@@ -1,55 +1,17 @@
 import { useRef, useState } from "react";
-import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { Folder, GitBranch, GitMerge } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { projectsApi } from "./api";
-import { useDeleteProject, useUpdateProject } from "./hooks";
+import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
 interface ProjectDetailProps {
   project: ProjectView;
-  onDeleted: () => void;
 }
 
-function ProjectDetail({ project, onDeleted }: ProjectDetailProps) {
-  const deleteProject = useDeleteProject();
-
-  const handleRemove = async () => {
-    const ok = await confirm(
-      "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.",
-      { title: `'${project.name}' 제거`, kind: "warning" },
-    );
-    if (!ok) return;
-    try {
-      await deleteProject.mutateAsync(project.slug);
-      onDeleted();
-    } catch (e) {
-      await message(`제거하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
-    }
-  };
-
+function ProjectDetail({ project }: ProjectDetailProps) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-10 py-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-[-0.01em]">{project.name}</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={project.missing}
-            onClick={() => projectsApi.openFolder(project.slug)}
-            className="rounded-[7px] border px-3 py-1.5 text-[13px] font-medium transition-colors hover:bg-sidebar-accent disabled:opacity-40"
-          >
-            폴더 열기
-          </button>
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="rounded-[7px] px-3 py-1.5 text-[13px] font-medium text-red-500 transition-colors hover:bg-red-500/10"
-          >
-            제거
-          </button>
-        </div>
-      </div>
+      <h1 className="text-3xl font-bold tracking-[-0.01em]">{project.name}</h1>
 
       {project.missing && (
         <div className="rounded-[7px] bg-red-500/10 px-4 py-3 text-[13px] text-red-500">

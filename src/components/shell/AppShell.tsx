@@ -35,11 +35,7 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
         {activeKey === "projects" ? (
-          <main className="flex min-w-0 flex-1 flex-col">
-            {/* Task 6에서 ProjectsPage가 자체 브레드크럼을 가지면 이 래퍼를 제거한다 */}
-            <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0 border-b" />
-            <ProjectsPage />
-          </main>
+          <ProjectsPage sidebarOpen={sidebarOpen} />
         ) : (
           <PlaceholderPage
             root="Works"
