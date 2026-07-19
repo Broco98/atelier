@@ -41,10 +41,9 @@ impl std::str::FromStr for WorkStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Work {
-    #[serde(skip)]
     pub slug: String,
     pub title: String,
     pub status: WorkStatus,
@@ -53,6 +52,20 @@ pub struct Work {
     pub projects: Vec<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// work.json 파일 직렬화 전용 — slug는 디렉터리명이 원천이라 파일에 저장하지 않는다
+/// (projects의 Frontmatter 패턴과 동일)
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileWork {
+    title: String,
+    status: WorkStatus,
+    branch: String,
+    created_at: String,
+    projects: Vec<String>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 프로젝트별 워크트리의 파생 정보 (조회 시 계산)
@@ -75,16 +88,31 @@ pub struct WorkView {
 }
 
 pub fn parse_work(slug: &str, content: &str) -> Result<Work> {
-    let mut work: Work = serde_json::from_str(content).map_err(|e| Error::InvalidFile {
+    let file: FileWork = serde_json::from_str(content).map_err(|e| Error::InvalidFile {
         slug: slug.to_string(),
         message: e.to_string(),
     })?;
-    work.slug = slug.to_string();
-    Ok(work)
+    Ok(Work {
+        slug: slug.to_string(),
+        title: file.title,
+        status: file.status,
+        branch: file.branch,
+        created_at: file.created_at,
+        projects: file.projects,
+        extra: file.extra,
+    })
 }
 
 pub fn render_work(work: &Work) -> String {
-    let mut json = serde_json::to_string_pretty(work).expect("work serializes");
+    let file = FileWork {
+        title: work.title.clone(),
+        status: work.status,
+        branch: work.branch.clone(),
+        created_at: work.created_at.clone(),
+        projects: work.projects.clone(),
+        extra: work.extra.clone(),
+    };
+    let mut json = serde_json::to_string_pretty(&file).expect("work serializes");
     json.push('\n');
     json
 }
@@ -129,6 +157,16 @@ mod tests {
             r#"{"title":"x","status":"paused","branch":"b","createdAt":"d","projects":[]}"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn view_serialization_includes_slug_but_file_does_not() {
+        let w = parse_work("cart-add-item", SAMPLE).unwrap();
+        // API(Tauri/CLI --json) 응답에는 slug가 반드시 포함돼야 한다
+        let json = serde_json::to_value(&w).unwrap();
+        assert_eq!(json["slug"], "cart-add-item");
+        // 파일(work.json)에는 저장하지 않는다 — 디렉터리명이 원천
+        assert!(!render_work(&w).contains("\"slug\""), "slug must not be persisted to work.json");
     }
 
     #[test]

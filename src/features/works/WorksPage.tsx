@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, GitFork, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Check, ChevronDown, List, Maximize2, Minimize2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import WorkList from "./WorkList";
@@ -22,6 +22,9 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
   );
+  // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
+  const [showSource, setShowSource] = useState(false);
+  const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
   useEffect(() => {
     localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
@@ -66,9 +69,28 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
           actions={
             <>
               {selected && (
-                <span className="flex items-center gap-1.5 text-[12.5px] text-tertiary">
-                  <GitFork className="size-3" strokeWidth={2} />
-                  <span className="font-mono">{selected.branch}</span>
+                <span className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowSource((v) => !v)}
+                    className={cn(
+                      "h-[26px] rounded-[9px] border px-[9px] text-[12.5px] transition-colors hover:bg-accent",
+                      showSource ? "bg-accent text-foreground" : "text-tertiary",
+                    )}
+                  >
+                    소스
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkPanelOpen((v) => !v)}
+                    title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
+                    className={cn(
+                      "flex size-[26px] items-center justify-center rounded-[9px] border transition-colors hover:bg-accent",
+                      workPanelOpen ? "text-primary" : "text-tertiary",
+                    )}
+                  >
+                    <List className="size-3.5" strokeWidth={2} />
+                  </button>
                 </span>
               )}
               <button
@@ -89,7 +111,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
           }
         />
         {selected ? (
-          <SpecViewer key={selected.slug} work={selected} />
+          <SpecViewer
+            key={selected.slug}
+            work={selected}
+            showSource={showSource}
+            panelOpen={workPanelOpen}
+          />
         ) : (
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
@@ -100,8 +127,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                 아직 작업이 없어요
               </span>
               <span className="text-[14px] leading-[1.65] text-tertiary">
-                작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.
+                작업은 Claude Code에서 스킬로 시작돼요. 작업이 시작되면 스펙 문서와 진행
+                상황이 여기에 나타나요.
               </span>
+              <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+                atelier work start "새 작업" --project &lt;slug&gt;
+              </code>
             </div>
           </div>
         )}

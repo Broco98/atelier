@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlignLeft, Check, FileText } from "lucide-react";
+import { Check, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import MermaidBlock from "./MermaidBlock";
-import SpecTree from "./SpecTree";
+import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
+  showSource: boolean;
+  panelOpen: boolean;
 }
 
 function defaultFile(files: string[]): string | null {
@@ -17,13 +19,11 @@ function defaultFile(files: string[]): string | null {
   return files[0] ?? null;
 }
 
-function SpecViewer({ work }: SpecViewerProps) {
+function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const files = work.specFiles;
   const [selected, setSelected] = useState<string | null>(null);
   // 파일이 삭제되면 기본 파일로 폴백
   const current = selected && files.includes(selected) ? selected : defaultFile(files);
-  const [showSource, setShowSource] = useState(false);
-  const [treeOpen, setTreeOpen] = useState(true);
   const { data: content } = useSpecFile(work.slug, current);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -42,89 +42,43 @@ function SpecViewer({ work }: SpecViewerProps) {
     showToast(`${ref} 복사됨`);
   };
 
-  if (files.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-10">
-        <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-          <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-            <FileText className="size-5" strokeWidth={1.6} />
-          </div>
-          <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-          <span className="text-[14px] leading-[1.65] text-tertiary">
-            AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-          </span>
-          <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-            ~/.atelier/works/{work.slug}/spec/
-          </code>
-        </div>
-      </div>
-    );
-  }
+  const copyPath = (path: string) => {
+    navigator.clipboard.writeText(`spec/${path}`);
+    showToast(`spec/${path} 복사됨`);
+  };
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* 파일 스트립 */}
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2.5 border-b px-3.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-mono text-[12.5px] text-muted-foreground">
-            spec/{current}
-          </span>
-          <span className="shrink-0 text-[11.5px] text-tertiary">
-            · 블록을 클릭하면 참조가 복사돼요
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setTreeOpen((v) => !v)}
-            title={treeOpen ? "파일 트리 접기" : "파일 트리 펼치기"}
-            className={cn(
-              "flex size-[26px] items-center justify-center rounded-[9px] border transition-colors hover:bg-accent",
-              treeOpen ? "text-primary" : "text-tertiary",
-            )}
-          >
-            <AlignLeft className="size-3.5" strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowSource((v) => !v)}
-            className={cn(
-              "h-[26px] rounded-[9px] border px-[9px] text-[12.5px] transition-colors hover:bg-accent",
-              showSource ? "bg-accent text-foreground" : "text-tertiary",
-            )}
-          >
-            소스
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(`spec/${current}`);
-              showToast(`spec/${current} 복사됨`);
-            }}
-            className="h-[26px] rounded-[9px] border px-[9px] text-[12.5px] text-tertiary transition-colors hover:bg-accent hover:text-muted-foreground"
-          >
-            경로 복사
-          </button>
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showSource ? (
+        {files.length === 0 ? (
+          <div className="flex h-full items-center justify-center p-10">
+            <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
+              <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+                <FileText className="size-5" strokeWidth={1.6} />
+              </div>
+              <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
+              <span className="text-[14px] leading-[1.65] text-tertiary">
+                AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
+              </span>
+              <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                ~/.atelier/works/{work.slug}/spec/
+              </code>
+            </div>
+          </div>
+        ) : showSource ? (
           <SourceView content={content ?? ""} />
         ) : (
           <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
         )}
       </div>
 
-      {treeOpen && (
-        <aside className="absolute right-3.5 top-[52px] z-10 flex max-h-[calc(100%-66px)] w-[232px] flex-col overflow-hidden rounded-[14px] border bg-panel shadow-lg">
-          <div className="flex h-[38px] shrink-0 items-center border-b px-3.5">
-            <span className="font-mono text-[12px] text-tertiary">spec/</span>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-1.5">
-            <SpecTree files={files} current={current} onSelect={setSelected} />
-          </div>
-        </aside>
+      {panelOpen && (
+        <WorkPanel
+          work={work}
+          currentFile={current}
+          onSelectFile={setSelected}
+          onCopyPath={copyPath}
+        />
       )}
 
       {toast && (

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TreeNode {
@@ -29,17 +29,17 @@ function buildTree(files: string[]): TreeNode[] {
   return root;
 }
 
-function SpecTree({
-  files,
-  current,
-  onSelect,
-}: {
+interface TreeProps {
   files: string[];
   current: string | null;
   onSelect: (path: string) => void;
-}) {
+  // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
+  onCopy?: (path: string) => void;
+}
+
+function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
   const tree = useMemo(() => buildTree(files), [files]);
-  return <TreeRows nodes={tree} depth={0} current={current} onSelect={onSelect} />;
+  return <TreeRows nodes={tree} depth={0} current={current} onSelect={onSelect} onCopy={onCopy} />;
 }
 
 function TreeRows({
@@ -47,11 +47,13 @@ function TreeRows({
   depth,
   current,
   onSelect,
+  onCopy,
 }: {
   nodes: TreeNode[];
   depth: number;
   current: string | null;
   onSelect: (path: string) => void;
+  onCopy?: (path: string) => void;
 }) {
   return (
     <>
@@ -66,19 +68,32 @@ function TreeRows({
                 <ChevronRight className="size-3 rotate-90" strokeWidth={2.2} />
                 {node.name}
               </span>
-              <TreeRows nodes={node.children} depth={depth + 1} current={current} onSelect={onSelect} />
+              <TreeRows nodes={node.children} depth={depth + 1} current={current} onSelect={onSelect} onCopy={onCopy} />
             </>
           ) : (
             <button
               type="button"
               onClick={() => onSelect(node.path)}
               className={cn(
-                "flex h-7 items-center gap-1.5 rounded-[8px] text-left text-[12.5px] transition-colors hover:bg-accent",
+                "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors hover:bg-accent",
                 node.path === current ? "font-medium text-primary" : "text-muted-foreground",
               )}
               style={{ paddingLeft: 8 + depth * 14 + 16 }}
             >
-              <span className="truncate">{node.name}</span>
+              <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              {onCopy && (
+                <span
+                  role="button"
+                  title="경로 복사"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopy(node.path);
+                  }}
+                  className="flex size-[22px] shrink-0 items-center justify-center rounded-[7px] text-tertiary opacity-0 transition-opacity hover:bg-inset hover:text-foreground group-hover:opacity-100"
+                >
+                  <Copy className="size-3" strokeWidth={1.8} />
+                </span>
+              )}
             </button>
           )}
         </div>

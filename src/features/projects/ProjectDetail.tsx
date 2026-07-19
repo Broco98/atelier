@@ -56,9 +56,9 @@ function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
         </dl>
       </div>
 
-      <WorksSection projectSlug={project.slug} onOpenWork={onOpenWork} />
-
       <DescriptionEditor key={project.slug} project={project} />
+
+      <WorksSection projectSlug={project.slug} onOpenWork={onOpenWork} />
     </div>
   );
 }
@@ -120,11 +120,6 @@ function WorksSection({
                     <span className="flex items-center gap-1.5 font-mono text-[11px]">
                       <GitFork className="size-3" strokeWidth={2} />
                       {work.branch}
-                      {tree.dirty && (
-                        <span className="rounded-[6px] bg-amber-600/10 px-1.5 py-px text-[10.5px] font-medium text-amber-700">
-                          변경 있음
-                        </span>
-                      )}
                     </span>
                   )}
                   {formatCreated(work.createdAt)}
