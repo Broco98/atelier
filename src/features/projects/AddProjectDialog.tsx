@@ -37,18 +37,28 @@ function DialogBody({ onClose, onCreated }: Omit<AddProjectDialogProps, "open">)
   const submit = async () => {
     if (!folder || submitting) return;
     setSubmitting(true);
+    let view;
     try {
-      const view = await createProject.mutateAsync(folder);
-      const branch = baseBranch.trim();
-      if (branch && branch !== view.baseBranch) {
-        await updateProject.mutateAsync({ slug: view.slug, patch: { baseBranch: branch } });
-      }
-      onCreated(view.slug);
-      onClose();
+      view = await createProject.mutateAsync(folder);
     } catch (e) {
       setSubmitting(false);
       await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      return;
     }
+    const branch = baseBranch.trim();
+    if (branch && branch !== view.baseBranch) {
+      try {
+        await updateProject.mutateAsync({ slug: view.slug, patch: { baseBranch: branch } });
+      } catch (e) {
+        // 등록 자체는 성공 — 사용자는 상세에서 baseBranch를 다시 바꿀 수 있다
+        await message(`프로젝트는 등록됐지만 baseBranch를 설정하지 못했습니다: ${e}`, {
+          title: "오류",
+          kind: "warning",
+        });
+      }
+    }
+    onCreated(view.slug);
+    onClose();
   };
 
   return (
