@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { confirm, message, open } from "@tauri-apps/plugin-dialog";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { Folder } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
+import AddProjectDialog from "./AddProjectDialog";
 import { projectsApi } from "./api";
-import { useCreateProject, useDeleteProject, useProjects } from "./hooks";
+import { useDeleteProject, useProjects } from "./hooks";
 
 interface ProjectsPageProps {
   sidebarOpen: boolean;
@@ -14,23 +15,13 @@ interface ProjectsPageProps {
 function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const createProject = useCreateProject();
+  const [dialogOpen, setDialogOpen] = useState(false);
   const deleteProject = useDeleteProject();
 
   const selected =
     projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
 
-  // Task 9에서 등록 다이얼로그로 교체된다
-  const handleAdd = async () => {
-    const folder = await open({ directory: true });
-    if (typeof folder !== "string") return;
-    try {
-      const view = await createProject.mutateAsync(folder);
-      setSelectedSlug(view.slug);
-    } catch (e) {
-      await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
-    }
-  };
+  const handleAdd = () => setDialogOpen(true);
 
   const handleRemove = async () => {
     if (!selected) return;
@@ -109,6 +100,11 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
           )}
         </div>
       </main>
+      <AddProjectDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={setSelectedSlug}
+      />
     </div>
   );
 }
