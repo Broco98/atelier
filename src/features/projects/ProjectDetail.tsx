@@ -45,7 +45,7 @@ function ProjectDetail({ project }: ProjectDetailProps) {
             </PropertyRow>
           )}
           <PropertyRow icon={<GitBranch className="size-3.5" strokeWidth={1.8} />} label="baseBranch">
-            <BaseBranchControl project={project} />
+            <BaseBranchControl key={project.slug} project={project} />
           </PropertyRow>
         </dl>
       </div>
