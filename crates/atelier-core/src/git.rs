@@ -39,6 +39,65 @@ pub fn origin_head(dir: &Path) -> Option<String> {
         .and_then(|s| s.split_once('/').map(|(_, b)| b.to_string()))
 }
 
+pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
+    git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")]).is_some()
+}
+
+pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
+    git(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")]).is_some()
+}
+
+/// `base`에서 분기한 새 브랜치 `branch`로 `path`에 워크트리 생성
+pub(crate) fn worktree_add(
+    repo: &Path,
+    path: &Path,
+    branch: &str,
+    base: &str,
+) -> std::result::Result<(), String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["worktree", "add", "-b", branch])
+        .arg(path)
+        .arg(base)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// 커밋 안 된 변경이 있는지. git 저장소가 아니거나 판단 불가면 보수적으로 dirty 취급.
+pub(crate) fn is_dirty(dir: &Path) -> bool {
+    match git(dir, &["status", "--porcelain"]) {
+        Some(s) => !s.is_empty(),
+        None => true,
+    }
+}
+
+/// 워크트리 제거. 브랜치는 건드리지 않는다.
+pub(crate) fn worktree_remove(tree: &Path, force: bool) -> std::result::Result<(), String> {
+    let common = git(tree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .ok_or_else(|| format!("not a git worktree: {}", tree.display()))?;
+    let repo = Path::new(&common)
+        .parent()
+        .ok_or_else(|| format!("cannot resolve repo for: {}", tree.display()))?
+        .to_path_buf();
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(&repo).args(["worktree", "remove"]);
+    if force {
+        cmd.arg("--force");
+    }
+    let out = cmd.arg(tree).output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 fn parse_remote_slug(url: &str) -> Option<String> {
     let url = url.trim_end_matches(".git");
     let tail = if let Some((_, t)) = url.split_once("://") {
