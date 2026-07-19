@@ -11,38 +11,41 @@ interface ProjectListProps {
 
 function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListProps) {
   return (
-    <div className="flex w-[320px] shrink-0 flex-col border-r">
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">
-          PROJECTS
+    <div className="flex w-[304px] shrink-0 flex-col border-r bg-panel px-3 pb-3">
+      <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
+      <div data-tauri-drag-region className="flex h-[50px] shrink-0 items-center justify-between px-0.5">
+        <span className="flex items-baseline gap-[7px]">
+          <span className="text-sm font-semibold tracking-[-0.01em]">Projects</span>
+          <span className="text-[11.5px] text-tertiary">{projects.length}</span>
         </span>
         <button
           type="button"
           onClick={onAdd}
-          aria-label="프로젝트 추가"
-          className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent"
+          aria-label="프로젝트 등록"
+          title="프로젝트 등록"
+          className="flex size-[26px] items-center justify-center rounded-[10px] border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <Plus className="size-4" strokeWidth={1.7} />
+          <Plus className="size-3.5" strokeWidth={1.8} />
         </button>
       </div>
 
       {projects.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-          <p className="text-[13px] text-muted-foreground">
-            아직 프로젝트가 없어요.
-            <br />
-            코드 폴더를 추가해 시작하세요.
-          </p>
+        <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
+          <Folder className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
+          <span className="text-[12.5px] font-medium text-muted-foreground">프로젝트가 없어요</span>
+          <span className="text-[11.5px] leading-normal text-tertiary">
+            로컬 저장소 폴더를 등록해 시작하세요.
+          </span>
           <button
             type="button"
             onClick={onAdd}
-            className="rounded-[7px] bg-sidebar-primary/12 px-3 py-1.5 text-[13px] font-medium text-sidebar-primary"
+            className="mt-1.5 h-[26px] rounded-[9px] bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
           >
-            프로젝트 추가
+            프로젝트 등록
           </button>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-[2px] overflow-y-auto px-2 pb-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2">
           {projects.map((project) => {
             const active = project.slug === selectedSlug;
             return (
@@ -51,36 +54,36 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
                 type="button"
                 onClick={() => onSelect(project.slug)}
                 className={cn(
-                  "flex flex-col gap-0.5 rounded-[7px] px-[9px] py-2 text-left transition-colors",
-                  active ? "bg-sidebar-primary/12" : "hover:bg-sidebar-accent",
+                  "flex w-full flex-col gap-1 rounded-[12px] px-[10px] py-[9px] text-left transition-colors",
+                  active ? "selected-ring" : "hover:bg-accent",
                 )}
               >
-                <span className="flex items-center gap-[7px]">
-                  <Folder className="size-[15px] shrink-0 text-muted-foreground" strokeWidth={1.7} />
+                <span className="flex w-full items-center gap-[7px]">
+                  <Folder className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.8} />
                   <span
                     className={cn(
-                      "truncate text-[13px] font-medium",
+                      "min-w-0 flex-1 truncate text-[13px] font-medium",
+                      active && "text-primary",
                       project.missing && "text-muted-foreground line-through",
-                      active && !project.missing && "text-sidebar-primary",
                     )}
                   >
                     {project.name}
                   </span>
                   {project.missing && (
-                    <span className="ml-auto rounded bg-red-500/10 px-1.5 text-[11px] font-medium text-red-500">
+                    <span className="shrink-0 rounded-[6px] bg-red-500/10 px-1.5 text-[10.5px] font-medium text-red-600">
                       누락
                     </span>
                   )}
                 </span>
-                <span className="truncate pl-[22px] font-mono text-[11.5px] text-muted-foreground">
+                <span className="truncate pl-[21px] font-mono text-[11px] text-tertiary">
                   {project.path}
                 </span>
                 {project.git?.remoteSlug && (
-                  <span className="flex items-center gap-1 truncate pl-[22px] font-mono text-[11.5px] text-muted-foreground">
-                    <GitBranch className="size-[11px]" strokeWidth={1.7} />
-                    {project.git.remoteSlug}
+                  <span className="flex items-center gap-1.5 pl-[21px] font-mono text-[11px] text-tertiary">
+                    <GitBranch className="size-[11px] shrink-0" strokeWidth={1.7} />
+                    <span className="truncate">{project.git.remoteSlug}</span>
                     {project.git.currentBranch && (
-                      <span className="rounded bg-sidebar-accent px-1">
+                      <span className="shrink-0 rounded-[6px] bg-accent px-[5px] text-[10.5px]">
                         {project.git.currentBranch}
                       </span>
                     )}
