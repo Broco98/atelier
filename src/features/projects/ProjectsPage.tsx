@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import ProjectList from "./ProjectList";
+import ProjectDetail from "./ProjectDetail";
 import { useCreateProject, useProjects } from "./hooks";
 
 function ProjectsPage() {
@@ -28,10 +29,7 @@ function ProjectsPage() {
         onAdd={handleAdd}
       />
       <div className="flex-1 overflow-y-auto">
-        {selected && (
-          /* Task 9에서 <ProjectDetail>로 교체 */
-          <div className="p-8 text-2xl font-semibold">{selected.name}</div>
-        )}
+        {selected && <ProjectDetail project={selected} onDeleted={() => setSelectedSlug(null)} />}
       </div>
     </div>
   );
