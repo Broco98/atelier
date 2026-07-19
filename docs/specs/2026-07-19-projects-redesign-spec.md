@@ -21,20 +21,17 @@ claude.ai/design 프로젝트 "Atelier SpecOps UI 디자인 브리프"의 `Ateli
 
 ## A. 셸
 
-레이아웃: 세로 컬럼 = [가로 행: Rail | 페이지 영역] + 하단 상태바 26px.
+레이아웃: 세로 컬럼 = [가로 행: 사이드바 | 페이지 영역] + 하단 상태바 26px.
 
-### Rail (`src/components/shell/`)
-- 펼침 **248px** / 접힘 **60px**(아이콘 전용). w-0으로 사라지지 않는다. 열림 상태는 기존 localStorage 키 재사용.
-- 상단 44px(`--titlebar-height`)은 drag region (신호등 영역, 현행 유지). 그 아래 로고 행: 26px radius-10 accent 사각 "A" + "Atelier"(13.5px/600, 접힘 시 숨김).
-- 네비 항목: Review / Projects / Works. 펼침: 높이 32px·radius 10·아이콘 17px+라벨 12.5px. 접힘: 38×38px·radius 12·아이콘만(툴팁으로 라벨+단축키).
-- 활성: `bg: color-mix(accent 12%)` + accent 텍스트. 호버: `--bg-hover`.
-- 하단 Settings 항목: 비활성(opacity .55), 툴팁 "이번 범위 밖".
-- Review 미확인 배지는 데이터가 없으므로 렌더하지 않는다.
-- 배경 `--bg-rail`(기존 `--sidebar` #f2f2f4), 우측 1px border.
+### 사이드바 (`src/components/shell/Sidebar.tsx` — **2026-07-19 사용자 정정: 구조 변경 없음, 리스타일만**)
+- **기존 v1 사이드바 구조를 그대로 유지한다**: "Atelier" 텍스트 로고(text-xl), **접힘 = w-0 전체 닫기**(기존 width+opacity 트랜지션), 신호등 옆 고정 SidebarToggle 유지, 네비는 **Projects / Works만** (Review·Settings 추가하지 않는다).
+- 바뀌는 것은 radius·크기·폰트뿐: 폭 272px → **248px**(`--sidebar-width`), 네비 항목 radius 7px → **10px**, 라벨 13px → **12.5px**, 항목 gap 2px → 3px.
+- 상단 44px drag region, 배경 `--sidebar`, 활성 `bg-sidebar-primary/12` — 전부 현행 유지.
+- (정정 이력: 목업의 Rail 아이콘 접힘 모드·"A" 로고 타일·Review 메뉴·Settings는 사용자가 반려 — 재도입 금지.)
 
 ### 브레드크럼 바 (페이지 소유, ProjectsPage 등 각 화면 상단)
-- 높이 44px, border-b, drag region.
-- 좌측: **사이드바 토글 버튼**(26px, radius 9 — 기존 신호등 옆 고정 SidebarToggle 제거하고 이곳으로 이동) + `Projects` `/` `<선택 프로젝트명>`(13px, leaf는 500).
+- 높이 44px, border-b, drag region. 토글 버튼은 넣지 않는다(기존 SidebarToggle이 그 역할 — 정정 반영).
+- 좌측: `Projects` `/` `<선택 프로젝트명>`(13px, leaf는 500). 사이드바 닫힘 시 신호등·SidebarToggle과 겹치지 않도록 좌측 패딩을 126px로 전환(열림 시 16px, 220ms 트랜지션).
 - 우측(Projects, 선택 항목 있을 때): **폴더 열기**(28px 높이, radius 9, border-strong) / **제거**(red 텍스트, hover red-bg) — 상세 본문에서 이동.
 
 ### 상태바
@@ -42,12 +39,10 @@ claude.ai/design 프로젝트 "Atelier SpecOps UI 디자인 브리프"의 `Ateli
 - 좌측: `~/.atelier`(mono) + "감시 중"(6px 초록 점). 목업의 "활성 작업 N / 미확인 N"은 Works·Review 데이터 도입 시 추가.
 
 ### 단축키
-- **⌘B**: 사이드바 펼침/접힘 (기존 유지, 목업의 ⌘\는 도입 안 함).
-- **⌘1/⌘2/⌘3**: Review/Projects/Works 전환 (신규).
+- **⌘B**: 사이드바 열기/닫기 (기존 유지). ⌘1/2/3·⌘\는 도입하지 않는다 (정정: Review 메뉴 제거로 무의미 + 구조 최소화).
 
-### Works·Review 화면 (빈 상태 전용)
+### Works 화면 (빈 상태 전용 — Review 화면은 정정으로 제외)
 - Works: 목록 패널에 "작업이 없어요 / 작업은 Claude Code에서 스킬로 시작돼요" dashed 카드(radius 14). 메인엔 목업 S5e 빈 상태(46px radius-16 아이콘 타일 + 안내문).
-- Review: 목록 패널 "Inbox / 모두 리뷰됨" 헤더만, 메인엔 목업 "인박스 제로" 화면(초록 원형 아이콘 + "새로 리뷰할 스펙이 없어요").
 - 목업의 `/specops start` 코드 블록은 스킬 이름 미확정이므로 넣지 않는다.
 
 ## B. 디자인 토큰 (`src/index.css`)
@@ -118,12 +113,12 @@ claude.ai/design 프로젝트 "Atelier SpecOps UI 디자인 브리프"의 `Ateli
 
 ## F. 구현 파일 (예상)
 
-- `src/index.css` — 토큰·폰트.
-- `src/components/shell/AppShell.tsx` — 컬럼+상태바 재편, ⌘1/2/3, nav 상태(**기본 네비는 Projects** — 목업 기본값 Review는 기능이 없으므로 따르지 않음).
-- `src/components/shell/Sidebar.tsx` → Rail로 개편 (접힘=아이콘 모드). `SidebarToggle.tsx` 삭제(브레드크럼으로 이동).
+- `src/index.css` — 토큰·폰트·`--sidebar-width: 248px`.
+- `src/components/shell/AppShell.tsx` — 컬럼+상태바 재편, nav 상태(기본 Projects). `SidebarToggle.tsx` **유지** (정정).
+- `src/components/shell/Sidebar.tsx` — 구조 유지, radius 10·12.5px·gap 3px 리스타일만 (정정 — Rail 폐기).
 - `src/components/shell/StatusBar.tsx` — 신규.
-- `src/components/shell/PageHeader.tsx` — 신규, 공용 브레드크럼 바(사이드바 토글 + 루트/리프 + 우측 액션 슬롯). 각 페이지가 이걸로 자기 브레드크럼을 렌더.
-- `src/components/shell/PlaceholderPage.tsx` — 신규, Works/Review 공용 빈 화면(브레드크럼 + 목록 패널 빈 상태 + 메인 빈 상태를 props로 구성).
+- `src/components/shell/PageHeader.tsx` — 신규, 공용 브레드크럼 바(루트/리프 + 우측 액션 슬롯 + 닫힘 시 좌측 패딩 전환). 토글 버튼 없음 (정정).
+- `src/components/shell/PlaceholderPage.tsx` — 신규, Works 빈 화면(브레드크럼 + 목록 패널 빈 상태 + 메인 빈 상태를 props로 구성).
 - `src/features/projects/` — `ProjectsPage.tsx`(목록 패널+브레드크럼+상세 배치), `ProjectList.tsx`, `ProjectDetail.tsx`(브랜치 팝오버 포함), `AddProjectDialog.tsx`(신규).
 
 ## G. 검증

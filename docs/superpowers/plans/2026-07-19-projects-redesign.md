@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** claude.ai/design 목업 기준으로 셸을 Rail(248/60px)+목록 패널(304px)+페이지 소유 브레드크럼+상태바 구조로 재편하고, Projects 전체를 라운드 디자인으로 리스타일한다.
+**Goal:** claude.ai/design 목업 기준으로 목록 패널(304px)+페이지 소유 브레드크럼+상태바를 도입하고 Projects 전체를 라운드 디자인으로 리스타일한다. 사이드바는 기존 구조 유지 + radius·크기·폰트만 변경 (2026-07-19 사용자 정정 — Rail 아이콘 접힘·Review 메뉴·⌘1/2/3 반려).
 
 **Architecture:** 셸(AppShell)은 Rail+상태바+nav 상태만 소유하고, 각 페이지(ProjectsPage, PlaceholderPage)가 목록 패널·브레드크럼·본문을 소유한다. 백엔드(crates, src-tauri)는 건드리지 않는다 — 등록 다이얼로그의 baseBranch는 `create → update` 2단 호출로 구현한다.
 
@@ -113,6 +113,8 @@ EOF
 ---
 
 ### Task 2: nav-items에 Review 추가 + Rail 컴포넌트
+
+> **정정(2026-07-19, 사용자 피드백):** 이 태스크의 Rail 구조(아이콘 접힘·"A" 로고·Review·Settings)는 반려되어 **Task 3R**에서 원복·리스타일된다. 이 섹션은 이력용 — 새로 구현하지 말 것.
 
 **Files:**
 - Modify: `src/components/shell/nav-items.ts`
@@ -245,6 +247,8 @@ EOF
 ---
 
 ### Task 3: PageHeader + StatusBar + PlaceholderPage
+
+> **정정(2026-07-19, 사용자 피드백):** PageHeader의 토글 버튼과 PlaceholderPage의 Review용 변형(green/mono)은 반려 — **Task 3R**에서 교체된다. StatusBar는 유효. 이 섹션의 코드로 새로 구현하지 말 것.
 
 **Files:**
 - Create: `src/components/shell/PageHeader.tsx`
@@ -423,21 +427,261 @@ EOF
 
 ---
 
-### Task 4: AppShell 재편 — 컬럼 레이아웃 + ⌘1/2/3 + 빈 화면 연결
+### Task 3R: 셸 정정 — 사이드바 원복+리스타일, PageHeader·PlaceholderPage 교체
+
+> 사용자 피드백 반영: Rail 구조 폐기. 사이드바는 **기존 v1 구조 유지 + radius·크기·폰트만 변경**. Review·Settings 메뉴 금지, 로고는 텍스트 "Atelier", 접힘은 w-0 전체 닫기, SidebarToggle 유지.
+
+**Files:**
+- Modify: `src/index.css` (`--sidebar-width` 272px → 248px, 1줄)
+- Modify: `src/components/shell/nav-items.ts` (Review 제거 원복)
+- Create: `src/components/shell/Sidebar.tsx` (복원+리스타일)
+- Delete: `src/components/shell/Rail.tsx`
+- Modify: `src/components/shell/AppShell.tsx` (import `Rail`→`Sidebar`, `<Rail`→`<Sidebar` 2줄만)
+- Modify: `src/components/shell/PageHeader.tsx` (전면 교체 — 토글 버튼 제거)
+- Modify: `src/components/shell/PlaceholderPage.tsx` (전면 교체 — green/mono 제거)
+
+**Interfaces:**
+- Produces (Task 4·6이 사용하는 최종 시그니처):
+  - `NavKey = "projects" | "works"`
+  - `Sidebar` props `{ open: boolean; activeKey: NavKey; onSelect: (key: NavKey) => void }`
+  - `PageHeader` props `{ root: string; leaf?: string; actions?: React.ReactNode; sidebarOpen: boolean }` — 토글 버튼 없음, `sidebarOpen`은 닫힘 시 좌측 패딩(126px) 전환용
+  - `PlaceholderPage` props `{ root: string; listHeader: string; listHint: string; listEmpty?: { icon: LucideIcon; title: string; body: string }; main: { icon: LucideIcon; title: string; body: string }; sidebarOpen: boolean }`
+  - `StatusBar` 불변
+
+- [ ] **Step 1: index.css 사이드바 폭 변경**
+
+`src/index.css`의 `:root` 셸 레이아웃 블록에서 `--sidebar-width: 272px;` → `--sidebar-width: 248px;` (이 1줄만).
+
+- [ ] **Step 2: nav-items.ts 원복**
+
+```ts
+import { Folder, Zap, type LucideIcon } from "lucide-react";
+
+export const navItems = [
+  { key: "projects", label: "Projects", icon: Folder },
+  { key: "works", label: "Works", icon: Zap },
+] as const satisfies readonly { key: string; label: string; icon: LucideIcon }[];
+
+export type NavKey = (typeof navItems)[number]["key"];
+```
+
+- [ ] **Step 3: Sidebar.tsx 생성 (기존 구조 + radius 10·12.5px·gap 3px)**
+
+```tsx
+import { cn } from "@/lib/utils";
+import { navItems, type NavKey } from "./nav-items";
+
+interface SidebarProps {
+  open: boolean;
+  activeKey: NavKey;
+  onSelect: (key: NavKey) => void;
+}
+
+function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
+  return (
+    <aside
+      className={cn(
+        "shrink-0 overflow-hidden border-r bg-sidebar transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        open ? "w-(--sidebar-width)" : "w-0 border-transparent",
+      )}
+    >
+      {/* fixed inner width so text doesn't reflow while the width animates */}
+      <div
+        className={cn(
+          "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
+          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
+        )}
+      >
+        {/* traffic light strip — same height as the main header so the logo top
+            lines up with the header's bottom border */}
+        <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
+
+        <div className="shrink-0 pb-3 pl-3.5 pt-1">
+          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
+            Atelier
+          </span>
+        </div>
+
+        <nav className="flex flex-col gap-[3px] px-2">
+          {navItems.map((item) => {
+            const active = item.key === activeKey;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onSelect(item.key)}
+                className={cn(
+                  "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[12.5px] font-medium transition-colors",
+                  active
+                    ? "bg-sidebar-primary/12 text-sidebar-primary"
+                    : "text-muted-foreground hover:bg-sidebar-accent",
+                )}
+              >
+                <item.icon className="size-[17px]" strokeWidth={1.7} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </aside>
+  );
+}
+
+export default Sidebar;
+```
+
+- [ ] **Step 4: Rail.tsx 삭제 + AppShell import 원복**
+
+`rm src/components/shell/Rail.tsx` 후, `src/components/shell/AppShell.tsx`에서:
+- `import Rail from "./Rail";` → `import Sidebar from "./Sidebar";`
+- `<Rail open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />` → `<Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />`
+
+다른 줄은 건드리지 않는다 (전면 개편은 Task 4).
+
+- [ ] **Step 5: PageHeader.tsx 전체 교체**
+
+```tsx
+import { cn } from "@/lib/utils";
+
+interface PageHeaderProps {
+  root: string;
+  leaf?: string;
+  actions?: React.ReactNode;
+  sidebarOpen: boolean;
+}
+
+// 페이지 소유 브레드크럼 바 — 메인 영역의 44px 타이틀바를 겸한다 (drag region).
+// 사이드바 닫힘 시 신호등·SidebarToggle을 피해 좌측 패딩을 넓힌다.
+function PageHeader({ root, leaf, actions, sidebarOpen }: PageHeaderProps) {
+  return (
+    <header
+      data-tauri-drag-region
+      className={cn(
+        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b pr-4 transition-[padding] duration-[220ms]",
+        sidebarOpen ? "pl-4" : "pl-[126px]",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-tertiary">
+        <span data-tauri-drag-region className="shrink-0">{root}</span>
+        {leaf && (
+          <>
+            <span className="text-border-strong">/</span>
+            <span className="min-w-0 truncate font-medium text-foreground">{leaf}</span>
+          </>
+        )}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </header>
+  );
+}
+
+export default PageHeader;
+```
+
+- [ ] **Step 6: PlaceholderPage.tsx 전체 교체**
+
+```tsx
+import type { LucideIcon } from "lucide-react";
+import PageHeader from "./PageHeader";
+
+interface EmptyCard {
+  icon: LucideIcon;
+  title: string;
+  body: string;
+}
+
+interface PlaceholderPageProps {
+  root: string;
+  listHeader: string;
+  listHint: string;
+  listEmpty?: EmptyCard;
+  main: EmptyCard;
+  sidebarOpen: boolean;
+}
+
+// Works 등 데이터 없는 화면의 공용 빈 화면 — 목록 패널(304px) + 브레드크럼 + 메인 빈 상태.
+function PlaceholderPage({
+  root,
+  listHeader,
+  listHint,
+  listEmpty,
+  main,
+  sidebarOpen,
+}: PlaceholderPageProps) {
+  const MainIcon = main.icon;
+  const ListIcon = listEmpty?.icon;
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex w-[304px] shrink-0 flex-col border-r bg-panel px-3 pb-3">
+        <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
+        <div data-tauri-drag-region className="flex h-[50px] shrink-0 items-center justify-between px-0.5">
+          <span className="text-sm font-semibold tracking-[-0.01em]">{listHeader}</span>
+          <span className="text-[11.5px] text-tertiary">{listHint}</span>
+        </div>
+        {listEmpty && ListIcon && (
+          <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
+            <ListIcon className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
+            <span className="text-[12.5px] font-medium text-muted-foreground">{listEmpty.title}</span>
+            <span className="text-[11.5px] leading-normal text-tertiary">{listEmpty.body}</span>
+          </div>
+        )}
+      </div>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <PageHeader root={root} sidebarOpen={sidebarOpen} />
+        <div className="flex flex-1 items-center justify-center p-10">
+          <div className="flex max-w-[400px] flex-col items-center gap-2.5 text-center">
+            <div className="mb-2 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+              <MainIcon className="size-5" strokeWidth={1.6} />
+            </div>
+            <span className="text-base font-semibold tracking-[-0.01em]">{main.title}</span>
+            <span className="text-[13px] leading-[1.65] text-muted-foreground">{main.body}</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default PlaceholderPage;
+```
+
+- [ ] **Step 7: 빌드 확인**
+
+Run: `pnpm build`
+Expected: PASS.
+
+- [ ] **Step 8: 커밋**
+
+```bash
+git status --short --branch
+git add src/index.css src/components/shell/nav-items.ts src/components/shell/Sidebar.tsx src/components/shell/Rail.tsx src/components/shell/AppShell.tsx src/components/shell/PageHeader.tsx src/components/shell/PlaceholderPage.tsx
+git commit -m "$(cat <<'EOF'
+fix(fe): 셸 정정 — 사이드바 원복+리스타일, Review 제거, 토글 원위치
+
+KimHyoYeon
+Claude-Session: https://claude.ai/code/session_01MQUzvWAWX5tw5SobxCgXn3
+EOF
+)"
+```
+
+---
+
+### Task 4: AppShell 재편 — 컬럼 레이아웃 + 빈 화면 연결
 
 **Files:**
 - Modify: `src/components/shell/AppShell.tsx` (전면 교체)
 
 **Interfaces:**
-- Consumes: `Rail`(Task 2), `StatusBar`·`PlaceholderPage`(Task 3), `NavKey`.
-- Produces: 없음 (최상위). **주의**: Projects 화면은 이 태스크에서 임시로 기존 44px 헤더 래퍼를 유지하고 `SidebarToggle`도 그대로 둔다 — Task 6에서 ProjectsPage가 자체 브레드크럼을 갖게 되면 둘 다 제거된다.
+- Consumes: `Sidebar`(Task 3R), `StatusBar`(Task 3), `PageHeader`·`PlaceholderPage`(Task 3R 시그니처), `NavKey = "projects" | "works"`.
+- Produces: 없음 (최상위). **주의**: `SidebarToggle`은 유지한다(정정 — 삭제 금지). Projects 화면은 이 태스크에서 임시로 기존 44px 헤더 래퍼를 유지한다 — Task 6에서 ProjectsPage가 자체 브레드크럼을 갖게 되면 래퍼만 제거된다.
 
 - [ ] **Step 1: AppShell.tsx 전체 교체**
 
 ```tsx
 import { useEffect, useState } from "react";
-import { Inbox, Zap } from "lucide-react";
-import Rail from "./Rail";
+import { Zap } from "lucide-react";
+import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import StatusBar from "./StatusBar";
 import PlaceholderPage from "./PlaceholderPage";
@@ -445,11 +689,6 @@ import ProjectsPage from "@/features/projects/ProjectsPage";
 import type { NavKey } from "./nav-items";
 
 const SIDEBAR_OPEN_KEY = "sidebar-open";
-const NAV_SHORTCUTS: Record<string, NavKey> = {
-  Digit1: "review",
-  Digit2: "projects",
-  Digit3: "works",
-};
 
 function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -463,52 +702,26 @@ function AppShell() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey) return;
-      if (e.code === "KeyB") {
+      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === "KeyB") {
         e.preventDefault();
         setSidebarOpen((open) => !open);
-        return;
-      }
-      const nav = NAV_SHORTCUTS[e.code];
-      if (nav) {
-        e.preventDefault();
-        setActiveKey(nav);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const toggleSidebar = () => setSidebarOpen((open) => !open);
-
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">
       <div className="flex min-h-0 flex-1">
-        <Rail open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
-        {activeKey === "projects" && (
+        <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
+        {activeKey === "projects" ? (
           <main className="flex min-w-0 flex-1 flex-col">
             {/* Task 6에서 ProjectsPage가 자체 브레드크럼을 가지면 이 래퍼를 제거한다 */}
             <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0 border-b" />
             <ProjectsPage />
           </main>
-        )}
-        {activeKey === "review" && (
-          <PlaceholderPage
-            root="Review"
-            listHeader="Inbox"
-            listHint="모두 리뷰됨"
-            main={{
-              icon: Inbox,
-              title: "인박스 제로",
-              body: "새로 리뷰할 스펙이 없어요.",
-              mono: "감시 중 · 변경이 오면 다시 떠요",
-              green: true,
-            }}
-            sidebarOpen={sidebarOpen}
-            onToggleSidebar={toggleSidebar}
-          />
-        )}
-        {activeKey === "works" && (
+        ) : (
           <PlaceholderPage
             root="Works"
             listHeader="Works"
@@ -524,12 +737,11 @@ function AppShell() {
               body: "작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
             }}
             sidebarOpen={sidebarOpen}
-            onToggleSidebar={toggleSidebar}
           />
         )}
       </div>
       <StatusBar />
-      <SidebarToggle open={sidebarOpen} onToggle={toggleSidebar} />
+      <SidebarToggle open={sidebarOpen} onToggle={() => setSidebarOpen((open) => !open)} />
     </div>
   );
 }
@@ -548,7 +760,7 @@ Expected: PASS.
 git status --short --branch
 git add src/components/shell/AppShell.tsx
 git commit -m "$(cat <<'EOF'
-feat(fe): AppShell 재편 — 상태바·⌘1/2/3·Works/Review 빈 화면
+feat(fe): AppShell 재편 — 상태바·Works 빈 화면 연결
 
 KimHyoYeon
 Claude-Session: https://claude.ai/code/session_01MQUzvWAWX5tw5SobxCgXn3
@@ -699,12 +911,11 @@ EOF
 **Files:**
 - Modify: `src/features/projects/ProjectsPage.tsx` (전면 교체)
 - Modify: `src/features/projects/ProjectDetail.tsx` (상단 버튼·onDeleted 제거)
-- Modify: `src/components/shell/AppShell.tsx` (임시 래퍼·SidebarToggle 제거)
-- Delete: `src/components/shell/SidebarToggle.tsx`
+- Modify: `src/components/shell/AppShell.tsx` (임시 래퍼 제거 — **SidebarToggle은 유지, 삭제 금지(정정)**)
 
 **Interfaces:**
-- Consumes: `PageHeader`(Task 3), `ProjectList`(Task 5), `projectsApi`·hooks(기존).
-- Produces: `ProjectsPage` props `{ sidebarOpen: boolean; onToggleSidebar: () => void }` (default export). `ProjectDetail` props는 `{ project: ProjectView }`로 축소 — Task 7·8이 이 시그니처를 유지한다.
+- Consumes: `PageHeader`(Task 3R 시그니처 — 토글 버튼 없음), `ProjectList`(Task 5), `projectsApi`·hooks(기존).
+- Produces: `ProjectsPage` props `{ sidebarOpen: boolean }` (default export). `ProjectDetail` props는 `{ project: ProjectView }`로 축소 — Task 7·8이 이 시그니처를 유지한다.
 
 - [ ] **Step 1: ProjectsPage.tsx 전체 교체**
 
@@ -720,10 +931,9 @@ import { useCreateProject, useDeleteProject, useProjects } from "./hooks";
 
 interface ProjectsPageProps {
   sidebarOpen: boolean;
-  onToggleSidebar: () => void;
 }
 
-function ProjectsPage({ sidebarOpen, onToggleSidebar }: ProjectsPageProps) {
+function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const createProject = useCreateProject();
@@ -772,7 +982,6 @@ function ProjectsPage({ sidebarOpen, onToggleSidebar }: ProjectsPageProps) {
           root="Projects"
           leaf={selected?.name}
           sidebarOpen={sidebarOpen}
-          onToggleSidebar={onToggleSidebar}
           actions={
             selected && (
               <>
@@ -836,19 +1045,9 @@ export default ProjectsPage;
 - `handleRemove` 함수, `useDeleteProject()` 호출, 상단 `<div className="flex items-center justify-between">…</div>` 블록(제목+버튼 2개)을 제거하고 `<h1 …>{project.name}</h1>`만 남긴다.
 - 사용하지 않게 된 import 제거: `confirm`, `message`(`@tauri-apps/plugin-dialog` import 줄 전체), `projectsApi`, `useDeleteProject`.
 
-- [ ] **Step 3: AppShell 임시 래퍼·SidebarToggle 제거**
+- [ ] **Step 3: AppShell 임시 래퍼 제거**
 
-`src/components/shell/AppShell.tsx`에서:
-- `import SidebarToggle from "./SidebarToggle";` 삭제, 하단 `<SidebarToggle open={sidebarOpen} onToggle={toggleSidebar} />` 삭제, 최상위 div에서 `relative` 클래스 삭제.
-- projects 분기를 다음으로 교체:
-
-```tsx
-        {activeKey === "projects" && (
-          <ProjectsPage sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
-        )}
-```
-
-그리고 `rm src/components/shell/SidebarToggle.tsx`.
+`src/components/shell/AppShell.tsx`에서 projects 분기의 임시 `<main>` 래퍼(주석·`<header>` 포함)를 제거하고 `<ProjectsPage sidebarOpen={sidebarOpen} />` 한 줄로 교체한다 (삼항 구조는 유지). **SidebarToggle과 최상위 `relative`는 그대로 둔다 — 삭제 금지(정정).**
 
 - [ ] **Step 4: 빌드 확인**
 
@@ -859,7 +1058,7 @@ Expected: PASS.
 
 ```bash
 git status --short --branch
-git add src/features/projects/ProjectsPage.tsx src/features/projects/ProjectDetail.tsx src/components/shell/AppShell.tsx src/components/shell/SidebarToggle.tsx
+git add src/features/projects/ProjectsPage.tsx src/features/projects/ProjectDetail.tsx src/components/shell/AppShell.tsx
 git commit -m "$(cat <<'EOF'
 feat(fe): ProjectsPage 브레드크럼 도입 — 폴더 열기·제거 액션 이동
 
