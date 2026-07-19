@@ -10,28 +10,45 @@ interface ProjectDetailProps {
 
 function ProjectDetail({ project }: ProjectDetailProps) {
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-10 py-8">
-      <h1 className="text-3xl font-bold tracking-[-0.01em]">{project.name}</h1>
-
+    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7 px-8 pb-12 pt-7">
       {project.missing && (
-        <div className="rounded-[7px] bg-red-500/10 px-4 py-3 text-[13px] text-red-500">
-          경로에 폴더가 없습니다. 폴더를 다시 만들거나 이 프로젝트를 제거하세요.
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500 bg-red-500/[0.07] px-3.5 py-2.5">
+          <span className="size-[7px] shrink-0 rounded-full bg-red-500" />
+          <span className="shrink-0 text-[13px] font-medium text-red-600">
+            경로를 찾을 수 없어요.
+          </span>
+          <span className="text-[12.5px] text-muted-foreground">
+            폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
+            직접 제거하세요.
+          </span>
         </div>
       )}
 
-      <dl className="flex flex-col gap-3">
-        <PropertyRow icon={<Folder className="size-4" strokeWidth={1.7} />} label="경로">
-          <span className="font-mono text-[13px]">{project.path}</span>
-        </PropertyRow>
-        {project.git?.remoteSlug && (
-          <PropertyRow icon={<GitMerge className="size-4" strokeWidth={1.7} />} label="원격">
-            <span className="font-mono text-[13px]">{project.git.remoteSlug}</span>
+      <div className="flex flex-col gap-2.5">
+        <h1 className="text-[21px] font-semibold tracking-[-0.01em]">{project.name}</h1>
+        <dl className="mt-1 flex flex-col gap-px">
+          <PropertyRow icon={<Folder className="size-3.5" strokeWidth={1.8} />} label="경로">
+            <span
+              className={cn(
+                "truncate font-mono text-[12.5px] text-muted-foreground",
+                project.missing && "text-red-600 line-through",
+              )}
+            >
+              {project.path}
+            </span>
           </PropertyRow>
-        )}
-        <PropertyRow icon={<GitBranch className="size-4" strokeWidth={1.7} />} label="baseBranch">
-          <BaseBranchControl project={project} />
-        </PropertyRow>
-      </dl>
+          {project.git?.remoteSlug && (
+            <PropertyRow icon={<GitMerge className="size-3.5" strokeWidth={1.8} />} label="원격">
+              <span className="truncate font-mono text-[12.5px] text-muted-foreground">
+                {project.git.remoteSlug}
+              </span>
+            </PropertyRow>
+          )}
+          <PropertyRow icon={<GitBranch className="size-3.5" strokeWidth={1.8} />} label="baseBranch">
+            <BaseBranchControl project={project} />
+          </PropertyRow>
+        </dl>
+      </div>
 
       <DescriptionEditor key={project.slug} project={project} />
     </div>
@@ -48,21 +65,22 @@ function PropertyRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <dt className="flex w-36 items-center gap-2 text-[13px] text-muted-foreground">
+    <div className="flex min-h-[30px] items-center gap-3.5">
+      <dt className="flex w-[108px] shrink-0 items-center gap-[9px] text-[12.5px] text-tertiary">
         {icon}
         {label}
       </dt>
-      <dd className="min-w-0 flex-1">{children}</dd>
+      <dd className="flex min-w-0 flex-1 items-center">{children}</dd>
     </div>
   );
 }
 
+// Task 8에서 팝오버 메뉴로 교체된다
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const branches = project.git?.localBranches ?? [];
   if (branches.length === 0) {
-    return <span className="font-mono text-[13px]">{project.baseBranch}</span>;
+    return <span className="font-mono text-[12.5px] text-muted-foreground">{project.baseBranch}</span>;
   }
   const options = branches.includes(project.baseBranch)
     ? branches
@@ -73,7 +91,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
       onChange={(e) =>
         updateProject.mutate({ slug: project.slug, patch: { baseBranch: e.target.value } })
       }
-      className="rounded-[7px] border bg-transparent px-2 py-1 font-mono text-[13px]"
+      className="rounded-[9px] border bg-transparent px-2 py-1 font-mono text-[12.5px]"
     >
       {options.map((branch) => (
         <option key={branch} value={branch}>
@@ -109,11 +127,11 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-[13px] font-semibold">
-        설명{" "}
-        <span className="font-normal text-muted-foreground">클릭해서 편집</span>
-      </span>
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-[13px] font-semibold text-muted-foreground">설명</h2>
+        <span className="text-[11.5px] text-tertiary">클릭해서 편집</span>
+      </div>
       {editing ? (
         <textarea
           autoFocus
@@ -125,18 +143,19 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
             if (e.key === "Escape") finish(false);
           }}
           rows={4}
-          className="rounded-[7px] border bg-transparent px-4 py-3 text-[13.5px] leading-relaxed outline-none focus:border-sidebar-primary"
+          placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요"
+          className="min-h-[72px] resize-y rounded-[12px] border border-primary bg-background px-3.5 py-3 text-[13.5px] leading-[1.65] outline-none"
         />
       ) : (
         <button
           type="button"
           onClick={startEditing}
           className={cn(
-            "min-h-[76px] rounded-[7px] border px-4 py-3 text-left text-[13.5px] leading-relaxed transition-colors hover:border-sidebar-primary/40",
-            !project.description && "text-muted-foreground",
+            "min-h-[72px] rounded-[12px] border px-3.5 py-3 text-left text-[13.5px] leading-[1.65] transition-colors hover:border-border-strong hover:bg-panel",
+            !project.description && "italic text-tertiary",
           )}
         >
-          {project.description || "설명을 입력하세요…"}
+          {project.description || "아직 설명이 없어요. 이 프로젝트가 무엇인지 적어 주세요."}
         </button>
       )}
     </div>
