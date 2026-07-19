@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Rail from "./Rail";
+import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import type { NavKey } from "./nav-items";
@@ -30,7 +30,7 @@ function AppShell() {
   return (
     <div className="relative flex h-screen bg-background text-foreground">
       <SidebarToggle open={sidebarOpen} onToggle={() => setSidebarOpen((open) => !open)} />
-      <Rail open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
+      <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
       <main className="flex min-w-0 flex-1 flex-col">
         <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0 border-b" />
         {activeKey === "projects" ? <ProjectsPage /> : <div className="flex-1" />}

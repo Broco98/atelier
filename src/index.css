@@ -10,7 +10,7 @@
 /* app shell layout — single source for the titlebar strip and sidebar width */
 :root {
     --titlebar-height: 44px;
-    --sidebar-width: 272px;
+    --sidebar-width: 248px;
 }
 
 @theme inline {
