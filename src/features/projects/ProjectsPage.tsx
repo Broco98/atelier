@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { message, open } from "@tauri-apps/plugin-dialog";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { useCreateProject, useProjects } from "./hooks";
@@ -14,9 +14,12 @@ function ProjectsPage() {
 
   const handleAdd = async () => {
     const folder = await open({ directory: true });
-    if (typeof folder === "string") {
+    if (typeof folder !== "string") return;
+    try {
       const view = await createProject.mutateAsync(folder);
       setSelectedSlug(view.slug);
+    } catch (e) {
+      await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
   };
 

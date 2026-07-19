@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { useRef, useState } from "react";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { Folder, GitBranch, GitMerge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { projectsApi } from "./api";
@@ -19,9 +19,12 @@ function ProjectDetail({ project, onDeleted }: ProjectDetailProps) {
       "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.",
       { title: `'${project.name}' 제거`, kind: "warning" },
     );
-    if (ok) {
+    if (!ok) return;
+    try {
       await deleteProject.mutateAsync(project.slug);
       onDeleted();
+    } catch (e) {
+      await message(`제거하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
   };
 
@@ -108,7 +111,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
       onChange={(e) =>
         updateProject.mutate({ slug: project.slug, patch: { baseBranch: e.target.value } })
       }
-      className="rounded-md border bg-transparent px-2 py-1 font-mono text-[13px]"
+      className="rounded-[7px] border bg-transparent px-2 py-1 font-mono text-[13px]"
     >
       {options.map((branch) => (
         <option key={branch} value={branch}>
@@ -123,11 +126,23 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(project.description);
   const updateProject = useUpdateProject();
+  // 키보드로 편집을 끝낸 뒤 언마운트 blur가 한 번 더 들어와도 무시하기 위한 가드
+  const finished = useRef(false);
 
-  const save = () => {
+  const startEditing = () => {
+    finished.current = false;
+    setDraft(project.description);
+    setEditing(true);
+  };
+
+  const finish = (commit: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
     setEditing(false);
-    if (draft !== project.description) {
+    if (commit && draft !== project.description) {
       updateProject.mutate({ slug: project.slug, patch: { description: draft } });
+    } else if (!commit) {
+      setDraft(project.description);
     }
   };
 
@@ -142,13 +157,10 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={save}
+          onBlur={() => finish(true)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && e.metaKey) save();
-            if (e.key === "Escape") {
-              setDraft(project.description);
-              setEditing(false);
-            }
+            if (e.key === "Enter" && e.metaKey) finish(true);
+            if (e.key === "Escape") finish(false);
           }}
           rows={4}
           className="rounded-[7px] border bg-transparent px-4 py-3 text-[13.5px] leading-relaxed outline-none focus:border-sidebar-primary"
@@ -156,10 +168,7 @@ function DescriptionEditor({ project }: { project: ProjectView }) {
       ) : (
         <button
           type="button"
-          onClick={() => {
-            setDraft(project.description);
-            setEditing(true);
-          }}
+          onClick={startEditing}
           className={cn(
             "min-h-[76px] rounded-[7px] border px-4 py-3 text-left text-[13.5px] leading-relaxed transition-colors hover:border-sidebar-primary/40",
             !project.description && "text-muted-foreground",

@@ -42,7 +42,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd }: ProjectListPro
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-[2px] overflow-y-auto px-2 pb-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-[2px] overflow-y-auto px-2 pb-2">
           {projects.map((project) => {
             const active = project.slug === selectedSlug;
             return (
