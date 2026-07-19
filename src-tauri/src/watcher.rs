@@ -12,6 +12,7 @@ pub fn start(app: AppHandle) {
         app.clone(),
         atelier_core::projects_dir(),
         RecursiveMode::NonRecursive,
+        Duration::from_millis(500),
         "projects:changed",
         |path| {
             path.file_name().is_some_and(|n| {
@@ -22,10 +23,12 @@ pub fn start(app: AppHandle) {
     );
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
     // 빌드 등으로 이벤트가 폭주하므로 무시한다.
+    // spec 라이브 리로드는 반응성이 중요해 더 짧게 디바운스한다 (스펙: 300ms)
     spawn_watch(
         app,
         atelier_core::works_dir(),
         RecursiveMode::Recursive,
+        Duration::from_millis(300),
         "works:changed",
         |path| {
             let in_trees = path
@@ -43,13 +46,14 @@ fn spawn_watch(
     app: AppHandle,
     dir: PathBuf,
     mode: RecursiveMode,
+    debounce: Duration,
     event: &'static str,
     relevant: fn(&Path) -> bool,
 ) {
     std::thread::spawn(move || {
         let _ = std::fs::create_dir_all(&dir);
         let (tx, rx) = std::sync::mpsc::channel();
-        let mut debouncer = match new_debouncer(Duration::from_millis(500), tx) {
+        let mut debouncer = match new_debouncer(debounce, tx) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("atelier: watcher init failed for {}: {e}", dir.display());

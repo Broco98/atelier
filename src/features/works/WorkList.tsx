@@ -21,8 +21,13 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
   const filtered = projectFilter
     ? works.filter((w) => w.projects.includes(projectFilter))
     : works;
-  // 백엔드 기본 정렬이 생성일 내림차순 — 오름차순 토글만 뒤집는다
-  const sorted = sortAsc ? [...filtered].reverse() : filtered;
+  // 백엔드 기본 정렬 = 생성일 내림차순·slug 오름차순 tiebreak.
+  // 오름차순은 생성일만 뒤집고 tiebreak 방향은 유지한다 (reverse()는 tiebreak도 뒤집힘)
+  const sorted = sortAsc
+    ? [...filtered].sort(
+        (a, b) => a.createdAt.localeCompare(b.createdAt) || a.slug.localeCompare(b.slug),
+      )
+    : filtered;
 
   return (
     <div

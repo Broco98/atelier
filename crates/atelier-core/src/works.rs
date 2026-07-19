@@ -14,7 +14,7 @@ pub struct TreeError {
 /// 전체 실패가 아니라 `errors`로 보고된다 (성공분 유지, 재실행 멱등).
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartReport {
+pub struct WorkReport {
     #[serde(flatten)]
     pub view: WorkView,
     pub errors: Vec<TreeError>,
@@ -26,7 +26,7 @@ pub fn start_work(
     title: &str,
     project_slugs: &[String],
     branch: Option<&str>,
-) -> Result<StartReport> {
+) -> Result<WorkReport> {
     let title = title.trim();
     if title.is_empty() {
         return Err(Error::Validation("title must not be empty".into()));
@@ -37,7 +37,9 @@ pub fn start_work(
     std::fs::create_dir_all(works_root)?;
 
     // 같은 제목의 work가 있으면 이어서 생성(멱등), 없으면 새로 만든다
-    let work = match find_by_title(works_root, title)? {
+    let existing_work = find_by_title(works_root, title)?;
+    let resuming = existing_work.is_some();
+    let work = match existing_work {
         Some(existing) => {
             if let Some(b) = branch {
                 if b != existing.branch {
@@ -77,7 +79,7 @@ pub fn start_work(
     let mut reasons = Vec::new();
     let mut repos = Vec::new();
     for p in &pending {
-        match validate_for_tree(projects_root, p, &work.branch) {
+        match validate_for_tree(projects_root, p, &work.branch, resuming) {
             Ok(repo_base) => repos.push(repo_base),
             Err(reason) => reasons.push(format!("{p}: {reason}")),
         }
@@ -101,14 +103,17 @@ pub fn start_work(
 
     // 소유권상 work를 다시 읽지 않고 뷰만 파생
     let view = to_view(works_root, work);
-    Ok(StartReport { view, errors })
+    Ok(WorkReport { view, errors })
 }
 
-/// 검증 통과 시 (저장소 절대경로, baseBranch) 반환
+/// 검증 통과 시 (저장소 절대경로, baseBranch) 반환.
+/// `allow_existing_branch`: 기존 work의 재개/attach는 부분 실패로 브랜치만 남은
+/// 상태를 이어가야 하므로 브랜치 충돌을 허용한다 (worktree_add가 채택).
 fn validate_for_tree(
     projects_root: &Path,
     project_slug: &str,
     branch: &str,
+    allow_existing_branch: bool,
 ) -> std::result::Result<(PathBuf, String), String> {
     let view = crate::get_project(projects_root, project_slug)
         .map_err(|_| "project not registered".to_string())?;
@@ -123,7 +128,7 @@ fn validate_for_tree(
     if !git::rev_exists(&repo, &base) {
         return Err(format!("baseBranch '{base}' does not exist"));
     }
-    if git::branch_exists(&repo, branch) {
+    if !allow_existing_branch && git::branch_exists(&repo, branch) {
         return Err(format!("branch '{branch}' already exists"));
     }
     Ok((repo, base))
@@ -148,13 +153,8 @@ fn unique_dir_slug(works_root: &Path, base: &str) -> String {
     slug
 }
 
-/// slug가 경로 요소를 포함하면 데이터 루트 밖으로 탈출할 수 있으므로 차단한다.
 fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
-    let valid = !slug.is_empty()
-        && !slug.starts_with('.')
-        && !slug.contains('/')
-        && !slug.contains('\\');
-    if !valid {
+    if !crate::slug::is_safe_slug(slug) {
         return Err(Error::WorkNotFound(slug.to_string()));
     }
     Ok(works_root.join(slug))
@@ -256,14 +256,14 @@ pub fn attach_project(
     projects_root: &Path,
     slug: &str,
     project_slug: &str,
-) -> Result<StartReport> {
+) -> Result<WorkReport> {
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
     let tree = dir.join("trees").join(project_slug);
 
     let mut errors = Vec::new();
     if !tree.is_dir() {
-        let (repo, base) = validate_for_tree(projects_root, project_slug, &work.branch)
+        let (repo, base) = validate_for_tree(projects_root, project_slug, &work.branch, true)
             .map_err(|reason| Error::Validation(format!("{project_slug}: {reason}")))?;
         std::fs::create_dir_all(dir.join("trees"))?;
         if let Err(message) = git::worktree_add(&repo, &tree, &work.branch, &base) {
@@ -274,7 +274,7 @@ pub fn attach_project(
         work.projects.push(project_slug.to_string());
         write_work(works_root, &work)?;
     }
-    Ok(StartReport { view: to_view(works_root, work), errors })
+    Ok(WorkReport { view: to_view(works_root, work), errors })
 }
 
 pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
@@ -561,6 +561,27 @@ mod tests {
             read_spec_file(&works, "없는작업", "overview.md"),
             Err(Error::WorkNotFound(_))
         ));
+    }
+
+    #[test]
+    fn resume_adopts_leftover_branch_instead_of_dead_ending() {
+        let (tmp, works, projects) = setup();
+        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        // 부분 실패 잔재 시뮬레이션: be에 브랜치만 만들어지고 워크트리는 없는 상태
+        run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
+
+        // 재실행이 "branch already exists"로 막히면 영구 dead-end — 기존 브랜치를 채택해야 한다
+        let report =
+            start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+        assert!(report.errors.is_empty(), "resume must adopt the existing branch: {:?}", report.errors);
+        let tree = works.join("카트/trees/be");
+        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/cart");
+
+        // attach도 동일하게 기존 브랜치를 채택한다
+        run_git(&tmp.path().join("fe"), &["worktree", "remove", "--force", works.join("카트/trees/fe").to_str().unwrap()]);
+        run_git(&tmp.path().join("fe"), &["worktree", "prune"]);
+        let report = attach_project(&works, &projects, "카트", "fe").unwrap();
+        assert!(report.errors.is_empty(), "attach must adopt the existing branch: {:?}", report.errors);
     }
 
     #[test]

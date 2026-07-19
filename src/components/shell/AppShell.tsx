@@ -42,7 +42,7 @@ function AppShell() {
             selectedSlug={projectSlug}
             onSelect={setProjectSlug}
             onOpenWork={(slug) => {
-              setWorkSlug(slug);
+              if (slug) setWorkSlug(slug);
               setActiveKey("works");
             }}
           />

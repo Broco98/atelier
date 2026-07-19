@@ -8,7 +8,8 @@ import type { ProjectView } from "./types";
 
 interface ProjectDetailProps {
   project: ProjectView;
-  onOpenWork: (slug: string) => void;
+  // null = 선택 변경 없이 Works 화면으로 이동
+  onOpenWork: (slug: string | null) => void;
 }
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
@@ -68,7 +69,7 @@ function WorksSection({
   onOpenWork,
 }: {
   projectSlug: string;
-  onOpenWork: (slug: string) => void;
+  onOpenWork: (slug: string | null) => void;
 }) {
   const { data: works = [] } = useWorks();
   const related = works.filter((w) => w.projects.includes(projectSlug));
@@ -79,6 +80,14 @@ function WorksSection({
         <Zap className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.7} />
         <h2 className="text-[14px] font-semibold text-muted-foreground">Works</h2>
         <span className="text-[12.5px] text-tertiary">이 프로젝트에서 시작된 작업</span>
+        <button
+          type="button"
+          onClick={() => onOpenWork(null)}
+          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors hover:bg-accent hover:text-foreground"
+        >
+          Works에서 모두 보기
+          <ChevronRight className="size-3" strokeWidth={2} />
+        </button>
       </div>
       <div className="flex flex-col overflow-hidden rounded-[12px] border">
         {related.length === 0 ? (

@@ -1,9 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AlignLeft, Check, ChevronRight, FileText, Maximize2, X } from "lucide-react";
+import { AlignLeft, Check, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
+import MermaidBlock from "./MermaidBlock";
+import SpecTree from "./SpecTree";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
@@ -114,7 +116,7 @@ function SpecViewer({ work }: SpecViewerProps) {
         )}
       </div>
 
-      {treeOpen && files.length > 0 && (
+      {treeOpen && (
         <aside className="absolute right-3.5 top-[52px] z-10 flex max-h-[calc(100%-66px)] w-[232px] flex-col overflow-hidden rounded-[14px] border bg-panel shadow-lg">
           <div className="flex h-[38px] shrink-0 items-center border-b px-3.5">
             <span className="font-mono text-[12px] text-tertiary">spec/</span>
@@ -158,6 +160,36 @@ interface PrettyViewProps {
   onCopyBlock: (start: number, end: number) => void;
 }
 
+// 클릭 → 참조 복사되는 최상위 블록 래퍼 (좌측 거터에 원본 라인 범위)
+function BlockWrapper({
+  start,
+  end,
+  spacing,
+  onCopy,
+  children,
+}: {
+  start: number;
+  end: number;
+  spacing: string;
+  onCopy: (start: number, end: number) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={() => onCopy(start, end)}
+      className={cn(
+        "relative -mx-3 cursor-copy rounded-[9px] px-3 py-1 transition-colors hover:bg-accent",
+        spacing,
+      )}
+    >
+      <span className="absolute -left-[30px] top-[9px] w-[34px] select-none text-right font-mono text-[10.5px] text-tertiary opacity-65">
+        {end !== start ? `${start}–${end}` : start}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
   // 최상위 블록의 시작 라인 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해
   const topLines = useRef<Set<number>>(new Set());
@@ -168,31 +200,27 @@ function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
   };
 
   const components = useMemo(() => {
+    // react-markdown 컴포넌트 props에서 소스 라인 범위를 꺼낸다 — hast 노드라 any로 좁힌다
+    const lines = (node: any): { start: number; end: number } | null => {
+      const start: number | undefined = node?.position?.start?.line;
+      if (start === undefined || !topLines.current.has(start)) return null;
+      return { start, end: node?.position?.end?.line ?? start };
+    };
+
     const block =
       (Tag: keyof React.JSX.IntrinsicElements, className: string, spacing: string) =>
-      // react-markdown 컴포넌트 시그니처 — node에서 소스 라인 범위를 얻는다
       ({ node, children, ...props }: any) => {
-        const start: number | undefined = node?.position?.start?.line;
-        const end: number | undefined = node?.position?.end?.line;
         const el = (
           <Tag className={className} {...props}>
             {children}
           </Tag>
         );
-        if (start === undefined || !topLines.current.has(start)) return el;
+        const range = lines(node);
+        if (!range) return el;
         return (
-          <div
-            onClick={() => onCopyBlock(start, end ?? start)}
-            className={cn(
-              "group relative -mx-3 cursor-copy rounded-[9px] px-3 py-1 transition-colors hover:bg-accent",
-              spacing,
-            )}
-          >
-            <span className="absolute -left-[30px] top-[9px] w-[34px] select-none text-right font-mono text-[10.5px] text-tertiary opacity-65">
-              {end && end !== start ? `${start}–${end}` : start}
-            </span>
+          <BlockWrapper start={range.start} end={range.end} spacing={spacing} onCopy={onCopyBlock}>
             {el}
-          </div>
+          </BlockWrapper>
         );
       };
 
@@ -211,7 +239,6 @@ function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
       ),
       hr: block("hr", "border-border", "mt-4"),
       table: block("table", "w-full border-collapse text-[13.5px]", "mt-2"),
-      thead: ({ children }) => <thead>{children}</thead>,
       th: ({ children }) => (
         <th className="border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
           {children}
@@ -226,16 +253,13 @@ function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
         </a>
       ),
       pre: (({ node, children, ...props }: any) => {
-        const start: number | undefined = node?.position?.start?.line;
-        const end: number | undefined = node?.position?.end?.line;
         const code = node?.children?.[0];
         const lang: string | undefined = code?.properties?.className
           ?.find?.((c: string) => c.startsWith("language-"))
           ?.slice("language-".length);
-        const text = hastText(code);
         const inner =
           lang === "mermaid" ? (
-            <MermaidBlock code={text} />
+            <MermaidBlock code={hastText(code)} />
           ) : (
             <pre
               className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7]"
@@ -244,17 +268,12 @@ function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
               {children}
             </pre>
           );
-        if (start === undefined || !topLines.current.has(start)) return inner;
+        const range = lines(node);
+        if (!range) return inner;
         return (
-          <div
-            onClick={() => onCopyBlock(start, end ?? start)}
-            className="relative -mx-3 mt-2 cursor-copy rounded-[12px] px-3 py-1 transition-colors hover:bg-accent"
-          >
-            <span className="absolute -left-[30px] top-[9px] w-[34px] select-none text-right font-mono text-[10.5px] text-tertiary opacity-65">
-              {end && end !== start ? `${start}–${end}` : start}
-            </span>
+          <BlockWrapper start={range.start} end={range.end} spacing="mt-2" onCopy={onCopyBlock}>
             {inner}
-          </div>
+          </BlockWrapper>
         );
       }) as Components["pre"],
       code: ({ children, className }) =>
@@ -284,215 +303,6 @@ function hastText(node: unknown): string {
   const n = node as { type?: string; value?: string; children?: unknown[] };
   if (n.type === "text") return n.value ?? "";
   return (n.children ?? []).map(hastText).join("");
-}
-
-// ─── mermaid ───
-
-function MermaidBlock({ code }: { code: string }) {
-  const id = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const [svg, setSvg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [scale, setScale] = useState(1);
-  const [showCode, setShowCode] = useState(false);
-  const [fullOpen, setFullOpen] = useState(false);
-  const [fullScale, setFullScale] = useState(1);
-
-  useEffect(() => {
-    let on = true;
-    import("mermaid").then(async ({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, theme: "neutral" });
-      try {
-        const { svg } = await mermaid.render(`mm${id}`, code);
-        if (on) setSvg(svg);
-      } catch (e) {
-        // 파싱 실패는 숨기지 않고 코드로 폴백한다
-        if (on) setError(String(e));
-      }
-    });
-    return () => {
-      on = false;
-    };
-  }, [code, id]);
-
-  useEffect(() => {
-    if (!fullOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullOpen]);
-
-  const zoomButton = "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors hover:bg-accent hover:text-foreground";
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
-
-  return (
-    <div className="overflow-hidden rounded-[12px] border bg-panel" onClick={stop}>
-      <div className="flex items-center justify-between border-b px-2.5 py-1.5">
-        <span className="font-mono text-[11px] text-tertiary">mermaid</span>
-        <span className="flex items-center gap-1">
-          <button type="button" onClick={() => setScale((s) => Math.max(0.4, s - 0.2))} className={zoomButton}>−</button>
-          <button type="button" onClick={() => setScale(1)} className={zoomButton}>{Math.round(scale * 100)}%</button>
-          <button type="button" onClick={() => setScale((s) => Math.min(2.4, s + 0.2))} className={zoomButton}>+</button>
-          <span className="mx-1 h-3.5 w-px bg-border" />
-          <button
-            type="button"
-            onClick={() => setShowCode((v) => !v)}
-            title="원본 mermaid 코드 보기"
-            className={cn(zoomButton, showCode && "bg-accent text-foreground")}
-          >
-            코드
-          </button>
-          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={zoomButton}>
-            <Maximize2 className="size-3" strokeWidth={2} />
-          </button>
-        </span>
-      </div>
-      {error && !svg ? (
-        <div className="flex flex-col gap-2 p-4">
-          <span className="text-[12.5px] text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground">{code}</pre>
-        </div>
-      ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground">{code}</pre>
-      ) : (
-        <div className="overflow-auto p-4">
-          {svg ? (
-            <div
-              style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          ) : (
-            <span className="text-[12.5px] text-tertiary">렌더링 중…</span>
-          )}
-        </div>
-      )}
-
-      {fullOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
-          onClick={() => setFullOpen(false)}
-        >
-          <div
-            className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
-            onClick={stop}
-          >
-            <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-              <span className="font-mono text-[12px] text-tertiary">mermaid</span>
-              <span className="flex items-center gap-1">
-                <button type="button" onClick={() => setFullScale((s) => Math.max(0.4, s - 0.2))} className={zoomButton}>−</button>
-                <button type="button" onClick={() => setFullScale(1)} className={zoomButton}>{Math.round(fullScale * 100)}%</button>
-                <button type="button" onClick={() => setFullScale((s) => Math.min(3, s + 0.2))} className={zoomButton}>+</button>
-                <button
-                  type="button"
-                  onClick={() => setFullOpen(false)}
-                  title="닫기 (Esc)"
-                  className="ml-1 flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <X className="size-3.5" strokeWidth={2} />
-                </button>
-              </span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-7">
-              {svg && (
-                <div
-                  style={{ transform: `scale(${fullScale})`, transformOrigin: "top left" }}
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── spec 파일 트리 ───
-
-interface TreeNode {
-  name: string;
-  path: string;
-  children: TreeNode[] | null; // null = 파일
-}
-
-function buildTree(files: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  for (const file of files) {
-    const parts = file.split("/");
-    let siblings = root;
-    let prefix = "";
-    for (let i = 0; i < parts.length; i++) {
-      const name = parts[i];
-      prefix = prefix ? `${prefix}/${name}` : name;
-      const isFile = i === parts.length - 1;
-      let node = siblings.find((n) => n.name === name && (n.children === null) === isFile);
-      if (!node) {
-        node = { name, path: prefix, children: isFile ? null : [] };
-        siblings.push(node);
-      }
-      if (node.children) siblings = node.children;
-    }
-  }
-  return root;
-}
-
-function SpecTree({
-  files,
-  current,
-  onSelect,
-}: {
-  files: string[];
-  current: string | null;
-  onSelect: (path: string) => void;
-}) {
-  const tree = useMemo(() => buildTree(files), [files]);
-  return <TreeRows nodes={tree} depth={0} current={current} onSelect={onSelect} />;
-}
-
-function TreeRows({
-  nodes,
-  depth,
-  current,
-  onSelect,
-}: {
-  nodes: TreeNode[];
-  depth: number;
-  current: string | null;
-  onSelect: (path: string) => void;
-}) {
-  return (
-    <>
-      {nodes.map((node) => (
-        <div key={node.path} className="flex flex-col">
-          {node.children ? (
-            <>
-              <span
-                className="flex h-7 items-center gap-1 text-[12.5px] text-tertiary"
-                style={{ paddingLeft: 8 + depth * 14 }}
-              >
-                <ChevronRight className="size-3 rotate-90" strokeWidth={2.2} />
-                {node.name}
-              </span>
-              <TreeRows nodes={node.children} depth={depth + 1} current={current} onSelect={onSelect} />
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onSelect(node.path)}
-              className={cn(
-                "flex h-7 items-center gap-1.5 rounded-[8px] text-left text-[12.5px] transition-colors hover:bg-accent",
-                node.path === current ? "font-medium text-primary" : "text-muted-foreground",
-              )}
-              style={{ paddingLeft: 8 + depth * 14 + 16 }}
-            >
-              <span className="truncate">{node.name}</span>
-            </button>
-          )}
-        </div>
-      ))}
-    </>
-  );
 }
 
 export default SpecViewer;

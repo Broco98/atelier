@@ -124,7 +124,7 @@ enum SkillCmd {
 
 fn main() -> ExitCode {
     match run() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(e) => {
             eprintln!("error: {e}");
             match e.downcast_ref::<atelier_core::Error>() {
@@ -136,7 +136,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> anyhow::Result<()> {
+fn run() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
     let root = projects_dir();
     match cli.command {
@@ -193,7 +193,7 @@ fn run() -> anyhow::Result<()> {
                         io::stdin().read_line(&mut line)?;
                         if !matches!(line.trim(), "y" | "Y") {
                             println!("취소됨");
-                            return Ok(());
+                            return Ok(ExitCode::SUCCESS);
                         }
                     } else {
                         anyhow::bail!("확인이 필요합니다. --yes 플래그를 사용하세요");
@@ -228,7 +228,7 @@ fn run() -> anyhow::Result<()> {
                         for e in &report.errors {
                             eprintln!("error: {}: {}", e.project, e.message);
                         }
-                        std::process::exit(1);
+                        return Ok(ExitCode::from(1));
                     }
                 }
                 WorkCmd::List { json } => {
@@ -271,7 +271,7 @@ fn run() -> anyhow::Result<()> {
                         for e in &report.errors {
                             eprintln!("error: {}: {}", e.project, e.message);
                         }
-                        std::process::exit(1);
+                        return Ok(ExitCode::from(1));
                     }
                 }
                 WorkCmd::Remove { slug, yes, force } => {
@@ -283,7 +283,7 @@ fn run() -> anyhow::Result<()> {
                             io::stdin().read_line(&mut line)?;
                             if !matches!(line.trim(), "y" | "Y") {
                                 println!("취소됨");
-                                return Ok(());
+                                return Ok(ExitCode::SUCCESS);
                             }
                         } else {
                             anyhow::bail!("확인이 필요합니다. --yes 플래그를 사용하세요");
@@ -310,15 +310,14 @@ fn run() -> anyhow::Result<()> {
             println!("설치됨: {}", target.display());
         }
     }
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
 
 fn print_work_row(v: &WorkView) {
-    let status = serde_json::to_value(v.work.status).unwrap();
     println!(
         "{}  [{}]  {}  {}",
         v.work.slug,
-        status.as_str().unwrap_or("?"),
+        v.work.status.as_str(),
         v.work.branch,
         v.work.projects.join(",")
     );
@@ -327,8 +326,7 @@ fn print_work_row(v: &WorkView) {
 fn print_work_detail(v: &WorkView) {
     println!("{}", v.work.title);
     println!("  slug:    {}", v.work.slug);
-    let status = serde_json::to_value(v.work.status).unwrap();
-    println!("  상태:    {}", status.as_str().unwrap_or("?"));
+    println!("  상태:    {}", v.work.status.as_str());
     println!("  브랜치:  {}", v.work.branch);
     println!("  생성일:  {}", v.work.created_at);
     println!("  워크트리:");

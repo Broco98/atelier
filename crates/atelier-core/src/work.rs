@@ -10,6 +10,22 @@ pub enum WorkStatus {
     Done,
 }
 
+impl WorkStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WorkStatus::Active => "active",
+            WorkStatus::Review => "review",
+            WorkStatus::Done => "done",
+        }
+    }
+}
+
+impl std::fmt::Display for WorkStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl std::str::FromStr for WorkStatus {
     type Err = Error;
 

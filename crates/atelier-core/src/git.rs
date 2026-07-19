@@ -47,21 +47,22 @@ pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")]).is_some()
 }
 
-/// `base`에서 분기한 새 브랜치 `branch`로 `path`에 워크트리 생성
+/// `path`에 `branch` 워크트리 생성. 브랜치가 없으면 `base`에서 분기해 만들고,
+/// 이미 있으면(부분 실패 잔재 등) 그 브랜치를 채택한다.
 pub(crate) fn worktree_add(
     repo: &Path,
     path: &Path,
     branch: &str,
     base: &str,
 ) -> std::result::Result<(), String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["worktree", "add", "-b", branch])
-        .arg(path)
-        .arg(base)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo).args(["worktree", "add"]);
+    if branch_exists(repo, branch) {
+        cmd.arg(path).arg(branch);
+    } else {
+        cmd.args(["-b", branch]).arg(path).arg(base);
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {

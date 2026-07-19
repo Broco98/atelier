@@ -11,7 +11,7 @@ interface ProjectsPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
   onSelect: (slug: string | null) => void;
-  onOpenWork: (slug: string) => void;
+  onOpenWork: (slug: string | null) => void;
 }
 
 const PANEL_OPEN_KEY = "projects-panel-open";

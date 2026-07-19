@@ -1,3 +1,8 @@
+/// slug가 경로 요소를 포함하면 데이터 루트 밖으로 탈출할 수 있으므로 차단한다.
+pub(crate) fn is_safe_slug(slug: &str) -> bool {
+    !slug.is_empty() && !slug.starts_with('.') && !slug.contains('/') && !slug.contains('\\')
+}
+
 pub fn slugify(name: &str) -> String {
     let slug: String = name
         .trim()
