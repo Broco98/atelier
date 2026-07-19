@@ -8,10 +8,12 @@ fn skill_install_writes_to_claude_skills() {
         .args(["skill", "install"])
         .assert()
         .success();
-    let installed = home.path().join(".claude/skills/atelier/SKILL.md");
-    let content = std::fs::read_to_string(installed).unwrap();
+    let dir = home.path().join(".claude/skills/atelier");
+    let content = std::fs::read_to_string(dir.join("SKILL.md")).unwrap();
     assert!(content.contains("name: atelier"));
     assert!(content.contains("atelier work start"), "works 흐름이 스킬에 포함돼야 한다");
+    let manual = std::fs::read_to_string(dir.join("manual-editing.md")).unwrap();
+    assert!(manual.contains("원자적 쓰기"), "직접 편집 규칙이 별도 파일로 설치돼야 한다");
 }
 
 #[test]

@@ -305,9 +305,12 @@ fn run() -> anyhow::Result<ExitCode> {
             }
             let dir = skills.join("atelier");
             std::fs::create_dir_all(&dir)?;
-            let target = dir.join("SKILL.md");
-            std::fs::write(&target, include_str!("../assets/SKILL.md"))?;
-            println!("설치됨: {}", target.display());
+            std::fs::write(dir.join("SKILL.md"), include_str!("../assets/SKILL.md"))?;
+            std::fs::write(
+                dir.join("manual-editing.md"),
+                include_str!("../assets/manual-editing.md"),
+            )?;
+            println!("설치됨: {}", dir.display());
         }
     }
     Ok(ExitCode::SUCCESS)
