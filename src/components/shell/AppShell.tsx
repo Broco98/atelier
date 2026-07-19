@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Zap } from "lucide-react";
 import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import StatusBar from "./StatusBar";
-import PlaceholderPage from "./PlaceholderPage";
 import ProjectsPage from "@/features/projects/ProjectsPage";
+import WorksPage from "@/features/works/WorksPage";
 import type { NavKey } from "./nav-items";
 
 const SIDEBAR_OPEN_KEY = "sidebar-open";
@@ -14,6 +13,9 @@ function AppShell() {
     () => localStorage.getItem(SIDEBAR_OPEN_KEY) !== "0",
   );
   const [activeKey, setActiveKey] = useState<NavKey>("projects");
+  // 페이지 간 이동(작업 ↔ 프로젝트)이 가능하도록 선택 상태는 셸이 소유한다
+  const [projectSlug, setProjectSlug] = useState<string | null>(null);
+  const [workSlug, setWorkSlug] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_OPEN_KEY, sidebarOpen ? "1" : "0");
@@ -35,23 +37,24 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
         {activeKey === "projects" ? (
-          <ProjectsPage sidebarOpen={sidebarOpen} />
-        ) : (
-          <PlaceholderPage
-            root="Works"
-            listHeader="Works"
-            listHint="0"
-            listEmpty={{
-              icon: Zap,
-              title: "작업이 없어요",
-              body: "작업은 Claude Code에서 스킬로 시작돼요.",
-            }}
-            main={{
-              icon: Zap,
-              title: "아직 작업이 없어요",
-              body: "작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
-            }}
+          <ProjectsPage
             sidebarOpen={sidebarOpen}
+            selectedSlug={projectSlug}
+            onSelect={setProjectSlug}
+            onOpenWork={(slug) => {
+              setWorkSlug(slug);
+              setActiveKey("works");
+            }}
+          />
+        ) : (
+          <WorksPage
+            sidebarOpen={sidebarOpen}
+            selectedSlug={workSlug}
+            onSelect={setWorkSlug}
+            onOpenProject={(slug) => {
+              setProjectSlug(slug);
+              setActiveKey("projects");
+            }}
           />
         )}
       </div>
