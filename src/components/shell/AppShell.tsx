@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
+import ProjectsPage from "@/features/projects/ProjectsPage";
 import type { NavKey } from "./nav-items";
 
 const SIDEBAR_OPEN_KEY = "sidebar-open";
@@ -32,7 +33,7 @@ function AppShell() {
       <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
       <main className="flex min-w-0 flex-1 flex-col">
         <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0 border-b" />
-        <div className="flex-1" />
+        {activeKey === "projects" ? <ProjectsPage /> : <div className="flex-1" />}
       </main>
     </div>
   );
