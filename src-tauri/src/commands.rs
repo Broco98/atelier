@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use atelier_core::{projects_dir, ProjectPatch, ProjectView};
+use atelier_core::{projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -41,6 +41,27 @@ pub async fn update_project(
 #[tauri::command]
 pub async fn delete_project(slug: String) -> CmdResult<()> {
     atelier_core::delete_project(&projects_dir(), &slug).map_err(err)
+}
+
+#[tauri::command]
+pub async fn list_works() -> CmdResult<Vec<WorkView>> {
+    atelier_core::list_works(&works_dir()).map_err(err)
+}
+
+#[tauri::command]
+pub async fn get_work(slug: String) -> CmdResult<WorkView> {
+    atelier_core::get_work(&works_dir(), &slug).map_err(err)
+}
+
+#[tauri::command]
+pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView> {
+    let status = status.parse().map_err(err)?;
+    atelier_core::update_work_status(&works_dir(), &slug, status).map_err(err)
+}
+
+#[tauri::command]
+pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
+    atelier_core::read_spec_file(&works_dir(), &slug, &path).map_err(err)
 }
 
 #[tauri::command]
