@@ -55,7 +55,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   );
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1">
       <div className="min-h-0 flex-1 overflow-y-auto">
         {files.length === 0 ? (
           <div className="flex h-full items-center justify-center p-10">

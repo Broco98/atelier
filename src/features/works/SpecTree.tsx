@@ -78,7 +78,7 @@ function TreeRows({
                 "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors hover:bg-accent",
                 node.path === current ? "font-medium text-primary" : "text-muted-foreground",
               )}
-              style={{ paddingLeft: 8 + depth * 14 + 16 }}
+              style={{ paddingLeft: 8 + depth * 14 }}
             >
               <FileGlyph name={node.name} />
               <span className="min-w-0 flex-1 truncate">{node.name}</span>

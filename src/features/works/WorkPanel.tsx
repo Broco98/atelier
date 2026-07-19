@@ -23,7 +23,8 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopyPath }: WorkPanelPro
   const treeCount = work.trees.filter((t) => t.exists).length;
 
   return (
-    <aside className="absolute right-0 top-0 z-10 flex max-h-full w-[296px] flex-col overflow-y-auto p-4">
+    // 플로팅이 아니라 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정)
+    <aside className="flex w-[296px] shrink-0 flex-col overflow-y-auto p-4 pl-0">
       <div className="flex shrink-0 flex-col rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
