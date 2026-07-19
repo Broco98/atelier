@@ -56,9 +56,12 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 
   return (
     <div className="relative flex min-h-0 flex-1">
+      {/* 스크롤 컨테이너는 패널까지 포함한 전체 — 스크롤바가 화면 맨 오른쪽에 붙는다 */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {files.length === 0 ? (
-          <div className="flex h-full items-center justify-center p-10">
+        <div className="flex min-h-full items-start">
+          <div className="flex min-w-0 flex-1 flex-col self-stretch">
+            {files.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
               <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
                 <FileText className="size-5" strokeWidth={1.6} />
@@ -72,21 +75,23 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               </code>
             </div>
           </div>
-        ) : showSource ? (
-          <SourceView content={content ?? ""} />
-        ) : (
-          <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
-        )}
-      </div>
+            ) : showSource ? (
+              <SourceView content={content ?? ""} />
+            ) : (
+              <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
+            )}
+          </div>
 
-      {panelOpen && (
-        <WorkPanel
-          work={work}
-          currentFile={current}
-          onSelectFile={setSelected}
-          onCopyPath={copyPath}
-        />
-      )}
+          {panelOpen && (
+            <WorkPanel
+              work={work}
+              currentFile={current}
+              onSelectFile={setSelected}
+              onCopyPath={copyPath}
+            />
+          )}
+        </div>
+      </div>
 
       {toast && (
         <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
