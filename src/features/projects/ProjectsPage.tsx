@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { confirm, message } from "@tauri-apps/plugin-dialog";
+import { confirm, message, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { Folder } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
-import AddProjectDialog from "./AddProjectDialog";
 import { projectsApi } from "./api";
-import { useDeleteProject, useProjects } from "./hooks";
+import { useCreateProject, useDeleteProject, useProjects } from "./hooks";
 
 interface ProjectsPageProps {
   sidebarOpen: boolean;
@@ -15,13 +14,24 @@ interface ProjectsPageProps {
 function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
 
   const selected =
     projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
 
-  const handleAdd = () => setDialogOpen(true);
+  // 네이티브 폴더 선택창 직행 — baseBranch는 백엔드가 감지하고 상세에서 바꿀 수 있다
+  const handleAdd = async () => {
+    if (createProject.isPending) return;
+    const folder = await openFolderPicker({ directory: true });
+    if (typeof folder !== "string") return;
+    try {
+      const view = await createProject.mutateAsync(folder);
+      setSelectedSlug(view.slug);
+    } catch (e) {
+      await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+    }
+  };
 
   const handleRemove = async () => {
     if (!selected) return;
@@ -45,12 +55,12 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
         selectedSlug={selected?.slug ?? null}
         onSelect={setSelectedSlug}
         onAdd={handleAdd}
+        sidebarOpen={sidebarOpen}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Projects"
           leaf={selected?.name}
-          sidebarOpen={sidebarOpen}
           actions={
             selected && (
               <>
@@ -58,14 +68,14 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
                   type="button"
                   disabled={selected.missing}
                   onClick={() => projectsApi.openFolder(selected.slug)}
-                  className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                  className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
                 >
                   폴더 열기
                 </button>
                 <button
                   type="button"
                   onClick={handleRemove}
-                  className="h-7 rounded-[9px] px-[11px] text-[12.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
+                  className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
                 >
                   제거
                 </button>
@@ -82,16 +92,16 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
                 <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
                   <Folder className="size-5" strokeWidth={1.6} />
                 </div>
-                <span className="text-[15.5px] font-semibold tracking-[-0.01em]">
+                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
                   등록된 프로젝트가 없어요
                 </span>
-                <span className="text-[13px] leading-[1.65] text-tertiary">
+                <span className="text-[14px] leading-[1.65] text-tertiary">
                   로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
                 </span>
                 <button
                   type="button"
                   onClick={handleAdd}
-                  className="mt-3 h-8 rounded-[10px] bg-primary px-4 text-[13px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
+                  className="mt-3 h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
                 >
                   프로젝트 등록
                 </button>
@@ -100,11 +110,6 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
           )}
         </div>
       </main>
-      <AddProjectDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onCreated={setSelectedSlug}
-      />
     </div>
   );
 }
