@@ -23,11 +23,11 @@ function DialogBody({ onClose, onCreated }: Omit<AddProjectDialogProps, "open">)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !submitting) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, submitting]);
 
   const pickFolder = async () => {
     const picked = await openFolderPicker({ directory: true });
@@ -64,7 +64,7 @@ function DialogBody({ onClose, onCreated }: Omit<AddProjectDialogProps, "open">)
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(18,18,24,0.4)] pt-[120px]"
-      onClick={onClose}
+      onClick={() => { if (!submitting) onClose(); }}
     >
       <div
         className="w-[480px] rounded-[14px] border border-border-strong bg-background shadow-xl"
@@ -123,6 +123,7 @@ function DialogBody({ onClose, onCreated }: Omit<AddProjectDialogProps, "open">)
           <button
             type="button"
             onClick={onClose}
+            disabled={submitting}
             className="h-[30px] rounded-[9px] border border-border-strong px-[13px] text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-accent"
           >
             취소

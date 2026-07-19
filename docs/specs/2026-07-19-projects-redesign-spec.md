@@ -1,6 +1,6 @@
 # Projects 디자인 개편 스펙 (2026-07-19)
 
-상태: **승인됨 — 구현 대기**
+상태: **구현 완료 — 머지 대기**
 브랜치: `feat/projects-redesign` (feat/projects-v1 위에 스택 — PR #2 머지 전)
 
 ## 배경
