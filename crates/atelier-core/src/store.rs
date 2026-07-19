@@ -83,7 +83,7 @@ pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<Pr
 }
 
 pub fn delete_project(root: &Path, slug: &str) -> Result<()> {
-    let path = root.join(format!("{slug}.md"));
+    let path = project_path(root, slug)?;
     if !path.exists() {
         return Err(Error::NotFound(slug.to_string()));
     }
@@ -92,10 +92,22 @@ pub fn delete_project(root: &Path, slug: &str) -> Result<()> {
 }
 
 fn read_project(root: &Path, slug: &str) -> Result<Project> {
-    let path = root.join(format!("{slug}.md"));
+    let path = project_path(root, slug)?;
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::NotFound(slug.to_string()))?;
     parse_project(slug, &content)
+}
+
+/// slug가 경로 요소를 포함하면 데이터 루트 밖으로 탈출할 수 있으므로 차단한다.
+fn project_path(root: &Path, slug: &str) -> Result<std::path::PathBuf> {
+    let valid = !slug.is_empty()
+        && !slug.starts_with('.')
+        && !slug.contains('/')
+        && !slug.contains('\\');
+    if !valid {
+        return Err(Error::NotFound(slug.to_string()));
+    }
+    Ok(root.join(format!("{slug}.md")))
 }
 
 /// 같은 디렉토리 tmp 파일 → rename 원자적 쓰기 (스펙 §3)
@@ -212,6 +224,18 @@ mod tests {
             create_project(&root, std::path::Path::new("/no/such/dir")),
             Err(crate::Error::FolderMissing(_))
         ));
+    }
+
+    #[test]
+    fn rejects_path_traversal_slugs() {
+        let (_tmp, root, folder) = setup();
+        create_project(&root, &folder).unwrap();
+        let outside = root.parent().unwrap().join("victim.md");
+        std::fs::write(&outside, "x").unwrap();
+        assert!(matches!(delete_project(&root, "../victim"), Err(crate::Error::NotFound(_))));
+        assert!(outside.exists(), "traversal must not delete outside the data root");
+        assert!(matches!(get_project(&root, "../victim"), Err(crate::Error::NotFound(_))));
+        assert!(matches!(get_project(&root, ".hidden"), Err(crate::Error::NotFound(_))));
     }
 
     #[test]

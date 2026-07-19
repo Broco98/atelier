@@ -10,10 +10,15 @@ pub fn start(app: AppHandle) {
         let dir = atelier_core::projects_dir();
         let _ = std::fs::create_dir_all(&dir);
         let (tx, rx) = std::sync::mpsc::channel();
-        let Ok(mut debouncer) = new_debouncer(Duration::from_millis(500), tx) else {
-            return;
+        let mut debouncer = match new_debouncer(Duration::from_millis(500), tx) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("atelier: projects watcher init failed: {e}");
+                return;
+            }
         };
-        if debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive).is_err() {
+        if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
+            eprintln!("atelier: failed to watch {}: {e}", dir.display());
             return;
         }
         for result in rx {
