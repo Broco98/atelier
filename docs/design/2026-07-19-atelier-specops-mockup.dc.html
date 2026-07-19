@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"></link>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"></link>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"></link>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { font-family: "Geist", -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #5E6AD2; text-decoration: none; }
+  a:hover { color: #4954b8; text-decoration: underline; }
+  button { font: inherit; cursor: pointer; }
+  input, select { font: inherit; }
+  *:focus-visible { outline: 2px solid #5E6AD2; outline-offset: 1px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(128,128,138,.35); border-radius: 7px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes flashBg { 0% { background: rgba(94,106,210,.22); } 100% { background: transparent; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+  [data-theme="light"] {
+    --bg: #ffffff; --bg-panel: #f7f7f8; --bg-rail: #f2f2f4; --bg-inset: #f6f6f7;
+    --bg-hover: rgba(20,20,28,.05); --border: #e5e5e8; --border-strong: #d2d2d7;
+    --text: #1a1a1e; --text-2: #55555e; --text-3: #8e8e97;
+    --green: #0f7b52; --green-bg: rgba(15,123,82,.09);
+    --red: #d3302f; --red-bg: rgba(211,48,47,.07);
+    --amber: #a16207; --amber-bg: rgba(161,98,7,.1);
+    --overlay: rgba(18,18,24,.4);
+    --shadow: 0 10px 32px rgba(18,18,28,.16), 0 2px 8px rgba(18,18,28,.08);
+    --code-key: #7c3aed; --code-str: #0f7b52; --code-cmt: #8e8e97; --code-kw: #b03060;
+  }
+  [data-theme="dark"] {
+    --bg: #1e1f24; --bg-panel: #191a1e; --bg-rail: #141519; --bg-inset: #17181c;
+    --bg-hover: rgba(255,255,255,.06); --border: #2d2e35; --border-strong: #3c3d45;
+    --text: #e8e8ec; --text-2: #a6a7b0; --text-3: #6f7079;
+    --green: #46c08a; --green-bg: rgba(70,192,138,.12);
+    --red: #f0605e; --red-bg: rgba(240,96,94,.1);
+    --amber: #e0a03c; --amber-bg: rgba(224,160,60,.12);
+    --overlay: rgba(8,8,12,.55);
+    --shadow: 0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+    --code-key: #b79df5; --code-str: #46c08a; --code-cmt: #6f7079; --code-kw: #e58ab0;
+  }
+</style>
+</helmet>
+
+<div ref="{{ rootRef }}" data-theme="{{ theme }}" style="width: 100%; height: 100vh; min-width: 1280px; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-size: 14px; overflow: hidden;">
+
+  <div style="flex: 1; display: flex; min-height: 0;">
+
+    <!-- ─── Rail ─── -->
+    <sc-if value="{{ sidebarOpen }}" hint-placeholder-val="{{ true }}">
+    <nav data-screen-label="Rail" style="{{ railNavStyle }}">
+      <div style="{{ railLogoRowStyle }}">
+        <div style="width: 26px; height: 26px; flex: none; border-radius: 10px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;">A</div>
+        <span style="{{ railBrandStyle }}">Atelier</span>
+      </div>
+
+      <button onClick="{{ goReview }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="Review  ⌘1" data-railitem="1" style="{{ railReviewStyle }}" style-hover="background: var(--bg-hover);">
+        <svg width="17" height="17" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"></path></svg>
+        <span style="{{ railLabelStyle }}">Review</span>
+        <sc-if value="{{ inboxHasUnread }}" hint-placeholder-val="{{ true }}">
+          <span style="{{ railInboxBadgeStyle }}">{{ inboxTotalUnreviewed }}</span>
+        </sc-if>
+      </button>
+      <button onClick="{{ goProjects }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="Projects  ⌘2" data-railitem="1" data-plus-host="1" style="{{ railProjectsStyle }}" style-hover="background: var(--bg-hover);">
+        <svg width="17" height="17" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8.6a1 1 0 0 1-.8-.4L9.4 4.9a1 1 0 0 0-.8-.4H4a1 1 0 0 0-1 1V19a1 1 0 0 0 1 1Z"></path></svg>
+        <span style="{{ railLabelStyle }}">Projects</span>
+      </button>
+      <button onClick="{{ goWorks }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="Works  ⌘3" data-railitem="1" style="{{ railWorksStyle }}" style-hover="background: var(--bg-hover);">
+        <svg width="17" height="17" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"></path></svg>
+        <span style="{{ railLabelStyle }}">Works</span>
+      </button>
+
+      <button onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="Settings — 이번 시안 범위 밖" style="{{ railSettingsStyle }}" style-hover="background: var(--bg-hover);">
+        <svg width="17" height="17" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"></line><circle cx="9" cy="7" r="2"></circle><line x1="4" y1="17" x2="20" y2="17"></line><circle cx="15" cy="17" r="2"></circle></svg>
+        <span style="{{ railLabelStyle }}">Settings</span>
+      </button>
+    </nav>
+    </sc-if>
+
+    <aside data-screen-label="목록 패널" style="{{ listPaneStyle }}">
+      <sc-if value="{{ navReview }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="S6 Review 인박스 큐" style="display: flex; flex-direction: column; min-height: 0; flex: 1; width: 100%;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 6px 10px;">
+            <span style="font-size: 11.5px; font-weight: 600; letter-spacing: .04em; color: var(--text-3); text-transform: uppercase;">Inbox</span>
+            <span style="font-size: 11px; color: var(--text-3);">{{ inboxSummary }}</span>
+          </div>
+          <div style="flex: 1; overflow-y: auto; min-height: 0; padding: 0 0 8px 0; display: flex; flex-direction: column; gap: 1px;">
+            <sc-for list="{{ inboxRows }}" as="q" hint-placeholder-count="4">
+              <button onClick="{{ q.onClick }}" style="{{ q.style }}" style-hover="background: var(--bg-hover);">
+                <span style="display: flex; align-items: center; gap: 7px; min-width: 0;">
+                  <span style="{{ q.dotStyle }}"></span>
+                  <span style="{{ q.titleStyle }}">{{ q.title }}</span>
+                  <span style="{{ q.badgeStyle }}">{{ q.badgeLabel }}</span>
+                </span>
+                <span style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <span style="display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden;">
+                    <span onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ q.toolTip }}" style="{{ q.toolStyle }}">{{ q.tool }}</span>
+                    <sc-for list="{{ q.chips }}" as="c" hint-placeholder-count="1">
+                      <span style="flex: none; font-size: 10.5px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 1px 6px;">{{ c.name }}</span>
+                    </sc-for>
+                  </span>
+                  <span style="flex: none; font-size: 11px; color: var(--text-3);">{{ q.ago }}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ navProjects }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S1 Projects 목록" style="display: flex; flex-direction: column; min-height: 0; flex: 1; width: 100%;">
+          <div style="display: flex; align-items: center; justify-content: space-between; height: 50px; padding: 0 2px; box-sizing: border-box; flex: none;">
+            <span style="display: flex; align-items: baseline; gap: 7px;">
+              <span style="font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--text);">Projects</span>
+              <span style="font-size: 11.5px; color: var(--text-3);">{{ projCount }}</span>
+            </span>
+            <button onClick="{{ openDialog }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="프로젝트 등록" style="width: 26px; height: 26px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text-2); display: flex; align-items: center; justify-content: center; flex: none;" style-hover="background: var(--bg-hover); color: var(--text);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+          </div>
+          <div onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업에서는 동작하지 않아요" data-tippos="bottom" style="display: flex; align-items: center; gap: 7px; height: 30px; flex: none; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-inset); padding: 0 12px; margin: 0 0 10px 0; box-sizing: border-box; color: var(--text-3); font-size: 12px;">
+            <svg width="12" height="12" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            프로젝트 검색
+          </div>
+          <div style="{{ projListStyle }}">
+            <sc-for list="{{ projectRows }}" as="p" hint-placeholder-count="3">
+              <button onClick="{{ p.onClick }}" style="{{ p.rowStyle }}" style-hover="background: var(--bg-hover);">
+                <span style="display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%;">
+                  <svg width="14" height="14" style="flex: none; color: var(--text-3);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                  <span style="{{ p.nameStyle }}">{{ p.name }}</span>
+                  <span style="{{ p.metaStyle }}">{{ p.metaLabel }}</span>
+                </span>
+                <span style="display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding-left: 21px; box-sizing: border-box;">
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.path }}</span>
+                </span>
+                <sc-if value="{{ p.hasRemote }}" hint-placeholder-val="{{ false }}">
+                  <span style="display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding-left: 21px; box-sizing: border-box; color: var(--text-3);">
+                    <sc-if value="{{ p.isGithub }}" hint-placeholder-val="{{ true }}">
+                      <svg width="11" height="11" style="flex: none;" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{ p.isGitlab }}" hint-placeholder-val="{{ false }}">
+                      <svg width="11" height="11" style="flex: none;" viewBox="0 0 24 24" fill="currentColor"><path d="m22.65 14.39-1.18-3.65-2.35-7.21c-.12-.36-.63-.36-.75 0l-2.35 7.21H7.98L5.63 3.53c-.12-.36-.63-.36-.75 0L2.53 10.74l-1.18 3.65c-.11.33.01.69.29.89l10.36 7.53 10.36-7.53c.28-.2.4-.56.29-.89Z"></path></svg>
+                    </sc-if>
+                    <span style="font-family: 'Geist Mono', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.remoteSlug }}</span>
+                    <span style="flex: none; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 1px 5px;">{{ p.branch }}</span>
+                  </span>
+                </sc-if>
+              </button>
+            </sc-for>
+            <sc-if value="{{ projsEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="margin: 4px 0; padding: 22px 14px; border: 1px dashed var(--border-strong); border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;">
+                <svg width="16" height="16" style="color: var(--text-3); margin-bottom: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                <span style="font-size: 12.5px; font-weight: 500; color: var(--text-2);">프로젝트가 없어요</span>
+                <span style="font-size: 11.5px; color: var(--text-3); line-height: 1.5;">로컬 저장소 폴더를 등록해 시작하세요.</span>
+                <button onClick="{{ openDialog }}" style="margin-top: 6px; height: 26px; padding: 0 12px; border-radius: 9px; border: none; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 12px; font-weight: 500;" style-hover="background: color-mix(in srgb, var(--accent) 16%, transparent);">프로젝트 등록</button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ navWorks }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S4 Works 목록" style="display: flex; flex-direction: column; min-height: 0; flex: 1; width: 100%;">
+          <div style="display: flex; align-items: center; height: 50px; padding: 0 2px; box-sizing: border-box; flex: none;">
+            <span style="display: flex; align-items: baseline; gap: 7px;">
+              <span style="font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--text);">Works</span>
+              <span style="font-size: 11.5px; color: var(--text-3);">{{ workCount }}</span>
+            </span>
+          </div>
+          <div onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업에서는 동작하지 않아요" data-tippos="bottom" style="display: flex; align-items: center; gap: 7px; height: 30px; flex: none; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-inset); padding: 0 12px; margin: 0 0 10px 0; box-sizing: border-box; color: var(--text-3); font-size: 12px;">
+            <svg width="12" height="12" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            작업 검색
+          </div>
+          <div style="flex: 1; overflow-y: auto; min-height: 0; padding: 0 0 8px 0; display: flex; flex-direction: column; gap: 1px;">
+            <sc-for list="{{ workRows }}" as="w" hint-placeholder-count="2">
+              <button onClick="{{ w.onClick }}" style="{{ w.style }}" style-hover="background: var(--bg-hover);">
+                <span style="display: flex; align-items: center; gap: 7px; min-width: 0;">
+                  <sc-if value="{{ w.isActive }}" hint-placeholder-val="{{ true }}">
+                    <svg width="13" height="13" style="flex: none; color: var(--accent);" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.6" opacity=".35"></circle><path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="7" cy="7" r="2.2" fill="currentColor"></circle></svg>
+                  </sc-if>
+                  <sc-if value="{{ w.isDone }}" hint-placeholder-val="{{ false }}">
+                    <svg width="13" height="13" style="flex: none; color: var(--green);" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" fill="currentColor"></circle><path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>
+                  </sc-if>
+                  <span style="{{ w.titleStyle }}">{{ w.title }}</span>
+                </span>
+                <span style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <span style="display: flex; gap: 4px; min-width: 0; overflow: hidden;">
+                    <sc-for list="{{ w.chips }}" as="c" hint-placeholder-count="1">
+                      <span style="flex: none; font-size: 10.5px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 1px 6px;">{{ c.name }}</span>
+                    </sc-for>
+                  </span>
+                  <span style="flex: none; font-size: 11px; color: var(--text-3);">{{ w.created }}</span>
+                </span>
+              </button>
+            </sc-for>
+            <sc-if value="{{ worksEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="margin: 4px 0; padding: 22px 14px; border: 1px dashed var(--border-strong); border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;">
+                <svg width="16" height="16" style="color: var(--text-3); margin-bottom: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"></path></svg>
+                <span style="font-size: 12.5px; font-weight: 500; color: var(--text-2);">작업이 없어요</span>
+                <span style="font-size: 11.5px; color: var(--text-3); line-height: 1.5;">작업은 Claude Code에서 스킬로 시작돼요.</span>
+                <code style="margin-top: 4px; font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px; user-select: all;">/specops start "새 작업"</code>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+    </aside>
+
+    <!-- ─── 메인 ─── -->
+    <main style="flex: 1; min-width: 480px; display: flex; flex-direction: column; min-height: 0; background: var(--bg);">
+
+      <!-- breadcrumb bar -->
+      <div style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid var(--border); gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-3); min-width: 0;">
+          <button onClick="{{ toggleSidebar }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ sidebarTip }}" data-tippos="bottom" style="width: 26px; height: 26px; margin-right: 4px; border-radius: 9px; border: none; background: transparent; color: var(--text-3); display: flex; align-items: center; justify-content: center; flex: none;" style-hover="background: var(--bg-hover); color: var(--text-2);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
+          </button>
+          <span>{{ crumbRoot }}</span>
+          <span style="color: var(--border-strong);">/</span>
+          <span style="color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto;">{{ crumbLeaf }}</span>
+          <sc-if value="{{ navWorksHasData }}" hint-placeholder-val="{{ false }}">
+            <span style="display: flex; align-items: center; gap: 8px; margin-left: 6px; flex: none;">
+              <button onClick="{{ toggleWorkStatus }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ statusTip }}" data-tippos="bottom" style="{{ workStatusBadgeStyle }}">
+                {{ selWorkStatusLabel }}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <span style="display: flex; gap: 5px;">
+                <sc-for list="{{ selWorkChips }}" as="c" hint-placeholder-count="1">
+                  <button onClick="{{ c.onClick }}" style="font-size: 11.5px; color: var(--text-2); background: var(--bg-hover); border: none; border-radius: 7px; padding: 3px 8px;" style-hover="color: var(--text); background: var(--bg-inset); box-shadow: inset 0 0 0 1px var(--border-strong);">{{ c.name }}</button>
+                </sc-for>
+              </span>
+            </span>
+          </sc-if>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex: none;">
+          <sc-if value="{{ navProjectsHasData }}" hint-placeholder-val="{{ false }}">
+            <span style="display: flex; gap: 8px;">
+              <button onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업에서는 동작하지 않아요" data-tippos="bottom" style="height: 28px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-2); font-size: 12.5px; font-weight: 500;" style-hover="background: var(--bg-hover);">폴더 열기</button>
+              <button onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업에서는 동작하지 않아요" data-tippos="bottom" style="height: 28px; padding: 0 11px; border-radius: 9px; border: 1px solid transparent; background: transparent; color: var(--red); font-size: 12.5px; font-weight: 500;" style-hover="background: var(--red-bg);">제거</button>
+            </span>
+          </sc-if>
+          <sc-if value="{{ navWorksHasData }}" hint-placeholder-val="{{ false }}">
+            <span style="display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3);">
+              <span style="display: flex; align-items: center; gap: 5px;">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="6" cy="18" r="2.5"></circle><circle cx="18" cy="8" r="2.5"></circle><path d="M6 8.5v7M18 10.5a7 7 0 0 1-7 7"></path></svg>
+                <span style="font-family: 'Geist Mono', monospace;">{{ selWorkBranch }}</span>
+              </span>
+            </span>
+          </sc-if>
+          <div style="display: flex; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 10px; padding: 2px; gap: 2px;" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업 전용 테마 토글" data-tippos="bottom">
+            <button onClick="{{ setLight }}" style="{{ themeLightStyle }}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+            </button>
+            <button onClick="{{ setDark }}" style="{{ themeDarkStyle }}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Review 리뷰 뷰어 ══ -->
+      <sc-if value="{{ navReview }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="S6 리뷰 뷰어" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+
+          <sc-if value="{{ reviewShowDoc }}" hint-placeholder-val="{{ true }}">
+            <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+
+              <div style="flex: none; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden;">
+                  <sc-for list="{{ reviewFileChips }}" as="f" hint-placeholder-count="3">
+                    <button onClick="{{ f.onClick }}" style="{{ f.style }}" style-hover="background: var(--bg-hover);">
+                      <span style="{{ f.dotStyle }}"></span>
+                      <span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; white-space: nowrap;">{{ f.name }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex: none;">
+                  <span style="display: flex; align-items: center; gap: 7px;">
+                    <span style="font-size: 11.5px; color: var(--text-3); white-space: nowrap;">{{ reviewProgressLabel }}</span>
+                    <span style="width: 64px; height: 3px; border-radius: 2px; background: var(--bg-hover); overflow: hidden; display: inline-flex;">
+                      <span style="{{ reviewProgressFillStyle }}"></span>
+                    </span>
+                  </span>
+                  <button onClick="{{ markFileReviewed }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="이 파일의 모든 블록을 reviewed로 기록해요" data-tippos="bottom" style="{{ markFileBtnStyle }}" style-hover="background: color-mix(in srgb, var(--accent) 16%, transparent);">
+                    이 파일 리뷰 완료
+                    <span style="font-family: 'Geist Mono', monospace; font-size: 10px; opacity: .75;">⌘⏎</span>
+                  </button>
+                </div>
+              </div>
+
+              <sc-if value="{{ showResume }}" hint-placeholder-val="{{ false }}">
+                <div style="flex: none; display: flex; align-items: center; gap: 9px; padding: 7px 14px; border-bottom: 1px solid var(--border); background: var(--bg-panel); font-size: 12px; color: var(--text-2);">
+                  <svg width="13" height="13" style="flex: none; color: var(--text-3);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"></path></svg>
+                  <span style="font-weight: 500;">지난 자리로 복원됨</span>
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--text-3);">{{ resumeLabel }}</span>
+                  <span style="color: var(--text-3);">떠났다 돌아와도 보던 곳 그대로예요</span>
+                </div>
+              </sc-if>
+
+              <div style="flex: 1; overflow-y: auto; min-height: 0;">
+                <article style="max-width: 820px; padding: 32px 40px 72px 76px; font-size: 15.5px; line-height: 1.7; color: var(--text);">
+                  <sc-for list="{{ reviewBlocks }}" as="b" hint-placeholder-count="6">
+                    <div style="{{ b.rowStyle }}">
+                      <span style="{{ b.lineStyle }}">{{ b.lines }}</span>
+                      <span onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ b.dotTip }}" style="{{ b.gutterStyle }}"></span>
+                      <div style="{{ b.textStyle }}">{{ b.text }}</div>
+                      <span style="{{ b.tagStyle }}">첫 미확인 · 진입 시 여기로 자동 스크롤</span>
+                    </div>
+                  </sc-for>
+                </article>
+              </div>
+
+              <div style="flex: none; height: 36px; border-top: 1px solid var(--border); background: var(--bg-panel); display: flex; align-items: center; gap: 18px; padding: 0 14px; font-size: 11.5px; color: var(--text-3);">
+                <span style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 5px; background: var(--bg); color: var(--text-2);">J</span>
+                  다음 미확인 — 파일·작업 경계를 넘어요
+                </span>
+                <span style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 5px; background: var(--bg); color: var(--text-2);">K</span>
+                  이전 미확인
+                </span>
+                <span style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 10px; font-weight: 600; border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 5px; background: var(--bg); color: var(--text-2);">⌘⏎</span>
+                  이 파일 리뷰 완료
+                </span>
+                <span style="margin-left: auto; font-size: 11px;">지나간 블록은 자동 reviewed · 기록은 .review.json (앱 소유)</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ reviewWorkDone }}" hint-placeholder-val="{{ false }}">
+            <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0;">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 24px;">
+                <span style="width: 40px; height: 40px; border-radius: 50%; background: var(--green-bg); color: var(--green); display: flex; align-items: center; justify-content: center;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                </span>
+                <span style="font-size: 15px; font-weight: 600;">{{ doneWorkTitle }} — 리뷰 끝</span>
+                <span style="font-size: 12.5px; color: var(--text-3);">이 작업엔 새로 볼 스펙이 없어요.</span>
+                <sc-if value="{{ hasNextWork }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ goNextWork }}" style="display: flex; align-items: center; gap: 8px; margin-top: 6px; height: 30px; padding: 0 13px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 500;" style-hover="filter: brightness(1.08);">
+                    다음: {{ nextWorkTitle }}
+                    <span style="font-size: 10.5px; font-weight: 600; background: rgba(255,255,255,.2); border-radius: 6px; padding: 1px 6px;">{{ nextWorkBadge }}</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                  </button>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ reviewInboxZero }}" hint-placeholder-val="{{ false }}">
+            <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0;">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 24px;">
+                <span style="width: 48px; height: 48px; border-radius: 50%; background: var(--green-bg); color: var(--green); display: flex; align-items: center; justify-content: center;">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"></path></svg>
+                </span>
+                <span style="font-size: 16px; font-weight: 600;">인박스 제로</span>
+                <span style="font-size: 13px; color: var(--text-2);">새로 리뷰할 스펙이 없어요.</span>
+                <span style="font-size: 11.5px; color: var(--text-3); font-family: 'Geist Mono', monospace;">감시 중 · 변경이 오면 다시 떠요</span>
+              </div>
+            </div>
+          </sc-if>
+
+        </div>
+      </sc-if>
+
+      <!-- ══ Projects 빈 상태 ══ -->
+      <sc-if value="{{ navProjectsEmpty }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S2e Projects 빈 상태" style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 7px; max-width: 400px; text-align: center;">
+            <div style="width: 46px; height: 46px; border-radius: 16px; background: var(--bg-inset); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-3); margin-bottom: 10px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+            </div>
+            <span style="font-size: 15.5px; font-weight: 600; letter-spacing: -.01em;">등록된 프로젝트가 없어요</span>
+            <span style="font-size: 13px; color: var(--text-3); line-height: 1.65; text-wrap: pretty;">로컬 저장소 폴더를 등록하면 원격(GitHub·GitLab)과 브랜치를 자동 감지하고, 그 프로젝트에서 시작된 작업이 여기에 모여요.</span>
+            <button onClick="{{ openDialog }}" style="margin-top: 12px; height: 32px; padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 500;" style-hover="filter: brightness(1.08);">프로젝트 등록</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ Projects 상세 ══ -->
+      <sc-if value="{{ navProjectsHasData }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S2 Projects 상세" style="flex: 1; overflow-y: auto; min-height: 0;">
+          <div style="max-width: 860px; margin: 0 auto; padding: 28px 32px 48px 32px; display: flex; flex-direction: column; gap: 28px;">
+
+            <sc-if value="{{ selProjMissing }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 10px; background: var(--red-bg); border: 1px solid var(--red); border-radius: 12px; padding: 10px 14px;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--red); flex: none;"></span>
+                <span style="font-size: 13px; color: var(--red); font-weight: 500;">경로를 찾을 수 없어요.</span>
+                <span style="font-size: 12.5px; color: var(--text-2);">폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나 직접 제거하세요.</span>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <h1 style="margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.01em;">{{ selProjName }}</h1>
+              <div style="display: flex; flex-direction: column; gap: 1px; margin-top: 4px;">
+                <div style="display: flex; align-items: center; min-height: 30px; gap: 14px;">
+                  <span style="display: flex; align-items: center; gap: 9px; width: 108px; flex: none; font-size: 12.5px; color: var(--text-3);">
+                    <svg width="14" height="14" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                    경로
+                  </span>
+                  <span style="{{ selProjPathStyle }}">{{ selProjPath }}</span>
+                </div>
+                <sc-if value="{{ hasRemote }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: center; min-height: 30px; gap: 14px;">
+                  <span style="display: flex; align-items: center; gap: 9px; width: 108px; flex: none; font-size: 12.5px; color: var(--text-3);">
+                    <sc-if value="{{ isGithub }}" hint-placeholder-val="{{ true }}">
+                      <svg width="14" height="14" style="flex: none;" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+                    </sc-if>
+                    <sc-if value="{{ isGitlab }}" hint-placeholder-val="{{ false }}">
+                      <svg width="14" height="14" style="flex: none;" viewBox="0 0 24 24" fill="currentColor"><path d="m22.65 14.39-1.18-3.65-2.35-7.21c-.12-.36-.63-.36-.75 0l-2.35 7.21H7.98L5.63 3.53c-.12-.36-.63-.36-.75 0L2.53 10.74l-1.18 3.65c-.11.33.01.69.29.89l10.36 7.53 10.36-7.53c.28-.2.4-.56.29-.89Z"></path></svg>
+                    </sc-if>
+                    원격
+                  </span>
+                  <span onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ remoteDetectTip }}" data-tippos="bottom" style="display: flex; align-items: center; gap: 6px; color: var(--text-2); min-width: 0;">
+                    <span style="font-family: 'Geist Mono', monospace; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ remoteSlug }}</span>
+                    <span style="font-size: 11.5px; color: var(--text-3); flex: none;">{{ remoteSynced }} 동기화</span>
+                  </span>
+                </div>
+                </sc-if>
+                <div style="display: flex; align-items: center; min-height: 30px; gap: 14px;">
+                  <span style="display: flex; align-items: center; gap: 9px; width: 108px; flex: none; font-size: 12.5px; color: var(--text-3);">
+                    <svg width="14" height="14" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="6" cy="18" r="2.5"></circle><circle cx="18" cy="8" r="2.5"></circle><path d="M6 8.5v7M18 10.5a7 7 0 0 1-7 7"></path></svg>
+                    baseBranch
+                  </span>
+                  <div style="display: flex; align-items: center; margin-left: -7px;">
+                  <sc-if value="{{ hasRemote }}" hint-placeholder-val="{{ false }}">
+                    <span style="position: relative; display: flex;">
+                      <button onClick="{{ toggleBranchMenu }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="원격 브랜치 목록에서 변경" data-tippos="bottom" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 7px; border-radius: 9px; border: none; background: transparent; color: var(--text-2); font-family: 'Geist Mono', monospace; font-size: 12.5px;" style-hover="background: var(--bg-hover); color: var(--text);">
+                        {{ selProjBranch }}
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+                      </button>
+                      <sc-if value="{{ branchMenuOpen }}" hint-placeholder-val="{{ false }}">
+                        <div onClick="{{ closeBranchMenu }}" style="position: fixed; inset: 0; z-index: 30;"></div>
+                        <div style="position: absolute; top: 30px; left: 0; width: 248px; z-index: 31; background: var(--bg); border: 1px solid var(--border-strong); border-radius: 13px; box-shadow: var(--shadow); overflow: hidden; animation: fadeIn .12s ease-out;">
+                          <div style="height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--border); box-sizing: border-box;">
+                            <span style="font-size: 11.5px; font-weight: 600; color: var(--text-2);">원격 브랜치</span>
+                            <span style="font-size: 11px; color: var(--text-3);">{{ remoteBranchCount }}개 · {{ remoteSynced }} 동기화</span>
+                          </div>
+                          <div style="padding: 5px; display: flex; flex-direction: column; gap: 1px;">
+                            <sc-for list="{{ branchOptions }}" as="b" hint-placeholder-count="3">
+                              <button onClick="{{ b.onClick }}" style="{{ b.style }}" style-hover="background: var(--bg-hover);">
+                                <span style="font-family: 'Geist Mono', monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ b.name }}</span>
+                                <span style="{{ b.defStyle }}">default</span>
+                                <svg width="12" height="12" style="{{ b.checkStyle }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                              </button>
+                            </sc-for>
+                          </div>
+                          <div style="padding: 7px 12px 8px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-3); line-height: 1.5;">baseBranch 설정만 바꿔요 — checkout은 하지 않아요</div>
+                        </div>
+                      </sc-if>
+                    </span>
+                  </sc-if>
+                  <sc-if value="{{ editingBranch }}" hint-placeholder-val="{{ false }}">
+                    <input value="{{ branchDraft }}" onChange="{{ setBranchDraft }}" onKeyDown="{{ branchKeyDown }}" onBlur="{{ commitBranch }}" autoFocus="{{ true }}" style="width: 110px; height: 20px; border-radius: 6px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); font-family: 'Geist Mono', monospace; font-size: 12.5px; padding: 0 5px; box-sizing: border-box;"></input>
+                  </sc-if>
+                  <sc-if value="{{ notEditingBranch }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ startEditBranch }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="클릭해서 편집" data-tippos="bottom" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 7px; border-radius: 9px; border: none; background: transparent; color: var(--text-2); font-family: 'Geist Mono', monospace; font-size: 12.5px;" style-hover="background: var(--bg-hover); color: var(--text);">
+                      {{ selProjBranch }}
+                    </button>
+                  </sc-if>
+                </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: baseline; gap: 8px;">
+                <h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2);">설명</h2>
+                <span style="font-size: 11.5px; color: var(--text-3);">클릭해서 편집</span>
+              </div>
+              <sc-if value="{{ notEditingDesc }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ startEditDesc }}" style="{{ selProjDescStyle }}" style-hover="border-color: var(--border-strong); background: var(--bg-panel);">{{ selProjDesc }}</button>
+              </sc-if>
+              <sc-if value="{{ editingDesc }}" hint-placeholder-val="{{ false }}">
+                <textarea value="{{ descDraft }}" onChange="{{ setDescDraft }}" onKeyDown="{{ descKeyDown }}" onBlur="{{ commitDesc }}" autoFocus="{{ true }}" placeholder="이 프로젝트가 무엇인지, 왜 등록했는지 적어 주세요" style="min-height: 72px; border-radius: 12px; border: 1px solid var(--accent); background: var(--bg); color: var(--text); font-family: inherit; font-size: 13.5px; line-height: 1.65; padding: 12px 14px; resize: vertical; box-sizing: border-box;"></textarea>
+              </sc-if>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <svg width="13" height="13" style="flex: none; color: var(--text-3);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"></path></svg>
+                <h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2);">Works</h2>
+                <span style="font-size: 11.5px; color: var(--text-3);">이 프로젝트에서 시작된 작업</span>
+                <button onClick="{{ goWorks }}" style="margin-left: auto; display: flex; align-items: center; gap: 4px; border: none; background: transparent; padding: 2px 6px; border-radius: 7px; font-size: 11.5px; font-weight: 500; color: var(--text-3);" style-hover="color: var(--text); background: var(--bg-hover);">
+                  Works에서 모두 보기
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+                </button>
+              </div>
+              <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+                <sc-for list="{{ selProjWorks }}" as="w" hint-placeholder-count="2">
+                  <button onClick="{{ w.onClick }}" style="{{ w.style }}" style-hover="background: var(--bg-hover);">
+                    <span style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+                      <sc-if value="{{ w.isActive }}" hint-placeholder-val="{{ true }}">
+                        <svg onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="active — 진행 중" data-tippos="bottom" width="14" height="14" style="flex: none; color: var(--accent);" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.6" opacity=".35"></circle><path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="7" cy="7" r="2.2" fill="currentColor"></circle></svg>
+                      </sc-if>
+                      <sc-if value="{{ w.isDone }}" hint-placeholder-val="{{ false }}">
+                        <svg onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="done — 완료" data-tippos="bottom" width="14" height="14" style="flex: none; color: var(--green);" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" fill="currentColor"></circle><path d="m4.4 7.2 1.8 1.8 3.4-3.9" stroke="var(--bg)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>
+                      </sc-if>
+                      <span style="{{ w.titleStyle }}">{{ w.title }}</span>
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 10px; flex: none; color: var(--text-3); font-size: 12px;">
+                      <sc-if value="{{ w.hasTree }}" hint-placeholder-val="{{ false }}">
+                        <span onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ w.treeTip }}" data-tippos="bottom" style="display: flex; align-items: center; gap: 5px; font-family: 'Geist Mono', monospace; font-size: 11px;">
+                          <svg width="11" height="11" style="flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="6" cy="18" r="2.5"></circle><circle cx="18" cy="8" r="2.5"></circle><path d="M6 8.5v7M18 10.5a7 7 0 0 1-7 7"></path></svg>
+                          {{ w.branch }}
+                          <span style="{{ w.treeGitStyle }}">{{ w.treeGit }}</span>
+                        </span>
+                      </sc-if>
+                      {{ w.created }}
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+                    </span>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ selProjNoWorks }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding: 16px 14px; font-size: 12.5px; color: var(--text-3);">이 프로젝트로 시작된 작업이 아직 없어요.</div>
+                </sc-if>
+              </div>
+            </div>
+
+            <sc-if value="{{ remoteConnectedShow }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="S2r 원격(GitHub/GitLab)" style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2);">{{ remoteProviderName }}</h2>
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--text-3);">{{ remoteSlug }}</span>
+                  <span style="font-size: 11.5px; color: var(--text-3);">읽기 전용 · {{ remoteSynced }} 동기화</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;">
+                  <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--bg-panel); box-sizing: border-box;">
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-2);">열린 {{ remoteMergeLabel }}</span>
+                      <span style="font-size: 10.5px; font-weight: 500; color: var(--text-2); background: var(--bg-hover); border-radius: 12px; padding: 1px 6px;">{{ prCount }}</span>
+                    </div>
+                    <sc-for list="{{ prRows }}" as="r" hint-placeholder-count="2">
+                      <button onClick="{{ r.onClick }}" style="{{ r.style }}" style-hover="background: var(--bg-hover);">
+                        <span style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                          <span style="{{ r.iconStyle }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg></span>
+                          <span style="{{ r.titleStyle }}">{{ r.title }}</span>
+                          <span style="{{ r.draftStyle }}">draft</span>
+                          <span style="flex: none; font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-3);">#{{ r.num }}</span>
+                        </span>
+                        <span style="display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 21px;">
+                          <span style="flex: none; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 1px 6px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.branch }}</span>
+                          <span style="font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.meta }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                    <sc-if value="{{ prEmpty }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding: 14px 12px; font-size: 12px; color: var(--text-3);">열린 {{ remoteMergeLabel }}이 없어요.</div>
+                    </sc-if>
+                  </div>
+                  <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--bg-panel); box-sizing: border-box;">
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-2);">이슈</span>
+                      <span style="font-size: 10.5px; font-weight: 500; color: var(--text-2); background: var(--bg-hover); border-radius: 12px; padding: 1px 6px;">{{ issueCount }}</span>
+                    </div>
+                    <sc-for list="{{ issueRows }}" as="r" hint-placeholder-count="2">
+                      <button onClick="{{ r.onClick }}" style="{{ r.style }}" style-hover="background: var(--bg-hover);">
+                        <span style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                          <span style="{{ r.iconStyle }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle></svg></span>
+                          <span style="{{ r.titleStyle }}">{{ r.title }}</span>
+                          <span style="flex: none; font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-3);">#{{ r.num }}</span>
+                        </span>
+                        <span style="display: flex; align-items: center; gap: 6px; min-width: 0; padding-left: 21px;">
+                          <sc-for list="{{ r.chips }}" as="c" hint-placeholder-count="1">
+                            <span style="{{ c.style }}">{{ c.name }}</span>
+                          </sc-for>
+                          <span style="font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.meta }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                    <sc-if value="{{ issueEmpty }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding: 14px 12px; font-size: 12px; color: var(--text-3);">열린 이슈가 없어요.</div>
+                    </sc-if>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ remoteNeedsConnect }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 9px; border: 1px dashed var(--border-strong); border-radius: 12px; padding: 10px 14px; font-size: 12.5px; color: var(--text-3);">
+                <sc-if value="{{ isGithub }}" hint-placeholder-val="{{ true }}">
+                  <svg width="14" height="14" style="flex: none; color: var(--text-3);" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+                </sc-if>
+                <sc-if value="{{ isGitlab }}" hint-placeholder-val="{{ false }}">
+                  <svg width="14" height="14" style="flex: none; color: var(--text-3);" viewBox="0 0 24 24" fill="currentColor"><path d="m22.65 14.39-1.18-3.65-2.35-7.21c-.12-.36-.63-.36-.75 0l-2.35 7.21H7.98L5.63 3.53c-.12-.36-.63-.36-.75 0L2.53 10.74l-1.18 3.65c-.11.33.01.69.29.89l10.36 7.53 10.36-7.53c.28-.2.4-.56.29-.89Z"></path></svg>
+                </sc-if>
+                <span><span style="font-family: 'Geist Mono', monospace; color: var(--text-2);">{{ remoteSlug }}</span> 감지됨 — 이슈·{{ remoteMergeLabel }}을 보려면 {{ remoteProviderName }} 계정을 연결하세요.</span>
+                <button onClick="{{ connectRemote }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업 — 클릭하면 연결된 상태를 시뮬레이션해요" data-tippos="bottom" style="margin-left: auto; flex: none; height: 26px; padding: 0 11px; border-radius: 9px; border: none; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font-size: 12px; font-weight: 500;" style-hover="background: color-mix(in srgb, var(--accent) 16%, transparent);">연결</button>
+              </div>
+            </sc-if>
+
+
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ Works 빈 상태 ══ -->
+      <sc-if value="{{ navWorksEmpty }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S5e Works 빈 상태" style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 7px; max-width: 400px; text-align: center;">
+            <div style="width: 46px; height: 46px; border-radius: 16px; background: var(--bg-inset); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-3); margin-bottom: 10px;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7Z"></path></svg>
+            </div>
+            <span style="font-size: 15.5px; font-weight: 600; letter-spacing: -.01em;">아직 작업이 없어요</span>
+            <span style="font-size: 13px; color: var(--text-3); line-height: 1.65; text-wrap: pretty;">작업은 Claude Code에서 스킬로 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.</span>
+            <code style="margin-top: 12px; font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--text-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; user-select: all;">/specops start "새 작업"</code>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ══ Work 상세 ══ -->
+      <sc-if value="{{ navWorksHasData }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="S5 작업 상세" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+
+          <!-- S5b Spec -->
+            <div data-screen-label="S5b Spec 뷰어" style="flex: 1; display: flex; min-height: 0; position: relative;">
+
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0;">
+                <div style="flex: none; height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); gap: 10px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ selFilePath }}</span>
+                    <span style="flex: none; font-size: 11px; color: var(--text-3);">· 블록을 클릭하면 참조가 복사돼요</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 6px; flex: none;">
+                    <button onClick="{{ toggleSpecTree }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="{{ specTreeTip }}" data-tippos="bottom" style="{{ specTreeToggleStyle }}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="13" y2="18"></line></svg>
+                    </button>
+                    <button onClick="{{ toggleSource }}" style="{{ sourceToggleStyle }}">소스</button>
+                    <button onClick="{{ copyPath }}" style="height: 26px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--border); background: transparent; color: var(--text-3); font-size: 12px;" style-hover="background: var(--bg-hover); color: var(--text-2);">{{ copyLabel }}</button>
+                  </div>
+                </div>
+
+                <div style="{{ specScrollStyle }}">
+
+                  <!-- 소스 보기 -->
+                  <sc-if value="{{ showSource }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding: 16px 0; font-family: 'Geist Mono', monospace; font-size: 12.5px; line-height: 1.75;">
+                      <sc-for list="{{ srcLines }}" as="l" hint-placeholder-count="8">
+                        <div style="display: grid; grid-template-columns: 52px 1fr; gap: 14px;">
+                          <span style="text-align: right; color: var(--text-3); user-select: none;">{{ l.n }}</span>
+                          <span style="white-space: pre; color: var(--text-2);">{{ l.t }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <!-- 예쁜 보기: overview.md -->
+                  <sc-if value="{{ prettyOverview }}" hint-placeholder-val="{{ true }}">
+                    <article style="max-width: 820px; padding: 36px 40px 72px 62px; font-size: 15.5px; line-height: 1.7; color: var(--text);">
+
+                      <div onClick="{{ copyBlock }}" data-lines="1" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 12px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">1</span>
+                        <h1 style="margin: 0; font-size: 27px; font-weight: 700; letter-spacing: -.018em;">스펙 뷰어 라이브 리로드</h1>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="3-5" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 10px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">3–5</span>
+                        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-3);">
+                          <span style="color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 6px; padding: 2px 8px; font-weight: 500;">active</span>
+                          <span>작성 7월 9일</span>
+                          <span style="font-family: 'Geist Mono', monospace;">work/spec-live-reload</span>
+                          <span>버전 <span style="font-family: 'Geist Mono', monospace; color: var(--text-2);">v0.2</span></span>
+                        </div>
+                      </div>
+                      <div style="border-bottom: 1px solid var(--border); margin: 14px 0 10px 0;"></div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="7-9" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">7–9</span>
+                        <p style="margin: 0; color: var(--text-2);">Atelier의 Spec 탭은 사람이 read·review에 집중하는 화면이다. 외부 AI가 <code style="font-family: 'Geist Mono', monospace; font-size: .88em; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px;">spec/</code> 아래 파일을 수정하면 뷰어는 1초 안에, 깜빡임 없이 콘텐츠만 교체되어야 한다.</p>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="11" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">11</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">목표</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="13-15" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 8px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">13–15</span>
+                        <ul style="margin: 0; padding-left: 22px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+                          <li>spec/ 폴더 변경을 <strong style="color: var(--text);">1초 이내</strong>에 반영한다</li>
+                          <li>스크롤 위치와 줌 상태를 유지한 채 콘텐츠만 교체한다</li>
+                          <li>파싱 실패 시 raw 텍스트로 폴백하고 실패 줄을 하이라이트한다</li>
+                        </ul>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="17" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">17</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">동작 흐름</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="19-27" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 10px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">19–27</span>
+                        <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--bg-panel); overflow: hidden;">
+                          <div onClick="{{ stopClick }}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: default;">
+                            <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-3);">mermaid</span>
+                            <span style="display: flex; align-items: center; gap: 4px;">
+                              <button onClick="{{ zoomOut }}" style="{{ zoomBtnStyle }}">−</button>
+                              <button onClick="{{ zoomReset }}" style="{{ zoomResetStyle }}">{{ zoomLabel }}</button>
+                              <button onClick="{{ zoomIn }}" style="{{ zoomBtnStyle }}">+</button>
+                              <span style="width: 1px; height: 14px; background: var(--border); margin: 0 3px;"></span>
+                              <button onClick="{{ toggleMermaidView }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="원본 mermaid 코드 보기" data-tippos="bottom" style="{{ mmCodeToggleStyle }}">코드</button>
+                              <button onClick="{{ openMermaidFull }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="전체화면으로 크게 보기" data-tippos="bottom" style="{{ zoomBtnStyle }}">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+                              </button>
+                            </span>
+                          </div>
+                          <sc-if value="{{ mmShowDiagram }}" hint-placeholder-val="{{ true }}">
+                            <div style="overflow: auto; padding: 18px;">
+                              <div ref="{{ mermaidRef }}" style="{{ mermaidScaleStyle }}"></div>
+                            </div>
+                          </sc-if>
+                          <sc-if value="{{ mmShowCode }}" hint-placeholder-val="{{ false }}">
+                            <pre style="margin: 0; padding: 16px 18px; font-family: 'Geist Mono', monospace; font-size: 12.5px; line-height: 1.75; color: var(--text-2); overflow-x: auto; background: var(--bg-inset);">{{ mermaidCode }}</pre>
+                          </sc-if>
+                        </div>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="29" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">29</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">감시 대상</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="31-35" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 10px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">31–35</span>
+                        <table style="border-collapse: collapse; width: 100%; font-size: 13.5px;">
+                        <thead>
+                          <tr>
+                            <th style="text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-strong); color: var(--text-3); font-weight: 500; font-size: 12.5px;">경로 패턴</th>
+                            <th style="text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-strong); color: var(--text-3); font-weight: 500; font-size: 12.5px;">이벤트</th>
+                            <th style="text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-strong); color: var(--text-3); font-weight: 500; font-size: 12.5px;">디바운스</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">spec/**/*.md</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2);">create · modify</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">300ms</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">spec/**/*.yaml</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2);">modify</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">300ms</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">work.json</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2);">modify</td>
+                            <td style="padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text-2);">100ms</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="37" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">37</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">리로드 정책</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="39-44" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 10px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">39–44</span>
+                        <pre style="margin: 0; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-family: 'Geist Mono', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto;"><span style="color: var(--code-key);">reload</span>:
+  <span style="color: var(--code-key);">debounce_ms</span>: <span style="color: var(--code-str);">300</span>
+  <span style="color: var(--code-key);">keep_scroll</span>: <span style="color: var(--code-str);">true</span>
+  <span style="color: var(--code-key);">fallback</span>: <span style="color: var(--code-str);">raw</span></pre>
+                      </div>
+
+                      <div onClick="{{ copyBlock }}" data-lines="46" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">46</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">뷰어 교체 규칙</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="48-53" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 10px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">48–53</span>
+                        <pre style="margin: 0; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-family: 'Geist Mono', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto;"><span style="color: var(--code-kw);">function</span> swap(next: Doc) {
+  <span style="color: var(--code-kw);">if</span> (same(current, next)) <span style="color: var(--code-kw);">return</span>;
+  viewer.replaceContent(next); <span style="color: var(--code-cmt);">// remount 없이 교체</span>
+}</pre>
+                      </div>
+                    </article>
+                  </sc-if>
+
+                  <!-- 예쁜 보기: architecture.md -->
+                  <sc-if value="{{ prettyArch }}" hint-placeholder-val="{{ false }}">
+                    <article style="max-width: 820px; padding: 36px 40px 72px 62px; font-size: 15.5px; line-height: 1.7; color: var(--text);">
+                      <div onClick="{{ copyBlock }}" data-lines="1" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 12px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">1</span>
+                        <h1 style="margin: 0; font-size: 27px; font-weight: 700; letter-spacing: -.018em;">뷰어 아키텍처</h1>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="3" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 12px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">3</span>
+                        <p style="margin: 0; color: var(--text-2);">파일 감시 → 파싱 → 렌더 파이프라인을 얇게 유지한다.</p>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="5" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">5</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">구성 요소</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="7-9" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 8px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">7–9</span>
+                        <ul style="margin: 0; padding-left: 22px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+                          <li><code style="font-family: 'Geist Mono', monospace; font-size: .88em; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px;">watcher</code> — notify 기반 파일 감시 (Rust)</li>
+                          <li><code style="font-family: 'Geist Mono', monospace; font-size: .88em; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px;">parser</code> — md / yaml → 렌더 트리</li>
+                          <li><code style="font-family: 'Geist Mono', monospace; font-size: .88em; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px;">renderer</code> — 웹뷰 쪽 교체 전용 뷰어</li>
+                        </ul>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="11" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 26px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 10px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">11</span>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -.01em;">원칙</h2>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="13-14" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 9px; padding: 4px 12px; margin: 8px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">13–14</span>
+                        <ul style="margin: 0; padding-left: 22px; color: var(--text-2); display: flex; flex-direction: column; gap: 6px;">
+                          <li>뷰어는 상태를 소유하지 않는다 (스크롤·줌 제외)</li>
+                          <li>실패는 숨기지 않고 표면화한다</li>
+                        </ul>
+                      </div>
+                    </article>
+                  </sc-if>
+
+                  <!-- 예쁜 보기: pipeline.yaml -->
+                  <sc-if value="{{ prettyYaml }}" hint-placeholder-val="{{ false }}">
+                    <article style="max-width: 820px; padding: 36px 40px 72px 62px;">
+                      <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 600; font-family: 'Geist Mono', monospace;">pipeline.yaml</h1>
+                      <p style="margin: 0 0 14px 0; font-size: 12.5px; color: var(--text-3);">yaml pretty 보기 — 소스는 우상단 [소스]로 확인</p>
+                      <div onClick="{{ copyBlock }}" data-lines="1-7" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">1–7</span>
+                        <pre style="margin: 0; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto;"><span style="color: var(--code-cmt);"># spec 감시 파이프라인
+</span><span style="color: var(--code-key);">watch</span>:
+  <span style="color: var(--code-key);">root</span>: <span style="color: var(--code-str);">spec/</span>
+  <span style="color: var(--code-key);">include</span>:
+    - <span style="color: var(--code-str);">"**/*.md"</span>
+    - <span style="color: var(--code-str);">"**/*.yaml"</span>
+  <span style="color: var(--code-key);">debounce_ms</span>: <span style="color: var(--code-str);">300</span></pre>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="8-10" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 8px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">8–10</span>
+                        <pre style="margin: 0; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto;"><span style="color: var(--code-key);">render</span>:
+  <span style="color: var(--code-key);">mermaid</span>: <span style="color: var(--code-str);">true</span>
+  <span style="color: var(--code-key);">yaml_pretty</span>: <span style="color: var(--code-str);">true</span></pre>
+                      </div>
+                      <div onClick="{{ copyBlock }}" data-lines="11-13" onMouseEnter="{{ blockEnter }}" onMouseLeave="{{ tipLeave }}" style="position: relative; border-radius: 12px; padding: 4px 12px; margin: 8px -12px 0 -12px; cursor: copy;" style-hover="background: var(--bg-hover);">
+                        <span style="position: absolute; left: -42px; top: 9px; width: 34px; text-align: right; font-family: 'Geist Mono', monospace; font-size: 10.5px; color: var(--text-3); opacity: .65; user-select: none;">11–13</span>
+                        <pre style="margin: 0; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.8; overflow-x: auto;"><span style="color: var(--code-key);">fallback</span>:
+  <span style="color: var(--code-key);">mode</span>: <span style="color: var(--code-str);">raw</span>
+  <span style="color: var(--code-key);">highlight_failed_line</span>: <span style="color: var(--code-str);">true</span></pre>
+                      </div>
+                    </article>
+                  </sc-if>
+
+                </div>
+              </div>
+
+              <sc-if value="{{ specTreeOpen }}" hint-placeholder-val="{{ true }}">
+              <aside style="position: absolute; top: 52px; right: 14px; width: 232px; max-height: calc(100% - 66px); border: 1px solid var(--border); border-radius: 14px; background: var(--bg-panel); box-shadow: 0 8px 24px rgba(20, 20, 40, .10), 0 1px 3px rgba(20, 20, 40, .06); display: flex; flex-direction: column; overflow: hidden; z-index: 5;">
+                <div style="flex: none; height: 38px; display: flex; align-items: center; padding: 0 10px 0 14px; border-bottom: 1px solid var(--border); box-sizing: border-box;">
+                  <span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--text-3);">spec/</span>
+                </div>
+                <div style="flex: 1; overflow-y: auto; min-height: 0; padding: 6px 6px 8px 6px; display: flex; flex-direction: column;">
+                  <sc-for list="{{ treeRows }}" as="n" hint-placeholder-count="4">
+                    <button onClick="{{ n.onClick }}" style="{{ n.style }}" style-hover="background-color: var(--bg-hover);">
+                      <span style="{{ n.chevronStyle }}">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+                      </span>
+                      <span style="{{ n.iconStyle }}">{{ n.iconGlyph }}</span>
+                      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ n.name }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </aside>
+              </sc-if>
+            </div>
+
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+
+  <!-- ─── 상태바 ─── -->
+  <div style="height: 26px; flex: none; border-top: 1px solid var(--border); background: var(--bg-panel); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: var(--text-3);">
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <span style="font-family: 'Geist Mono', monospace;">~/.atelier</span>
+      <span>활성 작업 {{ countActive }}</span>
+      <span style="{{ statusUnrevStyle }}">미확인 {{ inboxTotalUnreviewed }}</span>
+      <span style="display: flex; align-items: center; gap: 5px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--green);"></span>감시 중</span>
+    </div>
+    <span>Atelier 목업 · 라이트/다크는 우상단 토글</span>
+  </div>
+
+  <!-- ─── 원격 항목 미리보기 패널 ─── -->
+  <sc-if value="{{ remotePanelOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeRemotePanel }}" style="position: fixed; inset: 0; z-index: 55;"></div>
+    <aside data-screen-label="S2p 원격 항목 미리보기" style="position: fixed; top: 0; right: 0; bottom: 26px; width: 430px; background: var(--bg); color: var(--text); border-left: 1px solid var(--border-strong); box-shadow: var(--shadow); z-index: 56; display: flex; flex-direction: column; animation: fadeIn .15s ease-out;">
+      <div style="flex: none; height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); gap: 10px; box-sizing: border-box;">
+        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+          <span style="{{ panelTypeBadgeStyle }}">{{ panelTypeLabel }}</span>
+          <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--text-2);">#{{ panelNum }}</span>
+          <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ remoteSlug }}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px; flex: none;">
+          <button onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="목업 — 실제로는 기본 브라우저로 열려요" data-tippos="bottom" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 12px;" style-hover="background: var(--bg-hover); color: var(--text);">
+            {{ remoteProviderName }}에서 열기
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+          </button>
+          <button onClick="{{ closeRemotePanel }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="닫기 (Esc)" data-tippos="bottom" style="width: 26px; height: 26px; border-radius: 9px; border: none; background: transparent; color: var(--text-3); display: flex; align-items: center; justify-content: center;" style-hover="background: var(--bg-hover); color: var(--text);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div style="flex: 1; overflow-y: auto; min-height: 0; padding: 20px 20px 28px 20px; display: flex; flex-direction: column; gap: 14px;">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; line-height: 1.4;">{{ panelTitle }}</h2>
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="{{ panelStateStyle }}">{{ panelStateLabel }}</span>
+          <span style="font-size: 12px; color: var(--text-3);">{{ panelMeta }}</span>
+        </div>
+        <sc-if value="{{ panelIsPr }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 2px 7px;">{{ panelBranch }}</span>
+            <svg width="12" height="12" style="color: var(--text-3); flex: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+            <span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-2); background: var(--bg-hover); border-radius: 6px; padding: 2px 7px;">{{ panelBase }}</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ panelHasLabels }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <sc-for list="{{ panelChips }}" as="c" hint-placeholder-count="1">
+              <span style="{{ c.style }}">{{ c.name }}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="border-bottom: 1px solid var(--border);"></div>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap;">{{ panelBody }}</p>
+        <sc-if value="{{ panelIsPr }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--text-3); font-family: 'Geist Mono', monospace; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; background: var(--bg-panel);">
+            <span>커밋 {{ panelCommits }}</span>
+            <span>파일 {{ panelFiles }}</span>
+            <span style="color: var(--green);">+{{ panelAdd }}</span>
+            <span style="color: var(--red);">−{{ panelDel }}</span>
+            <span style="margin-left: auto;">코멘트 {{ panelComments }}</span>
+          </div>
+        </sc-if>
+      </div>
+      <div style="flex: none; padding: 10px 20px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--text-3);">읽기 전용 미리보기 — 편집·코멘트는 {{ remoteProviderName }}에서 해요</div>
+    </aside>
+  </sc-if>
+
+  <!-- ─── Tooltip ─── -->
+  <sc-if value="{{ tipVisible }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ tipStyle }}">{{ tipText }}</div>
+  </sc-if>
+
+  <!-- ─── 복사 토스트 ─── -->
+  <sc-if value="{{ toastVisible }}" hint-placeholder-val="{{ false }}">
+    <div style="{{ toastStyle }}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+      {{ toastText }}
+    </div>
+  </sc-if>
+
+  <!-- ─── mermaid 전체화면 ─── -->
+  <sc-if value="{{ mermaidFullOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeMermaidFull }}" style="position: fixed; inset: 0; background: var(--overlay); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 36px;">
+      <div onClick="{{ stopClick }}" style="width: 100%; height: 100%; max-width: 1280px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; animation: fadeIn .15s ease-out;">
+        <div style="flex: none; height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--border); gap: 10px;">
+          <div style="display: flex; align-items: baseline; gap: 8px; min-width: 0;">
+            <span style="font-size: 13.5px; font-weight: 600;">동작 흐름</span>
+            <span style="font-family: 'Geist Mono', monospace; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">spec/overview.md:L19-27 · mermaid</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 5px; flex: none;">
+            <button onClick="{{ fullZoomOut }}" style="{{ fullZoomBtnStyle }}">−</button>
+            <button onClick="{{ fullZoomReset }}" style="{{ fullZoomResetStyle }}">{{ fullZoomLabel }}</button>
+            <button onClick="{{ fullZoomIn }}" style="{{ fullZoomBtnStyle }}">+</button>
+            <span style="width: 1px; height: 16px; background: var(--border); margin: 0 4px;"></span>
+            <button onClick="{{ toggleFullView }}" style="{{ fullCodeToggleStyle }}">코드</button>
+            <button onClick="{{ closeMermaidFull }}" onMouseEnter="{{ tipEnter }}" onMouseLeave="{{ tipLeave }}" data-tip="닫기 (Esc)" data-tippos="bottom" style="width: 26px; height: 26px; border-radius: 9px; border: none; background: transparent; color: var(--text-3); display: flex; align-items: center; justify-content: center; margin-left: 2px;" style-hover="background: var(--bg-hover); color: var(--text);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+            </button>
+          </div>
+        </div>
+        <sc-if value="{{ fullShowDiagram }}" hint-placeholder-val="{{ true }}">
+          <div style="flex: 1; overflow: auto; padding: 28px; min-height: 0;">
+            <div ref="{{ mermaidFullRef }}" style="{{ fullScaleStyle }}"></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ fullShowCode }}" hint-placeholder-val="{{ false }}">
+          <div style="flex: 1; overflow: auto; min-height: 0; background: var(--bg-inset);">
+            <pre style="margin: 0; padding: 24px 28px; font-family: 'Geist Mono', monospace; font-size: 13.5px; line-height: 1.85; color: var(--text-2);">{{ mermaidCode }}</pre>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ─── S3 등록 다이얼로그 ─── -->
+  <sc-if value="{{ dialogOpen }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="S3 프로젝트 등록 다이얼로그" onClick="{{ closeDialog }}" style="position: fixed; inset: 0; background: var(--overlay); display: flex; align-items: flex-start; justify-content: center; padding-top: 120px; z-index: 50;">
+      <div onClick="{{ stopClick }}" style="width: 480px; background: var(--bg); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow); animation: fadeIn .15s ease-out; color: var(--text);">
+        <div style="padding: 18px 20px 0 20px; display: flex; flex-direction: column; gap: 4px;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600;">프로젝트 등록</h2>
+          <p style="margin: 0; font-size: 12.5px; color: var(--text-3);">로컬 git 저장소를 Atelier에 연결해요. 코드는 건드리지 않아요.</p>
+        </div>
+
+        <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 500; color: var(--text-2);">폴더</label>
+            <sc-if value="{{ dlgNoFolder }}" hint-placeholder-val="{{ true }}">
+              <div style="border: 1px dashed var(--border-strong); border-radius: 12px; padding: 18px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <button onClick="{{ pickFolder }}" style="height: 28px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg-panel); color: var(--text); font-size: 12.5px; font-weight: 500;" style-hover="background: var(--bg-hover);">폴더 선택…</button>
+                <span style="font-size: 12px; color: var(--text-3);">네이티브 선택기가 열려요</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ dlgHasFolder }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ dlgFolderBoxStyle }}">
+                <span style="font-family: 'Geist Mono', monospace; font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ dlgFolder }}</span>
+                <button onClick="{{ pickFolder }}" style="flex: none; height: 24px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 11.5px;" style-hover="background: var(--bg-hover);">변경</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ dlgError }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: flex-start; gap: 8px; background: var(--red-bg); border: 1px solid var(--red); border-radius: 10px; padding: 9px 12px;">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--red); margin-top: 5px; flex: none;"></span>
+                <span style="font-size: 12.5px; color: var(--red); line-height: 1.5;"><strong>git 저장소가 아니에요.</strong> <span style="font-family: 'Geist Mono', monospace;">.git</span> 디렉터리를 찾을 수 없어요. 다른 폴더를 선택하세요.</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 500; color: var(--text-2);">baseBranch</label>
+            <input value="{{ dlgBranch }}" onChange="{{ setDlgBranch }}" placeholder="main" style="height: 30px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-family: 'Geist Mono', monospace; font-size: 12.5px; padding: 0 10px;"></input>
+            <sc-if value="{{ dlgShowSuggest }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-3);">
+                감지된 브랜치:
+                <button onClick="{{ suggestMain }}" style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px;" style-hover="border-color: var(--accent); color: var(--accent);">main</button>
+                <button onClick="{{ suggestDevelop }}" style="font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--text-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px;" style-hover="border-color: var(--accent); color: var(--accent);">develop</button>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="padding: 12px 20px 16px 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border);">
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3);">
+            목업 시나리오:
+            <button onClick="{{ scenarioOk }}" style="{{ scOkStyle }}">정상</button>
+            <button onClick="{{ scenarioNotGit }}" style="{{ scNotGitStyle }}">git 아님</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button onClick="{{ closeDialog }}" style="height: 30px; padding: 0 13px; border-radius: 9px; border: 1px solid var(--border-strong); background: transparent; color: var(--text-2); font-size: 12.5px; font-weight: 500;" style-hover="background: var(--bg-hover);">취소</button>
+            <button onClick="{{ registerProject }}" style="{{ dlgSubmitStyle }}">등록</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;initialTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;테마&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#5E6AD2&quot;,&quot;#BC6A47&quot;,&quot;#7D9070&quot;,&quot;#D08B5B&quot;],&quot;default&quot;:&quot;#5E6AD2&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;테마&quot;},&quot;emptyProjects&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;빈 상태 미리보기&quot;},&quot;emptyWorks&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;빈 상태 미리보기&quot;}}">
+class Component extends DCLogic {
+  state = {
+    theme: 'light',
+    nav: 'review',
+    selInbox: 'w5',
+    selReviewFile: 0,
+    railOpen: true,
+    sidebarOpen: true,
+    selProject: 'atelier-core',
+    selWork: 'w1',
+    workTab: 'spec',
+    workFilter: 'active',
+    projFilter: 'all',
+    editingBranch: false,
+    branchDraft: '',
+    editingDesc: false,
+    descDraft: '',
+    // spec viewer
+    selFile: 'overview.md',
+    designOpen: true,
+    showSource: false,
+    specTreeOpen: true,
+    treeWidth: 248,
+    zoom: 1,
+    reloadCount: 0,
+    justReloaded: false,
+    copied: false,
+    // dialog
+    dialogOpen: false,
+    dlgFolder: null,
+    dlgBranch: '',
+    dlgScenario: 'ok',
+    // remote 연동
+    remoteConnected: { 'atelier-core': true, 'specops-cli': false, 'web-api': true, 'billing': true, 'search-svc': true },
+    branchMenuOpen: false,
+    remotePanel: null,
+    // tooltip
+    tip: null,
+    // data
+    projects: [
+      { id: 'atelier-core', name: 'atelier-core', path: '~/dev/atelier-core', branch: 'main', missing: false, desc: 'Atelier 데스크톱 앱 본체. Tauri 셸, 파일 감시, 스펙 뷰어 렌더러를 포함해요.' },
+      { id: 'specops-cli', name: 'specops-cli', path: '~/dev/specops-cli', branch: 'develop', missing: false, desc: 'Claude Code 스킬이 호출하는 CLI. 작업 생성과 worktree 준비를 담당해요.' },
+      { id: 'legacy-dashboard', name: 'legacy-dashboard', path: '~/archive/legacy-dashboard', branch: 'main', missing: true, desc: '이전 웹 대시보드 실험. 아카이브됨 — 참고용으로만 등록해 두었어요.' },
+      { id: 'web-api', name: 'web-api', path: '~/dev/web-api', branch: 'main', missing: false, desc: '메인 서비스 API 서버.' },
+      { id: 'billing', name: 'billing', path: '~/dev/billing', branch: 'main', missing: false, desc: '결제·정산 서비스. PG 연동과 웹훅을 담당해요.' },
+      { id: 'search-svc', name: 'search-svc', path: '~/dev/search-svc', branch: 'develop', missing: false, desc: '검색 인덱싱·질의 서비스.' },
+    ],
+    works: [
+      { id: 'w1', title: '스펙 뷰어 라이브 리로드', status: 'active', projects: ['atelier-core'], created: '7월 9일', branch: 'work/spec-live-reload' },
+      { id: 'w2', title: 'worktree 상태 감시 파이프라인', status: 'active', projects: ['atelier-core', 'specops-cli'], created: '7월 8일', branch: 'work/worktree-watch' },
+      { id: 'w3', title: '프로젝트 등록 플로우 정리', status: 'done', projects: ['specops-cli'], created: '7월 2일', branch: 'work/register-flow' },
+      { id: 'w4', title: 'CLI 초기화 마이그레이션', status: 'done', projects: ['specops-cli'], created: '6월 27일', branch: 'work/cli-init-migration' },
+      { id: 'w5', title: '결제 수단 추가 플로우', status: 'active', projects: ['web-api', 'billing'], created: '7월 11일', branch: 'work/payment-methods' },
+      { id: 'w6', title: '검색 인덱싱 개편', status: 'active', projects: ['search-svc'], created: '7월 10일', branch: 'work/search-indexing' },
+      { id: 'w7', title: '알림 파이프라인 리팩터', status: 'active', projects: ['web-api'], created: '7월 6일', branch: 'work/notif-refactor' },
+    ],
+    // ── Review 인박스: 파일·git 파생(바뀐 것) ∩ 앱 추적(안 본 것) 목업 데이터 ──
+    inbox: [
+      { workId: 'w5', tool: 'CC', ago: '3분 전', files: [
+        { path: 'spec/overview.md', status: 'changed', resume: true, blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '결제 수단 추가 플로우' },
+          { kind: 'p', st: 'reviewed', lines: '3-5', text: '게스트 결제와 저장 카드 결제를 하나의 플로우로 합친다. 카드 등록은 PG 토큰화를 거치며, web-api와 billing 양쪽 스펙이 함께 움직인다.' },
+          { kind: 'h2', st: 'reviewed', lines: '7', text: '목표' },
+          { kind: 'list', st: 'changed', lines: '9-12', text: '•  카드 등록 성공률 97% 이상 유지\n•  등록 실패 시 3회까지 재시도 UX 제공\n•  저장 카드 선택 → 결제까지 2탭 이내' },
+          { kind: 'h2', st: 'new', lines: '14', text: '범위 변경 (v0.3)' },
+          { kind: 'p', st: 'new', lines: '16-18', text: '재시도 UX를 v1 범위에 포함한다. billing 쪽 웹훅 재시도 정책과 시맨틱을 맞추기 위해 spec/webhook.md의 정책 표를 함께 갱신했다.' },
+        ] },
+        { path: 'spec/api.md', status: 'new', blocks: [
+          { kind: 'h1', st: 'new', lines: '1', text: '결제 API 계약' },
+          { kind: 'p', st: 'new', lines: '3-4', text: 'web-api가 billing에 위임하는 호출 계약. 모든 금액은 KRW 정수로 다룬다.' },
+          { kind: 'h2', st: 'new', lines: '6', text: '엔드포인트' },
+          { kind: 'code', st: 'new', lines: '8-12', text: 'POST /v1/payment-methods\nPOST /v1/payments\nGET  /v1/payments/:id\nPOST /v1/payments/:id/cancel' },
+          { kind: 'h2', st: 'new', lines: '14', text: '에러 코드' },
+          { kind: 'list', st: 'new', lines: '16-18', text: '•  CARD_DECLINED — 재시도 가능\n•  TOKEN_EXPIRED — 토큰 재발급 후 재시도\n•  DUPLICATE_REQUEST — 멱등키 충돌, 재시도 금지' },
+        ] },
+        { path: 'spec/webhook.md', status: 'changed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '빌링 웹훅' },
+          { kind: 'p', st: 'reviewed', lines: '3', text: 'billing → web-api 상태 통지. at-least-once 전달을 전제한다.' },
+          { kind: 'h2', st: 'reviewed', lines: '5', text: '재시도 정책' },
+          { kind: 'list', st: 'changed', lines: '7-9', text: '•  백오프: 1s → 10s → 60s (기존 1s→5s→30s에서 변경)\n•  6회 실패 시 DLQ 이동 후 알림\n•  멱등키: event_id 기준 중복 무시' },
+        ] },
+        { path: 'spec/plan.md', status: 'reviewed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '구현 계획' },
+          { kind: 'list', st: 'reviewed', lines: '3-5', text: '•  Phase 1 — billing 토큰화 API\n•  Phase 2 — web-api 플로우 연결\n•  Phase 3 — 재시도 UX' },
+        ] },
+        { path: 'spec/rollout.md', status: 'reviewed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '롤아웃' },
+          { kind: 'p', st: 'reviewed', lines: '3-4', text: '내부 → 1% → 25% → 100%. 각 단계에서 결제 성공률 대시보드를 확인한다.' },
+        ] },
+      ] },
+      { workId: 'w2', tool: 'CC', ago: '26분 전', files: [
+        { path: 'spec/overview.md', status: 'new', blocks: [
+          { kind: 'h1', st: 'new', lines: '1', text: 'worktree 상태 감시 파이프라인' },
+          { kind: 'p', st: 'new', lines: '3-4', text: '여러 repo의 worktree 상태(dirty·ahead·behind)를 주기 없이 이벤트로 수집한다.' },
+          { kind: 'h2', st: 'new', lines: '6', text: '신호' },
+          { kind: 'list', st: 'new', lines: '8-10', text: '•  git status --porcelain 파생\n•  HEAD 이동 감지 → 재계산\n•  모든 신호는 파일·git에서만 파생 (툴 중립)' },
+        ] },
+        { path: 'spec/watch.md', status: 'new', blocks: [
+          { kind: 'h1', st: 'new', lines: '1', text: '감시 규칙' },
+          { kind: 'code', st: 'new', lines: '3-6', text: 'watch:\n  include: [".git/HEAD", ".git/index"]\n  debounce_ms: 200' },
+        ] },
+      ] },
+      { workId: 'w6', tool: 'CX', ago: '12분 전', files: [
+        { path: 'spec/indexing.md', status: 'changed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '검색 인덱싱 개편' },
+          { kind: 'p', st: 'reviewed', lines: '3-4', text: '전체 재색인을 증분 색인으로 바꿔 색인 지연을 15분 → 30초로 줄인다.' },
+          { kind: 'h2', st: 'reviewed', lines: '6', text: '증분 인덱싱' },
+          { kind: 'list', st: 'changed', lines: '8-10', text: '•  변경 스트림: outbox 테이블 폴링 (기존 CDC에서 변경)\n•  배치 크기 500, 지연 상한 30초\n•  실패 배치는 격리 후 재시도' },
+        ] },
+        { path: 'spec/overview.md', status: 'reviewed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '개요' },
+          { kind: 'p', st: 'reviewed', lines: '3', text: '검색 결과 신선도가 핵심 지표. 색인 파이프라인만 다루고 랭킹은 범위 밖.' },
+        ] },
+      ] },
+      { workId: 'w7', tool: 'CX', ago: '41분 전', files: [
+        { path: 'spec/overview.md', status: 'reviewed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '알림 파이프라인 리팩터' },
+          { kind: 'p', st: 'reviewed', lines: '3-4', text: '알림 발송 경로를 단일 큐로 합치고 채널별 어댑터로 분리한다.' },
+        ] },
+      ] },
+      { workId: 'w1', tool: 'CC', ago: '2시간 전', files: [
+        { path: 'spec/overview.md', status: 'reviewed', blocks: [
+          { kind: 'h1', st: 'reviewed', lines: '1', text: '스펙 뷰어 라이브 리로드' },
+          { kind: 'p', st: 'reviewed', lines: '3-5', text: 'spec/ 변경을 1초 안에, 깜빡임 없이 반영하는 뷰어. 상세는 Works 탭에서.' },
+        ] },
+      ] },
+    ],
+  };
+
+  worktrees = {
+    'atelier-core': [
+      { branch: 'work/spec-live-reload', path: '~/.atelier/worktrees/atelier-core/spec-live-reload', git: 'dirty' },
+      { branch: 'work/worktree-watch', path: '~/.atelier/worktrees/atelier-core/worktree-watch', git: 'ahead 2' },
+    ],
+    'specops-cli': [
+      { branch: 'work/worktree-watch', path: '~/.atelier/worktrees/specops-cli/worktree-watch', git: 'clean' },
+    ],
+    'web-api': [
+      { branch: 'work/payment-methods', path: '~/.atelier/worktrees/web-api/payment-methods', git: 'dirty' },
+      { branch: 'work/notif-refactor', path: '~/.atelier/worktrees/web-api/notif-refactor', git: 'clean' },
+    ],
+    'billing': [
+      { branch: 'work/payment-methods', path: '~/.atelier/worktrees/billing/payment-methods', git: 'ahead 1' },
+    ],
+    'search-svc': [
+      { branch: 'work/search-indexing', path: '~/.atelier/worktrees/search-svc/search-indexing', git: 'clean' },
+    ],
+  };
+
+  remotes = {
+    'atelier-core': {
+      provider: 'github', slug: 'sohn/atelier-core', synced: '45초 전',
+      branches: [{ name: 'main', def: true }, { name: 'develop' }, { name: 'release/0.9' }],
+      prs: [
+        { num: 128, title: '스펙 뷰어 라이브 리로드', branch: 'work/spec-live-reload', base: 'main', author: 'sohn', ago: '1시간 전', draft: false, comments: 3, commits: 12, files: 8, add: 642, del: 118, body: 'spec/ 변경을 1초 안에 반영하는 감시-파싱-교체 파이프라인.\n\n- notify 기반 watcher (Rust)\n- 스크롤·줌 유지한 콘텐츠 교체\n- 파싱 실패 시 raw 폴백 + 실패 줄 하이라이트' },
+        { num: 126, title: 'worktree 상태 감시 1단계', branch: 'work/worktree-watch', base: 'main', author: 'claude-code[bot]', ago: '어제', draft: true, comments: 1, commits: 5, files: 4, add: 210, del: 32, body: 'HEAD·index 변경을 이벤트로 수집하는 1단계 구현. dirty/ahead/behind 계산은 2단계에서 이어서.' },
+      ],
+      issues: [
+        { num: 84, title: '대용량 md에서 렌더 지연', labels: [{ n: 'bug', c: 'red' }], author: 'sohn', ago: '2일 전', body: '3천 줄 이상 md 파일에서 콘텐츠 교체가 200ms 이상 걸려요. 블록 단위 diff 교체를 검토해요.' },
+        { num: 81, title: 'yaml pretty 보기 앵커(&/*) 미지원', labels: [{ n: 'enhancement', c: 'accent' }], author: 'sohn', ago: '4일 전', body: 'yaml 앵커·별칭이 있는 파일이 raw 폴백으로 떨어져요. 파서에 앵커 해석을 추가해요.' },
+        { num: 77, title: '다크 테마 mermaid 대비 개선', labels: [{ n: 'design', c: 'amber' }], author: 'mia', ago: '1주 전', body: '다크 테마에서 mermaid 노드 테두리 대비가 낮아요. themeVariables 조정 필요.' },
+      ],
+    },
+    'specops-cli': {
+      provider: 'github', slug: 'sohn/specops-cli', synced: '방금',
+      branches: [{ name: 'main' }, { name: 'develop', def: true }],
+      prs: [],
+      issues: [
+        { num: 23, title: 'init 마이그레이션 후 설정 경로 정리', labels: [{ n: 'chore', c: 'green' }], author: 'sohn', ago: '3일 전', body: '~/.specops → ~/.atelier 이전 후 남은 레거시 경로 참조를 정리해요.' },
+      ],
+    },
+    'web-api': {
+      provider: 'gitlab', slug: 'team/web-api', synced: '2분 전',
+      branches: [{ name: 'main', def: true }, { name: 'develop' }, { name: 'release/24.7' }],
+      prs: [
+        { num: 412, title: '결제 수단 추가 플로우', branch: 'work/payment-methods', base: 'main', author: 'jin', ago: '30분 전', draft: false, comments: 5, commits: 9, files: 14, add: 980, del: 240, body: '게스트 결제와 저장 카드 결제를 하나의 플로우로 합쳐요. billing 토큰화 API에 의존.\n\nspec/overview.md v0.3 범위 변경 반영.' },
+        { num: 409, title: '알림 파이프라인 리팩터', branch: 'work/notif-refactor', base: 'main', author: 'sohn', ago: '2일 전', draft: true, comments: 2, commits: 6, files: 11, add: 430, del: 510, body: '알림 발송 경로를 단일 큐로 합치고 채널별 어댑터로 분리해요.' },
+      ],
+      issues: [
+        { num: 233, title: '결제 실패 재시도 정책 확정', labels: [{ n: '결제', c: 'accent' }], author: 'jin', ago: '1일 전', body: '재시도 3회 상한, 백오프 시맨틱을 billing 웹훅 정책과 맞춰야 해요. spec/webhook.md 참고.' },
+        { num: 229, title: '웹훅 중복 처리 로그 개선', labels: [{ n: 'bug', c: 'red' }], author: 'dana', ago: '3일 전', body: '멱등키 충돌로 무시된 이벤트가 로그에 안 남아요. DUPLICATE_REQUEST 카운터 추가.' },
+      ],
+    },
+    'billing': {
+      provider: 'gitlab', slug: 'team/billing', synced: '5분 전',
+      branches: [{ name: 'main', def: true }, { name: 'develop' }],
+      prs: [
+        { num: 88, title: 'PG 토큰화 API', branch: 'work/payment-methods', base: 'main', author: 'dana', ago: '1시간 전', draft: false, comments: 4, commits: 7, files: 6, add: 520, del: 60, body: '카드 등록 시 PG 토큰화를 거치는 /v1/payment-methods 구현. 멱등키는 event_id 기준.' },
+      ],
+      issues: [],
+    },
+    'search-svc': {
+      provider: 'github', slug: 'sohn/search-svc', synced: '1분 전',
+      branches: [{ name: 'main' }, { name: 'develop', def: true }],
+      prs: [
+        { num: 54, title: '증분 색인 파이프라인', branch: 'work/search-indexing', base: 'develop', author: 'mia', ago: '20분 전', draft: false, comments: 2, commits: 11, files: 9, add: 760, del: 1320, body: '전체 재색인을 outbox 폴링 기반 증분 색인으로 교체. 색인 지연 15분 → 30초 목표.' },
+      ],
+      issues: [
+        { num: 41, title: '재색인 중 검색 지연 스파이크', labels: [{ n: 'bug', c: 'red' }], author: 'mia', ago: '5일 전', body: '전체 재색인 중 p99가 1.2s까지 튀어요. 증분 색인 전환으로 해소 예상 — 전환 후 검증.' },
+      ],
+    },
+  };
+
+  sources = {
+    'overview.md': `# 스펙 뷰어 라이브 리로드\n\n- 상태: active\n- 브랜치: work/spec-live-reload\n- 버전: v0.2\n\nAtelier의 Spec 탭은 사람이 read·review에 집중하는 화면이다.\n외부 AI가 spec/ 아래 파일을 수정하면 뷰어는 1초 안에,\n깜빡임 없이 콘텐츠만 교체되어야 한다.\n\n## 목표\n\n- spec/ 폴더 변경을 1초 이내에 반영한다\n- 스크롤 위치와 줌 상태를 유지한 채 콘텐츠만 교체한다\n- 파싱 실패 시 raw 텍스트로 폴백하고 실패 줄을 하이라이트한다\n\n## 동작 흐름\n\n\`\`\`mermaid\nflowchart LR\n  W[spec/ 변경 감지] --> D{디바운스}\n  D --> P[md 파싱]\n  P -->|성공| R[콘텐츠 교체]\n  P -->|실패| F[raw 폴백]\n  R --> V[뷰어 갱신]\n  F --> V\n\`\`\`\n\n## 감시 대상\n\n| 경로 패턴 | 이벤트 | 디바운스 |\n| --- | --- | --- |\n| spec/**/*.md | create·modify | 300ms |\n| spec/**/*.yaml | modify | 300ms |\n| work.json | modify | 100ms |\n\n## 리로드 정책\n\n\`\`\`yaml\nreload:\n  debounce_ms: 300\n  keep_scroll: true\n  fallback: raw\n\`\`\`\n\n## 뷰어 교체 규칙\n\n\`\`\`ts\nfunction swap(next: Doc) {\n  if (same(current, next)) return;\n  viewer.replaceContent(next); // remount 없이 교체\n}\n\`\`\``,
+    'design/architecture.md': `# 뷰어 아키텍처\n\n파일 감시 → 파싱 → 렌더 파이프라인을 얇게 유지한다.\n\n## 구성 요소\n\n- watcher: notify 기반 파일 감시 (Rust)\n- parser: md / yaml → 렌더 트리\n- renderer: 웹뷰 쪽 교체 전용 뷰어\n\n## 원칙\n\n- 뷰어는 상태를 소유하지 않는다 (스크롤·줌 제외)\n- 실패는 숨기지 않고 표면화한다`,
+    'design/pipeline.yaml': `# spec 감시 파이프라인\nwatch:\n  root: spec/\n  include:\n    - "**/*.md"\n    - "**/*.yaml"\n  debounce_ms: 300\nrender:\n  mermaid: true\n  yaml_pretty: true\nfallback:\n  mode: raw\n  highlight_failed_line: true`,
+  };
+
+  rootRef = React.createRef();
+  mermaidRef = React.createRef();
+  mermaidFullRef = React.createRef();
+  _mermaidKey = '';
+  _mmFullKey = '';
+  mermaidCode = 'flowchart LR\n  W[spec/ 변경 감지] --> D{디바운스}\n  D --> P[md 파싱]\n  P -->|성공| R[콘텐츠 교체]\n  P -->|실패| F[raw 폴백]\n  R --> V[뷰어 갱신]\n  F --> V';
+
+  componentDidMount() {
+    if (this.props.initialTheme && this.props.initialTheme !== this.state.theme) {
+      this.setState({ theme: this.props.initialTheme });
+    }
+    this._keyHandler = (e) => {
+      if (e.key === 'Escape' && (this.state.remotePanel || this.state.branchMenuOpen)) {
+        this.setState({ remotePanel: null, branchMenuOpen: false });
+        return;
+      }
+      if (e.key === 'Escape' && this.state.mermaidFull) {
+        this._mmFullKey = '';
+        this.setState({ mermaidFull: false });
+        return;
+      }
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === '\\') { e.preventDefault(); this.setState(s => ({ sidebarOpen: !s.sidebarOpen })); }
+      if (e.key === '1') { e.preventDefault(); this.setState({ nav: 'review' }); }
+      if (e.key === '2') { e.preventDefault(); this.setState({ nav: 'projects' }); }
+      if (e.key === '3') { e.preventDefault(); this.setState({ nav: 'works' }); }
+    };
+    window.addEventListener('keydown', this._keyHandler);
+    this.applyAccent();
+    this.maybeRenderMermaid();
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._keyHandler);
+  }
+
+  componentDidUpdate() {
+    this.applyAccent();
+    this.maybeRenderMermaid();
+  }
+
+  applyAccent() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    const accent = this.props.accent ?? '#5E6AD2';
+    el.style.setProperty('--accent', accent);
+  }
+
+  maybeRenderMermaid() {
+    const el = this.mermaidRef.current;
+    if (el) {
+      const key = this.state.theme;
+      if (!(this._mermaidKey === key && el.childNodes.length > 0)) {
+        this._mermaidKey = key;
+        this.renderMermaidInto(el);
+      }
+    }
+    const fel = this.mermaidFullRef.current;
+    if (fel && this.state.mermaidFull) {
+      const fkey = this.state.theme;
+      if (!(this._mmFullKey === fkey && fel.childNodes.length > 0)) {
+        this._mmFullKey = fkey;
+        this.renderMermaidInto(fel);
+      }
+    }
+  }
+
+  async renderMermaidInto(el) {
+    const dark = this.state.theme === 'dark';
+    const code = this.mermaidCode;
+    try {
+      if (!Component._mermaid) {
+        Component._mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.esm.min.mjs')).default;
+      }
+      const m = Component._mermaid;
+      m.initialize({
+        startOnLoad: false,
+        theme: 'base',
+        fontFamily: 'Geist, sans-serif',
+        themeVariables: dark ? {
+          background: '#1e1f24', primaryColor: '#26272e', primaryTextColor: '#e8e8ec',
+          primaryBorderColor: '#3c3d45', lineColor: '#6f7079', secondaryColor: '#26272e',
+          tertiaryColor: '#191a1e', fontSize: '14px',
+        } : {
+          background: '#ffffff', primaryColor: '#f6f6f7', primaryTextColor: '#1a1a1e',
+          primaryBorderColor: '#d2d2d7', lineColor: '#8e8e97', secondaryColor: '#f6f6f7',
+          tertiaryColor: '#ffffff', fontSize: '14px',
+        },
+      });
+      const { svg } = await m.render('mmd' + Date.now() + Math.floor(Math.random() * 1e4), code);
+      el.innerHTML = svg;
+    } catch (err) {
+      el.textContent = code;
+      el.style.whiteSpace = 'pre';
+      el.style.fontFamily = "'Geist Mono', monospace";
+      el.style.fontSize = '12.5px';
+    }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const dark = s.theme === 'dark';
+    const projects = (this.props.emptyProjects ?? false) ? [] : s.projects;
+    const works = (this.props.emptyWorks ?? false) ? [] : s.works;
+    const projById = Object.fromEntries(projects.map(p => [p.id, p]));
+
+    const railOpen = s.railOpen;
+    const railBase = railOpen ? {
+      position: 'relative', width: '100%', height: 32, boxSizing: 'border-box', borderRadius: 10, border: 'none',
+      background: 'transparent', color: 'var(--text-2)',
+      display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 9, padding: '0 9px', flex: 'none',
+    } : {
+      position: 'relative', width: 38, height: 38, borderRadius: 12, border: 'none',
+      background: 'transparent', color: 'var(--text-2)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none',
+    };
+    const railActive = { ...railBase, background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' };
+    const railDisabled = { ...railBase, color: 'var(--text-3)', opacity: .55, cursor: 'default' };
+
+    const sideRowBase = {
+      display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left',
+      padding: '9px 10px', minHeight: 46, borderRadius: 12, border: 'none',
+      background: 'transparent', width: '100%', boxSizing: 'border-box',
+    };
+    const sideRowSel = { ...sideRowBase, background: 'color-mix(in srgb, var(--accent) 9%, transparent)' };
+
+    const badge = (color, bg) => ({
+      flex: 'none', fontSize: 10.5, fontWeight: 500, color: `var(--${color})`,
+      background: `var(--${bg})`, borderRadius: 6, padding: '1px 6px',
+    });
+
+    // Projects rows
+    const projectRows = projects.map(p => {
+      const activeCount = works.filter(w => w.status === 'active' && w.projects.includes(p.id)).length;
+      const psel = s.selProject === p.id && s.nav === 'projects';
+      const prem = this.remotes[p.id] || null;
+      return {
+        ...p,
+        hasRemote: !!prem,
+        isGithub: !prem || prem.provider === 'github',
+        isGitlab: !!prem && prem.provider === 'gitlab',
+        remoteSlug: prem ? prem.slug : '',
+        rowStyle: {
+          display: 'flex', flexDirection: 'column', gap: 4, padding: '9px 10px',
+          borderRadius: 12, border: 'none', width: '100%', boxSizing: 'border-box', textAlign: 'left',
+          background: psel ? 'color-mix(in srgb, var(--accent) 9%, transparent)' : 'transparent',
+          boxShadow: psel ? 'inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent)' : 'none',
+        },
+        nameStyle: {
+          flex: 1, minWidth: 0, fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          color: psel ? 'var(--accent)' : 'var(--text)',
+          textDecoration: p.missing ? 'line-through' : 'none',
+        },
+        onClick: () => this.setState({ nav: 'projects', selProject: p.id, editingBranch: false, branchMenuOpen: false, remotePanel: null }),
+        metaLabel: p.missing ? '누락' : (activeCount > 0 ? `활성 ${activeCount}` : '작업 없음'),
+        metaStyle: p.missing ? badge('red', 'red-bg')
+          : activeCount > 0 ? badge('accent', 'bg-hover') && { flex: 'none', fontSize: 10.5, fontWeight: 500, color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)', borderRadius: 6, padding: '1px 6px' }
+          : { flex: 'none', fontSize: 10.5, color: 'var(--text-3)' },
+      };
+    });
+
+    // Works rows
+    const filtered = works;
+    const dot = (st) => ({
+      flex: 'none', width: 8, height: 8, borderRadius: '50%',
+      background: st === 'active' ? 'var(--accent)' : 'var(--green)',
+      boxShadow: st === 'active' ? '0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent)' : 'none',
+    });
+    const workRows = filtered.map(w => ({
+      ...w,
+      isSel: s.selWork === w.id && s.nav === 'works',
+      style: s.selWork === w.id ? sideRowSel : sideRowBase,
+      isActive: w.status === 'active',
+      isDone: w.status !== 'active',
+      chips: w.projects.map(pid => ({ name: projById[pid]?.name || pid })),
+      onClick: () => this.setState({ nav: 'works', selWork: w.id }),
+    }));
+
+    const selProj = projById[s.selProject] || projects[0] || { id: '', name: '—', path: '', branch: '', missing: false, desc: '' };
+    const selProjWorks = works.filter(w => w.projects.includes(selProj.id)).map(w => {
+      const tree = (this.worktrees[selProj.id] || []).find(t => t.branch === w.branch);
+      return ({
+      ...w,
+      hasTree: !!tree,
+      treeGit: tree ? tree.git : '',
+      treeGitStyle: tree ? (tree.git === 'clean'
+        ? { color: 'var(--green)', background: 'var(--green-bg)', borderRadius: 6, padding: '1px 5px', fontSize: 10, fontWeight: 500, fontFamily: 'inherit' }
+        : tree.git === 'dirty'
+        ? { color: 'var(--amber)', background: 'var(--amber-bg)', borderRadius: 6, padding: '1px 5px', fontSize: 10, fontWeight: 500, fontFamily: 'inherit' }
+        : { color: 'var(--text-2)', background: 'var(--bg-hover)', borderRadius: 6, padding: '1px 5px', fontSize: 10, fontWeight: 500, fontFamily: 'inherit' }) : {},
+      treeTip: tree ? `worktree — ${tree.path}` : '',
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        height: 44, padding: '0 14px', border: 'none', borderBottom: '1px solid var(--border)',
+        background: 'transparent', width: '100%', textAlign: 'left', boxSizing: 'border-box',
+      },
+      isActive: w.status === 'active',
+      isDone: w.status !== 'active',
+      titleStyle: {
+        fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        color: w.status === 'active' ? 'var(--text)' : 'var(--text-2)',
+      },
+      onClick: () => this.setState({ nav: 'works', selWork: w.id, workFilter: w.status }),
+    });
+    });
+    const selProjWorktrees = (this.worktrees[selProj.id] || []).map(t => ({
+      ...t,
+      gitStyle: t.git === 'clean' ? badge('green', 'green-bg')
+        : t.git === 'dirty' ? badge('amber', 'amber-bg')
+        : { flex: 'none', fontSize: 10.5, fontWeight: 500, color: 'var(--text-2)', background: 'var(--bg-hover)', borderRadius: 6, padding: '1px 6px', fontFamily: "'Geist Mono', monospace" },
+    }));
+
+    const selWork = works.find(w => w.id === s.selWork) || works[0] || { id: '', title: '—', status: 'active', projects: [], created: '', branch: '' };
+
+    // ── 원격(GitHub/GitLab) 파생값 ──
+    const remote = this.remotes[selProj.id] || null;
+    const remoteOn = !!remote && !!s.remoteConnected[selProj.id];
+    const mergeLabel = remote && remote.provider === 'gitlab' ? 'MR' : 'PR';
+    const provName = remote ? (remote.provider === 'github' ? 'GitHub' : 'GitLab') : '';
+    const labelColor = (c) => c === 'red' ? { color: 'var(--red)', background: 'var(--red-bg)' }
+      : c === 'amber' ? { color: 'var(--amber)', background: 'var(--amber-bg)' }
+      : c === 'green' ? { color: 'var(--green)', background: 'var(--green-bg)' }
+      : { color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)' };
+    const labelChip = (l) => ({ name: l.n, style: { ...labelColor(l.c), flex: 'none', fontSize: 10.5, fontWeight: 500, borderRadius: 6, padding: '1px 6px' } });
+    const remoteRowStyle = {
+      display: 'flex', flexDirection: 'column', gap: 5, padding: '9px 12px', border: 'none',
+      borderBottom: '1px solid var(--border)', background: 'transparent', width: '100%',
+      textAlign: 'left', boxSizing: 'border-box',
+    };
+    const remoteTitleStyle = { flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+    const prRows = (remoteOn ? remote.prs : []).map(pr => ({
+      ...pr,
+      style: remoteRowStyle,
+      iconStyle: { flex: 'none', display: 'flex', color: pr.draft ? 'var(--text-3)' : 'var(--green)' },
+      titleStyle: remoteTitleStyle,
+      draftStyle: pr.draft
+        ? { flex: 'none', fontSize: 10.5, fontWeight: 500, color: 'var(--text-2)', background: 'var(--bg-hover)', borderRadius: 6, padding: '1px 6px' }
+        : { display: 'none' },
+      meta: `${pr.author} · ${pr.ago} · 코멘트 ${pr.comments}`,
+      onClick: () => this.setState({ remotePanel: { kind: 'pr', num: pr.num } }),
+    }));
+    const issueRows = (remoteOn ? remote.issues : []).map(is => ({
+      ...is,
+      style: remoteRowStyle,
+      iconStyle: { flex: 'none', display: 'flex', color: 'var(--green)' },
+      titleStyle: remoteTitleStyle,
+      chips: is.labels.map(labelChip),
+      meta: `${is.author} · ${is.ago}`,
+      onClick: () => this.setState({ remotePanel: { kind: 'issue', num: is.num } }),
+    }));
+    const panelItem = (s.remotePanel && remote)
+      ? (s.remotePanel.kind === 'pr' ? remote.prs : remote.issues).find(x => x.num === s.remotePanel.num) || null
+      : null;
+    const panelIsPr = !!panelItem && s.remotePanel.kind === 'pr';
+    const branchOptions = (remote ? remote.branches : []).map(b => ({
+      name: b.name,
+      style: {
+        display: 'flex', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box',
+        height: 30, padding: '0 9px', borderRadius: 9, border: 'none', background: 'transparent',
+        color: 'var(--text-2)', textAlign: 'left',
+      },
+      defStyle: b.def
+        ? { flex: 'none', marginLeft: 'auto', fontSize: 10, fontWeight: 500, color: 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 6, padding: '1px 5px' }
+        : { marginLeft: 'auto', display: 'none' },
+      checkStyle: b.name === selProj.branch
+        ? { flex: 'none', color: 'var(--accent)', marginLeft: b.def ? 0 : 'auto' }
+        : { flex: 'none', visibility: 'hidden', marginLeft: b.def ? 0 : 'auto' },
+      onClick: () => this.setState(st => ({
+        branchMenuOpen: false,
+        projects: st.projects.map(p => p.id === selProj.id ? { ...p, branch: b.name } : p),
+      })),
+    }));
+
+    // Spec tree
+    const treeRowBase = (depth, sel) => ({
+      display: 'flex', alignItems: 'center', gap: 5, width: '100%', boxSizing: 'border-box',
+      height: 28, padding: `0 8px 0 ${8 + depth * 14}px`, borderRadius: 9, border: 'none',
+      backgroundColor: sel ? 'color-mix(in srgb, var(--accent) 9%, transparent)' : 'transparent',
+      color: sel ? 'var(--text)' : 'var(--text-2)', fontSize: 13, textAlign: 'left',
+    });
+    const chev = (open, folder) => ({
+      flex: 'none', width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'var(--text-3)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s',
+      visibility: folder ? 'visible' : 'hidden',
+    });
+    const icoStyle = {
+      flex: 'none', fontFamily: "'Geist Mono', monospace", fontSize: 8, fontWeight: 600,
+      letterSpacing: '.03em', color: 'var(--text-3)', background: 'var(--bg-hover)',
+      borderRadius: 3, padding: '2px 3px', lineHeight: 1, minWidth: 16, textAlign: 'center',
+    };
+    const treeRows = [
+      { name: 'overview.md', iconGlyph: 'MD', file: 'overview.md', depth: 0, folder: false },
+      { name: 'design', iconGlyph: '', folder: true, depth: 0 },
+      ...(s.designOpen ? [
+        { name: 'architecture.md', iconGlyph: 'MD', file: 'design/architecture.md', depth: 1, folder: false },
+        { name: 'pipeline.yaml', iconGlyph: 'YML', file: 'design/pipeline.yaml', depth: 1, folder: false },
+      ] : []),
+    ].map(n => ({
+      ...n,
+      style: treeRowBase(n.depth, n.file === s.selFile),
+      chevronStyle: n.folder ? chev(s.designOpen, true) : { display: 'none' },
+      iconStyle: n.folder ? { ...icoStyle, display: 'none' } : icoStyle,
+      onClick: n.folder
+        ? () => this.setState(st => ({ designOpen: !st.designOpen }))
+        : () => this.setState({ selFile: n.file, showSource: false, copied: false }),
+    }));
+
+    const src = this.sources[s.selFile] || '';
+    const srcLines = s.showSource ? src.split('\n').map((t, i) => ({ n: i + 1, t: t === '' ? ' ' : t })) : [];
+
+    const debounce = s.reloadCount % 2 === 1 ? '200ms' : '300ms';
+    const flashStyle = s.justReloaded
+      ? { animation: 'flashBg 1.4s ease-out', borderRadius: 3, padding: '0 2px' }
+      : { padding: '0 2px' };
+
+    // segmented styles
+    const segBase = {
+      flex: 1, height: 24, borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 500,
+      background: 'transparent', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+    };
+    const segOn = { ...segBase, background: 'var(--bg)', color: 'var(--text)', boxShadow: '0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--border)' };
+
+    const themeBtn = { width: 26, height: 22, borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+    const themeBtnOn = { ...themeBtn, background: 'var(--bg)', color: 'var(--text)', boxShadow: '0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--border)' };
+
+    const tabBase = {
+      height: 34, padding: '0 12px', border: 'none', background: 'transparent', fontSize: 13,
+      fontWeight: 500, color: 'var(--text-3)', borderBottom: '2px solid transparent', marginBottom: -1,
+    };
+    const tabOn = { ...tabBase, color: 'var(--text)', borderBottom: '2px solid var(--accent)' };
+
+    const dlgValid = s.dlgFolder && s.dlgScenario === 'ok';
+    const scChip = (on) => ({
+      height: 20, padding: '0 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+      border: on ? '1px solid var(--border-strong)' : '1px solid transparent',
+      background: on ? 'var(--bg-inset)' : 'transparent',
+      color: on ? 'var(--text-2)' : 'var(--text-3)',
+    });
+
+    const tip = s.tip;
+
+    // ── Review 인박스 ──
+    const inbox = s.inbox;
+    const unrevOf = (it) => it.files.filter(f => f.status !== 'reviewed').length;
+    const inboxSorted = [...inbox].sort((a, b) => unrevOf(b) - unrevOf(a));
+    const totalUnrev = inbox.reduce((n, it) => n + unrevOf(it), 0);
+    const selInboxItem = inbox.find(i => i.workId === s.selInbox) || inboxSorted[0];
+    const selInboxWork = works.find(w => w.id === selInboxItem.workId) || { title: '', projects: [] };
+    const selUnrev = unrevOf(selInboxItem);
+    const rFileIdx = Math.max(0, Math.min(s.selReviewFile, selInboxItem.files.length - 1));
+    const rFile = selInboxItem.files[rFileIdx];
+    const inboxZero = totalUnrev === 0;
+    const workDone = !inboxZero && selUnrev === 0;
+    const showDoc = !inboxZero && !workDone;
+    const nextWork = inboxSorted.find(i => i.workId !== selInboxItem.workId && unrevOf(i) > 0);
+
+    const toolGlyphStyle = {
+      flex: 'none', fontFamily: "'Geist Mono', monospace", fontSize: 9, fontWeight: 600, letterSpacing: '.06em',
+      lineHeight: 1, color: 'var(--text-2)', border: '1px solid var(--border-strong)', borderRadius: 3, padding: '2px 4px', background: 'var(--bg)',
+    };
+    const hollowRowDot = { flex: 'none', width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--border-strong)', boxSizing: 'border-box', background: 'transparent' };
+
+    const inboxRows = inboxSorted.map(it => {
+      const w = works.find(x => x.id === it.workId) || { title: it.workId, projects: [] };
+      const u = unrevOf(it);
+      return {
+        title: w.title, tool: it.tool, ago: it.ago,
+        toolTip: it.tool === 'CC' ? 'Claude Code가 만든 작업' : 'Codex가 만든 작업 — 툴과 무관하게 똑같이 떠요',
+        style: s.selInbox === it.workId ? sideRowSel : sideRowBase,
+        dotStyle: u > 0 ? dot('active') : hollowRowDot,
+        titleStyle: { flex: 1, minWidth: 0, fontWeight: 500, fontSize: 13, color: u > 0 ? 'var(--text)' : 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' },
+        badgeLabel: u > 0 ? `미확인 ${u}` : 'reviewed',
+        badgeStyle: u > 0
+          ? { flex: 'none', fontSize: 10.5, fontWeight: 500, color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)', borderRadius: 6, padding: '1px 6px' }
+          : { flex: 'none', fontSize: 10.5, color: 'var(--text-3)' },
+        toolStyle: toolGlyphStyle,
+        chips: w.projects.map(pid => ({ name: projById[pid]?.name || pid })),
+        onClick: () => {
+          const firstUn = it.files.findIndex(f => f.status !== 'reviewed');
+          this.setState({ selInbox: it.workId, selReviewFile: firstUn >= 0 ? firstUn : 0 });
+        },
+      };
+    });
+
+    const fileDot = (st) => st === 'new'
+      ? { flex: 'none', width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)' }
+      : st === 'changed'
+      ? { flex: 'none', width: 7, height: 7, borderRadius: '50%', border: '1.5px solid var(--accent)', boxSizing: 'border-box' }
+      : { flex: 'none', width: 7, height: 7, borderRadius: '50%', background: 'var(--border-strong)' };
+    const reviewFileChips = selInboxItem.files.map((f, i) => ({
+      name: f.path.replace('spec/', ''),
+      dotStyle: fileDot(f.status),
+      style: {
+        display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 9px', borderRadius: 9, flex: 'none',
+        border: i === rFileIdx ? '1px solid var(--border-strong)' : '1px solid transparent',
+        background: i === rFileIdx ? 'var(--bg-hover)' : 'transparent',
+        color: f.status === 'reviewed' ? 'var(--text-3)' : 'var(--text-2)',
+      },
+      onClick: () => this.setState({ selReviewFile: i }),
+    }));
+
+    const firstUnIdx = rFile ? rFile.blocks.findIndex(b => b.st !== 'reviewed') : -1;
+    const reviewBlocks = (rFile ? rFile.blocks : []).map((b, i) => {
+      const isFirst = i === firstUnIdx;
+      const mt = i === 0 ? 0 : (b.kind === 'h1' || b.kind === 'h2') ? 26 : 10;
+      const dotTop = b.kind === 'h1' ? 17 : 13;
+      return {
+        text: b.text, lines: b.lines,
+        rowStyle: {
+          position: 'relative', borderRadius: 12, padding: '4px 12px', margin: `${mt}px -12px 0 -12px`,
+          ...(isFirst ? { boxShadow: 'inset 0 0 0 1.5px var(--accent)', background: 'color-mix(in srgb, var(--accent) 4%, transparent)' } : {}),
+        },
+        textStyle: b.kind === 'h1' ? { margin: 0, fontSize: 27, fontWeight: 700, letterSpacing: '-.018em' }
+          : b.kind === 'h2' ? { margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-.01em' }
+          : b.kind === 'code' ? { margin: 0, fontFamily: "'Geist Mono', monospace", fontSize: 12.5, lineHeight: 1.75, whiteSpace: 'pre', overflowX: 'auto', background: 'var(--bg-inset)', border: '1px solid var(--border)', borderRadius: 12, padding: '13px 16px', color: 'var(--text-2)' }
+          : { margin: 0, color: 'var(--text-2)', whiteSpace: 'pre-wrap', lineHeight: b.kind === 'list' ? 1.85 : 1.7 },
+        gutterStyle: b.st === 'new'
+          ? { position: 'absolute', left: -18, top: dotTop, width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent)' }
+          : b.st === 'changed'
+          ? { position: 'absolute', left: -18, top: dotTop, width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--accent)', boxSizing: 'border-box' }
+          : { display: 'none' },
+        dotTip: b.st === 'new' ? '새 블록 — 아직 안 봤어요' : b.st === 'changed' ? '본 뒤에 바뀐 블록' : '',
+        lineStyle: { position: 'absolute', left: -58, top: b.kind === 'h1' ? 14 : 10, width: 32, textAlign: 'right', fontFamily: "'Geist Mono', monospace", fontSize: 10.5, color: 'var(--text-3)', opacity: .6, userSelect: 'none' },
+        tagStyle: isFirst ? { position: 'absolute', top: -9, right: 10, fontSize: 10, fontWeight: 600, color: '#fff', background: 'var(--accent)', borderRadius: 6, padding: '2px 6px', lineHeight: 1.3 } : { display: 'none' },
+      };
+    });
+
+    const reviewedFileCount = selInboxItem.files.filter(f => f.status === 'reviewed').length;
+
+    return {
+      // ── Review 인박스 ──
+      navReview: s.nav === 'review',
+      goReview: () => this.setState({ nav: 'review' }),
+      railReviewStyle: s.nav === 'review' ? railActive : railBase,
+      inboxHasUnread: totalUnrev > 0,
+      inboxTotalUnreviewed: totalUnrev,
+      railInboxBadgeStyle: railOpen
+        ? { marginLeft: 'auto', flex: 'none', fontSize: 10.5, fontWeight: 600, color: '#fff', background: 'var(--accent)', borderRadius: 13, padding: '1.5px 6px', lineHeight: 1.4 }
+        : { position: 'absolute', top: 2, right: -2, fontSize: 9, fontWeight: 600, color: '#fff', background: 'var(--accent)', borderRadius: 12, padding: '1px 4px' },
+      inboxSummary: totalUnrev > 0 ? `미확인 ${totalUnrev}` : '모두 리뷰됨',
+      statusUnrevStyle: { color: totalUnrev > 0 ? 'var(--accent)' : 'var(--text-3)', fontWeight: totalUnrev > 0 ? 500 : 400 },
+      inboxRows,
+      reviewShowDoc: showDoc,
+      reviewWorkDone: workDone,
+      reviewInboxZero: inboxZero,
+      reviewFileChips,
+      reviewBlocks,
+      reviewProgressLabel: `${reviewedFileCount} / ${selInboxItem.files.length} 리뷰됨`,
+      reviewProgressFillStyle: {
+        width: `${selInboxItem.files.length ? Math.round(reviewedFileCount / selInboxItem.files.length * 100) : 0}%`,
+        background: 'var(--accent)', borderRadius: 2, transition: 'width .25s',
+      },
+      markFileBtnStyle: { display: 'flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 9, border: 'none', fontSize: 12, fontWeight: 500, color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 10%, transparent)', flex: 'none' },
+      markFileReviewed: () => {
+        this.setState(st => {
+          const nb = st.inbox.map(it => it.workId !== selInboxItem.workId ? it : {
+            ...it,
+            files: it.files.map((f, i) => i !== rFileIdx ? f : { ...f, status: 'reviewed', blocks: f.blocks.map(b => ({ ...b, st: 'reviewed' })) }),
+          });
+          const item = nb.find(i => i.workId === selInboxItem.workId);
+          const nextIdx = item.files.findIndex(f => f.status !== 'reviewed');
+          return { inbox: nb, selReviewFile: nextIdx >= 0 ? nextIdx : st.selReviewFile };
+        });
+      },
+      showResume: !!(showDoc && rFile && rFile.resume && rFile.status !== 'reviewed'),
+      resumeLabel: rFile ? `${rFile.path} · 스크롤 62%` : '',
+      doneWorkTitle: selInboxWork.title,
+      hasNextWork: !!nextWork,
+      goNextWork: () => {
+        if (!nextWork) return;
+        const fi = nextWork.files.findIndex(f => f.status !== 'reviewed');
+        this.setState({ selInbox: nextWork.workId, selReviewFile: fi >= 0 ? fi : 0 });
+      },
+      nextWorkTitle: nextWork ? (works.find(w => w.id === nextWork.workId) || { title: '' }).title : '',
+      nextWorkBadge: nextWork ? `미확인 ${unrevOf(nextWork)}` : '',
+      theme: s.theme,
+      rootRef: this.rootRef,
+      mermaidRef: this.mermaidRef,
+
+      // rail
+      railNavStyle: {
+        width: railOpen ? 248 : 60, flex: 'none', boxSizing: 'border-box',
+        background: 'var(--bg-rail)', borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', alignItems: railOpen ? 'stretch' : 'center',
+        padding: '0 8px 10px 8px', gap: 3, minHeight: 0,
+      },
+      railSettingsStyle: { ...railBase, marginTop: 'auto' },
+      projListStyle: { flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 0 8px 0', display: 'flex', flexDirection: 'column', gap: 3 },
+      listPaneStyle: {
+        width: 304, flex: 'none', boxSizing: 'border-box',
+        background: 'var(--bg-panel)', borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 12px 12px 12px',
+      },
+      railLogoRowStyle: {
+        display: 'flex', alignItems: 'center', gap: 9, height: 44, flex: 'none',
+        marginBottom: 4, width: '100%', padding: '0 2px 0 6px', boxSizing: 'border-box',
+      },
+      railBrandStyle: railOpen
+        ? { fontSize: 13.5, fontWeight: 600, letterSpacing: '-.01em', whiteSpace: 'nowrap' }
+        : { display: 'none' },
+      railLabelStyle: railOpen
+        ? { fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+        : { display: 'none' },
+      railDividerStyle: { width: railOpen ? 'calc(100% - 12px)' : 28, height: 1, background: 'var(--border)', margin: '6px 0', flex: 'none' },
+      railProjectsStyle: s.nav === 'projects' ? railActive : railBase,
+      railWorksStyle: s.nav === 'works' ? railActive : railBase,
+      railSpecsStyle: railBase,
+      railDisabledStyle: railDisabled,
+      soonBadgeStyle: railOpen ? {
+        marginLeft: 'auto', fontSize: 9.5, fontWeight: 600, lineHeight: 1,
+        color: 'var(--text-2)', background: 'var(--bg)', border: '1px solid var(--border-strong)',
+        borderRadius: 6, padding: '2px 4px', flex: 'none',
+      } : {
+        position: 'absolute', top: 2, right: -2, fontSize: 8.5, fontWeight: 600, lineHeight: 1,
+        color: 'var(--text-2)', background: 'var(--bg)', border: '1px solid var(--border-strong)',
+        borderRadius: 6, padding: '2px 3px',
+      },
+      toggleRail: () => this.setState(st => ({ railOpen: !st.railOpen })),
+      railToggleTip: railOpen ? '메뉴 접기' : '메뉴 펼치기',
+      railToggleStyle: {
+        width: 24, height: 24, flex: 'none', borderRadius: 9, border: 'none',
+        background: 'transparent', color: 'var(--text-3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginLeft: railOpen ? 'auto' : 0,
+      },
+      railToggleIconStyle: {
+        flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transform: railOpen ? 'none' : 'rotate(180deg)', transition: 'transform .15s',
+      },
+      goProjects: () => this.setState({ nav: 'projects' }),
+
+      goWorks: () => this.setState({ nav: 'works' }),
+      toggleSidebar: () => this.setState(st => ({ sidebarOpen: !st.sidebarOpen })),
+      sidebarTip: (s.sidebarOpen ? '사이드바 접기' : '사이드바 펼치기') + '  ⌘\\',
+      sidebarOpen: s.sidebarOpen,
+      navProjects: s.nav === 'projects',
+      navWorks: s.nav === 'works',
+      navProjWorks: s.nav !== 'review',
+      projCount: projects.length,
+      workCount: works.length,
+      projsEmpty: projects.length === 0,
+      navProjectsHasData: s.nav === 'projects' && projects.length > 0,
+      navProjectsEmpty: s.nav === 'projects' && projects.length === 0,
+      navWorksHasData: s.nav === 'works' && works.length > 0,
+      navWorksEmpty: s.nav === 'works' && works.length === 0,
+
+      // theme
+      setLight: () => this.setState({ theme: 'light' }),
+      setDark: () => this.setState({ theme: 'dark' }),
+      themeLightStyle: dark ? themeBtn : themeBtnOn,
+      themeDarkStyle: dark ? themeBtnOn : themeBtn,
+
+      // breadcrumb
+      crumbRoot: s.nav === 'review' ? 'Review' : s.nav === 'projects' ? 'Projects' : 'Works',
+      crumbLeaf: s.nav === 'review' ? selInboxWork.title : s.nav === 'projects' ? selProj.name : selWork.title,
+
+      // projects
+      projectRows,
+      openDialog: () => this.setState({ dialogOpen: true, dlgFolder: null, dlgBranch: '', dlgScenario: 'ok' }),
+      selProjName: selProj.name,
+      selProjPath: selProj.path,
+      selProjPathStyle: {
+        fontFamily: "'Geist Mono', monospace", fontSize: 12.5,
+        color: selProj.missing ? 'var(--red)' : 'var(--text-2)',
+        textDecoration: selProj.missing ? 'line-through' : 'none',
+        height: 20, display: 'flex', alignItems: 'center',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      },
+      selProjBranch: selProj.branch,
+      selProjMissing: selProj.missing,
+      selProjDesc: selProj.desc || '아직 설명이 없어요. 이 프로젝트가 무엇인지 적어 주세요.',
+      selProjDescStyle: {
+        margin: 0, width: '100%', boxSizing: 'border-box', textAlign: 'left',
+        fontSize: 13.5, lineHeight: 1.65, whiteSpace: 'pre-wrap',
+        border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px',
+        background: 'transparent', cursor: 'text',
+        color: selProj.desc ? 'var(--text-2)' : 'var(--text-3)',
+        fontStyle: selProj.desc ? 'normal' : 'italic',
+      },
+      editingDesc: s.editingDesc,
+      notEditingDesc: !s.editingDesc,
+      descDraft: s.descDraft,
+      startEditDesc: () => this.setState({ editingDesc: true, descDraft: selProj.desc || '' }),
+      setDescDraft: (e) => this.setState({ descDraft: e.target.value }),
+      descKeyDown: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) e.target.blur(); if (e.key === 'Escape') this.setState({ editingDesc: false }); },
+      commitDesc: () => this.setState(st => ({
+        editingDesc: false,
+        projects: st.projects.map(p => p.id === selProj.id ? { ...p, desc: st.descDraft.trim() } : p),
+      })),
+      // 원격 연동
+      hasRemote: !!remote,
+      isGithub: !remote || remote.provider === 'github',
+      isGitlab: !!remote && remote.provider === 'gitlab',
+      remoteSlug: remote ? remote.slug : '',
+      remoteSynced: remote ? remote.synced : '',
+      remoteDetectTip: remote ? `git remote에서 자동 감지 — origin: git@${remote.provider}.com:${remote.slug}.git` : '',
+      remoteProviderName: provName,
+      remoteMergeLabel: mergeLabel,
+      remoteConnectedShow: remoteOn,
+      remoteNeedsConnect: !!remote && !remoteOn,
+      connectRemote: () => this.setState(st => ({ remoteConnected: { ...st.remoteConnected, [selProj.id]: true } })),
+      prRows, issueRows,
+      prCount: prRows.length, issueCount: issueRows.length,
+      prEmpty: remoteOn && prRows.length === 0,
+      issueEmpty: remoteOn && issueRows.length === 0,
+      branchMenuOpen: s.branchMenuOpen,
+      toggleBranchMenu: () => this.setState(st => ({ branchMenuOpen: !st.branchMenuOpen })),
+      closeBranchMenu: () => this.setState({ branchMenuOpen: false }),
+      branchOptions,
+      remoteBranchCount: branchOptions.length,
+      remotePanelOpen: !!panelItem,
+      closeRemotePanel: () => this.setState({ remotePanel: null }),
+      panelTypeLabel: panelIsPr ? `열린 ${mergeLabel}` : '이슈',
+      panelTypeBadgeStyle: { flex: 'none', fontSize: 10.5, fontWeight: 600, color: 'var(--green)', background: 'var(--green-bg)', borderRadius: 6, padding: '2px 7px' },
+      panelNum: panelItem ? panelItem.num : '',
+      panelTitle: panelItem ? panelItem.title : '',
+      panelStateLabel: panelIsPr ? (panelItem.draft ? 'draft' : 'open') : 'open',
+      panelStateStyle: panelIsPr && panelItem.draft
+        ? { flex: 'none', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', background: 'var(--bg-hover)', borderRadius: 6, padding: '2px 8px' }
+        : { flex: 'none', fontSize: 11, fontWeight: 600, color: 'var(--green)', background: 'var(--green-bg)', borderRadius: 6, padding: '2px 8px' },
+      panelMeta: panelItem ? `${panelItem.author} 님이 열었어요 · ${panelItem.ago}` : '',
+      panelIsPr,
+      panelBranch: panelIsPr ? panelItem.branch : '',
+      panelBase: panelIsPr ? panelItem.base : '',
+      panelHasLabels: !!panelItem && !panelIsPr && panelItem.labels.length > 0,
+      panelChips: (!panelIsPr && panelItem ? panelItem.labels : []).map(labelChip),
+      panelBody: panelItem ? panelItem.body : '',
+      panelCommits: panelIsPr ? panelItem.commits : 0,
+      panelFiles: panelIsPr ? panelItem.files : 0,
+      panelAdd: panelIsPr ? panelItem.add : 0,
+      panelDel: panelIsPr ? panelItem.del : 0,
+      panelComments: panelIsPr ? panelItem.comments : 0,
+
+      selProjWorks,
+      selProjNoWorks: selProjWorks.length === 0,
+      selProjWorktrees,
+      selProjNoTrees: selProjWorktrees.length === 0,
+      editingBranch: s.editingBranch && !remote,
+      notEditingBranch: !s.editingBranch && !remote,
+      branchDraft: s.branchDraft,
+      startEditBranch: () => this.setState({ editingBranch: true, branchDraft: selProj.branch }),
+      setBranchDraft: (e) => this.setState({ branchDraft: e.target.value }),
+      branchKeyDown: (e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') this.setState({ editingBranch: false }); },
+      commitBranch: () => this.setState(st => ({
+        editingBranch: false,
+        projects: st.projects.map(p => p.id === selProj.id ? { ...p, branch: st.branchDraft.trim() || p.branch } : p),
+      })),
+
+      // works
+      workRows,
+      worksEmpty: workRows.length === 0,
+      countActive: works.filter(w => w.status === 'active').length,
+      countDone: works.filter(w => w.status === 'done').length,
+      filterActive: () => this.setState({ workFilter: 'active' }),
+      filterDone: () => this.setState({ workFilter: 'done' }),
+      segActiveStyle: s.workFilter === 'active' ? segOn : segBase,
+      segDoneStyle: s.workFilter === 'done' ? segOn : segBase,
+      projFilter: s.projFilter,
+      setProjFilter: (e) => this.setState({ projFilter: e.target.value }),
+      projFilterOptions: [{ value: 'all', label: '모든 프로젝트' }, ...projects.map(p => ({ value: p.id, label: p.name }))],
+
+      // work detail
+      selWorkTitle: selWork.title,
+      selWorkStatusLabel: selWork.status === 'active' ? 'active' : 'done',
+      selWorkBranch: selWork.branch,
+      selWorkCreated: selWork.created + ' · work.json',
+      selWorkChips: selWork.projects.map(pid => ({
+        name: projById[pid]?.name || pid,
+        onClick: () => this.setState({ nav: 'projects', selProject: pid }),
+      })),
+      workStatusBadgeStyle: {
+        display: 'flex', alignItems: 'center', gap: 4, height: 24, padding: '0 9px', borderRadius: 7,
+        border: '1px solid transparent', fontSize: 12, fontWeight: 500,
+        color: selWork.status === 'active' ? 'var(--accent)' : 'var(--green)',
+        background: selWork.status === 'active' ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--green-bg)',
+      },
+      selWorkBadgeStyle: {
+        fontSize: 11, fontWeight: 500, borderRadius: 6, padding: '2px 7px',
+        color: selWork.status === 'active' ? 'var(--accent)' : 'var(--green)',
+        background: selWork.status === 'active' ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--green-bg)',
+      },
+      statusTip: selWork.status === 'active' ? '클릭해서 done으로 전환' : '클릭해서 active로 전환',
+      statusToggleLabel: selWork.status === 'active' ? 'done으로 표시' : 'active로 되돌리기',
+      toggleWorkStatus: () => this.setState(st => ({
+        works: st.works.map(w => w.id === selWork.id ? { ...w, status: w.status === 'active' ? 'done' : 'active' } : w),
+      })),
+      specTreeOpen: s.specTreeOpen,
+      specTreeClosed: !s.specTreeOpen,
+      toggleSpecTree: () => this.setState(st => ({ specTreeOpen: !st.specTreeOpen })),
+      specTreeTip: s.specTreeOpen ? '파일 패널 닫기' : '파일 패널 열기',
+      specTreeToggleStyle: {
+        width: 26, height: 26, borderRadius: 9, border: '1px solid ' + (s.specTreeOpen ? 'var(--border-strong)' : 'var(--border)'),
+        background: s.specTreeOpen ? 'var(--bg-hover)' : 'transparent',
+        color: s.specTreeOpen ? 'var(--text-2)' : 'var(--text-3)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none',
+      },
+      specScrollStyle: {
+        flex: 1, overflowY: 'auto', minHeight: 0,
+        paddingRight: s.specTreeOpen ? 262 : 0,
+      },
+
+      // spec viewer
+      treePaneStyle: {
+        width: s.treeWidth, flex: 'none', display: 'flex', flexDirection: 'column',
+        minHeight: 0, background: 'var(--bg-panel)',
+      },
+      treeRows,
+      dividerDown: (e) => {
+        e.preventDefault();
+        const startX = e.clientX, w = s.treeWidth;
+        const mv = (ev) => this.setState({ treeWidth: Math.max(180, Math.min(400, w + ev.clientX - startX)) });
+        const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      },
+      selFilePath: 'spec/' + s.selFile,
+      showSource: s.showSource,
+      toggleSource: () => this.setState(st => ({ showSource: !st.showSource })),
+      sourceToggleStyle: {
+        height: 26, padding: '0 9px', borderRadius: 9, fontSize: 12, fontWeight: 500,
+        border: s.showSource ? '1px solid var(--accent)' : '1px solid var(--border)',
+        color: s.showSource ? 'var(--accent)' : 'var(--text-3)',
+        background: s.showSource ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
+      },
+      copyLabel: s.copied ? '복사됨 ✓' : '경로 복사',
+      copyPath: () => {
+        try { navigator.clipboard.writeText('spec/' + s.selFile); } catch (e) {}
+        this.setState({ copied: true });
+        clearTimeout(this._copyT);
+        this._copyT = setTimeout(() => this.setState({ copied: false }), 1500);
+      },
+      srcLines,
+      prettyOverview: !s.showSource && s.selFile === 'overview.md',
+      prettyArch: !s.showSource && s.selFile === 'design/architecture.md',
+      prettyYaml: !s.showSource && s.selFile === 'design/pipeline.yaml',
+
+      // block copy (AI 참조)
+      copyBlock: (e) => {
+        const el = e.currentTarget;
+        const lines = el.dataset.lines;
+        if (!lines) return;
+        const file = 'spec/' + this.state.selFile;
+        const srcAll = (this.sources[this.state.selFile] || '').split('\n');
+        const parts = lines.split('-').map(Number);
+        const a = parts[0], b = parts[1] || parts[0];
+        const content = srcAll.slice(a - 1, b).join('\n');
+        const ref = `${file}:L${lines}\n\n${content}`;
+        try { navigator.clipboard.writeText(ref); } catch (err) {}
+        el.style.boxShadow = 'inset 0 0 0 1.5px var(--accent)';
+        setTimeout(() => { el.style.boxShadow = ''; }, 650);
+        this.setState({ blockToast: `${file}:L${lines} 참조 복사됨`, tip: null });
+        clearTimeout(this._toastT);
+        this._toastT = setTimeout(() => this.setState({ blockToast: null }), 2200);
+      },
+      blockEnter: (e) => {
+        const el = e.currentTarget;
+        const r = el.getBoundingClientRect();
+        this.setState({ tip: { text: '클릭하면 파일·줄·내용 참조가 복사돼요', r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width }, pos: 'block' } });
+      },
+      toastVisible: !!s.blockToast,
+      toastText: s.blockToast || '',
+      toastStyle: {
+        position: 'fixed', left: '50%', bottom: 44, transform: 'translateX(-50%)',
+        display: 'flex', alignItems: 'center', gap: 8,
+        background: dark ? '#0e0f12' : '#26262c', color: '#e8e8ec',
+        fontSize: 12, fontWeight: 500, fontFamily: "'Geist Mono', monospace",
+        padding: '7px 14px', borderRadius: 10, zIndex: 100, pointerEvents: 'none',
+        boxShadow: '0 6px 20px rgba(0,0,0,.35)', animation: 'fadeIn .15s ease-out',
+      },
+
+      // mermaid: 인라인 코드 보기 + 전체화면
+      mmShowDiagram: (s.mermaidView || 'diagram') === 'diagram',
+      mmShowCode: s.mermaidView === 'code',
+      mermaidCode: this.mermaidCode,
+      toggleMermaidView: () => {
+        this._mermaidKey = '';
+        this.setState(st => ({ mermaidView: st.mermaidView === 'code' ? 'diagram' : 'code' }));
+      },
+      mmCodeToggleStyle: {
+        height: 20, padding: '0 7px', borderRadius: 6, fontSize: 10.5, fontWeight: 500,
+        border: s.mermaidView === 'code' ? '1px solid var(--accent)' : '1px solid var(--border)',
+        color: s.mermaidView === 'code' ? 'var(--accent)' : 'var(--text-3)',
+        background: s.mermaidView === 'code' ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
+      },
+      openMermaidFull: () => { this._mmFullKey = ''; this.setState({ mermaidFull: true, fullZoom: 1.4, fullView: 'diagram' }); },
+      mermaidFullOpen: !!s.mermaidFull,
+      closeMermaidFull: () => { this._mmFullKey = ''; this.setState({ mermaidFull: false }); },
+      mermaidFullRef: this.mermaidFullRef,
+      fullShowDiagram: (s.fullView || 'diagram') === 'diagram',
+      fullShowCode: s.fullView === 'code',
+      toggleFullView: () => {
+        this._mmFullKey = '';
+        this.setState(st => ({ fullView: st.fullView === 'code' ? 'diagram' : 'code' }));
+      },
+      fullCodeToggleStyle: {
+        height: 26, padding: '0 10px', borderRadius: 9, fontSize: 12, fontWeight: 500,
+        border: s.fullView === 'code' ? '1px solid var(--accent)' : '1px solid var(--border)',
+        color: s.fullView === 'code' ? 'var(--accent)' : 'var(--text-3)',
+        background: s.fullView === 'code' ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent',
+      },
+      fullZoomIn: () => this.setState(st => ({ fullZoom: Math.min(3, +((st.fullZoom || 1.4) + 0.2).toFixed(2)) })),
+      fullZoomOut: () => this.setState(st => ({ fullZoom: Math.max(0.6, +((st.fullZoom || 1.4) - 0.2).toFixed(2)) })),
+      fullZoomReset: () => this.setState({ fullZoom: 1.4 }),
+      fullZoomLabel: Math.round((s.fullZoom || 1.4) * 100) + '%',
+      fullZoomBtnStyle: { width: 26, height: 26, borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 14, lineHeight: 1 },
+      fullZoomResetStyle: { height: 26, padding: '0 8px', borderRadius: 9, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 11.5 },
+      fullScaleStyle: { transform: `scale(${s.fullZoom || 1.4})`, transformOrigin: 'top left', width: 'fit-content' },
+
+      // mermaid zoom
+      zoomIn: () => this.setState(st => ({ zoom: Math.min(2, +(st.zoom + 0.25).toFixed(2)) })),
+      zoomOut: () => this.setState(st => ({ zoom: Math.max(0.5, +(st.zoom - 0.25).toFixed(2)) })),
+      zoomReset: () => this.setState({ zoom: 1 }),
+      zoomLabel: Math.round(s.zoom * 100) + '%',
+      zoomBtnStyle: { width: 22, height: 20, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)', fontSize: 12, lineHeight: 1 },
+      zoomResetStyle: { height: 20, padding: '0 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-3)', fontSize: 10.5 },
+      mermaidScaleStyle: { transform: `scale(${s.zoom})`, transformOrigin: 'top left', width: 'fit-content' },
+
+      // dialog
+      dialogOpen: s.dialogOpen,
+      closeDialog: () => this.setState({ dialogOpen: false }),
+      stopClick: (e) => e.stopPropagation(),
+      dlgNoFolder: !s.dlgFolder,
+      dlgHasFolder: !!s.dlgFolder,
+      dlgFolder: s.dlgFolder,
+      dlgError: !!s.dlgFolder && s.dlgScenario === 'notgit',
+      dlgShowSuggest: dlgValid,
+      dlgFolderBoxStyle: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        border: s.dlgScenario === 'notgit' ? '1px solid var(--red)' : '1px solid var(--border-strong)',
+        borderRadius: 10, padding: '8px 12px', background: 'var(--bg-inset)',
+      },
+      pickFolder: () => this.setState(st => ({
+        dlgFolder: st.dlgScenario === 'ok' ? '~/dev/new-service' : '~/Documents/notes',
+        dlgBranch: st.dlgScenario === 'ok' ? 'main' : st.dlgBranch,
+      })),
+      dlgBranch: s.dlgBranch,
+      setDlgBranch: (e) => this.setState({ dlgBranch: e.target.value }),
+      suggestMain: () => this.setState({ dlgBranch: 'main' }),
+      suggestDevelop: () => this.setState({ dlgBranch: 'develop' }),
+      scenarioOk: () => this.setState(st => ({ dlgScenario: 'ok', dlgFolder: st.dlgFolder ? '~/dev/new-service' : null, dlgBranch: st.dlgFolder ? 'main' : st.dlgBranch })),
+      scenarioNotGit: () => this.setState(st => ({ dlgScenario: 'notgit', dlgFolder: st.dlgFolder ? '~/Documents/notes' : null })),
+      scOkStyle: scChip(s.dlgScenario === 'ok'),
+      scNotGitStyle: scChip(s.dlgScenario === 'notgit'),
+      dlgSubmitStyle: {
+        height: 30, padding: '0 14px', borderRadius: 9, border: 'none', fontSize: 12.5, fontWeight: 500,
+        background: dlgValid ? 'var(--accent)' : 'var(--bg-hover)',
+        color: dlgValid ? '#fff' : 'var(--text-3)',
+        cursor: dlgValid ? 'pointer' : 'default',
+      },
+      registerProject: () => {
+        if (!dlgValid) return;
+        this.setState(st => ({
+          projects: [...st.projects, { id: 'new-service', name: 'new-service', path: st.dlgFolder, branch: st.dlgBranch.trim() || 'main', missing: false }],
+          dialogOpen: false, nav: 'projects', selProject: 'new-service',
+        }));
+      },
+
+      // tooltip
+      tipEnter: (e) => {
+        const el = e.currentTarget;
+        const text = el.dataset.tip;
+        if (!text) return;
+        if (el.dataset.railitem === '1' && this.state.railOpen) return;
+        const r = el.getBoundingClientRect();
+        const pos = el.dataset.tippos || 'right';
+        this.setState({ tip: { text, r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width }, pos } });
+      },
+      tipLeave: () => this.setState({ tip: null }),
+      tipVisible: !!tip,
+      tipText: tip ? tip.text : '',
+      tipStyle: tip ? (tip.pos === 'block' ? {
+        position: 'fixed', left: tip.r.left + 14, top: tip.r.top - 30,
+        background: dark ? '#0e0f12' : '#26262c', color: '#e8e8ec', fontSize: 11.5, fontWeight: 500,
+        padding: '4px 8px', borderRadius: 7, whiteSpace: 'nowrap', zIndex: 100, pointerEvents: 'none',
+        boxShadow: '0 4px 14px rgba(0,0,0,.3)', animation: 'fadeIn .1s ease-out',
+      } : tip.pos === 'bottom' ? {
+        position: 'fixed', left: tip.r.left + tip.r.width / 2, top: tip.r.bottom + 7, transform: 'translateX(-50%)',
+        background: dark ? '#0e0f12' : '#26262c', color: '#e8e8ec', fontSize: 11.5, fontWeight: 500,
+        padding: '4px 8px', borderRadius: 7, whiteSpace: 'nowrap', zIndex: 100, pointerEvents: 'none',
+        boxShadow: '0 4px 14px rgba(0,0,0,.3)', animation: 'fadeIn .1s ease-out',
+      } : {
+        position: 'fixed', left: tip.r.right + 9, top: (tip.r.top + tip.r.bottom) / 2, transform: 'translateY(-50%)',
+        background: dark ? '#0e0f12' : '#26262c', color: '#e8e8ec', fontSize: 11.5, fontWeight: 500,
+        padding: '4px 8px', borderRadius: 7, whiteSpace: 'nowrap', zIndex: 100, pointerEvents: 'none',
+        boxShadow: '0 4px 14px rgba(0,0,0,.3)', animation: 'fadeIn .1s ease-out',
+      }) : {},
+    };
+  }
+}
+</script>
+</body>
+</html>

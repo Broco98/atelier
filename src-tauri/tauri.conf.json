@@ -13,8 +13,13 @@
     "windows": [
       {
         "title": "atelier",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 13, "y": 24 }
       }
     ],
     "security": {

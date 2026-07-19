@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest # arm64 (aarch64-apple-darwin)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 태그와 매니페스트 버전 일치 확인
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CONF_VERSION="$(jq -r .version src-tauri/tauri.conf.json)"
+          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
+            echo "태그 v$VERSION 와 tauri.conf.json 버전 $CONF_VERSION 이 다릅니다." >&2
+            echo "scripts/bump-version.sh 로 버전을 올린 커밋에 태그를 붙이세요." >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: 테스트
+        run: cargo test
+
+      - name: 앱 빌드 (.dmg)
+        run: pnpm tauri build
+
+      - name: CLI 빌드 및 패키징
+        run: |
+          cargo build --release -p atelier-cli
+          tar -czf "atelier-cli-${VERSION}-aarch64-apple-darwin.tar.gz" \
+            -C target/release atelier
+
+      - name: 릴리스 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## 설치
+
+          **앱** — dmg를 열어 `atelier.app`을 Applications로 복사한 뒤, 서명이 없어 Gatekeeper가 막으므로 한 번 실행:
+
+          ```sh
+          xattr -cr /Applications/atelier.app
+          ```
+
+          **CLI** — 압축을 풀어 PATH에 놓고 Claude 스킬 설치:
+
+          ```sh
+          tar -xzf atelier-cli-*.tar.gz
+          sudo mv atelier /usr/local/bin/
+          atelier skill install
+          ```
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            --title "atelier v${VERSION}" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            target/release/bundle/dmg/*.dmg \
+            "atelier-cli-${VERSION}-aarch64-apple-darwin.tar.gz"
