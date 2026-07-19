@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Folder, GitBranch, GitMerge } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import { Folder, GitBranch, GitMerge, Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
@@ -75,30 +75,124 @@ function PropertyRow({
   );
 }
 
-// Task 8에서 팝오버 메뉴로 교체된다
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
+  const [open, setOpen] = useState(false);
   const branches = project.git?.localBranches ?? [];
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   if (branches.length === 0) {
-    return <span className="font-mono text-[12.5px] text-muted-foreground">{project.baseBranch}</span>;
+    return <InlineBranchEditor key={project.slug} project={project} />;
   }
+
   const options = branches.includes(project.baseBranch)
     ? branches
     : [project.baseBranch, ...branches];
+
   return (
-    <select
-      value={project.baseBranch}
-      onChange={(e) =>
-        updateProject.mutate({ slug: project.slug, patch: { baseBranch: e.target.value } })
-      }
-      className="rounded-[9px] border bg-transparent px-2 py-1 font-mono text-[12.5px]"
-    >
-      {options.map((branch) => (
-        <option key={branch} value={branch}>
-          {branch}
-        </option>
-      ))}
-    </select>
+    <div className="relative -ml-[7px] flex">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title="브랜치 목록에서 변경"
+        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        {project.baseBranch}
+        <ChevronDown className="size-2.5" strokeWidth={2.2} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-[30px] z-40 w-[248px] overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg">
+            <div className="flex h-8 items-center justify-between border-b px-3">
+              <span className="text-[11.5px] font-semibold text-muted-foreground">브랜치</span>
+              <span className="text-[11px] text-tertiary">{options.length}개</span>
+            </div>
+            <div className="flex flex-col gap-px p-[5px]">
+              {options.map((branch) => (
+                <button
+                  key={branch}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    if (branch !== project.baseBranch) {
+                      updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
+                    }
+                  }}
+                  className="flex h-[30px] w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+                    {branch}
+                  </span>
+                  {branch === project.baseBranch && (
+                    <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="border-t px-3 py-2 text-[11px] leading-normal text-tertiary">
+              baseBranch 설정만 바꿔요 — checkout은 하지 않아요
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// git 브랜치 정보가 없을 때 — 클릭해서 직접 편집
+function InlineBranchEditor({ project }: { project: ProjectView }) {
+  const updateProject = useUpdateProject();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(project.baseBranch);
+  const finished = useRef(false);
+
+  const finish = (commit: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    setEditing(false);
+    const value = draft.trim();
+    if (commit && value && value !== project.baseBranch) {
+      updateProject.mutate({ slug: project.slug, patch: { baseBranch: value } });
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title="클릭해서 편집"
+        onClick={() => {
+          finished.current = false;
+          setDraft(project.baseBranch);
+          setEditing(true);
+        }}
+        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        {project.baseBranch}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      }}
+      className="h-[26px] w-[140px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-[12.5px] outline-none"
+    />
   );
 }
 
