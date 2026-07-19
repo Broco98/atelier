@@ -64,20 +64,26 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
                 strokeWidth={2}
               />
-              생성일
+              {/* 사이드바 닫힘 시 신호등 인셋(114px) 때문에 라벨을 접고 아이콘만 남긴다 */}
+              {sidebarOpen && "생성일"}
             </button>
             <span className="relative flex min-w-0">
               <button
                 type="button"
                 onClick={() => setFilterOpen((v) => !v)}
+                title={projectFilter ?? "모든 프로젝트"}
                 className={cn(
                   "flex h-[26px] max-w-[120px] items-center gap-[5px] rounded-[8px] border px-[9px] text-[12px] font-medium transition-colors hover:bg-accent",
                   projectFilter ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 <Filter className="size-3 shrink-0" strokeWidth={2} />
-                <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
-                <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                {sidebarOpen && (
+                  <>
+                    <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
+                    <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                  </>
+                )}
               </button>
               {filterOpen && (
                 <>
