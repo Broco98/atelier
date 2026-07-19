@@ -11,3 +11,9 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+mod paths;
+mod slug;
+
+pub use paths::{collapse_home, expand_home, projects_dir};
+pub use slug::slugify;
