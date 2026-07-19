@@ -32,7 +32,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           </span>
         </div>
 
-        <nav className="flex flex-col gap-[3px] px-2">
+        <nav className="flex flex-col gap-[2px] px-2">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (
@@ -41,7 +41,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
                 type="button"
                 onClick={() => onSelect(item.key)}
                 className={cn(
-                  "flex h-8 items-center gap-[9px] rounded-[7px] px-[9px] text-[12.5px] font-medium transition-colors",
+                  "flex h-8 items-center gap-[9px] rounded-[7px] px-[9px] text-[13px] font-medium transition-colors",
                   active
                     ? "bg-sidebar-primary/12 text-sidebar-primary"
                     : "text-muted-foreground hover:bg-sidebar-accent",
