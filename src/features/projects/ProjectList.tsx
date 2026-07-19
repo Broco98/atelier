@@ -9,9 +9,10 @@ interface ProjectListProps {
   onSelect: (slug: string) => void;
   onAdd: () => void;
   sidebarOpen: boolean;
+  open: boolean;
 }
 
-function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen }: ProjectListProps) {
+function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, open }: ProjectListProps) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -21,7 +22,19 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen }: P
     : projects;
 
   return (
-    <div className="flex w-[360px] shrink-0 flex-col border-r bg-panel px-3 pb-3">
+    // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
+    <div
+      className={cn(
+        "shrink-0 overflow-hidden border-r bg-panel transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        open ? "w-[360px]" : "w-0 border-transparent",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-full w-[360px] flex-col px-3 pb-3 transition-opacity",
+          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
+        )}
+      >
       {/* 타이틀바 스트립을 겸하는 패널 헤더 — 사이드바 닫힘 시 신호등·토글을 피해 좌측 패딩을 넓힌다 */}
       <div
         data-tauri-drag-region
@@ -130,6 +143,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen }: P
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

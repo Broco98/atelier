@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { confirm, message, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
-import { Folder } from "lucide-react";
+import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
@@ -11,11 +11,20 @@ interface ProjectsPageProps {
   sidebarOpen: boolean;
 }
 
+const PANEL_OPEN_KEY = "projects-panel-open";
+
 function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(
+    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
+  );
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
+
+  useEffect(() => {
+    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
+  }, [panelOpen]);
 
   const selected =
     projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
@@ -56,31 +65,49 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
         onSelect={setSelectedSlug}
         onAdd={handleAdd}
         sidebarOpen={sidebarOpen}
+        open={panelOpen}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Projects"
           leaf={selected?.name}
+          inset={!sidebarOpen && !panelOpen}
           actions={
-            selected && (
-              <>
-                <button
-                  type="button"
-                  disabled={selected.missing}
-                  onClick={() => projectsApi.openFolder(selected.slug)}
-                  className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
-                >
-                  폴더 열기
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRemove}
-                  className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
-                >
-                  제거
-                </button>
-              </>
-            )
+            <>
+              {selected && (
+                <>
+                  <button
+                    type="button"
+                    disabled={selected.missing}
+                    onClick={() => projectsApi.openFolder(selected.slug)}
+                    className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                  >
+                    폴더 열기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemove}
+                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
+                  >
+                    제거
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setPanelOpen((open) => !open)}
+                aria-label="목록 패널 토글"
+                aria-expanded={panelOpen}
+                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
+                className="flex size-7 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {panelOpen ? (
+                  <Maximize2 className="size-4" strokeWidth={1.7} />
+                ) : (
+                  <Minimize2 className="size-4" strokeWidth={1.7} />
+                )}
+              </button>
+            </>
           }
         />
         <div className="flex-1 overflow-y-auto">

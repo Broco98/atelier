@@ -1,16 +1,22 @@
+import { cn } from "@/lib/utils";
+
 interface PageHeaderProps {
   root: string;
   leaf?: string;
   actions?: React.ReactNode;
+  // 사이드바·목록 패널이 모두 닫혀 헤더가 창 왼쪽 끝에 붙을 때 신호등·SidebarToggle 회피
+  inset?: boolean;
 }
 
 // 페이지 소유 브레드크럼 바 — 메인 영역의 44px 타이틀바를 겸한다 (drag region).
-// 왼쪽에 항상 목록 패널이 있어 신호등·SidebarToggle과 겹치지 않는다.
-function PageHeader({ root, leaf, actions }: PageHeaderProps) {
+function PageHeader({ root, leaf, actions, inset = false }: PageHeaderProps) {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b px-4"
+      className={cn(
+        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b pr-4 transition-[padding] duration-[220ms]",
+        inset ? "pl-[126px]" : "pl-4",
+      )}
     >
       <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-tertiary">
         <span data-tauri-drag-region className="shrink-0">{root}</span>
