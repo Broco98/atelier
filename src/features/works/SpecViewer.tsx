@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, FileText } from "lucide-react";
@@ -28,24 +28,31 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     setToast(message);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 1600);
-  };
+  }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  const copyRef = (start: number, end: number) => {
-    const range = end > start ? `L${start}-${end}` : `L${start}`;
-    const ref = `spec/${current}:${range}`;
-    navigator.clipboard.writeText(ref);
-    showToast(`${ref} 복사됨`);
-  };
+  // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
+  const copyRef = useCallback(
+    (start: number, end: number) => {
+      const range = end > start ? `L${start}-${end}` : `L${start}`;
+      const ref = `spec/${current}:${range}`;
+      navigator.clipboard.writeText(ref);
+      showToast(`${ref} 복사됨`);
+    },
+    [current, showToast],
+  );
 
-  const copyPath = (path: string) => {
-    navigator.clipboard.writeText(`spec/${path}`);
-    showToast(`spec/${path} 복사됨`);
-  };
+  const copyPath = useCallback(
+    (path: string) => {
+      navigator.clipboard.writeText(`spec/${path}`);
+      showToast(`spec/${path} 복사됨`);
+    },
+    [showToast],
+  );
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -136,7 +143,7 @@ function BlockWrapper({
         spacing,
       )}
     >
-      <span className="absolute -left-[30px] top-[9px] w-[34px] select-none text-right font-mono text-[10.5px] text-tertiary opacity-65">
+      <span className="absolute -left-[44px] top-[9px] w-[36px] select-none text-center font-mono text-[10.5px] text-tertiary opacity-65">
         {end !== start ? `${start}–${end}` : start}
       </span>
       {children}
@@ -144,7 +151,8 @@ function BlockWrapper({
   );
 }
 
-function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
+// memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
+const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
   // 최상위 블록의 시작 라인 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해
   const topLines = useRef<Set<number>>(new Set());
   const collectTopLevel = () => (tree: { children: { position?: { start: { line: number } } }[] }) => {
@@ -249,7 +257,7 @@ function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
       </ReactMarkdown>
     </article>
   );
-}
+});
 
 // hast 노드에서 텍스트만 추출 (mermaid 코드 등)
 function hastText(node: unknown): string {

@@ -80,6 +80,7 @@ function TreeRows({
               )}
               style={{ paddingLeft: 8 + depth * 14 + 16 }}
             >
+              <FileGlyph name={node.name} />
               <span className="min-w-0 flex-1 truncate">{node.name}</span>
               {onCopy && (
                 <span
@@ -99,6 +100,18 @@ function TreeRows({
         </div>
       ))}
     </>
+  );
+}
+
+// 목업 트리의 파일 타입 글리프 — 확장자를 소형 mono 라벨로 (MD, YAML …)
+function FileGlyph({ name }: { name: string }) {
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
+  if (!ext) return null;
+  return (
+    <span className="shrink-0 rounded-[5px] border bg-inset px-1 py-px font-mono text-[9px] font-medium leading-[1.4] text-tertiary">
+      {ext}
+    </span>
   );
 }
 
