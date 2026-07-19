@@ -31,7 +31,7 @@ function AppShell() {
       <SidebarToggle open={sidebarOpen} onToggle={() => setSidebarOpen((open) => !open)} />
       <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
       <main className="flex min-w-0 flex-1 flex-col">
-        <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
+        <header data-tauri-drag-region className="h-(--titlebar-height) shrink-0 border-b" />
         <div className="flex-1" />
       </main>
     </div>

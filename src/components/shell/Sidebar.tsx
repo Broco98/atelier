@@ -18,20 +18,21 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
       {/* fixed inner width so text doesn't reflow while the width animates */}
       <div
         className={cn(
-          "flex h-full w-(--sidebar-width) flex-col transition-opacity",
+          "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        {/* titlebar strip: traffic lights + toggle live here (native / floating) */}
+        {/* traffic light strip — same height as the main header so the logo top
+            lines up with the header's bottom border */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
-        <div className="px-5 pb-2">
-          <span className="text-[17px] font-semibold text-foreground">
+        <div className="shrink-0 pb-3 pl-3.5 pt-1">
+          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
             Atelier
           </span>
         </div>
 
-        <nav className="flex flex-col gap-0.5 px-3 pt-2">
+        <nav className="flex flex-col gap-[3px] px-2">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (
@@ -40,13 +41,13 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
                 type="button"
                 onClick={() => onSelect(item.key)}
                 className={cn(
-                  "flex h-9 items-center gap-[10px] rounded-lg px-[10px] text-[15px] font-medium transition-colors",
+                  "flex h-8 items-center gap-[9px] rounded-[7px] px-[9px] text-[12.5px] font-medium transition-colors",
                   active
-                    ? "bg-accent text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    ? "bg-sidebar-primary/12 text-sidebar-primary"
+                    : "text-muted-foreground hover:bg-sidebar-accent",
                 )}
               >
-                <item.icon className="size-[18px]" />
+                <item.icon className="size-[17px]" strokeWidth={1.7} />
                 {item.label}
               </button>
             );
