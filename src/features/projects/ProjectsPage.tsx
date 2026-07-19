@@ -9,13 +9,15 @@ import { useCreateProject, useDeleteProject, useProjects } from "./hooks";
 
 interface ProjectsPageProps {
   sidebarOpen: boolean;
+  selectedSlug: string | null;
+  onSelect: (slug: string | null) => void;
+  onOpenWork: (slug: string | null) => void;
 }
 
 const PANEL_OPEN_KEY = "projects-panel-open";
 
-function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
+function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
   const { data: projects = [] } = useProjects();
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
   );
@@ -36,7 +38,7 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
     if (typeof folder !== "string") return;
     try {
       const view = await createProject.mutateAsync(folder);
-      setSelectedSlug(view.slug);
+      onSelect(view.slug);
     } catch (e) {
       await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
@@ -51,7 +53,7 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
     if (!ok) return;
     try {
       await deleteProject.mutateAsync(selected.slug);
-      setSelectedSlug(null);
+      onSelect(null);
     } catch (e) {
       await message(`제거하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
@@ -62,9 +64,9 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
       <ProjectList
         projects={projects}
         selectedSlug={selected?.slug ?? null}
-        onSelect={setSelectedSlug}
-        onAdd={handleAdd}
+        onSelect={onSelect}
         sidebarOpen={sidebarOpen}
+        onAdd={handleAdd}
         open={panelOpen}
       />
       <main className="flex min-w-0 flex-1 flex-col">
@@ -112,7 +114,7 @@ function ProjectsPage({ sidebarOpen }: ProjectsPageProps) {
         />
         <div className="flex-1 overflow-y-auto">
           {selected ? (
-            <ProjectDetail project={selected} />
+            <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (
             <div className="flex h-full items-center justify-center p-10">
               <div className="flex max-w-[400px] flex-col items-center gap-[7px] text-center">

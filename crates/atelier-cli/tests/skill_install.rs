@@ -8,7 +8,25 @@ fn skill_install_writes_to_claude_skills() {
         .args(["skill", "install"])
         .assert()
         .success();
-    let installed = home.path().join(".claude/skills/atelier-projects/SKILL.md");
+    let installed = home.path().join(".claude/skills/atelier/SKILL.md");
     let content = std::fs::read_to_string(installed).unwrap();
-    assert!(content.contains("name: atelier-projects"));
+    assert!(content.contains("name: atelier"));
+    assert!(content.contains("atelier work start"), "works 흐름이 스킬에 포함돼야 한다");
+}
+
+#[test]
+fn skill_install_migrates_old_directory() {
+    let home = tempfile::tempdir().unwrap();
+    // 구버전 설치 흔적 — 새 설치가 스킬 중복을 막기 위해 정리한다
+    let old = home.path().join(".claude/skills/atelier-projects");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(old.join("SKILL.md"), "old").unwrap();
+
+    Command::cargo_bin("atelier").unwrap()
+        .env("HOME", home.path())
+        .args(["skill", "install"])
+        .assert()
+        .success();
+    assert!(!old.exists(), "구버전 atelier-projects 스킬이 제거돼야 한다");
+    assert!(home.path().join(".claude/skills/atelier/SKILL.md").exists());
 }

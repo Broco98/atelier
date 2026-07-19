@@ -106,13 +106,8 @@ fn read_project(root: &Path, slug: &str) -> Result<Project> {
     parse_project(slug, &content)
 }
 
-/// slug가 경로 요소를 포함하면 데이터 루트 밖으로 탈출할 수 있으므로 차단한다.
 fn project_path(root: &Path, slug: &str) -> Result<std::path::PathBuf> {
-    let valid = !slug.is_empty()
-        && !slug.starts_with('.')
-        && !slug.contains('/')
-        && !slug.contains('\\');
-    if !valid {
+    if !crate::slug::is_safe_slug(slug) {
         return Err(Error::NotFound(slug.to_string()));
     }
     Ok(root.join(format!("{slug}.md")))

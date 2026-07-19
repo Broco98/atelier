@@ -1,14 +1,18 @@
 import { useRef, useState, useEffect } from "react";
-import { Folder, GitFork, GitMerge, Check, ChevronDown } from "lucide-react";
+import { Folder, GitFork, GitMerge, Check, ChevronDown, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWorks } from "@/features/works/hooks";
+import { formatCreated, StatusIcon } from "@/features/works/status";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
 interface ProjectDetailProps {
   project: ProjectView;
+  // null = 선택 변경 없이 Works 화면으로 이동
+  onOpenWork: (slug: string | null) => void;
 }
 
-function ProjectDetail({ project }: ProjectDetailProps) {
+function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
     <div className="flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
       {project.missing && (
@@ -53,6 +57,79 @@ function ProjectDetail({ project }: ProjectDetailProps) {
       </div>
 
       <DescriptionEditor key={project.slug} project={project} />
+
+      <WorksSection projectSlug={project.slug} onOpenWork={onOpenWork} />
+    </div>
+  );
+}
+
+// 이 프로젝트에서 시작된 작업 목록 (목업 S2의 Works 란)
+function WorksSection({
+  projectSlug,
+  onOpenWork,
+}: {
+  projectSlug: string;
+  onOpenWork: (slug: string | null) => void;
+}) {
+  const { data: works = [] } = useWorks();
+  const related = works.filter((w) => w.projects.includes(projectSlug));
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <Zap className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.7} />
+        <h2 className="text-[14px] font-semibold text-muted-foreground">Works</h2>
+        <span className="text-[12.5px] text-tertiary">이 프로젝트에서 시작된 작업</span>
+        <button
+          type="button"
+          onClick={() => onOpenWork(null)}
+          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors hover:bg-accent hover:text-foreground"
+        >
+          Works에서 모두 보기
+          <ChevronRight className="size-3" strokeWidth={2} />
+        </button>
+      </div>
+      <div className="flex flex-col overflow-hidden rounded-[12px] border">
+        {related.length === 0 ? (
+          <div className="px-3.5 py-4 text-[13px] text-tertiary">
+            이 프로젝트로 시작된 작업이 아직 없어요.
+          </div>
+        ) : (
+          related.map((work) => {
+            const tree = work.trees.find((t) => t.project === projectSlug);
+            return (
+              <button
+                key={work.slug}
+                type="button"
+                onClick={() => onOpenWork(work.slug)}
+                className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5 text-left transition-colors last:border-b-0 hover:bg-accent"
+              >
+                <span className="flex min-w-0 items-center gap-[9px]">
+                  <StatusIcon status={work.status} />
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-[13.5px] font-medium",
+                      work.status === "done" && "text-muted-foreground",
+                    )}
+                  >
+                    {work.title}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2.5 text-[12px] text-tertiary">
+                  {tree?.exists && (
+                    <span className="flex items-center gap-1.5 font-mono text-[11px]">
+                      <GitFork className="size-3" strokeWidth={2} />
+                      {work.branch}
+                    </span>
+                  )}
+                  {formatCreated(work.createdAt)}
+                  <ChevronRight className="size-3.5" strokeWidth={2} />
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

@@ -1,11 +1,18 @@
 use std::path::{Path, PathBuf};
 
 /// 데이터 루트. `ATELIER_HOME`은 테스트용 내부 오버라이드.
-pub fn projects_dir() -> PathBuf {
-    let base = std::env::var_os("ATELIER_HOME")
+fn data_root() -> PathBuf {
+    std::env::var_os("ATELIER_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"));
-    base.join("projects")
+        .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"))
+}
+
+pub fn projects_dir() -> PathBuf {
+    data_root().join("projects")
+}
+
+pub fn works_dir() -> PathBuf {
+    data_root().join("works")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {
