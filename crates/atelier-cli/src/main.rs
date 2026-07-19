@@ -18,6 +18,9 @@ enum Command {
     /// 프로젝트 관리
     #[command(subcommand)]
     Project(ProjectCmd),
+    /// AI 스킬 관리
+    #[command(subcommand)]
+    Skill(SkillCmd),
 }
 
 #[derive(Subcommand)]
@@ -55,6 +58,12 @@ enum ProjectCmd {
         #[arg(long)]
         yes: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum SkillCmd {
+    /// AI 에이전트용 스킬 문서를 ~/.claude/skills/에 설치
+    Install,
 }
 
 fn main() -> ExitCode {
@@ -137,6 +146,15 @@ fn run() -> anyhow::Result<()> {
                 println!("제거됨: {slug}");
             }
         },
+        Command::Skill(SkillCmd::Install) => {
+            let dir = dirs::home_dir()
+                .context("홈 디렉토리를 찾을 수 없습니다")?
+                .join(".claude/skills/atelier-projects");
+            std::fs::create_dir_all(&dir)?;
+            let target = dir.join("SKILL.md");
+            std::fs::write(&target, include_str!("../assets/SKILL.md"))?;
+            println!("설치됨: {}", target.display());
+        }
     }
     Ok(())
 }
