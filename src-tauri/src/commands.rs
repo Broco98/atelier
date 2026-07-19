@@ -26,13 +26,14 @@ pub async fn create_project(folder: String) -> CmdResult<ProjectView> {
 #[tauri::command]
 pub async fn update_project(
     slug: String,
+    name: Option<String>,
     description: Option<String>,
     base_branch: Option<String>,
 ) -> CmdResult<ProjectView> {
     atelier_core::update_project(
         &projects_dir(),
         &slug,
-        ProjectPatch { description, base_branch },
+        ProjectPatch { name, description, base_branch },
     )
     .map_err(err)
 }

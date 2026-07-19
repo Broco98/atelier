@@ -45,6 +45,52 @@ fn full_crud_flow() {
 }
 
 #[test]
+fn edit_name_updates_display_name_and_keeps_slug() {
+    let home = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let folder = work.path().join("my-app");
+    std::fs::create_dir(&folder).unwrap();
+    atelier(home.path()).args(["project", "add"]).arg(&folder).assert().success();
+
+    // --name 단독으로도 동작하고, trim되어 저장된다
+    atelier(home.path())
+        .args(["project", "edit", "my-app", "--name", "  결제 서비스  "])
+        .assert().success();
+    atelier(home.path())
+        .args(["project", "show", "my-app", "--json"])
+        .assert().success()
+        .stdout(contains("\"name\": \"결제 서비스\""))
+        .stdout(contains("\"slug\": \"my-app\"")); // slug 불변
+
+    // 다른 플래그와 조합 가능
+    atelier(home.path())
+        .args(["project", "edit", "my-app", "--name", "빌링", "--description", "정산 서비스"])
+        .assert().success();
+    atelier(home.path())
+        .args(["project", "show", "my-app", "--json"])
+        .assert().success()
+        .stdout(contains("\"name\": \"빌링\""))
+        .stdout(contains("정산 서비스"));
+}
+
+#[test]
+fn edit_blank_name_exits_1() {
+    let home = tempfile::tempdir().unwrap();
+    let work = tempfile::tempdir().unwrap();
+    let folder = work.path().join("my-app");
+    std::fs::create_dir(&folder).unwrap();
+    atelier(home.path()).args(["project", "add"]).arg(&folder).assert().success();
+
+    atelier(home.path())
+        .args(["project", "edit", "my-app", "--name", "   "])
+        .assert().code(1);
+    // 실패해도 기존 이름 유지
+    atelier(home.path())
+        .args(["project", "show", "my-app", "--json"])
+        .assert().success().stdout(contains("\"name\": \"my-app\""));
+}
+
+#[test]
 fn not_found_exits_2() {
     let home = tempfile::tempdir().unwrap();
     atelier(home.path()).args(["project", "show", "nope"]).assert().code(2);

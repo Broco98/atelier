@@ -42,9 +42,11 @@ enum ProjectCmd {
         #[arg(long)]
         json: bool,
     },
-    /// 설명/baseBranch 수정
+    /// 이름/설명/baseBranch 수정
     Edit {
         slug: String,
+        #[arg(long)]
+        name: Option<String>,
         #[arg(long)]
         description: Option<String>,
         #[arg(long)]
@@ -112,14 +114,14 @@ fn run() -> anyhow::Result<()> {
                     println!("등록됨: {}", view.project.slug);
                 }
             }
-            ProjectCmd::Edit { slug, description, base_branch, json } => {
-                if description.is_none() && base_branch.is_none() {
-                    anyhow::bail!("--description 또는 --base-branch 중 하나 이상이 필요합니다");
+            ProjectCmd::Edit { slug, name, description, base_branch, json } => {
+                if name.is_none() && description.is_none() && base_branch.is_none() {
+                    anyhow::bail!("--name, --description, --base-branch 중 하나 이상이 필요합니다");
                 }
                 let view = atelier_core::update_project(
                     &root,
                     &slug,
-                    ProjectPatch { description, base_branch },
+                    ProjectPatch { name, description, base_branch },
                 )?;
                 if json {
                     println!("{}", serde_json::to_string_pretty(&view)?);

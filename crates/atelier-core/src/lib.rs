@@ -6,6 +6,8 @@ pub enum Error {
     InvalidFile { slug: String, message: String },
     #[error("folder does not exist: {0}")]
     FolderMissing(String),
+    #[error("name must not be empty")]
+    EmptyName,
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

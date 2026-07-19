@@ -4,6 +4,7 @@ use crate::project::{parse_project, render_project, Project, ProjectView};
 use crate::{collapse_home, expand_home, git, slugify, Error, Result};
 
 pub struct ProjectPatch {
+    pub name: Option<String>,
     pub description: Option<String>,
     pub base_branch: Option<String>,
 }
@@ -72,6 +73,13 @@ pub fn create_project(root: &Path, folder: &Path) -> Result<ProjectView> {
 
 pub fn update_project(root: &Path, slug: &str, patch: ProjectPatch) -> Result<ProjectView> {
     let mut project = read_project(root, slug)?;
+    if let Some(name) = patch.name {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::EmptyName);
+        }
+        project.name = name.to_string();
+    }
     if let Some(description) = patch.description {
         project.description = description;
     }
@@ -187,6 +195,7 @@ mod tests {
         let (_tmp, root, folder) = setup();
         create_project(&root, &folder).unwrap();
         let updated = update_project(&root, "my-app", ProjectPatch {
+            name: None,
             description: Some("설명".into()),
             base_branch: Some("develop".into()),
         }).unwrap();
@@ -194,6 +203,37 @@ mod tests {
         assert_eq!(updated.project.base_branch, "develop");
         // 디스크 반영 확인
         assert_eq!(get_project(&root, "my-app").unwrap().project.description, "설명");
+    }
+
+    #[test]
+    fn update_patches_name_trimmed_and_keeps_slug() {
+        let (_tmp, root, folder) = setup();
+        create_project(&root, &folder).unwrap();
+        let updated = update_project(&root, "my-app", ProjectPatch {
+            name: Some("  결제 서비스  ".into()),
+            description: None,
+            base_branch: None,
+        }).unwrap();
+        assert_eq!(updated.project.name, "결제 서비스"); // trim 적용
+        assert_eq!(updated.project.slug, "my-app"); // slug 불변
+        // 디스크 반영 + 다른 필드 유지 확인
+        let reread = get_project(&root, "my-app").unwrap();
+        assert_eq!(reread.project.name, "결제 서비스");
+        assert_eq!(reread.project.base_branch, "main");
+    }
+
+    #[test]
+    fn update_rejects_blank_name() {
+        let (_tmp, root, folder) = setup();
+        create_project(&root, &folder).unwrap();
+        let result = update_project(&root, "my-app", ProjectPatch {
+            name: Some("   ".into()),
+            description: None,
+            base_branch: None,
+        });
+        assert!(matches!(result, Err(crate::Error::EmptyName)));
+        // 실패 시 기존 이름 유지
+        assert_eq!(get_project(&root, "my-app").unwrap().project.name, "my-app");
     }
 
     #[test]

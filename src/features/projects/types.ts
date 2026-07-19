@@ -16,6 +16,7 @@ export interface ProjectView {
 }
 
 export interface ProjectPatch {
+  name?: string;
   description?: string;
   baseBranch?: string;
 }
