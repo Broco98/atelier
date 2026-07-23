@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +58,32 @@ function SizedSvg({ svg, size, scale }: { svg: string; size: SvgSize | null; sca
   );
 }
 
+// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다
+function usePanScroll() {
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !ref.current) return;
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      left: ref.current.scrollLeft,
+      top: ref.current.scrollTop,
+    };
+    ref.current.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || !ref.current) return;
+    ref.current.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
+    ref.current.scrollTop = drag.current.top - (e.clientY - drag.current.y);
+  };
+  const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = null;
+    if (ref.current?.hasPointerCapture(e.pointerId)) ref.current.releasePointerCapture(e.pointerId);
+  };
+  return { ref, onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
+}
+
 function MermaidBlock({ code }: { code: string }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const [svg, setSvg] = useState<string | null>(null);
@@ -68,6 +94,8 @@ function MermaidBlock({ code }: { code: string }) {
   const [fullScale, setFullScale] = useState(1);
 
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
+  const pan = usePanScroll();
+  const modalPan = usePanScroll();
 
   useEffect(() => {
     let on = true;
@@ -125,7 +153,7 @@ function MermaidBlock({ code }: { code: string }) {
       ) : showCode ? (
         <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground">{code}</pre>
       ) : (
-        <div className="overflow-auto p-4">
+        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
@@ -157,7 +185,7 @@ function MermaidBlock({ code }: { code: string }) {
                 </button>
               </span>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto p-7">
+            <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing">
               {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
             </div>
           </div>
