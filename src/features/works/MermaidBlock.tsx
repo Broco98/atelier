@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,10 +23,36 @@ function ZoomControls({
   );
 }
 
-function ScaledSvg({ svg, scale }: { svg: string; scale: number }) {
+interface SvgSize {
+  w: number;
+  h: number;
+}
+
+// mermaid가 만든 svg 문자열에서 viewBox 크기를 읽는다 — mermaid 11은 항상 viewBox를 넣는다
+function svgSize(svg: string): SvgSize | null {
+  const m = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) ([\d.]+)"/.exec(svg);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+// transform 대신 래퍼에 viewBox × scale 크기를 명시 — 레이아웃 크기 = 보이는 크기가 되어
+// overflow-auto 스크롤·드래그 팬이 실제 콘텐츠와 어긋나지 않는다 (svg는 벡터라 무손실 확대)
+function SizedSvg({ svg, size, scale }: { svg: string; size: SvgSize | null; scale: number }) {
+  if (!size) {
+    // viewBox 없는 예외 svg — 기존 transform 방식으로 폴백
+    return (
+      <div
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    );
+  }
   return (
     <div
-      style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+      style={{ width: size.w * scale, height: size.h * scale }}
+      className="[&>svg]:h-full! [&>svg]:w-full! [&>svg]:max-w-none!"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
@@ -40,6 +66,8 @@ function MermaidBlock({ code }: { code: string }) {
   const [showCode, setShowCode] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
   const [fullScale, setFullScale] = useState(1);
+
+  const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
 
   useEffect(() => {
     let on = true;
@@ -99,7 +127,7 @@ function MermaidBlock({ code }: { code: string }) {
       ) : (
         <div className="overflow-auto p-4">
           {svg ? (
-            <ScaledSvg svg={svg} scale={scale} />
+            <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
             <span className="text-[12.5px] text-tertiary">렌더링 중…</span>
           )}
@@ -130,7 +158,7 @@ function MermaidBlock({ code }: { code: string }) {
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-7">
-              {svg && <ScaledSvg svg={svg} scale={fullScale} />}
+              {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
             </div>
           </div>
         </div>
