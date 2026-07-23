@@ -28,6 +28,24 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
   }, [panelOpen]);
 
+  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )
+        return;
+      e.preventDefault();
+      setPanelOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const selected =
     projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
 
