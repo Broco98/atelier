@@ -50,12 +50,28 @@ jobs:
           tar -czf "atelier-cli-${VERSION}-aarch64-apple-darwin.tar.gz" \
             -C target/release atelier
 
+      - name: 앱 패키징 (tar.gz)
+        run: |
+          tar -czf "atelier-app-${VERSION}-aarch64-apple-darwin.tar.gz" \
+            -C target/release/bundle/macos atelier.app
+
       - name: 릴리스 생성
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > release-notes.md <<'EOF'
           ## 설치
+
+          한 줄로 앱·CLI·Claude 스킬을 모두 설치:
+
+          ```sh
+          curl -fsSL https://github.com/Broco98/atelier/releases/latest/download/install.sh | bash
+          ```
+
+          이미 설치된 단계는 건너뛰고, 중간에 실패해도 다시 실행하면 이어서 완료됩니다. sudo 불필요.
+
+          <details>
+          <summary>수동 설치</summary>
 
           **앱** — dmg를 열어 `atelier.app`을 Applications로 복사한 뒤, 서명이 없어 Gatekeeper가 막으므로 한 번 실행:
 
@@ -70,10 +86,14 @@ jobs:
           sudo mv atelier /usr/local/bin/
           atelier skill install
           ```
+
+          </details>
           EOF
           gh release create "$GITHUB_REF_NAME" \
             --title "atelier v${VERSION}" \
             --notes-file release-notes.md \
             --generate-notes \
             target/release/bundle/dmg/*.dmg \
-            "atelier-cli-${VERSION}-aarch64-apple-darwin.tar.gz"
+            "atelier-app-${VERSION}-aarch64-apple-darwin.tar.gz" \
+            "atelier-cli-${VERSION}-aarch64-apple-darwin.tar.gz" \
+            scripts/install.sh

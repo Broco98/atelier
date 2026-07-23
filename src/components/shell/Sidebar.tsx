@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { navItems, type NavKey } from "./nav-items";
+import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
@@ -8,10 +9,16 @@ interface SidebarProps {
 }
 
 function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
+  const size = useResizableWidth("sidebar-width", 248, 180, 400);
+
   return (
     <aside
+      style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "shrink-0 overflow-hidden border-r bg-sidebar transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "relative shrink-0 overflow-hidden border-r bg-sidebar",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        !size.dragging &&
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
         open ? "w-(--sidebar-width)" : "w-0 border-transparent",
       )}
     >
@@ -54,6 +61,8 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           })}
         </nav>
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </aside>
   );
 }
