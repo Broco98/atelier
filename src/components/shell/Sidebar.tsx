@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import { navItems, type NavKey } from "./nav-items";
+import useIsFullscreen from "./useIsFullscreen";
+import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
@@ -8,10 +10,17 @@ interface SidebarProps {
 }
 
 function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
+  const fullscreen = useIsFullscreen();
+  const size = useResizableWidth("sidebar-width", 248, 180, 400);
+
   return (
     <aside
+      style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "shrink-0 overflow-hidden border-r bg-sidebar transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "relative shrink-0 overflow-hidden border-r bg-sidebar",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        !size.dragging &&
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
         open ? "w-(--sidebar-width)" : "w-0 border-transparent",
       )}
     >
@@ -22,17 +31,24 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        {/* traffic light strip — same height as the main header so the logo top
-            lines up with the header's bottom border */}
-        <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
-
-        <div className="shrink-0 pb-3 pl-3.5 pt-1">
-          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
+        {/* traffic light strip — 로고가 신호등·토글 오른쪽에 붙는다.
+            pl은 PageHeader inset과 같은 산식(신호등 88/16 + 토글 26 + 간격 12) */}
+        <div
+          data-tauri-drag-region
+          className={cn(
+            "flex h-(--titlebar-height) shrink-0 items-center transition-[padding] duration-[220ms]",
+            fullscreen ? "pl-[54px]" : "pl-[126px]",
+          )}
+        >
+          <span
+            data-tauri-drag-region
+            className="text-[16px] font-semibold tracking-[-0.01em] text-sidebar-foreground"
+          >
             Atelier
           </span>
         </div>
 
-        <nav className="flex flex-col gap-[3px] px-2">
+        <nav className="flex flex-col gap-[3px] px-2 pt-1">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (
@@ -54,6 +70,8 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           })}
         </nav>
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </aside>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -21,17 +22,23 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       )
     : projects;
 
+  const size = useResizableWidth("panel-width", 360, 280, 560);
+
   return (
     // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
     <div
+      style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "shrink-0 overflow-hidden border-r bg-panel transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-        open ? "w-[360px]" : "w-0 border-transparent",
+        "relative shrink-0 overflow-hidden border-r bg-panel",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        !size.dragging &&
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        open ? "w-(--panel-width)" : "w-0 border-transparent",
       )}
     >
       <div
         className={cn(
-          "flex h-full w-[360px] flex-col px-3 pb-3 transition-opacity",
+          "flex h-full w-(--panel-width) flex-col px-3 pb-3 transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
@@ -43,10 +50,6 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           sidebarOpen ? "pl-0.5" : "pl-[114px]",
         )}
       >
-        <span className="flex items-baseline gap-[7px]">
-          <span className="text-[15px] font-semibold tracking-[-0.01em]">Projects</span>
-          <span className="text-[12.5px] text-tertiary">{projects.length}</span>
-        </span>
         <button
           type="button"
           onClick={onAdd}
@@ -144,6 +147,8 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
         </div>
       )}
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </div>
   );
 }
