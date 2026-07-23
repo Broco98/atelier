@@ -57,17 +57,31 @@ function useResizableWidth(
   };
 }
 
-// 패널 오른쪽 가장자리에 얹는 리사이즈 핸들 — 부모는 relative여야 한다
+// 패널 오른쪽 가장자리에 얹는 리사이즈 핸들 — 부모는 relative여야 한다.
+// 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
 export function ResizeHandle({ control }: { control: ResizableWidth }) {
+  const visible = control.dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100";
   return (
     <div
       {...control.handleProps}
       title="드래그로 폭 조절 · 더블클릭으로 기본 폭"
-      className={cn(
-        "absolute inset-y-0 right-0 z-30 w-[5px] cursor-col-resize touch-none",
-        control.dragging ? "bg-primary/25" : "hover:bg-primary/20",
-      )}
-    />
+      className="group absolute inset-y-0 right-0 z-30 w-[5px] cursor-col-resize touch-none"
+    >
+      {/* 퍼지는 글로우 층 */}
+      <div
+        className={cn(
+          "absolute inset-y-0 right-0 w-full bg-linear-to-b from-transparent via-primary/25 to-transparent blur-[2px] transition-opacity duration-200",
+          visible,
+        )}
+      />
+      {/* 심 라인 */}
+      <div
+        className={cn(
+          "absolute inset-y-0 right-[1.5px] w-[2px] bg-linear-to-b from-transparent via-primary/55 to-transparent transition-opacity duration-200",
+          visible,
+        )}
+      />
+    </div>
   );
 }
 
