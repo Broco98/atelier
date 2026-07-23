@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { Check, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
+import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
@@ -25,6 +26,8 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   // 파일이 삭제되면 기본 파일로 폴백
   const current = selected && files.includes(selected) ? selected : defaultFile(files);
   const { data: content } = useSpecFile(work.slug, current);
+  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
+  const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -36,22 +39,20 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
-  const copyRef = useCallback(
-    (start: number, end: number) => {
-      const range = end > start ? `L${start}-${end}` : `L${start}`;
-      const ref = `spec/${current}:${range}`;
-      navigator.clipboard.writeText(ref);
-      showToast(`${ref} 복사됨`);
-    },
-    [current, showToast],
-  );
-
-  const copyPath = useCallback(
-    (path: string) => {
-      navigator.clipboard.writeText(`spec/${path}`);
-      showToast(`spec/${path} 복사됨`);
+  const copyText = useCallback(
+    (text: string) => {
+      navigator.clipboard.writeText(text);
+      showToast(`${text} 복사됨`);
     },
     [showToast],
+  );
+
+  const copyRef = useCallback(
+    (start: number, end: number) => {
+      if (!current) return;
+      copyText(specRef(work.slug, current, start, end));
+    },
+    [work.slug, current, copyText],
   );
 
   return (
@@ -75,7 +76,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               </code>
             </div>
           </div>
-            ) : showSource ? (
+            ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
               <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
@@ -87,7 +88,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               work={work}
               currentFile={current}
               onSelectFile={setSelected}
-              onCopyPath={copyPath}
+              onCopy={copyText}
             />
           )}
         </div>
@@ -247,7 +248,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          <code className="rounded-[6px] border bg-inset px-[5px] py-px font-mono text-[0.88em]">
+          <code className="rounded-[6px] border bg-inset px-[5px] py-px font-mono text-[0.88em] wrap-anywhere">
             {children}
           </code>
         ),
@@ -256,7 +257,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
   }, [onCopyBlock]);
 
   return (
-    <article className="max-w-[820px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
+    <article className="mx-auto max-w-[900px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>

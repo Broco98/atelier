@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, Check, ChevronDown, Filter, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { formatCreated, StatusIcon } from "./status";
 import type { WorkView } from "./types";
 
@@ -29,16 +30,42 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
       )
     : filtered;
 
+  const size = useResizableWidth("panel-width", 360, 280, 560);
+
+  // Cmd+1~9 — 표시 순서(정렬·필터 반영) 기준 N번째 작업 선택. 입력 중에는 무시.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || !/^[1-9]$/.test(e.key)) return;
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )
+        return;
+      const work = sorted[Number(e.key) - 1];
+      if (!work) return;
+      e.preventDefault();
+      onSelect(work.slug);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sorted, onSelect]);
+
   return (
     <div
+      style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "shrink-0 overflow-hidden border-r bg-panel transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-        open ? "w-[360px]" : "w-0 border-transparent",
+        "relative shrink-0 overflow-hidden border-r bg-panel",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        !size.dragging &&
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        open ? "w-(--panel-width)" : "w-0 border-transparent",
       )}
     >
       <div
         className={cn(
-          "flex h-full w-[360px] flex-col px-3 pb-3 transition-opacity",
+          "flex h-full w-(--panel-width) flex-col px-3 pb-3 transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
@@ -49,10 +76,6 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             sidebarOpen ? "pl-0.5" : "pl-[114px]",
           )}
         >
-          <span className="flex items-baseline gap-[7px]">
-            <span className="text-[15px] font-semibold tracking-[-0.01em]">Works</span>
-            <span className="text-[12.5px] text-tertiary">{works.length}</span>
-          </span>
           <span className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
@@ -176,6 +199,8 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
           </div>
         )}
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </div>
   );
 }
