@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Maximize2, X } from "lucide-react";
+import { Check, Copy, Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const zoomButton =
@@ -20,6 +20,28 @@ function ZoomControls({
       <button type="button" onClick={() => onChange(1)} className={zoomButton}>{Math.round(scale * 100)}%</button>
       <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={zoomButton}>+</button>
     </>
+  );
+}
+
+// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const onCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(false), 1600);
+  };
+  return (
+    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={zoomButton}>
+      {copied ? (
+        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+      ) : (
+        <Copy className="size-3" strokeWidth={2} />
+      )}
+    </button>
   );
 }
 
@@ -140,6 +162,7 @@ function MermaidBlock({ code }: { code: string }) {
           >
             코드
           </button>
+          <CopyCodeButton code={code} />
           <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={zoomButton}>
             <Maximize2 className="size-3" strokeWidth={2} />
           </button>
@@ -175,6 +198,7 @@ function MermaidBlock({ code }: { code: string }) {
               <span className="font-mono text-[12px] text-tertiary">mermaid</span>
               <span className="flex items-center gap-1">
                 <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+                <CopyCodeButton code={code} />
                 <button
                   type="button"
                   onClick={() => setFullOpen(false)}
