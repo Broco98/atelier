@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -144,6 +144,15 @@ function MermaidBlock({ code }: { code: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [fullOpen]);
+
+  // 모달이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산)
+  useLayoutEffect(() => {
+    const el = modalPan.ref.current;
+    if (!fullOpen || !el || !size) return;
+    const pad = 56; // 모달 콘텐츠 p-7 좌우·상하 패딩 합
+    const fit = Math.min((el.clientWidth - pad) / size.w, (el.clientHeight - pad) / size.h);
+    setFullScale(Math.min(3, Math.max(0.4, fit)));
+  }, [fullOpen, size, modalPan.ref]);
 
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
