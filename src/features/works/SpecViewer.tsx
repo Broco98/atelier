@@ -25,6 +25,8 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   // 파일이 삭제되면 기본 파일로 폴백
   const current = selected && files.includes(selected) ? selected : defaultFile(files);
   const { data: content } = useSpecFile(work.slug, current);
+  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
+  const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -75,7 +77,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               </code>
             </div>
           </div>
-            ) : showSource ? (
+            ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
               <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
