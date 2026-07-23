@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import useIsFullscreen from "./useIsFullscreen";
 
 interface PageHeaderProps {
   root: string;
@@ -12,12 +13,14 @@ interface PageHeaderProps {
 
 // 페이지 소유 브레드크럼 바 — 메인 영역의 44px 타이틀바를 겸한다 (drag region).
 function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProps) {
+  // 전체화면에선 신호등이 숨으므로 SidebarToggle(left-4 + 26px + 12px 간격)만 회피
+  const fullscreen = useIsFullscreen();
   return (
     <header
       data-tauri-drag-region
       className={cn(
         "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b pr-4 transition-[padding] duration-[220ms]",
-        inset ? "pl-[126px]" : "pl-4",
+        inset ? (fullscreen ? "pl-[54px]" : "pl-[126px]") : "pl-4",
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-tertiary">
