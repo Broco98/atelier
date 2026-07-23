@@ -67,17 +67,10 @@ export function ResizeHandle({ control }: { control: ResizableWidth }) {
       title="드래그로 폭 조절 · 더블클릭으로 기본 폭"
       className="group absolute inset-y-0 right-0 z-30 w-[5px] cursor-col-resize touch-none"
     >
-      {/* 퍼지는 글로우 층 */}
+      {/* 심 라인 — blur 층은 WebKit에서 잔상(스미어)을 남겨 그라데이션 단일 층만 쓴다 */}
       <div
         className={cn(
-          "absolute inset-y-0 right-0 w-full bg-linear-to-b from-transparent via-primary/25 to-transparent blur-[2px] transition-opacity duration-200",
-          visible,
-        )}
-      />
-      {/* 심 라인 */}
-      <div
-        className={cn(
-          "absolute inset-y-0 right-[1.5px] w-[2px] bg-linear-to-b from-transparent via-primary/55 to-transparent transition-opacity duration-200",
+          "absolute inset-y-0 right-[1.5px] w-[2px] bg-linear-to-b from-transparent via-primary/55 to-transparent transition-opacity duration-150",
           visible,
         )}
       />
