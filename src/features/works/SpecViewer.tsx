@@ -257,7 +257,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
   }, [onCopyBlock]);
 
   return (
-    <article className="max-w-[820px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
+    <article className="mx-auto max-w-[900px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
