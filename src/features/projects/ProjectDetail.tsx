@@ -14,7 +14,7 @@ interface ProjectDetailProps {
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
-    <div className="flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
+    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
       {project.missing && (
         <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500 bg-red-500/[0.07] px-3.5 py-2.5">
           <span className="size-[7px] shrink-0 rounded-full bg-red-500" />
