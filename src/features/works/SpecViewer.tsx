@@ -249,7 +249,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         className?.includes("language-") ? (
           <code className={className}>{children}</code>
         ) : (
-          <code className="rounded-[6px] border bg-inset px-[5px] py-px font-mono text-[0.88em]">
+          <code className="rounded-[6px] border bg-inset px-[5px] py-px font-mono text-[0.88em] wrap-anywhere">
             {children}
           </code>
         ),
