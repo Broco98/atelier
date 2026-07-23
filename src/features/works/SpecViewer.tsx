@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { Check, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
+import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
@@ -38,22 +39,20 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
-  const copyRef = useCallback(
-    (start: number, end: number) => {
-      const range = end > start ? `L${start}-${end}` : `L${start}`;
-      const ref = `spec/${current}:${range}`;
-      navigator.clipboard.writeText(ref);
-      showToast(`${ref} 복사됨`);
-    },
-    [current, showToast],
-  );
-
-  const copyPath = useCallback(
-    (path: string) => {
-      navigator.clipboard.writeText(`spec/${path}`);
-      showToast(`spec/${path} 복사됨`);
+  const copyText = useCallback(
+    (text: string) => {
+      navigator.clipboard.writeText(text);
+      showToast(`${text} 복사됨`);
     },
     [showToast],
+  );
+
+  const copyRef = useCallback(
+    (start: number, end: number) => {
+      if (!current) return;
+      copyText(specRef(work.slug, current, start, end));
+    },
+    [work.slug, current, copyText],
   );
 
   return (
@@ -89,7 +88,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               work={work}
               currentFile={current}
               onSelectFile={setSelected}
-              onCopyPath={copyPath}
+              onCopy={copyText}
             />
           )}
         </div>

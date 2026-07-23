@@ -1,5 +1,6 @@
 import { ArrowRight, GitFork } from "lucide-react";
 import { useProjects } from "@/features/projects/hooks";
+import { specRef } from "./refs";
 import SpecTree from "./SpecTree";
 import type { WorkView } from "./types";
 
@@ -7,11 +8,12 @@ interface WorkPanelProps {
   work: WorkView;
   currentFile: string | null;
   onSelectFile: (path: string) => void;
-  onCopyPath: (path: string) => void;
+  // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
+  onCopy: (text: string) => void;
 }
 
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
-function WorkPanel({ work, currentFile, onSelectFile, onCopyPath }: WorkPanelProps) {
+function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) {
   const { data: projects = [] } = useProjects();
   const bases = [
     ...new Set(
@@ -58,7 +60,7 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopyPath }: WorkPanelPro
               files={work.specFiles}
               current={currentFile}
               onSelect={onSelectFile}
-              onCopy={onCopyPath}
+              onCopy={(path) => onCopy(specRef(work.slug, path))}
             />
           )}
         </div>
