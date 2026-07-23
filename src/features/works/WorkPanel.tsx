@@ -1,6 +1,6 @@
-import { ArrowRight, GitFork } from "lucide-react";
+import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { useProjects } from "@/features/projects/hooks";
-import { specRef } from "./refs";
+import { specRef, treeDirRef, workDirRef } from "./refs";
 import SpecTree from "./SpecTree";
 import type { WorkView } from "./types";
 
@@ -48,6 +48,16 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
             </>
           )}
         </div>
+        <div className="flex flex-col px-2 pb-2">
+          <PathCopyRow label="작업 폴더" onCopy={() => onCopy(workDirRef(work.slug))} />
+          {work.trees.map((t) => (
+            <PathCopyRow
+              key={t.project}
+              label={`트리 · ${t.project}`}
+              onCopy={() => onCopy(treeDirRef(t.path))}
+            />
+          ))}
+        </div>
         <div className="mx-4 h-px bg-border" />
         <div className="flex items-center px-4 pb-0.5 pt-2">
           <span className="text-[13.5px] font-semibold">Spec</span>
@@ -66,6 +76,24 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
         </div>
       </div>
     </aside>
+  );
+}
+
+// 경로 복사 행 — 행 전체가 버튼, hover 시 복사 아이콘 (SpecTree 파일 행과 같은 패턴)
+function PathCopyRow({ label, onCopy }: { label: string; onCopy: () => void }) {
+  return (
+    <button
+      type="button"
+      title="경로 복사"
+      onClick={onCopy}
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-accent"
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <Copy
+        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+        strokeWidth={1.8}
+      />
+    </button>
   );
 }
 
