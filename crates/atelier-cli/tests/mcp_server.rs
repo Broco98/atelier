@@ -228,6 +228,7 @@ fn listed_tools_are_exactly_this_wave() {
         vec![
             "atelier_add_project",
             "atelier_attach_project",
+            "atelier_edit_project",
             "atelier_get_work",
             "atelier_list_projects",
             "atelier_list_works",
@@ -715,4 +716,92 @@ fn add_project_refuses_relative_paths_instead_of_guessing() {
     let listed: Value =
         serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(listed.as_array().unwrap().is_empty(), "{listed}");
+}
+
+/// 프로젝트 하나를 등록한 홈을 만들고 서버를 띄운다.
+/// git 없는 폴더를 쓴다 — 02의 `fixture_with`에 기대지 않아 머지 순서와 무관하다 (§1.1).
+fn server_with_one_project() -> (tempfile::TempDir, tempfile::TempDir, Server) {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let folder = code.path().join("billing");
+    std::fs::create_dir(&folder).unwrap();
+    atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
+    let server = Server::start(home.path());
+    (home, code, server)
+}
+
+#[test]
+fn edit_project_fills_in_the_description() {
+    let (_home, _code, mut server) = server_with_one_project();
+    assert!(server.tool_names(2).contains(&"atelier_edit_project".to_string()));
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": {
+            "project_slug": "billing",
+            "description": "결제·정산 서비스. 카트 도메인과 인보이스 발행을 담당한다."
+        }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["description"].as_str().unwrap().contains("인보이스"), "{view}");
+    assert_eq!(view["slug"], "billing", "slug must not change");
+}
+
+#[test]
+fn edit_project_leaves_omitted_fields_untouched() {
+    // 부분 갱신은 커널이 Option으로 이미 보장한다. 여기서 보는 것은 그게 아니라
+    // **wire에서 생략한 키가 None으로 도착하는가** — 커널 테스트가 닿을 수 없는 지점이다.
+    let (_home, _code, mut server) = server_with_one_project();
+
+    server.request(2, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "billing", "description": "지켜져야 할 설명" }
+    }));
+    // base_branch만 준다 — name과 description은 아예 키가 없다
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "billing", "base_branch": "develop" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["baseBranch"], "develop");
+    assert_eq!(view["description"], "지켜져야 할 설명", "omitted field was clobbered: {view}");
+    assert_eq!(view["name"], "billing", "omitted field was clobbered: {view}");
+
+    // 생략 ≠ 비우기. 비우려면 빈 문자열을 준다 — 도구 설명이 약속하는 대로 동작해야 한다.
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "billing", "description": "" }
+    }));
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["description"], "");
+}
+
+#[test]
+fn edit_project_schema_shows_which_fields_are_optional() {
+    // 에이전트는 스키마를 보고 "안 주면 안 바뀐다"를 판단한다. 그게 계약이다.
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"].as_array().unwrap().iter()
+        .find(|t| t["name"] == "atelier_edit_project")
+        .unwrap_or_else(|| panic!("tool not listed: {res}"));
+
+    let required: Vec<&str> = tool["inputSchema"]["required"].as_array().unwrap()
+        .iter().map(|v| v.as_str().unwrap()).collect();
+    assert_eq!(required, vec!["project_slug"], "{tool}");
+    let props = &tool["inputSchema"]["properties"];
+    for field in ["name", "description", "base_branch"] {
+        assert!(!props[field].is_null(), "missing property {field}: {tool}");
+    }
+
+    let a = &tool["annotations"];
+    assert_eq!(a["readOnlyHint"], false, "{tool}");
+    assert_eq!(a["destructiveHint"], false, "{tool}");
+    assert_eq!(a["idempotentHint"], true, "{tool}");
+    assert_eq!(a["openWorldHint"], false, "{tool}");
 }

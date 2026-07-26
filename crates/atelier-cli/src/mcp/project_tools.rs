@@ -16,6 +16,20 @@ pub struct AddProjectParams {
     pub folder_path: String,
 }
 
+/// `atelier_edit_project`의 인자. 주지 않은 필드는 그대로 둔다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditProjectParams {
+    /// 수정할 프로젝트의 slug (atelier_list_projects가 돌려주는 `slug` 값)
+    pub project_slug: String,
+    /// 새 표시 이름. slug는 바뀌지 않는다. 공백만 있으면 거부된다.
+    pub name: Option<String>,
+    /// 프로젝트가 무엇인지 설명하는 새 본문(Markdown). 기존 설명을 통째로 대체한다.
+    pub description: Option<String>,
+    /// 워크트리가 갈라져 나올 기준 브랜치 (예: `main`, `develop`)
+    pub base_branch: Option<String>,
+}
+
 #[tool_router(router = project_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
@@ -49,6 +63,36 @@ impl AtelierServer {
             ))]));
         }
         match atelier_core::create_project(&self.projects_root, &folder) {
+            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Update an Atelier project's description, display name or base branch. \
+                       Use this to fill in `description` — a short account of what the project \
+                       is and what lives in it — right after registering a project, and again \
+                       whenever you learn it is more than its current description says. \
+                       Partial update: fields you omit are left untouched. Omitting is not \
+                       clearing — pass an empty string to clear a field. `description` replaces \
+                       the whole body rather than appending, so include everything you want to \
+                       keep. The slug never changes and the code folder is never modified. \
+                       Local files only.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn atelier_edit_project(
+        &self,
+        Parameters(EditProjectParams { project_slug, name, description, base_branch }): Parameters<
+            EditProjectParams,
+        >,
+    ) -> Result<CallToolResult, ErrorData> {
+        let patch = atelier_core::ProjectPatch { name, description, base_branch };
+        match atelier_core::update_project(&self.projects_root, &project_slug, patch) {
             Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }
