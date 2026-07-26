@@ -18,4 +18,18 @@ impl AtelierServer {
             Err(e) => Ok(kernel_error(e)),
         }
     }
+
+    #[tool(
+        description = "List every Atelier work. A work is one feature spanning one or more \
+                       projects, sharing a single branch name. Each entry carries the shared \
+                       branch, the per-project worktree paths, the spec directory and the spec \
+                       files already written. Read-only; reads local files only.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn atelier_list_works(&self) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::list_works(&self.works_root) {
+            Ok(views) => Ok(CallToolResult::success(vec![ContentBlock::json(&views)?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
 }

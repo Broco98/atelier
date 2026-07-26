@@ -82,6 +82,27 @@ impl Drop for Server {
     }
 }
 
+fn run_git(dir: &std::path::Path, args: &[&str]) {
+    let out = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// 프로젝트 하나가 등록된 홈 + 커밋 하나 있는 git 저장소를 만든다.
+fn fixture() -> (tempfile::TempDir, tempfile::TempDir) {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let repo = code.path().join("billing");
+    std::fs::create_dir(&repo).unwrap();
+    run_git(&repo, &["init", "-b", "main"]);
+    run_git(&repo, &["config", "user.email", "t@t.t"]);
+    run_git(&repo, &["config", "user.name", "t"]);
+    std::fs::write(repo.join("a.txt"), "x").unwrap();
+    run_git(&repo, &["add", "."]);
+    run_git(&repo, &["commit", "-m", "init"]);
+    atelier_core::create_project(&home.path().join("projects"), &repo).unwrap();
+    (home, code)
+}
+
 #[test]
 fn handshake_succeeds_and_stdout_carries_only_protocol_messages() {
     let home = tempfile::tempdir().unwrap();
@@ -100,8 +121,6 @@ fn list_projects_returns_registered_projects() {
     atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
 
     let mut server = Server::start(home.path());
-    assert_eq!(server.tool_names(2), vec!["atelier_list_projects"]);
-
     let res = server.request(3, "tools/call",
         json!({ "name": "atelier_list_projects", "arguments": {} }));
     assert_eq!(res["result"]["isError"], false, "{res}");
@@ -111,6 +130,32 @@ fn list_projects_returns_registered_projects() {
     let views: Value = serde_json::from_str(text).unwrap();
     assert_eq!(views[0]["slug"], "billing");
     assert!(views[0]["baseBranch"].is_string(), "{text}");
+}
+
+#[test]
+fn list_works_returns_every_work() {
+    let (home, _code) = fixture();
+    atelier_core::start_work(
+        &home.path().join("works"),
+        &home.path().join("projects"),
+        "카트 아이템 추가",
+        &["billing".to_string()],
+        Some("feat/cart"),
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    let mut names = server.tool_names(2);
+    names.sort();
+    assert_eq!(names, vec!["atelier_list_projects", "atelier_list_works"]);
+
+    let res = server.request(3, "tools/call",
+        json!({ "name": "atelier_list_works", "arguments": {} }));
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    let views: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(views[0]["slug"], "카트-아이템-추가");
+    assert_eq!(views[0]["branch"], "feat/cart");
+    assert_eq!(views[0]["status"], "active");
 }
 
 #[test]
