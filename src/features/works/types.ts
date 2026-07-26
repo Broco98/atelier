@@ -15,5 +15,6 @@ export interface WorkView {
   createdAt: string;
   projects: string[];
   trees: TreeView[];
+  specDir: string;
   specFiles: string[];
 }

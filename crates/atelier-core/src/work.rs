@@ -84,6 +84,8 @@ pub struct WorkView {
     #[serde(flatten)]
     pub work: Work,
     pub trees: Vec<TreeView>,
+    /// spec 문서를 두는 디렉터리 (홈 축약 경로). 에이전트가 여기에 직접 쓴다.
+    pub spec_dir: String,
     pub spec_files: Vec<String>,
 }
 
