@@ -6,6 +6,7 @@
 mod tool_error;
 mod read_tools;
 mod work_tools;
+mod project_tools;
 
 use rmcp::{
     handler::server::router::tool::ToolRouter, model::*, tool_handler, transport::stdio,
@@ -28,7 +29,7 @@ impl AtelierServer {
             projects_root: atelier_core::projects_dir(),
             works_root: atelier_core::works_dir(),
             // 영역별 라우터를 합성한다. 도구를 추가하는 티켓은 파일과 라우터를 하나씩 늘린다.
-            tool_router: Self::read_router() + Self::work_router(),
+            tool_router: Self::read_router() + Self::work_router() + Self::project_router(),
         }
     }
 }

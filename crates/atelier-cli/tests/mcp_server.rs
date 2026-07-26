@@ -226,6 +226,7 @@ fn listed_tools_are_exactly_this_wave() {
     assert_eq!(
         names,
         vec![
+            "atelier_add_project",
             "atelier_attach_project",
             "atelier_get_work",
             "atelier_list_projects",
@@ -595,4 +596,78 @@ fn remove_unknown_work_is_an_execution_error() {
         .as_str()
         .unwrap()
         .contains("atelier_list_works"));
+}
+
+#[test]
+fn add_project_registers_a_folder_and_is_idempotent() {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let folder = code.path().join("billing");
+    std::fs::create_dir(&folder).unwrap();
+
+    let mut server = Server::start(home.path());
+    assert!(server.tool_names(2).contains(&"atelier_add_project".to_string()));
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_add_project",
+        "arguments": { "folder_path": folder.to_str().unwrap() }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    // 결과는 ProjectView를 직렬화한 JSON 텍스트 한 블록이다 (A1)
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["slug"], "billing");
+    assert_eq!(view["baseBranch"], "main");       // git 없는 폴더 → 폴백
+    assert_eq!(view["missing"], false);
+    // 등록 직후 설명은 비어 있다 — 도구 설명이 edit로 이어 부르라고 지시하는 이유
+    assert_eq!(view["description"], "");
+
+    // 멱등 (D7의 안전 근거이자 idempotent_hint=true의 공개 주장)
+    let again = server.request(4, "tools/call", json!({
+        "name": "atelier_add_project",
+        "arguments": { "folder_path": folder.to_str().unwrap() }
+    }));
+    let again_view: Value =
+        serde_json::from_str(again["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(again_view["slug"], "billing", "re-registering must return the existing project");
+
+    let listed = server.request(5, "tools/call",
+        json!({ "name": "atelier_list_projects", "arguments": {} }));
+    let listed: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1, "duplicate registration: {listed}");
+}
+
+#[test]
+fn add_project_declares_additive_idempotent_and_local_only() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"].as_array().unwrap().iter()
+        .find(|t| t["name"] == "atelier_add_project")
+        .unwrap_or_else(|| panic!("tool not listed: {res}"));
+
+    // A4 — 기본값이 destructive:true / idempotent:false 라서 넷 다 명시해야 뜻이 통한다
+    let a = &tool["annotations"];
+    assert_eq!(a["readOnlyHint"], false, "{tool}");
+    assert_eq!(a["destructiveHint"], false, "{tool}");
+    assert_eq!(a["idempotentHint"], true, "{tool}");
+    assert_eq!(a["openWorldHint"], false, "{tool}");
+}
+
+#[test]
+fn add_project_missing_folder_is_an_execution_error() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_add_project",
+        "arguments": { "folder_path": "/no/such/dir" }
+    }));
+    // 프로토콜 오류가 아니다 — 도구는 실행됐고 실패했다
+    assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("/no/such/dir"), "{text}");
+    assert!(text.contains("atelier_list_projects"), "no next step: {text}");
 }
