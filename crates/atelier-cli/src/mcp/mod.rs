@@ -3,12 +3,15 @@
 //! 표준출력은 JSON-RPC 전용 채널이다. 이 모듈 아래에서는 어떤 경로로도
 //! `println!`을 쓰지 않는다 — 진단은 전부 표준에러로 나간다 (Δ13).
 
+mod tool_error;
 mod read_tools;
 
 use rmcp::{
     handler::server::router::tool::ToolRouter, model::*, tool_handler, transport::stdio,
     ServerHandler, ServiceExt,
 };
+
+pub(crate) use tool_error::kernel_error;
 
 /// 무상태 도구 표면. 데이터 루트는 기동 시 한 번 확정하고, 모든 작업은 커널에 위임한다.
 #[derive(Clone)]
