@@ -230,7 +230,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
             <MermaidBlock code={hastText(code)} />
           ) : (
             <pre
-              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7]"
+              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
               {...props}
             >
               {children}

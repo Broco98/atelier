@@ -180,12 +180,12 @@ function MermaidBlock({ code }: { code: string }) {
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
           <span className="text-[12.5px] text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground">{code}</pre>
+          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground">{code}</pre>
+        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
       ) : (
-        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing">
+        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
@@ -218,7 +218,7 @@ function MermaidBlock({ code }: { code: string }) {
                 </button>
               </span>
             </div>
-            <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing">
+            <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
               {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
             </div>
           </div>
