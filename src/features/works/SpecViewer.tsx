@@ -56,11 +56,12 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   );
 
   return (
-    <div className="relative flex min-h-0 flex-1">
-      {/* 스크롤 컨테이너는 패널까지 포함한 전체 — 스크롤바가 화면 맨 오른쪽에 붙는다 */}
-      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-        <div className="flex min-h-full items-start">
-          <div className="flex min-w-0 flex-1 flex-col self-stretch">
+    <div className="flex min-h-0 flex-1">
+      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다 */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
+        <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+          <div className="flex min-h-full min-w-0 flex-col">
             {files.length === 0 ? (
               <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
@@ -82,23 +83,23 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
               <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
             )}
           </div>
-
-          {panelOpen && (
-            <WorkPanel
-              work={work}
-              currentFile={current}
-              onSelectFile={setSelected}
-              onCopy={copyText}
-            />
-          )}
         </div>
+
+        {toast && (
+          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
+            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
+            {toast}
+          </div>
+        )}
       </div>
 
-      {toast && (
-        <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-          <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-          {toast}
-        </div>
+      {panelOpen && (
+        <WorkPanel
+          work={work}
+          currentFile={current}
+          onSelectFile={setSelected}
+          onCopy={copyText}
+        />
       )}
     </div>
   );
