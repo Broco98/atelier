@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ResizableWidth {
@@ -8,6 +8,7 @@ export interface ResizableWidth {
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
     onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
+    onPointerCancel: () => void;
     onDoubleClick: () => void;
   };
 }
@@ -62,6 +63,8 @@ function useResizableWidth(
         e.currentTarget.releasePointerCapture(e.pointerId);
         endDrag();
       },
+      // 웹뷰/OS가 드래그를 가로채면 pointerup이 오지 않는다 — 캡처는 이미 풀린 상태다
+      onPointerCancel: endDrag,
       onDoubleClick: () => {
         setWidth(defaultWidth);
         localStorage.setItem(key, String(defaultWidth));
@@ -73,6 +76,10 @@ function useResizableWidth(
 // 패널 오른쪽 가장자리에 얹는 리사이즈 핸들 — 부모는 relative여야 한다.
 // 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
 export function ResizeHandle({ control }: { control: ResizableWidth }) {
+  // 드래그 도중 핸들이 사라지면(Cmd+B·Cmd+Enter로 패널 접기) pointerup도 pointercancel도 오지 않는다.
+  // 억제가 영구히 남는 유일한 경로라 언마운트에서 무조건 푼다
+  useEffect(() => () => setResizing(false), []);
+
   const visible = control.dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100";
   return (
     <div
