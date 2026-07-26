@@ -166,3 +166,35 @@
         transform: none;
     }
 }
+
+/* 스크롤바 표현 정책 — 평소 투명, 영역에 접근(호버·포커스)하면 노출.
+   macOS 오버레이 스크롤바는 시스템 설정이 "항상"이면 상시 노출 클래식으로 바뀌고 CSS로 되돌릴 수 없다.
+   ::-webkit-scrollbar에 폭을 명시해 커스텀 스크롤바로 전환하면 설정과 무관하게 결과가 같아진다.
+   폭은 상태와 무관하게 11px 고정 — 노출/비노출은 thumb 색만 바꾸므로 콘텐츠 폭이 흔들리지 않는다.
+   track·corner를 투명으로, thumb를 3px 안쪽으로 물려 둥근 모서리 호를 침범하지 않는다. */
+@utility scroll-quiet {
+  &::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+    }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    }
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+    }
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    }
+  &:hover::-webkit-scrollbar-thumb,
+  &:focus-within::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 20%, transparent);
+    }
+  /* thumb 직접 호버는 컨테이너 호버와 명시도가 같다 — 아래에 둬야 이긴다 */
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--foreground) 34%, transparent);
+    }
+}

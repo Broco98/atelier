@@ -58,7 +58,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   return (
     <div className="relative flex min-h-0 flex-1">
       {/* 스크롤 컨테이너는 패널까지 포함한 전체 — 스크롤바가 화면 맨 오른쪽에 붙는다 */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
         <div className="flex min-h-full items-start">
           <div className="flex min-w-0 flex-1 flex-col self-stretch">
             {files.length === 0 ? (
