@@ -515,6 +515,7 @@ fn remove_work_refuses_dirty_trees_and_leaves_the_branch_behind() {
     let text = refused["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("uncommitted"), "{text}");
     assert!(text.contains("Commit or stash"), "no next step: {text}");
+    assert!(!text.contains("--force"), "dead CLI flag leaked into the tool surface: {text}");
     assert!(home.path().join("works/카트").exists(), "refused remove deleted data");
 
     // 변경을 치우면 제거된다

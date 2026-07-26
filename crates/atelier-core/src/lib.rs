@@ -12,7 +12,7 @@ pub enum Error {
     WorkNotFound(String),
     #[error("{0}")]
     Validation(String),
-    #[error("uncommitted changes in: {0} (use --force to remove anyway)")]
+    #[error("uncommitted changes in: {0}")]
     DirtyTrees(String),
     #[error("git: {0}")]
     Git(String),
