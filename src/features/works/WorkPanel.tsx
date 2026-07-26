@@ -27,8 +27,9 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
     // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
+    // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
     <aside className="flex w-[296px] shrink-0 origin-top-right animate-[panel-pop_260ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col p-4 pl-0">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
           <span
