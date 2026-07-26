@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, List, Maximize2, Minimize2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
+import { PopoverPortal } from "@/components/ui/popover-portal";
 import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
 import { useSetWorkStatus, useWorks } from "./hooks";
@@ -162,6 +163,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
 // 브레드크럼 상태 배지 + 변경 드롭다운
 function StatusMenu({ work }: { work: WorkView }) {
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
   const setStatus = useSetWorkStatus();
   const meta = STATUS_META[work.status];
 
@@ -177,6 +179,7 @@ function StatusMenu({ work }: { work: WorkView }) {
   return (
     <span className="relative flex">
       <button
+        ref={anchor}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title="상태 변경"
@@ -189,10 +192,13 @@ function StatusMenu({ work }: { work: WorkView }) {
         <ChevronDown className="size-2.5" strokeWidth={2.2} />
       </button>
       {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-[27px] z-40 flex w-[190px] flex-col gap-px overflow-hidden rounded-[13px] border border-border-strong bg-background p-[5px] shadow-lg">
-            {(Object.keys(STATUS_META) as WorkStatus[]).map((status) => {
+        <PopoverPortal
+          anchorRef={anchor}
+          width={190}
+          onClose={() => setOpen(false)}
+          className="flex flex-col gap-px p-[5px]"
+        >
+          {(Object.keys(STATUS_META) as WorkStatus[]).map((status) => {
               const option = STATUS_META[status];
               return (
                 <button
@@ -217,8 +223,7 @@ function StatusMenu({ work }: { work: WorkView }) {
                 </button>
               );
             })}
-          </div>
-        </>
+        </PopoverPortal>
       )}
     </span>
   );

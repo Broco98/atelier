@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Copy, Maximize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -157,7 +158,7 @@ function MermaidBlock({ code }: { code: string }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
-    <div className="overflow-hidden rounded-[12px] border bg-panel" onClick={stop}>
+    <div className="overflow-hidden rounded-[12px] border bg-panel">
       <div className="flex items-center justify-between border-b px-2.5 py-1.5">
         <span className="font-mono text-[11px] text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
@@ -180,12 +181,12 @@ function MermaidBlock({ code }: { code: string }) {
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
           <span className="text-[12.5px] text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground">{code}</pre>
+          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground">{code}</pre>
+        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
       ) : (
-        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing">
+        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
             <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
@@ -194,36 +195,40 @@ function MermaidBlock({ code }: { code: string }) {
         </div>
       )}
 
-      {fullOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
-          onClick={() => setFullOpen(false)}
-        >
+      {fullOpen &&
+        // 문서 최상위에 렌더한다 — 조상 어디에 변형이 걸려도 fixed의 기준 상자가 바뀌지 않는다.
+        // 포털이어도 이벤트는 React 트리를 따라 오르므로 바깥 블록과의 관계는 그대로다.
+        createPortal(
           <div
-            className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
-            onClick={stop}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
+            onClick={() => setFullOpen(false)}
           >
-            <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-              <span className="font-mono text-[12px] text-tertiary">mermaid</span>
-              <span className="flex items-center gap-1">
-                <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-                <CopyCodeButton code={code} />
-                <button
-                  type="button"
-                  onClick={() => setFullOpen(false)}
-                  title="닫기 (Esc)"
-                  className="ml-1 flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <X className="size-3.5" strokeWidth={2} />
-                </button>
-              </span>
+            <div
+              className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
+              onClick={stop}
+            >
+              <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
+                <span className="font-mono text-[12px] text-tertiary">mermaid</span>
+                <span className="flex items-center gap-1">
+                  <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+                  <CopyCodeButton code={code} />
+                  <button
+                    type="button"
+                    onClick={() => setFullOpen(false)}
+                    title="닫기 (Esc)"
+                    className="ml-1 flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="size-3.5" strokeWidth={2} />
+                  </button>
+                </span>
+              </div>
+              <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
+                {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+              </div>
             </div>
-            <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing">
-              {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

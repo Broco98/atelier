@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,66 +39,109 @@ interface TreeProps {
 
 function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
   const tree = useMemo(() => buildTree(files), [files]);
-  return <TreeRows nodes={tree} depth={0} current={current} onSelect={onSelect} onCopy={onCopy} />;
+  // 접힌 폴더 경로 — 트리가 소유하며 리마운트(작업 전환·패널 토글)를 넘어 살지 않는다
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggle = (path: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+  return (
+    <TreeRows
+      nodes={tree}
+      depth={0}
+      current={current}
+      collapsed={collapsed}
+      onToggle={toggle}
+      onSelect={onSelect}
+      onCopy={onCopy}
+    />
+  );
 }
 
 function TreeRows({
   nodes,
   depth,
   current,
+  collapsed,
+  onToggle,
   onSelect,
   onCopy,
 }: {
   nodes: TreeNode[];
   depth: number;
   current: string | null;
+  collapsed: Set<string>;
+  onToggle: (path: string) => void;
   onSelect: (path: string) => void;
   onCopy?: (path: string) => void;
 }) {
   return (
     <>
-      {nodes.map((node) => (
-        <div key={node.path} className="flex flex-col">
-          {node.children ? (
-            <>
-              <span
-                className="flex h-7 items-center gap-1 text-[12.5px] text-tertiary"
+      {nodes.map((node) => {
+        const expanded = !collapsed.has(node.path);
+        return (
+          <div key={node.path} className="flex flex-col">
+            {node.children ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onToggle(node.path)}
+                  aria-expanded={expanded}
+                  className="flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-accent"
+                  style={{ paddingLeft: 8 + depth * 14 }}
+                >
+                  <ChevronRight
+                    className={cn("size-3 transition-transform", expanded && "rotate-90")}
+                    strokeWidth={2.2}
+                  />
+                  {node.name}
+                </button>
+                {expanded && (
+                  <TreeRows
+                    nodes={node.children}
+                    depth={depth + 1}
+                    current={current}
+                    collapsed={collapsed}
+                    onToggle={onToggle}
+                    onSelect={onSelect}
+                    onCopy={onCopy}
+                  />
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSelect(node.path)}
+                className={cn(
+                  "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors hover:bg-accent",
+                  node.path === current ? "font-medium text-primary" : "text-muted-foreground",
+                )}
                 style={{ paddingLeft: 8 + depth * 14 }}
               >
-                <ChevronRight className="size-3 rotate-90" strokeWidth={2.2} />
-                {node.name}
-              </span>
-              <TreeRows nodes={node.children} depth={depth + 1} current={current} onSelect={onSelect} onCopy={onCopy} />
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onSelect(node.path)}
-              className={cn(
-                "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors hover:bg-accent",
-                node.path === current ? "font-medium text-primary" : "text-muted-foreground",
-              )}
-              style={{ paddingLeft: 8 + depth * 14 }}
-            >
-              <FileGlyph name={node.name} />
-              <span className="min-w-0 flex-1 truncate">{node.name}</span>
-              {onCopy && (
-                <span
-                  role="button"
-                  title="경로 복사"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCopy(node.path);
-                  }}
-                  className="flex size-[22px] shrink-0 items-center justify-center rounded-[7px] text-tertiary opacity-0 transition-opacity hover:bg-inset hover:text-foreground group-hover:opacity-100"
-                >
-                  <Copy className="size-3" strokeWidth={1.8} />
-                </span>
-              )}
-            </button>
-          )}
-        </div>
-      ))}
+                <FileGlyph name={node.name} />
+                <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                {onCopy && (
+                  <span
+                    role="button"
+                    title="경로 복사"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCopy(node.path);
+                    }}
+                    className="flex size-[22px] shrink-0 items-center justify-center rounded-[7px] text-tertiary opacity-0 transition-opacity hover:bg-inset hover:text-foreground group-hover:opacity-100"
+                  >
+                    <Copy className="size-3" strokeWidth={1.8} />
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }

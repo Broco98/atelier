@@ -1,12 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, FileText } from "lucide-react";
+import { Check, Copy, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
-import WorkPanel from "./WorkPanel";
+import WorkPanel, { PANEL_ANIM_MS } from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
@@ -28,6 +28,18 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const { data: content } = useSpecFile(work.slug, current);
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
+
+  // 패널은 닫는 즉시 사라지면 퇴장 애니메이션을 재생할 틈이 없다 — 길이만큼 언마운트를 늦춘다.
+  // 늦출 뿐 끝내 언마운트하므로, 스펙 트리의 접힘이 패널 토글을 넘지 않는다는 계약은 그대로다.
+  const [panelMounted, setPanelMounted] = useState(panelOpen);
+  useEffect(() => {
+    if (panelOpen) {
+      setPanelMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_ANIM_MS);
+    return () => window.clearTimeout(timer);
+  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -56,49 +68,51 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   );
 
   return (
-    <div className="relative flex min-h-0 flex-1">
-      {/* 스크롤 컨테이너는 패널까지 포함한 전체 — 스크롤바가 화면 맨 오른쪽에 붙는다 */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full items-start">
-          <div className="flex min-w-0 flex-1 flex-col self-stretch">
+    <div className="flex min-h-0 flex-1">
+      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다 */}
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
+        <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+          <div className="flex min-h-full min-w-0 flex-col">
             {files.length === 0 ? (
               <div className="flex flex-1 items-center justify-center p-10">
-            <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-              <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                <FileText className="size-5" strokeWidth={1.6} />
+                <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
+                  <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+                    <FileText className="size-5" strokeWidth={1.6} />
+                  </div>
+                  <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
+                  <span className="text-[14px] leading-[1.65] text-tertiary">
+                    AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
+                  </span>
+                  <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                    ~/.atelier/works/{work.slug}/spec/
+                  </code>
+                </div>
               </div>
-              <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-              <span className="text-[14px] leading-[1.65] text-tertiary">
-                AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-              </span>
-              <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                ~/.atelier/works/{work.slug}/spec/
-              </code>
-            </div>
-          </div>
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
               <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
             )}
           </div>
-
-          {panelOpen && (
-            <WorkPanel
-              work={work}
-              currentFile={current}
-              onSelectFile={setSelected}
-              onCopy={copyText}
-            />
-          )}
         </div>
+
+        {toast && (
+          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
+            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
+            {toast}
+          </div>
+        )}
       </div>
 
-      {toast && (
-        <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-          <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-          {toast}
-        </div>
+      {panelMounted && (
+        <WorkPanel
+          work={work}
+          currentFile={current}
+          onSelectFile={setSelected}
+          onCopy={copyText}
+          closing={!panelOpen}
+        />
       )}
     </div>
   );
@@ -109,25 +123,49 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 function SourceView({ content }: { content: string }) {
   const lines = content.split("\n");
   return (
-    <div className="px-3.5 py-4 font-mono text-[12.5px] leading-[1.75]">
-      {lines.map((line, i) => (
-        <div key={i} className="grid grid-cols-[52px_1fr] gap-3.5">
-          <span className="select-none text-right text-tertiary">{i + 1}</span>
-          <span className="whitespace-pre text-muted-foreground">{line}</span>
+    // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
+    <div className={cn(bodyColumn, "py-4")}>
+      {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
+          -ml로 규격의 좌측 여백(62px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
+          소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
+          예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
+      <div className="-ml-[62px] overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
+        {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
+        <div className="w-max min-w-full">
+          {lines.map((line, i) => (
+            <div key={i} className="flex">
+              {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
+                  폭 62px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터와 같은 자리에 온다 */}
+              <span className="sticky left-0 z-10 w-[62px] shrink-0 select-none bg-background pr-4 text-right text-tertiary">
+                {i + 1}
+              </span>
+              <span className="whitespace-pre text-muted-foreground">{line}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
 
 // ─── 예쁜 보기 ───
 
+// 본문 열 레이아웃 규격 — 예쁜 보기와 소스 보기가 공유하는 단일 출처.
+// w-full: 부모가 column-flex인데 mx-auto가 붙으면 stretch가 꺼져 폭이 fit-content로
+//   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
+// 좌우가 비대칭인 이유: 좌측 62px은 여백이 아니라 거터의 자리다.
+//   세 자리 줄범위 "123–145"는 10.5px mono(0.6em/자)에서 44.1px이고
+//   본문과 16px 떨어져야 하므로, 62px은 줄일 수 있는 값이 아니라 하한이다.
+export const bodyColumn = "mx-auto w-full max-w-[900px] pl-[62px] pr-10";
+
 interface PrettyViewProps {
   content: string;
   onCopyBlock: (start: number, end: number) => void;
 }
 
-// 클릭 → 참조 복사되는 최상위 블록 래퍼 (좌측 거터에 원본 라인 범위)
+// 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
+// 참조 복사는 좌측 거터의 버튼이 맡는다. 줄번호는 항상 보이고(그 자체가 정보다),
+// 블록에 접근하면 같은 자리에서 복사 아이콘으로 바뀌어 누를 수 있다는 걸 알린다.
 function BlockWrapper({
   start,
   end,
@@ -141,17 +179,29 @@ function BlockWrapper({
   onCopy: (start: number, end: number) => void;
   children: React.ReactNode;
 }) {
+  const range = end !== start ? `${start}–${end}` : `${start}`;
   return (
-    <div
-      onClick={() => onCopy(start, end)}
-      className={cn(
-        "relative -mx-3 cursor-copy rounded-[9px] px-3 py-1 transition-colors hover:bg-accent",
-        spacing,
-      )}
-    >
-      <span className="absolute -left-[44px] top-[9px] w-[36px] select-none text-center font-mono text-[10.5px] text-tertiary opacity-65">
-        {end !== start ? `${start}–${end}` : start}
-      </span>
+    <div className={cn("group relative py-1", spacing)}>
+      {/* 거터는 본문 좌측 여백(bodyColumn의 pl) 안쪽에 오른쪽 정렬로 얹힌다 —
+          줄범위가 길어지면 왼쪽으로 자라고 본문과의 간격 16px은 그대로다.
+          숫자와 아이콘을 grid 한 칸에 겹쳐 쌓아 트랙 폭을 긴 쪽(숫자)이 정한다 —
+          교체되는 동안 상자 폭이 변하지 않아 아이콘이 숫자의 오른쪽 끝에 그대로 선다 */}
+      <button
+        type="button"
+        onClick={() => onCopy(start, end)}
+        aria-label={`${range}줄 참조 복사`}
+        title={`${range}줄 참조 복사`}
+        className="absolute right-full top-[9px] mr-4 grid cursor-copy select-none place-items-end rounded-[4px] font-mono text-[10.5px] text-tertiary outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <span className="col-start-1 row-start-1 whitespace-nowrap group-hover:invisible group-focus-within:invisible">
+          {range}
+        </span>
+        <Copy
+          className="invisible col-start-1 row-start-1 size-3 group-hover:visible group-focus-within:visible"
+          strokeWidth={1.8}
+          aria-hidden
+        />
+      </button>
       {children}
     </div>
   );
@@ -206,7 +256,23 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         "mt-1.5",
       ),
       hr: block("hr", "border-border", "mt-4"),
-      table: block("table", "w-full border-collapse text-[13.5px]", "mt-2"),
+      // 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다
+      table: (({ node, children, ...props }: any) => {
+        const inner = (
+          <div className="overflow-x-auto scroll-quiet">
+            <table className="w-full border-collapse text-[13.5px]" {...props}>
+              {children}
+            </table>
+          </div>
+        );
+        const range = lines(node);
+        if (!range) return inner;
+        return (
+          <BlockWrapper start={range.start} end={range.end} spacing="mt-2" onCopy={onCopyBlock}>
+            {inner}
+          </BlockWrapper>
+        );
+      }) as Components["table"],
       th: ({ children }) => (
         <th className="border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
           {children}
@@ -230,7 +296,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
             <MermaidBlock code={hastText(code)} />
           ) : (
             <pre
-              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7]"
+              className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
               {...props}
             >
               {children}
@@ -257,7 +323,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
   }, [onCopyBlock]);
 
   return (
-    <article className="mx-auto max-w-[900px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
+    <article className={cn(bodyColumn, "pb-16 pt-8 text-[15px]")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
