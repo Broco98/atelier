@@ -88,7 +88,7 @@ pub fn start_work(
         return Err(Error::Validation(reasons.join("; ")));
     }
 
-    std::fs::create_dir_all(dir.join("spec"))?;
+    std::fs::create_dir_all(spec_dir(&dir))?;
     std::fs::create_dir_all(dir.join("trees"))?;
     write_work(works_root, &work)?;
 
@@ -192,13 +192,19 @@ fn to_view(works_root: &Path, work: Work) -> WorkView {
             }
         })
         .collect();
-    WorkView { spec_dir: collapse_home(&dir.join("spec")), spec_files: spec_files(&dir), work, trees }
+    WorkView { spec_dir: collapse_home(&spec_dir(&dir)), spec_files: spec_files(&dir), work, trees }
+}
+
+/// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
+/// 않도록 경로를 만드는 곳은 여기 하나다 (work_dir와 같은 규칙).
+fn spec_dir(work_dir: &Path) -> PathBuf {
+    work_dir.join("spec")
 }
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
 fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
-    collect_files(&work_dir.join("spec"), "", &mut files);
+    collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
     files
 }
@@ -317,7 +323,7 @@ pub fn read_spec_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<S
     if !safe {
         return Err(Error::Validation(format!("invalid spec path: {rel_path}")));
     }
-    Ok(std::fs::read_to_string(dir.join("spec").join(rel))?)
+    Ok(std::fs::read_to_string(spec_dir(&dir).join(rel))?)
 }
 
 #[cfg(test)]
