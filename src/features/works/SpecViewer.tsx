@@ -64,19 +64,19 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
           <div className="flex min-h-full min-w-0 flex-col">
             {files.length === 0 ? (
               <div className="flex flex-1 items-center justify-center p-10">
-            <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-              <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                <FileText className="size-5" strokeWidth={1.6} />
+                <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
+                  <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+                    <FileText className="size-5" strokeWidth={1.6} />
+                  </div>
+                  <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
+                  <span className="text-[14px] leading-[1.65] text-tertiary">
+                    AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
+                  </span>
+                  <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                    ~/.atelier/works/{work.slug}/spec/
+                  </code>
+                </div>
               </div>
-              <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-              <span className="text-[14px] leading-[1.65] text-tertiary">
-                AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-              </span>
-              <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                ~/.atelier/works/{work.slug}/spec/
-              </code>
-            </div>
-          </div>
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
