@@ -125,14 +125,18 @@ function SourceView({ content }: { content: string }) {
   return (
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
     <div className={cn(bodyColumn, "py-4")}>
-      {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
-      <div className="overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
+      {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
+          -ml로 규격의 좌측 여백(62px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
+          소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
+          예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
+      <div className="-ml-[62px] overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
             <div key={i} className="flex">
-              {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다 */}
-              <span className="sticky left-0 z-10 w-[66px] shrink-0 select-none bg-background pr-3.5 text-right text-tertiary">
+              {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
+                  폭 62px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터와 같은 자리에 온다 */}
+              <span className="sticky left-0 z-10 w-[62px] shrink-0 select-none bg-background pr-4 text-right text-tertiary">
                 {i + 1}
               </span>
               <span className="whitespace-pre text-muted-foreground">{line}</span>
