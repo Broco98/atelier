@@ -79,6 +79,14 @@ pub struct SetWorkStatusParams {
     pub status: String,
 }
 
+/// `atelier_remove_work`의 인자. **`force`가 없다** — 강제 삭제는 노출하지 않는다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct RemoveWorkParams {
+    /// Slug of the work to remove, as returned by atelier_list_works.
+    pub work_slug: String,
+}
+
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
@@ -149,6 +157,35 @@ impl AtelierServer {
         };
         match atelier_core::update_work_status(&self.works_root, &work_slug, status) {
             Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Remove a work: delete its metadata, its spec directory and its \
+                       worktrees. The shared branch is kept in every project repository, so \
+                       committed work is not lost. Refused when any worktree has uncommitted \
+                       changes — commit or stash them first. There is no force option."
+    )]
+    async fn atelier_remove_work(
+        &self,
+        Parameters(RemoveWorkParams { work_slug }): Parameters<RemoveWorkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // 살아남는 브랜치 이름을 응답에 담기 위해 먼저 읽는다.
+        let branch = match atelier_core::get_work(&self.works_root, &work_slug) {
+            Ok(view) => view.work.branch,
+            Err(e) => return Ok(kernel_error(e)),
+        };
+        // force = false 고정. dirty 검사와 브랜치 보존이 이 도구의 안전장치다 (D6).
+        match atelier_core::remove_work(&self.works_root, &work_slug, false) {
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::json(
+                &serde_json::json!({
+                    "removed": work_slug,
+                    "branch": branch,
+                    "note": "The worktrees are gone. The branch above still exists in every \
+                             project repository, so committed work is recoverable.",
+                }),
+            )?])),
             Err(e) => Ok(kernel_error(e)),
         }
     }

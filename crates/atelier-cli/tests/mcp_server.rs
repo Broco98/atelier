@@ -230,6 +230,7 @@ fn listed_tools_are_exactly_this_wave() {
             "atelier_get_work",
             "atelier_list_projects",
             "atelier_list_works",
+            "atelier_remove_work",
             "atelier_set_work_status",
             "atelier_start_work",
         ]
@@ -487,4 +488,76 @@ fn set_work_status_persists_and_rejects_unknown_values() {
     let text = bad["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("active"), "valid values not listed: {text}");
     assert!(text.contains("done"), "{text}");
+}
+
+/// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
+#[test]
+fn remove_work_refuses_dirty_trees_and_leaves_the_branch_behind() {
+    let (home, code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    let tree = home.path().join("works/카트/trees/billing");
+    std::fs::write(tree.join("wip.txt"), "uncommitted").unwrap();
+
+    // 강제 옵션이 없으므로 커널의 거부가 그대로 최종 결과다
+    let refused = server.request(4, "tools/call", json!({
+        "name": "atelier_remove_work", "arguments": { "work_slug": "카트" }
+    }));
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("uncommitted"), "{text}");
+    assert!(text.contains("Commit or stash"), "no next step: {text}");
+    assert!(home.path().join("works/카트").exists(), "refused remove deleted data");
+
+    // 변경을 치우면 제거된다
+    std::fs::remove_file(tree.join("wip.txt")).unwrap();
+    let res = server.request(5, "tools/call", json!({
+        "name": "atelier_remove_work", "arguments": { "work_slug": "카트" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(!home.path().join("works/카트").exists());
+
+    // 브랜치는 남는다 — 되돌릴 수 없는 손실이 없다는 근거
+    let repo = code.path().join("billing");
+    assert!(run_git_out(&repo, &["branch", "--list", "feat/cart"]).contains("feat/cart"));
+    assert!(!run_git_out(&repo, &["worktree", "list"]).contains("trees/billing"));
+
+    // 응답이 살아남은 브랜치 이름을 알려준다
+    let out: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(out["branch"], "feat/cart", "{out}");
+}
+
+/// D6 — 강제 삭제 옵션은 도구 표면에 존재하지 않는다.
+#[test]
+fn remove_work_exposes_no_force_option() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_remove_work")
+        .expect("atelier_remove_work missing");
+    let props = tool["inputSchema"]["properties"].as_object().unwrap();
+    assert!(!props.contains_key("force"), "force must not be exposed: {tool}");
+    assert_eq!(props.len(), 1, "only work_slug is an input: {tool}");
+}
+
+#[test]
+fn remove_unknown_work_is_an_execution_error() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_remove_work", "arguments": { "work_slug": "없는작업" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    assert!(res["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("atelier_list_works"));
 }
