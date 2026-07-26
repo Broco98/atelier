@@ -12,6 +12,7 @@ use super::{kernel_error, AtelierServer};
 #[schemars(crate = "rmcp::schemars")]
 pub struct AddProjectParams {
     /// 등록할 코드 폴더의 절대 경로. `~/dev/billing`처럼 `~`로 시작해도 된다.
+    /// 상대 경로는 받지 않는다 — 이 서버의 작업 디렉터리는 네가 아는 값이 아니다.
     pub folder_path: String,
 }
 
@@ -36,10 +37,18 @@ impl AtelierServer {
         &self,
         Parameters(AddProjectParams { folder_path }): Parameters<AddProjectParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        match atelier_core::create_project(
-            &self.projects_root,
-            std::path::Path::new(&folder_path),
-        ) {
+        // 이 표면이 내보내는 경로는 전부 `~` 축약형이다. 그대로 되돌려 받아도 동작해야 한다.
+        let folder = atelier_core::expand_home(&folder_path);
+        // 상대 경로는 이 서버 프로세스의 작업 디렉터리 기준으로 풀린다 — 호스트가 정하는 값이라
+        // 에이전트에게 보이지 않고, 같은 이름의 폴더가 있으면 조용히 엉뚱한 폴더를 등록한다.
+        if !folder.is_absolute() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "folder_path must be an absolute path, got: {folder_path}\n\n\
+                 Pass the full path to the folder (`/Users/you/dev/billing` or \
+                 `~/dev/billing`) and call this tool again."
+            ))]));
+        }
+        match atelier_core::create_project(&self.projects_root, &folder) {
             Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }

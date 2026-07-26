@@ -671,3 +671,48 @@ fn add_project_missing_folder_is_an_execution_error() {
     assert!(text.contains("/no/such/dir"), "{text}");
     assert!(text.contains("atelier_list_projects"), "no next step: {text}");
 }
+
+#[test]
+fn add_project_accepts_the_tilde_paths_it_hands_out() {
+    // 이 표면이 내보내는 경로는 전부 `~` 축약형이다(project.path · trees[].path · specDir).
+    // 읽은 값을 그대로 되돌려 넣을 수 있어야 한다.
+    let home_dir = dirs::home_dir().unwrap();
+    let code = tempfile::TempDir::new_in(&home_dir).unwrap();
+    let folder = code.path().join("billing");
+    std::fs::create_dir(&folder).unwrap();
+    let tilde = format!("~/{}", folder.strip_prefix(&home_dir).unwrap().display());
+
+    let atelier_home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(atelier_home.path());
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_add_project",
+        "arguments": { "folder_path": tilde }
+    }));
+    assert_eq!(res["result"]["isError"], false, "tilde path rejected: {res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["slug"], "billing");
+}
+
+#[test]
+fn add_project_refuses_relative_paths_instead_of_guessing() {
+    // 상대 경로는 서버 프로세스의 작업 디렉터리 기준으로 풀린다. 호스트가 정하는 값이라
+    // 에이전트가 알 수 없고, 같은 이름의 폴더가 우연히 있으면 조용히 엉뚱한 걸 등록한다.
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_add_project",
+        "arguments": { "folder_path": "some/relative/dir" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("absolute"), "must say what is wrong: {text}");
+    assert!(text.contains("again"), "must say what to do next: {text}");
+
+    // 아무것도 등록되지 않았다
+    let listed = server.request(3, "tools/call",
+        json!({ "name": "atelier_list_projects", "arguments": {} }));
+    let listed: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(listed.as_array().unwrap().is_empty(), "{listed}");
+}
