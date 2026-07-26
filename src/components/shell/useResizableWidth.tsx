@@ -12,6 +12,12 @@ export interface ResizableWidth {
   };
 }
 
+// 드래그 중 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다 (index.css의 body.resizing).
+// 해제가 누락되면 앱 전체에서 글자를 선택할 수 없고 재시작 외엔 복구 수단이 없다 — 종료 경로마다 반드시 끈다.
+function setResizing(on: boolean) {
+  document.body.classList.toggle("resizing", on);
+}
+
 // 패널 폭 드래그 조절 + 더블클릭으로 기본 폭 복원. localStorage에 유지된다.
 function useResizableWidth(
   key: string,
@@ -28,6 +34,16 @@ function useResizableWidth(
 
   const clamp = (value: number) => Math.min(max, Math.max(min, value));
 
+  // 드래그 종료 — pointerup·pointercancel 어느 쪽으로 끝나도 같은 정리를 한다
+  const endDrag = () => {
+    setResizing(false);
+    setDragging(false);
+    setWidth((value) => {
+      localStorage.setItem(key, String(value));
+      return value;
+    });
+  };
+
   return {
     width,
     dragging,
@@ -35,6 +51,7 @@ function useResizableWidth(
       onPointerDown: (e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         start.current = { x: e.clientX, width };
+        setResizing(true);
         setDragging(true);
       },
       onPointerMove: (e) => {
@@ -43,11 +60,7 @@ function useResizableWidth(
       },
       onPointerUp: (e) => {
         e.currentTarget.releasePointerCapture(e.pointerId);
-        setDragging(false);
-        setWidth((value) => {
-          localStorage.setItem(key, String(value));
-          return value;
-        });
+        endDrag();
       },
       onDoubleClick: () => {
         setWidth(defaultWidth);

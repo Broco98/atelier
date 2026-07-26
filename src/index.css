@@ -151,6 +151,19 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
+/* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.
+   포인터 아래 요소가 UA 스타일로 자기 커서(링크·입력)를 갖고 있어 커서만 !important로 덮는다.
+   선택 억제는 상속으로 충분하다 — user-select를 text로 되받는 곳이 없다 */
+body.resizing {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.resizing,
+body.resizing * {
+    cursor: col-resize !important;
+}
+
 /* 작업 패널 등장 팝 — 살짝 커졌다가 제자리로 (뿅) */
 @keyframes panel-pop {
     0% {
