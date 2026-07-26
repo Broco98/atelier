@@ -219,7 +219,23 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         "mt-1.5",
       ),
       hr: block("hr", "border-border", "mt-4"),
-      table: block("table", "w-full border-collapse text-[13.5px]", "mt-2"),
+      // 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다
+      table: (({ node, children, ...props }: any) => {
+        const inner = (
+          <div className="overflow-x-auto scroll-quiet">
+            <table className="w-full border-collapse text-[13.5px]" {...props}>
+              {children}
+            </table>
+          </div>
+        );
+        const range = lines(node);
+        if (!range) return inner;
+        return (
+          <BlockWrapper start={range.start} end={range.end} spacing="mt-2" onCopy={onCopyBlock}>
+            {inner}
+          </BlockWrapper>
+        );
+      }) as Components["table"],
       th: ({ children }) => (
         <th className="border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
           {children}
