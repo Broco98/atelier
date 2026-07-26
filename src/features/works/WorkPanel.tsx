@@ -26,9 +26,9 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
 
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
-    // 스크롤바가 화면 맨 오른쪽에 오도록 부모가 스크롤하고, 패널은 sticky로 고정된다.
-    <aside className="sticky top-0 flex w-[296px] shrink-0 origin-top-right animate-[panel-pop_260ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col self-start p-4 pl-0">
-      <div className="flex max-h-[calc(100vh-104px)] shrink-0 flex-col overflow-y-auto rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg scroll-quiet">
+    // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
+    <aside className="flex w-[296px] shrink-0 origin-top-right animate-[panel-pop_260ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col p-4 pl-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
           <span
@@ -62,7 +62,8 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
         <div className="flex items-center px-4 pb-0.5 pt-2">
           <span className="text-[13.5px] font-semibold">Spec</span>
         </div>
-        <div className="flex flex-col px-2 pb-0.5 pt-1">
+        {/* 세로 스크롤은 여기까지 — Git 요약과 Spec 머리글은 고정되어 항상 보인다 */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
           {work.specFiles.length === 0 ? (
             <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 spec 파일이 없어요</span>
           ) : (
