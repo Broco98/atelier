@@ -189,11 +189,11 @@ function BlockWrapper({
         title={`${range}줄 참조 복사`}
         className="absolute right-full top-[9px] mr-4 grid cursor-copy select-none place-items-end rounded-[4px] font-mono text-[10.5px] text-tertiary outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        <span className="col-start-1 row-start-1 whitespace-nowrap transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+        <span className="col-start-1 row-start-1 whitespace-nowrap group-hover:invisible group-focus-within:invisible">
           {range}
         </span>
         <Copy
-          className="col-start-1 row-start-1 size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          className="invisible col-start-1 row-start-1 size-3 group-hover:visible group-focus-within:visible"
           strokeWidth={1.8}
           aria-hidden
         />

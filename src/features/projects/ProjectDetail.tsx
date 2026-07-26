@@ -3,6 +3,7 @@ import { Folder, GitFork, GitMerge, Check, ChevronDown, ChevronRight, Zap } from
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
+import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
@@ -205,6 +206,7 @@ function PropertyRow({
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
   const branches = project.git?.localBranches ?? [];
 
   useEffect(() => {
@@ -227,6 +229,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
   return (
     <div className="relative -ml-[7px] flex">
       <button
+        ref={anchor}
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="브랜치 목록에서 변경"
@@ -236,9 +239,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
         <ChevronDown className="size-2.5" strokeWidth={2.2} />
       </button>
       {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-[30px] z-40 w-[248px] overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg">
+        <PopoverPortal anchorRef={anchor} width={248} onClose={() => setOpen(false)}>
             <div className="flex h-8 items-center justify-between border-b px-3">
               <span className="text-[12.5px] font-semibold text-muted-foreground">브랜치</span>
               <span className="text-[12px] text-tertiary">{options.length}개</span>
@@ -268,8 +269,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
             <div className="border-t px-3 py-2 text-[12px] leading-normal text-tertiary">
               baseBranch 설정만 바꿔요 — checkout은 하지 않아요
             </div>
-          </div>
-        </>
+        </PopoverPortal>
       )}
     </div>
   );
