@@ -58,6 +58,16 @@ pub struct StartWorkParams {
     pub branch: Option<String>,
 }
 
+/// `atelier_attach_project`의 인자.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct AttachProjectParams {
+    /// Slug of the work to extend, as returned by atelier_list_works.
+    pub work_slug: String,
+    /// Slug of the project to add, as returned by atelier_list_projects.
+    pub project_slug: String,
+}
+
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
@@ -78,6 +88,31 @@ impl AtelierServer {
             &title,
             &projects,
             branch.as_deref(),
+        ) {
+            Ok(report) if report.errors.is_empty() => {
+                Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
+            }
+            Ok(report) => partial_failure(&report),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Add one project to an existing work and create its worktree on the \
+                       work's shared branch. This is also the recovery path when \
+                       atelier_start_work reported that a worktree could not be created: \
+                       call it once per failed project instead of starting the work again. \
+                       Doing it twice for the same project changes nothing."
+    )]
+    async fn atelier_attach_project(
+        &self,
+        Parameters(AttachProjectParams { work_slug, project_slug }): Parameters<AttachProjectParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::attach_project(
+            &self.works_root,
+            &self.projects_root,
+            &work_slug,
+            &project_slug,
         ) {
             Ok(report) if report.errors.is_empty() => {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))

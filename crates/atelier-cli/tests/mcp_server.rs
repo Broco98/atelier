@@ -87,6 +87,12 @@ fn run_git(dir: &std::path::Path, args: &[&str]) {
     assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
 }
 
+fn run_git_out(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
 /// 프로젝트 n개가 등록된 홈. 각 프로젝트는 main에 커밋 하나가 있는 git 저장소다.
 /// 반환한 TempDir 둘은 테스트 끝까지 살려 둬야 한다 (drop되면 폴더가 사라진다).
 fn fixture_with(names: &[&str]) -> (tempfile::TempDir, tempfile::TempDir) {
@@ -220,6 +226,7 @@ fn listed_tools_are_exactly_this_wave() {
     assert_eq!(
         names,
         vec![
+            "atelier_attach_project",
             "atelier_get_work",
             "atelier_list_projects",
             "atelier_list_works",
@@ -350,4 +357,96 @@ fn partial_worktree_failure_is_an_execution_error_pointing_at_attach() {
     assert_eq!(report["trees"][0]["exists"], true, "{report}");   // billing
     assert_eq!(report["trees"][1]["exists"], false, "{report}");  // shipping
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
+
+/// V10 — 부분 실패에서 안내받은 대로 실패한 프로젝트만 붙여 복구한다.
+#[test]
+fn attach_project_recovers_the_failed_worktree_alone() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    let blocker = block_worktree(home.path(), "카트", "shipping");
+    let failed = server.request(4, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing", "shipping"], "branch": "feat/cart" }
+    }));
+    assert_eq!(failed["result"]["isError"], true, "{failed}");
+
+    // 원인 제거 후, 안내받은 그 호출 하나만 한다
+    std::fs::remove_file(&blocker).unwrap();
+    let res = server.request(5, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": { "work_slug": "카트", "project_slug": "shipping" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "recovery failed: {res}");
+
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["errors"].as_array().unwrap().len(), 0, "{report}");
+    // 중복 없이 두 프로젝트, 두 워크트리 다 살아 있다
+    assert_eq!(report["projects"], json!(["billing", "shipping"]));
+    for t in report["trees"].as_array().unwrap() {
+        assert_eq!(t["exists"], true, "{report}");
+        let tree = atelier_core::expand_home(t["path"].as_str().unwrap());
+        assert_eq!(run_git_out(&tree, &["branch", "--show-current"]), "feat/cart");
+    }
+}
+
+/// attach도 같은 부분 실패 계약을 따른다 (Δ12는 두 도구 공통이다).
+#[test]
+fn attach_project_reports_its_own_worktree_failure_as_an_error() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    block_worktree(home.path(), "카트", "shipping");
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": { "work_slug": "카트", "project_slug": "shipping" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("shipping"), "{text}");
+    assert!(text.contains("atelier_attach_project"), "{text}");
+}
+
+/// 미등록 프로젝트는 커널의 **사전검증**에서 걸린다 — 워크트리는 하나도 건드리지 않으므로
+/// 부분 실패가 아니라 그냥 실행 오류다.
+///
+/// 단언은 §2 오류 매핑표를 따른다: `attach_project`는 `get_project`의 `NotFound`를
+/// `Validation("<slug>: project not registered")`로 눌러 감싸므로(`works.rs:267`),
+/// `kernel_error`가 붙이는 안내는 `atelier_list_projects`가 **아니라**
+/// `"Fix the arguments and call this tool again."`이다 (⚠️ G2 — 표에 기록된 안내 없는 경로).
+#[test]
+fn attach_unknown_project_is_an_execution_error() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": { "work_slug": "카트", "project_slug": "없는프로젝트" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("없는프로젝트"), "the failing input must appear: {text}");
+    assert!(text.contains("project not registered"), "cause not shown: {text}");
+    assert!(text.contains("Fix the arguments"), "no next step: {text}");
+
+    // 작업은 그대로다 — 사전검증 실패는 아무것도 바꾸지 않는다
+    let got = server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "카트" }
+    }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["projects"], json!(["billing"]), "{view}");
 }
