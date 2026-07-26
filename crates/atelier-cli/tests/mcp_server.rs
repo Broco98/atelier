@@ -548,6 +548,41 @@ fn remove_work_exposes_no_force_option() {
     assert_eq!(props.len(), 1, "only work_slug is an input: {tool}");
 }
 
+/// A4 — 쓰기 도구는 넷 다 힌트를 전부 명시한다. 안 적으면 wire에 필드가 나가지 않아
+/// 클라이언트 기본값(destructiveHint = true)이 적용되고, 승인 UI가 작업 시작을
+/// 삭제와 같은 등급으로 취급한다.
+#[test]
+fn write_tools_declare_their_blast_radius() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+
+    let hints = |name: &str| -> Value {
+        res["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("{name} missing"))["annotations"]
+            .clone()
+    };
+
+    for name in ["atelier_start_work", "atelier_attach_project", "atelier_set_work_status"] {
+        let a = hints(name);
+        assert_eq!(a["readOnlyHint"], false, "{name}: {a}");
+        assert_eq!(a["destructiveHint"], false, "{name} is additive only: {a}");
+        assert_eq!(a["idempotentHint"], true, "{name} is safe to retry: {a}");
+        assert_eq!(a["openWorldHint"], false, "{name} touches local files only: {a}");
+    }
+
+    // 제거만 파괴적이고, 두 번째 호출은 없는 작업이라 멱등이 아니다
+    let a = hints("atelier_remove_work");
+    assert_eq!(a["readOnlyHint"], false, "{a}");
+    assert_eq!(a["destructiveHint"], true, "{a}");
+    assert_eq!(a["idempotentHint"], false, "{a}");
+    assert_eq!(a["openWorldHint"], false, "{a}");
+}
+
 #[test]
 fn remove_unknown_work_is_an_execution_error() {
     let home = tempfile::tempdir().unwrap();

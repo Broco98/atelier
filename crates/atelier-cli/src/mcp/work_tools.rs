@@ -95,7 +95,13 @@ impl AtelierServer {
                        one git worktree per project. Calling it again with the same title \
                        resumes that work and only creates the worktrees that are missing, so \
                        it is safe to retry. Returns the worktree paths to do code work in and \
-                       `specDir` to write the spec documents into."
+                       `specDir` to write the spec documents into.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn atelier_start_work(
         &self,
@@ -121,7 +127,13 @@ impl AtelierServer {
                        work's shared branch. This is also the recovery path when \
                        atelier_start_work reported that a worktree could not be created: \
                        call it once per failed project instead of starting the work again. \
-                       Doing it twice for the same project changes nothing."
+                       Doing it twice for the same project changes nothing.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn atelier_attach_project(
         &self,
@@ -144,7 +156,13 @@ impl AtelierServer {
     #[tool(
         description = "Set a work's status to active, review or done. Any transition is \
                        allowed. Nothing else about the work changes — the worktrees and the \
-                       branch stay exactly as they are."
+                       branch stay exactly as they are.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
     )]
     async fn atelier_set_work_status(
         &self,
@@ -165,7 +183,13 @@ impl AtelierServer {
         description = "Remove a work: delete its metadata, its spec directory and its \
                        worktrees. The shared branch is kept in every project repository, so \
                        committed work is not lost. Refused when any worktree has uncommitted \
-                       changes — commit or stash them first. There is no force option."
+                       changes — commit or stash them first. There is no force option.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn atelier_remove_work(
         &self,
