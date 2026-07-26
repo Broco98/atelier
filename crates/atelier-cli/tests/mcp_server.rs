@@ -10,6 +10,8 @@ struct Server {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    /// initialize 응답 전문. 호스트가 시스템 프롬프트를 만들 때 보는 것과 같은 값이다.
+    init: Value,
 }
 
 impl Server {
@@ -25,7 +27,7 @@ impl Server {
             .unwrap();
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        let mut server = Server { child, stdin, stdout };
+        let mut server = Server { child, stdin, stdout, init: Value::Null };
 
         // 프로토콜 버전은 클라이언트가 제안하는 값이고, 서버가 무엇으로 응답할지는
         // SDK가 정한다 (A5 — 코드에 상수를 박지 않는다). 문자열이기만 하면 통과.
@@ -43,6 +45,7 @@ impl Server {
             "handshake failed: {init}"
         );
         server.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
+        server.init = init;
         server
     }
 
@@ -865,4 +868,28 @@ fn the_tool_surface_has_no_way_to_delete_a_project() {
             "project deletion must not be exposed as a tool: {name}"
         );
     }
+}
+
+/// V4 전반부 — 지침이 실제로 클라이언트에게 전달되는 채널에 실린다.
+/// 클라이언트는 이 필드를 모델의 시스템 프롬프트에 주입하도록 의도돼 있다.
+#[test]
+fn initialize_carries_server_instructions() {
+    let home = tempfile::tempdir().unwrap();
+    let server = Server::start(home.path());
+
+    let instructions = server.init["result"]["instructions"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no instructions in initialize result: {}", server.init));
+
+    // 채널만 확인하고 끝내면 빈 문자열도 통과한다. 지침이 실제로
+    // 고피해 지식을 싣고 있는지는 여기서 대표 두 개로 못 박고,
+    // 나머지 내용 가드는 instructions.rs의 단위 테스트가 맡는다.
+    assert!(
+        instructions.contains("localBranches"),
+        "branch convention lost its data source: {instructions}"
+    );
+    assert!(
+        instructions.contains("specDir"),
+        "spec convention lost the location field: {instructions}"
+    );
 }

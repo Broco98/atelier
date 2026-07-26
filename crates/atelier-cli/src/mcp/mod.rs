@@ -4,6 +4,7 @@
 //! `println!`을 쓰지 않는다 — 진단은 전부 표준에러로 나간다 (Δ13).
 
 mod tool_error;
+mod instructions;
 mod read_tools;
 mod work_tools;
 mod project_tools;
@@ -41,6 +42,10 @@ impl ServerHandler for AtelierServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             // from_build_env()는 rmcp 자신의 이름을 내보내므로 쓰지 않는다.
             .with_server_info(Implementation::new("atelier", env!("CARGO_PKG_VERSION")))
+            // 절차 지식은 여기 한 곳에만 있다. 스킬 문서는 없다.
+            // 주의: #[tool_handler(instructions = ...)]는 get_info를 직접 쓴 이 impl에서
+            // 조용히 무시된다 (rmcp-macros 2.2.0 tool_handler.rs:91).
+            .with_instructions(instructions::INSTRUCTIONS)
     }
 }
 
