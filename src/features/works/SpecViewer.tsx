@@ -122,6 +122,14 @@ function SourceView({ content }: { content: string }) {
 
 // ─── 예쁜 보기 ───
 
+// 본문 열 레이아웃 규격 — 예쁜 보기와 소스 보기가 공유하는 단일 출처.
+// w-full: 부모가 column-flex인데 mx-auto가 붙으면 stretch가 꺼져 폭이 fit-content로
+//   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
+// 좌우가 비대칭인 이유: 좌측 62px은 여백이 아니라 거터의 자리다.
+//   세 자리 줄범위 "123–145"는 10.5px mono(0.6em/자)에서 44.1px이고
+//   본문과 16px 떨어져야 하므로, 62px은 줄일 수 있는 값이 아니라 하한이다.
+export const bodyColumn = "mx-auto w-full max-w-[900px] pl-[62px] pr-10";
+
 interface PrettyViewProps {
   content: string;
   onCopyBlock: (start: number, end: number) => void;
@@ -257,7 +265,7 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
   }, [onCopyBlock]);
 
   return (
-    <article className="mx-auto max-w-[900px] px-10 pb-16 pl-[62px] pt-8 text-[15px]">
+    <article className={cn(bodyColumn, "pb-16 pt-8 text-[15px]")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
