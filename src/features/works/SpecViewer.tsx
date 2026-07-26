@@ -110,9 +110,10 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 function SourceView({ content }: { content: string }) {
   const lines = content.split("\n");
   return (
-    <div className="px-3.5 py-4">
+    // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
+    <div className={cn(bodyColumn, "py-4")}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
-      <div className="overflow-x-auto font-mono text-[12.5px] leading-[1.75] scroll-quiet">
+      <div className="overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
