@@ -230,6 +230,7 @@ fn listed_tools_are_exactly_this_wave() {
             "atelier_get_work",
             "atelier_list_projects",
             "atelier_list_works",
+            "atelier_set_work_status",
             "atelier_start_work",
         ]
     );
@@ -449,4 +450,41 @@ fn attach_unknown_project_is_an_execution_error() {
     let view: Value =
         serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(view["projects"], json!(["billing"]), "{view}");
+}
+
+#[test]
+fn set_work_status_persists_and_rejects_unknown_values() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "카트", "status": "review" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["status"], "review");
+
+    // 조회로도 보인다 (파일에 남았다)
+    let got = server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "카트" }
+    }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["status"], "review");
+
+    // 잘못된 값은 실행 오류이고, 유효한 값이 메시지에 들어 있다
+    let bad = server.request(6, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "카트", "status": "paused" }
+    }));
+    assert_eq!(bad["result"]["isError"], true, "{bad}");
+    let text = bad["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("active"), "valid values not listed: {text}");
+    assert!(text.contains("done"), "{text}");
 }

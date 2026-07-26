@@ -68,6 +68,17 @@ pub struct AttachProjectParams {
     pub project_slug: String,
 }
 
+/// `atelier_set_work_status`의 인자.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct SetWorkStatusParams {
+    /// Slug of the work to change, as returned by atelier_list_works.
+    pub work_slug: String,
+    /// New status. One of: "active" (being worked on), "review" (waiting for review or
+    /// merge), "done" (finished). Any transition is allowed, including going back.
+    pub status: String,
+}
+
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
@@ -118,6 +129,26 @@ impl AtelierServer {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
             }
             Ok(report) => partial_failure(&report),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Set a work's status to active, review or done. Any transition is \
+                       allowed. Nothing else about the work changes — the worktrees and the \
+                       branch stay exactly as they are."
+    )]
+    async fn atelier_set_work_status(
+        &self,
+        Parameters(SetWorkStatusParams { work_slug, status }): Parameters<SetWorkStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // 상태 문자열의 정본은 커널이다. 여기서 미러 enum을 만들면 나중에 조용히 낡는다.
+        let status = match status.parse::<atelier_core::WorkStatus>() {
+            Ok(status) => status,
+            Err(e) => return Ok(kernel_error(e)),
+        };
+        match atelier_core::update_work_status(&self.works_root, &work_slug, status) {
+            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }
     }
