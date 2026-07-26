@@ -157,7 +157,7 @@ function MermaidBlock({ code }: { code: string }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
-    <div className="overflow-hidden rounded-[12px] border bg-panel" onClick={stop}>
+    <div className="overflow-hidden rounded-[12px] border bg-panel">
       <div className="flex items-center justify-between border-b px-2.5 py-1.5">
         <span className="font-mono text-[11px] text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
