@@ -20,6 +20,8 @@ impl Server {
             .unwrap()
             .arg("mcp")
             .env("ATELIER_HOME", home)
+            // 기동 시 정리(Δ11)가 개발자의 실제 ~/.claude/skills 를 건드리지 않게 한다.
+            .env("ATELIER_SKILLS_DIR", home.join("skills-guard"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

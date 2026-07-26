@@ -54,6 +54,10 @@ pub fn run() -> anyhow::Result<()> {
     // stdio 전송에서 로그가 표준출력으로 새면 클라이언트 파싱이 깨진다 (Δ13).
     tracing_subscriber::fmt().with_writer(std::io::stderr).with_ansi(false).init();
 
+    // 남아 있는 스킬 문서는 없어진 CLI 명령을 계속 안내한다 (Δ4). 첫 접촉에서 지운다.
+    // 실패해도 서버는 뜬다 — 정리는 도구 표면을 막을 이유가 못 된다.
+    skill_cleanup::purge_and_report();
+
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(async {
         let service = AtelierServer::new().serve(stdio()).await?;
