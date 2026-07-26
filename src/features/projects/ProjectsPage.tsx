@@ -130,7 +130,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             </>
           }
         />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scroll-quiet">
           {selected ? (
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (
