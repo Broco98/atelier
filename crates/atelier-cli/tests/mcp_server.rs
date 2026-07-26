@@ -298,3 +298,56 @@ fn start_work_repeated_adds_only_what_is_missing() {
     }
     assert!(!home.path().join("works/카트-2").exists(), "duplicate work created");
 }
+
+/// 워크트리 생성이 실패하도록 만든다: 워크트리가 놓일 자리에 파일을 미리 둔다.
+/// (사전검증은 프로젝트 등록·git·baseBranch만 보므로 통과하고, git worktree add가
+///  "fatal: '<path>' already exists"로 실패한다 — 실제로 실행해 확인한 동작이다.)
+fn block_worktree(home: &std::path::Path, work_slug: &str, project: &str) -> std::path::PathBuf {
+    let path = home.join("works").join(work_slug).join("trees").join(project);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "blocker").unwrap();
+    path
+}
+
+/// V10 (앞쪽) — 부분 실패는 성공이 아니라 실행 오류로 오고,
+/// 본문이 성공분·실패 원인·좁은 복구 경로를 전부 준다.
+#[test]
+fn partial_worktree_failure_is_an_execution_error_pointing_at_attach() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+
+    // billing 하나로 작업을 만든 뒤, shipping 워크트리 자리를 막고 이어서 시작한다
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    block_worktree(home.path(), "카트", "shipping");
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing", "shipping"], "branch": "feat/cart" }
+    }));
+
+    // 프로토콜 오류가 아니다 — 도구는 실행됐고 일부가 실패했다
+    assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+    assert_eq!(res["result"]["isError"], true, "partial failure reported as success: {res}");
+
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("shipping"), "failed project not named: {text}");
+    assert!(text.contains("already exists"), "failure cause not shown: {text}");
+    assert!(text.contains("billing"), "successful worktree not shown: {text}");
+    // 복구는 실패한 것만 붙이는 좁은 경로다 (D5)
+    assert!(text.contains("atelier_attach_project"), "no recovery path: {text}");
+    assert!(
+        !text.contains("call atelier_start_work again"),
+        "must not send the agent back through the whole call: {text}"
+    );
+
+    // 두 번째 블록은 보고서 전문 — 성공분과 specDir이 살아 있다
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][1]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["errors"][0]["project"], "shipping");
+    assert_eq!(report["trees"][0]["exists"], true, "{report}");   // billing
+    assert_eq!(report["trees"][1]["exists"], false, "{report}");  // shipping
+    assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
