@@ -153,3 +153,43 @@ fn install_purges_ghost_skills_too() {
     assert!(!skills.join("atelier").exists());
     assert!(!skills.join("atelier-projects").exists());
 }
+
+/// V8 후반 — 호스트 등록 도구가 없어도 스크립트가 실패하지 않는다.
+/// install.sh 는 `set -euo pipefail` + `trap fail ERR` 아래에서 이 명령을 부른다.
+/// 여기서 0이 아닌 값이 나오면 스크립트 상단이 약속한 멱등성이 깨진다.
+#[test]
+fn install_succeeds_with_guidance_when_the_host_tool_is_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let empty_bin = tmp.path().join("empty-bin");
+    std::fs::create_dir_all(&empty_bin).unwrap();      // claude 가 없는 PATH
+
+    let out = install_with_path(&empty_bin, &tmp.path().join("skills"));
+    assert!(
+        out.status.success(),
+        "등록 도구가 없다고 실패하면 install.sh 가 중단된다: {out:?}"
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("claude mcp add") && stdout.contains("--scope user"),
+        "수동 등록에 필요한 명령을 그대로 안내해야 한다: {stdout}"
+    );
+    assert!(
+        stdout.contains("atelier") && stdout.trim_end().contains("mcp"),
+        "안내에 서버 이름과 실행 인자가 있어야 한다: {stdout}"
+    );
+}
+
+/// 정리는 등록 도구 유무와 무관하게 돈다 — Δ4 는 호스트에 의존하지 않는다.
+#[test]
+fn ghost_skills_are_purged_even_without_the_host_tool() {
+    let tmp = tempfile::tempdir().unwrap();
+    let empty_bin = tmp.path().join("empty-bin");
+    std::fs::create_dir_all(&empty_bin).unwrap();
+    let skills = tmp.path().join("skills");
+    plant_ghost(&skills, "atelier");
+
+    let out = install_with_path(&empty_bin, &skills);
+    assert!(out.status.success(), "{out:?}");
+    assert!(!skills.join("atelier").exists(), "등록이 안 돼도 정리는 된다");
+}
