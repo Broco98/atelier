@@ -153,7 +153,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <span className="text-[13px] text-tertiary">해당 프로젝트의 작업이 없어요</span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5">
+          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5 scroll-quiet">
             {sorted.map((work) => {
               const active = work.slug === selectedSlug;
               return (

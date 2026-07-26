@@ -28,7 +28,7 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
     // 스크롤바가 화면 맨 오른쪽에 오도록 부모가 스크롤하고, 패널은 sticky로 고정된다.
     <aside className="sticky top-0 flex w-[296px] shrink-0 origin-top-right animate-[panel-pop_260ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col self-start p-4 pl-0">
-      <div className="flex max-h-[calc(100vh-104px)] shrink-0 flex-col overflow-y-auto rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg">
+      <div className="flex max-h-[calc(100vh-104px)] shrink-0 flex-col overflow-y-auto rounded-[16px] border bg-panel pb-2 pt-1 shadow-lg scroll-quiet">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
           <span
