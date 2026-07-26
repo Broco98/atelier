@@ -135,7 +135,8 @@ interface PrettyViewProps {
   onCopyBlock: (start: number, end: number) => void;
 }
 
-// 클릭 → 참조 복사되는 최상위 블록 래퍼 (좌측 거터에 원본 라인 범위)
+// 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
+// 참조 복사는 좌측 거터의 버튼이 맡고, 블록에 접근(호버·키보드 포커스)할 때만 나타난다.
 function BlockWrapper({
   start,
   end,
@@ -149,17 +150,20 @@ function BlockWrapper({
   onCopy: (start: number, end: number) => void;
   children: React.ReactNode;
 }) {
+  const range = end !== start ? `${start}–${end}` : `${start}`;
   return (
-    <div
-      onClick={() => onCopy(start, end)}
-      className={cn(
-        "relative -mx-3 cursor-copy rounded-[9px] px-3 py-1 transition-colors hover:bg-accent",
-        spacing,
-      )}
-    >
-      <span className="absolute -left-[44px] top-[9px] w-[36px] select-none text-center font-mono text-[10.5px] text-tertiary opacity-65">
-        {end !== start ? `${start}–${end}` : start}
-      </span>
+    <div className={cn("group relative py-1", spacing)}>
+      {/* 거터는 본문 좌측 여백(bodyColumn의 pl) 안쪽에 오른쪽 정렬로 얹힌다 —
+          줄범위가 길어지면 왼쪽으로 자라고 본문과의 간격 16px은 그대로다 */}
+      <button
+        type="button"
+        onClick={() => onCopy(start, end)}
+        aria-label={`${range}줄 참조 복사`}
+        title={`${range}줄 참조 복사`}
+        className="absolute right-full top-[9px] mr-4 cursor-copy select-none whitespace-nowrap rounded-[4px] font-mono text-[10.5px] text-tertiary opacity-0 outline-none transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        {range}
+      </button>
       {children}
     </div>
   );
