@@ -805,3 +805,50 @@ fn edit_project_schema_shows_which_fields_are_optional() {
     assert_eq!(a["idempotentHint"], true, "{tool}");
     assert_eq!(a["openWorldHint"], false, "{tool}");
 }
+
+#[test]
+fn edit_unknown_project_points_at_the_listing_tool() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "없는프로젝트", "description": "x" }
+    }));
+    assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("없는프로젝트"), "{text}");
+    assert!(text.contains("atelier_list_projects"), "no next step: {text}");
+}
+
+#[test]
+fn edit_with_no_fields_says_so_instead_of_rewriting_the_file() {
+    let (_home, _code, mut server) = server_with_one_project();
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "billing" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("description"), "must name the fields it wants: {text}");
+    assert!(text.contains("again"), "must say what to do next: {text}");
+}
+
+#[test]
+fn edit_blank_name_is_rejected_and_keeps_the_old_one() {
+    let (_home, _code, mut server) = server_with_one_project();
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_edit_project",
+        "arguments": { "project_slug": "billing", "name": "   " }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    // 커널의 EmptyName이 kernel_error를 타고 그대로 온다 (새 변환을 만들지 않았다는 증거)
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("empty"), "{text}");
+
+    let listed = server.request(3, "tools/call",
+        json!({ "name": "atelier_list_projects", "arguments": {} }));
+    let listed: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(listed[0]["name"], "billing", "failed edit must not change anything: {listed}");
+}

@@ -91,6 +91,14 @@ impl AtelierServer {
             EditProjectParams,
         >,
     ) -> Result<CallToolResult, ErrorData> {
+        // 커널은 빈 패치를 성공으로 받아 파일을 다시 쓴다. 에이전트에게는 아무 일도
+        // 안 일어난 것으로 보여 혼란만 남으므로, 무엇을 줘야 하는지 말해준다.
+        if name.is_none() && description.is_none() && base_branch.is_none() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "nothing to change: none of name, description, base_branch was given\n\n\
+                 Pass at least one of them and call this tool again.",
+            )]));
+        }
         let patch = atelier_core::ProjectPatch { name, description, base_branch };
         match atelier_core::update_project(&self.projects_root, &project_slug, patch) {
             Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
