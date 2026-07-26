@@ -87,20 +87,27 @@ fn run_git(dir: &std::path::Path, args: &[&str]) {
     assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
 }
 
-/// 프로젝트 하나가 등록된 홈 + 커밋 하나 있는 git 저장소를 만든다.
-fn fixture() -> (tempfile::TempDir, tempfile::TempDir) {
+/// 프로젝트 n개가 등록된 홈. 각 프로젝트는 main에 커밋 하나가 있는 git 저장소다.
+/// 반환한 TempDir 둘은 테스트 끝까지 살려 둬야 한다 (drop되면 폴더가 사라진다).
+fn fixture_with(names: &[&str]) -> (tempfile::TempDir, tempfile::TempDir) {
     let home = tempfile::tempdir().unwrap();
     let code = tempfile::tempdir().unwrap();
-    let repo = code.path().join("billing");
-    std::fs::create_dir(&repo).unwrap();
-    run_git(&repo, &["init", "-b", "main"]);
-    run_git(&repo, &["config", "user.email", "t@t.t"]);
-    run_git(&repo, &["config", "user.name", "t"]);
-    std::fs::write(repo.join("a.txt"), "x").unwrap();
-    run_git(&repo, &["add", "."]);
-    run_git(&repo, &["commit", "-m", "init"]);
-    atelier_core::create_project(&home.path().join("projects"), &repo).unwrap();
+    for name in names {
+        let repo = code.path().join(name);
+        std::fs::create_dir(&repo).unwrap();
+        run_git(&repo, &["init", "-b", "main"]);
+        run_git(&repo, &["config", "user.email", "t@t.t"]);
+        run_git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "x").unwrap();
+        run_git(&repo, &["add", "."]);
+        run_git(&repo, &["commit", "-m", "init"]);
+        atelier_core::create_project(&home.path().join("projects"), &repo).unwrap();
+    }
     (home, code)
+}
+
+fn fixture() -> (tempfile::TempDir, tempfile::TempDir) {
+    fixture_with(&["billing"])
 }
 
 #[test]
@@ -202,17 +209,28 @@ fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
     assert!(text.contains("atelier_list_works"), "{text}");
 }
 
+/// V2 — 이 물결이 끝난 시점의 도구 표면 전체. 도구를 더할 때마다 여기가 자란다.
+/// (티켓 03이 atelier_add_project·atelier_edit_project를 더해 9개로 채운다.)
 #[test]
-fn all_three_read_tools_are_listed() {
+fn listed_tools_are_exactly_this_wave() {
     let home = tempfile::tempdir().unwrap();
     let mut server = Server::start(home.path());
     let mut names = server.tool_names(2);
     names.sort();
     assert_eq!(
         names,
-        vec!["atelier_get_work", "atelier_list_projects", "atelier_list_works"]
+        vec![
+            "atelier_get_work",
+            "atelier_list_projects",
+            "atelier_list_works",
+            "atelier_start_work",
+        ]
     );
 }
+
+/// 읽기 전용 계약을 지켜야 하는 도구들. 쓰기 도구는 단계 6에서 따로 본다.
+const READ_ONLY_TOOLS: [&str; 3] =
+    ["atelier_get_work", "atelier_list_projects", "atelier_list_works"];
 
 #[test]
 fn read_tools_declare_read_only_and_local_only() {
@@ -220,8 +238,63 @@ fn read_tools_declare_read_only_and_local_only() {
     let mut server = Server::start(home.path());
     let res = server.request(2, "tools/list", json!({}));
     for tool in res["result"]["tools"].as_array().unwrap() {
+        if !READ_ONLY_TOOLS.contains(&tool["name"].as_str().unwrap()) {
+            continue;
+        }
         let a = &tool["annotations"];
         assert_eq!(a["readOnlyHint"], true, "{tool}");
         assert_eq!(a["openWorldHint"], false, "{tool}");
     }
+}
+
+#[test]
+fn start_work_creates_the_work_and_hands_back_where_to_write() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트 아이템 추가", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["slug"], "카트-아이템-추가");
+    assert_eq!(report["branch"], "feat/cart");
+    assert_eq!(report["status"], "active");
+    assert_eq!(report["errors"].as_array().unwrap().len(), 0, "{report}");
+
+    // 워크트리 경로와 spec 위치가 응답 하나에 다 있다 — 추측할 것이 없다
+    let tree = report["trees"][0].clone();
+    assert_eq!(tree["project"], "billing");
+    assert_eq!(tree["exists"], true, "{report}");
+    assert!(atelier_core::expand_home(tree["path"].as_str().unwrap()).is_dir());
+    assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
+
+/// V11 — 같은 인자로 다시 불러도 중복 생성 없이 빠진 것만 만들어진다.
+#[test]
+fn start_work_repeated_adds_only_what_is_missing() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+    let args = |projects: Value| json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": projects, "branch": "feat/cart" }
+    });
+
+    let first = server.request(3, "tools/call", args(json!(["billing"])));
+    assert_eq!(first["result"]["isError"], false, "{first}");
+
+    // 프로젝트를 하나 더해 재호출 → 새 작업이 아니라 같은 작업에 이어 붙는다
+    let second = server.request(4, "tools/call", args(json!(["billing", "shipping"])));
+    assert_eq!(second["result"]["isError"], false, "{second}");
+    let report: Value =
+        serde_json::from_str(second["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["slug"], "카트", "must resume, not fork a new work: {report}");
+    assert_eq!(report["projects"], json!(["billing", "shipping"]));
+    for t in report["trees"].as_array().unwrap() {
+        assert_eq!(t["exists"], true, "{report}");
+    }
+    assert!(!home.path().join("works/카트-2").exists(), "duplicate work created");
 }
