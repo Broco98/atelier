@@ -6,6 +6,8 @@ use anyhow::Context;
 use atelier_core::{projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
 use clap::{Parser, Subcommand};
 
+mod mcp;
+
 #[derive(Parser)]
 #[command(name = "atelier", version, about = "Atelier 로컬 데이터 CLI")]
 struct Cli {
@@ -24,6 +26,8 @@ enum Command {
     /// AI 스킬 관리
     #[command(subcommand)]
     Skill(SkillCmd),
+    /// 표준입출력 MCP 서버 실행 (MCP 호스트가 서브프로세스로 띄운다)
+    Mcp,
 }
 
 #[derive(Subcommand)]
@@ -312,6 +316,7 @@ fn run() -> anyhow::Result<ExitCode> {
             )?;
             println!("설치됨: {}", dir.display());
         }
+        Command::Mcp => mcp::run()?,
     }
     Ok(ExitCode::SUCCESS)
 }
