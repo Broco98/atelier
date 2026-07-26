@@ -110,13 +110,22 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 function SourceView({ content }: { content: string }) {
   const lines = content.split("\n");
   return (
-    <div className="px-3.5 py-4 font-mono text-[12.5px] leading-[1.75]">
-      {lines.map((line, i) => (
-        <div key={i} className="grid grid-cols-[52px_1fr] gap-3.5">
-          <span className="select-none text-right text-tertiary">{i + 1}</span>
-          <span className="whitespace-pre text-muted-foreground">{line}</span>
+    <div className="px-3.5 py-4">
+      {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
+      <div className="overflow-x-auto font-mono text-[12.5px] leading-[1.75] scroll-quiet">
+        {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
+        <div className="w-max min-w-full">
+          {lines.map((line, i) => (
+            <div key={i} className="flex">
+              {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다 */}
+              <span className="sticky left-0 z-10 w-[66px] shrink-0 select-none bg-background pr-3.5 text-right text-tertiary">
+                {i + 1}
+              </span>
+              <span className="whitespace-pre text-muted-foreground">{line}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
