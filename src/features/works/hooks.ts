@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { worksApi } from "./api";
 import type { WorkStatus } from "./types";
 
@@ -23,12 +23,15 @@ export function useWorks() {
 }
 
 export function useSpecFile(slug: string, path: string | null) {
+  const queryKey = [...WORKS_KEY, "spec", slug, path];
   return useQuery({
-    queryKey: [...WORKS_KEY, "spec", slug, path],
+    queryKey,
     queryFn: () => worksApi.readSpec(slug, path!),
     enabled: path !== null,
-    // 라이브 리로드 시 이전 내용을 유지한 채 교체해 깜빡임을 막는다
-    placeholderData: (prev) => prev,
+    // 라이브 리로드(같은 파일 재요청)에서만 이전 내용을 유지해 깜빡임을 막는다.
+    // 다른 파일로 전환할 때도 유지하면 새 파일 이름 아래 이전 파일 내용이 보인다.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery && hashKey(prevQuery.queryKey) === hashKey(queryKey) ? prev : undefined,
   });
 }
 
