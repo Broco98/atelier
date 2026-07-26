@@ -145,10 +145,6 @@ fn list_works_returns_every_work() {
     .unwrap();
 
     let mut server = Server::start(home.path());
-    let mut names = server.tool_names(2);
-    names.sort();
-    assert_eq!(names, vec!["atelier_list_projects", "atelier_list_works"]);
-
     let res = server.request(3, "tools/call",
         json!({ "name": "atelier_list_works", "arguments": {} }));
     let text = res["result"]["content"][0]["text"].as_str().unwrap();
@@ -156,6 +152,66 @@ fn list_works_returns_every_work() {
     assert_eq!(views[0]["slug"], "카트-아이템-추가");
     assert_eq!(views[0]["branch"], "feat/cart");
     assert_eq!(views[0]["status"], "active");
+}
+
+#[test]
+fn get_work_hands_over_the_spec_directory_to_write_into() {
+    let (home, _code) = fixture();
+    atelier_core::start_work(
+        &home.path().join("works"),
+        &home.path().join("projects"),
+        "카트",
+        &["billing".to_string()],
+        Some("feat/cart"),
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "카트" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    // V5 — 이 응답 하나로 spec을 쓸 위치를 안다. 추측도, 다른 도구도 필요 없다.
+    let spec_dir = view["specDir"].as_str().unwrap();
+    let abs = atelier_core::expand_home(spec_dir);
+    assert!(abs.is_dir(), "specDir does not exist: {spec_dir}");
+    assert!(view["specFiles"].as_array().unwrap().is_empty());
+
+    // Δ7 — 에이전트는 도구가 아니라 파일시스템으로 spec을 쓴다. 그 결과가 조회에 잡힌다.
+    std::fs::write(abs.join("overview.md"), "# 개요\n").unwrap();
+    let res = server.request(3, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "카트" } }));
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["specFiles"][0], "overview.md");
+}
+
+#[test]
+fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "없는작업" } }));
+    // 프로토콜 오류가 아니다 — 도구는 실행됐고 실패했다
+    assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("없는작업"), "{text}");
+    assert!(text.contains("atelier_list_works"), "{text}");
+}
+
+#[test]
+fn all_three_read_tools_are_listed() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let mut names = server.tool_names(2);
+    names.sort();
+    assert_eq!(
+        names,
+        vec!["atelier_get_work", "atelier_list_projects", "atelier_list_works"]
+    );
 }
 
 #[test]
