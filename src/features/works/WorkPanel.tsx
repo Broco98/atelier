@@ -1,4 +1,5 @@
 import { ArrowRight, Copy, GitFork } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef, treeDirRef, workDirRef } from "./refs";
 import SpecTree from "./SpecTree";
@@ -10,10 +11,15 @@ interface WorkPanelProps {
   onSelectFile: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
+  // 닫히는 중 — 부모가 언마운트를 늦춰 퇴장 애니메이션을 재생시킨다 (PANEL_ANIM_MS).
+  closing?: boolean;
 }
 
+// 등장·퇴장 애니메이션 길이. SpecViewer의 언마운트 지연과 같은 값을 써야 한다.
+export const PANEL_ANIM_MS = 260;
+
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
-function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) {
+function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPanelProps) {
   const { data: projects = [] } = useProjects();
   const bases = [
     ...new Set(
@@ -28,7 +34,14 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy }: WorkPanelProps) 
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
     // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
     // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
-    <aside className="flex w-[296px] shrink-0 animate-[panel-fade_260ms_cubic-bezier(0.22,1,0.36,1)_both] flex-col p-4 pl-0">
+    <aside
+      className={cn(
+        "flex w-[296px] shrink-0 origin-top-right flex-col p-4 pl-0",
+        closing
+          ? "animate-[panel-fade-out_260ms_cubic-bezier(0.4,0,1,1)_both]"
+          : "animate-[panel-fade_260ms_cubic-bezier(0.22,1,0.36,1)_both]",
+      )}
+    >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>

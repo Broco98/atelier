@@ -1,12 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, FileText } from "lucide-react";
+import { Check, Copy, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
-import WorkPanel from "./WorkPanel";
+import WorkPanel, { PANEL_ANIM_MS } from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
@@ -28,6 +28,18 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const { data: content } = useSpecFile(work.slug, current);
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
+
+  // 패널은 닫는 즉시 사라지면 퇴장 애니메이션을 재생할 틈이 없다 — 길이만큼 언마운트를 늦춘다.
+  // 늦출 뿐 끝내 언마운트하므로, 스펙 트리의 접힘이 패널 토글을 넘지 않는다는 계약은 그대로다.
+  const [panelMounted, setPanelMounted] = useState(panelOpen);
+  useEffect(() => {
+    if (panelOpen) {
+      setPanelMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_ANIM_MS);
+    return () => window.clearTimeout(timer);
+  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -93,12 +105,13 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
         )}
       </div>
 
-      {panelOpen && (
+      {panelMounted && (
         <WorkPanel
           work={work}
           currentFile={current}
           onSelectFile={setSelected}
           onCopy={copyText}
+          closing={!panelOpen}
         />
       )}
     </div>
@@ -147,7 +160,8 @@ interface PrettyViewProps {
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
-// 참조 복사는 좌측 거터의 버튼이 맡고, 블록에 접근(호버·키보드 포커스)할 때만 나타난다.
+// 참조 복사는 좌측 거터의 버튼이 맡는다. 줄번호는 항상 보이고(그 자체가 정보다),
+// 블록에 접근하면 같은 자리에서 복사 아이콘으로 바뀌어 누를 수 있다는 걸 알린다.
 function BlockWrapper({
   start,
   end,
@@ -165,15 +179,24 @@ function BlockWrapper({
   return (
     <div className={cn("group relative py-1", spacing)}>
       {/* 거터는 본문 좌측 여백(bodyColumn의 pl) 안쪽에 오른쪽 정렬로 얹힌다 —
-          줄범위가 길어지면 왼쪽으로 자라고 본문과의 간격 16px은 그대로다 */}
+          줄범위가 길어지면 왼쪽으로 자라고 본문과의 간격 16px은 그대로다.
+          숫자와 아이콘을 grid 한 칸에 겹쳐 쌓아 트랙 폭을 긴 쪽(숫자)이 정한다 —
+          교체되는 동안 상자 폭이 변하지 않아 아이콘이 숫자의 오른쪽 끝에 그대로 선다 */}
       <button
         type="button"
         onClick={() => onCopy(start, end)}
         aria-label={`${range}줄 참조 복사`}
         title={`${range}줄 참조 복사`}
-        className="absolute right-full top-[9px] mr-4 cursor-copy select-none whitespace-nowrap rounded-[4px] font-mono text-[10.5px] text-tertiary opacity-0 outline-none transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="absolute right-full top-[9px] mr-4 grid cursor-copy select-none place-items-end rounded-[4px] font-mono text-[10.5px] text-tertiary outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        {range}
+        <span className="col-start-1 row-start-1 whitespace-nowrap transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+          {range}
+        </span>
+        <Copy
+          className="col-start-1 row-start-1 size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+          strokeWidth={1.8}
+          aria-hidden
+        />
       </button>
       {children}
     </div>

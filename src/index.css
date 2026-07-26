@@ -164,22 +164,39 @@ body.resizing * {
     cursor: col-resize !important;
 }
 
-/* 작업 패널 등장 — 페이드만. 이동·확대를 쓰면 패널이 잠깐 제자리 밖으로 나가 문서에 가로 스크롤이 깜빡이고,
-   변형이 걸린 요소는 자손 fixed의 기준 상자까지 자기 자신으로 바꾼다 */
+/* 작업 패널 등장·퇴장 — 페이드 + 살짝 커지며 제자리로(뿅).
+   scale은 1을 넘지 않는다. 1보다 큰 값으로 오버슈트하거나 translateX를 쓰면 패널이 제 상자 밖으로
+   나가는데, 패널이 본문 스크롤 영역의 형제가 된 뒤로 그 넘침을 문서(viewport)가 받아
+   애니메이션이 도는 동안 가로 스크롤이 깜빡인다. 0.96→1은 항상 상자 안이라 그 경로가 없다.
+   퇴장은 SpecViewer가 언마운트를 이 길이만큼 늦춰 재생시킨다. */
 @keyframes panel-fade {
     0% {
         opacity: 0;
+        transform: scale(0.96);
     }
     100% {
         opacity: 1;
+        transform: scale(1);
     }
 }
 
-/* 스크롤바 표현 정책 — 평소 투명, 영역에 접근(호버·포커스)하면 노출.
+@keyframes panel-fade-out {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}
+
+/* 스크롤바 표현 정책 — 평소 투명, 스크롤하는 동안만 노출되고 멎으면 사라진다.
    macOS 오버레이 스크롤바는 시스템 설정이 "항상"이면 상시 노출 클래식으로 바뀌고 CSS로 되돌릴 수 없다.
    ::-webkit-scrollbar에 폭을 명시해 커스텀 스크롤바로 전환하면 설정과 무관하게 결과가 같아진다.
    폭은 상태와 무관하게 11px 고정 — 노출/비노출은 thumb 색만 바꾸므로 콘텐츠 폭이 흔들리지 않는다.
-   track·corner를 투명으로, thumb를 3px 안쪽으로 물려 둥근 모서리 호를 침범하지 않는다. */
+   track·corner를 투명으로, thumb를 3px 안쪽으로 물려 둥근 모서리 호를 침범하지 않는다.
+   "스크롤 중"은 CSS로 알 수 없어 lib/scroll-quiet.ts가 is-scrolling 클래스를 붙였다 뗀다. */
 @utility scroll-quiet {
   &::-webkit-scrollbar {
     width: 11px;
@@ -197,12 +214,14 @@ body.resizing * {
     border-radius: 999px;
     background-clip: padding-box;
     }
-  &:hover::-webkit-scrollbar-thumb,
-  &:focus-within::-webkit-scrollbar-thumb {
+}
+
+/* 스크롤 중 노출. @utility 바깥의 평범한 규칙이라 유틸리티 레이어보다 뒤에 와서 이긴다.
+   thumb 직접 호버는 잡을 수 있다는 신호 — 막대가 보이는 동안에만 의미가 있다. */
+.scroll-quiet.is-scrolling::-webkit-scrollbar-thumb {
     background-color: color-mix(in srgb, var(--foreground) 20%, transparent);
-    }
-  /* thumb 직접 호버는 컨테이너 호버와 명시도가 같다 — 아래에 둬야 이긴다 */
-  &::-webkit-scrollbar-thumb:hover {
+}
+
+.scroll-quiet.is-scrolling::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, var(--foreground) 34%, transparent);
-    }
 }
