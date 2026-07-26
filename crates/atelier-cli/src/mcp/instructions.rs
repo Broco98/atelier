@@ -20,3 +20,77 @@ Do code work only inside the work's worktree paths (`trees[].path`), never in th
 A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it.
 
 Paths are written with `~` for the home directory; expand it before opening them."#;
+
+#[cfg(test)]
+mod tests {
+    use super::INSTRUCTIONS;
+
+    /// 맵에서 확정한 도구 이름 9개. 지침이 이 밖의 이름을 부르면
+    /// 에이전트가 존재하지 않는 도구를 찾아 헤맨다.
+    const TOOL_NAMES: [&str; 9] = [
+        "atelier_list_projects",
+        "atelier_list_works",
+        "atelier_get_work",
+        "atelier_start_work",
+        "atelier_attach_project",
+        "atelier_set_work_status",
+        "atelier_remove_work",
+        "atelier_add_project",
+        "atelier_edit_project",
+    ];
+
+    /// 지침 안에 등장하는 `atelier_…` 토큰을 전부 뽑는다.
+    fn mentioned_tools(text: &str) -> Vec<String> {
+        text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .filter(|t| t.starts_with("atelier_"))
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn every_tool_it_names_actually_exists() {
+        for name in mentioned_tools(INSTRUCTIONS) {
+            assert!(
+                TOOL_NAMES.contains(&name.as_str()),
+                "instructions name a tool that does not exist: {name}"
+            );
+        }
+    }
+
+    /// D3이 "반드시 살릴 것"으로 지목한 지식. 하나라도 빠지면
+    /// 되돌리기 번거로운 실수가 저장소에 남는다.
+    #[test]
+    fn carries_the_high_damage_knowledge() {
+        // 브랜치 컨벤션 — 판단의 데이터 출처와 생략 시의 결과
+        assert!(INSTRUCTIONS.contains("git.localBranches"), "no branch source");
+        assert!(INSTRUCTIONS.contains("slug becomes the branch"), "no consequence of omitting");
+        // spec 규약 — 도구가 아니라 파일시스템, 위치는 조회 응답에서
+        assert!(INSTRUCTIONS.contains("no tool for spec"), "spec tool absence not stated");
+        assert!(INSTRUCTIONS.contains("specDir"), "no spec location field");
+        assert!(INSTRUCTIONS.contains("overview.md"), "no starting document");
+        // 워크트리에서만 코드 작업
+        assert!(INSTRUCTIONS.contains("trees[].path"), "no worktree rule");
+        // 블록 참조 해석 (형식 자체는 refs_ts_still_emits_the_same_reference_shape가 지킨다)
+        assert!(INSTRUCTIONS.contains(":L19-27"), "no block reference example");
+    }
+
+    /// 항상 시스템 프롬프트에 상주하는 문자열이다. 교재가 안티패턴으로
+    /// 지목한 500단어급으로 자라지 않게 상한을 둔다.
+    #[test]
+    fn stays_short() {
+        let words = INSTRUCTIONS.split_whitespace().count();
+        assert!(words <= 320, "instructions grew to {words} words");
+    }
+
+    /// D3에서 버린 것이 되돌아오지 않게 한다. 티켓 05가 CLI 명령을
+    /// 삭제하므로, 명령 목록이 지침에 남으면 없는 명령을 안내하게 된다.
+    #[test]
+    fn does_not_reintroduce_cli_commands() {
+        for banned in ["atelier project ", "atelier work ", "atelier skill ", "--json"] {
+            assert!(
+                !INSTRUCTIONS.contains(banned),
+                "CLI surface leaked back into the instructions: {banned}"
+            );
+        }
+    }
+}
