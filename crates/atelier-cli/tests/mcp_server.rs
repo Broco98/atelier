@@ -90,3 +90,37 @@ fn handshake_succeeds_and_stdout_carries_only_protocol_messages() {
     let res = server.request(2, "tools/list", json!({}));
     assert!(res["result"]["tools"].is_array(), "tools/list failed: {res}");
 }
+
+#[test]
+fn list_projects_returns_registered_projects() {
+    let home = tempfile::tempdir().unwrap();
+    let code = tempfile::tempdir().unwrap();
+    let folder = code.path().join("billing");
+    std::fs::create_dir(&folder).unwrap();
+    atelier_core::create_project(&home.path().join("projects"), &folder).unwrap();
+
+    let mut server = Server::start(home.path());
+    assert_eq!(server.tool_names(2), vec!["atelier_list_projects"]);
+
+    let res = server.request(3, "tools/call",
+        json!({ "name": "atelier_list_projects", "arguments": {} }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    // 결과는 JSON 텍스트 한 블록이다 (A1)
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    let views: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(views[0]["slug"], "billing");
+    assert!(views[0]["baseBranch"].is_string(), "{text}");
+}
+
+#[test]
+fn read_tools_declare_read_only_and_local_only() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    for tool in res["result"]["tools"].as_array().unwrap() {
+        let a = &tool["annotations"];
+        assert_eq!(a["readOnlyHint"], true, "{tool}");
+        assert_eq!(a["openWorldHint"], false, "{tool}");
+    }
+}
