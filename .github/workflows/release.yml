@@ -79,12 +79,12 @@ jobs:
           xattr -cr /Applications/atelier.app
           ```
 
-          **CLI** — 압축을 풀어 PATH에 놓고 Claude 스킬 설치:
+          **바이너리** — 압축을 풀어 PATH에 놓고 MCP 서버를 등록:
 
           ```sh
           tar -xzf atelier-cli-*.tar.gz
           sudo mv atelier /usr/local/bin/
-          atelier skill install
+          atelier mcp install
           ```
 
           </details>
