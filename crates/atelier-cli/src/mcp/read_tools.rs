@@ -14,7 +14,7 @@ use super::{kernel_error, AtelierServer};
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct GetWorkParams {
-    /// 조회할 작업의 slug (atelier_list_works가 돌려주는 `slug` 값)
+    /// Slug of the work to look up, as returned by atelier_list_works.
     pub work_slug: String,
 }
 
@@ -22,7 +22,10 @@ pub struct GetWorkParams {
 impl AtelierServer {
     #[tool(
         description = "List every registered Atelier project: slug, display name, folder path, \
-                       baseBranch and description. Call this first to get a valid project slug. \
+                       baseBranch, description, and `git` — which carries `localBranches`, the \
+                       branch names that already exist in that repository. Call this first to \
+                       get a valid project slug, and read `git.localBranches` to pick a branch \
+                       name that matches the repository's convention. \
                        Read-only; reads local files only.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]

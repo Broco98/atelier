@@ -11,8 +11,9 @@ use super::{kernel_error, AtelierServer};
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct AddProjectParams {
-    /// 등록할 코드 폴더의 절대 경로. `~/dev/billing`처럼 `~`로 시작해도 된다.
-    /// 상대 경로는 받지 않는다 — 이 서버의 작업 디렉터리는 네가 아는 값이 아니다.
+    /// Absolute path of the code folder to register. It may start with `~`, as in
+    /// `~/dev/billing`. Relative paths are refused — this server's working directory
+    /// is not something you can know.
     pub folder_path: String,
 }
 
@@ -20,13 +21,14 @@ pub struct AddProjectParams {
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct EditProjectParams {
-    /// 수정할 프로젝트의 slug (atelier_list_projects가 돌려주는 `slug` 값)
+    /// Slug of the project to update, as returned by atelier_list_projects.
     pub project_slug: String,
-    /// 새 표시 이름. slug는 바뀌지 않는다. 공백만 있으면 거부된다.
+    /// New display name. The slug never changes. A blank name is refused.
     pub name: Option<String>,
-    /// 프로젝트가 무엇인지 설명하는 새 본문(Markdown). 기존 설명을 통째로 대체한다.
+    /// New body (Markdown) describing what the project is. Replaces the whole
+    /// existing description rather than appending to it.
     pub description: Option<String>,
-    /// 워크트리가 갈라져 나올 기준 브랜치 (예: `main`, `develop`)
+    /// Base branch that worktrees branch off from (for example `main`, `develop`).
     pub base_branch: Option<String>,
 }
 
