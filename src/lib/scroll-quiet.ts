@@ -9,7 +9,7 @@
 // scroll은 버블링하지 않으므로 캡처 단계에서 문서 하나로 위임해 받는다 —
 // scroll-quiet이 붙은 영역이 몇 개든 리스너는 하나다.
 
-const HIDE_DELAY_MS = 900;
+const HIDE_DELAY_MS = 1400;
 
 const timers = new WeakMap<Element, number>();
 
