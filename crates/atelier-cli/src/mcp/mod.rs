@@ -8,6 +8,7 @@ mod instructions;
 mod read_tools;
 mod work_tools;
 mod project_tools;
+mod skill_cleanup;
 
 use rmcp::{
     handler::server::router::tool::ToolRouter, model::*, tool_handler, transport::stdio,
