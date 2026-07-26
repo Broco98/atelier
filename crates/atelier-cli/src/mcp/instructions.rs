@@ -93,4 +93,25 @@ mod tests {
             );
         }
     }
+
+    /// 블록 참조 형식은 프론트엔드(src/features/works/refs.ts)가 만들고
+    /// 이 지침이 해석한다. 한쪽만 바뀌면 앱이 복사해준 참조를 에이전트가
+    /// 못 읽는다 — refs.ts 상단 주석이 요구하는 "같은 커밋에서 함께 갱신"을
+    /// 부탁이 아니라 규칙으로 만든다.
+    #[test]
+    fn refs_ts_still_emits_the_same_reference_shape() {
+        let refs_ts = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src/features/works/refs.ts"
+        ))
+        .expect("refs.ts moved; update this test and the instructions together");
+
+        assert!(refs_ts.contains("`${base}:L${start}-${end}`"), "range form changed: {refs_ts}");
+        assert!(refs_ts.contains("`${base}:L${start}`"), "single-line form changed: {refs_ts}");
+        assert!(refs_ts.contains("~/.atelier/works/"), "reference root changed: {refs_ts}");
+
+        // 지침이 해석하는 형식도 같은 모양이어야 한다
+        assert!(INSTRUCTIONS.contains("~/.atelier/works/<slug>/spec/overview.md:L19-27"));
+        assert!(INSTRUCTIONS.contains(":L19"));
+    }
 }
