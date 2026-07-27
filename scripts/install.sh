@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# atelier 원터치 설치 — 앱 + CLI + Claude 스킬
+# atelier 원터치 설치 — 앱 + CLI + MCP 서버 등록
 #
 # 사용법:
 #   curl -fsSL https://github.com/Broco98/atelier/releases/latest/download/install.sh | bash
@@ -102,10 +102,13 @@ case ":$PATH:" in
     ;;
 esac
 
-# --- 4/4 Claude 스킬 설치 ------------------------------------------------
-STEP="스킬 설치"
-"$CLI" skill install
-echo "[4/4] 스킬 설치 완료"
+# --- 4/4 MCP 서버 등록 ---------------------------------------------------
+# AI가 Atelier를 쓰는 유일한 경로다. 사용자 전역 스코프로 등록하므로 어느
+# 프로젝트에서든 붙는다. 이 명령은 이미 등록돼 있어도, 호스트 등록 도구가
+# 없어도 0으로 끝난다 — set -e 아래에서 설치가 중단되지 않는다.
+STEP="MCP 서버 등록"
+"$CLI" mcp install
+echo "[4/4] MCP 서버 등록 완료"
 
 echo ""
-echo "완료 — 앱: $APP · CLI: $CLI (v$VERSION) · 스킬: ~/.claude/skills/atelier"
+echo "완료 — 앱: $APP · 바이너리: $CLI (v$VERSION) · MCP 서버: atelier (claude mcp list 로 확인)"

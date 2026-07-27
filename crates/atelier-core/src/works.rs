@@ -88,7 +88,7 @@ pub fn start_work(
         return Err(Error::Validation(reasons.join("; ")));
     }
 
-    std::fs::create_dir_all(dir.join("spec"))?;
+    std::fs::create_dir_all(spec_dir(&dir))?;
     std::fs::create_dir_all(dir.join("trees"))?;
     write_work(works_root, &work)?;
 
@@ -192,13 +192,19 @@ fn to_view(works_root: &Path, work: Work) -> WorkView {
             }
         })
         .collect();
-    WorkView { spec_files: spec_files(&dir), work, trees }
+    WorkView { spec_dir: collapse_home(&spec_dir(&dir)), spec_files: spec_files(&dir), work, trees }
+}
+
+/// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
+/// 않도록 경로를 만드는 곳은 여기 하나다 (work_dir와 같은 규칙).
+fn spec_dir(work_dir: &Path) -> PathBuf {
+    work_dir.join("spec")
 }
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
 fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
-    collect_files(&work_dir.join("spec"), "", &mut files);
+    collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
     files
 }
@@ -317,7 +323,7 @@ pub fn read_spec_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<S
     if !safe {
         return Err(Error::Validation(format!("invalid spec path: {rel_path}")));
     }
-    Ok(std::fs::read_to_string(dir.join("spec").join(rel))?)
+    Ok(std::fs::read_to_string(spec_dir(&dir).join(rel))?)
 }
 
 #[cfg(test)]
@@ -582,6 +588,28 @@ mod tests {
         run_git(&tmp.path().join("fe"), &["worktree", "prune"]);
         let report = attach_project(&works, &projects, "카트", "fe").unwrap();
         assert!(report.errors.is_empty(), "attach must adopt the existing branch: {:?}", report.errors);
+    }
+
+    #[test]
+    fn view_reports_spec_dir_next_to_spec_files() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
+
+        let view = get_work(&works, "카트").unwrap();
+        // 위치는 추측이 아니라 응답에서 온다 (V5)
+        assert_eq!(view.spec_dir, collapse_home(&works.join("카트/spec")));
+        assert!(expand_home(&view.spec_dir).is_dir());
+        // specFiles는 그 디렉터리 기준 상대 경로다
+        assert_eq!(view.spec_files, vec!["overview.md"]);
+
+        // wire 계약: camelCase specDir
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json["specDir"].is_string(), "specDir missing: {json}");
+
+        // list_works도 같은 값을 준다
+        let listed = list_works(&works).unwrap();
+        assert_eq!(listed[0].spec_dir, view.spec_dir);
     }
 
     #[test]
