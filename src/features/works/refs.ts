@@ -1,6 +1,7 @@
 // 참조 생성기 — 클립보드로 나가는 모든 경로 참조는 여기서 만든다.
-// 이 형식은 CLI 스킬 문서(crates/atelier-cli/assets/SKILL.md)의 "블록 참조 해석"
-// 규약과 한 몸이다: 형식을 바꾸면 반드시 같은 커밋에서 규약도 함께 갱신할 것.
+// 이 형식은 MCP 서버 지침(crates/atelier-cli/src/mcp/instructions.rs)의 "블록 참조
+// 해석" 규약과 한 몸이다: 형식을 바꾸면 반드시 같은 커밋에서 규약도 함께 갱신할 것.
+// instructions.rs의 refs_ts_still_emits_the_same_reference_shape 테스트가 이 결합을 지킨다.
 // `~` 축약은 Rust collapse_home(crates/atelier-core/src/paths.rs)과 같은 표기다.
 
 /** 작업 폴더: `~/.atelier/works/<slug>/` */

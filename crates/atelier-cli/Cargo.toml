@@ -1,6 +1,6 @@
 [package]
 name = "atelier-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [[bin]]
@@ -13,8 +13,11 @@ serde_json = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 dirs = "6"
+rmcp = { version = "2.2", features = ["server", "macros", "transport-io"] }
+tokio = { version = "1", features = ["rt", "io-std"] }
+serde = { workspace = true }
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
 assert_cmd = "2"
-predicates = "3"
 tempfile = "3"
