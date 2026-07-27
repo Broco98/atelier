@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Check, ChevronDown, Filter, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { PopoverPortal } from "@/components/ui/popover-portal";
 import { formatCreated, StatusIcon } from "./status";
 import type { WorkView } from "./types";
 
@@ -17,6 +18,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
   const [sortAsc, setSortAsc] = useState(false);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterAnchor = useRef<HTMLButtonElement>(null);
 
   const projectOptions = [...new Set(works.flatMap((w) => w.projects))].sort();
   const filtered = projectFilter
@@ -92,6 +94,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             </button>
             <span className="relative flex min-w-0">
               <button
+                ref={filterAnchor}
                 type="button"
                 onClick={() => setFilterOpen((v) => !v)}
                 title={projectFilter ?? "모든 프로젝트"}
@@ -109,29 +112,32 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                 )}
               </button>
               {filterOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setFilterOpen(false)} />
-                  <div className="absolute right-0 top-[30px] z-40 flex w-[200px] flex-col gap-px overflow-hidden rounded-[13px] border border-border-strong bg-background p-[5px] shadow-lg">
-                    {[null, ...projectOptions].map((option) => (
-                      <button
-                        key={option ?? "*"}
-                        type="button"
-                        onClick={() => {
-                          setProjectFilter(option);
-                          setFilterOpen(false);
-                        }}
-                        className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
-                          {option ?? "모든 프로젝트"}
-                        </span>
-                        {projectFilter === option && (
-                          <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <PopoverPortal
+                  anchorRef={filterAnchor}
+                  align="right"
+                  width={200}
+                  onClose={() => setFilterOpen(false)}
+                  className="flex flex-col gap-px p-[5px]"
+                >
+                  {[null, ...projectOptions].map((option) => (
+                    <button
+                      key={option ?? "*"}
+                      type="button"
+                      onClick={() => {
+                        setProjectFilter(option);
+                        setFilterOpen(false);
+                      }}
+                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
+                        {option ?? "모든 프로젝트"}
+                      </span>
+                      {projectFilter === option && (
+                        <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
+                      )}
+                    </button>
+                  ))}
+                </PopoverPortal>
               )}
             </span>
           </span>
@@ -153,7 +159,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <span className="text-[13px] text-tertiary">해당 프로젝트의 작업이 없어요</span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5">
+          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5 scroll-quiet">
             {sorted.map((work) => {
               const active = work.slug === selectedSlug;
               return (
