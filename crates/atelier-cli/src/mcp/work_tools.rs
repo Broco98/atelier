@@ -203,7 +203,7 @@ impl AtelierServer {
         // force = false 고정. dirty 검사와 브랜치 보존이 이 도구의 안전장치다 (D6).
         match atelier_core::remove_work(&self.works_root, &work_slug, false) {
             Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::json(
-                &serde_json::json!({
+                serde_json::json!({
                     "removed": work_slug,
                     "branch": branch,
                     "note": "The worktrees are gone. The branch above still exists in every \
