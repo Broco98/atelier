@@ -3,7 +3,10 @@ import useIsFullscreen from "./useIsFullscreen";
 
 interface PageHeaderProps {
   root: string;
-  leaf?: string;
+  // 문자열이면 그대로 렌더된다. 노드를 주면 그 자리에서 편집시킬 수 있다 —
+  // 감싸는 span이 truncate(overflow:hidden)라 노드도 max-w-full truncate를 스스로 가져야
+  // 오늘과 같은 말줄임이 나온다.
+  leaf?: React.ReactNode;
   // 브레드크럼 바로 뒤에 붙는 부가 요소 (상태 배지·칩 등)
   meta?: React.ReactNode;
   actions?: React.ReactNode;
