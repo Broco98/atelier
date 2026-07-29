@@ -227,9 +227,12 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
 
     const block =
       (Tag: keyof React.JSX.IntrinsicElements, className: string, spacing: string) =>
-      ({ node, children, ...props }: any) => {
+      ({ node, children, className: hastClass, ...props }: any) => {
         const el = (
-          <Tag className={className} {...props}>
+          // hast가 들고 온 클래스는 덮지 않고 합친다 — remark-gfm이 체크박스가 든 목록의
+          // ul·ol에 contains-task-list를 붙이는데, {...props}가 뒤에 오면 그게 이겨서
+          // 목록 스타일(들여쓰기·불릿·행간)이 통째로 사라진다.
+          <Tag className={cn(className, hastClass)} {...props}>
             {children}
           </Tag>
         );
