@@ -200,7 +200,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                   type="button"
                   onClick={() => setDraftsOpen((v) => !v)}
                   aria-expanded={draftsOpen}
-                  className="flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-accent"
+                  className="flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
                 >
                   <ChevronRight
                     className={cn("size-3 shrink-0 transition-transform", draftsOpen && "rotate-90")}
