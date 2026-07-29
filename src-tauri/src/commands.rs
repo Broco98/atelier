@@ -53,6 +53,12 @@ pub async fn get_work(slug: String) -> CmdResult<WorkView> {
     atelier_core::get_work(&works_dir(), &slug).map_err(err)
 }
 
+/// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
+#[tauri::command]
+pub async fn set_work_title(slug: String, title: String) -> CmdResult<WorkView> {
+    atelier_core::update_work_title(&works_dir(), &slug, &title).map_err(err)
+}
+
 #[tauri::command]
 pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView> {
     let status = status.parse().map_err(err)?;

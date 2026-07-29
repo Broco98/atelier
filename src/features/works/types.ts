@@ -1,7 +1,7 @@
 // draft는 "아직 시작 전"을 **선언**한 것이다 — 프로젝트 유무에서 파생되지 않는다.
 export type WorkStatus = "draft" | "active" | "review" | "done";
 
-export interface TreeView {
+export interface WorktreeView {
   project: string;
   path: string;
   exists: boolean;
@@ -16,7 +16,7 @@ export interface WorkView {
   branch: string | null;
   createdAt: string;
   projects: string[];
-  trees: TreeView[];
+  worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];
 }

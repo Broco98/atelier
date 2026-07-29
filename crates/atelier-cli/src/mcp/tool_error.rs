@@ -13,7 +13,7 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "Call atelier_list_projects to see the registered project slugs and their folders."
         }
         Error::WorkNotFound(_) => "Call atelier_list_works to see the existing work slugs.",
-        Error::DirtyTrees(_) => {
+        Error::DirtyWorktrees(_) => {
             "Commit or stash the changes in those worktrees, then call this tool again."
         }
         Error::Validation(_) | Error::EmptyName => "Fix the arguments and call this tool again.",

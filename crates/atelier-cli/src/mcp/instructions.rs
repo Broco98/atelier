@@ -11,11 +11,13 @@ pub const INSTRUCTIONS: &str = r#"Atelier organizes local development work. A pr
 
 Order matters when starting a work. Call atelier_list_projects first: it gives you the project slugs to pass, and each project's existing branches under `git.localBranches`.
 
-When the work has projects, pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work, so it has to fit all of them. If you omit the branch, the work's slug becomes the branch name, which is almost never the repository's convention; a wrong name also creates worktrees on it, which is tedious to unwind.
+Give every work an explicit `slug` in English kebab-case: it becomes the folder name and the default branch name, and it never changes. Write the `title` in the user's own language. To continue a work that already exists, pass its slug — that is what resumes it, not the title, which the user may have edited since.
+
+When the work has projects, pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work. If you omit the branch, the work's slug becomes the branch name, which is rarely the repository's convention, and worktrees are created on it.
 
 There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill puts a spec document in the worktree instead, move it into `specDir`; that is the only place the app and the next session look.
 
-Do code work only inside the work's worktree paths (`trees[].path`), never in the project's own folder.
+Do code work only inside the work's worktree paths (`worktrees[].path`), never in the project's own folder.
 
 A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it.
 
@@ -25,14 +27,15 @@ Paths are written with `~` for the home directory; expand it before opening them
 mod tests {
     use super::INSTRUCTIONS;
 
-    /// 맵에서 확정한 도구 이름 9개. 지침이 이 밖의 이름을 부르면
+    /// 맵에서 확정한 도구 이름 10개. 지침이 이 밖의 이름을 부르면
     /// 에이전트가 존재하지 않는 도구를 찾아 헤맨다.
-    const TOOL_NAMES: [&str; 9] = [
+    const TOOL_NAMES: [&str; 10] = [
         "atelier_list_projects",
         "atelier_list_works",
         "atelier_get_work",
         "atelier_start_work",
         "atelier_attach_project",
+        "atelier_edit_work",
         "atelier_set_work_status",
         "atelier_remove_work",
         "atelier_add_project",
@@ -68,8 +71,8 @@ mod tests {
         assert!(INSTRUCTIONS.contains("no tool for spec"), "spec tool absence not stated");
         assert!(INSTRUCTIONS.contains("specDir"), "no spec location field");
         assert!(INSTRUCTIONS.contains("overview.md"), "no starting document");
-        // 워크트리에서만 코드 작업
-        assert!(INSTRUCTIONS.contains("trees[].path"), "no worktree rule");
+        // 워크트리에서만 코드 작업 — 응답 필드 이름과 같은 말이어야 한다
+        assert!(INSTRUCTIONS.contains("worktrees[].path"), "no worktree rule");
         // 정의 문장 — 에이전트가 가장 먼저 읽는 줄이다. "one or more"로 되돌아가면
         // 프로젝트 없이 시작하는 경로를 첫 줄부터 부정하게 된다 (실제로 한 번 그랬다)
         assert!(
@@ -104,13 +107,37 @@ mod tests {
 
     /// D3에서 버린 것이 되돌아오지 않게 한다. 티켓 05가 CLI 명령을
     /// 삭제하므로, 명령 목록이 지침에 남으면 없는 명령을 안내하게 된다.
+    const BANNED_CLI: [&str; 4] =
+        ["atelier project ", "atelier work ", "atelier skill ", "--json"];
+
     #[test]
     fn does_not_reintroduce_cli_commands() {
-        for banned in ["atelier project ", "atelier work ", "atelier skill ", "--json"] {
+        for banned in BANNED_CLI {
             assert!(
                 !INSTRUCTIONS.contains(banned),
                 "CLI surface leaked back into the instructions: {banned}"
             );
+        }
+    }
+
+    /// 같은 금지 규칙이 앱 문구에도 걸린다. 지침만 검사하던 위 테스트는
+    /// 앱의 빈 상태가 `atelier work start ...`를 안내하는 것을 놓쳤다 —
+    /// 없어진 CLI를 광고하는 자리는 지침만이 아니다 (refs_ts_… 와 같은 방식으로
+    /// 프론트엔드 소스를 직접 읽는다).
+    #[test]
+    fn the_app_does_not_advertise_cli_commands_either() {
+        for rel in ["WorkList.tsx", "WorksPage.tsx"] {
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/features/works/")
+                .to_string()
+                + rel;
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{rel} moved ({e}); update this test with it"));
+            for banned in BANNED_CLI {
+                assert!(
+                    !source.contains(banned),
+                    "{rel} advertises a CLI command that does not exist: {banned}"
+                );
+            }
         }
     }
 

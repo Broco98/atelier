@@ -5,7 +5,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
-import { useSetWorkStatus, useWorks } from "./hooks";
+import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_META } from "./status";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -69,7 +69,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Works"
-          leaf={selected?.title}
+          leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
           inset={!sidebarOpen && !panelOpen}
           meta={
             selected && (
@@ -152,17 +152,74 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                 아직 작업이 없어요
               </span>
               <span className="text-[14px] leading-[1.65] text-tertiary">
-                작업은 Claude Code에서 스킬로 시작돼요. 작업이 시작되면 스펙 문서와 진행
+                작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행
                 상황이 여기에 나타나요.
               </span>
+              {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
+                  atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
               <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                atelier work start "새 작업" --project &lt;slug&gt;
+                atelier로 "새 작업" 시작해줘
               </code>
             </div>
           </div>
         )}
       </main>
     </div>
+  );
+}
+
+// 브레드크럼 말단 제목 인라인 편집 — slug는 바뀌지 않는다 (ProjectDetail의 TitleEditor와 같은 계약).
+// 감싸는 PageHeader의 leaf span이 truncate/overflow:hidden이라 두 상태 모두 max-w-full로 스스로 줄어든다.
+//
+// ProjectDetail 쪽과 달리 **음수 마진을 쓰지 않는다.** 그쪽 부모는 평범한 h1이지만 여기 부모는
+// 잘라내므로, 왼쪽으로 삐져나온 만큼이 그대로 클립된다 — outline-none이라 유일한 포커스 표시인
+// 입력의 왼쪽 테두리가 사라진다. 대신 패딩만 쓰고 두 상태의 좌측 정렬을 서로 맞춘다.
+function TitleEditor({ work }: { work: WorkView }) {
+  const setTitle = useSetWorkTitle();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(work.title);
+  // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
+  const finished = useRef(false);
+
+  const finish = (commit: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    // 재조회가 돌아오기 전에 편집 모드를 먼저 끝낸다 — draft가 새 값과 싸우지 않게
+    setEditing(false);
+    const value = draft.trim();
+    if (commit && value && value !== work.title) {
+      setTitle.mutate({ slug: work.slug, title: value });
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title="클릭해서 편집"
+        onClick={() => {
+          finished.current = false;
+          setDraft(work.title);
+          setEditing(true);
+        }}
+        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+      >
+        {work.title}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      }}
+      className="w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[14px] font-medium outline-none"
+    />
   );
 }
 
