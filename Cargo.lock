@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "atelier-core",
  "notify-debouncer-mini",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -276,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "dirs",
