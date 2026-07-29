@@ -157,6 +157,7 @@ fn list_works_returns_every_work() {
         &home.path().join("works"),
         &home.path().join("projects"),
         "카트 아이템 추가",
+        None,
         &["billing".to_string()],
         Some("feat/cart"),
     )
@@ -179,6 +180,7 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
         &home.path().join("works"),
         &home.path().join("projects"),
         "카트",
+        None,
         &["billing".to_string()],
         Some("feat/cart"),
     )
@@ -353,6 +355,113 @@ fn start_work_repeated_adds_only_what_is_missing() {
         assert_eq!(t["exists"], true, "{report}");
     }
     assert!(!home.path().join("works/카트-2").exists(), "duplicate work created");
+}
+
+/// slug 파생 규칙이 유니코드를 그대로 남기므로 한국어 제목은 한국어 폴더와, 브랜치를
+/// 생략하면 한국어 브랜치까지 만든다. 영어 slug를 직접 줘서 사람이 읽는 이름과
+/// 기계가 쓰는 이름을 갈라 놓는다.
+#[test]
+fn start_work_takes_an_english_slug_for_the_folder_and_the_default_branch() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+
+    // branch를 주지 않는다 — 기본값이 제목이 아니라 slug에서 오는지 보는 것이 요점이다
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트 아이템 추가", "slug": "cart-add-item", "projects": ["billing"] }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    assert_eq!(report["slug"], "cart-add-item", "the given slug must win: {report}");
+    assert_eq!(report["title"], "카트 아이템 추가", "title stays in the user's language");
+    assert_eq!(report["branch"], "cart-add-item", "branch defaults to the slug: {report}");
+
+    // 폴더도 그 slug다 — 한국어 폴더가 생기지 않는다
+    assert!(home.path().join("works/cart-add-item").is_dir());
+    assert!(!home.path().join("works/카트-아이템-추가").exists());
+
+    let worktree = atelier_core::expand_home(report["worktrees"][0]["path"].as_str().unwrap());
+    assert_eq!(run_git_out(&worktree, &["branch", "--show-current"]), "cart-add-item");
+}
+
+/// 재개의 정본은 slug다. 제목은 바뀔 수 있으므로 멱등 키가 될 수 없고, slug는 불변이라
+/// 될 수 있다. 그리고 재개가 **호출자의 제목으로 기존 제목을 덮어쓰지 않는다** —
+/// 사용자가 다듬어 둔 이름을 에이전트가 되돌리면 안 된다.
+#[test]
+fn start_work_resumes_on_the_slug_and_never_clobbers_the_stored_title() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": {
+            "title": "카트 아이템 추가", "slug": "cart-add-item",
+            "projects": ["billing"], "branch": "feat/cart"
+        }
+    }));
+
+    // 같은 slug, 다른 제목으로 재호출 — 새 작업이 아니라 재개다
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": {
+            "title": "전혀 다른 제목", "slug": "cart-add-item",
+            "projects": ["billing", "shipping"], "branch": "feat/cart"
+        }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    assert_eq!(report["slug"], "cart-add-item", "must resume, not fork: {report}");
+    assert_eq!(report["title"], "카트 아이템 추가", "resume overwrote the stored title: {report}");
+    assert_eq!(report["projects"], json!(["billing", "shipping"]));
+    // 명시된 slug는 충돌이 아니라 재개다 — 중복 회피 접미사가 붙지 않는다
+    assert!(!home.path().join("works/cart-add-item-2").exists(), "duplicate work created");
+    assert!(!home.path().join("works/전혀-다른-제목").exists(), "duplicate work created");
+}
+
+/// slug는 디렉터리명이 된다. 경로 구분자가 통과하면 데이터 루트 밖에 폴더가 생긴다.
+#[test]
+fn start_work_refuses_a_slug_that_could_escape_the_data_root() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+
+    for bad in ["../탈출", "a/b", ".hidden", "   "] {
+        let res = server.request(3, "tools/call", json!({
+            "name": "atelier_start_work",
+            "arguments": { "title": "카트", "slug": bad, "projects": ["billing"] }
+        }));
+        assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+        assert_eq!(res["result"]["isError"], true, "slug '{bad}' was accepted: {res}");
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("slug"), "must name the failing input: {text}");
+        assert!(text.contains("again"), "no next step: {text}");
+    }
+    // 거부된 호출은 아무것도 만들지 않는다
+    let listed = server.request(4, "tools/call",
+        json!({ "name": "atelier_list_works", "arguments": {} }));
+    let listed: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(listed.as_array().unwrap().is_empty(), "{listed}");
+}
+
+/// 에이전트는 스키마를 보고 "안 줘도 된다"를 판단한다 — edit_project와 같은 계약이다.
+#[test]
+fn start_work_schema_shows_slug_and_branch_are_optional() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"].as_array().unwrap().iter()
+        .find(|t| t["name"] == "atelier_start_work")
+        .unwrap_or_else(|| panic!("tool not listed: {res}"));
+
+    let mut required: Vec<&str> = tool["inputSchema"]["required"].as_array().unwrap()
+        .iter().map(|v| v.as_str().unwrap()).collect();
+    required.sort();
+    assert_eq!(required, vec!["projects", "title"], "{tool}");
+    assert!(!tool["inputSchema"]["properties"]["slug"].is_null(), "no slug property: {tool}");
 }
 
 /// 워크트리 생성이 실패하도록 만든다: 워크트리가 놓일 자리에 파일을 미리 둔다.

@@ -11,7 +11,9 @@ pub const INSTRUCTIONS: &str = r#"Atelier organizes local development work. A pr
 
 Order matters when starting a work. Call atelier_list_projects first: it gives you the project slugs you must pass, and each project's existing branches under `git.localBranches`.
 
-Pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work, so it has to fit all of them. If you omit the branch, the work's slug becomes the branch name, which is almost never the repository's convention; a wrong name also creates worktrees on it, which is tedious to unwind.
+Give every work an explicit `slug` in English kebab-case: it becomes the folder name and the default branch name, and it never changes. Write the `title` in the user's own language. To continue a work that already exists, pass its slug — that is what resumes it, not the title, which the user may have edited since.
+
+Pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work. If you omit the branch, the work's slug becomes the branch name, which is rarely the repository's convention, and worktrees are created on it.
 
 There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync.
 

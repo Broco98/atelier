@@ -20,10 +20,16 @@ pub struct WorkReport {
     pub errors: Vec<WorktreeError>,
 }
 
+/// `slug`를 주면 그것이 디렉터리명이자 브랜치 기본값이고, **재개 판정의 정본**이다.
+/// 생략하면 지금까지처럼 제목에서 파생하고 제목으로 재개를 판정한다.
+///
+/// 제목은 바뀔 수 있으므로 멱등 키가 될 수 없다(`update_work_title` 참조). slug는
+/// 불변이라 될 수 있다 — 그래서 slug를 아는 호출자는 제목이 어떻게 바뀌었든 재개된다.
 pub fn start_work(
     works_root: &Path,
     projects_root: &Path,
     title: &str,
+    slug: Option<&str>,
     project_slugs: &[String],
     branch: Option<&str>,
 ) -> Result<WorkReport> {
@@ -34,10 +40,28 @@ pub fn start_work(
     if project_slugs.is_empty() {
         return Err(Error::Validation("at least one project is required".into()));
     }
+    // slug는 디렉터리명이 된다 — 경로 구분자가 통과하면 데이터 루트 밖에 폴더가 생긴다.
+    let slug = slug.map(str::trim);
+    if let Some(slug) = slug {
+        if !crate::slug::is_safe_slug(slug) {
+            return Err(Error::Validation(format!(
+                "invalid slug '{slug}': it becomes a folder name, so it must not be empty, \
+                 start with '.', or contain '/' or '\\'"
+            )));
+        }
+    }
     std::fs::create_dir_all(works_root)?;
 
-    // 같은 제목의 work가 있으면 이어서 생성(멱등), 없으면 새로 만든다
-    let existing_work = find_by_title(works_root, title)?;
+    // 재개 판정: slug가 있으면 slug가 정본, 없을 때만 제목으로 찾는다 (멱등)
+    let existing_work = match slug {
+        Some(slug) => match read_work(works_root, slug) {
+            Ok(work) => Some(work),
+            Err(Error::WorkNotFound(_)) => None,
+            // 망가진 work.json을 "없음"으로 읽으면 그 위에 덮어쓴다 — 그대로 올린다
+            Err(e) => return Err(e),
+        },
+        None => find_by_title(works_root, title)?,
+    };
     let resuming = existing_work.is_some();
     let work = match existing_work {
         Some(existing) => {
@@ -58,7 +82,12 @@ pub fn start_work(
             work
         }
         None => {
-            let slug = unique_dir_slug(works_root, &slugify(title));
+            // slug를 명시했으면 그대로 쓴다 — 이미 있으면 위에서 재개했을 것이므로
+            // 여기까지 온 이상 충돌이 아니다. 중복 회피 접미사는 파생 slug에만 붙인다.
+            let slug = match slug {
+                Some(slug) => slug.to_string(),
+                None => unique_dir_slug(works_root, &slugify(title)),
+            };
             let branch = branch.unwrap_or(&slug).to_string();
             Work {
                 slug,
@@ -376,7 +405,7 @@ mod tests {
     #[test]
     fn start_creates_meta_spec_and_worktrees() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "카트 아이템 추가", &slugs(&["fe", "be"]), Some("feat/cart"))
+        let report = start_work(&works, &projects, "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
             .unwrap();
         assert!(report.errors.is_empty());
 
@@ -407,7 +436,7 @@ mod tests {
     #[test]
     fn start_defaults_branch_to_slug() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "Cart Add", &slugs(&["fe"]), None).unwrap();
+        let report = start_work(&works, &projects, "Cart Add", None, &slugs(&["fe"]), None).unwrap();
         assert_eq!(report.view.work.branch, "cart-add");
         let worktree = works.join("cart-add/trees/fe");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "cart-add");
@@ -418,7 +447,7 @@ mod tests {
         let (tmp, works, projects) = setup();
         // be 저장소에 충돌 브랜치를 미리 만들어 사전검증이 실패하게 한다
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
-        let result = start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart"));
+        let result = start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
         assert!(matches!(result, Err(Error::Validation(_))), "expected validation error");
         // 아무것도 만들지 않는다 — fe 워크트리도, work 디렉터리도
         assert!(!works.join("카트").exists());
@@ -428,7 +457,7 @@ mod tests {
     #[test]
     fn start_rejects_unknown_project() {
         let (_tmp, works, projects) = setup();
-        let result = start_work(&works, &projects, "카트", &slugs(&["nope"]), None);
+        let result = start_work(&works, &projects, "카트", None, &slugs(&["nope"]), None);
         assert!(matches!(result, Err(Error::Validation(_))));
         assert!(!works.join("카트").exists());
     }
@@ -436,10 +465,10 @@ mod tests {
     #[test]
     fn start_resumes_missing_worktrees_idempotently() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 같은 제목으로 재실행 + 프로젝트 추가 → 새 slug가 아니라 기존 work에 이어서 생성
         let report =
-            start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.slug, "카트");
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
@@ -451,8 +480,8 @@ mod tests {
     #[test]
     fn list_derives_dirty_and_spec_files_and_sorts() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "첫 작업", &slugs(&["fe"]), Some("b1")).unwrap();
-        start_work(&works, &projects, "둘째 작업", &slugs(&["be"]), Some("b2")).unwrap();
+        start_work(&works, &projects, "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
+        start_work(&works, &projects, "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
 
         // 워크트리에 커밋 안 된 변경 → dirty, spec 파일 → specFiles
         std::fs::write(works.join("첫-작업/trees/fe/new.txt"), "x").unwrap();
@@ -480,7 +509,7 @@ mod tests {
     #[test]
     fn update_status_persists() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         let view = update_work_status(&works, "카트", WorkStatus::Review).unwrap();
         assert_eq!(view.work.status, WorkStatus::Review);
         assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Review);
@@ -497,7 +526,7 @@ mod tests {
     #[test]
     fn attach_adds_project_with_worktree_and_is_idempotent() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let report = attach_project(&works, &projects, "카트", "be").unwrap();
         assert!(report.errors.is_empty());
@@ -522,7 +551,7 @@ mod tests {
     #[test]
     fn remove_refuses_dirty_worktrees_unless_forced() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         std::fs::write(works.join("카트/trees/be/wip.txt"), "uncommitted").unwrap();
 
         let result = remove_work(&works, "카트", false);
@@ -542,7 +571,7 @@ mod tests {
     #[test]
     fn remove_clean_work_without_force() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         remove_work(&works, "카트", false).unwrap();
         assert!(!works.join("카트").exists());
         assert!(list_works(&works).unwrap().is_empty());
@@ -552,7 +581,7 @@ mod tests {
     #[test]
     fn read_spec_file_reads_and_guards_traversal() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
@@ -577,13 +606,13 @@ mod tests {
     #[test]
     fn resume_adopts_leftover_branch_instead_of_dead_ending() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 부분 실패 잔재 시뮬레이션: be에 브랜치만 만들어지고 워크트리는 없는 상태
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
 
         // 재실행이 "branch already exists"로 막히면 영구 dead-end — 기존 브랜치를 채택해야 한다
         let report =
-            start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty(), "resume must adopt the existing branch: {:?}", report.errors);
         let worktree = works.join("카트/trees/be");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
@@ -598,7 +627,7 @@ mod tests {
     #[test]
     fn view_reports_spec_dir_next_to_spec_files() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
 
         let view = get_work(&works, "카트").unwrap();
@@ -620,10 +649,10 @@ mod tests {
     #[test]
     fn start_with_different_title_gets_unique_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트 추가", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트 추가", None, &slugs(&["fe"]), None).unwrap();
         // slugify 결과가 같지만 제목이 다르면 별개 work
         let report =
-            start_work(&works, &projects, "카트/추가", &slugs(&["be"]), Some("b2")).unwrap();
+            start_work(&works, &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
         assert_eq!(report.view.work.slug, "카트-추가-2");
     }
 }
