@@ -158,6 +158,14 @@ function SourceView({ content }: { content: string }) {
 //   본문과 16px 떨어져야 하므로, 62px은 줄일 수 있는 값이 아니라 하한이다.
 export const bodyColumn = "mx-auto w-full max-w-[900px] pl-[62px] pr-10";
 
+// 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
+// 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
+// 체크박스 항목의 본문 첫 글자가 불릿 항목의 본문과 같은 x에 선다.
+// 우측 여백 5px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 4.17 = 4.83.
+// 4.17px은 본문 글꼴(Geist 15px)에서 실측한 값이다 — 글꼴이나 본문 크기가 바뀌면 다시 재야 한다.
+const listIndent = "pl-[22px]";
+const checkboxGutter = "-ml-[22px] mr-[5px]";
+
 interface PrettyViewProps {
   content: string;
   onCopyBlock: (start: number, end: number) => void;
@@ -251,8 +259,8 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
       h3: block("h3", "text-[15.5px] font-semibold", "mt-4"),
       h4: block("h4", "text-[14px] font-semibold", "mt-3"),
       p: block("p", "leading-[1.7] text-muted-foreground", "mt-1.5"),
-      ul: block("ul", "flex list-disc flex-col gap-1.5 pl-[22px] leading-[1.7] text-muted-foreground", "mt-1.5"),
-      ol: block("ol", "flex list-decimal flex-col gap-1.5 pl-[22px] leading-[1.7] text-muted-foreground", "mt-1.5"),
+      ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
+      ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
       blockquote: block(
         "blockquote",
         "border-l-2 border-border-strong pl-3.5 text-muted-foreground",
@@ -291,6 +299,23 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
           {children}
         </a>
+      ),
+      // 체크박스 목록 — remark-gfm은 체크박스가 있는 항목의 li에만 task-list-item을 붙인다
+      // (ul·ol 둘 다). 그 항목만 불릿을 지우므로 한 목록에 섞여 있어도 나머지는 그대로다.
+      li: ({ node, children, className, ...props }) => (
+        <li
+          className={className?.includes("task-list-item") ? cn(className, "list-none") : className}
+          {...props}
+        >
+          {children}
+        </li>
+      ),
+      // 체크박스를 거터로 빼내 불릿이 서던 자리에 세운다 (근거는 checkboxGutter 위 주석).
+      // 본문은 흐름에 남으므로 둘째 줄부터도 첫 줄과 같은 x에서 시작한다.
+      // 마크다운이 만드는 input은 GFM 체크박스뿐이라(원시 HTML은 켜져 있지 않다) 분기하지 않는다.
+      // disabled는 remark-gfm이 붙여 보낸 것을 그대로 둔다 — 눌러도 문서가 바뀌지 않는다.
+      input: ({ node, ...props }) => (
+        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
       ),
       pre: (({ node, children, ...props }: any) => {
         const code = node?.children?.[0];
