@@ -483,6 +483,61 @@ fn attach_project_reports_its_own_worktree_failure_as_an_error() {
 /// `Validation("<slug>: project not registered")`로 눌러 감싸므로(`works.rs:267`),
 /// `kernel_error`가 붙이는 안내는 `atelier_list_projects`가 **아니라**
 /// `"Fix the arguments and call this tool again."`이다 (⚠️ G2 — 표에 기록된 안내 없는 경로).
+/// draft → active 경로의 마지막 한 칸 — 프로젝트를 붙이는 그 호출에서 브랜치가
+/// 정해진다. 상태는 선언된 것이므로 붙였다고 저절로 바뀌지 않는다.
+#[test]
+fn attach_project_fixes_the_branch_of_a_work_that_had_none() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "빈손으로 시작" }
+    }));
+    server.request(4, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "빈손으로-시작", "status": "draft" }
+    }));
+
+    let res = server.request(5, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": {
+            "work_slug": "빈손으로-시작", "project_slug": "billing", "branch": "feat/late"
+        }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["branch"], "feat/late", "{report}");
+    assert_eq!(report["trees"][0]["exists"], true, "{report}");
+    assert_eq!(report["status"], "draft", "attaching must not declare progress: {report}");
+
+    // 한 work는 브랜치 하나를 공유한다 — 다른 이름은 거부되고 저장된 값이 그대로다
+    let bad = server.request(6, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": {
+            "work_slug": "빈손으로-시작", "project_slug": "billing", "branch": "feat/other"
+        }
+    }));
+    assert_eq!(bad["result"]["isError"], true, "{bad}");
+    let text = bad["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("feat/late"), "the branch it already uses must appear: {text}");
+
+    // 도구 표면에 드러나야 에이전트가 이름을 고를 기회를 잡는다
+    let tools = server.request(7, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_attach_project")
+        .expect("atelier_attach_project missing");
+    assert!(tool["inputSchema"]["properties"]["branch"].is_object(), "{tool}");
+    let required = tool["inputSchema"]["required"].as_array().unwrap();
+    assert!(!required.iter().any(|r| r == "branch"), "branch must be optional: {tool}");
+    assert!(
+        tool["description"].as_str().unwrap().contains("this is where the branch is decided"),
+        "the deciding moment is undocumented: {tool}"
+    );
+}
+
 #[test]
 fn attach_unknown_project_is_an_execution_error() {
     let (home, _code) = fixture();

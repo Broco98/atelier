@@ -69,6 +69,11 @@ pub struct AttachProjectParams {
     pub work_slug: String,
     /// Slug of the project to add, as returned by atelier_list_projects.
     pub project_slug: String,
+    /// Branch name for the worktree, for a work whose branch is still `null` — this is
+    /// where it gets decided. Read the project's `git.localBranches` and match the
+    /// convention already in use. Omitting it falls back to the work slug. Passing a
+    /// different name than the work already uses is refused: one work, one branch.
+    pub branch: Option<String>,
 }
 
 /// `atelier_set_work_status`의 인자.
@@ -131,10 +136,13 @@ impl AtelierServer {
 
     #[tool(
         description = "Add one project to an existing work and create its worktree on the \
-                       work's shared branch. This is also the recovery path when \
-                       atelier_start_work reported that a worktree could not be created: \
-                       call it once per failed project instead of starting the work again. \
-                       Doing it twice for the same project changes nothing.",
+                       work's shared branch. If the work's `branch` is still null — it was \
+                       started without projects — this is where the branch is decided, so \
+                       pass one that matches the repository's convention. This is also the \
+                       recovery path when atelier_start_work reported that a worktree could \
+                       not be created: call it once per failed project instead of starting \
+                       the work again. Doing it twice for the same project changes nothing. \
+                       The work's status is never changed by attaching.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -144,13 +152,16 @@ impl AtelierServer {
     )]
     async fn atelier_attach_project(
         &self,
-        Parameters(AttachProjectParams { work_slug, project_slug }): Parameters<AttachProjectParams>,
+        Parameters(AttachProjectParams { work_slug, project_slug, branch }): Parameters<
+            AttachProjectParams,
+        >,
     ) -> Result<CallToolResult, ErrorData> {
         match atelier_core::attach_project(
             &self.works_root,
             &self.projects_root,
             &work_slug,
             &project_slug,
+            branch.as_deref(),
         ) {
             Ok(report) if report.errors.is_empty() => {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))

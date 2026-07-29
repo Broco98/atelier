@@ -279,17 +279,21 @@ pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> 
     Ok(to_view(works_root, work))
 }
 
+/// 프로젝트를 붙인다. `branch`는 **브랜치가 아직 미정인 work를 위한 것**이다 —
+/// 코드를 건드릴 때가 되어서야 저장소 관례에 맞는 이름을 고르게 한다.
+/// 이미 정해진 work에 다른 이름을 넘기면 거부된다 (fix_branch의 규칙표).
 pub fn attach_project(
     works_root: &Path,
     projects_root: &Path,
     slug: &str,
     project_slug: &str,
+    branch: Option<&str>,
 ) -> Result<WorkReport> {
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
     let tree = dir.join("trees").join(project_slug);
     // 워크트리를 만들려면 이름이 있어야 한다 — 미정이던 work는 여기서 확정된다.
-    let branch = fix_branch(&work, None)?;
+    let branch = fix_branch(&work, branch)?;
 
     let mut errors = Vec::new();
     if !tree.is_dir() {
@@ -615,24 +619,106 @@ mod tests {
         let (tmp, works, projects) = setup();
         start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
-        let report = attach_project(&works, &projects, "카트", "be").unwrap();
+        let report = attach_project(&works, &projects, "카트", "be", None).unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
         let tree = works.join("카트/trees/be");
         assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/cart");
 
         // 이미 붙은 프로젝트 재attach → 멱등
-        let again = attach_project(&works, &projects, "카트", "be").unwrap();
+        let again = attach_project(&works, &projects, "카트", "be", None).unwrap();
         assert!(again.errors.is_empty());
         assert_eq!(again.view.work.projects, vec!["fe", "be"]);
 
         // 검증 실패(미등록 프로젝트) → 에러, projects 불변
         assert!(matches!(
-            attach_project(&works, &projects, "카트", "nope"),
+            attach_project(&works, &projects, "카트", "nope", None),
             Err(Error::Validation(_))
         ));
         assert_eq!(get_work(&works, "카트").unwrap().work.projects, vec!["fe", "be"]);
         drop(tmp);
+    }
+
+    /// 빈손으로 시작한 work가 코드를 건드릴 때가 되어서야 저장소 관례에 맞는 이름을
+    /// 고른다. draft → active 경로가 여기서 처음 끝까지 뚫린다.
+    #[test]
+    fn attach_fixes_the_branch_of_a_project_less_work() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "Late Branch", &[], None).unwrap();
+        assert_eq!(get_work(&works, "late-branch").unwrap().work.branch, None);
+
+        // 미정 + 명시 → 그 값으로 확정·저장되고 워크트리가 생긴다
+        let report = attach_project(&works, &projects, "late-branch", "fe", Some("feat/late")).unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.branch.as_deref(), Some("feat/late"));
+        assert_eq!(get_work(&works, "late-branch").unwrap().work.branch.as_deref(), Some("feat/late"));
+        let tree = works.join("late-branch/trees/fe");
+        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/late");
+
+        // 이미 정해진 뒤에 다른 이름은 거부된다 — 한 work는 브랜치 하나를 공유한다
+        assert!(matches!(
+            attach_project(&works, &projects, "late-branch", "be", Some("feat/other")),
+            Err(Error::Validation(_))
+        ));
+        let after = get_work(&works, "late-branch").unwrap();
+        assert_eq!(after.work.branch.as_deref(), Some("feat/late"));
+        assert_eq!(after.work.projects, vec!["fe"], "a refused attach must change nothing");
+        assert!(!works.join("late-branch/trees/be").exists());
+
+        // 같은 값을 넘기는 것은 기존 동작 그대로다
+        let same = attach_project(&works, &projects, "late-branch", "be", Some("feat/late")).unwrap();
+        assert!(same.errors.is_empty(), "{same:?}");
+        assert_eq!(same.view.work.projects, vec!["fe", "be"]);
+    }
+
+    /// 미정 work에 이름을 생략하면 slug로 확정된다 (규칙표 마지막 행).
+    #[test]
+    fn attach_without_a_branch_name_falls_back_to_the_slug() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "Late Branch", &[], None).unwrap();
+        let report = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
+        assert_eq!(report.view.work.branch.as_deref(), Some("late-branch"));
+    }
+
+    /// 확정은 워크트리를 만들기 **전에** 저장한다. 생성이 실패해도 다음 시도가
+    /// 같은 이름을 쓰게 하기 위해서다 (부분 실패 보고 계약과 같은 결).
+    #[test]
+    fn attach_saves_the_branch_before_it_tries_the_worktree() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "Late Branch", &[], None).unwrap();
+        // 워크트리가 놓일 자리를 파일로 막아 git worktree add를 실패시킨다
+        let tree = works.join("late-branch/trees/fe");
+        std::fs::create_dir_all(tree.parent().unwrap()).unwrap();
+        std::fs::write(&tree, "blocker").unwrap();
+
+        let report =
+            attach_project(&works, &projects, "late-branch", "fe", Some("feat/late")).unwrap();
+        assert_eq!(report.errors.len(), 1, "the worktree must have failed: {report:?}");
+        assert_eq!(
+            get_work(&works, "late-branch").unwrap().work.branch.as_deref(),
+            Some("feat/late"),
+            "the fixed branch must survive a failed worktree"
+        );
+
+        // 원인을 치우고 이름 없이 재시도해도 slug가 아니라 확정된 이름을 쓴다
+        std::fs::remove_file(&tree).unwrap();
+        let retry = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
+        assert!(retry.errors.is_empty(), "{retry:?}");
+        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/late");
+    }
+
+    /// 직교성 회귀 가드 — 진행 상태는 사람과 세션이 선언한다. 프로젝트가 붙었다고
+    /// 저절로 active가 되지 않는다.
+    #[test]
+    fn attach_does_not_change_the_status() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "Draft Work", &[], None).unwrap();
+        update_work_status(&works, "draft-work", WorkStatus::Draft).unwrap();
+
+        let report =
+            attach_project(&works, &projects, "draft-work", "fe", Some("feat/draft")).unwrap();
+        assert_eq!(report.view.work.status, WorkStatus::Draft);
+        assert_eq!(get_work(&works, "draft-work").unwrap().work.status, WorkStatus::Draft);
     }
 
     #[test]
@@ -707,7 +793,7 @@ mod tests {
         // attach도 동일하게 기존 브랜치를 채택한다
         run_git(&tmp.path().join("fe"), &["worktree", "remove", "--force", works.join("카트/trees/fe").to_str().unwrap()]);
         run_git(&tmp.path().join("fe"), &["worktree", "prune"]);
-        let report = attach_project(&works, &projects, "카트", "fe").unwrap();
+        let report = attach_project(&works, &projects, "카트", "fe", None).unwrap();
         assert!(report.errors.is_empty(), "attach must adopt the existing branch: {:?}", report.errors);
     }
 
