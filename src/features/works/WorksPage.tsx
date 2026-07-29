@@ -5,7 +5,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
-import { useSetWorkStatus, useWorks } from "./hooks";
+import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_META } from "./status";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -63,7 +63,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Works"
-          leaf={selected?.title}
+          leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
           inset={!sidebarOpen && !panelOpen}
           meta={
             selected && (
@@ -159,6 +159,57 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
         )}
       </main>
     </div>
+  );
+}
+
+// 브레드크럼 말단 제목 인라인 편집 — slug는 바뀌지 않는다 (ProjectDetail의 TitleEditor와 같은 계약).
+// 감싸는 PageHeader의 leaf span이 truncate/overflow:hidden이라 두 상태 모두 max-w-full로 스스로 줄어든다.
+function TitleEditor({ work }: { work: WorkView }) {
+  const setTitle = useSetWorkTitle();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(work.title);
+  // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
+  const finished = useRef(false);
+
+  const finish = (commit: boolean) => {
+    if (finished.current) return;
+    finished.current = true;
+    // 재조회가 돌아오기 전에 편집 모드를 먼저 끝낸다 — draft가 새 값과 싸우지 않게
+    setEditing(false);
+    const value = draft.trim();
+    if (commit && value && value !== work.title) {
+      setTitle.mutate({ slug: work.slug, title: value });
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        title="클릭해서 편집"
+        onClick={() => {
+          finished.current = false;
+          setDraft(work.title);
+          setEditing(true);
+        }}
+        className="-mx-1.5 max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+      >
+        {work.title}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      }}
+      className="-mx-1.5 w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[14px] font-medium outline-none"
+    />
   );
 }
 
