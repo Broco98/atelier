@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
-import WorkPanel, { PANEL_ANIM_MS } from "./WorkPanel";
+import WorkPanel, { PANEL_EXIT_MS } from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
@@ -37,7 +37,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
       setPanelMounted(true);
       return;
     }
-    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_ANIM_MS);
+    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_EXIT_MS);
     return () => window.clearTimeout(timer);
   }, [panelOpen]);
 

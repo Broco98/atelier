@@ -11,7 +11,7 @@ interface WorkPanelProps {
   onSelectFile: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
-  // 닫히는 중 — 부모가 언마운트를 늦춰 퇴장 애니메이션을 재생시킨다 (PANEL_ANIM_MS).
+  // 닫히는 중 — 부모가 언마운트를 늦춰 퇴장 애니메이션을 재생시킨다 (PANEL_EXIT_MS).
   closing?: boolean;
 }
 
@@ -24,7 +24,8 @@ interface WorkPanelProps {
 // 박자였다. 짧게 잡아 그 틈을 지운다 — 120ms면 103ms에 99%다.
 //
 // 등장(260ms)보다 훨씬 짧다. 사라지는 것을 나타나는 것만큼 기다릴 이유가 없다.
-export const PANEL_ANIM_MS = 120;
+// 등장 길이는 상수가 아니다 — 아래 클래스 문자열에만 산다. 맞출 상대가 없기 때문이다.
+export const PANEL_EXIT_MS = 120;
 
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
 function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPanelProps) {
@@ -43,12 +44,15 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
     // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
     // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
     <aside
+      // 퇴장 길이는 클래스가 아니라 인라인으로 넘긴다. Tailwind 임의값은 JS 상수를 못 읽어
+      // 같은 숫자를 두 군데 적게 되는데, 그 둘이 갈리면 빈 열이 다시 생긴다.
+      // 패널 폭(--panel-width)을 인라인으로 넘기는 것과 같은 방식이다
+      style={closing ? { animationDuration: `${PANEL_EXIT_MS}ms` } : undefined}
       className={cn(
         "flex w-[296px] shrink-0 origin-top-right flex-col p-4 pl-0",
-        // 퇴장 120ms는 PANEL_ANIM_MS와 같은 값이어야 한다 (Tailwind 임의값이라 상수를 못 읽는다).
-        // 곡선은 패널 폭 트랜지션과 같은 것을 쓴다 — 즉시 출발해 끝에서 감속한다
+        // 퇴장 곡선은 패널 폭 트랜지션과 같은 --panel-ease다 — 즉시 출발해 끝에서 감속한다
         closing
-          ? "animate-[panel-fade-out_120ms_cubic-bezier(0.2,0,0,1)_both]"
+          ? "animate-[panel-fade-out_var(--panel-ease)_both]"
           : "animate-[panel-fade_260ms_cubic-bezier(0.22,1,0.36,1)_both]",
       )}
     >

@@ -17,10 +17,9 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-        // 이징은 출발이 빠른 곡선이다 — ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서
-        // 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다. 길이는 220ms 그대로다
+        // 곡선은 --ease-panel — 목록 패널 둘과 작업 패널 퇴장이 같은 값을 읽는다 (index.css)
         !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.2,0,0,1)]",
+          "transition-[width,border-color] duration-[220ms] ease-panel",
         open ? "w-(--sidebar-width)" : "w-0 border-transparent",
       )}
     >
