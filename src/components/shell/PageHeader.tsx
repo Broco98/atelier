@@ -19,7 +19,9 @@ function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProp
     <header
       data-tauri-drag-region
       className={cn(
-        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b pr-4 transition-[padding] duration-[220ms]",
+        // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다.
+        // 이 행은 여전히 창 드래그 영역이다 (data-tauri-drag-region)
+        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 pr-4 transition-[padding] duration-[220ms]",
         inset ? (fullscreen ? "pl-[54px]" : "pl-[126px]") : "pl-4",
       )}
     >

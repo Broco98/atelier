@@ -30,7 +30,8 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
         )}
       >
         {/* traffic light strip — same height as the main header so the logo top
-            lines up with the header's bottom border */}
+            lines up with where the header ends (the header no longer draws a
+            bottom border; the 44px strip is what keeps the two columns aligned) */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
         <div className="shrink-0 pb-3 pl-3.5 pt-1">
@@ -49,9 +50,10 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
                 onClick={() => onSelect(item.key)}
                 className={cn(
                   "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[13.5px] font-medium transition-colors",
+                  // 목록 항목과 같은 표시 — 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다
                   active
-                    ? "bg-sidebar-primary/12 text-sidebar-primary"
-                    : "text-muted-foreground hover:bg-sidebar-accent",
+                    ? "selected-row text-foreground"
+                    : "text-muted-foreground hover:bg-state-1",
                 )}
               >
                 <item.icon className="size-[17px]" strokeWidth={1.7} />

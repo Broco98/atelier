@@ -93,8 +93,10 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                     type="button"
                     onClick={() => setShowSource((v) => !v)}
                     className={cn(
-                      "h-[26px] rounded-[9px] border px-[9px] text-[12.5px] transition-colors hover:bg-accent",
-                      showSource ? "bg-accent text-foreground" : "text-tertiary",
+                      "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
+                      showSource
+                        ? "toggle-on"
+                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
                     )}
                   >
                     소스
@@ -104,8 +106,10 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                     onClick={() => setWorkPanelOpen((v) => !v)}
                     title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
                     className={cn(
-                      "flex size-[26px] items-center justify-center rounded-[9px] border transition-colors hover:bg-accent",
-                      workPanelOpen ? "text-primary" : "text-tertiary",
+                      "icon-button transition-colors",
+                      workPanelOpen
+                        ? "toggle-on"
+                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
                     )}
                   >
                     <List className="size-3.5" strokeWidth={2} />
@@ -118,7 +122,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                 aria-label="목록 패널 토글"
                 aria-expanded={panelOpen}
                 title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="flex size-7 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
               >
                 {panelOpen ? (
                   <Maximize2 className="size-4" strokeWidth={1.7} />

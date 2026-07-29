@@ -101,7 +101,7 @@ function PathCopyRow({ label, onCopy }: { label: string; onCopy: () => void }) {
       type="button"
       title="경로 복사"
       onClick={onCopy}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-accent"
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <Copy

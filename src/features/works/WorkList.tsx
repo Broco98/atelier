@@ -58,7 +58,9 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
     <div
       style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "relative shrink-0 overflow-hidden border-r bg-panel",
+        // 흰 바닥 — 무채색 선택 표시가 배경에 묻히지 않으려면 패널이 흰색이어야 한다.
+        // --bg-panel 변수 자체는 그대로 둔다 (상태바·작업 패널 카드는 회색으로 남는다)
+        "relative shrink-0 overflow-hidden border-r bg-background",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
@@ -83,7 +85,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
               type="button"
               onClick={() => setSortAsc((v) => !v)}
               title="생성일 기준 정렬"
-              className="flex h-[26px] items-center gap-[5px] rounded-[8px] border px-[9px] text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
             >
               <ArrowDown
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
@@ -99,8 +101,10 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                 onClick={() => setFilterOpen((v) => !v)}
                 title={projectFilter ?? "모든 프로젝트"}
                 className={cn(
-                  "flex h-[26px] max-w-[120px] items-center gap-[5px] rounded-[8px] border px-[9px] text-[12px] font-medium transition-colors hover:bg-accent",
-                  projectFilter ? "text-primary" : "text-muted-foreground",
+                  "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                  projectFilter
+                    ? "toggle-on"
+                    : "text-muted-foreground hover:bg-state-2 hover:text-foreground",
                 )}
               >
                 <Filter className="size-3 shrink-0" strokeWidth={2} />
@@ -168,8 +172,10 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                   type="button"
                   onClick={() => onSelect(work.slug)}
                   className={cn(
-                    "flex w-full shrink-0 flex-col gap-[7px] rounded-[12px] px-3 py-2.5 text-left transition-colors",
-                    active ? "selected-ring" : "hover:bg-accent",
+                    // 프로젝트 목록 항목과 공유하는 규격 — 반지름·패딩·줄 간격이 같고
+                    // 두 목록의 차이는 줄 수(정보량)뿐이다
+                    "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1.5 text-left transition-colors",
+                    active ? "selected-row" : "hover:bg-state-1",
                   )}
                 >
                   <span className="flex items-center gap-[7px]">
@@ -177,7 +183,6 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                     <span
                       className={cn(
                         "min-w-0 truncate text-[13.5px] font-medium",
-                        active && "text-primary",
                         work.status === "done" && "text-muted-foreground",
                       )}
                     >

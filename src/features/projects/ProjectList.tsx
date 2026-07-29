@@ -49,7 +49,8 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
     <div
       style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "relative shrink-0 overflow-hidden border-r bg-panel",
+        // 흰 바닥 — WorkList와 같은 이유다 (무채색 선택 표시가 묻히지 않게)
+        "relative shrink-0 overflow-hidden border-r bg-background",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
@@ -75,15 +76,15 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           onClick={onAdd}
           aria-label="프로젝트 등록"
           title="프로젝트 등록"
-          className="flex size-[26px] items-center justify-center rounded-[10px] border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
         >
           <Plus className="size-3.5" strokeWidth={1.8} />
         </button>
       </div>
 
-      {/* mb-[9px] = 헤더 행(44px)에서 26px 콘텐츠를 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
+      {/* mb-[10px] = 헤더 행(44px)에서 24px 아이콘 버튼을 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
       {projects.length > 0 && (
-        <div className="relative mb-[9px] shrink-0">
+        <div className="relative mb-[10px] shrink-0">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tertiary"
             strokeWidth={1.8}
@@ -117,7 +118,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-2 scroll-quiet">
+        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 scroll-quiet">
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
             return (
@@ -126,17 +127,16 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                 type="button"
                 onClick={() => onSelect(project.slug)}
                 className={cn(
-                  "flex w-full shrink-0 flex-col gap-[7px] rounded-[14px] border px-4 py-3.5 text-left transition-colors",
-                  active
-                    ? "border-transparent selected-ring"
-                    : "bg-background hover:bg-accent",
+                  // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
+                  // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
+                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1.5 text-left transition-colors",
+                  active ? "selected-row" : "hover:bg-state-1",
                 )}
               >
                 <span className="flex w-full items-center justify-between gap-2">
                   <span
                     className={cn(
-                      "min-w-0 truncate text-[14.5px] font-semibold tracking-[-0.01em]",
-                      active && "text-primary",
+                      "min-w-0 truncate text-[13.5px] font-medium",
                       project.missing && "text-muted-foreground line-through",
                     )}
                   >

@@ -126,17 +126,18 @@ function SourceView({ content }: { content: string }) {
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
     <div className={cn(bodyColumn, "py-4")}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
-          -ml로 규격의 좌측 여백(62px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
+          -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
           소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
           예쁜 보기 본문과 같은 x에서 시작한다 (규격의 폭·최대폭·우측 여백은 그대로다) */}
-      <div className="-ml-[62px] overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
+      <div className="-ml-12 overflow-x-auto font-mono text-[12.5px] leading-[1.75] [tab-size:4] scroll-quiet">
         {/* 폭의 단일 출처 — 가장 긴 줄이 폭을 정하고 모든 줄이 그 폭을 그대로 받는다 */}
         <div className="w-max min-w-full">
           {lines.map((line, i) => (
             <div key={i} className="flex">
               {/* 줄번호는 스크롤포트 왼쪽에 고정된다. 표시 전용 정보이지 버튼이 아니다.
-                  폭 62px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터와 같은 자리에 온다 */}
-              <span className="sticky left-0 z-10 w-[62px] shrink-0 select-none bg-background pr-4 text-right text-tertiary">
+                  폭 48px · 우측 여백 16px → 숫자 오른쪽 끝이 예쁜 보기 거터 버튼의
+                  오른쪽 끝과 같은 자리에 온다. 남는 32px이 네 자리 줄번호(30px)의 자리다 */}
+              <span className="sticky left-0 z-10 w-12 shrink-0 select-none bg-background pr-4 text-right text-tertiary">
                 {i + 1}
               </span>
               <span className="whitespace-pre text-muted-foreground">{line}</span>
@@ -153,10 +154,11 @@ function SourceView({ content }: { content: string }) {
 // 본문 열 레이아웃 규격 — 예쁜 보기와 소스 보기가 공유하는 단일 출처.
 // w-full: 부모가 column-flex인데 mx-auto가 붙으면 stretch가 꺼져 폭이 fit-content로
 //   잡힌다. 짧은 문서에서 열이 쪼그라들어 두 보기의 좌우 위치가 어긋나는 걸 막는다.
-// 좌우가 비대칭인 이유: 좌측 62px은 여백이 아니라 거터의 자리다.
-//   세 자리 줄범위 "123–145"는 10.5px mono(0.6em/자)에서 44.1px이고
-//   본문과 16px 떨어져야 하므로, 62px은 줄일 수 있는 값이 아니라 하한이다.
-export const bodyColumn = "mx-auto w-full max-w-[900px] pl-[62px] pr-10";
+// 48px 대칭인 이유: 좌측은 여백이면서 동시에 거터의 자리다. 거터에서 줄범위 숫자가
+//   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
+//   네 자리 "1024"는 12.5px mono(0.6em/자)에서 30px, 코드와 16px 떨어져야 하므로
+//   46px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
+export const bodyColumn = "mx-auto w-full max-w-[900px] px-12";
 
 interface PrettyViewProps {
   content: string;
@@ -164,8 +166,9 @@ interface PrettyViewProps {
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
-// 참조 복사는 좌측 거터의 버튼이 맡는다. 줄번호는 항상 보이고(그 자체가 정보다),
-// 블록에 접근하면 같은 자리에서 복사 아이콘으로 바뀌어 누를 수 있다는 걸 알린다.
+// 참조 복사는 좌측 거터의 버튼이 맡는다. 거터는 평소 비어 있고, 블록에 접근할 때만
+// 복사 아이콘이 나타난다 — 줄번호는 읽는 동안 계속 보일 이유가 없고, 정작 쓰이는 건
+// 참조를 복사하는 순간뿐이다. 복사되는 참조 문자열은 숫자를 지우기 전과 완전히 같다.
 function BlockWrapper({
   start,
   end,
@@ -182,25 +185,18 @@ function BlockWrapper({
   const range = end !== start ? `${start}–${end}` : `${start}`;
   return (
     <div className={cn("group relative py-1", spacing)}>
-      {/* 거터는 본문 좌측 여백(bodyColumn의 pl) 안쪽에 오른쪽 정렬로 얹힌다 —
-          줄범위가 길어지면 왼쪽으로 자라고 본문과의 간격 16px은 그대로다.
-          숫자와 아이콘을 grid 한 칸에 겹쳐 쌓아 트랙 폭을 긴 쪽(숫자)이 정한다 —
-          교체되는 동안 상자 폭이 변하지 않아 아이콘이 숫자의 오른쪽 끝에 그대로 선다 */}
+      {/* 거터는 본문 좌측 여백(bodyColumn의 px) 안쪽에 오른쪽 정렬로 얹힌다 —
+          버튼의 오른쪽 끝이 본문과 16px 떨어져, 소스 보기 줄번호의 오른쪽 끝과 같은 자리에 온다.
+          top-1은 버튼 중심(4+12=16px)을 숫자가 있던 자리의 중심에 그대로 둔다.
+          키보드로 도달했을 때도 보여야 하므로 focus-visible에서도 나타난다 */}
       <button
         type="button"
         onClick={() => onCopy(start, end)}
         aria-label={`${range}줄 참조 복사`}
         title={`${range}줄 참조 복사`}
-        className="absolute right-full top-[9px] mr-4 grid cursor-copy select-none place-items-end rounded-[4px] font-mono text-[10.5px] text-tertiary outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="icon-button absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none transition-[background-color,color,opacity] hover:bg-state-2 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
       >
-        <span className="col-start-1 row-start-1 whitespace-nowrap group-hover:invisible group-focus-within:invisible">
-          {range}
-        </span>
-        <Copy
-          className="invisible col-start-1 row-start-1 size-3 group-hover:visible group-focus-within:visible"
-          strokeWidth={1.8}
-          aria-hidden
-        />
+        <Copy className="size-3" strokeWidth={1.8} aria-hidden />
       </button>
       {children}
     </div>
