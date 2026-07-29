@@ -12,7 +12,8 @@ export interface WorkView {
   slug: string;
   title: string;
   status: WorkStatus;
-  branch: string;
+  // 프로젝트가 아직 없으면 브랜치는 미정이다. 키 유무가 아니라 null로 판단한다.
+  branch: string | null;
   createdAt: string;
   projects: string[];
   trees: TreeView[];

@@ -50,11 +50,14 @@ pub struct StartWorkParams {
     /// Human-readable title of the work. Calling again with the same title resumes the
     /// existing work instead of creating a second one.
     pub title: String,
-    /// Slugs of the projects this work spans, at least one. Use the `slug` values from
-    /// atelier_list_projects.
+    /// Slugs of the projects this work spans, from atelier_list_projects. Omit it to start
+    /// a work that has no project yet — nothing but the work and its spec directory is
+    /// created, and no branch is decided. Attach the projects later.
+    #[serde(default)]
     pub projects: Vec<String>,
-    /// Branch name shared by every project's worktree. Defaults to the work slug derived
-    /// from the title. Follow the target repositories' existing branch convention.
+    /// Branch name shared by every project's worktree. With projects, it defaults to the
+    /// work slug derived from the title; without them the branch simply stays undecided.
+    /// Follow the target repositories' existing branch convention.
     pub branch: Option<String>,
 }
 
@@ -93,10 +96,13 @@ impl AtelierServer {
     #[tool(
         description = "Start a work: one feature spanning one or more projects, sharing a \
                        single branch name. Creates the work metadata, a spec directory and \
-                       one git worktree per project. Calling it again with the same title \
-                       resumes that work and only creates the worktrees that are missing, so \
-                       it is safe to retry. Returns the worktree paths to do code work in and \
-                       `specDir` to write the spec documents into.",
+                       one git worktree per project. `projects` may be omitted for an idea \
+                       that has no code yet: no worktree and no branch are created, only the \
+                       work and its `specDir` — attach the projects when the work reaches \
+                       code. Calling it again with the same title resumes that work and only \
+                       creates the worktrees that are missing, so it is safe to retry. \
+                       Returns the worktree paths to do code work in and `specDir` to write \
+                       the spec documents into.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -203,14 +209,20 @@ impl AtelierServer {
             Ok(view) => view.work.branch,
             Err(e) => return Ok(kernel_error(e)),
         };
+        // 브랜치가 미정인 work는 워크트리도 없다 — 되찾을 커밋이 없다는 뜻이라 안내가 다르다.
+        let note = match &branch {
+            Some(_) => "The worktrees are gone. The branch above still exists in every \
+                        project repository, so committed work is recoverable.",
+            None => "The work had no project and no branch, so only its folder and the spec \
+                     documents in it are gone.",
+        };
         // force = false 고정. dirty 검사와 브랜치 보존이 이 도구의 안전장치다 (D6).
         match atelier_core::remove_work(&self.works_root, &work_slug, false) {
             Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::json(
                 serde_json::json!({
                     "removed": work_slug,
                     "branch": branch,
-                    "note": "The worktrees are gone. The branch above still exists in every \
-                             project repository, so committed work is recoverable.",
+                    "note": note,
                 }),
             )?])),
             Err(e) => Ok(kernel_error(e)),

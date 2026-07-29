@@ -31,25 +31,13 @@ pub fn start_work(
     if title.is_empty() {
         return Err(Error::Validation("title must not be empty".into()));
     }
-    if project_slugs.is_empty() {
-        return Err(Error::Validation("at least one project is required".into()));
-    }
     std::fs::create_dir_all(works_root)?;
 
     // 같은 제목의 work가 있으면 이어서 생성(멱등), 없으면 새로 만든다
     let existing_work = find_by_title(works_root, title)?;
     let resuming = existing_work.is_some();
-    let work = match existing_work {
-        Some(existing) => {
-            if let Some(b) = branch {
-                if b != existing.branch {
-                    return Err(Error::Validation(format!(
-                        "work '{}' already uses branch '{}'",
-                        existing.slug, existing.branch
-                    )));
-                }
-            }
-            let mut work = existing;
+    let mut work = match existing_work {
+        Some(mut work) => {
             for p in project_slugs {
                 if !work.projects.contains(p) {
                     work.projects.push(p.clone());
@@ -59,17 +47,23 @@ pub fn start_work(
         }
         None => {
             let slug = unique_dir_slug(works_root, &slugify(title));
-            let branch = branch.unwrap_or(&slug).to_string();
             Work {
                 slug,
                 title: title.to_string(),
                 status: WorkStatus::Active,
-                branch,
+                branch: None,
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
                 extra: Default::default(),
             }
         }
+    };
+    // 프로젝트가 없으면 워크트리도 없다. 쓰지도 않을 브랜치를 저장소에 남기지 않으려고
+    // 이름을 정하지 않고 미룬다 — 첫 프로젝트가 붙을 때 확정된다 (attach_project).
+    work.branch = if work.projects.is_empty() && work.branch.is_none() && branch.is_none() {
+        None
+    } else {
+        Some(fix_branch(&work, branch)?)
     };
 
     // 사전검증: 워크트리가 없는 프로젝트 전부를 먼저 검사하고, 하나라도 실패면 아무것도 만들지 않는다
@@ -78,10 +72,13 @@ pub fn start_work(
         work.projects.iter().filter(|p| !dir.join("trees").join(p.as_str()).is_dir()).collect();
     let mut reasons = Vec::new();
     let mut repos = Vec::new();
-    for p in &pending {
-        match validate_for_tree(projects_root, p, &work.branch, resuming) {
-            Ok(repo_base) => repos.push(repo_base),
-            Err(reason) => reasons.push(format!("{p}: {reason}")),
+    // 브랜치가 미정이면 프로젝트도 없다 — 검사할 워크트리가 아예 없다는 뜻이다
+    if let Some(branch) = work.branch.as_deref() {
+        for p in &pending {
+            match validate_for_tree(projects_root, p, branch, resuming) {
+                Ok(repo_base) => repos.push(repo_base),
+                Err(reason) => reasons.push(format!("{p}: {reason}")),
+            }
         }
     }
     if !reasons.is_empty() {
@@ -89,21 +86,46 @@ pub fn start_work(
     }
 
     std::fs::create_dir_all(spec_dir(&dir))?;
-    std::fs::create_dir_all(dir.join("trees"))?;
+    // 빈 trees/는 "망가진 워크트리"로 읽힌다 — 만들 것이 있을 때만 만든다
+    if !pending.is_empty() {
+        std::fs::create_dir_all(dir.join("trees"))?;
+    }
     write_work(works_root, &work)?;
 
     // 검증을 통과한 뒤의 개별 실패는 성공분을 유지한 채 보고만 한다
     let mut errors = Vec::new();
-    for (p, (repo, base)) in pending.iter().zip(repos) {
-        let tree = dir.join("trees").join(p.as_str());
-        if let Err(message) = git::worktree_add(&repo, &tree, &work.branch, &base) {
-            errors.push(TreeError { project: p.to_string(), message });
+    if let Some(branch) = work.branch.as_deref() {
+        for (p, (repo, base)) in pending.iter().zip(repos) {
+            let tree = dir.join("trees").join(p.as_str());
+            if let Err(message) = git::worktree_add(&repo, &tree, branch, &base) {
+                errors.push(TreeError { project: p.to_string(), message });
+            }
         }
     }
 
     // 소유권상 work를 다시 읽지 않고 뷰만 파생
     let view = to_view(works_root, work);
     Ok(WorkReport { view, errors })
+}
+
+/// 브랜치가 정해지는 **유일한** 지점. 확정된 이름을 돌려주기만 하고 저장은 호출부가 한다.
+///
+/// | work의 branch | 넘긴 branch | 결과 |
+/// |---|---|---|
+/// | 있음 | 없음 / 같은 값 | 기존 브랜치 그대로 |
+/// | 있음 | 다른 값 | 거부 — 한 work는 브랜치 하나를 공유한다 |
+/// | 없음 | 있음 | 그 값으로 확정 |
+/// | 없음 | 없음 | slug로 확정 |
+fn fix_branch(work: &Work, given: Option<&str>) -> Result<String> {
+    match (work.branch.as_deref(), given) {
+        (Some(current), Some(given)) if given != current => Err(Error::Validation(format!(
+            "work '{}' already uses branch '{current}'",
+            work.slug
+        ))),
+        (Some(current), _) => Ok(current.to_string()),
+        (None, Some(given)) => Ok(given.to_string()),
+        (None, None) => Ok(work.slug.clone()),
+    }
 }
 
 /// 검증 통과 시 (저장소 절대경로, baseBranch) 반환.
@@ -266,13 +288,21 @@ pub fn attach_project(
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
     let tree = dir.join("trees").join(project_slug);
+    // 워크트리를 만들려면 이름이 있어야 한다 — 미정이던 work는 여기서 확정된다.
+    let branch = fix_branch(&work, None)?;
 
     let mut errors = Vec::new();
     if !tree.is_dir() {
-        let (repo, base) = validate_for_tree(projects_root, project_slug, &work.branch, true)
+        let (repo, base) = validate_for_tree(projects_root, project_slug, &branch, true)
             .map_err(|reason| Error::Validation(format!("{project_slug}: {reason}")))?;
+        // 확정을 워크트리 생성 **전에** 저장한다 — 생성이 실패해도 다음 시도가 같은
+        // 이름을 쓴다 (성공분 유지·재실행 멱등이라는 부분 실패 계약과 같은 결).
+        if work.branch.is_none() {
+            work.branch = Some(branch.clone());
+            write_work(works_root, &work)?;
+        }
         std::fs::create_dir_all(dir.join("trees"))?;
-        if let Err(message) = git::worktree_add(&repo, &tree, &work.branch, &base) {
+        if let Err(message) = git::worktree_add(&repo, &tree, &branch, &base) {
             errors.push(TreeError { project: project_slug.to_string(), message });
         }
     }
@@ -379,7 +409,7 @@ mod tests {
         assert_eq!(w.slug, "카트-아이템-추가");
         assert_eq!(w.title, "카트 아이템 추가");
         assert_eq!(w.status, WorkStatus::Active);
-        assert_eq!(w.branch, "feat/cart");
+        assert_eq!(w.branch.as_deref(), Some("feat/cart"));
         assert_eq!(w.projects, vec!["fe", "be"]);
 
         let dir = works.join(&w.slug);
@@ -403,9 +433,81 @@ mod tests {
     fn start_defaults_branch_to_slug() {
         let (_tmp, works, projects) = setup();
         let report = start_work(&works, &projects, "Cart Add", &slugs(&["fe"]), None).unwrap();
-        assert_eq!(report.view.work.branch, "cart-add");
+        assert_eq!(report.view.work.branch.as_deref(), Some("cart-add"));
         let tree = works.join("cart-add/trees/fe");
         assert_eq!(run_git(&tree, &["branch", "--show-current"]), "cart-add");
+    }
+
+    /// 문턱 낮추기의 핵심 — 아이디어 한 줄에도 갈 곳이 생긴다.
+    /// 워크트리도, 빈 `trees/`도, **쓰지도 않을 브랜치도** 만들지 않는다.
+    #[test]
+    fn start_without_projects_creates_only_the_work_and_its_spec() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &projects, "언젠가 해볼 것", &[], None).unwrap();
+        assert!(report.errors.is_empty());
+
+        let w = &report.view.work;
+        assert_eq!(w.slug, "언젠가-해볼-것");
+        assert_eq!(w.branch, None, "an unused branch must not be invented");
+        assert!(w.projects.is_empty());
+        assert!(report.view.trees.is_empty());
+
+        let dir = works.join(&w.slug);
+        assert!(dir.join("work.json").is_file());
+        assert!(dir.join("spec").is_dir());
+        assert!(!dir.join("trees").exists(), "an empty trees/ reads as a broken worktree");
+
+        // 파일에는 branch 키가 아예 없다
+        let file = std::fs::read_to_string(dir.join("work.json")).unwrap();
+        assert!(!file.contains("branch"), "undecided branch must not be persisted: {file}");
+
+        // 조회도 같은 모양이고 specDir는 그대로 내려온다
+        let view = get_work(&works, &w.slug).unwrap();
+        assert_eq!(view.work.branch, None);
+        assert!(view.trees.is_empty());
+        assert!(expand_home(&view.spec_dir).is_dir());
+    }
+
+    /// 브랜치 이름만 미리 정해 두는 것도 된다. 그래도 붙일 프로젝트가 없으면
+    /// 워크트리는 생기지 않는다 — 브랜치 확정과 워크트리 생성은 별개다.
+    #[test]
+    fn start_without_projects_still_records_an_explicit_branch() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &projects, "미리 정한 것", &[], Some("feat/planned")).unwrap();
+        assert_eq!(report.view.work.branch.as_deref(), Some("feat/planned"));
+        assert!(!works.join("미리-정한-것/trees").exists());
+    }
+
+    /// 프로젝트가 없으면 지울 워크트리도 없다 — 폴더만 사라지고 git 경고도 없다.
+    #[test]
+    fn remove_project_less_work_deletes_only_its_folder() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "아이디어", &[], None).unwrap();
+        remove_work(&works, "아이디어", false).unwrap();
+        assert!(!works.join("아이디어").exists());
+    }
+
+    /// 이미 만들어 둔 work는 마이그레이션 없이 그대로 읽힌다.
+    #[test]
+    fn existing_work_files_still_parse_and_keep_unknown_fields() {
+        let (_tmp, works, _projects) = setup();
+        let dir = works.join("옛날-작업");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("work.json"),
+            r#"{"title":"옛날 작업","status":"active","branch":"feat/old","createdAt":"2026-01-02","projects":["fe"],"customField":"keep-me"}"#,
+        )
+        .unwrap();
+
+        let view = get_work(&works, "옛날-작업").unwrap();
+        assert_eq!(view.work.branch.as_deref(), Some("feat/old"));
+        assert_eq!(view.work.projects, vec!["fe"]);
+
+        // 상태만 바꿔 다시 써도 모르는 필드와 브랜치가 그대로다
+        update_work_status(&works, "옛날-작업", WorkStatus::Review).unwrap();
+        let file = std::fs::read_to_string(dir.join("work.json")).unwrap();
+        assert!(file.contains("keep-me"), "unknown field lost: {file}");
+        assert!(file.contains("feat/old"), "branch lost: {file}");
     }
 
     #[test]
@@ -499,7 +601,7 @@ mod tests {
         let view = update_work_status(&works, "카트", WorkStatus::Draft).unwrap();
         assert_eq!(view.work.status, WorkStatus::Draft);
         assert_eq!(view.work.projects, vec!["fe"]);
-        assert_eq!(view.work.branch, "feat/cart");
+        assert_eq!(view.work.branch.as_deref(), Some("feat/cart"));
         assert!(view.trees[0].exists, "draft must not touch the worktrees");
         assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Draft);
 

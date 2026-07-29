@@ -45,23 +45,32 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
-          <span
-            title={`워크트리 ${treeCount}개`}
-            className="text-[11.5px] text-tertiary"
-          >
-            트리 {treeCount}
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
-          <GitFork className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
-          <span className="truncate">{work.branch}</span>
-          {bases.length > 0 && (
-            <>
-              <ArrowRight className="size-2.5 shrink-0 text-tertiary" strokeWidth={2} />
-              <span className="shrink-0 text-tertiary">{bases.join(", ")}</span>
-            </>
+          {work.branch !== null && (
+            <span
+              title={`워크트리 ${treeCount}개`}
+              className="text-[11.5px] text-tertiary"
+            >
+              트리 {treeCount}
+            </span>
           )}
         </div>
+        {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다 */}
+        {work.branch === null ? (
+          <div className="px-4 pb-3 pt-2 text-[12px] leading-normal text-tertiary">
+            아직 프로젝트가 없어요. 프로젝트를 붙이면 브랜치가 정해져요.
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
+            <GitFork className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
+            <span className="truncate">{work.branch}</span>
+            {bases.length > 0 && (
+              <>
+                <ArrowRight className="size-2.5 shrink-0 text-tertiary" strokeWidth={2} />
+                <span className="shrink-0 text-tertiary">{bases.join(", ")}</span>
+              </>
+            )}
+          </div>
+        )}
         <div className="flex flex-col px-2 pb-2">
           <PathCopyRow label="작업 폴더" onCopy={() => onCopy(workDirRef(work.slug))} />
           {work.trees.map((t) => (

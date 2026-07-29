@@ -52,7 +52,9 @@ pub struct Work {
     pub slug: String,
     pub title: String,
     pub status: WorkStatus,
-    pub branch: String,
+    /// 아직 프로젝트가 없는 work는 브랜치가 **미정**이다. 응답에는 `null`로 나가고
+    /// (프론트와 에이전트가 키 유무가 아니라 값으로 판단한다), 파일에는 키가 아예 없다.
+    pub branch: Option<String>,
     pub created_at: String,
     pub projects: Vec<String>,
     #[serde(flatten)]
@@ -66,7 +68,9 @@ pub struct Work {
 struct FileWork {
     title: String,
     status: WorkStatus,
-    branch: String,
+    /// 미정이면 키를 쓰지 않는다 — 빈 문자열과 섞이지 않게.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
     created_at: String,
     projects: Vec<String>,
     #[serde(flatten)]
@@ -142,7 +146,7 @@ mod tests {
         assert_eq!(w.slug, "cart-add-item");
         assert_eq!(w.title, "카트 아이템 추가");
         assert_eq!(w.status, WorkStatus::Active);
-        assert_eq!(w.branch, "feat/cart-add-item");
+        assert_eq!(w.branch.as_deref(), Some("feat/cart-add-item"));
         assert_eq!(w.created_at, "2026-07-19");
         assert_eq!(w.projects, vec!["frontend", "backend"]);
     }
@@ -187,6 +191,22 @@ mod tests {
         for valid in ["draft", "active", "review", "done"] {
             assert!(msg.contains(valid), "'{valid}' missing from the error message: {msg}");
         }
+    }
+
+    /// 미정 브랜치는 파일과 응답에서 다른 모양이다: 파일에는 **키가 없고**,
+    /// 응답에는 **`null`**이 실린다. 읽는 쪽이 키 유무가 아니라 값으로 판단하게 한다.
+    #[test]
+    fn undecided_branch_is_absent_in_the_file_and_null_in_the_view() {
+        let src = r#"{"title":"아이디어","status":"draft","createdAt":"2026-07-29","projects":[]}"#;
+        let w = parse_work("아이디어", src).unwrap();
+        assert_eq!(w.branch, None);
+
+        let file = render_work(&w);
+        assert!(!file.contains("branch"), "undecided branch must not be written: {file}");
+        assert_eq!(parse_work("아이디어", &file).unwrap(), w);
+
+        let json = serde_json::to_value(&w).unwrap();
+        assert!(json["branch"].is_null(), "the view must carry an explicit null: {json}");
     }
 
     /// 선언된 상태다 — 파일에 그대로 남고 그대로 돌아온다.

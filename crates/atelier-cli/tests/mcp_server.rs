@@ -289,6 +289,56 @@ fn start_work_creates_the_work_and_hands_back_where_to_write() {
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
 }
 
+/// 문턱 낮추기 — 아이디어 한 줄에도 갈 곳이 생긴다. `projects` 없이 부르면
+/// 워크트리도, 빈 `trees/`도, 쓰지도 않을 브랜치도 만들지 않는다.
+#[test]
+fn start_work_without_projects_creates_no_worktree_and_no_branch() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "언젠가 해볼 것" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["slug"], "언젠가-해볼-것");
+    assert!(report["branch"].is_null(), "an unused branch must not be invented: {report}");
+    assert!(report["trees"].as_array().unwrap().is_empty(), "{report}");
+    // spec을 쓸 자리는 그대로 내려온다 — 문서부터 쓰는 것이 이 경로의 목적이다
+    assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+    assert!(
+        !home.path().join("works/언젠가-해볼-것/trees").exists(),
+        "an empty trees/ reads as a broken worktree"
+    );
+
+    // 조회도 같은 모양이다 — 키 유무가 아니라 값(null)으로 판단하게 한다
+    let got = server.request(4, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "언젠가-해볼-것" }
+    }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["branch"].is_null(), "{view}");
+    assert!(view["trees"].as_array().unwrap().is_empty(), "{view}");
+
+    // 도구 표면에도 드러나야 에이전트가 이 경로를 고를 수 있다
+    let tools = server.request(5, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_start_work")
+        .expect("atelier_start_work missing");
+    let required = tool["inputSchema"]["required"].as_array().unwrap();
+    assert!(required.iter().any(|r| r == "title"), "{tool}");
+    assert!(!required.iter().any(|r| r == "projects"), "projects must be optional: {tool}");
+    assert!(
+        tool["description"].as_str().unwrap().contains("no worktree and no branch"),
+        "the no-project path is undocumented: {tool}"
+    );
+}
+
 /// V11 — 같은 인자로 다시 불러도 중복 생성 없이 빠진 것만 만들어진다.
 #[test]
 fn start_work_repeated_adds_only_what_is_missing() {
