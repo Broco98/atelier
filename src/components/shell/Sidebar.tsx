@@ -16,9 +16,11 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
       style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
-        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
+        // 이징은 출발이 빠른 곡선이다 — ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서
+        // 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다. 길이는 220ms 그대로다
         !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.2,0,0,1)]",
         open ? "w-(--sidebar-width)" : "w-0 border-transparent",
       )}
     >

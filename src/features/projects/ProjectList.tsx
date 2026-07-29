@@ -53,7 +53,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
         "relative shrink-0 overflow-hidden border-r bg-background",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.2,0,0,1)]",
         open ? "w-(--panel-width)" : "w-0 border-transparent",
       )}
     >
