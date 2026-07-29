@@ -113,7 +113,8 @@
          행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
        --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경으로도 쓰이고, 아직 옮기지 않은
-       hover로도 남아 있다 (ProjectDetail·MermaidBlock·SidebarToggle·팝오버 항목) — 후속 티켓.
+       hover로도 남아 있다 (ProjectDetail·MermaidBlock·팝오버 항목·제목 편집 버튼) — 후속 티켓.
+       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
        그 자리들이 어긋나 보이지 않는 것은 5%가 새 버튼 hover(6%)와 사실상 구분되지 않기 때문이다 */
     --state-1: rgba(20, 20, 28, 0.03);
     --state-2: rgba(20, 20, 28, 0.06);

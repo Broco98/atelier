@@ -79,18 +79,9 @@ pub fn start_work(
                 Some(_) => slug,
                 None => unique_dir_slug(works_root, &slug),
             };
-            // slug에서 파생됐든 직접 넘어왔든, git이 ref로 거부하는 이름이면 워크트리 생성만
-            // 실패해 반쪽짜리 work가 남는다. 아무것도 쓰기 전에 여기서 막는다.
-            // 이름을 정하지 않는 경로(프로젝트도 브랜치도 없다)에는 검사할 이름이 없다.
-            if !project_slugs.is_empty() || branch.is_some() {
-                let candidate = branch.unwrap_or(&slug);
-                if !git::is_valid_branch_name(candidate) {
-                    return Err(Error::Validation(format!(
-                        "invalid branch name '{candidate}': git will not accept it. \
-                         Pass a 'branch' git accepts, or a 'slug' that works as one."
-                    )));
-                }
-            }
+            // 브랜치 이름 검사는 여기 없다 — 이름을 정하는 decide_branch가 한다.
+            // 여기서 `branch.unwrap_or(&slug)`로 다시 판단하면 결정표를 재구현하게 되고,
+            // 실제로 그렇게 두었을 때 재개 경로와 attach_project가 뚫려 있었다.
             Work {
                 slug,
                 title: title.to_string(),
@@ -164,15 +155,33 @@ pub fn start_work(
 /// 저장소에 남기지 않으려고. attach_project는 늘 부른다: 프로젝트가 붙는 순간이 곧
 /// 이름이 필요해지는 순간이라, 만들 워크트리가 남았는지와는 무관하다.
 fn decide_branch(work: &Work, given: Option<&str>) -> Result<String> {
-    match (work.branch.as_deref(), given) {
-        (Some(current), Some(given)) if given != current => Err(Error::Validation(format!(
-            "work '{}' already uses branch '{current}'",
-            work.slug
-        ))),
-        (Some(current), _) => Ok(current.to_string()),
-        (None, Some(given)) => Ok(given.to_string()),
-        (None, None) => Ok(work.slug.clone()),
+    let decided = match (work.branch.as_deref(), given) {
+        (Some(current), Some(given)) if given != current => {
+            return Err(Error::Validation(format!(
+                "work '{}' already uses branch '{current}'",
+                work.slug
+            )))
+        }
+        // 이미 확정된 이름은 그대로 돌려준다. 여기서 다시 검사하면 나쁜 이름이 이미
+        // 들어가 있는 work를 여는 것까지 막게 된다 — 막을 것은 **새로 쓰는 것**이다.
+        (Some(current), _) => return Ok(current.to_string()),
+        (None, Some(given)) => given.to_string(),
+        (None, None) => work.slug.clone(),
+    };
+    // slug에서 파생됐든 직접 넘어왔든, git이 ref로 거부하는 이름이면 워크트리 생성만
+    // 실패해 반쪽짜리 work가 남는다. 게다가 확정은 조건 없이 저장되므로 한 번 들어가면
+    // 그 work는 영구히 워크트리를 못 갖는다 — 되돌릴 수 없으니 쓰기 전에 막는다.
+    //
+    // 검사가 **이름을 정하는 이 지점**에 있어야 하는 이유: 이름이 처음 정해지는 자리는
+    // 셋(신규 start_work · 미정 work 재개 · attach_project)이고, 그중 하나에만 두었을 때
+    // 나머지 둘이 뚫려 있었다.
+    if !git::is_valid_branch_name(&decided) {
+        return Err(Error::Validation(format!(
+            "invalid branch name '{decided}': git will not accept it. \
+             Pass a 'branch' git accepts, or a 'slug' that works as one."
+        )));
     }
+    Ok(decided)
 }
 
 /// 검증 통과 시 (저장소 절대경로, baseBranch) 반환.
@@ -801,6 +810,46 @@ mod tests {
         start_work(&works, &projects, "Late Branch", None, &[], None).unwrap();
         let report = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("late-branch"));
+    }
+
+    /// git이 ref로 거부하는 이름은 **쓰기 전에** 막는다. 이 보장이 반만 참이면
+    /// 최악이다 — 확정은 조건 없이 저장되므로(attach_saves_the_branch_before_…)
+    /// 한 번 나쁜 이름이 들어가면 그 work는 영구히 워크트리를 못 갖는다.
+    ///
+    /// 이름이 처음 정해지는 자리가 셋이라 셋을 다 검사한다. 신규 경로만 막던 때에
+    /// 나머지 둘이 뚫려 있었다 — `is_safe_slug`는 빈 문자열·앞 `.`·`/`·`\`만 보므로
+    /// `bad..name`처럼 slug로는 멀쩡하고 브랜치로는 거부되는 이름이 통과한다.
+    #[test]
+    fn a_branch_name_git_would_reject_is_refused_wherever_it_is_first_decided() {
+        let bad = "bad..name";
+        assert!(!git::is_valid_branch_name(bad), "이 테스트의 전제가 깨졌다");
+
+        // (1) 신규 work — 처음부터 막혔던 경로
+        let (_t1, works, projects) = setup();
+        let new_work = start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some(bad));
+        assert!(matches!(new_work, Err(Error::Validation(_))), "{new_work:?}");
+        assert!(!works.join("카트").exists(), "거부됐으면 아무것도 남지 않는다");
+
+        // (2) 브랜치 미정 work를 재개하며 나쁜 이름을 넘긴다
+        let (_t2, works, projects) = setup();
+        start_work(&works, &projects, "아이디어", Some("idea"), &[], None).unwrap();
+        let resumed = start_work(&works, &projects, "아이디어", Some("idea"), &[], Some(bad));
+        assert!(matches!(resumed, Err(Error::Validation(_))), "{resumed:?}");
+        assert_eq!(
+            get_work(&works, "idea").unwrap().work.branch, None,
+            "거부된 이름이 확정되어 남으면 이 work는 되살릴 수 없다"
+        );
+
+        // (3) 프로젝트를 붙이며 slug가 브랜치로 승격되는 순간
+        let (_t3, works, projects) = setup();
+        start_work(&works, &projects, "아이디어", Some(bad), &[], None)
+            .expect("slug로는 멀쩡한 이름이다 — 브랜치를 정하지 않는 경로는 통과해야 한다");
+        let attached = attach_project(&works, &projects, bad, "fe", None);
+        assert!(matches!(attached, Err(Error::Validation(_))), "{attached:?}");
+        assert_eq!(
+            get_work(&works, bad).unwrap().work.branch, None,
+            "거부됐으면 확정도 없다"
+        );
     }
 
     /// 확정은 워크트리를 만들기 **전에** 저장한다. 생성이 실패해도 다음 시도가
