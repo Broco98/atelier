@@ -84,13 +84,37 @@ mod tests {
 
     /// D3에서 버린 것이 되돌아오지 않게 한다. 티켓 05가 CLI 명령을
     /// 삭제하므로, 명령 목록이 지침에 남으면 없는 명령을 안내하게 된다.
+    const BANNED_CLI: [&str; 4] =
+        ["atelier project ", "atelier work ", "atelier skill ", "--json"];
+
     #[test]
     fn does_not_reintroduce_cli_commands() {
-        for banned in ["atelier project ", "atelier work ", "atelier skill ", "--json"] {
+        for banned in BANNED_CLI {
             assert!(
                 !INSTRUCTIONS.contains(banned),
                 "CLI surface leaked back into the instructions: {banned}"
             );
+        }
+    }
+
+    /// 같은 금지 규칙이 앱 문구에도 걸린다. 지침만 검사하던 위 테스트는
+    /// 앱의 빈 상태가 `atelier work start ...`를 안내하는 것을 놓쳤다 —
+    /// 없어진 CLI를 광고하는 자리는 지침만이 아니다 (refs_ts_… 와 같은 방식으로
+    /// 프론트엔드 소스를 직접 읽는다).
+    #[test]
+    fn the_app_does_not_advertise_cli_commands_either() {
+        for rel in ["WorkList.tsx", "WorksPage.tsx"] {
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/features/works/")
+                .to_string()
+                + rel;
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{rel} moved ({e}); update this test with it"));
+            for banned in BANNED_CLI {
+                assert!(
+                    !source.contains(banned),
+                    "{rel} advertises a CLI command that does not exist: {banned}"
+                );
+            }
         }
     }
 

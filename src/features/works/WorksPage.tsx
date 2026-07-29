@@ -146,11 +146,13 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                 아직 작업이 없어요
               </span>
               <span className="text-[14px] leading-[1.65] text-tertiary">
-                작업은 Claude Code에서 스킬로 시작돼요. 작업이 시작되면 스펙 문서와 진행
+                작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행
                 상황이 여기에 나타나요.
               </span>
+              {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
+                  atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
               <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                atelier work start "새 작업" --project &lt;slug&gt;
+                atelier로 "새 작업" 시작해줘
               </code>
             </div>
           </div>
