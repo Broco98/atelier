@@ -223,7 +223,8 @@ fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
 }
 
 /// V2 — 이 물결이 끝난 시점의 도구 표면 전체. 도구를 더할 때마다 여기가 자란다.
-/// (티켓 03이 atelier_add_project·atelier_edit_project를 더해 9개로 채운다.)
+/// (티켓 03이 atelier_add_project·atelier_edit_project를 더해 9개로 채웠고,
+///  #23이 atelier_edit_work를 더해 10개가 됐다.)
 #[test]
 fn listed_tools_are_exactly_this_wave() {
     let home = tempfile::tempdir().unwrap();
@@ -236,6 +237,7 @@ fn listed_tools_are_exactly_this_wave() {
             "atelier_add_project",
             "atelier_attach_project",
             "atelier_edit_project",
+            "atelier_edit_work",
             "atelier_get_work",
             "atelier_list_projects",
             "atelier_list_works",
@@ -646,6 +648,141 @@ fn set_work_status_persists_and_rejects_unknown_values() {
     assert!(text.contains("done"), "{text}");
 }
 
+/// 이 기능의 핵심 불변식 — **제목을 바꿔도 slug와 워크트리 경로는 그대로다.**
+/// 사용자가 열어 둔 터미널·에디터 탭, 다른 문서에 박힌 spec 참조가 전부 살아 있어야 한다.
+#[test]
+fn edit_work_renames_the_title_and_moves_nothing_else() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+
+    let before: Value = serde_json::from_str(server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": {
+            "title": "카트", "slug": "cart-add-item",
+            "projects": ["billing"], "branch": "feat/cart"
+        }
+    }))["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work",
+        "arguments": { "work_slug": "cart-add-item", "title": "  카트 아이템 추가  " }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let after: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    assert_eq!(after["title"], "카트 아이템 추가", "앞뒤 공백은 잘라낸다: {after}");
+    assert_eq!(after["slug"], before["slug"], "slug must never move");
+    assert_eq!(after["branch"], before["branch"], "branch must not follow the title");
+    assert_eq!(after["status"], before["status"], "status must not follow the title");
+    assert_eq!(after["worktrees"], before["worktrees"], "worktree paths must not move");
+    assert_eq!(after["specDir"], before["specDir"], "spec references must stay valid");
+
+    // 파일에 남았고, 그 워크트리에서 git이 그대로 동작한다
+    let got: Value = serde_json::from_str(server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "cart-add-item" }
+    }))["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(got["title"], "카트 아이템 추가");
+    let worktree = atelier_core::expand_home(got["worktrees"][0]["path"].as_str().unwrap());
+    assert_eq!(run_git_out(&worktree, &["branch", "--show-current"]), "feat/cart");
+}
+
+/// #22와 #23이 맞물리는 지점 — 제목이 바뀐 **뒤에도** slug로 재개된다.
+/// 이것이 성립하지 않으면 이름을 바꾸는 순간 중복 작업과 중복 워크트리가 생긴다.
+#[test]
+fn start_work_still_resumes_by_slug_after_the_title_was_edited() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": {
+            "title": "카트", "slug": "cart-add-item",
+            "projects": ["billing"], "branch": "feat/cart"
+        }
+    }));
+    server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work",
+        "arguments": { "work_slug": "cart-add-item", "title": "사용자가 다듬은 이름" }
+    }));
+
+    // 옛 제목을 그대로 들고 재호출해도 slug가 맞으면 재개다
+    let res = server.request(5, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": {
+            "title": "카트", "slug": "cart-add-item",
+            "projects": ["billing", "shipping"], "branch": "feat/cart"
+        }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+
+    assert_eq!(report["slug"], "cart-add-item", "renaming broke resume: {report}");
+    assert_eq!(report["title"], "사용자가 다듬은 이름", "resume undid the user's edit: {report}");
+    assert_eq!(report["projects"], json!(["billing", "shipping"]));
+    assert!(!home.path().join("works/카트").exists(), "duplicate work created");
+}
+
+/// 프로젝트의 빈 이름 거부와 같은 계약 — 거부되고 기존 값이 살아 있다.
+#[test]
+fn edit_work_blank_title_is_rejected_and_keeps_the_old_one() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "cart", "title": "   " }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("empty"), "{text}");
+    assert!(text.contains("again"), "no next step: {text}");
+
+    let got: Value = serde_json::from_str(server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "cart" }
+    }))["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(got["title"], "카트", "failed edit must not change anything: {got}");
+}
+
+#[test]
+fn edit_unknown_work_points_at_the_listing_tool() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "없는작업", "title": "x" }
+    }));
+    assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("없는작업"), "{text}");
+    assert!(text.contains("atelier_list_works"), "no next step: {text}");
+}
+
+/// 이 도구는 제목만 받는다. status는 atelier_set_work_status가 담당하고, branch는
+/// 워크트리가 체크아웃해 둔 값이라 메타데이터만 바꾸면 실제 상태와 어긋난다.
+#[test]
+fn edit_work_takes_only_the_slug_and_the_title() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"].as_array().unwrap().iter()
+        .find(|t| t["name"] == "atelier_edit_work")
+        .unwrap_or_else(|| panic!("tool not listed: {res}"));
+
+    let props = tool["inputSchema"]["properties"].as_object().unwrap();
+    assert_eq!(props.len(), 2, "only work_slug and title are inputs: {tool}");
+    for field in ["work_slug", "title"] {
+        assert!(props.contains_key(field), "missing property {field}: {tool}");
+    }
+    for field in ["status", "branch", "slug", "projects"] {
+        assert!(!props.contains_key(field), "{field} must not be editable here: {tool}");
+    }
+}
+
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
 #[test]
 fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {
@@ -724,7 +861,12 @@ fn write_tools_declare_their_blast_radius() {
             .clone()
     };
 
-    for name in ["atelier_start_work", "atelier_attach_project", "atelier_set_work_status"] {
+    for name in [
+        "atelier_start_work",
+        "atelier_attach_project",
+        "atelier_set_work_status",
+        "atelier_edit_work",
+    ] {
         let a = hints(name);
         assert_eq!(a["readOnlyHint"], false, "{name}: {a}");
         assert_eq!(a["destructiveHint"], false, "{name} is additive only: {a}");

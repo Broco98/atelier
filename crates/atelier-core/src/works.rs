@@ -284,6 +284,20 @@ pub fn get_work(works_root: &Path, slug: &str) -> Result<WorkView> {
     Ok(to_view(works_root, read_work(works_root, slug)?))
 }
 
+/// 표시 이름만 바꾼다. **slug는 건드리지 않는다** — 디렉터리명이 slug의 원천이라
+/// 바꾸면 git이 등록해 둔 워크트리 경로와 배포된 spec 참조가 전부 깨진다
+/// (프로젝트의 `update_project`가 파일명을 건드리지 않는 것과 같은 규칙).
+pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<WorkView> {
+    let mut work = read_work(works_root, slug)?;
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(Error::Validation("title must not be empty".into()));
+    }
+    work.title = title.to_string();
+    write_work(works_root, &work)?;
+    Ok(to_view(works_root, work))
+}
+
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
     let mut work = read_work(works_root, slug)?;
     work.status = status;

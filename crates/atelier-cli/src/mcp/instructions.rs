@@ -27,14 +27,15 @@ Paths are written with `~` for the home directory; expand it before opening them
 mod tests {
     use super::INSTRUCTIONS;
 
-    /// 맵에서 확정한 도구 이름 9개. 지침이 이 밖의 이름을 부르면
+    /// 맵에서 확정한 도구 이름 10개. 지침이 이 밖의 이름을 부르면
     /// 에이전트가 존재하지 않는 도구를 찾아 헤맨다.
-    const TOOL_NAMES: [&str; 9] = [
+    const TOOL_NAMES: [&str; 10] = [
         "atelier_list_projects",
         "atelier_list_works",
         "atelier_get_work",
         "atelier_start_work",
         "atelier_attach_project",
+        "atelier_edit_work",
         "atelier_set_work_status",
         "atelier_remove_work",
         "atelier_add_project",

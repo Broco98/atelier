@@ -48,7 +48,8 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
 #[schemars(crate = "rmcp::schemars")]
 pub struct StartWorkParams {
     /// Human-readable title of the work, written in the user's own language. This is a
-    /// display name, not what identifies the work — `slug` is.
+    /// display name, not what identifies the work — `slug` is. It can be rewritten later
+    /// with atelier_edit_work, and the user may have done so.
     pub title: String,
     /// What identifies the work: its folder name and, unless `branch` overrides it, its
     /// branch name. Write it in English kebab-case, for example `cart-add-item`. It never
@@ -72,6 +73,18 @@ pub struct AttachProjectParams {
     pub work_slug: String,
     /// Slug of the project to add, as returned by atelier_list_projects.
     pub project_slug: String,
+}
+
+/// `atelier_edit_work`의 인자. **title만 받는다** — status는 `atelier_set_work_status`가
+/// 담당하고, branch는 워크트리가 체크아웃해 둔 값이라 단독으로 바꿀 수 없다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditWorkParams {
+    /// Slug of the work to rename, as returned by atelier_list_works.
+    pub work_slug: String,
+    /// New title, in the user's own language. A blank title is refused. The slug, the
+    /// branch and the worktree paths are untouched — only the display name changes.
+    pub title: String,
 }
 
 /// `atelier_set_work_status`의 인자.
@@ -158,6 +171,30 @@ impl AtelierServer {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
             }
             Ok(report) => partial_failure(&report),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Rename a work: replace its title with a better one. Use it when the \
+                       title was written in a hurry, or when the work turned out to be about \
+                       something else. Only the title changes — the slug, the branch, the \
+                       worktree paths and the spec directory all stay exactly as they are, so \
+                       references already written down elsewhere keep working. A blank title \
+                       is refused. Local files only.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn atelier_edit_work(
+        &self,
+        Parameters(EditWorkParams { work_slug, title }): Parameters<EditWorkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::update_work_title(&self.works_root, &work_slug, &title) {
+            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }
     }
