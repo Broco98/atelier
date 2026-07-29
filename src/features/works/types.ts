@@ -1,6 +1,6 @@
 export type WorkStatus = "active" | "review" | "done";
 
-export interface TreeView {
+export interface WorktreeView {
   project: string;
   path: string;
   exists: boolean;
@@ -14,7 +14,7 @@ export interface WorkView {
   branch: string;
   createdAt: string;
   projects: string[];
-  trees: TreeView[];
+  worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];
 }

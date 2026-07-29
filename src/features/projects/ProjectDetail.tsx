@@ -97,7 +97,7 @@ function WorksSection({
           </div>
         ) : (
           related.map((work) => {
-            const tree = work.trees.find((t) => t.project === projectSlug);
+            const worktree = work.worktrees.find((t) => t.project === projectSlug);
             return (
               <button
                 key={work.slug}
@@ -117,7 +117,7 @@ function WorksSection({
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5 text-[12px] text-tertiary">
-                  {tree?.exists && (
+                  {worktree?.exists && (
                     <span className="flex items-center gap-1.5 font-mono text-[11px]">
                       <GitFork className="size-3" strokeWidth={2} />
                       {work.branch}

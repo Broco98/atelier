@@ -19,7 +19,7 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
         "Work '{slug}' exists and its metadata is saved, but some worktrees could not be \
          created.\n\nReady for code work:\n"
     );
-    for t in report.view.trees.iter().filter(|t| t.exists) {
+    for t in report.view.worktrees.iter().filter(|t| t.exists) {
         text.push_str(&format!("  {}  {}\n", t.project, t.path));
     }
     text.push_str("\nFailed — do not start code work in these projects:\n");

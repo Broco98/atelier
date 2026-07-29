@@ -282,11 +282,51 @@ fn start_work_creates_the_work_and_hands_back_where_to_write() {
     assert_eq!(report["errors"].as_array().unwrap().len(), 0, "{report}");
 
     // 워크트리 경로와 spec 위치가 응답 하나에 다 있다 — 추측할 것이 없다
-    let tree = report["trees"][0].clone();
-    assert_eq!(tree["project"], "billing");
-    assert_eq!(tree["exists"], true, "{report}");
-    assert!(atelier_core::expand_home(tree["path"].as_str().unwrap()).is_dir());
+    let worktree = report["worktrees"][0].clone();
+    assert_eq!(worktree["project"], "billing");
+    assert_eq!(worktree["exists"], true, "{report}");
+    assert!(atelier_core::expand_home(worktree["path"].as_str().unwrap()).is_dir());
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
+
+/// 워크트리 목록의 이름은 `worktrees`다. 옛 이름 `trees`는 파일 트리와 구별되지 않아
+/// 매번 문맥으로 추측하게 만들었다 — **함께 내보내지 않는다.** 두 키가 같이 있으면
+/// 어느 쪽이 정본인지 에이전트가 알 수 없다.
+#[test]
+fn every_response_names_the_worktree_list_worktrees_and_never_trees() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+
+    let read = |res: &Value| -> Value {
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+    };
+
+    let started = read(&server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    })));
+    let attached = read(&server.request(4, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": { "work_slug": "카트", "project_slug": "shipping" }
+    })));
+    let got = read(&server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "카트" }
+    })));
+    let listed = read(&server.request(6, "tools/call",
+        json!({ "name": "atelier_list_works", "arguments": {} })));
+
+    for (name, view) in
+        [("start", &started), ("attach", &attached), ("get", &got), ("list", &listed[0])]
+    {
+        assert!(view["worktrees"].is_array(), "{name} has no worktrees[]: {view}");
+        assert!(view["trees"].is_null(), "{name} still emits the old trees[] key: {view}");
+        assert_eq!(view["worktrees"][0]["project"], "billing", "{view}");
+    }
+
+    // 필드 이름만 바뀐다 — 폴더는 여전히 trees/ 이고, 기존 Work가 그대로 열려야 한다
+    let path = got["worktrees"][0]["path"].as_str().unwrap();
+    assert!(path.contains("/trees/"), "the on-disk folder must not move: {path}");
+    assert!(atelier_core::expand_home(path).is_dir(), "{path}");
 }
 
 /// V11 — 같은 인자로 다시 불러도 중복 생성 없이 빠진 것만 만들어진다.
@@ -309,7 +349,7 @@ fn start_work_repeated_adds_only_what_is_missing() {
         serde_json::from_str(second["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(report["slug"], "카트", "must resume, not fork a new work: {report}");
     assert_eq!(report["projects"], json!(["billing", "shipping"]));
-    for t in report["trees"].as_array().unwrap() {
+    for t in report["worktrees"].as_array().unwrap() {
         assert_eq!(t["exists"], true, "{report}");
     }
     assert!(!home.path().join("works/카트-2").exists(), "duplicate work created");
@@ -363,8 +403,8 @@ fn partial_worktree_failure_is_an_execution_error_pointing_at_attach() {
     let report: Value =
         serde_json::from_str(res["result"]["content"][1]["text"].as_str().unwrap()).unwrap();
     assert_eq!(report["errors"][0]["project"], "shipping");
-    assert_eq!(report["trees"][0]["exists"], true, "{report}");   // billing
-    assert_eq!(report["trees"][1]["exists"], false, "{report}");  // shipping
+    assert_eq!(report["worktrees"][0]["exists"], true, "{report}");   // billing
+    assert_eq!(report["worktrees"][1]["exists"], false, "{report}");  // shipping
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
 }
 
@@ -398,10 +438,10 @@ fn attach_project_recovers_the_failed_worktree_alone() {
     assert_eq!(report["errors"].as_array().unwrap().len(), 0, "{report}");
     // 중복 없이 두 프로젝트, 두 워크트리 다 살아 있다
     assert_eq!(report["projects"], json!(["billing", "shipping"]));
-    for t in report["trees"].as_array().unwrap() {
+    for t in report["worktrees"].as_array().unwrap() {
         assert_eq!(t["exists"], true, "{report}");
-        let tree = atelier_core::expand_home(t["path"].as_str().unwrap());
-        assert_eq!(run_git_out(&tree, &["branch", "--show-current"]), "feat/cart");
+        let worktree = atelier_core::expand_home(t["path"].as_str().unwrap());
+        assert_eq!(run_git_out(&worktree, &["branch", "--show-current"]), "feat/cart");
     }
 }
 
@@ -499,15 +539,15 @@ fn set_work_status_persists_and_rejects_unknown_values() {
 
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
 #[test]
-fn remove_work_refuses_dirty_trees_and_leaves_the_branch_behind() {
+fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {
     let (home, code) = fixture();
     let mut server = Server::start(home.path());
     server.request(3, "tools/call", json!({
         "name": "atelier_start_work",
         "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
     }));
-    let tree = home.path().join("works/카트/trees/billing");
-    std::fs::write(tree.join("wip.txt"), "uncommitted").unwrap();
+    let worktree = home.path().join("works/카트/trees/billing");
+    std::fs::write(worktree.join("wip.txt"), "uncommitted").unwrap();
 
     // 강제 옵션이 없으므로 커널의 거부가 그대로 최종 결과다
     let refused = server.request(4, "tools/call", json!({
@@ -521,7 +561,7 @@ fn remove_work_refuses_dirty_trees_and_leaves_the_branch_behind() {
     assert!(home.path().join("works/카트").exists(), "refused remove deleted data");
 
     // 변경을 치우면 제거된다
-    std::fs::remove_file(tree.join("wip.txt")).unwrap();
+    std::fs::remove_file(worktree.join("wip.txt")).unwrap();
     let res = server.request(5, "tools/call", json!({
         "name": "atelier_remove_work", "arguments": { "work_slug": "카트" }
     }));
@@ -681,7 +721,7 @@ fn add_project_missing_folder_is_an_execution_error() {
 
 #[test]
 fn add_project_accepts_the_tilde_paths_it_hands_out() {
-    // 이 표면이 내보내는 경로는 전부 `~` 축약형이다(project.path · trees[].path · specDir).
+    // 이 표면이 내보내는 경로는 전부 `~` 축약형이다(project.path · worktrees[].path · specDir).
     // 읽은 값을 그대로 되돌려 넣을 수 있어야 한다.
     let home_dir = dirs::home_dir().unwrap();
     let code = tempfile::TempDir::new_in(&home_dir).unwrap();

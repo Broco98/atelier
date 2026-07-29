@@ -71,7 +71,7 @@ struct FileWork {
 /// 프로젝트별 워크트리의 파생 정보 (조회 시 계산)
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TreeView {
+pub struct WorktreeView {
     pub project: String,
     pub path: String,
     pub exists: bool,
@@ -83,7 +83,9 @@ pub struct TreeView {
 pub struct WorkView {
     #[serde(flatten)]
     pub work: Work,
-    pub trees: Vec<TreeView>,
+    /// 디스크 폴더는 여전히 `trees/`다 — 폴더를 옮기면 git이 등록해 둔 워크트리
+    /// 경로가 깨지므로, 이름만 바꾸고 경로는 그대로 둔다.
+    pub worktrees: Vec<WorktreeView>,
     /// spec 문서를 두는 디렉터리 (홈 축약 경로). 에이전트가 여기에 직접 쓴다.
     pub spec_dir: String,
     pub spec_files: Vec<String>,

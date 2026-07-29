@@ -79,19 +79,19 @@ pub(crate) fn is_dirty(dir: &Path) -> bool {
 }
 
 /// 워크트리 제거. 브랜치는 건드리지 않는다.
-pub(crate) fn worktree_remove(tree: &Path, force: bool) -> std::result::Result<(), String> {
-    let common = git(tree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .ok_or_else(|| format!("not a git worktree: {}", tree.display()))?;
+pub(crate) fn worktree_remove(worktree: &Path, force: bool) -> std::result::Result<(), String> {
+    let common = git(worktree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .ok_or_else(|| format!("not a git worktree: {}", worktree.display()))?;
     let repo = Path::new(&common)
         .parent()
-        .ok_or_else(|| format!("cannot resolve repo for: {}", tree.display()))?
+        .ok_or_else(|| format!("cannot resolve repo for: {}", worktree.display()))?
         .to_path_buf();
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(&repo).args(["worktree", "remove"]);
     if force {
         cmd.arg("--force");
     }
-    let out = cmd.arg(tree).output().map_err(|e| e.to_string())?;
+    let out = cmd.arg(worktree).output().map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {

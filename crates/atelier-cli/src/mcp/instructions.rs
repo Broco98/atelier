@@ -15,7 +15,7 @@ Pick the branch name from those existing branches and always pass it explicitly.
 
 There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync.
 
-Do code work only inside the work's worktree paths (`trees[].path`), never in the project's own folder.
+Do code work only inside the work's worktree paths (`worktrees[].path`), never in the project's own folder.
 
 A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it.
 
@@ -68,8 +68,8 @@ mod tests {
         assert!(INSTRUCTIONS.contains("no tool for spec"), "spec tool absence not stated");
         assert!(INSTRUCTIONS.contains("specDir"), "no spec location field");
         assert!(INSTRUCTIONS.contains("overview.md"), "no starting document");
-        // 워크트리에서만 코드 작업
-        assert!(INSTRUCTIONS.contains("trees[].path"), "no worktree rule");
+        // 워크트리에서만 코드 작업 — 응답 필드 이름과 같은 말이어야 한다
+        assert!(INSTRUCTIONS.contains("worktrees[].path"), "no worktree rule");
         // 블록 참조 해석 (형식 자체는 refs_ts_still_emits_the_same_reference_shape가 지킨다)
         assert!(INSTRUCTIONS.contains(":L19-27"), "no block reference example");
     }
