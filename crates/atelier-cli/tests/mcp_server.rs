@@ -121,6 +121,26 @@ fn fixture() -> (tempfile::TempDir, tempfile::TempDir) {
     fixture_with(&["billing"])
 }
 
+/// "work는 프로젝트 하나 이상"이라는 정의가 지침·start_work·list_works 세 곳에
+/// 복제돼 있다. 실제로 지침만 고치고 도구 설명 둘을 놔둔 적이 있는데, start_work는
+/// 한 설명 안에서 "one or more projects"라고 해놓고 세 문장 뒤에 "projects는 생략
+/// 가능"이라고 말하는 자기모순이었다. 에이전트는 지침보다 도구 설명을 더 자주 읽으니
+/// 여기서 어긋나면 지침을 고친 의미가 없다 — 셋을 한 줄로 묶는다.
+#[test]
+fn no_tool_description_denies_the_project_less_path() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    for tool in res["result"]["tools"].as_array().unwrap() {
+        let description = tool["description"].as_str().unwrap_or("");
+        assert!(
+            !description.contains("one or more projects"),
+            "{} still says a work needs at least one project",
+            tool["name"]
+        );
+    }
+}
+
 #[test]
 fn handshake_succeeds_and_stdout_carries_only_protocol_messages() {
     let home = tempfile::tempdir().unwrap();

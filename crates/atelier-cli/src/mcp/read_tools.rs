@@ -56,7 +56,7 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "List every Atelier work. A work is one feature spanning one or more \
+        description = "List every Atelier work. A work is one feature spanning zero or more \
                        projects, sharing a single branch name. Each entry carries the shared \
                        branch, the per-project worktree paths, the spec directory and the spec \
                        files already written. Read-only; reads local files only.",

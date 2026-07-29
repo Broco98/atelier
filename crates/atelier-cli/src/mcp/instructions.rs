@@ -70,6 +70,12 @@ mod tests {
         assert!(INSTRUCTIONS.contains("overview.md"), "no starting document");
         // 워크트리에서만 코드 작업
         assert!(INSTRUCTIONS.contains("trees[].path"), "no worktree rule");
+        // 정의 문장 — 에이전트가 가장 먼저 읽는 줄이다. "one or more"로 되돌아가면
+        // 프로젝트 없이 시작하는 경로를 첫 줄부터 부정하게 된다 (실제로 한 번 그랬다)
+        assert!(
+            INSTRUCTIONS.contains("spanning zero or more projects"),
+            "the definition sentence denies the project-less path"
+        );
         // 브랜치 규칙은 "프로젝트가 있을 때"로 한정돼 있어야 한다 — 한정이 빠지면
         // 프로젝트 없이 시작하는 경로(브랜치도 워크트리도 안 생긴다)에 대해 거짓이 된다
         assert!(

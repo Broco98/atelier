@@ -115,9 +115,10 @@ pub fn start_work(
 /// | 없음 | 있음 | 그 값으로 확정 |
 /// | 없음 | 없음 | slug로 확정 |
 ///
-/// **이름을 지금 정할지 말지**는 표 밖, 호출부의 결정이다. 워크트리가 생기지 않는
-/// start_work 경로는 이 함수를 부르지 않고 미정으로 남긴다 (`nothing_to_decide`) —
-/// 마지막 행의 slug 폴백은 워크트리를 당장 만들어야 해서 이름이 필요할 때의 이야기다.
+/// **이름을 지금 정할지 말지**는 표 밖, 호출부의 결정이다. 프로젝트도 브랜치도 없이
+/// 시작하는 start_work만 이 함수를 부르지 않고 미정으로 남긴다 — 쓰지도 않을 이름을
+/// 저장소에 남기지 않으려고. attach_project는 늘 부른다: 프로젝트가 붙는 순간이 곧
+/// 이름이 필요해지는 순간이라, 만들 워크트리가 남았는지와는 무관하다.
 fn decide_branch(work: &Work, given: Option<&str>) -> Result<String> {
     match (work.branch.as_deref(), given) {
         (Some(current), Some(given)) if given != current => Err(Error::Validation(format!(
@@ -294,7 +295,7 @@ pub fn attach_project(
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
     let tree = dir.join("trees").join(project_slug);
-    // 워크트리를 만들려면 이름이 있어야 한다 — 미정이던 work는 여기서 확정된다.
+    // 미정이던 work의 브랜치는 여기서 확정된다. 만들 워크트리가 남았는지는 보지 않는다.
     let branch = decide_branch(&work, branch)?;
 
     // 만들 워크트리가 있을 때만 검증한다. 실패하면 여기서 끝나고 아무것도 쓰지 않는다.

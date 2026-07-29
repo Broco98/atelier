@@ -99,7 +99,7 @@ pub struct RemoveWorkParams {
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
-        description = "Start a work: one feature spanning one or more projects, sharing a \
+        description = "Start a work: one feature spanning zero or more projects, sharing a \
                        single branch name. Creates the work metadata, a spec directory and \
                        one git worktree per project. `projects` may be omitted for an idea \
                        that has no code yet: no worktree and no branch are created, only the \
