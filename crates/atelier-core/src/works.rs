@@ -111,7 +111,7 @@ pub fn start_work(
     // 사전검증: 워크트리가 없는 프로젝트 전부를 먼저 검사하고, 하나라도 실패면 아무것도 만들지 않는다
     let dir = works_root.join(&work.slug);
     let pending: Vec<&String> =
-        work.projects.iter().filter(|p| !dir.join("trees").join(p.as_str()).is_dir()).collect();
+        work.projects.iter().filter(|p| !worktrees_dir(&dir).join(p.as_str()).is_dir()).collect();
     let mut reasons = Vec::new();
     let mut repos = Vec::new();
     // 브랜치가 미정이면 프로젝트도 없다 — 검사할 워크트리가 아예 없다는 뜻이다
@@ -130,7 +130,7 @@ pub fn start_work(
     std::fs::create_dir_all(spec_dir(&dir))?;
     // 빈 trees/는 "망가진 워크트리"로 읽힌다 — 만들 것이 있을 때만 만든다
     if !pending.is_empty() {
-        std::fs::create_dir_all(dir.join("trees"))?;
+        std::fs::create_dir_all(worktrees_dir(&dir))?;
     }
     write_work(works_root, &work)?;
 
@@ -138,7 +138,7 @@ pub fn start_work(
     let mut errors = Vec::new();
     if let Some(branch) = work.branch.as_deref() {
         for (p, (repo, base)) in pending.iter().zip(repos) {
-            let worktree = dir.join("trees").join(p.as_str());
+            let worktree = worktrees_dir(&dir).join(p.as_str());
             if let Err(message) = git::worktree_add(&repo, &worktree, branch, &base) {
                 errors.push(WorktreeError { project: p.to_string(), message });
             }
@@ -251,7 +251,7 @@ fn to_view(works_root: &Path, work: Work) -> WorkView {
         .projects
         .iter()
         .map(|p| {
-            let worktree = dir.join("trees").join(p);
+            let worktree = worktrees_dir(&dir).join(p);
             let exists = worktree.is_dir();
             WorktreeView {
                 project: p.clone(),
@@ -267,6 +267,15 @@ fn to_view(works_root: &Path, work: Work) -> WorkView {
         work,
         worktrees,
     }
+}
+
+/// 워크트리가 놓이는 디렉터리 — 같은 규칙이다.
+///
+/// **응답의 필드 이름은 `worktrees`지만 폴더는 `trees/`다.** git이 등록해 둔 워크트리
+/// 경로라 폴더를 옮기면 기존 work가 열리지 않는다. 그 불일치를 아는 자리를 여기 하나로
+/// 둔다 — 이름이 두 개인 것은 사실이고, 사실을 일곱 군데에 적어두면 하나가 낡는다.
+fn worktrees_dir(work_dir: &Path) -> PathBuf {
+    work_dir.join("trees")
 }
 
 /// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
@@ -357,7 +366,7 @@ pub fn attach_project(
 ) -> Result<WorkReport> {
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
-    let worktree = dir.join("trees").join(project_slug);
+    let worktree = worktrees_dir(&dir).join(project_slug);
     // 미정이던 work의 브랜치는 여기서 확정된다. 만들 워크트리가 남았는지는 보지 않는다.
     let branch = decide_branch(&work, branch)?;
 
@@ -380,7 +389,7 @@ pub fn attach_project(
 
     let mut errors = Vec::new();
     if let Some((repo, base)) = pending_worktree {
-        std::fs::create_dir_all(dir.join("trees"))?;
+        std::fs::create_dir_all(worktrees_dir(&dir))?;
         if let Err(message) = git::worktree_add(&repo, &worktree, &branch, &base) {
             errors.push(WorktreeError { project: project_slug.to_string(), message });
         }
@@ -399,7 +408,7 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
     let existing: Vec<PathBuf> = work
         .projects
         .iter()
-        .map(|p| dir.join("trees").join(p))
+        .map(|p| worktrees_dir(&dir).join(p))
         .filter(|t| t.is_dir())
         .collect();
 
