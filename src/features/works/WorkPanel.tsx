@@ -16,10 +16,15 @@ interface WorkPanelProps {
 }
 
 // 퇴장 애니메이션 길이. SpecViewer의 언마운트 지연과 같은 값을 써야 한다 —
-// 이 값이 곧 296px 열이 사라져 본문이 넓어지는 시점이다. 퇴장이 먼저 끝나고
-// 열만 남아 있으면 아무 일도 안 일어나는 빈 박자가 생긴다.
-// 등장(260ms)보다 짧다. 사라지는 것을 기다릴 이유가 없다.
-export const PANEL_ANIM_MS = 180;
+// 이 값이 곧 296px 열이 사라져 본문이 넓어지는 시점이다.
+//
+// 페이드와 열 제거는 서로 다른 타임라인이라(하나는 opacity, 하나는 언마운트)
+// 길이를 넉넉히 잡으면 그 사이가 벌어진다. 퇴장 곡선이 앞을 몰아 쓰는 탓에
+// 180ms일 때 패널은 113ms에 이미 94% 사라져 있고, 남은 67ms는 빈 열만 서 있는
+// 박자였다. 짧게 잡아 그 틈을 지운다 — 120ms면 103ms에 99%다.
+//
+// 등장(260ms)보다 훨씬 짧다. 사라지는 것을 나타나는 것만큼 기다릴 이유가 없다.
+export const PANEL_ANIM_MS = 120;
 
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
 function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPanelProps) {
@@ -40,10 +45,10 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
     <aside
       className={cn(
         "flex w-[296px] shrink-0 origin-top-right flex-col p-4 pl-0",
-        // 퇴장 180ms는 PANEL_ANIM_MS와 같은 값이어야 한다 (Tailwind 임의값이라 상수를 못 읽는다).
+        // 퇴장 120ms는 PANEL_ANIM_MS와 같은 값이어야 한다 (Tailwind 임의값이라 상수를 못 읽는다).
         // 곡선은 패널 폭 트랜지션과 같은 것을 쓴다 — 즉시 출발해 끝에서 감속한다
         closing
-          ? "animate-[panel-fade-out_180ms_cubic-bezier(0.2,0,0,1)_both]"
+          ? "animate-[panel-fade-out_120ms_cubic-bezier(0.2,0,0,1)_both]"
           : "animate-[panel-fade_260ms_cubic-bezier(0.22,1,0.36,1)_both]",
       )}
     >
