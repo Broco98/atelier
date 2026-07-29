@@ -13,6 +13,9 @@ dist-ssr
 *.local
 target/
 
+# @tanstack/router-plugin 임시 디렉터리 (라우트 트리 생성 중간물)
+.tanstack/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
