@@ -93,10 +93,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
-              // key: 파일이 바뀌면 예쁜 보기를 새로 세운다. 표의 열 폭처럼 보는 동안만
-              // 유지되는 상태가 문서를 넘어 살아남지 않게 하는 자리다 — 같은 파일이
-              // 밖에서 수정돼 다시 읽힐 때는 내용만 갈리고 그 상태는 남는다.
-              <PrettyView key={current} content={content ?? ""} onCopyBlock={copyRef} />
+              <PrettyView file={current ?? ""} content={content ?? ""} onCopyBlock={copyRef} />
             )}
           </div>
         </div>
@@ -171,6 +168,8 @@ const listIndent = "pl-[22px]";
 const checkboxGutter = "-ml-[22px] mr-[5px]";
 
 interface PrettyViewProps {
+  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데만 쓴다
+  file: string;
   content: string;
   onCopyBlock: (start: number, end: number) => void;
 }
@@ -220,7 +219,12 @@ function BlockWrapper({
 }
 
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
-const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
+const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
+  // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
+  // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
+  const fileRef = useRef(file);
+  fileRef.current = file;
+
   // 최상위 블록의 시작 라인 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해
   const topLines = useRef<Set<number>>(new Set());
   const collectTopLevel = () => (tree: { children: { position?: { start: { line: number } } }[] }) => {
@@ -271,9 +275,18 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         "mt-1.5",
       ),
       hr: block("hr", "border-border", "mt-4"),
-      // 표는 가로 스크롤과 전체화면 확대를 자기가 챙긴다 — 규격도 거기 있다
+      // 표는 가로 스크롤과 전체화면 확대와 열 폭 조절을 자기가 챙긴다 — 규격도 거기 있다.
+      // key: 조절한 열 폭이 다른 문서로 넘어가지 않는다는 계약이 사는 자리다.
+      // 오늘은 이게 없어도 초기화되긴 한다 — useSpecFile이 파일을 바꿀 때 내용을 한 번
+      // 비우고 시작해서(hooks.ts의 placeholderData) 블록이 전부 새로 마운트되기 때문이다.
+      // 그건 다른 파일의 로딩 정책일 뿐이라 언제든 바뀔 수 있다. 계약은 여기에 적어 둔다.
+      // 같은 파일이 밖에서 수정돼 다시 읽힐 때는 내용만 갈리고 폭은 남는다.
       table: ({ node, children, ...props }) => {
-        const inner = <SpecTable {...props}>{children}</SpecTable>;
+        const inner = (
+          <SpecTable key={fileRef.current} {...props}>
+            {children}
+          </SpecTable>
+        );
         const range = lines(node);
         if (!range) return inner;
         return (
