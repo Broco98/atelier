@@ -206,6 +206,52 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
     assert_eq!(view["specFiles"][0], "overview.md");
 }
 
+/// 조회는 문서를 쓰기 **직전**에 일어난다 — spec 폴더 관습이 실려 오는 자리가 여기다.
+/// 항상 상주하는 초기화 지침이 아니라 이 응답이 들고 간다.
+#[test]
+fn get_work_explains_what_the_spec_folder_names_mean() {
+    let (home, _code) = fixture();
+    atelier_core::start_work(
+        &home.path().join("works"),
+        &home.path().join("projects"),
+        "카트",
+        &["billing".to_string()],
+        Some("feat/cart"),
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "카트" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    // 기계가 읽는 JSON이 먼저고, 안내는 그 뒤 텍스트 블록이다
+    let content = res["result"]["content"].as_array().unwrap();
+    let view: Value = serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["specDir"].is_string(), "{view}");
+
+    let guidance = content
+        .get(1)
+        .and_then(|c| c["text"].as_str())
+        .unwrap_or_else(|| panic!("no spec layout guidance in the answer: {res}"));
+    for name in ["overview.md", "NN-", "tickets/", "research/", "explanation/"] {
+        assert!(guidance.contains(name), "'{name}' missing from the guidance: {guidance}");
+    }
+    // 고정하는 것은 폴더 이름뿐이라는 것과, 첫 판을 어디서 시작하는지
+    assert!(guidance.contains("file names are free"), "{guidance}");
+    assert!(guidance.contains("01-"), "the first iteration folder is not named: {guidance}");
+
+    // 관습은 데이터 모델이 아니다 — 커널이 준 뷰에는 한 글자도 실리지 않는다
+    let kernel = atelier_core::get_work(&home.path().join("works"), "카트").unwrap();
+    let kernel_json = serde_json::to_string(&kernel).unwrap();
+    for leaked in ["Five folder names", "explanation"] {
+        assert!(
+            !kernel_json.contains(leaked),
+            "the folder convention leaked into the kernel view: {kernel_json}"
+        );
+    }
+}
+
 #[test]
 fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
     let home = tempfile::tempdir().unwrap();

@@ -578,6 +578,41 @@ mod tests {
         assert!(matches!(get_work(&works, "../탈출"), Err(Error::WorkNotFound(_))));
     }
 
+    /// spec 폴더의 다섯 이름은 **표시 계층**의 약속이다. 커널은 정렬된 상대 경로
+    /// 목록만 주고, 관습에 없는 폴더도 빠뜨리지 않는다.
+    #[test]
+    fn spec_files_stay_a_flat_sorted_list_whatever_the_folder_names_are() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "카트", &[], None).unwrap();
+        let spec = works.join("카트/spec");
+        for dir in ["01-첫-판/tickets", "02-둘째-판", "research", "explanation", "잡동사니"] {
+            std::fs::create_dir_all(spec.join(dir)).unwrap();
+        }
+        for (path, body) in [
+            ("overview.md", "# o"),
+            ("01-첫-판/plan.md", "p"),
+            ("01-첫-판/tickets/t1.md", "t"),
+            ("02-둘째-판/plan.md", "p"),
+            ("research/api.md", "r"),
+            ("explanation/why.md", "w"),
+            ("잡동사니/메모.md", "m"),
+        ] {
+            std::fs::write(spec.join(path), body).unwrap();
+        }
+
+        let mut expected = vec![
+            "overview.md",
+            "01-첫-판/plan.md",
+            "01-첫-판/tickets/t1.md",
+            "02-둘째-판/plan.md",
+            "research/api.md",
+            "explanation/why.md",
+            "잡동사니/메모.md",
+        ];
+        expected.sort();
+        assert_eq!(get_work(&works, "카트").unwrap().spec_files, expected);
+    }
+
     #[test]
     fn update_status_persists() {
         let (_tmp, works, projects) = setup();
