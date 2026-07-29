@@ -41,20 +41,23 @@ pub fn start_work(
         return Err(Error::Validation("at least one project is required".into()));
     }
     // slug는 디렉터리명이 된다 — 경로 구분자가 통과하면 데이터 루트 밖에 폴더가 생긴다.
-    let slug = slug.map(str::trim);
-    if let Some(slug) = slug {
-        if !crate::slug::is_safe_slug(slug) {
-            return Err(Error::Validation(format!(
-                "invalid slug '{slug}': it becomes a folder name, so it must not be empty, \
-                 start with '.', or contain '/' or '\\'"
-            )));
-        }
+    // 명시했든 제목에서 파생했든 폴더가 될 값은 하나뿐이므로, 검사도 한 문으로 함께 지난다.
+    let explicit_slug = slug.map(str::trim);
+    let slug = match explicit_slug {
+        Some(slug) => slug.to_string(),
+        None => slugify(title),
+    };
+    if !crate::slug::is_safe_slug(&slug) {
+        return Err(Error::Validation(format!(
+            "invalid slug '{slug}': it becomes a folder name, so it must not be empty, \
+             start with '.', or contain '/' or '\\'"
+        )));
     }
     std::fs::create_dir_all(works_root)?;
 
     // 재개 판정: slug가 있으면 slug가 정본, 없을 때만 제목으로 찾는다 (멱등)
-    let existing_work = match slug {
-        Some(slug) => match read_work(works_root, slug) {
+    let existing_work = match explicit_slug {
+        Some(_) => match read_work(works_root, &slug) {
             Ok(work) => Some(work),
             Err(Error::WorkNotFound(_)) => None,
             // 망가진 work.json을 "없음"으로 읽으면 그 위에 덮어쓴다 — 그대로 올린다
@@ -84,11 +87,19 @@ pub fn start_work(
         None => {
             // slug를 명시했으면 그대로 쓴다 — 이미 있으면 위에서 재개했을 것이므로
             // 여기까지 온 이상 충돌이 아니다. 중복 회피 접미사는 파생 slug에만 붙인다.
-            let slug = match slug {
-                Some(slug) => slug.to_string(),
-                None => unique_dir_slug(works_root, &slugify(title)),
+            let slug = match explicit_slug {
+                Some(_) => slug,
+                None => unique_dir_slug(works_root, &slug),
             };
             let branch = branch.unwrap_or(&slug).to_string();
+            // slug에서 파생됐든 직접 넘어왔든, git이 ref로 거부하는 이름이면 워크트리 생성만
+            // 실패해 반쪽짜리 work가 남는다. 아무것도 쓰기 전에 여기서 막는다.
+            if !git::is_valid_branch_name(&branch) {
+                return Err(Error::Validation(format!(
+                    "invalid branch name '{branch}': git will not accept it. \
+                     Pass a 'branch' git accepts, or a 'slug' that works as one."
+                )));
+            }
             Work {
                 slug,
                 title: title.to_string(),

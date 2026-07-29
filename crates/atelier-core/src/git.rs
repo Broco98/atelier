@@ -43,6 +43,15 @@ pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")]).is_some()
 }
 
+/// git이 브랜치 이름으로 받아들이는가. 규칙(`..`, 공백, `~^:?*[`, `.lock` 끝 등)을
+/// 여기서 다시 쓰면 git과 어긋나므로 git에게 직접 묻는다. 저장소가 필요 없는 문법 검사다.
+pub(crate) fn is_valid_branch_name(name: &str) -> bool {
+    Command::new("git")
+        .args(["check-ref-format", &format!("refs/heads/{name}")])
+        .output()
+        .is_ok_and(|out| out.status.success())
+}
+
 pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")]).is_some()
 }

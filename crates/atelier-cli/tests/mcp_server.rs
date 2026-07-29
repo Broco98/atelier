@@ -449,6 +449,35 @@ fn start_work_refuses_a_slug_that_could_escape_the_data_root() {
     assert!(listed.as_array().unwrap().is_empty(), "{listed}");
 }
 
+/// slug와 branch는 둘 다 브랜치 이름이 된다. 경로로는 멀쩡해도 git이 ref로 거부하는
+/// 이름이 통과하면, work.json과 spec 디렉터리만 남고 워크트리 생성만 실패하는 반쪽이 착지한다.
+#[test]
+fn start_work_refuses_a_branch_name_git_will_not_accept() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+
+    for bad in ["cart add", "cart.lock", "cart~1", "cart..v2"] {
+        // slug에서 파생된 브랜치와 직접 넘긴 브랜치가 같은 문을 지난다
+        for arguments in [
+            json!({ "title": "카트", "slug": bad, "projects": ["billing"] }),
+            json!({ "title": "카트", "branch": bad, "projects": ["billing"] }),
+        ] {
+            let res = server.request(3, "tools/call",
+                json!({ "name": "atelier_start_work", "arguments": arguments }));
+            assert!(res["error"].is_null(), "must not be a protocol error: {res}");
+            assert_eq!(res["result"]["isError"], true, "'{bad}' was accepted: {res}");
+            let text = res["result"]["content"][0]["text"].as_str().unwrap();
+            assert!(text.contains("branch name"), "must name what git refused: {text}");
+        }
+    }
+    // 거부된 호출은 반쪽짜리 work를 남기지 않는다
+    let listed = server.request(4, "tools/call",
+        json!({ "name": "atelier_list_works", "arguments": {} }));
+    let listed: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(listed.as_array().unwrap().is_empty(), "{listed}");
+}
+
 /// 에이전트는 스키마를 보고 "안 줘도 된다"를 판단한다 — edit_project와 같은 계약이다.
 #[test]
 fn start_work_schema_shows_slug_and_branch_are_optional() {
