@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
-import SpecTable from "./SpecTable";
+import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import WorkPanel, { PANEL_ANIM_MS } from "./WorkPanel";
 import type { WorkView } from "./types";
 
@@ -93,7 +93,10 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
-              <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
+              // key: 파일이 바뀌면 예쁜 보기를 새로 세운다. 표의 열 폭처럼 보는 동안만
+              // 유지되는 상태가 문서를 넘어 살아남지 않게 하는 자리다 — 같은 파일이
+              // 밖에서 수정돼 다시 읽힐 때는 내용만 갈리고 그 상태는 남는다.
+              <PrettyView key={current} content={content ?? ""} onCopyBlock={copyRef} />
             )}
           </div>
         </div>
@@ -279,9 +282,11 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
           </BlockWrapper>
         );
       },
+      // relative: 열 폭 손잡이가 이 칸의 오른쪽 끝(열 경계)에 서기 위한 기준 상자다
       th: ({ children }) => (
-        <th className="border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
+        <th className="relative border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
           {children}
+          <ColumnResizeHandle />
         </th>
       ),
       td: ({ children }) => (
