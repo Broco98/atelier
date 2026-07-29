@@ -1,7 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Check, Copy, Maximize2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import FullscreenModal from "./FullscreenModal";
 
 const zoomButton =
   "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors hover:bg-accent hover:text-foreground";
@@ -137,14 +137,8 @@ function MermaidBlock({ code }: { code: string }) {
     };
   }, [code, id]);
 
-  useEffect(() => {
-    if (!fullOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullOpen]);
+  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
+  const close = useCallback(() => setFullOpen(false), []);
 
   // 모달이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산)
   useLayoutEffect(() => {
@@ -154,8 +148,6 @@ function MermaidBlock({ code }: { code: string }) {
     const fit = Math.min((el.clientWidth - pad) / size.w, (el.clientHeight - pad) / size.h);
     setFullScale(Math.min(3, Math.max(0.4, fit)));
   }, [fullOpen, size, modalPan.ref]);
-
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
     <div className="overflow-hidden rounded-[12px] border bg-panel">
@@ -195,40 +187,22 @@ function MermaidBlock({ code }: { code: string }) {
         </div>
       )}
 
-      {fullOpen &&
-        // 문서 최상위에 렌더한다 — 조상 어디에 변형이 걸려도 fixed의 기준 상자가 바뀌지 않는다.
-        // 포털이어도 이벤트는 React 트리를 따라 오르므로 바깥 블록과의 관계는 그대로다.
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
-            onClick={() => setFullOpen(false)}
-          >
-            <div
-              className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
-              onClick={stop}
-            >
-              <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-                <span className="font-mono text-[12px] text-tertiary">mermaid</span>
-                <span className="flex items-center gap-1">
-                  <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-                  <CopyCodeButton code={code} />
-                  <button
-                    type="button"
-                    onClick={() => setFullOpen(false)}
-                    title="닫기 (Esc)"
-                    className="ml-1 flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
-                  >
-                    <X className="size-3.5" strokeWidth={2} />
-                  </button>
-                </span>
-              </div>
-              <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
-                {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {fullOpen && (
+        <FullscreenModal
+          label="mermaid"
+          onClose={close}
+          controls={
+            <>
+              <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+              <CopyCodeButton code={code} />
+            </>
+          }
+        >
+          <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
+            {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+          </div>
+        </FullscreenModal>
+      )}
     </div>
   );
 }

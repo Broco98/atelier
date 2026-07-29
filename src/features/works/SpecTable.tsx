@@ -1,14 +1,16 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Maximize2, X } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setResizing } from "@/components/shell/useResizableWidth";
+import FullscreenModal from "./FullscreenModal";
 
 // 예쁜 보기의 표 블록. 가로 스크롤 위에 전체화면 확대와 열 폭 조절을 얹는다.
-// 모달은 MermaidBlock과 같은 패턴이다 — 포털로 띄우는 전면 오버레이, Escape·바깥 클릭으로 닫기.
+// 확대는 다이어그램 블록과 같은 틀(FullscreenModal)을 쓴다 — 같은 손버릇으로 열리고 닫힌다.
 
 // 끄는 동작은 표가 받고, 손잡이는 열 머리(th)가 그린다 — 손잡이가 설 자리는 열 경계뿐이고
 // 그 자리를 아는 건 th다. 손잡이는 자기가 몇 번째 열인지 모른다. 끌기 시작할 때 DOM에서 읽는다.
+// 핸들러를 prop이 아니라 context로 내리는 이유: th를 만드는 건 react-markdown이고 그 자리는
+// children 깊숙이라, 표가 자기 th에게 직접 무언가를 건넬 방법이 없다.
 interface DragHandle {
   onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
   onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
@@ -31,9 +33,9 @@ export function ColumnResizeHandle() {
 }
 
 // 열이 이보다 좁아지면 안에 든 것을 알아볼 수 없다
-const MIN_COLUMN = 48;
+const MIN_COLUMN_WIDTH = 48;
 
-function Table({ className, children, ...props }: React.ComponentProps<"table">) {
+function ResizableTable({ className, children, ...props }: React.ComponentProps<"table">) {
   // null이면 아직 내용이 폭을 정하는 상태다. 조절한 폭은 여기에만 있다 — 저장소에 남기지 않는다.
   const [widths, setWidths] = useState<number[] | null>(null);
   const drag = useRef<{ column: number; x: number; base: number[] } | null>(null);
@@ -49,6 +51,9 @@ function Table({ className, children, ...props }: React.ComponentProps<"table">)
 
   const handle: DragHandle = {
     onPointerDown: (e) => {
+      // 좌클릭만 받는다 (usePanScroll과 같은 이유) — 우클릭으로 시작하면 컨텍스트 메뉴가
+      // 뜨면서 pointerup을 잃고, 문서를 떠나기 전까지 body.resizing이 켜진 채 남는다
+      if (e.button !== 0) return;
       const cell = e.currentTarget.closest("th");
       const row = cell?.parentElement;
       if (!cell || !row) return;
@@ -64,11 +69,18 @@ function Table({ className, children, ...props }: React.ComponentProps<"table">)
       const d = drag.current;
       if (!d) return;
       const next = [...d.base];
-      next[d.column] = Math.max(MIN_COLUMN, d.base[d.column] + e.clientX - d.x);
+      next[d.column] = Math.max(MIN_COLUMN_WIDTH, d.base[d.column] + e.clientX - d.x);
       setWidths(next);
     },
+    // 끌기 없이 이 손잡이 위에서 손을 떼는 경로가 있다 — 칸에서 글자를 끌다 여기서 놓으면
+    // pointerdown 없이 pointerup만 온다. 잡은 적 없는 포인터를 놓으면 NotFoundError다.
+    // 판단 기준은 캡처가 아니라 우리 상태다 — 캡처가 어떤 이유로든 걸리지 않았을 때
+    // 캡처를 기준으로 삼으면 끝내는 길이 막혀 body.resizing이 켜진 채 남는다
     onPointerUp: (e) => {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      if (!drag.current) return;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
       endDrag();
     },
     // 웹뷰/OS가 드래그를 가로채면 pointerup이 오지 않는다 — 캡처는 이미 풀린 상태다
@@ -106,21 +118,14 @@ function Table({ className, children, ...props }: React.ComponentProps<"table">)
 
 function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
   const [fullOpen, setFullOpen] = useState(false);
-
-  useEffect(() => {
-    if (!fullOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullOpen]);
+  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
+  const close = useCallback(() => setFullOpen(false), []);
 
   return (
     <div className="group/table relative">
       {/* 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
       <div className="overflow-x-auto scroll-quiet">
-        <Table {...props}>{children}</Table>
+        <ResizableTable {...props}>{children}</ResizableTable>
       </div>
 
       {/* 확대 버튼은 스크롤 상자 바깥에 얹는다 — 안에 두면 표를 옆으로 밀 때 같이 밀려 사라진다.
@@ -137,38 +142,17 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
         <Maximize2 className="size-3" strokeWidth={2} />
       </button>
 
-      {fullOpen &&
-        // 문서 최상위에 렌더한다 — 조상 어디에 변형이 걸려도 fixed의 기준 상자가 바뀌지 않는다
-        createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
-            onClick={() => setFullOpen(false)}
-          >
-            <div
-              className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-                <span className="font-mono text-[12px] text-tertiary">표</span>
-                <button
-                  type="button"
-                  onClick={() => setFullOpen(false)}
-                  title="닫기 (Esc)"
-                  aria-label="닫기"
-                  className="flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <X className="size-3.5" strokeWidth={2} />
-                </button>
-              </div>
-              {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
-                  가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다 */}
-              <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
-                <Table {...props}>{children}</Table>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {fullOpen && (
+        <FullscreenModal label="표" onClose={close}>
+          {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
+              가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
+              폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
+              모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 닫으면 본문은 그대로다 */}
+          <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
+            <ResizableTable {...props}>{children}</ResizableTable>
+          </div>
+        </FullscreenModal>
+      )}
     </div>
   );
 }
