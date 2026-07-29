@@ -59,8 +59,10 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
-          {/* 셀 수 있는 워크트리가 있을 때만 — 브랜치 유무와는 별개다 */}
-          {work.worktrees.length > 0 && (
+          {/* 셀 수 있는 워크트리가 있을 때만 — 브랜치 유무와는 별개다.
+              세는 것과 같은 값으로 판단한다: 선언된 프로젝트는 있는데 워크트리 생성이
+              전부 실패한 work가 "worktree 0"을 내보이던 것을 막는다. */}
+          {worktreeCount > 0 && (
             <span
               title={`worktree ${worktreeCount}개`}
               className="text-[11.5px] text-tertiary"
