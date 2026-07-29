@@ -45,7 +45,8 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
-          {work.branch !== null && (
+          {/* 셀 수 있는 트리가 있을 때만 — 브랜치 유무와는 별개다 */}
+          {work.trees.length > 0 && (
             <span
               title={`워크트리 ${treeCount}개`}
               className="text-[11.5px] text-tertiary"

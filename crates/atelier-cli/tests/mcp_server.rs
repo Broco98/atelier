@@ -522,13 +522,6 @@ fn attach_project_reports_its_own_worktree_failure_as_an_error() {
     assert!(text.contains("atelier_attach_project"), "{text}");
 }
 
-/// 미등록 프로젝트는 커널의 **사전검증**에서 걸린다 — 워크트리는 하나도 건드리지 않으므로
-/// 부분 실패가 아니라 그냥 실행 오류다.
-///
-/// 단언은 §2 오류 매핑표를 따른다: `attach_project`는 `get_project`의 `NotFound`를
-/// `Validation("<slug>: project not registered")`로 눌러 감싸므로(`works.rs:267`),
-/// `kernel_error`가 붙이는 안내는 `atelier_list_projects`가 **아니라**
-/// `"Fix the arguments and call this tool again."`이다 (⚠️ G2 — 표에 기록된 안내 없는 경로).
 /// draft → active 경로의 마지막 한 칸 — 프로젝트를 붙이는 그 호출에서 브랜치가
 /// 정해진다. 상태는 선언된 것이므로 붙였다고 저절로 바뀌지 않는다.
 #[test]
@@ -584,6 +577,13 @@ fn attach_project_fixes_the_branch_of_a_work_that_had_none() {
     );
 }
 
+/// 미등록 프로젝트는 커널의 **사전검증**에서 걸린다 — 워크트리는 하나도 건드리지 않으므로
+/// 부분 실패가 아니라 그냥 실행 오류다.
+///
+/// 단언은 §2 오류 매핑표를 따른다: `attach_project`는 `get_project`의 `NotFound`를
+/// `Validation("<slug>: project not registered")`로 눌러 감싸므로(works.rs의 attach_project),
+/// `kernel_error`가 붙이는 안내는 `atelier_list_projects`가 **아니라**
+/// `"Fix the arguments and call this tool again."`이다 (⚠️ G2 — 표에 기록된 안내 없는 경로).
 #[test]
 fn attach_unknown_project_is_an_execution_error() {
     let (home, _code) = fixture();
@@ -725,6 +725,29 @@ fn remove_work_refuses_dirty_trees_and_leaves_the_branch_behind() {
     let out: Value =
         serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(out["branch"], "feat/cart", "{out}");
+}
+
+/// 프로젝트가 없는 work는 지울 워크트리도, 살아남을 브랜치도 없다. 응답이
+/// "브랜치는 남아 있으니 복구 가능하다"고 말하면 거짓말이 된다.
+#[test]
+fn removing_a_project_less_work_does_not_promise_a_surviving_branch() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "지울 아이디어" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_remove_work", "arguments": { "work_slug": "지울-아이디어" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let out: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(out["removed"], "지울-아이디어");
+    assert!(out["branch"].is_null(), "there was no branch to report: {out}");
+    let note = out["note"].as_str().unwrap();
+    assert!(!note.contains("recoverable"), "nothing was recoverable here: {note}");
+    assert!(!home.path().join("works/지울-아이디어").exists());
 }
 
 /// D6 — 강제 삭제 옵션은 도구 표면에 존재하지 않는다.

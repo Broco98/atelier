@@ -60,11 +60,9 @@ pub fn start_work(
     };
     // 프로젝트가 없으면 워크트리도 없다. 쓰지도 않을 브랜치를 저장소에 남기지 않으려고
     // 이름을 정하지 않고 미룬다 — 첫 프로젝트가 붙을 때 확정된다 (attach_project).
-    work.branch = if work.projects.is_empty() && work.branch.is_none() && branch.is_none() {
-        None
-    } else {
-        Some(fix_branch(&work, branch)?)
-    };
+    let nothing_to_decide =
+        work.projects.is_empty() && work.branch.is_none() && branch.is_none();
+    work.branch = if nothing_to_decide { None } else { Some(decide_branch(&work, branch)?) };
 
     // 사전검증: 워크트리가 없는 프로젝트 전부를 먼저 검사하고, 하나라도 실패면 아무것도 만들지 않는다
     let dir = works_root.join(&work.slug);
@@ -116,7 +114,7 @@ pub fn start_work(
 /// | 있음 | 다른 값 | 거부 — 한 work는 브랜치 하나를 공유한다 |
 /// | 없음 | 있음 | 그 값으로 확정 |
 /// | 없음 | 없음 | slug로 확정 |
-fn fix_branch(work: &Work, given: Option<&str>) -> Result<String> {
+fn decide_branch(work: &Work, given: Option<&str>) -> Result<String> {
     match (work.branch.as_deref(), given) {
         (Some(current), Some(given)) if given != current => Err(Error::Validation(format!(
             "work '{}' already uses branch '{current}'",
@@ -281,7 +279,7 @@ pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> 
 
 /// 프로젝트를 붙인다. `branch`는 **브랜치가 아직 미정인 work를 위한 것**이다 —
 /// 코드를 건드릴 때가 되어서야 저장소 관례에 맞는 이름을 고르게 한다.
-/// 이미 정해진 work에 다른 이름을 넘기면 거부된다 (fix_branch의 규칙표).
+/// 이미 정해진 work에 다른 이름을 넘기면 거부된다 (decide_branch의 규칙표).
 pub fn attach_project(
     works_root: &Path,
     projects_root: &Path,
@@ -293,7 +291,7 @@ pub fn attach_project(
     let dir = works_root.join(&work.slug);
     let tree = dir.join("trees").join(project_slug);
     // 워크트리를 만들려면 이름이 있어야 한다 — 미정이던 work는 여기서 확정된다.
-    let branch = fix_branch(&work, branch)?;
+    let branch = decide_branch(&work, branch)?;
 
     let mut errors = Vec::new();
     if !tree.is_dir() {

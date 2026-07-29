@@ -14,7 +14,11 @@ interface TreeNode {
 const OVERVIEW = "overview.md";
 const ITERATION = /^(\d+)-/; // NN-<이름>/ = 판 하나
 const TICKETS = "tickets";
-const STANDING = ["research", "explanation"]; // 판을 넘어 사는 구역
+// 판을 넘어 사는 구역. 이 배열이 트리에서의 순서이자 아이콘의 유일한 출처다.
+const STANDING = [
+  { name: "research", Glyph: Search },
+  { name: "explanation", Glyph: BookOpen },
+] as const;
 
 /** 구역 번호와 구역 안 순서. 같은 키는 커널이 준 순서를 그대로 지킨다(안정 정렬). */
 function sectionKey(node: TreeNode): [number, number] {
@@ -22,7 +26,7 @@ function sectionKey(node: TreeNode): [number, number] {
   if (!isDir && node.name === OVERVIEW) return [0, 0];
   const iteration = isDir ? ITERATION.exec(node.name) : null;
   if (iteration) return [1, Number(iteration[1])];
-  const standing = isDir ? STANDING.indexOf(node.name) : -1;
+  const standing = isDir ? STANDING.findIndex((s) => s.name === node.name) : -1;
   if (standing >= 0) return [2, standing];
   return [3, 0];
 }
@@ -181,8 +185,8 @@ function FolderGlyph({ name }: { name: string }) {
   const className = "size-3 shrink-0 text-tertiary";
   if (ITERATION.test(name)) return <Layers className={className} strokeWidth={1.9} />;
   if (name === TICKETS) return <ListChecks className={className} strokeWidth={1.9} />;
-  if (name === "research") return <Search className={className} strokeWidth={1.9} />;
-  if (name === "explanation") return <BookOpen className={className} strokeWidth={1.9} />;
+  const standing = STANDING.find((s) => s.name === name);
+  if (standing) return <standing.Glyph className={className} strokeWidth={1.9} />;
   return null;
 }
 
