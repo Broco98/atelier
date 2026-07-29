@@ -75,7 +75,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
           data-tauri-drag-region
           className={cn(
             "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms]",
-            sidebarOpen ? "pl-0.5" : "pl-[114px]",
+            sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
           )}
         >
           <span className="flex shrink-0 items-center gap-1.5">
@@ -89,7 +89,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
                 strokeWidth={2}
               />
-              {/* 사이드바 닫힘 시 신호등 인셋(114px) 때문에 라벨을 접고 아이콘만 남긴다 */}
+              {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
               {sidebarOpen && "생성일"}
             </button>
             <span className="relative flex min-w-0">

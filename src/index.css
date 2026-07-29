@@ -13,6 +13,29 @@
     --sidebar-width: 248px;
 }
 
+/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
+   --titlebar-inset / --titlebar-inset-panel을 읽어 신호등·셸 컨트롤을 피한다.
+   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-control-size만큼 이어지고,
+   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 폭만 고치면 된다.
+   88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
+
+   파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
+   치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. */
+[data-titlebar] {
+    --titlebar-controls-left: 88px;
+    --titlebar-control-size: 26px;
+    --titlebar-inset: calc(
+        var(--titlebar-controls-left) + var(--titlebar-control-size) + 12px
+    );
+    /* 목록 패널 헤더는 패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */
+    --titlebar-inset-panel: calc(var(--titlebar-inset) - 12px);
+}
+
+/* 전체화면에선 macOS가 신호등을 숨기므로 컨트롤이 창 여백까지 당겨진다 */
+[data-titlebar="fullscreen"] {
+    --titlebar-controls-left: 16px;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', 'Pretendard Variable', sans-serif;

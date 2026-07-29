@@ -67,7 +67,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
         data-tauri-drag-region
         className={cn(
           "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms]",
-          sidebarOpen ? "pl-0.5" : "pl-[114px]",
+          sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
         )}
       >
         <button
