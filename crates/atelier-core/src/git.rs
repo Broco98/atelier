@@ -46,10 +46,16 @@ pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
 /// git이 브랜치 이름으로 받아들이는가. 규칙(`..`, 공백, `~^:?*[`, `.lock` 끝 등)을
 /// 여기서 다시 쓰면 git과 어긋나므로 git에게 직접 묻는다. 저장소가 필요 없는 문법 검사다.
 pub(crate) fn is_valid_branch_name(name: &str) -> bool {
-    Command::new("git")
+    match Command::new("git")
         .args(["check-ref-format", &format!("refs/heads/{name}")])
         .output()
-        .is_ok_and(|out| out.status.success())
+    {
+        Ok(out) => out.status.success(),
+        // git을 못 띄운 것은 이름이 나쁘다는 뜻이 아니다. 여기서 거부하면 git이 없는 환경에서
+        // 모든 work 시작이 "invalid branch name"으로 죽어, 진짜 원인을 가린다. 판단을 보류하고
+        // 워크트리 생성이 제 이름으로 실패하게 둔다.
+        Err(_) => true,
+    }
 }
 
 pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
