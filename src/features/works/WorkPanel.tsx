@@ -46,7 +46,7 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
           <span
-            title={`워크트리 ${worktreeCount}개`}
+            title={`worktree ${worktreeCount}개`}
             className="text-[11.5px] text-tertiary"
           >
             worktree {worktreeCount}
