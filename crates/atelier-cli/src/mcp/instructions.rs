@@ -7,7 +7,7 @@
 
 /// 지침 전문. 문장 하나하나가 아래 `tests`의 가드에 걸려 있다 —
 /// 고칠 때 무엇이 왜 거기 있는지는 테스트 이름이 말해준다.
-pub const INSTRUCTIONS: &str = r#"Atelier organizes local development work. A project is a registered git repository. A work is one feature spanning one or more projects: it owns one branch name shared by every project it touches, one git worktree per project, and one spec directory.
+pub const INSTRUCTIONS: &str = r#"Atelier organizes local development work. A project is a registered git repository. A work is one feature spanning zero or more projects: it owns one branch name shared by every project it touches, one git worktree per project, and one spec directory.
 
 Order matters when starting a work. Call atelier_list_projects first: it gives you the project slugs to pass, and each project's existing branches under `git.localBranches`.
 

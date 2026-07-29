@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, Check, ChevronDown, ChevronRight, Filter, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
@@ -35,13 +35,9 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
 
   // 문턱을 낮추면 백로그가 쌓인다. 이 구역이 그 대가를 격리한다 — 쌓인 아이디어가
   // 진행 중인 일을 가리지 않게. 정렬·필터는 두 구역 모두에 그대로 걸린다.
-  // 위의 파생들과 달리 여기만 메모하는 이유: visible이 아래 keydown 이펙트의
-  // 의존성이라, 매 렌더 새 배열이면 리스너를 계속 다시 건다.
-  const { main, drafts, visible } = useMemo(() => {
-    const main = sorted.filter((w) => w.status !== "draft");
-    const drafts = sorted.filter((w) => w.status === "draft");
-    return { main, drafts, visible: draftsOpen ? [...main, ...drafts] : main };
-  }, [sorted, draftsOpen]);
+  const main = sorted.filter((w) => w.status !== "draft");
+  const drafts = sorted.filter((w) => w.status === "draft");
+  const visible = draftsOpen ? [...main, ...drafts] : main;
 
   const size = useResizableWidth("panel-width", 360, 280, 560);
 

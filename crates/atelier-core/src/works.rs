@@ -106,7 +106,7 @@ pub fn start_work(
     Ok(WorkReport { view, errors })
 }
 
-/// 브랜치가 정해지는 **유일한** 지점. 확정된 이름을 돌려주기만 하고 저장은 호출부가 한다.
+/// 이름을 **무엇으로** 정할지 답하는 유일한 지점. 돌려주기만 하고 저장은 호출부가 한다.
 ///
 /// | work의 branch | 넘긴 branch | 결과 |
 /// |---|---|---|
@@ -114,6 +114,10 @@ pub fn start_work(
 /// | 있음 | 다른 값 | 거부 — 한 work는 브랜치 하나를 공유한다 |
 /// | 없음 | 있음 | 그 값으로 확정 |
 /// | 없음 | 없음 | slug로 확정 |
+///
+/// **이름을 지금 정할지 말지**는 표 밖, 호출부의 결정이다. 워크트리가 생기지 않는
+/// start_work 경로는 이 함수를 부르지 않고 미정으로 남긴다 (`nothing_to_decide`) —
+/// 마지막 행의 slug 폴백은 워크트리를 당장 만들어야 해서 이름이 필요할 때의 이야기다.
 fn decide_branch(work: &Work, given: Option<&str>) -> Result<String> {
     match (work.branch.as_deref(), given) {
         (Some(current), Some(given)) if given != current => Err(Error::Validation(format!(
@@ -293,16 +297,25 @@ pub fn attach_project(
     // 워크트리를 만들려면 이름이 있어야 한다 — 미정이던 work는 여기서 확정된다.
     let branch = decide_branch(&work, branch)?;
 
+    // 만들 워크트리가 있을 때만 검증한다. 실패하면 여기서 끝나고 아무것도 쓰지 않는다.
+    let pending_tree = if tree.is_dir() {
+        None
+    } else {
+        Some(
+            validate_for_tree(projects_root, project_slug, &branch, true)
+                .map_err(|reason| Error::Validation(format!("{project_slug}: {reason}")))?,
+        )
+    };
+    // 확정은 조건 없이 저장한다 (결정표에 조건이 없다). 워크트리 생성 **전**이라
+    // 생성이 실패해도 다음 시도가 같은 이름을 쓴다 — 성공분 유지·재실행 멱등이라는
+    // 부분 실패 계약과 같은 결이다.
+    if work.branch.is_none() {
+        work.branch = Some(branch.clone());
+        write_work(works_root, &work)?;
+    }
+
     let mut errors = Vec::new();
-    if !tree.is_dir() {
-        let (repo, base) = validate_for_tree(projects_root, project_slug, &branch, true)
-            .map_err(|reason| Error::Validation(format!("{project_slug}: {reason}")))?;
-        // 확정을 워크트리 생성 **전에** 저장한다 — 생성이 실패해도 다음 시도가 같은
-        // 이름을 쓴다 (성공분 유지·재실행 멱등이라는 부분 실패 계약과 같은 결).
-        if work.branch.is_none() {
-            work.branch = Some(branch.clone());
-            write_work(works_root, &work)?;
-        }
+    if let Some((repo, base)) = pending_tree {
         std::fs::create_dir_all(dir.join("trees"))?;
         if let Err(message) = git::worktree_add(&repo, &tree, &branch, &base) {
             errors.push(TreeError { project: project_slug.to_string(), message });
@@ -741,6 +754,29 @@ mod tests {
         let retry = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
         assert!(retry.errors.is_empty(), "{retry:?}");
         assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/late");
+    }
+
+    /// 결정표에는 "워크트리를 만들 때만"이라는 조건이 없다. 자리가 이미 차 있으면
+    /// 만들 것은 없지만 확정된 이름은 그래도 남아야 한다 — 안 남으면 프로젝트는
+    /// 붙었는데 branch가 null인 work가 생긴다.
+    #[test]
+    fn attach_saves_the_branch_even_when_the_tree_is_already_there() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "Late Branch", &[], None).unwrap();
+        // 자리를 미리 채워 둔다 — attach는 만들 워크트리가 없다고 판단한다
+        std::fs::create_dir_all(works.join("late-branch/trees/fe")).unwrap();
+
+        let report =
+            attach_project(&works, &projects, "late-branch", "fe", Some("feat/late")).unwrap();
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.view.work.branch.as_deref(), Some("feat/late"));
+        let stored = get_work(&works, "late-branch").unwrap().work;
+        assert_eq!(
+            stored.branch.as_deref(),
+            Some("feat/late"),
+            "the decision must be stored even with no worktree to create"
+        );
+        assert_eq!(stored.projects, ["fe"]);
     }
 
     /// 직교성 회귀 가드 — 진행 상태는 사람과 세션이 선언한다. 프로젝트가 붙었다고
