@@ -97,7 +97,7 @@ function WorksSection({
           </div>
         ) : (
           related.map((work) => {
-            const tree = work.trees.find((t) => t.project === projectSlug);
+            const worktree = work.worktrees.find((t) => t.project === projectSlug);
             return (
               <button
                 key={work.slug}
@@ -117,7 +117,7 @@ function WorksSection({
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5 text-[12px] text-tertiary">
-                  {tree?.exists && (
+                  {worktree?.exists && (
                     <span className="flex items-center gap-1.5 font-mono text-[11px]">
                       <GitFork className="size-3" strokeWidth={2} />
                       {work.branch}
@@ -136,6 +136,10 @@ function WorksSection({
 }
 
 // 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
+//
+// works/WorksPage.tsx의 TitleEditor가 같은 상호작용 계약을 쓴다 — Enter/blur 확정,
+// Escape 취소, 공백·동일 값 미저장, 그리고 Enter와 blur가 함께 들어와 두 번 커밋되는 것을
+// 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다 (스타일은 서로 다르다).
 function TitleEditor({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [editing, setEditing] = useState(false);

@@ -35,6 +35,15 @@ export function useSpecFile(slug: string, path: string | null) {
   });
 }
 
+export function useSetWorkTitle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, title }: { slug: string; title: string }) =>
+      worksApi.setTitle(slug, title),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
+  });
+}
+
 export function useSetWorkStatus() {
   const queryClient = useQueryClient();
   return useMutation({

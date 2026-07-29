@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use crate::work::{parse_work, render_work, TreeView, Work, WorkStatus, WorkView};
+use crate::work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 use crate::{collapse_home, expand_home, git, slugify, Error, Result};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TreeError {
+pub struct WorktreeError {
     pub project: String,
     pub message: String,
 }
@@ -17,13 +17,19 @@ pub struct TreeError {
 pub struct WorkReport {
     #[serde(flatten)]
     pub view: WorkView,
-    pub errors: Vec<TreeError>,
+    pub errors: Vec<WorktreeError>,
 }
 
+/// `slug`를 주면 그것이 디렉터리명이자 브랜치 기본값이고, **재개 판정의 정본**이다.
+/// 생략하면 지금까지처럼 제목에서 파생하고 제목으로 재개를 판정한다.
+///
+/// 제목은 바뀔 수 있으므로 멱등 키가 될 수 없다(`update_work_title` 참조). slug는
+/// 불변이라 될 수 있다 — 그래서 slug를 아는 호출자는 제목이 어떻게 바뀌었든 재개된다.
 pub fn start_work(
     works_root: &Path,
     projects_root: &Path,
     title: &str,
+    slug: Option<&str>,
     project_slugs: &[String],
     branch: Option<&str>,
 ) -> Result<WorkReport> {
@@ -34,10 +40,31 @@ pub fn start_work(
     if project_slugs.is_empty() {
         return Err(Error::Validation("at least one project is required".into()));
     }
+    // slug는 디렉터리명이 된다 — 경로 구분자가 통과하면 데이터 루트 밖에 폴더가 생긴다.
+    // 명시했든 제목에서 파생했든 폴더가 될 값은 하나뿐이므로, 검사도 한 문으로 함께 지난다.
+    let explicit_slug = slug.map(str::trim);
+    let slug = match explicit_slug {
+        Some(slug) => slug.to_string(),
+        None => slugify(title),
+    };
+    if !crate::slug::is_safe_slug(&slug) {
+        return Err(Error::Validation(format!(
+            "invalid slug '{slug}': it becomes a folder name, so it must not be empty, \
+             start with '.', or contain '/' or '\\'"
+        )));
+    }
     std::fs::create_dir_all(works_root)?;
 
-    // 같은 제목의 work가 있으면 이어서 생성(멱등), 없으면 새로 만든다
-    let existing_work = find_by_title(works_root, title)?;
+    // 재개 판정: slug가 있으면 slug가 정본, 없을 때만 제목으로 찾는다 (멱등)
+    let existing_work = match explicit_slug {
+        Some(_) => match read_work(works_root, &slug) {
+            Ok(work) => Some(work),
+            Err(Error::WorkNotFound(_)) => None,
+            // 망가진 work.json을 "없음"으로 읽으면 그 위에 덮어쓴다 — 그대로 올린다
+            Err(e) => return Err(e),
+        },
+        None => find_by_title(works_root, title)?,
+    };
     let resuming = existing_work.is_some();
     let work = match existing_work {
         Some(existing) => {
@@ -58,8 +85,21 @@ pub fn start_work(
             work
         }
         None => {
-            let slug = unique_dir_slug(works_root, &slugify(title));
+            // slug를 명시했으면 그대로 쓴다 — 이미 있으면 위에서 재개했을 것이므로
+            // 여기까지 온 이상 충돌이 아니다. 중복 회피 접미사는 파생 slug에만 붙인다.
+            let slug = match explicit_slug {
+                Some(_) => slug,
+                None => unique_dir_slug(works_root, &slug),
+            };
             let branch = branch.unwrap_or(&slug).to_string();
+            // slug에서 파생됐든 직접 넘어왔든, git이 ref로 거부하는 이름이면 워크트리 생성만
+            // 실패해 반쪽짜리 work가 남는다. 아무것도 쓰기 전에 여기서 막는다.
+            if !git::is_valid_branch_name(&branch) {
+                return Err(Error::Validation(format!(
+                    "invalid branch name '{branch}': git will not accept it. \
+                     Pass a 'branch' git accepts, or a 'slug' that works as one."
+                )));
+            }
             Work {
                 slug,
                 title: title.to_string(),
@@ -79,7 +119,7 @@ pub fn start_work(
     let mut reasons = Vec::new();
     let mut repos = Vec::new();
     for p in &pending {
-        match validate_for_tree(projects_root, p, &work.branch, resuming) {
+        match validate_for_worktree(projects_root, p, &work.branch, resuming) {
             Ok(repo_base) => repos.push(repo_base),
             Err(reason) => reasons.push(format!("{p}: {reason}")),
         }
@@ -95,9 +135,9 @@ pub fn start_work(
     // 검증을 통과한 뒤의 개별 실패는 성공분을 유지한 채 보고만 한다
     let mut errors = Vec::new();
     for (p, (repo, base)) in pending.iter().zip(repos) {
-        let tree = dir.join("trees").join(p.as_str());
-        if let Err(message) = git::worktree_add(&repo, &tree, &work.branch, &base) {
-            errors.push(TreeError { project: p.to_string(), message });
+        let worktree = dir.join("trees").join(p.as_str());
+        if let Err(message) = git::worktree_add(&repo, &worktree, &work.branch, &base) {
+            errors.push(WorktreeError { project: p.to_string(), message });
         }
     }
 
@@ -109,7 +149,7 @@ pub fn start_work(
 /// 검증 통과 시 (저장소 절대경로, baseBranch) 반환.
 /// `allow_existing_branch`: 기존 work의 재개/attach는 부분 실패로 브랜치만 남은
 /// 상태를 이어가야 하므로 브랜치 충돌을 허용한다 (worktree_add가 채택).
-fn validate_for_tree(
+fn validate_for_worktree(
     projects_root: &Path,
     project_slug: &str,
     branch: &str,
@@ -178,21 +218,26 @@ fn write_work(works_root: &Path, work: &Work) -> Result<()> {
 
 fn to_view(works_root: &Path, work: Work) -> WorkView {
     let dir = works_root.join(&work.slug);
-    let trees = work
+    let worktrees = work
         .projects
         .iter()
         .map(|p| {
-            let tree = dir.join("trees").join(p);
-            let exists = tree.is_dir();
-            TreeView {
+            let worktree = dir.join("trees").join(p);
+            let exists = worktree.is_dir();
+            WorktreeView {
                 project: p.clone(),
-                path: collapse_home(&tree),
+                path: collapse_home(&worktree),
                 exists,
-                dirty: exists && git::is_dirty(&tree),
+                dirty: exists && git::is_dirty(&worktree),
             }
         })
         .collect();
-    WorkView { spec_dir: collapse_home(&spec_dir(&dir)), spec_files: spec_files(&dir), work, trees }
+    WorkView {
+        spec_dir: collapse_home(&spec_dir(&dir)),
+        spec_files: spec_files(&dir),
+        work,
+        worktrees,
+    }
 }
 
 /// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
@@ -250,6 +295,20 @@ pub fn get_work(works_root: &Path, slug: &str) -> Result<WorkView> {
     Ok(to_view(works_root, read_work(works_root, slug)?))
 }
 
+/// 표시 이름만 바꾼다. **slug는 건드리지 않는다** — 디렉터리명이 slug의 원천이라
+/// 바꾸면 git이 등록해 둔 워크트리 경로와 배포된 spec 참조가 전부 깨진다
+/// (프로젝트의 `update_project`가 파일명을 건드리지 않는 것과 같은 규칙).
+pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<WorkView> {
+    let mut work = read_work(works_root, slug)?;
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(Error::Validation("title must not be empty".into()));
+    }
+    work.title = title.to_string();
+    write_work(works_root, &work)?;
+    Ok(to_view(works_root, work))
+}
+
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
     let mut work = read_work(works_root, slug)?;
     work.status = status;
@@ -265,15 +324,15 @@ pub fn attach_project(
 ) -> Result<WorkReport> {
     let mut work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
-    let tree = dir.join("trees").join(project_slug);
+    let worktree = dir.join("trees").join(project_slug);
 
     let mut errors = Vec::new();
-    if !tree.is_dir() {
-        let (repo, base) = validate_for_tree(projects_root, project_slug, &work.branch, true)
+    if !worktree.is_dir() {
+        let (repo, base) = validate_for_worktree(projects_root, project_slug, &work.branch, true)
             .map_err(|reason| Error::Validation(format!("{project_slug}: {reason}")))?;
         std::fs::create_dir_all(dir.join("trees"))?;
-        if let Err(message) = git::worktree_add(&repo, &tree, &work.branch, &base) {
-            errors.push(TreeError { project: project_slug.to_string(), message });
+        if let Err(message) = git::worktree_add(&repo, &worktree, &work.branch, &base) {
+            errors.push(WorktreeError { project: project_slug.to_string(), message });
         }
     }
     if !work.projects.iter().any(|p| p == project_slug) {
@@ -301,11 +360,11 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
             .map(|t| collapse_home(t))
             .collect();
         if !dirty.is_empty() {
-            return Err(Error::DirtyTrees(dirty.join(", ")));
+            return Err(Error::DirtyWorktrees(dirty.join(", ")));
         }
     }
-    for tree in &existing {
-        git::worktree_remove(tree, force).map_err(Error::Git)?;
+    for worktree in &existing {
+        git::worktree_remove(worktree, force).map_err(Error::Git)?;
     }
     std::fs::remove_dir_all(&dir)?;
     Ok(())
@@ -371,7 +430,7 @@ mod tests {
     #[test]
     fn start_creates_meta_spec_and_worktrees() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "카트 아이템 추가", &slugs(&["fe", "be"]), Some("feat/cart"))
+        let report = start_work(&works, &projects, "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
             .unwrap();
         assert!(report.errors.is_empty());
 
@@ -386,13 +445,13 @@ mod tests {
         assert!(dir.join("work.json").is_file());
         assert!(dir.join("spec").is_dir());
         for (i, proj) in ["fe", "be"].iter().enumerate() {
-            let tree = dir.join("trees").join(proj);
-            assert!(tree.is_dir(), "worktree missing for {proj}");
+            let worktree = dir.join("trees").join(proj);
+            assert!(worktree.is_dir(), "worktree missing for {proj}");
             // 워크트리는 공유 브랜치명으로, 각 저장소의 baseBranch(main) 커밋에서 분기
-            assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/cart");
+            assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
             let base = run_git(&tmp.path().join(proj), &["rev-parse", "main"]);
-            assert_eq!(run_git(&tree, &["rev-parse", "HEAD"]), base);
-            let t = &report.view.trees[i];
+            assert_eq!(run_git(&worktree, &["rev-parse", "HEAD"]), base);
+            let t = &report.view.worktrees[i];
             assert_eq!(t.project, *proj);
             assert!(t.exists);
             assert!(!t.dirty);
@@ -402,10 +461,10 @@ mod tests {
     #[test]
     fn start_defaults_branch_to_slug() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "Cart Add", &slugs(&["fe"]), None).unwrap();
+        let report = start_work(&works, &projects, "Cart Add", None, &slugs(&["fe"]), None).unwrap();
         assert_eq!(report.view.work.branch, "cart-add");
-        let tree = works.join("cart-add/trees/fe");
-        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "cart-add");
+        let worktree = works.join("cart-add/trees/fe");
+        assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "cart-add");
     }
 
     #[test]
@@ -413,7 +472,7 @@ mod tests {
         let (tmp, works, projects) = setup();
         // be 저장소에 충돌 브랜치를 미리 만들어 사전검증이 실패하게 한다
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
-        let result = start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart"));
+        let result = start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
         assert!(matches!(result, Err(Error::Validation(_))), "expected validation error");
         // 아무것도 만들지 않는다 — fe 워크트리도, work 디렉터리도
         assert!(!works.join("카트").exists());
@@ -423,18 +482,18 @@ mod tests {
     #[test]
     fn start_rejects_unknown_project() {
         let (_tmp, works, projects) = setup();
-        let result = start_work(&works, &projects, "카트", &slugs(&["nope"]), None);
+        let result = start_work(&works, &projects, "카트", None, &slugs(&["nope"]), None);
         assert!(matches!(result, Err(Error::Validation(_))));
         assert!(!works.join("카트").exists());
     }
 
     #[test]
-    fn start_resumes_missing_trees_idempotently() {
+    fn start_resumes_missing_worktrees_idempotently() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 같은 제목으로 재실행 + 프로젝트 추가 → 새 slug가 아니라 기존 work에 이어서 생성
         let report =
-            start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.slug, "카트");
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
@@ -446,8 +505,8 @@ mod tests {
     #[test]
     fn list_derives_dirty_and_spec_files_and_sorts() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "첫 작업", &slugs(&["fe"]), Some("b1")).unwrap();
-        start_work(&works, &projects, "둘째 작업", &slugs(&["be"]), Some("b2")).unwrap();
+        start_work(&works, &projects, "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
+        start_work(&works, &projects, "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
 
         // 워크트리에 커밋 안 된 변경 → dirty, spec 파일 → specFiles
         std::fs::write(works.join("첫-작업/trees/fe/new.txt"), "x").unwrap();
@@ -462,10 +521,10 @@ mod tests {
         assert_eq!(listed[0].work.slug, "둘째-작업");
 
         let first = get_work(&works, "첫-작업").unwrap();
-        assert!(first.trees[0].dirty);
+        assert!(first.worktrees[0].dirty);
         assert_eq!(first.spec_files, vec!["overview.md", "sub/arch.md"]);
         let second = get_work(&works, "둘째-작업").unwrap();
-        assert!(!second.trees[0].dirty);
+        assert!(!second.worktrees[0].dirty);
         assert!(second.spec_files.is_empty());
 
         assert!(matches!(get_work(&works, "없음"), Err(Error::WorkNotFound(_))));
@@ -475,7 +534,7 @@ mod tests {
     #[test]
     fn update_status_persists() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         let view = update_work_status(&works, "카트", WorkStatus::Review).unwrap();
         assert_eq!(view.work.status, WorkStatus::Review);
         assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Review);
@@ -490,15 +549,15 @@ mod tests {
     }
 
     #[test]
-    fn attach_adds_project_with_tree_and_is_idempotent() {
+    fn attach_adds_project_with_worktree_and_is_idempotent() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let report = attach_project(&works, &projects, "카트", "be").unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
-        let tree = works.join("카트/trees/be");
-        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/cart");
+        let worktree = works.join("카트/trees/be");
+        assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
 
         // 이미 붙은 프로젝트 재attach → 멱등
         let again = attach_project(&works, &projects, "카트", "be").unwrap();
@@ -515,13 +574,13 @@ mod tests {
     }
 
     #[test]
-    fn remove_refuses_dirty_trees_unless_forced() {
+    fn remove_refuses_dirty_worktrees_unless_forced() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         std::fs::write(works.join("카트/trees/be/wip.txt"), "uncommitted").unwrap();
 
         let result = remove_work(&works, "카트", false);
-        assert!(matches!(result, Err(Error::DirtyTrees(_))), "dirty tree must be refused");
+        assert!(matches!(result, Err(Error::DirtyWorktrees(_))), "dirty worktree must be refused");
         assert!(works.join("카트").exists(), "refused remove must not delete anything");
 
         remove_work(&works, "카트", true).unwrap();
@@ -537,7 +596,7 @@ mod tests {
     #[test]
     fn remove_clean_work_without_force() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         remove_work(&works, "카트", false).unwrap();
         assert!(!works.join("카트").exists());
         assert!(list_works(&works).unwrap().is_empty());
@@ -547,7 +606,7 @@ mod tests {
     #[test]
     fn read_spec_file_reads_and_guards_traversal() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
@@ -572,16 +631,16 @@ mod tests {
     #[test]
     fn resume_adopts_leftover_branch_instead_of_dead_ending() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 부분 실패 잔재 시뮬레이션: be에 브랜치만 만들어지고 워크트리는 없는 상태
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
 
         // 재실행이 "branch already exists"로 막히면 영구 dead-end — 기존 브랜치를 채택해야 한다
         let report =
-            start_work(&works, &projects, "카트", &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty(), "resume must adopt the existing branch: {:?}", report.errors);
-        let tree = works.join("카트/trees/be");
-        assert_eq!(run_git(&tree, &["branch", "--show-current"]), "feat/cart");
+        let worktree = works.join("카트/trees/be");
+        assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
 
         // attach도 동일하게 기존 브랜치를 채택한다
         run_git(&tmp.path().join("fe"), &["worktree", "remove", "--force", works.join("카트/trees/fe").to_str().unwrap()]);
@@ -593,7 +652,7 @@ mod tests {
     #[test]
     fn view_reports_spec_dir_next_to_spec_files() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
 
         let view = get_work(&works, "카트").unwrap();
@@ -615,10 +674,10 @@ mod tests {
     #[test]
     fn start_with_different_title_gets_unique_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트 추가", &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &projects, "카트 추가", None, &slugs(&["fe"]), None).unwrap();
         // slugify 결과가 같지만 제목이 다르면 별개 work
         let report =
-            start_work(&works, &projects, "카트/추가", &slugs(&["be"]), Some("b2")).unwrap();
+            start_work(&works, &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
         assert_eq!(report.view.work.slug, "카트-추가-2");
     }
 }

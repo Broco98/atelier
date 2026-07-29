@@ -148,10 +148,12 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <Zap className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
             <span className="text-[13.5px] font-medium text-muted-foreground">작업이 없어요</span>
             <span className="text-[12.5px] leading-normal text-tertiary">
-              작업은 Claude Code에서 스킬로 시작돼요.
+              작업은 Claude Code에서 시작돼요.
             </span>
+            {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
+                atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
             <code className="mt-1 select-all rounded-[9px] border bg-inset px-2 py-1.5 font-mono text-[11.5px] text-muted-foreground">
-              atelier work start "새 작업" --project &lt;slug&gt;
+              atelier로 "새 작업" 시작해줘
             </code>
           </div>
         ) : sorted.length === 0 ? (

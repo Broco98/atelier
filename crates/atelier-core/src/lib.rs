@@ -13,7 +13,7 @@ pub enum Error {
     #[error("{0}")]
     Validation(String),
     #[error("uncommitted changes in: {0}")]
-    DirtyTrees(String),
+    DirtyWorktrees(String),
     #[error("git: {0}")]
     Git(String),
     #[error(transparent)]
@@ -37,8 +37,8 @@ pub use git::{detect as detect_git, origin_head, GitInfo};
 pub use store::{
     create_project, delete_project, get_project, list_projects, update_project, ProjectPatch,
 };
-pub use work::{parse_work, render_work, TreeView, Work, WorkStatus, WorkView};
+pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
     attach_project, get_work, list_works, read_spec_file, remove_work, start_work,
-    update_work_status, WorkReport, TreeError,
+    update_work_status, update_work_title, WorkReport, WorktreeError,
 };

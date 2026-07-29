@@ -1,7 +1,7 @@
 import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
-import { specRef, treeDirRef, workDirRef } from "./refs";
+import { specRef, worktreeDirRef, workDirRef } from "./refs";
 import SpecTree from "./SpecTree";
 import type { WorkView } from "./types";
 
@@ -28,7 +28,7 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
         .filter((b): b is string => Boolean(b)),
     ),
   ];
-  const treeCount = work.trees.filter((t) => t.exists).length;
+  const worktreeCount = work.worktrees.filter((t) => t.exists).length;
 
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
@@ -46,10 +46,10 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
           <span
-            title={`워크트리 ${treeCount}개`}
+            title={`worktree ${worktreeCount}개`}
             className="text-[11.5px] text-tertiary"
           >
-            트리 {treeCount}
+            worktree {worktreeCount}
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
@@ -64,11 +64,11 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
         </div>
         <div className="flex flex-col px-2 pb-2">
           <PathCopyRow label="작업 폴더" onCopy={() => onCopy(workDirRef(work.slug))} />
-          {work.trees.map((t) => (
+          {work.worktrees.map((t) => (
             <PathCopyRow
               key={t.project}
-              label={`트리 · ${t.project}`}
-              onCopy={() => onCopy(treeDirRef(t.path))}
+              label={`worktree · ${t.project}`}
+              onCopy={() => onCopy(worktreeDirRef(t.path))}
             />
           ))}
         </div>

@@ -19,7 +19,7 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
         "Work '{slug}' exists and its metadata is saved, but some worktrees could not be \
          created.\n\nReady for code work:\n"
     );
-    for t in report.view.trees.iter().filter(|t| t.exists) {
+    for t in report.view.worktrees.iter().filter(|t| t.exists) {
         text.push_str(&format!("  {}  {}\n", t.project, t.path));
     }
     text.push_str("\nFailed — do not start code work in these projects:\n");
@@ -47,14 +47,21 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct StartWorkParams {
-    /// Human-readable title of the work. Calling again with the same title resumes the
-    /// existing work instead of creating a second one.
+    /// Human-readable title of the work, written in the user's own language. This is a
+    /// display name, not what identifies the work — `slug` is. It can be rewritten later
+    /// with atelier_edit_work, and the user may have done so.
     pub title: String,
+    /// What identifies the work: its folder name and, unless `branch` overrides it, its
+    /// branch name. Write it in English kebab-case, for example `cart-add-item`. It never
+    /// changes, so pass the same value again to resume this work. If you omit it, one is
+    /// derived from the title — and that keeps non-ASCII characters, so a title that is
+    /// not in English produces a folder and a branch name that are awkward in git.
+    pub slug: Option<String>,
     /// Slugs of the projects this work spans, at least one. Use the `slug` values from
     /// atelier_list_projects.
     pub projects: Vec<String>,
-    /// Branch name shared by every project's worktree. Defaults to the work slug derived
-    /// from the title. Follow the target repositories' existing branch convention.
+    /// Branch name shared by every project's worktree. Defaults to the work's slug.
+    /// Follow the target repositories' existing branch convention.
     pub branch: Option<String>,
 }
 
@@ -66,6 +73,18 @@ pub struct AttachProjectParams {
     pub work_slug: String,
     /// Slug of the project to add, as returned by atelier_list_projects.
     pub project_slug: String,
+}
+
+/// `atelier_edit_work`의 인자. **title만 받는다** — status는 `atelier_set_work_status`가
+/// 담당하고, branch는 워크트리가 체크아웃해 둔 값이라 단독으로 바꿀 수 없다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditWorkParams {
+    /// Slug of the work to rename, as returned by atelier_list_works.
+    pub work_slug: String,
+    /// New title, in the user's own language. A blank title is refused. The slug, the
+    /// branch and the worktree paths are untouched — only the display name changes.
+    pub title: String,
 }
 
 /// `atelier_set_work_status`의 인자.
@@ -92,10 +111,12 @@ impl AtelierServer {
     #[tool(
         description = "Start a work: one feature spanning one or more projects, sharing a \
                        single branch name. Creates the work metadata, a spec directory and \
-                       one git worktree per project. Calling it again with the same title \
+                       one git worktree per project. Calling it again with the same `slug` \
                        resumes that work and only creates the worktrees that are missing, so \
-                       it is safe to retry. Returns the worktree paths to do code work in and \
-                       `specDir` to write the spec documents into.",
+                       it is safe to retry — on a resume the `title` you pass is ignored and \
+                       the stored one is kept, because the user may have edited it. Returns \
+                       the worktree paths to do code work in and `specDir` to write the spec \
+                       documents into.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -105,12 +126,13 @@ impl AtelierServer {
     )]
     async fn atelier_start_work(
         &self,
-        Parameters(StartWorkParams { title, projects, branch }): Parameters<StartWorkParams>,
+        Parameters(StartWorkParams { title, slug, projects, branch }): Parameters<StartWorkParams>,
     ) -> Result<CallToolResult, ErrorData> {
         match atelier_core::start_work(
             &self.works_root,
             &self.projects_root,
             &title,
+            slug.as_deref(),
             &projects,
             branch.as_deref(),
         ) {
@@ -149,6 +171,30 @@ impl AtelierServer {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
             }
             Ok(report) => partial_failure(&report),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Rename a work: replace its title with a better one. Use it when the \
+                       title was written in a hurry, or when the work turned out to be about \
+                       something else. Only the title changes — the slug, the branch, the \
+                       worktree paths and the spec directory all stay exactly as they are, so \
+                       references already written down elsewhere keep working. A blank title \
+                       is refused. Local files only.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn atelier_edit_work(
+        &self,
+        Parameters(EditWorkParams { work_slug, title }): Parameters<EditWorkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::update_work_title(&self.works_root, &work_slug, &title) {
+            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
             Err(e) => Ok(kernel_error(e)),
         }
     }
