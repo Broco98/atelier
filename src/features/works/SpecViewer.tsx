@@ -319,7 +319,10 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
   }, [onCopyBlock]);
 
   return (
-    <article className={cn(bodyColumn, "pb-16 pt-8 text-[15px]")}>
+    // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
+    // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 656px에서 맞춘 것과 같은 계약을
+    // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다
+    <article className={cn(bodyColumn, "pb-16 pt-3 text-[15px]")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
