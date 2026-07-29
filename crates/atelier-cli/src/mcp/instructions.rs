@@ -9,9 +9,9 @@
 /// 고칠 때 무엇이 왜 거기 있는지는 테스트 이름이 말해준다.
 pub const INSTRUCTIONS: &str = r#"Atelier organizes local development work. A project is a registered git repository. A work is one feature spanning one or more projects: it owns one branch name shared by every project it touches, one git worktree per project, and one spec directory.
 
-Order matters when starting a work. Call atelier_list_projects first: it gives you the project slugs to pass, and each project's existing branches under `git.localBranches`. A work can also start with no project at all — omit `projects` for an idea that has no code yet, and attach them when it does.
+Order matters when starting a work. Call atelier_list_projects first: it gives you the project slugs to pass, and each project's existing branches under `git.localBranches`.
 
-Pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work, so it has to fit all of them. If you omit the branch, the work's slug becomes the branch name, which is almost never the repository's convention; a wrong name also creates worktrees on it, which is tedious to unwind.
+When the work has projects, pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work, so it has to fit all of them. If you omit the branch, the work's slug becomes the branch name, which is almost never the repository's convention; a wrong name also creates worktrees on it, which is tedious to unwind.
 
 There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill puts a spec document in the worktree instead, move it into `specDir`; that is the only place the app and the next session look.
 
@@ -70,8 +70,12 @@ mod tests {
         assert!(INSTRUCTIONS.contains("overview.md"), "no starting document");
         // 워크트리에서만 코드 작업
         assert!(INSTRUCTIONS.contains("trees[].path"), "no worktree rule");
-        // 프로젝트 없이 시작하는 경로 — 없으면 에이전트가 이 경로를 영영 안 쓴다
-        assert!(INSTRUCTIONS.contains("no project at all"), "the project-less path is hidden");
+        // 브랜치 규칙은 "프로젝트가 있을 때"로 한정돼 있어야 한다 — 한정이 빠지면
+        // 프로젝트 없이 시작하는 경로(브랜치도 워크트리도 안 생긴다)에 대해 거짓이 된다
+        assert!(
+            INSTRUCTIONS.contains("When the work has projects"),
+            "the branch rule lost its scope and now lies about the project-less path"
+        );
         // 스킬이 워크트리에 만들어 버린 스펙의 처치 — 안 옮기면 앱에도 다음 세션에도 안 보인다
         assert!(INSTRUCTIONS.contains("move it into `specDir`"), "no rescue for a misplaced spec");
         // 블록 참조 해석 (형식 자체는 refs_ts_still_emits_the_same_reference_shape가 지킨다)
@@ -81,16 +85,15 @@ mod tests {
     /// 항상 시스템 프롬프트에 상주하는 문자열이다. 교재가 안티패턴으로
     /// 지목한 500단어급으로 자라지 않게 상한을 둔다.
     ///
-    /// 320 → 360 (#45·#46): 프로젝트 없이 시작하는 경로 한 문장과, 스펙 문서가
-    /// 워크트리에 생겼을 때 `specDir`로 옮기라는 규율 한 문장을 더했다. 둘 다
-    /// 지침에만 둘 수 있는 지식이다 — 앞의 것은 도구를 고르기 전에, 뒤의 것은
-    /// 아틀리에 도구를 부르지 않는 순간에 필요하다. 반면 spec 폴더 다섯 이름의
-    /// 뜻은 여기가 아니라 atelier_get_work 응답이 들고 간다: 문서를 쓰기 직전에만
-    /// 필요한 지식을 상주시키지 않기 위해서다.
+    /// 320 → 350 (#46): 스펙 문서가 워크트리에 생겼을 때 `specDir`로 옮기라는 규율
+    /// 한 문장을 더했다. 아틀리에 도구를 부르지 않는 순간에 필요한 지식이라 여기
+    /// 말고는 둘 자리가 없다. 반면 프로젝트 없이 시작하는 경로는 atelier_start_work의
+    /// 설명이, spec 폴더 다섯 이름의 뜻은 atelier_get_work의 응답이 들고 간다 —
+    /// 도구를 고르거나 문서를 쓰기 직전에만 필요한 지식을 상주시키지 않기 위해서다.
     #[test]
     fn stays_short() {
         let words = INSTRUCTIONS.split_whitespace().count();
-        assert!(words <= 360, "instructions grew to {words} words");
+        assert!(words <= 350, "instructions grew to {words} words");
     }
 
     /// D3에서 버린 것이 되돌아오지 않게 한다. 티켓 05가 CLI 명령을

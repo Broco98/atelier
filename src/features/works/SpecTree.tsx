@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BookOpen, ChevronRight, Copy, Layers, ListChecks, Search } from "lucide-react";
+import { BookOpen, ChevronRight, Compass, Copy, Layers, ListChecks, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TreeNode {
@@ -190,8 +190,12 @@ function FolderGlyph({ name }: { name: string }) {
   return null;
 }
 
-// 목업 트리의 파일 타입 글리프 — 확장자를 소형 mono 라벨로 (MD, YAML …)
+// 파일 타입 글리프 — 확장자를 소형 mono 라벨로 (MD, YAML …). 다섯 이름 중 파일은
+// overview.md 하나뿐이라, 그것만 확장자 대신 진입점 글리프를 받는다.
 function FileGlyph({ name }: { name: string }) {
+  if (name === OVERVIEW) {
+    return <Compass className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />;
+  }
   const dot = name.lastIndexOf(".");
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;
