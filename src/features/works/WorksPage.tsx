@@ -49,7 +49,13 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const selected = works.find((w) => w.slug === selectedSlug) ?? works[0] ?? null;
+  // 고른 것이 없으면 진행 중인 것부터 — 기본 선택이 접힌 초안 구역에 들어가 있으면
+  // 목록 어디에도 강조가 안 보인다.
+  const selected =
+    works.find((w) => w.slug === selectedSlug) ??
+    works.find((w) => w.status !== "draft") ??
+    works[0] ??
+    null;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">

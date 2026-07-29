@@ -121,6 +121,26 @@ fn fixture() -> (tempfile::TempDir, tempfile::TempDir) {
     fixture_with(&["billing"])
 }
 
+/// "work는 프로젝트 하나 이상"이라는 정의가 지침·start_work·list_works 세 곳에
+/// 복제돼 있다. 실제로 지침만 고치고 도구 설명 둘을 놔둔 적이 있는데, start_work는
+/// 한 설명 안에서 "one or more projects"라고 해놓고 세 문장 뒤에 "projects는 생략
+/// 가능"이라고 말하는 자기모순이었다. 에이전트는 지침보다 도구 설명을 더 자주 읽으니
+/// 여기서 어긋나면 지침을 고친 의미가 없다 — 셋을 한 줄로 묶는다.
+#[test]
+fn no_tool_description_denies_the_project_less_path() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    for tool in res["result"]["tools"].as_array().unwrap() {
+        let description = tool["description"].as_str().unwrap_or("");
+        assert!(
+            !description.contains("one or more projects"),
+            "{} still says a work needs at least one project",
+            tool["name"]
+        );
+    }
+}
+
 #[test]
 fn handshake_succeeds_and_stdout_carries_only_protocol_messages() {
     let home = tempfile::tempdir().unwrap();
@@ -208,6 +228,53 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
     assert_eq!(view["specFiles"][0], "overview.md");
 }
 
+/// 조회는 문서를 쓰기 **직전**에 일어난다 — spec 폴더 관습이 실려 오는 자리가 여기다.
+/// 항상 상주하는 초기화 지침이 아니라 이 응답이 들고 간다.
+#[test]
+fn get_work_explains_what_the_spec_folder_names_mean() {
+    let (home, _code) = fixture();
+    atelier_core::start_work(
+        &home.path().join("works"),
+        &home.path().join("projects"),
+        "카트",
+        None,
+        &["billing".to_string()],
+        Some("feat/cart"),
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "카트" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    // 기계가 읽는 JSON이 먼저고, 안내는 그 뒤 텍스트 블록이다
+    let content = res["result"]["content"].as_array().unwrap();
+    let view: Value = serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["specDir"].is_string(), "{view}");
+
+    let guidance = content
+        .get(1)
+        .and_then(|c| c["text"].as_str())
+        .unwrap_or_else(|| panic!("no spec layout guidance in the answer: {res}"));
+    for name in ["overview.md", "NN-", "tickets/", "research/", "explanation/"] {
+        assert!(guidance.contains(name), "'{name}' missing from the guidance: {guidance}");
+    }
+    // 고정하는 것은 폴더 이름뿐이라는 것과, 첫 판을 어디서 시작하는지
+    assert!(guidance.contains("file names are free"), "{guidance}");
+    assert!(guidance.contains("01-"), "the first iteration folder is not named: {guidance}");
+
+    // 관습은 데이터 모델이 아니다 — 커널이 준 뷰에는 한 글자도 실리지 않는다
+    let kernel = atelier_core::get_work(&home.path().join("works"), "카트").unwrap();
+    let kernel_json = serde_json::to_string(&kernel).unwrap();
+    for leaked in ["Five folder names", "explanation"] {
+        assert!(
+            !kernel_json.contains(leaked),
+            "the folder convention leaked into the kernel view: {kernel_json}"
+        );
+    }
+}
+
 #[test]
 fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
     let home = tempfile::tempdir().unwrap();
@@ -291,6 +358,56 @@ fn start_work_creates_the_work_and_hands_back_where_to_write() {
     assert_eq!(worktree["exists"], true, "{report}");
     assert!(atelier_core::expand_home(worktree["path"].as_str().unwrap()).is_dir());
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
+
+/// 문턱 낮추기 — 아이디어 한 줄에도 갈 곳이 생긴다. `projects` 없이 부르면
+/// 워크트리도, 빈 `trees/`도, 쓰지도 않을 브랜치도 만들지 않는다.
+#[test]
+fn start_work_without_projects_creates_no_worktree_and_no_branch() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "언젠가 해볼 것" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["slug"], "언젠가-해볼-것");
+    assert!(report["branch"].is_null(), "an unused branch must not be invented: {report}");
+    assert!(report["worktrees"].as_array().unwrap().is_empty(), "{report}");
+    // spec을 쓸 자리는 그대로 내려온다 — 문서부터 쓰는 것이 이 경로의 목적이다
+    assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+    assert!(
+        !home.path().join("works/언젠가-해볼-것/trees").exists(),
+        "an empty trees/ reads as a broken worktree"
+    );
+
+    // 조회도 같은 모양이다 — 키 유무가 아니라 값(null)으로 판단하게 한다
+    let got = server.request(4, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "언젠가-해볼-것" }
+    }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["branch"].is_null(), "{view}");
+    assert!(view["worktrees"].as_array().unwrap().is_empty(), "{view}");
+
+    // 도구 표면에도 드러나야 에이전트가 이 경로를 고를 수 있다
+    let tools = server.request(5, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_start_work")
+        .expect("atelier_start_work missing");
+    let required = tool["inputSchema"]["required"].as_array().unwrap();
+    assert!(required.iter().any(|r| r == "title"), "{tool}");
+    assert!(!required.iter().any(|r| r == "projects"), "projects must be optional: {tool}");
+    assert!(
+        tool["description"].as_str().unwrap().contains("no worktree and no branch"),
+        "the no-project path is undocumented: {tool}"
+    );
 }
 
 /// 워크트리 목록의 이름은 `worktrees`다. 옛 이름 `trees`는 파일 트리와 구별되지 않아
@@ -491,7 +608,9 @@ fn start_work_schema_shows_slug_and_branch_are_optional() {
     let mut required: Vec<&str> = tool["inputSchema"]["required"].as_array().unwrap()
         .iter().map(|v| v.as_str().unwrap()).collect();
     required.sort();
-    assert_eq!(required, vec!["projects", "title"], "{tool}");
+    // `projects`가 여기 없는 것은 문턱 낮추기의 결정이다 — 그 계약은
+    // start_work_without_projects_creates_no_worktree_and_no_branch가 지킨다.
+    assert_eq!(required, vec!["title"], "{tool}");
     assert!(!tool["inputSchema"]["properties"]["slug"].is_null(), "no slug property: {tool}");
 }
 
@@ -606,11 +725,66 @@ fn attach_project_reports_its_own_worktree_failure_as_an_error() {
     assert!(text.contains("atelier_attach_project"), "{text}");
 }
 
+/// draft → active 경로의 마지막 한 칸 — 프로젝트를 붙이는 그 호출에서 브랜치가
+/// 정해진다. 상태는 선언된 것이므로 붙였다고 저절로 바뀌지 않는다.
+#[test]
+fn attach_project_fixes_the_branch_of_a_work_that_had_none() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "빈손으로 시작" }
+    }));
+    server.request(4, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "빈손으로-시작", "status": "draft" }
+    }));
+
+    let res = server.request(5, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": {
+            "work_slug": "빈손으로-시작", "project_slug": "billing", "branch": "feat/late"
+        }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let report: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["branch"], "feat/late", "{report}");
+    assert_eq!(report["worktrees"][0]["exists"], true, "{report}");
+    assert_eq!(report["status"], "draft", "attaching must not declare progress: {report}");
+
+    // 한 work는 브랜치 하나를 공유한다 — 다른 이름은 거부되고 저장된 값이 그대로다
+    let bad = server.request(6, "tools/call", json!({
+        "name": "atelier_attach_project",
+        "arguments": {
+            "work_slug": "빈손으로-시작", "project_slug": "billing", "branch": "feat/other"
+        }
+    }));
+    assert_eq!(bad["result"]["isError"], true, "{bad}");
+    let text = bad["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("feat/late"), "the branch it already uses must appear: {text}");
+
+    // 도구 표면에 드러나야 에이전트가 이름을 고를 기회를 잡는다
+    let tools = server.request(7, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_attach_project")
+        .expect("atelier_attach_project missing");
+    assert!(tool["inputSchema"]["properties"]["branch"].is_object(), "{tool}");
+    let required = tool["inputSchema"]["required"].as_array().unwrap();
+    assert!(!required.iter().any(|r| r == "branch"), "branch must be optional: {tool}");
+    assert!(
+        tool["description"].as_str().unwrap().contains("this is where the branch is decided"),
+        "the deciding moment is undocumented: {tool}"
+    );
+}
+
 /// 미등록 프로젝트는 커널의 **사전검증**에서 걸린다 — 워크트리는 하나도 건드리지 않으므로
 /// 부분 실패가 아니라 그냥 실행 오류다.
 ///
 /// 단언은 §2 오류 매핑표를 따른다: `attach_project`는 `get_project`의 `NotFound`를
-/// `Validation("<slug>: project not registered")`로 눌러 감싸므로(`works.rs:267`),
+/// `Validation("<slug>: project not registered")`로 눌러 감싸므로(works.rs의 attach_project),
 /// `kernel_error`가 붙이는 안내는 `atelier_list_projects`가 **아니라**
 /// `"Fix the arguments and call this tool again."`이다 (⚠️ G2 — 표에 기록된 안내 없는 경로).
 #[test]
@@ -673,8 +847,45 @@ fn set_work_status_persists_and_rejects_unknown_values() {
     }));
     assert_eq!(bad["result"]["isError"], true, "{bad}");
     let text = bad["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(text.contains("active"), "valid values not listed: {text}");
-    assert!(text.contains("done"), "{text}");
+    for valid in ["draft", "active", "review", "done"] {
+        assert!(text.contains(valid), "valid value '{valid}' not listed: {text}");
+    }
+}
+
+/// "일단 적어만 둬"를 그대로 표현할 수 있어야 한다. 상태는 **선언**이므로
+/// 프로젝트가 붙어 있어도 draft일 수 있고, 워크트리는 그대로 남는다.
+#[test]
+fn set_work_status_accepts_draft_and_leaves_everything_else_alone() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "언젠가 할 것", "projects": ["billing"], "branch": "feat/someday" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "언젠가-할-것", "status": "draft" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["status"], "draft");
+    assert_eq!(view["branch"], "feat/someday", "draft must not touch the branch: {view}");
+    assert_eq!(view["worktrees"][0]["exists"], true, "draft must not touch the worktrees: {view}");
+
+    // 네 상태의 뜻이 도구 설명에 적혀 있어야 에이전트가 draft를 고를 수 있다
+    let tools = server.request(5, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_set_work_status")
+        .expect("atelier_set_work_status missing");
+    let described = format!("{} {}", tool["description"], tool["inputSchema"]);
+    for status in ["draft", "active", "review", "done"] {
+        assert!(described.contains(status), "'{status}' undocumented: {described}");
+    }
 }
 
 /// 이 기능의 핵심 불변식 — **제목을 바꿔도 slug와 워크트리 경로는 그대로다.**
@@ -852,6 +1063,29 @@ fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {
     let out: Value =
         serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(out["branch"], "feat/cart", "{out}");
+}
+
+/// 프로젝트가 없는 work는 지울 워크트리도, 살아남을 브랜치도 없다. 응답이
+/// "브랜치는 남아 있으니 복구 가능하다"고 말하면 거짓말이 된다.
+#[test]
+fn removing_a_project_less_work_does_not_promise_a_surviving_branch() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "지울 아이디어" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_remove_work", "arguments": { "work_slug": "지울-아이디어" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let out: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(out["removed"], "지울-아이디어");
+    assert!(out["branch"].is_null(), "there was no branch to report: {out}");
+    let note = out["note"].as_str().unwrap();
+    assert!(!note.contains("recoverable"), "nothing was recoverable here: {note}");
+    assert!(!home.path().join("works/지울-아이디어").exists());
 }
 
 /// D6 — 강제 삭제 옵션은 도구 표면에 존재하지 않는다.
