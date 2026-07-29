@@ -129,7 +129,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                 className={cn(
                   // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
                   // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
-                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1.5 text-left transition-colors",
+                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
                   active ? "selected-row" : "hover:bg-state-1",
                 )}
               >

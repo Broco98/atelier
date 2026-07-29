@@ -163,7 +163,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <span className="text-[13px] text-tertiary">해당 프로젝트의 작업이 없어요</span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5 scroll-quiet">
+          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 scroll-quiet">
             {sorted.map((work) => {
               const active = work.slug === selectedSlug;
               return (
@@ -174,7 +174,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                   className={cn(
                     // 프로젝트 목록 항목과 공유하는 규격 — 반지름·패딩·줄 간격이 같고
                     // 두 목록의 차이는 줄 수(정보량)뿐이다
-                    "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1.5 text-left transition-colors",
+                    "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
                     active ? "selected-row" : "hover:bg-state-1",
                   )}
                 >
