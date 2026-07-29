@@ -259,11 +259,14 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         "mt-1.5",
       ),
       hr: block("hr", "border-border", "mt-4"),
-      // 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다
+      // 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
+      // 표 폭은 소스 보기의 긴 줄과 같은 규격이다 — w-max로 내용만큼 넓어져 셀이 줄바꿈되지 않고,
+      // min-w-full로 좁은 표는 지금처럼 본문 폭을 채운다. w-full이면 표가 컨테이너에 갇혀
+      // 넘칠 수가 없고, 넘치지 않으니 가로 스크롤도 생기지 않는다.
       table: (({ node, children, ...props }: any) => {
         const inner = (
           <div className="overflow-x-auto scroll-quiet">
-            <table className="w-full border-collapse text-[13.5px]" {...props}>
+            <table className="w-max min-w-full border-collapse text-[13.5px]" {...props}>
               {children}
             </table>
           </div>
