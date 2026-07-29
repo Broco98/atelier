@@ -489,6 +489,25 @@ mod tests {
         ));
     }
 
+    /// draft는 **선언된** 상태다. 지정해도 프로젝트·브랜치·워크트리는 하나도 건드리지
+    /// 않고, 프로젝트가 붙어 있어도 draft일 수 있다 (직교성).
+    #[test]
+    fn draft_is_declared_and_changes_nothing_else() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &projects, "카트", &slugs(&["fe"]), Some("feat/cart")).unwrap();
+
+        let view = update_work_status(&works, "카트", WorkStatus::Draft).unwrap();
+        assert_eq!(view.work.status, WorkStatus::Draft);
+        assert_eq!(view.work.projects, vec!["fe"]);
+        assert_eq!(view.work.branch, "feat/cart");
+        assert!(view.trees[0].exists, "draft must not touch the worktrees");
+        assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Draft);
+
+        // 되돌아오는 것도 자유다 — 전이 제약은 없다
+        let back = update_work_status(&works, "카트", WorkStatus::Active).unwrap();
+        assert_eq!(back.work.status, WorkStatus::Active);
+    }
+
     #[test]
     fn attach_adds_project_with_tree_and_is_idempotent() {
         let (tmp, works, projects) = setup();

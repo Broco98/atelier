@@ -493,8 +493,45 @@ fn set_work_status_persists_and_rejects_unknown_values() {
     }));
     assert_eq!(bad["result"]["isError"], true, "{bad}");
     let text = bad["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(text.contains("active"), "valid values not listed: {text}");
-    assert!(text.contains("done"), "{text}");
+    for valid in ["draft", "active", "review", "done"] {
+        assert!(text.contains(valid), "valid value '{valid}' not listed: {text}");
+    }
+}
+
+/// "일단 적어만 둬"를 그대로 표현할 수 있어야 한다. 상태는 **선언**이므로
+/// 프로젝트가 붙어 있어도 draft일 수 있고, 워크트리는 그대로 남는다.
+#[test]
+fn set_work_status_accepts_draft_and_leaves_everything_else_alone() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "언젠가 할 것", "projects": ["billing"], "branch": "feat/someday" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_set_work_status",
+        "arguments": { "work_slug": "언젠가-할-것", "status": "draft" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["status"], "draft");
+    assert_eq!(view["branch"], "feat/someday", "draft must not touch the branch: {view}");
+    assert_eq!(view["trees"][0]["exists"], true, "draft must not touch the worktrees: {view}");
+
+    // 네 상태의 뜻이 도구 설명에 적혀 있어야 에이전트가 draft를 고를 수 있다
+    let tools = server.request(5, "tools/list", json!({}));
+    let tool = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_set_work_status")
+        .expect("atelier_set_work_status missing");
+    let described = format!("{} {}", tool["description"], tool["inputSchema"]);
+    for status in ["draft", "active", "review", "done"] {
+        assert!(described.contains(status), "'{status}' undocumented: {described}");
+    }
 }
 
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.

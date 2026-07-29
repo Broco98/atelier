@@ -5,6 +5,9 @@ use crate::{Error, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkStatus {
+    /// 적어만 두고 아직 시작하지 않은 것. **선언된 상태**이지 프로젝트 유무에서
+    /// 파생되지 않는다 — 프로젝트 없이 진행 중인 리서치 work는 `Active`가 맞다.
+    Draft,
     Active,
     Review,
     Done,
@@ -13,6 +16,7 @@ pub enum WorkStatus {
 impl WorkStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            WorkStatus::Draft => "draft",
             WorkStatus::Active => "active",
             WorkStatus::Review => "review",
             WorkStatus::Done => "done",
@@ -31,11 +35,12 @@ impl std::str::FromStr for WorkStatus {
 
     fn from_str(s: &str) -> Result<Self> {
         match s {
+            "draft" => Ok(WorkStatus::Draft),
             "active" => Ok(WorkStatus::Active),
             "review" => Ok(WorkStatus::Review),
             "done" => Ok(WorkStatus::Done),
             _ => Err(Error::Validation(format!(
-                "invalid status '{s}' (active | review | done)"
+                "invalid status '{s}' (draft | active | review | done)"
             ))),
         }
     }
@@ -173,8 +178,24 @@ mod tests {
 
     #[test]
     fn status_parses_from_str() {
+        assert_eq!("draft".parse::<WorkStatus>().unwrap(), WorkStatus::Draft);
         assert_eq!("active".parse::<WorkStatus>().unwrap(), WorkStatus::Active);
         assert_eq!("done".parse::<WorkStatus>().unwrap(), WorkStatus::Done);
         assert!("nope".parse::<WorkStatus>().is_err());
+        // 거부 메시지는 유효값 목록이자 유일한 안내다 — 새 상태가 빠지면 안 된다
+        let msg = "nope".parse::<WorkStatus>().unwrap_err().to_string();
+        for valid in ["draft", "active", "review", "done"] {
+            assert!(msg.contains(valid), "'{valid}' missing from the error message: {msg}");
+        }
+    }
+
+    /// 선언된 상태다 — 파일에 그대로 남고 그대로 돌아온다.
+    #[test]
+    fn draft_survives_a_file_roundtrip() {
+        let src = r#"{"title":"적어만 둔 것","status":"draft","branch":"b","createdAt":"2026-07-29","projects":[]}"#;
+        let w = parse_work("적어만-둔-것", src).unwrap();
+        assert_eq!(w.status, WorkStatus::Draft);
+        assert!(render_work(&w).contains("\"status\": \"draft\""), "{}", render_work(&w));
+        assert_eq!(parse_work("적어만-둔-것", &render_work(&w)).unwrap(), w);
     }
 }

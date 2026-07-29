@@ -74,8 +74,9 @@ pub struct AttachProjectParams {
 pub struct SetWorkStatusParams {
     /// Slug of the work to change, as returned by atelier_list_works.
     pub work_slug: String,
-    /// New status. One of: "active" (being worked on), "review" (waiting for review or
-    /// merge), "done" (finished). Any transition is allowed, including going back.
+    /// New status. One of: "draft" (written down, not started yet), "active" (being worked
+    /// on), "review" (waiting for review or merge), "done" (finished). Any transition is
+    /// allowed, including going back.
     pub status: String,
 }
 
@@ -154,9 +155,11 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "Set a work's status to active, review or done. Any transition is \
-                       allowed. Nothing else about the work changes — the worktrees and the \
-                       branch stay exactly as they are.",
+        description = "Set a work's status to draft, active, review or done. Use \"draft\" when \
+                       the user only wants the idea written down for later. The status is \
+                       declared, never derived: a work with no projects yet can still be \
+                       \"active\". Any transition is allowed. Nothing else about the work \
+                       changes — the worktrees and the branch stay exactly as they are.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
