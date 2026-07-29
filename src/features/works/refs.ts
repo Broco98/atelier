@@ -9,9 +9,9 @@ export function workDirRef(slug: string): string {
   return `~/.atelier/works/${slug}/`;
 }
 
-/** 워크트리: Rust가 내려준 `~` 축약 경로에 트레일링 `/`만 보장한다 */
-export function treeDirRef(treePath: string): string {
-  return treePath.endsWith("/") ? treePath : `${treePath}/`;
+/** 워크트리: Rust가 내려준 `~` 축약 경로(`worktrees[].path`)에 트레일링 `/`만 보장한다 */
+export function worktreeDirRef(worktreePath: string): string {
+  return worktreePath.endsWith("/") ? worktreePath : `${worktreePath}/`;
 }
 
 /** spec 파일(+줄범위): `~/.atelier/works/<slug>/spec/<path>[:L<n>[-<m>]]` */

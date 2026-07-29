@@ -19,7 +19,7 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
         "Work '{slug}' exists and its metadata is saved, but some worktrees could not be \
          created.\n\nReady for code work:\n"
     );
-    for t in report.view.trees.iter().filter(|t| t.exists) {
+    for t in report.view.worktrees.iter().filter(|t| t.exists) {
         text.push_str(&format!("  {}  {}\n", t.project, t.path));
     }
     text.push_str("\nFailed — do not start code work in these projects:\n");
@@ -47,14 +47,24 @@ fn partial_failure(report: &WorkReport) -> Result<CallToolResult, ErrorData> {
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct StartWorkParams {
-    /// Human-readable title of the work. Calling again with the same title resumes the
-    /// existing work instead of creating a second one.
+    /// Human-readable title of the work, written in the user's own language. This is a
+    /// display name, not what identifies the work — `slug` is. It can be rewritten later
+    /// with atelier_edit_work, and the user may have done so.
     pub title: String,
-    /// Slugs of the projects this work spans, at least one. Use the `slug` values from
-    /// atelier_list_projects.
+    /// What identifies the work: its folder name and, unless `branch` overrides it, its
+    /// branch name. Write it in English kebab-case, for example `cart-add-item`. It never
+    /// changes, so pass the same value again to resume this work. If you omit it, one is
+    /// derived from the title — and that keeps non-ASCII characters, so a title that is
+    /// not in English produces a folder and a branch name that are awkward in git.
+    pub slug: Option<String>,
+    /// Slugs of the projects this work spans, from atelier_list_projects. Omit it to start
+    /// a work that has no project yet — nothing but the work and its spec directory is
+    /// created, and no branch is decided. Attach the projects later.
+    #[serde(default)]
     pub projects: Vec<String>,
-    /// Branch name shared by every project's worktree. Defaults to the work slug derived
-    /// from the title. Follow the target repositories' existing branch convention.
+    /// Branch name shared by every project's worktree. With projects, it defaults to the
+    /// work's slug; without them the branch simply stays undecided.
+    /// Follow the target repositories' existing branch convention.
     pub branch: Option<String>,
 }
 
@@ -66,6 +76,23 @@ pub struct AttachProjectParams {
     pub work_slug: String,
     /// Slug of the project to add, as returned by atelier_list_projects.
     pub project_slug: String,
+    /// Branch name for the worktree, for a work whose branch is still `null` — this is
+    /// where it gets decided. Read the project's `git.localBranches` and match the
+    /// convention already in use. Omitting it falls back to the work slug. Passing a
+    /// different name than the work already uses is refused: one work, one branch.
+    pub branch: Option<String>,
+}
+
+/// `atelier_edit_work`의 인자. **title만 받는다** — status는 `atelier_set_work_status`가
+/// 담당하고, branch는 워크트리가 체크아웃해 둔 값이라 단독으로 바꿀 수 없다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct EditWorkParams {
+    /// Slug of the work to rename, as returned by atelier_list_works.
+    pub work_slug: String,
+    /// New title, in the user's own language. A blank title is refused. The slug, the
+    /// branch and the worktree paths are untouched — only the display name changes.
+    pub title: String,
 }
 
 /// `atelier_set_work_status`의 인자.
@@ -74,8 +101,9 @@ pub struct AttachProjectParams {
 pub struct SetWorkStatusParams {
     /// Slug of the work to change, as returned by atelier_list_works.
     pub work_slug: String,
-    /// New status. One of: "active" (being worked on), "review" (waiting for review or
-    /// merge), "done" (finished). Any transition is allowed, including going back.
+    /// New status. One of: "draft" (written down, not started yet), "active" (being worked
+    /// on), "review" (waiting for review or merge), "done" (finished). Any transition is
+    /// allowed, including going back.
     pub status: String,
 }
 
@@ -90,12 +118,16 @@ pub struct RemoveWorkParams {
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
-        description = "Start a work: one feature spanning one or more projects, sharing a \
+        description = "Start a work: one feature spanning zero or more projects, sharing a \
                        single branch name. Creates the work metadata, a spec directory and \
-                       one git worktree per project. Calling it again with the same title \
-                       resumes that work and only creates the worktrees that are missing, so \
-                       it is safe to retry. Returns the worktree paths to do code work in and \
-                       `specDir` to write the spec documents into.",
+                       one git worktree per project. `projects` may be omitted for an idea \
+                       that has no code yet: no worktree and no branch are created, only the \
+                       work and its `specDir` — attach the projects when the work reaches \
+                       code. Calling it again with the same `slug` resumes that work and only \
+                       creates the worktrees that are missing, so it is safe to retry — on a \
+                       resume the `title` you pass is ignored and the stored one is kept, \
+                       because the user may have edited it. Returns the worktree paths to do \
+                       code work in and `specDir` to write the spec documents into.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -105,12 +137,13 @@ impl AtelierServer {
     )]
     async fn atelier_start_work(
         &self,
-        Parameters(StartWorkParams { title, projects, branch }): Parameters<StartWorkParams>,
+        Parameters(StartWorkParams { title, slug, projects, branch }): Parameters<StartWorkParams>,
     ) -> Result<CallToolResult, ErrorData> {
         match atelier_core::start_work(
             &self.works_root,
             &self.projects_root,
             &title,
+            slug.as_deref(),
             &projects,
             branch.as_deref(),
         ) {
@@ -124,10 +157,13 @@ impl AtelierServer {
 
     #[tool(
         description = "Add one project to an existing work and create its worktree on the \
-                       work's shared branch. This is also the recovery path when \
-                       atelier_start_work reported that a worktree could not be created: \
-                       call it once per failed project instead of starting the work again. \
-                       Doing it twice for the same project changes nothing.",
+                       work's shared branch. If the work's `branch` is still null — it was \
+                       started without projects — this is where the branch is decided, so \
+                       pass one that matches the repository's convention. This is also the \
+                       recovery path when atelier_start_work reported that a worktree could \
+                       not be created: call it once per failed project instead of starting \
+                       the work again. Doing it twice for the same project changes nothing. \
+                       The work's status is never changed by attaching.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -137,13 +173,16 @@ impl AtelierServer {
     )]
     async fn atelier_attach_project(
         &self,
-        Parameters(AttachProjectParams { work_slug, project_slug }): Parameters<AttachProjectParams>,
+        Parameters(AttachProjectParams { work_slug, project_slug, branch }): Parameters<
+            AttachProjectParams,
+        >,
     ) -> Result<CallToolResult, ErrorData> {
         match atelier_core::attach_project(
             &self.works_root,
             &self.projects_root,
             &work_slug,
             &project_slug,
+            branch.as_deref(),
         ) {
             Ok(report) if report.errors.is_empty() => {
                 Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
@@ -154,9 +193,35 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "Set a work's status to active, review or done. Any transition is \
-                       allowed. Nothing else about the work changes — the worktrees and the \
-                       branch stay exactly as they are.",
+        description = "Rename a work: replace its title with a better one. Use it when the \
+                       title was written in a hurry, or when the work turned out to be about \
+                       something else. Only the title changes — the slug, the branch, the \
+                       worktree paths and the spec directory all stay exactly as they are, so \
+                       references already written down elsewhere keep working. A blank title \
+                       is refused. Local files only.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn atelier_edit_work(
+        &self,
+        Parameters(EditWorkParams { work_slug, title }): Parameters<EditWorkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::update_work_title(&self.works_root, &work_slug, &title) {
+            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Set a work's status to draft, active, review or done. Use \"draft\" when \
+                       the user only wants the idea written down for later. The status is \
+                       declared, never derived: a work with no projects yet can still be \
+                       \"active\". Any transition is allowed. Nothing else about the work \
+                       changes — the worktrees and the branch stay exactly as they are.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -200,14 +265,20 @@ impl AtelierServer {
             Ok(view) => view.work.branch,
             Err(e) => return Ok(kernel_error(e)),
         };
+        // 브랜치가 미정인 work는 워크트리도 없다 — 되찾을 커밋이 없다는 뜻이라 안내가 다르다.
+        let note = match &branch {
+            Some(_) => "The worktrees are gone. The branch above still exists in every \
+                        project repository, so committed work is recoverable.",
+            None => "The work had no project and no branch, so only its folder and the spec \
+                     documents in it are gone.",
+        };
         // force = false 고정. dirty 검사와 브랜치 보존이 이 도구의 안전장치다 (D6).
         match atelier_core::remove_work(&self.works_root, &work_slug, false) {
             Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::json(
                 serde_json::json!({
                     "removed": work_slug,
                     "branch": branch,
-                    "note": "The worktrees are gone. The branch above still exists in every \
-                             project repository, so committed work is recoverable.",
+                    "note": note,
                 }),
             )?])),
             Err(e) => Ok(kernel_error(e)),
