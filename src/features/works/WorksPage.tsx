@@ -49,7 +49,8 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const selected = works.find((w) => w.slug === selectedSlug) ?? works[0] ?? null;
+  // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx)
+  const selected = works.find((w) => w.slug === selectedSlug) ?? null;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">

@@ -39,7 +39,13 @@ function AppShell() {
         <Sidebar
           open={sidebarOpen}
           activeKey={activeKey}
-          onSelect={(key) => void navigate({ to: key === "works" ? "/works" : "/projects" })}
+          onSelect={(key) => {
+            // 이미 보고 있는 탭이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
+            // 정규화되는 경로라, 그냥 두면 지금과 똑같은 위치가 히스토리에 한 칸 더 쌓인다 —
+            // 뒤로가기를 눌러도 화면이 그대로인 죽은 항목이 된다.
+            if (key === activeKey) return;
+            void navigate({ to: key === "works" ? "/works" : "/projects" });
+          }}
         />
         <Outlet />
       </div>
