@@ -123,7 +123,7 @@ function TreeRows({
                   type="button"
                   onClick={() => onToggle(node.path)}
                   aria-expanded={expanded}
-                  className="flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-accent"
+                  className="flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1"
                   style={{ paddingLeft: 8 + depth * 14 }}
                 >
                   <ChevronRight
@@ -150,8 +150,10 @@ function TreeRows({
                 type="button"
                 onClick={() => onSelect(node.path)}
                 className={cn(
-                  "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors hover:bg-accent",
-                  node.path === current ? "font-medium text-primary" : "text-muted-foreground",
+                  "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors",
+                  node.path === current
+                    ? "selected-row font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-state-1",
                 )}
                 style={{ paddingLeft: 8 + depth * 14 }}
               >
@@ -165,7 +167,7 @@ function TreeRows({
                       e.stopPropagation();
                       onCopy(node.path);
                     }}
-                    className="flex size-[22px] shrink-0 items-center justify-center rounded-[7px] text-tertiary opacity-0 transition-opacity hover:bg-inset hover:text-foreground group-hover:opacity-100"
+                    className="icon-button text-tertiary opacity-0 transition-[background-color,color,opacity] hover:bg-state-2 hover:text-foreground group-hover:opacity-100"
                   >
                     <Copy className="size-3" strokeWidth={1.8} />
                   </span>
