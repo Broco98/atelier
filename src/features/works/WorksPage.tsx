@@ -164,6 +164,10 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
 
 // 브레드크럼 말단 제목 인라인 편집 — slug는 바뀌지 않는다 (ProjectDetail의 TitleEditor와 같은 계약).
 // 감싸는 PageHeader의 leaf span이 truncate/overflow:hidden이라 두 상태 모두 max-w-full로 스스로 줄어든다.
+//
+// ProjectDetail 쪽과 달리 **음수 마진을 쓰지 않는다.** 그쪽 부모는 평범한 h1이지만 여기 부모는
+// 잘라내므로, 왼쪽으로 삐져나온 만큼이 그대로 클립된다 — outline-none이라 유일한 포커스 표시인
+// 입력의 왼쪽 테두리가 사라진다. 대신 패딩만 쓰고 두 상태의 좌측 정렬을 서로 맞춘다.
 function TitleEditor({ work }: { work: WorkView }) {
   const setTitle = useSetWorkTitle();
   const [editing, setEditing] = useState(false);
@@ -192,7 +196,7 @@ function TitleEditor({ work }: { work: WorkView }) {
           setDraft(work.title);
           setEditing(true);
         }}
-        className="-mx-1.5 max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
       >
         {work.title}
       </button>
@@ -208,7 +212,7 @@ function TitleEditor({ work }: { work: WorkView }) {
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className="-mx-1.5 w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[14px] font-medium outline-none"
+      className="w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[14px] font-medium outline-none"
     />
   );
 }
