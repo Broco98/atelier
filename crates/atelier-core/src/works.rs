@@ -455,6 +455,9 @@ mod tests {
         assert_eq!(w.branch, None, "an unused branch must not be invented");
         assert!(w.projects.is_empty());
         assert!(report.view.trees.is_empty());
+        // 직교성: 프로젝트가 없다고 draft가 되지 않는다. 상태는 선언되는 것이고,
+        // 프로젝트 없이 진행 중인 리서치 work가 draft로 오표기되면 안 된다.
+        assert_eq!(w.status, WorkStatus::Active);
 
         let dir = works.join(&w.slug);
         assert!(dir.join("work.json").is_file());

@@ -93,3 +93,32 @@ impl AtelierServer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SPEC_LAYOUT;
+
+    /// 다섯 이름은 두 곳에 적혀 있다 — 에이전트에게 알려주는 여기, 그리고 앱이
+    /// 알아보는 트리(src/features/works/SpecTree.tsx). 한쪽만 바뀌면 에이전트가
+    /// 만드는 폴더를 앱이 못 알아본다. refs.ts ↔ instructions.rs와 같은 결합이라
+    /// 같은 방식으로 — 부탁이 아니라 테스트로 — 묶는다.
+    #[test]
+    fn the_app_recognises_the_same_folder_names_it_teaches() {
+        let spec_tree = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src/features/works/SpecTree.tsx"
+        ))
+        .expect("SpecTree.tsx moved; update this test and the guidance together");
+
+        for name in ["overview.md", "tickets", "research", "explanation"] {
+            assert!(SPEC_LAYOUT.contains(name), "the guidance stopped naming '{name}'");
+            assert!(
+                spec_tree.contains(&format!("\"{name}\"")),
+                "the app no longer recognises '{name}'"
+            );
+        }
+        // 판 폴더만 이름이 아니라 접두로 알아본다 — 양쪽이 같은 규칙이어야 한다
+        assert!(SPEC_LAYOUT.contains("NN-"), "the guidance stopped describing the iteration folder");
+        assert!(spec_tree.contains(r"/^(\d+)-/"), "the app's iteration pattern changed: {spec_tree}");
+    }
+}
