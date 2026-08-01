@@ -1,18 +1,26 @@
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
+import SidebarWorkList from "@/features/works/SidebarWorkList";
 import { navItems, type NavKey } from "./nav-items";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
-  activeKey: NavKey;
+  // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
+  activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
 }
 
+// 고정 nav 블록 + 상주하는 작업 목록. 어느 화면에 있든 이 사이드바는 바뀌지 않는다.
+// 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
-  const size = useResizableWidth("sidebar-width", 248, 180, 400);
+  const size = useResizableWidth("sidebar-width", 280, 240, 400);
+  // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
+  const asideRef = useRef<HTMLElement>(null);
 
   return (
     <aside
+      ref={asideRef}
       style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
@@ -49,7 +57,10 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           </span>
         </div>
 
-        <nav className="flex flex-col gap-[3px] px-2">
+        {/* 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 아래 작업 목록은 스크롤바가
+            늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
+            항목의 오른쪽 끝이 맞는다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다. */}
+        <nav className="flex shrink-0 flex-col gap-[3px] pl-2 pr-[19px]">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (
@@ -71,6 +82,8 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
             );
           })}
         </nav>
+
+        <SidebarWorkList open={open} boundaryRef={asideRef} />
       </div>
 
       {open && <ResizeHandle control={size} />}

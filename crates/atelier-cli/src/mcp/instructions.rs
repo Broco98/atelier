@@ -129,7 +129,9 @@ mod tests {
     /// 프론트엔드 소스를 직접 읽는다).
     #[test]
     fn the_app_does_not_advertise_cli_commands_either() {
-        for rel in ["WorkList.tsx", "WorksPage.tsx"] {
+        // WorkList.tsx는 사이드바로 옮겨지며 SidebarWorkList.tsx가 됐다 (PR #71).
+        // 이 테스트가 "moved" 패닉으로 그 사실을 알려주도록 만들어져 있었다 — 이름을 따라간다.
+        for rel in ["SidebarWorkList.tsx", "WorksPage.tsx"] {
             let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/features/works/")
                 .to_string()
                 + rel;
