@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { formatCreated, StatusIcon } from "./status";
+import { splitWorkSections } from "./work-sections";
 import type { WorkView } from "./types";
 
 interface WorkListProps {
@@ -33,11 +34,8 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
       )
     : filtered;
 
-  // 문턱을 낮추면 백로그가 쌓인다. 이 구역이 그 대가를 격리한다 — 쌓인 아이디어가
-  // 진행 중인 일을 가리지 않게. 정렬·필터는 두 구역 모두에 그대로 걸린다.
-  const main = sorted.filter((w) => w.status !== "draft");
-  const drafts = sorted.filter((w) => w.status === "draft");
-  const visible = draftsOpen ? [...main, ...drafts] : main;
+  // 구역 분리는 work-sections가 정한다 — 정렬·필터는 그 위에 얹혀 두 구역 모두에 그대로 걸린다
+  const { main, drafts, visible } = splitWorkSections(sorted, draftsOpen);
 
   const size = useResizableWidth("panel-width", 360, 280, 560);
 
