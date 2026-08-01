@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, List, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Check, ChevronDown, Folder, List, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import WorkList from "./WorkList";
+import { useProjects } from "@/features/projects/hooks";
 import SpecViewer from "./SpecViewer";
 import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_META } from "./status";
@@ -12,26 +12,26 @@ import type { WorkStatus, WorkView } from "./types";
 interface WorksPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
-  onSelect: (slug: string | null) => void;
   onOpenProject: (slug: string) => void;
 }
 
-const PANEL_OPEN_KEY = "works-panel-open";
-
-function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: WorksPageProps) {
+function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps) {
   const { data: works = [] } = useWorks();
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
+  // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
+  // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
+  //
+  // isPending을 함께 보는 이유: 이 화면이 앱의 첫 화면이 되면서 프로젝트 목록을 처음 읽는
+  // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
+  // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
+  const { data: projects = [], isPending: projectsPending } = useProjects();
+  const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
   // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
   const [showSource, setShowSource] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
-
-  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
+  // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
+  // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
+  // 입력 중에는 무시.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
@@ -43,7 +43,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
       )
         return;
       e.preventDefault();
-      setPanelOpen((open) => !open);
+      setWorkPanelOpen((open) => !open);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -55,18 +55,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <WorkList
-        works={works}
-        selectedSlug={selected?.slug ?? null}
-        onSelect={onSelect}
-        sidebarOpen={sidebarOpen}
-        open={panelOpen}
-      />
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Works"
           leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
-          inset={!sidebarOpen && !panelOpen}
+          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다
+          inset={!sidebarOpen}
           meta={
             selected && (
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
@@ -103,9 +97,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                   >
                     소스
                   </button>
+                  {/* 이 화면의 유일한 접이식이다 — 본문 확대 단축키(⌘Enter)도 여기로 온다 */}
                   <button
                     type="button"
                     onClick={() => setWorkPanelOpen((v) => !v)}
+                    aria-label="작업 패널 토글"
+                    aria-expanded={workPanelOpen}
                     title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
                     className={cn(
                       "icon-button transition-colors",
@@ -118,20 +115,6 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                   </button>
                 </span>
               )}
-              <button
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </button>
             </>
           }
         />
@@ -146,19 +129,25 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
               <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                <Zap className="size-5" strokeWidth={1.6} />
+                {needsProject ? (
+                  <Folder className="size-5" strokeWidth={1.6} />
+                ) : (
+                  <Zap className="size-5" strokeWidth={1.6} />
+                )}
               </div>
               <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                아직 작업이 없어요
+                {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
               </span>
               <span className="text-[14px] leading-[1.65] text-tertiary">
-                작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행
-                상황이 여기에 나타나요.
+                {needsProject
+                  ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+                  : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
               </span>
-              {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
-                  atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
+              {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
+                  atelier_add_project / atelier_start_work를 부른다.
+                  아래 문구는 그대로 붙여 넣는 것이다. */}
               <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                atelier로 "새 작업" 시작해줘
+                {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
               </code>
             </div>
           </div>

@@ -86,11 +86,19 @@ async function goForward(
   await router.load({ action: { type: "FORWARD" } });
 }
 
+// 앱을 켜면 작업 화면이다 — 작업이 본업이고 프로젝트는 설정에 가깝다.
+// 진입은 무선택 주소를 한 번 더 거치므로 그쪽 규칙(초안 건너뛰기 포함)을 그대로 물려받는다.
 describe("진입 정규화", () => {
-  it("'/'로 들어오면 프로젝트 목록의 첫 항목까지 정규화된다", async () => {
+  it("'/'로 들어오면 작업 목록의 첫 항목까지 정규화된다", async () => {
     const { router } = setup(["/"]);
     await router.load();
-    expect(router.state.location.pathname).toBe("/projects/proj-a");
+    expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+
+  it("이번 세션에서 마지막으로 보던 작업이 있으면 거기로 간다", async () => {
+    const { router } = setup(["/"], { lastWork: "work-b" });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works/work-b");
   });
 
   it("그 정규화는 히스토리를 늘리지 않는다 — 시작 직후 뒤로갈 곳이 없다", async () => {
@@ -142,7 +150,7 @@ describe("무선택 주소의 정규화", () => {
   });
 });
 
-// 목록 패널은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
+// 사이드바 목록은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
 // 목록 어디에도 강조가 없다 — 그래서 아무도 고르지 않았을 때만 초안을 건너뛴다.
 // 직접 고른 초안은 건드리지 않는다.
 describe("기본 선택은 초안을 건너뛴다", () => {
