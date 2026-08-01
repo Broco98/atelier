@@ -72,7 +72,9 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-panel",
-        open ? "w-(--panel-width)" : "w-0 border-transparent",
+        // border-r-0까지 붙이는 이유는 Sidebar.tsx의 같은 자리에 적었다 — 접힘 상태의 1px이
+        // 오른쪽 전부를 밀어 셸 헤더 인셋이 어긋난다
+        open ? "w-(--panel-width)" : "w-0 border-transparent border-r-0",
       )}
     >
       <div
@@ -84,7 +86,9 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
         <div
           data-tauri-drag-region
           className={cn(
-            "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms]",
+            // ease-panel은 위 폭 트랜지션과 같아야 한다 — 이 컨트롤들의 화면상 위치가 두 값의
+            // 합이라 곡선이 다르면 최종 자리를 지나쳤다 되돌아온다 (index.css의 --panel-ease 주석)
+            "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms] ease-panel",
             sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
           )}
         >

@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { worksQuery } from "./features/works/hooks";
 import { projectsQuery } from "./features/projects/hooks";
 import { shellStore } from "./components/shell/shell-store";
+import { trackCanGoForward } from "./can-go-forward";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
 
@@ -230,5 +231,169 @@ describe("선택한 항목의 히스토리 의미론", () => {
 
     await goBack(router, history);
     expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+});
+
+// "뒤로 갈 수 있는가"는 라우터가 알려주지만 "앞으로"는 우리가 센다. 그 셈이 히스토리와
+// 어긋나도 화면에서는 버튼 하나가 흐린지 아닌지로만 드러나 놓치기 쉬워서 여기서 고정한다.
+//
+// 여기서만 이동 방식이 다르다. 히스토리에 구독자가 하나라도 붙으면 라우터는 "누군가 나를
+// 굴려준다"고 보고 이동 뒤 스스로 load하지 않는다 (router-core `router.js:429`의
+// `if (!this.history.subscribers.size) this.load(...)`). 앱에서는 RouterProvider 안의
+// Transitioner가 그 구독자이고, 이 블록에서는 앞으로가기 추적기가 그렇다.
+// 그래서 위쪽 테스트들이 기대는 자동 load가 여기서는 오지 않는다 — 짝지어 돌리지 않으면
+// navigate가 반환한 약속이 영원히 풀리지 않는다.
+describe("앞으로 갈 수 있는가", () => {
+  // 추적기는 최대치를 sessionStorage에 남긴다 (웹뷰가 다시 떠도 이어가려고).
+  // Node에는 그게 없어 최소한만 흉내내고, 테스트마다 새로 만들어 앞 테스트가 남긴 값이 새지 않게 한다.
+  beforeEach(() => {
+    const data = new Map<string, string>();
+    Object.defineProperty(globalThis, "sessionStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => data.get(key) ?? null,
+        setItem: (key: string, value: string) => void data.set(key, value),
+      },
+    });
+  });
+
+  const start = (entries: Array<string>) => {
+    const { router, history } = setup(entries);
+    // 첫 이동보다 먼저 붙여야 한다 — 앱에서 Transitioner가 첫 렌더에 붙는 것과 같다
+    const canGoForward = trackCanGoForward(history);
+    // 이동을 감싸 load를 대신 돌린다. navigate가 돌려준 약속은 load가 끝나야 풀리므로
+    // 그냥 await하면 그 자리에서 멈춘다. 이동 옵션은 인자로 받지 않고 호출부에서 그대로
+    // 넘기게 둔다 — 변수를 거치면 to와 params의 타입 연결이 끊어진다.
+    const drive = async (committed: ReturnType<typeof router.navigate>) => {
+      await router.load();
+      await committed;
+    };
+    return { router, history, canGoForward, drive };
+  };
+
+  it("시작 직후에는 앞으로 갈 곳이 없다", async () => {
+    const { router, canGoForward } = start(["/works/work-a"]);
+    await router.load();
+    expect(canGoForward.state).toBe(false);
+  });
+
+  it("뒤로 가면 생기고, 앞으로 가면 다시 없어진다", async () => {
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+    expect(canGoForward.state).toBe(false);
+
+    await goBack(router, history);
+    expect(canGoForward.state).toBe(true);
+
+    await goForward(router, history);
+    expect(canGoForward.state).toBe(false);
+  });
+
+  // 두 칸을 쌓고 두 칸을 되돌아온다. 한 칸이면 새 이동이 원래 최대치와 같은 자리에 떨어져,
+  // 자르지 않는 구현도 우연히 같은 답을 낸다 — 그 상태로는 이 테스트가 헛돈다.
+  it("뒤로 간 뒤 다른 곳으로 이동하면 앞이 잘린다", async () => {
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+    await drive(router.navigate({ to: "/projects/$slug", params: { slug: "proj-a" } }));
+    await goBack(router, history);
+    await goBack(router, history);
+    expect(canGoForward.state).toBe(true);
+
+    await drive(router.navigate({ to: "/projects/$slug", params: { slug: "proj-b" } }));
+    expect(canGoForward.state).toBe(false);
+  });
+
+  // 뒤로 간 자리의 항목이 사라져 정규화가 일어나는 경우다. replace는 그 칸을 덮어쓸 뿐
+  // 뒤따르는 항목을 지우지 않으므로, 앞으로 갈 곳은 그대로 남아 있어야 한다.
+  it("제자리를 고쳐 쓰는 replace는 앞을 지우지 않는다", async () => {
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+    await goBack(router, history);
+
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" }, replace: true }));
+    expect(canGoForward.state).toBe(true);
+  });
+
+  // 앞으로가기도 한 칸씩만 움직이면 헛돈다 — 되돌아온 자리에서 한 칸 나아가면 그 자리가 곧
+  // 최대치라, 앞으로가기가 최대치를 깎아내리는 구현도 같은 답을 낸다. 두 칸 되돌아와야 갈린다.
+  it("두 칸 되돌아와 한 칸만 앞으로 가면 앞이 아직 남아 있다", async () => {
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+    await drive(router.navigate({ to: "/projects/$slug", params: { slug: "proj-a" } }));
+    await goBack(router, history);
+    await goBack(router, history);
+
+    await goForward(router, history);
+    expect(canGoForward.state).toBe(true);
+  });
+
+  // 웹뷰가 새로 뜨면(macOS 기본 우클릭 메뉴에 Reload가 있고 wry가 막지 않는다) 추적기는
+  // 다시 만들어지지만 세션 히스토리는 그대로 남는다. 최대치를 세션에 남기지 않으면
+  // 앞으로 갈 곳이 있는데도 버튼이 흐린 채 굳고, 되돌릴 방법이 마우스 사이드 버튼뿐이다.
+  it("웹뷰가 새로 떠도 앞으로 갈 곳을 잊지 않는다", async () => {
+    const { router, history, drive } = start(["/works/work-a"]);
+    await router.load();
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+    await goBack(router, history);
+
+    // 새 히스토리가 곧 리로드다. 세션 히스토리는 살아남으므로 뒤따르던 항목도 그대로 있다 —
+    // 항목이 하나뿐인 히스토리로 재현하면 forward()가 갈 곳이 없어, 되살린 숫자가 스택과
+    // 같은 것을 가리키는지 검사하지 못한 채 초록이 된다.
+    // (initialIndex: 0은 라이브러리가 falsy로 흘려버려 무시된다 — back()으로 옮긴다)
+    const reloaded = createMemoryHistory({
+      initialEntries: ["/works/work-a", "/works/work-b"],
+    });
+    reloaded.back();
+
+    const canGoForward = trackCanGoForward(reloaded);
+    expect(canGoForward.state).toBe(true);
+    // 켜졌다고만 보지 않는다 — 실제로 그 칸으로 옮겨가고, 다 갔으면 꺼져야 한다
+    reloaded.forward();
+    expect(reloaded.location.pathname).toBe("/works/work-b");
+    expect(canGoForward.state).toBe(false);
+  });
+
+  // 최대치를 세션에 남기는 일은 히스토리의 구독자 목록 안에서 돈다. 그 목록은 forEach로
+  // 도므로 우리가 던지면 **뒤에 등록된 구독자가 아예 실행되지 않는다** — 앱에서 그 뒷사람은
+  // 라우터의 load다. 주소만 바뀌고 화면은 안 따라오는, 되돌릴 수 없는 종류의 고장이다.
+  // sessionStorage는 용량 한도에서 실제로 던진다(WKWebView 실측 5MiB).
+  it("세션 저장이 실패해도 뒷사람이 실행되고 앞으로 버튼도 살아 있다", async () => {
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+
+    // 추적기 다음에 붙는다 — 앱에서 라우터의 load가 서 있는 자리다
+    let laterRan = false;
+    history.subscribe(() => {
+      laterRan = true;
+    });
+    sessionStorage.setItem = () => {
+      throw new Error("QuotaExceededError");
+    };
+
+    await goBack(router, history);
+    expect(laterRan).toBe(true);
+    expect(canGoForward.state).toBe(true);
+  });
+
+  // 이 파일이 그 환경이다 — 라우트 트리를 DOM 없는 Node에서 import해 돌린다.
+  // 저장소가 아예 없어도 이번 세션의 앞으로가기는 그대로 동작해야 한다.
+  it("sessionStorage가 없는 환경에서도 동작한다", async () => {
+    Reflect.deleteProperty(globalThis, "sessionStorage");
+
+    const { router, history, canGoForward, drive } = start(["/works/work-a"]);
+    await router.load();
+    await drive(router.navigate({ to: "/works/$slug", params: { slug: "work-b" } }));
+
+    await goBack(router, history);
+    expect(canGoForward.state).toBe(true);
   });
 });

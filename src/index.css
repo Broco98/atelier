@@ -15,8 +15,8 @@
 
 /* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
    --titlebar-inset / --titlebar-inset-panel을 읽어 신호등·셸 컨트롤을 피한다.
-   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-control-size만큼 이어지고,
-   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 폭만 고치면 된다.
+   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
+   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
    88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
 
    파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
@@ -26,11 +26,26 @@
     /* icon-button 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
        여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
     --titlebar-control-size: 24px;
-    --titlebar-inset: calc(
-        var(--titlebar-controls-left) + var(--titlebar-control-size) + 12px
+    /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 목록 패널 첫 컨트롤까지의 간격.
+       24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
+       붙어 보인다 */
+    --titlebar-control-gap: 6px;
+    /* 사이드바 토글 · 뒤로 · 앞으로 세 칸. ShellControls가 이 폭을 그대로 쓰므로
+       칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다 */
+    --titlebar-controls-width: calc(
+        3 * var(--titlebar-control-size) + 2 * var(--titlebar-control-gap)
     );
-    /* 목록 패널 헤더는 패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */
-    --titlebar-inset-panel: calc(var(--titlebar-inset) - 12px);
+    /* 셸 헤더는 글자가 놓이는 자리라 컨트롤 간격보다 넉넉히 띄운다 */
+    --titlebar-inset: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
+    );
+    /* 목록 패널 헤더의 첫 칸은 셸 컨트롤과 같은 간격으로 이어 붙인다 — 넷이 한 줄에 나란히
+       서 있어서 여기만 간격이 다르면 그 하나만 따로 떨어진 것처럼 읽힌다.
+       패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */
+    --titlebar-inset-panel: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) +
+            var(--titlebar-control-gap) - 12px
+    );
 }
 
 /* 전체화면에선 macOS가 신호등을 숨기므로 컨트롤이 창 여백까지 당겨진다 */
@@ -150,7 +165,15 @@
        ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다.
        사이드바·목록 패널 둘의 폭 트랜지션과 작업 패널 퇴장이 같은 곡선을 써야 한 화면에서
        따로 논다는 인상이 없다. transition은 아래 --ease-panel로, animation 축약형은
-       var(--panel-ease)로 같은 값을 읽는다 */
+       var(--panel-ease)로 같은 값을 읽는다.
+
+       폭과 **함께 더해지는** 값도 반드시 이 곡선이어야 한다 — 헤더들의 인셋 패딩이 그렇다.
+       화면상 위치가 (패널 폭 + 패딩)이라 곡선이 다르면 합이 단조롭지 않게 되어, 최종 자리를
+       지나쳤다 되돌아온다. 튕기는 크기는 인셋이 패널 폭에 가까울수록 커진다 — 셸 컨트롤이
+       하나뿐이라 인셋 패널이 112px이던 시절에는 곡선이 어긋난 채로도 0.7px이라 아무도 못 봤는데,
+       버튼 둘을 더해 166px이 되자 사이드바 기본 폭 248px에서 29px, 최소 폭 180px에서는 56px까지
+       튀었다(실측). "지금 안 보이니 괜찮다"가 성립하지 않는 종류라 곡선을 맞춰 두는 것이
+       유일한 방어선이다 */
     --panel-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 

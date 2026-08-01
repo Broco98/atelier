@@ -21,7 +21,11 @@ function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProp
       className={cn(
         // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다.
         // 이 행은 여전히 창 드래그 영역이다 (data-tauri-drag-region)
-        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 pr-4 transition-[padding] duration-[220ms]",
+        //
+        // ease-panel은 앞에 놓인 패널들의 폭 트랜지션과 같아야 한다 — 브레드크럼의 화면상
+        // 위치가 그 폭들과 이 패딩의 합이라, 곡선이 다르면 최종 자리를 지나쳤다 되돌아온다
+        // (index.css의 --panel-ease 주석)
+        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 pr-4 transition-[padding] duration-[220ms] ease-panel",
         inset ? "pl-(--titlebar-inset)" : "pl-4",
       )}
     >

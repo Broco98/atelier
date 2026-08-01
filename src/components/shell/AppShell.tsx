@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import Sidebar from "./Sidebar";
-import SidebarToggle from "./SidebarToggle";
+import ShellControls from "./ShellControls";
 import StatusBar from "./StatusBar";
 import useIsFullscreen from "./useIsFullscreen";
 import { shellStore, toggleSidebar } from "./shell-store";
@@ -50,7 +50,7 @@ function AppShell() {
         <Outlet />
       </div>
       <StatusBar />
-      <SidebarToggle open={sidebarOpen} onToggle={toggleSidebar} />
+      <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
     </div>
   );
 }

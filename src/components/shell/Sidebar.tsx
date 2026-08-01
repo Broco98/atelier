@@ -20,7 +20,15 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
         // 곡선은 --ease-panel — 목록 패널 둘과 작업 패널 퇴장이 같은 값을 읽는다 (index.css)
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-panel",
-        open ? "w-(--sidebar-width)" : "w-0 border-transparent",
+        // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
+        // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
+        // 전부를 밀어 --titlebar-inset-panel 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
+        // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다. 목록 패널 둘도 같은 이유로 같은 처리를 한다.
+        //
+        // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
+        // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만
+        // 1↔2 디바이스픽셀로 튄다 (열림 끝에 툭 굵어진다). 폭은 그냥 끊어 바꾸는 편이 낫다.
+        open ? "w-(--sidebar-width)" : "w-0 border-transparent border-r-0",
       )}
     >
       {/* fixed inner width so text doesn't reflow while the width animates */}
