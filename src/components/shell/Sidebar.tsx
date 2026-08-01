@@ -75,7 +75,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           })}
         </nav>
 
-        <SidebarWorkList />
+        <SidebarWorkList open={open} />
       </div>
 
       {open && <ResizeHandle control={size} />}
