@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
+import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import WorkPanel, { PANEL_EXIT_MS } from "./WorkPanel";
 import type { WorkView } from "./types";
 
@@ -92,7 +93,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
-              <PrettyView content={content ?? ""} onCopyBlock={copyRef} />
+              <PrettyView file={current ?? ""} content={content ?? ""} onCopyBlock={copyRef} />
             )}
           </div>
         </div>
@@ -160,7 +161,17 @@ function SourceView({ content }: { content: string }) {
 //   46px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
 export const bodyColumn = "mx-auto w-full max-w-[900px] px-12";
 
+// 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
+// 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
+// 체크박스 항목의 본문 첫 글자가 불릿 항목의 본문과 같은 x에 선다.
+// 우측 여백 5px의 근거: 거터 22 - 체크박스 13 - 체크박스 뒤에 오는 공백 한 칸 4.17 = 4.83.
+// 4.17px은 본문 글꼴(Geist 15px)에서 실측한 값이다 — 글꼴이나 본문 크기가 바뀌면 다시 재야 한다.
+const listIndent = "pl-[22px]";
+const checkboxGutter = "-ml-[22px] mr-[5px]";
+
 interface PrettyViewProps {
+  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데만 쓴다
+  file: string;
   content: string;
   onCopyBlock: (start: number, end: number) => void;
 }
@@ -204,7 +215,12 @@ function BlockWrapper({
 }
 
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
-const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyViewProps) {
+const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
+  // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
+  // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
+  const fileRef = useRef(file);
+  fileRef.current = file;
+
   // 최상위 블록의 시작 라인 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해
   const topLines = useRef<Set<number>>(new Set());
   const collectTopLevel = () => (tree: { children: { position?: { start: { line: number } } }[] }) => {
@@ -223,9 +239,12 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
 
     const block =
       (Tag: keyof React.JSX.IntrinsicElements, className: string, spacing: string) =>
-      ({ node, children, ...props }: any) => {
+      ({ node, children, className: hastClass, ...props }: any) => {
         const el = (
-          <Tag className={className} {...props}>
+          // hast가 들고 온 클래스는 덮지 않고 합친다 — remark-gfm이 체크박스가 든 목록의
+          // ul·ol에 contains-task-list를 붙이는데, {...props}가 뒤에 오면 그게 이겨서
+          // 목록 스타일(들여쓰기·불릿·행간)이 통째로 사라진다.
+          <Tag className={cn(className, hastClass)} {...props}>
             {children}
           </Tag>
         );
@@ -244,22 +263,25 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
       h3: block("h3", "text-[15.5px] font-semibold", "mt-4"),
       h4: block("h4", "text-[14px] font-semibold", "mt-3"),
       p: block("p", "leading-[1.7] text-muted-foreground", "mt-1.5"),
-      ul: block("ul", "flex list-disc flex-col gap-1.5 pl-[22px] leading-[1.7] text-muted-foreground", "mt-1.5"),
-      ol: block("ol", "flex list-decimal flex-col gap-1.5 pl-[22px] leading-[1.7] text-muted-foreground", "mt-1.5"),
+      ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
+      ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
       blockquote: block(
         "blockquote",
         "border-l-2 border-border-strong pl-3.5 text-muted-foreground",
         "mt-1.5",
       ),
       hr: block("hr", "border-border", "mt-4"),
-      // 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다
-      table: (({ node, children, ...props }: any) => {
+      // 표는 가로 스크롤과 전체화면 확대와 열 폭 조절을 자기가 챙긴다 — 규격도 거기 있다.
+      // key: 조절한 열 폭이 다른 문서로 넘어가지 않는다는 계약이 사는 자리다.
+      // 오늘은 이게 없어도 초기화되긴 한다 — useSpecFile이 파일을 바꿀 때 내용을 한 번
+      // 비우고 시작해서(hooks.ts의 placeholderData) 블록이 전부 새로 마운트되기 때문이다.
+      // 그건 다른 파일의 로딩 정책일 뿐이라 언제든 바뀔 수 있다. 계약은 여기에 적어 둔다.
+      // 같은 파일이 밖에서 수정돼 다시 읽힐 때는 내용만 갈리고 폭은 남는다.
+      table: ({ node, children, ...props }) => {
         const inner = (
-          <div className="overflow-x-auto scroll-quiet">
-            <table className="w-full border-collapse text-[13.5px]" {...props}>
-              {children}
-            </table>
-          </div>
+          <SpecTable key={fileRef.current} {...props}>
+            {children}
+          </SpecTable>
         );
         const range = lines(node);
         if (!range) return inner;
@@ -268,10 +290,12 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
             {inner}
           </BlockWrapper>
         );
-      }) as Components["table"],
+      },
+      // relative: 열 폭 손잡이가 이 칸의 오른쪽 끝(열 경계)에 서기 위한 기준 상자다
       th: ({ children }) => (
-        <th className="border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
+        <th className="relative border-b border-border-strong px-3 py-2 text-left text-[12.5px] font-medium text-tertiary">
           {children}
+          <ColumnResizeHandle />
         </th>
       ),
       td: ({ children }) => (
@@ -281,6 +305,23 @@ const PrettyView = memo(function PrettyView({ content, onCopyBlock }: PrettyView
         <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
           {children}
         </a>
+      ),
+      // 체크박스 목록 — remark-gfm은 체크박스가 있는 항목의 li에만 task-list-item을 붙인다
+      // (ul·ol 둘 다). 그 항목만 불릿을 지우므로 한 목록에 섞여 있어도 나머지는 그대로다.
+      li: ({ node, children, className, ...props }) => (
+        <li
+          className={className?.includes("task-list-item") ? cn(className, "list-none") : className}
+          {...props}
+        >
+          {children}
+        </li>
+      ),
+      // 체크박스를 거터로 빼내 불릿이 서던 자리에 세운다 (근거는 checkboxGutter 위 주석).
+      // 본문은 흐름에 남으므로 둘째 줄부터도 첫 줄과 같은 x에서 시작한다.
+      // 마크다운이 만드는 input은 GFM 체크박스뿐이라(원시 HTML은 켜져 있지 않다) 분기하지 않는다.
+      // disabled는 remark-gfm이 붙여 보낸 것을 그대로 둔다 — 눌러도 문서가 바뀌지 않는다.
+      input: ({ node, ...props }) => (
+        <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
       ),
       pre: (({ node, children, ...props }: any) => {
         const code = node?.children?.[0];
