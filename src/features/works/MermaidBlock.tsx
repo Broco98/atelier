@@ -122,16 +122,19 @@ function MermaidBlock({ code }: { code: string }) {
 
   useEffect(() => {
     let on = true;
-    import("mermaid").then(async ({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, theme: "neutral" });
-      try {
+    // 실패는 숨기지 않고 코드로 폴백한다. catch가 체인 끝에 붙어야 하는 이유: mermaid는
+    // 동적 import라 이 블록이 화면에 나타날 때 청크를 받아 온다. 그 요청이 실패하면
+    // (dev 서버가 죽었을 때·오프라인·청크 배포 누락) then 자체가 실행되지 않으므로,
+    // then 안에만 그물을 치면 실패가 밖으로 새고 화면은 "렌더링 중…"에 영원히 멈춘다.
+    import("mermaid")
+      .then(async ({ default: mermaid }) => {
+        mermaid.initialize({ startOnLoad: false, theme: "neutral" });
         const { svg } = await mermaid.render(`mm${id}`, code);
         if (on) setSvg(svg);
-      } catch (e) {
-        // 파싱 실패는 숨기지 않고 코드로 폴백한다
+      })
+      .catch((e) => {
         if (on) setError(String(e));
-      }
-    });
+      });
     return () => {
       on = false;
     };
