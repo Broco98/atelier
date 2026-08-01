@@ -1,11 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, List, Maximize2, Minimize2, Zap } from "lucide-react";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
+import {
+  Archive,
+  Check,
+  ChevronDown,
+  List,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
-import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
+import {
+  useArchiveWork,
+  useRemoveWork,
+  useSetWorkStatus,
+  useSetWorkTitle,
+  useWorks,
+} from "./hooks";
 import { STATUS_META } from "./status";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -84,6 +101,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                     </button>
                   ))}
                 </span>
+                <WorkMenu work={selected} onGone={() => onSelect(null)} />
               </span>
             )
           }
@@ -286,6 +304,100 @@ function StatusMenu({ work }: { work: WorkView }) {
                 </button>
               );
             })}
+        </PopoverPortal>
+      )}
+    </span>
+  );
+}
+
+// 생애주기 조작 — 뷰 토글이 모인 우측 actions가 아니라 StatusMenu 옆에 산다.
+// 둘 다 되돌릴 수 없어서 네이티브 확인을 거치고, 거절 사유(커밋 안 된 변경 등)는
+// 코어가 파일 단위로 말해주므로 그대로 보여준다.
+function WorkMenu({ work, onGone }: { work: WorkView; onGone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const archive = useArchiveWork();
+  const remove = useRemoveWork();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const handleArchive = async () => {
+    setOpen(false);
+    const ok = await confirm(
+      "스펙과 기록은 남고 워크트리만 정리돼요. 브랜치와 커밋은 그대로예요. 되돌릴 수 없어요.",
+      { title: `'${work.title}' 아카이빙`, kind: "warning" },
+    );
+    if (!ok) return;
+    try {
+      await archive.mutateAsync(work.slug);
+      onGone();
+    } catch (e) {
+      await message(`아카이빙하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+    }
+  };
+
+  const handleRemove = async () => {
+    setOpen(false);
+    const ok = await confirm(
+      "워크트리와 스펙 문서가 모두 지워져요. 남길 것이 있다면 아카이빙을 쓰세요. 되돌릴 수 없어요.",
+      { title: `'${work.title}' 삭제`, kind: "warning" },
+    );
+    if (!ok) return;
+    try {
+      await remove.mutateAsync(work.slug);
+      onGone();
+    } catch (e) {
+      await message(`삭제하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+    }
+  };
+
+  return (
+    <span className="relative flex">
+      <button
+        ref={anchor}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="작업 메뉴"
+        aria-expanded={open}
+        title="작업 메뉴"
+        className={cn(
+          "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
+          open ? "bg-accent text-foreground" : "text-tertiary hover:bg-accent hover:text-foreground",
+        )}
+      >
+        <MoreHorizontal className="size-3.5" strokeWidth={2.2} />
+      </button>
+      {open && (
+        <PopoverPortal
+          anchorRef={anchor}
+          width={190}
+          onClose={() => setOpen(false)}
+          className="flex flex-col gap-px p-[5px]"
+        >
+          <button
+            type="button"
+            onClick={handleArchive}
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+          >
+            <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
+          </button>
+          <span className="my-[3px] h-px bg-border" />
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <Trash2 className="size-3.5 shrink-0" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">삭제</span>
+          </button>
         </PopoverPortal>
       )}
     </span>

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use atelier_core::{projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
+use atelier_core::{archive_dir, projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -63,6 +63,21 @@ pub async fn set_work_title(slug: String, title: String) -> CmdResult<WorkView> 
 pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView> {
     let status = status.parse().map_err(err)?;
     atelier_core::update_work_status(&works_dir(), &slug, status).map_err(err)
+}
+
+/// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
+/// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
+#[tauri::command]
+pub async fn archive_work(slug: String) -> CmdResult<()> {
+    atelier_core::archive_work(&works_dir(), &archive_dir(), &projects_dir(), &slug)
+        .map(|_| ())
+        .map_err(err)
+}
+
+/// 통째로 지운다. MCP 도구와 같이 force를 노출하지 않는다 (atelier_remove_work와 같은 계약).
+#[tauri::command]
+pub async fn remove_work(slug: String) -> CmdResult<()> {
+    atelier_core::remove_work(&works_dir(), &slug, false).map_err(err)
 }
 
 #[tauri::command]

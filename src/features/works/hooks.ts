@@ -76,3 +76,20 @@ export function useSetWorkStatus() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
   });
 }
+
+// 아카이브와 삭제 모두 목록에서 사라지게 만든다 — 무효화 대상은 같다.
+export function useArchiveWork() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => worksApi.archive(slug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
+  });
+}
+
+export function useRemoveWork() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => worksApi.remove(slug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
+  });
+}
