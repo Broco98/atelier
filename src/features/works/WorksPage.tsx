@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, List, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Check, ChevronDown, Folder, List, Maximize2, Minimize2, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { useProjects } from "@/features/projects/hooks";
 import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
 import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
@@ -20,6 +21,10 @@ const PANEL_OPEN_KEY = "works-panel-open";
 
 function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: WorksPageProps) {
   const { data: works = [] } = useWorks();
+  // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
+  // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
+  const { data: projects = [] } = useProjects();
+  const needsProject = works.length === 0 && projects.length === 0;
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
   );
@@ -146,19 +151,25 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
               <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                <Zap className="size-5" strokeWidth={1.6} />
+                {needsProject ? (
+                  <Folder className="size-5" strokeWidth={1.6} />
+                ) : (
+                  <Zap className="size-5" strokeWidth={1.6} />
+                )}
               </div>
               <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                아직 작업이 없어요
+                {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
               </span>
               <span className="text-[14px] leading-[1.65] text-tertiary">
-                작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행
-                상황이 여기에 나타나요.
+                {needsProject
+                  ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+                  : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
               </span>
-              {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
-                  atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
+              {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
+                  atelier_add_project / atelier_start_work를 부른다.
+                  아래 문구는 그대로 붙여 넣는 것이다. */}
               <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                atelier로 "새 작업" 시작해줘
+                {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
               </code>
             </div>
           </div>
