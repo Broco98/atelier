@@ -312,9 +312,12 @@ function SectionHeader({
       <span className="shrink-0 text-[13.5px] font-medium text-tertiary transition-colors group-hover:text-muted-foreground">
         {label}
       </span>
+      {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
+          트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
+          독립 rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다. */}
       <ChevronDown
         className={cn(
-          "size-3.5 shrink-0 text-tertiary transition-[opacity,transform] duration-150",
+          "size-3.5 shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
           open ? "opacity-0 group-hover:opacity-100" : "-rotate-90 opacity-100",
         )}
         strokeWidth={2.2}
