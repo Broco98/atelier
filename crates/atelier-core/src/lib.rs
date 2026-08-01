@@ -39,6 +39,7 @@ pub use store::{
 };
 pub use work::{parse_work, render_work, WorktreeView, Work, WorkStatus, WorkView};
 pub use works::{
-    archive_work, attach_project, get_work, list_works, read_spec_file, remove_work, render_record,
-    start_work, update_work_status, update_work_title, WorkReport, WorktreeError,
+    archive_work, attach_project, get_work, list_archive, list_works, read_spec_file, remove_work,
+    render_record, start_work, update_work_status, update_work_title, ArchiveEntry, WorkReport,
+    WorktreeError,
 };

@@ -356,8 +356,51 @@ pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
     Ok(views)
 }
 
+/// **작업 루트만 본다.** 보존소로 넘어가는 폴백은 여기 넣지 않는다 — 데스크톱 앱의
+/// 단건 조회가 이 함수를 그대로 부르므로, 여기 넣으면 stale한 slug 하나로 아카이브된
+/// work가 Works 화면에 그려진다. 두 루트를 다 보고 싶은 호출부는 루트를 바꿔 두 번
+/// 부르면 된다 (MCP 표면이 그렇게 한다).
 pub fn get_work(works_root: &Path, slug: &str) -> Result<WorkView> {
     Ok(to_view(works_root, read_work(works_root, slug)?))
+}
+
+/// 아카이브 목록의 한 줄. **경량이다** — `specFiles`도 워크트리도 담지 않는다.
+/// 아카이브는 계속 쌓이기만 하므로, 작업 목록 조회가 spec 파일 목록까지 뱉어 컨텍스트를
+/// 먹는 문제를 물려받으면 안 된다. 문서가 필요하면 slug로 단건 조회한다.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveEntry {
+    pub slug: String,
+    pub title: String,
+    pub status: WorkStatus,
+    /// 손으로 옮겨 둔 폴더에는 없을 수 있다 — 없는 것을 지어내지 않는다.
+    pub archived_at: Option<String>,
+    pub projects: Vec<String>,
+}
+
+pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
+    std::fs::create_dir_all(archive_root)?;
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(archive_root)? {
+        let entry = entry?;
+        let slug = entry.file_name().to_string_lossy().to_string();
+        if slug.starts_with('.') || !entry.path().is_dir() {
+            continue;
+        }
+        // 망가진 파일 하나가 전체 목록을 막지 않게 한다 (list_works와 같은 규칙)
+        if let Ok(work) = read_work(archive_root, &slug) {
+            entries.push(ArchiveEntry {
+                archived_at: work.extra.get("archivedAt").and_then(|v| v.as_str()).map(str::to_string),
+                slug: work.slug,
+                title: work.title,
+                status: work.status,
+                projects: work.projects,
+            });
+        }
+    }
+    // 최근에 치운 것이 먼저, 같은 날이면 slug 오름차순 (list_works와 같은 규칙)
+    entries.sort_by(|a, b| b.archived_at.cmp(&a.archived_at).then_with(|| a.slug.cmp(&b.slug)));
+    Ok(entries)
 }
 
 /// 표시 이름만 바꾼다. **slug는 건드리지 않는다** — 디렉터리명이 slug의 원천이라
@@ -537,8 +580,8 @@ fn dirty_report(project: &str, worktree: &Path) -> String {
     }
     let shown = files.iter().take(CAP).cloned().collect::<Vec<_>>().join(", ");
     match files.len().saturating_sub(CAP) {
-        0 => format!("{project}: {shown}"),
-        more => format!("{project}: {shown} 외 {more}개"),
+        0 => format!("{project} ({shown})"),
+        more => format!("{project} ({shown} 외 {more}개)"),
     }
 }
 
@@ -1609,6 +1652,65 @@ mod tests {
         // 제목에서 파생하는 경로: 접미사가 붙는다
         let report = start_work(&works, &archive, &projects, "cart", None, &[], None).unwrap();
         assert_eq!(report.view.work.slug, "cart-2");
+    }
+
+    // ── 아카이브 조회 (list_archive) ──────────────────────────────────────
+
+    /// 아카이브는 계속 쌓이기만 한다. 작업 목록 조회가 spec 파일 목록까지 뱉어
+    /// 컨텍스트를 먹는 문제를 물려받으면 안 된다.
+    #[test]
+    fn archive_list_is_lightweight_and_carries_no_spec_files() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        std::fs::write(works.join(&slug).join("spec/overview.md"), "# 개요\n").unwrap();
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let listed = list_archive(&archive).unwrap();
+        assert_eq!(listed.len(), 1);
+        let e = &listed[0];
+        assert_eq!(e.slug, slug);
+        assert_eq!(e.title, "치울 것");
+        assert_eq!(e.status, WorkStatus::Active);
+        assert_eq!(e.projects, vec!["fe"]);
+        assert_eq!(e.archived_at.as_deref(), Some(chrono::Local::now().format("%Y-%m-%d").to_string().as_str()));
+
+        // wire 계약: 경량 필드만. specFiles·worktrees·specDir이 새어나오면 안 된다
+        let json = serde_json::to_value(e).unwrap();
+        let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, vec!["archivedAt", "projects", "slug", "status", "title"], "{json}");
+    }
+
+    #[test]
+    fn archive_list_is_empty_before_anything_is_archived() {
+        let (_tmp, works, _projects) = setup();
+        assert!(list_archive(&archive_root(&works)).unwrap().is_empty());
+    }
+
+    /// 최근에 치운 것이 먼저, 같은 날이면 slug 오름차순 (list_works와 같은 규칙).
+    #[test]
+    fn archive_list_puts_the_most_recently_archived_first() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        for slug in ["나중", "먼저"] {
+            start_work(&works, &archive, &projects, slug, Some(slug), &[], None).unwrap();
+            archive_work(&works, &archive, &projects, slug).unwrap();
+        }
+        let listed = list_archive(&archive).unwrap();
+        let slugs: Vec<&str> = listed.iter().map(|e| e.slug.as_str()).collect();
+        assert_eq!(slugs, vec!["나중", "먼저"], "같은 날짜의 tiebreak가 slug 오름차순이 아니다");
+    }
+
+    /// 데스크톱 앱의 단건 조회가 이 함수를 그대로 부른다. 여기에 폴백을 넣으면
+    /// stale한 slug 하나로 아카이브된 work가 Works 화면에 그려진다 — 확장은 MCP 표면에서만.
+    #[test]
+    fn get_work_does_not_reach_into_the_archive() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        assert!(matches!(get_work(&works, &slug), Err(Error::WorkNotFound(_))));
+        // 같은 함수를 보존소 루트로 부르면 나온다 — 폴백은 호출부가 정한다
+        assert_eq!(get_work(&archive, &slug).unwrap().work.slug, slug);
     }
 
     /// 워크트리가 이미 없어도 문서는 만든다. 없는 좌표를 지어내지 않고 그렇게 적는다.

@@ -294,7 +294,8 @@ fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
 
 /// V2 — 이 물결이 끝난 시점의 도구 표면 전체. 도구를 더할 때마다 여기가 자란다.
 /// (티켓 03이 atelier_add_project·atelier_edit_project를 더해 9개로 채웠고,
-///  #23이 atelier_edit_work를 더해 10개, #68이 atelier_archive_work를 더해 11개가 됐다.)
+///  #23이 atelier_edit_work를 더해 10개, #68이 atelier_archive_work를 더해 11개,
+///  #69가 atelier_list_archive를 더해 12개가 됐다.)
 #[test]
 fn listed_tools_are_exactly_this_wave() {
     let home = tempfile::tempdir().unwrap();
@@ -310,6 +311,7 @@ fn listed_tools_are_exactly_this_wave() {
             "atelier_edit_project",
             "atelier_edit_work",
             "atelier_get_work",
+            "atelier_list_archive",
             "atelier_list_projects",
             "atelier_list_works",
             "atelier_remove_work",
@@ -320,8 +322,8 @@ fn listed_tools_are_exactly_this_wave() {
 }
 
 /// 읽기 전용 계약을 지켜야 하는 도구들. 쓰기 도구는 단계 6에서 따로 본다.
-const READ_ONLY_TOOLS: [&str; 3] =
-    ["atelier_get_work", "atelier_list_projects", "atelier_list_works"];
+const READ_ONLY_TOOLS: [&str; 4] =
+    ["atelier_get_work", "atelier_list_archive", "atelier_list_projects", "atelier_list_works"];
 
 #[test]
 fn read_tools_declare_read_only_and_local_only() {
@@ -1146,6 +1148,85 @@ fn archive_refuses_dirty_worktrees_and_names_the_files() {
     assert!(text.contains("docs/plan.md"), "무엇 때문인지 말하지 않는다: {text}");
     assert!(!home.path().join("archive/cart").exists(), "거부됐는데 옮겨졌다");
     assert!(worktree.join("docs/plan.md").is_file(), "거부됐는데 파일이 사라졌다");
+}
+
+/// 이 기능의 주된 소비자가 미래 세션이다. **도구 목록에 이름이 떠 있는 것 자체가
+/// 발견 경로**이므로 목록 도구를 둔다. 응답은 경량이다 — 아카이브는 쌓이기만 한다.
+#[test]
+fn list_archive_returns_archived_works_without_their_spec_files() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    std::fs::write(home.path().join("works/cart/spec/overview.md"), "# 개요\n").unwrap();
+    server.request(4, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "cart" } }));
+
+    let res = server.request(5, "tools/call",
+        json!({ "name": "atelier_list_archive", "arguments": {} }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let entries: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let entry = &entries[0];
+    assert_eq!(entry["slug"], "cart");
+    assert_eq!(entry["title"], "카트");
+    assert_eq!(entry["status"], "active", "아카이브가 status를 바꿨다: {entry}");
+    assert!(entry["archivedAt"].is_string(), "{entry}");
+    assert_eq!(entry["projects"][0], "billing");
+    // 작업 목록 조회가 spec 파일까지 뱉어 컨텍스트를 먹는 문제를 물려받으면 안 된다
+    assert!(entry["specFiles"].is_null(), "경량이어야 한다: {entry}");
+    assert!(entry["specDir"].is_null(), "경량이어야 한다: {entry}");
+    assert!(entry["worktrees"].is_null(), "경량이어야 한다: {entry}");
+}
+
+/// "slug 하나를 주면 그 work를 준다"는 정신 모델이 유지돼야, 에이전트가 참조를 보고
+/// 도구를 고르기 전에 위치부터 알아낼 필요가 없다. 대신 **어느 쪽에서 왔는지**를
+/// 말해준다 — 아카이브된 work의 spec을 고치려 드는 실수를 막기 위해서다.
+#[test]
+fn get_work_falls_back_to_the_archive_and_says_where_it_came_from() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    // 아카이브 전에는 작업 루트에서 온다
+    let live = server.request(4, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "cart" } }));
+    let view: Value =
+        serde_json::from_str(live["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["origin"], "works", "{view}");
+    assert!(live["result"]["content"][1]["text"].as_str().unwrap().contains("specDir"));
+
+    server.request(5, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "cart" } }));
+
+    // 같은 slug, 같은 도구 — 이제 보존소에서 온다
+    let res = server.request(6, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "cart" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["origin"], "archive", "{view}");
+    assert!(view["specDir"].as_str().unwrap().contains("archive"), "{view}");
+
+    // spec을 쓸 자리를 안내하면 안 된다 — 여기는 일어난 일의 기록이다
+    let note = res["result"]["content"][1]["text"].as_str().unwrap();
+    assert!(note.contains("archived"), "{note}");
+    assert!(!note.contains("write this first"), "아카이브에 spec 작성을 안내했다: {note}");
+}
+
+#[test]
+fn get_work_that_is_in_neither_root_still_reports_not_found() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    let res = server.request(3, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "없는-것" } }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    assert!(res["result"]["content"][0]["text"].as_str().unwrap().contains("없는-것"));
 }
 
 /// 삭제 도구의 force가 없는 이유(그것은 "지운다")와 아카이브의 이유는 다르지만,
