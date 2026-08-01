@@ -1259,6 +1259,49 @@ fn archiving_a_project_less_work_does_not_promise_a_surviving_branch() {
     assert!(!note.contains("recoverable"), "되찾을 것이 없다: {note}");
 }
 
+/// 위 테스트는 부정 단언뿐이라 반대 방향을 못 잡는다 — 항상 "브랜치 없음" 문구를 쓰도록
+/// 회귀시켜도 통과한다. 브랜치가 **살아 있는** 쪽도 함께 걸어야 갈래가 고정된다.
+#[test]
+fn archiving_a_work_with_a_branch_says_the_commits_are_recoverable() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    let res = server.request(4, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "cart" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let note = res["result"]["content"][1]["text"].as_str().unwrap();
+    assert!(note.contains("branch still exists"), "살아 있는 브랜치를 안 알려줬다: {note}");
+    assert!(note.contains("recoverable"), "{note}");
+}
+
+/// 폴백은 **"없다"일 때만** 탄다. 망가진 work.json의 오류까지 폴백으로 넘기면
+/// 보존소에도 없으므로 결국 "work not found"로 보고되고, 에이전트는 원인을 못 보고
+/// 같은 work을 다시 만들려 든다. 계약이 주석에만 있었어서 여기에 건다.
+#[test]
+fn get_work_does_not_hide_a_broken_work_file_behind_the_archive_fallback() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    std::fs::write(home.path().join("works/cart/work.json"), "{ 이건 JSON이 아니다").unwrap();
+
+    let res = server.request(4, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "cart" } }));
+
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        !text.contains("not found"),
+        "망가진 파일을 '없다'로 덮었다 — 원인이 가려진다: {text}"
+    );
+}
+
 #[test]
 fn get_work_that_is_in_neither_root_still_reports_not_found() {
     let (home, _code) = fixture();

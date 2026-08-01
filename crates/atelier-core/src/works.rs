@@ -1530,6 +1530,10 @@ mod tests {
         // 목록에서 빠지는 것이 구조다 — 목록을 읽는 코드는 보존소를 보지 않는다
         assert!(list_works(&works).unwrap().is_empty());
         assert_eq!(view.work.slug, slug);
+        // 돌려주는 뷰는 **보존소를 기준으로** 읽어야 한다. 이 값이 그대로 MCP 응답 본체가
+        // 되므로, 작업 루트로 읽으면 방금 옮겨간 spec을 "없다"고 답하게 된다.
+        assert!(view.spec_dir.contains("archive"), "spec_dir: {}", view.spec_dir);
+        assert_eq!(view.spec_files, ["overview.md"], "옮겨간 spec을 못 읽었다");
     }
 
     /// spec은 사람과 에이전트가 **쓴** 것이고 기록은 기계가 **뽑은** 것이다.
@@ -1595,6 +1599,34 @@ mod tests {
         // 자정을 넘겨도 안 깨지게 — 실행 전후 중 하나면 된다
         assert!([&before[..], &chrono::Local::now().format("%Y-%m-%d").to_string()[..]]
             .contains(&stamped), "{stamped}");
+    }
+
+    /// 보존소에 같은 이름이 이미 있으면 **아무것도 건드리지 않고** 거절한다.
+    ///
+    /// 워크트리가 살아남았는지까지 보는 것이 이 테스트의 값이다 — 이 검사가 1단계에
+    /// 있다는 사실을 고정한다. 검사가 없으면 1~3단계(검증·기록·워크트리 제거)가 전부
+    /// 돌고 나서 4단계 rename이 `Directory not empty`로 죽는다: 워크트리는 이미 사라진
+    /// 뒤고, 사용자가 받는 것은 OS 오류 문자열뿐이다.
+    ///
+    /// 이 상태는 사람이 `~/.atelier/archive/`를 직접 만졌을 때 생긴다 — 되돌리기가
+    /// 없으므로 손으로 되돌리는 것이 유일한 경로이고, `mv` 대신 `cp -r`이면 양쪽에 남는다.
+    #[test]
+    fn archive_never_overwrites_and_refuses_before_touching_anything() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let occupied = archive.join(&slug);
+        std::fs::create_dir_all(&occupied).unwrap();
+        std::fs::write(occupied.join("record.md"), "먼저 있던 기록\n").unwrap();
+
+        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+
+        assert!(err.to_string().contains("never overwritten"), "{err}");
+        assert!(works.join(&slug).join("trees/fe").is_dir(), "워크트리를 이미 지웠다");
+        assert_eq!(
+            std::fs::read_to_string(occupied.join("record.md")).unwrap(),
+            "먼저 있던 기록\n",
+            "먼저 있던 것을 덮었다"
+        );
     }
 
     /// 기존 삭제 기능의 오류는 워크트리 **경로**만 준다 — 사용자가 직접 가서 확인해야 한다.
@@ -1983,6 +2015,29 @@ mod tests {
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
         assert!(doc.contains("base: 알 수 없다"), "{doc}");
+    }
+
+    /// 등록이 사라져도 **저장소 자신이 origin/HEAD를 알면** base는 거기서 온다.
+    ///
+    /// 위 테스트만으로는 이 갈래가 한 번도 실행되지 않는다 — `init_repo`가 만드는 저장소에는
+    /// origin이 없어서 폴백이 늘 None을 통과한다. 폴백을 통째로 지워도 초록이었다.
+    #[test]
+    fn record_falls_back_to_origin_head_when_the_project_is_gone() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "o.txt", "o\n", "고아 커밋");
+
+        // 원격이 있는 저장소를 흉내낸다: origin/main을 만들고 origin/HEAD가 그것을 가리키게 한다
+        let main = run_git(&worktree, &["rev-parse", "main"]);
+        run_git(&worktree, &["remote", "add", "origin", "."]);
+        run_git(&worktree, &["update-ref", "refs/remotes/origin/main", &main]);
+        run_git(&worktree, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+        crate::delete_project(&projects, "fe").unwrap();
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- base: main"), "origin/HEAD를 안 봤다: {doc}");
     }
 
     /// 이 저장소의 계획·리서치 문서 이름이 한글이다. git 기본값(`core.quotePath`)은 그것을
