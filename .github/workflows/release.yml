@@ -39,7 +39,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: 테스트
-        run: cargo test
+        run: |
+          cargo test
+          pnpm test
 
       - name: 앱 빌드 (.dmg)
         run: pnpm tauri build

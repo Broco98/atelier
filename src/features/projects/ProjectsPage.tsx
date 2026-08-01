@@ -46,8 +46,8 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const selected =
-    projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
+  // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
+  const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
 
   // 네이티브 폴더 선택창 직행 — baseBranch는 백엔드가 감지하고 상세에서 바꿀 수 있다
   const handleAdd = async () => {
