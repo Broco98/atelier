@@ -546,14 +546,18 @@ pub fn archive_work(
         return Err(Error::DirtyWorktrees(dirty.join("; ")));
     }
 
-    // 2. 기록 — 워크트리가 살아 있는 유일한 순간.
-    //    **이미 있으면 덮지 않는다.** 멈춘 실행을 재개할 때 워크트리는 이미 없으므로,
-    //    다시 뽑으면 좌표가 빈 문서가 살아 있을 때 뽑아 둔 기록을 지운다.
+    // 2. 기록 — 워크트리가 살아 있는 유일한 순간. 매번 새로 뽑되, 앞선 실행이 남긴 기록이
+    //    있으면 **이번에 좌표를 못 읽은 섹션만** 그쪽에서 되살린다. 통째로 덮으면 이미
+    //    지워진 워크트리의 좌표가 빈 문서로 지워지고, 통째로 두면 그 사이 쌓인 커밋이
+    //    영영 안 들어온다 (3단계가 아무것도 못 지우고 실패하는 경우가 실재한다).
     let archived_at = chrono::Local::now().format("%Y-%m-%d").to_string();
     let record = dir.join(RECORD_FILE);
-    if !record.exists() {
-        std::fs::write(&record, render_record(works_root, projects_root, &work, &archived_at))?;
-    }
+    let fresh = render_record(works_root, projects_root, &work, &archived_at);
+    let document = match std::fs::read_to_string(&record) {
+        Ok(previous) => merge_record(&fresh, &previous),
+        Err(_) => fresh,
+    };
+    std::fs::write(&record, document)?;
 
     // 3. 워크트리 전부 제거. 하나라도 실패하면 옮기지 않는다 — 반쯤 옮겨진 디렉터리는
     //    양쪽 어디에도 온전히 없다. 생성 쪽의 "성공분 유지" 계약을 물려받지 않는 이유다.
@@ -567,6 +571,31 @@ pub fn archive_work(
     work.extra.insert("archivedAt".to_string(), serde_json::Value::String(archived_at));
     write_work(archive_root, &work)?;
     Ok(to_view(archive_root, work))
+}
+
+/// 이번에 좌표를 못 읽은 프로젝트 섹션을 앞선 실행의 것으로 되돌린다.
+/// **기록이 덜 완전해지는 일은 없어야 한다** — 아카이브는 되돌릴 수 없고, 이 문서가
+/// 저장소 없이도 완결된 원본이라는 것이 커밋을 통째로 담기로 한 이유다.
+fn merge_record(fresh: &str, previous: &str) -> String {
+    fn has_coordinates(section: &str) -> bool {
+        section.contains("\n- 워크트리 HEAD:")
+    }
+    let mut out = String::new();
+    for (i, section) in fresh.split("\n## ").enumerate() {
+        // 0번은 머리말이다 — 날짜와 상태는 언제나 이번 실행 것이 맞다.
+        if i == 0 {
+            out.push_str(section);
+            continue;
+        }
+        let project = section.lines().next();
+        let recovered = (!has_coordinates(section))
+            .then(|| previous.split("\n## ").find(|p| p.lines().next() == project))
+            .flatten()
+            .filter(|p| has_coordinates(p));
+        out.push_str("\n## ");
+        out.push_str(recovered.unwrap_or(section));
+    }
+    out
 }
 
 /// 거부 사유를 **어떤 파일 때문인지**로 적는다. 목록이 길어지면 잘라 낸다 —
@@ -634,24 +663,35 @@ fn push_worktree_record(
     work: &Work,
 ) {
     let declared = work.branch.as_deref().unwrap_or("없음");
-    // 등록이 사라졌거나 워크트리가 이미 없어도 섹션은 남긴다. 읽지 못했다는 것도 사실이다.
-    let Ok(view) = crate::get_project(projects_root, project) else {
+    // base는 프로젝트 등록에서 온다. 등록이 사라졌으면 `origin/HEAD`로 물러서고, 그것도
+    // 없으면 base 없이 간다 — **좌표까지 버리지는 않는다.** 커밋 목록을 통째로 담기로 한
+    // 이유가 "프로젝트를 등록 해제하면 SHA로 복원이 안 된다"였는데, 바로 그 경우에
+    // 아무것도 안 남기면 그 결정이 산 것을 그대로 잃는다.
+    let base = crate::get_project(projects_root, project)
+        .ok()
+        .map(|view| view.project.base_branch)
+        .or_else(|| git::origin_head(worktree));
+    let Some(r) = git::inspect_worktree(worktree, base.as_deref(), work.branch.as_deref()) else {
+        // 워크트리 자체를 못 읽었다 — 여기서만 좌표가 없다.
         out.push_str(&format!(
-            "- 선언 브랜치: {declared}\n- 기록 없음: 프로젝트가 등록돼 있지 않아 base를 알 수 없다\n"
-        ));
-        return;
-    };
-    let base = view.project.base_branch;
-    let Some(r) = git::inspect_worktree(worktree, &base, work.branch.as_deref()) else {
-        out.push_str(&format!(
-            "- 선언 브랜치: {declared}\n- base: {base}\n- 기록 없음: 워크트리를 읽을 수 없다\n"
+            "- 선언 브랜치: {declared}\n- 기록 없음: 워크트리를 읽을 수 없다\n"
         ));
         return;
     };
     // 분석은 선언 브랜치의 끝을 따르고, 워크트리가 실제로 선 자리는 따로 적는다.
     // 둘이 어긋난 work가 실제로 있으므로 한쪽을 골라 진실인 척하면 안 된다.
-    out.push_str(&format!("- 선언 브랜치: {declared} — {}\n", r.tip));
-    out.push_str(&format!("- 워크트리 HEAD: {}\n- base: {base}\n", r.head));
+    match &r.branch_tip {
+        Some(tip) => out.push_str(&format!("- 선언 브랜치: {declared} — {tip}\n")),
+        // 브랜치가 정리돼 사라진 뒤일 수 있다. HEAD를 그 브랜치의 끝인 양 적지 않는다.
+        None => out.push_str(&format!(
+            "- 선언 브랜치: {declared} — 이 저장소에 없다 (아래는 워크트리 HEAD 기준)\n"
+        )),
+    }
+    out.push_str(&format!("- 워크트리 HEAD: {}\n", r.head));
+    match &base {
+        Some(base) => out.push_str(&format!("- base: {base}\n")),
+        None => out.push_str("- base: 알 수 없다 — 프로젝트가 등록돼 있지 않다\n"),
+    }
     out.push_str(&format!("- base 반영: {}\n", base_state_line(&r)));
     out.push_str(&format!(
         "- 커밋 {}개 · {}파일 · +{} / −{}\n",
@@ -676,11 +716,18 @@ fn push_worktree_record(
 
 fn base_state_line(r: &git::WorktreeRecord) -> String {
     match &r.state {
-        git::BaseState::Merged { sha, subject } => match pr_number(subject) {
-            Some(pr) => format!("예 — {sha} (PR #{pr})"),
-            None => format!("예 — {sha}"),
-        },
-        git::BaseState::NoMergeCommit if r.tip == r.base_sha => {
+        git::BaseState::Merged { sha, subject, merges } => {
+            let pr = match pr_number(subject) {
+                Some(pr) => format!("예 — {sha} (PR #{pr})"),
+                None => format!("예 — {sha}"),
+            };
+            // 여러 번 머지된 브랜치는 범위가 첫 머지 직전부터 마지막 머지까지다.
+            match merges {
+                1 => pr,
+                n => format!("{pr} — 이 브랜치는 {n}번에 걸쳐 머지됐고, 아래는 그 전체다"),
+            }
+        }
+        git::BaseState::NoMergeCommit if Some(&r.tip) == r.base_sha.as_ref() => {
             "예 — 브랜치 끝이 곧 base다".to_string()
         }
         // fast-forward든 커밋 없는 브랜치든 결과는 같다: 어느 커밋이 이 브랜치 것인지
@@ -690,7 +737,13 @@ fn base_state_line(r: &git::WorktreeRecord) -> String {
              브랜치 커밋이 없다). 커밋 범위도 특정할 수 없다"
                 .to_string()
         }
-        git::BaseState::NotMerged => "아니오".to_string(),
+        // 스쿼시·리베이스는 SHA가 바뀌므로 여기서 구별할 수 없다. 단정하지 않는다.
+        git::BaseState::NotMerged => {
+            "아니오 — base에서 이 커밋들을 찾지 못했다 (미반영이거나 스쿼시·리베이스로 \
+             SHA가 바뀌었다)"
+                .to_string()
+        }
+        git::BaseState::BaseUnknown => "알 수 없다 — base를 못 읽어 판정하지 않았다".to_string(),
     }
 }
 
@@ -1533,12 +1586,15 @@ mod tests {
         let (_tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe"]);
 
+        let before = chrono::Local::now().format("%Y-%m-%d").to_string();
         archive_work(&works, &archive, &projects, &slug).unwrap();
 
         let raw = std::fs::read_to_string(archive.join(&slug).join("work.json")).unwrap();
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
         let stamped = json["archivedAt"].as_str().expect("archivedAt missing");
-        assert_eq!(stamped, chrono::Local::now().format("%Y-%m-%d").to_string());
+        // 자정을 넘겨도 안 깨지게 — 실행 전후 중 하나면 된다
+        assert!([&before[..], &chrono::Local::now().format("%Y-%m-%d").to_string()[..]]
+            .contains(&stamped), "{stamped}");
     }
 
     /// 기존 삭제 기능의 오류는 워크트리 **경로**만 준다 — 사용자가 직접 가서 확인해야 한다.
@@ -1580,7 +1636,7 @@ mod tests {
     /// 디렉터리 이동은 반쯤 된 상태가 양쪽 어디에도 온전히 없는 결과를 만든다 —
     /// 생성 쪽의 "성공분 유지·재실행 멱등" 계약을 물려받지 않는 이유다.
     #[test]
-    fn archive_moves_nothing_when_one_project_cannot_be_settled() {
+    fn archive_moves_nothing_when_a_worktree_cannot_even_be_inspected() {
         let (tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe", "be"]);
         // 원본 저장소가 사라진 워크트리 — 실제로 겪은 상태다
@@ -1631,6 +1687,93 @@ mod tests {
         assert!(record.contains("살아 있을 때 뽑은 커밋"), "좋은 기록을 덮어썼다: {record}");
     }
 
+    /// 3단계가 **아무것도 못 지우고** 실패하는 경우가 실재한다(잠긴 워크트리, 서브모듈).
+    /// 워크트리는 살아 있는데 기록만 남고, 재실행이 그것을 갱신하지 않으면 되돌릴 수 없는
+    /// 원본이 옛 시점에 고정된다.
+    #[test]
+    fn archive_refreshes_a_record_left_by_a_run_that_removed_nothing() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let worktree = works.join(&slug).join("trees/fe");
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["worktree", "lock", worktree.to_str().unwrap()]);
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(works.join(&slug).join("record.md").is_file(), "1차 기록이 없다");
+        assert!(worktree.is_dir(), "워크트리는 살아 있어야 하는 상황이다");
+
+        run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
+        commit(&worktree, "later.txt", "l\n", "1차 실패 뒤에 올린 커밋");
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
+        assert!(record.contains("1차 실패 뒤에 올린 커밋"), "기록이 옛 시점에 고정됐다: {record}");
+    }
+
+    /// 반대쪽 위험: 이번 실행에서 **못 읽게 된** 섹션은 앞선 기록을 지켜야 한다.
+    /// 3단계가 프로젝트 하나를 지운 뒤 실패했다면 그 좌표는 다시 못 읽는다.
+    #[test]
+    fn archive_rerun_keeps_the_section_of_a_worktree_it_can_no_longer_read() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe", "be"]);
+        let dir = works.join(&slug);
+        commit(&dir.join("trees/fe"), "fe.txt", "f\n", "fe 커밋");
+        let be_worktree = dir.join("trees/be");
+        let be_repo = tmp.path().join("be");
+        run_git(&be_repo, &["worktree", "lock", be_worktree.to_str().unwrap()]);
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(!dir.join("trees/fe").exists(), "fe는 제거됐어야 이 상황이 된다");
+
+        run_git(&be_repo, &["worktree", "unlock", be_worktree.to_str().unwrap()]);
+        commit(&be_worktree, "be.txt", "b\n", "be 커밋");
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
+        assert!(record.contains("fe 커밋"), "못 읽게 된 섹션을 빈 문서로 덮었다: {record}");
+        assert!(record.contains("be 커밋"), "읽을 수 있는 섹션을 갱신하지 않았다: {record}");
+    }
+
+    /// 3단계 **부분 실패**의 원자성 — 워크트리 하나가 사라진 채 디렉터리는 그대로 남는다.
+    /// (dirty 게이트에 걸리는 경로와 다른 길이다. 그쪽은 아래 별도 테스트가 본다.)
+    #[test]
+    fn archive_moves_nothing_when_worktree_removal_fails_partway() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe", "be"]);
+        let be_worktree = works.join(&slug).join("trees/be");
+        run_git(&tmp.path().join("be"), &["worktree", "lock", be_worktree.to_str().unwrap()]);
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+
+        assert!(!archive.join(&slug).exists(), "부분 실패인데 옮겨졌다");
+        assert!(works.join(&slug).join("work.json").is_file());
+        let raw = std::fs::read_to_string(works.join(&slug).join("work.json")).unwrap();
+        assert!(!raw.contains("archivedAt"), "옮기지 못했는데 일시를 적었다: {raw}");
+    }
+
+    /// 인수 조건 "이동이 성공하지 않았으면 아카이브 일시가 적히지 않는다"를 고정한다.
+    /// 일시 기록을 rename 앞으로 옮기는 회귀가 어떤 테스트도 깨지 않았다.
+    #[cfg(unix)]
+    #[test]
+    fn archive_does_not_stamp_the_date_when_the_move_itself_fails() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        std::fs::create_dir_all(&archive).unwrap();
+        let mut perms = std::fs::metadata(&archive).unwrap().permissions();
+        perms.set_mode(0o500); // 안으로 새 항목을 만들 수 없다 — rename이 실패한다
+        std::fs::set_permissions(&archive, perms.clone()).unwrap();
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+
+        perms.set_mode(0o700);
+        std::fs::set_permissions(&archive, perms).unwrap();
+        let raw = std::fs::read_to_string(works.join(&slug).join("work.json")).unwrap();
+        assert!(!raw.contains("archivedAt"), "옮기지 못했는데 일시를 적었다: {raw}");
+        // 목록에 뜨는 아카이브된 work라는 모순 상태가 생기면 안 된다
+        assert_eq!(list_works(&works).unwrap().len(), 1);
+    }
+
     /// 아카이브에 같은 이름이 있는데 새 work가 그 이름을 쓰면 단건 조회가 모호해지고
     /// 사람도 두 디렉터리를 오가며 헷갈린다. **거는 지점이 하나가 아니다** — 제목에서
     /// 파생하는 경로와 slug를 명시하는 경로가 따로 있고, 명시 경로는 중복 회피를 거치지
@@ -1663,6 +1806,7 @@ mod tests {
         let (_tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe"]);
         std::fs::write(works.join(&slug).join("spec/overview.md"), "# 개요\n").unwrap();
+        let before = chrono::Local::now().format("%Y-%m-%d").to_string();
         archive_work(&works, &archive, &projects, &slug).unwrap();
 
         let listed = list_archive(&archive).unwrap();
@@ -1672,7 +1816,8 @@ mod tests {
         assert_eq!(e.title, "치울 것");
         assert_eq!(e.status, WorkStatus::Active);
         assert_eq!(e.projects, vec!["fe"]);
-        assert_eq!(e.archived_at.as_deref(), Some(chrono::Local::now().format("%Y-%m-%d").to_string().as_str()));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!([&before[..], &today[..]].contains(&e.archived_at.as_deref().unwrap()), "{e:?}");
 
         // wire 계약: 경량 필드만. specFiles·worktrees·specDir이 새어나오면 안 된다
         let json = serde_json::to_value(e).unwrap();
@@ -1711,6 +1856,154 @@ mod tests {
         assert!(matches!(get_work(&works, &slug), Err(Error::WorkNotFound(_))));
         // 같은 함수를 보존소 루트로 부르면 나온다 — 폴백은 호출부가 정한다
         assert_eq!(get_work(&archive, &slug).unwrap().work.slug, slug);
+    }
+
+    // ── 귀속 회귀 (리뷰에서 재현된 것들) ──────────────────────────────────
+
+    /// PR이 머지된 뒤 워크트리에서 브랜치를 base로 당겨오면(이미 다 머지됐으니 fast-forward)
+    /// 브랜치 ref가 **자기 머지 커밋 위로** 올라간다. 머지를 `tip..base`에서만 찾으면 그 순간
+    /// 범위 밖으로 나가 커밋이 통째로 사라진다 — 실측에서 6커밋·33파일이 "커밋 0개"가 됐다.
+    #[test]
+    fn record_still_finds_the_merge_after_the_branch_was_synced_onto_it() {
+        let (tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "동기화", None, &slugs(&["fe"]), Some("feat/synced")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "s.txt", "s\n", "동기화 전 커밋");
+
+        let repo = tmp.path().join("fe");
+        let subject = "Merge pull request #8 from o/feat/synced";
+        run_git(&repo, &["merge", "--no-ff", "feat/synced", "-m", subject]);
+        run_git(&worktree, &["merge", "--ff-only", "main"]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("(PR #8)"), "동기화 뒤 머지를 못 찾았다: {doc}");
+        assert!(doc.contains("동기화 전 커밋"), "커밋이 통째로 사라졌다: {doc}");
+        assert!(doc.contains("커밋 1개 · 1파일"), "{doc}");
+    }
+
+    /// 브랜치가 base로 동기화된 뒤에는 브랜치 ref와 base가 같은 커밋을 가리켜, ref만으로
+    /// 머지의 **방향**을 알 수 없다. `Merge branch 'develop' into feat/x`는 이 브랜치가 받는
+    /// 쪽이라 둘째 부모가 develop인데, 그것을 이 브랜치 구간으로 쓰면 base 커밋이 통째로
+    /// 딸려 온다 — 실측에서 6커밋짜리 work가 55커밋으로 기록됐다.
+    #[test]
+    fn record_ignores_merges_that_pulled_base_into_the_branch() {
+        let (tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "역방향", None, &slugs(&["fe"]), Some("feat/back")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        let repo = tmp.path().join("fe");
+
+        commit(&worktree, "mine.txt", "m\n", "내 커밋");
+        // base가 앞서 나가고, 그것을 브랜치로 당겨온다 (받는 쪽 머지)
+        commit(&repo, "theirs.txt", "t\n", "남의 커밋");
+        run_git(&worktree, &["merge", "--no-ff", "main", "-m", "Merge branch 'main' into feat/back"]);
+        // 그 다음 브랜치가 base로 들어간다
+        run_git(&repo, &["merge", "--no-ff", "feat/back", "-m", "Merge pull request #6 from o/feat/back"]);
+        run_git(&worktree, &["merge", "--ff-only", "main"]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("(PR #6)"), "{doc}");
+        assert!(doc.contains("내 커밋"), "{doc}");
+        assert!(!doc.contains("2번에 걸쳐"), "받는 쪽 머지를 구간으로 셌다: {doc}");
+        // 남의 커밋은 브랜치가 당겨온 것이지 이 work가 만든 것이 아니다
+        assert!(doc.contains("커밋 2개"), "{doc}");
+    }
+
+    /// 이름만 대조하면 접두 관계 브랜치(`feat/x`와 `feat/x-followup`)가 서로의 머지를 자기
+    /// 것으로 삼는다. 이름으로 좁히고 **구조로 확인해야** 한다.
+    #[test]
+    fn record_does_not_take_the_merge_of_a_branch_whose_name_extends_its_own() {
+        let (tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "짧은", Some("short"), &slugs(&["fe"]), Some("feat/x")).unwrap();
+        let work = report.view.work;
+        commit(&works.join("short/trees/fe"), "x.txt", "x\n", "내 커밋");
+
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["checkout", "-b", "feat/x-followup", "feat/x"]);
+        commit(&repo, "y.txt", "y\n", "남의 커밋");
+        run_git(&repo, &["checkout", "main"]);
+        let subject = "Merge pull request #9 from o/feat/x-followup";
+        run_git(&repo, &["merge", "--no-ff", "feat/x-followup", "-m", subject]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(!doc.contains("(PR #9)"), "이름이 겹치는 남의 머지를 삼켰다: {doc}");
+        assert!(!doc.contains("남의 커밋"), "남의 커밋이 이 work 것으로 기록됐다: {doc}");
+    }
+
+    #[test]
+    fn record_covers_every_merge_when_a_branch_landed_twice() {
+        let (tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "두번", None, &slugs(&["fe"]), Some("feat/twice")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        let repo = tmp.path().join("fe");
+
+        commit(&worktree, "one.txt", "1\n", "첫 커밋");
+        run_git(&repo, &["merge", "--no-ff", "feat/twice", "-m", "Merge pull request #1 from o/feat/twice"]);
+        commit(&worktree, "two.txt", "2\n", "둘째 커밋");
+        run_git(&repo, &["merge", "--no-ff", "feat/twice", "-m", "Merge pull request #2 from o/feat/twice"]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("첫 커밋"), "첫 머지분이 통째로 빠졌다: {doc}");
+        assert!(doc.contains("둘째 커밋"), "{doc}");
+        assert!(doc.contains("커밋 2개 · 2파일"), "{doc}");
+        assert!(doc.contains("2번에 걸쳐"), "여러 번 머지된 사실이 안 적혔다: {doc}");
+    }
+
+    /// 선언 브랜치가 정리돼 없어졌는데 워크트리 HEAD를 그 브랜치의 끝인 양 적으면,
+    /// 기계가 한쪽을 골라 진실인 척하는 것이다 — 이 결정이 막으려던 바로 그것이다.
+    #[test]
+    fn record_says_the_declared_branch_is_gone_rather_than_passing_head_off_as_its_tip() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "사라진", None, &slugs(&["fe"]), Some("feat/gone")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        run_git(&worktree, &["checkout", "-b", "release-x"]);
+        run_git(&worktree, &["branch", "-D", "feat/gone"]);
+        let head = run_git(&worktree, &["rev-parse", "HEAD"]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- 선언 브랜치: feat/gone — 이 저장소에 없다"), "{doc}");
+        assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "{doc}");
+    }
+
+    /// 커밋 목록을 통째로 담기로 한 근거가 *"프로젝트를 등록 해제하면 SHA로 복원이 안 된다"*
+    /// 였다. 정작 그 경우에 좌표까지 버리면 그 결정이 산 것을 그대로 잃는다.
+    #[test]
+    fn record_keeps_the_coordinates_when_the_project_is_no_longer_registered() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "o.txt", "o\n", "고아 커밋");
+        let head = run_git(&worktree, &["rev-parse", "HEAD"]);
+        crate::delete_project(&projects, "fe").unwrap();
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
+        assert!(doc.contains("base: 알 수 없다"), "{doc}");
+    }
+
+    /// 이 저장소의 계획·리서치 문서 이름이 한글이다. git 기본값(`core.quotePath`)은 그것을
+    /// 8진 이스케이프로 뱉어, "무엇 때문인지 말한다"는 목적이 실제 파일에서 깨진다.
+    #[test]
+    fn record_and_refusal_write_non_ascii_paths_readably() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let worktree = works.join(&slug).join("trees/fe");
+        commit(&worktree, "한글 문서.md", "내용\n", "한글 파일 추가");
+        let subject = "Merge pull request #2 from o/feat/tidy";
+        run_git(&tmp.path().join("fe"), &["merge", "--no-ff", "feat/tidy", "-m", subject]);
+
+        let work = get_work(&works, &slug).unwrap().work;
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- 한글 문서.md"), "파일명이 이스케이프됐다: {doc}");
+
+        std::fs::create_dir_all(worktree.join("docs")).unwrap();
+        std::fs::write(worktree.join("docs/설계 근거.md"), "메모\n").unwrap();
+        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+        assert!(err.to_string().contains("docs/설계 근거.md"), "거부 사유를 못 읽는다: {err}");
     }
 
     /// 워크트리가 이미 없어도 문서는 만든다. 없는 좌표를 지어내지 않고 그렇게 적는다.

@@ -1219,6 +1219,46 @@ fn get_work_falls_back_to_the_archive_and_says_where_it_came_from() {
     assert!(!note.contains("write this first"), "아카이브에 spec 작성을 안내했다: {note}");
 }
 
+/// 출처를 `flatten`으로 덧붙이면 work.json의 미지 필드와 같은 평면에 놓인다 —
+/// 누가 `origin` 필드를 적어 두면 키가 두 번 나가고, 읽는 쪽이 LLM이라 앞의 것을 집는다.
+#[test]
+fn get_work_reports_one_origin_even_when_the_work_file_already_has_that_field() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "카트", "slug": "cart" }
+    }));
+    let meta = home.path().join("works/cart/work.json");
+    let mut work: Value = serde_json::from_str(&std::fs::read_to_string(&meta).unwrap()).unwrap();
+    work["origin"] = json!("사용자가 손으로 적은 값");
+    std::fs::write(&meta, serde_json::to_string(&work).unwrap()).unwrap();
+
+    let res = server.request(4, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "cart" } }));
+    let raw = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(raw.matches("\"origin\"").count(), 1, "출처 키가 두 번 나갔다: {raw}");
+    let view: Value = serde_json::from_str(raw).unwrap();
+    assert_eq!(view["origin"], "works", "{view}");
+}
+
+/// 프로젝트가 없던 work는 브랜치도 커밋도 없다. "브랜치는 남아 있다"고 말하면
+/// 에이전트가 사용자에게 "코드는 브랜치에 있다"고 잘못 보고한다.
+#[test]
+fn archiving_a_project_less_work_does_not_promise_a_surviving_branch() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "리서치만", "slug": "research" }
+    }));
+
+    let res = server.request(4, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "research" } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let note = res["result"]["content"][1]["text"].as_str().unwrap();
+    assert!(!note.contains("branch still exists"), "없는 브랜치를 약속했다: {note}");
+    assert!(!note.contains("recoverable"), "되찾을 것이 없다: {note}");
+}
+
 #[test]
 fn get_work_that_is_in_neither_root_still_reports_not_found() {
     let (home, _code) = fixture();

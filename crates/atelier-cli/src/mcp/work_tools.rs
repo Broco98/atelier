@@ -326,15 +326,27 @@ impl AtelierServer {
             &self.projects_root,
             &work_slug,
         ) {
-            Ok(view) => Ok(CallToolResult::success(vec![
-                ContentBlock::json(&view)?,
-                ContentBlock::text(
-                    "Archived. The work is no longer in atelier_list_works. Its spec documents \
-                     moved with it and `record.md` next to them holds the git coordinates. The \
-                     branch still exists in every project repository, so committed work is \
-                     recoverable — the worktrees are not.",
-                ),
-            ])),
+            // 프로젝트가 없던 work는 브랜치도 워크트리도 없다 — "브랜치는 남아 있다"가
+            // 거짓이 된다 (atelier_remove_work가 같은 이유로 안내를 갈라 두었다).
+            Ok(view) => {
+                let note = match view.work.branch {
+                    Some(_) => {
+                        "Archived. The work is no longer in atelier_list_works. Its spec \
+                         documents moved with it and `record.md` next to them holds the git \
+                         coordinates. The branch still exists in every project repository, so \
+                         committed work is recoverable — the worktrees are not."
+                    }
+                    None => {
+                        "Archived. The work is no longer in atelier_list_works. It had no \
+                         project and no branch, so there is no code to recover anywhere: the \
+                         spec documents that moved with it are the whole record."
+                    }
+                };
+                Ok(CallToolResult::success(vec![
+                    ContentBlock::json(&view)?,
+                    ContentBlock::text(note),
+                ]))
+            }
             Err(e) => Ok(kernel_error(e)),
         }
     }

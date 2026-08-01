@@ -35,16 +35,6 @@ holds the git coordinates of what was actually done. Do not write into `specDir`
 is the record of what happened and archiving is not undone; start a new work for anything that \
 continues from here.";
 
-/// 단건 조회 응답. 뷰에 **어디서 왔는지**를 덧붙인다 — 커널의 뷰가 아니라 도구 계층이
-/// 아는 사실이다(루트를 두 개 보는 쪽이 여기이므로).
-#[derive(serde::Serialize)]
-struct WorkAnswer<'a> {
-    #[serde(flatten)]
-    view: &'a atelier_core::WorkView,
-    /// `"works"` 또는 `"archive"`
-    origin: &'static str,
-}
-
 /// `atelier_get_work`의 인자.
 ///
 /// `schemars(crate = ...)`는 필수다 — derive 확장이 크레이트 루트의 `schemars`를
@@ -141,10 +131,23 @@ impl AtelierServer {
             // 망가진 work.json 같은 것은 폴백으로 덮지 않는다. "없다"로 바뀌면 원인을 가린다.
             Err(e) => return Ok(kernel_error(e)),
         };
-        let answer = WorkAnswer { view: &view, origin };
+        // 출처는 **값으로 덮어쓴다.** `#[serde(flatten)]`로 덧붙이면 work.json의 미지 필드와
+        // 같은 평면에 놓여, 누군가 `origin`이라는 필드를 적어 두면 키가 두 번 나간다. 관대한
+        // 파서는 마지막 것을 취하지만, 이 응답을 읽는 것은 LLM이라 앞의 것을 집을 수 있다.
+        let answer = match serde_json::to_value(&view) {
+            Ok(serde_json::Value::Object(mut map)) => {
+                map.insert("origin".to_string(), origin.into());
+                Some(serde_json::Value::Object(map))
+            }
+            // 뷰 직렬화가 실패할 구조는 아니다. 그래도 출처 없이라도 뷰는 준다.
+            _ => None,
+        };
         // JSON이 먼저다 — 기계가 읽는 값이고, 안내는 그 뒤에 붙는다
         Ok(CallToolResult::success(vec![
-            ContentBlock::json(&answer)?,
+            match &answer {
+                Some(value) => ContentBlock::json(value)?,
+                None => ContentBlock::json(&view)?,
+            },
             ContentBlock::text(if origin == "archive" { ARCHIVED_NOTE } else { SPEC_LAYOUT }),
         ]))
     }

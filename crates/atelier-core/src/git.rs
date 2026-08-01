@@ -99,7 +99,12 @@ pub(crate) fn dirty_files(dir: &Path) -> Option<Vec<String>> {
     // porcelain v1은 `XY <경로>` — 상태 두 글자와 공백 뒤가 경로다.
     // `-uall`이 없으면 추적 안 된 디렉터리가 `docs/` 한 줄로 접혀, 무엇 때문인지를
     // 알려준다는 목적을 못 채운다. 목록이 길어지는 것은 호출부가 잘라 낸다.
-    let out = git(dir, &["status", "--porcelain", "--untracked-files=all"])?;
+    // `core.quotePath=false`가 없으면 한글 파일명이 8진 이스케이프로 나와 역시 못 읽는다 —
+    // 이 게이트가 실제로 잡는 파일들이 바로 한글 계획·리서치 문서다.
+    let out = git(
+        dir,
+        &["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"],
+    )?;
     Some(out.lines().filter_map(|line| line.get(3..)).map(str::to_string).collect())
 }
 
@@ -126,23 +131,28 @@ pub(crate) fn worktree_remove(worktree: &Path, force: bool) -> std::result::Resu
 
 /// 브랜치가 base에 반영된 방식.
 pub(crate) enum BaseState {
-    /// 머지 커밋을 통해 들어갔다
-    Merged { sha: String, subject: String },
+    /// 머지 커밋을 통해 들어갔다. `merges`는 그런 머지가 몇 번 있었는지.
+    Merged { sha: String, subject: String, merges: usize },
     /// base에 도달했지만 이 브랜치를 들여온 머지 커밋이 없다 — fast-forward로 들어갔거나,
     /// 애초에 브랜치에 커밋이 없어 base의 옛 커밋을 그대로 가리킨다. 어느 쪽이든 브랜치의
     /// 시작점을 git에게 물을 방법이 없으므로 커밋 범위를 특정할 수 없다.
     NoMergeCommit,
-    /// 반영되지 않았다 — 미반영이거나 스쿼시 머지
+    /// base에서 이 커밋들을 찾지 못했다 — 미반영이거나, 스쿼시·리베이스로 SHA가 바뀌었다.
     NotMerged,
+    /// base 자체를 알 수 없어 판정하지 못했다. 좌표는 그대로 남는다.
+    BaseUnknown,
 }
 
 /// 아카이브 기록이 쓰는 워크트리 좌표. **워크트리가 살아 있을 때만** 뽑을 수 있다.
 pub(crate) struct WorktreeRecord {
     /// 워크트리가 실제로 서 있는 커밋. 선언 브랜치와 어긋날 수 있어 따로 적는다.
     pub head: String,
-    /// 분석 대상 — 선언 브랜치의 끝. 브랜치를 찾을 수 없으면 `head`.
+    /// 선언 브랜치의 끝. 그 브랜치가 저장소에 없으면 `None`이고, 분석은 `head`로 물러선다 —
+    /// 없는 브랜치의 끝인 양 HEAD를 적으면 기계가 진실인 척하는 것이다.
+    pub branch_tip: Option<String>,
+    /// 실제 분석 대상 (`branch_tip`이 없으면 `head`)
     pub tip: String,
-    pub base_sha: String,
+    pub base_sha: Option<String>,
     pub state: BaseState,
     /// (짧은 SHA, 제목)
     pub commits: Vec<(String, String)>,
@@ -151,77 +161,124 @@ pub(crate) struct WorktreeRecord {
     pub deletions: u64,
 }
 
+/// base 히스토리에서 **이 브랜치를 들여온** 머지 커밋들 (최신 → 오래된 순).
+///
+/// 범위를 `tip..base`로 좁히면 안 된다. 머지된 뒤 워크트리에서 브랜치를 base로 동기화하면
+/// (이미 다 머지된 브랜치라 fast-forward된다) 브랜치 ref가 자기 머지 커밋 **위로** 올라가
+/// 그 머지가 범위 밖으로 나간다. 실측에서 6커밋·33파일짜리 work가 "커밋 0개"로 기록됐다.
+///
+/// 이름으로 후보를 좁히고 **구조로 확인한다.** 이름만 보면 접두 관계 브랜치(`feat/x`와
+/// `feat/x-followup`)가 서로의 머지를 자기 것으로 삼는다 — 그 머지가 들여온 쪽(`^2`)이
+/// 이 브랜치 끝에 포함돼 있어야 한다. 구조만 보는 것도 안 된다(크로스 머지 오탐).
+fn merges_that_brought_in(worktree: &Path, branch: &str, base_sha: &str, tip: &str) -> Vec<String> {
+    let listed = git(
+        worktree,
+        &["rev-list", "--merges", "--fixed-strings", &format!("--grep={branch}"), base_sha],
+    )
+    .unwrap_or_default();
+    listed
+        .lines()
+        .filter(|sha| {
+            git(worktree, &["merge-base", "--is-ancestor", &format!("{sha}^2"), tip]).is_some()
+                && git(worktree, &["log", "-1", "--format=%s", sha])
+                    .is_some_and(|subject| takes_branch_as_source(&subject, branch))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// 이 브랜치가 머지의 **들어가는 쪽**인가. `Merge branch 'develop' into feat/x`처럼 브랜치가
+/// **받는 쪽**이면 둘째 부모는 base이지 이 브랜치가 아니고, 그 범위를 쓰면 base의 커밋이
+/// 통째로 이 work 것이 된다. 브랜치가 base로 동기화된 뒤에는 ref만으로 방향을 알 수 없어
+/// (브랜치와 base가 같은 커밋을 가리킨다) 여기서는 머지 메시지의 방향을 읽는다.
+/// 실측: `feat/navigation-location`이 이 필터 없이 55커밋(정답 6커밋)으로 기록됐다.
+fn takes_branch_as_source(subject: &str, branch: &str) -> bool {
+    !subject.contains(&format!("into {branch}"))
+        && !subject.contains(&format!("into '{branch}'"))
+        && subject.contains(branch)
+}
+
 /// 워크트리 HEAD가 `base`에 대해 어떤 위치인지와, 그 브랜치가 담은 커밋·파일·증감.
-/// 저장소를 읽을 수 없으면 `None` — 없는 좌표를 지어내지 않는다.
+/// 워크트리를 읽을 수 없을 때만 `None` — 없는 좌표를 지어내지 않는다.
 ///
 /// 분석은 **선언 브랜치의 끝**을 따른다. 워크트리 HEAD가 아니다 — 워크트리는 릴리스
 /// 브랜치 같은 데로 흘러가 있을 수 있고, 실제로 그런 work가 있다. HEAD는 관측된 사실로
 /// 따로 기록한다.
+///
+/// `base`가 없거나 못 읽어도 **좌표는 남긴다.** 커밋 목록을 통째로 담기로 한 이유가
+/// "프로젝트를 등록 해제하면 SHA로 복원이 안 된다"였는데, 그 경우에 아무것도 안 남기면
+/// 그 결정이 산 것을 그대로 잃는다.
 pub(crate) fn inspect_worktree(
     worktree: &Path,
-    base: &str,
+    base: Option<&str>,
     branch: Option<&str>,
 ) -> Option<WorktreeRecord> {
     let head = git(worktree, &["rev-parse", "HEAD"])?;
-    let base_sha = git(worktree, &["rev-parse", &format!("{base}^{{commit}}")])?;
-    let tip = branch
-        .and_then(|b| git(worktree, &["rev-parse", "--verify", &format!("refs/heads/{b}")]))
-        .unwrap_or_else(|| head.clone());
+    let branch_tip =
+        branch.and_then(|b| git(worktree, &["rev-parse", "--verify", &format!("refs/heads/{b}")]));
+    let tip = branch_tip.clone().unwrap_or_else(|| head.clone());
+    let base_sha = base.and_then(|b| git(worktree, &["rev-parse", &format!("{b}^{{commit}}")]));
+
+    let Some(base_sha) = base_sha else {
+        return Some(WorktreeRecord {
+            head,
+            branch_tip,
+            tip,
+            base_sha: None,
+            state: BaseState::BaseUnknown,
+            commits: Vec::new(),
+            files: Vec::new(),
+            insertions: 0,
+            deletions: 0,
+        });
+    };
 
     // `--is-ancestor`는 종료 코드로 답한다 — git()이 실패를 None으로 접는 성질을 그대로 쓴다.
     let reached_base = git(worktree, &["merge-base", "--is-ancestor", &tip, &base_sha]).is_some();
 
-    // (from, to). 커밋은 `from..to`, 변경은 `from...to`(분기점 기준)로 본다.
-    let (state, range) = if reached_base {
-        // 브랜치를 base로 들여온 머지 커밋을 역추적한다. **`--first-parent`를 붙이면
-        // 안 된다** — 브랜치가 중간 브랜치를 거쳐 올라온 중첩 병합에서 결과가 사라진다.
-        let merges = git(
-            worktree,
-            &["rev-list", "--ancestry-path", "--merges", &format!("{tip}..{base_sha}")],
-        )
-        .unwrap_or_default();
-        // 오래된 것부터, 두 조건을 모두 만족하는 머지를 찾는다.
-        //
-        // ① tip이 그 머지의 **첫 부모 쪽에 이미 있으면 안 된다** — 있으면 머지 전에 이미
-        //    base에 있었다는 뜻이라, 이 브랜치를 들여온 머지가 아니라 뒤따라온 남의 머지다.
-        // ② 머지 커밋이 **이 브랜치 이름을 말해야 한다.** ①만으로는 부족하다 — 커밋이 하나도
-        //    없는 브랜치는 분기 시점의 커밋을 가리키는데, 그 커밋이 크로스 머지(main↔develop)로
-        //    남의 브랜치에 들어가면 그 머지가 ①을 통과한다. 실제 데이터에서 커밋 0개짜리
-        //    work가 develop 커밋 40개를 자기 것으로 삼았다. 이름은 우리가 가진 사실이므로
-        //    형식을 추측하는 것이 아니다. 못 찾으면 침묵한다 — 틀린 귀속보다 낫다.
-        let brought_in = branch.and_then(|branch| {
-            merges.lines().rev().find(|sha| {
-                git(worktree, &["merge-base", "--is-ancestor", &tip, &format!("{sha}^1")]).is_none()
-                    && git(worktree, &["log", "-1", "--format=%s", sha])
-                        .is_some_and(|subject| subject.contains(branch))
-            })
-        });
-        match brought_in {
-            Some(sha) => {
-                let subject = git(worktree, &["log", "-1", "--format=%s", sha]).unwrap_or_default();
-                let range = (format!("{sha}^1"), format!("{sha}^2"));
-                (BaseState::Merged { sha: sha.to_string(), subject }, Some(range))
+    // 각 머지가 들여온 구간. 커밋은 `from..to`, 변경은 `from...to`(분기점 기준)로 본다.
+    let (state, ranges) = if reached_base {
+        let found = branch
+            .map(|b| merges_that_brought_in(worktree, b, &base_sha, &tip))
+            .unwrap_or_default();
+        match found.first() {
+            // 같은 브랜치가 여러 번 머지됐으면 **각 머지의 구간을 합집합으로** 모은다.
+            // 하나로 이어 붙이면 그 사이 base가 나아간 커밋까지 딸려 들어온다.
+            Some(newest) => {
+                let subject =
+                    git(worktree, &["log", "-1", "--format=%s", newest]).unwrap_or_default();
+                let ranges: Vec<(String, String)> =
+                    found.iter().map(|sha| (format!("{sha}^1"), format!("{sha}^2"))).collect();
+                let state =
+                    BaseState::Merged { sha: newest.clone(), subject, merges: found.len() };
+                (state, ranges)
             }
             // 범위를 비워 둔다 — 머지 커밋의 존재를 가정하면 빈 결과가 깨진 범위 인자가 된다.
-            None => (BaseState::NoMergeCommit, None),
+            None => (BaseState::NoMergeCommit, Vec::new()),
         }
     } else {
-        (BaseState::NotMerged, Some((base_sha.clone(), tip.clone())))
+        (BaseState::NotMerged, vec![(base_sha.clone(), tip.clone())])
     };
+    let base_sha = Some(base_sha);
 
-    let mut commits = Vec::new();
-    let mut files = Vec::new();
+    let mut commits: Vec<(String, String)> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
     let (mut insertions, mut deletions) = (0, 0);
-    if let Some((from, to)) = &range {
+    for (from, to) in &ranges {
         let log = git(worktree, &["log", "--format=%h%x09%s", &format!("{from}..{to}")])
             .unwrap_or_default();
-        commits = log
-            .lines()
-            .filter_map(|l| l.split_once('\t'))
-            .map(|(sha, subject)| (sha.to_string(), subject.to_string()))
-            .collect();
-        let numstat =
-            git(worktree, &["diff", "--numstat", &format!("{from}...{to}")]).unwrap_or_default();
+        for (sha, subject) in log.lines().filter_map(|l| l.split_once('\t')) {
+            if !commits.iter().any(|(seen, _)| seen == sha) {
+                commits.push((sha.to_string(), subject.to_string()));
+            }
+        }
+        // `core.quotePath`를 끄지 않으면 비ASCII 파일명이 `"\355\225\234..."` 8진 이스케이프로
+        // 나온다. 이 저장소의 실제 문서 파일명이 한글이라 기록이 읽을 수 없게 된다.
+        let numstat = git(
+            worktree,
+            &["-c", "core.quotePath=false", "diff", "--numstat", &format!("{from}...{to}")],
+        )
+        .unwrap_or_default();
         for line in numstat.lines() {
             let mut parts = line.splitn(3, '\t');
             let (Some(added), Some(deleted), Some(path)) =
@@ -232,10 +289,23 @@ pub(crate) fn inspect_worktree(
             // 바이너리는 증감이 `-`로 나온다 — 세지 않고 파일 목록에는 남긴다
             insertions += added.parse::<u64>().unwrap_or(0);
             deletions += deleted.parse::<u64>().unwrap_or(0);
-            files.push(path.to_string());
+            // 여러 머지에 걸쳐 같은 파일이 바뀌었으면 목록에는 한 번만 (증감은 합산이 맞다)
+            if !files.iter().any(|seen| seen == path) {
+                files.push(path.to_string());
+            }
         }
     }
-    Some(WorktreeRecord { head, tip, base_sha, state, commits, files, insertions, deletions })
+    Some(WorktreeRecord {
+        head,
+        branch_tip,
+        tip,
+        base_sha,
+        state,
+        commits,
+        files,
+        insertions,
+        deletions,
+    })
 }
 
 fn parse_remote_slug(url: &str) -> Option<String> {
