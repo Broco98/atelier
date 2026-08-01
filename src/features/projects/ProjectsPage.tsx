@@ -100,7 +100,9 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                     type="button"
                     disabled={selected.missing}
                     onClick={() => projectsApi.openFolder(selected.slug)}
-                    className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                    // disabled:pointer-events-none — 테두리를 걷어낸 뒤로는 배경 농도가 "누를 수 있다"를
+                    // 말하는 유일한 어휘라서, 비활성 상태에서 hover가 걸리면 눌리는 버튼으로 읽힌다
+                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
                   >
                     폴더 열기
                   </button>
@@ -119,7 +121,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                 aria-label="목록 패널 토글"
                 aria-expanded={panelOpen}
                 title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="flex size-7 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
               >
                 {panelOpen ? (
                   <Maximize2 className="size-4" strokeWidth={1.7} />

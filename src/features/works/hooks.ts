@@ -8,7 +8,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { worksApi } from "./api";
-import type { WorkStatus } from "./types";
+import type { WorkStatus, WorkView } from "./types";
 
 // ["works"]로 시작하는 모든 쿼리(목록·spec 파일)가 works:changed 한 번에 무효화된다
 const WORKS_KEY = ["works"] as const;
@@ -25,6 +25,11 @@ export const worksQuery = queryOptions({
   queryFn: worksApi.list,
   staleTime: 30_000,
 });
+
+// 아무도 고르지 않았을 때 기본 선택이 될 수 있는 작업. 초안은 목록 패널에서 접힌 별도
+// 구역에 살기 때문에(WorkList), 여기로 떨어지면 본문에는 열려 있는데 목록에는 강조가
+// 안 보인다. pickSlug의 두 호출처가 같은 조건을 쓰도록 여기 한 곳에 둔다.
+export const isDefaultSelectable = (work: WorkView) => work.status !== "draft";
 
 export function useWorks() {
   const queryClient = useQueryClient();
@@ -51,6 +56,15 @@ export function useSpecFile(slug: string, path: string | null) {
     // 다른 파일로 전환할 때도 유지하면 새 파일 이름 아래 이전 파일 내용이 보인다.
     placeholderData: (prev, prevQuery) =>
       prevQuery && hashKey(prevQuery.queryKey) === hashKey(queryKey) ? prev : undefined,
+  });
+}
+
+export function useSetWorkTitle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, title }: { slug: string; title: string }) =>
+      worksApi.setTitle(slug, title),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
   });
 }
 

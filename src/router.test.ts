@@ -22,8 +22,13 @@ import type { ProjectView } from "./features/projects/types";
 // origin을 함께 넘기는 이유 — 클라이언트로 판단한 라우터는 origin이 비어 있으면
 // window.origin을 읽는데, node에는 window 자체가 없어 ReferenceError가 난다.
 
-// 정규화는 목록에서 slug만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다
-const works = (...slugs: Array<string>) => slugs.map((slug) => ({ slug })) as Array<WorkView>;
+// 정규화는 목록에서 slug와 status만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
+// "draft:" 접두사를 붙인 slug는 초안이 된다 (기본 선택이 건너뛰는 대상).
+const works = (...slugs: Array<string>) =>
+  slugs.map((raw) => {
+    const draft = raw.startsWith("draft:");
+    return { slug: draft ? raw.slice("draft:".length) : raw, status: draft ? "draft" : "active" };
+  }) as Array<WorkView>;
 const projects = (...slugs: Array<string>) =>
   slugs.map((slug) => ({ slug })) as Array<ProjectView>;
 
@@ -133,6 +138,35 @@ describe("무선택 주소의 정규화", () => {
     const { router } = setup(["/projects"], { lastProject: "proj-b" });
     await router.load();
     expect(router.state.location.pathname).toBe("/projects/proj-b");
+  });
+});
+
+// 목록 패널은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
+// 목록 어디에도 강조가 없다 — 그래서 아무도 고르지 않았을 때만 초안을 건너뛴다.
+// 직접 고른 초안은 건드리지 않는다.
+describe("기본 선택은 초안을 건너뛴다", () => {
+  it("마지막으로 보던 것이 없으면 초안이 아닌 첫 항목으로 간다", async () => {
+    const { router } = setup(["/works"], { works: works("draft:초안", "진행중"), lastWork: null });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works/진행중");
+  });
+
+  it("초안밖에 없으면 첫 초안으로 간다 — 빈 화면보다는 낫다", async () => {
+    const { router } = setup(["/works"], {
+      works: works("draft:초안-a", "draft:초안-b"),
+      lastWork: null,
+    });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works/초안-a");
+  });
+
+  it("직접 열어둔 초안은 무선택 주소로 돌아와도 그대로 유지된다", async () => {
+    const { router } = setup(["/works"], {
+      works: works("draft:초안", "진행중"),
+      lastWork: "초안",
+    });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works/초안");
   });
 });
 

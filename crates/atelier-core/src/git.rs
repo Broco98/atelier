@@ -43,6 +43,21 @@ pub(crate) fn branch_exists(repo: &Path, name: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")]).is_some()
 }
 
+/// git이 브랜치 이름으로 받아들이는가. 규칙(`..`, 공백, `~^:?*[`, `.lock` 끝 등)을
+/// 여기서 다시 쓰면 git과 어긋나므로 git에게 직접 묻는다. 저장소가 필요 없는 문법 검사다.
+pub(crate) fn is_valid_branch_name(name: &str) -> bool {
+    match Command::new("git")
+        .args(["check-ref-format", &format!("refs/heads/{name}")])
+        .output()
+    {
+        Ok(out) => out.status.success(),
+        // git을 못 띄운 것은 이름이 나쁘다는 뜻이 아니다. 여기서 거부하면 git이 없는 환경에서
+        // 모든 work 시작이 "invalid branch name"으로 죽어, 진짜 원인을 가린다. 판단을 보류하고
+        // 워크트리 생성이 제 이름으로 실패하게 둔다.
+        Err(_) => true,
+    }
+}
+
 pub(crate) fn rev_exists(repo: &Path, rev: &str) -> bool {
     git(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")]).is_some()
 }
@@ -79,19 +94,19 @@ pub(crate) fn is_dirty(dir: &Path) -> bool {
 }
 
 /// 워크트리 제거. 브랜치는 건드리지 않는다.
-pub(crate) fn worktree_remove(tree: &Path, force: bool) -> std::result::Result<(), String> {
-    let common = git(tree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .ok_or_else(|| format!("not a git worktree: {}", tree.display()))?;
+pub(crate) fn worktree_remove(worktree: &Path, force: bool) -> std::result::Result<(), String> {
+    let common = git(worktree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .ok_or_else(|| format!("not a git worktree: {}", worktree.display()))?;
     let repo = Path::new(&common)
         .parent()
-        .ok_or_else(|| format!("cannot resolve repo for: {}", tree.display()))?
+        .ok_or_else(|| format!("cannot resolve repo for: {}", worktree.display()))?
         .to_path_buf();
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(&repo).args(["worktree", "remove"]);
     if force {
         cmd.arg("--force");
     }
-    let out = cmd.arg(tree).output().map_err(|e| e.to_string())?;
+    let out = cmd.arg(worktree).output().map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {

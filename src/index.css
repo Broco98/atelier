@@ -23,7 +23,9 @@
    치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. */
 [data-titlebar] {
     --titlebar-controls-left: 88px;
-    --titlebar-control-size: 26px;
+    /* icon-button 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
+       여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
+    --titlebar-control-size: 24px;
     --titlebar-inset: calc(
         var(--titlebar-controls-left) + var(--titlebar-control-size) + 12px
     );
@@ -40,6 +42,11 @@
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', 'Pretendard Variable', sans-serif;
     --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+    /* 합자를 끈다. Geist Mono는 `###` `---` `|---|` `->` 같은 연속 기호를 한 글자로
+       이어 그리는데, 그 글자가 격자 폭보다 좁아 줄 전체가 왼쪽으로 밀린다
+       (`###|---|-> =>` 13글자 = 97.5px여야 하는데 45px로 그려졌다).
+       이 폰트가 쓰이는 자리는 전부 코드·경로·spec 원문이라 기호는 있는 그대로 보여야 한다 */
+    --font-mono--font-feature-settings: "liga" 0, "calt" 0;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -75,6 +82,11 @@
     --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
+    --color-state-1: var(--state-1);
+    --color-state-2: var(--state-2);
+    --color-state-3: var(--state-3);
+    --color-state-4: var(--state-4);
+    --ease-panel: var(--panel-ease);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -121,6 +133,25 @@
     --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
     --text-tertiary: #8e8e97;
+    /* 상태 농도 4단 — 선택·hover·켜짐을 말하는 무채색 스케일의 단일 출처.
+       퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
+         행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
+         버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
+       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경으로도 쓰이고, 아직 옮기지 않은
+       hover로도 남아 있다 (ProjectDetail·MermaidBlock·팝오버 항목·제목 편집 버튼) — 후속 티켓.
+       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
+       그 자리들이 어긋나 보이지 않는 것은 5%가 새 버튼 hover(6%)와 사실상 구분되지 않기 때문이다 */
+    --state-1: rgba(20, 20, 28, 0.03);
+    --state-2: rgba(20, 20, 28, 0.06);
+    --state-3: rgba(20, 20, 28, 0.09);
+    --state-4: rgba(20, 20, 28, 0.12);
+
+    /* 패널이 열리고 닫힐 때 쓰는 곡선의 단일 출처. 출발이 빠르고 끝에서 감속한다 —
+       ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다.
+       사이드바·목록 패널 둘의 폭 트랜지션과 작업 패널 퇴장이 같은 곡선을 써야 한 화면에서
+       따로 논다는 인상이 없다. transition은 아래 --ease-panel로, animation 축약형은
+       var(--panel-ease)로 같은 값을 읽는다 */
+    --panel-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
 .dark {
@@ -169,9 +200,41 @@
     }
 }
 
-@utility selected-ring {
-  background: color-mix(in srgb, var(--primary) 9%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+/* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
+   보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
+   hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
+   선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
+   충돌하지 않도록 분기 안에만 둔다). */
+@utility selected-row {
+  background: var(--state-2);
+  &:hover {
+    background: var(--state-3);
+    }
+}
+
+/* 아이콘 버튼 규격 — 거터 복사·spec 트리 복사·목록 패널 토글·작업 패널 토글·
+   프로젝트 등록 +가 모두 이 한 정의를 쓴다. 여기는 모양만 정한다.
+   hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면
+   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다. */
+@utility icon-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+/* 토글이 켜진 상태 — 배경이 한 단계 진해지고 아이콘·글자 색도 함께 진해진다.
+   6%와 9%의 차이만으로는 hover와 구분되지 않아 색 변화가 필수다.
+   켜진 채로 hover하면 한 단계 더 진해져 "다시 눌러 끌 수 있다"를 알린다. */
+@utility toggle-on {
+  background: var(--state-3);
+  color: var(--foreground);
+  &:hover {
+    background: var(--state-4);
+    }
 }
 
 /* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.

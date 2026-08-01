@@ -2,7 +2,10 @@ import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   root: string;
-  leaf?: string;
+  // 문자열이면 그대로 렌더된다. 노드를 주면 그 자리에서 편집시킬 수 있다 —
+  // 감싸는 span이 truncate(overflow:hidden)라 노드도 max-w-full truncate를 스스로 가져야
+  // 오늘과 같은 말줄임이 나온다.
+  leaf?: React.ReactNode;
   // 브레드크럼 바로 뒤에 붙는 부가 요소 (상태 배지·칩 등)
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -16,7 +19,9 @@ function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProp
     <header
       data-tauri-drag-region
       className={cn(
-        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 border-b pr-4 transition-[padding] duration-[220ms]",
+        // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다.
+        // 이 행은 여전히 창 드래그 영역이다 (data-tauri-drag-region)
+        "flex h-(--titlebar-height) shrink-0 items-center justify-between gap-3 pr-4 transition-[padding] duration-[220ms]",
         inset ? "pl-(--titlebar-inset)" : "pl-4",
       )}
     >

@@ -5,6 +5,9 @@ use crate::{Error, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkStatus {
+    /// 적어만 두고 아직 시작하지 않은 것. **선언된 상태**이지 프로젝트 유무에서
+    /// 파생되지 않는다 — 프로젝트 없이 진행 중인 리서치 work는 `Active`가 맞다.
+    Draft,
     Active,
     Review,
     Done,
@@ -13,6 +16,7 @@ pub enum WorkStatus {
 impl WorkStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            WorkStatus::Draft => "draft",
             WorkStatus::Active => "active",
             WorkStatus::Review => "review",
             WorkStatus::Done => "done",
@@ -31,11 +35,12 @@ impl std::str::FromStr for WorkStatus {
 
     fn from_str(s: &str) -> Result<Self> {
         match s {
+            "draft" => Ok(WorkStatus::Draft),
             "active" => Ok(WorkStatus::Active),
             "review" => Ok(WorkStatus::Review),
             "done" => Ok(WorkStatus::Done),
             _ => Err(Error::Validation(format!(
-                "invalid status '{s}' (active | review | done)"
+                "invalid status '{s}' (draft | active | review | done)"
             ))),
         }
     }
@@ -47,7 +52,9 @@ pub struct Work {
     pub slug: String,
     pub title: String,
     pub status: WorkStatus,
-    pub branch: String,
+    /// 아직 프로젝트가 없는 work는 브랜치가 **미정**이다. 응답에는 `null`로 나가고
+    /// (프론트와 에이전트가 키 유무가 아니라 값으로 판단한다), 파일에는 키가 아예 없다.
+    pub branch: Option<String>,
     pub created_at: String,
     pub projects: Vec<String>,
     #[serde(flatten)]
@@ -61,7 +68,9 @@ pub struct Work {
 struct FileWork {
     title: String,
     status: WorkStatus,
-    branch: String,
+    /// 미정이면 키를 쓰지 않는다 — 빈 문자열과 섞이지 않게.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    branch: Option<String>,
     created_at: String,
     projects: Vec<String>,
     #[serde(flatten)]
@@ -71,7 +80,7 @@ struct FileWork {
 /// 프로젝트별 워크트리의 파생 정보 (조회 시 계산)
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TreeView {
+pub struct WorktreeView {
     pub project: String,
     pub path: String,
     pub exists: bool,
@@ -83,7 +92,9 @@ pub struct TreeView {
 pub struct WorkView {
     #[serde(flatten)]
     pub work: Work,
-    pub trees: Vec<TreeView>,
+    /// 디스크 폴더는 여전히 `trees/`다 — 폴더를 옮기면 git이 등록해 둔 워크트리
+    /// 경로가 깨지므로, 이름만 바꾸고 경로는 그대로 둔다.
+    pub worktrees: Vec<WorktreeView>,
     /// spec 문서를 두는 디렉터리 (홈 축약 경로). 에이전트가 여기에 직접 쓴다.
     pub spec_dir: String,
     pub spec_files: Vec<String>,
@@ -137,7 +148,7 @@ mod tests {
         assert_eq!(w.slug, "cart-add-item");
         assert_eq!(w.title, "카트 아이템 추가");
         assert_eq!(w.status, WorkStatus::Active);
-        assert_eq!(w.branch, "feat/cart-add-item");
+        assert_eq!(w.branch.as_deref(), Some("feat/cart-add-item"));
         assert_eq!(w.created_at, "2026-07-19");
         assert_eq!(w.projects, vec!["frontend", "backend"]);
     }
@@ -173,8 +184,40 @@ mod tests {
 
     #[test]
     fn status_parses_from_str() {
+        assert_eq!("draft".parse::<WorkStatus>().unwrap(), WorkStatus::Draft);
         assert_eq!("active".parse::<WorkStatus>().unwrap(), WorkStatus::Active);
         assert_eq!("done".parse::<WorkStatus>().unwrap(), WorkStatus::Done);
         assert!("nope".parse::<WorkStatus>().is_err());
+        // 거부 메시지는 유효값 목록이자 유일한 안내다 — 새 상태가 빠지면 안 된다
+        let msg = "nope".parse::<WorkStatus>().unwrap_err().to_string();
+        for valid in ["draft", "active", "review", "done"] {
+            assert!(msg.contains(valid), "'{valid}' missing from the error message: {msg}");
+        }
+    }
+
+    /// 미정 브랜치는 파일과 응답에서 다른 모양이다: 파일에는 **키가 없고**,
+    /// 응답에는 **`null`**이 실린다. 읽는 쪽이 키 유무가 아니라 값으로 판단하게 한다.
+    #[test]
+    fn undecided_branch_is_absent_in_the_file_and_null_in_the_view() {
+        let src = r#"{"title":"아이디어","status":"draft","createdAt":"2026-07-29","projects":[]}"#;
+        let w = parse_work("아이디어", src).unwrap();
+        assert_eq!(w.branch, None);
+
+        let file = render_work(&w);
+        assert!(!file.contains("branch"), "undecided branch must not be written: {file}");
+        assert_eq!(parse_work("아이디어", &file).unwrap(), w);
+
+        let json = serde_json::to_value(&w).unwrap();
+        assert!(json["branch"].is_null(), "the view must carry an explicit null: {json}");
+    }
+
+    /// 선언된 상태다 — 파일에 그대로 남고 그대로 돌아온다.
+    #[test]
+    fn draft_survives_a_file_roundtrip() {
+        let src = r#"{"title":"적어만 둔 것","status":"draft","branch":"b","createdAt":"2026-07-29","projects":[]}"#;
+        let w = parse_work("적어만-둔-것", src).unwrap();
+        assert_eq!(w.status, WorkStatus::Draft);
+        assert!(render_work(&w).contains("\"status\": \"draft\""), "{}", render_work(&w));
+        assert_eq!(parse_work("적어만-둔-것", &render_work(&w)).unwrap(), w);
     }
 }

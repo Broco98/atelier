@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
-import { useWorks } from "@/features/works/hooks";
+import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 
 // /works와 /works/$slug가 그리는 화면은 같다 — 다른 것은 어떤 작업이 선택됐는지뿐이다.
@@ -34,7 +34,7 @@ function WorksView({ slug }: { slug: string | null }) {
     // 주소가 실제 화면과 어긋나 있다. 둘 중 하나다 —
     //  (a) 무선택 주소인데 목록이 뒤늦게 채워졌다 (빈 상태로 열어둔 채 밖에서 작업을 시작한 경우)
     //  (b) 주소가 가리키는 작업이 사라졌다 (지워졌거나 잘못된 링크)
-    const next = pickSlug(shellStore.state.workSlug, works);
+    const next = pickSlug(shellStore.state.workSlug, works, isDefaultSelectable);
     if (next === slug) return; // 목록이 비어 여전히 무선택 — 고칠 것이 없다
     goTo(next, true);
     // goTo는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다

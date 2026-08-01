@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { worksQuery } from "@/features/works/hooks";
+import { isDefaultSelectable, worksQuery } from "@/features/works/hooks";
 import { pickSlug, shellStore } from "@/components/shell/shell-store";
 import WorksView from "./-works-view";
 
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/works/")({
     // 목록을 못 가져오면(백엔드 오류) 정규화를 포기하고 빈 상태 화면으로 간다 —
     // 셸조차 뜨지 않는 것보다 낫고, 라우터 도입 전의 실패 모습과 같다.
     const works = await context.queryClient.ensureQueryData(worksQuery).catch(() => []);
-    const slug = pickSlug(shellStore.state.workSlug, works);
+    const slug = pickSlug(shellStore.state.workSlug, works, isDefaultSelectable);
     if (slug) throw redirect({ to: "/works/$slug", params: { slug } });
   },
   component: WorksIndexRoute,
