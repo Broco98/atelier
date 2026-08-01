@@ -15,7 +15,7 @@ export interface ResizableWidth {
 
 // 드래그 중 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다 (index.css의 body.resizing).
 // 해제가 누락되면 앱 전체에서 글자를 선택할 수 없고 재시작 외엔 복구 수단이 없다 — 종료 경로마다 반드시 끈다.
-function setResizing(on: boolean) {
+export function setResizing(on: boolean) {
   document.body.classList.toggle("resizing", on);
 }
 
