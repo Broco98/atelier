@@ -32,7 +32,10 @@ export function ColumnResizeHandle() {
   );
 }
 
-// 열이 이보다 좁아지면 안에 든 것을 알아볼 수 없다
+// 열이 이보다 좁아지면 안에 든 것을 알아볼 수 없다. 이 파일의 다른 값들과 달리 48은
+// 잰 값이 아니라 고른 값이다 — 셀 좌우 패딩(px-3 둘 = 24px)을 빼면 글자 자리가 24px
+// 남고, 13.5px 본문에서 두어 글자다. 더 줄이려면 가장 짧은 열 머리가 줄바꿈 없이
+// 들어가는 폭부터 재야 한다.
 const MIN_COLUMN_WIDTH = 48;
 
 function ResizableTable({ className, children, ...props }: React.ComponentProps<"table">) {
