@@ -114,6 +114,120 @@ pub(crate) fn worktree_remove(worktree: &Path, force: bool) -> std::result::Resu
     }
 }
 
+/// 브랜치가 base에 반영된 방식.
+pub(crate) enum BaseState {
+    /// 머지 커밋을 통해 들어갔다
+    Merged { sha: String, subject: String },
+    /// base에 도달했지만 이 브랜치를 들여온 머지 커밋이 없다 — fast-forward로 들어갔거나,
+    /// 애초에 브랜치에 커밋이 없어 base의 옛 커밋을 그대로 가리킨다. 어느 쪽이든 브랜치의
+    /// 시작점을 git에게 물을 방법이 없으므로 커밋 범위를 특정할 수 없다.
+    NoMergeCommit,
+    /// 반영되지 않았다 — 미반영이거나 스쿼시 머지
+    NotMerged,
+}
+
+/// 아카이브 기록이 쓰는 워크트리 좌표. **워크트리가 살아 있을 때만** 뽑을 수 있다.
+pub(crate) struct WorktreeRecord {
+    /// 워크트리가 실제로 서 있는 커밋. 선언 브랜치와 어긋날 수 있어 따로 적는다.
+    pub head: String,
+    /// 분석 대상 — 선언 브랜치의 끝. 브랜치를 찾을 수 없으면 `head`.
+    pub tip: String,
+    pub base_sha: String,
+    pub state: BaseState,
+    /// (짧은 SHA, 제목)
+    pub commits: Vec<(String, String)>,
+    pub files: Vec<String>,
+    pub insertions: u64,
+    pub deletions: u64,
+}
+
+/// 워크트리 HEAD가 `base`에 대해 어떤 위치인지와, 그 브랜치가 담은 커밋·파일·증감.
+/// 저장소를 읽을 수 없으면 `None` — 없는 좌표를 지어내지 않는다.
+///
+/// 분석은 **선언 브랜치의 끝**을 따른다. 워크트리 HEAD가 아니다 — 워크트리는 릴리스
+/// 브랜치 같은 데로 흘러가 있을 수 있고, 실제로 그런 work가 있다. HEAD는 관측된 사실로
+/// 따로 기록한다.
+pub(crate) fn inspect_worktree(
+    worktree: &Path,
+    base: &str,
+    branch: Option<&str>,
+) -> Option<WorktreeRecord> {
+    let head = git(worktree, &["rev-parse", "HEAD"])?;
+    let base_sha = git(worktree, &["rev-parse", &format!("{base}^{{commit}}")])?;
+    let tip = branch
+        .and_then(|b| git(worktree, &["rev-parse", "--verify", &format!("refs/heads/{b}")]))
+        .unwrap_or_else(|| head.clone());
+
+    // `--is-ancestor`는 종료 코드로 답한다 — git()이 실패를 None으로 접는 성질을 그대로 쓴다.
+    let reached_base = git(worktree, &["merge-base", "--is-ancestor", &tip, &base_sha]).is_some();
+
+    // (from, to). 커밋은 `from..to`, 변경은 `from...to`(분기점 기준)로 본다.
+    let (state, range) = if reached_base {
+        // 브랜치를 base로 들여온 머지 커밋을 역추적한다. **`--first-parent`를 붙이면
+        // 안 된다** — 브랜치가 중간 브랜치를 거쳐 올라온 중첩 병합에서 결과가 사라진다.
+        let merges = git(
+            worktree,
+            &["rev-list", "--ancestry-path", "--merges", &format!("{tip}..{base_sha}")],
+        )
+        .unwrap_or_default();
+        // 오래된 것부터, 두 조건을 모두 만족하는 머지를 찾는다.
+        //
+        // ① tip이 그 머지의 **첫 부모 쪽에 이미 있으면 안 된다** — 있으면 머지 전에 이미
+        //    base에 있었다는 뜻이라, 이 브랜치를 들여온 머지가 아니라 뒤따라온 남의 머지다.
+        // ② 머지 커밋이 **이 브랜치 이름을 말해야 한다.** ①만으로는 부족하다 — 커밋이 하나도
+        //    없는 브랜치는 분기 시점의 커밋을 가리키는데, 그 커밋이 크로스 머지(main↔develop)로
+        //    남의 브랜치에 들어가면 그 머지가 ①을 통과한다. 실제 데이터에서 커밋 0개짜리
+        //    work가 develop 커밋 40개를 자기 것으로 삼았다. 이름은 우리가 가진 사실이므로
+        //    형식을 추측하는 것이 아니다. 못 찾으면 침묵한다 — 틀린 귀속보다 낫다.
+        let brought_in = branch.and_then(|branch| {
+            merges.lines().rev().find(|sha| {
+                git(worktree, &["merge-base", "--is-ancestor", &tip, &format!("{sha}^1")]).is_none()
+                    && git(worktree, &["log", "-1", "--format=%s", sha])
+                        .is_some_and(|subject| subject.contains(branch))
+            })
+        });
+        match brought_in {
+            Some(sha) => {
+                let subject = git(worktree, &["log", "-1", "--format=%s", sha]).unwrap_or_default();
+                let range = (format!("{sha}^1"), format!("{sha}^2"));
+                (BaseState::Merged { sha: sha.to_string(), subject }, Some(range))
+            }
+            // 범위를 비워 둔다 — 머지 커밋의 존재를 가정하면 빈 결과가 깨진 범위 인자가 된다.
+            None => (BaseState::NoMergeCommit, None),
+        }
+    } else {
+        (BaseState::NotMerged, Some((base_sha.clone(), tip.clone())))
+    };
+
+    let mut commits = Vec::new();
+    let mut files = Vec::new();
+    let (mut insertions, mut deletions) = (0, 0);
+    if let Some((from, to)) = &range {
+        let log = git(worktree, &["log", "--format=%h%x09%s", &format!("{from}..{to}")])
+            .unwrap_or_default();
+        commits = log
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(sha, subject)| (sha.to_string(), subject.to_string()))
+            .collect();
+        let numstat =
+            git(worktree, &["diff", "--numstat", &format!("{from}...{to}")]).unwrap_or_default();
+        for line in numstat.lines() {
+            let mut parts = line.splitn(3, '\t');
+            let (Some(added), Some(deleted), Some(path)) =
+                (parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            // 바이너리는 증감이 `-`로 나온다 — 세지 않고 파일 목록에는 남긴다
+            insertions += added.parse::<u64>().unwrap_or(0);
+            deletions += deleted.parse::<u64>().unwrap_or(0);
+            files.push(path.to_string());
+        }
+    }
+    Some(WorktreeRecord { head, tip, base_sha, state, commits, files, insertions, deletions })
+}
+
 fn parse_remote_slug(url: &str) -> Option<String> {
     let url = url.trim_end_matches(".git");
     let tail = if let Some((_, t)) = url.split_once("://") {

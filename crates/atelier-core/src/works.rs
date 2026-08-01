@@ -453,6 +453,108 @@ pub fn read_spec_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<S
     Ok(std::fs::read_to_string(spec_dir(&dir).join(rel))?)
 }
 
+/// 아카이브 시점의 코드 좌표를 마크다운 한 장으로 봉인한다.
+///
+/// **워크트리가 살아 있는 동안에만** 뽑을 수 있다 — 사라지면 HEAD를 못 읽고, 아카이브에는
+/// 되돌리기가 없으니 복구 경로도 없다. 그래서 이 함수는 파일을 쓰지도 워크트리를 지우지도
+/// 않는다: 문자열을 돌려주고, 언제 쓸지는 아카이브 실행이 정한다.
+///
+/// 프로젝트가 없는 work도 머리말만으로 문서를 갖는다 — 파일 존재가 조건부이면 읽는 쪽이
+/// 매번 분기해야 한다.
+pub fn render_record(
+    works_root: &Path,
+    projects_root: &Path,
+    work: &Work,
+    archived_at: &str,
+) -> String {
+    let mut out = format!(
+        "# 기록 — {}\n\n- 아카이브: {archived_at}\n- 아카이브 시점 상태: {}\n",
+        work.title, work.status
+    );
+    let trees = worktrees_dir(&works_root.join(&work.slug));
+    for project in &work.projects {
+        out.push_str(&format!("\n## {project}\n\n"));
+        push_worktree_record(&mut out, projects_root, project, &trees.join(project), work);
+    }
+    out
+}
+
+fn push_worktree_record(
+    out: &mut String,
+    projects_root: &Path,
+    project: &str,
+    worktree: &Path,
+    work: &Work,
+) {
+    let declared = work.branch.as_deref().unwrap_or("없음");
+    // 등록이 사라졌거나 워크트리가 이미 없어도 섹션은 남긴다. 읽지 못했다는 것도 사실이다.
+    let Ok(view) = crate::get_project(projects_root, project) else {
+        out.push_str(&format!(
+            "- 선언 브랜치: {declared}\n- 기록 없음: 프로젝트가 등록돼 있지 않아 base를 알 수 없다\n"
+        ));
+        return;
+    };
+    let base = view.project.base_branch;
+    let Some(r) = git::inspect_worktree(worktree, &base, work.branch.as_deref()) else {
+        out.push_str(&format!(
+            "- 선언 브랜치: {declared}\n- base: {base}\n- 기록 없음: 워크트리를 읽을 수 없다\n"
+        ));
+        return;
+    };
+    // 분석은 선언 브랜치의 끝을 따르고, 워크트리가 실제로 선 자리는 따로 적는다.
+    // 둘이 어긋난 work가 실제로 있으므로 한쪽을 골라 진실인 척하면 안 된다.
+    out.push_str(&format!("- 선언 브랜치: {declared} — {}\n", r.tip));
+    out.push_str(&format!("- 워크트리 HEAD: {}\n- base: {base}\n", r.head));
+    out.push_str(&format!("- base 반영: {}\n", base_state_line(&r)));
+    out.push_str(&format!(
+        "- 커밋 {}개 · {}파일 · +{} / −{}\n",
+        r.commits.len(),
+        r.files.len(),
+        r.insertions,
+        r.deletions
+    ));
+    if !r.commits.is_empty() {
+        out.push_str("\n### 커밋\n\n| SHA | 제목 |\n| --- | --- |\n");
+        for (sha, subject) in &r.commits {
+            out.push_str(&format!("| {sha} | {subject} |\n"));
+        }
+    }
+    if !r.files.is_empty() {
+        out.push_str("\n### 변경 파일\n\n");
+        for file in &r.files {
+            out.push_str(&format!("- {file}\n"));
+        }
+    }
+}
+
+fn base_state_line(r: &git::WorktreeRecord) -> String {
+    match &r.state {
+        git::BaseState::Merged { sha, subject } => match pr_number(subject) {
+            Some(pr) => format!("예 — {sha} (PR #{pr})"),
+            None => format!("예 — {sha}"),
+        },
+        git::BaseState::NoMergeCommit if r.tip == r.base_sha => {
+            "예 — 브랜치 끝이 곧 base다".to_string()
+        }
+        // fast-forward든 커밋 없는 브랜치든 결과는 같다: 어느 커밋이 이 브랜치 것인지
+        // git에게 물을 수 없다. 둘을 갈라 적으면 알 수 없는 것을 아는 척하게 된다.
+        git::BaseState::NoMergeCommit => {
+            "예 — 이 브랜치를 들여온 머지 커밋을 특정할 수 없다 (fast-forward이거나 \
+             브랜치 커밋이 없다). 커밋 범위도 특정할 수 없다"
+                .to_string()
+        }
+        git::BaseState::NotMerged => "아니오".to_string(),
+    }
+}
+
+/// `Merge pull request #57 from ...` 형태에서만 뽑는다. 다른 형태를 추측하지 않는다 —
+/// 틀린 PR 번호는 없는 것보다 나쁘다.
+fn pr_number(subject: &str) -> Option<String> {
+    let rest = subject.split_once("pull request #")?.1;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    (!digits.is_empty()).then_some(digits)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1022,5 +1124,191 @@ mod tests {
         let report =
             start_work(&works, &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
         assert_eq!(report.view.work.slug, "카트-추가-2");
+    }
+
+    // ── 아카이브 기록 (render_record) ──────────────────────────────────────
+    // 워크트리가 살아 있는 동안에만 뽑을 수 있는 좌표라, 검증도 실제 저장소 위에서 한다.
+
+    fn commit(worktree: &Path, file: &str, body: &str, message: &str) {
+        std::fs::write(worktree.join(file), body).unwrap();
+        run_git(worktree, &["add", "."]);
+        run_git(worktree, &["commit", "-m", message]);
+    }
+
+    /// 메타에 적힌 브랜치와 워크트리가 실제로 체크아웃한 브랜치가 어긋난 work가 실제로
+    /// 있었다. 기계가 한쪽을 골라 진실인 척하면 안 된다 — 둘을 각각 적는다.
+    #[test]
+    fn record_reports_declared_branch_and_actual_head_separately() {
+        let (_tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "좌표", None, &slugs(&["fe"]), Some("feat/declared"))
+                .unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        let declared_tip = run_git(&worktree, &["rev-parse", "HEAD"]);
+        run_git(&worktree, &["checkout", "-b", "feat/actual"]);
+        commit(&worktree, "b.txt", "y\n", "다른 브랜치의 커밋");
+        let head = run_git(&worktree, &["rev-parse", "HEAD"]);
+        assert_ne!(head, declared_tip);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains(&format!("- 선언 브랜치: feat/declared — {declared_tip}")), "{doc}");
+        assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "{doc}");
+    }
+
+    /// 브랜치가 중간 브랜치를 거쳐 base에 올라오는 구조(이 저장소의 승격 구조)에서
+    /// 머지 커밋 역추적이 **첫 부모만 따라가면 결과가 사라진다.** 사라지면 반영된
+    /// 브랜치가 fast-forward로 오판되고 커밋 목록이 통째로 빈다.
+    #[test]
+    fn record_traces_the_merge_commit_through_a_nested_merge() {
+        let (tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "중첩", None, &slugs(&["fe"]), Some("feat/nested"))
+                .unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "feature.txt", "f\n", "기능 커밋");
+
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["checkout", "-b", "develop"]);
+        let subject = "Merge pull request #7 from Broco98/feat/nested";
+        run_git(&repo, &["merge", "--no-ff", "feat/nested", "-m", subject]);
+        run_git(&repo, &["checkout", "main"]);
+        run_git(&repo, &["merge", "--no-ff", "develop", "-m", "Merge develop into main"]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- base 반영: 예"), "{doc}");
+        assert!(doc.contains("(PR #7)"), "머지 커밋을 못 찾았다: {doc}");
+        assert!(doc.contains("기능 커밋"), "머지된 브랜치의 커밋이 비었다: {doc}");
+        assert!(doc.contains("커밋 1개 · 1파일 · +1 / −0"), "{doc}");
+        assert!(doc.contains("- feature.txt"), "{doc}");
+    }
+
+    /// 조상인데 머지 커밋이 **없는** 경우가 있다. 조상 관계만 보고 머지 커밋의 존재를
+    /// 가정하면 빈 역추적 결과가 깨진 범위 인자로 흘러간다. 없는 것을 지어내지 않는다.
+    #[test]
+    fn record_marks_a_fast_forwarded_branch_without_inventing_a_merge_commit() {
+        let (tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "빨리감기", None, &slugs(&["fe"]), Some("feat/ff"))
+                .unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "ff.txt", "f\n", "ff 커밋");
+
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["merge", "--ff-only", "feat/ff"]);
+        // base가 더 나아가야 HEAD가 base의 진짜 조상이 된다 (HEAD == base가 아니라)
+        commit(&repo, "after.txt", "a\n", "이후 커밋");
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- base 반영: 예"), "{doc}");
+        assert!(doc.contains("fast-forward"), "머지 커밋이 없다는 사실이 빠졌다: {doc}");
+        assert!(!doc.contains("(PR #"), "없는 머지 커밋을 지어냈다: {doc}");
+        assert!(doc.contains("커밋 0개 · 0파일"), "{doc}");
+        assert!(!doc.contains("이후 커밋"), "base의 커밋이 브랜치 것으로 섞였다: {doc}");
+    }
+
+    /// 커밋이 하나도 없는 브랜치는 base의 오래된 커밋을 그대로 가리킨다. 조상이라는 것만으로
+    /// 머지를 고르면 **그 뒤에 base로 들어온 남의 머지**가 이 브랜치 것으로 붙는다.
+    /// 실제 `~/.atelier` 데이터에서 이 오탐이 나왔다 — 틀린 PR 번호는 없는 것보다 나쁘다.
+    #[test]
+    fn record_does_not_attribute_someone_elses_merge_to_a_branch_that_never_diverged() {
+        let (tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "빈브랜치", None, &slugs(&["fe"]), Some("feat/empty"))
+                .unwrap();
+        let work = report.view.work;
+
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["checkout", "-b", "feat/other"]);
+        commit(&repo, "other.txt", "o\n", "남의 커밋");
+        run_git(&repo, &["checkout", "main"]);
+        let subject = "Merge pull request #99 from x/feat-other";
+        run_git(&repo, &["merge", "--no-ff", "feat/other", "-m", subject]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(!doc.contains("(PR #99)"), "남의 머지를 이 브랜치 것으로 붙였다: {doc}");
+        assert!(!doc.contains("남의 커밋"), "남의 커밋이 이 브랜치 것으로 섞였다: {doc}");
+        assert!(doc.contains("커밋 0개 · 0파일"), "{doc}");
+    }
+
+    /// 첫 부모 검사를 통과하는 머지도 있다 — 커밋 없는 브랜치가 가리키는 **분기 시점의
+    /// 커밋**이 크로스 머지로 남의 브랜치에 쓸려 들어가면, 그 머지는 "첫 부모 쪽에 없다"를
+    /// 만족한다. 실제 `~/.atelier`에서 커밋 0개짜리 work가 develop 커밋 40개를 자기 것으로
+    /// 삼았다. 머지 커밋이 이 브랜치 이름을 말해야 한다는 조건이 그 구멍을 막는다.
+    #[test]
+    fn record_does_not_inherit_a_cross_merge_that_swept_up_its_branch_point() {
+        let (tmp, works, projects) = setup();
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["checkout", "-b", "feat/other"]);
+        commit(&repo, "other.txt", "o\n", "남의 커밋");
+        run_git(&repo, &["checkout", "main"]);
+        commit(&repo, "main.txt", "m\n", "main 커밋");
+
+        // 브랜치는 여기서 갈라지고, 커밋을 하나도 만들지 않는다
+        let report =
+            start_work(&works, &projects, "분기만", None, &slugs(&["fe"]), Some("feat/branch-point"))
+                .unwrap();
+        let work = report.view.work;
+
+        // main이 남의 브랜치로 역머지되면서 우리 분기점이 그 머지의 둘째 부모가 된다
+        run_git(&repo, &["checkout", "feat/other"]);
+        run_git(&repo, &["merge", "--no-ff", "main", "-m", "Merge branch 'main' into feat/other"]);
+        run_git(&repo, &["checkout", "main"]);
+        let subject = "Merge pull request #3 from Broco98/feat/other";
+        run_git(&repo, &["merge", "--no-ff", "feat/other", "-m", subject]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(!doc.contains("(PR #3)"), "남의 머지를 물려받았다: {doc}");
+        assert!(!doc.contains("남의 커밋") && !doc.contains("main 커밋"), "{doc}");
+        assert!(doc.contains("커밋 0개 · 0파일"), "{doc}");
+    }
+
+    #[test]
+    fn record_reports_an_unmerged_branch_against_base() {
+        let (_tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "미반영", None, &slugs(&["fe"]), Some("feat/open"))
+                .unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        std::fs::write(worktree.join("one.txt"), "1\n").unwrap();
+        commit(&worktree, "two.txt", "2\n", "미반영 커밋");
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- base 반영: 아니오"), "{doc}");
+        assert!(doc.contains("커밋 1개 · 2파일 · +2 / −0"), "{doc}");
+        assert!(doc.contains("| 미반영 커밋 |"), "커밋 표가 비었다: {doc}");
+        assert!(doc.contains("- one.txt") && doc.contains("- two.txt"), "{doc}");
+    }
+
+    /// 파일 존재 여부가 조건부이면 읽는 쪽이 매번 분기해야 한다 — 머리말만이라도 만든다.
+    #[test]
+    fn record_for_a_work_without_projects_is_the_header_alone() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(&works, &projects, "리서치만", None, &[], None).unwrap();
+
+        let doc = render_record(&works, &projects, &report.view.work, "2026-08-02");
+        assert!(doc.starts_with("# 기록 — 리서치만\n"), "{doc}");
+        assert!(doc.contains("- 아카이브: 2026-08-02"), "{doc}");
+        assert!(doc.contains("- 아카이브 시점 상태: active"), "{doc}");
+        assert!(!doc.contains("##"), "프로젝트 섹션이 없어야 한다: {doc}");
+    }
+
+    /// 워크트리가 이미 없어도 문서는 만든다. 없는 좌표를 지어내지 않고 그렇게 적는다.
+    #[test]
+    fn record_has_a_section_per_project_even_when_a_worktree_is_gone() {
+        let (_tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &projects, "둘", None, &slugs(&["fe", "be"]), Some("feat/two"))
+                .unwrap();
+        let work = report.view.work;
+        std::fs::remove_dir_all(works.join(&work.slug).join("trees/be")).unwrap();
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("## fe") && doc.contains("## be"), "{doc}");
+        assert_eq!(doc.matches("\n## ").count(), 2, "{doc}");
+        assert!(doc.contains("기록 없음"), "읽지 못한 사실이 기록되지 않았다: {doc}");
     }
 }
