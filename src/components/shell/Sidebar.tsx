@@ -6,7 +6,8 @@ import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
-  activeKey: NavKey;
+  // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
+  activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
 }
 

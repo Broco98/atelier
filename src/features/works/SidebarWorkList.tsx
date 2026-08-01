@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useWorks } from "./hooks";
@@ -10,6 +10,11 @@ import type { WorkView } from "./types";
 
 // 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
 const HOVER_DELAY_MS = 350;
+
+// 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
+// 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
+const WORKS_OPEN_KEY = "sidebar-works-open";
+const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
 // 사이드바에 상주하는 작업 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 Works로 간다.
 //
@@ -26,7 +31,19 @@ function SidebarWorkList({
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
-  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [worksOpen, setWorksOpen] = useState(
+    () => localStorage.getItem(WORKS_OPEN_KEY) !== "0",
+  );
+  const [draftsOpen, setDraftsOpen] = useState(
+    () => localStorage.getItem(DRAFTS_OPEN_KEY) === "1",
+  );
+
+  useEffect(() => {
+    localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
+  }, [worksOpen]);
+  useEffect(() => {
+    localStorage.setItem(DRAFTS_OPEN_KEY, draftsOpen ? "1" : "0");
+  }, [draftsOpen]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
   // 슬러그에 한글이 들어가므로 경로에서 떼어낸 뒤 디코드한다.
@@ -36,8 +53,14 @@ function SidebarWorkList({
         ? decodeURIComponent(state.location.pathname.slice("/works/".length))
         : null,
   });
+  const onWorksScreen = useRouterState({
+    select: (state) => state.location.pathname.startsWith("/works"),
+  });
 
-  const { main, drafts, visible } = splitWorkSections(works, draftsOpen);
+  const { main, drafts, visible } = splitWorkSections(works, {
+    works: worksOpen,
+    drafts: draftsOpen,
+  });
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
 
@@ -82,12 +105,18 @@ function SidebarWorkList({
     void navigate({ to: "/works/$slug", params: { slug } });
   };
 
-  // 진행 중인 작업이 하나도 없으면 접을 것이 없다 — 초안이 곧 목록이다.
-  // (splitWorkSections의 visible도 같은 판단을 해서, 화면과 숫자 단축키가 어긋나지 않는다)
-  const foldDrafts = main.length > 0 && drafts.length > 0;
-  const rows = foldDrafts ? main : visible;
+  // '작업' 라벨이 Works 화면으로 가는 링크를 겸한다 — nav에서 Works를 뺐기 때문이고,
+  // 목록이 비어도 이 라벨은 남아 진입 경로가 유지된다.
+  // 이미 그 화면이면 아무것도 하지 않는다: 무선택 주소로 가는 이동은 정규화가 replace여도
+  // 그 자체가 히스토리 한 칸을 남긴다(router.test.ts가 고정). 뒤로가기를 눌러도 화면이
+  // 그대로인 죽은 칸이 된다.
+  const goToWorks = () => {
+    if (onWorksScreen) return;
+    closeCard();
+    void navigate({ to: "/works" });
+  };
 
-  // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업. 접힌 초안은 세지 않는다.
+  // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업. 접힌 섹션은 세지 않는다.
   // 어느 화면에 있든 이 목록을 센다: 어디에 있든 작업으로 한 번에 돌아갈 수 있다.
   // 입력 중에는 무시.
   useEffect(() => {
@@ -112,57 +141,53 @@ function SidebarWorkList({
 
   return (
     <>
-      {/* 좌측 정렬을 행·nav 라벨과 맞춘다 — 컨테이너 px-2 + 항목 px-[9px] = 17px */}
-      <div className="shrink-0 px-[17px] pb-1 pt-4">
-        <span className="text-[11.5px] font-medium tracking-[0.03em] text-tertiary">작업</span>
-      </div>
-
       {/* 거터를 스크롤 상자 **바깥**에 둔다. 스크롤바는 padding이 아니라 border 안쪽 끝에
           놓이므로, 스크롤 상자가 사이드바 폭을 그대로 쓰면 스크롤바가 폭 조절 핸들(오른쪽 5px)
-          아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다. */}
+          아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다.
+          두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
         <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 scroll-quiet">
-          {rows.length === 0 ? (
-            <span className="px-[9px] pt-1 text-[12.5px] leading-normal text-tertiary">
-              작업은 Claude Code에서 시작돼요.
-            </span>
-          ) : (
-            rows.map((work) => (
-              <WorkRow
-                key={work.slug}
-                work={work}
-                active={work.slug === selectedSlug}
-                onOpen={goTo}
-                onHover={openCardAfterDelay}
-                onLeave={closeCard}
-              />
-            ))
-          )}
-        </div>
-
-        {/* 상한이 목록 영역의 비율인 이유: 뷰포트 기준(vh)으로 두면 위에 얹힌 사이드바
-            머리(타이틀바·로고·nav·섹션 헤더 약 200px)를 계산에 넣지 못해, 창을 최소 높이로
-            줄이면 초안 구역이 진행 중 목록보다 넓은 자리를 가져간다. */}
-        {foldDrafts && (
-          <div className="flex max-h-[45%] shrink-0 flex-col border-t pt-1.5">
-            <button
-              type="button"
-              onClick={() => setDraftsOpen((v) => !v)}
-              aria-expanded={draftsOpen}
-              className="flex h-8 w-full shrink-0 items-center gap-1.5 rounded-[10px] px-[9px] text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
-            >
-              <ChevronRight
-                className={cn("size-3 shrink-0 transition-transform", draftsOpen && "rotate-90")}
-                strokeWidth={2.2}
-              />
-              <span className="min-w-0 flex-1 truncate">초안</span>
-              <span className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
-                {drafts.length}
+          {/* '작업' 헤더는 목록이 비어도 남는다 — Works 진입 링크를 겸한다 */}
+          <SectionHeader
+            label="작업"
+            className="mt-3"
+            open={worksOpen}
+            count={main.length}
+            onToggle={() => setWorksOpen((v) => !v)}
+            onNavigate={goToWorks}
+          />
+          {worksOpen &&
+            (main.length === 0 ? (
+              <span className="px-[9px] pb-1 pt-0.5 text-[12.5px] leading-normal text-tertiary">
+                {drafts.length > 0
+                  ? "진행 중인 작업이 없어요."
+                  : "작업은 Claude Code에서 시작돼요."}
               </span>
-            </button>
-            {draftsOpen && (
-              <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 pt-0.5 scroll-quiet">
-                {drafts.map((work) => (
+            ) : (
+              main.map((work) => (
+                <WorkRow
+                  key={work.slug}
+                  work={work}
+                  active={work.slug === selectedSlug}
+                  onOpen={goTo}
+                  onHover={openCardAfterDelay}
+                  onLeave={closeCard}
+                />
+              ))
+            ))}
+
+          {/* '초안' 헤더는 초안이 있을 때만 — 진입 링크가 아니라 빈 헤더는 자리만 먹는다 */}
+          {drafts.length > 0 && (
+            <>
+              <SectionHeader
+                label="초안"
+                className="mt-3"
+                open={draftsOpen}
+                count={drafts.length}
+                onToggle={() => setDraftsOpen((v) => !v)}
+              />
+              {draftsOpen &&
+                drafts.map((work) => (
                   <WorkRow
                     key={work.slug}
                     work={work}
@@ -172,10 +197,9 @@ function SidebarWorkList({
                     onLeave={closeCard}
                   />
                 ))}
-              </div>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* onClose를 넘기지 않는다 — 바깥 클릭 막이 깔리면 포인터를 가로채 열자마자 닫힌다.
@@ -255,6 +279,71 @@ function CardField({
         {children}
       </span>
     </span>
+  );
+}
+
+// 섹션 헤더 — 라벨 + 접기 아이콘 + (접혔을 때) 개수.
+//
+// 라벨은 항목과 **같은 크기**이고 색으로만 구분된다. 한 단계 작게 두면 라벨이 아니라 목록과
+// 목록 사이의 구분선처럼 읽힌다.
+//
+// 접기 아이콘은 평소 숨어 있다가 헤더에 마우스를 올리면 나타난다 — 좁은 사이드바에서
+// 섹션마다 상시 노출된 아이콘은 정작 봐야 할 목록보다 먼저 눈에 들어온다. 다만 **접혀 있으면
+// 계속 보인다**: 그것이 "비어 있는 게 아니라 접힌 것"을 알리는 유일한 표시다.
+//
+// onNavigate가 있는 섹션은 라벨이 링크를 겸한다. 없으면 라벨은 그냥 글자다 — 갈 곳이 없는데
+// 누를 수 있게 두면 라벨이 약속하지 않은 곳으로 데려간다.
+function SectionHeader({
+  label,
+  open,
+  count,
+  onToggle,
+  onNavigate,
+  className,
+}: {
+  label: string;
+  open: boolean;
+  count: number;
+  onToggle: () => void;
+  onNavigate?: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("group flex h-7 shrink-0 items-center gap-1 px-[9px]", className)}>
+      {onNavigate ? (
+        <button
+          type="button"
+          onClick={onNavigate}
+          title={`${label} 목록 열기`}
+          className="-mx-1 shrink-0 rounded-[7px] px-1 text-[13.5px] font-medium text-tertiary transition-colors hover:bg-state-1 hover:text-foreground"
+        >
+          {label}
+        </button>
+      ) : (
+        <span className="shrink-0 text-[13.5px] font-medium text-tertiary">{label}</span>
+      )}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={`${label} ${open ? "접기" : "펼치기"}`}
+        className={cn(
+          "flex size-[18px] shrink-0 items-center justify-center rounded-[6px] text-tertiary",
+          "transition-[opacity,color,background-color] duration-150 hover:bg-state-1 hover:text-foreground",
+          open ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "opacity-100",
+        )}
+      >
+        <ChevronDown
+          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+          strokeWidth={2.2}
+        />
+      </button>
+      {!open && (
+        <span className="ml-auto shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
+          {count}
+        </span>
+      )}
+    </div>
   );
 }
 
