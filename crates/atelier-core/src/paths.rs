@@ -15,6 +15,13 @@ pub fn works_dir() -> PathBuf {
     data_root().join("works")
 }
 
+/// 끝난 work가 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
+/// 작업 목록을 읽는 코드는 이 루트를 보지 않으므로, 목록에서 빠지는 것이 규약이 아니라
+/// 구조가 된다.
+pub fn archive_dir() -> PathBuf {
+    data_root().join("archive")
+}
+
 pub fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

@@ -175,6 +175,7 @@ fn list_works_returns_every_work() {
     let (home, _code) = fixture();
     atelier_core::start_work(
         &home.path().join("works"),
+        &home.path().join("archive"),
         &home.path().join("projects"),
         "카트 아이템 추가",
         None,
@@ -198,6 +199,7 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
     let (home, _code) = fixture();
     atelier_core::start_work(
         &home.path().join("works"),
+        &home.path().join("archive"),
         &home.path().join("projects"),
         "카트",
         None,
@@ -235,6 +237,7 @@ fn get_work_explains_what_the_spec_folder_names_mean() {
     let (home, _code) = fixture();
     atelier_core::start_work(
         &home.path().join("works"),
+        &home.path().join("archive"),
         &home.path().join("projects"),
         "카트",
         None,
@@ -291,7 +294,7 @@ fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
 
 /// V2 — 이 물결이 끝난 시점의 도구 표면 전체. 도구를 더할 때마다 여기가 자란다.
 /// (티켓 03이 atelier_add_project·atelier_edit_project를 더해 9개로 채웠고,
-///  #23이 atelier_edit_work를 더해 10개가 됐다.)
+///  #23이 atelier_edit_work를 더해 10개, #68이 atelier_archive_work를 더해 11개가 됐다.)
 #[test]
 fn listed_tools_are_exactly_this_wave() {
     let home = tempfile::tempdir().unwrap();
@@ -302,6 +305,7 @@ fn listed_tools_are_exactly_this_wave() {
         names,
         vec![
             "atelier_add_project",
+            "atelier_archive_work",
             "atelier_attach_project",
             "atelier_edit_project",
             "atelier_edit_work",
@@ -1086,6 +1090,83 @@ fn removing_a_project_less_work_does_not_promise_a_surviving_branch() {
     let note = out["note"].as_str().unwrap();
     assert!(!note.contains("recoverable"), "nothing was recoverable here: {note}");
     assert!(!home.path().join("works/지울-아이디어").exists());
+}
+
+/// 아카이브는 지우는 게 아니라 옮긴다. 목록에서 빠지는 것이 규약이 아니라 **구조**다 —
+/// 목록 조회는 보존소를 아예 보지 않는다.
+#[test]
+fn archiving_moves_the_work_out_of_the_list_and_seals_a_record() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    std::fs::write(home.path().join("works/cart/spec/overview.md"), "# 개요\n").unwrap();
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_archive_work", "arguments": { "work_slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    assert!(!home.path().join("works/cart").exists(), "작업 루트에 남아 있다");
+    let dir = home.path().join("archive/cart");
+    assert_eq!(std::fs::read_to_string(dir.join("spec/overview.md")).unwrap(), "# 개요\n");
+    // 기록은 spec 밖, work 루트에 봉인된다
+    let record = std::fs::read_to_string(dir.join("record.md")).unwrap();
+    assert!(record.contains("feat/cart"), "{record}");
+    assert!(!dir.join("spec/record.md").exists());
+
+    let listed = server.request(5, "tools/call",
+        json!({ "name": "atelier_list_works", "arguments": {} }));
+    let views: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(views.as_array().unwrap().is_empty(), "아카이브된 work가 목록에 남았다: {views}");
+}
+
+/// "보존한다"는 행위에 "커밋 안 된 작업을 버리고 진행"은 자기모순이다. 거부하되,
+/// 기존 삭제 도구와 달리 **어떤 파일 때문인지**를 말한다.
+#[test]
+fn archive_refuses_dirty_worktrees_and_names_the_files() {
+    let (home, _code) = fixture();
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    let worktree = home.path().join("works/cart/trees/billing");
+    std::fs::create_dir_all(worktree.join("docs")).unwrap();
+    std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap();
+
+    let refused = server.request(4, "tools/call", json!({
+        "name": "atelier_archive_work", "arguments": { "work_slug": "cart" }
+    }));
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let text = refused["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("docs/plan.md"), "무엇 때문인지 말하지 않는다: {text}");
+    assert!(!home.path().join("archive/cart").exists(), "거부됐는데 옮겨졌다");
+    assert!(worktree.join("docs/plan.md").is_file(), "거부됐는데 파일이 사라졌다");
+}
+
+/// 삭제 도구의 force가 없는 이유(그것은 "지운다")와 아카이브의 이유는 다르지만,
+/// 결론은 같다 — 표면에 강제가 없다.
+#[test]
+fn archive_work_exposes_no_force_option() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tool = res["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "atelier_archive_work")
+        .expect("atelier_archive_work missing");
+    let props = tool["inputSchema"]["properties"].as_object().unwrap();
+    assert!(!props.contains_key("force"), "force must not be exposed: {tool}");
+    assert_eq!(props.len(), 1, "only work_slug is an input: {tool}");
+    // 되돌릴 수 없는 동작이다 — 승인 UI가 그렇게 취급해야 한다
+    assert_eq!(tool["annotations"]["destructiveHint"], true, "{tool}");
+    assert_eq!(tool["annotations"]["idempotentHint"], false, "{tool}");
 }
 
 /// D6 — 강제 삭제 옵션은 도구 표면에 존재하지 않는다.

@@ -27,6 +27,7 @@ pub struct WorkReport {
 /// 불변이라 될 수 있다 — 그래서 slug를 아는 호출자는 제목이 어떻게 바뀌었든 재개된다.
 pub fn start_work(
     works_root: &Path,
+    archive_root: &Path,
     projects_root: &Path,
     title: &str,
     slug: Option<&str>,
@@ -56,6 +57,15 @@ pub fn start_work(
     let existing_work = match explicit_slug {
         Some(_) => match read_work(works_root, &slug) {
             Ok(work) => Some(work),
+            // 아카이브에 있는 이름은 새 work가 쓸 수 없고, 재개도 아니다 — 아카이브는
+            // 되돌리지 않는다. 아래 주석이 "이미 있으면 재개했을 것"을 근거로 명시 slug의
+            // 중복 회피를 생략하는데, 보존소가 정확히 그 전제를 깬다.
+            Err(Error::WorkNotFound(_)) if archive_root.join(&slug).is_dir() => {
+                return Err(Error::Validation(format!(
+                    "slug '{slug}' is already in the archive. Pick another slug — \
+                     archiving is not undone."
+                )))
+            }
             Err(Error::WorkNotFound(_)) => None,
             // 망가진 work.json을 "없음"으로 읽으면 그 위에 덮어쓴다 — 그대로 올린다
             Err(e) => return Err(e),
@@ -77,7 +87,7 @@ pub fn start_work(
             // 여기까지 온 이상 충돌이 아니다. 중복 회피 접미사는 파생 slug에만 붙인다.
             let slug = match explicit_slug {
                 Some(_) => slug,
-                None => unique_dir_slug(works_root, &slug),
+                None => unique_dir_slug(works_root, archive_root, &slug),
             };
             // 브랜치 이름 검사는 여기 없다 — 이름을 정하는 decide_branch가 한다.
             // 여기서 `branch.unwrap_or(&slug)`로 다시 판단하면 결정표를 재구현하게 되고,
@@ -221,10 +231,12 @@ fn find_by_title(works_root: &Path, title: &str) -> Result<Option<Work>> {
     Ok(None)
 }
 
-fn unique_dir_slug(works_root: &Path, base: &str) -> String {
+/// 아카이브 보존소까지 본다. 아카이브에 같은 이름이 있는데 새 work가 그것을 쓰면
+/// 단건 조회가 모호해지고, 사람도 두 디렉터리를 오가며 헷갈린다.
+fn unique_dir_slug(works_root: &Path, archive_root: &Path, base: &str) -> String {
     let mut slug = base.to_string();
     let mut n = 2;
-    while works_root.join(&slug).exists() {
+    while works_root.join(&slug).exists() || archive_root.join(&slug).exists() {
         slug = format!("{base}-{n}");
         n += 1;
     }
@@ -292,6 +304,12 @@ fn worktrees_dir(work_dir: &Path) -> PathBuf {
 fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
+
+/// 아카이브 기록의 파일 이름. **spec/ 밖, work 디렉터리 루트다** — spec은 사람과
+/// 에이전트가 쓴 것이고 기록은 기계가 뽑은 것이라, 섞으면 장래의 증류가 "의도"와
+/// "증거"를 대조할 두 항을 잃는다. spec 안의 파일명은 자유롭게 쓰기로 한 관습이 있어
+/// 예약어를 심으면 사용자의 파일과 충돌하기도 한다.
+const RECORD_FILE: &str = "record.md";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
 fn spec_files(work_dir: &Path) -> Vec<String> {
@@ -436,6 +454,92 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
     }
     std::fs::remove_dir_all(&dir)?;
     Ok(())
+}
+
+/// Work를 아카이브 보존소로 **옮긴다.** 지우지 않는다 — `remove_work`와 공존한다.
+///
+/// **순서가 계약이다:** 검증 → 기록 → 워크트리 제거 → 이동. 기록은 워크트리가 살아 있는
+/// 유일한 순간에만 뽑을 수 있고, 아카이브에는 되돌리기가 없으므로 순서가 뒤바뀌면 복구
+/// 경로도 없다. 아카이브 일시는 **이동이 성공한 뒤에** 쓴다 — 이동이 성립한 것만이
+/// 아카이브됐다는 사실의 근거이고, 먼저 쓰면 실패했을 때 작업 루트에 남은 work가 일시를
+/// 단 채 목록에 뜬다.
+///
+/// 3단계와 4단계 사이에서 멈추면 재실행이 그 상태를 흡수한다: 지울 워크트리가 없으니
+/// 곧장 이동으로 간다. 그 창에서 잃는 것은 없다 — 브랜치는 워크트리 제거가 건드리지
+/// 않고, 커밋 안 된 변경은 1단계가 이미 막았으며, 기록은 덮어쓰지 않는다.
+///
+/// `status`는 건드리지 않는다. 중단·기각된 접근도 치워야 하는데, 치우려고 상태를 거짓
+/// 기재하게 만드는 게이트는 잘못된 게이트다.
+pub fn archive_work(
+    works_root: &Path,
+    archive_root: &Path,
+    projects_root: &Path,
+    slug: &str,
+) -> Result<WorkView> {
+    let mut work = read_work(works_root, slug)?;
+    let dir = works_root.join(&work.slug);
+    let dest = archive_root.join(&work.slug);
+
+    // 1. 검증 — 실패하면 아무것도 건드리지 않고 끝난다.
+    if dest.exists() {
+        return Err(Error::Validation(format!(
+            "'{slug}' is already in the archive. The archive is never overwritten."
+        )));
+    }
+    let worktrees: Vec<(String, PathBuf)> = work
+        .projects
+        .iter()
+        .map(|p| (p.clone(), worktrees_dir(&dir).join(p)))
+        .filter(|(_, t)| t.is_dir())
+        .collect();
+    // 강제 실행 옵션은 없다. "보존한다"는 행위에 "커밋 안 된 작업을 버리고 진행"은
+    // 자기모순이고, 되돌리기가 없으니 잘못 밀면 복구 경로도 없다 (remove_work와 다른 점).
+    let dirty: Vec<String> = worktrees
+        .iter()
+        .filter(|(_, t)| git::is_dirty(t))
+        .map(|(project, t)| dirty_report(project, t))
+        .collect();
+    if !dirty.is_empty() {
+        return Err(Error::DirtyWorktrees(dirty.join("; ")));
+    }
+
+    // 2. 기록 — 워크트리가 살아 있는 유일한 순간.
+    //    **이미 있으면 덮지 않는다.** 멈춘 실행을 재개할 때 워크트리는 이미 없으므로,
+    //    다시 뽑으면 좌표가 빈 문서가 살아 있을 때 뽑아 둔 기록을 지운다.
+    let archived_at = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let record = dir.join(RECORD_FILE);
+    if !record.exists() {
+        std::fs::write(&record, render_record(works_root, projects_root, &work, &archived_at))?;
+    }
+
+    // 3. 워크트리 전부 제거. 하나라도 실패하면 옮기지 않는다 — 반쯤 옮겨진 디렉터리는
+    //    양쪽 어디에도 온전히 없다. 생성 쪽의 "성공분 유지" 계약을 물려받지 않는 이유다.
+    for (_, worktree) in &worktrees {
+        git::worktree_remove(worktree, false).map_err(Error::Git)?;
+    }
+
+    // 4. 이동. 성공한 뒤에야 일시를 쓴다.
+    std::fs::create_dir_all(archive_root)?;
+    std::fs::rename(&dir, &dest)?;
+    work.extra.insert("archivedAt".to_string(), serde_json::Value::String(archived_at));
+    write_work(archive_root, &work)?;
+    Ok(to_view(archive_root, work))
+}
+
+/// 거부 사유를 **어떤 파일 때문인지**로 적는다. 목록이 길어지면 잘라 낸다 —
+/// 이 문장은 에이전트 컨텍스트로 들어간다.
+fn dirty_report(project: &str, worktree: &Path) -> String {
+    const CAP: usize = 10;
+    let files = git::dirty_files(worktree).unwrap_or_default();
+    if files.is_empty() {
+        // 상태 자체를 못 읽었다 (보수적으로 dirty로 본 자리). 경로라도 준다.
+        return format!("{project} ({})", collapse_home(worktree));
+    }
+    let shown = files.iter().take(CAP).cloned().collect::<Vec<_>>().join(", ");
+    match files.len().saturating_sub(CAP) {
+        0 => format!("{project}: {shown}"),
+        more => format!("{project}: {shown} 외 {more}개"),
+    }
 }
 
 pub fn read_spec_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<String> {
@@ -600,7 +704,7 @@ mod tests {
     #[test]
     fn start_creates_meta_spec_and_worktrees() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
+        let report = start_work(&works, &archive_root(&works), &projects, "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
             .unwrap();
         assert!(report.errors.is_empty());
 
@@ -632,7 +736,7 @@ mod tests {
     fn start_defaults_branch_to_slug() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "Cart Add", None, &slugs(&["fe"]), None).unwrap();
+            start_work(&works, &archive_root(&works), &projects, "Cart Add", None, &slugs(&["fe"]), None).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("cart-add"));
         let worktree = works.join("cart-add/trees/fe");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "cart-add");
@@ -643,7 +747,7 @@ mod tests {
     #[test]
     fn start_without_projects_creates_only_the_work_and_its_spec() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "언젠가 해볼 것", None, &[], None).unwrap();
+        let report = start_work(&works, &archive_root(&works), &projects, "언젠가 해볼 것", None, &[], None).unwrap();
         assert!(report.errors.is_empty());
 
         let w = &report.view.work;
@@ -676,7 +780,7 @@ mod tests {
     #[test]
     fn start_without_projects_still_records_an_explicit_branch() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "미리 정한 것", None, &[], Some("feat/planned")).unwrap();
+        let report = start_work(&works, &archive_root(&works), &projects, "미리 정한 것", None, &[], Some("feat/planned")).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("feat/planned"));
         assert!(!works.join("미리-정한-것/trees").exists());
     }
@@ -685,7 +789,7 @@ mod tests {
     #[test]
     fn remove_project_less_work_deletes_only_its_folder() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "아이디어", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "아이디어", None, &[], None).unwrap();
         remove_work(&works, "아이디어", false).unwrap();
         assert!(!works.join("아이디어").exists());
     }
@@ -718,7 +822,7 @@ mod tests {
         let (tmp, works, projects) = setup();
         // be 저장소에 충돌 브랜치를 미리 만들어 사전검증이 실패하게 한다
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
-        let result = start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
+        let result = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
         assert!(matches!(result, Err(Error::Validation(_))), "expected validation error");
         // 아무것도 만들지 않는다 — fe 워크트리도, work 디렉터리도
         assert!(!works.join("카트").exists());
@@ -728,7 +832,7 @@ mod tests {
     #[test]
     fn start_rejects_unknown_project() {
         let (_tmp, works, projects) = setup();
-        let result = start_work(&works, &projects, "카트", None, &slugs(&["nope"]), None);
+        let result = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["nope"]), None);
         assert!(matches!(result, Err(Error::Validation(_))));
         assert!(!works.join("카트").exists());
     }
@@ -736,10 +840,10 @@ mod tests {
     #[test]
     fn start_resumes_missing_worktrees_idempotently() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 같은 제목으로 재실행 + 프로젝트 추가 → 새 slug가 아니라 기존 work에 이어서 생성
         let report =
-            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.slug, "카트");
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
@@ -751,8 +855,8 @@ mod tests {
     #[test]
     fn list_derives_dirty_and_spec_files_and_sorts() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
-        start_work(&works, &projects, "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
 
         // 워크트리에 커밋 안 된 변경 → dirty, spec 파일 → specFiles
         std::fs::write(works.join("첫-작업/trees/fe/new.txt"), "x").unwrap();
@@ -782,7 +886,7 @@ mod tests {
     #[test]
     fn spec_files_stay_a_flat_sorted_list_whatever_the_folder_names_are() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &[], None).unwrap();
         let spec = works.join("카트/spec");
         for dir in ["01-첫-판/tickets", "02-둘째-판", "research", "explanation", "잡동사니"] {
             std::fs::create_dir_all(spec.join(dir)).unwrap();
@@ -815,7 +919,7 @@ mod tests {
     #[test]
     fn update_status_persists() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         let view = update_work_status(&works, "카트", WorkStatus::Review).unwrap();
         assert_eq!(view.work.status, WorkStatus::Review);
         assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Review);
@@ -834,7 +938,7 @@ mod tests {
     #[test]
     fn draft_is_declared_and_changes_nothing_else() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let view = update_work_status(&works, "카트", WorkStatus::Draft).unwrap();
         assert_eq!(view.work.status, WorkStatus::Draft);
@@ -851,7 +955,7 @@ mod tests {
     #[test]
     fn attach_adds_project_with_worktree_and_is_idempotent() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let report = attach_project(&works, &projects, "카트", "be", None).unwrap();
         assert!(report.errors.is_empty());
@@ -878,7 +982,7 @@ mod tests {
     #[test]
     fn attach_fixes_the_branch_of_a_project_less_work() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
         assert_eq!(get_work(&works, "late-branch").unwrap().work.branch, None);
 
         // 미정 + 명시 → 그 값으로 확정·저장되고 워크트리가 생긴다
@@ -909,7 +1013,7 @@ mod tests {
     #[test]
     fn attach_without_a_branch_name_falls_back_to_the_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
         let report = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("late-branch"));
     }
@@ -928,14 +1032,14 @@ mod tests {
 
         // (1) 신규 work — 처음부터 막혔던 경로
         let (_t1, works, projects) = setup();
-        let new_work = start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some(bad));
+        let new_work = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some(bad));
         assert!(matches!(new_work, Err(Error::Validation(_))), "{new_work:?}");
         assert!(!works.join("카트").exists(), "거부됐으면 아무것도 남지 않는다");
 
         // (2) 브랜치 미정 work를 재개하며 나쁜 이름을 넘긴다
         let (_t2, works, projects) = setup();
-        start_work(&works, &projects, "아이디어", Some("idea"), &[], None).unwrap();
-        let resumed = start_work(&works, &projects, "아이디어", Some("idea"), &[], Some(bad));
+        start_work(&works, &archive_root(&works), &projects, "아이디어", Some("idea"), &[], None).unwrap();
+        let resumed = start_work(&works, &archive_root(&works), &projects, "아이디어", Some("idea"), &[], Some(bad));
         assert!(matches!(resumed, Err(Error::Validation(_))), "{resumed:?}");
         assert_eq!(
             get_work(&works, "idea").unwrap().work.branch, None,
@@ -944,7 +1048,7 @@ mod tests {
 
         // (3) 프로젝트를 붙이며 slug가 브랜치로 승격되는 순간
         let (_t3, works, projects) = setup();
-        start_work(&works, &projects, "아이디어", Some(bad), &[], None)
+        start_work(&works, &archive_root(&works), &projects, "아이디어", Some(bad), &[], None)
             .expect("slug로는 멀쩡한 이름이다 — 브랜치를 정하지 않는 경로는 통과해야 한다");
         let attached = attach_project(&works, &projects, bad, "fe", None);
         assert!(matches!(attached, Err(Error::Validation(_))), "{attached:?}");
@@ -959,7 +1063,7 @@ mod tests {
     #[test]
     fn attach_saves_the_branch_before_it_tries_the_worktree() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
         // 워크트리가 놓일 자리를 파일로 막아 git worktree add를 실패시킨다
         let tree = works.join("late-branch/trees/fe");
         std::fs::create_dir_all(tree.parent().unwrap()).unwrap();
@@ -987,7 +1091,7 @@ mod tests {
     #[test]
     fn attach_saves_the_branch_even_when_the_tree_is_already_there() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
         // 자리를 미리 채워 둔다 — attach는 만들 워크트리가 없다고 판단한다
         std::fs::create_dir_all(works.join("late-branch/trees/fe")).unwrap();
 
@@ -1009,7 +1113,7 @@ mod tests {
     #[test]
     fn attach_does_not_change_the_status() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "Draft Work", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "Draft Work", None, &[], None).unwrap();
         update_work_status(&works, "draft-work", WorkStatus::Draft).unwrap();
 
         let report =
@@ -1021,7 +1125,7 @@ mod tests {
     #[test]
     fn remove_refuses_dirty_worktrees_unless_forced() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         std::fs::write(works.join("카트/trees/be/wip.txt"), "uncommitted").unwrap();
 
         let result = remove_work(&works, "카트", false);
@@ -1041,7 +1145,7 @@ mod tests {
     #[test]
     fn remove_clean_work_without_force() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         remove_work(&works, "카트", false).unwrap();
         assert!(!works.join("카트").exists());
         assert!(list_works(&works).unwrap().is_empty());
@@ -1051,7 +1155,7 @@ mod tests {
     #[test]
     fn read_spec_file_reads_and_guards_traversal() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
@@ -1076,13 +1180,13 @@ mod tests {
     #[test]
     fn resume_adopts_leftover_branch_instead_of_dead_ending() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 부분 실패 잔재 시뮬레이션: be에 브랜치만 만들어지고 워크트리는 없는 상태
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
 
         // 재실행이 "branch already exists"로 막히면 영구 dead-end — 기존 브랜치를 채택해야 한다
         let report =
-            start_work(&works, &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty(), "resume must adopt the existing branch: {:?}", report.errors);
         let worktree = works.join("카트/trees/be");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
@@ -1097,7 +1201,7 @@ mod tests {
     #[test]
     fn view_reports_spec_dir_next_to_spec_files() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
 
         let view = get_work(&works, "카트").unwrap();
@@ -1119,15 +1223,20 @@ mod tests {
     #[test]
     fn start_with_different_title_gets_unique_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &projects, "카트 추가", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), &projects, "카트 추가", None, &slugs(&["fe"]), None).unwrap();
         // slugify 결과가 같지만 제목이 다르면 별개 work
         let report =
-            start_work(&works, &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
+            start_work(&works, &archive_root(&works), &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
         assert_eq!(report.view.work.slug, "카트-추가-2");
     }
 
     // ── 아카이브 기록 (render_record) ──────────────────────────────────────
     // 워크트리가 살아 있는 동안에만 뽑을 수 있는 좌표라, 검증도 실제 저장소 위에서 한다.
+
+    /// 아카이브 보존소는 works와 형제다 (`data_root()/works`, `data_root()/archive`).
+    fn archive_root(works: &Path) -> PathBuf {
+        works.parent().unwrap().join("archive")
+    }
 
     fn commit(worktree: &Path, file: &str, body: &str, message: &str) {
         std::fs::write(worktree.join(file), body).unwrap();
@@ -1141,7 +1250,7 @@ mod tests {
     fn record_reports_declared_branch_and_actual_head_separately() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "좌표", None, &slugs(&["fe"]), Some("feat/declared"))
+            start_work(&works, &archive_root(&works), &projects, "좌표", None, &slugs(&["fe"]), Some("feat/declared"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1163,7 +1272,7 @@ mod tests {
     fn record_traces_the_merge_commit_through_a_nested_merge() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "중첩", None, &slugs(&["fe"]), Some("feat/nested"))
+            start_work(&works, &archive_root(&works), &projects, "중첩", None, &slugs(&["fe"]), Some("feat/nested"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1190,7 +1299,7 @@ mod tests {
     fn record_marks_a_fast_forwarded_branch_without_inventing_a_merge_commit() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "빨리감기", None, &slugs(&["fe"]), Some("feat/ff"))
+            start_work(&works, &archive_root(&works), &projects, "빨리감기", None, &slugs(&["fe"]), Some("feat/ff"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1216,7 +1325,7 @@ mod tests {
     fn record_does_not_attribute_someone_elses_merge_to_a_branch_that_never_diverged() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "빈브랜치", None, &slugs(&["fe"]), Some("feat/empty"))
+            start_work(&works, &archive_root(&works), &projects, "빈브랜치", None, &slugs(&["fe"]), Some("feat/empty"))
                 .unwrap();
         let work = report.view.work;
 
@@ -1248,7 +1357,7 @@ mod tests {
 
         // 브랜치는 여기서 갈라지고, 커밋을 하나도 만들지 않는다
         let report =
-            start_work(&works, &projects, "분기만", None, &slugs(&["fe"]), Some("feat/branch-point"))
+            start_work(&works, &archive_root(&works), &projects, "분기만", None, &slugs(&["fe"]), Some("feat/branch-point"))
                 .unwrap();
         let work = report.view.work;
 
@@ -1269,7 +1378,7 @@ mod tests {
     fn record_reports_an_unmerged_branch_against_base() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "미반영", None, &slugs(&["fe"]), Some("feat/open"))
+            start_work(&works, &archive_root(&works), &projects, "미반영", None, &slugs(&["fe"]), Some("feat/open"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1287,7 +1396,7 @@ mod tests {
     #[test]
     fn record_for_a_work_without_projects_is_the_header_alone() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &projects, "리서치만", None, &[], None).unwrap();
+        let report = start_work(&works, &archive_root(&works), &projects, "리서치만", None, &[], None).unwrap();
 
         let doc = render_record(&works, &projects, &report.view.work, "2026-08-02");
         assert!(doc.starts_with("# 기록 — 리서치만\n"), "{doc}");
@@ -1296,12 +1405,218 @@ mod tests {
         assert!(!doc.contains("##"), "프로젝트 섹션이 없어야 한다: {doc}");
     }
 
+    // ── 아카이브 실행 (archive_work) ──────────────────────────────────────
+    // 지우는 게 아니라 **옮긴다.** 목록에서 빠지는 것이 규약이 아니라 구조가 된다.
+
+    /// 여러 프로젝트를 붙인 work를 세워 두고 (works_root, archive_root, slug)를 준다.
+    fn started(works: &Path, projects: &Path, names: &[&str]) -> (PathBuf, String) {
+        let report =
+            start_work(works, &archive_root(works), projects, "치울 것", None, &slugs(names), Some("feat/tidy"))
+                .unwrap();
+        assert!(report.errors.is_empty());
+        (archive_root(works), report.view.work.slug)
+    }
+
+    #[test]
+    fn archive_moves_the_work_out_of_the_works_root_with_its_spec() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        std::fs::write(works.join(&slug).join("spec/overview.md"), "# 개요\n").unwrap();
+
+        let view = archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        assert!(!works.join(&slug).exists(), "작업 루트에 남아 있다");
+        assert!(archive.join(&slug).join("work.json").is_file());
+        assert_eq!(
+            std::fs::read_to_string(archive.join(&slug).join("spec/overview.md")).unwrap(),
+            "# 개요\n"
+        );
+        // 목록에서 빠지는 것이 구조다 — 목록을 읽는 코드는 보존소를 보지 않는다
+        assert!(list_works(&works).unwrap().is_empty());
+        assert_eq!(view.work.slug, slug);
+    }
+
+    /// spec은 사람과 에이전트가 **쓴** 것이고 기록은 기계가 **뽑은** 것이다.
+    /// 섞이면 장래의 증류가 "의도"와 "증거"를 대조할 두 항을 잃는다.
+    #[test]
+    fn archive_writes_the_record_at_the_work_root_not_inside_spec() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        commit(&works.join(&slug).join("trees/fe"), "x.txt", "x\n", "치울 커밋");
+
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let dir = archive.join(&slug);
+        let record = std::fs::read_to_string(dir.join("record.md")).unwrap();
+        assert!(record.starts_with("# 기록 — 치울 것\n"), "{record}");
+        assert!(record.contains("치울 커밋"), "{record}");
+        assert!(!dir.join("spec/record.md").exists(), "기록이 spec 안에 들어갔다");
+        // spec 파일 목록에도 새어들면 안 된다
+        let view = get_work(&archive, &slug).unwrap();
+        assert!(!view.spec_files.iter().any(|f| f.contains("record")), "{:?}", view.spec_files);
+    }
+
+    #[test]
+    fn archive_removes_the_worktrees_but_keeps_the_branch() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe", "be"]);
+
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        for name in ["fe", "be"] {
+            let repo = tmp.path().join(name);
+            assert!(!run_git(&repo, &["worktree", "list"]).contains("trees/"), "{name} 워크트리가 남았다");
+            // 커밋한 것을 되찾을 유일한 경로다
+            assert!(crate::git::branch_exists(&repo, "feat/tidy"), "{name} 브랜치가 사라졌다");
+        }
+    }
+
+    /// 중단·기각된 접근도 치워야 한다. 치우려고 상태를 거짓 기재하게 만드는 게이트는
+    /// 잘못된 게이트다 — 어떤 상태든 아카이브되고, 그 값은 바뀌지 않는다.
+    #[test]
+    fn archive_keeps_whatever_status_the_work_had() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        update_work_status(&works, &slug, WorkStatus::Draft).unwrap();
+
+        let view = archive_work(&works, &archive, &projects, &slug).unwrap();
+        assert_eq!(view.work.status, WorkStatus::Draft);
+        assert_eq!(get_work(&archive, &slug).unwrap().work.status, WorkStatus::Draft);
+    }
+
+    /// 목록 조회(#69)가 읽을 기계 판독 필드. `record.md`를 파싱하는 것은 취약하다.
+    #[test]
+    fn archive_stamps_the_date_in_the_work_meta() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let raw = std::fs::read_to_string(archive.join(&slug).join("work.json")).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let stamped = json["archivedAt"].as_str().expect("archivedAt missing");
+        assert_eq!(stamped, chrono::Local::now().format("%Y-%m-%d").to_string());
+    }
+
+    /// 기존 삭제 기능의 오류는 워크트리 **경로**만 준다 — 사용자가 직접 가서 확인해야 한다.
+    /// 아카이브가 거부할 때는 **무엇 때문인지**를 말한다.
+    #[test]
+    fn archive_refuses_dirty_worktrees_and_names_the_files() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        // 실측상 dirty 내용은 전부 추적조차 되지 않는 계획·리서치 문서였다
+        let worktree = works.join(&slug).join("trees/fe");
+        std::fs::create_dir_all(worktree.join("docs")).unwrap();
+        std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap();
+
+        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("docs/plan.md"), "파일이 아니라 경로만 알려준다: {message}");
+        assert!(message.contains("fe"), "{message}");
+    }
+
+    #[test]
+    fn archive_refused_leaves_the_work_and_its_worktrees_untouched() {
+        let (_tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let worktree = works.join(&slug).join("trees/fe");
+        std::fs::write(worktree.join("dirty.txt"), "d\n").unwrap();
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+
+        assert!(works.join(&slug).join("work.json").is_file(), "work이 사라졌다");
+        assert!(worktree.join("dirty.txt").is_file(), "커밋 안 된 파일이 사라졌다");
+        assert!(worktree.join(".git").exists(), "워크트리가 제거됐다");
+        assert!(!archive.join(&slug).exists(), "보존소에 반쯤 옮겨졌다");
+        // 이동이 성립한 것만이 아카이브됐다는 사실의 근거다
+        let raw = std::fs::read_to_string(works.join(&slug).join("work.json")).unwrap();
+        assert!(!raw.contains("archivedAt"), "옮기지도 않고 일시를 적었다: {raw}");
+        assert!(!works.join(&slug).join("record.md").exists(), "검증 전에 기록을 썼다");
+    }
+
+    /// 디렉터리 이동은 반쯤 된 상태가 양쪽 어디에도 온전히 없는 결과를 만든다 —
+    /// 생성 쪽의 "성공분 유지·재실행 멱등" 계약을 물려받지 않는 이유다.
+    #[test]
+    fn archive_moves_nothing_when_one_project_cannot_be_settled() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe", "be"]);
+        // 원본 저장소가 사라진 워크트리 — 실제로 겪은 상태다
+        std::fs::remove_dir_all(tmp.path().join("be")).unwrap();
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+
+        assert!(works.join(&slug).join("work.json").is_file());
+        assert!(!archive.join(&slug).exists(), "하나가 실패했는데 옮겨졌다");
+    }
+
+    /// 프로젝트가 없는 리서치 work도 치울 수 있어야 한다. 기록도 갖는다.
+    #[test]
+    fn archive_handles_a_work_that_has_no_worktree() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        start_work(&works, &archive, &projects, "리서치만", None, &[], None).unwrap();
+
+        archive_work(&works, &archive, &projects, "리서치만").unwrap();
+
+        assert!(!works.join("리서치만").exists());
+        let record = std::fs::read_to_string(archive.join("리서치만/record.md")).unwrap();
+        assert!(record.starts_with("# 기록 — 리서치만\n"), "{record}");
+    }
+
+    /// 워크트리 제거와 이동 사이에서 멈춘 실행은 재실행이 흡수한다. 이 창에서 잃는 것은
+    /// 없다 — 되돌리기가 없다는 결정과 충돌하지 않는 이유가 이것이다.
+    /// **기록은 다시 뽑지 않는다**: 워크트리가 이미 없어 좌표가 빈 문서가 되고,
+    /// 살아 있을 때 뽑아 둔 좋은 기록을 덮어쓴다.
+    #[test]
+    fn archive_rerun_absorbs_a_run_that_stopped_after_the_worktrees_were_removed() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let dir = works.join(&slug);
+        commit(&dir.join("trees/fe"), "x.txt", "x\n", "살아 있을 때 뽑은 커밋");
+
+        // 3단계까지 간 뒤 이동 직전에 멈춘 상태를 만든다
+        let work = get_work(&works, &slug).unwrap().work;
+        let taken = render_record(&works, &projects, &work, "2026-08-02");
+        std::fs::write(dir.join("record.md"), taken).unwrap();
+        crate::git::worktree_remove(&dir.join("trees/fe"), false).unwrap();
+        assert!(!run_git(&tmp.path().join("fe"), &["worktree", "list"]).contains("trees/"));
+
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        assert!(archive.join(&slug).join("work.json").is_file());
+        let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
+        assert!(record.contains("살아 있을 때 뽑은 커밋"), "좋은 기록을 덮어썼다: {record}");
+    }
+
+    /// 아카이브에 같은 이름이 있는데 새 work가 그 이름을 쓰면 단건 조회가 모호해지고
+    /// 사람도 두 디렉터리를 오가며 헷갈린다. **거는 지점이 하나가 아니다** — 제목에서
+    /// 파생하는 경로와 slug를 명시하는 경로가 따로 있고, 명시 경로는 중복 회피를 거치지
+    /// 않는다("이미 있으면 재개했을 것"이라는 전제를 아카이브가 깬다).
+    #[test]
+    fn start_does_not_reuse_a_slug_that_is_already_archived() {
+        let (_tmp, works, projects) = setup();
+        let archive = archive_root(&works);
+        start_work(&works, &archive, &projects, "카트", Some("cart"), &slugs(&["fe"]), Some("feat/cart"))
+            .unwrap();
+        archive_work(&works, &archive, &projects, "cart").unwrap();
+
+        // 명시 경로: 재개가 아니다 — 아카이브는 되돌리지 않는다
+        let err =
+            start_work(&works, &archive, &projects, "카트 다시", Some("cart"), &[], None).unwrap_err();
+        assert!(err.to_string().contains("archive"), "{err}");
+        assert!(!works.join("cart").exists(), "거부됐는데 폴더가 생겼다");
+
+        // 제목에서 파생하는 경로: 접미사가 붙는다
+        let report = start_work(&works, &archive, &projects, "cart", None, &[], None).unwrap();
+        assert_eq!(report.view.work.slug, "cart-2");
+    }
+
     /// 워크트리가 이미 없어도 문서는 만든다. 없는 좌표를 지어내지 않고 그렇게 적는다.
     #[test]
     fn record_has_a_section_per_project_even_when_a_worktree_is_gone() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &projects, "둘", None, &slugs(&["fe", "be"]), Some("feat/two"))
+            start_work(&works, &archive_root(&works), &projects, "둘", None, &slugs(&["fe", "be"]), Some("feat/two"))
                 .unwrap();
         let work = report.view.work;
         std::fs::remove_dir_all(works.join(&work.slug).join("trees/be")).unwrap();

@@ -93,6 +93,16 @@ pub(crate) fn is_dirty(dir: &Path) -> bool {
     }
 }
 
+/// 커밋 안 된 항목들의 경로. `is_dirty`가 참일 때 **무엇 때문인지**를 준다 —
+/// 워크트리 경로만 주면 사용자가 직접 가서 확인해야 한다. 판단 불가면 `None`.
+pub(crate) fn dirty_files(dir: &Path) -> Option<Vec<String>> {
+    // porcelain v1은 `XY <경로>` — 상태 두 글자와 공백 뒤가 경로다.
+    // `-uall`이 없으면 추적 안 된 디렉터리가 `docs/` 한 줄로 접혀, 무엇 때문인지를
+    // 알려준다는 목적을 못 채운다. 목록이 길어지는 것은 호출부가 잘라 낸다.
+    let out = git(dir, &["status", "--porcelain", "--untracked-files=all"])?;
+    Some(out.lines().filter_map(|line| line.get(3..)).map(str::to_string).collect())
+}
+
 /// 워크트리 제거. 브랜치는 건드리지 않는다.
 pub(crate) fn worktree_remove(worktree: &Path, force: bool) -> std::result::Result<(), String> {
     let common = git(worktree, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
