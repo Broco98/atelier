@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -53,10 +53,6 @@ function SidebarWorkList({
         ? decodeURIComponent(state.location.pathname.slice("/works/".length))
         : null,
   });
-  const onWorksScreen = useRouterState({
-    select: (state) => state.location.pathname.startsWith("/works"),
-  });
-
   const { main, drafts, visible } = splitWorkSections(works, {
     works: worksOpen,
     drafts: draftsOpen,
@@ -105,17 +101,6 @@ function SidebarWorkList({
     void navigate({ to: "/works/$slug", params: { slug } });
   };
 
-  // '작업' 라벨이 Works 화면으로 가는 링크를 겸한다 — nav에서 Works를 뺐기 때문이고,
-  // 목록이 비어도 이 라벨은 남아 진입 경로가 유지된다.
-  // 이미 그 화면이면 아무것도 하지 않는다: 무선택 주소로 가는 이동은 정규화가 replace여도
-  // 그 자체가 히스토리 한 칸을 남긴다(router.test.ts가 고정). 뒤로가기를 눌러도 화면이
-  // 그대로인 죽은 칸이 된다.
-  const goToWorks = () => {
-    if (onWorksScreen) return;
-    closeCard();
-    void navigate({ to: "/works" });
-  };
-
   // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업. 접힌 섹션은 세지 않는다.
   // 어느 화면에 있든 이 목록을 센다: 어디에 있든 작업으로 한 번에 돌아갈 수 있다.
   // 입력 중에는 무시.
@@ -147,18 +132,17 @@ function SidebarWorkList({
           두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
         <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 scroll-quiet">
-          {/* '작업' 헤더는 목록이 비어도 남는다 — Works 진입 링크를 겸한다 */}
+          {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
           <SectionHeader
             label="작업"
             className="mt-3"
             open={worksOpen}
             count={main.length}
             onToggle={() => setWorksOpen((v) => !v)}
-            onNavigate={goToWorks}
           />
-          {worksOpen &&
-            (main.length === 0 ? (
-              <span className="px-[9px] pb-1 pt-0.5 text-[12.5px] leading-normal text-tertiary">
+          <SectionBody open={worksOpen}>
+            {main.length === 0 ? (
+              <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
                 {drafts.length > 0
                   ? "진행 중인 작업이 없어요."
                   : "작업은 Claude Code에서 시작돼요."}
@@ -174,9 +158,10 @@ function SidebarWorkList({
                   onLeave={closeCard}
                 />
               ))
-            ))}
+            )}
+          </SectionBody>
 
-          {/* '초안' 헤더는 초안이 있을 때만 — 진입 링크가 아니라 빈 헤더는 자리만 먹는다 */}
+          {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
           {drafts.length > 0 && (
             <>
               <SectionHeader
@@ -186,8 +171,8 @@ function SidebarWorkList({
                 count={drafts.length}
                 onToggle={() => setDraftsOpen((v) => !v)}
               />
-              {draftsOpen &&
-                drafts.map((work) => (
+              <SectionBody open={draftsOpen}>
+                {drafts.map((work) => (
                   <WorkRow
                     key={work.slug}
                     work={work}
@@ -197,6 +182,7 @@ function SidebarWorkList({
                     onLeave={closeCard}
                   />
                 ))}
+              </SectionBody>
             </>
           )}
         </div>
@@ -282,7 +268,7 @@ function CardField({
   );
 }
 
-// 섹션 헤더 — 라벨 + 접기 아이콘 + (접혔을 때) 개수.
+// 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
 // 라벨은 항목과 **같은 크기**이고 색으로만 구분된다. 한 단계 작게 두면 라벨이 아니라 목록과
 // 목록 사이의 구분선처럼 읽힌다.
@@ -291,58 +277,63 @@ function CardField({
 // 섹션마다 상시 노출된 아이콘은 정작 봐야 할 목록보다 먼저 눈에 들어온다. 다만 **접혀 있으면
 // 계속 보인다**: 그것이 "비어 있는 게 아니라 접힌 것"을 알리는 유일한 표시다.
 //
-// onNavigate가 있는 섹션은 라벨이 링크를 겸한다. 없으면 라벨은 그냥 글자다 — 갈 곳이 없는데
-// 누를 수 있게 두면 라벨이 약속하지 않은 곳으로 데려간다.
+// 개수는 접힘과 무관하게 항상 보인다. 배지가 아니라 옅은 숫자다 — 상시 노출인데 배지로 두면
+// 헤더가 목록보다 무거워진다.
 function SectionHeader({
   label,
   open,
   count,
   onToggle,
-  onNavigate,
   className,
 }: {
   label: string;
   open: boolean;
   count: number;
   onToggle: () => void;
-  onNavigate?: () => void;
   className?: string;
 }) {
   return (
-    <div className={cn("group flex h-7 shrink-0 items-center gap-1 px-[9px]", className)}>
-      {onNavigate ? (
-        <button
-          type="button"
-          onClick={onNavigate}
-          title={`${label} 목록 열기`}
-          className="-mx-1 shrink-0 rounded-[7px] px-1 text-[13.5px] font-medium text-tertiary transition-colors hover:bg-state-1 hover:text-foreground"
-        >
-          {label}
-        </button>
-      ) : (
-        <span className="shrink-0 text-[13.5px] font-medium text-tertiary">{label}</span>
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={cn(
+        "group flex h-7 w-full shrink-0 items-center gap-1 rounded-[8px] px-[9px] text-left transition-colors hover:bg-state-1",
+        className,
       )}
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-label={`${label} ${open ? "접기" : "펼치기"}`}
+    >
+      <span className="shrink-0 text-[13.5px] font-medium text-tertiary transition-colors group-hover:text-muted-foreground">
+        {label}
+      </span>
+      <ChevronDown
         className={cn(
-          "flex size-[18px] shrink-0 items-center justify-center rounded-[6px] text-tertiary",
-          "transition-[opacity,color,background-color] duration-150 hover:bg-state-1 hover:text-foreground",
-          open ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "opacity-100",
+          "size-3.5 shrink-0 text-tertiary transition-[opacity,transform] duration-150",
+          open ? "opacity-0 group-hover:opacity-100" : "-rotate-90 opacity-100",
         )}
-      >
-        <ChevronDown
-          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
-          strokeWidth={2.2}
-        />
-      </button>
-      {!open && (
-        <span className="ml-auto shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
-          {count}
-        </span>
+        strokeWidth={2.2}
+      />
+      <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary">{count}</span>
+    </button>
+  );
+}
+
+// 접기 애니메이션 — grid-template-rows를 0fr↔1fr로 보간한다. height:auto는 트랜지션되지 않고,
+// max-height는 목록 길이를 추정해야 해서 항목이 많을수록 타이밍이 어긋난다.
+//
+// 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
+// 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
+function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      inert={!open}
+      className={cn(
+        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
       )}
+    >
+      <div className="overflow-hidden">
+        <div className="flex flex-col gap-[3px] pt-[3px]">{children}</div>
+      </div>
     </div>
   );
 }
