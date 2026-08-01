@@ -57,7 +57,10 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           </span>
         </div>
 
-        <nav className="flex shrink-0 flex-col gap-[3px] px-2">
+        {/* 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 아래 작업 목록은 스크롤바가
+            늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
+            항목의 오른쪽 끝이 맞는다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다. */}
+        <nav className="flex shrink-0 flex-col gap-[3px] pl-2 pr-[19px]">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (

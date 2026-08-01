@@ -131,7 +131,14 @@ function SidebarWorkList({
           아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다.
           두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
-        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 scroll-quiet">
+        {/* auto가 아니라 scroll이다 — 자리를 **항상** 예약한다.
+            scroll-quiet의 스크롤바는 폭을 갖는 클래식이라, auto로 두면 목록이 넘치는 순간
+            콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 왼쪽으로 밀린다(실측 264→253). 접었다
+            펴는 것만으로도 폭이 오가는 자리다. scrollbar-gutter:stable은 이 WebKit에서
+            먹지 않아(실측) 확실한 쪽을 쓴다. 늘 있어도 보이지는 않는다 — track·thumb가
+            투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
+            예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
+        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
           {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
           <SectionHeader
             label="작업"
