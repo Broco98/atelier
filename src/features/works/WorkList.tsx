@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, Check, ChevronDown, Filter, Zap } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, ChevronRight, Filter, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { PopoverPortal } from "@/components/ui/popover-portal";
@@ -18,6 +18,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
   const [sortAsc, setSortAsc] = useState(false);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const filterAnchor = useRef<HTMLButtonElement>(null);
 
   const projectOptions = [...new Set(works.flatMap((w) => w.projects))].sort();
@@ -32,9 +33,16 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
       )
     : filtered;
 
+  // 문턱을 낮추면 백로그가 쌓인다. 이 구역이 그 대가를 격리한다 — 쌓인 아이디어가
+  // 진행 중인 일을 가리지 않게. 정렬·필터는 두 구역 모두에 그대로 걸린다.
+  const main = sorted.filter((w) => w.status !== "draft");
+  const drafts = sorted.filter((w) => w.status === "draft");
+  const visible = draftsOpen ? [...main, ...drafts] : main;
+
   const size = useResizableWidth("panel-width", 360, 280, 560);
 
-  // Cmd+1~9 — 표시 순서(정렬·필터 반영) 기준 N번째 작업 선택. 입력 중에는 무시.
+  // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업 선택. 접힌 초안은 세지 않는다.
+  // 입력 중에는 무시.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || !/^[1-9]$/.test(e.key)) return;
@@ -45,23 +53,25 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
         target.isContentEditable
       )
         return;
-      const work = sorted[Number(e.key) - 1];
+      const work = visible[Number(e.key) - 1];
       if (!work) return;
       e.preventDefault();
       onSelect(work.slug);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sorted, onSelect]);
+  }, [visible, onSelect]);
 
   return (
     <div
       style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "relative shrink-0 overflow-hidden border-r bg-panel",
+        // 흰 바닥 — 무채색 선택 표시가 배경에 묻히지 않으려면 패널이 흰색이어야 한다.
+        // --bg-panel 변수 자체는 그대로 둔다 (상태바·작업 패널 카드는 회색으로 남는다)
+        "relative shrink-0 overflow-hidden border-r bg-background",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "transition-[width,border-color] duration-[220ms] ease-panel",
         open ? "w-(--panel-width)" : "w-0 border-transparent",
       )}
     >
@@ -83,7 +93,7 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
               type="button"
               onClick={() => setSortAsc((v) => !v)}
               title="생성일 기준 정렬"
-              className="flex h-[26px] items-center gap-[5px] rounded-[8px] border px-[9px] text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
             >
               <ArrowDown
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
@@ -99,8 +109,10 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
                 onClick={() => setFilterOpen((v) => !v)}
                 title={projectFilter ?? "모든 프로젝트"}
                 className={cn(
-                  "flex h-[26px] max-w-[120px] items-center gap-[5px] rounded-[8px] border px-[9px] text-[12px] font-medium transition-colors hover:bg-accent",
-                  projectFilter ? "text-primary" : "text-muted-foreground",
+                  "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                  projectFilter
+                    ? "toggle-on"
+                    : "text-muted-foreground hover:bg-state-2 hover:text-foreground",
                 )}
               >
                 <Filter className="size-3 shrink-0" strokeWidth={2} />
@@ -148,10 +160,12 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <Zap className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
             <span className="text-[13.5px] font-medium text-muted-foreground">작업이 없어요</span>
             <span className="text-[12.5px] leading-normal text-tertiary">
-              작업은 Claude Code에서 스킬로 시작돼요.
+              작업은 Claude Code에서 시작돼요.
             </span>
+            {/* 실제로 통하는 경로만 안내한다 — CLI에는 시작 명령이 없고, 에이전트가
+                atelier_start_work를 부른다. 아래 문구는 그대로 붙여 넣는 것이다. */}
             <code className="mt-1 select-all rounded-[9px] border bg-inset px-2 py-1.5 font-mono text-[11.5px] text-muted-foreground">
-              atelier work start "새 작업" --project &lt;slug&gt;
+              atelier로 "새 작업" 시작해줘
             </code>
           </div>
         ) : sorted.length === 0 ? (
@@ -159,55 +173,115 @@ function WorkList({ works, selectedSlug, onSelect, sidebarOpen, open }: WorkList
             <span className="text-[13px] text-tertiary">해당 프로젝트의 작업이 없어요</span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5 scroll-quiet">
-            {sorted.map((work) => {
-              const active = work.slug === selectedSlug;
-              return (
+          <>
+            <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 pt-0.5 scroll-quiet">
+              {main.length === 0 ? (
+                // 전부 초안일 때 — "작업이 없다"고 말하면 거짓이다. 어디에 있는지 알려준다.
+                <span className="px-3 pt-6 text-center text-[13px] leading-normal text-tertiary">
+                  진행 중인 작업이 없어요.
+                  <br />
+                  적어 둔 것은 아래 초안에 있어요.
+                </span>
+              ) : (
+                main.map((work) => (
+                  <WorkRow
+                    key={work.slug}
+                    work={work}
+                    active={work.slug === selectedSlug}
+                    onSelect={onSelect}
+                  />
+                ))
+              )}
+            </div>
+
+            {drafts.length > 0 && (
+              <div className="shrink-0 border-t pt-1.5">
                 <button
-                  key={work.slug}
                   type="button"
-                  onClick={() => onSelect(work.slug)}
-                  className={cn(
-                    "flex w-full shrink-0 flex-col gap-[7px] rounded-[12px] px-3 py-2.5 text-left transition-colors",
-                    active ? "selected-ring" : "hover:bg-accent",
-                  )}
+                  onClick={() => setDraftsOpen((v) => !v)}
+                  aria-expanded={draftsOpen}
+                  className="flex h-8 w-full items-center gap-1.5 rounded-[10px] px-2.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
                 >
-                  <span className="flex items-center gap-[7px]">
-                    <StatusIcon status={work.status} />
-                    <span
-                      className={cn(
-                        "min-w-0 truncate text-[13.5px] font-medium",
-                        active && "text-primary",
-                        work.status === "done" && "text-muted-foreground",
-                      )}
-                    >
-                      {work.title}
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 gap-1 overflow-hidden">
-                      {work.projects.map((p) => (
-                        <span
-                          key={p}
-                          className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-muted-foreground"
-                        >
-                          {p}
-                        </span>
-                      ))}
-                    </span>
-                    <span className="shrink-0 text-[11.5px] text-tertiary">
-                      {formatCreated(work.createdAt)}
-                    </span>
+                  <ChevronRight
+                    className={cn("size-3 shrink-0 transition-transform", draftsOpen && "rotate-90")}
+                    strokeWidth={2.2}
+                  />
+                  <span className="min-w-0 flex-1 truncate">초안</span>
+                  <span className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
+                    {drafts.length}
                   </span>
                 </button>
-              );
-            })}
-          </div>
+                {draftsOpen && (
+                  <div className="flex max-h-[38vh] flex-col gap-[3px] overflow-y-auto pb-1 pt-0.5 scroll-quiet">
+                    {drafts.map((work) => (
+                      <WorkRow
+                        key={work.slug}
+                        work={work}
+                        active={work.slug === selectedSlug}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {open && <ResizeHandle control={size} />}
     </div>
+  );
+}
+
+// 본문 목록과 초안 구역이 같은 행을 쓴다 — 선택 표시도 같다.
+function WorkRow({
+  work,
+  active,
+  onSelect,
+}: {
+  work: WorkView;
+  active: boolean;
+  onSelect: (slug: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(work.slug)}
+      className={cn(
+        // 프로젝트 목록 항목과 공유하는 규격 — 반지름·패딩·줄 간격이 같고
+        // 두 목록의 차이는 줄 수(정보량)뿐이다
+        "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
+        active ? "selected-row" : "hover:bg-state-1",
+      )}
+    >
+      <span className="flex items-center gap-[7px]">
+        <StatusIcon status={work.status} />
+        <span
+          className={cn(
+            "min-w-0 truncate text-[13.5px] font-medium",
+            work.status === "done" && "text-muted-foreground",
+          )}
+        >
+          {work.title}
+        </span>
+      </span>
+      <span className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 gap-1 overflow-hidden">
+          {work.projects.map((p) => (
+            <span
+              key={p}
+              className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-muted-foreground"
+            >
+              {p}
+            </span>
+          ))}
+        </span>
+        <span className="shrink-0 text-[11.5px] text-tertiary">
+          {formatCreated(work.createdAt)}
+        </span>
+      </span>
+    </button>
   );
 }
 

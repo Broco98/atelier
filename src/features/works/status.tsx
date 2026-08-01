@@ -5,6 +5,13 @@ export const STATUS_META: Record<
   WorkStatus,
   { label: string; desc: string; dotClass: string; badgeClass: string }
 > = {
+  // 키 순서가 상태 드롭다운 순서다 — 진행 순서대로 둔다
+  draft: {
+    label: "draft",
+    desc: "아직 시작 전",
+    dotClass: "bg-tertiary",
+    badgeClass: "text-muted-foreground bg-accent",
+  },
   active: {
     label: "active",
     desc: "진행 중",
@@ -25,8 +32,23 @@ export const STATUS_META: Record<
   },
 };
 
-// 목업의 상태 아이콘 3종 — active 진행 아크 / review 시계 / done 체크
+// 상태 아이콘 4종 — draft 점선 원 / active 진행 아크 / review 시계 / done 체크
 export function StatusIcon({ status, className }: { status: WorkStatus; className?: string }) {
+  if (status === "draft") {
+    return (
+      <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-tertiary", className)}>
+        <circle
+          cx="7"
+          cy="7"
+          r="5.5"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeDasharray="2.4 2.2"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
   if (status === "active") {
     return (
       <svg viewBox="0 0 14 14" fill="none" className={cn("size-3.5 shrink-0 text-primary", className)}>

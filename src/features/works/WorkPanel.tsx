@@ -1,7 +1,7 @@
 import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
-import { specRef, treeDirRef, workDirRef } from "./refs";
+import { specRef, worktreeDirRef, workDirRef } from "./refs";
 import SpecTree from "./SpecTree";
 import type { WorkView } from "./types";
 
@@ -11,12 +11,21 @@ interface WorkPanelProps {
   onSelectFile: (path: string) => void;
   // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 참조 조립은 refs.ts가 담당.
   onCopy: (text: string) => void;
-  // 닫히는 중 — 부모가 언마운트를 늦춰 퇴장 애니메이션을 재생시킨다 (PANEL_ANIM_MS).
+  // 닫히는 중 — 부모가 언마운트를 늦춰 퇴장 애니메이션을 재생시킨다 (PANEL_EXIT_MS).
   closing?: boolean;
 }
 
-// 등장·퇴장 애니메이션 길이. SpecViewer의 언마운트 지연과 같은 값을 써야 한다.
-export const PANEL_ANIM_MS = 260;
+// 퇴장 애니메이션 길이. SpecViewer의 언마운트 지연과 같은 값을 써야 한다 —
+// 이 값이 곧 296px 열이 사라져 본문이 넓어지는 시점이다.
+//
+// 페이드와 열 제거는 서로 다른 타임라인이라(하나는 opacity, 하나는 언마운트)
+// 길이를 넉넉히 잡으면 그 사이가 벌어진다. 퇴장 곡선이 앞을 몰아 쓰는 탓에
+// 180ms일 때 패널은 113ms에 이미 94% 사라져 있고, 남은 67ms는 빈 열만 서 있는
+// 박자였다. 짧게 잡아 그 틈을 지운다 — 120ms면 103ms에 99%다.
+//
+// 등장(260ms)보다 훨씬 짧다. 사라지는 것을 나타나는 것만큼 기다릴 이유가 없다.
+// 등장 길이는 상수가 아니다 — 아래 클래스 문자열에만 산다. 맞출 상대가 없기 때문이다.
+export const PANEL_EXIT_MS = 120;
 
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
 function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPanelProps) {
@@ -28,47 +37,64 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
         .filter((b): b is string => Boolean(b)),
     ),
   ];
-  const treeCount = work.trees.filter((t) => t.exists).length;
+  const worktreeCount = work.worktrees.filter((t) => t.exists).length;
 
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
     // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
     // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
     <aside
+      // 퇴장 길이는 클래스가 아니라 인라인으로 넘긴다. Tailwind 임의값은 JS 상수를 못 읽어
+      // 같은 숫자를 두 군데 적게 되는데, 그 둘이 갈리면 빈 열이 다시 생긴다.
+      // 패널 폭(--panel-width)을 인라인으로 넘기는 것과 같은 방식이다
+      style={closing ? { animationDuration: `${PANEL_EXIT_MS}ms` } : undefined}
       className={cn(
         "flex w-[296px] shrink-0 origin-top-right flex-col p-4 pl-0",
+        // 퇴장 곡선은 패널 폭 트랜지션과 같은 --panel-ease다 — 즉시 출발해 끝에서 감속한다
         closing
-          ? "animate-[panel-fade-out_260ms_cubic-bezier(0.4,0,1,1)_both]"
+          ? "animate-[panel-fade-out_var(--panel-ease)_both]"
           : "animate-[panel-fade_260ms_cubic-bezier(0.22,1,0.36,1)_both]",
       )}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
         <div className="flex items-center justify-between gap-2 px-4 pt-3">
           <span className="text-[13.5px] font-semibold">Git</span>
-          <span
-            title={`워크트리 ${treeCount}개`}
-            className="text-[11.5px] text-tertiary"
-          >
-            트리 {treeCount}
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
-          <GitFork className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
-          <span className="truncate">{work.branch}</span>
-          {bases.length > 0 && (
-            <>
-              <ArrowRight className="size-2.5 shrink-0 text-tertiary" strokeWidth={2} />
-              <span className="shrink-0 text-tertiary">{bases.join(", ")}</span>
-            </>
+          {/* 셀 수 있는 워크트리가 있을 때만 — 브랜치 유무와는 별개다.
+              세는 것과 같은 값으로 판단한다: 선언된 프로젝트는 있는데 워크트리 생성이
+              전부 실패한 work가 "worktree 0"을 내보이던 것을 막는다. */}
+          {worktreeCount > 0 && (
+            <span
+              title={`worktree ${worktreeCount}개`}
+              className="text-[11.5px] text-tertiary"
+            >
+              worktree {worktreeCount}
+            </span>
           )}
         </div>
+        {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다 */}
+        {work.branch === null ? (
+          <div className="px-4 pb-3 pt-2 text-[12px] leading-normal text-tertiary">
+            아직 프로젝트가 없어요. 프로젝트를 붙이면 브랜치가 정해져요.
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
+            <GitFork className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
+            <span className="truncate">{work.branch}</span>
+            {bases.length > 0 && (
+              <>
+                <ArrowRight className="size-2.5 shrink-0 text-tertiary" strokeWidth={2} />
+                <span className="shrink-0 text-tertiary">{bases.join(", ")}</span>
+              </>
+            )}
+          </div>
+        )}
         <div className="flex flex-col px-2 pb-2">
           <PathCopyRow label="작업 폴더" onCopy={() => onCopy(workDirRef(work.slug))} />
-          {work.trees.map((t) => (
+          {work.worktrees.map((t) => (
             <PathCopyRow
               key={t.project}
-              label={`트리 · ${t.project}`}
-              onCopy={() => onCopy(treeDirRef(t.path))}
+              label={`worktree · ${t.project}`}
+              onCopy={() => onCopy(worktreeDirRef(t.path))}
             />
           ))}
         </div>
@@ -101,7 +127,7 @@ function PathCopyRow({ label, onCopy }: { label: string; onCopy: () => void }) {
       type="button"
       title="경로 복사"
       onClick={onCopy}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-accent"
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <Copy
