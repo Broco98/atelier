@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Folder, List, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Check, ChevronDown, Folder, List, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
-import WorkList from "./WorkList";
 import SpecViewer from "./SpecViewer";
 import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
 import { STATUS_META } from "./status";
@@ -13,30 +12,22 @@ import type { WorkStatus, WorkView } from "./types";
 interface WorksPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
-  onSelect: (slug: string | null) => void;
   onOpenProject: (slug: string) => void;
 }
 
-const PANEL_OPEN_KEY = "works-panel-open";
-
-function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: WorksPageProps) {
+function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps) {
   const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
   const { data: projects = [] } = useProjects();
   const needsProject = works.length === 0 && projects.length === 0;
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
   // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
   const [showSource, setShowSource] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
-
-  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
+  // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
+  // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
+  // 입력 중에는 무시.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
@@ -48,7 +39,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
       )
         return;
       e.preventDefault();
-      setPanelOpen((open) => !open);
+      setWorkPanelOpen((open) => !open);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -60,18 +51,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <WorkList
-        works={works}
-        selectedSlug={selected?.slug ?? null}
-        onSelect={onSelect}
-        sidebarOpen={sidebarOpen}
-        open={panelOpen}
-      />
       <main className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Works"
           leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
-          inset={!sidebarOpen && !panelOpen}
+          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다
+          inset={!sidebarOpen}
           meta={
             selected && (
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
@@ -108,9 +93,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                   >
                     소스
                   </button>
+                  {/* 이 화면의 유일한 접이식이다 — 본문 확대 단축키(⌘Enter)도 여기로 온다 */}
                   <button
                     type="button"
                     onClick={() => setWorkPanelOpen((v) => !v)}
+                    aria-label="작업 패널 토글"
+                    aria-expanded={workPanelOpen}
                     title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
                     className={cn(
                       "icon-button transition-colors",
@@ -123,20 +111,6 @@ function WorksPage({ sidebarOpen, selectedSlug, onSelect, onOpenProject }: Works
                   </button>
                 </span>
               )}
-              <button
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </button>
             </>
           }
         />

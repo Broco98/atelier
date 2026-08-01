@@ -44,8 +44,6 @@ function WorksView({ slug }: { slug: string | null }) {
     <WorksPage
       sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
-      // 선택 해제는 replace다 — 근거는 -projects-view.tsx의 같은 자리
-      onSelect={(next) => goTo(next, next === null)}
       onOpenProject={(project) =>
         void navigate({ to: "/projects/$slug", params: { slug: project } })
       }

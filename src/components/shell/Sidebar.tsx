@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import SidebarWorkList from "@/features/works/SidebarWorkList";
 import { navItems, type NavKey } from "./nav-items";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
@@ -8,8 +9,10 @@ interface SidebarProps {
   onSelect: (key: NavKey) => void;
 }
 
+// 고정 nav 블록 + 상주하는 작업 목록. 어느 화면에 있든 이 사이드바는 바뀌지 않는다.
+// 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
-  const size = useResizableWidth("sidebar-width", 248, 180, 400);
+  const size = useResizableWidth("sidebar-width", 280, 240, 400);
 
   return (
     <aside
@@ -49,7 +52,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           </span>
         </div>
 
-        <nav className="flex flex-col gap-[3px] px-2">
+        <nav className="flex shrink-0 flex-col gap-[3px] px-2">
           {navItems.map((item) => {
             const active = item.key === activeKey;
             return (
@@ -71,6 +74,8 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
             );
           })}
         </nav>
+
+        <SidebarWorkList />
       </div>
 
       {open && <ResizeHandle control={size} />}
