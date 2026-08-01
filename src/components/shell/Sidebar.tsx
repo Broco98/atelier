@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import { navItems, type NavKey } from "./nav-items";
@@ -13,9 +14,12 @@ interface SidebarProps {
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
+  // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
+  const asideRef = useRef<HTMLElement>(null);
 
   return (
     <aside
+      ref={asideRef}
       style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
@@ -75,7 +79,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           })}
         </nav>
 
-        <SidebarWorkList open={open} />
+        <SidebarWorkList open={open} boundaryRef={asideRef} />
       </div>
 
       {open && <ResizeHandle control={size} />}

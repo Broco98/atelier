@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,15 @@ const HOVER_DELAY_MS = 350;
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
-function SidebarWorkList({ open }: { open: boolean }) {
+function SidebarWorkList({
+  open,
+  boundaryRef,
+}: {
+  open: boolean;
+  // 호버 카드가 비켜야 할 상자 — 사이드바 자신이다. 행의 오른쪽 끝은 거터와 스크롤바 때문에
+  // 사이드바 끝보다 8~19px 안쪽이라, 행만 기준으로 삼으면 카드가 사이드바에 붙거나 파고든다.
+  boundaryRef: RefObject<HTMLElement | null>;
+}) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -40,7 +48,11 @@ function SidebarWorkList({ open }: { open: boolean }) {
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   const hoverAnchor = useRef<HTMLElement | null>(null);
   const hoverTimer = useRef<number | null>(null);
-  const hovered = works.find((work) => work.slug === hoveredSlug) ?? null;
+  // visible에서 찾는다 — works가 아니다. 작업이 지워질 때뿐 아니라 **화면에서만 빠질 때**도
+  // 카드가 따라 사라져야 한다. 행이 언마운트되면 mouseleave가 오지 않아 카드를 닫을 사람이
+  // 없고, 앵커가 문서에서 떨어져 위치 계산이 0,0으로 무너진다. (예: 초안이 접힌 채로
+  // 호버 중인 작업의 상태가 draft로 바뀌면 그 행이 접힌 구역으로 옮겨져 사라진다)
+  const hovered = visible.find((work) => work.slug === hoveredSlug) ?? null;
 
   const closeCard = () => {
     if (hoverTimer.current !== null) clearTimeout(hoverTimer.current);
@@ -56,10 +68,13 @@ function SidebarWorkList({ open }: { open: boolean }) {
   };
 
   // 사이드바가 접히면 행은 DOM에 남은 채 폭만 0이 된다 — 열려 있던 카드가 허공에 남는다.
-  // 언마운트 시 대기 중인 타이머도 함께 정리한다.
+  // 앵커 행이 목록에서 빠져 카드가 이미 사라진 경우에는 남아 있는 슬러그도 지운다 —
+  // 그 행이 도로 나타났을 때 마우스가 그대로인데 카드가 되살아나지 않게.
+  const hoverLost = hoveredSlug !== null && hovered === null;
   useEffect(() => {
-    if (!open) closeCard();
-  }, [open]);
+    if (!open || hoverLost) closeCard();
+  }, [open, hoverLost]);
+  // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
   const goTo = (slug: string) => {
@@ -102,63 +117,78 @@ function SidebarWorkList({ open }: { open: boolean }) {
         <span className="text-[11.5px] font-medium tracking-[0.03em] text-tertiary">작업</span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto px-2 pb-1 scroll-quiet">
-        {rows.length === 0 ? (
-          <span className="px-[9px] pt-1 text-[12.5px] leading-normal text-tertiary">
-            작업은 Claude Code에서 시작돼요.
-          </span>
-        ) : (
-          rows.map((work) => (
-            <WorkRow
-              key={work.slug}
-              work={work}
-              active={work.slug === selectedSlug}
-              onOpen={goTo}
-              onHover={openCardAfterDelay}
-              onLeave={closeCard}
-            />
-          ))
-        )}
-      </div>
-
-      {foldDrafts && (
-        <div className="mx-2 shrink-0 border-t pt-1.5">
-          <button
-            type="button"
-            onClick={() => setDraftsOpen((v) => !v)}
-            aria-expanded={draftsOpen}
-            className="flex h-8 w-full items-center gap-1.5 rounded-[10px] px-[9px] text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
-          >
-            <ChevronRight
-              className={cn("size-3 shrink-0 transition-transform", draftsOpen && "rotate-90")}
-              strokeWidth={2.2}
-            />
-            <span className="min-w-0 flex-1 truncate">초안</span>
-            <span className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
-              {drafts.length}
+      {/* 거터를 스크롤 상자 **바깥**에 둔다. 스크롤바는 padding이 아니라 border 안쪽 끝에
+          놓이므로, 스크롤 상자가 사이드바 폭을 그대로 쓰면 스크롤바가 폭 조절 핸들(오른쪽 5px)
+          아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다. */}
+      <div className="flex min-h-0 flex-1 flex-col px-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 scroll-quiet">
+          {rows.length === 0 ? (
+            <span className="px-[9px] pt-1 text-[12.5px] leading-normal text-tertiary">
+              작업은 Claude Code에서 시작돼요.
             </span>
-          </button>
-          {draftsOpen && (
-            <div className="flex max-h-[38vh] flex-col gap-[3px] overflow-y-auto pb-1 pt-0.5 scroll-quiet">
-              {drafts.map((work) => (
-                <WorkRow
-                  key={work.slug}
-                  work={work}
-                  active={work.slug === selectedSlug}
-                  onOpen={goTo}
-                  onHover={openCardAfterDelay}
-                  onLeave={closeCard}
-                />
-              ))}
-            </div>
+          ) : (
+            rows.map((work) => (
+              <WorkRow
+                key={work.slug}
+                work={work}
+                active={work.slug === selectedSlug}
+                onOpen={goTo}
+                onHover={openCardAfterDelay}
+                onLeave={closeCard}
+              />
+            ))
           )}
         </div>
-      )}
+
+        {/* 상한이 목록 영역의 비율인 이유: 뷰포트 기준(vh)으로 두면 위에 얹힌 사이드바
+            머리(타이틀바·로고·nav·섹션 헤더 약 200px)를 계산에 넣지 못해, 창을 최소 높이로
+            줄이면 초안 구역이 진행 중 목록보다 넓은 자리를 가져간다. */}
+        {foldDrafts && (
+          <div className="flex max-h-[45%] shrink-0 flex-col border-t pt-1.5">
+            <button
+              type="button"
+              onClick={() => setDraftsOpen((v) => !v)}
+              aria-expanded={draftsOpen}
+              className="flex h-8 w-full shrink-0 items-center gap-1.5 rounded-[10px] px-[9px] text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
+            >
+              <ChevronRight
+                className={cn("size-3 shrink-0 transition-transform", draftsOpen && "rotate-90")}
+                strokeWidth={2.2}
+              />
+              <span className="min-w-0 flex-1 truncate">초안</span>
+              <span className="shrink-0 rounded-[6px] bg-accent px-1.5 py-px text-[11px] text-tertiary">
+                {drafts.length}
+              </span>
+            </button>
+            {draftsOpen && (
+              <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-1 pt-0.5 scroll-quiet">
+                {drafts.map((work) => (
+                  <WorkRow
+                    key={work.slug}
+                    work={work}
+                    active={work.slug === selectedSlug}
+                    onOpen={goTo}
+                    onHover={openCardAfterDelay}
+                    onLeave={closeCard}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* onClose를 넘기지 않는다 — 바깥 클릭 막이 깔리면 포인터를 가로채 열자마자 닫힌다.
           이 카드의 여닫음은 행의 hover가 온전히 소유한다. */}
       {hovered && (
-        <PopoverPortal anchorRef={hoverAnchor} side="right" gap={8} width={272} className="p-3.5">
+        <PopoverPortal
+          anchorRef={hoverAnchor}
+          boundaryRef={boundaryRef}
+          side="right"
+          gap={8}
+          width={272}
+          className="p-3.5"
+        >
           <WorkCard work={hovered} />
         </PopoverPortal>
       )}

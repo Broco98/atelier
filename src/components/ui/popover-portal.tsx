@@ -17,6 +17,7 @@ const VIEWPORT_MARGIN = 8;
 
 export function PopoverPortal({
   anchorRef,
+  boundaryRef,
   side = "bottom",
   align = "left",
   gap = 4,
@@ -26,6 +27,9 @@ export function PopoverPortal({
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
+  // side가 right일 때 함께 비켜야 할 상자 — 앵커를 품은 패널이다. 앵커가 패널 안쪽 여백이나
+  // 스크롤바만큼 들어가 있으면 앵커 기준 gap이 그 여백에 먹혀, 팝오버가 패널에 붙거나 파고든다.
+  boundaryRef?: RefObject<HTMLElement | null>;
   // 앵커의 어느 쪽에 붙일지 — bottom은 아래, right는 오른쪽 옆(윗변을 맞춘다)
   side?: "bottom" | "right";
   // side가 bottom일 때 앵커의 어느 변에 맞출지 — left면 왼쪽 끝끼리, right면 오른쪽 끝끼리
@@ -49,8 +53,9 @@ export function PopoverPortal({
       // 세로로 물리려면 실제 높이가 필요하다 — 내용에 따라 달라져 상수로 둘 수 없다.
       // 레이아웃 이펙트라 이 시점에 카드는 이미 그려져 있다(아직 invisible일 뿐이다).
       const height = cardRef.current?.offsetHeight ?? 0;
+      const rightEdge = Math.max(rect.right, boundaryRef?.current?.getBoundingClientRect().right ?? 0);
       const rawLeft =
-        side === "right" ? rect.right + gap : align === "right" ? rect.right - width : rect.left;
+        side === "right" ? rightEdge + gap : align === "right" ? rect.right - width : rect.left;
       const rawTop = side === "right" ? rect.top : rect.bottom + gap;
       const fit = (value: number, size: number, limit: number) =>
         Math.min(Math.max(VIEWPORT_MARGIN, value), Math.max(VIEWPORT_MARGIN, limit - size - VIEWPORT_MARGIN));
@@ -67,7 +72,7 @@ export function PopoverPortal({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorRef, side, align, gap, width]);
+  }, [anchorRef, boundaryRef, side, align, gap, width]);
 
   return createPortal(
     <>

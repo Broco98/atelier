@@ -55,8 +55,9 @@ export function selectWork(slug: string | null) {
 // 초안을 건너뛰는 데 쓴다. 마지막으로 보던 것에는 걸리지 않으므로, 직접 연 초안은 유지된다.
 // 후보가 하나도 없으면 그냥 첫 항목으로 떨어진다 (초안뿐인 목록에서 빈 화면을 띄우지 않는다).
 //
-// "목록 첫 항목"은 백엔드가 준 순서 기준이라, 사용자가 정렬을 뒤집거나 필터를 걸어둔
-// 화면의 첫 항목과는 아직 다를 수 있다 — #58에서 다룬다.
+// "목록 첫 항목"은 백엔드가 준 순서 기준이다. 화면이 그 위에 정렬이나 필터를 얹으면 여기서
+// 고른 항목과 목록이 보여주는 첫 항목이 갈린다 — 실제로 그랬고(#58), 그래서 그 둘을 없앴다.
+// 이 등식은 work-sections.test.ts가 splitWorkSections와 이 함수를 나란히 불러 지킨다.
 export function pickSlug<T extends { slug: string }>(
   lastSeen: string | null,
   items: ReadonlyArray<T>,

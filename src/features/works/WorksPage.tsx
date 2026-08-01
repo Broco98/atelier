@@ -19,8 +19,12 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
   const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
-  const { data: projects = [] } = useProjects();
-  const needsProject = works.length === 0 && projects.length === 0;
+  //
+  // isPending을 함께 보는 이유: 이 화면이 앱의 첫 화면이 되면서 프로젝트 목록을 처음 읽는
+  // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
+  // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
+  const { data: projects = [], isPending: projectsPending } = useProjects();
+  const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
   // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
   const [showSource, setShowSource] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
