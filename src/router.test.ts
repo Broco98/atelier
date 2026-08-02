@@ -150,6 +150,28 @@ describe("무선택 주소의 정규화", () => {
   });
 });
 
+// 아카이브만 이 규칙에서 빠진다. Works·Projects에서 무선택은 주소와 화면의 어긋남이지만,
+// 아카이브에서 무선택은 **그 자체로 목록 화면**이다 — 사이드바에 상주 목록이 없어서
+// 목록을 볼 수 있는 주소가 여기 하나뿐이다.
+//
+// 대칭을 맞추겠다고 archive.index에 정규화 리다이렉트를 넣으면 목록이 통째로 사라지고,
+// 그 사실은 "아카이브를 열면 항상 뭔가 하나가 열려 있다"로만 드러나 알아채기 어렵다.
+describe("아카이브는 무선택 주소를 고쳐 쓰지 않는다", () => {
+  it("'/archive'는 첫 항목으로 떨어지지 않고 그대로 머문다", async () => {
+    const { router } = setup(["/archive"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/archive");
+  });
+
+  it("상세에서 '/archive'로 가면 목록에 도착한다 — nav의 Archive와 브레드크럼이 쓰는 길이다", async () => {
+    const { router } = setup(["/archive/치운-작업"]);
+    await router.load();
+
+    await router.navigate({ to: "/archive" });
+    expect(router.state.location.pathname).toBe("/archive");
+  });
+});
+
 // 사이드바 목록은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
 // 목록 어디에도 강조가 없다 — 그래서 아무도 고르지 않았을 때만 초안을 건너뛴다.
 // 직접 고른 초안은 건드리지 않는다.

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use atelier_core::{archive_dir, projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
+use atelier_core::{
+    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, WorkView,
+};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -83,6 +85,27 @@ pub async fn remove_work(slug: String) -> CmdResult<()> {
 #[tauri::command]
 pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_spec_file(&works_dir(), &slug, &path).map_err(err)
+}
+
+/// 아카이브 목록. **경량이다** — spec 파일 목록도 워크트리도 담지 않는다.
+/// 아카이브는 쌓이기만 하므로 목록 조회가 무거워지면 갈수록 나빠진다.
+#[tauri::command]
+pub async fn list_archive() -> CmdResult<Vec<ArchiveEntry>> {
+    atelier_core::list_archive(&archive_dir()).map_err(err)
+}
+
+/// 아카이브된 work가 가진 문서 경로들. 상세 화면의 머리말(제목·상태·언제 치웠는지)은
+/// 목록이 이미 들고 있으므로 단건 조회를 따로 두지 않는다.
+#[tauri::command]
+pub async fn list_archived_docs(slug: String) -> CmdResult<Vec<String>> {
+    atelier_core::list_archived_docs(&archive_dir(), &slug).map_err(err)
+}
+
+/// 아카이브된 work의 문서 하나. 경로는 **work 루트 기준**이다 (`record.md`, `spec/overview.md`) —
+/// 기록이 spec 밖에 있어서, 화면이 둘을 한 트리로 보여주려면 창구가 하나여야 한다.
+#[tauri::command]
+pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String> {
+    atelier_core::read_work_file(&archive_dir(), &slug, &path).map_err(err)
 }
 
 #[tauri::command]

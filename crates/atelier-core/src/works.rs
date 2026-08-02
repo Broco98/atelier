@@ -638,19 +638,54 @@ fn dirty_report(project: &str, files: &[String]) -> String {
     }
 }
 
+/// 주어진 work 디렉터리 밖을 가리키지 않는 상대 경로만 통과시킨다. 빈 문자열·절대 경로·
+/// `..`이 든 경로 셋 다 밖을 가리킬 수 있어 한자리에서 함께 막는다.
+fn safe_rel(rel_path: &str) -> Result<&Path> {
+    let rel = Path::new(rel_path);
+    let safe = !rel_path.is_empty()
+        && rel.is_relative()
+        && rel.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    safe.then_some(rel).ok_or_else(|| Error::Validation(format!("invalid path: {rel_path}")))
+}
+
 pub fn read_spec_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<String> {
     let dir = work_dir(works_root, slug)?;
     if !dir.join("work.json").is_file() {
         return Err(Error::WorkNotFound(slug.to_string()));
     }
-    let rel = Path::new(rel_path);
-    let safe = !rel_path.is_empty()
-        && rel.is_relative()
-        && rel.components().all(|c| matches!(c, std::path::Component::Normal(_)));
-    if !safe {
-        return Err(Error::Validation(format!("invalid spec path: {rel_path}")));
+    Ok(std::fs::read_to_string(spec_dir(&dir).join(safe_rel(rel_path)?))?)
+}
+
+/// 문서 하나를 work 디렉터리 **루트 기준**으로 읽는다.
+///
+/// `read_spec_file`은 `spec/` 안에 갇혀 있어 아카이브의 `record.md`에 닿지 못한다 —
+/// 기록은 spec의 일부가 아니라 아카이브가 만든 것이고, spec 안에 넣지 않는다는 것을
+/// `archive_moves_the_work_out_of_the_works_root_with_its_spec`이 못 박고 있다.
+/// 아카이브 화면은 기록과 spec을 한 트리로 보여주므로 읽는 창구가 하나여야 하고,
+/// 그 하나가 성립하는 기준점이 work 루트다.
+pub fn read_work_file(works_root: &Path, slug: &str, rel_path: &str) -> Result<String> {
+    let dir = work_dir(works_root, slug)?;
+    if !dir.join("work.json").is_file() {
+        return Err(Error::WorkNotFound(slug.to_string()));
     }
-    Ok(std::fs::read_to_string(spec_dir(&dir).join(rel))?)
+    Ok(std::fs::read_to_string(dir.join(safe_rel(rel_path)?))?)
+}
+
+/// 아카이브된 work가 가진 문서들. 경로는 **work 루트 기준**이라 `read_work_file`에 그대로
+/// 넘어간다. 기록이 맨 앞이고, 없으면 넣지 않는다 — 손으로 옮겨 둔 폴더에는 기록이 없을 수
+/// 있고(`ArchiveEntry::archived_at`이 없을 수 있는 것과 같은 이유), 목록이 곧 화면이 가진
+/// 것이어야 읽기 실패로 그 사실을 알게 되는 일이 없다.
+pub fn list_archived_docs(archive_root: &Path, slug: &str) -> Result<Vec<String>> {
+    let dir = work_dir(archive_root, slug)?;
+    if !dir.join("work.json").is_file() {
+        return Err(Error::WorkNotFound(slug.to_string()));
+    }
+    let mut docs = Vec::new();
+    if dir.join(RECORD_FILE).is_file() {
+        docs.push(RECORD_FILE.to_string());
+    }
+    docs.extend(spec_files(&dir).into_iter().map(|f| format!("spec/{f}")));
+    Ok(docs)
 }
 
 /// 아카이브 시점의 코드 좌표를 마크다운 한 장으로 봉인한다.
@@ -1297,6 +1332,61 @@ mod tests {
         assert!(read_spec_file(&works, "카트", "없는파일.md").is_err());
         assert!(matches!(
             read_spec_file(&works, "없는작업", "overview.md"),
+            Err(Error::WorkNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn archived_docs_lead_with_the_record_and_omit_it_when_absent() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
+        std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
+        std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
+
+        // 손으로 옮겨 둔 폴더에는 기록이 없다. 없는 것을 목록에 지어내면 화면은 그것을
+        // 읽기 실패로만 알게 된다 — 목록이 곧 "이 아카이브가 가진 것"이어야 한다.
+        assert_eq!(
+            list_archived_docs(&works, "카트").unwrap(),
+            ["spec/overview.md", "spec/sub/arch.md"]
+        );
+
+        std::fs::write(works.join("카트/record.md"), "# 기록\n").unwrap();
+        // 기록이 맨 앞이다 — 아카이브를 열었을 때 먼저 보여야 하는 것이 그것이다
+        assert_eq!(
+            list_archived_docs(&works, "카트").unwrap(),
+            ["record.md", "spec/overview.md", "spec/sub/arch.md"]
+        );
+
+        assert!(matches!(
+            list_archived_docs(&works, "없는작업"),
+            Err(Error::WorkNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn read_work_file_reaches_the_record_which_spec_reads_cannot() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        std::fs::create_dir_all(works.join("카트/spec")).unwrap();
+        std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
+        std::fs::write(works.join("카트/record.md"), "# 기록\n").unwrap();
+
+        // 기록은 spec 밖에 산다. 아카이브 화면은 기록과 spec을 한 트리로 보여주므로
+        // 읽는 창구도 하나여야 하고, 그 창구의 기준은 work 루트다.
+        assert_eq!(read_work_file(&works, "카트", "record.md").unwrap(), "# 기록\n");
+        assert_eq!(read_work_file(&works, "카트", "spec/overview.md").unwrap(), "# 개요\n");
+        // spec 창구로는 기록에 닿을 수 없다 — 이 함수가 따로 있는 이유가 그것이다
+        assert!(read_spec_file(&works, "카트", "record.md").is_err());
+
+        for bad in ["../work.json", "/etc/hosts", ""] {
+            assert!(
+                matches!(read_work_file(&works, "카트", bad), Err(Error::Validation(_))),
+                "work 디렉터리 밖을 가리키는 경로를 허용했다: {bad:?}"
+            );
+        }
+        assert!(matches!(
+            read_work_file(&works, "없는작업", "record.md"),
             Err(Error::WorkNotFound(_))
         ));
     }

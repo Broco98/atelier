@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ArchiveIndexRouteImport } from './routes/archive.index'
+import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
@@ -18,6 +20,16 @@ import { Route as WorksSlugRouteImport } from './routes/works.$slug'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchiveIndexRoute = ArchiveIndexRouteImport.update({
+  id: '/archive/',
+  path: '/archive/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchiveSlugRoute = ArchiveSlugRouteImport.update({
+  id: '/archive/$slug',
+  path: '/archive/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
@@ -43,44 +55,68 @@ const WorksSlugRoute = WorksSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
+  '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/works/': typeof WorksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
+  '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/works': typeof WorksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/archive/$slug': typeof ArchiveSlugRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
+  '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/works/': typeof WorksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/projects/$slug' | '/works/$slug' | '/projects/' | '/works/'
+  fullPaths:
+    | '/'
+    | '/archive/$slug'
+    | '/projects/$slug'
+    | '/works/$slug'
+    | '/archive/'
+    | '/projects/'
+    | '/works/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects/$slug' | '/works/$slug' | '/projects' | '/works'
+  to:
+    | '/'
+    | '/archive/$slug'
+    | '/projects/$slug'
+    | '/works/$slug'
+    | '/archive'
+    | '/projects'
+    | '/works'
   id:
     | '__root__'
     | '/'
+    | '/archive/$slug'
     | '/projects/$slug'
     | '/works/$slug'
+    | '/archive/'
     | '/projects/'
     | '/works/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArchiveSlugRoute: typeof ArchiveSlugRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   WorksSlugRoute: typeof WorksSlugRoute
+  ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
 }
@@ -92,6 +128,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/archive/': {
+      id: '/archive/'
+      path: '/archive'
+      fullPath: '/archive/'
+      preLoaderRoute: typeof ArchiveIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/archive/$slug': {
+      id: '/archive/$slug'
+      path: '/archive/$slug'
+      fullPath: '/archive/$slug'
+      preLoaderRoute: typeof ArchiveSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/': {
@@ -127,8 +177,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArchiveSlugRoute: ArchiveSlugRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   WorksSlugRoute: WorksSlugRoute,
+  ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
 }
