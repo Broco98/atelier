@@ -13,6 +13,9 @@ function render(markdown: string, files: string[] = []): string {
       onCopyBlock={() => {}}
       files={files}
       onNavigate={() => {}}
+      // 로컬 이미지의 asset 변환은 웹뷰 안에서만 되는 일이라 여기서는 켜지 않는다 —
+      // 경로 해석 자체는 doc-refs.test.ts의 resolveImageSrc가 덮는다
+      specRoot={null}
     />,
   );
 }
@@ -84,5 +87,22 @@ describe("PrettyView 링크", () => {
     const html = render("[다른 문서](./research/prompt.md)", ["research/prompt.md"]);
     expect(anchors(html)).toBe(1);
     expect(html).not.toContain("문서를 찾을 수 없어요");
+  });
+});
+
+describe("PrettyView 이미지", () => {
+  it("그릴 수 없는 이미지는 깨진 아이콘 대신 이름을 보여준다", () => {
+    const html = render("![패널 스크린샷](shot.png)");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("패널 스크린샷");
+  });
+
+  it("http 이미지는 변환 없이 그대로 그린다", () => {
+    const html = render("![외부](https://example.com/a.png)");
+    expect(html).toContain('src="https://example.com/a.png"');
+  });
+
+  it("이미지가 본문 폭을 넘지 않는다", () => {
+    expect(render("![외부](https://example.com/a.png)")).toContain("max-w-full");
   });
 });

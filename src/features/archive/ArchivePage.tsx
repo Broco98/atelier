@@ -227,6 +227,9 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                   onCopyBlock={copyBlockRef}
                   files={docs}
                   onNavigate={navigateDoc}
+                  // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — 로컬 이미지는
+                  // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
+                  specRoot={null}
                 />
               )}
             </div>

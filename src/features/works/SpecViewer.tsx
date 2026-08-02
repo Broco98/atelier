@@ -1,11 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Copy, FileText } from "lucide-react";
+import { Check, Copy, FileText, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
-import { resolveHref } from "./doc-refs";
+import { expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
@@ -23,12 +25,32 @@ function defaultFile(files: string[]): string | null {
   return files[0] ?? null;
 }
 
+// 홈 경로는 앱이 도는 동안 바뀌지 않는다 — 한 번만 묻고 모듈에 들고 있는다.
+// 작업을 옮길 때마다 뷰어가 리마운트되므로(key={slug}) 캐시가 없으면 그때마다 IPC를 탄다.
+let homeDirOnce: Promise<string> | null = null;
+
+function useHomeDir(): string | null {
+  const [home, setHome] = useState<string | null>(null);
+  useEffect(() => {
+    homeDirOnce ??= homeDir();
+    let alive = true;
+    homeDirOnce.then((value) => alive && setHome(value)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return home;
+}
+
 function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const files = work.specFiles;
   const [selected, setSelected] = useState<string | null>(null);
   // 파일이 삭제되면 기본 파일로 폴백
   const current = selected && files.includes(selected) ? selected : defaultFile(files);
   const { data: content } = useSpecFile(work.slug, current);
+  // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
+  const home = useHomeDir();
+  const specRoot = home ? expandHome(work.specDir, home) : null;
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
@@ -101,6 +123,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
                 onCopyBlock={copyRef}
                 files={files}
                 onNavigate={setSelected}
+                specRoot={specRoot}
               />
             )}
           </div>
@@ -190,6 +213,9 @@ interface PrettyViewProps {
   files: readonly string[];
   // 문서 링크를 눌렀을 때 갈 곳. 파일 선택은 뷰어가 소유하므로 트리의 현재 파일 표시도 따라온다
   onNavigate: (path: string) => void;
+  // 이미지를 읽을 절대 경로의 기준. 모르면(아카이브 화면) 로컬 이미지는 그리지 않는다 —
+  // 아카이브 목록은 경량이라 문서 위치를 담지 않는다.
+  specRoot: string | null;
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
@@ -240,6 +266,7 @@ export const PrettyView = memo(function PrettyView({
   onCopyBlock,
   files,
   onNavigate,
+  specRoot,
 }: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
   // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
@@ -249,8 +276,8 @@ export const PrettyView = memo(function PrettyView({
   // 링크 해석에 필요한 나머지도 같은 이유로 ref다. 파일 목록은 감시자가 폴더를 훑을
   // 때마다 새 배열로 도착하므로, components가 그것에 의존하면 스펙을 저장할 때마다
   // 본문이 통째로 다시 마운트된다.
-  const linkRef = useRef({ files, onNavigate });
-  linkRef.current = { files, onNavigate };
+  const linkRef = useRef({ files, onNavigate, specRoot });
+  linkRef.current = { files, onNavigate, specRoot };
 
   // 최상위 블록의 시작 위치 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해.
   // 라인만으로는 갈리지 않는다: "> 문단"은 인용과 그 안 문단의 시작 라인이 같아 둘 다
@@ -366,6 +393,33 @@ export const PrettyView = memo(function PrettyView({
           >
             {children}
           </a>
+        );
+      },
+      // 이미지 — 처리가 아예 없어 **스펙에 스크린샷을 붙여도 아무것도 나타나지 않았다.**
+      // Tauri 웹뷰는 로컬 파일을 직접 읽지 못하므로 asset 프로토콜을 거친다. 어디까지
+      // 읽을 수 있는지는 tauri.conf.json의 스코프가 정한다 — 아틀리에 데이터 폴더 아래뿐이다.
+      img: ({ src, alt }) => {
+        const source = resolveImageSrc(
+          linkRef.current.specRoot,
+          fileRef.current,
+          typeof src === "string" ? src : undefined,
+          linkRef.current.files,
+        );
+        // 깨진 아이콘 대신 무엇이 없는지 말한다 — 스펙을 쓰는 쪽이 경로를 고칠 수 있게
+        if (source.kind === "missing") {
+          return (
+            <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle text-[12.5px] text-tertiary">
+              <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+              {alt || (typeof src === "string" ? src : "이미지")}
+            </span>
+          );
+        }
+        return (
+          <img
+            src={source.kind === "url" ? source.url : convertFileSrc(source.path)}
+            alt={alt}
+            className="my-1 h-auto max-w-full rounded-[10px] border"
+          />
         );
       },
       // 체크박스 목록 — remark-gfm은 체크박스가 있는 항목의 li에만 task-list-item을 붙인다

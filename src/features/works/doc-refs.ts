@@ -72,3 +72,41 @@ export function resolveHref(
   if (resolved === null) return { kind: "none" };
   return files.includes(resolved) ? { kind: "doc", path: resolved } : { kind: "missing", path: resolved };
 }
+
+/**
+ * 홈이 `~`로 축약된 경로를 편다.
+ *
+ * 코어가 spec 디렉터리를 축약 표기로 내려 주므로(`~/.atelier/works/…`) 그대로는 URL을
+ * 만들 수 없다. 홈은 플랫폼 API가 알려 주는데 **끝에 슬래시를 붙여 준다** — 겹치면
+ * 경로가 어긋나므로 여기서 한 번만 다듬는다.
+ */
+export function expandHome(path: string, home: string): string {
+  if (!path.startsWith("~/")) return path;
+  return home.replace(/\/+$/, "") + path.slice(1);
+}
+
+export type ImageSource =
+  | { kind: "file"; path: string } // 절대 파일 경로. 그리는 쪽이 asset URL로 바꾼다
+  | { kind: "url"; url: string } // http·https는 변환 없이 그대로
+  | { kind: "missing" }; // 그릴 수 없다 — 자리표시가 대신 선다
+
+/**
+ * 본문 이미지 하나를 그릴 수 있는 것으로 바꾼다.
+ *
+ * 경로 규칙은 링크와 **같은 것을 쓴다**(resolveHref) — 같은 문서 안에서 `./shot.png`가
+ * 링크일 때와 이미지일 때 다른 곳을 가리키면 안 된다. 다른 점은 결과의 쓰임뿐이다:
+ * 링크는 앱 안에서 열고, 이미지는 파일을 읽어야 하므로 절대 경로가 필요하다.
+ *
+ * `specRoot`는 홈이 펴진 절대 경로다. 모르면(아카이브 화면) 로컬 이미지는 그리지 않는다.
+ */
+export function resolveImageSrc(
+  specRoot: string | null,
+  currentFile: string | null,
+  src: string | undefined,
+  files: readonly string[],
+): ImageSource {
+  const target = resolveHref(currentFile, src, files);
+  if (target.kind === "external") return { kind: "url", url: target.url };
+  if (target.kind === "doc" && specRoot) return { kind: "file", path: `${specRoot}/${target.path}` };
+  return { kind: "missing" };
+}
