@@ -19,7 +19,7 @@ There is no tool for spec documents. Write them yourself, with your own file too
 
 Do code work only inside the work's worktree paths (`worktrees[].path`), never in the project's own folder.
 
-A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it.
+A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived work is referenced the same way under `~/.atelier/archive/<slug>/`.
 
 Paths are written with `~` for the home directory; expand it before opening them."#;
 
@@ -27,9 +27,12 @@ Paths are written with `~` for the home directory; expand it before opening them
 mod tests {
     use super::INSTRUCTIONS;
 
-    /// 맵에서 확정한 도구 이름 10개. 지침이 이 밖의 이름을 부르면
+    /// 맵에서 확정한 도구 이름 12개 (#68이 atelier_archive_work를,
+    /// #69가 atelier_list_archive를 더했다). 지침이 이 밖의 이름을 부르면
     /// 에이전트가 존재하지 않는 도구를 찾아 헤맨다.
-    const TOOL_NAMES: [&str; 10] = [
+    const TOOL_NAMES: [&str; 12] = [
+        "atelier_archive_work",
+        "atelier_list_archive",
         "atelier_list_projects",
         "atelier_list_works",
         "atelier_get_work",
@@ -126,7 +129,9 @@ mod tests {
     /// 프론트엔드 소스를 직접 읽는다).
     #[test]
     fn the_app_does_not_advertise_cli_commands_either() {
-        for rel in ["WorkList.tsx", "WorksPage.tsx"] {
+        // WorkList.tsx는 사이드바로 옮겨지며 SidebarWorkList.tsx가 됐다 (PR #71).
+        // 이 테스트가 "moved" 패닉으로 그 사실을 알려주도록 만들어져 있었다 — 이름을 따라간다.
+        for rel in ["SidebarWorkList.tsx", "WorksPage.tsx"] {
             let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/features/works/")
                 .to_string()
                 + rel;
@@ -156,9 +161,15 @@ mod tests {
         assert!(refs_ts.contains("`${base}:L${start}-${end}`"), "range form changed: {refs_ts}");
         assert!(refs_ts.contains("`${base}:L${start}`"), "single-line form changed: {refs_ts}");
         assert!(refs_ts.contains("~/.atelier/works/"), "reference root changed: {refs_ts}");
+        // 아카이브 화면도 클립보드로 참조를 내보낸다 — 뿌리가 둘이면 가드도 둘이어야 한다.
+        assert!(refs_ts.contains("~/.atelier/archive/"), "archive reference root changed: {refs_ts}");
 
         // 지침이 해석하는 형식도 같은 모양이어야 한다
         assert!(INSTRUCTIONS.contains("~/.atelier/works/<slug>/spec/overview.md:L19-27"));
         assert!(INSTRUCTIONS.contains(":L19"));
+        assert!(
+            INSTRUCTIONS.contains("~/.atelier/archive/<slug>/"),
+            "앱이 아카이브 참조를 복사해 주는데 지침이 그 뿌리를 모른다"
+        );
     }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
@@ -22,39 +22,26 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       )
     : projects;
 
+  // 이제 이 목록만 쓰는 폭이다 — 사이드바는 자기 키(sidebar-width)를 따로 갖는다
   const size = useResizableWidth("panel-width", 360, 280, 560);
 
-  // Cmd+1~9 — 표시 순서(검색 반영) 기준 N번째 프로젝트 선택. 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || !/^[1-9]$/.test(e.key)) return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      const project = filtered[Number(e.key) - 1];
-      if (!project) return;
-      e.preventDefault();
-      onSelect(project.slug);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filtered, onSelect]);
+  // 숫자 단축키는 여기에 없다. 화면과 무관하게 항상 사이드바 작업 목록을 세도록 옮겼다
+  // (SidebarWorkList) — 어디에 있든 작업으로 한 번에 돌아갈 수 있다는 보장이다.
+  // 남겨두면 이 화면에서 같은 키 하나에 이동이 둘 걸린다.
 
   return (
     // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
     <div
       style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        // 흰 바닥 — WorkList와 같은 이유다 (무채색 선택 표시가 묻히지 않게)
+        // 흰 바닥 — 무채색 선택 표시가 배경에 묻히지 않으려면 패널이 흰색이어야 한다
         "relative shrink-0 overflow-hidden border-r bg-background",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-panel",
-        open ? "w-(--panel-width)" : "w-0 border-transparent",
+        // border-r-0까지 붙이는 이유는 Sidebar.tsx의 같은 자리에 적었다 — 접힘 상태의 1px이
+        // 오른쪽 전부를 밀어 셸 헤더 인셋이 어긋난다
+        open ? "w-(--panel-width)" : "w-0 border-transparent border-r-0",
       )}
     >
       <div
@@ -67,8 +54,10 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       <div
         data-tauri-drag-region
         className={cn(
-          "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms]",
-          sidebarOpen ? "pl-0.5" : "pl-[114px]",
+          // ease-panel은 위 폭 트랜지션과 같아야 한다 — 이 버튼의 화면상 위치가 두 값의 합이라
+          // 곡선이 다르면 최종 자리를 지나쳤다 되돌아온다 (index.css의 --panel-ease 주석)
+          "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms] ease-panel",
+          sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
         )}
       >
         <button
@@ -78,7 +67,9 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           title="프로젝트 등록"
           className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
         >
-          <Plus className="size-3.5" strokeWidth={1.8} />
+          {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
+              이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}
+          <Plus className="size-4" strokeWidth={1.8} />
         </button>
       </div>
 

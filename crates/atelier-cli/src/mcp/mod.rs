@@ -25,6 +25,8 @@ pub(crate) use tool_error::kernel_error;
 pub struct AtelierServer {
     projects_root: std::path::PathBuf,
     works_root: std::path::PathBuf,
+    /// 끝난 work가 옮겨가 머무는 루트. 작업 목록을 읽는 경로는 여기를 보지 않는다.
+    archive_root: std::path::PathBuf,
     tool_router: ToolRouter<AtelierServer>,
 }
 
@@ -33,6 +35,7 @@ impl AtelierServer {
         Self {
             projects_root: atelier_core::projects_dir(),
             works_root: atelier_core::works_dir(),
+            archive_root: atelier_core::archive_dir(),
             // 영역별 라우터를 합성한다. 도구를 추가하는 티켓은 파일과 라우터를 하나씩 늘린다.
             tool_router: Self::read_router() + Self::work_router() + Self::project_router(),
         }
