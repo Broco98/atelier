@@ -11,6 +11,8 @@ import type { ArchiveEntry } from "./types";
 interface ArchiveListProps {
   entries: ArchiveEntry[];
   selectedSlug: string | null;
+  // 목록이 아직 안 왔다 — 빈 배열을 "하나도 없다"로 읽으면 안 되는 동안
+  loading: boolean;
   currentDoc: string | null;
   // 문서를 고르는 것이 아카이브를 고르는 것이다 — 어느 아카이브의 문서인지 함께 넘긴다
   onSelectDoc: (slug: string, path: string) => void;
@@ -28,6 +30,7 @@ interface ArchiveListProps {
 function ArchiveList({
   entries,
   selectedSlug,
+  loading,
   currentDoc,
   onSelectDoc,
   onCopyDoc,
@@ -185,7 +188,8 @@ function ArchiveList({
           </div>
         )}
 
-        {entries.length === 0 ? (
+        {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
+        {loading ? null : entries.length === 0 ? (
           <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
             <Archive className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
             <span className="text-[13.5px] font-medium text-muted-foreground">

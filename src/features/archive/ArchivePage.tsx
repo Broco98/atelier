@@ -20,7 +20,11 @@ const PANEL_OPEN_KEY = "archive-panel-open";
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
 function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) {
-  const { data: entries = [] } = useArchive();
+  // `[]`는 "하나도 없다"와 "아직 모른다"를 같이 뜻한다. 아래 두 자리(본문 빈 상태·목록 패널)가
+  // 그것으로 "없어요"라고 단언하므로 둘을 갈라 둔다. 목록이 캐시에 없는 채로 /archive/$slug에
+  // 바로 닿는 경로가 있다 — 이 라우트에는 beforeLoad가 없고(세 $slug 라우트 모두 그렇다),
+  // archiveQuery는 gcTime이 지나면 캐시에서 빠진다.
+  const { data: entries = [], isPending: entriesPending } = useArchive();
   const selected = entries.find((entry) => entry.slug === selectedSlug) ?? null;
 
   const { data: docs = [] } = useArchivedDocs(selected?.slug ?? null);
@@ -90,6 +94,7 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
       <ArchiveList
         entries={entries}
         selectedSlug={selected?.slug ?? null}
+        loading={entriesPending}
         currentDoc={current}
         // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
         // 두 상태를 한 클릭에서 함께 옮겨야 주소가 바뀌는 프레임에 선택이 깜빡이지 않는다.
@@ -172,7 +177,11 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+          {/* 아직 모르는 동안에는 아무 말도 하지 않는다 — 목록이 도착하기 전에 "없어요"를
+              띄우면, 이 분기가 막으려던 바로 그 모순(왼쪽엔 목록, 본문엔 없다)이 로딩
+              타이밍에서 되살아난다. */}
           {!selected ? (
+            entriesPending ? null : (
             <div className="flex h-full items-center justify-center p-10">
               <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
                 <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
@@ -191,6 +200,7 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                 </span>
               </div>
             </div>
+            )
           ) : (
             <div className="flex min-h-full min-w-0 flex-col">
               {current === null ? (
