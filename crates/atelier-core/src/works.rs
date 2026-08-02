@@ -379,9 +379,15 @@ pub struct ArchiveEntry {
 }
 
 pub fn list_archive(archive_root: &Path) -> Result<Vec<ArchiveEntry>> {
-    std::fs::create_dir_all(archive_root)?;
+    // 폴더는 첫 아카이빙이 만든다 — 조회는 만들지 않는다. `atelier_list_archive`가
+    // `read_only_hint = true`로 선언돼 있어, 여기서 만들면 그 표시가 거짓말이 된다.
+    let dir = match std::fs::read_dir(archive_root) {
+        Ok(dir) => dir,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
     let mut entries = Vec::new();
-    for entry in std::fs::read_dir(archive_root)? {
+    for entry in dir {
         let entry = entry?;
         let slug = entry.file_name().to_string_lossy().to_string();
         if slug.starts_with('.') || !entry.path().is_dir() {
@@ -2004,10 +2010,15 @@ mod tests {
         assert_eq!(keys, vec!["archivedAt", "projects", "slug", "status", "title"], "{json}");
     }
 
+    /// 조회는 아무것도 만들지 않는다. `atelier_list_archive`가 `read_only_hint = true`로
+    /// 선언돼 있고, 그 표시를 보고 호출을 자유롭게 하는 쪽이 LLM이다 — 한 번 읽었을 뿐인데
+    /// 홈에 폴더가 생기면 그 표시가 거짓말이 된다. 폴더는 첫 아카이빙이 만든다.
     #[test]
-    fn archive_list_is_empty_before_anything_is_archived() {
+    fn archive_list_is_empty_before_anything_is_archived_and_creates_nothing() {
         let (_tmp, works, _projects) = setup();
-        assert!(list_archive(&archive_root(&works)).unwrap().is_empty());
+        let archive = archive_root(&works);
+        assert!(list_archive(&archive).unwrap().is_empty());
+        assert!(!archive.exists(), "읽기가 아카이브 폴더를 만들었다: {}", archive.display());
     }
 
     /// 최근에 치운 것이 먼저, 같은 날이면 slug 오름차순 (list_works와 같은 규칙).

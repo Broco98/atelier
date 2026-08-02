@@ -8,9 +8,16 @@ import { Archive, Folder, type LucideIcon } from "lucide-react";
 // Archive는 그 반대 이유로 여기 있다 — 치운 작업은 차가운 보관물이라 사이드바 목록에
 // 상주할 이유가 없고, 상주시키면 아래 목록이 "지금 하는 일"이라는 성질을 잃는다.
 // 아이콘은 ⋯ 메뉴의 '아카이빙'과 같은 것을 쓴다: 하는 일과 가는 곳이 같은 대상이다.
+// `to`는 목적지이자 **활성 판정의 접두사**다 — 어느 항목이 켜지는지와 어디로 가는지가
+// 한 줄에서 나온다. 둘을 따로 적으면 AppShell에 같은 key를 두 번 훑는 분기가 생긴다.
 export const navItems = [
-  { key: "projects", label: "Projects", icon: Folder },
-  { key: "archive", label: "Archive", icon: Archive },
-] as const satisfies readonly { key: string; label: string; icon: LucideIcon }[];
+  { key: "projects", label: "Projects", icon: Folder, to: "/projects" },
+  { key: "archive", label: "Archive", icon: Archive, to: "/archive" },
+] as const satisfies readonly {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  to: string;
+}[];
 
 export type NavKey = (typeof navItems)[number]["key"];
