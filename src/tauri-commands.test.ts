@@ -53,6 +53,35 @@ describe("Tauri 명령 배선", () => {
     expect(undefinedNames).toEqual([]);
   });
 
+  // 이름이 맞아도 **인자 이름이 어긋나면** 똑같이 버튼을 누를 때 터진다. 이쪽도 문자열로만
+  // 이어져 있고, 프런트엔드는 camelCase로 보내면 Tauri가 snake_case 파라미터에 맞춰 준다.
+  it("invoke가 보내는 인자 이름은 commands.rs의 파라미터와 맞는다", () => {
+    const commands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
+    const mismatched: string[] = [];
+    for (const file of sourceFiles(join(root, "src"))) {
+      const source = readFileSync(file, "utf8");
+      const calls = source.matchAll(
+        /\binvoke(?:<[^>]*>)?\(\s*"([a-z_]+)"\s*,\s*\{([^}]*)\}/g,
+      );
+      for (const [, name, args] of calls) {
+        const params = commands.match(new RegExp(`pub async fn ${name}\\(([^)]*)\\)`));
+        if (!params) continue;
+        const declared = [...params[1].matchAll(/(\w+)\s*:/g)].map((m) => m[1]);
+        const passed = args
+          .split(",")
+          .map((a) => a.split(":")[0].trim())
+          // 스프레드(`...patch`)가 무엇을 펼치는지는 여기서 알 수 없다 — 정적으로 못 보는
+          // 것을 틀렸다고 하면 그물이 아니라 소음이 된다. update_project가 그 형태다.
+          .filter((a) => a && !a.startsWith("..."));
+        for (const arg of passed) {
+          const snake = arg.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+          if (!declared.includes(snake)) mismatched.push(`${name}: ${arg}`);
+        }
+      }
+    }
+    expect(mismatched).toEqual([]);
+  });
+
   // 데스크톱 명령은 **어떤 테스트도 본문을 실행하지 않는다** — src-tauri의 테스트 수는 0이고,
   // 위 두 검사는 이름만 본다. 두 줄짜리 위임 함수를 위해 크레이트에 테스트 하네스를 세우는
   // 것은 비례하지 않으므로, 배선 사실로서 여기에 건다(이 파일이 이미 하는 일과 같은 종류다).

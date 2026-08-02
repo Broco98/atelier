@@ -310,6 +310,7 @@ function WorkMenu({ work }: { work: WorkView }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const archive = useArchiveWork();
   const remove = useRemoveWork();
+  const busy = archive.isPending || remove.isPending;
 
   useEffect(() => {
     if (!open) return;
@@ -320,33 +321,49 @@ function WorkMenu({ work }: { work: WorkView }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const handleArchive = async () => {
+  // 다른 작업으로 옮겨가면 닫는다. ⌘1~9와 목록 클릭은 이 컴포넌트를 다시 마운트하지 않으므로,
+  // 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는 것과 다른 작업**을 겨눈다.
+  useEffect(() => setOpen(false), [work.slug]);
+
+  // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
+  // 성공한 아카이빙 위에 "아카이빙하지 못했습니다" 창이 뜨는 것이 그 결과다.
+  const run = async (
+    verb: string,
+    detail: string,
+    call: () => Promise<unknown>,
+  ) => {
     setOpen(false);
-    const ok = await confirm(
-      "스펙과 기록은 남고 워크트리만 정리돼요. 브랜치와 커밋은 그대로예요. 되돌릴 수 없어요.",
-      { title: `'${work.title}' 아카이빙`, kind: "warning" },
-    );
+    if (busy) return;
+    const ok = await confirm(detail, { title: `'${work.title}' ${verb}`, kind: "warning" });
     if (!ok) return;
     try {
-      await archive.mutateAsync(work.slug);
+      await call();
     } catch (e) {
-      await message(`아카이빙하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      await message(`${verb}하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
   };
 
-  const handleRemove = async () => {
-    setOpen(false);
-    const ok = await confirm(
-      "워크트리와 스펙 문서가 모두 지워져요. 남길 것이 있다면 아카이빙을 쓰세요. 되돌릴 수 없어요.",
-      { title: `'${work.title}' 삭제`, kind: "warning" },
+  // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면
+  // 대비로 인해 삭제가 커밋까지 지우는 것처럼 읽히고(브랜치는 양쪽 다 남는다), 워크트리
+  // 제거가 gitignore된 파일(.env·로컬 DB·빌드 산출물)까지 가져간다는 사실은 어느 쪽에도
+  // 안 적혀 있었다. 그 파일들은 dirty 검사에 잡히지 않아 경고 없이 사라진다.
+  const handleArchive = () =>
+    run(
+      "아카이빙",
+      "스펙과 기록은 남고 워크트리 폴더가 정리돼요. 브랜치와 커밋은 그대로예요.\n" +
+        "다만 git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)은 폴더와 함께 사라져요.\n" +
+        "되돌릴 수 없어요.",
+      () => archive.mutateAsync(work.slug),
     );
-    if (!ok) return;
-    try {
-      await remove.mutateAsync(work.slug);
-    } catch (e) {
-      await message(`삭제하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
-    }
-  };
+
+  const handleRemove = () =>
+    run(
+      "삭제",
+      "워크트리 폴더와 스펙 문서가 모두 지워져요. 브랜치와 커밋은 남지만 기록은 안 남아요 —\n" +
+        "남길 것이 있다면 아카이빙을 쓰세요.\n" +
+        "되돌릴 수 없어요.",
+      () => remove.mutateAsync(work.slug),
+    );
 
   return (
     <span className="relative flex">
@@ -354,15 +371,19 @@ function WorkMenu({ work }: { work: WorkView }) {
         ref={anchor}
         type="button"
         onClick={() => setOpen((v) => !v)}
+        disabled={busy}
         aria-label="작업 메뉴"
         aria-expanded={open}
-        title="작업 메뉴"
+        aria-busy={busy}
+        title={busy ? "처리 중이에요" : "작업 메뉴"}
         className={cn(
           "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
+          "disabled:pointer-events-none disabled:opacity-50",
           open ? "bg-accent text-foreground" : "text-tertiary hover:bg-accent hover:text-foreground",
         )}
       >
-        <MoreHorizontal className="size-3.5" strokeWidth={2.2} />
+        {/* 진행 중임을 보여주는 유일한 자리다 — 아카이빙은 워크트리 제거가 있어 즉시 끝나지 않는다 */}
+        <MoreHorizontal className={cn("size-3.5", busy && "animate-pulse")} strokeWidth={2.2} />
       </button>
       {open && (
         <PopoverPortal

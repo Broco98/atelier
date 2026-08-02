@@ -187,15 +187,37 @@ fn merges_that_brought_in(worktree: &Path, branch: &str, base_sha: &str, tip: &s
         .collect()
 }
 
-/// 이 브랜치가 머지의 **들어가는 쪽**인가. `Merge branch 'develop' into feat/x`처럼 브랜치가
-/// **받는 쪽**이면 둘째 부모는 base이지 이 브랜치가 아니고, 그 범위를 쓰면 base의 커밋이
-/// 통째로 이 work 것이 된다. 브랜치가 base로 동기화된 뒤에는 ref만으로 방향을 알 수 없어
-/// (브랜치와 base가 같은 커밋을 가리킨다) 여기서는 머지 메시지의 방향을 읽는다.
-/// 실측: `feat/navigation-location`이 이 필터 없이 55커밋(정답 6커밋)으로 기록됐다.
+/// 이 브랜치가 머지의 **들어가는 쪽**인가.
+///
+/// 이름을 **비교하지 않고 꺼낸다.** 포함 여부로 보면 셋이 한꺼번에 틀린다:
+/// - 접두 관계 — `feat/a`가 `feat/ab`의 머지를 자기 것으로 삼는다
+/// - revert 브랜치 — `revert-12-feat/a`의 머지가 `feat/a` 것으로 기록된다
+/// - 방향 — `Merge branch 'develop' into feat/a`는 브랜치가 **받는** 쪽이라 둘째 부모가
+///   base다. 그 범위를 쓰면 base의 커밋이 통째로 이 work 것이 된다.
+///   (실측: `feat/navigation-location`이 방향을 안 보면 55커밋, 정답은 6커밋)
+///
+/// 꺼낸 이름이 정확히 일치할 때만 채택하므로 셋이 함께 막힌다. 대신 관습적이지 않은
+/// 머지 제목은 아무것도 못 꺼내 "반영 안 됨"으로 남는다 — **적게 말하는 쪽**이고,
+/// 커밋·파일 좌표 자체는 어느 경우든 보존된다.
 fn takes_branch_as_source(subject: &str, branch: &str) -> bool {
-    !subject.contains(&format!("into {branch}"))
-        && !subject.contains(&format!("into '{branch}'"))
-        && subject.contains(branch)
+    merged_branch(subject) == Some(branch)
+}
+
+/// 머지 커밋 제목에서 **들여온 브랜치 이름**을 꺼낸다. git과 GitHub이 쓰는 세 형태만 읽는다.
+fn merged_branch(subject: &str) -> Option<&str> {
+    // Merge pull request #12 from owner/feat/x  — 소유자 한 마디를 떼면 나머지가 이름이다
+    if let Some(rest) = subject.split_once(" from ").map(|(_, r)| r) {
+        if subject.starts_with("Merge pull request #") {
+            return rest.split_once('/').map(|(_, b)| b.trim());
+        }
+    }
+    // Merge branch 'feat/x' [into y] / Merge remote-tracking branch 'origin/feat/x' [into y]
+    let quoted = subject.split_once('\'').and_then(|(_, r)| r.split_once('\'')).map(|(b, _)| b)?;
+    if subject.starts_with("Merge remote-tracking branch") {
+        // 원격 이름 한 마디를 뗀다 — 'origin/feat/x' 는 브랜치 feat/x 다
+        return quoted.split_once('/').map(|(_, b)| b);
+    }
+    subject.starts_with("Merge branch").then_some(quoted)
 }
 
 /// 워크트리 HEAD가 `base`에 대해 어떤 위치인지와, 그 브랜치가 담은 커밋·파일·증감.
@@ -217,7 +239,13 @@ pub(crate) fn inspect_worktree(
     let branch_tip =
         branch.and_then(|b| git(worktree, &["rev-parse", "--verify", &format!("refs/heads/{b}")]));
     let tip = branch_tip.clone().unwrap_or_else(|| head.clone());
-    let base_sha = base.and_then(|b| git(worktree, &["rev-parse", &format!("{b}^{{commit}}")]));
+    // 원격을 먼저 본다. 로컬 base ref는 뒤처져 있기 일쑤고(이 저장소에서도 실제로 그랬다),
+    // 뒤처진 ref로 판정하면 **원격에서 이미 머지된 work가 "미반영"으로 영구히 굳는다** —
+    // 아카이브에는 되돌리기가 없다. 원격이 없으면 로컬로 물러선다.
+    let base_sha = base.and_then(|b| {
+        git(worktree, &["rev-parse", &format!("origin/{b}^{{commit}}")])
+            .or_else(|| git(worktree, &["rev-parse", &format!("{b}^{{commit}}")]))
+    });
 
     let Some(base_sha) = base_sha else {
         return Some(WorktreeRecord {
@@ -348,6 +376,38 @@ mod tests {
     fn non_repo_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         assert!(detect(dir.path()).is_none());
+    }
+
+    /// 머지 제목 판독. 이 판정 하나가 `record.md`의 "base 반영"과 커밋 범위를 정하고,
+    /// 아카이브는 되돌릴 수 없으므로 틀린 값이 영구히 굳는다.
+    #[test]
+    fn a_merge_is_ours_only_when_the_subject_names_this_branch_as_the_source() {
+        let ours = "feat/a";
+
+        // 들여온 쪽이 우리다
+        assert!(takes_branch_as_source("Merge pull request #12 from Broco98/feat/a", ours));
+        assert!(takes_branch_as_source("Merge branch 'feat/a'", ours));
+        assert!(takes_branch_as_source("Merge branch 'feat/a' into develop", ours));
+
+        // 접두 관계 — 남의 머지를 삼키면 안 된다
+        assert!(!takes_branch_as_source("Merge pull request #13 from Broco98/feat/ab", ours));
+        assert!(!takes_branch_as_source("Merge branch 'feat/a-followup' into develop", ours));
+
+        // revert 브랜치 — 이름을 품고 있지만 우리 것이 아니다
+        assert!(!takes_branch_as_source("Merge pull request #14 from Broco98/revert-12-feat/a", ours));
+
+        // 방향이 반대 — 우리가 **받는** 쪽이면 둘째 부모는 base다
+        assert!(!takes_branch_as_source("Merge branch 'develop' into feat/a", ours));
+        assert!(!takes_branch_as_source(
+            "Merge remote-tracking branch 'origin/develop' into feat/a",
+            ours
+        ));
+
+        // 원격 추적 브랜치로 우리를 들여온 경우는 우리 것이다
+        assert!(takes_branch_as_source("Merge remote-tracking branch 'origin/feat/a'", ours));
+
+        // 관습을 벗어난 제목은 아무것도 안 꺼낸다 — 적게 말한다
+        assert!(!takes_branch_as_source("feat/a 를 합침", ours));
     }
 
     #[test]

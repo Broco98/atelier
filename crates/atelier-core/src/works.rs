@@ -537,11 +537,28 @@ pub fn archive_work(
         .collect();
     // 강제 실행 옵션은 없다. "보존한다"는 행위에 "커밋 안 된 작업을 버리고 진행"은
     // 자기모순이고, 되돌리기가 없으니 잘못 밀면 복구 경로도 없다 (remove_work와 다른 점).
-    let dirty: Vec<String> = worktrees
-        .iter()
-        .filter(|(_, t)| git::is_dirty(t))
-        .map(|(project, t)| dirty_report(project, t))
-        .collect();
+    //
+    // **못 읽는 것과 더러운 것을 갈라서 말한다.** 폴더는 있는데 git이 못 읽는 상태(워크트리
+    // 등록이 끊겼거나 권한이 막혔거나)를 "커밋 안 된 변경"이라고 하면, 사용자는 있지도 않은
+    // 변경을 찾아 헤매고 3단계도 어차피 실패하므로 아카이브도 삭제도 못 한 채 갇힌다.
+    // 사실대로 말하고 빠져나갈 길(폴더를 직접 지우면 다음 실행이 그 프로젝트를 건너뛴다)을 준다.
+    let mut dirty = Vec::new();
+    let mut unreadable = Vec::new();
+    for (project, tree) in &worktrees {
+        match git::dirty_files(tree) {
+            Some(files) if files.is_empty() => {}
+            Some(files) => dirty.push(dirty_report(project, &files)),
+            None => unreadable.push(format!("{project} ({})", collapse_home(tree))),
+        }
+    }
+    if !unreadable.is_empty() {
+        return Err(Error::Validation(format!(
+            "these folders are no longer readable git worktrees: {}. \
+             Nothing was touched. Delete the folder yourself and run this again — \
+             a worktree that is not there is skipped.",
+            unreadable.join("; ")
+        )));
+    }
     if !dirty.is_empty() {
         return Err(Error::DirtyWorktrees(dirty.join("; ")));
     }
@@ -573,12 +590,24 @@ pub fn archive_work(
     Ok(to_view(archive_root, work))
 }
 
-/// 이번에 좌표를 못 읽은 프로젝트 섹션을 앞선 실행의 것으로 되돌린다.
+/// 이번 실행이 **덜 담은** 프로젝트 섹션을 앞선 실행의 것으로 되돌린다.
 /// **기록이 덜 완전해지는 일은 없어야 한다** — 아카이브는 되돌릴 수 없고, 이 문서가
 /// 저장소 없이도 완결된 원본이라는 것이 커밋을 통째로 담기로 한 이유다.
+///
+/// 좌표(HEAD) 유무만으로 판정하면 안 된다. `BaseUnknown`·`NoMergeCommit`은 **좌표는 쓰고
+/// 커밋은 비운 채로** 돌아오므로, 1차 실행이 커밋 표를 봉인해 둔 뒤 base를 못 읽게 되거나
+/// (프로젝트 등록 해제) 브랜치가 base로 fast-forward되면, 그 빈 섹션이 완전한 기록을
+/// 덮어 영구히 지운다. 등록 해제는 커밋을 통째로 담기로 한 **바로 그 이유**였다.
 fn merge_record(fresh: &str, previous: &str) -> String {
-    fn has_coordinates(section: &str) -> bool {
-        section.contains("\n- 워크트리 HEAD:")
+    /// 섹션이 담은 것의 등급. 큰 쪽이 이긴다.
+    fn completeness(section: &str) -> u8 {
+        if !section.contains("\n- 워크트리 HEAD:") {
+            0 // 좌표조차 못 읽었다
+        } else if !section.contains("\n### 커밋\n") {
+            1 // 좌표는 있으나 커밋 범위를 특정하지 못했다
+        } else {
+            2 // 커밋 표까지 담았다
+        }
     }
     let mut out = String::new();
     for (i, section) in fresh.split("\n## ").enumerate() {
@@ -588,10 +617,10 @@ fn merge_record(fresh: &str, previous: &str) -> String {
             continue;
         }
         let project = section.lines().next();
-        let recovered = (!has_coordinates(section))
-            .then(|| previous.split("\n## ").find(|p| p.lines().next() == project))
-            .flatten()
-            .filter(|p| has_coordinates(p));
+        let recovered = previous
+            .split("\n## ")
+            .find(|p| p.lines().next() == project)
+            .filter(|p| completeness(p) > completeness(section));
         out.push_str("\n## ");
         out.push_str(recovered.unwrap_or(section));
     }
@@ -600,13 +629,8 @@ fn merge_record(fresh: &str, previous: &str) -> String {
 
 /// 거부 사유를 **어떤 파일 때문인지**로 적는다. 목록이 길어지면 잘라 낸다 —
 /// 이 문장은 에이전트 컨텍스트로 들어간다.
-fn dirty_report(project: &str, worktree: &Path) -> String {
+fn dirty_report(project: &str, files: &[String]) -> String {
     const CAP: usize = 10;
-    let files = git::dirty_files(worktree).unwrap_or_default();
-    if files.is_empty() {
-        // 상태 자체를 못 읽었다 (보수적으로 dirty로 본 자리). 경로라도 준다.
-        return format!("{project} ({})", collapse_home(worktree));
-    }
     let shown = files.iter().take(CAP).cloned().collect::<Vec<_>>().join(", ");
     match files.len().saturating_sub(CAP) {
         0 => format!("{project} ({shown})"),
@@ -643,9 +667,13 @@ pub fn render_record(
     work: &Work,
     archived_at: &str,
 ) -> String {
+    // 제목의 개행을 접는다. `merge_record`가 섹션을 `"\n## "`로 가르므로, 제목에 그 형태가
+    // 들어가면 머리말이 통째로 섹션 취급을 받아 사라지고 프로젝트 섹션이 중복된다.
+    // 제목은 사용자·에이전트가 자유롭게 쓰는 값이라 여기서 막는 것이 유일한 지점이다.
+    let title = work.title.replace(['\n', '\r'], " ");
     let mut out = format!(
-        "# 기록 — {}\n\n- 아카이브: {archived_at}\n- 아카이브 시점 상태: {}\n",
-        work.title, work.status
+        "# 기록 — {title}\n\n- 아카이브: {archived_at}\n- 아카이브 시점 상태: {}\n",
+        work.status
     );
     let trees = worktrees_dir(&works_root.join(&work.slug));
     for project in &work.projects {
@@ -1740,6 +1768,35 @@ mod tests {
 
         let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
         assert!(record.contains("1차 실패 뒤에 올린 커밋"), "기록이 옛 시점에 고정됐다: {record}");
+    }
+
+    /// 좌표를 **읽을 수는 있는데 커밋 범위를 못 특정하게 된** 재실행이 앞선 커밋 표를
+    /// 지우면 안 된다. 1차 실패 뒤 프로젝트 등록이 사라지면 base를 못 읽어 `BaseUnknown`이
+    /// 되는데, 그 섹션도 HEAD 줄은 쓴다 — 좌표 유무만 보면 완전한 것으로 통과해 덮는다.
+    ///
+    /// **등록 해제는 커밋을 통째로 담기로 한 바로 그 이유였다**(SHA로 복원이 안 된다).
+    /// 그 경우에 커밋 표를 잃으면 그 결정이 산 것을 그대로 잃는다.
+    #[test]
+    fn archive_rerun_keeps_the_commit_table_when_it_can_no_longer_read_the_base() {
+        let (tmp, works, projects) = setup();
+        let (archive, slug) = started(&works, &projects, &["fe"]);
+        let worktree = works.join(&slug).join("trees/fe");
+        let repo = tmp.path().join("fe");
+        commit(&worktree, "keep.txt", "k\n", "잃으면 안 되는 커밋");
+        run_git(&repo, &["worktree", "lock", worktree.to_str().unwrap()]);
+
+        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        let first = std::fs::read_to_string(works.join(&slug).join("record.md")).unwrap();
+        assert!(first.contains("잃으면 안 되는 커밋"), "1차 기록에 커밋 표가 없다: {first}");
+
+        // 재실행 전에 등록이 사라진다 — base를 못 읽어 커밋 범위를 특정할 수 없게 된다
+        run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
+        crate::delete_project(&projects, "fe").unwrap();
+        archive_work(&works, &archive, &projects, &slug).unwrap();
+
+        let sealed = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
+        assert!(sealed.contains("잃으면 안 되는 커밋"), "커밋 표가 사라졌다: {sealed}");
+        assert!(sealed.contains("keep.txt"), "변경 파일 목록이 사라졌다: {sealed}");
     }
 
     /// 반대쪽 위험: 이번 실행에서 **못 읽게 된** 섹션은 앞선 기록을 지켜야 한다.
