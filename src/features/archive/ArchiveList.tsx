@@ -156,7 +156,7 @@ function ArchiveList({
                         setProjectFilter(option);
                         setFilterOpen(false);
                       }}
-                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
                     >
                       <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
                         {option ?? "모든 프로젝트"}

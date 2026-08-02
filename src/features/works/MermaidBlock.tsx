@@ -3,8 +3,11 @@ import { Check, Copy, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FullscreenModal from "./FullscreenModal";
 
+// 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. L21의 배율 텍스트("100%")가 들어가야 해서
+// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
+// 배경 농도만 스케일을 따른다.
 const zoomButton =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors hover:bg-accent hover:text-foreground";
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors hover:bg-state-2 hover:text-foreground";
 
 function ZoomControls({
   scale,

@@ -258,7 +258,7 @@ function TitleEditor({ work }: { work: WorkView }) {
           setDraft(work.title);
           setEditing(true);
         }}
-        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-state-2"
       >
         {work.title}
       </button>
@@ -329,7 +329,7 @@ function StatusMenu({ work }: { work: WorkView }) {
                       setStatus.mutate({ slug: work.slug, status });
                     }
                   }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
                 >
                   <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
@@ -456,7 +456,7 @@ function WorkMenu({
           <button
             type="button"
             onClick={handleArchive}
-            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
           >
             <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
             <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
