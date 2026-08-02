@@ -635,13 +635,30 @@ fn merge_record(fresh: &str, previous: &str) -> String {
 
 /// 거부 사유를 **어떤 파일 때문인지**로 적는다. 목록이 길어지면 잘라 낸다 —
 /// 이 문장은 에이전트 컨텍스트로 들어간다.
-fn dirty_report(project: &str, files: &[String]) -> String {
+///
+/// 추적 안 된 것과 커밋 안 된 것을 **갈라서** 적는다. 뭉쳐서 "uncommitted"라고만 하면
+/// 읽는 쪽이 `git stash`를 고르는데 그것은 `-u` 없이 추적 안 된 파일을 안 치운다 —
+/// 사용자가 실제로 그렇게 막혔고 왜 막혔는지 알 수 없었다. 실전에서 이 게이트가 잡는
+/// 것은 거의 다 추적조차 안 된 계획·리서치 문서다.
+fn dirty_report(project: &str, files: &[git::DirtyEntry]) -> String {
     const CAP: usize = 10;
-    let shown = files.iter().take(CAP).cloned().collect::<Vec<_>>().join(", ");
-    match files.len().saturating_sub(CAP) {
-        0 => format!("{project} ({shown})"),
-        more => format!("{project} ({shown} 외 {more}개)"),
-    }
+    let groups: Vec<String> = [("untracked", true), ("modified", false)]
+        .into_iter()
+        .filter_map(|(label, untracked)| {
+            let paths: Vec<&str> = files
+                .iter()
+                .filter(|f| f.untracked == untracked)
+                .map(|f| f.path.as_str())
+                .collect();
+            let shown = paths.iter().take(CAP).copied().collect::<Vec<_>>().join(", ");
+            match paths.len().saturating_sub(CAP) {
+                _ if paths.is_empty() => None,
+                0 => Some(format!("{label}: {shown}")),
+                more => Some(format!("{label}: {shown} 외 {more}개")),
+            }
+        })
+        .collect();
+    format!("{project} ({})", groups.join("; "))
 }
 
 /// 주어진 work 디렉터리 밖을 가리키지 않는 상대 경로만 통과시킨다. 빈 문자열·절대 경로·
@@ -1755,19 +1772,35 @@ mod tests {
 
     /// 기존 삭제 기능의 오류는 워크트리 **경로**만 준다 — 사용자가 직접 가서 확인해야 한다.
     /// 아카이브가 거부할 때는 **무엇 때문인지**를 말한다.
+    ///
+    /// 그리고 추적 안 된 것과 커밋 안 된 것을 **가른다.** 둘을 뭉쳐 "uncommitted"라고만 하면
+    /// 읽는 쪽이 `git stash`를 고르는데 그것은 `-u` 없이는 추적 안 된 파일을 안 치운다 —
+    /// 사용자가 실제로 그렇게 막혔고 왜 막혔는지 알 수 없었다. 이 게이트가 실전에서 잡는
+    /// 것은 거의 다 추적조차 안 된 계획·리서치 문서다.
     #[test]
-    fn archive_refuses_dirty_worktrees_and_names_the_files() {
+    fn archive_refuses_dirty_worktrees_and_tells_untracked_from_uncommitted() {
         let (_tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe"]);
-        // 실측상 dirty 내용은 전부 추적조차 되지 않는 계획·리서치 문서였다
         let worktree = works.join(&slug).join("trees/fe");
         std::fs::create_dir_all(worktree.join("docs")).unwrap();
-        std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap();
+        std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap(); // 추적 안 됨
+        std::fs::write(worktree.join("a.txt"), "고쳤다\n").unwrap(); // 추적됨 + 수정
 
         let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("docs/plan.md"), "파일이 아니라 경로만 알려준다: {message}");
         assert!(message.contains("fe"), "{message}");
+
+        // 두 종류가 각자의 이름표를 달고 갈려 있어야 한다
+        assert!(message.contains("untracked"), "추적 안 됨을 안 밝힌다: {message}");
+        assert!(message.contains("modified"), "수정을 안 밝힌다: {message}");
+        let untracked = message.find("untracked").unwrap();
+        let modified = message.find("modified").unwrap();
+        let plan = message.find("docs/plan.md").unwrap();
+        // 추적된 파일은 이름이 온전해야 한다 — `.txt`로 잘려 나간 적이 있다
+        let tracked = message.find("a.txt").unwrap();
+        assert!(untracked < plan && plan < modified, "추적 안 된 파일이 그 이름표 아래가 아니다: {message}");
+        assert!(modified < tracked, "수정된 파일이 그 이름표 아래가 아니다: {message}");
     }
 
     #[test]

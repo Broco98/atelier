@@ -12,7 +12,10 @@ pub enum Error {
     WorkNotFound(String),
     #[error("{0}")]
     Validation(String),
-    #[error("uncommitted changes in: {0}")]
+    // "uncommitted"만으로는 거짓이다 — 이 게이트가 실전에서 잡는 것은 거의 다 **추적조차
+    // 안 된** 파일이고, 그 말을 믿고 `git stash`(`-u` 없이)를 하면 똑같이 막힌 채 이유를
+    // 알 수 없다. 사용자가 실제로 그렇게 막혔다.
+    #[error("uncommitted or untracked files in: {0}")]
     DirtyWorktrees(String),
     #[error("git: {0}")]
     Git(String),

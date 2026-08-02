@@ -258,7 +258,8 @@ impl AtelierServer {
         description = "Remove a work: delete its metadata, its spec directory and its \
                        worktrees. The shared branch is kept in every project repository, so \
                        committed work is not lost. Refused when any worktree has uncommitted \
-                       changes — commit or stash them first. There is no force option.",
+                       or untracked files — commit them, or stash with `git stash -u`. \
+                       There is no force option.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -305,7 +306,8 @@ impl AtelierServer {
                        it carried. The worktrees are then removed and the shared branch is kept \
                        in every repository. Any status can be archived and the status is not \
                        changed — an abandoned approach is worth putting away too. Refused when \
-                       any worktree has uncommitted changes, and the error names the files. \
+                       any worktree has uncommitted or untracked files, and the error names \
+                       them and says which kind each is. \
                        There is no force option and no way back; use atelier_remove_work \
                        instead for a work that is not worth keeping.",
         annotations(

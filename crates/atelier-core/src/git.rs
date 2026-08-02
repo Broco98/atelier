@@ -93,10 +93,17 @@ pub(crate) fn is_dirty(dir: &Path) -> bool {
     }
 }
 
-/// 커밋 안 된 항목들의 경로. `is_dirty`가 참일 때 **무엇 때문인지**를 준다 —
+/// dirty 판정에 걸린 항목 하나.
+pub(crate) struct DirtyEntry {
+    /// git이 아직 모르는 파일(`??`). **`git stash`는 `-u` 없이 이것을 못 치운다** —
+    /// 이 구분이 없으면 읽는 쪽이 안 듣는 처방을 골라 똑같이 막히고 이유를 모른다.
+    pub untracked: bool,
+    pub path: String,
+}
+
+/// 커밋 안 됐거나 아예 추적되지 않는 항목들. `is_dirty`가 참일 때 **무엇 때문인지**를 준다 —
 /// 워크트리 경로만 주면 사용자가 직접 가서 확인해야 한다. 판단 불가면 `None`.
-pub(crate) fn dirty_files(dir: &Path) -> Option<Vec<String>> {
-    // porcelain v1은 `XY <경로>` — 상태 두 글자와 공백 뒤가 경로다.
+pub(crate) fn dirty_files(dir: &Path) -> Option<Vec<DirtyEntry>> {
     // `-uall`이 없으면 추적 안 된 디렉터리가 `docs/` 한 줄로 접혀, 무엇 때문인지를
     // 알려준다는 목적을 못 채운다. 목록이 길어지는 것은 호출부가 잘라 낸다.
     // `core.quotePath=false`가 없으면 한글 파일명이 8진 이스케이프로 나와 역시 못 읽는다 —
@@ -105,7 +112,22 @@ pub(crate) fn dirty_files(dir: &Path) -> Option<Vec<String>> {
         dir,
         &["-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all"],
     )?;
-    Some(out.lines().filter_map(|line| line.get(3..)).map(str::to_string).collect())
+    // porcelain v1은 `XY <경로>`이지만 고정 오프셋으로 자르면 안 된다: `git()`이 출력 전체를
+    // trim해서 **첫 줄만** 앞 공백이 깎인다(` M a.txt` → `M a.txt`). 그러면 그 줄의 경로
+    // 첫 글자가 잘려 나간다 — 실제로 `a.txt`가 `.txt`로 나갔다. 상태 두 글자를 떼고 남은
+    // 공백을 지우는 쪽이 깎인 줄과 안 깎인 줄을 함께 견딘다.
+    Some(
+        out.lines()
+            .filter_map(|line| {
+                let code = line.get(..2)?;
+                let path = line.get(2..)?.trim_start();
+                (!path.is_empty()).then(|| DirtyEntry {
+                    untracked: code.trim_start() == "??",
+                    path: path.to_string(),
+                })
+            })
+            .collect(),
+    )
 }
 
 /// 워크트리 제거. 브랜치는 건드리지 않는다.

@@ -13,8 +13,12 @@ pub fn kernel_error(err: Error) -> CallToolResult {
             "Call atelier_list_projects to see the registered project slugs and their folders."
         }
         Error::WorkNotFound(_) => "Call atelier_list_works to see the existing work slugs.",
+        // `git stash`만 시키면 **안 듣는 처방**이다: `-u` 없이는 추적 안 된 파일이 그대로
+        // 남아 다시 거부당하고, 읽는 쪽은 왜 막혔는지 알 수 없다. 실제로 그렇게 막혔다.
         Error::DirtyWorktrees(_) => {
-            "Commit or stash the changes in those worktrees, then call this tool again."
+            "Commit those files, or stash them with `git stash -u` — plain `git stash` \
+             leaves untracked files behind and this will be refused again. Then call \
+             this tool again."
         }
         Error::Validation(_) | Error::EmptyName => "Fix the arguments and call this tool again.",
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {
