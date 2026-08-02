@@ -134,7 +134,9 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
   );
 }
 
-// 경로 복사 행 — 행 전체가 버튼, hover 시 복사 아이콘 (SpecTree 파일 행과 같은 패턴)
+// 경로 복사 행 — 행 전체가 버튼이고 hover 시 복사 아이콘이 뜬다.
+// SpecTree의 파일 행과 겉모습은 같지만 구조는 다르다 — 그쪽은 이름 선택과 경로 복사가
+// 각각 버튼이라 div + 형제 둘로 풀렸다. 여기는 행 전체가 복사 하나뿐이라 버튼 하나로 족하다.
 function PathCopyRow({ label, onCopy }: { label: string; onCopy: () => void }) {
   return (
     <button

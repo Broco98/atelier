@@ -153,33 +153,59 @@ function TreeRows({
                 )}
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => onSelect(node.path)}
+              // 파일 행은 버튼 하나가 아니라 div + 형제 버튼 둘이다. 복사가 이름 선택 안에
+              // 중첩돼 있으면 두 가지가 동시에 깨진다 — 중첩 버튼은 HTML에서 허용되지 않아
+              // 안쪽을 span role="button"으로 흉내 내야 했고, 그러면 Tab으로 도달할 수 없다.
+              // 게다가 ARIA의 presentational-children 규칙상 button의 자식은 접근성 트리에서
+              // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
+              //
+              // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
+              // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+              // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
+              // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
+              // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
+              // 자기 오른쪽 여백까지 품는다(복사 버튼이 있을 때만 필요하다).
+              // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
+              // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
+              <div
                 className={cn(
-                  "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-left text-[12.5px] transition-colors",
+                  "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
                   node.path === current
-                    ? "selected-row font-medium text-foreground"
+                    ? "selected-row font-medium"
                     : "text-muted-foreground hover:bg-state-1",
                 )}
-                style={{ paddingLeft: 8 + depth * 14 }}
               >
-                <FileGlyph name={node.name} />
-                <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
+                    이름을 누를 수 있는 자리가 그만큼 좁아진다. h-full은 28px 행 전체가
+                    클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
+                <button
+                  type="button"
+                  onClick={() => onSelect(node.path)}
+                  className={cn(
+                    "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
+                    onCopy && "pr-1.5",
+                  )}
+                  style={{ paddingLeft: 8 + depth * 14 }}
+                >
+                  <FileGlyph name={node.name} />
+                  <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                </button>
                 {onCopy && (
-                  <span
-                    role="button"
+                  // 페이드 없이 뜨는 것은 icon-button-quiet이 정한다 — 행 높이가 28px뿐이라
+                  // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
+                  // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
+                  // 거터 복사 버튼이 이미 같은 답을 하고 있다
+                  <button
+                    type="button"
+                    aria-label={`${node.name} 경로 복사`}
                     title="경로 복사"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopy(node.path);
-                    }}
-                    className="icon-button text-tertiary opacity-0 transition-[background-color,color,opacity] hover:bg-state-2 hover:text-foreground group-hover:opacity-100"
+                    onClick={() => onCopy(node.path)}
+                    className="icon-button-quiet text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
                   >
                     <Copy className="size-3" strokeWidth={1.8} />
-                  </span>
+                  </button>
                 )}
-              </button>
+              </div>
             )}
           </div>
         );

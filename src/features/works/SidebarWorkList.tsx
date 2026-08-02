@@ -373,7 +373,7 @@ function WorkRow({
       onMouseLeave={onLeave}
       className={cn(
         "flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left transition-colors",
-        active ? "selected-row text-foreground" : "text-muted-foreground hover:bg-state-1",
+        active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
       <StatusIcon status={work.status} />

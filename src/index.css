@@ -152,10 +152,14 @@
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
          행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
-       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경으로도 쓰이고, 아직 옮기지 않은
-       hover로도 남아 있다 (ProjectDetail·MermaidBlock·팝오버 항목·제목 편집 버튼) — 후속 티켓.
+       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경·상태 배지가 그 자리다.
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
-       그 자리들이 어긋나 보이지 않는 것은 5%가 새 버튼 hover(6%)와 사실상 구분되지 않기 때문이다 */
+
+       --accent를 상태 hover로 쓰던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을 고정한다).
+       다만 스케일 밖 상태 배경이 아직 둘 남아 있다 — 설명 편집 버튼의 hover:bg-panel
+       (ProjectDetail)과 프로젝트 칩의 hover:bg-inset(WorksPage). 둘은 반투명 오버레이가
+       아니라 불투명 표면색이라 6%로 그냥 바꿀 수 없다(바꾸면 아래 것이 비친다). 옮길지는
+       따로 판단할 일이고, 그때까지 "전부 옮겼다"고 적지 않는다 */
     --state-1: rgba(20, 20, 28, 0.03);
     --state-2: rgba(20, 20, 28, 0.06);
     --state-3: rgba(20, 20, 28, 0.09);
@@ -228,9 +232,22 @@
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
    hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
    선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
-   충돌하지 않도록 분기 안에만 둔다). */
+   충돌하지 않도록 분기 안에만 둔다).
+
+   글자색도 여기서 정한다 — toggle-on이 이미 그렇게 하고 있어서, 형제 유틸리티 둘이 같은
+   질문에 다르게 답하고 있었다. 호출부가 손으로 text-foreground를 붙이던 세 자리
+   (사이드바 메뉴·사이드바 작업 목록·spec 트리)가 짧아진다.
+   자식이 자기 색을 가진 자리는 덮이지 않는다 — done 작업 제목의 text-tertiary처럼
+   직접 선언한 색은 부모에서 내려오는 상속을 항상 이긴다.
+
+   평소 색을 여기서 정하는 것은 아래 icon-button-quiet과 정반대인데, 갈리는 지점이 있다 —
+   선택된 행의 평소 색은 어디서나 foreground 하나라 덮을 호출부가 없다. icon-button-quiet은
+   호출부마다 평소 색이 갈려서(본문 tertiary·셸 크롬 muted-foreground) 유틸리티가 정하면
+   호출부가 덮어야 하고, 그 승자를 정렬 순서가 정하게 된다. 기준은 "형제끼리 같은 답을
+   하느냐"가 아니라 "덮을 호출부가 있느냐"다. */
 @utility selected-row {
   background: var(--state-2);
+  color: var(--foreground);
   &:hover {
     background: var(--state-3);
     }
@@ -248,6 +265,37 @@
   width: 24px;
   height: 24px;
   border-radius: 8px;
+}
+
+/* "켜지지 않는 것의 hover" — 배경 한 단계와 글자색이 함께 진해진다.
+   크기를 정하지 않는 것이 핵심이다. 이 hover는 24px 아이콘 버튼만의 것이 아니라
+   22px 툴바 버튼·토글의 꺼진 가지에도 똑같이 걸리는데, 규격까지 묶어 두면 그 자리들이
+   쓸 수 없어 같은 문자열을 손으로 다시 적게 된다.
+
+   평소 색은 여기서 정하지 않는다. 본문은 text-tertiary, 셸 크롬은 text-muted-foreground로
+   갈리는데, 여기서 색을 정하면 호출부가 덮어야 하고 그 승자를 유틸리티 정렬 순서가
+   정하게 된다. hover 색은 &:hover라 특이도가 한 단계 높아 호출부의 평소 색과 겨루지 않는다.
+
+   토글에 쓸 때는 반드시 **꺼진 가지 안에만** 둔다 — toggle-on과 한 요소에 겹치면
+   hover 규칙이 두 벌이 되어 정렬 순서가 승자를 정한다. */
+@utility quiet-hover {
+  &:hover {
+    background: var(--state-2);
+    color: var(--foreground);
+  }
+}
+
+/* 켜짐이 없는 아이콘 버튼 — icon-button 규격 + quiet-hover.
+   이 조합이 한 문자열로 여덟 자리에 똑같이 적혀 있었다.
+
+   transition에 opacity가 없는 것은 규칙이다 — 평소 숨어 있다가 hover에 뜨는 버튼들이
+   이걸 쓴다. 페이드를 걸면 옆 버튼으로 옮겨 갈 때 사라지는 페이드와 나타나는 페이드가
+   겹쳐, 같은 아이콘이 미끄러진 것처럼 보인다. 근거는 SpecViewer의 거터 복사 버튼 주석에 있다. */
+@utility icon-button-quiet {
+  @apply icon-button quiet-hover;
+  transition-property: color, background-color;
+  transition-timing-function: var(--default-transition-timing-function);
+  transition-duration: var(--default-transition-duration);
 }
 
 /* 토글이 켜진 상태 — 배경이 한 단계 진해지고 아이콘·글자 색도 함께 진해진다.

@@ -260,13 +260,21 @@ function BlockWrapper({
       {/* 거터는 본문 좌측 여백(bodyColumn의 px) 안쪽에 오른쪽 정렬로 얹힌다 —
           버튼의 오른쪽 끝이 본문과 16px 떨어져, 소스 보기 줄번호의 오른쪽 끝과 같은 자리에 온다.
           top-1은 버튼 중심(4+12=16px)을 숫자가 있던 자리의 중심에 그대로 둔다.
-          키보드로 도달했을 때도 보여야 하므로 focus-visible에서도 나타난다 */}
+          키보드로 도달했을 때도 보여야 하므로 focus-visible에서도 나타난다.
+
+          이 버튼이 페이드로 뜨지 않는 것은 실수가 아니다 — 숨은 버튼은 즉시 나타나고 즉시
+          사라진다(그 규칙은 icon-button-quiet이 갖는다: transition에 opacity가 없다).
+          블록마다 버튼이 하나씩이고 거터라 x가 모두 같아서, 페이드를 걸면 블록을 옮겨 갈 때
+          앞 버튼이 사라지는 페이드와 뒤 버튼이 나타나는 페이드가 겹친다. 같은 아이콘이 같은
+          x에서 40px 아래로 크로스페이드하면 눈에는 버튼이 미끄러진 것으로 보인다
+          (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 배경·글자색은 계속 전환한다 —
+          그건 한 버튼 안에서 일어나는 일이라 겹칠 상대가 없다 */}
       <button
         type="button"
         onClick={() => onCopy(start, end)}
         aria-label={`${range}줄 참조 복사`}
         title={`${range}줄 참조 복사`}
-        className="icon-button absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none transition-[background-color,color,opacity] hover:bg-state-2 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Copy className="size-3" strokeWidth={1.8} aria-hidden />
       </button>

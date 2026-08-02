@@ -51,7 +51,7 @@ function FullscreenModal({
                 onClick={onClose}
                 title="닫기 (Esc)"
                 aria-label="닫기"
-                className="icon-button ml-1 text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
+                className="icon-button-quiet ml-1 text-tertiary"
               >
                 <X className="size-3.5" strokeWidth={2} />
               </button>

@@ -164,7 +164,7 @@ function ArchivePage({
                     "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
                     showSource
                       ? "toggle-on"
-                      : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                      : "text-tertiary quiet-hover",
                   )}
                 >
                   소스
@@ -176,7 +176,7 @@ function ArchivePage({
                 aria-label="목록 패널 토글"
                 aria-expanded={panelOpen}
                 title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
+                className="icon-button-quiet text-tertiary"
               >
                 {panelOpen ? (
                   <Maximize2 className="size-4" strokeWidth={1.7} />

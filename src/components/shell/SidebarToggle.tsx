@@ -17,7 +17,7 @@ function SidebarToggle({ open, onToggle }: SidebarToggleProps) {
       // 이 버튼만 26px로 남으면 그 자리에서 바로 어긋나 보인다.
       // 기본 아이콘 색은 다른 아이콘 버튼(text-tertiary)보다 진한 채로 둔다:
       // 사이드바가 닫혔을 때 이걸 못 찾으면 되돌릴 방법이 없다
-      className="icon-button text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
+      className="icon-button-quiet text-muted-foreground"
     >
       <PanelLeft className="size-4" strokeWidth={1.7} />
     </button>
