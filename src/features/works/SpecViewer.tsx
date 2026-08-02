@@ -1,13 +1,34 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, Copy, FileText, ImageOff } from "lucide-react";
+import {
+  Check,
+  Copy,
+  FileText,
+  ImageOff,
+  Info,
+  Lightbulb,
+  MessageSquareWarning,
+  OctagonAlert,
+  TriangleAlert,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
-import { expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
@@ -330,11 +351,33 @@ export const PrettyView = memo(function PrettyView({
       p: block("p", "leading-[1.7] text-muted-foreground", "mt-1.5"),
       ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
       ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
-      blockquote: block(
-        "blockquote",
-        "border-l-2 border-border-strong pl-3.5 text-muted-foreground",
-        "mt-1.5",
-      ),
+      // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 지금 모양 그대로.
+      // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
+      // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
+      blockquote: ({ node, children, className: hastClass, ...props }: any) => {
+        const first = firstLineOf(node);
+        const callout = first ? calloutKind(first) : null;
+        const inner = callout ? (
+          // 첫 줄은 머리글이 대신 말하므로 본문에서 그만큼 걷어낸다
+          <Callout kind={callout.kind} title={callout.title} skip={first!.length}>
+            {children}
+          </Callout>
+        ) : (
+          <blockquote
+            className={cn("border-l-2 border-border-strong pl-3.5 text-muted-foreground", hastClass)}
+            {...props}
+          >
+            {children}
+          </blockquote>
+        );
+        const range = lines(node);
+        if (!range) return inner;
+        return (
+          <BlockWrapper start={range.start} end={range.end} spacing="mt-1.5" onCopy={onCopyBlock}>
+            {inner}
+          </BlockWrapper>
+        );
+      },
       hr: block("hr", "border-border", "mt-4"),
       // 표는 가로 스크롤과 전체화면 확대와 열 폭 조절을 자기가 챙긴다 — 규격도 거기 있다.
       // key: 조절한 열 폭이 다른 문서로 넘어가지 않는다는 계약이 사는 자리다.
@@ -486,6 +529,90 @@ export const PrettyView = memo(function PrettyView({
     </article>
   );
 });
+
+// ─── 콜아웃 ───
+
+// 종류마다 다른 것은 아이콘·강조선·제목색 셋뿐이다. 배경을 두지 않는 이유는 인용과
+// 형제로 보여야 하기 때문이다 — GitHub도 같은 자리에서 좌측 선과 제목색만 바꾼다.
+// 라벨은 마커와 같은 영문이다: 같은 파일을 GitHub·Obsidian에서 열어도 같게 보이는 것이
+// 이 다섯 종을 고른 이유였다 (결정 9).
+const CALLOUT_STYLE: Record<
+  CalloutKind,
+  { label: string; Glyph: typeof Info; line: string; tone: string }
+> = {
+  NOTE: { label: "Note", Glyph: Info, line: "border-blue-500", tone: "text-blue-700 dark:text-blue-400" },
+  TIP: {
+    label: "Tip",
+    Glyph: Lightbulb,
+    line: "border-emerald-500",
+    tone: "text-emerald-700 dark:text-emerald-400",
+  },
+  IMPORTANT: {
+    label: "Important",
+    Glyph: MessageSquareWarning,
+    line: "border-violet-500",
+    tone: "text-violet-700 dark:text-violet-400",
+  },
+  WARNING: {
+    label: "Warning",
+    Glyph: TriangleAlert,
+    line: "border-amber-500",
+    tone: "text-amber-700 dark:text-amber-400",
+  },
+  CAUTION: {
+    label: "Caution",
+    Glyph: OctagonAlert,
+    line: "border-red-500",
+    tone: "text-red-700 dark:text-red-400",
+  },
+};
+
+function Callout({
+  kind,
+  title,
+  skip,
+  children,
+}: {
+  kind: CalloutKind;
+  title: string | null;
+  // 첫 줄(마커 + 제목)의 길이 — 머리글이 대신 말하므로 본문에서 그만큼 걷어낸다
+  skip: number;
+  children: React.ReactNode;
+}) {
+  const { label, Glyph, line, tone } = CALLOUT_STYLE[kind];
+  return (
+    <div className={cn("border-l-2 pl-3.5 text-muted-foreground", line)}>
+      <div className={cn("flex items-center gap-1.5 font-medium", tone)}>
+        <Glyph className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+        {title ?? label}
+      </div>
+      {stripFirstLine(children, skip)}
+    </div>
+  );
+}
+
+// 인용문의 첫 줄. 첫 문단의 텍스트만 보므로 뒤따르는 문단·목록은 건드리지 않는다.
+function firstLineOf(node: any): string | null {
+  const paragraph = node?.children?.find((child: any) => child.type === "element");
+  return paragraph ? hastText(paragraph).split("\n")[0] : null;
+}
+
+// 마커가 있던 첫 줄을 본문에서 걷어낸다. 첫 문단의 첫 조각이 문자열일 때만 손대고,
+// 제목 자리에 마크업이 섞여 있으면(`> [!NOTE] **강조**`) 그대로 둔다 — 마커가 본문에
+// 남아 보이는 것이, 잘못 잘라 본문을 잃는 것보다 낫다.
+function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNode {
+  const items = Children.toArray(children);
+  const index = items.findIndex(isValidElement);
+  if (index < 0) return children;
+  const paragraph = items[index] as React.ReactElement<{ children?: React.ReactNode }>;
+  const inner = Children.toArray(paragraph.props.children);
+  if (typeof inner[0] !== "string") return children;
+  const rest = inner[0].slice(skip).replace(/^\n/, "");
+  const next = rest ? [rest, ...inner.slice(1)] : inner.slice(1);
+  // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
+  if (next.length === 0) return items.filter((_, i) => i !== index);
+  return items.map((item, i) => (i === index ? cloneElement(paragraph, undefined, ...next) : item));
+}
 
 // hast 노드에서 텍스트만 추출 (mermaid 코드 등)
 function hastText(node: unknown): string {

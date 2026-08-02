@@ -106,3 +106,49 @@ describe("PrettyView 이미지", () => {
     expect(render("![외부](https://example.com/a.png)")).toContain("max-w-full");
   });
 });
+
+describe("PrettyView 콜아웃", () => {
+  // 이 검사가 이 티켓의 중심이다. 기존 스펙들이 `> **커버:** …` 같은 평범한 인용을
+  // 많이 쓰고 있어서, 그것들이 색을 갖는 순간 그 자체가 회귀다.
+  it.each([
+    ["평범한 인용", "> **커버:** 이 문서가 답하는 것"],
+    ["알 수 없는 마커", "> [!TODO] 나중에"],
+    ["마커가 첫 줄 맨 앞이 아닌 인용", "> 앞말 [!NOTE] 뒷말"],
+  ])("%s은 blockquote 그대로다", (_name, markdown) => {
+    expect(render(markdown)).toContain("<blockquote");
+  });
+
+  it.each([
+    ["NOTE", "Note"],
+    ["TIP", "Tip"],
+    ["IMPORTANT", "Important"],
+    ["WARNING", "Warning"],
+    ["CAUTION", "Caution"],
+  ])("%s은 종류 이름을 제목으로 그린다", (kind, label) => {
+    const html = render(`> [!${kind}]\n> 본문이다`);
+    expect(html).not.toContain("<blockquote");
+    expect(html).toContain(label);
+    expect(html).toContain("본문이다");
+  });
+
+  it("마커 뒤 텍스트가 제목이 되고 마커는 본문에 남지 않는다", () => {
+    const html = render("> [!WARNING] 되돌릴 수 없어요\n> 브랜치는 남아요");
+    expect(html).toContain("되돌릴 수 없어요");
+    expect(html).toContain("브랜치는 남아요");
+    expect(html).not.toContain("[!WARNING]");
+    // 제목을 따로 말했으므로 종류 이름은 쓰지 않는다
+    expect(html).not.toContain("Warning");
+  });
+
+  it("콜아웃 안의 목록·코드·링크가 정상 렌더된다", () => {
+    const html = render("> [!TIP]\n> - 항목 하나\n> - `코드`\n> - [바깥](https://a.b)");
+    expect(html).toContain("<li");
+    expect(html).toContain("<code");
+    expect(html).toContain("<a ");
+  });
+
+  // 콜아웃도 최상위 블록이다 — 거터를 잃으면 참조를 복사할 수 없다
+  it("콜아웃에도 참조 복사 버튼이 하나 붙는다", () => {
+    expect(copyButtons("> [!NOTE] 제목\n> 본문")).toBe(1);
+  });
+});

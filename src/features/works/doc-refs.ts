@@ -110,3 +110,28 @@ export function resolveImageSrc(
   if (target.kind === "doc" && specRoot) return { kind: "file", path: `${specRoot}/${target.path}` };
   return { kind: "missing" };
 }
+
+// GitHub 표준 5종. Obsidian 전용 13종은 기각했다 — 색과 아이콘을 전부 정해야 하는데
+// 실제로 쓸 종류는 몇 개 안 되고, 이 다섯이라야 **같은 파일을 어디서 열든 같게 보인다**.
+export const CALLOUT_KINDS = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"] as const;
+
+export type CalloutKind = (typeof CALLOUT_KINDS)[number];
+
+/**
+ * 인용문의 첫 줄이 콜아웃 마커인지 본다.
+ *
+ * **마커가 있을 때만** 콜아웃이다. 기존 스펙들이 `> **커버:** …` 같은 평범한 인용을
+ * 많이 쓰고 있어서, 그것들이 색을 갖게 되면 그 자체가 회귀다.
+ *
+ * `title`이 null이면 종류 이름을 제목으로 쓴다 — 그리는 쪽의 몫이다.
+ */
+export function calloutKind(
+  firstLine: string,
+): { kind: CalloutKind; title: string | null } | null {
+  const match = /^\[!([a-z]+)\]\s*(.*)$/i.exec(firstLine);
+  if (!match) return null;
+  const kind = match[1].toUpperCase();
+  if (!(CALLOUT_KINDS as readonly string[]).includes(kind)) return null;
+  const title = match[2].trim();
+  return { kind: kind as CalloutKind, title: title || null };
+}

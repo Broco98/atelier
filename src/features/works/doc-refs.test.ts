@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 
 // spec 폴더의 실제 모양을 흉내낸 목록 — 한글 폴더명이 들어 있는 것이 중요하다.
 // 마크다운 렌더러가 비ASCII 경로를 퍼센트 인코딩해 넘기기 때문이다.
@@ -168,5 +168,42 @@ describe("resolveImageSrc", () => {
       kind: "url",
       url: "https://example.com/a.png",
     });
+  });
+});
+
+describe("calloutKind", () => {
+  it.each(["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"])(
+    "%s 마커를 알아본다 — 제목이 없으면 종류 이름이 제목이 된다",
+    (kind) => {
+      expect(calloutKind(`[!${kind}]`)).toEqual({ kind, title: null });
+    },
+  );
+
+  it("마커 뒤 텍스트가 제목이 된다", () => {
+    expect(calloutKind("[!WARNING] 되돌릴 수 없어요")).toEqual({
+      kind: "WARNING",
+      title: "되돌릴 수 없어요",
+    });
+  });
+
+  it("대소문자를 가리지 않는다 — GitHub·Obsidian 둘 다 그렇다", () => {
+    expect(calloutKind("[!note]")).toEqual({ kind: "NOTE", title: null });
+    expect(calloutKind("[!Tip] 힌트")).toEqual({ kind: "TIP", title: "힌트" });
+  });
+
+  // 기존 스펙들이 `> **커버:** …` 같은 평범한 인용을 많이 쓴다. 그것들이 갑자기
+  // 색을 갖게 되면 회귀다 — 마커가 있을 때**만** 콜아웃이다.
+  it("마커가 없는 인용은 콜아웃이 아니다", () => {
+    expect(calloutKind("**커버:** 이 문서가 답하는 것")).toBeNull();
+    expect(calloutKind("")).toBeNull();
+  });
+
+  it("알 수 없는 마커는 콜아웃이 아니다", () => {
+    expect(calloutKind("[!TODO] 나중에")).toBeNull();
+    expect(calloutKind("[!] 빈 것")).toBeNull();
+  });
+
+  it("마커가 첫 줄 맨 앞에 있어야 한다", () => {
+    expect(calloutKind("앞말 [!NOTE] 뒷말")).toBeNull();
   });
 });
