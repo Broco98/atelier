@@ -142,9 +142,10 @@ describe("resolveImageSrc", () => {
     });
   });
 
-  it("spec 루트를 벗어나면 그리지 않는다", () => {
+  it("spec 루트를 벗어나면 그리지 않는다 — 보여줄 경로도 없다", () => {
     expect(resolveImageSrc(ROOT, "overview.md", "../../secret.png", IMAGES)).toEqual({
       kind: "missing",
+      path: null,
     });
   });
 
@@ -155,14 +156,25 @@ describe("resolveImageSrc", () => {
     });
   });
 
-  it("목록에 없는 이미지는 missing이다 — 깨진 아이콘 대신 자리표시가 선다", () => {
+  // 자리표시는 **사람이 읽을 수 있는 경로**를 보여줘야 한다. 렌더러가 넘긴 원본을 그대로
+  // 쓰면 한글 파일명이 `%EC%97%86…`으로 나와, 정작 고쳐야 할 이름이 화면에 없다.
+  it("목록에 없는 이미지는 되돌린 경로와 함께 missing이다", () => {
     expect(resolveImageSrc(ROOT, "overview.md", "없는그림.png", IMAGES)).toEqual({
       kind: "missing",
+      path: "없는그림.png",
+    });
+    const encoded = "%EC%97%86%EB%8A%94%EA%B7%B8%EB%A6%BC.png";
+    expect(resolveImageSrc(ROOT, "overview.md", encoded, IMAGES)).toEqual({
+      kind: "missing",
+      path: "없는그림.png",
     });
   });
 
   it("spec 루트를 모르면 로컬 이미지는 그리지 않는다 — 아카이브 화면이 그렇다", () => {
-    expect(resolveImageSrc(null, "overview.md", "shot.png", IMAGES)).toEqual({ kind: "missing" });
+    expect(resolveImageSrc(null, "overview.md", "shot.png", IMAGES)).toEqual({
+      kind: "missing",
+      path: "shot.png",
+    });
     // 외부 URL은 루트를 몰라도 그릴 수 있다
     expect(resolveImageSrc(null, "overview.md", "https://example.com/a.png", IMAGES)).toEqual({
       kind: "url",

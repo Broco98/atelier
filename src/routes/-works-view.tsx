@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
@@ -7,17 +7,36 @@ import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store
 
 // /works와 /works/$slug가 그리는 화면은 같다 — 다른 것은 어떤 작업이 선택됐는지뿐이다.
 // 파일명의 "-" 접두사는 라우트 생성기가 이 파일을 라우트로 취급하지 않게 한다.
-function WorksView({ slug }: { slug: string | null }) {
+function WorksView({ slug, file = null }: { slug: string | null; file?: string | null }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   const { data: works = [], isPending, isFetching } = useWorks();
 
   const exists = slug !== null && works.some((work) => work.slug === slug);
 
+  // 작업을 옮길 때 search를 비운다 — 문서 경로는 그 작업 안에서만 뜻이 있어서,
+  // 딸려가면 새 작업에 없는 파일을 가리킨 채 주소만 남는다.
   const goTo = (next: string | null, replace = false) =>
     void (next
-      ? navigate({ to: "/works/$slug", params: { slug: next }, replace })
+      ? navigate({ to: "/works/$slug", params: { slug: next }, search: {}, replace })
       : navigate({ to: "/works", replace }));
+
+  // 문서 전환. **트리 훑기는 히스토리를 만들지 않고(replace), 링크를 따라간 것은 만든다.**
+  // 이슈 #25가 못박은 "파일 전환은 히스토리 항목을 만들지 않는다"는 트리를 두고 한 말이다 —
+  // 그때는 문서를 옮기는 길이 트리뿐이었다. 링크는 따라 들어갔다는 감각이 있으므로
+  // 돌아올 자리가 있어야 하고, 그 자리를 만드는 것이 push다.
+  const selectFile = useCallback(
+    (path: string, push: boolean) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: { file: path },
+        replace: !push,
+      });
+    },
+    [navigate, slug],
+  );
 
   // 주소와 화면을 목록 변화에 맞춰 계속 붙여 둔다.
   // beforeLoad는 이동할 때만 돌기 때문에, 머물러 있는 동안 목록이 바뀌어 생기는 어긋남은
@@ -44,6 +63,8 @@ function WorksView({ slug }: { slug: string | null }) {
     <WorksPage
       sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
+      currentFile={file}
+      onSelectFile={selectFile}
       onOpenProject={(project) =>
         void navigate({ to: "/projects/$slug", params: { slug: project } })
       }

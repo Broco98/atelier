@@ -38,6 +38,10 @@ interface SpecViewerProps {
   work: WorkView;
   showSource: boolean;
   panelOpen: boolean;
+  // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
+  // 자취가 히스토리에 남지 않아, 링크를 따라 들어간 뒤 뒤로가기가 작업 전체를 건너뛴다.
+  file: string | null;
+  onSelectFile: (path: string, push: boolean) => void;
 }
 
 function defaultFile(files: string[]): string | null {
@@ -46,11 +50,16 @@ function defaultFile(files: string[]): string | null {
 }
 
 
-function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
+function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecViewerProps) {
   const files = work.specFiles;
-  const [selected, setSelected] = useState<string | null>(null);
-  // 파일이 삭제되면 기본 파일로 폴백
-  const current = selected && files.includes(selected) ? selected : defaultFile(files);
+  // 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백
+  const current = file && files.includes(file) ? file : defaultFile(files);
+
+  // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
+  // 있어야 한다. 참조를 고정해 두는 것은 본문이 리렌더 때마다 통째로 다시 마운트되지 않게
+  // 하기 위해서다(PrettyView가 memo다).
+  const selectFromTree = useCallback((path: string) => onSelectFile(path, false), [onSelectFile]);
+  const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
   const { data: content } = useSpecFile(work.slug, current);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
@@ -126,7 +135,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
                 content={content ?? ""}
                 onCopyBlock={copyRef}
                 files={files}
-                onNavigate={setSelected}
+                onNavigate={followLink}
                 specRoot={specRoot}
               />
             )}
@@ -145,7 +154,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
         <WorkPanel
           work={work}
           currentFile={current}
-          onSelectFile={setSelected}
+          onSelectFile={selectFromTree}
           onCopy={copyText}
           closing={!panelOpen}
         />
@@ -443,7 +452,7 @@ export const PrettyView = memo(function PrettyView({
               className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"
             >
               <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
-              {typeof src === "string" && src ? src : alt || "이미지"}
+              {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
             </span>
           );
         }

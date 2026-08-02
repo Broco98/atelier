@@ -88,7 +88,10 @@ export function expandHome(path: string, home: string): string {
 export type ImageSource =
   | { kind: "file"; path: string } // 절대 파일 경로. 그리는 쪽이 asset URL로 바꾼다
   | { kind: "url"; url: string } // http·https는 변환 없이 그대로
-  | { kind: "missing" }; // 그릴 수 없다 — 자리표시가 대신 선다
+  // 그릴 수 없다 — 자리표시가 대신 선다. `path`는 **사람이 읽을 수 있게 되돌린** 경로다.
+  // 원본 문자열을 그대로 보여주면 한글 파일명이 `%EC%97%86…`으로 나와, 정작 고쳐야 할
+  // 이름이 화면에 없게 된다. spec 밖을 가리켜 경로 자체가 서지 않으면 null이다.
+  | { kind: "missing"; path: string | null };
 
 /**
  * 본문 이미지 하나를 그릴 수 있는 것으로 바꾼다.
@@ -108,7 +111,8 @@ export function resolveImageSrc(
   const target = resolveHref(currentFile, src, files);
   if (target.kind === "external") return { kind: "url", url: target.url };
   if (target.kind === "doc" && specRoot) return { kind: "file", path: `${specRoot}/${target.path}` };
-  return { kind: "missing" };
+  // doc이면서 specRoot를 모르는 경우(아카이브)에도 경로는 말해 줄 수 있다
+  return { kind: "missing", path: target.kind === "none" ? null : target.path };
 }
 
 // GitHub 표준 5종. Obsidian 전용 13종은 기각했다 — 색과 아이콘을 전부 정해야 하는데
