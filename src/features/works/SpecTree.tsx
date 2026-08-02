@@ -61,15 +61,22 @@ function buildTree(files: string[]): TreeNode[] {
   return root;
 }
 
+// 접기 행 하나의 규격. 판 머리글(SpecSection)이 같은 문자열을 읽는다 —
+// 트리의 폴더와 판이 같은 모양으로 접혀야 하고, 한쪽만 바뀌면 그 자리가 갈린다.
+export const COLLAPSE_ROW =
+  "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
+
 interface TreeProps {
   files: string[];
   current: string | null;
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
+  // 들여쓰기 시작 단. 판 구획 안에서는 판 머리글 아래로 한 단 들어간다.
+  depth?: number;
 }
 
-function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   const tree = useMemo(() => orderSections(buildTree(files)), [files]);
   // 접힌 폴더 경로 — 트리가 소유하며 리마운트(작업 전환·패널 토글)를 넘어 살지 않는다
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -84,7 +91,7 @@ function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
   return (
     <TreeRows
       nodes={tree}
-      depth={0}
+      depth={depth}
       current={current}
       collapsed={collapsed}
       onToggle={toggle}
@@ -123,7 +130,7 @@ function TreeRows({
                   type="button"
                   onClick={() => onToggle(node.path)}
                   aria-expanded={expanded}
-                  className="flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1"
+                  className={COLLAPSE_ROW}
                   style={{ paddingLeft: 8 + depth * 14 }}
                 >
                   <ChevronRight

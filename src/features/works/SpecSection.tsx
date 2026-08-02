@@ -1,4 +1,8 @@
-import SpecTree from "./SpecTree";
+import { useMemo, useState } from "react";
+import { ChevronRight, Layers } from "lucide-react";
+import { cn } from "@/lib/utils";
+import SpecTree, { COLLAPSE_ROW } from "./SpecTree";
+import { splitSpecFiles } from "./spec-sections";
 
 interface SpecSectionProps {
   files: string[];
@@ -11,10 +15,27 @@ interface SpecSectionProps {
 
 // 작업 패널의 Spec 영역 — 머리글과 파일 트리.
 //
+// 판이 쌓이면 어디가 지금인지 안 보이던 것을 **판 구획 + 상시 구획**으로 가른다.
+// 접힘 섹션이라 두 판을 나란히 펼쳐 훑을 수 있다 — 팝오버는 본문을 가리고 하나만
+// 고르게 강요해서 기각했다(결정 1).
+//
 // **Fragment로 돌려주는 것이 계약의 일부다.** 스크롤 경계가 이 둘 사이에 있다:
 // 머리글은 패널 카드에 고정되고 트리만 세로로 스크롤한다. 한 겹 감싸면 flex-1이
 // 카드가 아니라 그 껍데기를 기준으로 잡혀 경계가 옮겨간다.
 function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
+  const { iterations, standing } = useMemo(() => splitSpecFiles(files), [files]);
+
+  // 접힘은 트리의 폴더 접힘과 **같은 계약**이다 — 리마운트(작업 전환·패널 토글)를 넘어
+  // 살지 않는다. 그래서 여기 useState에 산다.
+  //
+  // 손으로 토글한 것만 기억하고 기본값은 계산으로 낸다. 판이 새로 생겼을 때 그것이
+  // 자동으로 "펼쳐진 최신 판"이 되려면, 초기값을 한 번 굳혀 두면 안 된다.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [sectionOpen, setSectionOpen] = useState(true);
+  const latest = iterations[0]?.dir;
+  const toggle = (dir: string, open: boolean) =>
+    setToggled((prev) => ({ ...prev, [dir]: !open }));
+
   return (
     <>
       <div className="flex items-center px-4 pb-0.5 pt-2">
@@ -25,10 +46,96 @@ function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
         {files.length === 0 ? (
           <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 spec 파일이 없어요</span>
         ) : (
-          <SpecTree files={files} current={current} onSelect={onSelect} onCopy={onCopy} />
+          <>
+            {/* 판이 하나도 없는 Work가 대부분이다(리서치만 하는 Work는 앞으로도 그렇다).
+                그때는 구획을 아예 그리지 않아 지금까지와 똑같이 보인다. */}
+            {iterations.length > 0 && (
+              <>
+                <CollapseRow
+                  label="Iterations"
+                  count={iterations.length}
+                  open={sectionOpen}
+                  onToggle={() => setSectionOpen((open) => !open)}
+                  depth={0}
+                />
+                {sectionOpen &&
+                  iterations.map((iteration) => {
+                    const open = toggled[iteration.dir] ?? iteration.dir === latest;
+                    const prefix = `${iteration.dir}/`;
+                    return (
+                      <div key={iteration.dir} className="flex flex-col">
+                        {/* 폴더 이름을 그대로 보여준다 — 경로 복사가 붙어 있는 자리라
+                            화면의 이름이 디스크의 이름과 어긋나면 안 된다 */}
+                        <CollapseRow
+                          label={iteration.dir}
+                          open={open}
+                          onToggle={() => toggle(iteration.dir, open)}
+                          depth={1}
+                          Glyph={Layers}
+                        />
+                        {open && (
+                          <SpecTree
+                            files={iteration.files}
+                            // 트리는 판 안 경로만 안다. 선택 표시도 같은 기준으로 맞춘다
+                            current={current?.startsWith(prefix) ? current.slice(prefix.length) : null}
+                            onSelect={(path) => onSelect(prefix + path)}
+                            onCopy={(path) => onCopy(prefix + path)}
+                            depth={2}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                {standing.length > 0 && <div className="mx-2 my-1.5 h-px bg-border" />}
+              </>
+            )}
+            {/* 상시 문서는 판 밖이므로 들여쓰지 않는다 — Iterations 머리글과 형제다.
+                둘을 가르는 것은 위 구분선이다 */}
+            {standing.length > 0 && (
+              <SpecTree files={standing} current={current} onSelect={onSelect} onCopy={onCopy} />
+            )}
+          </>
         )}
       </div>
     </>
+  );
+}
+
+// 판 구획과 판 하나의 머리글. 트리의 폴더 행과 **같은 규격을 읽는다**(COLLAPSE_ROW) —
+// 한 화면에서 접히는 것들이 서로 다르게 생기면 안 된다.
+function CollapseRow({
+  label,
+  count,
+  open,
+  onToggle,
+  depth,
+  Glyph,
+}: {
+  label: string;
+  count?: number;
+  open: boolean;
+  onToggle: () => void;
+  depth: number;
+  Glyph?: typeof Layers;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={COLLAPSE_ROW}
+      style={{ paddingLeft: 8 + depth * 14 }}
+    >
+      <ChevronRight
+        className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
+        strokeWidth={2.2}
+      />
+      {Glyph && <Glyph className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {count !== undefined && (
+        <span className="shrink-0 pr-2 text-[11px] tabular-nums">{count}</span>
+      )}
+    </button>
   );
 }
 
