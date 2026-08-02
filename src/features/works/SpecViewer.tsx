@@ -216,6 +216,9 @@ function BlockWrapper({
   );
 }
 
+// 블록의 시작 위치를 여는 열쇠 — 최상위를 담을 때와 꺼내 볼 때가 같은 문자열을 써야 한다
+const blockKey = (line: number, column: number) => `${line}:${column}`;
+
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
 export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
@@ -223,19 +226,26 @@ export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock 
   const fileRef = useRef(file);
   fileRef.current = file;
 
-  // 최상위 블록의 시작 라인 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해
-  const topLines = useRef<Set<number>>(new Set());
-  const collectTopLevel = () => (tree: { children: { position?: { start: { line: number } } }[] }) => {
-    topLines.current = new Set(
-      tree.children.map((c) => c.position?.start.line).filter((n): n is number => n !== undefined),
-    );
-  };
+  // 최상위 블록의 시작 위치 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해.
+  // 라인만으로는 갈리지 않는다: "> 문단"은 인용과 그 안 문단의 시작 라인이 같아 둘 다
+  // 최상위로 통과하고, 복사 버튼이 인용 들여쓰기만큼 어긋난 채 겹쳐 그려진다. 열까지 봐야 갈린다.
+  const topBlocks = useRef<Set<string>>(new Set());
+  const collectTopLevel =
+    () => (tree: { children: { position?: { start: { line: number; column: number } } }[] }) => {
+      topBlocks.current = new Set(
+        tree.children
+          .map((c) => c.position && blockKey(c.position.start.line, c.position.start.column))
+          .filter((k): k is string => k !== undefined),
+      );
+    };
 
   const components = useMemo(() => {
     // react-markdown 컴포넌트 props에서 소스 라인 범위를 꺼낸다 — hast 노드라 any로 좁힌다
     const lines = (node: any): { start: number; end: number } | null => {
       const start: number | undefined = node?.position?.start?.line;
-      if (start === undefined || !topLines.current.has(start)) return null;
+      const column: number | undefined = node?.position?.start?.column;
+      if (start === undefined || column === undefined) return null;
+      if (!topBlocks.current.has(blockKey(start, column))) return null;
       return { start, end: node?.position?.end?.line ?? start };
     };
 
