@@ -642,7 +642,10 @@ fn merge_record(fresh: &str, previous: &str) -> String {
 /// 것은 거의 다 추적조차 안 된 계획·리서치 문서다.
 fn dirty_report(project: &str, files: &[git::DirtyEntry]) -> String {
     const CAP: usize = 10;
-    let groups: Vec<String> = [("untracked", true), ("modified", false)]
+    // 라벨은 오류 문장과 같은 낱말을 쓴다("uncommitted or untracked"). 추적된 쪽을
+    // "modified"라 부르면 안 된다 — porcelain의 `D`(삭제)·`A`(스테이징)·`R`(이름 바꿈)이
+    // 전부 그 통에 들어가서, 지운 파일을 고쳤다고 말하게 된다.
+    let groups: Vec<String> = [("untracked", true), ("uncommitted", false)]
         .into_iter()
         .filter_map(|(label, untracked)| {
             let paths: Vec<&str> = files
@@ -1783,24 +1786,28 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
         let worktree = works.join(&slug).join("trees/fe");
         std::fs::create_dir_all(worktree.join("docs")).unwrap();
-        std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap(); // 추적 안 됨
-        std::fs::write(worktree.join("a.txt"), "고쳤다\n").unwrap(); // 추적됨 + 수정
+        std::fs::write(worktree.join("docs/plan.md"), "계획\n").unwrap(); // 추적 안 됨(`??`)
+        // 추적된 쪽은 **삭제**로 낸다(` D`). 라벨을 "modified"라 붙이면 지운 파일을 고쳤다고
+        // 말하게 되고, 앞 공백이 깎이는 첫 줄이라 경로 잘림도 이 줄이 함께 지킨다.
+        std::fs::remove_file(worktree.join("a.txt")).unwrap();
 
         let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("docs/plan.md"), "파일이 아니라 경로만 알려준다: {message}");
         assert!(message.contains("fe"), "{message}");
 
-        // 두 종류가 각자의 이름표를 달고 갈려 있어야 한다
-        assert!(message.contains("untracked"), "추적 안 됨을 안 밝힌다: {message}");
-        assert!(message.contains("modified"), "수정을 안 밝힌다: {message}");
-        let untracked = message.find("untracked").unwrap();
-        let modified = message.find("modified").unwrap();
+        // 두 종류가 각자의 이름표를 달고 갈려 있어야 한다. 라벨은 오류 문장과 같은 낱말을
+        // 쓴다("uncommitted or untracked") — 처방이 갈리는 선이 정확히 거기다.
+        assert!(message.contains("untracked:"), "추적 안 됨을 안 밝힌다: {message}");
+        assert!(message.contains("uncommitted:"), "커밋 안 됨을 안 밝힌다: {message}");
+        assert!(!message.contains("modified"), "지운 파일을 고쳤다고 말한다: {message}");
+        let untracked = message.find("untracked:").unwrap();
+        let uncommitted = message.find("uncommitted:").unwrap();
         let plan = message.find("docs/plan.md").unwrap();
         // 추적된 파일은 이름이 온전해야 한다 — `.txt`로 잘려 나간 적이 있다
         let tracked = message.find("a.txt").unwrap();
-        assert!(untracked < plan && plan < modified, "추적 안 된 파일이 그 이름표 아래가 아니다: {message}");
-        assert!(modified < tracked, "수정된 파일이 그 이름표 아래가 아니다: {message}");
+        assert!(untracked < plan && plan < uncommitted, "추적 안 된 파일이 그 이름표 아래가 아니다: {message}");
+        assert!(uncommitted < tracked, "커밋 안 된 파일이 그 이름표 아래가 아니다: {message}");
     }
 
     #[test]

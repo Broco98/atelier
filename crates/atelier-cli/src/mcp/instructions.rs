@@ -19,7 +19,7 @@ There is no tool for spec documents. Write them yourself, with your own file too
 
 Do code work only inside the work's worktree paths (`worktrees[].path`), never in the project's own folder.
 
-A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it.
+A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived work is referenced the same way under `~/.atelier/archive/<slug>/`.
 
 Paths are written with `~` for the home directory; expand it before opening them."#;
 
@@ -161,9 +161,15 @@ mod tests {
         assert!(refs_ts.contains("`${base}:L${start}-${end}`"), "range form changed: {refs_ts}");
         assert!(refs_ts.contains("`${base}:L${start}`"), "single-line form changed: {refs_ts}");
         assert!(refs_ts.contains("~/.atelier/works/"), "reference root changed: {refs_ts}");
+        // 아카이브 화면도 클립보드로 참조를 내보낸다 — 뿌리가 둘이면 가드도 둘이어야 한다.
+        assert!(refs_ts.contains("~/.atelier/archive/"), "archive reference root changed: {refs_ts}");
 
         // 지침이 해석하는 형식도 같은 모양이어야 한다
         assert!(INSTRUCTIONS.contains("~/.atelier/works/<slug>/spec/overview.md:L19-27"));
         assert!(INSTRUCTIONS.contains(":L19"));
+        assert!(
+            INSTRUCTIONS.contains("~/.atelier/archive/<slug>/"),
+            "앱이 아카이브 참조를 복사해 주는데 지침이 그 뿌리를 모른다"
+        );
     }
 }

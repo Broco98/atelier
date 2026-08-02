@@ -27,7 +27,9 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
   const { data: entries = [], isPending: entriesPending } = useArchive();
   const selected = entries.find((entry) => entry.slug === selectedSlug) ?? null;
 
-  const { data: docs = [] } = useArchivedDocs(selected?.slug ?? null);
+  // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
+  // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
+  const { data: docs = [], isPending: docsPending } = useArchivedDocs(selected?.slug ?? null);
   // 고른 문서는 **어느 아카이브의 것인지와 함께** 들고 있는다. 경로만 들면 다른 아카이브로
   // 옮겼을 때 이름이 같은 문서(record.md·overview.md)가 그대로 열려, 처음 보이는 것이
   // 아카이브마다 달라진다. 짝이 안 맞으면 아래에서 자동으로 기본값으로 떨어지므로
@@ -203,7 +205,7 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
             )
           ) : (
             <div className="flex min-h-full min-w-0 flex-col">
-              {current === null ? (
+              {docsPending ? null : current === null ? (
                 <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
                   남은 문서가 없어요
                 </div>
