@@ -29,10 +29,20 @@ import type { WorkStatus, WorkView } from "./types";
 interface WorksPageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
+  // 보고 있는 문서와 그것을 옮기는 길. 둘 다 주소가 정본이라 여기서 소유하지 않는다.
+  // `push`는 히스토리 항목을 만들지 여부다 — 트리는 만들지 않고 문서 링크는 만든다.
+  currentFile: string | null;
+  onSelectFile: (path: string, push: boolean) => void;
   onOpenProject: (slug: string) => void;
 }
 
-function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps) {
+function WorksPage({
+  sidebarOpen,
+  selectedSlug,
+  currentFile,
+  onSelectFile,
+  onOpenProject,
+}: WorksPageProps) {
   const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
@@ -152,6 +162,9 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
             work={selected}
             showSource={showSource}
             panelOpen={workPanelOpen}
+            sidebarOpen={sidebarOpen}
+            file={currentFile}
+            onSelectFile={onSelectFile}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center p-10">

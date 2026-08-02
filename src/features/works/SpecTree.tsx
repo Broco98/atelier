@@ -61,15 +61,22 @@ function buildTree(files: string[]): TreeNode[] {
   return root;
 }
 
+// 접기 행 하나의 규격. 판 머리글(SpecSection)이 같은 문자열을 읽는다 —
+// 트리의 폴더와 판이 같은 모양으로 접혀야 하고, 한쪽만 바뀌면 그 자리가 갈린다.
+export const COLLAPSE_ROW =
+  "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
+
 interface TreeProps {
   files: string[];
   current: string | null;
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
+  // 들여쓰기 시작 단. 판 구획 안에서는 판 머리글 아래로 한 단 들어간다.
+  depth?: number;
 }
 
-function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
+function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   const tree = useMemo(() => orderSections(buildTree(files)), [files]);
   // 접힌 폴더 경로 — 트리가 소유하며 리마운트(작업 전환·패널 토글)를 넘어 살지 않는다
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -84,7 +91,7 @@ function SpecTree({ files, current, onSelect, onCopy }: TreeProps) {
   return (
     <TreeRows
       nodes={tree}
-      depth={0}
+      depth={depth}
       current={current}
       collapsed={collapsed}
       onToggle={toggle}
@@ -123,7 +130,7 @@ function TreeRows({
                   type="button"
                   onClick={() => onToggle(node.path)}
                   aria-expanded={expanded}
-                  className="flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1"
+                  className={COLLAPSE_ROW}
                   style={{ paddingLeft: 8 + depth * 14 }}
                 >
                   <ChevronRight
@@ -183,7 +190,10 @@ function TreeRows({
 
 // 알려진 폴더 이름의 글리프. tickets/는 판 안에 있든 밖에 있든 같은 아이콘이다 —
 // 이름으로만 판단하고 위치는 보지 않는다. 규칙에 없는 폴더는 아이콘 없이 그대로 보인다.
-function FolderGlyph({ name }: { name: string }) {
+//
+// 판 머리글(SpecSection)도 이것을 부른다 — 폴더 하나가 트리 안에 있을 때와 구획 머리글로
+// 올라섰을 때 다른 아이콘을 달면, 위 STANDING 배열이 「아이콘의 유일한 출처」라는 말이 깨진다.
+export function FolderGlyph({ name }: { name: string }) {
   const className = "size-3 shrink-0 text-tertiary";
   if (ITERATION.test(name)) return <Layers className={className} strokeWidth={1.9} />;
   if (name === TICKETS) return <ListChecks className={className} strokeWidth={1.9} />;

@@ -268,6 +268,90 @@ describe("선택한 항목의 히스토리 의미론", () => {
   });
 });
 
+// 문서 전환은 두 얼굴이다. 트리 훑기는 뒤로가기를 오염시키지 않아야 하고(이슈 #25),
+// 문서 링크를 따라 들어간 것은 돌아올 자리가 있어야 한다 — 그 두 규칙이 같은 navigate의
+// replace 하나로 갈린다. 어느 한쪽이 잘못 붙어도 화면에서는 "뒤로가기가 이상하다"로만
+// 드러나고, 그때는 이미 어느 쪽이 원인인지 보이지 않는다.
+describe("문서 전환의 히스토리 의미론", () => {
+  const work = (file?: string) =>
+    ({ to: "/works/$slug", params: { slug: "work-a" }, search: file ? { file } : {} }) as const;
+
+  it("트리로 문서를 훑어도 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    await router.navigate({ ...work("research/prompt.md"), replace: true });
+    await router.navigate({ ...work("overview.md"), replace: true });
+
+    expect(router.state.location.search).toEqual({ file: "overview.md" });
+    expect(history.length).toBe(1);
+    expect(history.canGoBack()).toBe(false);
+  });
+
+  it("문서 링크를 따라 들어가면 뒤로가기로 원래 문서에 돌아온다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    // 트리로 연 문서가 돌아올 자리다 (replace)
+    await router.navigate({ ...work("검증/렌더링-확인.md"), replace: true });
+    // 그 문서 안의 링크를 따라간다 (push)
+    await router.navigate(work("overview.md"));
+    expect(history.length).toBe(2);
+
+    await goBack(router, history);
+    expect(router.state.location.search).toEqual({ file: "검증/렌더링-확인.md" });
+  });
+
+  it("작업을 옮기면 문서가 딸려가지 않는다", async () => {
+    const { router } = setup(["/works/work-a"]);
+    await router.load();
+    await router.navigate({ ...work("overview.md"), replace: true });
+
+    await router.navigate({ to: "/works/$slug", params: { slug: "work-b" }, search: {} });
+    expect(router.state.location.pathname).toBe("/works/work-b");
+    expect(router.state.location.search).toEqual({});
+  });
+
+  // 아카이브도 같은 규칙이다 — 같은 문서를 어느 화면에서 열든 뒤로가기가 다르게 굴면 안 된다.
+  // 다른 점은 하나뿐이다: 목록에서 문서를 고르는 것이 **아카이브를 고르는 것이기도 하다.**
+  const archive = (slug: string, file?: string) =>
+    ({ to: "/archive/$slug", params: { slug }, search: file ? { file } : {} }) as const;
+
+  it("아카이브 목록에서 문서를 고르면 아카이브와 문서가 한 번에 옮겨진다", async () => {
+    const { router, history } = setup(["/archive/치운-a"]);
+    await router.load();
+
+    await router.navigate({ ...archive("치운-b", "record.md"), replace: true });
+    expect(router.state.location.pathname).toBe("/archive/치운-b");
+    expect(router.state.location.search).toEqual({ file: "record.md" });
+    // 두 번 옮기면 뒤로가기도 두 번이어야 한다 — 한 번의 이동이라야 그렇지 않다
+    expect(history.length).toBe(1);
+  });
+
+  it("아카이브에서도 링크는 돌아올 자리를 만든다", async () => {
+    const { router, history } = setup(["/archive/치운-a"]);
+    await router.load();
+
+    await router.navigate({ ...archive("치운-a", "record.md"), replace: true });
+    await router.navigate(archive("치운-a", "spec/overview.md"));
+
+    await goBack(router, history);
+    expect(router.state.location.search).toEqual({ file: "record.md" });
+  });
+
+  // 이름이 같은 문서(record.md·overview.md)가 어느 아카이브에나 있다 — 딸려가면 엉뚱한
+  // 것이 열린다. 예전에는 선택을 {slug, path} 쌍으로 들어 막았고, 지금은 주소가 그 일을 한다.
+  it("아카이브를 옮기면 문서가 딸려가지 않는다", async () => {
+    const { router } = setup(["/archive/치운-a"]);
+    await router.load();
+    await router.navigate({ ...archive("치운-a", "record.md"), replace: true });
+
+    await router.navigate(archive("치운-b"));
+    expect(router.state.location.search).toEqual({});
+  });
+
+});
+
 // "뒤로 갈 수 있는가"는 라우터가 알려주지만 "앞으로"는 우리가 센다. 그 셈이 히스토리와
 // 어긋나도 화면에서는 버튼 하나가 흐린지 아닌지로만 드러나 놓치기 쉬워서 여기서 고정한다.
 //

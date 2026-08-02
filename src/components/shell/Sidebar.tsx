@@ -25,7 +25,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-        // 곡선은 --ease-panel — 목록 패널 둘과 작업 패널 퇴장이 같은 값을 읽는다 (index.css)
+        // 곡선은 --ease-panel — 접히는 패널 넷이 같은 값을 읽는다 (index.css)
         !size.dragging &&
           "transition-[width,border-color] duration-[220ms] ease-panel",
         // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,

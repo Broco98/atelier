@@ -1,19 +1,49 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, FileText } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  Check,
+  Copy,
+  FileText,
+  ImageOff,
+  Info,
+  Lightbulb,
+  MessageSquareWarning,
+  OctagonAlert,
+  TriangleAlert,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSpecFile } from "./hooks";
+import { useHomeDir, useSpecFile } from "./hooks";
+import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
-import WorkPanel, { PANEL_EXIT_MS } from "./WorkPanel";
+import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
   showSource: boolean;
   panelOpen: boolean;
+  // 본문이 넓어지는 조건의 나머지 반쪽 — 접을 수 있는 것이 이 화면에는 둘뿐이다
+  sidebarOpen: boolean;
+  // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
+  // 자취가 히스토리에 남지 않아, 링크를 따라 들어간 뒤 뒤로가기가 작업 전체를 건너뛴다.
+  file: string | null;
+  onSelectFile: (path: string, push: boolean) => void;
 }
 
 function defaultFile(files: string[]): string | null {
@@ -21,26 +51,31 @@ function defaultFile(files: string[]): string | null {
   return files[0] ?? null;
 }
 
-function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
+function SpecViewer({
+  work,
+  showSource,
+  panelOpen,
+  sidebarOpen,
+  file,
+  onSelectFile,
+}: SpecViewerProps) {
+  // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
+  const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  const [selected, setSelected] = useState<string | null>(null);
-  // 파일이 삭제되면 기본 파일로 폴백
-  const current = selected && files.includes(selected) ? selected : defaultFile(files);
+  // 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백
+  const current = file && files.includes(file) ? file : defaultFile(files);
+
+  // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
+  // 있어야 한다. 참조를 고정해 두는 것은 본문이 리렌더 때마다 통째로 다시 마운트되지 않게
+  // 하기 위해서다(PrettyView가 memo다).
+  const selectFromTree = useCallback((path: string) => onSelectFile(path, false), [onSelectFile]);
+  const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
   const { data: content } = useSpecFile(work.slug, current);
+  // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
+  const { data: home } = useHomeDir();
+  const specRoot = home ? expandHome(work.specDir, home) : null;
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
-
-  // 패널은 닫는 즉시 사라지면 퇴장 애니메이션을 재생할 틈이 없다 — 길이만큼 언마운트를 늦춘다.
-  // 늦출 뿐 끝내 언마운트하므로, 스펙 트리의 접힘이 패널 토글을 넘지 않는다는 계약은 그대로다.
-  const [panelMounted, setPanelMounted] = useState(panelOpen);
-  useEffect(() => {
-    if (panelOpen) {
-      setPanelMounted(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_EXIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -91,9 +126,17 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
                 </div>
               </div>
             ) : showSource || !isMarkdown ? (
-              <SourceView content={content ?? ""} />
+              <SourceView content={content ?? ""} wide={wide} />
             ) : (
-              <PrettyView file={current ?? ""} content={content ?? ""} onCopyBlock={copyRef} />
+              <PrettyView
+                file={current ?? ""}
+                content={content ?? ""}
+                onCopyBlock={copyRef}
+                wide={wide}
+                files={files}
+                onNavigate={followLink}
+                specRoot={specRoot}
+              />
             )}
           </div>
         </div>
@@ -106,15 +149,16 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
         )}
       </div>
 
-      {panelMounted && (
-        <WorkPanel
-          work={work}
-          currentFile={current}
-          onSelectFile={setSelected}
-          onCopy={copyText}
-          closing={!panelOpen}
-        />
-      )}
+      {/* 폭 접기로 바뀐 뒤로는 늘 마운트돼 있다 — 퇴장 애니메이션을 재생시키려고
+          언마운트를 미루던 장치가 필요 없다. 트리 접힘 초기화 계약은 WorkPanel 안의
+          key가 맡는다 (#35). 트리 클릭은 히스토리를 만들지 않으므로 selectFromTree다 */}
+      <WorkPanel
+        work={work}
+        currentFile={current}
+        onSelectFile={selectFromTree}
+        onCopy={copyText}
+        open={panelOpen}
+      />
     </div>
   );
 }
@@ -123,11 +167,11 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 
 // 아카이브 화면도 같은 두 보기를 쓴다 — 문서를 그리는 규칙이 갈라지면 같은 spec이
 // 어디서 열렸느냐에 따라 다르게 보인다. 둘 다 work에 의존하지 않아 그대로 나간다.
-export function SourceView({ content }: { content: string }) {
+export function SourceView({ content, wide = false }: { content: string; wide?: boolean }) {
   const lines = content.split("\n");
   return (
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
-    <div className={cn(bodyColumn, "py-4")}>
+    <div className={cn(bodyColumn(wide), "py-4")}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
           -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
           소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
@@ -161,7 +205,11 @@ export function SourceView({ content }: { content: string }) {
 //   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
 //   네 자리 "1024"는 12.5px mono(0.6em/자)에서 30px, 코드와 16px 떨어져야 하므로
 //   46px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
-export const bodyColumn = "mx-auto w-full max-w-[900px] px-12";
+// 화면을 비웠는데 본문이 안 넓어지던 것을 없앤다 — 접을 수 있는 것을 **둘 다** 접었을
+// 때만 넓어진다(결정 5·13). 원래 짝은 사이드바 + 목록 패널이었는데 nav 개편이 목록
+// 컬럼을 지워, 그 자리를 작업 패널 접기가 물려받았다.
+export const bodyColumn = (wide: boolean) =>
+  cn("mx-auto w-full px-12", wide ? "max-w-[1200px]" : "max-w-[900px]");
 
 // 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
 // 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
@@ -172,10 +220,21 @@ const listIndent = "pl-[22px]";
 const checkboxGutter = "-ml-[22px] mr-[5px]";
 
 interface PrettyViewProps {
-  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데만 쓴다
+  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데 쓰고,
+  // 문서 안 상대경로 링크를 푸는 기준이기도 하다
   file: string;
   content: string;
   onCopyBlock: (start: number, end: number) => void;
+  // 접을 수 있는 것을 둘 다 접었나 — 본문 열이 넓어지는 조건 (결정 13)
+  wide?: boolean;
+  // 문서 간 링크의 존재 판정이 서는 자리 — 이 목록에 없는 경로는 missing이다.
+  // 파일 시스템을 묻지 않는 이유는 이 목록이 감시자를 통해 이미 최신이기 때문이다.
+  files: readonly string[];
+  // 문서 링크를 눌렀을 때 갈 곳. 파일 선택은 뷰어가 소유하므로 트리의 현재 파일 표시도 따라온다
+  onNavigate: (path: string) => void;
+  // 이미지를 읽을 절대 경로의 기준. 모르면(아카이브 화면) 로컬 이미지는 그리지 않는다 —
+  // 아카이브 목록은 경량이라 문서 위치를 담지 않는다.
+  specRoot: string | null;
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
@@ -220,11 +279,25 @@ function BlockWrapper({
 const blockKey = (line: number, column: number) => `${line}:${column}`;
 
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
-export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
+export const PrettyView = memo(function PrettyView({
+  file,
+  content,
+  onCopyBlock,
+  wide = false,
+  files,
+  onNavigate,
+  specRoot,
+}: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
   // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
   const fileRef = useRef(file);
   fileRef.current = file;
+
+  // 링크 해석에 필요한 나머지도 같은 이유로 ref다. 파일 목록은 감시자가 폴더를 훑을
+  // 때마다 새 배열로 도착하므로, components가 그것에 의존하면 스펙을 저장할 때마다
+  // 본문이 통째로 다시 마운트된다.
+  const linkRef = useRef({ files, onNavigate, specRoot });
+  linkRef.current = { files, onNavigate, specRoot };
 
   // 최상위 블록의 시작 위치 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해.
   // 라인만으로는 갈리지 않는다: "> 문단"은 인용과 그 안 문단의 시작 라인이 같아 둘 다
@@ -277,11 +350,35 @@ export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock 
       p: block("p", "leading-[1.7] text-muted-foreground", "mt-1.5"),
       ul: block("ul", `flex list-disc flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
       ol: block("ol", `flex list-decimal flex-col gap-1.5 ${listIndent} leading-[1.7] text-muted-foreground`, "mt-1.5"),
-      blockquote: block(
-        "blockquote",
-        "border-l-2 border-border-strong pl-3.5 text-muted-foreground",
-        "mt-1.5",
-      ),
+      // 인용은 두 얼굴이다 — 첫 줄에 `[!TYPE]` 마커가 있으면 콜아웃, 없으면 지금 모양 그대로.
+      // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
+      // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
+      blockquote: ({ node, children, className: hastClass, ...props }: any) => {
+        const first = firstLineOf(node) ?? "";
+        const callout = calloutKind(first);
+        // 첫 줄은 머리글이 대신 말하므로 본문에서 걷어낸다. 걷어낼 수 없으면(null) 제목도
+        // 쓰지 않는다 — 제목만 취하고 본문을 그대로 두면 같은 말이 두 번 보인다.
+        const body = callout ? stripFirstLine(children, first.length) : null;
+        const inner = callout ? (
+          <Callout kind={callout.kind} title={body ? callout.title : null}>
+            {body ?? children}
+          </Callout>
+        ) : (
+          <blockquote
+            className={cn("border-l-2 border-border-strong pl-3.5 text-muted-foreground", hastClass)}
+            {...props}
+          >
+            {children}
+          </blockquote>
+        );
+        const range = lines(node);
+        if (!range) return inner;
+        return (
+          <BlockWrapper start={range.start} end={range.end} spacing="mt-1.5" onCopy={onCopyBlock}>
+            {inner}
+          </BlockWrapper>
+        );
+      },
       hr: block("hr", "border-border", "mt-4"),
       // 표는 가로 스크롤과 전체화면 확대와 열 폭 조절을 자기가 챙긴다 — 규격도 거기 있다.
       // key: 조절한 열 폭이 다른 문서로 넘어가지 않는다는 계약이 사는 자리다.
@@ -313,11 +410,67 @@ export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock 
       td: ({ children }) => (
         <td className="border-b px-3 py-2 text-muted-foreground">{children}</td>
       ),
-      a: ({ children, href }) => (
-        <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-          {children}
-        </a>
-      ),
+      // 링크는 두 가지만 산다 — 문서 간 이동과 외부 URL (결정 3).
+      // target="_blank"는 **Tauri 웹뷰에서 아무 일도 하지 않는다.** 그래서 여기가 직접 연다.
+      // none(앵커·기타 스킴)도 기본 동작을 막는다 — 주소가 바뀌면 라우터가 반응한다.
+      a: ({ children, href }) => {
+        const target = resolveHref(fileRef.current, href, linkRef.current.files);
+        if (target.kind === "missing") {
+          return (
+            <span
+              title={`문서를 찾을 수 없어요 — ${target.path}`}
+              className="text-tertiary underline decoration-dotted underline-offset-2"
+            >
+              {children}
+            </span>
+          );
+        }
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              if (target.kind === "doc") linkRef.current.onNavigate(target.path);
+              else if (target.kind === "external") void openUrl(target.url);
+            }}
+            className="text-primary hover:underline"
+          >
+            {children}
+          </a>
+        );
+      },
+      // 이미지 — 처리가 아예 없어 **스펙에 스크린샷을 붙여도 아무것도 나타나지 않았다.**
+      // Tauri 웹뷰는 로컬 파일을 직접 읽지 못하므로 asset 프로토콜을 거친다. 어디까지
+      // 읽을 수 있는지는 tauri.conf.json의 스코프가 정한다 — 아틀리에 데이터 폴더 아래뿐이다.
+      img: ({ src, alt }) => {
+        const source = resolveImageSrc(
+          linkRef.current.specRoot,
+          fileRef.current,
+          typeof src === "string" ? src : undefined,
+          linkRef.current.files,
+        );
+        // 깨진 아이콘 대신 무엇이 없는지 말한다 — 스펙을 쓰는 쪽이 경로를 고칠 수 있게.
+        // **보여주는 것은 경로다.** 대체글이 있을 때 그것만 보여주면 정작 고쳐야 할
+        // 문자열이 화면에 없어, 이 자리표시가 존재하는 이유가 사라진다.
+        if (source.kind === "missing") {
+          return (
+            <span
+              title={alt || undefined}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"
+            >
+              <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+              {source.path ?? (typeof src === "string" && src ? src : alt || "이미지")}
+            </span>
+          );
+        }
+        return (
+          <img
+            src={source.kind === "url" ? source.url : convertFileSrc(source.path)}
+            alt={alt}
+            className="my-1 h-auto max-w-full rounded-[10px] border"
+          />
+        );
+      },
       // 체크박스 목록 — remark-gfm은 체크박스가 있는 항목의 li에만 task-list-item을 붙인다
       // (ul·ol 둘 다). 그 항목만 불릿을 지우므로 한 목록에 섞여 있어도 나머지는 그대로다.
       li: ({ node, children, className, ...props }) => (
@@ -375,13 +528,105 @@ export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock 
     // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
     // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 656px에서 맞춘 것과 같은 계약을
     // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다
-    <article className={cn(bodyColumn, "pb-16 pt-3 text-[15px]")}>
+    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-[15px]")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
     </article>
   );
 });
+
+// ─── 콜아웃 ───
+
+// 종류마다 다른 것은 아이콘·강조선·제목색 셋뿐이다. 배경을 두지 않는 이유는 인용과
+// 형제로 보여야 하기 때문이다 — GitHub도 같은 자리에서 좌측 선과 제목색만 바꾼다.
+// 라벨은 마커와 같은 영문이다: 같은 파일을 GitHub·Obsidian에서 열어도 같게 보이는 것이
+// 이 다섯 종을 고른 이유였다 (결정 9).
+//
+// **색이 CSS 변수가 아닌 이유.** index.css의 스케일은 상태를 말하는 무채색 4단이라
+// 다섯 종의 뜻을 담을 자리가 없고, 여기서 다섯 쌍을 새로 올리면 그 자체가 시각 어휘를
+// 늘리는 일이다. 어휘를 정하는 것은 `ui-시각-통일` 계열 Work의 몫이므로, 그때까지는
+// status.tsx가 배지 색을 직접 적은 것과 같은 자리에 둔다. 다크 값을 함께 적어 두는 것도
+// 그 이유다 — index.css가 .dark 토큰을 이미 정의해 두었고, 여기만 따로 갈리면 안 된다.
+const CALLOUT_STYLE: Record<
+  CalloutKind,
+  { label: string; Glyph: typeof Info; line: string; tone: string }
+> = {
+  NOTE: { label: "Note", Glyph: Info, line: "border-blue-500", tone: "text-blue-700 dark:text-blue-400" },
+  TIP: {
+    label: "Tip",
+    Glyph: Lightbulb,
+    line: "border-emerald-500",
+    tone: "text-emerald-700 dark:text-emerald-400",
+  },
+  IMPORTANT: {
+    label: "Important",
+    Glyph: MessageSquareWarning,
+    line: "border-violet-500",
+    tone: "text-violet-700 dark:text-violet-400",
+  },
+  WARNING: {
+    label: "Warning",
+    Glyph: TriangleAlert,
+    line: "border-amber-500",
+    tone: "text-amber-700 dark:text-amber-400",
+  },
+  CAUTION: {
+    label: "Caution",
+    Glyph: OctagonAlert,
+    line: "border-red-500",
+    tone: "text-red-700 dark:text-red-400",
+  },
+};
+
+function Callout({
+  kind,
+  title,
+  children,
+}: {
+  kind: CalloutKind;
+  // 없으면 종류 이름이 제목이다
+  title: string | null;
+  children: React.ReactNode;
+}) {
+  const { label, Glyph, line, tone } = CALLOUT_STYLE[kind];
+  return (
+    <div className={cn("border-l-2 pl-3.5 text-muted-foreground", line)}>
+      <div className={cn("flex items-center gap-1.5 font-medium", tone)}>
+        <Glyph className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+        {title ?? label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// 인용문의 첫 줄. 첫 문단의 텍스트만 보므로 뒤따르는 문단·목록은 건드리지 않는다.
+function firstLineOf(node: any): string | null {
+  const paragraph = node?.children?.find((child: any) => child.type === "element");
+  return paragraph ? hastText(paragraph).split("\n")[0] : null;
+}
+
+// 마커가 있던 첫 줄을 본문에서 걷어낸다. **걷어내지 못하면 null이다** — 그때는 부르는
+// 쪽이 제목도 함께 포기해, 같은 말이 제목과 본문에 두 번 나오지 않게 한다.
+//
+// 걷어낼 수 있는 조건은 하나다: 첫 줄이 **한 조각의 문자열 안에 통째로** 들어 있을 것.
+// 제목에 마크업이 섞이면(`> [!NOTE] 제목 **강조**`) 첫 줄이 여러 노드로 쪼개지는데,
+// 길이는 납작하게 편 텍스트에서 재고 자르기는 첫 조각에만 하므로 앞부분만 잘려
+// **강조가 본문에 남는다.** 그 모양을 막는 것이 길이 비교다.
+function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNode | null {
+  const items = Children.toArray(children);
+  const index = items.findIndex(isValidElement);
+  if (index < 0) return null;
+  const paragraph = items[index] as React.ReactElement<{ children?: React.ReactNode }>;
+  const inner = Children.toArray(paragraph.props.children);
+  if (typeof inner[0] !== "string" || inner[0].length < skip) return null;
+  const rest = inner[0].slice(skip).replace(/^\n/, "");
+  const next = rest ? [rest, ...inner.slice(1)] : inner.slice(1);
+  // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
+  if (next.length === 0) return items.filter((_, i) => i !== index);
+  return items.map((item, i) => (i === index ? cloneElement(paragraph, undefined, ...next) : item));
+}
 
 // hast 노드에서 텍스트만 추출 (mermaid 코드 등)
 function hastText(node: unknown): string {
