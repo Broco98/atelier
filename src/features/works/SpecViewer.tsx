@@ -121,7 +121,9 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
 
 // ─── 소스 보기 ───
 
-function SourceView({ content }: { content: string }) {
+// 아카이브 화면도 같은 두 보기를 쓴다 — 문서를 그리는 규칙이 갈라지면 같은 spec이
+// 어디서 열렸느냐에 따라 다르게 보인다. 둘 다 work에 의존하지 않아 그대로 나간다.
+export function SourceView({ content }: { content: string }) {
   const lines = content.split("\n");
   return (
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
@@ -215,7 +217,7 @@ function BlockWrapper({
 }
 
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
-const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
+export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
   // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
   const fileRef = useRef(file);

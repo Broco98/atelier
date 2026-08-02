@@ -1,11 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Folder, List, Zap } from "lucide-react";
+import { confirm, message } from "@tauri-apps/plugin-dialog";
+import {
+  Archive,
+  Check,
+  ChevronDown,
+  Folder,
+  List,
+  LoaderCircle,
+  MoreHorizontal,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import SpecViewer from "./SpecViewer";
-import { useSetWorkStatus, useSetWorkTitle, useWorks } from "./hooks";
+import {
+  useArchiveWork,
+  useRemoveWork,
+  useSetWorkStatus,
+  useSetWorkTitle,
+  useWorks,
+} from "./hooks";
 import { STATUS_META } from "./status";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -25,6 +42,16 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
   const { data: projects = [], isPending: projectsPending } = useProjects();
   const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
+
+  // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
+  // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
+  const archive = useArchiveWork();
+  const remove = useRemoveWork();
+  const running = archive.isPending
+    ? { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" }
+    : remove.isPending
+      ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
+      : null;
   // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
   const [showSource, setShowSource] = useState(false);
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
@@ -55,7 +82,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <PageHeader
           root="Works"
           leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
@@ -78,6 +105,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
                     </button>
                   ))}
                 </span>
+                <WorkMenu work={selected} archive={archive} remove={remove} />
               </span>
             )
           }
@@ -152,7 +180,33 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
             </div>
           </div>
         )}
+
+        {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
       </main>
+    </div>
+  );
+}
+
+// 되돌릴 수 없는 조작이 도는 동안 본문을 덮는다.
+//
+// 워크트리 제거는 폴더 크기에 비례해 수 초가 걸린다(실측 8.9GB). 그동안 화면이 아무 말도
+// 하지 않으면 **버튼이 안 눌린 것처럼 보이고**, 사이드바에는 그 작업이 아직 그대로 있어
+// 더 그렇다. 덮는 것 자체도 목적이다 — 진행 중에 같은 작업을 다시 겨누지 못하게 한다.
+//
+// 헤더까지 덮는다. ⋯ 버튼이 거기 있고, 그것을 다시 누르는 것이 막아야 할 바로 그 동작이다.
+// 사이드바는 덮지 않는다 — 이 조작은 본문이 보여주는 작업 하나에만 걸린다.
+function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="absolute inset-0 z-30 flex items-center justify-center bg-background/80 backdrop-blur-[2px]"
+    >
+      <div className="flex flex-col items-center gap-2">
+        <LoaderCircle className="size-6 animate-spin text-primary" strokeWidth={2} />
+        <span className="mt-1 text-[15px] font-semibold tracking-[-0.01em]">{verb} 중…</span>
+        <span className="text-[13px] text-tertiary">{detail}</span>
+      </div>
     </div>
   );
 }
@@ -275,6 +329,134 @@ function StatusMenu({ work }: { work: WorkView }) {
                 </button>
               );
             })}
+        </PopoverPortal>
+      )}
+    </span>
+  );
+}
+
+// 생애주기 조작 — 뷰 토글이 모인 우측 actions가 아니라 StatusMenu 옆에 산다.
+// 둘 다 되돌릴 수 없어서 네이티브 확인을 거치고, 거절 사유(커밋 안 된 변경 등)는
+// 코어가 파일 단위로 말해주므로 그대로 보여준다.
+//
+// 성공 뒤에 선택을 옮기지 않는다 — 목록 무효화로 이 작업이 사라지면 -works-view.tsx의
+// 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
+// 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
+function WorkMenu({
+  work,
+  archive,
+  remove,
+}: {
+  work: WorkView;
+  // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
+  archive: ReturnType<typeof useArchiveWork>;
+  remove: ReturnType<typeof useRemoveWork>;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const busy = archive.isPending || remove.isPending;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // 다른 작업으로 옮겨가면 닫는다. ⌘1~9와 목록 클릭은 이 컴포넌트를 다시 마운트하지 않으므로,
+  // 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는 것과 다른 작업**을 겨눈다.
+  useEffect(() => setOpen(false), [work.slug]);
+
+  // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
+  // 성공한 아카이빙 위에 "아카이빙하지 못했습니다" 창이 뜨는 것이 그 결과다.
+  const run = async (
+    verb: string,
+    detail: string,
+    call: () => Promise<unknown>,
+  ) => {
+    setOpen(false);
+    if (busy) return;
+    const ok = await confirm(detail, { title: `'${work.title}' ${verb}`, kind: "warning" });
+    if (!ok) return;
+    try {
+      await call();
+    } catch (e) {
+      await message(`${verb}하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+    }
+  };
+
+  // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면
+  // 대비로 인해 삭제가 커밋까지 지우는 것처럼 읽히고(브랜치는 양쪽 다 남는다), 워크트리
+  // 제거가 gitignore된 파일(.env·로컬 DB·빌드 산출물)까지 가져간다는 사실은 **양쪽 다**
+  // 적는다. 그 파일들은 dirty 검사에 잡히지 않으므로 이 문구가 유일한 경고이고, 둘 다
+  // 같은 worktree_remove를 탄다 — 삭제 쪽은 스펙까지 지우니 더 잃는다.
+  const handleArchive = () =>
+    run(
+      "아카이빙",
+      "스펙과 기록은 남고 워크트리 폴더가 정리돼요. 브랜치와 커밋은 그대로예요.\n" +
+        "다만 git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)은 폴더와 함께 사라져요.\n" +
+        "되돌릴 수 없어요.",
+      () => archive.mutateAsync(work.slug),
+    );
+
+  const handleRemove = () =>
+    run(
+      "삭제",
+      "워크트리 폴더와 스펙 문서가 모두 지워져요. 브랜치와 커밋은 남지만 기록은 안 남아요 —\n" +
+        "남길 것이 있다면 아카이빙을 쓰세요.\n" +
+        "git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)도 폴더와 함께 사라져요.\n" +
+        "되돌릴 수 없어요.",
+      () => remove.mutateAsync(work.slug),
+    );
+
+  return (
+    <span className="relative flex">
+      <button
+        ref={anchor}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        aria-label="작업 메뉴"
+        aria-expanded={open}
+        aria-busy={busy}
+        title={busy ? "처리 중이에요" : "작업 메뉴"}
+        className={cn(
+          "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
+          "disabled:pointer-events-none disabled:opacity-50",
+          open ? "bg-accent text-foreground" : "text-tertiary hover:bg-accent hover:text-foreground",
+        )}
+      >
+        {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+            깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+            disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+        <MoreHorizontal className="size-3.5" strokeWidth={2.2} />
+      </button>
+      {open && (
+        <PopoverPortal
+          anchorRef={anchor}
+          width={190}
+          onClose={() => setOpen(false)}
+          className="flex flex-col gap-px p-[5px]"
+        >
+          <button
+            type="button"
+            onClick={handleArchive}
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+          >
+            <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
+          </button>
+          <span className="my-[3px] h-px bg-border" />
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left text-destructive transition-colors hover:bg-destructive/10"
+          >
+            <Trash2 className="size-3.5 shrink-0" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">삭제</span>
+          </button>
         </PopoverPortal>
       )}
     </span>

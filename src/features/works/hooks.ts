@@ -7,6 +7,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { ARCHIVE_KEY } from "@/features/archive/hooks";
 import { worksApi } from "./api";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -73,6 +74,28 @@ export function useSetWorkStatus() {
   return useMutation({
     mutationFn: ({ slug, status }: { slug: string; status: WorkStatus }) =>
       worksApi.setStatus(slug, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
+  });
+}
+
+// 아카이브와 삭제 모두 작업 목록에서 사라지게 만든다. 다만 아카이브는 **반대편에 하나를
+// 더한다** — 파일 감시가 뒤늦게 알려주기를 기다리지 않고 여기서 함께 무효화한다.
+// 그러지 않으면 방금 치운 작업이 Archive 화면에 바로 나타나지 않는다.
+export function useArchiveWork() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => worksApi.archive(slug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: WORKS_KEY });
+      queryClient.invalidateQueries({ queryKey: ARCHIVE_KEY });
+    },
+  });
+}
+
+export function useRemoveWork() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => worksApi.remove(slug),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
   });
 }

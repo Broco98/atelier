@@ -25,6 +25,16 @@ Create `01-...` when you first plan, `02-...` for the next round.
 Atelier never creates these folders and nothing breaks if you skip them. You create them \
 with your own file tools; the desktop app just recognises the names.";
 
+/// 아카이브에서 온 응답에 붙는 안내. `SPEC_LAYOUT` 자리를 대신한다 — 아카이브된 work에
+/// "여기에 spec을 쓰라"고 안내하면 정확히 막으려던 실수를 시키게 된다.
+const ARCHIVED_NOTE: &str = "\
+This work is archived (`origin` is \"archive\"): it has been put away and no longer appears in \
+atelier_list_works, and its worktrees are gone — the branch is still in the project \
+repositories. Read it freely: `record.md`, in the work's folder one level above `specDir`, \
+holds the git coordinates of what was actually done. Do not write into `specDir`. The archive \
+is the record of what happened and archiving is not undone; start a new work for anything that \
+continues from here.";
+
 /// `atelier_get_work`의 인자.
 ///
 /// `schemars(crate = ...)`는 필수다 — derive 확장이 크레이트 루트의 `schemars`를
@@ -56,10 +66,11 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "List every Atelier work. A work is one feature spanning zero or more \
-                       projects, sharing a single branch name. Each entry carries the shared \
+        description = "List the Atelier works in progress. A work is one feature spanning zero or \
+                       more projects, sharing a single branch name. Each entry carries the shared \
                        branch, the per-project worktree paths, the spec directory and the spec \
-                       files already written. Read-only; reads local files only.",
+                       files already written. Works that have been archived are not here — see \
+                       atelier_list_archive. Read-only; reads local files only.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
     async fn atelier_list_works(&self) -> Result<CallToolResult, ErrorData> {
@@ -70,12 +81,32 @@ impl AtelierServer {
     }
 
     #[tool(
+        description = "List the archived works: everything put away with atelier_archive_work, \
+                       most recently archived first. Deliberately lightweight — slug, title, the \
+                       status it was archived at, the projects it spanned and the date, and \
+                       nothing else, because the archive only ever grows. Pass a slug to \
+                       atelier_get_work to open one: that hands back its `specDir` and the \
+                       documents in it, and the work's folder also holds a `record.md` with the \
+                       git coordinates of what was done. Use this to find out what was already \
+                       tried and how it ended. Read-only; reads local files only.",
+        annotations(read_only_hint = true, open_world_hint = false)
+    )]
+    async fn atelier_list_archive(&self) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::list_archive(&self.archive_root) {
+            Ok(entries) => Ok(CallToolResult::success(vec![ContentBlock::json(&entries)?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
         description = "Get one Atelier work by slug: its shared branch, the per-project worktree \
                        paths to do code work in, `specDir` — the directory to write this work's \
                        spec documents into — and `specFiles`, the documents already there. \
                        Write spec documents yourself with your own file tools into `specDir`; \
                        there is no spec-writing tool. The answer also explains what the folder \
-                       names inside `specDir` mean. Paths are written with `~` for your home \
+                       names inside `specDir` mean. A work that has been archived is found by \
+                       the same slug — `origin` then says \"archive\", and it is a record to \
+                       read, not a place to write. Paths are written with `~` for your home \
                        directory. Read-only; reads local files only.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
@@ -83,14 +114,42 @@ impl AtelierServer {
         &self,
         Parameters(GetWorkParams { work_slug }): Parameters<GetWorkParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        match atelier_core::get_work(&self.works_root, &work_slug) {
-            // JSON이 먼저다 — 기계가 읽는 값이고, 폴더 관습은 그 뒤에 붙는 사람용 안내다
-            Ok(view) => Ok(CallToolResult::success(vec![
-                ContentBlock::json(&view)?,
-                ContentBlock::text(SPEC_LAYOUT),
-            ])),
-            Err(e) => Ok(kernel_error(e)),
-        }
+        // 작업 루트에 없으면 보존소를 본다. "slug 하나를 주면 그 work를 준다"는 정신
+        // 모델이 유지돼야, 에이전트가 참조를 보고 도구를 고르기 전에 위치부터 알아낼
+        // 필요가 없다. **확장은 이 표면에서만 일어난다** — 커널의 get_work는 작업 루트만
+        // 보고, 데스크톱 앱이 그것을 그대로 부른다 (stale한 slug 하나로 아카이브된 work가
+        // Works 화면에 그려지면 안 된다).
+        let (view, origin) = match atelier_core::get_work(&self.works_root, &work_slug) {
+            Ok(view) => (view, "works"),
+            Err(atelier_core::Error::WorkNotFound(_)) => {
+                match atelier_core::get_work(&self.archive_root, &work_slug) {
+                    Ok(view) => (view, "archive"),
+                    // 어느 쪽에도 없다 — "없다"를 그대로 올린다
+                    Err(e) => return Ok(kernel_error(e)),
+                }
+            }
+            // 망가진 work.json 같은 것은 폴백으로 덮지 않는다. "없다"로 바뀌면 원인을 가린다.
+            Err(e) => return Ok(kernel_error(e)),
+        };
+        // 출처는 **값으로 덮어쓴다.** `#[serde(flatten)]`로 덧붙이면 work.json의 미지 필드와
+        // 같은 평면에 놓여, 누군가 `origin`이라는 필드를 적어 두면 키가 두 번 나간다. 관대한
+        // 파서는 마지막 것을 취하지만, 이 응답을 읽는 것은 LLM이라 앞의 것을 집을 수 있다.
+        let answer = match serde_json::to_value(&view) {
+            Ok(serde_json::Value::Object(mut map)) => {
+                map.insert("origin".to_string(), origin.into());
+                Some(serde_json::Value::Object(map))
+            }
+            // 뷰 직렬화가 실패할 구조는 아니다. 그래도 출처 없이라도 뷰는 준다.
+            _ => None,
+        };
+        // JSON이 먼저다 — 기계가 읽는 값이고, 안내는 그 뒤에 붙는다
+        Ok(CallToolResult::success(vec![
+            match &answer {
+                Some(value) => ContentBlock::json(value)?,
+                None => ContentBlock::json(&view)?,
+            },
+            ContentBlock::text(if origin == "archive" { ARCHIVED_NOTE } else { SPEC_LAYOUT }),
+        ]))
     }
 }
 

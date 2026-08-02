@@ -115,6 +115,15 @@ pub struct RemoveWorkParams {
     pub work_slug: String,
 }
 
+/// `atelier_archive_work`의 인자. 여기에도 **`force`가 없다** — 이유는 삭제 쪽과 다르다.
+/// "보존한다"는 행위에 "커밋 안 된 작업을 버리고 진행"은 자기모순이다.
+#[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ArchiveWorkParams {
+    /// Slug of the work to archive, as returned by atelier_list_works.
+    pub work_slug: String,
+}
+
 #[tool_router(router = work_router, vis = "pub")]
 impl AtelierServer {
     #[tool(
@@ -141,6 +150,7 @@ impl AtelierServer {
     ) -> Result<CallToolResult, ErrorData> {
         match atelier_core::start_work(
             &self.works_root,
+            &self.archive_root,
             &self.projects_root,
             &title,
             slug.as_deref(),
@@ -248,7 +258,8 @@ impl AtelierServer {
         description = "Remove a work: delete its metadata, its spec directory and its \
                        worktrees. The shared branch is kept in every project repository, so \
                        committed work is not lost. Refused when any worktree has uncommitted \
-                       changes — commit or stash them first. There is no force option.",
+                       or untracked files; the error names them and says which kind each is. \
+                       Commit them, or stash with `git stash -u`. There is no force option.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -281,6 +292,63 @@ impl AtelierServer {
                     "note": note,
                 }),
             )?])),
+            Err(e) => Ok(kernel_error(e)),
+        }
+    }
+
+    #[tool(
+        description = "Archive a work: move it out of the active works, so it stops showing up \
+                       in atelier_list_works and stops taking up context. Nothing is deleted — \
+                       the work folder and its spec documents move to the archive intact, and a \
+                       `record.md` is sealed at the work's root first, while the worktrees are \
+                       still alive: it captures the declared branch, the worktree HEAD, whether \
+                       the branch reached the project's base branch, and the commits and files \
+                       it carried. The worktrees are then removed and the shared branch is kept \
+                       in every repository. Any status can be archived and the status is not \
+                       changed — an abandoned approach is worth putting away too. Refused when \
+                       any worktree has uncommitted or untracked files, and the error names \
+                       them and says which kind each is. \
+                       There is no force option and no way back; use atelier_remove_work \
+                       instead for a work that is not worth keeping.",
+        annotations(
+            read_only_hint = false,
+            // 지우지는 않지만 되돌릴 수 없다 — 승인 UI가 가볍게 취급하면 안 된다.
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn atelier_archive_work(
+        &self,
+        Parameters(ArchiveWorkParams { work_slug }): Parameters<ArchiveWorkParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        match atelier_core::archive_work(
+            &self.works_root,
+            &self.archive_root,
+            &self.projects_root,
+            &work_slug,
+        ) {
+            // 프로젝트가 없던 work는 브랜치도 워크트리도 없다 — "브랜치는 남아 있다"가
+            // 거짓이 된다 (atelier_remove_work가 같은 이유로 안내를 갈라 두었다).
+            Ok(view) => {
+                let note = match view.work.branch {
+                    Some(_) => {
+                        "Archived. The work is no longer in atelier_list_works. Its spec \
+                         documents moved with it and `record.md` next to them holds the git \
+                         coordinates. The branch still exists in every project repository, so \
+                         committed work is recoverable — the worktrees are not."
+                    }
+                    None => {
+                        "Archived. The work is no longer in atelier_list_works. It had no \
+                         project and no branch, so there is no code to recover anywhere: the \
+                         spec documents that moved with it are the whole record."
+                    }
+                };
+                Ok(CallToolResult::success(vec![
+                    ContentBlock::json(&view)?,
+                    ContentBlock::text(note),
+                ]))
+            }
             Err(e) => Ok(kernel_error(e)),
         }
     }

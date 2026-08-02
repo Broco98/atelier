@@ -4,10 +4,12 @@ import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { worksQuery } from "./features/works/hooks";
 import { projectsQuery } from "./features/projects/hooks";
+import { archiveQuery } from "./features/archive/hooks";
 import { shellStore } from "./components/shell/shell-store";
 import { trackCanGoForward } from "./can-go-forward";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
+import type { ArchiveEntry } from "./features/archive/types";
 
 // 위치 전이 규칙의 seam은 라우터 하나다. 컴포넌트를 렌더하지 않고 라우터만 띄워
 // "어떤 조작 뒤에 위치가 무엇이 되는가"와 "히스토리가 몇 칸 늘었는가"만 관찰한다.
@@ -32,12 +34,16 @@ const works = (...slugs: Array<string>) =>
   }) as Array<WorkView>;
 const projects = (...slugs: Array<string>) =>
   slugs.map((slug) => ({ slug })) as Array<ProjectView>;
+const archives = (...slugs: Array<string>) =>
+  slugs.map((slug) => ({ slug })) as Array<ArchiveEntry>;
 
 interface SetupOptions {
   works?: Array<WorkView>;
   projects?: Array<ProjectView>;
+  archives?: Array<ArchiveEntry>;
   lastWork?: string | null;
   lastProject?: string | null;
+  lastArchive?: string | null;
 }
 
 function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
@@ -49,12 +55,17 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
     projectsQuery.queryKey,
     options.projects ?? projects("proj-a", "proj-b"),
   );
+  queryClient.setQueryData(
+    archiveQuery.queryKey,
+    options.archives ?? archives("치운-a", "치운-b"),
+  );
   // "이번 세션에서 마지막으로 보던 항목"도 정규화의 입력이다. 스토어는 모듈 싱글턴이라
   // 테스트마다 여기서 덮어써 이전 테스트가 남긴 값이 새지 않게 한다.
   shellStore.setState((state) => ({
     ...state,
     workSlug: options.lastWork ?? null,
     projectSlug: options.lastProject ?? null,
+    archiveSlug: options.lastArchive ?? null,
   }));
 
   const history = createMemoryHistory({ initialEntries });
@@ -147,6 +158,21 @@ describe("무선택 주소의 정규화", () => {
     const { router } = setup(["/projects"], { lastProject: "proj-b" });
     await router.load();
     expect(router.state.location.pathname).toBe("/projects/proj-b");
+  });
+
+  // 아카이브도 같은 규칙이다. **목록 패널이 곁에 상주하기 때문에** 그래도 된다 —
+  // 패널 없이 목록과 상세가 같은 영역을 번갈아 쓰던 판에서는 이 정규화가 목록을 볼 방법을
+  // 통째로 없앴고, 그래서 그때는 아카이브만 규칙에서 빼야 했다. 패널이 그 예외를 지웠다.
+  it("아카이브에도 같은 규칙이 적용된다", async () => {
+    const { router } = setup(["/archive"], { lastArchive: "치운-b" });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/archive/치운-b");
+  });
+
+  it("아카이브가 하나도 없으면 정규화하지 않고 빈 상태에 머문다", async () => {
+    const { router } = setup(["/archive"], { archives: [] });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/archive");
   });
 });
 
