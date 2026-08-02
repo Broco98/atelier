@@ -11,7 +11,13 @@ import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
 interface ArchivePageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
-  onSelect: (slug: string | null) => void;
+  // 보고 있는 문서는 주소가 정본이다 — 여기서 들면 문서를 옮긴 자취가 히스토리에 남지 않아
+  // 링크를 따라 들어간 뒤 뒤로가기가 아카이브 전체를 건너뛴다 (Works와 같은 근거).
+  currentFile: string | null;
+  // 목록에서 문서를 고르는 것은 아카이브를 고르는 것이기도 하다 — 둘을 함께 넘긴다
+  onSelectDoc: (slug: string, path: string) => void;
+  // 본문 링크는 지금 아카이브 안에서만 움직인다
+  onFollowLink: (path: string) => void;
 }
 
 const PANEL_OPEN_KEY = "archive-panel-open";
@@ -19,7 +25,13 @@ const PANEL_OPEN_KEY = "archive-panel-open";
 // 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
-function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) {
+function ArchivePage({
+  sidebarOpen,
+  selectedSlug,
+  currentFile,
+  onSelectDoc,
+  onFollowLink,
+}: ArchivePageProps) {
   // `[]`는 "하나도 없다"와 "아직 모른다"를 같이 뜻한다. 아래 두 자리(본문 빈 상태·목록 패널)가
   // 그것으로 "없어요"라고 단언하므로 둘을 갈라 둔다. 목록이 캐시에 없는 채로 /archive/$slug에
   // 바로 닿는 경로가 있다 — 이 라우트에는 beforeLoad가 없고(세 $slug 라우트 모두 그렇다),
@@ -30,14 +42,11 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
   // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
   // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
   const { data: docs = [], isPending: docsPending } = useArchivedDocs(selected?.slug ?? null);
-  // 고른 문서는 **어느 아카이브의 것인지와 함께** 들고 있는다. 경로만 들면 다른 아카이브로
-  // 옮겼을 때 이름이 같은 문서(record.md·overview.md)가 그대로 열려, 처음 보이는 것이
-  // 아카이브마다 달라진다. 짝이 안 맞으면 아래에서 자동으로 기본값으로 떨어지므로
-  // 선택을 지우는 효과가 따로 필요 없다.
-  const [doc, setDoc] = useState<{ slug: string; path: string } | null>(null);
-  // 목록의 첫 항목이 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
-  const current =
-    doc && doc.slug === selectedSlug && docs.includes(doc.path) ? doc.path : (docs[0] ?? null);
+  // 고른 문서가 **어느 아카이브의 것인지**는 이제 주소가 함께 들고 있다 — 아카이브를 옮길 때
+  // 이동이 search를 비우므로, 이름이 같은 문서(record.md·overview.md)가 딸려가 엉뚱하게
+  // 열리던 경로가 아예 없다. 목록에 없는 경로면 아래에서 기본값으로 떨어진다.
+  // 목록의 첫 항목이 그 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
+  const current = currentFile && docs.includes(currentFile) ? currentFile : (docs[0] ?? null);
   const { data: content } = useArchivedFile(selected?.slug ?? null, current);
 
   const [showSource, setShowSource] = useState(false);
@@ -103,11 +112,8 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
         loading={entriesPending}
         currentDoc={current}
         // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
-        // 두 상태를 한 클릭에서 함께 옮겨야 주소가 바뀌는 프레임에 선택이 깜빡이지 않는다.
-        onSelectDoc={(docSlug, path) => {
-          setDoc({ slug: docSlug, path });
-          if (docSlug !== selectedSlug) onSelect(docSlug);
-        }}
+        // 둘은 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
+        onSelectDoc={onSelectDoc}
         onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
         sidebarOpen={sidebarOpen}
         open={panelOpen}
@@ -221,6 +227,11 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                   content={content ?? ""}
                   onCopyBlock={copyBlockRef}
                   wide={wide}
+                  files={docs}
+                  onNavigate={onFollowLink}
+                  // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — 로컬 이미지는
+                  // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
+                  specRoot={null}
                 />
               )}
             </div>

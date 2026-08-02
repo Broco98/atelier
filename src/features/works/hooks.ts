@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import {
   hashKey,
   queryOptions,
@@ -98,4 +99,11 @@ export function useRemoveWork() {
     mutationFn: (slug: string) => worksApi.remove(slug),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
   });
+}
+
+// 홈 경로. 코어가 spec 디렉터리를 홈 축약 표기(`~/.atelier/…`)로 내려 주므로, 본문 이미지가
+// 파일을 읽으려면 이것으로 펴야 한다. 앱이 도는 동안 바뀌지 않아 staleTime이 무한이고,
+// 캐시가 중복 호출을 막는다 — 작업을 옮길 때마다 뷰어가 리마운트되기 때문에 그 몫이 크다.
+export function useHomeDir() {
+  return useQuery({ queryKey: ["home-dir"], queryFn: homeDir, staleTime: Infinity });
 }
