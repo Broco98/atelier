@@ -137,13 +137,14 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           클릭을 아무것도 보이지 않는 버튼이 가로챈다. invisible은 그것까지 막아 주지만 키보드
           포커스도 함께 막아 Tab으로 도달할 수 없다 — 둘 다 필요하므로 나눠서 쓴다.
           배경만 규격 밖이다: 표 셀 위에 겹치므로 불투명해야 하고, hover의 --state-2(6%)는
-          반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다 */}
+          반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
+          opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다 */}
       <button
         type="button"
         onClick={() => setFullOpen(true)}
         title="전체화면으로 크게 보기"
         aria-label="표를 전체화면으로 보기"
-        className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color,opacity] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+        className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
       >
         <Maximize2 className="size-3" strokeWidth={2} />
       </button>

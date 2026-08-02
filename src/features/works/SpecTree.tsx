@@ -167,6 +167,9 @@ function TreeRows({
                 <FileGlyph name={node.name} />
                 <span className="min-w-0 flex-1 truncate">{node.name}</span>
                 {onCopy && (
+                  // opacity는 전환하지 않는다 — 행 높이가 28px뿐이라 페이드를 걸면 옆 행으로
+                  // 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다. 근거는 SpecViewer의
+                  // 거터 복사 버튼 주석에 있다
                   <span
                     role="button"
                     title="경로 복사"
@@ -174,7 +177,7 @@ function TreeRows({
                       e.stopPropagation();
                       onCopy(node.path);
                     }}
-                    className="icon-button text-tertiary opacity-0 transition-[background-color,color,opacity] hover:bg-state-2 hover:text-foreground group-hover:opacity-100"
+                    className="icon-button text-tertiary opacity-0 transition-[background-color,color] hover:bg-state-2 hover:text-foreground group-hover:opacity-100"
                   >
                     <Copy className="size-3" strokeWidth={1.8} />
                   </span>
