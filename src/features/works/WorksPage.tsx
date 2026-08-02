@@ -162,6 +162,7 @@ function WorksPage({
             work={selected}
             showSource={showSource}
             panelOpen={workPanelOpen}
+            sidebarOpen={sidebarOpen}
             file={currentFile}
             onSelectFile={onSelectFile}
           />

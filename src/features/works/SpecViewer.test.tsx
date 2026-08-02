@@ -1,16 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PrettyView } from "./SpecViewer";
+import { PrettyView, SourceView } from "./SpecViewer";
 
 // 참조 복사 버튼은 최상위 블록 하나당 정확히 하나이고, 그 블록 바깥에 선다. 이 불변조건이
 // 뚫리면 버튼이 겹쳐 보인다 — 인용은 자기 자신과 안쪽 첫 문단의 시작 라인이 같아서,
 // 라인만으로 최상위를 가리면 둘 다 통과한다. 판정이 라인으로 되돌아가면 여기서 걸린다.
-function render(markdown: string, files: string[] = []): string {
+function render(markdown: string, files: string[] = [], wide = false): string {
   return renderToStaticMarkup(
     <PrettyView
       file="overview.md"
       content={markdown}
       onCopyBlock={() => {}}
+      wide={wide}
       files={files}
       onNavigate={() => {}}
       // 로컬 이미지의 asset 변환은 웹뷰 안에서만 되는 일이라 여기서는 켜지 않는다 —
@@ -64,6 +65,29 @@ describe("PrettyView 참조 복사 버튼", () => {
     const html = render("본문에 각주가 있다[^1]\n\n[^1]: 각주 정의 본문");
     expect(html.match(BUTTON)).toHaveLength(1);
     expect(html.slice(html.indexOf("data-footnotes")).match(BUTTON)).toBeNull();
+  });
+});
+
+// 본문 열 규격은 값을 정하는 지점이 하나다. 넓어지는 쪽만 보면 좁은 쪽이 조용히 따라
+// 넓어져도 통과하므로 둘을 함께 본다. px-12(48px)는 어느 쪽에서도 바뀌지 않는다 —
+// 좌측 48px은 여백이 아니라 거터의 자리이고, 소스 보기의 줄번호 열이 그 자리를 채운다.
+describe("PrettyView 본문 열", () => {
+  it("평소에는 900px이다", () => {
+    const html = render("문단");
+    expect(html).toContain("max-w-[900px]");
+    expect(html).toContain("px-12");
+  });
+
+  it("둘 다 접었을 때만 1200px로 넓어진다", () => {
+    const html = render("문단", [], true);
+    expect(html).toContain("max-w-[1200px]");
+    expect(html).toContain("px-12");
+  });
+
+  // 두 보기가 **함께** 넓어져야 한다 — 한쪽만 따라가면 소스 토글에서 본문이 좌우로 튄다
+  it("소스 보기도 같은 폭을 쓴다", () => {
+    expect(renderToStaticMarkup(<SourceView content="줄" />)).toContain("max-w-[900px]");
+    expect(renderToStaticMarkup(<SourceView content="줄" wide />)).toContain("max-w-[1200px]");
   });
 });
 

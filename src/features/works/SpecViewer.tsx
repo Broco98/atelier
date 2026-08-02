@@ -31,13 +31,15 @@ import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
-import WorkPanel, { PANEL_EXIT_MS } from "./WorkPanel";
+import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
   showSource: boolean;
   panelOpen: boolean;
+  // 본문이 넓어지는 조건의 나머지 반쪽 — 접을 수 있는 것이 이 화면에는 둘뿐이다
+  sidebarOpen: boolean;
   // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
   // 자취가 히스토리에 남지 않아, 링크를 따라 들어간 뒤 뒤로가기가 작업 전체를 건너뛴다.
   file: string | null;
@@ -49,8 +51,16 @@ function defaultFile(files: string[]): string | null {
   return files[0] ?? null;
 }
 
-
-function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecViewerProps) {
+function SpecViewer({
+  work,
+  showSource,
+  panelOpen,
+  sidebarOpen,
+  file,
+  onSelectFile,
+}: SpecViewerProps) {
+  // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
+  const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
   // 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백
   const current = file && files.includes(file) ? file : defaultFile(files);
@@ -66,18 +76,6 @@ function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecVie
   const specRoot = home ? expandHome(work.specDir, home) : null;
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
-
-  // 패널은 닫는 즉시 사라지면 퇴장 애니메이션을 재생할 틈이 없다 — 길이만큼 언마운트를 늦춘다.
-  // 늦출 뿐 끝내 언마운트하므로, 스펙 트리의 접힘이 패널 토글을 넘지 않는다는 계약은 그대로다.
-  const [panelMounted, setPanelMounted] = useState(panelOpen);
-  useEffect(() => {
-    if (panelOpen) {
-      setPanelMounted(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setPanelMounted(false), PANEL_EXIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -128,12 +126,13 @@ function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecVie
                 </div>
               </div>
             ) : showSource || !isMarkdown ? (
-              <SourceView content={content ?? ""} />
+              <SourceView content={content ?? ""} wide={wide} />
             ) : (
               <PrettyView
                 file={current ?? ""}
                 content={content ?? ""}
                 onCopyBlock={copyRef}
+                wide={wide}
                 files={files}
                 onNavigate={followLink}
                 specRoot={specRoot}
@@ -150,15 +149,16 @@ function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecVie
         )}
       </div>
 
-      {panelMounted && (
-        <WorkPanel
-          work={work}
-          currentFile={current}
-          onSelectFile={selectFromTree}
-          onCopy={copyText}
-          closing={!panelOpen}
-        />
-      )}
+      {/* 폭 접기로 바뀐 뒤로는 늘 마운트돼 있다 — 퇴장 애니메이션을 재생시키려고
+          언마운트를 미루던 장치가 필요 없다. 트리 접힘 초기화 계약은 WorkPanel 안의
+          key가 맡는다 (#35). 트리 클릭은 히스토리를 만들지 않으므로 selectFromTree다 */}
+      <WorkPanel
+        work={work}
+        currentFile={current}
+        onSelectFile={selectFromTree}
+        onCopy={copyText}
+        open={panelOpen}
+      />
     </div>
   );
 }
@@ -167,11 +167,11 @@ function SpecViewer({ work, showSource, panelOpen, file, onSelectFile }: SpecVie
 
 // 아카이브 화면도 같은 두 보기를 쓴다 — 문서를 그리는 규칙이 갈라지면 같은 spec이
 // 어디서 열렸느냐에 따라 다르게 보인다. 둘 다 work에 의존하지 않아 그대로 나간다.
-export function SourceView({ content }: { content: string }) {
+export function SourceView({ content, wide = false }: { content: string; wide?: boolean }) {
   const lines = content.split("\n");
   return (
     // 본문 열 규격은 예쁜 보기와 같은 것을 쓴다 — 세로 여백만 소스 보기의 값이다.
-    <div className={cn(bodyColumn, "py-4")}>
+    <div className={cn(bodyColumn(wide), "py-4")}>
       {/* 가로 스크롤은 여기서 끝난다 — 본문 스크롤 영역은 가로로 확장되지 않는다.
           -ml로 규격의 좌측 여백(48px)만큼 되돌린다 — 그 여백은 거터의 자리이고,
           소스 보기에서는 줄번호 열이 바로 그 자리를 채운다. 이래야 코드 첫 글자가
@@ -205,7 +205,11 @@ export function SourceView({ content }: { content: string }) {
 //   사라진 뒤로 그 자리를 정하는 건 소스 보기의 줄번호 열이다 —
 //   네 자리 "1024"는 12.5px mono(0.6em/자)에서 30px, 코드와 16px 떨어져야 하므로
 //   46px이 하한이고 48px은 그 위의 가장 작은 대칭값이다. 더 줄이려면 줄번호 글자 크기부터 바꿔야 한다.
-export const bodyColumn = "mx-auto w-full max-w-[900px] px-12";
+// 화면을 비웠는데 본문이 안 넓어지던 것을 없앤다 — 접을 수 있는 것을 **둘 다** 접었을
+// 때만 넓어진다(결정 5·13). 원래 짝은 사이드바 + 목록 패널이었는데 nav 개편이 목록
+// 컬럼을 지워, 그 자리를 작업 패널 접기가 물려받았다.
+export const bodyColumn = (wide: boolean) =>
+  cn("mx-auto w-full px-12", wide ? "max-w-[1200px]" : "max-w-[900px]");
 
 // 목록 거터 — 불릿과 번호가 서는 자리다. 체크박스 항목은 불릿 대신 체크박스가 여기 선다.
 // 둘은 반드시 함께 움직인다. 들여쓰기를 바꾸면 체크박스를 되돌리는 폭도 같이 바꿔야
@@ -221,6 +225,8 @@ interface PrettyViewProps {
   file: string;
   content: string;
   onCopyBlock: (start: number, end: number) => void;
+  // 접을 수 있는 것을 둘 다 접었나 — 본문 열이 넓어지는 조건 (결정 13)
+  wide?: boolean;
   // 문서 간 링크의 존재 판정이 서는 자리 — 이 목록에 없는 경로는 missing이다.
   // 파일 시스템을 묻지 않는 이유는 이 목록이 감시자를 통해 이미 최신이기 때문이다.
   files: readonly string[];
@@ -277,6 +283,7 @@ export const PrettyView = memo(function PrettyView({
   file,
   content,
   onCopyBlock,
+  wide = false,
   files,
   onNavigate,
   specRoot,
@@ -521,7 +528,7 @@ export const PrettyView = memo(function PrettyView({
     // pt-3: 블록 래퍼의 py-1(4px)을 더하면 첫 글자가 헤더 아래 16px에 온다 —
     // 소스 보기의 첫 줄(py-4)과 같은 y다. 좌우를 656px에서 맞춘 것과 같은 계약을
     // 세로에도 건다. 토글할 때 본문이 위아래로 튀지 않는다
-    <article className={cn(bodyColumn, "pb-16 pt-3 text-[15px]")}>
+    <article className={cn(bodyColumn(wide), "pb-16 pt-3 text-[15px]")}>
       <ReactMarkdown remarkPlugins={[remarkGfm, collectTopLevel]} components={components}>
         {content}
       </ReactMarkdown>
