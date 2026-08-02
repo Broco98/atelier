@@ -161,9 +161,15 @@ function TreeRows({
               //
               // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
               // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+              // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
+              // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
+              // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
+              // 자기 오른쪽 여백까지 품는다(복사 버튼이 있을 때만 필요하다).
+              // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
+              // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
               <div
                 className={cn(
-                  "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-[12.5px] transition-colors",
+                  "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
                   node.path === current
                     ? "selected-row font-medium"
                     : "text-muted-foreground hover:bg-state-1",
@@ -175,7 +181,10 @@ function TreeRows({
                 <button
                   type="button"
                   onClick={() => onSelect(node.path)}
-                  className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+                  className={cn(
+                    "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
+                    onCopy && "pr-1.5",
+                  )}
                   style={{ paddingLeft: 8 + depth * 14 }}
                 >
                   <FileGlyph name={node.name} />
