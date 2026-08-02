@@ -110,7 +110,7 @@ function ArchiveList({
               type="button"
               onClick={() => setSortAsc((v) => !v)}
               title="아카이브한 날짜 기준 정렬"
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
+              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
             >
               <ArrowDown
                 className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
@@ -129,7 +129,7 @@ function ArchiveList({
                   "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
                   projectFilter
                     ? "toggle-on"
-                    : "text-muted-foreground hover:bg-state-2 hover:text-foreground",
+                    : "text-muted-foreground quiet-hover",
                 )}
               >
                 <Filter className="size-3 shrink-0" strokeWidth={2} />
@@ -156,7 +156,7 @@ function ArchiveList({
                         setProjectFilter(option);
                         setFilterOpen(false);
                       }}
-                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
                     >
                       <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
                         {option ?? "모든 프로젝트"}

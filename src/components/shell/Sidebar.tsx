@@ -72,7 +72,7 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
                   "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[13.5px] font-medium transition-colors",
                   // 목록 항목과 같은 표시 — 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다
                   active
-                    ? "selected-row text-foreground"
+                    ? "selected-row"
                     : "text-muted-foreground hover:bg-state-1",
                 )}
               >

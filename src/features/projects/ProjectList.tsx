@@ -65,7 +65,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           onClick={onAdd}
           aria-label="프로젝트 등록"
           title="프로젝트 등록"
-          className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
+          className="icon-button-quiet text-tertiary"
         >
           {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
               이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}

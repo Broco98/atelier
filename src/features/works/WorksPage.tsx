@@ -130,7 +130,7 @@ function WorksPage({
                       "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
                       showSource
                         ? "toggle-on"
-                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                        : "text-tertiary quiet-hover",
                     )}
                   >
                     소스
@@ -146,7 +146,7 @@ function WorksPage({
                       "icon-button transition-colors",
                       workPanelOpen
                         ? "toggle-on"
-                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                        : "text-tertiary quiet-hover",
                     )}
                   >
                     <List className="size-3.5" strokeWidth={2} />
@@ -258,7 +258,7 @@ function TitleEditor({ work }: { work: WorkView }) {
           setDraft(work.title);
           setEditing(true);
         }}
-        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-accent"
+        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-state-2"
       >
         {work.title}
       </button>
@@ -329,7 +329,7 @@ function StatusMenu({ work }: { work: WorkView }) {
                       setStatus.mutate({ slug: work.slug, status });
                     }
                   }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
                 >
                   <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
@@ -438,7 +438,7 @@ function WorkMenu({
         className={cn(
           "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
           "disabled:pointer-events-none disabled:opacity-50",
-          open ? "bg-accent text-foreground" : "text-tertiary hover:bg-accent hover:text-foreground",
+          open ? "toggle-on" : "text-tertiary quiet-hover",
         )}
       >
         {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
@@ -456,7 +456,7 @@ function WorkMenu({
           <button
             type="button"
             onClick={handleArchive}
-            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
           >
             <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
             <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
