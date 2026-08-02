@@ -89,6 +89,10 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
     [slug, current, copyText],
   );
 
+  // 이 화면의 접이식은 사이드바와 목록 패널 둘이다. 화면을 비웠는지를 말하는 값이
+  // 헤더 인셋과 본문 폭 두 곳에서 쓰이므로 여기 한 번만 적는다 (Works 쪽도 같은 규칙).
+  const wide = !sidebarOpen && !panelOpen;
+
   const meta = selected && STATUS_META[selected.status];
 
   return (
@@ -113,7 +117,7 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
         <PageHeader
           root="Archive"
           leaf={selected?.title}
-          inset={!sidebarOpen && !panelOpen}
+          inset={wide}
           meta={
             selected &&
             meta && (
@@ -210,15 +214,13 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                   남은 문서가 없어요
                 </div>
               ) : showSource || !isMarkdown ? (
-                <SourceView content={content ?? ""} wide={!sidebarOpen && !panelOpen} />
+                <SourceView content={content ?? ""} wide={wide} />
               ) : (
                 <PrettyView
                   file={current}
                   content={content ?? ""}
                   onCopyBlock={copyBlockRef}
-                  // 이 화면의 접이식은 사이드바와 목록 패널이다 — 같은 문서를 어디서 열든
-                  // 같은 규칙으로 넓어져야 하므로 헤더 인셋이 쓰는 조건을 그대로 읽는다
-                  wide={!sidebarOpen && !panelOpen}
+                  wide={wide}
                 />
               )}
             </div>

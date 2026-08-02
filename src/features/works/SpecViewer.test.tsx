@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PrettyView } from "./SpecViewer";
+import { PrettyView, SourceView } from "./SpecViewer";
 
 // 참조 복사 버튼은 최상위 블록 하나당 정확히 하나이고, 그 블록 바깥에 선다. 이 불변조건이
 // 뚫리면 버튼이 겹쳐 보인다 — 인용은 자기 자신과 안쪽 첫 문단의 시작 라인이 같아서,
@@ -76,5 +76,11 @@ describe("PrettyView 본문 열", () => {
     );
     expect(html).toContain("max-w-[1200px]");
     expect(html).toContain("px-12");
+  });
+
+  // 두 보기가 **함께** 넓어져야 한다 — 한쪽만 따라가면 소스 토글에서 본문이 좌우로 튄다
+  it("소스 보기도 같은 폭을 쓴다", () => {
+    expect(renderToStaticMarkup(<SourceView content="줄" />)).toContain("max-w-[900px]");
+    expect(renderToStaticMarkup(<SourceView content="줄" wide />)).toContain("max-w-[1200px]");
   });
 });

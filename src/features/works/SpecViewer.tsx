@@ -34,15 +34,6 @@ function SpecViewer({ work, showSource, panelOpen, sidebarOpen }: SpecViewerProp
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
-  // 패널은 폭으로 접히므로 언제나 마운트된 채다(좌측 목록과 같은 규칙). 그런데
-  // **"스펙 트리의 폴더 접힘은 패널 토글을 넘어 살지 않는다"** 는 계약이 그동안
-  // 언마운트에 기대고 있었다 — 그 일을 여기 세대 번호가 대신한다. 닫을 때 값이 바뀌어
-  // 다음에 열릴 때는 새 트리가 선다. (닫히는 중의 리마운트는 이미 opacity가 0으로
-  // 가는 중이라 보이지 않는다.)
-  const [panelGeneration, setPanelGeneration] = useState(0);
-  useEffect(() => {
-    if (!panelOpen) setPanelGeneration((n) => n + 1);
-  }, [panelOpen]);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -114,7 +105,6 @@ function SpecViewer({ work, showSource, panelOpen, sidebarOpen }: SpecViewerProp
       </div>
 
       <WorkPanel
-        key={panelGeneration}
         work={work}
         currentFile={current}
         onSelectFile={setSelected}

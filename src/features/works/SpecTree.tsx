@@ -190,7 +190,10 @@ function TreeRows({
 
 // 알려진 폴더 이름의 글리프. tickets/는 판 안에 있든 밖에 있든 같은 아이콘이다 —
 // 이름으로만 판단하고 위치는 보지 않는다. 규칙에 없는 폴더는 아이콘 없이 그대로 보인다.
-function FolderGlyph({ name }: { name: string }) {
+//
+// 판 머리글(SpecSection)도 이것을 부른다 — 폴더 하나가 트리 안에 있을 때와 구획 머리글로
+// 올라섰을 때 다른 아이콘을 달면, 위 STANDING 배열이 「아이콘의 유일한 출처」라는 말이 깨진다.
+export function FolderGlyph({ name }: { name: string }) {
   const className = "size-3 shrink-0 text-tertiary";
   if (ITERATION.test(name)) return <Layers className={className} strokeWidth={1.9} />;
   if (name === TICKETS) return <ListChecks className={className} strokeWidth={1.9} />;

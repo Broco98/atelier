@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
@@ -18,6 +19,22 @@ interface WorkPanelProps {
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
 function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelProps) {
   const { data: projects = [] } = useProjects();
+  // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
+  // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
+  // 세워 그 일을 대신한다.
+  //
+  // **다시 세우는 것은 안쪽뿐이다.** 바깥 aside까지 key로 갈면 새 요소의 첫 계산 스타일이
+  // 이미 w-0·opacity-0이라 트랜지션이 출발할 자리가 없어져 패널이 뚝 끊긴다 —
+  // CSS 트랜지션은 요소의 초기 스타일에서는 돌지 않는다.
+  //
+  // 열려 있다가 닫힐 때만 센다. 닫힌 채로 마운트되는 경로(패널을 접어 둔 채 다른 작업으로
+  // 옮기기)에서 공짜로 한 번 더 세지 않게 한다.
+  const [treeGeneration, setTreeGeneration] = useState(0);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) setTreeGeneration((n) => n + 1);
+    wasOpen.current = open;
+  }, [open]);
   const bases = [
     ...new Set(
       work.projects
@@ -33,23 +50,31 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
     // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
     <aside
       // 폭은 한 곳에만 적는다 — 바깥이 접히는 폭이고 안쪽이 그 폭으로 버틴다.
-      // 둘이 갈리면 접히는 동안 글이 되흐른다 (목록 패널 둘과 같은 방식)
-      style={{ "--panel-width": "296px" } as React.CSSProperties}
+      // 둘이 갈리면 접히는 동안 글이 되흐른다 (목록 패널 둘과 같은 방식).
+      //
+      // 이름이 --panel-width가 아닌 이유: 목록 패널 둘은 그 이름으로 **드래그해 바꾼 폭**을
+      // 담는다. 상속되는 값이라 같은 이름을 쓰면 어느 쪽이 이겼는지가 위치에 달리게 된다.
+      // 사이드바가 자기 키(--sidebar-width)를 따로 갖는 것과 같은 이유다.
+      style={{ "--work-panel-width": "296px" } as React.CSSProperties}
       className={cn(
         // 좌측 사이드바·목록 패널과 **같은 폭 접기**다: 넘침을 감춘 상자의 폭을 0으로 보내고
         // 안쪽은 고정 폭을 유지한다. 220ms·--ease-panel도 그쪽과 같은 값을 읽는다.
+        //
+        // 다른 점은 테두리 하나뿐이다. 저쪽은 aside가 구분선을 그려서 접을 때 border-color와
+        // border-r-0까지 함께 보내야 하지만(그 1px이 남으면 폭 바닥이 0이 아니다), 이 패널의
+        // 테두리는 안쪽 카드에 있어 폭과 함께 사라진다. 그래서 트랜지션 목록이 width 하나다.
         //
         // translateX로 옆으로 밀어내는 방식은 **이미 실패한 길이다** — 패널이 본문 스크롤
         // 영역의 형제가 된 뒤로 제 상자 밖 넘침을 문서가 받아, 애니메이션이 도는 동안
         // 가로 스크롤이 깜빡인다. 다시 시도하지 말 것.
         "shrink-0 overflow-hidden transition-[width] duration-[220ms] ease-panel",
-        open ? "w-(--panel-width)" : "w-0",
+        open ? "w-(--work-panel-width)" : "w-0",
       )}
     >
       {/* 폭이 도는 동안 글이 되흐르지 않도록 안쪽은 고정 폭이다 */}
       <div
         className={cn(
-          "flex h-full w-(--panel-width) flex-col p-4 pl-0 transition-opacity",
+          "flex h-full w-(--work-panel-width) flex-col p-4 pl-0 transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
@@ -97,6 +122,7 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
           </div>
           <div className="mx-4 h-px bg-border" />
           <SpecSection
+            key={treeGeneration}
             files={work.specFiles}
             current={currentFile}
             onSelect={onSelectFile}

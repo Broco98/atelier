@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, Layers } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import SpecTree, { COLLAPSE_ROW } from "./SpecTree";
+import SpecTree, { COLLAPSE_ROW, FolderGlyph } from "./SpecTree";
 import { splitSpecFiles } from "./spec-sections";
 
 interface SpecSectionProps {
@@ -32,6 +32,7 @@ function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
   // 자동으로 "펼쳐진 최신 판"이 되려면, 초기값을 한 번 굳혀 두면 안 된다.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const [sectionOpen, setSectionOpen] = useState(true);
+  const [standingOpen, setStandingOpen] = useState(true);
   const latest = iterations[0]?.dir;
   const toggle = (dir: string, open: boolean) =>
     setToggled((prev) => ({ ...prev, [dir]: !open }));
@@ -71,7 +72,9 @@ function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
                           open={open}
                           onToggle={() => toggle(iteration.dir, open)}
                           depth={1}
-                          Glyph={Layers}
+                          // 아이콘은 트리와 **같은 출처**에서 온다. 판 폴더 이름을 그대로
+                          // 넘기므로 트리에서 접혀 있을 때와 같은 글리프가 선다.
+                          glyph={<FolderGlyph name={iteration.dir} />}
                         />
                         {open && (
                           <SpecTree
@@ -89,11 +92,31 @@ function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
                 {standing.length > 0 && <div className="mx-2 my-1.5 h-px bg-border" />}
               </>
             )}
-            {/* 상시 문서는 판 밖이므로 들여쓰지 않는다 — Iterations 머리글과 형제다.
-                둘을 가르는 것은 위 구분선이다 */}
-            {standing.length > 0 && (
-              <SpecTree files={standing} current={current} onSelect={onSelect} onCopy={onCopy} />
-            )}
+            {/* 상시 문서도 접힌다 — 결정 1은 두 구획 **모두** 접힌다고 말한다.
+                다만 판이 하나도 없는 Work에서는 머리글을 그리지 않는다: 가를 상대가 없는데
+                구획 이름만 서면 지금까지 보던 화면에 없던 층이 하나 생긴다. */}
+            {standing.length > 0 &&
+              (iterations.length > 0 ? (
+                <>
+                  <CollapseRow
+                    label="Documents"
+                    open={standingOpen}
+                    onToggle={() => setStandingOpen((open) => !open)}
+                    depth={0}
+                  />
+                  {standingOpen && (
+                    <SpecTree
+                      files={standing}
+                      current={current}
+                      onSelect={onSelect}
+                      onCopy={onCopy}
+                      depth={1}
+                    />
+                  )}
+                </>
+              ) : (
+                <SpecTree files={standing} current={current} onSelect={onSelect} onCopy={onCopy} />
+              ))}
           </>
         )}
       </div>
@@ -101,22 +124,26 @@ function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
   );
 }
 
-// 판 구획과 판 하나의 머리글. 트리의 폴더 행과 **같은 규격을 읽는다**(COLLAPSE_ROW) —
+// 구획과 판 하나의 머리글. 트리의 폴더 행과 **같은 규격을 읽는다**(COLLAPSE_ROW) —
 // 한 화면에서 접히는 것들이 서로 다르게 생기면 안 된다.
+//
+// 펼침은 트리의 폴더와 같이 **끊어서** 바꾼다. 사이드바 목록의 구역은 높이를 애니메이션하지만
+// 그건 한 화면에 늘 보이는 두 구역이 서로 밀고 당기는 자리이고, 여기는 트리 안이라
+// 폴더 접힘과 같은 박자여야 한다.
 function CollapseRow({
   label,
   count,
   open,
   onToggle,
   depth,
-  Glyph,
+  glyph,
 }: {
   label: string;
   count?: number;
   open: boolean;
   onToggle: () => void;
   depth: number;
-  Glyph?: typeof Layers;
+  glyph?: React.ReactNode;
 }) {
   return (
     <button
@@ -126,11 +153,14 @@ function CollapseRow({
       className={COLLAPSE_ROW}
       style={{ paddingLeft: 8 + depth * 14 }}
     >
+      {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
+          독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
+          (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
       <ChevronRight
-        className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
+        className={cn("size-3 shrink-0 transition-[rotate] duration-150", open && "rotate-90")}
         strokeWidth={2.2}
       />
-      {Glyph && <Glyph className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />}
+      {glyph}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && (
         <span className="shrink-0 pr-2 text-[11px] tabular-nums">{count}</span>
