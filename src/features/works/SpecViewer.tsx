@@ -34,7 +34,6 @@ function SpecViewer({ work, showSource, panelOpen, sidebarOpen }: SpecViewerProp
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
-
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const showToast = useCallback((message: string) => {
