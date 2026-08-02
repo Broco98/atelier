@@ -15,6 +15,7 @@ export interface ShellState {
   sidebarOpen: boolean;
   projectSlug: string | null;
   workSlug: string | null;
+  archiveSlug: string | null;
 }
 
 // 라우트 트리를 Node(DOM 없음)에서 import하는 테스트가 있으므로 모듈 최상위에서 터지지 않게 한다
@@ -24,6 +25,7 @@ export const shellStore = new Store<ShellState>({
   sidebarOpen: !hasLocalStorage || localStorage.getItem(SIDEBAR_OPEN_KEY) !== "0",
   projectSlug: null,
   workSlug: null,
+  archiveSlug: null,
 });
 
 export function toggleSidebar() {
@@ -44,6 +46,12 @@ export function selectProject(slug: string | null) {
 export function selectWork(slug: string | null) {
   shellStore.setState((state) =>
     state.workSlug === slug ? state : { ...state, workSlug: slug },
+  );
+}
+
+export function selectArchive(slug: string | null) {
+  shellStore.setState((state) =>
+    state.archiveSlug === slug ? state : { ...state, archiveSlug: slug },
   );
 }
 

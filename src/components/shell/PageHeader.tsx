@@ -6,9 +6,6 @@ interface PageHeaderProps {
   // 감싸는 span이 truncate(overflow:hidden)라 노드도 max-w-full truncate를 스스로 가져야
   // 오늘과 같은 말줄임이 나온다.
   leaf?: React.ReactNode;
-  // 말단에서 뿌리로 돌아가는 길. 주면 뿌리가 버튼이 되고, 안 주면 지금처럼 그냥 글자다 —
-  // 목록과 상세가 같은 영역을 쓰는 화면(Archive)에는 돌아갈 길이 브레드크럼밖에 없다.
-  onRoot?: () => void;
   // 브레드크럼 바로 뒤에 붙는 부가 요소 (상태 배지·칩 등)
   meta?: React.ReactNode;
   actions?: React.ReactNode;
@@ -17,7 +14,7 @@ interface PageHeaderProps {
 }
 
 // 페이지 소유 브레드크럼 바 — 메인 영역의 44px 타이틀바를 겸한다 (drag region).
-function PageHeader({ root, leaf, onRoot, meta, actions, inset = false }: PageHeaderProps) {
+function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProps) {
   return (
     <header
       data-tauri-drag-region
@@ -33,18 +30,7 @@ function PageHeader({ root, leaf, onRoot, meta, actions, inset = false }: PageHe
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-tertiary">
-        {/* 버튼일 때는 드래그 영역이 아니다 — 창을 끌려다 목록으로 튀면 안 된다 */}
-        {onRoot ? (
-          <button
-            type="button"
-            onClick={onRoot}
-            className="-ml-1.5 shrink-0 rounded-[7px] px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground"
-          >
-            {root}
-          </button>
-        ) : (
-          <span data-tauri-drag-region className="shrink-0">{root}</span>
-        )}
+        <span data-tauri-drag-region className="shrink-0">{root}</span>
         {leaf && (
           <>
             <span className="text-border-strong">/</span>

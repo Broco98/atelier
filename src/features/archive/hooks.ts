@@ -32,18 +32,19 @@ export function useArchive() {
   return useQuery(archiveQuery);
 }
 
-export function useArchivedDocs(slug: string) {
+export function useArchivedDocs(slug: string | null) {
   return useQuery({
     queryKey: [...ARCHIVE_KEY, "docs", slug],
-    queryFn: () => archiveApi.docs(slug),
+    queryFn: () => archiveApi.docs(slug!),
+    enabled: slug !== null,
   });
 }
 
-export function useArchivedFile(slug: string, path: string | null) {
+export function useArchivedFile(slug: string | null, path: string | null) {
   return useQuery({
     queryKey: [...ARCHIVE_KEY, "file", slug, path],
-    queryFn: () => archiveApi.read(slug, path!),
-    enabled: path !== null,
+    queryFn: () => archiveApi.read(slug!, path!),
+    enabled: slug !== null && path !== null,
     // 아카이브된 문서는 바뀌지 않는다 — 읽은 것을 다시 읽을 이유가 없다.
     // (works 쪽 useSpecFile이 깜빡임을 막으려 쓰는 placeholderData도 그래서 필요 없다.)
     staleTime: Infinity,

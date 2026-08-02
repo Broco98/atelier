@@ -44,19 +44,12 @@ function AppShell() {
           open={sidebarOpen}
           activeKey={activeKey}
           onSelect={(key) => {
-            if (key === "archive") {
-              // 아카이브의 무선택 주소는 **그 자체로 목록 화면**이라 상세에서 누르면 목록으로
-              // 돌아간다. 여기서 활성 항목이 같은지로 막으면(상세에서도 활성은 Archive다)
-              // 목록으로 가는 유일한 nav 경로가 죽는다. 막을 것은 완전히 같은 주소뿐이다.
-              if (pathname === "/archive") return;
-              void navigate({ to: "/archive" });
-              return;
-            }
-            // Projects는 무선택 주소로 한 번 갔다가 항목 주소로 정규화된다. 이미 보고 있는
-            // 화면이면 지금과 똑같은 위치가 히스토리에 한 칸 더 쌓일 뿐이다 —
+            // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
+            // 정규화되는 경로라, 그냥 두면 지금과 똑같은 위치가 히스토리에 한 칸 더 쌓인다 —
             // 뒤로가기를 눌러도 화면이 그대로인 죽은 항목이 된다.
-            if (activeKey === "projects") return;
-            void navigate({ to: "/projects" });
+            // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
+            if (key === activeKey) return;
+            void navigate({ to: key === "archive" ? "/archive" : "/projects" });
           }}
         />
         <Outlet />

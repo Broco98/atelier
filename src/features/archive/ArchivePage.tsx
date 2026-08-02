@@ -1,158 +1,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-// 빈 상태 아이콘은 nav 항목과 같은 것을 쓴다 — Works의 빈 상태가 Zap을 쓰는 것과 같은 규칙
-import { Archive, Check } from "lucide-react";
+import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
-import SpecTree from "@/features/works/SpecTree";
 import { PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { archiveRef } from "@/features/works/refs";
-import { formatCreated, StatusIcon, STATUS_META } from "@/features/works/status";
+import { formatCreated, STATUS_META } from "@/features/works/status";
+import ArchiveList from "./ArchiveList";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
-import type { ArchiveEntry } from "./types";
 
 interface ArchivePageProps {
   sidebarOpen: boolean;
   selectedSlug: string | null;
-  onSelect: (slug: string | null, replace?: boolean) => void;
+  onSelect: (slug: string | null) => void;
 }
 
-// 아카이브는 사이드바에 상주 목록을 두지 않는다 — 차가운 보관물이라 늘 자리를 차지할 이유가
-// 없고, 그것이 nav 항목으로 간 이유다(결정 11). 그래서 목록과 상세가 같은 본문 영역을
-// 번갈아 쓰고, 돌아가는 길은 브레드크럼의 뿌리다.
+const PANEL_OPEN_KEY = "archive-panel-open";
+
+// 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
+// (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
+// 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
 function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) {
-  const { data: entries = [], isPending, isFetching } = useArchive();
+  const { data: entries = [] } = useArchive();
   const selected = entries.find((entry) => entry.slug === selectedSlug) ?? null;
 
-  // 주소가 가리키는 아카이브가 없다(지워졌거나 잘못된 링크) — 목록으로 되돌려 주소와 화면을
-  // 맞춘다. 목록이 아직 오는 중이면 판단을 미룬다: 방금 치운 것을 "없다"고 오판하면
-  // 아카이빙 직후 상세를 열자마자 튕긴다.
-  // onSelect는 의존성에 넣지 않는다 — 호출부가 인라인으로 만들어 매 렌더 새 참조다.
-  useEffect(() => {
-    if (selectedSlug === null || selected || isPending || isFetching) return;
-    onSelect(null, true);
-  }, [selectedSlug, selected, isPending, isFetching]);
-
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
-        {selected ? (
-          <ArchiveDetail
-            key={selected.slug}
-            entry={selected}
-            sidebarOpen={sidebarOpen}
-            onBack={() => onSelect(null)}
-          />
-        ) : (
-          <ArchiveList
-            entries={entries}
-            // 목록이 아직 오는 중인 것을 "하나도 없다"로 읽으면 매 진입마다 빈 상태가 스친다
-            pending={isPending}
-            sidebarOpen={sidebarOpen}
-            onOpen={onSelect}
-          />
-        )}
-      </main>
-    </div>
-  );
-}
-
-function ArchiveList({
-  entries,
-  pending,
-  sidebarOpen,
-  onOpen,
-}: {
-  entries: ArchiveEntry[];
-  pending: boolean;
-  sidebarOpen: boolean;
-  onOpen: (slug: string) => void;
-}) {
-  return (
-    <>
-      <PageHeader
-        root="Archive"
-        inset={!sidebarOpen}
-        meta={
-          entries.length > 0 && (
-            <span className="ml-1.5 shrink-0 text-[12.5px] text-tertiary">{entries.length}</span>
-          )
-        }
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-        {entries.length === 0 ? (
-          <div className="flex h-full items-center justify-center p-10">
-            {!pending && (
-              <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Archive className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  아직 치운 작업이 없어요
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.
-                </span>
-              </div>
-            )}
-          </div>
-        ) : (
-          // 문서 열(bodyColumn)처럼 가운데 정렬하지 않는다. 이 화면에는 폭을 먹는 우측
-          // 패널이 없어서, 가운데로 몰면 왼쪽에 빈 벌판이 생기고 목록이 머리말에서
-          // 떨어져 나온다. 목록은 자기 머리말에 맞춘다 — 행 안쪽 여백(px-3)까지 더해
-          // 제목 첫 글자가 브레드크럼과 같은 x에 선다.
-          <div className="flex w-full max-w-[820px] flex-col gap-px px-1 py-2">
-            {entries.map((entry) => (
-              <button
-                key={entry.slug}
-                type="button"
-                onClick={() => onOpen(entry.slug)}
-                className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-left transition-colors hover:bg-state-1"
-              >
-                {/* 치운 시점의 상태를 그대로 보존한다 — 아카이브가 done을 뜻하지는 않는다 */}
-                <StatusIcon status={entry.status} />
-                <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
-                  {entry.title}
-                </span>
-                <span className="flex shrink-0 gap-1.5">
-                  {entry.projects.map((project) => (
-                    <span
-                      key={project}
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[11.5px] text-muted-foreground"
-                    >
-                      {project}
-                    </span>
-                  ))}
-                </span>
-                {/* 손으로 옮겨 둔 폴더에는 일시가 없다 — 없으면 자리를 비운다 */}
-                <span className="w-[62px] shrink-0 text-right text-[12px] text-tertiary">
-                  {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function ArchiveDetail({
-  entry,
-  sidebarOpen,
-  onBack,
-}: {
-  entry: ArchiveEntry;
-  sidebarOpen: boolean;
-  onBack: () => void;
-}) {
-  const { data: docs = [] } = useArchivedDocs(entry.slug);
-  const [selected, setSelected] = useState<string | null>(null);
+  const { data: docs = [] } = useArchivedDocs(selected?.slug ?? null);
+  const [doc, setDoc] = useState<string | null>(null);
   // 목록의 첫 항목이 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
-  const current = selected && docs.includes(selected) ? selected : (docs[0] ?? null);
-  const { data: content } = useArchivedFile(entry.slug, current);
+  const current = doc && docs.includes(doc) ? doc : (docs[0] ?? null);
+  const { data: content } = useArchivedFile(selected?.slug ?? null, current);
+  // 다른 아카이브로 옮기면 문서 선택을 놓는다 — 이름이 같은 문서가 양쪽에 있으면
+  // 새로 연 아카이브에서 기록 대신 그 문서가 열려, 처음 보이는 것이 아카이브마다 달라진다
+  useEffect(() => setDoc(null), [selectedSlug]);
+
   const [showSource, setShowSource] = useState(false);
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
-  const meta = STATUS_META[entry.status];
+
+  const [panelOpen, setPanelOpen] = useState(
+    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
+  );
+  useEffect(() => {
+    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
+  }, [panelOpen]);
+
+  // ⌘Enter — "본문을 넓히는 토글". 이 화면의 유일한 접이식이 목록 패널이라 그 자리를 받는다
+  // (Projects와 같은 규칙). 입력 중에는 무시.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )
+        return;
+      e.preventDefault();
+      setPanelOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -165,98 +72,138 @@ function ArchiveDetail({
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
   // 참조가 안정적이어야 토스트 표시/해제 리렌더가 마크다운 트리를 리마운트하지 않는다
+  const slug = selected?.slug;
   const copyBlockRef = useCallback(
     (start: number, end: number) => {
-      if (!current) return;
-      copyText(archiveRef(entry.slug, current, start, end));
+      if (!slug || !current) return;
+      copyText(archiveRef(slug, current, start, end));
     },
-    [entry.slug, current, copyText],
+    [slug, current, copyText],
   );
 
+  const meta = selected && STATUS_META[selected.status];
+
   return (
-    <>
-      <PageHeader
-        root="Archive"
-        onRoot={onBack}
-        leaf={entry.title}
-        inset={!sidebarOpen}
-        meta={
-          <span className="ml-1.5 flex shrink-0 items-center gap-2">
-            <span
-              className={cn(
-                "flex h-[22px] items-center rounded-[7px] px-2 text-[12px] font-medium",
-                meta.badgeClass,
-              )}
-            >
-              {meta.label}
-            </span>
-            {entry.archivedAt && (
-              <span className="text-[12px] text-tertiary">
-                {formatCreated(entry.archivedAt)}에 치움
-              </span>
-            )}
-          </span>
-        }
-        actions={
-          <button
-            type="button"
-            onClick={() => setShowSource((v) => !v)}
-            className={cn(
-              "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
-              showSource ? "toggle-on" : "text-tertiary hover:bg-state-2 hover:text-foreground",
-            )}
-          >
-            소스
-          </button>
-        }
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <ArchiveList
+        entries={entries}
+        selectedSlug={selected?.slug ?? null}
+        onSelect={onSelect}
+        docs={docs}
+        currentDoc={current}
+        onSelectDoc={setDoc}
+        onCopyDoc={(path) => slug && copyText(archiveRef(slug, path))}
+        sidebarOpen={sidebarOpen}
+        open={panelOpen}
       />
-      <div className="flex min-h-0 flex-1">
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        <PageHeader
+          root="Archive"
+          leaf={selected?.title}
+          inset={!sidebarOpen && !panelOpen}
+          meta={
+            selected &&
+            meta && (
+              <span className="ml-1.5 flex shrink-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "flex h-[22px] items-center rounded-[7px] px-2 text-[12px] font-medium",
+                    meta.badgeClass,
+                  )}
+                >
+                  {meta.label}
+                </span>
+                {selected.archivedAt && (
+                  <span className="text-[12px] text-tertiary">
+                    {formatCreated(selected.archivedAt)}에 치움
+                  </span>
+                )}
+                <span className="flex gap-1.5">
+                  {selected.projects.map((project) => (
+                    <span
+                      key={project}
+                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground"
+                    >
+                      {project}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            )
+          }
+          actions={
+            <>
+              {selected && (
+                <button
+                  type="button"
+                  onClick={() => setShowSource((v) => !v)}
+                  className={cn(
+                    "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
+                    showSource
+                      ? "toggle-on"
+                      : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                  )}
+                >
+                  소스
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setPanelOpen((open) => !open)}
+                aria-label="목록 패널 토글"
+                aria-expanded={panelOpen}
+                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
+                className="icon-button text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
+              >
+                {panelOpen ? (
+                  <Maximize2 className="size-4" strokeWidth={1.7} />
+                ) : (
+                  <Minimize2 className="size-4" strokeWidth={1.7} />
+                )}
+              </button>
+            </>
+          }
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+          {!selected ? (
+            <div className="flex h-full items-center justify-center p-10">
+              <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
+                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+                  <Archive className="size-5" strokeWidth={1.6} />
+                </div>
+                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
+                  아직 치운 작업이 없어요
+                </span>
+                <span className="text-[14px] leading-[1.65] text-tertiary">
+                  끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.
+                </span>
+              </div>
+            </div>
+          ) : (
             <div className="flex min-h-full min-w-0 flex-col">
-              {docs.length === 0 ? (
+              {current === null ? (
                 <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
                   남은 문서가 없어요
                 </div>
               ) : showSource || !isMarkdown ? (
                 <SourceView content={content ?? ""} />
               ) : (
-                <PrettyView
-                  file={current ?? ""}
-                  content={content ?? ""}
-                  onCopyBlock={copyBlockRef}
-                />
+                <PrettyView file={current} content={content ?? ""} onCopyBlock={copyBlockRef} />
               )}
-            </div>
-          </div>
-          {toast && (
-            <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-              <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-              {toast}
             </div>
           )}
         </div>
 
-        {/* 문서 목록. 작업 패널(WorkPanel)을 쓰지 않는다 — 그쪽은 워크트리와 base 브랜치를
-            보여주는데 아카이브에는 워크트리가 없어, 빈 Git 요약을 세우는 꼴이 된다.
-            아카이브에서 남은 좌표는 기록 문서 안에 있다. */}
-        <aside className="flex w-[264px] shrink-0 flex-col p-4 pl-0">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
-            <div className="flex items-center px-4 pb-0.5 pt-3">
-              <span className="text-[13.5px] font-semibold">문서</span>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
-              <SpecTree
-                files={docs}
-                current={current}
-                onSelect={setSelected}
-                onCopy={(path) => copyText(archiveRef(entry.slug, path))}
-              />
-            </div>
+        {toast && (
+          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
+            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
+            {toast}
           </div>
-        </aside>
-      </div>
-    </>
+        )}
+      </main>
+    </div>
   );
 }
 
