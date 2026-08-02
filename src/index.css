@@ -227,9 +227,16 @@
    보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
    hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
    선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
-   충돌하지 않도록 분기 안에만 둔다). */
+   충돌하지 않도록 분기 안에만 둔다).
+
+   글자색도 여기서 정한다 — toggle-on이 이미 그렇게 하고 있어서, 형제 유틸리티 둘이 같은
+   질문에 다르게 답하고 있었다. 호출부가 손으로 text-foreground를 붙이던 세 자리
+   (사이드바 메뉴·사이드바 작업 목록·spec 트리)가 짧아진다.
+   자식이 자기 색을 가진 자리는 덮이지 않는다 — done 작업 제목의 text-tertiary처럼
+   직접 선언한 색은 부모에서 내려오는 상속을 항상 이긴다. */
 @utility selected-row {
   background: var(--state-2);
+  color: var(--foreground);
   &:hover {
     background: var(--state-3);
     }

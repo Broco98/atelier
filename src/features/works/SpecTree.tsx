@@ -165,7 +165,7 @@ function TreeRows({
                 className={cn(
                   "group flex h-7 items-center gap-1.5 rounded-[8px] pr-1 text-[12.5px] transition-colors",
                   node.path === current
-                    ? "selected-row font-medium text-foreground"
+                    ? "selected-row font-medium"
                     : "text-muted-foreground hover:bg-state-1",
                 )}
               >
