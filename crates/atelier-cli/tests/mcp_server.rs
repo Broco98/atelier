@@ -1052,6 +1052,9 @@ fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {
     // 그대로 남아 다시 거부당하고, 읽는 쪽은 왜 막혔는지 알 수 없다. 사용자가 실제로 겪었다.
     assert!(text.contains("untracked"), "추적 안 된 파일이라는 사실이 안 나온다: {text}");
     assert!(text.contains("stash -u"), "stash만 시키면 추적 안 된 파일이 남는다: {text}");
+    // 삭제도 아카이빙과 같은 수준으로 말한다 — 경로만 주면 에이전트가 무엇을 치워야
+    // 하는지 모른 채 워크트리를 뒤져야 한다. 삭제 쪽이 더 파괴적이다.
+    assert!(text.contains("wip.txt"), "무엇 때문에 막혔는지 안 알려준다: {text}");
     assert!(!text.contains("--force"), "dead CLI flag leaked into the tool surface: {text}");
     assert!(home.path().join("works/카트").exists(), "refused remove deleted data");
 

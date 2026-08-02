@@ -481,24 +481,33 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
     let work = read_work(works_root, slug)?;
     let dir = works_root.join(&work.slug);
 
-    let existing: Vec<PathBuf> = work
+    let existing: Vec<(&String, PathBuf)> = work
         .projects
         .iter()
-        .map(|p| worktrees_dir(&dir).join(p))
-        .filter(|t| t.is_dir())
+        .map(|p| (p, worktrees_dir(&dir).join(p)))
+        .filter(|(_, t)| t.is_dir())
         .collect();
 
     if !force {
-        let dirty: Vec<String> = existing
-            .iter()
-            .filter(|t| git::is_dirty(t))
-            .map(|t| collapse_home(t))
-            .collect();
+        // 거부 사유는 `archive_work`와 **같은 수준으로** 적는다(같은 `dirty_report`).
+        // 그전에는 워크트리 경로만 줘서, 무엇을 커밋해야 풀리는지 알려면 직접 가서
+        // `git status`를 쳐야 했다. 삭제는 스펙 문서까지 지우므로 아카이빙보다 더
+        // 잃는데 말은 덜 해 주고 있었다.
+        let mut dirty = Vec::new();
+        for (project, tree) in &existing {
+            match git::dirty_files(tree) {
+                Some(files) if files.is_empty() => {}
+                Some(files) => dirty.push(dirty_report(project, &files)),
+                // 읽을 수 없으면 보수적으로 거부한다 — `is_dirty`가 하던 그대로다.
+                // 다만 "커밋 안 된 변경"이라 하지 않고 못 읽었다고 말한다.
+                None => dirty.push(format!("{project} ({}): not a readable git worktree", collapse_home(tree))),
+            }
+        }
         if !dirty.is_empty() {
-            return Err(Error::DirtyWorktrees(dirty.join(", ")));
+            return Err(Error::DirtyWorktrees(dirty.join("; ")));
         }
     }
-    for worktree in &existing {
+    for (_, worktree) in &existing {
         git::worktree_remove(worktree, force).map_err(Error::Git)?;
     }
     std::fs::remove_dir_all(&dir)?;
@@ -1317,6 +1326,14 @@ mod tests {
         assert!(matches!(result, Err(Error::DirtyWorktrees(_))), "dirty worktree must be refused");
         assert!(works.join("카트").exists(), "refused remove must not delete anything");
 
+        // 아카이브와 **같은 수준으로** 말한다. 삭제가 더 파괴적인데(스펙 문서까지 지운다)
+        // 워크트리 경로만 주면 무엇을 커밋해야 풀리는지 알 수 없어, 사용자가 직접 가서
+        // `git status`를 쳐야 한다. 어느 쪽인지도 밝힌다 — `git stash`는 `-u` 없이 못 치운다.
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("wip.txt"), "파일이 아니라 경로만 알려준다: {message}");
+        assert!(message.contains("be"), "어느 프로젝트인지 안 알려준다: {message}");
+        assert!(message.contains("untracked:"), "추적 안 됨을 안 밝힌다: {message}");
+
         remove_work(&works, "카트", true).unwrap();
         assert!(!works.join("카트").exists());
         // 브랜치는 유지된다 (복구 가능)
@@ -1773,8 +1790,8 @@ mod tests {
         );
     }
 
-    /// 기존 삭제 기능의 오류는 워크트리 **경로**만 준다 — 사용자가 직접 가서 확인해야 한다.
-    /// 아카이브가 거부할 때는 **무엇 때문인지**를 말한다.
+    /// 거부할 때는 **무엇 때문인지**를 말한다 — 워크트리 경로만 주면 사용자가 직접 가서
+    /// `git status`를 쳐야 한다. 삭제도 같은 `dirty_report`를 쓴다(remove 쪽 테스트 참조).
     ///
     /// 그리고 추적 안 된 것과 커밋 안 된 것을 **가른다.** 둘을 뭉쳐 "uncommitted"라고만 하면
     /// 읽는 쪽이 `git stash`를 고르는데 그것은 `-u` 없이는 추적 안 된 파일을 안 치운다 —
