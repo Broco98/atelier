@@ -2,7 +2,7 @@ import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef, worktreeDirRef, workDirRef } from "./refs";
-import SpecTree from "./SpecTree";
+import SpecSection from "./SpecSection";
 import type { WorkView } from "./types";
 
 interface WorkPanelProps {
@@ -99,22 +99,12 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, closing }: WorkPan
           ))}
         </div>
         <div className="mx-4 h-px bg-border" />
-        <div className="flex items-center px-4 pb-0.5 pt-2">
-          <span className="text-[13.5px] font-semibold">Spec</span>
-        </div>
-        {/* 세로 스크롤은 여기까지 — Git 요약과 Spec 머리글은 고정되어 항상 보인다 */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
-          {work.specFiles.length === 0 ? (
-            <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 spec 파일이 없어요</span>
-          ) : (
-            <SpecTree
-              files={work.specFiles}
-              current={currentFile}
-              onSelect={onSelectFile}
-              onCopy={(path) => onCopy(specRef(work.slug, path))}
-            />
-          )}
-        </div>
+        <SpecSection
+          files={work.specFiles}
+          current={currentFile}
+          onSelect={onSelectFile}
+          onCopy={(path) => onCopy(specRef(work.slug, path))}
+        />
       </div>
     </aside>
   );
