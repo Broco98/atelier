@@ -210,9 +210,16 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                   남은 문서가 없어요
                 </div>
               ) : showSource || !isMarkdown ? (
-                <SourceView content={content ?? ""} />
+                <SourceView content={content ?? ""} wide={!sidebarOpen && !panelOpen} />
               ) : (
-                <PrettyView file={current} content={content ?? ""} onCopyBlock={copyBlockRef} />
+                <PrettyView
+                  file={current}
+                  content={content ?? ""}
+                  onCopyBlock={copyBlockRef}
+                  // 이 화면의 접이식은 사이드바와 목록 패널이다 — 같은 문서를 어디서 열든
+                  // 같은 규칙으로 넓어져야 하므로 헤더 인셋이 쓰는 조건을 그대로 읽는다
+                  wide={!sidebarOpen && !panelOpen}
+                />
               )}
             </div>
           )}

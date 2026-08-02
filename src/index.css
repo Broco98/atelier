@@ -273,32 +273,11 @@ body.resizing * {
     cursor: col-resize !important;
 }
 
-/* 작업 패널 등장·퇴장 — 페이드 + 살짝 커지며 제자리로(뿅).
-   scale은 1을 넘지 않는다. 1보다 큰 값으로 오버슈트하거나 translateX를 쓰면 패널이 제 상자 밖으로
-   나가는데, 패널이 본문 스크롤 영역의 형제가 된 뒤로 그 넘침을 문서(viewport)가 받아
-   애니메이션이 도는 동안 가로 스크롤이 깜빡인다. 0.96→1은 항상 상자 안이라 그 경로가 없다.
-   퇴장은 SpecViewer가 언마운트를 이 길이만큼 늦춰 재생시킨다. */
-@keyframes panel-fade {
-    0% {
-        opacity: 0;
-        transform: scale(0.96);
-    }
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-@keyframes panel-fade-out {
-    0% {
-        opacity: 1;
-        transform: scale(1);
-    }
-    100% {
-        opacity: 0;
-        transform: scale(0.96);
-    }
-}
+/* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
+   패널이 좌우 다른 규칙으로 움직이지 않도록, 좌측 사이드바·목록 패널과 같은 폭 접기로
+   바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**
+   패널이 본문 스크롤 영역의 형제라 제 상자 밖 넘침을 문서(viewport)가 받고,
+   애니메이션이 도는 동안 가로 스크롤이 깜빡인다. 폭 접기에는 그 경로가 없다. */
 
 /* 스크롤바 표현 정책 — 평소 투명, 스크롤하는 동안만 노출되고 멎으면 사라진다.
    macOS 오버레이 스크롤바는 시스템 설정이 "항상"이면 상시 노출 클래식으로 바뀌고 CSS로 되돌릴 수 없다.

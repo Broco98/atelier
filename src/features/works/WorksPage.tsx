@@ -152,6 +152,7 @@ function WorksPage({ sidebarOpen, selectedSlug, onOpenProject }: WorksPageProps)
             work={selected}
             showSource={showSource}
             panelOpen={workPanelOpen}
+            sidebarOpen={sidebarOpen}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center p-10">

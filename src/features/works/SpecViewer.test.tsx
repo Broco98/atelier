@@ -57,3 +57,24 @@ describe("PrettyView 참조 복사 버튼", () => {
     expect(html.slice(html.indexOf("data-footnotes")).match(BUTTON)).toBeNull();
   });
 });
+
+// 본문 열 규격은 값을 정하는 지점이 하나다. 넓어지는 쪽만 보면 좁은 쪽이 조용히 따라
+// 넓어져도 통과하므로 둘을 함께 본다. px-12(48px)는 어느 쪽에서도 바뀌지 않는다 —
+// 좌측 48px은 여백이 아니라 거터의 자리이고, 소스 보기의 줄번호 열이 그 자리를 채운다.
+describe("PrettyView 본문 열", () => {
+  it("평소에는 900px이다", () => {
+    const html = renderToStaticMarkup(
+      <PrettyView file="overview.md" content="문단" onCopyBlock={() => {}} />,
+    );
+    expect(html).toContain("max-w-[900px]");
+    expect(html).toContain("px-12");
+  });
+
+  it("둘 다 접었을 때만 1200px로 넓어진다", () => {
+    const html = renderToStaticMarkup(
+      <PrettyView file="overview.md" content="문단" onCopyBlock={() => {}} wide />,
+    );
+    expect(html).toContain("max-w-[1200px]");
+    expect(html).toContain("px-12");
+  });
+});
