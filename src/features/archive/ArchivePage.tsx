@@ -89,6 +89,15 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
     [slug, current, copyText],
   );
 
+  // 문서 간 링크가 가는 곳. 같은 아카이브 안에서만 움직인다 — 아카이브를 가로지르는
+  // 링크는 상대경로로 표현되지 않으므로 여기 닿지 않는다.
+  const navigateDoc = useCallback(
+    (path: string) => {
+      if (slug) setDoc({ slug, path });
+    },
+    [slug],
+  );
+
   const meta = selected && STATUS_META[selected.status];
 
   return (
@@ -212,7 +221,13 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
               ) : showSource || !isMarkdown ? (
                 <SourceView content={content ?? ""} />
               ) : (
-                <PrettyView file={current} content={content ?? ""} onCopyBlock={copyBlockRef} />
+                <PrettyView
+                  file={current}
+                  content={content ?? ""}
+                  onCopyBlock={copyBlockRef}
+                  files={docs}
+                  onNavigate={navigateDoc}
+                />
               )}
             </div>
           )}

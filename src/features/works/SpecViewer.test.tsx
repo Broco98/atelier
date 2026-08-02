@@ -5,9 +5,15 @@ import { PrettyView } from "./SpecViewer";
 // 참조 복사 버튼은 최상위 블록 하나당 정확히 하나이고, 그 블록 바깥에 선다. 이 불변조건이
 // 뚫리면 버튼이 겹쳐 보인다 — 인용은 자기 자신과 안쪽 첫 문단의 시작 라인이 같아서,
 // 라인만으로 최상위를 가리면 둘 다 통과한다. 판정이 라인으로 되돌아가면 여기서 걸린다.
-function render(markdown: string): string {
+function render(markdown: string, files: string[] = []): string {
   return renderToStaticMarkup(
-    <PrettyView file="overview.md" content={markdown} onCopyBlock={() => {}} />,
+    <PrettyView
+      file="overview.md"
+      content={markdown}
+      onCopyBlock={() => {}}
+      files={files}
+      onNavigate={() => {}}
+    />,
   );
 }
 
@@ -55,5 +61,28 @@ describe("PrettyView 참조 복사 버튼", () => {
     const html = render("본문에 각주가 있다[^1]\n\n[^1]: 각주 정의 본문");
     expect(html.match(BUTTON)).toHaveLength(1);
     expect(html.slice(html.indexOf("data-footnotes")).match(BUTTON)).toBeNull();
+  });
+});
+
+describe("PrettyView 링크", () => {
+  // 이 앱에서 target="_blank"는 아무 데도 가지 않는다(Tauri 웹뷰). 그래서 링크가 죽어 있었다.
+  // 되돌아오면 증상도 그대로 돌아오므로 그물을 여기 건다.
+  it("target=_blank로 렌더하지 않는다", () => {
+    expect(render("[깃허브](https://github.com)")).not.toContain("_blank");
+  });
+
+  // "<a"로 세지 않는다 — 본문을 감싸는 <article>이 걸린다
+  const anchors = (html: string) => html.match(/<a[\s>]/g)?.length ?? 0;
+
+  it("목록에 없는 문서 링크는 a가 아니라 span이다 — 눌러도 아무 일이 없어야 한다", () => {
+    const html = render("[없는 것](./없는문서.md)", ["overview.md"]);
+    expect(anchors(html)).toBe(0);
+    expect(html).toContain("문서를 찾을 수 없어요");
+  });
+
+  it("목록에 있는 문서 링크는 살아 있는 a다", () => {
+    const html = render("[다른 문서](./research/prompt.md)", ["research/prompt.md"]);
+    expect(anchors(html)).toBe(1);
+    expect(html).not.toContain("문서를 찾을 수 없어요");
   });
 });

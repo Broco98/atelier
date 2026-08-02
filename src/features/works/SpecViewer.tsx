@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, Copy, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpecFile } from "./hooks";
+import { resolveHref } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
@@ -93,7 +95,13 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
             ) : showSource || !isMarkdown ? (
               <SourceView content={content ?? ""} />
             ) : (
-              <PrettyView file={current ?? ""} content={content ?? ""} onCopyBlock={copyRef} />
+              <PrettyView
+                file={current ?? ""}
+                content={content ?? ""}
+                onCopyBlock={copyRef}
+                files={files}
+                onNavigate={setSelected}
+              />
             )}
           </div>
         </div>
@@ -172,10 +180,16 @@ const listIndent = "pl-[22px]";
 const checkboxGutter = "-ml-[22px] mr-[5px]";
 
 interface PrettyViewProps {
-  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데만 쓴다
+  // 지금 보고 있는 파일 — 표의 열 폭이 문서를 넘어 살아남지 않게 하는 데 쓰고,
+  // 문서 안 상대경로 링크를 푸는 기준이기도 하다
   file: string;
   content: string;
   onCopyBlock: (start: number, end: number) => void;
+  // 문서 간 링크의 존재 판정이 서는 자리 — 이 목록에 없는 경로는 missing이다.
+  // 파일 시스템을 묻지 않는 이유는 이 목록이 감시자를 통해 이미 최신이기 때문이다.
+  files: readonly string[];
+  // 문서 링크를 눌렀을 때 갈 곳. 파일 선택은 뷰어가 소유하므로 트리의 현재 파일 표시도 따라온다
+  onNavigate: (path: string) => void;
 }
 
 // 최상위 블록 래퍼 — 본문은 어떤 포인터 제스처도 가로채지 않는다.
@@ -220,11 +234,23 @@ function BlockWrapper({
 const blockKey = (line: number, column: number) => `${line}:${column}`;
 
 // memo: 토스트 등 뷰어 상태 변화에 content·onCopyBlock이 그대로면 재파싱·리마운트를 건너뛴다
-export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock }: PrettyViewProps) {
+export const PrettyView = memo(function PrettyView({
+  file,
+  content,
+  onCopyBlock,
+  files,
+  onNavigate,
+}: PrettyViewProps) {
   // 지금 파일을 ref로 들고 간다 — components를 file에 의존시키면 렌더러 함수의 정체가
   // 파일마다 바뀌어, 표 하나 되돌리자고 마크다운 트리를 통째로 새로 마운트하게 된다.
   const fileRef = useRef(file);
   fileRef.current = file;
+
+  // 링크 해석에 필요한 나머지도 같은 이유로 ref다. 파일 목록은 감시자가 폴더를 훑을
+  // 때마다 새 배열로 도착하므로, components가 그것에 의존하면 스펙을 저장할 때마다
+  // 본문이 통째로 다시 마운트된다.
+  const linkRef = useRef({ files, onNavigate });
+  linkRef.current = { files, onNavigate };
 
   // 최상위 블록의 시작 위치 집합 — 중첩 블록(인용 안 문단 등)은 래핑하지 않기 위해.
   // 라인만으로는 갈리지 않는다: "> 문단"은 인용과 그 안 문단의 시작 라인이 같아 둘 다
@@ -313,11 +339,35 @@ export const PrettyView = memo(function PrettyView({ file, content, onCopyBlock 
       td: ({ children }) => (
         <td className="border-b px-3 py-2 text-muted-foreground">{children}</td>
       ),
-      a: ({ children, href }) => (
-        <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-          {children}
-        </a>
-      ),
+      // 링크는 두 가지만 산다 — 문서 간 이동과 외부 URL (결정 3).
+      // target="_blank"는 **Tauri 웹뷰에서 아무 일도 하지 않는다.** 그래서 여기가 직접 연다.
+      // none(앵커·기타 스킴)도 기본 동작을 막는다 — 주소가 바뀌면 라우터가 반응한다.
+      a: ({ children, href }) => {
+        const target = resolveHref(fileRef.current, href, linkRef.current.files);
+        if (target.kind === "missing") {
+          return (
+            <span
+              title={`문서를 찾을 수 없어요 — ${target.path}`}
+              className="text-tertiary underline decoration-dotted underline-offset-2"
+            >
+              {children}
+            </span>
+          );
+        }
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              if (target.kind === "doc") linkRef.current.onNavigate(target.path);
+              else if (target.kind === "external") void openUrl(target.url);
+            }}
+            className="text-primary hover:underline"
+          >
+            {children}
+          </a>
+        );
+      },
       // 체크박스 목록 — remark-gfm은 체크박스가 있는 항목의 li에만 task-list-item을 붙인다
       // (ul·ol 둘 다). 그 항목만 불릿을 지우므로 한 목록에 섞여 있어도 나머지는 그대로다.
       li: ({ node, children, className, ...props }) => (
