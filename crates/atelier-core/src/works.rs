@@ -2074,6 +2074,29 @@ mod tests {
         assert!(doc.contains("base: 알 수 없다"), "{doc}");
     }
 
+    /// base 판정은 **원격을 먼저 본다.** 로컬 base ref는 뒤처져 있기 일쑤인데(이 저장소에서도
+    /// 실제로 그랬다), 뒤처진 ref로 보면 원격에서 이미 머지된 work가 "반영 안 됨"으로
+    /// 기록된다. 아카이브에는 되돌리기가 없으니 그 오판이 영구히 굳는다.
+    #[test]
+    fn record_reads_the_base_from_the_remote_when_the_local_ref_lags() {
+        let (tmp, works, projects) = setup();
+        let report = start_work(&works, &archive_root(&works), &projects, "뒤처짐", None, &slugs(&["fe"]), Some("feat/lag")).unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+        commit(&worktree, "l.txt", "l\n", "머지될 커밋");
+
+        // 저장소에서 브랜치를 main으로 머지한 뒤, 그 결과를 **원격에만** 남기고 로컬은 되돌린다
+        let repo = tmp.path().join("fe");
+        run_git(&repo, &["merge", "--no-ff", "-m", "Merge branch 'feat/lag'", "feat/lag"]);
+        let merged = run_git(&repo, &["rev-parse", "main"]);
+        run_git(&repo, &["update-ref", "refs/remotes/origin/main", &merged]);
+        run_git(&repo, &["reset", "--hard", &format!("{merged}^1")]);
+
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains("- base 반영: 예"), "뒤처진 로컬 ref로 판정했다: {doc}");
+        assert!(doc.contains("머지될 커밋"), "커밋 범위를 못 특정했다: {doc}");
+    }
+
     /// 등록이 사라져도 **저장소 자신이 origin/HEAD를 알면** base는 거기서 온다.
     ///
     /// 위 테스트만으로는 이 갈래가 한 번도 실행되지 않는다 — `init_repo`가 만드는 저장소에는
