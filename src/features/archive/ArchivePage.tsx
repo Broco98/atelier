@@ -24,13 +24,15 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
   const selected = entries.find((entry) => entry.slug === selectedSlug) ?? null;
 
   const { data: docs = [] } = useArchivedDocs(selected?.slug ?? null);
-  const [doc, setDoc] = useState<string | null>(null);
+  // 고른 문서는 **어느 아카이브의 것인지와 함께** 들고 있는다. 경로만 들면 다른 아카이브로
+  // 옮겼을 때 이름이 같은 문서(record.md·overview.md)가 그대로 열려, 처음 보이는 것이
+  // 아카이브마다 달라진다. 짝이 안 맞으면 아래에서 자동으로 기본값으로 떨어지므로
+  // 선택을 지우는 효과가 따로 필요 없다.
+  const [doc, setDoc] = useState<{ slug: string; path: string } | null>(null);
   // 목록의 첫 항목이 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
-  const current = doc && docs.includes(doc) ? doc : (docs[0] ?? null);
+  const current =
+    doc && doc.slug === selectedSlug && docs.includes(doc.path) ? doc.path : (docs[0] ?? null);
   const { data: content } = useArchivedFile(selected?.slug ?? null, current);
-  // 다른 아카이브로 옮기면 문서 선택을 놓는다 — 이름이 같은 문서가 양쪽에 있으면
-  // 새로 연 아카이브에서 기록 대신 그 문서가 열려, 처음 보이는 것이 아카이브마다 달라진다
-  useEffect(() => setDoc(null), [selectedSlug]);
 
   const [showSource, setShowSource] = useState(false);
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
@@ -88,11 +90,14 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
       <ArchiveList
         entries={entries}
         selectedSlug={selected?.slug ?? null}
-        onSelect={onSelect}
-        docs={docs}
         currentDoc={current}
-        onSelectDoc={setDoc}
-        onCopyDoc={(path) => slug && copyText(archiveRef(slug, path))}
+        // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
+        // 두 상태를 한 클릭에서 함께 옮겨야 주소가 바뀌는 프레임에 선택이 깜빡이지 않는다.
+        onSelectDoc={(docSlug, path) => {
+          setDoc({ slug: docSlug, path });
+          if (docSlug !== selectedSlug) onSelect(docSlug);
+        }}
+        onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
         sidebarOpen={sidebarOpen}
         open={panelOpen}
       />
@@ -173,11 +178,16 @@ function ArchivePage({ sidebarOpen, selectedSlug, onSelect }: ArchivePageProps) 
                 <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
                   <Archive className="size-5" strokeWidth={1.6} />
                 </div>
+                {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
+                    왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
+                    stale한 slug가 남았을 때 실제로 그렇게 된다. */}
                 <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  아직 치운 작업이 없어요
+                  {entries.length === 0 ? "아직 치운 작업이 없어요" : "그 아카이브를 찾을 수 없어요"}
                 </span>
                 <span className="text-[14px] leading-[1.65] text-tertiary">
-                  끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요.
+                  {entries.length === 0
+                    ? "끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요."
+                    : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
                 </span>
               </div>
             </div>
