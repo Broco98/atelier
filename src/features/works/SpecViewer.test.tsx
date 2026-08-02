@@ -91,10 +91,12 @@ describe("PrettyView 링크", () => {
 });
 
 describe("PrettyView 이미지", () => {
-  it("그릴 수 없는 이미지는 깨진 아이콘 대신 이름을 보여준다", () => {
-    const html = render("![패널 스크린샷](shot.png)");
+  // 자리표시가 보여주는 것은 **경로**다. 대체글이 있을 때 그것만 보여주면 정작 고쳐야 할
+  // 문자열이 화면에 없어, 이 자리표시가 존재하는 이유("경로를 고칠 수 있게")가 사라진다.
+  it("그릴 수 없는 이미지는 깨진 아이콘 대신 경로를 보여준다", () => {
+    const html = render("![패널 스크린샷](images/shot.png)");
     expect(html).not.toContain("<img");
-    expect(html).toContain("패널 스크린샷");
+    expect(html).toContain("images/shot.png");
   });
 
   it("http 이미지는 변환 없이 그대로 그린다", () => {
@@ -150,5 +152,14 @@ describe("PrettyView 콜아웃", () => {
   // 콜아웃도 최상위 블록이다 — 거터를 잃으면 참조를 복사할 수 없다
   it("콜아웃에도 참조 복사 버튼이 하나 붙는다", () => {
     expect(copyButtons("> [!NOTE] 제목\n> 본문")).toBe(1);
+  });
+
+  // 제목이 여러 노드로 쪼개지는 모양. 앞부분만 잘라내면 강조가 본문에 남아 제목과 겹친다 —
+  // 그럴 때는 첫 줄을 손대지 않고 제목도 종류 이름으로 되돌린다.
+  it("제목에 마크업이 섞이면 같은 말이 두 번 나오지 않는다", () => {
+    const html = render("> [!NOTE] 제목 **강조**\n> 본문이다");
+    expect(html.match(/강조/g)).toHaveLength(1);
+    expect(html).toContain("Note");
+    expect(html).toContain("본문이다");
   });
 });

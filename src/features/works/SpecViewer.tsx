@@ -12,7 +12,6 @@ import {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { homeDir } from "@tauri-apps/api/path";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
@@ -26,7 +25,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSpecFile } from "./hooks";
+import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
@@ -46,22 +45,6 @@ function defaultFile(files: string[]): string | null {
   return files[0] ?? null;
 }
 
-// 홈 경로는 앱이 도는 동안 바뀌지 않는다 — 한 번만 묻고 모듈에 들고 있는다.
-// 작업을 옮길 때마다 뷰어가 리마운트되므로(key={slug}) 캐시가 없으면 그때마다 IPC를 탄다.
-let homeDirOnce: Promise<string> | null = null;
-
-function useHomeDir(): string | null {
-  const [home, setHome] = useState<string | null>(null);
-  useEffect(() => {
-    homeDirOnce ??= homeDir();
-    let alive = true;
-    homeDirOnce.then((value) => alive && setHome(value)).catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return home;
-}
 
 function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const files = work.specFiles;
@@ -70,7 +53,7 @@ function SpecViewer({ work, showSource, panelOpen }: SpecViewerProps) {
   const current = selected && files.includes(selected) ? selected : defaultFile(files);
   const { data: content } = useSpecFile(work.slug, current);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
-  const home = useHomeDir();
+  const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
   // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
@@ -355,12 +338,14 @@ export const PrettyView = memo(function PrettyView({
       // 마커가 있을 때**만** 갈리는 것이 이 자리의 계약이다: 기존 스펙들이
       // `> **커버:** …` 같은 평범한 인용을 많이 쓰고 있어, 그것들이 색을 갖는 순간 회귀다.
       blockquote: ({ node, children, className: hastClass, ...props }: any) => {
-        const first = firstLineOf(node);
-        const callout = first ? calloutKind(first) : null;
+        const first = firstLineOf(node) ?? "";
+        const callout = calloutKind(first);
+        // 첫 줄은 머리글이 대신 말하므로 본문에서 걷어낸다. 걷어낼 수 없으면(null) 제목도
+        // 쓰지 않는다 — 제목만 취하고 본문을 그대로 두면 같은 말이 두 번 보인다.
+        const body = callout ? stripFirstLine(children, first.length) : null;
         const inner = callout ? (
-          // 첫 줄은 머리글이 대신 말하므로 본문에서 그만큼 걷어낸다
-          <Callout kind={callout.kind} title={callout.title} skip={first!.length}>
-            {children}
+          <Callout kind={callout.kind} title={body ? callout.title : null}>
+            {body ?? children}
           </Callout>
         ) : (
           <blockquote
@@ -448,12 +433,17 @@ export const PrettyView = memo(function PrettyView({
           typeof src === "string" ? src : undefined,
           linkRef.current.files,
         );
-        // 깨진 아이콘 대신 무엇이 없는지 말한다 — 스펙을 쓰는 쪽이 경로를 고칠 수 있게
+        // 깨진 아이콘 대신 무엇이 없는지 말한다 — 스펙을 쓰는 쪽이 경로를 고칠 수 있게.
+        // **보여주는 것은 경로다.** 대체글이 있을 때 그것만 보여주면 정작 고쳐야 할
+        // 문자열이 화면에 없어, 이 자리표시가 존재하는 이유가 사라진다.
         if (source.kind === "missing") {
           return (
-            <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle text-[12.5px] text-tertiary">
+            <span
+              title={alt || undefined}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"
+            >
               <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
-              {alt || (typeof src === "string" ? src : "이미지")}
+              {typeof src === "string" && src ? src : alt || "이미지"}
             </span>
           );
         }
@@ -536,6 +526,12 @@ export const PrettyView = memo(function PrettyView({
 // 형제로 보여야 하기 때문이다 — GitHub도 같은 자리에서 좌측 선과 제목색만 바꾼다.
 // 라벨은 마커와 같은 영문이다: 같은 파일을 GitHub·Obsidian에서 열어도 같게 보이는 것이
 // 이 다섯 종을 고른 이유였다 (결정 9).
+//
+// **색이 CSS 변수가 아닌 이유.** index.css의 스케일은 상태를 말하는 무채색 4단이라
+// 다섯 종의 뜻을 담을 자리가 없고, 여기서 다섯 쌍을 새로 올리면 그 자체가 시각 어휘를
+// 늘리는 일이다. 어휘를 정하는 것은 `ui-시각-통일` 계열 Work의 몫이므로, 그때까지는
+// status.tsx가 배지 색을 직접 적은 것과 같은 자리에 둔다. 다크 값을 함께 적어 두는 것도
+// 그 이유다 — index.css가 .dark 토큰을 이미 정의해 두었고, 여기만 따로 갈리면 안 된다.
 const CALLOUT_STYLE: Record<
   CalloutKind,
   { label: string; Glyph: typeof Info; line: string; tone: string }
@@ -570,13 +566,11 @@ const CALLOUT_STYLE: Record<
 function Callout({
   kind,
   title,
-  skip,
   children,
 }: {
   kind: CalloutKind;
+  // 없으면 종류 이름이 제목이다
   title: string | null;
-  // 첫 줄(마커 + 제목)의 길이 — 머리글이 대신 말하므로 본문에서 그만큼 걷어낸다
-  skip: number;
   children: React.ReactNode;
 }) {
   const { label, Glyph, line, tone } = CALLOUT_STYLE[kind];
@@ -586,7 +580,7 @@ function Callout({
         <Glyph className="size-4 shrink-0" strokeWidth={2} aria-hidden />
         {title ?? label}
       </div>
-      {stripFirstLine(children, skip)}
+      {children}
     </div>
   );
 }
@@ -597,16 +591,20 @@ function firstLineOf(node: any): string | null {
   return paragraph ? hastText(paragraph).split("\n")[0] : null;
 }
 
-// 마커가 있던 첫 줄을 본문에서 걷어낸다. 첫 문단의 첫 조각이 문자열일 때만 손대고,
-// 제목 자리에 마크업이 섞여 있으면(`> [!NOTE] **강조**`) 그대로 둔다 — 마커가 본문에
-// 남아 보이는 것이, 잘못 잘라 본문을 잃는 것보다 낫다.
-function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNode {
+// 마커가 있던 첫 줄을 본문에서 걷어낸다. **걷어내지 못하면 null이다** — 그때는 부르는
+// 쪽이 제목도 함께 포기해, 같은 말이 제목과 본문에 두 번 나오지 않게 한다.
+//
+// 걷어낼 수 있는 조건은 하나다: 첫 줄이 **한 조각의 문자열 안에 통째로** 들어 있을 것.
+// 제목에 마크업이 섞이면(`> [!NOTE] 제목 **강조**`) 첫 줄이 여러 노드로 쪼개지는데,
+// 길이는 납작하게 편 텍스트에서 재고 자르기는 첫 조각에만 하므로 앞부분만 잘려
+// **강조가 본문에 남는다.** 그 모양을 막는 것이 길이 비교다.
+function stripFirstLine(children: React.ReactNode, skip: number): React.ReactNode | null {
   const items = Children.toArray(children);
   const index = items.findIndex(isValidElement);
-  if (index < 0) return children;
+  if (index < 0) return null;
   const paragraph = items[index] as React.ReactElement<{ children?: React.ReactNode }>;
   const inner = Children.toArray(paragraph.props.children);
-  if (typeof inner[0] !== "string") return children;
+  if (typeof inner[0] !== "string" || inner[0].length < skip) return null;
   const rest = inner[0].slice(skip).replace(/^\n/, "");
   const next = rest ? [rest, ...inner.slice(1)] : inner.slice(1);
   // 마커 한 줄뿐인 문단은 통째로 뺀다 — 빈 문단이 남으면 머리글 아래가 벌어진다
