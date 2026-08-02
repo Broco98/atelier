@@ -19,7 +19,7 @@ function HistoryButton({ label, disabled, onClick, children }: HistoryButtonProp
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="icon-button text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="icon-button-quiet text-muted-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
