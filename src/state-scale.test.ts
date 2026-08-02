@@ -22,16 +22,24 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+function offenders(pattern: RegExp): string[] {
+  return sourceFiles(join(root, "src")).flatMap((file) => {
+    const source = readFileSync(file, "utf8");
+    return [...source.matchAll(pattern)].map((m) => `${file.slice(root.length)}: ${m[0].trim()}`);
+  });
+}
+
 describe("상태 농도 스케일", () => {
   it("상태 배경으로 --accent를 쓰지 않는다", () => {
-    const offenders = sourceFiles(join(root, "src")).flatMap((file) => {
-      const source = readFileSync(file, "utf8");
-      return [...source.matchAll(/.*\bhover:bg-accent\b.*/g)].map(
-        (m) => `${file.slice(root.length)}: ${m[0].trim()}`,
-      );
-    });
     // 실패하면 hover:bg-accent를 hover:bg-state-1(행) 또는 hover:bg-state-2(버튼)로 옮긴다.
     // 어느 쪽인지는 index.css의 부등식이 정한다: 행 hover(1) < 행 선택(2), 버튼 hover(2) < 켜짐(3).
-    expect(offenders).toEqual([]);
+    expect(offenders(/.*\bhover:bg-accent\b.*/g)).toEqual([]);
+  });
+
+  // 「켜지지 않는 것의 hover」는 quiet-hover 하나가 답한다. 손으로 다시 적으면 열 자리가
+  // 같은 문자열을 갖게 되고, 농도를 한 번 조정할 때 열 곳을 다 고쳐야 한다 — 실제로
+  // 그 상태였고 이 work가 걷어냈다. 눈으로는 안 보이는 종류라 여기서 막는다.
+  it("조용한 hover를 손으로 다시 적지 않는다", () => {
+    expect(offenders(/.*hover:bg-state-2\s+hover:text-foreground.*/g)).toEqual([]);
   });
 });

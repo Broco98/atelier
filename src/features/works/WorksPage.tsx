@@ -130,7 +130,7 @@ function WorksPage({
                       "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
                       showSource
                         ? "toggle-on"
-                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                        : "text-tertiary quiet-hover",
                     )}
                   >
                     소스
@@ -146,7 +146,7 @@ function WorksPage({
                       "icon-button transition-colors",
                       workPanelOpen
                         ? "toggle-on"
-                        : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                        : "text-tertiary quiet-hover",
                     )}
                   >
                     <List className="size-3.5" strokeWidth={2} />
@@ -438,7 +438,7 @@ function WorkMenu({
         className={cn(
           "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
           "disabled:pointer-events-none disabled:opacity-50",
-          open ? "toggle-on" : "text-tertiary hover:bg-state-2 hover:text-foreground",
+          open ? "toggle-on" : "text-tertiary quiet-hover",
         )}
       >
         {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의

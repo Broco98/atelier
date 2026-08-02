@@ -164,7 +164,7 @@ function ArchivePage({
                     "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
                     showSource
                       ? "toggle-on"
-                      : "text-tertiary hover:bg-state-2 hover:text-foreground",
+                      : "text-tertiary quiet-hover",
                   )}
                 >
                   소스

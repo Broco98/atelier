@@ -84,7 +84,7 @@ function WorksSection({
         <button
           type="button"
           onClick={() => onOpenWork(null)}
-          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors hover:bg-state-2 hover:text-foreground"
+          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors quiet-hover"
         >
           Works에서 모두 보기
           <ChevronRight className="size-3" strokeWidth={2} />
@@ -239,7 +239,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="브랜치 목록에서 변경"
-        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
+        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
         <ChevronDown className="size-2.5" strokeWidth={2.2} />
@@ -308,7 +308,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
           setDraft(project.baseBranch);
           setEditing(true);
         }}
-        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-state-2 hover:text-foreground"
+        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
       </button>

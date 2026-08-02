@@ -10,9 +10,9 @@ import FullscreenModal from "./FullscreenModal";
 // 여기는 모양만 정하고 hover·켜짐은 호출부가 분기 안에 붙인다 — 「코드」가 토글이라
 // toggle-on과 겹치면 hover 규칙이 두 벌이 되어 어느 쪽이 이길지 유틸리티 정렬 순서가
 // 정하게 된다. icon-button이 hover를 갖지 않는 것과 같은 이유다.
-const zoomButton =
+const toolbarButton =
   "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] transition-colors";
-const zoomButtonQuiet = cn(zoomButton, "text-tertiary hover:bg-state-2 hover:text-foreground");
+const toolbarButtonQuiet = cn(toolbarButton, "text-tertiary quiet-hover");
 
 function ZoomControls({
   scale,
@@ -25,9 +25,9 @@ function ZoomControls({
 }) {
   return (
     <>
-      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={zoomButtonQuiet}>−</button>
-      <button type="button" onClick={() => onChange(1)} className={zoomButtonQuiet}>{Math.round(scale * 100)}%</button>
-      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={zoomButtonQuiet}>+</button>
+      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
+      <button type="button" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
+      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
     </>
   );
 }
@@ -44,7 +44,7 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={zoomButtonQuiet}>
+    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={toolbarButtonQuiet}>
       {copied ? (
         <Check className="size-3 text-green-700" strokeWidth={2.4} />
       ) : (
@@ -171,12 +171,12 @@ function MermaidBlock({ code }: { code: string }) {
             type="button"
             onClick={() => setShowCode((v) => !v)}
             title="원본 mermaid 코드 보기"
-            className={showCode ? cn(zoomButton, "toggle-on") : zoomButtonQuiet}
+            className={showCode ? cn(toolbarButton, "toggle-on") : toolbarButtonQuiet}
           >
             코드
           </button>
           <CopyCodeButton code={code} />
-          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={zoomButtonQuiet}>
+          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
             <Maximize2 className="size-3" strokeWidth={2} />
           </button>
         </span>
