@@ -311,6 +311,15 @@ fn spec_dir(work_dir: &Path) -> PathBuf {
 /// 예약어를 심으면 사용자의 파일과 충돌하기도 한다.
 const RECORD_FILE: &str = "record.md";
 
+/// 기록 문서의 뼈대. **렌더러(`render_record`)와 병합 판정(`completeness`)이 같은 문자열을
+/// 봐야 한다.** 라벨 한 글자가 한쪽에서만 바뀌면 등급이 조용히 0으로 떨어져 완전한 기록을
+/// 빈 섹션으로 덮고, 아카이브에는 되돌리기가 없어 그것이 영구다. 상수를 나눠 쓰는 것으로도
+/// 부족해서(누군가 다시 문자열을 박을 수 있다) `the_renderers_own_output_grades_as_written`이
+/// **렌더러의 실제 출력**을 판정에 먹여 본다.
+const PROJECT_HEADING: &str = "## ";
+const HEAD_LABEL: &str = "- 워크트리 HEAD:";
+const COMMITS_HEADING: &str = "### 커밋";
+
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
 fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
@@ -614,18 +623,8 @@ pub fn archive_work(
 /// (프로젝트 등록 해제) 브랜치가 base로 fast-forward되면, 그 빈 섹션이 완전한 기록을
 /// 덮어 영구히 지운다. 등록 해제는 커밋을 통째로 담기로 한 **바로 그 이유**였다.
 fn merge_record(fresh: &str, previous: &str) -> String {
-    /// 섹션이 담은 것의 등급. 큰 쪽이 이긴다.
-    fn completeness(section: &str) -> u8 {
-        if !section.contains("\n- 워크트리 HEAD:") {
-            0 // 좌표조차 못 읽었다
-        } else if !section.contains("\n### 커밋\n") {
-            1 // 좌표는 있으나 커밋 범위를 특정하지 못했다
-        } else {
-            2 // 커밋 표까지 담았다
-        }
-    }
     let mut out = String::new();
-    for (i, section) in fresh.split("\n## ").enumerate() {
+    for (i, section) in fresh.split(&format!("\n{PROJECT_HEADING}")).enumerate() {
         // 0번은 머리말이다 — 날짜와 상태는 언제나 이번 실행 것이 맞다.
         if i == 0 {
             out.push_str(section);
@@ -633,13 +632,25 @@ fn merge_record(fresh: &str, previous: &str) -> String {
         }
         let project = section.lines().next();
         let recovered = previous
-            .split("\n## ")
+            .split(&format!("\n{PROJECT_HEADING}"))
             .find(|p| p.lines().next() == project)
             .filter(|p| completeness(p) > completeness(section));
-        out.push_str("\n## ");
+        out.push_str(&format!("\n{PROJECT_HEADING}"));
         out.push_str(recovered.unwrap_or(section));
     }
     out
+}
+
+/// 섹션이 담은 것의 등급. 큰 쪽이 이긴다. 라벨은 렌더러와 **같은 상수**를 본다 —
+/// 이 함수가 `merge_record` 안에 숨어 있으면 그 계약을 테스트로 못 건다.
+fn completeness(section: &str) -> u8 {
+    if !section.contains(&format!("\n{HEAD_LABEL}")) {
+        0 // 좌표조차 못 읽었다
+    } else if !section.contains(&format!("\n{COMMITS_HEADING}\n")) {
+        1 // 좌표는 있으나 커밋 범위를 특정하지 못했다
+    } else {
+        2 // 커밋 표까지 담았다
+    }
 }
 
 /// 거부 사유를 **어떤 파일 때문인지**로 적는다. 목록이 길어지면 잘라 낸다 —
@@ -747,7 +758,7 @@ pub fn render_record(
     );
     let trees = worktrees_dir(&works_root.join(&work.slug));
     for project in &work.projects {
-        out.push_str(&format!("\n## {project}\n\n"));
+        out.push_str(&format!("\n{PROJECT_HEADING}{project}\n\n"));
         push_worktree_record(&mut out, projects_root, project, &trees.join(project), work);
     }
     out
@@ -785,7 +796,7 @@ fn push_worktree_record(
             "- 선언 브랜치: {declared} — 이 저장소에 없다 (아래는 워크트리 HEAD 기준)\n"
         )),
     }
-    out.push_str(&format!("- 워크트리 HEAD: {}\n", r.head));
+    out.push_str(&format!("{HEAD_LABEL} {}\n", r.head));
     match &base {
         Some(base) => out.push_str(&format!("- base: {base}\n")),
         None => out.push_str("- base: 알 수 없다 — 프로젝트가 등록돼 있지 않다\n"),
@@ -799,7 +810,7 @@ fn push_worktree_record(
         r.deletions
     ));
     if !r.commits.is_empty() {
-        out.push_str("\n### 커밋\n\n| SHA | 제목 |\n| --- | --- |\n");
+        out.push_str(&format!("\n{COMMITS_HEADING}\n\n| SHA | 제목 |\n| --- | --- |\n"));
         for (sha, subject) in &r.commits {
             out.push_str(&format!("| {sha} | {subject} |\n"));
         }
@@ -1520,6 +1531,51 @@ mod tests {
         let doc = render_record(&works, &projects, &work, "2026-08-02");
         assert!(doc.contains(&format!("- 선언 브랜치: feat/declared — {declared_tip}")), "{doc}");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "{doc}");
+    }
+
+    /// 렌더러와 병합 판정이 **같은 문자열을 본다**는 것을 실제 출력으로 지킨다.
+    ///
+    /// 상수를 나눠 쓰는 것만으로는 부족하다 — 누군가 라벨을 다시 박아 넣으면 등급이 조용히
+    /// 0으로 떨어지고, 그러면 `merge_record`가 완전한 앞선 기록을 빈 섹션으로 덮는다.
+    /// 아카이브에는 되돌리기가 없어 그것이 영구다. 그래서 세 등급을 **렌더러가 실제로 뽑은
+    /// 문서로** 확인한다: 문자열이 갈라지는 순간 어느 한 등급이 어긋난다.
+    #[test]
+    fn the_renderers_own_output_grades_as_written() {
+        let (_tmp, works, projects) = setup();
+        let report = start_work(
+            &works,
+            &archive_root(&works),
+            &projects,
+            "등급",
+            None,
+            &slugs(&["fe"]),
+            Some("feat/grade"),
+        )
+        .unwrap();
+        let work = report.view.work;
+        let worktree = works.join(&work.slug).join("trees/fe");
+
+        fn grade_of(doc: &str) -> u8 {
+            let section =
+                doc.split(&format!("\n{PROJECT_HEADING}")).nth(1).expect("프로젝트 섹션이 없다");
+            completeness(section)
+        }
+
+        // 1등급 — 좌표는 있으나 담을 커밋이 없다 (막 만든 워크트리는 base와 같은 자리다)
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains(HEAD_LABEL), "좌표 라벨이 렌더러 출력에 없다: {doc}");
+        assert_eq!(grade_of(&doc), 1, "커밋 없는 기록이 1등급으로 안 읽힌다: {doc}");
+
+        // 2등급 — 커밋 표까지 담았다
+        commit(&worktree, "b.txt", "y\n", "담길 커밋");
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert!(doc.contains(COMMITS_HEADING), "커밋 표 제목이 렌더러 출력에 없다: {doc}");
+        assert_eq!(grade_of(&doc), 2, "커밋 표를 담은 기록이 2등급으로 안 읽힌다: {doc}");
+
+        // 0등급 — 워크트리를 읽을 수 없어 좌표조차 없다
+        std::fs::remove_dir_all(&worktree).unwrap();
+        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        assert_eq!(grade_of(&doc), 0, "좌표 없는 기록이 0등급으로 안 읽힌다: {doc}");
     }
 
     /// 브랜치가 중간 브랜치를 거쳐 base에 올라오는 구조(이 저장소의 승격 구조)에서
