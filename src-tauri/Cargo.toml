@@ -18,7 +18,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# protocol-asset: 본문 이미지가 로컬 파일을 읽는 통로. 켜는 곳이 둘이고
+# (여기와 tauri.conf.json의 assetProtocol) 한쪽만 있으면 빌드가 거부한다.
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
