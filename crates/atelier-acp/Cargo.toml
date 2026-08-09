@@ -1,0 +1,10 @@
+[package]
+name = "atelier-acp"
+version = "0.1.1"
+edition = "2021"
+
+[dependencies]
+atelier-core = { path = "../atelier-core" }
+agent-client-protocol = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
