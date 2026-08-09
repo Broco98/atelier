@@ -3,10 +3,11 @@
 //! 의존 방향은 `src-tauri` → `atelier-acp` → `atelier-core`이고 **역방향은 없다.**
 
 mod adapter;
+mod envelope;
 mod manager;
 
 pub use adapter::{codex_command, CODEX, DEFAULT_CODEX_COMMAND};
-pub use manager::{SessionManager, SessionPaths, SessionView};
+pub use manager::{Listener, SessionManager, SessionPaths, SessionView};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -15,6 +16,11 @@ pub enum Error {
     AgentStart { command: String, message: String },
     #[error("start point folder is missing: {0}")]
     StartPointMissing(String),
+    /// 살아있지 않은 세션에 말을 걸었다. 죽은 세션을 다시 띄우는 것은 뒤 티켓의 몫이다.
+    #[error("session is not running: {0}")]
+    NotRunning(String),
+    #[error("prompt failed: {0}")]
+    Prompt(String),
     /// 앱이 닫히는 도중에 세션이 다 떴을 때. 그 자식은 거두고 사용자에게는 서지 않았다고 말한다.
     #[error("atelier is closing")]
     Closing,

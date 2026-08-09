@@ -11,14 +11,27 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use agent_client_protocol::schema::v1::{InitializeRequest, NewSessionRequest};
+use agent_client_protocol::schema::v1::{
+    ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest, SessionId, TextContent,
+};
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
+use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo, JsonRpcNotification};
 use atelier_core::{NewSession, Session, StartPoint};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::adapter::{codex_command, CODEX};
-use crate::{Error, Result};
+use crate::{envelope, Error, Result};
+
+/// 제목이 될 첫 줄의 길이. 목록 한 줄에 들어갈 만큼만 남긴다.
+const TITLE_CHARS: usize = 80;
+
+/// 봉투 한 줄이 기록될 때마다 불린다 — 세션 id, **기록에서 그 줄이 앉은 자리**, 그리고 줄.
+///
+/// 파일에 쌓이는 줄과 밖으로 나가는 줄이 **같은 값**이어서, 재생과 라이브 스트림이 화면에서
+/// 같은 렌더러를 쓴다. 자리 번호를 함께 싣는 것은 그 둘이 겹치는 지점을 화면이 알아보게
+/// 하기 위해서다 — 재생이 n줄을 그렸다면 라이브는 n번째부터만 이으면 된다.
+pub type Listener = Arc<dyn Fn(&str, usize, &Value) + Send + Sync>;
 
 /// 매니저가 읽고 쓰는 자리들. 전부 밖에서 준다 — 데이터 루트의 생김새는 `atelier-core`가 안다.
 #[derive(Debug, Clone)]
@@ -48,13 +61,15 @@ struct Registry {
 pub struct SessionManager {
     paths: SessionPaths,
     registry: Mutex<Registry>,
+    listener: Listener,
 }
 
 impl SessionManager {
-    pub fn new(paths: SessionPaths) -> Self {
+    pub fn new(paths: SessionPaths, listener: Listener) -> Self {
         Self {
             paths,
             registry: Mutex::new(Registry::default()),
+            listener,
         }
     }
 
@@ -63,8 +78,13 @@ impl SessionManager {
     pub fn start(&self, start_point: StartPoint) -> Result<SessionView> {
         let cwd = self.resolve(&start_point)?;
         let command = codex_command(&self.paths.adapters_file);
+        let recorder = Arc::new(Recorder {
+            sessions_root: self.paths.sessions.clone(),
+            listener: Arc::clone(&self.listener),
+            session: Mutex::new(Recording::Waiting(Vec::new())),
+        });
 
-        let (live, agent_session_id) = spawn_session(command, cwd.clone())?;
+        let (live, agent_session_id) = spawn_session(command, cwd.clone(), recorder)?;
 
         // 자물쇠를 등록까지 쥔 채로 간다. 여기서 놓으면 그 틈에 앱이 닫힐 수 있고, 그러면
         // 이 자식은 자기 프로세스 그룹의 리더라 부모가 죽어도 따라 죽지 않고 고아로 남는다.
@@ -93,11 +113,59 @@ impl SessionManager {
             }
         };
 
+        // 이제야 기록할 자리가 정해졌다. 세션이 열리는 동안 온 말들이 여기서 쏟아진다.
+        live.recorder.open(session.id.clone());
+
         registry.sessions.insert(session.id.clone(), live);
         Ok(SessionView {
             session,
             alive: true,
         })
+    }
+
+    /// 사람이 친 말을 보내고 **턴이 끝날 때까지** 기다린다. 그동안 오는 조각들은 알림 통로로
+    /// 기록되고 밖으로 흐르므로, 부르는 쪽이 돌아왔다는 것은 곧 턴이 끝났다는 뜻이다.
+    pub fn prompt(&self, session_id: &str, text: &str) -> Result<()> {
+        let (cx, agent_session_id, recorder) = {
+            let registry = self.registry.lock().unwrap();
+            let live = registry
+                .sessions
+                .get(session_id)
+                .filter(|live| live.is_alive())
+                .ok_or_else(|| Error::NotRunning(session_id.to_string()))?;
+            (
+                live.cx.clone(),
+                live.agent_session_id.clone(),
+                Arc::clone(&live.recorder),
+            )
+        };
+
+        // 세션의 이름은 첫 지시로 정해진다. 두 번째부터는 저장소가 그대로 둔다.
+        if let Some(title) = title_from(text) {
+            atelier_core::set_session_title_once(&self.paths.sessions, session_id, title)?;
+        }
+        recorder.record(envelope::user_prompt(text));
+
+        let turn = futures::executor::block_on(
+            cx.send_request(PromptRequest::new(
+                SessionId::from(agent_session_id),
+                vec![ContentBlock::Text(TextContent::new(text))],
+            ))
+            .block_task(),
+        );
+
+        if let Err(error) = turn {
+            // 실패도 대화의 일부다. 기록에 남겨야 다시 열었을 때 이유가 보인다.
+            let error = error.to_string();
+            recorder.record(envelope::turn_failed(&error));
+            return Err(Error::Prompt(error));
+        }
+        Ok(())
+    }
+
+    /// 지난 대화 전체. 화면은 프로세스를 띄우기 전에 이것부터 그린다.
+    pub fn updates(&self, session_id: &str) -> Result<Vec<Value>> {
+        Ok(atelier_core::read_updates(&self.paths.sessions, session_id)?)
     }
 
     /// 최근 것부터. 살아있음은 이 프로세스가 지금 쥐고 있는 연결에서만 온다.
@@ -157,6 +225,10 @@ struct Live {
     thread: std::thread::JoinHandle<()>,
     /// 연결이 끝나면 스레드가 내린다 — 에이전트가 스스로 죽어도 목록이 거짓말하지 않도록.
     alive: Arc<AtomicBool>,
+    /// 클로저 밖으로 나온 연결. 아무 스레드에서나 요청을 보낼 수 있다(티켓 02가 검증).
+    cx: ConnectionTo<Agent>,
+    agent_session_id: String,
+    recorder: Arc<Recorder>,
 }
 
 impl Live {
@@ -170,10 +242,82 @@ impl Live {
     }
 }
 
+/// 봉투를 파일에 쌓고 밖으로도 흘린다.
+struct Recorder {
+    sessions_root: PathBuf,
+    listener: Listener,
+    session: Mutex<Recording>,
+}
+
+/// 알림 통로는 연결과 함께 서는데 세션 폴더는 `session/new`가 성공한 뒤에야 생긴다. 그 틈에
+/// 오는 말(실물 Codex는 세션을 열자마자 쓸 수 있는 명령 목록을 보낸다)을 **버리지 않는다** —
+/// 스펙은 스트림을 전부 기록하라고 한다. 자리가 생길 때까지 안고 있다가 순서 그대로 쏟는다.
+enum Recording {
+    Waiting(Vec<Value>),
+    /// `next`는 다음 줄이 앉을 자리다. 이어 여는 세션은 이미 쌓인 만큼 뒤에서 시작한다.
+    Open { id: String, next: usize },
+}
+
+impl Recorder {
+    fn record(&self, line: Value) {
+        let mut recording = self.session.lock().unwrap();
+        match &mut *recording {
+            Recording::Waiting(pending) => pending.push(line),
+            Recording::Open { id, next } => self.write(&id.clone(), next, &line),
+        }
+    }
+
+    /// 세션의 신원이 정해졌다. 기다리던 줄들을 먼저 흘려보내고, 이후로는 곧바로 쓴다.
+    /// 자물쇠를 쥔 채로 쏟아야 그 사이에 도착한 조각이 앞질러 가지 않는다.
+    fn open(&self, id: String) {
+        let mut recording = self.session.lock().unwrap();
+        let placeholder = Recording::Waiting(Vec::new());
+        let Recording::Waiting(pending) = std::mem::replace(&mut *recording, placeholder) else {
+            return;
+        };
+        // 이어 여는 세션은 이미 쌓인 만큼 뒤에서 시작한다.
+        let mut next = atelier_core::read_updates(&self.sessions_root, &id)
+            .map(|lines| lines.len())
+            .unwrap_or(0);
+        for line in pending {
+            self.write(&id, &mut next, &line);
+        }
+        *recording = Recording::Open { id, next };
+    }
+
+    /// 한 줄을 파일에 쌓고 밖으로 흘린다. `next`는 그 줄이 앉을 자리이고, 쓴 뒤 한 칸 나아간다.
+    fn write(&self, id: &str, next: &mut usize, line: &Value) {
+        if let Err(error) = atelier_core::append_update(&self.sessions_root, id, line) {
+            // 기록이 막혀도 대화는 이어져야 한다. 사용자는 지금 말하고 있는 중이다.
+            eprintln!("세션 {id}의 대화를 기록하지 못했다: {error}");
+        }
+        (self.listener)(id, *next, line);
+        *next += 1;
+    }
+}
+
+/// `session/update` 알림을 **날것 그대로** 받는다.
+///
+/// 스키마 타입으로 받아 되쓰면 우리가 아직 모르는 종류의 갱신이 통째로 사라진다. 기록은
+/// 에이전트가 보낸 것을 그대로 안고, 무엇을 그릴지는 화면이 정한다.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonRpcNotification)]
+#[notification(method = "session/update")]
+#[serde(transparent)]
+struct RawSessionUpdate(Value);
+
+/// 세션의 이름이 될 한 줄. 빈 줄로 시작하는 프롬프트도 있으므로 처음 비지 않은 줄을 찾는다.
+fn title_from(text: &str) -> Option<&str> {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    Some(match line.char_indices().nth(TITLE_CHARS) {
+        Some((at, _)) => &line[..at],
+        None => line,
+    })
+}
+
 /// 스레드 하나를 띄워 연결을 세우고, 세션이 열릴 때까지 부른 쪽을 기다리게 한다.
 ///
 /// `npx`가 패키지를 내려받는 첫 실행은 오래 걸릴 수 있으므로 여기에 제한 시간을 두지 않는다.
-fn spawn_session(command: String, cwd: PathBuf) -> Result<(Live, String)> {
+fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Result<(Live, String)> {
     let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = futures::channel::oneshot::channel::<()>();
     let alive = Arc::new(AtomicBool::new(true));
@@ -182,33 +326,41 @@ fn spawn_session(command: String, cwd: PathBuf) -> Result<(Live, String)> {
     let thread = {
         let alive = alive.clone();
         let failure_tx = outcome_tx.clone();
+        let recorder = Arc::clone(&recorder);
         std::thread::spawn(move || {
             // 클로저가 아예 돌지 못한 경우(spawn 실패)에는 이 통로로만 소식이 나간다.
-            if let Err(error) = run_connection(command, cwd, outcome_tx, shutdown_rx) {
+            if let Err(error) = run_connection(command, cwd, recorder, outcome_tx, shutdown_rx) {
                 let _ = failure_tx.send(Err(error));
             }
             alive.store(false, Ordering::Relaxed);
         })
     };
 
-    let live = Live {
-        shutdown: shutdown_tx,
-        thread,
-        alive,
-    };
-    match outcome_rx.recv() {
-        Ok(Ok(agent_session_id)) => Ok((live, agent_session_id)),
-        Ok(Err(error)) => {
-            live.close();
-            Err(error)
-        }
+    let opened = outcome_rx.recv().unwrap_or_else(|_| {
         // 스레드가 아무 말 없이 끝났다면 그 자체가 실패다.
-        Err(_) => {
-            live.close();
-            Err(Error::AgentStart {
-                command: attempted,
-                message: "agent left no answer".to_string(),
-            })
+        Err(Error::AgentStart {
+            command: attempted,
+            message: "agent left no answer".to_string(),
+        })
+    });
+
+    match opened {
+        Ok((agent_session_id, cx)) => Ok((
+            Live {
+                shutdown: shutdown_tx,
+                thread,
+                alive,
+                cx,
+                agent_session_id: agent_session_id.clone(),
+                recorder,
+            },
+            agent_session_id,
+        )),
+        // 서지 못한 세션에는 거둘 연결이 없다. 신호만 쏘고 스레드가 끝나기를 기다린다.
+        Err(error) => {
+            drop(shutdown_tx);
+            let _ = thread.join();
+            Err(error)
         }
     }
 }
@@ -216,32 +368,44 @@ fn spawn_session(command: String, cwd: PathBuf) -> Result<(Live, String)> {
 fn run_connection(
     command: String,
     cwd: PathBuf,
-    outcome: std::sync::mpsc::Sender<Result<String>>,
+    recorder: Arc<Recorder>,
+    outcome: std::sync::mpsc::Sender<Result<(String, ConnectionTo<Agent>)>>,
     shutdown: futures::channel::oneshot::Receiver<()>,
 ) -> Result<()> {
     let agent = AcpAgent::from_str(&command).map_err(|e| Error::agent_start(&command, &e))?;
     let command_in_error = command.clone();
 
     // 비동기 런타임을 따로 들이지 않고 futures의 실행기로만 돈다 (티켓 02가 검증).
-    futures::executor::block_on(Client.builder().name("atelier").connect_with(
-        agent,
-        async |cx: ConnectionTo<Agent>| {
-            let opened = open_session(&cx, cwd)
-                .await
-                .map_err(|message| Error::AgentStart {
-                    command: command_in_error,
-                    message,
-                });
-            let opened_ok = opened.is_ok();
-            let _ = outcome.send(opened);
+    futures::executor::block_on(
+        Client
+            .builder()
+            .name("atelier")
+            // 스트림 한 조각. 이 콜백은 수신 루프 안에서 돌므로 **도착 순서가 곧 기록 순서**다.
+            .on_receive_notification(
+                async move |update: RawSessionUpdate, _cx| {
+                    recorder.record(envelope::session_update(update.0));
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_notification!(),
+            )
+            .connect_with(agent, async |cx: ConnectionTo<Agent>| {
+                let opened = open_session(&cx, cwd)
+                    .await
+                    .map(|agent_session_id| (agent_session_id, cx.clone()))
+                    .map_err(|message| Error::AgentStart {
+                        command: command_in_error,
+                        message,
+                    });
+                let opened_ok = opened.is_ok();
+                let _ = outcome.send(opened);
 
-            if opened_ok {
-                // 종료 신호가 올 때까지 연결을 붙잡는다. 반환하는 순간 연결과 자식이 끝난다.
-                let _ = shutdown.await;
-            }
-            Ok(())
-        },
-    ))
+                if opened_ok {
+                    // 종료 신호가 올 때까지 연결을 붙잡는다. 반환하는 순간 연결과 자식이 끝난다.
+                    let _ = shutdown.await;
+                }
+                Ok(())
+            }),
+    )
     .map_err(|e| Error::agent_start(&command, &e))?;
 
     Ok(())

@@ -91,6 +91,27 @@ pub async fn create_session(
 }
 
 #[tauri::command]
+pub async fn prompt_session(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    text: String,
+) -> CmdResult<()> {
+    let manager = Arc::clone(&manager);
+    // 턴이 끝날 때까지 막힌다. 그동안의 조각들은 `session:update` 이벤트로 먼저 간다.
+    tauri::async_runtime::spawn_blocking(move || manager.prompt(&session_id, &text).map_err(err))
+        .await
+        .map_err(err)?
+}
+
+#[tauri::command]
+pub async fn read_session_updates(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+) -> CmdResult<Vec<serde_json::Value>> {
+    manager.updates(&session_id).map_err(err)
+}
+
+#[tauri::command]
 pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
     let view = atelier_core::get_project(&projects_dir(), &slug).map_err(err)?;

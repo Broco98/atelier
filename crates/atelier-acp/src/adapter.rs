@@ -16,7 +16,12 @@ use std::path::Path;
 pub const CODEX: &str = "codex";
 
 /// 설정에 항목이 없을 때 쓰는 커맨드(확정 결정 2).
-pub const DEFAULT_CODEX_COMMAND: &str = "npx @zed-industries/codex-acp";
+///
+/// 티켓 02는 `@zed-industries/codex-acp`를 기본값으로 두었다 — 그때 검증된 것이 그쪽이었기
+/// 때문이다. 티켓 05가 처음으로 **턴을 끝까지 돌려 보니** 그 패키지(0.16.0에서 멈춤)는 지금
+/// 모델 설정에서 400으로 끊기고, `@agentclientprotocol/codex-acp`는 통과한다. 검증된 상대가
+/// 바뀌었으므로 기본값도 따라간다. (`explanation/05-실물-한-턴.md`)
+pub const DEFAULT_CODEX_COMMAND: &str = "npx @agentclientprotocol/codex-acp";
 
 /// Codex 어댑터를 띄우는 커맨드.
 ///

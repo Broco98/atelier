@@ -13,6 +13,8 @@ struct Wire {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    /// 답을 기다리는 동안 지나간, 에이전트가 먼저 건 말들.
+    notifications: Vec<serde_json::Value>,
 }
 
 impl Wire {
@@ -29,18 +31,29 @@ impl Wire {
             child,
             stdin,
             stdout,
+            notifications: Vec::new(),
         }
     }
 
+    /// 요청 하나를 보내고 **그 요청의 답**을 받는다. 답 앞에 알림이 끼어들 수 있으므로
+    /// id가 붙은 프레임이 나올 때까지 읽고, 지나간 알림은 모아 둔다.
     fn request(&mut self, line: &str) -> serde_json::Value {
         writeln!(self.stdin, "{line}").expect("요청을 쓰지 못했다");
         self.stdin.flush().expect("flush");
-        let mut answer = String::new();
-        self.stdout
-            .read_line(&mut answer)
-            .expect("응답을 읽지 못했다");
-        assert!(!answer.is_empty(), "응답 없이 스트림이 닫혔다");
-        serde_json::from_str(&answer).expect("응답이 JSON 한 줄이 아니다")
+        loop {
+            let frame = self.read();
+            if frame.get("id").is_some() {
+                return frame;
+            }
+            self.notifications.push(frame);
+        }
+    }
+
+    fn read(&mut self) -> serde_json::Value {
+        let mut frame = String::new();
+        self.stdout.read_line(&mut frame).expect("응답을 읽지 못했다");
+        assert!(!frame.is_empty(), "응답 없이 스트림이 닫혔다");
+        serde_json::from_str(&frame).expect("응답이 JSON 한 줄이 아니다")
     }
 }
 
@@ -84,6 +97,25 @@ fn normal_scenario_opens_a_session() {
         .as_str()
         .unwrap_or_else(|| panic!("세션 id가 문자열이 아니다: {frame}"));
     assert!(!session_id.is_empty());
+}
+
+/// 실물 Codex가 그렇듯 세션을 열면서 **답보다 먼저** 말을 건다. 클라이언트가 세션 id를
+/// 알기도 전에 오는 조각이 있다는 뜻이고, 그것을 흘리지 않는 것이 티켓 05의 몫이다.
+#[test]
+fn opening_a_session_says_something_before_answering() {
+    let mut wire = Wire::spawn("normal");
+
+    wire.request(
+        r#"{"jsonrpc":"2.0","id":"s1","method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}"#,
+    );
+
+    let announced = &wire.notifications;
+    assert_eq!(announced.len(), 1, "답 앞에 온 말: {announced:?}");
+    assert_eq!(announced[0]["method"], "session/update");
+    assert_eq!(
+        announced[0]["params"]["update"]["sessionUpdate"],
+        "available_commands_update"
+    );
 }
 
 /// 세션 id는 프로세스마다 달라야 한다. 티켓 04가 같은 프로젝트로 두 번 시작해

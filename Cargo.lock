@@ -299,6 +299,7 @@ version = "0.1.1"
 dependencies = [
  "agent-client-protocol",
  "atelier-core",
+ "chrono",
  "futures",
  "serde",
  "serde_json",

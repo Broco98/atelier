@@ -45,4 +45,7 @@ pub use works::{
     attach_project, get_work, list_works, read_spec_file, remove_work, start_work,
     update_work_status, WorkReport, TreeError,
 };
-pub use sessions::{create_session, get_session, list_sessions, NewSession, Session, StartPoint};
+pub use sessions::{
+    append_update, create_session, get_session, list_sessions, read_updates,
+    set_session_title_once, NewSession, Session, StartPoint,
+};

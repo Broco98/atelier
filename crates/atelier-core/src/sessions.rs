@@ -99,11 +99,66 @@ pub fn get_session(root: &Path, id: &str) -> Result<Session> {
     Ok(session)
 }
 
+/// 제목은 **처음 한 번만** 붙는다. 이미 있으면 그대로 두고 지금 값을 돌려준다 — 부르는 쪽이
+/// "처음인가"를 따로 기억하지 않아도 되도록 그 판단을 여기 한 곳에 둔다.
+pub fn set_session_title_once(root: &Path, id: &str, title: &str) -> Result<Session> {
+    let mut session = get_session(root, id)?;
+    if session.title.is_some() {
+        return Ok(session);
+    }
+    session.title = Some(title.to_string());
+    session.updated_at = chrono::Local::now().to_rfc3339();
+    write_session(root, &session)?;
+    Ok(session)
+}
+
+/// 대화 기록 한 줄을 덧붙인다. **덧붙이기만 한다** — 되감거나 고쳐 쓰지 않는다.
+///
+/// 줄의 모양은 여기서 정하지 않는다. 저장소는 사람이 읽을 수 있는 JSON 한 줄이라는 것까지만 안다.
+pub fn append_update(root: &Path, id: &str, line: &serde_json::Value) -> Result<()> {
+    use std::io::Write;
+    // 줄바꿈까지 한 번에 내보낸다. 내가 친 말과 에이전트가 보낸 조각은 서로 다른 스레드에서
+    // 오므로, 나눠 쓰면 두 줄이 서로의 사이에 끼어들 수 있다.
+    let mut bytes = serde_json::to_vec(line).map_err(io_err)?;
+    bytes.push(b'\n');
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(updates_file(root, id)?)?
+        .write_all(&bytes)?;
+    Ok(())
+}
+
+/// 쓴 순서 그대로. 읽을 수 없는 줄은 건너뛴다 — 앱이 죽는 순간 반쯤 쓰인 한 줄이
+/// 지난 대화 전체를 삼키면 안 된다.
+pub fn read_updates(root: &Path, id: &str) -> Result<Vec<serde_json::Value>> {
+    use std::io::BufRead;
+    let path = updates_file(root, id)?;
+    let Ok(file) = std::fs::File::open(&path) else {
+        // 아직 아무것도 오가지 않은 세션이다.
+        return Ok(Vec::new());
+    };
+    Ok(std::io::BufReader::new(file)
+        .lines()
+        .map_while(std::result::Result::ok)
+        .filter_map(|line| serde_json::from_str(&line).ok())
+        .collect())
+}
+
+fn updates_file(root: &Path, id: &str) -> Result<PathBuf> {
+    Ok(session_dir(root, id)?.join("updates.jsonl"))
+}
+
 fn session_file(root: &Path, id: &str) -> Result<PathBuf> {
+    Ok(session_dir(root, id)?.join("session.json"))
+}
+
+/// 세션 id는 프런트에서 오는 값이다. 폴더로 내려가는 길은 여기 하나뿐이고, 여기서 막는다.
+fn session_dir(root: &Path, id: &str) -> Result<PathBuf> {
     if !crate::slug::is_safe_slug(id) {
         return Err(Error::SessionNotFound(id.to_string()));
     }
-    Ok(root.join(id).join("session.json"))
+    Ok(root.join(id))
 }
 
 /// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (프로젝트 저장소와 같은 규칙)
@@ -225,6 +280,15 @@ mod tests {
             get_session(&root, ".hidden"),
             Err(Error::SessionNotFound(_))
         ));
+        // 대화 기록도 같은 문을 지난다 — 세션 id는 앞으로 프런트에서 오는 값이다
+        assert!(matches!(
+            read_updates(&root, "../victim"),
+            Err(Error::SessionNotFound(_))
+        ));
+        assert!(matches!(
+            append_update(&root, "../victim", &serde_json::json!({})),
+            Err(Error::SessionNotFound(_))
+        ));
         assert!(
             std::fs::read_to_string(outside.join("session.json")).unwrap() == "{}",
             "데이터 루트 밖 파일은 건드려지지 않는다"
@@ -235,6 +299,85 @@ mod tests {
     fn write_leaves_no_tmp_files() {
         let (_tmp, root) = setup();
         let created = create_session(&root, new_session("a")).unwrap();
+        let leftovers: Vec<_> = std::fs::read_dir(root.join(&created.id))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "남은 임시 파일: {leftovers:?}");
+    }
+
+    #[test]
+    fn updates_replay_in_the_order_they_were_written() {
+        let (_tmp, root) = setup();
+        let session = create_session(&root, new_session("a")).unwrap();
+
+        assert!(
+            read_updates(&root, &session.id).unwrap().is_empty(),
+            "아직 오간 것이 없으면 빈 대화다"
+        );
+
+        for n in 0..3 {
+            append_update(&root, &session.id, &serde_json::json!({"n": n})).unwrap();
+        }
+
+        let replayed = read_updates(&root, &session.id).unwrap();
+        let order: Vec<i64> = replayed.iter().map(|line| line["n"].as_i64().unwrap()).collect();
+        assert_eq!(order, vec![0, 1, 2], "쓴 순서 그대로 나온다");
+    }
+
+    #[test]
+    fn a_broken_line_does_not_block_the_replay() {
+        let (_tmp, root) = setup();
+        let session = create_session(&root, new_session("a")).unwrap();
+        let tear = |bytes: &[u8]| {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(root.join(&session.id).join("updates.jsonl"))
+                .and_then(|mut f| std::io::Write::write_all(&mut f, bytes))
+                .unwrap()
+        };
+
+        append_update(&root, &session.id, &serde_json::json!({"n": 0})).unwrap();
+        // 읽을 수 없는 줄 하나. 줄바꿈이 있으므로 딱 그 줄에서 끝난다.
+        tear(b"{\"n\": 1\n");
+        append_update(&root, &session.id, &serde_json::json!({"n": 2})).unwrap();
+        // 앱이 죽는 순간의 진짜 모양 — 줄바꿈도 없이 끊긴 꼬리. 뒤에 붙는 줄이 여기 말려들어
+        // **둘이 함께** 사라진다. 그래도 그 앞의 대화는 그대로 나온다.
+        tear(b"{\"n\": 3");
+        append_update(&root, &session.id, &serde_json::json!({"n": 4})).unwrap();
+        append_update(&root, &session.id, &serde_json::json!({"n": 5})).unwrap();
+
+        let order: Vec<i64> = read_updates(&root, &session.id)
+            .unwrap()
+            .iter()
+            .map(|line| line["n"].as_i64().unwrap())
+            .collect();
+        assert_eq!(order, vec![0, 2, 5]);
+    }
+
+    #[test]
+    fn the_title_is_written_once_and_keeps_the_rest_of_the_identity() {
+        let (_tmp, root) = setup();
+        let created = create_session(&root, new_session("a")).unwrap();
+
+        let titled = set_session_title_once(&root, &created.id, "첫 지시").unwrap();
+        assert_eq!(titled.title.as_deref(), Some("첫 지시"));
+
+        let again = set_session_title_once(&root, &created.id, "두 번째 지시").unwrap();
+        assert_eq!(
+            again.title.as_deref(),
+            Some("첫 지시"),
+            "제목은 첫 프롬프트로만 정해진다"
+        );
+
+        let reread = get_session(&root, &created.id).unwrap();
+        assert_eq!(reread.title.as_deref(), Some("첫 지시"));
+        assert_eq!(reread.agent_session_id, created.agent_session_id);
+        assert_eq!(reread.start_point, created.start_point);
+        assert_eq!(reread.cwd, created.cwd);
+        assert_eq!(reread.created_at, created.created_at, "만든 시각은 그대로다");
+
         let leftovers: Vec<_> = std::fs::read_dir(root.join(&created.id))
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
