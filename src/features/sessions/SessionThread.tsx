@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import PermissionCard from "./PermissionCard";
 import { toLines } from "./conversation";
 import { useLiveUpdates, usePromptSession, useSessionReplay } from "./hooks";
 import type { SessionView } from "./types";
@@ -27,6 +28,10 @@ function SessionThread({ session }: SessionThreadProps) {
       ]),
     [replayed, live.lines],
   );
+
+  // 에이전트가 나를 기다리는 중인가. 떠 있지 않은 세션의 답 없는 카드는 이미 지난 일이다.
+  const awaiting =
+    session.alive && lines.some((line) => line.kind === "permission" && line.answered === null);
 
   useEffect(() => {
     foot.current?.scrollIntoView({ block: "end" });
@@ -54,7 +59,14 @@ function SessionThread({ session }: SessionThreadProps) {
             </p>
           )}
           {lines.map((line, at) =>
-            line.kind === "tool" ? (
+            line.kind === "permission" ? (
+              <PermissionCard
+                key={at}
+                card={line}
+                sessionId={session.id}
+                alive={session.alive}
+              />
+            ) : line.kind === "tool" ? (
               <span
                 key={at}
                 className="flex items-center gap-2 font-mono text-[12px] text-tertiary"
@@ -84,7 +96,9 @@ function SessionThread({ session }: SessionThreadProps) {
             ),
           )}
           {prompt.running && (
-            <span className="animate-pulse text-[13px] text-tertiary">응답 중…</span>
+            <span className="animate-pulse text-[13px] text-tertiary">
+              {awaiting ? "답을 기다리는 중…" : "응답 중…"}
+            </span>
           )}
           <div ref={foot} />
         </div>
@@ -112,9 +126,11 @@ function SessionThread({ session }: SessionThreadProps) {
           <span className="text-[11.5px] text-tertiary">
             {!session.alive
               ? "앱을 껐다 켠 세션이에요. 이어 말하는 것은 다음 판이에요."
-              : prompt.running
-                ? "응답이 끝나면 다시 보낼 수 있어요."
-                : "Enter 로 보내고 Shift+Enter 로 줄을 바꿔요."}
+              : awaiting
+                ? "에이전트가 위 카드의 답을 기다리고 있어요."
+                : prompt.running
+                  ? "응답이 끝나면 다시 보낼 수 있어요."
+                  : "Enter 로 보내고 Shift+Enter 로 줄을 바꿔요."}
           </span>
         </div>
       </div>

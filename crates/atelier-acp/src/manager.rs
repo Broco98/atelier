@@ -12,10 +12,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use agent_client_protocol::schema::v1::{
-    ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest, SessionId, TextContent,
+    ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionId, TextContent,
 };
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo, JsonRpcNotification};
+use agent_client_protocol::{
+    AcpAgent, Agent, Client, ConnectionTo, JsonRpcNotification, JsonRpcRequest, Responder,
+};
 use atelier_core::{NewSession, Session, StartPoint};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,6 +51,9 @@ pub struct SessionView {
     #[serde(flatten)]
     pub session: Session,
     pub alive: bool,
+    /// 답을 기다리는 권한 요청이 있는가. 살아있음과 마찬가지로 **런타임의 사실**이라 신원
+    /// 파일에 적히지 않는다 — 답할 자리는 이 프로세스의 연결에만 있기 때문이다.
+    pub awaiting_permission: bool,
 }
 
 /// 살아있는 세션들과 "이미 닫는 중인가"를 **한 자물쇠 아래** 둔다. 둘이 갈라져 있으면
@@ -120,6 +126,7 @@ impl SessionManager {
         Ok(SessionView {
             session,
             alive: true,
+            awaiting_permission: false,
         })
     }
 
@@ -163,6 +170,46 @@ impl SessionManager {
         Ok(())
     }
 
+    /// 권한 카드의 답. 사람이 고른 선택지 id를 그대로 받는다 — **선택지는 에이전트가 준
+    /// 목록뿐이고 아틀리에가 만들어 내지 않는다**(이 판은 정책 판정 없이 매번 사람에게 묻는다).
+    ///
+    /// 답은 **기록에 먼저 남고 그다음 상대에게 간다.** 순서를 뒤집으면 에이전트가 답을 받고
+    /// 흘린 조각이 내 답보다 앞에 쌓여, 다시 열었을 때 승낙 전에 움직인 것처럼 읽힌다.
+    pub fn answer_permission(
+        &self,
+        session_id: &str,
+        request_id: &str,
+        option_id: &str,
+    ) -> Result<()> {
+        let (permissions, recorder) = {
+            let registry = self.registry.lock().unwrap();
+            let live = registry
+                .sessions
+                .get(session_id)
+                .filter(|live| live.is_alive())
+                .ok_or_else(|| Error::NotRunning(session_id.to_string()))?;
+            (Arc::clone(&live.permissions), Arc::clone(&live.recorder))
+        };
+
+        let (responder, allow) = permissions.take(request_id, option_id).ok_or_else(|| {
+            Error::NoSuchPermission {
+                session: session_id.to_string(),
+                request: request_id.to_string(),
+                option: option_id.to_string(),
+            }
+        })?;
+        recorder.record(envelope::permission_response(request_id, option_id, allow));
+
+        responder
+            .respond(RequestPermissionResponse::new(
+                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                    option_id.to_string(),
+                )),
+            ))
+            // 답을 돌려줄 통로가 닫혔다면 그 세션은 이미 살아있지 않다.
+            .map_err(|_| Error::NotRunning(session_id.to_string()))
+    }
+
     /// 지난 대화 전체. 화면은 프로세스를 띄우기 전에 이것부터 그린다.
     pub fn updates(&self, session_id: &str) -> Result<Vec<Value>> {
         Ok(atelier_core::read_updates(&self.paths.sessions, session_id)?)
@@ -175,11 +222,15 @@ impl SessionManager {
         Ok(sessions
             .into_iter()
             .map(|session| {
-                let alive = registry
+                let live = registry
                     .sessions
                     .get(&session.id)
-                    .is_some_and(Live::is_alive);
-                SessionView { session, alive }
+                    .filter(|live| live.is_alive());
+                SessionView {
+                    alive: live.is_some(),
+                    awaiting_permission: live.is_some_and(|live| live.permissions.waiting()),
+                    session,
+                }
             })
             .collect())
     }
@@ -229,6 +280,7 @@ struct Live {
     cx: ConnectionTo<Agent>,
     agent_session_id: String,
     recorder: Arc<Recorder>,
+    permissions: Arc<Pending>,
 }
 
 impl Live {
@@ -240,6 +292,64 @@ impl Live {
         drop(self.shutdown);
         let _ = self.thread.join();
     }
+}
+
+/// 답을 기다리는 권한 요청들. 요청 id로 찾는다.
+///
+/// 요청을 받은 자리에서 사람을 기다릴 수는 없다 — 그 콜백은 수신 루프 안에서 돌기 때문에,
+/// 붙잡고 있으면 답하는 동안 에이전트의 다른 조각이 하나도 들어오지 못한다. 그래서 **답할
+/// 자리만 여기 챙겨 두고 루프를 놓아준다.**
+#[derive(Default)]
+struct Pending {
+    cards: Mutex<HashMap<String, Card>>,
+}
+
+/// 화면에 뜬 카드 한 장 — 상대에게 답을 돌려줄 자리와, 그가 준 선택지들.
+struct Card {
+    responder: Responder<RequestPermissionResponse>,
+    /// 선택지 id → 이것이 허용인가.
+    options: HashMap<String, bool>,
+}
+
+impl Pending {
+    fn open(&self, request_id: &str, card: Card) {
+        self.cards.lock().unwrap().insert(request_id.to_string(), card);
+    }
+
+    /// 그 요청을 그 선택지로 답할 수 있을 때만 카드를 꺼낸다. 없는 선택지에 카드를 잃으면
+    /// 사람에게는 다시 답할 길이 없다 — 그래서 지우기 전에 확인한다.
+    fn take(
+        &self,
+        request_id: &str,
+        option_id: &str,
+    ) -> Option<(Responder<RequestPermissionResponse>, bool)> {
+        let mut cards = self.cards.lock().unwrap();
+        let allow = *cards.get(request_id)?.options.get(option_id)?;
+        Some((cards.remove(request_id)?.responder, allow))
+    }
+
+    fn waiting(&self) -> bool {
+        !self.cards.lock().unwrap().is_empty()
+    }
+}
+
+/// 에이전트가 준 선택지에서 **id와 허용/거부만** 뽑는다. 이름과 종류는 화면의 몫이라 봉투 안
+/// 원본에 그대로 있다.
+///
+/// ACP의 종류는 `allow_once`·`allow_always`·`reject_once`·`reject_always`이고 열려 있다.
+/// 그 어휘의 규칙은 접두사이므로 접두사로 읽는다 — 뒤에 늘어난 종류도 같은 규칙을 따른다.
+fn options_of(payload: &Value) -> HashMap<String, bool> {
+    let Some(options) = payload["options"].as_array() else {
+        return HashMap::new();
+    };
+    options
+        .iter()
+        .filter_map(|option| {
+            let id = option["optionId"].as_str()?;
+            let kind = option["kind"].as_str()?;
+            Some((id.to_string(), kind.starts_with("allow")))
+        })
+        .collect()
 }
 
 /// 봉투를 파일에 쌓고 밖으로도 흘린다.
@@ -305,6 +415,15 @@ impl Recorder {
 #[serde(transparent)]
 struct RawSessionUpdate(Value);
 
+/// `session/request_permission` **요청**을 날것 그대로 받는다.
+///
+/// 같은 이유다 — 카드에 무엇을 그릴지는 화면이 정하고, 기록은 에이전트가 보낸 것을 그대로
+/// 안는다. 답은 반대로 크레이트의 타입으로 돌려준다: 나가는 와이어 모양을 손으로 짜지 않는다.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonRpcRequest)]
+#[request(method = "session/request_permission", response = RequestPermissionResponse)]
+#[serde(transparent)]
+struct RawPermissionRequest(Value);
+
 /// 세션의 이름이 될 한 줄. 빈 줄로 시작하는 프롬프트도 있으므로 처음 비지 않은 줄을 찾는다.
 fn title_from(text: &str) -> Option<&str> {
     let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
@@ -322,14 +441,19 @@ fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Resu
     let (shutdown_tx, shutdown_rx) = futures::channel::oneshot::channel::<()>();
     let alive = Arc::new(AtomicBool::new(true));
     let attempted = command.clone();
+    // 답을 기다리는 카드들은 연결과 함께 나고 진다 — 답할 자리가 그 연결 안에 있기 때문이다.
+    let permissions = Arc::new(Pending::default());
 
     let thread = {
         let alive = alive.clone();
         let failure_tx = outcome_tx.clone();
         let recorder = Arc::clone(&recorder);
+        let permissions = Arc::clone(&permissions);
         std::thread::spawn(move || {
             // 클로저가 아예 돌지 못한 경우(spawn 실패)에는 이 통로로만 소식이 나간다.
-            if let Err(error) = run_connection(command, cwd, recorder, outcome_tx, shutdown_rx) {
+            if let Err(error) =
+                run_connection(command, cwd, recorder, permissions, outcome_tx, shutdown_rx)
+            {
                 let _ = failure_tx.send(Err(error));
             }
             alive.store(false, Ordering::Relaxed);
@@ -353,6 +477,7 @@ fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Resu
                 cx,
                 agent_session_id: agent_session_id.clone(),
                 recorder,
+                permissions,
             },
             agent_session_id,
         )),
@@ -369,11 +494,13 @@ fn run_connection(
     command: String,
     cwd: PathBuf,
     recorder: Arc<Recorder>,
+    permissions: Arc<Pending>,
     outcome: std::sync::mpsc::Sender<Result<(String, ConnectionTo<Agent>)>>,
     shutdown: futures::channel::oneshot::Receiver<()>,
 ) -> Result<()> {
     let agent = AcpAgent::from_str(&command).map_err(|e| Error::agent_start(&command, &e))?;
     let command_in_error = command.clone();
+    let permission_recorder = Arc::clone(&recorder);
 
     // 비동기 런타임을 따로 들이지 않고 futures의 실행기로만 돈다 (티켓 02가 검증).
     futures::executor::block_on(
@@ -387,6 +514,25 @@ fn run_connection(
                     Ok(())
                 },
                 agent_client_protocol::on_receive_notification!(),
+            )
+            // 도구를 쓰기 전의 물음. **여기서 사람을 기다리지 않는다** — 이 콜백도 수신 루프
+            // 안에서 돌기 때문에, 붙잡고 있으면 답하는 동안 스트림 전체가 멎는다.
+            .on_receive_request(
+                async move |asked: RawPermissionRequest, responder, _cx| {
+                    let request_id = responder.id().to_string();
+                    // 카드를 먼저 세우고 기록한다. 기록이 화면에 뜨는 순간 사람이 누를 수
+                    // 있어야 하고, 그때 답할 자리가 아직 없으면 그 누름이 헛돈다.
+                    permissions.open(
+                        &request_id,
+                        Card {
+                            responder,
+                            options: options_of(&asked.0),
+                        },
+                    );
+                    permission_recorder.record(envelope::permission_request(&request_id, asked.0));
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_request!(),
             )
             .connect_with(agent, async |cx: ConnectionTo<Agent>| {
                 let opened = open_session(&cx, cwd)

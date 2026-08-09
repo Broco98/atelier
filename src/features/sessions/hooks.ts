@@ -102,3 +102,36 @@ export function usePromptSession(sessionId: string) {
 
   return { send: prompt.mutateAsync, running: useIsMutating({ mutationKey: key }) > 0 };
 }
+
+/**
+ * 권한 카드의 답. 답이 기록에 남으면 그 줄이 라이브로 돌아와 카드가 스스로 답한 모습으로
+ * 다시 그려지므로, 여기서 화면을 미리 고치지 않는다.
+ */
+export function useAnswerPermission(sessionId: string) {
+  return useMutation({
+    mutationFn: ({ requestId, optionId }: { requestId: string; optionId: string }) =>
+      sessionsApi.answerPermission(sessionId, requestId, optionId),
+  });
+}
+
+/**
+ * 답을 기다리는 요청이 생기거나 사라지면 목록을 다시 읽는다.
+ *
+ * 대화 화면이 아니라 **페이지**가 이 귀를 연다 — 지금 보고 있지 않은 세션에 뜬 요청도
+ * 목록에서 보여야 하기 때문이다.
+ */
+export function useWatchPermissions() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let attached = true;
+    const unlisten = listen<{ line: Envelope }>("session:update", (event) => {
+      if (!attached || !event.payload.line.kind.startsWith("permission_")) return;
+      void queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
+    });
+    return () => {
+      attached = false;
+      unlisten.then((fn) => fn());
+    };
+  }, [queryClient]);
+}

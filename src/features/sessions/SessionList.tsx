@@ -1,4 +1,4 @@
-import { Terminal } from "lucide-react";
+import { ShieldQuestion, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SessionView } from "./types";
 
@@ -74,6 +74,13 @@ function SessionList({ sessions, selectedId, onSelect, label, sidebarOpen }: Ses
                     {session.agent}
                   </span>
                 </span>
+                {/* 답하지 않은 권한 요청 — 내가 아니라 에이전트가 나를 기다리는 중이다 */}
+                {session.awaitingPermission && (
+                  <span className="flex items-center gap-1.5 self-start rounded-[7px] bg-primary/[0.12] px-1.5 py-0.5 text-[11.5px] font-medium text-primary">
+                    <ShieldQuestion className="size-3.5 shrink-0" strokeWidth={1.8} />
+                    권한을 기다려요
+                  </span>
+                )}
                 <span className="flex items-center justify-between gap-2 text-[11.5px] text-tertiary">
                   <span className="min-w-0 truncate font-mono">{session.cwd}</span>
                   <span className="shrink-0">{formatStarted(session.createdAt)}</span>

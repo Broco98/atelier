@@ -46,6 +46,7 @@ pub fn run() {
             commands::list_sessions,
             commands::create_session,
             commands::prompt_session,
+            commands::answer_permission,
             commands::read_session_updates,
         ])
         .build(tauri::generate_context!())

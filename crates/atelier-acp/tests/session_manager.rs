@@ -338,6 +338,175 @@ fn a_turn_that_gets_no_answer_still_leaves_its_reason_in_the_record() {
     );
 }
 
+/// 카드에 답하는 한 턴이 남긴 것들. 스코프 안에서 본 것을 그대로 들고 나온다.
+struct Asked {
+    request_id: String,
+    /// 답하기 직전, 목록이 "기다리는 중"을 드러냈는가.
+    awaiting: bool,
+    /// 에이전트가 주지 않은 선택지로 답해 봤을 때 — 거절당했는가, 그리고 카드는 남았는가.
+    made_up_refused: bool,
+    card_kept: bool,
+    turn: atelier_acp::Result<()>,
+}
+
+/// 한 턴을 보내고, 카드가 뜨면 주어진 선택지로 답한 뒤 턴이 끝나기를 기다린다.
+///
+/// **스코프 안에서는 어긋난 것을 외치지 않는다.** 스코프는 자식 스레드가 끝나야 빠져나오는데
+/// 답하지 못한 턴은 영원히 돌기 때문에, 여기서 패닉하면 실패가 아니라 **멈춤**이 된다. 본 것은
+/// 값으로 들고 나가 밖에서 따지고, 끝내 답하지 못하면 세션을 접어 턴을 풀어 준다.
+fn turn_answering_with(manager: &SessionManager, session_id: &str, option_id: &str) -> Asked {
+    let asked = std::thread::scope(|scope| {
+        let turn = scope.spawn(|| manager.prompt(session_id, PROMPT));
+
+        let Some(request_id) = wait_for_permission(manager, session_id) else {
+            manager.close_all();
+            return None;
+        };
+        let awaiting = awaiting_permission(manager);
+        let made_up = manager.answer_permission(session_id, &request_id, "고르지 않은 것");
+        let card_kept = awaiting_permission(manager);
+
+        if manager
+            .answer_permission(session_id, &request_id, option_id)
+            .is_err()
+        {
+            manager.close_all();
+        }
+        Some(Asked {
+            request_id,
+            awaiting,
+            made_up_refused: made_up.is_err(),
+            card_kept,
+            turn: turn.join().unwrap(),
+        })
+    });
+    asked.expect("권한 요청이 오지 않았다")
+}
+
+/// 카드가 뜰 때까지 기다린다. 프롬프트는 답을 줄 때까지 돌아오지 않으므로 **다른 스레드**가
+/// 이것을 본다. 기다리는 자리는 기록 파일이다 — 매니저의 속을 들여다보지 않는다.
+fn wait_for_permission(manager: &SessionManager, session_id: &str) -> Option<String> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        let asked = manager
+            .updates(session_id)
+            .unwrap_or_default()
+            .into_iter()
+            .find_map(|line| {
+                (line["kind"] == "permission_request")
+                    .then(|| line["requestId"].as_str().map(str::to_string))
+                    .flatten()
+            });
+        if asked.is_some() {
+            return asked;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    None
+}
+
+fn awaiting_permission(manager: &SessionManager) -> bool {
+    manager
+        .list()
+        .is_ok_and(|listed| listed[0].awaiting_permission)
+}
+
+/// 허용을 누르면 세션이 끊기지 않고 그 자리에서 이어진다. 그리고 그 승인이 기록에 남아
+/// **기록만 읽어도 무엇을 승인했는지** 성립한다.
+#[test]
+fn allowing_a_permission_lets_the_turn_go_on_and_pairs_in_the_record() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} asks-permission"));
+    let manager = sandbox.manager();
+    let started = manager.start(sandbox.start_point()).unwrap();
+
+    let asked = turn_answering_with(&manager, &started.session.id, "yes");
+    let asking = asked.request_id;
+
+    asked.turn.expect("허용했으니 턴은 끝까지 간다");
+    // 답하지 않은 요청은 목록에서 눈에 띈다 — 내가 아니라 **에이전트가 나를 기다리는 중**이다
+    assert!(asked.awaiting, "답을 기다리는 동안 목록이 그것을 드러내야 한다");
+    // 에이전트가 주지 않은 선택지로는 답할 수 없다. 그리고 그렇게 빗나간 답이 **카드를
+    // 가져가 버리면** 사람에게는 다시 답할 길이 없다.
+    assert!(asked.made_up_refused, "없는 선택지로 답할 수는 없다");
+    assert!(asked.card_kept, "빗나간 답이 카드를 가져가면 안 된다");
+
+    let listed = manager.list().unwrap();
+    assert!(listed[0].alive, "허용한 세션은 그대로 살아 있다");
+    assert!(
+        !listed[0].awaiting_permission,
+        "답한 뒤에는 기다림이 사라진다"
+    );
+
+    let lines = manager.updates(&started.session.id).unwrap();
+    let order: Vec<String> = lines.iter().map(kind_of).collect();
+    assert_eq!(
+        order,
+        vec![
+            "session_update:available_commands_update",
+            "user_prompt",
+            "session_update:tool_call",
+            "permission_request",
+            // 답이 **에이전트가 다시 움직이기 전에** 남는다 — 재생이 순서를 뒤집지 않도록
+            "permission_response",
+            "session_update:agent_message_chunk",
+        ]
+    );
+
+    // 요청과 답이 서로 짝지어진다
+    assert_eq!(lines[3]["requestId"], asking.as_str());
+    assert_eq!(lines[4]["requestId"], asking.as_str());
+    assert_eq!(lines[4]["outcome"], "allow");
+    assert_eq!(lines[4]["optionId"], "yes", "실제로 고른 것도 남는다");
+
+    // 물음이 실어 온 도구는 **갱신**이라 이름도 입력도 없다. 손대지 않고 그대로 담고,
+    // 어떤 도구인지는 같은 번호로 앞의 도구 호출을 찾아 알아낸다 (화면이 그렇게 그린다).
+    assert_eq!(
+        lines[3]["payload"]["toolCall"],
+        serde_json::json!({"toolCallId": "call-1", "kind": "execute", "status": "pending"})
+    );
+    assert_eq!(
+        lines[2]["payload"]["update"]["rawInput"],
+        serde_json::json!({"command": "echo hi"}),
+        "어떤 입력으로 쓰려는지는 앞선 도구 호출에 남아 있다"
+    );
+    assert_eq!(
+        lines[5]["payload"]["update"]["content"]["text"], "허락받아 echo hi 를 실행했다",
+        "허용을 받은 에이전트가 그 자리에서 이어 간다"
+    );
+
+    // 같은 카드에 두 번 답할 수는 없다 — 두 번째 누름이 조용히 통과하면 안 된다
+    let again = manager
+        .answer_permission(&started.session.id, &asking, "yes")
+        .unwrap_err()
+        .to_string();
+    assert!(again.contains(&asking), "어느 요청이 문제인지 보여야 한다: {again}");
+}
+
+/// 거부해도 세션이 죽지 않는다. 턴은 실패가 아니라 **다른 길로** 끝난다.
+#[test]
+fn denying_a_permission_does_not_kill_the_session() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} asks-permission"));
+    let manager = sandbox.manager();
+    let started = manager.start(sandbox.start_point()).unwrap();
+
+    let asked = turn_answering_with(&manager, &started.session.id, "no");
+    asked.turn.expect("거부는 턴의 실패가 아니다");
+
+    let listed = manager.list().unwrap();
+    assert!(listed[0].alive, "거부했다고 세션이 죽으면 안 된다");
+    assert!(
+        is_running(pid_of(&listed[0].session)),
+        "자식 프로세스도 그대로 떠 있어야 한다"
+    );
+
+    let lines = manager.updates(&started.session.id).unwrap();
+    assert_eq!(lines[4]["outcome"], "deny");
+    assert_eq!(
+        lines[5]["payload"]["update"]["content"]["text"], "허락받지 못해 다른 길로 간다",
+        "거부를 받은 에이전트가 다른 길을 찾는다"
+    );
+}
+
 #[test]
 fn prompting_a_session_that_is_not_running_fails_readably() {
     let sandbox = Sandbox::normal_agent();

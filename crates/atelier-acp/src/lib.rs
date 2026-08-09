@@ -21,6 +21,13 @@ pub enum Error {
     NotRunning(String),
     #[error("prompt failed: {0}")]
     Prompt(String),
+    /// 그 카드로는 답할 수 없다 — 이미 답했거나, 에이전트가 주지 않은 선택지다.
+    #[error("session {session} has no permission request '{request}' waiting for option '{option}'")]
+    NoSuchPermission {
+        session: String,
+        request: String,
+        option: String,
+    },
     /// 앱이 닫히는 도중에 세션이 다 떴을 때. 그 자식은 거두고 사용자에게는 서지 않았다고 말한다.
     #[error("atelier is closing")]
     Closing,

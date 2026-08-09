@@ -28,7 +28,11 @@ type Scenario = fn(&mut Wire);
 type OnPrompt = fn(&mut Wire, &Value, &Value, &Value);
 
 /// 시나리오를 고르는 표. 더할 때는 **여기 한 줄과 함수 하나**를 더한다.
-const SCENARIOS: &[(&str, Scenario)] = &[("normal", normal), ("refuses-prompt", refuses_prompt)];
+const SCENARIOS: &[(&str, Scenario)] = &[
+    ("normal", normal),
+    ("refuses-prompt", refuses_prompt),
+    ("asks-permission", asks_permission),
+];
 
 fn main() {
     let name = std::env::args()
@@ -59,6 +63,51 @@ fn normal(wire: &mut Wire) {
 fn refuses_prompt(wire: &mut Wire) {
     converse(wire, |wire, id, _session, _said| {
         wire.reply_error(id, -32603, "Internal error: model unavailable");
+    });
+}
+
+/// 도구를 쓰기 전에 사람에게 묻는 에이전트. **묻고, 답을 받고, 그 답에 따라 갈린다.**
+///
+/// 허용이든 거부든 턴은 정상으로 끝난다 — 거부는 실패가 아니라 다른 길이다. 그래서 이 한
+/// 시나리오로 허용·거부 두 경우를 다 몰 수 있다. 어느 쪽인지는 **답하는 쪽**이 정한다.
+fn asks_permission(wire: &mut Wire) {
+    converse(wire, |wire, id, session_id, _said| {
+        // 쓰려는 도구를 **먼저 알린다.** 이름과 입력은 여기 실린다.
+        wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "tool_call", "toolCallId": "call-1",
+                              "title": "echo hi", "kind": "execute", "status": "pending",
+                              "rawInput": {"command": "echo hi"}}}),
+        );
+        // 그리고 묻는다. 물음이 실어 오는 `toolCall`은 **갱신**이라 방금 보낸 자리가 비어
+        // 있다 — 실물 Codex가 그렇게 보낸다. 화면은 같은 번호로 앞의 것을 찾아 메워야 한다.
+        let asked = json!({
+            "sessionId": session_id,
+            "toolCall": {"toolCallId": "call-1", "kind": "execute", "status": "pending"},
+            "options": [
+                {"optionId": "yes", "name": "이번만 허용", "kind": "allow_once"},
+                {"optionId": "no", "name": "거부", "kind": "reject_once"}
+            ]
+        });
+        // 답을 받지 못하면 이 턴은 여기서 끝난다 — 상대가 사라진 것이므로 답할 곳도 없다.
+        let Some(answer) = wire.ask("session/request_permission", asked) else {
+            return;
+        };
+
+        // 고른 것이 무엇인지는 우리가 준 선택지 id로 온다. 오류로 답했다면 고른 것이 없고,
+        // 없는 것은 허락이 아니다.
+        let said = match answer["outcome"]["optionId"].as_str() {
+            Some("yes") => "허락받아 echo hi 를 실행했다",
+            _ => "허락받지 못해 다른 길로 간다",
+        };
+        wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk",
+                              "content": {"type": "text", "text": said}}}),
+        );
+        wire.reply(id, json!({"stopReason": "end_turn"}));
     });
 }
 
@@ -168,6 +217,8 @@ fn leave_receipt(cwd: &Value, client_capabilities: &Value) {
 struct Wire {
     input: std::io::StdinLock<'static>,
     output: std::io::Stdout,
+    /// 이쪽에서 먼저 건 물음의 수. 다음 요청 id가 된다 — 요청 id는 방향마다 따로 센다.
+    asked: i64,
 }
 
 impl Wire {
@@ -175,6 +226,7 @@ impl Wire {
         Self {
             input: std::io::stdin().lock(),
             output: std::io::stdout(),
+            asked: 0,
         }
     }
 
@@ -205,6 +257,23 @@ impl Wire {
     /// 답을 기대하지 않고 먼저 거는 말.
     fn notify(&mut self, method: &str, params: Value) {
         self.send(&json!({"jsonrpc": "2.0", "method": method, "params": params}));
+    }
+
+    /// **이쪽에서 먼저 묻고** 답을 기다린다. 상대가 답하지 않고 스트림을 닫으면 `None`.
+    ///
+    /// 기다리는 동안 상대가 거는 말은 흘려보낸다 — 이 판에서 그 자리에 오는 것은 없다.
+    /// 오류로 답한 경우 `result`가 없으므로 그대로 널이 나가고, 부르는 쪽이 그것을 읽는다.
+    fn ask(&mut self, method: &str, params: Value) -> Option<Value> {
+        self.asked += 1;
+        let id = json!(self.asked);
+        self.send(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+        loop {
+            let message = self.read()?;
+            // 답에는 method가 없다. 그것이 상대의 물음과 상대의 답을 가르는 자리다.
+            if message.get("method").is_none() && message["id"] == id {
+                return Some(message["result"].clone());
+            }
+        }
     }
 
     fn reply(&mut self, id: &Value, result: Value) {

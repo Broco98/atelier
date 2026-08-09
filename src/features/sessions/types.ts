@@ -17,6 +17,8 @@ export interface SessionView {
   updatedAt: string;
   /** 런타임의 사실이라 신원 파일에 없다 — 새로 켠 앱에서는 전부 false다. */
   alive: boolean;
+  /** 답을 기다리는 권한 요청이 있는가. 살아있음과 같은 이유로 런타임에서만 온다. */
+  awaitingPermission: boolean;
 }
 
 /**
@@ -35,15 +37,47 @@ export interface Envelope {
   text?: string;
   /** kind가 `turn_failed`일 때 — 답을 얻지 못한 이유 */
   message?: string;
-  /** kind가 `session_update`일 때 — ACP 알림 파라미터 원본 */
-  payload?: { update?: AgentUpdate };
+  /** kind가 `permission_request`·`permission_response`일 때 — 둘을 잇는 번호 */
+  requestId?: string;
+  /** kind가 `permission_response`일 때 — 실제로 고른 선택지와, 그것을 줄인 말 */
+  optionId?: string;
+  outcome?: string;
+  /** kind가 `session_update`면 알림 파라미터, `permission_request`면 요청 파라미터 — 둘 다 원본 */
+  payload?: { update?: AgentUpdate; toolCall?: ToolCall; options?: PermissionOption[] };
 }
 
 /** 그리려고 꺼내 보는 자리만 적는다. 나머지는 봉투 안에 손대지 않은 채 그대로 있다. */
 interface AgentUpdate {
   sessionUpdate?: string;
-  content?: { type?: string; text?: string };
+  /** 갱신 종류마다 모양이 다르다 — 말 조각은 블록 하나, 도구 호출은 블록의 배열이다. */
+  content?: unknown;
   title?: string;
+  /** `tool_call`일 때 — 권한 요청이 이 번호로 자기가 어느 도구인지 가리킨다 */
+  toolCallId?: string;
+  rawInput?: unknown;
+}
+
+/**
+ * 에이전트가 쓰려는 도구. ACP에서 이 자리는 **갱신**이라 앞서 보낸 것은 다시 오지 않는다 —
+ * 비어 있는 자리는 같은 `toolCallId`의 지난 `tool_call`에서 메운다.
+ *
+ * 이 판은 이름과 원시 입력까지만 본다. diff와 도구별 렌더링은 판 04다.
+ */
+export interface ToolCall {
+  toolCallId?: string;
+  title?: string;
+  kind?: string;
+  rawInput?: unknown;
+  /** 입력이 `rawInput`으로 오지 않는 도구도 있다 — 실물 Codex의 편집은 여기 diff를 싣는다 */
+  content?: unknown;
+}
+
+/** 에이전트가 준 선택지 하나. **아틀리에가 만들어 내는 선택지는 없다.** */
+export interface PermissionOption {
+  optionId: string;
+  name: string;
+  /** allow_once · allow_always · reject_once · reject_always */
+  kind: string;
 }
 
 /** 화면에 그려지는 한 덩이. */
@@ -51,4 +85,17 @@ export type Line =
   | { kind: "user"; text: string }
   | { kind: "agent"; text: string }
   | { kind: "tool"; text: string }
-  | { kind: "failed"; text: string };
+  | { kind: "failed"; text: string }
+  | PermissionLine;
+
+/** 권한 카드 한 장. 아직 답하지 않았으면 `answered`가 null이다. */
+export interface PermissionLine {
+  kind: "permission";
+  requestId: string;
+  /** 어떤 도구를 */
+  title: string;
+  /** 어떤 입력으로 — 에이전트가 보낸 그대로 읽을 수 있게 편 것 */
+  input: string;
+  options: PermissionOption[];
+  answered: { optionId: string; outcome: string } | null;
+}

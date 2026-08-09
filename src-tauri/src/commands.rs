@@ -104,6 +104,19 @@ pub async fn prompt_session(
 }
 
 #[tauri::command]
+pub async fn answer_permission(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+    request_id: String,
+    option_id: String,
+) -> CmdResult<()> {
+    // 답을 돌려주는 것은 기다리는 일이 아니다 — 상대에게 한 줄 보내고 곧바로 돌아온다.
+    manager
+        .answer_permission(&session_id, &request_id, &option_id)
+        .map_err(err)
+}
+
+#[tauri::command]
 pub async fn read_session_updates(
     manager: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,
