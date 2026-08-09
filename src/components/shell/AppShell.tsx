@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import StatusBar from "./StatusBar";
@@ -32,31 +32,38 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // 키별로 "그 화면을 그리는 방법"을 담는다. 화면마다 요구하는 협력자가 다르므로
+  // 컴포넌트가 아니라 렌더 함수를 담는다. navItems에 키가 늘면 여기 등록이 강제된다.
+  const pages: Record<NavKey, () => ReactNode> = {
+    projects: () => (
+      <ProjectsPage
+        sidebarOpen={sidebarOpen}
+        selectedSlug={projectSlug}
+        onSelect={setProjectSlug}
+        onOpenWork={(slug) => {
+          if (slug) setWorkSlug(slug);
+          setActiveKey("works");
+        }}
+      />
+    ),
+    works: () => (
+      <WorksPage
+        sidebarOpen={sidebarOpen}
+        selectedSlug={workSlug}
+        onSelect={setWorkSlug}
+        onOpenProject={(slug) => {
+          setProjectSlug(slug);
+          setActiveKey("projects");
+        }}
+      />
+    ),
+  };
+
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">
       <div className="flex min-h-0 flex-1">
         <Sidebar open={sidebarOpen} activeKey={activeKey} onSelect={setActiveKey} />
-        {activeKey === "projects" ? (
-          <ProjectsPage
-            sidebarOpen={sidebarOpen}
-            selectedSlug={projectSlug}
-            onSelect={setProjectSlug}
-            onOpenWork={(slug) => {
-              if (slug) setWorkSlug(slug);
-              setActiveKey("works");
-            }}
-          />
-        ) : (
-          <WorksPage
-            sidebarOpen={sidebarOpen}
-            selectedSlug={workSlug}
-            onSelect={setWorkSlug}
-            onOpenProject={(slug) => {
-              setProjectSlug(slug);
-              setActiveKey("projects");
-            }}
-          />
-        )}
+        {pages[activeKey]()}
       </div>
       <StatusBar />
       <SidebarToggle open={sidebarOpen} onToggle={() => setSidebarOpen((open) => !open)} />
