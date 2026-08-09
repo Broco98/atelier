@@ -15,12 +15,9 @@ interface SessionsPageProps {
 function SessionsPage({ sidebarOpen }: SessionsPageProps) {
   const { data: sessions = [] } = useSessions();
   const { data: projects = [] } = useProjects();
-  const [startPointSlug, setStartPointSlug] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const createSession = useCreateSession();
 
-  const startPoint =
-    projects.find((p) => p.slug === startPointSlug) ?? projects[0] ?? null;
   const selected = sessions.find((s) => s.id === selectedId) ?? null;
   // 첫 지시가 세션의 이름이 된다. 아직 없으면 어느 프로젝트에서 떴는지가 다음 단서이고,
   // 그 프로젝트의 등록이 지워졌으면 슬러그가 마지막 단서다.
@@ -29,10 +26,12 @@ function SessionsPage({ sidebarOpen }: SessionsPageProps) {
     projects.find((p) => p.slug === session.startPoint.slug)?.name ??
     session.startPoint.slug;
 
-  const handleStart = async () => {
-    if (!startPoint || createSession.isPending) return;
+  // 시작점은 목록 패널의 + 가 고른다 — Projects의 등록 +가 폴더 선택창을 여는 것과 같은 자리다.
+  // 그래서 여기에는 고르는 상태가 없다: 고른 값이 곧바로 인자로 온다.
+  const handleStart = async (projectSlug: string) => {
+    if (createSession.isPending) return;
     try {
-      const started = await createSession.mutateAsync(startPoint.slug);
+      const started = await createSession.mutateAsync(projectSlug);
       setSelectedId(started.id);
     } catch (e) {
       // 무엇을 실행하려다 실패했는지가 이 문장 안에 들어 있다 (커맨드 + 원인)
@@ -47,39 +46,13 @@ function SessionsPage({ sidebarOpen }: SessionsPageProps) {
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}
         label={label}
+        projects={projects}
+        onStart={handleStart}
+        starting={createSession.isPending}
         sidebarOpen={sidebarOpen}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader
-          root="Sessions"
-          leaf={selected ? label(selected) : undefined}
-          actions={
-            projects.length > 0 && (
-              <>
-                <select
-                  value={startPoint?.slug ?? ""}
-                  onChange={(e) => setStartPointSlug(e.target.value)}
-                  aria-label="시작점"
-                  className="h-7 max-w-[220px] rounded-[9px] border border-border-strong bg-background px-2 text-[13.5px] font-medium text-muted-foreground"
-                >
-                  {projects.map((project) => (
-                    <option key={project.slug} value={project.slug}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleStart}
-                  disabled={createSession.isPending}
-                  className="h-7 rounded-[9px] bg-primary px-[11px] text-[13.5px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:opacity-40"
-                >
-                  {createSession.isPending ? "시작 중…" : "세션 시작"}
-                </button>
-              </>
-            )
-          }
-        />
+        <PageHeader root="Sessions" leaf={selected ? label(selected) : undefined} />
 
         {selected ? (
           // 세션을 바꾸면 대화도 처음부터 다시 그린다 — 재생과 라이브가 섞이지 않도록
