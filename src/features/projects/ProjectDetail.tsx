@@ -3,6 +3,7 @@ import { Folder, GitFork, GitMerge, Check, ChevronDown, ChevronRight, Zap } from
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
+import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
@@ -14,7 +15,7 @@ interface ProjectDetailProps {
 
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
-    <div className="flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
+    <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
       {project.missing && (
         <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500 bg-red-500/[0.07] px-3.5 py-2.5">
           <span className="size-[7px] shrink-0 rounded-full bg-red-500" />
@@ -83,7 +84,7 @@ function WorksSection({
         <button
           type="button"
           onClick={() => onOpenWork(null)}
-          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors hover:bg-accent hover:text-foreground"
+          className="ml-auto flex items-center gap-1 rounded-[7px] px-1.5 py-0.5 text-[12px] font-medium text-tertiary transition-colors quiet-hover"
         >
           Works에서 모두 보기
           <ChevronRight className="size-3" strokeWidth={2} />
@@ -96,13 +97,15 @@ function WorksSection({
           </div>
         ) : (
           related.map((work) => {
-            const tree = work.trees.find((t) => t.project === projectSlug);
+            const worktree = work.worktrees.find((t) => t.project === projectSlug);
             return (
               <button
                 key={work.slug}
                 type="button"
                 onClick={() => onOpenWork(work.slug)}
-                className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5 text-left transition-colors last:border-b-0 hover:bg-accent"
+                // 목록 "행"이라 농도 1이다 — 버튼(2)이 아니다. D1의 부등식에서 행 hover가
+                // 한 단계 아래인 이유는 행 선택(2)에 자리를 내주기 위해서다
+                className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5 text-left transition-colors last:border-b-0 hover:bg-state-1"
               >
                 <span className="flex min-w-0 items-center gap-[9px]">
                   <StatusIcon status={work.status} />
@@ -116,7 +119,7 @@ function WorksSection({
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5 text-[12px] text-tertiary">
-                  {tree?.exists && (
+                  {worktree?.exists && (
                     <span className="flex items-center gap-1.5 font-mono text-[11px]">
                       <GitFork className="size-3" strokeWidth={2} />
                       {work.branch}
@@ -135,6 +138,10 @@ function WorksSection({
 }
 
 // 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
+//
+// works/WorksPage.tsx의 TitleEditor가 같은 상호작용 계약을 쓴다 — Enter/blur 확정,
+// Escape 취소, 공백·동일 값 미저장, 그리고 Enter와 blur가 함께 들어와 두 번 커밋되는 것을
+// 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다 (스타일은 서로 다르다).
 function TitleEditor({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [editing, setEditing] = useState(false);
@@ -161,7 +168,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
           setDraft(project.name);
           setEditing(true);
         }}
-        className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-[25px] font-semibold tracking-[-0.015em] transition-colors hover:bg-accent"
+        className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-[25px] font-semibold tracking-[-0.015em] transition-colors hover:bg-state-2"
       >
         {project.name}
       </button>
@@ -205,6 +212,7 @@ function PropertyRow({
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
   const branches = project.git?.localBranches ?? [];
 
   useEffect(() => {
@@ -227,18 +235,17 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
   return (
     <div className="relative -ml-[7px] flex">
       <button
+        ref={anchor}
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="브랜치 목록에서 변경"
-        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
         <ChevronDown className="size-2.5" strokeWidth={2.2} />
       </button>
       {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-[30px] z-40 w-[248px] overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg">
+        <PopoverPortal anchorRef={anchor} width={248} onClose={() => setOpen(false)}>
             <div className="flex h-8 items-center justify-between border-b px-3">
               <span className="text-[12.5px] font-semibold text-muted-foreground">브랜치</span>
               <span className="text-[12px] text-tertiary">{options.length}개</span>
@@ -254,7 +261,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
                       updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
                     }
                   }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-accent"
+                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
                 >
                   <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
                     {branch}
@@ -268,8 +275,7 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
             <div className="border-t px-3 py-2 text-[12px] leading-normal text-tertiary">
               baseBranch 설정만 바꿔요 — checkout은 하지 않아요
             </div>
-          </div>
-        </>
+        </PopoverPortal>
       )}
     </div>
   );
@@ -302,7 +308,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
           setDraft(project.baseBranch);
           setEditing(true);
         }}
-        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
       </button>

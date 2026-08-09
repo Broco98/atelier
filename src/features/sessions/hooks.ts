@@ -10,7 +10,35 @@ const SESSIONS_KEY = ["sessions"] as const;
 const REPLAY_KEY = ["session-replay"] as const;
 const PROMPT_KEY = ["session-prompt"] as const;
 
+/**
+ * 목록이 보여 주는 **런타임의 사실**을 바꾸는 봉투들 — 답을 기다리는 요청이 생기거나
+ * 사라졌다, 그리고 에이전트가 끝났다.
+ */
+const RUNTIME_KINDS = ["permission_request", "permission_response", "agent_exited"];
+
+/**
+ * 세션 목록. **런타임의 사실이 바뀌면 스스로 다시 읽는다.**
+ *
+ * 살아있음과 답을 기다림은 신원 파일에 없으므로 파일을 다시 읽어도 알 수 없다. 봉투 한 줄이
+ * 그 소식이 오는 유일한 길이고, 그래서 따로 난 이벤트 통로가 없다(티켓 06과 같은 이유).
+ * 귀는 목록이 스스로 연다 — 지금 보고 있지 않은 세션의 변화도 목록에서 보여야 하는데,
+ * 그것을 부르는 쪽이 기억해야 한다면 언젠가 잊는다.
+ */
 export function useSessions() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    let attached = true;
+    const unlisten = listen<{ line: Envelope }>("session:update", (event) => {
+      if (!attached || !RUNTIME_KINDS.includes(event.payload.line.kind)) return;
+      void queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
+    });
+    return () => {
+      attached = false;
+      unlisten.then((fn) => fn());
+    };
+  }, [queryClient]);
+
   return useQuery({ queryKey: SESSIONS_KEY, queryFn: sessionsApi.list });
 }
 
@@ -141,33 +169,3 @@ export function useAnswerPermission(sessionId: string) {
   });
 }
 
-/**
- * 목록이 보여 주는 **런타임의 사실**을 바꾸는 봉투들 — 답을 기다리는 요청이 생기거나
- * 사라졌다, 그리고 에이전트가 끝났다.
- */
-const RUNTIME_KINDS = ["permission_request", "permission_response", "agent_exited"];
-
-/**
- * 런타임의 사실이 바뀌면 목록을 다시 읽는다.
- *
- * 살아있음과 답을 기다림은 신원 파일에 없으므로 파일을 다시 읽어도 알 수 없다. 봉투 한 줄이
- * 그 소식이 오는 유일한 길이고, 그래서 **따로 난 이벤트 통로가 없다**(티켓 06과 같은 이유).
- *
- * 대화 화면이 아니라 **페이지**가 이 귀를 연다 — 지금 보고 있지 않은 세션의 변화도
- * 목록에서 보여야 하기 때문이다.
- */
-export function useWatchSessionRuntime() {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    let attached = true;
-    const unlisten = listen<{ line: Envelope }>("session:update", (event) => {
-      if (!attached || !RUNTIME_KINDS.includes(event.payload.line.kind)) return;
-      void queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
-    });
-    return () => {
-      attached = false;
-      unlisten.then((fn) => fn());
-    };
-  }, [queryClient]);
-}

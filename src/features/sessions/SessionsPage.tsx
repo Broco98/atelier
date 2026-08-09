@@ -5,7 +5,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { useProjects } from "@/features/projects/hooks";
 import SessionList from "./SessionList";
 import SessionThread from "./SessionThread";
-import { useCreateSession, useSessions, useWatchSessionRuntime } from "./hooks";
+import { useCreateSession, useSessions } from "./hooks";
 import type { SessionView } from "./types";
 
 interface SessionsPageProps {
@@ -18,8 +18,6 @@ function SessionsPage({ sidebarOpen }: SessionsPageProps) {
   const [startPointSlug, setStartPointSlug] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const createSession = useCreateSession();
-  // 지금 보고 있지 않은 세션에 뜬 권한 요청과 그 세션의 죽음도 목록에서 보여야 한다
-  useWatchSessionRuntime();
 
   const startPoint =
     projects.find((p) => p.slug === startPointSlug) ?? projects[0] ?? null;

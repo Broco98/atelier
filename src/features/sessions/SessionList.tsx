@@ -51,7 +51,7 @@ function SessionList({ sessions, selectedId, onSelect, label, sidebarOpen }: Ses
                 onClick={() => onSelect(session.id)}
                 className={cn(
                   "flex w-full shrink-0 flex-col gap-[7px] rounded-[14px] border px-4 py-3.5 text-left transition-colors",
-                  active ? "border-transparent selected-ring" : "bg-background hover:bg-accent",
+                  active ? "border-transparent selected-row" : "bg-background hover:bg-state-1",
                 )}
               >
                 <span className="flex w-full items-center gap-[7px]">

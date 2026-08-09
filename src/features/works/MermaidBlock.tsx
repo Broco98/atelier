@@ -1,9 +1,18 @@
-import { useEffect, useId, useState } from "react";
-import { Maximize2, X } from "lucide-react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import FullscreenModal from "./FullscreenModal";
 
-const zoomButton =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors hover:bg-accent hover:text-foreground";
+// 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
+// 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
+// 배경 농도만 스케일을 따른다.
+//
+// 여기는 모양만 정하고 hover·켜짐은 호출부가 분기 안에 붙인다 — 「코드」가 토글이라
+// toggle-on과 겹치면 hover 규칙이 두 벌이 되어 어느 쪽이 이길지 유틸리티 정렬 순서가
+// 정하게 된다. icon-button이 hover를 갖지 않는 것과 같은 이유다.
+const toolbarButton =
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] transition-colors";
+const toolbarButtonQuiet = cn(toolbarButton, "text-tertiary quiet-hover");
 
 function ZoomControls({
   scale,
@@ -16,20 +25,94 @@ function ZoomControls({
 }) {
   return (
     <>
-      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={zoomButton}>−</button>
-      <button type="button" onClick={() => onChange(1)} className={zoomButton}>{Math.round(scale * 100)}%</button>
-      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={zoomButton}>+</button>
+      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
+      <button type="button" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
+      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
     </>
   );
 }
 
-function ScaledSvg({ svg, scale }: { svg: string; scale: number }) {
+// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const onCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(false), 1600);
+  };
+  return (
+    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={toolbarButtonQuiet}>
+      {copied ? (
+        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+      ) : (
+        <Copy className="size-3" strokeWidth={2} />
+      )}
+    </button>
+  );
+}
+
+interface SvgSize {
+  w: number;
+  h: number;
+}
+
+// mermaid가 만든 svg 문자열에서 viewBox 크기를 읽는다 — mermaid 11은 항상 viewBox를 넣는다
+function svgSize(svg: string): SvgSize | null {
+  const m = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) ([\d.]+)"/.exec(svg);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
+// transform 대신 래퍼에 viewBox × scale 크기를 명시 — 레이아웃 크기 = 보이는 크기가 되어
+// overflow-auto 스크롤·드래그 팬이 실제 콘텐츠와 어긋나지 않는다 (svg는 벡터라 무손실 확대)
+function SizedSvg({ svg, size, scale }: { svg: string; size: SvgSize | null; scale: number }) {
+  if (!size) {
+    // viewBox 없는 예외 svg — 기존 transform 방식으로 폴백
+    return (
+      <div
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    );
+  }
   return (
     <div
-      style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+      style={{ width: size.w * scale, height: size.h * scale }}
+      className="[&>svg]:h-full! [&>svg]:w-full! [&>svg]:max-w-none!"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
+}
+
+// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다
+function usePanScroll() {
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !ref.current) return;
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      left: ref.current.scrollLeft,
+      top: ref.current.scrollTop,
+    };
+    ref.current.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || !ref.current) return;
+    ref.current.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
+    ref.current.scrollTop = drag.current.top - (e.clientY - drag.current.y);
+  };
+  const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = null;
+    if (ref.current?.hasPointerCapture(e.pointerId)) ref.current.releasePointerCapture(e.pointerId);
+  };
+  return { ref, onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
 function MermaidBlock({ code }: { code: string }) {
@@ -41,36 +124,44 @@ function MermaidBlock({ code }: { code: string }) {
   const [fullOpen, setFullOpen] = useState(false);
   const [fullScale, setFullScale] = useState(1);
 
+  const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
+  const pan = usePanScroll();
+  const modalPan = usePanScroll();
+
   useEffect(() => {
     let on = true;
-    import("mermaid").then(async ({ default: mermaid }) => {
-      mermaid.initialize({ startOnLoad: false, theme: "neutral" });
-      try {
+    // 실패는 숨기지 않고 코드로 폴백한다. catch가 체인 끝에 붙어야 하는 이유: mermaid는
+    // 동적 import라 이 블록이 화면에 나타날 때 청크를 받아 온다. 그 요청이 실패하면
+    // (dev 서버가 죽었을 때·오프라인·청크 배포 누락) then 자체가 실행되지 않으므로,
+    // then 안에만 그물을 치면 실패가 밖으로 새고 화면은 "렌더링 중…"에 영원히 멈춘다.
+    import("mermaid")
+      .then(async ({ default: mermaid }) => {
+        mermaid.initialize({ startOnLoad: false, theme: "neutral" });
         const { svg } = await mermaid.render(`mm${id}`, code);
         if (on) setSvg(svg);
-      } catch (e) {
-        // 파싱 실패는 숨기지 않고 코드로 폴백한다
+      })
+      .catch((e) => {
         if (on) setError(String(e));
-      }
-    });
+      });
     return () => {
       on = false;
     };
   }, [code, id]);
 
-  useEffect(() => {
-    if (!fullOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullOpen]);
+  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
+  const close = useCallback(() => setFullOpen(false), []);
 
-  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  // 모달이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산)
+  useLayoutEffect(() => {
+    const el = modalPan.ref.current;
+    if (!fullOpen || !el || !size) return;
+    const pad = 56; // 모달 콘텐츠 p-7 좌우·상하 패딩 합
+    const fit = Math.min((el.clientWidth - pad) / size.w, (el.clientHeight - pad) / size.h);
+    setFullScale(Math.min(3, Math.max(0.4, fit)));
+  }, [fullOpen, size, modalPan.ref]);
 
   return (
-    <div className="overflow-hidden rounded-[12px] border bg-panel" onClick={stop}>
+    <div className="overflow-hidden rounded-[12px] border bg-panel">
       <div className="flex items-center justify-between border-b px-2.5 py-1.5">
         <span className="font-mono text-[11px] text-tertiary">mermaid</span>
         <span className="flex items-center gap-1">
@@ -80,11 +171,12 @@ function MermaidBlock({ code }: { code: string }) {
             type="button"
             onClick={() => setShowCode((v) => !v)}
             title="원본 mermaid 코드 보기"
-            className={cn(zoomButton, showCode && "bg-accent text-foreground")}
+            className={showCode ? cn(toolbarButton, "toggle-on") : toolbarButtonQuiet}
           >
             코드
           </button>
-          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={zoomButton}>
+          <CopyCodeButton code={code} />
+          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
             <Maximize2 className="size-3" strokeWidth={2} />
           </button>
         </span>
@@ -92,14 +184,14 @@ function MermaidBlock({ code }: { code: string }) {
       {error && !svg ? (
         <div className="flex flex-col gap-2 p-4">
           <span className="text-[12.5px] text-red-600">다이어그램 렌더링 실패 — 원본 코드를 표시해요</span>
-          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground">{code}</pre>
+          <pre className="overflow-x-auto font-mono text-[12.5px] leading-[1.7] text-muted-foreground scroll-quiet">{code}</pre>
         </div>
       ) : showCode ? (
-        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground">{code}</pre>
+        <pre className="overflow-x-auto bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.75] text-muted-foreground scroll-quiet">{code}</pre>
       ) : (
-        <div className="overflow-auto p-4">
+        <div {...pan} className="cursor-grab select-none overflow-auto p-4 active:cursor-grabbing scroll-quiet">
           {svg ? (
-            <ScaledSvg svg={svg} scale={scale} />
+            <SizedSvg svg={svg} size={size} scale={scale} />
           ) : (
             <span className="text-[12.5px] text-tertiary">렌더링 중…</span>
           )}
@@ -107,33 +199,20 @@ function MermaidBlock({ code }: { code: string }) {
       )}
 
       {fullOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
-          onClick={() => setFullOpen(false)}
+        <FullscreenModal
+          label="mermaid"
+          onClose={close}
+          controls={
+            <>
+              <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+              <CopyCodeButton code={code} />
+            </>
+          }
         >
-          <div
-            className="flex h-full w-full max-w-[1280px] flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
-            onClick={stop}
-          >
-            <div className="flex h-[46px] shrink-0 items-center justify-between border-b px-3.5">
-              <span className="font-mono text-[12px] text-tertiary">mermaid</span>
-              <span className="flex items-center gap-1">
-                <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-                <button
-                  type="button"
-                  onClick={() => setFullOpen(false)}
-                  title="닫기 (Esc)"
-                  className="ml-1 flex size-[26px] items-center justify-center rounded-[9px] text-tertiary transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <X className="size-3.5" strokeWidth={2} />
-                </button>
-              </span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-7">
-              {svg && <ScaledSvg svg={svg} scale={fullScale} />}
-            </div>
+          <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
+            {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
           </div>
-        </div>
+        </FullscreenModal>
       )}
     </div>
   );

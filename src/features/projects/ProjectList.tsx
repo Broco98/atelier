@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -21,17 +22,31 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       )
     : projects;
 
+  // 이제 이 목록만 쓰는 폭이다 — 사이드바는 자기 키(sidebar-width)를 따로 갖는다
+  const size = useResizableWidth("panel-width", 360, 280, 560);
+
+  // 숫자 단축키는 여기에 없다. 화면과 무관하게 항상 사이드바 작업 목록을 세도록 옮겼다
+  // (SidebarWorkList) — 어디에 있든 작업으로 한 번에 돌아갈 수 있다는 보장이다.
+  // 남겨두면 이 화면에서 같은 키 하나에 이동이 둘 걸린다.
+
   return (
     // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지
     <div
+      style={{ "--panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
-        "shrink-0 overflow-hidden border-r bg-panel transition-[width,border-color] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-        open ? "w-[360px]" : "w-0 border-transparent",
+        // 흰 바닥 — 무채색 선택 표시가 배경에 묻히지 않으려면 패널이 흰색이어야 한다
+        "relative shrink-0 overflow-hidden border-r bg-background",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다
+        !size.dragging &&
+          "transition-[width,border-color] duration-[220ms] ease-panel",
+        // border-r-0까지 붙이는 이유는 Sidebar.tsx의 같은 자리에 적었다 — 접힘 상태의 1px이
+        // 오른쪽 전부를 밀어 셸 헤더 인셋이 어긋난다
+        open ? "w-(--panel-width)" : "w-0 border-transparent border-r-0",
       )}
     >
       <div
         className={cn(
-          "flex h-full w-[360px] flex-col px-3 pb-3 transition-opacity",
+          "flex h-full w-(--panel-width) flex-col px-3 pb-3 transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
@@ -39,28 +54,28 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       <div
         data-tauri-drag-region
         className={cn(
-          "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms]",
-          sidebarOpen ? "pl-0.5" : "pl-[114px]",
+          // ease-panel은 위 폭 트랜지션과 같아야 한다 — 이 버튼의 화면상 위치가 두 값의 합이라
+          // 곡선이 다르면 최종 자리를 지나쳤다 되돌아온다 (index.css의 --panel-ease 주석)
+          "flex h-(--titlebar-height) shrink-0 items-center justify-between pr-0.5 transition-[padding] duration-[220ms] ease-panel",
+          sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
         )}
       >
-        <span className="flex items-baseline gap-[7px]">
-          <span className="text-[15px] font-semibold tracking-[-0.01em]">Projects</span>
-          <span className="text-[12.5px] text-tertiary">{projects.length}</span>
-        </span>
         <button
           type="button"
           onClick={onAdd}
           aria-label="프로젝트 등록"
           title="프로젝트 등록"
-          className="flex size-[26px] items-center justify-center rounded-[10px] border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="icon-button-quiet text-tertiary"
         >
-          <Plus className="size-3.5" strokeWidth={1.8} />
+          {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
+              이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}
+          <Plus className="size-4" strokeWidth={1.8} />
         </button>
       </div>
 
-      {/* mb-[9px] = 헤더 행(44px)에서 26px 콘텐츠를 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
+      {/* mb-[10px] = 헤더 행(44px)에서 24px 아이콘 버튼을 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
       {projects.length > 0 && (
-        <div className="relative mb-[9px] shrink-0">
+        <div className="relative mb-[10px] shrink-0">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tertiary"
             strokeWidth={1.8}
@@ -94,7 +109,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 scroll-quiet">
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
             return (
@@ -103,17 +118,16 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
                 type="button"
                 onClick={() => onSelect(project.slug)}
                 className={cn(
-                  "flex w-full shrink-0 flex-col gap-[7px] rounded-[14px] border px-4 py-3.5 text-left transition-colors",
-                  active
-                    ? "border-transparent selected-ring"
-                    : "bg-background hover:bg-accent",
+                  // 테두리 없는 평평한 행 — 패널이 흰색이 된 뒤 흰 카드는 테두리만 남아 어긋난다.
+                  // 규격(반지름·패딩·줄 간격)은 작업 목록과 같은 값이다 — 다른 것은 줄 수뿐
+                  "flex w-full shrink-0 flex-col gap-[5px] rounded-[12px] px-3 py-1 text-left transition-colors",
+                  active ? "selected-row" : "hover:bg-state-1",
                 )}
               >
                 <span className="flex w-full items-center justify-between gap-2">
                   <span
                     className={cn(
-                      "min-w-0 truncate text-[14.5px] font-semibold tracking-[-0.01em]",
-                      active && "text-primary",
+                      "min-w-0 truncate text-[13.5px] font-medium",
                       project.missing && "text-muted-foreground line-through",
                     )}
                   >
@@ -144,6 +158,8 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
         </div>
       )}
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </div>
   );
 }

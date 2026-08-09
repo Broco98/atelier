@@ -13,10 +13,55 @@
     --sidebar-width: 248px;
 }
 
+/* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
+   --titlebar-inset / --titlebar-inset-panel을 읽어 신호등·셸 컨트롤을 피한다.
+   컨트롤은 창 왼쪽 --titlebar-controls-left에서 시작해 --titlebar-controls-width만큼 이어지고,
+   그 뒤 12px를 띄운 곳부터 페이지 콘텐츠가 놓인다. 컨트롤이 늘면 여기 칸 수만 고치면 된다.
+   88px는 tauri.conf.json의 trafficLightPosition(x:13)이 만드는 신호등 폭 — 함께 고쳐야 한다.
+
+   파생값을 controls-left와 같은 요소에 선언하는 게 핵심이다. 커스텀 속성은 선언된 요소에서
+   치환되므로, :root에 파생값을 두고 자손에서 controls-left만 덮으면 인셋이 따라오지 않는다. */
+[data-titlebar] {
+    --titlebar-controls-left: 88px;
+    /* icon-button 규격과 같아야 한다 — 셸 컨트롤이 그 유틸리티로 그려지므로,
+       여기 값이 어긋나면 인셋만 버튼보다 넓거나 좁아진다 */
+    --titlebar-control-size: 24px;
+    /* 셸 컨트롤 사이 간격이자, 그 오른쪽에 이어지는 목록 패널 첫 컨트롤까지의 간격.
+       24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
+       붙어 보인다 */
+    --titlebar-control-gap: 6px;
+    /* 사이드바 토글 · 뒤로 · 앞으로 세 칸. ShellControls가 이 폭을 그대로 쓰므로
+       칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다 */
+    --titlebar-controls-width: calc(
+        3 * var(--titlebar-control-size) + 2 * var(--titlebar-control-gap)
+    );
+    /* 셸 헤더는 글자가 놓이는 자리라 컨트롤 간격보다 넉넉히 띄운다 */
+    --titlebar-inset: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
+    );
+    /* 목록 패널 헤더의 첫 칸은 셸 컨트롤과 같은 간격으로 이어 붙인다 — 넷이 한 줄에 나란히
+       서 있어서 여기만 간격이 다르면 그 하나만 따로 떨어진 것처럼 읽힌다.
+       패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */
+    --titlebar-inset-panel: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) +
+            var(--titlebar-control-gap) - 12px
+    );
+}
+
+/* 전체화면에선 macOS가 신호등을 숨기므로 컨트롤이 창 여백까지 당겨진다 */
+[data-titlebar="fullscreen"] {
+    --titlebar-controls-left: 16px;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', 'Pretendard Variable', sans-serif;
     --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
+    /* 합자를 끈다. Geist Mono는 `###` `---` `|---|` `->` 같은 연속 기호를 한 글자로
+       이어 그리는데, 그 글자가 격자 폭보다 좁아 줄 전체가 왼쪽으로 밀린다
+       (`###|---|-> =>` 13글자 = 97.5px여야 하는데 45px로 그려졌다).
+       이 폰트가 쓰이는 자리는 전부 코드·경로·spec 원문이라 기호는 있는 그대로 보여야 한다 */
+    --font-mono--font-feature-settings: "liga" 0, "calt" 0;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,6 +97,11 @@
     --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
+    --color-state-1: var(--state-1);
+    --color-state-2: var(--state-2);
+    --color-state-3: var(--state-3);
+    --color-state-4: var(--state-4);
+    --ease-panel: var(--panel-ease);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -98,6 +148,38 @@
     --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
     --text-tertiary: #8e8e97;
+    /* 상태 농도 4단 — 선택·hover·켜짐을 말하는 무채색 스케일의 단일 출처.
+       퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
+         행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
+         버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
+       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경·상태 배지가 그 자리다.
+       이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
+
+       --accent를 상태 hover로 쓰던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을 고정한다).
+       다만 스케일 밖 상태 배경이 아직 둘 남아 있다 — 설명 편집 버튼의 hover:bg-panel
+       (ProjectDetail)과 프로젝트 칩의 hover:bg-inset(WorksPage). 둘은 반투명 오버레이가
+       아니라 불투명 표면색이라 6%로 그냥 바꿀 수 없다(바꾸면 아래 것이 비친다). 옮길지는
+       따로 판단할 일이고, 그때까지 "전부 옮겼다"고 적지 않는다 */
+    --state-1: rgba(20, 20, 28, 0.03);
+    --state-2: rgba(20, 20, 28, 0.06);
+    --state-3: rgba(20, 20, 28, 0.09);
+    --state-4: rgba(20, 20, 28, 0.12);
+
+    /* 패널이 열리고 닫힐 때 쓰는 곡선의 단일 출처. 출발이 빠르고 끝에서 감속한다 —
+       ease-in-out(0.4,0,0.2,1)은 앞부분이 굼떠서 폭처럼 긴 거리를 움직일 때 "느리다"로 읽힌다.
+       접히는 패널 셋(사이드바·목록 패널 둘·작업 패널)의 폭 트랜지션이 같은 곡선을 써야
+       한 화면에서 따로 논다는 인상이 없다. 읽는 길은 --ease-panel 하나다 — 작업 패널이
+       키프레임 애니메이션을 쓰던 시절에는 var(--panel-ease)로 읽는 길이 하나 더 있었는데,
+       그 패널도 폭 접기로 옮기면서 사라졌다.
+
+       폭과 **함께 더해지는** 값도 반드시 이 곡선이어야 한다 — 헤더들의 인셋 패딩이 그렇다.
+       화면상 위치가 (패널 폭 + 패딩)이라 곡선이 다르면 합이 단조롭지 않게 되어, 최종 자리를
+       지나쳤다 되돌아온다. 튕기는 크기는 인셋이 패널 폭에 가까울수록 커진다 — 셸 컨트롤이
+       하나뿐이라 인셋 패널이 112px이던 시절에는 곡선이 어긋난 채로도 0.7px이라 아무도 못 봤는데,
+       버튼 둘을 더해 166px이 되자 사이드바 기본 폭 248px에서 29px, 최소 폭 180px에서는 56px까지
+       튀었다(실측). "지금 안 보이니 괜찮다"가 성립하지 않는 종류라 곡선을 맞춰 두는 것이
+       유일한 방어선이다 */
+    --panel-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
 .dark {
@@ -146,7 +228,137 @@
     }
 }
 
-@utility selected-ring {
-  background: color-mix(in srgb, var(--primary) 9%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+/* "지금 선택된 것"의 단일 정의 — 작업·프로젝트 목록, 사이드바 메뉴, spec 트리가 함께 쓴다.
+   보라 배경 + 보라 링이었던 것을 무채색 배경 하나로 바꿨다 (링이 없어 이름도 함께 바꿨다).
+   hover는 한 단계 진해진다 — 선택된 행을 가리키는 중임을 알린다.
+   선택되지 않은 행의 hover는 호출부가 hover:bg-state-1로 붙인다 (두 hover가 같은 자리에서
+   충돌하지 않도록 분기 안에만 둔다).
+
+   글자색도 여기서 정한다 — toggle-on이 이미 그렇게 하고 있어서, 형제 유틸리티 둘이 같은
+   질문에 다르게 답하고 있었다. 호출부가 손으로 text-foreground를 붙이던 세 자리
+   (사이드바 메뉴·사이드바 작업 목록·spec 트리)가 짧아진다.
+   자식이 자기 색을 가진 자리는 덮이지 않는다 — done 작업 제목의 text-tertiary처럼
+   직접 선언한 색은 부모에서 내려오는 상속을 항상 이긴다.
+
+   평소 색을 여기서 정하는 것은 아래 icon-button-quiet과 정반대인데, 갈리는 지점이 있다 —
+   선택된 행의 평소 색은 어디서나 foreground 하나라 덮을 호출부가 없다. icon-button-quiet은
+   호출부마다 평소 색이 갈려서(본문 tertiary·셸 크롬 muted-foreground) 유틸리티가 정하면
+   호출부가 덮어야 하고, 그 승자를 정렬 순서가 정하게 된다. 기준은 "형제끼리 같은 답을
+   하느냐"가 아니라 "덮을 호출부가 있느냐"다. */
+@utility selected-row {
+  background: var(--state-2);
+  color: var(--foreground);
+  &:hover {
+    background: var(--state-3);
+    }
+}
+
+/* 아이콘 버튼 규격 — 거터 복사·spec 트리 복사·목록 패널 토글·작업 패널 토글·
+   프로젝트 등록 +가 모두 이 한 정의를 쓴다. 여기는 모양만 정한다.
+   hover·켜짐은 호출부가 분기 안에 붙인다 — 한 요소에 hover 규칙이 두 벌 겹치면
+   어느 쪽이 이길지 유틸리티 정렬 순서에 맡기게 된다. */
+@utility icon-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+/* "켜지지 않는 것의 hover" — 배경 한 단계와 글자색이 함께 진해진다.
+   크기를 정하지 않는 것이 핵심이다. 이 hover는 24px 아이콘 버튼만의 것이 아니라
+   22px 툴바 버튼·토글의 꺼진 가지에도 똑같이 걸리는데, 규격까지 묶어 두면 그 자리들이
+   쓸 수 없어 같은 문자열을 손으로 다시 적게 된다.
+
+   평소 색은 여기서 정하지 않는다. 본문은 text-tertiary, 셸 크롬은 text-muted-foreground로
+   갈리는데, 여기서 색을 정하면 호출부가 덮어야 하고 그 승자를 유틸리티 정렬 순서가
+   정하게 된다. hover 색은 &:hover라 특이도가 한 단계 높아 호출부의 평소 색과 겨루지 않는다.
+
+   토글에 쓸 때는 반드시 **꺼진 가지 안에만** 둔다 — toggle-on과 한 요소에 겹치면
+   hover 규칙이 두 벌이 되어 정렬 순서가 승자를 정한다. */
+@utility quiet-hover {
+  &:hover {
+    background: var(--state-2);
+    color: var(--foreground);
+  }
+}
+
+/* 켜짐이 없는 아이콘 버튼 — icon-button 규격 + quiet-hover.
+   이 조합이 한 문자열로 여덟 자리에 똑같이 적혀 있었다.
+
+   transition에 opacity가 없는 것은 규칙이다 — 평소 숨어 있다가 hover에 뜨는 버튼들이
+   이걸 쓴다. 페이드를 걸면 옆 버튼으로 옮겨 갈 때 사라지는 페이드와 나타나는 페이드가
+   겹쳐, 같은 아이콘이 미끄러진 것처럼 보인다. 근거는 SpecViewer의 거터 복사 버튼 주석에 있다. */
+@utility icon-button-quiet {
+  @apply icon-button quiet-hover;
+  transition-property: color, background-color;
+  transition-timing-function: var(--default-transition-timing-function);
+  transition-duration: var(--default-transition-duration);
+}
+
+/* 토글이 켜진 상태 — 배경이 한 단계 진해지고 아이콘·글자 색도 함께 진해진다.
+   6%와 9%의 차이만으로는 hover와 구분되지 않아 색 변화가 필수다.
+   켜진 채로 hover하면 한 단계 더 진해져 "다시 눌러 끌 수 있다"를 알린다. */
+@utility toggle-on {
+  background: var(--state-3);
+  color: var(--foreground);
+  &:hover {
+    background: var(--state-4);
+    }
+}
+
+/* 패널 폭 드래그 중 — 문서 전체의 텍스트 선택을 막고 커서를 리사이즈 모양으로 고정한다.
+   포인터 아래 요소가 UA 스타일로 자기 커서(링크·입력)를 갖고 있어 커서만 !important로 덮는다.
+   선택 억제는 상속으로 충분하다 — user-select를 text로 되받는 곳이 없다 */
+body.resizing {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.resizing,
+body.resizing * {
+    cursor: col-resize !important;
+}
+
+/* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
+   패널이 좌우 다른 규칙으로 움직이지 않도록, 좌측 사이드바·목록 패널과 같은 폭 접기로
+   바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**
+   패널이 본문 스크롤 영역의 형제라 제 상자 밖 넘침을 문서(viewport)가 받고,
+   애니메이션이 도는 동안 가로 스크롤이 깜빡인다. 폭 접기에는 그 경로가 없다. */
+
+/* 스크롤바 표현 정책 — 평소 투명, 스크롤하는 동안만 노출되고 멎으면 사라진다.
+   macOS 오버레이 스크롤바는 시스템 설정이 "항상"이면 상시 노출 클래식으로 바뀌고 CSS로 되돌릴 수 없다.
+   ::-webkit-scrollbar에 폭을 명시해 커스텀 스크롤바로 전환하면 설정과 무관하게 결과가 같아진다.
+   폭은 상태와 무관하게 11px 고정 — 노출/비노출은 thumb 색만 바꾸므로 콘텐츠 폭이 흔들리지 않는다.
+   track·corner를 투명으로, thumb를 2px 안쪽으로 물려 둥근 모서리 호를 침범하지 않는다.
+   "스크롤 중"은 CSS로 알 수 없어 lib/scroll-quiet.ts가 is-scrolling 클래스를 붙였다 뗀다. */
+@utility scroll-quiet {
+  &::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+    }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    }
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+    }
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    }
+}
+
+/* 스크롤 중 노출. @utility 바깥의 평범한 규칙이라 유틸리티 레이어보다 뒤에 와서 이긴다.
+   thumb 직접 호버는 잡을 수 있다는 신호 — 막대가 보이는 동안에만 의미가 있다. */
+.scroll-quiet.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 34%, transparent);
+}
+
+.scroll-quiet.is-scrolling::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--foreground) 52%, transparent);
 }

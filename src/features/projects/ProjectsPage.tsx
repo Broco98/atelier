@@ -28,8 +28,26 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
     localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
   }, [panelOpen]);
 
-  const selected =
-    projects.find((p) => p.slug === selectedSlug) ?? projects[0] ?? null;
+  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      )
+        return;
+      e.preventDefault();
+      setPanelOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
+  const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
 
   // 네이티브 폴더 선택창 직행 — baseBranch는 백엔드가 감지하고 상세에서 바꿀 수 있다
   const handleAdd = async () => {
@@ -82,7 +100,9 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                     type="button"
                     disabled={selected.missing}
                     onClick={() => projectsApi.openFolder(selected.slug)}
-                    className="h-7 rounded-[9px] border border-border-strong bg-background px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                    // disabled:pointer-events-none — 테두리를 걷어낸 뒤로는 배경 농도가 "누를 수 있다"를
+                    // 말하는 유일한 어휘라서, 비활성 상태에서 hover가 걸리면 눌리는 버튼으로 읽힌다
+                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
                   >
                     폴더 열기
                   </button>
@@ -101,7 +121,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                 aria-label="목록 패널 토글"
                 aria-expanded={panelOpen}
                 title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="flex size-7 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="icon-button-quiet text-tertiary"
               >
                 {panelOpen ? (
                   <Maximize2 className="size-4" strokeWidth={1.7} />
@@ -112,7 +132,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             </>
           }
         />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto scroll-quiet">
           {selected ? (
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (

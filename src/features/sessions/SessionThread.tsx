@@ -37,9 +37,10 @@ function SessionThread({ session }: SessionThreadProps) {
     [replayed, live.lines],
   );
 
-  // 에이전트가 나를 기다리는 중인가. 떠 있지 않은 세션의 답 없는 카드는 이미 지난 일이다.
-  const awaiting =
-    session.alive && lines.some((line) => line.kind === "permission" && line.answered === null);
+  // 에이전트가 나를 기다리는 중인가. **화면이 다시 세지 않고 런타임이 말해 준 것을 그대로
+  // 쓴다** — 기록에 남은 답 없는 카드는 지난 연결의 것일 수 있고, 그것까지 세면 목록과 이
+  // 화면이 서로 다른 말을 한다.
+  const awaiting = session.awaitingPermission;
 
   const busy = prompt.running || resume.isPending;
 
@@ -86,7 +87,7 @@ function SessionThread({ session }: SessionThreadProps) {
                 key={at}
                 card={line}
                 sessionId={session.id}
-                alive={session.alive}
+                answerable={awaiting}
               />
             ) : line.kind === "tool" ? (
               <span
@@ -133,7 +134,7 @@ function SessionThread({ session }: SessionThreadProps) {
                   type="button"
                   onClick={() => void stop()}
                   disabled={cancel.isPending}
-                  className="flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors quiet-hover disabled:opacity-40"
                 >
                   <Square className="size-2.5 shrink-0 fill-current" strokeWidth={2} />
                   중단

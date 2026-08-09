@@ -7,8 +7,11 @@ import type { PermissionLine } from "./types";
 interface PermissionCardProps {
   card: PermissionLine;
   sessionId: string;
-  /** 떠 있지 않은 세션에는 답을 돌려줄 자리가 없다 — 재생으로 보이기만 한다. */
-  alive: boolean;
+  /**
+   * 지금 붙어 있는 에이전트가 답을 기다리는가. **살아있음과 다르다** — 다시 띄운 세션에는
+   * 답을 못 받고 끝난 지난 연결의 카드가 기록에 남아 있고, 그 카드로는 돌려줄 자리가 없다.
+   */
+  answerable: boolean;
 }
 
 /**
@@ -16,7 +19,7 @@ interface PermissionCardProps {
  * 워크트리 안/밖과 태세를 다룬다). 버튼은 에이전트가 준 선택지 그대로이고, 아틀리에가
  * 선택지를 만들거나 지우지 않는다.
  */
-function PermissionCard({ card, sessionId, alive }: PermissionCardProps) {
+function PermissionCard({ card, sessionId, answerable }: PermissionCardProps) {
   const answer = useAnswerPermission(sessionId);
   const chosen = card.answered
     ? (card.options.find((option) => option.optionId === card.answered?.optionId) ?? null)
@@ -36,7 +39,7 @@ function PermissionCard({ card, sessionId, alive }: PermissionCardProps) {
       className={cn(
         "flex flex-col gap-2.5 rounded-[14px] border px-4 py-3.5",
         // 답하기 전에는 눈에 띈다 — 내가 기다리는 게 아니라 에이전트가 나를 기다리는 중이다
-        card.answered === null && alive ? "border-primary bg-primary/[0.06]" : "bg-inset",
+        card.answered === null && answerable ? "border-primary bg-primary/[0.06]" : "bg-inset",
       )}
     >
       <span className="flex items-start gap-2 text-[13px] font-medium">
@@ -56,9 +59,9 @@ function PermissionCard({ card, sessionId, alive }: PermissionCardProps) {
           {card.answered.outcome === "allow" ? "허용했어요" : "거부했어요"}
           {chosen && ` — ${chosen.name}`}
         </span>
-      ) : !alive ? (
+      ) : !answerable ? (
         <span className="text-[12.5px] text-tertiary">
-          답하지 않은 채로 세션이 끝났어요.
+          답하지 않은 채로 그때의 대화가 끝났어요.
         </span>
       ) : (
         <span className="flex flex-wrap gap-1.5">
