@@ -1,5 +1,37 @@
-/// 어댑터 커맨드의 기본값(확정 결정 2). 설정 파일에 항목이 없으면 이것을 쓴다.
-pub const DEFAULT_CODEX_COMMAND: &str = "npx @zed-industries/codex-acp";
+//! ACP 프로토콜·프로세스 층. spawn, JSON-RPC, 세션 수명, 어댑터 설정 읽기가 여기 있다.
+//!
+//! 의존 방향은 `src-tauri` → `atelier-acp` → `atelier-core`이고 **역방향은 없다.**
+
+mod adapter;
+mod manager;
+
+pub use adapter::{codex_command, CODEX, DEFAULT_CODEX_COMMAND};
+pub use manager::{SessionManager, SessionPaths, SessionView};
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// 무엇을 실행하려다 실패했는지 사용자가 읽을 수 있어야 한다 — 커맨드를 언제나 함께 싣는다.
+    #[error("cannot start agent '{command}': {message}")]
+    AgentStart { command: String, message: String },
+    #[error("start point folder is missing: {0}")]
+    StartPointMissing(String),
+    /// 앱이 닫히는 도중에 세션이 다 떴을 때. 그 자식은 거두고 사용자에게는 서지 않았다고 말한다.
+    #[error("atelier is closing")]
+    Closing,
+    #[error(transparent)]
+    Core(#[from] atelier_core::Error),
+}
+
+impl Error {
+    fn agent_start(command: &str, source: &dyn std::fmt::Display) -> Self {
+        Error::AgentStart {
+            command: command.to_string(),
+            message: source.to_string(),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[cfg(test)]
 mod tests {

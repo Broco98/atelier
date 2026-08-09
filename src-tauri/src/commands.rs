@@ -1,10 +1,12 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use atelier_core::{projects_dir, works_dir, ProjectPatch, ProjectView, WorkView};
+use atelier_acp::{SessionManager, SessionView};
+use atelier_core::{projects_dir, works_dir, ProjectPatch, ProjectView, StartPoint, WorkView};
 
 type CmdResult<T> = Result<T, String>;
 
-fn err(e: atelier_core::Error) -> String {
+fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
@@ -62,6 +64,30 @@ pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView
 #[tauri::command]
 pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_spec_file(&works_dir(), &slug, &path).map_err(err)
+}
+
+#[tauri::command]
+pub async fn list_sessions(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+) -> CmdResult<Vec<SessionView>> {
+    manager.list().map_err(err)
+}
+
+#[tauri::command]
+pub async fn create_session(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    project_slug: String,
+) -> CmdResult<SessionView> {
+    let manager = Arc::clone(&manager);
+    // 에이전트를 띄우고 핸드셰이크가 끝나기를 기다리는 동안 막힌다. `npx`가 패키지를 내려받는
+    // 첫 실행은 오래 걸리므로 비동기 일꾼이 아니라 블로킹 전용 실행기에서 기다린다.
+    tauri::async_runtime::spawn_blocking(move || {
+        manager
+            .start(StartPoint::Project { slug: project_slug })
+            .map_err(err)
+    })
+    .await
+    .map_err(err)?
 }
 
 #[tauri::command]

@@ -47,6 +47,7 @@ fn main() {
 /// 어긋난 상대는 언제나 표에 함수를 더하는 쪽이고, 이 함수를 건드리지 않는다.
 fn normal(wire: &mut Wire) {
     let mut opened = 0u32;
+    let mut client_capabilities = Value::Null;
 
     while let Some(message) = wire.read() {
         // id가 없으면 알림이다. 알림에는 답하지 않는다.
@@ -55,29 +56,36 @@ fn normal(wire: &mut Wire) {
         };
 
         match message["method"].as_str().unwrap_or_default() {
-            "initialize" => wire.reply(
-                &id,
-                json!({
-                    "protocolVersion": 1,
-                    "agentCapabilities": {
-                        // 실물은 true라고 말하지만 이 시나리오는 session/load를 구현하지
-                        // 않는다. 하지 않는 것을 한다고 광고하지 않는다 — 불러오기를 다루는
-                        // 시나리오는 그것을 필요로 하는 티켓이 따로 더한다.
-                        "loadSession": false,
-                        "promptCapabilities": {
-                            "image": false,
-                            "audio": false,
-                            "embeddedContext": false
-                        }
-                    },
-                    "agentInfo": {"name": "atelier-fake-agent", "version": "0"}
-                }),
-            ),
+            "initialize" => {
+                client_capabilities = message["params"]["clientCapabilities"].clone();
+                wire.reply(
+                    &id,
+                    json!({
+                        "protocolVersion": 1,
+                        "agentCapabilities": {
+                            // 실물은 true라고 말하지만 이 시나리오는 session/load를 구현하지
+                            // 않는다. 하지 않는 것을 한다고 광고하지 않는다 — 불러오기를 다루는
+                            // 시나리오는 그것을 필요로 하는 티켓이 따로 더한다.
+                            "loadSession": false,
+                            "promptCapabilities": {
+                                "image": false,
+                                "audio": false,
+                                "embeddedContext": false
+                            }
+                        },
+                        "agentInfo": {"name": "atelier-fake-agent", "version": "0"}
+                    }),
+                );
+            }
             "session/new" => {
                 opened += 1;
                 // 프로세스마다 다른 id여야 한다 — 한 프로젝트로 두 번 시작한 세션이
                 // 서로 구분되는지를 뒤 티켓이 검사한다.
                 let session_id = format!("fake-{}-{opened}", std::process::id());
+                // 진짜 에이전트가 하는 일 중 이 판이 검사해야 하는 것 하나 — 자기가 받은
+                // 디렉터리에서 실제로 움직인다. 영수증을 그 자리에 남기면 "화면이 보여주는
+                // 디렉터리"와 "에이전트가 받은 디렉터리"가 같은지를 밖에서 확인할 수 있다.
+                leave_receipt(&message["params"]["cwd"], &client_capabilities);
                 wire.reply(&id, json!({"sessionId": session_id}));
             }
             unknown => {
@@ -86,6 +94,21 @@ fn normal(wire: &mut Wire) {
             }
         }
     }
+}
+
+/// 영수증 파일 이름. 실행 파일이라 테스트가 이 상수를 가져다 쓸 수 없으므로 저쪽에도 같은
+/// 문자열이 적혀 있다.
+const RECEIPT: &str = ".atelier-fake-agent.json";
+
+/// 세션 디렉터리에 받은 것을 적어 둔다. 테스트는 이 파일 하나로 두 가지를 본다 —
+/// 세션이 열린 디렉터리가 어디인가, 그리고 클라이언트가 어떤 능력을 선언했는가(확정 결정 10).
+///
+/// 실패해도 조용히 넘어간다. 이건 응답이 아니라 곁다리이고, 여기서 죽으면 정작 검사하려던
+/// 프로토콜 쪽이 "왜 실패했는지 모르는" 상태가 된다.
+fn leave_receipt(cwd: &Value, client_capabilities: &Value) {
+    let Some(dir) = cwd.as_str() else { return };
+    let receipt = json!({"cwd": cwd, "clientCapabilities": client_capabilities});
+    let _ = std::fs::write(std::path::Path::new(dir).join(RECEIPT), receipt.to_string());
 }
 
 /// 시나리오들이 공유하는 배관. 한 줄에 JSON-RPC 메시지 하나.

@@ -15,6 +15,15 @@ pub fn works_dir() -> PathBuf {
     data_root().join("works")
 }
 
+pub fn sessions_dir() -> PathBuf {
+    data_root().join("sessions")
+}
+
+/// 어댑터별 실행 커맨드를 담는 사용자 설정. **아틀리에는 이 파일을 만들지 않는다** — 읽기만 한다.
+pub fn adapters_file() -> PathBuf {
+    data_root().join("adapters.json")
+}
+
 pub fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import StatusBar from "./StatusBar";
 import ProjectsPage from "@/features/projects/ProjectsPage";
+import SessionsPage from "@/features/sessions/SessionsPage";
 import WorksPage from "@/features/works/WorksPage";
 import type { NavKey } from "./nav-items";
 
@@ -57,6 +58,7 @@ function AppShell() {
         }}
       />
     ),
+    sessions: () => <SessionsPage sidebarOpen={sidebarOpen} />,
   };
 
   return (
