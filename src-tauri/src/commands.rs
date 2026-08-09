@@ -104,6 +104,16 @@ pub async fn prompt_session(
 }
 
 #[tauri::command]
+pub async fn cancel_session(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+) -> CmdResult<()> {
+    // 중단은 기다리는 일이 아니다 — 알림 한 줄을 보내고 곧바로 돌아온다. 턴이 실제로 끝나는
+    // 것은 `prompt_session`을 붙잡고 있는 쪽이 돌아오는 것으로 보인다.
+    manager.cancel(&session_id).map_err(err)
+}
+
+#[tauri::command]
 pub async fn answer_permission(
     manager: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,

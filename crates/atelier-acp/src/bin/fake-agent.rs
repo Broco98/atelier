@@ -32,6 +32,10 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("normal", normal),
     ("refuses-prompt", refuses_prompt),
     ("asks-permission", asks_permission),
+    ("long-turn", long_turn),
+    ("dies-mid-turn", dies_mid_turn),
+    ("ignores-shutdown", ignores_shutdown),
+    ("spawns-a-child", spawns_a_child),
 ];
 
 fn main() {
@@ -109,6 +113,75 @@ fn asks_permission(wire: &mut Wire) {
         );
         wire.reply(id, json!({"stopReason": "end_turn"}));
     });
+}
+
+/// 오래 도는 턴. **중단이 올 때까지 답하지 않는다.**
+///
+/// 잠들어 기다리지 않는 것은 일부러다. 시간으로 재면 느린 기계에서 흔들리고, 무엇보다
+/// **중단이 실제로 도착했는지**를 증명하지 못한다 — 여기서는 중단 알림을 읽어서 턴을 끝낸다.
+fn long_turn(wire: &mut Wire) {
+    converse(wire, |wire, id, session_id, _said| {
+        // 턴이 실제로 돌기 시작했다는 표식. 중단은 이것을 본 뒤에 온다.
+        wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk",
+                              "content": {"type": "text", "text": "한참 걸리는 일을 시작한다…"}}}),
+        );
+        loop {
+            // 중단도 없이 상대가 사라지면 이 턴은 여기서 끝난다 — 답할 곳이 없다.
+            let Some(message) = wire.read() else { return };
+            if message["method"] == "session/cancel" {
+                break;
+            }
+        }
+        // ACP는 중단된 턴이 **이 이유로** 끝나기를 요구한다. 실패가 아니라 다른 끝이다.
+        wire.reply(id, json!({"stopReason": "cancelled"}));
+    });
+}
+
+/// 턴 도중에 **스스로 죽는** 에이전트. 답도 오류도 없이 저쪽이 사라진다.
+///
+/// 상대가 끊은 것이 아니라 저쪽이 없어지는 경우다. 크래시한 실물이 이렇게 보인다.
+fn dies_mid_turn(wire: &mut Wire) {
+    converse(wire, |_wire, _id, _session_id, _said| std::process::exit(0));
+}
+
+/// **종료를 무시하도록 만든** 에이전트. 죽이지 않으면 그대로 남는다.
+///
+/// 이 스택에서 얌전한 종료 신호는 **표준입력을 닫는 것**이다 — ACP 연결이 그렇게 끝나고,
+/// 아틀리에가 SIGTERM을 따로 쏘는 자리는 없다. 그래서 그것을 무시하는 것이 여기서 말하는
+/// "신호를 무시한다"이고, 남는 길은 프로세스 그룹째 강제로 죽이는 것 하나뿐이다.
+fn ignores_shutdown(wire: &mut Wire) {
+    converse(wire, stream_a_turn);
+    // 표준입력이 닫혀도 끝내지 않는다.
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+/// 자기가 또 자식을 낳는 에이전트.
+///
+/// 실물에서 기본 어댑터 커맨드는 패키지 실행기를 거치므로 자식은 프로세스 하나가 아니라
+/// **트리**이고, 게다가 Codex 자신이 셸 도구를 돌린다. 직계만 죽이면 손자가 살아남는데,
+/// 그 손자가 정확히 이 판이 막으려는 **정체불명의 프로세스**다.
+///
+/// 손자의 pid는 커맨드로 받은 자리에 적는다 — 밖에서 그것을 지켜볼 수 있어야 하기 때문이다.
+/// 표준입출력은 물려준 채로 둔다. 패키지 실행기 뒤의 진짜 에이전트가 바로 그 모양이다.
+fn spawns_a_child(wire: &mut Wire) {
+    let tell = std::env::args()
+        .nth(2)
+        .expect("손자의 pid를 적을 자리를 커맨드로 받지 못했다");
+    // 거두지 않는 것이 이 시나리오다 — 손자는 부모보다 오래 살아야 한다. 거기까지 죽는지가
+    // 검사하려는 것이므로, 여기서 기다리면 검사할 것이 사라진다.
+    #[allow(clippy::zombie_processes)]
+    let grandchild = std::process::Command::new("sleep")
+        .arg("600")
+        .spawn()
+        .expect("손자를 낳지 못했다");
+    std::fs::write(tell, grandchild.id().to_string()).expect("손자의 pid를 적지 못했다");
+
+    converse(wire, stream_a_turn);
 }
 
 /// 세션을 여는 데까지의 대화. 시나리오들이 공유한다 — 갈리는 곳은 프롬프트 하나다.

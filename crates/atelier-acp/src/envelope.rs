@@ -42,6 +42,15 @@ pub fn turn_failed(message: &str) -> Value {
     json!({"kind": "turn_failed", "at": now(), "message": message})
 }
 
+/// 에이전트 프로세스가 끝났다. 스스로 죽었든 우리가 접었든, 저쪽은 이제 없다.
+///
+/// 살아있음은 런타임의 사실이라 신원 파일에 적히지 않는다. 그런데 **그 사실이 바뀌었다는
+/// 소식**은 화면까지 가야 하고, 이 판에서 봉투 한 줄이 화면으로 가는 유일한 길이다 —
+/// 티켓 06이 `session:permission`을 만들지 않은 것과 같은 이유로 따로 길을 내지 않는다.
+pub fn agent_exited() -> Value {
+    json!({"kind": "agent_exited", "at": now()})
+}
+
 fn now() -> String {
     chrono::Local::now().to_rfc3339()
 }

@@ -104,6 +104,17 @@ export function usePromptSession(sessionId: string) {
 }
 
 /**
+ * 돌고 있는 턴을 멈춘다. **세션을 끝내는 것이 아니다** — 턴만 접히고 같은 세션에 이어서
+ * 다시 지시할 수 있다.
+ *
+ * 턴이 실제로 끝나는 것은 `usePromptSession`이 붙잡고 있는 쪽이 돌아오는 것으로 보이므로,
+ * 여기서 화면을 미리 고치지 않는다.
+ */
+export function useCancelSession(sessionId: string) {
+  return useMutation({ mutationFn: () => sessionsApi.cancel(sessionId) });
+}
+
+/**
  * 권한 카드의 답. 답이 기록에 남으면 그 줄이 라이브로 돌아와 카드가 스스로 답한 모습으로
  * 다시 그려지므로, 여기서 화면을 미리 고치지 않는다.
  */
@@ -115,18 +126,27 @@ export function useAnswerPermission(sessionId: string) {
 }
 
 /**
- * 답을 기다리는 요청이 생기거나 사라지면 목록을 다시 읽는다.
+ * 목록이 보여 주는 **런타임의 사실**을 바꾸는 봉투들 — 답을 기다리는 요청이 생기거나
+ * 사라졌다, 그리고 에이전트가 끝났다.
+ */
+const RUNTIME_KINDS = ["permission_request", "permission_response", "agent_exited"];
+
+/**
+ * 런타임의 사실이 바뀌면 목록을 다시 읽는다.
  *
- * 대화 화면이 아니라 **페이지**가 이 귀를 연다 — 지금 보고 있지 않은 세션에 뜬 요청도
+ * 살아있음과 답을 기다림은 신원 파일에 없으므로 파일을 다시 읽어도 알 수 없다. 봉투 한 줄이
+ * 그 소식이 오는 유일한 길이고, 그래서 **따로 난 이벤트 통로가 없다**(티켓 06과 같은 이유).
+ *
+ * 대화 화면이 아니라 **페이지**가 이 귀를 연다 — 지금 보고 있지 않은 세션의 변화도
  * 목록에서 보여야 하기 때문이다.
  */
-export function useWatchPermissions() {
+export function useWatchSessionRuntime() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     let attached = true;
     const unlisten = listen<{ line: Envelope }>("session:update", (event) => {
-      if (!attached || !event.payload.line.kind.startsWith("permission_")) return;
+      if (!attached || !RUNTIME_KINDS.includes(event.payload.line.kind)) return;
       void queryClient.invalidateQueries({ queryKey: SESSIONS_KEY });
     });
     return () => {

@@ -2,8 +2,10 @@
 //!
 //! 모양은 티켓 02의 실물 스파이크가 정했다(`spec/01-걷는-뼈대/explanation/02-실물-스파이크.md`).
 //! 연결의 수명은 `connect_with`에 준 **클로저의 수명**이므로, 세션마다 스레드 하나가 그 클로저
-//! 안에서 종료 신호를 기다린다. 신호를 쏘는 것이 곧 세션을 접는 것이고, 클로저가 반환하면
-//! 연결과 자식 프로세스가 함께 끝난다.
+//! 안에서 기다린다. 기다리는 것은 둘이다 — 내가 쏘는 종료 신호와, **저쪽이 사라졌다는 사실**.
+//! 어느 쪽이 먼저 와도 클로저가 반환하고, 그때 연결과 자식 프로세스가 함께 끝난다.
+//! 둘째를 함께 기다리지 않으면 에이전트가 죽어도 이 자리가 풀리지 않는다
+//! (`spec/01-걷는-뼈대/explanation/07-중단과-프로세스-수명.md`).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,8 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use agent_client_protocol::schema::v1::{
-    ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionId, TextContent,
+    CancelNotification, ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
+    TextContent,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{
@@ -168,6 +171,28 @@ impl SessionManager {
             return Err(Error::Prompt(error));
         }
         Ok(())
+    }
+
+    /// 돌고 있는 턴을 멈춘다. **세션을 끝내는 것이 아니다** — 상대는 이 자리에서 턴을 접고,
+    /// 같은 세션에 이어서 다시 지시할 수 있다.
+    ///
+    /// 여기서 기다리지 않는다. 알림 한 줄을 보내고 곧바로 돌아오며, 턴이 실제로 끝나는 것은
+    /// `prompt`를 붙잡고 있는 쪽이 본다 — 그쪽은 답을 받을 때까지 돌아오지 않기 때문에
+    /// **중단은 반드시 다른 스레드에서** 온다.
+    pub fn cancel(&self, session_id: &str) -> Result<()> {
+        let (cx, agent_session_id) = {
+            let registry = self.registry.lock().unwrap();
+            let live = registry
+                .sessions
+                .get(session_id)
+                .filter(|live| live.is_alive())
+                .ok_or_else(|| Error::NotRunning(session_id.to_string()))?;
+            (live.cx.clone(), live.agent_session_id.clone())
+        };
+
+        cx.send_notification(CancelNotification::new(agent_session_id))
+            // 보낼 통로가 닫혔다면 그 세션은 이미 살아있지 않다.
+            .map_err(|_| Error::NotRunning(session_id.to_string()))
     }
 
     /// 권한 카드의 답. 사람이 고른 선택지 id를 그대로 받는다 — **선택지는 에이전트가 준
@@ -451,11 +476,20 @@ fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Resu
         let permissions = Arc::clone(&permissions);
         std::thread::spawn(move || {
             // 클로저가 아예 돌지 못한 경우(spawn 실패)에는 이 통로로만 소식이 나간다.
-            if let Err(error) =
-                run_connection(command, cwd, recorder, permissions, outcome_tx, shutdown_rx)
-            {
+            if let Err(error) = run_connection(
+                command,
+                cwd,
+                Arc::clone(&recorder),
+                permissions,
+                outcome_tx,
+                shutdown_rx,
+            ) {
                 let _ = failure_tx.send(Err(error));
             }
+            // 연결이 끝났다는 것은 저쪽이 사라졌다는 뜻이다. **살아있음을 내리기 전에** 적는다 —
+            // 목록이 죽음을 말하는 순간 기록에도 그 줄이 이미 있어야 화면이 둘을 함께 읽는다.
+            // 세션이 서지 못했다면 이 줄은 갈 곳이 없어 기록자와 함께 사라진다.
+            recorder.record(envelope::agent_exited());
             alive.store(false, Ordering::Relaxed);
         })
     };
@@ -546,8 +580,15 @@ fn run_connection(
                 let _ = outcome.send(opened);
 
                 if opened_ok {
-                    // 종료 신호가 올 때까지 연결을 붙잡는다. 반환하는 순간 연결과 자식이 끝난다.
-                    let _ = shutdown.await;
+                    // 종료 신호가 올 때까지, **또는 저쪽이 사라질 때까지** 연결을 붙잡는다.
+                    // 반환하는 순간 연결과 자식이 끝난다.
+                    //
+                    // 둘째 조건이 없으면 안 된다. 수신이 EOF로 끝나도 크레이트는 이 클로저를
+                    // 깨우지 않는다 — 문서가 그렇게 못 박고 `incoming_closed`를 보라고 한다.
+                    // 종료 신호만 기다리면 에이전트가 죽어도 이 자리가 영영 풀리지 않아,
+                    // 목록은 죽은 세션을 살아있다고 말하고 사용자는 허공에 대고 말한다.
+                    let gone = std::pin::pin!(cx.incoming_closed());
+                    let _ = futures::future::select(shutdown, gone).await;
                 }
                 Ok(())
             }),

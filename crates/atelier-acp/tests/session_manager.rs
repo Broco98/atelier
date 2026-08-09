@@ -99,14 +99,7 @@ fn is_running(pid: u32) -> bool {
 }
 
 fn wait_until_gone(pid: u32) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        if !is_running(pid) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    false
+    wait_until(|| !is_running(pid))
 }
 
 #[test]
@@ -507,6 +500,129 @@ fn denying_a_permission_does_not_kill_the_session() {
     );
 }
 
+/// 한 턴을 보내고, **에이전트가 실제로 말을 시작한 뒤에** 중단한다. 시작도 전에 보내면
+/// 무엇도 증명하지 못한다.
+///
+/// 티켓 06과 같은 규칙이다 — **스코프 안에서는 어긋난 것을 외치지 않는다.** 스코프는 자식
+/// 스레드가 끝나야 빠져나오는데 중단받지 못한 턴은 영원히 돌기 때문에, 여기서 패닉하면
+/// 실패가 아니라 멈춤이 된다. 끝내 중단하지 못하면 세션을 접어 턴을 풀어 준다.
+fn prompt_then_cancel(manager: &SessionManager, session_id: &str) -> atelier_acp::Result<()> {
+    let before = manager.updates(session_id).map(|l| l.len()).unwrap_or(0);
+    let ended = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let turn = scope.spawn(|| {
+            let turn = manager.prompt(session_id, PROMPT);
+            ended.store(true, Ordering::SeqCst);
+            turn
+        });
+
+        // 내 말 한 줄과 에이전트가 말을 시작한 한 줄. 그 뒤에야 멈출 것이 있다.
+        let began = wait_for_lines(manager, session_id, before + 2);
+        let sent = began && manager.cancel(session_id).is_ok();
+        // 중단이 조용히 아무것도 하지 않아도 여기서 멈추지 않는다. 세션을 접으면 턴이 오류로
+        // 풀리고, 그 오류를 부르는 쪽이 받아 **실패로** 끝난다.
+        if !sent || !wait_until(|| ended.load(Ordering::SeqCst)) {
+            manager.close_all();
+        }
+        turn.join().unwrap()
+    })
+}
+
+/// 기록이 그만큼 쌓일 때까지 기다린다. 매니저의 속을 들여다보지 않고 파일만 본다.
+fn wait_for_lines(manager: &SessionManager, session_id: &str, want: usize) -> bool {
+    wait_until(|| manager.updates(session_id).map(|l| l.len()).unwrap_or(0) >= want)
+}
+
+fn wait_until(mut done: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if done() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+/// 중단은 **세션을 끝내는 것이 아니다.** 턴만 접고, 같은 세션에 이어서 다시 지시할 수 있다.
+#[test]
+fn cancelling_a_long_turn_ends_it_and_the_session_takes_the_next_prompt() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} long-turn"));
+    let manager = sandbox.manager();
+    let started = manager.start(sandbox.start_point()).unwrap();
+
+    prompt_then_cancel(&manager, &started.session.id).expect("중단은 턴의 실패가 아니다");
+
+    let listed = manager.list().unwrap();
+    assert!(listed[0].alive, "중단했다고 세션이 죽으면 안 된다");
+    assert!(
+        is_running(pid_of(&listed[0].session)),
+        "자식 프로세스도 그대로 떠 있어야 한다"
+    );
+
+    // 여기가 이 티켓의 핵심이다 — 중단이 세션 종료와 같은 말이 아니게 된다
+    prompt_then_cancel(&manager, &started.session.id).expect("중단한 세션에 이어서 다시 지시한다");
+
+    let kinds: Vec<String> = manager
+        .updates(&started.session.id)
+        .unwrap()
+        .iter()
+        .map(kind_of)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|kind| *kind == "user_prompt").count(),
+        2,
+        "두 번 지시한 것이 기록에 남는다: {kinds:?}"
+    );
+    assert!(
+        !kinds.iter().any(|kind| kind == "turn_failed"),
+        "중단은 답을 얻지 못한 것과 다르다: {kinds:?}"
+    );
+}
+
+/// 에이전트가 스스로 죽으면 목록이 죽음으로 바뀌고, **그 사실이 화면까지 간다.**
+///
+/// 살아있음은 런타임의 사실이라 신원 파일에 없다. 그래서 파일을 다시 읽어도 알 수 없고,
+/// 봉투 한 줄이 밖으로 나가는 것이 화면이 죽음을 아는 유일한 길이다.
+#[test]
+fn an_agent_that_dies_on_its_own_shows_up_as_dead() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} dies-mid-turn"));
+    let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let manager = sandbox.manager_watched_by({
+        let seen = seen.clone();
+        Arc::new(move |_: &str, _: usize, line: &serde_json::Value| {
+            seen.lock().unwrap().push(kind_of(line))
+        })
+    });
+    let started = manager.start(sandbox.start_point()).unwrap();
+
+    assert!(
+        manager.prompt(&started.session.id, PROMPT).is_err(),
+        "저쪽이 사라졌으므로 이 턴은 답을 얻지 못한다"
+    );
+    assert!(
+        wait_until(|| manager.list().is_ok_and(|listed| !listed[0].alive)),
+        "에이전트가 죽었는데 목록이 살아있다고 말한다"
+    );
+
+    let kinds: Vec<String> = manager
+        .updates(&started.session.id)
+        .unwrap()
+        .iter()
+        .map(kind_of)
+        .collect();
+    assert_eq!(
+        kinds.iter().filter(|kind| *kind == "agent_exited").count(),
+        1,
+        "죽음은 기록에 한 줄로 남는다: {kinds:?}"
+    );
+    assert!(
+        seen.lock().unwrap().iter().any(|kind| kind == "agent_exited"),
+        "그 줄이 밖으로 나가지 않으면 화면은 죽음을 모른다: {:?}",
+        seen.lock().unwrap()
+    );
+}
+
 #[test]
 fn prompting_a_session_that_is_not_running_fails_readably() {
     let sandbox = Sandbox::normal_agent();
@@ -605,6 +721,67 @@ fn closing_the_manager_kills_the_child() {
     assert!(
         wait_until_gone(pid_of(&session)),
         "매니저를 접었는데 자식이 남았다"
+    );
+}
+
+/// 얌전한 종료를 무시하도록 만든 자식도 죽는다.
+///
+/// 이 스택에서 얌전한 종료는 **표준입력을 닫는 것**이다. 그것만으로 끝나는 상대는 이미
+/// 위 테스트가 덮으므로, 여기서는 그것을 무시하는 상대를 세운다 — 강제로 죽이지 않으면
+/// 그대로 남는다.
+#[test]
+fn closing_the_manager_kills_a_child_that_ignores_shutdown() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} ignores-shutdown"));
+    let session = {
+        let manager = sandbox.manager();
+        let session = manager.start(sandbox.start_point()).unwrap().session;
+        // 어긋난 것은 종료뿐임을 먼저 못 박는다 — 애초에 말이 통하지 않는 상대였다면
+        // 이 테스트가 증명하는 것이 없다.
+        manager.prompt(&session.id, PROMPT).unwrap();
+        assert!(is_running(pid_of(&session)));
+        session
+    };
+
+    assert!(
+        wait_until_gone(pid_of(&session)),
+        "종료를 무시하는 자식이 고아로 남았다"
+    );
+}
+
+/// **손자까지** 사라지는가.
+///
+/// 실물의 기본 어댑터 커맨드는 패키지 실행기를 거치므로 자식은 프로세스 하나가 아니라
+/// 트리다. 직계만 죽이면 손자가 살아남고, 그 손자가 며칠 뒤 CPU를 먹는 정체불명의
+/// 프로세스가 된다 — 이 판이 막으려는 바로 그것이다.
+#[test]
+fn closing_the_manager_kills_the_whole_tree() {
+    // 손자의 pid를 적을 자리는 데이터 루트 밖에 둔다. 매니저가 쓰는 자리와 섞이지 않도록.
+    let scratch = tempfile::tempdir().unwrap();
+    let told = scratch.path().join("grandchild.pid");
+    let sandbox = Sandbox::with_command(&format!(
+        "{FAKE_AGENT:?} spawns-a-child {:?}",
+        told.to_string_lossy()
+    ));
+
+    let (child, grandchild) = {
+        let manager = sandbox.manager();
+        let session = manager.start(sandbox.start_point()).unwrap().session;
+        let grandchild: u32 = std::fs::read_to_string(&told)
+            .expect("에이전트가 손자의 pid를 적지 않았다")
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            is_running(pid_of(&session)) && is_running(grandchild),
+            "자식과 손자가 함께 떠 있어야 이 테스트에 뜻이 있다"
+        );
+        (pid_of(&session), grandchild)
+    };
+
+    assert!(wait_until_gone(child), "매니저를 접었는데 자식이 남았다");
+    assert!(
+        wait_until_gone(grandchild),
+        "직계만 죽고 손자가 살아남았다 — 정체불명의 프로세스가 되는 자리다"
     );
 }
 

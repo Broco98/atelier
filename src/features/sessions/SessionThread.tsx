@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Wrench } from "lucide-react";
+import { Square, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PermissionCard from "./PermissionCard";
 import { toLines } from "./conversation";
-import { useLiveUpdates, usePromptSession, useSessionReplay } from "./hooks";
+import {
+  useCancelSession,
+  useLiveUpdates,
+  usePromptSession,
+  useSessionReplay,
+} from "./hooks";
 import type { SessionView } from "./types";
 
 interface SessionThreadProps {
@@ -15,6 +20,7 @@ function SessionThread({ session }: SessionThreadProps) {
   const live = useLiveUpdates(session.id);
   const { data: replayed = [] } = useSessionReplay(session.id, live.listening);
   const prompt = usePromptSession(session.id);
+  const cancel = useCancelSession(session.id);
   const [draft, setDraft] = useState("");
   const foot = useRef<HTMLDivElement>(null);
 
@@ -46,6 +52,15 @@ function SessionThread({ session }: SessionThreadProps) {
       await prompt.send(text);
     } catch (e) {
       await message(`보내지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+    }
+  };
+
+  const stop = async () => {
+    try {
+      // 턴은 여기서가 아니라 저쪽에서 끝난다 — 잠금이 풀리는 것은 `prompt.send`가 돌아올 때다
+      await cancel.mutateAsync();
+    } catch (e) {
+      await message(`중단하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
     }
   };
 
@@ -96,8 +111,20 @@ function SessionThread({ session }: SessionThreadProps) {
             ),
           )}
           {prompt.running && (
-            <span className="animate-pulse text-[13px] text-tertiary">
-              {awaiting ? "답을 기다리는 중…" : "응답 중…"}
+            <span className="flex items-center gap-2.5">
+              <span className="animate-pulse text-[13px] text-tertiary">
+                {awaiting ? "답을 기다리는 중…" : "응답 중…"}
+              </span>
+              {/* 방향이 틀렸다고 판단했을 때 여기서 멈춘다. 세션은 그대로 살아 있다. */}
+              <button
+                type="button"
+                onClick={() => void stop()}
+                disabled={cancel.isPending}
+                className="flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+              >
+                <Square className="size-2.5 shrink-0 fill-current" strokeWidth={2} />
+                중단
+              </button>
             </span>
           )}
           <div ref={foot} />
@@ -115,17 +142,18 @@ function SessionThread({ session }: SessionThreadProps) {
                 void send();
               }
             }}
-            // 턴이 도는 동안 잠긴다 — 중간에 끼어들지 않도록
-            disabled={!session.alive || prompt.running}
+            // 턴이 도는 동안에만 잠긴다 — 중간에 끼어들지 않도록.
+            // **떠 있지 않다고 잠그지 않는다.** 잠그면 죽은 세션에 이어 말할 길이 사라진다.
+            disabled={prompt.running}
             rows={3}
             placeholder={
-              session.alive ? "무엇을 시킬까요" : "이 세션은 떠 있지 않아요"
+              session.alive ? "무엇을 시킬까요" : "이어 말하면 다시 띄워요"
             }
             className="w-full resize-none rounded-[12px] border bg-background px-3.5 py-2.5 text-[14px] leading-[1.6] outline-none placeholder:text-tertiary focus:border-primary disabled:opacity-50"
           />
           <span className="text-[11.5px] text-tertiary">
             {!session.alive
-              ? "앱을 껐다 켠 세션이에요. 이어 말하는 것은 다음 판이에요."
+              ? "에이전트가 떠 있지 않아요. 보내면 그때 다시 띄워요."
               : awaiting
                 ? "에이전트가 위 카드의 답을 기다리고 있어요."
                 : prompt.running
