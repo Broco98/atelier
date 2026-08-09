@@ -112,6 +112,23 @@ pub fn set_session_title_once(root: &Path, id: &str, title: &str) -> Result<Sess
     Ok(session)
 }
 
+/// 재개가 지난 에이전트 세션을 되살리지 못해 **새로 열었다.** 그 id만 갈아 끼운다.
+///
+/// 제목도 만든 시각도 시작점도 대화 기록도 그대로다 — 세션은 같은 세션이고 말할 상대만
+/// 새로 생긴 것이다. 상대가 불러오기를 지원하는지 아닌지가 사용자에게 보이지 않아야 하고,
+/// 그러려면 이 자리에서 바뀌는 것이 id 하나뿐이어야 한다.
+pub fn set_session_agent_session_id(
+    root: &Path,
+    id: &str,
+    agent_session_id: &str,
+) -> Result<Session> {
+    let mut session = get_session(root, id)?;
+    session.agent_session_id = agent_session_id.to_string();
+    session.updated_at = chrono::Local::now().to_rfc3339();
+    write_session(root, &session)?;
+    Ok(session)
+}
+
 /// 대화 기록 한 줄을 덧붙인다. **덧붙이기만 한다** — 되감거나 고쳐 쓰지 않는다.
 ///
 /// 줄의 모양은 여기서 정하지 않는다. 저장소는 사람이 읽을 수 있는 JSON 한 줄이라는 것까지만 안다.
@@ -384,6 +401,34 @@ mod tests {
             .filter(|name| name.ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty(), "남은 임시 파일: {leftovers:?}");
+    }
+
+    /// 재개가 새 에이전트 세션을 열었을 때 **id만** 갈리는가. 나머지가 함께 흔들리면
+    /// 상대가 불러오기를 지원하는지가 사용자 눈에 보이게 된다.
+    #[test]
+    fn swapping_the_agent_session_id_keeps_everything_else_and_the_record() {
+        let (_tmp, root) = setup();
+        let created = create_session(&root, new_session("a")).unwrap();
+        set_session_title_once(&root, &created.id, "첫 지시").unwrap();
+        for n in 0..3 {
+            append_update(&root, &created.id, &serde_json::json!({"n": n})).unwrap();
+        }
+
+        let swapped = set_session_agent_session_id(&root, &created.id, "agent-새것").unwrap();
+
+        assert_eq!(swapped.agent_session_id, "agent-새것");
+        assert_eq!(swapped.id, created.id);
+        assert_eq!(swapped.title.as_deref(), Some("첫 지시"));
+        assert_eq!(swapped.start_point, created.start_point);
+        assert_eq!(swapped.cwd, created.cwd);
+        assert_eq!(swapped.agent, created.agent);
+        assert_eq!(swapped.created_at, created.created_at, "만든 시각은 그대로다");
+        assert_eq!(get_session(&root, &created.id).unwrap(), swapped, "디스크에도 남는다");
+
+        // 지난 대화는 재개의 1차 경로다. 여기서 한 줄이라도 사라지면 화면이 비어 버린다.
+        let replayed = read_updates(&root, &created.id).unwrap();
+        let order: Vec<i64> = replayed.iter().map(|l| l["n"].as_i64().unwrap()).collect();
+        assert_eq!(order, vec![0, 1, 2]);
     }
 
     #[test]

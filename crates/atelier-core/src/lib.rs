@@ -47,5 +47,5 @@ pub use works::{
 };
 pub use sessions::{
     append_update, create_session, get_session, list_sessions, read_updates,
-    set_session_title_once, NewSession, Session, StartPoint,
+    set_session_agent_session_id, set_session_title_once, NewSession, Session, StartPoint,
 };

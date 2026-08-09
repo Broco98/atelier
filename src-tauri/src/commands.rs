@@ -91,6 +91,19 @@ pub async fn create_session(
 }
 
 #[tauri::command]
+pub async fn resume_session(
+    manager: tauri::State<'_, Arc<SessionManager>>,
+    session_id: String,
+) -> CmdResult<SessionView> {
+    let manager = Arc::clone(&manager);
+    // `create_session`과 같은 이유로 블로킹 실행기에서 기다린다 — 다시 띄우는 것도 패키지
+    // 실행기를 거치므로 오래 걸릴 수 있다.
+    tauri::async_runtime::spawn_blocking(move || manager.resume(&session_id).map_err(err))
+        .await
+        .map_err(err)?
+}
+
+#[tauri::command]
 pub async fn prompt_session(
     manager: tauri::State<'_, Arc<SessionManager>>,
     session_id: String,

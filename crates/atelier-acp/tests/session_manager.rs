@@ -623,6 +623,130 @@ fn an_agent_that_dies_on_its_own_shows_up_as_dead() {
     );
 }
 
+/// 앱을 껐다 켜는 자리. 세션 하나를 만들어 한 턴을 나누고 매니저를 접는다 — 남는 것은
+/// 디스크의 신원과 그때까지의 대화뿐이다.
+fn a_session_from_yesterday(sandbox: &Sandbox) -> (Session, Vec<serde_json::Value>) {
+    let session = {
+        let manager = sandbox.manager();
+        let started = manager.start(sandbox.start_point()).unwrap();
+        manager.prompt(&started.session.id, PROMPT).unwrap();
+        started.session
+    };
+    // 앱이 닫히며 남긴 `agent_exited`까지가 어제의 대화다 — 접은 **뒤에** 읽는다.
+    let past = sandbox.manager().updates(&session.id).unwrap();
+    // 제목은 첫 지시가 붙였다. 어제의 신원은 그것까지 담은 디스크의 값이다.
+    let session = atelier_core::get_session(&sandbox.paths.sessions, &session.id).unwrap();
+    (session, past)
+}
+
+/// 죽은 세션에 이어 말하면 다시 떠서 대화가 이어진다. 이 상대는 **불러오기를 지원하지
+/// 않으므로** 새 에이전트 세션이 열리고, 신원 파일에서 갈리는 것은 id 하나뿐이어야 한다.
+#[test]
+fn resuming_a_session_whose_agent_cannot_load_swaps_only_the_agent_session_id() {
+    let sandbox = Sandbox::normal_agent();
+    let (yesterday, past) = a_session_from_yesterday(&sandbox);
+
+    // 새로 켠 앱. **프로세스를 띄우기 전에** 지난 대화를 읽을 수 있다 — 화면은 이것부터 그린다.
+    let manager = sandbox.manager();
+    assert!(!manager.list().unwrap()[0].alive);
+    assert_eq!(manager.updates(&yesterday.id).unwrap(), past);
+
+    let resumed = manager.resume(&yesterday.id).unwrap();
+
+    assert!(resumed.alive);
+    assert_ne!(
+        resumed.session.agent_session_id, yesterday.agent_session_id,
+        "되살리지 못하는 상대라 새 에이전트 세션이 열린다"
+    );
+    // 하나씩 세지 않고 통째로 견준다 — 신원에 필드가 늘어도 이 검사가 따라온다.
+    let only_those_two = Session {
+        agent_session_id: resumed.session.agent_session_id.clone(),
+        updated_at: resumed.session.updated_at.clone(),
+        ..yesterday.clone()
+    };
+    assert_eq!(
+        resumed.session, only_those_two,
+        "에이전트 세션 id와 고친 시각 말고는 하나도 바뀌지 않는다"
+    );
+    assert_eq!(
+        atelier_core::get_session(&sandbox.paths.sessions, &yesterday.id).unwrap(),
+        resumed.session,
+        "새 id가 신원 파일에도 남는다"
+    );
+
+    manager.prompt(&yesterday.id, "이어서 지시").unwrap();
+
+    let after = manager.updates(&yesterday.id).unwrap();
+    assert_eq!(after[..past.len()], past[..], "지난 대화는 손대지 않는다");
+    assert!(after.len() > past.len(), "이어 말한 것이 그 아래에 붙는다");
+}
+
+/// 불러오기가 과거를 다시 흘려줘도 **기록에 두 번 쌓이지 않는다.**
+///
+/// 재생과 라이브가 같은 파일을 읽으므로, 파일에 두 번 적히는 것이 곧 화면에 같은 말이 두 번
+/// 나오는 것이다.
+#[test]
+fn resuming_an_agent_that_replays_the_past_does_not_write_it_twice() {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} replays-on-load"));
+    let (yesterday, past) = a_session_from_yesterday(&sandbox);
+
+    let manager = sandbox.manager();
+    let resumed = manager.resume(&yesterday.id).unwrap();
+
+    assert_eq!(
+        resumed.session.agent_session_id, yesterday.agent_session_id,
+        "되살렸으므로 에이전트 세션 id는 그대로다"
+    );
+    assert_eq!(
+        manager.updates(&yesterday.id).unwrap(),
+        past,
+        "불러오기가 흘려보낸 과거가 기록에 다시 쌓였다"
+    );
+}
+
+/// **사용자에게 보이는 화면은 두 경우 모두 같다.** 상대가 불러오기를 지원하든 아니든,
+/// 재개해서 이어 말한 대화가 같은 줄들로 남는다 — 이 티켓이 지키기로 한 약속이다.
+#[test]
+fn the_conversation_reads_the_same_whether_or_not_the_agent_can_load() {
+    assert_eq!(resume_and_talk("normal"), resume_and_talk("replays-on-load"));
+}
+
+/// 어제 만든 세션을 재개해 한 턴을 더 나누고, 남은 대화를 한 마디씩으로 줄여 돌려준다.
+fn resume_and_talk(scenario: &str) -> Vec<String> {
+    let sandbox = Sandbox::with_command(&format!("{FAKE_AGENT:?} {scenario}"));
+    let (yesterday, _) = a_session_from_yesterday(&sandbox);
+
+    let manager = sandbox.manager();
+    manager.resume(&yesterday.id).unwrap();
+    manager.prompt(&yesterday.id, "이어서 지시").unwrap();
+
+    manager
+        .updates(&yesterday.id)
+        .unwrap()
+        .iter()
+        .map(kind_of)
+        .collect()
+}
+
+/// 이미 떠 있는 세션을 재개해도 **말할 상대가 둘이 되지 않는다.** 다시 띄웠다면 새 에이전트
+/// 세션이 열려 신원의 id가 갈렸을 것이다.
+#[test]
+fn resuming_a_live_session_keeps_the_agent_it_already_has() {
+    let sandbox = Sandbox::normal_agent();
+    let manager = sandbox.manager();
+    let started = manager.start(sandbox.start_point()).unwrap();
+
+    let resumed = manager.resume(&started.session.id).unwrap();
+
+    assert_eq!(resumed.session, started.session, "신원이 흔들리지 않는다");
+    assert!(resumed.alive);
+    assert!(
+        is_running(pid_of(&started.session)),
+        "쓰던 자식이 그대로 살아 있어야 한다"
+    );
+    assert_eq!(manager.list().unwrap().len(), 1);
+}
+
 #[test]
 fn prompting_a_session_that_is_not_running_fails_readably() {
     let sandbox = Sandbox::normal_agent();

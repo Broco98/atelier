@@ -8,6 +8,7 @@ import {
   useCancelSession,
   useLiveUpdates,
   usePromptSession,
+  useResumeSession,
   useSessionReplay,
 } from "./hooks";
 import type { SessionView } from "./types";
@@ -21,6 +22,7 @@ function SessionThread({ session }: SessionThreadProps) {
   const { data: replayed = [] } = useSessionReplay(session.id, live.listening);
   const prompt = usePromptSession(session.id);
   const cancel = useCancelSession(session.id);
+  const resume = useResumeSession(session.id);
   const [draft, setDraft] = useState("");
   const foot = useRef<HTMLDivElement>(null);
 
@@ -39,15 +41,20 @@ function SessionThread({ session }: SessionThreadProps) {
   const awaiting =
     session.alive && lines.some((line) => line.kind === "permission" && line.answered === null);
 
+  const busy = prompt.running || resume.isPending;
+
   useEffect(() => {
     foot.current?.scrollIntoView({ block: "end" });
-  }, [lines, prompt.running]);
+  }, [lines, busy]);
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || prompt.running) return;
+    if (!text || busy) return;
     setDraft("");
     try {
+      // 떠 있지 않으면 **여기서** 다시 띄운다 — 세션을 여는 것이 아니라 말할 상대를 되찾는
+      // 것이라, 지난 대화는 이미 그려진 그대로 둔다.
+      if (!session.alive) await resume.mutateAsync();
       // 내가 친 말도 기록을 거쳐 이벤트로 돌아온다 — 여기서 미리 그리지 않는다
       await prompt.send(text);
     } catch (e) {
@@ -110,21 +117,28 @@ function SessionThread({ session }: SessionThreadProps) {
               </div>
             ),
           )}
-          {prompt.running && (
+          {busy && (
             <span className="flex items-center gap-2.5">
               <span className="animate-pulse text-[13px] text-tertiary">
-                {awaiting ? "답을 기다리는 중…" : "응답 중…"}
+                {resume.isPending
+                  ? "다시 띄우는 중…"
+                  : awaiting
+                    ? "답을 기다리는 중…"
+                    : "응답 중…"}
               </span>
-              {/* 방향이 틀렸다고 판단했을 때 여기서 멈춘다. 세션은 그대로 살아 있다. */}
-              <button
-                type="button"
-                onClick={() => void stop()}
-                disabled={cancel.isPending}
-                className="flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
-              >
-                <Square className="size-2.5 shrink-0 fill-current" strokeWidth={2} />
-                중단
-              </button>
+              {/* 방향이 틀렸다고 판단했을 때 여기서 멈춘다. 세션은 그대로 살아 있다.
+                  아직 뜨는 중이면 멈출 턴이 없다. */}
+              {prompt.running && (
+                <button
+                  type="button"
+                  onClick={() => void stop()}
+                  disabled={cancel.isPending}
+                  className="flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                >
+                  <Square className="size-2.5 shrink-0 fill-current" strokeWidth={2} />
+                  중단
+                </button>
+              )}
             </span>
           )}
           <div ref={foot} />
@@ -142,9 +156,9 @@ function SessionThread({ session }: SessionThreadProps) {
                 void send();
               }
             }}
-            // 턴이 도는 동안에만 잠긴다 — 중간에 끼어들지 않도록.
+            // 턴이 도는 동안, 그리고 다시 띄우는 동안에만 잠긴다 — 중간에 끼어들지 않도록.
             // **떠 있지 않다고 잠그지 않는다.** 잠그면 죽은 세션에 이어 말할 길이 사라진다.
-            disabled={prompt.running}
+            disabled={busy}
             rows={3}
             placeholder={
               session.alive ? "무엇을 시킬까요" : "이어 말하면 다시 띄워요"
@@ -152,13 +166,15 @@ function SessionThread({ session }: SessionThreadProps) {
             className="w-full resize-none rounded-[12px] border bg-background px-3.5 py-2.5 text-[14px] leading-[1.6] outline-none placeholder:text-tertiary focus:border-primary disabled:opacity-50"
           />
           <span className="text-[11.5px] text-tertiary">
-            {!session.alive
-              ? "에이전트가 떠 있지 않아요. 보내면 그때 다시 띄워요."
-              : awaiting
-                ? "에이전트가 위 카드의 답을 기다리고 있어요."
-                : prompt.running
-                  ? "응답이 끝나면 다시 보낼 수 있어요."
-                  : "Enter 로 보내고 Shift+Enter 로 줄을 바꿔요."}
+            {resume.isPending
+              ? "에이전트를 다시 띄우고 있어요. 뜨면 보낸 말이 그대로 이어져요."
+              : !session.alive
+                ? "에이전트가 떠 있지 않아요. 보내면 그때 다시 띄워요."
+                : awaiting
+                  ? "에이전트가 위 카드의 답을 기다리고 있어요."
+                  : prompt.running
+                    ? "응답이 끝나면 다시 보낼 수 있어요."
+                    : "Enter 로 보내고 Shift+Enter 로 줄을 바꿔요."}
           </span>
         </div>
       </div>

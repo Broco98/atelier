@@ -16,7 +16,7 @@ pub enum Error {
     AgentStart { command: String, message: String },
     #[error("start point folder is missing: {0}")]
     StartPointMissing(String),
-    /// 살아있지 않은 세션에 말을 걸었다. 죽은 세션을 다시 띄우는 것은 뒤 티켓의 몫이다.
+    /// 살아있지 않은 세션에 말을 걸었다. 다시 띄우는 것은 `resume`이 한다.
     #[error("session is not running: {0}")]
     NotRunning(String),
     #[error("prompt failed: {0}")]

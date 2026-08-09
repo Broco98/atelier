@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use agent_client_protocol::schema::v1::{
-    CancelNotification, ContentBlock, InitializeRequest, NewSessionRequest, PromptRequest,
-    RequestPermissionOutcome, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
-    TextContent,
+    CancelNotification, ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest,
+    PromptRequest, RequestPermissionOutcome, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionId, TextContent,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{
@@ -86,50 +86,73 @@ impl SessionManager {
     /// 세션 폴더를 만든다. 실패하면 디스크에 아무것도 남기지 않고 읽을 수 있는 오류만 돌려준다.
     pub fn start(&self, start_point: StartPoint) -> Result<SessionView> {
         let cwd = self.resolve(&start_point)?;
-        let command = codex_command(&self.paths.adapters_file);
-        let recorder = Arc::new(Recorder {
-            sessions_root: self.paths.sessions.clone(),
-            listener: Arc::clone(&self.listener),
-            session: Mutex::new(Recording::Waiting(Vec::new())),
-        });
+        // 세션 폴더가 생기기 전에 오는 말은 안고 있다가 쏟는다 — 하나도 버리지 않는다.
+        let recorder = self.recorder(Recording::Waiting(Vec::new()));
 
-        let (live, agent_session_id) = spawn_session(command, cwd.clone(), recorder)?;
+        let (live, agent_session_id) = spawn_session(
+            codex_command(&self.paths.adapters_file),
+            cwd.clone(),
+            recorder,
+            None,
+        )?;
 
-        // 자물쇠를 등록까지 쥔 채로 간다. 여기서 놓으면 그 틈에 앱이 닫힐 수 있고, 그러면
-        // 이 자식은 자기 프로세스 그룹의 리더라 부모가 죽어도 따라 죽지 않고 고아로 남는다.
-        let mut registry = self.registry.lock().unwrap();
-        if registry.closing {
-            drop(registry);
-            live.close();
-            return Err(Error::Closing);
+        self.register(live, || {
+            Ok(atelier_core::create_session(
+                &self.paths.sessions,
+                NewSession {
+                    agent: CODEX.to_string(),
+                    agent_session_id,
+                    start_point,
+                    cwd,
+                },
+            )?)
+        })
+    }
+
+    /// 죽은 세션을 다시 띄운다. **지난 대화는 건드리지 않는다** — 화면은 이미 재생으로 채워져
+    /// 있고, 여기서 되찾는 것은 말할 상대뿐이다.
+    ///
+    /// 상대가 불러오기를 지원하면 지난 에이전트 세션을 되살리고, 아니거나 실패하면 새로 연다.
+    /// 어느 쪽이든 **사용자에게 보이는 화면은 같다** — 그래서 이 분기가 여기 한 곳에 갇힌다.
+    pub fn resume(&self, session_id: &str) -> Result<SessionView> {
+        let session = atelier_core::get_session(&self.paths.sessions, session_id)?;
+        {
+            let registry = self.registry.lock().unwrap();
+            let running = registry
+                .sessions
+                .get(session_id)
+                .filter(|live| live.is_alive());
+            if let Some(live) = running {
+                // 이미 떠 있다. 다시 띄우면 한 세션에 말할 상대가 둘이 된다.
+                return Ok(SessionView {
+                    session,
+                    alive: true,
+                    awaiting_permission: live.permissions.waiting(),
+                });
+            }
         }
 
-        let session = match atelier_core::create_session(
-            &self.paths.sessions,
-            NewSession {
-                agent: CODEX.to_string(),
-                agent_session_id,
-                start_point,
-                cwd,
-            },
-        ) {
-            Ok(session) => session,
-            // 신원을 남기지 못한 세션은 사용자가 다시 만날 방법이 없다. 자식을 두고 가지 않는다.
-            Err(error) => {
-                drop(registry);
-                live.close();
-                return Err(error.into());
+        // 뜨는 동안 오는 말은 버린다. 불러오기가 되돌려 주는 과거가 여기로 오기 때문이다.
+        let recorder = self.recorder(Recording::Discarding);
+        // 어디서 뜨는지는 **그때 실제로 뜬 자리**가 정한다 — 시작점의 등록이 그새 지워졌거나
+        // 옮겨졌어도 이 세션이 뿌리내린 곳은 바뀌지 않는다.
+        let (live, agent_session_id) = spawn_session(
+            codex_command(&self.paths.adapters_file),
+            atelier_core::expand_home(&session.cwd),
+            recorder,
+            Some(session.agent_session_id.clone()),
+        )?;
+
+        self.register(live, || {
+            if agent_session_id == session.agent_session_id {
+                return Ok(session);
             }
-        };
-
-        // 이제야 기록할 자리가 정해졌다. 세션이 열리는 동안 온 말들이 여기서 쏟아진다.
-        live.recorder.open(session.id.clone());
-
-        registry.sessions.insert(session.id.clone(), live);
-        Ok(SessionView {
-            session,
-            alive: true,
-            awaiting_permission: false,
+            // 되살리지 못해 새로 열었다. 신원 파일에서 갈리는 것은 **id 하나**다.
+            Ok(atelier_core::set_session_agent_session_id(
+                &self.paths.sessions,
+                &session.id,
+                &agent_session_id,
+            )?)
         })
     }
 
@@ -273,6 +296,49 @@ impl SessionManager {
         }
     }
 
+    /// 신원을 정하고 등록한다. **자물쇠를 등록까지 쥔 채로 간다** — 여기서 놓으면 그 틈에 앱이
+    /// 닫힐 수 있고, 그러면 이 자식은 자기 프로세스 그룹의 리더라 부모가 죽어도 따라 죽지 않고
+    /// 고아로 남는다. 처음 서는 세션과 다시 뜨는 세션이 이 규칙을 함께 쓴다.
+    fn register(
+        &self,
+        live: Live,
+        identify: impl FnOnce() -> Result<Session>,
+    ) -> Result<SessionView> {
+        let mut registry = self.registry.lock().unwrap();
+        let identified = if registry.closing {
+            Err(Error::Closing)
+        } else {
+            identify()
+        };
+        let session = match identified {
+            Ok(session) => session,
+            // 신원을 남기지 못한 세션은 사용자가 다시 만날 방법이 없다. 자식을 두고 가지 않는다.
+            Err(error) => {
+                drop(registry);
+                live.close();
+                return Err(error);
+            }
+        };
+
+        // 이제야 기록할 자리가 정해졌다. 안고 있던 말들이 여기서 쏟아진다.
+        live.recorder.open(session.id.clone());
+
+        registry.sessions.insert(session.id.clone(), live);
+        Ok(SessionView {
+            session,
+            alive: true,
+            awaiting_permission: false,
+        })
+    }
+
+    fn recorder(&self, recording: Recording) -> Arc<Recorder> {
+        Arc::new(Recorder {
+            sessions_root: self.paths.sessions.clone(),
+            listener: Arc::clone(&self.listener),
+            session: Mutex::new(recording),
+        })
+    }
+
     /// 시작점의 디렉터리는 **기존 도메인 읽기 API로만** 얻는다 — 세션 코드는 프로젝트 저장
     /// 형식을 알지 못한다.
     fn resolve(&self, start_point: &StartPoint) -> Result<PathBuf> {
@@ -389,6 +455,11 @@ struct Recorder {
 /// 스펙은 스트림을 전부 기록하라고 한다. 자리가 생길 때까지 안고 있다가 순서 그대로 쏟는다.
 enum Recording {
     Waiting(Vec<Value>),
+    /// 재개하는 중이다. 이 사이에 오는 말은 **버린다.**
+    ///
+    /// `session/load`는 응답보다 먼저 지난 대화를 되돌려 줄 수 있는데, 화면은 그 전에 이미
+    /// 재생으로 채워져 있다. 받아 적으면 파일에 두 번 쌓이고 곧 화면에도 두 번 나온다.
+    Discarding,
     /// `next`는 다음 줄이 앉을 자리다. 이어 여는 세션은 이미 쌓인 만큼 뒤에서 시작한다.
     Open { id: String, next: usize },
 }
@@ -398,6 +469,7 @@ impl Recorder {
         let mut recording = self.session.lock().unwrap();
         match &mut *recording {
             Recording::Waiting(pending) => pending.push(line),
+            Recording::Discarding => {}
             Recording::Open { id, next } => self.write(&id.clone(), next, &line),
         }
     }
@@ -406,9 +478,15 @@ impl Recorder {
     /// 자물쇠를 쥔 채로 쏟아야 그 사이에 도착한 조각이 앞질러 가지 않는다.
     fn open(&self, id: String) {
         let mut recording = self.session.lock().unwrap();
-        let placeholder = Recording::Waiting(Vec::new());
-        let Recording::Waiting(pending) = std::mem::replace(&mut *recording, placeholder) else {
-            return;
+        // 쏟는 동안의 자리지기. 자물쇠를 쥐고 있으므로 아무도 여기 쓰지 못한다.
+        let pending = match std::mem::replace(&mut *recording, Recording::Discarding) {
+            Recording::Waiting(pending) => pending,
+            // 재개하며 온 것은 이미 버렸다. 쏟을 것이 없다.
+            Recording::Discarding => Vec::new(),
+            already_open => {
+                *recording = already_open;
+                return;
+            }
         };
         // 이어 여는 세션은 이미 쌓인 만큼 뒤에서 시작한다.
         let mut next = atelier_core::read_updates(&self.sessions_root, &id)
@@ -461,7 +539,12 @@ fn title_from(text: &str) -> Option<&str> {
 /// 스레드 하나를 띄워 연결을 세우고, 세션이 열릴 때까지 부른 쪽을 기다리게 한다.
 ///
 /// `npx`가 패키지를 내려받는 첫 실행은 오래 걸릴 수 있으므로 여기에 제한 시간을 두지 않는다.
-fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Result<(Live, String)> {
+fn spawn_session(
+    command: String,
+    cwd: PathBuf,
+    recorder: Arc<Recorder>,
+    resuming: Option<String>,
+) -> Result<(Live, String)> {
     let (outcome_tx, outcome_rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = futures::channel::oneshot::channel::<()>();
     let alive = Arc::new(AtomicBool::new(true));
@@ -479,6 +562,7 @@ fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Resu
             if let Err(error) = run_connection(
                 command,
                 cwd,
+                resuming,
                 Arc::clone(&recorder),
                 permissions,
                 outcome_tx,
@@ -527,6 +611,7 @@ fn spawn_session(command: String, cwd: PathBuf, recorder: Arc<Recorder>) -> Resu
 fn run_connection(
     command: String,
     cwd: PathBuf,
+    resuming: Option<String>,
     recorder: Arc<Recorder>,
     permissions: Arc<Pending>,
     outcome: std::sync::mpsc::Sender<Result<(String, ConnectionTo<Agent>)>>,
@@ -569,7 +654,7 @@ fn run_connection(
                 agent_client_protocol::on_receive_request!(),
             )
             .connect_with(agent, async |cx: ConnectionTo<Agent>| {
-                let opened = open_session(&cx, cwd)
+                let opened = open_session(&cx, cwd, resuming)
                     .await
                     .map(|agent_session_id| (agent_session_id, cx.clone()))
                     .map_err(|message| Error::AgentStart {
@@ -598,16 +683,39 @@ fn run_connection(
     Ok(())
 }
 
-/// 핸드셰이크와 세션 열기. 실패하면 사람이 읽을 메시지만 돌려준다 — 커맨드는 부르는 쪽이 안다.
+/// 핸드셰이크와 세션 열기. 돌려주는 것은 **말을 걸 에이전트 세션 id**이고, 실패하면 사람이
+/// 읽을 메시지만 돌려준다 — 커맨드는 부르는 쪽이 안다.
+///
+/// `resuming`이 있으면 그 세션을 되살려 본다. **이 판에서 분기가 있는 유일한 자리다** — 되살든
+/// 새로 열든 위층에는 id 하나만 나가고, 화면에는 분기가 없다.
 async fn open_session(
     cx: &ConnectionTo<Agent>,
     cwd: PathBuf,
+    resuming: Option<String>,
 ) -> std::result::Result<String, String> {
     // 클라이언트 능력은 하나도 선언하지 않는다 (확정 결정 10).
-    cx.send_request(InitializeRequest::new(ProtocolVersion::V1))
+    let initialized = cx
+        .send_request(InitializeRequest::new(ProtocolVersion::V1))
         .block_task()
         .await
         .map_err(|e| e.to_string())?;
+
+    // 지원한다고 말할 때만 부른다. 그러고도 실패하면 새 세션을 연다 — 되살리지 못한 것은
+    // 재개의 실패가 아니다. 지난 대화는 이미 재생으로 화면에 있다.
+    if let Some(agent_session_id) = resuming {
+        if initialized.agent_capabilities.load_session
+            && cx
+                .send_request(LoadSessionRequest::new(
+                    agent_session_id.clone(),
+                    cwd.clone(),
+                ))
+                .block_task()
+                .await
+                .is_ok()
+        {
+            return Ok(agent_session_id);
+        }
+    }
 
     let opened = cx
         .send_request(NewSessionRequest::new(cwd))

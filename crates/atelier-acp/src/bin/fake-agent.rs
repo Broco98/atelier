@@ -27,6 +27,11 @@ type Scenario = fn(&mut Wire);
 /// 지금까지의 시나리오들은 여기서만 갈린다.
 type OnPrompt = fn(&mut Wire, &Value, &Value, &Value);
 
+/// 불러오기를 어떻게 상대하는가 — `(선, 요청 id, 불러오라고 받은 세션 id)`.
+///
+/// 사람이 친 말이 없는 것이 프롬프트와 다른 점이다. 불러오기는 지시가 아니라 **되감기**다.
+type OnLoad = fn(&mut Wire, &Value, &Value);
+
 /// 시나리오를 고르는 표. 더할 때는 **여기 한 줄과 함수 하나**를 더한다.
 const SCENARIOS: &[(&str, Scenario)] = &[
     ("normal", normal),
@@ -36,6 +41,7 @@ const SCENARIOS: &[(&str, Scenario)] = &[
     ("dies-mid-turn", dies_mid_turn),
     ("ignores-shutdown", ignores_shutdown),
     ("spawns-a-child", spawns_a_child),
+    ("replays-on-load", replays_on_load),
 ];
 
 fn main() {
@@ -184,8 +190,42 @@ fn spawns_a_child(wire: &mut Wire) {
     converse(wire, stream_a_turn);
 }
 
+/// **불러오기를 지원하고, 부르면 지난 대화를 다시 흘려주는** 에이전트.
+///
+/// ACP에서 `session/load`는 응답보다 **먼저** 지난 대화를 `session/update`로 되돌려 줄 수 있다.
+/// 그런데 화면은 그 전에 이미 재생으로 채워져 있으므로, 그 스트림을 그대로 받아 적으면 같은
+/// 말이 두 번 나온다. 그것을 버리는지가 이 시나리오로 드러난다.
+fn replays_on_load(wire: &mut Wire) {
+    converse_loading(wire, stream_a_turn, Some(replay_the_past));
+}
+
+/// 되감아 주는 과거. 실물이 무엇을 흘리는지는 아직 모르므로 **이 판이 이미 기록한 것과 같은
+/// 모양**으로 흘린다 — 버리지 않으면 기록에 그대로 두 번 쌓인다.
+fn replay_the_past(wire: &mut Wire, id: &Value, session_id: &Value) {
+    for text in ["받았다: ", "지난번에 하던 이야기"] {
+        wire.notify(
+            "session/update",
+            json!({"sessionId": session_id,
+                   "update": {"sessionUpdate": "agent_message_chunk",
+                              "content": {"type": "text", "text": text}}}),
+        );
+    }
+    wire.reply(id, json!({}));
+}
+
 /// 세션을 여는 데까지의 대화. 시나리오들이 공유한다 — 갈리는 곳은 프롬프트 하나다.
+///
+/// 불러오기는 **지원하지 않는다고 말하고** 물어 오면 모른다고 답한다. 지원하는 상대가
+/// 필요하면 아래 `converse_loading`을 쓴다.
 fn converse(wire: &mut Wire, on_prompt: OnPrompt) {
+    converse_loading(wire, on_prompt, None);
+}
+
+/// `converse`와 같되 불러오기를 상대한다.
+///
+/// 광고와 구현이 따로 놀지 않도록 능력은 `on_load`가 있는지로 정한다 — 하지 않는 것을 한다고
+/// 말하는 상대는 이 판이 흉내낼 어긋남이 아니다.
+fn converse_loading(wire: &mut Wire, on_prompt: OnPrompt, on_load: Option<OnLoad>) {
     let mut opened = 0u32;
     let mut client_capabilities = Value::Null;
 
@@ -203,10 +243,10 @@ fn converse(wire: &mut Wire, on_prompt: OnPrompt) {
                     json!({
                         "protocolVersion": 1,
                         "agentCapabilities": {
-                            // 실물은 true라고 말하지만 이 시나리오는 session/load를 구현하지
-                            // 않는다. 하지 않는 것을 한다고 광고하지 않는다 — 불러오기를 다루는
-                            // 시나리오는 그것을 필요로 하는 티켓이 따로 더한다.
-                            "loadSession": false,
+                            // 하지 않는 것을 한다고 광고하지 않는다 — 상대할 자리가 있을 때만
+                            // 참이다. 대부분의 시나리오는 여기서 거짓이고, 그것이 곧 "불러오기를
+                            // 지원하지 않는 에이전트"다.
+                            "loadSession": on_load.is_some(),
                             "promptCapabilities": {
                                 "image": false,
                                 "audio": false,
@@ -237,6 +277,12 @@ fn converse(wire: &mut Wire, on_prompt: OnPrompt) {
                 );
                 wire.reply(&id, json!({"sessionId": session_id}));
             }
+            // 불러오기는 세션을 **새로 열지 않는다** — 부른 쪽이 쥐고 있던 id가 그대로 산다.
+            // 그래서 여기서는 세는 수도 늘지 않고 새 id도 나가지 않는다.
+            "session/load" => match on_load {
+                Some(load) => load(wire, &id, &message["params"]["sessionId"]),
+                None => wire.reply_error(&id, -32601, "method not found: session/load"),
+            },
             "session/prompt" => {
                 let session_id = message["params"]["sessionId"].clone();
                 let said = message["params"]["prompt"][0]["text"].clone();

@@ -45,6 +45,7 @@ pub fn run() {
             commands::read_spec_file,
             commands::list_sessions,
             commands::create_session,
+            commands::resume_session,
             commands::prompt_session,
             commands::cancel_session,
             commands::answer_permission,

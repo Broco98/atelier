@@ -104,6 +104,22 @@ export function usePromptSession(sessionId: string) {
 }
 
 /**
+ * 죽은 세션을 다시 띄운다. **지난 대화는 건드리지 않는다** — 화면은 이미 재생으로 채워져
+ * 있고, 여기서 되찾는 것은 말할 상대뿐이다.
+ *
+ * 상대가 지난 세션 불러오기를 지원하든 아니든 화면은 같다. 그 분기는 아래층에 갇혀 있고,
+ * 여기로 올라오는 것은 다시 뜬 세션 한 줄뿐이다.
+ */
+export function useResumeSession(sessionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => sessionsApi.resume(sessionId),
+    // 살아있음이 바뀌었다. 목록도 대화 화면도 그 사실을 이 무효화로 받는다.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSIONS_KEY }),
+  });
+}
+
+/**
  * 돌고 있는 턴을 멈춘다. **세션을 끝내는 것이 아니다** — 턴만 접히고 같은 세션에 이어서
  * 다시 지시할 수 있다.
  *
