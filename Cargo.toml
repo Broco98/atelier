@@ -1,7 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/atelier-core", "crates/atelier-cli", "src-tauri"]
+members = ["crates/atelier-core", "crates/atelier-acp", "crates/atelier-cli", "src-tauri"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# ACP 프로토콜·프로세스 층이 쓰는 외부 의존. 이 크레이트가 프로세스 spawn과 stdio를
+# 자기 안에 들고 있고 async-io 기반이라, 별도의 비동기 런타임을 들이지 않는다.
+agent-client-protocol = "2"
+futures = "0.3"

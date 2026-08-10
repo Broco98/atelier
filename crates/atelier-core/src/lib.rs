@@ -10,6 +10,8 @@ pub enum Error {
     EmptyName,
     #[error("work not found: {0}")]
     WorkNotFound(String),
+    #[error("session not found: {0}")]
+    SessionNotFound(String),
     #[error("{0}")]
     Validation(String),
     // "uncommitted"만으로는 거짓이다 — 이 게이트가 실전에서 잡는 것은 거의 다 **추적조차
@@ -32,8 +34,11 @@ mod git;
 mod store;
 mod work;
 mod works;
+mod sessions;
 
-pub use paths::{archive_dir, collapse_home, expand_home, projects_dir, works_dir};
+pub use paths::{
+    adapters_file, archive_dir, collapse_home, expand_home, projects_dir, sessions_dir, works_dir,
+};
 pub use slug::slugify;
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
@@ -45,4 +50,8 @@ pub use works::{
     archive_work, attach_project, get_work, list_archive, list_archived_docs, list_works,
     read_spec_file, read_work_file, remove_work, render_record, start_work, update_work_status,
     update_work_title, ArchiveEntry, WorkReport, WorktreeError,
+};
+pub use sessions::{
+    append_update, create_session, get_session, list_sessions, read_updates,
+    set_session_agent_session_id, set_session_title_once, NewSession, Session, StartPoint,
 };

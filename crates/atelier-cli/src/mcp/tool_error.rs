@@ -21,6 +21,14 @@ pub fn kernel_error(err: Error) -> CallToolResult {
              this tool again."
         }
         Error::Validation(_) | Error::EmptyName => "Fix the arguments and call this tool again.",
+        // 세션은 데스크톱 앱 안에서만 뜨고 죽는다 — 이 서버에는 세션 도구가 없어서 오늘은
+        // 이 변형이 여기까지 올 길이 없다. 그래도 갈래를 적는 것은, 이 `match`가 **일부러
+        // 와일드카드를 두지 않아** 변형이 늘 때마다 "다음에 무엇을 하라"를 쓰게 만들기
+        // 때문이다. 세션 도구가 생기는 날 이 문장이 그 도구를 가리키게 고치면 된다.
+        Error::SessionNotFound(_) => {
+            "Sessions live in the desktop app, not in this server. Report it to the user \
+             instead of retrying."
+        }
         Error::InvalidFile { .. } | Error::Git(_) | Error::Io(_) => {
             "This is a local data or git problem. Report it to the user instead of retrying."
         }
