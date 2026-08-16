@@ -41,6 +41,8 @@ interface SpecViewerProps {
   // 패널 안 ×가 부른다. 접기 state의 소유자는 WorksPage다 — ⌘Enter와 같은 자리를 뒤집어야
   // 여는 길과 닫는 길이 각각 하나로 남는다.
   onClosePanel: () => void;
+  // 정보 탭의 프로젝트 이름이 부른다. 헤더 칩이 이 탭으로 옮겨 오면서 여기를 지난다.
+  onOpenProject: (slug: string) => void;
   // 본문이 넓어지는 조건의 나머지 반쪽 — 접을 수 있는 것이 이 화면에는 둘뿐이다
   sidebarOpen: boolean;
   // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
@@ -59,6 +61,7 @@ function SpecViewer({
   showSource,
   panelOpen,
   onClosePanel,
+  onOpenProject,
   sidebarOpen,
   file,
   onSelectFile,
@@ -162,6 +165,7 @@ function SpecViewer({
         onSelectFile={selectFromTree}
         onCopy={copyText}
         onClose={onClosePanel}
+        onOpenProject={onOpenProject}
         open={panelOpen}
       />
     </div>

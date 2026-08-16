@@ -2,40 +2,91 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorkPanel from "./WorkPanel";
+import { projectsQuery } from "@/features/projects/hooks";
+import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 
 // 이 패널은 화면 **오른쪽**에 있어 핸들이 왼쪽 가장자리에 붙고 끄는 방향의 부호가 반대다.
 // 호출부가 side를 빠뜨리거나 "left"로 적으면 핸들이 패널 건너편으로 가 잡을 곳이 사라지는데,
 // 훅 쪽 테스트는 이 배선을 보지 못한다.
 //
-// WorkPanel은 프로젝트 목록을 스스로 조회하므로 쿼리 프로바이더를 세워 준다 — 조회 결과는
-// 여기서 쓰지 않는다(로딩 중이라 빈 배열이다). 폭은 localStorage에서 읽어 온다.
+// WorkPanel은 프로젝트 목록을 스스로 조회해 **정보 탭에 값으로 내려준다.** 그래서 여기가
+// 로딩·미등록·등록됨 셋을 가르는 유일한 자리다 — 정보 탭 본문은 순수 표현이라 받은 prop만
+// 증명할 수 있다.
+//
+// **로딩 중 값은 빈 배열이 아니라 `undefined`다.** 그 둘이 같아지면(`= []` 기본값) 목록이
+// 오기 전과 등록이 사라진 뒤가 구분되지 않아, 정상 등록된 프로젝트에도 "알 수 없다"가
+// 스친다. 아래 테스트 넷이 그 갈림을 고정한다.
+//
+// 폭은 localStorage에서 읽어 온다.
 
 const work: WorkView = {
   slug: "some-work",
   title: "어떤 작업",
   status: "active",
   branch: "feat/some-work",
-  createdAt: "2026-08-16T00:00:00Z",
+  createdAt: "2026-08-16",
   projects: [],
   worktrees: [],
   specDir: "~/.atelier/works/some-work/spec",
   specFiles: ["overview.md"],
 };
 
-function render(open: boolean, override: Partial<WorkView> = {}): string {
+// projects를 넘기지 않으면 조회가 **pending 그대로다** — 정적 렌더는 이펙트를 돌리지 않아
+// 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.
+function render(
+  open: boolean,
+  override: Partial<WorkView> = {},
+  projects?: ProjectView[],
+): string {
+  const client = new QueryClient();
+  if (projects !== undefined) client.setQueryData(projectsQuery.queryKey, projects);
   return renderToStaticMarkup(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <WorkPanel
         work={{ ...work, ...override }}
         currentFile={null}
         onSelectFile={() => {}}
         onCopy={() => {}}
         onClose={() => {}}
+        onOpenProject={() => {}}
         open={open}
       />
     </QueryClientProvider>,
   );
+}
+
+const oneProject: Partial<WorkView> = {
+  projects: ["atelier"],
+  worktrees: [
+    {
+      project: "atelier",
+      path: "~/.atelier/works/some-work/trees/atelier",
+      exists: true,
+      dirty: false,
+    },
+  ],
+};
+
+const twoProjects: Partial<WorkView> = {
+  projects: ["atelier", "notes"],
+  worktrees: [
+    { project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false },
+    { project: "notes", path: "~/.atelier/works/some-work/trees/notes", exists: true, dirty: false },
+  ],
+};
+
+function project(slug: string, baseBranch: string): ProjectView {
+  return {
+    slug,
+    name: slug,
+    path: `~/MyProjects/${slug}`,
+    baseBranch,
+    createdAt: "2026-08-01",
+    description: "",
+    git: null,
+    missing: false,
+  };
 }
 
 function stubEmptyStorage() {
@@ -137,16 +188,50 @@ describe("WorkPanel 두 탭", () => {
   });
 
   it("워크트리 개수 배지가 없다", () => {
-    const markup = render(true, {
-      projects: ["atelier"],
-      worktrees: [
-        { project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false },
-      ],
-    });
-    // 사라지는 것은 개수 배지다 — 경로 복사 행은 그대로 남는다.
-    // 배지는 exists가 참인 것만 세어 다음 티켓의 프로젝트 덩어리 개수와 어긋난다 (결정 24).
-    expect(markup).toContain("worktree · atelier");
+    const markup = render(true, oneProject);
+    // 사라지는 것은 개수 배지다 — 그 프로젝트의 덩어리와 워크트리 경로는 그대로 남는다.
+    // 배지는 exists가 참인 것만 세어 프로젝트 덩어리 개수와 어긋난다 (결정 24).
+    expect(markup).toContain("trees/atelier/");
     expect(markup).not.toMatch(/worktree 1/);
+  });
+
+  it("프로젝트 목록이 아직 안 왔을 때는 base 자리를 비운다", () => {
+    // 정적 렌더는 이펙트를 돌리지 않으므로 여기 조회는 **pending 그대로다**. 목록을 받는
+    // 자리에 `= []` 기본값을 두면 그 순간이 "등록이 하나도 없다"와 완전히 같은 값이 되어,
+    // 화면이 로딩 중에도 "알 수 없다"를 내보인다. 이 화면은 목록을 프리로드하지 않으므로
+    // 그 순간이 매번 실재한다.
+    const markup = render(true, oneProject);
+    expect(markup).toContain("trees/atelier/");
+    expect(markup).not.toContain("알 수 없다");
+  });
+
+  it("등록된 프로젝트의 base가 그 덩어리에 붙는다", () => {
+    const markup = render(true, oneProject, [project("atelier", "develop")]);
+    expect(markup).toContain("develop");
+    expect(markup).not.toContain("알 수 없다");
+  });
+
+  it("프로젝트가 둘이면 각 덩어리가 **자기** base를 받는다", () => {
+    // 이 작업이 고치려는 버그가 바로 이것이다 — 오늘은 base들을 Set으로 모아
+    // `feat/… → develop, main`처럼 이어 붙여, 어느 base가 어느 프로젝트 것인지 사라진다.
+    // 뽑는 쪽이 slug로 맞추지 않으면 덩어리마다 남의 base가 붙는데 화면은 멀쩡해 보인다.
+    const markup = render(true, twoProjects, [
+      project("atelier", "develop"),
+      project("notes", "main"),
+    ]);
+    const first = markup.slice(
+      markup.indexOf('aria-label="atelier 프로젝트 상세로 이동"'),
+      markup.indexOf('aria-label="notes 프로젝트 상세로 이동"'),
+    );
+    expect(first).toMatch(/>develop</);
+    expect(first).not.toMatch(/>main</);
+    expect(markup).toMatch(/>main</);
+  });
+
+  it("목록이 왔는데 그 프로젝트가 없으면 등록이 사라진 것이다", () => {
+    // 프로젝트를 지워도 그것을 쓰는 작업은 남는다. 로딩 중(위 테스트)과 **다른 말**을
+    // 해야 하고, 그러라고 값이 둘로 갈려 내려간다.
+    expect(render(true, oneProject, [])).toContain("알 수 없다");
   });
 
   it("트리 위 Spec 소제목이 없다", () => {

@@ -16,16 +16,16 @@ const work: WorkView = {
   title: "어떤 작업",
   status: "active",
   branch: "feat/some-work",
-  createdAt: "2026-08-16T00:00:00Z",
+  createdAt: "2026-08-16",
   projects: [],
   worktrees: [],
   specDir: "~/.atelier/works/some-work/spec",
   specFiles: [],
 };
 
-function render(): string {
+function render(overrides: Partial<WorkView> = {}): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery.queryKey, [work]);
+  client.setQueryData(worksQuery.queryKey, [{ ...work, ...overrides }]);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <WorksPage
@@ -64,5 +64,30 @@ describe("WorksPage 헤더의 여는 아이콘", () => {
     // 상태를 만들 길이 없다(접기 state가 이 컴포넌트 안에 살고 여는 길은 클릭뿐이다).
     // 글리프 자체는 실물로 짚는다.
     expect(render()).not.toMatch(/lucide-list\b/);
+  });
+
+  it("헤더에 프로젝트 칩이 없고, 상태 배지와 ⋯는 그대로 있다", () => {
+    // 칩은 정보 탭으로 갔다 — 그 프로젝트의 base·워크트리와 한 덩어리로 묶여야 어느 것이
+    // 어느 프로젝트 것인지가 이어진다. 정보 탭 본문도 같은 화면에 마운트돼 있으므로
+    // (두 탭 동시 마운트) 이름을 세는 것으로는 안 되고 **헤더 안에서만** 본다.
+    const markup = render({
+      projects: ["atelier"],
+      worktrees: [
+        {
+          project: "atelier",
+          path: "~/.atelier/works/some-work/trees/atelier",
+          exists: true,
+          dirty: false,
+        },
+      ],
+    });
+    const header = markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(header).not.toBe("");
+    expect(header).not.toContain("atelier");
+    // 상태 배지와 ⋯는 남는다 — 자주 누르는 조작이라 탭 뒤에 숨기면 클릭이 두 번 든다
+    expect(header).toContain("active");
+    expect(header).toMatch(/aria-label="작업 메뉴"/);
+    // 그리고 프로젝트 덩어리는 정보 탭에 있다
+    expect(markup).toContain("trees/atelier/");
   });
 });

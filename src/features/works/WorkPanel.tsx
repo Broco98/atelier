@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Copy, GitFork, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
-import { specRef, worktreeDirRef, workDirRef } from "./refs";
+import { specRef } from "./refs";
 import SpecSection from "./SpecSection";
+import WorkInfo, { type ProjectBase } from "./WorkInfo";
 import type { WorkView } from "./types";
 
 interface WorkPanelProps {
@@ -16,6 +17,8 @@ interface WorkPanelProps {
   // 탭 바 오른쪽 끝의 ×가 부른다. 헤더의 여는 아이콘과 짝이라 여는 길과 닫는 길이
   // 각각 하나다 — 접기 단축키(⌘Enter)와 같은 state를 뒤집는다.
   onClose: () => void;
+  // 정보 탭의 프로젝트 이름을 누르면 그 프로젝트 상세로 간다.
+  onOpenProject: (slug: string) => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라 패널은 언제나 마운트된 채다.
   open: boolean;
 }
@@ -23,8 +26,16 @@ interface WorkPanelProps {
 type PanelTab = "spec" | "info";
 
 // 목업 S5t 작업 패널 — `spec | 정보` 두 탭. PR 연동 카드는 v2.
-function WorkPanel({ work, currentFile, onSelectFile, onCopy, onClose, open }: WorkPanelProps) {
-  const { data: projects = [] } = useProjects();
+function WorkPanel({
+  work,
+  currentFile,
+  onSelectFile,
+  onCopy,
+  onClose,
+  onOpenProject,
+  open,
+}: WorkPanelProps) {
+  const { data: projects } = useProjects();
   // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
   // 저장 키는 이 패널 전용이다: 목록 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다.
   const size = useResizableWidth("work-panel-width", 296, 260, 520, "right");
@@ -52,13 +63,21 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, onClose, open }: W
     if (wasOpen.current && !open) setTreeGeneration((n) => n + 1);
     wasOpen.current = open;
   }, [open]);
-  const bases = [
-    ...new Set(
-      work.projects
-        .map((p) => projects.find((x) => x.slug === p)?.baseBranch)
-        .filter((b): b is string => Boolean(b)),
-    ),
-  ];
+  // 프로젝트별 base를 뽑아 정보 탭에 값으로 내려준다 — 그쪽은 순수 표현이라 스스로 조회하지
+  // 않는다. 도는 것은 워크트리 목록 하나다(코어가 프로젝트에서 1:1로 만든다).
+  //
+  // **`= []` 기본값을 두지 않는다.** 두면 "목록이 아직 안 왔다"가 "등록이 하나도 없다"와
+  // 완전히 같은 값이 되어, 화면이 로딩 중에도 "알 수 없다"를 내보인다. 이 화면은 프로젝트
+  // 목록을 프리로드하지 않으므로 그 순간이 매번 실재한다.
+  const bases: Record<string, ProjectBase> = Object.fromEntries(
+    work.worktrees.map((worktree) => {
+      const project = projects?.find((p) => p.slug === worktree.project);
+      return [
+        worktree.project,
+        { base: project?.baseBranch ?? null, unregistered: projects !== undefined && !project },
+      ];
+    }),
+  );
 
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
@@ -128,33 +147,12 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, onClose, open }: W
             />
           </TabPanel>
           <TabPanel active={tab === "info"}>
-            {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다 */}
-            {work.branch === null ? (
-              <div className="px-4 pb-3 pt-2 text-[12px] leading-normal text-tertiary">
-                아직 프로젝트가 없어요. 프로젝트를 붙이면 브랜치가 정해져요.
-              </div>
-            ) : (
-              <div className="flex min-w-0 items-center gap-1.5 px-4 pb-3 pt-2.5 font-mono text-[12px] text-muted-foreground">
-                <GitFork className="size-3 shrink-0 text-tertiary" strokeWidth={2} />
-                <span className="truncate">{work.branch}</span>
-                {bases.length > 0 && (
-                  <>
-                    <ArrowRight className="size-2.5 shrink-0 text-tertiary" strokeWidth={2} />
-                    <span className="shrink-0 text-tertiary">{bases.join(", ")}</span>
-                  </>
-                )}
-              </div>
-            )}
-            <div className="flex flex-col px-2 pb-2">
-              <PathCopyRow label="작업 폴더" onCopy={() => onCopy(workDirRef(work.slug))} />
-              {work.worktrees.map((t) => (
-                <PathCopyRow
-                  key={t.project}
-                  label={`worktree · ${t.project}`}
-                  onCopy={() => onCopy(worktreeDirRef(t.path))}
-                />
-              ))}
-            </div>
+            <WorkInfo
+              work={work}
+              bases={bases}
+              onCopy={onCopy}
+              onOpenProject={onOpenProject}
+            />
           </TabPanel>
         </div>
       </div>
@@ -202,26 +200,6 @@ function TabButton({
 // 직계 flex 자식으로 남는다. 감춤은 cn이 twMerge라 display 충돌을 알아서 정리한다.
 function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
   return <div className={cn("contents", !active && "hidden")}>{children}</div>;
-}
-
-// 경로 복사 행 — 행 전체가 버튼이고 hover 시 복사 아이콘이 뜬다.
-// SpecTree의 파일 행과 겉모습은 같지만 구조는 다르다 — 그쪽은 이름 선택과 경로 복사가
-// 각각 버튼이라 div + 형제 둘로 풀렸다. 여기는 행 전체가 복사 하나뿐이라 버튼 하나로 족하다.
-function PathCopyRow({ label, onCopy }: { label: string; onCopy: () => void }) {
-  return (
-    <button
-      type="button"
-      title="경로 복사"
-      onClick={onCopy}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-state-1"
-    >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <Copy
-        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-        strokeWidth={1.8}
-      />
-    </button>
-  );
 }
 
 export default WorkPanel;

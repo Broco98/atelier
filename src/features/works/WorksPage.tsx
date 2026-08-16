@@ -101,20 +101,11 @@ function WorksPage({
           meta={
             selected && (
               <span className="ml-1.5 flex shrink-0 items-center gap-2">
+                {/* 프로젝트 칩은 정보 탭으로 갔다 — 그 프로젝트의 base·워크트리와 한
+                    덩어리로 묶여야 어느 것이 어느 프로젝트 것인지가 이어진다.
+                    상태 배지와 ⋯는 남는다: 자주 누르는 조작이라 탭 뒤에 숨기면 상태를
+                    바꾸는 데 클릭이 두 번 든다. */}
                 <StatusMenu work={selected} />
-                <span className="flex gap-1.5">
-                  {selected.projects.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => onOpenProject(p)}
-                      title="프로젝트 상세로 이동"
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground transition-colors hover:bg-inset hover:text-foreground"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </span>
                 <WorkMenu work={selected} archive={archive} remove={remove} />
               </span>
             )
@@ -168,6 +159,7 @@ function WorksPage({
             showSource={showSource}
             panelOpen={workPanelOpen}
             onClosePanel={() => setWorkPanelOpen(false)}
+            onOpenProject={onOpenProject}
             sidebarOpen={sidebarOpen}
             file={currentFile}
             onSelectFile={onSelectFile}
