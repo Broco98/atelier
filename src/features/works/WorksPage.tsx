@@ -5,9 +5,9 @@ import {
   Check,
   ChevronDown,
   Folder,
-  List,
   LoaderCircle,
   MoreHorizontal,
+  PanelRight,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -135,22 +135,27 @@ function WorksPage({
                   >
                     소스
                   </button>
-                  {/* 이 화면의 유일한 접이식이다 — 본문 확대 단축키(⌘Enter)도 여기로 온다 */}
-                  <button
-                    type="button"
-                    onClick={() => setWorkPanelOpen((v) => !v)}
-                    aria-label="작업 패널 토글"
-                    aria-expanded={workPanelOpen}
-                    title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
-                    className={cn(
-                      "icon-button transition-colors",
-                      workPanelOpen
-                        ? "toggle-on"
-                        : "text-tertiary quiet-hover",
-                    )}
-                  >
-                    <List className="size-3.5" strokeWidth={2} />
-                  </button>
+                  {/* 여는 길은 이것 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로
+                      두면 닫는 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
+
+                      닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
+                      따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다.
+                      트랜지션이 끝난 뒤에 띄우면 빈 자리를 그만큼 쳐다보게 된다.
+
+                      글리프는 PanelRight다. List는 이 패널이 "작업 목록"이던 시절의
+                      이름인데, 정보 탭이 생기면 더는 목록이 아니다. */}
+                  {!workPanelOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setWorkPanelOpen(true)}
+                      aria-label="작업 패널 펼치기"
+                      aria-expanded={false}
+                      title="작업 패널 펼치기"
+                      className="icon-button-quiet text-tertiary"
+                    >
+                      <PanelRight className="size-3.5" strokeWidth={2} />
+                    </button>
+                  )}
                 </span>
               )}
             </>
@@ -162,6 +167,7 @@ function WorksPage({
             work={selected}
             showSource={showSource}
             panelOpen={workPanelOpen}
+            onClosePanel={() => setWorkPanelOpen(false)}
             sidebarOpen={sidebarOpen}
             file={currentFile}
             onSelectFile={onSelectFile}
