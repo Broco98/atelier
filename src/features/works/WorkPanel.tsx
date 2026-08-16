@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Copy, GitFork } from "lucide-react";
 import { cn } from "@/lib/utils";
+import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef, worktreeDirRef, workDirRef } from "./refs";
 import SpecSection from "./SpecSection";
@@ -19,6 +20,9 @@ interface WorkPanelProps {
 // 목업 S5t 작업 패널 — Git 요약 + Spec 파일 트리. PR 연동 카드는 v2.
 function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelProps) {
   const { data: projects = [] } = useProjects();
+  // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
+  // 저장 키는 이 패널 전용이다: 목록 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다.
+  const size = useResizableWidth("work-panel-width", 296, 260, 520, "right");
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
   // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
   // 세워 그 일을 대신한다.
@@ -52,10 +56,11 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
       // 폭은 한 곳에만 적는다 — 바깥이 접히는 폭이고 안쪽이 그 폭으로 버틴다.
       // 둘이 갈리면 접히는 동안 글이 되흐른다 (목록 패널 둘과 같은 방식).
       //
-      // 이름이 --panel-width가 아닌 이유: 목록 패널 둘은 그 이름으로 **드래그해 바꾼 폭**을
-      // 담는다. 상속되는 값이라 같은 이름을 쓰면 어느 쪽이 이겼는지가 위치에 달리게 된다.
+      // 이름이 --panel-width가 아닌 이유는 **상속 충돌 하나**다. 이 패널도 이제 드래그로
+      // 폭이 바뀌니 "저쪽만 드래그해 바꾼 폭을 담는다"는 근거는 더 이상 없다. 남는 이유는
+      // 상속뿐이다 — 같은 이름을 쓰면 어느 쪽이 이겼는지가 위치에 달리게 된다.
       // 사이드바가 자기 키(--sidebar-width)를 따로 갖는 것과 같은 이유다.
-      style={{ "--work-panel-width": "296px" } as React.CSSProperties}
+      style={{ "--work-panel-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
         // 좌측 사이드바·목록 패널과 **같은 폭 접기**다: 넘침을 감춘 상자의 폭을 0으로 보내고
         // 안쪽은 고정 폭을 유지한다. 220ms·--ease-panel도 그쪽과 같은 값을 읽는다.
@@ -67,7 +72,11 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
         // translateX로 옆으로 밀어내는 방식은 **이미 실패한 길이다** — 패널이 본문 스크롤
         // 영역의 형제가 된 뒤로 제 상자 밖 넘침을 문서가 받아, 애니메이션이 도는 동안
         // 가로 스크롤이 깜빡인다. 다시 시도하지 말 것.
-        "shrink-0 overflow-hidden transition-[width] duration-[220ms] ease-panel",
+        //
+        // relative는 폭 조절 핸들이 이 상자의 왼쪽 가장자리를 기준으로 서기 위한 것이다.
+        "relative shrink-0 overflow-hidden",
+        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다 (목록 패널 둘과 같다)
+        !size.dragging && "transition-[width] duration-[220ms] ease-panel",
         open ? "w-(--work-panel-width)" : "w-0",
       )}
     >
@@ -130,6 +139,8 @@ function WorkPanel({ work, currentFile, onSelectFile, onCopy, open }: WorkPanelP
           />
         </div>
       </div>
+
+      {open && <ResizeHandle control={size} />}
     </aside>
   );
 }
