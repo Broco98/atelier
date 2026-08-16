@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 /// 데이터 루트. `ATELIER_HOME`은 테스트용 내부 오버라이드.
-fn data_root() -> PathBuf {
+///
+/// **이 값을 부르는 쪽이 다시 계산하면 안 된다.** `~/.atelier`를 박아 두면 오버라이드가
+/// 그 자리에서만 죽어서, 테스트가 진짜 홈을 건드리는 것이 조용히 시작된다.
+pub fn data_root() -> PathBuf {
     std::env::var_os("ATELIER_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"))
