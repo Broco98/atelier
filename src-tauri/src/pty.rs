@@ -320,6 +320,10 @@ fn shell_builder(dir: &Path) -> Result<CommandBuilder, String> {
     cmd.cwd(dir);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // **방어 겹으로 세지 않는다**(결정 28). 이것은 깜빡임 완화가 아니라 fullscreen 렌더러
+    // 스위치이고, 사용자가 셸에서 `/tui`를 한 번 치면 앱이 심은 값이 무의미해지는데 앱은
+    // 그것을 모른다. 권장 기본값으로만 둔다 — 셸에서 덮어쓰면 그쪽이 이긴다.
+    cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
     Ok(cmd)
 }
 
