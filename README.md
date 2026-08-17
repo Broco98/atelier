@@ -71,7 +71,7 @@ args = ["mcp"]
 ## Development
 
 - 앱: `pnpm tauri dev`
-- Rust 테스트: `cargo test --workspace`
+- 검증: `pnpm verify` — 타입·Rust·프론트엔드를 한 번에. `--full`은 느린 관통 층까지 돌리는 기어이며, 그 층은 아직 없습니다
 - CLI 로컬 설치: `cargo install --path crates/atelier-cli`
 
 ## Release
