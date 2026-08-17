@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { CodeXml, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
@@ -19,6 +19,17 @@ interface WorkPanelProps {
   onClose: () => void;
   // 정보 탭의 프로젝트 이름을 누르면 그 프로젝트 상세로 간다.
   onOpenProject: (slug: string) => void;
+  // `</>`가 켜져 있는가 — **사람이 정한 값**이지 본문이 지금 무엇이냐가 아니다.
+  // 그 둘은 비-md 파일에서 갈린다 (아래 sourceLocked).
+  //
+  // **이 패널은 그 상태를 소유하지 않는다.** 바꾸는 대상이 본문이라 주인은 SpecViewer이고
+  // 여기에는 버튼만 산다 (결정 6). 그래서 패널을 닫으면 토글이 함께 사라져 그때의 보기가
+  // 양방향으로 잠긴다 — 알고 받아들인 대가이고, 되돌리는 길은 패널을 다시 여는 것이다.
+  sourceOn: boolean;
+  // 토글이 잠겼는가. 비-md 파일은 이 토글과 **무관하게** 코드뷰로 고정되므로(결정 6),
+  // 살아 있으면서 아무 일도 하지 않는 버튼이 되지 않게 흐리고 누를 수 없게 한다 (결정 21).
+  sourceLocked: boolean;
+  onToggleSource: () => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라 패널은 언제나 마운트된 채다.
   open: boolean;
 }
@@ -33,6 +44,9 @@ function WorkPanel({
   onCopy,
   onClose,
   onOpenProject,
+  sourceOn,
+  sourceLocked,
+  onToggleSource,
   open,
 }: WorkPanelProps) {
   const { data: projects } = useProjects();
@@ -126,12 +140,40 @@ function WorkPanel({
           <div className="flex items-center gap-1 px-2 pb-1.5 pt-1.5">
             <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
             <TabButton label="정보" active={tab === "info"} onClick={() => setTab("info")} />
+            {/* `</>` — 이 버튼만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
+                규격은 icon-button 그대로이고 켜짐만 기존 toggle-on을 읽는다 — 새 토큰은
+                없다. quiet-hover를 꺼진 가지 안에만 두는 이유는 아래 TabButton과 같다.
+
+                **켜짐은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 비-md 파일이
+                코드뷰로 고정되는 것까지 켜짐으로 그리면, 트리에서 md와 비-md를 오갈 때마다
+                누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다. 결정 6이 그 고정을 토글과
+                **무관하다**고 적은 것도 같은 말이다 — 잠김을 말하는 것은 흐림이지 켜짐이 아니다.
+
+                잠김은 흐림과 포인터 차단이 **함께** 간다. 흐리게만 하면 눌리는데 아무 일도
+                일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
+                왜 잠겼는지를 title로 말할 수는 없다 — pointer-events가 꺼져 있으면 hover가
+                성립하지 않아 네이티브 툴팁이 뜨지 않는다. 흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
+            <button
+              type="button"
+              onClick={onToggleSource}
+              disabled={sourceLocked}
+              aria-label="마크다운 원문 보기"
+              aria-pressed={sourceOn}
+              title="마크다운 원문 보기"
+              className={cn(
+                "icon-button ml-auto transition-colors",
+                "disabled:pointer-events-none disabled:opacity-40",
+                sourceOn ? "toggle-on" : "text-tertiary quiet-hover",
+              )}
+            >
+              <CodeXml className="size-3.5" strokeWidth={2} />
+            </button>
             <button
               type="button"
               onClick={onClose}
               aria-label="작업 패널 접기"
               title="작업 패널 접기"
-              className="icon-button-quiet ml-auto text-tertiary"
+              className="icon-button-quiet text-tertiary"
             >
               <X className="size-3.5" strokeWidth={2} />
             </button>
@@ -162,7 +204,9 @@ function WorkPanel({
   );
 }
 
-// 탭 하나 — 헤더의 [소스] 토글과 **같은 규격·같은 켜짐 어휘**를 읽는다. 새 토큰은 없다.
+// 탭 하나 — 켜짐은 저장소 공통 toggle-on, 꺼짐은 text-tertiary + quiet-hover다. 새 토큰은 없다.
+// 규격(h-6 · rounded-8 · 12.5px)은 헤더에 있던 [소스] 토글에서 온 것인데 **그 버튼은 없어졌다** —
+// 이제 이 규격을 정하는 곳은 여기 하나뿐이다.
 // quiet-hover는 꺼진 가지 안에만 둔다: toggle-on과 한 요소에 겹치면 hover 규칙이 두 벌이
 // 되어 유틸리티 정렬 순서가 승자를 정한다 (index.css의 quiet-hover 주석).
 function TabButton({

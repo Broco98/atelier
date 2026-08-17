@@ -36,7 +36,6 @@ import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
-  showSource: boolean;
   panelOpen: boolean;
   // 패널 안 ×가 부른다. 접기 state의 소유자는 WorksPage다 — ⌘Enter와 같은 자리를 뒤집어야
   // 여는 길과 닫는 길이 각각 하나로 남는다.
@@ -58,7 +57,6 @@ function defaultFile(files: string[]): string | null {
 
 function SpecViewer({
   work,
-  showSource,
   panelOpen,
   onClosePanel,
   onOpenProject,
@@ -81,9 +79,19 @@ function SpecViewer({
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
-  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
+  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 (소스 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
+  // 소스 보기의 주인이 **여기다.** 토글이 작업 패널 머리행으로 올라가면서 화면(WorksPage)이
+  // 이 상태를 들 이유가 없어졌다. 이 컴포넌트는 key={slug}로 서 있으므로 작업을 옮기면
+  // 예쁜 보기로 돌아온다 — 탭 선택과 수명이 같아져 "패널에 사는 훑기 상태는 작업을 옮기면
+  // 처음으로 돌아간다"는 규칙 하나로 묶인다 (결정 22, **오늘과 다른 동작이다**).
+  // 패널 접기는 이 컴포넌트를 리마운트하지 않으므로 접었다 펴도 보기는 유지된다.
+  //
+  // 이 값은 **버튼의 켜짐 그대로** 패널로 내려가고, 본문은 여기에 파일 종류를 얹어
+  // 정한다(아래 `showSource || !isMarkdown`). 둘을 같은 식으로 묶으면 비-md 파일을 열
+  // 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
+  const [showSource, setShowSource] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const showToast = useCallback((message: string) => {
@@ -166,6 +174,9 @@ function SpecViewer({
         onCopy={copyText}
         onClose={onClosePanel}
         onOpenProject={onOpenProject}
+        sourceOn={showSource}
+        sourceLocked={!isMarkdown}
+        onToggleSource={() => setShowSource((v) => !v)}
         open={panelOpen}
       />
     </div>

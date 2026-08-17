@@ -62,8 +62,9 @@ function WorksPage({
     : remove.isPending
       ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
       : null;
-  // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
-  const [showSource, setShowSource] = useState(false);
+  // 브레드크럼이 소유하는 것은 작업 패널 접기 하나다. [소스]는 그 패널 머리행으로 갔고
+  // 상태도 함께 SpecViewer로 내려갔다 — 버튼이 여기 없으면 이 화면이 그것을 들 이유도
+  // 없다 (결정 6·22).
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
@@ -110,53 +111,38 @@ function WorksPage({
               </span>
             )
           }
+          // 헤더 우측에 남은 것은 이것 하나다 — [소스]가 패널 머리행으로 가면서 둘을
+          // 나란히 놓으려던 감싸개도 함께 걷혔다. PageHeader가 이미 actions를 감싼다.
+          //
+          // 여는 길은 이것 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로 두면 닫는
+          // 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
+          //
+          // 닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
+          // 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다.
+          // 트랜지션이 끝난 뒤에 띄우면 빈 자리를 그만큼 쳐다보게 된다.
+          //
+          // 글리프는 PanelRight다. List는 이 패널이 "작업 목록"이던 시절의 이름인데,
+          // 정보 탭이 생기면 더는 목록이 아니다.
           actions={
-            <>
-              {selected && (
-                <span className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowSource((v) => !v)}
-                    className={cn(
-                      "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
-                      showSource
-                        ? "toggle-on"
-                        : "text-tertiary quiet-hover",
-                    )}
-                  >
-                    소스
-                  </button>
-                  {/* 여는 길은 이것 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로
-                      두면 닫는 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
-
-                      닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
-                      따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다.
-                      트랜지션이 끝난 뒤에 띄우면 빈 자리를 그만큼 쳐다보게 된다.
-
-                      글리프는 PanelRight다. List는 이 패널이 "작업 목록"이던 시절의
-                      이름인데, 정보 탭이 생기면 더는 목록이 아니다. */}
-                  {!workPanelOpen && (
-                    <button
-                      type="button"
-                      onClick={() => setWorkPanelOpen(true)}
-                      aria-label="작업 패널 펼치기"
-                      aria-expanded={false}
-                      title="작업 패널 펼치기"
-                      className="icon-button-quiet text-tertiary"
-                    >
-                      <PanelRight className="size-3.5" strokeWidth={2} />
-                    </button>
-                  )}
-                </span>
-              )}
-            </>
+            selected &&
+            !workPanelOpen && (
+              <button
+                type="button"
+                onClick={() => setWorkPanelOpen(true)}
+                aria-label="작업 패널 펼치기"
+                aria-expanded={false}
+                title="작업 패널 펼치기"
+                className="icon-button-quiet text-tertiary"
+              >
+                <PanelRight className="size-3.5" strokeWidth={2} />
+              </button>
+            )
           }
         />
         {selected ? (
           <SpecViewer
             key={selected.slug}
             work={selected}
-            showSource={showSource}
             panelOpen={workPanelOpen}
             onClosePanel={() => setWorkPanelOpen(false)}
             onOpenProject={onOpenProject}

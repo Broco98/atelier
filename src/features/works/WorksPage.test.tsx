@@ -56,9 +56,9 @@ describe("WorksPage 헤더의 여는 아이콘", () => {
   });
 
   it("헤더에 늘 보이는 패널 토글이 없다", () => {
-    // 늘 보이는 토글을 두면 닫는 길이 둘이 된다. 열린 상태의 헤더 우측에 남는 것은
-    // [소스] 하나뿐이고, 목록 글리프는 이 화면에서 완전히 사라졌다 — 정보 탭이 생기면
-    // 이 패널은 더는 "작업 목록"이 아니다.
+    // 늘 보이는 토글을 두면 닫는 길이 둘이 된다. 패널이 열려 있으면 헤더 우측은
+    // **아예 비어 있다** — [소스]는 패널 머리행으로 갔고(결정 6), 목록 글리프는 이
+    // 화면에서 완전히 사라졌다(정보 탭이 생기면 이 패널은 더는 "작업 목록"이 아니다).
     //
     // 여는 아이콘이 PanelRight인지는 이 seam에서 볼 수 없다: 정적 렌더로 패널이 닫힌
     // 상태를 만들 길이 없다(접기 state가 이 컴포넌트 안에 살고 여는 길은 클릭뿐이다).
@@ -89,5 +89,56 @@ describe("WorksPage 헤더의 여는 아이콘", () => {
     expect(header).toMatch(/aria-label="작업 메뉴"/);
     // 그리고 프로젝트 덩어리는 정보 탭에 있다
     expect(markup).toContain("trees/atelier/");
+  });
+});
+
+// 여기가 이 판에서 유일하게 **본문과 토글을 한 화면에서** 보는 자리다.
+// WorksPage → SpecViewer → WorkPanel 셋이 다 도므로, 소스 보기의 주인이 화면에서
+// 패널 쪽으로 내려간 배선이 실제로 이어졌는지가 드러난다 (결정 22).
+describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const LABEL = 'aria-label="마크다운 원문 보기"';
+
+  function toggle(markup: string): string {
+    return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
+  }
+
+  it("헤더에 [소스] 버튼이 없다", () => {
+    const header = render({ specFiles: ["overview.md"] }).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(header).not.toBe("");
+    expect(header).not.toContain("소스");
+  });
+
+  it("토글은 작업 패널 안에 있다", () => {
+    const markup = render({ specFiles: ["overview.md"] });
+    const header = markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(markup).toContain(LABEL);
+    // 헤더에 남아 있으면 이 판이 옮긴 것이 아무것도 없는 것이다
+    expect(header).not.toContain(LABEL);
+  });
+
+  it("마크다운 문서에서는 예쁜 보기이고 토글이 살아 있다", () => {
+    const markup = render({ specFiles: ["overview.md"] });
+    expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
+    expect(toggle(markup)).not.toMatch(/\sdisabled=""/);
+  });
+
+  it("비-md 문서를 열면 본문이 코드뷰로 고정되고 토글이 잠긴다", () => {
+    // 본문과 버튼을 **함께** 본다. 하나만 보면 "코드뷰인데 버튼은 멀쩡히 살아 있다"는
+    // 바로 그 어긋남(결정 21)이 통과한다.
+    const markup = render({ specFiles: ["diagram.puml"] });
+    expect(markup).toContain("[tab-size:4]");
+    const button = toggle(markup);
+    expect(button).toMatch(/\sdisabled=""/);
+    // 그런데 **켜지지는 않는다.** 아무도 누르지 않았기 때문이다 — 파일을 여는 것만으로
+    // 토글이 켜지면 트리를 훑는 동안 버튼이 저 혼자 깜빡인다. 잠김은 흐림이 말한다.
+    expect(button).toContain('aria-pressed="false"');
+    expect(button).not.toContain("toggle-on");
   });
 });

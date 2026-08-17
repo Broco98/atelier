@@ -34,10 +34,15 @@ const work: WorkView = {
 
 // projects를 넘기지 않으면 조회가 **pending 그대로다** — 정적 렌더는 이펙트를 돌리지 않아
 // 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.
+//
+// source는 소스 토글의 상태다. 이 패널은 그것을 소유하지 않고 **보여주기만** 하므로
+// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 SpecViewer 쪽 계약이다.
+// on은 사람이 정한 켜짐이고, locked는 이 파일에서 토글이 먹지 않는다는 뜻이다. **둘은 독립이다.**
 function render(
   open: boolean,
   override: Partial<WorkView> = {},
   projects?: ProjectView[],
+  source: { on: boolean; locked: boolean } = { on: false, locked: false },
 ): string {
   const client = new QueryClient();
   if (projects !== undefined) client.setQueryData(projectsQuery.queryKey, projects);
@@ -50,6 +55,9 @@ function render(
         onCopy={() => {}}
         onClose={() => {}}
         onOpenProject={() => {}}
+        sourceOn={source.on}
+        sourceLocked={source.locked}
+        onToggleSource={() => {}}
         open={open}
       />
     </QueryClientProvider>,
@@ -237,5 +245,85 @@ describe("WorkPanel 두 탭", () => {
   it("트리 위 Spec 소제목이 없다", () => {
     // 바로 위 탭 버튼이 이미 spec이라 같은 말이 두 줄 연달아 나온다 (결정 23)
     expect(render(true)).not.toMatch(/>Spec</);
+  });
+});
+
+// `</>`는 **왼쪽 본문**을 바꾸는데 오른쪽 패널 머리행에 앉는다 (결정 6). 그래서 이 seam이
+// 보는 것은 "무엇을 바꾸는가"가 아니라 **버튼이 받은 두 값을 그대로 그리는가**다 —
+// 본문과 켜짐이 같은 식에서 나오는지는 SpecViewer 쪽에서 본다.
+describe("WorkPanel 소스 토글", () => {
+  beforeEach(stubEmptyStorage);
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const LABEL = 'aria-label="마크다운 원문 보기"';
+
+  // 여는 태그만 잘라낸다 — 클래스와 속성을 함께 봐야 "꺼짐 어휘"와 "잠김"이 갈린다
+  function toggle(markup: string): string {
+    return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
+  }
+
+  it("탭 바 오른쪽 끝, ×보다 왼쪽에 선다", () => {
+    const markup = render(true);
+    // 자리를 못 박는 이유: `</>`가 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
+    // 다른 패널들의 × 위치와 어긋난다. 오른쪽 끝은 창을 닫는 자리다.
+    const source = markup.indexOf(LABEL);
+    const close = markup.indexOf('aria-label="작업 패널 접기"');
+    expect(source).toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(source);
+    // 순서만으로는 모자라다. 오른쪽 끝으로 밀어내는 것은 ml-auto인데 그것이 ×로 옮겨가면
+    // 둘의 순서는 그대로인 채 `</>`만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
+    expect(toggle(markup)).toContain("ml-auto");
+    expect(markup.slice(close)).not.toContain("ml-auto");
+    // 글리프는 `</>` 하나뿐이다 — Code(꺾쇠 둘)와 달리 CodeXml만 슬래시를 가진다
+    expect(markup).toMatch(/lucide-code-xml\b/);
+  });
+
+  it("예쁜 보기에서는 꺼져 있고 누를 수 있다", () => {
+    const button = toggle(render(true));
+    expect(button).toContain('aria-pressed="false"');
+    expect(button).not.toMatch(/\sdisabled=""/);
+    expect(button).toContain("quiet-hover");
+  });
+
+  it("소스 보기에서는 기존 켜짐 어휘를 그대로 쓴다", () => {
+    const button = toggle(render(true, {}, undefined, { on: true, locked: false }));
+    expect(button).toContain('aria-pressed="true"');
+    expect(button).toContain("toggle-on");
+    // 켜짐과 quiet-hover가 한 요소에 겹치면 hover 규칙이 두 벌이 되어 유틸리티 정렬
+    // 순서가 승자를 정한다 (index.css의 quiet-hover 주석). 꺼진 가지 안에만 둘 것.
+    //
+    // 규격도 icon-button **맨몸**이어야 한다. icon-button-quiet은 quiet-hover를 품고
+    // 있어서 겹침이 클래스 이름 안으로 숨는다 — 위 검사만으로는 그것이 통과한다.
+    expect(button).not.toContain("quiet-hover");
+    expect(button).not.toContain("icon-button-quiet");
+  });
+
+  it("잠기면 흐려지고 눌리지 않는다", () => {
+    // 비-md 파일은 토글과 무관하게 코드뷰로 고정된다 (결정 6·21). 흐리게만 하고
+    // disabled를 빠뜨리면 눌리는데 아무 일도 없는 오늘 그대로다 — 둘을 함께 본다.
+    const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
+    expect(button).toMatch(/\sdisabled=""/);
+    expect(button).toContain("disabled:pointer-events-none");
+    expect(button).toMatch(/disabled:opacity-\d+/);
+  });
+
+  it("잠김이 켜짐을 만들지 않는다", () => {
+    // 잠김과 켜짐은 **독립이다.** 비-md 파일도 본문은 코드뷰이므로 "본문이 소스니까
+    // 켜진 것"으로 그리고 싶어지는데, 그러면 트리에서 md와 비-md를 오갈 때마다 누른 적도
+    // 없는 버튼이 저 혼자 켜졌다 꺼진다. 잠김을 말하는 것은 흐림이지 켜짐이 아니다.
+    const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
+    expect(button).toContain('aria-pressed="false"');
+    expect(button).not.toContain("toggle-on");
+  });
+
+  it("켜 둔 채 잠기면 켜짐이 유지된다", () => {
+    // 반대 방향도 못 박는다 — 잠김이 켜짐을 **끄지도** 않는다. 사람이 켜 둔 값은
+    // 비-md 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
+    const button = toggle(render(true, {}, undefined, { on: true, locked: true }));
+    expect(button).toContain('aria-pressed="true"');
+    expect(button).toContain("toggle-on");
+    expect(button).toMatch(/\sdisabled=""/);
   });
 });
