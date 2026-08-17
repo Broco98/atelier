@@ -138,9 +138,9 @@ describe("WorkPanel 폭 조절", () => {
     expect(render(false)).not.toMatch(/cursor-col-resize/);
   });
 
-  it("기본 폭 296으로 서고, 바깥과 안쪽이 같은 폭을 읽는다", () => {
+  it("기본 폭 330으로 서고, 바깥과 안쪽이 같은 폭을 읽는다", () => {
     const markup = render(true);
-    expect(markup).toMatch(/--work-panel-width:\s*296px/);
+    expect(markup).toMatch(/--work-panel-width:\s*330px/);
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다 — 핸들도 서고
     // 커서도 뜨는데 끌어도 1px도 안 움직인다. 바깥은 접히는 폭이고 안쪽은 그 폭으로
     // 버티는 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다.
@@ -148,8 +148,10 @@ describe("WorkPanel 폭 조절", () => {
   });
 
   it("지난번에 바꾼 폭으로 다시 선다", () => {
-    vi.stubGlobal("localStorage", { getItem: () => "420", setItem: () => {} });
-    expect(render(true)).toMatch(/--work-panel-width:\s*420px/);
+    // **기본 폭과 다른 값이어야 한다.** 같으면 저장값을 통째로 무시해도 이 검사가 초록이라
+    // 아무것도 지키지 못한다 (기본 폭을 296에서 420으로 올릴 때 실제로 그렇게 될 뻔했다).
+    vi.stubGlobal("localStorage", { getItem: () => "500", setItem: () => {} });
+    expect(render(true)).toMatch(/--work-panel-width:\s*500px/);
   });
 });
 
@@ -325,5 +327,30 @@ describe("WorkPanel 소스 토글", () => {
     expect(button).toContain('aria-pressed="true"');
     expect(button).toContain("toggle-on");
     expect(button).toMatch(/\sdisabled=""/);
+  });
+});
+
+// 이 패널은 화면 머리행과 **같은 층의 옆 컬럼**이다 — 창 맨 위에서 시작해 아래까지 내려온다.
+// 그래서 탭 행이 브레드크럼과 같은 높이에 서야 두 층이 한 줄로 읽힌다.
+describe("WorkPanel 머리행", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("탭 행이 타이틀바 높이를 그대로 읽는다", () => {
+    // 값을 손으로 적으면(h-11 같은 것) 타이틀바 높이가 바뀔 때 이 줄만 남아 어긋난다.
+    // 두 층이 어긋난 것은 화면을 열어 보기 전에는 드러나지 않는다.
+    expect(render(true)).toContain("h-(--titlebar-height)");
+  });
+
+  it("떠 있는 카드가 아니라 왼쪽 경계선을 가진 컬럼이다", () => {
+    // 전체 높이를 차지하는 surface라 둥근 모서리와 바깥 여백이 설 자리가 없다 —
+    // 창 위·아래 끝에서 카드가 잘린 것처럼 보인다. 본문과의 구분은 경계선 하나가 맡는다.
+    const markup = render(true);
+    expect(markup).toContain("border-l");
+    expect(markup).not.toContain("rounded-[16px]");
   });
 });

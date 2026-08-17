@@ -141,4 +141,87 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toContain("toggle-on");
   });
+
+  it("spec 문서가 하나도 없으면 토글이 잠긴다", () => {
+    // 본문이 "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다 — 결정 21이 없애려는
+    // 바로 그 어긋남이다. 비-md 파일보다 **먼저** 만나는 화면이기도 하다: 새로 만든
+    // 작업은 spec이 0개이므로 항상 여기서 시작한다.
+    const markup = render(); // specFiles: []가 기본값이다
+    expect(markup).toContain("아직 spec이 없어요");
+    const button = toggle(markup);
+    expect(button).toMatch(/\sdisabled=""/);
+    expect(button).toContain('aria-pressed="false"');
+  });
+});
+
+// v2 디자인의 머리행 배치 — 작업 그 자체를 말하는 것(제목 · ⓘ · ⋯)은 브레드크럼에 모이고,
+// 지금 무엇을 하는가(상태 · 패널)는 오른쪽 actions로 간다.
+describe("WorksPage 머리행 배치", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function header(markup: string): string {
+    return markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+  }
+  // actions는 헤더의 마지막 자식이다 (PageHeader)
+  function actions(markup: string): string {
+    return header(markup).match(/<div class="flex shrink-0 items-center gap-2">([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
+  }
+
+  it("제목 뒤에 ⓘ가 오고, 그 뒤가 ⋯다", () => {
+    const h = header(render());
+    const info = h.indexOf('aria-label="작업 메타"');
+    const menu = h.indexOf('aria-label="작업 메뉴"');
+    expect(info).toBeGreaterThan(-1);
+    expect(menu).toBeGreaterThan(info);
+  });
+
+  it("상태 배지는 오른쪽 actions에 있고, ⓘ·⋯는 거기 없다", () => {
+    // 배지가 브레드크럼에 남아 있으면 제목과 ⓘ 사이를 가른다 — 셋이 한 덩어리로 읽히지 않는다.
+    const a = actions(render());
+    expect(a).not.toBe("");
+    expect(a).toContain('title="상태 변경"');
+    expect(a).not.toContain('aria-label="작업 메타"');
+    expect(a).not.toContain('aria-label="작업 메뉴"');
+  });
+});
+
+// 뷰 탭 — 지금은 spec 하나뿐이고 앞으로 `파일`·`터미널`이 이 묶음에 붙는다.
+describe("WorksPage 뷰 탭", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function actions(markup: string): string {
+    return (
+      markup
+        .match(/<header[\s\S]*?<\/header>/)?.[0]
+        .match(/<div class="flex shrink-0 items-center gap-2">([\s\S]*)<\/div><\/header>/)?.[1] ?? ""
+    );
+  }
+
+  it("상태 배지 **다음**에 온다", () => {
+    // 배지는 "어느 단계인가", 뷰 탭은 "무엇을 보고 있는가"다. 순서가 뒤집히면 지금 보는
+    // 것이 작업의 상태보다 앞서 읽힌다.
+    const a = actions(render());
+    const badge = a.indexOf('title="상태 변경"');
+    const spec = a.indexOf('aria-label="spec 보기"');
+    expect(badge).toBeGreaterThan(-1);
+    expect(spec).toBeGreaterThan(badge);
+  });
+
+  it("켜진 상태로 그려진다 — 지금은 이 뷰 하나뿐이다", () => {
+    // 형제가 생기기 전까지 이 탭은 늘 켜져 있다. 꺼진 모습이 나오면 볼 수 없는 뷰가
+    // 켜져 있다는 뜻이라 거짓이 된다.
+    const a = actions(render());
+    expect(a).toContain('aria-pressed="true"');
+    expect(a).toContain("toggle-on");
+  });
 });

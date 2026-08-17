@@ -36,6 +36,12 @@ import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
+  // 화면의 머리행(브레드크럼)을 **본문 열 안에** 그린다.
+  //
+  // 작업 패널은 머리행과 **같은 층의 옆 컬럼**이다 — 창 맨 위에서 시작해 아래까지
+  // 내려온다. 그래서 머리행이 패널 위를 지나갈 수 없고, 화면이 그것을 자기 자리에서
+  // 그리면 패널은 그 아래에서 시작하게 된다. 슬롯으로 받아 본문 열이 이고 있는 이유다.
+  header?: React.ReactNode;
   panelOpen: boolean;
   // 패널 안 ×가 부른다. 접기 state의 소유자는 WorksPage다 — ⌘Enter와 같은 자리를 뒤집어야
   // 여는 길과 닫는 길이 각각 하나로 남는다.
@@ -57,6 +63,7 @@ function defaultFile(files: string[]): string | null {
 
 function SpecViewer({
   work,
+  header,
   panelOpen,
   onClosePanel,
   onOpenProject,
@@ -120,8 +127,11 @@ function SpecViewer({
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다 */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다.
+          머리행도 여기 안에 있다: 패널이 이 열의 형제이자 **머리행과 같은 층**이라
+          (창 맨 위에서 시작한다) 머리행은 이 열의 폭만 차지해야 한다. */}
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {header}
         {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
         <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
           <div className="flex min-h-full min-w-0 flex-col">
@@ -162,7 +172,7 @@ function SpecViewer({
             {toast}
           </div>
         )}
-      </div>
+      </main>
 
       {/* 폭 접기로 바뀐 뒤로는 늘 마운트돼 있다 — 퇴장 애니메이션을 재생시키려고
           언마운트를 미루던 장치가 필요 없다. 트리 접힘 초기화 계약은 WorkPanel 안의
@@ -175,7 +185,12 @@ function SpecViewer({
         onClose={onClosePanel}
         onOpenProject={onOpenProject}
         sourceOn={showSource}
-        sourceLocked={!isMarkdown}
+        // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 둘이다: 비-md 파일(결정 6)과
+        // spec 문서가 하나도 없는 작업. 뒤엣것에서 `current`는 null이고 위 `?? true`가
+        // 마크다운으로 떨어뜨리는데, 그 기본값은 **본문 분기(예쁜 보기)를 위한 것이지
+        // "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라
+        // 눌러도 아무 일이 없다. 새로 만든 작업은 항상 이 화면이라 비-md보다 먼저 만난다.
+        sourceLocked={!current || !isMarkdown}
         onToggleSource={() => setShowSource((v) => !v)}
         open={panelOpen}
       />

@@ -52,7 +52,17 @@ function WorkPanel({
   const { data: projects } = useProjects();
   // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
   // 저장 키는 이 패널 전용이다: 목록 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다.
-  const size = useResizableWidth("work-panel-width", 296, 260, 520, "right");
+  // 기본 폭 330 — 296은 좁았다. 여기 들어오는 것이 **경로와 파일 이름**이라 꼬리가 잘리면
+  // 판·티켓 문서가 서로 구분되지 않는다.
+  //
+  // **이 값은 계산이 아니라 사용자가 끌어서 고른 폭이다** (2026-08-17, 실측 326.38px을
+  // 반올림). 한 번 420으로 올렸다가 사람이 그 자리에서 다시 줄인 값이라, 여기서 폭을
+  // 조정할 때는 계산으로 덮지 말고 같은 방식으로 다시 물어볼 것.
+  //
+  // 참고로 본문이 버티는 폭은 이보다 넉넉하다 — 본문 열은 좌우 거터 48px씩(bodyColumn의
+  // px-12)을 떼고 남는 폭에 글을 앉히므로, 창 1280·사이드바 280에서도 글자 자리가
+  // 1280-280-330-96 = 574px 남는다. 최대 560은 목록 패널 둘과 같은 값이다.
+  const size = useResizableWidth("work-panel-width", 330, 260, 560, "right");
   // 폭 접기는 패널을 언마운트하지 않는다. 그런데 **"스펙 트리의 폴더 접힘은 패널 토글을
   // 넘어 살지 않는다"** 는 계약이 그 언마운트에 기대고 있었으므로, 접힐 때 안쪽만 새로
   // 세워 그 일을 대신한다.
@@ -128,16 +138,26 @@ function WorkPanel({
       {/* 폭이 도는 동안 글이 되흐르지 않도록 안쪽은 고정 폭이다 */}
       <div
         className={cn(
-          "flex h-full w-(--work-panel-width) flex-col p-4 pl-0 transition-opacity",
+          "flex h-full w-(--work-panel-width) flex-col transition-opacity",
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[16px] border bg-panel pb-2 pt-1">
+        {/* **떠 있는 카드가 아니라 창 끝에서 끝까지 가는 컬럼이다.** 화면 머리행과 같은 층에
+            서면서 바깥 여백과 둥근 모서리가 설 자리를 잃었다 — 창 위·아래 끝에서 카드가
+            잘린 것처럼 보인다. 본문과의 구분은 왼쪽 경계선 하나가 맡는다 (사이드바와 같은 방식). */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-l bg-background pb-2">
           {/* 탭 바는 카드에 고정된다 — 세로 스크롤은 각 탭 안에서만 돈다.
               전환은 클릭뿐이고, 어느 탭을 보고 있는지는 주소에 넣지 않는다: 탭을 누를
               때마다 히스토리가 쌓여 문서 사이 뒤로가기를 묻어버린다. 주소를 정본으로
               삼은 대상은 **문서**이지 훑기 상태가 아니다 (이슈 #25). */}
-          <div className="flex items-center gap-1 px-2 pb-1.5 pt-1.5">
+          {/* 높이는 **타이틀바 높이를 그대로 읽는다** — 이 행과 화면 브레드크럼이 같은 층에
+              나란히 서므로, 값을 손으로 적으면 그 높이가 바뀔 때 여기만 남아 어긋난다.
+              드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 296px로는
+              창을 끌 수 없다 (PageHeader가 같은 속성을 단다). */}
+          <div
+            data-tauri-drag-region
+            className="flex h-(--titlebar-height) shrink-0 items-center gap-1 px-2"
+          >
             <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
             <TabButton label="정보" active={tab === "info"} onClick={() => setTab("info")} />
             {/* `</>` — 이 버튼만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
@@ -166,7 +186,7 @@ function WorkPanel({
                 sourceOn ? "toggle-on" : "text-tertiary quiet-hover",
               )}
             >
-              <CodeXml className="size-3.5" strokeWidth={2} />
+              <CodeXml className="size-4" strokeWidth={2} />
             </button>
             <button
               type="button"
@@ -175,10 +195,13 @@ function WorkPanel({
               title="작업 패널 접기"
               className="icon-button-quiet text-tertiary"
             >
-              <X className="size-3.5" strokeWidth={2} />
+              <X className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <div className="mx-4 h-px bg-border" />
+          {/* 머리행 아래에 선이 없다. 이 행은 화면 브레드크럼과 **같은 층**인데 그쪽이
+              "아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다"를 이미
+              정해 뒀다 (PageHeader). 나란히 선 두 행 중 하나만 밑줄을 그으면 그 층이
+              반쪽만 잘린 것처럼 읽힌다. 본문과 패널의 구분은 왼쪽 경계선이 맡는다. */}
           <TabPanel active={tab === "spec"}>
             <SpecSection
               key={treeGeneration}
@@ -205,8 +228,11 @@ function WorkPanel({
 }
 
 // 탭 하나 — 켜짐은 저장소 공통 toggle-on, 꺼짐은 text-tertiary + quiet-hover다. 새 토큰은 없다.
-// 규격(h-6 · rounded-8 · 12.5px)은 헤더에 있던 [소스] 토글에서 온 것인데 **그 버튼은 없어졌다** —
-// 이제 이 규격을 정하는 곳은 여기 하나뿐이다.
+// 규격(h-6 · rounded-8 · 12.5px)은 이 화면 헤더에 있던 [소스] 토글에서 왔고 그 버튼은 없어졌다.
+// **그렇다고 규격을 정하는 곳이 여기 하나인 것은 아니다** — 같은 문자열이 분기까지 통째로
+// ArchivePage의 [소스] 토글에 한 벌 더 있다. 아카이브에는 작업 패널이 없어 `</>`를 올릴
+// 자리가 없었고, 그래서 옮기지 못했다. 규격을 고치려면 두 곳을 함께 고쳐야 한다.
+// state-scale.test.ts는 이 중복을 잡지 못한다 — 그 정규식은 quiet-hover 손복사만 본다.
 // quiet-hover는 꺼진 가지 안에만 둔다: toggle-on과 한 요소에 겹치면 hover 규칙이 두 벌이
 // 되어 유틸리티 정렬 순서가 승자를 정한다 (index.css의 quiet-hover 주석).
 function TabButton({

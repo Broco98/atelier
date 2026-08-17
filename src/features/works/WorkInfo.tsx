@@ -63,8 +63,10 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
       <Section title="작업">
         {/* 제목과 달리 절대 바뀌지 않는 이름이다. 작업 폴더 경로에 들어 있긴 하지만
-            따로 읽을 수 있어야 한다. */}
-        <Row label="slug" value={work.slug} />
+            따로 읽을 수 있어야 하고, **읽는 것만으로는 절반이다** — 제목이 바뀌어도 같은
+            작업을 가리키려면 그 이름이 클립보드로 나가야 한다 (스토리 10). 경로가 아니므로
+            접을 것이 없어 보이는 값과 나가는 값이 같다. */}
+        <Row label="slug" value={work.slug} copy={{ text: work.slug, title: "slug 복사", onCopy }} />
         {/* 코어가 내려준 `%Y-%m-%d` 그대로다. 저장소의 formatCreated는 "8월 16일"을 내며
             **연도를 버려서**, 이 탭의 쓰임 하나인 "오래된 작업을 정리할지 판단한다"에
             답하지 못한다. 어휘 통일보다 사실 보존이 앞서는 자리다. */}
@@ -154,16 +156,46 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 // 라벨–값 한 줄. **값은 원값 그대로다** — 정보 탭은 slug와 경로를 사람 말로 다듬지 않고
 // 읽는 자리다. 한 항목만 다듬으면 구획 안에서 등록이 갈린다.
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">
+function Row({
+  label,
+  value,
+  copy,
+}: {
+  label: string;
+  value: string;
+  // 주면 행 전체가 복사 버튼이 되고 hover 시 복사 아이콘이 뜬다 (spec 트리의 경로 복사와 같다).
+  //
+  // **셋이 한 덩어리로 오간다.** 나가는 값과 그것을 말하는 툴팁과 실제 동작이 따로 다니면
+  // "복사되는 값이 화면 표기와 갈린다"는 사고가 조용히 생긴다 — 접어서 보이는 경로가 있는
+  // 화면이라 실재하는 위험이다. 그래서 `text`는 **보이는 값이 아니라 나가는 값**이다.
+  copy?: { text: string; title: string; onCopy: (text: string) => void };
+}) {
+  const body = (
+    <>
       <span className="w-[58px] shrink-0 text-tertiary">{label}</span>
       <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{value}</span>
-    </div>
+    </>
+  );
+  if (!copy) {
+    return <div className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">{body}</div>;
+  }
+  return (
+    <button
+      type="button"
+      title={copy.title}
+      onClick={() => copy.onCopy(copy.text)}
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
+    >
+      {body}
+      <Copy
+        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+        strokeWidth={1.8}
+      />
+    </button>
   );
 }
 
-// 경로 한 줄 — 행 전체가 버튼이고 hover 시 복사 아이콘이 뜬다 (spec 트리의 경로 복사와 같다).
+// 경로 한 줄.
 //
 // **전체 경로를 받아 꼬리를 여기서 만든다.** 보이는 값과 나가는 값이 갈릴 수 있는 자리를
 // 호출부 셋에서 이 한 곳으로 줄이려는 것이다 — 화면을 믿고 붙여 넣은 경로가 다른 곳을
@@ -182,21 +214,8 @@ function PathRow({
   onCopy: (text: string) => void;
 }) {
   const value = relativeTo ? relativeToWorkDir(path, relativeTo) : path;
-  return (
-    <button
-      type="button"
-      title="경로 복사"
-      onClick={() => onCopy(path)}
-      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
-    >
-      <span className="w-[58px] shrink-0 text-tertiary">{label}</span>
-      <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{value}</span>
-      <Copy
-        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-        strokeWidth={1.8}
-      />
-    </button>
-  );
+  // 보이는 것은 접힌 꼬리, 나가는 것은 전체 경로다 (Row의 copy 주석).
+  return <Row label={label} value={value} copy={{ text: path, title: "경로 복사", onCopy }} />;
 }
 
 // 값이 아니라 사실 하나를 적는 줄 — 배지를 달지 않는다.

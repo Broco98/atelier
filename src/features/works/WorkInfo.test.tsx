@@ -155,6 +155,16 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     expect(markup).not.toContain("8월 16일");
   });
 
+  it("slug 줄이 복사되는 진짜 버튼이다", () => {
+    // 스토리 10은 slug를 "읽고 **복사하고**" 싶다고 적었다. 읽기만 되면 절반이다 —
+    // 제목이 바뀌어도 같은 작업을 가리키려면 그 이름이 클립보드로 나가야 한다.
+    const markup = render();
+    // 값은 그대로 읽힌다 (사람 말로 다듬지 않는다)
+    expect(rowValue(markup, "slug")).toBe("some-work");
+    // 경로 셋과 같은 어포던스다 — 행 전체가 버튼이고 hover에 복사 아이콘이 뜬다
+    expect(markup).toMatch(/<button[^>]*title="slug 복사"/);
+  });
+
   it("브랜치가 미정이면 브랜치 줄만 빠진다", () => {
     const markup = render({ branch: null });
     expect(rowValue(markup, "브랜치")).toBeNull();
