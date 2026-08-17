@@ -8,6 +8,9 @@ use atelier_core::Error;
 use rmcp::model::{CallToolResult, ContentBlock};
 
 pub fn kernel_error(err: Error) -> CallToolResult {
+    // 이 `match`는 **일부러 와일드카드를 두지 않는다** — 변형이 늘 때마다 컴파일러가
+    // "다음에 무엇을 하라"를 쓰도록 강제한다. `_ =>` 하나를 넣으면 그 강제가 사라지고,
+    // 새 오류는 안내 없이 에이전트에게 나간다.
     let next_step = match &err {
         Error::NotFound(_) | Error::FolderMissing(_) => {
             "Call atelier_list_projects to see the registered project slugs and their folders."

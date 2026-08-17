@@ -1,6 +1,6 @@
 [package]
 name = "atelier-app"
-version = "0.6.1"
+version = "0.7.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -27,4 +27,8 @@ serde_json = "1"
 atelier-core = { path = "../crates/atelier-core" }
 tauri-plugin-dialog = "2"
 notify-debouncer-mini = "0.7"
+# PTY는 데스크톱 앱만 쓴다 — MCP·CLI가 쓸 일이 없어 워크스페이스 공용으로 올리지 않는다.
+# libc는 회수 경로의 killpg 하나 때문에 직접 든다.
+portable-pty = "0.9"
+libc = "0.2"
 

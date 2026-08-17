@@ -33,7 +33,7 @@ mod store;
 mod work;
 mod works;
 
-pub use paths::{archive_dir, collapse_home, expand_home, projects_dir, works_dir};
+pub use paths::{archive_dir, collapse_home, data_root, expand_home, projects_dir, works_dir};
 pub use slug::slugify;
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
