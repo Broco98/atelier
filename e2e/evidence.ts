@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
-import { test as base, type TestInfo } from "@playwright/test";
+import { test as base, type Page, type TestInfo } from "@playwright/test";
+import { readIpcRecord } from "./harness";
 
 // 실패한 테스트가 **그 순간의 증거**를 파일로 남긴다. 에이전트가 사람에게 "무슨 일이
 // 났는지 봐 달라"고 되묻지 않고 폴더 하나만 읽고 다음 수정을 정할 수 있어야 한다.
@@ -34,6 +35,12 @@ export const test = base.extend<{ evidence: void }>({
         testInfo.outputPath("console.txt"),
         messages.length > 0 ? `${messages.join("\n")}\n` : "(콘솔 출력 없음)\n",
       );
+
+      // 하네스가 모르는 IPC 호출은 예외를 던지지만 그 예외는 react-query가 삼켜서 콘솔에도
+      // 안 남는다. 게다가 기록을 읽는 유일한 자리가 spec의 마지막 단언이라, **앞 단언이
+      // 먼저 터지면 그 신호가 통째로 사라진다** — 오진을 막으려고 만든 기록이 정작 실패한
+      // 실행에서 안 읽힌다. 그래서 여기서 꺼내 둔다.
+      writeFileSync(testInfo.outputPath("ipc.txt"), await ipcReport(page));
 
       // 접근성 트리 스냅샷은 **숨은 요소를 뺀다.** 그래서 "안 그려졌다"와 "그려졌는데
       // CSS로 가려졌다"가 똑같이 '없음'으로 보인다 — 고칠 곳이 전혀 다른 두 경우다.
@@ -70,6 +77,25 @@ function failureReport(testInfo: TestInfo): string {
     );
   });
   return `${lines.join("\n")}\n`;
+}
+
+/**
+ * 브라우저 안에서 오간 IPC. 순서까지 적는다 — "list_projects가 아예 안 불렸다"와
+ * "불렸는데 화면이 안 그려졌다"는 고칠 곳이 다르고, 그 둘은 순서로만 갈린다.
+ */
+async function ipcReport(page: Page): Promise<string> {
+  const record = await readIpcRecord(page);
+  if (!record) return "(IPC 기록이 없습니다 — 하네스를 세우지 않았거나 페이지를 읽지 못했습니다)\n";
+
+  const calls =
+    record.calls.length > 0
+      ? record.calls.map((cmd, index) => `  ${index + 1}. ${cmd}`).join("\n")
+      : "  (없음)";
+  const unknown =
+    record.unknown.length > 0
+      ? record.unknown.map((cmd) => `  - ${cmd}`).join("\n")
+      : "  (없음)";
+  return `호출 ${record.calls.length}건\n${calls}\n\n하네스가 모르는 호출 ${record.unknown.length}건\n${unknown}\n`;
 }
 
 /** 에러 본문에는 터미널 색이 섞여 들어온다. 파일로 읽을 것이므로 벗긴다. */

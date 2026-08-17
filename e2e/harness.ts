@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import type { Page } from "./evidence";
+import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import { PROJECTS } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
@@ -41,9 +42,10 @@ const PLUGINS: Record<string, unknown> = {
 // (2) 폴더 선택창은 고정값이 될 수 없다. 테스트가 미리 만든 임시 폴더의 절대경로를
 //     돌려줘야 하므로 테스트별 인자가 필요하다 — 그 형태는 L4(#118)가 정한다.
 
-interface IpcRecord {
-  calls: string[];
-  unknown: string[];
+/** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름을 같이 싣는다. */
+interface InitArgs {
+  responses: Record<string, unknown>;
+  recordKey: string;
 }
 
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
@@ -57,7 +59,7 @@ export async function installTauriMock(page: Page): Promise<void> {
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript((responses: Record<string, unknown>) => {
+  await page.addInitScript(({ responses, recordKey }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -66,7 +68,7 @@ export async function installTauriMock(page: Page): Promise<void> {
     mocks.mockWindows("main");
 
     const record: IpcRecord = { calls: [], unknown: [] };
-    (window as unknown as { __ATELIER_IPC__: IpcRecord }).__ATELIER_IPC__ = record;
+    (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
 
     mocks.mockIPC((cmd) => {
       record.calls.push(cmd);
@@ -76,12 +78,25 @@ export async function installTauriMock(page: Page): Promise<void> {
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { ...COMMANDS, ...PLUGINS });
+  }, { responses: { ...COMMANDS, ...PLUGINS }, recordKey: IPC_RECORD_KEY });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
 export async function unknownIpcCalls(page: Page): Promise<string[]> {
-  return page.evaluate(
-    () => (window as unknown as { __ATELIER_IPC__: IpcRecord }).__ATELIER_IPC__.unknown,
-  );
+  return (await readIpcRecord(page))?.unknown ?? [];
+}
+
+/**
+ * 브라우저 안의 기록을 그대로 꺼낸다. 실패한 실행에서도 읽히도록 **없을 때 던지지 않는다** —
+ * 하네스를 안 세운 테스트, 페이지가 죽은 경우가 둘 다 정상적으로 있다.
+ */
+export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
+  try {
+    return await page.evaluate(
+      (key) => (window as unknown as Record<string, IpcRecord | undefined>)[key] ?? null,
+      IPC_RECORD_KEY,
+    );
+  } catch {
+    return null;
+  }
 }
