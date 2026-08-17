@@ -5,12 +5,12 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 
 // 터미널의 글꼴과 색은 **두 곳에 적혀 있다** — 앱 팔레트인 `index.css`와, xterm이 요구하는
-// 모양으로 옮겨 적은 `terminal-theme.ts`/`TerminalPage.tsx`다. 옮겨 적은 쪽이 뒤처져도
+// 모양으로 옮겨 적은 `terminal-theme.ts`/`terminal-store.ts`다. 옮겨 적은 쪽이 뒤처져도
 // 타입 검사도 화면도 조용하다: 색이 조금 어긋난 터미널은 "원래 그런가 보다"로 읽힌다.
 // 그 짝을 여기서 고정한다 — 이 저장소가 파일 간 불변조건을 다루는 방식 그대로다
 // (src/tauri-commands.test.ts의 invoke↔Rust 배선, src/state-scale.test.ts).
 //
-// **import하지 않고 소스를 읽는다.** `TerminalPage.tsx`를 import하면 `@xterm/*`와 그 CSS가
+// **import하지 않고 소스를 읽는다.** `terminal-store.ts`를 import하면 `@xterm/*`와 그 CSS가
 // DOM 없는 Node 테스트로 딸려 들어온다 — 위 두 파일이 소스 스캔인 것과 같은 이유다.
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -18,7 +18,7 @@ const read = (path: string) => readFileSync(root + path, "utf8");
 
 const css = read("src/index.css");
 const theme = read("src/features/terminal/terminal-theme.ts");
-const page = read("src/features/terminal/TerminalPage.tsx");
+const store = read("src/features/terminal/terminal-store.ts");
 
 // `:root`(라이트)가 `.dark`보다 먼저 나오므로 **첫 번째** 정의가 라이트 값이다.
 // 앱은 아직 다크를 출하하지 않고 `terminal-theme.ts`도 라이트 한 벌만 갖는다.
@@ -45,8 +45,8 @@ const fontList = (raw: string) =>
 
 describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
   it("모노 글꼴 목록이 --font-mono와 같다", () => {
-    const declared = page.match(/const FONT_FAMILY = "([^"]+)"/);
-    expect(declared, "TerminalPage.tsx에서 FONT_FAMILY를 찾지 못했다").not.toBeNull();
+    const declared = store.match(/const FONT_FAMILY = "([^"]+)"/);
+    expect(declared, "terminal-store.ts에서 FONT_FAMILY를 찾지 못했다").not.toBeNull();
     expect(fontList(declared![1])).toBe(fontList(cssToken("font-mono")));
   });
 
