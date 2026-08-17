@@ -36,8 +36,18 @@ import type { WorkView } from "./types";
 
 interface SpecViewerProps {
   work: WorkView;
-  showSource: boolean;
+  // 화면의 머리행(브레드크럼)을 **본문 열 안에** 그린다.
+  //
+  // 작업 패널은 머리행과 **같은 층의 옆 컬럼**이다 — 창 맨 위에서 시작해 아래까지
+  // 내려온다. 그래서 머리행이 패널 위를 지나갈 수 없고, 화면이 그것을 자기 자리에서
+  // 그리면 패널은 그 아래에서 시작하게 된다. 슬롯으로 받아 본문 열이 이고 있는 이유다.
+  header?: React.ReactNode;
   panelOpen: boolean;
+  // 패널 안 ×가 부른다. 접기 state의 소유자는 WorksPage다 — ⌘Enter와 같은 자리를 뒤집어야
+  // 여는 길과 닫는 길이 각각 하나로 남는다.
+  onClosePanel: () => void;
+  // 정보 탭의 프로젝트 이름이 부른다. 헤더 칩이 이 탭으로 옮겨 오면서 여기를 지난다.
+  onOpenProject: (slug: string) => void;
   // 본문이 넓어지는 조건의 나머지 반쪽 — 접을 수 있는 것이 이 화면에는 둘뿐이다
   sidebarOpen: boolean;
   // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
@@ -53,8 +63,10 @@ function defaultFile(files: string[]): string | null {
 
 function SpecViewer({
   work,
-  showSource,
+  header,
   panelOpen,
+  onClosePanel,
+  onOpenProject,
   sidebarOpen,
   file,
   onSelectFile,
@@ -74,9 +86,19 @@ function SpecViewer({
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
-  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 ("소스" 토글과 무관)
+  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 (소스 토글과 무관)
   const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
 
+  // 소스 보기의 주인이 **여기다.** 토글이 작업 패널 머리행으로 올라가면서 화면(WorksPage)이
+  // 이 상태를 들 이유가 없어졌다. 이 컴포넌트는 key={slug}로 서 있으므로 작업을 옮기면
+  // 예쁜 보기로 돌아온다 — 탭 선택과 수명이 같아져 "패널에 사는 훑기 상태는 작업을 옮기면
+  // 처음으로 돌아간다"는 규칙 하나로 묶인다 (결정 22, **오늘과 다른 동작이다**).
+  // 패널 접기는 이 컴포넌트를 리마운트하지 않으므로 접었다 펴도 보기는 유지된다.
+  //
+  // 이 값은 **버튼의 켜짐 그대로** 패널로 내려가고, 본문은 여기에 파일 종류를 얹어
+  // 정한다(아래 `showSource || !isMarkdown`). 둘을 같은 식으로 묶으면 비-md 파일을 열
+  // 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
+  const [showSource, setShowSource] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const showToast = useCallback((message: string) => {
@@ -104,9 +126,20 @@ function SpecViewer({
   );
 
   return (
-    <div className="flex min-h-0 flex-1">
-      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다 */}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    // **min-w-0이 빠지면 패널이 창 밖으로 밀린다.** 이 행은 스스로도 flex 항목이라
+    // min-width가 auto면 자기 min-content(=본문 열의 min-content + 패널 폭)만큼 부푼다.
+    // 본문 열에 min-w-0을 달아 둔 것만으로는 막히지 않는다 — 여기서 한 번 더 끊어야
+    // 그 값이 위로 새지 않는다.
+    //
+    // 부푼 만큼 패널은 오른쪽으로 밀려 잘리는데, **미는 양이 본문 내용에 따라 달라진다.**
+    // 그래서 소스 보기를 켜고 끌 때마다 패널 폭이 바뀌는 것처럼 보였다 (실측: 예쁜 보기에서
+    // 패널 오른쪽 끝이 1521, 창은 1512 — 9px이 창 밖에 있었다. 지금은 1512로 딱 맞는다).
+    <div className="flex min-h-0 min-w-0 flex-1">
+      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다.
+          머리행도 여기 안에 있다: 패널이 이 열의 형제이자 **머리행과 같은 층**이라
+          (창 맨 위에서 시작한다) 머리행은 이 열의 폭만 차지해야 한다. */}
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {header}
         {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
         <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
           <div className="flex min-h-full min-w-0 flex-col">
@@ -147,7 +180,7 @@ function SpecViewer({
             {toast}
           </div>
         )}
-      </div>
+      </main>
 
       {/* 폭 접기로 바뀐 뒤로는 늘 마운트돼 있다 — 퇴장 애니메이션을 재생시키려고
           언마운트를 미루던 장치가 필요 없다. 트리 접힘 초기화 계약은 WorkPanel 안의
@@ -157,6 +190,16 @@ function SpecViewer({
         currentFile={current}
         onSelectFile={selectFromTree}
         onCopy={copyText}
+        onClose={onClosePanel}
+        onOpenProject={onOpenProject}
+        sourceOn={showSource}
+        // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 둘이다: 비-md 파일(결정 6)과
+        // spec 문서가 하나도 없는 작업. 뒤엣것에서 `current`는 null이고 위 `?? true`가
+        // 마크다운으로 떨어뜨리는데, 그 기본값은 **본문 분기(예쁜 보기)를 위한 것이지
+        // "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라
+        // 눌러도 아무 일이 없다. 새로 만든 작업은 항상 이 화면이라 비-md보다 먼저 만난다.
+        sourceLocked={!current || !isMarkdown}
+        onToggleSource={() => setShowSource((v) => !v)}
         open={panelOpen}
       />
     </div>
