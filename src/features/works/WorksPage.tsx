@@ -482,8 +482,15 @@ function WorkMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // 다른 작업으로 옮겨가면 닫는다. ⌘1~9와 목록 클릭은 이 컴포넌트를 다시 마운트하지 않으므로,
-  // 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는 것과 다른 작업**을 겨눈다.
+  // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
+  // 것과 다른 작업**을 겨눈다.
+  //
+  // **지금은 이 이펙트가 돌기 전에 리마운트가 먼저 닫는다.** 머리행이 key={slug}인
+  // SpecViewer 안으로 들어가면서(디자인 정본 정렬) 작업을 옮기면 이 컴포넌트째 새로 선다.
+  // 남겨 두는 것은 그 배치가 이 화면의 계약이 아니기 때문이다 — 머리행을 다시 SpecViewer
+  // 밖으로 끌어내면(작업 패널을 WorksPage로 올리는 다음 판이 그렇게 한다) 리마운트가
+  // 사라지고 이 줄만 남아 같은 일을 한다. 형제인 StatusMenu는 이 줄이 없어서, 지금은
+  // 리마운트에만 기대고 있다.
   useEffect(() => setOpen(false), [work.slug]);
 
   // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
@@ -548,8 +555,14 @@ function WorkMenu({
         aria-expanded={open}
         aria-busy={busy}
         title={busy ? "처리 중이에요" : "작업 메뉴"}
+        // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
+        // 둘 사이에 여백이 없어(위 meta의 -ml-1 묶음) hover 배경이 한 버튼에서 다음
+        // 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+        // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
+        // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
+        // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
         className={cn(
-          "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
+          "icon-button transition-colors",
           "disabled:pointer-events-none disabled:opacity-50",
           open ? "toggle-on" : "text-tertiary quiet-hover",
         )}

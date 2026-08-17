@@ -98,7 +98,12 @@ function WorkPanel({
       const project = projects?.find((p) => p.slug === worktree.project);
       return [
         worktree.project,
-        { base: project?.baseBranch ?? null, unregistered: projects !== undefined && !project },
+        // **`??`가 아니라 `||`다.** 빈 문자열도 "말할 base가 없다"로 접는다 — 코어가 빈
+        // base_branch를 막지 않아서(atelier_edit_project에 검증이 없다) ""가 여기 닿을 수
+        // 있고, `??`는 그것을 통과시킨다. 그러면 정보 탭은 `base !== null`이 참이라 뒤에
+        // 아무것도 없는 → 글리프만 그리고, ⓘ 팝오버는 truthy로 봐서 꼬리를 안 그린다.
+        // 한 값이 두 화면에서 달리 읽히는 자리라, 값을 정하는 **이 한 곳**에서 접는다.
+        { base: project?.baseBranch || null, unregistered: projects !== undefined && !project },
       ];
     }),
   );
@@ -106,7 +111,9 @@ function WorkPanel({
   return (
     // 레이아웃 영역을 차지하는 우측 컬럼 (2026-07-19 사용자 정정).
     // 본문 스크롤 영역의 형제라 전체 높이를 차지한다 — 화면 고정도 높이 상한도 필요 없다.
-    // 떠 있는 카드가 아니라 영역을 차지하는 surface다 — 그림자 대신 배경과 옅은 경계선으로 본문과 구분한다.
+    // 떠 있는 카드가 아니라 영역을 차지하는 surface다. **구분은 왼쪽 경계선 하나가 맡는다** —
+    // 표면색은 본문과 같은 bg-background다 (아래 카드 주석). 카드였던 시절에는 bg-panel과
+    // 옅은 경계선이 함께 구분했는데, 컬럼이 되면서 배경이 그 일에서 빠졌다.
     <aside
       // 폭은 한 곳에만 적는다 — 바깥이 접히는 폭이고 안쪽이 그 폭으로 버틴다.
       // 둘이 갈리면 접히는 동안 글이 되흐른다 (목록 패널 둘과 같은 방식).
@@ -152,8 +159,9 @@ function WorkPanel({
               삼은 대상은 **문서**이지 훑기 상태가 아니다 (이슈 #25). */}
           {/* 높이는 **타이틀바 높이를 그대로 읽는다** — 이 행과 화면 브레드크럼이 같은 층에
               나란히 서므로, 값을 손으로 적으면 그 높이가 바뀔 때 여기만 남아 어긋난다.
-              드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 296px로는
-              창을 끌 수 없다 (PageHeader가 같은 속성을 단다). */}
+              드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 **패널 폭만큼은**
+              창을 끌 수 없다 (PageHeader가 같은 속성을 단다). 여기에 숫자를 적지 않는 것은
+              그 폭이 드래그로 바뀌기 때문이다 — 적으면 다음에 폭이 바뀔 때 이 줄만 낡는다. */}
           {/* 오른쪽 여백은 **PageHeader와 같은 pr-4다.** 이 행의 ×와 헤더의 여는 버튼은
               같은 화면에 함께 나오지 않아(하나가 뜨면 다른 하나가 사라진다) 어긋나 있어도
               나란히 재 볼 수가 없고, 토글할 때 버튼이 튀는 것으로만 보인다. */}
@@ -231,11 +239,18 @@ function WorkPanel({
 }
 
 // 탭 하나 — 켜짐은 저장소 공통 toggle-on, 꺼짐은 text-tertiary + quiet-hover다. 새 토큰은 없다.
-// 규격(h-6 · rounded-8 · 12.5px)은 이 화면 헤더에 있던 [소스] 토글에서 왔고 그 버튼은 없어졌다.
-// **그렇다고 규격을 정하는 곳이 여기 하나인 것은 아니다** — 같은 문자열이 분기까지 통째로
-// ArchivePage의 [소스] 토글에 한 벌 더 있다. 아카이브에는 작업 패널이 없어 `</>`를 올릴
-// 자리가 없었고, 그래서 옮기지 못했다. 규격을 고치려면 두 곳을 함께 고쳐야 한다.
-// state-scale.test.ts는 이 중복을 잡지 못한다 — 그 정규식은 quiet-hover 손복사만 본다.
+//
+// 규격은 **디자인 정본의 `.cp-tab`**(26px · radius 9 · 13px · 500)이다. 처음에는 이 화면
+// 헤더에 있던 [소스] 토글의 규격(h-6 · radius 8 · 12.5px)을 그대로 물려받았는데, 그것은
+// 토글 버튼의 규격이지 탭의 규격이 아니었다 — 그 버튼이 `</>`로 바뀌어 사라지면서 출처만
+// 남았던 셈이다. 헤더의 뷰 탭(`.vtab` 28 · radius 9 · 13 · 500)과 **한 가족으로 읽혀야**
+// 하는 것이 이 자리다: 둘은 같은 44px 층에 24px 간격으로 서고 둘 다 `spec`이라고 적혀 있다.
+// 정본이 반지름·글자·굵기를 맞추고 높이만 2px 낮춘 이유가 그것이다.
+//
+// 그래서 ArchivePage의 [소스] 토글과의 중복도 함께 풀렸다. 같은 문자열이었던 것은
+// 우연이고 — 저쪽은 토글이라 계속 토글 규격(h-6 · radius 8 · 12.5px)이 맞다.
+// 여기를 고칠 때 저쪽을 따라 고칠 이유는 이제 없다.
+//
 // quiet-hover는 꺼진 가지 안에만 둔다: toggle-on과 한 요소에 겹치면 hover 규칙이 두 벌이
 // 되어 유틸리티 정렬 순서가 승자를 정한다 (index.css의 quiet-hover 주석).
 function TabButton({
@@ -255,7 +270,7 @@ function TabButton({
       // 않는 것은 그것이 화살표 키 이동까지 약속하기 때문이다 — 전환은 클릭뿐이다.
       aria-pressed={active}
       className={cn(
-        "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
+        "h-[26px] rounded-[9px] px-[10px] text-[13px] font-medium transition-colors",
         active ? "toggle-on" : "text-tertiary quiet-hover",
       )}
     >
