@@ -288,6 +288,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atelier-test-bridge"
+version = "0.6.1"
+dependencies = [
+ "atelier-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "atk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

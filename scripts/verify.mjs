@@ -20,11 +20,16 @@ const FAST = [
   // 조용히 좁아지고, 데스크톱 앱 크레이트가 어느 CI에서도 컴파일되지 않는다 (D18).
   ["L1 Rust", "cargo", ["test", "--workspace"]],
   ["L2 프론트엔드", "pnpm", ["test"]],
-  ["L3 브라우저", "pnpm", ["exec", "playwright", "test"]],
+  ["L3 브라우저", "pnpm", ["exec", "playwright", "test", "--project", "l3"]],
 ];
 
-/** --full에서만 도는 층. L4 관통 테스트가 여기 붙는다. */
-const FULL_ONLY = [];
+/** --full에서만 도는 층. 진짜 백엔드를 타므로 느리다. */
+const FULL_ONLY = [
+  // L1이 이미 컴파일하지만 그 순서에 기대지 않는다 — 층이 앞 층의 부산물을 믿으면
+  // 층 하나만 따로 돌렸을 때 이유 없이 실패한다.
+  ["L4 다리 빌드", "cargo", ["build", "-p", "atelier-test-bridge"]],
+  ["L4 관통", "pnpm", ["exec", "playwright", "test", "--project", "l4"]],
+];
 
 const args = process.argv.slice(2);
 const unknown = args.filter((arg) => arg !== "--full");
@@ -43,9 +48,6 @@ console.log(`검증 기어: ${full ? "--full" : "기본"} — ${layers.length}�
 // L3가 실제로 돌 때뿐이라, 앞 층에서 멈추면 직전 실패의 증거가 그대로 남는다. 그러면
 // 방금 실패한 것과 무관한 스크린샷을 읽고 엉뚱한 결론으로 간다.
 rmSync(evidence.evidenceDir, { recursive: true, force: true });
-if (full && FULL_ONLY.length === 0) {
-  console.log("(--full에서만 도는 층은 아직 없습니다. L4가 여기 붙습니다.)");
-}
 
 for (const [name, command, commandArgs] of layers) {
   console.log(`\n── ${name}`);

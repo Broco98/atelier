@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { BRIDGE_FN, callBridge } from "./bridge";
 import type { Page } from "./evidence";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import { PROJECTS } from "./fixtures";
@@ -15,8 +16,11 @@ const MOCKS_SOURCE = readFileSync(
   "utf8",
 );
 
-/** 하네스가 답하는 우리 커맨드. L4에서는 이 자리가 진짜 백엔드로 바뀐다. */
-const COMMANDS: Record<string, unknown> = {
+/**
+ * L3에서 우리 커맨드에 답하는 고정 데이터. L4에서는 이 자리를 다리가 대신한다.
+ * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 등록부와 대조해 잡는다.
+ */
+export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
   list_works: [],
   list_archive: [],
@@ -33,23 +37,56 @@ const PLUGINS: Record<string, unknown> = {
   "plugin:window|is_fullscreen": false,
 };
 
-// 이 앱이 쓰는 와이어 층의 나머지 `plugin:*`는 `plugin:dialog|open`(폴더 선택창),
-// `plugin:dialog|message`(확인·알림 — `confirm`도 와이어에서는 이것으로 나간다),
-// `plugin:opener|open_url`, 그리고 `plugin:path|resolve_directory`(`homeDir`)다.
-// 지금 넣지 않는 이유는 둘이다.
-// (1) 부팅 경로가 부르지 않아 아무 테스트도 태우지 않는다 — 태우지 않는 스텁은
-//     화이트리스트 탐지기가 영원히 건드리지 않는 자리라 조용히 낡는다.
-// (2) 폴더 선택창은 고정값이 될 수 없다. 테스트가 미리 만든 임시 폴더의 절대경로를
-//     돌려줘야 하므로 테스트별 인자가 필요하다 — 그 형태는 L4(#118)가 정한다.
+// `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
+// 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
+//
+// 아직 안 넣은 나머지는 `plugin:dialog|message`(확인·알림 — `confirm`도 와이어에서는
+// 이것으로 나간다), `plugin:opener|open_url`, `plugin:path|resolve_directory`(`homeDir`)다.
+// 지금 이 셋을 태우는 시나리오가 없고, **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트
+// 탐지기가 영원히 건드리지 않는 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
 
-/** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름을 같이 싣는다. */
+/** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
 interface InitArgs {
   responses: Record<string, unknown>;
   recordKey: string;
+  /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
+  bridgeName: string | null;
+}
+
+/**
+ * L3: 우리 커맨드에 고정 데이터가 답한다. 빠르고 결정론적이라 자가수리 루프가 수십 번
+ * 돌아도 안 깨진다.
+ */
+export async function installFixtureBackend(page: Page): Promise<void> {
+  await install(page, { responses: { ...FIXTURE_COMMANDS, ...PLUGINS }, bridgeName: null });
+}
+
+/**
+ * L4: 우리 커맨드가 브라우저 밖으로 나가 진짜 코어·파일시스템·git을 탄다.
+ *
+ * 갈래는 **접두사로** 정한다 — `plugin:*`은 대응하는 코어 함수가 없어 넘길 수 없고,
+ * 나머지는 전부 다리로 간다. 커맨드 목록을 여기 베껴 적지 않는 이유다: 베껴 적으면
+ * 커맨드가 늘어도 양쪽이 같이 낡을 뿐 아무 신호도 나지 않는다. 등록부와 다리가 어긋나는
+ * 것은 다리 크레이트의 테스트가 L1에서 잡는다.
+ */
+export async function installRealBackend(
+  page: Page,
+  { home, pickedFolder }: { home: string; pickedFolder: string },
+): Promise<void> {
+  await page.exposeFunction(BRIDGE_FN, (cmd: string, args: Record<string, unknown>) =>
+    callBridge(home, cmd, args),
+  );
+  await install(page, {
+    responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
+    bridgeName: BRIDGE_FN,
+  });
 }
 
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
-export async function installTauriMock(page: Page): Promise<void> {
+async function install(
+  page: Page,
+  { responses, bridgeName }: Omit<InitArgs, "recordKey">,
+): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
   await page.addInitScript({
@@ -59,7 +96,7 @@ export async function installTauriMock(page: Page): Promise<void> {
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, bridgeName }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -70,15 +107,23 @@ export async function installTauriMock(page: Page): Promise<void> {
     const record: IpcRecord = { calls: [], unknown: [] };
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
 
-    mocks.mockIPC((cmd) => {
+    mocks.mockIPC((cmd, args) => {
       record.calls.push(cmd);
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) return responses[cmd];
+      // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
+      // 하네스가 낡았다는 뜻이다.
+      if (bridgeName !== null && !cmd.startsWith("plugin:")) {
+        const bridge = (window as unknown as Record<string, (c: string, a: unknown) => unknown>)[
+          bridgeName
+        ];
+        return bridge(cmd, args ?? {});
+      }
       // `undefined`를 돌려주면 안 된다 — 폴더 선택 화면이 그것을 사용자 취소로 삼켜서,
       // 테스트는 "아무 일도 안 일어났다"로만 실패하고 원인이 엉뚱한 곳을 가리킨다.
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses: { ...COMMANDS, ...PLUGINS }, recordKey: IPC_RECORD_KEY });
+  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */

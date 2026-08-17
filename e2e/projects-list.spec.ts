@@ -1,12 +1,12 @@
 import { expect, test } from "./evidence";
 import { PROJECTS } from "./fixtures";
-import { installTauriMock, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
 // 컴포넌트를 격리 마운트하지 않고 실제 엔트리부터 태운다. 라우터가 브라우저 히스토리
 // 위에서 돌고 엔트리가 렌더 전에 전역 초기화를 하므로, 부트를 건너뛰면 "브라우저에서
 // 실제로 동작한다"가 증명되지 않는다.
 test("고정 데이터가 주어지면 목록 화면이 그 데이터를 그린다", async ({ page }) => {
-  await installTauriMock(page);
+  await installFixtureBackend(page);
 
   await page.goto("/projects");
 

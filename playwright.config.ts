@@ -13,7 +13,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // 실패한 순간의 화면. 나머지 증거(콘솔·DOM)는 e2e/evidence.ts가 같은 폴더에 넣는다.
   use: { baseURL: BASE_URL, screenshot: "only-on-failure" },
-  projects: [{ name: "webkit", use: { ...devices["Desktop Safari"] } }],
+  // 층을 프로젝트로 가른다. **l4만 이름으로 골라내고 나머지는 전부 l3다** — 새 spec이
+  // 어느 쪽에도 안 걸려 조용히 안 도는 일이 생기지 않는다.
+  projects: [
+    { name: "l3", testIgnore: /\.l4\.spec\.ts$/, use: { ...devices["Desktop Safari"] } },
+    { name: "l4", testMatch: /\.l4\.spec\.ts$/, use: { ...devices["Desktop Safari"] } },
+  ],
 
   // 서버를 띄운 **뒤**, 그것이 이 워크트리의 것인지 확인하고 나서 테스트가 돈다.
   globalSetup: "./e2e/assert-own-server.ts",
