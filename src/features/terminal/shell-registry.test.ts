@@ -19,6 +19,7 @@ import {
   shellEndLabels,
   shellLabel,
   shellsOf,
+  isNewShellKey,
   TOP_TERMINAL,
   workShellOrigin,
 } from "./shell-registry";
@@ -529,5 +530,48 @@ describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
     const origin = workShellOrigin(w(["atelier"]), null)!;
     const { state, id } = 프로젝트칸(origin.project);
     expect(shellLabel(shellOf(setShellName(state, id, "zsh"), id))).toBe("zsh");
+  });
+});
+
+// Ctrl+T. 실물로는 못 잡는 자리가 있다 — 「셸에 `^T`가 안 간다」는 핸들러의 반환값이
+// 정하는데 정적 렌더에는 안 보이고, 「수식키를 더 안 받는다」는 조합마다 쳐 봐야 한다.
+// 그 판정만 순수 함수로 떼어 여기서 전수한다.
+describe("Ctrl+T가 새 칸을 연다", () => {
+  const key = (over: Partial<Parameters<typeof isNewShellKey>[0]> = {}) => ({
+    type: "keydown",
+    code: "KeyT",
+    ctrlKey: true,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...over,
+  });
+
+  it("Ctrl+T", () => {
+    expect(isNewShellKey(key())).toBe(true);
+  });
+
+  // keydown만이다. 같은 키에 keypress·keyup이 뒤따르므로, 안 거르면 한 번 눌러 셋이 열린다.
+  it.each(["keypress", "keyup"])("%s는 아니다", (type) => {
+    expect(isNewShellKey(key({ type }))).toBe(false);
+  });
+
+  // 수식키가 하나라도 더 붙으면 셸 몫이다(결정 37).
+  it.each(["metaKey", "altKey", "shiftKey"] as const)("%s가 더 눌리면 아니다", (extra) => {
+    expect(isNewShellKey(key({ [extra]: true }))).toBe(false);
+  });
+
+  it("Ctrl 없이 T만은 아니다 — 그냥 글자다", () => {
+    expect(isNewShellKey(key({ ctrlKey: false }))).toBe(false);
+  });
+
+  it("다른 키는 아니다", () => {
+    expect(isNewShellKey(key({ code: "KeyN" }))).toBe(false);
+  });
+
+  // **`code`로 보는 이유**가 이 줄이다. 한글 입력기가 켜져 있으면 `key`는 `ㅅ`으로 오는데
+  // 물리 키는 그대로 `KeyT`다. `key`를 봤다면 이 검사가 빨갛다.
+  it("입력기가 켜져 있어도 물리 키로 본다", () => {
+    expect(isNewShellKey({ ...key(), code: "KeyT" })).toBe(true);
   });
 });

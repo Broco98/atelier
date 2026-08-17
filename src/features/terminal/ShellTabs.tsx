@@ -18,6 +18,18 @@ interface ShellTabsProps {
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
+  /**
+   * **이 줄이 창의 타이틀바를 겸하는가.** 최상위 터미널(`/terminal`)이 그렇다 — 거기서는
+   * 브레드크럼에 적을 것이 화면 이름 하나뿐이라, 그 자리를 탭 줄이 대신 쓴다.
+   *
+   * 겸할 때 따라오는 것 셋이 전부 그 사실에서 나온다: 44px 층 높이, 창을 끌 수 있는 영역
+   * (`data-tauri-drag-region` — 이 줄이 창 맨 위라 없으면 창을 못 끈다), 그리고 사이드바가
+   * 접혔을 때 신호등을 피하는 왼쪽 여백. 여백은 사이드바 폭 트랜지션과 **같은 곡선**이라야
+   * 한다(PageHeader와 같은 이유 — index.css의 `--panel-ease`).
+   *
+   * `undefined`면 보통 줄이다. Work의 터미널 탭이 그쪽인데, 그 화면은 머리행을 이미 이고 있다.
+   */
+  titlebar?: { inset: boolean };
 }
 
 // 셸 탭 줄. **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
@@ -26,7 +38,7 @@ interface ShellTabsProps {
 //
 // 모양은 새로 들이지 않는다. 칸 하나는 spec 트리의 파일 행(SpecTree.tsx)이 이미 푼 것과
 // 같은 문제라 그 구조를 그대로 따르고, 색은 index.css의 상태 농도 4단만 읽는다.
-function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen }: ShellTabsProps) {
+function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar }: ShellTabsProps) {
   // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
   // 나오는 것이 결정 30의 전부다.
   const full = atCap(state);
@@ -39,7 +51,20 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen }: ShellT
   const [picking, setPicking] = useState(false);
 
   return (
-    <div className="flex h-8 shrink-0 items-center gap-1 px-4">
+    <div
+      // 타이틀바를 겸할 때만 창 드래그 영역이다. 안쪽 버튼들은 이 속성이 없으므로 그대로
+      // 눌린다 — PageHeader가 브레드크럼에 쓰는 방식과 같다.
+      data-tauri-drag-region={titlebar ? true : undefined}
+      className={cn(
+        "flex shrink-0 items-center gap-1",
+        titlebar
+          ? [
+              "h-(--titlebar-height) pr-4 transition-[padding] duration-[220ms] ease-panel",
+              titlebar.inset ? "pl-(--titlebar-inset)" : "pl-4",
+            ]
+          : "h-8 px-4",
+      )}
+    >
       {shells.map((shell) => {
         const active = shell.id === activeId;
         const label = shellLabel(shell);

@@ -278,14 +278,16 @@ describe("WorksPage 터미널 탭", () => {
 
   // **여는 아이콘과 ⌘Enter는 렌더로 못 본다.** 둘 다 `workPanelOpen`이 false일 때만 뜻이
   // 있는데 그 값은 이 화면의 useState(초기값 true)라 정적 렌더에서 뒤집을 방법이 없다.
-  // "터미널 탭에 아이콘이 없다"를 마크업으로 확인하면 **가드가 없어도 초록이다**(패널이
-  // 열려 있어 어차피 안 그려진다). 그래서 이 저장소가 파일 간·렌더 밖 불변조건에 쓰는
-  // 방식으로 소스를 읽는다 (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
-  it("여는 아이콘과 ⌘Enter가 터미널 탭을 비켜간다", () => {
+  // 그래서 이 저장소가 파일 간·렌더 밖 불변조건에 쓰는 방식으로 소스를 읽는다
+  // (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
+  it("여는 아이콘은 탭을 안 가리고, ⌘Enter는 여전히 터미널 탭을 비켜간다", () => {
     const source = readFileSync(fileURLToPath(new URL("./WorksPage.tsx", import.meta.url)), "utf8");
-    // 여는 아이콘: spec 탭이고 패널이 닫혀 있을 때만.
-    expect(source).toMatch(/tab === "spec" && !workPanelOpen &&/);
-    // ⌘Enter: 터미널 탭이면 리스너가 붙기 전에 돌아간다. 그리고 `tab`이 바뀌면 다시 걸려야
+    // 여는 아이콘: **패널이 닫혀 있을 때만**이고 탭은 안 본다. 두 탭 다 패널을 이고 있다.
+    expect(source).toMatch(/\{!workPanelOpen && \(/);
+    // 한때 있던 탭 조건이 되살아나면 터미널 탭에서 다시 못 연다.
+    expect(source).not.toMatch(/tab === "spec" && !workPanelOpen/);
+    // ⌘Enter는 그대로 비켜간다 — 여는 길을 버튼 하나로 두는 것이 이 화면의 계약이고,
+    // 터미널에 포커스가 있으면 ⌘가 셸로 가는 것이 결정 37이다. `tab`이 바뀌면 다시 걸려야
     // 하므로 의존성에 들어 있어야 한다 — 빠지면 spec으로 돌아와도 단축키가 죽은 채로 남는다.
     const effect = source.match(/if \(tab === "terminal"\) return;[\s\S]*?\}, \[([^\]]*)\]\);/);
     expect(effect, "⌘Enter 효과에서 터미널 가드를 찾지 못했다").not.toBeNull();
@@ -309,17 +311,25 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
-  it("본문이 셸 탭 줄로 바뀐다", () => {
+  it("본문이 셸 탭 줄로 바뀌고, 작업 패널은 옆에 그대로 선다", () => {
     const markup = render({}, "terminal");
     expect(markup).toContain('aria-label="셸 열기"');
-    // 작업 패널이 통째로 빠진다(결정 11) — 그 머리행의 닫는 ×가 없는 것으로 확인한다.
-    expect(markup).not.toContain('aria-label="작업 패널 접기"');
+    // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
+    expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
   it("spec 탭에는 셸 탭 줄이 없고 작업 패널이 있다", () => {
     const markup = render({}, "spec");
     expect(markup).not.toContain('aria-label="셸 열기"');
     expect(markup).toContain('aria-label="작업 패널 접기"');
+  });
+
+  // 본문이 셸이라 `</>`가 적용될 곳이 없다. 잠기지 않으면 눌러도 아무 일이 없는 버튼이 된다.
+  it("터미널 탭에서는 소스 토글이 잠겨 있다", () => {
+    const markup = render({}, "terminal");
+    const toggle = markup.match(/<button[^>]*aria-label="마크다운 원문 보기"[^>]*>/);
+    expect(toggle, "소스 토글을 찾지 못했다").not.toBeNull();
+    expect(toggle![0]).toContain("disabled");
   });
 });
 

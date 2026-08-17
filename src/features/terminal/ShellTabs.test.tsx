@@ -42,7 +42,11 @@ function opened(
 
 function render(
   state: ShellsState,
-  { owner = null, projects = [] }: { owner?: string | null; projects?: string[] } = {},
+  {
+    owner = null,
+    projects = [],
+    titlebar,
+  }: { owner?: string | null; projects?: string[]; titlebar?: { inset: boolean } } = {},
 ): string {
   return renderToStaticMarkup(
     <ShellTabs
@@ -52,6 +56,7 @@ function render(
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
+      titlebar={titlebar}
     />,
   );
 }
@@ -225,4 +230,34 @@ describe("`+`가 묻는 조건은 cwd가 갈리는 조건과 같다", () => {
       expect(묻는다).toBe(물어야);
     });
   }
+});
+
+// 최상위 터미널에서는 이 줄이 창 맨 위에 선다. 그때 딸려와야 하는 셋은 화면으로만 보이고
+// (창이 안 끌린다 / 신호등이 탭을 가린다 / 층 높이가 안 맞는다) 하나같이 "그냥 좀 이상한데"
+// 로 나타나 원인을 못 찾는다. 마크업에 못박는다.
+describe("탭 줄이 타이틀바를 겸할 때", () => {
+  it("보통 줄은 창을 끌지 않는다", () => {
+    expect(render(NO_SHELLS)).not.toContain("data-tauri-drag-region");
+  });
+
+  it("겸하면 창을 끌 수 있다 — 이 줄이 창 맨 위라 없으면 창이 안 움직인다", () => {
+    expect(render(NO_SHELLS, { titlebar: { inset: false } })).toContain("data-tauri-drag-region");
+  });
+
+  it("겸하면 44px 층이다 — 보통 줄은 32px", () => {
+    expect(render(NO_SHELLS, { titlebar: { inset: false } })).toContain("h-(--titlebar-height)");
+    expect(render(NO_SHELLS)).toContain("h-8");
+  });
+
+  // 사이드바가 접히면 이 줄이 창 왼쪽 끝에 붙는다. 그 자리가 신호등이다.
+  it("사이드바가 접히면 신호등을 피한다", () => {
+    expect(render(NO_SHELLS, { titlebar: { inset: true } })).toContain("pl-(--titlebar-inset)");
+    expect(render(NO_SHELLS, { titlebar: { inset: false } })).not.toContain("(--titlebar-inset)");
+  });
+
+  // 여백이 사이드바 폭과 다른 곡선으로 움직이면 최종 자리를 지나쳤다 되돌아온다
+  // (index.css의 --panel-ease 주석. PageHeader가 같은 이유로 같은 값을 쓴다).
+  it("여백이 사이드바와 같은 곡선으로 움직인다", () => {
+    expect(render(NO_SHELLS, { titlebar: { inset: true } })).toContain("ease-panel");
+  });
 });

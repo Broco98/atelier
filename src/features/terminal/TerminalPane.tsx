@@ -25,7 +25,14 @@ import type { WorkView } from "@/features/works/types";
  * **`work` 하나가 나머지를 전부 정한다** — 소유자·cwd·프로젝트 목록이 거기서 나온다.
  * `null`이면 최상위 터미널이다.
  */
-function TerminalPane({ work }: { work: WorkView | null }) {
+function TerminalPane({
+  work,
+  titlebar,
+}: {
+  work: WorkView | null;
+  /** 탭 줄이 창 타이틀바를 겸하는가. 최상위 터미널만 그렇다 — ShellTabs의 같은 이름 참조. */
+  titlebar?: { inset: boolean };
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   // 좁히지 않고 통째로 읽는다 — 탭 줄이 앱 전체 상한을 세야 해서 어차피 전부 필요하다(결정 30).
   // **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
@@ -64,6 +71,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
       <ShellTabs
         state={state}
         owner={owner}
+        titlebar={titlebar}
         // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
         // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 —
         // 눌러도 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. 코어가 둘을 1:1로

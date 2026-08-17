@@ -248,6 +248,36 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
 }
 
 /** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
+/**
+ * Ctrl+T — 새 칸을 연다.
+ *
+ * **`key`가 아니라 `code`로 본다.** `key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면
+ * 같은 키가 자모로 온다(실측). `code`는 물리 키라 둘 다 안 탄다.
+ *
+ * 수식키를 **하나도 더 안 받는 것**이 조건에 들어 있다. ⌃⇧T·⌥⌃T를 여기서 먹으면 셸이
+ * 쓰는 다른 조합까지 앱이 가로챈다 — 결정 37이 막으려는 것이다.
+ *
+ * 대가는 분명하다: 셸의 `^T`(zsh emacs 모드의 `transpose-chars`, fzf의 파일 위젯)가
+ * 이 터미널에서는 안 온다. 사용자가 그 대가를 알고 고른 것이다.
+ */
+export function isNewShellKey(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  return (
+    event.type === "keydown" &&
+    event.code === "KeyT" &&
+    event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey
+  );
+}
+
 export function shellLabel(shell: Shell): string {
   return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
 }

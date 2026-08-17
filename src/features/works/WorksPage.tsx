@@ -24,6 +24,7 @@ import { runningShellsOf } from "@/features/terminal/shell-registry";
 import { closeShellsOf, terminalStore } from "@/features/terminal/terminal-store";
 import type { ViewTab } from "@/routes/-work-search";
 import SpecViewer from "./SpecViewer";
+import WorkPanel from "./WorkPanel";
 import WorkMetaMenu from "./WorkMetaMenu";
 import {
   useArchiveWork,
@@ -163,9 +164,10 @@ function WorksPage({
               <>
                 <StatusMenu work={selected} />
                 <ViewTabs tab={tab} onSelect={onSelectTab} />
-                {/* 터미널 탭에는 그 패널이 없다 — 여는 아이콘이 남아 있으면 눌러도 아무
-                    일이 없는 버튼이 된다(결정 11). */}
-                {tab === "spec" && !workPanelOpen && (
+                {/* 두 탭 **모두**에 그린다. 한때 터미널 탭에서 뺐던 것은 그때 패널이
+                    거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며 사라졌다.
+                    지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
+                {!workPanelOpen && (
                   <button
                     type="button"
                     onClick={() => setWorkPanelOpen(true)}
@@ -188,13 +190,38 @@ function WorksPage({
     // 보관·제거가 도는 동안 패널만 살아 있으면 그 위에서 조작이 계속된다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
       {terminalWork ? (
-        // 터미널 탭에는 작업 패널이 없다 — 이 열이 머리행을 직접 이고 있는다.
         // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
         // 자리만 새로 잡힌다(결정 20·21).
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          {header}
-          <TerminalPane key={terminalWork.slug} work={terminalWork} />
-        </main>
+        <>
+          <main className="relative flex min-w-0 flex-1 flex-col">
+            {header}
+            <TerminalPane key={terminalWork.slug} work={terminalWork} />
+          </main>
+          {/* SpecViewer가 그리는 것과 **같은 패널**이다. 호출부가 둘인 것은 두 본문이
+              형제 컬럼이라서다 — 패널을 여기로 끌어올리려면 SpecViewer가 들고 있는
+              문서·소스토글·토스트까지 함께 올라와야 한다. 그 정리는 패널이
+              `spec|세션|정보`가 되는 다음 판의 몫이다.
+
+              트리에서 파일을 누르면 **spec으로 돌아가며** 그 문서가 열린다. `selectFile`이
+              search를 객체로 갈아 끼워 `tab`이 함께 떨어지기 때문이다(결정 15의 뒷면).
+              그 성질이 여기서 처음으로 눈에 보이는 일을 하므로 router.test.ts에 못박았다.
+              래퍼를 두지 않는 것은 이동이 **한 번**이어야 해서다 — 탭과 파일을 따로 옮기면
+              두 navigate가 한 틱에 겹친다. */}
+          <WorkPanel
+            work={terminalWork}
+            currentFile={currentFile}
+            onSelectFile={(path) => onSelectFile(path, false)}
+            onCopy={(text) => void navigator.clipboard.writeText(text)}
+            onClose={() => setWorkPanelOpen(false)}
+            onOpenProject={onOpenProject}
+            // 본문이 문서가 아니라 셸이다. `</>`가 적용될 곳이 없으므로 잠근다 — 눌러도
+            // 아무 일이 없는 버튼을 만들지 않는다(결정 11·21).
+            sourceOn={false}
+            sourceLocked
+            onToggleSource={() => {}}
+            open={workPanelOpen}
+          />
+        </>
       ) : selected ? (
         <SpecViewer
           key={selected.slug}

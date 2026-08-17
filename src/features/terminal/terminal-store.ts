@@ -8,6 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalApi } from "./api";
 import {
   activateShell,
+  isNewShellKey,
   markExited,
   markFailed,
   NO_SHELLS,
@@ -60,9 +61,13 @@ interface ShellInstance {
   // PTY가 떠 있는 동안의 id. 종료 프레임이 오면 다시 null이다 — 죽은 셸에는 쓰지 않는다.
   // 레지스트리의 `id`와 다른 번호다(shell-registry.ts의 openShell 주석).
   ptyId: number | null;
-  // 이 셸을 어디서 띄우는가. `~` 축약 표기 그대로 넘긴다 — 펴는 것은 백엔드다(결정 25).
-  // `null`이면 데이터 루트다(최상위 터미널).
-  cwd: string | null;
+  // 이 셸을 어디서 띄웠는가. cwd는 `~` 축약 표기 그대로 넘긴다 — 펴는 것은 백엔드다(결정 25).
+  // `cwd`가 `null`이면 데이터 루트다(최상위 터미널).
+  //
+  // **cwd만이 아니라 origin 통째로 든다.** Ctrl+T가 「이 칸과 같은 자리에」 새 칸을 여는데,
+  // 프로젝트가 여럿인 Work에서는 소유자만으로 자리가 안 정해진다(`workShellOrigin`이 null을
+  // 준다). 지금 칸이 어느 프로젝트에서 떴는지는 그 칸만 안다.
+  origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
   // `×`로 거둔 뒤. 이 뒤에는 이 인스턴스에 아무것도 하지 않는다 — dispose된 Terminal에
@@ -99,7 +104,7 @@ export function openNewShell(origin: ShellOrigin): void {
   if (!opened) return;
 
   terminalStore.setState(() => opened.state);
-  const instance = createInstance(opened.id, origin.cwd);
+  const instance = createInstance(opened.id, origin);
   instances.set(instance.id, instance);
   void loadFont(instance);
 }
@@ -176,7 +181,7 @@ export function detachShell(id: number): void {
   instances.get(id)?.wrapper.remove();
 }
 
-function createInstance(id: number, cwd: string | null): ShellInstance {
+function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   const term = new Terminal({
     fontFamily: FONT_FAMILY,
     fontSize: FONT_SIZE,
@@ -202,7 +207,7 @@ function createInstance(id: number, cwd: string | null): ShellInstance {
     observer: new ResizeObserver(() => refit(instance)),
     webgl: null,
     ptyId: null,
-    cwd,
+    origin,
     fontsReady: false,
     opened: false,
     closed: false,
@@ -222,6 +227,21 @@ function createInstance(id: number, cwd: string | null): ShellInstance {
   });
   term.onData((data) => {
     if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, data));
+  });
+
+  // Ctrl+T — 이 칸과 **같은 자리에** 새 칸을 연다. 여기 붙이는 것은 `onTitleChange`와 같은
+  // 이유다: 이펙트에 두면 배경 칸이 못 받는다.
+  //
+  // `false`를 돌려주면 xterm이 그 키를 처리하지 않는다 — 셸에 `^T`가 안 간다. 그것이
+  // 의도다(그 대가는 `isNewShellKey`에 적었다).
+  //
+  // **자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
+  // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 조용히 돌아간다.
+  term.attachCustomKeyEventHandler((event) => {
+    if (!isNewShellKey(event)) return true;
+    event.preventDefault();
+    openNewShell(instance.origin);
+    return false;
   });
 
   return instance;
@@ -344,7 +364,7 @@ async function spawn(instance: ShellInstance) {
     // (결정 25). `null`이면 데이터 루트이고 그 자리가 어디인지도 백엔드만 안다.
     const cols = instance.term.cols;
     const rows = instance.term.rows;
-    const spawned = await terminalApi.spawn(instance.cwd, cols, rows, channel);
+    const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);
     // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —
