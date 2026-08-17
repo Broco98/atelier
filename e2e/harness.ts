@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Page } from "./evidence";
 import { PROJECTS } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
