@@ -111,6 +111,14 @@ pub fn spawn(
     let pid = child.process_id();
     let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
 
+    // **스레드보다 먼저 풀에 앉힌다.** 아래 스레드는 끝나며 자기 자리를 치우는데
+    // (`owner.lock().remove`), 그 치움이 등록보다 **먼저** 돌 수 있다 — `$SHELL`이 즉시
+    // 끝나면 그렇다. 그러면 등록이 죽은 셸을 되살리고, 그 pid는 이미 회수돼 재사용
+    // 가능한 상태다. 다음 `reap_all`이 그 자리에 앉은 남의 프로세스 그룹을 쏜다 —
+    // 아래 스레드의 주석이 막으려는 바로 그것이다. 순서를 이렇게 두면 그 창이 닫힌다:
+    // 치움은 언제 돌아도 `remove`일 뿐이다.
+    pool.lock().insert(id, Shell { pid, master: pair.master, writer });
+
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
     // 받은 채널은 명령이 리턴하는 순간 drop되고, 그 뒤의 send는 조용히 버려진다.
@@ -155,7 +163,6 @@ pub fn spawn(
         // 채널이 여기서 떨어지며 JS 쪽 콜백이 정리된다.
     });
 
-    pool.lock().insert(id, Shell { pid, master: pair.master, writer });
     Ok(PtySpawned { id, shell_name })
 }
 
@@ -332,4 +339,33 @@ fn executable(path: &Path) -> bool {
         return false;
     };
     unsafe { libc::access(c.as_ptr(), libc::X_OK) == 0 }
+}
+
+#[cfg(test)]
+mod tests {
+    /// `spawn`의 풀 등록이 읽기 스레드보다 **앞에** 있어야 한다.
+    ///
+    /// 실행으로는 못 잡는다 — 뒤집혀도 스레드가 늦게 뜨는 보통의 경우에는 아무 일도
+    /// 안 일어나고, 터지는 것은 셸이 즉시 끝나는 순간뿐이다. 그래서 자리로 잰다.
+    /// 주석만 두면 뚫린다는 것을 이 저장소가 이미 겪었다.
+    #[test]
+    fn pool_insert_precedes_the_reader_thread() {
+        let src = include_str!("pty.rs");
+        let spawn_fn = src
+            .split_once("pub fn spawn(")
+            .expect("spawn이 있다")
+            .1
+            .split_once("\npub fn ")
+            .expect("다음 함수가 있다")
+            .0;
+
+        let insert = spawn_fn.find("pool.lock().insert(").expect("풀에 앉히는 줄이 있다");
+        let thread = spawn_fn.find("std::thread::spawn(").expect("읽기 스레드가 있다");
+
+        assert!(
+            insert < thread,
+            "등록({insert})이 스레드({thread})보다 뒤에 있다 — 셸이 즉시 끝나면 \
+             스레드의 remove가 먼저 돌아 죽은 셸이 되살아나고, 재사용된 pgid를 쏘게 된다"
+        );
+    }
 }

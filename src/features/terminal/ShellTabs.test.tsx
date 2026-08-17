@@ -1,8 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import ShellTabs from "./ShellTabs";
-import { markExited, markFailed, MAX_SHELLS, NO_SHELLS, openShell, TOP_TERMINAL } from "./shell-registry";
+import {
+  markExited,
+  markFailed,
+  MAX_SHELLS,
+  NO_SHELLS,
+  openShell,
+  TOP_TERMINAL,
+  workShellOrigin,
+} from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
+import type { WorkView } from "@/features/works/types";
 
 // 탭 줄은 **이 저장소에 선례가 없는 모양**이라(role="tab" 0건) 지킬 것을 스스로 들고 있어야
 // 한다. 여기서 보는 것은 셋이다.
@@ -183,4 +192,37 @@ describe("프로젝트가 여럿인 Work의 `+`", () => {
     const state = opened(1, { owner: "가", project: "cli" });
     expect(render(state, { owner: "가", projects: ["atelier", "cli"] })).toContain(">cli<");
   });
+});
+
+// `+`가 묻는 조건과 cwd가 갈리는 조건은 **한 규칙**인데(결정 24) 자리가 둘이다 —
+// 여기 `projects.length > 1`과 순수 모듈의 `workShellOrigin` 갈래. 둘이 갈리면 화면이
+// 안 묻고 지나간 뒤 셸이 안 뜨거나(묻어야 했는데), 물어 놓고 답이 무의미해진다.
+// 렌더로는 한쪽만 보이므로 여기서 둘을 맞대어 둔다.
+describe("`+`가 묻는 조건은 cwd가 갈리는 조건과 같다", () => {
+  const work = (projects: string[]): WorkView => ({
+    slug: "w",
+    title: "w",
+    status: "active",
+    branch: "feat/w",
+    createdAt: "2026-08-17",
+    projects,
+    worktrees: projects.map((project) => ({
+      project,
+      path: `~/.atelier/works/w/trees/${project}`,
+      exists: true,
+      dirty: false,
+    })),
+    specDir: "~/.atelier/works/w/spec",
+    specFiles: [],
+  });
+
+  for (const projects of [[], ["atelier"], ["atelier", "ghost"], ["a", "b", "c"]]) {
+    it(`프로젝트 ${projects.length}개`, () => {
+      // 순수 모듈: 프로젝트를 안 정하고 물었을 때 자리를 못 정하면 = 물어야 한다.
+      const 물어야 = workShellOrigin(work(projects), null) === null;
+      // 화면: 메뉴를 여는 `+`인가.
+      const 묻는다 = render(NO_SHELLS, { owner: "w", projects }).includes('aria-haspopup="menu"');
+      expect(묻는다).toBe(물어야);
+    });
+  }
 });
