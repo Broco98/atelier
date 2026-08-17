@@ -2120,11 +2120,11 @@ mod tests {
         // wire 계약: 경량 필드만. specFiles·worktrees·specDir이 새어나오면 안 된다
         //
         // **정렬해서 비교한다.** 이 계약이 말하는 것은 "어떤 필드가 나가는가"이지 그 차례가
-        // 아니다. serde_json은 `preserve_order`가 꺼져 있으면 키를 사전순으로 내놓는데,
-        // ACP 프로토콜 크레이트(agent-client-protocol)가 그 feature를 켜면서 워크스페이스
-        // 전체가 선언순으로 바뀌었다 — 크레이트 하나만 돌리면 사전순, `--workspace`로 돌리면
-        // 선언순이라 같은 코드가 명령에 따라 다른 답을 냈다. 차례에 기대면 이 계약은
-        // 자기와 무관한 의존성이 바뀔 때마다 깨진다.
+        // 아니다. serde_json의 키 차례는 `preserve_order` feature가 정하는데, 그 feature는
+        // 워크스페이스의 어느 크레이트가 켜도 전부에 켜진다 — PR #99가 들여온
+        // `agent-client-protocol`(#102로 다시 걷어냈다)이 그것을 켜자, 크레이트 하나만
+        // 돌릴 때는 사전순, `--workspace`로 돌릴 때는 선언순이라 같은 코드가 명령에 따라
+        // 다른 답을 냈다. 차례에 기대면 이 계약은 자기와 무관한 의존성이 바뀔 때마다 깨진다.
         let json = serde_json::to_value(e).unwrap();
         let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();

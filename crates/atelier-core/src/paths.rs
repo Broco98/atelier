@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 /// 데이터 루트. `ATELIER_HOME`은 테스트용 내부 오버라이드.
-fn data_root() -> PathBuf {
+///
+/// **이 값을 부르는 쪽이 다시 계산하면 안 된다.** `~/.atelier`를 박아 두면 오버라이드가
+/// 그 자리에서만 죽어서, 테스트가 진짜 홈을 건드리는 것이 조용히 시작된다.
+pub fn data_root() -> PathBuf {
     std::env::var_os("ATELIER_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"))
@@ -13,15 +16,6 @@ pub fn projects_dir() -> PathBuf {
 
 pub fn works_dir() -> PathBuf {
     data_root().join("works")
-}
-
-pub fn sessions_dir() -> PathBuf {
-    data_root().join("sessions")
-}
-
-/// 어댑터별 실행 커맨드를 담는 사용자 설정. **아틀리에는 이 파일을 만들지 않는다** — 읽기만 한다.
-pub fn adapters_file() -> PathBuf {
-    data_root().join("adapters.json")
 }
 
 /// 끝난 work가 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —

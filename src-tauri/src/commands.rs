@@ -1,15 +1,16 @@
 use std::path::PathBuf;
+
+use atelier_core::{
+    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, WorkView,
+};
+
 use std::sync::Arc;
 
-use atelier_acp::{SessionManager, SessionView};
-use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, StartPoint,
-    WorkView,
-};
+use crate::pty;
 
 type CmdResult<T> = Result<T, String>;
 
-fn err(e: impl std::fmt::Display) -> String {
+fn err(e: atelier_core::Error) -> String {
     e.to_string()
 }
 
@@ -112,87 +113,6 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
 }
 
 #[tauri::command]
-pub async fn list_sessions(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-) -> CmdResult<Vec<SessionView>> {
-    manager.list().map_err(err)
-}
-
-#[tauri::command]
-pub async fn create_session(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    project_slug: String,
-) -> CmdResult<SessionView> {
-    let manager = Arc::clone(&manager);
-    // 에이전트를 띄우고 핸드셰이크가 끝나기를 기다리는 동안 막힌다. `npx`가 패키지를 내려받는
-    // 첫 실행은 오래 걸리므로 비동기 일꾼이 아니라 블로킹 전용 실행기에서 기다린다.
-    tauri::async_runtime::spawn_blocking(move || {
-        manager
-            .start(StartPoint::Project { slug: project_slug })
-            .map_err(err)
-    })
-    .await
-    .map_err(err)?
-}
-
-#[tauri::command]
-pub async fn resume_session(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    session_id: String,
-) -> CmdResult<SessionView> {
-    let manager = Arc::clone(&manager);
-    // `create_session`과 같은 이유로 블로킹 실행기에서 기다린다 — 다시 띄우는 것도 패키지
-    // 실행기를 거치므로 오래 걸릴 수 있다.
-    tauri::async_runtime::spawn_blocking(move || manager.resume(&session_id).map_err(err))
-        .await
-        .map_err(err)?
-}
-
-#[tauri::command]
-pub async fn prompt_session(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    session_id: String,
-    text: String,
-) -> CmdResult<()> {
-    let manager = Arc::clone(&manager);
-    // 턴이 끝날 때까지 막힌다. 그동안의 조각들은 `session:update` 이벤트로 먼저 간다.
-    tauri::async_runtime::spawn_blocking(move || manager.prompt(&session_id, &text).map_err(err))
-        .await
-        .map_err(err)?
-}
-
-#[tauri::command]
-pub async fn cancel_session(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    session_id: String,
-) -> CmdResult<()> {
-    // 중단은 기다리는 일이 아니다 — 알림 한 줄을 보내고 곧바로 돌아온다. 턴이 실제로 끝나는
-    // 것은 `prompt_session`을 붙잡고 있는 쪽이 돌아오는 것으로 보인다.
-    manager.cancel(&session_id).map_err(err)
-}
-
-#[tauri::command]
-pub async fn answer_permission(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    session_id: String,
-    request_id: String,
-    option_id: String,
-) -> CmdResult<()> {
-    // 답을 돌려주는 것은 기다리는 일이 아니다 — 상대에게 한 줄 보내고 곧바로 돌아온다.
-    manager
-        .answer_permission(&session_id, &request_id, &option_id)
-        .map_err(err)
-}
-
-#[tauri::command]
-pub async fn read_session_updates(
-    manager: tauri::State<'_, Arc<SessionManager>>,
-    session_id: String,
-) -> CmdResult<Vec<serde_json::Value>> {
-    manager.updates(&session_id).map_err(err)
-}
-
-#[tauri::command]
 pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
     let view = atelier_core::get_project(&projects_dir(), &slug).map_err(err)?;
@@ -203,4 +123,42 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
     app.opener()
         .open_path(abs.to_string_lossy(), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+// PTY 명령 넷. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// 있는 것 자체가 배선 테스트의 조건이다.
+
+#[tauri::command]
+pub async fn pty_spawn(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> CmdResult<pty::PtySpawned> {
+    pty::spawn(&pool, cwd, cols, rows, on_frame)
+}
+
+#[tauri::command]
+pub async fn pty_write(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    data: String,
+) -> CmdResult<()> {
+    pty::write(&pool, id, &data)
+}
+
+#[tauri::command]
+pub async fn pty_resize(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> CmdResult<()> {
+    pty::resize(&pool, id, cols, rows)
+}
+
+#[tauri::command]
+pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
+    pty::kill(&pool, id)
 }
