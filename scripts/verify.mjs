@@ -6,6 +6,8 @@
 //   pnpm verify --full   느린 관통 층까지
 
 import { spawnSync } from "node:child_process";
+import { rmSync } from "node:fs";
+import evidence from "./evidence-dir.json" with { type: "json" };
 
 /** 기본 기어에서 도는 층. */
 const FAST = [
@@ -36,6 +38,11 @@ if (unknown.length > 0) {
 const full = args.includes("--full");
 const layers = full ? [...FAST, ...FULL_ONLY] : FAST;
 console.log(`검증 기어: ${full ? "--full" : "기본"} — ${layers.length}개 층`);
+
+// 낡은 증거를 **여기서** 지운다. Playwright도 시작할 때 자기 출력 폴더를 비우지만 그건
+// L3가 실제로 돌 때뿐이라, 앞 층에서 멈추면 직전 실패의 증거가 그대로 남는다. 그러면
+// 방금 실패한 것과 무관한 스크린샷을 읽고 엉뚱한 결론으로 간다.
+rmSync(evidence.evidenceDir, { recursive: true, force: true });
 if (full && FULL_ONLY.length === 0) {
   console.log("(--full에서만 도는 층은 아직 없습니다. L4가 여기 붙습니다.)");
 }

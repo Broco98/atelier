@@ -1,10 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 import { BASE_URL, PORT } from "./e2e/dev-server";
+import evidence from "./scripts/evidence-dir.json" with { type: "json" };
 
 // 앱은 macOS에서 WKWebView 위에 산다. 같은 엔진(WebKit)으로 봐야 이 층이 실물을
 // 예측한다 — Chromium에서만 통과하는 CSS·히스토리 동작을 초록으로 넘기지 않는다.
 export default defineConfig({
   testDir: "e2e",
+  // 기본값과 같지만 **적어 둔다.** verify.mjs가 매 실행 시작에 이 폴더를 비우므로,
+  // 암묵적 기본값에 기대면 그쪽이 무엇을 지우는지 아무 데도 안 적힌 것이 된다.
+  outputDir: evidence.evidenceDir,
   reporter: "list",
   forbidOnly: !!process.env.CI,
   // 실패한 순간의 화면. 나머지 증거(콘솔·DOM)는 e2e/evidence.ts가 같은 폴더에 넣는다.

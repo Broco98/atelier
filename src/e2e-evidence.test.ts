@@ -56,8 +56,11 @@ describe("L3 증거 수집", () => {
   // 그래서 위치를 설정에서 **가져오고**, 무시되는지는 git에게 직접 묻는다 — .gitignore를
   // 우리가 해석하면 그 해석이 또 틀릴 수 있다.
   it("증거 디렉터리가 버전 관리에서 빠져 있다", () => {
-    const outputDir = playwrightConfig.outputDir ?? "test-results";
-    const probe = join(outputDir, "sample-test", "console.txt");
+    // 설정이 이 값을 비우면 Playwright는 자기 기본값으로 돌아가는데 verify.mjs는 여전히
+    // JSON에 적힌 폴더를 지운다 — 둘이 갈라지는 유일한 길이라 여기서 먼저 막는다.
+    const { outputDir } = playwrightConfig;
+    expect(outputDir, "playwright.config.ts가 outputDir을 명시해야 한다").toBeDefined();
+    const probe = join(outputDir as string, "sample-test", "console.txt");
     const check = spawnSync("git", ["check-ignore", "--quiet", probe], { cwd: root });
     expect(check.status, `${probe} 가 .gitignore에 걸리지 않는다`).toBe(0);
   });

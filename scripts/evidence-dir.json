@@ -1,0 +1,4 @@
+{
+  "comment": "실패 증거가 쌓이는 곳. Playwright 설정과 verify 스크립트가 이 파일 하나를 읽는다 — verify는 평범한 Node 스크립트라 TS 설정을 임포트할 수 없고, tsconfig에 allowJs가 없어 반대 방향도 막혀 있다. JSON이 그 경계를 넘는 유일한 형식이다.",
+  "evidenceDir": "test-results"
+}
