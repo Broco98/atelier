@@ -19,7 +19,7 @@ import {
   shellEndLabels,
   shellLabel,
   shellsOf,
-  isNewShellKey,
+  shellHotkey,
   TOP_TERMINAL,
   workShellOrigin,
 } from "./shell-registry";
@@ -536,42 +536,66 @@ describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
 // Ctrl+T. 실물로는 못 잡는 자리가 있다 — 「셸에 `^T`가 안 간다」는 핸들러의 반환값이
 // 정하는데 정적 렌더에는 안 보이고, 「수식키를 더 안 받는다」는 조합마다 쳐 봐야 한다.
 // 그 판정만 순수 함수로 떼어 여기서 전수한다.
-describe("Ctrl+T가 새 칸을 연다", () => {
-  const key = (over: Partial<Parameters<typeof isNewShellKey>[0]> = {}) => ({
+describe("앱이 가져가는 키", () => {
+  const key = (over: Partial<Parameters<typeof shellHotkey>[0]> = {}) => ({
     type: "keydown",
     code: "KeyT",
-    ctrlKey: true,
-    metaKey: false,
+    ctrlKey: false,
+    metaKey: true,
     altKey: false,
     shiftKey: false,
     ...over,
   });
 
-  it("Ctrl+T", () => {
-    expect(isNewShellKey(key())).toBe(true);
+  it("⌘T는 새 칸", () => {
+    expect(shellHotkey(key())).toBe("new");
+  });
+
+  it("⌘W는 이 칸 닫기", () => {
+    expect(shellHotkey(key({ code: "KeyW" }))).toBe("close");
   });
 
   // keydown만이다. 같은 키에 keypress·keyup이 뒤따르므로, 안 거르면 한 번 눌러 셋이 열린다.
   it.each(["keypress", "keyup"])("%s는 아니다", (type) => {
-    expect(isNewShellKey(key({ type }))).toBe(false);
+    expect(shellHotkey(key({ type }))).toBeNull();
   });
 
-  // 수식키가 하나라도 더 붙으면 셸 몫이다(결정 37).
-  it.each(["metaKey", "altKey", "shiftKey"] as const)("%s가 더 눌리면 아니다", (extra) => {
-    expect(isNewShellKey(key({ [extra]: true }))).toBe(false);
+  // 수식키가 하나라도 더 붙으면 셸 몫이다(결정 37). **⌃T는 특히 그렇다** — zsh의
+  // transpose-chars와 fzf 파일 위젯이 그 키다. 여기서 먹으면 그것들을 뺏는다.
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 눌리면 아니다", (extra) => {
+    expect(shellHotkey(key({ [extra]: true }))).toBeNull();
+    expect(shellHotkey(key({ code: "KeyW", [extra]: true }))).toBeNull();
   });
 
-  it("Ctrl 없이 T만은 아니다 — 그냥 글자다", () => {
-    expect(isNewShellKey(key({ ctrlKey: false }))).toBe(false);
+  it("⌘ 없이 T·W만은 아니다 — 그냥 글자다", () => {
+    expect(shellHotkey(key({ metaKey: false }))).toBeNull();
+    expect(shellHotkey(key({ code: "KeyW", metaKey: false }))).toBeNull();
   });
 
   it("다른 키는 아니다", () => {
-    expect(isNewShellKey(key({ code: "KeyN" }))).toBe(false);
+    expect(shellHotkey(key({ code: "KeyN" }))).toBeNull();
   });
 
   // **`code`로 보는 이유**가 이 줄이다. 한글 입력기가 켜져 있으면 `key`는 `ㅅ`으로 오는데
   // 물리 키는 그대로 `KeyT`다. `key`를 봤다면 이 검사가 빨갛다.
   it("입력기가 켜져 있어도 물리 키로 본다", () => {
-    expect(isNewShellKey({ ...key(), code: "KeyT" })).toBe(true);
+    expect(shellHotkey({ ...key(), code: "KeyT" })).toBe("new");
   });
 });
+
+// ⌘W는 **두 자리가 함께여야** 성립한다. 프런트가 잡아도 macOS 메뉴에 `Close Window`가
+// 있으면 OS가 먼저 먹어 창이 닫히고 셸이 전부 죽는다 — 실물에서 그렇게 잃었다. 프런트만
+// 보는 검사는 그 회귀에 초록이므로, 메뉴 쪽 자리를 여기서 함께 못박는다.
+it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 못 온다", () => {
+  const menu = readFileSync(
+    fileURLToPath(new URL("../../../src-tauri/src/lib.rs", import.meta.url)),
+    "utf8",
+  );
+  expect(menu, "메뉴를 손으로 세우지 않으면 Tauri 기본 메뉴가 붙고, 거기엔 ⌘W가 있다").toContain(
+    "fn build_menu",
+  );
+  expect(menu).not.toMatch(/\.close_window\(\)/);
+  // 메뉴를 통째로 지우면 ⌘C·⌘V·⌘A가 함께 죽는다. Edit이 살아 있는지 본다.
+  expect(menu).toContain(".select_all()");
+});
+

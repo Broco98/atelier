@@ -8,7 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalApi } from "./api";
 import {
   activateShell,
-  isNewShellKey,
+  shellHotkey,
   markExited,
   markFailed,
   NO_SHELLS,
@@ -229,18 +229,23 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, data));
   });
 
-  // Ctrl+T — 이 칸과 **같은 자리에** 새 칸을 연다. 여기 붙이는 것은 `onTitleChange`와 같은
-  // 이유다: 이펙트에 두면 배경 칸이 못 받는다.
+  // ⌘T는 새 칸, ⌘W는 이 칸 닫기. 여기 붙이는 것은 `onTitleChange`와 같은 이유다:
+  // 이펙트에 두면 배경 칸이 못 받는다.
   //
-  // `false`를 돌려주면 xterm이 그 키를 처리하지 않는다 — 셸에 `^T`가 안 간다. 그것이
-  // 의도다(그 대가는 `isNewShellKey`에 적었다).
+  // `false`를 돌려주면 xterm이 그 키를 처리하지 않는다. 어느 키가 앱 몫인지와 그 근거는
+  // `shellHotkey`가 혼자 안다(결정 37의 예외 둘).
   //
-  // **자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
+  // **새 칸은 자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
   // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 조용히 돌아간다.
+  //
+  // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
+  // 그대로 따라온다(판 02).
   term.attachCustomKeyEventHandler((event) => {
-    if (!isNewShellKey(event)) return true;
+    const hotkey = shellHotkey(event);
+    if (!hotkey) return true;
     event.preventDefault();
-    openNewShell(instance.origin);
+    if (hotkey === "new") openNewShell(instance.origin);
+    else closeShell(instance.id);
     return false;
   });
 

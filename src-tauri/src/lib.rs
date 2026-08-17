@@ -4,11 +4,56 @@ mod watcher;
 
 use std::sync::Arc;
 
+use tauri::menu::{AboutMetadata, MenuBuilder, SubmenuBuilder};
 use tauri::Manager;
+
+/// macOS 기본 메뉴에서 **`Close Window`(⌘W)만 뺀 것.**
+///
+/// 그 항목이 있으면 ⌘W를 **OS 메뉴가 웹뷰보다 먼저 먹는다.** 프런트에서
+/// `preventDefault`를 해도 소용이 없다 — 키가 페이지까지 오지 않는다. 창이 닫히고, 이 앱은
+/// 창이 하나뿐이라 그대로 종료되며 **돌던 셸이 전부 죽는다**(실물에서 그렇게 잃었다).
+///
+/// 비워 두면 그 키가 웹뷰까지 와서 터미널이 「이 칸 닫기」로 쓴다(`shellHotkey`). 두 자리가
+/// 함께여야 성립하므로 한쪽만 되돌리면 조용히 옛 동작으로 간다.
+///
+/// 나머지는 기본 메뉴와 같은 것을 손으로 세운다 — 메뉴를 통째로 지우면 **⌘C·⌘V·⌘A가
+/// 함께 죽는다.** 창을 닫는 길은 신호등의 빨간 버튼과 ⌘Q로 남는다.
+fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    let app = SubmenuBuilder::new(handle, "atelier")
+        .about(Some(AboutMetadata::default()))
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    let edit = SubmenuBuilder::new(handle, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    // `close_window()`가 **없다.** 위 주석이 그 자리의 전부다.
+    let window = SubmenuBuilder::new(handle, "Window")
+        .minimize()
+        .fullscreen()
+        .build()?;
+
+    MenuBuilder::new(handle).items(&[&app, &edit, &window]).build()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .menu(build_menu)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(pty::PtyPool::default()))
