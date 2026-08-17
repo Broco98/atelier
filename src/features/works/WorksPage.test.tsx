@@ -287,7 +287,7 @@ describe("WorksPage 터미널 탭", () => {
     // 한때 있던 탭 조건이 되살아나면 터미널 탭에서 다시 못 연다.
     expect(source).not.toMatch(/tab === "spec" && !workPanelOpen/);
     // ⌘Enter는 그대로 비켜간다 — 여는 길을 버튼 하나로 두는 것이 이 화면의 계약이고,
-    // 터미널에 포커스가 있으면 ⌘가 셸로 가는 것이 결정 37이다. `tab`이 바뀌면 다시 걸려야
+    // 터미널에 포커스가 있으면 ⌘가 셸로 가는 것이 결정 29다. `tab`이 바뀌면 다시 걸려야
     // 하므로 의존성에 들어 있어야 한다 — 빠지면 spec으로 돌아와도 단축키가 죽은 채로 남는다.
     const effect = source.match(/if \(tab === "terminal"\) return;[\s\S]*?\}, \[([^\]]*)\]\);/);
     expect(effect, "⌘Enter 효과에서 터미널 가드를 찾지 못했다").not.toBeNull();

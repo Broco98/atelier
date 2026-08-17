@@ -533,9 +533,12 @@ describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
   });
 });
 
-// Ctrl+T. 실물로는 못 잡는 자리가 있다 — 「셸에 `^T`가 안 간다」는 핸들러의 반환값이
+// ⌘T·⌘W. 실물로는 못 잡는 자리가 있다 — 「셸에 이 키가 안 간다」는 핸들러의 반환값이
 // 정하는데 정적 렌더에는 안 보이고, 「수식키를 더 안 받는다」는 조합마다 쳐 봐야 한다.
 // 그 판정만 순수 함수로 떼어 여기서 전수한다.
+//
+// **⌃T는 셸 몫이다** — 아래 「ctrlKey가 더 눌리면 아니다」가 그것을 못박는다. ⌘로 고른
+// 이유가 그것이다(결정 34): ⌃T는 zsh emacs 모드의 `transpose-chars`와 fzf가 쓴다.
 describe("앱이 가져가는 키", () => {
   const key = (over: Partial<Parameters<typeof shellHotkey>[0]> = {}) => ({
     type: "keydown",
@@ -560,7 +563,7 @@ describe("앱이 가져가는 키", () => {
     expect(shellHotkey(key({ type }))).toBeNull();
   });
 
-  // 수식키가 하나라도 더 붙으면 셸 몫이다(결정 37). **⌃T는 특히 그렇다** — zsh의
+  // 수식키가 하나라도 더 붙으면 셸 몫이다(결정 29). **⌃T는 특히 그렇다** — zsh의
   // transpose-chars와 fzf 파일 위젯이 그 키다. 여기서 먹으면 그것들을 뺏는다.
   it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 눌리면 아니다", (extra) => {
     expect(shellHotkey(key({ [extra]: true }))).toBeNull();

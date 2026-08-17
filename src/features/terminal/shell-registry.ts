@@ -247,14 +247,13 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
 
-/** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
 /** 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작. */
 export type ShellHotkey = "new" | "close";
 
 /**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
  *
- * **결정 37의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
+ * **결정 29의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
  * 먹는다」인데, ⌘만은 앱이 가져가도 잃는 것이 없다 — 셸도 TUI도 ⌘를 안 쓴다(macOS
  * 터미널들이 ⌘를 자기 몫으로 두는 이유다). ⌃T였다면 zsh emacs 모드의 `transpose-chars`와
  * fzf의 파일 위젯을 뺏었을 것이다.
@@ -268,7 +267,7 @@ export type ShellHotkey = "new" | "close";
  * 같은 키가 자모로 온다(실측). `code`는 물리 키라 둘 다 안 탄다.
  *
  * 수식키가 하나라도 더 붙으면 **셸 몫이다.** ⌘⇧T·⌥⌘W까지 먹으면 근거 없이 넓히는 것이고,
- * 그 미끄러짐이 결정 37이 막으려는 것이다.
+ * 그 미끄러짐이 결정 29가 막으려는 것이다.
  */
 export function shellHotkey(event: {
   type: string;
@@ -285,6 +284,7 @@ export function shellHotkey(event: {
   return null;
 }
 
+/** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
 export function shellLabel(shell: Shell): string {
   return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
 }

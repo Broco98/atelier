@@ -8,7 +8,6 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalApi } from "./api";
 import {
   activateShell,
-  shellHotkey,
   markExited,
   markFailed,
   NO_SHELLS,
@@ -16,6 +15,7 @@ import {
   removeShell,
   setShellName,
   setTitle,
+  shellHotkey,
   shellsOf,
 } from "./shell-registry";
 import type { ShellOrigin, ShellsState } from "./shell-registry";
@@ -99,8 +99,12 @@ export function openNewShell(origin: ShellOrigin): void {
   // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
   // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
   const opened = openShell(terminalStore.state, origin);
-  // `+`는 상한에서 이미 잠겨 있으므로 여기 닿는 것은 경주뿐이다. 조용히 돌아간다 —
-  // 잠긴 이유는 그 버튼의 title이 말한다.
+  // 상한에 닿으면 조용히 돌아간다. `+`로 온 것이라면 그 버튼이 이미 잠겨 있어 여기 닿는
+  // 것은 경주뿐이고, 잠긴 이유는 그 버튼의 title이 말한다.
+  //
+  // **⌘T로 오면 다르다** — 그쪽에는 이유를 말할 title이 없어서 아무 일도 안 일어난 것처럼
+  // 보인다. 사용자 스토리 33이 요구하는 "왜 잠겼는지"가 이 입구에는 없다는 뜻이다. 메울
+  // 자리가 전역 알림 표면이라 이 판의 몫이 아니라, 알려진 구멍으로 티켓 06에 적어 뒀다.
   if (!opened) return;
 
   terminalStore.setState(() => opened.state);
@@ -233,7 +237,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 이펙트에 두면 배경 칸이 못 받는다.
   //
   // `false`를 돌려주면 xterm이 그 키를 처리하지 않는다. 어느 키가 앱 몫인지와 그 근거는
-  // `shellHotkey`가 혼자 안다(결정 37의 예외 둘).
+  // `shellHotkey`가 혼자 안다(결정 29의 예외 둘).
   //
   // **새 칸은 자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
   // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 조용히 돌아간다.
