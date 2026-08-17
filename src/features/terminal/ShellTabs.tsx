@@ -1,15 +1,23 @@
+import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { atCap, MAX_SHELLS, shellEndLabels, shellLabel } from "./shell-registry";
+import { PopoverPortal } from "@/components/ui/popover-portal";
+import { activeIdOf, atCap, MAX_SHELLS, shellEndLabels, shellLabel, shellsOf } from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
 
 interface ShellTabsProps {
-  // 목록과 활성을 따로 받지 않는다 — 늘 함께 다니고 이미 이름이 있는 한 덩어리다.
-  // `+`가 잠기는지도 이 상태 하나가 답한다(결정 30: 앱 전체 기준).
+  /**
+   * **앱 전체 상태다 — 이 줄의 것만 걸러서 받지 않는다.** 걸러 받으면 `atCap`이 이 줄의
+   * 길이를 세게 되고, 상한 8이 화면마다 8이 된다(결정 30). 그리는 것만 `owner`로 좁힌다.
+   */
   state: ShellsState;
+  /** 이 줄이 그리는 화면. 최상위 터미널은 `null`이다. */
+  owner: string | null;
+  /** 이 Work의 프로젝트들. 둘 이상이면 `+`가 어디에 띄울지 물어본다(결정 24). */
+  projects: string[];
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
-  onOpen: () => void;
+  onOpen: (project: string | null) => void;
 }
 
 // 셸 탭 줄. **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
@@ -18,13 +26,22 @@ interface ShellTabsProps {
 //
 // 모양은 새로 들이지 않는다. 칸 하나는 spec 트리의 파일 행(SpecTree.tsx)이 이미 푼 것과
 // 같은 문제라 그 구조를 그대로 따르고, 색은 index.css의 상태 농도 4단만 읽는다.
-function ShellTabs({ state, onSelect, onClose, onOpen }: ShellTabsProps) {
+function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen }: ShellTabsProps) {
+  // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
+  // 나오는 것이 결정 30의 전부다.
   const full = atCap(state);
+  const shells = shellsOf(state, owner);
+  const activeId = activeIdOf(state, owner);
+
+  // 프로젝트가 여럿인 Work에서만 `+`가 묻는다. 앵커가 그 버튼이라 여기 산다.
+  const asks = projects.length > 1;
+  const plusRef = useRef<HTMLButtonElement>(null);
+  const [picking, setPicking] = useState(false);
 
   return (
     <div className="flex h-8 shrink-0 items-center gap-1 px-4">
-      {state.shells.map((shell) => {
-        const active = shell.id === state.activeId;
+      {shells.map((shell) => {
+        const active = shell.id === activeId;
         const label = shellLabel(shell);
         const end = shellEndLabels(shell);
 
@@ -86,21 +103,56 @@ function ShellTabs({ state, onSelect, onClose, onOpen }: ShellTabsProps) {
           요구사항이라, 잠그되 hover는 살린다 — aria-disabled + 클릭 무시다.
           hover 배경만 뺀다: 눌리지 않는 버튼이 눌릴 것처럼 밝아지지는 않게. */}
       <button
+        ref={plusRef}
         type="button"
         aria-label="셸 열기"
         aria-disabled={full || undefined}
+        // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이
+        // 안 뜨는 것이 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다.
+        aria-haspopup={asks ? "menu" : undefined}
+        aria-expanded={asks ? picking : undefined}
         title={
           full
             ? `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개고, 다른 터미널의 셸도 함께 셉니다`
-            : "셸 열기"
+            : asks
+              ? "셸 열기 — 프로젝트를 고릅니다"
+              : "셸 열기"
         }
         onClick={() => {
-          if (!full) onOpen();
+          if (full) return;
+          if (asks) setPicking((open) => !open);
+          else onOpen(null);
         }}
         className={cn("shrink-0 text-tertiary", full ? "icon-button opacity-40" : "icon-button-quiet")}
       >
         <Plus className="size-3.5" strokeWidth={1.8} />
       </button>
+
+      {picking && (
+        <PopoverPortal
+          anchorRef={plusRef}
+          // 왼쪽 맞춤이다 — `+`가 줄 왼쪽 끝에 있어서 오른쪽 맞춤이면 메뉴가 사이드바 위로
+          // 뻗는다(실물에서 확인했다).
+          align="left"
+          width={190}
+          onClose={() => setPicking(false)}
+          className="flex flex-col gap-px p-[5px]"
+        >
+          {projects.map((project) => (
+            <button
+              key={project}
+              type="button"
+              onClick={() => {
+                setPicking(false);
+                onOpen(project);
+              }}
+              className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
+            >
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{project}</span>
+            </button>
+          ))}
+        </PopoverPortal>
+      )}
     </div>
   );
 }

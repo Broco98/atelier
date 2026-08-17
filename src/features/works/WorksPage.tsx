@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
+import { useStore } from "@tanstack/react-store";
 import {
   Archive,
   Check,
@@ -9,13 +10,19 @@ import {
   LoaderCircle,
   MoreHorizontal,
   PanelRight,
+  SquareTerminal,
   Trash2,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
+import TerminalPane from "@/features/terminal/TerminalPane";
+import { runningShellsOf } from "@/features/terminal/shell-registry";
+import { closeShellsOf, terminalStore } from "@/features/terminal/terminal-store";
+import type { ViewTab } from "@/routes/-work-search";
 import SpecViewer from "./SpecViewer";
 import WorkMetaMenu from "./WorkMetaMenu";
 import {
@@ -36,6 +43,9 @@ interface WorksPageProps {
   currentFile: string | null;
   onSelectFile: (path: string, push: boolean) => void;
   onOpenProject: (slug: string) => void;
+  // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
+  tab: ViewTab;
+  onSelectTab: (tab: ViewTab) => void;
 }
 
 function WorksPage({
@@ -44,6 +54,8 @@ function WorksPage({
   currentFile,
   onSelectFile,
   onOpenProject,
+  tab,
+  onSelectTab,
 }: WorksPageProps) {
   const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
@@ -72,7 +84,11 @@ function WorksPage({
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
   // 입력 중에는 무시.
+  // 터미널 탭에서는 **아무 일도 안 한다**(결정 11). 그 탭에서는 작업 패널이 통째로 빠지는데
+  // (WorkPanel이 SpecViewer의 자식이다) 이 단축키만 살아 있으면 눌러도 아무 일이 없다.
+  // `workPanelOpen` 값 자체는 건드리지 않는다 — spec으로 돌아오면 접어 뒀던 그대로여야 한다.
   useEffect(() => {
+    if (tab === "terminal") return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
       const target = e.target as HTMLElement;
@@ -87,11 +103,24 @@ function WorksPage({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [tab]);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx).
   // "기본 선택은 초안을 건너뛴다"는 규칙도 그쪽 pickSlug가 들고 있다.
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
+
+  // **마지막으로 고른 작업을 붙들고 있는다.** 목록이 한 프레임이라도 이 작업을 잃으면
+  // (조회가 흔들리거나 갱신 사이에 낀 렌더) 아래 터미널 가지가 통째로 언마운트되고, 다시
+  // 마운트될 때 진입 이펙트가 「없으면 하나 띄운다」를 또 돈다 — `×`로 비워 둔 줄에 셸이
+  // 저절로 돌아와, 판 02가 못박은 「마지막 칸을 닫으면 새 셸이 저절로 뜨지 않는다」가 깨진다
+  // (실물에서 한 번 봤고 재현은 못 했다. 경로는 코드에서 읽힌다).
+  //
+  // 진짜로 사라진 경우에 붙들려 있지 않다: 그때는 주소 정규화가 다른 작업으로 옮기고
+  // `tab`은 따라오지 않으므로 이 가지가 곧 닫힌다. spec 가지는 붙들지 않는다 — 거기서는
+  // 다시 마운트돼도 문서를 다시 읽을 뿐 프로세스가 생기지 않는다.
+  const lastSelected = useRef(selected);
+  if (selected) lastSelected.current = selected;
+  const terminalWork = tab === "terminal" ? (selected ?? lastSelected.current) : null;
 
   // 머리행은 **본문 열 안에서만** 산다. 작업 패널이 이 열의 형제이자 머리행과 같은 층이라
   // (창 맨 위에서 시작해 아래까지 내려온다) 머리행이 그 위를 지나갈 수 없다. 그래서 화면이
@@ -133,8 +162,10 @@ function WorksPage({
             selected && (
               <>
                 <StatusMenu work={selected} />
-                <ViewTabs />
-                {!workPanelOpen && (
+                <ViewTabs tab={tab} onSelect={onSelectTab} />
+                {/* 터미널 탭에는 그 패널이 없다 — 여는 아이콘이 남아 있으면 눌러도 아무
+                    일이 없는 버튼이 된다(결정 11). */}
+                {tab === "spec" && !workPanelOpen && (
                   <button
                     type="button"
                     onClick={() => setWorkPanelOpen(true)}
@@ -156,18 +187,26 @@ function WorksPage({
     // relative는 생애주기 오버레이가 이 영역 전체를 덮기 위한 것이다 — 패널까지 포함한다.
     // 보관·제거가 도는 동안 패널만 살아 있으면 그 위에서 조작이 계속된다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {selected ? (
-          <SpecViewer
-            key={selected.slug}
-            work={selected}
-            header={header}
-            panelOpen={workPanelOpen}
-            onClosePanel={() => setWorkPanelOpen(false)}
-            onOpenProject={onOpenProject}
-            sidebarOpen={sidebarOpen}
-            file={currentFile}
-            onSelectFile={onSelectFile}
-          />
+      {terminalWork ? (
+        // 터미널 탭에는 작업 패널이 없다 — 이 열이 머리행을 직접 이고 있는다.
+        // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
+        // 자리만 새로 잡힌다(결정 20·21).
+        <main className="relative flex min-w-0 flex-1 flex-col">
+          {header}
+          <TerminalPane key={terminalWork.slug} work={terminalWork} />
+        </main>
+      ) : selected ? (
+        <SpecViewer
+          key={selected.slug}
+          work={selected}
+          header={header}
+          panelOpen={workPanelOpen}
+          onClosePanel={() => setWorkPanelOpen(false)}
+          onOpenProject={onOpenProject}
+          sidebarOpen={sidebarOpen}
+          file={currentFile}
+          onSelectFile={onSelectFile}
+        />
       ) : (
         // 고른 작업이 없으면 패널도 없다 — 이 열이 머리행을 직접 이고 있는다.
         <main className="relative flex min-w-0 flex-1 flex-col">
@@ -286,32 +325,55 @@ function TitleEditor({ work }: { work: WorkView }) {
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
 /**
- * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음. 지금은 `spec` 하나다.
- *
- * 형제가 생길 자리다 — `파일`(워크트리 탐색)과 `터미널`이 여기 붙는다. 하나뿐일 때
- * 미리 세워 두는 이유는 그때 헤더 배치가 바뀌지 않게 하려는 것이다: 나중에 끼워 넣으면
- * 상태 배지와 패널 토글 사이의 간격·순서를 그 판에서 다시 정하게 된다.
- *
- * **누를 것이 하나뿐인 동안 이 탭은 늘 켜져 있다.** 켜진 탭을 다시 눌러도 아무 일이
- * 없는 것은 탭 묶음의 평범한 동작이지 죽은 버튼이 아니다 (결정 21이 말하는 것은
- * "켜질 수도 없는데 살아 있는" 버튼이다). 형제가 붙는 순간 이 자리가 실제로 갈린다.
+ * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음 — `spec`과 `터미널` 둘이다(결정 9).
+ * `파일`(워크트리 탐색)은 재료도 문제도 다른 기능이라 별도 작업이다.
  *
  * 켜짐은 저장소 공통 toggle-on이다. 목업은 이 자리에 --accent를 쓰는데, 이 저장소는
  * 상태 배경을 무채색 4단으로만 말한다(state-scale.test.ts가 막는다) — 그쪽을 따르지 않는다.
+ * 꺼진 칸의 hover가 `quiet-hover`(2)인 것은 이 줄이 **토글 묶음**이어서다: 셸 탭 줄이
+ * `hover:bg-state-1`을 쓰는 것과 갈리는 자리이고, 근거는 index.css의 부등식이다.
  */
-function ViewTabs() {
+function ViewTabs({ tab, onSelect }: { tab: ViewTab; onSelect: (tab: ViewTab) => void }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
-      <button
-        type="button"
-        aria-label="spec 보기"
-        aria-pressed
-        className="toggle-on inline-flex h-7 shrink-0 items-center gap-[7px] rounded-[9px] px-[11px] text-[13px] font-medium transition-colors"
-      >
-        <File className="size-3.5 shrink-0" strokeWidth={1.8} />
-        spec
-      </button>
+      <ViewTabButton icon={File} label="spec" on={tab === "spec"} onClick={() => onSelect("spec")} />
+      <ViewTabButton
+        icon={SquareTerminal}
+        label="터미널"
+        on={tab === "terminal"}
+        onClick={() => onSelect("terminal")}
+      />
     </span>
+  );
+}
+
+function ViewTabButton({
+  icon: Icon,
+  label,
+  on,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  on: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${label} 보기`}
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center gap-[7px] rounded-[9px] px-[11px] text-[13px] font-medium transition-colors",
+        // hover는 **꺼진 가지 안에만** 둔다 — toggle-on이 자기 hover를 품으므로 함께 얹으면
+        // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+        on ? "toggle-on" : "text-tertiary quiet-hover",
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
+      {label}
+    </button>
   );
 }
 
@@ -403,6 +465,13 @@ function WorkMenu({
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const busy = archive.isPending || remove.isPending;
+  // 이 Work의 **살아 있는** 셸. 확인 대화가 그 수를 말한다(결정 26). 고르는 규칙은
+  // `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
+  //
+  // 끝난 칸과 못 뜬 칸은 세지 않는다 — 그 칸들은 남아 있지만 죽일 프로세스가 없어서,
+  // 함께 세면 "셸 2개가 닫혀요"라고 해놓고 실제로는 하나만 끝난다. **거두는 것은 그래도
+  // 전부다**(아래): Work가 사라지는데 그 Work를 가리키는 칸만 남으면 닫을 길이 없다.
+  const liveShells = useStore(terminalStore, (state) => runningShellsOf(state, work.slug));
 
   useEffect(() => {
     if (!open) return;
@@ -426,13 +495,22 @@ function WorkMenu({
   ) => {
     setOpen(false);
     if (busy) return;
-    const ok = await confirm(detail, { title: `'${work.title}' ${verb}`, kind: "warning" });
+    // 셸은 이 Work의 워크트리에서 도는 프로세스라 폴더가 정리되면 함께 끝난다. 누르기 전에
+    // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
+    // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
+    const notice = liveShells > 0 ? `${detail}\n셸 ${liveShells}개가 닫혀요.` : detail;
+    const ok = await confirm(notice, { title: `'${work.title}' ${verb}`, kind: "warning" });
     if (!ok) return;
     try {
       await call();
     } catch (e) {
       await message(`${verb}하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      return;
     }
+    // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
+    // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
+    // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
+    closeShellsOf(work.slug);
   };
 
   // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면

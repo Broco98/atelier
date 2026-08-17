@@ -1,3 +1,4 @@
+import type { WorkView } from "@/features/works/types";
 import type { PtyExit } from "./types";
 
 // 셸 목록과 그 목록에 관한 규칙만 아는 순수 모듈. import는 타입뿐이라 DOM 없는 기본 환경에서
@@ -23,7 +24,8 @@ export type ShellStatus =
  * 합쳐 놓으면 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
  * `shellLabel`이 혼자 안다.
  *
- * cwd·소속(owner)은 아직 없다 — 판 03이 더한다.
+ * cwd는 여기 없다 — 셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안 묻는다. 목록이 들면
+ * 쓰는 곳 없는 값이 상태에 눌러앉는다.
  */
 export interface Shell {
   id: number;
@@ -32,16 +34,77 @@ export interface Shell {
   title: string | null;
   /** `$SHELL`의 basename. 백엔드가 spawn 응답에 실어 준다(결정 8) — 프런트는 모른다. */
   shellName: string | null;
+  /** 어느 Work의 셸인가(결정 26). 최상위 터미널은 `null`이다 — Work가 아니다. */
+  owner: string | null;
+  /** 이름의 가운데 갈래(결정 31). 프로젝트가 여럿인 Work에서만 찬다. */
+  project: string | null;
 }
 
 export interface ShellsState {
   shells: ReadonlyArray<Shell>;
-  activeId: number | null;
+  /**
+   * **켜진 칸은 화면마다 따로다.** 키는 소유자이고 최상위 터미널은 빈 문자열이다
+   * (Work slug는 비어 있을 수 없다).
+   *
+   * 하나로 두면 Work 가에서 나로 갔다 오는 것만으로 가의 줄에 켜진 칸이 없어지고,
+   * 그 자리에서 「없으면 하나 띄운다」가 돌면 이미 있는 셸 옆에 셸이 또 뜬다. `×`의
+   * 이웃 규칙도 남의 Work 셸을 켜게 된다.
+   */
+  activeByOwner: Readonly<Record<string, number>>;
   // 다음에 발급할 번호. 아래 openShell의 주석이 이유다.
   nextId: number;
 }
 
-export const NO_SHELLS: ShellsState = { shells: [], activeId: null, nextId: 1 };
+export const NO_SHELLS: ShellsState = { shells: [], activeByOwner: {}, nextId: 1 };
+
+/** 소유자를 레코드 키로. Work slug가 비어 있을 수 없어서 최상위와 안 겹친다. */
+const ownerKey = (owner: string | null) => owner ?? "";
+
+/**
+ * 새 셸 하나를 여는 데 필요한 것 전부. **`cwd`가 `null`이면 데이터 루트**이고, 그 자리가
+ * 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25).
+ */
+export interface ShellOrigin {
+  /** `~` 축약 표기의 cwd 후보. 펴는 것은 백엔드 한 곳이다 — 여기서 홈을 붙이지 않는다. */
+  cwd: string | null;
+  owner: string | null;
+  project: string | null;
+}
+
+/** 최상위 터미널(`/terminal`)이 셸을 여는 자리. Work가 아니라 소유자가 없다. */
+export const TOP_TERMINAL: ShellOrigin = { cwd: null, owner: null, project: null };
+
+/**
+ * 이 Work에서 셸 하나를 여는 자리(결정 24). **`null`이면 열지 않는다.**
+ *
+ * | Work의 모양 | cwd |
+ * |---|---|
+ * | 프로젝트 1개 | 그 워크트리 |
+ * | 프로젝트 여럿 | 고른 프로젝트의 워크트리 — **안 고르면 `null`** |
+ * | 프로젝트 0개 | Work 폴더 |
+ *
+ * `worktrees[].exists`는 보지 않는다. 폴더가 없으면 spawn이 실패하고 결정 23의 「그 칸에
+ * 이유를 적는다」를 그대로 탄다 — 여기서 한 번 더 판정하면 같은 사실을 두 곳이 말한다.
+ */
+export function workShellOrigin(work: WorkView, project: string | null): ShellOrigin | null {
+  const trees = work.worktrees;
+  if (trees.length === 0) return { cwd: workDir(work), owner: work.slug, project: null };
+  // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
+  if (trees.length === 1) return { cwd: trees[0].path, owner: work.slug, project: null };
+
+  const picked = project === null ? undefined : trees.find((tree) => tree.project === project);
+  return picked ? { cwd: picked.path, owner: work.slug, project: picked.project } : null;
+}
+
+/**
+ * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는
+ * `~/.atelier/works/…`를 손으로 적는데 그쪽은 클립보드로 나가는 참조 형식이라 그래도 된다.
+ * 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
+ * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
+ */
+function workDir(work: WorkView): string {
+  return work.specDir.replace(/\/+[^/]+\/*$/, "");
+}
 
 /**
  * 앱 전체에서 동시에 살 수 있는 셸 수(결정 30).
@@ -67,19 +130,55 @@ export function atCap(state: ShellsState): boolean {
  *
  * **상한에 닿으면 `null`이다.** 부르는 쪽이 거부를 못 본 척할 수 없는 모양이라야 한다 —
  * 조용히 상태를 그대로 돌려주면 `+`가 눌리는데 아무 일도 안 나는 화면이 된다.
+ *
+ * 소유자를 **반드시 받는다.** 기본값을 두면 Work 화면에서 빠뜨린 셸이 최상위 것이 되어,
+ * 그 Work를 아카이빙할 때 안 거둬지고 탭 줄에도 안 뜬다.
  */
-export function openShell(state: ShellsState): { state: ShellsState; id: number } | null {
+export function openShell(
+  state: ShellsState,
+  seed: Pick<ShellOrigin, "owner" | "project">,
+): { state: ShellsState; id: number } | null {
   if (atCap(state)) return null;
 
   const id = state.nextId;
+  const shell: Shell = {
+    id,
+    status: { kind: "running" },
+    title: null,
+    shellName: null,
+    owner: seed.owner,
+    project: seed.project,
+  };
   return {
     state: {
-      shells: [...state.shells, { id, status: { kind: "running" }, title: null, shellName: null }],
-      activeId: id,
+      shells: [...state.shells, shell],
+      activeByOwner: { ...state.activeByOwner, [ownerKey(seed.owner)]: id },
       nextId: id + 1,
     },
     id,
   };
+}
+
+/**
+ * 이 화면이 보여줄 칸들. **상한은 이것으로 세지 않는다** — 그것은 앱 전체 기준이라
+ * `atCap`이 목록 전체를 본다(결정 30).
+ */
+export function shellsOf(state: ShellsState, owner: string | null): ReadonlyArray<Shell> {
+  return state.shells.filter((shell) => shell.owner === owner);
+}
+
+/**
+ * 이 화면에서 **도는** 셸의 수. 끝난 칸과 못 뜬 칸은 목록에 남아 있지만 죽일 프로세스가
+ * 없어서 세지 않는다 — 아카이브 확인 대화가 「셸 N개가 닫혀요」라고 말할 때의 N이 이것이다
+ * (결정 26). 함께 세면 2개라고 해놓고 하나만 끝난다.
+ */
+export function runningShellsOf(state: ShellsState, owner: string | null): number {
+  return shellsOf(state, owner).filter((shell) => shell.status.kind === "running").length;
+}
+
+/** 이 화면에서 켜진 칸. */
+export function activeIdOf(state: ShellsState, owner: string | null): number | null {
+  return state.activeByOwner[ownerKey(owner)] ?? null;
 }
 
 /** 종료 프레임이 왔다. 칸은 그대로 두고 상태만 바꾼다 — 활성이었으면 활성인 채로 남는다. */
@@ -140,14 +239,17 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
  * 없는 칸을 활성으로 만들면 켜진 칸도 본문도 없는 화면이 이유 없이 남는다.
  */
 export function activateShell(state: ShellsState, id: number): ShellsState {
-  if (state.activeId === id) return state;
-  if (!state.shells.some((shell) => shell.id === id)) return state;
-  return { ...state, activeId: id };
+  const shell = state.shells.find((one) => one.id === id);
+  if (!shell) return state;
+
+  const key = ownerKey(shell.owner);
+  if (state.activeByOwner[key] === id) return state;
+  return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
 
-/** 칸에 적는 이름. 타이틀 → 셸 이름 순이고, 둘 다 없어도 **비지 않는다**(결정 31·23). */
+/** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
 export function shellLabel(shell: Shell): string {
-  return shell.title ?? shell.shellName ?? UNNAMED;
+  return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
 }
 
 /**
@@ -171,17 +273,28 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
 /**
  * **목록에서 빼는 유일한 조작이다.** 종료도 실패도 빼지 않는다.
  *
- * 활성 칸을 빼면 다음 활성은 **오른쪽 이웃 → 없으면 왼쪽 이웃 → 목록이 비면 없음**이다.
+ * 활성 칸을 빼면 다음 활성은 **오른쪽 이웃 → 없으면 왼쪽 이웃 → 그 화면이 비면 없음**이다.
  * 판 02의 `×`가 이 규칙에 붙는다.
+ *
+ * **이웃은 같은 소유자 안에서 고른다.** 전체 목록에서 고르면 남의 Work 셸이 켜져, 그 줄에
+ * 켜진 칸이 없어진다.
  */
 export function removeShell(state: ShellsState, id: number): ShellsState {
-  const index = state.shells.findIndex((shell) => shell.id === id);
-  if (index === -1) return state;
+  const gone = state.shells.find((shell) => shell.id === id);
+  if (!gone) return state;
 
   const shells = state.shells.filter((shell) => shell.id !== id);
-  if (state.activeId !== id) return { ...state, shells };
+  const key = ownerKey(gone.owner);
+  if (state.activeByOwner[key] !== id) return { ...state, shells };
 
-  // 빠진 자리의 index가 곧 오른쪽 이웃이다. 없으면 그 앞이 왼쪽 이웃이고, 둘 다 없으면 빈 목록이다.
-  const next = shells[index] ?? shells[index - 1] ?? null;
-  return { ...state, shells, activeId: next?.id ?? null };
+  const siblings = state.shells.filter((shell) => shell.owner === gone.owner);
+  // 빠진 자리의 index가 곧 오른쪽 이웃이다. 없으면 그 앞이 왼쪽 이웃이고, 둘 다 없으면 빈 화면이다.
+  const at = siblings.findIndex((shell) => shell.id === id);
+  const rest = siblings.filter((shell) => shell.id !== id);
+  const next = rest[at] ?? rest[at - 1] ?? null;
+
+  const activeByOwner = { ...state.activeByOwner };
+  if (next) activeByOwner[key] = next.id;
+  else delete activeByOwner[key];
+  return { ...state, shells, activeByOwner };
 }

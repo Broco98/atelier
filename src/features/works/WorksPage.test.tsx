@@ -1,9 +1,14 @@
+/// <reference types="node" />
+// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage from "./WorksPage";
 import { worksQuery } from "./hooks";
 import type { WorkView } from "./types";
+import type { ViewTab } from "@/routes/-work-search";
 
 // 헤더의 여는 아이콘은 **패널이 닫혔을 때만** 뜬다 — 여는 길과 닫는 길이 각각 하나다.
 // 그 판단이 뒤집히면 닫는 길이 둘이 되는데, 화면을 열어 보기 전에는 드러나지 않는다.
@@ -23,7 +28,7 @@ const work: WorkView = {
   specFiles: [],
 };
 
-function render(overrides: Partial<WorkView> = {}): string {
+function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery.queryKey, [{ ...work, ...overrides }]);
   return renderToStaticMarkup(
@@ -34,6 +39,8 @@ function render(overrides: Partial<WorkView> = {}): string {
         currentFile={null}
         onSelectFile={() => {}}
         onOpenProject={() => {}}
+        tab={tab}
+        onSelectTab={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -190,7 +197,7 @@ describe("WorksPage 머리행 배치", () => {
   });
 });
 
-// 뷰 탭 — 지금은 spec 하나뿐이고 앞으로 `파일`·`터미널`이 이 묶음에 붙는다.
+// 뷰 탭 — `spec`과 `터미널` 둘이다(결정 9). `파일`은 별도 작업으로 빠졌다.
 describe("WorksPage 뷰 탭", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -217,12 +224,87 @@ describe("WorksPage 뷰 탭", () => {
     expect(spec).toBeGreaterThan(badge);
   });
 
-  it("켜진 상태로 그려진다 — 지금은 이 뷰 하나뿐이다", () => {
-    // 형제가 생기기 전까지 이 탭은 늘 켜져 있다. 꺼진 모습이 나오면 볼 수 없는 뷰가
-    // 켜져 있다는 뜻이라 거짓이 된다.
+  it("두 칸이 있고 보고 있는 쪽만 켜져 있다", () => {
+    for (const [tab, label] of [
+      ["spec", "spec"],
+      ["terminal", "터미널"],
+    ] as const) {
+      const a = actions(render({}, tab));
+      const on = [...a.matchAll(/aria-label="([^"]*) 보기"[^>]*aria-pressed="true"/g)];
+      expect(on.map((found) => found[1]), tab).toEqual([label]);
+      expect([...a.matchAll(/aria-label="[^"]* 보기"/g)], tab).toHaveLength(2);
+    }
+  });
+
+  // toggle-on은 자기 hover를 품는다. 꺼진 가지의 hover가 같은 요소에 함께 오면
+  // 어느 쪽이 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+  it("한 칸에 hover 규칙이 두 벌 얹히지 않는다", () => {
     const a = actions(render());
-    expect(a).toContain('aria-pressed="true"');
-    expect(a).toContain("toggle-on");
+    const tabs = [...a.matchAll(/<button[^>]*aria-label="[^"]* 보기"[^>]*>/g)].map((f) => f[0]);
+    expect(tabs).toHaveLength(2);
+    expect(tabs.filter((one) => /toggle-on/.test(one) && /(hover:|quiet-hover)/.test(one))).toEqual(
+      [],
+    );
+    // 꺼진 칸은 조용한 hover를 갖는다 — 누를 수 있다는 것이 보여야 한다.
+    expect(tabs.filter((one) => /quiet-hover/.test(one))).toHaveLength(1);
+  });
+});
+
+// 결정 11. 터미널 탭에서는 작업 패널이 통째로 빠지는데(WorkPanel이 SpecViewer의 자식이다)
+// 여는 아이콘이 살아남으면 **눌러도 아무 일이 없는 버튼**이 된다. 화면으로는 "안 열리네"로만
+// 보여서, 버튼이 있어야 할 자리에 없는 것보다 알아채기 어렵다.
+describe("WorksPage 터미널 탭", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // **여는 아이콘과 ⌘Enter는 렌더로 못 본다.** 둘 다 `workPanelOpen`이 false일 때만 뜻이
+  // 있는데 그 값은 이 화면의 useState(초기값 true)라 정적 렌더에서 뒤집을 방법이 없다.
+  // "터미널 탭에 아이콘이 없다"를 마크업으로 확인하면 **가드가 없어도 초록이다**(패널이
+  // 열려 있어 어차피 안 그려진다). 그래서 이 저장소가 파일 간·렌더 밖 불변조건에 쓰는
+  // 방식으로 소스를 읽는다 (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
+  it("여는 아이콘과 ⌘Enter가 터미널 탭을 비켜간다", () => {
+    const source = readFileSync(fileURLToPath(new URL("./WorksPage.tsx", import.meta.url)), "utf8");
+    // 여는 아이콘: spec 탭이고 패널이 닫혀 있을 때만.
+    expect(source).toMatch(/tab === "spec" && !workPanelOpen &&/);
+    // ⌘Enter: 터미널 탭이면 리스너가 붙기 전에 돌아간다. 그리고 `tab`이 바뀌면 다시 걸려야
+    // 하므로 의존성에 들어 있어야 한다 — 빠지면 spec으로 돌아와도 단축키가 죽은 채로 남는다.
+    const effect = source.match(/if \(tab === "terminal"\) return;[\s\S]*?\}, \[([^\]]*)\]\);/);
+    expect(effect, "⌘Enter 효과에서 터미널 가드를 찾지 못했다").not.toBeNull();
+    expect(effect![1]).toContain("tab");
+  });
+
+  // 결정 26. **순서가 계약이다** — dirty 판정은 확인 대화가 아니라 그 뒤 코어에서 나므로,
+  // 먼저 죽이면 거부당했을 때 Work는 남고 돌던 claude만 사라진다. 이것도 렌더로 못 본다
+  // (네이티브 대화가 끼어 있다). 자리를 세 지점의 **순서**로 못박는다 — 문자열 하나를
+  // 통째로 맞추면 줄바꿈만 바뀌어도 깨지고, 순서가 이 계약의 전부다.
+  it("셸은 명령이 성공한 뒤에 거둔다", () => {
+    const source = readFileSync(fileURLToPath(new URL("./WorksPage.tsx", import.meta.url)), "utf8");
+    const call = source.indexOf("await call();");
+    // `await` **뒤에서** 찾는다 — 같은 문구가 위쪽 주석에도 나온다(실측으로 걸렸다).
+    const bail = source.indexOf("return;", source.indexOf("하지 못했습니다", call));
+    const reap = source.indexOf("closeShellsOf(work.slug)");
+
+    expect(call, "await call()을 찾지 못했다").toBeGreaterThan(-1);
+    // 실패하면 **거두지 않고 돌아간다** — 이 return이 빠지면 거부당한 Work의 셸이 죽는다.
+    expect(bail, "catch에서 돌아가는 자리를 찾지 못했다").toBeGreaterThan(call);
+    expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
+  });
+
+  it("본문이 셸 탭 줄로 바뀐다", () => {
+    const markup = render({}, "terminal");
+    expect(markup).toContain('aria-label="셸 열기"');
+    // 작업 패널이 통째로 빠진다(결정 11) — 그 머리행의 닫는 ×가 없는 것으로 확인한다.
+    expect(markup).not.toContain('aria-label="작업 패널 접기"');
+  });
+
+  it("spec 탭에는 셸 탭 줄이 없고 작업 패널이 있다", () => {
+    const markup = render({}, "spec");
+    expect(markup).not.toContain('aria-label="셸 열기"');
+    expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 });
 

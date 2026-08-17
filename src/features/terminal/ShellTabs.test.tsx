@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import ShellTabs from "./ShellTabs";
-import { markExited, markFailed, MAX_SHELLS, NO_SHELLS, openShell } from "./shell-registry";
+import { markExited, markFailed, MAX_SHELLS, NO_SHELLS, openShell, TOP_TERMINAL } from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
 
 // 탭 줄은 **이 저장소에 선례가 없는 모양**이라(role="tab" 0건) 지킬 것을 스스로 들고 있어야
@@ -17,19 +17,33 @@ import type { ShellsState } from "./shell-registry";
 //    (disabled + pointer-events-none + title)는 hover 자체를 막아 그 title이 뜨지 않는다.
 //    티켓이 그 관용구를 복사하지 말라고 못박은 자리다.
 
-function opened(count: number): ShellsState {
-  let state = NO_SHELLS;
+function opened(
+  count: number,
+  seed: { owner: string | null; project: string | null } = TOP_TERMINAL,
+  from: ShellsState = NO_SHELLS,
+): ShellsState {
+  let state = from;
   for (let n = 0; n < count; n += 1) {
-    const next = openShell(state);
+    const next = openShell(state, seed);
     if (!next) throw new Error(`셸 ${count}개를 띄우려 했는데 ${n}개에서 거부됐다`);
     state = next.state;
   }
   return state;
 }
 
-function render(state: ShellsState): string {
+function render(
+  state: ShellsState,
+  { owner = null, projects = [] }: { owner?: string | null; projects?: string[] } = {},
+): string {
   return renderToStaticMarkup(
-    <ShellTabs state={state} onSelect={() => {}} onClose={() => {}} onOpen={() => {}} />,
+    <ShellTabs
+      state={state}
+      owner={owner}
+      projects={projects}
+      onSelect={() => {}}
+      onClose={() => {}}
+      onOpen={() => {}}
+    />,
   );
 }
 
@@ -111,5 +125,62 @@ describe("상한에 닿은 `+`", () => {
     const markup = render(NO_SHELLS);
     expect(plusOf(markup)).toBeTruthy();
     expect(markup).not.toMatch(/닫기/);
+  });
+});
+
+// 판 03. 줄 하나가 화면 하나를 그리는데, 상한만은 앱 전체가 센다(결정 30) — 두 규칙이
+// 한 컴포넌트 안에 함께 있어서 한쪽으로 미끄러지기 쉽다.
+describe("줄은 자기 화면 것만 그린다", () => {
+  it("다른 Work의 셸은 이 줄에 없다", () => {
+    let state = opened(2, { owner: "가", project: null });
+    state = opened(3, { owner: "나", project: null }, state);
+    expect(render(state, { owner: "가" }).match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
+    expect(render(state, { owner: "나" }).match(/aria-label="[^"]*닫기"/g)).toHaveLength(3);
+  });
+
+  it("이 줄에서 켜진 칸은 이 화면의 것이다", () => {
+    let state = opened(2, { owner: "가", project: null });
+    state = opened(1, { owner: "나", project: null }, state);
+    // 마지막으로 띄운 것은 나의 셸이다. 그래도 가의 줄에는 가의 켜진 칸이 있어야 한다.
+    const classes = classesOf(render(state, { owner: "가" }));
+    expect(classes.filter((one) => one.includes("toggle-on"))).toHaveLength(1);
+  });
+
+  // 화면이 세면 Work마다 8개가 된다. `+`가 잠기는 판정은 **이 줄의 길이와 무관하다.**
+  it("이 줄이 비어 있어도 앱 전체가 상한이면 `+`가 잠긴다", () => {
+    const state = opened(MAX_SHELLS, { owner: "남", project: null });
+    const markup = render(state, { owner: "나" });
+    expect(markup).not.toMatch(/닫기/);
+    expect(plusOf(markup)).toMatch(/aria-disabled="true"/);
+  });
+
+  it("잠긴 이유가 이 줄이 아니라 앱 전체 수를 말한다", () => {
+    const state = opened(MAX_SHELLS, { owner: "남", project: null });
+    const title = plusOf(render(state, { owner: "나" })).match(/title="([^"]*)"/)![1];
+    expect(title).toMatch(new RegExp(`지금 ${MAX_SHELLS}개`));
+  });
+});
+
+// 결정 24. 프로젝트가 여럿이면 아무 데나 고를 수 없다 — 틀린 워크트리에서 claude가 돈다.
+describe("프로젝트가 여럿인 Work의 `+`", () => {
+  it("프로젝트가 여럿이면 `+`가 곧바로 열지 않고 물어본다", () => {
+    const plus = plusOf(render(NO_SHELLS, { owner: "가", projects: ["atelier", "cli"] }));
+    expect(plus).toMatch(/aria-haspopup="menu"/);
+    expect(plus).toMatch(/aria-expanded="false"/);
+  });
+
+  it("프로젝트가 하나면 묻지 않는다", () => {
+    const plus = plusOf(render(NO_SHELLS, { owner: "가", projects: ["atelier"] }));
+    expect(plus).not.toMatch(/aria-haspopup/);
+  });
+
+  it("최상위 터미널도 묻지 않는다", () => {
+    expect(plusOf(render(NO_SHELLS))).not.toMatch(/aria-haspopup/);
+  });
+
+  // 이름의 가운데 갈래(결정 31). 어느 칸이 어느 워크트리인지가 줄에서 읽혀야 한다.
+  it("프로젝트로 연 칸은 그 이름을 단다", () => {
+    const state = opened(1, { owner: "가", project: "cli" });
+    expect(render(state, { owner: "가", projects: ["atelier", "cli"] })).toContain(">cli<");
   });
 });

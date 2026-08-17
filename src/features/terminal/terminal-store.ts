@@ -15,8 +15,9 @@ import {
   removeShell,
   setShellName,
   setTitle,
+  shellsOf,
 } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import type { ShellOrigin, ShellsState } from "./shell-registry";
 import { terminalTheme } from "./terminal-theme";
 import type { PtyFrame } from "./types";
 // `@xterm/*` import는 이 파일과 이것을 부르는 화면에만 둔다. `__root.tsx`는
@@ -59,6 +60,9 @@ interface ShellInstance {
   // PTY가 떠 있는 동안의 id. 종료 프레임이 오면 다시 null이다 — 죽은 셸에는 쓰지 않는다.
   // 레지스트리의 `id`와 다른 번호다(shell-registry.ts의 openShell 주석).
   ptyId: number | null;
+  // 이 셸을 어디서 띄우는가. `~` 축약 표기 그대로 넘긴다 — 펴는 것은 백엔드다(결정 25).
+  // `null`이면 데이터 루트다(최상위 터미널).
+  cwd: string | null;
   fontsReady: boolean;
   opened: boolean;
   // `×`로 거둔 뒤. 이 뒤에는 이 인스턴스에 아무것도 하지 않는다 — dispose된 Terminal에
@@ -80,18 +84,22 @@ const ignoreGone = (result: Promise<void>) => void result.catch(() => {});
  * 목록에 더하는 것과 인스턴스를 만드는 것이 **한 틱에 함께 끝난다.** StrictMode가 마운트를
  * mount→unmount→mount로 돌려도 `ensureShell`의 "비었나" 판정이 그 사이에서 이미 참이 아니라
  * 셸은 하나만 뜬다.
+ *
+ * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `TOP_TERMINAL`, Work 화면은
+ * `workShellOrigin(work, project)`. 그 함수가 `null`을 주면(프로젝트를 안 골랐다) 여기까지
+ * 오지 않는다.
  */
-export function openNewShell(): void {
+export function openNewShell(origin: ShellOrigin): void {
   // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
   // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
   // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
-  const opened = openShell(terminalStore.state);
+  const opened = openShell(terminalStore.state, origin);
   // `+`는 상한에서 이미 잠겨 있으므로 여기 닿는 것은 경주뿐이다. 조용히 돌아간다 —
   // 잠긴 이유는 그 버튼의 title이 말한다.
   if (!opened) return;
 
   terminalStore.setState(() => opened.state);
-  const instance = createInstance(opened.id);
+  const instance = createInstance(opened.id, origin.cwd);
   instances.set(instance.id, instance);
   void loadFont(instance);
 }
@@ -103,8 +111,10 @@ export function openNewShell(): void {
  * **마지막 칸을 `×`로 닫은 자리에서는 뜨지 않는다.** 그것이 이 함수가 화면 진입 이펙트에만
  * 붙어 있는 이유다 — 닫자마자 새 셸이 뜨면 `×`가 무의미해진다.
  */
-export function ensureShell(): void {
-  if (terminalStore.state.shells.length === 0) openNewShell();
+export function ensureShell(origin: ShellOrigin): void {
+  // **그 화면의 칸만 센다.** 전체를 세면 다른 Work에 셸이 있다는 이유로 이 화면이 빈 채로
+  // 열린다 — 판 03에서 화면이 여럿이 되면서 갈린 자리다.
+  if (shellsOf(terminalStore.state, origin.owner).length === 0) openNewShell(origin);
 }
 
 /** 칸을 고른다. */
@@ -136,6 +146,16 @@ export function closeShell(id: number): void {
 }
 
 /**
+ * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
+ *
+ * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
+ * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
+ */
+export function closeShellsOf(owner: string): void {
+  for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);
+}
+
+/**
  * 활성 칸의 집을 `host`에 들인다. 이미 열려 있으면 다시 붙는 길이고, 그때 **`fit` → PTY
  * `resize`를 한 번 태운다** — 떼어 둔 사이에 ⌘B로 본문 폭이 바뀌었을 수 있다.
  */
@@ -156,7 +176,7 @@ export function detachShell(id: number): void {
   instances.get(id)?.wrapper.remove();
 }
 
-function createInstance(id: number): ShellInstance {
+function createInstance(id: number, cwd: string | null): ShellInstance {
   const term = new Terminal({
     fontFamily: FONT_FAMILY,
     fontSize: FONT_SIZE,
@@ -182,6 +202,7 @@ function createInstance(id: number): ShellInstance {
     observer: new ResizeObserver(() => refit(instance)),
     webgl: null,
     ptyId: null,
+    cwd,
     fontsReady: false,
     opened: false,
     closed: false,
@@ -319,10 +340,11 @@ async function spawn(instance: ShellInstance) {
       terminalStore.setState((state) => markExited(state, instance.id, frame));
     };
 
-    // cwd를 비운다 — `~/.atelier`가 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25)
+    // `~` 축약 표기를 그대로 넘긴다 — 펴는 것은 `expand_home`을 가진 백엔드 한 곳이다
+    // (결정 25). `null`이면 데이터 루트이고 그 자리가 어디인지도 백엔드만 안다.
     const cols = instance.term.cols;
     const rows = instance.term.rows;
-    const spawned = await terminalApi.spawn(null, cols, rows, channel);
+    const spawned = await terminalApi.spawn(instance.cwd, cols, rows, channel);
     // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —
