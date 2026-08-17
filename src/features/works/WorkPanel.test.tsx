@@ -171,6 +171,18 @@ describe("WorkPanel 두 탭", () => {
     expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>정보</);
   });
 
+  it("탭 규격이 헤더 뷰 탭과 같은 가족이다", () => {
+    // 이 탭과 헤더의 `spec` 뷰 탭은 **같은 44px 층에 24px 간격으로** 서고, 글자도 켜짐도
+    // 같다. 정본이 둘의 반지름·글자 크기·굵기를 맞추고 높이만 2px 낮춘 이유가 그것이다.
+    // 처음에는 없어진 헤더 [소스] 토글의 규격(h-6 · radius 8 · 12.5px)을 물려받고 있었는데,
+    // 그것은 **토글의 규격이지 탭의 규격이 아니다.**
+    const tab = render(true).match(/<button[^>]*class="([^"]*)"[^>]*>spec</)?.[1] ?? "";
+    expect(tab).not.toBe("");
+    expect(tab).toContain("rounded-[9px]");
+    expect(tab).toContain("text-[13px]");
+    expect(tab).toContain("font-medium");
+  });
+
   it("보이지 않는 탭도 함께 마운트돼 있다", () => {
     const markup = render(true);
     // 정보 탭은 지금 안 보이지만 마크업에 있다. 언마운트하면 메타를 보고 spec으로
@@ -236,6 +248,23 @@ describe("WorkPanel 두 탭", () => {
     expect(first).toMatch(/>develop</);
     expect(first).not.toMatch(/>main</);
     expect(markup).toMatch(/>main</);
+  });
+
+  it("base가 빈 문자열이면 그 줄을 아예 그리지 않는다", () => {
+    // 코어가 빈 base_branch를 막지 않는다 — 이름은 EmptyName으로 거부하는데 base는 검증이
+    // 없고, MCP의 atelier_edit_project가 값을 그대로 통과시킨다. 받는 자리를 `??`로 쓰면
+    // ""가 null이 되지 않아 정보 탭은 `base !== null`이 참이라 **뒤에 아무것도 없는 →
+    // 글리프만** 그린다. 같은 값을 ⓘ 팝오버는 truthy로 봐서 꼬리를 안 그리므로,
+    // 한 값이 두 화면에서 다르게 읽힌다. 값을 정하는 이 한 곳에서 `||`로 접는다.
+    const empty = render(true, oneProject, [project("atelier", "")]);
+    expect(empty).toContain("trees/atelier/");
+    // 등록은 돼 있다 — "알 수 없다"는 다른 사실이라 여기서 나오면 안 된다
+    expect(empty).not.toContain("알 수 없다");
+    expect(empty).not.toContain("font-mono text-[12px] text-tertiary");
+    // 같은 자리에 진짜 base가 오면 그 줄이 선다 — 위 부재가 "원래 없는 줄"이 아님을 못 박는다
+    expect(render(true, oneProject, [project("atelier", "develop")])).toContain(
+      "font-mono text-[12px] text-tertiary",
+    );
   });
 
   it("목록이 왔는데 그 프로젝트가 없으면 등록이 사라진 것이다", () => {

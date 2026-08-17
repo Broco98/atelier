@@ -180,6 +180,21 @@ describe("WorksPage 머리행 배치", () => {
     expect(menu).toBeGreaterThan(info);
   });
 
+  it("맞붙어 선 ⓘ와 ⋯가 같은 상자를 쓴다", () => {
+    // 둘 사이에 여백이 없다(meta 묶음에 gap이 없다). 그래서 hover 배경이 한 버튼에서 다음
+    // 버튼으로 **끊김 없이** 옮겨가고, 상자가 다르면 그 순간 배경이 커졌다 작아진다.
+    // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
+    // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
+    // actions로 가면서 맞출 상대가 24px 아이콘 버튼으로 바뀌었다.
+    const h = header(render());
+    const box = (label: string) =>
+      h.match(new RegExp(`<button[^>]*aria-label="${label}"[^>]*class="([^"]*)"`))?.[1] ?? "";
+    expect(box("작업 메타")).toMatch(/\bicon-button/);
+    expect(box("작업 메뉴")).toMatch(/\bicon-button/);
+    // 손으로 적은 상자 규격이 다시 들어오면 여기서 갈린다
+    expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
+  });
+
   it("상태 배지는 오른쪽 actions에 있고, ⓘ·⋯는 거기 없다", () => {
     // 배지가 브레드크럼에 남아 있으면 제목과 ⓘ 사이를 가른다 — 셋이 한 덩어리로 읽히지 않는다.
     const a = actions(render());

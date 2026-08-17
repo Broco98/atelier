@@ -65,49 +65,55 @@ export function WorkMetaRows({
           공유해서, 288px 안에서 꼬리를 자르면 두 줄의 보이는 글자가 완전히 같아진다 —
           그 줄을 구분해 주는 유일한 부분만 잘려 나간다. 기준 행이 바로 위에 있으니
           여기를 그것에 상대로 적을 수 있다 (정보 탭과 같은 계약). */}
-      {work.worktrees.map((worktree) => {
-        const path = worktreeDirRef(worktree.path);
-        return (
-          <MetaRow
-            key={worktree.project}
-            glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
-            value={relativeToWorkDir(path, workDirRef(work.slug))}
-            copy={path}
-            onCopy={onCopy}
-          />
-        );
-      })}
+      {work.worktrees.map((worktree) => (
+        <MetaRow
+          key={worktree.project}
+          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+          value={worktreeDirRef(worktree.path)}
+          relativeTo={workDirRef(work.slug)}
+          onCopy={onCopy}
+        />
+      ))}
     </>
   );
 }
 
 // 줄 하나 — 행 전체가 복사 버튼이고 hover 시 복사 아이콘이 뜬다.
+//
+// **전체 값을 받아 꼬리를 여기서 만든다** (정보 탭의 PathRow와 같은 계약). 접힌 값을
+// 받고 전체 값을 따로 받는 모양이었는데, 그러면 둘이 갈릴 수 있는 자리가 호출부마다
+// 생긴다 — 한 줄을 빠뜨려도 타입은 통과하고, 화면은 멀쩡한데 클립보드로 나가는 것만
+// 조용히 잘린다. 여기서 접으면 **나가는 값은 언제나 받은 값 그대로**라 갈릴 수가 없다.
+//
+// 다만 아래 onCopy(value) 한 줄에는 테스트가 없다 — 정적 마크업에 핸들러가 보이지 않아
+// shown으로 바꿔도 207개가 전부 초록이다(실제로 변형해 확인했다). 없앤 것은 그물이 아니라
+// **호출부마다 있던 구멍**이고, 남은 구멍은 이 한 줄 하나다.
 function MetaRow({
   glyph,
   value,
-  copy,
+  relativeTo,
   tail,
   onCopy,
 }: {
   glyph: React.ReactNode;
-  // 화면에 보이는 값. 접힌 경로가 올 수 있다.
+  // 클립보드로 나가는 값. 화면에는 relativeTo만큼 접혀 보인다.
   value: string;
-  // 클립보드로 나가는 값. **생략하면 보이는 값 그대로다** — 접은 줄만 넘긴다.
-  // 둘을 갈라 두는 이유는 화면을 믿고 붙여 넣은 경로가 다른 곳을 가리키면 안 되기 때문이다.
-  copy?: string;
+  // 접어서 보일 기준. **기준 행 자신은 받지 않는다** — 자기에 대해 접으면 빈 문자열이 된다.
+  relativeTo?: string;
   // 없으면 복사 글리프가 온다. base처럼 늘 보여야 하는 꼬리가 있는 줄만 넘긴다.
   tail?: React.ReactNode;
   onCopy: (text: string) => void;
 }) {
+  const shown = relativeTo ? relativeToWorkDir(value, relativeTo) : value;
   return (
     <button
       type="button"
       title="복사"
-      onClick={() => onCopy(copy ?? value)}
+      onClick={() => onCopy(value)}
       className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
     >
       {glyph}
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{value}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
       {tail ?? (
         <Copy
           className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
