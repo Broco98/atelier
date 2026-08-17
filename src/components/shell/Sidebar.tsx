@@ -46,16 +46,11 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        {/* traffic light strip — same height as the main header so the logo top
-            lines up with where the header ends (the header no longer draws a
-            bottom border; the 44px strip is what keeps the two columns aligned) */}
+        {/* traffic light strip — same height as the main header (the header no
+            longer draws a bottom border; the 44px strip is what keeps the two
+            columns aligned). It is also the nav's top breathing room, which is
+            why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
-
-        <div className="shrink-0 pb-3 pl-3.5 pt-1">
-          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
-            Atelier
-          </span>
-        </div>
 
         {/* 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 아래 작업 목록은 스크롤바가
             늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
