@@ -1,4 +1,4 @@
-import { Archive, Folder, type LucideIcon } from "lucide-react";
+import { Archive, Folder, SquareTerminal, type LucideIcon } from "lucide-react";
 
 // Works 항목은 없다. 바로 아래에 작업 목록이 통째로 상주하고 그 섹션 헤더('작업')가
 // Works 화면으로 가는 링크를 겸하므로, nav의 Works는 같은 곳으로 가는 두 번째 버튼이었다.
@@ -12,6 +12,7 @@ import { Archive, Folder, type LucideIcon } from "lucide-react";
 // 한 줄에서 나온다. 둘을 따로 적으면 AppShell에 같은 key를 두 번 훑는 분기가 생긴다.
 export const navItems = [
   { key: "projects", label: "Projects", icon: Folder, to: "/projects" },
+  { key: "terminal", label: "Terminal", icon: SquareTerminal, to: "/terminal" },
   { key: "archive", label: "Archive", icon: Archive, to: "/archive" },
 ] as const satisfies readonly {
   key: string;

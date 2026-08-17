@@ -4,6 +4,10 @@ use atelier_core::{
     archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, WorkView,
 };
 
+use std::sync::Arc;
+
+use crate::pty;
+
 type CmdResult<T> = Result<T, String>;
 
 fn err(e: atelier_core::Error) -> String {
@@ -119,4 +123,42 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
     app.opener()
         .open_path(abs.to_string_lossy(), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+// PTY 명령 넷. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// 있는 것 자체가 배선 테스트의 조건이다.
+
+#[tauri::command]
+pub async fn pty_spawn(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    cwd: Option<String>,
+    cols: u16,
+    rows: u16,
+    on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> CmdResult<pty::PtySpawned> {
+    pty::spawn(&pool, cwd, cols, rows, on_frame)
+}
+
+#[tauri::command]
+pub async fn pty_write(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    data: String,
+) -> CmdResult<()> {
+    pty::write(&pool, id, &data)
+}
+
+#[tauri::command]
+pub async fn pty_resize(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> CmdResult<()> {
+    pty::resize(&pool, id, cols, rows)
+}
+
+#[tauri::command]
+pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
+    pty::kill(&pool, id)
 }
