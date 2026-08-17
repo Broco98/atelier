@@ -15,6 +15,15 @@ pub fn works_dir() -> PathBuf {
     data_root().join("works")
 }
 
+pub fn sessions_dir() -> PathBuf {
+    data_root().join("sessions")
+}
+
+/// 어댑터별 실행 커맨드를 담는 사용자 설정. **아틀리에는 이 파일을 만들지 않는다** — 읽기만 한다.
+pub fn adapters_file() -> PathBuf {
+    data_root().join("adapters.json")
+}
+
 /// 끝난 work가 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
 /// 작업 목록을 읽는 코드는 이 루트를 보지 않으므로, 목록에서 빠지는 것이 규약이 아니라
 /// 구조가 된다.
