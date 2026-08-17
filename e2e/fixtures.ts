@@ -24,3 +24,13 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
+ * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
+ */
+export const FIXTURE_COMMANDS: Record<string, unknown> = {
+  list_projects: PROJECTS,
+  list_works: [],
+  list_archive: [],
+};

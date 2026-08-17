@@ -3,8 +3,9 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { BRIDGE_FN, callBridge } from "./bridge";
 import type { Page } from "./evidence";
+import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
-import { PROJECTS } from "./fixtures";
+import { FIXTURE_COMMANDS } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -17,16 +18,6 @@ const MOCKS_SOURCE = readFileSync(
 );
 
 /**
- * L3에서 우리 커맨드에 답하는 고정 데이터. L4에서는 이 자리를 다리가 대신한다.
- * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 등록부와 대조해 잡는다.
- */
-export const FIXTURE_COMMANDS: Record<string, unknown> = {
-  list_projects: PROJECTS,
-  list_works: [],
-  list_archive: [],
-};
-
-/**
  * 와이어 층의 `plugin:*` 커맨드. 대응하는 코어 함수가 없어 L3·L4 모두 하네스가 직접 답한다.
  * 이 문자열은 `src/` 트리에 없다 — 전부 의존성 래퍼 안에 있어 소스에서 긁어낼 수 없고,
  * 그래서 손으로 관리한다. 새 플러그인을 쓰기 시작하면 여기에 더해야 한다.
@@ -35,14 +26,18 @@ const PLUGINS: Record<string, unknown> = {
   "plugin:event|listen": 1,
   "plugin:event|unlisten": null,
   "plugin:window|is_fullscreen": false,
+  // `confirm`도 와이어에서는 이 커맨드로 나간다 — `plugin:dialog|confirm`은 없다.
+  // 그래서 답은 **null이어야 한다**: `message`는 반환값을 안 쓰고 `confirm`은 null을
+  // 취소로 읽는다. true를 돌려주면 확인 대화상자가 전부 "예"가 되어, 삭제 같은 파괴적
+  // 흐름이 테스트 안에서 조용히 실행된다.
+  "plugin:dialog|message": null,
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
 // 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
 //
-// 아직 안 넣은 나머지는 `plugin:dialog|message`(확인·알림 — `confirm`도 와이어에서는
-// 이것으로 나간다), `plugin:opener|open_url`, `plugin:path|resolve_directory`(`homeDir`)다.
-// 지금 이 셋을 태우는 시나리오가 없고, **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트
+// 아직 안 넣은 것은 `plugin:opener|open_url`과 `plugin:path|resolve_directory`(`homeDir`)다.
+// 지금 이 둘을 태우는 시나리오가 없고, **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트
 // 탐지기가 영원히 건드리지 않는 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
 
 /** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
@@ -71,7 +66,7 @@ export async function installFixtureBackend(page: Page): Promise<void> {
  */
 export async function installRealBackend(
   page: Page,
-  { home, pickedFolder }: { home: string; pickedFolder: string },
+  { home, pickedFolder }: Sandbox,
 ): Promise<void> {
   await page.exposeFunction(BRIDGE_FN, (cmd: string, args: Record<string, unknown>) =>
     callBridge(home, cmd, args),
@@ -108,7 +103,16 @@ async function install(
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
 
     mocks.mockIPC((cmd, args) => {
-      record.calls.push(cmd);
+      // 인자까지 적는다 — "어느 폴더를 골랐나", "어떤 문구로 오류 대화상자를 띄웠나"가
+      // 실패를 읽는 데 그대로 쓰인다. 기록하다 터지면 원래 실패보다 시끄러워지므로 감싼다.
+      let detail = "";
+      try {
+        const json = args === undefined || args === null ? "" : JSON.stringify(args);
+        detail = json && json !== "{}" ? ` ${json}` : "";
+      } catch {
+        detail = " (인자를 적지 못했습니다)";
+      }
+      record.calls.push(`${cmd}${detail}`);
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) return responses[cmd];
       // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
       // 하네스가 낡았다는 뜻이다.

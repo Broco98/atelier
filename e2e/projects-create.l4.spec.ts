@@ -10,10 +10,10 @@ import { expect, test } from "./l4";
 // 끊긴 것이고, 파일은 있는데 행이 없으면 읽는 다리가 끊긴 것이다 — 고칠 곳이 다르다.
 test("폴더를 고르면 진짜 파일이 생기고 목록에 그 프로젝트가 나타난다", async ({
   page,
-  home,
-  pickedFolder,
+  sandbox,
 }) => {
-  await installRealBackend(page, { home, pickedFolder });
+  const { home, pickedFolder } = sandbox;
+  await installRealBackend(page, sandbox);
 
   await page.goto("/projects");
   await expect(page.getByText("등록된 프로젝트가 없어요")).toBeVisible();

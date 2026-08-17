@@ -4,10 +4,10 @@
 //! 꺼내 이 바이너리를 부른다. 여기서 진짜 `atelier-core`·파일시스템·git을 탄다.
 //! 데이터 루트는 `ATELIER_HOME`으로 임시 폴더에 묶여 있어 실제 `~/.atelier`는 안 건드린다.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use atelier_core::{archive_dir, projects_dir, works_dir, ProjectPatch};
-use std::ffi::OsString;
 use serde_json::{Map, Value};
 
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
@@ -50,7 +50,7 @@ const HANDLERS: &[(&str, Handler)] = &[
         ok(atelier_core::update_work_title(&works_dir(), &text(a, "slug")?, &text(a, "title")?))
     }),
     ("set_work_status", |a| {
-        let status = text(a, "status")?.parse().map_err(message)?;
+        let status = text(a, "status")?.parse().map_err(err)?;
         ok(atelier_core::update_work_status(&works_dir(), &text(a, "slug")?, status))
     }),
     ("archive_work", |a| {
@@ -79,11 +79,11 @@ const HANDLERS: &[(&str, Handler)] = &[
 /// 코어의 결과를 그대로 JSON으로 옮긴다. **여기서 모양을 손보지 않는다** — 손보는 순간
 /// 이 층이 검증하는 것이 앱이 아니라 다리가 된다.
 fn ok<T: serde::Serialize>(result: atelier_core::Result<T>) -> Handled {
-    let value = result.map_err(message)?;
-    serde_json::to_value(value).map_err(message)
+    let value = result.map_err(err)?;
+    serde_json::to_value(value).map_err(err)
 }
 
-fn message(error: impl std::fmt::Display) -> String {
+fn err(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 
@@ -96,8 +96,8 @@ fn maybe_text(args: &Args, key: &str) -> Option<String> {
 }
 
 fn main() {
-    if let Err(message) = require_isolated_home(std::env::var_os("ATELIER_HOME")) {
-        die(2, &message);
+    if let Err(reason) = require_isolated_home(std::env::var_os("ATELIER_HOME")) {
+        die(2, &reason);
     }
 
     let mut argv = std::env::args().skip(1);
@@ -178,12 +178,36 @@ mod tests {
         let end = start + source[start..].find(']').expect("generate_handler! 블록이 닫히지 않았다");
         let mut names: Vec<String> = source[start..end]
             .split(',')
-            .filter_map(|item| item.trim().strip_prefix("commands::"))
-            .map(|name| name.trim().to_string())
-            .filter(|name| !name.is_empty())
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(|item| {
+                // 모르는 모양을 **건너뛰지 않는다.** 건너뛰면 그 커맨드가 이 검사의 눈에서
+                // 통째로 사라지고, 다리에도 없으면 양쪽에서 같이 빠져 초록이 된다.
+                // `use commands::*;`로 접두사 없이 등록하면 실제로 그렇게 샜다.
+                item.strip_prefix("commands::")
+                    .unwrap_or_else(|| panic!("등록부에서 예상 못 한 항목을 봤다: {item}"))
+                    .to_string()
+            })
             .collect();
         names.sort();
         names
+    }
+
+    /// 다리가 배포되는 크레이트의 의존성이 되면 그 코드가 릴리스 바이너리 안으로 들어간다.
+    /// 릴리스 워크플로가 패키징 대상을 이름으로 고르므로 tar 줄이 늘 일은 없지만, **의존성
+    /// 한 줄은 아무도 안 보는 사이에 늘 수 있다.** 매니페스트는 `include_str!`로 읽으므로
+    /// 파일이 옮겨지면 컴파일이 깨진다.
+    #[test]
+    fn 배포되는_크레이트는_다리에_의존하지_않는다() {
+        for (name, manifest) in [
+            ("atelier-app", include_str!("../../../src-tauri/Cargo.toml")),
+            ("atelier-cli", include_str!("../../atelier-cli/Cargo.toml")),
+        ] {
+            assert!(
+                !manifest.contains("atelier-test-bridge"),
+                "{name}이 다리에 의존한다 — 릴리스 산출물에 다리 코드가 섞인다"
+            );
+        }
     }
 
     /// 커맨드가 하나 늘었는데 다리가 그대로면, 그 커맨드를 쓰는 화면은 L4에서 조용히

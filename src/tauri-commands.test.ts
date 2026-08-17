@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { FIXTURE_COMMANDS } from "../e2e/harness";
+import { FIXTURE_COMMANDS } from "../e2e/fixtures";
 
 // 프런트엔드가 부르는 invoke 이름과 Rust가 등록한 명령 이름은 **문자열로만** 이어져 있다.
 // 어느 쪽을 빠뜨려도 컴파일도 타입 검사도 통과하고, 버튼을 누르는 순간에야 실패한다.
@@ -37,7 +37,19 @@ function registeredNames(): string[] {
   const source = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
   const block = source.match(/generate_handler!\[([\s\S]*?)\]/);
   if (!block) throw new Error("generate_handler! 블록을 찾지 못했다");
-  return [...block[1].matchAll(/commands::([a-z_]+)/g)].map((m) => m[1]).sort();
+  return block[1]
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .map((item) => {
+      // 모르는 모양을 **건너뛰지 않는다.** 건너뛰면 그 커맨드가 이 검사의 눈에서 통째로
+      // 사라져 등록을 빠뜨려도 초록이 된다 — `use commands::*;`로 접두사 없이 등록하면
+      // 실제로 그렇게 샌다. 같은 이유로 다리 크레이트의 대조도 fail-closed다.
+      const name = /^commands::([a-z_]+)$/.exec(item);
+      if (!name) throw new Error(`등록부에서 예상 못 한 항목을 봤다: ${item}`);
+      return name[1];
+    })
+    .sort();
 }
 
 describe("Tauri 명령 배선", () => {
