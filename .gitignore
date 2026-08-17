@@ -9,6 +9,9 @@ lerna-debug.log*
 
 node_modules
 dist
+
+# tsc가 composite 프로젝트를 검사할 때 남기는 증분 캐시
+*.tsbuildinfo
 dist-ssr
 *.local
 target/

@@ -10,6 +10,10 @@ import { spawnSync } from "node:child_process";
 /** 기본 기어에서 도는 층. */
 const FAST = [
   ["L0 타입", "pnpm", ["exec", "tsc", "--noEmit"]],
+  // vite.config.ts는 별도 프로젝트(tsconfig.node.json)에 있고, tsc는 -b 없이는
+  // project reference를 따라가지 않는다. 어느 테스트가 도는지를 정하는 파일이라
+  // 타입 사각지대에 두면 실행되지 않은 테스트가 초록으로 통과한다.
+  ["L0 타입 (설정)", "pnpm", ["exec", "tsc", "--noEmit", "-p", "tsconfig.node.json"]],
   // `--workspace`를 명시한다. 누가 나중에 default-members를 넣으면 맨 `cargo test`는
   // 조용히 좁아지고, 데스크톱 앱 크레이트가 어느 CI에서도 컴파일되지 않는다 (D18).
   ["L1 Rust", "cargo", ["test", "--workspace"]],
