@@ -12,6 +12,10 @@ dist
 
 # tsc가 composite 프로젝트를 검사할 때 남기는 증분 캐시
 *.tsbuildinfo
+
+# Playwright 실행 산출물
+/test-results/
+/playwright-report/
 dist-ssr
 *.local
 target/

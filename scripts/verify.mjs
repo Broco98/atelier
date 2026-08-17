@@ -18,6 +18,7 @@ const FAST = [
   // 조용히 좁아지고, 데스크톱 앱 크레이트가 어느 CI에서도 컴파일되지 않는다 (D18).
   ["L1 Rust", "cargo", ["test", "--workspace"]],
   ["L2 프론트엔드", "pnpm", ["test"]],
+  ["L3 브라우저", "pnpm", ["exec", "playwright", "test"]],
 ];
 
 /** --full에서만 도는 층. L4 관통 테스트가 여기 붙는다. */
