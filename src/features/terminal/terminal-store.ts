@@ -6,7 +6,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalApi } from "./api";
-import { markExited, markFailed, NO_SHELLS, openShell } from "./shell-registry";
+import {
+  activateShell,
+  markExited,
+  markFailed,
+  NO_SHELLS,
+  openShell,
+  removeShell,
+  setShellName,
+  setTitle,
+} from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
 import { terminalTheme } from "./terminal-theme";
 import type { PtyFrame } from "./types";
@@ -52,6 +61,9 @@ interface ShellInstance {
   ptyId: number | null;
   fontsReady: boolean;
   opened: boolean;
+  // `×`로 거둔 뒤. 이 뒤에는 이 인스턴스에 아무것도 하지 않는다 — dispose된 Terminal에
+  // 쓰면 던지는데, PTY를 죽인 **뒤에도 종료 프레임이 한 번 더 온다.**
+  closed: boolean;
 }
 
 const instances = new Map<number, ShellInstance>();
@@ -63,41 +75,85 @@ const instances = new Map<number, ShellInstance>();
 const ignoreGone = (result: Promise<void>) => void result.catch(() => {});
 
 /**
- * 화면이 뜰 때 부른다. 활성 셸이 없으면 하나 띄우고, 그 셸의 집을 `host`에 붙인 뒤
- * **`fit` → PTY `resize` 경로를 한 번 태운다** — 떼어 둔 사이에 ⌘B로 본문 폭이 바뀌었을 수 있다.
+ * 셸을 하나 띄운다 — `+`가 이것이다. **상한에서는 아무 일도 안 한다**(결정 30).
  *
- * 판 01의 터미널은 최상위 하나뿐이라 "활성 셸 하나"가 곧 전부다. 여럿과 `+`는 판 02가
- * 이 자리를 바꾼다 — 레지스트리는 이미 여럿을 안다.
+ * 목록에 더하는 것과 인스턴스를 만드는 것이 **한 틱에 함께 끝난다.** StrictMode가 마운트를
+ * mount→unmount→mount로 돌려도 `ensureShell`의 "비었나" 판정이 그 사이에서 이미 참이 아니라
+ * 셸은 하나만 뜬다.
  */
-export function mountShell(host: HTMLElement): number {
-  const instance = ensureInstance();
-  host.appendChild(instance.wrapper);
-  openOrReattach(instance);
-  return instance.id;
-}
-
-/**
- * 화면이 사라질 때 부른다. **DOM에서 빼기만 한다** — `dispose`도 `kill`도 없다.
- * 그것이 이 티켓 전체다: 다른 nav를 한 번 본 대가로 셸이 죽지 않는다(결정 20).
- */
-export function unmountShell(id: number): void {
-  instances.get(id)?.wrapper.remove();
-}
-
-function ensureInstance(): ShellInstance {
-  const active = terminalStore.state.activeId;
-  const existing = active === null ? undefined : instances.get(active);
-  if (existing) return existing;
-
-  // StrictMode는 개발에서 마운트를 mount→unmount→mount로 돌리는데, 목록에 더하는 것과
-  // 인스턴스를 만드는 것이 **여기서 한 틱에 함께 끝난다.** 그래서 두 번째 마운트는 위에서
-  // 걸러지고 셸은 하나만 뜬다.
+export function openNewShell(): void {
+  // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
+  // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
+  // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
   const opened = openShell(terminalStore.state);
+  // `+`는 상한에서 이미 잠겨 있으므로 여기 닿는 것은 경주뿐이다. 조용히 돌아간다 —
+  // 잠긴 이유는 그 버튼의 title이 말한다.
+  if (!opened) return;
+
   terminalStore.setState(() => opened.state);
   const instance = createInstance(opened.id);
   instances.set(instance.id, instance);
   void loadFont(instance);
-  return instance;
+}
+
+/**
+ * 화면에 들어올 때 한 번. 칸이 하나도 없으면 하나 띄운다 — 판 01이 정한 규칙이고 여기서
+ * 바꾸지 않는다.
+ *
+ * **마지막 칸을 `×`로 닫은 자리에서는 뜨지 않는다.** 그것이 이 함수가 화면 진입 이펙트에만
+ * 붙어 있는 이유다 — 닫자마자 새 셸이 뜨면 `×`가 무의미해진다.
+ */
+export function ensureShell(): void {
+  if (terminalStore.state.shells.length === 0) openNewShell();
+}
+
+/** 칸을 고른다. */
+export function selectShell(id: number): void {
+  terminalStore.setState((state) => activateShell(state, id));
+}
+
+/**
+ * 셸을 거둔다 — `×`가 이것이다. **셸을 죽이는 유일한 길이고, 목록에서 빼는 유일한 길이다**
+ * (결정 22). 화면을 옮기는 것으로는 여기 오지 않는다(결정 20).
+ *
+ * 넷을 **한자리에서** 한다. 흩어 놓으면 PTY만 죽고 인스턴스가 남거나(WebGL 컨텍스트를 계속
+ * 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
+ */
+export function closeShell(id: number): void {
+  const instance = instances.get(id);
+  if (instance) {
+    instances.delete(id);
+    instance.closed = true;
+    if (instance.ptyId !== null) ignoreGone(terminalApi.kill(instance.ptyId));
+    instance.observer.disconnect();
+    // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
+    // 묶여 있어 **WebGL 컨텍스트도 여기서 풀린다.** 상한 8이 컨텍스트 수를 말하는 이상
+    // 이 한 줄이 상한을 되돌려주는 자리다.
+    instance.term.dispose();
+    instance.wrapper.remove();
+  }
+  terminalStore.setState((state) => removeShell(state, id));
+}
+
+/**
+ * 활성 칸의 집을 `host`에 들인다. 이미 열려 있으면 다시 붙는 길이고, 그때 **`fit` → PTY
+ * `resize`를 한 번 태운다** — 떼어 둔 사이에 ⌘B로 본문 폭이 바뀌었을 수 있다.
+ */
+export function attachShell(host: HTMLElement, id: number): void {
+  const instance = instances.get(id);
+  // 그리는 것과 이펙트가 도는 것 사이에 그 칸이 `×`로 빠질 수 있다. 다음 상태가 곧 이
+  // 이펙트를 다시 돌린다.
+  if (!instance) return;
+  host.appendChild(instance.wrapper);
+  openOrReattach(instance);
+}
+
+/**
+ * 집을 DOM에서 뺀다. **`dispose`도 `kill`도 없다** — 다른 nav를 한 번 본 대가로, 또는 옆
+ * 칸으로 갈아탄 대가로 셸이 죽지 않는다(결정 20·21).
+ */
+export function detachShell(id: number): void {
+  instances.get(id)?.wrapper.remove();
 }
 
 function createInstance(id: number): ShellInstance {
@@ -128,7 +184,14 @@ function createInstance(id: number): ShellInstance {
     ptyId: null,
     fontsReady: false,
     opened: false,
+    closed: false,
   };
+
+  // **인스턴스를 만들 때 붙인다 — 이펙트가 아니다.** 이펙트에 붙이면 배경 칸(결정 21로
+  // React 트리 밖에 사는 칸)의 이름이 갱신되지 않는다: 그 칸에는 도는 이펙트가 없다.
+  term.onTitleChange((title) => {
+    terminalStore.setState((state) => setTitle(state, id, title));
+  });
 
   // PTY resize는 `cols`/`rows`가 **실제로 바뀔 때만** 나가야 한다(⌘B의 220ms 폭 트랜지션이
   // 프레임마다 관측을 일으킨다). 그 판정을 우리가 다시 하지 않는다 — xterm의 `resize`가
@@ -172,7 +235,7 @@ async function loadFont(instance: ShellInstance) {
  * 떨어진다. 그 상태로 `open()`하면 xterm이 크기를 0으로 재고 그 값이 굳는다.
  */
 function openOrReattach(instance: ShellInstance) {
-  if (!instance.fontsReady || !instance.wrapper.isConnected) return;
+  if (instance.closed || !instance.fontsReady || !instance.wrapper.isConnected) return;
 
   const first = !instance.opened;
   if (first) {
@@ -243,6 +306,9 @@ async function spawn(instance: ShellInstance) {
   try {
     const channel = new Channel<PtyFrame>();
     channel.onmessage = (frame) => {
+      // **죽인 뒤에도 한 번 더 온다** — SIGHUP을 받은 셸의 종료 프레임이다. dispose된
+      // Terminal에 쓰면 던지고, 그 던짐은 채널 콜백 안이라 아무 데도 안 걸린다.
+      if (instance.closed) return;
       // **떼어 둔 사이에도 그대로 받아 적는다.** 그것이 결정 20이다 — 다른 화면에 가 있는
       // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다.
       if (frame instanceof ArrayBuffer) {
@@ -257,7 +323,18 @@ async function spawn(instance: ShellInstance) {
     const cols = instance.term.cols;
     const rows = instance.term.rows;
     const spawned = await terminalApi.spawn(null, cols, rows, channel);
+    // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
+    // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
+    // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —
+    // "그 셸과 자식만 사라진다"가 이 창에서만 깨진다. 아래 채널 콜백은 같은 위험을
+    // 이미 막고 있었는데 이 자리만 비어 있었다.
+    if (instance.closed) {
+      ignoreGone(terminalApi.kill(spawned.id));
+      return;
+    }
     instance.ptyId = spawned.id;
+    // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다.
+    terminalStore.setState((state) => setShellName(state, instance.id, spawned.shellName));
     // 이 왕복 사이에 폭이 바뀌었으면 그 `resize`는 `ptyId`가 없어서 버려졌고, xterm은 값이
     // **바뀔 때만** `onResize`를 때리므로 스스로 다시 알려주지 않는다. 그대로 두면 셸이
     // 옛 격자에 영영 갇힌다 — 여기서 한 번 맞춘다.

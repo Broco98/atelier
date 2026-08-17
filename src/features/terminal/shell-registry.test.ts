@@ -3,8 +3,21 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { markExited, markFailed, NO_SHELLS, openShell, removeShell } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import {
+  activateShell,
+  atCap,
+  markExited,
+  markFailed,
+  MAX_SHELLS,
+  NO_SHELLS,
+  openShell,
+  removeShell,
+  setShellName,
+  setTitle,
+  shellEndLabels,
+  shellLabel,
+} from "./shell-registry";
+import type { Shell, ShellsState } from "./shell-registry";
 
 // 셸 목록 seam. 순수 모듈 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다
 // (work-sections.test.ts가 선례다). 관찰하는 것은 "어떤 조작을 하면 목록과 활성이 어떻게
@@ -19,7 +32,10 @@ function opened(count: number): { state: ShellsState; ids: number[] } {
   let state = NO_SHELLS;
   const ids: number[] = [];
   for (let n = 0; n < count; n += 1) {
+    // 상한이 생긴 뒤로 이 헬퍼는 거부당할 수 있다. 조용히 적게 만들면 "3개를 띄웠다"고
+    // 믿는 테스트가 2개를 보고 통과하므로 여기서 끊는다.
     const next = openShell(state);
+    if (!next) throw new Error(`셸 ${count}개를 띄우려 했는데 ${n}개에서 거부됐다`);
     state = next.state;
     ids.push(next.id);
   }
@@ -53,7 +69,7 @@ describe("셸을 띄운다", () => {
     const first = opened(1);
     const emptied = removeShell(first.state, first.ids[0]);
     const again = openShell(emptied);
-    expect(again.id).not.toBe(first.ids[0]);
+    expect(again?.id).not.toBe(first.ids[0]);
   });
 });
 
@@ -126,6 +142,159 @@ describe("활성 칸을 제거하면 다음 활성이 정해진다", () => {
     const after = removeShell(state, ids[0]);
     expect(after.shells).toEqual([]);
     expect(after.activeId).toBeNull();
+  });
+});
+
+// 결정 30. 세는 자리가 **화면이 아니라 이 상태 하나**라는 것이 「앱 전체 기준」의 뜻이다 —
+// 화면이 세면 판 03에서 Work마다 8개가 되어 조용히 깨진다.
+describe("셸 수에는 앱 전체 상한이 있다", () => {
+  it(`${MAX_SHELLS}개까지 띄운다`, () => {
+    expect(opened(MAX_SHELLS).state.shells).toHaveLength(MAX_SHELLS);
+  });
+
+  it("상한을 넘는 요청은 거부된다", () => {
+    expect(openShell(opened(MAX_SHELLS).state)).toBeNull();
+  });
+
+  // 터미널이 둘이어도 그 둘은 **같은 상태를** 번갈아 고칠 뿐이다. 그래서 나눠 만들어도
+  // 합이 상한에서 멈춘다 — 이것이 화면마다 세는 것과 갈리는 지점이다.
+  it("두 터미널이 나눠 띄워도 합이 상한에서 멈춘다", () => {
+    let state = NO_SHELLS;
+    const 왼쪽: number[] = [];
+    const 오른쪽: number[] = [];
+    for (let n = 0; n < MAX_SHELLS; n += 1) {
+      const next = openShell(state);
+      expect(next, `${n}번째에서 거부됐다`).not.toBeNull();
+      state = next!.state;
+      (n % 2 === 0 ? 왼쪽 : 오른쪽).push(next!.id);
+    }
+    expect(왼쪽.length + 오른쪽.length).toBe(MAX_SHELLS);
+    expect(openShell(state)).toBeNull();
+  });
+
+  it("거부당해도 목록과 다음 번호는 그대로다", () => {
+    const { state } = opened(MAX_SHELLS);
+    expect(openShell(state)).toBeNull();
+    expect(state.shells).toHaveLength(MAX_SHELLS);
+    expect(state.nextId).toBe(MAX_SHELLS + 1);
+  });
+
+  it("하나를 빼면 다시 띄울 자리가 생긴다", () => {
+    const { state, ids } = opened(MAX_SHELLS);
+    expect(openShell(removeShell(state, ids[0]))).not.toBeNull();
+  });
+
+  // `+`가 잠기는 판정과 openShell이 거부하는 판정은 **같은 자리**여야 한다. 갈리면
+  // 눌리는 `+`가 아무 일도 안 하거나, 잠긴 `+` 뒤에 자리가 남는다.
+  it("atCap이 참인 것과 openShell이 거부하는 것이 같다", () => {
+    let state = NO_SHELLS;
+    for (let n = 0; n <= MAX_SHELLS; n += 1) {
+      const refused = openShell(state);
+      expect(atCap(state), `${n}개일 때 갈렸다`).toBe(refused === null);
+      if (!refused) break;
+      state = refused.state;
+    }
+  });
+});
+
+const shellOf = (state: ShellsState, id: number) =>
+  state.shells.find((shell) => shell.id === id) as Shell;
+
+// 결정 31의 **두 갈래**다 — 타이틀 시퀀스(OSC 0/2) → 셸 이름. 가운데 「프로젝트」 갈래는 판 03.
+describe("칸 이름은 타이틀 → 셸 이름 순이다", () => {
+  it("셸 이름이 오면 그것이 이름이다", () => {
+    const { state, ids } = opened(1);
+    expect(shellLabel(shellOf(setShellName(state, ids[0], "zsh"), ids[0]))).toBe("zsh");
+  });
+
+  it("타이틀이 오면 셸 이름을 이긴다", () => {
+    const { state, ids } = opened(1);
+    const named = setTitle(setShellName(state, ids[0], "zsh"), ids[0], "내이름");
+    expect(shellLabel(shellOf(named, ids[0]))).toBe("내이름");
+  });
+
+  // 타이틀을 쏘던 셸이 빈 문자열을 쏘면 그 칸은 이름을 잃는다 — 그때 셸 이름으로 돌아가지
+  // 않으면 빈 칸이 남는다.
+  it("타이틀이 비면 셸 이름으로 돌아간다", () => {
+    const { state, ids } = opened(1);
+    const named = setTitle(setShellName(state, ids[0], "zsh"), ids[0], "내이름");
+    expect(shellLabel(shellOf(setTitle(named, ids[0], "  "), ids[0]))).toBe("zsh");
+  });
+
+  // 결정 23. 못 띄운 셸에는 타이틀도 셸 이름도 영영 오지 않는다. 그 칸이 이름 없는
+  // 빈 상자면 무엇이 실패했는지 목록에서 가리킬 수가 없다.
+  it("못 띄운 칸도 이름이 비어 있지 않다", () => {
+    const { state, ids } = opened(1);
+    const failed = markFailed(state, ids[0], "$SHELL을 실행할 수 없습니다: /nonexistent");
+    expect(shellLabel(shellOf(failed, ids[0])).trim()).not.toBe("");
+  });
+
+  it("아직 아무것도 안 온 칸도 이름이 비어 있지 않다", () => {
+    const { state, ids } = opened(1);
+    expect(shellLabel(shellOf(state, ids[0])).trim()).not.toBe("");
+  });
+
+  // 프롬프트마다 같은 타이틀을 쏘는 셸이 흔하다(zsh의 precmd). 매번 새 상태를 만들면
+  // 명령 하나마다 터미널 화면 전체가 다시 그려진다.
+  it("같은 타이틀이 다시 오면 상태가 그대로다", () => {
+    const { state, ids } = opened(1);
+    const once = setTitle(state, ids[0], "같은이름");
+    expect(setTitle(once, ids[0], "같은이름")).toBe(once);
+  });
+
+  it("모르는 id로는 이름이 붙지 않는다", () => {
+    const { state } = opened(1);
+    expect(setTitle(state, 9999, "무엇")).toBe(state);
+    expect(setShellName(state, 9999, "zsh")).toBe(state);
+  });
+});
+
+describe("칸을 고른다", () => {
+  it("고른 칸이 활성이 된다", () => {
+    const { state, ids } = opened(3);
+    expect(activateShell(state, ids[0]).activeId).toBe(ids[0]);
+  });
+
+  // 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있다. 없는 칸을 활성으로 만들면
+  // 탭 줄에는 켜진 칸이 없고 본문도 비는데 이유가 아무 데도 안 남는다.
+  it("모르는 id로는 활성이 바뀌지 않는다", () => {
+    const { state } = opened(2);
+    expect(activateShell(state, 9999)).toBe(state);
+  });
+});
+
+// 결정 22·23이 「화면 하나에 적으면 됐던 것」이라 부른 둘이 여기서 **칸 단위**가 된다.
+// 한 문장은 활성 칸의 줄과 그 칸의 title이 함께 쓰고, 꼬리표는 목록에서 **어느 칸이**
+// 죽었는지를 누르지 않고 알아보게 한다.
+describe("죽은 칸이 무엇을 말하는가", () => {
+  it("도는 셸은 아무것도 말하지 않는다", () => {
+    const { state, ids } = opened(1);
+    expect(shellEndLabels(shellOf(state, ids[0]))).toBeNull();
+  });
+
+  it("종료 코드가 문장과 꼬리표에 함께 나온다", () => {
+    const { state, ids } = opened(1);
+    const dead = shellEndLabels(shellOf(markExited(state, ids[0], EXIT_42), ids[0]));
+    expect(dead?.notice).toBe("종료 코드 42");
+    expect(dead?.mark).toBe("42");
+  });
+
+  // `signal`은 시그널 이름이 아니라 strsignal()이 준 사람이 읽는 문자열이다(types.ts).
+  // 그때 `exitCode`는 셸 관례인 128+N이 아니라 1이라, 꼬리표에 1을 적으면 거짓말이 된다.
+  it("신호로 죽으면 그 문자열을 그대로 옮기고 꼬리표에 1을 적지 않는다", () => {
+    const { state, ids } = opened(1);
+    const killed = { exitCode: 1, signal: "Terminated: 15" };
+    const dead = shellEndLabels(shellOf(markExited(state, ids[0], killed), ids[0]));
+    expect(dead?.notice).toBe("신호로 종료 — Terminated: 15");
+    expect(dead?.mark).not.toBe("1");
+  });
+
+  it("못 띄운 이유가 그대로 문장이 된다", () => {
+    const { state, ids } = opened(1);
+    const reason = "$SHELL을 실행할 수 없습니다: /nonexistent";
+    const dead = shellEndLabels(shellOf(markFailed(state, ids[0], reason), ids[0]));
+    expect(dead?.notice).toBe(reason);
+    expect(dead?.mark).not.toBe("");
   });
 });
 

@@ -1,0 +1,115 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import ShellTabs from "./ShellTabs";
+import { markExited, markFailed, MAX_SHELLS, NO_SHELLS, openShell } from "./shell-registry";
+import type { ShellsState } from "./shell-registry";
+
+// 탭 줄은 **이 저장소에 선례가 없는 모양**이라(role="tab" 0건) 지킬 것을 스스로 들고 있어야
+// 한다. 여기서 보는 것은 셋이다.
+//
+// 1. 형제 버튼 — SpecTree가 이미 푼 문제와 같다. 중첩 button은 HTML에서 허용되지 않고,
+//    span role="button"으로 흉내내면 Tab으로 도달할 수 없다. 화면으로는 안 잡힌다.
+// 2. hover 규칙이 한 요소에 두 벌 얹히지 않는 것 — index.css의 toggle-on·quiet-hover 주석이
+//    "정렬 순서가 승자를 정하게 된다"고 경고하는 그것이다. state-scale.test.ts는 이것을
+//    지켜주지 않는다: 그 파일의 검사는 hover:bg-accent 금지와 손으로 다시 쓴 조용한 hover
+//    금지 **둘뿐**이다.
+// 3. 상한에서 잠긴 `+`가 **이유를 실제로 읽히게** 두는 것 — 이 저장소의 잠근 버튼 관용구
+//    (disabled + pointer-events-none + title)는 hover 자체를 막아 그 title이 뜨지 않는다.
+//    티켓이 그 관용구를 복사하지 말라고 못박은 자리다.
+
+function opened(count: number): ShellsState {
+  let state = NO_SHELLS;
+  for (let n = 0; n < count; n += 1) {
+    const next = openShell(state);
+    if (!next) throw new Error(`셸 ${count}개를 띄우려 했는데 ${n}개에서 거부됐다`);
+    state = next.state;
+  }
+  return state;
+}
+
+function render(state: ShellsState): string {
+  return renderToStaticMarkup(
+    <ShellTabs state={state} onSelect={() => {}} onClose={() => {}} onOpen={() => {}} />,
+  );
+}
+
+const classesOf = (markup: string) => [...markup.matchAll(/class="([^"]*)"/g)].map((m) => m[1]);
+const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
+
+describe("셸 탭 줄의 칸", () => {
+  it("이름 버튼과 닫기 버튼이 형제다", () => {
+    const markup = render(opened(2));
+    expect(markup.match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
+    expect(markup).not.toMatch(/<button(?:(?!<\/button>)[\s\S])*<button/);
+  });
+
+  it("켜진 칸과 꺼진 칸이 서로 다른 배경을 갖는다", () => {
+    const classes = classesOf(render(opened(3)));
+    expect(classes.filter((one) => one.includes("toggle-on"))).toHaveLength(1);
+    expect(classes.filter((one) => one.includes("hover:bg-state-1"))).toHaveLength(2);
+  });
+
+  it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {
+    const classes = classesOf(render(opened(3)));
+    // toggle-on은 자기 hover를 품는다. 꺼진 가지의 hover가 같은 요소에 함께 오면
+    // 어느 쪽이 이길지를 유틸리티 정렬 순서가 정한다.
+    expect(classes.filter((one) => /toggle-on/.test(one) && /hover:/.test(one))).toEqual([]);
+  });
+
+  // 최근 커밋 c0978b1이 spec 트리에서 없앤 것과 같은 함정이다. 배경을 가진 바깥 상자가
+  // padding·gap을 가지면 그 자리는 **배경은 덮이는데 눌러도 아무 일이 없다.**
+  // spec 트리는 오른쪽 4px을 남겼지만(hover에만 뜨는 복사 버튼을 띄우는 값) 여기 `×`는
+  // 늘 보이므로 예외가 없다 — 덮인 자리가 전부 버튼이다.
+  it("배경을 가진 바깥 상자가 여백을 하나도 갖지 않는다", () => {
+    const boxes = classesOf(render(opened(2))).filter(
+      (one) => one.includes("toggle-on") || one.includes("hover:bg-state-1"),
+    );
+    expect(boxes).toHaveLength(2);
+    for (const box of boxes) expect(box).not.toMatch(/\b(gap-|p[xylrtb]?-)/);
+  });
+});
+
+describe("죽은 칸과 못 뜬 칸", () => {
+  it("종료 코드가 칸에 꼬리표로 붙는다", () => {
+    const state = opened(2);
+    const markup = render(markExited(state, state.shells[0].id, { exitCode: 42, signal: null }));
+    expect(markup).toMatch(/>42</);
+  });
+
+  it("못 뜬 칸도 이름이 비어 있지 않다", () => {
+    const state = opened(1);
+    const reason = "$SHELL을 실행할 수 없습니다: /nonexistent";
+    const markup = render(markFailed(state, state.shells[0].id, reason));
+    expect(markup).toContain(reason);
+    expect(markup).not.toMatch(/<span[^>]*>\s*<\/span>/);
+  });
+});
+
+describe("상한에 닿은 `+`", () => {
+  it("상한 아래에서는 잠기지 않는다", () => {
+    expect(plusOf(render(opened(MAX_SHELLS - 1)))).not.toMatch(/aria-disabled/);
+  });
+
+  it("상한에서 잠기지만 hover는 살아 있다", () => {
+    const plus = plusOf(render(opened(MAX_SHELLS)));
+    expect(plus).toMatch(/aria-disabled="true"/);
+    // 이 둘 중 하나라도 들어오면 hover 이벤트가 죽어 아래 title이 화면에 뜨지 않는다.
+    // `\b`로 쓰면 안 된다 — `aria-disabled`의 하이픈 뒤에도 단어 경계가 서서
+    // 우리가 일부러 붙인 그 속성에 스스로 걸린다. 속성의 시작을 공백으로 본다.
+    expect(plus).not.toMatch(/\sdisabled(=|\s|>)/);
+    expect(plus).not.toMatch(/pointer-events-none/);
+  });
+
+  it("잠긴 이유가 상한·현재 수·앱 전체 기준을 함께 말한다", () => {
+    const title = plusOf(render(opened(MAX_SHELLS))).match(/title="([^"]*)"/)![1];
+    expect(title).toMatch(new RegExp(`${MAX_SHELLS}개까지`));
+    expect(title).toMatch(new RegExp(`지금 ${MAX_SHELLS}개`));
+    expect(title).toContain("다른 터미널");
+  });
+
+  it("칸이 하나도 없어도 `+`는 남는다", () => {
+    const markup = render(NO_SHELLS);
+    expect(plusOf(markup)).toBeTruthy();
+    expect(markup).not.toMatch(/닫기/);
+  });
+});
