@@ -31,6 +31,15 @@ describe("nextWidth", () => {
     expect(nextWidth({ side: "right", startX: 700, startWidth: 410, clientX: 665, min: 260, max: 520 })).toBe(445);
   });
 
+  it("폭은 언제나 정수다", () => {
+    // 트랙패드·레티나에서 clientX가 분수로 들어온다. 그대로 두면 패널 폭이
+    // `326.3828125px` 같은 값이 되고(실제로 저장돼 있던 값이다), 본문이 다시 배치될 때마다
+    // 경계선이 장치 픽셀 격자에 다르게 얹혀 1px씩 떨린다. 끄는 감각은 정수로도 같다.
+    expect(nextWidth({ ...base, side: "left", clientX: 140.6 })).toBe(341);
+    expect(nextWidth({ ...base, side: "right", clientX: 60.4 })).toBe(340);
+    expect(Number.isInteger(nextWidth({ ...base, side: "right", clientX: 137.3828125 }))).toBe(true);
+  });
+
   it("최소·최대가 양쪽 부호에서 똑같이 걸린다", () => {
     expect(nextWidth({ ...base, side: "left", clientX: 1000 })).toBe(520);
     expect(nextWidth({ ...base, side: "left", clientX: -1000 })).toBe(260);

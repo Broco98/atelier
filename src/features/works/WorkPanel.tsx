@@ -154,9 +154,12 @@ function WorkPanel({
               나란히 서므로, 값을 손으로 적으면 그 높이가 바뀔 때 여기만 남아 어긋난다.
               드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 296px로는
               창을 끌 수 없다 (PageHeader가 같은 속성을 단다). */}
+          {/* 오른쪽 여백은 **PageHeader와 같은 pr-4다.** 이 행의 ×와 헤더의 여는 버튼은
+              같은 화면에 함께 나오지 않아(하나가 뜨면 다른 하나가 사라진다) 어긋나 있어도
+              나란히 재 볼 수가 없고, 토글할 때 버튼이 튀는 것으로만 보인다. */}
           <div
             data-tauri-drag-region
-            className="flex h-(--titlebar-height) shrink-0 items-center gap-1 px-2"
+            className="flex h-(--titlebar-height) shrink-0 items-center gap-1 pl-2 pr-4"
           >
             <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
             <TabButton label="정보" active={tab === "info"} onClick={() => setTab("info")} />

@@ -225,3 +225,26 @@ describe("WorksPage 뷰 탭", () => {
     expect(a).toContain("toggle-on");
   });
 });
+
+// 패널을 여는 버튼(헤더 actions)과 닫는 ×(패널 머리행)는 **같은 화면에 함께 나오지 않는다** —
+// 하나가 뜨면 다른 하나가 사라진다. 그래서 어긋나 있으면 "버튼이 튄다"로만 보이고
+// 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에는 드러나지 않는다. 둘이 한 마크업에 있는
+// 자리는 여기뿐이라, 오른쪽 여백이 같다는 것을 여기서 못 박는다.
+describe("WorksPage 여는 버튼과 닫는 ×의 오른쪽 여백", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("헤더와 패널 머리행이 같은 오른쪽 여백을 쓴다", () => {
+    const markup = render();
+    const header = markup.match(/<header[^>]*class="([^"]*)"/)?.[1] ?? "";
+    const panelHead = markup.match(/<div data-tauri-drag-region[^>]*class="([^"]*)"/)?.[1] ?? "";
+    expect(header).not.toBe("");
+    expect(panelHead).not.toBe("");
+    expect(header).toContain("pr-4");
+    expect(panelHead).toContain("pr-4");
+  });
+});

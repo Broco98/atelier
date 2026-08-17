@@ -45,7 +45,10 @@ export function nextWidth({
 }): number {
   const delta = clientX - startX;
   const raw = startWidth + (side === "right" ? -delta : delta);
-  return Math.min(max, Math.max(min, raw));
+  // **폭은 정수다.** 트랙패드·레티나에서 clientX가 분수로 들어와 그대로 두면
+  // `326.3828125px` 같은 폭이 남는다. 그러면 패널 경계선이 장치 픽셀 격자에 얹히는
+  // 자리가 본문 재배치 때마다 달라져 1px씩 떨린다. 끄는 감각은 정수로도 같다.
+  return Math.round(Math.min(max, Math.max(min, raw)));
 }
 
 // 패널 폭 드래그 조절 + 더블클릭으로 기본 폭 복원. localStorage에 유지된다.
@@ -59,7 +62,9 @@ function useResizableWidth(
 ): ResizableWidth {
   const [width, setWidth] = useState(() => {
     const saved = Number(localStorage.getItem(key));
-    return saved >= min && saved <= max ? saved : defaultWidth;
+    // 반올림은 여기서도 한다 — 이 값을 정수로 만들기 전에 저장된 분수 폭이 남아 있다
+    // (nextWidth 주석 참조). 새로 끄는 순간이 아니라 **다음에 앱을 켤 때** 걸린다.
+    return saved >= min && saved <= max ? Math.round(saved) : defaultWidth;
   });
   const [dragging, setDragging] = useState(false);
   const start = useRef({ x: 0, width: 0 });
