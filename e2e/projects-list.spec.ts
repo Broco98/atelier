@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./evidence";
 import { PROJECTS } from "./fixtures";
 import { installTauriMock, unknownIpcCalls } from "./harness";
 

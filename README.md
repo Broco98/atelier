@@ -73,6 +73,7 @@ args = ["mcp"]
 - 앱: `pnpm tauri dev`
 - 검증: `pnpm verify` — 타입·Rust·프론트엔드·브라우저를 한 번에. `--full`은 느린 관통 층까지 돌리는 기어이며, 그 층은 아직 없습니다
 - 브라우저 층 준비(최초 1회): `pnpm exec playwright install webkit`
+- 실패 증거: 브라우저 층이 실패하면 `test-results/<테스트>/` 아래에 스크린샷·콘솔·DOM·실패 지점이 남습니다. 실행마다 통째로 비워지며, 통과한 실행은 증거를 남기지 않습니다(실행 기록 `.last-run.json`만 남습니다)
 - CLI 로컬 설치: `cargo install --path crates/atelier-cli`
 
 ## Release

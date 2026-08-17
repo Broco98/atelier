@@ -7,7 +7,8 @@ export default defineConfig({
   testDir: "e2e",
   reporter: "list",
   forbidOnly: !!process.env.CI,
-  use: { baseURL: BASE_URL },
+  // 실패한 순간의 화면. 나머지 증거(콘솔·DOM)는 e2e/evidence.ts가 같은 폴더에 넣는다.
+  use: { baseURL: BASE_URL, screenshot: "only-on-failure" },
   projects: [{ name: "webkit", use: { ...devices["Desktop Safari"] } }],
 
   // 서버를 띄운 **뒤**, 그것이 이 워크트리의 것인지 확인하고 나서 테스트가 돈다.
