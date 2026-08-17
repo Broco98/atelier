@@ -4,10 +4,11 @@ import {
   Archive,
   Check,
   ChevronDown,
+  File,
   Folder,
-  List,
   LoaderCircle,
   MoreHorizontal,
+  PanelRight,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import SpecViewer from "./SpecViewer";
+import WorkMetaMenu from "./WorkMetaMenu";
 import {
   useArchiveWork,
   useRemoveWork,
@@ -62,8 +64,9 @@ function WorksPage({
     : remove.isPending
       ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
       : null;
-  // 목업 2026-07-19 개정: [소스]·작업 패널 토글은 브레드크럼 소유
-  const [showSource, setShowSource] = useState(false);
+  // 브레드크럼이 소유하는 것은 작업 패널 접기 하나다. [소스]는 그 패널 머리행으로 갔고
+  // 상태도 함께 SpecViewer로 내려갔다 — 버튼이 여기 없으면 이 화면이 그것을 들 이유도
+  // 없다 (결정 6·22).
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
@@ -90,83 +93,85 @@ function WorksPage({
   // "기본 선택은 초안을 건너뛴다"는 규칙도 그쪽 pickSlug가 들고 있다.
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="relative flex min-w-0 flex-1 flex-col">
+  // 머리행은 **본문 열 안에서만** 산다. 작업 패널이 이 열의 형제이자 머리행과 같은 층이라
+  // (창 맨 위에서 시작해 아래까지 내려온다) 머리행이 그 위를 지나갈 수 없다. 그래서 화면이
+  // 여기서 만들어 두고, 작업이 골라졌으면 SpecViewer에 슬롯으로 넘긴다.
+  const header = (
         <PageHeader
           root="Works"
           leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
           // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다
           inset={!sidebarOpen}
+          // 브레드크럼에는 **작업 그 자체를 말하는 것**만 온다 — 제목 · ⓘ(메타) · ⋯(생애주기).
+          // 셋이 붙어 한 덩어리로 읽혀야 "이것이 무슨 작업인가"가 한 번에 잡힌다.
+          // 상태 배지는 오른쪽 actions로 갔다: 그것은 신원이 아니라 지금 어느 단계인가다.
+          //
+          // -ml-1은 PageHeader의 gap-1.5(6px)를 2px로 물린 것이다. 제목과 ⓘ 사이만
+          // 좁히려는 것이고, 아이콘 버튼 둘은 서로 붙는다 (24px 상자 안에 여백이 이미 있다).
           meta={
             selected && (
-              <span className="ml-1.5 flex shrink-0 items-center gap-2">
-                <StatusMenu work={selected} />
-                <span className="flex gap-1.5">
-                  {selected.projects.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => onOpenProject(p)}
-                      title="프로젝트 상세로 이동"
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground transition-colors hover:bg-inset hover:text-foreground"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </span>
+              <span className="-ml-1 flex shrink-0 items-center">
+                <WorkMetaMenu work={selected} />
                 <WorkMenu work={selected} archive={archive} remove={remove} />
               </span>
             )
           }
+          // 우측은 **지금 이 작업이 어느 단계이고 무엇을 보고 있는가**다. 상태 배지가
+          // 여기 남는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면 상태를
+          // 바꾸는 데 클릭이 두 번 든다.
+          //
+          // 여는 길은 PanelRight 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로 두면 닫는
+          // 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
+          //
+          // 닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
+          // 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다.
+          // 트랜지션이 끝난 뒤에 띄우면 빈 자리를 그만큼 쳐다보게 된다.
+          //
+          // 글리프는 PanelRight다. List는 이 패널이 "작업 목록"이던 시절의 이름인데,
+          // 정보 탭이 생기면 더는 목록이 아니다.
           actions={
-            <>
-              {selected && (
-                <span className="flex items-center gap-1.5">
+            selected && (
+              <>
+                <StatusMenu work={selected} />
+                <ViewTabs />
+                {!workPanelOpen && (
                   <button
                     type="button"
-                    onClick={() => setShowSource((v) => !v)}
-                    className={cn(
-                      "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
-                      showSource
-                        ? "toggle-on"
-                        : "text-tertiary quiet-hover",
-                    )}
+                    onClick={() => setWorkPanelOpen(true)}
+                    aria-label="작업 패널 펼치기"
+                    aria-expanded={false}
+                    title="작업 패널 펼치기"
+                    className="icon-button-quiet text-tertiary"
                   >
-                    소스
+                    <PanelRight className="size-4" strokeWidth={2} />
                   </button>
-                  {/* 이 화면의 유일한 접이식이다 — 본문 확대 단축키(⌘Enter)도 여기로 온다 */}
-                  <button
-                    type="button"
-                    onClick={() => setWorkPanelOpen((v) => !v)}
-                    aria-label="작업 패널 토글"
-                    aria-expanded={workPanelOpen}
-                    title={workPanelOpen ? "작업 패널 접기" : "작업 패널 펼치기"}
-                    className={cn(
-                      "icon-button transition-colors",
-                      workPanelOpen
-                        ? "toggle-on"
-                        : "text-tertiary quiet-hover",
-                    )}
-                  >
-                    <List className="size-3.5" strokeWidth={2} />
-                  </button>
-                </span>
-              )}
-            </>
+                )}
+              </>
+            )
           }
         />
-        {selected ? (
+  );
+
+  return (
+    // relative는 생애주기 오버레이가 이 영역 전체를 덮기 위한 것이다 — 패널까지 포함한다.
+    // 보관·제거가 도는 동안 패널만 살아 있으면 그 위에서 조작이 계속된다.
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      {selected ? (
           <SpecViewer
             key={selected.slug}
             work={selected}
-            showSource={showSource}
+            header={header}
             panelOpen={workPanelOpen}
+            onClosePanel={() => setWorkPanelOpen(false)}
+            onOpenProject={onOpenProject}
             sidebarOpen={sidebarOpen}
             file={currentFile}
             onSelectFile={onSelectFile}
           />
-        ) : (
+      ) : (
+        // 고른 작업이 없으면 패널도 없다 — 이 열이 머리행을 직접 이고 있는다.
+        <main className="relative flex min-w-0 flex-1 flex-col">
+          {header}
           <div className="flex flex-1 items-center justify-center p-10">
             <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
               <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
@@ -192,10 +197,10 @@ function WorksPage({
               </code>
             </div>
           </div>
-        )}
+        </main>
+      )}
 
-        {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
-      </main>
+      {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
     </div>
   );
 }
@@ -280,6 +285,36 @@ function TitleEditor({ work }: { work: WorkView }) {
 }
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
+/**
+ * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음. 지금은 `spec` 하나다.
+ *
+ * 형제가 생길 자리다 — `파일`(워크트리 탐색)과 `터미널`이 여기 붙는다. 하나뿐일 때
+ * 미리 세워 두는 이유는 그때 헤더 배치가 바뀌지 않게 하려는 것이다: 나중에 끼워 넣으면
+ * 상태 배지와 패널 토글 사이의 간격·순서를 그 판에서 다시 정하게 된다.
+ *
+ * **누를 것이 하나뿐인 동안 이 탭은 늘 켜져 있다.** 켜진 탭을 다시 눌러도 아무 일이
+ * 없는 것은 탭 묶음의 평범한 동작이지 죽은 버튼이 아니다 (결정 21이 말하는 것은
+ * "켜질 수도 없는데 살아 있는" 버튼이다). 형제가 붙는 순간 이 자리가 실제로 갈린다.
+ *
+ * 켜짐은 저장소 공통 toggle-on이다. 목업은 이 자리에 --accent를 쓰는데, 이 저장소는
+ * 상태 배경을 무채색 4단으로만 말한다(state-scale.test.ts가 막는다) — 그쪽을 따르지 않는다.
+ */
+function ViewTabs() {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        aria-label="spec 보기"
+        aria-pressed
+        className="toggle-on inline-flex h-7 shrink-0 items-center gap-[7px] rounded-[9px] px-[11px] text-[13px] font-medium transition-colors"
+      >
+        <File className="size-3.5 shrink-0" strokeWidth={1.8} />
+        spec
+      </button>
+    </span>
+  );
+}
+
 function StatusMenu({ work }: { work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -378,8 +413,15 @@ function WorkMenu({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // 다른 작업으로 옮겨가면 닫는다. ⌘1~9와 목록 클릭은 이 컴포넌트를 다시 마운트하지 않으므로,
-  // 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는 것과 다른 작업**을 겨눈다.
+  // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
+  // 것과 다른 작업**을 겨눈다.
+  //
+  // **지금은 이 이펙트가 돌기 전에 리마운트가 먼저 닫는다.** 머리행이 key={slug}인
+  // SpecViewer 안으로 들어가면서(디자인 정본 정렬) 작업을 옮기면 이 컴포넌트째 새로 선다.
+  // 남겨 두는 것은 그 배치가 이 화면의 계약이 아니기 때문이다 — 머리행을 다시 SpecViewer
+  // 밖으로 끌어내면(작업 패널을 WorksPage로 올리는 다음 판이 그렇게 한다) 리마운트가
+  // 사라지고 이 줄만 남아 같은 일을 한다. 형제인 StatusMenu는 이 줄이 없어서, 지금은
+  // 리마운트에만 기대고 있다.
   useEffect(() => setOpen(false), [work.slug]);
 
   // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
@@ -435,8 +477,14 @@ function WorkMenu({
         aria-expanded={open}
         aria-busy={busy}
         title={busy ? "처리 중이에요" : "작업 메뉴"}
+        // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
+        // 둘 사이에 여백이 없어(위 meta의 -ml-1 묶음) hover 배경이 한 버튼에서 다음
+        // 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+        // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
+        // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
+        // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
         className={cn(
-          "flex h-[22px] items-center rounded-[7px] px-1.5 transition-colors",
+          "icon-button transition-colors",
           "disabled:pointer-events-none disabled:opacity-50",
           open ? "toggle-on" : "text-tertiary quiet-hover",
         )}
@@ -444,7 +492,7 @@ function WorkMenu({
         {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
             깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
             disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-        <MoreHorizontal className="size-3.5" strokeWidth={2.2} />
+        <MoreHorizontal className="size-4" strokeWidth={2.2} />
       </button>
       {open && (
         <PopoverPortal
