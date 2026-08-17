@@ -248,3 +248,23 @@ describe("WorksPage 여는 버튼과 닫는 ×의 오른쪽 여백", () => {
     expect(panelHead).toContain("pr-4");
   });
 });
+
+// 본문 열과 작업 패널을 담는 행은 **자기도 flex 항목이라** min-w-0이 필요하다.
+// 없으면 min-width가 auto가 되어 자기 min-content만큼 부풀고, 그만큼 패널이 창 밖으로
+// 밀려 잘린다. 미는 양이 본문 내용에 따라 달라지기 때문에 **패널 폭이 저 혼자 바뀌는
+// 것처럼 보인다** — 실제로 소스 보기를 켜고 끌 때마다 그랬다.
+//
+// 레이아웃은 정적 마크업으로 볼 수 없으므로 클래스가 붙어 있다는 것만 본다. 약한 검사지만
+// 이 한 줄이 사라지는 것을 아무도 못 잡는 상태보다는 낫다.
+describe("WorksPage 본문·패널 행의 min-w-0", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("본문 열과 패널을 담는 행이 min-w-0을 갖는다", () => {
+    expect(render()).toContain('class="flex min-h-0 min-w-0 flex-1"');
+  });
+});
