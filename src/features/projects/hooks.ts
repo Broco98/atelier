@@ -35,7 +35,7 @@ function useInvalidatingMutation<TArgs, TResult>(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projekts"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROJECTS_KEY }),
   });
 }
 
