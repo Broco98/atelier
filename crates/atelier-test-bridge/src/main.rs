@@ -39,11 +39,7 @@ const HANDLERS: &[(&str, Handler)] = &[
         ))
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
-    // 네이티브 파일 탐색기를 여는 일이라 대응하는 코어 함수가 없다. 표에는 남는다 —
-    // 빠지면 드리프트 검사가 "덮지 않은 커맨드"로 읽고, 그러면 진짜 누락과 구별되지 않는다.
-    ("open_project_folder", |_| {
-        Err("이 커맨드는 다리로 탈 수 없습니다: 탐색기를 여는 일이라 코어 함수가 없습니다".into())
-    }),
+    ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
     ("list_works", |_| ok(atelier_core::list_works(&works_dir()))),
     ("get_work", |a| ok(atelier_core::get_work(&works_dir(), &text(a, "slug")?))),
     ("set_work_title", |a| {
@@ -74,7 +70,20 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    // 셸 넷은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
+    // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
+    ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_write", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_resize", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_kill", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
 ];
+
+/// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
+/// "덮지 않은 커맨드"로 읽어 진짜 누락과 구별되지 않는다. 스텁으로 조용히 성공시키지도
+/// 않는다: 검증 층에서 아무것도 확인하지 않은 통과는 실패보다 나쁘다.
+fn in_app_only(why: &str) -> Handled {
+    Err(format!("이 커맨드는 다리로 탈 수 없습니다: {why}"))
+}
 
 /// 코어의 결과를 그대로 JSON으로 옮긴다. **여기서 모양을 손보지 않는다** — 손보는 순간
 /// 이 층이 검증하는 것이 앱이 아니라 다리가 된다.
