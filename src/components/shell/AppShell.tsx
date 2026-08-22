@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import Sidebar from "./Sidebar";
@@ -22,6 +23,29 @@ function AppShell() {
     select: (state): NavKey | null =>
       navItems.find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
   });
+  // 설정은 `navItems`에 없다(결정 51) — 활성 판정도 따로 한 줄이다. 위 select에 합쳐
+  // 객체 하나로 돌려주지 않는 이유는 그 주석과 같다: 매번 새 객체를 돌려주면 걸러내지 못해
+  // 주소가 바뀔 때마다 셸 전체가 리렌더한다.
+  const settingsActive = useRouterState({
+    select: (state) => state.location.pathname.startsWith("/settings"),
+  });
+
+  // 네이티브 메뉴의 `atelier ▸ Settings…`(⌘,)가 여기로 온다(결정 51).
+  // **이것이 셸에 포커스가 있어도 듣는 유일한 길이다** — OS 메뉴가 웹뷰보다 먼저 키를 먹어서
+  // (결정 34가 ⌘W를 메뉴에서 손으로 빼야 했던 그 성질) 프런트의 keydown으로는 ⌘,를 잡을 수
+  // 없다. 터미널을 쓰다 「글꼴이 작네」 하고 여는 흐름이 정확히 그 상황이라, 이번에는 그
+  // 성질을 유리하게 쓴다.
+  //
+  // 배선은 `watcher.rs`가 `works:changed`를 쏘고 프런트가 `listen`으로 받는 그 길과 같다.
+  // `navigate`는 라우터가 고정해 준다 (SidebarWorkList의 같은 주석).
+  useEffect(() => {
+    const unlisten = listen("settings:open", () => {
+      void navigate({ to: "/settings" });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [navigate]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -52,6 +76,10 @@ function AppShell() {
             if (!target || key === activeKey) return;
             void navigate({ to: target.to });
           }}
+          settingsActive={settingsActive}
+          // `/settings`에는 정규화 리다이렉트가 없어서 위와 같은 가드가 필요 없다 —
+          // 같은 위치로 가는 이동은 히스토리를 늘리지 않는다(router.test.ts).
+          onOpenSettings={() => void navigate({ to: "/settings" })}
         />
         <Outlet />
       </div>
