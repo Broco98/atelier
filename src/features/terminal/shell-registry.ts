@@ -13,6 +13,11 @@ import type { PtyExit } from "./types";
  * 셸 한 칸의 상태. `exited`·`failed`도 **목록에 남는 상태**다 — 사라지는 상태가 아니다.
  * `claude`가 조용히 죽었을 때 이유를 읽는 것이 이 터미널의 핵심 용도라(결정 22),
  * 끝났다는 이유로 칸을 치우면 읽을 자리가 없어진다.
+ *
+ * **정상 종료만은 `exited`가 되지 않는다**(결정 48). 결정 22의 근거는 위 한 줄뿐이었고
+ * `exit`에는 읽을 이유가 없어서, 근거를 해치지 않고 범위만 좁혔다 — 남기는 것은 이유가
+ * 있을 때만이다. 가르는 자리는 `markExited` 하나이므로, 여기 `exited`로 앉아 있는 칸은
+ * 전부 「이유가 있는 끝」이다.
  */
 export type ShellStatus =
   | { kind: "running" }
@@ -181,8 +186,30 @@ export function activeIdOf(state: ShellsState, owner: string | null): number | n
   return state.activeByOwner[ownerKey(owner)] ?? null;
 }
 
-/** 종료 프레임이 왔다. 칸은 그대로 두고 상태만 바꾼다 — 활성이었으면 활성인 채로 남는다. */
+/**
+ * 종료 프레임이 왔다. 칸은 그대로 두고 상태만 바꾼다 — 활성이었으면 활성인 채로 남는다.
+ *
+ * **정상 종료(`exitCode === 0` && `signal === null`)만은 그 칸을 목록에서 뺀다**(결정 48).
+ * 시그널로 죽은 셸이 이 조건에 섞이지 않는 것은 백엔드가 「시그널이면 `exitCode`는 셸 관례인
+ * `128+N`이 아니라 `1`」로 정해 둔 덕인데(`types.ts`), 그 약속 하나에 기대지 않고 `signal`도
+ * 함께 본다 — 약속이 흔들려 0이 실려 와도 신호로 죽은 칸은 남아야 한다.
+ *
+ * **판정은 여기 한 번뿐이다.** 종료 정보가 상태에 닿는 길이 이 함수뿐이라(터미널 스토어의
+ * 채널 콜백) 부르는 쪽에서 한 번 더 가르면 같은 판정이 두 벌이 되고 한쪽만 늙는다. 못 뜬
+ * 셸은 `markFailed`로 와서 종료 코드라는 것이 아예 없으므로 이 조건에 걸릴 길이 없다.
+ *
+ * **빼는 길은 `×`와 같다** — `removeShell`을 그대로 부른다. 다음에 켜질 칸을 여기서 새로
+ * 정하지 않는다. 마지막 칸이 이렇게 사라지면 셸 0개인 화면이 되고, 그 자리에서 새 셸이
+ * 저절로 뜨지 않는 것까지 `×`의 성질을 그대로 물려받는다.
+ *
+ * **빠진 칸의 인스턴스를 거두는 일은 여기 없다 — 그 자리는 터미널 스토어다.** 상한 8이
+ * 세는 것은 셸의 수가 아니라 살아 있는 WebGL 컨텍스트의 수라(결정 30), 목록에서만 빼면
+ * 「열고 → `exit`」을 되풀이하는 동안 목록은 0개라 말하는데 컨텍스트는 계속 쌓인다.
+ * `×`는 `closeShell`이 둘을 한자리에서 해서 안 새는데 이 길에는 그 짝이 아직 없다.
+ * 거두는 일은 DOM을 아는 쪽만 할 수 있어 이 순수 모듈에 들일 수 없다.
+ */
 export function markExited(state: ShellsState, id: number, exit: PtyExit): ShellsState {
+  if (exit.exitCode === 0 && exit.signal === null) return removeShell(state, id);
   return withStatus(state, id, { kind: "exited", exit });
 }
 
@@ -308,7 +335,9 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
 }
 
 /**
- * **목록에서 빼는 유일한 조작이다.** 종료도 실패도 빼지 않는다.
+ * **목록에서 빼는 유일한 조작이다.** 못 뜬 칸은 빠지지 않고, 끝난 칸은 `markExited`가
+ * 정상 종료를 가려 이리로 보낼 때만 빠진다(결정 48) — 그 길도 결국 이 함수라, 다음에
+ * 켜질 칸을 정하는 규칙은 여전히 한 벌이다.
  *
  * 활성 칸을 빼면 다음 활성은 **오른쪽 이웃 → 없으면 왼쪽 이웃 → 그 화면이 비면 없음**이다.
  * 판 02의 `×`가 이 규칙에 붙는다.

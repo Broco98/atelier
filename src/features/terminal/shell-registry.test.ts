@@ -61,6 +61,8 @@ const statusOf = (state: ShellsState, id: number) =>
 
 // 백엔드가 주는 종료 프레임 모양 그대로다(types.ts).
 const EXIT_42 = { exitCode: 42, signal: null };
+// `exit` 한 줄로 끝난 셸. 결정 48이 이것만 목록에서 뺀다.
+const EXIT_0 = { exitCode: 0, signal: null };
 
 describe("셸을 띄운다", () => {
   it("목록이 하나 늘고 그 셸이 활성이 된다", () => {
@@ -87,8 +89,9 @@ describe("셸을 띄운다", () => {
 });
 
 // 결정 22·23. 이 터미널의 핵심 용도가 "claude가 조용히 죽었을 때 이유를 읽는 것"이라
-// 끝난 셸이 목록에서 사라지면 읽을 자리가 없다.
-describe("끝난 셸도 목록에 남는다", () => {
+// 끝난 셸이 목록에서 사라지면 읽을 자리가 없다. **결정 48이 그 범위를 「이유가 있을 때」로
+// 좁혔다** — 정상 종료만 빠지고 나머지는 그대로 남는다.
+describe("이유가 남은 셸은 목록에 남는다", () => {
   it("종료 신호가 와도 칸이 남고 종료 코드를 갖는다", () => {
     const { state, ids } = opened(2);
     const after = markExited(state, ids[0], EXIT_42);
@@ -114,13 +117,13 @@ describe("끝난 셸도 목록에 남는다", () => {
 
 // 위의 "남는다"는 **빼는 조작과 대비해야만** 관찰된다. 대조군이 없으면 목록을 건드리는
 // 코드가 아예 없어도 그 테스트들이 통과한다.
-describe("목록에서 빼는 것은 제거뿐이다", () => {
+describe("제거하면 목록에서 빠진다", () => {
   it("제거하면 그 칸이 목록에서 빠진다", () => {
     const { state, ids } = opened(3);
     expect(idsOf(removeShell(state, ids[1]))).toEqual([ids[0], ids[2]]);
   });
 
-  it("끝난 셸도 제거로만 빠진다", () => {
+  it("이유가 남은 칸도 제거로 뺄 수 있다", () => {
     const { state, ids } = opened(2);
     const exited = markExited(state, ids[0], EXIT_42);
     expect(idsOf(removeShell(exited, ids[0]))).toEqual([ids[1]]);
@@ -134,6 +137,79 @@ describe("목록에서 빼는 것은 제거뿐이다", () => {
   it("모르는 id로는 아무것도 빠지지 않는다", () => {
     const { state } = opened(2);
     expect(removeShell(state, 9999)).toBe(state);
+  });
+});
+
+// 결정 48. 결정 22의 근거는 「claude가 조용히 죽었을 때 이유를 읽는다」 **하나**였고
+// 정상 종료에는 읽을 이유가 없다. 그래서 근거를 해치지 않고 범위만 좁힌다 — 남기는 것은
+// 이유가 있을 때만이다. Terminal.app도 `exit`에 창을 닫는다.
+describe("정상 종료한 셸은 목록에서 스스로 빠진다", () => {
+  it("`exit`(코드 0, 신호 없음)이면 그 칸이 빠진다", () => {
+    const { state, ids } = opened(2);
+    expect(idsOf(markExited(state, ids[0], EXIT_0))).toEqual([ids[1]]);
+  });
+
+  // 앞 판의 판별 증거를 그대로 쓴다 — 42 ≠ 0이라 성립한다. 이 줄이 빨개지면 범위를 좁힌
+  // 것이 아니라 결정 22를 통째로 뒤집은 것이다.
+  it("`exit 42`는 남는다 — 읽을 이유가 있다", () => {
+    const { state, ids } = opened(2);
+    const after = markExited(state, ids[0], EXIT_42);
+    expect(idsOf(after)).toEqual(ids);
+    expect(statusOf(after, ids[0])).toEqual({ kind: "exited", exit: EXIT_42 });
+  });
+
+  it("신호로 죽은 셸은 남는다", () => {
+    const { state, ids } = opened(2);
+    const killed = { exitCode: 1, signal: "Terminated: 15" };
+    expect(idsOf(markExited(state, ids[0], killed))).toEqual(ids);
+  });
+
+  // 신호로 죽은 셸이 안 섞이는 것은 백엔드가 「시그널이면 128+N이 아니라 1」로 정해 둔
+  // 덕이지만(types.ts), 그 약속 하나에 얹으면 백엔드가 흔들릴 때 조용히 깨진다.
+  // `signal`을 함께 보는 것이 그 대비다.
+  it("신호와 함께 코드 0이 실려 와도 남는다", () => {
+    const { state, ids } = opened(1);
+    expect(idsOf(markExited(state, ids[0], { exitCode: 0, signal: "Hangup: 1" }))).toEqual(ids);
+  });
+
+  // 「실패해서 못 뜬 셸」은 정상 종료가 아니다. 그쪽은 `markFailed`로 와서 종료 코드라는
+  // 것이 아예 없어 이 조건에 걸릴 길이 없는데, **한 목록에서 대비해야** 그 사실이 보인다.
+  it("같은 목록에서 정상 종료만 빠지고 못 뜬 칸은 남는다", () => {
+    const { state, ids } = opened(2);
+    const 못뜬것 = markFailed(state, ids[0], "$SHELL을 실행할 수 없습니다: /nonexistent");
+    const after = markExited(못뜬것, ids[1], EXIT_0);
+    expect(idsOf(after)).toEqual([ids[0]]);
+    expect(statusOf(after, ids[0])).toEqual({
+      kind: "failed",
+      reason: "$SHELL을 실행할 수 없습니다: /nonexistent",
+    });
+  });
+
+  // **`×`와 같은 길이다.** 다음에 켜질 칸을 여기서 새로 정하면 「닫아서 사라진 자리」와
+  // 「끝나서 사라진 자리」가 다른 칸을 켜는 날이 온다. 상태를 통째로 대 보는 것이라
+  // 규칙이 한 줄이라도 갈리면 빨개진다.
+  it.each([0, 1, 2])("사라진 칸이 활성이면 다음 활성이 `×`와 같다 — %i번째 칸", (n) => {
+    const { state, ids } = opened(3);
+    const 켠것 = activateShell(state, ids[n]);
+    expect(markExited(켠것, ids[n], EXIT_0)).toEqual(removeShell(켠것, ids[n]));
+  });
+
+  // 마지막 칸이 `exit`으로 사라지면 셸 0개인 화면이다. 「새 셸이 저절로 뜨지 않는다」는
+  // 이 seam에서 **번호가 안 나간 것**으로 관찰된다 — 화면 진입 이펙트에 붙은 `ensureShell`은
+  // 이 모듈에 없다(머리말의 「여기서 관찰하지 않는 것」과 같은 이유다).
+  it("마지막 칸이 정상 종료하면 셸 0개가 되고 새 칸도 생기지 않는다", () => {
+    const { state, ids } = opened(1);
+    const after = markExited(state, ids[0], EXIT_0);
+    expect(after.shells).toEqual([]);
+    expect(activeTop(after)).toBeNull();
+    expect(after.nextId).toBe(state.nextId);
+  });
+
+  // 제거와 IPC가 경주한다 — 이미 빠진 칸의 종료 프레임이 늦게 온다(patch의 주석). 그때
+  // 새 상태를 만들면 화면이 이유 없이 다시 그려진다.
+  it("이미 빠진 칸의 정상 종료가 늦게 와도 상태가 그대로다", () => {
+    const { state } = opened(2);
+    expect(markExited(state, 9999, EXIT_0)).toBe(state);
   });
 });
 
