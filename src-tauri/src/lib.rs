@@ -1,5 +1,6 @@
 mod commands;
 mod pty;
+mod settings;
 mod watcher;
 
 use std::sync::Arc;
@@ -97,6 +98,8 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::read_settings,
+            commands::write_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
