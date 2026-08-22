@@ -29,8 +29,11 @@ export type ShellStatus =
  * 합쳐 놓으면 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
  * `shellLabel`이 혼자 안다.
  *
- * cwd는 여기 없다 — 셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안 묻는다. 목록이 들면
- * 쓰는 곳 없는 값이 상태에 눌러앉는다.
+ * **cwd가 여기 있다 — 한때 없었다.** 「셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안
+ * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 패널 `shell` 탭의 행
+ * 둘째 줄이 **도는 셸의 cwd**다. 화면이 구독하는 값은 이 상태 하나이므로(xterm 인스턴스는
+ * 리렌더가 그것을 다시 만드는 경로가 없어야 해서 스토어 옆 모듈 스코프에 따로 산다),
+ * 목록이 들지 않으면 그 값이 화면까지 오는 길이 아예 없다.
  */
 export interface Shell {
   id: number;
@@ -43,6 +46,13 @@ export interface Shell {
   owner: string | null;
   /** 이름의 가운데 갈래(결정 31). 프로젝트가 여럿인 Work에서만 찬다. */
   project: string | null;
+  /**
+   * 이 셸이 뜬 자리. `~` 축약 표기 그대로이고(펴는 것은 백엔드다 — 결정 25) `null`이면
+   * 데이터 루트다. 여는 순간 `ShellOrigin`에서 받아 그대로 눌러앉는다 — 셸이 `cd`로
+   * 옮겨 다녀도 이 값은 안 바뀐다. 그래서 이것이 말하는 것은 「지금 어디냐」가 아니라
+   * **「어디서 떴냐」**다.
+   */
+  cwd: string | null;
 }
 
 export interface ShellsState {
@@ -126,6 +136,44 @@ export function atCap(state: ShellsState): boolean {
 }
 
 /**
+ * 상한에 닿았을 때 사람에게 하는 말. **입구 둘이 같은 문장을 쓴다**(결정 47) —
+ * 패널 목록의 잠긴 `+` 행이 그 자리에 이 문장을 적고, ⌘T가 거절당했을 때 뜨는 토스트도
+ * 같은 문장이다. 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다.
+ *
+ * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
+ *
+ * 최상위 터미널의 가로 탭 줄은 이 문장을 쓰지 않는다 — 거기 `+`는 폭이 없어 이유를
+ * `title`(hover)에 적고, 그 자리는 「다른 터미널의 셸도 함께 셉니다」까지 말할 여유가 있다.
+ */
+export function shellCapNotice(state: ShellsState): string {
+  return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
+}
+
+/**
+ * 셸을 열려 한 뒤 사람에게 할 말. **열렸으면 `null`이다 — 성공 경로는 조용하다.**
+ *
+ * 이 판정은 한때 터미널 스토어의 `openNewShell` 안에 있었는데, 그 함수는 열리는 순간
+ * xterm 인스턴스를 세우므로 **성공 경로를 테스트에서 돌 수 없다**(DOM 없는 seam이다).
+ * 그래서 계약의 절반 — 「열렸으면 아무 말도 안 한다」 — 이 어떤 검사에도 안 걸린 채였다.
+ * 거절을 알리는 줄이 성공 경로로 새면 ⌘T와 `+`가 **열 때마다** 「셸은 8개까지예요」를
+ * 뱉는데, 그것을 잡는 그물이 없었다. 판정을 이 순수 모듈로 내려 두 절반을 함께 못박는다.
+ *
+ * **`opened`를 통째로 받는다 — 불리언으로 접어 받지 않는다.** 접는 것이 부르는 쪽의
+ * 일이 되면 거절 판정이 다시 저쪽으로 새어, 이 함수가 지키는 것이 문장 하나로 줄어든다.
+ *
+ * 문장은 `shellCapNotice`가 짓는다 — 잠긴 `+` 행이 읽는 것과 같은 문장이어야 해서다(결정 47).
+ */
+export function shellOpenNotice(state: ShellsState, opened: OpenedShell | null): string | null {
+  return opened ? null : shellCapNotice(state);
+}
+
+/** `openShell`이 열었을 때 돌려주는 것. 새 목록과 그 자리에서 발급한 id다. */
+export interface OpenedShell {
+  state: ShellsState;
+  id: number;
+}
+
+/**
  * 셸 한 칸을 목록 끝에 더하고 그것을 활성으로 만든다.
  *
  * **id는 이 모듈이 발급한다 — PTY id가 아니다.** 띄우기에 실패한 셸도 칸을 갖는데(결정 23)
@@ -138,11 +186,12 @@ export function atCap(state: ShellsState): boolean {
  *
  * 소유자를 **반드시 받는다.** 기본값을 두면 Work 화면에서 빠뜨린 셸이 최상위 것이 되어,
  * 그 Work를 아카이빙할 때 안 거둬지고 탭 줄에도 안 뜬다.
+ *
+ * **`origin`을 통째로 받는다 — 갈래 둘만 뽑아 받지 않는다.** 한때 `owner`·`project`만
+ * 받았는데, cwd가 칸에 눌러앉게 되면서(위 `Shell.cwd`) 뽑을 이유가 없어졌다. 통째로
+ * 받으면 여는 자리가 셸에 적히는 자리와 **같은 값 하나**를 본다.
  */
-export function openShell(
-  state: ShellsState,
-  seed: Pick<ShellOrigin, "owner" | "project">,
-): { state: ShellsState; id: number } | null {
+export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell | null {
   if (atCap(state)) return null;
 
   const id = state.nextId;
@@ -151,13 +200,14 @@ export function openShell(
     status: { kind: "running" },
     title: null,
     shellName: null,
-    owner: seed.owner,
-    project: seed.project,
+    owner: origin.owner,
+    project: origin.project,
+    cwd: origin.cwd,
   };
   return {
     state: {
       shells: [...state.shells, shell],
-      activeByOwner: { ...state.activeByOwner, [ownerKey(seed.owner)]: id },
+      activeByOwner: { ...state.activeByOwner, [ownerKey(origin.owner)]: id },
       nextId: id + 1,
     },
     id,
@@ -332,6 +382,41 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
       : { mark: String(status.exit.exitCode), notice: `종료 코드 ${status.exit.exitCode}` };
   }
   return null;
+}
+
+/**
+ * 세로 목록 한 행의 **첫 줄 — 이름**이다. `프로젝트 · 타이틀`로 **함께 적는다**(결정 46).
+ *
+ * `shellLabel`과 갈리는 자리는 프로젝트 하나다. 저쪽은 셋 중 하나를 **고르므로** 타이틀이
+ * 오는 순간 프로젝트가 사라진다 — 실물에서 로그인 zsh가 뜨자마자 OSC 타이틀을 쏴 이름이
+ * `gimhyoyeon@gimhy…`가 되고 어느 워크트리의 셸인지가 없어졌다. 세로 목록은 한 행에 두
+ * 줄을 쓸 수 있어 그 부담이 없고, 그것이 결정 46이 갈래 셋 중 ③을 고른 이유다.
+ *
+ * **가로 탭 줄은 그대로 `shellLabel`이다**(결정 44·46) — 거기는 칸 하나에 이름 하나뿐이라
+ * 폭이 없다. 같은 일이 두 화면에서 다른 모양인 것이 그 결정이 감수한 대가다.
+ */
+export function shellRowName(shell: Shell): string {
+  // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.
+  const tail = shell.title ?? shell.shellName ?? UNNAMED;
+  return shell.project ? `${shell.project} · ${tail}` : tail;
+}
+
+/**
+ * 행의 **둘째 줄 — 지금 상태**다(결정 45). 도는 셸은 어디서 떴는지, 끝난 셸은 어떻게
+ * 끝났는지. 한 자리가 둘을 겸하는 것은 궁금한 것이 그때마다 하나뿐이어서다.
+ *
+ * **`pid`는 여기 없다**(결정 45). 백엔드가 주는 것은 `PtySpawned { id, shellName }`뿐이라
+ * 화면까지 오는 길이 아예 없고, 결정 22가 요구하는 「조용히 죽은 이유 읽기」에 필요한
+ * 것은 종료 코드와 이유이며 그것은 이미 와 있다.
+ */
+export function shellRowStatus(shell: Shell): string {
+  // 끝난 칸이 먼저다 — `shellEndLabels`가 null을 주는 것이 곧 「아직 돈다」이므로 상태를
+  // 여기서 한 번 더 가르지 않는다.
+  const end = shellEndLabels(shell);
+  if (end) return end.notice;
+  // cwd가 없는 것은 최상위 터미널의 셸뿐이고(결정 25) 그 화면에는 이 목록이 없다. 그래도
+  // 빈 문자열을 돌려주지 않는 것은 행이 두 줄로 서기 때문이다 — 비면 이유 없는 빈 줄이 남는다.
+  return shell.cwd ?? "데이터 루트";
 }
 
 /**

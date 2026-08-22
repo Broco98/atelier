@@ -9,6 +9,14 @@ import WorksPage, { togglesWorkPanel } from "./WorksPage";
 import { worksQuery } from "./hooks";
 import type { WorkView } from "./types";
 import type { ViewTab } from "@/routes/-work-search";
+// 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
+// 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
+import { MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "@/features/terminal/shell-registry";
+import {
+  onShellOpenRejected,
+  openNewShell,
+  terminalStore,
+} from "@/features/terminal/terminal-store";
 
 // 헤더의 여는 아이콘은 **패널이 닫혔을 때만** 뜬다 — 여는 길과 닫는 길이 각각 하나다.
 // 그 판단이 뒤집히면 닫는 길이 둘이 되는데, 화면을 열어 보기 전에는 드러나지 않는다.
@@ -323,16 +331,24 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
-  it("본문이 셸 탭 줄로 바뀌고, 작업 패널은 옆에 그대로 선다", () => {
+  // 결정 42. 본문 위 셸 탭 줄을 걷어냈다 — Work 화면에서 셸을 고르는 자리는 패널의
+  // `shell` 탭 하나다. 되살아나면 **같은 것이 두 자리에 서고**, 화면으로는 둘 다 멀쩡해
+  // 보여서 어느 쪽이 틀렸는지가 안 드러난다.
+  it("터미널 탭 본문에 셸 탭 줄이 없다 — 셸을 여는 자리는 패널뿐이다", () => {
     const markup = render({}, "terminal");
-    expect(markup).toContain('aria-label="셸 열기"');
+    // `+`가 딱 하나이고, 그 하나가 본문(`</main>`) **뒤**의 패널 안에 있다.
+    expect(markup.match(/aria-label="셸 열기"/g)).toHaveLength(1);
+    expect(markup.indexOf('aria-label="셸 열기"')).toBeGreaterThan(markup.indexOf("</main><aside"));
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
-  it("spec 탭에는 셸 탭 줄이 없고 작업 패널이 있다", () => {
+  it("spec 탭에서도 같은 자리에 그 하나가 있다 — 패널은 두 탭에 다 선다", () => {
+    // 한때 이 검사는 「spec 탭에는 셸 탭 줄이 없다」였다. 목록이 패널로 가면서 그 부재가
+    // 뜻을 잃었다 — 패널은 두 탭 모두에 서므로 `shell` 탭도 두 탭 모두에 마운트돼 있다.
     const markup = render({}, "spec");
-    expect(markup).not.toContain('aria-label="셸 열기"');
+    expect(markup.match(/aria-label="셸 열기"/g)).toHaveLength(1);
+    expect(markup.indexOf('aria-label="셸 열기"')).toBeGreaterThan(markup.indexOf("</main><aside"));
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
@@ -539,5 +555,110 @@ describe("WorksPage ⌘Enter", () => {
     // `tab`을 안 보므로 의존성도 비어 있다. 남아 있으면 판단이 아직 탭에 매여 있다는 뜻이다.
     expect(effect![1].trim()).toBe("");
     expect(effect![0]).not.toContain("tab");
+  });
+});
+
+// ─── 결정 42·47·50: 셸 목록이 패널로 왔다 ───
+
+// 이 화면은 셸 목록을 **슬롯으로 조립한다** — 스토어를 구독하는 가지 하나(PanelShells)를
+// 만들어 패널에 넘긴다. 그래서 「목록이 실제로 이 Work의 셸을 그리는가」는 여기서만 보인다:
+// 패널 쪽 seam은 슬롯을 표식으로 대신하고, 목록 쪽 seam은 상태를 손으로 넣는다.
+describe("WorksPage 패널 shell 탭", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    // 스토어는 모듈 싱글턴이라 이 파일 안에서 새어 나간다. 비우고 나간다.
+    terminalStore.setState(() => NO_SHELLS);
+  });
+
+  function seed(count: number, owner: string, cwd: string): void {
+    let state = NO_SHELLS;
+    for (let n = 0; n < count; n += 1) {
+      state = openShell(state, { owner, project: null, cwd })!.state;
+    }
+    terminalStore.setState(() => state);
+  }
+
+  it("이 Work의 셸이 행으로 서고 둘째 줄에 cwd가 있다", () => {
+    seed(1, work.slug, "~/.atelier/works/some-work/trees/atelier");
+    const markup = render();
+    expect(markup).toContain("~/.atelier/works/some-work/trees/atelier");
+    expect(markup).toMatch(/aria-label="[^"]*닫기"/);
+  });
+
+  it("다른 Work의 셸은 이 패널에 없다", () => {
+    // 목록이 `owner`로 좁히지 않으면 남의 Work 셸이 이 패널에 서고, 누르면 이 화면에서
+    // 열 수 없는 셸이 켜진다.
+    seed(1, "남의-작업", "~/어딘가");
+    const markup = render();
+    expect(markup).not.toContain("~/어딘가");
+    expect(markup).toContain("아직 셸이 없어요");
+  });
+
+  it("행을 누르면 그 셸이 켜지고 본문이 terminal로 넘어간다", () => {
+    // 결정 50. 클릭은 이 seam에서 못 건다(정적 마크업이다). 배선의 **짝**을 소스에서 본다 —
+    // 한쪽만 남으면 화면에 아무 일도 안 일어나거나(뷰가 안 바뀐다) 엉뚱한 칸이 켜진다.
+    const worksPage = source("WorksPage.tsx");
+    const onSelect = worksPage.match(/onSelect=\{\(id\) => \{[\s\S]*?\}\}/)?.[0] ?? "";
+    expect(onSelect, "목록의 onSelect 배선을 찾지 못했다").not.toBe("");
+    expect(onSelect).toContain("selectShell(id)");
+    expect(onSelect).toContain('onSelectTab("terminal")');
+  });
+});
+
+// 결정 47. 상한 8에서 ⌘T는 **아무 일도 안 일어난 것처럼** 보였다(스토리 33의 알려진 구멍) —
+// 그 키는 xterm의 키 핸들러에서 오고 그것은 React 트리 밖이라 화면의 토스트를 부를 길이
+// 없었다. 스토어가 거절을 알리고 이 화면이 그것을 받는다.
+describe("WorksPage 상한에서 ⌘T가 말한다", () => {
+  afterEach(() => {
+    terminalStore.setState(() => NO_SHELLS);
+  });
+
+  it("상한에서 셸을 열려 하면 잠긴 `+`와 **같은 문장**이 온다", () => {
+    let state = NO_SHELLS;
+    for (let n = 0; n < MAX_SHELLS; n += 1) {
+      state = openShell(state, { owner: null, project: null, cwd: null })!.state;
+    }
+    terminalStore.setState(() => state);
+
+    const heard: string[] = [];
+    const stop = onShellOpenRejected((notice) => heard.push(notice));
+    // ⌘T가 부르는 그 함수다. 상한에서는 인스턴스를 만들기 전에 돌아오므로 xterm이 안 뜬다.
+    openNewShell({ owner: null, project: null, cwd: null });
+    stop();
+
+    expect(heard).toEqual([shellCapNotice(terminalStore.state)]);
+    expect(heard[0]).toContain(`${MAX_SHELLS}개까지`);
+  });
+
+  // 「상한이 아니면 아무 말도 하지 않는다」는 여기 없다 — 이 seam에서 상한 아래로
+  // `openNewShell`을 부르면 실제로 열려 xterm 인스턴스가 뜬다(DOM이 없다). 그래서 그 절반은
+  // 판정을 순수 모듈로 내려 shell-registry.test.ts의 「열렸으면 아무 말도 하지 않는다」가
+  // 실제로 돌며 지킨다. 여기 구독만 걸고 곧바로 비었음을 보는 검사를 두면 어떤 구현에도
+  // 통과하는 이름뿐인 그물이 된다.
+
+  it("구독을 끊으면 더 듣지 않는다", () => {
+    // 화면이 언마운트된 뒤에도 듣고 있으면 사라진 화면의 setState가 불린다.
+    let state = NO_SHELLS;
+    for (let n = 0; n < MAX_SHELLS; n += 1) {
+      state = openShell(state, { owner: null, project: null, cwd: null })!.state;
+    }
+    terminalStore.setState(() => state);
+
+    const heard: string[] = [];
+    onShellOpenRejected((notice) => heard.push(notice))();
+    openNewShell({ owner: null, project: null, cwd: null });
+    expect(heard).toEqual([]);
+  });
+
+  it("화면이 그 통로를 실제로 구독한다", () => {
+    // 위 셋은 스토어 쪽 계약이다. 화면이 그것을 안 들으면 전부 초록인 채로 ⌘T가 다시
+    // 조용해진다. 그리고 **토스트로** 말해야 한다 — 콘솔이나 대화 상자가 아니라.
+    const worksPage = source("WorksPage.tsx");
+    const effect = worksPage.match(/useEffect\(\(\) => onShellOpenRejected\([\s\S]*?\);/)?.[0] ?? "";
+    expect(effect, "거절을 듣는 효과를 찾지 못했다").not.toBe("");
+    expect(effect).toContain("showToast");
   });
 });

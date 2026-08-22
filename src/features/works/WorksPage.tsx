@@ -3,6 +3,7 @@ import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
+  Ban,
   Check,
   ChevronDown,
   File,
@@ -19,9 +20,17 @@ import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
+import ShellList from "@/features/terminal/ShellList";
 import TerminalPane from "@/features/terminal/TerminalPane";
-import { runningShellsOf } from "@/features/terminal/shell-registry";
-import { closeShellsOf, terminalStore } from "@/features/terminal/terminal-store";
+import { runningShellsOf, workShellOrigin } from "@/features/terminal/shell-registry";
+import {
+  closeShell,
+  closeShellsOf,
+  onShellOpenRejected,
+  openNewShell,
+  selectShell,
+  terminalStore,
+} from "@/features/terminal/terminal-store";
 import type { ViewTab } from "@/routes/-work-search";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -160,14 +169,27 @@ function WorksPage({
   // 복사 확인 토스트도 여기로 올라왔다(결정 47). 앞 판에서는 SpecViewer의 지역 상태라
   // **터미널 탭에서 트리를 복사하면 아무 말이 없었다** — 그 탭에는 SpecViewer가 없다.
   // 패널이 올라오면 토스트도 함께 올라와야 하는 것이 그래서다.
-  const [toast, setToast] = useState<string | null>(null);
+  //
+  // **`done`은 한 표면이 두 가지 말을 하게 됐기 때문에 있다**(결정 47). 복사는 한 일을
+  // 알리고(✓) 상한 거절은 **못 한 일**을 알린다 — 「셸은 8개까지예요」 옆에 초록 체크가
+  // 서면 그 문장이 「됐어요」로 읽힌다.
+  const [toast, setToast] = useState<{ text: string; done: boolean } | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
-  const showToast = useCallback((message: string) => {
-    setToast(message);
+  const showToast = useCallback((text: string, done = true) => {
+    setToast({ text, done });
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 1600);
   }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // **상한 8에서 ⌘T가 조용하던 구멍을 메운다**(결정 47). 그 키는 xterm의 키 핸들러에서
+  // 오는데 그것은 React 트리 밖이라, 스토어가 낸 거절을 여기서 받아 같은 표면에 붙인다.
+  // 문장은 스토어가 짓는다 — 잠긴 `+` 행과 **같은 문장**이어야 해서다.
+  //
+  // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
+  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 알림 표면을
+  // 새로 짓는 안은 기각됐다.
+  useEffect(() => onShellOpenRejected((notice) => showToast(notice, false)), [showToast]);
 
   // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
   const copyText = useCallback(
@@ -381,19 +403,73 @@ function WorksPage({
           sourceLocked={sourceLocked}
           onToggleSource={() => setShowSource((v) => !v)}
           open={workPanelOpen}
+          // 셸 목록은 **슬롯으로 넘긴다** — 스토어를 구독하는 자리를 이 가지 하나로 좁혀,
+          // 셸이 프롬프트마다 쏘는 타이틀에 화면이나 패널 전체가 다시 그려지지 않게 한다
+          // (WorkPanel의 shellList 주석).
+          shellList={<PanelShells work={panelWork} onSelectTab={onSelectTab} />}
         />
       )}
-      {/* 복사 확인 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다
-          (결정 47). 가운데는 본문 열이 아니라 **본문+패널** 전체의 가운데인데, 이 표면이
-          이제 패널에서 일어나는 일(트리 복사)까지 말하기 때문이다. */}
+      {/* 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
+          가운데는 본문 열이 아니라 **본문+패널** 전체의 가운데인데, 이 표면이 이제 패널에서
+          일어나는 일(트리 복사·⌘T 거절)까지 말하기 때문이다. */}
       {toast && (
         <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-          <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-          {toast}
+          {/* 한 일과 못 한 일이 같은 표면을 쓴다(결정 47) — 글리프가 그 둘을 가른다. */}
+          {toast.done ? (
+            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
+          ) : (
+            <Ban className="size-3.5 text-tertiary" strokeWidth={2.2} />
+          )}
+          {toast.text}
         </div>
       )}
       {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
     </div>
+  );
+}
+
+/**
+ * 패널 `shell` 탭의 내용 — 셸을 고르는 세로 목록이다(결정 42).
+ *
+ * **터미널 스토어를 구독하는 자리가 이 가지 하나다.** 화면(WorksPage)이 구독하지 않는
+ * 것은 값이 자주 흔들려서다: 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안
+ * 그것을 계속 갈아 끼운다. 화면이 구독하면 그때마다 본문 마크다운까지 다시 그려진다.
+ *
+ * 좁히지 않고 통째로 읽는 것은 목록이 **앱 전체** 상한을 세야 해서다(결정 30).
+ * **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
+ */
+function PanelShells({
+  work,
+  onSelectTab,
+}: {
+  work: WorkView;
+  onSelectTab: (tab: ViewTab) => void;
+}) {
+  const state = useStore(terminalStore, (whole) => whole);
+  return (
+    <ShellList
+      state={state}
+      owner={work.slug}
+      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
+      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
+      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. TerminalPane이 같은 이유로
+      // 같은 자리에서 뽑는다.
+      projects={work.worktrees.map((tree) => tree.project)}
+      onSelect={(id) => {
+        // 행을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다**(결정 50). 패널의 spec
+        // 트리에서 문서를 누르면 본문이 spec으로 돌아가는 것과 같은 규칙이다 — 「패널에서
+        // 고르면 본문이 그에 맞는 뷰로 간다」. 본문이 이미 터미널이면 켜진 칸만 바뀐다
+        // (탭 전환은 `replace`라 히스토리도 안 쌓인다).
+        selectShell(id);
+        onSelectTab("terminal");
+      }}
+      onClose={closeShell}
+      onOpen={(project) => {
+        // 프로젝트가 여럿인데 안 골랐으면 자리가 안 정해진다 — 그때는 열지 않는다(결정 24).
+        const origin = workShellOrigin(work, project);
+        if (origin) openNewShell(origin);
+      }}
+    />
   );
 }
 

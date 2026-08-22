@@ -16,14 +16,18 @@ import {
   runningShellsOf,
   setShellName,
   setTitle,
+  shellCapNotice,
   shellEndLabels,
   shellLabel,
+  shellOpenNotice,
+  shellRowName,
+  shellRowStatus,
   shellsOf,
   shellHotkey,
   TOP_TERMINAL,
   workShellOrigin,
 } from "./shell-registry";
-import type { Shell, ShellsState } from "./shell-registry";
+import type { Shell, ShellOrigin, ShellsState } from "./shell-registry";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 
 // 셸 목록 seam. 순수 모듈 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다
@@ -38,7 +42,7 @@ import type { WorkView, WorktreeView } from "@/features/works/types";
 // **소유자를 안 주면 최상위 터미널이다** — 판 02가 관찰하던 것이 전부 그 화면이었다.
 function opened(
   count: number,
-  seed: { owner: string | null; project: string | null } = TOP_TERMINAL,
+  seed: ShellOrigin = TOP_TERMINAL,
 ): { state: ShellsState; ids: number[] } {
   let state = NO_SHELLS;
   const ids: number[] = [];
@@ -433,9 +437,9 @@ const w = (projects: string[]): WorkView => ({
 // 결정 26. 아카이브·삭제가 「그 Work의 셸만」 거두려면 고르는 규칙이 한 자리에 있어야 한다.
 describe("셸은 자기 화면 것만 보인다", () => {
   it("Work의 화면에는 그 Work의 셸만 있다", () => {
-    let state = opened(1, { owner: "가", project: null }).state;
-    state = openShell(state, { owner: "나", project: null })!.state;
-    state = openShell(state, { owner: "가", project: null })!.state;
+    let state = opened(1, { owner: "가", project: null, cwd: null }).state;
+    state = openShell(state, { owner: "나", project: null, cwd: null })!.state;
+    state = openShell(state, { owner: "가", project: null, cwd: null })!.state;
 
     expect(shellsOf(state, "가")).toHaveLength(2);
     expect(shellsOf(state, "나")).toHaveLength(1);
@@ -444,7 +448,7 @@ describe("셸은 자기 화면 것만 보인다", () => {
   // 최상위 터미널은 Work가 아니다 — 아카이브가 그 셸까지 거두면 상관없는 작업이 끊긴다.
   it("최상위 터미널의 셸은 어느 Work에도 안 걸린다", () => {
     let state = opened(1).state;
-    state = openShell(state, { owner: "가", project: null })!.state;
+    state = openShell(state, { owner: "가", project: null, cwd: null })!.state;
 
     expect(shellsOf(state, "가")).toHaveLength(1);
     expect(shellsOf(state, null)).toHaveLength(1);
@@ -454,8 +458,8 @@ describe("셸은 자기 화면 것만 보인다", () => {
   // 확인 대화가 말하는 N이다(결정 26). 끝난 칸과 못 뜬 칸은 목록에 남지만 죽일 프로세스가
   // 없어서, 함께 세면 「셸 2개가 닫혀요」라고 해놓고 하나만 끝난다.
   it("도는 셸만 센다", () => {
-    let state = opened(3, { owner: "가", project: null }).state;
-    state = openShell(state, { owner: "나", project: null })!.state;
+    let state = opened(3, { owner: "가", project: null, cwd: null }).state;
+    state = openShell(state, { owner: "나", project: null, cwd: null })!.state;
     const ids = shellsOf(state, "가").map((shell) => shell.id);
 
     expect(runningShellsOf(state, "가")).toBe(3);
@@ -470,11 +474,11 @@ describe("셸은 자기 화면 것만 보인다", () => {
   it("소유자가 갈려도 상한은 합으로 센다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      const next = openShell(state, { owner: n % 2 === 0 ? "가" : "나", project: null });
+      const next = openShell(state, { owner: n % 2 === 0 ? "가" : "나", project: null, cwd: null });
       expect(next, `${n}번째에서 거부됐다`).not.toBeNull();
       state = next!.state;
     }
-    expect(openShell(state, { owner: "다", project: null })).toBeNull();
+    expect(openShell(state, { owner: "다", project: null, cwd: null })).toBeNull();
     expect(atCap(state)).toBe(true);
   });
 });
@@ -483,17 +487,17 @@ describe("셸은 자기 화면 것만 보인다", () => {
 // 그 상태에서 「없으면 하나 띄운다」가 돌면 이미 있는 셸 옆에 셸이 또 뜬다.
 describe("켜진 칸은 화면마다 따로다", () => {
   it("다른 Work에서 셸을 띄워도 이 Work의 켜진 칸은 그대로다", () => {
-    const 가 = opened(2, { owner: "가", project: null });
-    const 나 = openShell(가.state, { owner: "나", project: null })!;
+    const 가 = opened(2, { owner: "가", project: null, cwd: null });
+    const 나 = openShell(가.state, { owner: "나", project: null, cwd: null })!;
 
     expect(activeIdOf(나.state, "가")).toBe(가.ids[1]);
     expect(activeIdOf(나.state, "나")).toBe(나.id);
   });
 
   it("갔다 와도 보던 칸이 그대로다", () => {
-    const 가 = opened(3, { owner: "가", project: null });
+    const 가 = opened(3, { owner: "가", project: null, cwd: null });
     const 고른것 = activateShell(가.state, 가.ids[0]);
-    const 나 = openShell(고른것, { owner: "나", project: null })!;
+    const 나 = openShell(고른것, { owner: "나", project: null, cwd: null })!;
     const 돌아옴 = activateShell(나.state, 가.ids[0]);
 
     expect(activeIdOf(돌아옴, "가")).toBe(가.ids[0]);
@@ -503,9 +507,9 @@ describe("켜진 칸은 화면마다 따로다", () => {
   // 이웃을 전체 목록에서 고르면 **남의 Work 셸**이 켜진다. 그 줄에는 켜진 칸이 없어진다.
   // 그래서 남의 셸을 두 칸 **사이에** 끼워 둔다 — 나란한 배치로는 두 규칙이 같은 답을 낸다.
   it("활성 칸을 빼면 같은 화면 안에서 이웃이 켜진다", () => {
-    const 첫째 = opened(1, { owner: "가", project: null });
-    const 남 = openShell(첫째.state, { owner: "나", project: null })!;
-    const 둘째 = openShell(남.state, { owner: "가", project: null })!;
+    const 첫째 = opened(1, { owner: "가", project: null, cwd: null });
+    const 남 = openShell(첫째.state, { owner: "나", project: null, cwd: null })!;
+    const 둘째 = openShell(남.state, { owner: "가", project: null, cwd: null })!;
     const 켠것 = activateShell(둘째.state, 첫째.ids[0]);
 
     const 뺀것 = removeShell(켠것, 첫째.ids[0]);
@@ -514,8 +518,8 @@ describe("켜진 칸은 화면마다 따로다", () => {
   });
 
   it("그 화면의 마지막 칸을 빼면 그 화면만 켜진 칸이 없어진다", () => {
-    const 가 = opened(1, { owner: "가", project: null });
-    const 나 = openShell(가.state, { owner: "나", project: null })!;
+    const 가 = opened(1, { owner: "가", project: null, cwd: null });
+    const 나 = openShell(가.state, { owner: "나", project: null, cwd: null })!;
 
     const 뺀것 = removeShell(나.state, 가.ids[0]);
     expect(activeIdOf(뺀것, "가")).toBeNull();
@@ -588,7 +592,7 @@ describe("cwd는 Work의 모양이 정한다", () => {
 // 그래서 이 갈래만은 순수 모듈이 **반드시** 해야 한다.
 describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
   const 프로젝트칸 = (project: string | null) => {
-    const { state, ids } = opened(1, { owner: "w", project });
+    const { state, ids } = opened(1, { owner: "w", project, cwd: null });
     return { state, id: ids[0] };
   };
 
@@ -606,6 +610,98 @@ describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
     const origin = workShellOrigin(w(["atelier"]), null)!;
     const { state, id } = 프로젝트칸(origin.project);
     expect(shellLabel(shellOf(setShellName(state, id, "zsh"), id))).toBe("zsh");
+  });
+});
+
+// 결정 45·46. 세로 목록의 행은 두 줄이고, 그 두 줄을 정하는 것이 이 함수 둘이다.
+// **가로 탭 줄의 `shellLabel`과 갈리는 자리**라 여기서 나란히 놓고 본다 — 저쪽은 셋 중
+// 하나를 고르고 이쪽은 프로젝트를 함께 적는다.
+describe("세로 목록 행의 두 줄", () => {
+  const 칸 = (project: string | null, cwd: string | null) => {
+    const { state, ids } = opened(1, { owner: "w", project, cwd });
+    return { state, id: ids[0] };
+  };
+
+  it("프로젝트가 있으면 타이틀을 이기지 못한다 — 둘을 함께 적는다", () => {
+    // 앞 판이 실물에서 잃은 것이 이것이다: 로그인 zsh가 뜨자마자 OSC 타이틀을 쏘면
+    // `shellLabel`은 프로젝트를 버린다. 같은 칸에서 두 함수가 갈리는 것을 못박는다.
+    const { state, id } = 칸("cli", "~/w/trees/cli");
+    const 이름붙은 = setTitle(state, id, "gimhyoyeon@gimhyoyeon");
+    expect(shellRowName(shellOf(이름붙은, id))).toBe("cli · gimhyoyeon@gimhyoyeon");
+    expect(shellLabel(shellOf(이름붙은, id))).toBe("gimhyoyeon@gimhyoyeon");
+  });
+
+  it("타이틀이 없으면 셸 이름이 뒤에 온다", () => {
+    const { state, id } = 칸("cli", "~/w/trees/cli");
+    expect(shellRowName(shellOf(setShellName(state, id, "zsh"), id))).toBe("cli · zsh");
+  });
+
+  it("프로젝트가 없으면 이름 하나다 — 구분점이 앞에 남지 않는다", () => {
+    const { state, id } = 칸(null, "~/w");
+    expect(shellRowName(shellOf(setShellName(state, id, "zsh"), id))).toBe("zsh");
+  });
+
+  it("이름이 하나도 없어도 비지 않는다", () => {
+    const { state, id } = 칸(null, "~/w");
+    expect(shellRowName(shellOf(state, id)).trim()).not.toBe("");
+  });
+
+  it("프로젝트만 있고 이름이 없으면 그 이름을 두 번 적지 않는다", () => {
+    // `cli · cli`가 되는 자리다. 뒤 갈래에서 프로젝트를 빼지 않으면 그렇게 된다.
+    const { state, id } = 칸("cli", "~/w/trees/cli");
+    expect(shellRowName(shellOf(state, id))).not.toBe("cli · cli");
+  });
+
+  it("도는 셸의 둘째 줄은 cwd다", () => {
+    const { state, id } = 칸(null, "~/w/trees/atelier");
+    expect(shellRowStatus(shellOf(state, id))).toBe("~/w/trees/atelier");
+  });
+
+  it("끝난 셸의 둘째 줄은 종료 사유로 바뀐다 — cwd가 그 자리를 넘긴다", () => {
+    const { state, id } = 칸(null, "~/w/trees/atelier");
+    expect(shellRowStatus(shellOf(markExited(state, id, EXIT_42), id))).toBe("종료 코드 42");
+  });
+
+  it("못 뜬 셸의 둘째 줄은 그 이유다", () => {
+    const { state, id } = 칸(null, "~/w/trees/atelier");
+    const reason = "$SHELL을 실행할 수 없습니다: /nonexistent";
+    expect(shellRowStatus(shellOf(markFailed(state, id, reason), id))).toBe(reason);
+  });
+
+  it("cwd가 없어도 둘째 줄이 비지 않는다 — 행이 두 줄로 서기 때문이다", () => {
+    const { state, id } = 칸(null, null);
+    expect(shellRowStatus(shellOf(state, id)).trim()).not.toBe("");
+  });
+});
+
+// 결정 47. 잠긴 `+` 행이 적는 문장과 ⌘T가 거절당했을 때 뜨는 토스트가 **같은 문장**이다.
+describe("상한에 닿았을 때 하는 말", () => {
+  it("상한과 지금 수를 함께 말한다", () => {
+    const state = opened(MAX_SHELLS).state;
+    expect(shellCapNotice(state)).toBe(`셸은 ${MAX_SHELLS}개까지예요 — 지금 ${MAX_SHELLS}개`);
+  });
+
+  it("지금 수는 **앱 전체**다 — 화면 하나가 아니다", () => {
+    // 화면이 세면 Work마다 8개가 된다(결정 30). 문장이 이 화면의 수를 말하면 「지금 0개인데
+    // 왜 못 열지」가 된다.
+    let state = opened(3, { owner: "가", project: null, cwd: null }).state;
+    state = openShell(state, { owner: "나", project: null, cwd: null })!.state;
+    expect(shellCapNotice(state)).toContain("지금 4개");
+  });
+
+  // 아래 둘은 **`openShell`을 실제로 통과시켜** 본다. 거절 여부와 할 말이 한 자리에서
+  // 갈리는지가 관찰 대상이라, `null`을 손으로 넣으면 그 짝이 검사에서 빠진다.
+  it("열렸으면 아무 말도 하지 않는다", () => {
+    // 이 판정이 터미널 스토어(`openNewShell`)에 있었을 때 **성공 경로가 어떤 검사에도 안
+    // 걸렸다** — 그 함수는 열리는 순간 xterm을 세워 DOM 없는 seam에서 못 돈다. 거절을
+    // 알리는 줄이 성공 경로로 새면 ⌘T·`+`가 열 때마다 「셸은 8개까지예요」를 뱉는다.
+    const state = opened(MAX_SHELLS - 1).state;
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBeNull();
+  });
+
+  it("거부당하면 잠긴 `+`와 같은 문장이 온다", () => {
+    const state = opened(MAX_SHELLS).state;
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBe(shellCapNotice(state));
   });
 });
 

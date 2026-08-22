@@ -16,6 +16,7 @@ import {
   setShellName,
   setTitle,
   shellHotkey,
+  shellOpenNotice,
   shellsOf,
 } from "./shell-registry";
 import type { ShellOrigin, ShellsState } from "./shell-registry";
@@ -84,7 +85,30 @@ const instances = new Map<number, ShellInstance>();
 const ignoreGone = (result: Promise<void>) => void result.catch(() => {});
 
 /**
- * 셸을 하나 띄운다 — `+`가 이것이다. **상한에서는 아무 일도 안 한다**(결정 30).
+ * 상한에서 셸을 못 열었다는 것을 듣는 자리. **⌘T 하나 때문에 있다**(결정 47).
+ *
+ * 그 키는 `attachCustomKeyEventHandler`에서 오는데 그 핸들러는 **React 트리 밖**이라,
+ * 화면의 지역 토스트를 부를 길이 이 통로 말고는 없다. `+`는 잠긴 채 이유를 이미 적어
+ * 두고 있어(결정 47) 이리로 오는 것은 경주뿐이지만, 두 입구를 갈라 두면 같은 사실을
+ * 두 곳이 말하게 되므로 거절은 한 자리에서 알린다.
+ *
+ * **듣는 화면이 없으면 아무 일도 안 일어난다.** 최상위 터미널(`/terminal`)이 그쪽이고,
+ * 거기 ⌘T는 계속 조용하다 — 결정 47이 알려진 것으로 남긴 자리다. 앱 전역 알림 표면을
+ * 새로 짓는 안은 그 결정이 기각했다(한 판에 전역 신설 둘은 위험하다).
+ *
+ * Set인 것은 StrictMode 때문이다 — 마운트를 두 번 돌리면 구독도 두 번 걸린다.
+ */
+const openRejectedListeners = new Set<(notice: string) => void>();
+
+export function onShellOpenRejected(listen: (notice: string) => void): () => void {
+  openRejectedListeners.add(listen);
+  return () => {
+    openRejectedListeners.delete(listen);
+  };
+}
+
+/**
+ * 셸을 하나 띄운다 — `+`가 이것이다. **상한에서는 열지 않고 알리기만 한다**(결정 30·47).
  *
  * 목록에 더하는 것과 인스턴스를 만드는 것이 **한 틱에 함께 끝난다.** StrictMode가 마운트를
  * mount→unmount→mount로 돌려도 `ensureShell`의 "비었나" 판정이 그 사이에서 이미 참이 아니라
@@ -99,12 +123,18 @@ export function openNewShell(origin: ShellOrigin): void {
   // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
   // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
   const opened = openShell(terminalStore.state, origin);
-  // 상한에 닿으면 조용히 돌아간다. `+`로 온 것이라면 그 버튼이 이미 잠겨 있어 여기 닿는
-  // 것은 경주뿐이고, 잠긴 이유는 그 버튼의 title이 말한다.
+  // 상한에 닿으면 열지 않고 **거절을 알린다.** `+`로 온 것이라면 그 버튼이 이미 잠긴 채
+  // 이유를 적고 있어 여기 닿는 것은 경주뿐이지만, ⌘T로 오면 다르다 — 그쪽에는 이유를
+  // 말할 자리가 없어 아무 일도 안 일어난 것처럼 보였다(사용자 스토리 33의 알려진 구멍).
   //
-  // **⌘T로 오면 다르다** — 그쪽에는 이유를 말할 title이 없어서 아무 일도 안 일어난 것처럼
-  // 보인다. 사용자 스토리 33이 요구하는 "왜 잠겼는지"가 이 입구에는 없다는 뜻이다. 메울
-  // 자리가 전역 알림 표면이라 이 판의 몫이 아니라, 알려진 구멍으로 티켓 06에 적어 뒀다.
+  // **가르는 것도 문장을 짓는 것도 여기가 아니다** — `shellOpenNotice`가 둘을 함께 정하고,
+  // 잠긴 `+` 행도 같은 문장을 읽는다(결정 47). 판정을 이리로 되돌리면 계약의 절반이 검사
+  // 밖으로 샌다: 이 함수는 열리는 순간 xterm을 세워 **성공 경로를 테스트에서 못 돈다.**
+  // 「열렸으면 아무 말도 안 한다」가 안 걸린 채 새면 열 때마다 거절 문구가 뜬다.
+  const notice = shellOpenNotice(terminalStore.state, opened);
+  if (notice !== null) {
+    for (const listen of openRejectedListeners) listen(notice);
+  }
   if (!opened) return;
 
   terminalStore.setState(() => opened.state);
@@ -258,7 +288,8 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // `shellHotkey`가 혼자 안다(결정 29의 예외 둘).
   //
   // **새 칸은 자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
-  // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 조용히 돌아간다.
+  // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 열지 않고
+  // 거절을 알리고, 듣는 화면이 그것을 말한다(결정 47).
   //
   // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
   // 그대로 따라온다(판 02).

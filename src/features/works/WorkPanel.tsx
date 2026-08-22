@@ -33,11 +33,21 @@ interface WorkPanelProps {
   onToggleSource: () => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라 패널은 언제나 마운트된 채다.
   open: boolean;
+  /**
+   * `shell` 탭의 내용 — **셸 목록을 슬롯으로 받는다**(결정 42).
+   *
+   * 이 패널이 스스로 그리지 않는 이유는 구독하는 자리 때문이다. 목록은 터미널 스토어를
+   * 구독해야 하는데 그 구독을 여기 두면 셸이 프롬프트마다 쏘는 OSC 타이틀에 **패널
+   * 전체가** 다시 그려진다(spec 트리까지 함께). 슬롯이면 구독이 화면 쪽 가지 하나로
+   * 좁혀지고, 이 패널은 터미널을 아예 모르는 채로 남는다 — `@xterm/*`가 이 파일의
+   * 검사로 따라 들어오지 않는 것도 그 덕이다.
+   */
+  shellList: React.ReactNode;
 }
 
-type PanelTab = "spec" | "info";
+type PanelTab = "spec" | "shell" | "info";
 
-// 목업 S5t 작업 패널 — `spec | info` 두 탭. PR 연동 카드는 v2.
+// 목업 S5t 작업 패널 — `spec | shell | info` 세 탭(결정 41·42). PR 연동 카드는 v2.
 function WorkPanel({
   work,
   currentFile,
@@ -49,6 +59,7 @@ function WorkPanel({
   sourceLocked,
   onToggleSource,
   open,
+  shellList,
 }: WorkPanelProps) {
   const { data: projects } = useProjects();
   // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
@@ -183,6 +194,9 @@ function WorkPanel({
             className="flex h-(--titlebar-height) shrink-0 items-center gap-1 pl-2 pr-4"
           >
             <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
+            {/* 순서는 `spec → shell → info`다(결정 41). 가운데인 것은 자주 오가는 자리라서고,
+                `info`가 끝인 것은 그것이 한 번 읽고 마는 값이어서다. */}
+            <TabButton label="shell" active={tab === "shell"} onClick={() => setTab("shell")} />
             {/* 라벨은 소문자 영어다(결정 41) — 헤더 뷰 탭과 같은 44px 층에 서므로 한
                 가족으로 읽혀야 한다. 문장 속 한국어는 그대로다(CONTEXT.md). */}
             <TabButton label="info" active={tab === "info"} onClick={() => setTab("info")} />
@@ -237,6 +251,7 @@ function WorkPanel({
               onCopy={(path) => onCopy(specRef(work.slug, path))}
             />
           </TabPanel>
+          <TabPanel active={tab === "shell"}>{shellList}</TabPanel>
           <TabPanel active={tab === "info"}>
             <WorkInfo
               work={work}
