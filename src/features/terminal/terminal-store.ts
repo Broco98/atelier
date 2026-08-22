@@ -201,6 +201,14 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     fontSize: FONT_SIZE,
     theme: terminalTheme,
     scrollback: 10000,
+    // **팔레트와 함께 와야 하는 값이다.** 결정 54가 ANSI 16색을 VS Code Dark+에서
+    // 그대로 가져왔는데, 그 열여섯 색이 VS Code에서 읽히는 이유의 절반은 VS Code가
+    // 대비 바닥 4.5를 함께 출하하기 때문이다. xterm의 기본값은 1(= 아무것도 안 한다)이라
+    // 검정(SGR 30) `#000000`이 새 바탕 `#1e1e1e` 위에서 1.26:1로 묻힌다.
+    //
+    // 색을 우리가 고르는 것이 아니다 — 팔레트는 그대로 두고 **그리는 순간의 바닥만**
+    // 준다. 기본을 어둡게로 옮긴 이 판이 만든 경로라, 고치는 자리도 이 판이다.
+    minimumContrastRatio: 4.5,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
