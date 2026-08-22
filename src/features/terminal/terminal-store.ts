@@ -132,25 +132,35 @@ export function selectShell(id: number): void {
 }
 
 /**
- * 셸을 거둔다 — `×`가 이것이다. **셸을 죽이는 유일한 길이고, 목록에서 빼는 유일한 길이다**
- * (결정 22). 화면을 옮기는 것으로는 여기 오지 않는다(결정 20).
+ * 인스턴스를 거둔다 — **이것이 유일한 정리 경로다.** 부르는 곳이 둘이다: `×`(`closeShell`)와
+ * 정상 종료(결정 48로 목록에서 스스로 빠지는 칸). 흩어 놓으면 PTY만 죽고 인스턴스가
+ * 남거나(WebGL 컨텍스트를 계속 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
  *
- * 넷을 **한자리에서** 한다. 흩어 놓으면 PTY만 죽고 인스턴스가 남거나(WebGL 컨텍스트를 계속
- * 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
+ * **`kill`은 스스로 갈린다.** 정상 종료로 오면 PTY가 이미 죽었고 `ptyId`도 그 자리에서
+ * null로 눕혀지므로 아래 가드가 그대로 건너뛴다 — 부르는 쪽이 플래그로 말할 것이 없다.
+ */
+function disposeInstance(instance: ShellInstance): void {
+  instances.delete(instance.id);
+  instance.closed = true;
+  if (instance.ptyId !== null) ignoreGone(terminalApi.kill(instance.ptyId));
+  instance.observer.disconnect();
+  // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
+  // 묶여 있어 **WebGL 컨텍스트도 여기서 풀린다.** 상한 8이 컨텍스트 수를 말하는 이상
+  // 이 한 줄이 상한을 되돌려주는 자리다.
+  instance.term.dispose();
+  instance.wrapper.remove();
+}
+
+/**
+ * 셸을 거둔다 — `×`가 이것이다. **셸을 죽이는 유일한 길이다**(결정 22). 화면을 옮기는
+ * 것으로는 여기 오지 않는다(결정 20).
+ *
+ * 목록에서 빼는 길은 이제 **둘이다** — 결정 48이 정상 종료한 칸을 스스로 빼기 때문이다.
+ * 그쪽은 아래 채널 콜백이 같은 정리를 태운다.
  */
 export function closeShell(id: number): void {
   const instance = instances.get(id);
-  if (instance) {
-    instances.delete(id);
-    instance.closed = true;
-    if (instance.ptyId !== null) ignoreGone(terminalApi.kill(instance.ptyId));
-    instance.observer.disconnect();
-    // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
-    // 묶여 있어 **WebGL 컨텍스트도 여기서 풀린다.** 상한 8이 컨텍스트 수를 말하는 이상
-    // 이 한 줄이 상한을 되돌려주는 자리다.
-    instance.term.dispose();
-    instance.wrapper.remove();
-  }
+  if (instance) disposeInstance(instance);
   terminalStore.setState((state) => removeShell(state, id));
 }
 
@@ -367,6 +377,18 @@ async function spawn(instance: ShellInstance) {
       }
       instance.ptyId = null;
       terminalStore.setState((state) => markExited(state, instance.id, frame));
+      // **결정 48의 나머지 반쪽이 여기다.** 정상 종료한 칸은 목록에서 스스로 빠지는데,
+      // 빠지면 그 칸은 다시 그려지지 않아 `×`가 영영 안 생긴다 — 즉 `closeShell`이 그 id로
+      // 불릴 길이 그 순간 사라진다. 여기서 안 거두면 인스턴스가 WebGL 컨텍스트와 스크롤백
+      // 10,000줄을 쥔 채 리로드까지 살고, 상한 8은 컨텍스트 수를 말하는 값인데(결정 30)
+      // `atCap`은 목록을 세므로 **새는 것을 못 본다.**
+      //
+      // **조건을 여기 다시 적지 않는다.** `exitCode === 0 && signal === null`은
+      // `markExited`가 아는 것이고, 우리는 그 결과에 "뺐느냐"만 묻는다. 두 곳에 적으면
+      // 한쪽만 고쳐지는 날이 온다.
+      if (!terminalStore.state.shells.some((shell) => shell.id === instance.id)) {
+        disposeInstance(instance);
+      }
     };
 
     // `~` 축약 표기를 그대로 넘긴다 — 펴는 것은 `expand_home`을 가진 백엔드 한 곳이다
