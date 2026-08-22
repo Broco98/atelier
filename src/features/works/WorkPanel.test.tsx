@@ -36,7 +36,7 @@ const work: WorkView = {
 // 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.
 //
 // source는 소스 토글의 상태다. 이 패널은 그것을 소유하지 않고 **보여주기만** 하므로
-// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 SpecViewer 쪽 계약이다.
+// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 화면(WorksPage) 쪽 계약이다.
 // on은 사람이 정한 켜짐이고, locked는 이 파일에서 토글이 먹지 않는다는 뜻이다. **둘은 독립이다.**
 function render(
   open: boolean,
@@ -164,11 +164,14 @@ describe("WorkPanel 두 탭", () => {
     vi.unstubAllGlobals();
   });
 
-  it("맨 위가 spec | 정보 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
+  it("맨 위가 spec | info 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
     const markup = render(true);
     // 켜짐·꺼짐 둘 다 기존 토글 어휘를 그대로 쓴다 — 새 토큰을 만들지 않았다
     expect(markup).toMatch(/<button[^>]*\btoggle-on\b[^>]*>spec</);
-    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>정보</);
+    // 라벨은 **소문자 영어다**(결정 41). `정보`로 되돌아오면 헤더 뷰 탭과 같은 44px 층에서
+    // 언어가 갈린다 — 두 줄은 한 가족으로 읽혀야 한다.
+    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>info</);
+    expect(markup).not.toMatch(/<button[^>]*>정보</);
   });
 
   it("탭 규격이 헤더 뷰 탭과 같은 가족이다", () => {
@@ -281,7 +284,7 @@ describe("WorkPanel 두 탭", () => {
 
 // `</>`는 **왼쪽 본문**을 바꾸는데 오른쪽 패널 머리행에 앉는다 (결정 6). 그래서 이 seam이
 // 보는 것은 "무엇을 바꾸는가"가 아니라 **버튼이 받은 두 값을 그대로 그리는가**다 —
-// 본문과 켜짐이 같은 식에서 나오는지는 SpecViewer 쪽에서 본다.
+// 본문과 켜짐이 같은 식에서 나오는지는 화면(WorksPage) 쪽에서 본다.
 describe("WorkPanel 소스 토글", () => {
   beforeEach(stubEmptyStorage);
   afterEach(() => {
