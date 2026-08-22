@@ -78,7 +78,9 @@ interface TreeProps {
 
 function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   const tree = useMemo(() => orderSections(buildTree(files)), [files]);
-  // 접힌 폴더 경로 — 트리가 소유하며 리마운트(작업 전환·패널 토글)를 넘어 살지 않는다
+  // 접힌 폴더 경로 — 트리가 소유하며 리마운트(패널 토글)를 넘어 살지 않는다.
+  // **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
+  // `key`를 떼서, 작업을 옮겨도 이 접힘이 유지된다(그 결정이 감수한 것이다).
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const toggle = (path: string) => {
     setCollapsed((prev) => {

@@ -169,7 +169,8 @@ function WorkMetaMenu({ work }: { work: WorkView }) {
           className="flex flex-col gap-0.5 p-1.5"
         >
           {/* 누르면 닫는다 — 복사가 끝났다는 신호가 팝오버가 사라지는 것이다.
-              토스트는 본문(SpecViewer)에 사는데 헤더는 그 바깥이라 여기서 띄울 수 없다. */}
+              결정 47이 토스트를 화면(WorksPage)으로 올려 이제 헤더에서도 띄울 수는
+              있지만, 배선하지 않았다 — 팝오버가 사라지는 것으로 이미 신호가 선다. */}
           <WorkMetaRows
             work={work}
             base={sharedBase(projects, work.projects)}
