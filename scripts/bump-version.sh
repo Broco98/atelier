@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 사용법: scripts/bump-version.sh 0.2.0
-# package.json, tauri.conf.json, Cargo.toml ×3, Cargo.lock을 갱신하고
-# "release: v<버전>" 커밋과 v<버전> 태그를 만든다. push는 하지 않는다.
+# package.json, tauri.conf.json, 워크스페이스 크레이트 전부의 Cargo.toml, Cargo.lock을
+# 갱신하고 "release: v<버전>" 커밋과 v<버전> 태그를 만든다. push는 하지 않는다.
 set -euo pipefail
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -22,17 +22,29 @@ if git rev-parse -q --verify "refs/tags/v$NEW" >/dev/null; then
   exit 1
 fi
 
+# 크레이트 목록을 여기에 손으로 적지 않는다. 예전엔 셋을 적어 뒀는데 네 번째 크레이트
+# (atelier-test-bridge)가 들어오자 그 목록이 조용히 낡아, v0.7.0을 자른 뒤에도 그것만
+# 0.6.1로 남았다. 워크스페이스에 무엇이 있는지는 cargo가 정본이므로 거기서 받는다.
+# 갈라지면 src/release-version.test.ts가 빨간불을 켠다.
+MANIFESTS=$(cargo metadata --no-deps --format-version 1 \
+  | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).packages.map(p=>p.manifest_path).join('\n')")
+if [[ -z "$MANIFESTS" ]]; then
+  echo "cargo metadata에서 워크스페이스 크레이트를 하나도 받지 못했습니다." >&2
+  exit 1
+fi
+
 for f in package.json src-tauri/tauri.conf.json; do
   sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW\"/" "$f"
 done
-for f in crates/atelier-core/Cargo.toml crates/atelier-cli/Cargo.toml src-tauri/Cargo.toml; do
+while IFS= read -r f; do
   sed -i '' "s/^version = \"[0-9.]*\"/version = \"$NEW\"/" "$f"
-done
+done <<< "$MANIFESTS"
 cargo update --workspace --quiet
 
-git add package.json src-tauri/tauri.conf.json \
-  crates/atelier-core/Cargo.toml crates/atelier-cli/Cargo.toml \
-  src-tauri/Cargo.toml Cargo.lock
+git add package.json src-tauri/tauri.conf.json Cargo.lock
+while IFS= read -r f; do
+  git add "$f"
+done <<< "$MANIFESTS"
 git commit -q -m "release: v$NEW"
 git tag "v$NEW"
 
