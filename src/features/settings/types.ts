@@ -7,10 +7,11 @@ export type TerminalTheme = "light" | "dark";
 // 메모리 값이다).
 export interface TerminalSettings {
   // 고르지 않았으면 `null`이다. **기본 글꼴 이름은 여기에도 백엔드에도 없다** — 그 값은
-  // 폴백 사슬과 함께 `terminal-store.ts`가 들고 있고(`FONT_FAMILY`), 결정 55가 그것을
-  // 바꾼다. 쓰는 쪽이 `settings.terminal.fontFamily ?? FONT_FAMILY`로 읽는다.
+  // 폴백 사슬과 함께 `terminal-defaults.ts`가 들고 있다(`FONT_FAMILY`).
+  // **이름 하나가 아니라 목록으로 쓰인다**: 고른 이름 뒤에 늘 같은 꼬리가 붙는다(결정 56).
+  // 합치는 자리는 그 파일의 `terminalLook` 하나다.
   fontFamily: string | null;
-  // 같은 규칙이다 — 기본은 `terminal-store.ts`의 `FONT_SIZE`.
+  // 같은 규칙이다 — 기본은 `terminal-defaults.ts`의 `FONT_SIZE`.
   fontSize: number | null;
   // 이 하나만 파일이 비어도 값이 정해져 온다 — 기본은 어둡게다(결정 54).
   theme: TerminalTheme;

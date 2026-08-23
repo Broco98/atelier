@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { MONO_FACE } from "@/features/terminal/terminal-defaults";
 
 // 이 트랙의 산출물 전체가 **문자열 경로로만 닿는 바이너리 두 개**다. `index.css`의 `url()`이
 // 옆 폴더의 woff2를 이름으로 가리킬 뿐, 그 둘을 import하는 코드는 어디에도 없다.
@@ -17,9 +18,10 @@ import { describe, expect, it } from "vitest";
 // 파일 간 불변조건을 소스 스캔으로 고정하는 방식은 이 저장소 관습 그대로다
 // (src/tauri-commands.test.ts의 invoke↔Rust 배선, src/state-scale.test.ts).
 //
-// **여기서 하지 않는 것:** 얼굴 이름을 `terminal-store.ts`의 `FONT_FAMILY` 첫 항목과 견주는 일.
-// 그 짝도 끊기면 조용하지만(번들만 1.9MB 무거워지고 아이콘은 여전히 두부다) `FONT_FAMILY`는
-// 아직 이 얼굴을 부르지 않는다 — 그쪽을 고치는 트랙이 그 검사도 같이 들여온다.
+// **그 짝이 이제 여기 있다.** 머리말이 「그쪽을 고치는 트랙이 그 검사도 같이 들여온다」로
+// 남겨 뒀던 자리다 — 결정 55가 터미널 기본 글꼴을 이 얼굴로 옮겼고, 그 이름은
+// `terminal-defaults.ts`의 `MONO_FACE`가 든다. 값 import가 없는 모듈이라 여기서 import해도
+// 아무것도 딸려오지 않는다.
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const cssPath = root + "src/index.css";
@@ -53,6 +55,17 @@ describe("번들한 터미널 글꼴", () => {
   // 목록을 그대로 견줘서 개수까지 함께 고정한다 — `every`로 쓰면 빈 목록이 통과한다.
   it("두 벌 다 번들한 얼굴 이름을 쓴다", () => {
     expect(faces.map((face) => face.family)).toEqual([FAMILY, FAMILY]);
+  });
+
+  // **터미널이 이름으로 청구하는 얼굴과 글자 그대로 같아야 한다.** `document.fonts.load`가
+  // `MONO_FACE`를 이름으로 부르고, `FONT_FAMILY`의 첫 항목도 그 값이다(그쪽에서 이 상수로
+  // 사슬을 만든다). 어긋나면 **아무 소리도 나지 않는다** — 청구가 빈손으로 돌아오고 xterm은
+  // 다음 폴백으로 그린다. 번들만 1.9MB 무거워지고 Nerd Font 아이콘은 여전히 두부(￿)다.
+  //
+  // 위 검사와 겹쳐 보이지만 다른 것을 본다: 저쪽은 CSS가 **글꼴 파일이 제 이름표에 적어 둔
+  // 이름**을 쓰는지, 이쪽은 **코드가 CSS와 같은 이름을 부르는지**다. 한쪽만 고치면 갈린다.
+  it("터미널이 청구하는 얼굴 이름이 @font-face의 것과 같다", () => {
+    expect(faces.map((face) => face.family)).toEqual([MONO_FACE, MONO_FACE]);
   });
 
   // 무게가 둘뿐인 것은 셈이 아니라 사실이다: ANSI bold는 실제로 쓰이고 italic은 xterm이 합성한다.

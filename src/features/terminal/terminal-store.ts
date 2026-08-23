@@ -20,7 +20,9 @@ import {
   shellsOf,
 } from "./shell-registry";
 import type { ShellOrigin, ShellsState } from "./shell-registry";
-import { terminalTheme } from "./terminal-theme";
+import { terminalLook } from "./terminal-defaults";
+import { terminalSettingsStore } from "./terminal-settings";
+import { terminalThemeFor } from "./terminal-theme";
 import type { PtyFrame } from "./types";
 // `@xterm/*` import는 이 파일과 이것을 부르는 화면에만 둔다. `__root.tsx`는
 // autoCodeSplitting이 떼어내지 않으므로(vite.config.ts 주석) 셸 쪽에 한 줄이라도 새면
@@ -28,13 +30,9 @@ import type { PtyFrame } from "./types";
 // `/terminal`의 화면만 부르고, 그 화면은 분할되는 라우트 component라 안전하다.
 import "@xterm/xterm/css/xterm.css";
 
-// index.css의 `--font-mono`와 같은 목록이어야 한다 — 다르면 앱의 다른 모노 글자와 어긋난다.
-// 그 일치는 주석이 아니라 `theme-tokens.test.ts`가 지킨다.
-const FONT_FAMILY = "Geist Mono Variable, ui-monospace, SFMono-Regular, monospace";
-// 첫 항목만 따로 든다 — 아래에서 이 얼굴을 이름으로 청구한다.
-const MONO_FACE = "Geist Mono Variable";
-// xterm의 기본값과 같은 값이지만 명시한다 — `document.fonts.load`에 같은 크기를 줘야 한다.
-const FONT_SIZE = 15;
+// 글꼴·크기·테마의 기본값은 **여기 없다** — `terminal-defaults.ts`로 꺼냈다. 설정 화면이
+// 「고르지 않았을 때 무엇이 쓰이는지」를 같은 상수에서 읽어야 하는데, 이 파일을 import하면
+// 위의 `@xterm/*`가 함께 따라가기 때문이다. 고른 값과 그 기본값을 합치는 규칙도 그쪽이 안다.
 
 /**
  * 화면이 구독하는 값. **인스턴스는 여기 없다** — 리렌더가 xterm을 다시 만드는 경로가
@@ -226,10 +224,14 @@ export function detachShell(id: number): void {
 }
 
 function createInstance(id: number, origin: ShellOrigin): ShellInstance {
+  // **설정을 여기서 파일에서 읽지 않는다** — 앱이 뜰 때 한 번 읽어 스토어에 들어 있고
+  // (`terminal-settings.ts`), 셸을 만들 때마다 읽으면 ⌘T가 IPC 왕복을 탄다. 아직 안 왔으면
+  // `terminalLook`이 기본값으로 답하고, 늦게 오면 아래 `restyleShells`가 이 칸을 따라오게 한다.
+  const look = terminalLook(terminalSettingsStore.state);
   const term = new Terminal({
-    fontFamily: FONT_FAMILY,
-    fontSize: FONT_SIZE,
-    theme: terminalTheme,
+    fontFamily: look.fontFamily,
+    fontSize: look.fontSize,
+    theme: terminalThemeFor(look.theme),
     scrollback: 10000,
     // **팔레트와 함께 와야 하는 값이다.** 결정 54가 ANSI 16색을 VS Code Dark+에서
     // 그대로 가져왔는데, 그 열여섯 색이 VS Code에서 읽히는 이유의 절반은 VS Code가
@@ -305,24 +307,67 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   return instance;
 }
 
-async function loadFont(instance: ShellInstance) {
+/**
+ * 지금 쓸 얼굴을 **이름으로 청구하고 기다린다.** 부르는 곳이 둘이다 — 셸을 처음 열기 전과,
+ * 설정이 바뀌어 얼굴이 갈릴 때(`restyleShells`).
+ *
+ * 폰트가 뜨기 전에 셀을 재면 폴백 글꼴 폭으로 굳어 TUI 박스 선이 어긋난다.
+ * **xterm은 폰트 로딩을 스스로 듣지 않는다** — `lib/xterm.js`에 `fonts`가 0건이고
+ * `open()` 시점에 한 번 재고 끝이다.
+ *
+ * `ready`만으로는 부족하다: 그것은 **이미 걸려 있는** 로딩만 기다리는데, 이 화면 전까지 앱이
+ * 그 얼굴을 한 글자도 안 썼으면 로딩이 애초에 안 걸려 있다. 고른 글꼴이 시스템 글꼴이면
+ * (`Menlo`) `document.fonts`에 없어 곧바로 돌아온다 — 기다릴 것이 없다는 뜻이라 맞다.
+ */
+async function claimFont(): Promise<void> {
+  const look = terminalLook(terminalSettingsStore.state);
   try {
-    // 폰트가 뜨기 전에 셀을 재면 폴백 글꼴 폭으로 굳어 TUI 박스 선이 어긋난다.
-    // **xterm은 폰트 로딩을 스스로 듣지 않는다** — `lib/xterm.js`에 `fonts`가 0건이고
-    // `open()` 시점에 한 번 재고 끝이다.
-    //
-    // `ready`만으로는 부족하다: 그것은 **이미 걸려 있는** 로딩만 기다리는데, 이 화면
-    // 전까지 앱이 모노 글꼴을 한 글자도 안 썼으면 로딩이 애초에 안 걸려 있다.
-    await document.fonts.load(`${FONT_SIZE}px "${MONO_FACE}"`);
+    await document.fonts.load(`${look.fontSize}px "${look.monoFace}"`);
     await document.fonts.ready;
   } catch (error) {
-    // **글꼴을 못 얻는 것은 셸의 실패가 아니다** — 폴백 글꼴로 흐를 뿐이다. 여기서 멈추면
-    // 이 인스턴스는 영영 안 열린다: `fontsReady`가 false로 굳어 다시 마운트해도 아래 게이트를
-    // 통과하지 못한다. 결정 23이 적으라는 이유는 "셸을 못 띄운" 이유지 글꼴 얘기가 아니다.
+    // **글꼴을 못 얻는 것은 셸의 실패가 아니다** — 폴백 글꼴로 흐를 뿐이다. 결정 23이 적으라는
+    // 이유는 "셸을 못 띄운" 이유지 글꼴 얘기가 아니다.
     console.warn("atelier: 모노 글꼴을 못 얻었다 — 폴백으로 간다", error);
   }
+}
+
+async function loadFont(instance: ShellInstance) {
+  // 위에서 삼킨 실패가 여기까지 와야 한다. 던져 올리면 `fontsReady`가 false로 굳어 이
+  // 인스턴스는 영영 안 열린다 — 다시 마운트해도 아래 게이트를 통과하지 못한다.
+  await claimFont();
   instance.fontsReady = true;
   openOrReattach(instance);
+}
+
+/**
+ * 설정이 바뀌면 **이미 떠 있는 셸도 따라간다**(결정 52). 재생성은 없다 — xterm은
+ * `options.fontFamily`/`fontSize`/`theme`을 런타임에 받아 다시 그린다.
+ *
+ * 구독을 모듈 최상위에 건다. 이펙트에 두면 배경 칸(결정 21로 React 트리 밖에 사는 칸)이
+ * 못 받는다 — `onTitleChange`를 인스턴스에 붙이는 것과 같은 이유다.
+ */
+terminalSettingsStore.subscribe(() => void restyleShells());
+
+async function restyleShells(): Promise<void> {
+  // **글꼴을 먼저 기다린다.** 옵션을 먼저 바꾸면 xterm이 그 자리에서 셀을 다시 재는데
+  // (`charSizeService`가 `fontFamily`·`fontSize` 변화를 듣는다 — lib/xterm.js 확인) 새 얼굴이
+  // 아직 안 떠 있으면 폴백 폭으로 굳는다. `loadFont`가 처음 열 때 막는 그 함정이 여기도 있다.
+  await claimFont();
+  const look = terminalLook(terminalSettingsStore.state);
+  const theme = terminalThemeFor(look.theme);
+  for (const instance of instances.values()) {
+    // 거둔 인스턴스에 쓰면 던진다. **아직 안 연 칸에는 그대로 먹인다** — 그 칸은 지금 폰트를
+    // 기다리는 중이고(fontsReady 게이트), 열릴 때 이 값으로 열려야 한다. 옵션 변화를 듣는
+    // 서비스들은 `open()`이 만들므로 안 연 칸에서는 값만 적히고 아무것도 안 돈다.
+    if (instance.closed) continue;
+    instance.term.options.fontFamily = look.fontFamily;
+    instance.term.options.fontSize = look.fontSize;
+    instance.term.options.theme = theme;
+    // **크기를 바꾸면 격자가 바뀐다**(결정 52). `fit()`이 새 cols/rows를 정하고, 값이 실제로
+    // 달라졌을 때만 `onResize`가 PTY로 나간다 — 그 판정은 위 `onResize` 주석대로 xterm이 한다.
+    // 안 연 칸에서는 `fit()`이 스스로 돌아간다(element가 아직 없다).
+    refit(instance);
+  }
 }
 
 /**

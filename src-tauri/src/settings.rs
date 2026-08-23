@@ -37,14 +37,13 @@ pub enum TerminalTheme {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
-    /// 고르지 않았으면 `null`이다. **여기에 기본 글꼴 이름을 박지 않는다** — 지금 값
-    /// (`Geist Mono Variable`)은 결정 55가 `JetBrainsMonoNL Nerd Font`로 바꿀 예정이고,
-    /// 그 이름은 폴백 사슬과 함께 `terminal-store.ts`가 들고 있다. 두 곳에 적으면 한쪽이
-    /// 낡는다 — 「값을 정하는 유일한 지점」을 터미널 쪽에 남기고, 이 파일에는 **사용자가
-    /// 고른 것만** 적는다.
+    /// 고르지 않았으면 `null`이다. **여기에 기본 글꼴 이름을 박지 않는다** — 그 이름
+    /// (결정 55로 `JetBrainsMonoNL Nerd Font`가 됐다)은 폴백 사슬과 함께
+    /// `terminal-defaults.ts`가 들고 있다. 두 곳에 적으면 한쪽이 낡는다 — 「값을 정하는
+    /// 유일한 지점」을 터미널 쪽에 남기고, 이 파일에는 **사용자가 고른 것만** 적는다.
     #[serde(default)]
     pub font_family: Option<String>,
-    /// 크기도 같은 규칙이다 (지금 기본은 `terminal-store.ts`의 `FONT_SIZE`).
+    /// 크기도 같은 규칙이다 (지금 기본은 `terminal-defaults.ts`의 `FONT_SIZE`).
     #[serde(default)]
     pub font_size: Option<u16>,
     /// 테마만 여기에 기본이 있다 — 결정 54가 「기본은 어둡게」를 못박았고, 터미널 쪽에는

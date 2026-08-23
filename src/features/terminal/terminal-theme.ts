@@ -1,4 +1,5 @@
 import type { ITheme } from "@xterm/xterm";
+import type { TerminalTheme } from "@/features/settings/types";
 
 // **xterm 테마 색의 정본은 여기다 — `index.css`가 아니다.**
 //
@@ -92,7 +93,18 @@ export const terminalThemeDark: ITheme = {
   brightWhite: "#e5e5e5",
 };
 
-// **기본은 어둡게**(결정 54). `terminal-store.ts`가 import하는 이름이 이것이라, 여기서
-// 다크를 가리키게 하는 것만으로 store를 한 줄도 안 고치고 기본이 바뀐다. 고르는 길
-// (설정의 「테마: 밝게 / 어둡게」)이 생기면 그 화면은 이 별칭이 아니라 위 두 이름을 쓴다.
-export const terminalTheme: ITheme = terminalThemeDark;
+/**
+ * 고른 이름을 한 벌로 옮긴다.
+ *
+ * **`terminalTheme`(다크 별칭)이 있던 자리다.** 그 별칭은 store를 못 만지는 트랙이 「기본은
+ * 어둡게」(결정 54)를 한 줄로 말하려고 뒀던 것이고, 이제 store가 고른 값을 직접 받으므로
+ * 지웠다 — 남겨 두면 「기본은 어둡게」가 두 곳(별칭과 `terminalLook`)에 적힌다.
+ * **그 기본은 이제 `terminal-defaults.ts`의 `terminalLook`이 혼자 답한다**(설정 파일을 못 읽는
+ * 자리까지 그 함수가 한 번에 답한다).
+ *
+ * 대응을 함수 하나로 두는 이유: store와 설정 화면의 미리보기가 같은 삼항을 각자 적으면 한쪽만
+ * 뒤집혀도 조용하다 — 밝게가 어둡게로 그려지는 것은 오류가 아니라 그냥 다른 화면이다.
+ */
+export function terminalThemeFor(theme: TerminalTheme): ITheme {
+  return theme === "light" ? terminalThemeLight : terminalThemeDark;
+}

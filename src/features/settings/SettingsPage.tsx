@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/shell/PageHeader";
 import { cn } from "@/lib/utils";
-import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
+import { FONT_FAMILY, FONT_SIZE } from "@/features/terminal/terminal-defaults";
+import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
+import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { settingsApi } from "./api";
 import type { Settings, TerminalSettings, TerminalTheme } from "./types";
 
@@ -11,9 +13,13 @@ import type { Settings, TerminalSettings, TerminalTheme } from "./types";
 // **값은 `~/.atelier/settings.json` 한 장에 산다**(결정 53 · adr-02) — `localStorage`가
 // 아니다. 창구는 `api.ts`의 둘뿐이고, 쓸 때는 **읽은 것을 펼쳐 고친다**(`patchTerminal`).
 //
-// **고른 값을 실제 셸에 먹이는 일은 이 화면의 몫이 아니다.** 그 값을 정하는 자리는
-// `terminal-store.ts`의 `FONT_FAMILY`·`FONT_SIZE`·`terminalTheme`이고 이 화면은 거기를
-// 만지지 않는다. 그래서 여기서는 **파일에 적는 데까지만** 한다.
+// **저장에 성공하면 그 값을 셸에도 먹인다**(`applyTerminalSettings`) — 이미 떠 있는 칸까지
+// 따라온다(결정 52). 먹이는 일 자체는 이 화면이 하지 않는다: 무엇이 바뀌어야 하는지를 아는 곳은
+// `terminal-store.ts`이고, 이 화면은 그 모듈을 import하지 않는다(`@xterm/*`가 함께 온다).
+// 둘 사이에 스토어 한 장(`terminal-settings.ts`)이 있고, 이 화면이 아는 것은 거기까지다.
+//
+// **파일에 적기 전에는 먹이지 않는다.** 칸을 고칠 때마다 먹이면 이름을 한 자 지운 순간
+// (`Menl`)이 셸에 가고, 저장을 안 하고 화면을 떠난 값이 셸에만 남는다.
 
 // 프리셋은 **손으로 적는다.** 설치된 글꼴을 실측으로 얻는 웹 API가 WebKit에 없다
 // (`queryLocalFonts()`는 Chromium 전용이고, Rust로 시스템 글꼴을 열거하는 안은 결정 52가
@@ -72,26 +78,20 @@ export function patchTerminal(settings: Settings, patch: Partial<TerminalSetting
  *
  * 결정 52가 미리보기를 필수로 만든 이유가 그것이다 — 이름을 잘못 적으면 오류 없이 폴백으로
  * 그려지는 조용한 실패를 눈에 보이게 하는 것. 여기서 `, monospace`를 덧붙이면 오타가 그럴듯한
- * 다른 글꼴로 그려져 **미리보기가 그 실패를 도로 감춘다.** 실제 터미널이 받는 것도 고른
- * 문자열 그대로다(`settings.terminal.fontFamily ?? FONT_FAMILY` — types.ts).
+ * 다른 글꼴로 그려져 **미리보기가 그 실패를 도로 감춘다.**
  *
- * 고르지 않았을 때는 앱 토큰 `--font-mono`를 읽는다. **기본 글꼴 이름을 여기 적지 않는다** —
- * 그 값을 정하는 유일한 지점은 `terminal-store.ts`의 `FONT_FAMILY`이고, 이 모듈에서 그것을
- * import할 수는 없다(그 모듈은 `@xterm/*`와 그 CSS를 딸고 온다 — `theme-tokens.test.ts`
- * 머리말이 같은 이유로 소스를 읽는다).
+ * **그래서 여기는 실물 터미널과 일부러 다르다.** 셸이 실제로 받는 것은 고른 이름 뒤에 폴백
+ * 사슬이 붙은 목록이다(결정 56 — 고른 글꼴이 무엇이든 한글은 늘 같은 모양이어야 한다).
+ * 그 사슬을 여기 붙이면 이 칸이 하는 일이 사라진다.
  *
- * **그래서 이 답은 `--font-mono`와 `FONT_FAMILY`가 같은 목록인 동안에만 맞다. 그리고 결정
- * 55가 그 짝을 일부러 끊는다** — 터미널 기본 글꼴만 `JetBrainsMonoNL Nerd Font`로 가고
- * `--font-mono`는 Geist Mono로 남는다(`index.css` 머리말의 「`--font-mono`는 건드리지
- * 않는다」). 그날 「기본」 칩의 미리보기는 실물 터미널과 **다른 글꼴**을 그린다.
- *
- * 그 순간을 조용히 넘기지 않으려고 짝을 `SettingsPage.test.tsx`에 못박아 뒀다 — 갈라지면
- * 거기가 빨개지고, 고치는 길(기본값을 `@xterm` 없는 모듈로 꺼내 양쪽이 같은 상수를 읽게
- * 하기)도 그 주석에 적혀 있다. `theme-tokens.test.ts`의 같은 줄에 기대지 않는 이유도 거기
- * 있다 — 그 줄은 갈라짐과 함께 지워질 쪽이다.
+ * 고르지 않았을 때만 다르다 — **그때는 셸이 받는 것과 글자 그대로 같은 목록을 그린다.**
+ * 여기 이름을 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점(`terminal-defaults.ts`의
+ * `FONT_FAMILY`)에서 읽는다. 예전에는 그 모듈이 `@xterm/*`를 딸고 오는 `terminal-store.ts`
+ * 안에 있어서 앱 토큰 `--font-mono`를 대신 읽었고, 결정 55가 그 둘을 갈라놓으면서
+ * 「기본」 칩이 실물과 다른 글꼴을 그리게 됐다. 그 대신 물음을 이 import 하나가 닫는다.
  */
 export function previewFontFamily(fontFamily: string | null): string {
-  return fontFamily ?? "var(--font-mono)";
+  return fontFamily ?? FONT_FAMILY;
 }
 
 /**
@@ -193,6 +193,9 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     try {
       await settingsApi.write(draft);
       setSaved(draft);
+      // **파일에 들어간 뒤에 먹인다.** 먼저 먹이면 쓰기가 실패했을 때 셸만 새 값으로 남아
+      // 다음 실행에 되돌아간다 — 「저장이 안 됐는데 바뀌었다」가 가장 읽기 어려운 상태다.
+      applyTerminalSettings(draft.terminal);
     } catch (error) {
       setSaveError(String(error));
     } finally {
@@ -276,7 +279,7 @@ export function TerminalSection({
   onChangeSize: (raw: string) => void;
 }) {
   const { fontFamily, fontSize, theme } = settings.terminal;
-  const palette = theme === "light" ? terminalThemeLight : terminalThemeDark;
+  const palette = terminalThemeFor(theme);
 
   return (
     <section className="flex flex-col gap-5 pt-2">
@@ -364,12 +367,11 @@ export function TerminalSection({
             background: palette.background,
             color: palette.foreground,
             fontFamily: previewFontFamily(fontFamily),
-            // 고르지 않았으면 크기를 적지 않는다 — 기본 크기를 정하는 자리도
-            // `terminal-store.ts`(`FONT_SIZE`)이고 그 값을 여기 베껴 적으면 한쪽이 낡는다.
-            // 그때는 아래 클래스의 크기로 그려지고, 고르는 순간부터 실물과 같아진다.
-            ...(fontSize === null ? {} : { fontSize: `${fontSize}px` }),
+            // 글꼴과 같은 규칙이다 — 고르지 않았으면 셸이 쓸 기본 크기를 그대로 그린다.
+            // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
+            fontSize: `${fontSize ?? FONT_SIZE}px`,
           }}
-          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 text-[13.5px] leading-[1.6]"
+          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 leading-[1.6]"
         >
           {PREVIEW_LINE}
         </div>

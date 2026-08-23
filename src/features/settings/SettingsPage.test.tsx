@@ -1,9 +1,3 @@
-/// <reference types="node" />
-// Node 타입을 끌어오는 셋째 파일이다 — 근거는 `src/tauri-commands.test.ts` 머리말과 같다
-// (tsconfig의 전역 types를 건드리면 프로젝트 전체의 자동 @types 포함이 좁아진다).
-// 아래 「미리보기의 「고르지 않음」이 기대는 전제」 하나가 소스를 읽는다.
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -16,6 +10,7 @@ import {
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
+import { FONT_FAMILY, FONT_SIZE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
 import type { Settings } from "./types";
 
@@ -27,8 +22,9 @@ import type { Settings } from "./types";
 // 2. **미리보기가 폴백을 감추지 않는 것** — 결정 52가 미리보기를 필수로 만든 이유 자체가
 //    「이름을 잘못 적어도 조용히 그려진다」이고, 미리보기에 폴백을 덧붙이면 그 실패가
 //    미리보기 안에서 한 번 더 감춰진다. 눈으로는 「글꼴이 잘 나오네」로 보인다.
-// 3. **기본 글꼴 이름이 이 화면에 없는 것** — 값을 정하는 자리는 `terminal-store.ts`이고
-//    여기에 베껴 적으면 그쪽이 바뀔 때 이 화면만 낡는다. 낡아도 조용하다.
+// 3. **기본 글꼴·크기를 이 화면이 베껴 적지 않는 것** — 값을 정하는 자리는
+//    `terminal-defaults.ts`이고, 여기에 옮겨 적으면 그쪽이 바뀔 때 이 화면만 낡는다.
+//    낡아도 조용하다: 미리보기가 실물과 다른 글꼴을 그려도 화면에는 아무 표시가 없다.
 // 4. **범위 밖 크기가 파일에서 온 것인지 여기서 적힌 것인지** — 파일이 준 값이 저장을
 //    잠그면 테마 한 줄 바꾸는 것도 막힌다. 화면에는 「저장이 안 눌린다」로만 보이고 왜
 //    잠겼는지는 어디에도 안 적힌다.
@@ -149,59 +145,19 @@ describe("미리보기가 읽는 글꼴", () => {
     expect(previewFontFamily("있지도 않은 글꼴")).toBe("있지도 않은 글꼴");
   });
 
-  it("고르지 않았으면 앱 토큰을 읽는다 — 이름을 적지 않는다", () => {
-    expect(previewFontFamily(null)).toBe("var(--font-mono)");
+  // **고르지 않았을 때만 셸과 글자 그대로 같다.** 고른 이름에는 셸 쪽에서 폴백 사슬이
+  // 붙지만(결정 56) 여기는 안 붙인다 — 위 검사가 그 이유다. 「기본」은 붙일 것이 없어
+  // 두 값이 같아지고, 그래서 이 칩만은 실물과 어긋날 수 없다.
+  //
+  // 이름을 베껴 적지 않고 **값을 정하는 유일한 지점**에서 읽는다. 예전에는 그 자리가
+  // `@xterm/*`를 딸고 오는 `terminal-store.ts` 안이라 앱 토큰 `var(--font-mono)`를 대신
+  // 읽었는데, 결정 55가 터미널 글꼴만 `JetBrainsMonoNL Nerd Font`로 옮기면서 그 대역이
+  // 실물과 갈라졌다. `terminal-defaults.ts`가 그 물음을 닫았다.
+  it("고르지 않았으면 셸이 쓸 목록을 그대로 그린다", () => {
+    expect(previewFontFamily(null)).toBe(FONT_FAMILY);
   });
 });
 
-// 위 「고르지 않음」이 서 있는 전제를 여기서 못박는다: **`--font-mono`가 터미널 기본 글꼴과
-// 같은 목록인 동안에만** `var(--font-mono)`가 실물과 같은 그림을 그린다.
-//
-// **이 전제는 곧 깨진다.** 결정 55가 터미널 기본 글꼴만 `JetBrainsMonoNL Nerd Font`로 옮기고
-// `--font-mono`는 Geist Mono로 남긴다(`index.css` 머리말이 「`--font-mono`는 건드리지
-// 않는다」로 못박았고, 그 글꼴의 `@font-face`는 이미 그 파일에 있다). 그날 「기본」 칩의
-// 미리보기는 실물과 다른 글꼴을 그리는데 **화면에는 아무 표시도 나지 않는다** — 폴백이란
-// 원래 조용한 것이고, 그것을 눈에 보이게 만드는 게 미리보기의 존재 이유였다.
-//
-// `theme-tokens.test.ts`에도 같은 짝을 보는 줄이 있지만 거기 기대지 않는다. 그쪽은 「터미널이
-// 앱 팔레트에서 옮겨 적은 값」을 지키는 검사라 짝이 끊기는 날 **함께 고쳐지거나 지워질 쪽**
-// 이다. 전제를 쓰는 사람이 자기 전제를 진다.
-//
-// **여기가 빨개졌다면 색을 맞추지 마라.** 고치는 길은 기본 글꼴·크기를 정하는 자리를
-// `@xterm`을 딸고 오지 않는 작은 모듈(예: `src/features/terminal/terminal-defaults.ts`)로
-// 꺼내, 미리보기와 `terminal-store.ts`가 **같은 상수**를 읽게 하는 것이다. 그러면 이 검사도
-// 그 import 하나로 줄어든다.
-//
-// 소스를 읽는 이유는 `terminal-store.ts`를 import하면 `@xterm/*`와 그 CSS가 DOM 없는 Node
-// 테스트로 딸려 들어오기 때문이다(`theme-tokens.test.ts` 머리말과 같다). 정규식이 못 찾으면
-// **실패한다** — 못 찾은 것을 통과로 읽으면 이 검사가 지키는 것은 갈라짐이 아니라 자기 자신이다.
-describe("미리보기의 「고르지 않음」이 기대는 전제", () => {
-  const root = fileURLToPath(new URL("../../../", import.meta.url));
-
-  // 따옴표와 공백만 다른 것은 같은 목록이다 — CSS는 `'Geist Mono Variable', …`, xterm 옵션은
-  // 따옴표 없는 한 문자열이다(`theme-tokens.test.ts`의 같은 함수).
-  const fontList = (raw: string) =>
-    raw
-      .replace(/['"]/g, "")
-      .split(",")
-      .map((one) => one.trim())
-      .join(", ");
-
-  it("--font-mono가 터미널 기본 글꼴과 같은 동안에만 var(--font-mono)가 맞다", () => {
-    const store = readFileSync(root + "src/features/terminal/terminal-store.ts", "utf8");
-    const declared = store.match(/const FONT_FAMILY = "([^"]+)"/);
-    expect(declared, "terminal-store.ts에서 FONT_FAMILY를 찾지 못했다").not.toBeNull();
-
-    const css = readFileSync(root + "src/index.css", "utf8");
-    const token = css.match(/--font-mono:\s*([^;]+);/);
-    expect(token, "index.css에서 --font-mono를 찾지 못했다").not.toBeNull();
-
-    expect(
-      fontList(declared![1]),
-      "터미널 기본 글꼴이 --font-mono와 갈라졌다 — 미리보기의 「기본」이 실물과 다른 글꼴을 그린다",
-    ).toBe(fontList(token![1]));
-  });
-});
 
 describe("프리셋", () => {
   // 첫 줄은 앱이 번들하는 글꼴이다 — 목록의 순서가 「무엇을 먼저 권하는가」다.
@@ -234,16 +190,25 @@ describe("미리보기 한 줄", () => {
     expect(markup).not.toContain("var(--font-mono)");
   });
 
-  // 기본 글꼴 이름을 이 화면이 알면 안 된다 — 그 값을 정하는 자리는 `terminal-store.ts`다.
-  it("고르지 않았으면 앱 토큰으로 그리고 화면 어디에도 기본 글꼴 이름이 없다", () => {
+  // 기본 글꼴 이름을 이 화면이 **베껴 적지** 않는다 — 값을 정하는 자리는
+  // `terminal-defaults.ts`이고 여기는 그 상수를 읽는다. 그래서 그 이름이 **마크업에** 나오는
+  // 것은 맞다(셸이 쓸 목록을 그대로 그리는 중이다). 틀린 것은 이 화면 소스에 문자열로
+  // 적히는 쪽이고, 그 갈래는 위 「전제」 검사가 아니라 이 import 하나가 닫는다.
+  //
+  // `var(--font-mono)`를 대신 읽던 자리다 — 결정 55가 터미널 글꼴만 옮기면서 그 대역이
+  // 실물과 갈라졌다.
+  it("고르지 않았으면 셸이 쓸 목록을 그대로 그린다", () => {
     const markup = render(settings());
-    expect(markup).toContain("font-family:var(--font-mono)");
-    expect(markup).not.toContain("Geist");
+    expect(markup).toContain(`font-family:${FONT_FAMILY}`);
+    expect(markup).not.toContain("var(--font-mono)");
   });
 
-  it("고른 크기가 실리고, 고르지 않았으면 크기를 적지 않는다", () => {
+  // 글꼴과 같은 규칙이다. 예전에는 고르지 않았을 때 크기를 **아예 적지 않고** CSS 클래스에
+  // 맡겼는데(기본값을 베껴 적지 않으려는 것이었다), 그러면 「기본」 미리보기가 실물보다 작게
+  // 그려지는 것을 아무도 못 본다 — 미리보기가 실패를 감추는 그 자리다.
+  it("고른 크기가 실리고, 고르지 않았으면 기본 크기로 그린다", () => {
     expect(render(settings({ fontSize: 20 }), "20")).toContain("font-size:20px");
-    expect(render(settings())).not.toContain("font-size:");
+    expect(render(settings())).toContain(`font-size:${FONT_SIZE}px`);
   });
 
   // 「어둡게」가 어떤 어둠인지는 이름으로 알 수 없다 — 두 벌의 실제 값을 그대로 쓴다.

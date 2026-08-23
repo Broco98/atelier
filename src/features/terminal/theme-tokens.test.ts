@@ -3,25 +3,24 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { terminalTheme, terminalThemeDark, terminalThemeLight } from "./terminal-theme";
+import { FONT_FAMILY } from "./terminal-defaults";
+import { terminalThemeDark, terminalThemeFor, terminalThemeLight } from "./terminal-theme";
 
 // 터미널의 글꼴과 색은 **두 곳에 적혀 있다** — 앱 팔레트인 `index.css`와, xterm이 요구하는
-// 모양으로 옮겨 적은 `terminal-theme.ts`/`terminal-store.ts`다. 옮겨 적은 쪽이 뒤처져도
+// 모양으로 옮겨 적은 `terminal-theme.ts`/`terminal-defaults.ts`다. 옮겨 적은 쪽이 뒤처져도
 // 타입 검사도 화면도 조용하다: 색이 조금 어긋난 터미널은 "원래 그런가 보다"로 읽힌다.
 // 그 짝을 여기서 고정한다 — 이 저장소가 파일 간 불변조건을 다루는 방식 그대로다
 // (src/tauri-commands.test.ts의 invoke↔Rust 배선, src/state-scale.test.ts).
 //
-// **`terminal-store.ts`는 import하지 않고 소스를 읽는다.** import하면 `@xterm/*`와 그 CSS가
-// DOM 없는 Node 테스트로 딸려 들어온다 — 위 두 파일이 소스 스캔인 것과 같은 이유다.
-// `terminal-theme.ts`는 반대로 **import한다**: 그 파일의 유일한 import가 `import type`이라
-// 런타임에 아무것도 딸려오지 않고, 테마가 두 벌이 된 뒤로 소스 정규식은 「어느 벌의
-// `foreground`인지」를 선언 순서로만 구분하게 되어 조용히 틀릴 수 있다.
+// **소스를 읽는 것은 `index.css` 하나다.** 나머지 둘은 import한다: 값 import가 없는 모듈이라
+// 런타임에 아무것도 딸려오지 않고(`terminal-theme.ts`는 `import type` 둘, `terminal-defaults.ts`도
+// 그렇다), 소스 정규식은 「어느 벌의 `foreground`인지」를 선언 순서로만 구분하게 되어 조용히
+// 틀릴 수 있다.
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const read = (path: string) => readFileSync(root + path, "utf8");
 
 const css = read("src/index.css");
-const store = read("src/features/terminal/terminal-store.ts");
 
 // `:root`(라이트)가 `.dark`보다 먼저 나오므로 **첫 번째** 정의가 라이트 값이다.
 // 앱은 아직 다크를 출하하지 않는다 — `.dark` 블록은 shadcn 기본값이고 아무도 켜지 않는다.
@@ -41,10 +40,20 @@ const fontList = (raw: string) =>
     .join(", ");
 
 describe("터미널이 앱 팔레트에서 옮겨 적은 값", () => {
-  it("모노 글꼴 목록이 --font-mono와 같다", () => {
-    const declared = store.match(/const FONT_FAMILY = "([^"]+)"/);
-    expect(declared, "terminal-store.ts에서 FONT_FAMILY를 찾지 못했다").not.toBeNull();
-    expect(fontList(declared![1])).toBe(fontList(cssToken("font-mono")));
+  // **이 짝은 이 판에서 일부러 끊겼다.** 여기 있던 검사는 「터미널 글꼴 목록이 `--font-mono`와
+  // 같다」였는데, 결정 55가 터미널만 `JetBrainsMonoNL Nerd Font`로 옮기고 앱 전체 mono는
+  // `Geist Mono`로 남겼다 — 아이콘이 필요한 곳은 터미널 하나고, 문서 코드 블록·경로·spec
+  // 원문에는 필요 없다(`index.css` 머리말의 「`--font-mono`는 건드리지 않는다」).
+  //
+  // 그래서 지키는 것을 「같다」에서 **「갈라진 채로 있다」**로 뒤집는다. 터미널 글꼴을 다시
+  // 만지는 사람이 「짝이 어긋났네」 하고 `--font-mono`까지 끌고 가면 앱의 모노 글자가 전부
+  // 아이콘 글꼴로 바뀌는데, 그 변화는 화면 어디에도 「바꿨다」고 적히지 않는다.
+  it("앱 전체 --font-mono는 터미널 글꼴을 따라가지 않는다", () => {
+    const appMono = fontList(cssToken("font-mono"));
+    expect(appMono.startsWith("Geist Mono Variable"), `--font-mono가 바뀌었다: ${appMono}`).toBe(
+      true,
+    );
+    expect(appMono, "터미널 글꼴이 앱 전체 mono를 함께 끌고 갔다").not.toBe(fontList(FONT_FAMILY));
   });
 
   // 티켓이 「앱과 어긋나면 안 되는 넷」으로 못박은 짝들이다(결정 33). **라이트만** 짝이 있다 —
@@ -101,10 +110,15 @@ function brightness(hex: string | undefined): number {
 // 다크는 앱과 견줄 짝이 커서 하나뿐이라, 나머지는 **두 벌 사이**를 견준다 — 한 벌만 고치고
 // 다른 벌을 잊는 것이 이 파일이 썩는 방식이기 때문이다.
 describe("터미널 테마 두 벌", () => {
-  // 기본을 정하는 유일한 지점이 이 별칭이다(결정 54). store는 `terminalTheme`만 import하므로
-  // 여기가 라이트로 돌아가도 타입 검사에는 아무 티가 안 난다.
-  it("기본은 어둡게다", () => {
-    expect(terminalTheme).toBe(terminalThemeDark);
+  // 여기 있던 「기본은 어둡게다」(다크 별칭이 다크를 가리키는가)의 자리다. 그 별칭은 store가
+  // 고른 값을 직접 받게 되면서 지워졌고, **「기본은 어둡게」(결정 54)는 `terminalLook`으로
+  // 옮겨 갔다**(`terminal-defaults.test.ts`가 그것을 본다).
+  //
+  // 여기 남은 것은 이름 → 한 벌의 대응이다. 뒤집혀도 타입 검사에는 아무 티가 안 나고, 화면에는
+  // 「밝게를 골랐는데 어둡다」로만 보인다 — 오류가 아니라 그냥 다른 화면이라 조용하다.
+  it("이름이 제 벌을 고른다", () => {
+    expect(terminalThemeFor("dark")).toBe(terminalThemeDark);
+    expect(terminalThemeFor("light")).toBe(terminalThemeLight);
   });
 
   it("두 벌이 같은 키 집합을 갖는다", () => {
