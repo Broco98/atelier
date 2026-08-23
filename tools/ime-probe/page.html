@@ -1,0 +1,46 @@
+<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="xterm.css">
+<style>
+/* run.sh가 src/index.css의 실제 규칙을 여기에 끼워 넣는다 */
+/*__APP_CSS__*/
+html,body{margin:0;background:#1e1e1e}#term{width:640px;height:300px}</style>
+<div id="term"></div>
+<script src="xterm.js"></script>
+<script src="terminal-ime.js"></script>
+<script>
+const put = s => window.webkit.messageHandlers.log.postMessage(s);
+const cp = s => [...(s ?? '')].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')).join(' ');
+const t0 = performance.now();
+const line = (k, d) => put(String(Math.round(performance.now()-t0)).padStart(5) + 'ms  ' + k.padEnd(20) + ' ' + d);
+
+// 앱의 createInstance와 같은 옵션으로 만든다.
+const term = new Terminal({
+  fontFamily: 'JetBrainsMonoNL Nerd Font, ui-monospace, SFMono-Regular, Apple SD Gothic Neo, monospace',
+  fontSize: 15, scrollback: 5000, minimumContrastRatio: 4.5,
+  theme: { background: '#1e1e1e', foreground: '#cccccc' },
+});
+term.open(document.getElementById('term'));
+
+// **이것이 재려는 것** — xterm이 결국 PTY로 무엇을 보내는가. 앱에서는 이 자리가 pty_write다.
+const sent = [];
+term.onData(d => { sent.push(d); line('→PTY', `"${d}" [${cp(d)}]`); });
+
+// 앱이 다는 것과 같은 커스텀 핸들러(⌘T/⌘W). 조합과 무관함을 이 자리에서 함께 확인한다.
+term.attachCustomKeyEventHandler(e => {
+  if (e.type !== 'keydown') return true;
+  if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return true;
+  return !(e.code === 'KeyT' || e.code === 'KeyW');
+});
+
+// **앱의 진짜 모듈을 건다** — 흉내가 아니다. run.sh가 terminal-ime.ts를 번들해 넣는다.
+AtelierIme.attachIme(document.getElementById('term'), (d) => term.input(d, true));
+const ta = document.querySelector('.xterm-helper-textarea');
+for (const t of ['compositionstart','compositionupdate','compositionend'])
+  ta.addEventListener(t, e => line(t, `data="${e.data ?? ''}"[${cp(e.data)}]`));
+for (const t of ['beforeinput','input'])
+  ta.addEventListener(t, e => line(t, `inputType=${e.inputType} isComposing=${e.isComposing} data="${e.data ?? ''}"[${cp(e.data)}] value="${ta.value}"[${cp(ta.value)}]`), true);
+ta.addEventListener('keydown', e => line('keydown', `key="${e.key}" code=${e.code} keyCode=${e.keyCode} isComposing=${e.isComposing}`), true);
+
+term.focus();
+window.__done = () => put('FINAL →PTY 합계 = "' + sent.join('') + '" [' + cp(sent.join('')) + ']');
+</script>

@@ -1,10 +1,19 @@
 # 한글 조합이 어디서 끊기는가 — 조사와 계측 설계
 
-트랙 A-0. **코드는 한 줄도 안 고쳤다.** 번들 소스에서 확인한 사실, 원인 후보의 순위,
-실물 앱에서 한 번에 가르는 계측, 원인별 처방을 적는다.
+**끝났다. 원인은 아래 §2에 있고 고침은 들어갔다**(2026-08-23). 다시 재려면
+`sh tools/ime-probe/run.sh` — 사람이 한글을 칠 필요가 없다.
 
-읽는 법: 「확인함」은 파일에서 눈으로 본 것이다. 「추측」은 추측이라고 적었다.
-줄 번호는 원본 TypeScript 기준인데, 그것을 어떻게 얻었는지는 아래에 적어 둔다.
+읽는 법: 「확인함」은 파일에서 눈으로 본 것이고, 「실측」은 진짜 WKWebView에 두벌식을
+프로그램으로 쳐 넣어 받은 로그다. §0·§1은 처음 조사 그대로 두었다 — 여전히 맞고, 무엇을
+배제했는지가 거기 있다.
+
+## 한 문단으로
+
+**xterm의 숨은 입력칸이 `width: 0; height: 0`인 것 하나가 원인이었다.** 크기 0인 요소에
+한국어 입력기가 붙으면 WKWebView가 조합을 매 타자 끊어 「안녕」이 `ㅇㅏㄴ녕`으로 흩어진다.
+크기를 1px만 줘도 WebKit은 멀쩡한 경로를 쓰는데 — 그 경로는 `compositionstart`를 **한 건도
+안 보내고** 완성 음절을 `insertReplacementText`로 준다 — 이번엔 xterm이 그 종류를 안 봐서
+낱자만 샌다. 그래서 고침도 둘이다: `index.css`의 크기 한 줄과 `terminal-ime.ts`의 조합 다리.
 
 ## 0. 무엇을 읽었나 — 번들에서 원본을 되찾는 법
 
@@ -171,224 +180,109 @@ if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return nu
 
 **결론: 1판이 단 핸들러는 이 버그와 무관하다.** 다시 조사하지 말 것.
 
-## 2. 가장 유력한 원인
+## 2. 원인 — 실측으로 갈린 것
 
-### 순위 1 — WKWebView가 한글 IME에 대해 composition 이벤트를 **안 준다** (유력)
+계측기(`tools/ime-probe/`)가 진짜 WKWebView를 세우고 진짜 두벌식 입력기로 「안녕」을 친 뒤
+xterm이 PTY로 내보낸 바이트를 읽었다. 아래는 그 로그에서 나온 사실이다.
 
-상류에 이 증상을 정확히 적은 미머지 PR이 있다:
-[xtermjs/xterm.js#5704 "fix: handle insertReplacementText for Korean IME on WKWebView/Safari"](https://github.com/xtermjs/xterm.js/pull/5704)
-(2026-02-16, **아직 open**). 본문 인용:
+### 갈린 자리 — 숨은 입력칸의 **크기**
 
-> WKWebView (used by Tauri, Capacitor, and Safari-based apps on macOS/iOS) does not fire
-> `compositionstart`/`compositionupdate`/`compositionend` events for Korean IME input. Instead, it fires:
-> - `insertText` with `inputType === 'insertText'` for the initial jamo (e.g. `ㅎ`)
-> - `insertReplacementText` for composition updates (e.g. `ㅎ` → `하` → `한`)
->
-> Since `_inputEvent()` only handles `inputType === 'insertText'`, the composed Korean syllables
-> from `insertReplacementText` were silently dropped, causing only raw jamo to reach the terminal.
+같은 페이지에서 CSS 한 줄만 바꿔 두 번 쟀다.
 
-근거가 맞물리는 자리:
+| 숨은 입력칸 | WebKit이 쓰는 경로 | 입력칸 최종값 | xterm이 PTY로 보낸 것 |
+|---|---|---|---|
+| `width: 0; height: 0` (xterm 기본) | 조합이 **매 타자 끊긴다** | `ㅇㅏㄴ녕 ` ❌ | `ㅇㅏㄴ녕 ` ❌ |
+| `width: 1px; height: 1px` | 조합 이벤트 **0건**, `insertReplacementText` | `안녕 ` ✅ | `ㅇㄴ ` ❌ |
 
-- `_inputEvent`가 `insertText`만 본다 — **우리 번들에서 확인함**(1.3).
-- `insertReplacementText`가 번들에 **0건** — 그 PR은 우리 판(beta.302)에 안 들어 있다.
-- 조합 이벤트가 안 오면 `_isComposing`이 영영 false → `CompositionHelper`가 **통째로 무력화**된다(1.2).
-  이 앱의 증상 서술 「일부가 새는 것이 아니라 **조합이 아예 시작되지 않는다**」와 정확히 같은 말이다.
-- 자모가 나가는 문 세 개(1.3)가 전부 열려 있어, 타자 한 번에 한 건씩 흘러나오는 그림이 된다.
+**오직 크기만 갈랐다.** 화면 밖(`left: -9999em`)인 것도, 투명(`opacity: 0`)인 것도, `z-index: -5`도
+전부 무해했다 — 셋을 그대로 두고 크기만 1px로 준 판이 위 둘째 줄이다. xterm 스스로도 조합
+중에는 이 칸을 1×1 이상으로 만든다(`updateCompositionElements`의 주석: "Ensure the text area is
+at least 1x1, otherwise certain IMEs may break"). 다만 그 손질은 조합이 **시작된 뒤**라 늦다.
 
-**증상 개수도 이 그림과 맞는다.** 「안녕하세요」는 두벌식으로 **12타**(ㅇㅏㄴ·ㄴㅕㅇ·ㅎㅏ·ㅅㅔ·ㅇㅛ)인데
-spec에 적힌 결과 `ㅇ ㅣ ㅣ ㅣ ㅣ ㅇ ㅣ ㅣ ㄱ ㅔ ㅔ ㅔ`도 **12자**다. 「타자 한 번에 한 건」이라는 뜻이다.
-다만 **글자 하나하나는 믿지 말 것** — 자모 글리프가 폰트 폴백을 타고 폭도 어긋나 화면에서
-읽은 것이라, 도착한 코드포인트와 다를 수 있다. 그래서 아래 계측은 **화면이 아니라 바이트**를 잰다.
+곁가지 둘도 이 한 줄에서 함께 나았다: 스페이스가 **U+00A0**으로 오던 것과, 조합 중
+백스페이스가 먹통이던 것.
 
-### 순위 2 — 셸의 로케일이 없어서 멀쩡히 도착한 UTF-8이 셸에서 깨진다 (배제 안 됨)
+### 남은 절반 — xterm이 `insertReplacementText`를 안 본다
 
-이것을 순위 2로 올리는 이유는 실제 사고 기록이 있어서다.
-[xtermjs/xterm.js#6084](https://github.com/xtermjs/xterm.js/issues/6084)은 **우리와 똑같은 제목**으로
-열렸다가(「WKWebView: Korean IME fires no composition events — composed syllables dropped」)
-사흘 뒤 보고자가 **철회**했다:
+크기를 고친 뒤의 이벤트 흐름은 이렇다(실측 그대로):
 
-> The Korean input problem in my Tauri/WKWebView app was **not** xterm's IME handling. It was a
-> missing UTF-8 locale: the app was launched from Finder, so it inherited no `LANG`/`LC_CTYPE` …
-> Removing it entirely gives correct Hangul input with stock xterm in WKWebView.
-
-우리 앱에도 **같은 구멍이 있다**. `src-tauri/src/pty.rs:328-333`의 `shell_builder`가 심는 환경변수는
-`TERM`·`COLORTERM`·`CLAUDE_CODE_NO_FLICKER` 셋뿐이고 **`LANG`도 `LC_CTYPE`도 없다.**
-바로 위 주석이 스스로 이렇게 적어 뒀다: 「Finder로 띄운 앱의 환경은 launchd의 빈약한 것」.
-
-가리는 법은 아래 계측이 한 줄로 준다 — **웹뷰가 PTY로 무엇을 보냈는지**를 보면 된다.
-`안녕하세요`(U+C548 U+B155 …)가 통째로 나갔는데 화면이 깨졌다면 xterm은 무죄고 로케일이 범인이다.
-
-### 순위 3 — 이벤트는 오는데 xterm이 못 받는다 (낮음)
-
-「붙는 자리·순서 문제」는 코드상 근거가 약하다. 리스너는 조건 없이 붙고(1.1), 우리 쪽
-커스텀 핸들러는 무해하며(1.5), 옵션도 다 기본값이다(1.4). 앱이 숨은 textarea를 직접 건드리는
-코드는 없다(`grep` 확인함). 터미널 화면에서 함께 도는 전역 `keydown` 리스너는
-`AppShell.tsx:26-35` 하나뿐이고, 그것은 **⌘B만** 보고 그때만 `preventDefault`한다(확인함).
-**그래도 계측이 「composition 3종이 정상으로 온다」를 보이면 이쪽이다.**
-
-### 순위 4 — 웹뷰가 IME를 아예 안 태운다 (낮음)
-
-`keyCode`가 229가 **아닌** 채 `key`에 자모가 들어오면 이쪽이다. 이 경우 1.2의 문 ①이 열려
-`ev.key`가 그대로 나간다. 계측 로그의 `keyCode`가 바로 가른다.
-
-## 3. 계측 설계 — 한 번에 가른다
-
-**코드를 안 고친다.** 웹 인스펙터 콘솔에 붙여 넣는 스니펫 하나로 끝난다.
-
-### 3.0 준비
-
-- **디버그 빌드로 띄운다**: `nohup <워크트리>/target/debug/atelier-app &`.
-  `src-tauri/Cargo.toml`에 `devtools` 피처가 없으므로 **릴리스/설치본에는 인스펙터가 없다**(확인함).
-- 인스펙터 여는 자리: **사이드바 빈 곳**에서 우클릭 → `Inspect Element`.
-  터미널 안에서 우클릭하면 textarea의 편집 메뉴가 떠서 안 나온다.
-- **손으로 친다. CGEvent 자동 타이핑을 쓰지 말 것** — 한국어 IME가 켜져 있으면 그 경로가
-  자체로 자모를 만들어서(실측 기록 있음) 재는 대상과 재는 도구가 같은 함정에 빠진다.
-- 앱이 **여럿 떠 있으면** 인스펙터가 어느 창의 것인지 먼저 확인할 것(설치본과 이름이 같다).
-
-### 3.1 붙이는 것 — 콘솔에 통째로 붙여 넣는다
-
-터미널 화면을 띄워 셸이 보이는 상태에서 실행한다.
-
-```js
-(() => {
-  const ta = document.querySelector('.xterm-helper-textarea');
-  if (!ta) { console.warn('숨은 textarea가 없다 — 터미널이 보이는 화면에서 다시 하라'); return; }
-  const t0 = performance.now(), log = (window.__ime = []);
-  const cp = s => [...(s ?? '')].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')).join(' ');
-  const put = (k, d) => log.push(`${String(Math.round(performance.now()-t0)).padStart(6)}ms  ${k.padEnd(18)} ${d}`);
-
-  for (const t of ['compositionstart','compositionupdate','compositionend'])
-    ta.addEventListener(t, e => put(t, `data="${e.data ?? ''}"[${cp(e.data)}] value="${ta.value}"[${cp(ta.value)}]`), true);
-  for (const t of ['beforeinput','input'])
-    ta.addEventListener(t, e => put(t, `inputType=${e.inputType} isComposing=${e.isComposing} data="${e.data ?? ''}"[${cp(e.data)}] value="${ta.value}"[${cp(ta.value)}]`), true);
-  for (const t of ['keydown','keyup'])
-    ta.addEventListener(t, e => put(t, `key="${e.key}"[${cp(e.key.length === 1 ? e.key : '')}] code=${e.code} keyCode=${e.keyCode} isComposing=${e.isComposing} meta=${e.metaKey}`), true);
-
-  // 이 한 줄이 「xterm이 결국 무엇을 셸로 보냈는가」다. api.ts가 invoke("pty_write", {id, data})를 부르고,
-  // @tauri-apps/api의 invoke는 호출 시점에 window.__TAURI_INTERNALS__.invoke를 찾아가므로 여기서 가로챌 수 있다.
-  const I = window.__TAURI_INTERNALS__, orig = I.invoke.bind(I);
-  I.invoke = (cmd, args, opts) => {
-    if (cmd === 'pty_write') put('→PTY', `"${args.data}" [${cp(args.data)}]`);
-    return orig(cmd, args, opts);
-  };
-
-  window.__imeDump = () => console.log(log.join('\n'));
-  console.log('계측 켜짐. 타자 다 친 뒤 __imeDump() 를 부르라.');
-})();
+```
+insertText            "ㅇ"   입력칸: ""     → "ㅇ"
+insertReplacementText "아"   입력칸: "ㅇ"   → "아"
+insertReplacementText "안"   입력칸: "아"   → "안"
+insertReplacementText "안"   입력칸: "안"   → "안"     ← 값이 안 바뀌는 헛것도 온다
+insertText            "ㄴ"   입력칸: "안"   → "안ㄴ"   ← 여기서 「안」이 확정된다
+insertReplacementText "녀" …
 ```
 
-찍히는 곳은 **콘솔**이다. 파일로 안 뽑는 이유: 웹뷰에서 파일을 쓰려면 앱 코드를 건드려야 하고
-이 트랙은 그것을 안 한다. 콘솔 출력은 우클릭 → 복사로 통째로 가져올 수 있다.
+xterm의 `_inputEvent`는 **`insertText`만** 받는다(§1.3에서 번들로 확인함). 그래서 낱자
+`ㅇ`·`ㄴ`만 새고 완성된 `안`·`녕`은 통째로 버려진다 — 상류 PR
+[#5704](https://github.com/xtermjs/xterm.js/pull/5704)가 말하는 그 자리다. 다만 그 PR은
+**크기 0을 원인으로 짚지 않았고**, 우리가 잰 바로는 조합 이벤트가 안 오는 것이 결과이지
+원인이 아니다.
 
-**한계 하나(정직하게)**: 우리 리스너는 xterm이 먼저 등록해 둔 리스너 **뒤에** 불린다(같은 요소·같은
-단계에서는 등록 순서다). xterm이 부르는 것은 `stopPropagation`이지 `stopImmediatePropagation`이
-아니므로(`_keyDown` 확인함) **이벤트는 다 받는다.** 다만 `ta.value`는 xterm이 손댄 뒤의 값일 수 있다
-(예: Enter에서 xterm이 `textarea.value = ''`로 비운다, `CoreBrowserTerminal.ts:916`). 그래서 값보다
-**`data`와 `→PTY`를 먼저 읽을 것.**
+조합 중 백스페이스는 지우는 신호가 따로 오지 않는다 — `insertReplacementText`의 데이터가
+한 겹 벗겨져 온다(`녕` → `녀` → `ㄴ`). 그래서 다리에 특별한 처리가 없다.
 
-### 3.2 사람이 칠 것 — 이 순서로, 이것만
+### 순위 2(셸 로케일)는 **배제됐다**
 
-1. `hello` + Enter — **대조군.** 계측이 도는지, 영문 경로가 멀쩡한지 확인.
-2. `locale` + Enter — 셸의 로케일을 눈으로 본다(순위 2용).
-3. `cat > /tmp/ime.bin` + Enter
-4. **「안녕하세요」를 손으로 친다** (한/영 전환 후, 12타).
-5. **⌘Enter를 한 번** 누른다. ← 결정 43의 미측정 하나를 여기서 공짜로 받는다.
-6. Enter → `Ctrl-D`로 `cat` 끝내기
-7. `xxd /tmp/ime.bin` + Enter — **셸이 실제로 받은 바이트**
-8. 콘솔에서 `__imeDump()`
+상류 [#6084](https://github.com/xtermjs/xterm.js/issues/6084)가 똑같은 증상을 `LANG` 없음으로
+철회한 전례가 있어 의심했지만, 우리에게는 해당되지 않는다. `/etc/zprofile`(애플 기본 파일)에
+이것이 있다:
 
-이어서 ⌘Enter의 **의미**만 따로:
+```sh
+if [ -z "$LANG" ]; then
+	export LANG=C.UTF-8
+fi
+```
 
-9. `claude` 실행 → 영문으로 한 줄 치고 → **⌘Enter 한 번** →
-   전송됐나 / 줄만 바뀌었나 / 아무 일도 없었나를 본다.
+`shell_builder`가 `new_default_prog()`로 **로그인 셸**을 띄우므로 이 파일이 돌고, 로케일이
+공짜로 따라온다. 실측으로도 확인했다 — 로케일 넷(`없음`·`C.UTF-8`·`en_US.UTF-8`·`ko_KR.UTF-8`)
+아래 PTY에 `안녕하세요`를 흘려 넣고 에코를 받아 보니 **1398바이트로 전부 같았다.**
 
-### 3.3 보고할 것 — 이 넷이면 끝난다
+> 로그인 셸로 띄우는 것은 PATH 때문에 정한 것인데(`pty.rs` 주석) 로케일이 거기 얹혀 있다.
+> 언젠가 비로그인 셸로 바꾸면 이 구멍이 열린다.
 
-- (A) `__imeDump()` 출력 **전문**
-- (B) `xxd /tmp/ime.bin` 출력
-- (C) `locale` 출력
-- (D) 9번에서 `claude`가 ⌘Enter에 무엇을 했나 (한 문장)
+### 배제된 것들 (다시 조사하지 말 것)
 
-### 3.4 로그를 읽는 표 — 이 네 줄이 원인을 가른다
+- **렌더러·글리프 아틀라스** — 1판에서 WebGL을 끄고도 그대로였다
+- **`attachCustomKeyEventHandler`** — §1.5. ⌘ 없이는 `null`을 돌려주므로 가로챌 수가 없다
+- **xterm 옵션 전부** — §1.4. 우리가 옮긴 `minimumContrastRatio`까지 그리는 쪽이다
+- **입력칸의 속성** — `autocorrect="off"`·`spellcheck="false"`를 그대로 단 맨 `<textarea>`는
+  정상으로 돌았다(실측). 속성이 아니라 크기였다
+- **`updateCompositionElements`가 조합 중 기하를 흔드는 것** — no-op으로 막아도 그대로였다(실측)
 
-| 로그에서 보이는 것 | 결론 |
+## 3. 다시 재는 법
+
+`sh tools/ime-probe/run.sh`. 쓰는 법·한계·대본 늘리는 법은 `tools/ime-probe/README.md`에 있다.
+
+**손으로 칠 일이 없다.** 예전에 여기 있던 「웹 인스펙터에 스니펫을 붙여 넣고 한글을 친다」
+절차는 계측기가 대신한다. 화면에서 읽은 자모는 글꼴 폴백을 타서 증거가 못 되므로,
+계측기는 **바이트**를 잰다.
+
+## 4. 무엇을 고쳤나
+
+| 자리 | 무엇 |
 |---|---|
-| `compositionstart/update/end`가 **0건**이고 `input`에 `inputType=insertReplacementText`가 보인다 | **순위 1 확정.** PR #5704가 말하는 그대로다 |
-| `→PTY`에 `"안녕하세요" [C548 B155 D558 C138 C694]`가 **통째로** 나갔는데 `xxd`가 깨져 있다 | **순위 2 확정.** xterm 무죄, 셸 로케일이다. (C)의 `LANG`이 비었을 것이다 |
-| composition 3종이 **정상으로 오는데** `→PTY`에 자모가 나간다 | **순위 3.** 붙는 자리·순서 또는 상류 버그 |
-| `→PTY`에 자모가 나가고 그때 `keydown`의 `keyCode`가 **229가 아니다** | **순위 4.** 웹뷰가 IME를 안 태운다 — `ev.key`가 문 ①로 그대로 샌다 |
+| `src/index.css` | `.xterm textarea.xterm-helper-textarea`에 `width/height: 1px`. `!important`가 아니라 `textarea` 한 겹을 얹어 특이도로 이긴다 — 청크 순서에 안 기댄다 |
+| `src/features/terminal/terminal-ime.ts` | 조합 다리. 완성될 때까지 붙들었다가 확정되는 순간 보낸다 |
+| `src/features/terminal/terminal-store.ts` | `createInstance`에서 집(`wrapper`)의 capture 단계에 건다 |
 
-곁가지로 함께 읽을 것:
+**꺼낸 안 하나**: 상류 PR #5704를 `pnpm patch`로 물리는 것. 크기 0을 안 고치면 그 PR만으로는
+안 낫는다(조합이 매 타자 끊기는 쪽으로 가므로 `insertReplacementText`가 아예 안 온다).
+검토 안 거친 남의 코드를 입력 경로 한복판에 놓는 값도 있어 접었다.
 
-- `keydown`이 `input`보다 **앞인지 뒤인지**. 뒤면 `_inputEvent`의 `_keyDownSeen` 가드가
-  두 번째 타자부터 막는다(상류 #5887이 그 경우다).
-- textarea에 **U+00A0**(`00A0`)이 섞이는지. WebKit이 스페이스를 non-breaking space로 넣는
-  버릇이 있다고 상류에 적혀 있다 — 그러면 `cd works`가 한 단어로 셸에 가서 「Tab이 깨졌다」로 보인다.
-- Backspace의 **keydown이 통째로 사라지고 keyup만** 오는지(성공 기준 4번에 걸린다).
-
-### 3.5 ⌘Enter — 코드가 예측하는 답 (계측이 확인만 하면 된다)
-
-**예측: ⌘Enter는 그냥 `\r`(0x0D) 하나로 셸에 간다. Enter와 구분되지 않는다.**
-근거는 둘이다.
-
-- `shellHotkey`가 `KeyT`·`KeyW`만 보므로 ⌘Enter는 앱이 안 가져간다(`shell-registry.ts:309-311`).
-- `Keyboard.ts:100-110`의 `case 13`은 `altKey`만 본다 — `result.key = ev.altKey ? ESC+CR : CR`.
-  **`metaKey`를 아예 안 본다.**
-
-그러니 `claude`는 이것을 「전송」으로 쓸 것이다(추측 — 9번이 확인한다).
-`→PTY "\r" [000D]` 한 줄이 로그에 있으면 예측이 맞은 것이다.
-
-## 4. 처방 갈래 — 원인별로 무엇을, 얼마나
-
-### 순위 1이 맞을 때 (WKWebView가 조합 이벤트를 안 준다)
-
-고쳐야 하는 것은 **「조합 중에는 xterm에게 키를 안 주고, 완성된 음절만 준다」** 한 가지다.
-길이 셋 있는데 크기가 꽤 다르다.
-
-**(a) 상류 PR #5704를 pnpm patch로 물린다 — 가장 작다.**
-남이 이미 쓴 코드다. 우리는 6.1.0-beta.302에 리베이스만 하면 된다.
-크기: patch 파일 1개(상류 diff 4파일) + `package.json` 한 줄. **작음.**
-대가: 상류가 판을 올릴 때마다 리베이스한다. **그리고 그 PR은 아직 머지가 안 됐다** — 검토를
-안 거친 남의 코드를 우리 입력 경로 한복판에 놓는다는 뜻이다. 그 코드가 무엇을 하는지는
-우리가 읽고 판단해야 한다.
-
-**(b) 우리 층을 만든다 — wrapper의 capture 단계에서 먼저 받는다.**
-xterm의 리스너보다 **먼저 등록할 수는 없지만**(그것은 `open()` 안에서 붙는다), **상위 요소의
-capture 단계**는 대상 요소의 어떤 리스너보다도 앞이다. `terminal-store.ts`의 `wrapper`가 바로
-그 상위 요소다. 거기서 `keydown`·`input`을 capture로 받아, 조합 중이면 `stopPropagation()`으로
-**xterm에게 안 넘기고**, 음절이 완성됐을 때만 `term.input(완성문자열, true)`로 되돌려 준다
-(그러면 기존 `onData` → `pty_write` 한 길로 합류해 경로가 둘로 갈라지지 않는다).
-크기: 새 파일 1개(150~250줄) + `createInstance`에 두어 줄 + 마크업 테스트. **중간.**
-대가: 「조합이 끝났는가」를 우리가 판정해야 한다 — 상류가 못 한 그 판정이다.
-
-**(c) `onData`에서 자모를 걸러낸다 — 하지 말 것.**
-xterm이 이미 내보낸 것을 뒤에서 주워 담는 모양이라, 정상 입력의 자모(사람이 `ㅋㅋ`를 치는
-경우)를 구분할 수 없다. 적어 두는 이유는 **이 안을 다시 꺼내지 않기 위해서**다.
-
-### 순위 2가 맞을 때 (셸 로케일)
-
-`src-tauri/src/pty.rs`의 `shell_builder`에 `LANG`/`LC_CTYPE`을 **없을 때만** 심는다
-(`TERM`처럼 무조건 덮으면 사용자가 셸에서 정한 값을 뺏는다).
-크기: **아주 작음** — 3~5줄 + 검사 1개. 다만 「어떤 값을 심을 것인가」가 결정거리다
-(`en_US.UTF-8` 고정인가, macOS의 `AppleLocale`을 읽는가).
-
-**주의**: 이건 원인이 아니어도 값어치가 있는 변경이다. 그래도 **원인이 아니면 이 티켓에 넣지 말 것** —
-이 저장소는 모든 변경 줄이 자기 티켓으로 추적돼야 한다.
-
-### 순위 3이 맞을 때 (이벤트는 오는데 못 받는다)
-
-로그가 어느 이벤트에서 끊기는지를 바로 지목해 줄 것이다. 대개 상류 버그거나 우리 쪽의
-한 줄짜리 어긋남이다. 크기: **작음** — 다만 상류 버그면 (a)와 같은 patch 길로 간다.
-
-### 순위 4가 맞을 때 (웹뷰가 IME를 안 태운다)
-
-우리가 웹 레이어에서 고칠 수 있는 것이 없다 — wry/WKWebView 쪽이다.
-현실적인 길은 순위 1의 (b)와 같아진다(입력 위임층을 우리가 든다). **큼.**
+**안 한 것**: 조합 중인 글자를 화면에 보여 주는 것. 지금은 다음 글자를 치는 순간 앞 글자가
+나타난다 — 바이트는 맞지만 한 박자 늦게 보인다. xterm의 조합 오버레이는 조합 이벤트에
+기대는데 이 경로에는 그 이벤트가 없다. 실물에서 얼마나 거슬리는지 보고 판단할 일이다.
 
 ## 5. 다음 사람이 안 되풀이했으면 하는 것
 
-- `attachCustomKeyEventHandler`는 **끝났다**(1.5). 자리는 위험하지만 우리가 심은 함수는 무해하다.
-- xterm 옵션도 **끝났다**(1.4). `screenReaderMode`·`macOptionIsMeta`·kitty 전부 기본값이라 경로를
-  안 바꾸고, 우리가 주는 다섯은 — 기본값에서 옮긴 `minimumContrastRatio`까지 — 전부 그리는 쪽이다.
-- 번들은 minified지만 **`.map`에 원본이 통째로 들어 있다**(0절). 「소스를 못 봤다」고 다시 적지 말 것.
-- 화면에서 읽은 자모 글자는 **증거가 아니다.** 폰트 폴백과 폭이 섞인다. 바이트를 잴 것.
+- **크기 0이 원인이다.** `xterm.css`가 그렇게 두고 있고, 우리 override가 사라지면 그대로 재발한다.
+  `terminal-ime.test.ts`가 그 규칙과 상류 값을 함께 본다
+- `attachCustomKeyEventHandler`는 **끝났다**(§1.5)
+- xterm 옵션도 **끝났다**(§1.4)
+- 번들은 minified지만 **`.map`에 원본이 통째로 들어 있다**(§0)
+- 화면에서 읽은 자모 글자는 **증거가 아니다.** 폰트 폴백과 폭이 섞인다. 바이트를 잴 것
+- **CGEvent 타이핑은 쓸 수 있다** — 오히려 그것이 맞다. 입력기를 거치는 유일한 길이고,
+  계측기가 쓰는 방식이다. 쓰면 안 되는 것은 **유니코드 문자열 주입**이다(입력기를 건너뛴다)

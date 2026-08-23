@@ -21,6 +21,7 @@ import {
 } from "./shell-registry";
 import type { OpenedShell, ShellOrigin, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
+import { attachIme } from "./terminal-ime";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
 import type { PtyFrame } from "./types";
@@ -284,6 +285,16 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // Tailwind가 아니라 인라인이다 — JSX 밖에서 만드는 요소라 클래스 스캔에 기대지 않는다.
   wrapper.style.width = "100%";
   wrapper.style.height = "100%";
+
+  // **한글은 xterm이 혼자 못 받는다.** WKWebView가 조합 이벤트 대신 `insertReplacementText`로
+  // 완성 음절을 주는데 xterm의 입력 경로가 그 종류를 안 본다 — 낱자만 새고 음절은 버려진다.
+  // 왜 그런지와 무엇으로 갈랐는지는 `terminal-ime.ts` 머리말에 있다.
+  //
+  // **`term.input`으로 되돌린다.** 위 `onData`가 유일한 출구로 남아야 `pty_write`가 한 곳에서
+  // 나가고, xterm이 스스로 보내는 것과 순서도 안 뒤집힌다(다리가 capture로 먼저 돌기 때문).
+  //
+  // 여기서 거는 이유는 `onTitleChange`와 같다 — 이펙트에 두면 배경 칸이 못 받는다.
+  attachIme(wrapper, (data) => term.input(data, true));
 
   const instance: ShellInstance = {
     id,

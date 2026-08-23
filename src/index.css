@@ -410,3 +410,17 @@ body.resizing * {
 .scroll-quiet.is-scrolling::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, var(--foreground) 52%, transparent);
 }
+/* xterm의 숨은 입력칸에 **크기를 준다.** `xterm.css`는 `width: 0; height: 0`으로 두는데,
+   크기가 0인 요소에 한국어 IME가 붙으면 WKWebView가 조합을 매 타자 끊어 「안녕」이
+   `ㅇㅏㄴ녕`으로 흩어지고 스페이스마저 U+00A0으로 온다(2026-08-23 실측 — 실제 WKWebView에
+   두벌식을 프로그램으로 쳐 넣어 갈랐다). 화면 밖인 것도 투명인 것도 무해했다: **오직 크기
+   0만이 갈랐다.** 1px이면 WebKit이 제대로 된 경로를 쓰고, 그 경로를 셸까지 잇는 것은
+   `terminal-ime.ts`다.
+
+   `!important`가 아니라 `textarea`를 한 겹 더 얹어 이긴다 — 번들 순서에 기대지 않는다.
+   xterm 스스로도 조합 중에는 이 칸을 1x1 이상으로 만든다("Ensure the text area is at least
+   1x1, otherwise certain IMEs may break"). 다만 그 손질은 조합이 시작된 **뒤**라 늦는다. */
+.xterm textarea.xterm-helper-textarea {
+  width: 1px;
+  height: 1px;
+}
