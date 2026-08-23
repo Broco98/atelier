@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import ShellPicker from "./ShellPicker";
 import {
   activeIdOf,
   atCap,
@@ -151,29 +151,14 @@ function ShellList({ state, owner, projects, onSelect, onClose, onOpen }: ShellL
       </button>
 
       {picking && (
-        <PopoverPortal
+        <ShellPicker
           anchorRef={plusRef}
-          // 왼쪽 맞춤이다 — 이 행이 패널 왼쪽 끝에 붙어 있어 오른쪽 맞춤이면 메뉴가 창
-          // 밖으로 뻗는다(가로 탭 줄이 같은 이유로 같은 값을 쓴다).
-          align="left"
-          width={190}
-          onClose={() => setPicking(false)}
-          className="flex flex-col gap-px p-[5px]"
-        >
-          {projects.map((project) => (
-            <button
-              key={project}
-              type="button"
-              onClick={() => {
-                setPicking(false);
-                onOpen(project);
-              }}
-              className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-            >
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{project}</span>
-            </button>
-          ))}
-        </PopoverPortal>
+          projects={projects}
+          onPick={(project) => {
+            setPicking(false);
+            if (project) onOpen(project);
+          }}
+        />
       )}
     </div>
   );

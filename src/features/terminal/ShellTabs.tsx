@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PopoverPortal } from "@/components/ui/popover-portal";
-import { activeIdOf, atCap, MAX_SHELLS, shellEndLabels, shellLabel, shellsOf } from "./shell-registry";
+import ShellPicker from "./ShellPicker";
+import { activeIdOf, atCap, shellCapNotice, shellEndLabels, shellLabel, shellsOf } from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
 
 interface ShellTabsProps {
@@ -148,7 +148,7 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar
         aria-expanded={asks ? picking : undefined}
         title={
           full
-            ? `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개고, 다른 터미널의 셸도 함께 셉니다`
+            ? `${shellCapNotice(state)}고, 다른 터미널의 셸도 함께 셉니다`
             : asks
               ? "셸 열기 — 프로젝트를 고릅니다"
               : "셸 열기"
@@ -164,29 +164,14 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar
       </button>
 
       {picking && (
-        <PopoverPortal
+        <ShellPicker
           anchorRef={plusRef}
-          // 왼쪽 맞춤이다 — `+`가 줄 왼쪽 끝에 있어서 오른쪽 맞춤이면 메뉴가 사이드바 위로
-          // 뻗는다(실물에서 확인했다).
-          align="left"
-          width={190}
-          onClose={() => setPicking(false)}
-          className="flex flex-col gap-px p-[5px]"
-        >
-          {projects.map((project) => (
-            <button
-              key={project}
-              type="button"
-              onClick={() => {
-                setPicking(false);
-                onOpen(project);
-              }}
-              className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-            >
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{project}</span>
-            </button>
-          ))}
-        </PopoverPortal>
+          projects={projects}
+          onPick={(project) => {
+            setPicking(false);
+            if (project) onOpen(project);
+          }}
+        />
       )}
     </div>
   );

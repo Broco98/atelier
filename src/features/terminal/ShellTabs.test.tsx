@@ -7,6 +7,7 @@ import {
   MAX_SHELLS,
   NO_SHELLS,
   openShell,
+  shellCapNotice,
   TOP_TERMINAL,
   workShellOrigin,
 } from "./shell-registry";
@@ -144,6 +145,15 @@ describe("상한에 닿은 `+`", () => {
     expect(title).toMatch(new RegExp(`${MAX_SHELLS}개까지`));
     expect(title).toMatch(new RegExp(`지금 ${MAX_SHELLS}개`));
     expect(title).toContain("다른 터미널");
+  });
+
+  // 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다(결정 47). 이 줄은 패널
+  // 목록보다 hover라 여유가 있어 꼬리를 더 붙이는데, **앞 절은 같은 함수에서 와야 한다.**
+  // 위 검사는 「N개까지」와 「지금 N개」가 있는지만 보므로, 문장을 손으로 다시 적어도 통과한다.
+  it("잠긴 이유의 앞 절은 패널 목록과 **같은 함수**에서 온다", () => {
+    const state = opened(MAX_SHELLS);
+    const title = plusOf(render(state)).match(/title="([^"]*)"/)![1];
+    expect(title.startsWith(shellCapNotice(state))).toBe(true);
   });
 
   it("칸이 하나도 없어도 `+`는 남는다", () => {

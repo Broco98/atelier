@@ -410,6 +410,7 @@ body.resizing * {
 .scroll-quiet.is-scrolling::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, var(--foreground) 52%, transparent);
 }
+
 /* xterm의 숨은 입력칸에 **크기 바닥을 준다.**
 
    쓰이는 크기가 0이면 한국어 입력기가 붙을 때 WKWebView가 조합을 매 타자 끊어 「안녕」이
@@ -431,6 +432,6 @@ body.resizing * {
 
    이 경로를 셸까지 잇는 나머지 절반은 `terminal-ime.ts`에 있다. */
 .xterm textarea.xterm-helper-textarea {
-  min-width: 1px;
-  min-height: 1px;
+    min-width: 1px;
+    min-height: 1px;
 }

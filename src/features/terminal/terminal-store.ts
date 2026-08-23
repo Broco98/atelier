@@ -21,6 +21,7 @@ import {
 } from "./shell-registry";
 import type { OpenedShell, ShellOrigin, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
+import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
@@ -365,6 +366,11 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
  * 지금 쓸 얼굴을 **이름으로 청구하고 기다린다.** 부르는 곳이 둘이다 — 셸을 처음 열기 전과,
  * 설정이 바뀌어 얼굴이 갈릴 때(`restyleShells`).
  *
+ * **얼굴을 인자로 받는다 — 여기서 다시 읽지 않는다.** `restyleShells`는 이 `await` 뒤에
+ * 옵션을 먹이는데, 그 사이 설정이 또 바뀌면 스스로 읽는 판에서는 **청구한 얼굴과 먹인
+ * 얼굴이 갈린다** — 안 뜬 글꼴로 셀을 재는 바로 그 함정으로 되돌아간다. 값을 넘겨받으면
+ * 그 어긋남이 구조적으로 없다.
+ *
  * 폰트가 뜨기 전에 셀을 재면 폴백 글꼴 폭으로 굳어 TUI 박스 선이 어긋난다.
  * **xterm은 폰트 로딩을 스스로 듣지 않는다** — `lib/xterm.js`에 `fonts`가 0건이고
  * `open()` 시점에 한 번 재고 끝이다.
@@ -373,8 +379,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
  * 그 얼굴을 한 글자도 안 썼으면 로딩이 애초에 안 걸려 있다. 고른 글꼴이 시스템 글꼴이면
  * (`Menlo`) `document.fonts`에 없어 곧바로 돌아온다 — 기다릴 것이 없다는 뜻이라 맞다.
  */
-async function claimFont(): Promise<void> {
-  const look = terminalLook(terminalSettingsStore.state);
+async function claimFont(look: TerminalLook): Promise<void> {
   try {
     await document.fonts.load(`${look.fontSize}px "${look.monoFace}"`);
     await document.fonts.ready;
@@ -388,7 +393,7 @@ async function claimFont(): Promise<void> {
 async function loadFont(instance: ShellInstance) {
   // 위에서 삼킨 실패가 여기까지 와야 한다. 던져 올리면 `fontsReady`가 false로 굳어 이
   // 인스턴스는 영영 안 열린다 — 다시 마운트해도 아래 게이트를 통과하지 못한다.
-  await claimFont();
+  await claimFont(terminalLook(terminalSettingsStore.state));
   instance.fontsReady = true;
   openOrReattach(instance);
 }
@@ -406,8 +411,8 @@ async function restyleShells(): Promise<void> {
   // **글꼴을 먼저 기다린다.** 옵션을 먼저 바꾸면 xterm이 그 자리에서 셀을 다시 재는데
   // (`charSizeService`가 `fontFamily`·`fontSize` 변화를 듣는다 — lib/xterm.js 확인) 새 얼굴이
   // 아직 안 떠 있으면 폴백 폭으로 굳는다. `loadFont`가 처음 열 때 막는 그 함정이 여기도 있다.
-  await claimFont();
   const look = terminalLook(terminalSettingsStore.state);
+  await claimFont(look);
   const theme = terminalThemeFor(look.theme);
   for (const instance of instances.values()) {
     // 거둔 인스턴스에 쓰면 던진다. **아직 안 연 칸에는 그대로 먹인다** — 그 칸은 지금 폰트를

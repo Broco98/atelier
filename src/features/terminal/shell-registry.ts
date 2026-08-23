@@ -142,8 +142,9 @@ export function atCap(state: ShellsState): boolean {
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
  *
- * 최상위 터미널의 가로 탭 줄은 이 문장을 쓰지 않는다 — 거기 `+`는 폭이 없어 이유를
- * `title`(hover)에 적고, 그 자리는 「다른 터미널의 셸도 함께 셉니다」까지 말할 여유가 있다.
+ * 최상위 터미널의 가로 탭 줄도 **이 문장을 쓴다** — 거기 `+`는 폭이 없어 이유를
+ * `title`(hover)에 적는데, hover는 잘릴 걱정이 없어 「다른 터미널의 셸도 함께 셉니다」를
+ * 뒤에 잇는다. 이으므로 앞 절은 여전히 여기 한 곳에서 온다.
  */
 export function shellCapNotice(state: ShellsState): string {
   return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
