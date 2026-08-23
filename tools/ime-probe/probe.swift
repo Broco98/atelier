@@ -10,6 +10,7 @@
 // 인자: <page.html> [키코드,쉼표,구분] [ascii]
 //   키코드 앞의 `s` = Shift와 함께, `c` = ⌘와 함께  (예: `5,31,s17` = ㅎ ㅐ Shift+ㅅ)
 //   ascii = 영문 배열을 **골라** 친다(회귀 확인용). 안 주면 두벌식을 고른다.
+//   wide  = 치기 전에 커서를 넓은 글자 뒤칸에 세운다(xterm이 인라인 `width: 0px`을 쓰는 자리).
 import Cocoa
 import WebKit
 import Carbon.HIToolbox
@@ -78,14 +79,21 @@ final class Log: NSObject, WKScriptMessageHandler {
     }
 }
 
-guard CommandLine.arguments.count > 1 else { die("쓰는 법: probe <page.html> [키코드…] [ascii]", 2) }
+guard CommandLine.arguments.count > 1 else { die("쓰는 법: probe <page.html> [키코드…] [ascii] [wide]", 2) }
 let page = CommandLine.arguments[1]
 guard FileManager.default.fileExists(atPath: page) else { die("페이지가 없다: \(page)", 2) }
 
-// 중간에 끊겨도 기계가 두벌식으로 남지 않게 한다. 핸들러는 C 규약이라 캡처를 못 하므로
-// 위 전역들에 기댄다.
+// 중간에 끊겨도 기계가 두벌식으로 남지 않게 한다. **C 시그널 핸들러가 아니라 `DispatchSource`**
+// 로 받는다 — 핸들러 안에서 `TISSelectInputSource`를 부르는 것은 async-signal-safe하지 않다.
+// 이쪽은 큐에서 평범한 코드로 돌므로 마음대로 불러도 된다.
+// (강제 종료·크래시까지 막지는 못한다. 그때는 손으로 입력 소스를 되돌려야 한다.)
+var signalSources: [DispatchSourceSignal] = []
 for sig in [SIGINT, SIGTERM, SIGHUP] {
-    signal(sig, { _ in restore(); exit(130) })
+    signal(sig, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+    source.setEventHandler { restore(); exit(130) }
+    source.resume()
+    signalSources.append(source)
 }
 
 let app = NSApplication.shared
@@ -128,8 +136,18 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
         // 전부 뒤에 몰려 도착한다(첫 시도에서 keyup 7개가 keydown보다 먼저 왔다).
         DispatchQueue.global().async {
             if CommandLine.arguments.contains("wide") {
-                DispatchQueue.main.sync { web.evaluateJavaScript("window.__wide && window.__wide()") }
-                usleep(400_000)
+                // **없으면 죽는다.** `&&`로 넘기면 페이지가 바뀌었을 때 준비가 조용히 안 돌고
+                // 그대로 초록이 된다.
+                var missing = false
+                DispatchQueue.main.sync {
+                    web.evaluateJavaScript("typeof window.__wide") { value, _ in
+                        missing = (value as? String) != "function"
+                    }
+                }
+                usleep(200_000)
+                if missing { die("페이지에 window.__wide가 없다 — wide 준비를 못 한다", 2) }
+                DispatchQueue.main.sync { web.evaluateJavaScript("window.__wide()") }
+                usleep(500_000)
             }
             let spec = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "2,40,1,1,32,2,49"
             for token in spec.split(separator: ",") {

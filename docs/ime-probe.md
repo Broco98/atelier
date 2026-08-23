@@ -9,11 +9,11 @@
 
 ## 한 문단으로
 
-**xterm의 숨은 입력칸이 `width: 0; height: 0`인 것 하나가 원인이었다.** 크기 0인 요소에
-한국어 입력기가 붙으면 WKWebView가 조합을 매 타자 끊어 「안녕」이 `ㅇㅏㄴ녕`으로 흩어진다.
-크기를 1px만 줘도 WebKit은 멀쩡한 경로를 쓰는데 — 그 경로는 `compositionstart`를 **한 건도
-안 보내고** 완성 음절을 `insertReplacementText`로 준다 — 이번엔 xterm이 그 종류를 안 봐서
-낱자만 샌다. 그래서 고침도 둘이다: `index.css`의 크기 한 줄과 `terminal-ime.ts`의 조합 다리.
+원인이 **둘**이다. **앱이 평소 걸린 것**은 이쪽이다 — WKWebView가 `compositionstart`를 한 건도
+안 보내고 완성 음절을 `insertReplacementText`로 주는데, xterm의 입력 경로는 `insertText`만
+받아서 낱자만 새고 음절은 버려진다. 그리고 숨은 입력칸의 **쓰이는 크기가 0**이 되는 자리가
+따로 있는데(§2), 거기서는 조합이 아예 매 타자 끊겨 「안녕」이 `ㅇㅏㄴ녕`으로 흩어진다.
+그래서 고침도 둘이다: `terminal-ime.ts`의 조합 다리와 `index.css`의 크기 바닥.
 
 ## 0. 무엇을 읽었나 — 번들에서 원본을 되찾는 법
 
@@ -291,7 +291,7 @@ fi
 | `src/index.css` | `.xterm textarea.xterm-helper-textarea`에 `min-width`/`min-height: 1px`. 바닥만 깔아 인라인과 안 싸운다(위 표) |
 | `src/features/terminal/terminal-ime.ts` | 조합 다리. 완성될 때까지 붙들었다가 확정되는 순간 보낸다 |
 | `src/features/terminal/terminal-store.ts` | `createInstance`에서 집(`wrapper`)의 capture 단계에 건다 |
-| `tools/ime-probe/` | 위 전부를 진짜 입력기로 재는 계측기. 여섯 대본 |
+| `tools/ime-probe/` | 위 전부를 진짜 입력기로 재는 계측기. 열 대본 |
 
 **수식키를 거르는 것이 다리의 절반이다.** 두벌식에서 `ㄲㄸㅃㅆㅉ`·`ㅒㅖ`는 Shift로 치는데,
 그 Shift keydown이 음절 한가운데 들어오면 아직 미완인 앞 음절을 흘려보내고 곧이어 오는
@@ -303,9 +303,14 @@ replacement가 같은 음절을 다시 채워 **두 번 나간다**(실측: 「�
 안 낫는다(조합이 매 타자 끊기는 쪽으로 가므로 `insertReplacementText`가 아예 안 온다).
 검토 안 거친 남의 코드를 입력 경로 한복판에 놓는 값도 있어 접었다.
 
-**안 한 것**: 조합 중인 글자를 화면에 보여 주는 것. 지금은 다음 글자를 치는 순간 앞 글자가
-나타난다 — 바이트는 맞지만 한 박자 늦게 보인다. xterm의 조합 오버레이는 조합 이벤트에
-기대는데 이 경로에는 그 이벤트가 없다. 실물에서 얼마나 거슬리는지 보고 판단할 일이다.
+**조합 중인 글자도 보여 준다.** xterm이 자기 조합 표시용으로 만들어 두는 `.composition-view`를
+쓰고, 자리는 숨은 입력칸에서 베낀다(`_syncTextArea`가 그것을 커서 셀에 맞춰 둔다). 흘려보낸
+음절의 에코는 늦게 오므로 그릴 때의 자리는 아직 옛 자리인데, 입력칸이 움직이는 것을
+`MutationObserver`로 보고 따라간다 — 안 그러면 방금 확정된 음절 **위에 겹쳐** 남는다.
+
+그 칸은 **우리 것만이 아니다.** 조합 이벤트가 오는 입력기(일본어·중국어)에서는 xterm이 거기
+미리보기를 그리므로, 우리가 올려 둔 것이 있을 때만 건드린다(`imeDraws`). 매번 비우면 상류가
+`compositionstart`에서만 다시 켜기 때문에 두 번째 글자부터 화면에서 사라진다.
 
 ## 5. 다음 사람이 안 되풀이했으면 하는 것
 

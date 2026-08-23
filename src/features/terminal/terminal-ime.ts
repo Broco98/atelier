@@ -40,6 +40,19 @@
  * 영문은 붙들지 않으므로 `hello`는 예전 그대로 한 타에 한 자씩 나간다(실측).
  */
 
+/** xterm이 숨은 입력칸에 다는 클래스. 자리를 베끼는 대상이자, 그 움직임을 보는 대상이다. */
+const TEXTAREA = "xterm-helper-textarea";
+
+/** 조합 표시가 쓰는 지금의 얼굴. 스냅숏이 아니라 **부를 때마다** 묻는다(설정이 바뀐다). */
+export interface ImeLook {
+  family: string;
+  size: number;
+  /** 표시 칸의 바탕 — 터미널 글자색을 쓴다(뒤집는다). */
+  background: string;
+  /** 표시 칸의 글자색 — 터미널 바탕색을 쓴다. */
+  foreground: string;
+}
+
 /** IME가 아직 그 키를 물고 있다는 신호. xterm도 같은 값을 같은 뜻으로 쓴다. */
 export const IME_KEYCODE = 229;
 
@@ -64,8 +77,11 @@ const MODIFIERS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsL
  * 한글이 될 수 있는 글자. 한국어 IME가 실제로 내보내는 세 대역이다 —
  * 낱자(호환 자모, 실측에서 `ㅇ`=U+3147로 왔다) · 조합용 자모 · 완성 음절.
  * 옛한글 확장 대역(U+A960·U+D7B0)은 두벌식이 못 내므로 넣지 않았다.
+ *
+ * **한 글자로 못박았다.** 입력기가 주는 것은 늘 한 글자인데(실측), 안 묶어 두면 한글이
+ * 섞인 긴 문자열이 통째로 붙들려 다음 replacement에 통째로 갈린다.
  */
-const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힣]/;
+const HANGUL = /^[ᄀ-ᇿ㄰-㆏가-힣]$/;
 
 export interface ImeStep {
   /** 지금 셸로 보낼 것. 빈 문자열이면 보내지 않는다. */
@@ -112,6 +128,18 @@ export function imeKeyDown(
 }
 
 /**
+ * 조합 표시 칸을 지금 건드려야 하는가. `shown`은 **우리가** 거기 올려 둔 것이다.
+ *
+ * **안 바뀌었으면 손대지 않는다.** 매번 그리면 붙든 게 없을 때도 칸을 비우게 되는데, 그 칸은
+ * 우리 것만이 아니다 — 조합 이벤트가 오는 입력기(일본어·중국어)에서는 xterm이 거기에
+ * 미리보기를 그린다. 상류는 `compositionstart`에서만 그 칸을 다시 켜므로(번들 확인) 한 번
+ * 꺼 버리면 그 조합이 끝날 때까지 안 돌아온다 — 두 번째 글자부터 화면에서 사라진다.
+ */
+export function imeDraws(shown: string, held: string): boolean {
+  return held !== shown;
+}
+
+/**
  * 초점이 떠났다. 조합은 거기서 끝난다 — 붙들고 있던 글자를 안 보내면 **조용히 사라진다**
  * (한 음절 치다 말고 다른 칸을 누르는 경우). 실측으로 확인했다: 초점을 옮기면 `녕`이
  * 그때 나가고, 중복은 없다.
@@ -130,16 +158,23 @@ export function imeBlur(held: string): { send: string; held: string } {
  * 떼는 함수를 돌려주지 않는다. 리스너는 `wrapper`에 살고 `disposeInstance`가 그 집을 DOM에서
  * 빼며 인스턴스 참조까지 지우므로, 통째로 수거된다.
  */
-export function attachIme(
-  wrapper: HTMLElement,
-  input: (data: string) => void,
-  font: () => { family: string; size: number },
-): void {
+export function attachIme(wrapper: HTMLElement, input: (data: string) => void, look: () => ImeLook): void {
   let held = "";
+  // 화면에 **우리가** 올려 둔 것. 「저 칸이 우리 것인가」의 정본이다 — 이것 없이 매번 그리면
+  // 붙든 게 없을 때도 칸을 비워, 조합 이벤트가 오는 입력기(일본어·중국어)에서 **xterm이
+  // 그려 둔 미리보기를 우리가 꺼 버린다.** 상류는 `compositionstart`에서만 그 칸을 다시
+  // 켜므로(번들 확인) 한 번 끄면 그 조합이 끝날 때까지 안 돌아온다.
+  let shown = "";
+
+  const draw = () => {
+    if (!imeDraws(shown, held)) return;
+    showComposing(wrapper, held, look);
+    shown = held;
+  };
   const apply = (step: { send: string; held: string }) => {
     held = step.held;
     if (step.send) input(step.send);
-    showComposing(wrapper, held, font);
+    draw();
   };
 
   wrapper.addEventListener(
@@ -164,15 +199,33 @@ export function attachIme(
 
   // `focusout`은 올라오므로 집에서 받을 수 있다(`blur`는 안 올라온다).
   wrapper.addEventListener("focusout", () => apply(imeBlur(held)));
+
+  // **입력칸이 움직이면 표시도 따라간다.** 우리가 그리는 순간의 커서 자리는 아직 옛 자리다 —
+  // 방금 흘려보낸 음절은 셸이 되돌려 줘야 화면에 서고, 그 왕복은 비동기다(IPC). 그때
+  // `_syncTextArea`가 입력칸을 새 커서 셀로 옮기는데, 표시를 따로 옮기는 곳이 없으면 그
+  // 음절 **위에 겹쳐** 남는다. 화면이 흐르거나 창이 바뀔 때도 같은 자리로 낫는다.
+  //
+  // `onCursorMove`가 아니라 입력칸 자체를 본다. 그 구독은 `term.open()` 안에서 걸리는데
+  // 우리는 그보다 먼저 붙으므로, 구독으로 받으면 **xterm이 옮기기 전에** 불려 옛 자리를
+  // 다시 베낀다. 우리가 베끼는 그 값이 바뀌는 것을 직접 보는 편이 순서에 안 기댄다.
+  new MutationObserver((records) => {
+    if (!held) return;
+    // 우리가 표시 칸에 쓰는 style은 무시한다 — 안 그러면 자기 변경을 다시 받는다.
+    if (!records.some((r) => (r.target as Element).classList?.contains(TEXTAREA))) return;
+    showComposing(wrapper, held, look);
+  }).observe(wrapper, { subtree: true, attributes: true, attributeFilter: ["style"] });
 }
 
 /**
  * 조합 중인 글자를 커서 자리에 겹쳐 보여 준다. 빈 문자열이면 걷는다.
  *
  * **xterm이 이미 가진 칸을 쓴다.** `.composition-view`는 xterm이 자기 조합 표시용으로 만들어
- * 두는 요소이고 `xterm.css`가 모양(검은 바탕·흰 글자·숨김)까지 준다. 이 경로에는 조합
- * 이벤트가 안 오므로 xterm은 그 칸을 영영 안 쓴다 — 둘이 부딪힐 일이 없다. 조합 이벤트가
- * 오는 입력기(일본어·중국어)에서는 반대로 우리가 아무것도 안 붙들어 이 함수가 안 불린다.
+ * 두는 요소이고 `xterm.css`가 모양(숨김·절대배치)까지 준다. 이 경로에는 조합 이벤트가 안
+ * 오므로 xterm은 그 칸을 영영 안 쓴다.
+ *
+ * **다만 그 칸을 남이 쓸 수도 있다.** 조합 이벤트가 오는 입력기(일본어·중국어)에서는 xterm이
+ * 그 칸에 미리보기를 그리는데, 우리가 「붙든 게 없다」는 이유로 매번 비우면 그것을 꺼 버린다.
+ * 그래서 부르는 쪽이 **우리가 올려 둔 것이 있을 때만** 부른다(`shown`).
  *
  * **자리는 숨은 입력칸에서 베낀다.** `_syncTextArea`가 커서가 움직일 때마다 그 칸을 커서
  * 셀에 맞춰 두므로, 우리가 커서 픽셀 위치를 따로 셀 필요가 없다(둘은 같은 부모 안에 있다).
@@ -180,23 +233,24 @@ export function attachIme(
  * 글꼴은 **물려받지 않는다** — 그래서 xterm도 자기 조합 표시에 매번 직접 넣는다. 우리도
  * 지금 값을 그때그때 묻는다: 설정으로 글꼴이 바뀌어도 따라온다.
  */
-function showComposing(
-  wrapper: HTMLElement,
-  text: string,
-  font: () => { family: string; size: number },
-): void {
+function showComposing(wrapper: HTMLElement, text: string, look: () => ImeLook): void {
   const view = wrapper.querySelector<HTMLElement>(".composition-view");
-  const textarea = wrapper.querySelector<HTMLElement>(".xterm-helper-textarea");
+  const textarea = wrapper.querySelector<HTMLElement>(`.${TEXTAREA}`);
   // 아직 `term.open()` 전이면 둘 다 없다. 그때는 보여 줄 화면도 없다.
   if (!view || !textarea) return;
   view.textContent = text;
   view.classList.toggle("active", text !== "");
   if (!text) return;
-  const { family, size } = font();
+  const { family, size, background, foreground } = look();
   view.style.left = textarea.style.left;
   view.style.top = textarea.style.top;
   view.style.height = textarea.style.height;
   view.style.lineHeight = textarea.style.lineHeight;
+  // 글꼴도 색도 **물려받지 않는다** — 그래서 xterm도 자기 조합 표시에 매번 직접 넣는다.
+  // `xterm.css`가 주는 색은 검정 바탕·흰 글자 **고정**이라 라이트 테마에서 검은 상자가 뜬다.
+  // 터미널 색을 뒤집어 쓰면 어느 테마에서도 「지금 조합 중」으로 읽힌다.
   view.style.fontFamily = family;
   view.style.fontSize = `${size}px`;
+  view.style.background = background;
+  view.style.color = foreground;
 }

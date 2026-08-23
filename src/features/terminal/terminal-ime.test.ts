@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { IME_KEYCODE, imeBlur, imeInput, imeKeyDown } from "./terminal-ime";
+import { IME_KEYCODE, imeBlur, imeDraws, imeInput, imeKeyDown } from "./terminal-ime";
 
 // 이 판에서 유일하게 **웹뷰가 준 실제 이벤트**로 세운 검사다. 아래 대본은 지어낸 것이 아니라
 // 2026-08-23에 진짜 WKWebView에 두벌식을 프로그램으로 쳐 넣어 받은 로그를 그대로 옮긴 것이다
@@ -99,6 +99,32 @@ describe("실측 대본 — Shift가 음절 한가운데 들어올 때", () => {
   });
 });
 
+describe("조합 표시를 건드리는 때", () => {
+  /** `held`의 흐름을 흘려 **몇 번 그렸는지** 센다. 화면 대신 횟수를 재는 것이 이 불변조건이다. */
+  const draws = (flow: readonly string[]) => {
+    let shown = "";
+    let n = 0;
+    for (const held of flow) {
+      if (!imeDraws(shown, held)) continue;
+      shown = held;
+      n += 1;
+    }
+    return n;
+  };
+
+  it("붙든 게 내내 없으면 한 번도 안 건드린다", () => {
+    // **일본어·중국어가 이 줄에 걸려 있다.** 그쪽은 조합 이벤트가 와서 xterm이 같은 칸에
+    // 미리보기를 그리는데, 우리가 매번 비우면 두 번째 글자부터 화면에서 사라진다.
+    // 우리 다리는 그때 아무것도 안 붙들므로(`insertCompositionText`는 한글 분기에 안 걸린다)
+    // `held`가 내내 빈 문자열이다.
+    expect(draws(["", "", "", "", ""])).toBe(0);
+  });
+
+  it("바뀔 때마다 한 번씩, 걷을 때도 한 번", () => {
+    expect(draws(["ㅇ", "아", "안", "안", ""])).toBe(4);
+  });
+});
+
 describe("초점이 떠날 때", () => {
   it("붙들고 있던 글자를 흘려보낸다 — 안 그러면 조용히 사라진다", () => {
     expect(imeBlur("녕")).toEqual({ send: "녕", held: "" });
@@ -148,6 +174,13 @@ describe("한글 대역", () => {
   it("낱자·완성 음절 둘 다 붙든다", () => {
     expect(imeInput("", "insertText", "ㅇ").held).toBe("ㅇ"); // 호환 자모 U+3147
     expect(imeInput("", "insertText", "안").held).toBe("안"); // 완성 음절 U+C548
+  });
+
+  it("여러 글자짜리는 안 붙든다 — 입력기는 늘 한 글자씩 준다", () => {
+    // 안 묶어 두면 한글이 섞인 긴 문자열이 통째로 붙들려 다음 replacement에 통째로 갈린다.
+    expect(imeInput("", "insertText", "안녕").swallow).toBe(false);
+    expect(imeInput("", "insertText", "안녕").held).toBe("");
+    expect(imeInput("", "insertText", "가a").held).toBe("");
   });
 
   it("한글이 아니면 안 붙든다", () => {
