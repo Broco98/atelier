@@ -18,18 +18,18 @@ import type { TerminalTheme } from "@/features/settings/types";
 // 한 벌씩이라 우리가 열여섯 개를 새로 고르는 것보다 낫다. **우리가 정하는 것은 배경·전경·
 // 커서·선택 넷뿐이다.**
 //
-// **가져오지 못한 것 하나 — 대비 바닥.** VS Code는 이 팔레트를 `minimumContrastRatio` 기본값
-// **4.5**와 함께 출하해서(`terminalConfiguration.ts`) 바탕에 묻히는 색을 런타임에 끌어올린다.
-// 우리는 색 열여섯만 옮겼고 그 바닥은 안 왔다 — xterm의 기본값은 `1`(= 아무것도 하지 않는다,
-// `xterm.d.ts`의 `minimumContrastRatio`)이고 `createInstance`가 그 옵션을 주지 않는다. 그래서
+// **팔레트와 함께 와야 하는 것 하나 — 대비 바닥.** VS Code는 이 팔레트를
+// `minimumContrastRatio` 기본값 **4.5**와 함께 출하해서(`terminalConfiguration.ts`) 바탕에
+// 묻히는 색을 런타임에 끌어올린다. 우리가 옮긴 것은 색 열여섯뿐이고 xterm의 기본값은
+// `1`(= 아무것도 하지 않는다, `xterm.d.ts`의 `minimumContrastRatio`)이라, 그 바닥이 없으면
 // **다크에서 ANSI 검정(SGR 30·40, `#000000`)이 `#1e1e1e` 바탕 위 1.26:1로 묻힌다.** 기본이
 // 라이트였을 땐 같은 검정이 흰 바탕 위 21:1이라 없던 문제고, 기본을 어둡게로 옮긴 이 판이
 // 새로 만든 경로다. 앱 안에서 `claude`·`codex`를 돌리는 것이 이 터미널의 존재 이유라 ANSI
 // 색은 실제로 많이 쓰인다.
-// 여기서 다크 `black`을 밝은 회색으로 바꾸는 안은 **택하지 않았다** — 결정 54의 「열여섯 색을
-// 우리가 고르지 않는다」와 어긋난다. 고칠 자리는 `terminal-store.ts`의 `new Terminal({ … })`에
-// `minimumContrastRatio: 4.5` 한 줄이고, 그 파일은 이 트랙이 만지지 않으므로 **다음 트랙에
-// 넘긴다.**
+// **그 한 줄은 이제 와 있다** — `terminal-store.ts`의 `createInstance`가 `new Terminal({ … })`에
+// `minimumContrastRatio: 4.5`를 준다. 여기서 다크 `black`을 밝은 회색으로 바꾸는 안은
+// **택하지 않았다** — 결정 54의 「열여섯 색을 우리가 고르지 않는다」와 어긋난다: 팔레트는
+// 그대로 두고 그리는 순간의 바닥만 준다.
 //
 // **다크에는 짝이 될 앱 토큰이 없다 — 앱이 라이트 한 벌뿐이기 때문이다.** `index.css`에
 // `.dark` 블록이 있지만 아무도 켜지 않고, 그 블록은 shadcn 기본값이라 켜면 `--primary`가
@@ -74,7 +74,7 @@ export const terminalThemeDark: ITheme = {
   // 오히려 조금 더 벌어진다(바탕 대비 1.30, 라이트는 1.20).
   selectionBackground: "rgba(255, 255, 255, 0.09)",
 
-  black: "#000000", // 이 바탕 위 1.26:1로 묻힌다 — 머리말 「가져오지 못한 것 하나」를 볼 것
+  black: "#000000", // 맨 색으로는 이 바탕 위 1.26:1이다 — 그리는 순간 대비 바닥이 끌어올린다(머리말)
 
   red: "#cd3131",
   green: "#0dbc79",

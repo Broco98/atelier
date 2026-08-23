@@ -19,15 +19,24 @@ import {
   shellOpenNotice,
   shellsOf,
 } from "./shell-registry";
-import type { ShellOrigin, ShellsState } from "./shell-registry";
+import type { OpenedShell, ShellOrigin, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
 import type { PtyFrame } from "./types";
-// `@xterm/*` import는 이 파일과 이것을 부르는 화면에만 둔다. `__root.tsx`는
-// autoCodeSplitting이 떼어내지 않으므로(vite.config.ts 주석) 셸 쪽에 한 줄이라도 새면
-// Node에서 routeTree.gen.ts를 import하는 router.test.ts가 함께 죽는다. 이 모듈은
-// `/terminal`의 화면만 부르고, 그 화면은 분할되는 라우트 component라 안전하다.
+// `@xterm/*` import는 이 파일과 이것을 부르는 화면에만 둔다. 청크가 `/terminal`과 Work 화면에만
+// 붙는 것은 사실이지만, **그것이 앱 시작 무게를 줄이지는 않는다** — 첫 화면이 `/works`이고
+// (`routes/index.tsx`가 그리로 redirect한다) `WorksPage`가 `TerminalPane`을 **정적으로** 들여서,
+// 600KB대인 이 청크는 터미널을 한 번도 안 여는 사람에게도 앱을 켜는 순간 함께 온다(실측:
+// `vite build`의 청크 그래프).
+//
+// 그래도 격리를 유지하는 값은 둘이다 — Node 테스트가 셸 모듈을 파싱하지 않는 것과, 값의
+// 정의(`terminal-defaults.ts`)가 인스턴스 관리에 매이지 않는 것. 본문이 lazy로 갈리는 날
+// 무게 쪽 값도 살아난다.
+//
+// 한때 여기 「`__root.tsx`는 autoCodeSplitting이 떼어내지 않으므로 셸 쪽에 한 줄이라도 새면
+// Node에서 `routeTree.gen.ts`를 import하는 `router.test.ts`가 함께 죽는다」고 적혀 있었지만
+// **사실이 아니었다** — 실측은 `terminal-defaults.ts` 머리말에 있다.
 import "@xterm/xterm/css/xterm.css";
 
 // 글꼴·크기·테마의 기본값은 **여기 없다** — `terminal-defaults.ts`로 꺼냈다. 설정 화면이
@@ -106,39 +115,53 @@ export function onShellOpenRejected(listen: (notice: string) => void): () => voi
 }
 
 /**
- * 셸을 하나 띄운다 — `+`가 이것이다. **상한에서는 열지 않고 알리기만 한다**(결정 30·47).
+ * 셸 한 칸을 목록에 더하고 그 인스턴스를 세운다. **거절을 알리는 일은 여기 없다** — 그래야
+ * 부르는 쪽이 「누가 눌렀나」로 갈릴 수 있다(`openNewShell` / `ensureShell`).
  *
  * 목록에 더하는 것과 인스턴스를 만드는 것이 **한 틱에 함께 끝난다.** StrictMode가 마운트를
  * mount→unmount→mount로 돌려도 `ensureShell`의 "비었나" 판정이 그 사이에서 이미 참이 아니라
  * 셸은 하나만 뜬다.
+ *
+ * **`OpenedShell`을 그대로 돌려준다 — 불리언으로 접지 않는다.** 접으면 「열렸나 거절인가」를
+ * 부르는 쪽이 다시 정하게 되어, 그 판정을 한 자리에 모아 둔 `shellOpenNotice`의 계약이 깨진다
+ * (그 함수 주석).
+ */
+function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
+  // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
+  // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
+  // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
+  const opened = openShell(terminalStore.state, origin);
+  if (!opened) return null;
+
+  terminalStore.setState(() => opened.state);
+  const instance = createInstance(opened.id, origin);
+  instances.set(instance.id, instance);
+  void loadFont(instance);
+  return opened;
+}
+
+/**
+ * 셸을 하나 띄운다 — **사람이 누른 길이다**: `+`와 ⌘T. **상한에서는 열지 않고 알리기만
+ * 한다**(결정 30·47).
  *
  * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `TOP_TERMINAL`, Work 화면은
  * `workShellOrigin(work, project)`. 그 함수가 `null`을 주면(프로젝트를 안 골랐다) 여기까지
  * 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
-  // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
-  // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
-  // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
-  const opened = openShell(terminalStore.state, origin);
+  const opened = openShellQuietly(origin);
   // 상한에 닿으면 열지 않고 **거절을 알린다.** `+`로 온 것이라면 그 버튼이 이미 잠긴 채
   // 이유를 적고 있어 여기 닿는 것은 경주뿐이지만, ⌘T로 오면 다르다 — 그쪽에는 이유를
   // 말할 자리가 없어 아무 일도 안 일어난 것처럼 보였다(사용자 스토리 33의 알려진 구멍).
   //
   // **가르는 것도 문장을 짓는 것도 여기가 아니다** — `shellOpenNotice`가 둘을 함께 정하고,
   // 잠긴 `+` 행도 같은 문장을 읽는다(결정 47). 판정을 이리로 되돌리면 계약의 절반이 검사
-  // 밖으로 샌다: 이 함수는 열리는 순간 xterm을 세워 **성공 경로를 테스트에서 못 돈다.**
+  // 밖으로 샌다: 여는 길은 열리는 순간 xterm을 세워 **성공 경로를 테스트에서 못 돈다.**
   // 「열렸으면 아무 말도 안 한다」가 안 걸린 채 새면 열 때마다 거절 문구가 뜬다.
   const notice = shellOpenNotice(terminalStore.state, opened);
   if (notice !== null) {
     for (const listen of openRejectedListeners) listen(notice);
   }
-  if (!opened) return;
-
-  terminalStore.setState(() => opened.state);
-  const instance = createInstance(opened.id, origin);
-  instances.set(instance.id, instance);
-  void loadFont(instance);
 }
 
 /**
@@ -147,11 +170,20 @@ export function openNewShell(origin: ShellOrigin): void {
  *
  * **마지막 칸을 `×`로 닫은 자리에서는 뜨지 않는다.** 그것이 이 함수가 화면 진입 이펙트에만
  * 붙어 있는 이유다 — 닫자마자 새 셸이 뜨면 `×`가 무의미해진다.
+ *
+ * **상한에서 거절당해도 알리지 않는다 — 이 길에는 누른 사람이 없어서다.** 결정 47이 토스트를
+ * 만든 근거는 「⌘T에는 이유를 말할 자리가 없다」이고 그것은 **사람이 누른 것에 대한 답**인데,
+ * 이 함수는 화면에 들어온 부작용이다. 게다가 그 화면에는 이미 말할 자리가 있다 — 패널 `shell`
+ * 탭의 잠긴 `+` 행이 같은 문장을 hover가 아니라 보이는 글자로 쓰고 있다(결정 47). 여기서 또
+ * 알리면 아무도 안 누른 토스트가 탭을 오갈 때마다 다시 뜬다.
+ *
+ * **판정이 갈린 것은 아니다.** 「열렸나 거절인가」는 여전히 `shellOpenNotice` 한 곳이 정하고
+ * (그 함수 주석), 이 길은 그것을 아예 지나지 않는다 — 갈린 것은 「누가 듣느냐」뿐이다.
  */
 export function ensureShell(origin: ShellOrigin): void {
   // **그 화면의 칸만 센다.** 전체를 세면 다른 Work에 셸이 있다는 이유로 이 화면이 빈 채로
   // 열린다 — 판 03에서 화면이 여럿이 되면서 갈린 자리다.
-  if (shellsOf(terminalStore.state, origin.owner).length === 0) openNewShell(origin);
+  if (shellsOf(terminalStore.state, origin.owner).length === 0) openShellQuietly(origin);
 }
 
 /** 칸을 고른다. */

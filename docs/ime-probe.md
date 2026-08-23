@@ -113,7 +113,9 @@ if (ev.data && ev.inputType === 'insertText' && (!ev.composed || !this._keyDownS
 
 ### 1.4 조합에 영향을 주는 옵션 — 이 앱에서는 전부 꺼져 있다 (확인함)
 
-`terminal-store.ts:189-194`가 주는 옵션은 `fontFamily`·`fontSize`·`theme`·`scrollback` 넷뿐이다.
+`terminal-store.ts`의 `createInstance`가 주는 옵션은 다섯이다 —
+`fontFamily`·`fontSize`·`theme`·`scrollback`·`minimumContrastRatio`. **그중에 조합 경로를 가르는
+것은 없고**, 가를 수 있는 셋은 아래대로 전부 기본값이다.
 
 - `screenReaderMode`: 기본 false → `_inputEvent`의 마지막 가드가 **안 막는다**(즉 이모지/IME 경로는 살아 있다).
 - `macOptionIsMeta`: 기본 false → `_keyDown:855`의 `shouldIgnoreComposition`은
@@ -121,6 +123,14 @@ if (ev.data && ev.inputType === 'insertText' && (!ev.composed || !this._keyDownS
 - `vtExtensions`: 기본 `{}` (`OptionsService.ts:60`) → `useKitty`·`useWin32InputMode`가 둘 다 false.
   `claude`가 kitty 키보드 프로토콜을 요청해도 **옵션이 없으면 안 켜진다**(`KeyboardService.ts:59-66`).
   그래서 상류의 kitty+IME 이슈(#6112)는 우리 경우가 아니다.
+
+다섯 중 기본값에서 옮긴 것은 `minimumContrastRatio` 하나다(1 → 4.5). 결정 54가 다크 팔레트를
+들여오면서 함께 온 값이고 근거는 `terminal-theme.ts` 머리말에 있다. **조합과는 무관하다** —
+번들 `.map`의 `sourcesContent` 109건을 전수 검색하면 그 이름이 나오는 소스는 다섯인데,
+옵션을 선언하는 `Services.ts`·`OptionsService.ts`와 색을 쓰는
+`ThemeService`·`RenderService`·`DomRendererRowFactory`다. `CoreBrowserTerminal.ts`·
+`CompositionHelper.ts`·`Keyboard.ts`에는 **0건**이다. 하는 일이 「이미 정해진 색을 그리는 순간
+끌어올리는 것」이라 키가 들어오는 길과 겹치는 자리가 없다.
 
 **즉 옵션은 용의자가 아니다.**
 
@@ -378,6 +388,7 @@ xterm이 이미 내보낸 것을 뒤에서 주워 담는 모양이라, 정상 �
 ## 5. 다음 사람이 안 되풀이했으면 하는 것
 
 - `attachCustomKeyEventHandler`는 **끝났다**(1.5). 자리는 위험하지만 우리가 심은 함수는 무해하다.
-- xterm 옵션도 **끝났다**(1.4). `screenReaderMode`·`macOptionIsMeta`·kitty 전부 기본값이라 경로를 안 바꾼다.
+- xterm 옵션도 **끝났다**(1.4). `screenReaderMode`·`macOptionIsMeta`·kitty 전부 기본값이라 경로를
+  안 바꾸고, 우리가 주는 다섯은 — 기본값에서 옮긴 `minimumContrastRatio`까지 — 전부 그리는 쪽이다.
 - 번들은 minified지만 **`.map`에 원본이 통째로 들어 있다**(0절). 「소스를 못 봤다」고 다시 적지 말 것.
 - 화면에서 읽은 자모 글자는 **증거가 아니다.** 폰트 폴백과 폭이 섞인다. 바이트를 잴 것.

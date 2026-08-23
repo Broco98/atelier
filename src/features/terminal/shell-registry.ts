@@ -255,8 +255,9 @@ export function activeIdOf(state: ShellsState, owner: string | null): number | n
  * **빠진 칸의 인스턴스를 거두는 일은 여기 없다 — 그 자리는 터미널 스토어다.** 상한 8이
  * 세는 것은 셸의 수가 아니라 살아 있는 WebGL 컨텍스트의 수라(결정 30), 목록에서만 빼면
  * 「열고 → `exit`」을 되풀이하는 동안 목록은 0개라 말하는데 컨텍스트는 계속 쌓인다.
- * `×`는 `closeShell`이 둘을 한자리에서 해서 안 새는데 이 길에는 그 짝이 아직 없다.
- * 거두는 일은 DOM을 아는 쪽만 할 수 있어 이 순수 모듈에 들일 수 없다.
+ * `×`는 `closeShell`이 둘을 한자리에서 하고, 이 길의 짝은 터미널 스토어의 채널 콜백이 든다 —
+ * 이 함수가 그 칸을 뺐으면 그 자리에서 `disposeInstance`를 태운다. 거두는 일은 DOM을 아는
+ * 쪽만 할 수 있어 이 순수 모듈에 들일 수 없다.
  */
 export function markExited(state: ShellsState, id: number, exit: PtyExit): ShellsState {
   if (exit.exitCode === 0 && exit.signal === null) return removeShell(state, id);

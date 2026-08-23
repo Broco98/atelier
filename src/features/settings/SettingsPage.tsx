@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/shell/PageHeader";
 import { cn } from "@/lib/utils";
-import { FONT_FAMILY, FONT_SIZE } from "@/features/terminal/terminal-defaults";
+import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { settingsApi } from "./api";
@@ -23,17 +23,18 @@ import type { Settings, TerminalSettings, TerminalTheme } from "./types";
 
 // 프리셋은 **손으로 적는다.** 설치된 글꼴을 실측으로 얻는 웹 API가 WebKit에 없다
 // (`queryLocalFonts()`는 Chromium 전용이고, Rust로 시스템 글꼴을 열거하는 안은 결정 52가
-// 「이 판에서 열 크기가 아니다」로 기각했다). 첫 줄은 앱이 번들하는 글꼴이고 나머지 셋은
-// macOS에 늘 있는 것들이다. 여기 없는 글꼴은 아래 자유 입력이 받는다.
+// 「이 판에서 열 크기가 아니다」로 기각했다). 나머지 셋은 macOS에 늘 있는 것들이고, 여기 없는
+// 글꼴은 아래 자유 입력이 받는다.
+//
+// **첫 줄만은 이름을 베껴 적지 않는다** — 번들 글꼴의 이름은 `MONO_FACE`가 정하고 그 값이
+// `index.css`의 `@font-face`와 같은지는 `font-bundle.test.ts`가 묶는다. 여기 문자열로 적으면
+// 이 한 줄만 그 그물 밖에 남는데, 되돌리는 길이 「파일을 `…NerdFontMono-*`로 갈아 끼운다」라
+// (`assets/fonts/README.md`) 이름이 실제로 바뀐다 — 그때 낡은 칩은 없는 글꼴을 권하고,
+// 누르면 아무 소리 없이 폴백으로 흐른다.
 //
 // **이 목록은 「기본값」이 아니라 「고를 수 있는 것」이다.** 고르지 않았을 때 무엇으로
 // 그려지는지는 `previewFontFamily`가 답하고, 그 답에 글꼴 이름은 나오지 않는다.
-export const FONT_PRESETS = [
-  "JetBrainsMonoNL Nerd Font",
-  "SF Mono",
-  "Menlo",
-  "Monaco",
-] as const;
+export const FONT_PRESETS = [MONO_FACE, "SF Mono", "Menlo", "Monaco"] as const;
 
 // 터미널이 못 쓰게 되는 값을 파일에 적지 않기 위한 울타리다. 위아래 둘 다 실제로 못 쓰는
 // 크기이고(8 미만은 글자가 뭉개지고 32 초과는 한 줄에 몇 자 안 들어간다), **이 화면이 새로

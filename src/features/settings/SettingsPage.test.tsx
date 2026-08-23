@@ -10,7 +10,7 @@ import {
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
-import { FONT_FAMILY, FONT_SIZE } from "@/features/terminal/terminal-defaults";
+import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
 import type { Settings } from "./types";
 
@@ -160,9 +160,11 @@ describe("미리보기가 읽는 글꼴", () => {
 
 
 describe("프리셋", () => {
-  // 첫 줄은 앱이 번들하는 글꼴이다 — 목록의 순서가 「무엇을 먼저 권하는가」다.
+  // 첫 줄은 앱이 번들하는 글꼴이다 — 목록의 순서가 「무엇을 먼저 권하는가」다. 이름이 아니라
+  // **자리**를 본다: 이름은 `MONO_FACE` 하나가 정하므로 베껴 적을 것이 없고(위 목록 주석),
+  // 여기서 어긋날 수 있는 것은 그 글꼴이 첫 줄이 아니게 되는 것뿐이다.
   it("첫 줄이 번들 글꼴이고 macOS의 셋이 함께 있다", () => {
-    expect(FONT_PRESETS[0]).toBe("JetBrainsMonoNL Nerd Font");
+    expect(FONT_PRESETS[0]).toBe(MONO_FACE);
     expect(FONT_PRESETS).toContain("SF Mono");
     expect(FONT_PRESETS).toContain("Menlo");
     expect(FONT_PRESETS).toContain("Monaco");

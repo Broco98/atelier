@@ -45,7 +45,7 @@ xterm은 문자마다 칸 하나를 배정하고 PUA는 유니코드 폭표에�
 어긋나면 되돌리는 비용은 파일 교체 한 번이다(`…NerdFontMono-*`로 바꾸고 이 표를 다시 잰다).
 
 **한글은 이 글꼴에 없다**(실측: `가` U+AC00이 cmap에 없다). 폴백 사슬 끝을 못박는 일은
-`terminal-store.ts`의 `FONT_FAMILY`가 한다.
+`terminal-defaults.ts`의 `FONT_FAMILY`가 한다.
 
 ## 어디서 왔고 어떻게 만들었나
 

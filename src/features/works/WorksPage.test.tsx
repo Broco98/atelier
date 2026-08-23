@@ -13,6 +13,7 @@ import type { ViewTab } from "@/routes/-work-search";
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import { MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "@/features/terminal/shell-registry";
 import {
+  ensureShell,
   onShellOpenRejected,
   openNewShell,
   terminalStore,
@@ -39,7 +40,7 @@ const work: WorkView = {
 // 이 화면의 소스를 문자열로 읽는다. 렌더로 볼 수 없는 불변조건(이펙트·리마운트 자리)이
 // 여기 걸리고, 그 방식은 이 저장소가 파일 간 계약에 쓰는 것과 같다
 // (state-scale.test.ts · theme-tokens.test.ts · tauri-commands.test.ts).
-function source(file: "WorksPage.tsx" | "SpecViewer.tsx"): string {
+function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal-store.ts"): string {
   return readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
 }
 
@@ -639,6 +640,29 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
   // 실제로 돌며 지킨다. 여기 구독만 걸고 곧바로 비었음을 보는 검사를 두면 어떤 구현에도
   // 통과하는 이름뿐인 그물이 된다.
 
+  // **화면에 들어가기만 한 것은 거절이 아니라 부작용이다.** 상한에 닿은 채 어떤 Work의 터미널
+  // 탭에 들어가면 `ensureShell`이 「이 화면엔 칸이 0개」라며 열려다 거절당하는데, 그때도 토스트가
+  // 뜨면 아무도 안 누른 알림이 탭을 오갈 때마다 다시 뜬다. 그 화면에는 이미 말할 자리가 있다 —
+  // 잠긴 `+` 행이 같은 문장을 보이는 글자로 쓰고 있다(결정 47).
+  it("화면에 들어간 것만으로는 아무 말도 하지 않는다", () => {
+    // 상한을 **다른 소유자**로 채운다 — 그래야 이 화면의 칸이 0개라 `ensureShell`이 실제로
+    // 여는 길까지 가고, 거기서 앱 전체 상한에 걸린다(결정 30).
+    let state = NO_SHELLS;
+    for (let n = 0; n < MAX_SHELLS; n += 1) {
+      state = openShell(state, { owner: "가", project: null, cwd: null })!.state;
+    }
+    terminalStore.setState(() => state);
+
+    const heard: string[] = [];
+    const stop = onShellOpenRejected((notice) => heard.push(notice));
+    ensureShell({ owner: "나", project: null, cwd: null });
+    stop();
+
+    expect(heard).toEqual([]);
+    // 열리지 않은 것까지 함께 본다 — 조용해진 이유가 「그냥 열려 버려서」이면 안 된다.
+    expect(terminalStore.state.shells).toHaveLength(MAX_SHELLS);
+  });
+
   it("구독을 끊으면 더 듣지 않는다", () => {
     // 화면이 언마운트된 뒤에도 듣고 있으면 사라진 화면의 setState가 불린다.
     let state = NO_SHELLS;
@@ -654,11 +678,26 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
   });
 
   it("화면이 그 통로를 실제로 구독한다", () => {
-    // 위 셋은 스토어 쪽 계약이다. 화면이 그것을 안 들으면 전부 초록인 채로 ⌘T가 다시
+    // 위 넷은 스토어 쪽 계약이다. 화면이 그것을 안 들으면 전부 초록인 채로 ⌘T가 다시
     // 조용해진다. 그리고 **토스트로** 말해야 한다 — 콘솔이나 대화 상자가 아니라.
     const worksPage = source("WorksPage.tsx");
     const effect = worksPage.match(/useEffect\(\(\) => onShellOpenRejected\([\s\S]*?\);/)?.[0] ?? "";
     expect(effect, "거절을 듣는 효과를 찾지 못했다").not.toBe("");
     expect(effect).toContain("showToast");
+  });
+
+  it("⌘T는 알리는 쪽으로 온다", () => {
+    // `ensureShell`이 조용한 짝을 쓰게 되면서 **같은 모듈에 여는 함수가 둘**이 됐다. ⌘T가
+    // 실수로 조용한 쪽으로 옮겨가면 상한에서 다시 아무 말이 없어지는데 — 스토리 33의 그
+    // 구멍이 되돌아온다 — 그것을 잡는 것이 이 검사 하나다(실측: 이 검사를 넣기 전에는
+    // 바꿔도 431건이 전부 초록이었다).
+    //
+    // ⌘T가 React 트리 밖(`attachCustomKeyEventHandler`)에 살아 렌더로는 못 본다. 그래서
+    // 소스를 읽되 **못 찾으면 실패한다** — 못 찾은 것을 통과로 읽으면 이 검사가 지키는 것은
+    // 배선이 아니라 자기 자신이다.
+    const store = source("../terminal/terminal-store.ts");
+    const branch = store.match(/if \(hotkey === "new"\)[\s\S]{0,120}/)?.[0] ?? "";
+    expect(branch, "⌘T가 새 셸을 여는 자리를 찾지 못했다").not.toBe("");
+    expect(branch).toContain("openNewShell");
   });
 });

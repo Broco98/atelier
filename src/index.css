@@ -23,7 +23,7 @@
    **`--font-mono`(아래 `@theme inline`)는 건드리지 않는다.** 이 글꼴이 가는 곳은 터미널
    하나고, 앱의 다른 모노 자리(코드 블록·경로·spec 원문)엔 아이콘이 필요 없다. 그래서
    이 두 벌은 `@theme`에 토큰으로 올리지 않는다 — 읽는 쪽이 CSS가 아니라 xterm 옵션
-   문자열(`terminal-store.ts`의 `FONT_FAMILY`) 하나뿐이라, 토큰을 만들면 아무도 안 쓰는
+   문자열(`terminal-defaults.ts`의 `FONT_FAMILY`) 하나뿐이라, 토큰을 만들면 아무도 안 쓰는
    `font-*` 유틸리티만 생긴다.
 
    family 이름은 글꼴이 제 이름표(name ID 16)에 적어 둔 것을 그대로 쓴다 — 사용자가 같은

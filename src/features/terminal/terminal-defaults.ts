@@ -2,16 +2,23 @@ import type { TerminalSettings, TerminalTheme } from "@/features/settings/types"
 
 // 셸이 **고르지 않았을 때** 쓰는 값과, 고른 값을 그 자리에 끼우는 규칙. `terminal-store.ts`에서
 // 꺼내 왔다 — 설정 화면도 같은 값을 읽어야 하는데(미리보기의 「기본」) 그 모듈을 import하면
-// `@xterm/*`와 그 CSS가 함께 온다. 그러면 터미널을 한 번도 안 여는 사람도 앱이 뜨는 순간부터
-// 그 무게를 진다: 지금 그 청크는 `/terminal`과 Work 화면에만 붙어 있다.
+// `@xterm/*`와 그 CSS가 함께 온다.
+//
+// **그 무게를 앱 시작에서 덜어내는 것은 아니다.** 첫 화면이 `/works`이고 `WorksPage`가
+// `TerminalPane`을 정적으로 들여서 그 청크는 어차피 앱을 켤 때 온다(실측: `vite build`).
+// 이 분리가 실제로 사는 값은 둘이다 — Node 테스트가 600KB대 셸 모듈을 파싱하지 않는 것과,
+// **값의 정의가 인스턴스 관리에 매이지 않는 것.** 뒤엣것이 이 파일의 존재 이유에 가깝다:
+// 설정 화면이 「고르지 않았을 때 무엇이 쓰이나」를 물을 곳은 값이 정해지는 자리지 xterm을
+// 세우는 자리가 아니다.
 //
 // **이 파일에는 값 import가 하나도 없다 — 타입 둘뿐이다.** 그 성질이 존재 이유이므로, 여기에
 // 값 import를 하나라도 들이려면 그 사슬 끝에 무엇이 달려 있는지 다시 세야 한다.
 //
-// (`vite.config.ts` 주석과 `theme-tokens.test.ts` 머리말이 「셸 쪽에 한 줄이라도 새면 Node에서
-// `routeTree.gen.ts`를 import하는 `router.test.ts`가 함께 죽는다」고 적어 뒀지만, 지금 그것은
-// **사실이 아니다** — 실측: `@xterm/xterm`도 그 CSS도 vitest의 node 환경에서 그대로 import된다.
-// 그래도 값을 여기 두는 이유는 위의 무게 하나다.)
+// (「셸 쪽에 한 줄이라도 새면 Node에서 `routeTree.gen.ts`를 import하는 `router.test.ts`가 함께
+// 죽는다」가 한때 `terminal-store.ts` 머리말에 적혀 있었지만 **사실이 아니다.** 실측 둘:
+// `@xterm/xterm`도 그 CSS도 vitest의 node 환경에서 그대로 import되고, `__root.tsx`에
+// `terminal-store.ts`를 직접 들여도 `router.test.ts`가 그대로 초록이다. 그래서 값을 여기 두는
+// 이유는 위의 무게 하나다.)
 
 /**
  * 터미널 기본 글꼴의 첫 항목이자 `document.fonts.load`가 **이름으로 청구하는 얼굴**.
