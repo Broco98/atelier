@@ -294,7 +294,13 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 나가고, xterm이 스스로 보내는 것과 순서도 안 뒤집힌다(다리가 capture로 먼저 돌기 때문).
   //
   // 여기서 거는 이유는 `onTitleChange`와 같다 — 이펙트에 두면 배경 칸이 못 받는다.
-  attachIme(wrapper, (data) => term.input(data, true));
+  // 글꼴을 **그때그때 묻는다** — 스냅숏을 넘기면 설정으로 글꼴을 바꿨을 때 조합 표시만
+  // 옛 얼굴로 남는다. `term.options`가 이 칸의 정본이고 `restyleShells`가 그 값을 고친다.
+  attachIme(
+    wrapper,
+    (data) => term.input(data, true),
+    () => ({ family: term.options.fontFamily ?? look.fontFamily, size: term.options.fontSize ?? look.fontSize }),
+  );
 
   const instance: ShellInstance = {
     id,

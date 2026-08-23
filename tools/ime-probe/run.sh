@@ -58,4 +58,14 @@ check "했다 (Shift)"   "5,31,s17,14,40,36"      "D588 B2E4 000D"
 # 커서가 넓은 글자 뒤칸이면 xterm이 인라인 `width: 0px`을 쓴다 — 크기 바닥이 그걸 막는다.
 check "안녕 (0폭 칸)"  "2,40,1,1,32,2,36"       "C548 B155 000D" wide
 check "영문 hello"     "4,14,37,37,31,36"       "0068 0065 006C 006C 006F 000D" ascii
+
+# 붙들고 있는 동안 그 글자는 셸에 없다 — 커서 자리에 겹쳐 보여 주지 않으면 한 박자 늦게 보인다.
+view() { # 이름 키코드 기대VIEW줄
+  raw=$("$OUT/probe" "$OUT/page.html" "$2" 2>&1) || true
+  got=$(printf '%s\n' "$raw" | sed -n 's/^VIEW //p')
+  if [ "$got" = "$3" ]; then printf '  ok    %-24s %s\n' "$1" "$got"
+  else printf '  FAIL  %-24s %s\n        %-24s %s (기대)\n' "$1" "$got" "" "$3"; fail=1; fi
+}
+view "조합 표시 (안녕)" "2,40,1,1,32,2"    'active=true text="녕" 자리맞음=true'
+view "조합 표시 (끝난 뒤)" "2,40,1,1,32,2,36" 'active=false text="" 자리맞음=true'
 exit $fail

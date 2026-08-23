@@ -33,7 +33,8 @@ term.onData(d => { sent.push(d); line('→PTY', `"${d}" [${cp(d)}]`); term.write
 
 // 애드온은 안 붙인다. fit·web-links·webgl 셋 다 입력 경로에 안 닿고, WebGL은 헤드리스에
 // 가까운 이 창에서 렌더러가 갈려 잡음만 는다. 렌더러가 무관하다는 것은 1판이 이미 실측했다.
-Atelier.attachIme(document.getElementById('term'), (d) => term.input(d, true));
+Atelier.attachIme(document.getElementById('term'), (d) => term.input(d, true),
+  () => ({ family: look.fontFamily, size: look.fontSize }));
 
 const ta = document.querySelector('.xterm-helper-textarea');
 for (const t of ['compositionstart','compositionupdate','compositionend'])
@@ -51,6 +52,11 @@ window.__wide = () => {
   line('__wide__', '커서를 넓은 글자 뒤칸에 세웠다');
 };
 window.__done = () => {
+  // 조합 표시가 커서 자리에 떠 있는가. `안녕`을 Enter 없이 치면 `녕`이 여기 있어야 한다.
+  const v = document.querySelector('.composition-view');
+  const vr = v.getBoundingClientRect(), tr = ta.getBoundingClientRect();
+  put(`VIEW active=${v.classList.contains('active')} text="${v.textContent}" `
+    + `자리맞음=${Math.abs(vr.x - tr.x) < 1 && Math.abs(vr.y - tr.y) < 1}`);
   const w = ta.style.width || '(없음)';
   const used = Math.round(ta.getBoundingClientRect().width * 100) / 100;
   put(`입력칸 inline width=${w} / 실제 ${used}`);

@@ -182,7 +182,8 @@ describe("붙이는 자리", () => {
     const store = read("src/features/terminal/terminal-store.ts");
     const create = store.match(/function createInstance\([\s\S]*?\n\}/)?.[0] ?? "";
     expect(create, "createInstance를 못 찾았다").not.toBe("");
-    expect(create).toContain("attachIme(wrapper");
+    // 줄바꿈이 어디에 오든 첫 인자가 집이어야 한다 — 입력칸에 걸면 xterm보다 늦다.
+    expect(create).toMatch(/attachIme\(\s*wrapper\b/);
   });
 
   it("숨은 입력칸의 크기 바닥이 0이 아니다", () => {

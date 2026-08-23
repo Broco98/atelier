@@ -30,6 +30,10 @@
  * **완성될 때까지 붙들었다가, 확정되는 순간 보낸다.** 마지막 글자는 아직 바뀔 수 있으므로
  * (`아`→`안`) 붙들고, 새 `insertText`가 오면 그것이 「앞 글자는 끝났다」는 신호다.
  *
+ * 붙들고 있는 동안 그 글자는 셸에 없다. 그래서 **커서 자리에 겹쳐 보여 준다** — 안 그러면
+ * 다음 글자를 칠 때에야 앞 글자가 나타나 한 박자 늦게 보인다. 자리는 xterm이 이미 잡아 준다
+ * (`_syncTextArea`가 커서가 움직일 때마다 숨은 입력칸을 커서 셀에 맞춰 둔다).
+ *
  * **미룰 수 없어서 글자로 가른다.** `insertReplacementText`는 다음 타자와 함께 오지 스스로
  * 오지 않는다(실측: 다음 키를 누르기 전에는 영영 안 온다). 그러니 타이머로 기다릴 수 없고,
  * 넣는 순간 「이건 아직 바뀔 수 있는가」를 답해야 한다. 그 답이 한글 대역이다 —
@@ -126,11 +130,16 @@ export function imeBlur(held: string): { send: string; held: string } {
  * 떼는 함수를 돌려주지 않는다. 리스너는 `wrapper`에 살고 `disposeInstance`가 그 집을 DOM에서
  * 빼며 인스턴스 참조까지 지우므로, 통째로 수거된다.
  */
-export function attachIme(wrapper: HTMLElement, input: (data: string) => void): void {
+export function attachIme(
+  wrapper: HTMLElement,
+  input: (data: string) => void,
+  font: () => { family: string; size: number },
+): void {
   let held = "";
   const apply = (step: { send: string; held: string }) => {
     held = step.held;
     if (step.send) input(step.send);
+    showComposing(wrapper, held, font);
   };
 
   wrapper.addEventListener(
@@ -155,4 +164,39 @@ export function attachIme(wrapper: HTMLElement, input: (data: string) => void): 
 
   // `focusout`은 올라오므로 집에서 받을 수 있다(`blur`는 안 올라온다).
   wrapper.addEventListener("focusout", () => apply(imeBlur(held)));
+}
+
+/**
+ * 조합 중인 글자를 커서 자리에 겹쳐 보여 준다. 빈 문자열이면 걷는다.
+ *
+ * **xterm이 이미 가진 칸을 쓴다.** `.composition-view`는 xterm이 자기 조합 표시용으로 만들어
+ * 두는 요소이고 `xterm.css`가 모양(검은 바탕·흰 글자·숨김)까지 준다. 이 경로에는 조합
+ * 이벤트가 안 오므로 xterm은 그 칸을 영영 안 쓴다 — 둘이 부딪힐 일이 없다. 조합 이벤트가
+ * 오는 입력기(일본어·중국어)에서는 반대로 우리가 아무것도 안 붙들어 이 함수가 안 불린다.
+ *
+ * **자리는 숨은 입력칸에서 베낀다.** `_syncTextArea`가 커서가 움직일 때마다 그 칸을 커서
+ * 셀에 맞춰 두므로, 우리가 커서 픽셀 위치를 따로 셀 필요가 없다(둘은 같은 부모 안에 있다).
+ *
+ * 글꼴은 **물려받지 않는다** — 그래서 xterm도 자기 조합 표시에 매번 직접 넣는다. 우리도
+ * 지금 값을 그때그때 묻는다: 설정으로 글꼴이 바뀌어도 따라온다.
+ */
+function showComposing(
+  wrapper: HTMLElement,
+  text: string,
+  font: () => { family: string; size: number },
+): void {
+  const view = wrapper.querySelector<HTMLElement>(".composition-view");
+  const textarea = wrapper.querySelector<HTMLElement>(".xterm-helper-textarea");
+  // 아직 `term.open()` 전이면 둘 다 없다. 그때는 보여 줄 화면도 없다.
+  if (!view || !textarea) return;
+  view.textContent = text;
+  view.classList.toggle("active", text !== "");
+  if (!text) return;
+  const { family, size } = font();
+  view.style.left = textarea.style.left;
+  view.style.top = textarea.style.top;
+  view.style.height = textarea.style.height;
+  view.style.lineHeight = textarea.style.lineHeight;
+  view.style.fontFamily = family;
+  view.style.fontSize = `${size}px`;
 }
