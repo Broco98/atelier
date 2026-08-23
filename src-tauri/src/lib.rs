@@ -1,11 +1,21 @@
 mod commands;
 mod pty;
+mod settings;
 mod watcher;
 
 use std::sync::Arc;
 
-use tauri::menu::{AboutMetadata, MenuBuilder, SubmenuBuilder};
-use tauri::Manager;
+use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::{Emitter, Manager};
+
+/// `atelier ▸ Settings…`(⌘,)의 id — 메뉴를 세우는 곳과 그 클릭을 받는 곳 둘이 이 문자열로만
+/// 이어져 있다.
+///
+/// **이 항목이 셸에 포커스가 있어도 듣는 유일한 길이다**(결정 51). 아래 주석이 말하는
+/// 「OS 메뉴가 웹뷰보다 먼저 먹는다」를 이번에는 유리하게 쓴다 — 그 성질 때문에 웹뷰의
+/// keydown으로는 ⌘,를 잡을 수 없고, 터미널을 쓰다 「글꼴이 작네」 하고 여는 흐름이 정확히
+/// 그 상황이다.
+const SETTINGS_MENU_ID: &str = "settings";
 
 /// macOS 기본 메뉴에서 **`Close Window`(⌘W)만 뺀 것.**
 ///
@@ -19,8 +29,16 @@ use tauri::Manager;
 /// 나머지는 기본 메뉴와 같은 것을 손으로 세운다 — 메뉴를 통째로 지우면 **⌘C·⌘V·⌘A가
 /// 함께 죽는다.** 창을 닫는 길은 신호등의 빨간 버튼과 ⌘Q로 남는다.
 fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    // ⌘,는 macOS가 「환경설정」으로 약속해 둔 키다 — 우리가 고른 값이 아니라 그 관습이다.
+    // 자리도 관습을 따라 About 바로 아래다.
+    let settings = MenuItemBuilder::with_id(SETTINGS_MENU_ID, "Settings…")
+        .accelerator("CmdOrCtrl+,")
+        .build(handle)?;
+
     let app = SubmenuBuilder::new(handle, "atelier")
         .about(Some(AboutMetadata::default()))
+        .separator()
+        .item(&settings)
         .separator()
         .services()
         .separator()
@@ -54,6 +72,14 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
 pub fn run() {
     tauri::Builder::default()
         .menu(build_menu)
+        // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
+        // 안다(`/settings`). 배선은 `watcher.rs`가 `works:changed`를 쏘고 프런트가 `listen`으로
+        // 받는 그 길과 같다(AppShell).
+        .on_menu_event(|app, event| {
+            if event.id() == SETTINGS_MENU_ID {
+                let _ = app.emit("settings:open", ());
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(Arc::new(pty::PtyPool::default()))
@@ -97,6 +123,8 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::read_settings,
+            commands::write_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

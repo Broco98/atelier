@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
+  Ban,
   Check,
   ChevronDown,
   File,
@@ -19,9 +20,17 @@ import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
+import ShellList from "@/features/terminal/ShellList";
 import TerminalPane from "@/features/terminal/TerminalPane";
-import { runningShellsOf } from "@/features/terminal/shell-registry";
-import { closeShellsOf, terminalStore } from "@/features/terminal/terminal-store";
+import { runningShellsOf, workShellOrigin } from "@/features/terminal/shell-registry";
+import {
+  closeShell,
+  closeShellsOf,
+  onShellOpenRejected,
+  openNewShell,
+  selectShell,
+  terminalStore,
+} from "@/features/terminal/terminal-store";
 import type { ViewTab } from "@/routes/-work-search";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -47,6 +56,56 @@ interface WorksPageProps {
   // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
   tab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
+}
+
+// 주소가 가리키는 문서가 없을 때 대신 열 것. **이 판단이 여기로 올라왔다** — 한때
+// SpecViewer의 지역 함수였는데, 작업 패널이 이 화면으로 올라오면서 트리의 "지금 이 문서"
+// 표시와 본문이 **같은 값**을 봐야 하게 됐다(결정 49). 값을 정하는 지점이 둘이면 뷰 탭을
+// 오갈 때마다 트리 표시가 켜졌다 꺼진다 — 1판에서 실제로 그랬다(터미널 탭에서는 폴백을
+// 거치지 않은 raw 값이 내려갔다).
+function defaultFile(files: string[]): string | null {
+  if (files.includes("overview.md")) return "overview.md";
+  return files[0] ?? null;
+}
+
+/**
+ * ⌘Enter가 **작업 패널 몫인가** (결정 43).
+ *
+ * 앞 판은 이 판단에 `tab === "terminal"`을 얹어 두었다 — 「여는 길은 버튼 하나」(결정 35)의
+ * 부산물이었는데, 패널이 이 화면으로 올라오면서 터미널 탭에서도 트리·패널에 포커스가 갈 수
+ * 있게 됐다. 그 상태에서 안 듣는 것이 앞 판이 「알려진 비대칭」으로 남긴 구멍이다. 그 줄을
+ * 지운다.
+ *
+ * **셸 안에 포커스가 있으면 여전히 셸 몫이다**(결정 29). 아래 `HTMLTextAreaElement` 가드가
+ * 그것을 그대로 지킨다 — **xterm의 입력 자리가 바로 숨은 `<textarea>`**이기 때문이다
+ * (`@xterm/xterm`의 `Terminal.textarea`가 `HTMLTextAreaElement`이고, 실제 요소는
+ * `document.createElement("textarea")`로 만든 `.xterm-helper-textarea`다 — 둘 다 소스에서 확인함).
+ * 셸이 이 키를 삼키지도 않는다: `shellHotkey`가 아는 것은 ⌘T·⌘W 둘뿐이라
+ * `attachCustomKeyEventHandler`가 `true`를 돌려주고, 이벤트는 window까지 올라온다.
+ *
+ * **함수로 꺼낸 이유는 테스트다.** 이 저장소의 컴포넌트 seam은 정적 마크업이라 이펙트가
+ * 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를 문자열로 훑는 검사밖에 못 건다.
+ * 구조적 이벤트 형태를 받는 순수 함수는 `shellHotkey`가 이미 쓰는 방식이고, 그쪽과 같은
+ * 이유로 여기도 그렇게 둔다.
+ */
+export function togglesWorkPanel(event: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  key: string;
+  target: EventTarget | null;
+}): boolean {
+  if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey || event.key !== "Enter")
+    return false;
+  const target = event.target as HTMLElement;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  )
+    return false;
+  return true;
 }
 
 function WorksPage({
@@ -77,37 +136,74 @@ function WorksPage({
     : remove.isPending
       ? { verb: "삭제", detail: "워크트리와 스펙 문서를 지우고 있어요" }
       : null;
-  // 브레드크럼이 소유하는 것은 작업 패널 접기 하나다. [소스]는 그 패널 머리행으로 갔고
-  // 상태도 함께 SpecViewer로 내려갔다 — 버튼이 여기 없으면 이 화면이 그것을 들 이유도
-  // 없다 (결정 6·22).
+  // 작업 패널 접기. [소스]는 그 패널 머리행으로 갔지만 **상태는 이 화면이 다시 든다** —
+  // 패널이 여기로 올라오면서(결정 49) 버튼(패널)과 그것이 바꾸는 것(본문)의 공통 조상이
+  // 이 화면뿐이 됐다. 아래 `showSource`가 그 자리다 (한때 SpecViewer가 들고 있었다 — 결정 6·22).
   const [workPanelOpen, setWorkPanelOpen] = useState(true);
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
-  // 입력 중에는 무시.
-  // 터미널 탭에서는 **아무 일도 안 한다.** 한때 이유는 「그 탭에 패널이 없다」였는데 결정 35가
-  // 패널을 되살리며 그 이유는 사라졌다. 그래도 그대로 두는 것은 결정 35가 **여는 길을 버튼
-  // 하나로 두기로** 했기 때문이다 — 터미널에 포커스가 있으면 ⌘가 셸로 가는 결정 29와도
-  // 맞는다. **비대칭은 남는다**: 포커스가 트리에 있어도 이 탭에서는 안 듣는다. 알려진 것으로
-  // 티켓 06에 적어 뒀다.
-  // `workPanelOpen` 값 자체는 건드리지 않는다 — spec으로 돌아오면 접어 뒀던 그대로여야 한다.
+  //
+  // **두 탭 모두에서 듣는다**(결정 43). 한때 여기 있던 터미널 탭 가드 한 줄 — 탭만 보고
+  // 그냥 돌아가던 것 — 을 지웠다. 어느 경우가 셸 몫인지는 `togglesWorkPanel`이 혼자 알고,
+  // 그 판단은 탭이 아니라 **포커스**로 갈린다. `tab`을 안 보므로 의존성도 비었다.
+  //
+  // (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.)
   useEffect(() => {
-    if (tab === "terminal") return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
+      if (!togglesWorkPanel(e)) return;
       e.preventDefault();
       setWorkPanelOpen((open) => !open);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tab]);
+  }, []);
+
+  // 소스 보기의 주인이 **여기로 올라왔다.** 버튼은 패널 머리행에 있고 그것이 바꾸는 것은
+  // 본문(SpecViewer)인데, 패널이 본문의 형제가 되면서 둘의 공통 조상이 이 화면뿐이다.
+  // 한때 SpecViewer의 지역 상태였고 그 컴포넌트의 `key={slug}` 덕에 "작업을 옮기면 예쁜
+  // 보기로 돌아온다"가 공짜로 따라왔는데, 그 공짜는 결정 49가 패널 탭에서 걷어낸 것과
+  // **같은 종류의 것**이라 여기서도 되살리지 않는다. 사람이 켠 값은 작업을 옮겨도 그대로다.
+  const [showSource, setShowSource] = useState(false);
+
+  // 복사 확인 토스트도 여기로 올라왔다(결정 47). 앞 판에서는 SpecViewer의 지역 상태라
+  // **터미널 탭에서 트리를 복사하면 아무 말이 없었다** — 그 탭에는 SpecViewer가 없다.
+  // 패널이 올라오면 토스트도 함께 올라와야 하는 것이 그래서다.
+  //
+  // **`done`은 한 표면이 두 가지 말을 하게 됐기 때문에 있다**(결정 47). 복사는 한 일을
+  // 알리고(✓) 상한 거절은 **못 한 일**을 알린다 — 「셸은 8개까지예요」 옆에 초록 체크가
+  // 서면 그 문장이 「됐어요」로 읽힌다.
+  const [toast, setToast] = useState<{ text: string; done: boolean } | null>(null);
+  const toastTimer = useRef<number | undefined>(undefined);
+  const showToast = useCallback((text: string, done = true) => {
+    setToast({ text, done });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 1600);
+  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // **상한 8에서 ⌘T가 조용하던 구멍을 메운다**(결정 47). 그 키는 xterm의 키 핸들러에서
+  // 오는데 그것은 React 트리 밖이라, 스토어가 낸 거절을 여기서 받아 같은 표면에 붙인다.
+  // 문장은 스토어가 짓는다 — 잠긴 `+` 행과 **같은 문장**이어야 해서다.
+  //
+  // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
+  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 알림 표면을
+  // 새로 짓는 안은 기각됐다.
+  useEffect(() => onShellOpenRejected((notice) => showToast(notice, false)), [showToast]);
+
+  // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
+  const copyText = useCallback(
+    (text: string) => {
+      navigator.clipboard.writeText(text);
+      showToast(`${text} 복사됨`);
+    },
+    [showToast],
+  );
+
+  // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
+  // 있어야 한다. 두 갈래가 이 화면에서 갈리는 것은 트리(패널)와 링크(본문)가 이제 형제라서다.
+  const selectFromTree = useCallback((path: string) => onSelectFile(path, false), [onSelectFile]);
+  const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx).
   // "기본 선택은 초안을 건너뛴다"는 규칙도 그쪽 pickSlug가 들고 있다.
@@ -125,6 +221,28 @@ function WorksPage({
   const lastSelected = useRef(selected);
   if (selected) lastSelected.current = selected;
   const terminalWork = tab === "terminal" ? (selected ?? lastSelected.current) : null;
+
+  // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
+  // (결정 49). 터미널 탭에서 `terminalWork`가 붙들어 둔 작업을 쓰는 것도 그대로 따라온다 —
+  // 본문이 그 작업의 셸을 보여주는데 패널만 다른 작업을 말하면 안 된다.
+  const panelWork = terminalWork ?? selected;
+
+  // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
+  // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
+  const specFiles = panelWork?.specFiles ?? [];
+  const currentSpec =
+    currentFile && specFiles.includes(currentFile) ? currentFile : defaultFile(specFiles);
+  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 (소스 토글과 무관)
+  const isMarkdown = currentSpec?.toLowerCase().endsWith(".md") ?? true;
+  // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 셋이다: 본문이 셸일 때(터미널 탭 —
+  // `</>`가 적용될 곳이 아예 없다), 비-md 파일(결정 6), spec 문서가 하나도 없는 작업.
+  // 마지막 것에서 `currentSpec`은 null이고 위 `?? true`가 마크다운으로 떨어뜨리는데, 그
+  // 기본값은 **본문 분기(예쁜 보기)를 위한 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은
+  // "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다(결정 11·21).
+  const sourceLocked = tab === "terminal" || !currentSpec || !isMarkdown;
+  // 본문은 **버튼의 켜짐에 파일 종류를 얹어** 정한다. 둘을 같은 식으로 묶으면 비-md 파일을
+  // 열 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
+  const sourceView = showSource || !isMarkdown;
 
   // 머리행은 **본문 열 안에서만** 산다. 작업 패널이 이 열의 형제이자 머리행과 같은 층이라
   // (창 맨 위에서 시작해 아래까지 내려온다) 머리행이 그 위를 지나갈 수 없다. 그래서 화면이
@@ -188,89 +306,170 @@ function WorksPage({
         />
   );
 
+  // 본문 열 — 셋 중 하나다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
+  // 패널은 그 형제로 아래 return에서 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널
+  // 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
+  const body = terminalWork ? (
+    <main className="relative flex min-w-0 flex-1 flex-col">
+      {header}
+      {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
+          자리만 새로 잡힌다(결정 20·21). */}
+      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+    </main>
+  ) : selected ? (
+    <SpecViewer
+      key={selected.slug}
+      work={selected}
+      header={header}
+      panelOpen={workPanelOpen}
+      sidebarOpen={sidebarOpen}
+      file={currentSpec}
+      sourceView={sourceView}
+      onNavigate={followLink}
+      onCopy={copyText}
+    />
+  ) : (
+    // 고른 작업이 없으면 패널도 없다 — 이 열이 머리행을 직접 이고 있는다.
+    <main className="relative flex min-w-0 flex-1 flex-col">
+      {header}
+      <div className="flex flex-1 items-center justify-center p-10">
+        <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
+          <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+            {needsProject ? (
+              <Folder className="size-5" strokeWidth={1.6} />
+            ) : (
+              <Zap className="size-5" strokeWidth={1.6} />
+            )}
+          </div>
+          <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
+            {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
+          </span>
+          <span className="text-[14px] leading-[1.65] text-tertiary">
+            {needsProject
+              ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+              : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
+          </span>
+          {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
+              atelier_add_project / atelier_start_work를 부른다.
+              아래 문구는 그대로 붙여 넣는 것이다. */}
+          <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+            {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
+          </code>
+        </div>
+      </div>
+    </main>
+  );
+
   return (
+    // 본문 열과 작업 패널을 담는 행이다. **min-w-0이 빠지면 패널이 창 밖으로 밀린다** —
+    // 이 행은 스스로도 flex 항목이라 min-width가 auto면 자기 min-content(=본문 열의
+    // min-content + 패널 폭)만큼 부푼다. 본문 열에 min-w-0을 달아 둔 것만으로는 막히지
+    // 않는다. 부푼 만큼 패널이 오른쪽으로 밀려 잘리는데 **미는 양이 본문 내용에 따라
+    // 달라져서**, 소스 보기를 켜고 끌 때마다 패널 폭이 바뀌는 것처럼 보였다 (실측: 예쁜
+    // 보기에서 패널 오른쪽 끝이 1521, 창은 1512 — 9px이 창 밖에 있었다).
+    //
     // relative는 생애주기 오버레이가 이 영역 전체를 덮기 위한 것이다 — 패널까지 포함한다.
     // 보관·제거가 도는 동안 패널만 살아 있으면 그 위에서 조작이 계속된다.
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {terminalWork ? (
-        // `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
-        // 자리만 새로 잡힌다(결정 20·21).
-        <>
-          <main className="relative flex min-w-0 flex-1 flex-col">
-            {header}
-            <TerminalPane key={terminalWork.slug} work={terminalWork} />
-          </main>
-          {/* SpecViewer가 그리는 것과 **같은 패널**이다. 호출부가 둘인 것은 두 본문이
-              형제 컬럼이라서다 — 패널을 여기로 끌어올리려면 SpecViewer가 들고 있는
-              문서·소스토글·토스트까지 함께 올라와야 한다. 그 정리는 패널이
-              `spec|세션|정보`가 되는 다음 판의 몫이다.
+      {body}
+      {/* **작업 패널을 그리는 유일한 자리다**(결정 49). 1판은 여기와 SpecViewer 둘에서
+          그려서 뷰 탭을 오갈 때마다 인스턴스가 갈렸다.
 
-              트리에서 파일을 누르면 **spec으로 돌아가며** 그 문서가 열린다. `selectFile`이
-              search를 객체로 갈아 끼워 `tab`이 함께 떨어지기 때문이다(결정 15의 뒷면).
-              그 성질이 여기서 처음으로 눈에 보이는 일을 하므로 router.test.ts에 못박았다.
-              래퍼를 두지 않는 것은 이동이 **한 번**이어야 해서다 — 탭과 파일을 따로 옮기면
-              두 navigate가 한 틱에 겹친다. */}
-          <WorkPanel
-            work={terminalWork}
-            currentFile={currentFile}
-            onSelectFile={(path) => onSelectFile(path, false)}
-            onCopy={(text) => void navigator.clipboard.writeText(text)}
-            onClose={() => setWorkPanelOpen(false)}
-            onOpenProject={onOpenProject}
-            // 본문이 문서가 아니라 셸이다. `</>`가 적용될 곳이 없으므로 잠근다 — 눌러도
-            // 아무 일이 없는 버튼을 만들지 않는다(결정 11·21).
-            sourceOn={false}
-            sourceLocked
-            onToggleSource={() => {}}
-            open={workPanelOpen}
-          />
-        </>
-      ) : selected ? (
-        <SpecViewer
-          key={selected.slug}
-          work={selected}
-          header={header}
-          panelOpen={workPanelOpen}
-          onClosePanel={() => setWorkPanelOpen(false)}
+          **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 탭이 spec으로
+          리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
+          나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
+          (a) 뷰 탭 왕복(spec ↔ terminal)에도 패널 탭이 유지된다 — `shell` 탭을 보던 채로
+              본문만 갈아탈 수 있다는 뜻이고, 3탭의 자연스러운 쓰임이다.
+          (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
+              전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
+              기본값(최신 판만 펼침)으로 뜬다.
+
+          트리에서 파일을 누르면 **spec으로 돌아가며** 그 문서가 열린다. `selectFile`이
+          search를 객체로 갈아 끼워 `tab`이 함께 떨어지기 때문이다(결정 15의 뒷면).
+          래퍼를 두지 않는 것은 이동이 **한 번**이어야 해서다 — 탭과 파일을 따로 옮기면
+          두 navigate가 한 틱에 겹친다. */}
+      {panelWork && (
+        <WorkPanel
+          work={panelWork}
+          currentFile={currentSpec}
+          onSelectFile={selectFromTree}
+          onCopy={copyText}
+          onClose={() => setWorkPanelOpen(false)}
           onOpenProject={onOpenProject}
-          sidebarOpen={sidebarOpen}
-          file={currentFile}
-          onSelectFile={onSelectFile}
+          // 켜짐은 **사람이 정한 값 그대로** 내려간다. 터미널 탭에서 억지로 false로
+          // 끄지 않는 것은 잠김과 켜짐이 독립이기 때문이다(WorkPanel의 sourceOn 주석) —
+          // 탭마다 다른 값을 내려주면 뷰 탭을 오갈 때 버튼이 저 혼자 켜졌다 꺼진다.
+          sourceOn={showSource}
+          sourceLocked={sourceLocked}
+          onToggleSource={() => setShowSource((v) => !v)}
+          open={workPanelOpen}
+          // 셸 목록은 **슬롯으로 넘긴다** — 스토어를 구독하는 자리를 이 가지 하나로 좁혀,
+          // 셸이 프롬프트마다 쏘는 타이틀에 화면이나 패널 전체가 다시 그려지지 않게 한다
+          // (WorkPanel의 shellList 주석).
+          shellList={<PanelShells work={panelWork} onSelectTab={onSelectTab} />}
         />
-      ) : (
-        // 고른 작업이 없으면 패널도 없다 — 이 열이 머리행을 직접 이고 있는다.
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          {header}
-          <div className="flex flex-1 items-center justify-center p-10">
-            <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-              <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                {needsProject ? (
-                  <Folder className="size-5" strokeWidth={1.6} />
-                ) : (
-                  <Zap className="size-5" strokeWidth={1.6} />
-                )}
-              </div>
-              <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
-              </span>
-              <span className="text-[14px] leading-[1.65] text-tertiary">
-                {needsProject
-                  ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-                  : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
-              </span>
-              {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
-                  atelier_add_project / atelier_start_work를 부른다.
-                  아래 문구는 그대로 붙여 넣는 것이다. */}
-              <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
-              </code>
-            </div>
-          </div>
-        </main>
       )}
-
+      {/* 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
+          가운데는 본문 열이 아니라 **본문+패널** 전체의 가운데인데, 이 표면이 이제 패널에서
+          일어나는 일(트리 복사·⌘T 거절)까지 말하기 때문이다. */}
+      {toast && (
+        <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
+          {/* 한 일과 못 한 일이 같은 표면을 쓴다(결정 47) — 글리프가 그 둘을 가른다. */}
+          {toast.done ? (
+            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
+          ) : (
+            <Ban className="size-3.5 text-tertiary" strokeWidth={2.2} />
+          )}
+          {toast.text}
+        </div>
+      )}
       {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
     </div>
+  );
+}
+
+/**
+ * 패널 `shell` 탭의 내용 — 셸을 고르는 세로 목록이다(결정 42).
+ *
+ * **터미널 스토어를 구독하는 자리가 이 가지 하나다.** 화면(WorksPage)이 구독하지 않는
+ * 것은 값이 자주 흔들려서다: 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안
+ * 그것을 계속 갈아 끼운다. 화면이 구독하면 그때마다 본문 마크다운까지 다시 그려진다.
+ *
+ * 좁히지 않고 통째로 읽는 것은 목록이 **앱 전체** 상한을 세야 해서다(결정 30).
+ * **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
+ */
+function PanelShells({
+  work,
+  onSelectTab,
+}: {
+  work: WorkView;
+  onSelectTab: (tab: ViewTab) => void;
+}) {
+  const state = useStore(terminalStore, (whole) => whole);
+  return (
+    <ShellList
+      state={state}
+      owner={work.slug}
+      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
+      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
+      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. TerminalPane이 같은 이유로
+      // 같은 자리에서 뽑는다.
+      projects={work.worktrees.map((tree) => tree.project)}
+      onSelect={(id) => {
+        // 행을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다**(결정 50). 패널의 spec
+        // 트리에서 문서를 누르면 본문이 spec으로 돌아가는 것과 같은 규칙이다 — 「패널에서
+        // 고르면 본문이 그에 맞는 뷰로 간다」. 본문이 이미 터미널이면 켜진 칸만 바뀐다
+        // (탭 전환은 `replace`라 히스토리도 안 쌓인다).
+        selectShell(id);
+        onSelectTab("terminal");
+      }}
+      onClose={closeShell}
+      onOpen={(project) => {
+        // 프로젝트가 여럿인데 안 골랐으면 자리가 안 정해진다 — 그때는 열지 않는다(결정 24).
+        const origin = workShellOrigin(work, project);
+        if (origin) openNewShell(origin);
+      }}
+    />
   );
 }
 
@@ -355,8 +554,12 @@ function TitleEditor({ work }: { work: WorkView }) {
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
 /**
- * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음 — `spec`과 `터미널` 둘이다(결정 9).
+ * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음 — `spec`과 `terminal` 둘이다(결정 9).
  * `파일`(워크트리 탐색)은 재료도 문제도 다른 기능이라 별도 작업이다.
+ *
+ * 라벨이 소문자 영어인 것은 결정 41이다 — 이 줄과 패널 탭 줄은 같은 44px 층에 나란히 서므로
+ * 한 가족으로 읽혀야 한다. main nav의 `Terminal`과 같은 단어인 것은 균열이 아니다:
+ * 대소문자가 층을 가른다(대문자는 가는 곳, 소문자는 고르는 것 — CONTEXT.md).
  *
  * 켜짐은 저장소 공통 toggle-on이다. 목업은 이 자리에 --accent를 쓰는데, 이 저장소는
  * 상태 배경을 무채색 4단으로만 말한다(state-scale.test.ts가 막는다) — 그쪽을 따르지 않는다.
@@ -369,7 +572,7 @@ function ViewTabs({ tab, onSelect }: { tab: ViewTab; onSelect: (tab: ViewTab) =>
       <ViewTabButton icon={File} label="spec" on={tab === "spec"} onClick={() => onSelect("spec")} />
       <ViewTabButton
         icon={SquareTerminal}
-        label="터미널"
+        label="terminal"
         on={tab === "terminal"}
         onClick={() => onSelect("terminal")}
       />
@@ -518,9 +721,11 @@ function WorkMenu({
   // **지금은 이 이펙트가 돌기 전에 리마운트가 먼저 닫는다.** 머리행이 key={slug}인
   // SpecViewer 안으로 들어가면서(디자인 정본 정렬) 작업을 옮기면 이 컴포넌트째 새로 선다.
   // 남겨 두는 것은 그 배치가 이 화면의 계약이 아니기 때문이다 — 머리행을 다시 SpecViewer
-  // 밖으로 끌어내면(작업 패널을 WorksPage로 올리는 다음 판이 그렇게 한다) 리마운트가
-  // 사라지고 이 줄만 남아 같은 일을 한다. 형제인 StatusMenu는 이 줄이 없어서, 지금은
-  // 리마운트에만 기대고 있다.
+  // 밖으로 끌어내면 리마운트가 사라지고 이 줄만 남아 같은 일을 한다. 형제인 StatusMenu는
+  // 이 줄이 없어서, 지금은 리마운트에만 기대고 있다.
+  //
+  // 작업 패널이 WorksPage로 올라온 뒤(결정 49)에도 **머리행은 SpecViewer 안에 그대로 있다** —
+  // 올라간 것은 패널이지 머리행이 아니다. 터미널 탭에서는 이 이펙트가 실제로 일한다.
   useEffect(() => setOpen(false), [work.slug]);
 
   // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,

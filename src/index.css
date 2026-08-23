@@ -5,6 +5,53 @@
 @import "@fontsource-variable/geist-mono";
 @import "pretendard/dist/web/variable/pretendardvariable.css";
 
+/* 앱 안 터미널의 글꼴. **npm 패키지가 아니라 파일을 저장소에 넣고 직접 들인다** — 위 넷은
+   `@fontsource-variable/*`로 오지만 Nerd Font 패치본은 fontsource에 없다.
+
+   왜 필요한가: 사용자의 셸 프롬프트와 상태줄이 Nerd Font 아이콘을 쓰는데 `Geist Mono`에는
+   그 글리프가 없어 앱 안 터미널에서 두부(￿)로 보인다.
+
+   변형은 `…NerdFont-*` — 아이콘을 한 칸보다 넓게 그리는 쪽이다. 한 칸에 맞춰 줄인
+   `…NerdFontMono-*`는 쓰지 않는다(사용자 결정). 어긋나면 되돌리는 비용은 파일 교체 한 번이다.
+   `NL`은 No Ligatures다 — 아래 `--font-mono--font-feature-settings`의 「합자를 끈다」와 같은
+   방침이고, 저쪽은 기능을 끄는 데 반해 이쪽은 애초에 합자가 없는 판을 고른다.
+
+   무게는 Regular·Bold 둘뿐이다. ANSI bold는 실제로 쓰이고 italic은 xterm이 합성한다.
+   TTF 각 2.3MB를 woff2로 옮겨 각 0.94MB가 됐다(fontTools 4.60.2, `flavor = "woff2"`).
+   라이선스 원문과 출처는 `assets/fonts/README.md` 옆에 있다 — OFL 1.1은 동봉이 조건이다.
+
+   **`--font-mono`(아래 `@theme inline`)는 건드리지 않는다.** 이 글꼴이 가는 곳은 터미널
+   하나고, 앱의 다른 모노 자리(코드 블록·경로·spec 원문)엔 아이콘이 필요 없다. 그래서
+   이 두 벌은 `@theme`에 토큰으로 올리지 않는다 — 읽는 쪽이 CSS가 아니라 xterm 옵션
+   문자열(`terminal-defaults.ts`의 `FONT_FAMILY`) 하나뿐이라, 토큰을 만들면 아무도 안 쓰는
+   `font-*` 유틸리티만 생긴다.
+
+   family 이름은 글꼴이 제 이름표(name ID 16)에 적어 둔 것을 그대로 쓴다 — 사용자가 같은
+   글꼴을 시스템에 설치해 뒀을 때 이름이 갈리지 않는다. **이 문자열은 `FONT_FAMILY`의 첫
+   항목과 같아야 한다.** 어긋나면 아무 소리 없이 폴백으로 흘러 — 번들만 1.9MB 무거워지고
+   아이콘은 여전히 두부다.
+
+   한글은 이 글꼴에 **없다**(실측: `가` U+AC00이 cmap에 없다). 그래서 폴백 사슬 끝을
+   `FONT_FAMILY` 쪽에서 못박는다 — 여기서 할 수 있는 일이 아니다.
+
+   `font-display: swap`이어도 터미널이 폴백 폭으로 굳지는 않는다 — `terminal-store.ts`의
+   `loadFont`가 `document.fonts.load`로 이 얼굴을 이름으로 청구해 기다린 뒤에야 xterm을 연다. */
+@font-face {
+    font-family: "JetBrainsMonoNL Nerd Font";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("./assets/fonts/JetBrainsMonoNLNerdFont-Regular.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "JetBrainsMonoNL Nerd Font";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("./assets/fonts/JetBrainsMonoNLNerdFont-Bold.woff2") format("woff2");
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* app shell layout — single source for the titlebar strip and sidebar width */
@@ -362,4 +409,29 @@ body.resizing * {
 
 .scroll-quiet.is-scrolling::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in srgb, var(--foreground) 52%, transparent);
+}
+
+/* xterm의 숨은 입력칸에 **크기 바닥을 준다.**
+
+   쓰이는 크기가 0이면 한국어 입력기가 붙을 때 WKWebView가 조합을 매 타자 끊어 「안녕」이
+   `ㅇㅏㄴ녕`으로 흩어지고 스페이스마저 U+00A0으로 온다(실측 — 진짜 WKWebView에 두벌식을
+   프로그램으로 쳐 넣어 갈랐다. `tools/ime-probe/`가 그 계측기다). 화면 밖인 것도 투명인 것도
+   무해했다: **오직 크기만 갈랐다.**
+
+   그 크기 0으로 가는 길이 **둘**이다.
+
+   1. `xterm.css`가 `width: 0; height: 0`으로 시작한다 — 첫 커서 이동 전까지 이 값이다.
+   2. 그 뒤로는 xterm이 **인라인으로** 덮어쓴다. `_syncTextArea()`가 커서가 움직일 때마다
+      돌면서 `width = 셀너비 × bufferLine.getWidth(커서칸)`을 넣는데, 커서가 **넓은 글자의
+      뒤칸**에 서면 그 폭이 0이라 `width: 0px`이 인라인으로 들어간다. 한글을 친 뒤 왼쪽으로
+      한 칸 움직이면 바로 그 자리다(실측: 인라인 `0px` → 실제 0 → `ㅇㅏㄴ녕`).
+
+   그래서 `width`가 아니라 **`min-width`로 바닥만 깐다.** 인라인 `width`와 싸우지 않으므로
+   `!important`가 필요 없고, xterm이 입력칸을 커서 셀에 맞춰 두는 뜻(다른 입력기의 후보창
+   위치)도 안 뺏는다. `!important`로 폭을 1px에 못박아도 증상은 낫지만 그 뜻까지 뺏는다.
+
+   이 경로를 셸까지 잇는 나머지 절반은 `terminal-ime.ts`에 있다. */
+.xterm textarea.xterm-helper-textarea {
+    min-width: 1px;
+    min-height: 1px;
 }

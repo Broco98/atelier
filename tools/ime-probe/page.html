@@ -1,0 +1,99 @@
+<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="xterm.css">
+<style>html,body{margin:0;background:#1e1e1e}#term{width:640px;height:300px}
+/*__APP_CSS__*/
+</style>
+<div id="term"></div>
+<script src="xterm.js"></script>
+<script src="app.js"></script>
+<script>
+const put = s => window.webkit.messageHandlers.log.postMessage(s);
+const cp = s => [...(s ?? '')].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')).join(' ');
+const t0 = performance.now();
+const line = (k, d) => put(String(Math.round(performance.now()-t0)).padStart(5) + 'ms  ' + k.padEnd(20) + ' ' + d);
+
+// **앱의 값을 그대로 쓴다** — `entry.ts`가 실어 온 것이다.
+const look = Atelier.terminalLook(null);
+const term = new Terminal({
+  fontFamily: look.fontFamily,
+  fontSize: look.fontSize,
+  theme: Atelier.terminalThemeFor(look.theme),
+  // 이 둘만 `createInstance`에 리터럴로 박혀 있어 여기 옮겨 적었다. 조합 경로와 무관함은
+  // 번들 전수 검색으로 확인했다(docs/ime-probe.md §1.4).
+  scrollback: 10000,
+  minimumContrastRatio: 4.5,
+});
+term.open(document.getElementById('term'));
+
+// **이것이 재려는 것** — xterm이 결국 셸로 무엇을 보내는가. 앱에서는 이 자리가 pty_write다.
+// 셸이 없으니 우리가 되받아 그린다: 커서가 움직여야 앱과 같은 상태가 된다(xterm이 커서
+// 이동마다 숨은 입력칸의 인라인 크기를 다시 쓴다 — 그것이 이 판이 고친 것의 절반이다).
+const sent = [];
+// **되쓰기를 미룬다.** 앱에서 이 자리는 `pty_write`(비동기 IPC)이고, 화면에 서는 것은 셸이
+// 돌려준 뒤다. 여기서 같은 호출 스택에 그리면 커서가 **너무 일찍** 움직여, 앱에는 없는
+// 순간을 재게 된다(조합 표시가 방금 확정된 음절 위에 겹치는 자리를 통째로 놓쳤다).
+let heal = 'ok';
+term.onData(d => {
+  sent.push(d);
+  line('→PTY', `"${d}" [${cp(d)}]`);
+  setTimeout(() => {
+    term.write(d);
+    // **에코가 도착한 직후**를 잰다. 어긋남은 흘려보낸 순간부터 에코가 커서를 옮길 때까지의
+    // 짧은 창이고, 끝나고 재면 이미 나아 있어 아무것도 안 재는 검사가 된다.
+    setTimeout(() => {
+      const v = document.querySelector('.composition-view');
+      if (!v.classList.contains('active')) return;
+      const vr = v.getBoundingClientRect(), tr = ta.getBoundingClientRect();
+      if (Math.abs(vr.x - tr.x) >= 1 || Math.abs(vr.y - tr.y) >= 1) {
+        heal = 'bad';
+        line('겹침', `표시 ${Math.round(vr.x)} vs 커서 ${Math.round(tr.x)}`);
+      }
+    }, 30);
+  }, 0);
+});
+
+// 애드온은 안 붙인다. fit·web-links·webgl 셋 다 입력 경로에 안 닿고, WebGL은 헤드리스에
+// 가까운 이 창에서 렌더러가 갈려 잡음만 는다. 렌더러가 무관하다는 것은 1판이 이미 실측했다.
+// 앱과 같은 모양으로 **살아 있는 값**을 준다 — 스냅숏을 넘기면 「그때그때 묻는다」가 안 재진다.
+Atelier.attachIme(document.getElementById('term'), (d) => term.input(d, true), () => {
+  const theme = term.options.theme ?? {};
+  return {
+    family: term.options.fontFamily ?? look.fontFamily,
+    size: term.options.fontSize ?? look.fontSize,
+    background: theme.foreground ?? '#000000',
+    foreground: theme.background ?? '#ffffff',
+  };
+});
+
+const ta = document.querySelector('.xterm-helper-textarea');
+for (const t of ['compositionstart','compositionupdate','compositionend'])
+  ta.addEventListener(t, e => line(t, `data="${e.data ?? ''}"[${cp(e.data)}]`));
+for (const t of ['beforeinput','input'])
+  ta.addEventListener(t, e => line(t, `inputType=${e.inputType} isComposing=${e.isComposing} data="${e.data ?? ''}"[${cp(e.data)}] value="${ta.value}"[${cp(ta.value)}]`), true);
+ta.addEventListener('keydown', e => line('keydown', `key="${e.key}" code=${e.code} keyCode=${e.keyCode}`), true);
+
+term.write('$ ');            // 프롬프트 한 번 — 커서를 움직여 앱과 같은 상태로 만든다
+term.focus();
+
+/** 커서를 **넓은 글자의 뒤칸**에 세운다. 거기서 xterm이 인라인 `width: 0px`을 쓴다. */
+window.__wide = () => {
+  term.write('가\x1b[1D');
+  // **준비가 됐다는 증거를 남긴다.** 이 줄이 없으면 준비가 조용히 안 돌아도 초록이 된다.
+  setTimeout(() => put(`WIDE inline=${ta.style.width || '(없음)'}`), 200);
+};
+window.__done = () => {
+  // 조합 표시가 커서 자리에 떠 있는가. `안녕`을 Enter 없이 치면 `녕`이 여기 있어야 한다.
+  const v = document.querySelector('.composition-view');
+  const on = v.classList.contains('active');
+  // **꺼져 있으면 자리를 안 잰다.** `display:none`이면 사각형이 전부 0이라, 커서가 원점에
+  // 있을 때 우연히 「맞음」이 되어 아무것도 안 재는 검사가 된다.
+  const vr = v.getBoundingClientRect(), tr = ta.getBoundingClientRect();
+  const fit = on ? String(Math.abs(vr.x - tr.x) < 1 && Math.abs(vr.y - tr.y) < 1) : 'n/a';
+  put(`VIEW active=${on} text="${v.textContent}" 자리맞음=${fit}`);
+  put(`HEAL ${heal}`);
+  const w = ta.style.width || '(없음)';
+  const used = Math.round(ta.getBoundingClientRect().width * 100) / 100;
+  put(`입력칸 inline width=${w} / 실제 ${used}`);
+  put('FINAL →PTY 합계 = "' + sent.join('') + '" [' + cp(sent.join('')) + ']');
+};
+</script>

@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PopoverPortal } from "@/components/ui/popover-portal";
-import { activeIdOf, atCap, MAX_SHELLS, shellEndLabels, shellLabel, shellsOf } from "./shell-registry";
+import ShellPicker from "./ShellPicker";
+import { activeIdOf, atCap, shellCapNotice, shellEndLabels, shellLabel, shellsOf } from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
 
 interface ShellTabsProps {
@@ -27,12 +27,16 @@ interface ShellTabsProps {
    * 접혔을 때 신호등을 피하는 왼쪽 여백. 여백은 사이드바 폭 트랜지션과 **같은 곡선**이라야
    * 한다(PageHeader와 같은 이유 — index.css의 `--panel-ease`).
    *
-   * `undefined`면 보통 줄이다. Work의 터미널 탭이 그쪽인데, 그 화면은 머리행을 이미 이고 있다.
+   * **`undefined`면 이 줄은 아예 서지 않는다**(아래 컴포넌트 첫 줄). 겸하지 않는 화면은
+   * 패널이 있는 화면이고, 거기서 셸을 고르는 자리는 패널의 `shell` 탭이다(결정 42).
    */
   titlebar?: { inset: boolean };
 }
 
-// 셸 탭 줄. **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
+// 셸 탭 줄. **최상위 터미널(`/terminal`)의 것이다**(결정 44) — Work 화면에서는 걷어냈고
+// (결정 42) 셸 고르기가 오른쪽 패널의 `shell` 탭으로 갔다.
+//
+// **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
 // 그 성질이 사라진다: `@xterm/*`와 그 CSS가 따라 들어온다.
 //
@@ -50,19 +54,25 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar
   const plusRef = useRef<HTMLButtonElement>(null);
   const [picking, setPicking] = useState(false);
 
+  // **이 줄이 서는 조건과 이 줄이 타이틀바를 겸하는 조건은 같은 하나다.** 겸하는 화면은
+  // 패널도 머리행도 없는 최상위 터미널뿐이고(결정 36·44), 패널이 있는 화면은 셸을 패널의
+  // `shell` 탭에서 고른다(결정 42) — 그 화면에도 이 줄이 서면 같은 것이 두 자리에 선다.
+  //
+  // 판정을 한 줄로 여기 두는 것은 그것이 하나이기 때문이다. 부르는 쪽마다 「이 화면은
+  // 탭 줄을 쓰나」를 다시 적으면 화면이 늘 때마다 그 답이 갈린다.
+  //
+  // 훅 **뒤에** 있는 것은 규칙이다 — 앞에 두면 렌더마다 훅 수가 달라진다.
+  if (!titlebar) return null;
+
   return (
     <div
-      // 타이틀바를 겸할 때만 창 드래그 영역이다. 안쪽 버튼들은 이 속성이 없으므로 그대로
-      // 눌린다 — PageHeader가 브레드크럼에 쓰는 방식과 같다.
-      data-tauri-drag-region={titlebar ? true : undefined}
+      // 이 줄은 늘 창 드래그 영역이다 — 위 가드를 지난 이상 창 맨 위이기 때문이다. 안쪽
+      // 버튼들은 이 속성이 없으므로 그대로 눌린다 — PageHeader가 브레드크럼에 쓰는 방식과 같다.
+      data-tauri-drag-region
       className={cn(
         "flex shrink-0 items-center gap-1",
-        titlebar
-          ? [
-              "h-(--titlebar-height) pr-4 transition-[padding] duration-[220ms] ease-panel",
-              titlebar.inset ? "pl-(--titlebar-inset)" : "pl-4",
-            ]
-          : "h-8 px-4",
+        "h-(--titlebar-height) pr-4 transition-[padding] duration-[220ms] ease-panel",
+        titlebar.inset ? "pl-(--titlebar-inset)" : "pl-4",
       )}
     >
       {shells.map((shell) => {
@@ -138,7 +148,7 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar
         aria-expanded={asks ? picking : undefined}
         title={
           full
-            ? `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개고, 다른 터미널의 셸도 함께 셉니다`
+            ? `${shellCapNotice(state)}고, 다른 터미널의 셸도 함께 셉니다`
             : asks
               ? "셸 열기 — 프로젝트를 고릅니다"
               : "셸 열기"
@@ -154,29 +164,14 @@ function ShellTabs({ state, owner, projects, onSelect, onClose, onOpen, titlebar
       </button>
 
       {picking && (
-        <PopoverPortal
+        <ShellPicker
           anchorRef={plusRef}
-          // 왼쪽 맞춤이다 — `+`가 줄 왼쪽 끝에 있어서 오른쪽 맞춤이면 메뉴가 사이드바 위로
-          // 뻗는다(실물에서 확인했다).
-          align="left"
-          width={190}
-          onClose={() => setPicking(false)}
-          className="flex flex-col gap-px p-[5px]"
-        >
-          {projects.map((project) => (
-            <button
-              key={project}
-              type="button"
-              onClick={() => {
-                setPicking(false);
-                onOpen(project);
-              }}
-              className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-            >
-              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{project}</span>
-            </button>
-          ))}
-        </PopoverPortal>
+          projects={projects}
+          onPick={(project) => {
+            setPicking(false);
+            if (project) onOpen(project);
+          }}
+        />
       )}
     </div>
   );

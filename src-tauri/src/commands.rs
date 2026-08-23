@@ -162,3 +162,23 @@ pub async fn pty_resize(
 pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
     pty::kill(&pool, id)
 }
+
+// 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
+// **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
+// (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
+//
+// 루트는 `atelier_core::data_root()`가 정한다 — 여기서 `~/.atelier`를 다시 계산하면
+// `ATELIER_HOME` 오버라이드가 이 자리에서만 죽는다.
+
+#[tauri::command]
+pub async fn read_settings() -> CmdResult<crate::settings::Settings> {
+    crate::settings::read(&atelier_core::data_root())
+}
+
+/// **읽은 것을 통째로 되돌려 받는다.** 그래야 우리가 모르는 키가 파일에 남는다 —
+/// `update_work_title`이 work를 읽어 한 필드만 바꿔 되쓰는 것과 같은 왕복이고, 여기서는
+/// 그 왕복이 IPC 경계를 건넌다.
+#[tauri::command]
+pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()> {
+    crate::settings::write(&atelier_core::data_root(), &settings)
+}
