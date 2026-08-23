@@ -1,0 +1,17 @@
+# L4 관통 테스트 전용 다리. 릴리스에 들어가지 않는다 — 릴리스 워크플로는 패키징할
+# 산출물을 이름으로 지정한다(`-p atelier-cli`, tauri 번들). 여기에 새 tar 줄을 손으로
+# 추가하지 않는 한 포함될 길이 없다.
+[package]
+name = "atelier-test-bridge"
+version = "0.6.1"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "atelier-test-bridge"
+path = "src/main.rs"
+
+[dependencies]
+atelier-core = { path = "../atelier-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }

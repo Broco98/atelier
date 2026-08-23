@@ -7,10 +7,11 @@ import {
   MAX_SHELLS,
   NO_SHELLS,
   openShell,
+  shellCapNotice,
   TOP_TERMINAL,
   workShellOrigin,
 } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import type { ShellOrigin, ShellsState } from "./shell-registry";
 import type { WorkView } from "@/features/works/types";
 
 // 탭 줄은 **이 저장소에 선례가 없는 모양**이라(role="tab" 0건) 지킬 것을 스스로 들고 있어야
@@ -25,10 +26,15 @@ import type { WorkView } from "@/features/works/types";
 // 3. 상한에서 잠긴 `+`가 **이유를 실제로 읽히게** 두는 것 — 이 저장소의 잠근 버튼 관용구
 //    (disabled + pointer-events-none + title)는 hover 자체를 막아 그 title이 뜨지 않는다.
 //    티켓이 그 관용구를 복사하지 말라고 못박은 자리다.
+//
+// **이 줄은 이제 최상위 터미널(`/terminal`)의 것뿐이다**(결정 42·44). Work 화면에서는
+// 걷어냈고 셸 고르기가 오른쪽 패널의 `shell` 탭으로 갔다(ShellList). 그래서 아래
+// `render`의 기본값이 「타이틀바를 겸하는 줄」이다 — 겸하지 않는 줄이라는 것이 이제
+// 없다(맨 아래 「패널이 있는 화면에는 서지 않는다」가 그것을 못박는다).
 
 function opened(
   count: number,
-  seed: { owner: string | null; project: string | null } = TOP_TERMINAL,
+  seed: ShellOrigin = TOP_TERMINAL,
   from: ShellsState = NO_SHELLS,
 ): ShellsState {
   let state = from;
@@ -45,8 +51,14 @@ function render(
   {
     owner = null,
     projects = [],
-    titlebar,
-  }: { owner?: string | null; projects?: string[]; titlebar?: { inset: boolean } } = {},
+    // 기본값이 「겸한다」인 것은 이 줄이 사는 화면이 그것뿐이어서다. `titlebar: undefined`를
+    // 일부러 넘기는 검사는 맨 아래 하나뿐이고, 그 검사가 보는 것은 **아무것도 안 그린다**이다.
+    titlebar = { inset: false },
+  }: {
+    owner?: string | null;
+    projects?: string[];
+    titlebar?: { inset: boolean };
+  } = {},
 ): string {
   return renderToStaticMarkup(
     <ShellTabs
@@ -135,6 +147,15 @@ describe("상한에 닿은 `+`", () => {
     expect(title).toContain("다른 터미널");
   });
 
+  // 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다(결정 47). 이 줄은 패널
+  // 목록보다 hover라 여유가 있어 꼬리를 더 붙이는데, **앞 절은 같은 함수에서 와야 한다.**
+  // 위 검사는 「N개까지」와 「지금 N개」가 있는지만 보므로, 문장을 손으로 다시 적어도 통과한다.
+  it("잠긴 이유의 앞 절은 패널 목록과 **같은 함수**에서 온다", () => {
+    const state = opened(MAX_SHELLS);
+    const title = plusOf(render(state)).match(/title="([^"]*)"/)![1];
+    expect(title.startsWith(shellCapNotice(state))).toBe(true);
+  });
+
   it("칸이 하나도 없어도 `+`는 남는다", () => {
     const markup = render(NO_SHELLS);
     expect(plusOf(markup)).toBeTruthy();
@@ -146,15 +167,15 @@ describe("상한에 닿은 `+`", () => {
 // 한 컴포넌트 안에 함께 있어서 한쪽으로 미끄러지기 쉽다.
 describe("줄은 자기 화면 것만 그린다", () => {
   it("다른 Work의 셸은 이 줄에 없다", () => {
-    let state = opened(2, { owner: "가", project: null });
-    state = opened(3, { owner: "나", project: null }, state);
+    let state = opened(2, { owner: "가", project: null, cwd: null });
+    state = opened(3, { owner: "나", project: null, cwd: null }, state);
     expect(render(state, { owner: "가" }).match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
     expect(render(state, { owner: "나" }).match(/aria-label="[^"]*닫기"/g)).toHaveLength(3);
   });
 
   it("이 줄에서 켜진 칸은 이 화면의 것이다", () => {
-    let state = opened(2, { owner: "가", project: null });
-    state = opened(1, { owner: "나", project: null }, state);
+    let state = opened(2, { owner: "가", project: null, cwd: null });
+    state = opened(1, { owner: "나", project: null, cwd: null }, state);
     // 마지막으로 띄운 것은 나의 셸이다. 그래도 가의 줄에는 가의 켜진 칸이 있어야 한다.
     const classes = classesOf(render(state, { owner: "가" }));
     expect(classes.filter((one) => one.includes("toggle-on"))).toHaveLength(1);
@@ -162,14 +183,14 @@ describe("줄은 자기 화면 것만 그린다", () => {
 
   // 화면이 세면 Work마다 8개가 된다. `+`가 잠기는 판정은 **이 줄의 길이와 무관하다.**
   it("이 줄이 비어 있어도 앱 전체가 상한이면 `+`가 잠긴다", () => {
-    const state = opened(MAX_SHELLS, { owner: "남", project: null });
+    const state = opened(MAX_SHELLS, { owner: "남", project: null, cwd: null });
     const markup = render(state, { owner: "나" });
     expect(markup).not.toMatch(/닫기/);
     expect(plusOf(markup)).toMatch(/aria-disabled="true"/);
   });
 
   it("잠긴 이유가 이 줄이 아니라 앱 전체 수를 말한다", () => {
-    const state = opened(MAX_SHELLS, { owner: "남", project: null });
+    const state = opened(MAX_SHELLS, { owner: "남", project: null, cwd: null });
     const title = plusOf(render(state, { owner: "나" })).match(/title="([^"]*)"/)![1];
     expect(title).toMatch(new RegExp(`지금 ${MAX_SHELLS}개`));
   });
@@ -194,7 +215,7 @@ describe("프로젝트가 여럿인 Work의 `+`", () => {
 
   // 이름의 가운데 갈래(결정 31). 어느 칸이 어느 워크트리인지가 줄에서 읽혀야 한다.
   it("프로젝트로 연 칸은 그 이름을 단다", () => {
-    const state = opened(1, { owner: "가", project: "cli" });
+    const state = opened(1, { owner: "가", project: "cli", cwd: null });
     expect(render(state, { owner: "가", projects: ["atelier", "cli"] })).toContain(">cli<");
   });
 });
@@ -236,17 +257,12 @@ describe("`+`가 묻는 조건은 cwd가 갈리는 조건과 같다", () => {
 // (창이 안 끌린다 / 신호등이 탭을 가린다 / 층 높이가 안 맞는다) 하나같이 "그냥 좀 이상한데"
 // 로 나타나 원인을 못 찾는다. 마크업에 못박는다.
 describe("탭 줄이 타이틀바를 겸할 때", () => {
-  it("보통 줄은 창을 끌지 않는다", () => {
-    expect(render(NO_SHELLS)).not.toContain("data-tauri-drag-region");
+  it("창을 끌 수 있다 — 이 줄이 창 맨 위라 없으면 창이 안 움직인다", () => {
+    expect(render(NO_SHELLS)).toContain("data-tauri-drag-region");
   });
 
-  it("겸하면 창을 끌 수 있다 — 이 줄이 창 맨 위라 없으면 창이 안 움직인다", () => {
-    expect(render(NO_SHELLS, { titlebar: { inset: false } })).toContain("data-tauri-drag-region");
-  });
-
-  it("겸하면 44px 층이다 — 보통 줄은 32px", () => {
-    expect(render(NO_SHELLS, { titlebar: { inset: false } })).toContain("h-(--titlebar-height)");
-    expect(render(NO_SHELLS)).toContain("h-8");
+  it("44px 층이다 — 화면 머리행이 없는 자리를 이 줄이 대신 이고 있다", () => {
+    expect(render(NO_SHELLS)).toContain("h-(--titlebar-height)");
   });
 
   // 사이드바가 접히면 이 줄이 창 왼쪽 끝에 붙는다. 그 자리가 신호등이다.
@@ -259,5 +275,36 @@ describe("탭 줄이 타이틀바를 겸할 때", () => {
   // (index.css의 --panel-ease 주석. PageHeader가 같은 이유로 같은 값을 쓴다).
   it("여백이 사이드바와 같은 곡선으로 움직인다", () => {
     expect(render(NO_SHELLS, { titlebar: { inset: true } })).toContain("ease-panel");
+  });
+});
+
+// 결정 42·44. **이 줄이 서는 조건과 이 줄이 타이틀바를 겸하는 조건은 같은 하나다** —
+// 겸하는 화면은 패널도 머리행도 없는 최상위 터미널뿐이고, 패널이 있는 화면은 셸을 패널의
+// `shell` 탭에서 고른다. 이 검사가 없으면 Work 화면 본문에 탭 줄이 되살아나도 아무도
+// 못 잡는다: 되살아난 줄은 **화면에서 멀쩡해 보이고**, 같은 것이 두 자리에 선 것만이
+// 문제라 어느 쪽이 틀렸는지가 안 드러난다.
+describe("패널이 있는 화면에는 이 줄이 서지 않는다", () => {
+  // 위 `render`를 쓰지 않는다 — 그 헬퍼의 기본값이 바로 「겸한다」라, `titlebar: undefined`를
+  // 넘겨도 기본값이 도로 채운다(기본 매개변수는 undefined에 걸린다). 여기서 보려는 것이
+  // 그 부재 자체이므로 컴포넌트를 직접 세운다.
+  const plain = (state: ShellsState) =>
+    renderToStaticMarkup(
+      <ShellTabs
+        state={state}
+        owner="가"
+        projects={[]}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onOpen={() => {}}
+      />,
+    );
+
+  it("타이틀바를 겸하지 않으면 아무것도 그리지 않는다", () => {
+    expect(plain(opened(2, { owner: "가", project: null, cwd: null }))).toBe("");
+  });
+
+  it("셸이 하나도 없어도 마찬가지다 — `+`까지 함께 사라진다", () => {
+    // `+`만 남기고 칸을 지우는 절충이 없다는 뜻이다. 새 셸을 여는 자리도 패널로 갔다.
+    expect(plain(NO_SHELLS)).toBe("");
   });
 });

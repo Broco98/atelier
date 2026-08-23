@@ -144,7 +144,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
   );
 }
 
-// 구획 하나. 탭 바가 이미 `정보`라 구획 이름은 그보다 한 단 작고 옅다.
+// 구획 하나. 탭 바가 이미 `info`라 구획 이름은 그보다 한 단 작고 옅다.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col pb-2">

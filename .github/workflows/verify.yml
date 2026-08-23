@@ -1,0 +1,74 @@
+# PR 게이트. 이 job이 실패하면 머지가 막힌다.
+#
+# **무엇이 검증인지는 여기 적지 않는다.** `pnpm verify --full` 하나만 부른다 (D9).
+# CI가 자기 목록을 가지면 로컬과 CI가 다른 것을 검사하게 되고, 그때부터 "통과했다"가
+# 두 가지 뜻을 갖는다.
+name: Verify
+
+on:
+  pull_request:
+
+jobs:
+  verify:
+    # 리눅스로 유지한다 — 공개 저장소의 표준 러너는 분 제한 없이 무료다. macOS로 옮기는
+    # 순간 비용이 붙는다 (D10).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `verify --full`에는 L1(워크스페이스 전체 cargo test)이 들어 있고, 워크스페이스에
+      # 데스크톱 앱 크레이트가 멤버로 있다 (D18). 그 크레이트의 `*-sys` 빌드 스크립트가
+      # pkg-config로 이 패키지들을 찾으므로, 없으면 링크까지 가지도 못하고 죽는다.
+      # 목록은 Tauri v2 prerequisites 문서의 Debian 계열 목록 그대로다.
+      - name: 시스템 패키지 설치
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # 콜드 빌드는 첫 회뿐이다. 릴리스 워크플로가 이미 쓰는 액션과 같은 것을 쓴다.
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      # 러너에는 브라우저가 없다. --with-deps가 브라우저 쪽 OS 의존성까지 넣는다.
+      - name: 브라우저 설치
+        run: pnpm exec playwright install --with-deps webkit
+
+      - name: 검증
+        run: pnpm verify --full
+
+      # 증거가 쌓이는 곳을 YAML에 베껴 적지 않는다. 베껴 적으면 한쪽만 바뀌었을 때
+      # upload-artifact가 **경고만 내고 통과해서** 빈 아티팩트를 초록으로 올린다.
+      - name: 증거 경로 읽기
+        if: failure()
+        id: evidence
+        run: echo "dir=$(node -p "require('./scripts/evidence-dir.json').evidenceDir")" >> "$GITHUB_OUTPUT"
+
+      - name: 실패 증거 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-evidence
+          path: ${{ steps.evidence.outputs.dir }}
+          # 앞선 층(타입·Rust)에서 멈추면 증거가 없는 것이 정상이다. 그때까지 빨간
+          # 오류를 하나 더 내면 진짜 신호가 묻힌다.
+          if-no-files-found: ignore

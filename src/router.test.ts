@@ -354,7 +354,7 @@ describe("문서 전환의 히스토리 의미론", () => {
 
 });
 
-// 화면 탭(`spec｜터미널`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
+// 화면 탭(`spec｜terminal`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
 // 새로고침이 늘 spec으로 떨어지고, 그 어긋남은 화면에서 "왜 spec이 열리지"로만 보인다.
 //
 // **여기서 보는 것은 갱신 방식이다.** 이 라우터는 `search`에 객체를 주면 기존 search를
@@ -452,6 +452,45 @@ describe("화면 탭의 주소", () => {
     await router.load();
     expect(router.state.location.pathname).toBe("/works");
     expect(router.state.location.search).toEqual({ tab: "terminal" });
+  });
+});
+
+// 설정은 목록도 선택도 없는 화면이라(결정 51·52) 위 규칙 둘이 **걸리지 않아야 한다** —
+// 무선택 주소 정규화도, 마지막으로 보던 항목도 여기엔 없다. 그리고 사이드바 바닥과 네이티브
+// 메뉴(⌘,) 둘이 같은 이동을 하므로, 그 이동이 히스토리에 어떻게 남는지가 두 자리의 공통
+// 계약이다 — AppShell이 nav 항목에만 「이미 그 화면이면 가만히 있는다」 가드를 두고 설정에는
+// 두지 않은 근거가 아래 마지막 줄이다.
+describe("설정 화면의 주소", () => {
+  it("`/settings`로 들어오면 그대로 머문다 — 정규화가 건드리지 않는다", async () => {
+    const { router } = setup(["/settings"], { lastWork: "work-b" });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(router.state.location.search).toEqual({});
+    // 주소만 보면 **라우트가 없어도 초록이다** — 못 찾은 주소도 위치는 그대로 남는다.
+    // 실제로 그 화면에 닿았는지는 매치를 봐야 안다.
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/settings");
+  });
+
+  // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
+  it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(history.length).toBe(2);
+
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+
+  it("이미 설정에 있을 때 다시 열어도 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/settings"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    expect(history.length).toBe(1);
+    expect(history.canGoBack()).toBe(false);
   });
 });
 

@@ -1,20 +1,9 @@
-import {
-  Children,
-  cloneElement,
-  isValidElement,
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Children, cloneElement, isValidElement, memo, useCallback, useMemo, useRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  Check,
   Copy,
   FileText,
   ImageOff,
@@ -31,7 +20,6 @@ import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
-import WorkPanel from "./WorkPanel";
 import type { WorkView } from "./types";
 
 interface SpecViewerProps {
@@ -42,167 +30,94 @@ interface SpecViewerProps {
   // 내려온다. 그래서 머리행이 패널 위를 지나갈 수 없고, 화면이 그것을 자기 자리에서
   // 그리면 패널은 그 아래에서 시작하게 된다. 슬롯으로 받아 본문 열이 이고 있는 이유다.
   header?: React.ReactNode;
+  // 본문이 넓어지는 조건 — 접을 수 있는 것을 **둘 다** 접었을 때만이다(결정 5·13).
+  // 패널 자체는 이제 이 컴포넌트가 그리지 않지만(결정 49), 그 폭은 여전히 본문 폭을 정한다.
   panelOpen: boolean;
-  // 패널 안 ×가 부른다. 접기 state의 소유자는 WorksPage다 — ⌘Enter와 같은 자리를 뒤집어야
-  // 여는 길과 닫는 길이 각각 하나로 남는다.
-  onClosePanel: () => void;
-  // 정보 탭의 프로젝트 이름이 부른다. 헤더 칩이 이 탭으로 옮겨 오면서 여기를 지난다.
-  onOpenProject: (slug: string) => void;
-  // 본문이 넓어지는 조건의 나머지 반쪽 — 접을 수 있는 것이 이 화면에는 둘뿐이다
   sidebarOpen: boolean;
-  // 보고 있는 문서는 **주소가 정본이다**(이슈 #25). 여기서 useState로 들면 문서를 옮긴
-  // 자취가 히스토리에 남지 않아, 링크를 따라 들어간 뒤 뒤로가기가 작업 전체를 건너뛴다.
+  // 보고 있는 문서. **주소가 정본이고**(이슈 #25) 없는 파일을 가리킬 때의 폴백까지
+  // 화면(WorksPage)이 이미 풀어서 내려준다 — 트리의 "지금 이 문서" 표시와 본문이 같은
+  // 값을 봐야 하고, 그 트리가 이제 형제 컬럼에 살기 때문이다.
   file: string | null;
-  onSelectFile: (path: string, push: boolean) => void;
-}
-
-function defaultFile(files: string[]): string | null {
-  if (files.includes("overview.md")) return "overview.md";
-  return files[0] ?? null;
+  // 본문이 소스 보기인가. **버튼의 켜짐 그대로가 아니다** — 거기에 파일 종류가 얹혀 있다
+  // (결정 6의 비-md 고정). 그 식도 화면이 든다: 켜짐은 패널 버튼이, 본문은 여기가 쓰는데
+  // 둘의 공통 조상이 화면뿐이다.
+  sourceView: boolean;
+  // 문서 안 링크를 따라갈 때. 히스토리를 **만든다** — 따라 들어갔으면 돌아올 수 있어야 한다.
+  // (히스토리를 만들지 않는 트리 훑기는 패널 쪽 길이라 여기를 지나지 않는다.)
+  onNavigate: (path: string) => void;
+  // 완성된 참조 문자열을 클립보드에 복사 (+토스트). 토스트 표면의 주인은 화면이다(결정 47).
+  onCopy: (text: string) => void;
 }
 
 function SpecViewer({
   work,
   header,
   panelOpen,
-  onClosePanel,
-  onOpenProject,
   sidebarOpen,
   file,
-  onSelectFile,
+  sourceView,
+  onNavigate,
+  onCopy,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  // 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백
-  const current = file && files.includes(file) ? file : defaultFile(files);
-
-  // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
-  // 있어야 한다. 참조를 고정해 두는 것은 본문이 리렌더 때마다 통째로 다시 마운트되지 않게
-  // 하기 위해서다(PrettyView가 memo다).
-  const selectFromTree = useCallback((path: string) => onSelectFile(path, false), [onSelectFile]);
-  const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
-  const { data: content } = useSpecFile(work.slug, current);
+  const { data: content } = useSpecFile(work.slug, file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
-  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 (소스 토글과 무관)
-  const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
-
-  // 소스 보기의 주인이 **여기다.** 토글이 작업 패널 머리행으로 올라가면서 화면(WorksPage)이
-  // 이 상태를 들 이유가 없어졌다. 이 컴포넌트는 key={slug}로 서 있으므로 작업을 옮기면
-  // 예쁜 보기로 돌아온다 — 탭 선택과 수명이 같아져 "패널에 사는 훑기 상태는 작업을 옮기면
-  // 처음으로 돌아간다"는 규칙 하나로 묶인다 (결정 22, **오늘과 다른 동작이다**).
-  // 패널 접기는 이 컴포넌트를 리마운트하지 않으므로 접었다 펴도 보기는 유지된다.
-  //
-  // 이 값은 **버튼의 켜짐 그대로** 패널로 내려가고, 본문은 여기에 파일 종류를 얹어
-  // 정한다(아래 `showSource || !isMarkdown`). 둘을 같은 식으로 묶으면 비-md 파일을 열
-  // 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
-  const [showSource, setShowSource] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1600);
-  }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-
-  // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
-  const copyText = useCallback(
-    (text: string) => {
-      navigator.clipboard.writeText(text);
-      showToast(`${text} 복사됨`);
-    },
-    [showToast],
-  );
 
   const copyRef = useCallback(
     (start: number, end: number) => {
-      if (!current) return;
-      copyText(specRef(work.slug, current, start, end));
+      if (!file) return;
+      onCopy(specRef(work.slug, file, start, end));
     },
-    [work.slug, current, copyText],
+    [work.slug, file, onCopy],
   );
 
   return (
-    // **min-w-0이 빠지면 패널이 창 밖으로 밀린다.** 이 행은 스스로도 flex 항목이라
-    // min-width가 auto면 자기 min-content(=본문 열의 min-content + 패널 폭)만큼 부푼다.
-    // 본문 열에 min-w-0을 달아 둔 것만으로는 막히지 않는다 — 여기서 한 번 더 끊어야
-    // 그 값이 위로 새지 않는다.
+    // 본문 열 — 스크롤 경계는 여기까지다. 작업 패널은 이 열의 형제이고 **이제 화면이
+    // 그린다**(결정 49). 머리행이 여기 안에 있는 것은 그대로다: 패널이 이 열의 형제이자
+    // **머리행과 같은 층**이라(창 맨 위에서 시작한다) 머리행은 이 열의 폭만 차지해야 한다.
     //
-    // 부푼 만큼 패널은 오른쪽으로 밀려 잘리는데, **미는 양이 본문 내용에 따라 달라진다.**
-    // 그래서 소스 보기를 켜고 끌 때마다 패널 폭이 바뀌는 것처럼 보였다 (실측: 예쁜 보기에서
-    // 패널 오른쪽 끝이 1521, 창은 1512 — 9px이 창 밖에 있었다. 지금은 1512로 딱 맞는다).
-    <div className="flex min-h-0 min-w-0 flex-1">
-      {/* 본문 영역 — 스크롤 경계는 여기까지다. 작업 패널은 형제라 본문과 함께 스크롤되지 않는다.
-          머리행도 여기 안에 있다: 패널이 이 열의 형제이자 **머리행과 같은 층**이라
-          (창 맨 위에서 시작한다) 머리행은 이 열의 폭만 차지해야 한다. */}
-      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {header}
-        {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
-        <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
-          <div className="flex min-h-full min-w-0 flex-col">
-            {files.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center p-10">
-                <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-                  <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                    <FileText className="size-5" strokeWidth={1.6} />
-                  </div>
-                  <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-                  <span className="text-[14px] leading-[1.65] text-tertiary">
-                    AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-                  </span>
-                  <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                    ~/.atelier/works/{work.slug}/spec/
-                  </code>
+    // 이 열을 감싸던 행(min-w-0을 들고 있던 자리)은 화면으로 올라갔다 — 그 행이 있던 이유가
+    // "본문과 패널을 나란히 세우는 것" 하나였고, 그 일이 여기서 사라졌다.
+    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      {header}
+      {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">
+        <div className="flex min-h-full min-w-0 flex-col">
+          {files.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center p-10">
+              <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
+                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+                  <FileText className="size-5" strokeWidth={1.6} />
                 </div>
+                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
+                <span className="text-[14px] leading-[1.65] text-tertiary">
+                  AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
+                </span>
+                <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                  ~/.atelier/works/{work.slug}/spec/
+                </code>
               </div>
-            ) : showSource || !isMarkdown ? (
-              <SourceView content={content ?? ""} wide={wide} />
-            ) : (
-              <PrettyView
-                file={current ?? ""}
-                content={content ?? ""}
-                onCopyBlock={copyRef}
-                wide={wide}
-                files={files}
-                onNavigate={followLink}
-                specRoot={specRoot}
-              />
-            )}
-          </div>
+            </div>
+          ) : sourceView ? (
+            <SourceView content={content ?? ""} wide={wide} />
+          ) : (
+            <PrettyView
+              file={file ?? ""}
+              content={content ?? ""}
+              onCopyBlock={copyRef}
+              wide={wide}
+              files={files}
+              onNavigate={onNavigate}
+              specRoot={specRoot}
+            />
+          )}
         </div>
-
-        {toast && (
-          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-            {toast}
-          </div>
-        )}
-      </main>
-
-      {/* 폭 접기로 바뀐 뒤로는 늘 마운트돼 있다 — 퇴장 애니메이션을 재생시키려고
-          언마운트를 미루던 장치가 필요 없다. 트리 접힘 초기화 계약은 WorkPanel 안의
-          key가 맡는다 (#35). 트리 클릭은 히스토리를 만들지 않으므로 selectFromTree다 */}
-      <WorkPanel
-        work={work}
-        currentFile={current}
-        onSelectFile={selectFromTree}
-        onCopy={copyText}
-        onClose={onClosePanel}
-        onOpenProject={onOpenProject}
-        sourceOn={showSource}
-        // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 둘이다: 비-md 파일(결정 6)과
-        // spec 문서가 하나도 없는 작업. 뒤엣것에서 `current`는 null이고 위 `?? true`가
-        // 마크다운으로 떨어뜨리는데, 그 기본값은 **본문 분기(예쁜 보기)를 위한 것이지
-        // "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라
-        // 눌러도 아무 일이 없다. 새로 만든 작업은 항상 이 화면이라 비-md보다 먼저 만난다.
-        sourceLocked={!current || !isMarkdown}
-        onToggleSource={() => setShowSource((v) => !v)}
-        open={panelOpen}
-      />
-    </div>
+      </div>
+    </main>
   );
 }
 

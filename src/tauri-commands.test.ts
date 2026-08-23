@@ -6,6 +6,7 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import { FIXTURE_COMMANDS } from "../e2e/fixtures";
 
 // 프런트엔드가 부르는 invoke 이름과 Rust가 등록한 명령 이름은 **문자열로만** 이어져 있다.
 // 어느 쪽을 빠뜨려도 컴파일도 타입 검사도 통과하고, 버튼을 누르는 순간에야 실패한다.
@@ -36,7 +37,19 @@ function registeredNames(): string[] {
   const source = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
   const block = source.match(/generate_handler!\[([\s\S]*?)\]/);
   if (!block) throw new Error("generate_handler! 블록을 찾지 못했다");
-  return [...block[1].matchAll(/commands::([a-z_]+)/g)].map((m) => m[1]).sort();
+  return block[1]
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .map((item) => {
+      // 모르는 모양을 **건너뛰지 않는다.** 건너뛰면 그 커맨드가 이 검사의 눈에서 통째로
+      // 사라져 등록을 빠뜨려도 초록이 된다 — `use commands::*;`로 접두사 없이 등록하면
+      // 실제로 그렇게 샌다. 같은 이유로 다리 크레이트의 대조도 fail-closed다.
+      const name = /^commands::([a-z_]+)$/.exec(item);
+      if (!name) throw new Error(`등록부에서 예상 못 한 항목을 봤다: ${item}`);
+      return name[1];
+    })
+    .sort();
 }
 
 describe("Tauri 명령 배선", () => {
@@ -80,6 +93,17 @@ describe("Tauri 명령 배선", () => {
       }
     }
     expect(mismatched).toEqual([]);
+  });
+
+  // L3 하네스는 부팅 경로가 부르는 커맨드에만 고정 데이터로 답한다. 그 이름이 낡으면
+  // 하네스는 아무도 안 부르는 커맨드에 답하고, 진짜 커맨드는 화이트리스트 밖으로 나간다.
+  // 실행 중에 터지긴 하지만 **그 커맨드를 태우는 테스트가 있을 때만**이라 여기서 못 박는다.
+  // (L4는 이 목록이 없다 — `plugin:` 접두사가 아닌 것은 전부 다리로 가므로 낡을 자리가 없다.)
+  it("L3 하네스가 답하는 커맨드는 전부 등록돼 있다", () => {
+    const stale = Object.keys(FIXTURE_COMMANDS).filter(
+      (name) => !registeredNames().includes(name),
+    );
+    expect(stale, "하네스의 고정 데이터가 등록부에 없는 이름을 답하고 있다").toEqual([]);
   });
 
   // 데스크톱 명령은 **어떤 테스트도 본문을 실행하지 않는다** — src-tauri의 테스트 수는 0이고,
