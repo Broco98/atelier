@@ -27,9 +27,9 @@ m.sources.indexOf('webpack://@xterm/xterm/./src/browser/input/CompositionHelper.
 m.sourcesContent[16]; // 원본 전문
 ```
 
-우리 저장소 쪽 줄 번호는 **2026-08-22 이 워크트리 기준**이다. 같은 워크트리에서 다른 트랙이
-동시에 일하고 있으니(`shell-registry.ts`·`WorksPage.tsx` 등이 이미 수정 상태다) 숫자가 밀렸으면
-인용한 코드 조각으로 찾을 것 — 조각은 안 밀린다.
+**저장소 쪽은 줄 번호를 안 적는다.** 처음 판에 적었던 숫자 셋이 그 뒤 편집으로 전부 다른 코드를
+가리키게 됐다(리뷰가 잡았다). 이름과 인용한 조각으로 찾을 것 — 그쪽은 안 밀린다.
+상류(`node_modules` 안) 줄 번호는 판이 고정돼 있으므로 그대로 둔다.
 
 설치된 판: **`@xterm/xterm` 6.1.0-beta.302** (`package.json`), 애드온은 fit 0.12.0-beta.299 ·
 web-links 0.13.0-beta.299 · webgl 0.20.0-beta.298.
@@ -95,7 +95,7 @@ public keydown(ev: KeyboardEvent): boolean {
 
 **`ev.key`가 그대로 나간다.** 한글 입력기가 켜져 있을 때 이 웹뷰가 `ev.key`에 자모를
 넣어 준다는 것은 이 저장소가 이미 실측해 적어 뒀다 —
-`src/features/terminal/shell-registry.ts:293-294`의 주석
+`src/features/terminal/shell-registry.ts`의 `shellHotkey` 머리말
 「`key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면 같은 키가 자모로 온다(실측)」.
 **조합이 안 서면 정확히 이 증상이 난다**는 것이 코드로 확인된다.
 
@@ -154,7 +154,7 @@ if (this._customKeyEventHandler && this._customKeyEventHandler(event) === false)
 ```
 
 자리는 위험하다. 그런데 우리가 거기 심은 함수는 위험할 수가 없다.
-`terminal-store.ts:247-254`:
+`terminal-store.ts`의 `createInstance`:
 
 ```ts
 term.attachCustomKeyEventHandler((event) => {
@@ -166,7 +166,7 @@ term.attachCustomKeyEventHandler((event) => {
 });
 ```
 
-`shellHotkey`(`shell-registry.ts:299-312`)의 첫 두 줄:
+`shellHotkey`(`shell-registry.ts`)의 첫 두 줄:
 
 ```ts
 if (event.type !== "keydown") return null;
@@ -195,9 +195,33 @@ xterm이 PTY로 내보낸 바이트를 읽었다. 아래는 그 로그에서 나
 | `width: 1px; height: 1px` | 조합 이벤트 **0건**, `insertReplacementText` | `안녕 ` ✅ | `ㅇㄴ ` ❌ |
 
 **오직 크기만 갈랐다.** 화면 밖(`left: -9999em`)인 것도, 투명(`opacity: 0`)인 것도, `z-index: -5`도
-전부 무해했다 — 셋을 그대로 두고 크기만 1px로 준 판이 위 둘째 줄이다. xterm 스스로도 조합
-중에는 이 칸을 1×1 이상으로 만든다(`updateCompositionElements`의 주석: "Ensure the text area is
-at least 1x1, otherwise certain IMEs may break"). 다만 그 손질은 조합이 **시작된 뒤**라 늦다.
+전부 무해했다 — 셋을 그대로 두고 크기만 1px로 준 판이 위 둘째 줄이다.
+
+### 크기 0으로 가는 길이 **둘**이다 — 고침이 `min-width`인 이유
+
+1. **`xterm.css`의 시작값** `width: 0; height: 0`. 첫 커서 이동 전까지 이 값이다.
+2. **xterm이 인라인으로 덮어쓴다.** `_syncTextArea()`가 `onCursorMove`·`onResize`마다 돌면서
+   `width = 셀너비 × bufferLine.getWidth(커서칸)`을 넣는다. 커서가 **넓은 글자의 뒤칸**에 서면
+   그 폭이 0이라 **`width: 0px`이 인라인으로** 들어간다.
+
+둘째가 중요하다. 앱에서는 셸이 프롬프트를 찍는 순간 커서가 움직이므로 보통은 인라인
+`width: 9.275px`(한 셀)이 서 있고 — 그래서 **앱의 평소 증상은 `ㅇㅏㄴ녕`이 아니라 `ㅇㄴ`**,
+곧 낱자만 새는 쪽이다. 그러다 커서가 한글 뒤칸에 서면 인라인이 `0px`이 되어 조합이 끊기는
+쪽으로 넘어간다(실측: `가` 찍고 왼쪽 한 칸 → 인라인 `0px` → `ㅇㅏㄴ녕`).
+
+스타일시트로는 인라인을 못 이긴다. 그래서 **`width`가 아니라 `min-width`로 바닥만 깐다** —
+인라인 `width`와 싸우지 않으므로 `!important`가 필요 없고, xterm이 입력칸을 커서 셀에 맞춰
+두는 뜻(다른 입력기의 후보창 위치)도 안 뺏는다. 실측으로 셋을 나란히 재 봤다:
+
+| 규칙 | 인라인 | 쓰이는 폭 | 결과 |
+|---|---|---|---|
+| 없음 | `0px` | 0 | `ㅇㅏㄴ녕` ❌ |
+| `min-width: 1px` | `0px` | 1 | `안녕` ✅ |
+| `width: 1px !important` | `0px` | 1 | `안녕` ✅ (다만 커서 추적까지 뺏는다) |
+
+xterm 스스로도 조합 중에는 이 칸을 1×1 이상으로 만든다(`updateCompositionElements`의 주석:
+"Ensure the text area is at least 1x1, otherwise certain IMEs may break"). 다만 그 손질은
+`_isComposing`이 선 **뒤**라 이 경로(조합이 안 서는 경로)에는 영영 안 온다.
 
 곁가지 둘도 이 한 줄에서 함께 나았다: 스페이스가 **U+00A0**으로 오던 것과, 조합 중
 백스페이스가 먹통이던 것.
@@ -264,9 +288,16 @@ fi
 
 | 자리 | 무엇 |
 |---|---|
-| `src/index.css` | `.xterm textarea.xterm-helper-textarea`에 `width/height: 1px`. `!important`가 아니라 `textarea` 한 겹을 얹어 특이도로 이긴다 — 청크 순서에 안 기댄다 |
+| `src/index.css` | `.xterm textarea.xterm-helper-textarea`에 `min-width`/`min-height: 1px`. 바닥만 깔아 인라인과 안 싸운다(위 표) |
 | `src/features/terminal/terminal-ime.ts` | 조합 다리. 완성될 때까지 붙들었다가 확정되는 순간 보낸다 |
 | `src/features/terminal/terminal-store.ts` | `createInstance`에서 집(`wrapper`)의 capture 단계에 건다 |
+| `tools/ime-probe/` | 위 전부를 진짜 입력기로 재는 계측기. 여섯 대본 |
+
+**수식키를 거르는 것이 다리의 절반이다.** 두벌식에서 `ㄲㄸㅃㅆㅉ`·`ㅒㅖ`는 Shift로 치는데,
+그 Shift keydown이 음절 한가운데 들어오면 아직 미완인 앞 음절을 흘려보내고 곧이어 오는
+replacement가 같은 음절을 다시 채워 **두 번 나간다**(실측: 「했다」→`해했다`, 조합 중 ⌘→`해해`).
+상류도 `CompositionHelper.keydown`에서 16·17·18·20을 거른다. **`Meta`는 상류에 없는데 우리가
+넣었다** — macOS에서 ⌘는 수식키이고 이 앱은 그 터미널에 ⌘T·⌘W를 걸어 두었다.
 
 **꺼낸 안 하나**: 상류 PR #5704를 `pnpm patch`로 물리는 것. 크기 0을 안 고치면 그 PR만으로는
 안 낫는다(조합이 매 타자 끊기는 쪽으로 가므로 `insertReplacementText`가 아예 안 온다).
@@ -278,8 +309,12 @@ fi
 
 ## 5. 다음 사람이 안 되풀이했으면 하는 것
 
-- **크기 0이 원인이다.** `xterm.css`가 그렇게 두고 있고, 우리 override가 사라지면 그대로 재발한다.
-  `terminal-ime.test.ts`가 그 규칙과 상류 값을 함께 본다
+- **크기 0이 원인의 절반이다.** 스타일시트와 **인라인** 둘 다에서 온다(§2). `width:`로 적으면
+  인라인에 지므로 `min-*`이라야 한다 — `terminal-ime.test.ts`가 `width:`로 되돌리는 것을 막는다
+- **수식키 keydown은 조합을 안 끝낸다.** 이걸 빼면 한국어의 절반(과거형·쌍받침)이 두 번 나간다.
+  상류 가드를 읽고도 안 옮긴 것이 1차 리뷰에서 blocker로 잡혔다
+- **계측기가 못 치는 것은 안 재는 것이다.** 처음 네 대본에 Shift가 하나도 없어서 위 blocker가
+  초록인 채로 빠져나갔다. 대본을 늘릴 때 「이 대본이 무엇을 지키는가」를 README 표에 적을 것
 - `attachCustomKeyEventHandler`는 **끝났다**(§1.5)
 - xterm 옵션도 **끝났다**(§1.4)
 - 번들은 minified지만 **`.map`에 원본이 통째로 들어 있다**(§0)

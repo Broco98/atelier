@@ -1,46 +1,59 @@
 <!doctype html><meta charset="utf-8">
 <link rel="stylesheet" href="xterm.css">
-<style>
-/* run.sh가 src/index.css의 실제 규칙을 여기에 끼워 넣는다 */
+<style>html,body{margin:0;background:#1e1e1e}#term{width:640px;height:300px}
 /*__APP_CSS__*/
-html,body{margin:0;background:#1e1e1e}#term{width:640px;height:300px}</style>
+</style>
 <div id="term"></div>
 <script src="xterm.js"></script>
-<script src="terminal-ime.js"></script>
+<script src="app.js"></script>
 <script>
 const put = s => window.webkit.messageHandlers.log.postMessage(s);
 const cp = s => [...(s ?? '')].map(c => c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')).join(' ');
 const t0 = performance.now();
 const line = (k, d) => put(String(Math.round(performance.now()-t0)).padStart(5) + 'ms  ' + k.padEnd(20) + ' ' + d);
 
-// 앱의 createInstance와 같은 옵션으로 만든다.
+// **앱의 값을 그대로 쓴다** — `entry.ts`가 실어 온 것이다.
+const look = Atelier.terminalLook(null);
 const term = new Terminal({
-  fontFamily: 'JetBrainsMonoNL Nerd Font, ui-monospace, SFMono-Regular, Apple SD Gothic Neo, monospace',
-  fontSize: 15, scrollback: 5000, minimumContrastRatio: 4.5,
-  theme: { background: '#1e1e1e', foreground: '#cccccc' },
+  fontFamily: look.fontFamily,
+  fontSize: look.fontSize,
+  theme: Atelier.terminalThemeFor(look.theme),
+  // 이 둘만 `createInstance`에 리터럴로 박혀 있어 여기 옮겨 적었다. 조합 경로와 무관함은
+  // 번들 전수 검색으로 확인했다(docs/ime-probe.md §1.4).
+  scrollback: 10000,
+  minimumContrastRatio: 4.5,
 });
 term.open(document.getElementById('term'));
 
-// **이것이 재려는 것** — xterm이 결국 PTY로 무엇을 보내는가. 앱에서는 이 자리가 pty_write다.
+// **이것이 재려는 것** — xterm이 결국 셸로 무엇을 보내는가. 앱에서는 이 자리가 pty_write다.
+// 셸이 없으니 우리가 되받아 그린다: 커서가 움직여야 앱과 같은 상태가 된다(xterm이 커서
+// 이동마다 숨은 입력칸의 인라인 크기를 다시 쓴다 — 그것이 이 판이 고친 것의 절반이다).
 const sent = [];
-term.onData(d => { sent.push(d); line('→PTY', `"${d}" [${cp(d)}]`); });
+term.onData(d => { sent.push(d); line('→PTY', `"${d}" [${cp(d)}]`); term.write(d); });
 
-// 앱이 다는 것과 같은 커스텀 핸들러(⌘T/⌘W). 조합과 무관함을 이 자리에서 함께 확인한다.
-term.attachCustomKeyEventHandler(e => {
-  if (e.type !== 'keydown') return true;
-  if (!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return true;
-  return !(e.code === 'KeyT' || e.code === 'KeyW');
-});
+// 애드온은 안 붙인다. fit·web-links·webgl 셋 다 입력 경로에 안 닿고, WebGL은 헤드리스에
+// 가까운 이 창에서 렌더러가 갈려 잡음만 는다. 렌더러가 무관하다는 것은 1판이 이미 실측했다.
+Atelier.attachIme(document.getElementById('term'), (d) => term.input(d, true));
 
-// **앱의 진짜 모듈을 건다** — 흉내가 아니다. run.sh가 terminal-ime.ts를 번들해 넣는다.
-AtelierIme.attachIme(document.getElementById('term'), (d) => term.input(d, true));
 const ta = document.querySelector('.xterm-helper-textarea');
 for (const t of ['compositionstart','compositionupdate','compositionend'])
   ta.addEventListener(t, e => line(t, `data="${e.data ?? ''}"[${cp(e.data)}]`));
 for (const t of ['beforeinput','input'])
   ta.addEventListener(t, e => line(t, `inputType=${e.inputType} isComposing=${e.isComposing} data="${e.data ?? ''}"[${cp(e.data)}] value="${ta.value}"[${cp(ta.value)}]`), true);
-ta.addEventListener('keydown', e => line('keydown', `key="${e.key}" code=${e.code} keyCode=${e.keyCode} isComposing=${e.isComposing}`), true);
+ta.addEventListener('keydown', e => line('keydown', `key="${e.key}" code=${e.code} keyCode=${e.keyCode}`), true);
 
+term.write('$ ');            // 프롬프트 한 번 — 커서를 움직여 앱과 같은 상태로 만든다
 term.focus();
-window.__done = () => put('FINAL →PTY 합계 = "' + sent.join('') + '" [' + cp(sent.join('')) + ']');
+
+/** 커서를 **넓은 글자의 뒤칸**에 세운다. 거기서 xterm이 인라인 `width: 0px`을 쓴다. */
+window.__wide = () => {
+  term.write('가\x1b[1D');
+  line('__wide__', '커서를 넓은 글자 뒤칸에 세웠다');
+};
+window.__done = () => {
+  const w = ta.style.width || '(없음)';
+  const used = Math.round(ta.getBoundingClientRect().width * 100) / 100;
+  put(`입력칸 inline width=${w} / 실제 ${used}`);
+  put('FINAL →PTY 합계 = "' + sent.join('') + '" [' + cp(sent.join('')) + ']');
+};
 </script>

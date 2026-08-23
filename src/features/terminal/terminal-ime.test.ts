@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { IME_KEYCODE, imeInput, imeKeyDown } from "./terminal-ime";
+import { IME_KEYCODE, imeBlur, imeInput, imeKeyDown } from "./terminal-ime";
 
 // 이 판에서 유일하게 **웹뷰가 준 실제 이벤트**로 세운 검사다. 아래 대본은 지어낸 것이 아니라
 // 2026-08-23에 진짜 WKWebView에 두벌식을 프로그램으로 쳐 넣어 받은 로그를 그대로 옮긴 것이다
@@ -16,16 +16,24 @@ import { IME_KEYCODE, imeInput, imeKeyDown } from "./terminal-ime";
  * 세야 「사용자가 친 것이 셸에 무엇으로 닿는가」가 된다. 하네스에서 잰 `→PTY` 합계가 바로
  * 이 값이었다. (keydown이 만드는 `\r` 따위는 xterm의 키 경로라 여기서 안 센다.)
  */
-function replay(script: readonly (readonly [string, string | null] | number)[]): {
-  sent: string;
-  swallowed: number;
-} {
+type Step = readonly [string, string | null] | Key;
+interface Key {
+  keydown: string;
+  code: number;
+}
+
+/** 평범한 키 하나. 이름은 판정에 안 쓰이므로 비워 둔다. */
+const key = (code: number): Key => ({ keydown: "", code });
+/** 수식키. **이름으로 갈린다** — keyCode가 아니다. */
+const mod = (name: string): Key => ({ keydown: name, code: 0 });
+
+function replay(script: readonly Step[]): { sent: string; swallowed: number } {
   let held = "";
   let sent = "";
   let swallowed = 0;
   for (const step of script) {
-    if (typeof step === "number") {
-      const out = imeKeyDown(held, step);
+    if ("keydown" in step) {
+      const out = imeKeyDown(held, step.keydown, step.code);
       held = out.held;
       sent += out.send;
       continue;
@@ -58,12 +66,12 @@ describe("실측 대본 — 두벌식 「안녕」", () => {
     // Enter는 `insertText`로 안 온다 — keydown 13이다. 그 자리에서 흘려보내지 않으면
     // 「녕」이 개행 뒤에 도착하거나 아예 사라진다. 개행 자체는 xterm의 키 경로 몫이라
     // 여기 안 나온다 — 하네스에서는 `안녕` 뒤에 `\r`이 붙어 나갔다.
-    expect(replay([...안녕, 13]).sent).toBe("안녕");
+    expect(replay([...안녕, key(13)]).sent).toBe("안녕");
   });
 
   it("조합 중 백스페이스는 꼬리를 줄인다 — 지우는 신호가 따로 오지 않는다", () => {
     // 실측: 백스페이스도 `insertReplacementText`로 오고 데이터가 한 겹 벗겨진다.
-    expect(replay([...안녕, rep("녀"), rep("ㄴ"), 13]).sent).toBe("안ㄴ");
+    expect(replay([...안녕, rep("녀"), rep("ㄴ"), key(13)]).sent).toBe("안ㄴ");
   });
 
   it("붙드는 동안에는 한 글자도 새지 않는다", () => {
@@ -71,10 +79,37 @@ describe("실측 대본 — 두벌식 「안녕」", () => {
   });
 });
 
+describe("실측 대본 — Shift가 음절 한가운데 들어올 때", () => {
+  // **이 판에서 가장 크게 뚫려 있던 자리다.** 두벌식에서 `ㄲㄸㅃㅆㅉ`·`ㅒㅖ`는 Shift로 치는데
+  // 그 Shift keydown이 아직 미완인 앞 음절을 흘려보내고, 곧이어 오는 replacement가 같은
+  // 음절을 다시 채워 **두 번 나갔다.** 실측에서 「했다」가 `해했다`로 갔다.
+  it("「했다」가 한 번만 나간다", () => {
+    // ㅎ · ㅐ · Shift+ㅅ · ㄷ · ㅏ · Enter
+    const 했다 = [
+      ins("ㅎ"), rep("해"), mod("Shift"), rep("했"),
+      ins("ㄷ"), rep("다"), key(13),
+    ] as const;
+    expect(replay(했다).sent).toBe("했다");
+  });
+
+  it("조합 중 ⌘도 앞 음절을 뱉지 않는다", () => {
+    // 상류의 가드에는 `Meta`가 없다. 이 앱은 그 터미널에 ⌘T·⌘W를 걸어 두어 조합 중에
+    // 실제로 눌리고, 안 막으면 실측에서 `해해`가 나갔다.
+    expect(replay([ins("ㅎ"), rep("해"), mod("Meta"), key(84)]).sent).toBe("해");
+  });
+});
+
+describe("초점이 떠날 때", () => {
+  it("붙들고 있던 글자를 흘려보낸다 — 안 그러면 조용히 사라진다", () => {
+    expect(imeBlur("녕")).toEqual({ send: "녕", held: "" });
+    expect(imeBlur("")).toEqual({ send: "", held: "" });
+  });
+});
+
 describe("영문은 예전 그대로", () => {
   it("한 타에 한 자씩, 붙들지 않는다", () => {
     // 여기서 붙들면 `ls`가 `s`를 칠 때까지 `l`이 안 보인다. 그 회귀를 막는 자리다.
-    const script = [ins("h"), ins("i"), 13];
+    const script = [ins("h"), ins("i"), key(13)];
     expect(replay(script).sent).toBe("hi");
     expect(replay(script).swallowed).toBe(0);
   });
@@ -90,13 +125,22 @@ describe("keydown", () => {
   it("IME가 물고 있는 키는 조합을 안 끊는다", () => {
     // 한글 타자도 조합 중 백스페이스도 전부 229로 온다(실측). 여기서 흘려보내면
     // 방금 붙든 낱자를 곧바로 뱉어 고치기 전과 같아진다.
-    expect(imeKeyDown("녕", IME_KEYCODE)).toEqual({ send: "", held: "녕" });
+    expect(imeKeyDown("녕", "ㅇ", IME_KEYCODE)).toEqual({ send: "", held: "녕" });
+  });
+
+  it("수식키도 조합을 안 끊는다 — 누르는 것만으로는 아무 데이터도 안 만든다", () => {
+    for (const name of ["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsLock"]) {
+      expect(imeKeyDown("해", name, 16), `${name}이 조합을 끊었다`).toEqual({
+        send: "",
+        held: "해",
+      });
+    }
   });
 
   it("그 밖의 키는 조합의 끝이다", () => {
-    expect(imeKeyDown("녕", 13)).toEqual({ send: "녕", held: "" });
-    expect(imeKeyDown("녕", 27)).toEqual({ send: "녕", held: "" });
-    expect(imeKeyDown("", 13)).toEqual({ send: "", held: "" });
+    expect(imeKeyDown("녕", "Enter", 13)).toEqual({ send: "녕", held: "" });
+    expect(imeKeyDown("녕", "Escape", 27)).toEqual({ send: "녕", held: "" });
+    expect(imeKeyDown("", "Enter", 13)).toEqual({ send: "", held: "" });
   });
 });
 
@@ -141,14 +185,20 @@ describe("붙이는 자리", () => {
     expect(create).toContain("attachIme(wrapper");
   });
 
-  it("숨은 입력칸의 크기가 0이 아니다", () => {
-    // **이것 하나가 원인이었다.** `width: 0`이면 WKWebView가 조합을 매 타자 끊는다.
+  it("숨은 입력칸의 크기 바닥이 0이 아니다", () => {
+    // **이것이 원인의 절반이었다.** 쓰이는 크기가 0이면 WKWebView가 조합을 매 타자 끊는다.
     const rule = read("src/index.css").match(
       /\.xterm textarea\.xterm-helper-textarea\s*\{[^}]*\}/,
     )?.[0];
     expect(rule, "override 규칙이 index.css에 없다").toBeTruthy();
-    expect(rule).toMatch(/width:\s*[1-9]/);
-    expect(rule).toMatch(/height:\s*[1-9]/);
+    expect(rule).toMatch(/min-width:\s*[1-9]/);
+    expect(rule).toMatch(/min-height:\s*[1-9]/);
+    // **`width`로 적으면 진다.** xterm이 커서가 움직일 때마다 인라인 `width`를 덮어쓰고
+    // (`_syncTextArea`), 커서가 넓은 글자 뒤칸에 서면 그 값이 `0px`이다(실측).
+    // 바닥(`min-*`)은 인라인과 싸우지 않고 이긴다.
+    expect(rule, "`width`/`height`로 적으면 xterm의 인라인에 진다").not.toMatch(
+      /(^|[^-])\bwidth:/,
+    );
   });
 
   it("상류가 아직 0으로 두고 있다 — 고쳤으면 우리 override를 지울 때다", () => {
