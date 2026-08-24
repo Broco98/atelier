@@ -2,11 +2,13 @@
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   activateShell,
   activeIdOf,
   atCap,
+  CLOSE_NOTICE,
+  confirmClose,
   markExited,
   markFailed,
   MAX_SHELLS,
@@ -32,6 +34,15 @@ import {
 } from "./shell-registry";
 import type { Shell, ShellOrigin, ShellsState } from "./shell-registry";
 import type { WorkView, WorktreeView } from "@/features/works/types";
+
+// 소스를 **문자열로만** 본다. 자르거나 파싱하는 정규식은 파서가 새는 순간 조용히 통과하고,
+// 이 저장소는 그것을 fail-open이라 부른다 — 실제로 그 사고가 있었다(아래 「본문도 DOM 전역을
+// 안 읽는다」와 「확인을 건너뛰는 길이 셋뿐이다」가 그 자리다). 여기서 쓰는 것은 리터럴
+// `includes`와 **정확한 등장 횟수** 둘뿐이라, 문자열이 사라지거나 개수가 달라지면 반드시
+// 빨개진다.
+const read = (file: string) =>
+  readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
+const countOf = (source: string, literal: string) => source.split(literal).length - 1;
 
 // 셸 목록 seam. 순수 모듈 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다
 // (work-sections.test.ts가 선례다). 관찰하는 것은 "어떤 조작을 하면 목록과 활성이 어떻게
@@ -413,6 +424,33 @@ it("react·tauri·xterm을 import하지 않는다", () => {
     found[0].trim(),
   );
   expect(valueImports).toEqual([]);
+});
+
+// **위 검사는 import만 본다 — 그것이 fail-open이었다.** 머리말은 「DOM 없는 기본 환경에서
+// 그대로 돈다」를 「shell-registry.test.ts의 소스 스캔이 지킨다」고 못박아 놨는데, 정작
+// `opensShellFromWindow`의 **본문**이 `HTMLTextAreaElement`를 `instanceof`로 읽는 동안에도
+// 그 스캔은 조용히 초록이었다: 전역을 읽는 데는 import가 필요 없기 때문이다. 노드에서
+// 스텁 없이 부르면 그 줄이 ReferenceError로 터지므로 머리말은 그때 이미 거짓이었다.
+//
+// 그래서 본문까지 본다. 파싱은 안 한다 — 리터럴이 있는지·몇 개인지만 본다.
+it("본문도 DOM 전역을 안 읽는다 — 머리말이 약속한 것이 이것이다", () => {
+  const source = read("./shell-registry.ts");
+  for (const forbidden of [
+    "HTMLInputElement",
+    "instanceof HTML",
+    "document.",
+    "window.",
+    "globalThis.",
+  ]) {
+    expect(source, `${forbidden} — DOM 없는 환경에는 이 이름이 없다`).not.toContain(forbidden);
+  }
+  // `HTMLTextAreaElement`만은 `typesInto`의 주석이 「한때 이랬다」로 **한 번** 든다. 그
+  // 역사를 지우면서까지 검사를 편하게 만들 이유가 없으니 **센다** — 코드가 그 전역을 다시
+  // 읽는 순간 둘이 되어 여기가 빨개진다.
+  expect(
+    countOf(source, "HTMLTextAreaElement"),
+    "본문이 DOM 전역을 다시 읽는다 — 주석 한 번 말고는 나올 자리가 없다",
+  ).toBe(1);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -854,27 +892,64 @@ describe("닫기 전에 묻는가", () => {
   it("없는 칸은 안 묻는다", () => {
     expect(needsCloseConfirm(undefined, true)).toBe(false);
   });
+
+  // **묻고 나서 그 답을 존중하는가**가 여기까지 와야 절반이 채워진다. 한때 그 한 줄이
+  // 스토어 안에 `confirm`과 붙어 있어 잴 수가 없었고, 답을 버리고 그냥 닫게 만들어도
+  // 검사가 전부 초록이었다(실측). 확인 창을 인자로 받게 하면서 값으로 드러났다.
+  describe("물은 답을 존중한다", () => {
+    const ask = (answer: boolean) => {
+      let asked = 0;
+      return {
+        count: () => asked,
+        fn: async () => {
+          asked += 1;
+          return answer;
+        },
+      };
+    };
+
+    it("아니라고 하면 안 닫는다 — sleep 30이 도는 셸이 이 자리다", async () => {
+      expect(await confirmClose(running, true, ask(false).fn)).toBe(false);
+    });
+
+    // **정확히 한 번만 묻는다**(결정 92의 「닫기 직전에 한 번만」). 두 번 물으면 ⌘W 한 번에
+    // 팝업이 둘 뜬다.
+    it("예라고 하면 닫는다 — 묻는 것은 한 번뿐이다", async () => {
+      const asking = ask(true);
+      expect(await confirmClose(running, true, asking.fn)).toBe(true);
+      expect(asking.count()).toBe(1);
+    });
+
+    // 물을 일이 없는데 물으면 빈 프롬프트를 닫을 때마다 팝업이 뜬다(결정 92가 피한 것).
+    it("물을 일이 없으면 아예 안 묻고 닫는다", async () => {
+      const asking = ask(false);
+      expect(await confirmClose(running, false, asking.fn)).toBe(true);
+      expect(asking.count()).toBe(0);
+    });
+  });
+
+  // 결정 105. 「명령」은 CONTEXT.md에 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이
+  // 아니다. `claude` 같은 프로그램 이름은 안 싣는다.
+  it("확인 창은 도는 것을 「명령」이라 부르고 이름은 안 싣는다", () => {
+    expect(CLOSE_NOTICE).toContain("명령");
+    expect(CLOSE_NOTICE).toBe("실행 중인 명령이 있어요 — 닫을까요?");
+    // **이름을 실을 재료가 없다는 것까지 여기서 드러난다.** 결정 92가 여는 커맨드가 주는
+    // 것은 「도는가」 bool 하나뿐이라, 이 문구는 인자를 안 받는 **상수**다 — 이름을 끼워
+    // 넣을 자리 자체가 없다. 이름을 받는 함수로 바뀌는 순간 이 줄이 빨개진다.
+    expect(read("./shell-registry.ts")).toContain('export const CLOSE_NOTICE = "');
+  });
 });
 
 // ⌘T가 xterm의 키 핸들러에만 붙어 있어 **셸이 0개면 들을 사람이 없었다**(결정 93).
 // window에서도 듣되 범위는 work 화면 전체다(결정 98) — ⌘1이 spec, ⌘2~9가 셸로 본문을
 // 옮기는 한 벌에 ⌘T도 든다.
 describe("window에서 듣는 ⌘T", () => {
-  // 노드 환경에는 DOM 생성자가 없다. `instanceof`가 보는 것은 그 자리의 전역이므로 세워
-  // 두면 그대로 갈린다 — `togglesWorkPanel`의 검사가 같은 방식이다.
-  class FakeTextArea extends EventTarget {}
-  class FakeInput extends EventTarget {}
-  class FakeEditable extends EventTarget {
-    isContentEditable = true;
-  }
-
-  beforeEach(() => {
-    vi.stubGlobal("HTMLTextAreaElement", FakeTextArea);
-    vi.stubGlobal("HTMLInputElement", FakeInput);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  // **DOM 생성자를 세우지 않는다.** 한때 여기 `vi.stubGlobal` 두 줄이 있었고, 그것이 곧 이
+  // 모듈의 「DOM 없는 기본 환경에서 그대로 돈다」가 이 함수에 대해 깨졌다는 흔적이었다
+  // (노드에서 스텁 없이 부르면 `instanceof`가 터진다). 판정이 값 둘만 보게 되면서 스텁이
+  // 필요 없어졌고, **그래서 이 describe 자체가 그 계약의 그물이다** — 전역을 다시 읽는
+  // 순간 여기가 ReferenceError로 빨개진다.
+  const el = (tagName: string) => Object.assign(new EventTarget(), { tagName });
 
   type WindowT = Parameters<typeof opensShellFromWindow>[0];
   const key = (over: Partial<WindowT> = {}): WindowT => ({
@@ -884,8 +959,14 @@ describe("window에서 듣는 ⌘T", () => {
     metaKey: true,
     altKey: false,
     shiftKey: false,
-    target: new EventTarget(),
+    target: el("DIV"),
     ...over,
+  });
+
+  // 위 문장의 전제다. jsdom이 들어오면 「스텁 없이 돈다」가 이 seam에서 더는 관찰되지 않는다.
+  it("이 seam에는 DOM 전역이 없다 — 위 검사들이 그것을 딛는다", () => {
+    expect(globalThis).not.toHaveProperty("HTMLTextAreaElement");
+    expect(globalThis).not.toHaveProperty("HTMLInputElement");
   });
 
   it("본문에 포커스가 있으면 연다 — 셸이 0개인 화면이 이 자리다", () => {
@@ -895,12 +976,19 @@ describe("window에서 듣는 ⌘T", () => {
   // **xterm의 입력 자리가 숨은 <textarea>다.** 셸 안에서는 xterm 핸들러가 이미 가져가므로
   // 여기서 또 들으면 한 번 눌러 둘이 열린다.
   it("셸 안에서는 안 듣는다 — xterm 핸들러가 이미 가져갔다", () => {
-    expect(opensShellFromWindow(key({ target: new FakeTextArea() }))).toBe(false);
+    expect(opensShellFromWindow(key({ target: el("TEXTAREA") }))).toBe(false);
   });
 
   it("제목 편집 중(<input>)·편집 가능 요소에서도 안 듣는다", () => {
-    expect(opensShellFromWindow(key({ target: new FakeInput() }))).toBe(false);
-    expect(opensShellFromWindow(key({ target: new FakeEditable() }))).toBe(false);
+    expect(opensShellFromWindow(key({ target: el("INPUT") }))).toBe(false);
+    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
+    expect(opensShellFromWindow(key({ target: editable }))).toBe(false);
+  });
+
+  // 한때 `event.target as HTMLElement`로 좁혀 놓고 `isContentEditable`을 읽어, 이 값이 오면
+  // TypeError였다(`null instanceof X`는 false라 앞 가드를 그냥 통과한다).
+  it("포커스가 아무 데도 없어도 안 터진다", () => {
+    expect(opensShellFromWindow(key({ target: null }))).toBe(true);
   });
 
   // **⌘W는 안 넓힌다**(결정 98) — 「이 칸을 닫는다」는 겨눌 칸이 있어야 하고, 그 칸은
@@ -915,5 +1003,71 @@ describe("window에서 듣는 ⌘T", () => {
 
   it("⌘ 없이 T만은 아니다 — 그냥 글자다", () => {
     expect(opensShellFromWindow(key({ metaKey: false }))).toBe(false);
+  });
+});
+
+// 위 판정 셋은 순수 함수라 전수됐지만, **그것을 실제로 쓰는 자리**는 xterm의 키 핸들러와
+// 스토어라 어느 seam에도 안 보인다 — 정적 렌더는 이펙트도 키 이벤트도 안 돌리고, 노드
+// seam은 `@xterm/xterm`을 끌고 오는 모듈을 못 들인다.
+//
+// 그래서 소스로 못박되 **표현식을 통째로** 못박는다. 이름이 어딘가 있는지만 보면 가드가
+// 뒤집혀도 초록인 change-detector가 된다 — 실측으로 그랬다: `if (!opensShellFromWindow(e))`의
+// `!` 하나를 지워 ⌘T가 영영 안 먹게 만들어도 485건이 전부 초록이었다.
+describe("판정 셋이 실제로 배선돼 있다", () => {
+  const store = read("./terminal-store.ts");
+
+  it("⌘T·⌘W가 셸 안에서 갈리는 자리", () => {
+    expect(store).toContain('if (hotkey === "new") openNewShell(instance.origin);');
+    expect(store).toContain("else void requestCloseShell(instance.id);");
+  });
+
+  // **⌘W와 `×`가 같은 판정을 쓴다**(결정 92). 「`closeShell`을 밖으로 안 내보냈다」는 근거는
+  // ⌘W에 대해 거짓이다 — 그 핸들러가 `closeShell`과 **같은 모듈**에 살아 비공개가 아무것도
+  // 막지 못한다(실측: `requestCloseShell`을 `closeShell`로 되돌려도 tsc가 exit 0이었다).
+  // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 셋뿐이다.
+  it("확인을 건너뛰는 길이 셋뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수", () => {
+    // 정의. 밖으로 안 나가는 것은 `×`(모듈 밖)에 대해서는 여전히 유효한 절반이다.
+    expect(store).toContain("function closeShell(id: number): void {");
+    // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
+    expect(store).toContain(
+      "if (!(await confirmClose(shell, await commandRunning(id), ask))) return;",
+    );
+    // 아카이빙 회수. 그 길에는 사람이 이미 한 번 확인했다(결정 26의 순서).
+    expect(store).toContain(
+      "for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);",
+    );
+    // 넷째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
+    // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
+    expect(
+      countOf(store, "closeShell("),
+      "`closeShell`을 직접 부르는 자리가 늘었다 — ⌘W·`×`는 `requestCloseShell`만 부른다",
+    ).toBe(3);
+  });
+
+  // ⇧Enter(결정 91). `shellRewrite` 자체는 위에서 전수됐지만 **그것을 쓰는지**가 무테였다 —
+  // 판정을 `null` 고정으로 바꿔 기능을 통째로 죽여도 485건이 초록이었다.
+  it("⇧Enter가 `shellRewrite`를 딛는다", () => {
+    expect(store).toContain("const rewrite = shellRewrite(event);");
+    expect(store).toContain("if (rewrite !== null) {");
+  });
+
+  // 이 모듈이 80줄 위에서 스스로 적어 둔 계약이다 — `onData`가 **유일한 출구**로 남아야
+  // `pty_write`가 한 곳에서 나가고, xterm이 스스로 보내는 것과 순서도 안 뒤집힌다(IME 다리가
+  // capture로 먼저 돈다). ⇧Enter가 한글 조합 중에 걸리는 자리라 예외를 둘 곳이 아니다.
+  it("바뀐 바이트도 `onData` 하나로 나간다", () => {
+    expect(store).toContain("term.input(rewrite, true);");
+    // **파일 전체에서 하나다.** 핸들러 안만 보면 두 번째 출구가 다른 함수로 옮겨 가는 것을
+    // 못 본다 — 계약이 말하는 것은 「`onData`가 유일한 출구」이지 「이 핸들러가 안 쓴다」가
+    // 아니다.
+    expect(
+      countOf(store, "terminalApi.write("),
+      "쓰기 출구가 둘이 됐다 — `pty_write`는 `onData` 한 곳에서만 나가야 한다",
+    ).toBe(1);
+  });
+
+  // 결정 98이 `/terminal`에도 같은 판정을 세웠다. WorksPage 쪽 배선은 그 화면의 검사가
+  // 이펙트째로 못박는다.
+  it("`/terminal`이 같은 판정을 같은 방향으로 딛는다", () => {
+    expect(read("./TerminalPage.tsx")).toContain("if (!opensShellFromWindow(e)) return;");
   });
 });

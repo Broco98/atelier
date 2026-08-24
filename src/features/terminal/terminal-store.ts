@@ -9,9 +9,10 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { terminalApi } from "./api";
 import {
   activateShell,
+  CLOSE_NOTICE,
+  confirmClose,
   markExited,
   markFailed,
-  needsCloseConfirm,
   NO_SHELLS,
   openShell,
   removeShell,
@@ -235,28 +236,20 @@ function closeShell(id: number): void {
 }
 
 /**
- * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 결정 92가
- * 여는 커맨드가 주는 것은 「도는가」 하나이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹
- * 더 든다. 「명령」은 CONTEXT.md에 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이
- * 아니다.
- */
-const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
-
-/**
  * 사람이 셸을 닫으려 한다 — **⌘W와 `×`가 함께 여기로 온다**(결정 92). 셸 하나를 없애는
  * 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
  *
  * **닫기 직전에** 백엔드에 묻는다. 셸 상태에 얹어 두지 않는 것은 그 값이 매 순간 바뀌기
  * 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
  *
- * 무엇을 보고 묻는지는 `needsCloseConfirm`이 혼자 안다(끝난 칸·못 얻은 판정까지). 여기서
- * 한 번 더 가르지 않는다.
+ * 무엇을 보고 묻는지도, 물은 답을 어떻게 읽는지도 `confirmClose`가 혼자 안다(끝난 칸·못 얻은
+ * 판정까지). 여기서 한 번 더 가르지 않는다 — 여기 남는 것은 **확인 창을 건네는 일**뿐이고,
+ * 그것이 저쪽을 순수하게 잴 수 있는 모양으로 만든다.
  */
 export async function requestCloseShell(id: number): Promise<void> {
   const shell = terminalStore.state.shells.find((one) => one.id === id);
-  if (needsCloseConfirm(shell, await commandRunning(id))) {
-    if (!(await confirm(CLOSE_NOTICE, { title: "셸 닫기", kind: "warning" }))) return;
-  }
+  const ask = () => confirm(CLOSE_NOTICE, { title: "셸 닫기", kind: "warning" });
+  if (!(await confirmClose(shell, await commandRunning(id), ask))) return;
   closeShell(id);
 }
 
@@ -421,10 +414,15 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     // ⇧Enter는 셸에 가되 **다른 바이트로** 간다(결정 91). 앱이 가져가는 것이 아니라
     // 바꿔 보내는 것이라 위 분기와 따로 선다. `false`를 돌려주는 것은 xterm이 같은 키로
     // `\r`을 한 번 더 보내지 않게 하려는 것이다.
+    //
+    // **`term.input`으로 보낸다 — `terminalApi.write`를 직접 부르지 않는다.** 위 IME 다리가
+    // 같은 이유로 같은 길을 쓴다(80줄 위 주석): `onData`가 유일한 출구로 남아야 `pty_write`가
+    // 한 곳에서 나가고 xterm이 스스로 보내는 것과 순서도 안 뒤집힌다. 한글 조합 중의 ⇧Enter가
+    // 정확히 그 순서가 걸리는 자리라 여기에 예외를 둘 이유가 없다.
     const rewrite = shellRewrite(event);
     if (rewrite !== null) {
       event.preventDefault();
-      if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, rewrite));
+      term.input(rewrite, true);
       return false;
     }
     return true;
