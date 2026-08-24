@@ -63,16 +63,11 @@ function Sidebar({
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        {/* traffic light strip — same height as the main header so the logo top
-            lines up with where the header ends (the header no longer draws a
-            bottom border; the 44px strip is what keeps the two columns aligned) */}
+        {/* traffic light strip — same height as the main header (the header no
+            longer draws a bottom border; the 44px strip is what keeps the two
+            columns aligned). It is also the nav's top breathing room, which is
+            why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
-
-        <div className="shrink-0 pb-3 pl-3.5 pt-1">
-          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
-            Atelier
-          </span>
-        </div>
 
         {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
         <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
