@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
+import type { SectionsOpen, WorkSections } from "./work-sections";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
@@ -61,12 +62,17 @@ function SidebarWorkList({
         ? decodeURIComponent(state.location.pathname.slice("/works/".length))
         : null,
   });
-  const sections = splitWorkSections(works, {
+  const sectionsOpen: SectionsOpen = {
     pinned: pinnedOpen,
     works: worksOpen,
     drafts: draftsOpen,
-  });
-  const { pinned, main, drafts, visible } = sections;
+  };
+  const sections = splitWorkSections(works, sectionsOpen);
+  const { visible } = sections;
+  // 어느 구획을 접었는지만 아래에서 올라온다 — 어느 setState인지는 여기서 고른다.
+  const toggleSection = (section: keyof SectionsOpen) => {
+    ({ pinned: setPinnedOpen, works: setWorksOpen, drafts: setDraftsOpen })[section]((v) => !v);
+  };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
 
@@ -156,85 +162,16 @@ function SidebarWorkList({
             투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
             예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
-          {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
-          {pinned.length > 0 && (
-            <>
-              <SectionHeader
-                label="고정"
-                className="mt-3"
-                open={pinnedOpen}
-                count={pinned.length}
-                onToggle={() => setPinnedOpen((v) => !v)}
-              />
-              <SectionBody open={pinnedOpen}>
-                {pinned.map((work) => (
-                  <WorkRow
-                    key={work.slug}
-                    work={work}
-                    active={work.slug === selectedSlug}
-                    onOpen={goTo}
-                    onHover={openCardAfterDelay}
-                    onLeave={closeCard}
-                    onTogglePin={togglePin}
-                  />
-                ))}
-              </SectionBody>
-            </>
-          )}
-
-          {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
-          <SectionHeader
-            label="작업"
-            className="mt-3"
-            open={worksOpen}
-            count={main.length}
-            onToggle={() => setWorksOpen((v) => !v)}
+          <WorkSectionList
+            sections={sections}
+            open={sectionsOpen}
+            selectedSlug={selectedSlug}
+            onToggleSection={toggleSection}
+            onOpen={goTo}
+            onHover={openCardAfterDelay}
+            onLeave={closeCard}
+            onTogglePin={togglePin}
           />
-          <SectionBody open={worksOpen}>
-            {main.length === 0 ? (
-              <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-                {emptyMainNotice(sections)}
-              </span>
-            ) : (
-              main.map((work) => (
-                <WorkRow
-                  key={work.slug}
-                  work={work}
-                  active={work.slug === selectedSlug}
-                  onOpen={goTo}
-                  onHover={openCardAfterDelay}
-                  onLeave={closeCard}
-                  onTogglePin={togglePin}
-                />
-              ))
-            )}
-          </SectionBody>
-
-          {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
-          {drafts.length > 0 && (
-            <>
-              <SectionHeader
-                label="초안"
-                className="mt-3"
-                open={draftsOpen}
-                count={drafts.length}
-                onToggle={() => setDraftsOpen((v) => !v)}
-              />
-              <SectionBody open={draftsOpen}>
-                {drafts.map((work) => (
-                  <WorkRow
-                    key={work.slug}
-                    work={work}
-                    active={work.slug === selectedSlug}
-                    onOpen={goTo}
-                    onHover={openCardAfterDelay}
-                    onLeave={closeCard}
-                    onTogglePin={togglePin}
-                  />
-                ))}
-              </SectionBody>
-            </>
-          )}
         </div>
       </div>
 
@@ -251,6 +188,115 @@ function SidebarWorkList({
         >
           <WorkCard work={hovered} />
         </PopoverPortal>
+      )}
+    </>
+  );
+}
+
+// 세 구획을 그리는 부분. 구독하는 자리(useWorks·라우터·localStorage)는 위에 남기고 여기는
+// **받은 것만** 그린다 — ShellList와 같은 모양이다. 이 저장소의 컴포넌트 seam은 정적
+// 마크업이라, 가지 조건(결정 82·108)과 핀의 생김새(결정 85)를 그물에 걸려면 훅을 부르지
+// 않는 자리가 있어야 한다(SidebarWorkList.test.tsx).
+export function WorkSectionList({
+  sections,
+  open,
+  selectedSlug,
+  onToggleSection,
+  onOpen,
+  onHover,
+  onLeave,
+  onTogglePin,
+}: {
+  sections: WorkSections;
+  open: SectionsOpen;
+  selectedSlug: string | null;
+  onToggleSection: (section: keyof SectionsOpen) => void;
+  onOpen: (slug: string) => void;
+  onHover: (slug: string, row: HTMLElement) => void;
+  onLeave: () => void;
+  onTogglePin: (work: WorkView) => void;
+}) {
+  const { pinned, main, drafts } = sections;
+  return (
+    <>
+      {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
+      {pinned.length > 0 && (
+        <>
+          <SectionHeader
+            label="고정"
+            className="mt-3"
+            open={open.pinned}
+            count={pinned.length}
+            onToggle={() => onToggleSection("pinned")}
+          />
+          <SectionBody open={open.pinned}>
+            {pinned.map((work) => (
+              <WorkRow
+                key={work.slug}
+                work={work}
+                active={work.slug === selectedSlug}
+                onOpen={onOpen}
+                onHover={onHover}
+                onLeave={onLeave}
+                onTogglePin={onTogglePin}
+              />
+            ))}
+          </SectionBody>
+        </>
+      )}
+
+      {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
+      <SectionHeader
+        label="작업"
+        className="mt-3"
+        open={open.works}
+        count={main.length}
+        onToggle={() => onToggleSection("works")}
+      />
+      <SectionBody open={open.works}>
+        {main.length === 0 ? (
+          <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
+            {emptyMainNotice(sections)}
+          </span>
+        ) : (
+          main.map((work) => (
+            <WorkRow
+              key={work.slug}
+              work={work}
+              active={work.slug === selectedSlug}
+              onOpen={onOpen}
+              onHover={onHover}
+              onLeave={onLeave}
+              onTogglePin={onTogglePin}
+            />
+          ))
+        )}
+      </SectionBody>
+
+      {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
+      {drafts.length > 0 && (
+        <>
+          <SectionHeader
+            label="초안"
+            className="mt-3"
+            open={open.drafts}
+            count={drafts.length}
+            onToggle={() => onToggleSection("drafts")}
+          />
+          <SectionBody open={open.drafts}>
+            {drafts.map((work) => (
+              <WorkRow
+                key={work.slug}
+                work={work}
+                active={work.slug === selectedSlug}
+                onOpen={onOpen}
+                onHover={onHover}
+                onLeave={onLeave}
+                onTogglePin={onTogglePin}
+              />
+            ))}
+          </SectionBody>
+        </>
       )}
     </>
   );
