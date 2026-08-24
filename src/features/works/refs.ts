@@ -14,6 +14,11 @@ export function worktreeDirRef(worktreePath: string): string {
   return worktreePath.endsWith("/") ? worktreePath : `${worktreePath}/`;
 }
 
+/** spec 폴더: `~/.atelier/works/<slug>/spec/` */
+export function specDirRef(slug: string): string {
+  return `${workDirRef(slug)}spec/`;
+}
+
 /** 줄범위 꼬리표. 형식이 한 곳에만 있어야 spec 참조와 아카이브 참조가 갈라지지 않는다. */
 function withLines(base: string, start?: number, end?: number): string {
   if (start === undefined) return base;
@@ -22,7 +27,7 @@ function withLines(base: string, start?: number, end?: number): string {
 
 /** spec 파일(+줄범위): `~/.atelier/works/<slug>/spec/<path>[:L<n>[-<m>]]` */
 export function specRef(slug: string, path: string, start?: number, end?: number): string {
-  const base = `${workDirRef(slug)}spec/${path}`;
+  const base = `${specDirRef(slug)}${path}`;
   return withLines(base, start, end);
 }
 

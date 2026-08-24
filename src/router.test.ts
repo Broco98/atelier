@@ -7,6 +7,8 @@ import { projectsQuery } from "./features/projects/hooks";
 import { archiveQuery } from "./features/archive/hooks";
 import { shellStore } from "./components/shell/shell-store";
 import { trackCanGoForward } from "./can-go-forward";
+import { tabSearch } from "./routes/-work-search";
+import type { ViewTab } from "./routes/-work-search";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
 import type { ArchiveEntry } from "./features/archive/types";
@@ -350,6 +352,146 @@ describe("문서 전환의 히스토리 의미론", () => {
     expect(router.state.location.search).toEqual({});
   });
 
+});
+
+// 화면 탭(`spec｜terminal`)도 주소가 정본이다(이슈 #25). 탭이 주소에 없으면 링크와
+// 새로고침이 늘 spec으로 떨어지고, 그 어긋남은 화면에서 "왜 spec이 열리지"로만 보인다.
+//
+// **여기서 보는 것은 갱신 방식이다.** 이 라우터는 `search`에 객체를 주면 기존 search를
+// 통째로 버려서, 가장 자연스럽게 쓰는 형태가 보던 문서를 조용히 떨어뜨린다(결정 15).
+describe("화면 탭의 주소", () => {
+  // **WorksView의 selectTab과 같은 함수를 쓴다.** 여기서 갱신 모양을 베껴 적으면 실제
+  // 이동이 퇴화해도 이 검사는 초록이다 — 자기가 적은 것을 자기가 확인하는 꼴이 된다.
+  const pick = (slug: string, next: ViewTab) =>
+    ({
+      to: "/works/$slug",
+      params: { slug },
+      search: (prev: Record<string, unknown>) => tabSearch(prev, next),
+      replace: true,
+    }) as const;
+
+  it("터미널로 옮기면 주소에 남지만 히스토리는 안 는다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    await router.navigate(pick("work-a", "terminal"));
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
+    expect(history.length).toBe(1);
+    expect(history.canGoBack()).toBe(false);
+  });
+
+  it("보던 문서가 탭을 왕복해도 그대로 남는다", async () => {
+    const { router } = setup(["/works/work-a"]);
+    await router.load();
+    await router.navigate({
+      to: "/works/$slug",
+      params: { slug: "work-a" },
+      search: { file: "overview.md" },
+      replace: true,
+    });
+
+    await router.navigate(pick("work-a", "terminal"));
+    expect(router.state.location.search).toEqual({ file: "overview.md", tab: "terminal" });
+
+    await router.navigate(pick("work-a", "spec"));
+    // spec은 주소에 안 적는다 — 값이 없으면 spec이라는 규칙이 이미 있다(결정 14).
+    expect(router.state.location.search).toEqual({ file: "overview.md" });
+  });
+
+  it("`?tab=terminal`로 들어오면 그대로 열린다", async () => {
+    const { router } = setup(["/works/work-a?tab=terminal"]);
+    await router.load();
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
+  });
+
+  it("탭이 없는 주소는 아무것도 안 싣는다", async () => {
+    const { router } = setup(["/works/work-a"]);
+    await router.load();
+    expect(router.state.location.search).toEqual({});
+  });
+
+  // **검증기는 주소를 청소하지 않는다.** 이 라우터는 검증기의 결과를 부모의 raw search
+  // 위에 얹는데 루트에는 검증기가 없어서, 모르는 키가 주소에도 컴포넌트에도 그대로 온다
+  // (`?file=`도 예전부터 같은 성질이다 — 이 판이 만든 것이 아니다). 그래서 「모르는 값은
+  // spec」은 여기가 아니라 `-work-search.ts`의 `viewTab`이 정하고, 그쪽에서 검사한다.
+  // 이 줄은 그 사실을 못박는다 — 검증기를 넓히면 주소가 깨끗해질 것이라 믿지 않도록.
+  it("모르는 값은 주소에 그대로 남는다 — 읽는 규칙이 따로 있다", async () => {
+    const { router } = setup(["/works/work-a?tab=zzz"]);
+    await router.load();
+    expect(router.state.location.search).toEqual({ tab: "zzz" });
+  });
+
+  it("작업을 옮기면 탭이 딸려가지 않는다", async () => {
+    const { router } = setup(["/works/work-a?tab=terminal"]);
+    await router.load();
+
+    await router.navigate({ to: "/works/$slug", params: { slug: "work-b" }, search: {} });
+    expect(router.state.location.search).toEqual({});
+  });
+
+  // 결정 14. `file` 검증기는 Works와 아카이브가 **일부러** 공유하지만 `tab`에는 그 이유가
+  // 없다 — 아카이브에는 터미널이 없다. 공용 검증기를 넓히지 않았다는 것은 아카이브 화면이
+  // `tab`을 **읽지 않는다**는 뜻이지 주소에서 지운다는 뜻이 아니다(위 줄과 같은 이유).
+  it("아카이브 주소에서도 문서는 그대로 실린다", async () => {
+    const { router } = setup(["/archive/치운-a?tab=terminal&file=record.md"]);
+    await router.load();
+    expect(router.state.location.search).toEqual({ tab: "terminal", file: "record.md" });
+  });
+
+  it("무선택 주소의 `?tab=`은 정규화가 떨어뜨린다", async () => {
+    const { router } = setup(["/works?tab=terminal"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(router.state.location.search).toEqual({});
+  });
+
+  // 알려진 구멍이다 — `works.index.tsx`에는 validateSearch가 없어서 목록이 비면 리다이렉트가
+  // 안 돌고 `tab`이 주소에 남는다. 그려지는 화면은 빈 상태 안내라 아무 데도 안 쓰인다.
+  it("목록이 비면 리다이렉트가 안 돌아 `tab`이 주소에 남는다", async () => {
+    const { router } = setup(["/works?tab=terminal"], { works: [] });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/works");
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
+  });
+});
+
+// 설정은 목록도 선택도 없는 화면이라(결정 51·52) 위 규칙 둘이 **걸리지 않아야 한다** —
+// 무선택 주소 정규화도, 마지막으로 보던 항목도 여기엔 없다. 그리고 사이드바 바닥과 네이티브
+// 메뉴(⌘,) 둘이 같은 이동을 하므로, 그 이동이 히스토리에 어떻게 남는지가 두 자리의 공통
+// 계약이다 — AppShell이 nav 항목에만 「이미 그 화면이면 가만히 있는다」 가드를 두고 설정에는
+// 두지 않은 근거가 아래 마지막 줄이다.
+describe("설정 화면의 주소", () => {
+  it("`/settings`로 들어오면 그대로 머문다 — 정규화가 건드리지 않는다", async () => {
+    const { router } = setup(["/settings"], { lastWork: "work-b" });
+    await router.load();
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(router.state.location.search).toEqual({});
+    // 주소만 보면 **라우트가 없어도 초록이다** — 못 찾은 주소도 위치는 그대로 남는다.
+    // 실제로 그 화면에 닿았는지는 매치를 봐야 안다.
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/settings");
+  });
+
+  // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
+  it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(history.length).toBe(2);
+
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+
+  it("이미 설정에 있을 때 다시 열어도 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/settings"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    expect(history.length).toBe(1);
+    expect(history.canGoBack()).toBe(false);
+  });
 });
 
 // "뒤로 갈 수 있는가"는 라우터가 알려주지만 "앞으로"는 우리가 센다. 그 셈이 히스토리와

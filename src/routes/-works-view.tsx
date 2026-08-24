@@ -2,12 +2,22 @@ import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
+import { tabSearch } from "./-work-search";
+import type { ViewTab } from "./-work-search";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 
 // /works와 /works/$slug가 그리는 화면은 같다 — 다른 것은 어떤 작업이 선택됐는지뿐이다.
 // 파일명의 "-" 접두사는 라우트 생성기가 이 파일을 라우트로 취급하지 않게 한다.
-function WorksView({ slug, file = null }: { slug: string | null; file?: string | null }) {
+function WorksView({
+  slug,
+  file = null,
+  tab = "spec",
+}: {
+  slug: string | null;
+  file?: string | null;
+  tab?: ViewTab;
+}) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   const { data: works = [], isPending, isFetching } = useWorks();
@@ -33,6 +43,22 @@ function WorksView({ slug, file = null }: { slug: string | null; file?: string |
         params: { slug },
         search: { file: path },
         replace: !push,
+      });
+    },
+    [navigate, slug],
+  );
+
+  // 화면 탭 전환. 갱신 자체는 `tabSearch`가 안다 — **함수형이어야 한다**(결정 15).
+  // `replace`인 것은 결정 13이다: 탭을 한 번 눌렀는데 되돌리는 데 뒤로가기를 두 번 눌러야
+  // 하는 일이 없다.
+  const selectTab = useCallback(
+    (next: ViewTab) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: (prev) => tabSearch(prev, next),
+        replace: true,
       });
     },
     [navigate, slug],
@@ -65,6 +91,8 @@ function WorksView({ slug, file = null }: { slug: string | null; file?: string |
       selectedSlug={exists ? slug : null}
       currentFile={file}
       onSelectFile={selectFile}
+      tab={tab}
+      onSelectTab={selectTab}
       onOpenProject={(project) =>
         void navigate({ to: "/projects/$slug", params: { slug: project } })
       }

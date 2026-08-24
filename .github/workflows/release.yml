@@ -38,10 +38,15 @@ jobs:
       - name: 의존성 설치
         run: pnpm install --frozen-lockfile
 
-      - name: 테스트
-        run: |
-          cargo test
-          pnpm test
+      # 러너에는 브라우저가 없다. macOS에서는 --with-deps가 필요 없다.
+      - name: 브라우저 설치
+        run: pnpm exec playwright install webkit
+
+      # `cargo test` + `pnpm test`를 직접 부르던 자리다. 검증의 정의가 두 곳에 있으면
+      # 조용히 갈라진다 — 태그 시점에 무엇을 통과했는지가 PR 때와 달라진다 (D9).
+      # 기본 기어다. 관통 층은 PR 게이트가 이미 봤다.
+      - name: 검증
+        run: pnpm verify
 
       - name: 앱 빌드 (.dmg)
         run: pnpm tauri build

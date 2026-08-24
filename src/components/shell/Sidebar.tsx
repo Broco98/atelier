@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { Settings, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
 import { navItems, type NavKey } from "./nav-items";
@@ -9,11 +10,27 @@ interface SidebarProps {
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
   activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
+  // 설정은 nav 항목이 아니라 바닥에 따로 산다(결정 51) — 활성 판정도 그래서 따로 온다
+  settingsActive: boolean;
+  onOpenSettings: () => void;
 }
 
-// 고정 nav 블록 + 상주하는 작업 목록. 어느 화면에 있든 이 사이드바는 바뀌지 않는다.
+// 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 가운데 작업 목록은 스크롤바가
+// 늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
+// 항목의 오른쪽 끝이 맞는다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다.
+// **바닥의 설정도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다.
+const GUTTER = "pl-2 pr-[19px]";
+
+// 고정 nav 블록 + 상주하는 작업 목록 + 바닥에 고정된 설정. 어느 화면에 있든 이 사이드바는
+// 바뀌지 않는다.
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
-function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
+function Sidebar({
+  open,
+  activeKey,
+  onSelect,
+  settingsActive,
+  onOpenSettings,
+}: SidebarProps) {
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
   const asideRef = useRef<HTMLElement>(null);
@@ -52,37 +69,70 @@ function Sidebar({ open, activeKey, onSelect }: SidebarProps) {
             why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
-        {/* 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 아래 작업 목록은 스크롤바가
-            늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
-            항목의 오른쪽 끝이 맞는다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다. */}
-        <nav className="flex shrink-0 flex-col gap-[3px] pl-2 pr-[19px]">
-          {navItems.map((item) => {
-            const active = item.key === activeKey;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => onSelect(item.key)}
-                className={cn(
-                  "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[13.5px] font-medium transition-colors",
-                  // 목록 항목과 같은 표시 — 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다
-                  active
-                    ? "selected-row"
-                    : "text-muted-foreground hover:bg-state-1",
-                )}
-              >
-                <item.icon className="size-[17px]" strokeWidth={1.7} />
-                {item.label}
-              </button>
-            );
-          })}
+        {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
+        <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
+          {navItems.map((item) => (
+            <SidebarItem
+              key={item.key}
+              icon={item.icon}
+              label={item.label}
+              active={item.key === activeKey}
+              onClick={() => onSelect(item.key)}
+            />
+          ))}
         </nav>
 
         <SidebarWorkList open={open} boundaryRef={asideRef} />
+
+        {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
+            `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날
+            목적지는 이 배열에 한 줄」로 길을 열어 뒀지만, 설정은 그 목적지들이 아니다.
+            대가는 여기 그대로 있다 — 작업 목록 아래에 새 영역이 생기고, 위 nav와 같은
+            규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
+            하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다. */}
+        <div className={cn("shrink-0 pt-1.5", GUTTER)}>
+          <SidebarItem
+            icon={Settings}
+            label="Settings"
+            active={settingsActive}
+            onClick={onOpenSettings}
+          />
+        </div>
       </div>
 
       {open && <ResizeHandle control={size} />}
     </aside>
+  );
+}
+
+// nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어
+// 규격이 갈리면 그 자리에서 보이는데(위 GUTTER 주석과 같은 계약), 같은 문자열을 두 곳에
+// 적어 두면 다음에 규격을 한 번 조정할 때 한쪽만 남는다 — index.css의 quiet-hover 주석이
+// 같은 이유로 열 자리를 하나로 묶었다.
+function SidebarItem({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[13.5px] font-medium transition-colors",
+        // 목록 항목과 같은 표시 — 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다
+        active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
+      )}
+    >
+      <Icon className="size-[17px]" strokeWidth={1.7} />
+      {label}
+    </button>
   );
 }
 
