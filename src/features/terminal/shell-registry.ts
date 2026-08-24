@@ -363,6 +363,77 @@ export function shellHotkey(event: {
   return null;
 }
 
+/**
+ * 셸에 그대로 넘기지 않고 **다른 바이트로 바꿔** 보내는 키. 지금은 ⇧Enter 하나다(결정 91).
+ *
+ * xterm은 Shift+Enter를 그냥 `\r`로 보내 셸에게는 Enter와 구별되지 않는다. `claude`가
+ * 「개행」으로 읽는 바이트열은 `\x1b\r`(ESC + CR)이고, VS Code·iTerm2에서 `/terminal-setup`이
+ * 심는 키바인딩이 정확히 그것이다 — **우리는 앱이 그 자리라 설정 없이 기본으로 넣는다.**
+ *
+ * `shellHotkey`와 **다른 종류다.** 저쪽은 앱이 가져가는 조작이라 셸에 아무것도 안 가고,
+ * 이쪽은 여전히 셸에 간다 — 가는 바이트만 갈린다. 그래서 판정도 따로 산다.
+ *
+ * **⇧Enter만이다.** 수식키가 더 붙으면 셸 몫이다(⌥Enter·⌃Enter) — 결정 29의 범위를 근거
+ * 없이 넓히지 않는다. `key`가 아니라 `code`로 보는 이유도 `shellHotkey`와 같다(IME·배열).
+ *
+ * **한글 조합을 안 깨뜨린다.** `terminal-ime.ts`의 다리가 capture 단계에서 먼저 돌아
+ * Enter를 조합의 끝으로 읽고 붙들고 있던 음절을 흘려보내므로(`imeKeyDown`), 여기서 무엇을
+ * 돌려주든 그 순서는 안 바뀐다.
+ */
+export function shellRewrite(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): string | null {
+  if (event.type !== "keydown") return null;
+  if (!event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return null;
+  return event.code === "Enter" ? "\x1b\r" : null;
+}
+
+/**
+ * ⌘T를 **window에서** 듣는 자리의 판정(결정 93·98).
+ *
+ * 그 키는 지금까지 xterm의 키 핸들러에만 붙어 있어 **셸이 0개면 들을 사람이 없었다** —
+ * 마지막 칸을 `×`로 닫은 화면이 정확히 그 자리다. 범위는 터미널 본문이 아니라 **work 화면
+ * 전체**이고(결정 98), 열리면 본문이 터미널로 넘어간다 — ⌘1이 spec, ⌘2~9가 셸로 본문을
+ * 옮기는 한 벌에 이 키도 든다.
+ *
+ * **⌘W는 넓히지 않는다**(결정 98). 그것은 「이 칸을 닫는다」라 겨눌 칸이 있어야 하고, 그
+ * 칸은 셸에 포커스가 있을 때만 뚜렷하다. 그래서 여기서 보는 것은 `"new"` 하나다.
+ *
+ * **입력 중에는 안 듣는다 — 그런데 xterm의 입력 자리도 숨은 `<textarea>`다**
+ * (`togglesWorkPanel`이 적어 둔 함정과 같은 자리). 셸 안에서는 xterm 핸들러가 이미
+ * 열어 주므로 여기서 또 들으면 한 번 눌러 둘이 열린다. 그쪽이 `stopPropagation`으로도
+ * 막지만 그 한 겹에만 기대지 않는다 — 두 겹이 같은 사실을 말하는 것이 아니라, 하나는
+ * 「셸이 처리했다」이고 하나는 「입력 중에는 안 먹는다」로 근거가 다르다.
+ *
+ * **이 모듈에서 DOM 전역을 읽는 유일한 함수다.** 머리말의 「DOM 없는 기본 환경에서 그대로
+ * 돈다」는 import를 두고 한 말이고 그대로 살아 있다 — 이 함수만은 부를 때 그 전역이 있어야
+ * 한다. 검사는 `togglesWorkPanel`의 것과 같은 방식으로 그 전역을 세워 둔다.
+ */
+export function opensShellFromWindow(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  target: EventTarget | null;
+}): boolean {
+  if (shellHotkey(event) !== "new") return false;
+  const target = event.target as HTMLElement;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  )
+    return false;
+  return true;
+}
+
 /** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
 export function shellLabel(shell: Shell): string {
   return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
@@ -419,6 +490,28 @@ export function shellRowStatus(shell: Shell): string {
   // cwd가 없는 것은 최상위 터미널의 셸뿐이고(결정 25) 그 화면에는 이 목록이 없다. 그래도
   // 빈 문자열을 돌려주지 않는 것은 행이 두 줄로 서기 때문이다 — 비면 이유 없는 빈 줄이 남는다.
   return shell.cwd ?? "데이터 루트";
+}
+
+/**
+ * 이 칸을 닫기 전에 사람에게 물어야 하는가(결정 92). **⌘W와 `×` 두 길이 이 하나를 부른다** —
+ * 셸 하나를 없애는 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
+ *
+ * `commandRunning`은 **닫기 직전에** 백엔드에 물어 온 답이다. 셸 상태에 얹어 두지 않는 것은
+ * 그 값이 매 순간 바뀌기 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ *
+ * **`null`은 「못 얻었다」이고 그때는 안 묻는다.** 모르는 것을 이유로 닫는 길을 막지 않는다.
+ * 그 경우가 실제로 온다: 이미 끝난 pty, tcgetpgrp 실패, IPC 실패.
+ *
+ * **끝난 칸·못 뜬 칸도 안 묻는다.** 물어볼 프로세스가 없고, 그 pty id는 이미 회수돼 남이
+ * 앉아 있을 수 있다 — 백엔드가 무엇을 답하든 여기서 끊는다. 그 칸들이 목록에 남아 있는
+ * 것은 죽은 이유를 읽기 위해서다(결정 22).
+ */
+export function needsCloseConfirm(
+  shell: Shell | undefined,
+  commandRunning: boolean | null,
+): boolean {
+  if (!shell || shell.status.kind !== "running") return false;
+  return commandRunning === true;
 }
 
 /**

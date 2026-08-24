@@ -13,4 +13,7 @@ export const terminalApi = {
   // 부르는 곳은 둘, 둘 다 사람이 끝내겠다고 한 자리다: `×`(판 02)와, 아카이빙·삭제가
   // 성공한 뒤의 회수(결정 26).
   kill: (id: number) => invoke<void>("pty_kill", { id }),
+  // 셸 안에서 **명령이 도는가** — 포그라운드 그룹이 셸 자신이 아닌가다(결정 92). 묻는
+  // 자리는 닫기 직전 한 번뿐이라(`requestCloseShell`) 이 값을 구독하는 곳은 없다.
+  commandRunning: (id: number) => invoke<boolean>("pty_command_running", { id }),
 };

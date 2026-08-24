@@ -123,6 +123,7 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::pty_command_running,
             commands::read_settings,
             commands::write_settings,
         ])

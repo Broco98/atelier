@@ -542,6 +542,22 @@ describe("WorksPage ⌘Enter", () => {
     expect(togglesWorkPanel(key({ key: "t" }))).toBe(false);
   });
 
+  // 결정 93·98. ⌘T가 xterm 밖에서도 들린다 — 셸이 0개인 화면에는 xterm이 없어 그 키를
+  // 들을 사람이 없었다. **판정은 `opensShellFromWindow`가 혼자 알고**(그쪽 검사는
+  // shell-registry.test.ts에 전수돼 있다) 여기서 보는 것은 그 판정이 이 화면에 실제로
+  // 배선돼 있는가다 — 이펙트는 정적 렌더에서 안 돈다.
+  it("⌘T를 window에서 듣고, 열리면 본문이 터미널로 간다", () => {
+    const worksPage = source("WorksPage.tsx");
+    const effect = worksPage.match(
+      /useEffect\(\(\) => \{[\s\S]*?opensShellFromWindow[\s\S]*?\}, \[([^\]]*)\]\);/,
+    );
+    expect(effect, "⌘T 효과를 찾지 못했다").not.toBeNull();
+    expect(effect![0]).toContain('window.addEventListener("keydown"');
+    expect(effect![0]).toContain("openNewShell");
+    // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
+    expect(effect![0]).toContain('onSelectTab("terminal")');
+  });
+
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {
     const worksPage = source("WorksPage.tsx");
     // 지운 그 줄. 되살아나면 앞 판의 비대칭이 그대로 돌아온다.

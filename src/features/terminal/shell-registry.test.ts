@@ -2,7 +2,7 @@
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activateShell,
   activeIdOf,
@@ -10,8 +10,10 @@ import {
   markExited,
   markFailed,
   MAX_SHELLS,
+  needsCloseConfirm,
   NO_SHELLS,
   openShell,
+  opensShellFromWindow,
   removeShell,
   runningShellsOf,
   setShellName,
@@ -20,6 +22,7 @@ import {
   shellEndLabels,
   shellLabel,
   shellOpenNotice,
+  shellRewrite,
   shellRowName,
   shellRowStatus,
   shellsOf,
@@ -774,3 +777,143 @@ it("macOS 메뉴에 Close Window가 없다 — 있으면 ⌘W가 웹뷰까지 �
   expect(menu).toContain(".select_all()");
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 판 02(ux-papercuts) — 터미널 손맛. 키와 닫기의 판정 셋이 여기 산다. 셋 다 실물로는
+// 전수할 수 없는 것들이다: 「셸에 이 키가 안 간다」도 「닫기 전에 물었나」도 정적 렌더에
+// 안 보이고, 조합마다 손으로 쳐 봐야 한다.
+
+// ⇧Enter. xterm은 Shift를 무시하고 `\r`을 보내 셸에게는 Enter와 구별되지 않고, `claude`는
+// 그것을 「보내기」로 읽어 쓰다 만 프롬프트가 그대로 나간다(결정 91).
+describe("⇧Enter가 개행한다", () => {
+  const key = (over: Partial<Parameters<typeof shellRewrite>[0]> = {}) => ({
+    type: "keydown",
+    code: "Enter",
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: true,
+    ...over,
+  });
+
+  it("ESC + CR로 바꿔 보낸다", () => {
+    expect(shellRewrite(key())).toBe("\x1b\r");
+  });
+
+  // **이 줄이 뒤집히면 아무 프롬프트도 못 보낸다.** 그냥 Enter는 셸 몫이다.
+  it("Shift 없는 Enter는 그대로 셸에 간다", () => {
+    expect(shellRewrite(key({ shiftKey: false }))).toBeNull();
+  });
+
+  // ⌥Enter·⌃Enter는 셸 몫으로 둔다(결정 91) — 결정 29의 범위를 근거 없이 넓히지 않는다.
+  it.each(["ctrlKey", "altKey", "metaKey"] as const)("%s가 더 붙으면 셸 몫이다", (extra) => {
+    expect(shellRewrite(key({ [extra]: true }))).toBeNull();
+  });
+
+  // keydown만이다. 같은 키에 keypress·keyup이 뒤따르므로, 안 거르면 한 번에 셋이 나간다.
+  it.each(["keypress", "keyup"])("%s는 아니다", (type) => {
+    expect(shellRewrite(key({ type }))).toBeNull();
+  });
+
+  it("다른 키는 아니다", () => {
+    expect(shellRewrite(key({ code: "KeyT" }))).toBeNull();
+  });
+});
+
+// ⌘W와 `×`가 도는 명령을 조용히 죽이지 않는다(결정 92). 판정은 백엔드가 읽는 PTY의
+// 포그라운드 그룹인데, **그 값을 못 얻는 경우가 실제로 있다** — 이미 끝난 pty, IPC 실패.
+// 그때 묻지 않고 닫는 것이 이 함수가 지키는 절반이다.
+describe("닫기 전에 묻는가", () => {
+  const one = opened(1);
+  const running = one.state.shells[0];
+  const exited = markExited(one.state, running.id, EXIT_42).shells[0];
+  const failed = markFailed(one.state, running.id, "폴더가 없습니다").shells[0];
+
+  it("명령이 돌면 묻는다", () => {
+    expect(needsCloseConfirm(running, true)).toBe(true);
+  });
+
+  it("빈 프롬프트면 안 묻는다 — 닫을 때마다 팝업이 뜨면 안 된다", () => {
+    expect(needsCloseConfirm(running, false)).toBe(false);
+  });
+
+  it("판정을 못 얻으면 안 묻는다 — 모르는 것으로 닫는 길을 막지 않는다", () => {
+    expect(needsCloseConfirm(running, null)).toBe(false);
+  });
+
+  // 물어볼 프로세스가 없는 칸들이다(결정 22가 목록에 남겨 두는 그 칸들). 백엔드가 무엇을
+  // 답하든 안 묻는다 — 그 pty id는 이미 회수돼 남이 앉아 있을 수 있다.
+  it.each([
+    ["끝난 칸", exited],
+    ["못 뜬 칸", failed],
+  ])("%s은 안 묻는다", (_name, shell) => {
+    expect(needsCloseConfirm(shell, true)).toBe(false);
+  });
+
+  // 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있다 — `removeShell`이 같은 자리를 연다.
+  it("없는 칸은 안 묻는다", () => {
+    expect(needsCloseConfirm(undefined, true)).toBe(false);
+  });
+});
+
+// ⌘T가 xterm의 키 핸들러에만 붙어 있어 **셸이 0개면 들을 사람이 없었다**(결정 93).
+// window에서도 듣되 범위는 work 화면 전체다(결정 98) — ⌘1이 spec, ⌘2~9가 셸로 본문을
+// 옮기는 한 벌에 ⌘T도 든다.
+describe("window에서 듣는 ⌘T", () => {
+  // 노드 환경에는 DOM 생성자가 없다. `instanceof`가 보는 것은 그 자리의 전역이므로 세워
+  // 두면 그대로 갈린다 — `togglesWorkPanel`의 검사가 같은 방식이다.
+  class FakeTextArea extends EventTarget {}
+  class FakeInput extends EventTarget {}
+  class FakeEditable extends EventTarget {
+    isContentEditable = true;
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("HTMLTextAreaElement", FakeTextArea);
+    vi.stubGlobal("HTMLInputElement", FakeInput);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  type WindowT = Parameters<typeof opensShellFromWindow>[0];
+  const key = (over: Partial<WindowT> = {}): WindowT => ({
+    type: "keydown",
+    code: "KeyT",
+    ctrlKey: false,
+    metaKey: true,
+    altKey: false,
+    shiftKey: false,
+    target: new EventTarget(),
+    ...over,
+  });
+
+  it("본문에 포커스가 있으면 연다 — 셸이 0개인 화면이 이 자리다", () => {
+    expect(opensShellFromWindow(key())).toBe(true);
+  });
+
+  // **xterm의 입력 자리가 숨은 <textarea>다.** 셸 안에서는 xterm 핸들러가 이미 가져가므로
+  // 여기서 또 들으면 한 번 눌러 둘이 열린다.
+  it("셸 안에서는 안 듣는다 — xterm 핸들러가 이미 가져갔다", () => {
+    expect(opensShellFromWindow(key({ target: new FakeTextArea() }))).toBe(false);
+  });
+
+  it("제목 편집 중(<input>)·편집 가능 요소에서도 안 듣는다", () => {
+    expect(opensShellFromWindow(key({ target: new FakeInput() }))).toBe(false);
+    expect(opensShellFromWindow(key({ target: new FakeEditable() }))).toBe(false);
+  });
+
+  // **⌘W는 안 넓힌다**(결정 98) — 「이 칸을 닫는다」는 겨눌 칸이 있어야 하고, 그 칸은
+  // 셸에 포커스가 있을 때만 뚜렷하다.
+  it("⌘W는 여기서 안 듣는다", () => {
+    expect(opensShellFromWindow(key({ code: "KeyW" }))).toBe(false);
+  });
+
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 붙으면 아니다", (extra) => {
+    expect(opensShellFromWindow(key({ [extra]: true }))).toBe(false);
+  });
+
+  it("⌘ 없이 T만은 아니다 — 그냥 글자다", () => {
+    expect(opensShellFromWindow(key({ metaKey: false }))).toBe(false);
+  });
+});

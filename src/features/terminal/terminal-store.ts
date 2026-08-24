@@ -1,5 +1,6 @@
 import { Store } from "@tanstack/react-store";
 import { Channel } from "@tauri-apps/api/core";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -10,6 +11,7 @@ import {
   activateShell,
   markExited,
   markFailed,
+  needsCloseConfirm,
   NO_SHELLS,
   openShell,
   removeShell,
@@ -17,6 +19,7 @@ import {
   setTitle,
   shellHotkey,
   shellOpenNotice,
+  shellRewrite,
   shellsOf,
 } from "./shell-registry";
 import type { OpenedShell, ShellOrigin, ShellsState } from "./shell-registry";
@@ -214,16 +217,64 @@ function disposeInstance(instance: ShellInstance): void {
 }
 
 /**
- * 셸을 거둔다 — `×`가 이것이다. **셸을 죽이는 유일한 길이다**(결정 22). 화면을 옮기는
- * 것으로는 여기 오지 않는다(결정 20).
+ * 셸을 거둔다. **셸을 죽이는 유일한 길이다**(결정 22). 화면을 옮기는 것으로는 여기 오지
+ * 않는다(결정 20).
  *
  * 목록에서 빼는 길은 이제 **둘이다** — 결정 48이 정상 종료한 칸을 스스로 빼기 때문이다.
  * 그쪽은 아래 채널 콜백이 같은 정리를 태운다.
+ *
+ * **밖으로 내보내지 않는다**(결정 92). ⌘W와 `×`는 확인을 거치는 `requestCloseShell`만
+ * 볼 수 있어야 한다 — 「두 길이 같은 판정을 쓴다」를 주석으로 부탁하는 대신, 확인을
+ * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 아카이빙의 회수(`closeShellsOf`)만 여기를
+ * 직접 부르는데, 그 길에는 사람이 이미 한 번 확인했다.
  */
-export function closeShell(id: number): void {
+function closeShell(id: number): void {
   const instance = instances.get(id);
   if (instance) disposeInstance(instance);
   terminalStore.setState((state) => removeShell(state, id));
+}
+
+/**
+ * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 결정 92가
+ * 여는 커맨드가 주는 것은 「도는가」 하나이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹
+ * 더 든다. 「명령」은 CONTEXT.md에 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이
+ * 아니다.
+ */
+const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
+
+/**
+ * 사람이 셸을 닫으려 한다 — **⌘W와 `×`가 함께 여기로 온다**(결정 92). 셸 하나를 없애는
+ * 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
+ *
+ * **닫기 직전에** 백엔드에 묻는다. 셸 상태에 얹어 두지 않는 것은 그 값이 매 순간 바뀌기
+ * 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ *
+ * 무엇을 보고 묻는지는 `needsCloseConfirm`이 혼자 안다(끝난 칸·못 얻은 판정까지). 여기서
+ * 한 번 더 가르지 않는다.
+ */
+export async function requestCloseShell(id: number): Promise<void> {
+  const shell = terminalStore.state.shells.find((one) => one.id === id);
+  if (needsCloseConfirm(shell, await commandRunning(id))) {
+    if (!(await confirm(CLOSE_NOTICE, { title: "셸 닫기", kind: "warning" }))) return;
+  }
+  closeShell(id);
+}
+
+/**
+ * 백엔드에 「이 칸에서 명령이 도는가」를 묻는다. **못 얻으면 `null`이다** — 모르는 것을
+ * 이유로 닫는 길을 막지 않는다(결정 92).
+ *
+ * `null`로 오는 길이 둘이다: PTY가 아직·이미 없는 칸(`ptyId`가 null — 못 뜬 칸과 스스로
+ * 끝난 칸이 그렇다)과, 백엔드가 판정을 못 낸 경우(tcgetpgrp 실패, 이미 지워진 id).
+ */
+async function commandRunning(id: number): Promise<boolean | null> {
+  const ptyId = instances.get(id)?.ptyId ?? null;
+  if (ptyId === null) return null;
+  try {
+    return await terminalApi.commandRunning(ptyId);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -344,6 +395,9 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // `false`를 돌려주면 xterm이 그 키를 처리하지 않는다. 어느 키가 앱 몫인지와 그 근거는
   // `shellHotkey`가 혼자 안다(결정 29의 예외 둘).
   //
+  // **여기서 가르는 것이 둘이다.** 앱이 가져가는 키(위 둘)와, 셸에 가되 **바이트가 갈리는**
+  // 키(⇧Enter — 결정 91). 판정도 그래서 둘이고, 아래 두 분기가 각각을 탄다.
+  //
   // **새 칸은 자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
   // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 열지 않고
   // 거절을 알리고, 듣는 화면이 그것을 말한다(결정 47).
@@ -352,11 +406,28 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 그대로 따라온다(판 02).
   term.attachCustomKeyEventHandler((event) => {
     const hotkey = shellHotkey(event);
-    if (!hotkey) return true;
-    event.preventDefault();
-    if (hotkey === "new") openNewShell(instance.origin);
-    else closeShell(instance.id);
-    return false;
+    if (hotkey) {
+      event.preventDefault();
+      // **`stopPropagation`이 함께 있어야 한다**(결정 93). ⌘T를 window에서도 듣게 되면서
+      // (셸이 0개인 화면 때문이다) 이 키를 듣는 자리가 둘이 됐다 — `preventDefault`만으로는
+      // window 리스너가 안 막혀 한 번 눌러 셸이 둘 열린다.
+      event.stopPropagation();
+      if (hotkey === "new") openNewShell(instance.origin);
+      // 확인을 거치는 길로 간다(결정 92) — `×`와 **같은 함수**다.
+      else void requestCloseShell(instance.id);
+      return false;
+    }
+
+    // ⇧Enter는 셸에 가되 **다른 바이트로** 간다(결정 91). 앱이 가져가는 것이 아니라
+    // 바꿔 보내는 것이라 위 분기와 따로 선다. `false`를 돌려주는 것은 xterm이 같은 키로
+    // `\r`을 한 번 더 보내지 않게 하려는 것이다.
+    const rewrite = shellRewrite(event);
+    if (rewrite !== null) {
+      event.preventDefault();
+      if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, rewrite));
+      return false;
+    }
+    return true;
   });
 
   return instance;
