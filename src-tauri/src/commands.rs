@@ -125,7 +125,7 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
         .map_err(|e| e.to_string())
 }
 
-// PTY 명령 넷. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// PTY 명령 다섯. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 
 #[tauri::command]
@@ -161,6 +161,16 @@ pub async fn pty_resize(
 #[tauri::command]
 pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
     pty::kill(&pool, id)
+}
+
+// 닫기 직전에 **한 번** 묻는 값이다(결정 92). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라
+// 상태에 얹으면 폴링이 생기고, 필요한 순간은 닫을 때뿐이다.
+#[tauri::command]
+pub async fn pty_command_running(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+) -> CmdResult<bool> {
+    pty::command_running(&pool, id)
 }
 
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,

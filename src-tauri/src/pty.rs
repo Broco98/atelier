@@ -189,6 +189,39 @@ pub fn resize(pool: &PtyPool, id: u32, cols: u16, rows: u16) -> Result<(), Strin
         .map_err(|e| format!("터미널 크기를 바꾸지 못했습니다: {e}"))
 }
 
+/// 이 셸 안에서 **명령이 도는가**(결정 92). 셸이 프롬프트에 서 있으면 터미널을 쥔 그룹이
+/// 셸 자신이고, `claude`·빌드·테스트가 돌면 대화형 셸이 그 잡에 새 그룹을 주고 터미널을
+/// 넘긴다 — 그 차이가 그대로 답이다.
+///
+/// **`Err`이 실제로 온다**: 이미 끝난 셸, tcgetpgrp 실패, pid를 못 받은 셸. 프런트는 그때
+/// 묻지 않고 닫는다 — 모르는 것을 이유로 닫는 길을 막지 않는다.
+///
+/// 값이 **매 순간 바뀌므로** 이것을 구독하거나 상태에 얹지 않는다. 묻는 자리는 닫기 직전
+/// 한 번뿐이다.
+pub fn command_running(pool: &PtyPool, id: u32) -> Result<bool, String> {
+    let shells = pool.lock();
+    let shell = shells.get(&id).ok_or_else(|| gone(id))?;
+    // 이름은 `process_group_leader`지만 속은 `tcgetpgrp`라 **지금 터미널을 쥔 그룹**이다
+    // (`groups_of`가 같은 값을 같은 뜻으로 쓴다).
+    let foreground = shell
+        .master
+        .process_group_leader()
+        .ok_or_else(|| format!("포그라운드 그룹을 읽지 못했습니다 (id {id})"))?;
+    // 셸의 pid가 그대로 그 pgid다 — `portable-pty`가 `pre_exec`에서 `setsid()`를 부른다
+    // (`Shell::pid`의 주석).
+    let pid = shell.pid.ok_or_else(|| format!("셸의 pid를 모릅니다 (id {id})"))?;
+    Ok(command_runs(pid, foreground))
+}
+
+/// 포그라운드 그룹이 셸 자신이 아니면 명령이 돈다.
+///
+/// **한 줄인데 따로 있는 이유는 재기 위해서다.** 위 함수는 살아 있는 pty가 있어야 돌지만
+/// 이 판정은 값 둘이면 된다. 뒤집히면 확인 창이 정확히 반대로 산다 — 빈 프롬프트를 닫을
+/// 때마다 묻고, `claude`가 도는 칸은 조용히 죽는다.
+fn command_runs(shell_pid: u32, foreground: i32) -> bool {
+    foreground != shell_pid as i32
+}
+
 pub fn kill(pool: &PtyPool, id: u32) -> Result<(), String> {
     let shell = pool.lock().remove(&id).ok_or_else(|| gone(id))?;
     reap(vec![shell]);
@@ -343,6 +376,59 @@ fn executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// 결정 92의 판정. 실행으로는 pty가 있어야 재지만 값 둘로는 여기서 전수된다.
+    #[test]
+    fn a_foreground_group_that_is_not_the_shell_means_a_command_runs() {
+        assert!(
+            !super::command_runs(4321, 4321),
+            "프롬프트에 서 있으면 터미널을 쥔 것이 셸 자신이다 — 물을 것이 없다"
+        );
+        assert!(
+            super::command_runs(4321, 4399),
+            "대화형 셸은 잡마다 새 그룹을 만들고 터미널을 그리로 넘긴다"
+        );
+    }
+
+    /// 위 판정을 **실제로 딛는가**. 조립부는 살아 있는 pty가 있어야 실행으로 재는데 이
+    /// seam에는 없어서, `command_running`이 늘 `Ok(false)`를 돌려주게 만들어도 위 테스트가
+    /// 초록이었다(실측). `spawn`과 같은 방식으로 자리에서 잰다 — 값 둘을 읽어 판정에
+    /// 그대로 넘기는지.
+    ///
+    /// **무엇을 못 보는지 적어 둔다.** 이것은 리터럴이 **있는가**만 보므로, 부르기는 하되
+    /// 값을 갈아 끼우는 변형은 그대로 통과한다 — `.process_group_leader().or(Some(1))`로
+    /// 뒤집어도 초록인 것을 실측했다(그러면 죽은 셸이 늘 「명령이 돈다」가 된다). 그 자리는
+    /// **살아 있는 pty 없이는 못 잰다.** 여기서 막는 것은 검증 1차가 지목한 회귀 하나
+    /// — 판정을 안 딛고 답을 새로 짓는 것 — 이고, 나머지는 실물 확인 몫이다.
+    #[test]
+    fn command_running_hands_both_values_to_the_verdict() {
+        let src = include_str!("pty.rs");
+        let body = src
+            .split_once("pub fn command_running(")
+            .expect("command_running이 있다")
+            .1
+            .split_once("\nfn ")
+            .expect("다음 함수가 있다")
+            .0;
+
+        // **잘라 낸 자리가 제 자신을 삼키면 안 된다.** 아래 두 `assert`가 찾는 리터럴은 그
+        // `assert`의 문자열로도 이 파일에 있다 — 슬라이스가 테스트 모듈까지 흘러가면 이
+        // 검사는 제 문장을 읽고 스스로 통과한다. 위 두 `expect`가 표식이 사라진 경우를
+        // 막고, 이 줄이 표식은 있는데 자리가 흘러간 경우를 막는다.
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 이 검사가 제 문자열을 읽고 통과한다"
+        );
+
+        assert!(
+            body.contains("process_group_leader()"),
+            "터미널을 쥔 그룹을 안 읽는다 — 판정의 한쪽 값이 없다"
+        );
+        assert!(
+            body.contains("Ok(command_runs(pid, foreground))"),
+            "값 둘을 그대로 판정에 넘기지 않는다 — 여기서 답을 새로 지으면 위 전수가 헛돈다"
+        );
+    }
+
     /// `spawn`의 풀 등록이 읽기 스레드보다 **앞에** 있어야 한다.
     ///
     /// 실행으로는 못 잡는다 — 뒤집혀도 스레드가 늦게 뜨는 보통의 경우에는 아무 일도

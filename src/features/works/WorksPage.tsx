@@ -22,12 +22,16 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellList from "@/features/terminal/ShellList";
 import TerminalPane from "@/features/terminal/TerminalPane";
-import { runningShellsOf, workShellOrigin } from "@/features/terminal/shell-registry";
 import {
-  closeShell,
+  opensShellFromWindow,
+  runningShellsOf,
+  workShellOrigin,
+} from "@/features/terminal/shell-registry";
+import {
   closeShellsOf,
   onShellOpenRejected,
   openNewShell,
+  requestCloseShell,
   selectShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
@@ -226,6 +230,32 @@ function WorksPage({
   // (결정 49). 터미널 탭에서 `terminalWork`가 붙들어 둔 작업을 쓰는 것도 그대로 따라온다 —
   // 본문이 그 작업의 셸을 보여주는데 패널만 다른 작업을 말하면 안 된다.
   const panelWork = terminalWork ?? selected;
+
+  // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
+  // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
+  //
+  // **듣는 범위가 이 화면 전체다**(결정 98). ⌘1이 spec, ⌘2~9가 셸로 본문을 옮기는 한 벌인데
+  // ⌘T만 안 옮기면 혼자 어긋난다 — 그래서 spec을 읽는 중에도 듣고, 열면 본문을 함께 옮긴다.
+  // **⌘W는 안 넓힌다** — 「이 칸을 닫는다」는 겨눌 칸이 있어야 한다.
+  //
+  // 언제 비켜야 하는지는 `opensShellFromWindow`가 혼자 안다(제목 편집 중인 `<input>`,
+  // 그리고 **xterm의 숨은 `<textarea>`** — `togglesWorkPanel`이 적어 둔 함정과 같은 자리다).
+  //
+  // 딛고 선 작업은 `panelWork`다 — 본문이 셸을 보여주는데 다른 작업의 셸을 여는 일이 없다.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!opensShellFromWindow(e)) return;
+      e.preventDefault();
+      // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
+      // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
+      const origin = panelWork && workShellOrigin(panelWork, null);
+      if (!origin) return;
+      openNewShell(origin);
+      onSelectTab("terminal");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panelWork, onSelectTab]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
@@ -463,7 +493,7 @@ function PanelShells({
         selectShell(id);
         onSelectTab("terminal");
       }}
-      onClose={closeShell}
+      onClose={requestCloseShell}
       onOpen={(project) => {
         // 프로젝트가 여럿인데 안 골랐으면 자리가 안 정해진다 — 그때는 열지 않는다(결정 24).
         const origin = workShellOrigin(work, project);
