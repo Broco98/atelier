@@ -49,6 +49,10 @@ const HANDLERS: &[(&str, Handler)] = &[
         let status = text(a, "status")?.parse().map_err(err)?;
         ok(atelier_core::update_work_status(&works_dir(), &text(a, "slug")?, status))
     }),
+    ("set_work_pinned", |a| {
+        let pinned = flag(a, "pinned")?;
+        ok(atelier_core::update_work_pinned(&works_dir(), &text(a, "slug")?, pinned))
+    }),
     ("archive_work", |a| {
         ok(atelier_core::archive_work(
             &works_dir(),
@@ -112,6 +116,12 @@ fn text(args: &Args, key: &str) -> Result<String, String> {
 
 fn maybe_text(args: &Args, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+fn flag(args: &Args, key: &str) -> Result<bool, String> {
+    args.get(key)
+        .and_then(Value::as_bool)
+        .ok_or_else(|| format!("인자 '{key}'(불리언)가 필요합니다"))
 }
 
 fn main() {

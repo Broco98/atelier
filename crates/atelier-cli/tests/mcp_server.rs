@@ -1008,10 +1008,10 @@ fn edit_unknown_work_points_at_the_listing_tool() {
     assert!(text.contains("atelier_list_works"), "no next step: {text}");
 }
 
-/// 이 도구는 제목만 받는다. status는 atelier_set_work_status가 담당하고, branch는
+/// 이 도구는 제목과 고정만 받는다. status는 atelier_set_work_status가 담당하고, branch는
 /// 워크트리가 체크아웃해 둔 값이라 메타데이터만 바꾸면 실제 상태와 어긋난다.
 #[test]
-fn edit_work_takes_only_the_slug_and_the_title() {
+fn edit_work_takes_only_the_slug_the_title_and_the_pin() {
     let home = tempfile::tempdir().unwrap();
     let mut server = Server::start(home.path());
     let res = server.request(2, "tools/list", json!({}));
@@ -1020,13 +1020,96 @@ fn edit_work_takes_only_the_slug_and_the_title() {
         .unwrap_or_else(|| panic!("tool not listed: {res}"));
 
     let props = tool["inputSchema"]["properties"].as_object().unwrap();
-    assert_eq!(props.len(), 2, "only work_slug and title are inputs: {tool}");
-    for field in ["work_slug", "title"] {
+    assert_eq!(props.len(), 3, "only work_slug, title and pinned are inputs: {tool}");
+    for field in ["work_slug", "title", "pinned"] {
         assert!(props.contains_key(field), "missing property {field}: {tool}");
     }
     for field in ["status", "branch", "slug", "projects"] {
         assert!(!props.contains_key(field), "{field} must not be editable here: {tool}");
     }
+    // 고정이 무엇인지 한 줄로 말한다 — 에이전트가 읽는 것은 이 문장뿐이다
+    let described = format!("{} {}", tool["description"], props["pinned"]);
+    assert!(described.contains("top"), "what pinning does is undocumented: {described}");
+}
+
+/// 에이전트도 고정할 수 있다 (결정 81). **제목을 함께 주지 않아도 된다** — 둘 다 선택
+/// 인자이고, 안 준 쪽은 그대로 남는다 (atelier_edit_project와 같은 계약).
+#[test]
+fn edit_work_pins_a_work_without_touching_the_title() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "cart", "pinned": true }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let after: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(after["pinned"], true, "{after}");
+    assert_eq!(after["title"], "카트", "an omitted title must not be cleared: {after}");
+
+    // 파일에 남는다 — 앱을 껐다 켜도 고정이 살아 있어야 한다
+    let got: Value = serde_json::from_str(server.request(5, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "cart" }
+    }))["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(got["pinned"], true, "{got}");
+
+    // 끄는 것도 같은 길이다
+    let off = server.request(6, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "cart", "pinned": false }
+    }));
+    let off: Value =
+        serde_json::from_str(off["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(off["pinned"], false, "{off}");
+}
+
+/// 빈 패치는 파일만 다시 쓰고 아무 일도 안 일어난 것처럼 보인다 — atelier_edit_project가
+/// 이미 같은 답을 한다.
+#[test]
+fn edit_work_with_nothing_to_change_says_what_to_pass() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("title"), "{text}");
+    assert!(text.contains("pinned"), "{text}");
+    assert!(text.contains("again"), "no next step: {text}");
+}
+
+/// 고정은 목록 **순서**로 나타난다 (결정 100). 앱이 그 위에 정렬을 얹지 않아도 되도록
+/// 이 표면도 같은 순서를 본다.
+#[test]
+fn list_works_puts_pinned_first() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut server = Server::start(home.path());
+    for slug in ["a-work", "b-work"] {
+        server.request(3, "tools/call", json!({
+            "name": "atelier_start_work", "arguments": { "title": slug, "slug": slug }
+        }));
+    }
+    // 같은 날 만들어졌으므로 기존 규칙(slug 오름차순)으로는 a-work이 먼저다
+    server.request(4, "tools/call", json!({
+        "name": "atelier_edit_work", "arguments": { "work_slug": "b-work", "pinned": true }
+    }));
+
+    let listed: Value = serde_json::from_str(server.request(5, "tools/call", json!({
+        "name": "atelier_list_works", "arguments": {}
+    }))["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let order: Vec<&str> =
+        listed.as_array().unwrap().iter().map(|w| w["slug"].as_str().unwrap()).collect();
+    assert_eq!(order, vec!["b-work", "a-work"], "pinned must come first: {listed}");
 }
 
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.

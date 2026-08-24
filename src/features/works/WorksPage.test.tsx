@@ -32,6 +32,7 @@ const work: WorkView = {
   branch: "feat/some-work",
   createdAt: "2026-08-16",
   projects: [],
+  pinned: false,
   worktrees: [],
   specDir: "~/.atelier/works/some-work/spec",
   specFiles: [],
