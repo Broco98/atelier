@@ -389,6 +389,46 @@ mod tests {
         );
     }
 
+    /// 위 판정을 **실제로 딛는가**. 조립부는 살아 있는 pty가 있어야 실행으로 재는데 이
+    /// seam에는 없어서, `command_running`이 늘 `Ok(false)`를 돌려주게 만들어도 위 테스트가
+    /// 초록이었다(실측). `spawn`과 같은 방식으로 자리에서 잰다 — 값 둘을 읽어 판정에
+    /// 그대로 넘기는지.
+    ///
+    /// **무엇을 못 보는지 적어 둔다.** 이것은 리터럴이 **있는가**만 보므로, 부르기는 하되
+    /// 값을 갈아 끼우는 변형은 그대로 통과한다 — `.process_group_leader().or(Some(1))`로
+    /// 뒤집어도 초록인 것을 실측했다(그러면 죽은 셸이 늘 「명령이 돈다」가 된다). 그 자리는
+    /// **살아 있는 pty 없이는 못 잰다.** 여기서 막는 것은 검증 1차가 지목한 회귀 하나
+    /// — 판정을 안 딛고 답을 새로 짓는 것 — 이고, 나머지는 실물 확인 몫이다.
+    #[test]
+    fn command_running_hands_both_values_to_the_verdict() {
+        let src = include_str!("pty.rs");
+        let body = src
+            .split_once("pub fn command_running(")
+            .expect("command_running이 있다")
+            .1
+            .split_once("\nfn ")
+            .expect("다음 함수가 있다")
+            .0;
+
+        // **잘라 낸 자리가 제 자신을 삼키면 안 된다.** 아래 두 `assert`가 찾는 리터럴은 그
+        // `assert`의 문자열로도 이 파일에 있다 — 슬라이스가 테스트 모듈까지 흘러가면 이
+        // 검사는 제 문장을 읽고 스스로 통과한다. 위 두 `expect`가 표식이 사라진 경우를
+        // 막고, 이 줄이 표식은 있는데 자리가 흘러간 경우를 막는다.
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 이 검사가 제 문자열을 읽고 통과한다"
+        );
+
+        assert!(
+            body.contains("process_group_leader()"),
+            "터미널을 쥔 그룹을 안 읽는다 — 판정의 한쪽 값이 없다"
+        );
+        assert!(
+            body.contains("Ok(command_runs(pid, foreground))"),
+            "값 둘을 그대로 판정에 넘기지 않는다 — 여기서 답을 새로 지으면 위 전수가 헛돈다"
+        );
+    }
+
     /// `spawn`의 풀 등록이 읽기 스레드보다 **앞에** 있어야 한다.
     ///
     /// 실행으로는 못 잡는다 — 뒤집혀도 스레드가 늦게 뜨는 보통의 경우에는 아무 일도
