@@ -99,6 +99,7 @@ pub fn start_work(
                 branch: None,
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
+                pinned: false,
                 extra: Default::default(),
             }
         }
@@ -359,8 +360,16 @@ pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
             views.push(to_view(works_root, work));
         }
     }
+    // **고정이 먼저다** (결정 100). 사이드바가 고정 구획을 맨 위에 세우므로, 그 순서를
+    // 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이
+    // 갈린다 — 이슈 #58이 정확히 그것이었다. 여기서 먼저 주면 어떤 조합에서도 저절로
+    // 성립하고, 앱·MCP·CLI가 같은 순서를 본다.
     views.sort_by(|a, b| {
-        b.work.created_at.cmp(&a.work.created_at).then_with(|| a.work.slug.cmp(&b.work.slug))
+        b.work
+            .pinned
+            .cmp(&a.work.pinned)
+            .then_with(|| b.work.created_at.cmp(&a.work.created_at))
+            .then_with(|| a.work.slug.cmp(&b.work.slug))
     });
     Ok(views)
 }
@@ -435,6 +444,15 @@ pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<W
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
     let mut work = read_work(works_root, slug)?;
     work.status = status;
+    write_work(works_root, &work)?;
+    Ok(to_view(works_root, work))
+}
+
+/// 고정을 켜고 끈다. **목록 순서가 함께 바뀐다** — 고정된 것은 `list_works`가 먼저 준다
+/// (결정 100). 그 외에는 상태와 마찬가지로 아무것도 건드리지 않는다.
+pub fn update_work_pinned(works_root: &Path, slug: &str, pinned: bool) -> Result<WorkView> {
+    let mut work = read_work(works_root, slug)?;
+    work.pinned = pinned;
     write_work(works_root, &work)?;
     Ok(to_view(works_root, work))
 }
@@ -1014,6 +1032,8 @@ mod tests {
         let view = get_work(&works, "옛날-작업").unwrap();
         assert_eq!(view.work.branch.as_deref(), Some("feat/old"));
         assert_eq!(view.work.projects, vec!["fe"]);
+        // 뒤에 는 필드는 없으면 기본값으로 읽힌다 — 마이그레이션은 없다 (결정 81)
+        assert!(!view.work.pinned, "a work.json without `pinned` must read as not pinned");
 
         // 상태만 바꿔 다시 써도 모르는 필드와 브랜치가 그대로다
         update_work_status(&works, "옛날-작업", WorkStatus::Review).unwrap();
@@ -1119,6 +1139,55 @@ mod tests {
         ];
         expected.sort();
         assert_eq!(get_work(&works, "카트").unwrap().spec_files, expected);
+    }
+
+    /// 고정된 것이 **먼저**다. 그다음이 기존 규칙(createdAt 내림차순 → slug 오름차순)이라
+    /// 고정 구획 안의 순서도 그대로 산다 (결정 100).
+    ///
+    /// 순서를 여기서 주는 이유: 화면이 백엔드 순서 위에 정렬을 얹으면 「보이는 첫 항목 =
+    /// 무선택 정규화가 고르는 항목」이 갈린다. 이슈 #58이 정확히 그것이었고, 사이드바의
+    /// 고정 구획이 바로 그 얹는 정렬이다. 앱·MCP·CLI가 같은 순서를 보려면 여기가 유일한 자리다.
+    #[test]
+    fn list_puts_pinned_first_even_when_it_is_older() {
+        let (_tmp, works, _projects) = setup();
+        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일을 직접 쓴다
+        let write = |slug: &str, created: &str, pinned: bool| {
+            let dir = works.join(slug);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("work.json"),
+                format!(
+                    r#"{{"title":"{slug}","status":"active","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
+                ),
+            )
+            .unwrap();
+        };
+        write("새-것", "2026-08-20", false);
+        write("오래된-것", "2026-01-02", true);
+        write("고정-최신", "2026-08-22", true);
+
+        let listed: Vec<String> =
+            list_works(&works).unwrap().into_iter().map(|v| v.work.slug).collect();
+        assert_eq!(listed, slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
+    }
+
+    /// 상태와 같은 모양의 한 필드 쓰기 — 파일에 남고 조회가 같은 값을 준다 (결정 81).
+    #[test]
+    fn update_pinned_persists() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        assert!(!get_work(&works, "카트").unwrap().work.pinned);
+
+        let view = update_work_pinned(&works, "카트", true).unwrap();
+        assert!(view.work.pinned);
+        assert!(get_work(&works, "카트").unwrap().work.pinned);
+        // 고정은 그 작업에 대한 사실이라 상태·브랜치·워크트리는 건드리지 않는다
+        assert_eq!(view.work.status, WorkStatus::Active);
+        assert!(view.worktrees[0].exists);
+
+        let off = update_work_pinned(&works, "카트", false).unwrap();
+        assert!(!off.work.pinned);
+        assert!(matches!(update_work_pinned(&works, "없음", true), Err(Error::WorkNotFound(_))));
     }
 
     #[test]

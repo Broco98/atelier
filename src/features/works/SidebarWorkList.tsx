@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { useWorks } from "./hooks";
-import { splitWorkSections } from "./work-sections";
+import { useSetWorkPinned, useWorks } from "./hooks";
+import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
@@ -13,6 +13,7 @@ const HOVER_DELAY_MS = 350;
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
+const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
 const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
@@ -31,6 +32,10 @@ function SidebarWorkList({
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
+  const setPinned = useSetWorkPinned();
+  const [pinnedOpen, setPinnedOpen] = useState(
+    () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
+  );
   const [worksOpen, setWorksOpen] = useState(
     () => localStorage.getItem(WORKS_OPEN_KEY) !== "0",
   );
@@ -38,6 +43,9 @@ function SidebarWorkList({
     () => localStorage.getItem(DRAFTS_OPEN_KEY) === "1",
   );
 
+  useEffect(() => {
+    localStorage.setItem(PINNED_OPEN_KEY, pinnedOpen ? "1" : "0");
+  }, [pinnedOpen]);
   useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
@@ -53,10 +61,12 @@ function SidebarWorkList({
         ? decodeURIComponent(state.location.pathname.slice("/works/".length))
         : null,
   });
-  const { main, drafts, visible } = splitWorkSections(works, {
+  const sections = splitWorkSections(works, {
+    pinned: pinnedOpen,
     works: worksOpen,
     drafts: draftsOpen,
   });
+  const { pinned, main, drafts, visible } = sections;
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
 
@@ -101,6 +111,13 @@ function SidebarWorkList({
     void navigate({ to: "/works/$slug", params: { slug } });
   };
 
+  // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
+  // (결정 82) — 앵커 행이 사라지면 카드가 허공에 남는다.
+  const togglePin = (work: WorkView) => {
+    closeCard();
+    setPinned.mutate({ slug: work.slug, pinned: !work.pinned });
+  };
+
   // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업. 접힌 섹션은 세지 않는다.
   // 어느 화면에 있든 이 목록을 센다: 어디에 있든 작업으로 한 번에 돌아갈 수 있다.
   // 입력 중에는 무시.
@@ -139,6 +156,32 @@ function SidebarWorkList({
             투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
             예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
+          {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
+          {pinned.length > 0 && (
+            <>
+              <SectionHeader
+                label="고정"
+                className="mt-3"
+                open={pinnedOpen}
+                count={pinned.length}
+                onToggle={() => setPinnedOpen((v) => !v)}
+              />
+              <SectionBody open={pinnedOpen}>
+                {pinned.map((work) => (
+                  <WorkRow
+                    key={work.slug}
+                    work={work}
+                    active={work.slug === selectedSlug}
+                    onOpen={goTo}
+                    onHover={openCardAfterDelay}
+                    onLeave={closeCard}
+                    onTogglePin={togglePin}
+                  />
+                ))}
+              </SectionBody>
+            </>
+          )}
+
           {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
           <SectionHeader
             label="작업"
@@ -150,9 +193,7 @@ function SidebarWorkList({
           <SectionBody open={worksOpen}>
             {main.length === 0 ? (
               <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-                {drafts.length > 0
-                  ? "진행 중인 작업이 없어요."
-                  : "작업은 Claude Code에서 시작돼요."}
+                {emptyMainNotice(sections)}
               </span>
             ) : (
               main.map((work) => (
@@ -163,6 +204,7 @@ function SidebarWorkList({
                   onOpen={goTo}
                   onHover={openCardAfterDelay}
                   onLeave={closeCard}
+                  onTogglePin={togglePin}
                 />
               ))
             )}
@@ -187,6 +229,7 @@ function SidebarWorkList({
                     onOpen={goTo}
                     onHover={openCardAfterDelay}
                     onLeave={closeCard}
+                    onTogglePin={togglePin}
                   />
                 ))}
               </SectionBody>
@@ -348,44 +391,82 @@ function SectionBody({ open, children }: { open: boolean; children: ReactNode })
   );
 }
 
-// 한 줄 — 상태 점 + 제목. 바로 위 nav 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기):
+// 한 줄 — 상태 점 + 제목 + 핀. 바로 위 nav 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기):
 // 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다.
 // 좁은 폭이라 제목이 자주 잘리는데, 전체는 호버 카드가 보여준다 — title 속성을 함께 두면
 // OS 툴팁이 카드 위로 겹쳐 뜬다.
+//
+// 행 전체가 button이던 것이 **바깥 상자 + 형제 버튼 둘**이 됐다. 중첩 button은 HTML에서
+// 허용되지 않고, span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — SpecTree의
+// 파일 행과 ShellList가 이미 같은 문제를 그 구조로 풀었다.
+// 배경(선택·hover)은 바깥 상자가 갖고, 가로 여백은 이름 버튼이 품는다: 바깥이 가진
+// padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가
+// 된다. 남는 것은 오른쪽 끝 pr-1뿐이고 그건 핀을 행 가장자리에서 띄우는 값이다.
+//
+// hover(카드 여는 것)는 바깥 상자가 듣는다 — 이름 버튼에 걸면 핀 위로 마우스를 옮기는
+// 순간 카드가 닫힌다.
 function WorkRow({
   work,
   active,
   onOpen,
   onHover,
   onLeave,
+  onTogglePin,
 }: {
   work: WorkView;
   active: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
+  onTogglePin: (work: WorkView) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(work.slug)}
+    <div
       onMouseEnter={(e) => onHover(work.slug, e.currentTarget)}
       onMouseLeave={onLeave}
       className={cn(
-        "flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left transition-colors",
+        "group flex h-8 w-full shrink-0 items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
-      <StatusIcon status={work.status} />
-      <span
-        className={cn(
-          "min-w-0 truncate text-[13.5px] font-medium",
-          work.status === "done" && "text-tertiary",
-        )}
+      <button
+        type="button"
+        onClick={() => onOpen(work.slug)}
+        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left"
       >
-        {work.title}
-      </span>
-    </button>
+        <StatusIcon status={work.status} />
+        <span
+          className={cn(
+            "min-w-0 truncate text-[13.5px] font-medium",
+            work.status === "done" && "text-tertiary",
+          )}
+        >
+          {work.title}
+        </span>
+      </button>
+      {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
+          좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
+          페이드가 없는 것은 icon-button-quiet이 정한다(옆 행으로 옮겨 갈 때 두 핀이
+          겹쳐 미끄러져 보인다). focus-visible:opacity-100이 없으면 Tab으로 도달은
+          하는데 보이지 않는다 — spec 트리의 복사 버튼이 이미 같은 답을 한다.
+          채운 핀 / 빈 핀으로 갈린다. PinOff(사선 그은 핀)를 쓰지 않는 것은 이 저장소의
+          아이콘이 전부 외곽선이고, 결정 85가 말한 것도 「채운 핀」이기 때문이다.
+          켜짐은 aria-pressed가 말한다(WorkPanel의 `</>` 토글과 같은 규칙). title은 두지
+          않는다 — 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다. */}
+      <button
+        type="button"
+        aria-label={`${work.title} 고정`}
+        aria-pressed={work.pinned}
+        onClick={() => onTogglePin(work)}
+        className="icon-button-quiet shrink-0 text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+      >
+        <Pin
+          className="size-3"
+          strokeWidth={1.8}
+          fill={work.pinned ? "currentColor" : "none"}
+        />
+      </button>
+    </div>
   );
 }
 

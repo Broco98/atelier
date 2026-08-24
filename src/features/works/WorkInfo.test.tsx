@@ -16,6 +16,7 @@ const work: WorkView = {
   // 코어가 내려주는 값 그대로다 — chrono의 %Y-%m-%d
   createdAt: "2026-08-16",
   projects: ["atelier"],
+  pinned: false,
   worktrees: [
     {
       project: "atelier",

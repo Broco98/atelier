@@ -14,6 +14,7 @@ const work: WorkView = {
   branch: "feat/some-work",
   createdAt: "2026-08-16",
   projects: ["atelier"],
+  pinned: false,
   worktrees: [
     { project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false },
   ],

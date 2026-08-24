@@ -422,6 +422,7 @@ const w = (projects: string[]): WorkView => ({
   branch: "feat/w",
   createdAt: "2026-08-17",
   projects,
+  pinned: false,
   worktrees: projects.map(
     (project): WorktreeView => ({
       project,

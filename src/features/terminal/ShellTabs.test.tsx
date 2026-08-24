@@ -232,6 +232,7 @@ describe("`+`가 묻는 조건은 cwd가 갈리는 조건과 같다", () => {
     branch: "feat/w",
     createdAt: "2026-08-17",
     projects,
+    pinned: false,
     worktrees: projects.map((project) => ({
       project,
       path: `~/.atelier/works/w/trees/${project}`,

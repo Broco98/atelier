@@ -71,6 +71,12 @@ pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView
     atelier_core::update_work_status(&works_dir(), &slug, status).map_err(err)
 }
 
+/// 고정을 켜고 끈다. 목록 순서는 커널이 정한다 — 화면은 그 위에 정렬을 얹지 않는다 (결정 100).
+#[tauri::command]
+pub async fn set_work_pinned(slug: String, pinned: bool) -> CmdResult<WorkView> {
+    atelier_core::update_work_pinned(&works_dir(), &slug, pinned).map_err(err)
+}
+
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]
