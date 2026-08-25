@@ -28,7 +28,7 @@ import type { WorkView } from "@/features/works/types";
  */
 function TerminalPane({ work }: { work: WorkView | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  // 좁히지 않고 통째로 읽는다 — 탭 줄이 앱 전체 상한을 세야 해서 어차피 전부 필요하다(결정 30).
+  // 좁히지 않고 통째로 읽는다 — 아래 목록이 앱 전체 상한을 세야 해서 어차피 전부 필요하다(결정 30).
   // **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
   // 그러니 이 항등 셀렉터는 지울 수 있는 중간자가 아니다.
   // 새 상태를 **바뀔 때만** 만드는 것은 레지스트리가 지킨다(patch가 무변화에 같은 객체를

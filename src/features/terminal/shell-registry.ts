@@ -30,8 +30,8 @@ export type ShellStatus =
  * `shellRowName`이 혼자 안다.
  *
  * **cwd가 여기 있다 — 한때 없었다.** 「셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안
- * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 패널 `shell` 탭의 행
- * 둘째 줄이 **도는 셸의 cwd**다. 화면이 구독하는 값은 이 상태 하나이므로(xterm 인스턴스는
+ * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 셸 행의 둘째 줄이
+ * **도는 셸의 cwd**다. 화면이 구독하는 값은 이 상태 하나이므로(xterm 인스턴스는
  * 리렌더가 그것을 다시 만드는 경로가 없어야 해서 스토어 옆 모듈 스코프에 따로 산다),
  * 목록이 들지 않으면 그 값이 화면까지 오는 길이 아예 없다.
  */
@@ -137,14 +137,10 @@ export function atCap(state: ShellsState): boolean {
 
 /**
  * 상한에 닿았을 때 사람에게 하는 말. **입구 둘이 같은 문장을 쓴다**(결정 47) —
- * 패널 목록의 잠긴 `+` 행이 그 자리에 이 문장을 적고, ⌘T가 거절당했을 때 뜨는 토스트도
- * 같은 문장이다. 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다.
+ * 잠긴 `+ 새 셸` 행이 그 자리에 이 문장을 적고, ⌘T가 거절당했을 때 뜨는 토스트도 같은
+ * 문장이다. 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다.
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
- *
- * 최상위 터미널의 가로 탭 줄도 **이 문장을 쓴다** — 거기 `+`는 폭이 없어 이유를
- * `title`(hover)에 적는데, hover는 잘릴 걱정이 없어 「다른 터미널의 셸도 함께 셉니다」를
- * 뒤에 잇는다. 이으므로 앞 절은 여전히 여기 한 곳에서 온다.
  */
 export function shellCapNotice(state: ShellsState): string {
   return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
@@ -186,7 +182,7 @@ export interface OpenedShell {
  * 조용히 상태를 그대로 돌려주면 `+`가 눌리는데 아무 일도 안 나는 화면이 된다.
  *
  * 소유자를 **반드시 받는다.** 기본값을 두면 Work 화면에서 빠뜨린 셸이 최상위 것이 되어,
- * 그 Work를 아카이빙할 때 안 거둬지고 탭 줄에도 안 뜬다.
+ * 그 Work를 아카이빙할 때 안 거둬지고 그 work의 가지에도 안 뜬다.
  *
  * **`origin`을 통째로 받는다 — 갈래 둘만 뽑아 받지 않는다.** 한때 `owner`·`project`만
  * 받았는데, cwd가 칸에 눌러앉게 되면서(위 `Shell.cwd`) 뽑을 이유가 없어졌다. 통째로
@@ -460,6 +456,26 @@ function isShellInput(target: EventTarget | null): boolean {
   if (!target || !("className" in target)) return false;
   const name = target.className;
   return typeof name === "string" && name.includes("xterm-helper-textarea");
+}
+
+/**
+ * 그 키가 가리키는 셸. 갈 곳이 없으면 `null`이다.
+ *
+ * **화면마다 갈리는 것은 `firstKey` 하나다** — ⌘몇이 첫 셸인가. work 화면은 ⌘1이 spec이라
+ * 2이고, 최상위 터미널은 문서가 없어 1이다(결정 78). 나머지 판단을 두 화면이 같은 자리에서
+ * 딛는 것이 이 함수의 전부다: 따로 두면 순회가 한쪽에서만 끝에서 돌아오거나, 한쪽만 자리를
+ * 밀어 마지막 셸을 영영 못 고르게 된다.
+ *
+ * **세는 것은 받은 목록이다**(결정 109) — 부르는 쪽이 그 화면의 셸만 담아 준다.
+ */
+export function shellForNav(
+  shells: ReadonlyArray<Shell>,
+  activeId: number | null,
+  nav: ShellNav,
+  firstKey: number,
+): number | null {
+  if (nav.kind === "cycle") return cycleShell(shells, activeId, nav.delta);
+  return shells[nav.n - firstKey]?.id ?? null;
 }
 
 /**

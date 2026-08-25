@@ -3,8 +3,8 @@ import PageHeader from "@/components/shell/PageHeader";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
-  cycleShell,
   opensShellFromWindow,
+  shellForNav,
   shellNavFromWindow,
   shellsOf,
   TOP_TERMINAL,
@@ -50,10 +50,8 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       e.preventDefault();
       const state = terminalStore.state;
       const shells = shellsOf(state, null);
-      const next =
-        nav.kind === "index"
-          ? (shells[nav.n - 1]?.id ?? null)
-          : cycleShell(shells, activeIdOf(state, null), nav.delta);
+      // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다.
+      const next = shellForNav(shells, activeIdOf(state, null), nav, 1);
       if (next !== null) selectShell(next);
     };
     window.addEventListener("keydown", onKeyDown);

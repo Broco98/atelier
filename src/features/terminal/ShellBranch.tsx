@@ -1,4 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { TreeIndent } from "@/components/shell/sidebar-tree";
+import { tabSearch, workSlugOf } from "@/routes/-work-search";
 import { useStore } from "@tanstack/react-store";
 import ShellList from "./ShellList";
 import { TOP_TERMINAL, workShellOrigin } from "./shell-registry";
@@ -27,23 +29,42 @@ function ShellBranch({ work }: { work: WorkView | null }) {
   const navigate = useNavigate();
   const owner = work?.slug ?? null;
 
-  // 본문이 지금 이 가지를 보여주는가 — 켜진 행 표시를 그때만 준다. 남의 work의 가지를
-  // 펼쳐 놓았을 때 그쪽 활성 칸까지 강조되면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
-  const showing = useRouterState({
+  /**
+   * 지금 **이 가지의 화면을 보고 있는가.** 둘로 갈라 읽는다 — `onThisWork`는 「이 work에
+   * 있는가」이고 `showing`은 「본문이 이 가지인가」다. 하나로 합치면 아래 `go`가 같은
+   * work 안에서 문서를 보다 셸을 누른 경우를 **남의 work으로 가는 것과 똑같이** 다루고,
+   * 그러면 보던 문서가 조용히 떨어진다(결정 15가 막으려는 사고 그 자체다).
+   *
+   * **따로 구독한다.** 객체 하나로 묶어 돌려주면 매번 새 객체라 걸러내지 못해 주소가
+   * 바뀔 때마다 이 가지가 다시 그려진다(AppShell의 같은 주석).
+   */
+  const onThisWork = useRouterState({
     select: (routerState) => {
-      const { pathname, search } = routerState.location;
-      if (owner === null) return pathname.startsWith("/terminal");
-      // 슬러그에 한글이 들어가므로 경로에서 떼어낸 뒤 디코드한다(SidebarWorkList와 같은 규칙).
-      const open = pathname.startsWith("/works/")
-        ? decodeURIComponent(pathname.slice("/works/".length))
-        : null;
-      return open === owner && (search as { tab?: string }).tab === "terminal";
+      const { pathname } = routerState.location;
+      return owner === null ? pathname.startsWith("/terminal") : workSlugOf(pathname) === owner;
     },
   });
+  // 켜진 행 표시를 이때만 준다. 남의 work의 가지를 펼쳐 놓았을 때 그쪽 활성 칸까지
+  // 강조되면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
+  const onTerminal = useRouterState({
+    select: (routerState) => (routerState.location.search as { tab?: string }).tab === "terminal",
+  });
+  const showing = owner === null ? onThisWork : onThisWork && onTerminal;
 
-  // 본문을 이 가지로 옮긴다. 이미 이 work을 보고 있으면 `replace`다 — 탭을 한 번 눌렀는데
-  // 되돌리는 데 뒤로가기를 두 번 눌러야 하는 일이 없다(결정 13). 남의 work이면 진짜 이동이라
-  // 히스토리를 만든다.
+  /**
+   * 본문을 이 가지로 옮긴다.
+   *
+   * **이 work을 보던 중이면 보던 문서를 지킨다.** 이 라우터는 `search`에 객체를 주면 기존
+   * search를 통째로 버려서, 문서를 읽다 셸 행을 누르면 `file`이 조용히 떨어진다 — 그리고
+   * `spec` 잎으로 돌아왔을 때 읽던 문서가 아니라 기본 문서가 열린다(결정 15). 함수형으로
+   * 얹으면 그 사고가 설 자리가 없다.
+   *
+   * **남의 work이면 빈 자리에서 시작한다**(결정 77) — 문서 경로는 그 work 안에서만 뜻이
+   * 있어서 딸려가면 새 work에 없는 파일을 가리킨 채 주소만 남는다.
+   *
+   * `replace`도 같은 갈래를 탄다: 같은 work 안의 전환은 히스토리를 안 쌓고(결정 13),
+   * 남의 work으로 가는 것은 진짜 이동이라 돌아올 자리를 만든다.
+   */
   const go = () => {
     if (owner === null) {
       void navigate({ to: "/terminal" });
@@ -52,14 +73,15 @@ function ShellBranch({ work }: { work: WorkView | null }) {
     void navigate({
       to: "/works/$slug",
       params: { slug: owner },
-      search: { tab: "terminal" as const },
-      replace: showing,
+      search: onThisWork
+        ? (prev) => tabSearch(prev, "terminal")
+        : { tab: "terminal" as const },
+      replace: onThisWork,
     });
   };
 
   return (
-    // 들여쓰기는 이 상자 하나가 준다 — 행은 자기 여백만 갖는다(ShellList 머리말).
-    <div className="flex flex-col gap-[3px] pl-[18px]">
+    <TreeIndent>
       <ShellList
         state={state}
         owner={owner}
@@ -82,7 +104,7 @@ function ShellBranch({ work }: { work: WorkView | null }) {
           go();
         }}
       />
-    </div>
+    </TreeIndent>
   );
 }
 

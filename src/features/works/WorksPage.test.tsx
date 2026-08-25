@@ -571,8 +571,8 @@ describe("WorksPage ⌘Enter", () => {
     expect(worksPage).toContain("const shells = shellsOf(state, panelWork.slug);");
     // ⌘1만 spec이고 나머지는 한 칸 밀린다. 안 밀면 ⌘1이 spec이면서 첫 셸이 되고,
     // 마지막 셸은 영영 못 고른다.
-    expect(worksPage).toContain('if (nav.n === 1) {\n          onSelectTab("spec");');
-    expect(worksPage).toContain("const shell = shells[nav.n - 2];");
+    expect(worksPage).toContain('if (nav.kind === "index" && nav.n === 1) {\n        onSelectTab("spec");');
+    expect(worksPage).toContain("shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2)");
   });
 
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {

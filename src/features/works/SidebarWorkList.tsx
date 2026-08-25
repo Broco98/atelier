@@ -3,8 +3,8 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { BranchHeader, SectionBody, TreeLeaf } from "@/components/shell/sidebar-tree";
-import { recallTab, tabSearch, type ViewTab } from "@/routes/-work-search";
+import { BranchHeader, SectionBody, TreeIndent, TreeLeaf } from "@/components/shell/sidebar-tree";
+import { recallTab, tabSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -69,12 +69,8 @@ function SidebarWorkList({
   }, [draftsOpen]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
-  // 슬러그에 한글이 들어가므로 경로에서 떼어낸 뒤 디코드한다.
   const openSlug = useRouterState({
-    select: (state) =>
-      state.location.pathname.startsWith("/works/")
-        ? decodeURIComponent(state.location.pathname.slice("/works/".length))
-        : null,
+    select: (state) => workSlugOf(state.location.pathname),
   });
   // 본문이 지금 무엇인가 — 고른 work의 `spec` 잎이 켜지는지가 이것으로 갈린다.
   // `openSlug`와 **따로** 구독한다: 객체 하나로 묶어 돌려주면 매번 새 객체라 걸러내지 못해
@@ -430,8 +426,7 @@ function WorkNode({
         onTogglePin={onTogglePin}
       />
       {stands && (
-        // 들여쓰기는 이 상자 하나가 준다 — 잎과 가지는 자기 여백만 갖는다.
-        <div className="flex flex-col gap-[3px] pl-[18px]">
+        <TreeIndent>
           {active && (
             <TreeLeaf
               icon={File}
@@ -447,7 +442,7 @@ function WorkNode({
             onToggle={() => onToggleBranch(work)}
           />
           <SectionBody open={branchOpen}>{shells}</SectionBody>
-        </div>
+        </TreeIndent>
       )}
     </>
   );

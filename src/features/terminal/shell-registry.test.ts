@@ -30,6 +30,7 @@ import {
   shellRowStatus,
   shellsOf,
   cycleShell,
+  shellForNav,
   shellHotkey,
   TOP_TERMINAL,
   workShellOrigin,
@@ -1097,6 +1098,40 @@ describe("셸 순회", () => {
   });
 });
 
+// 결정 78·109. 두 화면이 **같은 자리를 딛는다** — 갈리는 것은 「⌘몇이 첫 셸인가」 하나다.
+// 따로 두면 순회가 한쪽에서만 끝에서 돌아오거나, 한쪽만 자리를 밀어 마지막 셸을 영영
+// 못 고르게 된다(실제로 그 둘이 두 벌로 적혀 있었다).
+describe("키가 가리키는 셸", () => {
+  const shells = () => shellsOf(opened(3).state, null);
+
+  it("최상위 터미널은 ⌘1이 첫 셸이다", () => {
+    const list = shells();
+    expect(shellForNav(list, null, { kind: "index", n: 1 }, 1)).toBe(list[0].id);
+    expect(shellForNav(list, null, { kind: "index", n: 3 }, 1)).toBe(list[2].id);
+  });
+
+  // work 화면은 ⌘1이 spec이라 자리가 한 칸 밀린다 — 그 밀림이 이 숫자다.
+  it("work 화면은 ⌘2가 첫 셸이다", () => {
+    const list = shells();
+    expect(shellForNav(list, null, { kind: "index", n: 2 }, 2)).toBe(list[0].id);
+    expect(shellForNav(list, null, { kind: "index", n: 4 }, 2)).toBe(list[2].id);
+    // ⌘1은 셸이 아니다 — 화면이 spec으로 가른 뒤라 여기 오면 갈 곳이 없다.
+    expect(shellForNav(list, null, { kind: "index", n: 1 }, 2)).toBeNull();
+  });
+
+  it("없는 자리는 아무 일도 없다", () => {
+    expect(shellForNav(shells(), null, { kind: "index", n: 9 }, 1)).toBeNull();
+  });
+
+  it("순회는 같은 규칙을 딛는다 — 밀림과 무관하다", () => {
+    const list = shells();
+    for (const firstKey of [1, 2]) {
+      expect(shellForNav(list, list[0].id, { kind: "cycle", delta: 1 }, firstKey)).toBe(list[1].id);
+      expect(shellForNav(list, list[2].id, { kind: "cycle", delta: 1 }, firstKey)).toBe(list[0].id);
+    }
+  });
+});
+
 // 위 판정 셋은 순수 함수라 전수됐지만, **그것을 실제로 쓰는 자리**는 xterm의 키 핸들러와
 // 스토어라 어느 seam에도 안 보인다 — 정적 렌더는 이펙트도 키 이벤트도 안 돌리고, 노드
 // seam은 `@xterm/xterm`을 끌고 오는 모듈을 못 들인다.
@@ -1189,7 +1224,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(page).toContain("const nav = shellNavFromWindow(e);");
     // `owner`가 `null`이 아니면 남의 화면 셸을 센다(결정 109가 막는 것).
     expect(page).toContain("const shells = shellsOf(state, null);");
-    // 한 칸 밀지 않는다 — `n - 2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
-    expect(page).toContain("shells[nav.n - 1]?.id ?? null");
+    // 자리를 밀지 않는다 — `2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
+    expect(page).toContain("shellForNav(shells, activeIdOf(state, null), nav, 1)");
   });
 });

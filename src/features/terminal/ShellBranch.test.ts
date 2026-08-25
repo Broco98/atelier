@@ -31,6 +31,14 @@ describe("사이드바 가지의 배선", () => {
     // 옮기고 어떤 행은 안 옮긴다.
     expect(countOf(branch, 'tab: "terminal" as const')).toBe(1);
   });
+
+  // 결정 15. 이 라우터는 `search`에 **객체**를 주면 기존 search를 통째로 버린다 — 문서를
+  // 읽다 이 work의 셸 행을 누르면 `file`이 조용히 떨어지고, `spec` 잎으로 돌아왔을 때
+  // 읽던 문서가 아니라 기본 문서가 열린다. 남의 work으로 가는 길과 **갈라져 있어야** 한다.
+  it("같은 work 안에서는 보던 문서를 지킨다", () => {
+    expect(branch).toContain('? (prev) => tabSearch(prev, "terminal")');
+    expect(branch).toContain(': { tab: "terminal" as const },');
+  });
 });
 
 describe("사이드바 목록은 터미널을 모른다", () => {

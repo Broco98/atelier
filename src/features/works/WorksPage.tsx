@@ -20,9 +20,9 @@ import { useProjects } from "@/features/projects/hooks";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
-  cycleShell,
   opensShellFromWindow,
   runningShellsOf,
+  shellForNav,
   shellNavFromWindow,
   shellsOf,
   workShellOrigin,
@@ -275,20 +275,13 @@ function WorksPage({
       e.preventDefault();
       const state = terminalStore.state;
       const shells = shellsOf(state, panelWork.slug);
-      // ⌘1만 spec이다. 나머지는 한 칸씩 밀린 셸 자리다 — 없는 자리면 아무 일도 없다.
-      if (nav.kind === "index") {
-        if (nav.n === 1) {
-          onSelectTab("spec");
-          return;
-        }
-        const shell = shells[nav.n - 2];
-        if (shell) {
-          selectShell(shell.id);
-          onSelectTab("terminal");
-        }
+      // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
+      // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
+      if (nav.kind === "index" && nav.n === 1) {
+        onSelectTab("spec");
         return;
       }
-      const next = cycleShell(shells, activeIdOf(state, panelWork.slug), nav.delta);
+      const next = shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2);
       if (next !== null) {
         selectShell(next);
         onSelectTab("terminal");
@@ -454,8 +447,8 @@ function WorksPage({
           **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 탭이 spec으로
           리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
           나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-          (a) 뷰 탭 왕복(spec ↔ terminal)에도 패널 탭이 유지된다 — `shell` 탭을 보던 채로
-              본문만 갈아탈 수 있다는 뜻이고, 3탭의 자연스러운 쓰임이다.
+          (a) 본문을 오가도(spec ↔ terminal) 패널 탭이 유지된다 — `info`를 보던 채로
+              본문만 갈아탈 수 있다는 뜻이다.
           (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
               전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
               기본값(최신 판만 펼침)으로 뜬다.

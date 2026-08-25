@@ -31,10 +31,46 @@ export function SectionBody({ open, children }: { open: boolean; children: React
 }
 
 /**
- * 가지의 머리행 — `▾ terminal  2`. 누르면 접힌다.
+ * 트리 한 단. **들여쓰기를 이 상자 하나가 준다** — 잎과 가지는 자기 여백만 갖는다.
+ * 값을 부르는 쪽마다 적으면 트리 깊이를 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의
+ * GUTTER 주석과 같은 계약).
+ */
+export function TreeIndent({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-[3px] pl-[18px]">{children}</div>;
+}
+
+/**
+ * 가지가 접혔는지 말하는 화살표.
  *
- * **개수는 접힘과 무관하게 늘 보인다.** 구획 헤더가 이미 그 규칙이고(SidebarWorkList의
- * SectionHeader), 둘이 한 컬럼에 서므로 한쪽만 숨기면 같은 모양이 다른 규칙을 갖는다.
+ * **목록이 접히는 것과 같은 시간·같은 곡선으로 돈다** — 한 동작으로 읽혀야 한다.
+ * 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는 독립
+ * rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다.
+ *
+ * 서는 자리가 둘이다 — 가지 머리행 안, 그리고 nav 항목의 곁(그쪽은 항목 자신이 머리행을
+ * 겸해 화살표만 형제 버튼으로 선다). 규격을 두 곳에 적으면 한쪽만 남는다.
+ */
+export function BranchArrow({ open }: { open: boolean }) {
+  return (
+    <ChevronDown
+      className={cn(
+        "size-3 shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
+        !open && "-rotate-90",
+      )}
+      strokeWidth={2.2}
+    />
+  );
+}
+
+/**
+ * 가지에 딸린 것의 개수. **접힘과 무관하게 늘 보인다** — 접힌 가지에서 「몇 개가 도는가」를
+ * 말하는 것이 이 숫자의 전부다. 구획 헤더도 같은 규칙이라 규격이 갈리면 그 자리에서 보인다.
+ */
+export function BranchCount({ count }: { count: number }) {
+  return <span className="shrink-0 text-[11.5px] tabular-nums text-tertiary">{count}</span>;
+}
+
+/**
+ * 가지의 머리행 — `▾ terminal  2`. 누르면 접힌다.
  *
  * 화살표는 **늘 보인다** — 구획 헤더는 hover에만 띄우지만 그쪽은 「구획이 접힌다」가
  * 이미 알려진 관용구이고, 가지는 그 자체가 새로 생긴 것이라 접힌다는 사실이 보여야 한다.
@@ -61,18 +97,11 @@ export function BranchHeader({
       aria-expanded={open}
       className="flex h-7 w-full shrink-0 items-center gap-1 rounded-[9px] px-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
     >
-      {/* 목록이 접히는 것과 **같은 시간·같은 곡선**으로 돈다 — 한 동작으로 읽혀야 한다.
-          트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
-          독립 rotate 속성을 쓰고, transform만 걸면 화살표만 뚝 끊긴다. */}
-      <ChevronDown
-        className={cn(
-          "size-3 shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
-          !open && "-rotate-90",
-        )}
-        strokeWidth={2.2}
-      />
-      <span className="min-w-0 truncate">{label}</span>
-      <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary">{count}</span>
+      <BranchArrow open={open} />
+      {/* `flex-1`이라 개수가 오른쪽 끝으로 밀린다 — `ml-auto`를 개수 쪽에 얹지 않는 것은
+          그 조각이 nav 곁에도 그대로 서기 때문이다(BranchCount). */}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <BranchCount count={count} />
     </button>
   );
 }

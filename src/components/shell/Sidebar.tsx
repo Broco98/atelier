@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ChevronDown, Settings, type LucideIcon } from "lucide-react";
+import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
@@ -7,7 +7,7 @@ import ShellBranch from "@/features/terminal/ShellBranch";
 import { shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
-import { SectionBody } from "./sidebar-tree";
+import { BranchArrow, BranchCount, SectionBody } from "./sidebar-tree";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -96,17 +96,21 @@ function Sidebar({
 
         {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
         <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
-          {navItems.map((item) => (
+          {navItems.map((item) => {
+            // **nav 항목에도 가지가 붙는다**(결정 72). 최상위 셸을 고르는 자리가 가로 탭
+            // 줄에서 여기로 왔고, 그 줄이 겸하던 타이틀바는 PageHeader가 받았다.
+            // 판정을 한 번만 하는 것은 아래에서 세 번 읽기 때문이다 — 갈리면 화살표는 있는데
+            // 속이 없는 항목이 나온다.
+            const branches = item.key === "terminal" && terminalStands;
+            return (
             <Fragment key={item.key}>
               <SidebarItem
                 icon={item.icon}
                 label={item.label}
                 active={item.key === activeKey}
                 onClick={() => onSelect(item.key)}
-                // **nav 항목에도 가지가 붙는다**(결정 72). 최상위 셸을 고르는 자리가
-                // 가로 탭 줄에서 여기로 왔고, 그 줄이 겸하던 타이틀바는 PageHeader가 받았다.
                 branch={
-                  item.key === "terminal" && terminalStands
+                  branches
                     ? {
                         open: terminalOpen,
                         count: topShells,
@@ -115,7 +119,7 @@ function Sidebar({
                     : undefined
                 }
               />
-              {item.key === "terminal" && terminalStands && (
+              {branches && (
                 // **들여쓰기가 한 단이다** — 여기서는 nav 항목 자신이 가지의 머리행을 겸하므로
                 // `ShellBranch`가 주는 한 단으로 끝난다. work 쪽은 두 단이다(work 행 아래에
                 // `terminal` 머리행이 따로 서고 셸은 그 아래다). 트리의 깊이가 실제로 그렇다.
@@ -124,7 +128,8 @@ function Sidebar({
                 </SectionBody>
               )}
             </Fragment>
-          ))}
+            );
+          })}
         </nav>
 
         <SidebarWorkList
@@ -199,26 +204,21 @@ function SidebarItem({
       </button>
       {branch && (
         <>
-          {/* 접힌 채로도 「몇 개가 돌고 있나」가 보여야 한다 — work의 가지 머리행과 같은 규칙이다. */}
-          {branch.count > 0 && (
-            <span className="shrink-0 text-[11.5px] tabular-nums text-tertiary">{branch.count}</span>
-          )}
+          {/* 접힌 채로도 「몇 개가 돌고 있나」가 보여야 한다 — 가지 머리행과 같은 조각이다. */}
+          {branch.count > 0 && <BranchCount count={branch.count} />}
           <button
             type="button"
             // 표식은 검사가 이 버튼을 정체성으로 집기 위한 것이다(sidebar-tree의 같은 주석).
             data-branch=""
             aria-expanded={branch.open}
-            aria-label={`${label} 가지 접기`}
+            // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은
+            // 누르면 무엇이 되는지를 말한다. 「접기」로 고정하면 이미 접힌 가지에서 거짓이다
+            // (WorksPage의 「작업 패널 펼치기」가 같은 규칙이다).
+            aria-label={`${label} 가지 ${branch.open ? "접기" : "펼치기"}`}
             onClick={branch.onToggle}
             className="icon-button-quiet shrink-0 text-tertiary"
           >
-            <ChevronDown
-              className={cn(
-                "size-3 transition-[rotate] duration-[180ms] ease-panel",
-                !branch.open && "-rotate-90",
-              )}
-              strokeWidth={2.2}
-            />
+            <BranchArrow open={branch.open} />
           </button>
         </>
       )}

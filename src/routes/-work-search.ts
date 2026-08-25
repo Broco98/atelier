@@ -11,6 +11,19 @@ import type { FileSearch } from "./-file-search";
 
 export type ViewTab = "spec" | "terminal";
 
+/**
+ * 주소가 가리키는 work. `/works/…`가 아니면 `null`이다.
+ *
+ * **디코드가 필요하다** — 슬러그에 한글이 들어간다. 읽는 자리가 둘이라(사이드바 목록의
+ * 강조, 가지가 자기 화면인지 아는 것) 한쪽만 디코드를 잊으면 한글 work에서만 조용히
+ * 어긋난다 — 화면으로는 「가끔 강조가 안 된다」로만 보인다.
+ */
+export function workSlugOf(pathname: string): string | null {
+  return pathname.startsWith("/works/")
+    ? decodeURIComponent(pathname.slice("/works/".length))
+    : null;
+}
+
 export interface WorkSearch extends FileSearch {
   /**
    * **`spec`은 주소에 쓰지 않는다.** 값이 없으면 spec이라는 규칙이 이미 있으므로

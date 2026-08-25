@@ -1,4 +1,4 @@
-/** `pty_spawn`의 응답. `shellName`은 탭 이름의 재료다(결정 31). */
+/** `pty_spawn`의 응답. `shellName`은 셸 행에 적히는 이름의 재료다(결정 31). */
 export interface PtySpawned {
   id: number;
   shellName: string;
