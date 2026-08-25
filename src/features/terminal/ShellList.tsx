@@ -19,10 +19,18 @@ interface ShellListProps {
    * 좁힌다. 가로 탭 줄(`ShellTabs`)과 같은 계약이다.
    */
   state: ShellsState;
-  /** 이 목록이 그리는 화면. 패널은 Work 화면에만 있으므로 여기 `null`은 오지 않는다. */
-  owner: string;
+  /** 이 목록이 그리는 화면. 최상위 터미널은 `null`이다 — nav `Terminal`의 가지가 그 자리다. */
+  owner: string | null;
   /** 이 Work의 프로젝트들. 둘 이상이면 `+`가 어디에 띄울지 물어본다(결정 24). */
   projects: string[];
+  /**
+   * **본문이 지금 이 화면을 보여주는가.** 켜진 행 표시를 그때만 준다.
+   *
+   * 사이드바에서는 **남의 work의 가지도 펼쳐 둘 수 있다**(결정 101). 그 가지의 활성 칸까지
+   * 강조하면 「지금 보고 있는 것」이 한 화면에 둘이 되어, 어느 셸이 본문에 서 있는지가
+   * 사라진다. `activeIdOf`는 그 work의 기억이지 지금 화면이 아니다 — 둘을 여기서 가른다.
+   */
+  showing: boolean;
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
@@ -40,7 +48,7 @@ interface ShellListProps {
 // (SpecTree.tsx의 파일 행) 그 구조를 그대로 따른다 — 배경을 가진 바깥 상자 + 형제 버튼 둘,
 // 선택은 `selected-row`, 비선택 hover는 `hover:bg-state-1`. 같은 패널 안에 서는 두 목록이
 // 다른 어휘를 쓰면 한쪽이 다른 종류의 것으로 읽힌다.
-function ShellList({ state, owner, projects, onSelect, onClose, onOpen }: ShellListProps) {
+function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen }: ShellListProps) {
   // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
   // 나오는 것이 결정 30의 전부다.
   const full = atCap(state);
@@ -53,9 +61,11 @@ function ShellList({ state, owner, projects, onSelect, onClose, onOpen }: ShellL
   const [picking, setPicking] = useState(false);
 
   return (
-    // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다. 규격은 spec 탭의
-    // 스크롤 상자(SpecSection)와 같은 값이다: 탭을 오갈 때 내용이 좌우로 밀리면 안 된다.
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+    // **상자를 갖지 않는다 — 행만 낸다.** 이 목록이 서는 자리가 둘이 되면서(패널의 세로
+    // 목록과 사이드바의 가지) 스크롤·여백·들여쓰기가 자리마다 다른 값이 됐다. 그 셋을
+    // 여기서 정하면 부르는 쪽마다 다시 뒤집어야 하므로, **자리는 부르는 쪽이 만들고
+    // 여기서는 행의 모양만** 정한다.
+    <>
       {/* 셸 0개인 화면이 실재한다 — 정상 종료한 셸이 목록에서 스스로 빠지기 때문이다
           (결정 48). 마지막 칸이 `exit`으로 사라진 자리에서는 새 셸이 저절로 뜨지 않으므로
           (`×`에서 물려받은 성질) 여기가 그때 보이는 전부다. 문구는 이 패널의 다른 빈 상태
@@ -65,7 +75,7 @@ function ShellList({ state, owner, projects, onSelect, onClose, onOpen }: ShellL
       )}
 
       {shells.map((shell) => {
-        const active = shell.id === activeId;
+        const active = showing && shell.id === activeId;
         const name = shellRowName(shell);
 
         return (
@@ -160,7 +170,7 @@ function ShellList({ state, owner, projects, onSelect, onClose, onOpen }: ShellL
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 

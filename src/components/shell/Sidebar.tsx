@@ -1,7 +1,11 @@
 import { useRef } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
+import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import ShellBranch from "@/features/terminal/ShellBranch";
+import { shellCountsOf } from "@/features/terminal/shell-registry";
+import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
@@ -34,6 +38,10 @@ function Sidebar({
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
   const asideRef = useRef<HTMLElement>(null);
+  // **어느 work에 가지가 서는가만 읽는다**(결정 71). 셀렉터가 얕은 비교를 타므로 셸이
+  // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
+  // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
+  const shellCounts = useStore(terminalStore, shellCountsOf, shallow);
 
   return (
     <aside
@@ -82,7 +90,12 @@ function Sidebar({
           ))}
         </nav>
 
-        <SidebarWorkList open={open} boundaryRef={asideRef} />
+        <SidebarWorkList
+          open={open}
+          boundaryRef={asideRef}
+          shellCounts={shellCounts}
+          renderShells={(work) => <ShellBranch work={work} />}
+        />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
             `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날

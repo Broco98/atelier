@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
+import type { ViewTab } from "@/routes/-work-search";
 import type { WorkView } from "./types";
 
 // 사이드바 목록이 **그리는 것**을 본다. 어느 구역에 무엇이 놓이는지는 work-sections.test.ts가
@@ -24,40 +26,67 @@ const works = (...raws: string[]) =>
 
 const ALL: SectionsOpen = { pinned: true, works: true, drafts: true };
 
-function render(list: WorkView[], open: SectionsOpen = ALL): string {
+// 트리(결정 71·73·107)를 함께 본다. 기본값은 **가지가 하나도 안 서는 상태**다 — 고른 work도
+// 셸도 없으면 목록은 판 03까지의 모습 그대로이고, 아래 구획 검사들이 그 위에서 돈다.
+function render(
+  list: WorkView[],
+  open: SectionsOpen = ALL,
+  {
+    selectedSlug = null,
+    tab = "spec" as ViewTab,
+    shellCounts = {},
+    branchOpen = () => false,
+    renderShells = (work: WorkView) => <i data-shells={work.slug} />,
+  }: {
+    selectedSlug?: string | null;
+    tab?: ViewTab;
+    shellCounts?: Record<string, number>;
+    branchOpen?: (slug: string) => boolean;
+    renderShells?: (work: WorkView) => ReactNode;
+  } = {},
+): string {
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections(list, open)}
       open={open}
-      selectedSlug={null}
+      selectedSlug={selectedSlug}
+      tab={tab}
+      shellCounts={shellCounts}
+      branchOpen={branchOpen}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
+      onToggleBranch={() => {}}
+      onOpenSpec={() => {}}
+      renderShells={renderShells}
     />,
   );
 }
 
-// 구획 헤더 = aria-expanded를 가진 버튼. 라벨·펼침·개수를 **한 헤더 안에서** 함께 읽는다.
-// 마크업 전체에서 문자열만 찾으면 "고정"이 핀 버튼의 aria-label에도 있어서, 고정 구획이
-// 통째로 사라져도 초록이 된다.
-//
-// **구획 헤더의 모양(라벨 span + 개수 span)에 맞는 것만 센다.** 판 04가 이 서브트리 안에
-// 접히는 `terminal` 가지를 넣는데(결정 107), 그것도 `aria-expanded` 버튼이라 모양을 안 보면
-// 여기서 non-null 단언이 `TypeError`로 죽는다 — 결정 82·85·108과 무관한 실패가 되고, 그
-// 메시지는 무엇이 깨졌는지 말해 주지 않는다. 걸러도 그물은 안 샌다: 아래 검사들이 헤더
-// **목록 전체**를 `toEqual`로 못박으므로, 진짜 헤더가 빠지면 목록이 달라져 빨개진다.
+// 구획 헤더와 가지 머리행은 **표식으로** 가른다 — 둘 다 `aria-expanded`를 가진 버튼이라
+// 「접히는 버튼」이라는 자리만으로는 갈리지 않는다. 모양(클래스 문자열)으로 가르면 규격을
+// 손보는 날 검사가 조용히 새므로, 각자 `data-section` / `data-branch`를 달고 있다.
+const buttonsOf = (markup: string, marker: string) =>
+  markup.match(new RegExp(`<button[^>]*${marker}[^>]*>[\\s\\S]*?</button>`, "g")) ?? [];
+const spansOf = (button: string) =>
+  [...button.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
+
+// 라벨·펼침·개수를 **한 헤더 안에서** 함께 읽는다. 마크업 전체에서 문자열만 찾으면
+// "고정"이 핀 버튼의 aria-label에도 있어서, 고정 구획이 통째로 사라져도 초록이 된다.
 const headersOf = (markup: string) =>
-  [...markup.matchAll(/<button type="button" aria-expanded="(true|false)"[^>]*>(.*?)<\/button>/g)]
-    .map((m) => {
-      const label = m[2].match(/^<span[^>]*>([^<]*)</);
-      const count = m[2].match(/<span[^>]*>([^<]*)<\/span>$/);
-      return label && count ? { open: m[1] === "true", label: label[1], count: count[1] } : null;
-    })
-    .filter((one) => one !== null);
+  buttonsOf(markup, 'data-section=""').map((button) => {
+    const spans = spansOf(button);
+    return {
+      open: /aria-expanded="true"/.test(button),
+      label: spans[0],
+      count: spans[spans.length - 1],
+    };
+  });
 
 // 접기 상자들 — 헤더와 같은 순서로 나온다. 접힌 것은 grid-template-rows가 0fr이고 inert다.
+// 가지도 같은 상자를 쓰므로(공용 SectionBody) 가지가 서면 여기 함께 잡힌다.
 const bodiesOf = (markup: string) => markup.match(/<div (?:inert="" )?class="grid shrink-0[^"]*">/g) ?? [];
 
 // 핀 버튼 하나를 통째로 잘라낸다 — aria-pressed를 가진 버튼은 이것뿐이고 안에 svg만 있어
@@ -71,19 +100,12 @@ const pinsOf = (markup: string) =>
 // 마크업 전체에서 제목을 세면 고정된 것이 두 구획에 겹쳐 나와도 걸리지 않는다.
 const rowsBySection = (markup: string) =>
   markup
-    .split(/(?=<button type="button" aria-expanded=)/)
-    .filter((chunk) => chunk.startsWith("<button"))
-    .map((chunk) => {
-      // 위 `headersOf`와 같은 이유로 모양을 본다 — 낯선 `aria-expanded` 버튼에 안 죽는다.
-      const label = chunk.match(/^<button[^>]*><span[^>]*>([^<]*)</);
-      return label
-        ? {
-            label: label[1],
-            rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
-          }
-        : null;
-    })
-    .filter((one) => one !== null);
+    .split(/(?=<button[^>]*data-section="")/)
+    .filter((chunk) => /^<button[^>]*data-section=""/.test(chunk))
+    .map((chunk) => ({
+      label: spansOf(chunk.slice(0, chunk.indexOf("</button>")))[0],
+      rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
+    }));
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
@@ -198,5 +220,58 @@ describe("구획 접기", () => {
     const markup = render(works("pin:가", "pin:나", "다"), { ...ALL, pinned: false });
     expect(headersOf(markup)[0].count).toBe("2");
     expect(pinsOf(markup)).toHaveLength(3);
+  });
+});
+
+describe("work 아래 트리", () => {
+  // 결정 71~73·107. 셸을 고르는 자리가 패널에서 사이드바로 오면서 목록이 **트리**가 됐다.
+  // 여기서 보는 것은 「어디에 무엇이 서는가」뿐이다 — 셸 행의 모양은 ShellList.test.tsx가 보고,
+  // 그 목록이 실제로 스토어를 읽는 자리(ShellBranch)는 이 파일에 오지 않는다.
+  const branchesOf = (markup: string) => buttonsOf(markup, 'data-branch=""');
+  const countOf = (button: string) => spansOf(button).slice(-1)[0];
+
+  it("가지는 고른 work **또는** 셸이 있는 work에 선다", () => {
+    // 결정 73. 합집합이라야 「다른 work에서 `claude`가 돌고 있다」가 화면에서 사라지지 않는다.
+    const markup = render(works("가", "나", "다"), ALL, {
+      selectedSlug: "나",
+      shellCounts: { 가: 2 },
+    });
+    expect(branchesOf(markup)).toHaveLength(2);
+    // 셸도 없고 고르지도 않은 `다`에는 안 선다 — 가지의 속을 만드는 슬롯도 안 불린다.
+    expect(markup).toContain('data-shells="가"');
+    expect(markup).toContain('data-shells="나"');
+    expect(markup).not.toContain('data-shells="다"');
+  });
+
+  it("`spec` 잎은 고른 work에만 선다", () => {
+    // 남의 work의 문서는 그 work로 가야 뜻이 있다. work마다 서면 트리가 목록이 아니라 벽이 된다.
+    const markup = render(works("가", "나"), ALL, { selectedSlug: "나", shellCounts: { 가: 1 } });
+    expect(markup.match(/data-leaf="spec"/g)).toHaveLength(1);
+  });
+
+  it("`spec` 잎은 본문이 문서일 때만 켜진다", () => {
+    // 헤더의 `spec｜terminal` 토글이 하던 말을 이 잎이 물려받는다(결정 70).
+    const leaf = (tab: ViewTab) =>
+      buttonsOf(render(works("가"), ALL, { selectedSlug: "가", tab }), 'data-leaf="spec"')[0];
+    expect(leaf("spec")).toContain("selected-row");
+    expect(leaf("terminal")).not.toContain("selected-row");
+  });
+
+  it("가지 머리행이 그 work의 셸 개수를 적는다", () => {
+    // 「안 골랐지만 셸이 산다」를 말하는 것이 이 숫자다.
+    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 3, 나: 1 } });
+    expect(branchesOf(markup).map(countOf)).toEqual(["3", "1"]);
+  });
+
+  it("접힌 가지는 그렇다고 말하고 속이 잠긴다", () => {
+    // 결정 107. 접혀도 속은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 inert다.
+    // 구획 셋이 전부 펼쳐진 상태라 0fr 상자는 이 가지의 것 하나뿐이다.
+    const shut = render(works("가"), ALL, { selectedSlug: "가", branchOpen: () => false });
+    expect(branchesOf(shut)[0]).toContain('aria-expanded="false"');
+    expect(bodiesOf(shut).filter((body) => body.includes("grid-rows-[0fr]"))).toHaveLength(1);
+
+    const open = render(works("가"), ALL, { selectedSlug: "가", branchOpen: () => true });
+    expect(branchesOf(open)[0]).toContain('aria-expanded="true"');
+    expect(bodiesOf(open).filter((body) => body.includes("grid-rows-[0fr]"))).toHaveLength(0);
   });
 });

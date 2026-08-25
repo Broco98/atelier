@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown, Pin } from "lucide-react";
+import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { BranchHeader, SectionBody, TreeLeaf } from "@/components/shell/sidebar-tree";
+import { tabSearch, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -25,11 +27,23 @@ const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 function SidebarWorkList({
   open,
   boundaryRef,
+  shellCounts,
+  renderShells,
 }: {
   open: boolean;
   // 호버 카드가 비켜야 할 상자 — 사이드바 자신이다. 행의 오른쪽 끝은 거터와 스크롤바 때문에
   // 사이드바 끝보다 8~19px 안쪽이라, 행만 기준으로 삼으면 카드가 사이드바에 붙거나 파고든다.
   boundaryRef: RefObject<HTMLElement | null>;
+  /**
+   * work별 셸 개수 — 어느 work에 가지가 서는가를 정한다(결정 73).
+   *
+   * **이 파일은 터미널 스토어를 모른다.** 개수도 가지의 속도 위(Sidebar)에서 내려온다:
+   * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
+   * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx).
+   */
+  shellCounts: Record<string, number>;
+  /** 가지의 속. 터미널 스토어를 구독하는 자리라 슬롯으로 받는다(ShellBranch). */
+  renderShells: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
@@ -62,6 +76,13 @@ function SidebarWorkList({
         ? decodeURIComponent(state.location.pathname.slice("/works/".length))
         : null,
   });
+  // 본문이 지금 무엇인가 — 고른 work의 `spec` 잎이 켜지는지가 이것으로 갈린다.
+  // `openSlug`와 **따로** 구독한다: 객체 하나로 묶어 돌려주면 매번 새 객체라 걸러내지 못해
+  // 주소가 바뀔 때마다 목록 전체가 다시 그려진다(AppShell의 같은 주석).
+  const tab: ViewTab = useRouterState({
+    select: (state) => ((state.location.search as { tab?: string }).tab === "terminal" ? "terminal" : "spec"),
+  });
+
   const sectionsOpen: SectionsOpen = {
     pinned: pinnedOpen,
     works: worksOpen,
@@ -117,6 +138,55 @@ function SidebarWorkList({
     void navigate({ to: "/works/$slug", params: { slug } });
   };
 
+  /**
+   * 가지가 펼쳐졌는가 — **세션 메모리다**(결정 107). 앱을 껐다 켜면 기본값으로 돌아온다.
+   * 구획 접힘(`sidebar-*-open`)이 localStorage에 사는 것과 갈리는 자리인데, 그쪽은 「설정」이고
+   * 이쪽은 「지금 무엇을 펼쳐 두었나」라는 위치다(shell-store의 수명 구분과 같은 규칙).
+   *
+   * 기록에 없는 슬러그는 **접힌 것**이다. 자동 펼침은 그 work을 **처음 고를 때 한 번**이고
+   * (아래 이펙트), 사람이 접으면 기록에 `false`가 남아 다시 골라도 접힌 채다.
+   */
+  const [branchOpen, setBranchOpen] = useState<Record<string, boolean>>({});
+  const isBranchOpen = (slug: string) => branchOpen[slug] === true;
+
+  useEffect(() => {
+    if (selectedSlug === null) return;
+    setBranchOpen((prev) => (selectedSlug in prev ? prev : { ...prev, [selectedSlug]: true }));
+  }, [selectedSlug]);
+
+  /**
+   * `terminal` 가지의 머리행을 눌렀다.
+   *
+   * **남의 work의 것이면 그 work로 간다**(결정 101) — 사이드바 규칙이 그 하나로 줄었다.
+   * 고른 work의 것이면 접기 토글이다(결정 90·107).
+   */
+  const toggleBranch = (work: WorkView) => {
+    if (work.slug !== selectedSlug) {
+      goTo(work.slug);
+      setBranchOpen((prev) => ({ ...prev, [work.slug]: true }));
+      return;
+    }
+    setBranchOpen((prev) => ({ ...prev, [work.slug]: !isBranchOpen(work.slug) }));
+  };
+
+  /**
+   * `spec` 잎을 눌렀다 — 본문이 문서로 돌아온다. 이 잎은 **고른 work에만** 서므로
+   * 여기 오는 것은 늘 지금 보고 있는 work이다.
+   *
+   * **`tabSearch`로 갈아 끼운다 — 객체를 주지 않는다.** 이 라우터는 `search`에 객체를 주면
+   * 기존 search를 통째로 버려서 보던 문서(`file`)가 조용히 떨어진다(결정 15). `replace`인
+   * 것도 탭 전환과 같은 이유다(결정 13).
+   */
+  const openSpec = (work: WorkView) => {
+    closeCard();
+    void navigate({
+      to: "/works/$slug",
+      params: { slug: work.slug },
+      search: (prev) => tabSearch(prev, "spec"),
+      replace: true,
+    });
+  };
+
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
   // (결정 82) — 앵커 행이 사라지면 카드가 허공에 남는다.
   const togglePin = (work: WorkView) => {
@@ -166,11 +236,17 @@ function SidebarWorkList({
             sections={sections}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
+            tab={tab}
+            shellCounts={shellCounts}
+            branchOpen={isBranchOpen}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
+            onToggleBranch={toggleBranch}
+            onOpenSpec={openSpec}
+            renderShells={renderShells}
           />
         </div>
       </div>
@@ -201,22 +277,52 @@ export function WorkSectionList({
   sections,
   open,
   selectedSlug,
+  tab,
+  shellCounts,
+  branchOpen,
   onToggleSection,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
+  onToggleBranch,
+  onOpenSpec,
+  renderShells,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
   selectedSlug: string | null;
+  tab: ViewTab;
+  shellCounts: Record<string, number>;
+  branchOpen: (slug: string) => boolean;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
+  onToggleBranch: (work: WorkView) => void;
+  onOpenSpec: (work: WorkView) => void;
+  renderShells: (work: WorkView) => ReactNode;
 }) {
   const { pinned, main, drafts } = sections;
+  // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 가지를 붙이는 자리가 셋이 된다.
+  const node = (work: WorkView) => (
+    <WorkNode
+      key={work.slug}
+      work={work}
+      active={work.slug === selectedSlug}
+      tab={tab}
+      shellCount={shellCounts[work.slug] ?? 0}
+      branchOpen={branchOpen(work.slug)}
+      onOpen={onOpen}
+      onHover={onHover}
+      onLeave={onLeave}
+      onTogglePin={onTogglePin}
+      onToggleBranch={onToggleBranch}
+      onOpenSpec={onOpenSpec}
+      shells={renderShells(work)}
+    />
+  );
   return (
     <>
       {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
@@ -229,19 +335,7 @@ export function WorkSectionList({
             count={pinned.length}
             onToggle={() => onToggleSection("pinned")}
           />
-          <SectionBody open={open.pinned}>
-            {pinned.map((work) => (
-              <WorkRow
-                key={work.slug}
-                work={work}
-                active={work.slug === selectedSlug}
-                onOpen={onOpen}
-                onHover={onHover}
-                onLeave={onLeave}
-                onTogglePin={onTogglePin}
-              />
-            ))}
-          </SectionBody>
+          <SectionBody open={open.pinned}>{pinned.map(node)}</SectionBody>
         </>
       )}
 
@@ -259,17 +353,7 @@ export function WorkSectionList({
             {emptyMainNotice(sections)}
           </span>
         ) : (
-          main.map((work) => (
-            <WorkRow
-              key={work.slug}
-              work={work}
-              active={work.slug === selectedSlug}
-              onOpen={onOpen}
-              onHover={onHover}
-              onLeave={onLeave}
-              onTogglePin={onTogglePin}
-            />
-          ))
+          main.map(node)
         )}
       </SectionBody>
 
@@ -283,20 +367,81 @@ export function WorkSectionList({
             count={drafts.length}
             onToggle={() => onToggleSection("drafts")}
           />
-          <SectionBody open={open.drafts}>
-            {drafts.map((work) => (
-              <WorkRow
-                key={work.slug}
-                work={work}
-                active={work.slug === selectedSlug}
-                onOpen={onOpen}
-                onHover={onHover}
-                onLeave={onLeave}
-                onTogglePin={onTogglePin}
-              />
-            ))}
-          </SectionBody>
+          <SectionBody open={open.drafts}>{drafts.map(node)}</SectionBody>
         </>
+      )}
+    </>
+  );
+}
+
+/**
+ * work 한 줄과 그 아래 트리(결정 71·73).
+ *
+ * **가지가 서는 조건은 합집합이다** — 지금 고른 work **또는** 셸이 하나라도 있는 work.
+ * 뒤쪽이 있어야 「다른 work에서 `claude`가 돌고 있다」가 화면에서 사라지지 않는다.
+ * `spec` 잎은 **고른 work에만** 선다: 남의 work의 문서는 그 work로 가야 뜻이 있고, 셋 넷의
+ * work마다 `spec`이 서면 트리가 목록이 아니라 벽이 된다.
+ *
+ * 가지의 **속**은 슬롯으로 받는다(`shells`) — 터미널 스토어를 구독하는 자리를 그 한 곳으로
+ * 좁히기 위해서다(ShellBranch 머리말). 여기서는 그것을 어디에 놓을지만 정한다.
+ */
+function WorkNode({
+  work,
+  active,
+  tab,
+  shellCount,
+  branchOpen,
+  onOpen,
+  onHover,
+  onLeave,
+  onTogglePin,
+  onToggleBranch,
+  onOpenSpec,
+  shells,
+}: {
+  work: WorkView;
+  active: boolean;
+  tab: ViewTab;
+  shellCount: number;
+  branchOpen: boolean;
+  onOpen: (slug: string) => void;
+  onHover: (slug: string, row: HTMLElement) => void;
+  onLeave: () => void;
+  onTogglePin: (work: WorkView) => void;
+  onToggleBranch: (work: WorkView) => void;
+  onOpenSpec: (work: WorkView) => void;
+  shells: ReactNode;
+}) {
+  const stands = active || shellCount > 0;
+  return (
+    <>
+      <WorkRow
+        work={work}
+        active={active}
+        onOpen={onOpen}
+        onHover={onHover}
+        onLeave={onLeave}
+        onTogglePin={onTogglePin}
+      />
+      {stands && (
+        // 들여쓰기는 이 상자 하나가 준다 — 잎과 가지는 자기 여백만 갖는다.
+        <div className="flex flex-col gap-[3px] pl-[18px]">
+          {active && (
+            <TreeLeaf
+              icon={File}
+              label="spec"
+              active={tab === "spec"}
+              onClick={() => onOpenSpec(work)}
+            />
+          )}
+          <BranchHeader
+            label="terminal"
+            count={shellCount}
+            open={branchOpen}
+            onToggle={() => onToggleBranch(work)}
+          />
+          <SectionBody open={branchOpen}>{shells}</SectionBody>
+        </div>
       )}
     </>
   );
@@ -391,6 +536,10 @@ function SectionHeader({
   return (
     <button
       type="button"
+      // 표식은 검사가 이 버튼을 **정체성으로** 집기 위한 것이다. 판 04가 이 서브트리 안에
+      // `aria-expanded`를 가진 가지 머리행을 넣으면서, 「접히는 버튼」이라는 자리만으로는
+      // 구획 헤더를 집을 수 없게 됐다 (TerminalPane의 `data-shell-host`와 같은 이유).
+      data-section=""
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
@@ -413,27 +562,6 @@ function SectionHeader({
       />
       <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary">{count}</span>
     </button>
-  );
-}
-
-// 접기 애니메이션 — grid-template-rows를 0fr↔1fr로 보간한다. height:auto는 트랜지션되지 않고,
-// max-height는 목록 길이를 추정해야 해서 항목이 많을수록 타이밍이 어긋난다.
-//
-// 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
-// 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
-function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
-  return (
-    <div
-      inert={!open}
-      className={cn(
-        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
-        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-      )}
-    >
-      <div className="overflow-hidden">
-        <div className="flex flex-col gap-[3px] pt-[3px]">{children}</div>
-      </div>
-    </div>
   );
 }
 

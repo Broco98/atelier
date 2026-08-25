@@ -477,9 +477,17 @@ function PanelShells({
 }) {
   const state = useStore(terminalStore, (whole) => whole);
   return (
+    // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다. 규격은 spec 탭의
+    // 스크롤 상자(SpecSection)와 같은 값이다: 탭을 오갈 때 내용이 좌우로 밀리면 안 된다.
+    // **상자를 여기서 만드는 것**은 같은 목록이 사이드바 가지에도 서기 때문이다(결정 71) —
+    // 그쪽은 스크롤도 여백도 다른 값이라, 자리는 부르는 쪽이 만든다(ShellList 머리말).
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
     <ShellList
       state={state}
       owner={work.slug}
+      // 패널의 목록은 **보고 있는 work의 것**이라 늘 지금 화면이다 — 남의 work의 가지를
+      // 펼쳐 둘 수 있는 사이드바와 갈리는 자리다.
+      showing
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. TerminalPane이 같은 이유로
@@ -500,6 +508,7 @@ function PanelShells({
         if (origin) openNewShell(origin);
       }}
     />
+    </div>
   );
 }
 
