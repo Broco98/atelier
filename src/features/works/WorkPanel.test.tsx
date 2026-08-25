@@ -39,12 +39,6 @@ const work: WorkView = {
 // source는 소스 토글의 상태다. 이 패널은 그것을 소유하지 않고 **보여주기만** 하므로
 // 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 화면(WorksPage) 쪽 계약이다.
 // on은 사람이 정한 켜짐이고, locked는 이 파일에서 토글이 먹지 않는다는 뜻이다. **둘은 독립이다.**
-//
-// **셸 목록은 슬롯이라 여기서는 표식 하나로 대신한다.** 이 패널은 터미널을 모른다 —
-// 구독하는 자리가 화면 쪽 가지 하나이기 때문이다(WorkPanel의 shellList 주석). 그래서
-// 여기서 볼 수 있는 것은 「그 슬롯이 `shell` 탭 자리에 마운트돼 있는가」뿐이고, 행이
-// 무엇을 적는지는 ShellList.test.tsx가 본다.
-const SHELL_SLOT = "셸-목록-자리";
 
 function render(
   open: boolean,
@@ -67,7 +61,6 @@ function render(
         sourceLocked={source.locked}
         onToggleSource={() => {}}
         open={open}
-        shellList={<div>{SHELL_SLOT}</div>}
       />
     </QueryClientProvider>,
   );
@@ -167,38 +160,38 @@ describe("WorkPanel 폭 조절", () => {
 // 탭 전환 자체(클릭)는 여기서 볼 수 없다 — 이 seam은 정적 마크업이라 이벤트가 돌지 않는다.
 // 대신 **첫 화면의 구조**를 못 박는다: 탭 바가 서 있는가, 세 탭이 함께 마운트돼 있는가,
 // 스크롤 경계가 여전히 패널 카드에 있는가.
-describe("WorkPanel 세 탭", () => {
+describe("WorkPanel 두 탭", () => {
   beforeEach(stubEmptyStorage);
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("맨 위가 spec | shell | info 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
+  it("맨 위가 spec | info 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
     const markup = render(true);
     // 켜짐·꺼짐 둘 다 기존 토글 어휘를 그대로 쓴다 — 새 토큰을 만들지 않았다
     expect(markup).toMatch(/<button[^>]*\btoggle-on\b[^>]*>spec</);
-    // 라벨은 **소문자 영어다**(결정 41). `정보`·`세션`으로 되돌아오면 헤더 뷰 탭과 같은
-    // 44px 층에서 언어가 갈린다 — 두 줄은 한 가족으로 읽혀야 한다. `세션`은 특히
+    // 라벨은 **소문자 영어다**(결정 41). `정보`·`세션`으로 되돌아오면 사이드바 가지의
+    // `spec`·`terminal`과 언어가 갈린다 — 그 셋은 한 가족으로 읽혀야 한다. `세션`은 특히
     // 앱의 말이 아니다(CONTEXT.md) — `claude`가 자기 쪽에 저장하는 대화 몫이다.
-    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>shell</);
     expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>info</);
     expect(markup).not.toMatch(/<button[^>]*>정보</);
     expect(markup).not.toMatch(/<button[^>]*>세션</);
   });
 
-  it("순서가 spec → shell → info다", () => {
-    // 결정 41이 정한 순서다. `shell`이 끝으로 밀리면 자주 오가는 자리가 가장 멀어진다.
+  it("`shell` 탭이 없다 — 셸을 고르는 자리는 사이드바 가지다", () => {
+    // 결정 71. 되살아나면 **같은 것을 두 자리에서 고르게 되고**, 화면으로는 둘 다 멀쩡해
+    // 보여서 어느 쪽이 지금인지가 안 드러난다. 앞 판이 가로 탭 줄에서 겪은 그 병이다.
+    const markup = render(true);
+    expect(markup).not.toMatch(/<button[^>]*>shell</);
+    // 안 보이는 탭까지 마운트돼 있으므로 `+`도 함께 딸려 오면 안 된다.
+    expect(markup).not.toContain('aria-label="셸 열기"');
+  });
+
+  it("순서가 spec → info다", () => {
     const markup = render(true);
     const at = (label: string) => markup.search(new RegExp(`<button[^>]*>${label}<`));
     expect(at("spec")).toBeGreaterThan(-1);
-    expect(at("shell")).toBeGreaterThan(at("spec"));
-    expect(at("info")).toBeGreaterThan(at("shell"));
-  });
-
-  it("셸 목록은 슬롯으로 받아 그 자리에 세운다", () => {
-    // 이 패널은 터미널을 모른다 — 구독을 여기 두면 셸이 프롬프트마다 쏘는 타이틀에
-    // spec 트리까지 함께 다시 그려진다. 슬롯이 실제로 그려지는지만 본다.
-    expect(render(true)).toContain(SHELL_SLOT);
+    expect(at("info")).toBeGreaterThan(at("spec"));
   });
 
   it("탭 규격이 헤더 뷰 탭과 같은 가족이다", () => {
@@ -218,11 +211,8 @@ describe("WorkPanel 세 탭", () => {
     // info 탭은 지금 안 보이지만 마크업에 있다. 언마운트하면 메타를 보고 spec으로
     // 돌아왔을 때 접어둔 판이 펴져 있다 (결정 13).
     expect(markup).toContain("feat/some-work");
-    // 셸 목록도 마찬가지다 — 여기서 언마운트하면 `+`가 연 프로젝트 메뉴가 탭을 오갈 때
-    // 닫히고, 무엇보다 목록이 매번 새로 서므로 곧 붙을 스크롤 위치가 유지되지 않는다.
-    expect(markup).toContain(SHELL_SLOT);
-    // 안 보이는 탭이 둘이다 — `cn`이 display 충돌을 정리해 `contents`가 `hidden`으로 접힌다.
-    expect(markup.match(/class="hidden"/g)).toHaveLength(2);
+    // 안 보이는 탭이 하나다 — `cn`이 display 충돌을 정리해 `contents`가 `hidden`으로 접힌다.
+    expect(markup.match(/class="hidden"/g)).toHaveLength(1);
   });
 
   it("탭 껍데기가 패널 카드의 flex 컨텍스트를 통과시킨다", () => {
