@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
-import { tabSearch } from "./-work-search";
+import { recallTab, rememberTab, tabSearch } from "./-work-search";
 import type { ViewTab } from "./-work-search";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
@@ -24,11 +24,18 @@ function WorksView({
 
   const exists = slug !== null && works.some((work) => work.slug === slug);
 
-  // 작업을 옮길 때 search를 비운다 — 문서 경로는 그 작업 안에서만 뜻이 있어서,
-  // 딸려가면 새 작업에 없는 파일을 가리킨 채 주소만 남는다.
+  // 작업을 옮길 때 `file`은 떨어뜨리고 `tab`은 **기억에서 되살린다**(결정 77). 문서 경로는
+  // 그 작업 안에서만 뜻이 있어서 딸려가면 새 작업에 없는 파일을 가리킨 채 주소만 남지만,
+  // 「무엇을 보고 있었나」는 어느 작업에나 있는 값이다. 주소를 짓는 자리가 여기와
+  // 사이드바 둘이라 씨앗을 `-work-search.ts` 한 곳에 뒀다.
   const goTo = (next: string | null, replace = false) =>
     void (next
-      ? navigate({ to: "/works/$slug", params: { slug: next }, search: {}, replace })
+      ? navigate({
+          to: "/works/$slug",
+          params: { slug: next },
+          search: tabSearch({}, recallTab(next)),
+          replace,
+        })
       : navigate({ to: "/works", replace }));
 
   // 문서 전환. **트리 훑기는 히스토리를 만들지 않고(replace), 링크를 따라간 것은 만든다.**
@@ -63,6 +70,13 @@ function WorksView({
     },
     [navigate, slug],
   );
+
+  // **보던 본문을 적어 둔다**(결정 77). 쓰는 자리가 여기 하나인 것은 주소가 정본이기
+  // 때문이다 — 탭을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab으로 넷인데,
+  // 그 넷이 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 넷을 다 덮는다.
+  useEffect(() => {
+    if (slug !== null && exists) rememberTab(slug, tab);
+  }, [slug, exists, tab]);
 
   // 주소와 화면을 목록 변화에 맞춰 계속 붙여 둔다.
   // beforeLoad는 이동할 때만 돌기 때문에, 머물러 있는 동안 목록이 바뀌어 생기는 어긋남은

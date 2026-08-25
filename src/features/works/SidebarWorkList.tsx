@@ -4,7 +4,7 @@ import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { BranchHeader, SectionBody, TreeLeaf } from "@/components/shell/sidebar-tree";
-import { tabSearch, type ViewTab } from "@/routes/-work-search";
+import { recallTab, tabSearch, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -133,9 +133,16 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
+  // 작업을 옮긴다. **보던 본문을 기억에서 되살린다**(결정 77) — 터미널을 보다 옆 작업을
+  // 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이 없애려는 것이다.
+  // `file`은 딸려가지 않는다: `tabSearch`가 빈 객체 위에 얹으므로 이전 주소가 통째로 버려진다.
   const goTo = (slug: string) => {
     closeCard();
-    void navigate({ to: "/works/$slug", params: { slug } });
+    void navigate({
+      to: "/works/$slug",
+      params: { slug },
+      search: tabSearch({}, recallTab(slug)),
+    });
   };
 
   /**
