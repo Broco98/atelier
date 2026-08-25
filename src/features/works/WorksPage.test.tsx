@@ -554,10 +554,25 @@ describe("WorksPage ⌘Enter", () => {
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
     // 셸이 0개인 화면에서 ⌘T가 다시 안 먹는다 — 결정 93이 없애려던 증상 그 자체다.
+    // 이 화면이 window에서 듣는 자리는 **셋이다** — ⌘Enter(패널 접기) · ⌘T(셸 열기) ·
+    // 본문을 옮기는 ⌘1~9·⌃Tab(결정 78·79). 줄어들면 그중 한 벌이 통째로 죽은 것이다.
     expect(
       countOf(worksPage, 'window.addEventListener("keydown", onKeyDown);'),
-      "window에서 키를 듣는 자리가 둘이 아니다 — ⌘Enter와 ⌘T",
-    ).toBe(2);
+      "window에서 키를 듣는 자리가 셋이 아니다 — ⌘Enter · ⌘T · ⌘1~9·⌃Tab",
+    ).toBe(3);
+  });
+
+  // 결정 78·109. ⌘1은 spec, ⌘2~9는 **이 화면의** 셸이다. 클릭도 키도 이 seam에서는 못
+  // 거니(정적 마크업이다) 배선을 소스에서 본다 — 표현식을 통째로 못박는다.
+  it("⌘1은 spec, ⌘2~9는 이 화면의 셸이다", () => {
+    const worksPage = source("WorksPage.tsx");
+    expect(worksPage).toContain("const nav = shellNavFromWindow(e);");
+    // 세는 것이 이 work의 셸이 아니면, 사이드바에 펼쳐 둔 **남의 셸까지** 세게 된다.
+    expect(worksPage).toContain("const shells = shellsOf(state, panelWork.slug);");
+    // ⌘1만 spec이고 나머지는 한 칸 밀린다. 안 밀면 ⌘1이 spec이면서 첫 셸이 되고,
+    // 마지막 셸은 영영 못 고른다.
+    expect(worksPage).toContain('if (nav.n === 1) {\n          onSelectTab("spec");');
+    expect(worksPage).toContain("const shell = shells[nav.n - 2];");
   });
 
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {

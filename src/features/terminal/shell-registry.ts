@@ -346,8 +346,13 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
 
-/** 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작. */
-export type ShellHotkey = "new" | "close";
+/**
+ * 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작.
+ *
+ * `"app"`은 「앱 몫이되 **이 셸이 하지 않는다**」다 — 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
+ * 셸은 그 키를 타이핑하지 않고 그대로 위로 흘려보내고 window에서 듣는 자리가 처리한다.
+ */
+export type ShellHotkey = "new" | "close" | "app";
 
 /**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
@@ -377,10 +382,99 @@ export function shellHotkey(event: {
   shiftKey: boolean;
 }): ShellHotkey | null {
   if (event.type !== "keydown") return null;
+  // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
+  // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
+  // 처리는 여기서 하지 않는다 — 어느 본문으로 갈지는 화면이 알고, 셸은 그것을 모른다.
+  if (shellNavKey(event) !== null) return "app";
   if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
   if (event.code === "KeyT") return "new";
   if (event.code === "KeyW") return "close";
   return null;
+}
+
+/** 본문을 옮기는 키가 가리키는 것. `index`는 1부터 세고, `cycle`은 앞뒤 한 칸이다. */
+export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 | -1 };
+
+/**
+ * ⌘1~9와 ⌃Tab 짝(결정 78·79·80).
+ *
+ * ⌘1~9는 **한 화면 안에서 본문을 옮긴다** — 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다.
+ * 무엇을 세는지는 부르는 화면이 정한다: work 화면은 ⌘1이 spec이고 ⌘2~9가 그 화면의 셸,
+ * 최상위 터미널은 spec이 없어 ⌘1부터가 셸이다.
+ *
+ * **⌃Tab 짝만이 결정 29의 넷째 예외다**(결정 79). ⌃는 셸 몫이라는 것이 그 결정인데,
+ * ⌃Tab은 셸도 TUI도 안 쓰고 탭 순회는 이 저장소의 다른 키들과 같은 관용구다. ⌃⇧Tab은
+ * 수식키가 둘이라 `shellHotkey`의 「수식키가 더 붙으면 셸 몫」과 부딪치므로 **이 짝에
+ * 한해** 예외로 못박는다 — 그 규칙 자체를 넓히지 않는다.
+ *
+ * **`key`가 아니라 `code`로 본다.** `key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면
+ * 같은 키가 자모로 온다(`shellHotkey`와 같은 이유).
+ */
+export function shellNavKey(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): ShellNav | null {
+  if (event.type !== "keydown") return null;
+  if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
+    return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
+  }
+  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
+  const digit = /^Digit([1-9])$/.exec(event.code);
+  return digit ? { kind: "index", n: Number(digit[1]) } : null;
+}
+
+/**
+ * **window에서** 그 키를 듣는 자리의 판정.
+ *
+ * 입력 중에는 안 듣는다 — **그런데 셸 안에서는 들어야 한다**(결정 99). xterm의 입력 자리가
+ * 숨은 `<textarea>`라 「글을 치는 자리면 비킨다」를 그대로 쓰면 터미널 화면에서 영영 안
+ * 먹는데, 셸을 붙일 때마다 포커스가 그리로 가므로 그 화면이 곧 정상 상태다.
+ * 그래서 그 하나만 예외로 가른다 — work 제목을 고치는 `<input>`은 그대로 비킨다.
+ */
+export function shellNavFromWindow(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  target: EventTarget | null;
+}): ShellNav | null {
+  const nav = shellNavKey(event);
+  if (nav === null) return null;
+  return typesInto(event.target) && !isShellInput(event.target) ? null : nav;
+}
+
+/**
+ * 그 자리가 **xterm의 숨은 입력 자리**인가.
+ *
+ * `@xterm/xterm`이 `createElement("textarea")`로 만들고 `.xterm-helper-textarea` 클래스를
+ * 붙인다(소스에서 확인함). 요소가 스스로 들고 있는 값 하나만 보므로 DOM 생성자가
+ * 없는 환경에서도 그대로 돈다 — `typesInto`와 같은 계약이다.
+ */
+function isShellInput(target: EventTarget | null): boolean {
+  if (!target || !("className" in target)) return false;
+  const name = target.className;
+  return typeof name === "string" && name.includes("xterm-helper-textarea");
+}
+
+/**
+ * 순회했을 때 켜질 칸(결정 80). 끝에서 **돌아온다** — 여덟 번째에서 다음을 누르면 첫 칸이다.
+ * 켜진 칸이 없으면 방향에 따라 첫 칸 또는 마지막 칸이다.
+ */
+export function cycleShell(
+  shells: ReadonlyArray<Shell>,
+  activeId: number | null,
+  delta: 1 | -1,
+): number | null {
+  if (shells.length === 0) return null;
+  const at = shells.findIndex((shell) => shell.id === activeId);
+  if (at === -1) return (delta === 1 ? shells[0] : shells[shells.length - 1]).id;
+  return shells[(at + delta + shells.length) % shells.length].id;
 }
 
 /**

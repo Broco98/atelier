@@ -24,9 +24,12 @@ import {
   shellEndLabels,
   shellOpenNotice,
   shellRewrite,
+  shellNavFromWindow,
+  shellNavKey,
   shellRowName,
   shellRowStatus,
   shellsOf,
+  cycleShell,
   shellHotkey,
   TOP_TERMINAL,
   workShellOrigin,
@@ -982,6 +985,118 @@ describe("window에서 듣는 ⌘T", () => {
   });
 });
 
+// 결정 78·79·80·99·109. ⌘1~9와 ⌃Tab 짝 — **한 화면 안에서 본문을 옮기는 한 벌**이다.
+// 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다. 여기서도 실물로 못 잡는 자리가 있어
+// (「셸에 이 키가 안 간다」는 핸들러의 반환값이 정하고 정적 렌더에는 안 보인다) 판정만 뗀다.
+describe("본문을 옮기는 키", () => {
+  type NavT = Parameters<typeof shellNavFromWindow>[0];
+  const el = (tagName: string, className?: string) =>
+    Object.assign(new EventTarget(), className === undefined ? { tagName } : { tagName, className });
+  const key = (over: Partial<NavT> = {}): NavT => ({
+    type: "keydown",
+    code: "Digit2",
+    ctrlKey: false,
+    metaKey: true,
+    altKey: false,
+    shiftKey: false,
+    target: el("DIV"),
+    ...over,
+  });
+
+  it("⌘1~9가 그 자리를 가리킨다", () => {
+    for (let n = 1; n <= 9; n += 1) {
+      expect(shellNavKey(key({ code: `Digit${n}` }))).toEqual({ kind: "index", n });
+    }
+  });
+
+  // 자리는 1부터 센다. ⌘0을 받으면 `n`이 0이 되어 부르는 화면마다 다른 뜻이 된다.
+  it("⌘0은 아니다", () => {
+    expect(shellNavKey(key({ code: "Digit0" }))).toBeNull();
+  });
+
+  it("⌃Tab은 앞으로, ⌃⇧Tab은 뒤로", () => {
+    const tab = { code: "Tab", ctrlKey: true, metaKey: false } as const;
+    expect(shellNavKey(key(tab))).toEqual({ kind: "cycle", delta: 1 });
+    expect(shellNavKey(key({ ...tab, shiftKey: true }))).toEqual({ kind: "cycle", delta: -1 });
+  });
+
+  // 결정 79. ⌃는 셸 몫이라는 결정 29에 **이 짝만** 예외를 냈다 — 규칙 자체를 넓히지 않는다.
+  it("⌘⌃Tab·⌥⌃Tab은 아니다 — 예외는 그 짝뿐이다", () => {
+    expect(shellNavKey(key({ code: "Tab", ctrlKey: true, metaKey: true }))).toBeNull();
+    expect(shellNavKey(key({ code: "Tab", ctrlKey: true, metaKey: false, altKey: true }))).toBeNull();
+  });
+
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("숫자에 %s가 더 붙으면 아니다", (extra) => {
+    expect(shellNavKey(key({ [extra]: true }))).toBeNull();
+  });
+
+  it("⌘ 없이 숫자만은 아니다 — 그냥 글자다", () => {
+    expect(shellNavKey(key({ metaKey: false }))).toBeNull();
+  });
+
+  it.each(["keypress", "keyup"])("%s는 아니다", (type) => {
+    expect(shellNavKey(key({ type }))).toBeNull();
+  });
+
+  // 결정 99. 셸을 붙일 때마다 xterm이 스스로 포커스를 가져가므로, 여기서 안 가르면
+  // 터미널 화면에서 ⌘2~9와 ⌃Tab이 **영영 안 먹는다**. 앱 몫이되 셸이 처리하지는 않는다.
+  it("셸도 이 키를 타이핑하지 않는다", () => {
+    expect(shellHotkey(key())).toBe("app");
+    expect(shellHotkey(key({ code: "Tab", ctrlKey: true, metaKey: false }))).toBe("app");
+    // ⌘T·⌘W는 그대로다 — 새 갈래가 그것들을 삼키면 새 칸도 닫기도 죽는다.
+    expect(shellHotkey(key({ code: "KeyT" }))).toBe("new");
+    expect(shellHotkey(key({ code: "KeyW" }))).toBe("close");
+  });
+
+  // **셸 안에서 듣는다는 것이 ⌘T와 갈리는 자리다.** 저쪽은 xterm 핸들러가 이미 열어 주므로
+  // 비켜야 하고, 이쪽은 xterm이 처리하지 않고 흘려보내므로 여기가 유일한 처리자다.
+  it("셸 안에서도 듣는다 — 그 화면이 곧 정상 상태다", () => {
+    const shellInput = el("TEXTAREA", "xterm-helper-textarea");
+    expect(shellNavFromWindow(key({ target: shellInput }))).toEqual({ kind: "index", n: 2 });
+  });
+
+  it("제목 편집 중(<input>)·편집 가능 요소에서는 안 듣는다", () => {
+    expect(shellNavFromWindow(key({ target: el("INPUT") }))).toBeNull();
+    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
+    expect(shellNavFromWindow(key({ target: editable }))).toBeNull();
+  });
+
+  // xterm의 것만 예외다. 남의 `<textarea>`까지 통과시키면 「입력 중에는 안 먹는다」가
+  // 이름만 남는다.
+  it("xterm의 것이 아닌 <textarea>에서는 안 듣는다", () => {
+    expect(shellNavFromWindow(key({ target: el("TEXTAREA") }))).toBeNull();
+    expect(shellNavFromWindow(key({ target: el("TEXTAREA", "prose") }))).toBeNull();
+  });
+
+  it("포커스가 아무 데도 없어도 안 터진다", () => {
+    expect(shellNavFromWindow(key({ target: null }))).toEqual({ kind: "index", n: 2 });
+  });
+});
+
+// 결정 80. 끝에서 **돌아온다** — 여덟 번째에서 다음을 누르면 첫 칸이다. 안 돌아오면
+// 순회가 아니라 「끝까지 밀기」가 되어 마지막 칸에서 키가 죽은 것처럼 보인다.
+describe("셸 순회", () => {
+  it("다음 칸으로 가고 끝에서 돌아온다", () => {
+    const { state, ids } = opened(3);
+    const shells = shellsOf(state, null);
+    expect(cycleShell(shells, ids[0], 1)).toBe(ids[1]);
+    expect(cycleShell(shells, ids[2], 1)).toBe(ids[0]);
+    expect(cycleShell(shells, ids[0], -1)).toBe(ids[2]);
+  });
+
+  // 켜진 칸이 없는 화면이 실재한다 — 마지막 칸을 `×`로 닫으면 그 자리다.
+  it("켜진 칸이 없으면 방향에 따라 양 끝이다", () => {
+    const { state, ids } = opened(3);
+    const shells = shellsOf(state, null);
+    expect(cycleShell(shells, null, 1)).toBe(ids[0]);
+    expect(cycleShell(shells, null, -1)).toBe(ids[2]);
+  });
+
+  it("셸이 없으면 갈 곳이 없다", () => {
+    expect(cycleShell([], null, 1)).toBeNull();
+  });
+});
+
 // 위 판정 셋은 순수 함수라 전수됐지만, **그것을 실제로 쓰는 자리**는 xterm의 키 핸들러와
 // 스토어라 어느 seam에도 안 보인다 — 정적 렌더는 이펙트도 키 이벤트도 안 돌리고, 노드
 // seam은 `@xterm/xterm`을 끌고 오는 모듈을 못 들인다.
@@ -1057,9 +1172,24 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // 그러면 `/terminal`에서 마지막 칸을 닫은 뒤 ⌘T가 다시 안 먹는다 — 결정 93의 원래
     // 증상이고 결정 98의 「`/terminal`에서도 같다」가 깨진다. 이 화면을 보는 검사는
     // 저장소에서 여기뿐이라 다른 층이 받아 주지 않는다.
+    // **가드만 보면 핸들러가 window에 안 걸려도 초록이다.** 등록 한 줄을 지워도 가드는
+    // `onKeyDown` 안에 그대로 남고, 정리 함수가 그것을 계속 참조하므로 tsc도 안 막는다.
+    // 이 화면이 window에서 듣는 자리는 **둘이다** — ⌘T(결정 93·98)와 본문을 옮기는
+    // ⌘1~9·⌃Tab(결정 78·79). 하나로 줄면 그중 한 벌이 통째로 죽은 것이다.
     expect(
       countOf(page, 'window.addEventListener("keydown", onKeyDown);'),
-      "⌘T 핸들러가 window에 안 걸린다 — 셸이 0개인 화면에는 들을 사람이 없다",
-    ).toBe(1);
+      "window에서 키를 듣는 자리가 둘이 아니다 — ⌘T와 ⌘1~9·⌃Tab",
+    ).toBe(2);
+  });
+
+  // 결정 78·79·109. work 화면과 갈리는 자리는 ⌘1 하나뿐이고(거기서는 spec), 여기서는
+  // 문서가 없어 ⌘1부터가 셸이다. 그 어긋남을 화면이 흡수한다 — 판정은 한 벌이다.
+  it("`/terminal`의 ⌘1~9는 **이 화면의 셸**을 센다", () => {
+    const page = read("./TerminalPage.tsx");
+    expect(page).toContain("const nav = shellNavFromWindow(e);");
+    // `owner`가 `null`이 아니면 남의 화면 셸을 센다(결정 109가 막는 것).
+    expect(page).toContain("const shells = shellsOf(state, null);");
+    // 한 칸 밀지 않는다 — `n - 2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
+    expect(page).toContain("shells[nav.n - 1]?.id ?? null");
   });
 });

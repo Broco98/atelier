@@ -19,14 +19,19 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
+  activeIdOf,
+  cycleShell,
   opensShellFromWindow,
   runningShellsOf,
+  shellNavFromWindow,
+  shellsOf,
   workShellOrigin,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
   onShellOpenRejected,
   openNewShell,
+  selectShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { ViewTab } from "@/routes/-work-search";
@@ -246,6 +251,48 @@ function WorksPage({
       if (!origin) return;
       openNewShell(origin);
       onSelectTab("terminal");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panelWork, onSelectTab]);
+
+  /**
+   * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
+   *
+   * 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다 — 한 화면 안에서 본문을 옮기는 한 벌이
+   * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
+   * 보이는 전부가 아니다: 남의 work의 가지를 펼쳐 두었어도 ⌘2는 이 work의 첫 셸이다.
+   *
+   * **스토어를 구독하지 않고 그때 읽는다.** 필요한 순간은 키를 누른 그 한 번뿐이라,
+   * 구독하면 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 통째로 다시 그려진다.
+   *
+   * 셸 안에서도 먹어야 한다(결정 99) — 그 판정은 `shellNavFromWindow`가 혼자 안다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const nav = shellNavFromWindow(e);
+      if (!nav || !panelWork) return;
+      e.preventDefault();
+      const state = terminalStore.state;
+      const shells = shellsOf(state, panelWork.slug);
+      // ⌘1만 spec이다. 나머지는 한 칸씩 밀린 셸 자리다 — 없는 자리면 아무 일도 없다.
+      if (nav.kind === "index") {
+        if (nav.n === 1) {
+          onSelectTab("spec");
+          return;
+        }
+        const shell = shells[nav.n - 2];
+        if (shell) {
+          selectShell(shell.id);
+          onSelectTab("terminal");
+        }
+        return;
+      }
+      const next = cycleShell(shells, activeIdOf(state, panelWork.slug), nav.delta);
+      if (next !== null) {
+        selectShell(next);
+        onSelectTab("terminal");
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

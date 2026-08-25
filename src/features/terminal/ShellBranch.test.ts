@@ -39,7 +39,15 @@ describe("사이드바 목록은 터미널을 모른다", () => {
   // 위(Sidebar)에서 슬롯으로 내려오는 이유가 그것이다.
   it("SidebarWorkList가 terminal feature를 import하지 않는다", () => {
     const list = read("../works/SidebarWorkList.tsx");
-    expect(countOf(list, '@/features/terminal')).toBe(0);
+    expect(countOf(list, "@/features/terminal")).toBe(0);
     expect(countOf(list, "./terminal-store")).toBe(0);
+  });
+
+  // 결정 78. ⌘1~9가 **한 화면 안에서 본문을 옮기는** 키가 됐다. 사이드바가 계속 듣고
+  // 있으면 한 번 눌러 둘이 일어나고, 본문을 옮기려던 사람이 다른 work으로 끌려간다.
+  // 지운 자리라 「없다」를 세는 것 말고 볼 방법이 없다.
+  it("사이드바 목록이 window에서 키를 듣지 않는다", () => {
+    const list = read("../works/SidebarWorkList.tsx");
+    expect(countOf(list, 'window.addEventListener("keydown"')).toBe(0);
   });
 });

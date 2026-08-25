@@ -1,8 +1,15 @@
 import { useEffect } from "react";
 import PageHeader from "@/components/shell/PageHeader";
 import TerminalPane from "./TerminalPane";
-import { opensShellFromWindow, TOP_TERMINAL } from "./shell-registry";
-import { openNewShell } from "./terminal-store";
+import {
+  activeIdOf,
+  cycleShell,
+  opensShellFromWindow,
+  shellNavFromWindow,
+  shellsOf,
+  TOP_TERMINAL,
+} from "./shell-registry";
+import { openNewShell, selectShell, terminalStore } from "./terminal-store";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
 // 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
@@ -24,6 +31,30 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
       openNewShell(TOP_TERMINAL);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  /**
+   * ⌘1~9와 ⌃Tab이 **이 화면의 셸**을 고른다(결정 78·79·109).
+   *
+   * work 화면과 갈리는 자리가 ⌘1 하나다 — 거기서는 그것이 spec이지만 이 화면에는 문서가
+   * 없어 ⌘1부터가 셸이다. 그 어긋남을 여기서 흡수한다: 판정은 한 벌이고 무엇을 세는지만
+   * 화면이 정한다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const nav = shellNavFromWindow(e);
+      if (!nav) return;
+      e.preventDefault();
+      const state = terminalStore.state;
+      const shells = shellsOf(state, null);
+      const next =
+        nav.kind === "index"
+          ? (shells[nav.n - 1]?.id ?? null)
+          : cycleShell(shells, activeIdOf(state, null), nav.delta);
+      if (next !== null) selectShell(next);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
