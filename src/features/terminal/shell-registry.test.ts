@@ -1056,7 +1056,12 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // `pty_write`가 한 곳에서 나가고, xterm이 스스로 보내는 것과 순서도 안 뒤집힌다(IME 다리가
   // capture로 먼저 돈다). ⇧Enter가 한글 조합 중에 걸리는 자리라 예외를 둘 곳이 아니다.
   it("바뀐 바이트도 `onData` 하나로 나간다", () => {
-    expect(store).toContain("term.input(rewrite, true);");
+    // **`return false`까지 한 리터럴로 잡는다.** 그 한 줄이 「바꿔 보낸다」와 「덧붙여
+    // 보낸다」를 가른다 — `true`를 주면 xterm이 그 키를 계속 처리해 우리가 넣은 `\x1b\r`과
+    // xterm이 만든 `\r`이 **둘 다** 나가고, `claude` 프롬프트에서 줄이 바뀌면서 동시에
+    // 제출된다(결정 91이 없애려던 증상 그 자체다). 따로 못박으면 안 된다 — 이 파일에
+    // `return false;`가 둘이라 위 hotkey 분기가 대신 통과시킨다.
+    expect(store).toContain("      term.input(rewrite, true);\n      return false;");
     // **파일 전체에서 하나다.** 핸들러 안만 보면 두 번째 출구가 다른 함수로 옮겨 가는 것을
     // 못 본다 — 계약이 말하는 것은 「`onData`가 유일한 출구」이지 「이 핸들러가 안 쓴다」가
     // 아니다.
@@ -1068,7 +1073,18 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
 
   // 결정 98이 `/terminal`에도 같은 판정을 세웠다. WorksPage 쪽 배선은 그 화면의 검사가
   // 이펙트째로 못박는다.
-  it("`/terminal`이 같은 판정을 같은 방향으로 딛는다", () => {
-    expect(read("./TerminalPage.tsx")).toContain("if (!opensShellFromWindow(e)) return;");
+  it("`/terminal`이 같은 판정을 같은 방향으로 딛고, 그 핸들러가 window에 걸린다", () => {
+    const page = read("./TerminalPage.tsx");
+    expect(page).toContain("if (!opensShellFromWindow(e)) return;");
+    expect(page).toContain("openNewShell(TOP_TERMINAL);");
+    // **가드만 보면 핸들러가 window에 안 걸려도 초록이다.** 등록 한 줄을 지워도 가드는
+    // `onKeyDown` 안에 그대로 남고, 정리 함수가 그것을 계속 참조하므로 tsc도 안 막는다.
+    // 그러면 `/terminal`에서 마지막 칸을 닫은 뒤 ⌘T가 다시 안 먹는다 — 결정 93의 원래
+    // 증상이고 결정 98의 「`/terminal`에서도 같다」가 깨진다. 이 화면을 보는 검사는
+    // 저장소에서 여기뿐이라 다른 층이 받아 주지 않는다.
+    expect(
+      countOf(page, 'window.addEventListener("keydown", onKeyDown);'),
+      "⌘T 핸들러가 window에 안 걸린다 — 셸이 0개인 화면에는 들을 사람이 없다",
+    ).toBe(1);
   });
 });

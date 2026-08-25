@@ -42,14 +42,20 @@ function render(list: WorkView[], open: SectionsOpen = ALL): string {
 // 구획 헤더 = aria-expanded를 가진 버튼. 라벨·펼침·개수를 **한 헤더 안에서** 함께 읽는다.
 // 마크업 전체에서 문자열만 찾으면 "고정"이 핀 버튼의 aria-label에도 있어서, 고정 구획이
 // 통째로 사라져도 초록이 된다.
+//
+// **구획 헤더의 모양(라벨 span + 개수 span)에 맞는 것만 센다.** 판 04가 이 서브트리 안에
+// 접히는 `terminal` 가지를 넣는데(결정 107), 그것도 `aria-expanded` 버튼이라 모양을 안 보면
+// 여기서 non-null 단언이 `TypeError`로 죽는다 — 결정 82·85·108과 무관한 실패가 되고, 그
+// 메시지는 무엇이 깨졌는지 말해 주지 않는다. 걸러도 그물은 안 샌다: 아래 검사들이 헤더
+// **목록 전체**를 `toEqual`로 못박으므로, 진짜 헤더가 빠지면 목록이 달라져 빨개진다.
 const headersOf = (markup: string) =>
-  [...markup.matchAll(/<button type="button" aria-expanded="(true|false)"[^>]*>(.*?)<\/button>/g)].map(
-    (m) => ({
-      open: m[1] === "true",
-      label: m[2].match(/^<span[^>]*>([^<]*)</)![1],
-      count: m[2].match(/<span[^>]*>([^<]*)<\/span>$/)![1],
-    }),
-  );
+  [...markup.matchAll(/<button type="button" aria-expanded="(true|false)"[^>]*>(.*?)<\/button>/g)]
+    .map((m) => {
+      const label = m[2].match(/^<span[^>]*>([^<]*)</);
+      const count = m[2].match(/<span[^>]*>([^<]*)<\/span>$/);
+      return label && count ? { open: m[1] === "true", label: label[1], count: count[1] } : null;
+    })
+    .filter((one) => one !== null);
 
 // 접기 상자들 — 헤더와 같은 순서로 나온다. 접힌 것은 grid-template-rows가 0fr이고 inert다.
 const bodiesOf = (markup: string) => markup.match(/<div (?:inert="" )?class="grid shrink-0[^"]*">/g) ?? [];
@@ -67,10 +73,17 @@ const rowsBySection = (markup: string) =>
   markup
     .split(/(?=<button type="button" aria-expanded=)/)
     .filter((chunk) => chunk.startsWith("<button"))
-    .map((chunk) => ({
-      label: chunk.match(/^<button[^>]*><span[^>]*>([^<]*)</)![1],
-      rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
-    }));
+    .map((chunk) => {
+      // 위 `headersOf`와 같은 이유로 모양을 본다 — 낯선 `aria-expanded` 버튼에 안 죽는다.
+      const label = chunk.match(/^<button[^>]*><span[^>]*>([^<]*)</);
+      return label
+        ? {
+            label: label[1],
+            rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
+          }
+        : null;
+    })
+    .filter((one) => one !== null);
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
