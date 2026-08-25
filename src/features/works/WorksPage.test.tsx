@@ -337,14 +337,19 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
-  // 결정 42. 본문 위 셸 탭 줄을 걷어냈다 — Work 화면에서 셸을 고르는 자리는 패널의
-  // `shell` 탭 하나다. 되살아나면 **같은 것이 두 자리에 서고**, 화면으로는 둘 다 멀쩡해
-  // 보여서 어느 쪽이 틀렸는지가 안 드러난다.
-  it("터미널 탭 본문에 셸 탭 줄이 없다 — 셸을 여는 자리는 패널뿐이다", () => {
+  // 결정 102. 가로 탭 줄이 걷힌 뒤로 **본문에서 셸을 여는 길이 여기뿐이다** — 정상 종료한
+  // 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로
+  // 뜨지 않는다(판 02). 셸이 0개인 화면이 실재하고, 그때 본문이 그 자리를 내야 한다.
+  //
+  // **본문 안(`</main>` 앞)만 센다.** 사이드바 가지와 패널에도 같은 이름의 `+`가 있어서
+  // 마크업 전체에서 세면 「본문에 있다」와 「어딘가 있다」가 같아진다.
+  it("셸이 0개면 터미널 본문이 여는 자리를 낸다", () => {
     const markup = render({}, "terminal");
-    // `+`가 딱 하나이고, 그 하나가 본문(`</main>`) **뒤**의 패널 안에 있다.
-    expect(markup.match(/aria-label="셸 열기"/g)).toHaveLength(1);
-    expect(markup.indexOf('aria-label="셸 열기"')).toBeGreaterThan(markup.indexOf("</main><aside"));
+    const bodyEnd = markup.indexOf("</main><aside");
+    expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(-1);
+    const body = markup.slice(0, bodyEnd);
+    expect(body.match(/aria-label="셸 열기"/g)).toHaveLength(1);
+    expect(body).toContain("아직 셸이 없어요");
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });

@@ -22,7 +22,6 @@ import {
   setTitle,
   shellCapNotice,
   shellEndLabels,
-  shellLabel,
   shellOpenNotice,
   shellRewrite,
   shellRowName,
@@ -307,17 +306,18 @@ describe("셸 수에는 앱 전체 상한이 있다", () => {
 const shellOf = (state: ShellsState, id: number) =>
   state.shells.find((shell) => shell.id === id) as Shell;
 
-// 결정 31의 세 갈래 — 타이틀 시퀀스(OSC 0/2) → 프로젝트 → 셸 이름.
-describe("칸 이름은 타이틀 → 셸 이름 순이다", () => {
+// 결정 31의 갈래들 — 타이틀 시퀀스(OSC 0/2) → 셸 이름 → 기본 이름. 프로젝트는 셋 중
+// 하나로 **고르지 않고** 앞에 함께 적히므로(결정 46) 아래 「셸 행의 두 줄」이 따로 본다.
+describe("셸 이름은 타이틀 → 셸 이름 순이다", () => {
   it("셸 이름이 오면 그것이 이름이다", () => {
     const { state, ids } = opened(1);
-    expect(shellLabel(shellOf(setShellName(state, ids[0], "zsh"), ids[0]))).toBe("zsh");
+    expect(shellRowName(shellOf(setShellName(state, ids[0], "zsh"), ids[0]))).toBe("zsh");
   });
 
   it("타이틀이 오면 셸 이름을 이긴다", () => {
     const { state, ids } = opened(1);
     const named = setTitle(setShellName(state, ids[0], "zsh"), ids[0], "내이름");
-    expect(shellLabel(shellOf(named, ids[0]))).toBe("내이름");
+    expect(shellRowName(shellOf(named, ids[0]))).toBe("내이름");
   });
 
   // 타이틀을 쏘던 셸이 빈 문자열을 쏘면 그 칸은 이름을 잃는다 — 그때 셸 이름으로 돌아가지
@@ -325,7 +325,7 @@ describe("칸 이름은 타이틀 → 셸 이름 순이다", () => {
   it("타이틀이 비면 셸 이름으로 돌아간다", () => {
     const { state, ids } = opened(1);
     const named = setTitle(setShellName(state, ids[0], "zsh"), ids[0], "내이름");
-    expect(shellLabel(shellOf(setTitle(named, ids[0], "  "), ids[0]))).toBe("zsh");
+    expect(shellRowName(shellOf(setTitle(named, ids[0], "  "), ids[0]))).toBe("zsh");
   });
 
   // 결정 23. 못 띄운 셸에는 타이틀도 셸 이름도 영영 오지 않는다. 그 칸이 이름 없는
@@ -333,12 +333,12 @@ describe("칸 이름은 타이틀 → 셸 이름 순이다", () => {
   it("못 띄운 칸도 이름이 비어 있지 않다", () => {
     const { state, ids } = opened(1);
     const failed = markFailed(state, ids[0], "$SHELL을 실행할 수 없습니다: /nonexistent");
-    expect(shellLabel(shellOf(failed, ids[0])).trim()).not.toBe("");
+    expect(shellRowName(shellOf(failed, ids[0])).trim()).not.toBe("");
   });
 
   it("아직 아무것도 안 온 칸도 이름이 비어 있지 않다", () => {
     const { state, ids } = opened(1);
-    expect(shellLabel(shellOf(state, ids[0])).trim()).not.toBe("");
+    expect(shellRowName(shellOf(state, ids[0])).trim()).not.toBe("");
   });
 
   // 프롬프트마다 같은 타이틀을 쏘는 셸이 흔하다(zsh의 precmd). 매번 새 상태를 만들면
@@ -630,35 +630,11 @@ describe("cwd는 Work의 모양이 정한다", () => {
   });
 });
 
-// 결정 31의 가운데 갈래. OSC 타이틀은 셸이 쏘는 것이라 프로젝트를 드러낼 수 없다 —
-// 그래서 이 갈래만은 순수 모듈이 **반드시** 해야 한다.
-describe("칸 이름의 가운데 갈래는 프로젝트다", () => {
-  const 프로젝트칸 = (project: string | null) => {
-    const { state, ids } = opened(1, { owner: "w", project, cwd: null });
-    return { state, id: ids[0] };
-  };
-
-  it("프로젝트가 실린 칸은 셸 이름을 이긴다", () => {
-    const { state, id } = 프로젝트칸("cli");
-    expect(shellLabel(shellOf(setShellName(state, id, "zsh"), id))).toBe("cli");
-  });
-
-  it("타이틀이 오면 프로젝트를 이긴다", () => {
-    const { state, id } = 프로젝트칸("cli");
-    expect(shellLabel(shellOf(setTitle(state, id, "claude"), id))).toBe("claude");
-  });
-
-  it("프로젝트가 하나뿐인 Work의 칸은 셸 이름이 이름이다", () => {
-    const origin = workShellOrigin(w(["atelier"]), null)!;
-    const { state, id } = 프로젝트칸(origin.project);
-    expect(shellLabel(shellOf(setShellName(state, id, "zsh"), id))).toBe("zsh");
-  });
-});
-
-// 결정 45·46. 세로 목록의 행은 두 줄이고, 그 두 줄을 정하는 것이 이 함수 둘이다.
-// **가로 탭 줄의 `shellLabel`과 갈리는 자리**라 여기서 나란히 놓고 본다 — 저쪽은 셋 중
-// 하나를 고르고 이쪽은 프로젝트를 함께 적는다.
-describe("세로 목록 행의 두 줄", () => {
+// 결정 45·46. 셸 행은 두 줄이고, 그 두 줄을 정하는 것이 이 함수 둘이다. **프로젝트를
+// 버리지 않는 것**이 여기서 지켜야 할 전부다 — 앞 판의 가로 탭 줄은 타이틀이 오는 순간
+// 프로젝트를 버렸고, 그래서 어느 워크트리의 셸인지가 실물에서 사라졌다(결정 104가 그
+// 함수를 지웠다).
+describe("셸 행의 두 줄", () => {
   const 칸 = (project: string | null, cwd: string | null) => {
     const { state, ids } = opened(1, { owner: "w", project, cwd });
     return { state, id: ids[0] };
@@ -670,7 +646,6 @@ describe("세로 목록 행의 두 줄", () => {
     const { state, id } = 칸("cli", "~/w/trees/cli");
     const 이름붙은 = setTitle(state, id, "gimhyoyeon@gimhyoyeon");
     expect(shellRowName(shellOf(이름붙은, id))).toBe("cli · gimhyoyeon@gimhyoyeon");
-    expect(shellLabel(shellOf(이름붙은, id))).toBe("gimhyoyeon@gimhyoyeon");
   });
 
   it("타이틀이 없으면 셸 이름이 뒤에 온다", () => {

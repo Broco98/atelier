@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
-import ShellTabs from "./ShellTabs";
+import ShellList from "./ShellList";
 import { activeIdOf, shellEndLabels, shellsOf, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
 import {
@@ -15,8 +15,9 @@ import {
 import type { WorkView } from "@/features/works/types";
 
 /**
- * 터미널 본문 — 탭 줄, 종료 줄, 셸이 들어앉는 자리. **머리행은 없다**: 최상위 터미널은
- * `/terminal`의 `PageHeader`를, Work의 터미널 탭은 `WorksPage`의 머리행을 이미 이고 있다.
+ * 터미널 본문 — 종료 줄과 셸이 들어앉는 자리. **머리행도 탭 줄도 없다**: 셸을 고르는
+ * 자리가 사이드바 가지로 갔고(결정 71·72), 머리행은 두 화면이 각자 이고 있다 —
+ * 최상위 터미널은 `/terminal`의 `PageHeader`, Work의 터미널은 `WorksPage`의 머리행이다.
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(결정 20·21). 여기서 하는 일은 활성 칸의 집을 자리에 들이고
@@ -25,14 +26,7 @@ import type { WorkView } from "@/features/works/types";
  * **`work` 하나가 나머지를 전부 정한다** — 소유자·cwd·프로젝트 목록이 거기서 나온다.
  * `null`이면 최상위 터미널이다.
  */
-function TerminalPane({
-  work,
-  titlebar,
-}: {
-  work: WorkView | null;
-  /** 탭 줄이 창 타이틀바를 겸하는가. 최상위 터미널만 그렇다 — ShellTabs의 같은 이름 참조. */
-  titlebar?: { inset: boolean };
-}) {
+function TerminalPane({ work }: { work: WorkView | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
   // 좁히지 않고 통째로 읽는다 — 탭 줄이 앱 전체 상한을 세야 해서 어차피 전부 필요하다(결정 30).
   // **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
@@ -63,42 +57,55 @@ function TerminalPane({
     return () => detachShell(activeId);
   }, [activeId]);
 
-  const active = shellsOf(state, owner).find((shell) => shell.id === activeId);
+  const shells = shellsOf(state, owner);
+  const active = shells.find((shell) => shell.id === activeId);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
+  const projects = work?.worktrees.map((tree) => tree.project) ?? [];
 
   return (
     <>
-      <ShellTabs
-        state={state}
-        owner={owner}
-        titlebar={titlebar}
-        // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
-        // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 —
-        // 눌러도 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. 코어가 둘을 1:1로
-        // 만들어 주지만(works.rs의 to_view) 그 사실을 여기서 다시 믿지 않는다.
-        projects={work?.worktrees.map((tree) => tree.project) ?? []}
-        onSelect={selectShell}
-        onClose={requestCloseShell}
-        onOpen={(project) => {
-          const origin = originOf(work, project);
-          if (origin) openNewShell(origin);
-        }}
-      />
       {/* 이 줄은 **비어 있어도 자리를 차지한다.** 죽은 셸의 마지막 화면을 그대로 두라는
           것이 결정 22인데, 조건부로 끼워 넣으면 나타나는 순간 컨테이너가 그만큼 낮아지고
           ResizeObserver가 그 화면을 한두 행 줄여 다시 흐르게 한다. 높이를 고정하면 없다.
-          탭의 꼬리표(`42`)가 어느 칸인지를 말하고, 이 줄이 그 한 문장을 말한다.
 
           **여백은 없다**(결정 94) — 이 줄도 셸과 같은 왼쪽 끝에서 시작한다. */}
       <div className="h-5 shrink-0 text-[12px] text-muted-foreground">{notice}</div>
-      {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
-          창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
-          읽는 글이라 그대로 둔다. */}
-      {/* 셸이 들어앉는 자리. 표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 —
-          한때 「마크업의 마지막 빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만
-          더 그려지면(결정 102의 「아직 셸이 없어요」가 그렇다) 그 판정이 결정 94와
-          무관하게 깨진다. */}
-      <div ref={hostRef} data-shell-host="" className="min-h-0 min-w-0 flex-1" />
+      {/* 상자는 여백을 갖지 않는다 — 아래 셸의 집이 결정 94를 그대로 지켜야 한다.
+          `relative`는 셸이 0개일 때 덮는 안내를 이 영역 안에 세우기 위한 것이다. */}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
+            창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
+            읽는 글이라 그대로 둔다.
+
+            표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 — 한때 「마크업의 마지막
+            빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만 더 그려지면 그 판정이
+            결정 94와 무관하게 깨진다. 아래 안내가 정확히 그 「무엇 하나」다. */}
+        <div ref={hostRef} data-shell-host="" className="min-h-0 min-w-0 flex-1" />
+        {/* **셸이 0개인 화면이 실재한다**(결정 102). 정상 종료한 셸이 목록에서 스스로 빠지고
+            (결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로 뜨지 않는다. 탭 줄이
+            걷힌 뒤로 본문에서 셸을 여는 길이 여기뿐이다.
+
+            **여는 자리를 새로 짓지 않고 같은 목록을 쓴다** — 상한 문구도 프로젝트 고르기도
+            그쪽이 이미 안다. 둘로 두면 「셸 8개까지예요」가 화면마다 다른 말이 된다. */}
+        {shells.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex w-[240px] flex-col gap-[3px]">
+              <ShellList
+                state={state}
+                owner={owner}
+                projects={projects}
+                showing
+                onSelect={selectShell}
+                onClose={requestCloseShell}
+                onOpen={(project) => {
+                  const origin = originOf(work, project);
+                  if (origin) openNewShell(origin);
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }

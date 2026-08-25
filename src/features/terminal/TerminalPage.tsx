@@ -1,18 +1,17 @@
 import { useEffect } from "react";
+import PageHeader from "@/components/shell/PageHeader";
 import TerminalPane from "./TerminalPane";
 import { opensShellFromWindow, TOP_TERMINAL } from "./shell-registry";
 import { openNewShell } from "./terminal-store";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
-// 데이터 루트다(결정 12·25). 본문은 Work의 터미널 탭과 **같은 컴포넌트**다.
+// 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
 //
-// **머리행이 없다 — 탭 줄이 그 자리다.** 이 화면의 브레드크럼에 적을 것은 `Terminal`
-// 하나뿐인데, 그 한 낱말은 사이드바에서 이미 켜져 있는 항목이 말한다. 같은 말을 두 번
-// 하려고 44px 한 층을 더 쓰는 대신 탭 줄을 그 층으로 올렸다. 창을 끄는 영역과 신호등
-// 피하기는 탭 줄이 물려받는다(ShellTabs의 `titlebar`).
-//
-// Work의 터미널 탭은 이렇게 하지 않는다 — 그쪽 머리행에는 작업 이름·상태·뷰 탭이 있어
-// 지울 것이 없다.
+// **머리행이 돌아왔다**(결정 72). 앞 판은 이 자리를 가로 탭 줄이 겸했다 — 브레드크럼에
+// 적을 것이 `Terminal` 한 낱말뿐이라 44px 한 층을 아끼려던 것이었는데, 셸을 고르는 자리가
+// 사이드바 가지로 가면서 그 줄 자체가 없어졌다. 그러면 이 화면 맨 위에 창을 끌 영역도
+// 신호등을 피할 여백도 남지 않는다 — 둘 다 그 줄이 물려받고 있던 몫이라, 자리를 다시
+// `PageHeader`에 돌려준다.
 function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
@@ -33,7 +32,9 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <TerminalPane work={null} titlebar={{ inset: !sidebarOpen }} />
+        {/* 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다 */}
+        <PageHeader root="Terminal" inset={!sidebarOpen} />
+        <TerminalPane work={null} />
       </main>
     </div>
   );

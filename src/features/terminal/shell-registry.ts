@@ -27,7 +27,7 @@ export type ShellStatus =
 /**
  * 칸 하나. `title`과 `shellName`은 **이름의 두 갈래**를 그대로 들고 있는다(결정 31) —
  * 합쳐 놓으면 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
- * `shellLabel`이 혼자 안다.
+ * `shellRowName`이 혼자 안다.
  *
  * **cwd가 여기 있다 — 한때 없었다.** 「셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안
  * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 패널 `shell` 탭의 행
@@ -319,7 +319,7 @@ function withStatus(state: ShellsState, id: number, status: ShellStatus): Shells
 
 /**
  * 셸이 쏜 타이틀(OSC 0·2). 빈 문자열은 **이름을 지운 것**이라 null로 눕힌다 — 그래야
- * `shellLabel`이 셸 이름으로 돌아간다.
+ * `shellRowName`이 셸 이름으로 돌아간다.
  */
 export function setTitle(state: ShellsState, id: number, title: string): ShellsState {
   const next = title.trim() || null;
@@ -465,11 +465,6 @@ function typesInto(target: EventTarget | null): boolean {
   return "tagName" in target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
 }
 
-/** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
-export function shellLabel(shell: Shell): string {
-  return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
-}
-
 /**
  * 그 칸이 어떻게 끝났는지. 도는 셸에는 없다.
  *
@@ -489,15 +484,14 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
 }
 
 /**
- * 세로 목록 한 행의 **첫 줄 — 이름**이다. `프로젝트 · 타이틀`로 **함께 적는다**(결정 46).
+ * 셸 행의 **첫 줄 — 이름**이다. `프로젝트 · 타이틀`로 **함께 적는다**(결정 46).
+ * 이제 셸 이름을 정하는 자리가 앱에서 여기 하나다.
  *
- * `shellLabel`과 갈리는 자리는 프로젝트 하나다. 저쪽은 셋 중 하나를 **고르므로** 타이틀이
- * 오는 순간 프로젝트가 사라진다 — 실물에서 로그인 zsh가 뜨자마자 OSC 타이틀을 쏴 이름이
- * `gimhyoyeon@gimhy…`가 되고 어느 워크트리의 셸인지가 없어졌다. 세로 목록은 한 행에 두
- * 줄을 쓸 수 있어 그 부담이 없고, 그것이 결정 46이 갈래 셋 중 ③을 고른 이유다.
- *
- * **가로 탭 줄은 그대로 `shellLabel`이다**(결정 44·46) — 거기는 칸 하나에 이름 하나뿐이라
- * 폭이 없다. 같은 일이 두 화면에서 다른 모양인 것이 그 결정이 감수한 대가다.
+ * 한때 가로 탭 줄이 쓰던 `shellLabel`이 곁에 있었다 — 그쪽은 셋 중 하나를 **골라서**
+ * 타이틀이 오는 순간 프로젝트가 사라졌다(실물에서 로그인 zsh가 뜨자마자 OSC 타이틀을 쏴
+ * 이름이 `gimhyoyeon@gimhy…`가 되고 어느 워크트리의 셸인지가 없어졌다). 결정 46이 갈래 셋
+ * 중 ③을 고른 이유가 그것이고, 판 04가 가로 탭 줄을 걷으면서 그 함수는 생산 사용처가 0이
+ * 되어 함께 지웠다(결정 104).
  */
 export function shellRowName(shell: Shell): string {
   // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.
