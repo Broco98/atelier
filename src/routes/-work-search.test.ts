@@ -3,7 +3,14 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { recallTab, rememberTab, tabSearch, validateWorkSearch, viewTab } from "./-work-search";
+import {
+  recallTab,
+  rememberTab,
+  tabSearch,
+  validateWorkSearch,
+  viewTab,
+  workSlugOf,
+} from "./-work-search";
 
 // 주소 ↔ 화면 탭의 규칙. 라우터를 띄우는 seam(router.test.ts)에서는 **이것이 안 보인다** —
 // 그쪽이 관찰하는 `location.search`는 주소에 적힌 것 그대로라, 모르는 값을 무엇으로 읽는지가
@@ -47,6 +54,25 @@ describe("주소를 화면 탭으로 읽는 것", () => {
 //
 // **모듈 스코프 Map이라 이 파일 안에서 새어 나간다.** 검사마다 다른 슬러그를 쓴다 —
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
+// 주소에서 work을 읽는 자리. 읽는 쪽이 둘이라(사이드바 목록의 강조, 가지가 자기 화면인지
+// 아는 것) 한 곳에 뒀다.
+describe("주소가 가리키는 work", () => {
+  it("`/works/…`가 아니면 없다", () => {
+    expect(workSlugOf("/projects")).toBeNull();
+    expect(workSlugOf("/terminal")).toBeNull();
+  });
+
+  it("슬러그를 그대로 준다", () => {
+    expect(workSlugOf("/works/plain-work")).toBe("plain-work");
+  });
+
+  // **슬러그에 한글이 들어간다.** 디코드를 잊으면 한글 work에서만 조용히 어긋나 —
+  // 화면으로는 「가끔 강조가 안 된다」로만 보인다. 이 저장소에 그런 work가 실제로 있다.
+  it("한글 슬러그를 편다", () => {
+    expect(workSlugOf(`/works/${encodeURIComponent("세션-내-에이전트")}`)).toBe("세션-내-에이전트");
+  });
+});
+
 describe("work마다 마지막으로 보던 본문", () => {
   it("적어 두지 않은 work은 문서다", () => {
     expect(recallTab("처음-보는-work")).toBe("spec");

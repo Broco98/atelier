@@ -31,14 +31,20 @@ const PLUGINS: Record<string, unknown> = {
   // 취소로 읽는다. true를 돌려주면 확인 대화상자가 전부 "예"가 되어, 삭제 같은 파괴적
   // 흐름이 테스트 안에서 조용히 실행된다.
   "plugin:dialog|message": null,
+  // `homeDir()`가 와이어에서 이 이름으로 나간다. Works 화면을 여는 시나리오가 생기면서
+  // (사이드바 트리 검사) 이 호출을 지나게 됐다 — 본문 뷰어가 홈 축약 경로(`~/…`)를 펴는 데
+  // 쓴다(`useHomeDir`). 값이 화면에 드러나는 자리는 이미지 경로 하나뿐이라 아무 경로여도
+  // 되지만, **`~`가 아닌 절대 경로**여야 편 결과가 편 것처럼 보인다.
+  "plugin:path|resolve_directory": "/Users/tester",
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
 // 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
 //
-// 아직 안 넣은 것은 `plugin:opener|open_url`과 `plugin:path|resolve_directory`(`homeDir`)다.
-// 지금 이 둘을 태우는 시나리오가 없고, **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트
-// 탐지기가 영원히 건드리지 않는 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
+// 아직 안 넣은 것은 `plugin:opener|open_url`이다. 지금 그것을 태우는 시나리오가 없고,
+// **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트 탐지기가 영원히 건드리지 않는
+// 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
+// (`plugin:path|resolve_directory`는 판 04가 Works 화면을 여는 검사를 들이면서 태웠다.)
 
 /** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
 interface InitArgs {

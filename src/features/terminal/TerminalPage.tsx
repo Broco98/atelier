@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
 import TerminalPane from "./TerminalPane";
 import {
@@ -6,6 +7,7 @@ import {
   opensShellFromWindow,
   shellForNav,
   shellNavFromWindow,
+  shellRowName,
   shellsOf,
   TOP_TERMINAL,
 } from "./shell-registry";
@@ -20,6 +22,24 @@ import { openNewShell, selectShell, terminalStore } from "./terminal-store";
 // 신호등을 피할 여백도 남지 않는다 — 둘 다 그 줄이 물려받고 있던 몫이라, 자리를 다시
 // `PageHeader`에 돌려준다.
 function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
+  /**
+   * 브레드크럼 말단에 서는 **지금 켜진 셸**(결정 72).
+   *
+   * 결정 44가 이 화면의 머리행을 아꼈던 이유는 「적을 것이 `Terminal` 하나뿐」이었다.
+   * 셸을 고르는 자리가 사이드바로 가면서 그 말이 거짓이 됐다 — 화면에는 그중 하나가 서
+   * 있는데 어느 것인지는 사이드바를 봐야 알 수 있게 됐다. 말단이 그것을 말한다.
+   *
+   * 이름은 `shellRowName`이다 — **사이드바 셸 행과 같은 이름**이어야 한 셸로 읽힌다.
+   *
+   * 칸 하나를 구독한다. 프롬프트마다 갈리는 값이지만 이 화면은 본문이 이미 스토어를 통째로
+   * 읽고 있어(TerminalPane) 새로 드는 비용이 없고, 셀렉터가 칸 하나를 돌려주므로 남의
+   * 화면 셸이 쏘는 타이틀에는 안 흔들린다.
+   */
+  const active = useStore(terminalStore, (state) => {
+    const id = activeIdOf(state, null);
+    return shellsOf(state, null).find((shell) => shell.id === id) ?? null;
+  });
+
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
   //
@@ -62,7 +82,11 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다 */}
-        <PageHeader root="Terminal" inset={!sidebarOpen} />
+        <PageHeader
+          root="Terminal"
+          leaf={active && shellRowName(active)}
+          inset={!sidebarOpen}
+        />
         <TerminalPane work={null} />
       </main>
     </div>

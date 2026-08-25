@@ -30,6 +30,7 @@ import {
   shellRowStatus,
   shellsOf,
   cycleShell,
+  sameBranch,
   shellForNav,
   shellHotkey,
   TOP_TERMINAL,
@@ -1095,6 +1096,48 @@ describe("셸 순회", () => {
 
   it("셸이 없으면 갈 곳이 없다", () => {
     expect(cycleShell([], null, 1)).toBeNull();
+  });
+});
+
+// 판 04 spec의 「스토어 구독의 자리 — 이 판에서 가장 조심할 곳」. 가지가 **하나가 아니다** —
+// 셸이 도는 work마다 선다(결정 73). 통째로 비교하면 work A의 셸이 프롬프트마다 쏘는 OSC
+// 타이틀 하나에 work B·C의 셸 행이 함께 다시 그려진다.
+describe("가지가 다시 그려져야 하는가", () => {
+  const two = () => {
+    let state = NO_SHELLS;
+    const mine = openShell(state, { owner: "가", project: null, cwd: "~/가" })!;
+    state = mine.state;
+    const theirs = openShell(state, { owner: "나", project: null, cwd: "~/나" })!;
+    return { state: theirs.state, mine: mine.id, theirs: theirs.id };
+  };
+
+  it("남의 셸이 타이틀을 쏘면 안 다시 그린다", () => {
+    const { state, theirs } = two();
+    expect(sameBranch(state, setTitle(state, theirs, "claude"), "가")).toBe(true);
+  });
+
+  it("내 셸이 타이틀을 쏘면 다시 그린다", () => {
+    const { state, mine } = two();
+    expect(sameBranch(state, setTitle(state, mine, "claude"), "가")).toBe(false);
+  });
+
+  // 상한 문구가 **앱 전체**를 센다(결정 30) — 남의 화면에 셸이 하나 늘면 「지금 N개」가 바뀐다.
+  it("남의 셸이 열리면 다시 그린다 — 상한 문구가 앱 전체를 센다", () => {
+    const { state } = two();
+    const more = openShell(state, { owner: "나", project: null, cwd: "~/나" })!.state;
+    expect(sameBranch(state, more, "가")).toBe(false);
+  });
+
+  it("내 켜진 칸이 바뀌면 다시 그린다", () => {
+    const { state, mine } = two();
+    const another = openShell(state, { owner: "가", project: null, cwd: "~/가" })!;
+    expect(sameBranch(another.state, activateShell(another.state, mine), "가")).toBe(false);
+  });
+
+  // 최상위 터미널의 가지도 같은 규칙을 딛는다 — owner가 `null`일 뿐이다.
+  it("최상위 가지도 남의 타이틀에 안 흔들린다", () => {
+    const { state, mine } = two();
+    expect(sameBranch(state, setTitle(state, mine, "claude"), null)).toBe(true);
   });
 });
 

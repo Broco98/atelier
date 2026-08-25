@@ -3,7 +3,7 @@ import { TreeIndent } from "@/components/shell/sidebar-tree";
 import { tabSearch, workSlugOf } from "@/routes/-work-search";
 import { useStore } from "@tanstack/react-store";
 import ShellList from "./ShellList";
-import { TOP_TERMINAL, workShellOrigin } from "./shell-registry";
+import { sameBranch, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
 import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
 import type { WorkView } from "@/features/works/types";
 
@@ -25,9 +25,14 @@ import type { WorkView } from "@/features/works/types";
  * 서지 못한다(ShellList 머리말과 같은 계약).
  */
 function ShellBranch({ work }: { work: WorkView | null }) {
-  const state = useStore(terminalStore, (whole) => whole);
-  const navigate = useNavigate();
+  // **`owner`가 맨 위에 있어야 한다.** 아래 비교 함수가 그것을 닫아 잡는데, 그 함수는
+  // `useStore` 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다(그렇게 한 번 냈다).
   const owner = work?.slug ?? null;
+  // 통째로 읽는 것은 아래 목록이 **앱 전체** 상한을 세야 해서다(결정 30). 대신 **다시
+  // 그릴지는 `sameBranch`가 가른다** — 가지가 하나가 아니라서(셸이 도는 work마다 선다)
+  // 통째로 비교하면 work A의 타이틀 하나에 B·C의 셸 행이 함께 다시 그려진다.
+  const state = useStore(terminalStore, (whole) => whole, (a, b) => sameBranch(a, b, owner));
+  const navigate = useNavigate();
 
   /**
    * 지금 **이 가지의 화면을 보고 있는가.** 둘로 갈라 읽는다 — `onThisWork`는 「이 work에

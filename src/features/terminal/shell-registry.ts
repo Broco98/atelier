@@ -459,6 +459,30 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
+ * 두 상태가 **이 가지에게 같은가.**
+ *
+ * 가지가 그리는 것은 셋뿐이다 — 자기 셸들, 그중 켜진 칸, 그리고 앱 전체 개수(상한 문구는
+ * 앱 전체를 센다 — 결정 30). 남의 work의 셸이 프롬프트마다 쏘는 OSC 타이틀에는 그 셋 중
+ * 아무것도 안 바뀐다.
+ *
+ * **가지가 하나가 아니라서 필요하다.** 셸이 도는 work마다 가지가 서므로(결정 73) 스토어를
+ * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 셸 행이 함께 다시 그려진다. 판 04
+ * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이고, 목록이 아니라 가지 사이에서도
+ * 같은 이유가 선다.
+ *
+ * 칸을 **개수가 아니라 정체로** 본다 — `patch`가 안 바뀐 칸에는 같은 객체를 돌려주므로
+ * 타이틀이 갈린 칸만 새 객체다. 개수만 세면 이름이 바뀌어도 안 다시 그린다.
+ */
+export function sameBranch(a: ShellsState, b: ShellsState, owner: string | null): boolean {
+  if (a === b) return true;
+  if (a.shells.length !== b.shells.length) return false;
+  if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
+  const mine = shellsOf(a, owner);
+  const theirs = shellsOf(b, owner);
+  return mine.length === theirs.length && mine.every((shell, at) => shell === theirs[at]);
+}
+
+/**
  * 그 키가 가리키는 셸. 갈 곳이 없으면 `null`이다.
  *
  * **화면마다 갈리는 것은 `firstKey` 하나다** — ⌘몇이 첫 셸인가. work 화면은 ⌘1이 spec이라
