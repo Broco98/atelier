@@ -5,10 +5,10 @@ import { activeIdOf, shellEndLabels, shellsOf, TOP_TERMINAL, workShellOrigin } f
 import type { ShellOrigin } from "./shell-registry";
 import {
   attachShell,
-  closeShell,
   detachShell,
   ensureShell,
   openNewShell,
+  requestCloseShell,
   selectShell,
   terminalStore,
 } from "./terminal-store";
@@ -78,7 +78,7 @@ function TerminalPane({
         // 만들어 주지만(works.rs의 to_view) 그 사실을 여기서 다시 믿지 않는다.
         projects={work?.worktrees.map((tree) => tree.project) ?? []}
         onSelect={selectShell}
-        onClose={closeShell}
+        onClose={requestCloseShell}
         onOpen={(project) => {
           const origin = originOf(work, project);
           if (origin) openNewShell(origin);
@@ -87,9 +87,18 @@ function TerminalPane({
       {/* 이 줄은 **비어 있어도 자리를 차지한다.** 죽은 셸의 마지막 화면을 그대로 두라는
           것이 결정 22인데, 조건부로 끼워 넣으면 나타나는 순간 컨테이너가 그만큼 낮아지고
           ResizeObserver가 그 화면을 한두 행 줄여 다시 흐르게 한다. 높이를 고정하면 없다.
-          탭의 꼬리표(`42`)가 어느 칸인지를 말하고, 이 줄이 그 한 문장을 말한다. */}
-      <div className="h-5 shrink-0 px-4 text-[12px] text-muted-foreground">{notice}</div>
-      <div ref={hostRef} className="min-h-0 min-w-0 flex-1 px-4 pb-3" />
+          탭의 꼬리표(`42`)가 어느 칸인지를 말하고, 이 줄이 그 한 문장을 말한다.
+
+          **여백은 없다**(결정 94) — 이 줄도 셸과 같은 왼쪽 끝에서 시작한다. */}
+      <div className="h-5 shrink-0 text-[12px] text-muted-foreground">{notice}</div>
+      {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
+          창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
+          읽는 글이라 그대로 둔다. */}
+      {/* 셸이 들어앉는 자리. 표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 —
+          한때 「마크업의 마지막 빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만
+          더 그려지면(결정 102의 「아직 셸이 없어요」가 그렇다) 그 판정이 결정 94와
+          무관하게 깨진다. */}
+      <div ref={hostRef} data-shell-host="" className="min-h-0 min-w-0 flex-1" />
     </>
   );
 }

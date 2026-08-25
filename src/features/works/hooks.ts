@@ -31,7 +31,11 @@ export const worksQuery = queryOptions({
 // 아무도 고르지 않았을 때 기본 선택이 될 수 있는 작업. 초안은 사이드바 목록에서 접힌 별도
 // 구역에 살기 때문에, 여기로 떨어지면 본문에는 열려 있는데 목록에는 강조가 안 보인다.
 // pickSlug의 두 호출처가 같은 조건을 쓰도록 여기 한 곳에 둔다.
-export const isDefaultSelectable = (work: WorkView) => work.status !== "draft";
+//
+// **핀이 그 규칙을 이긴다**(결정 83). 「초안은 건너뛴다」는 아무도 안 고른 상태의
+// 기본값이고, 핀은 사람이 명시적으로 꽂은 것이다 — 고정된 초안이 목록 맨 위에 서는데
+// 정규화가 그것을 건너뛰면 보이는 첫 항목과 열리는 작업이 갈린다.
+export const isDefaultSelectable = (work: WorkView) => work.pinned || work.status !== "draft";
 
 export function useWorks() {
   const queryClient = useQueryClient();
@@ -75,6 +79,17 @@ export function useSetWorkStatus() {
   return useMutation({
     mutationFn: ({ slug, status }: { slug: string; status: WorkStatus }) =>
       worksApi.setStatus(slug, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
+  });
+}
+
+// 고정을 켜고 끈다. 목록 순서까지 바뀌는데(결정 100) 순서는 코어가 정하므로, 여기서는
+// 상태 변경과 똑같이 목록을 무효화하기만 한다.
+export function useSetWorkPinned() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, pinned }: { slug: string; pinned: boolean }) =>
+      worksApi.setPinned(slug, pinned),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKS_KEY }),
   });
 }

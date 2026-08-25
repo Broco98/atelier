@@ -32,6 +32,7 @@ const work: WorkView = {
   branch: "feat/some-work",
   createdAt: "2026-08-16",
   projects: [],
+  pinned: false,
   worktrees: [],
   specDir: "~/.atelier/works/some-work/spec",
   specFiles: [],
@@ -43,6 +44,10 @@ const work: WorkView = {
 function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal-store.ts"): string {
   return readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
 }
+
+// 리터럴이 **몇 번** 나오는가. 파싱이 필요 없어 파서가 샐 자리가 없다 —
+// 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
+const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
 function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): string {
   const client = new QueryClient();
@@ -540,6 +545,35 @@ describe("WorksPage ⌘Enter", () => {
     }
     expect(togglesWorkPanel(key({ metaKey: false }))).toBe(false);
     expect(togglesWorkPanel(key({ key: "t" }))).toBe(false);
+  });
+
+  // 결정 93·98. ⌘T가 xterm 밖에서도 들린다 — 셸이 0개인 화면에는 xterm이 없어 그 키를
+  // 들을 사람이 없었다. **판정은 `opensShellFromWindow`가 혼자 알고**(그쪽 검사는
+  // shell-registry.test.ts에 전수돼 있다) 여기서 보는 것은 그 판정이 이 화면에 실제로
+  // 배선돼 있는가다 — 이펙트는 정적 렌더에서 안 돈다.
+  it("⌘T를 window에서 듣고, 열리면 본문이 터미널로 간다", () => {
+    const worksPage = source("WorksPage.tsx");
+    // **이펙트를 정규식으로 잘라내지 않는다.** 한때 그렇게 했는데 앞쪽 `[\s\S]*?`가
+    // **다른 이펙트(⌘Enter, 156행)에서 출발**해 103줄을 통째로 삼켰고, 그래서 아래
+    // 리터럴들이 남의 이펙트로 충족됐다 — ⌘T의 `addEventListener` 한 줄을 지워도 초록이었다
+    // (실측). 파싱을 없애고 **리터럴과 개수**로 본다: 새면 통과가 아니라 실패가 되는 모양이다.
+    //
+    // **이름이 있는지만 보면 안 된다.** 가드의 `!` 하나를 지우면 ⌘T가 영영 안 먹고 다른
+    // 모든 키가 셸을 여는데, 그렇게 뒤집어도 초록이었다. 리터럴 그대로 못박는다.
+    expect(worksPage).toContain("if (!opensShellFromWindow(e)) return;");
+    // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
+    expect(worksPage).toContain("workShellOrigin(panelWork, null)");
+    // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
+    expect(worksPage).toContain("onSelectTab(\"terminal\")");
+    expect(worksPage).toContain("openNewShell(origin);");
+    // **등록을 따로 센다.** 위 리터럴은 전부 핸들러 **본문**이라, 핸들러가 window에 안
+    // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
+    // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
+    // 셸이 0개인 화면에서 ⌘T가 다시 안 먹는다 — 결정 93이 없애려던 증상 그 자체다.
+    expect(
+      countOf(worksPage, 'window.addEventListener("keydown", onKeyDown);'),
+      "window에서 키를 듣는 자리가 둘이 아니다 — ⌘Enter와 ⌘T",
+    ).toBe(2);
   });
 
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {
