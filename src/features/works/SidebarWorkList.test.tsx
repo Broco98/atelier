@@ -1,7 +1,11 @@
+/// <reference types="node" />
+// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { WorkSectionList } from "./SidebarWorkList";
+import { openBranchOnSelect, WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { ViewTab } from "@/routes/-work-search";
 import type { WorkView } from "./types";
@@ -273,5 +277,41 @@ describe("work 아래 트리", () => {
     const open = render(works("가"), ALL, { selectedSlug: "가", branchOpen: () => true });
     expect(branchesOf(open)[0]).toContain('aria-expanded="true"');
     expect(bodiesOf(open).filter((body) => body.includes("grid-rows-[0fr]"))).toHaveLength(0);
+  });
+});
+
+describe("가지의 자동 펼침", () => {
+  // 결정 107. 「처음 고를 때 한 번」과 「고를 때마다」는 화면으로 구별이 어렵다 — 접었다가
+  // 다른 work을 거쳐 돌아와야 갈리고, 그 왕복은 이 seam에 없다. 그래서 판정만 뗐다.
+  it("기록에 없는 work은 펼친다", () => {
+    expect(openBranchOnSelect({}, "가")).toEqual({ 가: true });
+  });
+
+  // **이 한 줄이 결정 107의 전부다.** 값을 보는 판정(`prev[slug] ?? true`)으로 바꾸면
+  // 여기가 빨개진다 — 사람이 접어 둔 `false`와 기록이 아예 없는 것이 같아지기 때문이다.
+  it("사람이 접어 둔 work은 다시 골라도 접힌 채다", () => {
+    expect(openBranchOnSelect({ 가: false }, "가")).toEqual({ 가: false });
+  });
+
+  it("사람이 펴 둔 work도 그대로다 — 같은 객체를 돌려준다", () => {
+    // 새 객체를 만들면 그 work을 다시 고를 때마다 목록이 통째로 다시 그려진다.
+    const open = { 가: true };
+    expect(openBranchOnSelect(open, "가")).toBe(open);
+  });
+
+  it("남의 기록은 안 건드린다", () => {
+    expect(openBranchOnSelect({ 가: false }, "나")).toEqual({ 가: false, 나: true });
+  });
+
+  // **판정을 꺼내 놓는 것만으로는 모자라다.** 이펙트가 옛 식을 그대로 갖고 있으면 위
+  // 검사들이 전부 초록인 채로 화면 동작만 뒤집힌다 — 실측으로 그랬다(뮤테이션 F3).
+  it("이펙트가 그 판정을 딛는다", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(source).toContain("setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));");
+    // 정의 하나 + 부르는 자리 하나. 늘면 판정을 딛는 자리가 둘이 되어 한쪽만 늙는다.
+    expect(source.split("openBranchOnSelect(").length - 1).toBe(2);
   });
 });

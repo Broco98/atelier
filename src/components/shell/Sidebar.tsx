@@ -116,7 +116,9 @@ function Sidebar({
                 }
               />
               {item.key === "terminal" && terminalStands && (
-                // 들여쓰기는 이 상자 하나가 준다 — work의 가지와 같은 값이다.
+                // **들여쓰기가 한 단이다** — 여기서는 nav 항목 자신이 가지의 머리행을 겸하므로
+                // `ShellBranch`가 주는 한 단으로 끝난다. work 쪽은 두 단이다(work 행 아래에
+                // `terminal` 머리행이 따로 서고 셸은 그 아래다). 트리의 깊이가 실제로 그렇다.
                 <SectionBody open={terminalOpen}>
                   <ShellBranch work={null} />
                 </SectionBody>

@@ -158,7 +158,7 @@ function SidebarWorkList({
 
   useEffect(() => {
     if (selectedSlug === null) return;
-    setBranchOpen((prev) => (selectedSlug in prev ? prev : { ...prev, [selectedSlug]: true }));
+    setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));
   }, [selectedSlug]);
 
   /**
@@ -251,6 +251,28 @@ function SidebarWorkList({
       )}
     </>
   );
+}
+
+/**
+ * work을 골랐을 때 가지의 접힘 기록이 어떻게 되는가(결정 107).
+ *
+ * **처음 고를 때 한 번만 펼친다.** 기록에 이미 있으면 그대로 둔다 — 그 값은 사람이 접거나
+ * 편 결과이고, 다시 고를 때마다 펼치면 「사람이 접으면 접힌 채 남는다」가 거짓이 된다.
+ * `false`가 기록에 남아 있는 것과 기록이 아예 없는 것을 **가르는 것이 전부**이므로,
+ * `prev[slug] ?? true`처럼 값을 보는 판정으로 바꾸면 그 둘이 같아진다.
+ *
+ * **안 바뀌면 같은 객체를 돌려준다** — 새 객체를 만들면 그 work을 다시 고를 때마다 목록이
+ * 통째로 다시 그려진다.
+ *
+ * **함수로 꺼낸 이유는 테스트다.** 이 저장소의 컴포넌트 seam은 정적 마크업이라 이펙트가
+ * 돌지 않는다 — 이 판단을 이펙트 안에 두면 「고를 때마다 펼친다」로 뒤집어도 검사가 전부
+ * 초록이었다(실측). `togglesWorkPanel`이 같은 이유로 같은 모양이다.
+ */
+export function openBranchOnSelect(
+  open: Record<string, boolean>,
+  slug: string,
+): Record<string, boolean> {
+  return slug in open ? open : { ...open, [slug]: true };
 }
 
 // 세 구획을 그리는 부분. 구독하는 자리(useWorks·라우터·localStorage)는 위에 남기고 여기는
