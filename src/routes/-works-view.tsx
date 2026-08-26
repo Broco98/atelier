@@ -2,7 +2,14 @@ import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
-import { recallView, rememberView, splitSearch, tabSearch, viewSearch } from "./-work-search";
+import {
+  fileSearch,
+  recallView,
+  rememberView,
+  splitSearch,
+  tabSearch,
+  viewSearch,
+} from "./-work-search";
 import type { SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/features/works/split-view";
@@ -46,13 +53,16 @@ function WorksView({
   // 이슈 #25가 못박은 "파일 전환은 히스토리 항목을 만들지 않는다"는 트리를 두고 한 말이다 —
   // 그때는 문서를 옮기는 길이 트리뿐이었다. 링크는 따라 들어갔다는 감각이 있으므로
   // 돌아올 자리가 있어야 하고, 그 자리를 만드는 것이 push다.
+  //
+  // 주소를 고치는 몸통은 `fileSearch`다 — **함수형이어야 한다**(결정 15). 그 머리말에
+  // 이 자리가 왜 오래 틀려 있었는지가 적혀 있다.
   const selectFile = useCallback(
     (path: string, push: boolean) => {
       if (slug === null) return;
       void navigate({
         to: "/works/$slug",
         params: { slug },
-        search: { file: path },
+        search: (prev: object) => fileSearch(prev, path),
         replace: !push,
       });
     },

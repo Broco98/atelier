@@ -7,6 +7,7 @@ import {
   recallView,
   rememberView,
   splitOf,
+  fileSearch,
   splitSearch,
   tabSearch,
   validateWorkSearch,
@@ -96,6 +97,18 @@ describe("주소를 고치는 짝", () => {
       file: "a.md",
       tab: "terminal",
       split: undefined,
+    });
+  });
+
+  // **축이 셋이다.** 문서를 바꾸는 자리가 오래 이 파일 밖에 있었고, 그래서 `tab`·`split`이
+  // 생긴 뒤에도 객체를 통째로 주는 옛 모양이 남아 문서를 고르면 분할이 무너졌다(실측).
+  it("문서를 바꿔도 분할이 남는다", () => {
+    expect(fileSearch({ file: "a.md", split: "rl" as const, tab: "terminal" as const }, "b.md")).toEqual({
+      file: "b.md",
+      split: "rl",
+      // 문서를 고르면 본문은 spec으로 돌아온다(결정 50) — `tab`은 **분할을 끄면 남는 쪽**이라
+      // 이 갱신이 분할을 건드리지 않는다.
+      tab: undefined,
     });
   });
 });

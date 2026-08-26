@@ -85,6 +85,24 @@ export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?:
 }
 
 /**
+ * 문서를 바꿀 때 주소의 `search`를 어떻게 고치는가. **셋째 축이다.**
+ *
+ * 이 자리가 오래 비어 있었다. 주소에 `file` 하나뿐이던 시절에 쓴 `search: { file }`이
+ * 그대로 살아, 판 04가 `tab`을 판 05가 `split`을 얹은 뒤로는 **문서를 고르는 것만으로
+ * 분할이 무너졌다**(실측 — 위 `tabSearch` 머리말이 경고한 그 사고가 반대 방향으로 났다).
+ * 축 셋이 한 파일에 나란히 서야 넷째가 생기는 날 같은 일이 안 난다.
+ *
+ * `tab`을 함께 spec으로 보내는 것은 결정 50이다 — 「문서를 고르면 spec으로 돌아온다」.
+ * `split`은 건드리지 않는다: 분할 중이면 문서는 **이미 서 있는 열**의 내용일 뿐이다.
+ */
+export function fileSearch<T extends object>(
+  prev: T,
+  path: string,
+): T & { file: string; tab?: "terminal" } {
+  return { ...tabSearch(prev, "spec"), file: path };
+}
+
+/**
  * 분할을 바꿀 때 주소의 `search`를 어떻게 고치는가. `tabSearch`와 **같은 몸통**이다 —
  * 둘을 한 함수로 합치지 않는 것은 바꾸는 축이 둘이라서다: 열에 포커스가 들어가면 `tab`만
  * 바뀌고(분할은 그대로), 토글을 끄면 `split`만 바뀐다(남는 쪽은 `tab`이 이미 안다).

@@ -276,3 +276,27 @@ test("두 열이 반반으로 서고, 창이 넓어져도 반반이다", async (
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **분할 중에 문서를 골라도 분할이 남는다.**
+//
+// 주소에 `file`을 적는 자리가 이 판보다 오래됐고, 그때는 주소에 `file` 하나뿐이라
+// 객체를 통째로 주는 것이 맞았다. 판 04가 `tab`을, 판 05가 `split`을 얹으면서 **그 자리만
+// 안 따라왔다** — 객체를 주면 TanStack Router가 search를 통째로 갈아치운다(결정 15).
+//
+// 이 층에서만 보인다: 문서를 고르는 것은 주소를 바꾸는 일이라 마크업 seam에는 없다.
+test("분할 중에 문서를 골라도 분할이 남는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const [pinnedWork] = WORKS;
+  await page.goto(`/works/${pinnedWork.slug}?split=lr`);
+
+  // 분할로 들어오면 패널이 접혀 있다(결정 88). 트리를 보려면 사람이 다시 연다.
+  await page.getByRole("button", { name: "작업 패널 펼치기" }).click();
+  await page.getByRole("button", { name: pinnedWork.specFiles[0], exact: true }).click();
+
+  await expect(page).toHaveURL(/file=/);
+  // **분할이 남는다.** 여기가 무너지면 열이 하나로 접히면서 터미널이 통째로 사라진다.
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page.locator("[data-column]")).toHaveCount(2);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
