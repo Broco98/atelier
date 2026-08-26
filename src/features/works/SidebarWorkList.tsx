@@ -4,7 +4,6 @@ import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import {
-  BranchArrow,
   BranchHeader,
   SectionBody,
   TreeIndent,
@@ -660,10 +659,11 @@ function WorkRow({
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
   /**
-   * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 없으면 화살표가
-   * 서지 않는다 — nav 항목의 `branch`와 같은 계약이고, 없는 이유도 같다: **남의 work의
-   * 행에는 안 준다**(결정 101 — 남의 work 항목을 건드리면 그 work로 간다. 접기 토글은
-   * 고른 work의 것에만 있다).
+   * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 있으면 이 행을
+   * 누르는 것이 곧 접기 토글이고, 없으면 그 work으로 가는 것이다.
+   *
+   * **남의 work의 행에는 없다**(결정 101 — 남의 work 항목을 건드리면 그 work로 간다.
+   * 접기 토글은 고른 work의 것에만 있다).
    */
   branch?: { open: boolean; onToggle: () => void };
 }) {
@@ -678,8 +678,16 @@ function WorkRow({
     >
       <button
         type="button"
-        onClick={() => onOpen(work.slug)}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left"
+        // 표식과 `aria-expanded`가 **이 버튼에 있다** — 행 전체가 곧 토글이라서다.
+        // 값을 싣는 것은 한 화면에 가지가 여럿이기 때문이고(sidebar-tree의 같은 주석),
+        // 슬러그로 갈리는 것은 제목을 사람이 고쳐도 슬러그는 안 바뀌기 때문이다.
+        data-branch={branch ? work.slug : undefined}
+        aria-expanded={branch?.open}
+        // **누르면 무엇이 되는가가 갈린다**(결정 101). 남의 work 행이면 그 work로 가고,
+        // 고른 work의 행이면 접기 토글이다 — `terminal` 머리행이 이미 쓰는 규칙 그대로이고,
+        // 구획 헤더(`작업`)가 행 전체로 접히는 것과도 같은 모양이다.
+        onClick={branch ? branch.onToggle : () => onOpen(work.slug)}
+        className="group/row flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
         <span
@@ -690,6 +698,19 @@ function WorkRow({
         >
           {work.title}
         </span>
+        {/* 화살표가 **제목 곁**에 선다 — 구획 헤더와 같은 자리·같은 규칙이다. 펼쳐져 있을 때
+            숨는 것은 결정 85가 핀에 세운 것과 같은 근거다: 좁은 사이드바에서 상시 아이콘은
+            정작 봐야 할 제목보다 먼저 눈에 들어온다. 접혀 있으면 늘 보인다 — 그때는
+            「아래에 더 있다」가 그 화살표 말고는 화면에 없다. */}
+        {branch && (
+          <ChevronDown
+            className={cn(
+              "size-3.5 shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
+              branch.open ? "opacity-0 group-hover/row:opacity-100" : "-rotate-90 opacity-100",
+            )}
+            strokeWidth={2.2}
+          />
+        )}
       </button>
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
@@ -713,22 +734,6 @@ function WorkRow({
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>
-      {branch && (
-        <button
-          type="button"
-          // 값을 싣는 것은 한 화면에 가지가 여럿이기 때문이다(sidebar-tree의 같은 주석).
-          // work 블럭은 슬러그로 갈린다 — 제목은 사람이 고쳐도 슬러그는 안 바뀐다.
-          data-branch={work.slug}
-          aria-expanded={branch.open}
-          // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은 누르면
-          // 무엇이 되는지를 말한다(nav 항목·작업 패널이 같은 규칙이다).
-          aria-label={`${work.title} ${branch.open ? "접기" : "펼치기"}`}
-          onClick={branch.onToggle}
-          className="icon-button-quiet shrink-0 text-tertiary"
-        >
-          <BranchArrow open={branch.open} />
-        </button>
-      )}
     </div>
   );
 }

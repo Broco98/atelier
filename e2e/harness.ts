@@ -26,11 +26,6 @@ const PLUGINS: Record<string, unknown> = {
   "plugin:event|listen": 1,
   "plugin:event|unlisten": null,
   "plugin:window|is_fullscreen": false,
-  // `confirm`도 와이어에서는 이 커맨드로 나간다 — `plugin:dialog|confirm`은 없다.
-  // 그래서 답은 **null이어야 한다**: `message`는 반환값을 안 쓰고 `confirm`은 null을
-  // 취소로 읽는다. true를 돌려주면 확인 대화상자가 전부 "예"가 되어, 삭제 같은 파괴적
-  // 흐름이 테스트 안에서 조용히 실행된다.
-  "plugin:dialog|message": null,
   // `homeDir()`가 와이어에서 이 이름으로 나간다. Works 화면을 여는 시나리오가 생기면서
   // (사이드바 트리 검사) 이 호출을 지나게 됐다 — 본문 뷰어가 홈 축약 경로(`~/…`)를 펴는 데
   // 쓴다(`useHomeDir`). 값이 화면에 드러나는 자리는 이미지 경로 하나뿐이라 아무 경로여도
@@ -40,6 +35,11 @@ const PLUGINS: Record<string, unknown> = {
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
 // 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
+//
+// **`plugin:dialog|message`를 뺐다.** 확인·알림 창이 앱의 것으로 바뀌면서(`AppDialog`)
+// 앱이 그 커맨드로 나가는 길이 없어졌다 — 남겨 두면 아무도 안 태우는 스텁이 되고, 그러면
+// 「OS에 안 물었다」를 보는 검사가 **답이 준비돼 있어서** 초록인지 정말 안 물어서 초록인지
+// 갈리지 않는다. 지금은 그 커맨드가 오면 화이트리스트 탐지기가 문다.
 //
 // 아직 안 넣은 것은 `plugin:opener|open_url`이다. 지금 그것을 태우는 시나리오가 없고,
 // **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트 탐지기가 영원히 건드리지 않는

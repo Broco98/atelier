@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
@@ -17,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { PopoverPortal } from "@/components/ui/popover-portal";
@@ -1004,12 +1004,13 @@ function WorkMenu({
     // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
     // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
     const notice = liveShells > 0 ? `${detail}\n셸 ${liveShells}개가 닫혀요.` : detail;
-    const ok = await confirm(notice, { title: `'${work.title}' ${verb}`, kind: "warning" });
-    if (!ok) return;
+    // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
+    // 앱 밖의 일처럼 읽힌다.
+    if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;
     try {
       await call();
     } catch (e) {
-      await message(`${verb}하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      await showProblem(`${verb}하지 못했습니다: ${e}`);
       return;
     }
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라

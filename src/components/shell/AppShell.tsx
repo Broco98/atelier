@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
+import AppDialog from "@/components/ui/AppDialog";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
@@ -83,6 +84,9 @@ function AppShell() {
         <Outlet />
       </div>
       <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+      {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
+          그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
+      <AppDialog />
     </div>
   );
 }

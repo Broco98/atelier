@@ -127,6 +127,19 @@ test("트리 행의 배경은 work 행과 나란히 서고, 글자만 들여쓴�
   const shellInsetX = await shell.evaluate((el) => el.firstElementChild!.getBoundingClientRect().x);
   expect(shellInsetX).toBeGreaterThan(leafInsetX);
 
+  // **한 컬럼에서 세로 간격이 하나다.** 「머리행 아래」가 「행 사이」보다 넓으면 같은 목록의
+  // 행들이 다른 무리로 읽힌다 — 접히는 상자가 부모의 gap 위에 자기 여백을 한 번 더 물면
+  // 정확히 그렇게 된다(실측으로 6px 대 3px이었다).
+  const gaps = await page.evaluate(() => {
+    const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+    const workRow = document.querySelector("[data-branch]")!.parentElement!.getBoundingClientRect();
+    const leaf = box('[data-leaf="spec"]');
+    const branch = box('[data-branch="terminal"]');
+    const shellRow = document.querySelector("[data-shell-row]")!.parentElement!.getBoundingClientRect();
+    return [leaf.top - workRow.bottom, branch.top - leaf.bottom, shellRow.top - branch.bottom];
+  });
+  expect(gaps).toEqual([gaps[0], gaps[0], gaps[0]]);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -149,9 +162,44 @@ test("고른 work 블럭을 통째로 접을 수 있고, 남의 work에는 그 �
   // 접혀도 속은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 닿을 수 없다.
   await expect(body).toHaveAttribute("inert", "");
 
-  // 결정 101. 남의 work 항목을 건드리면 그 work로 간다 — 접기 토글은 고른 것에만 있다.
+  // 결정 101. 남의 work 항목을 건드리면 그 work로 **간다** — 접히는 것이 아니다.
+  // 행 하나가 두 가지 일을 하게 됐으므로 갈림을 여기서 함께 본다.
   const [pinnedWork] = WORKS;
   await expect(page.locator(`[data-branch="${pinnedWork.slug}"]`)).toHaveCount(0);
+  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 확인 창이 **이 앱의 것**이다 — OS 시트가 아니다. 창 하나만 남의 글꼴·남의 모서리로 뜨면
+// 그것이 앱 밖의 일처럼 읽힌다. 이 층에서만 보인다: 정적 마크업 seam에는 클릭이 없고,
+// 「OS에 안 물었다」는 IPC 기록으로만 드러난다.
+test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  const shell = page.locator("[data-shell-row]");
+  await expect(shell).toBeVisible();
+  await page.getByRole("button", { name: /닫기$/ }).first().click();
+
+  // 앱이 그리는 창이다 — 이 요소가 DOM에 있다는 것 자체가 OS 시트가 아니라는 뜻이다.
+  const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("실행 중인 명령이 있어요");
+
+  // 취소하면 셸이 그대로 남는다 — 「물었고, 아니라고 하면 안 닫는다」(결정 92).
+  await dialog.getByRole("button", { name: "취소" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(shell).toBeVisible();
+
+  // 다시 물어 이번엔 닫는다.
+  await page.getByRole("button", { name: /닫기$/ }).first().click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "닫기" }).click();
+  await expect(shell).toHaveCount(0);
+
+  // **OS에는 한 번도 안 물었다.** `confirm`도 `message`도 와이어에서는 이 커맨드로 나간다.
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  expect(calls.filter((call) => call.startsWith("plugin:dialog"))).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
