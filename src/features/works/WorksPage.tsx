@@ -331,29 +331,6 @@ function WorksPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [panelWork, onSelectTab]);
 
-  /**
-   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
-   *
-   * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
-   * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
-   *
-   * **분할일 때는 안 옮긴다** — 문서가 이미 옆 열에 서 있고, 옮기면 그 순간 `tab`이
-   * 바뀌어 「끄면 남는 쪽」(결정 97)까지 조용히 달라진다.
-   *
-   * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
-   * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
-   * 개수는 셸을 열고 닫을 때만 바뀐다.
-   */
-  const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, panelWork.slug).length : 0,
-  );
-  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
-  useEffect(() => {
-    const now = { owner: panelWork?.slug ?? null, count: shellCount };
-    const emptied = shellsEmptied(tally.current, now);
-    tally.current = now;
-    if (emptied && tab === "terminal" && split === null) onSelectTab("spec");
-  }, [shellCount, panelWork, tab, split, onSelectTab]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
@@ -489,6 +466,35 @@ function WorksPage({
     },
     [collapseOnSplit, onSelectSplit],
   );
+
+  /**
+   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
+   *
+   * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
+   * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
+   *
+   * **분할이면 분할째로 걷는다.** 한때 「문서가 이미 옆 열에 서 있으니 그냥 둔다」로
+   * 두었는데, 실물에서 그 화면은 **빈 터미널 열이 반을 차지한 채로 남았다** — 볼 것이
+   * 없는 열이 절반을 먹는 것이 두 열을 나란히 세운 이유와 정면으로 어긋난다.
+   * 남는 것은 문서 하나이므로 `split`을 끄면서 `tab`도 함께 문서로 보낸다(한 번의 이동이라
+   * 「끄면 남는 쪽」(결정 97)도 어긋나지 않는다).
+   *
+   * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
+   * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
+   * 개수는 셸을 열고 닫을 때만 바뀐다.
+   */
+  const shellCount = useStore(terminalStore, (state) =>
+    panelWork ? shellsOf(state, panelWork.slug).length : 0,
+  );
+  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
+  useEffect(() => {
+    const now = { owner: panelWork?.slug ?? null, count: shellCount };
+    const emptied = shellsEmptied(tally.current, now);
+    tally.current = now;
+    // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
+    // 화면에서 아무것도 안 바뀌어야 한다.
+    if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
+  }, [shellCount, panelWork, tab, split, changeSplit]);
 
   // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.

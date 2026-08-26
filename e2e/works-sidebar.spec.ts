@@ -277,3 +277,30 @@ test("spec 트리의 그림은 그림으로 선다", async ({ page }) => {
   expect(calls.filter((call) => call.startsWith("read_spec_file"))).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **블럭이 사라질 때도 접히면서 사라진다.** 조건이 거짓이 되는 순간 걷어 버리면 아래
+// 행들이 그만큼 순간이동한다 — 실물에서 다른 work을 누를 때 목록이 68px 튀는 모습으로
+// 났다(실측). 이 층에서만 보인다: 마운트/언마운트는 정적 마크업에 시간이 없다.
+test("다른 work을 눌러도 목록이 순간이동하지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const [pinnedWork] = WORKS;
+  await page.goto(`/works/${pinnedWork.slug}`);
+
+  const row = page.getByRole("button", { name: `${plainWork.title} 고정` });
+  const y = () => row.evaluate((el) => el.parentElement!.getBoundingClientRect().y);
+  const before = await y();
+
+  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
+  await page.waitForTimeout(40);
+  const mid = await y();
+  await page.waitForTimeout(400);
+  const after = await y();
+
+  // 결국 자리는 바뀐다 — 앞 work의 블럭이 걷혔으니까.
+  expect(after).toBeLessThan(before - 20);
+  // **가는 중이 있었다.** 순간이동이면 40ms에 이미 끝자리라 이 줄이 빨개진다.
+  // (실측: 고치기 전에는 40ms에 벌써 도착해 있었다.)
+  expect(mid).toBeGreaterThan(after);
+  expect(mid).toBeLessThan(before);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

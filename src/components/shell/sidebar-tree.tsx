@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,44 @@ import { cn } from "@/lib/utils";
 //
 // 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
 // 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
+/**
+ * 접기 애니메이션이 도는 시간. 아래 `SectionBody`의 `duration-[180ms]`와 **같은 값이어야
+ * 한다** — 이 숫자는 「언제 걷어도 되는가」를 재는 데 쓰이므로, 짧으면 애니메이션이 도는
+ * 중에 걷혀 뚝 끊기고 길면 빈 상자가 그만큼 남는다.
+ */
+const COLLAPSE_MS = 180;
+
+/**
+ * **서고 사라지는 것을 애니메이션할 수 있게 만든다.** 두 가지를 함께 푼다:
+ *
+ * 1. 설 때 — 처음부터 펼친 채로 마운트하면 뚝 뜬다. CSS 트랜지션은 요소의 **초기
+ *    스타일에서는 돌지 않는다.** 닫힌 채로 세우고 다음 프레임에 편다.
+ * 2. 사라질 때 — 조건이 거짓이 되는 순간 걷어 버리면 접히는 것을 볼 수가 없다. 실물에서
+ *    이것이 **다른 work을 누르면 목록이 68px 순간이동하는** 모습으로 났다(실측).
+ *
+ * 첫 렌더는 예외다: 앱을 켠 순간이나 목록이 처음 도착한 순간은 「나타나는 것」이 아니라
+ * 그냥 첫 화면이라, 그때까지 애니메이션하면 켤 때마다 사이드바가 펼쳐지는 것을 보게 된다.
+ */
+export function useCollapse(open: boolean): { mounted: boolean; shown: boolean } {
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const frame = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setShown(false);
+    // 여유 한 틱을 더 두는 것은 타이머와 트랜지션이 같은 시계를 안 쓰기 때문이다 —
+    // 딱 맞추면 마지막 프레임이 잘려 끝이 뚝 끊긴다.
+    const timer = window.setTimeout(() => setMounted(false), COLLAPSE_MS + 20);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  return { mounted, shown };
+}
+
 export function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <div

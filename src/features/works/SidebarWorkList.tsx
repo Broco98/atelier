@@ -8,6 +8,7 @@ import {
   SectionBody,
   TreeIndent,
   TreeLeaf,
+  useCollapse,
 } from "@/components/shell/sidebar-tree";
 import { recallView, tabSearch, viewSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
@@ -456,26 +457,11 @@ function WorkNode({
 }) {
   const stands = active || shellCount > 0;
 
-  // **블럭이 새로 설 때도 부드럽게 뜬다.** 접기 토글은 `SectionBody`가 이미 nav와 같은
-  // 애니메이션(grid-rows 0fr↔1fr)으로 돌리는데, work를 **처음 고르는** 순간은 토글이
-  // 아니라 마운트라 트랜지션이 출발할 자리가 없다 — CSS 트랜지션은 요소의 초기 스타일에서는
-  // 돌지 않는다(WorkPanel이 같은 함정을 적어 뒀다). 닫힌 채로 세우고 다음 프레임에 편다.
-  //
-  // `useEffect`는 페인트 뒤에 돌지만 rAF를 한 겹 더 두는 것은 그 보장이 커밋 방식에 달려
-  // 있어서다 — 한 프레임 늦는 대신 「가끔 뚝 뜬다」가 없다.
-  //
-  // **첫 렌더는 이미 서 있는 값으로 시작한다.** 앱을 켠 순간이나 목록이 처음 도착한 순간은
-  // 「나타나는 것」이 아니라 그냥 첫 화면이라, 그때까지 애니메이션하면 켤 때마다 사이드바가
-  // 펼쳐지는 것을 보게 된다.
-  const [entered, setEntered] = useState(stands);
-  useEffect(() => {
-    if (!stands) {
-      setEntered(false);
-      return;
-    }
-    const frame = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(frame);
-  }, [stands]);
+  // **블럭이 설 때도 사라질 때도 부드럽다**(`useCollapse`). 접기 토글은 `SectionBody`가
+  // 이미 nav와 같은 애니메이션으로 돌리는데, 「이 블럭이 아예 있는가」는 마운트/언마운트라
+  // 그 트랜지션이 설 자리가 없었다 — 실물에서 **다른 work을 누르면 목록이 68px
+  // 순간이동하는** 모습으로 났다(실측). 앞 work의 블럭이 즉시 걷혀 아래를 끌어올린 것이다.
+  const block = useCollapse(stands);
   return (
     <>
       <WorkRow
@@ -489,10 +475,10 @@ function WorkNode({
         // 그 work로 가는 것이 사이드바에 남은 규칙 하나다.
         branch={active && stands ? { open: nodeOpen, onToggle: onToggleNode } : undefined}
       />
-      {stands && (
+      {block.mounted && (
         // 블럭의 속. nav 항목이 자기 가지를 이는 모양과 **같은 겹**이다(Sidebar.tsx) —
         // 머리행 + `SectionBody` + 그 안의 `TreeIndent`.
-        <SectionBody open={nodeOpen && entered}>
+        <SectionBody open={block.shown && nodeOpen}>
           <TreeIndent>
             {/* **블럭이 서면 잎도 선다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
                 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는
