@@ -71,6 +71,12 @@ pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView
     atelier_core::update_work_status(&works_dir(), &slug, status).map_err(err)
 }
 
+/// 고정을 켜고 끈다. 목록 순서는 커널이 정한다 — 화면은 그 위에 정렬을 얹지 않는다 (결정 100).
+#[tauri::command]
+pub async fn set_work_pinned(slug: String, pinned: bool) -> CmdResult<WorkView> {
+    atelier_core::update_work_pinned(&works_dir(), &slug, pinned).map_err(err)
+}
+
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]
@@ -125,7 +131,7 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
         .map_err(|e| e.to_string())
 }
 
-// PTY 명령 넷. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// PTY 명령 다섯. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 
 #[tauri::command]
@@ -161,6 +167,16 @@ pub async fn pty_resize(
 #[tauri::command]
 pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
     pty::kill(&pool, id)
+}
+
+// 닫기 직전에 **한 번** 묻는 값이다(결정 92). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라
+// 상태에 얹으면 폴링이 생기고, 필요한 순간은 닫을 때뿐이다.
+#[tauri::command]
+pub async fn pty_command_running(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+) -> CmdResult<bool> {
+    pty::command_running(&pool, id)
 }
 
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,

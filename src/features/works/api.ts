@@ -8,6 +8,8 @@ export const worksApi = {
     invoke<WorkView>("set_work_title", { slug, title }),
   setStatus: (slug: string, status: WorkStatus) =>
     invoke<WorkView>("set_work_status", { slug, status }),
+  setPinned: (slug: string, pinned: boolean) =>
+    invoke<WorkView>("set_work_pinned", { slug, pinned }),
   readSpec: (slug: string, path: string) =>
     invoke<string>("read_spec_file", { slug, path }),
   archive: (slug: string) => invoke<void>("archive_work", { slug }),

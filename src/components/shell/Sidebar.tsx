@@ -1,8 +1,14 @@
-import { useRef } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
+import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import { armDrag } from "@/features/works/split-view";
+import ShellBranch from "@/features/terminal/ShellBranch";
+import { shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
+import { BranchArrow, BranchCount, SectionBody } from "./sidebar-tree";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -34,6 +40,26 @@ function Sidebar({
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
   const asideRef = useRef<HTMLElement>(null);
+  // **어느 work에 가지가 서는가만 읽는다**(결정 71). 셀렉터가 얕은 비교를 타므로 셸이
+  // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
+  // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
+  const shellCounts = useStore(terminalStore, shellCountsOf, shallow);
+  // 최상위 셸은 work의 것이 아니라 nav 항목에 붙는 가지다(결정 72) — 세는 자리도 따로다.
+  // 숫자 하나라 얕은 비교가 필요 없다.
+  const topShells = useStore(terminalStore, (state) => shellsOf(state, null).length);
+
+  /**
+   * nav `Terminal`의 가지가 펼쳐졌는가 — work의 가지와 **같은 규칙**이다(결정 107).
+   * `null`은 「사람이 아직 안 정했다」이고, 그 화면을 처음 고를 때 한 번 펼친다.
+   * 사람이 접으면 `false`가 남아 다시 들어가도 접힌 채다. 세션 메모리다.
+   */
+  const [terminalBranch, setTerminalBranch] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (activeKey === "terminal") setTerminalBranch((open) => open ?? true);
+  }, [activeKey]);
+  const terminalOpen = terminalBranch === true;
+  // 가지가 서는 조건은 work과 같은 **합집합**이다 — 지금 그 화면이거나, 셸이 하나라도 있거나.
+  const terminalStands = activeKey === "terminal" || topShells > 0;
 
   return (
     <aside
@@ -63,31 +89,70 @@ function Sidebar({
           open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
         )}
       >
-        {/* traffic light strip — same height as the main header so the logo top
-            lines up with where the header ends (the header no longer draws a
-            bottom border; the 44px strip is what keeps the two columns aligned) */}
+        {/* traffic light strip — same height as the main header (the header no
+            longer draws a bottom border; the 44px strip is what keeps the two
+            columns aligned). It is also the nav's top breathing room, which is
+            why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
-        <div className="shrink-0 pb-3 pl-3.5 pt-1">
-          <span className="text-xl font-semibold tracking-[-0.01em] text-sidebar-foreground">
-            Atelier
-          </span>
-        </div>
-
         {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
-        <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
-          {navItems.map((item) => (
-            <SidebarItem
-              key={item.key}
-              icon={item.icon}
-              label={item.label}
-              active={item.key === activeKey}
-              onClick={() => onSelect(item.key)}
-            />
-          ))}
+        <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+          {navItems.map((item) => {
+            // **nav 항목에도 가지가 붙는다**(결정 72). 최상위 셸을 고르는 자리가 가로 탭
+            // 줄에서 여기로 왔고, 그 줄이 겸하던 타이틀바는 PageHeader가 받았다.
+            // 판정을 한 번만 하는 것은 아래에서 세 번 읽기 때문이다 — 갈리면 화살표는 있는데
+            // 속이 없는 항목이 나온다.
+            const branches = item.key === "terminal" && terminalStands;
+            return (
+            <Fragment key={item.key}>
+              <SidebarItem
+                icon={item.icon}
+                label={item.label}
+                active={item.key === activeKey}
+                onClick={() => onSelect(item.key)}
+                branch={
+                  branches
+                    ? {
+                        open: terminalOpen,
+                        count: topShells,
+                        onToggle: () => setTerminalBranch(!terminalOpen),
+                      }
+                    : undefined
+                }
+              />
+              {branches && (
+                // **들여쓰기가 한 단이다** — 여기서는 nav 항목 자신이 가지의 머리행을 겸하므로
+                // `ShellBranch`가 주는 한 단으로 끝난다. work 쪽은 두 단이다(work 행 아래에
+                // `terminal` 머리행이 따로 서고 셸은 그 아래다). 트리의 깊이가 실제로 그렇다.
+                <SectionBody open={terminalOpen}>
+                  <ShellBranch work={null} />
+                </SectionBody>
+              )}
+            </Fragment>
+            );
+          })}
         </nav>
 
-        <SidebarWorkList open={open} boundaryRef={asideRef} />
+        <SidebarWorkList
+          open={open}
+          boundaryRef={asideRef}
+          shellCounts={shellCounts}
+          // 셸 행을 본문 위로 끄는 자리는 **여기서 만든다**(결정 86·90). 가지가 스스로
+          // 만들면 `terminal → works` 방향이 값 차원에서 새로 생긴다(ShellBranch 주석).
+          //
+          // **최상위 터미널 가지에는 안 준다**(위 `work={null}`) — 떨굴 자리인 분할은
+          // work 화면의 것이고, 저 셸들은 어느 work에도 딸려 있지 않다.
+          //
+          // 남의 work의 행도 끌린다: 떨구면 그 work로 옮겨 가 그 자리에 선다(결정 101).
+          renderShells={(work) => (
+            <ShellBranch
+              work={work}
+              onDragRow={(id, from) =>
+                armDrag({ kind: "shell", slug: work.slug, shellId: id }, from)
+              }
+            />
+          )}
+        />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
             `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날
@@ -114,30 +179,65 @@ function Sidebar({
 // 규격이 갈리면 그 자리에서 보이는데(위 GUTTER 주석과 같은 계약), 같은 문자열을 두 곳에
 // 적어 두면 다음에 규격을 한 번 조정할 때 한쪽만 남는다 — index.css의 quiet-hover 주석이
 // 같은 이유로 열 자리를 하나로 묶었다.
+//
+// **행이 바깥 상자 + 버튼 둘이 됐다**(결정 72). `Terminal`이 가는 곳이면서 접히는 가지를
+// 이고 있게 되어, 한 행에 누를 것이 둘이다. 중첩 button은 HTML에서 허용되지 않고
+// span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — 작업 행(WorkRow)과 셸 행이
+// 이미 같은 문제를 이 구조로 풀었다. 가지가 없는 항목도 **같은 구조로 남긴다**: 규격이
+// 갈리는 것이 이 컬럼에서 가장 먼저 보이는 결함이라, 분기를 마크업이 아니라 값으로 둔다.
+//
+// 배경(선택·hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 — 바깥이 가진 padding은
+// 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다.
 function SidebarItem({
   icon: Icon,
   label,
   active,
   onClick,
+  branch,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
   onClick: () => void;
+  /** 이 항목이 가지를 이고 있으면. 없으면 화살표도 개수도 서지 않는다. */
+  branch?: { open: boolean; count: number; onToggle: () => void };
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "flex h-8 items-center gap-[9px] rounded-[10px] px-[9px] text-[13.5px] font-medium transition-colors",
-        // 목록 항목과 같은 표시 — 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다
+        "flex h-8 shrink-0 items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
-      <Icon className="size-[17px]" strokeWidth={1.7} />
-      {label}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left text-[13.5px] font-medium"
+      >
+        <Icon className="size-[17px] shrink-0" strokeWidth={1.7} />
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+      {branch && (
+        <>
+          {/* 접힌 채로도 「몇 개가 돌고 있나」가 보여야 한다 — 가지 머리행과 같은 조각이다. */}
+          {branch.count > 0 && <BranchCount count={branch.count} />}
+          <button
+            type="button"
+            // 표식은 검사가 이 버튼을 정체성으로 집기 위한 것이다(sidebar-tree의 같은 주석).
+            data-branch={label}
+            aria-expanded={branch.open}
+            // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은
+            // 누르면 무엇이 되는지를 말한다. 「접기」로 고정하면 이미 접힌 가지에서 거짓이다
+            // (WorksPage의 「작업 패널 펼치기」가 같은 규칙이다).
+            aria-label={`${label} 가지 ${branch.open ? "접기" : "펼치기"}`}
+            onClick={branch.onToggle}
+            className="icon-button-quiet shrink-0 text-tertiary"
+          >
+            <BranchArrow open={branch.open} />
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

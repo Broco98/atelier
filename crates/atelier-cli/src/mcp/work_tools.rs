@@ -83,16 +83,21 @@ pub struct AttachProjectParams {
     pub branch: Option<String>,
 }
 
-/// `atelier_edit_work`의 인자. **title만 받는다** — status는 `atelier_set_work_status`가
-/// 담당하고, branch는 워크트리가 체크아웃해 둔 값이라 단독으로 바꿀 수 없다.
+/// `atelier_edit_work`의 인자. **title과 pinned만 받는다** — status는
+/// `atelier_set_work_status`가 담당하고, branch는 워크트리가 체크아웃해 둔 값이라 단독으로
+/// 바꿀 수 없다. 둘 다 선택이다: 안 준 쪽은 그대로 둔다 (`EditProjectParams`와 같은 계약).
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct EditWorkParams {
-    /// Slug of the work to rename, as returned by atelier_list_works.
+    /// Slug of the work to edit, as returned by atelier_list_works.
     pub work_slug: String,
     /// New title, in the user's own language. A blank title is refused. The slug, the
     /// branch and the worktree paths are untouched — only the display name changes.
-    pub title: String,
+    pub title: Option<String>,
+    /// Pin the work so it sorts to the top of every work listing, above the rest.
+    /// Pinning is a fact about the work, not a view setting: it is stored in the work
+    /// itself and survives restarts. Pass false to unpin.
+    pub pinned: Option<bool>,
 }
 
 /// `atelier_set_work_status`의 인자.
@@ -203,12 +208,14 @@ impl AtelierServer {
     }
 
     #[tool(
-        description = "Rename a work: replace its title with a better one. Use it when the \
-                       title was written in a hurry, or when the work turned out to be about \
-                       something else. Only the title changes — the slug, the branch, the \
-                       worktree paths and the spec directory all stay exactly as they are, so \
-                       references already written down elsewhere keep working. A blank title \
-                       is refused. Local files only.",
+        description = "Edit a work's title or pin it. Rename it when the title was written in \
+                       a hurry, or when the work turned out to be about something else; pin it \
+                       when the user says this is what matters right now, so it sorts to the \
+                       top of every listing. Pass either field or both — whichever you omit is \
+                       left alone. Nothing else moves: the slug, the branch, the worktree paths \
+                       and the spec directory all stay exactly as they are, so references \
+                       already written down elsewhere keep working. A blank title is refused. \
+                       Local files only.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -218,12 +225,34 @@ impl AtelierServer {
     )]
     async fn atelier_edit_work(
         &self,
-        Parameters(EditWorkParams { work_slug, title }): Parameters<EditWorkParams>,
+        Parameters(EditWorkParams { work_slug, title, pinned }): Parameters<EditWorkParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        match atelier_core::update_work_title(&self.works_root, &work_slug, &title) {
-            Ok(view) => Ok(CallToolResult::success(vec![ContentBlock::json(&view)?])),
-            Err(e) => Ok(kernel_error(e)),
+        // 커널은 빈 패치를 성공으로 받아 파일을 다시 쓴다. 에이전트에게는 아무 일도
+        // 안 일어난 것으로 보여 혼란만 남으므로, 무엇을 줘야 하는지 말해준다
+        // (atelier_edit_project가 같은 답을 한다).
+        if title.is_none() && pinned.is_none() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "nothing to change: neither title nor pinned was given\n\n\
+                 Pass at least one of them and call this tool again.",
+            )]));
         }
+        // 커널에는 한 필드짜리 쓰기 둘이 있다. 제목이 거부되면 거기서 끝난다 —
+        // 실패한 편집이 반쪽만 착지하지 않게 순서를 고정한다.
+        let mut latest = None;
+        if let Some(title) = title {
+            match atelier_core::update_work_title(&self.works_root, &work_slug, &title) {
+                Ok(view) => latest = Some(view),
+                Err(e) => return Ok(kernel_error(e)),
+            }
+        }
+        if let Some(pinned) = pinned {
+            match atelier_core::update_work_pinned(&self.works_root, &work_slug, pinned) {
+                Ok(view) => latest = Some(view),
+                Err(e) => return Ok(kernel_error(e)),
+            }
+        }
+        let view = latest.expect("the guard above leaves at least one write");
+        Ok(CallToolResult::success(vec![ContentBlock::json(&view)?]))
     }
 
     #[tool(

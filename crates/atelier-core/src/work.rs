@@ -57,6 +57,9 @@ pub struct Work {
     pub branch: Option<String>,
     pub created_at: String,
     pub projects: Vec<String>,
+    /// 「지금 이게 중요하다」 — 화면 설정이 아니라 **그 작업에 대한 사실**이라 여기 산다
+    /// (결정 81). work를 지우면 함께 사라지고, 에이전트도 켤 수 있다.
+    pub pinned: bool,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -73,6 +76,10 @@ struct FileWork {
     branch: Option<String>,
     created_at: String,
     projects: Vec<String>,
+    /// **키가 없으면 false다** — 이 필드보다 먼저 만들어진 work.json 전부가
+    /// 마이그레이션 없이 그대로 읽혀야 한다 (결정 81).
+    #[serde(default)]
+    pinned: bool,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -112,6 +119,7 @@ pub fn parse_work(slug: &str, content: &str) -> Result<Work> {
         branch: file.branch,
         created_at: file.created_at,
         projects: file.projects,
+        pinned: file.pinned,
         extra: file.extra,
     })
 }
@@ -123,6 +131,7 @@ pub fn render_work(work: &Work) -> String {
         branch: work.branch.clone(),
         created_at: work.created_at.clone(),
         projects: work.projects.clone(),
+        pinned: work.pinned,
         extra: work.extra.clone(),
     };
     let mut json = serde_json::to_string_pretty(&file).expect("work serializes");
@@ -209,6 +218,22 @@ mod tests {
 
         let json = serde_json::to_value(&w).unwrap();
         assert!(json["branch"].is_null(), "the view must carry an explicit null: {json}");
+    }
+
+    /// 고정은 **없으면 false**다 (결정 81) — 이미 만들어 둔 work.json 전부가
+    /// 마이그레이션 없이 그대로 읽혀야 한다. 켠 뒤에는 파일에도 뷰에도 실린다.
+    #[test]
+    fn pinned_defaults_to_false_and_survives_a_file_roundtrip() {
+        let w = parse_work("cart-add-item", SAMPLE).unwrap();
+        assert!(!w.pinned, "a work.json without the key must read as not pinned");
+
+        let pinned = Work { pinned: true, ..w };
+        let file = render_work(&pinned);
+        assert!(file.contains("\"pinned\": true"), "pinned must be written: {file}");
+        assert_eq!(parse_work("cart-add-item", &file).unwrap(), pinned);
+
+        let json = serde_json::to_value(&pinned).unwrap();
+        assert_eq!(json["pinned"], true, "the view must carry pinned: {json}");
     }
 
     /// 선언된 상태다 — 파일에 그대로 남고 그대로 돌아온다.

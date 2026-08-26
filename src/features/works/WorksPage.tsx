@@ -1,37 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
   Ban,
   Check,
   ChevronDown,
-  File,
+  CodeXml,
+  Columns2,
   Folder,
   LoaderCircle,
   MoreHorizontal,
   PanelRight,
-  SquareTerminal,
   Trash2,
+  X,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
+import { ResizeHandle } from "@/components/shell/useResizableWidth";
+import useSplitRatio from "@/components/shell/useSplitRatio";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
-import ShellList from "@/features/terminal/ShellList";
+import ShellHeadName from "@/features/terminal/ShellHeadName";
 import TerminalPane from "@/features/terminal/TerminalPane";
-import { runningShellsOf, workShellOrigin } from "@/features/terminal/shell-registry";
 import {
-  closeShell,
+  activeIdOf,
+  opensShellFromWindow,
+  runningShellsOf,
+  shellForNav,
+  shellNavFromWindow,
+  shellsEmptied,
+  shellsOf,
+  workShellOrigin,
+} from "@/features/terminal/shell-registry";
+import {
   closeShellsOf,
   onShellOpenRejected,
   openNewShell,
   selectShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
-import type { ViewTab } from "@/routes/-work-search";
+import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import {
+  clearHalf,
+  dragStore,
+  dropSplit,
+  hoverHalf,
+  otherTab,
+  specHeadLabel,
+} from "./split-view";
+import type { DragSource, SplitHalf } from "./split-view";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
 import WorkMetaMenu from "./WorkMetaMenu";
@@ -43,6 +62,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
+import type { ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
@@ -56,6 +76,15 @@ interface WorksPageProps {
   // 보고 있는 화면 탭도 주소가 정본이다 — `currentFile`과 같은 결이다.
   tab: ViewTab;
   onSelectTab: (tab: ViewTab) => void;
+  // 분할도 주소가 정본이다(결정 97). `null`이면 단일 뷰다.
+  //
+  // **바꾸는 콜백이 `tab`을 함께 받는다**: 열의 `×`는 분할을 끄면서 남는 쪽을 정하고
+  // (결정 89), 헤더 토글은 지금 `tab`을 그대로 넘긴다. 둘을 따로 옮기면 한 틱에 겹친다.
+  split: SplitSide | null;
+  onSelectSplit: (split: SplitSide | null, tab: ViewTab) => void;
+  // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립해야 해서**(결정 101)
+  // 이동을 여기서 하지 않고 주소를 쥔 쪽으로 넘긴다.
+  onDropInto: (source: DragSource, split: SplitSide) => void;
 }
 
 // 주소가 가리키는 문서가 없을 때 대신 열 것. **이 판단이 여기로 올라왔다** — 한때
@@ -116,6 +145,9 @@ function WorksPage({
   onOpenProject,
   tab,
   onSelectTab,
+  split,
+  onSelectSplit,
+  onDropInto,
 }: WorksPageProps) {
   const { data: works = [] } = useWorks();
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
@@ -139,7 +171,11 @@ function WorksPage({
   // 작업 패널 접기. [소스]는 그 패널 머리행으로 갔지만 **상태는 이 화면이 다시 든다** —
   // 패널이 여기로 올라오면서(결정 49) 버튼(패널)과 그것이 바꾸는 것(본문)의 공통 조상이
   // 이 화면뿐이 됐다. 아래 `showSource`가 그 자리다 (한때 SpecViewer가 들고 있었다 — 결정 6·22).
-  const [workPanelOpen, setWorkPanelOpen] = useState(true);
+  //
+  // **초기값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래
+  // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
+  // `claude` TUI가 깨진다」가 그대로 재현된다.
+  const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
@@ -158,6 +194,16 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // 두 열의 경계. **비율로 든다** — px가 아니다(useSplitRatio 머리말). 두 열이 같은 본문을
+  // 나눠 갖는 것이라 기본값이 「반」이고, 창이 넓어지면 둘 다 넓어져야 한다.
+  //
+  // 분모가 이 상자의 폭이라 상자를 가리켜야 한다.
+  const splitHost = useRef<HTMLDivElement>(null);
+  const splitSize = useSplitRatio("work-split-ratio", splitHost);
+
+  // 끌고 있는 것. **드래그 중에만 값이 있다** — 그동안만 이 화면이 다시 그려진다.
+  const drag = useStore(dragStore, (state) => state);
 
   // 소스 보기의 주인이 **여기로 올라왔다.** 버튼은 패널 머리행에 있고 그것이 바꾸는 것은
   // 본문(SpecViewer)인데, 패널이 본문의 형제가 되면서 둘의 공통 조상이 이 화면뿐이다.
@@ -220,12 +266,78 @@ function WorksPage({
   // 다시 마운트돼도 문서를 다시 읽을 뿐 프로세스가 생기지 않는다.
   const lastSelected = useRef(selected);
   if (selected) lastSelected.current = selected;
-  const terminalWork = tab === "terminal" ? (selected ?? lastSelected.current) : null;
+  // **분할이면 둘 다 선다**(결정 87) — 단일 뷰에서만 `tab`이 하나를 고른다. 이 두 값이
+  // 아래에서 「어느 본문을 그리나」와 「`</>`가 적용될 곳이 있나」를 함께 정한다.
+  const specStands = split !== null || tab === "spec";
+  const terminalStands = split !== null || tab === "terminal";
+  const terminalWork = terminalStands ? (selected ?? lastSelected.current) : null;
 
   // 패널이 딛고 선 작업. 두 본문 중 어느 것이 서 있든 **같은 패널 하나**가 옆에 선다
   // (결정 49). 터미널 탭에서 `terminalWork`가 붙들어 둔 작업을 쓰는 것도 그대로 따라온다 —
   // 본문이 그 작업의 셸을 보여주는데 패널만 다른 작업을 말하면 안 된다.
   const panelWork = terminalWork ?? selected;
+
+  // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
+  // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
+  //
+  // **듣는 범위가 이 화면 전체다**(결정 98). ⌘1이 spec, ⌘2~9가 셸로 본문을 옮기는 한 벌인데
+  // ⌘T만 안 옮기면 혼자 어긋난다 — 그래서 spec을 읽는 중에도 듣고, 열면 본문을 함께 옮긴다.
+  // **⌘W는 안 넓힌다** — 「이 칸을 닫는다」는 겨눌 칸이 있어야 한다.
+  //
+  // 언제 비켜야 하는지는 `opensShellFromWindow`가 혼자 안다(제목 편집 중인 `<input>`,
+  // 그리고 **xterm의 숨은 `<textarea>`** — `togglesWorkPanel`이 적어 둔 함정과 같은 자리다).
+  //
+  // 딛고 선 작업은 `panelWork`다 — 본문이 셸을 보여주는데 다른 작업의 셸을 여는 일이 없다.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!opensShellFromWindow(e)) return;
+      e.preventDefault();
+      // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
+      // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
+      const origin = panelWork && workShellOrigin(panelWork, null);
+      if (!origin) return;
+      openNewShell(origin);
+      onSelectTab("terminal");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panelWork, onSelectTab]);
+
+  /**
+   * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
+   *
+   * 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다 — 한 화면 안에서 본문을 옮기는 한 벌이
+   * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
+   * 보이는 전부가 아니다: 남의 work의 가지를 펼쳐 두었어도 ⌘2는 이 work의 첫 셸이다.
+   *
+   * **스토어를 구독하지 않고 그때 읽는다.** 필요한 순간은 키를 누른 그 한 번뿐이라,
+   * 구독하면 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 통째로 다시 그려진다.
+   *
+   * 셸 안에서도 먹어야 한다(결정 99) — 그 판정은 `shellNavFromWindow`가 혼자 안다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const nav = shellNavFromWindow(e);
+      if (!nav || !panelWork) return;
+      e.preventDefault();
+      const state = terminalStore.state;
+      const shells = shellsOf(state, panelWork.slug);
+      // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
+      // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
+      if (nav.kind === "index" && nav.n === 1) {
+        onSelectTab("spec");
+        return;
+      }
+      const next = shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2);
+      if (next !== null) {
+        selectShell(next);
+        onSelectTab("terminal");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panelWork, onSelectTab]);
+
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
@@ -239,7 +351,7 @@ function WorksPage({
   // 마지막 것에서 `currentSpec`은 null이고 위 `?? true`가 마크다운으로 떨어뜨리는데, 그
   // 기본값은 **본문 분기(예쁜 보기)를 위한 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은
   // "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다(결정 11·21).
-  const sourceLocked = tab === "terminal" || !currentSpec || !isMarkdown;
+  const sourceLocked = !specStands || !currentSpec || !isMarkdown;
   // 본문은 **버튼의 켜짐에 파일 종류를 얹어** 정한다. 둘을 같은 식으로 묶으면 비-md 파일을
   // 열 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
   const sourceView = showSource || !isMarkdown;
@@ -284,10 +396,36 @@ function WorksPage({
             selected && (
               <>
                 <StatusMenu work={selected} />
-                <ViewTabs tab={tab} onSelect={onSelectTab} />
-                {/* 두 탭 **모두**에 그린다. 한때 터미널 탭에서 뺐던 것은 그때 패널이
-                    거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며 사라졌다.
-                    지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
+                {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
+                    그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
+                    지금인지가 화면마다 갈린다. 무엇을 보고 있는지는 이제 트리의 켜진 행이
+                    말한다.
+                    (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
+                    주석까지 읽는다.) */}
+                {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
+                    터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
+                    여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
+                <button
+                  type="button"
+                  onClick={() => changeSplit(split === null ? "lr" : null, tab)}
+                  // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+                  // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+                  // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
+                  aria-label="분할"
+                  aria-pressed={split !== null}
+                  // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+                  // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
+                  title={split !== null ? "분할 끄기" : "분할 켜기"}
+                  className={cn(
+                    "icon-button transition-colors",
+                    split !== null ? "toggle-on" : "text-tertiary quiet-hover",
+                  )}
+                >
+                  <Columns2 className="size-4" strokeWidth={2} />
+                </button>
+                {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
+                    그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
+                    사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
                 {!workPanelOpen && (
                   <button
                     type="button"
@@ -306,21 +444,136 @@ function WorksPage({
         />
   );
 
-  // 본문 열 — 셋 중 하나다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
-  // 패널은 그 형제로 아래 return에서 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널
-  // 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
-  const body = terminalWork ? (
-    <main className="relative flex min-w-0 flex-1 flex-col">
-      {header}
-      {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
-          자리만 새로 잡힌다(결정 20·21). */}
-      <TerminalPane key={terminalWork.slug} work={terminalWork} />
-    </main>
-  ) : selected ? (
+  // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
+  // 쪽이 그 값이다. 이미 그 값이면 옮기지 않는다: 열 머리의 `×`처럼 한 틱에 두 이동이
+  // 겹치는 자리에서 앞의 것이 조용히 이기기 때문이다.
+  const focusColumn = useCallback(
+    (next: ViewTab) => {
+      if (next !== tab) onSelectTab(next);
+    },
+    [tab, onSelectTab],
+  );
+
+  /**
+   * **분할을 켜면 패널을 한 번 접는다**(결정 88). 창 1280·사이드바 264·패널 330에서
+   * 분할하면 열 하나가 343px이고, 거터를 빼면 터미널이 ≈34칸이라 `claude` TUI가 깨진다.
+   *
+   * **한 번은 「사람이 켠 그 순간」이지 상태 전이가 아니다.** 한때 `split`을 보는 이펙트로
+   * 두었는데, 그러면 분할인 A에서 단일인 B로 갔다 A로 돌아올 때도 `null → lr`이라
+   * **사람이 다시 열어 둔 패널을 또 접었다** — 결정 88이 적어 둔 「억지로 닫지 않는다」의
+   * 반대다. 켜는 길이 둘(헤더 토글·드래그 놓기)이라 판정을 여기 하나에 둔다.
+   */
+  const collapseOnSplit = useCallback(
+    (next: SplitSide | null) => {
+      if (next !== null && split === null) setWorkPanelOpen(false);
+    },
+    [split],
+  );
+
+  // 분할을 바꾸는 **유일한 자리**다 — 켜기·끄기·좌우 맞바꾸기가 전부 여기를 지난다.
+  const changeSplit = useCallback(
+    (next: SplitSide | null, nextTab: ViewTab) => {
+      collapseOnSplit(next);
+      onSelectSplit(next, nextTab);
+    },
+    [collapseOnSplit, onSelectSplit],
+  );
+
+  /**
+   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
+   *
+   * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
+   * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
+   *
+   * **분할이면 분할째로 걷는다.** 한때 「문서가 이미 옆 열에 서 있으니 그냥 둔다」로
+   * 두었는데, 실물에서 그 화면은 **빈 터미널 열이 반을 차지한 채로 남았다** — 볼 것이
+   * 없는 열이 절반을 먹는 것이 두 열을 나란히 세운 이유와 정면으로 어긋난다.
+   * 남는 것은 문서 하나이므로 `split`을 끄면서 `tab`도 함께 문서로 보낸다(한 번의 이동이라
+   * 「끄면 남는 쪽」(결정 97)도 어긋나지 않는다).
+   *
+   * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
+   * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
+   * 개수는 셸을 열고 닫을 때만 바뀐다.
+   */
+  const shellCount = useStore(terminalStore, (state) =>
+    panelWork ? shellsOf(state, panelWork.slug).length : 0,
+  );
+  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
+  useEffect(() => {
+    const now = { owner: panelWork?.slug ?? null, count: shellCount };
+    const emptied = shellsEmptied(tally.current, now);
+    tally.current = now;
+    // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
+    // 화면에서 아무것도 안 바뀌어야 한다.
+    if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
+  }, [shellCount, panelWork, tab, split, changeSplit]);
+
+  // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
+  // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
+  const dropHere = useCallback(
+    (source: DragSource, half: SplitHalf) => {
+      if (source.kind === "shell" && source.shellId !== null) selectShell(source.shellId);
+      const next = dropSplit(source.kind, half);
+      collapseOnSplit(next);
+      onDropInto(source, next);
+    },
+    [collapseOnSplit, onDropInto],
+  );
+
+  // 열 머리 둘 — **분할일 때만 쓰인다**(결정 89). 단일 뷰에 두면 분할을 켤 때마다 층이
+  // 하나 늘었다 줄어 본문이 위아래로 밀린다.
+  const specHead = (
+    <ColumnHead
+      kind="spec"
+      label={specHeadLabel(currentSpec)}
+      closeLabel="spec 열 닫기"
+      // 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
+      onClose={() => changeSplit(null, otherTab("spec"))}
+      // `</>`는 **패널이 접혔을 때만** 여기 선다(결정 106). 결정 89가 이 버튼을 열 머리에
+      // 놓은 근거는 「분할이 패널을 접으면 함께 사라진다」 하나뿐이라, 패널이 열려 있으면
+      // 근거가 없어진다 — 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다.
+      source={
+        !workPanelOpen && (
+          <button
+            type="button"
+            // 패널 머리행에도 **같은 접근성 이름**의 버튼이 있다(같은 일을 하니 당연하다).
+            // 검사가 「열 머리의 것」만 셀 수 있게 표식을 단다 — 접힌 패널도 마운트된 채라
+            // 이름으로 세면 둘이 잡힌다.
+            data-column-source=""
+            onClick={() => setShowSource((v) => !v)}
+            disabled={sourceLocked}
+            aria-label="마크다운 원문 보기"
+            aria-pressed={showSource}
+            title="마크다운 원문 보기"
+            className={cn(
+              "icon-button transition-colors",
+              "disabled:pointer-events-none disabled:opacity-40",
+              showSource ? "toggle-on" : "text-tertiary quiet-hover",
+            )}
+          >
+            <CodeXml className="size-3.5" strokeWidth={2} />
+          </button>
+        )
+      }
+    />
+  );
+  const terminalHead = terminalWork && (
+    <ColumnHead
+      kind="terminal"
+      // 사이드바 셸 행과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
+      // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
+      label={<ShellHeadName owner={terminalWork.slug} />}
+      closeLabel="terminal 열 닫기"
+      onClose={() => changeSplit(null, otherTab("terminal"))}
+    />
+  );
+
+  // 문서 본문. **머리행은 단일 뷰에서만 이 안에 있다** — 분할이면 열 둘 위에 한 번 선다.
+  const specBody = selected && (
     <SpecViewer
       key={selected.slug}
       work={selected}
-      header={header}
+      header={split === null ? header : undefined}
       panelOpen={workPanelOpen}
       sidebarOpen={sidebarOpen}
       file={currentSpec}
@@ -328,6 +581,60 @@ function WorksPage({
       onNavigate={followLink}
       onCopy={copyText}
     />
+  );
+  const terminalBody = terminalWork && (
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21). */}
+      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+    </div>
+  );
+
+  // **조합은 늘 `spec ▏터미널`이고 좌우만 바뀐다**(결정 87). 그래서 정할 것이 하나다.
+  //
+  // 순서를 여기 한 줄에서 정한다 — 열을 그리는 조각이 둘이면 「마크업에서 먼저 나오는 것이
+  // 왼쪽」이라는, 검사가 기대는 규칙이 두 자리로 갈린다.
+  const specColumn = { tab: "spec" as const, head: specHead, body: specBody };
+  const terminalColumn = { tab: "terminal" as const, head: terminalHead, body: terminalBody };
+  const [leftColumn, rightColumn] =
+    split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn];
+
+  // `drag.source`를 그대로 쓰면 아래 클로저 안에서 타입이 안 좁혀진다 — 한 번 받아 둔다.
+  const dragSource = drag.source;
+
+  // 본문 열 — 셋 중 하나다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
+  // 패널은 그 형제로 아래 return에서 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널
+  // 인스턴스가 그대로 살아 탭 선택이 유지된다 — 1판은 호출부가 둘이라 인스턴스도 둘이었다.
+  const body = split !== null && specBody && terminalBody ? (
+    // 분할 — 머리행 하나 아래에 열 둘이 선다. 이 상자가 `<main>`이 아닌 것은 **문서 열이
+    // 이미 `<main>`이기 때문이다**(SpecViewer) — 겹치면 화면에 `<main>`이 둘이 된다.
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      {header}
+      <div ref={splitHost} className="flex min-h-0 flex-1">
+        {/* **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
+            같은 관용구). 폭 핸들은 그 열의 오른쪽 가장자리에 얹힌다. */}
+        <SplitColumn
+          column={leftColumn}
+          width={`${splitSize.ratio * 100}%`}
+          // 더블클릭으로 반반에 돌아갈 때만 애니메이션한다(useSplitRatio의 `snapping`).
+          // 값은 패널이 접히는 것과 같다 — 같은 화면에서 두 폭이 다른 속도로 움직이면
+          // 한 동작으로 안 읽힌다.
+          snapping={splitSize.snapping}
+          onFocus={focusColumn}
+        >
+          <ResizeHandle control={splitSize} />
+        </SplitColumn>
+        <SplitColumn column={rightColumn} onFocus={focusColumn} />
+      </div>
+    </div>
+  ) : terminalWork ? (
+    <main className="relative flex min-w-0 flex-1 flex-col">
+      {header}
+      {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
+          자리만 새로 잡힌다(결정 20·21). */}
+      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+    </main>
+  ) : specBody ? (
+    specBody
   ) : (
     // 고른 작업이 없으면 패널도 없다 — 이 열이 머리행을 직접 이고 있는다.
     <main className="relative flex min-w-0 flex-1 flex-col">
@@ -378,8 +685,8 @@ function WorksPage({
           **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 탭이 spec으로
           리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
           나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-          (a) 뷰 탭 왕복(spec ↔ terminal)에도 패널 탭이 유지된다 — `shell` 탭을 보던 채로
-              본문만 갈아탈 수 있다는 뜻이고, 3탭의 자연스러운 쓰임이다.
+          (a) 본문을 오가도(spec ↔ terminal) 패널 탭이 유지된다 — `info`를 보던 채로
+              본문만 갈아탈 수 있다는 뜻이다.
           (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
               전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
               기본값(최신 판만 펼침)으로 뜬다.
@@ -403,11 +710,35 @@ function WorksPage({
           sourceLocked={sourceLocked}
           onToggleSource={() => setShowSource((v) => !v)}
           open={workPanelOpen}
-          // 셸 목록은 **슬롯으로 넘긴다** — 스토어를 구독하는 자리를 이 가지 하나로 좁혀,
-          // 셸이 프롬프트마다 쏘는 타이틀에 화면이나 패널 전체가 다시 그려지지 않게 한다
-          // (WorkPanel의 shellList 주석).
-          shellList={<PanelShells work={panelWork} onSelectTab={onSelectTab} />}
         />
+      )}
+      {/* 놓일 자리 — **끄는 동안에만 선다**(결정 86). 절반 둘이 이 영역을 나눠 덮고,
+          포인터가 그 위를 지나가면 스스로 「내 위다」를 말한다. 좌표에서 절반을 계산하지
+          않는 이유는 split-view.ts 머리말에 있다.
+
+          **덮는 범위가 이 행 전체다** — 머리행과 패널까지 든다. 본문 영역만 정확히
+          도려내려면 패널 폭을 여기서 알아야 하는데, 그 값은 패널이 드래그로 바꾸는 것이라
+          두 곳에 적히면 한쪽만 늙는다. 넉넉히 받는 쪽이 겨누기도 쉽다. */}
+      {dragSource && (
+        // 겹판 **전체**를 벗어날 때만 끈다 — `pointerleave`는 버블하지 않아 반쪽 사이를
+        // 오갈 때는 안 온다.
+        <div className="absolute inset-0 z-40 flex" onPointerLeave={clearHalf}>
+          {(["left", "right"] as const).map((half) => (
+            <div
+              key={half}
+              // 표식 둘 다 검사가 **정체성으로** 집기 위한 것이다 — 밝아짐은 클래스 문자열로
+              // 표현되는데 그 모양을 손보는 날 검사가 조용히 새면 안 된다.
+              data-drop-half={half}
+              data-over={drag.half === half ? "" : undefined}
+              onPointerMove={() => hoverHalf(half)}
+              onPointerUp={() => dropHere(dragSource, half)}
+              className={cn(
+                "flex-1 transition-colors duration-150",
+                drag.half === half && "bg-primary/12 ring-1 ring-inset ring-primary/40",
+              )}
+            />
+          ))}
+        </div>
       )}
       {/* 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
           가운데는 본문 열이 아니라 **본문+패널** 전체의 가운데인데, 이 표면이 이제 패널에서
@@ -428,48 +759,106 @@ function WorksPage({
   );
 }
 
+/** 분할의 열 하나 — 머리행과 본문. */
+interface SplitColumnView {
+  tab: ViewTab;
+  head: React.ReactNode;
+  body: React.ReactNode;
+}
+
 /**
- * 패널 `shell` 탭의 내용 — 셸을 고르는 세로 목록이다(결정 42).
- *
- * **터미널 스토어를 구독하는 자리가 이 가지 하나다.** 화면(WorksPage)이 구독하지 않는
- * 것은 값이 자주 흔들려서다: 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안
- * 그것을 계속 갈아 끼운다. 화면이 구독하면 그때마다 본문 마크다운까지 다시 그려진다.
- *
- * 좁히지 않고 통째로 읽는 것은 목록이 **앱 전체** 상한을 세야 해서다(결정 30).
- * **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
+ * 열 하나를 그린다. 두 열의 상자가 같아야 하는데 좌우가 바뀌므로, 같은 마크업을 두 번
+ * 적으면 한쪽만 손보는 날이 온다.
  */
-function PanelShells({
-  work,
-  onSelectTab,
+function SplitColumn({
+  column,
+  width,
+  snapping = false,
+  onFocus,
+  children,
 }: {
-  work: WorkView;
-  onSelectTab: (tab: ViewTab) => void;
+  column: SplitColumnView;
+  /**
+   * 주면 **몫을 드는 쪽**(왼쪽)이다. 없으면 남는 자리를 먹고 경계선을 그린다.
+   *
+   * CSS 길이 문자열인 것은 이 값이 비율이기 때문이다 — px로 두면 창이 넓어질 때
+   * 오른쪽 열만 자란다(useSplitRatio 머리말).
+   */
+  width?: string;
+  /** 폭이 훌쩍 뛰는 중인가 — 그때만 트랜지션을 켠다(useSplitRatio의 `snapping`). */
+  snapping?: boolean;
+  onFocus: (tab: ViewTab) => void;
+  /** 폭 핸들. 왼쪽 열에만 온다 — 이 상자의 오른쪽 가장자리에 얹힌다. */
+  children?: React.ReactNode;
 }) {
-  const state = useStore(terminalStore, (whole) => whole);
   return (
-    <ShellList
-      state={state}
-      owner={work.slug}
-      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
-      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
-      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. TerminalPane이 같은 이유로
-      // 같은 자리에서 뽑는다.
-      projects={work.worktrees.map((tree) => tree.project)}
-      onSelect={(id) => {
-        // 행을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다**(결정 50). 패널의 spec
-        // 트리에서 문서를 누르면 본문이 spec으로 돌아가는 것과 같은 규칙이다 — 「패널에서
-        // 고르면 본문이 그에 맞는 뷰로 간다」. 본문이 이미 터미널이면 켜진 칸만 바뀐다
-        // (탭 전환은 `replace`라 히스토리도 안 쌓인다).
-        selectShell(id);
-        onSelectTab("terminal");
-      }}
-      onClose={closeShell}
-      onOpen={(project) => {
-        // 프로젝트가 여럿인데 안 골랐으면 자리가 안 정해진다 — 그때는 열지 않는다(결정 24).
-        const origin = workShellOrigin(work, project);
-        if (origin) openNewShell(origin);
-      }}
-    />
+    <div
+      style={width === undefined ? undefined : { width }}
+      className={cn(
+        "relative flex min-w-0 flex-col",
+        width === undefined && "flex-1 border-l",
+        snapping && "transition-[width] duration-[220ms] ease-panel",
+      )}
+    >
+      {column.head}
+      {/* 포커스를 받는 것은 **머리행이 아니라 속**이다. 머리행에 얹으면 그 열의 `×`를
+          누르는 것이 「이 열을 봤다」로 먼저 읽혀, 한 틱에 이동이 둘 겹친다.
+          `pointerdown`까지 보는 것은 **문서 열이 포커스를 못 받기 때문이다** — 글을 읽는
+          영역이라 클릭해도 focus 이벤트가 안 난다(결정 97의 「포커스가 들어갈 때」를
+          여기까지 넓혔다). */}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onFocusCapture={() => onFocus(column.tab)}
+        onPointerDownCapture={() => onFocus(column.tab)}
+      >
+        {column.body}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 열 머리 — **분할일 때만 선다**(결정 89). 왼쪽은 `문서명 · </> · ×`, 오른쪽은 `셸 이름 · ×`.
+ *
+ * **아래에 선을 긋지 않는다.** 이 행은 화면 브레드크럼 바로 아래에 붙는데 그쪽이
+ * 「아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다」를 이미 정해 뒀다
+ * (PageHeader, 작업 패널 머리행도 같다). 열의 구분은 두 열 사이의 세로선이 맡는다.
+ */
+function ColumnHead({
+  kind,
+  label,
+  closeLabel,
+  onClose,
+  source,
+}: {
+  // 표식은 검사가 이 행을 **정체성으로** 집기 위한 것이다 — 모양(클래스 문자열)으로
+  // 가르면 규격을 손보는 날 검사가 조용히 샌다(`data-branch`·`data-shell-host`와 같은 이유).
+  // 순서도 이 표식으로 읽힌다: 마크업에서 먼저 나오는 것이 왼쪽 열이다.
+  kind: ViewTab;
+  label: React.ReactNode;
+  closeLabel: string;
+  onClose: () => void;
+  // 왼쪽 열에만 있는 `</>`. 오른쪽 열에는 아무것도 오지 않는다.
+  source?: React.ReactNode;
+}) {
+  return (
+    <div
+      data-column={kind}
+      className="flex h-8 shrink-0 items-center gap-1 pl-3 pr-1.5 text-[12.5px] text-tertiary"
+    >
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {source}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel}
+        title={closeLabel}
+        className="icon-button-quiet shrink-0 text-tertiary"
+      >
+        <X className="size-3.5" strokeWidth={2} />
+      </button>
+    </div>
   );
 }
 
@@ -553,63 +942,6 @@ function TitleEditor({ work }: { work: WorkView }) {
 }
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
-/**
- * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음 — `spec`과 `terminal` 둘이다(결정 9).
- * `파일`(워크트리 탐색)은 재료도 문제도 다른 기능이라 별도 작업이다.
- *
- * 라벨이 소문자 영어인 것은 결정 41이다 — 이 줄과 패널 탭 줄은 같은 44px 층에 나란히 서므로
- * 한 가족으로 읽혀야 한다. main nav의 `Terminal`과 같은 단어인 것은 균열이 아니다:
- * 대소문자가 층을 가른다(대문자는 가는 곳, 소문자는 고르는 것 — CONTEXT.md).
- *
- * 켜짐은 저장소 공통 toggle-on이다. 목업은 이 자리에 --accent를 쓰는데, 이 저장소는
- * 상태 배경을 무채색 4단으로만 말한다(state-scale.test.ts가 막는다) — 그쪽을 따르지 않는다.
- * 꺼진 칸의 hover가 `quiet-hover`(2)인 것은 이 줄이 **토글 묶음**이어서다: 셸 탭 줄이
- * `hover:bg-state-1`을 쓰는 것과 갈리는 자리이고, 근거는 index.css의 부등식이다.
- */
-function ViewTabs({ tab, onSelect }: { tab: ViewTab; onSelect: (tab: ViewTab) => void }) {
-  return (
-    <span className="flex shrink-0 items-center gap-1">
-      <ViewTabButton icon={File} label="spec" on={tab === "spec"} onClick={() => onSelect("spec")} />
-      <ViewTabButton
-        icon={SquareTerminal}
-        label="terminal"
-        on={tab === "terminal"}
-        onClick={() => onSelect("terminal")}
-      />
-    </span>
-  );
-}
-
-function ViewTabButton({
-  icon: Icon,
-  label,
-  on,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  on: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={`${label} 보기`}
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 shrink-0 items-center gap-[7px] rounded-[9px] px-[11px] text-[13px] font-medium transition-colors",
-        // hover는 **꺼진 가지 안에만** 둔다 — toggle-on이 자기 hover를 품으므로 함께 얹으면
-        // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
-        on ? "toggle-on" : "text-tertiary quiet-hover",
-      )}
-    >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
-      {label}
-    </button>
-  );
-}
-
 function StatusMenu({ work }: { work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -741,12 +1073,13 @@ function WorkMenu({
     // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
     // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
     const notice = liveShells > 0 ? `${detail}\n셸 ${liveShells}개가 닫혀요.` : detail;
-    const ok = await confirm(notice, { title: `'${work.title}' ${verb}`, kind: "warning" });
-    if (!ok) return;
+    // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
+    // 앱 밖의 일처럼 읽힌다.
+    if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;
     try {
       await call();
     } catch (e) {
-      await message(`${verb}하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      await showProblem(`${verb}하지 못했습니다: ${e}`);
       return;
     }
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라

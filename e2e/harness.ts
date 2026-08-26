@@ -26,19 +26,25 @@ const PLUGINS: Record<string, unknown> = {
   "plugin:event|listen": 1,
   "plugin:event|unlisten": null,
   "plugin:window|is_fullscreen": false,
-  // `confirm`도 와이어에서는 이 커맨드로 나간다 — `plugin:dialog|confirm`은 없다.
-  // 그래서 답은 **null이어야 한다**: `message`는 반환값을 안 쓰고 `confirm`은 null을
-  // 취소로 읽는다. true를 돌려주면 확인 대화상자가 전부 "예"가 되어, 삭제 같은 파괴적
-  // 흐름이 테스트 안에서 조용히 실행된다.
-  "plugin:dialog|message": null,
+  // `homeDir()`가 와이어에서 이 이름으로 나간다. Works 화면을 여는 시나리오가 생기면서
+  // (사이드바 트리 검사) 이 호출을 지나게 됐다 — 본문 뷰어가 홈 축약 경로(`~/…`)를 펴는 데
+  // 쓴다(`useHomeDir`). 값이 화면에 드러나는 자리는 이미지 경로 하나뿐이라 아무 경로여도
+  // 되지만, **`~`가 아닌 절대 경로**여야 편 결과가 편 것처럼 보인다.
+  "plugin:path|resolve_directory": "/Users/tester",
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
 // 폴더의 절대경로를 돌려줘야 한다. 그래서 표에 없고 L4가 인자로 넘긴다.
 //
-// 아직 안 넣은 것은 `plugin:opener|open_url`과 `plugin:path|resolve_directory`(`homeDir`)다.
-// 지금 이 둘을 태우는 시나리오가 없고, **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트
-// 탐지기가 영원히 건드리지 않는 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
+// **`plugin:dialog|message`를 뺐다.** 확인·알림 창이 앱의 것으로 바뀌면서(`AppDialog`)
+// 앱이 그 커맨드로 나가는 길이 없어졌다 — 남겨 두면 아무도 안 태우는 스텁이 되고, 그러면
+// 「OS에 안 물었다」를 보는 검사가 **답이 준비돼 있어서** 초록인지 정말 안 물어서 초록인지
+// 갈리지 않는다. 지금은 그 커맨드가 오면 화이트리스트 탐지기가 문다.
+//
+// 아직 안 넣은 것은 `plugin:opener|open_url`이다. 지금 그것을 태우는 시나리오가 없고,
+// **태우지 않는 스텁은 조용히 낡는다** — 화이트리스트 탐지기가 영원히 건드리지 않는
+// 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
+// (`plugin:path|resolve_directory`는 판 04가 Works 화면을 여는 검사를 들이면서 태웠다.)
 
 /** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
 interface InitArgs {
@@ -98,6 +104,15 @@ async function install(
     } }).__TAURI_MOCKS__;
 
     mocks.mockWindows("main");
+
+    // **`convertFileSrc`는 IPC가 아니라 웹뷰가 주는 것이다** — 공식 mocks가 안 세운다.
+    // 로컬 파일을 화면에 걸려면 asset 프로토콜을 거쳐야 하는데(본문의 그림), 없으면
+    // 부르는 순간 터져 앱이 통째로 언마운트된다 — 실패가 「화면이 비었다」로만 보여
+    // 원인이 엉뚱한 곳을 가리킨다. 실물 macOS가 만드는 모양을 그대로 흉내낸다.
+    const internals = (window as unknown as Record<string, Record<string, unknown>>)
+      .__TAURI_INTERNALS__;
+    internals.convertFileSrc ??= (filePath: string, protocol = "asset") =>
+      `${protocol}://localhost/${encodeURIComponent(filePath)}`;
 
     const record: IpcRecord = { calls: [], unknown: [] };
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;

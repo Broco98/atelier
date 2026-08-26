@@ -16,6 +16,9 @@ export interface WorkView {
   branch: string | null;
   createdAt: string;
   projects: string[];
+  // 「지금 이게 중요하다」 — 화면 설정이 아니라 그 작업에 대한 사실이라 work.json에 산다
+  // (결정 81). 목록에서 고정된 것이 먼저 오는 것도 코어가 정한다 (결정 100).
+  pinned: boolean;
   worktrees: WorktreeView[];
   specDir: string;
   specFiles: string[];
