@@ -109,7 +109,7 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto pb-2 scroll-quiet">
+        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-2 scroll-quiet">
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
             return (

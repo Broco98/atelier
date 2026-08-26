@@ -96,7 +96,7 @@ function Sidebar({
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
         {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
-        <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
+        <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
           {navItems.map((item) => {
             // **nav 항목에도 가지가 붙는다**(결정 72). 최상위 셸을 고르는 자리가 가로 탭
             // 줄에서 여기로 왔고, 그 줄이 겸하던 타이틀바는 PageHeader가 받았다.

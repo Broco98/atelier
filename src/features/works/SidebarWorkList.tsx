@@ -229,7 +229,7 @@ function SidebarWorkList({
             먹지 않아(실측) 확실한 쪽을 쓴다. 늘 있어도 보이지는 않는다 — track·thumb가
             투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
             예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
-        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
+        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-scroll pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
             open={sectionsOpen}
