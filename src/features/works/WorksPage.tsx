@@ -18,7 +18,8 @@ import {
 import { cn } from "@/lib/utils";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
-import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { ResizeHandle } from "@/components/shell/useResizableWidth";
+import useSplitRatio from "@/components/shell/useSplitRatio";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
@@ -187,10 +188,12 @@ function WorksPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // 두 열의 경계. **왼쪽 열만 폭을 든다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
-  // 같은 관용구). 저장 키가 전용인 것도 그쪽과 같은 이유다: 폭 범위가 다른 둘이 한 키를
-  // 쓰면 서로를 덮는다.
-  const splitSize = useResizableWidth("work-split-width", 480, 320, 900);
+  // 두 열의 경계. **비율로 든다** — px가 아니다(useSplitRatio 머리말). 두 열이 같은 본문을
+  // 나눠 갖는 것이라 기본값이 「반」이고, 창이 넓어지면 둘 다 넓어져야 한다.
+  //
+  // 분모가 이 상자의 폭이라 상자를 가리켜야 한다.
+  const splitHost = useRef<HTMLDivElement>(null);
+  const splitSize = useSplitRatio("work-split-ratio", splitHost);
 
   // 끌고 있는 것. **드래그 중에만 값이 있다** — 그동안만 이 화면이 다시 그려진다.
   const drag = useStore(dragStore, (state) => state);
@@ -588,10 +591,18 @@ function WorksPage({
     // 이미 `<main>`이기 때문이다**(SpecViewer) — 겹치면 화면에 `<main>`이 둘이 된다.
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {header}
-      <div className="flex min-h-0 flex-1">
-        {/* **폭을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
+      <div ref={splitHost} className="flex min-h-0 flex-1">
+        {/* **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
             같은 관용구). 폭 핸들은 그 열의 오른쪽 가장자리에 얹힌다. */}
-        <SplitColumn column={leftColumn} width={splitSize.width} onFocus={focusColumn}>
+        <SplitColumn
+          column={leftColumn}
+          width={`${splitSize.ratio * 100}%`}
+          // 더블클릭으로 반반에 돌아갈 때만 애니메이션한다(useSplitRatio의 `snapping`).
+          // 값은 패널이 접히는 것과 같다 — 같은 화면에서 두 폭이 다른 속도로 움직이면
+          // 한 동작으로 안 읽힌다.
+          snapping={splitSize.snapping}
+          onFocus={focusColumn}
+        >
           <ResizeHandle control={splitSize} />
         </SplitColumn>
         <SplitColumn column={rightColumn} onFocus={focusColumn} />
@@ -742,12 +753,20 @@ interface SplitColumnView {
 function SplitColumn({
   column,
   width,
+  snapping = false,
   onFocus,
   children,
 }: {
   column: SplitColumnView;
-  /** 주면 **폭을 드는 쪽**(왼쪽)이다. 없으면 남는 자리를 먹고 경계선을 그린다. */
-  width?: number;
+  /**
+   * 주면 **몫을 드는 쪽**(왼쪽)이다. 없으면 남는 자리를 먹고 경계선을 그린다.
+   *
+   * CSS 길이 문자열인 것은 이 값이 비율이기 때문이다 — px로 두면 창이 넓어질 때
+   * 오른쪽 열만 자란다(useSplitRatio 머리말).
+   */
+  width?: string;
+  /** 폭이 훌쩍 뛰는 중인가 — 그때만 트랜지션을 켠다(useSplitRatio의 `snapping`). */
+  snapping?: boolean;
   onFocus: (tab: ViewTab) => void;
   /** 폭 핸들. 왼쪽 열에만 온다 — 이 상자의 오른쪽 가장자리에 얹힌다. */
   children?: React.ReactNode;
@@ -755,7 +774,11 @@ function SplitColumn({
   return (
     <div
       style={width === undefined ? undefined : { width }}
-      className={cn("relative flex min-w-0 flex-col", width === undefined && "flex-1 border-l")}
+      className={cn(
+        "relative flex min-w-0 flex-col",
+        width === undefined && "flex-1 border-l",
+        snapping && "transition-[width] duration-[220ms] ease-panel",
+      )}
     >
       {column.head}
       {/* 포커스를 받는 것은 **머리행이 아니라 속**이다. 머리행에 얹으면 그 열의 `×`를

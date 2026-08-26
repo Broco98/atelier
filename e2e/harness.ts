@@ -105,6 +105,15 @@ async function install(
 
     mocks.mockWindows("main");
 
+    // **`convertFileSrc`는 IPC가 아니라 웹뷰가 주는 것이다** — 공식 mocks가 안 세운다.
+    // 로컬 파일을 화면에 걸려면 asset 프로토콜을 거쳐야 하는데(본문의 그림), 없으면
+    // 부르는 순간 터져 앱이 통째로 언마운트된다 — 실패가 「화면이 비었다」로만 보여
+    // 원인이 엉뚱한 곳을 가리킨다. 실물 macOS가 만드는 모양을 그대로 흉내낸다.
+    const internals = (window as unknown as Record<string, Record<string, unknown>>)
+      .__TAURI_INTERNALS__;
+    internals.convertFileSrc ??= (filePath: string, protocol = "asset") =>
+      `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+
     const record: IpcRecord = { calls: [], unknown: [] };
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
 

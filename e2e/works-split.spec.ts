@@ -251,3 +251,28 @@ test("열의 ×로 닫으면 반대쪽이 남는다", async ({ page }) => {
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **자동 크기는 반반이다.** 두 열이 같은 본문을 나눠 갖는 것이 이 뷰의 전부라, 기본값이
+// 「반」이지 「480px」이 아니다. px로 들면 창 크기마다 반이 아닌 자리에서 시작하고
+// (실측: 창 1512에서 480은 본문의 38%였다) 창을 늘리면 오른쪽 열만 자란다.
+test("두 열이 반반으로 서고, 창이 넓어져도 반반이다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+
+  const widths = async () => {
+    const left = await page.locator('[data-column="spec"]').boundingBox();
+    const right = await page.locator('[data-column="terminal"]').boundingBox();
+    return [left!.width, right!.width];
+  };
+
+  const [a, b] = await widths();
+  expect(Math.abs(a - b)).toBeLessThanOrEqual(2);
+
+  // 창을 넓힌다 — px로 들면 여기서 한쪽만 자란다.
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const [wideA, wideB] = await widths();
+  expect(wideA).toBeGreaterThan(a);
+  expect(Math.abs(wideA - wideB)).toBeLessThanOrEqual(2);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

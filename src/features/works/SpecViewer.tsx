@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
-import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
@@ -62,7 +62,10 @@ function SpecViewer({
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  const { data: content } = useSpecFile(work.slug, file);
+  // **그림은 안 읽는다.** PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은 줄번호
+  // `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로 건다.
+  const image = isImageFile(file);
+  const { data: content } = useSpecFile(work.slug, image ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
@@ -102,6 +105,8 @@ function SpecViewer({
                 </code>
               </div>
             </div>
+          ) : image ? (
+            <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />
           ) : sourceView ? (
             <SourceView content={content ?? ""} wide={wide} />
           ) : (
@@ -118,6 +123,35 @@ function SpecViewer({
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * 그림 한 장을 본문에 세운다 — 트리에서 그림 파일을 고른 자리.
+ *
+ * 자리표시의 모양과 문구는 본문 안 `![](…)`가 깨졌을 때와 **같은 것을 쓴다**(아래 `img`
+ * 렌더러) — 같은 「그릴 수 없다」가 어디서 났느냐에 따라 달리 보이면 안 된다.
+ *
+ * `specRoot`를 모르면(아카이브 화면, 홈을 아직 못 읽음) 그릴 수 없다.
+ */
+function ImageDoc({ path, name }: { path: string | null; name: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      {path === null ? (
+        <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 font-mono text-[12px] text-tertiary">
+          <ImageOff className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />
+          {name}
+        </span>
+      ) : (
+        // `max-h-full`이 있어야 세로로 긴 그림이 본문을 넘어 스크롤을 만들지 않는다 —
+        // 이 영역은 이미 스크롤 상자 안이라 두 겹이 되면 어느 쪽이 도는지가 갈린다.
+        <img
+          src={convertFileSrc(path)}
+          alt={name}
+          className="max-h-full max-w-full rounded-[10px] border object-contain"
+        />
+      )}
+    </div>
   );
 }
 

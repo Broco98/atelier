@@ -255,10 +255,25 @@ describe("work 아래 트리", () => {
     expect(markup).not.toContain('data-shells="다"');
   });
 
-  it("`spec` 잎은 고른 work에만 선다", () => {
-    // 남의 work의 문서는 그 work로 가야 뜻이 있다. work마다 서면 트리가 목록이 아니라 벽이 된다.
+  it("`spec` 잎은 **블럭이 선 work마다** 선다", () => {
+    // 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐 들여다보는 동안 방금까지 읽던
+    // work의 문서가 트리에서 사라졌다 — 셸이 도는 work은 블럭이 서 있는데 그 안에
+    // `terminal`만 남았다. 블럭이 서는 조건(고름 **또는** 셸이 있음)과 같아졌다.
+    const markup = render(works("가", "나", "다"), ALL, {
+      selectedSlug: "나",
+      shellCounts: { 가: 1 },
+    });
+    expect(markup.match(/data-leaf="spec"/g)).toHaveLength(2);
+    // 셸도 없고 고르지도 않은 `다`에는 블럭이 없으므로 잎도 없다 — 트리가 벽이 되지 않는다.
+    expect(markup).not.toContain('data-shells="다"');
+  });
+
+  // 남의 work의 잎까지 강조하면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
+  it("켜진 잎은 고른 work의 것 하나다", () => {
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나", shellCounts: { 가: 1 } });
-    expect(markup.match(/data-leaf="spec"/g)).toHaveLength(1);
+    const leaves = buttonsOf(markup, 'data-leaf="spec"');
+    expect(leaves).toHaveLength(2);
+    expect(leaves.filter((leaf) => leaf.includes("selected-row"))).toHaveLength(1);
   });
 
   it("`spec` 잎은 본문이 문서일 때만 켜진다", () => {

@@ -191,20 +191,30 @@ function SidebarWorkList({
   };
 
   /**
-   * `spec` 잎을 눌렀다 — 본문이 문서로 돌아온다. 이 잎은 **고른 work에만** 서므로
-   * 여기 오는 것은 늘 지금 보고 있는 work이다.
+   * `spec` 잎을 눌렀다 — 본문이 문서로 간다.
    *
-   * **`tabSearch`로 갈아 끼운다 — 객체를 주지 않는다.** 이 라우터는 `search`에 객체를 주면
-   * 기존 search를 통째로 버려서 보던 문서(`file`)가 조용히 떨어진다(결정 15). `replace`인
-   * 것도 탭 전환과 같은 이유다(결정 13).
+   * **남의 work의 것일 수도 있다.** 이 잎은 한때 고른 work에만 섰는데, 그러면 옆 work을
+   * 잠깐 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라진다 — 셸이 도는 work은
+   * 블럭이 서 있는데 그 안에 `terminal`만 남는 모양이었다. 지금은 **블럭이 서면 잎도 선다.**
+   *
+   * 갈림은 `ShellBranch.go()`와 **같은 규칙이다**(결정 101·15·77):
+   * - 이 work을 보던 중이면 보던 문서를 지킨다. `search`에 객체를 주면 이 라우터가 기존
+   *   search를 통째로 버려 `file`이 조용히 떨어진다
+   * - 남의 work이면 빈 자리에서 시작하고 그 work의 기억을 지고 간다 — 문서 경로는 그 work
+   *   안에서만 뜻이 있어 딸려가면 새 work에 없는 파일을 가리킨 채 주소만 남는다
+   * - `replace`도 같은 갈래다: 같은 work 안의 전환은 히스토리를 안 쌓고(결정 13), 남의
+   *   work으로 가는 것은 진짜 이동이라 돌아올 자리를 만든다
    */
   const openSpec = (work: WorkView) => {
     closeCard();
+    const mine = work.slug === selectedSlug;
     void navigate({
       to: "/works/$slug",
       params: { slug: work.slug },
-      search: (prev) => tabSearch(prev, "spec"),
-      replace: true,
+      search: mine
+        ? (prev) => tabSearch(prev, "spec")
+        : viewSearch({}, { ...recallView(work.slug), tab: "spec" }),
+      replace: mine,
     });
   };
 
@@ -484,19 +494,23 @@ function WorkNode({
         // 머리행 + `SectionBody` + 그 안의 `TreeIndent`.
         <SectionBody open={nodeOpen && entered}>
           <TreeIndent>
-            {active && (
-              <TreeLeaf
-                icon={File}
-                label="spec"
-                active={tab === "spec"}
-                onClick={() => onOpenSpec(work)}
-                // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 이 잎은 **고른 work에만**
-                // 서므로 떨궈도 work이 바뀌지 않는다 — 셸 행과 다른 점이 그 하나다.
-                onPointerDown={(event) =>
-                  armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
-                }
-              />
-            )}
+            {/* **블럭이 서면 잎도 선다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
+                들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는
+                work은 블럭이 서 있는데 그 안에 `terminal`만 남았다. 남의 것을 누르면
+                그 work으로 간다(결정 101). */}
+            <TreeLeaf
+              icon={File}
+              label="spec"
+              // 켜짐은 **고른 work의 것에만** 준다 — 남의 work의 잎까지 강조하면
+              // 「지금 보고 있는 것」이 한 화면에 둘이 된다(ShellList의 `showing`과 같은 규칙).
+              active={active && tab === "spec"}
+              onClick={() => onOpenSpec(work)}
+              // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 남의 work의 잎을 떨구면
+              // 그 work으로 옮겨 가 그 자리에 선다 — 셸 행과 같은 규칙이다(결정 101).
+              onPointerDown={(event) =>
+                armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
+              }
+            />
             <BranchHeader
               label="terminal"
               count={shellCount}

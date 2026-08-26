@@ -228,3 +228,52 @@ test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ pa
   expect(calls.filter((call) => call.startsWith("plugin:dialog"))).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **남의 work의 `spec` 잎이 남는다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
+// 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는 work은 블럭이
+// 서 있는데 그 안에 `terminal`만 남는 모양이었다.
+test("남의 work의 spec 잎이 남고, 누르면 그 work으로 간다", async ({ page }) => {
+  await installFixtureBackend(page);
+  // 터미널로 들어가 셸을 하나 띄운다 — 그래야 이 work을 떠나도 블럭이 선다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator("[data-shell-row]")).toBeVisible();
+
+  const [pinnedWork] = WORKS;
+  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+
+  // 블럭이 선 work마다 잎이 있다 — 떠나온 것과 지금 고른 것 둘.
+  const leaves = page.locator('[data-leaf="spec"]');
+  await expect(leaves).toHaveCount(2);
+  // 켜진 것은 **고른 work의 것 하나**다. 둘 다 켜지면 「지금 보고 있는 것」이 둘이 된다.
+  await expect(page.locator('[data-leaf="spec"][aria-current]')).toHaveCount(1);
+
+  // 남의 잎을 누르면 그 work으로 간다(결정 101). **켜지지 않은 것**이 남의 것이다 —
+  // 순서로 집으면 구획(고정·작업)에 따라 갈린다.
+  await page.locator('[data-leaf="spec"]:not([aria-current])').click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).not.toHaveURL(/tab=terminal/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **트리에서 그림을 고르면 본문이 그림으로 선다.** 한때 확장자를 안 보고 글로 읽어,
+// PNG를 UTF-8로 읽은 값이 줄번호 `1` 하나만 있는 빈 화면으로 섰다(실물에서 났다).
+//
+// 이 층에서만 보인다 — 그림을 거는 것은 asset 프로토콜이라 진짜 웹뷰가 있어야 하고,
+// 「글로 안 읽는다」는 IPC 기록으로만 드러난다.
+test("spec 트리의 그림은 그림으로 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const [pinnedWork] = WORKS;
+  const shot = pinnedWork.specFiles[1];
+  await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent(shot)}`);
+
+  const image = page.locator("main img");
+  await expect(image).toHaveCount(1);
+  // 파일을 못 찾아도(고정 데이터라 실제 파일이 없다) **거는 자리는 맞아야** 한다.
+  await expect(image).toHaveAttribute("alt", shot);
+
+  // **읽지 않는다.** 그림을 문자열로 읽으면 쓸 수 없는 값이 오고, 그 호출 자체가 낭비다.
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  expect(calls.filter((call) => call.startsWith("read_spec_file"))).toEqual([]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calloutKind, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
 
 // spec 폴더의 실제 모양을 흉내낸 목록 — 한글 폴더명이 들어 있는 것이 중요하다.
 // 마크다운 렌더러가 비ASCII 경로를 퍼센트 인코딩해 넘기기 때문이다.
@@ -217,5 +217,35 @@ describe("calloutKind", () => {
 
   it("마커가 첫 줄 맨 앞에 있어야 한다", () => {
     expect(calloutKind("앞말 [!NOTE] 뒷말")).toBeNull();
+  });
+});
+
+// 트리에서 고른 파일이 그림인데 글로 읽으면 화면이 텅 빈다 — PNG를 UTF-8로 읽은 결과가
+// 줄번호 `1` 하나로 서는 것이 실물에서 난 모습이다.
+describe("그림으로 세울 수 있는 파일", () => {
+  it.each(["샷.png", "a/b/c.JPG", "x.jpeg", "x.gif", "x.webp", "x.svg", "x.avif"])(
+    "%s는 그림이다",
+    (path) => {
+      expect(isImageFile(path)).toBe(true);
+    },
+  );
+
+  it.each(["spec.md", "overview.MD", "notes.txt", "a/b/spec.md", "Makefile"])(
+    "%s는 글이다",
+    (path) => {
+      expect(isImageFile(path)).toBe(false);
+    },
+  );
+
+  // 고른 문서가 없을 때가 실재한다(spec이 하나도 없는 work).
+  it("문서가 없으면 그림이 아니다", () => {
+    expect(isImageFile(null)).toBe(false);
+  });
+
+  // 확장자처럼 보이지만 아닌 것들. 점으로 시작하는 이름은 확장자가 없는 것이다.
+  it("점이 이름의 일부인 것을 확장자로 읽지 않는다", () => {
+    expect(isImageFile(".png")).toBe(false);
+    expect(isImageFile("png")).toBe(false);
+    expect(isImageFile("shot.png.md")).toBe(false);
   });
 });

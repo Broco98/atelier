@@ -85,6 +85,23 @@ export function expandHome(path: string, home: string): string {
   return home.replace(/\/+$/, "") + path.slice(1);
 }
 
+/**
+ * 본문에 **그림으로** 세울 수 있는 파일인가.
+ *
+ * 트리에서 고른 파일이 그림인데 글로 읽으면 화면이 텅 빈다 — PNG를 UTF-8로 읽은 결과가
+ * 줄번호 `1` 하나로 서는 것이 실물에서 난 모습이다. 여기 없는 확장자는 글로 읽는다.
+ *
+ * **마크다운 안의 `![](…)`와 다른 판정이다.** 저쪽은 문서가 「이건 그림이다」라고 이미
+ * 말해 준 것을 자리로 옮기는 일이고, 이쪽은 확장자만 보고 정해야 한다.
+ */
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico"];
+
+export function isImageFile(path: string | null): boolean {
+  if (!path) return false;
+  const dot = path.lastIndexOf(".");
+  return dot > 0 && IMAGE_EXTENSIONS.includes(path.slice(dot + 1).toLowerCase());
+}
+
 export type ImageSource =
   | { kind: "file"; path: string } // 절대 파일 경로. 그리는 쪽이 asset URL로 바꾼다
   | { kind: "url"; url: string } // http·https는 변환 없이 그대로

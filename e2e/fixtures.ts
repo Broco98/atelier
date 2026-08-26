@@ -48,7 +48,9 @@ export const WORKS: WorkView[] = [
       },
     ],
     specDir: "~/.atelier/works/pinned-work/spec",
-    specFiles: ["overview.md"],
+    // **그림 파일을 하나 둔다** — 트리에서 그림을 고르면 본문이 그림으로 서는지가 이
+    // 층에서만 보인다(글로 읽으면 줄번호 `1` 하나만 있는 빈 화면이 된다).
+    specFiles: ["overview.md", "증거/샷.png"],
   },
   {
     slug: "plain-work",
