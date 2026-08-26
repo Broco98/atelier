@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { togglesWorkPanel } from "./WorksPage";
 import { worksQuery } from "./hooks";
 import type { WorkView } from "./types";
-import type { ViewTab } from "@/routes/-work-search";
+import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import { MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "@/features/terminal/shell-registry";
@@ -49,7 +49,11 @@ function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal
 // 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
 const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
-function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): string {
+function render(
+  overrides: Partial<WorkView> = {},
+  tab: ViewTab = "spec",
+  split: SplitSide | null = null,
+): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery.queryKey, [{ ...work, ...overrides }]);
   return renderToStaticMarkup(
@@ -62,6 +66,9 @@ function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): strin
         onOpenProject={() => {}}
         tab={tab}
         onSelectTab={() => {}}
+        split={split}
+        onSelectSplit={() => {}}
+        onDropInto={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -454,7 +461,10 @@ describe("WorksPage 복사 토스트", () => {
     expect(worksPage).toContain("const [toast, setToast]");
 
     // 그리는 자리가 본문 분기 **밖**이다. 분기 안이면 한 탭에서만 뜬다.
-    const body = worksPage.indexOf("const body = terminalWork ?");
+    //
+    // 닻이 `const body =`까지인 것은 판 05가 여기에 분할 가지를 하나 더 얹었기 때문이다 —
+    // 분기의 **첫 조건**을 닻으로 삼으면 가지가 늘 때마다 이 검사가 무관하게 깨진다.
+    const body = worksPage.indexOf("const body =");
     const ret = worksPage.indexOf("return (", body);
     const toast = worksPage.indexOf("{toast && (", ret);
     expect(body, "본문 분기를 찾지 못했다").toBeGreaterThan(-1);
@@ -716,4 +726,80 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     expect(branch, "⌘T가 새 셸을 여는 자리를 찾지 못했다").not.toBe("");
     expect(branch).toContain("openNewShell");
   });
+});
+
+// 판 05 — 분할. 결정 86~90·97·104·106.
+//
+// 정적 마크업이라 **여닫는 동작은 안 보인다** — 여기서 보는 것은 「주소가 분할이면 화면이
+// 무엇으로 서는가」다. 켜고 끄는 판정은 순수 함수(split-view.test.ts)와 주소
+// (-work-search.test.ts)가 각자 든다.
+describe("분할 뷰", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+
+  // 결정 89. 단일 뷰에 두면 분할을 켤 때마다 층이 하나 늘었다 줄어 본문이 위아래로 밀린다.
+  it("단일 뷰에는 열 머리가 없다", () => {
+    expect(countOf(render(withSpec, "spec", null), "data-column=")).toBe(0);
+    expect(countOf(render(withSpec, "terminal", null), "data-column=")).toBe(0);
+  });
+
+  it("분할이면 열 머리가 둘 선다", () => {
+    expect(countOf(render(withSpec, "spec", "lr"), "data-column=")).toBe(2);
+  });
+
+  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다.
+  it("문서 열 머리가 판 폴더까지 말한다", () => {
+    expect(render(withSpec, "spec", "lr")).toContain("05-분할-뷰 / spec.md");
+  });
+
+  // 결정 87. 좌우만 바뀐다 — 마크업에서 먼저 나오는 것이 왼쪽 열이다.
+  it("lr은 문서가 왼쪽, rl은 문서가 오른쪽이다", () => {
+    const lr = render(withSpec, "spec", "lr");
+    expect(lr.indexOf('data-column="spec"')).toBeLessThan(lr.indexOf('data-column="terminal"'));
+    const rl = render(withSpec, "spec", "rl");
+    expect(rl.indexOf('data-column="terminal"')).toBeLessThan(rl.indexOf('data-column="spec"'));
+  });
+
+  // 결정 87의 뒷면 — 분할이면 `tab`과 무관하게 **둘 다** 선다. `tab`은 이때
+  // 「끄면 남는 쪽」일 뿐이라, 이것이 어긋나면 터미널을 보다 분할을 켜면 문서 열이 빈다.
+  it("분할이면 tab과 무관하게 둘 다 선다", () => {
+    expect(countOf(render(withSpec, "terminal", "rl"), "data-column=")).toBe(2);
+  });
+
+  // 결정 106. 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 패널은 첫 화면에
+  // 열려 있으므로(workPanelOpen 초기값) 여기 보이는 하나는 **패널 머리행의 것**이다.
+  it("패널이 열려 있으면 `</>`가 한 화면에 하나다", () => {
+    for (const split of [null, "lr", "rl"] as const) {
+      const html = render(withSpec, "spec", split);
+      expect(countOf(html, 'aria-label="마크다운 원문 보기"'), String(split)).toBe(1);
+    }
+  });
+
+  // 결정 89의 「끄는 길」 둘 중 하나. 남는 쪽이 서로 반대여야 `×`가 「이 열을 닫는다」가 된다.
+  it("열마다 닫는 버튼이 하나씩 있다", () => {
+    const html = render(withSpec, "spec", "lr");
+    expect(countOf(html, 'aria-label="spec 열 닫기"')).toBe(1);
+    expect(countOf(html, 'aria-label="terminal 열 닫기"')).toBe(1);
+  });
+
+  // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
+  it("분할 토글이 두 상태 모두에 서고 켜짐을 말한다", () => {
+    expect(render(withSpec, "spec", null)).toContain('aria-label="2열로 보기" aria-pressed="false"');
+    expect(render(withSpec, "spec", "lr")).toContain('aria-label="2열로 보기" aria-pressed="true"');
+  });
+});
+
+// 결정 88. **한 번뿐이다** — 사람이 다시 열면 그 뜻을 존중한다. 이펙트라 정적 렌더로는
+// 안 보이므로 배선을 리터럴로 못박는다. 조건을 `split !== null`로 넓히면 분할인 채로는
+// 패널을 열 수 없는 앱이 되는데, 그것이 결정 88이 적어 둔 「억지로 닫지 않는다」의 반대다.
+it("분할을 켜는 순간에만 패널을 접는다", () => {
+  expect(source("WorksPage.tsx")).toContain(
+    "if (split !== null && wasSplit.current === null) setWorkPanelOpen(false);",
+  );
 });

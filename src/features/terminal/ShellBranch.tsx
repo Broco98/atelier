@@ -2,6 +2,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { TreeIndent } from "@/components/shell/sidebar-tree";
 import { tabSearch, workSlugOf } from "@/routes/-work-search";
 import { useStore } from "@tanstack/react-store";
+import { armDrag } from "@/features/works/split-view";
 import ShellList from "./ShellList";
 import { sameBranch, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
 import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
@@ -100,6 +101,15 @@ function ShellBranch({ work }: { work: WorkView | null }) {
           go();
         }}
         onClose={requestCloseShell}
+        // 행을 본문 위로 끌 수 있다(결정 86·90). **최상위 터미널은 못 끈다** — 떨굴 자리인
+        // 분할은 work 화면의 것이고, 저 셸들은 어느 work에도 딸려 있지 않다.
+        //
+        // 남의 work의 행도 끌린다: 떨구면 그 work로 옮겨 가 그 자리에 선다(결정 101).
+        onDragRow={
+          owner === null
+            ? undefined
+            : (id, from) => armDrag({ kind: "shell", slug: owner, shellId: id }, from)
+        }
         onOpen={(project) => {
           // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
           // 본문을 옮기지도 않는다(결정 24).

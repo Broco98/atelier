@@ -117,11 +117,17 @@ export function TreeLeaf({
   label,
   active,
   onClick,
+  onPointerDown,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
   onClick: () => void;
+  /**
+   * 이 잎을 본문 위로 끌 수 있다면(결정 86·90). **`onClick`을 대신하지 않는다** —
+   * 5px 안쪽의 움직임은 그냥 클릭이고, 그 판정은 받는 쪽이 한다.
+   */
+  onPointerDown?: (event: { clientX: number; clientY: number }) => void;
 }) {
   return (
     <button
@@ -129,6 +135,7 @@ export function TreeLeaf({
       // 위 `data-branch`와 같은 이유의 표식이다.
       data-leaf={label}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       aria-current={active || undefined}
       className={cn(
         "flex h-7 w-full shrink-0 items-center gap-[7px] rounded-[9px] px-[9px] text-left text-[13px] transition-colors",

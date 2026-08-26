@@ -2,8 +2,9 @@ import { useCallback, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
-import { recallTab, rememberTab, tabSearch } from "./-work-search";
-import type { ViewTab } from "./-work-search";
+import { recallView, rememberView, splitSearch, tabSearch, viewSearch } from "./-work-search";
+import type { SplitSide, ViewTab } from "./-work-search";
+import type { DragSource } from "@/features/works/split-view";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 
@@ -13,10 +14,12 @@ function WorksView({
   slug,
   file = null,
   tab = "spec",
+  split = null,
 }: {
   slug: string | null;
   file?: string | null;
   tab?: ViewTab;
+  split?: SplitSide | null;
 }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
@@ -33,7 +36,7 @@ function WorksView({
       ? navigate({
           to: "/works/$slug",
           params: { slug: next },
-          search: tabSearch({}, recallTab(next)),
+          search: viewSearch({}, recallView(next)),
           replace,
         })
       : navigate({ to: "/works", replace }));
@@ -55,6 +58,41 @@ function WorksView({
     [navigate, slug],
   );
 
+  // 분할 전환 — 켜기·끄기·좌우 맞바꾸기가 전부 여기다(결정 97). **`tab`을 함께 받는다**:
+  // 열의 `×`는 분할을 끄면서 **남는 쪽**을 정하고(결정 89), 토글은 지금 `tab`을 그대로 넘긴다.
+  // 두 축을 한 navigate로 옮기는 것은 두 번 옮기면 한 틱에 겹쳐 앞의 것이 버려지기 때문이다.
+  const selectSplit = useCallback(
+    (next: SplitSide | null, nextTab: ViewTab) => {
+      if (slug === null) return;
+      void navigate({
+        to: "/works/$slug",
+        params: { slug },
+        search: (prev) => splitSearch(tabSearch(prev, nextTab), next),
+        replace: true,
+      });
+    },
+    [navigate, slug],
+  );
+
+  // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립한다**(결정 101) —
+  // 그때는 work이 통째로 바뀌므로 `file`을 떨어뜨려야 하고, 같은 work이면 보던 문서를
+  // 지켜야 한다. 그 갈림이 여기 하나뿐이라 `search`를 짓는 두 모양이 나란히 선다.
+  const dropInto = useCallback(
+    (source: DragSource, next: SplitSide) => {
+      const nextTab: ViewTab = source.kind === "shell" ? "terminal" : "spec";
+      void navigate({
+        to: "/works/$slug",
+        params: { slug: source.slug },
+        search:
+          source.slug === slug
+            ? (prev: object) => splitSearch(tabSearch(prev, nextTab), next)
+            : viewSearch({}, { tab: nextTab, split: next }),
+        replace: true,
+      });
+    },
+    [navigate, slug],
+  );
+
   // 화면 탭 전환. 갱신 자체는 `tabSearch`가 안다 — **함수형이어야 한다**(결정 15).
   // `replace`인 것은 결정 13이다: 탭을 한 번 눌렀는데 되돌리는 데 뒤로가기를 두 번 눌러야
   // 하는 일이 없다.
@@ -71,12 +109,12 @@ function WorksView({
     [navigate, slug],
   );
 
-  // **보던 본문을 적어 둔다**(결정 77). 쓰는 자리가 여기 하나인 것은 주소가 정본이기
-  // 때문이다 — 탭을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab으로 넷인데,
-  // 그 넷이 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 넷을 다 덮는다.
+  // **보던 화면을 적어 둔다**(결정 77·97). 쓰는 자리가 여기 하나인 것은 주소가 정본이기
+  // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
+  // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
   useEffect(() => {
-    if (slug !== null && exists) rememberTab(slug, tab);
-  }, [slug, exists, tab]);
+    if (slug !== null && exists) rememberView(slug, { tab, split });
+  }, [slug, exists, tab, split]);
 
   // 주소와 화면을 목록 변화에 맞춰 계속 붙여 둔다.
   // beforeLoad는 이동할 때만 돌기 때문에, 머물러 있는 동안 목록이 바뀌어 생기는 어긋남은
@@ -107,6 +145,9 @@ function WorksView({
       onSelectFile={selectFile}
       tab={tab}
       onSelectTab={selectTab}
+      split={split}
+      onSelectSplit={selectSplit}
+      onDropInto={dropInto}
       onOpenProject={(project) =>
         void navigate({ to: "/projects/$slug", params: { slug: project } })
       }

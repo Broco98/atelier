@@ -82,6 +82,19 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
+  // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
+  //
+  // 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 —
+  // 여기서 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도
+  // 그것뿐이다(진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
+  pty_spawn: { id: 1, shellName: "zsh" },
+  pty_write: null,
+  pty_resize: null,
+  pty_kill: null,
+  // 닫기 직전에만 묻는다(결정 92). `false`는 「도는 명령이 없다」라 확인 창이 안 뜬다 —
+  // 대화상자 응답이 null(취소)이라 true를 주면 닫기가 조용히 막힌다.
+  pty_command_running: false,
 };
 
 // `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은

@@ -34,6 +34,14 @@ interface ShellListProps {
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
+  /**
+   * 이 행을 본문 위로 끌 수 있다면(결정 86·90). 없으면 안 끌린다 — 셸이 0개인 **본문**에
+   * 서는 이 목록에는 끌어다 놓을 자리가 없다.
+   *
+   * **드래그 모듈을 여기서 import하지 않는다.** 이 목록은 상태와 콜백만 받는 그림이라야
+   * DOM 없는 기본 환경에서 그대로 검사된다(위 머리말).
+   */
+  onDragRow?: (id: number, from: { clientX: number; clientY: number }) => void;
 }
 
 // 셸을 고르는 세로 목록. **한 행이 두 줄이다**(결정 45): 첫 줄은 `프로젝트 · 타이틀`(결정 46),
@@ -51,7 +59,16 @@ interface ShellListProps {
 // (SpecTree.tsx의 파일 행) 그 구조를 그대로 따른다 — 배경을 가진 바깥 상자 + 형제 버튼 둘,
 // 선택은 `selected-row`, 비선택 hover는 `hover:bg-state-1`. 한 컬럼에 세로로 붙어 서는
 // 목록들이 다른 어휘를 쓰면 한쪽이 다른 종류의 것으로 읽힌다.
-function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen }: ShellListProps) {
+function ShellList({
+  state,
+  owner,
+  projects,
+  showing,
+  onSelect,
+  onClose,
+  onOpen,
+  onDragRow,
+}: ShellListProps) {
   // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
   // 나오는 것이 결정 30의 전부다.
   const full = atCap(state);
@@ -107,6 +124,7 @@ function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen 
             <button
               type="button"
               onClick={() => onSelect(shell.id)}
+              onPointerDown={onDragRow && ((event) => onDragRow(shell.id, event))}
               className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-2 pr-1.5 text-left"
             >
               <span className="w-full truncate text-[12.5px]">{name}</span>

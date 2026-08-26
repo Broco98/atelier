@@ -370,6 +370,19 @@ body.resizing * {
     cursor: col-resize !important;
 }
 
+/* 사이드바 행을 본문 위로 끄는 동안(결정 86). 위 `resizing`과 나누는 것은 커서 하나
+   때문이다 — 그쪽은 경계를 미는 중이고 이쪽은 잡은 것을 옮기는 중이다. 켜고 끄는 자리는
+   split-view.ts 하나이고, 끝나는 길 셋이 모두 같은 정리를 한다. */
+body.dragging-row {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.dragging-row,
+body.dragging-row * {
+    cursor: grabbing !important;
+}
+
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
    패널이 좌우 다른 규칙으로 움직이지 않도록, 좌측 사이드바·목록 패널과 같은 폭 접기로
    바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**
