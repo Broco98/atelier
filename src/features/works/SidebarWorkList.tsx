@@ -160,16 +160,42 @@ function SidebarWorkList({
   const isBranchOpen = (slug: string) => branchOpen[slug] === true;
 
   /**
-   * work 블럭이 펼쳐졌는가 — **기본이 펼침이라 위 `branchOpen`과 반대다.** 이 블럭은
-   * 오늘까지 늘 서 있었고, 접는 것이 새로 생긴 일이다: 아무것도 안 한 사람의 화면이
-   * 달라지면 안 된다. 그래서 기록에 남는 것은 **접었다는 사실**뿐이다.
+   * work 블럭의 상태. **값이 셋이다** — 위 `branchOpen`(둘)과 갈리는 자리다.
+   *
+   * | 기록 | 뜻 | 화면 |
+   * |---|---|---|
+   * | 없음 | 아직 안 열어 봤다 | 블럭이 안 선다(셸이 돌면 예외) |
+   * | `true` | 펼침 | 블럭이 서고 속이 보인다 |
+   * | `false` | 사람이 접었다 | 블럭이 서 있되 속이 접힌다 |
+   *
+   * **한 번 연 블럭은 work을 옮겨도 남는다**(사용자 결정). 한때 「고른 work」에만 섰는데,
+   * 그러면 옆 work을 잠깐 들여다보는 것만으로 앞 work의 트리가 통째로 접혀, 돌아왔을 때
+   * 펼쳐 둔 것이 사라져 있었다. 그 대가는 방문한 work마다 블럭이 쌓이는 것이고, 접는 길은
+   * **그 work을 다시 골라 행을 누르는 것**이다(접기 토글은 고른 work의 행에만 있다 — 결정 101).
    *
    * 수명은 `branchOpen`과 같은 세션 메모리다(결정 107) — 접힘은 위치이지 설정이 아니다.
+   *
    */
-  const [folded, setFolded] = useState<Record<string, boolean>>({});
-  const isNodeOpen = (slug: string) => folded[slug] !== true;
+  const [blockOpen, setBlockOpen] = useState<Record<string, boolean>>({});
+  /**
+   * 이 work의 블럭이 **자리를 잡았는가.** 기록에 있으면 접혀 있어도 자리는 있다.
+   *
+   * 고른 work은 **기록보다 먼저** 선다. 기록에 넣는 것은 아래 이펙트인데 그것은 페인트
+   * 뒤에 돌아서, 기록만 보면 앱을 켤 때마다 트리가 한 번 펼쳐지는 것을 보게 된다 —
+   * 첫 화면은 나타나는 것이 아니라 그냥 첫 화면이다(`useCollapse`).
+   */
+  const blockStands = (slug: string) => slug in blockOpen || slug === selectedSlug;
+  // 기록에 없는 것도 펼침으로 읽는다 — 셸이 돌아 저절로 선 블럭이 접힌 채로 뜨면 안 된다.
+  const isNodeOpen = (slug: string) => blockOpen[slug] !== false;
   const toggleNode = (slug: string) =>
-    setFolded((prev) => ({ ...prev, [slug]: prev[slug] !== true }));
+    setBlockOpen((prev) => ({ ...prev, [slug]: prev[slug] === false }));
+
+  // **고르면 열린다 — 한 번만**(결정 107과 같은 판정을 쓴다). 사람이 접어 둔 `false`는
+  // 다시 골라도 접힌 채다.
+  useEffect(() => {
+    if (selectedSlug === null) return;
+    setBlockOpen((prev) => openBranchOnSelect(prev, selectedSlug));
+  }, [selectedSlug]);
 
   useEffect(() => {
     if (selectedSlug === null) return;
@@ -248,6 +274,7 @@ function SidebarWorkList({
             tab={tab}
             shellCounts={shellCounts}
             branchOpen={isBranchOpen}
+            nodeStands={blockStands}
             nodeOpen={isNodeOpen}
             onToggleSection={toggleSection}
             onOpen={goTo}
@@ -313,6 +340,7 @@ export function WorkSectionList({
   tab,
   shellCounts,
   branchOpen,
+  nodeStands,
   nodeOpen,
   onToggleSection,
   onOpen,
@@ -330,6 +358,7 @@ export function WorkSectionList({
   tab: ViewTab;
   shellCounts: Record<string, number>;
   branchOpen: (slug: string) => boolean;
+  nodeStands: (slug: string) => boolean;
   nodeOpen: (slug: string) => boolean;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
@@ -356,6 +385,7 @@ export function WorkSectionList({
       onLeave={onLeave}
       onTogglePin={onTogglePin}
       onToggleBranch={onToggleBranch}
+      nodeStands={nodeStands(work.slug)}
       nodeOpen={nodeOpen(work.slug)}
       onToggleNode={() => onToggleNode(work.slug)}
       onOpenSpec={onOpenSpec}
@@ -430,6 +460,7 @@ function WorkNode({
   tab,
   shellCount,
   branchOpen,
+  nodeStands,
   nodeOpen,
   onOpen,
   onHover,
@@ -445,6 +476,7 @@ function WorkNode({
   tab: ViewTab;
   shellCount: number;
   branchOpen: boolean;
+  nodeStands: boolean;
   nodeOpen: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
@@ -455,7 +487,9 @@ function WorkNode({
   onOpenSpec: (work: WorkView) => void;
   shells: ReactNode;
 }) {
-  const stands = active || shellCount > 0;
+  // **한 번 연 블럭은 남는다**(위 `blockOpen` 표). 셸이 도는 work은 열어 본 적이 없어도
+  // 선다 — 「돌고 있는 것」이 화면에서 사라지지 않는 규칙이 그대로다(결정 73).
+  const stands = nodeStands || shellCount > 0;
 
   // **블럭이 설 때도 사라질 때도 부드럽다**(`useCollapse`). 접기 토글은 `SectionBody`가
   // 이미 nav와 같은 애니메이션으로 돌리는데, 「이 블럭이 아예 있는가」는 마운트/언마운트라

@@ -278,29 +278,68 @@ test("spec 트리의 그림은 그림으로 선다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **블럭이 사라질 때도 접히면서 사라진다.** 조건이 거짓이 되는 순간 걷어 버리면 아래
-// 행들이 그만큼 순간이동한다 — 실물에서 다른 work을 누를 때 목록이 68px 튀는 모습으로
-// 났다(실측). 이 층에서만 보인다: 마운트/언마운트는 정적 마크업에 시간이 없다.
-test("다른 work을 눌러도 목록이 순간이동하지 않는다", async ({ page }) => {
+// **한 번 연 블럭은 work을 옮겨도 남는다**(사용자 결정). 한때 「고른 work」에만 섰는데,
+// 그러면 옆 work을 잠깐 들여다보는 것만으로 앞 work의 트리가 통째로 접혀, 돌아왔을 때
+// 펼쳐 둔 것이 사라져 있었다.
+test("work을 옮겨도 앞 work의 블럭이 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   const [pinnedWork] = WORKS;
-  await page.goto(`/works/${pinnedWork.slug}`);
+  await page.goto(`/works/${plainWork.slug}`);
+  await expect(page.locator(`[data-branch="${plainWork.slug}"]`)).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
 
-  const row = page.getByRole("button", { name: `${plainWork.title} 고정` });
-  const y = () => row.evaluate((el) => el.parentElement!.getBoundingClientRect().y);
-  const before = await y();
+  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await page.waitForTimeout(300);
 
+  // 떠나온 work의 속이 그대로 있다 — `spec` 잎이 둘, 셸을 여는 자리도 둘.
+  await expect(page.locator('[data-leaf="spec"]')).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "셸 열기" })).toHaveCount(2);
+
+  // **접는 길은 그 work을 다시 골라 행을 누르는 것**이다(결정 101 — 토글은 고른 행에만).
   await page.getByRole("button", { name: plainWork.title, exact: true }).click();
-  await page.waitForTimeout(40);
-  const mid = await y();
-  await page.waitForTimeout(400);
-  const after = await y();
+  const branch = page.locator(`[data-branch="${plainWork.slug}"]`);
+  await expect(branch).toHaveAttribute("aria-expanded", "true");
+  await branch.click();
+  await expect(branch).toHaveAttribute("aria-expanded", "false");
 
-  // 결국 자리는 바뀐다 — 앞 work의 블럭이 걷혔으니까.
-  expect(after).toBeLessThan(before - 20);
-  // **가는 중이 있었다.** 순간이동이면 40ms에 이미 끝자리라 이 줄이 빨개진다.
-  // (실측: 고치기 전에는 40ms에 벌써 도착해 있었다.)
-  expect(mid).toBeGreaterThan(after);
+  // 접어 둔 것은 다시 골라도 접힌 채다(결정 107과 같은 판정).
+  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
+  await expect(branch).toHaveAttribute("aria-expanded", "false");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **접히는 것이 보인다.** 조건이 바뀌는 순간 걷어 버리면 아래 행들이 그만큼 순간이동한다 —
+// 실물에서 다른 work을 누를 때 목록이 68px 튀는 모습으로 났다(실측). 지금은 앞 work의
+// 블럭이 남으므로 그 길로는 안 나지만, 접는 길에서는 그대로 난다.
+//
+// 이 층에서만 보인다: 정적 마크업에는 시간이 없다.
+test("블럭을 접으면 한 번에 사라지지 않고 접힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+
+  const branch = page.locator(`[data-branch="${plainWork.slug}"]`);
+  const body = branch.locator("xpath=../following-sibling::div[1]");
+  const height = async () => (await body.boundingBox())?.height ?? 0;
+
+  const before = await height();
+  expect(before).toBeGreaterThan(20);
+
+  await branch.click();
+  await page.waitForTimeout(40);
+  const mid = await height();
+  await page.waitForTimeout(400);
+  const after = await height();
+
+  // 끝내 접힌다.
+  expect(after).toBe(0);
+  // **가는 중이 있었다.** 한 번에 사라지면 40ms에 이미 0이라 이 줄이 빨개진다.
+  expect(mid).toBeGreaterThan(0);
   expect(mid).toBeLessThan(before);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

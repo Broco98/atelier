@@ -40,8 +40,10 @@ function render(
     tab = "spec" as ViewTab,
     shellCounts = {},
     branchOpen = () => false,
-    // work 블럭은 **기본이 펼침이다** — 생산 쪽 기본값과 같게 둔다(SidebarWorkList의
-    // `folded` 주석). 반대로 두면 이 파일의 검사가 전부 접힌 화면만 보게 된다.
+    // 블럭이 **자리를 잡았는가**와 **펼쳐졌는가**는 다른 값이다(SidebarWorkList의
+    // `blockOpen` 표). 검사 기본값은 「고른 work은 자리를 잡았다」이고, 셸이 도는 work은
+    // 그와 무관하게 선다 — 생산 쪽 판정과 같게 둔다.
+    nodeStands = (slug: string) => slug === selectedSlug,
     nodeOpen = () => true,
     renderShells = (work: WorkView) => <i data-shells={work.slug} />,
   }: {
@@ -49,6 +51,7 @@ function render(
     tab?: ViewTab;
     shellCounts?: Record<string, number>;
     branchOpen?: (slug: string) => boolean;
+    nodeStands?: (slug: string) => boolean;
     nodeOpen?: (slug: string) => boolean;
     renderShells?: (work: WorkView) => ReactNode;
   } = {},
@@ -61,6 +64,7 @@ function render(
       tab={tab}
       shellCounts={shellCounts}
       branchOpen={branchOpen}
+      nodeStands={nodeStands}
       nodeOpen={nodeOpen}
       onToggleSection={() => {}}
       onOpen={() => {}}
@@ -333,8 +337,11 @@ describe("가지의 자동 펼침", () => {
       fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
       "utf8",
     );
+    // **접히는 것이 둘이고 규칙은 하나다** — `terminal` 가지와 work 블럭. 판정을 한 자리에
+    // 두고 둘이 그것을 딛는다: 「기록에 없으면 펼치고, 사람이 접어 둔 `false`는 유지한다」.
     expect(source).toContain("setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));");
-    // 정의 하나 + 부르는 자리 하나. 늘면 판정을 딛는 자리가 둘이 되어 한쪽만 늙는다.
-    expect(source.split("openBranchOnSelect(").length - 1).toBe(2);
+    expect(source).toContain("setBlockOpen((prev) => openBranchOnSelect(prev, selectedSlug));");
+    // 정의 하나 + 부르는 자리 둘. 늘면 판정을 딛는 자리가 셋이 되어 한쪽만 늙는다.
+    expect(source.split("openBranchOnSelect(").length - 1).toBe(3);
   });
 });
