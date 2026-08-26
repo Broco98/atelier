@@ -336,7 +336,6 @@ describe("WorksPage 터미널 탭", () => {
     expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(-1);
     const body = markup.slice(0, bodyEnd);
     expect(body.match(/aria-label="셸 열기"/g)).toHaveLength(1);
-    expect(body).toContain("아직 셸이 없어요");
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
@@ -825,4 +824,15 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
     expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
     expect(countOf(render(withSpec, "spec", null), 'aria-label="작업 패널 펼치기"')).toBe(0);
   });
+});
+
+// **마지막 셸이 닫히면 본문이 문서로 돌아온다.** 판정은 `shellsEmptied`가 들고
+// (shell-registry.test.ts), 그것을 실제로 딛는지는 렌더로 안 보인다 — 이펙트라서다.
+//
+// 두 조건을 함께 못박는다: **분할일 때는 안 옮긴다**(문서가 이미 옆 열에 서 있고, 옮기면
+// 「끄면 남는 쪽」이 조용히 달라진다) · **터미널을 보고 있을 때만**이다.
+it("마지막 셸이 닫히면 문서로 돌아오되, 분할이면 그대로 둔다", () => {
+  expect(source("WorksPage.tsx")).toContain(
+    'if (emptied && tab === "terminal" && split === null) onSelectTab("spec");',
+  );
 });

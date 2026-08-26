@@ -687,7 +687,7 @@ function WorkRow({
         // 고른 work의 행이면 접기 토글이다 — `terminal` 머리행이 이미 쓰는 규칙 그대로이고,
         // 구획 헤더(`작업`)가 행 전체로 접히는 것과도 같은 모양이다.
         onClick={branch ? branch.onToggle : () => onOpen(work.slug)}
-        className="group/row flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left"
+        className="group/row flex h-full min-w-0 flex-1 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
         <span
@@ -705,7 +705,7 @@ function WorkRow({
         {branch && (
           <ChevronDown
             className={cn(
-              "size-3.5 shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
+              "size-(--glyph) shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
               branch.open ? "opacity-0 group-hover/row:opacity-100" : "-rotate-90 opacity-100",
             )}
             strokeWidth={2.2}

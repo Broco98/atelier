@@ -253,6 +253,31 @@ export function activeIdOf(state: ShellsState, owner: string | null): number | n
   return state.activeByOwner[ownerKey(owner)] ?? null;
 }
 
+/** 어느 화면에 셸이 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. */
+export interface ShellTally {
+  owner: string | null;
+  count: number;
+}
+
+/**
+ * **마지막 셸이 방금 사라졌는가.**
+ *
+ * 「지금 0개다」가 아니라 「0이 됐다」인 것이 요점이다. 화면에 들어올 때는 0에서 시작해
+ * 진입 이펙트가 하나를 띄우므로(`ensureShell`), 서 있는 값으로 재면 들어오자마자 되돌아
+ * 나간다 — 터미널을 열 수 없는 앱이 된다.
+ *
+ * **work이 바뀐 것은 세지 않는다.** A(1개)에서 B(0개)로 옮긴 것은 A의 마지막 칸이 닫힌
+ * 것이 아니다. 이 줄이 없으면 셸이 도는 work에서 안 도는 work으로 갈 때마다 본문이
+ * 문서로 튕긴다.
+ *
+ * 닫는 길이 둘인데 둘 다 여기로 온다 — `×`·⌘W(`requestCloseShell`)와 **정상 종료**
+ * (결정 48이 목록에서 스스로 빼는 그 길)다. 스토어에서 알림을 쏘는 방식으로 만들면
+ * 뒤쪽이 빠진다.
+ */
+export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
+  return before.owner === now.owner && before.count > 0 && now.count === 0;
+}
+
 /**
  * 그 화면에서 **켜진 셸** 자체. 없으면 `null`이다.
  *

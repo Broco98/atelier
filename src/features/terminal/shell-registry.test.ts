@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   activateShell,
   activeShellOf,
+  shellsEmptied,
   activeIdOf,
   atCap,
   CLOSE_NOTICE,
@@ -233,6 +234,37 @@ describe("정상 종료한 셸은 목록에서 스스로 빠진다", () => {
   it("이미 빠진 칸의 정상 종료가 늦게 와도 상태가 그대로다", () => {
     const { state } = opened(2);
     expect(markExited(state, 9999, EXIT_0)).toBe(state);
+  });
+});
+
+// **마지막 셸이 방금 사라졌는가.** 화면이 이 판정을 딛고 본문을 문서로 되돌린다 —
+// 셸 0개인 터미널 본문은 볼 것이 없는 화면이라 사람을 거기 남겨 두면 다음에 무엇을 할지가
+// 본문 밖에 있다.
+describe("마지막 셸이 사라진 순간", () => {
+  const at = (owner: string | null, count: number) => ({ owner, count });
+
+  it("1에서 0이 되면 그렇다", () => {
+    expect(shellsEmptied(at("가", 1), at("가", 0))).toBe(true);
+  });
+
+  // **서 있는 값으로 재면 안 된다.** 화면에 들어올 때는 0에서 시작해 진입 이펙트가 하나를
+  // 띄우므로, 「지금 0개다」로 재면 들어오자마자 되돌아 나가 터미널을 열 수 없는 앱이 된다.
+  it("처음부터 0이면 아니다", () => {
+    expect(shellsEmptied(at("가", 0), at("가", 0))).toBe(false);
+  });
+
+  it("아직 남아 있으면 아니다", () => {
+    expect(shellsEmptied(at("가", 2), at("가", 1))).toBe(false);
+  });
+
+  // 셸이 도는 work에서 안 도는 work으로 갈 때마다 본문이 문서로 튕기면 안 된다.
+  it("work이 바뀐 것은 세지 않는다", () => {
+    expect(shellsEmptied(at("가", 1), at("나", 0))).toBe(false);
+  });
+
+  it("최상위 터미널도 같은 규칙이다", () => {
+    expect(shellsEmptied(at(null, 1), at(null, 0))).toBe(true);
+    expect(shellsEmptied(at(null, 1), at("가", 0))).toBe(false);
   });
 });
 

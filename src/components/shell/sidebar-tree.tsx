@@ -34,9 +34,6 @@ export function SectionBody({ open, children }: { open: boolean; children: React
   );
 }
 
-/** 트리 한 단의 들여쓰기(px). **이 숫자는 여기 한 곳에만 있다.** */
-const INDENT_STEP = 18;
-
 /**
  * 트리 한 단. **들여쓰기를 이 상자 하나가 정한다** — 값을 부르는 쪽마다 적으면 트리 깊이를
  * 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의 GUTTER 주석과 같은 계약).
@@ -53,7 +50,9 @@ const INDENT_STEP = 18;
 export function TreeIndent({ depth = 1, children }: { depth?: 1 | 2; children: ReactNode }) {
   return (
     <div
-      style={{ "--tree-indent": `${depth * INDENT_STEP}px` } as CSSProperties}
+      // 한 단의 크기는 `--tree-step`이 정한다(index.css) — 「글리프 칸 하나」라는 규칙이
+      // 거기 한 줄로 적혀 있고, 그 규칙이 곧 정렬이다.
+      style={{ "--tree-indent": `calc(${depth} * var(--tree-step))` } as CSSProperties}
       className="flex flex-col gap-(--row-gap)"
     >
       {children}
@@ -75,7 +74,8 @@ export function BranchArrow({ open }: { open: boolean }) {
   return (
     <ChevronDown
       className={cn(
-        "size-3 shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
+        // 상자가 `--glyph`다 — 파일 아이콘과 같은 칸에 앉아야 두 행의 글자가 한 줄에 선다.
+        "size-(--glyph) shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
         !open && "-rotate-90",
       )}
       strokeWidth={2.2}
@@ -120,7 +120,7 @@ export function BranchHeader({
       data-branch={label}
       onClick={onToggle}
       aria-expanded={open}
-      className="flex h-7 w-full shrink-0 items-center gap-1 rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
+      className="flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
     >
       <BranchArrow open={open} />
       {/* `flex-1`이라 개수가 오른쪽 끝으로 밀린다 — `ml-auto`를 개수 쪽에 얹지 않는 것은
@@ -163,11 +163,11 @@ export function TreeLeaf({
       onPointerDown={onPointerDown}
       aria-current={active || undefined}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-[7px] rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] transition-colors",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] transition-colors",
         active ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
       )}
     >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
+      <Icon className="size-(--glyph) shrink-0" strokeWidth={1.8} />
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );

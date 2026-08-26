@@ -140,6 +140,27 @@ test("트리 행의 배경은 work 행과 나란히 서고, 글자만 들여쓴�
   });
   expect(gaps).toEqual([gaps[0], gaps[0], gaps[0]]);
 
+  // **트리 한 단이 「글리프 칸 하나」다**(index.css의 `--tree-step`). 그래서 아래 단의
+  // 글리프가 위 단의 글자와 같은 x에 선다 — 한 컬럼에 세로줄이 둘만 남는다.
+  // 숫자를 따로 골라 두면 글리프 크기를 손보는 날 이 관계가 조용히 깨진다.
+  const columns = await page.evaluate(() => {
+    const x = (el: Element | null) => Math.round(el!.getBoundingClientRect().x);
+    const work = document.querySelector("[data-branch]:not([data-branch='terminal'])")!;
+    const leaf = document.querySelector('[data-leaf="spec"]')!;
+    const branch = document.querySelector('[data-branch="terminal"]')!;
+    return {
+      // 아이콘은 SVG라 `getBoundingClientRect`가 획 넘침까지 재므로 글자로만 잰다.
+      workText: x(work.children[1]),
+      leafText: x(leaf.lastElementChild),
+      branchText: x(branch.children[1]),
+      shellText: x(document.querySelector("[data-shell-row]")!.firstElementChild),
+    };
+  });
+  // 같은 단의 글자는 서로 맞고, 한 단 아래는 그만큼만 들어간다.
+  expect(columns.branchText).toBe(columns.leafText);
+  expect(columns.shellText).toBe(columns.leafText);
+  expect(columns.leafText - columns.workText).toBe(columns.workText - 17);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -197,6 +218,10 @@ test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ pa
   await page.getByRole("button", { name: /닫기$/ }).first().click();
   await page.getByRole("alertdialog").getByRole("button", { name: "닫기" }).click();
   await expect(shell).toHaveCount(0);
+
+  // **마지막 칸이 닫히면 본문이 문서로 돌아온다.** 셸 0개인 터미널 본문은 볼 것이 없는
+  // 화면이라(빈 자리와 `+` 하나) 사람을 거기 남겨 두면 다음에 무엇을 할지가 본문 밖에 있다.
+  await expect(page).not.toHaveURL(/tab=terminal/);
 
   // **OS에는 한 번도 안 물었다.** `confirm`도 `message`도 와이어에서는 이 커맨드로 나간다.
   const calls = (await readIpcRecord(page))?.calls ?? [];

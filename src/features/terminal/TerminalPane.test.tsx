@@ -36,7 +36,6 @@ describe("터미널 본문의 자리", () => {
   // 순간 집이 이미 자리를 잡고 있어 xterm이 다시 흐르지 않는다.
   it("셸이 0개면 여는 자리가 덮개로 선다", () => {
     const markup = html();
-    expect(markup).toContain("아직 셸이 없어요");
     expect(markup).toContain('aria-label="셸 열기"');
     expect(markup).toContain("absolute inset-0");
   });

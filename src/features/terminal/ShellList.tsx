@@ -86,15 +86,11 @@ function ShellList({
     // 여기서 정하면 부르는 쪽마다 다시 뒤집어야 하므로, **자리는 부르는 쪽이 만들고
     // 여기서는 행의 모양만** 정한다.
     <>
-      {/* 셸 0개인 화면이 실재한다 — 정상 종료한 셸이 목록에서 스스로 빠지기 때문이다
-          (결정 48). 마지막 칸이 `exit`으로 사라진 자리에서는 새 셸이 저절로 뜨지 않으므로
-          (`×`에서 물려받은 성질) 여기가 그때 보이는 전부다. 문구는 이 패널의 다른 빈 상태
-          (「아직 spec 파일이 없어요」)와 같은 어투다 — 아래 `+` 행이 「여기서 만든다」를 잇는다. */}
-      {shells.length === 0 && (
-        <span className="py-1.5 pl-[calc(var(--tree-indent,0px)+8px)] pr-2 text-[12.5px] text-tertiary">
-          아직 셸이 없어요
-        </span>
-      )}
+      {/* 여기 「아직 셸이 없어요」 한 줄이 있었다(결정 102). **실물에서 걷었다** — 바로
+          아래 `+ 새 셸`이 「없다」와 「여기서 만든다」를 함께 말하고 있어, 그 문장은 같은
+          말을 한 번 더 하면서 줄만 하나 더 썼다. 상한에 닿았을 때의 문장은 그대로 남는다
+          (그쪽은 `+`가 잠긴 **이유**를 말하므로 다른 정보다 — 결정 47).
+          (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.) */}
 
       {shells.map((shell) => {
         const active = showing && shell.id === activeId;
@@ -132,7 +128,7 @@ function ShellList({
               onPointerDown={onDragRow && ((event) => onDragRow(shell.id, event))}
               // 들여쓰기는 **글자만** 받는다 — 배경은 바깥 상자가 갖고 끝까지 간다
               // (`TreeIndent` 머리말). 상자가 없는 자리(셸 0개인 본문)에서는 0이다.
-              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-[calc(var(--tree-indent,0px)+8px)] pr-1.5 text-left"
+              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-[calc(var(--tree-indent,0px)+9px)] pr-1.5 text-left"
             >
               <span className="w-full truncate text-[12.5px]">{name}</span>
               {/* 둘째 줄. 색을 직접 선언하므로 켜진 행의 selected-row 글자색에 안 덮인다 —
@@ -180,11 +176,11 @@ function ShellList({
           else onOpen(null);
         }}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded-[8px] pl-[calc(var(--tree-indent,0px)+8px)] pr-1.5 text-left text-[12.5px] transition-colors",
+          "flex h-7 items-center gap-(--glyph-gap) rounded-[8px] pl-[calc(var(--tree-indent,0px)+9px)] pr-1.5 text-left text-[12.5px] transition-colors",
           full ? "text-tertiary" : "text-muted-foreground hover:bg-state-1",
         )}
       >
-        <Plus className="size-3 shrink-0" strokeWidth={1.8} />
+        <Plus className="size-(--glyph) shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 truncate">{full ? shellCapNotice(state) : "새 셸"}</span>
       </button>
 

@@ -29,6 +29,7 @@ import {
   runningShellsOf,
   shellForNav,
   shellNavFromWindow,
+  shellsEmptied,
   shellsOf,
   workShellOrigin,
 } from "@/features/terminal/shell-registry";
@@ -53,6 +54,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
+import type { ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
@@ -325,6 +327,30 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [panelWork, onSelectTab]);
+
+  /**
+   * **마지막 셸이 닫히면 본문이 문서로 돌아온다.**
+   *
+   * 셸이 0개인 터미널 본문은 볼 것이 없는 화면이다 — 빈 자리와 `+ 새 셸` 하나뿐이고,
+   * 그 자리에 사람을 남겨 두면 다음에 무엇을 할지가 본문 밖(사이드바)에 있다.
+   *
+   * **분할일 때는 안 옮긴다** — 문서가 이미 옆 열에 서 있고, 옮기면 그 순간 `tab`이
+   * 바뀌어 「끄면 남는 쪽」(결정 97)까지 조용히 달라진다.
+   *
+   * 세는 것을 **개수 하나로 좁힌다.** 이 화면이 스토어를 통째로 구독하면 셸이 프롬프트마다
+   * 쏘는 타이틀에 마크다운 본문까지 다시 그려진다(⌘1~9가 구독을 피한 그 이유와 같다).
+   * 개수는 셸을 열고 닫을 때만 바뀐다.
+   */
+  const shellCount = useStore(terminalStore, (state) =>
+    panelWork ? shellsOf(state, panelWork.slug).length : 0,
+  );
+  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
+  useEffect(() => {
+    const now = { owner: panelWork?.slug ?? null, count: shellCount };
+    const emptied = shellsEmptied(tally.current, now);
+    tally.current = now;
+    if (emptied && tab === "terminal" && split === null) onSelectTab("spec");
+  }, [shellCount, panelWork, tab, split, onSelectTab]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
