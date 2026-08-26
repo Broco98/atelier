@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DRAG_THRESHOLD, dropSplit, farEnough, specHeadLabel } from "./split-view";
+import { DRAG_THRESHOLD, dropSplit, farEnough, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
 // 이펙트도 돌지 않아, 떨군 자리가 어느 쪽을 spec으로 만드는지가 마크업에 드러나지 않는다.
@@ -29,6 +29,28 @@ describe("떨군 절반이 정하는 좌우", () => {
   // 곧 맞바뀜이다.
   it("맞바뀜이 같은 규칙에서 나온다", () => {
     expect(dropSplit("spec", "right")).not.toBe(dropSplit("spec", "left"));
+  });
+});
+
+// `DragKind`("spec"|"shell")와 `ViewTab`("spec"|"terminal")이 한 칸에서 어긋나 있어,
+// 이 대응을 부르는 쪽마다 적으면 같은 `? :`가 여러 곳에 산다.
+describe("끈 것이 서는 본문", () => {
+  it("셸은 터미널이고 문서는 문서다", () => {
+    expect(tabOfDrag("shell")).toBe("terminal");
+    expect(tabOfDrag("spec")).toBe("spec");
+  });
+});
+
+// 결정 89. 열 머리의 `×`가 「이 열을 닫는다」가 되려면 남는 것이 **반대쪽**이어야 한다.
+// 같은 쪽을 남기면 닫은 열이 그대로 서서 아무 일도 안 일어난 것처럼 보인다.
+describe("반대쪽 열", () => {
+  it("서로를 가리킨다", () => {
+    expect(otherTab("spec")).toBe("terminal");
+    expect(otherTab("terminal")).toBe("spec");
+  });
+
+  it("두 번 뒤집으면 제자리다", () => {
+    expect(otherTab(otherTab("spec"))).toBe("spec");
   });
 });
 

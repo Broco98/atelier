@@ -203,3 +203,24 @@ test("모르는 split 값은 단일 뷰로 눕는다", async ({ page }) => {
   await expect(page.locator("[data-column]")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 수용 기준 「열의 `×`로 한쪽을 닫으면 남는 쪽이 전체가 된다」(결정 89). 남는 쪽이 곧
+// `tab`이라(결정 97) 주소에도 그대로 드러난다 — 같은 쪽을 남기면 닫은 열이 그대로 선다.
+test("열의 ×로 닫으면 반대쪽이 남는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+
+  await page.getByRole("button", { name: "spec 열 닫기" }).click();
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  await expect(page).toHaveURL(/tab=terminal/);
+  await expect(page).not.toHaveURL(/split=/);
+
+  // 반대 방향도 본다 — 한쪽만 맞으면 `otherTab`이 아니라 상수를 적어 둔 것과 구분이 안 된다.
+  await page.goto(`/works/${plainWork.slug}?split=lr&tab=terminal`);
+  await page.getByRole("button", { name: "terminal 열 닫기" }).click();
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/tab=terminal/);
+  await expect(page).not.toHaveURL(/split=/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
