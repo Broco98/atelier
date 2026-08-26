@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { togglesWorkPanel } from "./WorksPage";
 import { worksQuery } from "./hooks";
 import type { WorkView } from "./types";
-import type { ViewTab } from "@/routes/-work-search";
+import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import { MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "@/features/terminal/shell-registry";
@@ -49,7 +49,11 @@ function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal
 // 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
 const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
-function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): string {
+function render(
+  overrides: Partial<WorkView> = {},
+  tab: ViewTab = "spec",
+  split: SplitSide | null = null,
+): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery.queryKey, [{ ...work, ...overrides }]);
   return renderToStaticMarkup(
@@ -62,6 +66,9 @@ function render(overrides: Partial<WorkView> = {}, tab: ViewTab = "spec"): strin
         onOpenProject={() => {}}
         tab={tab}
         onSelectTab={() => {}}
+        split={split}
+        onSelectSplit={() => {}}
+        onDropInto={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -329,7 +336,6 @@ describe("WorksPage 터미널 탭", () => {
     expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(-1);
     const body = markup.slice(0, bodyEnd);
     expect(body.match(/aria-label="셸 열기"/g)).toHaveLength(1);
-    expect(body).toContain("아직 셸이 없어요");
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
@@ -454,7 +460,10 @@ describe("WorksPage 복사 토스트", () => {
     expect(worksPage).toContain("const [toast, setToast]");
 
     // 그리는 자리가 본문 분기 **밖**이다. 분기 안이면 한 탭에서만 뜬다.
-    const body = worksPage.indexOf("const body = terminalWork ?");
+    //
+    // 닻이 `const body =`까지인 것은 판 05가 여기에 분할 가지를 하나 더 얹었기 때문이다 —
+    // 분기의 **첫 조건**을 닻으로 삼으면 가지가 늘 때마다 이 검사가 무관하게 깨진다.
+    const body = worksPage.indexOf("const body =");
     const ret = worksPage.indexOf("return (", body);
     const toast = worksPage.indexOf("{toast && (", ret);
     expect(body, "본문 분기를 찾지 못했다").toBeGreaterThan(-1);
@@ -716,4 +725,115 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     expect(branch, "⌘T가 새 셸을 여는 자리를 찾지 못했다").not.toBe("");
     expect(branch).toContain("openNewShell");
   });
+});
+
+// 판 05 — 분할. 결정 86~90·97·104·106.
+//
+// 정적 마크업이라 **여닫는 동작은 안 보인다** — 여기서 보는 것은 「주소가 분할이면 화면이
+// 무엇으로 서는가」다. 켜고 끄는 판정은 순수 함수(split-view.test.ts)와 주소
+// (-work-search.test.ts)가 각자 든다.
+describe("분할 뷰", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+
+  // 결정 89. 단일 뷰에 두면 분할을 켤 때마다 층이 하나 늘었다 줄어 본문이 위아래로 밀린다.
+  it("단일 뷰에는 열 머리가 없다", () => {
+    expect(countOf(render(withSpec, "spec", null), "data-column=")).toBe(0);
+    expect(countOf(render(withSpec, "terminal", null), "data-column=")).toBe(0);
+  });
+
+  it("분할이면 열 머리가 둘 선다", () => {
+    expect(countOf(render(withSpec, "spec", "lr"), "data-column=")).toBe(2);
+  });
+
+  // 결정 104. basename만 쓰면 판마다 `spec.md`라 열 머리가 늘 같은 글자가 된다.
+  it("문서 열 머리가 판 폴더까지 말한다", () => {
+    expect(render(withSpec, "spec", "lr")).toContain("05-분할-뷰 / spec.md");
+  });
+
+  // 결정 87. 좌우만 바뀐다 — 마크업에서 먼저 나오는 것이 왼쪽 열이다.
+  it("lr은 문서가 왼쪽, rl은 문서가 오른쪽이다", () => {
+    const lr = render(withSpec, "spec", "lr");
+    expect(lr.indexOf('data-column="spec"')).toBeLessThan(lr.indexOf('data-column="terminal"'));
+    const rl = render(withSpec, "spec", "rl");
+    expect(rl.indexOf('data-column="terminal"')).toBeLessThan(rl.indexOf('data-column="spec"'));
+  });
+
+  // 결정 87의 뒷면 — 분할이면 `tab`과 무관하게 **둘 다** 선다. `tab`은 이때
+  // 「끄면 남는 쪽」일 뿐이라, 이것이 어긋나면 터미널을 보다 분할을 켜면 문서 열이 빈다.
+  it("분할이면 tab과 무관하게 둘 다 선다", () => {
+    expect(countOf(render(withSpec, "terminal", "rl"), "data-column=")).toBe(2);
+  });
+
+  // 결정 106. 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다.
+  it("열 머리의 `</>`는 패널이 접혔을 때만 선다", () => {
+    // 분할을 켜면 패널이 접히므로(결정 88) 이 화면에는 열 머리의 것이 서 있다.
+    expect(countOf(render(withSpec, "spec", "lr"), 'data-column-source=""')).toBe(1);
+    // 단일 뷰에는 열 머리 자체가 없다.
+    expect(countOf(render(withSpec, "spec", null), 'data-column-source=""')).toBe(0);
+    // **패널을 다시 연 화면은 정적 렌더로 만들 수 없다** — 여닫음이 이 화면의 useState이고
+    // 그것을 뒤집는 것은 클릭이다. 결정 106의 나머지 절반은 배선을 리터럴로 못박는다.
+    expect(countOf(source("WorksPage.tsx"), "source={\n        !workPanelOpen && (")).toBe(1);
+  });
+
+  // 결정 89의 「끄는 길」 둘 중 하나. 남는 쪽이 서로 반대여야 `×`가 「이 열을 닫는다」가 된다.
+  it("열마다 닫는 버튼이 하나씩 있다", () => {
+    const html = render(withSpec, "spec", "lr");
+    expect(countOf(html, 'aria-label="spec 열 닫기"')).toBe(1);
+    expect(countOf(html, 'aria-label="terminal 열 닫기"')).toBe(1);
+  });
+
+  // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
+  it("분할 토글이 두 상태 모두에 서고 켜짐을 말한다", () => {
+    expect(render(withSpec, "spec", null)).toContain('aria-label="분할" aria-pressed="false"');
+    expect(render(withSpec, "spec", "lr")).toContain('aria-label="분할" aria-pressed="true"');
+  });
+});
+
+// 결정 88. **한 번은 「사람이 켠 그 순간」이지 상태 전이가 아니다.** 한때 `split`을 보는
+// 이펙트로 두었는데, 그러면 분할인 A에서 단일인 B로 갔다 A로 돌아올 때도 `null → lr`이라
+// 사람이 다시 열어 둔 패널을 또 접었다 — 「억지로 닫지 않는다」의 반대다. 켜는 길이
+// 둘(헤더 토글·드래그 놓기)이므로 **판정이 한 자리에 있고 둘이 그것을 부른다**를 함께 본다.
+describe("분할을 켜면 패널을 한 번 접는다", () => {
+  beforeEach(() => {
+    // 아래 렌더 검사가 폭 둘(작업 패널·분할 경계)을 여기서 읽는다
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("판정이 한 자리이고, 켜는 길 둘이 그것을 부른다", () => {
+    const worksPage = source("WorksPage.tsx");
+    expect(worksPage).toContain("if (next !== null && split === null) setWorkPanelOpen(false);");
+    expect(countOf(worksPage, "collapseOnSplit(next)")).toBe(2);
+  });
+
+  // 새로고침·링크로 **분할인 채 들어오는** 길이 있고, 그때는 「켠 순간」이 한 번도 안 돈다.
+  // 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸」이 그대로 재현된다.
+  //
+  // 접혔다는 것은 **헤더에 여는 버튼이 서는 것**으로 보인다(닫혀 있을 때만 그린다).
+  it("분할인 채 들어와도 3열로 서지 않는다", () => {
+    const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+    expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
+    expect(countOf(render(withSpec, "spec", null), 'aria-label="작업 패널 펼치기"')).toBe(0);
+  });
+});
+
+// **마지막 셸이 닫히면 본문에서 터미널이 걷힌다.** 판정은 `shellsEmptied`가 들고
+// (shell-registry.test.ts), 그것을 실제로 딛는지는 렌더로 안 보인다 — 이펙트라서다.
+//
+// 두 가지를 함께 못박는다: **분할이면 분할째로 걷는다**(빈 터미널 열이 반을 차지한 채
+// 남으면 두 열을 세운 이유와 정면으로 어긋난다) · **본문에 터미널이 서 있을 때만**이다
+// (문서를 읽는 중에 사이드바로 셸을 닫은 것은 화면에서 아무것도 안 바뀌어야 한다).
+it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 가만있는다", () => {
+  expect(source("WorksPage.tsx")).toContain(
+    'if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");',
+  );
 });

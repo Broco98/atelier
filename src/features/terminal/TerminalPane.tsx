@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
 import ShellList from "./ShellList";
-import { activeIdOf, shellEndLabels, shellsOf, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
+import {
+  activeIdOf,
+  activeShellOf,
+  shellEndLabels,
+  shellsOf,
+  TOP_TERMINAL,
+  workShellOrigin,
+} from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
 import {
   attachShell,
@@ -58,7 +65,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   }, [activeId]);
 
   const shells = shellsOf(state, owner);
-  const active = shells.find((shell) => shell.id === activeId);
+  const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
   const projects = work?.worktrees.map((tree) => tree.project) ?? [];
 
@@ -89,7 +96,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
             그쪽이 이미 안다. 둘로 두면 「셸 8개까지예요」가 화면마다 다른 말이 된다. */}
         {shells.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex w-[240px] flex-col gap-[3px]">
+            <div className="flex w-[240px] flex-col gap-(--row-gap)">
               <ShellList
                 state={state}
                 owner={owner}

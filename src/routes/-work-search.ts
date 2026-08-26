@@ -12,6 +12,12 @@ import type { FileSearch } from "./-file-search";
 export type ViewTab = "spec" | "terminal";
 
 /**
+ * 분할일 때 **spec이 어느 쪽에 서는가**(결정 97). 열 조합은 늘 `spec ▏터미널`이라
+ * (결정 87) 좌우 하나로 족하다 — 열마다 상태를 따로 들면 `spec▏spec`이 표현 가능해진다.
+ */
+export type SplitSide = "lr" | "rl";
+
+/**
  * 주소가 가리키는 work. `/works/…`가 아니면 `null`이다.
  *
  * **디코드가 필요하다** — 슬러그에 한글이 들어간다. 읽는 자리가 둘이라(사이드바 목록의
@@ -30,12 +36,30 @@ export interface WorkSearch extends FileSearch {
    * `tab=spec`은 같은 것을 두 번 적는 것이다(결정 14).
    */
   tab?: "terminal";
+  /**
+   * **분할도 주소에 적는다**(결정 97). 결정 70이 「주소가 정본」을 이미 정했으므로 분할만
+   * 예외로 두면 규칙이 둘이 된다. 값이 없으면 단일 뷰다 — `tab`과 같은 규칙이라
+   * `split=none` 같은 것을 쓰지 않는다.
+   */
+  split?: SplitSide;
 }
 
-export const validateWorkSearch = (search: Record<string, unknown>): WorkSearch =>
-  search.tab === "terminal"
-    ? { ...validateFileSearch(search), tab: "terminal" }
-    : validateFileSearch(search);
+export const validateWorkSearch = (search: Record<string, unknown>): WorkSearch => {
+  const split = splitOf(search as { split?: string });
+  return {
+    ...validateFileSearch(search),
+    ...(search.tab === "terminal" ? { tab: "terminal" as const } : {}),
+    ...(split ? { split } : {}),
+  };
+};
+
+/**
+ * 주소가 말하는 분할. **`viewTab`과 같은 이유로 있다** — 루트에 검증기가 없어
+ * `?split=zzz`가 그대로 컴포넌트까지 오므로, 모르는 값을 **단일 뷰로 눕히는 자리**를
+ * 하나 둔다. 그 자리가 갈리면 화면마다 다른 값을 모르는 값으로 친다.
+ */
+export const splitOf = (search: { split?: string }): SplitSide | null =>
+  search.split === "lr" || search.split === "rl" ? search.split : null;
 
 /**
  * 주소가 말하는 화면 탭.
@@ -61,7 +85,40 @@ export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?:
 }
 
 /**
- * work마다 **마지막으로 보던 본문**(결정 77). work을 옮길 때 새 주소를 짓는 씨앗이다.
+ * 문서를 바꿀 때 주소의 `search`를 어떻게 고치는가. **셋째 축이다.**
+ *
+ * 이 자리가 오래 비어 있었다. 주소에 `file` 하나뿐이던 시절에 쓴 `search: { file }`이
+ * 그대로 살아, 판 04가 `tab`을 판 05가 `split`을 얹은 뒤로는 **문서를 고르는 것만으로
+ * 분할이 무너졌다**(실측 — 위 `tabSearch` 머리말이 경고한 그 사고가 반대 방향으로 났다).
+ * 축 셋이 한 파일에 나란히 서야 넷째가 생기는 날 같은 일이 안 난다.
+ *
+ * `tab`을 함께 spec으로 보내는 것은 결정 50이다 — 「문서를 고르면 spec으로 돌아온다」.
+ * `split`은 건드리지 않는다: 분할 중이면 문서는 **이미 서 있는 열**의 내용일 뿐이다.
+ */
+export function fileSearch<T extends object>(
+  prev: T,
+  path: string,
+): T & { file: string; tab?: "terminal" } {
+  return { ...tabSearch(prev, "spec"), file: path };
+}
+
+/**
+ * 분할을 바꿀 때 주소의 `search`를 어떻게 고치는가. `tabSearch`와 **같은 몸통**이다 —
+ * 둘을 한 함수로 합치지 않는 것은 바꾸는 축이 둘이라서다: 열에 포커스가 들어가면 `tab`만
+ * 바뀌고(분할은 그대로), 토글을 끄면 `split`만 바뀐다(남는 쪽은 `tab`이 이미 안다).
+ */
+export function splitSearch<T extends object>(
+  prev: T,
+  next: SplitSide | null,
+): T & { split?: SplitSide } {
+  return { ...prev, split: next ?? undefined };
+}
+
+/**
+ * work마다 **마지막으로 보던 화면**(결정 77·97). 본문과 분할 여부를 함께 든다.
+ *
+ * **화면을 정하는 것은 주소이고 이 기억은 씨앗이다**(결정 97). work을 옮길 때 새 주소를
+ * 무엇으로 지을지만 말한다 — 머물러 있는 동안의 정본은 언제나 주소다.
  *
  * 앞 판은 work을 옮길 때 search를 통째로 비웠다. 그래야 하는 것은 `file` 하나였는데 —
  * 문서 경로는 그 work 안에서만 뜻이 있어 딸려가면 새 work에 없는 파일을 가리킨 채 주소만
@@ -76,12 +133,28 @@ export function tabSearch<T extends object>(prev: T, next: ViewTab): T & { tab?:
  * 라우터 밖 모듈 스코프인 것은 이 값이 **주소가 아니기 때문이다.** 주소에 넣으면 뒤로가기가
  * 이 기억까지 되감아, 「돌아왔을 때 그 화면」이 히스토리 위치에 따라 갈린다.
  */
-const lastTab = new Map<string, ViewTab>();
-
-export function rememberTab(slug: string, tab: ViewTab): void {
-  lastTab.set(slug, tab);
+export interface WorkMemory {
+  tab: ViewTab;
+  split: SplitSide | null;
 }
 
-export function recallTab(slug: string): ViewTab {
-  return lastTab.get(slug) ?? "spec";
+const lastView = new Map<string, WorkMemory>();
+
+export function rememberView(slug: string, view: WorkMemory): void {
+  lastView.set(slug, view);
+}
+
+export function recallView(slug: string): WorkMemory {
+  return lastView.get(slug) ?? { tab: "spec", split: null };
+}
+
+/**
+ * 기억을 **빈 주소 위에 얹어** 새 주소를 짓는다 — 그래서 `file`이 안 딸려간다(위 주석).
+ * 짓는 자리가 둘이라(주소 정규화·사이드바 행) 몸통을 여기 하나에 둔다.
+ */
+export function viewSearch<T extends object>(
+  prev: T,
+  view: WorkMemory,
+): T & { tab?: "terminal"; split?: SplitSide } {
+  return splitSearch(tabSearch(prev, view.tab), view.split);
 }

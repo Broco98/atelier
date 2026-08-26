@@ -1,6 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { TreeIndent } from "@/components/shell/sidebar-tree";
-import { tabSearch, workSlugOf } from "@/routes/-work-search";
+import { recallView, tabSearch, viewSearch, workSlugOf } from "@/routes/-work-search";
 import { useStore } from "@tanstack/react-store";
 import ShellList from "./ShellList";
 import { sameBranch, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
@@ -24,7 +24,21 @@ import type { WorkView } from "@/features/works/types";
  * 위해서다 — 그 파일이 이 모듈을 import하면 `@xterm/*`가 따라 들어와 정적 마크업 검사가
  * 서지 못한다(ShellList 머리말과 같은 계약).
  */
-function ShellBranch({ work }: { work: WorkView | null }) {
+function ShellBranch({
+  work,
+  onDragRow,
+}: {
+  work: WorkView | null;
+  /**
+   * 이 가지의 셸 행을 본문 위로 끌 수 있다면(결정 86·90).
+   *
+   * **여기서 만들지 않고 받는다.** 끄는 자리를 만드는 것은 `features/works`의 일인데,
+   * 이 파일이 그 모듈을 값으로 import하면 `terminal → works` 방향이 값 차원에서 처음
+   * 생겨(지금까지는 `import type`뿐이었다) 반대 방향과 맞물린다. 부르는 쪽(Sidebar)은
+   * 이미 양쪽을 다 알고 있어 그 자리에서는 새 방향이 안 생긴다.
+   */
+  onDragRow?: (id: number, from: { clientX: number; clientY: number }) => void;
+}) {
   // **`owner`가 맨 위에 있어야 한다.** 아래 비교 함수가 그것을 닫아 잡는데, 그 함수는
   // `useStore` 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다(그렇게 한 번 냈다).
   const owner = work?.slug ?? null;
@@ -80,13 +94,19 @@ function ShellBranch({ work }: { work: WorkView | null }) {
       params: { slug: owner },
       search: onThisWork
         ? (prev) => tabSearch(prev, "terminal")
-        : { tab: "terminal" as const },
+        // **분할 기억은 지고 간다**(결정 97). 빈 자리에서 시작하는 것은 `file` 하나 때문인데
+        // (그 work에 없는 파일을 가리킨 채 주소만 남는다) `split`은 그 이유에 해당하지
+        // 않는다 — 여기서 씨앗을 안 쓰면 분할로 두고 떠난 work이 셸 행으로 돌아올 때만
+        // 단일로 서서, 「가끔 그런다」로만 보이는 어긋남이 된다.
+        : viewSearch({}, { tab: "terminal", split: recallView(owner).split }),
       replace: onThisWork,
     });
   };
 
   return (
-    <TreeIndent>
+    // work 아래면 두 단이다(work 행 → `terminal` 머리행 → 셸). nav `Terminal` 아래면
+    // 그 항목 자신이 머리행을 겸해 한 단으로 끝난다 — Sidebar.tsx의 같은 주석.
+    <TreeIndent depth={owner === null ? 1 : 2}>
       <ShellList
         state={state}
         owner={owner}
@@ -100,6 +120,7 @@ function ShellBranch({ work }: { work: WorkView | null }) {
           go();
         }}
         onClose={requestCloseShell}
+        onDragRow={onDragRow}
         onOpen={(project) => {
           // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
           // 본문을 옮기지도 않는다(결정 24).

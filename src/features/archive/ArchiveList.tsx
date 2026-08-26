@@ -206,7 +206,7 @@ function ArchiveList({
             </span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto scroll-quiet">
+          <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto scroll-quiet">
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}

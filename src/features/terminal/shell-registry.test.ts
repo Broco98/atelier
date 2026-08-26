@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
   activateShell,
+  activeShellOf,
+  shellsEmptied,
   activeIdOf,
   atCap,
   CLOSE_NOTICE,
@@ -232,6 +234,64 @@ describe("정상 종료한 셸은 목록에서 스스로 빠진다", () => {
   it("이미 빠진 칸의 정상 종료가 늦게 와도 상태가 그대로다", () => {
     const { state } = opened(2);
     expect(markExited(state, 9999, EXIT_0)).toBe(state);
+  });
+});
+
+// **마지막 셸이 방금 사라졌는가.** 화면이 이 판정을 딛고 본문을 문서로 되돌린다 —
+// 셸 0개인 터미널 본문은 볼 것이 없는 화면이라 사람을 거기 남겨 두면 다음에 무엇을 할지가
+// 본문 밖에 있다.
+describe("마지막 셸이 사라진 순간", () => {
+  const at = (owner: string | null, count: number) => ({ owner, count });
+
+  it("1에서 0이 되면 그렇다", () => {
+    expect(shellsEmptied(at("가", 1), at("가", 0))).toBe(true);
+  });
+
+  // **서 있는 값으로 재면 안 된다.** 화면에 들어올 때는 0에서 시작해 진입 이펙트가 하나를
+  // 띄우므로, 「지금 0개다」로 재면 들어오자마자 되돌아 나가 터미널을 열 수 없는 앱이 된다.
+  it("처음부터 0이면 아니다", () => {
+    expect(shellsEmptied(at("가", 0), at("가", 0))).toBe(false);
+  });
+
+  it("아직 남아 있으면 아니다", () => {
+    expect(shellsEmptied(at("가", 2), at("가", 1))).toBe(false);
+  });
+
+  // 셸이 도는 work에서 안 도는 work으로 갈 때마다 본문이 문서로 튕기면 안 된다.
+  it("work이 바뀐 것은 세지 않는다", () => {
+    expect(shellsEmptied(at("가", 1), at("나", 0))).toBe(false);
+  });
+
+  it("최상위 터미널도 같은 규칙이다", () => {
+    expect(shellsEmptied(at(null, 1), at(null, 0))).toBe(true);
+    expect(shellsEmptied(at(null, 1), at("가", 0))).toBe(false);
+  });
+});
+
+// 「켜진 셸이 무엇인가」를 정하는 자리. 이 함수가 없던 동안 같은 2단 체인이 화면 넷에
+// 베껴져 있었고, 그 값이 **어느 셸을 그릴지**(TerminalPane)와 **열 머리의 이름**
+// (ShellHeadName)으로 곧장 간다 — 첫 칸을 주는 것으로 퇴화하면 화면이 조용히 갈린다.
+describe("켜진 셸을 집는다", () => {
+  it("첫 칸이 아니라 켜진 칸을 준다", () => {
+    const { state, ids } = opened(3);
+    const 켠것 = activateShell(state, ids[2]);
+    expect(activeShellOf(켠것, null)?.id).toBe(ids[2]);
+  });
+
+  it("`activeIdOf`와 같은 칸을 가리킨다", () => {
+    const { state, ids } = opened(3);
+    const 켠것 = activateShell(state, ids[1]);
+    expect(activeShellOf(켠것, null)?.id).toBe(activeIdOf(켠것, null));
+  });
+
+  // 소유자마다 따로다. 남의 화면의 켜진 칸을 여기서 주면 열 머리가 옆 work의 셸 이름을 쓴다.
+  it("남의 화면 것을 주지 않는다", () => {
+    const { state } = opened(2);
+    expect(activeShellOf(state, "가")).toBeNull();
+  });
+
+  it("셸이 없으면 없다", () => {
+    expect(activeShellOf(NO_SHELLS, null)).toBeNull();
   });
 });
 

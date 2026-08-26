@@ -68,11 +68,18 @@ const classesOf = (markup: string) => [...markup.matchAll(/class="([^"]*)"/g)].m
 const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
 // 이름 버튼 하나를 통째로 잘라낸다 — 두 줄이 **같은 버튼 안**에 있어야 한 행으로 읽힌다.
 // 마크업 전체에서 문자열만 찾으면 「어딘가 적혀 있다」와 「이 행에 적혀 있다」가 같아진다.
-// 세로 flex인 버튼은 이름 버튼뿐이라 `flex-col`이 표식이다.
+//
+// 집는 것은 **표식이지 모양이 아니다.** 한때 `flex-col`(세로 flex인 버튼은 이름 버튼뿐)로
+// 집었는데, 판 05가 그 버튼에 속성 하나를 더하자 이 검사 여섯이 한꺼번에 빨개졌다 —
+// 결정 90이 그 버튼을 「끄는 자리」로 만들면서 표식이 생겼으니 그것으로 집는다.
+// **표식 앞뒤로 무엇이 오든 상관없게 둔다** — `type="button"`이 바로 앞에 오는 것까지 걸면
+// 속성 하나만 사이에 끼어도 같은 실패가 다시 난다.
 const rowsOf = (state: ShellsState) =>
-  [...render(state).matchAll(/<button type="button" class="[^"]*flex-col[^"]*">(.*?)<\/button>/g)].map(
-    (m) => m[1],
-  );
+  [
+    ...render(state).matchAll(
+      /<button[^>]*data-shell-row=""[^>]*>(.*?)<\/button>/g,
+    ),
+  ].map((m) => m[1]);
 
 // 배경(선택·hover)을 가진 **바깥 상자**들. `+`는 div가 아니라 button이라 안 걸린다.
 const rowBoxesOf = (markup: string) =>
@@ -179,16 +186,24 @@ describe("행 하나의 규격", () => {
 describe("셸이 하나도 없는 화면", () => {
   // 정상 종료한 셸이 목록에서 스스로 빠지므로(결정 48) 이 화면이 실재한다 — 마지막 칸이
   // `exit`으로 사라진 자리에서는 새 셸이 저절로 뜨지 않는다(`×`에서 물려받은 성질).
-  it("빈 상태와 새 셸 행이 함께 보인다", () => {
+  it("`+ 새 셸`만 남는다", () => {
     const markup = render(NO_SHELLS);
-    expect(markup).toContain("아직 셸이 없어요");
-    // 「없다」만 말하고 끝나면 여기서 할 수 있는 일이 없다 — 만드는 자리가 같이 있어야 한다.
     expect(markup).toContain("새 셸");
     expect(markup).not.toMatch(/닫기/);
   });
 
-  it("셸이 있으면 빈 상태를 말하지 않는다", () => {
-    expect(render(opened(1).state)).not.toContain("아직 셸이 없어요");
+  // **「없다」를 말하는 줄을 따로 두지 않는다.** 결정 102는 그 문장을 두기로 했는데,
+  // 실물에서 보니 바로 아래 `+ 새 셸`이 「없다」와 「여기서 만든다」를 함께 말하고 있어
+  // 같은 말을 한 번 더 하면서 줄만 하나 더 썼다. 지운 자리라 「없다」를 세는 것 말고
+  // 볼 방법이 없다.
+  it("빈 것을 말하는 줄을 두지 않는다", () => {
+    expect(render(NO_SHELLS)).not.toContain("없어요");
+  });
+
+  // 상한 문구는 **남는다** — 그쪽은 `+`가 잠긴 **이유**를 말하므로 다른 정보다(결정 47).
+  it("상한에 닿았을 때의 문장은 그대로다", () => {
+    const state = opened(MAX_SHELLS, { owner: "남", project: null, cwd: "~/x" }).state;
+    expect(render(state, { owner: "나" })).toContain(`지금 ${MAX_SHELLS}개`);
   });
 });
 
@@ -237,7 +252,6 @@ describe("목록은 자기 Work 것만 그린다", () => {
     // 화면이 세면 Work마다 8개가 된다. 잠기는 판정은 이 목록의 길이와 무관하다.
     const state = opened(MAX_SHELLS, { owner: "남", project: null, cwd: "~/x" }).state;
     const markup = render(state, { owner: "나" });
-    expect(markup).toContain("아직 셸이 없어요");
     expect(plusOf(markup)).toMatch(/aria-disabled="true"/);
     // 그리고 이유가 **앱 전체 수**를 말한다 — 이 목록의 0개가 아니다.
     expect(markup).toContain(`지금 ${MAX_SHELLS}개`);

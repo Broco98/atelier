@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,44 @@ import { cn } from "@/lib/utils";
 //
 // 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
 // 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
+/**
+ * 접기 애니메이션이 도는 시간. 아래 `SectionBody`의 `duration-[180ms]`와 **같은 값이어야
+ * 한다** — 이 숫자는 「언제 걷어도 되는가」를 재는 데 쓰이므로, 짧으면 애니메이션이 도는
+ * 중에 걷혀 뚝 끊기고 길면 빈 상자가 그만큼 남는다.
+ */
+const COLLAPSE_MS = 180;
+
+/**
+ * **서고 사라지는 것을 애니메이션할 수 있게 만든다.** 두 가지를 함께 푼다:
+ *
+ * 1. 설 때 — 처음부터 펼친 채로 마운트하면 뚝 뜬다. CSS 트랜지션은 요소의 **초기
+ *    스타일에서는 돌지 않는다.** 닫힌 채로 세우고 다음 프레임에 편다.
+ * 2. 사라질 때 — 조건이 거짓이 되는 순간 걷어 버리면 접히는 것을 볼 수가 없다. 실물에서
+ *    이것이 **다른 work을 누르면 목록이 68px 순간이동하는** 모습으로 났다(실측).
+ *
+ * 첫 렌더는 예외다: 앱을 켠 순간이나 목록이 처음 도착한 순간은 「나타나는 것」이 아니라
+ * 그냥 첫 화면이라, 그때까지 애니메이션하면 켤 때마다 사이드바가 펼쳐지는 것을 보게 된다.
+ */
+export function useCollapse(open: boolean): { mounted: boolean; shown: boolean } {
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const frame = requestAnimationFrame(() => setShown(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setShown(false);
+    // 여유 한 틱을 더 두는 것은 타이머와 트랜지션이 같은 시계를 안 쓰기 때문이다 —
+    // 딱 맞추면 마지막 프레임이 잘려 끝이 뚝 끊긴다.
+    const timer = window.setTimeout(() => setMounted(false), COLLAPSE_MS + 20);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  return { mounted, shown };
+}
+
 export function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <div
@@ -23,20 +62,41 @@ export function SectionBody({ open, children }: { open: boolean; children: React
         open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
       )}
     >
+      {/* **위 여백을 갖지 않는다.** 이 상자는 부르는 쪽의 세로 flow 안에 서고 그쪽이 이미
+          `gap-(--row-gap)`를 준다 — 여기서 한 번 더 물면 머리행 아래만 간격이 두 배가 되어
+          (실측 6px 대 3px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
+          접힐 때 함께 사라지는 자리라 오래 안 보였다. */}
       <div className="overflow-hidden">
-        <div className="flex flex-col gap-[3px] pt-[3px]">{children}</div>
+        <div className="flex flex-col gap-(--row-gap)">{children}</div>
       </div>
     </div>
   );
 }
 
 /**
- * 트리 한 단. **들여쓰기를 이 상자 하나가 준다** — 잎과 가지는 자기 여백만 갖는다.
- * 값을 부르는 쪽마다 적으면 트리 깊이를 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의
- * GUTTER 주석과 같은 계약).
+ * 트리 한 단. **들여쓰기를 이 상자 하나가 정한다** — 값을 부르는 쪽마다 적으면 트리 깊이를
+ * 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의 GUTTER 주석과 같은 계약).
+ *
+ * **주는 것은 padding이 아니라 값이다.** 상자가 왼쪽 여백을 직접 물면 그 안의 행들이
+ * 배경까지 함께 밀려, 켜진 행·hover가 앞에 빈 자리를 두고 시작한다 — 한 컬럼에서 work 행과
+ * 그 아래 행들의 배경 폭이 갈린다. 값으로 내려보내면 **배경은 끝까지 가고 글자만 들어간다**
+ * (파일 트리들이 하는 방식이다). 행 쪽에서 `calc(var(--tree-indent) + 자기 여백)`으로 받는다.
+ *
+ * `depth`는 이 상자가 트리의 **몇 번째 단**인가다. 중첩된 상자가 값을 스스로 더할 수 없어서
+ * (CSS 커스텀 속성은 자기 자신을 참조하면 순환이라 무효다) 부르는 쪽이 밝힌다 — 이 앱에서
+ * 깊이는 둘뿐이다: nav `Terminal` 아래 셸(한 단), work 아래 `terminal` 아래 셸(두 단).
  */
-export function TreeIndent({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-[3px] pl-[18px]">{children}</div>;
+export function TreeIndent({ depth = 1, children }: { depth?: 1 | 2; children: ReactNode }) {
+  return (
+    <div
+      // 한 단의 크기는 `--tree-step`이 정한다(index.css) — 「글리프 칸 하나」라는 규칙이
+      // 거기 한 줄로 적혀 있고, 그 규칙이 곧 정렬이다.
+      style={{ "--tree-indent": `calc(${depth} * var(--tree-step))` } as CSSProperties}
+      className="flex flex-col gap-(--row-gap)"
+    >
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -53,7 +113,8 @@ export function BranchArrow({ open }: { open: boolean }) {
   return (
     <ChevronDown
       className={cn(
-        "size-3 shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
+        // 상자가 `--glyph`다 — 파일 아이콘과 같은 칸에 앉아야 두 행의 글자가 한 줄에 선다.
+        "size-(--glyph) shrink-0 text-tertiary transition-[rotate] duration-[180ms] ease-panel",
         !open && "-rotate-90",
       )}
       strokeWidth={2.2}
@@ -92,10 +153,13 @@ export function BranchHeader({
       // 표식은 검사가 이 버튼을 **정체성으로** 집기 위한 것이다 — 구획 헤더도 `aria-expanded`를
       // 가진 버튼이라, 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 조용히 샌다
       // (TerminalPane의 `data-shell-host`와 같은 이유).
-      data-branch=""
+      //
+      // **값을 싣는다**(`data-leaf`와 같은 규칙). 한 화면에 가지가 여럿 서므로 — work 블럭 ·
+      // 그 안의 `terminal` · nav `Terminal` — 빈 값이면 검사가 어느 것을 집었는지 모른다.
+      data-branch={label}
       onClick={onToggle}
       aria-expanded={open}
-      className="flex h-7 w-full shrink-0 items-center gap-1 rounded-[9px] px-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
+      className="flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
     >
       <BranchArrow open={open} />
       {/* `flex-1`이라 개수가 오른쪽 끝으로 밀린다 — `ml-auto`를 개수 쪽에 얹지 않는 것은
@@ -117,11 +181,17 @@ export function TreeLeaf({
   label,
   active,
   onClick,
+  onPointerDown,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
   onClick: () => void;
+  /**
+   * 이 잎을 본문 위로 끌 수 있다면(결정 86·90). **`onClick`을 대신하지 않는다** —
+   * 5px 안쪽의 움직임은 그냥 클릭이고, 그 판정은 받는 쪽이 한다.
+   */
+  onPointerDown?: (event: { clientX: number; clientY: number }) => void;
 }) {
   return (
     <button
@@ -129,13 +199,14 @@ export function TreeLeaf({
       // 위 `data-branch`와 같은 이유의 표식이다.
       data-leaf={label}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       aria-current={active || undefined}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-[7px] rounded-[9px] px-[9px] text-left text-[13px] transition-colors",
+        "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] transition-colors",
         active ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
       )}
     >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
+      <Icon className="size-(--glyph) shrink-0" strokeWidth={1.8} />
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );

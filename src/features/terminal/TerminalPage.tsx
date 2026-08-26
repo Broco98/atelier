@@ -4,6 +4,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
+  activeShellOf,
   opensShellFromWindow,
   shellForNav,
   shellNavFromWindow,
@@ -35,10 +36,7 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
    * 읽고 있어(TerminalPane) 새로 드는 비용이 없고, 셀렉터가 칸 하나를 돌려주므로 남의
    * 화면 셸이 쏘는 타이틀에는 안 흔들린다.
    */
-  const active = useStore(terminalStore, (state) => {
-    const id = activeIdOf(state, null);
-    return shellsOf(state, null).find((shell) => shell.id === id) ?? null;
-  });
+  const active = useStore(terminalStore, (state) => activeShellOf(state, null));
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.

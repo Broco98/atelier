@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { confirm, message, open as openFolderPicker } from "@tauri-apps/plugin-dialog";
+import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
+import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import ProjectList from "./ProjectList";
@@ -58,22 +59,23 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
       const view = await createProject.mutateAsync(folder);
       onSelect(view.slug);
     } catch (e) {
-      await message(`프로젝트를 추가하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      await showProblem(`프로젝트를 추가하지 못했습니다: ${e}`);
     }
   };
 
   const handleRemove = async () => {
     if (!selected) return;
-    const ok = await confirm(
+    const ok = await askDanger(
+      `'${selected.name}' 제거`,
       "코드 폴더는 삭제되지 않고 Atelier 목록에서만 제거됩니다.",
-      { title: `'${selected.name}' 제거`, kind: "warning" },
+      "제거",
     );
     if (!ok) return;
     try {
       await deleteProject.mutateAsync(selected.slug);
       onSelect(null);
     } catch (e) {
-      await message(`제거하지 못했습니다: ${e}`, { title: "오류", kind: "error" });
+      await showProblem(`제거하지 못했습니다: ${e}`);
     }
   };
 

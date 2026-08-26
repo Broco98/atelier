@@ -3,6 +3,7 @@ import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import { armDrag } from "@/features/works/split-view";
 import ShellBranch from "@/features/terminal/ShellBranch";
 import { shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
@@ -95,7 +96,7 @@ function Sidebar({
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
         {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
-        <nav className={cn("flex shrink-0 flex-col gap-[3px]", GUTTER)}>
+        <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
           {navItems.map((item) => {
             // **nav 항목에도 가지가 붙는다**(결정 72). 최상위 셸을 고르는 자리가 가로 탭
             // 줄에서 여기로 왔고, 그 줄이 겸하던 타이틀바는 PageHeader가 받았다.
@@ -136,7 +137,21 @@ function Sidebar({
           open={open}
           boundaryRef={asideRef}
           shellCounts={shellCounts}
-          renderShells={(work) => <ShellBranch work={work} />}
+          // 셸 행을 본문 위로 끄는 자리는 **여기서 만든다**(결정 86·90). 가지가 스스로
+          // 만들면 `terminal → works` 방향이 값 차원에서 새로 생긴다(ShellBranch 주석).
+          //
+          // **최상위 터미널 가지에는 안 준다**(위 `work={null}`) — 떨굴 자리인 분할은
+          // work 화면의 것이고, 저 셸들은 어느 work에도 딸려 있지 않다.
+          //
+          // 남의 work의 행도 끌린다: 떨구면 그 work로 옮겨 가 그 자리에 선다(결정 101).
+          renderShells={(work) => (
+            <ShellBranch
+              work={work}
+              onDragRow={(id, from) =>
+                armDrag({ kind: "shell", slug: work.slug, shellId: id }, from)
+              }
+            />
+          )}
         />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
@@ -209,7 +224,7 @@ function SidebarItem({
           <button
             type="button"
             // 표식은 검사가 이 버튼을 정체성으로 집기 위한 것이다(sidebar-tree의 같은 주석).
-            data-branch=""
+            data-branch={label}
             aria-expanded={branch.open}
             // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은
             // 누르면 무엇이 되는지를 말한다. 「접기」로 고정하면 이미 접힌 가지에서 거짓이다

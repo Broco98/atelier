@@ -40,12 +40,19 @@ function render(
     tab = "spec" as ViewTab,
     shellCounts = {},
     branchOpen = () => false,
+    // 블럭이 **자리를 잡았는가**와 **펼쳐졌는가**는 다른 값이다(SidebarWorkList의
+    // `blockOpen` 표). 검사 기본값은 「고른 work은 자리를 잡았다」이고, 셸이 도는 work은
+    // 그와 무관하게 선다 — 생산 쪽 판정과 같게 둔다.
+    nodeStands = (slug: string) => slug === selectedSlug,
+    nodeOpen = () => true,
     renderShells = (work: WorkView) => <i data-shells={work.slug} />,
   }: {
     selectedSlug?: string | null;
     tab?: ViewTab;
     shellCounts?: Record<string, number>;
     branchOpen?: (slug: string) => boolean;
+    nodeStands?: (slug: string) => boolean;
+    nodeOpen?: (slug: string) => boolean;
     renderShells?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
@@ -57,12 +64,15 @@ function render(
       tab={tab}
       shellCounts={shellCounts}
       branchOpen={branchOpen}
+      nodeStands={nodeStands}
+      nodeOpen={nodeOpen}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
       onToggleBranch={() => {}}
+      onToggleNode={() => {}}
       onOpenSpec={() => {}}
       renderShells={renderShells}
     />,
@@ -231,7 +241,9 @@ describe("work 아래 트리", () => {
   // 결정 71~73·107. 셸을 고르는 자리가 패널에서 사이드바로 오면서 목록이 **트리**가 됐다.
   // 여기서 보는 것은 「어디에 무엇이 서는가」뿐이다 — 셸 행의 모양은 ShellList.test.tsx가 보고,
   // 그 목록이 실제로 스토어를 읽는 자리(ShellBranch)는 이 파일에 오지 않는다.
-  const branchesOf = (markup: string) => buttonsOf(markup, 'data-branch=""');
+  // **표식에 값이 실린다** — 한 화면에 가지가 여럿이라(work 블럭 · 그 안의 `terminal`)
+  // 빈 값이면 어느 것을 집었는지 모른다.
+  const branchesOf = (markup: string) => buttonsOf(markup, 'data-branch="terminal"');
   const countOf = (button: string) => spansOf(button).slice(-1)[0];
 
   it("가지는 고른 work **또는** 셸이 있는 work에 선다", () => {
@@ -247,10 +259,25 @@ describe("work 아래 트리", () => {
     expect(markup).not.toContain('data-shells="다"');
   });
 
-  it("`spec` 잎은 고른 work에만 선다", () => {
-    // 남의 work의 문서는 그 work로 가야 뜻이 있다. work마다 서면 트리가 목록이 아니라 벽이 된다.
+  it("`spec` 잎은 **블럭이 선 work마다** 선다", () => {
+    // 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐 들여다보는 동안 방금까지 읽던
+    // work의 문서가 트리에서 사라졌다 — 셸이 도는 work은 블럭이 서 있는데 그 안에
+    // `terminal`만 남았다. 블럭이 서는 조건(고름 **또는** 셸이 있음)과 같아졌다.
+    const markup = render(works("가", "나", "다"), ALL, {
+      selectedSlug: "나",
+      shellCounts: { 가: 1 },
+    });
+    expect(markup.match(/data-leaf="spec"/g)).toHaveLength(2);
+    // 셸도 없고 고르지도 않은 `다`에는 블럭이 없으므로 잎도 없다 — 트리가 벽이 되지 않는다.
+    expect(markup).not.toContain('data-shells="다"');
+  });
+
+  // 남의 work의 잎까지 강조하면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
+  it("켜진 잎은 고른 work의 것 하나다", () => {
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나", shellCounts: { 가: 1 } });
-    expect(markup.match(/data-leaf="spec"/g)).toHaveLength(1);
+    const leaves = buttonsOf(markup, 'data-leaf="spec"');
+    expect(leaves).toHaveLength(2);
+    expect(leaves.filter((leaf) => leaf.includes("selected-row"))).toHaveLength(1);
   });
 
   it("`spec` 잎은 본문이 문서일 때만 켜진다", () => {
@@ -310,8 +337,11 @@ describe("가지의 자동 펼침", () => {
       fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
       "utf8",
     );
+    // **접히는 것이 둘이고 규칙은 하나다** — `terminal` 가지와 work 블럭. 판정을 한 자리에
+    // 두고 둘이 그것을 딛는다: 「기록에 없으면 펼치고, 사람이 접어 둔 `false`는 유지한다」.
     expect(source).toContain("setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));");
-    // 정의 하나 + 부르는 자리 하나. 늘면 판정을 딛는 자리가 둘이 되어 한쪽만 늙는다.
-    expect(source.split("openBranchOnSelect(").length - 1).toBe(2);
+    expect(source).toContain("setBlockOpen((prev) => openBranchOnSelect(prev, selectedSlug));");
+    // 정의 하나 + 부르는 자리 둘. 늘면 판정을 딛는 자리가 셋이 되어 한쪽만 늙는다.
+    expect(source.split("openBranchOnSelect(").length - 1).toBe(3);
   });
 });

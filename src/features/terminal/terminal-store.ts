@@ -1,11 +1,11 @@
 import { Store } from "@tanstack/react-store";
 import { Channel } from "@tauri-apps/api/core";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { askDialog } from "@/components/ui/confirm-store";
 import { terminalApi } from "./api";
 import {
   activateShell,
@@ -248,7 +248,9 @@ function closeShell(id: number): void {
  */
 export async function requestCloseShell(id: number): Promise<void> {
   const shell = terminalStore.state.shells.find((one) => one.id === id);
-  const ask = () => confirm(CLOSE_NOTICE, { title: "셸 닫기", kind: "warning" });
+  // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
+  // 앱 밖의 일처럼 읽힌다. 문구는 `CLOSE_NOTICE`가 든다(결정 105).
+  const ask = () => askDialog({ title: "셸 닫기", body: CLOSE_NOTICE, confirm: "닫기", danger: true });
   if (!(await confirmClose(shell, await commandRunning(id), ask))) return;
   closeShell(id);
 }

@@ -26,18 +26,23 @@ describe("사이드바 가지의 배선", () => {
     expect(branch).toContain("          openNewShell(origin);\n          go();");
   });
 
-  it("본문으로 옮기는 자리가 하나다", () => {
-    // `tab=terminal`을 짓는 자리가 둘이 되면 한쪽만 늙는다 — 그 순간 어떤 행은 본문을
-    // 옮기고 어떤 행은 안 옮긴다.
-    expect(countOf(branch, 'tab: "terminal" as const')).toBe(1);
-  });
-
+  // **본문으로 옮기는 길이 둘로 갈려 있다** — 그리고 갈려 있어야 한다.
+  //
   // 결정 15. 이 라우터는 `search`에 **객체**를 주면 기존 search를 통째로 버린다 — 문서를
   // 읽다 이 work의 셸 행을 누르면 `file`이 조용히 떨어지고, `spec` 잎으로 돌아왔을 때
-  // 읽던 문서가 아니라 기본 문서가 열린다. 남의 work으로 가는 길과 **갈라져 있어야** 한다.
+  // 읽던 문서가 아니라 기본 문서가 열린다. 남의 work으로 가는 길은 반대로 **비워야**
+  // 한다(그 문서 경로는 새 work에 없다). 둘을 하나로 합치면 어느 쪽이든 한 사고가 난다.
   it("같은 work 안에서는 보던 문서를 지킨다", () => {
     expect(branch).toContain('? (prev) => tabSearch(prev, "terminal")');
-    expect(branch).toContain(': { tab: "terminal" as const },');
+  });
+
+  // 결정 97. 기억은 **work을 옮길 때 새 주소를 짓는 씨앗**이고, 남의 work의 셸 행을
+  // 누르는 것이 그 옮김 중 하나다(결정 101). 여기서 씨앗을 안 쓰면 분할로 두고 떠난
+  // work이 **이 길로 돌아올 때만** 단일로 서서, 화면으로는 「가끔 그런다」로만 보인다.
+  it("남의 work으로 갈 때 그 work의 분할 기억을 지고 간다", () => {
+    expect(branch).toContain(
+      ': viewSearch({}, { tab: "terminal", split: recallView(owner).split }),',
+    );
   });
 });
 

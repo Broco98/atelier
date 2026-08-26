@@ -58,6 +58,21 @@
 :root {
     --titlebar-height: 44px;
     --sidebar-width: 248px;
+    /* 세로로 붙어 서는 행 사이 — 사이드바 목록·트리·구획, 그리고 목록 패널 둘이 전부 이
+       값을 읽는다. 한때 여덟 자리에 `gap-[3px]`로 흩어져 있었고, 그러면 한 곳만 손봐도
+       같은 컬럼 안에서 리듬이 갈린다. `gap-(--row-gap)`으로 받는다. */
+    --row-gap: 2px;
+
+    /* 행 머리의 **글리프 칸** — 아이콘·화살표가 앉는 상자와 그 뒤 여백.
+       크기를 행마다 따로 적으면(파일 아이콘 14px + 7px, 화살표 12px + 4px) 같은 단의
+       글자가 5px씩 어긋나 한 줄로 안 읽힌다 — 실측으로 그랬다. */
+    --glyph: 14px;
+    --glyph-gap: 9px;
+
+    /* 트리 한 단 = **글리프 칸 하나**. 이 한 줄이 정렬을 만든다: 아래 단의 글리프가
+       위 단의 글자와 같은 x에 선다(work 제목 ↔ `spec` 아이콘 ↔ `terminal` 화살표).
+       숫자를 따로 고르면 그 관계가 우연이 되고, 글리프 크기를 손보는 날 조용히 깨진다. */
+    --tree-step: calc(var(--glyph) + var(--glyph-gap));
 }
 
 /* 타이틀바 왼쪽 여백의 유일한 출처. AppShell 루트에 붙고, 셸 헤더와 두 목록 패널 헤더가
@@ -368,6 +383,19 @@ body.resizing {
 body.resizing,
 body.resizing * {
     cursor: col-resize !important;
+}
+
+/* 사이드바 행을 본문 위로 끄는 동안(결정 86). 위 `resizing`과 나누는 것은 커서 하나
+   때문이다 — 그쪽은 경계를 미는 중이고 이쪽은 잡은 것을 옮기는 중이다. 켜고 끄는 자리는
+   split-view.ts 하나이고, 끝나는 길 셋이 모두 같은 정리를 한다. */
+body.dragging-row {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+body.dragging-row,
+body.dragging-row * {
+    cursor: grabbing !important;
 }
 
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —

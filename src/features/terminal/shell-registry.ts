@@ -253,6 +253,43 @@ export function activeIdOf(state: ShellsState, owner: string | null): number | n
   return state.activeByOwner[ownerKey(owner)] ?? null;
 }
 
+/** 어느 화면에 셸이 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. */
+export interface ShellTally {
+  owner: string | null;
+  count: number;
+}
+
+/**
+ * **마지막 셸이 방금 사라졌는가.**
+ *
+ * 「지금 0개다」가 아니라 「0이 됐다」인 것이 요점이다. 화면에 들어올 때는 0에서 시작해
+ * 진입 이펙트가 하나를 띄우므로(`ensureShell`), 서 있는 값으로 재면 들어오자마자 되돌아
+ * 나간다 — 터미널을 열 수 없는 앱이 된다.
+ *
+ * **work이 바뀐 것은 세지 않는다.** A(1개)에서 B(0개)로 옮긴 것은 A의 마지막 칸이 닫힌
+ * 것이 아니다. 이 줄이 없으면 셸이 도는 work에서 안 도는 work으로 갈 때마다 본문이
+ * 문서로 튕긴다.
+ *
+ * 닫는 길이 둘인데 둘 다 여기로 온다 — `×`·⌘W(`requestCloseShell`)와 **정상 종료**
+ * (결정 48이 목록에서 스스로 빼는 그 길)다. 스토어에서 알림을 쏘는 방식으로 만들면
+ * 뒤쪽이 빠진다.
+ */
+export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
+  return before.owner === now.owner && before.count > 0 && now.count === 0;
+}
+
+/**
+ * 그 화면에서 **켜진 셸** 자체. 없으면 `null`이다.
+ *
+ * `activeIdOf` → `shellsOf(...).find(...)` 2단 체인이 화면 셋에 그대로 베껴져 있었다
+ * (터미널 본문·최상위 머리행·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
+ * 한 곳만 고쳐도 화면마다 다른 셸을 켜진 것으로 부른다.
+ */
+export function activeShellOf(state: ShellsState, owner: string | null): Shell | null {
+  const id = activeIdOf(state, owner);
+  return shellsOf(state, owner).find((shell) => shell.id === id) ?? null;
+}
+
 /**
  * 종료 프레임이 왔다. 칸은 그대로 두고 상태만 바꾼다 — 활성이었으면 활성인 채로 남는다.
  *

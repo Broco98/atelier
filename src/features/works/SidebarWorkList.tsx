@@ -3,11 +3,18 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { BranchHeader, SectionBody, TreeIndent, TreeLeaf } from "@/components/shell/sidebar-tree";
-import { recallTab, tabSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
+import {
+  BranchHeader,
+  SectionBody,
+  TreeIndent,
+  TreeLeaf,
+  useCollapse,
+} from "@/components/shell/sidebar-tree";
+import { recallView, tabSearch, viewSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
+import { armDrag } from "./split-view";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
@@ -131,13 +138,13 @@ function SidebarWorkList({
 
   // 작업을 옮긴다. **보던 본문을 기억에서 되살린다**(결정 77) — 터미널을 보다 옆 작업을
   // 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이 없애려는 것이다.
-  // `file`은 딸려가지 않는다: `tabSearch`가 빈 객체 위에 얹으므로 이전 주소가 통째로 버려진다.
+  // `file`은 딸려가지 않는다: `viewSearch`가 빈 객체 위에 얹으므로 이전 주소가 통째로 버려진다.
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
       to: "/works/$slug",
       params: { slug },
-      search: tabSearch({}, recallTab(slug)),
+      search: viewSearch({}, recallView(slug)),
     });
   };
 
@@ -151,6 +158,44 @@ function SidebarWorkList({
    */
   const [branchOpen, setBranchOpen] = useState<Record<string, boolean>>({});
   const isBranchOpen = (slug: string) => branchOpen[slug] === true;
+
+  /**
+   * work 블럭의 상태. **값이 셋이다** — 위 `branchOpen`(둘)과 갈리는 자리다.
+   *
+   * | 기록 | 뜻 | 화면 |
+   * |---|---|---|
+   * | 없음 | 아직 안 열어 봤다 | 블럭이 안 선다(셸이 돌면 예외) |
+   * | `true` | 펼침 | 블럭이 서고 속이 보인다 |
+   * | `false` | 사람이 접었다 | 블럭이 서 있되 속이 접힌다 |
+   *
+   * **한 번 연 블럭은 work을 옮겨도 남는다**(사용자 결정). 한때 「고른 work」에만 섰는데,
+   * 그러면 옆 work을 잠깐 들여다보는 것만으로 앞 work의 트리가 통째로 접혀, 돌아왔을 때
+   * 펼쳐 둔 것이 사라져 있었다. 그 대가는 방문한 work마다 블럭이 쌓이는 것이고, 접는 길은
+   * **그 work을 다시 골라 행을 누르는 것**이다(접기 토글은 고른 work의 행에만 있다 — 결정 101).
+   *
+   * 수명은 `branchOpen`과 같은 세션 메모리다(결정 107) — 접힘은 위치이지 설정이 아니다.
+   *
+   */
+  const [blockOpen, setBlockOpen] = useState<Record<string, boolean>>({});
+  /**
+   * 이 work의 블럭이 **자리를 잡았는가.** 기록에 있으면 접혀 있어도 자리는 있다.
+   *
+   * 고른 work은 **기록보다 먼저** 선다. 기록에 넣는 것은 아래 이펙트인데 그것은 페인트
+   * 뒤에 돌아서, 기록만 보면 앱을 켤 때마다 트리가 한 번 펼쳐지는 것을 보게 된다 —
+   * 첫 화면은 나타나는 것이 아니라 그냥 첫 화면이다(`useCollapse`).
+   */
+  const blockStands = (slug: string) => slug in blockOpen || slug === selectedSlug;
+  // 기록에 없는 것도 펼침으로 읽는다 — 셸이 돌아 저절로 선 블럭이 접힌 채로 뜨면 안 된다.
+  const isNodeOpen = (slug: string) => blockOpen[slug] !== false;
+  const toggleNode = (slug: string) =>
+    setBlockOpen((prev) => ({ ...prev, [slug]: prev[slug] === false }));
+
+  // **고르면 열린다 — 한 번만**(결정 107과 같은 판정을 쓴다). 사람이 접어 둔 `false`는
+  // 다시 골라도 접힌 채다.
+  useEffect(() => {
+    if (selectedSlug === null) return;
+    setBlockOpen((prev) => openBranchOnSelect(prev, selectedSlug));
+  }, [selectedSlug]);
 
   useEffect(() => {
     if (selectedSlug === null) return;
@@ -173,20 +218,30 @@ function SidebarWorkList({
   };
 
   /**
-   * `spec` 잎을 눌렀다 — 본문이 문서로 돌아온다. 이 잎은 **고른 work에만** 서므로
-   * 여기 오는 것은 늘 지금 보고 있는 work이다.
+   * `spec` 잎을 눌렀다 — 본문이 문서로 간다.
    *
-   * **`tabSearch`로 갈아 끼운다 — 객체를 주지 않는다.** 이 라우터는 `search`에 객체를 주면
-   * 기존 search를 통째로 버려서 보던 문서(`file`)가 조용히 떨어진다(결정 15). `replace`인
-   * 것도 탭 전환과 같은 이유다(결정 13).
+   * **남의 work의 것일 수도 있다.** 이 잎은 한때 고른 work에만 섰는데, 그러면 옆 work을
+   * 잠깐 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라진다 — 셸이 도는 work은
+   * 블럭이 서 있는데 그 안에 `terminal`만 남는 모양이었다. 지금은 **블럭이 서면 잎도 선다.**
+   *
+   * 갈림은 `ShellBranch.go()`와 **같은 규칙이다**(결정 101·15·77):
+   * - 이 work을 보던 중이면 보던 문서를 지킨다. `search`에 객체를 주면 이 라우터가 기존
+   *   search를 통째로 버려 `file`이 조용히 떨어진다
+   * - 남의 work이면 빈 자리에서 시작하고 그 work의 기억을 지고 간다 — 문서 경로는 그 work
+   *   안에서만 뜻이 있어 딸려가면 새 work에 없는 파일을 가리킨 채 주소만 남는다
+   * - `replace`도 같은 갈래다: 같은 work 안의 전환은 히스토리를 안 쌓고(결정 13), 남의
+   *   work으로 가는 것은 진짜 이동이라 돌아올 자리를 만든다
    */
   const openSpec = (work: WorkView) => {
     closeCard();
+    const mine = work.slug === selectedSlug;
     void navigate({
       to: "/works/$slug",
       params: { slug: work.slug },
-      search: (prev) => tabSearch(prev, "spec"),
-      replace: true,
+      search: mine
+        ? (prev) => tabSearch(prev, "spec")
+        : viewSearch({}, { ...recallView(work.slug), tab: "spec" }),
+      replace: mine,
     });
   };
 
@@ -211,7 +266,7 @@ function SidebarWorkList({
             먹지 않아(실측) 확실한 쪽을 쓴다. 늘 있어도 보이지는 않는다 — track·thumb가
             투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
             예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
-        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
+        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-scroll pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
             open={sectionsOpen}
@@ -219,12 +274,15 @@ function SidebarWorkList({
             tab={tab}
             shellCounts={shellCounts}
             branchOpen={isBranchOpen}
+            nodeStands={blockStands}
+            nodeOpen={isNodeOpen}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
             onToggleBranch={toggleBranch}
+            onToggleNode={toggleNode}
             onOpenSpec={openSpec}
             renderShells={renderShells}
           />
@@ -282,12 +340,15 @@ export function WorkSectionList({
   tab,
   shellCounts,
   branchOpen,
+  nodeStands,
+  nodeOpen,
   onToggleSection,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
   onToggleBranch,
+  onToggleNode,
   onOpenSpec,
   renderShells,
 }: {
@@ -297,12 +358,15 @@ export function WorkSectionList({
   tab: ViewTab;
   shellCounts: Record<string, number>;
   branchOpen: (slug: string) => boolean;
+  nodeStands: (slug: string) => boolean;
+  nodeOpen: (slug: string) => boolean;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
   onToggleBranch: (work: WorkView) => void;
+  onToggleNode: (slug: string) => void;
   onOpenSpec: (work: WorkView) => void;
   renderShells: (work: WorkView) => ReactNode;
 }) {
@@ -321,6 +385,9 @@ export function WorkSectionList({
       onLeave={onLeave}
       onTogglePin={onTogglePin}
       onToggleBranch={onToggleBranch}
+      nodeStands={nodeStands(work.slug)}
+      nodeOpen={nodeOpen(work.slug)}
+      onToggleNode={() => onToggleNode(work.slug)}
       onOpenSpec={onOpenSpec}
       shells={renderShells(work)}
     />
@@ -393,11 +460,14 @@ function WorkNode({
   tab,
   shellCount,
   branchOpen,
+  nodeStands,
+  nodeOpen,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
   onToggleBranch,
+  onToggleNode,
   onOpenSpec,
   shells,
 }: {
@@ -406,15 +476,26 @@ function WorkNode({
   tab: ViewTab;
   shellCount: number;
   branchOpen: boolean;
+  nodeStands: boolean;
+  nodeOpen: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
   onToggleBranch: (work: WorkView) => void;
+  onToggleNode: () => void;
   onOpenSpec: (work: WorkView) => void;
   shells: ReactNode;
 }) {
-  const stands = active || shellCount > 0;
+  // **한 번 연 블럭은 남는다**(위 `blockOpen` 표). 셸이 도는 work은 열어 본 적이 없어도
+  // 선다 — 「돌고 있는 것」이 화면에서 사라지지 않는 규칙이 그대로다(결정 73).
+  const stands = nodeStands || shellCount > 0;
+
+  // **블럭이 설 때도 사라질 때도 부드럽다**(`useCollapse`). 접기 토글은 `SectionBody`가
+  // 이미 nav와 같은 애니메이션으로 돌리는데, 「이 블럭이 아예 있는가」는 마운트/언마운트라
+  // 그 트랜지션이 설 자리가 없었다 — 실물에서 **다른 work을 누르면 목록이 68px
+  // 순간이동하는** 모습으로 났다(실측). 앞 work의 블럭이 즉시 걷혀 아래를 끌어올린 것이다.
+  const block = useCollapse(stands);
   return (
     <>
       <WorkRow
@@ -424,25 +505,41 @@ function WorkNode({
         onHover={onHover}
         onLeave={onLeave}
         onTogglePin={onTogglePin}
+        // 접기 토글은 **고른 work의 것에만** 있다(결정 101). 남의 work 행을 건드리면
+        // 그 work로 가는 것이 사이드바에 남은 규칙 하나다.
+        branch={active && stands ? { open: nodeOpen, onToggle: onToggleNode } : undefined}
       />
-      {stands && (
-        <TreeIndent>
-          {active && (
+      {block.mounted && (
+        // 블럭의 속. nav 항목이 자기 가지를 이는 모양과 **같은 겹**이다(Sidebar.tsx) —
+        // 머리행 + `SectionBody` + 그 안의 `TreeIndent`.
+        <SectionBody open={block.shown && nodeOpen}>
+          <TreeIndent>
+            {/* **블럭이 서면 잎도 선다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
+                들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는
+                work은 블럭이 서 있는데 그 안에 `terminal`만 남았다. 남의 것을 누르면
+                그 work으로 간다(결정 101). */}
             <TreeLeaf
               icon={File}
               label="spec"
-              active={tab === "spec"}
+              // 켜짐은 **고른 work의 것에만** 준다 — 남의 work의 잎까지 강조하면
+              // 「지금 보고 있는 것」이 한 화면에 둘이 된다(ShellList의 `showing`과 같은 규칙).
+              active={active && tab === "spec"}
               onClick={() => onOpenSpec(work)}
+              // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 남의 work의 잎을 떨구면
+              // 그 work으로 옮겨 가 그 자리에 선다 — 셸 행과 같은 규칙이다(결정 101).
+              onPointerDown={(event) =>
+                armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
+              }
             />
-          )}
-          <BranchHeader
-            label="terminal"
-            count={shellCount}
-            open={branchOpen}
-            onToggle={() => onToggleBranch(work)}
-          />
-          <SectionBody open={branchOpen}>{shells}</SectionBody>
-        </TreeIndent>
+            <BranchHeader
+              label="terminal"
+              count={shellCount}
+              open={branchOpen}
+              onToggle={() => onToggleBranch(work)}
+            />
+            <SectionBody open={branchOpen}>{shells}</SectionBody>
+          </TreeIndent>
+        </SectionBody>
       )}
     </>
   );
@@ -587,6 +684,7 @@ function WorkRow({
   onHover,
   onLeave,
   onTogglePin,
+  branch,
 }: {
   work: WorkView;
   active: boolean;
@@ -594,6 +692,14 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
+  /**
+   * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 있으면 이 행을
+   * 누르는 것이 곧 접기 토글이고, 없으면 그 work으로 가는 것이다.
+   *
+   * **남의 work의 행에는 없다**(결정 101 — 남의 work 항목을 건드리면 그 work로 간다.
+   * 접기 토글은 고른 work의 것에만 있다).
+   */
+  branch?: { open: boolean; onToggle: () => void };
 }) {
   return (
     <div
@@ -606,8 +712,16 @@ function WorkRow({
     >
       <button
         type="button"
-        onClick={() => onOpen(work.slug)}
-        className="flex h-full min-w-0 flex-1 items-center gap-[9px] pl-[9px] pr-1.5 text-left"
+        // 표식과 `aria-expanded`가 **이 버튼에 있다** — 행 전체가 곧 토글이라서다.
+        // 값을 싣는 것은 한 화면에 가지가 여럿이기 때문이고(sidebar-tree의 같은 주석),
+        // 슬러그로 갈리는 것은 제목을 사람이 고쳐도 슬러그는 안 바뀌기 때문이다.
+        data-branch={branch ? work.slug : undefined}
+        aria-expanded={branch?.open}
+        // **누르면 무엇이 되는가가 갈린다**(결정 101). 남의 work 행이면 그 work로 가고,
+        // 고른 work의 행이면 접기 토글이다 — `terminal` 머리행이 이미 쓰는 규칙 그대로이고,
+        // 구획 헤더(`작업`)가 행 전체로 접히는 것과도 같은 모양이다.
+        onClick={branch ? branch.onToggle : () => onOpen(work.slug)}
+        className="group/row flex h-full min-w-0 flex-1 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
         <span
@@ -618,6 +732,19 @@ function WorkRow({
         >
           {work.title}
         </span>
+        {/* 화살표가 **제목 곁**에 선다 — 구획 헤더와 같은 자리·같은 규칙이다. 펼쳐져 있을 때
+            숨는 것은 결정 85가 핀에 세운 것과 같은 근거다: 좁은 사이드바에서 상시 아이콘은
+            정작 봐야 할 제목보다 먼저 눈에 들어온다. 접혀 있으면 늘 보인다 — 그때는
+            「아래에 더 있다」가 그 화살표 말고는 화면에 없다. */}
+        {branch && (
+          <ChevronDown
+            className={cn(
+              "size-(--glyph) shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
+              branch.open ? "opacity-0 group-hover/row:opacity-100" : "-rotate-90 opacity-100",
+            )}
+            strokeWidth={2.2}
+          />
+        )}
       </button>
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.

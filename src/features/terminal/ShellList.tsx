@@ -34,6 +34,14 @@ interface ShellListProps {
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
+  /**
+   * 이 행을 본문 위로 끌 수 있다면(결정 86·90). 없으면 안 끌린다 — 셸이 0개인 **본문**에
+   * 서는 이 목록에는 끌어다 놓을 자리가 없다.
+   *
+   * **드래그 모듈을 여기서 import하지 않는다.** 이 목록은 상태와 콜백만 받는 그림이라야
+   * DOM 없는 기본 환경에서 그대로 검사된다(위 머리말).
+   */
+  onDragRow?: (id: number, from: { clientX: number; clientY: number }) => void;
 }
 
 // 셸을 고르는 세로 목록. **한 행이 두 줄이다**(결정 45): 첫 줄은 `프로젝트 · 타이틀`(결정 46),
@@ -51,7 +59,16 @@ interface ShellListProps {
 // (SpecTree.tsx의 파일 행) 그 구조를 그대로 따른다 — 배경을 가진 바깥 상자 + 형제 버튼 둘,
 // 선택은 `selected-row`, 비선택 hover는 `hover:bg-state-1`. 한 컬럼에 세로로 붙어 서는
 // 목록들이 다른 어휘를 쓰면 한쪽이 다른 종류의 것으로 읽힌다.
-function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen }: ShellListProps) {
+function ShellList({
+  state,
+  owner,
+  projects,
+  showing,
+  onSelect,
+  onClose,
+  onOpen,
+  onDragRow,
+}: ShellListProps) {
   // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
   // 나오는 것이 결정 30의 전부다.
   const full = atCap(state);
@@ -69,13 +86,11 @@ function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen 
     // 여기서 정하면 부르는 쪽마다 다시 뒤집어야 하므로, **자리는 부르는 쪽이 만들고
     // 여기서는 행의 모양만** 정한다.
     <>
-      {/* 셸 0개인 화면이 실재한다 — 정상 종료한 셸이 목록에서 스스로 빠지기 때문이다
-          (결정 48). 마지막 칸이 `exit`으로 사라진 자리에서는 새 셸이 저절로 뜨지 않으므로
-          (`×`에서 물려받은 성질) 여기가 그때 보이는 전부다. 문구는 이 패널의 다른 빈 상태
-          (「아직 spec 파일이 없어요」)와 같은 어투다 — 아래 `+` 행이 「여기서 만든다」를 잇는다. */}
-      {shells.length === 0 && (
-        <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 셸이 없어요</span>
-      )}
+      {/* 여기 「아직 셸이 없어요」 한 줄이 있었다(결정 102). **실물에서 걷었다** — 바로
+          아래 `+ 새 셸`이 「없다」와 「여기서 만든다」를 함께 말하고 있어, 그 문장은 같은
+          말을 한 번 더 하면서 줄만 하나 더 썼다. 상한에 닿았을 때의 문장은 그대로 남는다
+          (그쪽은 `+`가 잠긴 **이유**를 말하므로 다른 정보다 — 결정 47).
+          (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가 주석까지 읽는다.) */}
 
       {shells.map((shell) => {
         const active = showing && shell.id === activeId;
@@ -106,8 +121,14 @@ function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen 
                 바깥 상자가 여백을 갖지 않기 위해서다(위 주석). */}
             <button
               type="button"
+              // 표식은 검사가 **끄는 자리**를 정체성으로 집기 위한 것이다(결정 90) —
+              // 이름으로 집으면 셸이 쏘는 OSC 타이틀에 따라 갈리고, 형제인 `×`와도 헷갈린다.
+              data-shell-row=""
               onClick={() => onSelect(shell.id)}
-              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-2 pr-1.5 text-left"
+              onPointerDown={onDragRow && ((event) => onDragRow(shell.id, event))}
+              // 들여쓰기는 **글자만** 받는다 — 배경은 바깥 상자가 갖고 끝까지 간다
+              // (`TreeIndent` 머리말). 상자가 없는 자리(셸 0개인 본문)에서는 0이다.
+              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-[calc(var(--tree-indent,0px)+9px)] pr-1.5 text-left"
             >
               <span className="w-full truncate text-[12.5px]">{name}</span>
               {/* 둘째 줄. 색을 직접 선언하므로 켜진 행의 selected-row 글자색에 안 덮인다 —
@@ -155,11 +176,11 @@ function ShellList({ state, owner, projects, showing, onSelect, onClose, onOpen 
           else onOpen(null);
         }}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded-[8px] pl-2 pr-1.5 text-left text-[12.5px] transition-colors",
+          "flex h-7 items-center gap-(--glyph-gap) rounded-[8px] pl-[calc(var(--tree-indent,0px)+9px)] pr-1.5 text-left text-[12.5px] transition-colors",
           full ? "text-tertiary" : "text-muted-foreground hover:bg-state-1",
         )}
       >
-        <Plus className="size-3 shrink-0" strokeWidth={1.8} />
+        <Plus className="size-(--glyph) shrink-0" strokeWidth={1.8} />
         <span className="min-w-0 truncate">{full ? shellCapNotice(state) : "새 셸"}</span>
       </button>
 
