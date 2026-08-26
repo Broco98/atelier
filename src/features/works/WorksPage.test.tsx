@@ -791,8 +791,8 @@ describe("분할 뷰", () => {
 
   // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
   it("분할 토글이 두 상태 모두에 서고 켜짐을 말한다", () => {
-    expect(render(withSpec, "spec", null)).toContain('aria-label="2열로 보기" aria-pressed="false"');
-    expect(render(withSpec, "spec", "lr")).toContain('aria-label="2열로 보기" aria-pressed="true"');
+    expect(render(withSpec, "spec", null)).toContain('aria-label="분할" aria-pressed="false"');
+    expect(render(withSpec, "spec", "lr")).toContain('aria-label="분할" aria-pressed="true"');
   });
 });
 

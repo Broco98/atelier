@@ -42,7 +42,14 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
-import { dragStore, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
+import {
+  clearHalf,
+  dragStore,
+  dropSplit,
+  hoverHalf,
+  otherTab,
+  specHeadLabel,
+} from "./split-view";
 import type { DragSource, SplitHalf } from "./split-view";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -401,9 +408,14 @@ function WorksPage({
                 <button
                   type="button"
                   onClick={() => changeSplit(split === null ? "lr" : null, tab)}
-                  aria-label="2열로 보기"
+                  // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+                  // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+                  // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
+                  aria-label="분할"
                   aria-pressed={split !== null}
-                  title="2열로 보기"
+                  // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+                  // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
+                  title={split !== null ? "분할 끄기" : "분할 켜기"}
                   className={cn(
                     "icon-button transition-colors",
                     split !== null ? "toggle-on" : "text-tertiary quiet-hover",
@@ -708,7 +720,9 @@ function WorksPage({
           도려내려면 패널 폭을 여기서 알아야 하는데, 그 값은 패널이 드래그로 바꾸는 것이라
           두 곳에 적히면 한쪽만 늙는다. 넉넉히 받는 쪽이 겨누기도 쉽다. */}
       {dragSource && (
-        <div className="absolute inset-0 z-40 flex">
+        // 겹판 **전체**를 벗어날 때만 끈다 — `pointerleave`는 버블하지 않아 반쪽 사이를
+        // 오갈 때는 안 온다.
+        <div className="absolute inset-0 z-40 flex" onPointerLeave={clearHalf}>
           {(["left", "right"] as const).map((half) => (
             <div
               key={half}

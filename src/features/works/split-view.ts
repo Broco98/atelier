@@ -136,6 +136,17 @@ export function hoverHalf(half: SplitHalf): void {
 }
 
 /**
+ * 포인터가 겹판 **밖으로** 나갔다. 밝아짐을 끈다.
+ *
+ * **놓을 수 없는 자리인데 밝아 있으면 안 된다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
+ * 이라, 사이드바로 되돌아가 손을 떼면 아무 일도 안 난다 — 그때까지 반쪽이 밝은 채면
+ * 화면이 「여기 놓인다」고 말해 놓고 아무것도 안 하는 셈이다.
+ */
+export function clearHalf(): void {
+  dragStore.setState((state) => (state.half === null ? state : { ...state, half: null }));
+}
+
+/**
  * 열 머리의 문서 이름 — `판 폴더 / 파일명`(결정 104).
  *
  * **basename만 쓰면 안 된다.** 이 저장소의 spec은 판마다 파일 이름이 `spec.md`라

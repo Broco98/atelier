@@ -300,3 +300,25 @@ test("분할 중에 문서를 골라도 분할이 남는다", async ({ page }) =
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **놓을 수 없는 자리로 나가면 밝기가 꺼진다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
+// 이라, 사이드바로 되돌아가 손을 떼면 아무 일도 안 난다 — 그때까지 반쪽이 밝아 있으면
+// 화면이 「여기 놓인다」고 말해 놓고 아무것도 안 한다.
+test("겹판 밖으로 나가면 밝기가 꺼지고, 거기서 놓아도 분할이 안 켜진다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+
+  const leaf = await specLeaf(page);
+  const from = await startDrag(page, leaf);
+  await moveOnto(page, "right");
+
+  // 출발한 사이드바로 되돌아간다 — 겹판이 안 덮는 자리다.
+  await page.mouse.move(from.x, from.y);
+  await expect(page.locator("[data-drop-half][data-over]")).toHaveCount(0);
+
+  await page.mouse.up();
+  await expect(page).not.toHaveURL(/split=/);
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
