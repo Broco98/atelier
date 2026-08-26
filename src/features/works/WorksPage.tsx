@@ -40,7 +40,7 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
-import { dragStore, dropSplit, hoverHalf, specHeadLabel } from "./split-view";
+import { dragStore, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
 import type { DragSource, SplitHalf } from "./split-view";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -161,7 +161,11 @@ function WorksPage({
   // 작업 패널 접기. [소스]는 그 패널 머리행으로 갔지만 **상태는 이 화면이 다시 든다** —
   // 패널이 여기로 올라오면서(결정 49) 버튼(패널)과 그것이 바꾸는 것(본문)의 공통 조상이
   // 이 화면뿐이 됐다. 아래 `showSource`가 그 자리다 (한때 SpecViewer가 들고 있었다 — 결정 6·22).
-  const [workPanelOpen, setWorkPanelOpen] = useState(true);
+  //
+  // **초기값이 분할 여부를 본다**(결정 88). `?split=lr`로 새로 뜨거나 새로고침하면 아래
+  // 「켜는 순간」이 한 번도 안 도는데, 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸에서
+  // `claude` TUI가 깨진다」가 그대로 재현된다.
+  const [workPanelOpen, setWorkPanelOpen] = useState(split === null);
 
   // Cmd+Enter — 본문을 넓히는 토글. 원래 의미가 "콘텐츠 확대·축소"였고 대상이 목록 패널이었던 건
   // 그게 유일한 접이식이었기 때문이다. 이 화면에서 그 자리를 작업 패널이 물려받는다.
@@ -180,18 +184,6 @@ function WorksPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  // **분할을 켜면 패널을 한 번 접는다**(결정 88). 창 1280·사이드바 264·패널 330에서
-  // 분할하면 열 하나가 343px이고, 거터를 빼면 터미널이 ≈34칸이라 `claude` TUI가 깨진다.
-  //
-  // **한 번뿐이다.** 사람이 다시 열면 그 뜻을 존중한다 — 그래서 `split !== null`을 보고
-  // 매번 닫는 것이 아니라 **null에서 넘어오는 순간**만 센다. 매번 닫으면 분할인 채로는
-  // 패널을 열 수 없는 앱이 되고, 그것은 결정 88이 적어 둔 「억지로 닫지 않는다」의 반대다.
-  const wasSplit = useRef(split);
-  useEffect(() => {
-    if (split !== null && wasSplit.current === null) setWorkPanelOpen(false);
-    wasSplit.current = split;
-  }, [split]);
 
   // 두 열의 경계. **왼쪽 열만 폭을 든다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
   // 같은 관용구). 저장 키가 전용인 것도 그쪽과 같은 이유다: 폭 범위가 다른 둘이 한 키를
@@ -402,7 +394,7 @@ function WorksPage({
                     여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
                 <button
                   type="button"
-                  onClick={() => onSelectSplit(split === null ? "lr" : null, tab)}
+                  onClick={() => changeSplit(split === null ? "lr" : null, tab)}
                   aria-label="2열로 보기"
                   aria-pressed={split !== null}
                   title="2열로 보기"
@@ -444,14 +436,41 @@ function WorksPage({
     [tab, onSelectTab],
   );
 
+  /**
+   * **분할을 켜면 패널을 한 번 접는다**(결정 88). 창 1280·사이드바 264·패널 330에서
+   * 분할하면 열 하나가 343px이고, 거터를 빼면 터미널이 ≈34칸이라 `claude` TUI가 깨진다.
+   *
+   * **한 번은 「사람이 켠 그 순간」이지 상태 전이가 아니다.** 한때 `split`을 보는 이펙트로
+   * 두었는데, 그러면 분할인 A에서 단일인 B로 갔다 A로 돌아올 때도 `null → lr`이라
+   * **사람이 다시 열어 둔 패널을 또 접었다** — 결정 88이 적어 둔 「억지로 닫지 않는다」의
+   * 반대다. 켜는 길이 둘(헤더 토글·드래그 놓기)이라 판정을 여기 하나에 둔다.
+   */
+  const collapseOnSplit = useCallback(
+    (next: SplitSide | null) => {
+      if (next !== null && split === null) setWorkPanelOpen(false);
+    },
+    [split],
+  );
+
+  // 분할을 바꾸는 **유일한 자리**다 — 켜기·끄기·좌우 맞바꾸기가 전부 여기를 지난다.
+  const changeSplit = useCallback(
+    (next: SplitSide | null, nextTab: ViewTab) => {
+      collapseOnSplit(next);
+      onSelectSplit(next, nextTab);
+    },
+    [collapseOnSplit, onSelectSplit],
+  );
+
   // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
   const dropHere = useCallback(
     (source: DragSource, half: SplitHalf) => {
       if (source.kind === "shell" && source.shellId !== null) selectShell(source.shellId);
-      onDropInto(source, dropSplit(source.kind, half));
+      const next = dropSplit(source.kind, half);
+      collapseOnSplit(next);
+      onDropInto(source, next);
     },
-    [onDropInto],
+    [collapseOnSplit, onDropInto],
   );
 
   // 열 머리 둘 — **분할일 때만 쓰인다**(결정 89). 단일 뷰에 두면 분할을 켤 때마다 층이
@@ -461,8 +480,8 @@ function WorksPage({
       kind="spec"
       label={specHeadLabel(currentSpec)}
       closeLabel="spec 열 닫기"
-      // 이 열을 닫으면 **남는 쪽은 터미널**이다(결정 89) — 그 값이 곧 `tab`이다.
-      onClose={() => onSelectSplit(null, "terminal")}
+      // 이 열을 닫으면 남는 쪽은 **반대쪽**이다(결정 89) — 그 값이 곧 `tab`이다.
+      onClose={() => changeSplit(null, otherTab("spec"))}
       // `</>`는 **패널이 접혔을 때만** 여기 선다(결정 106). 결정 89가 이 버튼을 열 머리에
       // 놓은 근거는 「분할이 패널을 접으면 함께 사라진다」 하나뿐이라, 패널이 열려 있으면
       // 근거가 없어진다 — 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다.
@@ -470,6 +489,10 @@ function WorksPage({
         !workPanelOpen && (
           <button
             type="button"
+            // 패널 머리행에도 **같은 접근성 이름**의 버튼이 있다(같은 일을 하니 당연하다).
+            // 검사가 「열 머리의 것」만 셀 수 있게 표식을 단다 — 접힌 패널도 마운트된 채라
+            // 이름으로 세면 둘이 잡힌다.
+            data-column-source=""
             onClick={() => setShowSource((v) => !v)}
             disabled={sourceLocked}
             aria-label="마크다운 원문 보기"
@@ -494,7 +517,7 @@ function WorksPage({
       // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
       label={<ShellHeadName owner={terminalWork.slug} />}
       closeLabel="terminal 열 닫기"
-      onClose={() => onSelectSplit(null, "spec")}
+      onClose={() => changeSplit(null, otherTab("terminal"))}
     />
   );
 
@@ -520,7 +543,13 @@ function WorksPage({
   );
 
   // **조합은 늘 `spec ▏터미널`이고 좌우만 바뀐다**(결정 87). 그래서 정할 것이 하나다.
-  const specLeft = split === "lr";
+  //
+  // 순서를 여기 한 줄에서 정한다 — 열을 그리는 조각이 둘이면 「마크업에서 먼저 나오는 것이
+  // 왼쪽」이라는, 검사가 기대는 규칙이 두 자리로 갈린다.
+  const specColumn = { tab: "spec" as const, head: specHead, body: specBody };
+  const terminalColumn = { tab: "terminal" as const, head: terminalHead, body: terminalBody };
+  const [leftColumn, rightColumn] =
+    split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn];
 
   // `drag.source`를 그대로 쓰면 아래 클로저 안에서 타입이 안 좁혀진다 — 한 번 받아 둔다.
   const dragSource = drag.source;
@@ -534,31 +563,12 @@ function WorksPage({
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {header}
       <div className="flex min-h-0 flex-1">
-        {/* 왼쪽 열이 폭을 든다 — 오른쪽이 남는 자리를 먹는다. `relative`는 오른쪽
-            가장자리에 얹히는 폭 핸들 때문이다(패널과 같은 관용구). */}
-        <div style={{ width: splitSize.width }} className="relative flex min-w-0 flex-col">
-          {specLeft ? specHead : terminalHead}
-          {/* 포커스를 받는 것은 **머리행이 아니라 속**이다. 머리행에 얹으면 그 열의 `×`를
-              누르는 것이 「이 열을 봤다」로 먼저 읽혀, 한 틱에 이동이 둘 겹친다. */}
-          <div
-            className="flex min-h-0 flex-1 flex-col"
-            onFocusCapture={() => focusColumn(specLeft ? "spec" : "terminal")}
-            onPointerDownCapture={() => focusColumn(specLeft ? "spec" : "terminal")}
-          >
-            {specLeft ? specBody : terminalBody}
-          </div>
+        {/* **폭을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
+            같은 관용구). 폭 핸들은 그 열의 오른쪽 가장자리에 얹힌다. */}
+        <SplitColumn column={leftColumn} width={splitSize.width} onFocus={focusColumn}>
           <ResizeHandle control={splitSize} />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col border-l">
-          {specLeft ? terminalHead : specHead}
-          <div
-            className="flex min-h-0 flex-1 flex-col"
-            onFocusCapture={() => focusColumn(specLeft ? "terminal" : "spec")}
-            onPointerDownCapture={() => focusColumn(specLeft ? "terminal" : "spec")}
-          >
-            {specLeft ? terminalBody : specBody}
-          </div>
-        </div>
+        </SplitColumn>
+        <SplitColumn column={rightColumn} onFocus={focusColumn} />
       </div>
     </div>
   ) : terminalWork ? (
@@ -688,6 +698,53 @@ function WorksPage({
         </div>
       )}
       {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
+    </div>
+  );
+}
+
+/** 분할의 열 하나 — 머리행과 본문. */
+interface SplitColumnView {
+  tab: ViewTab;
+  head: React.ReactNode;
+  body: React.ReactNode;
+}
+
+/**
+ * 열 하나를 그린다. 두 열의 상자가 같아야 하는데 좌우가 바뀌므로, 같은 마크업을 두 번
+ * 적으면 한쪽만 손보는 날이 온다.
+ */
+function SplitColumn({
+  column,
+  width,
+  onFocus,
+  children,
+}: {
+  column: SplitColumnView;
+  /** 주면 **폭을 드는 쪽**(왼쪽)이다. 없으면 남는 자리를 먹고 경계선을 그린다. */
+  width?: number;
+  onFocus: (tab: ViewTab) => void;
+  /** 폭 핸들. 왼쪽 열에만 온다 — 이 상자의 오른쪽 가장자리에 얹힌다. */
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={width === undefined ? undefined : { width }}
+      className={cn("relative flex min-w-0 flex-col", width === undefined && "flex-1 border-l")}
+    >
+      {column.head}
+      {/* 포커스를 받는 것은 **머리행이 아니라 속**이다. 머리행에 얹으면 그 열의 `×`를
+          누르는 것이 「이 열을 봤다」로 먼저 읽혀, 한 틱에 이동이 둘 겹친다.
+          `pointerdown`까지 보는 것은 **문서 열이 포커스를 못 받기 때문이다** — 글을 읽는
+          영역이라 클릭해도 focus 이벤트가 안 난다(결정 97의 「포커스가 들어갈 때」를
+          여기까지 넓혔다). */}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onFocusCapture={() => onFocus(column.tab)}
+        onPointerDownCapture={() => onFocus(column.tab)}
+      >
+        {column.body}
+      </div>
+      {children}
     </div>
   );
 }

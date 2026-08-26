@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
 import ShellList from "./ShellList";
-import { activeIdOf, shellEndLabels, shellsOf, TOP_TERMINAL, workShellOrigin } from "./shell-registry";
+import {
+  activeIdOf,
+  activeShellOf,
+  shellEndLabels,
+  shellsOf,
+  TOP_TERMINAL,
+  workShellOrigin,
+} from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
 import {
   attachShell,
@@ -58,7 +65,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   }, [activeId]);
 
   const shells = shellsOf(state, owner);
-  const active = shells.find((shell) => shell.id === activeId);
+  const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
   const projects = work?.worktrees.map((tree) => tree.project) ?? [];
 

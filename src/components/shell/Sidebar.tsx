@@ -3,6 +3,7 @@ import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import { armDrag } from "@/features/works/split-view";
 import ShellBranch from "@/features/terminal/ShellBranch";
 import { shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
@@ -136,7 +137,21 @@ function Sidebar({
           open={open}
           boundaryRef={asideRef}
           shellCounts={shellCounts}
-          renderShells={(work) => <ShellBranch work={work} />}
+          // 셸 행을 본문 위로 끄는 자리는 **여기서 만든다**(결정 86·90). 가지가 스스로
+          // 만들면 `terminal → works` 방향이 값 차원에서 새로 생긴다(ShellBranch 주석).
+          //
+          // **최상위 터미널 가지에는 안 준다**(위 `work={null}`) — 떨굴 자리인 분할은
+          // work 화면의 것이고, 저 셸들은 어느 work에도 딸려 있지 않다.
+          //
+          // 남의 work의 행도 끌린다: 떨구면 그 work로 옮겨 가 그 자리에 선다(결정 101).
+          renderShells={(work) => (
+            <ShellBranch
+              work={work}
+              onDragRow={(id, from) =>
+                armDrag({ kind: "shell", slug: work.slug, shellId: id }, from)
+              }
+            />
+          )}
         />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).

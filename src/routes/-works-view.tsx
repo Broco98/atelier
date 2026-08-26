@@ -4,6 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
 import { recallView, rememberView, splitSearch, tabSearch, viewSearch } from "./-work-search";
 import type { SplitSide, ViewTab } from "./-work-search";
+import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/features/works/split-view";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
@@ -79,7 +80,7 @@ function WorksView({
   // 지켜야 한다. 그 갈림이 여기 하나뿐이라 `search`를 짓는 두 모양이 나란히 선다.
   const dropInto = useCallback(
     (source: DragSource, next: SplitSide) => {
-      const nextTab: ViewTab = source.kind === "shell" ? "terminal" : "spec";
+      const nextTab = tabOfDrag(source.kind);
       void navigate({
         to: "/works/$slug",
         params: { slug: source.slug },

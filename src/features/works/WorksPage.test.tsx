@@ -772,13 +772,15 @@ describe("분할 뷰", () => {
     expect(countOf(render(withSpec, "terminal", "rl"), "data-column=")).toBe(2);
   });
 
-  // 결정 106. 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다. 패널은 첫 화면에
-  // 열려 있으므로(workPanelOpen 초기값) 여기 보이는 하나는 **패널 머리행의 것**이다.
-  it("패널이 열려 있으면 `</>`가 한 화면에 하나다", () => {
-    for (const split of [null, "lr", "rl"] as const) {
-      const html = render(withSpec, "spec", split);
-      expect(countOf(html, 'aria-label="마크다운 원문 보기"'), String(split)).toBe(1);
-    }
+  // 결정 106. 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다.
+  it("열 머리의 `</>`는 패널이 접혔을 때만 선다", () => {
+    // 분할을 켜면 패널이 접히므로(결정 88) 이 화면에는 열 머리의 것이 서 있다.
+    expect(countOf(render(withSpec, "spec", "lr"), 'data-column-source=""')).toBe(1);
+    // 단일 뷰에는 열 머리 자체가 없다.
+    expect(countOf(render(withSpec, "spec", null), 'data-column-source=""')).toBe(0);
+    // **패널을 다시 연 화면은 정적 렌더로 만들 수 없다** — 여닫음이 이 화면의 useState이고
+    // 그것을 뒤집는 것은 클릭이다. 결정 106의 나머지 절반은 배선을 리터럴로 못박는다.
+    expect(countOf(source("WorksPage.tsx"), "source={\n        !workPanelOpen && (")).toBe(1);
   });
 
   // 결정 89의 「끄는 길」 둘 중 하나. 남는 쪽이 서로 반대여야 `×`가 「이 열을 닫는다」가 된다.
@@ -795,11 +797,22 @@ describe("분할 뷰", () => {
   });
 });
 
-// 결정 88. **한 번뿐이다** — 사람이 다시 열면 그 뜻을 존중한다. 이펙트라 정적 렌더로는
-// 안 보이므로 배선을 리터럴로 못박는다. 조건을 `split !== null`로 넓히면 분할인 채로는
-// 패널을 열 수 없는 앱이 되는데, 그것이 결정 88이 적어 둔 「억지로 닫지 않는다」의 반대다.
-it("분할을 켜는 순간에만 패널을 접는다", () => {
-  expect(source("WorksPage.tsx")).toContain(
-    "if (split !== null && wasSplit.current === null) setWorkPanelOpen(false);",
-  );
+// 결정 88. **한 번은 「사람이 켠 그 순간」이지 상태 전이가 아니다.** 한때 `split`을 보는
+// 이펙트로 두었는데, 그러면 분할인 A에서 단일인 B로 갔다 A로 돌아올 때도 `null → lr`이라
+// 사람이 다시 열어 둔 패널을 또 접었다 — 「억지로 닫지 않는다」의 반대다. 켜는 길이
+// 둘(헤더 토글·드래그 놓기)이므로 **판정이 한 자리에 있고 둘이 그것을 부른다**를 함께 본다.
+describe("분할을 켜면 패널을 한 번 접는다", () => {
+  it("판정이 한 자리이고, 켜는 길 둘이 그것을 부른다", () => {
+    const worksPage = source("WorksPage.tsx");
+    expect(worksPage).toContain("if (next !== null && split === null) setWorkPanelOpen(false);");
+    expect(countOf(worksPage, "collapseOnSplit(next)")).toBe(2);
+  });
+
+  // 새로고침·링크로 **분할인 채 들어오는** 길이 있고, 그때는 「켠 순간」이 한 번도 안 돈다.
+  // 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸」이 그대로 재현된다.
+  it("분할인 채 들어와도 3열로 서지 않는다", () => {
+    expect(source("WorksPage.tsx")).toContain(
+      "useState(split === null);",
+    );
+  });
 });

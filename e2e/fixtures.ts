@@ -89,13 +89,14 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 여기서 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도
   // 그것뿐이다(진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
   pty_spawn: { id: 1, shellName: "zsh" },
-  pty_write: null,
+  // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
+  // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,
-  pty_kill: null,
-  // 닫기 직전에만 묻는다(결정 92). `false`는 「도는 명령이 없다」라 확인 창이 안 뜬다 —
-  // 대화상자 응답이 null(취소)이라 true를 주면 닫기가 조용히 막힌다.
-  pty_command_running: false,
 };
+
+// 여기 없는 pty 커맨드 셋(`pty_write`·`pty_kill`·`pty_command_running`)은 **일부러 뺐다.**
+// 지금 그것을 태우는 시나리오가 없고, 아래 `write_settings` 주석이 적어 둔 규칙이 그대로
+// 걸린다 — **태우지 않는 스텁은 조용히 낡는다.** 타자를 치거나 셸을 닫는 판이 같이 넣는다.
 
 // `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은
 // 조용히 낡는다**(harness.ts의 플러그인 표가 같은 이유로 둘을 비워 뒀다). 그 시나리오를

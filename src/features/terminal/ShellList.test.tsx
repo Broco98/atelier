@@ -72,10 +72,12 @@ const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열
 // 집는 것은 **표식이지 모양이 아니다.** 한때 `flex-col`(세로 flex인 버튼은 이름 버튼뿐)로
 // 집었는데, 판 05가 그 버튼에 속성 하나를 더하자 이 검사 여섯이 한꺼번에 빨개졌다 —
 // 결정 90이 그 버튼을 「끄는 자리」로 만들면서 표식이 생겼으니 그것으로 집는다.
+// **표식 앞뒤로 무엇이 오든 상관없게 둔다** — `type="button"`이 바로 앞에 오는 것까지 걸면
+// 속성 하나만 사이에 끼어도 같은 실패가 다시 난다.
 const rowsOf = (state: ShellsState) =>
   [
     ...render(state).matchAll(
-      /<button type="button" data-shell-row=""[^>]*>(.*?)<\/button>/g,
+      /<button[^>]*data-shell-row=""[^>]*>(.*?)<\/button>/g,
     ),
   ].map((m) => m[1]);
 

@@ -1,5 +1,5 @@
 import { useStore } from "@tanstack/react-store";
-import { activeIdOf, shellRowName, shellsOf } from "./shell-registry";
+import { activeShellOf, shellRowName } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
 
 /**
@@ -12,8 +12,7 @@ import { terminalStore } from "./terminal-store";
  */
 function ShellHeadName({ owner }: { owner: string | null }) {
   const name = useStore(terminalStore, (state) => {
-    const id = activeIdOf(state, owner);
-    const shell = shellsOf(state, owner).find((each) => each.id === id);
+    const shell = activeShellOf(state, owner);
     return shell ? shellRowName(shell) : "";
   });
   return <>{name}</>;

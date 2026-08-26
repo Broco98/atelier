@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import type { SplitSide } from "@/routes/-work-search";
+import type { SplitSide, ViewTab } from "@/routes/-work-search";
 
 /**
  * 사이드바 행을 본문 위로 끌어다 놓는 길(결정 86). **HTML5 드래그가 아니라 포인터
@@ -62,6 +62,22 @@ export function dropSplit(kind: DragKind, half: SplitHalf): SplitSide {
 }
 
 /**
+ * 끈 것이 서는 **본문**. `DragKind`와 `ViewTab`이 「셸 ↔ 터미널」 한 칸에서 어긋나 있어,
+ * 이 대응을 부르는 쪽마다 적으면 같은 `? :`가 여러 곳에 산다(리뷰가 셋을 셌다).
+ */
+export function tabOfDrag(kind: DragKind): ViewTab {
+  return kind === "shell" ? "terminal" : "spec";
+}
+
+/**
+ * 반대쪽 열. 열 조합이 늘 `spec ▏터미널`이라(결정 87) 한쪽을 닫으면 **남는 것이 정해진다** —
+ * 열 머리의 `×`가 그 값을 `tab`으로 남긴다(결정 89).
+ */
+export function otherTab(tab: ViewTab): ViewTab {
+  return tab === "spec" ? "terminal" : "spec";
+}
+
+/**
  * 사이드바 행에서 포인터가 눌렸다. **아직 드래그가 아니다** — 5px을 넘어야 시작한다.
  *
  * `preventDefault`를 부르지 않는다: 임계값 안쪽이면 이 눌림은 그냥 클릭이어야 하고,
@@ -91,6 +107,19 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     if (!started) return;
     document.body.classList.remove("dragging-row");
     dragStore.setState(() => ({ source: null, half: null }));
+
+    // **끈 것이 눌린 것으로도 읽히면 안 된다.** 5px을 넘긴 뒤 출발한 행 위로 되돌아와
+    // 놓으면 pointerdown/up이 같은 버튼이라 브라우저가 `click`을 낸다 — 그러면 한 제스처가
+    // 「분할을 안 켰다」와 「행을 눌렀다」 둘을 함께 하게 된다.
+    //
+    // 한 번만 삼키고 **곧바로 거둔다.** `once: true`로 두면 클릭이 안 오는 경우(본문에서
+    // 놓았을 때)에 이 리스너가 남아 다음에 아무 데나 누른 클릭을 먹는다.
+    const swallow = (event: MouseEvent) => {
+      event.stopPropagation();
+      event.preventDefault();
+    };
+    window.addEventListener("click", swallow, true);
+    window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);
   };
 
   window.addEventListener("pointermove", move);
