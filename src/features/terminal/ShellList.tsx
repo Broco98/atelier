@@ -123,6 +123,9 @@ function ShellList({
                 바깥 상자가 여백을 갖지 않기 위해서다(위 주석). */}
             <button
               type="button"
+              // 표식은 검사가 **끄는 자리**를 정체성으로 집기 위한 것이다(결정 90) —
+              // 이름으로 집으면 셸이 쏘는 OSC 타이틀에 따라 갈리고, 형제인 `×`와도 헷갈린다.
+              data-shell-row=""
               onClick={() => onSelect(shell.id)}
               onPointerDown={onDragRow && ((event) => onDragRow(shell.id, event))}
               className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-2 pr-1.5 text-left"

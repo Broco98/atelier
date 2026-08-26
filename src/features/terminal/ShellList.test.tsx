@@ -68,11 +68,16 @@ const classesOf = (markup: string) => [...markup.matchAll(/class="([^"]*)"/g)].m
 const plusOf = (markup: string) => markup.match(/<button[^>]*aria-label="셸 열기"[^>]*>/)![0];
 // 이름 버튼 하나를 통째로 잘라낸다 — 두 줄이 **같은 버튼 안**에 있어야 한 행으로 읽힌다.
 // 마크업 전체에서 문자열만 찾으면 「어딘가 적혀 있다」와 「이 행에 적혀 있다」가 같아진다.
-// 세로 flex인 버튼은 이름 버튼뿐이라 `flex-col`이 표식이다.
+//
+// 집는 것은 **표식이지 모양이 아니다.** 한때 `flex-col`(세로 flex인 버튼은 이름 버튼뿐)로
+// 집었는데, 판 05가 그 버튼에 속성 하나를 더하자 이 검사 여섯이 한꺼번에 빨개졌다 —
+// 결정 90이 그 버튼을 「끄는 자리」로 만들면서 표식이 생겼으니 그것으로 집는다.
 const rowsOf = (state: ShellsState) =>
-  [...render(state).matchAll(/<button type="button" class="[^"]*flex-col[^"]*">(.*?)<\/button>/g)].map(
-    (m) => m[1],
-  );
+  [
+    ...render(state).matchAll(
+      /<button type="button" data-shell-row=""[^>]*>(.*?)<\/button>/g,
+    ),
+  ].map((m) => m[1]);
 
 // 배경(선택·hover)을 가진 **바깥 상자**들. `+`는 div가 아니라 button이라 안 걸린다.
 const rowBoxesOf = (markup: string) =>

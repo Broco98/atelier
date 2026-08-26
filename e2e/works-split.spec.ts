@@ -98,3 +98,27 @@ test("모르는 split 값은 단일 뷰로 눕는다", async ({ page }) => {
   await expect(page.locator("[data-column]")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 결정 90의 나머지 절반 — 끌 수 있는 것은 `spec` 잎**과 셸 행**이다. 셸은 터미널 열이라
+// spec이 반대쪽으로 밀린다(결정 87). 이 화면에 셸이 있는 것은 분할이 본문에 터미널 열을
+// 세우기 때문이다(진입 이펙트가 「없으면 하나 띄운다」를 돈다).
+test("셸 행을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "spec");
+
+  // 사이드바 가지 안의 셸 행. 이름 버튼이 끄는 자리다 — `×`는 형제라 안 끌린다.
+  // 본문(터미널 열)에는 셸이 서 있어 목록이 안 뜨므로 이 표식은 사이드바의 것 하나다.
+  const row = page.locator("[data-shell-row]");
+  await expect(row).toBeVisible();
+  const from = await row.boundingBox();
+  if (!from) throw new Error("셸 행의 상자를 못 읽었다");
+
+  await dragFrom(page, from, LEFT_HALF);
+  await expect(page.locator('[data-drop-half="left"]')).toHaveAttribute("data-over", "");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=rl/);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
