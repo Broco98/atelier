@@ -6,32 +6,31 @@ import {
   Ban,
   Check,
   ChevronDown,
-  File,
   Folder,
   LoaderCircle,
   MoreHorizontal,
   PanelRight,
-  SquareTerminal,
   Trash2,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PageHeader from "@/components/shell/PageHeader";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
-import ShellList from "@/features/terminal/ShellList";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
+  activeIdOf,
   opensShellFromWindow,
   runningShellsOf,
+  shellForNav,
+  shellNavFromWindow,
+  shellsOf,
   workShellOrigin,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
   onShellOpenRejected,
   openNewShell,
-  requestCloseShell,
   selectShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
@@ -257,6 +256,41 @@ function WorksPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [panelWork, onSelectTab]);
 
+  /**
+   * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
+   *
+   * 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다 — 한 화면 안에서 본문을 옮기는 한 벌이
+   * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
+   * 보이는 전부가 아니다: 남의 work의 가지를 펼쳐 두었어도 ⌘2는 이 work의 첫 셸이다.
+   *
+   * **스토어를 구독하지 않고 그때 읽는다.** 필요한 순간은 키를 누른 그 한 번뿐이라,
+   * 구독하면 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 통째로 다시 그려진다.
+   *
+   * 셸 안에서도 먹어야 한다(결정 99) — 그 판정은 `shellNavFromWindow`가 혼자 안다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const nav = shellNavFromWindow(e);
+      if (!nav || !panelWork) return;
+      e.preventDefault();
+      const state = terminalStore.state;
+      const shells = shellsOf(state, panelWork.slug);
+      // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
+      // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
+      if (nav.kind === "index" && nav.n === 1) {
+        onSelectTab("spec");
+        return;
+      }
+      const next = shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2);
+      if (next !== null) {
+        selectShell(next);
+        onSelectTab("terminal");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [panelWork, onSelectTab]);
+
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
   const specFiles = panelWork?.specFiles ?? [];
@@ -314,10 +348,15 @@ function WorksPage({
             selected && (
               <>
                 <StatusMenu work={selected} />
-                <ViewTabs tab={tab} onSelect={onSelectTab} />
-                {/* 두 탭 **모두**에 그린다. 한때 터미널 탭에서 뺐던 것은 그때 패널이
-                    거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며 사라졌다.
-                    지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
+                {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
+                    그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
+                    지금인지가 화면마다 갈린다. 무엇을 보고 있는지는 이제 트리의 켜진 행이
+                    말한다.
+                    (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
+                    주석까지 읽는다.) */}
+                {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
+                    그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
+                    사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
                 {!workPanelOpen && (
                   <button
                     type="button"
@@ -408,8 +447,8 @@ function WorksPage({
           **`key`를 주지 않는다.** 앞 판 결정 4(「작업을 옮기면 패널 탭이 spec으로
           리셋된다」)는 코드가 아니라 `key={slug}`가 붙은 SpecViewer 아래에 있어서 공짜로
           나오던 성질이었고, 결정 49가 그것을 명시적으로 뒤집는다. 따라오는 것 둘:
-          (a) 뷰 탭 왕복(spec ↔ terminal)에도 패널 탭이 유지된다 — `shell` 탭을 보던 채로
-              본문만 갈아탈 수 있다는 뜻이고, 3탭의 자연스러운 쓰임이다.
+          (a) 본문을 오가도(spec ↔ terminal) 패널 탭이 유지된다 — `info`를 보던 채로
+              본문만 갈아탈 수 있다는 뜻이다.
           (b) 트리 접힘도 작업을 넘어 유지된다 — **감수한다.** 접힘 기억의 키가 판 폴더의
               전체 이름이라 이름이 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라
               기본값(최신 판만 펼침)으로 뜬다.
@@ -433,10 +472,6 @@ function WorksPage({
           sourceLocked={sourceLocked}
           onToggleSource={() => setShowSource((v) => !v)}
           open={workPanelOpen}
-          // 셸 목록은 **슬롯으로 넘긴다** — 스토어를 구독하는 자리를 이 가지 하나로 좁혀,
-          // 셸이 프롬프트마다 쏘는 타이틀에 화면이나 패널 전체가 다시 그려지지 않게 한다
-          // (WorkPanel의 shellList 주석).
-          shellList={<PanelShells work={panelWork} onSelectTab={onSelectTab} />}
         />
       )}
       {/* 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
@@ -455,51 +490,6 @@ function WorksPage({
       )}
       {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
     </div>
-  );
-}
-
-/**
- * 패널 `shell` 탭의 내용 — 셸을 고르는 세로 목록이다(결정 42).
- *
- * **터미널 스토어를 구독하는 자리가 이 가지 하나다.** 화면(WorksPage)이 구독하지 않는
- * 것은 값이 자주 흔들려서다: 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안
- * 그것을 계속 갈아 끼운다. 화면이 구독하면 그때마다 본문 마크다운까지 다시 그려진다.
- *
- * 좁히지 않고 통째로 읽는 것은 목록이 **앱 전체** 상한을 세야 해서다(결정 30).
- * **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
- */
-function PanelShells({
-  work,
-  onSelectTab,
-}: {
-  work: WorkView;
-  onSelectTab: (tab: ViewTab) => void;
-}) {
-  const state = useStore(terminalStore, (whole) => whole);
-  return (
-    <ShellList
-      state={state}
-      owner={work.slug}
-      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
-      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
-      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. TerminalPane이 같은 이유로
-      // 같은 자리에서 뽑는다.
-      projects={work.worktrees.map((tree) => tree.project)}
-      onSelect={(id) => {
-        // 행을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다**(결정 50). 패널의 spec
-        // 트리에서 문서를 누르면 본문이 spec으로 돌아가는 것과 같은 규칙이다 — 「패널에서
-        // 고르면 본문이 그에 맞는 뷰로 간다」. 본문이 이미 터미널이면 켜진 칸만 바뀐다
-        // (탭 전환은 `replace`라 히스토리도 안 쌓인다).
-        selectShell(id);
-        onSelectTab("terminal");
-      }}
-      onClose={requestCloseShell}
-      onOpen={(project) => {
-        // 프로젝트가 여럿인데 안 골랐으면 자리가 안 정해진다 — 그때는 열지 않는다(결정 24).
-        const origin = workShellOrigin(work, project);
-        if (origin) openNewShell(origin);
-      }}
-    />
   );
 }
 
@@ -583,63 +573,6 @@ function TitleEditor({ work }: { work: WorkView }) {
 }
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
-/**
- * 왼쪽 본문이 **무엇을 보여주는가**를 고르는 묶음 — `spec`과 `terminal` 둘이다(결정 9).
- * `파일`(워크트리 탐색)은 재료도 문제도 다른 기능이라 별도 작업이다.
- *
- * 라벨이 소문자 영어인 것은 결정 41이다 — 이 줄과 패널 탭 줄은 같은 44px 층에 나란히 서므로
- * 한 가족으로 읽혀야 한다. main nav의 `Terminal`과 같은 단어인 것은 균열이 아니다:
- * 대소문자가 층을 가른다(대문자는 가는 곳, 소문자는 고르는 것 — CONTEXT.md).
- *
- * 켜짐은 저장소 공통 toggle-on이다. 목업은 이 자리에 --accent를 쓰는데, 이 저장소는
- * 상태 배경을 무채색 4단으로만 말한다(state-scale.test.ts가 막는다) — 그쪽을 따르지 않는다.
- * 꺼진 칸의 hover가 `quiet-hover`(2)인 것은 이 줄이 **토글 묶음**이어서다: 셸 탭 줄이
- * `hover:bg-state-1`을 쓰는 것과 갈리는 자리이고, 근거는 index.css의 부등식이다.
- */
-function ViewTabs({ tab, onSelect }: { tab: ViewTab; onSelect: (tab: ViewTab) => void }) {
-  return (
-    <span className="flex shrink-0 items-center gap-1">
-      <ViewTabButton icon={File} label="spec" on={tab === "spec"} onClick={() => onSelect("spec")} />
-      <ViewTabButton
-        icon={SquareTerminal}
-        label="terminal"
-        on={tab === "terminal"}
-        onClick={() => onSelect("terminal")}
-      />
-    </span>
-  );
-}
-
-function ViewTabButton({
-  icon: Icon,
-  label,
-  on,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  on: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={`${label} 보기`}
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 shrink-0 items-center gap-[7px] rounded-[9px] px-[11px] text-[13px] font-medium transition-colors",
-        // hover는 **꺼진 가지 안에만** 둔다 — toggle-on이 자기 hover를 품으므로 함께 얹으면
-        // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
-        on ? "toggle-on" : "text-tertiary quiet-hover",
-      )}
-    >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} />
-      {label}
-    </button>
-  );
-}
-
 function StatusMenu({ work }: { work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);

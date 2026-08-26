@@ -5,8 +5,8 @@ import TerminalPane from "./TerminalPane";
 // 터미널 본문의 **자리**만 본다. 정적 렌더라 이펙트가 안 돌아 xterm은 서지 않고, 셸도
 // 붙지 않는다 — 여기서 관찰할 수 있는 것은 그 셸이 들어앉을 상자의 모양뿐이다.
 //
-// `work={null}`이고 `titlebar`가 없으므로 탭 줄은 아무것도 안 그린다(ShellTabs의 가드).
-// 남는 것은 종료 줄과 셸의 집 둘뿐이라 마크업이 그 둘로 좁혀진다.
+// `work={null}`이고 스토어가 비어 있으므로 셸이 하나도 없다 — 종료 줄과 셸의 집, 그리고
+// 셸 0개일 때 덮는 안내(결정 102)가 전부다.
 describe("터미널 본문의 자리", () => {
   const html = () => renderToStaticMarkup(<TerminalPane work={null} />);
   const classesOf = (found: RegExpExecArray | null) => (found?.[1] ?? "").split(/\s+/);
@@ -29,5 +29,15 @@ describe("터미널 본문의 자리", () => {
     const notice = /<div class="([^"]*\bh-5\b[^"]*)"><\/div>/.exec(html());
     expect(notice, "종료 줄이 사라졌다 — 조건부로 끼우면 셸이 다시 흐른다").not.toBeNull();
     expect(padding(classesOf(notice))).toEqual([]);
+  });
+
+  // 결정 102. 가로 탭 줄이 걷힌 뒤로 셸 0개인 화면에서 셸을 여는 길이 여기뿐이다.
+  // **셸의 집을 밀어내지 않는다** — 덮개라 집의 여백이 그대로 0이고(위 검사), 셸이 뜨는
+  // 순간 집이 이미 자리를 잡고 있어 xterm이 다시 흐르지 않는다.
+  it("셸이 0개면 여는 자리가 덮개로 선다", () => {
+    const markup = html();
+    expect(markup).toContain("아직 셸이 없어요");
+    expect(markup).toContain('aria-label="셸 열기"');
+    expect(markup).toContain("absolute inset-0");
   });
 });

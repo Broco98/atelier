@@ -399,6 +399,11 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 그대로 따라온다(판 02).
   term.attachCustomKeyEventHandler((event) => {
     const hotkey = shellHotkey(event);
+    // **앱 몫이되 이 셸이 하지 않는다**(결정 99). 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
+    // `false`로 xterm의 타이핑만 막고 **그대로 위로 흘려보낸다** — 어느 본문으로 갈지는
+    // 화면이 알고, 그 화면이 window에서 이 키를 듣는다. 여기서 `stopPropagation`을 부르면
+    // 셸에 포커스가 있는 동안 그 키가 영영 안 먹는다.
+    if (hotkey === "app") return false;
     if (hotkey) {
       event.preventDefault();
       // **`stopPropagation`이 함께 있어야 한다**(결정 93). ⌘T를 window에서도 듣게 되면서

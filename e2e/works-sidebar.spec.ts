@@ -49,3 +49,39 @@ test("`고정` 구획을 접으면 다음 실행에도 접혀 있다", async ({ 
   await expect(header).toHaveAttribute("aria-expanded", "false");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 사이드바 트리(판 04). **이 층에서만 마운트된다** — 정적 마크업 seam은 가지의 속을 슬롯
+// 표식으로 대신하므로, 스토어를 구독하는 진짜 컴포넌트(`ShellBranch`)가 실제로 서는지는
+// 여기서만 드러난다. 실제로 그 자리에서 훅 순서를 뒤집는 사고를 한 번 냈고, 그때 L2도 L3도
+// 전부 초록이었다 — 이 화면을 여는 검사가 저장소에 하나도 없었기 때문이다.
+//
+// Works 화면으로 들어가므로 그 화면이 부르는 것까지 하네스가 답해야 한다. `plain-work`은
+// spec 파일이 없어(fixtures) 본문이 빈 상태로 서고 문서를 읽지 않는다.
+test("고른 work 아래에 트리가 서고, 가지 접힘은 세션까지만 산다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+
+  // 표식으로 집는다 — 패널에도 `spec`이라 적힌 탭이 있어 글자로 집으면 갈린다.
+  await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
+
+  const branch = page.locator('[data-branch=""]');
+  // 가지의 속. 접혀도 DOM에는 남으므로(펴는 쪽도 애니메이션되어야 한다) **보이는가**로는
+  // 가릴 수 없다 — 넘침에 잘릴 뿐이라 상자 크기는 그대로다. 닿을 수 없게 만드는 것이
+  // `inert`이고, 그것이 이 계약의 관찰 가능한 형태다.
+  const body = page.locator('[data-branch=""] + div');
+
+  // 처음 고른 work의 가지는 펼쳐진다(결정 107). 그 속이 실제로 서는 것까지 본다.
+  await expect(branch).toHaveAttribute("aria-expanded", "true");
+  await expect(body).not.toHaveAttribute("inert", "");
+  await expect(page.getByRole("button", { name: "셸 열기" })).toBeVisible();
+
+  await branch.click();
+  await expect(branch).toHaveAttribute("aria-expanded", "false");
+  await expect(body).toHaveAttribute("inert", "");
+
+  // **세션 메모리다**(결정 107) — 구획 접힘(위 검사)이 localStorage에 남는 것과 갈리는
+  // 자리다. 다시 띄우면 기본값으로 돌아온다.
+  await page.reload();
+  await expect(branch).toHaveAttribute("aria-expanded", "true");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

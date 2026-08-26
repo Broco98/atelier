@@ -45,13 +45,18 @@ function opened(
 
 function render(
   state: ShellsState,
-  { owner = WORK, projects = [] }: { owner?: string; projects?: string[] } = {},
+  {
+    owner = WORK,
+    projects = [],
+    showing = true,
+  }: { owner?: string | null; projects?: string[]; showing?: boolean } = {},
 ): string {
   return renderToStaticMarkup(
     <ShellList
       state={state}
       owner={owner}
       projects={projects}
+      showing={showing}
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
@@ -138,6 +143,16 @@ describe("행 하나의 규격", () => {
     expect(classes.filter((one) => one.includes("selected-row"))).toHaveLength(1);
     // `+` 행도 꺼진 행과 같은 hover를 갖는다 — 셋 + 하나.
     expect(classes.filter((one) => one.includes("hover:bg-state-1"))).toHaveLength(3);
+  });
+
+  it("본문이 이 화면이 아니면 켜진 행이 하나도 없다", () => {
+    // 결정 101. 사이드바에서는 **남의 work의 가지도 펼쳐 둘 수 있다** — 그 가지의 활성
+    // 칸까지 강조하면 「지금 보고 있는 것」이 한 화면에 둘이 된다. `activeIdOf`는 그 work의
+    // 기억이지 지금 화면이 아니라, 둘을 가르는 자리가 `showing` 하나다.
+    const classes = classesOf(render(opened(3).state, { showing: false }));
+    expect(classes.filter((one) => one.includes("selected-row"))).toEqual([]);
+    // 셋 다 꺼진 행이 됐으니 `+` 행까지 넷이 같은 hover를 쓴다.
+    expect(classes.filter((one) => one.includes("hover:bg-state-1"))).toHaveLength(4);
   });
 
   it("한 요소에 hover 규칙이 두 벌 얹히지 않는다", () => {

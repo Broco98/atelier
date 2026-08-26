@@ -27,11 +27,11 @@ export type ShellStatus =
 /**
  * 칸 하나. `title`과 `shellName`은 **이름의 두 갈래**를 그대로 들고 있는다(결정 31) —
  * 합쳐 놓으면 타이틀이 비었을 때 무엇으로 돌아가야 하는지가 사라진다. 고르는 규칙은
- * `shellLabel`이 혼자 안다.
+ * `shellRowName`이 혼자 안다.
  *
  * **cwd가 여기 있다 — 한때 없었다.** 「셸이 뜨는 순간에만 쓰이고 그 뒤로는 아무도 안
- * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 패널 `shell` 탭의 행
- * 둘째 줄이 **도는 셸의 cwd**다. 화면이 구독하는 값은 이 상태 하나이므로(xterm 인스턴스는
+ * 묻는다」가 빼 두었던 이유인데, 결정 45가 묻는 자리를 만들었다: 셸 행의 둘째 줄이
+ * **도는 셸의 cwd**다. 화면이 구독하는 값은 이 상태 하나이므로(xterm 인스턴스는
  * 리렌더가 그것을 다시 만드는 경로가 없어야 해서 스토어 옆 모듈 스코프에 따로 산다),
  * 목록이 들지 않으면 그 값이 화면까지 오는 길이 아예 없다.
  */
@@ -137,14 +137,10 @@ export function atCap(state: ShellsState): boolean {
 
 /**
  * 상한에 닿았을 때 사람에게 하는 말. **입구 둘이 같은 문장을 쓴다**(결정 47) —
- * 패널 목록의 잠긴 `+` 행이 그 자리에 이 문장을 적고, ⌘T가 거절당했을 때 뜨는 토스트도
- * 같은 문장이다. 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다.
+ * 잠긴 `+ 새 셸` 행이 그 자리에 이 문장을 적고, ⌘T가 거절당했을 때 뜨는 토스트도 같은
+ * 문장이다. 두 입구가 같은 사실을 말하는데 문장이 갈리면 한쪽만 늙는다.
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
- *
- * 최상위 터미널의 가로 탭 줄도 **이 문장을 쓴다** — 거기 `+`는 폭이 없어 이유를
- * `title`(hover)에 적는데, hover는 잘릴 걱정이 없어 「다른 터미널의 셸도 함께 셉니다」를
- * 뒤에 잇는다. 이으므로 앞 절은 여전히 여기 한 곳에서 온다.
  */
 export function shellCapNotice(state: ShellsState): string {
   return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
@@ -186,7 +182,7 @@ export interface OpenedShell {
  * 조용히 상태를 그대로 돌려주면 `+`가 눌리는데 아무 일도 안 나는 화면이 된다.
  *
  * 소유자를 **반드시 받는다.** 기본값을 두면 Work 화면에서 빠뜨린 셸이 최상위 것이 되어,
- * 그 Work를 아카이빙할 때 안 거둬지고 탭 줄에도 안 뜬다.
+ * 그 Work를 아카이빙할 때 안 거둬지고 그 work의 가지에도 안 뜬다.
  *
  * **`origin`을 통째로 받는다 — 갈래 둘만 뽑아 받지 않는다.** 한때 `owner`·`project`만
  * 받았는데, cwd가 칸에 눌러앉게 되면서(위 `Shell.cwd`) 뽑을 이유가 없어졌다. 통째로
@@ -233,6 +229,26 @@ export function runningShellsOf(state: ShellsState, owner: string | null): numbe
 }
 
 /** 이 화면에서 켜진 칸. */
+/**
+ * 소유자별 셸 개수 — 사이드바에서 **어느 work에 가지가 서는가**를 정하는 값이다(결정 73).
+ *
+ * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
+ * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
+ * 없다(ShellBranch 머리말).
+ *
+ * **최상위 터미널의 셸은 여기 없다.** 그쪽은 work이 아니라 nav 항목에 붙는 가지라
+ * 세는 자리가 따로다(`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가
+ * 슬러그인 척하게 된다.
+ */
+export function shellCountsOf(state: ShellsState): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const shell of state.shells) {
+    if (shell.owner === null) continue;
+    counts[shell.owner] = (counts[shell.owner] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export function activeIdOf(state: ShellsState, owner: string | null): number | null {
   return state.activeByOwner[ownerKey(owner)] ?? null;
 }
@@ -299,7 +315,7 @@ function withStatus(state: ShellsState, id: number, status: ShellStatus): Shells
 
 /**
  * 셸이 쏜 타이틀(OSC 0·2). 빈 문자열은 **이름을 지운 것**이라 null로 눕힌다 — 그래야
- * `shellLabel`이 셸 이름으로 돌아간다.
+ * `shellRowName`이 셸 이름으로 돌아간다.
  */
 export function setTitle(state: ShellsState, id: number, title: string): ShellsState {
   const next = title.trim() || null;
@@ -326,8 +342,13 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
 
-/** 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작. */
-export type ShellHotkey = "new" | "close";
+/**
+ * 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작.
+ *
+ * `"app"`은 「앱 몫이되 **이 셸이 하지 않는다**」다 — 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
+ * 셸은 그 키를 타이핑하지 않고 그대로 위로 흘려보내고 window에서 듣는 자리가 처리한다.
+ */
+export type ShellHotkey = "new" | "close" | "app";
 
 /**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
@@ -357,10 +378,143 @@ export function shellHotkey(event: {
   shiftKey: boolean;
 }): ShellHotkey | null {
   if (event.type !== "keydown") return null;
+  // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
+  // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
+  // 처리는 여기서 하지 않는다 — 어느 본문으로 갈지는 화면이 알고, 셸은 그것을 모른다.
+  if (shellNavKey(event) !== null) return "app";
   if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
   if (event.code === "KeyT") return "new";
   if (event.code === "KeyW") return "close";
   return null;
+}
+
+/** 본문을 옮기는 키가 가리키는 것. `index`는 1부터 세고, `cycle`은 앞뒤 한 칸이다. */
+export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 | -1 };
+
+/**
+ * ⌘1~9와 ⌃Tab 짝(결정 78·79·80).
+ *
+ * ⌘1~9는 **한 화면 안에서 본문을 옮긴다** — 앞 판의 「사이드바 N번째 작업 열기」가 걷혔다.
+ * 무엇을 세는지는 부르는 화면이 정한다: work 화면은 ⌘1이 spec이고 ⌘2~9가 그 화면의 셸,
+ * 최상위 터미널은 spec이 없어 ⌘1부터가 셸이다.
+ *
+ * **⌃Tab 짝만이 결정 29의 넷째 예외다**(결정 79). ⌃는 셸 몫이라는 것이 그 결정인데,
+ * ⌃Tab은 셸도 TUI도 안 쓰고 탭 순회는 이 저장소의 다른 키들과 같은 관용구다. ⌃⇧Tab은
+ * 수식키가 둘이라 `shellHotkey`의 「수식키가 더 붙으면 셸 몫」과 부딪치므로 **이 짝에
+ * 한해** 예외로 못박는다 — 그 규칙 자체를 넓히지 않는다.
+ *
+ * **`key`가 아니라 `code`로 본다.** `key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면
+ * 같은 키가 자모로 온다(`shellHotkey`와 같은 이유).
+ */
+export function shellNavKey(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): ShellNav | null {
+  if (event.type !== "keydown") return null;
+  if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
+    return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
+  }
+  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
+  const digit = /^Digit([1-9])$/.exec(event.code);
+  return digit ? { kind: "index", n: Number(digit[1]) } : null;
+}
+
+/**
+ * **window에서** 그 키를 듣는 자리의 판정.
+ *
+ * 입력 중에는 안 듣는다 — **그런데 셸 안에서는 들어야 한다**(결정 99). xterm의 입력 자리가
+ * 숨은 `<textarea>`라 「글을 치는 자리면 비킨다」를 그대로 쓰면 터미널 화면에서 영영 안
+ * 먹는데, 셸을 붙일 때마다 포커스가 그리로 가므로 그 화면이 곧 정상 상태다.
+ * 그래서 그 하나만 예외로 가른다 — work 제목을 고치는 `<input>`은 그대로 비킨다.
+ */
+export function shellNavFromWindow(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  target: EventTarget | null;
+}): ShellNav | null {
+  const nav = shellNavKey(event);
+  if (nav === null) return null;
+  return typesInto(event.target) && !isShellInput(event.target) ? null : nav;
+}
+
+/**
+ * 그 자리가 **xterm의 숨은 입력 자리**인가.
+ *
+ * `@xterm/xterm`이 `createElement("textarea")`로 만들고 `.xterm-helper-textarea` 클래스를
+ * 붙인다(소스에서 확인함). 요소가 스스로 들고 있는 값 하나만 보므로 DOM 생성자가
+ * 없는 환경에서도 그대로 돈다 — `typesInto`와 같은 계약이다.
+ */
+function isShellInput(target: EventTarget | null): boolean {
+  if (!target || !("className" in target)) return false;
+  const name = target.className;
+  return typeof name === "string" && name.includes("xterm-helper-textarea");
+}
+
+/**
+ * 두 상태가 **이 가지에게 같은가.**
+ *
+ * 가지가 그리는 것은 셋뿐이다 — 자기 셸들, 그중 켜진 칸, 그리고 앱 전체 개수(상한 문구는
+ * 앱 전체를 센다 — 결정 30). 남의 work의 셸이 프롬프트마다 쏘는 OSC 타이틀에는 그 셋 중
+ * 아무것도 안 바뀐다.
+ *
+ * **가지가 하나가 아니라서 필요하다.** 셸이 도는 work마다 가지가 서므로(결정 73) 스토어를
+ * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 셸 행이 함께 다시 그려진다. 판 04
+ * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이고, 목록이 아니라 가지 사이에서도
+ * 같은 이유가 선다.
+ *
+ * 칸을 **개수가 아니라 정체로** 본다 — `patch`가 안 바뀐 칸에는 같은 객체를 돌려주므로
+ * 타이틀이 갈린 칸만 새 객체다. 개수만 세면 이름이 바뀌어도 안 다시 그린다.
+ */
+export function sameBranch(a: ShellsState, b: ShellsState, owner: string | null): boolean {
+  if (a === b) return true;
+  if (a.shells.length !== b.shells.length) return false;
+  if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
+  const mine = shellsOf(a, owner);
+  const theirs = shellsOf(b, owner);
+  return mine.length === theirs.length && mine.every((shell, at) => shell === theirs[at]);
+}
+
+/**
+ * 그 키가 가리키는 셸. 갈 곳이 없으면 `null`이다.
+ *
+ * **화면마다 갈리는 것은 `firstKey` 하나다** — ⌘몇이 첫 셸인가. work 화면은 ⌘1이 spec이라
+ * 2이고, 최상위 터미널은 문서가 없어 1이다(결정 78). 나머지 판단을 두 화면이 같은 자리에서
+ * 딛는 것이 이 함수의 전부다: 따로 두면 순회가 한쪽에서만 끝에서 돌아오거나, 한쪽만 자리를
+ * 밀어 마지막 셸을 영영 못 고르게 된다.
+ *
+ * **세는 것은 받은 목록이다**(결정 109) — 부르는 쪽이 그 화면의 셸만 담아 준다.
+ */
+export function shellForNav(
+  shells: ReadonlyArray<Shell>,
+  activeId: number | null,
+  nav: ShellNav,
+  firstKey: number,
+): number | null {
+  if (nav.kind === "cycle") return cycleShell(shells, activeId, nav.delta);
+  return shells[nav.n - firstKey]?.id ?? null;
+}
+
+/**
+ * 순회했을 때 켜질 칸(결정 80). 끝에서 **돌아온다** — 여덟 번째에서 다음을 누르면 첫 칸이다.
+ * 켜진 칸이 없으면 방향에 따라 첫 칸 또는 마지막 칸이다.
+ */
+export function cycleShell(
+  shells: ReadonlyArray<Shell>,
+  activeId: number | null,
+  delta: 1 | -1,
+): number | null {
+  if (shells.length === 0) return null;
+  const at = shells.findIndex((shell) => shell.id === activeId);
+  if (at === -1) return (delta === 1 ? shells[0] : shells[shells.length - 1]).id;
+  return shells[(at + delta + shells.length) % shells.length].id;
 }
 
 /**
@@ -445,11 +599,6 @@ function typesInto(target: EventTarget | null): boolean {
   return "tagName" in target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
 }
 
-/** 칸에 적는 이름. 타이틀 → 프로젝트 → 셸 이름 순이고, 셋 다 없어도 **비지 않는다**(결정 31·23). */
-export function shellLabel(shell: Shell): string {
-  return shell.title ?? shell.project ?? shell.shellName ?? UNNAMED;
-}
-
 /**
  * 그 칸이 어떻게 끝났는지. 도는 셸에는 없다.
  *
@@ -469,15 +618,14 @@ export function shellEndLabels(shell: Shell): { mark: string; notice: string } |
 }
 
 /**
- * 세로 목록 한 행의 **첫 줄 — 이름**이다. `프로젝트 · 타이틀`로 **함께 적는다**(결정 46).
+ * 셸 행의 **첫 줄 — 이름**이다. `프로젝트 · 타이틀`로 **함께 적는다**(결정 46).
+ * 이제 셸 이름을 정하는 자리가 앱에서 여기 하나다.
  *
- * `shellLabel`과 갈리는 자리는 프로젝트 하나다. 저쪽은 셋 중 하나를 **고르므로** 타이틀이
- * 오는 순간 프로젝트가 사라진다 — 실물에서 로그인 zsh가 뜨자마자 OSC 타이틀을 쏴 이름이
- * `gimhyoyeon@gimhy…`가 되고 어느 워크트리의 셸인지가 없어졌다. 세로 목록은 한 행에 두
- * 줄을 쓸 수 있어 그 부담이 없고, 그것이 결정 46이 갈래 셋 중 ③을 고른 이유다.
- *
- * **가로 탭 줄은 그대로 `shellLabel`이다**(결정 44·46) — 거기는 칸 하나에 이름 하나뿐이라
- * 폭이 없다. 같은 일이 두 화면에서 다른 모양인 것이 그 결정이 감수한 대가다.
+ * 한때 가로 탭 줄이 쓰던 `shellLabel`이 곁에 있었다 — 그쪽은 셋 중 하나를 **골라서**
+ * 타이틀이 오는 순간 프로젝트가 사라졌다(실물에서 로그인 zsh가 뜨자마자 OSC 타이틀을 쏴
+ * 이름이 `gimhyoyeon@gimhy…`가 되고 어느 워크트리의 셸인지가 없어졌다). 결정 46이 갈래 셋
+ * 중 ③을 고른 이유가 그것이고, 판 04가 가로 탭 줄을 걷으면서 그 함수는 생산 사용처가 0이
+ * 되어 함께 지웠다(결정 104).
  */
 export function shellRowName(shell: Shell): string {
   // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.

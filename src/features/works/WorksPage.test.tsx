@@ -246,7 +246,7 @@ describe("WorksPage 머리행 배치", () => {
 
 // 뷰 탭 — `spec`과 `terminal` 둘이다(결정 9). `파일`은 별도 작업으로 빠졌다.
 // 라벨이 소문자 영어인 것은 결정 41이다.
-describe("WorksPage 뷰 탭", () => {
+describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -262,41 +262,21 @@ describe("WorksPage 뷰 탭", () => {
     );
   }
 
-  it("상태 배지 **다음**에 온다", () => {
-    // 배지는 "어느 단계인가", 뷰 탭은 "무엇을 보고 있는가"다. 순서가 뒤집히면 지금 보는
-    // 것이 작업의 상태보다 앞서 읽힌다.
-    const a = actions(render());
-    const badge = a.indexOf('title="상태 변경"');
-    const spec = a.indexOf('aria-label="spec 보기"');
-    expect(badge).toBeGreaterThan(-1);
-    expect(spec).toBeGreaterThan(badge);
-  });
-
-  it("두 칸이 있고 보고 있는 쪽만 켜져 있다", () => {
-    // 라벨은 **소문자 영어다**(결정 41) — 패널 탭과 같은 44px 층에 서므로 한 가족으로
-    // 읽혀야 한다. 한국어로 되돌아오면 여기서 갈린다.
-    for (const [tab, label] of [
-      ["spec", "spec"],
-      ["terminal", "terminal"],
-    ] as const) {
-      const a = actions(render({}, tab));
-      const on = [...a.matchAll(/aria-label="([^"]*) 보기"[^>]*aria-pressed="true"/g)];
-      expect(on.map((found) => found[1]), tab).toEqual([label]);
-      expect([...a.matchAll(/aria-label="[^"]* 보기"/g)], tab).toHaveLength(2);
+  // 결정 70. 본문을 고르는 자리가 **사이드바 트리로 갔다.** 되살아나면 같은 것을 두 자리에서
+  // 고르게 되고, 화면으로는 둘 다 멀쩡해 보여서 어느 쪽이 지금인지가 안 드러난다 —
+  // 앞 판이 가로 탭 줄에서 겪은 그 병이다.
+  it("`spec`·`terminal` 칸이 헤더에 없다", () => {
+    for (const tab of ["spec", "terminal"] as const) {
+      const markup = render({}, tab);
+      expect(markup, tab).not.toContain('aria-label="spec 보기"');
+      expect(markup, tab).not.toContain('aria-label="terminal 보기"');
     }
   });
 
-  // toggle-on은 자기 hover를 품는다. 꺼진 가지의 hover가 같은 요소에 함께 오면
-  // 어느 쪽이 이길지를 유틸리티 정렬 순서가 정한다(index.css의 경고).
-  it("한 칸에 hover 규칙이 두 벌 얹히지 않는다", () => {
-    const a = actions(render());
-    const tabs = [...a.matchAll(/<button[^>]*aria-label="[^"]* 보기"[^>]*>/g)].map((f) => f[0]);
-    expect(tabs).toHaveLength(2);
-    expect(tabs.filter((one) => /toggle-on/.test(one) && /(hover:|quiet-hover)/.test(one))).toEqual(
-      [],
-    );
-    // 꺼진 칸은 조용한 hover를 갖는다 — 누를 수 있다는 것이 보여야 한다.
-    expect(tabs.filter((one) => /quiet-hover/.test(one))).toHaveLength(1);
+  it("상태 배지는 남는다", () => {
+    // 배지는 「어느 단계인가」라 뷰 탭과 성질이 다르다 — 자주 누르는 조작이라 헤더에 남는다.
+    // 뷰 탭을 걷으면서 함께 쓸려 나가면 상태를 바꾸는 데 클릭이 두 번 든다.
+    expect(actions(render())).toContain('title="상태 변경"');
   });
 });
 
@@ -337,24 +317,28 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
-  // 결정 42. 본문 위 셸 탭 줄을 걷어냈다 — Work 화면에서 셸을 고르는 자리는 패널의
-  // `shell` 탭 하나다. 되살아나면 **같은 것이 두 자리에 서고**, 화면으로는 둘 다 멀쩡해
-  // 보여서 어느 쪽이 틀렸는지가 안 드러난다.
-  it("터미널 탭 본문에 셸 탭 줄이 없다 — 셸을 여는 자리는 패널뿐이다", () => {
+  // 결정 102. 가로 탭 줄이 걷힌 뒤로 **본문에서 셸을 여는 길이 여기뿐이다** — 정상 종료한
+  // 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로
+  // 뜨지 않는다(판 02). 셸이 0개인 화면이 실재하고, 그때 본문이 그 자리를 내야 한다.
+  //
+  // **본문 안(`</main>` 앞)만 센다.** 사이드바 가지와 패널에도 같은 이름의 `+`가 있어서
+  // 마크업 전체에서 세면 「본문에 있다」와 「어딘가 있다」가 같아진다.
+  it("셸이 0개면 터미널 본문이 여는 자리를 낸다", () => {
     const markup = render({}, "terminal");
-    // `+`가 딱 하나이고, 그 하나가 본문(`</main>`) **뒤**의 패널 안에 있다.
-    expect(markup.match(/aria-label="셸 열기"/g)).toHaveLength(1);
-    expect(markup.indexOf('aria-label="셸 열기"')).toBeGreaterThan(markup.indexOf("</main><aside"));
+    const bodyEnd = markup.indexOf("</main><aside");
+    expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(-1);
+    const body = markup.slice(0, bodyEnd);
+    expect(body.match(/aria-label="셸 열기"/g)).toHaveLength(1);
+    expect(body).toContain("아직 셸이 없어요");
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
-  it("spec 탭에서도 같은 자리에 그 하나가 있다 — 패널은 두 탭에 다 선다", () => {
-    // 한때 이 검사는 「spec 탭에는 셸 탭 줄이 없다」였다. 목록이 패널로 가면서 그 부재가
-    // 뜻을 잃었다 — 패널은 두 탭 모두에 서므로 `shell` 탭도 두 탭 모두에 마운트돼 있다.
+  it("spec 본문에는 여는 자리가 아예 없다", () => {
+    // 결정 71·102. 셸을 여는 자리는 사이드바 가지와 **셸 0개인 터미널 본문**뿐이다.
+    // 문서를 읽는 화면에 `+`가 남아 있으면 그것이 어느 화면의 셸을 여는지가 흐려진다.
     const markup = render({}, "spec");
-    expect(markup.match(/aria-label="셸 열기"/g)).toHaveLength(1);
-    expect(markup.indexOf('aria-label="셸 열기"')).toBeGreaterThan(markup.indexOf("</main><aside"));
+    expect(markup).not.toContain('aria-label="셸 열기"');
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
@@ -570,10 +554,25 @@ describe("WorksPage ⌘Enter", () => {
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
     // 셸이 0개인 화면에서 ⌘T가 다시 안 먹는다 — 결정 93이 없애려던 증상 그 자체다.
+    // 이 화면이 window에서 듣는 자리는 **셋이다** — ⌘Enter(패널 접기) · ⌘T(셸 열기) ·
+    // 본문을 옮기는 ⌘1~9·⌃Tab(결정 78·79). 줄어들면 그중 한 벌이 통째로 죽은 것이다.
     expect(
       countOf(worksPage, 'window.addEventListener("keydown", onKeyDown);'),
-      "window에서 키를 듣는 자리가 둘이 아니다 — ⌘Enter와 ⌘T",
-    ).toBe(2);
+      "window에서 키를 듣는 자리가 셋이 아니다 — ⌘Enter · ⌘T · ⌘1~9·⌃Tab",
+    ).toBe(3);
+  });
+
+  // 결정 78·109. ⌘1은 spec, ⌘2~9는 **이 화면의** 셸이다. 클릭도 키도 이 seam에서는 못
+  // 거니(정적 마크업이다) 배선을 소스에서 본다 — 표현식을 통째로 못박는다.
+  it("⌘1은 spec, ⌘2~9는 이 화면의 셸이다", () => {
+    const worksPage = source("WorksPage.tsx");
+    expect(worksPage).toContain("const nav = shellNavFromWindow(e);");
+    // 세는 것이 이 work의 셸이 아니면, 사이드바에 펼쳐 둔 **남의 셸까지** 세게 된다.
+    expect(worksPage).toContain("const shells = shellsOf(state, panelWork.slug);");
+    // ⌘1만 spec이고 나머지는 한 칸 밀린다. 안 밀면 ⌘1이 spec이면서 첫 셸이 되고,
+    // 마지막 셸은 영영 못 고른다.
+    expect(worksPage).toContain('if (nav.kind === "index" && nav.n === 1) {\n        onSelectTab("spec");');
+    expect(worksPage).toContain("shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2)");
   });
 
   it("듣는 자리가 탭을 안 본다 — 가드 한 줄이 되살아나면 걸린다", () => {
@@ -598,7 +597,7 @@ describe("WorksPage ⌘Enter", () => {
 // 이 화면은 셸 목록을 **슬롯으로 조립한다** — 스토어를 구독하는 가지 하나(PanelShells)를
 // 만들어 패널에 넘긴다. 그래서 「목록이 실제로 이 Work의 셸을 그리는가」는 여기서만 보인다:
 // 패널 쪽 seam은 슬롯을 표식으로 대신하고, 목록 쪽 seam은 상태를 손으로 넣는다.
-describe("WorksPage 패널 shell 탭", () => {
+describe("WorksPage에 셸 목록이 없다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -616,30 +615,13 @@ describe("WorksPage 패널 shell 탭", () => {
     terminalStore.setState(() => state);
   }
 
-  it("이 Work의 셸이 행으로 서고 둘째 줄에 cwd가 있다", () => {
+  // 결정 71. 셸을 고르는 자리가 사이드바 가지 하나다. 이 화면에 목록이 남아 있으면
+  // 같은 것이 두 자리에 서고, 어느 쪽이 지금인지가 화면마다 갈린다.
+  it("이 Work의 셸이 도는 중에도 패널에 행이 서지 않는다", () => {
     seed(1, work.slug, "~/.atelier/works/some-work/trees/atelier");
     const markup = render();
-    expect(markup).toContain("~/.atelier/works/some-work/trees/atelier");
-    expect(markup).toMatch(/aria-label="[^"]*닫기"/);
-  });
-
-  it("다른 Work의 셸은 이 패널에 없다", () => {
-    // 목록이 `owner`로 좁히지 않으면 남의 Work 셸이 이 패널에 서고, 누르면 이 화면에서
-    // 열 수 없는 셸이 켜진다.
-    seed(1, "남의-작업", "~/어딘가");
-    const markup = render();
-    expect(markup).not.toContain("~/어딘가");
-    expect(markup).toContain("아직 셸이 없어요");
-  });
-
-  it("행을 누르면 그 셸이 켜지고 본문이 terminal로 넘어간다", () => {
-    // 결정 50. 클릭은 이 seam에서 못 건다(정적 마크업이다). 배선의 **짝**을 소스에서 본다 —
-    // 한쪽만 남으면 화면에 아무 일도 안 일어나거나(뷰가 안 바뀐다) 엉뚱한 칸이 켜진다.
-    const worksPage = source("WorksPage.tsx");
-    const onSelect = worksPage.match(/onSelect=\{\(id\) => \{[\s\S]*?\}\}/)?.[0] ?? "";
-    expect(onSelect, "목록의 onSelect 배선을 찾지 못했다").not.toBe("");
-    expect(onSelect).toContain("selectShell(id)");
-    expect(onSelect).toContain('onSelectTab("terminal")');
+    expect(markup).not.toContain("~/.atelier/works/some-work/trees/atelier");
+    expect(markup).not.toMatch(/aria-label="[^"]*닫기"/);
   });
 });
 
