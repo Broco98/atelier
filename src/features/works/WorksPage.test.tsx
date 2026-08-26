@@ -802,6 +802,14 @@ describe("분할 뷰", () => {
 // 사람이 다시 열어 둔 패널을 또 접었다 — 「억지로 닫지 않는다」의 반대다. 켜는 길이
 // 둘(헤더 토글·드래그 놓기)이므로 **판정이 한 자리에 있고 둘이 그것을 부른다**를 함께 본다.
 describe("분할을 켜면 패널을 한 번 접는다", () => {
+  beforeEach(() => {
+    // 아래 렌더 검사가 폭 둘(작업 패널·분할 경계)을 여기서 읽는다
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("판정이 한 자리이고, 켜는 길 둘이 그것을 부른다", () => {
     const worksPage = source("WorksPage.tsx");
     expect(worksPage).toContain("if (next !== null && split === null) setWorkPanelOpen(false);");
@@ -810,9 +818,11 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
 
   // 새로고침·링크로 **분할인 채 들어오는** 길이 있고, 그때는 「켠 순간」이 한 번도 안 돈다.
   // 그 화면이 3열이면 결정 88이 계산한 「터미널 ≈34칸」이 그대로 재현된다.
+  //
+  // 접혔다는 것은 **헤더에 여는 버튼이 서는 것**으로 보인다(닫혀 있을 때만 그린다).
   it("분할인 채 들어와도 3열로 서지 않는다", () => {
-    expect(source("WorksPage.tsx")).toContain(
-      "useState(split === null);",
-    );
+    const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+    expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
+    expect(countOf(render(withSpec, "spec", null), 'aria-label="작업 패널 펼치기"')).toBe(0);
   });
 });

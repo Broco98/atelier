@@ -122,6 +122,33 @@ test("셸 행을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", 
 
   await expect(page).toHaveURL(/split=rl/);
   await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
+  // **`tab`도 함께 본다.** 열 배치는 `dropSplit`이 정하므로 「끈 것이 셸이었다」가 `tab`에
+  // 안 적혀도 화면은 똑같다 — 그 어긋남은 나중에 `×`로 분할을 닫는 순간(결정 97: `tab`이
+  // 가리키는 쪽이 남는다) 「셸을 떨궜는데 문서가 남는」 사고로 터진다.
+  await expect(page).toHaveURL(/tab=terminal/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 88의 「사람이 다시 열면 그 뜻을 존중한다 — 억지로 닫지 않는다」. 접는 판정이
+// 「`split`이 null이 아니다」로 넓어지면 이미 분할인 화면에서 좌우를 맞바꾸기만 해도
+// 사람이 열어 둔 패널이 닫힌다. **소스 문자열이 아니라 동작으로 본다.**
+test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫히지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+
+  // 분할로 들어오면 패널이 접혀 있다(결정 88) — 헤더에 여는 버튼이 서 있는 것이 그 모습이다.
+  const opener = page.getByRole("button", { name: "작업 패널 펼치기" });
+  await expect(opener).toBeVisible();
+  await opener.click();
+  await expect(opener).toHaveCount(0);
+
+  // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다.
+  await startDrag(page, await specLeaf(page));
+  await moveOnto(page, "right");
+  await page.mouse.up();
+  await expect(page).toHaveURL(/split=rl/);
+
+  await expect(opener).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
