@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,13 +30,31 @@ export function SectionBody({ open, children }: { open: boolean; children: React
   );
 }
 
+/** 트리 한 단의 들여쓰기(px). **이 숫자는 여기 한 곳에만 있다.** */
+const INDENT_STEP = 18;
+
 /**
- * 트리 한 단. **들여쓰기를 이 상자 하나가 준다** — 잎과 가지는 자기 여백만 갖는다.
- * 값을 부르는 쪽마다 적으면 트리 깊이를 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의
- * GUTTER 주석과 같은 계약).
+ * 트리 한 단. **들여쓰기를 이 상자 하나가 정한다** — 값을 부르는 쪽마다 적으면 트리 깊이를
+ * 한 번 조정할 때 한쪽만 남는다(Sidebar.tsx의 GUTTER 주석과 같은 계약).
+ *
+ * **주는 것은 padding이 아니라 값이다.** 상자가 왼쪽 여백을 직접 물면 그 안의 행들이
+ * 배경까지 함께 밀려, 켜진 행·hover가 앞에 빈 자리를 두고 시작한다 — 한 컬럼에서 work 행과
+ * 그 아래 행들의 배경 폭이 갈린다. 값으로 내려보내면 **배경은 끝까지 가고 글자만 들어간다**
+ * (파일 트리들이 하는 방식이다). 행 쪽에서 `calc(var(--tree-indent) + 자기 여백)`으로 받는다.
+ *
+ * `depth`는 이 상자가 트리의 **몇 번째 단**인가다. 중첩된 상자가 값을 스스로 더할 수 없어서
+ * (CSS 커스텀 속성은 자기 자신을 참조하면 순환이라 무효다) 부르는 쪽이 밝힌다 — 이 앱에서
+ * 깊이는 둘뿐이다: nav `Terminal` 아래 셸(한 단), work 아래 `terminal` 아래 셸(두 단).
  */
-export function TreeIndent({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-[3px] pl-[18px]">{children}</div>;
+export function TreeIndent({ depth = 1, children }: { depth?: 1 | 2; children: ReactNode }) {
+  return (
+    <div
+      style={{ "--tree-indent": `${depth * INDENT_STEP}px` } as CSSProperties}
+      className="flex flex-col gap-[3px]"
+    >
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -92,10 +110,13 @@ export function BranchHeader({
       // 표식은 검사가 이 버튼을 **정체성으로** 집기 위한 것이다 — 구획 헤더도 `aria-expanded`를
       // 가진 버튼이라, 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 조용히 샌다
       // (TerminalPane의 `data-shell-host`와 같은 이유).
-      data-branch=""
+      //
+      // **값을 싣는다**(`data-leaf`와 같은 규칙). 한 화면에 가지가 여럿 서므로 — work 블럭 ·
+      // 그 안의 `terminal` · nav `Terminal` — 빈 값이면 검사가 어느 것을 집었는지 모른다.
+      data-branch={label}
       onClick={onToggle}
       aria-expanded={open}
-      className="flex h-7 w-full shrink-0 items-center gap-1 rounded-[9px] px-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
+      className="flex h-7 w-full shrink-0 items-center gap-1 rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] text-muted-foreground transition-colors hover:bg-state-1"
     >
       <BranchArrow open={open} />
       {/* `flex-1`이라 개수가 오른쪽 끝으로 밀린다 — `ml-auto`를 개수 쪽에 얹지 않는 것은
@@ -138,7 +159,7 @@ export function TreeLeaf({
       onPointerDown={onPointerDown}
       aria-current={active || undefined}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-[7px] rounded-[9px] px-[9px] text-left text-[13px] transition-colors",
+        "flex h-7 w-full shrink-0 items-center gap-[7px] rounded-[9px] pl-[calc(var(--tree-indent,0px)+9px)] pr-[9px] text-left text-[13px] transition-colors",
         active ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
       )}
     >

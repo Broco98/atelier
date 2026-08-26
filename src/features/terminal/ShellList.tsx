@@ -91,7 +91,9 @@ function ShellList({
           (`×`에서 물려받은 성질) 여기가 그때 보이는 전부다. 문구는 이 패널의 다른 빈 상태
           (「아직 spec 파일이 없어요」)와 같은 어투다 — 아래 `+` 행이 「여기서 만든다」를 잇는다. */}
       {shells.length === 0 && (
-        <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 셸이 없어요</span>
+        <span className="py-1.5 pl-[calc(var(--tree-indent,0px)+8px)] pr-2 text-[12.5px] text-tertiary">
+          아직 셸이 없어요
+        </span>
       )}
 
       {shells.map((shell) => {
@@ -128,7 +130,9 @@ function ShellList({
               data-shell-row=""
               onClick={() => onSelect(shell.id)}
               onPointerDown={onDragRow && ((event) => onDragRow(shell.id, event))}
-              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-2 pr-1.5 text-left"
+              // 들여쓰기는 **글자만** 받는다 — 배경은 바깥 상자가 갖고 끝까지 간다
+              // (`TreeIndent` 머리말). 상자가 없는 자리(셸 0개인 본문)에서는 0이다.
+              className="flex min-w-0 flex-1 flex-col gap-px py-1.5 pl-[calc(var(--tree-indent,0px)+8px)] pr-1.5 text-left"
             >
               <span className="w-full truncate text-[12.5px]">{name}</span>
               {/* 둘째 줄. 색을 직접 선언하므로 켜진 행의 selected-row 글자색에 안 덮인다 —
@@ -176,7 +180,7 @@ function ShellList({
           else onOpen(null);
         }}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded-[8px] pl-2 pr-1.5 text-left text-[12.5px] transition-colors",
+          "flex h-7 items-center gap-1.5 rounded-[8px] pl-[calc(var(--tree-indent,0px)+8px)] pr-1.5 text-left text-[12.5px] transition-colors",
           full ? "text-tertiary" : "text-muted-foreground hover:bg-state-1",
         )}
       >

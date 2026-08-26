@@ -40,12 +40,16 @@ function render(
     tab = "spec" as ViewTab,
     shellCounts = {},
     branchOpen = () => false,
+    // work 블럭은 **기본이 펼침이다** — 생산 쪽 기본값과 같게 둔다(SidebarWorkList의
+    // `folded` 주석). 반대로 두면 이 파일의 검사가 전부 접힌 화면만 보게 된다.
+    nodeOpen = () => true,
     renderShells = (work: WorkView) => <i data-shells={work.slug} />,
   }: {
     selectedSlug?: string | null;
     tab?: ViewTab;
     shellCounts?: Record<string, number>;
     branchOpen?: (slug: string) => boolean;
+    nodeOpen?: (slug: string) => boolean;
     renderShells?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
@@ -57,12 +61,14 @@ function render(
       tab={tab}
       shellCounts={shellCounts}
       branchOpen={branchOpen}
+      nodeOpen={nodeOpen}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
       onToggleBranch={() => {}}
+      onToggleNode={() => {}}
       onOpenSpec={() => {}}
       renderShells={renderShells}
     />,
@@ -231,7 +237,9 @@ describe("work 아래 트리", () => {
   // 결정 71~73·107. 셸을 고르는 자리가 패널에서 사이드바로 오면서 목록이 **트리**가 됐다.
   // 여기서 보는 것은 「어디에 무엇이 서는가」뿐이다 — 셸 행의 모양은 ShellList.test.tsx가 보고,
   // 그 목록이 실제로 스토어를 읽는 자리(ShellBranch)는 이 파일에 오지 않는다.
-  const branchesOf = (markup: string) => buttonsOf(markup, 'data-branch=""');
+  // **표식에 값이 실린다** — 한 화면에 가지가 여럿이라(work 블럭 · 그 안의 `terminal`)
+  // 빈 값이면 어느 것을 집었는지 모른다.
+  const branchesOf = (markup: string) => buttonsOf(markup, 'data-branch="terminal"');
   const countOf = (button: string) => spansOf(button).slice(-1)[0];
 
   it("가지는 고른 work **또는** 셸이 있는 work에 선다", () => {

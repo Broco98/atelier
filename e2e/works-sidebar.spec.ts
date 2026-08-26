@@ -64,11 +64,13 @@ test("고른 work 아래에 트리가 서고, 가지 접힘은 세션까지만 �
   // 표식으로 집는다 — 패널에도 `spec`이라 적힌 탭이 있어 글자로 집으면 갈린다.
   await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
 
-  const branch = page.locator('[data-branch=""]');
+  // **표식에 값이 실린다** — 한 화면에 가지가 여럿이다(work 블럭 · 그 안의 `terminal` ·
+  // nav `Terminal`). 빈 값으로 집으면 어느 것을 잡았는지가 화면 구성에 따라 갈린다.
+  const branch = page.locator('[data-branch="terminal"]');
   // 가지의 속. 접혀도 DOM에는 남으므로(펴는 쪽도 애니메이션되어야 한다) **보이는가**로는
   // 가릴 수 없다 — 넘침에 잘릴 뿐이라 상자 크기는 그대로다. 닿을 수 없게 만드는 것이
   // `inert`이고, 그것이 이 계약의 관찰 가능한 형태다.
-  const body = page.locator('[data-branch=""] + div');
+  const body = page.locator('[data-branch="terminal"] + div');
 
   // 처음 고른 work의 가지는 펼쳐진다(결정 107). 그 속이 실제로 서는 것까지 본다.
   await expect(branch).toHaveAttribute("aria-expanded", "true");
@@ -83,5 +85,73 @@ test("고른 work 아래에 트리가 서고, 가지 접힘은 세션까지만 �
   // 자리다. 다시 띄우면 기본값으로 돌아온다.
   await page.reload();
   await expect(branch).toHaveAttribute("aria-expanded", "true");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 트리 행의 **배경이 work 행과 같은 왼쪽 끝에서 시작한다**. 한 컬럼에서 배경 폭이 갈리면
+// 켜진 행과 hover가 앞에 빈 자리를 두고 시작해, 같은 목록의 행들이 다른 종류로 읽힌다.
+//
+// **이 층에서만 보인다** — 들여쓰기가 `--tree-indent` + `calc()`로 내려가므로 진짜 CSS가
+// 있어야 재진다. 정적 마크업으로는 클래스 문자열밖에 못 본다.
+test("트리 행의 배경은 work 행과 나란히 서고, 글자만 들여쓴다", async ({ page }) => {
+  await installFixtureBackend(page);
+  // 본문을 터미널로 두고 들어간다 — 그래야 셸이 하나 서서 **두 번째 단**까지 잴 수 있다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  // work 행의 배경 상자는 핀 버튼의 **부모**다 — 라벨·핀·화살표가 그 안의 형제라서다.
+  // 핀으로 집는 것은 제목이 브레드크럼 말단에도 같은 글자로 서기 때문이다.
+  const row = await page
+    .getByRole("button", { name: `${plainWork.title} 고정` })
+    .evaluate((el) => el.parentElement!.getBoundingClientRect().x);
+
+  const leaf = page.locator('[data-leaf="spec"]');
+  const branch = page.locator('[data-branch="terminal"]');
+  await expect(leaf).toBeVisible();
+  expect(Math.round((await leaf.boundingBox())!.x)).toBe(Math.round(row));
+  expect(Math.round((await branch.boundingBox())!.x)).toBe(Math.round(row));
+
+  // 배경만 나란한 것이지 **속은 한 단 들어가 있다.** 이 줄이 없으면 들여쓰기를 통째로
+  // 잃은 것도 초록이다 — `calc()`가 안 먹어 padding이 0이 되는 경우가 정확히 그것이다.
+  //
+  // 재는 것은 **속이 시작하는 자리**이지 글자가 아니다 — 행마다 앞에 오는 것이 다르다
+  // (잎은 아이콘, 셸 행은 이름이 바로 온다). 글자끼리 대면 모양 차이를 깊이로 오독한다.
+  const leafInsetX = await leaf.evaluate((el) => el.firstElementChild!.getBoundingClientRect().x);
+  expect(leafInsetX).toBeGreaterThan(row + 18);
+
+  // 셸 행은 **두 단**이다(work 행 → `terminal` → 셸). 배경은 여전히 같은 끝에서 시작한다.
+  const shell = page.locator("[data-shell-row]");
+  await expect(shell).toBeVisible();
+  expect(Math.round((await shell.evaluate((el) => el.parentElement!.getBoundingClientRect().x)))).toBe(
+    Math.round(row),
+  );
+  const shellInsetX = await shell.evaluate((el) => el.firstElementChild!.getBoundingClientRect().x);
+  expect(shellInsetX).toBeGreaterThan(leafInsetX);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 고른 work가 **하나의 블럭**이 됐다 — 행이 머리행이고 `spec`·`terminal`·셸이 그 속이다.
+// 접기는 nav 항목이 자기 가지를 이는 모양과 같은 겹이라 애니메이션도 같은 것을 쓴다.
+test("고른 work 블럭을 통째로 접을 수 있고, 남의 work에는 그 토글이 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+
+  const block = page.locator(`[data-branch="${plainWork.slug}"]`);
+  // 블럭의 속은 행 상자의 **다음 형제**다 — 화살표가 그 상자 안에 산다.
+  const body = block.locator("xpath=../following-sibling::div[1]");
+
+  await expect(block).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
+  await expect(body).not.toHaveAttribute("inert", "");
+
+  await block.click();
+  await expect(block).toHaveAttribute("aria-expanded", "false");
+  // 접혀도 속은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 닿을 수 없다.
+  await expect(body).toHaveAttribute("inert", "");
+
+  // 결정 101. 남의 work 항목을 건드리면 그 work로 간다 — 접기 토글은 고른 것에만 있다.
+  const [pinnedWork] = WORKS;
+  await expect(page.locator(`[data-branch="${pinnedWork.slug}"]`)).toHaveCount(0);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -104,7 +104,9 @@ function ShellBranch({
   };
 
   return (
-    <TreeIndent>
+    // work 아래면 두 단이다(work 행 → `terminal` 머리행 → 셸). nav `Terminal` 아래면
+    // 그 항목 자신이 머리행을 겸해 한 단으로 끝난다 — Sidebar.tsx의 같은 주석.
+    <TreeIndent depth={owner === null ? 1 : 2}>
       <ShellList
         state={state}
         owner={owner}

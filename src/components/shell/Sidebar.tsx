@@ -224,7 +224,7 @@ function SidebarItem({
           <button
             type="button"
             // 표식은 검사가 이 버튼을 정체성으로 집기 위한 것이다(sidebar-tree의 같은 주석).
-            data-branch=""
+            data-branch={label}
             aria-expanded={branch.open}
             // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은
             // 누르면 무엇이 되는지를 말한다. 「접기」로 고정하면 이미 접힌 가지에서 거짓이다

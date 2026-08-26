@@ -3,7 +3,13 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, File, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { BranchHeader, SectionBody, TreeIndent, TreeLeaf } from "@/components/shell/sidebar-tree";
+import {
+  BranchArrow,
+  BranchHeader,
+  SectionBody,
+  TreeIndent,
+  TreeLeaf,
+} from "@/components/shell/sidebar-tree";
 import { recallView, tabSearch, viewSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
@@ -153,6 +159,18 @@ function SidebarWorkList({
   const [branchOpen, setBranchOpen] = useState<Record<string, boolean>>({});
   const isBranchOpen = (slug: string) => branchOpen[slug] === true;
 
+  /**
+   * work 블럭이 펼쳐졌는가 — **기본이 펼침이라 위 `branchOpen`과 반대다.** 이 블럭은
+   * 오늘까지 늘 서 있었고, 접는 것이 새로 생긴 일이다: 아무것도 안 한 사람의 화면이
+   * 달라지면 안 된다. 그래서 기록에 남는 것은 **접었다는 사실**뿐이다.
+   *
+   * 수명은 `branchOpen`과 같은 세션 메모리다(결정 107) — 접힘은 위치이지 설정이 아니다.
+   */
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
+  const isNodeOpen = (slug: string) => folded[slug] !== true;
+  const toggleNode = (slug: string) =>
+    setFolded((prev) => ({ ...prev, [slug]: prev[slug] !== true }));
+
   useEffect(() => {
     if (selectedSlug === null) return;
     setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));
@@ -220,12 +238,14 @@ function SidebarWorkList({
             tab={tab}
             shellCounts={shellCounts}
             branchOpen={isBranchOpen}
+            nodeOpen={isNodeOpen}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
             onToggleBranch={toggleBranch}
+            onToggleNode={toggleNode}
             onOpenSpec={openSpec}
             renderShells={renderShells}
           />
@@ -283,12 +303,14 @@ export function WorkSectionList({
   tab,
   shellCounts,
   branchOpen,
+  nodeOpen,
   onToggleSection,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
   onToggleBranch,
+  onToggleNode,
   onOpenSpec,
   renderShells,
 }: {
@@ -298,12 +320,14 @@ export function WorkSectionList({
   tab: ViewTab;
   shellCounts: Record<string, number>;
   branchOpen: (slug: string) => boolean;
+  nodeOpen: (slug: string) => boolean;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
   onToggleBranch: (work: WorkView) => void;
+  onToggleNode: (slug: string) => void;
   onOpenSpec: (work: WorkView) => void;
   renderShells: (work: WorkView) => ReactNode;
 }) {
@@ -322,6 +346,8 @@ export function WorkSectionList({
       onLeave={onLeave}
       onTogglePin={onTogglePin}
       onToggleBranch={onToggleBranch}
+      nodeOpen={nodeOpen(work.slug)}
+      onToggleNode={() => onToggleNode(work.slug)}
       onOpenSpec={onOpenSpec}
       shells={renderShells(work)}
     />
@@ -394,11 +420,13 @@ function WorkNode({
   tab,
   shellCount,
   branchOpen,
+  nodeOpen,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
   onToggleBranch,
+  onToggleNode,
   onOpenSpec,
   shells,
 }: {
@@ -407,15 +435,38 @@ function WorkNode({
   tab: ViewTab;
   shellCount: number;
   branchOpen: boolean;
+  nodeOpen: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
   onToggleBranch: (work: WorkView) => void;
+  onToggleNode: () => void;
   onOpenSpec: (work: WorkView) => void;
   shells: ReactNode;
 }) {
   const stands = active || shellCount > 0;
+
+  // **블럭이 새로 설 때도 부드럽게 뜬다.** 접기 토글은 `SectionBody`가 이미 nav와 같은
+  // 애니메이션(grid-rows 0fr↔1fr)으로 돌리는데, work를 **처음 고르는** 순간은 토글이
+  // 아니라 마운트라 트랜지션이 출발할 자리가 없다 — CSS 트랜지션은 요소의 초기 스타일에서는
+  // 돌지 않는다(WorkPanel이 같은 함정을 적어 뒀다). 닫힌 채로 세우고 다음 프레임에 편다.
+  //
+  // `useEffect`는 페인트 뒤에 돌지만 rAF를 한 겹 더 두는 것은 그 보장이 커밋 방식에 달려
+  // 있어서다 — 한 프레임 늦는 대신 「가끔 뚝 뜬다」가 없다.
+  //
+  // **첫 렌더는 이미 서 있는 값으로 시작한다.** 앱을 켠 순간이나 목록이 처음 도착한 순간은
+  // 「나타나는 것」이 아니라 그냥 첫 화면이라, 그때까지 애니메이션하면 켤 때마다 사이드바가
+  // 펼쳐지는 것을 보게 된다.
+  const [entered, setEntered] = useState(stands);
+  useEffect(() => {
+    if (!stands) {
+      setEntered(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, [stands]);
   return (
     <>
       <WorkRow
@@ -425,30 +476,37 @@ function WorkNode({
         onHover={onHover}
         onLeave={onLeave}
         onTogglePin={onTogglePin}
+        // 접기 토글은 **고른 work의 것에만** 있다(결정 101). 남의 work 행을 건드리면
+        // 그 work로 가는 것이 사이드바에 남은 규칙 하나다.
+        branch={active && stands ? { open: nodeOpen, onToggle: onToggleNode } : undefined}
       />
       {stands && (
-        <TreeIndent>
-          {active && (
-            <TreeLeaf
-              icon={File}
-              label="spec"
-              active={tab === "spec"}
-              onClick={() => onOpenSpec(work)}
-              // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 이 잎은 **고른 work에만**
-              // 서므로 떨궈도 work이 바뀌지 않는다 — 셸 행과 다른 점이 그 하나다.
-              onPointerDown={(event) =>
-                armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
-              }
+        // 블럭의 속. nav 항목이 자기 가지를 이는 모양과 **같은 겹**이다(Sidebar.tsx) —
+        // 머리행 + `SectionBody` + 그 안의 `TreeIndent`.
+        <SectionBody open={nodeOpen && entered}>
+          <TreeIndent>
+            {active && (
+              <TreeLeaf
+                icon={File}
+                label="spec"
+                active={tab === "spec"}
+                onClick={() => onOpenSpec(work)}
+                // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 이 잎은 **고른 work에만**
+                // 서므로 떨궈도 work이 바뀌지 않는다 — 셸 행과 다른 점이 그 하나다.
+                onPointerDown={(event) =>
+                  armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
+                }
+              />
+            )}
+            <BranchHeader
+              label="terminal"
+              count={shellCount}
+              open={branchOpen}
+              onToggle={() => onToggleBranch(work)}
             />
-          )}
-          <BranchHeader
-            label="terminal"
-            count={shellCount}
-            open={branchOpen}
-            onToggle={() => onToggleBranch(work)}
-          />
-          <SectionBody open={branchOpen}>{shells}</SectionBody>
-        </TreeIndent>
+            <SectionBody open={branchOpen}>{shells}</SectionBody>
+          </TreeIndent>
+        </SectionBody>
       )}
     </>
   );
@@ -593,6 +651,7 @@ function WorkRow({
   onHover,
   onLeave,
   onTogglePin,
+  branch,
 }: {
   work: WorkView;
   active: boolean;
@@ -600,6 +659,13 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
+  /**
+   * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 없으면 화살표가
+   * 서지 않는다 — nav 항목의 `branch`와 같은 계약이고, 없는 이유도 같다: **남의 work의
+   * 행에는 안 준다**(결정 101 — 남의 work 항목을 건드리면 그 work로 간다. 접기 토글은
+   * 고른 work의 것에만 있다).
+   */
+  branch?: { open: boolean; onToggle: () => void };
 }) {
   return (
     <div
@@ -647,6 +713,22 @@ function WorkRow({
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>
+      {branch && (
+        <button
+          type="button"
+          // 값을 싣는 것은 한 화면에 가지가 여럿이기 때문이다(sidebar-tree의 같은 주석).
+          // work 블럭은 슬러그로 갈린다 — 제목은 사람이 고쳐도 슬러그는 안 바뀐다.
+          data-branch={work.slug}
+          aria-expanded={branch.open}
+          // **여닫이를 이름에 적는다** — `aria-expanded`가 지금 상태를 말하고 이름은 누르면
+          // 무엇이 되는지를 말한다(nav 항목·작업 패널이 같은 규칙이다).
+          aria-label={`${work.title} ${branch.open ? "접기" : "펼치기"}`}
+          onClick={branch.onToggle}
+          className="icon-button-quiet shrink-0 text-tertiary"
+        >
+          <BranchArrow open={branch.open} />
+        </button>
+      )}
     </div>
   );
 }
