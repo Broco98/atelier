@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { agentMarkOf } from "@/components/ui/agent-mark";
 import ShellTabs from "./ShellTabs";
 import {
   markExited,
@@ -7,6 +8,7 @@ import {
   MAX_SHELLS,
   NO_SHELLS,
   openShell,
+  setRunning,
   setShellName,
   setTitle,
   shellEndLabels,
@@ -194,6 +196,140 @@ describe("칸이 적는 것", () => {
     const notice = shellEndLabels(dead.shells[0])!.notice;
     expect(notice).toContain("/nonexistent");
     expect(shellCellsOf(render(dead))[0]).not.toContain(notice);
+  });
+});
+
+describe("칸이 무엇이 도는지 말한다", () => {
+  /**
+   * 로고를 **표에서 꺼내 온 그림 그대로** 찾는다(결정 15). 검사가 자기 사본을 들면 표가
+   * 바뀌는 날 둘이 갈리고, 그때 이 검사는 옛 그림을 지키느라 초록으로 남는다.
+   *
+   * 그림만 떼어 오는 것은 탭 칸이 크기 class를 얹어 그리기 때문이다 — svg 태그째로는 안 같다.
+   * 못 찾으면 던진다: 표가 비면 조각이 0개가 되어 반드시 빨개진다(`cellsOf`와 같은 근거).
+   */
+  const glyphOf = (name: string) => {
+    const mark = agentMarkOf(name);
+    if (!mark) throw new Error(`${name}에 마크가 없다`);
+    return renderToStaticMarkup(<mark.Glyph />).match(/ d="([^"]+)"/)![1];
+  };
+
+  it("claude가 도는 칸에 로고와 스피너가 뜨고, 끝나면 사라진다", () => {
+    const { state, ids } = opened(1);
+    const 도는중 = shellCellsOf(render(setRunning(state, ids[0], "claude")))[0];
+    expect(도는중).toContain(glyphOf("claude"));
+    expect(도는중).toContain("animate-spin");
+
+    // 프롬프트로 돌아오면 `running`이 null이다 — 표시도 함께 걷힌다.
+    const 끝난뒤 = shellCellsOf(render(setRunning(state, ids[0], null)))[0];
+    expect(끝난뒤).not.toContain(glyphOf("claude"));
+    expect(끝난뒤).not.toContain("animate-spin");
+  });
+
+  it("codex가 도는 칸과 claude가 도는 칸이 로고로 갈린다", () => {
+    // **칸 안에서 본다.** 마크업 전체로 판정하면 로고 둘이 한 칸에 몰려 있어도 초록이라,
+    // 「어느 칸에서 뭐가 도나」라는 이 판의 물음을 그대로 못 보고 지나간다.
+    const { state, ids } = opened(2);
+    const 지금 = setRunning(setRunning(state, ids[0], "claude"), ids[1], "codex");
+    const cells = shellCellsOf(render(지금));
+    expect(cells[0]).toContain(glyphOf("claude"));
+    expect(cells[0]).not.toContain(glyphOf("codex"));
+    expect(cells[1]).toContain(glyphOf("codex"));
+    expect(cells[1]).not.toContain(glyphOf("claude"));
+  });
+
+  it("모르는 것이 도는 칸에는 로고가 없다 — 그래도 도는 표시는 남는다", () => {
+    // 결정 4·15. 물음표를 띄우면 줄이 시끄러워진다(셸에서 도는 것의 대부분이 그 자리에 온다).
+    // 다만 **그 칸이 일하는 중**이라는 사실은 아는 에이전트가 아니어도 참이라, 스피너는
+    // 로고와 무관하게 돈다 — 로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다.
+    const { state, ids } = opened(1);
+    const cell = shellCellsOf(render(setRunning(state, ids[0], "cargo")))[0];
+    expect(cell).not.toContain(glyphOf("claude"));
+    expect(cell).not.toContain(glyphOf("codex"));
+    expect(cell).toContain("animate-spin");
+    expect(cell).toContain('aria-label="명령 실행 중"');
+  });
+
+  it("죽은 칸에는 아무것도 안 돈다", () => {
+    // 판정은 `runningOn` 하나다(결정 4). `shell.running`을 직접 읽으면 마지막 값이 굳어
+    // claude 로고가 죽은 칸에 영영 남는다 — 그 함수 주석이 든 이유 그대로다.
+    const { state, ids } = opened(1);
+    const 도는중 = setRunning(state, ids[0], "claude");
+    // 종료 코드가 0이면 칸 자체가 목록에서 빠진다(`markExited`) — 남는 칸을 봐야 하므로
+    // 「이유가 있는 끝」을 쓴다.
+    const 죽은뒤 = markExited(도는중, ids[0], { exitCode: 42, signal: null });
+    const cell = shellCellsOf(render(죽은뒤))[0];
+    expect(cell).not.toContain(glyphOf("claude"));
+    expect(cell).not.toContain("animate-spin");
+  });
+
+  it("칸이 로고에 색을 덧칠하지 않는다", () => {
+    // 결정 15. 색을 정하는 자리는 `agent-mark` 하나이고(거기 소스에 색 리터럴이 0개다),
+    // 여기서 `text-…`를 얹으면 그 결정이 **읽는 자리에서** 깨진다 — 한쪽 테마에서 대비
+    // 바닥이 무너지는 길이 그것 하나 남아 있다. 로고 svg 태그만 잘라 본다(lucide의 것은
+    // viewBox가 `0 0 24 24`라 안 걸린다). 로고가 없으면 여기서 던져 빨개진다.
+    const { state, ids } = opened(1);
+    const cell = shellCellsOf(render(setRunning(state, ids[0], "claude")))[0];
+    const glyph = cell.match(/<svg viewBox="0 0 16 16"[^>]*>/)![0];
+    expect(glyph).toContain('fill="currentColor"');
+    expect(glyph).not.toMatch(/text-/);
+  });
+
+  it("로고가 스크린리더에도 말하고, 이름 버튼의 이름은 그대로다", () => {
+    // 로고 svg는 `aria-hidden`이라(agent-mark 계약) 혼자서는 아무 말도 안 간다 — 로고만
+    // 얹으면 그 칸이 도는지가 **눈으로만** 보인다.
+    // 닫기 버튼이 이름 버튼의 이름을 딛고 있어(`${name} 닫기`) 그 이름을 밀어내도 안 된다.
+    const { state, ids } = opened(1);
+    const named = setTitle(state, ids[0], "zsh");
+    const cell = shellCellsOf(render(setRunning(named, ids[0], "claude")))[0];
+    expect(cell).toContain('aria-label="claude 실행 중"');
+    expect(cell).toContain('aria-label="zsh 닫기"');
+    expect(cell).toContain(">zsh<");
+    // 이름 **앞자리**다(`gap-1.5`가 비워 둔 그 자리) — 접근성 이름이 「무엇이 도나」 →
+    // 「어느 셸인가」 순서로 조립되고, 좁아질 때 줄어드는 것이 뒤쪽 이름 하나로 남는다.
+    expect(cell.indexOf('aria-label="claude 실행 중"')).toBeLessThan(cell.indexOf(">zsh<"));
+  });
+});
+
+// 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안 계속 갈아 끼운다(adr-04).
+//
+// **이 seam에는 리렌더가 없다** — 정적 마크업이라 「몇 번 그렸나」를 셀 자리가 없다. 대신
+// 그 아래 깔린 성질을 잰다: 한 칸의 그림이 **그 칸의 셸에만** 달렸는가, 그리고 안 바뀐 칸이
+// 같은 객체로 남는가. 둘이 함께 서면 「다른 칸은 다시 그릴 것이 없다」가 된다.
+//
+// **못 보는 것**: React가 실제로 다시 그리는 횟수. 그것은 구독하는 쪽의 몫이고
+// (`WorksPage`의 `sameBranch`), 이 줄은 상태와 콜백만 받는다.
+describe("한 칸이 흔들려도 다른 칸은 그대로다", () => {
+  it("한 칸의 타이틀만 갈리면 그 칸만 갈린다", () => {
+    const { state, ids } = opened(3);
+    const before = shellCellsOf(render(state));
+    const after = shellCellsOf(render(setTitle(state, ids[0], "gimhyoyeon@gimhyoyeon")));
+    // 바뀐 칸은 바뀐다 — 이것이 없으면 아래 둘은 「아무것도 안 그렸다」로도 통과한다.
+    expect(after[0]).not.toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after[2]).toBe(before[2]);
+  });
+
+  it("한 칸에서 명령이 시작돼도 다른 칸은 안 갈린다", () => {
+    // 여기서 걸리는 것이 **줄 단위 판정**이다 — 로고를 `runningKindsOf`처럼 줄 전체에서
+    // 뽑으면 한 칸이 claude를 켜는 순간 세 칸이 전부 갈린다. 결정 4가 사이드바(종류만)와
+    // 탭 줄(칸마다)을 가른 지점이 정확히 여기다.
+    const { state, ids } = opened(3);
+    const before = shellCellsOf(render(state));
+    const after = shellCellsOf(render(setRunning(state, ids[0], "claude")));
+    expect(after[0]).not.toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+    expect(after[2]).toBe(before[2]);
+  });
+
+  it("안 바뀐 칸은 같은 객체로 남는다", () => {
+    // `patch`의 계약이다. 이 줄이 칸을 **셸 객체 하나에서** 그리는 한 이 성질이 곧
+    // 리렌더가 멈추는 자리다 — 초마다 오는 값이라 여기서 새 객체를 만들면 줄이 초마다
+    // 통째로 다시 그려진다(`setRunning` 주석).
+    const { state, ids } = opened(3);
+    const next = setRunning(state, ids[0], "claude");
+    expect(next.shells[0]).not.toBe(state.shells[0]);
+    expect(next.shells[1]).toBe(state.shells[1]);
+    expect(next.shells[2]).toBe(state.shells[2]);
   });
 });
 

@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
-import { File, Plus, X } from "lucide-react";
+import { File, LoaderCircle, Plus, X } from "lucide-react";
+import { agentMarkOf } from "@/components/ui/agent-mark";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
 import {
   activeIdOf,
   atCap,
+  runningOn,
   shellCapNotice,
   shellEndLabels,
   shellRowName,
@@ -142,6 +144,13 @@ function ShellTabs({
         // 사라지는 실물 사고를 냈고 사용처가 0이 되어 지워졌다(결정 104).
         const name = shellRowName(shell);
         const end = shellEndLabels(shell);
+        // 결정 4 — **탭 줄은 칸마다**다. 사이드바가 종류만 말하는 것(`runningKindsOf`)과
+        // 갈리는 자리이고, 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
+        // 갈린다. 판정도 표도 새로 짓지 않는다: 「끝난 칸은 아무것도 안 돈다」는 `runningOn`
+        // 하나가 알고(`shell.running`을 직접 읽으면 죽은 칸에 로고가 굳는다), 이름→그림은
+        // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
+        const running = runningOn(shell);
+        const mark = agentMarkOf(running);
 
         return (
           // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
@@ -171,13 +180,47 @@ function ShellTabs({
                 이름 버튼이 자기 오른쪽 여백까지 품는다. h-full은 칸 높이 전체가 눌리게 한다 —
                 items-center는 자식을 내용 높이로 줄인다.
 
-                gap-1.5는 **로고가 들어올 자리**이기도 하다(결정 4 — 뒤 티켓). */}
+                gap-1.5가 로고·스피너와 이름 사이를 벌린다(결정 4). */}
             <button
               type="button"
               aria-pressed={active}
               onClick={() => onSelect(shell.id)}
               className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left"
             >
+              {/* 이름 **앞**에 서고 `shrink-0`이다 — 줄어드는 것은 옆의 이름(`truncate`)
+                  뿐이라, 균등 축소가 오는 뒤 티켓에서 「로고와 스피너는 끝까지 남는다」
+                  (결정 11)를 지킬 자리가 여기 이미 잡혀 있다.
+
+                  **로고와 스피너를 나란히 세운다** — 겹치는 안은 기각했다: 로고 없이 도는
+                  칸(모르는 명령)에 빈 고리만 남고, 14px 실루엣 위의 고리는 이 줄의 아이콘
+                  규격(size-3.5)을 넘긴다.
+
+                  **바깥 조건이 `mark`가 아니라 `running`이다.** 아는 에이전트가 아니어도
+                  「그 칸이 일하는 중」은 참이고, 그 사실이 이 판이 답하려는 물음이다 —
+                  로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다. 모르는 것에
+                  물음표를 세우지 않는 것(결정 4)은 그대로다: 그때는 스피너만 돈다.
+
+                  색을 안 준다. 로고는 `currentColor`라야 다크·라이트 둘 다 살고(결정 15)
+                  스피너도 같은 색이라야 둘이 한 덩어리로 읽힌다 — 켜진 칸에서는 toggle-on
+                  글자색을 그대로 받는다(죽은 칸의 꼬리표가 자기 색을 박는 것과 반대 방향
+                  이고, 그쪽은 「꺼진 것」을 말해야 해서 그렇다).
+
+                  글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는
+                  칸이 **눈에만** 보인다. 이 저장소는 아이콘에 이름을 `aria-label`로 다는데
+                  그 자리가 늘 버튼이었고 여기는 버튼 **안**이라 `role="img"`을 함께 준다 —
+                  역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않는다.
+                  이름 버튼의 접근성 이름은 이름 **앞에** 이 한 마디가 붙는 것으로 끝난다
+                  (닫기 버튼은 `shellRowName`을 따로 딛으므로 그대로다). */}
+              {running !== null && (
+                <span
+                  role="img"
+                  aria-label={mark ? `${mark.label} 실행 중` : "명령 실행 중"}
+                  className="flex shrink-0 items-center gap-1"
+                >
+                  {mark && <mark.Glyph className="size-3.5" />}
+                  <LoaderCircle className="size-3 animate-spin" strokeWidth={1.8} />
+                </span>
+              )}
               <span className="min-w-0 truncate">{name}</span>
               {/* 죽은 칸을 **누르지 않고** 알아보는 자리다(결정 17). 왜 죽었는지 한 문장은
                   그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
