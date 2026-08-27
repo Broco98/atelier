@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   MoreHorizontal,
   PanelRight,
+  Pencil,
   Trash2,
   X,
   Zap,
@@ -23,11 +24,14 @@ import useSplitRatio from "@/components/shell/useSplitRatio";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
+import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
+  closesShellFromWindow,
   opensShellFromWindow,
   runningShellsOf,
+  sameBranch,
   shellForNav,
   shellNavFromWindow,
   shellsEmptied,
@@ -38,6 +42,7 @@ import {
   closeShellsOf,
   onShellOpenRejected,
   openNewShell,
+  requestCloseShell,
   selectShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
@@ -62,7 +67,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
-import type { ShellTally } from "@/features/terminal/shell-registry";
+import type { ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
@@ -135,6 +140,33 @@ export function togglesWorkPanel(event: {
   )
     return false;
   return true;
+}
+
+/**
+ * ⌘W가 겨누는 칸 — **켜진 탭**이다(결정 13). 닫을 것이 없으면 `null`이다.
+ *
+ * 「켜진 탭이 무엇인가」는 이 화면만 안다. 두 갈래로 `null`이 나온다:
+ * - **`spec`이 켜져 있다.** 고정 탭이라 `×`가 없는 것과 같은 말이다. 분할이면 열 둘이
+ *   함께 서지만 `tab`은 그때 **포커스가 든 열**을 가리키므로(결정 97의 `focusColumn`)
+ *   여기서 한 번 더 가를 것이 없다.
+ * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다.
+ *
+ * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **소유자를 여기서 한 번 가르기**
+ * 위해서다 — `owner`가 `null`이면 그 값은 `shellsOf`의 계약상 최상위 터미널을 가리켜,
+ * 고른 작업이 없는 work 화면에서 ⌘W가 **`/terminal`의 셸을 닫는다.**
+ *
+ * **함수로 꺼낸 이유는 테스트다**(위 `togglesWorkPanel`과 같다). 이 저장소의 컴포넌트
+ * seam은 정적 마크업이라 이펙트가 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를
+ * 문자열로 훑는 검사밖에 못 걸고, 그 검사는 가드 한 줄이 뒤집혀도 초록이다(실측으로
+ * 확인했다: 핸들러 첫 줄에 `return`을 얹어도 리터럴 검사가 전부 통과했다).
+ */
+export function shellClosedByTab(
+  tab: ViewTab,
+  owner: string | null,
+  state: ShellsState,
+): number | null {
+  if (tab !== "terminal" || owner === null) return null;
+  return activeIdOf(state, owner);
 }
 
 function WorksPage({
@@ -277,6 +309,27 @@ function WorksPage({
   // 본문이 그 작업의 셸을 보여주는데 패널만 다른 작업을 말하면 안 된다.
   const panelWork = terminalWork ?? selected;
 
+  /**
+   * 탭 줄이 그리는 것 — **스토어를 구독하는 자리가 화면이다.** 줄 자체는 상태와 콜백만
+   * 받는다(ShellTabs 머리말): 그 파일이 terminal-store를 import하면 `@xterm/*`와 그 CSS가
+   * 따라 들어와 정적 마크업 검사가 통째로 죽는다.
+   *
+   * 좁히지 않고 통째로 읽는 것은 그 줄이 **앱 전체** 상한을 세야 해서다(결정 30).
+   * 대신 **다시 그릴지는 `sameBranch`가 가른다** — 셸은 프롬프트마다 OSC 타이틀을 쏘는데,
+   * 남의 work의 타이틀 하나에 이 화면이 다시 그려지면 마크다운 본문까지 함께 다시 그려진다
+   * (⌘1~9가 구독을 아예 피한 그 이유와 같다).
+   *
+   * **`tabOwner`가 위에 있어야 한다.** 비교 함수가 그것을 닫아 잡는데 그 함수는 `useStore`
+   * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다(ShellBranch가 같은 자리에
+   * 같은 주석을 남겼다).
+   */
+  const tabOwner = panelWork?.slug ?? null;
+  const shellState = useStore(
+    terminalStore,
+    (whole) => whole,
+    (a, b) => sameBranch(a, b, tabOwner),
+  );
+
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
   //
@@ -310,8 +363,10 @@ function WorksPage({
    * 됐고, ⌘T가 그 벌에 이미 들어 있다(결정 98). 세는 것은 **이 화면의 셸**이지 사이드바에
    * 보이는 전부가 아니다: 남의 work의 가지를 펼쳐 두었어도 ⌘2는 이 work의 첫 셸이다.
    *
-   * **스토어를 구독하지 않고 그때 읽는다.** 필요한 순간은 키를 누른 그 한 번뿐이라,
-   * 구독하면 셸이 프롬프트마다 쏘는 타이틀에 이 화면이 통째로 다시 그려진다.
+   * **구독한 값을 쓰지 않고 그때 읽는다.** 필요한 순간은 키를 누른 그 한 번뿐이라,
+   * 의존성에 상태를 얹으면 셸이 프롬프트마다 쏘는 타이틀마다 이 이펙트가 다시 붙는다.
+   * (탭 줄이 서면서 이 화면은 위 `shellState`로 **이 work의** 셸을 구독하게 됐다 —
+   * 그래도 여기서 읽는 자리는 안 바꾼다: 그 값은 이 이펙트의 의존성이 아니어야 한다.)
    *
    * 셸 안에서도 먹어야 한다(결정 99) — 그 판정은 `shellNavFromWindow`가 혼자 안다.
    */
@@ -338,6 +393,39 @@ function WorksPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [panelWork, onSelectTab]);
 
+  /**
+   * ⌘W — **켜진 탭을 닫는다**(결정 13).
+   *
+   * 이 키를 window에서 듣게 된 근거는 **겨눌 칸이 화면에 서게 된 것** 하나다. 한때
+   * `opensShellFromWindow`의 머리말이 「⌘W는 안 넓힌다 — 겨눌 칸은 셸에 포커스가 있을
+   * 때만 뚜렷하다」고 적었는데, 탭 줄이 그 전제를 없앴다(adr-03).
+   *
+   * **`spec`이 켜져 있으면 아무 일도 안 한다** — 고정 탭이라 `×`가 없는 것과 같은 말이다.
+   * 분할이면 열 둘이 함께 서지만 `tab`은 그때 **포커스가 든 열**을 가리키므로(결정 97의
+   * `focusColumn`) 여기서 한 번 더 가를 것이 없다.
+   *
+   * 닫는 길은 여전히 `requestCloseShell` 하나다 — 확인 창을 우회하는 길을 새로 만들지
+   * 않는다(결정 92가 `closeShell`을 밖으로 안 내보내는 그 이유). 셸 안에서는 xterm 핸들러가
+   * 이미 같은 함수로 보내고 `stopPropagation`으로 여기까지 안 올라오므로 창이 두 번 안 뜬다.
+   *
+   * **닫을 것이 없으면 `preventDefault`도 안 부른다.** 이 앱의 메뉴에는 `close_window()`가
+   * 없어(src-tauri/src/lib.rs) ⌘W는 원래 아무 일도 안 하는 키다 — 삼키는 시늉을 해 두면
+   * 나중에 그 자리에 무엇이 생겼을 때 왜 안 오는지가 이 줄에 숨는다.
+   *
+   * 겨누는 칸을 정하는 일은 `shellClosedByTab`이 혼자 안다 — 아래 그 함수의 머리말이
+   * 왜 꺼냈는지를 든다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!closesShellFromWindow(e)) return;
+      const id = shellClosedByTab(tab, tabOwner, terminalStore.state);
+      if (id === null) return;
+      e.preventDefault();
+      void requestCloseShell(id);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tabOwner, tab]);
 
   // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
   // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
@@ -359,89 +447,119 @@ function WorksPage({
   // 머리행은 **본문 열 안에서만** 산다. 작업 패널이 이 열의 형제이자 머리행과 같은 층이라
   // (창 맨 위에서 시작해 아래까지 내려온다) 머리행이 그 위를 지나갈 수 없다. 그래서 화면이
   // 여기서 만들어 두고, 작업이 골라졌으면 SpecViewer에 슬롯으로 넘긴다.
-  const header = (
-        <PageHeader
-          root="Works"
-          leaf={selected && <TitleEditor key={selected.slug} work={selected} />}
-          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다
-          inset={!sidebarOpen}
-          // 브레드크럼에는 **작업 그 자체를 말하는 것**만 온다 — 제목 · ⓘ(메타) · ⋯(생애주기).
-          // 셋이 붙어 한 덩어리로 읽혀야 "이것이 무슨 작업인가"가 한 번에 잡힌다.
-          // 상태 배지는 오른쪽 actions로 갔다: 그것은 신원이 아니라 지금 어느 단계인가다.
-          //
-          // -ml-1은 PageHeader의 gap-1.5(6px)를 2px로 물린 것이다. 제목과 ⓘ 사이만
-          // 좁히려는 것이고, 아이콘 버튼 둘은 서로 붙는다 (24px 상자 안에 여백이 이미 있다).
-          meta={
-            selected && (
-              <span className="-ml-1 flex shrink-0 items-center">
-                <WorkMetaMenu work={selected} />
-                <WorkMenu work={selected} archive={archive} remove={remove} />
-              </span>
-            )
-          }
-          // 우측은 **지금 이 작업이 어느 단계이고 무엇을 보고 있는가**다. 상태 배지가
-          // 여기 남는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면 상태를
-          // 바꾸는 데 클릭이 두 번 든다.
-          //
-          // 여는 길은 PanelRight 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로 두면 닫는
-          // 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
-          //
-          // 닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
-          // 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다.
-          // 트랜지션이 끝난 뒤에 띄우면 빈 자리를 그만큼 쳐다보게 된다.
-          //
-          // 글리프는 PanelRight다. List는 이 패널이 "작업 목록"이던 시절의 이름인데,
-          // 정보 탭이 생기면 더는 목록이 아니다.
-          actions={
-            selected && (
-              <>
-                <StatusMenu work={selected} />
-                {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
-                    그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
-                    지금인지가 화면마다 갈린다. 무엇을 보고 있는지는 이제 트리의 켜진 행이
-                    말한다.
-                    (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
-                    주석까지 읽는다.) */}
-                {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
-                    터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
-                    여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
-                <button
-                  type="button"
-                  onClick={() => changeSplit(split === null ? "lr" : null, tab)}
-                  // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
-                  // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
-                  // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
-                  aria-label="분할"
-                  aria-pressed={split !== null}
-                  // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
-                  // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
-                  title={split !== null ? "분할 끄기" : "분할 켜기"}
-                  className={cn(
-                    "icon-button transition-colors",
-                    split !== null ? "toggle-on" : "text-tertiary quiet-hover",
-                  )}
-                >
-                  <Columns2 className="size-4" strokeWidth={2} />
-                </button>
-                {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
-                    그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
-                    사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다. */}
-                {!workPanelOpen && (
-                  <button
-                    type="button"
-                    onClick={() => setWorkPanelOpen(true)}
-                    aria-label="작업 패널 펼치기"
-                    aria-expanded={false}
-                    title="작업 패널 펼치기"
-                    className="icon-button-quiet text-tertiary"
-                  >
-                    <PanelRight className="size-4" strokeWidth={2} />
-                  </button>
-                )}
-              </>
-            )
-          }
-        />
+  //
+  // **그 머리행이 탭 줄이 됐다**(결정 7·10) — 셸을 고르는 자리가 사이드바 가지에서 화면
+  // 안으로 되돌아왔다(adr-03). 브레드크럼(`Works / 제목`)은 함께 사라진다: **work 제목은
+  // 사이드바 행이 말한다.** 감수한 것은 ⌘B로 사이드바를 접으면 화면 어디에도 제목이
+  // 없다는 것이고, 이름을 고치는 길은 ⋯ 메뉴로 갔다(아래 `WorkMenu`).
+  const header = panelWork ? (
+    <ShellTabs
+      state={shellState}
+      owner={panelWork.slug}
+      // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
+      // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
+      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. ShellBranch의 같은 주석이다.
+      projects={panelWork.worktrees.map((tree) => tree.project)}
+      // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
+      // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
+      spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
+      showing={terminalStands}
+      // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 이 줄이 창 왼쪽 끝에 붙는다
+      inset={!sidebarOpen}
+      // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
+      // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
+      // 보고 있는 work의 것이기 때문이다.
+      onSelect={(id) => {
+        selectShell(id);
+        onSelectTab("terminal");
+      }}
+      // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
+      onClose={requestCloseShell}
+      onOpen={(project) => {
+        // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
+        // 본문을 옮기지도 않는다(결정 24). ⌘T가 위에서 같은 규칙을 탄다.
+        const origin = workShellOrigin(panelWork, project);
+        if (!origin) return;
+        openNewShell(origin);
+        onSelectTab("terminal");
+      }}
+      // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
+      // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
+      //
+      // 상태 배지가 여기 있는 이유는 자주 누르는 조작이라서다 — 탭이나 메뉴 뒤에 숨기면
+      // 상태를 바꾸는 데 클릭이 두 번 든다. ⓘ·⋯는 브레드크럼에 있던 것이 제목과 함께
+      // 이리로 왔다: 제목이 사라져 「작업 그 자체를 말하는 덩어리」가 설 자리가 없어졌다.
+      actions={
+        selected && (
+          <>
+            <StatusMenu work={selected} />
+            {/* ⓘ와 ⋯ 사이에는 **여백이 없다**(이 묶음에 gap이 없다). hover 배경이 한
+                버튼에서 다음 버튼으로 끊김 없이 옮겨가야 하고, 그러려면 두 상자가 같아야
+                한다 — 둘 다 icon-button 규격인 근거가 그것이다.
+                한때 여기 `-ml-1`이 있었다: PageHeader의 gap을 물려 **제목과 ⓘ 사이만**
+                좁히는 값이었는데, 제목이 사라져 물릴 상대가 없다. */}
+            <span className="flex shrink-0 items-center">
+              <WorkMetaMenu work={selected} />
+              <WorkMenu work={selected} archive={archive} remove={remove} />
+            </span>
+            {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
+                그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
+                지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
+                두었다 — 사이드바에서 셸 가지가 걷히므로 자리는 여전히 하나다(adr-03).
+                (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
+                주석까지 읽는다.) */}
+            {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
+                터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
+                여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
+            <button
+              type="button"
+              onClick={() => changeSplit(split === null ? "lr" : null, tab)}
+              // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+              // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+              // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
+              aria-label="분할"
+              aria-pressed={split !== null}
+              // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+              // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
+              title={split !== null ? "분할 끄기" : "분할 켜기"}
+              className={cn(
+                "icon-button transition-colors",
+                split !== null ? "toggle-on" : "text-tertiary quiet-hover",
+              )}
+            >
+              <Columns2 className="size-4" strokeWidth={2} />
+            </button>
+            {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
+                그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
+                사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다.
+
+                여는 길은 이 버튼 하나, 닫는 길은 패널 안 × 하나다. 늘 보이는 토글로 두면
+                닫는 길이 둘이 된다. 본문 확대 단축키(⌘Enter)는 양쪽을 겸한다.
+
+                닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
+                따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다. */}
+            {!workPanelOpen && (
+              <button
+                type="button"
+                onClick={() => setWorkPanelOpen(true)}
+                aria-label="작업 패널 펼치기"
+                aria-expanded={false}
+                title="작업 패널 펼치기"
+                className="icon-button-quiet text-tertiary"
+              >
+                <PanelRight className="size-4" strokeWidth={2} />
+              </button>
+            )}
+          </>
+        )
+      }
+    />
+  ) : (
+    // 고른 작업이 없으면 **칸이 설 자리가 없다** — 문서도 셸도 없는 화면이라 탭 줄 대신
+    // 화면 이름만 이고 선다. 여기에 탭 줄을 세우면 `owner`가 `null`이 되는데 그 값은
+    // `shellsOf`의 계약상 **최상위 터미널**을 가리켜, `/terminal`의 셸이 이 줄에 서고
+    // `+`는 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
+    <PageHeader root="Works" inset={!sidebarOpen} />
   );
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
@@ -886,15 +1004,21 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
   );
 }
 
-// 브레드크럼 말단 제목 인라인 편집 — slug는 바뀌지 않는다 (ProjectDetail의 TitleEditor와 같은 계약).
-// 감싸는 PageHeader의 leaf span이 truncate/overflow:hidden이라 두 상태 모두 max-w-full로 스스로 줄어든다.
+// 이름 바꾸기 — **⋯ 메뉴 안에 산다**(결정 10). slug는 바뀌지 않는다 (ProjectDetail의
+// TitleEditor와 같은 계약).
 //
-// ProjectDetail 쪽과 달리 **음수 마진을 쓰지 않는다.** 그쪽 부모는 평범한 h1이지만 여기 부모는
-// 잘라내므로, 왼쪽으로 삐져나온 만큼이 그대로 클립된다 — outline-none이라 유일한 포커스 표시인
-// 입력의 왼쪽 테두리가 사라진다. 대신 패딩만 쓰고 두 상태의 좌측 정렬을 서로 맞춘다.
-function TitleEditor({ work }: { work: WorkView }) {
+// **한때 브레드크럼 말단의 제자리 편집이었다.** 탭 줄이 머리행을 차지하면서 제목이 화면에서
+// 빠졌고(사이드바 행이 말한다) 그 자리와 함께 편집도 사라졌는데, **이름을 고칠 길이 없어지면
+// 안 된다** — 그래서 여는 자리만 ⋯ 메뉴 항목으로 옮기고 편집 자체는 그대로 왔다.
+//
+// **늘 입력이다.** 예전의 「누르면 입력이 되는 버튼」은 여는 일을 겸하고 있었는데, 그 일을
+// 메뉴 항목이 가져갔으므로 남겨 두면 같은 일을 하는 자리가 둘이 된다.
+//
+// 끝나는 길이 셋이다 — Enter(적용) · Escape(버림) · 포커스 이탈(적용). 메뉴가 바깥 클릭으로
+// 닫히면 입력이 언마운트되며 그냥 사라진다: blur가 안 오는 경로라 그때는 안 고쳐지고,
+// 그것이 「메뉴를 닫았다」의 자연스러운 뜻이다.
+function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
   const setTitle = useSetWorkTitle();
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(work.title);
   // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
   const finished = useRef(false);
@@ -902,41 +1026,28 @@ function TitleEditor({ work }: { work: WorkView }) {
   const finish = (commit: boolean) => {
     if (finished.current) return;
     finished.current = true;
-    // 재조회가 돌아오기 전에 편집 모드를 먼저 끝낸다 — draft가 새 값과 싸우지 않게
-    setEditing(false);
     const value = draft.trim();
     if (commit && value && value !== work.title) {
       setTitle.mutate({ slug: work.slug, title: value });
     }
+    // 재조회가 돌아오기 전에 이 자리를 먼저 걷는다 — draft가 새 값과 싸우지 않게
+    onDone();
   };
 
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        title="클릭해서 편집"
-        onClick={() => {
-          finished.current = false;
-          setDraft(work.title);
-          setEditing(true);
-        }}
-        className="max-w-full truncate rounded-[7px] px-1.5 py-0.5 text-left transition-colors hover:bg-state-2"
-      >
-        {work.title}
-      </button>
-    );
-  }
   return (
     <input
       autoFocus
+      aria-label="작업 이름"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => finish(true)}
       onKeyDown={(e) => {
         if (e.key === "Enter") finish(true);
+        // Escape는 삼키지 않는다 — 메뉴의 Escape 핸들러가 함께 들어도 하는 일이 같다
+        // (아래 `onDone`이 메뉴를 닫는다). 삼키면 「같은 일을 두 번 막았다」만 남는다.
         if (e.key === "Escape") finish(false);
       }}
-      className="w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[14px] font-medium outline-none"
+      className="w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[12.5px] font-medium outline-none"
     />
   );
 }
@@ -1028,6 +1139,11 @@ function WorkMenu({
   remove: ReturnType<typeof useRemoveWork>;
 }) {
   const [open, setOpen] = useState(false);
+  // **이름 바꾸기가 이 메뉴로 왔다**(결정 10 · #141). 제목이 머리행에서 빠지면서 제자리
+  // 편집도 함께 사라졌는데, 이름을 고칠 길이 없어지면 안 된다. 항목을 누르면 메뉴가 닫히지
+  // 않고 **그 자리가 입력으로 바뀐다** — 팝오버 밖에 입력을 세우면 앵커가 사라진 뒤에도
+  // 떠 있는 자리가 하나 더 생기고, 그것을 닫는 규칙을 또 정해야 한다.
+  const [renaming, setRenaming] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const busy = archive.isPending || remove.isPending;
   // 이 Work의 **살아 있는** 셸. 확인 대화가 그 수를 말한다(결정 26). 고르는 규칙은
@@ -1058,7 +1174,13 @@ function WorkMenu({
   //
   // 작업 패널이 WorksPage로 올라온 뒤(결정 49)에도 **머리행은 SpecViewer 안에 그대로 있다** —
   // 올라간 것은 패널이지 머리행이 아니다. 터미널 탭에서는 이 이펙트가 실제로 일한다.
-  useEffect(() => setOpen(false), [work.slug]);
+  //
+  // 편집도 함께 걷는다 — 남겨 두면 다음에 이 메뉴를 열었을 때 **다른 작업의 이름**을
+  // 고치는 입력이 먼저 서 있다.
+  useEffect(() => {
+    setOpen(false);
+    setRenaming(false);
+  }, [work.slug]);
 
   // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
   // 성공한 아카이빙 위에 "아카이빙하지 못했습니다" 창이 뜨는 것이 그 결과다.
@@ -1124,8 +1246,8 @@ function WorkMenu({
         aria-busy={busy}
         title={busy ? "처리 중이에요" : "작업 메뉴"}
         // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
-        // 둘 사이에 여백이 없어(위 meta의 -ml-1 묶음) hover 배경이 한 버튼에서 다음
-        // 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+        // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
+        // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
         // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
         // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
         // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
@@ -1144,26 +1266,52 @@ function WorkMenu({
         <PopoverPortal
           anchorRef={anchor}
           width={190}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            setRenaming(false);
+          }}
           className="flex flex-col gap-px p-[5px]"
         >
-          <button
-            type="button"
-            onClick={handleArchive}
-            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-          >
-            <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
-          </button>
-          <span className="my-[3px] h-px bg-border" />
-          <button
-            type="button"
-            onClick={handleRemove}
-            className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left text-destructive transition-colors hover:bg-destructive/10"
-          >
-            <Trash2 className="size-3.5 shrink-0" strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">삭제</span>
-          </button>
+          {renaming ? (
+            <TitleEditor
+              work={work}
+              onDone={() => {
+                setRenaming(false);
+                setOpen(false);
+              }}
+            />
+          ) : (
+            <>
+              {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
+                  거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}
+              <button
+                type="button"
+                onClick={() => setRenaming(true)}
+                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
+              >
+                <Pencil className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">이름 바꾸기</span>
+              </button>
+              <span className="my-[3px] h-px bg-border" />
+              <button
+                type="button"
+                onClick={handleArchive}
+                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
+              >
+                <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
+              </button>
+              <span className="my-[3px] h-px bg-border" />
+              <button
+                type="button"
+                onClick={handleRemove}
+                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <Trash2 className="size-3.5 shrink-0" strokeWidth={1.9} />
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">삭제</span>
+              </button>
+            </>
+          )}
         </PopoverPortal>
       )}
     </span>

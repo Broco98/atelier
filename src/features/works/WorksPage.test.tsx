@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WorksPage, { togglesWorkPanel } from "./WorksPage";
+import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
 import { worksQuery } from "./hooks";
 import type { WorkView } from "./types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
@@ -200,8 +200,10 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   });
 });
 
-// v2 디자인의 머리행 배치 — 작업 그 자체를 말하는 것(제목 · ⓘ · ⋯)은 브레드크럼에 모이고,
-// 지금 무엇을 하는가(상태 · 패널)는 오른쪽 actions로 간다.
+// 머리행 배치 — **탭 줄이 되면서 조작이 전부 오른쪽 끝으로 모였다**(결정 10).
+// 한때는 「작업 그 자체를 말하는 것(제목 · ⓘ · ⋯)은 브레드크럼, 지금 무엇을 하는가(상태 ·
+// 패널)는 오른쪽」이었는데, 제목이 화면에서 빠지면서 왼쪽 덩어리 자체가 없어졌다 —
+// 그 자리를 탭이 쓴다.
 describe("WorksPage 머리행 배치", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -213,12 +215,12 @@ describe("WorksPage 머리행 배치", () => {
   function header(markup: string): string {
     return markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
   }
-  // actions는 헤더의 마지막 자식이다 (PageHeader)
+  // actions는 헤더의 마지막 자식이다 (ShellTabs·PageHeader가 같은 상자를 쓴다)
   function actions(markup: string): string {
     return header(markup).match(/<div class="flex shrink-0 items-center gap-2">([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
   }
 
-  it("제목 뒤에 ⓘ가 오고, 그 뒤가 ⋯다", () => {
+  it("ⓘ 다음이 ⋯다", () => {
     const h = header(render());
     const info = h.indexOf('aria-label="작업 메타"');
     const menu = h.indexOf('aria-label="작업 메뉴"');
@@ -227,7 +229,7 @@ describe("WorksPage 머리행 배치", () => {
   });
 
   it("맞붙어 선 ⓘ와 ⋯가 같은 상자를 쓴다", () => {
-    // 둘 사이에 여백이 없다(meta 묶음에 gap이 없다). 그래서 hover 배경이 한 버튼에서 다음
+    // 둘 사이에 여백이 없다(그 묶음에 gap이 없다). 그래서 hover 배경이 한 버튼에서 다음
     // 버튼으로 **끊김 없이** 옮겨가고, 상자가 다르면 그 순간 배경이 커졌다 작아진다.
     // 눈으로는 "살짝 튄다"로만 보여서, 어느 쪽이 틀렸는지는 나란히 놓고 재기 전에 안 드러난다.
     // ⋯가 22px·radius 7이었던 것은 옛 이웃인 상태 배지에 맞춘 값인데, 그 배지가 오른쪽
@@ -241,13 +243,34 @@ describe("WorksPage 머리행 배치", () => {
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
 
-  it("상태 배지는 오른쪽 actions에 있고, ⓘ·⋯는 거기 없다", () => {
-    // 배지가 브레드크럼에 남아 있으면 제목과 ⓘ 사이를 가른다 — 셋이 한 덩어리로 읽히지 않는다.
+  it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
+    // 결정 10. 상태 배지 · ⓘ · ⋯ · 분할이 한 자리에 모인다(패널 열기는 패널이 닫혔을
+    // 때만이라 여기 안 보인다 — 그쪽은 아래 「분할인 채 들어와도」가 센다).
+    //
+    // **왼쪽에 남는 것이 있으면 안 된다.** 하나라도 왼쪽에 남으면 탭이 늘고 줄 때마다
+    // 그것의 자리가 함께 움직인다 — 결정 10이 오른쪽 끝을 고른 이유가 그것이다.
     const a = actions(render());
     expect(a).not.toBe("");
-    expect(a).toContain('title="상태 변경"');
-    expect(a).not.toContain('aria-label="작업 메타"');
-    expect(a).not.toContain('aria-label="작업 메뉴"');
+    for (const one of [
+      'title="상태 변경"',
+      'aria-label="작업 메타"',
+      'aria-label="작업 메뉴"',
+      'aria-label="분할"',
+    ]) {
+      expect(a, one).toContain(one);
+    }
+  });
+
+  // 결정 10. work 제목은 화면에서 사라진다 — 사이드바 행이 말한다.
+  // _감수한 것_: ⌘B로 사이드바를 접으면 화면 어디에도 제목이 없다.
+  it("work 제목이 머리행에 없다", () => {
+    const h = header(render());
+    expect(h).not.toBe("");
+    expect(h).not.toContain(work.title);
+    // 제자리 편집도 함께 걷혔다 — 여는 자리가 ⋯ 메뉴로 갔다(#141).
+    expect(h).not.toContain('title="클릭해서 편집"');
+    // 브레드크럼 자체가 없다. `Works /`가 남아 있으면 탭이 그만큼 밀린다.
+    expect(h).not.toContain("Works");
   });
 });
 
@@ -324,27 +347,34 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
-  // 결정 102. 가로 탭 줄이 걷힌 뒤로 **본문에서 셸을 여는 길이 여기뿐이다** — 정상 종료한
-  // 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로
-  // 뜨지 않는다(판 02). 셸이 0개인 화면이 실재하고, 그때 본문이 그 자리를 내야 한다.
+  // 결정 102. 정상 종료한 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은
+  // 자리에서는 새 셸이 저절로 뜨지 않는다(판 02) — 셸이 0개인 화면이 실재하고, 그때 본문이
+  // 그 자리를 낸다.
   //
-  // **본문 안(`</main>` 앞)만 센다.** 사이드바 가지와 패널에도 같은 이름의 `+`가 있어서
-  // 마크업 전체에서 세면 「본문에 있다」와 「어딘가 있다」가 같아진다.
+  // **머리행 뒤부터 `</main>` 앞까지만 센다.** 사이드바 가지·패널에도 같은 이름의 `+`가
+  // 있고, **탭 줄에도 이제 하나 선다**(결정 7) — 마크업 전체에서 세면 「본문에 있다」와
+  // 「어딘가 있다」가 같아진다.
   it("셸이 0개면 터미널 본문이 여는 자리를 낸다", () => {
     const markup = render({}, "terminal");
+    const headEnd = markup.indexOf("</header>");
     const bodyEnd = markup.indexOf("</main><aside");
-    expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(-1);
-    const body = markup.slice(0, bodyEnd);
+    expect(headEnd, "머리행의 끝을 찾지 못했다").toBeGreaterThan(-1);
+    expect(bodyEnd, "본문과 패널의 경계를 찾지 못했다").toBeGreaterThan(headEnd);
+    const body = markup.slice(headEnd, bodyEnd);
     expect(body.match(/aria-label="셸 열기"/g)).toHaveLength(1);
     // 패널이 **함께** 있다. 그 머리행의 닫는 ×로 확인한다.
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
-  it("spec 본문에는 여는 자리가 아예 없다", () => {
-    // 결정 71·102. 셸을 여는 자리는 사이드바 가지와 **셸 0개인 터미널 본문**뿐이다.
-    // 문서를 읽는 화면에 `+`가 남아 있으면 그것이 어느 화면의 셸을 여는지가 흐려진다.
+  it("spec 본문에는 여는 자리가 없다 — 여는 자리는 탭 줄의 `+`다", () => {
+    // 결정 7. 셸을 여는 자리가 화면 안으로 돌아왔다(adr-03) — 그래서 문서를 읽는 중에도
+    // `+`가 **머리행에** 서고, 본문에는 여전히 없다. 본문에 또 서면 그것이 어느 화면의
+    // 셸을 여는지가 흐려진다.
     const markup = render({}, "spec");
-    expect(markup).not.toContain('aria-label="셸 열기"');
+    const headEnd = markup.indexOf("</header>");
+    expect(headEnd, "머리행의 끝을 찾지 못했다").toBeGreaterThan(-1);
+    expect(markup.slice(0, headEnd)).toContain('aria-label="셸 열기"');
+    expect(markup.slice(headEnd)).not.toContain('aria-label="셸 열기"');
     expect(markup).toContain('aria-label="작업 패널 접기"');
   });
 
@@ -563,12 +593,13 @@ describe("WorksPage ⌘Enter", () => {
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
     // 셸이 0개인 화면에서 ⌘T가 다시 안 먹는다 — 결정 93이 없애려던 증상 그 자체다.
-    // 이 화면이 window에서 듣는 자리는 **셋이다** — ⌘Enter(패널 접기) · ⌘T(셸 열기) ·
-    // 본문을 옮기는 ⌘1~9·⌃Tab(결정 78·79). 줄어들면 그중 한 벌이 통째로 죽은 것이다.
+    // 이 화면이 window에서 듣는 자리는 **넷이다** — ⌘Enter(패널 접기) · ⌘T(셸 열기) ·
+    // 본문을 옮기는 ⌘1~9·⌃Tab(결정 78·79) · ⌘W(켜진 탭 닫기 — 결정 13). 줄어들면 그중
+    // 한 벌이 통째로 죽은 것이다.
     expect(
       countOf(worksPage, 'window.addEventListener("keydown", onKeyDown);'),
-      "window에서 키를 듣는 자리가 셋이 아니다 — ⌘Enter · ⌘T · ⌘1~9·⌃Tab",
-    ).toBe(3);
+      "window에서 키를 듣는 자리가 넷이 아니다 — ⌘Enter · ⌘T · ⌘1~9·⌃Tab · ⌘W",
+    ).toBe(4);
   });
 
   // 결정 78·109. ⌘1은 spec, ⌘2~9는 **이 화면의** 셸이다. 클릭도 키도 이 seam에서는 못
@@ -601,12 +632,12 @@ describe("WorksPage ⌘Enter", () => {
   });
 });
 
-// ─── 결정 42·47·50: 셸 목록이 패널로 왔다 ───
+// ─── 결정 7·10·13(판 03): 머리행이 탭 줄이 된다 ───
 
-// 이 화면은 셸 목록을 **슬롯으로 조립한다** — 스토어를 구독하는 가지 하나(PanelShells)를
-// 만들어 패널에 넘긴다. 그래서 「목록이 실제로 이 Work의 셸을 그리는가」는 여기서만 보인다:
-// 패널 쪽 seam은 슬롯을 표식으로 대신하고, 목록 쪽 seam은 상태를 손으로 넣는다.
-describe("WorksPage에 셸 목록이 없다", () => {
+// **이 화면이 그 줄을 조립한다** — 줄 자체(ShellTabs)는 상태와 콜백만 받으므로, 「이 work의
+// 셸이 실제로 칸으로 서는가」는 스토어를 여기서 손으로 채워야 보인다. 줄 쪽 seam은
+// 상태를 직접 넣고(ShellTabs.test.tsx), 이 seam은 그 둘이 이어졌는지를 본다.
+describe("WorksPage 머리행이 탭 줄이다", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -624,13 +655,144 @@ describe("WorksPage에 셸 목록이 없다", () => {
     terminalStore.setState(() => state);
   }
 
-  // 결정 71. 셸을 고르는 자리가 사이드바 가지 하나다. 이 화면에 목록이 남아 있으면
-  // 같은 것이 두 자리에 서고, 어느 쪽이 지금인지가 화면마다 갈린다.
-  it("이 Work의 셸이 도는 중에도 패널에 행이 서지 않는다", () => {
+  const headerOf = (markup: string) => markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+  // 칸을 표식으로 자른다 — ShellTabs.test.tsx의 같은 관용구다(정규식으로 블록을 잘라내는
+  // 판정은 쓰지 않는다: 이 저장소는 그 fail-open으로 데었다).
+  const kindsOf = (markup: string) =>
+    markup
+      .split('data-tab="')
+      .slice(1)
+      .map((chunk) => chunk.slice(0, chunk.indexOf('"')));
+
+  it("이 Work의 셸이 `spec` 뒤에 칸으로 선다", () => {
+    seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
+    // 남의 work의 셸이 섞이면 안 된다 — `owner`가 이 화면의 것이어야 한다.
+    terminalStore.setState((state) => openShell(state, { owner: "남", project: null, cwd: "~/x" })!.state);
+    expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
+  });
+
+  it("세로 목록의 둘째 줄은 안 따라온다", () => {
+    // 결정 45의 `cwd` 줄은 **세로 목록**의 것이다. 한 줄짜리 칸에 끌고 오면 이름이 그만큼
+    // 밀린다 — 옮겨 온 것은 「칸이 무엇을 고르나」이지 행의 모양이 아니다.
     seed(1, work.slug, "~/.atelier/works/some-work/trees/atelier");
+    expect(render()).not.toContain("~/.atelier/works/some-work/trees/atelier");
+  });
+
+  it("셸을 닫는 `×`가 칸마다 하나씩, 머리행 안에만 있다", () => {
+    // 결정 71이 이 화면에서 걷어낸 것은 **세로 목록**이다. 닫는 길은 여전히 하나이고
+    // (결정 22·92) 그것이 이제 탭의 `×`다 — 본문·패널에 또 서면 두 자리가 된다.
+    seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
     const markup = render();
-    expect(markup).not.toContain("~/.atelier/works/some-work/trees/atelier");
-    expect(markup).not.toMatch(/aria-label="[^"]*닫기"/);
+    const header = headerOf(markup);
+    expect(header.match(/aria-label="[^"]*닫기"/g)).toHaveLength(2);
+    expect(markup.slice(markup.indexOf("</header>"))).not.toMatch(/aria-label="[^"]*셸[^"]*닫기"/);
+  });
+
+  it("고른 작업이 없으면 탭 줄이 아니라 화면 이름이 선다", () => {
+    // `owner`를 `null`로 넘기면 그 값은 `shellsOf`의 계약상 **최상위 터미널**을 가리킨다 —
+    // `/terminal`의 셸이 work 화면의 줄에 서고, `+`는 열 자리가 없어 눌러도 아무 일이 없는
+    // 버튼이 된다(결정 11·21이 금지하는 것).
+    seed(2, null as unknown as string, "~/x");
+    const client = new QueryClient();
+    client.setQueryData(worksQuery.queryKey, []);
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <WorksPage
+          sidebarOpen
+          selectedSlug={null}
+          currentFile={null}
+          onSelectFile={() => {}}
+          onOpenProject={() => {}}
+          tab="spec"
+          onSelectTab={() => {}}
+          split={null}
+          onSelectSplit={() => {}}
+          onDropInto={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    expect(kindsOf(headerOf(markup))).toEqual([]);
+    expect(headerOf(markup)).toContain("Works");
+  });
+});
+
+// 결정 13. ⌘W의 대상이 **켜진 탭**이 됐다 — 겨눌 칸이 화면에 서게 된 것이 그 근거다(adr-03).
+//
+// **겨누는 칸을 정하는 일이 순수 함수로 나와 있어 이건 진짜로 도는 검사다**(`togglesWorkPanel`과
+// 같은 이유). 핸들러 안에 두면 소스를 문자열로 훑는 검사밖에 못 거는데, 그 검사는 핸들러
+// 첫 줄에 `return`을 얹어도 초록이었다(실측). 키 판정 쪽(`closesShellFromWindow`)은
+// shell-registry.test.ts에 전수돼 있다.
+describe("WorksPage ⌘W가 겨누는 칸", () => {
+  afterEach(() => {
+    terminalStore.setState(() => NO_SHELLS);
+  });
+
+  function seed(owner: string | null): number {
+    const opened = openShell(NO_SHELLS, { owner, project: null, cwd: "~/x" })!;
+    terminalStore.setState(() => opened.state);
+    return opened.id;
+  }
+
+  it("터미널 탭에서는 그 화면의 켜진 칸이다", () => {
+    const id = seed(work.slug);
+    expect(shellClosedByTab("terminal", work.slug, terminalStore.state)).toBe(id);
+  });
+
+  it("`spec`이 켜져 있으면 아무 일도 안 한다", () => {
+    // 고정 탭이라 `×`가 없는 것과 같은 말이다(결정 13).
+    seed(work.slug);
+    expect(shellClosedByTab("spec", work.slug, terminalStore.state)).toBeNull();
+  });
+
+  it("고른 작업이 없으면 최상위 터미널의 셸을 닫지 않는다", () => {
+    // `owner`가 `null`이면 그 값은 `shellsOf`의 계약상 **`/terminal`**을 가리킨다 —
+    // 그냥 `activeIdOf`를 부르면 work 화면의 ⌘W가 남의 화면 셸을 죽인다.
+    seed(null);
+    expect(shellClosedByTab("terminal", null, terminalStore.state)).toBeNull();
+  });
+
+  it("그 화면의 셸이 0개면 닫을 것이 없다", () => {
+    seed("남");
+    expect(shellClosedByTab("terminal", work.slug, terminalStore.state)).toBeNull();
+  });
+
+  // 배선은 렌더로 못 본다(이펙트다). **정규식으로 블록을 잘라내지 않는다** — 앞쪽
+  // `[\s\S]*?`가 남의 이펙트에서 출발해 초록이 되는 사고를 이 파일이 이미 겪었다.
+  it("그 판단이 window에서 듣는 자리에 실제로 배선돼 있다", () => {
+    const worksPage = source("WorksPage.tsx");
+    // 판정을 손으로 다시 적으면 xterm 안에서 확인 창이 두 번 뜬다 — 그 예외는 저 함수가 든다.
+    expect(worksPage).toContain("if (!closesShellFromWindow(e)) return;");
+    expect(worksPage).toContain("const id = shellClosedByTab(tab, tabOwner, terminalStore.state);");
+    // **확인 창을 우회하는 길을 새로 만들지 않는다**(결정 92).
+    expect(worksPage).toContain("void requestCloseShell(id);");
+    // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
+    // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
+    expect(worksPage).toContain("onClose={requestCloseShell}");
+  });
+});
+
+// #141. 제목이 머리행에서 빠지면서 제자리 편집도 사라졌다 — **이름을 고칠 길이 없어지면
+// 안 된다.** 메뉴가 열린 화면은 정적 렌더로 만들 수 없으므로(여닫음이 클릭이다) 배선을
+// 리터럴로 못박는다.
+describe("WorksPage 이름 바꾸기가 ⋯ 메뉴로 갔다", () => {
+  it("편집을 여는 자리가 ⋯ 메뉴 안에 하나 있다", () => {
+    const worksPage = source("WorksPage.tsx");
+    const menu = worksPage.indexOf("function WorkMenu(");
+    expect(menu, "⋯ 메뉴를 찾지 못했다").toBeGreaterThan(-1);
+    // 편집이 그 함수 **뒤**에 있다 = 그 메뉴 안이다. 머리행에 남아 있으면 앞에 나온다.
+    expect(worksPage.indexOf("<TitleEditor")).toBeGreaterThan(menu);
+    expect(countOf(worksPage, "<TitleEditor")).toBe(1);
+    // **JSX에만 있는 리터럴로 집는다.** 「이름 바꾸기」라는 글자는 이 파일의 주석에도 나와서
+    // 그것만 세면 항목을 지워도 초록이다 — 실제로 뮤테이션에서 살아남았다.
+    expect(worksPage).toContain(
+      '<span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">이름 바꾸기</span>',
+    );
+    expect(worksPage).toContain("onClick={() => setRenaming(true)}");
+  });
+
+  it("고친 이름이 실제로 코어로 간다", () => {
+    // 항목만 있고 커밋이 없으면 「눌러도 아무 일이 없는 버튼」이 된다(결정 11·21).
+    expect(source("WorksPage.tsx")).toContain("setTitle.mutate({ slug: work.slug, title: value })");
   });
 });
 

@@ -75,7 +75,10 @@ test("고른 work 아래에 트리가 서고, 가지 접힘은 세션까지만 �
   // 처음 고른 work의 가지는 펼쳐진다(결정 107). 그 속이 실제로 서는 것까지 본다.
   await expect(branch).toHaveAttribute("aria-expanded", "true");
   await expect(body).not.toHaveAttribute("inert", "");
-  await expect(page.getByRole("button", { name: "셸 열기" })).toBeVisible();
+  // **사이드바 안에서 센다.** 판 03이 work 화면 머리행에 탭 줄을 세우면서 같은 접근성
+  // 이름의 `+`가 화면에 하나 더 생겼다 — 범위를 안 좁히면 이 검사는 「가지가 펼쳐졌나」가
+  // 아니라 「화면 어딘가에 여는 자리가 있나」를 보게 된다.
+  await expect(page.locator("aside").getByRole("button", { name: "셸 열기" })).toBeVisible();
 
   await branch.click();
   await expect(branch).toHaveAttribute("aria-expanded", "false");
@@ -296,7 +299,7 @@ test("work을 옮겨도 앞 work의 블럭이 남는다", async ({ page }) => {
 
   // 떠나온 work의 속이 그대로 있다 — `spec` 잎이 둘, 셸을 여는 자리도 둘.
   await expect(page.locator('[data-leaf="spec"]')).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "셸 열기" })).toHaveCount(2);
+  await expect(page.locator("aside").getByRole("button", { name: "셸 열기" })).toHaveCount(2);
 
   // **접는 길은 그 work을 다시 골라 행을 누르는 것**이다(결정 101 — 토글은 고른 행에만).
   await page.getByRole("button", { name: plainWork.title, exact: true }).click();
