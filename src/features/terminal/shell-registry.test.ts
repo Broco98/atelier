@@ -17,6 +17,7 @@ import {
   needsCloseConfirm,
   NO_SHELLS,
   openShell,
+  closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
   runningShellsOf,
@@ -1032,9 +1033,10 @@ describe("window에서 듣는 ⌘T", () => {
     expect(opensShellFromWindow(key({ target: null }))).toBe(true);
   });
 
-  // **⌘W는 안 넓힌다**(결정 98) — 「이 칸을 닫는다」는 겨눌 칸이 있어야 하고, 그 칸은
-  // 셸에 포커스가 있을 때만 뚜렷하다.
-  it("⌘W는 여기서 안 듣는다", () => {
+  // 판정 둘이 **갈려 있다.** ⌘W도 이제 window에서 듣지만(결정 13) 그것은 아래 describe의
+  // 함수다 — 한 함수가 둘을 겸하면 부르는 쪽이 「무엇이 눌렸나」를 다시 갈라야 하고,
+  // ⌘T만 듣는 화면(셸 0개)에서 ⌘W가 함께 새어 들어온다.
+  it("⌘W는 이 판정으로는 안 온다", () => {
     expect(opensShellFromWindow(key({ code: "KeyW" }))).toBe(false);
   });
 
@@ -1044,6 +1046,59 @@ describe("window에서 듣는 ⌘T", () => {
 
   it("⌘ 없이 T만은 아니다 — 그냥 글자다", () => {
     expect(opensShellFromWindow(key({ metaKey: false }))).toBe(false);
+  });
+});
+
+// ⌘W도 window에서 듣는다(결정 13). `opensShellFromWindow`의 머리말은 한때 그 반대를
+// 적고 있었다 — 「겨눌 칸은 셸에 포커스가 있을 때만 뚜렷하다」. **탭 줄이 그 전제를
+// 없앤다**(adr-03): 켜진 칸이 화면에 서 있으므로 포커스가 탭 버튼에 있든 `+`에 있든
+// 겨눌 것이 하나로 정해진다. 무엇을 닫을지는 화면이 알고, 여기서는 「그 키가 맞나」만 본다.
+describe("window에서 듣는 ⌘W", () => {
+  const el = (tagName: string) => Object.assign(new EventTarget(), { tagName });
+
+  type WindowT = Parameters<typeof closesShellFromWindow>[0];
+  const key = (over: Partial<WindowT> = {}): WindowT => ({
+    type: "keydown",
+    code: "KeyW",
+    ctrlKey: false,
+    metaKey: true,
+    altKey: false,
+    shiftKey: false,
+    target: el("DIV"),
+    ...over,
+  });
+
+  // 탭을 눌러 고른 직후가 이 자리다 — 그때 포커스는 그 버튼에 있고 xterm에 없다.
+  it("본문·탭 줄에 포커스가 있으면 닫는다", () => {
+    expect(closesShellFromWindow(key())).toBe(true);
+  });
+
+  // **xterm의 입력 자리가 숨은 <textarea>다.** 셸 안에서는 그쪽 핸들러가 이미 같은 길
+  // (`requestCloseShell`)로 보내므로 여기서 또 들으면 확인 창이 두 번 뜬다.
+  it("셸 안에서는 안 듣는다 — xterm 핸들러가 이미 가져갔다", () => {
+    expect(closesShellFromWindow(key({ target: el("TEXTAREA") }))).toBe(false);
+  });
+
+  it("글을 치는 자리에서는 안 듣는다", () => {
+    expect(closesShellFromWindow(key({ target: el("INPUT") }))).toBe(false);
+    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
+    expect(closesShellFromWindow(key({ target: editable }))).toBe(false);
+  });
+
+  it("포커스가 아무 데도 없어도 안 터진다", () => {
+    expect(closesShellFromWindow(key({ target: null }))).toBe(true);
+  });
+
+  it("⌘T는 이 판정으로는 안 온다", () => {
+    expect(closesShellFromWindow(key({ code: "KeyT" }))).toBe(false);
+  });
+
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 붙으면 아니다", (extra) => {
+    expect(closesShellFromWindow(key({ [extra]: true }))).toBe(false);
+  });
+
+  it("⌘ 없이 W만은 아니다 — 그냥 글자다", () => {
+    expect(closesShellFromWindow(key({ metaKey: false }))).toBe(false);
   });
 });
 

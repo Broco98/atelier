@@ -592,8 +592,11 @@ export function shellRewrite(event: {
  * 전체**이고(결정 98), 열리면 본문이 터미널로 넘어간다 — ⌘1이 spec, ⌘2~9가 셸로 본문을
  * 옮기는 한 벌에 이 키도 든다.
  *
- * **⌘W는 넓히지 않는다**(결정 98). 그것은 「이 칸을 닫는다」라 겨눌 칸이 있어야 하고, 그
- * 칸은 셸에 포커스가 있을 때만 뚜렷하다. 그래서 여기서 보는 것은 `"new"` 하나다.
+ * **⌘W는 이 함수가 아니다** — 아래 `closesShellFromWindow`가 따로 든다(결정 13). 한때
+ * 여기 「⌘W는 넓히지 않는다(결정 98) — 겨눌 칸은 셸에 포커스가 있을 때만 뚜렷하다」고
+ * 적혀 있었는데, **탭 줄이 그 전제를 없앴다**(adr-03): 켜진 칸이 화면에 서 있다. 판정을
+ * 둘로 갈라 두는 것은 ⌘T만 듣는 화면(셸 0개)에 ⌘W가 새어 들지 않게 하기 위해서다 —
+ * 그래서 여기서 보는 것은 여전히 `"new"` 하나다.
  *
  * **입력 중에는 안 듣는다 — 그런데 xterm의 입력 자리도 숨은 `<textarea>`다**
  * (`togglesWorkPanel`이 적어 둔 함정과 같은 자리). 셸 안에서는 xterm 핸들러가 이미
@@ -616,6 +619,31 @@ export function opensShellFromWindow(event: {
   target: EventTarget | null;
 }): boolean {
   if (shellHotkey(event) !== "new") return false;
+  return !typesInto(event.target);
+}
+
+/**
+ * **window에서** ⌘W를 듣는 자리의 판정(결정 13). 위 함수와 **같은 모양이고 같은 예외를
+ * 탄다** — 다른 것은 어느 키를 보는가 하나뿐이다.
+ *
+ * 무엇을 닫을지는 여기서 안 정한다. 「켜진 탭」이 무엇인지는 화면이 알고(work 화면은
+ * `spec`이 켜져 있으면 닫을 것이 없다), 셸을 닫는 길은 여전히 `requestCloseShell` 하나다 —
+ * 확인 창을 우회하는 길을 새로 만들지 않는다(결정 92).
+ *
+ * **셸 안에서는 안 듣는다.** xterm 핸들러가 이미 같은 함수로 보내므로 여기서 또 들으면
+ * 확인 창이 두 번 뜬다. 그쪽이 `stopPropagation`으로도 막지만 그 한 겹에만 기대지 않는
+ * 이유는 `opensShellFromWindow`의 머리말과 같다.
+ */
+export function closesShellFromWindow(event: {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  target: EventTarget | null;
+}): boolean {
+  if (shellHotkey(event) !== "close") return false;
   return !typesInto(event.target);
 }
 
