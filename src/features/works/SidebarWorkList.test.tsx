@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { openBranchOnSelect, WorkSectionList } from "./SidebarWorkList";
+import { openBranchOnSelect, RunningMarks, WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { ViewTab } from "@/routes/-work-search";
 import type { WorkView } from "./types";
@@ -46,6 +46,8 @@ function render(
     nodeStands = (slug: string) => slug === selectedSlug,
     nodeOpen = () => true,
     renderShells = (work: WorkView) => <i data-shells={work.slug} />,
+    // 둘째 줄의 로고도 슬롯으로 온다 — 값을 고르는 자리가 Sidebar라서다(RunningMarks 머리말).
+    renderRunning = (work: WorkView) => <i data-running={work.slug} />,
   }: {
     selectedSlug?: string | null;
     tab?: ViewTab;
@@ -54,6 +56,7 @@ function render(
     nodeStands?: (slug: string) => boolean;
     nodeOpen?: (slug: string) => boolean;
     renderShells?: (work: WorkView) => ReactNode;
+    renderRunning?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -75,6 +78,7 @@ function render(
       onToggleNode={() => {}}
       onOpenSpec={() => {}}
       renderShells={renderShells}
+      renderRunning={renderRunning}
     />,
   );
 }
@@ -120,6 +124,15 @@ const rowsBySection = (markup: string) =>
       label: spansOf(chunk.slice(0, chunk.indexOf("</button>")))[0],
       rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
     }));
+
+// 행의 **둘째 줄**만 잘라낸다(결정 2). 「행 안에서」 봐야 뜻이 있다 — 마크업 전체에서 숫자를
+// 세면 다른 행의 줄이나 구획 개수와 섞여, 줄이 엉뚱한 work에 서도 초록이 된다.
+// 이 줄 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 줄 전부다.
+const subrowsOf = (markup: string) =>
+  [...markup.matchAll(/<div[^>]*data-subrow="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
+    slug: m[1],
+    html: m[0],
+  }));
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
@@ -234,6 +247,83 @@ describe("구획 접기", () => {
     const markup = render(works("pin:가", "pin:나", "다"), { ...ALL, pinned: false });
     expect(headersOf(markup)[0].count).toBe("2");
     expect(pinsOf(markup)).toHaveLength(3);
+  });
+});
+
+// 결정 2~5. **이 work의 절반이 이 물음 하나를 위한 것이다: 목록만 훑고도 어느 work에서
+// 무엇이 돌고 있는지 안다.** 그래서 이 줄의 주인공은 지금 보고 있지 **않은** work다 —
+// 보고 있는 work에서 뭐가 도는지는 본문의 탭 줄이 이미 말한다.
+describe("work 행의 둘째 줄", () => {
+  it("셸이 하나라도 있는 행에만 선다 — 높이가 곧 신호다", () => {
+    // 결정 3. 셸이 0개인 work는 한 줄로 남아 **행 높이 자체가 「여기서 일이 돌고 있다」**가 된다.
+    const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2, 다: 1 } });
+    expect(subrowsOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
+  });
+
+  it("그 work의 셸 수를 적는다", () => {
+    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 3, 나: 1 } });
+    expect(subrowsOf(markup).map((one) => spansOf(one.html)[0])).toEqual(["3", "1"]);
+  });
+
+  it("도는 것이 없어도 줄은 그대로 선다", () => {
+    // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
+    // 순간 바뀌어서(pty.rs가 1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이
+    // 접혔다 펴지고 아래 work들이 계속 밀린다. 줄이 서는 조건은 **안 변하는 값**(셸을
+    // 포함하는가)이고 변하는 것은 줄 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도
+    // 줄은 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderRunning: () => null });
+    expect(subrowsOf(markup)).toHaveLength(1);
+  });
+
+  it("로고는 그 줄 **안에** 있고, 셸이 없는 행에는 아예 안 붙는다", () => {
+    // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
+    // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
+    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
+    const [가] = subrowsOf(markup);
+    expect(가.html).toContain('data-running="가"');
+    expect(markup).not.toContain('data-running="나"');
+  });
+
+  it("아무것도 눌리지 않는다", () => {
+    // 결정 5. 로고가 **종류만** 말하므로(결정 4) 로고와 셸이 1:1이 아니다 — 누르면 어느
+    // 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아 그 work로 간다.
+    const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
+    expect(가.html).not.toContain("<button");
+    expect(가.html).not.toContain("<a ");
+  });
+});
+
+// 결정 4·15. **표는 agent-mark 하나다** — 탭 칸과 이 줄이 각자 표를 들면 둘이 갈린다.
+// 중복 제거는 `runningKindsOf`가 이미 했고(shell-registry.test.ts) 여기서 다시 가르지 않는다.
+describe("둘째 줄의 로고", () => {
+  const marks = (kinds: string[]) => renderToStaticMarkup(<RunningMarks kinds={kinds} />);
+  const labelsOf = (html: string) => [...html.matchAll(/aria-label="(.*?)"/g)].map((m) => m[1]);
+
+  it("종류마다 하나씩, 받은 순서 그대로다", () => {
+    expect(labelsOf(marks(["codex", "claude"]))).toEqual(["codex", "claude"]);
+  });
+
+  it("모르는 것에는 아무것도 안 띄운다", () => {
+    // 셸에서 도는 것의 대부분(`node`·`cargo`·`vim`)이 그 자리에 온다 — 그때마다 무엇인가
+    // 뜨면 줄이 시끄러워져 「어느 work에서 에이전트가 도나」가 오히려 안 보인다.
+    expect(marks(["node", "cargo"])).toBe("");
+    expect(marks([])).toBe("");
+  });
+
+  it("줄보다 한 단 진하다 — 대비 바닥이 그 이유다", () => {
+    // 결정 15가 로고를 `currentColor`로 칠한 근거가 「대비 바닥 4.5를 저절로 넘는다」인데,
+    // 이 줄의 색(tertiary)은 사이드바 배경에서 그 아래다(≈2.9). 줄 색을 그대로 물려받으면
+    // 결정 15의 근거가 이 자리에서만 거짓이 된다.
+    expect(marks(["claude"])).toContain("text-muted-foreground");
+  });
+
+  it("이름은 눈이 아니라 접근성으로만 읽는다 — 누를 수도 없다", () => {
+    const html = marks(["claude"]);
+    // 좁은 사이드바에서 이름까지 적으면 종류가 둘일 때 제목보다 그 줄이 길어진다.
+    expect(html).not.toContain(">claude<");
+    // `title`을 안 다는 것은 이 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹치기 때문이다.
+    expect(html).not.toContain("title=");
+    expect(html).not.toContain("<button");
   });
 });
 

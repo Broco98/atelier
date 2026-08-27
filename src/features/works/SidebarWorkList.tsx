@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown, File, Pin } from "lucide-react";
+import { ChevronDown, File, Pin, SquareTerminal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { agentMarkOf } from "@/components/ui/agent-mark";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import {
   BranchHeader,
@@ -36,6 +37,7 @@ function SidebarWorkList({
   boundaryRef,
   shellCounts,
   renderShells,
+  renderRunning,
 }: {
   open: boolean;
   // 호버 카드가 비켜야 할 상자 — 사이드바 자신이다. 행의 오른쪽 끝은 거터와 스크롤바 때문에
@@ -51,6 +53,8 @@ function SidebarWorkList({
   shellCounts: Record<string, number>;
   /** 가지의 속. 터미널 스토어를 구독하는 자리라 슬롯으로 받는다(ShellBranch). */
   renderShells: (work: WorkView) => ReactNode;
+  /** 둘째 줄의 로고들. 같은 이유로 슬롯이다 — 그리는 것은 여기 있다(`RunningMarks`). */
+  renderRunning: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
@@ -285,6 +289,7 @@ function SidebarWorkList({
             onToggleNode={toggleNode}
             onOpenSpec={openSpec}
             renderShells={renderShells}
+            renderRunning={renderRunning}
           />
         </div>
       </div>
@@ -351,6 +356,7 @@ export function WorkSectionList({
   onToggleNode,
   onOpenSpec,
   renderShells,
+  renderRunning,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
@@ -369,6 +375,7 @@ export function WorkSectionList({
   onToggleNode: (slug: string) => void;
   onOpenSpec: (work: WorkView) => void;
   renderShells: (work: WorkView) => ReactNode;
+  renderRunning: (work: WorkView) => ReactNode;
 }) {
   const { pinned, main, drafts } = sections;
   // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 가지를 붙이는 자리가 셋이 된다.
@@ -390,6 +397,7 @@ export function WorkSectionList({
       onToggleNode={() => onToggleNode(work.slug)}
       onOpenSpec={onOpenSpec}
       shells={renderShells(work)}
+      running={renderRunning(work)}
     />
   );
   return (
@@ -470,6 +478,7 @@ function WorkNode({
   onToggleNode,
   onOpenSpec,
   shells,
+  running,
 }: {
   work: WorkView;
   active: boolean;
@@ -486,6 +495,7 @@ function WorkNode({
   onToggleNode: () => void;
   onOpenSpec: (work: WorkView) => void;
   shells: ReactNode;
+  running: ReactNode;
 }) {
   // **한 번 연 블럭은 남는다**(위 `blockOpen` 표). 셸이 도는 work은 열어 본 적이 없어도
   // 선다 — 「돌고 있는 것」이 화면에서 사라지지 않는 규칙이 그대로다(결정 73).
@@ -505,6 +515,8 @@ function WorkNode({
         onHover={onHover}
         onLeave={onLeave}
         onTogglePin={onTogglePin}
+        shellCount={shellCount}
+        running={running}
         // 접기 토글은 **고른 work의 것에만** 있다(결정 101). 남의 work 행을 건드리면
         // 그 work로 가는 것이 사이드바에 남은 규칙 하나다.
         branch={active && stands ? { open: nodeOpen, onToggle: onToggleNode } : undefined}
@@ -684,6 +696,8 @@ function WorkRow({
   onHover,
   onLeave,
   onTogglePin,
+  shellCount,
+  running,
   branch,
 }: {
   work: WorkView;
@@ -692,6 +706,10 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
+  /** 이 work의 셸 수 — **둘째 줄이 서는 조건이자 그 줄이 적는 값이다**(결정 2·3). */
+  shellCount: number;
+  /** 둘째 줄의 로고들. 슬롯으로 온다 — 그리는 것은 `RunningMarks`다. */
+  running: ReactNode;
   /**
    * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 있으면 이 행을
    * 누르는 것이 곧 접기 토글이고, 없으면 그 work으로 가는 것이다.
@@ -706,7 +724,12 @@ function WorkRow({
       onMouseEnter={(e) => onHover(work.slug, e.currentTarget)}
       onMouseLeave={onLeave}
       className={cn(
-        "group flex h-8 w-full shrink-0 items-center rounded-[10px] pr-1 transition-colors",
+        // **flex가 아니라 grid다**(결정 2). 둘째 줄이 서면서 행이 두 줄이 됐는데, 첫 줄을
+        // 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어 「행 상자」를 부모로 집는
+        // 자리들이 통째로 어긋난다 — 배경 상자(e2e가 핀의 부모로 집는다)와 블럭의 속
+        // (행 상자의 **다음 형제**)이 그것이다. 두 칸 grid면 이름·핀이 직계 자식으로
+        // 남고 둘째 줄만 두 칸을 걸쳐 아래에 선다.
+        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
@@ -721,7 +744,9 @@ function WorkRow({
         // 고른 work의 행이면 접기 토글이다 — `terminal` 머리행이 이미 쓰는 규칙 그대로이고,
         // 구획 헤더(`작업`)가 행 전체로 접히는 것과도 같은 모양이다.
         onClick={branch ? branch.onToggle : () => onOpen(work.slug)}
-        className="group/row flex h-full min-w-0 flex-1 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
+        // 첫 줄의 높이를 **이 버튼이 든다** — 바깥이 grid가 되면서 `h-full`은 두 줄을
+        // 합친 높이가 됐다. nav 항목과 맞춰야 하는 규격은 여전히 이 한 줄의 32px이다.
+        className="group/row flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
         <span
@@ -768,7 +793,80 @@ function WorkRow({
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>
+      {/* **둘째 줄 — 셸이 하나라도 있으면 선다**(결정 3). 셸이 0개인 work는 한 줄로 남아
+          **행 높이 자체가 「여기서 일이 돌고 있다」는 신호**가 된다.
+
+          「명령이 도는 동안만 선다」는 **기각됐다**: 그 값은 매 순간 바뀌어서(백엔드가
+          1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이 접혔다 펴지고 아래
+          work들이 계속 위아래로 밀린다. 줄이 서는 조건은 **안 변하는 값**이고, 변하는 것은
+          줄 **안에서**만 변한다 — 그래서 로고가 하나도 없어도 이 줄은 그대로 선다.
+
+          **표시 전용이다**(결정 5). 로고가 종류만 말하므로(결정 4) 로고와 셸이 1:1이 아니고,
+          누르면 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아
+          그 work로 간다. _감수한 것_: 이 줄의 배경은 눌러도 아무 일이 없는 자리다 — 누를 수
+          있게 하려면 이름 버튼 안에 넣어야 하는데, 그러면 셸 수와 로고 이름이 그 버튼의
+          접근성 이름에 섞여 「제목으로 행을 집는다」가 깨진다.
+
+          왼쪽 여백은 **제목이 시작하는 자리**다(`--tree-step` = 글리프 칸 하나 + 그 간격) —
+          숫자로 박으면 글리프 크기를 손보는 날 이 정렬이 조용히 깨진다. */}
+      {shellCount > 0 && (
+        <div
+          data-subrow={work.slug}
+          className="col-span-2 flex h-[22px] items-center gap-1.5 pl-[calc(9px+var(--tree-step))] pr-1.5 text-[11.5px] text-tertiary"
+        >
+          <SquareTerminal className="size-3 shrink-0" strokeWidth={1.8} />
+          <span className="tabular-nums">{shellCount}</span>
+          {running}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * 둘째 줄의 **로고들** — 그 work에서 도는 것의 종류다(결정 4). 종류마다 하나이고, 중복을
+ * 지우는 것은 `runningKindsOf`이지 여기가 아니다(같은 판정이 두 벌이 되면 한쪽만 늙는다).
+ *
+ * **그림은 여기 있고 값은 슬롯으로 온다.** 값을 고르는 자리는 행마다 터미널 스토어를
+ * 구독하는 자리라 이 파일에 둘 수 없고(위 `shellCounts` 주석의 계약), 반대로 그림을
+ * Sidebar에 두면 이 저장소의 유일한 컴포넌트 seam인 정적 마크업이 닿지 못한다 — 그 파일은
+ * `terminal-store`를 import해서 `@xterm/*`를 딸고 온다. 그래서 값과 그림이 갈렸다.
+ *
+ * `agent-mark`를 여기서 들이는 것은 계약 위반이 아니다 — 그 모듈은 react 말고 아무것도 안
+ * 끌어오고, 계약이 막는 것은 터미널 feature가 딸고 오는 무게다(그쪽 머리말이 이 자리를
+ * 미리 적어 뒀다). **그 경로를 여기 적을 수도 없다** — 계약 검사가 세는 것은 import가
+ * 아니라 리터럴이라 주석에 한 번 쓰는 것만으로 빨개진다(실측). 그것이 그 그물의 성질이다.
+ *
+ * **모르는 이름에는 아무것도 안 띄운다**(`agentMarkOf`가 `null`을 준다). 셸에서 도는 것의
+ * 대부분(`node`·`cargo`·`vim`)이 그 자리에 오는데 그때마다 무엇인가 뜨면 줄이 시끄러워져
+ * 「어느 work에서 에이전트가 도나」라는 이 줄의 물음이 오히려 안 보인다.
+ */
+export function RunningMarks({ kinds }: { kinds: ReadonlyArray<string> }) {
+  return (
+    <>
+      {kinds.map((kind) => {
+        const mark = agentMarkOf(kind);
+        if (mark === null) return null;
+        return (
+          // 이름은 **눈이 아니라 접근성으로만** 읽는다 — 좁은 사이드바에서 이름까지 적으면
+          // 종류가 둘일 때 그 줄이 제목보다 길어진다. `title`은 안 단다: 이 행에 머물면
+          // 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다(핀 버튼과 같은 이유).
+          //
+          // **줄의 색을 그대로 따르지 않는다.** 로고는 `currentColor`로 칠하는데(결정 15)
+          // 그 결정이 든 근거가 「대비 바닥 4.5를 저절로 넘는다」이고, 이 줄의 tertiary는
+          // 사이드바 배경에서 그 아래다(#8e8e97 대 #f2f2f4 ≈ 2.9, 다크 ≈ 3.9). 개수는
+          // 부차적이라 그 색이 맞지만 로고는 **이 줄이 있는 이유**다(결정 2) — 한 단 올린다.
+          <span
+            key={kind}
+            role="img"
+            aria-label={mark.label}
+            className="flex shrink-0 text-muted-foreground"
+          >
+            <mark.Glyph className="size-3" />
+          </span>
+        );
+      })}
+    </>
   );
 }
 

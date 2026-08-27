@@ -2,10 +2,10 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
-import SidebarWorkList from "@/features/works/SidebarWorkList";
+import SidebarWorkList, { RunningMarks } from "@/features/works/SidebarWorkList";
 import { armDrag } from "@/features/works/split-view";
 import ShellBranch from "@/features/terminal/ShellBranch";
-import { shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import { runningKindsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
 import { BranchArrow, BranchCount, SectionBody } from "./sidebar-tree";
@@ -152,6 +152,10 @@ function Sidebar({
               }
             />
           )}
+          // 둘째 줄의 로고도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
+          // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
+          // 않는다. 구독이 행마다 따로인 이유는 `RowRunning`이 든다.
+          renderRunning={(work) => <RowRunning slug={work.slug} />}
         />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
@@ -173,6 +177,24 @@ function Sidebar({
       {open && <ResizeHandle control={size} />}
     </aside>
   );
+}
+
+/**
+ * work 행 하나가 **자기 것만** 구독한다(결정 2).
+ *
+ * `ShellBranch`가 터미널 스토어를 구독하는 유일한 자리였던 것은 값이 자주 흔들려서다 —
+ * 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속 갈아 끼운다. 그 값을 이제
+ * 목록도 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**: `Record<slug, string[]>`로
+ * 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
+ * 때마다 **목록 전체가** 다시 그려진다(`runningKindsOf` 머리말이 그 근거를 든다).
+ * 행마다 자기 것을 고르면 안 바뀐 행은 같은 배열을 받아 그 자리에 머문다.
+ *
+ * **개수는 반대로 위에서 한 번에 읽는다**(`shellCounts`) — 그 값은 셸이 열리고 닫힐 때만
+ * 바뀌어 얕은 비교가 실제로 걸린다. 둘이 갈리는 자리가 여기다.
+ */
+function RowRunning({ slug }: { slug: string }) {
+  const kinds = useStore(terminalStore, (state) => runningKindsOf(state, slug), shallow);
+  return <RunningMarks kinds={kinds} />;
 }
 
 // nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어
