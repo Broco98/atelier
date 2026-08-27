@@ -10,8 +10,8 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // 픽스처 백엔드가 `pty_spawn`을 답해 xterm이 실제로 뜬다(works-split.spec.ts의 「경계를 끌면
 // 터미널 격자가 따라간다」가 선례다).
 //
-// 마크업 seam(TerminalPane.test.tsx)이 보는 것은 여기서 다시 보지 않는다 — 안내가 흐름에
-// 끼는지, 셸 0개일 때 덮개가 서는지는 그쪽이 든다.
+// 마크업 seam(TerminalPane.test.tsx)이 보는 것은 여기서 다시 보지 않는다 — 죽은 셸의 안내가
+// 흐름에 끼는지, 셸 0개일 때 빈 화면 안내가 서는지는 그쪽이 든다.
 
 const [, plainWork] = WORKS;
 

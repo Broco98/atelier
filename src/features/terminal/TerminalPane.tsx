@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
-import ShellList from "./ShellList";
+import { SquareTerminal } from "lucide-react";
 import {
   activeIdOf,
   activeShellOf,
+  atCap,
+  shellCapNotice,
   shellEndLabels,
   shellsOf,
   TOP_TERMINAL,
@@ -13,15 +15,7 @@ import type { ShellOrigin } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
-import {
-  attachShell,
-  detachShell,
-  ensureShell,
-  openNewShell,
-  requestCloseShell,
-  selectShell,
-  terminalStore,
-} from "./terminal-store";
+import { attachShell, detachShell, ensureShell, terminalStore } from "./terminal-store";
 import type { WorkView } from "@/features/works/types";
 
 /**
@@ -54,7 +48,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // (dirty·exists를 다시 재서 온다) 그때마다 이 이펙트가 돌면 `×`로 비운 화면에 셸이
   // 저절로 돌아온다. 여기서 읽는 것은 그 순간의 `work`이고, 소유자가 그대로면 cwd도 그대로다.
   useEffect(() => {
-    const origin = originOf(work, null);
+    const origin = originOf(work);
     if (origin) ensureShell(origin);
   }, [owner]);
 
@@ -68,9 +62,10 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   }, [activeId]);
 
   const shells = shellsOf(state, owner);
+  // 상한은 **앱 전체**다(결정 30) — 이 화면의 셸이 0개여도 닿아 있을 수 있다.
+  const full = atCap(state);
   const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
-  const projects = work?.worktrees.map((tree) => tree.project) ?? [];
 
   // 셸의 배경색. **색을 여기서 고르지 않는다** — xterm 테마의 정본은 `terminal-theme.ts`이고
   // (그 파일 머리말), 셸이 실제로 그리는 값과 어긋나면 아래 잉여 띠가 도로 보인다.
@@ -132,29 +127,44 @@ function TerminalPane({ work }: { work: WorkView | null }) {
       {/* **셸이 0개인 화면이 실재한다**(결정 102). 정상 종료한 셸이 목록에서 스스로 빠지고
           (결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로 뜨지 않는다.
 
-          **「본문에서 셸을 여는 길이 여기뿐이다」가 거짓이 됐다.** 결정 102가 이 덮개를
-          세운 근거가 그 한 줄이었는데, 판 03이 탭 줄을 되살리며 `+`를 화면 위로 도로
-          가져왔다 — 지금 이 화면에는 여는 자리가 둘이다. 걷을지 남길지는 `/terminal`까지
-          같은 줄이 서는 판에서 함께 정한다: 거기서는 셸이 0개일 때 본문에 볼 것이
-          하나도 안 남는다는 것이 이 덮개를 남기는 쪽의 근거다.
+          **여기 여는 자리가 있었고, 걷었다**(결정 19). 결정 102가 `+ 새 셸` 행이 든 목록을
+          이 자리에 세운 근거는 「탭 줄이 걷힌 뒤로 본문에서 셸을 여는 길이 여기뿐이다」
+          하나였는데, 판 03이 그 줄을 되살리며 근거가 사라졌다 — 남겨 두면 한 화면에 같은
+          일을 하는 버튼이 둘이 되고, 그것을 이 저장소는 두지 않는다(결정 89가 `</>`를
+          패널이 열렸을 때 열 머리에서 뺀 것과 같은 규칙).
 
-          **여는 자리를 새로 짓지 않고 같은 목록을 쓴다** — 상한 문구도 프로젝트 고르기도
-          그쪽이 이미 안다. 둘로 두면 「셸 8개까지예요」가 화면마다 다른 말이 된다. */}
+          **그렇다고 빈 채로 두지 않는다.** 여는 법이 화면 밖(머리행)에 있으므로 아무 말도
+          없는 빈 판은 「아직 없다」가 아니라 **고장**으로 읽힌다. 그래서 남는 것은 조작이
+          아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업이 없어요」와 같은 관용구다.
+
+          **잠긴 이유는 여기서도 문장이다**(결정 45·47). 상한은 앱 전체라(결정 30) 이 화면의
+          셸이 0개인데도 닿아 있을 수 있고, 그때 탭 줄의 `+`는 잠긴 채 이유를 hover `title`
+          뒤에 숨긴다. 문장은 `shellCapNotice`가 짓는다 — ⌘T 거절 토스트·잠긴 `+`와 **같은
+          문장**이어야 한쪽만 늙지 않는다.
+
+          **덮개인 것은 그대로다**(`absolute inset-0`) — 흐름에 끼면 셸의 집 상자가 이 판의
+          유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유). */}
       {shells.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex w-[240px] flex-col gap-(--row-gap)">
-            <ShellList
-              state={state}
-              owner={owner}
-              projects={projects}
-              showing
-              onSelect={selectShell}
-              onClose={requestCloseShell}
-              onOpen={(project) => {
-                const origin = originOf(work, project);
-                if (origin) openNewShell(origin);
-              }}
-            />
+        <div className="absolute inset-0 flex items-center justify-center p-10">
+          <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
+            {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
+                한 번에 잡게 한다. 상자 규격은 Works의 빈 화면 그대로다. */}
+            <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
+              <SquareTerminal className="size-5" strokeWidth={1.6} />
+            </div>
+            <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 셸이 없어요</span>
+            <span className="text-[14px] leading-[1.65] text-tertiary">
+              {full
+                ? `${shellCapNotice(state)}. 다른 화면의 셸을 닫으면 여기서 새로 열 수 있어요.`
+                : "위 탭 줄의 + 로 새 셸을 열어요."}
+            </span>
+            {/* 키는 **잠겼을 때 안 적는다** — 눌러도 안 되는 길을 알려 주는 것이 된다.
+                `<code>` 규격은 Works의 빈 화면이 안내 문구를 싣는 자리와 같다. */}
+            {!full && (
+              <code className="mt-3 rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+                ⌘T
+              </code>
+            )}
           </div>
         </div>
       )}
@@ -162,9 +172,15 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   );
 }
 
-/** Work가 없으면 최상위 터미널이다 — 그 자리는 백엔드의 데이터 루트다(결정 25). */
-function originOf(work: WorkView | null, project: string | null): ShellOrigin | null {
-  return work ? workShellOrigin(work, project) : TOP_TERMINAL;
+/**
+ * Work가 없으면 최상위 터미널이다 — 그 자리는 백엔드의 데이터 루트다(결정 25).
+ *
+ * **프로젝트를 안 받는다.** 한때 받았다 — 이 본문이 셸을 여는 자리를 갖고 있어서
+ * 「어느 워크트리에」를 물어야 했다(결정 24). 결정 19가 그 자리를 탭 줄로 보내면서
+ * 여기 남은 부름은 「없으면 하나 띄운다」 하나가 됐고, 그것은 늘 안 고른 자리에서 뜬다.
+ */
+function originOf(work: WorkView | null): ShellOrigin | null {
+  return work ? workShellOrigin(work, null) : TOP_TERMINAL;
 }
 
 export default TerminalPane;
