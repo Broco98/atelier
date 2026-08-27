@@ -20,10 +20,14 @@ import {
   closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
+  runningKindsOf,
+  runningOn,
   runningShellsOf,
+  setRunning,
   setShellName,
   setTitle,
   shellCapNotice,
+  shellCountsOf,
   shellEndLabels,
   shellOpenNotice,
   shellRewrite,
@@ -1384,5 +1388,155 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(page).toContain("const shells = shellsOf(state, null);");
     // 자리를 밀지 않는다 — `2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
     expect(page).toContain("shellForNav(shells, activeIdOf(state, null), nav, 1)");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// adr-04. 백엔드가 1초마다 재서 **바뀐 셸만** 실어 보내는 「지금 도는 것」이 목록에 앉는다.
+// 뒤에 오는 두 화면(탭 칸의 로고 · 사이드바 행의 로고)이 **같은 함수**를 봐야 해서 여기 있다 —
+// 두 곳이 각자 세면 「사이드바는 종류만, 탭은 칸마다」(결정 4)가 화면마다 갈린다.
+
+describe("셸에 「지금 도는 것」이 앉는다", () => {
+  it("이름이 그 칸에 그대로 앉는다 — 접지 않는다", () => {
+    const { state, ids } = opened(1);
+    // 원문 그대로여야 한다(adr-04). 백엔드가 「claude냐」를 알면 에이전트가 늘 때마다
+    // Rust를 고쳐야 하고, 프런트가 여기서 접으면 로고 매핑이 두 벌이 된다.
+    expect(setRunning(state, ids[0], "claude").shells[0].running).toBe("claude");
+  });
+
+  it("아직 아무것도 안 온 칸은 비어 있다", () => {
+    expect(opened(1).state.shells[0].running).toBeNull();
+  });
+
+  it("명령이 끝나면 지워진다", () => {
+    const { state, ids } = opened(1);
+    const 도는중 = setRunning(state, ids[0], "cargo");
+    expect(setRunning(도는중, ids[0], null).shells[0].running).toBeNull();
+  });
+
+  // **초마다 모든 화면이 다시 그려지는 것을 막는 자리다.** 백엔드가 안 바뀐 값을 안 쏘지만
+  // (`changes`) 그 한 겹에만 기대지 않는다 — 같은 값이 두 번 오면 여기서 끊긴다.
+  it("같은 값이 다시 와도 상태가 그대로다", () => {
+    const { state, ids } = opened(1);
+    const 앉은뒤 = setRunning(state, ids[0], "claude");
+    expect(setRunning(앉은뒤, ids[0], "claude")).toBe(앉은뒤);
+    expect(setRunning(state, ids[0], null)).toBe(state);
+  });
+
+  // 이벤트와 제거가 경주한다 — 이미 닫힌 칸에 대한 값이 늦게 도착한다.
+  it("모르는 id로는 아무것도 앉지 않는다", () => {
+    const { state } = opened(1);
+    expect(setRunning(state, 9999, "claude")).toBe(state);
+  });
+});
+
+describe("끝난 칸은 아무것도 안 돌린다", () => {
+  it("도는 칸은 앉은 값을 그대로 준다", () => {
+    const { state, ids } = opened(1);
+    expect(runningOn(setRunning(state, ids[0], "claude").shells[0])).toBe("claude");
+  });
+
+  // **마지막 값이 굳는 것을 막는다.** 백엔드도 풀에서 빠진 셸을 한 번 지우지만(`changes`),
+  // 그 이벤트와 종료 프레임의 순서는 보장되지 않는다 — 지움이 먼저 오면 죽은 칸에 claude
+  // 로고가 그대로 남는다. 상태로 가르면 순서가 무의미해진다.
+  it("신호로 죽은 칸은 돌던 것이 있어도 없다", () => {
+    const { state, ids } = opened(1);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    const 죽은뒤 = markExited(돌던칸, ids[0], { exitCode: 1, signal: "Terminated: 15" });
+    expect(runningOn(죽은뒤.shells[0])).toBeNull();
+  });
+
+  it("못 뜬 칸도 없다", () => {
+    const { state, ids } = opened(1);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    expect(runningOn(markFailed(돌던칸, ids[0], "폴더가 없습니다").shells[0])).toBeNull();
+  });
+});
+
+describe("work가 도는 것의 **종류**를 말한다", () => {
+  const 가 = { owner: "가", project: null, cwd: null };
+
+  // 결정 4. claude가 둘 돌아도 사이드바의 로고는 하나다 — 목록은 「뭐가 도나」를 말하지
+  // 「몇 개 도나」를 말하지 않는다(개수는 `⌨3`이 이미 말한다).
+  it("같은 것이 둘 돌아도 하나로 센다", () => {
+    const { state, ids } = opened(2, 가);
+    let 지금 = setRunning(state, ids[0], "claude");
+    지금 = setRunning(지금, ids[1], "claude");
+    expect(runningKindsOf(지금, "가")).toEqual(["claude"]);
+  });
+
+  it("다른 것이 돌면 둘 다 말하고, 순서는 칸 순서다", () => {
+    const { state, ids } = opened(2, 가);
+    let 지금 = setRunning(state, ids[0], "codex");
+    지금 = setRunning(지금, ids[1], "claude");
+    expect(runningKindsOf(지금, "가")).toEqual(["codex", "claude"]);
+  });
+
+  it("아무것도 안 도는 work는 빈 목록이다", () => {
+    expect(runningKindsOf(opened(2, 가).state, "가")).toEqual([]);
+  });
+
+  it("남의 work에서 도는 것은 안 센다", () => {
+    const { state, ids } = opened(1, 가);
+    const 나 = openShell(state, { owner: "나", project: null, cwd: null })!;
+    let 지금 = setRunning(나.state, ids[0], "claude");
+    지금 = setRunning(지금, 나.id, "cargo");
+    expect(runningKindsOf(지금, "가")).toEqual(["claude"]);
+    expect(runningKindsOf(지금, "나")).toEqual(["cargo"]);
+  });
+
+  // `runningOn`을 딛는다 — 여기서 상태를 한 번 더 가르면 같은 판정이 두 벌이 된다.
+  it("죽은 칸이 돌던 것은 안 센다", () => {
+    const { state, ids } = opened(1, 가);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    const 죽은뒤 = markFailed(돌던칸, ids[0], "폴더가 없습니다");
+    expect(runningKindsOf(죽은뒤, "가")).toEqual([]);
+  });
+});
+
+// 결정 2·3. 둘째 줄의 `⌨수`이자 **그 줄이 서는 조건**이다. 세는 자리를 새로 만들지 않고
+// 이미 있는 이것으로 되는지 여기서 못박는다.
+describe("work마다 셸이 몇 개인가", () => {
+  const 가 = { owner: "가", project: null, cwd: null };
+
+  it("소유자별로 센다", () => {
+    const { state } = opened(2, 가);
+    const 나 = openShell(state, { owner: "나", project: null, cwd: null })!;
+    expect(shellCountsOf(나.state)).toEqual({ 가: 2, 나: 1 });
+  });
+
+  it("최상위 터미널의 셸은 어느 work에도 안 걸린다", () => {
+    expect(shellCountsOf(opened(2).state)).toEqual({});
+  });
+
+  // **끝난 칸도 센다 — 그것이 결정 3이 원하는 것이다.** 줄이 서는 조건은 **안 변하는 값**
+  // (셸을 포함하는가)이어야 하고, 명령이 끝날 때마다 값이 흔들리면 목록이 접혔다 펴진다.
+  it("끝난 칸도 센다 — 행 높이가 명령마다 출렁이면 안 된다", () => {
+    const { state, ids } = opened(1, 가);
+    const 죽은뒤 = markFailed(state, ids[0], "폴더가 없습니다");
+    expect(shellCountsOf(죽은뒤)).toEqual({ 가: 1 });
+  });
+});
+
+// 위 함수들은 순수해서 전수됐지만 **그것을 실제로 쓰는 자리**는 스토어라 어느 seam에도
+// 안 보인다(위 「판정 셋이 실제로 배선돼 있다」와 같은 자리·같은 이유). 소스로 못박는다.
+describe("도는 명령이 프런트 상태까지 오는 배선", () => {
+  it("이벤트 이름이 백엔드와 **같은 문자열**이다", () => {
+    // 이 둘은 문자열로만 이어져 있다 — 한쪽을 고치면 아무 일도 안 일어나고 컴파일도
+    // 타입 검사도 통과한다(`tauri-commands.test.ts`가 invoke 이름에 대해 막는 것과 같다).
+    expect(read("../../../src-tauri/src/pty.rs")).toContain(
+      'const RUNNING_EVENT: &str = "pty:running";',
+    );
+    expect(read("./api.ts")).toContain('const PTY_RUNNING = "pty:running";');
+  });
+
+  it("pty id를 레지스트리 id로 바꿔 앉힌다", () => {
+    const store = read("./terminal-store.ts");
+    // **이 한 줄이 없으면 값이 엉뚱한 칸에 앉는다.** 이벤트가 싣는 것은 pty id이고
+    // 레지스트리의 id는 이 모듈이 따로 발급한 번호라 둘은 다른 값이다(`ShellInstance.ptyId`).
+    expect(store).toContain("const id = shellOfPty(one.id);");
+    // 모르는 pty id는 건너뛴다 — 이 왕복 사이에 `×`로 닫힌 칸이 실제로 온다. 그리고 값은
+    // **그대로** 앉는다: 여기서 접으면 로고 매핑이 두 벌이 된다(adr-04).
+    expect(store).toContain("if (id !== null) next = setRunning(next, id, one.running);");
   });
 });

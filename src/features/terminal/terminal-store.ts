@@ -6,7 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { terminalApi } from "./api";
+import { onPtyRunning, terminalApi } from "./api";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -16,6 +16,7 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
+  setRunning,
   setShellName,
   setTitle,
   shellHotkey,
@@ -271,6 +272,51 @@ async function commandRunning(id: number): Promise<boolean | null> {
     return null;
   }
 }
+
+/**
+ * pty id로 그 칸의 **레지스트리 id**를 되찾는다. **둘은 다른 번호다** — 레지스트리는 자기
+ * 번호를 스스로 발급하고(`openShell`의 주석: 못 뜬 칸에는 pty id라는 것이 아예 없다),
+ * 백엔드는 그것을 모른다. 위 `commandRunning`이 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
+ *
+ * **모르는 pty id가 실제로 온다.** 이벤트가 오는 사이에 그 칸이 `×`로 닫혔거나 스스로
+ * 끝났으면 `ptyId`가 이미 null로 눕혀져 있다. 그때는 `null`이고, 부르는 쪽이 건너뛴다.
+ *
+ * 훑는 것이 최대 8칸이라(결정 30) 뒤집힌 색인을 따로 들지 않는다 — 그 색인은 `ptyId`가
+ * 바뀌는 자리 셋(spawn 응답·종료 프레임·`×`)과 늘 맞춰야 하고, 어긋나면 값이 남의 칸에 앉는다.
+ */
+function shellOfPty(ptyId: number): number | null {
+  for (const instance of instances.values()) {
+    if (instance.ptyId === ptyId) return instance.id;
+  }
+  return null;
+}
+
+/**
+ * 도는 명령을 **상시 구독한다**(adr-04). 백엔드가 1초마다 재서 **바뀐 셸만** 실어 보낸다.
+ *
+ * **모듈 최상위에 건다 — 이펙트가 아니다.** `onTitleChange`를 인스턴스에 붙이는 것과 같은
+ * 이유다: 이펙트에 두면 배경 칸(결정 21로 React 트리 밖에 사는 칸)이 못 받는다. 받는 쪽이
+ * React가 아니라 모듈 싱글턴 스토어라 붙일 화면도 필요 없다.
+ *
+ * **한 번의 `setState`로 끝낸다.** 회차마다 여러 셸이 실려 오는데 칸마다 setState를 부르면
+ * 그 수만큼 구독자가 깨어난다.
+ *
+ * **못 걸어도 셸은 뜬다.** 웹뷰 밖(노드 seam)에서는 이 통로가 없어 여기가 실제로 거절당한다.
+ * 멈추면 터미널을 통째로 못 쓰는데 로고 하나를 못 얻은 값으로는 과하다 — `loadTerminalSettings`
+ * 와 같은 판단이고, 이유만 남긴다.
+ */
+void onPtyRunning((changed) => {
+  terminalStore.setState((state) => {
+    let next = state;
+    for (const one of changed) {
+      const id = shellOfPty(one.id);
+      if (id !== null) next = setRunning(next, id, one.running);
+    }
+    return next;
+  });
+}).catch((error) => {
+  console.warn("atelier: 도는 명령을 구독하지 못했다 — 로고가 안 뜬다", error);
+});
 
 /**
  * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).

@@ -8,7 +8,7 @@
 //! 이름이 `commands.rs`에 `pub async fn`으로 있는지를 문자열로 보기 때문이다. 여기 두면
 //! 그 그물이 조용히 꺼진다.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
@@ -20,6 +20,7 @@ use std::time::Duration;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::{AppHandle, Emitter};
 
 /// SIGHUP을 보낸 뒤 SIGKILL까지 주는 유예. 진짜 터미널이 닫힐 때 셸과 그 잡들이 정리할
 /// 시간이고, 협조하지 않는 상대를 기다려 주는 시간이기도 하다.
@@ -196,8 +197,15 @@ pub fn resize(pool: &PtyPool, id: u32, cols: u16, rows: u16) -> Result<(), Strin
 /// **`Err`이 실제로 온다**: 이미 끝난 셸, tcgetpgrp 실패, pid를 못 받은 셸. 프런트는 그때
 /// 묻지 않고 닫는다 — 모르는 것을 이유로 닫는 길을 막지 않는다.
 ///
-/// 값이 **매 순간 바뀌므로** 이것을 구독하거나 상태에 얹지 않는다. 묻는 자리는 닫기 직전
-/// 한 번뿐이다.
+/// **이 자리는 여전히 닫기 직전 한 번뿐이다 — 그런데 이유가 바뀌었다.** 한때 여기 「값이
+/// 매 순간 바뀌므로 구독하거나 상태에 얹지 않는다」고 적혀 있었는데, `adr-04`가 그것을
+/// 뒤집었다: 아래 `watch_running`이 같은 판정을 1초마다 재서 프런트 상태에 얹는다. 바뀐
+/// 것은 값의 성질이 아니라 목적이다 — 「어느 work에서 무엇이 도는가」는 구독 없이는
+/// 답할 수 없다.
+///
+/// **그렇다고 구독이 이 자리를 대신하지 않는다.** 닫기 판정은 **그 순간의 진실**이어야
+/// 하고 구독값은 최대 1초 낡았다. 그래서 이 함수도 그것을 부르는 길(`requestCloseShell`)도
+/// 그대로 남는다.
 pub fn command_running(pool: &PtyPool, id: u32) -> Result<bool, String> {
     let shells = pool.lock();
     let shell = shells.get(&id).ok_or_else(|| gone(id))?;
@@ -220,6 +228,151 @@ pub fn command_running(pool: &PtyPool, id: u32) -> Result<bool, String> {
 /// 때마다 묻고, `claude`가 도는 칸은 조용히 죽는다.
 fn command_runs(shell_pid: u32, foreground: i32) -> bool {
     foreground != shell_pid as i32
+}
+
+/// 셸 하나에서 **지금 도는 명령**. `running`이 `None`이면 프롬프트에 서 있다.
+///
+/// **이름은 원문 그대로 간다**(`claude`·`codex`·`node`·`cargo`). 「claude냐 codex냐」를
+/// 여기서 접지 않는 이유는 adr-04가 든다 — 백엔드가 그걸 알면 에이전트가 늘 때마다
+/// Rust를 고쳐야 한다. 로고로 바꾸는 판단은 프런트가 든다.
+///
+/// `id`는 **pty id**다. 프런트 셸 레지스트리의 `id`는 그쪽이 따로 발급하는 다른 번호이고
+/// (`shell-registry.ts`의 `openShell`), 그 사이를 잇는 자리는 `terminal-store.ts`다.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct PtyRunning {
+    id: u32,
+    running: Option<String>,
+}
+
+/// 도는 명령이 바뀐 셸이 실려 나가는 이벤트. **배선은 `watcher.rs`의 `works:changed`와 같은
+/// 길이다** — 스레드가 emit하고 프런트가 `listen`으로 받는다. 이름을 아는 자리가 여기와
+/// `api.ts` 둘뿐이라 문자열이 갈리면 조용히 아무 일도 안 일어난다.
+const RUNNING_EVENT: &str = "pty:running";
+
+/// 얼마나 자주 재는가(adr-04). 셸이 명령을 시작하고 끝낼 때 커널이 알려 주는 이벤트가 없어
+/// **물어봐야** 알고, `tcgetpgrp`는 syscall 하나라 셸 8개(결정 30의 상한)면 초당 8회다.
+const POLL: Duration = Duration::from_secs(1);
+
+/// 한 회차에 잰 것 전부 — pty id마다 「지금 도는 것」이다. 잰 값과 **직전에 쏜 값**이 같은
+/// 모양이라야 둘을 그대로 뺄 수 있어서 이름을 붙였다. `HashMap`이 아니라 `BTreeMap`인 것은
+/// 나가는 순서가 회차마다 흔들리지 않게 하기 위해서다.
+type Running = BTreeMap<u32, Option<String>>;
+
+/// 이 pgid의 프로세스 **이름**. 못 읽으면 `None`이고, 그 경우가 실제로 온다 — 재는 사이에
+/// 끝난 프로세스, 권한이 없는 프로세스.
+///
+/// **`sysctl`이 아니라 `libproc`이다.** 판 spec이 셋(`libproc`·`sysctl`·`ps`) 중 실물로
+/// 정하라고 남긴 자리라 재 봤다: `ps`는 1초마다 외부 프로세스를 띄우는 것이라 처음부터
+/// 빠지고, `sysctl(KERN_PROC/KERN_PROC_PID)` 길은 `kinfo_proc`이 **libc의 apple 모듈에
+/// 없어서**(0.2.186 확인) 그 큰 구조체를 손으로 선언해야 한다 — 커널 레이아웃을 우리가
+/// 베껴 드는 것은 조용히 틀릴 자리다. `proc_name`은 libc에 이미 바인딩이 있어 새 의존이
+/// 들지 않는다.
+///
+/// 버퍼가 `pbi_name`(32바이트)보다 커야 `proc_name`이 ENOMEM으로 돌아가지 않는다. 넉넉히
+/// 0으로 채워 두는 것은 이름이 버퍼를 꽉 채워 NUL 없이 올 수 있어서다.
+fn process_name(pgid: i32) -> Option<String> {
+    if pgid <= 1 {
+        return None;
+    }
+    let mut buf = [0u8; 64];
+    // 반환값은 errno가 아니라 **이름의 길이**이고, 못 읽으면 0이다.
+    let len = unsafe { libc::proc_name(pgid, buf.as_mut_ptr().cast(), buf.len() as u32) };
+    if len <= 0 {
+        return None;
+    }
+    let len = (len as usize).min(buf.len());
+    // UTF-8이 아닌 이름은 못 읽은 것으로 센다. U+FFFD를 흘리면 프런트가 그것을 「도는
+    // 것의 종류」로 세어 정체 모를 칸이 로고 자리를 차지한다.
+    std::str::from_utf8(&buf[..len]).ok().map(str::to_string)
+}
+
+/// 읽은 이름을 **어떻게 다루나** — 값 셋만 받는 순수 판정이다.
+///
+/// **`command_runs`와 같은 이유로 따로 있다**(그 함수 주석). 조립부는 살아 있는 pty가
+/// 있어야 돌지만 이 판정은 값 셋이면 되고, 뒤집히면 모든 셸에 늘 로고가 붙거나 아무 셸에도
+/// 안 붙는다.
+///
+/// 이름을 못 읽었으면 `None`이다 — 「무엇인지 모르는 것이 돈다」를 표시할 자리가 화면에
+/// 없으므로(로고 하나가 전부다) 조용히 넘어간다.
+fn running_command(shell_pid: u32, foreground: i32, name: Option<String>) -> Option<String> {
+    if !command_runs(shell_pid, foreground) {
+        return None;
+    }
+    name
+}
+
+/// 풀에 있는 셸마다 지금 도는 명령을 **한 번 잰다.**
+///
+/// **잠금 안에서 풀에 남아 있는 셸만 읽는다 — 그것이 `reap`의 순서를 안 건드리는 방법이다.**
+/// 포그라운드 그룹은 master fd가 살아 있어야 읽는데, `kill`과 `reap_all`은 풀에서 **먼저
+/// 빼고**(잠금 안에서) 그 다음에 거둔다. 그러니 우리가 잠금을 쥐고 있는 동안 그 셸은 아직
+/// 풀에 있고 master도 살아 있거나, 이미 빠져 우리 눈에 안 보이거나 둘 중 하나다 — 거두는
+/// 중인 셸을 읽는 창이 없다.
+///
+/// 이름은 **셸 자신일 때도 읽는다.** 판정을 여기서 한 번 더 가르면 「도는가」가 두 자리에
+/// 살게 되고, 아끼는 것은 셸당 초당 syscall 하나다.
+fn measure(pool: &PtyPool) -> Running {
+    let shells = pool.lock();
+    shells
+        .iter()
+        .map(|(id, shell)| {
+            let running = shell.pid.and_then(|pid| {
+                let foreground = shell.master.process_group_leader()?;
+                running_command(pid, foreground, process_name(foreground))
+            });
+            (*id, running)
+        })
+        .collect()
+}
+
+/// **재는 것과 쏘는 것을 가르는 자리.** 직전에 쏜 값과 다른 셸만 나온다.
+///
+/// adr-04가 폴링을 산 값이 이 한 줄에 있다 — 비용은 재기가 아니라 **다시 그리기**에 있다.
+/// 안 가르면 사이드바와 탭 줄이 초마다 통째로 다시 그려진다(`ShellBranch`의 `sameBranch`가
+/// 막고 있는 그 문제와 같은 것이다).
+fn changes(sent: &Running, now: &Running) -> Vec<PtyRunning> {
+    let mut out = Vec::new();
+    for (id, running) in now {
+        // **직전에 없던 셸은 「아무것도 안 돌던 셸」과 같다.** 프런트도 새 칸을 `null`로
+        // 시작하므로(`openShell`), 방금 열린 빈 셸에 `null`을 쏘면 그것이 곧 안 바뀐 값이다.
+        if sent.get(id).unwrap_or(&None) != running {
+            out.push(PtyRunning { id: *id, running: running.clone() });
+        }
+    }
+    // 풀에서 빠진 셸은 **한 번 더** 쏘아 지운다. 안 그러면 마지막 값이 화면에 굳어 죽은
+    // 칸에 로고가 영영 남는다. 돌던 셸만 지우는 것도 같은 이유의 뒷면이다 — 이미 `None`
+    // 이던 셸까지 쏘면 안 바뀐 값이 나간다.
+    for (id, running) in sent {
+        if running.is_some() && !now.contains_key(id) {
+            out.push(PtyRunning { id: *id, running: None });
+        }
+    }
+    out
+}
+
+/// 도는 명령을 **상시 구독한다**(adr-04). 1초마다 재고 **바뀐 셸만** 실어 쏜다.
+///
+/// 배선은 `watcher.rs`가 `works:changed`를 쏘고 프런트가 `listen`으로 받는 그 길과 같다 —
+/// 스레드 하나가 스스로 돌고, 창을 직접 만지지 않는다.
+///
+/// **셸이 0개면 아무 일도 안 한다.** 잰 것도 직전도 비어 있어 `changes`가 빈 목록을 주고,
+/// 빈 목록은 쏘지 않는다.
+pub fn watch_running(app: AppHandle, pool: Arc<PtyPool>) {
+    std::thread::spawn(move || {
+        // **프런트가 지금 믿고 있는 값**이다. 안 쏜 회차에는 잰 값과 같으므로 그대로
+        // 덮어써도 어긋나지 않는다 — 「바뀐 것만 쏜다」가 성립하는 근거가 이 한 줄이다.
+        let mut sent = Running::new();
+        loop {
+            std::thread::sleep(POLL);
+            let now = measure(&pool);
+            let changed = changes(&sent, &now);
+            if !changed.is_empty() {
+                let _ = app.emit(RUNNING_EVENT, changed);
+            }
+            sent = now;
+        }
+    });
 }
 
 pub fn kill(pool: &PtyPool, id: u32) -> Result<(), String> {
@@ -376,6 +529,11 @@ fn executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+
     /// 결정 92의 판정. 실행으로는 pty가 있어야 재지만 값 둘로는 여기서 전수된다.
     #[test]
     fn a_foreground_group_that_is_not_the_shell_means_a_command_runs() {
@@ -452,6 +610,146 @@ mod tests {
             insert < thread,
             "등록({insert})이 스레드({thread})보다 뒤에 있다 — 셸이 즉시 끝나면 \
              스레드의 remove가 먼저 돌아 죽은 셸이 되살아나고, 재사용된 pgid를 쏘게 된다"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // adr-04. 「도는가」 옆에 **「무엇이」**가 서고, 그것을 1초마다 재서 바뀔 때만 쏜다.
+
+    /// 이름을 **어떻게 다루나**의 전부. 위 `command_runs`와 같은 이유로 따로 산다 —
+    /// 조립부는 살아 있는 pty가 있어야 돌지만 이 판정은 값 셋이면 된다.
+    #[test]
+    fn a_name_only_counts_while_the_terminal_is_not_the_shells_own() {
+        assert_eq!(
+            super::running_command(4321, 4321, Some("zsh".to_string())),
+            None,
+            "프롬프트에 서 있으면 도는 명령이 없다 — 셸 자신의 이름을 도는 것으로 세면 \
+             모든 셸에 늘 로고가 붙는다"
+        );
+        assert_eq!(
+            super::running_command(4321, 4399, Some("claude".to_string())),
+            Some("claude".to_string()),
+            "잡에 넘어간 터미널의 이름이 그대로 답이다"
+        );
+        assert_eq!(
+            super::running_command(4321, 4399, None),
+            None,
+            "이름을 못 읽는 경우가 실제로 온다(이미 끝난 프로세스·권한) — 조용히 넘어간다"
+        );
+    }
+
+    /// **재는 것과 쏘는 것을 가른 자리.** 값이 안 바뀌면 이벤트가 안 나가는 것이 adr-04가
+    /// 폴링을 산 값이다 — 비용은 재기가 아니라 다시 그리기에 있다. 조립부에 두면 이 성질을
+    /// 재려고 1초를 기다려야 하고, 그러면 아무도 안 잰다.
+    #[test]
+    fn only_the_shells_whose_command_changed_go_out() {
+        let sent: BTreeMap<u32, Option<String>> =
+            BTreeMap::from([(1, Some("claude".to_string())), (2, None)]);
+
+        assert!(
+            super::changes(&sent, &sent.clone()).is_empty(),
+            "안 바뀐 값이 나갔다 — 초마다 사이드바와 탭 줄이 통째로 다시 그려진다"
+        );
+
+        let now = BTreeMap::from([(1, None), (2, Some("cargo".to_string()))]);
+        assert_eq!(
+            super::changes(&sent, &now),
+            vec![
+                super::PtyRunning { id: 1, running: None },
+                super::PtyRunning { id: 2, running: Some("cargo".to_string()) },
+            ],
+            "끝난 것과 시작한 것이 둘 다 나가야 한다"
+        );
+    }
+
+    /// 방금 열린 셸은 프런트에서도 `null`로 시작한다(`openShell`). 그 칸에 `null`을 쏘는 것은
+    /// **안 바뀐 값을 쏘는 것**이라, 셸을 열 때마다 이벤트가 하나씩 헛나간다.
+    #[test]
+    fn a_shell_that_just_opened_with_nothing_running_is_not_news() {
+        let now = BTreeMap::from([(7, None)]);
+        assert!(
+            super::changes(&BTreeMap::new(), &now).is_empty(),
+            "빈 셸이 새로 생긴 것만으로 이벤트가 나갔다"
+        );
+        assert_eq!(
+            super::changes(&BTreeMap::new(), &BTreeMap::from([(7, Some("claude".to_string()))])),
+            vec![super::PtyRunning { id: 7, running: Some("claude".to_string()) }],
+            "열자마자 돌고 있는 셸은 첫 회차에 나가야 한다"
+        );
+    }
+
+    /// 거둔 셸은 풀에서 사라진다. 그때 **한 번 더 쏘지 않으면** 마지막 값이 화면에 굳어,
+    /// 죽은 칸에 claude 로고가 영영 남는다.
+    #[test]
+    fn a_shell_that_left_the_pool_is_cleared_once() {
+        let sent = BTreeMap::from([(1, Some("claude".to_string())), (2, None)]);
+        let now = BTreeMap::new();
+        assert_eq!(
+            super::changes(&sent, &now),
+            vec![super::PtyRunning { id: 1, running: None }],
+            "돌던 셸만 지운다 — 이미 null이던 셸까지 쏘면 안 바뀐 값이 나간다"
+        );
+    }
+
+    /// **실물 증거.** 「pgid로 이름을 읽는다」는 살아 있는 프로세스 없이는 못 잰다 — 위 순수
+    /// 판정은 값 셋으로 전수되지만 그 값이 어디서 오는지는 거기 없다.
+    ///
+    /// **오탐 검사를 겸한다.** 타이틀 추론을 기각한 근거(adr-04)가 「명령줄에 `claude`가 들어
+    /// 있다고 claude가 아니다」인데, 말로만 두면 다음 사람이 되돌린다. `/usr/bin/grep claude`는
+    /// 명령줄에 그 낱말을 달고 stdin을 기다리며 막혀 있고, 읽히는 이름은 `grep`이다.
+    #[test]
+    fn the_foreground_groups_name_comes_from_a_real_pty() {
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("pty를 연다");
+        // 인자가 명령줄에 남되 이름은 되지 않는다. 파일 인자를 안 주면 stdin(= 이 pty)을
+        // 읽으며 막히므로 재는 동안 살아 있다.
+        let mut cmd = CommandBuilder::new("/usr/bin/grep");
+        cmd.arg("claude");
+        let mut child = pair.slave.spawn_command(cmd).expect("grep을 띄운다");
+        // 셸을 띄울 때와 같은 이유로 떨군다 — 우리가 slave를 쥐고 있으면 상대가 죽어도
+        // master가 EOF를 못 받는다.
+        drop(pair.slave);
+
+        // `portable-pty`가 `pre_exec`에서 setsid + TIOCSCTTY를 부르므로 자식의 pid가 그대로
+        // 포그라운드 그룹이 된다(`Shell::pid`의 주석과 같은 성질이다).
+        let child_pid = child.process_id().expect("자식의 pid를 받는다") as i32;
+        // **함정 둘을 여기서 실측했다.**
+        // ① 아직 아무도 안 쥔 pty의 `tcgetpgrp`가 macOS에서 **부르는 쪽의 pgid**를 준다 —
+        //    「0보다 크면 됐다」로 기다리면 첫 판에 테스트 바이너리 자신을 읽는다.
+        // ② `pre_exec`의 setsid는 **`exec`보다 먼저** 돌아서, 터미널은 이미 넘어왔는데
+        //    자식은 아직 부모의 이름을 달고 있다 — 그 창에서 읽어도 우리 이름이 나온다.
+        //
+        // 그래서 기다리는 조건이 「우리 이름이 아닌 이름이 붙었다」다. **「grep이 될 때까지」로
+        // 기다리면 안 된다** — 그러면 아래 단언이 스스로 통과하는 change-detector가 된다.
+        let mine = super::process_name(std::process::id() as i32);
+        let mut name = None;
+        for _ in 0..300 {
+            if pair.master.process_group_leader() == Some(child_pid) {
+                let read = super::process_name(child_pid);
+                if read.is_some() && read != mine {
+                    name = read;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        // **거두는 것이 단언보다 먼저다.** 단언이 빨개지면 그 자리에서 패닉이라, 뒤에 둔
+        // 정리는 안 돈다 — 막혀 있는 grep이 그대로 남는다.
+        super::signal(child_pid, libc::SIGKILL);
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert_eq!(
+            name.as_deref(),
+            Some("grep"),
+            "터미널을 쥔 그룹의 프로세스 이름을 못 읽는다 (우리 이름은 {mine:?})"
+        );
+        assert_ne!(
+            name.as_deref(),
+            Some("claude"),
+            "명령줄의 낱말을 이름으로 집었다 — 타이틀 추론을 기각한 근거가 여기서 무너진다"
         );
     }
 }

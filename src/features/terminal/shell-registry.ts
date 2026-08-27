@@ -53,6 +53,21 @@ export interface Shell {
    * **「어디서 떴냐」**다.
    */
   cwd: string | null;
+  /**
+   * 이 셸에서 **지금 도는 명령**의 프로세스 이름. 프롬프트에 서 있으면 `null`이다.
+   *
+   * **이 칸이 있는 것은 결정 92를 뒤집은 결과다**(adr-04). 그 결정은 「도는가」를 닫기 직전
+   * 한 번만 묻고 상태에 얹지 않았는데, 바뀐 것은 값의 성질이 아니라 목적이다 — 「어느
+   * work에서 무엇이 도는가」를 늘 보는 것은 구독 없이 답할 수 없다. 백엔드가 1초마다 재서
+   * **바뀐 셸만** 실어 보낸다.
+   *
+   * **원문 그대로다**(`claude`·`codex`·`node`·`cargo`). 「claude냐 codex냐」의 판정과 로고
+   * 매핑은 이 값을 읽는 화면이 든다 — 백엔드가 그걸 알면 에이전트가 늘 때마다 Rust를
+   * 고쳐야 하고, 여기서 접으면 그 매핑이 두 벌이 된다.
+   *
+   * **읽을 때는 `runningOn`을 쓴다** — 끝난 칸에 남은 마지막 값을 가르는 자리가 거기다.
+   */
+  running: string | null;
 }
 
 export interface ShellsState {
@@ -200,6 +215,8 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     owner: origin.owner,
     project: origin.project,
     cwd: origin.cwd,
+    // 첫 값은 백엔드의 다음 회차가 준다(adr-04) — 최대 1초다. 여기서 미리 채울 것이 없다.
+    running: null,
   };
   return {
     state: {
@@ -364,6 +381,57 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
   return patch(state, id, (shell) =>
     shell.shellName === shellName ? shell : { ...shell, shellName },
   );
+}
+
+/**
+ * 백엔드가 잰 「지금 도는 것」(adr-04). `null`이면 프롬프트에 서 있다.
+ *
+ * **안 바뀌면 같은 객체를 돌려주는 것이 계약이다** — `patch`의 관용구를 그대로 딛는다.
+ * 이 값은 **초마다** 도착하므로, 여기서 새 객체를 만들면 사이드바와 탭 줄이 초마다 통째로
+ * 다시 그려진다(`sameBranch`가 칸을 정체로 보는 이유가 그것이다). 백엔드도 안 바뀐 값을
+ * 안 쏘지만 그 한 겹에만 기대지 않는다 — 근거가 다른 두 겹이다.
+ *
+ * **이름을 접지 않는다.** 원문 그대로 앉히고, 로고로 바꾸는 판단은 읽는 화면이 든다.
+ */
+export function setRunning(state: ShellsState, id: number, running: string | null): ShellsState {
+  return patch(state, id, (shell) => (shell.running === running ? shell : { ...shell, running }));
+}
+
+/**
+ * 그 칸에서 **지금 도는 것**. 탭 한 칸이 읽는 자리다(결정 4의 「탭 줄은 칸마다」).
+ *
+ * **끝난 칸은 아무것도 안 돌린다.** 죽은 칸에 마지막 값이 굳어 있으면 claude 로고가 영영
+ * 남는다 — 백엔드도 풀에서 빠진 셸을 한 번 지우지만, 그 이벤트와 종료 프레임의 순서는
+ * 보장되지 않는다(다른 통로다). 상태로 가르면 순서가 무의미해진다.
+ *
+ * **`shell.running`을 직접 읽지 않는 이유가 그 한 줄이다.** 두 화면이 각자 읽으면 한쪽만
+ * 그 가름을 빠뜨린다.
+ */
+export function runningOn(shell: Shell): string | null {
+  return shell.status.kind === "running" ? shell.running : null;
+}
+
+/**
+ * 그 화면에서 도는 것의 **종류**(결정 4). 중복이 없다 — claude가 둘 돌아도 로고는 하나다.
+ * 목록은 「뭐가 도나」를 말하지 「몇 개 도나」를 말하지 않고, 개수는 `shellCountsOf`가
+ * 이미 말한다.
+ *
+ * 순서는 칸 순서 그대로다(`Set`이 넣은 순서를 지킨다) — 로고 자리가 초마다 재배열되면
+ * 그 자체가 깜빡임이다.
+ *
+ * **`shellCountsOf`처럼 Record로 한 번에 주지 않는다.** 그쪽은 셸이 열리고 닫힐 때만 바뀌어
+ * 사이드바가 얕은 비교로 통째로 구독해도 되지만, 이 값은 초마다 바뀐다 — Record로 주면
+ * 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
+ * 때마다 목록 전체가 다시 그려진다. 행마다 자기 것을 고르게 두면 그 행만 바뀐다.
+ */
+export function runningKindsOf(state: ShellsState, owner: string | null): ReadonlyArray<string> {
+  const kinds = new Set<string>();
+  for (const shell of shellsOf(state, owner)) {
+    // 「죽은 칸은 안 센다」를 여기서 다시 가르지 않는다 — 그 판정은 `runningOn` 하나다.
+    const running = runningOn(shell);
+    if (running !== null) kinds.add(running);
+  }
+  return [...kinds];
 }
 
 /**
