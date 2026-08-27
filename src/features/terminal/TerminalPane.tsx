@@ -10,6 +10,9 @@ import {
   workShellOrigin,
 } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
+import { terminalLook } from "./terminal-defaults";
+import { terminalSettingsStore } from "./terminal-settings";
+import { terminalThemeFor } from "./terminal-theme";
 import {
   attachShell,
   detachShell,
@@ -22,9 +25,9 @@ import {
 import type { WorkView } from "@/features/works/types";
 
 /**
- * 터미널 본문 — 종료 줄과 셸이 들어앉는 자리. **머리행도 탭 줄도 없다**: 셸을 고르는
- * 자리가 사이드바 가지로 갔고(결정 71·72), 머리행은 두 화면이 각자 이고 있다 —
- * 최상위 터미널은 `/terminal`의 `PageHeader`, Work의 터미널은 `WorksPage`의 머리행이다.
+ * 터미널 본문 — 셸이 들어앉는 자리. **머리행은 여기 없다**: 두 화면이 각자 이고 있다.
+ * Work의 터미널은 `WorksPage`의 **탭 줄**(`ShellTabs` — 결정 7)이고, 최상위 터미널은
+ * 아직 `TerminalPage`의 `PageHeader`다(그쪽도 같은 줄로 가는 것이 판 03의 남은 몫이다).
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(결정 20·21). 여기서 하는 일은 활성 칸의 집을 자리에 들이고
@@ -69,51 +72,93 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
   const projects = work?.worktrees.map((tree) => tree.project) ?? [];
 
+  // 셸의 배경색. **색을 여기서 고르지 않는다** — xterm 테마의 정본은 `terminal-theme.ts`이고
+  // (그 파일 머리말), 셸이 실제로 그리는 값과 어긋나면 아래 잉여 띠가 도로 보인다.
+  // 설정을 구독하는 것은 밝게·어둡게를 바꾸면 이 칠도 따라와야 해서다(결정 52가 이미 떠 있는
+  // 셸을 따라오게 하는 것과 같은 몫).
+  const shellBackground = useStore(
+    terminalSettingsStore,
+    (settings) => terminalThemeFor(terminalLook(settings).theme).background,
+  );
+
   return (
-    <>
-      {/* 이 줄은 **비어 있어도 자리를 차지한다.** 죽은 셸의 마지막 화면을 그대로 두라는
-          것이 결정 22인데, 조건부로 끼워 넣으면 나타나는 순간 컨테이너가 그만큼 낮아지고
-          ResizeObserver가 그 화면을 한두 행 줄여 다시 흐르게 한다. 높이를 고정하면 없다.
+    // 상자는 여백을 갖지 않는다 — 아래 셸의 집이 결정 94를 그대로 지켜야 한다.
+    // `relative`는 셸이 0개일 때 덮는 안내와 죽은 셸의 안내를 이 영역 안에 세우기 위한
+    // 것이다. **위에 형제가 없다**(결정 1) — 종료 줄이 흐름에서 빠지면서 프래그먼트도
+    // 함께 걷혔고, 이 상자가 머리행 바로 아래에서 시작한다.
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
+          창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
+          읽는 글이라 그대로 둔다.
 
-          **여백은 없다**(결정 94) — 이 줄도 셸과 같은 왼쪽 끝에서 시작한다. */}
-      <div className="h-5 shrink-0 text-[12px] text-muted-foreground">{notice}</div>
-      {/* 상자는 여백을 갖지 않는다 — 아래 셸의 집이 결정 94를 그대로 지켜야 한다.
-          `relative`는 셸이 0개일 때 덮는 안내를 이 영역 안에 세우기 위한 것이다. */}
-      <div className="relative flex min-h-0 min-w-0 flex-1">
-        {/* 셸이 들어앉는 자리. **여백이 0인 것이 결정 94다** — 셸 화면에서 여백은 빈 배경이라
-            창이 좁을수록 손해가 크고, 그만큼 `cols`가 줄어든다. spec 본문의 거터(`px-12`)는
-            읽는 글이라 그대로 둔다.
+          표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 — 한때 「마크업의 마지막
+          빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만 더 그려지면 그 판정이
+          결정 94와 무관하게 깨진다. 아래 안내가 정확히 그 「무엇 하나」다.
 
-            표식은 검사가 이 상자를 **정체성으로** 집기 위한 것이다 — 한때 「마크업의 마지막
-            빈 div」라는 자리로 집었는데, 이 컴포넌트에 무엇 하나만 더 그려지면 그 판정이
-            결정 94와 무관하게 깨진다. 아래 안내가 정확히 그 「무엇 하나」다. */}
-        <div ref={hostRef} data-shell-host="" className="min-h-0 min-w-0 flex-1" />
-        {/* **셸이 0개인 화면이 실재한다**(결정 102). 정상 종료한 셸이 목록에서 스스로 빠지고
-            (결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로 뜨지 않는다. 탭 줄이
-            걷힌 뒤로 본문에서 셸을 여는 길이 여기뿐이다.
+          **칠하는 이유가 결정 1의 아래쪽 절반이다.** FitAddon이 `rows`를 내림으로 재서
+          (`floor(높이 / 셀높이)`) 셸 화면 아래에 한 셀보다 작은 잉여가 남는다 — 실측 16px
+          (자리 676px, 셀 20px, 33행 = 660px). 그 자리는 xterm이 안 그리므로 앱 배경이 비쳐
+          띠가 된다. 창 높이가 바뀌면 잉여도 0~19px에서 함께 바뀌므로 「16px」을 값으로 어디에도
+          적어 두지 않는다. 셀 높이를 억지로 늘려 잉여를 없애는 안은 글꼴을 흔들어서 안 쓴다.
+          **셸이 있을 때만 칠한다** — 0개인 화면까지 칠하면 결정 102의 안내가 커다란 어두운
+          판 위에 서고, 그 화면에는 덮을 잉여도 없다. */}
+      <div
+        ref={hostRef}
+        data-shell-host=""
+        className="min-h-0 min-w-0 flex-1"
+        style={activeId === null ? undefined : { backgroundColor: shellBackground }}
+      />
+      {/* 죽은 셸의 한 문장(결정 22·45). **흐름에 끼지 않고 셸 위에 겹쳐 뜬다**(결정 1).
+          흐름에 끼면 — 조건부로든 `h-5`로 자리를 늘 잡아 두든 — 이 20px이 그대로 셸 위쪽
+          띠가 된다: 조건부는 뜨는 순간 컨테이너가 낮아져 ResizeObserver가 셸을 한두 행
+          줄이고, 고정 높이는 안내가 없는 평소에도 빈 띠로 남는다. 겹쳐 두면 둘 다 없다.
 
-            **여는 자리를 새로 짓지 않고 같은 목록을 쓴다** — 상한 문구도 프로젝트 고르기도
-            그쪽이 이미 안다. 둘로 두면 「셸 8개까지예요」가 화면마다 다른 말이 된다. */}
-        {shells.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex w-[240px] flex-col gap-(--row-gap)">
-              <ShellList
-                state={state}
-                owner={owner}
-                projects={projects}
-                showing
-                onSelect={selectShell}
-                onClose={requestCloseShell}
-                onOpen={(project) => {
-                  const origin = originOf(work, project);
-                  if (origin) openNewShell(origin);
-                }}
-              />
-            </div>
+          **자리는 그대로 맨 위 20px이다** — 사람이 이 문장을 찾던 자리가 거기다. 대가는
+          죽은 셸 화면의 첫 행이 가려지는 것이고, 그 행은 스크롤로 되찾을 수 있다.
+
+          바탕을 앱 배경으로 두는 것은 지금 모습을 그대로 두려는 것이다: 이 줄은 예전에도
+          앱 배경 위의 `text-muted-foreground`였다. 바탕 없이 셸 위에 얹으면 `#55555e`가
+          다크 셸 바탕 `#1e1e1e` 위 2.4:1로 묻힌다.
+
+          `pointer-events-none` — 겹친 만큼 xterm이 포인터를 잃으면 안 된다. */}
+      {notice !== null && (
+        <div
+          data-shell-notice=""
+          className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-background text-[12px] text-muted-foreground"
+        >
+          {notice}
+        </div>
+      )}
+      {/* **셸이 0개인 화면이 실재한다**(결정 102). 정상 종료한 셸이 목록에서 스스로 빠지고
+          (결정 48), 마지막 칸을 `×`로 닫은 자리에서는 새 셸이 저절로 뜨지 않는다.
+
+          **「본문에서 셸을 여는 길이 여기뿐이다」가 거짓이 됐다.** 결정 102가 이 덮개를
+          세운 근거가 그 한 줄이었는데, 판 03이 탭 줄을 되살리며 `+`를 화면 위로 도로
+          가져왔다 — 지금 이 화면에는 여는 자리가 둘이다. 걷을지 남길지는 `/terminal`까지
+          같은 줄이 서는 판에서 함께 정한다: 거기서는 셸이 0개일 때 본문에 볼 것이
+          하나도 안 남는다는 것이 이 덮개를 남기는 쪽의 근거다.
+
+          **여는 자리를 새로 짓지 않고 같은 목록을 쓴다** — 상한 문구도 프로젝트 고르기도
+          그쪽이 이미 안다. 둘로 두면 「셸 8개까지예요」가 화면마다 다른 말이 된다. */}
+      {shells.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex w-[240px] flex-col gap-(--row-gap)">
+            <ShellList
+              state={state}
+              owner={owner}
+              projects={projects}
+              showing
+              onSelect={selectShell}
+              onClose={requestCloseShell}
+              onOpen={(project) => {
+                const origin = originOf(work, project);
+                if (origin) openNewShell(origin);
+              }}
+            />
           </div>
-        )}
-      </div>
-    </>
+        </div>
+      )}
+    </div>
   );
 }
 
