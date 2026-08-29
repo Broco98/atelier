@@ -175,7 +175,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
  * `.html`은 **실물 목업을 안 넣는다.** 27KB짜리 남의 work 파일이 이 저장소의 검사에
  * 들어오면 그 파일이 바뀔 때 여기가 깨지고, 그 문서가 증명하는 두 값(264px·32px)은
  * 껍데기와 무관하게 통과해 자동 검사로서 아무것도 못 지킨다. **몇 줄짜리 합성**이
- * 껍데기가 실제로 섰는지(`body` 여백)와 스크립트가 돌았는지를 다 잰다.
+ * 껍데기가 실제로 섰는지(`body` 여백)와 스크립트가 돌았는지, 그리고 프레임 안이 여전히
+ * 눌리는지를 다 잰다.
  */
 export const SPEC_FILE_BODIES: Record<string, string> = {
   // **doctype이 없다** — 아티팩트 조각이라 껍데기를 받는 쪽이다. 껍데기가 섰는지는
@@ -183,8 +184,14 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
   "목업/조각.html": [
     "<title>조각</title>",
     '<p id="조각">껍데기 없는 아티팩트 조각</p>',
+    // **프레임 안이 여전히 눌리는지**를 재는 자리(spec-html.spec.ts). 목업의 토글을 살리는
+    // 것이 결정 4의 목적이라, 포커스 완화책이 그것을 죽이지 않았다는 증거가 필요하다.
+    '<button id="토글" type="button">토글</button>',
     // 프레임 안에서 스크립트가 돌았다는 증거. `allow-scripts`가 빠지면 여기가 안 남는다.
-    '<script>document.body.dataset.ran = "1";</script>',
+    // 그 아래 한 줄은 위 버튼의 손잡이다 — 눌리면 `toggled`가 선다.
+    '<script>document.body.dataset.ran = "1";',
+    'document.getElementById("토글").onclick = () => { document.body.dataset.toggled = "1"; };',
+    "</script>",
     "",
   ].join("\n"),
   "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',

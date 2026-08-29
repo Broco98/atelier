@@ -122,3 +122,57 @@ test("`.html`은 토글이 안 잠기고, `.json`은 지금 그대로다", async
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 프레임에 포커스가 들어가면 앱 단축키가 통째로 죽는다(이슈 #153). 그것을 여기서 고치지는
+// 않는다 — 이 판은 **그 사실을 화면이 말하게** 한 완화책이고, 이 검사는 그 말이 서고
+// 사라지는 것과 **덮개가 아니라는 것**을 잰다.
+//
+// **이 층에서만 보인다.** 판정의 근거가 브라우저가 주는 두 신호(`window`의 `blur`/`focus`)와
+// `document.activeElement`인데, 정적 마크업 seam에는 포커스가 없고 jsdom에는 프레임 안으로
+// 들어갈 문서가 없다. 실제로 프레임 안을 클릭해야 그 경로가 한 번 도는데, 클릭 시점에
+// `focusin`이 **안 온다**는 것이 이 완화책의 판정을 정한 실측이다(`useFrameFocused` 머리말).
+test("프레임에 포커스가 있는 동안만 「단축키가 안 먹는다」가 서고, 덮개는 아니다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${work.slug}?file=${encodeURIComponent(HTML_FILE)}`);
+
+  const frameEl = page.locator(`iframe[title="${HTML_FILE}"]`);
+  await expect(frameEl).toBeVisible();
+  const hint = page.locator("[data-frame-hint]");
+
+  // **상시 뜨지 않는다.** 읽기만 하는 사람은 아무것도 안 겪으므로 아무 말도 안 한다.
+  await expect(hint).toHaveCount(0);
+
+  const frame = await (await frameEl.elementHandle())?.contentFrame();
+  if (!frame) throw new Error("프레임 안으로 들어가지 못했다");
+
+  // 프레임 안의 토글을 누른다 — 겪는 사람이 실제로 하는 그 동작이다(읽기만 하면 안 겪는다).
+  await frame.locator("#토글").click();
+
+  // 눌렸다. **포커스를 도로 안 뺏는다**(#153이 기각한 첫째 길) — 뺏었다면 이 값이 안 선다.
+  await expect.poll(() => frame.evaluate(() => document.body.dataset.toggled ?? null)).toBe("1");
+
+  // 그리고 화면이 말한다. **말할 것 둘이 다 있다** — 지금 안 먹는다는 것과 돌아오는 길.
+  await expect(hint).toBeVisible();
+  await expect(hint).toContainText("앱 단축키가 지금 안 먹어요");
+  await expect(hint).toContainText("문서 바깥을 한 번 클릭하면");
+
+  // **덮개가 아니다**(#153이 기각한 둘째 길). 카드가 포인터를 안 받으므로 그 밑의 프레임이
+  // 계속 눌린다 — 아래 두 줄이 그 증거 둘이다: 카드는 클릭을 통과시키고, 프레임 안 토글은
+  // 카드가 떠 있는 채로 다시 눌린다.
+  expect(
+    await hint.evaluate((el) => getComputedStyle(el.closest("[data-popover]")!).pointerEvents),
+  ).toBe("none");
+  await frame.evaluate(() => delete document.body.dataset.toggled);
+  await frame.locator("#토글").click();
+  await expect.poll(() => frame.evaluate(() => document.body.dataset.toggled ?? null)).toBe("1");
+
+  // 프레임 밖을 한 번 클릭하면 돌아온다 — 카드가 적어 둔 그 길을 그대로 밟는다.
+  // (트리에서 **지금 보고 있는 그 파일**을 누른다: 화면을 안 바꾸면서 포커스만 나온다.)
+  await page.getByRole("button", { name: "HTML 조각.html", exact: true }).click();
+  await expect(hint).toHaveCount(0);
+  await expect(frameEl).toBeVisible();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
