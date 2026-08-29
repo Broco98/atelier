@@ -53,6 +53,21 @@ export interface Shell {
    * **「어디서 떴냐」**다.
    */
   cwd: string | null;
+  /**
+   * 이 셸에서 **지금 도는 명령**의 프로세스 이름. 프롬프트에 서 있으면 `null`이다.
+   *
+   * **이 칸이 있는 것은 결정 92를 뒤집은 결과다**(adr-04). 그 결정은 「도는가」를 닫기 직전
+   * 한 번만 묻고 상태에 얹지 않았는데, 바뀐 것은 값의 성질이 아니라 목적이다 — 「어느
+   * work에서 무엇이 도는가」를 늘 보는 것은 구독 없이 답할 수 없다. 백엔드가 1초마다 재서
+   * **바뀐 셸만** 실어 보낸다.
+   *
+   * **원문 그대로다**(`claude`·`codex`·`node`·`cargo`). 「claude냐 codex냐」의 판정과 로고
+   * 매핑은 이 값을 읽는 화면이 든다 — 백엔드가 그걸 알면 에이전트가 늘 때마다 Rust를
+   * 고쳐야 하고, 여기서 접으면 그 매핑이 두 벌이 된다.
+   *
+   * **읽을 때는 `runningOn`을 쓴다** — 끝난 칸에 남은 마지막 값을 가르는 자리가 거기다.
+   */
+  running: string | null;
 }
 
 export interface ShellsState {
@@ -122,17 +137,29 @@ function workDir(work: WorkView): string {
 }
 
 /**
- * 앱 전체에서 동시에 살 수 있는 셸 수(결정 30).
+ * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 최상위
+ * 터미널(`owner`가 `null`)도 자기 몫으로 이만큼이다.
  *
- * **화면 단위가 아니라 앱 단위다.** WebGL 컨텍스트는 웹뷰의 자원이고, 결정 21이 비활성
- * 셸의 xterm 인스턴스를 React 트리 밖에 두었으므로 **안 보이는 칸도 컨텍스트를 계속 쥔다.**
- * 세는 자리가 이 상태 하나여야 판 03에서 Work마다 8개가 되는 일이 없다.
+ * **결정 30을 뒤집었다** — 그때는 앱 전체 하나였다. 근거는 WebGL 컨텍스트가 웹뷰의
+ * 자원이고 결정 21이 비활성 셸의 xterm을 React 트리 밖에 두어 **안 보이는 칸도 컨텍스트를
+ * 계속 쥔다**는 것이었다. 그 사실은 그대로지만 상한이 답할 물음이 아니었다: 사람이 세는
+ * 단위는 「이 화면에 몇 개」이고, 앱 전체로 세면 **남의 work에서 연 셸 때문에 이 화면의
+ * `+`가 잠긴다** — 왜 잠겼는지가 이 화면에 안 보인다.
+ *
+ * 컨텍스트가 웹뷰의 한도를 넘으면 `WebglAddon`이 `onContextLoss`로 스스로 물러나고
+ * (terminal-store의 그 핸들러) 그 칸은 DOM 렌더러로 그려진다 — 느려지는 것이지 깨지는
+ * 것이 아니다. 상한이 막아야 할 것은 그 열화이지 사람이 화면마다 여는 일이 아니다.
  */
 export const MAX_SHELLS = 8;
 
-/** 상한에 닿았다. `+`가 잠기는 판정과 `openShell`이 거부하는 판정이 이것 하나다. */
-export function atCap(state: ShellsState): boolean {
-  return state.shells.length >= MAX_SHELLS;
+/**
+ * 이 화면이 상한에 닿았다. `+`가 잠기는 판정과 `openShell`이 거부하는 판정이 이것 하나다.
+ *
+ * **`owner`를 반드시 받는다**(결정 23). 기본값을 두면 빠뜨린 자리가 조용히 다른 화면을
+ * 세고, 그때 나는 것은 「눌러도 아무 일이 없는 `+`」다.
+ */
+export function atCap(state: ShellsState, owner: string | null): boolean {
+  return shellsOf(state, owner).length >= MAX_SHELLS;
 }
 
 /**
@@ -142,8 +169,8 @@ export function atCap(state: ShellsState): boolean {
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
  */
-export function shellCapNotice(state: ShellsState): string {
-  return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
+export function shellCapNotice(state: ShellsState, owner: string | null): string {
+  return `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${shellsOf(state, owner).length}개`;
 }
 
 /**
@@ -160,8 +187,12 @@ export function shellCapNotice(state: ShellsState): string {
  *
  * 문장은 `shellCapNotice`가 짓는다 — 잠긴 `+` 행이 읽는 것과 같은 문장이어야 해서다(결정 47).
  */
-export function shellOpenNotice(state: ShellsState, opened: OpenedShell | null): string | null {
-  return opened ? null : shellCapNotice(state);
+export function shellOpenNotice(
+  state: ShellsState,
+  opened: OpenedShell | null,
+  owner: string | null,
+): string | null {
+  return opened ? null : shellCapNotice(state, owner);
 }
 
 /** `openShell`이 열었을 때 돌려주는 것. 새 목록과 그 자리에서 발급한 id다. */
@@ -189,7 +220,7 @@ export interface OpenedShell {
  * 받으면 여는 자리가 셸에 적히는 자리와 **같은 값 하나**를 본다.
  */
 export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell | null {
-  if (atCap(state)) return null;
+  if (atCap(state, origin.owner)) return null;
 
   const id = state.nextId;
   const shell: Shell = {
@@ -200,6 +231,8 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     owner: origin.owner,
     project: origin.project,
     cwd: origin.cwd,
+    // 첫 값은 백엔드의 다음 회차가 준다(adr-04) — 최대 1초다. 여기서 미리 채울 것이 없다.
+    running: null,
   };
   return {
     state: {
@@ -212,8 +245,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
 }
 
 /**
- * 이 화면이 보여줄 칸들. **상한은 이것으로 세지 않는다** — 그것은 앱 전체 기준이라
- * `atCap`이 목록 전체를 본다(결정 30).
+ * 이 화면이 보여줄 칸들. **상한도 이것으로 센다**(결정 23) — `atCap`이 이 함수를 딛는다.
  */
 export function shellsOf(state: ShellsState, owner: string | null): ReadonlyArray<Shell> {
   return state.shells.filter((shell) => shell.owner === owner);
@@ -230,15 +262,15 @@ export function runningShellsOf(state: ShellsState, owner: string | null): numbe
 
 /** 이 화면에서 켜진 칸. */
 /**
- * 소유자별 셸 개수 — 사이드바에서 **어느 work에 가지가 서는가**를 정하는 값이다(결정 73).
+ * 소유자별 셸 개수 — 사이드바 work 행의 **둘째 줄이 서는 조건이자 그 줄이 적는 값**이다
+ * (결정 2·3).
  *
  * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
  * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
- * 없다(ShellBranch 머리말).
+ * 없다(Sidebar.tsx의 `shellCounts`).
  *
- * **최상위 터미널의 셸은 여기 없다.** 그쪽은 work이 아니라 nav 항목에 붙는 가지라
- * 세는 자리가 따로다(`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가
- * 슬러그인 척하게 된다.
+ * **최상위 터미널의 셸은 여기 없다.** 그쪽은 어느 work의 것도 아니라 세는 자리가 따로다
+ * (`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가 슬러그인 척하게 된다.
  */
 export function shellCountsOf(state: ShellsState): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -367,6 +399,63 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
 }
 
 /**
+ * 백엔드가 잰 「지금 도는 것」(adr-04). `null`이면 프롬프트에 서 있다.
+ *
+ * **안 바뀌면 같은 객체를 돌려주는 것이 계약이다** — `patch`의 관용구를 그대로 딛는다.
+ * 이 값은 **초마다** 도착하므로, 여기서 새 객체를 만들면 사이드바와 탭 줄이 초마다 통째로
+ * 다시 그려진다(`sameScreen`가 칸을 정체로 보는 이유가 그것이다). 백엔드도 안 바뀐 값을
+ * 안 쏘지만 그 한 겹에만 기대지 않는다 — 근거가 다른 두 겹이다.
+ *
+ * **이름을 접지 않는다.** 원문 그대로 앉히고, 로고로 바꾸는 판단은 읽는 화면이 든다.
+ */
+export function setRunning(state: ShellsState, id: number, running: string | null): ShellsState {
+  return patch(state, id, (shell) => (shell.running === running ? shell : { ...shell, running }));
+}
+
+/**
+ * 그 칸에서 **지금 도는 것**. 탭 한 칸이 읽는 자리다(결정 4의 「탭 줄은 칸마다」).
+ *
+ * **끝난 칸은 아무것도 안 돌린다.** 죽은 칸에 마지막 값이 굳어 있으면 claude 로고가 영영
+ * 남는다 — 백엔드도 풀에서 빠진 셸을 한 번 지우지만, 그 이벤트와 종료 프레임의 순서는
+ * 보장되지 않는다(다른 통로다). 상태로 가르면 순서가 무의미해진다.
+ *
+ * **`shell.running`을 직접 읽지 않는 이유가 그 한 줄이다.** 두 화면이 각자 읽으면 한쪽만
+ * 그 가름을 빠뜨린다.
+ */
+export function runningOn(shell: Shell): string | null {
+  return shell.status.kind === "running" ? shell.running : null;
+}
+
+/**
+ * 그 화면에서 **도는 것들**(결정 4·28). 칸 순서 그대로이고 **중복을 지우지 않는다** —
+ * claude가 둘 돌면 두 번 들어 있다.
+ *
+ * **개수를 여기서 접지 않는 이유**는 얕은 비교다. `Map`이나 `Record`로 접어 주면 회차마다
+ * 새 객체라 사이드바 행의 `shallow`가 늘 어긋나고, work 하나에서 명령이 시작될 때마다
+ * 목록 전체가 다시 그려진다(`shellCountsOf` 머리말이 든 그 함정). 문자열 배열은 얕은
+ * 비교가 그대로 먹으므로 **세는 일은 그리는 쪽**(`RunningMarks`)이 한다.
+ *
+ * 한때 종류만 담았다(중복 없음) — 「뭐가 도나」만 말하고 개수는 `shellCountsOf`가 셸 수로
+ * 말한다는 것이었는데, 그러면 한 줄 안에서 셸에는 수가 붙고 에이전트에는 안 붙는다.
+ *
+ * 순서가 칸 순서인 것은 로고 자리가 초마다 재배열되면 그 자체가 깜빡임이라서다.
+ *
+ * **`shellCountsOf`처럼 Record로 한 번에 주지 않는다.** 그쪽은 셸이 열리고 닫힐 때만 바뀌어
+ * 사이드바가 얕은 비교로 통째로 구독해도 되지만, 이 값은 초마다 바뀐다 — Record로 주면
+ * 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
+ * 때마다 목록 전체가 다시 그려진다. 행마다 자기 것을 고르게 두면 그 행만 바뀐다.
+ */
+export function runningAgentsOf(state: ShellsState, owner: string | null): ReadonlyArray<string> {
+  const out: string[] = [];
+  for (const shell of shellsOf(state, owner)) {
+    // 「죽은 칸은 안 센다」를 여기서 다시 가르지 않는다 — 그 판정은 `runningOn` 하나다.
+    const running = runningOn(shell);
+    if (running !== null) out.push(running);
+  }
+  return out;
+}
+
+/**
  * 칸을 고른다. **없는 id는 무시한다** — 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있고,
  * 없는 칸을 활성으로 만들면 켜진 칸도 본문도 없는 화면이 이유 없이 남는다.
  */
@@ -388,6 +477,28 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
 export type ShellHotkey = "new" | "close" | "app";
 
 /**
+ * 이 모듈이 **키에서 보는 것 전부**. `KeyboardEvent`를 이름으로 받지 않는 것은 머리말의
+ * 「DOM 없는 기본 환경에서 그대로 돈다」 때문이다 — 구조로만 받으면 테스트가 객체 리터럴
+ * 하나로 부른다. 여섯 함수가 같은 여섯 필드를 손으로 다시 적던 것을 한 자리로 묶었다.
+ */
+interface KeyPress {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+/**
+ * **window에서** 듣는 판정이 보는 것. 키에 더해 **어디서 눌렸는지**를 본다 — 입력 자리
+ * (xterm의 숨은 `<textarea>` 포함)에서는 비켜야 해서다(`typesInto`).
+ */
+interface KeyFromWindow extends KeyPress {
+  target: EventTarget | null;
+}
+
+/**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
  *
  * **결정 29의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
@@ -406,14 +517,7 @@ export type ShellHotkey = "new" | "close" | "app";
  * 수식키가 하나라도 더 붙으면 **셸 몫이다.** ⌘⇧T·⌥⌘W까지 먹으면 근거 없이 넓히는 것이고,
  * 그 미끄러짐이 결정 29가 막으려는 것이다.
  */
-export function shellHotkey(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): ShellHotkey | null {
+export function shellHotkey(event: KeyPress): ShellHotkey | null {
   if (event.type !== "keydown") return null;
   // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
   // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
@@ -443,14 +547,7 @@ export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 
  * **`key`가 아니라 `code`로 본다.** `key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면
  * 같은 키가 자모로 온다(`shellHotkey`와 같은 이유).
  */
-export function shellNavKey(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): ShellNav | null {
+export function shellNavKey(event: KeyPress): ShellNav | null {
   if (event.type !== "keydown") return null;
   if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
     return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
@@ -468,15 +565,7 @@ export function shellNavKey(event: {
  * 먹는데, 셸을 붙일 때마다 포커스가 그리로 가므로 그 화면이 곧 정상 상태다.
  * 그래서 그 하나만 예외로 가른다 — work 제목을 고치는 `<input>`은 그대로 비킨다.
  */
-export function shellNavFromWindow(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  target: EventTarget | null;
-}): ShellNav | null {
+export function shellNavFromWindow(event: KeyFromWindow): ShellNav | null {
   const nav = shellNavKey(event);
   if (nav === null) return null;
   return typesInto(event.target) && !isShellInput(event.target) ? null : nav;
@@ -496,21 +585,22 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
- * 두 상태가 **이 가지에게 같은가.**
+ * 두 상태가 **이 화면에게 같은가.**
  *
- * 가지가 그리는 것은 셋뿐이다 — 자기 셸들, 그중 켜진 칸, 그리고 앱 전체 개수(상한 문구는
- * 앱 전체를 센다 — 결정 30). 남의 work의 셸이 프롬프트마다 쏘는 OSC 타이틀에는 그 셋 중
- * 아무것도 안 바뀐다.
+ * 한 화면의 탭 줄이 그리는 것은 둘뿐이다 — 자기 셸들과 그중 켜진 칸. 남의 work의 셸이
+ * 프롬프트마다 쏘는 OSC 타이틀에는 그 둘 중 아무것도 안 바뀐다.
  *
- * **가지가 하나가 아니라서 필요하다.** 셸이 도는 work마다 가지가 서므로(결정 73) 스토어를
- * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 셸 행이 함께 다시 그려진다. 판 04
- * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이고, 목록이 아니라 가지 사이에서도
- * 같은 이유가 선다.
+ * **화면이 하나가 아니라서 필요하다.** 상한도 탭 줄도 화면마다이므로(결정 23) 스토어를
+ * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 화면이 함께 다시 그려진다. 판 04
+ * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이다.
+ *
+ * **한때 이름이 `sameBranch`였다** — 사이드바 가지 하나가 이 판정의 단위였을 때다(결정 73).
+ * 그 가지는 걷혔고(결정 6) 사전에서도 낱말이 빠졌다.
  *
  * 칸을 **개수가 아니라 정체로** 본다 — `patch`가 안 바뀐 칸에는 같은 객체를 돌려주므로
  * 타이틀이 갈린 칸만 새 객체다. 개수만 세면 이름이 바뀌어도 안 다시 그린다.
  */
-export function sameBranch(a: ShellsState, b: ShellsState, owner: string | null): boolean {
+export function sameScreen(a: ShellsState, b: ShellsState, owner: string | null): boolean {
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
@@ -571,14 +661,7 @@ export function cycleShell(
  * Enter를 조합의 끝으로 읽고 붙들고 있던 음절을 흘려보내므로(`imeKeyDown`), 여기서 무엇을
  * 돌려주든 그 순서는 안 바뀐다.
  */
-export function shellRewrite(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): string | null {
+export function shellRewrite(event: KeyPress): string | null {
   if (event.type !== "keydown") return null;
   if (!event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return null;
   return event.code === "Enter" ? "\x1b\r" : null;
@@ -592,8 +675,11 @@ export function shellRewrite(event: {
  * 전체**이고(결정 98), 열리면 본문이 터미널로 넘어간다 — ⌘1이 spec, ⌘2~9가 셸로 본문을
  * 옮기는 한 벌에 이 키도 든다.
  *
- * **⌘W는 넓히지 않는다**(결정 98). 그것은 「이 칸을 닫는다」라 겨눌 칸이 있어야 하고, 그
- * 칸은 셸에 포커스가 있을 때만 뚜렷하다. 그래서 여기서 보는 것은 `"new"` 하나다.
+ * **⌘W는 이 함수가 아니다** — 아래 `closesShellFromWindow`가 따로 든다(결정 13). 한때
+ * 여기 「⌘W는 넓히지 않는다(결정 98) — 겨눌 칸은 셸에 포커스가 있을 때만 뚜렷하다」고
+ * 적혀 있었는데, **탭 줄이 그 전제를 없앴다**(adr-03): 켜진 칸이 화면에 서 있다. 판정을
+ * 둘로 갈라 두는 것은 ⌘T만 듣는 화면(셸 0개)에 ⌘W가 새어 들지 않게 하기 위해서다 —
+ * 그래서 여기서 보는 것은 여전히 `"new"` 하나다.
  *
  * **입력 중에는 안 듣는다 — 그런데 xterm의 입력 자리도 숨은 `<textarea>`다**
  * (`togglesWorkPanel`이 적어 둔 함정과 같은 자리). 셸 안에서는 xterm 핸들러가 이미
@@ -606,16 +692,25 @@ export function shellRewrite(event: {
  * 그 문장을 이 함수에 대해 거짓으로 만들었다(노드에서 스텁 없이 부르면 터진다). 가르는 일은
  * `typesInto`가 값으로 한다.
  */
-export function opensShellFromWindow(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  target: EventTarget | null;
-}): boolean {
+export function opensShellFromWindow(event: KeyFromWindow): boolean {
   if (shellHotkey(event) !== "new") return false;
+  return !typesInto(event.target);
+}
+
+/**
+ * **window에서** ⌘W를 듣는 자리의 판정(결정 13). 위 함수와 **같은 모양이고 같은 예외를
+ * 탄다** — 다른 것은 어느 키를 보는가 하나뿐이다.
+ *
+ * 무엇을 닫을지는 여기서 안 정한다. 「켜진 탭」이 무엇인지는 화면이 알고(work 화면은
+ * `spec`이 켜져 있으면 닫을 것이 없다), 셸을 닫는 길은 여전히 `requestCloseShell` 하나다 —
+ * 확인 창을 우회하는 길을 새로 만들지 않는다(결정 92).
+ *
+ * **셸 안에서는 안 듣는다.** xterm 핸들러가 이미 같은 함수로 보내므로 여기서 또 들으면
+ * 확인 창이 두 번 뜬다. 그쪽이 `stopPropagation`으로도 막지만 그 한 겹에만 기대지 않는
+ * 이유는 `opensShellFromWindow`의 머리말과 같다.
+ */
+export function closesShellFromWindow(event: KeyFromWindow): boolean {
+  if (shellHotkey(event) !== "close") return false;
   return !typesInto(event.target);
 }
 
@@ -668,24 +763,6 @@ export function shellRowName(shell: Shell): string {
   // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.
   const tail = shell.title ?? shell.shellName ?? UNNAMED;
   return shell.project ? `${shell.project} · ${tail}` : tail;
-}
-
-/**
- * 행의 **둘째 줄 — 지금 상태**다(결정 45). 도는 셸은 어디서 떴는지, 끝난 셸은 어떻게
- * 끝났는지. 한 자리가 둘을 겸하는 것은 궁금한 것이 그때마다 하나뿐이어서다.
- *
- * **`pid`는 여기 없다**(결정 45). 백엔드가 주는 것은 `PtySpawned { id, shellName }`뿐이라
- * 화면까지 오는 길이 아예 없고, 결정 22가 요구하는 「조용히 죽은 이유 읽기」에 필요한
- * 것은 종료 코드와 이유이며 그것은 이미 와 있다.
- */
-export function shellRowStatus(shell: Shell): string {
-  // 끝난 칸이 먼저다 — `shellEndLabels`가 null을 주는 것이 곧 「아직 돈다」이므로 상태를
-  // 여기서 한 번 더 가르지 않는다.
-  const end = shellEndLabels(shell);
-  if (end) return end.notice;
-  // cwd가 없는 것은 최상위 터미널의 셸뿐이고(결정 25) 그 화면에는 이 목록이 없다. 그래도
-  // 빈 문자열을 돌려주지 않는 것은 행이 두 줄로 서기 때문이다 — 비면 이유 없는 빈 줄이 남는다.
-  return shell.cwd ?? "데이터 루트";
 }
 
 /**

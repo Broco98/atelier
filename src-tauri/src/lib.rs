@@ -85,6 +85,13 @@ pub fn run() {
         .manage(Arc::new(pty::PtyPool::default()))
         .setup(|app| {
             watcher::start(app.handle().clone());
+            // 도는 명령을 1초마다 재서 **바뀐 셸만** 쏜다(adr-04). 배선은 바로 위 watcher와
+            // 같은 길이다 — 스레드 하나가 emit하고 프런트가 `listen`으로 받는다.
+            //
+            // 풀을 여기서 건넨다. 스레드가 `state()`로 스스로 찾게 두면 그것이 등록되기
+            // 전에 뜰 수 있는 코드가 되고, 그때 나는 것은 조용한 패닉 하나다 — 폴링이
+            // 통째로 죽는데 앱은 멀쩡히 돈다.
+            pty::watch_running(app.handle().clone(), Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면

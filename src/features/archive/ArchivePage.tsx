@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceToggle } from "@/components/ui/SourceToggle";
 import PageHeader from "@/components/shell/PageHeader";
 import { PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { archiveRef } from "@/features/works/refs";
@@ -156,20 +157,9 @@ function ArchivePage({
           }
           actions={
             <>
-              {selected && (
-                <button
-                  type="button"
-                  onClick={() => setShowSource((v) => !v)}
-                  className={cn(
-                    "h-6 rounded-[8px] px-[9px] text-[12.5px] transition-colors",
-                    showSource
-                      ? "toggle-on"
-                      : "text-tertiary quiet-hover",
-                  )}
-                >
-                  소스
-                </button>
-              )}
+              {/* 글자 하나로 「소스」라고만 적던 자리다 — 여기도 같은 컨트롤을 쓴다(결정 33).
+                  한 화면에서만 다른 어휘를 쓰면 같은 일이 두 모양으로 읽힌다. */}
+              {selected && <SourceToggle on={showSource} onChange={setShowSource} />}
               <button
                 type="button"
                 onClick={() => setPanelOpen((open) => !open)}

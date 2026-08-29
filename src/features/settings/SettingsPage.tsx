@@ -372,7 +372,7 @@ export function TerminalSection({
             // 베껴 적는 것이 아니라 그 값을 정하는 유일한 지점에서 읽는다(`terminal-defaults.ts`).
             fontSize: `${fontSize ?? FONT_SIZE}px`,
           }}
-          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 leading-[1.6]"
+          className="overflow-x-auto whitespace-pre rounded-[10px] px-3.5 py-3 leading-[1.6] scroll-quiet"
         >
           {PREVIEW_LINE}
         </div>
