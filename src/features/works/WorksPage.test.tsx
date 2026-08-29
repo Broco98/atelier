@@ -13,7 +13,6 @@ import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
 import { MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "@/features/terminal/shell-registry";
 import {
-  ensureShell,
   onShellOpenRejected,
   openNewShell,
   terminalStore,
@@ -872,7 +871,7 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     openNewShell({ owner: null, project: null, cwd: null });
     stop();
 
-    expect(heard).toEqual([shellCapNotice(terminalStore.state)]);
+    expect(heard).toEqual([shellCapNotice(terminalStore.state, null)]);
     expect(heard[0]).toContain(`${MAX_SHELLS}개까지`);
   });
 
@@ -882,28 +881,15 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
   // 실제로 돌며 지킨다. 여기 구독만 걸고 곧바로 비었음을 보는 검사를 두면 어떤 구현에도
   // 통과하는 이름뿐인 그물이 된다.
 
-  // **화면에 들어가기만 한 것은 거절이 아니라 부작용이다.** 상한에 닿은 채 어떤 Work의 터미널
-  // 탭에 들어가면 `ensureShell`이 「이 화면엔 칸이 0개」라며 열려다 거절당하는데, 그때도 토스트가
-  // 뜨면 아무도 안 누른 알림이 탭을 오갈 때마다 다시 뜬다. 그 화면에는 이미 말할 자리가 있다 —
-  // 잠긴 `+` 행이 같은 문장을 보이는 글자로 쓰고 있다(결정 47).
-  it("화면에 들어간 것만으로는 아무 말도 하지 않는다", () => {
-    // 상한을 **다른 소유자**로 채운다 — 그래야 이 화면의 칸이 0개라 `ensureShell`이 실제로
-    // 여는 길까지 가고, 거기서 앱 전체 상한에 걸린다(결정 30).
-    let state = NO_SHELLS;
-    for (let n = 0; n < MAX_SHELLS; n += 1) {
-      state = openShell(state, { owner: "가", project: null, cwd: null })!.state;
-    }
-    terminalStore.setState(() => state);
-
-    const heard: string[] = [];
-    const stop = onShellOpenRejected((notice) => heard.push(notice));
-    ensureShell({ owner: "나", project: null, cwd: null });
-    stop();
-
-    expect(heard).toEqual([]);
-    // 열리지 않은 것까지 함께 본다 — 조용해진 이유가 「그냥 열려 버려서」이면 안 된다.
-    expect(terminalStore.state.shells).toHaveLength(MAX_SHELLS);
-  });
+  // 한때 여기 「화면에 들어간 것만으로는 아무 말도 하지 않는다」가 있었다 — 상한에 닿은 채
+  // 어떤 Work의 터미널 탭에 들어가면 `ensureShell`이 「이 화면엔 칸이 0개」라며 열려다
+  // 거절당했고, 그때 토스트가 뜨면 탭을 오갈 때마다 아무도 안 누른 알림이 다시 떴다.
+  //
+  // **결정 23이 그 전제를 없앴다.** 상한이 화면마다가 되면서 `ensureShell`의 거절 경로가
+  // **도달 불가**가 됐다: 그 함수는 칸이 0개일 때만 열고, 0은 언제나 상한 미만이다. 남의
+  // 화면이 꽉 차도 이 화면은 자기 몫을 그대로 갖는다는 것을 `shell-registry.test.ts`의
+  // 「한 화면을 꽉 채워도 다른 화면은 자기 몫을 갖는다」가 순수 층에서 든다 — 여기서
+  // 다시 세우면 `ensureShell`이 실제로 열려 이 seam에 없는 xterm을 만든다.
 
   it("구독을 끊으면 더 듣지 않는다", () => {
     // 화면이 언마운트된 뒤에도 듣고 있으면 사라진 화면의 setState가 불린다.

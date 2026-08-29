@@ -101,6 +101,14 @@
     --titlebar-inset: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
     );
+    /* **탭 줄의 첫 칸은 글자가 아니다** — 결정 10이 제목을 빼면서 그 자리에 알약(`spec`)이나
+       버튼(`+`)이 선다. 그래서 위 --titlebar-inset(글자용 12px)이 아니라 컨트롤 간격으로
+       이어 붙인다: 글자는 제 상자에 여백이 없지만 알약·버튼은 이미 갖고 있어, 12px을 주면
+       그만큼 더 벌어져 첫 칸만 혼자 떨어져 보인다. 목록 패널이 같은 이유로 같은 값을 쓴다. */
+    --titlebar-inset-tabs: calc(
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) +
+            var(--titlebar-control-gap)
+    );
     /* 목록 패널 헤더의 첫 칸은 셸 컨트롤과 같은 간격으로 이어 붙인다 — 넷이 한 줄에 나란히
        서 있어서 여기만 간격이 다르면 그 하나만 따로 떨어진 것처럼 읽힌다.
        패널 자체의 좌우 거터(px-3 = 12px) 안쪽이라 그만큼 뺀다 */

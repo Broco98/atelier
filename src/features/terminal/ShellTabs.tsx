@@ -27,8 +27,10 @@ export interface SpecTab {
 
 interface ShellTabsProps {
   /**
-   * **앱 전체 상태다 — 이 줄의 것만 걸러서 받지 않는다.** 걸러 받으면 `atCap`이 이 줄의
-   * 길이를 세게 되고, 상한 8이 화면마다 8이 된다(결정 30). 그리는 것만 `owner`로 좁힌다.
+   * **앱 전체 상태다 — 이 줄의 것만 걸러서 받지 않는다.** 좁혀 받으면 `owner`가 뜻을
+   * 잃는다: 이 줄은 그 값으로 그릴 칸도 고르고 **켜진 칸도** 찾는데(`activeIdOf`),
+   * 그것들은 소유자별 표를 앱 전체 상태에서 읽는다. 상한은 이제 화면마다이고
+   * (결정 23) `atCap`이 `owner`를 함께 받아 이 화면만 센다.
    */
   state: ShellsState;
   /** 이 줄이 그리는 화면. 최상위 터미널은 `null`이다. */
@@ -119,7 +121,7 @@ function ShellTabs({
 }: ShellTabsProps) {
   // 상한은 **앱 전체**, 그리는 것은 **이 화면**이다. 두 값이 같은 상태에서 다른 범위로
   // 나오는 것이 결정 30의 전부다.
-  const full = atCap(state);
+  const full = atCap(state, owner);
   const shells = shellsOf(state, owner);
   const activeId = activeIdOf(state, owner);
 
@@ -170,7 +172,9 @@ function ShellTabs({
       className={cn(
         // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다(PageHeader와 같다).
         "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-4 transition-[padding] duration-[220ms] ease-panel",
-        inset ? "pl-(--titlebar-inset)" : "pl-4",
+        // **`--titlebar-inset`이 아니다**(index.css의 그 토큰 주석) — 그쪽은 브레드크럼
+        // 글자용 12px이고 이 줄의 첫 칸은 알약이나 버튼이라 자기 여백을 이미 갖고 있다.
+        inset ? "pl-(--titlebar-inset-tabs)" : "pl-4",
       )}
     >
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
@@ -265,14 +269,18 @@ function ShellTabs({
         // 안 뜨는 것이 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다.
         aria-haspopup={asks ? "menu" : undefined}
         aria-expanded={asks ? picking : undefined}
-        title={full ? shellCapNotice(state) : "셸 열기"}
+        title={full ? shellCapNotice(state, owner) : "셸 열기"}
         onClick={() => {
           if (full) return;
           if (asks) setPicking((open) => !open);
           else onOpen(null);
         }}
         className={cn(
-          "shrink-0 text-tertiary",
+          // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
+          // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
+          // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
+          // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+          "-ml-0.5 shrink-0 text-tertiary",
           full ? "icon-button opacity-40" : "icon-button-quiet",
         )}
       >

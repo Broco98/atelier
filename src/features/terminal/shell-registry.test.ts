@@ -365,7 +365,7 @@ describe("셸 수에는 앱 전체 상한이 있다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n <= MAX_SHELLS; n += 1) {
       const refused = openShell(state, TOP_TERMINAL);
-      expect(atCap(state), `${n}개일 때 갈렸다`).toBe(refused === null);
+      expect(atCap(state, TOP_TERMINAL.owner), `${n}개일 때 갈렸다`).toBe(refused === null);
       if (!refused) break;
       state = refused.state;
     }
@@ -581,16 +581,25 @@ describe("셸은 자기 화면 것만 보인다", () => {
     expect(runningShellsOf(state, null)).toBe(0);
   });
 
-  // 상한만은 화면이 아니라 앱 전체가 센다(결정 30). 나눠 담아도 합이 8에서 멈춘다.
-  it("소유자가 갈려도 상한은 합으로 센다", () => {
+  // **상한도 화면마다다**(결정 23이 결정 30을 뒤집었다). 한 화면을 꽉 채워도 남의 화면과
+  // 최상위 터미널은 자기 몫을 그대로 갖는다 — 앱 전체로 세면 남이 연 셸 때문에 이 화면의
+  // `+`가 잠기고, 왜 잠겼는지가 이 화면에 안 보인다.
+  it("한 화면을 꽉 채워도 다른 화면은 자기 몫을 갖는다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      const next = openShell(state, { owner: n % 2 === 0 ? "가" : "나", project: null, cwd: null });
+      const next = openShell(state, { owner: "가", project: null, cwd: null });
       expect(next, `${n}번째에서 거부됐다`).not.toBeNull();
       state = next!.state;
     }
-    expect(openShell(state, { owner: "다", project: null, cwd: null })).toBeNull();
-    expect(atCap(state)).toBe(true);
+    // 꽉 찬 화면은 거부한다 — 이것이 없으면 아래 둘은 「상한이 아예 없어서」도 초록이다.
+    expect(openShell(state, { owner: "가", project: null, cwd: null })).toBeNull();
+    expect(atCap(state, "가")).toBe(true);
+
+    // 남의 work도, 최상위 터미널도 그대로 연다.
+    expect(atCap(state, "나")).toBe(false);
+    expect(openShell(state, { owner: "나", project: null, cwd: null })).not.toBeNull();
+    expect(atCap(state, null)).toBe(false);
+    expect(openShell(state, TOP_TERMINAL)).not.toBeNull();
   });
 });
 
@@ -743,15 +752,18 @@ describe("셸 행의 두 줄", () => {
 describe("상한에 닿았을 때 하는 말", () => {
   it("상한과 지금 수를 함께 말한다", () => {
     const state = opened(MAX_SHELLS).state;
-    expect(shellCapNotice(state)).toBe(`셸은 ${MAX_SHELLS}개까지예요 — 지금 ${MAX_SHELLS}개`);
+    expect(shellCapNotice(state, TOP_TERMINAL.owner)).toBe(
+      `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${MAX_SHELLS}개`,
+    );
   });
 
-  it("지금 수는 **앱 전체**다 — 화면 하나가 아니다", () => {
-    // 화면이 세면 Work마다 8개가 된다(결정 30). 문장이 이 화면의 수를 말하면 「지금 0개인데
-    // 왜 못 열지」가 된다.
+  it("수는 **이 화면**의 것이다 — 앱 전체가 아니다", () => {
+    // 결정 23. 앱 전체를 세면 「여기 3개인데 8개까지라면서 왜 못 열지」가 된다 — 사람이
+    // 세는 단위가 이 화면이라서다. 남의 work의 셸은 이 문장에 안 섞인다.
     let state = opened(3, { owner: "가", project: null, cwd: null }).state;
     state = openShell(state, { owner: "나", project: null, cwd: null })!.state;
-    expect(shellCapNotice(state)).toContain("지금 4개");
+    expect(shellCapNotice(state, "가")).toContain("여기 3개");
+    expect(shellCapNotice(state, "나")).toContain("여기 1개");
   });
 
   // 아래 둘은 **`openShell`을 실제로 통과시켜** 본다. 거절 여부와 할 말이 한 자리에서
@@ -761,12 +773,14 @@ describe("상한에 닿았을 때 하는 말", () => {
     // 걸렸다** — 그 함수는 열리는 순간 xterm을 세워 DOM 없는 seam에서 못 돈다. 거절을
     // 알리는 줄이 성공 경로로 새면 ⌘T·`+`가 열 때마다 「셸은 8개까지예요」를 뱉는다.
     const state = opened(MAX_SHELLS - 1).state;
-    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBeNull();
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL), TOP_TERMINAL.owner)).toBeNull();
   });
 
   it("거부당하면 잠긴 `+`와 같은 문장이 온다", () => {
     const state = opened(MAX_SHELLS).state;
-    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBe(shellCapNotice(state));
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL), TOP_TERMINAL.owner)).toBe(
+      shellCapNotice(state, TOP_TERMINAL.owner),
+    );
   });
 });
 

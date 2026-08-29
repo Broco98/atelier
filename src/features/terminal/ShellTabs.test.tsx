@@ -637,7 +637,7 @@ describe("타이틀바 몫", () => {
   });
 
   it("사이드바가 접히면 왼쪽 여백이 신호등을 피한다", () => {
-    expect(headerTagOf(render(NO_SHELLS, { inset: true }))).toContain("pl-(--titlebar-inset)");
+    expect(headerTagOf(render(NO_SHELLS, { inset: true }))).toContain("pl-(--titlebar-inset-tabs)");
     expect(headerTagOf(render(NO_SHELLS, { inset: false }))).toContain("pl-4");
   });
 
@@ -678,10 +678,14 @@ describe("`+`", () => {
     expect(plusOf(render(NO_SHELLS, { projects: ["atelier"] }))).not.toMatch(/aria-haspopup/);
   });
 
-  it("앱 전체가 상한이면 이 화면이 비어 있어도 잠긴다", () => {
-    // 결정 30. 화면이 세면 Work마다 8개가 된다 — 잠기는 판정은 이 줄의 길이와 무관하다.
-    const state = opened(MAX_SHELLS, { owner: "남", project: null, cwd: "~/x" }).state;
-    const plus = plusOf(render(state, { owner: "나" }));
+  it("이 화면이 상한이면 잠긴다 — 남의 화면은 안 센다", () => {
+    // **결정 23이 결정 30을 뒤집었다.** 한때 남의 work의 셸 여덟이 이 줄의 `+`를 잠갔는데,
+    // 그 화면에는 칸이 하나도 없어 왜 잠겼는지가 안 보였다.
+    const 남 = opened(MAX_SHELLS, { owner: "남", project: null, cwd: "~/x" }).state;
+    expect(plusOf(render(남, { owner: "나" }))).not.toMatch(/aria-disabled/);
+
+    const 나 = opened(MAX_SHELLS, { owner: "나", project: null, cwd: "~/x" }, 남).state;
+    const plus = plusOf(render(나, { owner: "나" }));
     expect(plus).toMatch(/aria-disabled="true"/);
     // 이유는 hover 뒤에 있다 — **칸 하나에 문장을 넣을 폭이 없어서다**(결정 47이 세로
     // 목록에서 문장을 꺼낸 것과 같은 근거가 반대 방향을 가리킨다). work 화면에서는 ⌘T가

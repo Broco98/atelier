@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import TerminalPane from "./TerminalPane";
-import { markExited, MAX_SHELLS, NO_SHELLS, openShell, shellCapNotice } from "./shell-registry";
+import { markExited, MAX_SHELLS, NO_SHELLS, openShell } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
 
 // 터미널 본문의 **자리**만 본다. 정적 렌더라 이펙트가 안 돌아 xterm은 서지 않고, 셸도
@@ -95,7 +95,9 @@ describe("터미널 본문의 자리", () => {
    * 문장은 `shellCapNotice`가 짓는다 — ⌘T 거절 토스트·잠긴 `+`와 **같은 문장**이어야
    * 한쪽만 늙지 않는다(결정 47).
    */
-  it("상한에 닿았으면 그 이유를 말한다", () => {
+  it("남의 화면이 꽉 차도 이 화면은 그대로 연다", () => {
+    // **결정 23이 결정 30을 뒤집은 자리다.** 한때 여기서 「남」의 셸 여덟이 이 화면의 `+`를
+    // 잠갔는데, 그때 이 화면에 보이는 것은 셸 0개 + 잠긴 `+`뿐이라 왜 잠겼는지가 없었다.
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
       const opened = openShell(state, { owner: "남", project: null, cwd: null });
@@ -103,8 +105,8 @@ describe("터미널 본문의 자리", () => {
       state = opened.state;
     }
     terminalStore.setState(() => state);
-    // 이 화면(최상위 터미널)의 셸은 여전히 0개다 — 상한은 앱 전체를 센다.
-    expect(html()).toContain(shellCapNotice(state));
+    expect(html()).not.toContain("개까지예요");
+    expect(html()).toContain("위 탭 줄의 + 로 새 셸을 열어요.");
   });
 
   /**

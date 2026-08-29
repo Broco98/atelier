@@ -137,17 +137,29 @@ function workDir(work: WorkView): string {
 }
 
 /**
- * 앱 전체에서 동시에 살 수 있는 셸 수(결정 30).
+ * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 최상위
+ * 터미널(`owner`가 `null`)도 자기 몫으로 이만큼이다.
  *
- * **화면 단위가 아니라 앱 단위다.** WebGL 컨텍스트는 웹뷰의 자원이고, 결정 21이 비활성
- * 셸의 xterm 인스턴스를 React 트리 밖에 두었으므로 **안 보이는 칸도 컨텍스트를 계속 쥔다.**
- * 세는 자리가 이 상태 하나여야 판 03에서 Work마다 8개가 되는 일이 없다.
+ * **결정 30을 뒤집었다** — 그때는 앱 전체 하나였다. 근거는 WebGL 컨텍스트가 웹뷰의
+ * 자원이고 결정 21이 비활성 셸의 xterm을 React 트리 밖에 두어 **안 보이는 칸도 컨텍스트를
+ * 계속 쥔다**는 것이었다. 그 사실은 그대로지만 상한이 답할 물음이 아니었다: 사람이 세는
+ * 단위는 「이 화면에 몇 개」이고, 앱 전체로 세면 **남의 work에서 연 셸 때문에 이 화면의
+ * `+`가 잠긴다** — 왜 잠겼는지가 이 화면에 안 보인다.
+ *
+ * 컨텍스트가 웹뷰의 한도를 넘으면 `WebglAddon`이 `onContextLoss`로 스스로 물러나고
+ * (terminal-store의 그 핸들러) 그 칸은 DOM 렌더러로 그려진다 — 느려지는 것이지 깨지는
+ * 것이 아니다. 상한이 막아야 할 것은 그 열화이지 사람이 화면마다 여는 일이 아니다.
  */
 export const MAX_SHELLS = 8;
 
-/** 상한에 닿았다. `+`가 잠기는 판정과 `openShell`이 거부하는 판정이 이것 하나다. */
-export function atCap(state: ShellsState): boolean {
-  return state.shells.length >= MAX_SHELLS;
+/**
+ * 이 화면이 상한에 닿았다. `+`가 잠기는 판정과 `openShell`이 거부하는 판정이 이것 하나다.
+ *
+ * **`owner`를 반드시 받는다**(결정 23). 기본값을 두면 빠뜨린 자리가 조용히 다른 화면을
+ * 세고, 그때 나는 것은 「눌러도 아무 일이 없는 `+`」다.
+ */
+export function atCap(state: ShellsState, owner: string | null): boolean {
+  return shellsOf(state, owner).length >= MAX_SHELLS;
 }
 
 /**
@@ -157,8 +169,8 @@ export function atCap(state: ShellsState): boolean {
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
  */
-export function shellCapNotice(state: ShellsState): string {
-  return `셸은 ${MAX_SHELLS}개까지예요 — 지금 ${state.shells.length}개`;
+export function shellCapNotice(state: ShellsState, owner: string | null): string {
+  return `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${shellsOf(state, owner).length}개`;
 }
 
 /**
@@ -175,8 +187,12 @@ export function shellCapNotice(state: ShellsState): string {
  *
  * 문장은 `shellCapNotice`가 짓는다 — 잠긴 `+` 행이 읽는 것과 같은 문장이어야 해서다(결정 47).
  */
-export function shellOpenNotice(state: ShellsState, opened: OpenedShell | null): string | null {
-  return opened ? null : shellCapNotice(state);
+export function shellOpenNotice(
+  state: ShellsState,
+  opened: OpenedShell | null,
+  owner: string | null,
+): string | null {
+  return opened ? null : shellCapNotice(state, owner);
 }
 
 /** `openShell`이 열었을 때 돌려주는 것. 새 목록과 그 자리에서 발급한 id다. */
@@ -204,7 +220,7 @@ export interface OpenedShell {
  * 받으면 여는 자리가 셸에 적히는 자리와 **같은 값 하나**를 본다.
  */
 export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell | null {
-  if (atCap(state)) return null;
+  if (atCap(state, origin.owner)) return null;
 
   const id = state.nextId;
   const shell: Shell = {
@@ -229,8 +245,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
 }
 
 /**
- * 이 화면이 보여줄 칸들. **상한은 이것으로 세지 않는다** — 그것은 앱 전체 기준이라
- * `atCap`이 목록 전체를 본다(결정 30).
+ * 이 화면이 보여줄 칸들. **상한도 이것으로 센다**(결정 23) — `atCap`이 이 함수를 딛는다.
  */
 export function shellsOf(state: ShellsState, owner: string | null): ReadonlyArray<Shell> {
   return state.shells.filter((shell) => shell.owner === owner);

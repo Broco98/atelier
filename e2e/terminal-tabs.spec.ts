@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, markRunning, unknownIpcCalls } from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
 // 것 둘이다**: 키 이벤트(정적 마크업 seam에는 이벤트가 없어 이펙트가 아예 안 돈다)와,
@@ -59,37 +59,6 @@ const MAX_SHELLS = 8;
 
 /** 픽스처의 `pty_spawn`이 주는 셸 이름. 이 work은 워크트리가 없어 앞에 프로젝트가 안 붙는다(결정 18). */
 const SHELL_NAME = "zsh";
-
-/**
- * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
- * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
- *
- * 구독 id는 하네스가 적어 둔 IPC 기록에서 읽는다. **상수로 적을 수 없다** — `transformCallback`이
- * 난수로 짓는다. 못 찾으면 던진다: 구독이 안 걸린 채로 지나가면 아래 「로고가 남는다」가
- * **로고가 아예 없어서** 초록이 된다.
- *
- * 픽스처의 `pty_spawn`이 늘 같은 pty id(1)를 주므로 값이 앉는 칸은 **맨 앞 칸 하나**다
- * (`shellOfPty`가 먼저 찾은 인스턴스를 준다).
- */
-async function markRunning(page: Page, running: string): Promise<void> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  const listen = calls.filter((call) => call.includes('"pty:running"')).reverse()[0];
-  const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
-  if (!handler) throw new Error(`pty:running 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
-  await page.evaluate(
-    ([id, name]) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      internals.runCallback(Number(id), {
-        event: "pty:running",
-        id: 0,
-        payload: [{ id: 1, running: name }],
-      });
-    },
-    [handler, running],
-  );
-}
 
 interface Row {
   width: number;

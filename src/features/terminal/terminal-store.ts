@@ -165,7 +165,7 @@ export function openNewShell(origin: ShellOrigin): void {
   // 잠긴 `+` 행도 같은 문장을 읽는다(결정 47). 판정을 이리로 되돌리면 계약의 절반이 검사
   // 밖으로 샌다: 여는 길은 열리는 순간 xterm을 세워 **성공 경로를 테스트에서 못 돈다.**
   // 「열렸으면 아무 말도 안 한다」가 안 걸린 채 새면 열 때마다 거절 문구가 뜬다.
-  const notice = shellOpenNotice(terminalStore.state, opened);
+  const notice = shellOpenNotice(terminalStore.state, opened, origin.owner);
   if (notice !== null) {
     for (const listen of openRejectedListeners) listen(notice);
   }
@@ -645,8 +645,8 @@ async function spawn(instance: ShellInstance) {
       // **결정 48의 나머지 반쪽이 여기다.** 정상 종료한 칸은 목록에서 스스로 빠지는데,
       // 빠지면 그 칸은 다시 그려지지 않아 `×`가 영영 안 생긴다 — 즉 `closeShell`이 그 id로
       // 불릴 길이 그 순간 사라진다. 여기서 안 거두면 인스턴스가 WebGL 컨텍스트와 스크롤백
-      // 10,000줄을 쥔 채 리로드까지 살고, 상한 8은 컨텍스트 수를 말하는 값인데(결정 30)
-      // `atCap`은 목록을 세므로 **새는 것을 못 본다.**
+      // 10,000줄을 쥔 채 리로드까지 살고, `atCap`은 목록을 세므로 **새는 것을 못 본다.**
+      // (상한이 화면마다가 된 뒤에도 같다 — 결정 23이 바꾼 것은 세는 범위뿐이다.)
       //
       // **조건을 여기 다시 적지 않는다.** `exitCode === 0 && signal === null`은
       // `markExited`가 아는 것이고, 우리는 그 결과에 "뺐느냐"만 묻는다. 두 곳에 적으면

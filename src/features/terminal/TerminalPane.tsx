@@ -62,8 +62,10 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   }, [activeId]);
 
   const shells = shellsOf(state, owner);
-  // 상한은 **앱 전체**다(결정 30) — 이 화면의 셸이 0개여도 닿아 있을 수 있다.
-  const full = atCap(state);
+  // 상한은 **이 화면**의 것이다(결정 23) — 셸이 0개인 이 화면이 상한에 닿는 일은 없다.
+  // 그래도 판정을 남겨 두는 것은 아래 안내가 그 갈래를 여전히 쓰기 때문이다(0개 화면에서
+  // 상한 문구가 서는 일이 없다는 것 자체가 결정 23이 바꾼 것이다).
+  const full = atCap(state, owner);
   const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
 
@@ -155,7 +157,7 @@ function TerminalPane({ work }: { work: WorkView | null }) {
             <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 셸이 없어요</span>
             <span className="text-[14px] leading-[1.65] text-tertiary">
               {full
-                ? `${shellCapNotice(state)}. 다른 화면의 셸을 닫으면 여기서 새로 열 수 있어요.`
+                ? `${shellCapNotice(state, owner)}. 이 화면의 셸을 하나 닫으면 새로 열 수 있어요.`
                 : "위 탭 줄의 + 로 새 셸을 열어요."}
             </span>
             {/* 키는 **잠겼을 때 안 적는다** — 눌러도 안 되는 길을 알려 주는 것이 된다.
