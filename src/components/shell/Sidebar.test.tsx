@@ -64,9 +64,10 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
     expect(shallow(runningAgentsOf(뒤, "나"), runningAgentsOf(state, "나"))).toBe(false);
   });
 
-  it("명령이 끝나도 **줄이 서는 조건**은 안 바뀐다", () => {
-    // 결정 3. 행 높이를 정하는 값(셸 수)이 초마다 흔들리면 claude가 답을 마칠 때마다
-    // 목록이 접혔다 펴진다. 도는 것이 붙었다 떨어지는 동안 이 값은 같은 값이어야 한다.
+  it("명령이 끝나도 **메타가 서는 조건**은 안 바뀐다", () => {
+    // 결정 3. 메타가 서는 조건(셸 수)이 초마다 흔들리면 claude가 답을 마칠 때마다 그 칸이
+    // 생겼다 사라져 제목의 말줄임 지점이 좌우로 뛴다. 도는 것이 붙었다 떨어지는 동안 이
+    // 값은 같은 값이어야 한다.
     const { state, 나 } = twoWorks();
     const 도는중 = setRunning(state, 나, "claude");
     const 끝난뒤 = setRunning(도는중, 나, null);
