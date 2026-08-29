@@ -28,7 +28,7 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
-import type { CalloutKind } from "./doc-refs";
+import type { CalloutKind, DocBody } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
@@ -93,6 +93,41 @@ function SpecViewer({
     [work.slug, file, onCopy],
   );
 
+  // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
+  // (`doc-refs.ts`의 표 머리말이 이미 다섯째 칸의 여지를 말한다) 여기가 컴파일에서 깨진다.
+  // 마지막을 `else`로 두면 새 칸이 **조용히 소스 보기로** 떨어지고 아무 데서도 안 잡힌다.
+  // 아카이브 화면에도 같은 네 갈래가 있고(인자와 근거가 갈려 한 컴포넌트로는 안 묶는다)
+  // 거기도 같은 모양이다 — 칸이 늘면 두 자리가 함께 깨져야 한다.
+  const bodyView = (body: DocBody): React.ReactNode => {
+    switch (body) {
+      case "image":
+        return <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />;
+      case "html":
+        // `?? ""`로 뭉개지 않는다 — 안 온 것과 빈 파일이 프레임 경로에서 갈린다(결정 9)
+        return <HtmlDoc content={content} name={file ?? ""} />;
+      case "pretty":
+        return (
+          <PrettyView
+            file={file ?? ""}
+            content={content ?? ""}
+            onCopyBlock={copyRef}
+            wide={wide}
+            files={files}
+            onNavigate={onNavigate}
+            specRoot={specRoot}
+          />
+        );
+      case "source":
+        return <SourceView content={content ?? ""} wide={wide} />;
+      // 반환 타입만으로는 빠진 칸이 안 잡힌다 — `ReactNode`가 `undefined`를 품는다. 이웃
+      // `hitTarget`이 `default` 없이 사는 것은 그 반환 타입이 좁아서다.
+      default: {
+        const unhandled: never = body;
+        return unhandled;
+      }
+    }
+  };
+
   return (
     // 본문 열 — 스크롤 경계는 여기까지다. 작업 패널은 이 열의 형제이고 **이제 화면이
     // 그린다**(결정 49). 머리행이 여기 안에 있는 것은 그대로다: 패널이 이 열의 형제이자
@@ -120,23 +155,8 @@ function SpecViewer({
                 </code>
               </div>
             </div>
-          ) : body === "image" ? (
-            <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />
-          ) : body === "html" ? (
-            // `?? ""`로 뭉개지 않는다 — 안 온 것과 빈 파일이 프레임 경로에서 갈린다(결정 9)
-            <HtmlDoc content={content} name={file ?? ""} />
-          ) : body === "pretty" ? (
-            <PrettyView
-              file={file ?? ""}
-              content={content ?? ""}
-              onCopyBlock={copyRef}
-              wide={wide}
-              files={files}
-              onNavigate={onNavigate}
-              specRoot={specRoot}
-            />
           ) : (
-            <SourceView content={content ?? ""} wide={wide} />
+            bodyView(body)
           )}
         </div>
       </div>

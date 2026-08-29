@@ -5,6 +5,7 @@ import { SourceToggle } from "@/components/ui/SourceToggle";
 import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
+import type { DocBody } from "@/features/works/doc-refs";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
 import ArchiveList from "./ArchiveList";
@@ -116,6 +117,50 @@ function ArchivePage({
   const wide = !sidebarOpen && !panelOpen;
 
   const meta = selected && STATUS_META[selected.status];
+
+  // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
+  // 여기가 컴파일에서 깨진다. 마지막을 `else`로 두면 새 칸이 **조용히 소스 보기로** 떨어지고
+  // 아무 데서도 안 잡힌다. Works 화면(`SpecViewer`)에도 같은 네 갈래가 같은 모양으로 있다 —
+  // 인자와 근거가 갈려 한 컴포넌트로는 안 묶지만, 칸이 늘면 두 자리가 함께 깨져야 한다.
+  //
+  // 문서 이름을 인자로 받는 것은 **여기 오는 길이 「문서가 있다」를 이미 가른 뒤**라서다
+  // (`current === null`은 위에서 「남은 문서가 없어요」로 끝난다).
+  const bodyView = (body: DocBody, name: string): React.ReactNode => {
+    switch (body) {
+      case "image":
+        // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — **뜨지는 않고** 자리표시가
+        // 선다. 그래도 줄번호 `1` 하나보다 낫다: 그쪽은 빈 문서라는 거짓말이고 자리표시는
+        // 사실이다. 경로를 내려 주는 일은 다음 판이다.
+        return <ImageDoc path={null} name={name} />;
+      case "html":
+        // **여기만 `?? ""`를 걷어낸다**(결정 17). 이 화면은 `placeholderData`가 없어
+        // 문서를 옮길 때마다 `undefined`를 지나는데, 프레임이 그 값을 빈 문서로 받으면
+        // 한 번 항해했다 다시 항해한다. 마크다운·소스가 잠깐 비는 것과는 성질이 다르다 —
+        // 나머지 두 자리는 그대로 둔다.
+        return <HtmlDoc content={content} name={name} />;
+      case "pretty":
+        return (
+          <PrettyView
+            file={name}
+            content={content ?? ""}
+            onCopyBlock={copyBlockRef}
+            wide={wide}
+            files={docs}
+            onNavigate={onFollowLink}
+            // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — 로컬 이미지는
+            // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
+            specRoot={null}
+          />
+        );
+      case "source":
+        return <SourceView content={content ?? ""} wide={wide} />;
+      // 반환 타입만으로는 빠진 칸이 안 잡힌다 — `ReactNode`가 `undefined`를 품는다.
+      default: {
+        const unhandled: never = body;
+        return unhandled;
+      }
+    }
+  };
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -237,31 +282,8 @@ function ArchivePage({
                 <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
                   남은 문서가 없어요
                 </div>
-              ) : body === "image" ? (
-                // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — **뜨지는 않고**
-                // 자리표시가 선다. 그래도 줄번호 `1` 하나보다 낫다: 그쪽은 빈 문서라는
-                // 거짓말이고 자리표시는 사실이다. 경로를 내려 주는 일은 다음 판이다.
-                <ImageDoc path={null} name={current} />
-              ) : body === "html" ? (
-                // **여기만 `?? ""`를 걷어낸다**(결정 17). 이 화면은 `placeholderData`가 없어
-                // 문서를 옮길 때마다 `undefined`를 지나는데, 프레임이 그 값을 빈 문서로
-                // 받으면 한 번 항해했다 다시 항해한다. 마크다운·소스가 잠깐 비는 것과는
-                // 성질이 다르다 — 나머지 두 자리는 그대로 둔다.
-                <HtmlDoc content={content} name={current} />
-              ) : body === "pretty" ? (
-                <PrettyView
-                  file={current}
-                  content={content ?? ""}
-                  onCopyBlock={copyBlockRef}
-                  wide={wide}
-                  files={docs}
-                  onNavigate={onFollowLink}
-                  // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — 로컬 이미지는
-                  // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
-                  specRoot={null}
-                />
               ) : (
-                <SourceView content={content ?? ""} wide={wide} />
+                bodyView(body, current)
               )}
             </div>
           )}
