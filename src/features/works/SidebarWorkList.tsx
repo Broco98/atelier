@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { recallView, viewSearch, workSlugOf } from "@/routes/-work-search";
+import { recallSearch, workSlugOf } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -139,14 +139,14 @@ function SidebarWorkList({
 
   // 작업을 옮긴다. **보던 화면을 기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
   // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
-  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `viewSearch`가 빈 객체 위에 얹으므로
+  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `recallSearch`가 빈 객체 위에 얹으므로
   // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
       to: "/works/$slug",
       params: { slug },
-      search: viewSearch({}, recallView(slug)),
+      search: recallSearch(slug),
     });
   };
 
