@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SearchHit } from "./types";
+import type { SearchResults } from "./types";
 
 export const searchApi = {
-  /** 지금은 「최근 고쳐진 문서」 하나를 답한다. 질의는 다음 판이 인자로 얹는다. */
-  run: () => invoke<SearchHit[]>("search"),
+  /**
+   * 질의 하나에 답 하나. **디바운스가 없다**(결정 29) — 실측 10~20ms짜리 일에 지연을 얹으면
+   * 「치는 동안 즉시 따라온다」를 스스로 깨는 것이다. 질의가 비면 최근 고쳐진 문서가 온다.
+   */
+  run: (query: string) => invoke<SearchResults>("search", { query }),
 };

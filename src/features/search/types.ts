@@ -20,3 +20,13 @@ export type SearchHit = {
   path: string;
   archived: boolean;
 };
+
+/**
+ * 한 질의의 답 전부. **「잘렸다」가 줄이 아니라 목록의 성질인 것**이 이 모양의 전부다 —
+ * 딱 20줄이 온 것과 21번째부터 잘린 것이 줄들로는 같아서, 화면이 그것을 가르려면 상한을
+ * 자기도 알고 세어야 한다. 그러면 상한이 두 자리에 살고 어긋나도 티가 안 난다(결정 15).
+ */
+export type SearchResults = {
+  hits: SearchHit[];
+  truncated: boolean;
+};

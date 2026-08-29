@@ -18,9 +18,20 @@ const doc = (slug: string, path: string, archived = false): SearchHit => ({
   archived,
 });
 
-const render = (hits: SearchHit[], selected = 0) =>
+const render = (
+  hits: SearchHit[],
+  { selected = 0, query = "", truncated = false } = {},
+) =>
   renderToStaticMarkup(
-    <SearchList hits={hits} selected={selected} onGo={() => {}} onClose={() => {}} />,
+    <SearchList
+      query={query}
+      hits={hits}
+      truncated={truncated}
+      selected={selected}
+      onQuery={() => {}}
+      onGo={() => {}}
+      onClose={() => {}}
+    />,
   );
 
 // 줄을 **표식으로** 집는다 — 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 샌다.
@@ -52,7 +63,7 @@ describe("팔레트가 그리는 줄", () => {
   // 방향키가 옮기는 그 표시다. **하나뿐이어야 한다** — 둘이면 Enter가 어느 것을 여는지
   // 화면이 말하지 못한다.
   it("골라진 줄이 하나이고 그것이 그 자리다", () => {
-    const rows = rowsOf(render([doc("가", "a.md"), doc("나", "b.md"), doc("다", "c.md")], 1));
+    const rows = rowsOf(render([doc("가", "a.md"), doc("나", "b.md"), doc("다", "c.md")], { selected: 1 }));
     expect(rows.filter((row) => row.includes('aria-selected="true"'))).toHaveLength(1);
     expect(rows[1]).toContain('aria-selected="true"');
   });
@@ -60,9 +71,34 @@ describe("팔레트가 그리는 줄", () => {
   // 목록이 비면 고른 자리가 없다(`-1`) — 그때 골라진 줄도 없어야 한다. 자리를 0으로 두면
   // 없는 줄을 가리킨 채 Enter가 무엇을 여는지 모르게 된다.
   it("줄이 없으면 골라진 것도 없다", () => {
-    const markup = render([], -1);
+    const markup = render([], { selected: -1 });
     expect(rowsOf(markup)).toEqual([]);
     expect(markup).not.toContain('aria-selected="true"');
+  });
+});
+
+describe("치는 자리와 목록이 하는 말", () => {
+  // 좁히는 일이 시작되는 자리다. **친 것이 그 칸에 그대로 서야** 지운 것도 지워진다 —
+  // 값을 안 걸면 화면과 질의가 갈려서, 다 지웠는데 목록은 좁혀진 채로 남는다.
+  it("입력칸이 서고 친 것이 그대로 적힌다", () => {
+    const markup = render([doc("가", "overview.md")], { query: "가 네비" });
+    const input = /<input[^>]*>/.exec(markup)?.[0] ?? "";
+    expect(input, "입력칸이 없다").not.toBe("");
+    expect(input).toContain('value="가 네비"');
+  });
+
+  // 맞는 것이 없는 것과 **고장 난 것**은 화면에서 같아 보인다 — 빈 상자는 아무 말도 안 한다.
+  it("맞는 것이 없으면 없다고 말하는 줄이 선다", () => {
+    const markup = render([], { selected: -1, query: "없는말" });
+    expect(markup).toContain("맞는 것이 없습니다");
+    // 그 줄은 **고를 수 있는 것이 아니다** — 방향키가 서면 Enter가 갈 곳이 없다.
+    expect(markup).not.toContain('role="option"');
+  });
+
+  // 결정 24. 상한에 걸린 것을 말하지 않으면, 안 나온 문서가 **없는 것처럼** 보인다.
+  it("잘렸을 때만 잘렸다고 말한다", () => {
+    expect(render([doc("가", "overview.md")], { truncated: true })).toContain("20개까지만");
+    expect(render([doc("가", "overview.md")])).not.toContain("20개까지만");
   });
 });
 

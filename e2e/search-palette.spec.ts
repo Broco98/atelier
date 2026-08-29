@@ -2,14 +2,15 @@ import { SEARCH_GAP_MS } from "@/features/terminal/shell-registry";
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_HITS, WORKS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 판 01 — ⇧⇧로 열고, 방향키로 고르고, Enter로 간다.
+// 판 01 — ⇧⇧로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
 // **마크업 seam이 보는 것은 여기서 다시 보지 않는다.** 줄에 무엇이 적히는지·골라진 줄이
-// 하나인지는 SearchPalette.test.tsx가 들고, 순서와 상한은 코어 단위가 든다. 이 층이 드는
-// 것은 이벤트가 있어야만 보이는 넷이다 — 셸을 지나오는 키, 마우스, 실제 이동, 그리고
-// 「떠 있는 창이 막는다」.
+// 하나인지·없다고 말하는 줄은 SearchPalette.test.tsx가 들고, 맞추는 규칙과 상한은 코어
+// 단위가 들고, 늦은 답을 버리는 것은 옵션 seam이 든다(hooks.test.ts). 이 층이 드는 것은
+// 이벤트가 있어야만 보이는 것들이다 — 셸을 지나오는 키, 마우스, 실제 이동, 「떠 있는 창이
+// 막는다」, 그리고 **친 것이 명령까지 가는 배선**.
 //
 // **가장 큰 것은 첫 검사다.** 「⇧ 단독 keydown이 xterm을 지나 window까지 오는가」는 실물
 // xterm이 붙어야만 답이 나오고, 다른 층은 전부 xterm 없이 돈다.
@@ -18,6 +19,19 @@ const [specWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
+const box = (page: Page) => page.getByRole("textbox", { name: "검색어" });
+
+/**
+ * 검색 명령이 **어떤 질의로** 나갔는가. 같은 질의가 두 번 나가는 것은 세지 않는다 —
+ * StrictMode가 붙였다 떼는 자리라 그 수는 이 검사가 말하려는 것이 아니다.
+ */
+async function askedFor(page: Page): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  const asked = calls
+    .filter((call) => call.startsWith("search "))
+    .map((call) => JSON.parse(call.slice("search ".length)).query as string);
+  return [...new Set(asked)];
+}
 
 /** ⇧를 두 번 누른다. **사이에 아무 키도 안 낀다** — 끼면 무장이 풀린다. */
 async function doubleShift(page: Page) {
@@ -39,6 +53,28 @@ test("⇧⇧가 셸에 포커스가 있는 동안에도 팔레트를 연다", as
   await doubleShift(page);
 
   await expect(palette(page)).toBeVisible();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 29. **치는 동안 즉시 따라온다** — 디바운스가 없으니 글자 하나가 곧 물음 하나다.
+// 이 층이 드는 것은 **배선**이다: 포커스가 칸으로 오는가, 친 것이 그대로 명령에 실려 나가는가.
+// 좁혀지는 규칙은 코어 단위가 든다 — 이 층의 픽스처는 질의를 못 보고 늘 같은 답을 준다.
+test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+
+  await doubleShift(page);
+  // **팔레트가 포커스를 가져와야 한다.** 안 가져오면 친 글자가 칸이 아니라 뒤 화면으로 간다.
+  await expect(box(page)).toBeFocused();
+
+  await box(page).pressSequentially("고정");
+
+  await expect(box(page)).toHaveValue("고정");
+  // 열 때 한 번(빈 질의), 글자마다 한 번씩. 마지막 물음이 **지금 칸에 있는 것**이다.
+  await expect.poll(() => askedFor(page)).toEqual(["", "고", "고정"]);
+  // 치는 사이에 목록이 비지 않는다 — 픽스처가 질의를 안 보므로 줄 수는 내내 같다.
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -116,20 +152,27 @@ test("마우스로도 고를 수 있다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("Esc로 닫히고 주소는 그대로다", async ({ page }) => {
+test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}?tab=terminal`);
   // 화면이 서기를 기다린다 — 앱이 뜨기 전에 누르면 키를 듣는 자리가 아직 없다.
   await expect(page.locator(".xterm")).toHaveCount(1);
+  // **이 줄이 아래 포커스 검사의 전제다.** 포커스가 애초에 셸에 없으면 돌려주는 것을
+  // 아무것도 안 잰다.
+  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
   const before = page.url();
 
   await doubleShift(page);
   await expect(palette(page)).toBeVisible();
+  // 입력칸이 생기면서 포커스가 셸을 떠난다 — 빌린 것이 있어야 돌려줄 것도 있다.
+  await expect(box(page)).toBeFocused();
 
   await page.keyboard.press("Escape");
 
   await expect(palette(page)).toHaveCount(0);
   expect(page.url()).toBe(before);
+  // **빌린 포커스를 돌려준다.** 안 돌려주면 Esc 뒤에 친 글자가 아무 데도 안 들어간다.
+  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

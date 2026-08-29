@@ -1,5 +1,5 @@
 import type { ProjectView } from "@/features/projects/types";
-import type { SearchHit } from "@/features/search/types";
+import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
 import type { Settings } from "@/features/settings/types";
 
@@ -84,6 +84,12 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
 }));
 
 /**
+ * 한 질의의 답 통째. **「잘렸다」는 안 켠다** — 이 층이 재는 것은 배선이고, 상한에 걸렸는지를
+ * 가르는 것은 코어 단위가 든다(딱 20줄과 잘린 것을 여기서 흉내내면 상한이 두 자리에 산다).
+ */
+export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  */
@@ -111,8 +117,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 내용은 **한 줄이면 족하다**: 여기서 보는 것은 사이드바이고, 문서 렌더의 규칙은
   // SpecViewer.test.tsx가 든다.
   read_spec_file: "# 개요\n\n한 줄.\n",
-  // ⇧⇧로 여는 팔레트가 뜨자마자 부른다 — 캐시를 안 남기므로 열 때마다 나간다.
-  search: SEARCH_HITS,
+  // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
+  // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
+  search: SEARCH_RESULTS,
   pty_spawn: { id: 1, shellName: "zsh" },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
