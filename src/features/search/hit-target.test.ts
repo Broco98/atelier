@@ -5,14 +5,22 @@ import type { SearchHit } from "./types";
 
 // 고른 줄이 **어디로 가는가.** 이 판정만 순수 함수로 떼어 두는 것은 실제 이동을 재는 층이
 // L3인데 그쪽 픽스처가 아카이브 화면까지 태우지 않기 때문이다 — 그리고 여기서 재는 것이
-// 「주소를 짓는 규칙을 다시 적지 않았다」이기도 하다: 값이 `fileSearch`·`viewSearch`에서
-// 나오므로, 그 함수들이 바뀌면 여기가 함께 움직인다.
+// 「주소를 짓는 규칙을 다시 적지 않았다」이기도 하다: 값이 `fileSearch`·`viewSearch`·
+// `nav-items.ts`에서 나오므로, 그것들이 바뀌면 여기가 함께 움직인다.
 
-const doc = (over: Partial<SearchHit> = {}): SearchHit => ({
+const doc = (over: Partial<Extract<SearchHit, { kind: "doc" }>> = {}): SearchHit => ({
   kind: "doc",
   slug: "가",
   title: "가 작업",
   path: "overview.md",
+  archived: false,
+  ...over,
+});
+
+const workHit = (over: Partial<Extract<SearchHit, { kind: "work" }>> = {}): SearchHit => ({
+  kind: "work",
+  slug: "가",
+  title: "가 작업",
   archived: false,
   ...over,
 });
@@ -45,8 +53,67 @@ describe("문서 줄이 가는 곳", () => {
       params: { slug: "옛일" },
       search: { file: "record.md" },
     });
-    expect(hitTarget(doc({ slug: "옛일", path: "spec/overview.md", archived: true })).search).toEqual(
-      { file: "spec/overview.md" },
-    );
+    expect(hitTarget(doc({ slug: "옛일", path: "spec/overview.md", archived: true }))).toEqual({
+      to: "/archive/$slug",
+      params: { slug: "옛일" },
+      search: { file: "spec/overview.md" },
+    });
+  });
+});
+
+describe("work 줄이 가는 곳", () => {
+  // 결정 14·77. **문서 줄과 다른 일이다** — 문서를 얹지 않으므로 spec으로 떨어지지 않고,
+  // 그 work을 마지막으로 보던 화면이 그대로 선다. 주소를 짓는 모양이 사이드바의 work 행과
+  // **같아야 한다**(`SidebarWorkList`의 `goTo`): work을 고르는 길이 둘인데 도착지가 갈리면
+  // 어긋나도 화면에 티가 안 난다.
+  it("그 work을 마지막으로 보던 화면으로 간다 — 문서를 얹지 않는다", () => {
+    rememberView("터미널보던것", { tab: "terminal", split: "lr" });
+    expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
+      to: "/works/$slug",
+      params: { slug: "터미널보던것" },
+      search: { tab: "terminal", split: "lr" },
+    });
+  });
+
+  // 기억이 없으면 기본값이다 — 방금 만들어 아직 안 열어 본 work이 그 자리다(결정 14가
+  // 세우려는 것이 바로 그런 work이다).
+  it("아직 안 본 work은 기본 화면으로 간다", () => {
+    expect(hitTarget(workHit({ slug: "방금만든것" }))).toEqual({
+      to: "/works/$slug",
+      params: { slug: "방금만든것" },
+      search: { tab: undefined, split: undefined },
+    });
+  });
+
+  // 아카이브 work은 **가는 화면이 다르다.** 문서를 안 골랐으므로 `file`도 없다.
+  it("아카이브 work은 아카이브 화면으로 간다", () => {
+    expect(hitTarget(workHit({ slug: "옛일", archived: true }))).toEqual({
+      to: "/archive/$slug",
+      params: { slug: "옛일" },
+      search: {},
+    });
+  });
+});
+
+describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
+  it("프로젝트 줄은 그 프로젝트 화면으로 간다", () => {
+    expect(hitTarget({ kind: "project", slug: "billing", name: "빌링" })).toEqual({
+      to: "/projects/$slug",
+      params: { slug: "billing" },
+    });
+  });
+
+  // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를 주소로 푸는
+  // 자리가 `nav-items.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
+  it("목적지 줄은 main nav가 가는 곳으로 간다", () => {
+    expect(hitTarget({ kind: "destination", key: "projects" })).toEqual({ to: "/projects" });
+    expect(hitTarget({ kind: "destination", key: "terminal" })).toEqual({ to: "/terminal" });
+    expect(hitTarget({ kind: "destination", key: "archive" })).toEqual({ to: "/archive" });
+  });
+
+  // 코어는 여기서 건넨 key만 돌려주므로(결정 21) 모르는 key는 계약이 깨진 것이다.
+  // **갈 곳을 지어내지 않는다** — 지어내면 엉뚱한 화면으로 데려가고 그것이 조용하다.
+  it("모르는 목적지는 갈 곳이 없다고 말한다", () => {
+    expect(hitTarget({ kind: "destination", key: "없는목적지" })).toBeNull();
   });
 });

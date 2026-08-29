@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { searchApi } from "./api";
+import { destinations } from "./destinations";
 
 /**
  * 한 질의가 무엇을 어떻게 물어 오는가. **옵션을 값으로 떼어 둔 것은 seam이다** — 이 저장소의
@@ -21,7 +22,9 @@ import { searchApi } from "./api";
 export function searchQuery(query: string) {
   return {
     queryKey: ["search", query],
-    queryFn: () => searchApi.run(query),
+    // **목적지는 키에 안 실린다**(결정 21). `nav-items.ts`가 정하는 모듈 상수라 앱이 도는
+    // 동안 변하지 않는다 — 키에 넣으면 늘 같은 값이 질의 옆에 붙어 다니는 소음이 된다.
+    queryFn: () => searchApi.run(query, destinations),
     gcTime: 0,
     placeholderData: keepPreviousData,
   };

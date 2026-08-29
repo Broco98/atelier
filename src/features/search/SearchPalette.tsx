@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import { destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
 import type { SearchHit } from "./types";
@@ -17,8 +18,59 @@ import type { SearchHit } from "./types";
  * 같은 이유로 셸 개수를 슬롯으로 받는 그 자리와 같다.
  *
  * 치면 좁혀진다. **맞추는 규칙은 코어에 있다**(결정 15) — 여기는 친 것을 그대로 넘기고 받은
- * 것을 순서대로 그린다. 본문 층은 판 02다.
+ * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → 프로젝트 → 문서로 와서
+ * 갈래가 안 흩어지므로, 구획 머리는 갈래가 바뀌는 자리에서 한 줄 내면 된다. 본문 층은 판 02다.
  */
+
+/**
+ * 구획 머리. **사이드바 목록과 같은 계통의 한국어다**(결정 17) — 이 팔레트가 나열하는 것이
+ * 사이드바가 나열하는 것과 같은 것들이라, spec 트리의 대문자 영어(`Iterations`·`Documents`)를
+ * 따르지 않는다. 부수 효과가 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
+ * 머리이기도 한** 자리가 생기지 않는다.
+ */
+const GROUP: Record<SearchHit["kind"], string> = {
+  destination: "가는 곳",
+  work: "작업",
+  project: "프로젝트",
+  doc: "문서",
+};
+
+/**
+ * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
+ * 목적지의 라벨은 프런트 것이라(결정 21) 코어가 준 `key`로 여기서 되찾는다.
+ */
+function rowText(hit: SearchHit): { name: string; detail?: string } {
+  switch (hit.kind) {
+    case "destination":
+      return { name: destinationLabel(hit.key) };
+    case "work":
+      return { name: hit.title };
+    case "project":
+      return { name: hit.name };
+    case "doc":
+      // work 제목과 경로가 **함께** 선다(결정 12) — `overview.md`가 29개라 파일명만으로는
+      // 어느 것인지 못 고른다. 맞추는 재료도 이 둘이라, 왜 떴는지가 줄 안에서 설명된다.
+      return { name: hit.title, detail: hit.path };
+  }
+}
+
+/** 아카이브 화면에서 열리는가. 갈래 둘에만 있는 성질이라 **태그로 가른다.** */
+const isArchived = (hit: SearchHit) =>
+  (hit.kind === "work" || hit.kind === "doc") && hit.archived;
+
+/** React가 줄을 붙잡는 표. 갈래가 다르면 slug가 같아도 다른 줄이다. */
+function rowKey(hit: SearchHit): string {
+  switch (hit.kind) {
+    case "destination":
+      return `destination/${hit.key}`;
+    case "work":
+      return `work/${hit.archived}/${hit.slug}`;
+    case "project":
+      return `project/${hit.slug}`;
+    case "doc":
+      return `doc/${hit.archived}/${hit.slug}/${hit.path}`;
+  }
+}
 
 /**
  * 그려지는 것 전부. **상태와 콜백만 받는다** — 이 조각이 정적 마크업 seam에서 재는 것이다.
@@ -102,31 +154,47 @@ export function SearchList({
           // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다.
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
-          {hits.map((hit, at) => (
-            <button
-              key={`${hit.slug}/${hit.path}`}
-              type="button"
-              role="option"
-              // 줄을 집는 표식. 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 샌다.
-              data-row=""
-              aria-selected={at === selected}
-              onClick={() => onGo(hit)}
-              className={cn(
-                "flex shrink-0 items-baseline gap-2 rounded-[8px] px-2.5 py-1.5 text-left",
-                at === selected ? "bg-state-2" : "hover:bg-state-1",
-              )}
-            >
-              {/* work 제목과 경로가 **함께** 선다(결정 12) — `overview.md`가 29개라
-                  파일명만으로는 어느 것인지 못 고른다. 맞추는 재료도 이 둘이라, 왜 떴는지가
-                  줄 안에서 설명된다. */}
-              <span className="shrink-0 text-[13px] tracking-[-0.01em]">{hit.title}</span>
-              <span className="truncate text-[12px] text-tertiary">{hit.path}</span>
-              {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
-              {hit.archived && (
-                <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">아카이브</span>
-              )}
-            </button>
-          ))}
+          {hits.map((hit, at) => {
+            const { name, detail } = rowText(hit);
+            return (
+              <Fragment key={rowKey(hit)}>
+                {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
+                    낸다. 머리는 `role="option"`이 아니라 방향키가 여기 서지 않는다: 서면
+                    Enter가 갈 곳이 없는 자리가 생긴다. */}
+                {(at === 0 || hits[at - 1].kind !== hit.kind) && (
+                  <p
+                    data-head=""
+                    className="shrink-0 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground first:pt-0.5"
+                  >
+                    {GROUP[hit.kind]}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  role="option"
+                  // 줄을 집는 표식. 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 샌다.
+                  data-row=""
+                  aria-selected={at === selected}
+                  onClick={() => onGo(hit)}
+                  className={cn(
+                    "flex shrink-0 items-baseline gap-2 rounded-[8px] px-2.5 py-1.5 text-left",
+                    at === selected ? "bg-state-2" : "hover:bg-state-1",
+                  )}
+                >
+                  <span className="shrink-0 text-[13px] tracking-[-0.01em]">{name}</span>
+                  {detail !== undefined && (
+                    <span className="truncate text-[12px] text-tertiary">{detail}</span>
+                  )}
+                  {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
+                  {isArchived(hit) && (
+                    <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                      아카이브
+                    </span>
+                  )}
+                </button>
+              </Fragment>
+            );
+          })}
           {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
               여기 서지 않는다(`role="option"`이 없다). */}
           {ready && hits.length === 0 && (
@@ -164,6 +232,16 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
   // 목록이 뒤늦게 오거나 짧아져도 고른 자리가 목록 밖으로 나가지 않는다.
   const at = hits.length === 0 ? -1 : Math.min(selected, hits.length - 1);
 
+  // **고르는 자리가 하나다.** 방향키와 마우스가 같은 것을 부른다 — 갈리면 한쪽만 퇴화해도
+  // 화면에 티가 안 난다. 갈 곳이 없으면(모르는 목적지 `key`) 닫지도 않는다: 계약이 깨진
+  // 것이므로 조용히 사라지는 것보다 그 자리에 서 있는 편이 낫다.
+  const go = (hit: SearchHit) => {
+    const target = hitTarget(hit);
+    if (target === null) return;
+    onClose();
+    void navigate(target);
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const handled = () => {
@@ -181,8 +259,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
         setSelected(Math.max(at - 1, 0));
       } else if (event.key === "Enter" && at >= 0) {
         handled();
-        onClose();
-        void navigate(hitTarget(hits[at]));
+        go(hits[at]);
       }
     };
     // **캡처로 듣는다.** 셸에 포커스가 있는 채로 열렸으면 xterm의 키 핸들러가 먼저 보는
@@ -206,10 +283,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
         setSelected(0);
       }}
       onClose={onClose}
-      onGo={(hit) => {
-        onClose();
-        void navigate(hitTarget(hit));
-      }}
+      onGo={go}
     />
   );
 }

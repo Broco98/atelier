@@ -36,12 +36,18 @@ async function answer(query: string, path: string) {
   await new Promise((done) => setTimeout(done, 0));
 }
 
+/** 화면에 선 첫 줄의 문서 경로. 갈래가 넷이라 태그로 가른다 — 이 검사가 세우는 것은 문서뿐이다. */
+function pathOf(data: unknown): string | undefined {
+  const hit = (data as SearchResults | undefined)?.hits[0];
+  return hit?.kind === "doc" ? hit.path : undefined;
+}
+
 /** 화면 하나를 세운다. 구독이 곧 첫 물음이다. */
 function watch(query: string) {
   const observer = new QueryObserver(new QueryClient(), searchQuery(query));
   const seen: (string | undefined)[] = [];
-  observer.subscribe((result) => seen.push((result.data as SearchResults | undefined)?.hits[0].path));
-  return { observer, seen, shown: () => (observer.getCurrentResult().data as SearchResults | undefined)?.hits[0].path };
+  observer.subscribe((result) => seen.push(pathOf(result.data)));
+  return { observer, seen, shown: () => pathOf(observer.getCurrentResult().data) };
 }
 
 describe("빨리 칠 때", () => {

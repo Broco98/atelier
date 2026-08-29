@@ -18,6 +18,17 @@ const doc = (slug: string, path: string, archived = false): SearchHit => ({
   archived,
 });
 
+const workHit = (slug: string, archived = false): SearchHit => ({
+  kind: "work",
+  slug,
+  title: `${slug} 작업`,
+  archived,
+});
+
+const project = (slug: string, name: string): SearchHit => ({ kind: "project", slug, name });
+
+const destination = (key: string): SearchHit => ({ kind: "destination", key });
+
 const render = (
   hits: SearchHit[],
   { selected = 0, query = "", truncated = false, ready = true } = {},
@@ -39,6 +50,11 @@ const render = (
 // 줄 안에는 다른 button이 없어 첫 `</button>`까지가 그 줄 전부다.
 const rowsOf = (markup: string) =>
   markup.match(/<button[^>]*data-row=""[\s\S]*?<\/button>/g) ?? [];
+
+// 구획 머리도 **표식으로** 집는다. 글로만 찾으면 목적지 라벨 `Projects`와 그룹 머리
+// 「프로젝트」가 같은 자리에 있는지 없는지를 못 가른다.
+const headsOf = (markup: string) =>
+  [...markup.matchAll(/<p[^>]*data-head=""[^>]*>([^<]*)<\/p>/g)].map((m) => m[1]);
 
 describe("팔레트가 그리는 줄", () => {
   // 결정 12. `overview.md`가 29개라 파일명만으로는 아무것도 못 고른다 — **한 줄 안에**
@@ -109,6 +125,65 @@ describe("치는 자리와 목록이 하는 말", () => {
   it("잘렸을 때만 잘렸다고 말한다", () => {
     expect(render([doc("가", "overview.md")], { truncated: true })).toContain("일부만 보입니다");
     expect(render([doc("가", "overview.md")])).not.toContain("일부만 보입니다");
+  });
+});
+
+describe("갈래마다 다른 것을 그린다", () => {
+  // 결정 21. 목적지 줄이 드는 말은 **프런트 것이다** — 코어는 `key`만 돌려주고, 라벨은
+  // `nav-items.ts`가 정한다. 줄 안에서 본다: 마크업 전체에서 찾으면 라벨이 엉뚱한 줄에
+  // 서도 초록이 된다.
+  it("목적지 줄에 main nav의 라벨이 선다", () => {
+    const rows = rowsOf(render([destination("projects"), destination("terminal")]));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("Projects");
+    expect(rows[1]).toContain("Terminal");
+  });
+
+  // 결정 14. **문서가 0개인 work도 한 줄로 선다** — 줄이 드는 것은 그 work의 제목이다.
+  it("work 줄에 제목이 서고 아카이브 work만 아카이브라고 말한다", () => {
+    const rows = rowsOf(render([workHit("가"), workHit("옛일", true)]));
+    expect(rows[0]).toContain("가 작업");
+    expect(rows[0]).not.toContain("아카이브");
+    expect(rows[1]).toContain("옛일 작업");
+    expect(rows[1]).toContain("아카이브");
+  });
+
+  it("프로젝트 줄에 이름이 선다", () => {
+    const rows = rowsOf(render([project("billing", "빌링")]));
+    expect(rows[0]).toContain("빌링");
+    // slug는 화면에 안 선다 — 사이드바·Projects 화면이 이름으로 부르는 것과 같다.
+    expect(rows[0]).not.toContain("billing");
+  });
+});
+
+describe("구획 머리", () => {
+  // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」 — **사이드바 목록과 같은 계통의
+  // 한국어다.** 순서는 코어가 정한 층 순서 그대로다.
+  it("층마다 한 번씩 그 순서로 선다", () => {
+    const markup = render([
+      destination("projects"),
+      workHit("가"),
+      workHit("옛일", true),
+      project("billing", "빌링"),
+      doc("가", "overview.md"),
+      doc("옛일", "record.md", true),
+    ]);
+    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "프로젝트", "문서"]);
+  });
+
+  // **결과가 없는 그룹은 머리도 안 선다** — 비어 있는 머리는 「여기 뭔가 있었는데」로 읽힌다.
+  it("줄이 없는 그룹은 머리도 없다", () => {
+    expect(headsOf(render([doc("가", "overview.md")]))).toEqual(["문서"]);
+    expect(headsOf(render([]))).toEqual([]);
+  });
+
+  // 머리는 **고를 수 있는 것이 아니다.** 방향키가 여기 서면 Enter가 갈 곳이 없는 자리가
+  // 생기고, 코어가 세는 줄 수와 화면이 고를 수 있는 자리 수가 갈린다.
+  it("머리에는 방향키가 서지 않는다", () => {
+    const hits = [destination("projects"), workHit("가"), doc("가", "overview.md")];
+    const markup = render(hits);
+    expect(headsOf(markup)).toHaveLength(3);
+    expect(markup.match(/role="option"/g) ?? []).toHaveLength(hits.length);
   });
 });
 
