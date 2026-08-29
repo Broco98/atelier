@@ -30,9 +30,9 @@ function SidebarWorkList({
 }: {
   open: boolean;
   /**
-   * work별 셸 개수 — **둘째 줄이 서는 조건**이다(결정 2·3). 그 줄이 무엇을 적는지는 이제
-   * 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의 셸」의 수를
-   * 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
+   * work별 셸 개수 — **행 오른쪽 끝의 메타가 서는 조건**이다(결정 2·3). 그것이 무엇을
+   * 적는지는 이제 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의
+   * 셸」의 수를 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
    *
    * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
    * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
@@ -40,8 +40,9 @@ function SidebarWorkList({
    */
   shellCounts: Record<string, number>;
   /**
-   * 둘째 줄의 **셸 메타**. 같은 이유로 슬롯이다 — 그리는 것은 `components/shell/shell-meta`의
-   * `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는 Sidebar다(결정 13).
+   * 행 오른쪽 끝의 **셸 메타**. 같은 이유로 슬롯이다 — 그리는 것은
+   * `components/shell/shell-meta`의 `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는
+   * Sidebar다(결정 13).
    */
   renderShellMeta: (work: WorkView) => ReactNode;
 }) {
@@ -438,8 +439,9 @@ function SectionHeader({
   );
 }
 
-// 한 줄 — 상태 점 + 제목 + 핀. 바로 위 nav 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기):
-// 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다.
+// **한 줄이다** — 상태 점 + 제목 + (핀과 셸 메타가 겹쳐 서는 오른쪽 끝 한 칸). 바로 위 nav
+// 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기): 둘이 세로로 붙어 있어 규칙이 다르면 그
+// 자리에서 어긋난다.
 // 좁은 폭이라 제목이 자주 잘리는데, 전체는 호버 카드가 보여준다 — title 속성을 함께 두면
 // OS 툴팁이 카드 위로 겹쳐 뜬다.
 //
@@ -448,7 +450,10 @@ function SectionHeader({
 // 파일 행이 이미 같은 문제를 그 구조로 풀었다.
 // 배경(선택·hover)은 바깥 상자가 갖고, 가로 여백은 이름 버튼이 품는다: 바깥이 가진
 // padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가
-// 된다. 남는 것은 오른쪽 끝 pr-1뿐이고 그건 핀을 행 가장자리에서 띄우는 값이다.
+// 된다. 남는 것은 오른쪽 끝 pr-1뿐이고 그건 핀과 메타를 행 가장자리에서 띄우는 값이다 —
+// 메타의 `pr-[5px]`와 합쳐 **9px**이 되어, 구획 헤더 `작업`의 개수(`px-[9px]`)와 같은 x에
+// 오른쪽 끝이 선다. 한 컬럼에 세로로 붙어 서는 숫자들이 다른 무게로 읽히지 않게 하는 그
+// 계약(`SidebarItem` 주석)에 이제 work 행도 들어와 있다.
 //
 // hover(카드 여는 것)는 바깥 상자가 듣는다 — 이름 버튼에 걸면 핀 위로 마우스를 옮기는
 // 순간 카드가 닫힌다.
@@ -468,9 +473,9 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  /** 이 work의 셸 수 — **둘째 줄이 서는 조건이다**(결정 2·3). */
+  /** 이 work의 셸 수 — **메타가 서는 조건이다**(결정 2·3). */
   shellCount: number;
-  /** 둘째 줄의 **셸 메타**. 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
+  /** 행 오른쪽 끝의 **셸 메타**. 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
   shellMeta: ReactNode;
 }) {
   return (
@@ -478,11 +483,20 @@ function WorkRow({
       onMouseEnter={(e) => onHover(work.slug, e.currentTarget)}
       onMouseLeave={onLeave}
       className={cn(
-        // **flex가 아니라 grid다**(결정 2). 둘째 줄이 서면서 행이 두 줄이 됐는데, 첫 줄을
-        // 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어 **「행 상자」를 부모로 집는**
-        // 자리가 조용히 어긋난다 — e2e가 핀의 `parentElement`로 배경 상자를 잰다.
-        // 두 칸 grid면 이름·핀이 직계 자식으로 남고 둘째 줄만 두 칸을 걸쳐 아래에 선다.
-        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[10px] pr-1 transition-colors",
+        // **flex가 아니라 grid다**(결정 1). 메타와 핀이 **2열 같은 칸에 겹쳐** 서야 하는데,
+        // 그 둘을 상자 하나로 묶으면 요소만 늘고 칸 폭 계산은 똑같다. 그리고 첫 줄을 상자로
+        // 한 겹 싸면 **이름 버튼의 부모**가 그 상자가 되어, 그것으로 배경 상자를 집는 자리가
+        // 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를 잰다.
+        // (한때 이 주석이 「핀의 `parentElement`」라고 적어 뒀는데 그런 자리는 없다. 그
+        // 한 줄이 스펙까지 물려가 안 하나를 잘못 기각했다 — 결정 1이 그 내력을 든다.)
+        //
+        // **2열은 한 무리분(28px)을 바닥으로 예약한다**(결정 2·5). `auto`로 두면 로고가
+        // 붙을 때마다 칸이 넓어져 제목의 말줄임 지점이 초마다 밀린다 — 판 04가 행 높이에서
+        // 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프 12 + 간격 4 + 숫자 7 = 23px,
+        // 오른쪽 여백 5px. 셸이 하나인 work은 무리가 늘 정확히 하나라 제목이 영영 안 움직이고,
+        // 셸이 0개인 행도 같은 폭을 내 말줄임 지점이 행마다 갈리지 않는다.
+        // **바닥이지 상한이 아니다** — 무리가 둘 이상이면 `minmax`의 위쪽(`auto`)이 받는다.
+        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_minmax(28px,auto)] items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
@@ -492,8 +506,9 @@ function WorkRow({
         // 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그 갈래가 통째로 사라졌다.
         // 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙 전부다.
         onClick={() => onOpen(work.slug)}
-        // 첫 줄의 높이를 **이 버튼이 든다** — 바깥이 grid가 되면서 `h-full`은 두 줄을
-        // 합친 높이가 됐다. nav 항목과 맞춰야 하는 규격은 여전히 이 한 줄의 32px이다.
+        // 행의 높이를 **이 버튼이 든다** — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
+        // 순환이 된다. nav 항목과 맞춰야 하는 규격이 이 32px이고, 이제 셸이 몇 개든 무엇이
+        // 돌든 모든 work 행이 이 높이다(결정 0) — 겹쳐 선 메타·핀은 둘 다 이보다 낮다.
         className="flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
@@ -514,13 +529,19 @@ function WorkRow({
           채운 핀 / 빈 핀으로 갈린다. PinOff(사선 그은 핀)를 쓰지 않는 것은 이 저장소의
           아이콘이 전부 외곽선이고, 결정 85가 말한 것도 「채운 핀」이기 때문이다.
           켜짐은 aria-pressed가 말한다(WorkPanel의 `</>` 토글과 같은 규칙). title은 두지
-          않는다 — 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다. */}
+          않는다 — 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다.
+
+          **메타와 같은 칸에 선다**(결정 1) — 2열 1행에 둘 다 놓으면 겹침이 이미 되고 칸 폭은
+          `max(메타, 핀)`이다. `peer`는 **아래 메타가 이 버튼의 포커스를 보기 위한 것**이다
+          (결정 7): 이 핀은 hover뿐 아니라 포커스에도 뜨므로, 메타를 `group-hover`로만 물리면
+          Tab으로 닿았을 때 둘이 겹쳐 그려진다. 후행 형제에만 걸리는 선택자인데 DOM 순서가
+          이미 `이름 버튼 → 핀 → 메타`라 그대로 먹는다. */}
       <button
         type="button"
         aria-label={`${work.title} 고정`}
         aria-pressed={work.pinned}
         onClick={() => onTogglePin(work)}
-        className="icon-button-tint shrink-0 text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+        className="peer icon-button-tint col-start-2 row-start-1 shrink-0 justify-self-end text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
       >
         <Pin
           className="size-3"
@@ -528,32 +549,40 @@ function WorkRow({
           fill={work.pinned ? "currentColor" : "none"}
         />
       </button>
-      {/* **둘째 줄 — 셸이 하나라도 있으면 선다**(결정 3). 셸이 0개인 work는 한 줄로 남아
-          **행 높이 자체가 「여기서 일이 돌고 있다」는 신호**가 된다.
+      {/* **셸 메타 — 셸이 하나라도 있으면 선다**(결정 3). 셸이 0개인 work의 행에는 아무것도
+          안 선다: 「없음」은 숫자로 말하지 않는다. 한때 이것이 왼쪽 32px을 들여쓴 **둘째 줄**
+          이었고 행 높이가 곧 「여기서 일이 돌고 있다」는 신호였다 — 결정 0이 그것을 뒤집었다.
+          그 줄이 실제로 쓰는 폭은 25px이었고, 왼쪽 들여쓰기는 철거된 트리의 유물이라 트리처럼
+          보이는데 눌러도 아무 일이 없는 자리였다.
 
           「명령이 도는 동안만 선다」는 **기각됐다**: 그 값은 매 순간 바뀌어서(백엔드가
-          1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이 접혔다 펴지고 아래
-          work들이 계속 위아래로 밀린다. 줄이 서는 조건은 **안 변하는 값**이고, 변하는 것은
-          줄 **안에서**만 변한다 — 그래서 도는 것이 하나도 없어도 이 줄은 그대로 선다.
+          1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이 생겼다 사라지고 제목의
+          말줄임 지점이 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**이고, 변하는 것은
+          그 **안에서**만 변한다 — 그래서 도는 것이 하나도 없어도 이 자리는 그대로 선다.
 
-          **이 줄이 적는 것은 「무리」의 나열이다**(결정 3). 무리 하나 = 글리프 + 그 무리의
+          **여기 적히는 것은 「무리」의 나열이다**(결정 3). 무리 하나 = 글리프 + 그 무리의
           셸 수이고, **숫자를 다 더하면 이 work의 셸 수**다. 셸 수를 여기서 직접 적지 않는
           이유가 그 불변조건이다 — 「그 밖의 셸」의 수는 셸 수와 도는 것을 **둘 다 아는
           자리**에서만 나오므로, 세는 규칙도 규격도 `ShellMeta` 하나가 든다(결정 13).
-          이 줄은 자리(높이·들여쓰기·표식)만 든다.
+          바깥인 이 상자가 드는 것은 **격자 칸 · hover 페이드 · 표식** 셋뿐이다(결정 14) —
+          그림 컴포넌트는 슬러그를 모르므로 표식이 여기 있다.
+
+          **핀과 같은 칸에 겹친다**(결정 1). hover하면 메타가 **투명해지고**(`hidden`이 아니다 —
+          `display:none`은 칸 폭 계산에서 빠져 칸이 핀의 24px로 줄고 hover마다 제목이 좌우로
+          뛴다) 그 자리에 핀이 선다. `visibility:hidden`도 아니다: 셸 수가 마우스 위치에 따라
+          있다 없다 하는 정보가 되면 안 된다(결정 6). 트랜지션은 안 건다 — 옆 행으로 옮겨 갈 때
+          두 페이드가 겹쳐 미끄러져 보인다(icon-button-tint가 opacity를 뺀 것과 같은 이유).
+          **`peer-focus-visible`이 함께 가는 이유는 핀이 포커스에도 뜨기 때문이다**(결정 7).
+          `group-focus-within`은 틀린 답이다 — 이름 버튼에 포커스가 가도 메타가 물러나는데
+          그때는 핀이 안 떠서 그 자리가 통째로 빈다.
 
           **표시 전용이다**(결정 5). 무리 하나가 셸 여럿을 접으므로 무리와 셸이 1:1이 아니고,
-          누르면 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아
-          그 work로 간다. _감수한 것_: 이 줄의 배경은 눌러도 아무 일이 없는 자리다 — 누를 수
-          있게 하려면 이름 버튼 안에 넣어야 하는데, 그러면 셸 수와 로고 이름이 그 버튼의
-          접근성 이름에 섞여 「제목으로 행을 집는다」가 깨진다.
-
-          왼쪽 여백은 **제목이 시작하는 자리**다(`--tree-step` = 글리프 칸 하나 + 그 간격) —
-          숫자로 박으면 글리프 크기를 손보는 날 이 정렬이 조용히 깨진다. */}
+          누르면 어느 셸로 갈지 정해지지 않는다. 그래서 `pointer-events-none`이 상시다 —
+          누를 것이 없을 뿐 아니라, 겹친 자리라 이것이 위에 있으면 **핀의 클릭을 가로챈다.** */}
       {shellCount > 0 && (
         <div
-          data-subrow={work.slug}
-          className="col-span-2 flex h-[22px] items-center pl-[calc(9px+var(--tree-step))]"
+          data-shells={work.slug}
+          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end group-hover:opacity-0 peer-focus-visible:opacity-0"
         >
           {shellMeta}
         </div>

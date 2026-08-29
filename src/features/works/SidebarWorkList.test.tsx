@@ -36,7 +36,7 @@ function render(
   {
     selectedSlug = null,
     shellCounts = {},
-    // 둘째 줄의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
+    // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
     // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯을 부르는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
@@ -103,11 +103,13 @@ const rowsBySection = (markup: string) =>
       rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
     }));
 
-// 행의 **둘째 줄**만 잘라낸다(결정 2). 「행 안에서」 봐야 뜻이 있다 — 마크업 전체에서 숫자를
-// 세면 다른 행의 줄이나 구획 개수와 섞여, 줄이 엉뚱한 work에 서도 초록이 된다.
-// 이 줄 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 줄 전부다.
-const subrowsOf = (markup: string) =>
-  [...markup.matchAll(/<div[^>]*data-subrow="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
+// 행 오른쪽 끝의 **셸 메타 상자**만 잘라낸다(결정 14). 표식이 「둘째 줄」이라는 자리 설명이
+// 아니라 **그 자리에 있는 것**의 이름인 것은 이 저장소의 다른 표식들과 같은 규칙이다
+// (`data-branch`·`data-section`). 「행 안에서」 봐야 뜻이 있다 — 마크업 전체에서 숫자를 세면
+// 다른 행의 메타나 구획 개수와 섞여, 메타가 엉뚱한 work에 서도 초록이 된다.
+// 이 상자 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 상자 전부다.
+const shellBoxesOf = (markup: string) =>
+  [...markup.matchAll(/<div[^>]*data-shells="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
     slug: m[1],
     html: m[0],
   }));
@@ -239,30 +241,34 @@ describe("구획 접기", () => {
 });
 
 // 결정 2~5. **이 work의 절반이 이 물음 하나를 위한 것이다: 목록만 훑고도 어느 work에서
-// 무엇이 돌고 있는지 안다.** 그래서 이 줄의 주인공은 지금 보고 있지 **않은** work다 —
+// 무엇이 돌고 있는지 안다.** 그래서 이 자리의 주인공은 지금 보고 있지 **않은** work다 —
 // 보고 있는 work에서 뭐가 도는지는 본문의 탭 줄이 이미 말한다.
-describe("work 행의 둘째 줄", () => {
-  it("셸이 하나라도 있는 행에만 선다 — 높이가 곧 신호다", () => {
-    // 결정 3. 셸이 0개인 work는 한 줄로 남아 **행 높이 자체가 「여기서 일이 돌고 있다」**가 된다.
+//
+// 한때 이것이 **둘째 줄**이었다. 판 02가 그 줄을 걷어 행 오른쪽 끝으로 옮겼다(결정 0) —
+// 자리와 높이는 아래 e2e가 실측으로 재고, 여기서 보는 것은 **마크업이 무엇을 말하는가**다.
+describe("work 행 오른쪽 끝의 셸 메타", () => {
+  it("셸이 하나라도 있는 행에만 선다", () => {
+    // 셸이 0개인 work의 행에는 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다.
+    // (행 **높이**는 이제 신호가 아니다 — 모든 행이 32px이다. 결정 0.)
     const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2, 다: 1 } });
-    expect(subrowsOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
+    expect(shellBoxesOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
   });
 
-  it("도는 것이 없어도 줄은 그대로 선다", () => {
+  it("도는 것이 없어도 자리는 그대로 선다", () => {
     // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
-    // 순간 바뀌어서(pty.rs가 1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이
-    // 접혔다 펴지고 아래 work들이 계속 밀린다. 줄이 서는 조건은 **안 변하는 값**(셸을
-    // 포함하는가)이고 변하는 것은 줄 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도
-    // 줄은 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    // 순간 바뀌어서(pty.rs가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이
+    // 생겼다 사라지고 제목의 말줄임 지점이 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
+    // (셸을 포함하는가)이고 변하는 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안
+    // 그려도 자리는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderShellMeta: () => null });
-    expect(subrowsOf(markup)).toHaveLength(1);
+    expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
-  it("메타는 그 줄 **안에** 있고, 셸이 없는 행에는 슬롯을 아예 안 부른다", () => {
+  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯을 아예 안 부른다", () => {
     // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
     // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
-    const [가] = subrowsOf(markup);
+    const [가] = shellBoxesOf(markup);
     expect(가.html).toContain('data-meta="가"');
     expect(markup).not.toContain('data-meta="나"');
   });
@@ -271,17 +277,43 @@ describe("work 행의 둘째 줄", () => {
     // 결정 3·13. 「그 밖의 셸」의 수는 셸 수와 도는 것을 둘 다 아는 자리에서만 나오므로
     // 두 값이 `ShellMeta` 하나로 합쳐졌다. 여기가 셸 수를 다시 적으면 그 수가 무리들의
     // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다.
-    const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
+    const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
     expect(가.html).not.toContain(">3<");
     expect(spansOf(가.html)).toEqual([]);
   });
 
   it("아무것도 눌리지 않는다", () => {
     // 결정 5. 무리 하나가 셸 **여럿**을 접으므로(결정 3) 무리와 셸이 1:1이 아니다 — 누르면
-    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아 그 work로 간다.
-    const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
+    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 이름 버튼이 받아 그 work로 간다.
+    const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
     expect(가.html).not.toContain("<button");
     expect(가.html).not.toContain("<a ");
+  });
+
+  it("**둘째 줄이 없다** — 메타와 핀이 2열 같은 칸에 겹친다", () => {
+    // 결정 0·1. 두 칸을 걸쳐 아래에 서던 줄이 사라졌다. 래퍼를 세우지 않고 **둘 다** 2열
+    // 1행에 놓는 것이 겹치는 방법 전부다 — 칸 폭은 `max(메타, 핀)`으로 저절로 정해지고,
+    // 이름 버튼은 행 상자의 직계 자식으로 남는다(호버 카드 자리를 재는 e2e의 불변조건).
+    // 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다(결정 14).
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
+    expect(markup).not.toContain("col-span-2");
+    expect(markup).not.toContain("data-subrow");
+    for (const html of [shellBoxesOf(markup)[0].html, pinsOf(markup)[0]]) {
+      expect(html).toContain("col-start-2");
+      expect(html).toContain("row-start-1");
+    }
+  });
+
+  it("2열이 한 무리분을 **바닥으로** 예약한다", () => {
+    // 결정 2·5. `auto`로 두면 로고가 붙을 때마다 칸이 넓어져 제목의 말줄임 지점이 초마다
+    // 밀린다 — 판 04가 행 높이에서 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프
+    // 12 + 간격 4 + 숫자 7 = 23px에 오른쪽 여백 5px을 더한 **28px**이 그 바닥이다.
+    //
+    // **바닥이지 상한이 아니다** — `minmax`의 위쪽이 `auto`라 무리가 둘이면 넘어서 넓어진다.
+    // 그 폭이 실제로 나오는지, 셸이 없는 행도 같은 제목 폭을 갖는지는 e2e가 실측으로 잰다.
+    expect(render(works("가"), ALL, { shellCounts: { 가: 1 } })).toContain(
+      "grid-cols-[minmax(0,1fr)_minmax(28px,auto)]",
+    );
   });
 });
 
