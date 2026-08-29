@@ -49,7 +49,6 @@ function ArchivePage({
   // 열리던 경로가 아예 없다. 목록에 없는 경로면 아래에서 기본값으로 떨어진다.
   // 목록의 첫 항목이 그 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
   const current = currentFile && docs.includes(currentFile) ? currentFile : (docs[0] ?? null);
-  const { data: content } = useArchivedFile(selected?.slug ?? null, current);
 
   const [showSource, setShowSource] = useState(false);
   // 본문 갈래는 Works 화면과 **같은 표**가 정한다(결정 7·11). 여기서 식을 한 벌 더 들면
@@ -57,6 +56,14 @@ function ArchivePage({
   // 하나로 섰고, 비-md에서 토글이 안 잠겨 **선 칸만 「문서」로 옮겨 가고 본문은 소스에
   // 눌러앉았다**(눌리는데 아무 일도 안 나는 그 어긋남, 결정 21).
   const body = docBody(current, showSource);
+  // **읽을지 말지도 그 표가 정한다**(결정 15) — 그림이면 안 읽는다. 아카이브 목록에도
+  // `.png`가 뜨고(list_archived_docs가 spec_files를 그대로 쓴다) 읽기 바닥은
+  // read_to_string이라, 그냥 읽으면 고를 때마다 UTF-8 실패가 재시도까지 달고 나간다.
+  // 읽기만 표 밖에 남기면 결정 11이 막으려던 **화면별 예외**가 여기 생긴다.
+  const { data: content } = useArchivedFile(
+    selected?.slug ?? null,
+    body === "image" ? null : current,
+  );
 
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
