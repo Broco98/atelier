@@ -127,6 +127,7 @@ pub fn run() {
             commands::list_archive,
             commands::list_archived_docs,
             commands::read_archived_file,
+            commands::search,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,

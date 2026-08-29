@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, WorkView,
+    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, SearchHit,
+    WorkView,
 };
 
 use std::sync::Arc;
@@ -116,6 +117,15 @@ pub async fn list_archived_docs(slug: String) -> CmdResult<Vec<String>> {
 #[tauri::command]
 pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_work_file(&archive_dir(), &slug, &path).map_err(err)
+}
+
+/// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 순위와 층 규칙이 프런트와
+/// 갈리면 어긋나도 화면에 티가 안 난다. 여기는 루트 둘을 건네는 위임뿐이다.
+///
+/// 질의는 아직 인자로 안 받는다. 지금 답하는 것은 「최근 고쳐진 문서」 하나다.
+#[tauri::command]
+pub async fn search() -> CmdResult<Vec<SearchHit>> {
+    atelier_core::search(&works_dir(), &archive_dir()).map_err(err)
 }
 
 #[tauri::command]

@@ -251,7 +251,7 @@ fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     Ok(works_root.join(slug))
 }
 
-fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
+pub(crate) fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
     let path = work_dir(works_root, slug)?.join("work.json");
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::WorkNotFound(slug.to_string()))?;
@@ -302,7 +302,7 @@ fn worktrees_dir(work_dir: &Path) -> PathBuf {
 
 /// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
 /// 않도록 경로를 만드는 곳은 여기 하나다 (work_dir와 같은 규칙).
-fn spec_dir(work_dir: &Path) -> PathBuf {
+pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
@@ -322,7 +322,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-fn spec_files(work_dir: &Path) -> Vec<String> {
+pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
