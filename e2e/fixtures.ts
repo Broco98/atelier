@@ -1,3 +1,4 @@
+import type { ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
@@ -74,6 +75,33 @@ export const WORKS: WorkView[] = [
   },
 ];
 
+// 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
+// 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
+// 분기를 위한 것이지 「누를 것이 있다」는 뜻이 아니라, 화면이 `current === null`을 따로
+// 얹어 잠근다(ArchivePage의 `locked`). 하나만 두면 그 항이 빠져도 초록이 된다.
+//
+// 목록은 **경량이다** — spec 파일 목록을 담지 않는다(`ArchiveEntry`). 문서 목록은 아래
+// `ARCHIVED_DOCS`가 `list_archived_docs`로 따로 답한다.
+export const ARCHIVE: ArchiveEntry[] = [
+  {
+    slug: "shipped-work",
+    title: "치운 일",
+    // 아카이브가 done을 뜻하지는 않지만(치운 시점 상태를 그대로 보존한다), 흔한 쪽을 둔다
+    status: "done",
+    archivedAt: "2026-08-10T03:04:05Z",
+    projects: ["billing"],
+  },
+  {
+    // 손으로 옮겨 둔 폴더 — 기록도 spec도 없다. `archivedAt`이 없는 것도 같은 사정이다
+    // (`ArchiveEntry.archivedAt` 주석). `record.md`를 지운 아카이브가 같은 모양이 된다.
+    slug: "bare-archive",
+    title: "문서가 남지 않은 것",
+    status: "active",
+    archivedAt: null,
+    projects: [],
+  },
+];
+
 /**
  * 팔레트가 그리는 줄들. **이 표는 질의를 못 본다** — 이름 → 고정 값이라 어떤 질의에도 같은
  * 답이 온다. 좁혀지는 것을 여기서 재려 하지 말 것: 그것은 코어 단위의 몫이고 이 층이
@@ -103,7 +131,7 @@ export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: fal
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
   list_works: WORKS,
-  list_archive: [],
+  list_archive: ARCHIVE,
   // 핀을 누르면 나가는 쓰기다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을
   // 다시 읽어 오는 것이 화면을 고치는 자리다(useSetWorkPinned).
   set_work_pinned: null,
@@ -169,3 +197,52 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
 // `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은
 // 조용히 낡는다**(harness.ts의 플러그인 표가 같은 이유로 둘을 비워 뒀다). 그 시나리오를
 // 쓰는 판이 같이 넣는다.
+
+/**
+ * 아카이브의 문서 목록 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
+ * spec(`spec/…`)이 한 목록에 함께 오고, 기록이 맨 앞이다(코어 `list_archived_docs`).
+ *
+ * 파일 종류 표의 세 줄을 담는다: `.md` · 그림 · `.html`. **뒤에 더한다** — 위 `specFiles`와
+ * 같은 규칙이다(검사가 목록을 자리로 집을 수 있다).
+ *
+ * `bare-archive`가 `[]`인 것은 지어낸 상태가 아니다 — 손으로 옮겨 둔 폴더에는 기록이 없고,
+ * 코어도 없으면 안 넣는다.
+ */
+export const ARCHIVED_DOCS: Record<string, string[]> = {
+  "shipped-work": ["record.md", "spec/증거/샷.png", "spec/목업/조각.html"],
+  "bare-archive": [],
+};
+
+/**
+ * 아카이브 문서 읽기의 **경로별** 답.
+ *
+ * **그림이 여기 없는 것이 그물이다**(결정 15). 읽을지 말지도 파일 종류 표가 정하므로
+ * 아카이브 화면은 그림을 아예 안 읽는데, 그 항이 빠지면 `spec/증거/샷.png`로 읽기가
+ * 나가고 표에 없는 경로라 하네스가 문다 — 「안 읽는다」가 화이트리스트 탐지기에 걸린다.
+ * 여기에 답을 채워 두면 그 신호가 사라진다.
+ *
+ * `.html`은 spec 쪽과 **같은 조각**이다 — 두 화면이 같은 `HtmlDoc`을 쓰는 것이 결정 11의
+ * 요지라, 조각이 갈리면 무엇이 같은지가 이 층에서 안 보인다.
+ */
+export const ARCHIVED_FILE_BODIES: Record<string, string> = {
+  "record.md": "# 기록 — 치운 일\n\n한 줄.\n",
+  "spec/목업/조각.html": SPEC_FILE_BODIES["목업/조각.html"],
+};
+
+/**
+ * **인자를 한 겹 더 보는** 커맨드들의 답: 커맨드 이름 → 가르는 인자 이름 + 그 값별 답.
+ *
+ * 위 `FIXTURE_COMMANDS`는 커맨드 이름으로만 갈리는데, 한 시나리오가 문서 셋을 열어야 하고
+ * (`read_spec_file`·`read_archived_file`) 아카이브 둘이 서로 다른 문서 목록을 가져야 한다
+ * (`list_archived_docs`). 여기서 못 찾은 값은 그대로 `FIXTURE_COMMANDS`가 답한다 —
+ * `read_spec_file`의 그 한 줄이 앞 시나리오들을 그대로 돌린다.
+ *
+ * 아카이브 쪽 둘은 **여기에만** 있다. `FIXTURE_COMMANDS`에 폴백을 두면 표에 없는 경로가
+ * 조용히 답을 받아, 위 `ARCHIVED_FILE_BODIES`가 그림으로 세운 그물이 무력해진다.
+ * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 이 표도 함께 대조해 잡는다.
+ */
+export const FIXTURE_BY_ARG: Record<string, { arg: string; answers: Record<string, unknown> }> = {
+  read_spec_file: { arg: "path", answers: SPEC_FILE_BODIES },
+  list_archived_docs: { arg: "slug", answers: ARCHIVED_DOCS },
+  read_archived_file: { arg: "path", answers: ARCHIVED_FILE_BODIES },
+};

@@ -5,7 +5,7 @@ import { BRIDGE_FN, callBridge } from "./bridge";
 import type { Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
-import { FIXTURE_COMMANDS, SPEC_FILE_BODIES } from "./fixtures";
+import { FIXTURE_BY_ARG, FIXTURE_COMMANDS } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -53,11 +53,13 @@ interface InitArgs {
   /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
   bridgeName: string | null;
   /**
-   * spec 파일 읽기의 **경로별** 답. `responses`는 커맨드 이름으로만 갈리는데 한 시나리오가
-   * 문서 셋을 열어야 해서, 이 커맨드만 인자를 한 겹 더 본다. 표에 없는 경로는 그대로
-   * `responses`의 값이 답한다 — L4는 진짜 백엔드가 답하므로 비어 있다.
+   * **인자를 한 겹 더 보는** 커맨드들의 답: 커맨드 이름 → 가르는 인자 이름 + 그 값별 답.
+   * `responses`는 커맨드 이름으로만 갈리는데 한 시나리오가 문서 셋을 열어야 하고
+   * (`read_spec_file`·`read_archived_file`), 아카이브 둘이 서로 다른 문서 목록을 가져야
+   * 한다(`list_archived_docs`). 여기서 못 찾은 값은 그대로 `responses`가 답한다 —
+   * L4는 진짜 백엔드가 답하므로 비어 있다.
    */
-  specFiles: Record<string, string>;
+  byArg: Record<string, { arg: string; answers: Record<string, unknown> }>;
 }
 
 /**
@@ -68,7 +70,7 @@ export async function installFixtureBackend(page: Page): Promise<void> {
   await install(page, {
     responses: { ...FIXTURE_COMMANDS, ...PLUGINS },
     bridgeName: null,
-    specFiles: SPEC_FILE_BODIES,
+    byArg: FIXTURE_BY_ARG,
   });
 }
 
@@ -90,14 +92,14 @@ export async function installRealBackend(
   await install(page, {
     responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
     bridgeName: BRIDGE_FN,
-    specFiles: {},
+    byArg: {},
   });
 }
 
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, specFiles }: Omit<InitArgs, "recordKey">,
+  { responses, bridgeName, byArg }: Omit<InitArgs, "recordKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -108,7 +110,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, bridgeName, specFiles }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, bridgeName, byArg }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -139,12 +141,15 @@ async function install(
         detail = " (인자를 적지 못했습니다)";
       }
       record.calls.push(`${cmd}${detail}`);
-      // spec 파일 읽기만 인자를 한 겹 더 본다 — 표에 있는 경로면 그 답을 주고, 없으면
-      // 아래 커맨드 표의 한 줄이 그대로 답한다(앞 시나리오들이 그대로 돈다).
-      if (cmd === "read_spec_file") {
-        const path = (args as { path?: string } | undefined)?.path;
-        if (path !== undefined && Object.prototype.hasOwnProperty.call(specFiles, path)) {
-          return specFiles[path];
+      // 문서 읽기·아카이브 문서 목록은 인자를 한 겹 더 본다 — 표에 있는 값이면 그 답을
+      // 주고, 없으면 아래 커맨드 표가 그대로 답한다(앞 시나리오들이 그대로 돈다).
+      // 아래 표에도 없으면 화이트리스트 밖이다 — 아카이브의 「그림은 안 읽는다」가 그 신호로
+      // 잡힌다(fixtures의 `ARCHIVED_FILE_BODIES` 머리말).
+      const keyed = Object.prototype.hasOwnProperty.call(byArg, cmd) ? byArg[cmd] : null;
+      if (keyed) {
+        const key = (args as Record<string, unknown> | undefined)?.[keyed.arg];
+        if (typeof key === "string" && Object.prototype.hasOwnProperty.call(keyed.answers, key)) {
+          return keyed.answers[key];
         }
       }
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) return responses[cmd];
@@ -161,7 +166,7 @@ async function install(
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, specFiles });
+  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */

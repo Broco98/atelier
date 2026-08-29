@@ -20,9 +20,10 @@ const JSON_FILE = "메타.json";
 // 세 줄까지 함께 잰다. 그 셋이 처음 판에서 발행본과 어긋나 있었고, 화소 대조가 그것을
 // 잡았다(`SpecViewer.tsx`의 상수 주석).
 //
-// 아카이브 화면은 여기 안 들어간다(결정 12) — 픽스처의 아카이브 목록이 비어 있고 문서
-// 목록·파일 읽기 커맨드가 표에 아예 없다. 세우려면 스텁 셋이 필요한데 이 판은 아카이브
-// 이미지를 안 고치므로 그 절반을 아무도 안 태운다. 아카이브 픽스처는 다음 판이 세운다.
+// 아카이브 화면은 여기 안 들어간다 — **이제 자기 파일에서 탄다**(archive-docs.spec.ts).
+// 「픽스처의 아카이브 목록이 비어 있어 그 층에는 그물이 없다」던 것이 거짓이 됐다: 그 판이
+// 미뤄 둔 스텁 둘(`list_archived_docs`·`read_archived_file`)이 섰고, 갈리던 세 갈래
+// (그림 · `.html` · 잠김)를 그 파일이 태운다. 여기 남는 것은 Works 쪽 한 벌이다.
 test("`.html`은 껍데기를 쓴 프레임으로 서고, 그 안에서 스크립트가 돈다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?file=${encodeURIComponent(HTML_FILE)}`);
