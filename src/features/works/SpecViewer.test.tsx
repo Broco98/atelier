@@ -282,12 +282,17 @@ describe("htmlSrcdoc 껍데기", () => {
   // **이 검사가 무엇을 잡는지를 정확히 적는다** — 우리가 이 껍데기를 우발적으로 고치는
   // 것이다(결정 2). **아티팩트 발행 쪽이 바뀌어도 이 검사는 초록이다.** 발행 껍데기와의
   // 드리프트를 알려 주는 장치는 이 저장소에 없다 — 1:1은 손으로 한 번 확인한다.
+  //
+  // 아래 문자열은 2026-08-29 발행본 원문의 `<head>`를 따옴표까지 그대로 옮긴 것이다
+  // (`SpecViewer.tsx`의 상수 주석). 첫 판이 말로 풀어 쓴 설명에서 근사해 적어 네 자리가
+  // 어긋나 있었고, 실측이 그것을 잡았다 — 그러니 이 검사를 고칠 때는 **발행본을 다시 떠서**
+  // 고친다. 「보기 좋게 다듬는다」로 고치면 잡으려던 그 사고가 그대로 다시 난다.
   it("아티팩트 조각에는 발행 껍데기를 그대로 씌운다", () => {
     expect(htmlSrcdoc("<p>조각</p>")).toBe(
       '<!doctype html>\n<html data-theme="light">\n<head>\n' +
-        '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-        "<style>:root{color-scheme:light}body{margin:0;font:14px system-ui;background:#fbfbfc}\n" +
-        "img{max-width:100%}[hidden]{display:none!important}</style>\n" +
+        '<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">\n' +
+        "<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}\n" +
+        "img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style>\n" +
         "</head><body><p>조각</p></body></html>",
     );
   });

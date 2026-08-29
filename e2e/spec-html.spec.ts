@@ -13,10 +13,12 @@ const JSON_FILE = "메타.json";
 // 값을 문자열로 고정하지만, 그 껍데기가 **정말 섰는지**는 진짜 파서가 있어야 한다.
 // 스크립트가 돌았는지와 부모 DOM이 막혔는지도 같다.
 //
-// **껍데기를 가르는 값은 `body` 여백 하나다**(아래에 그렇게 적어 뒀다). 이 통로에서
-// `compatMode`는 안 갈린다 — 실물 목업으로 재 봤다(2026-08-29, WebKit·뷰포트 1000px):
-// 껍데기가 있든 없든 `CSS1Compat`이고, 갈리는 것은 `body` 여백 8px→0px과 그만큼의 문서
-// 높이(3016→3000)뿐이다. 행 폭 264px·첫 줄 32px·테이블 셀 47.08px은 **전부 그대로다.**
+// 이 통로에서 `compatMode`는 안 갈린다 — 실물 목업으로 재 봤다(2026-08-29, WebKit·뷰포트
+// 1000px): 껍데기가 있든 없든 `CSS1Compat`이고, 행 폭 264px·첫 줄 32px·테이블 셀 47.08px은
+// **전부 그대로다.** 그 목업은 배경·글자색·글꼴을 자기가 정하므로 껍데기에서 얻는 것이
+// `body` 여백 한 줄뿐이었다 — 그래서 **껍데기에 기대는 조각**(픽스처의 그것)으로 나머지
+// 세 줄까지 함께 잰다. 그 셋이 처음 판에서 발행본과 어긋나 있었고, 화소 대조가 그것을
+// 잡았다(`SpecViewer.tsx`의 상수 주석).
 //
 // 아카이브 화면은 여기 안 들어간다(결정 12) — 픽스처의 아카이브 목록이 비어 있고 문서
 // 목록·파일 읽기 커맨드가 표에 아예 없다. 세우려면 스텁 셋이 필요한데 이 판은 아카이브
@@ -40,9 +42,23 @@ test("`.html`은 껍데기를 쓴 프레임으로 서고, 그 안에서 스크�
     .poll(() => frame.evaluate(() => document.body?.dataset.ran ?? null))
     .toBe("1");
 
-  // **껍데기가 섰다고 말하는 값은 이 한 줄이다** — 껍데기의 `body{margin:0}`이 없으면
-  // UA 기본 8px이 선다.
-  expect(await frame.evaluate(() => getComputedStyle(document.body).marginTop)).toBe("0px");
+  // **껍데기가 정말 칠했는가.** 픽스처의 조각은 배경도 글자색도 글꼴도 자기가 안 정하므로
+  // 이 네 값이 곧 껍데기다 — 여백이 없으면 UA 기본 8px, 배경이 없으면 캔버스가 흰색,
+  // 글자색이 없으면 검정이 선다. 문자열 검사(`SpecViewer.test.tsx`)는 **우리가 무엇을
+  // 적었는지**만 알고, 그 바이트가 파서를 통과해 실제로 칠하는지는 여기서만 보인다
+  // (발행본에서 그대로 떠 온 `charset=utf8`·`[hidden]:not([hidden=until-found])`처럼
+  // 눈으로는 오타처럼 읽히는 조각이 그 안에 있다).
+  expect(
+    await frame.evaluate(() => {
+      const cs = getComputedStyle(document.body);
+      return { margin: cs.marginTop, bg: cs.backgroundColor, color: cs.color, font: cs.fontFamily };
+    }),
+  ).toEqual({
+    margin: "0px",
+    bg: "rgb(250, 249, 245)",
+    color: "rgb(20, 20, 19)",
+    font: "-apple-system, BlinkMacSystemFont, sans-serif",
+  });
   // 이쪽은 **껍데기를 가르지 못한다.** `srcdoc` 문서는 doctype이 없어도 quirks mode로
   // 안 떨어지기 때문이다(HTML 파싱 규칙이 srcdoc을 예외로 둔다 — 실측으로 확인했다).
   // 그래도 고정한다: 이 값이 `BackCompat`으로 바뀌면 렌더 통로가 `srcdoc`이 아닌 다른

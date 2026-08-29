@@ -177,12 +177,24 @@ export function ImageDoc({ path, name }: { path: string | null; name: string }) 
  * 여기서 실제로 얻는 것은 `body{margin:0}` 한 줄뿐이지만(`srcdoc` 문서는 doctype이 없어도
  * quirks mode로 안 떨어져, 갈리는 것이 그 여백 하나다 — e2e/spec-html.spec.ts 머리말),
  * 앞으로 들어올 조각이 어느 줄에 기댈지는 미리 알 수 없고 비용은 CSS 네 줄이다.
+ *
+ * **아래 문자열은 발행본 원문에서 떠 온 것이다** — 2026-08-29, 그 목업의 발행본
+ * (artifact `99087708`)의 `<head>`. 따옴표 유무까지 그대로다: 「근사해 그리지 않는다」가
+ * 규칙이라(결정 2) 다음 사람이 발행본과 **문자열로** 견줄 수 있어야 한다. 발행 쪽의
+ * 프레임 런타임 스크립트와 `<base>`는 안 베낀다 — 그것은 문서 리셋이 아니라 호스트다.
+ * `<html>`에 `data-theme`는 발행 시점엔 없고 런타임이 뷰어 테마로 찍는다(결정 3).
+ *
+ * 처음 판은 이 값을 **말로 풀어 쓴 설명에서 근사해** 적었고 네 자리가 어긋나 있었다
+ * (`background` `#fbfbfc`→`#faf9f5`, `color` 누락, 글꼴 `system-ui`, `padding:0` 누락,
+ * `[hidden]`의 `:not([hidden=until-found])`). 목업은 배경·글자색·글꼴을 자기가 정해서
+ * 화소로 안 갈렸지만(실측: 1000px 폭 12,800,000화소 전부 일치), **껍데기에 기대는 조각을
+ * 하나 세우자 전 화소가 갈렸다** — 이 상수가 지키려던 「다음 파일」이 바로 그것이다.
  */
 const ARTIFACT_SHELL_HEAD =
   '<!doctype html>\n<html data-theme="light">\n<head>\n' +
-  '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-  "<style>:root{color-scheme:light}body{margin:0;font:14px system-ui;background:#fbfbfc}\n" +
-  "img{max-width:100%}[hidden]{display:none!important}</style>\n" +
+  '<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">\n' +
+  "<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}\n" +
+  "img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style>\n" +
   "</head><body>";
 const ARTIFACT_SHELL_TAIL = "</body></html>";
 
