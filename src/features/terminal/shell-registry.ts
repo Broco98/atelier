@@ -403,7 +403,7 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
  *
  * **안 바뀌면 같은 객체를 돌려주는 것이 계약이다** — `patch`의 관용구를 그대로 딛는다.
  * 이 값은 **초마다** 도착하므로, 여기서 새 객체를 만들면 사이드바와 탭 줄이 초마다 통째로
- * 다시 그려진다(`sameBranch`가 칸을 정체로 보는 이유가 그것이다). 백엔드도 안 바뀐 값을
+ * 다시 그려진다(`sameScreen`가 칸을 정체로 보는 이유가 그것이다). 백엔드도 안 바뀐 값을
  * 안 쏘지만 그 한 겹에만 기대지 않는다 — 근거가 다른 두 겹이다.
  *
  * **이름을 접지 않는다.** 원문 그대로 앉히고, 로고로 바꾸는 판단은 읽는 화면이 든다.
@@ -585,21 +585,22 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
- * 두 상태가 **이 가지에게 같은가.**
+ * 두 상태가 **이 화면에게 같은가.**
  *
- * 가지가 그리는 것은 셋뿐이다 — 자기 셸들, 그중 켜진 칸, 그리고 앱 전체 개수(상한 문구는
- * 앱 전체를 센다 — 결정 30). 남의 work의 셸이 프롬프트마다 쏘는 OSC 타이틀에는 그 셋 중
- * 아무것도 안 바뀐다.
+ * 한 화면의 탭 줄이 그리는 것은 둘뿐이다 — 자기 셸들과 그중 켜진 칸. 남의 work의 셸이
+ * 프롬프트마다 쏘는 OSC 타이틀에는 그 둘 중 아무것도 안 바뀐다.
  *
- * **가지가 하나가 아니라서 필요하다.** 셸이 도는 work마다 가지가 서므로(결정 73) 스토어를
- * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 셸 행이 함께 다시 그려진다. 판 04
- * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이고, 목록이 아니라 가지 사이에서도
- * 같은 이유가 선다.
+ * **화면이 하나가 아니라서 필요하다.** 상한도 탭 줄도 화면마다이므로(결정 23) 스토어를
+ * 통째로 구독하면 work A의 타이틀 하나에 work B·C의 화면이 함께 다시 그려진다. 판 04
+ * spec의 「스토어 구독의 자리」가 막으려던 것이 그것이다.
+ *
+ * **한때 이름이 `sameBranch`였다** — 사이드바 가지 하나가 이 판정의 단위였을 때다(결정 73).
+ * 그 가지는 걷혔고(결정 6) 사전에서도 낱말이 빠졌다.
  *
  * 칸을 **개수가 아니라 정체로** 본다 — `patch`가 안 바뀐 칸에는 같은 객체를 돌려주므로
  * 타이틀이 갈린 칸만 새 객체다. 개수만 세면 이름이 바뀌어도 안 다시 그린다.
  */
-export function sameBranch(a: ShellsState, b: ShellsState, owner: string | null): boolean {
+export function sameScreen(a: ShellsState, b: ShellsState, owner: string | null): boolean {
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;

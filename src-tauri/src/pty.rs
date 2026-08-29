@@ -251,7 +251,8 @@ struct PtyRunning {
 const RUNNING_EVENT: &str = "pty:running";
 
 /// 얼마나 자주 재는가(adr-04). 셸이 명령을 시작하고 끝낼 때 커널이 알려 주는 이벤트가 없어
-/// **물어봐야** 알고, `tcgetpgrp`는 syscall 하나라 셸 8개(결정 30의 상한)면 초당 8회다.
+/// **물어봐야** 알고, `tcgetpgrp`는 syscall 하나라 셸 하나에 초당 1회다. 상한은 화면마다
+/// 8개이므로(결정 23) 화면 둘을 열어 둬도 초당 16회다.
 const POLL: Duration = Duration::from_secs(1);
 
 /// 한 회차에 잰 것 전부 — pty id마다 「지금 도는 것」이다. 잰 값과 **직전에 쏜 값**이 같은

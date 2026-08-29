@@ -4,8 +4,6 @@ import { SquareTerminal } from "lucide-react";
 import {
   activeIdOf,
   activeShellOf,
-  atCap,
-  shellCapNotice,
   shellEndLabels,
   shellsOf,
   TOP_TERMINAL,
@@ -32,7 +30,7 @@ import type { WorkView } from "@/features/works/types";
  */
 function TerminalPane({ work }: { work: WorkView | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  // 좁히지 않고 통째로 읽는다 — 아래 목록이 앱 전체 상한을 세야 해서 어차피 전부 필요하다(결정 30).
+  // 좁히지 않고 통째로 읽는다 — 아래에서 이 화면의 셸·켜진 칸·종료 줄을 다 봐야 한다.
   // **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
   // 그러니 이 항등 셀렉터는 지울 수 있는 중간자가 아니다.
   // 새 상태를 **바뀔 때만** 만드는 것은 레지스트리가 지킨다(patch가 무변화에 같은 객체를
@@ -62,10 +60,6 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   }, [activeId]);
 
   const shells = shellsOf(state, owner);
-  // 상한은 **이 화면**의 것이다(결정 23) — 셸이 0개인 이 화면이 상한에 닿는 일은 없다.
-  // 그래도 판정을 남겨 두는 것은 아래 안내가 그 갈래를 여전히 쓰기 때문이다(0개 화면에서
-  // 상한 문구가 서는 일이 없다는 것 자체가 결정 23이 바꾼 것이다).
-  const full = atCap(state, owner);
   const active = activeShellOf(state, owner);
   const notice = active ? (shellEndLabels(active)?.notice ?? null) : null;
 
@@ -139,10 +133,11 @@ function TerminalPane({ work }: { work: WorkView | null }) {
           없는 빈 판은 「아직 없다」가 아니라 **고장**으로 읽힌다. 그래서 남는 것은 조작이
           아니라 **비었다는 표시와 여는 법** — Works의 「아직 작업이 없어요」와 같은 관용구다.
 
-          **잠긴 이유는 여기서도 문장이다**(결정 45·47). 상한은 앱 전체라(결정 30) 이 화면의
-          셸이 0개인데도 닿아 있을 수 있고, 그때 탭 줄의 `+`는 잠긴 채 이유를 hover `title`
-          뒤에 숨긴다. 문장은 `shellCapNotice`가 짓는다 — ⌘T 거절 토스트·잠긴 `+`와 **같은
-          문장**이어야 한쪽만 늙지 않는다.
+          **여기에 상한 갈래는 없다**(결정 23). 한때 「셸이 0개인데도 상한에 닿아 있을 수
+          있다」를 이 자리에서 문장으로 말했는데, 그것은 상한이 앱 전체였을 때의 이야기다.
+          상한이 화면마다가 된 뒤로 `atCap(state, owner)`은 셸이 0개인 이 화면에서 **늘
+          거짓**이라, 그 갈래는 그릴 수 없는 화면을 그리는 죽은 코드였다. 상한 문장이 서는
+          자리는 이제 잠긴 `+`와 ⌘T 거절 토스트 둘이고, 둘 다 `shellCapNotice`를 쓴다.
 
           **덮개인 것은 그대로다**(`absolute inset-0`) — 흐름에 끼면 셸의 집 상자가 이 판의
           유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유). */}
@@ -156,17 +151,14 @@ function TerminalPane({ work }: { work: WorkView | null }) {
             </div>
             <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 셸이 없어요</span>
             <span className="text-[14px] leading-[1.65] text-tertiary">
-              {full
-                ? `${shellCapNotice(state, owner)}. 이 화면의 셸을 하나 닫으면 새로 열 수 있어요.`
-                : "위 탭 줄의 + 로 새 셸을 열어요."}
+              위 탭 줄의 + 로 새 셸을 열어요.
             </span>
-            {/* 키는 **잠겼을 때 안 적는다** — 눌러도 안 되는 길을 알려 주는 것이 된다.
-                `<code>` 규격은 Works의 빈 화면이 안내 문구를 싣는 자리와 같다. */}
-            {!full && (
-              <code className="mt-3 rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-                ⌘T
-              </code>
-            )}
+            {/* `<code>` 규격은 Works의 빈 화면이 안내 문구를 싣는 자리와 같다. 한때 이
+                키를 「상한에 닿았으면 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는
+                것이 되어서인데, 위 주석대로 그 조건이 여기서는 늘 거짓이다. */}
+            <code className="mt-3 rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+              ⌘T
+            </code>
           </div>
         </div>
       )}

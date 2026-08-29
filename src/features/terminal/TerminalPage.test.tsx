@@ -164,8 +164,8 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   it("구독이 이 화면의 가지로 좁혀져 있다", () => {
     // 줄은 상태와 콜백만 받으므로(ShellTabs 머리말) 구독을 화면이 진다. 좁히지 않고 통째로
     // 읽는 것은 그 줄이 **앱 전체** 상한을 세야 해서이고(결정 30), 다시 그릴지는
-    // `sameBranch`가 가른다 — 소유자를 잘못 넘기면 남의 work 타이틀마다 이 화면이 다시
+    // `sameScreen`가 가른다 — 소유자를 잘못 넘기면 남의 work 타이틀마다 이 화면이 다시
     // 그려지거나(넓게) 이 화면의 칸이 아예 안 갱신된다(엉뚱한 가지).
-    expect(source).toContain("(a, b) => sameBranch(a, b, null),");
+    expect(source).toContain("(a, b) => sameScreen(a, b, null),");
   });
 });

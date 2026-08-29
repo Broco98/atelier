@@ -6,7 +6,7 @@ import {
   activeIdOf,
   closesShellFromWindow,
   opensShellFromWindow,
-  sameBranch,
+  sameScreen,
   shellForNav,
   shellNavFromWindow,
   shellsOf,
@@ -39,8 +39,8 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
    * 받는다(ShellTabs 머리말): 그 파일이 terminal-store를 import하면 `@xterm/*`와 그 CSS가
    * 따라 들어와 정적 마크업 검사가 통째로 죽는다.
    *
-   * 좁히지 않고 통째로 읽는 것은 그 줄이 **앱 전체** 상한을 세야 해서다(결정 30). 대신
-   * 다시 그릴지는 `sameBranch`가 가른다 — 셸은 프롬프트마다 OSC 타이틀을 쏘는데 남의
+   * 좁히지 않고 통째로 읽는 것은 셀렉터를 빼면 컴파일이 안 되기 때문이다(TS2554). 대신
+   * 다시 그릴지는 `sameScreen`가 가른다 — 셸은 프롬프트마다 OSC 타이틀을 쏘는데 남의
    * work의 타이틀 하나에 이 화면이 다시 그려질 이유가 없다. `WorksPage`가 같은 자리에서
    * 같은 것을 한다.
    *
@@ -50,7 +50,7 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const shellState = useStore(
     terminalStore,
     (whole) => whole,
-    (a, b) => sameBranch(a, b, null),
+    (a, b) => sameScreen(a, b, null),
   );
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어

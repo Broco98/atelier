@@ -109,7 +109,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
 // 않고(위 머리말), 접힘은 e2e에서도 「구획 헤더의 것」과 「nav의 것」이 같은 속성으로
 // 보인다. 지운 자리라 「없다」를 세는 것 말고 볼 방법이 없다 — 판 04 직전 이 파일에는
 // `aria-expanded`가 둘, `SectionBody`가 셋 있었다.
-describe("nav 항목은 잎이다", () => {
+describe("nav 항목은 더 갈라지지 않는다", () => {
   const sidebar = read("Sidebar.tsx");
 
   it("접히는 자리가 하나도 없다", () => {

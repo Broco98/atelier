@@ -281,7 +281,8 @@ async function commandRunning(id: number): Promise<boolean | null> {
  * **모르는 pty id가 실제로 온다.** 이벤트가 오는 사이에 그 칸이 `×`로 닫혔거나 스스로
  * 끝났으면 `ptyId`가 이미 null로 눕혀져 있다. 그때는 `null`이고, 부르는 쪽이 건너뛴다.
  *
- * 훑는 것이 최대 8칸이라(결정 30) 뒤집힌 색인을 따로 들지 않는다 — 그 색인은 `ptyId`가
+ * 훑는 것이 화면마다 최대 8칸이라(결정 23) 뒤집힌 색인을 따로 들지 않는다 — 앱 전체로는
+ * 화면 수만큼 곱해지지만 사람이 동시에 여는 화면은 손에 꼽는다. 그 색인은 `ptyId`가
  * 바뀌는 자리 셋(spawn 응답·종료 프레임·`×`)과 늘 맞춰야 하고, 어긋나면 값이 남의 칸에 앉는다.
  */
 function shellOfPty(ptyId: number): number | null {
