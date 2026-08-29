@@ -373,7 +373,8 @@ describe("WorkPanel 소스 토글", () => {
     expect(button).toContain('aria-pressed="true"');
     expect(button).toContain("segment-on");
     // 서 있는 칸에는 hover 규칙이 없다 — 겹치면 유틸리티 정렬 순서가 승자를 정한다
-    // (index.css의 quiet-hover 주석). 눌러도 아무 일이 없는 칸이라 hover할 이유도 없다.
+    // (index.css의 quiet-hover 주석). 눌리기는 한다(누르면 뒤집힌다) — 다만 그 사실을
+    // 말하는 것은 배경이 아니라 **떠올라 있음**이다.
     expect(button).not.toContain("tint-hover");
     expect(button).not.toContain("quiet-hover");
   });

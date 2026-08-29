@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CodeXml, FileText } from "lucide-react";
+import { CodeXml, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // 지금 보고 있는 것이 **문서인가 원문인가**를 두 칸으로 말한다(결정 33).
@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils";
 // 전부라, 포인터를 얹은 채로는 둘이 사실상 같은 색이었다. 두 칸이면 어느 칸이 서 있는가가
 // 그 말을 대신한다: 색이 아니라 **자리**가 모드를 적는다.
 //
-// 하는 일은 그대로다 — 서 있지 않은 칸을 누르면 그때만 `onChange`가 온다. 이미 선 칸을 눌러도
-// 아무 일이 없는 것은 화면과 같은 말이다(그 모드에 이미 있다).
+// **어느 칸을 눌러도 뒤집힌다.** 세그먼트 컨트롤의 관습은 선 칸이 눌려도 아무 일이 없는
+// 것인데, 여기서는 그 관습을 안 따른다 — 상태가 둘뿐이라 「선 칸을 누른다」가 뜻할 수 있는
+// 것은 「반대로 간다」 하나뿐이고, 아무 일도 안 일어나는 자리는 그저 안 듣는 버튼으로 읽힌다.
+// 두 칸은 **모드를 읽는 자리**이지 각자 목적지를 가진 두 버튼이 아니다.
 //
 // 잠김도 그대로 흐림 + 포인터 차단이다(비-md·spec 0개·터미널 탭 — 근거는 WorkPanel 주석).
 // **두 칸을 함께 잠근다**: 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
@@ -35,10 +37,10 @@ export function SourceToggle({
         className,
       )}
     >
-      <Segment on={!on} locked={locked} label="문서로 보기" onPick={() => onChange(false)}>
-        <FileText className="size-3.5" strokeWidth={1.9} />
+      <Segment on={!on} locked={locked} label="문서로 보기" onFlip={() => onChange(!on)}>
+        <Eye className="size-3.5" strokeWidth={1.9} />
       </Segment>
-      <Segment on={on} locked={locked} label="마크다운 원문 보기" onPick={() => onChange(true)}>
+      <Segment on={on} locked={locked} label="마크다운 원문 보기" onFlip={() => onChange(!on)}>
         <CodeXml className="size-3.5" strokeWidth={2} />
       </Segment>
     </span>
@@ -49,20 +51,20 @@ function Segment({
   on,
   locked,
   label,
-  onPick,
+  onFlip,
   children,
 }: {
   on: boolean;
   locked: boolean;
   label: string;
-  onPick: () => void;
+  onFlip: () => void;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
-      // 이미 선 칸은 부르지 않는다 — 호출부가 「같은 값이 또 왔다」를 거를 필요가 없다.
-      onClick={() => !on && onPick()}
+      // 선 칸도 그대로 뒤집는다(위 주석) — 두 칸이 한 토글의 두 얼굴이다.
+      onClick={onFlip}
       disabled={locked}
       aria-label={label}
       aria-pressed={on}
@@ -70,7 +72,7 @@ function Segment({
       className={cn(
         "icon-button transition-colors",
         "disabled:pointer-events-none disabled:opacity-40",
-        // 꺼진 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 그 위에 hover 칩을
+        // 안 선 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 그 위에 hover 칩을
         // 얹으면 서 있는 칸과 구분이 안 된다.
         on ? "segment-on" : "text-tertiary tint-hover",
       )}
