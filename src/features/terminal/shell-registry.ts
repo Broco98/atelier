@@ -1,9 +1,15 @@
 import type { WorkView } from "@/features/works/types";
 import type { PtyExit } from "./types";
 
-// 셸 목록과 그 목록에 관한 규칙만 아는 순수 모듈. import는 타입뿐이라 DOM 없는 기본 환경에서
-// 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례). 그 성질은 주석이 아니라
-// shell-registry.test.ts의 소스 스캔이 지킨다.
+// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
+// 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
+// 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+//
+// **키 판정 중 `searchHotkey`(⇧⇧)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
+// 그런데도 여기 사는 것은 「어디서 눌렸으면 비키는가」를 정하는 `typesInto`·`isShellInput`을
+// 이웃 키 판정들과 **함께** 딛기 때문이다. 그 둘을 공용 모듈로 빼면 이 모듈이 그것을 **값으로**
+// import하게 되는데, 바로 위 소스 스캔(「값 import가 하나도 없다」)이 그 길을 막아 뒀다.
+// 팔레트 쪽에서 여는 키를 찾는 사람을 위해 `SearchPalette.tsx` 머리말이 이 자리를 가리킨다.
 //
 // 이 모듈이 React 밖에 있는 것은 취향이 아니다 — 결정 21이 "비활성 셸의 xterm 인스턴스는
 // React 트리 밖에 산다"를 요구하고, 그 인스턴스를 가리키는 목록이 컴포넌트 state에 있으면
