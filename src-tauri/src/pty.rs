@@ -14,9 +14,7 @@ use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::os::raw::c_int;
-use std::ptr;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -261,6 +259,21 @@ const POLL: Duration = Duration::from_secs(1);
 /// 나가는 순서가 회차마다 흔들리지 않게 하기 위해서다.
 type Running = BTreeMap<u32, Option<String>>;
 
+/// **여기서부터 셋은 macOS의 커널 인터페이스다.** `proc_name`도 `KERN_PROCARGS2`도 리눅스
+/// libc에는 없다. 우리가 파는 것은 macOS 앱 하나뿐이지만(릴리스 워크플로가 만드는 타깃이
+/// `aarch64-apple-darwin` 하나다) **PR 게이트는 우분투에서 돈다**(verify.yml의 D10 — 공개
+/// 저장소의 표준 러너가 무료라서다). 그래서 이 크레이트는 리눅스에서 **컴파일은 돼야 한다**.
+///
+/// 리눅스판은 「못 읽었다」로 답한다. `/proc`으로 같은 것을 읽는 길이 있지만 두지 않았다 —
+/// 아무도 안 켜는 코드는 조용히 썩고, 그것이 맞는지 보는 눈이 여기엔 없다. 못 읽었을 때 무슨
+/// 일이 나는지는 이미 정해져 있다(`foreground_name`의 되돌아갈 자리): 칸이 셸 이름을 단다.
+///
+/// **아래 두 실물 테스트도 같이 닫힌다.** 그것들이 재는 것은 macOS 커널의 성질이라 다른
+/// 커널에서는 물음 자체가 성립하지 않는다. 그래도 태그마다 돈다 — 릴리스 워크플로의
+/// `pnpm verify`는 macOS 러너에서 돌고 거기 L1이 들어 있다.
+#[cfg(target_os = "macos")]
+use std::{os::raw::c_int, ptr, sync::OnceLock};
+
 /// 이 pgid의 프로세스 **이름**. 못 읽으면 `None`이고, 그 경우가 실제로 온다 — 재는 사이에
 /// 끝난 프로세스, 권한이 없는 프로세스.
 ///
@@ -273,6 +286,7 @@ type Running = BTreeMap<u32, Option<String>>;
 ///
 /// 버퍼가 `pbi_name`(32바이트)보다 커야 `proc_name`이 ENOMEM으로 돌아가지 않는다. 넉넉히
 /// 0으로 채워 두는 것은 이름이 버퍼를 꽉 채워 NUL 없이 올 수 있어서다.
+#[cfg(target_os = "macos")]
 fn process_name(pgid: i32) -> Option<String> {
     if pgid <= 1 {
         return None;
@@ -289,6 +303,11 @@ fn process_name(pgid: i32) -> Option<String> {
     std::str::from_utf8(&buf[..len]).ok().map(str::to_string)
 }
 
+#[cfg(not(target_os = "macos"))]
+fn process_name(_pgid: i32) -> Option<String> {
+    None
+}
+
 /// 그 pid의 **argv**. `KERN_PROCARGS2`가 주는 것은 `[argc][실행 파일 경로][argv…][env…]`이고,
 /// 여기서는 argv만 잘라 낸다.
 ///
@@ -301,6 +320,7 @@ fn process_name(pgid: i32) -> Option<String> {
 /// **버퍼를 `KERN_ARGMAX`만큼 잡는다.** 이 sysctl은 버퍼가 모자라면 잘라 주지 않고 `ENOMEM`으로
 /// 통째로 실패한다 — argv 뒤에 환경 변수가 함께 실려 오므로 「명령이 짧으니 4KB면 되겠지」가
 /// 안 통한다. 그 값은 부팅 중 안 바뀌어서 한 번만 묻는다.
+#[cfg(target_os = "macos")]
 fn process_argv(pid: i32) -> Option<Vec<String>> {
     let max = *ARG_MAX.get_or_init(|| {
         let mut mib = [libc::CTL_KERN, libc::KERN_ARGMAX];
@@ -347,7 +367,13 @@ fn process_argv(pid: i32) -> Option<Vec<String>> {
     Some(out)
 }
 
+#[cfg(target_os = "macos")]
 static ARG_MAX: OnceLock<usize> = OnceLock::new();
+
+#[cfg(not(target_os = "macos"))]
+fn process_argv(_pid: i32) -> Option<Vec<String>> {
+    None
+}
 
 /// **인터프리터가 자기 이름을 대신 내주는 것을 막는다.** 이 목록에 에이전트 이름은 없다 —
 /// 백엔드가 그것을 알면 에이전트가 늘 때마다 Rust를 고쳐야 한다(adr-04). 여기 있는 것은
@@ -842,6 +868,7 @@ mod tests {
     /// 여기서는 `/bin/sleep`을 `claude`라는 이름의 심링크로 부른다: `process_name`은 `sleep`을,
     /// `foreground_name`은 `claude`를 줘야 한다. **둘을 함께 단언하는 것이 핵심이다** —
     /// 뒤엣것만 보면 「어차피 원래 됐던 것 아닌가」와 갈리지 않는다.
+    #[cfg(target_os = "macos")]
     #[test]
     fn a_symlinked_command_is_named_by_the_link_not_the_file_behind_it() {
         let dir = std::env::temp_dir().join(format!("atelier-argv-{}", std::process::id()));
@@ -883,6 +910,7 @@ mod tests {
     /// **오탐 검사를 겸한다.** 타이틀 추론을 기각한 근거(adr-04)가 「명령줄에 `claude`가 들어
     /// 있다고 claude가 아니다」인데, 말로만 두면 다음 사람이 되돌린다. `/usr/bin/grep claude`는
     /// 명령줄에 그 낱말을 달고 stdin을 기다리며 막혀 있고, 읽히는 이름은 `grep`이다.
+    #[cfg(target_os = "macos")]
     #[test]
     fn the_foreground_groups_name_comes_from_a_real_pty() {
         let pair = native_pty_system()
