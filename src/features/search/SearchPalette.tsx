@@ -149,8 +149,9 @@ export function SearchList({
         onClick={(event) => event.stopPropagation()}
         className="flex max-h-[60vh] w-[560px] max-w-full flex-col overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg"
       >
-        {/* **디바운스가 없다**(결정 29). 글자 하나마다 그대로 물어본다 — 실측 10~20ms짜리
-            일에 지연을 얹으면 「치는 동안 즉시 따라온다」를 스스로 깨는 것이다. */}
+        {/* **디바운스가 없다**(결정 29). 글자 하나마다 그대로 물어본다 — 그만큼 싼 일에
+            지연을 얹으면 「치는 동안 즉시 따라온다」를 스스로 깨는 것이다. 얼마나 싼지는
+            코어 주석 한 자리에 있다(`search.rs`의 `search`). */}
         <input
           ref={inputRef}
           type="text"
@@ -198,24 +199,23 @@ export function SearchList({
                     at === selected ? "bg-state-2" : "hover:bg-state-1",
                   )}
                 >
-                  <span className="shrink-0 text-[13px] tracking-[-0.01em]">{name}</span>
+                  {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
+                      스니펫 혼자 무는데, 실측(2026-08-30, 줄 폭 526px)에서 제목이 39자인
+                      work의 본문 줄이 스니펫에 남긴 폭이 106px, 한글 8자였다 — 제목이 더
+                      길면 0이 되고 줄이 가로로 넘친다. */}
+                  <span className="truncate text-[13px] tracking-[-0.01em]">{name}</span>
                   {detail !== undefined && (
-                    // 스니펫이 함께 서는 줄에서는 **경로가 안 줄어든다** — 「어느 work의
-                    // 무엇이냐」가 먼저이고, 한 줄에 넣느라 줄일 것은 그다음인 스니펫이다.
-                    <span
-                      className={cn(
-                        "text-[12px] text-tertiary",
-                        snippet === undefined ? "truncate" : "shrink-0",
-                      )}
-                    >
-                      {detail}
-                    </span>
+                    <span className="truncate text-[12px] text-tertiary">{detail}</span>
                   )}
-                  {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6) — 한 줄에
-                      안 들어가는 만큼은 여기서 줄인다. 코어는 맞은 문단을 통째로 펴서 보내고,
-                      「한 줄에 얼마나 보일까」는 화면 폭이 정하는 것이라 그 판정이 여기 있다. */}
+                  {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6). 코어는
+                      맞은 문단을 통째로 펴서 보내고, 「한 줄에 얼마나 보일까」는 화면 폭이
+                      정하는 것이라 그 판정이 여기 있다 — 그래서 **줄의 3분의 1은 떼어 둔다**
+                      (같은 실측에서 175px·한글 13자). 남는 폭이 그보다 넓으면 그만큼 다
+                      갖고(`grow`), 모자라면 이름과 경로가 대신 줄어든다. */}
                   {snippet !== undefined && (
-                    <span className="truncate text-[12px] text-tertiary">{snippet}</span>
+                    <span className="shrink-0 grow basis-1/3 truncate text-[12px] text-tertiary">
+                      {snippet}
+                    </span>
                   )}
                   {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                   {isArchived(hit) && (
