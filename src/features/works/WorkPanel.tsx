@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { CodeXml, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceToggle } from "@/components/ui/SourceToggle";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef } from "./refs";
@@ -188,11 +189,10 @@ function WorkPanel({
             {/* 라벨은 소문자 영어다(결정 41) — 사이드바 가지의 `spec`·`terminal`과 같은
                 어휘여야 한 층으로 읽힌다. 문장 속 한국어는 그대로다(CONTEXT.md). */}
             <TabButton label="info" active={tab === "info"} onClick={() => setTab("info")} />
-            {/* `</>` — 이 버튼만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
-                규격은 icon-button 그대로이고 켜짐만 기존 toggle-on을 읽는다 — 새 토큰은
-                없다. quiet-hover를 꺼진 가지 안에만 두는 이유는 아래 TabButton과 같다.
+            {/* 문서/원문 — 이 컨트롤만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
+                두 칸으로 갈린 근거는 SourceToggle 주석에 있다(결정 33).
 
-                **켜짐은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 비-md 파일이
+                **선 칸은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 비-md 파일이
                 코드뷰로 고정되는 것까지 켜짐으로 그리면, 트리에서 md와 비-md를 오갈 때마다
                 누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다. 결정 6이 그 고정을 토글과
                 **무관하다**고 적은 것도 같은 말이다 — 잠김을 말하는 것은 흐림이지 켜짐이 아니다.
@@ -201,21 +201,12 @@ function WorkPanel({
                 일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
                 왜 잠겼는지를 title로 말할 수는 없다 — pointer-events가 꺼져 있으면 hover가
                 성립하지 않아 네이티브 툴팁이 뜨지 않는다. 흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
-            <button
-              type="button"
-              onClick={onToggleSource}
-              disabled={sourceLocked}
-              aria-label="마크다운 원문 보기"
-              aria-pressed={sourceOn}
-              title="마크다운 원문 보기"
-              className={cn(
-                "icon-button ml-auto transition-colors",
-                "disabled:pointer-events-none disabled:opacity-40",
-                sourceOn ? "toggle-on" : "text-tertiary quiet-hover",
-              )}
-            >
-              <CodeXml className="size-4" strokeWidth={2} />
-            </button>
+            <SourceToggle
+              on={sourceOn}
+              locked={sourceLocked}
+              onChange={onToggleSource}
+              className="ml-auto"
+            />
             <button
               type="button"
               onClick={onClose}

@@ -175,23 +175,38 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
  *
  * 픽스처의 `pty_spawn`이 늘 같은 pty id(1)를 주므로 값이 앉는 칸은 **맨 앞 칸 하나**다
  * (`shellOfPty`가 먼저 찾은 인스턴스를 준다).
+ *
+ * **앉을 때까지 다시 쏜다.** 스폰 **응답**이 앉기 전에 쏘면 그 값은 조용히 버려진다 —
+ * 그 칸은 이미 화면에 있지만 아직 pty를 모르는 상태라 `shellOfPty`가 null을 주고,
+ * `setRunning`이 아무 칸에도 안 닿는다. 병렬 l3에서 두 번에 한 번 그 사이가 벌어졌다.
+ * 다시 쏘는 것이 상태를 흔들지 않는다: 「지금 이것이 돈다」는 몇 번 와도 같은 말이고,
+ * `setRunning`이 같은 값이면 상태를 그대로 돌려준다.
  */
 export async function markRunning(page: Page, running: string): Promise<void> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
   const listen = calls.filter((call) => call.includes('"pty:running"')).reverse()[0];
   const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
   if (!handler) throw new Error(`pty:running 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
-  await page.evaluate(
-    ([id, name]) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      internals.runCallback(Number(id), {
-        event: "pty:running",
-        id: 0,
-        payload: [{ id: 1, running: name }],
-      });
-    },
-    [handler, running],
-  );
+  const fire = () =>
+    page.evaluate(
+      ([id, name]) => {
+        const internals = (window as unknown as {
+          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+        }).__TAURI_INTERNALS__;
+        internals.runCallback(Number(id), {
+          event: "pty:running",
+          id: 0,
+          payload: [{ id: 1, running: name }],
+        });
+      },
+      [handler, running],
+    );
+
+  const mark = page.locator(`[role="img"][aria-label*="${running}"]`);
+  for (let tries = 0; tries < 50; tries += 1) {
+    await fire();
+    if ((await mark.count()) > 0) return;
+    await page.waitForTimeout(100);
+  }
+  throw new Error(`\`${running}\`이 도는 칸이 5초 안에 안 생겼다`);
 }

@@ -319,40 +319,63 @@ describe("WorkPanel 소스 토글", () => {
     return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
   }
 
+  const DOC_LABEL = 'aria-label="문서로 보기"';
+
+  /** 두 칸을 감싸는 상자의 여는 태그 — 바닥(bg-state-1)이 그 표식이다. */
+  function well(markup: string): string {
+    return markup.match(/<span[^>]*bg-state-1[^>]*>/)?.[0] ?? "";
+  }
+
+  function docTab(markup: string): string {
+    return markup.match(new RegExp(`<button[^>]*${DOC_LABEL}[^>]*>`))?.[0] ?? "";
+  }
+
   it("탭 바 오른쪽 끝, ×보다 왼쪽에 선다", () => {
     const markup = render(true);
-    // 자리를 못 박는 이유: `</>`가 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
+    // 자리를 못 박는 이유: 이 컨트롤이 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
     // 다른 패널들의 × 위치와 어긋난다. 오른쪽 끝은 창을 닫는 자리다.
     const source = markup.indexOf(LABEL);
     const close = markup.indexOf('aria-label="작업 패널 접기"');
     expect(source).toBeGreaterThan(-1);
     expect(close).toBeGreaterThan(source);
     // 순서만으로는 모자라다. 오른쪽 끝으로 밀어내는 것은 ml-auto인데 그것이 ×로 옮겨가면
-    // 둘의 순서는 그대로인 채 `</>`만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
-    expect(toggle(markup)).toContain("ml-auto");
+    // 둘의 순서는 그대로인 채 컨트롤만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
+    // 미는 것은 이제 칸이 아니라 **두 칸을 감싼 상자**다(결정 33).
+    expect(well(markup)).toContain("ml-auto");
     expect(markup.slice(close)).not.toContain("ml-auto");
     // 글리프는 `</>` 하나뿐이다 — Code(꺾쇠 둘)와 달리 CodeXml만 슬래시를 가진다
     expect(markup).toMatch(/lucide-code-xml\b/);
   });
 
-  it("예쁜 보기에서는 꺼져 있고 누를 수 있다", () => {
+  // 결정 33 — **어느 모드인지가 색이 아니라 자리로 읽힌다.** 두 칸 중 하나만 서 있다.
+  // 이 한 줄이 없으면 둘 다 서거나 둘 다 안 선 판이 「좀 흐리네」로 지나간다.
+  it("두 칸 중 정확히 한 칸만 서 있다", () => {
+    for (const on of [false, true]) {
+      const markup = render(true, {}, undefined, { on, locked: false });
+      expect([docTab(markup), toggle(markup)].filter((tag) => tag.includes("segment-on"))).toHaveLength(1);
+      expect(docTab(markup)).toContain(`aria-pressed="${!on}"`);
+      expect(toggle(markup)).toContain(`aria-pressed="${on}"`);
+    }
+  });
+
+  it("예쁜 보기에서는 `</>` 칸이 안 서 있고 누를 수 있다", () => {
     const button = toggle(render(true));
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toMatch(/\sdisabled=""/);
-    expect(button).toContain("quiet-hover");
+    // 안 선 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 hover 칩을 얹으면
+    // 서 있는 칸과 구분이 안 된다.
+    expect(button).toContain("tint-hover");
+    expect(button).not.toContain("quiet-hover");
   });
 
-  it("소스 보기에서는 기존 켜짐 어휘를 그대로 쓴다", () => {
+  it("소스 보기에서는 `</>` 칸이 떠오른다", () => {
     const button = toggle(render(true, {}, undefined, { on: true, locked: false }));
     expect(button).toContain('aria-pressed="true"');
-    expect(button).toContain("toggle-on");
-    // 켜짐과 quiet-hover가 한 요소에 겹치면 hover 규칙이 두 벌이 되어 유틸리티 정렬
-    // 순서가 승자를 정한다 (index.css의 quiet-hover 주석). 꺼진 가지 안에만 둘 것.
-    //
-    // 규격도 icon-button **맨몸**이어야 한다. icon-button-quiet은 quiet-hover를 품고
-    // 있어서 겹침이 클래스 이름 안으로 숨는다 — 위 검사만으로는 그것이 통과한다.
+    expect(button).toContain("segment-on");
+    // 서 있는 칸에는 hover 규칙이 없다 — 겹치면 유틸리티 정렬 순서가 승자를 정한다
+    // (index.css의 quiet-hover 주석). 눌러도 아무 일이 없는 칸이라 hover할 이유도 없다.
+    expect(button).not.toContain("tint-hover");
     expect(button).not.toContain("quiet-hover");
-    expect(button).not.toContain("icon-button-quiet");
   });
 
   it("잠기면 흐려지고 눌리지 않는다", () => {
@@ -378,8 +401,18 @@ describe("WorkPanel 소스 토글", () => {
     // 비-md 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
     const button = toggle(render(true, {}, undefined, { on: true, locked: true }));
     expect(button).toContain('aria-pressed="true"');
-    expect(button).toContain("toggle-on");
+    expect(button).toContain("segment-on");
     expect(button).toMatch(/\sdisabled=""/);
+  });
+
+  // 두 칸을 **함께** 잠근다. 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
+  // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
+  it("잠기면 두 칸이 함께 잠긴다", () => {
+    const markup = render(true, {}, undefined, { on: false, locked: true });
+    for (const tag of [docTab(markup), toggle(markup)]) {
+      expect(tag).toMatch(/\sdisabled=""/);
+      expect(tag).toContain("disabled:pointer-events-none");
+    }
   });
 });
 

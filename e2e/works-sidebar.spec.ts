@@ -220,3 +220,36 @@ test("도는 명령의 로고가 work 행 둘째 줄에 선다", async ({ page }
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 결정 30 — 호버 카드는 **행 옆에 뜬다**. 사이드바 경계선 밖으로 밀어내던 판을 걷은 자리다:
+// 경계에서 재면 카드가 그 선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼 읽혔다(실물).
+//
+// 이 층에서만 보인다 — 카드는 body 직계에 뜨는 fixed 상자라 자리가 진짜 레이아웃에서만 난다.
+test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 올라선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+
+  // 앵커는 이름 버튼이 아니라 **행 상자**다 — 그 오른쪽 끝과 이름 버튼 사이에 핀 칸이 있다.
+  const row = page.getByRole("button", { name: plainWork.title, exact: true }).locator("xpath=..");
+  const card = page.locator("[data-popover]");
+  // **먼저 없음을 센다** — 이것이 없으면 아래가 「원래 떠 있던 것」으로도 초록이 된다.
+  await expect(card).toHaveCount(0);
+
+  await row.hover();
+  // 350ms 머물러야 뜬다(HOVER_DELAY_MS). 자리를 재기 전 한 프레임은 invisible이라
+  // toBeVisible이 그 프레임까지 함께 기다린다.
+  await expect(card).toBeVisible();
+
+  const rowBox = (await row.boundingBox())!;
+  const cardBox = (await card.boundingBox())!;
+  const aside = (await page.locator("aside").boundingBox())!;
+
+  // **행에서 4px이다.** 경계선에서 재던 값은 눈에 19px 더 벌어져 보였다 — 거터 8px과
+  // 늘 예약된 스크롤바 11px이 행과 경계선 사이에 있기 때문이다.
+  expect(Math.round(cardBox.x - (rowBox.x + rowBox.width))).toBe(4);
+  // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
+  // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
+  expect(cardBox.x).toBeLessThan(aside.x + aside.width);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

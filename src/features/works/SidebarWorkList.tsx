@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin, SquareTerminal } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,14 +26,10 @@ const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 function SidebarWorkList({
   open,
-  boundaryRef,
   shellCounts,
   renderRunning,
 }: {
   open: boolean;
-  // 호버 카드가 비켜야 할 상자 — 사이드바 자신이다. 행의 오른쪽 끝은 거터와 스크롤바 때문에
-  // 사이드바 끝보다 8~19px 안쪽이라, 행만 기준으로 삼으면 카드가 사이드바에 붙거나 파고든다.
-  boundaryRef: RefObject<HTMLElement | null>;
   /**
    * work별 셸 개수 — 둘째 줄이 서는 조건이자 그 줄이 적는 값이다(결정 2·3).
    *
@@ -153,14 +149,11 @@ function SidebarWorkList({
           아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다.
           두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
-        {/* auto가 아니라 scroll이다 — 자리를 **항상** 예약한다.
-            scroll-quiet의 스크롤바는 폭을 갖는 클래식이라, auto로 두면 목록이 넘치는 순간
-            콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 왼쪽으로 밀린다(실측 264→253). 접었다
-            펴는 것만으로도 폭이 오가는 자리다. scrollbar-gutter:stable은 이 WebKit에서
-            먹지 않아(실측) 확실한 쪽을 쓴다. 늘 있어도 보이지는 않는다 — track·thumb가
-            투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
-            예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
-        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-scroll pb-1 scroll-quiet">
+        {/* **자리를 예약하지 않는다**(결정 32). 한때 scroll이었다 — 폭을 갖는 클래식 막대라
+            auto로 두면 넘치는 순간 콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 밀렸다
+            (실측 264→253). 이제 막대가 콘텐츠 **위에** 떠서(scroll-quiet) 폭을 안 먹으므로
+            예약할 것이 없고, 그만큼 행이 넓어진다. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
             open={sectionsOpen}
@@ -181,11 +174,10 @@ function SidebarWorkList({
       {hovered && (
         <PopoverPortal
           anchorRef={hoverAnchor}
-          boundaryRef={boundaryRef}
           side="right"
-          // 사이드바 **경계선**에서 재는 값이다 — 행이 아니라(그쪽 prop 주석). 실측으로
-          // 행의 오른쪽 끝은 경계선보다 19px 안쪽이라 눈에 보이는 거리는 이 값 + 19px이고,
-          // 그래서 8px이 27px로 보였다. 더 줄이면 카드의 그림자가 사이드바에 닿는다.
+          // **행에서 재는 값이다**(결정 30). 행의 오른쪽 끝은 거터 8px과 늘 예약된
+          // 스크롤바 11px 때문에 사이드바 경계선보다 19px 안쪽이라, 카드는 그 19px을
+          // 덮고 경계선 위로 올라선다 — 카드가 사이드바에 얹혀 떠 있다는 사실을 그렇게 말한다.
           gap={4}
           width={272}
           className="p-3.5"
@@ -511,7 +503,7 @@ function WorkRow({
       </button>
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
-          페이드가 없는 것은 icon-button-quiet이 정한다(옆 행으로 옮겨 갈 때 두 핀이
+          페이드가 없는 것은 icon-button-tint가 정한다(옆 행으로 옮겨 갈 때 두 핀이
           겹쳐 미끄러져 보인다). focus-visible:opacity-100이 없으면 Tab으로 도달은
           하는데 보이지 않는다 — spec 트리의 복사 버튼이 이미 같은 답을 한다.
           채운 핀 / 빈 핀으로 갈린다. PinOff(사선 그은 핀)를 쓰지 않는 것은 이 저장소의
@@ -523,7 +515,7 @@ function WorkRow({
         aria-label={`${work.title} 고정`}
         aria-pressed={work.pinned}
         onClick={() => onTogglePin(work)}
-        className="icon-button-quiet shrink-0 text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+        className="icon-button-tint shrink-0 text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
       >
         <Pin
           className="size-3"

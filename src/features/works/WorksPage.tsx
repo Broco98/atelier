@@ -5,7 +5,6 @@ import {
   Ban,
   Check,
   ChevronDown,
-  CodeXml,
   Columns2,
   Folder,
   LoaderCircle,
@@ -17,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceToggle } from "@/components/ui/SourceToggle";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
 import { ResizeHandle } from "@/components/shell/useResizableWidth";
@@ -666,25 +666,13 @@ function WorksPage({
       // 근거가 없어진다 — 이 저장소는 같은 일을 하는 버튼을 한 화면에 둘 두지 않는다.
       source={
         !workPanelOpen && (
-          <button
-            type="button"
-            // 패널 머리행에도 **같은 접근성 이름**의 버튼이 있다(같은 일을 하니 당연하다).
-            // 검사가 「열 머리의 것」만 셀 수 있게 표식을 단다 — 접힌 패널도 마운트된 채라
-            // 이름으로 세면 둘이 잡힌다.
-            data-column-source=""
-            onClick={() => setShowSource((v) => !v)}
-            disabled={sourceLocked}
-            aria-label="마크다운 원문 보기"
-            aria-pressed={showSource}
-            title="마크다운 원문 보기"
-            className={cn(
-              "icon-button transition-colors",
-              "disabled:pointer-events-none disabled:opacity-40",
-              showSource ? "toggle-on" : "text-tertiary quiet-hover",
-            )}
-          >
-            <CodeXml className="size-3.5" strokeWidth={2} />
-          </button>
+          // 패널 머리행에도 **같은 접근성 이름**의 칸이 있다(같은 일을 하니 당연하다).
+          // 검사가 「열 머리의 것」만 셀 수 있게 표식을 단다 — 접힌 패널도 마운트된 채라
+          // 이름으로 세면 둘이 잡힌다. 컨트롤 자신은 이 표식을 모른다: 세 자리가 함께 쓰는
+          // 것이라 한 호출부의 검사 사정을 그 안으로 들이지 않는다.
+          <span data-column-source="">
+            <SourceToggle on={showSource} locked={sourceLocked} onChange={setShowSource} />
+          </span>
         )
       }
     />

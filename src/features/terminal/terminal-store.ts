@@ -379,8 +379,9 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     // 늘 보이지도 않는 것을 위해 한 화면의 오른쪽 끝을 늘 비워 두는 셈이라, 오른쪽에 붙는
     // 프롬프트를 쓰는 셸에서는 그 자리가 「끝나지 않은 여백」으로 보인다.
     //
-    // _감수한 것_: 스크롤백 10,000줄에 위치를 알려 주는 막대가 없다. 무는 길은 그대로다
-    // (휠·트랙패드·⇧PageUp) — 탭 줄이 44px에서 같은 이유로 막대를 숨긴 것과 같은 결정이다.
+    // _한때 감수했던 것_: 스크롤백 10,000줄에 위치를 알려 주는 막대가 없었다. 결정 32가
+    // 그것을 돌려줬다 — 앱 공통 막대가 콘텐츠 **위에** 떠서 폭을 한 칸도 안 먹는다
+    // (`open()` 뒤에 `xterm-viewport`에 `scroll-quiet`을 건다).
     scrollbar: { showScrollbar: false },
   });
   const fit = new FitAddon();
@@ -581,6 +582,10 @@ function openOrReattach(instance: ShellInstance) {
   if (first) {
     try {
       instance.term.open(instance.wrapper);
+      // **막대도 앱의 것 하나로 통일한다**(결정 32). xterm의 막대는 꺼 둔 채다(결정 26 —
+      // 켜면 `FitAddon`이 폭에서 14px을 뺀다). `xterm-viewport`는 진짜로 구르는 상자라
+      // (`overflow-y: scroll`) 문서 하나가 받는 그 리스너에 이 클래스만으로 걸린다.
+      instance.wrapper.querySelector(".xterm-viewport")?.classList.add("scroll-quiet");
       // **`open()`이 돌아온 뒤에 세운다.** 앞에 세우면 여기서 터졌을 때 열리지도 않은 채
       // "열렸다"로 굳어, 다음 마운트부터는 spawn도 관측도 없는 죽은 화면이 된다.
       instance.opened = true;

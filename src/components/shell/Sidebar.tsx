@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
@@ -18,11 +17,12 @@ interface SidebarProps {
   onOpenSettings: () => void;
 }
 
-// 오른쪽만 19px = 거터 8 + 스크롤바 11(scroll-quiet). 가운데 작업 목록은 스크롤바가
-// 늘 자리를 잡고 있어 항목 폭이 그만큼 좁다 — 같은 값을 비워 둬야 nav 항목과 목록
-// 항목의 오른쪽 끝이 맞는다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다.
+// 좌우 8px로 같다. 한때 오른쪽만 19px(= 거터 8 + 스크롤바 11)이었다 — 가운데 작업 목록이
+// 막대 자리를 늘 예약하고 있어서, 같은 값을 비워 둬야 nav 항목과 목록 항목의 오른쪽 끝이
+// 맞았다. 막대가 콘텐츠 위로 뜨면서(결정 32) 목록이 그 11px을 돌려받았고, 이 거터도 함께
+// 돌아왔다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다.
 // **바닥의 설정도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다.
-const GUTTER = "pl-2 pr-[19px]";
+const GUTTER = "pl-2 pr-2";
 
 // 고정 nav 블록 + 상주하는 작업 목록 + 바닥에 고정된 설정. 어느 화면에 있든 이 사이드바는
 // 바뀌지 않는다.
@@ -35,8 +35,6 @@ function Sidebar({
   onOpenSettings,
 }: SidebarProps) {
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
-  // 호버 카드가 이 상자 오른쪽으로 비켜 열린다 — 행이 아니라 사이드바가 기준이다
-  const asideRef = useRef<HTMLElement>(null);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
@@ -47,7 +45,6 @@ function Sidebar({
 
   return (
     <aside
-      ref={asideRef}
       style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
       className={cn(
         "relative shrink-0 overflow-hidden border-r bg-sidebar",
@@ -99,7 +96,6 @@ function Sidebar({
 
         <SidebarWorkList
           open={open}
-          boundaryRef={asideRef}
           shellCounts={shellCounts}
           // 둘째 줄의 로고도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
           // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지

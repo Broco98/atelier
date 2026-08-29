@@ -515,6 +515,14 @@ describe("좁아질 때 줄어드는 순서", () => {
     return chunk.slice(0, chunk.indexOf(">"));
   };
 
+  // 결정 31 — 칸이 이미 hover·켜짐 배경을 갖고 있어서, 닫기까지 자기 배경을 켜면
+  // 포인터 하나에 상자 둘이 뜬다. 사이드바 work 행의 핀과 같은 규칙이다.
+  it("닫기는 hover에 배경이 아니라 색만 바꾼다", () => {
+    const [cell] = shellCellsOf(render(opened(2).state));
+    expect(closeTagOf(cell)).toContain("icon-button-tint");
+    expect(closeTagOf(cell)).not.toContain("icon-button-quiet");
+  });
+
   it("이름이 숨는 폭에서 빈 칸이 안 생긴다 — 셸 글리프가 그 자리에 선다", () => {
     // **크롬에서 이 구멍이 없는 것은 파비콘이 늘 있어서다.** 여기서는 도는 것이 없는 칸에
     // 로고가 없어, 이름만 숨기면 아무 글리프도 없는 칸이 남는다.
@@ -616,14 +624,16 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
     expect(markup.indexOf('data-tab="new"')).toBeLessThan(markup.indexOf("조작"));
   });
 
-  it("가로로만 스크롤하고 막대는 안 보인다", () => {
-    // 세로로도 스크롤하면 44px 줄 안에서 칸이 위아래로 흔들린다. 막대를 숨기는 것은
-    // `scroll-quiet`이 11px를 세우기 때문이다 — 타이틀바에서는 그만큼 칸이 눌린다.
-    // 정적 마크업이라 클래스 문자열의 `&`가 `&amp;`로 온다 — 이스케이프를 되돌려 **소스에
-    // 적힌 그대로** 본다. 엔티티까지 물면 규격이 아니라 직렬화 방식에 검사가 매인다.
+  it("가로로만 스크롤하고, 막대는 저장소 공통의 것을 쓴다", () => {
+    // 세로로도 스크롤하면 44px 줄 안에서 칸이 위아래로 흔들린다.
+    // 막대는 `scroll-quiet` 하나다(결정 32) — 한때 이 줄만 손으로 숨겼는데, 그때의
+    // `scroll-quiet`은 11px을 세워 타이틀바에서 칸을 눌렀기 때문이다. 이제 막대가 위로
+    // 떠서 폭을 안 먹으므로 이 줄만 다른 규칙을 쓸 이유가 없다.
     const tag = stripTagOf(render(opened(2).state)).replace(/&amp;/g, "&");
     expect(tag).toContain("overflow-x-auto");
-    expect(tag).toContain("[&::-webkit-scrollbar]:hidden");
+    expect(tag).toContain("scroll-quiet");
+    // 손으로 다시 숨기지 않는다 — 같은 답을 두 벌로 적으면 농도를 한 번 바꿀 때 한 자리가 남는다.
+    expect(tag).not.toContain("::-webkit-scrollbar");
   });
 
   it("줄어드는 몫을 이 상자 하나가 받는다 — 형제는 안 줄어든다", () => {

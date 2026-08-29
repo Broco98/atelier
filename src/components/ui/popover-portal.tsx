@@ -17,7 +17,6 @@ const VIEWPORT_MARGIN = 8;
 
 export function PopoverPortal({
   anchorRef,
-  boundaryRef,
   side = "bottom",
   align = "left",
   gap = 4,
@@ -27,9 +26,6 @@ export function PopoverPortal({
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
-  // side가 right일 때 함께 비켜야 할 상자 — 앵커를 품은 패널이다. 앵커가 패널 안쪽 여백이나
-  // 스크롤바만큼 들어가 있으면 앵커 기준 gap이 그 여백에 먹혀, 팝오버가 패널에 붙거나 파고든다.
-  boundaryRef?: RefObject<HTMLElement | null>;
   // 앵커의 어느 쪽에 붙일지 — bottom은 아래, right는 오른쪽 옆(윗변을 맞춘다)
   side?: "bottom" | "right";
   // side가 bottom일 때 앵커의 어느 변에 맞출지 — left면 왼쪽 끝끼리, right면 오른쪽 끝끼리
@@ -53,9 +49,12 @@ export function PopoverPortal({
       // 세로로 물리려면 실제 높이가 필요하다 — 내용에 따라 달라져 상수로 둘 수 없다.
       // 레이아웃 이펙트라 이 시점에 카드는 이미 그려져 있다(아직 invisible일 뿐이다).
       const height = cardRef.current?.offsetHeight ?? 0;
-      const rightEdge = Math.max(rect.right, boundaryRef?.current?.getBoundingClientRect().right ?? 0);
+      // **앵커에서만 잰다** — 앵커를 품은 패널의 경계에서 재던 판은 걷었다(결정 30).
+      // 패널 밖으로 밀어내면 카드가 그 경계선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼
+      // 보인다. 여기 팝오버는 문서 최상위에 뜨는 **떠 있는 것**이라, 앵커 옆에 붙어
+      // 패널 여백을 덮고 올라서는 편이 그 사실을 말한다.
       const rawLeft =
-        side === "right" ? rightEdge + gap : align === "right" ? rect.right - width : rect.left;
+        side === "right" ? rect.right + gap : align === "right" ? rect.right - width : rect.left;
       const rawTop = side === "right" ? rect.top : rect.bottom + gap;
       const fit = (value: number, size: number, limit: number) =>
         Math.min(Math.max(VIEWPORT_MARGIN, value), Math.max(VIEWPORT_MARGIN, limit - size - VIEWPORT_MARGIN));
@@ -72,13 +71,15 @@ export function PopoverPortal({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchorRef, boundaryRef, side, align, gap, width]);
+  }, [anchorRef, side, align, gap, width]);
 
   return createPortal(
     <>
       {onClose && <div className="fixed inset-0 z-40" onClick={onClose} />}
       <div
         ref={cardRef}
+        // 이 상자는 body 직계라 조상으로 못 찾는다 — 자리를 재는 검사가 붙잡을 손잡이다
+        data-popover
         style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width }}
         className={cn(
           "fixed z-50 overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg",

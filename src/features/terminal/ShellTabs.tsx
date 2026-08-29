@@ -255,15 +255,15 @@ function ShellTabs({
           `e2e/terminal-tabs.spec.ts`가 세 폭에서 실제로 재고 `spill ≤ 0`으로 든다 —
           지금 900px에서 여유가 3.5px이라, 이 줄에 고정된 것을 늘리면 그만큼만 남는다.
 
-          **스크롤 막대를 숨긴다.** 이 저장소의 `scroll-quiet`은 11px 막대를 세우는데,
-          44px 타이틀바에서는 그만큼 칸이 눌린다. 닿는 길은 트랙패드 가로 스크롤과
-          ⌘1~9다(위 이펙트가 켜진 칸을 끌어온다). */}
+          **막대는 저장소 공통 `scroll-quiet`이다**(결정 32). 한때 여기만 손으로 숨겼다 —
+          그때의 `scroll-quiet`은 11px을 세워 44px 타이틀바에서 칸을 눌렀기 때문이다.
+          이제 막대가 위로 떠서 폭을 안 먹으므로 이 줄만 다른 규칙을 쓸 이유가 없어졌다. */}
       <div
         ref={stripRef}
         // 표식이 `data-tab`이 아니라 `data-tab-strip`인 것은 검사가 `data-tab="`로 칸을
         // 잘라내기 때문이다 — 같은 이름을 쓰면 상자가 칸 하나로 세어진다.
         data-tab-strip
-        className="flex w-max min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex w-max min-w-0 items-center gap-1 overflow-x-auto scroll-quiet"
       >
         {shells.map((shell) => (
           <ShellTab
@@ -502,7 +502,7 @@ const ShellTab = memo(function ShellTab({
         title="셸 닫기"
         onClick={() => onClose(shell.id)}
         className={cn(
-          "icon-button-quiet shrink-0 text-tertiary",
+          "icon-button-tint shrink-0 text-tertiary",
           // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
           // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
           // 켜진 칸도 68px(=14+30+24) 아래에서는 함께 접는다: 거기부터는 로고·스피너와

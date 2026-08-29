@@ -197,6 +197,16 @@ describe("핀 버튼", () => {
     expect(plainRow).toContain('fill="none"');
   });
 
+  // 결정 31 — **행 안에 사는 버튼은 자기 배경을 안 켠다.** 행이 이미 hover 배경을 갖고
+  // 있어서, 버튼까지 켜면 포인터 하나에 상자 둘이 뜬다. 눈으로는 「좀 진하네」로 지나가는
+  // 종류라 여기서 못박는다.
+  it("hover에 배경이 아니라 색만 바뀐다", () => {
+    for (const pin of pinsOf(render(works("pin:가", "나")))) {
+      expect(pin).toContain("icon-button-tint");
+      expect(pin).not.toContain("icon-button-quiet");
+    }
+  });
+
   it("행마다 하나씩 있다 — 초안 행에도 있다", () => {
     // 결정 83. 초안도 고정할 수 있다.
     expect(pinsOf(render(works("pin:가", "나", "draft:다")))).toHaveLength(3);
