@@ -247,15 +247,15 @@ export function runningShellsOf(state: ShellsState, owner: string | null): numbe
 
 /** 이 화면에서 켜진 칸. */
 /**
- * 소유자별 셸 개수 — 사이드바에서 **어느 work에 가지가 서는가**를 정하는 값이다(결정 73).
+ * 소유자별 셸 개수 — 사이드바 work 행의 **둘째 줄이 서는 조건이자 그 줄이 적는 값**이다
+ * (결정 2·3).
  *
  * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
  * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
- * 없다(ShellBranch 머리말).
+ * 없다(Sidebar.tsx의 `shellCounts`).
  *
- * **최상위 터미널의 셸은 여기 없다.** 그쪽은 work이 아니라 nav 항목에 붙는 가지라
- * 세는 자리가 따로다(`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가
- * 슬러그인 척하게 된다.
+ * **최상위 터미널의 셸은 여기 없다.** 그쪽은 어느 work의 것도 아니라 세는 자리가 따로다
+ * (`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가 슬러그인 척하게 된다.
  */
 export function shellCountsOf(state: ShellsState): Record<string, number> {
   const counts: Record<string, number> = {};

@@ -27,7 +27,7 @@ import type { ShellOrigin, ShellsState } from "./shell-registry";
 //
 // **칸 안에서 본다.** 마크업 전체에서 `toContain`으로 판정하면 「어딘가 적혀 있다」와
 // 「이 칸에 적혀 있다」가 같아져서, 이름이 사라진 칸과 살아 있는 칸이 구분되지 않는다 —
-// ShellList.test.tsx 머리말이 앞 판에서 실물로 잃은 것으로 적어 둔 사고다.
+// 앞 판의 셸 목록 검사가 실물로 한 번 잃고 적어 둔 사고다.
 //
 // **이 줄은 지워졌던 그 컴포넌트가 아니다.** 옛것은 「탭 줄이 타이틀바를 겸하는가」를
 // prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 겸한다** — 그래서 창 드래그
@@ -358,7 +358,7 @@ describe("켜짐을 말하는 법", () => {
   });
 
   it("본문이 문서면 켜진 칸이 `spec` 하나다", () => {
-    // `activeIdOf`는 그 work의 **기억**이지 지금 화면이 아니다(ShellList의 `showing`과 같은
+    // `activeIdOf`는 그 work의 **기억**이지 지금 화면이 아니다(걷힌 셸 목록의 `showing`과 같은
     // 계약) — 문서를 읽는 중에 셸 칸까지 켜져 있으면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
     const cells = cellsOf(render(opened(3).state, { spec: { on: true, onSelect: () => {} }, showing: false }));
     const on = cells.filter((cell) => cell.markup.includes('aria-pressed="true"'));
@@ -383,7 +383,7 @@ describe("켜짐을 말하는 법", () => {
 describe("칸 하나의 규격", () => {
   it("이름 버튼과 닫기 버튼이 형제다", () => {
     // 중첩 button은 HTML에서 허용되지 않고, span role="button"으로 흉내내면 Tab으로
-    // 도달할 수 없다(SpecTree.test.tsx·ShellList.test.tsx가 같은 것을 지킨다).
+    // 도달할 수 없다(SpecTree.test.tsx가 같은 것을 지킨다).
     const markup = render(opened(2).state);
     expect(markup).not.toMatch(/<button(?:(?!<\/button>)[\s\S])*<button/);
   });
@@ -565,7 +565,7 @@ describe("칸을 본문 위로 끄는 자리", () => {
 
   it("콜백이 없으면 안 붙는다", () => {
     // 떨굴 자리인 분할은 **work 화면의 것이다** — `/terminal`은 이 콜백을 안 주고, 그때
-    // 칸은 안 끌린다(`ShellList.onDragRow`와 같은 계약). `onDragTab &&`가 그 계약이고,
+    // 칸은 안 끌린다(걷힌 셸 목록의 `onDragRow`와 같은 계약). `onDragTab &&`가 그 계약이고,
     // prop이 optional이라는 것은 그 화면이 컴파일되는 것으로 L0가 잰다.
     expect(cellOf("spec")).toContain("onDragTab && ");
     expect(cellOf("shell")).toContain("onDragTab && ");

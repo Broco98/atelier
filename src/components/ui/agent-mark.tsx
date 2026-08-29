@@ -8,7 +8,7 @@ import type { ReactElement } from "react";
  *
  * **`features/terminal`이 아니라 여기 산다.** 읽는 자리가 둘인데(탭 칸 — 결정 4,
  * 사이드바 work 행 — 결정 2) 사이드바 목록은 `@/features/terminal`을 **한 번도 참조하지
- * 않는다는 계약**을 지고 있다(ShellBranch.test.ts가 등장 횟수 0을 센다). 이 모듈은 react
+ * 않는다는 계약**을 지고 있다(SidebarWorkList.test.tsx가 등장 횟수 0을 센다). 이 모듈은 react
  * 말고 아무것도 안 끌어오므로 그 계약이 막으려는 것(`@xterm/*`와 그 CSS가 따라 들어오는
  * 것)과 무관한데, 그 검사는 리터럴을 세는 fail-closed 그물이라 예외를 뚫지 않는다.
  *

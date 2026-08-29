@@ -40,7 +40,7 @@ interface ShellTabsProps {
    *
    * `activeIdOf`는 그 화면의 **기억**이지 지금 본문이 아니다 — 문서를 읽는 중에도 값이
    * 남아 있어서, 그것만 보고 칸을 켜면 「지금 보고 있는 것」이 한 화면에 둘이 된다.
-   * `ShellList`의 같은 이름 prop이 같은 것을 가른다.
+   * 사이드바 셸 목록이 걷히기 전까지 같은 이름의 prop이 같은 것을 갈랐다.
    */
   showing: boolean;
   onSelect: (id: number) => void;
@@ -54,12 +54,12 @@ interface ShellTabsProps {
    * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다.
    *
    * **없으면 안 끌린다.** 떨굴 자리인 분할은 work 화면의 것이라 `/terminal`은 이 콜백을
-   * 주지 않는다 — `ShellList.onDragRow`와 같은 계약이다.
+   * 주지 않는다.
    *
    * **드래그 모듈을 여기서 import하지 않는다.** 이 파일이 `features/works`를 **값으로**
    * import하는 순간 `terminal → works` 방향이 값 차원에서 처음 생겨(지금까지는
-   * `import type`뿐이었다) 반대 방향과 맞물린다 — `ShellBranch.onDragRow`가 같은 함정을
-   * 적어 뒀다. 만드는 것은 양쪽을 이미 아는 화면(WorksPage)이 한다.
+   * `import type`뿐이었다) 반대 방향과 맞물린다. 만드는 것은 양쪽을 이미 아는
+   * 화면(WorksPage)이 한다 — 걷히기 전 사이드바 셸 목록도 같은 이유로 같은 우회를 썼다.
    */
   onDragTab?: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
   /**
@@ -91,7 +91,8 @@ interface ShellTabsProps {
 // **셸도 xterm도 여기 없다** — 상태와 콜백만 받는 그림이라 DOM 없는 기본 환경에서
 // renderToStaticMarkup으로 그대로 검사된다(ShellTabs.test.tsx). terminal-store를 import하면
 // 그 성질이 사라진다: `@xterm/*`와 그 CSS가 따라 들어온다. 구독은 화면(WorksPage)이 한다 —
-// `ShellList`·`ShellBranch`가 이미 같은 계약을 지고 있다.
+// 사이드바 목록도 같은 계약을 지고 있고(`SidebarWorkList.test.tsx`가 리터럴로 센다), 걷힌
+// 셸 목록·가지도 그랬다.
 function ShellTabs({
   state,
   owner,
@@ -270,7 +271,7 @@ function ShellTabs({
                 aria-pressed={active}
                 onClick={() => onSelect(shell.id)}
                 // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
-                // 분할이 켜진다. `ShellList`의 셸 행이 같은 자리에 같은 모양으로 걸어 뒀다.
+                // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
                 onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}
                 // 이름이 숨은 폭에서는 글리프를 **가운데로** 보낸다 — 왼쪽에 붙여 두면 오른쪽
                 // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.

@@ -38,9 +38,8 @@ function twoWorks(): { state: ShellsState; 나: number } {
 /**
  * **셸 하나가 흔들리는 동안 남의 work 행이 다시 안 그려진다**(판 04의 핵심 위험).
  *
- * `ShellBranch`가 터미널 스토어를 구독하는 유일한 자리였던 것은 값이 자주 흔들려서다 —
- * 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속 갈아 끼운다. 목록이 통째로
- * 구독하면 **모든 work 행이** 그때마다 다시 그려진다.
+ * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
+ * 갈아 끼운다. 목록이 통째로 구독하면 **모든 work 행이** 그때마다 다시 그려진다.
  *
  * 재는 것은 「리렌더 횟수」가 아니라 **셀렉터가 주는 값**이다. `useStore`는 얕은 비교로
  * 같으면 다시 그리지 않으므로, 「안 바뀐 work에 대해 같은 값을 준다」가 곧 「그 행은 안
@@ -100,5 +99,27 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
     expect(sidebar).toContain("renderRunning={(work) => <RowRunning slug={work.slug} />}");
+  });
+});
+
+// 결정 6. nav `Terminal` 아래의 셸 가지가 걷혔다 — 셸을 고르는 자리가 화면 안 탭 줄로
+// 되돌아갔으므로(adr-03) 사이드바에 남은 것은 「누르면 간다」뿐이다.
+//
+// **접히는 것이 정말 없는가는 여기서만 볼 수 있다.** 이 화면은 정적 마크업 seam이 닿지
+// 않고(위 머리말), 접힘은 e2e에서도 「구획 헤더의 것」과 「nav의 것」이 같은 속성으로
+// 보인다. 지운 자리라 「없다」를 세는 것 말고 볼 방법이 없다 — 판 04 직전 이 파일에는
+// `aria-expanded`가 둘, `SectionBody`가 셋 있었다.
+describe("nav 항목은 잎이다", () => {
+  const sidebar = read("Sidebar.tsx");
+
+  it("접히는 자리가 하나도 없다", () => {
+    expect(countOf(sidebar, "aria-expanded")).toBe(0);
+    expect(countOf(sidebar, "SectionBody")).toBe(0);
+  });
+
+  it("`Terminal`이 안고 있는 셸 수는 남는다", () => {
+    // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
+    // 사이드바 어디에도 안 남는다(work 행은 둘째 줄이 그 몫을 한다 — 결정 2·3).
+    expect(sidebar).toContain('count={item.key === "terminal" ? topShells : 0}');
   });
 });

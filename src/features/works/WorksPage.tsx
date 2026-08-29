@@ -321,8 +321,7 @@ function WorksPage({
    * (⌘1~9가 구독을 아예 피한 그 이유와 같다).
    *
    * **`tabOwner`가 위에 있어야 한다.** 비교 함수가 그것을 닫아 잡는데 그 함수는 `useStore`
-   * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다(ShellBranch가 같은 자리에
-   * 같은 주석을 남겼다).
+   * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다.
    */
   const tabOwner = panelWork?.slug ?? null;
   const shellState = useStore(
@@ -459,7 +458,7 @@ function WorksPage({
       owner={panelWork.slug}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
-      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다. ShellBranch의 같은 주석이다.
+      // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
       projects={panelWork.worktrees.map((tree) => tree.project)}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
@@ -488,8 +487,8 @@ function WorksPage({
       // **바뀐 것은 출발점뿐이다**(놓일 자리도 분할 계산도 그대로다).
       //
       // **끄는 자리를 여기서 만든다.** 탭 줄이 스스로 만들면 `terminal → works` 방향이
-      // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — Sidebar가 `ShellBranch`에
-      // 같은 이유로 같은 일을 해 준다). 이 화면은 이미 양쪽을 다 알고 있다.
+      // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — 걷히기 전 Sidebar가 셸
+      // 가지에 같은 이유로 같은 일을 해 줬다). 이 화면은 이미 양쪽을 다 알고 있다.
       //
       // 이 줄은 늘 **지금 보고 있는 work**의 것이라 `slug`가 하나로 정해진다 — 남의 work을
       // 떨구는 길(결정 101)은 사이드바에만 있다.
@@ -523,7 +522,7 @@ function WorksPage({
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
                 지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
-                두었다 — 사이드바에서 셸 가지가 걷히므로 자리는 여전히 하나다(adr-03).
+                두었다 — 사이드바에서 셸 가지가 걷혔으므로 자리는 여전히 하나다(adr-03).
                 (그 줄의 글자를 여기 옮겨 적지 않는다 — 되살아났는지 보는 검사가
                 주석까지 읽는다.) */}
             {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
@@ -696,7 +695,7 @@ function WorksPage({
   const terminalHead = terminalWork && (
     <ColumnHead
       kind="terminal"
-      // 사이드바 셸 행과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
+      // 탭 줄의 셸 칸과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
       // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
       label={<ShellHeadName owner={terminalWork.slug} />}
       closeLabel="terminal 열 닫기"

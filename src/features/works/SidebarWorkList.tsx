@@ -1,21 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown, File, Pin, SquareTerminal } from "lucide-react";
+import { ChevronDown, Pin, SquareTerminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import {
-  BranchHeader,
-  SectionBody,
-  TreeIndent,
-  TreeLeaf,
-  useCollapse,
-} from "@/components/shell/sidebar-tree";
-import { recallView, tabSearch, viewSearch, workSlugOf, type ViewTab } from "@/routes/-work-search";
+import { recallView, viewSearch, workSlugOf } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
-import { armDrag } from "./split-view";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
@@ -36,7 +28,6 @@ function SidebarWorkList({
   open,
   boundaryRef,
   shellCounts,
-  renderShells,
   renderRunning,
 }: {
   open: boolean;
@@ -44,15 +35,13 @@ function SidebarWorkList({
   // 사이드바 끝보다 8~19px 안쪽이라, 행만 기준으로 삼으면 카드가 사이드바에 붙거나 파고든다.
   boundaryRef: RefObject<HTMLElement | null>;
   /**
-   * work별 셸 개수 — 어느 work에 가지가 서는가를 정한다(결정 73).
+   * work별 셸 개수 — 둘째 줄이 서는 조건이자 그 줄이 적는 값이다(결정 2·3).
    *
-   * **이 파일은 터미널 스토어를 모른다.** 개수도 가지의 속도 위(Sidebar)에서 내려온다:
+   * **이 파일은 터미널 스토어를 모른다.** 개수도 로고도 위(Sidebar)에서 내려온다:
    * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
-   * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx).
+   * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다).
    */
   shellCounts: Record<string, number>;
-  /** 가지의 속. 터미널 스토어를 구독하는 자리라 슬롯으로 받는다(ShellBranch). */
-  renderShells: (work: WorkView) => ReactNode;
   /** 둘째 줄의 로고들. 같은 이유로 슬롯이다 — 그리는 것은 여기 있다(`RunningMarks`). */
   renderRunning: (work: WorkView) => ReactNode;
 }) {
@@ -80,14 +69,12 @@ function SidebarWorkList({
   }, [draftsOpen]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
+  //
+  // **읽는 것이 슬러그 하나다.** 한때 `tab`도 따로 구독했다 — 고른 work의 `spec` 잎이
+  // 켜지는지가 그것으로 갈렸는데, 그 잎이 탭 줄로 가면서(결정 6·7) 이 목록에 「지금 보고
+  // 있는 것」을 말하는 자리가 행 하나로 줄었다.
   const openSlug = useRouterState({
     select: (state) => workSlugOf(state.location.pathname),
-  });
-  // 본문이 지금 무엇인가 — 고른 work의 `spec` 잎이 켜지는지가 이것으로 갈린다.
-  // `openSlug`와 **따로** 구독한다: 객체 하나로 묶어 돌려주면 매번 새 객체라 걸러내지 못해
-  // 주소가 바뀔 때마다 목록 전체가 다시 그려진다(AppShell의 같은 주석).
-  const tab: ViewTab = useRouterState({
-    select: (state) => ((state.location.search as { tab?: string }).tab === "terminal" ? "terminal" : "spec"),
   });
 
   const sectionsOpen: SectionsOpen = {
@@ -152,103 +139,6 @@ function SidebarWorkList({
     });
   };
 
-  /**
-   * 가지가 펼쳐졌는가 — **세션 메모리다**(결정 107). 앱을 껐다 켜면 기본값으로 돌아온다.
-   * 구획 접힘(`sidebar-*-open`)이 localStorage에 사는 것과 갈리는 자리인데, 그쪽은 「설정」이고
-   * 이쪽은 「지금 무엇을 펼쳐 두었나」라는 위치다(shell-store의 수명 구분과 같은 규칙).
-   *
-   * 기록에 없는 슬러그는 **접힌 것**이다. 자동 펼침은 그 work을 **처음 고를 때 한 번**이고
-   * (아래 이펙트), 사람이 접으면 기록에 `false`가 남아 다시 골라도 접힌 채다.
-   */
-  const [branchOpen, setBranchOpen] = useState<Record<string, boolean>>({});
-  const isBranchOpen = (slug: string) => branchOpen[slug] === true;
-
-  /**
-   * work 블럭의 상태. **값이 셋이다** — 위 `branchOpen`(둘)과 갈리는 자리다.
-   *
-   * | 기록 | 뜻 | 화면 |
-   * |---|---|---|
-   * | 없음 | 아직 안 열어 봤다 | 블럭이 안 선다(셸이 돌면 예외) |
-   * | `true` | 펼침 | 블럭이 서고 속이 보인다 |
-   * | `false` | 사람이 접었다 | 블럭이 서 있되 속이 접힌다 |
-   *
-   * **한 번 연 블럭은 work을 옮겨도 남는다**(사용자 결정). 한때 「고른 work」에만 섰는데,
-   * 그러면 옆 work을 잠깐 들여다보는 것만으로 앞 work의 트리가 통째로 접혀, 돌아왔을 때
-   * 펼쳐 둔 것이 사라져 있었다. 그 대가는 방문한 work마다 블럭이 쌓이는 것이고, 접는 길은
-   * **그 work을 다시 골라 행을 누르는 것**이다(접기 토글은 고른 work의 행에만 있다 — 결정 101).
-   *
-   * 수명은 `branchOpen`과 같은 세션 메모리다(결정 107) — 접힘은 위치이지 설정이 아니다.
-   *
-   */
-  const [blockOpen, setBlockOpen] = useState<Record<string, boolean>>({});
-  /**
-   * 이 work의 블럭이 **자리를 잡았는가.** 기록에 있으면 접혀 있어도 자리는 있다.
-   *
-   * 고른 work은 **기록보다 먼저** 선다. 기록에 넣는 것은 아래 이펙트인데 그것은 페인트
-   * 뒤에 돌아서, 기록만 보면 앱을 켤 때마다 트리가 한 번 펼쳐지는 것을 보게 된다 —
-   * 첫 화면은 나타나는 것이 아니라 그냥 첫 화면이다(`useCollapse`).
-   */
-  const blockStands = (slug: string) => slug in blockOpen || slug === selectedSlug;
-  // 기록에 없는 것도 펼침으로 읽는다 — 셸이 돌아 저절로 선 블럭이 접힌 채로 뜨면 안 된다.
-  const isNodeOpen = (slug: string) => blockOpen[slug] !== false;
-  const toggleNode = (slug: string) =>
-    setBlockOpen((prev) => ({ ...prev, [slug]: prev[slug] === false }));
-
-  // **고르면 열린다 — 한 번만**(결정 107과 같은 판정을 쓴다). 사람이 접어 둔 `false`는
-  // 다시 골라도 접힌 채다.
-  useEffect(() => {
-    if (selectedSlug === null) return;
-    setBlockOpen((prev) => openBranchOnSelect(prev, selectedSlug));
-  }, [selectedSlug]);
-
-  useEffect(() => {
-    if (selectedSlug === null) return;
-    setBranchOpen((prev) => openBranchOnSelect(prev, selectedSlug));
-  }, [selectedSlug]);
-
-  /**
-   * `terminal` 가지의 머리행을 눌렀다.
-   *
-   * **남의 work의 것이면 그 work로 간다**(결정 101) — 사이드바 규칙이 그 하나로 줄었다.
-   * 고른 work의 것이면 접기 토글이다(결정 90·107).
-   */
-  const toggleBranch = (work: WorkView) => {
-    if (work.slug !== selectedSlug) {
-      goTo(work.slug);
-      setBranchOpen((prev) => ({ ...prev, [work.slug]: true }));
-      return;
-    }
-    setBranchOpen((prev) => ({ ...prev, [work.slug]: !isBranchOpen(work.slug) }));
-  };
-
-  /**
-   * `spec` 잎을 눌렀다 — 본문이 문서로 간다.
-   *
-   * **남의 work의 것일 수도 있다.** 이 잎은 한때 고른 work에만 섰는데, 그러면 옆 work을
-   * 잠깐 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라진다 — 셸이 도는 work은
-   * 블럭이 서 있는데 그 안에 `terminal`만 남는 모양이었다. 지금은 **블럭이 서면 잎도 선다.**
-   *
-   * 갈림은 `ShellBranch.go()`와 **같은 규칙이다**(결정 101·15·77):
-   * - 이 work을 보던 중이면 보던 문서를 지킨다. `search`에 객체를 주면 이 라우터가 기존
-   *   search를 통째로 버려 `file`이 조용히 떨어진다
-   * - 남의 work이면 빈 자리에서 시작하고 그 work의 기억을 지고 간다 — 문서 경로는 그 work
-   *   안에서만 뜻이 있어 딸려가면 새 work에 없는 파일을 가리킨 채 주소만 남는다
-   * - `replace`도 같은 갈래다: 같은 work 안의 전환은 히스토리를 안 쌓고(결정 13), 남의
-   *   work으로 가는 것은 진짜 이동이라 돌아올 자리를 만든다
-   */
-  const openSpec = (work: WorkView) => {
-    closeCard();
-    const mine = work.slug === selectedSlug;
-    void navigate({
-      to: "/works/$slug",
-      params: { slug: work.slug },
-      search: mine
-        ? (prev) => tabSearch(prev, "spec")
-        : viewSearch({}, { ...recallView(work.slug), tab: "spec" }),
-      replace: mine,
-    });
-  };
-
   // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
   // (결정 82) — 앵커 행이 사라지면 카드가 허공에 남는다.
   const togglePin = (work: WorkView) => {
@@ -275,20 +165,12 @@ function SidebarWorkList({
             sections={sections}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
-            tab={tab}
             shellCounts={shellCounts}
-            branchOpen={isBranchOpen}
-            nodeStands={blockStands}
-            nodeOpen={isNodeOpen}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            onToggleBranch={toggleBranch}
-            onToggleNode={toggleNode}
-            onOpenSpec={openSpec}
-            renderShells={renderShells}
             renderRunning={renderRunning}
           />
         </div>
@@ -312,91 +194,45 @@ function SidebarWorkList({
   );
 }
 
-/**
- * work을 골랐을 때 가지의 접힘 기록이 어떻게 되는가(결정 107).
- *
- * **처음 고를 때 한 번만 펼친다.** 기록에 이미 있으면 그대로 둔다 — 그 값은 사람이 접거나
- * 편 결과이고, 다시 고를 때마다 펼치면 「사람이 접으면 접힌 채 남는다」가 거짓이 된다.
- * `false`가 기록에 남아 있는 것과 기록이 아예 없는 것을 **가르는 것이 전부**이므로,
- * `prev[slug] ?? true`처럼 값을 보는 판정으로 바꾸면 그 둘이 같아진다.
- *
- * **안 바뀌면 같은 객체를 돌려준다** — 새 객체를 만들면 그 work을 다시 고를 때마다 목록이
- * 통째로 다시 그려진다.
- *
- * **함수로 꺼낸 이유는 테스트다.** 이 저장소의 컴포넌트 seam은 정적 마크업이라 이펙트가
- * 돌지 않는다 — 이 판단을 이펙트 안에 두면 「고를 때마다 펼친다」로 뒤집어도 검사가 전부
- * 초록이었다(실측). `togglesWorkPanel`이 같은 이유로 같은 모양이다.
- */
-export function openBranchOnSelect(
-  open: Record<string, boolean>,
-  slug: string,
-): Record<string, boolean> {
-  return slug in open ? open : { ...open, [slug]: true };
-}
-
 // 세 구획을 그리는 부분. 구독하는 자리(useWorks·라우터·localStorage)는 위에 남기고 여기는
-// **받은 것만** 그린다 — ShellList와 같은 모양이다. 이 저장소의 컴포넌트 seam은 정적
-// 마크업이라, 가지 조건(결정 82·108)과 핀의 생김새(결정 85)를 그물에 걸려면 훅을 부르지
-// 않는 자리가 있어야 한다(SidebarWorkList.test.tsx).
+// **받은 것만** 그린다. 이 저장소의 컴포넌트 seam은 정적 마크업이라, 구획이 서는 조건
+// (결정 82·108)과 핀의 생김새(결정 85)를 그물에 걸려면 훅을 부르지 않는 자리가 있어야
+// 한다(SidebarWorkList.test.tsx).
 export function WorkSectionList({
   sections,
   open,
   selectedSlug,
-  tab,
   shellCounts,
-  branchOpen,
-  nodeStands,
-  nodeOpen,
   onToggleSection,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
-  onToggleBranch,
-  onToggleNode,
-  onOpenSpec,
-  renderShells,
   renderRunning,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
   selectedSlug: string | null;
-  tab: ViewTab;
   shellCounts: Record<string, number>;
-  branchOpen: (slug: string) => boolean;
-  nodeStands: (slug: string) => boolean;
-  nodeOpen: (slug: string) => boolean;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  onToggleBranch: (work: WorkView) => void;
-  onToggleNode: (slug: string) => void;
-  onOpenSpec: (work: WorkView) => void;
-  renderShells: (work: WorkView) => ReactNode;
   renderRunning: (work: WorkView) => ReactNode;
 }) {
   const { pinned, main, drafts } = sections;
-  // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 가지를 붙이는 자리가 셋이 된다.
-  const node = (work: WorkView) => (
-    <WorkNode
+  // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 셋이 된다.
+  const row = (work: WorkView) => (
+    <WorkRow
       key={work.slug}
       work={work}
       active={work.slug === selectedSlug}
-      tab={tab}
       shellCount={shellCounts[work.slug] ?? 0}
-      branchOpen={branchOpen(work.slug)}
       onOpen={onOpen}
       onHover={onHover}
       onLeave={onLeave}
       onTogglePin={onTogglePin}
-      onToggleBranch={onToggleBranch}
-      nodeStands={nodeStands(work.slug)}
-      nodeOpen={nodeOpen(work.slug)}
-      onToggleNode={() => onToggleNode(work.slug)}
-      onOpenSpec={onOpenSpec}
-      shells={renderShells(work)}
       running={renderRunning(work)}
     />
   );
@@ -412,7 +248,7 @@ export function WorkSectionList({
             count={pinned.length}
             onToggle={() => onToggleSection("pinned")}
           />
-          <SectionBody open={open.pinned}>{pinned.map(node)}</SectionBody>
+          <SectionBody open={open.pinned}>{pinned.map(row)}</SectionBody>
         </>
       )}
 
@@ -430,7 +266,7 @@ export function WorkSectionList({
             {emptyMainNotice(sections)}
           </span>
         ) : (
-          main.map(node)
+          main.map(row)
         )}
       </SectionBody>
 
@@ -444,114 +280,8 @@ export function WorkSectionList({
             count={drafts.length}
             onToggle={() => onToggleSection("drafts")}
           />
-          <SectionBody open={open.drafts}>{drafts.map(node)}</SectionBody>
+          <SectionBody open={open.drafts}>{drafts.map(row)}</SectionBody>
         </>
-      )}
-    </>
-  );
-}
-
-/**
- * work 한 줄과 그 아래 트리(결정 71·73).
- *
- * **가지가 서는 조건은 합집합이다** — 지금 고른 work **또는** 셸이 하나라도 있는 work.
- * 뒤쪽이 있어야 「다른 work에서 `claude`가 돌고 있다」가 화면에서 사라지지 않는다.
- * `spec` 잎은 **고른 work에만** 선다: 남의 work의 문서는 그 work로 가야 뜻이 있고, 셋 넷의
- * work마다 `spec`이 서면 트리가 목록이 아니라 벽이 된다.
- *
- * 가지의 **속**은 슬롯으로 받는다(`shells`) — 터미널 스토어를 구독하는 자리를 그 한 곳으로
- * 좁히기 위해서다(ShellBranch 머리말). 여기서는 그것을 어디에 놓을지만 정한다.
- */
-function WorkNode({
-  work,
-  active,
-  tab,
-  shellCount,
-  branchOpen,
-  nodeStands,
-  nodeOpen,
-  onOpen,
-  onHover,
-  onLeave,
-  onTogglePin,
-  onToggleBranch,
-  onToggleNode,
-  onOpenSpec,
-  shells,
-  running,
-}: {
-  work: WorkView;
-  active: boolean;
-  tab: ViewTab;
-  shellCount: number;
-  branchOpen: boolean;
-  nodeStands: boolean;
-  nodeOpen: boolean;
-  onOpen: (slug: string) => void;
-  onHover: (slug: string, row: HTMLElement) => void;
-  onLeave: () => void;
-  onTogglePin: (work: WorkView) => void;
-  onToggleBranch: (work: WorkView) => void;
-  onToggleNode: () => void;
-  onOpenSpec: (work: WorkView) => void;
-  shells: ReactNode;
-  running: ReactNode;
-}) {
-  // **한 번 연 블럭은 남는다**(위 `blockOpen` 표). 셸이 도는 work은 열어 본 적이 없어도
-  // 선다 — 「돌고 있는 것」이 화면에서 사라지지 않는 규칙이 그대로다(결정 73).
-  const stands = nodeStands || shellCount > 0;
-
-  // **블럭이 설 때도 사라질 때도 부드럽다**(`useCollapse`). 접기 토글은 `SectionBody`가
-  // 이미 nav와 같은 애니메이션으로 돌리는데, 「이 블럭이 아예 있는가」는 마운트/언마운트라
-  // 그 트랜지션이 설 자리가 없었다 — 실물에서 **다른 work을 누르면 목록이 68px
-  // 순간이동하는** 모습으로 났다(실측). 앞 work의 블럭이 즉시 걷혀 아래를 끌어올린 것이다.
-  const block = useCollapse(stands);
-  return (
-    <>
-      <WorkRow
-        work={work}
-        active={active}
-        onOpen={onOpen}
-        onHover={onHover}
-        onLeave={onLeave}
-        onTogglePin={onTogglePin}
-        shellCount={shellCount}
-        running={running}
-        // 접기 토글은 **고른 work의 것에만** 있다(결정 101). 남의 work 행을 건드리면
-        // 그 work로 가는 것이 사이드바에 남은 규칙 하나다.
-        branch={active && stands ? { open: nodeOpen, onToggle: onToggleNode } : undefined}
-      />
-      {block.mounted && (
-        // 블럭의 속. nav 항목이 자기 가지를 이는 모양과 **같은 겹**이다(Sidebar.tsx) —
-        // 머리행 + `SectionBody` + 그 안의 `TreeIndent`.
-        <SectionBody open={block.shown && nodeOpen}>
-          <TreeIndent>
-            {/* **블럭이 서면 잎도 선다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
-                들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는
-                work은 블럭이 서 있는데 그 안에 `terminal`만 남았다. 남의 것을 누르면
-                그 work으로 간다(결정 101). */}
-            <TreeLeaf
-              icon={File}
-              label="spec"
-              // 켜짐은 **고른 work의 것에만** 준다 — 남의 work의 잎까지 강조하면
-              // 「지금 보고 있는 것」이 한 화면에 둘이 된다(ShellList의 `showing`과 같은 규칙).
-              active={active && tab === "spec"}
-              onClick={() => onOpenSpec(work)}
-              // 본문 위로 끌면 그 절반에 문서가 선다(결정 86·90). 남의 work의 잎을 떨구면
-              // 그 work으로 옮겨 가 그 자리에 선다 — 셸 행과 같은 규칙이다(결정 101).
-              onPointerDown={(event) =>
-                armDrag({ kind: "spec", slug: work.slug, shellId: null }, event)
-              }
-            />
-            <BranchHeader
-              label="terminal"
-              count={shellCount}
-              open={branchOpen}
-              onToggle={() => onToggleBranch(work)}
-            />
-            <SectionBody open={branchOpen}>{shells}</SectionBody>
-          </TreeIndent>
-        </SectionBody>
       )}
     </>
   );
@@ -619,6 +349,39 @@ function CardField({
   );
 }
 
+/**
+ * 구획의 속 — 접기 애니메이션은 `grid-template-rows`를 0fr↔1fr로 보간한다. `height:auto`는
+ * 트랜지션되지 않고, `max-height`는 목록 길이를 추정해야 해서 항목이 많을수록 타이밍이
+ * 어긋난다.
+ *
+ * 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 `inert`로
+ * 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
+ *
+ * **한때 `components/shell/sidebar-tree`에 살았다.** 그 모듈은 구획 헤더와 사이드바 가지가
+ * 접히는 규격을 함께 쓰라고 만든 것인데, 판 04가 가지를 통째로 걷으면서 접히는 것이 구획
+ * 하나만 남았다 — 쓰는 자리가 이 파일뿐인 조각을 `components/shell/`에 남겨 두면 다음
+ * 사람이 그 이름(`tree`)에서 없는 구조를 읽는다.
+ */
+function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      inert={!open}
+      className={cn(
+        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+      )}
+    >
+      {/* **위 여백을 갖지 않는다.** 이 상자는 부르는 쪽의 세로 flow 안에 서고 그쪽이 이미
+          `gap-(--row-gap)`를 준다 — 여기서 한 번 더 물면 머리행 아래만 간격이 두 배가 되어
+          (실측 6px 대 3px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
+          접힐 때 함께 사라지는 자리라 오래 안 보였다. */}
+      <div className="overflow-hidden">
+        <div className="flex flex-col gap-(--row-gap)">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
 // 라벨은 항목과 **같은 크기**이고 색으로만 구분된다. 한 단계 작게 두면 라벨이 아니라 목록과
@@ -682,7 +445,7 @@ function SectionHeader({
 //
 // 행 전체가 button이던 것이 **바깥 상자 + 형제 버튼 둘**이 됐다. 중첩 button은 HTML에서
 // 허용되지 않고, span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — SpecTree의
-// 파일 행과 ShellList가 이미 같은 문제를 그 구조로 풀었다.
+// 파일 행이 이미 같은 문제를 그 구조로 풀었다.
 // 배경(선택·hover)은 바깥 상자가 갖고, 가로 여백은 이름 버튼이 품는다: 바깥이 가진
 // padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가
 // 된다. 남는 것은 오른쪽 끝 pr-1뿐이고 그건 핀을 행 가장자리에서 띄우는 값이다.
@@ -698,7 +461,6 @@ function WorkRow({
   onTogglePin,
   shellCount,
   running,
-  branch,
 }: {
   work: WorkView;
   active: boolean;
@@ -710,14 +472,6 @@ function WorkRow({
   shellCount: number;
   /** 둘째 줄의 로고들. 슬롯으로 온다 — 그리는 것은 `RunningMarks`다. */
   running: ReactNode;
-  /**
-   * 이 행이 **블럭의 머리행**이면(아래에 `spec`·`terminal`이 딸린다). 있으면 이 행을
-   * 누르는 것이 곧 접기 토글이고, 없으면 그 work으로 가는 것이다.
-   *
-   * **남의 work의 행에는 없다**(결정 101 — 남의 work 항목을 건드리면 그 work로 간다.
-   * 접기 토글은 고른 work의 것에만 있다).
-   */
-  branch?: { open: boolean; onToggle: () => void };
 }) {
   return (
     <div
@@ -725,28 +479,22 @@ function WorkRow({
       onMouseLeave={onLeave}
       className={cn(
         // **flex가 아니라 grid다**(결정 2). 둘째 줄이 서면서 행이 두 줄이 됐는데, 첫 줄을
-        // 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어 「행 상자」를 부모로 집는
-        // 자리들이 통째로 어긋난다 — 배경 상자(e2e가 핀의 부모로 집는다)와 블럭의 속
-        // (행 상자의 **다음 형제**)이 그것이다. 두 칸 grid면 이름·핀이 직계 자식으로
-        // 남고 둘째 줄만 두 칸을 걸쳐 아래에 선다.
+        // 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어 **「행 상자」를 부모로 집는**
+        // 자리가 조용히 어긋난다 — e2e가 핀의 `parentElement`로 배경 상자를 잰다.
+        // 두 칸 grid면 이름·핀이 직계 자식으로 남고 둘째 줄만 두 칸을 걸쳐 아래에 선다.
         "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
       <button
         type="button"
-        // 표식과 `aria-expanded`가 **이 버튼에 있다** — 행 전체가 곧 토글이라서다.
-        // 값을 싣는 것은 한 화면에 가지가 여럿이기 때문이고(sidebar-tree의 같은 주석),
-        // 슬러그로 갈리는 것은 제목을 사람이 고쳐도 슬러그는 안 바뀌기 때문이다.
-        data-branch={branch ? work.slug : undefined}
-        aria-expanded={branch?.open}
-        // **누르면 무엇이 되는가가 갈린다**(결정 101). 남의 work 행이면 그 work로 가고,
-        // 고른 work의 행이면 접기 토글이다 — `terminal` 머리행이 이미 쓰는 규칙 그대로이고,
-        // 구획 헤더(`작업`)가 행 전체로 접히는 것과도 같은 모양이다.
-        onClick={branch ? branch.onToggle : () => onOpen(work.slug)}
+        // **누르면 그 work로 간다 — 늘 그것 하나다**(결정 6). 한때 고른 work의 행만은
+        // 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그 갈래가 통째로 사라졌다.
+        // 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙 전부다.
+        onClick={() => onOpen(work.slug)}
         // 첫 줄의 높이를 **이 버튼이 든다** — 바깥이 grid가 되면서 `h-full`은 두 줄을
         // 합친 높이가 됐다. nav 항목과 맞춰야 하는 규격은 여전히 이 한 줄의 32px이다.
-        className="group/row flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
+        className="flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
         <span
@@ -757,19 +505,6 @@ function WorkRow({
         >
           {work.title}
         </span>
-        {/* 화살표가 **제목 곁**에 선다 — 구획 헤더와 같은 자리·같은 규칙이다. 펼쳐져 있을 때
-            숨는 것은 결정 85가 핀에 세운 것과 같은 근거다: 좁은 사이드바에서 상시 아이콘은
-            정작 봐야 할 제목보다 먼저 눈에 들어온다. 접혀 있으면 늘 보인다 — 그때는
-            「아래에 더 있다」가 그 화살표 말고는 화면에 없다. */}
-        {branch && (
-          <ChevronDown
-            className={cn(
-              "size-(--glyph) shrink-0 text-tertiary transition-[opacity,rotate] duration-[180ms] ease-panel",
-              branch.open ? "opacity-0 group-hover/row:opacity-100" : "-rotate-90 opacity-100",
-            )}
-            strokeWidth={2.2}
-          />
-        )}
       </button>
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
           좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
