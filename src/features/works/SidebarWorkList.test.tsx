@@ -37,7 +37,7 @@ function render(
     selectedSlug = null,
     shellCounts = {},
     // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
-    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯을 부르는가**뿐이다.
+    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
@@ -264,9 +264,11 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
     expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
-  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯을 아예 안 부른다", () => {
-    // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
-    // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
+  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯이 안 선다", () => {
+    // 슬롯을 **부르는** 것은 `SidebarWorkList.tsx`가 모든 work에서 한다 — 여기서 재는 것은
+    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `ShellMetaFor`의 몸통이 안 돌아
+    // 구독도 안 붙는다: 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」로 뒤집히는
+    // 자리는 마운트다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
     const [가] = shellBoxesOf(markup);
     expect(가.html).toContain('data-meta="가"');
