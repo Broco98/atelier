@@ -3,7 +3,7 @@ import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import PageHeader from "@/components/shell/PageHeader";
-import { ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
+import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
@@ -234,6 +234,12 @@ function ArchivePage({
                 // 자리표시가 선다. 그래도 줄번호 `1` 하나보다 낫다: 그쪽은 빈 문서라는
                 // 거짓말이고 자리표시는 사실이다. 경로를 내려 주는 일은 다음 판이다.
                 <ImageDoc path={null} name={current} />
+              ) : body === "html" ? (
+                // **여기만 `?? ""`를 걷어낸다**(결정 17). 이 화면은 `placeholderData`가 없어
+                // 문서를 옮길 때마다 `undefined`를 지나는데, 프레임이 그 값을 빈 문서로
+                // 받으면 한 번 항해했다 다시 항해한다. 마크다운·소스가 잠깐 비는 것과는
+                // 성질이 다르다 — 나머지 두 자리는 그대로 둔다.
+                <HtmlDoc content={content} name={current} />
               ) : body === "pretty" ? (
                 <PrettyView
                   file={current}

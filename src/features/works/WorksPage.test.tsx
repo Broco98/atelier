@@ -186,6 +186,18 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     expect(toggle(markup)).toMatch(/\sdisabled=""/);
   });
 
+  // html은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 칸이다. 여기서도 두 칸을 함께
+  // 본다: 렌더만 켜고 토글을 잠그면 **소스를 볼 길이 사라진다**(이 work에서 지금보다
+  // 나빠지는 유일한 경로다).
+  it("html 문서를 열면 본문이 코드뷰가 아니고 토글이 살아 있다", () => {
+    const markup = render({ specFiles: ["목업/조각.html"] });
+    expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
+    // 내용이 아직 안 왔으므로 **프레임을 아직 안 그린다** — 빈 문서로 한 번 항해했다
+    // 다시 항해하는 깜빡임을 만들지 않는다(결정 9). 프레임이 정말 서는 것은 L3가 본다.
+    expect(markup).not.toContain("<iframe");
+    expect(toggle(markup)).not.toMatch(/\sdisabled=""/);
+  });
+
   it("spec 문서가 하나도 없으면 토글이 잠긴다", () => {
     // 본문이 "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다 — 결정 21이 없애려는
     // 바로 그 어긋남이다. 비-md 파일보다 **먼저** 만나는 화면이기도 하다: 새로 만든

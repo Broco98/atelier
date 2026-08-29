@@ -235,6 +235,12 @@ describe("파일 종류 표", () => {
   it.each([
     ["overview.md", "pretty", "source"],
     ["01-판/spec.MD", "pretty", "source"],
+    // html은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 지점이다. 렌더가 기본이고
+    // 원문 쪽이 살아 있다. 둘을 함께 넣어야 한다: 렌더만 켜고 토글을 잠그면 소스를 볼
+    // 길이 사라진다.
+    ["목업/조각.html", "html", "source"],
+    ["a/b/c.HTML", "html", "source"],
+    ["옛것.htm", "html", "source"],
     // 그림은 토글과 무관하다 — 읽을 소스가 없다
     ["샷.png", "image", "image"],
     ["a/b/c.JPG", "image", "image"],
@@ -270,6 +276,8 @@ describe("파일 종류 표", () => {
   it.each([
     ["overview.md", false],
     ["shot.png.md", false],
+    ["목업/조각.html", false],
+    ["옛것.htm", false],
     ["샷.png", true],
     ["도해.svg", true],
     ["notes.txt", true],

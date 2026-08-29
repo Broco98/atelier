@@ -48,9 +48,11 @@ export const WORKS: WorkView[] = [
       },
     ],
     specDir: "~/.atelier/works/pinned-work/spec",
-    // **그림 파일을 하나 둔다** — 트리에서 그림을 고르면 본문이 그림으로 서는지가 이
-    // 층에서만 보인다(글로 읽으면 줄번호 `1` 하나만 있는 빈 화면이 된다).
-    specFiles: ["overview.md", "증거/샷.png"],
+    // **파일 종류 표의 네 줄이 여기 다 있다** — 트리에서 고를 수 있는 것이 곧 이 층에서
+    // 볼 수 있는 것이다. 그림은 글로 읽으면 줄번호 `1` 하나만 있는 빈 화면이 되고,
+    // `.html`은 프레임으로 서고, `.json`은 그 옆에서 **지금 그대로**임을 받쳐 준다.
+    // **뒤에 더한다** — 앞 검사 하나가 이 목록을 자리로 집는다(`specFiles[1]`이 그림이다).
+    specFiles: ["overview.md", "증거/샷.png", "목업/조각.html", "메타.json"],
   },
   {
     slug: "plain-work",
@@ -102,6 +104,31 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 셸 닫기 확인 창이 이 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다.
   pty_command_running: true,
   pty_kill: null,
+};
+
+/**
+ * spec 파일 읽기의 **경로별** 답. `read_spec_file`이 경로와 무관하게 한 문자열로 답하던
+ * 자리를 넓힌 것이다 — 같은 시나리오에서 `.md`·`.html`·`.json`을 각각 열어야 한다.
+ *
+ * **여기 없는 경로는 위 `FIXTURE_COMMANDS.read_spec_file`의 그 한 줄이 계속 답한다** —
+ * 앞 시나리오들이 그대로 돈다.
+ *
+ * `.html`은 **실물 목업을 안 넣는다.** 27KB짜리 남의 work 파일이 이 저장소의 검사에
+ * 들어오면 그 파일이 바뀔 때 여기가 깨지고, 그 문서가 증명하는 두 값(264px·32px)은
+ * 껍데기와 무관하게 통과해 자동 검사로서 아무것도 못 지킨다. **몇 줄짜리 합성**이
+ * 껍데기가 실제로 섰는지(`body` 여백)와 스크립트가 돌았는지를 다 잰다.
+ */
+export const SPEC_FILE_BODIES: Record<string, string> = {
+  // **doctype이 없다** — 아티팩트 조각이라 껍데기를 받는 쪽이다. 껍데기가 섰는지는
+  // `body` 여백으로 갈린다(껍데기가 없으면 UA 기본 8px이다).
+  "목업/조각.html": [
+    "<title>조각</title>",
+    '<p id="조각">껍데기 없는 아티팩트 조각</p>',
+    // 프레임 안에서 스크립트가 돌았다는 증거. `allow-scripts`가 빠지면 여기가 안 남는다.
+    '<script>document.body.dataset.ran = "1";</script>',
+    "",
+  ].join("\n"),
+  "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',
 };
 
 // 여기 없는 pty 커맨드(`pty_write`)는 **일부러 뺐다.** 지금 타자를 치는 시나리오가 없고,

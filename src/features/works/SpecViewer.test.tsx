@@ -1,13 +1,17 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import SpecViewer, { PrettyView, SourceView } from "./SpecViewer";
+import SpecViewer, { HtmlDoc, PrettyView, SourceView, htmlSrcdoc } from "./SpecViewer";
 import { useSpecFile } from "./hooks";
 import type { WorkView } from "./types";
 
 // 이 화면이 파일을 **읽는지**를 세려면 조회 계층을 걷어내야 한다. 정적 렌더는 이펙트를
 // 돌리지 않아 IPC가 나가지는 않지만, 훅이 어떤 인자로 불렸는가는 그 자리에서만 보인다.
+//
+// 읽어 온 내용도 여기서 정한다 — 「아직 안 왔다」(`undefined`)와 「왔는데 비었다」(`""`)가
+// 프레임 경로에서 갈리기 때문이다(결정 9).
+const read = vi.hoisted(() => ({ content: undefined as string | undefined }));
 vi.mock("./hooks", () => ({
-  useSpecFile: vi.fn(() => ({ data: undefined })),
+  useSpecFile: vi.fn(() => ({ data: read.content })),
   useHomeDir: () => ({ data: undefined }),
 }));
 
@@ -233,6 +237,7 @@ describe("SpecViewer 본문 갈래", () => {
 
   beforeEach(() => {
     vi.mocked(useSpecFile).mockClear();
+    read.content = undefined;
   });
 
   it("그림은 읽지 않는다", () => {
@@ -240,7 +245,7 @@ describe("SpecViewer 본문 갈래", () => {
     expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
   });
 
-  it.each(["overview.md", "notes.txt"])("%s는 읽는다", (file) => {
+  it.each(["overview.md", "notes.txt", "목업/조각.html"])("%s는 읽는다", (file) => {
     viewer(file);
     expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
   });
@@ -258,5 +263,92 @@ describe("SpecViewer 본문 갈래", () => {
   it("마크다운은 토글이 갈린다", () => {
     expect(viewer("overview.md")).not.toContain("[tab-size:4]");
     expect(viewer("overview.md", true)).toContain("[tab-size:4]");
+  });
+
+  it("html은 토글이 갈린다 — 렌더와 원문을 오간다", () => {
+    read.content = "<p>조각</p>";
+    expect(viewer("목업/조각.html")).toContain("<iframe");
+    const source = viewer("목업/조각.html", true);
+    expect(source).toContain("[tab-size:4]");
+    expect(source).not.toContain("<iframe");
+  });
+});
+
+// ─── HTML 프레임 ───
+//
+// 결정 1·2·4·5·9. 통로는 `srcdoc` 하나이고, 껍데기는 **없을 때만** 씌우며, sandbox 값에
+// 조건이 없고, 마크업을 문자열로 조립하지 않는다.
+describe("htmlSrcdoc 껍데기", () => {
+  // **이 검사가 무엇을 잡는지를 정확히 적는다** — 우리가 이 껍데기를 우발적으로 고치는
+  // 것이다(결정 2). **아티팩트 발행 쪽이 바뀌어도 이 검사는 초록이다.** 발행 껍데기와의
+  // 드리프트를 알려 주는 장치는 이 저장소에 없다 — 1:1은 손으로 한 번 확인한다.
+  it("아티팩트 조각에는 발행 껍데기를 그대로 씌운다", () => {
+    expect(htmlSrcdoc("<p>조각</p>")).toBe(
+      '<!doctype html>\n<html data-theme="light">\n<head>\n' +
+        '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+        "<style>:root{color-scheme:light}body{margin:0;font:14px system-ui;background:#fbfbfc}\n" +
+        "img{max-width:100%}[hidden]{display:none!important}</style>\n" +
+        "</head><body><p>조각</p></body></html>",
+    );
+  });
+
+  // 온전한 문서에 껍데기를 또 씌우면 `<html>`이 겹친다. 판정은 **BOM과 선행 공백을 버린 뒤
+  // 대소문자를 무시한다** — 손으로 넣는 파일이라 셋 다 실재한다.
+  it.each([
+    ["소문자 doctype", "<!doctype html><p>온전한 문서</p>"],
+    ["대문자 DOCTYPE", "<!DOCTYPE html><p>온전한 문서</p>"],
+    ["BOM이 앞에 붙은 것", "\uFEFF<!doctype html><p>온전한 문서</p>"],
+    ["선행 공백과 줄바꿈", "\n  <!doctype html><p>온전한 문서</p>"],
+    ["doctype 없이 <html>부터", "<html><body>온전한 문서</body></html>"],
+    ["대문자 <HTML>", "<HTML><BODY>온전한 문서</BODY></HTML>"],
+  ])("%s는 그 파일이 정한 그대로 선다", (_name, content) => {
+    expect(htmlSrcdoc(content)).toBe(content);
+  });
+
+  // 「아직 안 왔다」와 갈린다 — 안 온 것은 아예 안 그리고(아래), 빈 파일은 껍데기를 쓴다.
+  it("빈 파일은 껍데기를 씌워 그린다", () => {
+    expect(htmlSrcdoc("")).toContain("<!doctype html>");
+    expect(htmlSrcdoc("")).toContain("<body></body>");
+  });
+});
+
+describe("HtmlDoc 프레임", () => {
+  const frame = (content: string | undefined, name = "목업/조각.html") =>
+    renderToStaticMarkup(<HtmlDoc content={content} name={name} />);
+
+  // 빈 `srcdoc`으로 한 번 항해했다 다시 항해하는 깜빡임을 만들지 않는다(결정 9).
+  it("내용이 아직 안 왔으면 프레임을 안 그린다", () => {
+    expect(frame(undefined)).toBe("");
+  });
+
+  it("빈 파일은 프레임을 그린다 — 안 온 것과 다르다", () => {
+    expect(frame("")).toContain("<iframe");
+  });
+
+  // 값에 조건을 달지 않는다(결정 5). `allow-same-origin`을 함께 주면 프레임이 앱과 같은
+  // 출처가 되어 **부모에 있는 자기 sandbox 속성을 지우고 리로드**할 수 있다.
+  it('sandbox 값이 정확히 "allow-scripts"다', () => {
+    expect(frame("<p>a</p>")).toContain('sandbox="allow-scripts"');
+    expect(frame("<p>a</p>")).not.toContain("allow-same-origin");
+  });
+
+  // `<iframe>`은 이름이 없으면 「프레임」으로만 읽힌다. 그림 본문이 `alt`에 파일 경로를
+  // 넣는 관습을 그대로 따른다.
+  it("파일 경로가 접근성 이름으로 붙는다", () => {
+    expect(frame("<p>a</p>")).toContain('title="목업/조각.html"');
+  });
+
+  // 결정 4의 세 겹을 통째로 무의미하게 만드는 실수는 하나뿐이다 — 마크업을 문자열로
+  // 조립하는 것. 그러면 파일 안의 따옴표가 속성을 깨고 나와 **부모 문서에** 스크립트를
+  // 심고, 그 순간 sandbox도 IPC 키도 우회된다. React가 값으로만 넣는지를 여기서 시도해 본다.
+  it("따옴표와 </iframe>이 든 내용으로도 부모 마크업이 안 깨진다", () => {
+    const hostile = '"><script>parent.document.title="털렸다"</script></iframe><iframe srcdoc="';
+    const markup = frame(hostile, "적대적.html");
+    // 부모 마크업의 태그는 `<iframe …></iframe>` 딱 하나다 — 내용이 속성을 깨고 나왔다면
+    // 여기가 늘어난다. 개수로 세는 것이 「무엇이 새어 나왔나」를 미리 알 필요가 없어서다.
+    expect(markup.match(/</g)).toHaveLength(2);
+    expect(markup).not.toContain("<script");
+    // 그러면서 내용은 잃지 않는다 — 이스케이프된 채 속성 안에 그대로 있다.
+    expect(markup).toContain("&lt;script&gt;");
   });
 });

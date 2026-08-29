@@ -105,7 +105,7 @@ function isImageFile(path: string | null): boolean {
   return dot > 0 && IMAGE_EXTENSIONS.includes(path.slice(dot + 1).toLowerCase());
 }
 
-/** 본문이 무엇으로 서는가. `html`은 아직 아무도 안 내놓는다 — 그 줄은 다음 판이 넣는다. */
+/** 본문이 무엇으로 서는가. */
 export type DocBody = "pretty" | "source" | "image" | "html";
 
 /**
@@ -114,6 +114,7 @@ export type DocBody = "pretty" | "source" | "image" | "html";
  * | 파일 | 본문 기본 | `[소스]` 토글 |
  * | --- | --- | --- |
  * | `.md` | 예쁜 보기 | 살아 있음 |
+ * | `.html` · `.htm` | 렌더 | 살아 있음 |
  * | 그림 | 그림 | 잠김 |
  * | 그 외 | 소스 | 잠김 |
  *
@@ -124,14 +125,27 @@ export type DocBody = "pretty" | "source" | "image" | "html";
  *
  * `.svg`는 **그림 칸이다** — 마크업이기도 하지만 이미 그림 확장자이고, 표는 그림을 먼저 본다.
  *
+ * `.html`은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 지점이다(그림은 읽을 소스가 없어서
+ * 잠긴 것이 옳았다). 두 칸을 함께 넣어야 한다: 렌더만 켜고 토글을 잠그면 **소스를 볼 길이
+ * 사라진다** — 이 표에서 지금보다 나빠지는 유일한 경로다.
+ *
  * 고른 문서가 없으면(spec이 하나도 없는 work) 마크다운으로 떨어진다. 그 기본값은 **본문
  * 분기를 위한 것이지 「누를 것이 있다」는 뜻이 아니다** — 잠그는 것은 화면의 사정이다.
  */
 export function docBody(file: string | null, showSource: boolean): DocBody {
   if (isImageFile(file)) return "image";
-  const markdown = file === null || file.toLowerCase().endsWith(".md");
-  if (!markdown) return "source";
-  return showSource ? "source" : "pretty";
+  const rendered = renderedBody(file);
+  if (rendered === null) return "source";
+  return showSource ? "source" : rendered;
+}
+
+/** 원문을 안 켰을 때 이 파일이 서는 모양. `null`이면 켜든 끄든 소스다. */
+function renderedBody(file: string | null): "pretty" | "html" | null {
+  if (file === null) return "pretty";
+  const lower = file.toLowerCase();
+  if (lower.endsWith(".md")) return "pretty";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  return null;
 }
 
 /**
