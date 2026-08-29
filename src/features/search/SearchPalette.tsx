@@ -26,6 +26,7 @@ import type { SearchHit } from "./types";
 export function SearchList({
   query,
   hits,
+  ready,
   truncated,
   selected,
   onQuery,
@@ -34,6 +35,12 @@ export function SearchList({
 }: {
   query: string;
   hits: SearchHit[];
+  /**
+   * 답이 왔는가. **빈 목록이 「없다」인지 「아직 모른다」인지는 줄들로 못 가른다** — 팔레트는
+   * 열 때마다 새로 마운트되고 캐시도 안 남기므로(hooks.ts), 첫 답이 오기 전 한 프레임을
+   * 「맞는 것이 없습니다」로 채우면 여는 것마다 그 줄이 깜빡인다.
+   */
+  ready: boolean;
   /** 상한에 걸려 못 나온 줄이 있는가. **코어가 말해 준다** — 줄 수로는 못 가른다. */
   truncated: boolean;
   /** 지금 골라진 줄. 목록이 비면 아무 줄도 안 골라진다(`-1`). */
@@ -122,20 +129,24 @@ export function SearchList({
           ))}
           {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
               여기 서지 않는다(`role="option"`이 없다). */}
-          {hits.length === 0 && (
+          {ready && hits.length === 0 && (
             <p data-note="" className="px-2.5 py-1.5 text-[13px] text-muted-foreground">
               맞는 것이 없습니다
             </p>
           )}
         </div>
         {/* 결정 24. **「더 보기」는 안 만든다** — 걸리면 좁히는 것이 답이고, 목록은 걸렸다는
-            것만 말한다. 목록 밖에 두는 것은 구르는 상자 안이면 끝까지 내려야 보이기 때문이다. */}
+            것만 말한다. 목록 밖에 두는 것은 구르는 상자 안이면 끝까지 내려야 보이기 때문이다.
+
+            **수를 적지 않는다.** 상한(`LAYER_LIMIT`)은 코어에 살고 여기로 오지 않는데, 여기에
+            베껴 적으면 상한이 두 자리에 살게 된다 — `truncated`를 값으로 실어 온 이유가 바로
+            그것이라, 그 줄에서 수를 말하면 고치는 날 화면만 거짓말을 한다. */}
         {truncated && (
           <p
             data-note=""
             className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground"
           >
-            20개까지만 보입니다 — 더 치면 좁혀집니다
+            일부만 보입니다 — 더 치면 좁혀집니다
           </p>
         )}
       </div>
@@ -185,6 +196,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
     <SearchList
       query={query}
       hits={hits}
+      ready={data !== undefined}
       truncated={data?.truncated ?? false}
       selected={at}
       onQuery={(next) => {

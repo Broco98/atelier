@@ -20,12 +20,13 @@ const doc = (slug: string, path: string, archived = false): SearchHit => ({
 
 const render = (
   hits: SearchHit[],
-  { selected = 0, query = "", truncated = false } = {},
+  { selected = 0, query = "", truncated = false, ready = true } = {},
 ) =>
   renderToStaticMarkup(
     <SearchList
       query={query}
       hits={hits}
+      ready={ready}
       truncated={truncated}
       selected={selected}
       onQuery={() => {}}
@@ -95,10 +96,19 @@ describe("치는 자리와 목록이 하는 말", () => {
     expect(markup).not.toContain('role="option"');
   });
 
+  // 답이 오기 전의 빈 목록은 **「없다」가 아니다.** 팔레트는 열 때마다 새로 마운트되고 캐시도
+  // 안 남기므로(hooks.ts), 이것을 안 가르면 여는 것마다 첫 답이 올 때까지 「맞는 것이
+  // 없습니다」가 선다 — 「치는 동안 즉시 따라온다」의 반대다.
+  it("아직 답이 안 왔으면 없다고 말하지 않는다", () => {
+    expect(render([], { selected: -1, ready: false })).not.toContain("맞는 것이 없습니다");
+  });
+
   // 결정 24. 상한에 걸린 것을 말하지 않으면, 안 나온 문서가 **없는 것처럼** 보인다.
+  // **수는 안 센다.** 상한은 코어 한 자리에 살고(`LAYER_LIMIT`) 화면으로 오지 않으므로,
+  // 여기서 수를 세면 상한을 고치는 날 화면과 검사가 함께 낡는다.
   it("잘렸을 때만 잘렸다고 말한다", () => {
-    expect(render([doc("가", "overview.md")], { truncated: true })).toContain("20개까지만");
-    expect(render([doc("가", "overview.md")])).not.toContain("20개까지만");
+    expect(render([doc("가", "overview.md")], { truncated: true })).toContain("일부만 보입니다");
+    expect(render([doc("가", "overview.md")])).not.toContain("일부만 보입니다");
   });
 });
 
