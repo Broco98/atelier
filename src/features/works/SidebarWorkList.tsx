@@ -13,6 +13,15 @@ import type { WorkView } from "./types";
 // 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
 const HOVER_DELAY_MS = 350;
 
+// 제목이 흐르는 **속도**(결정 11). 거리에 비례한다 — 고정 지속시간은 기각됐다: 넘침 30px은
+// 12px/s로 기고 200px은 80px/s로 달려 읽는 속도가 제목마다 갈린다.
+const MARQUEE_SPEED = 50; // px/s
+// 오른쪽 끝 페이드의 폭. **`index.css`의 `--title-fade`와 같은 수여야 한다** — 흐르는 거리가
+// 「넘침 + 이 값」이고(결정 11), 거리는 CSS가 정하는데(결정 10) 그것을 **시간으로 바꾸는**
+// 자리가 여기라서 둘이 같은 수를 읽는다. `calc()`가 길이를 시간으로 못 바꾸는 것이 이
+// 한 값이 두 언어에 걸치는 이유 전부다(결정 12).
+const TITLE_FADE = 24; // px
+
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
 const PINNED_OPEN_KEY = "sidebar-pinned-open";
@@ -478,10 +487,37 @@ function WorkRow({
   /** 행 오른쪽 끝의 **셸 메타**. 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
   shellMeta: ReactNode;
 }) {
+  // 제목 상자 — **hover 진입 때만** 만진다(아래 onMouseEnter).
+  const titleBox = useRef<HTMLSpanElement>(null);
   return (
     <div
-      onMouseEnter={(e) => onHover(work.slug, e.currentTarget)}
-      onMouseLeave={onLeave}
+      onMouseEnter={(e) => {
+        // **재는 것은 속도 하나이고, 이 한 번뿐이다**(결정 12). 흐르는 거리는 CSS가 정하므로
+        // (결정 10) 여기서 넘침을 읽는 것은 그 거리를 **시간으로** 바꾸기 위해서다 —
+        // `calc()`는 길이를 시간으로 못 바꾼다. 자리가 이 핸들러인 것은 호버 카드 타이머를
+        // 이미 여기서 걸기 때문이고, 그래서 **쉴 때 계측도 관찰자도 없다**: 사이드바 폭이
+        // 바뀌면 `100cqw`가 스스로 다시 풀리고, 호버 중에 폭을 끄는 경우는 없다.
+        //
+        // **표식을 지속시간과 함께 단다.** 마퀴를 `:hover`로 켜면 브라우저가 이 핸들러보다
+        // 먼저 hover 스타일을 계산해, 그 행을 처음 가리킬 때 트랜지션이 `--marquee-ms` 없이
+        // 0ms로 만들어지고 제목이 툭 튀어 끝으로 간다(실측). 둘이 한 번의 스타일 변화로
+        // 들어가야 그 갈래가 없다 — 그래서 켜는 것도 여기다.
+        const box = titleBox.current;
+        if (box) {
+          const over = box.scrollWidth - box.clientWidth;
+          box.style.setProperty(
+            "--marquee-ms",
+            `${Math.round(((over + TITLE_FADE) / MARQUEE_SPEED) * 1000)}ms`,
+          );
+          box.setAttribute("data-marquee", "");
+        }
+        onHover(work.slug, e.currentTarget);
+      }}
+      onMouseLeave={() => {
+        // 제자리로 돌아온다 — 복귀 시간(180ms)은 표식이 없는 평상시 규칙이 든다(결정 11).
+        titleBox.current?.removeAttribute("data-marquee");
+        onLeave();
+      }}
       className={cn(
         // **flex가 아니라 grid다**(결정 1). 메타와 핀이 **2열 같은 칸에 겹쳐** 서야 하는데,
         // 그 둘을 상자 하나로 묶으면 요소만 늘고 칸 폭 계산은 똑같다. 그리고 첫 줄을 상자로
@@ -512,13 +548,27 @@ function WorkRow({
         className="flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
         <StatusIcon status={work.status} />
+        {/* **제목은 `…`이 아니라 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
+            읽힌다**(결정 9). 폭으로는 이 문제를 못 풀어서다 — 핀을 띄워도 +24px, 이 버튼의
+            여백을 없애도 +6px, 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이라 다 합쳐도
+            두 글자다. 그래서 이 판은 제목 폭을 짜내지 않는다.
+
+            **상자와 안쪽 글자가 갈려 있다.** 상자가 컨테이너이자 마스크이고 흐르는 것은
+            안쪽 글자다 — 규격도 거리도 `index.css`의 `[data-title]`이 든다(결정 10·11).
+            여기 `flex-1 min-w-0`은 그 딸린 조정이다: `container-type: inline-size`가
+            「내 폭이 내용에 안 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가
+            **0으로 무너져** 제목이 통째로 사라진다.
+
+            색은 상자가 든다 — 안쪽 글자가 그대로 물려받는다. */}
         <span
+          ref={titleBox}
+          data-title=""
           className={cn(
-            "min-w-0 truncate text-[13.5px] font-medium",
+            "min-w-0 flex-1 text-[13.5px] font-medium",
             work.status === "done" && "text-tertiary",
           )}
         >
-          {work.title}
+          <span className="block w-max whitespace-nowrap">{work.title}</span>
         </span>
       </button>
       {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,

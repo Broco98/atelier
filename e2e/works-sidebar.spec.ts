@@ -1,4 +1,4 @@
-import { expect, test } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { installFixtureBackend, markRunning, readIpcRecord, unknownIpcCalls } from "./harness";
 
@@ -14,6 +14,24 @@ const [pinnedWork, plainWork] = WORKS;
 // 헤더의 접근성 이름에는 개수가 함께 들어간다 — 라벨과 옅은 숫자가 같은 버튼 안이다.
 const PINNED_HEADER = "고정 1";
 const MAIN_HEADER = "작업 1";
+
+// 오른쪽 끝 페이드의 폭이자 **마퀴가 넘침 위에 더 가는 거리**다(결정 11) — 그만큼 더 가지
+// 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
+const TITLE_FADE = 24;
+
+/** 제목 상자 — 마스크가 걸리고 넘침을 재는 자리다. 흐르는 것은 그 **안쪽 글자**다. */
+const titleBoxOf = (page: Page, title: string) =>
+  page.getByRole("button", { name: title, exact: true }).locator("[data-title]");
+
+/** 흐른 거리. `transform`이 문자열이라 행렬에서 x만 꺼낸다 — 안 흐르면 `none`이라 0이다. */
+const shiftOf = (box: Locator) =>
+  box.locator("span").evaluate((el) => {
+    const transform = getComputedStyle(el).transform;
+    return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
+  });
+
+/** 넘친 폭. 0보다 커야 흐를 것이 있다. */
+const overflowOf = (box: Locator) => box.evaluate((el) => el.scrollWidth - el.clientWidth);
 
 test("핀은 hover에만 뜨고, 누르면 그 사실이 백엔드로 나간다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -347,6 +365,133 @@ test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안
   expect((await readIpcRecord(page))?.calls).toContain(
     `set_work_pinned {"slug":"${plainWork.slug}","pinned":true}`,
   );
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 9~12 — **긴 제목이 `…` 대신 페이드로 끝나고, 마우스를 올리면 흘러 끝까지 읽힌다.**
+// 폭으로는 이 문제를 못 푼다(핀 +24px · 이름 버튼 여백 +6px · 기본 폭 0px — 다 합쳐도 두
+// 글자다). 그래서 마퀴가 답이고, 이 판은 제목 폭을 짜내지 않는다.
+//
+// **이 층이 유일한 그물이다.** 정적 마크업 seam은 마스크가 걸리는지도 글자가 흐르는지도
+// 영영 못 본다 — 거리는 `100cqw`가 풀고 타이밍은 트랜지션이 든다. 둘 다 진짜 CSS와 레이아웃이
+// 있어야 난다.
+//
+// **넘치는 제목과 안 넘치는 제목을 함께 본다.** 「흐른다」만 보면 아무것도 안 흐르는 화면에서
+// 초록이 되고, 「안 흐른다」만 보면 그 반대다.
+test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 흐른다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+
+  const 긴제목 = titleBoxOf(page, pinnedWork.title);
+  const 짧은제목 = titleBoxOf(page, plainWork.title);
+  // **먼저 둘이 갈려 있음을 센다.** 이것이 없으면 아래 두 단언이 서로를 못 지킨다.
+  const 넘침 = await overflowOf(긴제목);
+  expect(넘침).toBeGreaterThan(0);
+  expect(await overflowOf(짧은제목)).toBeLessThanOrEqual(0);
+
+  // **`…`이 아니다**(결정 9·18). 끊는 것은 오른쪽 끝 24px 그라디언트이고, 마스크는 상시라
+  // 넘치지 않는 제목에도 걸려 있다(결정 12 — 거의 꽉 찬 제목의 끝 글자가 옅어지는 대가).
+  await expect(긴제목).toHaveCSS("text-overflow", "clip");
+  for (const box of [긴제목, 짧은제목]) {
+    expect(await box.evaluate((el) => getComputedStyle(el).maskImage)).toContain("linear-gradient");
+  }
+  // 쉴 때는 제자리다 — 쉴 때 계측도 없다(결정 12).
+  expect(await shiftOf(긴제목)).toBe(0);
+
+  // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 24px이
+  // 없으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다(결정 11).
+  await 긴제목.hover();
+  const 거리 = 넘침 + TITLE_FADE;
+
+  // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않고, 호버
+  // 카드(350ms)보다는 먼저 답한다.
+  await page.waitForTimeout(80);
+  expect(-(await shiftOf(긴제목))).toBeLessThan(2);
+
+  // **그다음 천천히 흐른다 — 50px/s, 거리에 비례**(결정 11). 이 네 줄이 없으면 「툭 튀어
+  // 끝으로 갔다」도 초록이 된다: 실제로 그렇게 났다(실측) — 마퀴를 `:hover`로 켜면 그 행을
+  // **처음** 가리킬 때 트랜지션이 지속시간 없이 만들어져 0ms로 굳는다(index.css의 표식 주석).
+  await page.waitForTimeout(370);
+  const 중간 = -(await shiftOf(긴제목));
+  await page.waitForTimeout(400);
+  const 나중 = -(await shiftOf(긴제목));
+  expect(중간).toBeGreaterThan(4);
+  expect(나중).toBeLessThan(거리 - 4);
+  const 속도 = (나중 - 중간) / 0.4;
+  expect(속도).toBeGreaterThan(30);
+  expect(속도).toBeLessThan(70);
+
+  await expect
+    .poll(async () => Math.abs((await shiftOf(긴제목)) + 거리) <= 2, {
+      timeout: 8000,
+      message: "제목이 넘침 + 페이드 폭만큼 흐르지 않았다",
+    })
+    .toBe(true);
+
+  // **호버 카드는 그대로다**(결정 11) — 350ms 뒤에 떠서 전체 제목을 줄바꿈해 보여준다.
+  // 마퀴가 빠른 답, 카드가 완전한 답이라 이 판은 카드를 안 건드린다.
+  await expect(page.locator("[data-popover]")).toContainText(pinnedWork.title);
+
+  // **끝에서 멈춘다 — 반복하지 않는다**(결정 11). 왕복 루프는 시선을 계속 잡아끈다.
+  const 멈춘자리 = await shiftOf(긴제목);
+  await page.waitForTimeout(600);
+  expect(await shiftOf(긴제목)).toBe(멈춘자리);
+
+  // 마우스가 떠나면 제자리로 돌아온다(180ms, 지연 0).
+  await 짧은제목.hover();
+  await expect.poll(() => shiftOf(긴제목)).toBe(0);
+
+  // **안 넘치는 제목은 hover해도 가만히 있다** — 시작 지연이 지나도 0이다. `min`이 0을
+  // 고르기 때문이고(결정 10), 페이드 폭을 그냥 빼면 여기가 24px까지 흐른다.
+  await page.waitForTimeout(500);
+  expect(await shiftOf(짧은제목)).toBe(0);
+
+  // **모션을 끄면 안 흐른다. 페이드는 남는다**(결정 11) — 그때 전체 제목을 보는 길이 카드다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await 긴제목.hover();
+  await page.waitForTimeout(700);
+  expect(await shiftOf(긴제목)).toBe(0);
+  expect(await 긴제목.evaluate((el) => getComputedStyle(el).maskImage)).toContain("linear-gradient");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 10 — **흐르는 거리는 CSS가 정한다. 아무도 재지 않는다.** 상자가 인라인 사이즈
+// 컨테이너라 안쪽 글자가 `100cqw`로 상자 폭을 되읽고, 사이드바 폭이 바뀌면 CSS가 스스로 다시
+// 푼다. **폭이 드래그로 바뀌는 이 화면에서 그게 결정적이다** — 관찰자가 필요 없는 이유가 이것이고,
+// 「관찰자를 안 단다」 자체는 소스 스캔(SidebarWorkList.test.tsx)이 든다.
+//
+// 이 층에서만 보인다: 폭을 실제로 끌어야 나고, `cqw`는 진짜 레이아웃에서만 풀린다.
+test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+
+  const 긴제목 = titleBoxOf(page, pinnedWork.title);
+  const 처음넘침 = await overflowOf(긴제목);
+
+  // 폭 핸들은 사이드바의 **오른쪽 가장자리**에 얹힌 5px 띠다 — 좌표는 그 상자에서 읽는다.
+  const handle = page.locator('aside [title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]');
+  const box = await handle.boundingBox();
+  if (!box) throw new Error("사이드바 폭 핸들의 상자를 못 읽었다");
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 30, y, { steps: 5 });
+  await page.mouse.up();
+
+  // 좁아진 만큼 넘침이 늘었다 — 이것이 안 서면 아래는 「끌지도 못했다」를 초록으로 읽는다.
+  const 좁힌뒤 = await overflowOf(긴제목);
+  expect(좁힌뒤).toBeGreaterThan(처음넘침);
+
+  // **다시 그리지도, 다시 재지도 않았는데** 흐르는 거리가 새 폭에 맞는다.
+  await 긴제목.hover();
+  await expect
+    .poll(async () => Math.abs((await shiftOf(긴제목)) + (좁힌뒤 + TITLE_FADE)) <= 2, {
+      timeout: 8000,
+      message: "좁힌 뒤의 넘침에 흐르는 거리가 안 맞는다",
+    })
+    .toBe(true);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

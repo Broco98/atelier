@@ -317,6 +317,54 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
   });
 });
 
+// 결정 9~12 — **제목이 `…` 대신 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
+// 읽힌다.** 폭으로는 이 문제를 못 푼다: 핀을 띄워도 +24px, 이름 버튼 여백을 없애도 +6px,
+// 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이다 — 다 합쳐도 두 글자다.
+//
+// **여기서 보는 것은 마크업이 그 자리를 만들어 두는가뿐이다.** 페이드가 실제로 걸리는지도,
+// 글자가 흐르는지도 진짜 CSS가 있어야 나므로 e2e가 그쪽의 유일한 그물이다(결정 15).
+describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
+  // 상자와 그 **안쪽 글자**를 함께 집는다. 둘이 갈려 있는 것이 이 판의 구조 전부다 —
+  // 상자가 컨테이너이자 마스크이고, 흐르는 것은 그 안의 글자다(결정 10).
+  const titleOf = (markup: string) => {
+    const found = /<span data-title="" class="([^"]*)"><span class="([^"]*)">([^<]*)<\/span><\/span>/.exec(
+      markup,
+    );
+    return found && { box: found[1], text: found[2], title: found[3] };
+  };
+
+  it("제목이 상자 **안쪽 글자**로 서고, 말줄임이 아니다", () => {
+    // `…`을 그리던 `truncate`가 사라진 자리다(결정 9). 흐르는 것이 글자라 상자와 갈려야
+    // 하고, 상자에 걸린 마스크가 그 끝을 흐린다 — 그 둘은 e2e가 실측으로 본다.
+    const one = titleOf(render(works("가")))!;
+    expect(one.title).toBe("가");
+    expect(one.box).not.toContain("truncate");
+    expect(one.text).toContain("w-max");
+  });
+
+  it("상자는 폭을 **밖에서** 받는다", () => {
+    // 결정 10의 딸린 조정이다. `container-type: inline-size`는 「내 폭이 내용에 안
+    // 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가 **0으로 무너져** 제목이
+    // 통째로 사라진다. `flex-1`(basis 0)과 `min-w-0`이 함께 가야 한다.
+    const one = titleOf(render(works("가")))!;
+    expect(one.box).toContain("flex-1");
+    expect(one.box).toContain("min-w-0");
+  });
+
+  it("**관찰자를 새로 달지 않는다** — 흐르는 거리는 CSS가 정한다", () => {
+    // 결정 10. `100cqw`가 상자 폭을 되읽으므로 사이드바 폭을 드래그해도 CSS가 스스로 다시
+    // 푼다 — 폭이 바뀌는 이 화면에서 그게 결정적이다. 재는 것은 **속도 하나**이고 그 자리는
+    // 호버 카드 타이머를 이미 거는 핸들러다(결정 12): 쉴 때 계측도, 관찰자도 없다.
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(source).not.toContain("ResizeObserver");
+    // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
+    expect(source.split("scrollWidth").length - 1).toBe(1);
+  });
+});
+
 describe("행 아래에 아무것도 딸리지 않는다", () => {
   // 결정 6. 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가 화면마다 갈린다 —
   // 셸을 고르는 자리가 탭 줄로 돌아갔으므로(결정 7·8) 사이드바에서 그 길을 걷는다.
