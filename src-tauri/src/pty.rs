@@ -329,8 +329,8 @@ fn measure(pool: &PtyPool) -> Running {
 /// **재는 것과 쏘는 것을 가르는 자리.** 직전에 쏜 값과 다른 셸만 나온다.
 ///
 /// adr-04가 폴링을 산 값이 이 한 줄에 있다 — 비용은 재기가 아니라 **다시 그리기**에 있다.
-/// 안 가르면 사이드바와 탭 줄이 초마다 통째로 다시 그려진다(`ShellBranch`의 `sameBranch`가
-/// 막고 있는 그 문제와 같은 것이다).
+/// 안 가르면 사이드바와 탭 줄이 초마다 통째로 다시 그려진다(`shell-registry.ts`의
+/// `sameBranch`가 막고 있는 그 문제와 같은 것이다).
 fn changes(sent: &Running, now: &Running) -> Vec<PtyRunning> {
     let mut out = Vec::new();
     for (id, running) in now {

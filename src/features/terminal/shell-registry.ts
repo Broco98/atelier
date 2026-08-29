@@ -456,6 +456,28 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
 export type ShellHotkey = "new" | "close" | "app";
 
 /**
+ * 이 모듈이 **키에서 보는 것 전부**. `KeyboardEvent`를 이름으로 받지 않는 것은 머리말의
+ * 「DOM 없는 기본 환경에서 그대로 돈다」 때문이다 — 구조로만 받으면 테스트가 객체 리터럴
+ * 하나로 부른다. 여섯 함수가 같은 여섯 필드를 손으로 다시 적던 것을 한 자리로 묶었다.
+ */
+interface KeyPress {
+  type: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+/**
+ * **window에서** 듣는 판정이 보는 것. 키에 더해 **어디서 눌렸는지**를 본다 — 입력 자리
+ * (xterm의 숨은 `<textarea>` 포함)에서는 비켜야 해서다(`typesInto`).
+ */
+interface KeyFromWindow extends KeyPress {
+  target: EventTarget | null;
+}
+
+/**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
  *
  * **결정 29의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
@@ -474,14 +496,7 @@ export type ShellHotkey = "new" | "close" | "app";
  * 수식키가 하나라도 더 붙으면 **셸 몫이다.** ⌘⇧T·⌥⌘W까지 먹으면 근거 없이 넓히는 것이고,
  * 그 미끄러짐이 결정 29가 막으려는 것이다.
  */
-export function shellHotkey(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): ShellHotkey | null {
+export function shellHotkey(event: KeyPress): ShellHotkey | null {
   if (event.type !== "keydown") return null;
   // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
   // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
@@ -511,14 +526,7 @@ export type ShellNav = { kind: "index"; n: number } | { kind: "cycle"; delta: 1 
  * **`key`가 아니라 `code`로 본다.** `key`는 배열과 IME를 탄다 — 한글 입력기가 켜져 있으면
  * 같은 키가 자모로 온다(`shellHotkey`와 같은 이유).
  */
-export function shellNavKey(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): ShellNav | null {
+export function shellNavKey(event: KeyPress): ShellNav | null {
   if (event.type !== "keydown") return null;
   if (event.code === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
     return { kind: "cycle", delta: event.shiftKey ? -1 : 1 };
@@ -536,15 +544,7 @@ export function shellNavKey(event: {
  * 먹는데, 셸을 붙일 때마다 포커스가 그리로 가므로 그 화면이 곧 정상 상태다.
  * 그래서 그 하나만 예외로 가른다 — work 제목을 고치는 `<input>`은 그대로 비킨다.
  */
-export function shellNavFromWindow(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  target: EventTarget | null;
-}): ShellNav | null {
+export function shellNavFromWindow(event: KeyFromWindow): ShellNav | null {
   const nav = shellNavKey(event);
   if (nav === null) return null;
   return typesInto(event.target) && !isShellInput(event.target) ? null : nav;
@@ -639,14 +639,7 @@ export function cycleShell(
  * Enter를 조합의 끝으로 읽고 붙들고 있던 음절을 흘려보내므로(`imeKeyDown`), 여기서 무엇을
  * 돌려주든 그 순서는 안 바뀐다.
  */
-export function shellRewrite(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-}): string | null {
+export function shellRewrite(event: KeyPress): string | null {
   if (event.type !== "keydown") return null;
   if (!event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return null;
   return event.code === "Enter" ? "\x1b\r" : null;
@@ -677,15 +670,7 @@ export function shellRewrite(event: {
  * 그 문장을 이 함수에 대해 거짓으로 만들었다(노드에서 스텁 없이 부르면 터진다). 가르는 일은
  * `typesInto`가 값으로 한다.
  */
-export function opensShellFromWindow(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  target: EventTarget | null;
-}): boolean {
+export function opensShellFromWindow(event: KeyFromWindow): boolean {
   if (shellHotkey(event) !== "new") return false;
   return !typesInto(event.target);
 }
@@ -702,15 +687,7 @@ export function opensShellFromWindow(event: {
  * 확인 창이 두 번 뜬다. 그쪽이 `stopPropagation`으로도 막지만 그 한 겹에만 기대지 않는
  * 이유는 `opensShellFromWindow`의 머리말과 같다.
  */
-export function closesShellFromWindow(event: {
-  type: string;
-  code: string;
-  ctrlKey: boolean;
-  metaKey: boolean;
-  altKey: boolean;
-  shiftKey: boolean;
-  target: EventTarget | null;
-}): boolean {
+export function closesShellFromWindow(event: KeyFromWindow): boolean {
   if (shellHotkey(event) !== "close") return false;
   return !typesInto(event.target);
 }
@@ -764,24 +741,6 @@ export function shellRowName(shell: Shell): string {
   // 프로젝트를 앞에 적었으니 뒤 갈래에서는 뺀다 — 안 빼면 타이틀 없는 칸이 `cli · cli`가 된다.
   const tail = shell.title ?? shell.shellName ?? UNNAMED;
   return shell.project ? `${shell.project} · ${tail}` : tail;
-}
-
-/**
- * 행의 **둘째 줄 — 지금 상태**다(결정 45). 도는 셸은 어디서 떴는지, 끝난 셸은 어떻게
- * 끝났는지. 한 자리가 둘을 겸하는 것은 궁금한 것이 그때마다 하나뿐이어서다.
- *
- * **`pid`는 여기 없다**(결정 45). 백엔드가 주는 것은 `PtySpawned { id, shellName }`뿐이라
- * 화면까지 오는 길이 아예 없고, 결정 22가 요구하는 「조용히 죽은 이유 읽기」에 필요한
- * 것은 종료 코드와 이유이며 그것은 이미 와 있다.
- */
-export function shellRowStatus(shell: Shell): string {
-  // 끝난 칸이 먼저다 — `shellEndLabels`가 null을 주는 것이 곧 「아직 돈다」이므로 상태를
-  // 여기서 한 번 더 가르지 않는다.
-  const end = shellEndLabels(shell);
-  if (end) return end.notice;
-  // cwd가 없는 것은 최상위 터미널의 셸뿐이고(결정 25) 그 화면에는 이 목록이 없다. 그래도
-  // 빈 문자열을 돌려주지 않는 것은 행이 두 줄로 서기 때문이다 — 비면 이유 없는 빈 줄이 남는다.
-  return shell.cwd ?? "데이터 루트";
 }
 
 /**

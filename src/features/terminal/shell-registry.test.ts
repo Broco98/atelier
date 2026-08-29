@@ -34,7 +34,6 @@ import {
   shellNavFromWindow,
   shellNavKey,
   shellRowName,
-  shellRowStatus,
   shellsOf,
   cycleShell,
   sameBranch,
@@ -737,27 +736,6 @@ describe("셸 행의 두 줄", () => {
     // `cli · cli`가 되는 자리다. 뒤 갈래에서 프로젝트를 빼지 않으면 그렇게 된다.
     const { state, id } = 칸("cli", "~/w/trees/cli");
     expect(shellRowName(shellOf(state, id))).not.toBe("cli · cli");
-  });
-
-  it("도는 셸의 둘째 줄은 cwd다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    expect(shellRowStatus(shellOf(state, id))).toBe("~/w/trees/atelier");
-  });
-
-  it("끝난 셸의 둘째 줄은 종료 사유로 바뀐다 — cwd가 그 자리를 넘긴다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    expect(shellRowStatus(shellOf(markExited(state, id, EXIT_42), id))).toBe("종료 코드 42");
-  });
-
-  it("못 뜬 셸의 둘째 줄은 그 이유다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    const reason = "$SHELL을 실행할 수 없습니다: /nonexistent";
-    expect(shellRowStatus(shellOf(markFailed(state, id, reason), id))).toBe(reason);
-  });
-
-  it("cwd가 없어도 둘째 줄이 비지 않는다 — 행이 두 줄로 서기 때문이다", () => {
-    const { state, id } = 칸(null, null);
-    expect(shellRowStatus(shellOf(state, id)).trim()).not.toBe("");
   });
 });
 
