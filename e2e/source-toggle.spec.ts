@@ -14,7 +14,7 @@ test("어느 칸을 눌러도 문서와 원문이 오간다", async ({ page }) =
   await page.goto(`/works/${work.slug}?file=${encodeURIComponent(work.specFiles[0])}`);
 
   const doc = page.getByRole("button", { name: "문서로 보기" });
-  const source = page.getByRole("button", { name: "마크다운 원문 보기" });
+  const source = page.getByRole("button", { name: "원문 보기" });
   // 예쁜 보기에서는 `# 개요`가 제목으로 선다. 원문 보기면 글자 그대로라 제목이 없다 —
   // 값만 보면 「aria-pressed만 뒤집히고 본문은 그대로」가 통과한다.
   const heading = page.getByRole("heading", { name: "개요" });

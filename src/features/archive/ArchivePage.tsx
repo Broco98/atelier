@@ -3,7 +3,8 @@ import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import PageHeader from "@/components/shell/PageHeader";
-import { PrettyView, SourceView } from "@/features/works/SpecViewer";
+import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
+import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
 import ArchiveList from "./ArchiveList";
@@ -48,10 +49,21 @@ function ArchivePage({
   // 열리던 경로가 아예 없다. 목록에 없는 경로면 아래에서 기본값으로 떨어진다.
   // 목록의 첫 항목이 그 기본값이다 — 기록이 있으면 그것이 맨 앞이다 (list_archived_docs)
   const current = currentFile && docs.includes(currentFile) ? currentFile : (docs[0] ?? null);
-  const { data: content } = useArchivedFile(selected?.slug ?? null, current);
 
   const [showSource, setShowSource] = useState(false);
-  const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
+  // 본문 갈래는 Works 화면과 **같은 표**가 정한다(결정 7·11). 여기서 식을 한 벌 더 들면
+  // 같은 spec이 어디서 열렸느냐에 따라 다르게 보인다 — 실제로 그랬다: 그림이 줄번호 `1`
+  // 하나로 섰고, 비-md에서 토글이 안 잠겨 **선 칸만 「문서」로 옮겨 가고 본문은 소스에
+  // 눌러앉았다**(눌리는데 아무 일도 안 나는 그 어긋남, 결정 21).
+  const body = docBody(current, showSource);
+  // **읽을지 말지도 그 표가 정한다**(결정 15) — 그림이면 안 읽는다. 아카이브 목록에도
+  // `.png`가 뜨고(list_archived_docs가 spec_files를 그대로 쓴다) 읽기 바닥은
+  // read_to_string이라, 그냥 읽으면 고를 때마다 UTF-8 실패가 재시도까지 달고 나간다.
+  // 읽기만 표 밖에 남기면 결정 11이 막으려던 **화면별 예외**가 여기 생긴다.
+  const { data: content } = useArchivedFile(
+    selected?.slug ?? null,
+    body === "image" ? null : current,
+  );
 
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
@@ -159,7 +171,15 @@ function ArchivePage({
             <>
               {/* 글자 하나로 「소스」라고만 적던 자리다 — 여기도 같은 컨트롤을 쓴다(결정 33).
                   한 화면에서만 다른 어휘를 쓰면 같은 일이 두 모양으로 읽힌다. */}
-              {selected && <SourceToggle on={showSource} onChange={setShowSource} />}
+              {selected && (
+                <SourceToggle
+                  on={showSource}
+                  // 잠김도 표에서 나온다 — 본문이 토글을 안 따르는 파일에서 두 칸이 살아
+                  // 있으면 선 칸과 본문이 서로 다른 말을 한다(결정 11).
+                  locked={ignoresSourceToggle(current)}
+                  onChange={setShowSource}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => setPanelOpen((open) => !open)}
@@ -209,9 +229,18 @@ function ArchivePage({
                 <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
                   남은 문서가 없어요
                 </div>
-              ) : showSource || !isMarkdown ? (
-                <SourceView content={content ?? ""} wide={wide} />
-              ) : (
+              ) : body === "image" ? (
+                // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — **뜨지는 않고**
+                // 자리표시가 선다. 그래도 줄번호 `1` 하나보다 낫다: 그쪽은 빈 문서라는
+                // 거짓말이고 자리표시는 사실이다. 경로를 내려 주는 일은 다음 판이다.
+                <ImageDoc path={null} name={current} />
+              ) : body === "html" ? (
+                // **여기만 `?? ""`를 걷어낸다**(결정 17). 이 화면은 `placeholderData`가 없어
+                // 문서를 옮길 때마다 `undefined`를 지나는데, 프레임이 그 값을 빈 문서로
+                // 받으면 한 번 항해했다 다시 항해한다. 마크다운·소스가 잠깐 비는 것과는
+                // 성질이 다르다 — 나머지 두 자리는 그대로 둔다.
+                <HtmlDoc content={content} name={current} />
+              ) : body === "pretty" ? (
                 <PrettyView
                   file={current}
                   content={content ?? ""}
@@ -223,6 +252,8 @@ function ArchivePage({
                   // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
                   specRoot={null}
                 />
+              ) : (
+                <SourceView content={content ?? ""} wide={wide} />
               )}
             </div>
           )}

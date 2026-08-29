@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
-import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
@@ -38,10 +38,10 @@ interface SpecViewerProps {
   // 화면(WorksPage)이 이미 풀어서 내려준다 — 트리의 "지금 이 문서" 표시와 본문이 같은
   // 값을 봐야 하고, 그 트리가 이제 형제 컬럼에 살기 때문이다.
   file: string | null;
-  // 본문이 소스 보기인가. **버튼의 켜짐 그대로가 아니다** — 거기에 파일 종류가 얹혀 있다
-  // (결정 6의 비-md 고정). 그 식도 화면이 든다: 켜짐은 패널 버튼이, 본문은 여기가 쓰는데
-  // 둘의 공통 조상이 화면뿐이다.
-  sourceView: boolean;
+  // `[소스]`가 켜져 있는가 — **사람이 정한 값 그대로**다. 파일 종류를 얹는 일은 표
+  // (`docBody`)가 하므로 화면은 식을 안 든다. 상태의 주인이 화면인 것은 그대로다:
+  // 켜짐은 패널 버튼이, 본문은 여기가 쓰는데 둘의 공통 조상이 화면뿐이다.
+  showSource: boolean;
   // 문서 안 링크를 따라갈 때. 히스토리를 **만든다** — 따라 들어갔으면 돌아올 수 있어야 한다.
   // (히스토리를 만들지 않는 트리 훑기는 패널 쪽 길이라 여기를 지나지 않는다.)
   onNavigate: (path: string) => void;
@@ -55,17 +55,20 @@ function SpecViewer({
   panelOpen,
   sidebarOpen,
   file,
-  sourceView,
+  showSource,
   onNavigate,
   onCopy,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  // **그림은 안 읽는다.** PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은 줄번호
-  // `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로 건다.
-  const image = isImageFile(file);
-  const { data: content } = useSpecFile(work.slug, image ? null : file);
+  // 본문이 무엇으로 서는가 — **표가 정한다**(결정 7). 이 화면은 그 값으로 갈리기만 한다.
+  //
+  // **읽을지 말지도 그 값이다**: PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은
+  // 줄번호 `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로
+  // 건다. 여기서 그림 판정을 따로 부르면 표가 바뀔 때 읽기만 옛 규칙을 따른다.
+  const body = docBody(file, showSource);
+  const { data: content } = useSpecFile(work.slug, body === "image" ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
@@ -105,11 +108,12 @@ function SpecViewer({
                 </code>
               </div>
             </div>
-          ) : image ? (
+          ) : body === "image" ? (
             <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />
-          ) : sourceView ? (
-            <SourceView content={content ?? ""} wide={wide} />
-          ) : (
+          ) : body === "html" ? (
+            // `?? ""`로 뭉개지 않는다 — 안 온 것과 빈 파일이 프레임 경로에서 갈린다(결정 9)
+            <HtmlDoc content={content} name={file ?? ""} />
+          ) : body === "pretty" ? (
             <PrettyView
               file={file ?? ""}
               content={content ?? ""}
@@ -119,6 +123,8 @@ function SpecViewer({
               onNavigate={onNavigate}
               specRoot={specRoot}
             />
+          ) : (
+            <SourceView content={content ?? ""} wide={wide} />
           )}
         </div>
       </div>
@@ -133,8 +139,11 @@ function SpecViewer({
  * 렌더러) — 같은 「그릴 수 없다」가 어디서 났느냐에 따라 달리 보이면 안 된다.
  *
  * `specRoot`를 모르면(아카이브 화면, 홈을 아직 못 읽음) 그릴 수 없다.
+ *
+ * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 그림 자리만 화면마다 다른
+ * 것을 그리면 그 표가 「유일한 자리」가 아니게 된다. 아래 두 보기와 같은 근거다.
  */
-function ImageDoc({ path, name }: { path: string | null; name: string }) {
+export function ImageDoc({ path, name }: { path: string | null; name: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
@@ -152,6 +161,94 @@ function ImageDoc({ path, name }: { path: string | null; name: string }) {
         />
       )}
     </div>
+  );
+}
+
+// ─── HTML 프레임 ───
+
+/**
+ * 아티팩트 발행 껍데기 — **발행 쪽에서 그대로 베낀 것이다**(결정 2).
+ *
+ * `data-theme="light"`를 박는 것은 앱이 라이트 전용이기 때문이다(결정 3). 아티팩트는
+ * 뷰어의 명시적 선택을 root에 찍고 목업이 그 값으로 갈리므로, 이 값이 「뷰어가 라이트를
+ * 골랐다」와 같은 상태가 되어 1:1이 성립한다.
+ *
+ * **전부 베끼는 근거는 「지금 이 파일」이 아니라 「다음 파일」이다.** 실측상 지금 목업이
+ * 여기서 실제로 얻는 것은 `body{margin:0}` 한 줄뿐이지만(`srcdoc` 문서는 doctype이 없어도
+ * quirks mode로 안 떨어져, 갈리는 것이 그 여백 하나다 — e2e/spec-html.spec.ts 머리말),
+ * 앞으로 들어올 조각이 어느 줄에 기댈지는 미리 알 수 없고 비용은 CSS 네 줄이다.
+ *
+ * **아래 문자열은 발행본 원문에서 떠 온 것이다** — 2026-08-29, 그 목업의 발행본
+ * (artifact `99087708`)의 `<head>`. 따옴표 유무까지 그대로다: 「근사해 그리지 않는다」가
+ * 규칙이라(결정 2) 다음 사람이 발행본과 **문자열로** 견줄 수 있어야 한다. 발행 쪽의
+ * 프레임 런타임 스크립트와 `<base>`는 안 베낀다 — 그것은 문서 리셋이 아니라 호스트다.
+ * `<html>`에 `data-theme`는 발행 시점엔 없고 런타임이 뷰어 테마로 찍는다(결정 3).
+ *
+ * 처음 판은 이 값을 **말로 풀어 쓴 설명에서 근사해** 적었고 네 자리가 어긋나 있었다
+ * (`background` `#fbfbfc`→`#faf9f5`, `color` 누락, 글꼴 `system-ui`, `padding:0` 누락,
+ * `[hidden]`의 `:not([hidden=until-found])`). 목업은 배경·글자색·글꼴을 자기가 정해서
+ * 화소로 안 갈렸지만(실측: 1000px 폭 12,800,000화소 전부 일치), **껍데기에 기대는 조각을
+ * 하나 세우자 전 화소가 갈렸다** — 이 상수가 지키려던 「다음 파일」이 바로 그것이다.
+ */
+const ARTIFACT_SHELL_HEAD =
+  '<!doctype html>\n<html data-theme="light">\n<head>\n' +
+  '<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">\n' +
+  "<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}\n" +
+  "img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style>\n" +
+  "</head><body>";
+const ARTIFACT_SHELL_TAIL = "</body></html>";
+
+/**
+ * 파일 내용을 프레임이 항해할 문서로 만든다 — **껍데기는 없을 때만 씌운다**(결정 2).
+ *
+ * 내용이 `<!doctype` 또는 `<html`로 시작하면 온전한 문서로 보고 그대로 통과시킨다.
+ * 온전한 문서에 껍데기를 또 씌우면 `<html>`이 겹치고, 반대로 늘 안 씌우면 아티팩트 조각이
+ * 발행본과 갈린다. 가르는 값이 doctype 하나라 규칙이 한 줄이다.
+ *
+ * 판정은 **BOM과 선행 공백을 버린 뒤 대소문자를 무시한다** — spec 문서는 사람이 손으로도
+ * 넣는 파일이라 셋 다 실재한다.
+ */
+export function htmlSrcdoc(content: string): string {
+  const head = content.replace(/^\uFEFF/, "").trimStart().toLowerCase();
+  if (head.startsWith("<!doctype") || head.startsWith("<html")) return content;
+  return ARTIFACT_SHELL_HEAD + content + ARTIFACT_SHELL_TAIL;
+}
+
+/**
+ * HTML 문서 한 장을 본문에 **렌더로** 세운다 — `ImageDoc`과 같은 자리, 같은 모양이다.
+ *
+ * 프레임은 본문 열을 채우고 **자기 안에서** 구른다(결정 9). 바깥 스크롤 상자는 넘치지
+ * 않으므로 막대가 한 개만 산다. 좁은 열에서는 프레임 안이 가로로도 구른다 — 안 잘라낸다.
+ * **본문 열 폭 규격(900/1200px)을 안 쓴다**: 아티팩트 1:1이 목적이다.
+ *
+ * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 프레임만 화면마다 다르면
+ * 그 표가 「유일한 자리」가 아니게 된다.
+ *
+ * **감수 — 프레임에 포커스가 들어가면 앱 단축키가 죽는다**(결정 13). ⌘1~9·⌃Tab·⌘B·⌘T·
+ * ⌘W·⌘↩가 전부 부모 창의 리스너라 프레임 경계를 안 넘는다. 프레임 밖을 한 번 클릭하면
+ * 돌아온다 — 뿌리는 iframe이 아니라 「단축키의 정본이 JS window 리스너다」이고, 거기서 고친다.
+ */
+export function HtmlDoc({ content, name }: { content: string | undefined; name: string }) {
+  // **안 온 것과 빈 파일을 가른다.** 안 왔으면 아예 안 그린다 — 빈 문서로 한 번 항해했다
+  // 다시 항해하는 깜빡임을 만들지 않는다(결정 9). 빈 문자열은 **온 것이라** 껍데기를
+  // 씌워 그린다: `?? ""`로 뭉치면 진짜 빈 `.html`이 영영 빈 화면이 된다.
+  if (content === undefined) return null;
+  return (
+    <iframe
+      // 이름이 없으면 「프레임」으로만 읽힌다. 그림 본문이 `alt`에 파일 경로를 넣는
+      // 관습을 그대로 따른다.
+      title={name}
+      // **React가 값으로만 넣는다**(결정 5). 마크업을 문자열로 조립하거나
+      // `dangerouslySetInnerHTML`로 넣으면 파일 안의 따옴표가 속성을 깨고 나와 **부모
+      // 문서에** 스크립트를 심고, 그 순간 아래 sandbox도 IPC 키도 우회된다.
+      srcDoc={htmlSrcdoc(content)}
+      // **값에 조건을 달지 않는다**(결정 5). 「신뢰하는 파일이면」 같은 갈래를 만드는 순간
+      // 그 갈래가 구멍이다. `allow-scripts`는 필요하고(목업의 토글이 스크립트다),
+      // `allow-same-origin`은 **주면 안 된다** — 둘을 함께 주면 프레임이 앱과 같은 출처가
+      // 되어 부모에 있는 자기 sandbox 속성을 지우고 리로드할 수 있다(결정 4).
+      sandbox="allow-scripts"
+      className="min-h-0 w-full flex-1 border-0"
+    />
   );
 }
 

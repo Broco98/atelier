@@ -137,7 +137,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     vi.unstubAllGlobals();
   });
 
-  const LABEL = 'aria-label="마크다운 원문 보기"';
+  const LABEL = 'aria-label="원문 보기"';
 
   function toggle(markup: string): string {
     return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
@@ -174,6 +174,28 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     // 토글이 켜지면 트리를 훑는 동안 버튼이 저 혼자 깜빡인다. 잠김은 흐림이 말한다.
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toContain("toggle-on");
+  });
+
+  // 그림도 「토글을 무시하는 파일」이다. 비-md와 **본문이 다르다** — 코드뷰가 아니라
+  // 그림 자리다. 표를 한 자리로 모으면서 이 두 칸이 붙었으므로 함께 고정한다.
+  it("그림 문서를 열면 본문이 그림 자리이고 토글이 잠긴다", () => {
+    const markup = render({ specFiles: ["샷.png"] });
+    expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
+    // 홈을 아직 못 읽어 asset URL이 없다 — 그림 본문의 자리표시가 그 자리를 채운다
+    expect(markup).toContain("border-dashed");
+    expect(toggle(markup)).toMatch(/\sdisabled=""/);
+  });
+
+  // html은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 칸이다. 여기서도 두 칸을 함께
+  // 본다: 렌더만 켜고 토글을 잠그면 **소스를 볼 길이 사라진다**(이 work에서 지금보다
+  // 나빠지는 유일한 경로다).
+  it("html 문서를 열면 본문이 코드뷰가 아니고 토글이 살아 있다", () => {
+    const markup = render({ specFiles: ["목업/조각.html"] });
+    expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
+    // 내용이 아직 안 왔으므로 **프레임을 아직 안 그린다** — 빈 문서로 한 번 항해했다
+    // 다시 항해하는 깜빡임을 만들지 않는다(결정 9). 프레임이 정말 서는 것은 L3가 본다.
+    expect(markup).not.toContain("<iframe");
+    expect(toggle(markup)).not.toMatch(/\sdisabled=""/);
   });
 
   it("spec 문서가 하나도 없으면 토글이 잠긴다", () => {
@@ -391,7 +413,7 @@ describe("WorksPage 터미널 탭", () => {
   // 본문이 셸이라 `</>`가 적용될 곳이 없다. 잠기지 않으면 눌러도 아무 일이 없는 버튼이 된다.
   it("터미널 탭에서는 소스 토글이 잠겨 있다", () => {
     const markup = render({}, "terminal");
-    const toggle = markup.match(/<button[^>]*aria-label="마크다운 원문 보기"[^>]*>/);
+    const toggle = markup.match(/<button[^>]*aria-label="원문 보기"[^>]*>/);
     expect(toggle, "소스 토글을 찾지 못했다").not.toBeNull();
     expect(toggle![0]).toContain("disabled");
   });
