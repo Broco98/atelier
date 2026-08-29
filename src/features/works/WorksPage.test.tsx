@@ -137,7 +137,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     vi.unstubAllGlobals();
   });
 
-  const LABEL = 'aria-label="마크다운 원문 보기"';
+  const LABEL = 'aria-label="원문 보기"';
 
   function toggle(markup: string): string {
     return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
@@ -391,7 +391,7 @@ describe("WorksPage 터미널 탭", () => {
   // 본문이 셸이라 `</>`가 적용될 곳이 없다. 잠기지 않으면 눌러도 아무 일이 없는 버튼이 된다.
   it("터미널 탭에서는 소스 토글이 잠겨 있다", () => {
     const markup = render({}, "terminal");
-    const toggle = markup.match(/<button[^>]*aria-label="마크다운 원문 보기"[^>]*>/);
+    const toggle = markup.match(/<button[^>]*aria-label="원문 보기"[^>]*>/);
     expect(toggle, "소스 토글을 찾지 못했다").not.toBeNull();
     expect(toggle![0]).toContain("disabled");
   });

@@ -40,7 +40,7 @@ export function SourceToggle({
       <Segment on={!on} locked={locked} label="문서로 보기" onFlip={() => onChange(!on)}>
         <Eye className="size-3.5" strokeWidth={1.9} />
       </Segment>
-      <Segment on={on} locked={locked} label="마크다운 원문 보기" onFlip={() => onChange(!on)}>
+      <Segment on={on} locked={locked} label="원문 보기" onFlip={() => onChange(!on)}>
         <CodeXml className="size-3.5" strokeWidth={2} />
       </Segment>
     </span>

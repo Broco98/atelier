@@ -312,7 +312,7 @@ describe("WorkPanel 소스 토글", () => {
     vi.unstubAllGlobals();
   });
 
-  const LABEL = 'aria-label="마크다운 원문 보기"';
+  const LABEL = 'aria-label="원문 보기"';
 
   // 여는 태그만 잘라낸다 — 클래스와 속성을 함께 봐야 "꺼짐 어휘"와 "잠김"이 갈린다
   function toggle(markup: string): string {
