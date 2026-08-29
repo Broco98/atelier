@@ -3,7 +3,7 @@
 # 추가하지 않는 한 포함될 길이 없다.
 [package]
 name = "atelier-test-bridge"
-version = "0.7.0"
+version = "0.10.0"
 edition = "2021"
 publish = false
 
