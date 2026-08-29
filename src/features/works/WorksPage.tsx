@@ -852,13 +852,19 @@ function WorksPage({
           포인터가 그 위를 지나가면 스스로 「내 위다」를 말한다. 좌표에서 절반을 계산하지
           않는 이유는 split-view.ts 머리말에 있다.
 
-          **덮는 범위가 이 행 전체다** — 머리행과 패널까지 든다. 본문 영역만 정확히
-          도려내려면 패널 폭을 여기서 알아야 하는데, 그 값은 패널이 드래그로 바꾸는 것이라
-          두 곳에 적히면 한쪽만 늙는다. 넉넉히 받는 쪽이 겨누기도 쉽다. */}
+          **패널까지 덮되 머리행은 뺀다.** 패널을 도려내려면 그 폭을 여기서 알아야 하는데,
+          그 값은 패널이 드래그로 바꾸는 것이라 두 곳에 적히면 한쪽만 늙는다 — 넉넉히 받는
+          쪽이 겨누기도 쉽다. 머리행은 반대다: 높이가 상수(`--titlebar-height`)이고, **끄는
+          것이 출발한 자리**라서다(결정 12). 덮으면 겹판이 제 출발점 위에 서서 「제자리에
+          돌려놓으면 아무 일도 안 난다」가 사라진다 — 칸을 12px 흔들고 손을 떼기만 해도
+          화면이 갈린다. 취소하는 몸짓이 그 한 줄뿐이라 그것을 남긴다. */}
       {dragSource && (
         // 겹판 **전체**를 벗어날 때만 끈다 — `pointerleave`는 버블하지 않아 반쪽 사이를
         // 오갈 때는 안 온다.
-        <div className="absolute inset-0 z-40 flex" onPointerLeave={clearHalf}>
+        <div
+          className="absolute inset-x-0 bottom-0 top-(--titlebar-height) z-40 flex"
+          onPointerLeave={clearHalf}
+        >
           {(["left", "right"] as const).map((half) => (
             <div
               key={half}

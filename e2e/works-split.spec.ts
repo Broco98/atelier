@@ -11,12 +11,26 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 
 const [, plainWork] = WORKS;
 
-/** `spec` 잎의 상자. 이 잎은 **고른 work에만** 선다. */
-async function specLeaf(page: Page) {
-  const leaf = page.locator('[data-leaf="spec"]');
-  await expect(leaf).toBeVisible();
-  const box = await leaf.boundingBox();
-  if (!box) throw new Error("spec 잎의 상자를 못 읽었다");
+/**
+ * 셸 탭의 **이름 버튼** — 끄는 자리다. 형제인 `×`는 안 끌린다(닫으려다 분할이 켜지면 안 된다).
+ *
+ * 켜짐을 말하는 쪽이 이름 버튼이라 그 속성으로 집는다 — 한때 사이드바 셸 행이 `data-shell-row`로
+ * 하던 일이고, 모양(클래스·자식 순서)으로 집지 않는 이유도 그쪽과 같다.
+ */
+async function shellTab(page: Page) {
+  const tab = page.locator('[data-tab="shell"] button[aria-pressed]');
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error("셸 탭의 상자를 못 읽었다");
+  return box;
+}
+
+/** 맨 앞 문서 칸. 고정 탭이라 `×`가 없어 칸 자체가 버튼이다(결정 7). */
+async function specTab(page: Page) {
+  const tab = page.locator('[data-tab="spec"]');
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error("문서 탭의 상자를 못 읽었다");
   return box;
 }
 
@@ -55,36 +69,6 @@ async function moveOnto(page: Page, half: "left" | "right") {
 const resizeCalls = async (page: Page) =>
   ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_resize")).length;
 
-test("spec 잎을 오른쪽 절반에 떨구면 문서가 오른쪽 열이 된다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-
-  const box = await specLeaf(page);
-  const from = middle(box);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-
-  // **5px 안쪽은 아직 드래그가 아니다**(결정 86). 겹판이 서지 않는 것이 그 관찰 가능한
-  // 형태다 — 안 두면 그냥 클릭이 드래그로 읽혀 사이드바 행을 못 누른다.
-  await page.mouse.move(from.x + 3, from.y);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-
-  // 넘기면 겹판이 서고, 포인터가 있는 절반이 밝아진다.
-  await page.mouse.move(from.x + 12, from.y);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-  await moveOnto(page, "right");
-  await expect(page.locator('[data-drop-half="left"]')).not.toHaveAttribute("data-over", "");
-
-  await page.mouse.up();
-  // 떨군 것이 그 절반에 선다 — spec이 오른쪽이면 `rl`이다(결정 87·97).
-  await expect(page).toHaveURL(/split=rl/);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-  // 마크업에서 먼저 나오는 것이 왼쪽 열이다.
-  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
-
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
 test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
   await installFixtureBackend(page);
   // 이미 문서가 오른쪽인 분할에서 출발한다 — 같은 종류를 반대쪽에 떨구는 것이
@@ -92,7 +76,7 @@ test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
   await page.goto(`/works/${plainWork.slug}?split=rl`);
   await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
 
-  await startDrag(page, await specLeaf(page));
+  await startDrag(page, await specTab(page));
   await moveOnto(page, "left");
   await page.mouse.up();
 
@@ -101,65 +85,14 @@ test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 90의 나머지 절반 — 끌 수 있는 것은 `spec` 잎**과 셸 행**이다. 셸은 터미널 열이라
-// spec이 반대쪽으로 밀린다(결정 87). 이 화면에 셸이 있는 것은 분할이 본문에 터미널 열을
-// 세우기 때문이다(진입 이펙트가 「없으면 하나 띄운다」를 돈다).
-test("셸 행을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", async ({ page }) => {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}?split=lr`);
-  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "spec");
-
-  // 사이드바 가지 안의 셸 행. 이름 버튼이 끄는 자리다 — `×`는 형제라 안 끌린다.
-  // 본문(터미널 열)에는 셸이 서 있어 목록이 안 뜨므로 이 표식은 사이드바의 것 하나다.
-  const row = page.locator("[data-shell-row]");
-  await expect(row).toBeVisible();
-  const box = await row.boundingBox();
-  if (!box) throw new Error("셸 행의 상자를 못 읽었다");
-
-  await startDrag(page, box);
-  await moveOnto(page, "left");
-  await page.mouse.up();
-
-  await expect(page).toHaveURL(/split=rl/);
-  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
-  // **`tab`도 함께 본다.** 열 배치는 `dropSplit`이 정하므로 「끈 것이 셸이었다」가 `tab`에
-  // 안 적혀도 화면은 똑같다 — 그 어긋남은 나중에 `×`로 분할을 닫는 순간(결정 97: `tab`이
-  // 가리키는 쪽이 남는다) 「셸을 떨궜는데 문서가 남는」 사고로 터진다.
-  await expect(page).toHaveURL(/tab=terminal/);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
 // ─── 결정 12(판 03): 분할을 **탭**에서 만든다 ───
 //
-// 사이드바 행이 하던 몸짓의 출발점이 머리행의 탭 줄로 옮겨 왔다(adr-03이 그 행을 걷는다).
-// **놓일 자리도 분할 계산도 그대로다** — 바뀌는 것은 끌 수 있는 것뿐이라, 위 사이드바
-// 검사들은 판 04가 그 행을 걷을 때까지 그대로 산다.
+// 사이드바 행이 하던 몸짓의 출발점이 머리행의 탭 줄로 옮겨 왔다(adr-03이 그 행을 걷었다).
+// **놓일 자리도 분할 계산도 그대로다** — 바뀐 것은 끌 수 있는 것뿐이다. 한때 같은 것을
+// 사이드바 잎·행에서 재던 검사 둘이 이 아래 둘과 겹쳐, 판 04가 그 행을 걷으면서 지웠다.
 //
 // 이 층이 아니면 아무것도 안 보인다: 배선은 핸들러라 마크업 seam에 없고, 5px 문턱과
 // 겹판은 포인터가 있어야 선다.
-
-/**
- * 셸 탭의 **이름 버튼** — 끄는 자리다. 형제인 `×`는 안 끌린다(닫으려다 분할이 켜지면 안 된다).
- *
- * 켜짐을 말하는 쪽이 이름 버튼이라 그 속성으로 집는다 — 사이드바 행이 `data-shell-row`로
- * 하던 일이고, 모양(클래스·자식 순서)으로 집지 않는 이유도 그쪽과 같다.
- */
-async function shellTab(page: Page) {
-  const tab = page.locator('[data-tab="shell"] button[aria-pressed]');
-  await expect(tab).toBeVisible();
-  const box = await tab.boundingBox();
-  if (!box) throw new Error("셸 탭의 상자를 못 읽었다");
-  return box;
-}
-
-/** 맨 앞 문서 칸. 고정 탭이라 `×`가 없어 칸 자체가 버튼이다(결정 7). */
-async function specTab(page: Page) {
-  const tab = page.locator('[data-tab="spec"]');
-  await expect(tab).toBeVisible();
-  const box = await tab.boundingBox();
-  if (!box) throw new Error("문서 탭의 상자를 못 읽었다");
-  return box;
-}
 
 // 수용 기준 「탭을 본문 오른쪽으로 끌면 분할이 켜지고 그 탭이 오른쪽 열에 선다」.
 // **분할이 아닌 화면에서 출발한다** — 켜지는 것까지가 이 기준이다. 셸 칸이 서려면 그
@@ -200,6 +133,27 @@ test("셸 탭을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **이미 분할인 화면**에서 반대쪽으로 떨군다 — 위 둘은 분할을 켜는 몸짓이라, 「이미 열
+// 둘인 화면에서 자리를 바꾼다」는 여기서만 선다. 한때 사이드바 셸 행으로 같은 것을 재던
+// 검사이고, 판 04가 그 행을 걷으면서 출발점만 칸으로 옮겼다.
+test("이미 분할인 화면에서 셸 탭을 반대쪽에 떨구면 `tab`도 셸을 가리킨다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?split=lr`);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "spec");
+
+  await startDrag(page, await shellTab(page));
+  await moveOnto(page, "left");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=rl/);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
+  // **`tab`도 함께 본다.** 열 배치는 `dropSplit`이 정하므로 「끈 것이 셸이었다」가 `tab`에
+  // 안 적혀도 화면은 똑같다 — 그 어긋남은 나중에 `×`로 분할을 닫는 순간(결정 97: `tab`이
+  // 가리키는 쪽이 남는다) 「셸을 떨궜는데 문서가 남는」 사고로 터진다.
+  await expect(page).toHaveURL(/tab=terminal/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 맨 앞 **문서 칸**도 끌린다 — 사이드바의 `spec` 잎이 하던 몫이 이 칸으로 왔다.
 // 출발이 **꺼진 칸**이라는 것도 함께 선다(이 화면은 터미널을 보는 중이다): 끄는 것은
 // 켜진 칸의 특권이 아니다.
@@ -212,11 +166,27 @@ test("문서 탭을 오른쪽 절반에 떨구면 문서가 오른쪽 열이 된
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  await startDrag(page, await specTab(page));
-  await moveOnto(page, "right");
-  await page.mouse.up();
+  // **겹판이 서고 사라지는 것을 여기서 함께 든다** — 한때 사이드바 `spec` 잎으로 같은 것을
+  // 재던 검사가 있었고, 판 04가 그 잎을 걷으면서 이 자리로 왔다.
+  const from = middle(await specTab(page));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
 
+  // **5px 안쪽은 아직 드래그가 아니다**(결정 86). 겹판이 서지 않는 것이 그 관찰 가능한
+  // 형태다 — 안 두면 그냥 클릭이 드래그로 읽혀 칸을 못 누른다.
+  await page.mouse.move(from.x + 3, from.y);
+  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+
+  // 넘기면 겹판이 서고, 포인터가 있는 절반**만** 밝아진다.
+  await page.mouse.move(from.x + 12, from.y);
+  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+  await moveOnto(page, "right");
+  await expect(page.locator('[data-drop-half="left"]')).not.toHaveAttribute("data-over", "");
+
+  await page.mouse.up();
   await expect(page).toHaveURL(/split=rl/);
+  // 떨구면 겹판이 걷힌다.
+  await expect(page.locator("[data-drop-half]")).toHaveCount(0);
   await expect(page.locator("[data-column]").last()).toHaveAttribute("data-column", "spec");
   await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -236,7 +206,7 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await expect(opener).toHaveCount(0);
 
   // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다.
-  await startDrag(page, await specLeaf(page));
+  await startDrag(page, await specTab(page));
   await moveOnto(page, "right");
   await page.mouse.up();
   await expect(page).toHaveURL(/split=rl/);
@@ -245,32 +215,31 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 수용 기준 「5px 안쪽의 움직임은 클릭으로 읽힌다 — 사이드바 행이 그대로 눌린다」.
-// 겹판이 안 서는 것(위 첫 검사)은 절반이고, **행이 실제로 눌리는 것**이 나머지 절반이다.
-test("5px 안쪽이면 행이 그대로 눌린다", async ({ page }) => {
+// 수용 기준 「5px 안쪽의 움직임은 클릭으로 읽힌다 — 그 칸이 그대로 눌린다」.
+// 겹판이 안 서는 것(아래 「문서 탭」 검사)은 절반이고, **칸이 실제로 눌리는 것**이 나머지다.
+test("5px 안쪽이면 칸이 그대로 눌린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const from = middle(await specLeaf(page));
+  const from = middle(await specTab(page));
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + 3, from.y);
   await page.mouse.up();
 
-  // 잎을 누르면 본문이 문서로 돌아온다 — 주소에서 `tab`이 빠지는 것이 그 모습이다.
+  // 문서 칸을 누르면 본문이 문서로 돌아온다 — 주소에서 `tab`이 빠지는 것이 그 모습이다.
   await expect(page).not.toHaveURL(/tab=terminal/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 반대쪽 — **끈 것이 눌린 것으로도 읽히면 안 된다.** 임계값을 넘긴 뒤 출발한 행 위로
+// 반대쪽 — **끈 것이 눌린 것으로도 읽히면 안 된다.** 임계값을 넘긴 뒤 출발한 칸 위로
 // 되돌아와 놓으면 pointerdown/up이 같은 버튼이라 브라우저가 `click`을 낸다.
-test("끌었다 제자리에 놓으면 행이 안 눌린다", async ({ page }) => {
+test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const box = await specLeaf(page);
-  const from = await startDrag(page, box);
-  // 본문까지 갔다가 다시 행 위로. 사이드바는 겹판이 안 덮으므로 잎이 그대로 포인터를 받는다.
+  const from = await startDrag(page, await specTab(page));
+  // 본문까지 갔다가 다시 칸 위로. 머리행은 겹판이 안 덮으므로 칸이 그대로 포인터를 받는다.
   await moveOnto(page, "right");
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
@@ -288,7 +257,7 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
   // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다.
-  await expect(page.locator("[data-shell-row]")).toBeVisible();
+  await expect(page.locator('[data-tab="shell"]')).toBeVisible();
   const before = await resizeCalls(page);
 
   // 폭 핸들은 왼쪽 열의 **오른쪽 가장자리**에 얹힌 5px 띠다. 열 머리가 그 열의 폭을 그대로
@@ -319,7 +288,7 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
 test("모르는 split 값은 단일 뷰로 눕는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=zzz`);
-  await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
+  await expect(page.locator('[data-tab="spec"]')).toBeVisible();
   await expect(page.locator("[data-column]")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -401,11 +370,10 @@ test("겹판 밖으로 나가면 밝기가 꺼지고, 거기서 놓아도 분할
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
 
-  const leaf = await specLeaf(page);
-  const from = await startDrag(page, leaf);
+  const from = await startDrag(page, await specTab(page));
   await moveOnto(page, "right");
 
-  // 출발한 사이드바로 되돌아간다 — 겹판이 안 덮는 자리다.
+  // 출발한 탭 줄로 되돌아간다 — 겹판이 안 덮는 자리다.
   await page.mouse.move(from.x, from.y);
   await expect(page.locator("[data-drop-half][data-over]")).toHaveCount(0);
 
