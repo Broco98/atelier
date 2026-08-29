@@ -27,8 +27,10 @@ interface SpecSectionProps {
 function SpecSection({ files, current, onSelect, onCopy }: SpecSectionProps) {
   const { iterations, standing } = useMemo(() => splitSpecFiles(files), [files]);
 
-  // 접힘은 트리의 폴더 접힘과 **같은 계약**이다 — 리마운트(작업 전환·패널 토글)를 넘어
-  // 살지 않는다. 그래서 여기 useState에 산다.
+  // 접힘은 트리의 폴더 접힘과 **같은 계약**이다 — 리마운트(패널 토글)를 넘어 살지
+  // 않는다. 그래서 여기 useState에 산다. **작업 전환은 결정 49 이후 리마운트가
+  // 아니므로 접힘이 유지된다** — 접힘 기억의 키가 판 폴더의 전체 이름이라 대부분은
+  // 기억에 없는 이름이고, 그래서 아래 기본값(최신 판만 펼침)으로 뜬다.
   //
   // 손으로 토글한 것만 기억하고 기본값은 계산으로 낸다. 판이 새로 생겼을 때 그것이
   // 자동으로 "펼쳐진 최신 판"이 되려면, 초기값을 한 번 굳혀 두면 안 된다.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { CodeXml, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceToggle } from "@/components/ui/SourceToggle";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import { specRef } from "./refs";
@@ -22,12 +23,14 @@ interface WorkPanelProps {
   // `</>`가 켜져 있는가 — **사람이 정한 값**이지 본문이 지금 무엇이냐가 아니다.
   // 그 둘은 비-md 파일에서 갈린다 (아래 sourceLocked).
   //
-  // **이 패널은 그 상태를 소유하지 않는다.** 바꾸는 대상이 본문이라 주인은 SpecViewer이고
-  // 여기에는 버튼만 산다 (결정 6). 그래서 패널을 닫으면 토글이 함께 사라져 그때의 보기가
-  // 양방향으로 잠긴다 — 알고 받아들인 대가이고, 되돌리는 길은 패널을 다시 여는 것이다.
+  // **이 패널은 그 상태를 소유하지 않는다.** 바꾸는 대상이 본문이라 주인은 화면(WorksPage)이고
+  // 여기에는 버튼만 산다 (결정 6). 이 패널이 본문의 형제로 올라오면서(결정 49) 둘의 공통
+  // 조상이 화면뿐이 됐다. 그래서 패널을 닫으면 토글이 함께 사라져 그때의 보기가 양방향으로
+  // 잠긴다 — 알고 받아들인 대가이고, 되돌리는 길은 패널을 다시 여는 것이다.
   sourceOn: boolean;
-  // 토글이 잠겼는가. 비-md 파일은 이 토글과 **무관하게** 코드뷰로 고정되므로(결정 6),
-  // 살아 있으면서 아무 일도 하지 않는 버튼이 되지 않게 흐리고 누를 수 없게 한다 (결정 21).
+  // 토글이 잠겼는가. 본문이 이 토글을 안 따르는 파일(그림, 그리고 md도 html도 아닌 것)은
+  // 켜든 끄든 같은 것이 서므로 — 어느 파일이 그런지는 `doc-refs`의 표가 든다 — 살아 있으면서
+  // 아무 일도 하지 않는 버튼이 되지 않게 흐리고 누를 수 없게 한다 (결정 21).
   sourceLocked: boolean;
   onToggleSource: () => void;
   // 펼쳐져 있는가. 접힘은 폭 트랜지션이라 패널은 언제나 마운트된 채다.
@@ -36,7 +39,9 @@ interface WorkPanelProps {
 
 type PanelTab = "spec" | "info";
 
-// 목업 S5t 작업 패널 — `spec | 정보` 두 탭. PR 연동 카드는 v2.
+// 작업 패널 — `spec | info` 두 탭. 가운데 `shell` 탭이 있었는데, 셸을 고르는 자리가
+// **사이드바 가지로 갔다**(결정 71). 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가
+// 화면마다 갈린다. PR 연동 카드는 v2.
 function WorkPanel({
   work,
   currentFile,
@@ -73,10 +78,22 @@ function WorkPanel({
   //
   // 열려 있다가 닫힐 때만 센다. 닫힌 채로 마운트되는 경로(패널을 접어 둔 채 다른 작업으로
   // 옮기기)에서 공짜로 한 번 더 세지 않게 한다.
+  //
+  // **작업을 옮기는 것은 더 이상 접힘을 초기화하지 않는다**(결정 49). 한때 이 패널이
+  // key={slug}인 SpecViewer 아래에 있어 함께 다시 세워졌는데, 화면으로 올라오면서 그
+  // 리마운트가 사라졌다. 감수한다 — 접힘 기억의 키가 **판 폴더의 전체 이름**이라 이름이
+  // 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라 기본값(최신 판만 펼침)으로
+  // 뜬다. 구획 두 개의 접힘이 유지되는 것은 오히려 자연스럽다.
   const [treeGeneration, setTreeGeneration] = useState(0);
-  // 탭 선택도 여기 산다. "작업을 옮기면 spec으로 돌아온다"가 공짜로 따라오기 때문이다 —
-  // 이 컴포넌트는 key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워진다.
-  // 반대로 패널 접기는 언마운트가 아니라 폭 트랜지션이라, 탭은 접었다 펴도 유지된다.
+  // 탭 선택은 여기 산다. **그리고 이제 작업을 옮겨도 유지된다**(결정 49).
+  //
+  // 한때 "작업을 옮기면 spec으로 돌아온다"(앞 판 결정 4)가 공짜로 따라왔다 — 이 컴포넌트가
+  // key={slug}가 걸린 SpecViewer 아래에 key 없이 놓여 함께 다시 세워졌기 때문이다. 그것은
+  // 코드가 아니라 **구조에서 나온 성질**이었고, 패널이 화면(WorksPage)으로 올라가면서
+  // 사라졌다. 되살리지 않는다 — 되살리려면 여기에 없던 key를 새로 줘야 한다.
+  //
+  // 패널 접기는 언마운트가 아니라 폭 트랜지션이라, 탭은 접었다 펴도 유지된다. 뷰 탭
+  // 왕복(spec ↔ terminal)에도 유지된다 — 호출부가 하나라 인스턴스도 하나다.
   //
   // 트리 접힘과 수명이 다르다. 접힘 초기화는 아래 treeGeneration이 패널을 접을 때만
   // 올리고, 탭 전환은 그 계약에 들지 않는다 — 탭 전환은 같은 패널 안에서 잠시 다른 것을
@@ -170,35 +187,28 @@ function WorkPanel({
             className="flex h-(--titlebar-height) shrink-0 items-center gap-1 pl-2 pr-4"
           >
             <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
-            <TabButton label="정보" active={tab === "info"} onClick={() => setTab("info")} />
-            {/* `</>` — 이 버튼만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
-                규격은 icon-button 그대로이고 켜짐만 기존 toggle-on을 읽는다 — 새 토큰은
-                없다. quiet-hover를 꺼진 가지 안에만 두는 이유는 아래 TabButton과 같다.
+            {/* 라벨은 소문자 영어다(결정 41) — 사이드바 가지의 `spec`·`terminal`과 같은
+                어휘여야 한 층으로 읽힌다. 문장 속 한국어는 그대로다(CONTEXT.md). */}
+            <TabButton label="info" active={tab === "info"} onClick={() => setTab("info")} />
+            {/* 문서/원문 — 이 컨트롤만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
+                두 칸으로 갈린 근거는 SourceToggle 주석에 있다(결정 33).
 
-                **켜짐은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 비-md 파일이
-                코드뷰로 고정되는 것까지 켜짐으로 그리면, 트리에서 md와 비-md를 오갈 때마다
-                누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다. 결정 6이 그 고정을 토글과
-                **무관하다**고 적은 것도 같은 말이다 — 잠김을 말하는 것은 흐림이지 켜짐이 아니다.
+                **선 칸은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 토글을 무시하는
+                파일(그림, 그리고 md도 html도 아닌 것)에서 본문이 무엇으로 섰는지까지 켜짐으로
+                그리면, 트리에서 파일을 오갈 때마다 누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다.
+                그 파일들에서 본문이 토글과 **무관하게** 정해지는 것은 `doc-refs`의 표가 든다 —
+                잠김을 말하는 것은 흐림이지 켜짐이 아니다.
 
                 잠김은 흐림과 포인터 차단이 **함께** 간다. 흐리게만 하면 눌리는데 아무 일도
                 일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
                 왜 잠겼는지를 title로 말할 수는 없다 — pointer-events가 꺼져 있으면 hover가
                 성립하지 않아 네이티브 툴팁이 뜨지 않는다. 흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
-            <button
-              type="button"
-              onClick={onToggleSource}
-              disabled={sourceLocked}
-              aria-label="마크다운 원문 보기"
-              aria-pressed={sourceOn}
-              title="마크다운 원문 보기"
-              className={cn(
-                "icon-button ml-auto transition-colors",
-                "disabled:pointer-events-none disabled:opacity-40",
-                sourceOn ? "toggle-on" : "text-tertiary quiet-hover",
-              )}
-            >
-              <CodeXml className="size-4" strokeWidth={2} />
-            </button>
+            <SourceToggle
+              on={sourceOn}
+              locked={sourceLocked}
+              onChange={onToggleSource}
+              className="ml-auto"
+            />
             <button
               type="button"
               onClick={onClose}

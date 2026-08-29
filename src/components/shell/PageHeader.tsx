@@ -39,7 +39,17 @@ function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProp
         )}
         {meta}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* 간격이 탭 줄·셸 컨트롤과 **같은 값이다**(결정 24 — `--titlebar-control-gap`).
+          같은 44px 줄에 선 같은 규격의 버튼이라 자리마다 값이 갈리면 그중 하나만 따로
+          떨어진 것처럼 읽힌다. */}
+      {actions && (
+        <div
+          data-tab-actions
+          className="flex shrink-0 items-center gap-(--titlebar-control-gap)"
+        >
+          {actions}
+        </div>
+      )}
     </header>
   );
 }

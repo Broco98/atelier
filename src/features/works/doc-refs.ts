@@ -85,6 +85,79 @@ export function expandHome(path: string, home: string): string {
   return home.replace(/\/+$/, "") + path.slice(1);
 }
 
+/**
+ * 본문에 **그림으로** 세울 수 있는 파일인가.
+ *
+ * 트리에서 고른 파일이 그림인데 글로 읽으면 화면이 텅 빈다 — PNG를 UTF-8로 읽은 결과가
+ * 줄번호 `1` 하나로 서는 것이 실물에서 난 모습이다. 여기 없는 확장자는 글로 읽는다.
+ *
+ * **마크다운 안의 `![](…)`와 다른 판정이다.** 저쪽은 문서가 「이건 그림이다」라고 이미
+ * 말해 준 것을 자리로 옮기는 일이고, 이쪽은 확장자만 보고 정해야 한다.
+ *
+ * **밖으로 내보내지 않는다.** 이 판정은 아래 표 안에서만 쓰인다 — 화면이 따로 부르면
+ * 술어가 하나 살아남아, 표가 바뀔 때 그 자리만 옛 규칙을 따르는 어긋남이 생긴다.
+ */
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico"];
+
+function isImageFile(path: string | null): boolean {
+  if (!path) return false;
+  const dot = path.lastIndexOf(".");
+  return dot > 0 && IMAGE_EXTENSIONS.includes(path.slice(dot + 1).toLowerCase());
+}
+
+/** 본문이 무엇으로 서는가. */
+export type DocBody = "pretty" | "source" | "image" | "html";
+
+/**
+ * 「어떤 파일을 어떻게 그리는가」의 표 — **본문이 무엇으로 서는지를 정하는 유일한 자리다.**
+ *
+ * | 파일 | 본문 기본 | `[소스]` 토글 |
+ * | --- | --- | --- |
+ * | `.md` | 예쁜 보기 | 살아 있음 |
+ * | `.html` · `.htm` | 렌더 | 살아 있음 |
+ * | 그림 | 그림 | 잠김 |
+ * | 그 외 | 소스 | 잠김 |
+ *
+ * `showSource`는 **사람이 정한 값 그대로**다(버튼의 켜짐). 파일 종류를 얹는 일은 여기가
+ * 한다 — 화면이 각자 얹으면 트리와 본문과 아카이브가 다른 말을 한다.
+ *
+ * **읽을지 말지도 여기서 나온다**: `"image"`면 파일을 안 읽는다(위 `isImageFile` 머리말).
+ *
+ * `.svg`는 **그림 칸이다** — 마크업이기도 하지만 이미 그림 확장자이고, 표는 그림을 먼저 본다.
+ *
+ * `.html`은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 지점이다(그림은 읽을 소스가 없어서
+ * 잠긴 것이 옳았다). 두 칸을 함께 넣어야 한다: 렌더만 켜고 토글을 잠그면 **소스를 볼 길이
+ * 사라진다** — 이 표에서 지금보다 나빠지는 유일한 경로다.
+ *
+ * 고른 문서가 없으면(spec이 하나도 없는 work) 마크다운으로 떨어진다. 그 기본값은 **본문
+ * 분기를 위한 것이지 「누를 것이 있다」는 뜻이 아니다** — 잠그는 것은 화면의 사정이다.
+ */
+export function docBody(file: string | null, showSource: boolean): DocBody {
+  if (isImageFile(file)) return "image";
+  const rendered = renderedBody(file);
+  if (rendered === null) return "source";
+  return showSource ? "source" : rendered;
+}
+
+/** 원문을 안 켰을 때 이 파일이 서는 모양. `null`이면 켜든 끄든 소스다. */
+function renderedBody(file: string | null): "pretty" | "html" | null {
+  if (file === null) return "pretty";
+  const lower = file.toLowerCase();
+  if (lower.endsWith(".md")) return "pretty";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
+  return null;
+}
+
+/**
+ * 이 파일이 `[소스]` 토글을 무시하는가 — 그러면 두 칸을 함께 잠근다(결정 21).
+ *
+ * **표에서 파생한다.** 「켜든 끄든 본문이 같다」가 곧 「눌러도 아무 일이 없다」이므로,
+ * 잠김 규칙을 따로 적으면 표가 바뀔 때 한쪽만 늙는다.
+ */
+export function ignoresSourceToggle(file: string | null): boolean {
+  return docBody(file, false) === docBody(file, true);
+}
+
 export type ImageSource =
   | { kind: "file"; path: string } // 절대 파일 경로. 그리는 쪽이 asset URL로 바꾼다
   | { kind: "url"; url: string } // http·https는 변환 없이 그대로

@@ -39,7 +39,7 @@ atelier mcp install
 
 ```bash
 atelier mcp            # 표준입출력 MCP 서버 실행 — 호스트가 서브프로세스로 띄웁니다
-atelier mcp install    # 호스트에 이 서버를 사용자 전역으로 등록 (+ 남은 스킬 폴더 정리)
+atelier mcp install    # 설치된 호스트(Claude Code · Codex)에 이 서버를 등록 (+ 남은 스킬 폴더 정리)
 ```
 
 등록되면 AI가 도구 9개로 Atelier를 조작합니다 — 프로젝트 조회·등록·수정,
@@ -48,18 +48,14 @@ atelier mcp install    # 호스트에 이 서버를 사용자 전역으로 등�
 
 **프로젝트 삭제는 앱에서만** 합니다. 사람이 하는 조작은 전부 앱이 담당합니다.
 
+`atelier mcp install`은 **Claude Code와 Codex**를 자동 등록합니다. 설치돼 있는 것만
+등록하고, 없거나 등록에 실패한 호스트는 직접 칠 한 줄을 그 자리에 출력합니다 — 한쪽의
+사정이 다른 쪽을 막지 않습니다.
+
 <details>
-<summary>Claude Code 외 호스트에 직접 등록하기</summary>
+<summary>그 밖의 호스트에 직접 등록하기</summary>
 
-`atelier mcp install`이 자동 등록하는 호스트는 Claude Code 하나입니다.
-다른 호스트는 stdio 서버로 아래를 등록하세요 — 실행 명령 `atelier`, 인자 `["mcp"]`.
-
-```toml
-# Codex — ~/.codex/config.toml
-[mcp_servers.atelier]
-command = "/usr/local/bin/atelier"
-args = ["mcp"]
-```
+stdio 서버로 아래를 등록하세요 — 실행 명령 `atelier`, 인자 `["mcp"]`.
 
 ```json
 // Gemini CLI — ~/.gemini/settings.json

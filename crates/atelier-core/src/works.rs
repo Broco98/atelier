@@ -99,6 +99,7 @@ pub fn start_work(
                 branch: None,
                 created_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 projects: project_slugs.to_vec(),
+                pinned: false,
                 extra: Default::default(),
             }
         }
@@ -250,7 +251,7 @@ fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     Ok(works_root.join(slug))
 }
 
-fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
+pub(crate) fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
     let path = work_dir(works_root, slug)?.join("work.json");
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::WorkNotFound(slug.to_string()))?;
@@ -301,7 +302,7 @@ fn worktrees_dir(work_dir: &Path) -> PathBuf {
 
 /// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
 /// 않도록 경로를 만드는 곳은 여기 하나다 (work_dir와 같은 규칙).
-fn spec_dir(work_dir: &Path) -> PathBuf {
+pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
@@ -321,7 +322,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-fn spec_files(work_dir: &Path) -> Vec<String> {
+pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
@@ -345,10 +346,21 @@ fn collect_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
-pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
-    std::fs::create_dir_all(works_root)?;
-    let mut views = Vec::new();
-    for entry in std::fs::read_dir(works_root)? {
+/// 작업 목록의 **순서와 걷는 법**. 무거운 것은 안 단다 — 워크트리마다 `git status`를 부르는
+/// 것은 `to_view`이고(`is_dirty`), **글자마다 부르는 자리는 그것을 탈 수 없다.** 검색의 작업
+/// 층이 이것을 부른다(결정 23): 순서를 거기서 다시 적으면 팔레트가 사이드바와 어긋난 두
+/// 세상을 만든다.
+///
+/// **폴더가 없으면 빈 목록이다 — 만들지 않는다.** 만드는 것은 `list_works`의 일이다(첫 실행이
+/// 그 자리를 지난다). 조회가 폴더를 만들면 「읽기만 한다」가 거짓이 된다(`list_archive`와 같은 규칙).
+pub fn read_works(works_root: &Path) -> Result<Vec<Work>> {
+    let entries = match std::fs::read_dir(works_root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut works = Vec::new();
+    for entry in entries {
         let entry = entry?;
         let slug = entry.file_name().to_string_lossy().to_string();
         if slug.starts_with('.') || !entry.path().is_dir() {
@@ -356,13 +368,25 @@ pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
         }
         // AI가 망가뜨린 파일 하나가 전체 목록을 막지 않도록 파싱 실패는 건너뜀
         if let Ok(work) = read_work(works_root, &slug) {
-            views.push(to_view(works_root, work));
+            works.push(work);
         }
     }
-    views.sort_by(|a, b| {
-        b.work.created_at.cmp(&a.work.created_at).then_with(|| a.work.slug.cmp(&b.work.slug))
+    // **고정이 먼저다** (결정 100). 사이드바가 고정 구획을 맨 위에 세우므로, 그 순서를
+    // 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이
+    // 갈린다 — 이슈 #58이 정확히 그것이었다. 여기서 먼저 주면 어떤 조합에서도 저절로
+    // 성립하고, 앱·MCP·CLI가 같은 순서를 본다.
+    works.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then_with(|| b.created_at.cmp(&a.created_at))
+            .then_with(|| a.slug.cmp(&b.slug))
     });
-    Ok(views)
+    Ok(works)
+}
+
+pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
+    std::fs::create_dir_all(works_root)?;
+    Ok(read_works(works_root)?.into_iter().map(|work| to_view(works_root, work)).collect())
 }
 
 /// **작업 루트만 본다.** 보존소로 넘어가는 폴백은 여기 넣지 않는다 — 데스크톱 앱의
@@ -435,6 +459,15 @@ pub fn update_work_title(works_root: &Path, slug: &str, title: &str) -> Result<W
 pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> Result<WorkView> {
     let mut work = read_work(works_root, slug)?;
     work.status = status;
+    write_work(works_root, &work)?;
+    Ok(to_view(works_root, work))
+}
+
+/// 고정을 켜고 끈다. **목록 순서가 함께 바뀐다** — 고정된 것은 `list_works`가 먼저 준다
+/// (결정 100). 그 외에는 상태와 마찬가지로 아무것도 건드리지 않는다.
+pub fn update_work_pinned(works_root: &Path, slug: &str, pinned: bool) -> Result<WorkView> {
+    let mut work = read_work(works_root, slug)?;
+    work.pinned = pinned;
     write_work(works_root, &work)?;
     Ok(to_view(works_root, work))
 }
@@ -1014,6 +1047,8 @@ mod tests {
         let view = get_work(&works, "옛날-작업").unwrap();
         assert_eq!(view.work.branch.as_deref(), Some("feat/old"));
         assert_eq!(view.work.projects, vec!["fe"]);
+        // 뒤에 는 필드는 없으면 기본값으로 읽힌다 — 마이그레이션은 없다 (결정 81)
+        assert!(!view.work.pinned, "a work.json without `pinned` must read as not pinned");
 
         // 상태만 바꿔 다시 써도 모르는 필드와 브랜치가 그대로다
         update_work_status(&works, "옛날-작업", WorkStatus::Review).unwrap();
@@ -1119,6 +1154,55 @@ mod tests {
         ];
         expected.sort();
         assert_eq!(get_work(&works, "카트").unwrap().spec_files, expected);
+    }
+
+    /// 고정된 것이 **먼저**다. 그다음이 기존 규칙(createdAt 내림차순 → slug 오름차순)이라
+    /// 고정 구획 안의 순서도 그대로 산다 (결정 100).
+    ///
+    /// 순서를 여기서 주는 이유: 화면이 백엔드 순서 위에 정렬을 얹으면 「보이는 첫 항목 =
+    /// 무선택 정규화가 고르는 항목」이 갈린다. 이슈 #58이 정확히 그것이었고, 사이드바의
+    /// 고정 구획이 바로 그 얹는 정렬이다. 앱·MCP·CLI가 같은 순서를 보려면 여기가 유일한 자리다.
+    #[test]
+    fn list_puts_pinned_first_even_when_it_is_older() {
+        let (_tmp, works, _projects) = setup();
+        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일을 직접 쓴다
+        let write = |slug: &str, created: &str, pinned: bool| {
+            let dir = works.join(slug);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("work.json"),
+                format!(
+                    r#"{{"title":"{slug}","status":"active","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
+                ),
+            )
+            .unwrap();
+        };
+        write("새-것", "2026-08-20", false);
+        write("오래된-것", "2026-01-02", true);
+        write("고정-최신", "2026-08-22", true);
+
+        let listed: Vec<String> =
+            list_works(&works).unwrap().into_iter().map(|v| v.work.slug).collect();
+        assert_eq!(listed, slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
+    }
+
+    /// 상태와 같은 모양의 한 필드 쓰기 — 파일에 남고 조회가 같은 값을 준다 (결정 81).
+    #[test]
+    fn update_pinned_persists() {
+        let (_tmp, works, projects) = setup();
+        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        assert!(!get_work(&works, "카트").unwrap().work.pinned);
+
+        let view = update_work_pinned(&works, "카트", true).unwrap();
+        assert!(view.work.pinned);
+        assert!(get_work(&works, "카트").unwrap().work.pinned);
+        // 고정은 그 작업에 대한 사실이라 상태·브랜치·워크트리는 건드리지 않는다
+        assert_eq!(view.work.status, WorkStatus::Active);
+        assert!(view.worktrees[0].exists);
+
+        let off = update_work_pinned(&works, "카트", false).unwrap();
+        assert!(!off.work.pinned);
+        assert!(matches!(update_work_pinned(&works, "없음", true), Err(Error::WorkNotFound(_))));
     }
 
     #[test]

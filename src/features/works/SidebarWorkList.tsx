@@ -1,18 +1,30 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { useWorks } from "./hooks";
-import { splitWorkSections } from "./work-sections";
+import { recallView, viewSearch, workSlugOf } from "@/routes/-work-search";
+import { useSetWorkPinned, useWorks } from "./hooks";
+import { emptyMainNotice, splitWorkSections } from "./work-sections";
+import type { SectionsOpen, WorkSections } from "./work-sections";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
 
 // 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
 const HOVER_DELAY_MS = 350;
 
+// 제목이 흐르는 **속도**(결정 11). 거리에 비례한다 — 고정 지속시간은 기각됐다: 넘침 30px은
+// 12px/s로 기고 200px은 80px/s로 달려 읽는 속도가 제목마다 갈린다.
+const MARQUEE_SPEED = 50; // px/s
+// 오른쪽 끝 페이드의 폭. **`index.css`의 `--title-fade`와 같은 수여야 한다** — 흐르는 거리가
+// 「넘침 + 이 값」이고(결정 11), 거리는 CSS가 정하는데(결정 10) 그것을 **시간으로 바꾸는**
+// 자리가 여기라서 둘이 같은 수를 읽는다. `calc()`가 길이를 시간으로 못 바꾸는 것이 이
+// 한 값이 두 언어에 걸치는 이유 전부다(결정 12).
+const TITLE_FADE = 24; // px
+
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
+const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
 const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
@@ -22,15 +34,33 @@ const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 function SidebarWorkList({
   open,
-  boundaryRef,
+  shellCounts,
+  renderShellMeta,
 }: {
   open: boolean;
-  // 호버 카드가 비켜야 할 상자 — 사이드바 자신이다. 행의 오른쪽 끝은 거터와 스크롤바 때문에
-  // 사이드바 끝보다 8~19px 안쪽이라, 행만 기준으로 삼으면 카드가 사이드바에 붙거나 파고든다.
-  boundaryRef: RefObject<HTMLElement | null>;
+  /**
+   * work별 셸 개수 — **행 오른쪽 끝의 메타가 서는 조건**이다(결정 2·3). 그것이 무엇을
+   * 적는지는 이제 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의
+   * 셸」의 수를 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
+   *
+   * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
+   * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
+   * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다).
+   */
+  shellCounts: Record<string, number>;
+  /**
+   * 행 오른쪽 끝의 **셸 메타**. 같은 이유로 슬롯이다 — 그리는 것은
+   * `components/shell/shell-meta`의 `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는
+   * Sidebar다(결정 13).
+   */
+  renderShellMeta: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
+  const setPinned = useSetWorkPinned();
+  const [pinnedOpen, setPinnedOpen] = useState(
+    () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
+  );
   const [worksOpen, setWorksOpen] = useState(
     () => localStorage.getItem(WORKS_OPEN_KEY) !== "0",
   );
@@ -39,6 +69,9 @@ function SidebarWorkList({
   );
 
   useEffect(() => {
+    localStorage.setItem(PINNED_OPEN_KEY, pinnedOpen ? "1" : "0");
+  }, [pinnedOpen]);
+  useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
   useEffect(() => {
@@ -46,17 +79,25 @@ function SidebarWorkList({
   }, [draftsOpen]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
-  // 슬러그에 한글이 들어가므로 경로에서 떼어낸 뒤 디코드한다.
+  //
+  // **읽는 것이 슬러그 하나다.** 한때 `tab`도 따로 구독했다 — 고른 work의 `spec` 잎이
+  // 켜지는지가 그것으로 갈렸는데, 그 잎이 탭 줄로 가면서(결정 6·7) 이 목록에 「지금 보고
+  // 있는 것」을 말하는 자리가 행 하나로 줄었다.
   const openSlug = useRouterState({
-    select: (state) =>
-      state.location.pathname.startsWith("/works/")
-        ? decodeURIComponent(state.location.pathname.slice("/works/".length))
-        : null,
+    select: (state) => workSlugOf(state.location.pathname),
   });
-  const { main, drafts, visible } = splitWorkSections(works, {
+
+  const sectionsOpen: SectionsOpen = {
+    pinned: pinnedOpen,
     works: worksOpen,
     drafts: draftsOpen,
-  });
+  };
+  const sections = splitWorkSections(works, sectionsOpen);
+  const { visible } = sections;
+  // 어느 구획을 접었는지만 아래에서 올라온다 — 어느 setState인지는 여기서 고른다.
+  const toggleSection = (section: keyof SectionsOpen) => {
+    ({ pinned: setPinnedOpen, works: setWorksOpen, drafts: setDraftsOpen })[section]((v) => !v);
+  };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
 
@@ -96,33 +137,25 @@ function SidebarWorkList({
   // 언마운트 시 대기 중인 타이머를 정리한다
   useEffect(() => () => closeCard(), []);
 
+  // 작업을 옮긴다. **보던 화면을 기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
+  // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
+  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `viewSearch`가 빈 객체 위에 얹으므로
+  // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
   const goTo = (slug: string) => {
     closeCard();
-    void navigate({ to: "/works/$slug", params: { slug } });
+    void navigate({
+      to: "/works/$slug",
+      params: { slug },
+      search: viewSearch({}, recallView(slug)),
+    });
   };
 
-  // Cmd+1~9 — **화면에 보이는** 순서 기준 N번째 작업. 접힌 섹션은 세지 않는다.
-  // 어느 화면에 있든 이 목록을 센다: 어디에 있든 작업으로 한 번에 돌아갈 수 있다.
-  // 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || !/^[1-9]$/.test(e.key)) return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      const work = visible[Number(e.key) - 1];
-      if (!work) return;
-      e.preventDefault();
-      goTo(work.slug);
-      // goTo는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visible]);
+  // 고정을 뒤집는다. 카드를 함께 닫는 것은 행이 다른 구획으로 **옮겨 가기** 때문이다
+  // (결정 82) — 앵커 행이 사라지면 카드가 허공에 남는다.
+  const togglePin = (work: WorkView) => {
+    closeCard();
+    setPinned.mutate({ slug: work.slug, pinned: !work.pinned });
+  };
 
   return (
     <>
@@ -131,67 +164,23 @@ function SidebarWorkList({
           아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다.
           두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
-        {/* auto가 아니라 scroll이다 — 자리를 **항상** 예약한다.
-            scroll-quiet의 스크롤바는 폭을 갖는 클래식이라, auto로 두면 목록이 넘치는 순간
-            콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 왼쪽으로 밀린다(실측 264→253). 접었다
-            펴는 것만으로도 폭이 오가는 자리다. scrollbar-gutter:stable은 이 WebKit에서
-            먹지 않아(실측) 확실한 쪽을 쓴다. 늘 있어도 보이지는 않는다 — track·thumb가
-            투명이고 lib/scroll-quiet.ts가 실제 스크롤 중에만 색을 준다.
-            예약된 11px만큼 nav도 오른쪽을 비워 둔다(Sidebar.tsx). */}
-        <div className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-scroll pb-1 scroll-quiet">
-          {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
-          <SectionHeader
-            label="작업"
-            className="mt-3"
-            open={worksOpen}
-            count={main.length}
-            onToggle={() => setWorksOpen((v) => !v)}
+        {/* **자리를 예약하지 않는다**(결정 32). 한때 scroll이었다 — 폭을 갖는 클래식 막대라
+            auto로 두면 넘치는 순간 콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 밀렸다
+            (실측 264→253). 이제 막대가 콘텐츠 **위에** 떠서(scroll-quiet) 폭을 안 먹으므로
+            예약할 것이 없고, 그만큼 행이 넓어진다. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-1 scroll-quiet">
+          <WorkSectionList
+            sections={sections}
+            open={sectionsOpen}
+            selectedSlug={selectedSlug}
+            shellCounts={shellCounts}
+            onToggleSection={toggleSection}
+            onOpen={goTo}
+            onHover={openCardAfterDelay}
+            onLeave={closeCard}
+            onTogglePin={togglePin}
+            renderShellMeta={renderShellMeta}
           />
-          <SectionBody open={worksOpen}>
-            {main.length === 0 ? (
-              <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-                {drafts.length > 0
-                  ? "진행 중인 작업이 없어요."
-                  : "작업은 Claude Code에서 시작돼요."}
-              </span>
-            ) : (
-              main.map((work) => (
-                <WorkRow
-                  key={work.slug}
-                  work={work}
-                  active={work.slug === selectedSlug}
-                  onOpen={goTo}
-                  onHover={openCardAfterDelay}
-                  onLeave={closeCard}
-                />
-              ))
-            )}
-          </SectionBody>
-
-          {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
-          {drafts.length > 0 && (
-            <>
-              <SectionHeader
-                label="초안"
-                className="mt-3"
-                open={draftsOpen}
-                count={drafts.length}
-                onToggle={() => setDraftsOpen((v) => !v)}
-              />
-              <SectionBody open={draftsOpen}>
-                {drafts.map((work) => (
-                  <WorkRow
-                    key={work.slug}
-                    work={work}
-                    active={work.slug === selectedSlug}
-                    onOpen={goTo}
-                    onHover={openCardAfterDelay}
-                    onLeave={closeCard}
-                  />
-                ))}
-              </SectionBody>
-            </>
-          )}
         </div>
       </div>
 
@@ -200,14 +189,110 @@ function SidebarWorkList({
       {hovered && (
         <PopoverPortal
           anchorRef={hoverAnchor}
-          boundaryRef={boundaryRef}
           side="right"
-          gap={8}
+          // **행에서 재는 값이다**(결정 30). 행의 오른쪽 끝은 거터 8px만큼 사이드바
+          // 경계선보다 안쪽이라, 카드는 그 8px을 덮고 경계선 위로 올라선다 — 카드가
+          // 사이드바에 얹혀 떠 있다는 사실을 그렇게 말한다. 한때 이 값이 19px이었다
+          // (거터 8 + 늘 예약된 스크롤바 11) — 결정 32가 막대를 위로 띄우며 그 11을 걷었다.
+          gap={4}
           width={272}
           className="p-3.5"
         >
           <WorkCard work={hovered} />
         </PopoverPortal>
+      )}
+    </>
+  );
+}
+
+// 세 구획을 그리는 부분. 구독하는 자리(useWorks·라우터·localStorage)는 위에 남기고 여기는
+// **받은 것만** 그린다. 이 저장소의 컴포넌트 seam은 정적 마크업이라, 구획이 서는 조건
+// (결정 82·108)과 핀의 생김새(결정 85)를 그물에 걸려면 훅을 부르지 않는 자리가 있어야
+// 한다(SidebarWorkList.test.tsx).
+export function WorkSectionList({
+  sections,
+  open,
+  selectedSlug,
+  shellCounts,
+  onToggleSection,
+  onOpen,
+  onHover,
+  onLeave,
+  onTogglePin,
+  renderShellMeta,
+}: {
+  sections: WorkSections;
+  open: SectionsOpen;
+  selectedSlug: string | null;
+  shellCounts: Record<string, number>;
+  onToggleSection: (section: keyof SectionsOpen) => void;
+  onOpen: (slug: string) => void;
+  onHover: (slug: string, row: HTMLElement) => void;
+  onLeave: () => void;
+  onTogglePin: (work: WorkView) => void;
+  renderShellMeta: (work: WorkView) => ReactNode;
+}) {
+  const { pinned, main, drafts } = sections;
+  // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 셋이 된다.
+  const row = (work: WorkView) => (
+    <WorkRow
+      key={work.slug}
+      work={work}
+      active={work.slug === selectedSlug}
+      shellCount={shellCounts[work.slug] ?? 0}
+      onOpen={onOpen}
+      onHover={onHover}
+      onLeave={onLeave}
+      onTogglePin={onTogglePin}
+      shellMeta={renderShellMeta(work)}
+    />
+  );
+  return (
+    <>
+      {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
+      {pinned.length > 0 && (
+        <>
+          <SectionHeader
+            label="고정"
+            className="mt-3"
+            open={open.pinned}
+            count={pinned.length}
+            onToggle={() => onToggleSection("pinned")}
+          />
+          <SectionBody open={open.pinned}>{pinned.map(row)}</SectionBody>
+        </>
+      )}
+
+      {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
+      <SectionHeader
+        label="작업"
+        className="mt-3"
+        open={open.works}
+        count={main.length}
+        onToggle={() => onToggleSection("works")}
+      />
+      <SectionBody open={open.works}>
+        {main.length === 0 ? (
+          <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
+            {emptyMainNotice(sections)}
+          </span>
+        ) : (
+          main.map(row)
+        )}
+      </SectionBody>
+
+      {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
+      {drafts.length > 0 && (
+        <>
+          <SectionHeader
+            label="초안"
+            className="mt-3"
+            open={open.drafts}
+            count={drafts.length}
+            onToggle={() => onToggleSection("drafts")}
+          />
+          <SectionBody open={open.drafts}>{drafts.map(row)}</SectionBody>
+        </>
       )}
     </>
   );
@@ -275,6 +360,39 @@ function CardField({
   );
 }
 
+/**
+ * 구획의 속 — 접기 애니메이션은 `grid-template-rows`를 0fr↔1fr로 보간한다. `height:auto`는
+ * 트랜지션되지 않고, `max-height`는 목록 길이를 추정해야 해서 항목이 많을수록 타이밍이
+ * 어긋난다.
+ *
+ * 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 `inert`로
+ * 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
+ *
+ * **한때 `components/shell/sidebar-tree`에 살았다.** 그 모듈은 구획 헤더와 사이드바 가지가
+ * 접히는 규격을 함께 쓰라고 만든 것인데, 판 04가 가지를 통째로 걷으면서 접히는 것이 구획
+ * 하나만 남았다 — 쓰는 자리가 이 파일뿐인 조각을 `components/shell/`에 남겨 두면 다음
+ * 사람이 그 이름(`tree`)에서 없는 구조를 읽는다.
+ */
+function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div
+      inert={!open}
+      className={cn(
+        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+      )}
+    >
+      {/* **위 여백을 갖지 않는다.** 이 상자는 부르는 쪽의 세로 flow 안에 서고 그쪽이 이미
+          `gap-(--row-gap)`를 준다 — 여기서 한 번 더 물면 머리행 아래만 간격이 두 배가 되어
+          (실측 6px 대 3px) 같은 컬럼에서 「행 사이」와 「머리행 아래」가 다른 값이 된다.
+          접힐 때 함께 사라지는 자리라 오래 안 보였다. */}
+      <div className="overflow-hidden">
+        <div className="flex flex-col gap-(--row-gap)">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // 섹션 헤더 — **헤더 전체가 접기 토글이다.** 라벨을 누르면 그 섹션이 접힌다.
 //
 // 라벨은 항목과 **같은 크기**이고 색으로만 구분된다. 한 단계 작게 두면 라벨이 아니라 목록과
@@ -302,6 +420,10 @@ function SectionHeader({
   return (
     <button
       type="button"
+      // 표식은 검사가 이 버튼을 **정체성으로** 집기 위한 것이다. 판 04가 이 서브트리 안에
+      // `aria-expanded`를 가진 가지 머리행을 넣으면서, 「접히는 버튼」이라는 자리만으로는
+      // 구획 헤더를 집을 수 없게 됐다 (TerminalPane의 `data-shell-host`와 같은 이유).
+      data-section=""
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
@@ -327,65 +449,199 @@ function SectionHeader({
   );
 }
 
-// 접기 애니메이션 — grid-template-rows를 0fr↔1fr로 보간한다. height:auto는 트랜지션되지 않고,
-// max-height는 목록 길이를 추정해야 해서 항목이 많을수록 타이밍이 어긋난다.
+// **한 줄이다** — 상태 점 + 제목 + (핀과 셸 메타가 겹쳐 서는 오른쪽 끝 한 칸). 바로 위 nav
+// 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기): 둘이 세로로 붙어 있어 규칙이 다르면 그
+// 자리에서 어긋난다.
+// 좁은 폭이라 제목이 자주 넘치는데, hover하면 마퀴가 흘려 보여주고 호버 카드가 전체를
+// 줄바꿈해 보여준다 — **마퀴가 빠른 답, 카드가 완전한 답**이다(결정 11). title 속성을 함께
+// 두면 OS 툴팁이 카드 위로 겹쳐 뜬다.
 //
-// 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
-// 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
-function SectionBody({ open, children }: { open: boolean; children: ReactNode }) {
-  return (
-    <div
-      inert={!open}
-      className={cn(
-        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
-        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-      )}
-    >
-      <div className="overflow-hidden">
-        <div className="flex flex-col gap-[3px] pt-[3px]">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-// 한 줄 — 상태 점 + 제목. 바로 위 nav 항목과 규격을 맞춘다(높이·반지름·간격·글자 크기):
-// 둘이 세로로 붙어 있어 규칙이 다르면 그 자리에서 어긋난다.
-// 좁은 폭이라 제목이 자주 잘리는데, 전체는 호버 카드가 보여준다 — title 속성을 함께 두면
-// OS 툴팁이 카드 위로 겹쳐 뜬다.
+// 행 전체가 button이던 것이 **바깥 상자 + 형제 버튼 둘**이 됐다. 중첩 button은 HTML에서
+// 허용되지 않고, span role="button"으로 흉내 내면 Tab으로 도달할 수 없다 — SpecTree의
+// 파일 행이 이미 같은 문제를 그 구조로 풀었다.
+// 배경(선택·hover)은 바깥 상자가 갖고, 가로 여백은 이름 버튼이 품는다: 바깥이 가진
+// padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가
+// 된다. 남는 것은 오른쪽 끝 pr-1뿐이고 그건 핀과 메타를 행 가장자리에서 띄우는 값이다 —
+// 메타의 `pr-[5px]`와 합쳐 **9px**이 되어, 구획 헤더 `작업`의 개수(`px-[9px]`)와 같은 x에
+// 오른쪽 끝이 선다. 한 컬럼에 세로로 붙어 서는 숫자들이 다른 무게로 읽히지 않게 하는 그
+// 계약(`SidebarItem` 주석)에 이제 work 행도 들어와 있다.
+//
+// hover(카드 여는 것)는 바깥 상자가 듣는다 — 이름 버튼에 걸면 핀 위로 마우스를 옮기는
+// 순간 카드가 닫힌다.
 function WorkRow({
   work,
   active,
   onOpen,
   onHover,
   onLeave,
+  onTogglePin,
+  shellCount,
+  shellMeta,
 }: {
   work: WorkView;
   active: boolean;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
+  onTogglePin: (work: WorkView) => void;
+  /** 이 work의 셸 수 — **메타가 서는 조건이다**(결정 2·3). */
+  shellCount: number;
+  /** 행 오른쪽 끝의 **셸 메타**. 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
+  shellMeta: ReactNode;
 }) {
+  // 제목 상자 — **hover 진입 때만** 만진다(아래 onMouseEnter).
+  const titleBox = useRef<HTMLSpanElement>(null);
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(work.slug)}
-      onMouseEnter={(e) => onHover(work.slug, e.currentTarget)}
-      onMouseLeave={onLeave}
+    <div
+      onMouseEnter={(e) => {
+        // **재는 것은 속도 하나이고, 이 한 번뿐이다**(결정 12). 흐르는 거리는 CSS가 정하므로
+        // (결정 10) 여기서 넘침을 읽는 것은 그 거리를 **시간으로** 바꾸기 위해서다 —
+        // `calc()`는 길이를 시간으로 못 바꾼다. 자리가 이 핸들러인 것은 호버 카드 타이머를
+        // 이미 여기서 걸기 때문이고, 그래서 **쉴 때 계측도 관찰자도 없다**: 사이드바 폭이
+        // 바뀌면 `100cqw`가 스스로 다시 풀리고, 호버 중에 폭을 끄는 경우는 없다.
+        //
+        // **표식을 지속시간과 함께 단다.** 마퀴를 `:hover`로 켜면 브라우저가 이 핸들러보다
+        // 먼저 hover 스타일을 계산해, 그 행을 처음 가리킬 때 트랜지션이 `--marquee-ms` 없이
+        // 0ms로 만들어지고 제목이 툭 튀어 끝으로 간다(실측). 둘이 한 번의 스타일 변화로
+        // 들어가야 그 갈래가 없다 — 그래서 켜는 것도 여기다.
+        const box = titleBox.current;
+        if (box) {
+          const over = box.scrollWidth - box.clientWidth;
+          box.style.setProperty(
+            "--marquee-ms",
+            `${Math.round(((over + TITLE_FADE) / MARQUEE_SPEED) * 1000)}ms`,
+          );
+          box.setAttribute("data-marquee", "");
+        }
+        onHover(work.slug, e.currentTarget);
+      }}
+      onMouseLeave={() => {
+        // 제자리로 돌아온다 — 복귀 시간(180ms)은 표식이 없는 평상시 규칙이 든다(결정 11).
+        titleBox.current?.removeAttribute("data-marquee");
+        onLeave();
+      }}
       className={cn(
-        "flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left transition-colors",
+        // **flex가 아니라 grid다**(결정 1). 메타와 핀이 **2열 같은 칸에 겹쳐** 서야 하는데,
+        // 그 둘을 상자 하나로 묶으면 요소만 늘고 칸 폭 계산은 똑같다. 그리고 첫 줄을 상자로
+        // 한 겹 싸면 **이름 버튼의 부모**가 그 상자가 되어, 그것으로 배경 상자를 집는 자리가
+        // 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를 잰다.
+        // (한때 이 주석이 「핀의 `parentElement`」라고 적어 뒀는데 그런 자리는 없다. 그
+        // 한 줄이 스펙까지 물려가 안 하나를 잘못 기각했다 — 결정 1이 그 내력을 든다.)
+        //
+        // **2열은 한 무리분(28px)을 바닥으로 예약한다**(결정 2·5). `auto`로 두면 로고가
+        // 붙을 때마다 칸이 넓어져 제목이 끊기는 자리가 초마다 밀린다 — 판 04가 행 높이에서
+        // 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프 12 + 간격 4 + 숫자 7 = 23px,
+        // 오른쪽 여백 5px. 셸이 하나인 work은 무리가 늘 정확히 하나라 제목이 영영 안 움직이고,
+        // 셸이 0개인 행도 같은 폭을 내 제목이 끊기는 자리가 행마다 갈리지 않는다.
+        // **바닥이지 상한이 아니다** — 무리가 둘 이상이면 `minmax`의 위쪽(`auto`)이 받는다.
+        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_minmax(28px,auto)] items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
-      <StatusIcon status={work.status} />
-      <span
-        className={cn(
-          "min-w-0 truncate text-[13.5px] font-medium",
-          work.status === "done" && "text-tertiary",
-        )}
+      <button
+        type="button"
+        // **누르면 그 work로 간다 — 늘 그것 하나다**(결정 6). 한때 고른 work의 행만은
+        // 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그 갈래가 통째로 사라졌다.
+        // 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙 전부다.
+        onClick={() => onOpen(work.slug)}
+        // 행의 높이를 **이 버튼이 든다** — 바깥이 grid라 `h-full`은 자기가 잰 높이를 되받는
+        // 순환이 된다. nav 항목과 맞춰야 하는 규격이 이 32px이고, 이제 셸이 몇 개든 무엇이
+        // 돌든 모든 work 행이 이 높이다(결정 0) — 겹쳐 선 메타·핀은 둘 다 이보다 낮다.
+        className="flex h-8 min-w-0 items-center gap-(--glyph-gap) pl-[9px] pr-1.5 text-left"
       >
-        {work.title}
-      </span>
-    </button>
+        <StatusIcon status={work.status} />
+        {/* **제목은 `…`이 아니라 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
+            읽힌다**(결정 9). 폭으로는 이 문제를 못 풀어서다 — 핀을 띄워도 +24px, 이 버튼의
+            여백을 없애도 +6px, 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이라 다 합쳐도
+            두 글자다. 그래서 이 판은 제목 폭을 짜내지 않는다.
+
+            **상자와 안쪽 글자가 갈려 있다.** 상자가 컨테이너이자 마스크이고 흐르는 것은
+            안쪽 글자다 — 규격도 거리도 `index.css`의 `[data-title]`이 든다(결정 10·11).
+            여기 `flex-1 min-w-0`은 그 딸린 조정이다: `container-type: inline-size`가
+            「내 폭이 내용에 안 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가
+            **0으로 무너져** 제목이 통째로 사라진다.
+
+            색은 상자가 든다 — 안쪽 글자가 그대로 물려받는다. **안쪽 글자에는 클래스가
+            없다** — 규격을 유틸리티로 다시 적으면 그것들이 `utilities` 레이어에 들어가 레이어
+            밖의 `[data-title] > span`에 무조건 져서, 고쳐도 화면이 안 바뀌는 손잡이가 된다. */}
+        <span
+          ref={titleBox}
+          data-title=""
+          className={cn(
+            "min-w-0 flex-1 text-[13.5px] font-medium",
+            work.status === "done" && "text-tertiary",
+          )}
+        >
+          <span>{work.title}</span>
+        </span>
+      </button>
+      {/* 평소 숨어 있다가 hover에만 뜬다(결정 85) — 고정 여부는 구획이 이미 말하고,
+          좁은 사이드바에서 상시 아이콘은 정작 봐야 할 제목보다 먼저 눈에 들어온다.
+          페이드가 없는 것은 icon-button-tint가 정한다(옆 행으로 옮겨 갈 때 두 핀이
+          겹쳐 미끄러져 보인다). focus-visible:opacity-100이 없으면 Tab으로 도달은
+          하는데 보이지 않는다 — spec 트리의 복사 버튼이 이미 같은 답을 한다.
+          채운 핀 / 빈 핀으로 갈린다. PinOff(사선 그은 핀)를 쓰지 않는 것은 이 저장소의
+          아이콘이 전부 외곽선이고, 결정 85가 말한 것도 「채운 핀」이기 때문이다.
+          켜짐은 aria-pressed가 말한다(WorkPanel의 `</>` 토글과 같은 규칙). title은 두지
+          않는다 — 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다.
+
+          **메타와 같은 칸에 선다**(결정 1) — 2열 1행에 둘 다 놓으면 겹침이 이미 되고 칸 폭은
+          `max(메타, 핀)`이다. `peer`는 **아래 메타가 이 버튼의 포커스를 보기 위한 것**이다
+          (결정 7): 이 핀은 hover뿐 아니라 포커스에도 뜨므로, 메타를 `group-hover`로만 물리면
+          Tab으로 닿았을 때 둘이 겹쳐 그려진다. 후행 형제에만 걸리는 선택자인데 DOM 순서가
+          이미 `이름 버튼 → 핀 → 메타`라 그대로 먹는다. */}
+      <button
+        type="button"
+        aria-label={`${work.title} 고정`}
+        aria-pressed={work.pinned}
+        onClick={() => onTogglePin(work)}
+        className="peer icon-button-tint col-start-2 row-start-1 shrink-0 justify-self-end text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+      >
+        <Pin
+          className="size-3"
+          strokeWidth={1.8}
+          fill={work.pinned ? "currentColor" : "none"}
+        />
+      </button>
+      {/* **셸 메타 — 셸이 하나라도 있으면 선다**(결정 3). 셸이 0개인 work의 행에는 아무것도
+          안 선다: 「없음」은 숫자로 말하지 않는다. 한때 이것이 왼쪽 32px을 들여쓴 **둘째 줄**
+          이었고 행 높이가 곧 「여기서 일이 돌고 있다」는 신호였다 — 결정 0이 그것을 뒤집었다.
+          그 줄이 실제로 쓰는 폭은 25px이었고, 왼쪽 들여쓰기는 철거된 트리의 유물이라 트리처럼
+          보이는데 눌러도 아무 일이 없는 자리였다.
+
+          「명령이 도는 동안만 선다」는 **기각됐다**: 그 값은 매 순간 바뀌어서(백엔드가
+          1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이 생겼다 사라지고 제목이
+          끊기는 자리가 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**이고, 변하는 것은
+          그 **안에서**만 변한다 — 그래서 도는 것이 하나도 없어도 이 자리는 그대로 선다.
+
+          **여기 적히는 것은 「무리」의 나열이다**(결정 3). 무리 하나 = 글리프 + 그 무리의
+          셸 수이고, **숫자를 다 더하면 이 work의 셸 수**다. 셸 수를 여기서 직접 적지 않는
+          이유가 그 불변조건이다 — 「그 밖의 셸」의 수는 셸 수와 도는 것을 **둘 다 아는
+          자리**에서만 나오므로, 세는 규칙도 규격도 `ShellMeta` 하나가 든다(결정 13).
+          바깥인 이 상자가 드는 것은 **격자 칸 · hover 페이드 · 표식** 셋뿐이다(결정 14) —
+          그림 컴포넌트는 슬러그를 모르므로 표식이 여기 있다.
+
+          **핀과 같은 칸에 겹친다**(결정 1). hover하면 메타가 **투명해지고**(`hidden`이 아니다 —
+          `display:none`은 칸 폭 계산에서 빠져 칸이 핀의 24px로 줄고 hover마다 제목이 좌우로
+          뛴다) 그 자리에 핀이 선다. `visibility:hidden`도 아니다: 셸 수가 마우스 위치에 따라
+          있다 없다 하는 정보가 되면 안 된다(결정 6). 트랜지션은 안 건다 — 옆 행으로 옮겨 갈 때
+          두 페이드가 겹쳐 미끄러져 보인다(icon-button-tint가 opacity를 뺀 것과 같은 이유).
+          **`peer-focus-visible`이 함께 가는 이유는 핀이 포커스에도 뜨기 때문이다**(결정 7).
+          `group-focus-within`은 틀린 답이다 — 이름 버튼에 포커스가 가도 메타가 물러나는데
+          그때는 핀이 안 떠서 그 자리가 통째로 빈다.
+
+          **표시 전용이다**(결정 5). 무리 하나가 셸 여럿을 접으므로 무리와 셸이 1:1이 아니고,
+          누르면 어느 셸로 갈지 정해지지 않는다. 그래서 `pointer-events-none`이 상시다 —
+          누를 것이 없을 뿐 아니라, 겹친 자리라 이것이 위에 있으면 **핀의 클릭을 가로챈다.** */}
+      {shellCount > 0 && (
+        <div
+          data-shells={work.slug}
+          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end group-hover:opacity-0 peer-focus-visible:opacity-0"
+        >
+          {shellMeta}
+        </div>
+      )}
+    </div>
   );
 }
 

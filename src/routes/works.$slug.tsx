@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import WorksView from "./-works-view";
-import { validateWorkSearch, viewTab } from "./-work-search";
+import { splitOf, validateWorkSearch, viewTab } from "./-work-search";
 
 export const Route = createFileRoute("/works/$slug")({
   component: WorkRoute,
@@ -11,6 +11,13 @@ export const Route = createFileRoute("/works/$slug")({
 function WorkRoute() {
   const { slug } = Route.useParams();
   const search = Route.useSearch();
-  // 모르는 값을 눕히는 자리는 `viewTab` 하나다 — 검증기가 주소를 청소하지 않는다.
-  return <WorksView slug={slug} file={search.file ?? null} tab={viewTab(search)} />;
+  // 모르는 값을 눕히는 자리는 `viewTab`·`splitOf` 둘뿐이다 — 검증기가 주소를 청소하지 않는다.
+  return (
+    <WorksView
+      slug={slug}
+      file={search.file ?? null}
+      tab={viewTab(search)}
+      split={splitOf(search)}
+    />
+  );
 }

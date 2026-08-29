@@ -77,19 +77,36 @@ fn starting_the_server_purges_ghost_skills_and_the_second_start_is_quiet() {
     }
 }
 
-/// 진짜 `claude`를 절대 부르지 않게 하는 하네스.
+/// 진짜 호스트 도구를 절대 부르지 않게 하는 하네스.
 /// PATH를 이 디렉터리 하나로 갈아끼우고, 받은 argv를 로그 파일에 적는 가짜를 심는다.
-/// → 사용자의 실제 ~/.claude.json 은 어떤 경로로도 열리지 않는다.
-fn plant_fake_claude(bin: &Path, log: &Path) {
+/// → 사용자의 실제 ~/.claude.json · ~/.codex/config.toml 은 어떤 경로로도 열리지 않는다.
+///
+/// `code`는 그 가짜가 낼 종료 코드다. 0이 아닌 값으로 심으면 「도구는 있는데 등록이
+/// 실패하는」 경우가 된다 — 결정 103이 그때도 install 전체는 0으로 끝나라고 정한다.
+fn plant_fake_host(bin: &Path, name: &str, log: &Path, code: i32) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(bin).unwrap();
     let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{}\"\nexit 0\n",
-        log.display()
+        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{}\"\nexit {}\n",
+        log.display(),
+        code
     );
-    let path = bin.join("claude");
+    let path = bin.join(name);
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn plant_fake_claude(bin: &Path, log: &Path) {
+    plant_fake_host(bin, "claude", log, 0);
+}
+
+/// 그 호스트에 실제로 나간 argv 줄들. 로그가 없으면 「한 번도 안 불렸다」이므로 빈 벡터다.
+fn argv_lines(log: &Path) -> Vec<String> {
+    std::fs::read_to_string(log)
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_owned)
+        .collect()
 }
 
 fn install_with_path(bin: &Path, skills: &Path) -> std::process::Output {
@@ -192,4 +209,91 @@ fn ghost_skills_are_purged_even_without_the_host_tool() {
     let out = install_with_path(&empty_bin, &skills);
     assert!(out.status.success(), "{out:?}");
     assert!(!skills.join("atelier").exists(), "등록이 안 돼도 정리는 된다");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 판 01 — 호스트 둘 (결정 95 · 103)
+//
+// 등록 절차는 호스트마다 같다: 지우고 → 넣는다. 갈리는 것은 **스코프가 호스트의
+// 성질**이라는 점이다 — claude는 `--scope user`, codex는 `~/.codex/config.toml`
+// 하나뿐이라 그 인자가 아예 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// V-판01-1 · 결정 95 — 둘 다 있으면 **둘 다** 등록한다.
+#[test]
+fn install_registers_every_host_that_is_present() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bin = tmp.path().join("bin");
+    let claude_log = tmp.path().join("claude-argv.log");
+    let codex_log = tmp.path().join("codex-argv.log");
+    plant_fake_host(&bin, "claude", &claude_log, 0);
+    plant_fake_host(&bin, "codex", &codex_log, 0);
+
+    let out = install_with_path(&bin, &tmp.path().join("skills"));
+    assert!(out.status.success(), "등록이 실패했다: {out:?}");
+
+    let claude = argv_lines(&claude_log);
+    assert_eq!(claude.len(), 2, "claude: remove 후 add 두 번: {claude:?}");
+    assert!(claude[0].starts_with("mcp remove"), "{claude:?}");
+    assert!(claude[1].contains("--scope user"), "claude는 사용자 전역이다: {claude:?}");
+
+    let codex = argv_lines(&codex_log);
+    assert_eq!(codex.len(), 2, "codex: remove 후 add 두 번: {codex:?}");
+    assert!(codex[0].starts_with("mcp remove"), "{codex:?}");
+    assert!(codex[1].starts_with("mcp add"), "{codex:?}");
+    // codex의 `mcp add`에는 스코프 인자가 없다 — 설정 파일이 하나뿐이라 고를 것이 없다.
+    assert!(
+        !codex[1].contains("--scope"),
+        "codex에는 스코프 인자가 없다: {codex:?}"
+    );
+    assert!(codex[1].contains(" atelier -- "), "서버 이름은 atelier: {codex:?}");
+    assert!(codex[1].ends_with(" mcp"), "실행 인자는 mcp 하나: {codex:?}");
+}
+
+/// V-판01-2 · 결정 95 — 하나만 있으면 **그것만** 등록하고, 없는 쪽은 안내로 끝난다.
+/// 종료 코드는 0이다: `install.sh`가 `set -euo pipefail` 아래에서 이것을 부른다.
+#[test]
+fn install_registers_the_present_host_and_guides_for_the_missing_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bin = tmp.path().join("bin");
+    let codex_log = tmp.path().join("codex-argv.log");
+    plant_fake_host(&bin, "codex", &codex_log, 0); // claude 는 없다
+
+    let out = install_with_path(&bin, &tmp.path().join("skills"));
+    assert!(out.status.success(), "한쪽이 없다고 실패하면 안 된다: {out:?}");
+
+    assert_eq!(argv_lines(&codex_log).len(), 2, "있는 호스트에는 등록이 나갔다");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("claude mcp add") && stdout.contains("--scope user"),
+        "없는 호스트의 수동 명령을 그대로 안내해야 한다: {stdout}"
+    );
+}
+
+/// V-판01-3 · 결정 103 — 도구는 있는데 **등록이 실패**해도 install 전체는 0으로 끝나고,
+/// 성공한 호스트는 성공한 채로 남는다. 앱·CLI가 다 깔린 마지막 단계에서 죽으면
+/// 재실행으로도 안 풀린다.
+#[test]
+fn a_failing_host_does_not_sink_the_whole_install() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bin = tmp.path().join("bin");
+    let claude_log = tmp.path().join("claude-argv.log");
+    let codex_log = tmp.path().join("codex-argv.log");
+    plant_fake_host(&bin, "claude", &claude_log, 0);
+    plant_fake_host(&bin, "codex", &codex_log, 1); // add 가 1을 낸다
+
+    let out = install_with_path(&bin, &tmp.path().join("skills"));
+    assert!(
+        out.status.success(),
+        "한 호스트의 실패가 install.sh를 중단시키면 안 된다: {out:?}"
+    );
+
+    assert_eq!(argv_lines(&claude_log).len(), 2, "성공한 호스트는 그대로 등록된다");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("codex mcp add"),
+        "실패한 호스트에는 수동 등록 한 줄이 찍혀야 한다: {stdout}"
+    );
 }

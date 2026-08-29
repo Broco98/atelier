@@ -27,6 +27,7 @@ const work: WorkView = {
   branch: "feat/some-work",
   createdAt: "2026-08-16",
   projects: [],
+  pinned: false,
   worktrees: [],
   specDir: "~/.atelier/works/some-work/spec",
   specFiles: ["overview.md"],
@@ -36,8 +37,9 @@ const work: WorkView = {
 // 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.
 //
 // source는 소스 토글의 상태다. 이 패널은 그것을 소유하지 않고 **보여주기만** 하므로
-// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 SpecViewer 쪽 계약이다.
+// 여기서는 값으로 넣는다 — 어느 식에서 나오는지는 화면(WorksPage) 쪽 계약이다.
 // on은 사람이 정한 켜짐이고, locked는 이 파일에서 토글이 먹지 않는다는 뜻이다. **둘은 독립이다.**
+
 function render(
   open: boolean,
   override: Partial<WorkView> = {},
@@ -110,8 +112,10 @@ describe("WorkPanel 폭 조절", () => {
   it("펼쳐져 있으면 왼쪽 가장자리에 핸들이 선다", () => {
     const markup = render(true);
     expect(markup).toMatch(/cursor-col-resize/);
-    // 핸들과 심 라인 둘 다 왼쪽에 붙어야 한다 — 오른쪽이면 패널 건너편이다
-    expect(markup.match(/left-0/g)).toHaveLength(2);
+    // 핸들과 심 라인 둘 다 왼쪽에 붙어야 한다 — 오른쪽이면 패널 건너편이다.
+    // 끝을 막는 이유: `left-0`은 `left-0.5`의 앞머리라, 이 머리행 어딘가에 0.5짜리 붙임이
+    // 하나 생기면(소스 토글의 미끄러지는 칩이 그랬다) 세는 수가 저 혼자 늘어난다.
+    expect(markup.match(/left-0(?![.\d])/g)).toHaveLength(2);
     // 핸들은 absolute다. 이 상자가 기준이 아니면 조상 어딘가를 기준으로 서서
     // 화면 엉뚱한 곳에 붙는데, 마크업만 보면 멀쩡하다.
     expect(markup).toMatch(/<aside [^>]*class="[^"]*\brelative\b/);
@@ -156,7 +160,7 @@ describe("WorkPanel 폭 조절", () => {
 });
 
 // 탭 전환 자체(클릭)는 여기서 볼 수 없다 — 이 seam은 정적 마크업이라 이벤트가 돌지 않는다.
-// 대신 **첫 화면의 구조**를 못 박는다: 탭 바가 서 있는가, 두 탭이 함께 마운트돼 있는가,
+// 대신 **첫 화면의 구조**를 못 박는다: 탭 바가 서 있는가, 세 탭이 함께 마운트돼 있는가,
 // 스크롤 경계가 여전히 패널 카드에 있는가.
 describe("WorkPanel 두 탭", () => {
   beforeEach(stubEmptyStorage);
@@ -164,11 +168,32 @@ describe("WorkPanel 두 탭", () => {
     vi.unstubAllGlobals();
   });
 
-  it("맨 위가 spec | 정보 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
+  it("맨 위가 spec | info 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
     const markup = render(true);
     // 켜짐·꺼짐 둘 다 기존 토글 어휘를 그대로 쓴다 — 새 토큰을 만들지 않았다
     expect(markup).toMatch(/<button[^>]*\btoggle-on\b[^>]*>spec</);
-    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>정보</);
+    // 라벨은 **소문자 영어다**(결정 41). `정보`·`세션`으로 되돌아오면 사이드바 가지의
+    // `spec`·`terminal`과 언어가 갈린다 — 그 셋은 한 가족으로 읽혀야 한다. `세션`은 특히
+    // 앱의 말이 아니다(CONTEXT.md) — `claude`가 자기 쪽에 저장하는 대화 몫이다.
+    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>info</);
+    expect(markup).not.toMatch(/<button[^>]*>정보</);
+    expect(markup).not.toMatch(/<button[^>]*>세션</);
+  });
+
+  it("`shell` 탭이 없다 — 셸을 고르는 자리는 사이드바 가지다", () => {
+    // 결정 71. 되살아나면 **같은 것을 두 자리에서 고르게 되고**, 화면으로는 둘 다 멀쩡해
+    // 보여서 어느 쪽이 지금인지가 안 드러난다. 앞 판이 가로 탭 줄에서 겪은 그 병이다.
+    const markup = render(true);
+    expect(markup).not.toMatch(/<button[^>]*>shell</);
+    // 안 보이는 탭까지 마운트돼 있으므로 `+`도 함께 딸려 오면 안 된다.
+    expect(markup).not.toContain('aria-label="셸 열기"');
+  });
+
+  it("순서가 spec → info다", () => {
+    const markup = render(true);
+    const at = (label: string) => markup.search(new RegExp(`<button[^>]*>${label}<`));
+    expect(at("spec")).toBeGreaterThan(-1);
+    expect(at("info")).toBeGreaterThan(at("spec"));
   });
 
   it("탭 규격이 헤더 뷰 탭과 같은 가족이다", () => {
@@ -185,9 +210,10 @@ describe("WorkPanel 두 탭", () => {
 
   it("보이지 않는 탭도 함께 마운트돼 있다", () => {
     const markup = render(true);
-    // 정보 탭은 지금 안 보이지만 마크업에 있다. 언마운트하면 메타를 보고 spec으로
+    // info 탭은 지금 안 보이지만 마크업에 있다. 언마운트하면 메타를 보고 spec으로
     // 돌아왔을 때 접어둔 판이 펴져 있다 (결정 13).
     expect(markup).toContain("feat/some-work");
+    // 안 보이는 탭이 하나다 — `cn`이 display 충돌을 정리해 `contents`가 `hidden`으로 접힌다.
     expect(markup.match(/class="hidden"/g)).toHaveLength(1);
   });
 
@@ -281,54 +307,90 @@ describe("WorkPanel 두 탭", () => {
 
 // `</>`는 **왼쪽 본문**을 바꾸는데 오른쪽 패널 머리행에 앉는다 (결정 6). 그래서 이 seam이
 // 보는 것은 "무엇을 바꾸는가"가 아니라 **버튼이 받은 두 값을 그대로 그리는가**다 —
-// 본문과 켜짐이 같은 식에서 나오는지는 SpecViewer 쪽에서 본다.
+// 본문과 켜짐이 같은 식에서 나오는지는 화면(WorksPage) 쪽에서 본다.
 describe("WorkPanel 소스 토글", () => {
   beforeEach(stubEmptyStorage);
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  const LABEL = 'aria-label="마크다운 원문 보기"';
+  const LABEL = 'aria-label="원문 보기"';
 
   // 여는 태그만 잘라낸다 — 클래스와 속성을 함께 봐야 "꺼짐 어휘"와 "잠김"이 갈린다
   function toggle(markup: string): string {
     return markup.match(new RegExp(`<button[^>]*${LABEL}[^>]*>`))?.[0] ?? "";
   }
 
+  const DOC_LABEL = 'aria-label="문서로 보기"';
+
+  /** 두 칸을 감싸는 상자의 여는 태그 — 바닥(bg-state-1)이 그 표식이다. */
+  function well(markup: string): string {
+    return markup.match(/<span[^>]*bg-state-1[^>]*>/)?.[0] ?? "";
+  }
+
+  function docTab(markup: string): string {
+    return markup.match(new RegExp(`<button[^>]*${DOC_LABEL}[^>]*>`))?.[0] ?? "";
+  }
+
+  /** 두 칸 사이를 미끄러지는 흰 칩의 여는 태그 — segment-on이 그 표식이다. */
+  function chip(markup: string): string {
+    return markup.match(/<span[^>]*segment-on[^>]*>/)?.[0] ?? "";
+  }
+
+  /** 칩이 오른쪽(`</>`) 칸에 서 있는가. 왼쪽은 옮김이 없는 자리다. */
+  const SLID = "translate-x-[26px]";
+
   it("탭 바 오른쪽 끝, ×보다 왼쪽에 선다", () => {
     const markup = render(true);
-    // 자리를 못 박는 이유: `</>`가 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
+    // 자리를 못 박는 이유: 이 컨트롤이 ×보다 오른쪽으로 가면 창을 닫는 버튼이 안쪽으로 밀려
     // 다른 패널들의 × 위치와 어긋난다. 오른쪽 끝은 창을 닫는 자리다.
     const source = markup.indexOf(LABEL);
     const close = markup.indexOf('aria-label="작업 패널 접기"');
     expect(source).toBeGreaterThan(-1);
     expect(close).toBeGreaterThan(source);
     // 순서만으로는 모자라다. 오른쪽 끝으로 밀어내는 것은 ml-auto인데 그것이 ×로 옮겨가면
-    // 둘의 순서는 그대로인 채 `</>`만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
-    expect(toggle(markup)).toContain("ml-auto");
+    // 둘의 순서는 그대로인 채 컨트롤만 `정보` 옆에 붙는다 — 마크업 순서로는 안 보인다.
+    // 미는 것은 이제 칸이 아니라 **두 칸을 감싼 상자**다(결정 33).
+    expect(well(markup)).toContain("ml-auto");
     expect(markup.slice(close)).not.toContain("ml-auto");
     // 글리프는 `</>` 하나뿐이다 — Code(꺾쇠 둘)와 달리 CodeXml만 슬래시를 가진다
     expect(markup).toMatch(/lucide-code-xml\b/);
   });
 
-  it("예쁜 보기에서는 꺼져 있고 누를 수 있다", () => {
+  // 결정 33 — **어느 모드인지가 색이 아니라 자리로 읽힌다.** 두 칸 중 하나만 서 있다.
+  // 이 한 줄이 없으면 둘 다 서거나 둘 다 안 선 판이 「좀 흐리네」로 지나간다.
+  it("두 칸 중 정확히 한 칸만 서 있다", () => {
+    for (const on of [false, true]) {
+      const markup = render(true, {}, undefined, { on, locked: false });
+      // 칩은 하나뿐이라 「둘 다 섰다」는 마크업에서 불가능하다. 남은 질문은 **어느 자리냐**다.
+      expect(chip(markup)).toBeTruthy();
+      expect(chip(markup).includes(SLID)).toBe(on);
+      expect(docTab(markup)).toContain(`aria-pressed="${!on}"`);
+      expect(toggle(markup)).toContain(`aria-pressed="${on}"`);
+    }
+  });
+
+  it("예쁜 보기에서는 `</>` 칸이 안 서 있고 누를 수 있다", () => {
     const button = toggle(render(true));
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toMatch(/\sdisabled=""/);
-    expect(button).toContain("quiet-hover");
+    // 안 선 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 hover 칩을 얹으면
+    // 서 있는 칸과 구분이 안 된다.
+    expect(button).toContain("tint-hover");
+    expect(button).not.toContain("quiet-hover");
   });
 
-  it("소스 보기에서는 기존 켜짐 어휘를 그대로 쓴다", () => {
-    const button = toggle(render(true, {}, undefined, { on: true, locked: false }));
+  it("소스 보기에서는 `</>` 칸이 떠오른다", () => {
+    const markup = render(true, {}, undefined, { on: true, locked: false });
+    const button = toggle(markup);
     expect(button).toContain('aria-pressed="true"');
-    expect(button).toContain("toggle-on");
-    // 켜짐과 quiet-hover가 한 요소에 겹치면 hover 규칙이 두 벌이 되어 유틸리티 정렬
-    // 순서가 승자를 정한다 (index.css의 quiet-hover 주석). 꺼진 가지 안에만 둘 것.
-    //
-    // 규격도 icon-button **맨몸**이어야 한다. icon-button-quiet은 quiet-hover를 품고
-    // 있어서 겹침이 클래스 이름 안으로 숨는다 — 위 검사만으로는 그것이 통과한다.
+    // 떠오름은 칸이 아니라 그 칸으로 미끄러져 온 칩이 말한다(SourceToggle 주석).
+    expect(chip(markup)).toContain(SLID);
+    // 서 있는 칸에는 hover 규칙이 없다 — 겹치면 유틸리티 정렬 순서가 승자를 정한다
+    // (index.css의 quiet-hover 주석). 눌리기는 한다(누르면 뒤집힌다) — 다만 그 사실을
+    // 말하는 것은 배경이 아니라 **떠올라 있음**이다.
+    expect(button).not.toContain("tint-hover");
     expect(button).not.toContain("quiet-hover");
-    expect(button).not.toContain("icon-button-quiet");
   });
 
   it("잠기면 흐려지고 눌리지 않는다", () => {
@@ -352,10 +414,24 @@ describe("WorkPanel 소스 토글", () => {
   it("켜 둔 채 잠기면 켜짐이 유지된다", () => {
     // 반대 방향도 못 박는다 — 잠김이 켜짐을 **끄지도** 않는다. 사람이 켜 둔 값은
     // 비-md 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
-    const button = toggle(render(true, {}, undefined, { on: true, locked: true }));
+    const markup = render(true, {}, undefined, { on: true, locked: true });
+    const button = toggle(markup);
     expect(button).toContain('aria-pressed="true"');
-    expect(button).toContain("toggle-on");
+    expect(chip(markup)).toContain(SLID);
     expect(button).toMatch(/\sdisabled=""/);
+    // 칩은 disabled를 못 받는다(버튼이 아니다) — 흐림을 따로 주지 않으면 두 칸이 흐린
+    // 위에서 칩 혼자 또렷하게 서 있다.
+    expect(chip(markup)).toMatch(/\bopacity-40\b/);
+  });
+
+  // 두 칸을 **함께** 잠근다. 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
+  // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
+  it("잠기면 두 칸이 함께 잠긴다", () => {
+    const markup = render(true, {}, undefined, { on: false, locked: true });
+    for (const tag of [docTab(markup), toggle(markup)]) {
+      expect(tag).toMatch(/\sdisabled=""/);
+      expect(tag).toContain("disabled:pointer-events-none");
+    }
   });
 });
 
