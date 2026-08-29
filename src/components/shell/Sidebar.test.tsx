@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // 소스 스캔이라 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { shallow } from "@tanstack/react-store";
 import { describe, expect, it } from "vitest";
@@ -115,6 +115,23 @@ describe("nav 항목은 잎이다", () => {
   it("접히는 자리가 하나도 없다", () => {
     expect(countOf(sidebar, "aria-expanded")).toBe(0);
     expect(countOf(sidebar, "SectionBody")).toBe(0);
+  });
+
+  it("셸 가지 컴포넌트가 저장소에 없다", () => {
+    // 티켓 #146의 수용 기준 「셸 가지 컴포넌트와 그것을 부르던 자리가 남아 있지 않다
+    // (소스 스캔으로 건다)」. **부르던 자리는 타입 검사가 든다** — 없는 모듈을 import하면
+    // L0가 깨진다. 여기서 세는 것은 그 앞의 것, 파일 자체가 돌아오지 않았는가다.
+    //
+    // **이름을 리터럴로 세지 않는다.** 이 저장소의 주석은 내력을 이름으로 남기고(「한때
+    // `ShellBranch`가 …」) 실제로 여러 파일에 그렇게 적혀 있다 — 그것까지 세면 계약이
+    // 「역사를 지워라」가 된다. 파일의 있고 없음은 그 함정이 없다.
+    const at = (name: string) =>
+      fileURLToPath(new URL(`../../features/terminal/${name}`, import.meta.url));
+    // **경로가 맞는지 먼저 센다.** 오타 하나면 아래 「없다」가 읽은 것 없이 초록이 된다.
+    expect(existsSync(at("ShellTabs.tsx"))).toBe(true);
+    for (const gone of ["ShellBranch.tsx", "ShellList.tsx"]) {
+      expect(existsSync(at(gone)), gone).toBe(false);
+    }
   });
 
   it("`Terminal`이 안고 있는 셸 수는 남는다", () => {

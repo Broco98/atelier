@@ -20,8 +20,8 @@ import type { WorkView } from "@/features/works/types";
 
 /**
  * 터미널 본문 — 셸이 들어앉는 자리. **머리행은 여기 없다**: 두 화면이 각자 이고 있다.
- * Work의 터미널은 `WorksPage`의 **탭 줄**(`ShellTabs` — 결정 7)이고, 최상위 터미널은
- * 아직 `TerminalPage`의 `PageHeader`다(그쪽도 같은 줄로 가는 것이 판 03의 남은 몫이다).
+ * 두 화면 다 같은 줄이다 — Work의 터미널도 `/terminal`도 `ShellTabs`가 머리행이다
+ * (결정 7·8). 한때 최상위만 `PageHeader`였는데 #142가 그것도 이 줄로 옮겼다.
  *
  * 이 컴포넌트가 소유하는 것은 **자리 하나뿐이다.** 셸도 xterm도 terminal-store가 들고 있어
  * 이 화면이 사라져도 그대로 산다(결정 20·21). 여기서 하는 일은 활성 칸의 집을 자리에 들이고
