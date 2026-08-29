@@ -1,8 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
+import { dialogStore } from "@/components/ui/confirm-store";
+import SearchPalette from "@/features/search/SearchPalette";
+import { searchHotkey } from "@/features/terminal/shell-registry";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
@@ -58,6 +61,52 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // ⇧⇧로 검색을 연다(결정 3·4). ⌘B가 이미 이 자리에 있으므로 새 자리를 만들지 않는다.
+  //
+  // **판정은 순수 함수가 하고, 그것이 안 보는 둘을 여기서 든다.**
+  //  - **직전 ⇧의 시각.** 리듀서라 상태를 밖에 둔다 — `useRef`인 것은 이 값이 화면에 안
+  //    그려지기 때문이다. state로 두면 ⇧를 누를 때마다 앱 셸이 통째로 다시 그려진다.
+  //  - **mousedown**(결정 30). 키만 보면 **⇧+클릭 두 번이 팔레트를 연다** — 그 사이에
+  //    keydown이 하나도 안 끼기 때문이다. 본문에서 선택을 늘리는 흔한 동작이 그 모양이라
+  //    무장을 비운다.
+  //  - **떠 있는 확인 창.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠 있나」는
+  //    다른 물음이고 주인도 다르다 — 이 앱의 창은 전역 스토어 하나가 든다. 구독하지 않고
+  //    그 순간의 값만 읽는다: 창이 뜨고 지는 것으로 이 리스너를 다시 걸 이유가 없다.
+  const armedAt = useRef<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (dialogStore.state !== null) {
+        armedAt.current = null;
+        return;
+      }
+      const arm = searchHotkey(
+        {
+          type: e.type,
+          code: e.code,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          target: e.target,
+          at: e.timeStamp,
+        },
+        armedAt.current,
+      );
+      armedAt.current = arm.armedAt;
+      if (arm.open) setSearchOpen(true);
+    };
+    const onMouseDown = () => {
+      armedAt.current = null;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, []);
+
   return (
     <div
       data-titlebar={fullscreen ? "fullscreen" : "windowed"}
@@ -84,6 +133,10 @@ function AppShell() {
         <Outlet />
       </div>
       <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+      {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 확인 창 **앞에** 서는 것은
+          층 순서다: 창이 떠 있는 동안에는 ⇧⇧가 안 먹으므로 둘이 겹칠 일이 없지만, 겹친다면
+          답해야 하는 물음이 위여야 한다. */}
+      {searchOpen && <SearchPalette onClose={() => setSearchOpen(false)} />}
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />

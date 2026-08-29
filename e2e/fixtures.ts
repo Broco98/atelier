@@ -1,4 +1,5 @@
 import type { ProjectView } from "@/features/projects/types";
+import type { SearchHit } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
 import type { Settings } from "@/features/settings/types";
 
@@ -67,6 +68,22 @@ export const WORKS: WorkView[] = [
 ];
 
 /**
+ * 팔레트가 그리는 줄들. **이 표는 질의를 못 본다** — 이름 → 고정 값이라 어떤 질의에도 같은
+ * 답이 온다. 좁혀지는 것을 여기서 재려 하지 말 것: 그것은 코어 단위의 몫이고 이 층이
+ * 재는 것은 배선이다.
+ *
+ * 경로는 `pinned-work`가 **실제로 가진 spec 파일 그대로**여야 한다. 주소의 `file`이 그
+ * work의 목록에 없으면 본문이 기본 문서로 되돌아가, 「고른 것이 열렸다」가 조용히 거짓이 된다.
+ */
+export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
+  kind: "doc",
+  slug: WORKS[0].slug,
+  title: WORKS[0].title,
+  path,
+  archived: false,
+}));
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  */
@@ -94,6 +111,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 내용은 **한 줄이면 족하다**: 여기서 보는 것은 사이드바이고, 문서 렌더의 규칙은
   // SpecViewer.test.tsx가 든다.
   read_spec_file: "# 개요\n\n한 줄.\n",
+  // ⇧⇧로 여는 팔레트가 뜨자마자 부른다 — 캐시를 안 남기므로 열 때마다 나간다.
+  search: SEARCH_HITS,
   pty_spawn: { id: 1, shellName: "zsh" },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).

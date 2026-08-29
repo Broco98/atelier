@@ -23,6 +23,8 @@ import {
   runningAgentsOf,
   runningOn,
   runningShellsOf,
+  SEARCH_GAP_MS,
+  searchHotkey,
   setRunning,
   setShellName,
   setTitle,
@@ -1183,6 +1185,122 @@ describe("본문을 옮기는 키", () => {
 
   it("포커스가 아무 데도 없어도 안 터진다", () => {
     expect(shellNavFromWindow(key({ target: null }))).toEqual({ kind: "index", n: 2 });
+  });
+});
+
+// 결정 3·4·30. ⇧를 두 번 누르면 검색이 열린다. **타이머 없는 순수 리듀서라** 가짜 시계가
+// 필요 없다 — 시각을 인자로 넣는다. 이 판정이 이 모듈에 있는 것은 「비키는 자리」 규칙이
+// 여기 한 벌 있어서다(`typesInto`·`isShellInput`): 새 모듈에 다시 적으면 판정이 둘로
+// 갈리고 한쪽만 고쳐진 채 오래 간다.
+describe("⇧⇧가 검색을 연다", () => {
+  const el = (tagName: string, className?: string) =>
+    Object.assign(new EventTarget(), className === undefined ? { tagName } : { tagName, className });
+
+  type ShiftT = Parameters<typeof searchHotkey>[0];
+  const key = (over: Partial<ShiftT> = {}): ShiftT => ({
+    type: "keydown",
+    code: "ShiftLeft",
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    // **⇧ 자신의 keydown에는 이 값이 이미 참이다.** 판정이 `shiftKey`로 갈리면 한 번도
+    // 무장하지 않는다 — 여기 기본값이 그 함정을 그대로 재현해 둔 것이다.
+    shiftKey: true,
+    target: el("DIV"),
+    at: 1000,
+    ...over,
+  });
+
+  /** ⇧를 두 번 눌러 본다 — 둘째의 시각만 갈린다. */
+  const twice = (gap: number, first: Partial<ShiftT> = {}, second: Partial<ShiftT> = {}) => {
+    const armed = searchHotkey(key({ at: 1000, ...first }), null);
+    return searchHotkey(key({ at: 1000 + gap, ...second }), armed.armedAt);
+  };
+
+  it("간격 안에 두 번 누르면 열린다", () => {
+    expect(searchHotkey(key(), null)).toEqual({ open: false, armedAt: 1000 });
+    expect(twice(120).open).toBe(true);
+  });
+
+  // 오른쪽 ⇧로 두 번, 좌우를 섞어도 같다 — 사람이 그렇게 누른다.
+  it("좌우 어느 ⇧든, 섞여도 열린다", () => {
+    expect(twice(120, { code: "ShiftRight" }, { code: "ShiftRight" }).open).toBe(true);
+    expect(twice(120, { code: "ShiftLeft" }, { code: "ShiftRight" }).open).toBe(true);
+  });
+
+  // 상수가 **이름으로** 존재하고 그 값이 경계다. 여기서 값을 다시 적지 않는다 —
+  // 상수를 바꾸면 이 검사가 함께 따라가야 「그 값이 경계다」가 유지된다.
+  it("간격을 넘기면 안 열리고, 그 ⇧가 다시 무장한다", () => {
+    expect(twice(SEARCH_GAP_MS).open).toBe(true);
+    const late = twice(SEARCH_GAP_MS + 1);
+    expect(late.open).toBe(false);
+    expect(late.armedAt).toBe(1000 + SEARCH_GAP_MS + 1);
+  });
+
+  // 세 번째 ⇧가 붙으면 열려야 한다 — 위 「다시 무장한다」가 그것을 위한 것이다.
+  it("느리게 눌러 놓친 뒤 한 번 더 누르면 열린다", () => {
+    const late = twice(SEARCH_GAP_MS + 1);
+    expect(searchHotkey(key({ at: 2000 }), late.armedAt).open).toBe(false);
+    const third = searchHotkey(key({ at: 1000 + SEARCH_GAP_MS + 1 + 100 }), late.armedAt);
+    expect(third.open).toBe(true);
+  });
+
+  // **사이에 다른 키가 끼면 취소다.** 대문자 `A`를 치는 동안이 그 모양이고(`Shift↓ A↓ Shift↓`),
+  // 한글 입력기가 켜져 있으면 `ㄲ`이 같은 자리다 — 그래서 `key`가 아니라 `code`로 본다.
+  it("⇧ 사이에 다른 키가 끼면 안 열린다", () => {
+    const armed = searchHotkey(key({ at: 1000 }), null);
+    const typed = searchHotkey(key({ at: 1050, code: "KeyA" }), armed.armedAt);
+    expect(typed).toEqual({ open: false, armedAt: null });
+    expect(searchHotkey(key({ at: 1100 }), typed.armedAt).open).toBe(false);
+  });
+
+  it("⇧에 다른 수식키가 붙으면 무장하지 않는다", () => {
+    for (const extra of ["metaKey", "ctrlKey", "altKey"] as const) {
+      expect(searchHotkey(key({ [extra]: true }), null)).toEqual({ open: false, armedAt: null });
+    }
+  });
+
+  it("keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다", () => {
+    // ⇧를 눌렀다 떼는 것 자체가 keydown·keyup 한 쌍이다. 뗀 것을 취소로 읽으면 한 번도
+    // 안 열리고, 무장으로 읽으면 한 번 눌러 열린다.
+    expect(searchHotkey(key({ type: "keyup" }), null)).toEqual({ open: false, armedAt: null });
+    expect(searchHotkey(key({ type: "keyup", at: 1050 }), 1000)).toEqual({
+      open: false,
+      armedAt: 1000,
+    });
+  });
+
+  // 결정 4. 이 앱에서 포커스가 가 있는 시간이 제일 긴 곳이 셸이다 — 거기서 안 먹으면
+  // 검색이 「먼저 다른 데를 클릭하고 나서 여는 것」이 된다. ⇧ 단독은 셸이 아무 바이트도
+  // 안 보내므로 가로채도 잃는 것이 없다.
+  it("셸 안에서는 열린다 — xterm의 숨은 입력칸만 예외다", () => {
+    const shellInput = el("TEXTAREA", "xterm-helper-textarea");
+    expect(twice(120, { target: shellInput }, { target: shellInput }).open).toBe(true);
+  });
+
+  // work 이름을 고치는 입력칸에서는 비킨다 — 이름에 대문자를 쓸 수 있어야 한다.
+  it("글을 치는 자리에서는 안 열린다", () => {
+    for (const target of [el("INPUT"), el("TEXTAREA")]) {
+      expect(twice(120, { target }, { target }).open).toBe(false);
+    }
+    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
+    expect(twice(120, { target: editable }, { target: editable }).open).toBe(false);
+  });
+
+  // 밖에서 무장한 뒤 입력칸으로 들어가도 안 열린다 — 그 자리의 키는 무장을 지키지도 않는다.
+  it("입력칸으로 들어가면 무장이 풀린다", () => {
+    expect(twice(120, {}, { target: el("INPUT") })).toEqual({ open: false, armedAt: null });
+  });
+
+  it("포커스가 아무 데도 없어도 안 터진다", () => {
+    expect(twice(120, { target: null }, { target: null }).open).toBe(true);
+  });
+
+  // **mousedown은 이 함수 밖이다**(결정 30). 키만 보면 ⇧+클릭 두 번이 팔레트를 여는데,
+  // 그 사이에 keydown이 하나도 안 끼기 때문이다 — 여기서는 그 사실을 못박아만 둔다.
+  // 실제로 무장을 비우는 것은 앱 셸이고, 그것을 재는 자리는 L3다.
+  it("클릭은 이 판정에 안 온다 — 무장이 그대로 남는다", () => {
+    expect(searchHotkey(key({ type: "mousedown" }), 1000)).toEqual({ open: false, armedAt: 1000 });
   });
 });
 
