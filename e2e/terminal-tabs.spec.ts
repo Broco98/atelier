@@ -180,9 +180,12 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     expect(Math.max(...row.tabs) - Math.min(...row.tabs), at).toBeLessThanOrEqual(1);
     expect(row.tabs, at).toHaveLength(MAX_SHELLS);
 
-    // **로고와 스피너는 끝까지 남는다** — 이 판이 사려는 것이 「무엇이 도나」다.
+    // **로고는 끝까지 남는다** — 이 판이 사려는 것이 「무엇이 도나」다. 세 폭 모두 칸이
+    // 최소 폭(44px)이라 이름이 숨었고, 그때 서는 것이 이 글리프다(결정 27) — 넓은 폭에서는
+    // 이름이 그 몫을 하므로 안 선다.
     expect(row.mark, at).not.toBeNull();
-    expect(row.mark!.width, at).toBeGreaterThan(20);
+    // 글리프 하나의 규격이다(`size-3.5`). 한때 여기 스피너가 나란히 서서 30px이었다.
+    expect(row.mark!.width, at).toBe(14);
     // 남아 있기만 하면 안 된다 — 제 칸을 넘어 옆 칸 위에 그려지면 그것도 잘린 것이다.
     expect(row.mark!.over, at).toBeLessThanOrEqual(0);
 

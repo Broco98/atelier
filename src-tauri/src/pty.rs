@@ -14,7 +14,9 @@ use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::os::raw::c_int;
+use std::ptr;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -287,6 +289,112 @@ fn process_name(pgid: i32) -> Option<String> {
     std::str::from_utf8(&buf[..len]).ok().map(str::to_string)
 }
 
+/// 그 pid의 **argv**. `KERN_PROCARGS2`가 주는 것은 `[argc][실행 파일 경로][argv…][env…]`이고,
+/// 여기서는 argv만 잘라 낸다.
+///
+/// **`proc_name`으로는 못 얻는 이름이 있어서 필요하다.** 커널이 `p_comm`에 적는 것은 **실제로
+/// 실행된 파일**의 이름이라 심링크를 따라간 뒤의 것이 온다 — Claude Code의 네이티브 설치본이
+/// 그 자리에 정확히 걸린다: `~/.local/bin/claude`가 `~/.local/share/claude/versions/2.1.251`을
+/// 가리키므로 이름이 **`2.1.251`**로 읽힌다(실측: 심링크로 `/bin/sleep`을 부르면 `p_comm`이
+/// `sleep`이다). 사람이 친 이름은 argv[0]에 남는다.
+///
+/// **버퍼를 `KERN_ARGMAX`만큼 잡는다.** 이 sysctl은 버퍼가 모자라면 잘라 주지 않고 `ENOMEM`으로
+/// 통째로 실패한다 — argv 뒤에 환경 변수가 함께 실려 오므로 「명령이 짧으니 4KB면 되겠지」가
+/// 안 통한다. 그 값은 부팅 중 안 바뀌어서 한 번만 묻는다.
+fn process_argv(pid: i32) -> Option<Vec<String>> {
+    let max = *ARG_MAX.get_or_init(|| {
+        let mut mib = [libc::CTL_KERN, libc::KERN_ARGMAX];
+        let mut value: c_int = 0;
+        let mut len = std::mem::size_of::<c_int>();
+        let ok = unsafe {
+            libc::sysctl(mib.as_mut_ptr(), 2, (&raw mut value).cast(), &mut len, ptr::null_mut(), 0)
+        };
+        // 못 물으면 macOS의 실제 값(1MB)으로 간다 — 여기서 0을 쓰면 아래가 늘 실패한다.
+        if ok == 0 && value > 0 { value as usize } else { 1 << 20 }
+    });
+
+    let mut buf = vec![0u8; max];
+    let mut len = buf.len();
+    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    let ok = unsafe {
+        libc::sysctl(mib.as_mut_ptr(), 3, buf.as_mut_ptr().cast(), &mut len, ptr::null_mut(), 0)
+    };
+    if ok != 0 || len < 4 {
+        return None;
+    }
+    buf.truncate(len);
+
+    let argc = i32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    if argc <= 0 {
+        return None;
+    }
+    // 4바이트 argc 다음이 실행 파일 경로다. 그것을 건너뛰고, 그 뒤의 정렬용 NUL도 건너뛴다.
+    let rest = &buf[4..];
+    let end = rest.iter().position(|b| *b == 0)?;
+    let mut at = end;
+    while rest.get(at) == Some(&0) {
+        at += 1;
+    }
+
+    let mut out = Vec::with_capacity(argc as usize);
+    for chunk in rest[at..].split(|b| *b == 0) {
+        if out.len() == argc as usize {
+            break;
+        }
+        // UTF-8이 아닌 인자는 버리지 않고 자리를 지킨다 — 자리가 밀리면 argv[1]이 argv[2]가 된다.
+        out.push(String::from_utf8_lossy(chunk).into_owned());
+    }
+    Some(out)
+}
+
+static ARG_MAX: OnceLock<usize> = OnceLock::new();
+
+/// **인터프리터가 자기 이름을 대신 내주는 것을 막는다.** 이 목록에 에이전트 이름은 없다 —
+/// 백엔드가 그것을 알면 에이전트가 늘 때마다 Rust를 고쳐야 한다(adr-04). 여기 있는 것은
+/// 「스스로는 아무것도 아니고 뒤따르는 스크립트가 진짜인 것들」뿐이다.
+const INTERPRETERS: [&str; 7] = ["node", "bun", "deno", "python", "python3", "ruby", "perl"];
+
+/// argv에서 **사람이 부른 이름**을 고른다 — 값 하나만 받는 순수 판정이다.
+///
+/// 경로가 붙어 오면 마지막 조각만 쓴다(`/opt/homebrew/bin/codex` → `codex`). 인터프리터가
+/// argv[0]이면 **그 뒤 첫 비-플래그 인자**의 이름이 진짜다: `codex`가 `#!/usr/bin/env node`
+/// 스크립트라 그 프로세스의 argv[0]은 `node`이고 스크립트 경로가 argv[1]에 온다.
+///
+/// **오탐은 여기서 막는다.** 인터프리터가 아니면 argv[0]에서 끝내므로 `vim claude.md`는
+/// `vim`이다 — 인자를 훑지 않는다는 것이 그 보장이다.
+fn invoked_name(argv: &[String]) -> Option<String> {
+    let base = |arg: &String| -> String {
+        arg.rsplit('/').next().unwrap_or(arg).to_string()
+    };
+    let mut it = argv.iter().filter(|arg| !arg.is_empty());
+    let first = base(it.next()?);
+    if !INTERPRETERS.contains(&first.as_str()) {
+        return Some(first);
+    }
+    // 플래그를 건너뛴다 — `node --enable-source-maps <스크립트>`가 그 모양이다.
+    for arg in it {
+        if arg.starts_with('-') {
+            continue;
+        }
+        return Some(base(arg));
+    }
+    Some(first)
+}
+
+/// 그 pgid에서 도는 것의 이름. argv를 먼저 보고, 못 얻으면 `p_comm`으로 간다.
+///
+/// 되돌아갈 자리를 남기는 것은 `sysctl`이 실패하는 경우가 실재하기 때문이다 — 재는 사이에
+/// 끝난 프로세스, 권한이 없는 프로세스. 그때는 지금까지 하던 그대로가 답이다.
+fn foreground_name(pgid: i32) -> Option<String> {
+    if pgid <= 1 {
+        return None;
+    }
+    process_argv(pgid)
+        .as_deref()
+        .and_then(invoked_name)
+        .or_else(|| process_name(pgid))
+}
+
 /// 읽은 이름을 **어떻게 다루나** — 값 셋만 받는 순수 판정이다.
 ///
 /// **`command_runs`와 같은 이유로 따로 있다**(그 함수 주석). 조립부는 살아 있는 pty가
@@ -319,7 +427,7 @@ fn measure(pool: &PtyPool) -> Running {
         .map(|(id, shell)| {
             let running = shell.pid.and_then(|pid| {
                 let foreground = shell.master.process_group_leader()?;
-                running_command(pid, foreground, process_name(foreground))
+                running_command(pid, foreground, foreground_name(foreground))
             });
             (*id, running)
         })
@@ -689,6 +797,84 @@ mod tests {
             vec![super::PtyRunning { id: 1, running: None }],
             "돌던 셸만 지운다 — 이미 null이던 셸까지 쏘면 안 바뀐 값이 나간다"
         );
+    }
+
+    #[test]
+    fn the_name_a_person_typed_wins_over_the_file_that_actually_ran() {
+        // 값만 받는 순수 판정이라 전수한다.
+        let argv = |parts: &[&str]| parts.iter().map(|p| p.to_string()).collect::<Vec<_>>();
+
+        // 사람이 친 그대로. 경로가 붙어 와도 마지막 조각만 쓴다.
+        assert_eq!(super::invoked_name(&argv(&["claude"])), Some("claude".into()));
+        assert_eq!(
+            super::invoked_name(&argv(&["/Users/x/.local/bin/claude", "-p", "hi"])),
+            Some("claude".into())
+        );
+
+        // **인터프리터는 자기 이름을 안 내준다.** `codex`가 `#!/usr/bin/env node` 스크립트라
+        // 그 프로세스의 argv[0]이 `node`다 — 여기서 안 가르면 codex가 영영 `node`로 읽힌다.
+        assert_eq!(
+            super::invoked_name(&argv(&["node", "/opt/homebrew/bin/codex", "exec"])),
+            Some("codex".into())
+        );
+        assert_eq!(
+            super::invoked_name(&argv(&["node", "--enable-source-maps", "/opt/hb/bin/codex"])),
+            Some("codex".into())
+        );
+        // 인터프리터 혼자면 그것이 이름이다(REPL).
+        assert_eq!(super::invoked_name(&argv(&["node"])), Some("node".into()));
+
+        // **오탐은 여기서 막힌다.** 인터프리터가 아니면 argv[0]에서 끝내므로 인자를 안 훑는다 —
+        // adr-04가 타이틀 추론을 기각한 그 근거를 이 한 줄이 지킨다.
+        assert_eq!(super::invoked_name(&argv(&["vim", "claude.md"])), Some("vim".into()));
+        assert_eq!(super::invoked_name(&argv(&["grep", "claude"])), Some("grep".into()));
+
+        assert_eq!(super::invoked_name(&[]), None);
+    }
+
+    /// **이 판이 고친 버그를 실물로 못박는다.**
+    ///
+    /// 커널이 `p_comm`에 적는 것은 **실제로 실행된 파일**의 이름이라 심링크 뒤의 것이 온다.
+    /// Claude Code의 네이티브 설치본이 정확히 그 모양이다 — `~/.local/bin/claude`가
+    /// `~/.local/share/claude/versions/2.1.251`을 가리켜 이름이 `2.1.251`로 읽혔고, 그래서
+    /// 탭에도 사이드바에도 로고가 안 떴다.
+    ///
+    /// 여기서는 `/bin/sleep`을 `claude`라는 이름의 심링크로 부른다: `process_name`은 `sleep`을,
+    /// `foreground_name`은 `claude`를 줘야 한다. **둘을 함께 단언하는 것이 핵심이다** —
+    /// 뒤엣것만 보면 「어차피 원래 됐던 것 아닌가」와 갈리지 않는다.
+    #[test]
+    fn a_symlinked_command_is_named_by_the_link_not_the_file_behind_it() {
+        let dir = std::env::temp_dir().join(format!("atelier-argv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("임시 폴더를 만든다");
+        let link = dir.join("claude");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink("/bin/sleep", &link).expect("심링크를 건다");
+
+        let mut child = std::process::Command::new(&link)
+            .arg("30")
+            .spawn()
+            .expect("심링크로 띄운다");
+        let pid = child.id() as i32;
+
+        // 이름이 붙을 때까지 기다린다. **「claude가 될 때까지」로 기다리지 않는다** — 그러면
+        // 아래 단언이 스스로 통과한다. 기다리는 조건은 「커널이 무엇이든 읽어 준다」다.
+        let mut comm = None;
+        for _ in 0..300 {
+            comm = super::process_name(pid);
+            if comm.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let invoked = super::foreground_name(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_dir(&dir);
+
+        assert_eq!(comm.as_deref(), Some("sleep"), "커널은 심링크 뒤의 파일 이름을 준다");
+        assert_eq!(invoked.as_deref(), Some("claude"), "사람이 부른 이름은 argv[0]에 있다");
     }
 
     /// **실물 증거.** 「pgid로 이름을 읽는다」는 살아 있는 프로세스 없이는 못 잰다 — 위 순수

@@ -3,7 +3,7 @@ import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList, { RunningMarks } from "@/features/works/SidebarWorkList";
-import { runningKindsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import { runningAgentsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
@@ -134,7 +134,7 @@ function Sidebar({
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
  * `Record<slug, string[]>`로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고,
- * work 하나에서 명령이 시작될 때마다 **목록 전체가** 다시 그려진다(`runningKindsOf`
+ * work 하나에서 명령이 시작될 때마다 **목록 전체가** 다시 그려진다(`runningAgentsOf`
  * 머리말이 그 근거를 든다). 행마다 자기 것을 고르면 안 바뀐 행은 같은 배열을 받아 그
  * 자리에 머문다.
  *
@@ -142,8 +142,8 @@ function Sidebar({
  * 바뀌어 얕은 비교가 실제로 걸린다. 둘이 갈리는 자리가 여기다.
  */
 function RowRunning({ slug }: { slug: string }) {
-  const kinds = useStore(terminalStore, (state) => runningKindsOf(state, slug), shallow);
-  return <RunningMarks kinds={kinds} />;
+  const running = useStore(terminalStore, (state) => runningAgentsOf(state, slug), shallow);
+  return <RunningMarks running={running} />;
 }
 
 // nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어

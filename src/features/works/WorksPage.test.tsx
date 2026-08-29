@@ -216,7 +216,7 @@ describe("WorksPage 머리행 배치", () => {
   }
   // actions는 헤더의 마지막 자식이다 (ShellTabs·PageHeader가 같은 상자를 쓴다)
   function actions(markup: string): string {
-    return header(markup).match(/<div class="flex shrink-0 items-center gap-2">([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
+    return header(markup).match(/<div data-tab-actions[^>]*>([\s\S]*)<\/div><\/header>/)?.[1] ?? "";
   }
 
   it("ⓘ 다음이 ⋯다", () => {
@@ -287,7 +287,7 @@ describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
     return (
       markup
         .match(/<header[\s\S]*?<\/header>/)?.[0]
-        .match(/<div class="flex shrink-0 items-center gap-2">([\s\S]*)<\/div><\/header>/)?.[1] ?? ""
+        .match(/<div data-tab-actions[^>]*>([\s\S]*)<\/div><\/header>/)?.[1] ?? ""
     );
   }
 

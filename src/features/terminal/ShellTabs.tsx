@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { File, LoaderCircle, Plus, SquareTerminal, X } from "lucide-react";
+import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
@@ -205,25 +205,11 @@ function ShellTabs({
             // 이 칸이 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다.
             // 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이 성립하는 조건이다.
             //
-            // **꺼져도 상자가 있다**(결정 25). 셸 칸은 꺼지면 글자만 남는데 이 칸은 눌린 자리에
-            // 앉아 있어, 「늘 거기 있는 것」이 그 차이로 읽힌다 — 옆의 세로선이 「묶음이 다르다」를
-            // 말하고 이 상자가 「종류가 다르다」를 말한다.
-            //
-            // 여백이 7·9px인 것은 **테두리 1px을 물린 값**이다(8·10에서 각 1px). 안 물리면 이
-            // 칸만 2px 넓어져 라벨이 셸 칸의 첫 글자와 어긋난다.
-            //
-            // hover가 `bg-state-1`이 아니라 `quiet-hover`인 것은 **바탕이 생겼기 때문이다** —
-            // state-1(3%)은 inset보다 옅어서 hover에 칸이 오히려 밝아진다. quiet-hover는 한 단계
-            // 진해지고(state-2) 글자색까지 함께 가며, 그 유틸리티의 계약대로 **꺼진 가지 안에만**
-            // 있다(index.css의 경고 — toggle-on과 겹치면 hover 규칙이 두 벌이 된다).
-            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] border pl-[7px] pr-[9px] text-[12.5px] transition-colors",
-            spec.on
-              // 켜지면 **테두리를 지운다.** inset과 toggle-on의 농도 차가 작아 그것만으로는
-              // 「지금 문서를 보고 있나」가 흐려진다 — 두 상태가 농도뿐 아니라 테두리의
-              // 있고 없음으로도 갈린다. 켜짐을 말하는 어휘는 그대로 하나다
-              // (`aria-pressed` + `toggle-on`).
-              ? "toggle-on border-transparent font-medium"
-              : "bg-inset text-muted-foreground quiet-hover",
+            // **셸 칸과 같은 알약이다**(결정 25). 눌린 자리(`bg-inset` + 테두리)로 종류를
+            // 가르는 안은 실물에서 접었다 — 그 칸만 규격이 갈리면 줄에서 튄다. 「다른 종류」는
+            // 옆의 세로선 하나가 말한다.
+            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] pl-2 pr-2.5 text-[12.5px] transition-colors",
+            spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
           )}
         >
           <File className="size-3.5 shrink-0" strokeWidth={1.8} />
@@ -336,7 +322,17 @@ function ShellTabs({
           `min-w-4`는 칸이 꽉 찼을 때도 `+`와 조작이 맞붙지 않게 남기는 값이다. */}
       <span data-tauri-drag-region className="min-w-4 flex-1" />
 
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* 조작 사이 간격이 **왼쪽 셸 컨트롤과 같은 값이다**(결정 24 — `--titlebar-control-gap`).
+          한 줄에 선 아이콘 버튼이 자리마다 다른 간격을 쓰면 그중 하나만 따로 떨어진 것처럼
+          읽힌다 — 목록 패널 헤더가 같은 이유로 이미 같은 값을 쓴다. */}
+      {actions && (
+        <div
+          data-tab-actions
+          className="flex shrink-0 items-center gap-(--titlebar-control-gap)"
+        >
+          {actions}
+        </div>
+      )}
 
       {picking && (
         <ShellPicker
@@ -453,55 +449,37 @@ const ShellTab = memo(function ShellTab({
         // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
       >
-        {/* 이름 **앞**에 서고 `shrink-0`이다 — 줄어드는 것은 옆의 이름(`truncate`)
-            뿐이라, 균등 축소가 오는 뒤 티켓에서 「로고와 스피너는 끝까지 남는다」
-            (결정 11)를 지킬 자리가 여기 이미 잡혀 있다.
+        {/* **넓은 폭에서는 글리프가 없다**(결정 27). 이름이 이미 그것을 말하기 때문이다 —
+            `claude`가 도는 칸의 타이틀이 「✳ Claude」이고, 그 옆에 같은 마크를 하나 더 세우면
+            같은 사실이 한 칸에 두 번 적힌다.
 
-            **로고와 스피너를 나란히 세운다** — 겹치는 안은 기각했다: 로고 없이 도는
-            칸(모르는 명령)에 빈 고리만 남고, 14px 실루엣 위의 고리는 이 줄의 아이콘
-            규격(size-3.5)을 넘긴다.
+            **이름이 숨는 폭에서만 글리프로 바뀐다.** 그 폭에서는 칸이 텅 비므로(크롬에서 그
+            일이 없는 것은 파비콘이 늘 있어서다) 무언가는 서야 하는데, 그때 세울 것이 둘로
+            갈린다: 아는 에이전트면 그 로고, 아니면 셸을 뜻하는 `SquareTerminal`이다. 두 자리가
+            같은 규칙을 쓰는 것이 「통일성」이고, 사이드바 둘째 줄이 셸 수 옆에 같은 글리프를
+            쓰는 것도 그래서다(결정 4).
 
-            **바깥 조건이 `mark`가 아니라 `running`이다.** 아는 에이전트가 아니어도
-            「그 칸이 일하는 중」은 참이고, 그 사실이 이 판이 답하려는 물음이다 —
-            로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다. 모르는 것에
-            물음표를 세우지 않는 것(결정 4)은 그대로다: 그때는 스피너만 돈다.
+            **꼬리표가 있으면 안 선다** — 죽은 칸은 그 자리를 이미 먹고 있다.
 
-            색을 안 준다. 로고는 `currentColor`라야 다크·라이트 둘 다 살고(결정 15)
-            스피너도 같은 색이라야 둘이 한 덩어리로 읽힌다 — 켜진 칸에서는 toggle-on
-            글자색을 그대로 받는다(죽은 칸의 꼬리표가 자기 색을 박는 것과 반대 방향
-            이고, 그쪽은 「꺼진 것」을 말해야 해서 그렇다).
-
-            글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는
-            칸이 **눈에만** 보인다. 이 저장소는 아이콘에 이름을 `aria-label`로 다는데
-            그 자리가 늘 버튼이었고 여기는 버튼 **안**이라 `role="img"`을 함께 준다 —
-            역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않는다.
-            이름 버튼의 접근성 이름은 이름 **앞에** 이 한 마디가 붙는 것으로 끝난다
-            (닫기 버튼은 `shellRowName`을 따로 딛으므로 그대로다). */}
-        {running !== null && (
-          <span
-            role="img"
-            aria-label={mark ? `${mark.label} 실행 중` : "명령 실행 중"}
-            className="flex shrink-0 items-center gap-1"
-          >
-            {mark && <mark.Glyph className="size-3.5" />}
-            <LoaderCircle className="size-3 animate-spin" strokeWidth={1.8} />
-          </span>
-        )}
-        {/* **빈 칸을 만들지 않는다**(결정 20). 이름이 숨는 폭에서 로고가 없는 칸에는
-            아무 글리프도 안 남아 칸이 텅 빈다 — 크롬에서 그 일이 없는 것은 파비콘이
-            늘 있어서다. 그 폭에서만 서는 대체 글리프를 두어 자리를 채운다: 평소 폭에서는
-            `hidden`이라 판 03이 세운 줄의 모습이 안 바뀐다.
-
-            **로고가 돌거나 꼬리표가 있으면 안 선다** — 그 자리를 이미 먹고 있어서다.
-            글리프가 사이드바 둘째 줄이 셸 수 옆에 쓰는 것과 같은 `SquareTerminal`인 것은
-            결정 4와 같은 규칙이다: 같은 것을 두 자리에서 다른 모양으로 그리면 한쪽이
-            다른 종류의 것으로 읽힌다. */}
-        {running === null && !end && (
-          <SquareTerminal
-            className="hidden size-3.5 shrink-0 @max-[88px]:block"
-            strokeWidth={1.8}
-          />
-        )}
+            글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는 칸이
+            **눈에만** 보인다. 역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않아
+            `role="img"`을 함께 준다 — 넓은 폭에서는 이름 글자가 그 몫을 하므로 `sr-only`로
+            남는 이름과 겹쳐 읽히지 않게 좁은 폭에서만 이 마디가 붙는다. */}
+        {!end &&
+          (mark ? (
+            <span
+              role="img"
+              aria-label={`${mark.label} 실행 중`}
+              className="hidden shrink-0 items-center @max-[88px]:flex"
+            >
+              <mark.Glyph className="size-3.5" />
+            </span>
+          ) : (
+            <SquareTerminal
+              className="hidden size-3.5 shrink-0 @max-[88px]:block"
+              strokeWidth={1.8}
+            />
+          ))}
         {/* 좁아지면 **먼저 말줄임으로 줄고**(`truncate`), 이름 몇 글자도 못 세우는 폭에서
             자리를 비운다(결정 11). `hidden`이 아니라 `sr-only`인 것은 이름 버튼의
             접근성 이름이 이 글자 하나라서다 — `display:none`으로 지우면 좁은 창에서 그

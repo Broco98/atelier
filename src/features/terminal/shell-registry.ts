@@ -427,26 +427,32 @@ export function runningOn(shell: Shell): string | null {
 }
 
 /**
- * 그 화면에서 도는 것의 **종류**(결정 4). 중복이 없다 — claude가 둘 돌아도 로고는 하나다.
- * 목록은 「뭐가 도나」를 말하지 「몇 개 도나」를 말하지 않고, 개수는 `shellCountsOf`가
- * 이미 말한다.
+ * 그 화면에서 **도는 것들**(결정 4·28). 칸 순서 그대로이고 **중복을 지우지 않는다** —
+ * claude가 둘 돌면 두 번 들어 있다.
  *
- * 순서는 칸 순서 그대로다(`Set`이 넣은 순서를 지킨다) — 로고 자리가 초마다 재배열되면
- * 그 자체가 깜빡임이다.
+ * **개수를 여기서 접지 않는 이유**는 얕은 비교다. `Map`이나 `Record`로 접어 주면 회차마다
+ * 새 객체라 사이드바 행의 `shallow`가 늘 어긋나고, work 하나에서 명령이 시작될 때마다
+ * 목록 전체가 다시 그려진다(`shellCountsOf` 머리말이 든 그 함정). 문자열 배열은 얕은
+ * 비교가 그대로 먹으므로 **세는 일은 그리는 쪽**(`RunningMarks`)이 한다.
+ *
+ * 한때 종류만 담았다(중복 없음) — 「뭐가 도나」만 말하고 개수는 `shellCountsOf`가 셸 수로
+ * 말한다는 것이었는데, 그러면 한 줄 안에서 셸에는 수가 붙고 에이전트에는 안 붙는다.
+ *
+ * 순서가 칸 순서인 것은 로고 자리가 초마다 재배열되면 그 자체가 깜빡임이라서다.
  *
  * **`shellCountsOf`처럼 Record로 한 번에 주지 않는다.** 그쪽은 셸이 열리고 닫힐 때만 바뀌어
  * 사이드바가 얕은 비교로 통째로 구독해도 되지만, 이 값은 초마다 바뀐다 — Record로 주면
  * 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
  * 때마다 목록 전체가 다시 그려진다. 행마다 자기 것을 고르게 두면 그 행만 바뀐다.
  */
-export function runningKindsOf(state: ShellsState, owner: string | null): ReadonlyArray<string> {
-  const kinds = new Set<string>();
+export function runningAgentsOf(state: ShellsState, owner: string | null): ReadonlyArray<string> {
+  const out: string[] = [];
   for (const shell of shellsOf(state, owner)) {
     // 「죽은 칸은 안 센다」를 여기서 다시 가르지 않는다 — 그 판정은 `runningOn` 하나다.
     const running = runningOn(shell);
-    if (running !== null) kinds.add(running);
+    if (running !== null) out.push(running);
   }
-  return [...kinds];
+  return out;
 }
 
 /**

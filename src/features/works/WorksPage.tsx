@@ -510,15 +510,12 @@ function WorksPage({
         selected && (
           <>
             <StatusMenu work={selected} />
-            {/* ⓘ와 ⋯ 사이에는 **여백이 없다**(이 묶음에 gap이 없다). hover 배경이 한
-                버튼에서 다음 버튼으로 끊김 없이 옮겨가야 하고, 그러려면 두 상자가 같아야
-                한다 — 둘 다 icon-button 규격인 근거가 그것이다.
-                한때 여기 `-ml-1`이 있었다: PageHeader의 gap을 물려 **제목과 ⓘ 사이만**
-                좁히는 값이었는데, 제목이 사라져 물릴 상대가 없다. */}
-            <span className="flex shrink-0 items-center">
-              <WorkMetaMenu work={selected} />
-              <WorkMenu work={selected} archive={archive} remove={remove} />
-            </span>
+            {/* ⓘ와 ⋯가 **줄의 간격을 그대로 받는다**(결정 24). 한때 둘을 gap 0인 상자에
+                묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
+                것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
+                리듬이 갈리는 값이 크다. */}
+            <WorkMetaMenu work={selected} />
+            <WorkMenu work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
                 지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에

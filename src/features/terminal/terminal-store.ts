@@ -367,6 +367,21 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     // 색을 우리가 고르는 것이 아니다 — 팔레트는 그대로 두고 **그리는 순간의 바닥만**
     // 준다. 기본을 어둡게로 옮긴 이 판이 만든 경로라, 고치는 자리도 이 판이다.
     minimumContrastRatio: 4.5,
+    // **막대 자리를 예약하지 않는다 — 그래야 오른쪽 끝까지 글자가 간다**(결정 26).
+    //
+    // `FitAddon`이 `cols`를 셀 때 `showScrollbar`면 폭에서 **14px 빼고** 나눈다
+    // (`addon-fit`의 `proposeDimensions`). xterm 6의 막대는 `position: absolute`로 화면 위에
+    // **겹쳐** 뜨는 것이라(VS Code식 `xterm-scrollable-element`) 그 14px은 「막대가 글자를
+    // 덮지 않게」 비워 두는 자리다 — 실측으로 오른쪽에 22px이 남았고, 그중 14가 이것,
+    // 나머지 8이 `cols` 내림 잉여였다.
+    //
+    // **그 막대는 평소 `opacity: 0`이다**(`xterm-invisible`) — 스크롤·hover에만 잠깐 뜬다.
+    // 늘 보이지도 않는 것을 위해 한 화면의 오른쪽 끝을 늘 비워 두는 셈이라, 오른쪽에 붙는
+    // 프롬프트를 쓰는 셸에서는 그 자리가 「끝나지 않은 여백」으로 보인다.
+    //
+    // _감수한 것_: 스크롤백 10,000줄에 위치를 알려 주는 막대가 없다. 무는 길은 그대로다
+    // (휠·트랙패드·⇧PageUp) — 탭 줄이 44px에서 같은 이유로 막대를 숨긴 것과 같은 결정이다.
+    scrollbar: { showScrollbar: false },
   });
   const fit = new FitAddon();
   term.loadAddon(fit);

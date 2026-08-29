@@ -220,16 +220,16 @@ describe("칸이 무엇이 도는지 말한다", () => {
     return renderToStaticMarkup(<mark.Glyph />).match(/ d="([^"]+)"/)![1];
   };
 
-  it("claude가 도는 칸에 로고와 스피너가 뜨고, 끝나면 사라진다", () => {
+  it("claude가 도는 칸에 로고가 뜨고, 끝나면 사라진다", () => {
     const { state, ids } = opened(1);
     const 도는중 = shellCellsOf(render(setRunning(state, ids[0], "claude")))[0];
     expect(도는중).toContain(glyphOf("claude"));
-    expect(도는중).toContain("animate-spin");
+    expect(도는중).toContain('aria-label="claude 실행 중"');
 
-    // 프롬프트로 돌아오면 `running`이 null이다 — 표시도 함께 걷힌다.
+    // 프롬프트로 돌아오면 `running`이 null이다 — 로고도 함께 걷힌다.
     const 끝난뒤 = shellCellsOf(render(setRunning(state, ids[0], null)))[0];
     expect(끝난뒤).not.toContain(glyphOf("claude"));
-    expect(끝난뒤).not.toContain("animate-spin");
+    expect(끝난뒤).not.toContain("실행 중");
   });
 
   it("codex가 도는 칸과 claude가 도는 칸이 로고로 갈린다", () => {
@@ -244,16 +244,17 @@ describe("칸이 무엇이 도는지 말한다", () => {
     expect(cells[1]).not.toContain(glyphOf("claude"));
   });
 
-  it("모르는 것이 도는 칸에는 로고가 없다 — 그래도 도는 표시는 남는다", () => {
-    // 결정 4·15. 물음표를 띄우면 줄이 시끄러워진다(셸에서 도는 것의 대부분이 그 자리에 온다).
-    // 다만 **그 칸이 일하는 중**이라는 사실은 아는 에이전트가 아니어도 참이라, 스피너는
-    // 로고와 무관하게 돈다 — 로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다.
+  it("모르는 것이 도는 칸에는 **아무것도** 안 뜬다", () => {
+    // 결정 4·27. 한때 여기 스피너가 돌았다 — 「그 칸이 일하는 중」은 아는 에이전트가
+    // 아니어도 참이라는 근거였는데, 그 스피너는 **무엇이 도는지를 말하지 않으면서** 자리와
+    // 눈길만 가져갔다. 이 줄이 답하는 물음은 「어느 칸에서 에이전트가 도나」이고, 사이드바
+    // 둘째 줄이 종류만 말하는 것과 같은 규칙이 된다.
     const { state, ids } = opened(1);
     const cell = shellCellsOf(render(setRunning(state, ids[0], "cargo")))[0];
     expect(cell).not.toContain(glyphOf("claude"));
     expect(cell).not.toContain(glyphOf("codex"));
-    expect(cell).toContain("animate-spin");
-    expect(cell).toContain('aria-label="명령 실행 중"');
+    expect(cell).not.toContain("animate-spin");
+    expect(cell).not.toContain("실행 중");
   });
 
   it("죽은 칸에는 아무것도 안 돈다", () => {
@@ -384,40 +385,21 @@ describe("칸이 `memo` 경계다", () => {
 });
 
 // 결정 25 — `spec` 칸이 셸 칸과 **다른 종류**로 읽혀야 한다. 그 칸이 지는 사실 넷(늘 맨 앞 ·
-// `×`가 없음 · 스크롤 상자 밖 · 프로세스가 아님) 중 어느 것도 모양에 없었다: 두 칸이 같은
-// 알약이고 꺼지면 글자색까지 같았다.
+// `×`가 없음 · 스크롤 상자 밖 · 프로세스가 아님) 중 어느 것도 모양에 없었다.
 //
-// **판단이 갈리는 것은 꺼진 상태다.** 켜져 있으면 어느 안이든 `toggle-on`이 말해 준다.
+// **말하는 것은 세로선 하나다.** 칸 자체는 셸 칸과 같은 알약으로 둔다 — 규격을 가르는 안
+// (눌린 자리)은 실물에서 접었다.
 describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
   const spec = (markup: string) => markup.match(/<button[^>]*data-tab="spec"[^>]*>/)![0];
   const firstShell = (markup: string) => markup.match(/<div[^>]*data-tab="shell"[^>]*>/)![0];
 
-  it("꺼져도 상자를 갖는다 — 셸 칸은 안 갖는다", () => {
-    // 이 대비가 이 판의 전부다. 한쪽만 보면 「상자가 있다」까지이고, 둘을 함께 봐야
-    // 「그래서 갈린다」가 된다.
+  it("셸 칸과 같은 알약이다", () => {
+    // 눌린 자리로 종류를 가르는 안은 실물에서 접었다(결정 25) — 그 칸만 규격이 갈리면
+    // 줄에서 튄다. 되살아나면 여기가 빨개진다.
     const markup = render(opened(2).state, { spec: { on: false, onSelect: () => {} } });
-    expect(spec(markup)).toContain("bg-inset");
-    expect(spec(markup)).toContain("border");
-    expect(firstShell(markup)).not.toContain("bg-inset");
-  });
-
-  it("켜지면 테두리를 지운다", () => {
-    // inset과 toggle-on(state-3)의 농도 차가 작아 그것만으로는 켜짐이 흐려진다 — 두 상태가
-    // **테두리의 있고 없음**으로도 갈린다. 어휘는 그대로 `aria-pressed` + `toggle-on` 하나다.
-    const tag = spec(render(opened(2).state, { spec: { on: true, onSelect: () => {} } }));
-    expect(tag).toContain("toggle-on");
-    expect(tag).toContain("border-transparent");
-  });
-
-  it("꺼진 칸의 hover가 `quiet-hover`다 — `bg-state-1`이 아니다", () => {
-    // 바탕이 생겼으므로 state-1(3%)은 inset보다 **옅어서** hover에 칸이 오히려 밝아진다.
-    // 그 유틸리티의 계약대로 꺼진 가지 안에만 있다(toggle-on과 겹치면 규칙이 두 벌이 된다).
-    const off = spec(render(opened(2).state, { spec: { on: false, onSelect: () => {} } }));
-    expect(off).toContain("quiet-hover");
-    expect(off).not.toContain("hover:bg-state-1");
-    expect(spec(render(opened(2).state, { spec: { on: true, onSelect: () => {} } }))).not.toContain(
-      "quiet-hover",
-    );
+    expect(spec(markup)).not.toContain("bg-inset");
+    expect(spec(markup)).toContain("rounded-[8px]");
+    expect(firstShell(markup)).toContain("rounded-[8px]");
   });
 
   it("세로선이 `spec`와 스크롤 상자 **사이**에 선다", () => {
@@ -557,16 +539,18 @@ describe("좁아질 때 줄어드는 순서", () => {
     expect(cell).toContain("실패");
   });
 
-  it("로고와 스피너에는 숨기는 규칙이 안 붙는다", () => {
-    // 결정 11의 핵심 한 줄이다 — **로고와 스피너는 끝까지 남는다.** 그 묶음 안 어디에도
-    // 숨기는 클래스가 없어야 하므로 자식 글리프까지 함께 본다(바깥 span만 보면 스피너에
-    // 몰래 붙은 규칙을 못 본다).
+  it("로고는 **이름이 숨는 폭에서만** 선다", () => {
+    // 결정 27이 결정 11의 「로고는 끝까지 남는다」를 뒤집었다. 넓은 폭에서 로고가 없는 것은
+    // **이름이 이미 그것을 말하기 때문이다** — claude가 도는 칸의 타이틀이 「✳ Claude」라,
+    // 그 옆에 같은 마크를 세우면 같은 사실이 한 칸에 두 번 적힌다.
     const { state, ids } = opened(1);
     const cell = shellCellsOf(render(setRunning(state, ids[0], "claude")))[0];
     const group = cell.split('role="img"')[1].split("</span>")[0];
-    // 클래스 자리의 `hidden`만 문다 — 로고 svg가 달고 오는 `aria-hidden`은 그 계약이다.
-    expect(group).not.toMatch(/["\s]hidden["\s]/);
-    expect(group).not.toMatch(/@max-/);
+    // 평소에는 없고, 이름이 `sr-only`가 되는 그 폭에서 선다 — **문턱이 이름과 같아야 한다**.
+    // 어긋나면 둘 다 없는 폭이나 둘 다 있는 폭이 생긴다.
+    expect(group).toMatch(/["\s]hidden["\s]/);
+    expect(group).toContain("@max-[88px]:flex");
+    expect(cell).toContain("@max-[88px]:sr-only");
   });
 
   it("이름은 숨어도 스크린리더에는 남는다", () => {

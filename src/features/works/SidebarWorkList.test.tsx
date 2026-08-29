@@ -271,13 +271,21 @@ describe("work 행의 둘째 줄", () => {
 });
 
 // 결정 4·15. **표는 agent-mark 하나다** — 탭 칸과 이 줄이 각자 표를 들면 둘이 갈린다.
-// 중복 제거는 `runningKindsOf`가 이미 했고(shell-registry.test.ts) 여기서 다시 가르지 않는다.
+// **세는 일이 여기다**(결정 28) — 값 쪽은 중복을 그대로 둔다(shell-registry.test.ts).
 describe("둘째 줄의 로고", () => {
-  const marks = (kinds: string[]) => renderToStaticMarkup(<RunningMarks kinds={kinds} />);
+  const marks = (running: string[]) => renderToStaticMarkup(<RunningMarks running={running} />);
   const labelsOf = (html: string) => [...html.matchAll(/aria-label="(.*?)"/g)].map((m) => m[1]);
 
   it("종류마다 하나씩, 받은 순서 그대로다", () => {
-    expect(labelsOf(marks(["codex", "claude"]))).toEqual(["codex", "claude"]);
+    expect(labelsOf(marks(["codex", "claude"]))).toEqual(["codex 1개", "claude 1개"]);
+  });
+
+  it("같은 것이 여럿이면 로고 하나에 **수**가 붙는다", () => {
+    // 결정 28. 한 줄 안에서 셸에만 수가 붙고 에이전트에는 안 붙으면 세는 단위가 둘로 갈린다.
+    const html = marks(["claude", "codex", "claude"]);
+    expect(labelsOf(html)).toEqual(["claude 2개", "codex 1개"]);
+    expect(html).toContain(">2<");
+    expect(html).toContain("tabular-nums");
   });
 
   it("모르는 것에는 아무것도 안 띄운다", () => {

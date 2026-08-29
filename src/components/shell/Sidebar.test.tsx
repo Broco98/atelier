@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   NO_SHELLS,
   openShell,
-  runningKindsOf,
+  runningAgentsOf,
   setRunning,
   setTitle,
   shellCountsOf,
@@ -52,7 +52,7 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
     const { state, 나 } = twoWorks();
     const 뒤 = setTitle(state, 나, "~/atelier — nvim");
     for (const slug of ["가", "나"]) {
-      expect(shallow(runningKindsOf(뒤, slug), runningKindsOf(state, slug))).toBe(true);
+      expect(shallow(runningAgentsOf(뒤, slug), runningAgentsOf(state, slug))).toBe(true);
     }
     expect(shallow(shellCountsOf(뒤), shellCountsOf(state))).toBe(true);
   });
@@ -60,8 +60,8 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
   it("명령이 시작되면 그 work의 행만 달라진다", () => {
     const { state, 나 } = twoWorks();
     const 뒤 = setRunning(state, 나, "claude");
-    expect(shallow(runningKindsOf(뒤, "가"), runningKindsOf(state, "가"))).toBe(true);
-    expect(shallow(runningKindsOf(뒤, "나"), runningKindsOf(state, "나"))).toBe(false);
+    expect(shallow(runningAgentsOf(뒤, "가"), runningAgentsOf(state, "가"))).toBe(true);
+    expect(shallow(runningAgentsOf(뒤, "나"), runningAgentsOf(state, "나"))).toBe(false);
   });
 
   it("명령이 끝나도 **줄이 서는 조건**은 안 바뀐다", () => {
@@ -82,17 +82,17 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 얕은 비교가 빠지면 셀렉터가 회차마다 새 배열을 돌려주므로 위 검사들이 전부 초록인
     // 채로 모든 행이 초마다 다시 그려진다 — 값과 배선을 함께 봐야 하는 이유가 이것이다.
     expect(sidebar).toContain(
-      "useStore(terminalStore, (state) => runningKindsOf(state, slug), shallow)",
+      "useStore(terminalStore, (state) => runningAgentsOf(state, slug), shallow)",
     );
   });
 
   it("종류를 Record로 한 번에 읽지 않는다", () => {
     // `shellCountsOf`처럼 Record로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘
     // 어긋나고, work 하나에서 명령이 시작될 때마다 **목록 전체**가 다시 그려진다
-    // (`runningKindsOf` 머리말이 그 근거를 든다). 부르는 자리가 하나뿐임을 세어 못박는다.
+    // (`runningAgentsOf` 머리말이 그 근거를 든다). 부르는 자리가 하나뿐임을 세어 못박는다.
     // 이름이 아니라 **부르는 자리**를 센다 — 이름만 세면 import 줄과 주석의 산문까지
     // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다.
-    expect(countOf(sidebar, "runningKindsOf(")).toBe(1);
+    expect(countOf(sidebar, "runningAgentsOf(")).toBe(1);
   });
 
   it("그 값이 work 행의 둘째 줄로 내려간다", () => {

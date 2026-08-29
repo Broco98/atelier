@@ -183,7 +183,10 @@ function SidebarWorkList({
           anchorRef={hoverAnchor}
           boundaryRef={boundaryRef}
           side="right"
-          gap={8}
+          // 사이드바 **경계선**에서 재는 값이다 — 행이 아니라(그쪽 prop 주석). 실측으로
+          // 행의 오른쪽 끝은 경계선보다 19px 안쪽이라 눈에 보이는 거리는 이 값 + 19px이고,
+          // 그래서 8px이 27px로 보였다. 더 줄이면 카드의 그림자가 사이드바에 닿는다.
+          gap={4}
           width={272}
           className="p-3.5"
         >
@@ -576,10 +579,15 @@ function WorkRow({
  * 대부분(`node`·`cargo`·`vim`)이 그 자리에 오는데 그때마다 무엇인가 뜨면 줄이 시끄러워져
  * 「어느 work에서 에이전트가 도나」라는 이 줄의 물음이 오히려 안 보인다.
  */
-export function RunningMarks({ kinds }: { kinds: ReadonlyArray<string> }) {
+export function RunningMarks({ running }: { running: ReadonlyArray<string> }) {
+  // **세는 일이 여기다**(결정 28). 값 쪽은 중복을 그대로 둔 문자열 배열이라야 사이드바 행의
+  // 얕은 비교가 먹는다(`runningAgentsOf` 머리말) — 접는 것은 그리는 자리의 몫이다.
+  // `Map`이 넣은 순서를 지키므로 로고 자리가 초마다 재배열되지 않는다.
+  const counted = new Map<string, number>();
+  for (const one of running) counted.set(one, (counted.get(one) ?? 0) + 1);
   return (
     <>
-      {kinds.map((kind) => {
+      {[...counted].map(([kind, count]) => {
         const mark = agentMarkOf(kind);
         if (mark === null) return null;
         return (
@@ -594,10 +602,14 @@ export function RunningMarks({ kinds }: { kinds: ReadonlyArray<string> }) {
           <span
             key={kind}
             role="img"
-            aria-label={mark.label}
-            className="flex shrink-0 text-muted-foreground"
+            // 수까지 함께 읽힌다 — 눈에 보이는 것과 같은 말이어야 한다.
+            aria-label={`${mark.label} ${count}개`}
+            className="flex shrink-0 items-center gap-1 text-muted-foreground"
           >
             <mark.Glyph className="size-3" />
+            {/* 셸 수와 **같은 대접이다**(결정 28). 한 줄 안에서 셸에만 수가 붙고 에이전트에는
+                안 붙으면, 그 줄이 세는 단위가 둘로 갈린다. `tabular-nums`도 그쪽과 같다. */}
+            <span className="tabular-nums">{count}</span>
           </span>
         );
       })}

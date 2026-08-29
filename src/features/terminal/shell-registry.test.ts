@@ -20,7 +20,7 @@ import {
   closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
-  runningKindsOf,
+  runningAgentsOf,
   runningOn,
   runningShellsOf,
   setRunning,
@@ -1451,22 +1451,24 @@ describe("work가 도는 것의 **종류**를 말한다", () => {
 
   // 결정 4. claude가 둘 돌아도 사이드바의 로고는 하나다 — 목록은 「뭐가 도나」를 말하지
   // 「몇 개 도나」를 말하지 않는다(개수는 `⌨3`이 이미 말한다).
-  it("같은 것이 둘 돌아도 하나로 센다", () => {
+  it("같은 것이 둘 돌면 **두 번** 들어 있다 — 세는 일은 그리는 쪽이다", () => {
+    // 결정 28. 여기서 접으면 `Map`이나 `Record`가 되고, 그러면 회차마다 새 객체라 사이드바
+    // 행의 얕은 비교가 늘 어긋나 목록 전체가 초마다 다시 그려진다(`shellCountsOf`의 함정).
     const { state, ids } = opened(2, 가);
     let 지금 = setRunning(state, ids[0], "claude");
     지금 = setRunning(지금, ids[1], "claude");
-    expect(runningKindsOf(지금, "가")).toEqual(["claude"]);
+    expect(runningAgentsOf(지금, "가")).toEqual(["claude", "claude"]);
   });
 
   it("다른 것이 돌면 둘 다 말하고, 순서는 칸 순서다", () => {
     const { state, ids } = opened(2, 가);
     let 지금 = setRunning(state, ids[0], "codex");
     지금 = setRunning(지금, ids[1], "claude");
-    expect(runningKindsOf(지금, "가")).toEqual(["codex", "claude"]);
+    expect(runningAgentsOf(지금, "가")).toEqual(["codex", "claude"]);
   });
 
   it("아무것도 안 도는 work는 빈 목록이다", () => {
-    expect(runningKindsOf(opened(2, 가).state, "가")).toEqual([]);
+    expect(runningAgentsOf(opened(2, 가).state, "가")).toEqual([]);
   });
 
   it("남의 work에서 도는 것은 안 센다", () => {
@@ -1474,8 +1476,8 @@ describe("work가 도는 것의 **종류**를 말한다", () => {
     const 나 = openShell(state, { owner: "나", project: null, cwd: null })!;
     let 지금 = setRunning(나.state, ids[0], "claude");
     지금 = setRunning(지금, 나.id, "cargo");
-    expect(runningKindsOf(지금, "가")).toEqual(["claude"]);
-    expect(runningKindsOf(지금, "나")).toEqual(["cargo"]);
+    expect(runningAgentsOf(지금, "가")).toEqual(["claude"]);
+    expect(runningAgentsOf(지금, "나")).toEqual(["cargo"]);
   });
 
   // `runningOn`을 딛는다 — 여기서 상태를 한 번 더 가르면 같은 판정이 두 벌이 된다.
@@ -1483,7 +1485,7 @@ describe("work가 도는 것의 **종류**를 말한다", () => {
     const { state, ids } = opened(1, 가);
     const 돌던칸 = setRunning(state, ids[0], "claude");
     const 죽은뒤 = markFailed(돌던칸, ids[0], "폴더가 없습니다");
-    expect(runningKindsOf(죽은뒤, "가")).toEqual([]);
+    expect(runningAgentsOf(죽은뒤, "가")).toEqual([]);
   });
 });
 
