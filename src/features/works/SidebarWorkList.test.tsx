@@ -366,6 +366,29 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
     // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
     expect(source.split("scrollWidth").length - 1).toBe(1);
   });
+
+  // 페이드 폭은 **한 값인데 두 언어에 적혀 있다** — `calc()`가 길이를 시간으로 못 바꾸는 것이
+  // 그 이유 전부다(결정 12). 정본은 `index.css`이고(결정 10) `TITLE_FADE`는 그것을 시간으로
+  // 바꾸려고 옮겨 적은 쪽이다. 옮겨 적은 쪽이 뒤처져도 타입 검사도 화면도 조용하다:
+  // 어긋남은 마퀴 **속도**로만 나타나고(넘침 100px에서 24→12는 +10.7%) e2e의 속도 밴드
+  // (`MARQUEE_SPEED * [0.88, 1.12]`) 안에 숨는다. e2e가 이미 묶는 짝은 CSS↔e2e 하나뿐이라
+  // 이 짝은 여기서 본다 — `theme-tokens.test.ts`가 앱 팔레트↔터미널에 하는 것과 같다.
+  it("`TITLE_FADE`가 `index.css`의 `--title-fade`와 같은 수다", () => {
+    // 못 찾으면 던진다 — 어느 쪽 이름이 바뀌면 조용히 통과하는 대신 여기가 깨져야 한다.
+    const px = (source: string, pattern: RegExp, where: string) => {
+      const found = pattern.exec(source);
+      if (!found) throw new Error(`${where}에서 페이드 폭을 찾지 못했다`);
+      return found[1];
+    };
+    const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(px(source, /const TITLE_FADE = (\d+);/, "SidebarWorkList.tsx")).toBe(
+      px(css, /--title-fade:\s*(\d+)px;/, "index.css"),
+    );
+  });
 });
 
 describe("행 아래에 아무것도 딸리지 않는다", () => {
