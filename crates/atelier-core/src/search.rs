@@ -39,6 +39,7 @@ pub const LAYER_LIMIT: usize = 20;
 /// 알고 세어야 한다. 그러면 상한이 두 자리에 살고, 고치는 날 어긋나도 화면에 티가 안 난다
 /// (결정 15가 순위·층 규칙을 코어에 몰아둔 것과 같은 이유다).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchResults {
     pub hits: Vec<SearchHit>,
     /// 상한에 걸려 **못 나온 줄이 있는가.** 「더 보기」는 만들지 않는다(결정 24) — 걸리면
