@@ -25,6 +25,15 @@ const workHit = (slug: string, archived = false): SearchHit => ({
   archived,
 });
 
+const text = (slug: string, path: string, snippet: string, archived = false): SearchHit => ({
+  kind: "text",
+  slug,
+  title: `${slug} 작업`,
+  path,
+  archived,
+  snippet,
+});
+
 const project = (slug: string, name: string): SearchHit => ({ kind: "project", slug, name });
 
 const destination = (key: string): SearchHit => ({ kind: "destination", key });
@@ -55,6 +64,11 @@ const rowsOf = (markup: string) =>
 // 「프로젝트」가 같은 자리에 있는지 없는지를 못 가른다.
 const headsOf = (markup: string) =>
   [...markup.matchAll(/<p[^>]*data-head=""[^>]*>([^<]*)<\/p>/g)].map((m) => m[1]);
+
+// 소스를 그대로 센다. **리터럴로 센다** — 정규식으로 import 블록을 잘라내는 판정은 남의
+// 코드를 읽고도 초록이었다(사이드바 목록의 같은 검사가 적어 둔 자리).
+const source = readFileSync(fileURLToPath(new URL("./SearchPalette.tsx", import.meta.url)), "utf8");
+const countOf = (literal: string) => source.split(literal).length - 1;
 
 describe("팔레트가 그리는 줄", () => {
   // 결정 12. `overview.md`가 29개라 파일명만으로는 아무것도 못 고른다 — **한 줄 안에**
@@ -148,6 +162,24 @@ describe("갈래마다 다른 것을 그린다", () => {
     expect(rows[1]).toContain("아카이브");
   });
 
+  // 판 02. **스니펫은 본문 줄만의 것이다** — 「왜 떴는지」를 열기 전에 말하는 자리라,
+  // 이름으로 맞은 문서 줄에는 말할 것이 없다. 줄 안에서 본다: 마크업 전체에서 찾으면
+  // 스니펫이 엉뚱한 줄에 서 있어도 초록이 된다.
+  it("본문 줄에만 스니펫이 서고 문서 줄에는 없다", () => {
+    const rows = rowsOf(render([doc("가", "overview.md"), text("가", "decisions.md", "맞은 대목 한 줄")]));
+    expect(rows[0]).not.toContain("맞은 대목 한 줄");
+    expect(rows[1]).toContain("맞은 대목 한 줄");
+    // 본문 줄도 **어느 work의 무엇인지**를 함께 말한다 — 문서 줄과 같은 이유다(결정 12).
+    expect(rows[1]).toContain("가 작업");
+    expect(rows[1]).toContain("decisions.md");
+  });
+
+  it("아카이브 본문 줄만 아카이브라고 말한다", () => {
+    const rows = rowsOf(render([text("가", "a.md", "여기"), text("옛일", "record.md", "저기", true)]));
+    expect(rows[0]).not.toContain("아카이브");
+    expect(rows[1]).toContain("아카이브");
+  });
+
   it("프로젝트 줄에 이름이 선다", () => {
     const rows = rowsOf(render([project("billing", "빌링")]));
     expect(rows[0]).toContain("빌링");
@@ -157,8 +189,8 @@ describe("갈래마다 다른 것을 그린다", () => {
 });
 
 describe("구획 머리", () => {
-  // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」 — **사이드바 목록과 같은 계통의
-  // 한국어다.** 순서는 코어가 정한 층 순서 그대로다.
+  // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」·「본문」 — **사이드바 목록과 같은
+  // 계통의 한국어다.** 순서는 코어가 정한 층 순서 그대로다.
   it("층마다 한 번씩 그 순서로 선다", () => {
     const markup = render([
       destination("projects"),
@@ -167,8 +199,10 @@ describe("구획 머리", () => {
       project("billing", "빌링"),
       doc("가", "overview.md"),
       doc("옛일", "record.md", true),
+      text("가", "decisions.md", "맞은 대목"),
+      text("옛일", "record.md", "옛 대목", true),
     ]);
-    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "프로젝트", "문서"]);
+    expect(headsOf(markup)).toEqual(["가는 곳", "작업", "프로젝트", "문서", "본문"]);
   });
 
   // **결과가 없는 그룹은 머리도 안 선다** — 비어 있는 머리는 「여기 뭔가 있었는데」로 읽힌다.
@@ -187,12 +221,30 @@ describe("구획 머리", () => {
   });
 });
 
-describe("팔레트는 터미널을 모른다", () => {
-  const source = readFileSync(fileURLToPath(new URL("./SearchPalette.tsx", import.meta.url)), "utf8");
-  // 리터럴로 센다 — 정규식으로 import 블록을 잘라내는 판정은 남의 코드를 읽고도 초록이었다
-  // (사이드바 목록의 같은 검사가 적어 둔 자리).
-  const countOf = (literal: string) => source.split(literal).length - 1;
+describe("팔레트에는 프리뷰가 없다", () => {
+  // 결정 6. 노션의 오른쪽 프리뷰는 **제목**을 찾는 검색이라 「이 페이지가 맞나」를 답해야
+  // 해서 있는 것이다. **여기는 본문 전문검색이라 매치된 줄 자체가 그 답이다.** 그리고 spec
+  // 문서에는 mermaid가 흔해서, 프리뷰는 방향키로 훑을 때마다 다이어그램을 다시 그린다.
+  it("문서를 그리는 것을 부르지 않는다", () => {
+    // 부르지 않으면 **방향키가 다시 그릴 것도 없다.** 주석에 적어도 빨개진다 — 세는 것이
+    // import가 아니라 리터럴이고, 그 성질은 아래 검사와 같은 이유로 그대로 둔다.
+    expect(countOf("SpecViewer")).toBe(0);
+    expect(countOf("MermaidBlock")).toBe(0);
+    expect(countOf("react-markdown")).toBe(0);
+  });
 
+  // 위 검사는 「무엇을 안 부른다」이고 이것은 **「무엇을 안 그린다」**다. 방향키가 옮기는 것이
+  // 표시 하나뿐이면 **줄 밖의 화면은 글자 하나 안 바뀐다** — 프리뷰가 있으면 고른 줄마다
+  // 다른 문서가 펴지므로 여기가 갈린다.
+  it("고른 줄이 바뀌어도 줄 밖의 화면은 그대로다", () => {
+    const hits = [text("가", "a.md", "첫 대목"), text("가", "b.md", "둘째 대목")];
+    const outside = (at: number) =>
+      render(hits, { selected: at }).replace(/<button[^>]*data-row=""[\s\S]*?<\/button>/g, "[줄]");
+    expect(outside(0)).toBe(outside(1));
+  });
+});
+
+describe("팔레트는 터미널을 모른다", () => {
   it("터미널 스토어를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가** 서지
     // 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다.

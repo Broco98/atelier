@@ -62,6 +62,32 @@ describe("문서 줄이 가는 곳", () => {
   });
 });
 
+describe("본문 줄이 가는 곳", () => {
+  // 판 02. **갈래가 갈리는 것은 「왜 떴는가」이지 「어디로 가는가」가 아니다** — 본문 줄도
+  // 그 문서를 여는 한 가지 뜻이라, 문서 줄과 **같은 주소**가 나와야 한다. 여기서 갈리면
+  // 같은 문서를 여는 길이 둘인데 도착지가 다른 세상이 생긴다. (매치를 품은 헤딩까지
+  // 데려가는 것은 판 03의 몫이고, 그때도 주소는 이 값 그대로다 — 결정 8.)
+  const text = (over: Partial<Extract<SearchHit, { kind: "text" }>> = {}): SearchHit => ({
+    kind: "text",
+    slug: "가",
+    title: "가 작업",
+    path: "overview.md",
+    archived: false,
+    snippet: "맞은 대목 한 줄",
+    ...over,
+  });
+
+  it("활성 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
+    expect(hitTarget(text())).toEqual(hitTarget(doc()));
+  });
+
+  it("아카이브 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
+    expect(hitTarget(text({ slug: "옛일", path: "record.md", archived: true }))).toEqual(
+      hitTarget(doc({ slug: "옛일", path: "record.md", archived: true })),
+    );
+  });
+});
+
 describe("work 줄이 가는 곳", () => {
   // 결정 14·77 · #156 수용 기준 2(「문서·탭·분할이 살아 있다」). **문서 줄과 다른 일이다** —
   // 여기서는 문서를 안 골랐으므로 spec으로 떨어지지 않고, 그 work을 마지막으로 보던 화면이

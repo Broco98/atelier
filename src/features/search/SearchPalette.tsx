@@ -18,8 +18,14 @@ import type { SearchHit } from "./types";
  * 같은 이유로 셸 개수를 슬롯으로 받는 그 자리와 같다.
  *
  * 치면 좁혀진다. **맞추는 규칙은 코어에 있다**(결정 15) — 여기는 친 것을 그대로 넘기고 받은
- * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → 프로젝트 → 문서로 와서
- * 갈래가 안 흩어지므로, 구획 머리는 갈래가 바뀌는 자리에서 한 줄 내면 된다. 본문 층은 판 02다.
+ * 것을 순서대로 그린다. **층 순서도 코어의 것이다**: 목적지 → 작업 → 프로젝트 → 문서 → 본문으로
+ * 와서 갈래가 안 흩어지므로, 구획 머리는 갈래가 바뀌는 자리에서 한 줄 내면 된다.
+ *
+ * **프리뷰 패널은 없다**(결정 6). 노션의 오른쪽 프리뷰는 **제목**을 찾는 검색이라 「이 페이지가
+ * 맞나」를 답해야 해서 있는 것인데, 여기는 본문 전문검색이라 **매치된 줄 자체가 그 답**이다.
+ * 그리고 spec 문서에는 mermaid가 흔해서, 프리뷰는 방향키로 훑을 때마다 다이어그램을 다시
+ * 그린다 — 프리뷰를 없앤 이유가 「훑는 것이 고르는 것보다 비싸면 안 된다」였다. 그 계약을
+ * 소스 스캔이 센다(SearchPalette.test.tsx): **문서를 그리는 모듈의 이름은 주석에도 안 적는다.**
  */
 
 /**
@@ -33,13 +39,14 @@ const GROUP: Record<SearchHit["kind"], string> = {
   work: "작업",
   project: "프로젝트",
   doc: "문서",
+  text: "본문",
 };
 
 /**
  * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
  * 목적지의 라벨은 프런트 것이라(결정 21) 코어가 준 `key`로 여기서 되찾는다.
  */
-function rowText(hit: SearchHit): { name: string; detail?: string } {
+function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: string } {
   switch (hit.kind) {
     case "destination":
       return { name: destinationLabel(hit.key) };
@@ -51,12 +58,16 @@ function rowText(hit: SearchHit): { name: string; detail?: string } {
       // work 제목과 경로가 **함께** 선다(결정 12) — `overview.md`가 29개라 파일명만으로는
       // 어느 것인지 못 고른다. 맞추는 재료도 이 둘이라, 왜 떴는지가 줄 안에서 설명된다.
       return { name: hit.title, detail: hit.path };
+    case "text":
+      // 문서 줄이 드는 것에 **스니펫 하나가 더 선다** — 열기 전에 왜 떴는지를 말하는 자리다
+      // (결정 6). 어느 work의 무엇인지는 문서 줄과 같은 이유로 함께 서야 한다(결정 12).
+      return { name: hit.title, detail: hit.path, snippet: hit.snippet };
   }
 }
 
-/** 아카이브 화면에서 열리는가. 갈래 둘에만 있는 성질이라 **태그로 가른다.** */
+/** 아카이브 화면에서 열리는가. 갈래 셋에만 있는 성질이라 **태그로 가른다.** */
 const isArchived = (hit: SearchHit) =>
-  (hit.kind === "work" || hit.kind === "doc") && hit.archived;
+  (hit.kind === "work" || hit.kind === "doc" || hit.kind === "text") && hit.archived;
 
 /** React가 줄을 붙잡는 표. 갈래가 다르면 slug가 같아도 다른 줄이다. */
 function rowKey(hit: SearchHit): string {
@@ -69,6 +80,10 @@ function rowKey(hit: SearchHit): string {
       return `project/${hit.slug}`;
     case "doc":
       return `doc/${hit.archived}/${hit.slug}/${hit.path}`;
+    case "text":
+      // 같은 문서가 이름으로도 본문으로도 맞으면 **두 층에 한 줄씩 선다** — 층이 답하는
+      // 물음이 다르기 때문이다. 갈래가 키 앞에 붙어 있어 React가 그 둘을 안 섞는다.
+      return `text/${hit.archived}/${hit.slug}/${hit.path}`;
   }
 }
 
@@ -142,7 +157,9 @@ export function SearchList({
           value={query}
           onChange={(event) => onQuery(event.target.value)}
           aria-label="검색어"
-          placeholder="이름으로 좁히기"
+          // 판 02가 뒤지는 것을 늘렸으므로 안내말도 함께 는다 — 「이름으로」만 적혀 있으면
+          // 본문으로도 찾는다는 것을 아무 데서도 말하지 않는다.
+          placeholder="이름과 본문으로 좁히기"
           // 팔레트에 제목이 없다(결정 17) — 이 칸이 첫 줄이라 아래 목록과 선 하나로 갈린다.
           className="shrink-0 border-b border-border px-3.5 py-2.5 text-[13px] outline-none placeholder:text-muted-foreground"
         />
@@ -155,7 +172,7 @@ export function SearchList({
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
           {hits.map((hit, at) => {
-            const { name, detail } = rowText(hit);
+            const { name, detail, snippet } = rowText(hit);
             return (
               <Fragment key={rowKey(hit)}>
                 {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
@@ -183,7 +200,22 @@ export function SearchList({
                 >
                   <span className="shrink-0 text-[13px] tracking-[-0.01em]">{name}</span>
                   {detail !== undefined && (
-                    <span className="truncate text-[12px] text-tertiary">{detail}</span>
+                    // 스니펫이 함께 서는 줄에서는 **경로가 안 줄어든다** — 「어느 work의
+                    // 무엇이냐」가 먼저이고, 한 줄에 넣느라 줄일 것은 그다음인 스니펫이다.
+                    <span
+                      className={cn(
+                        "text-[12px] text-tertiary",
+                        snippet === undefined ? "truncate" : "shrink-0",
+                      )}
+                    >
+                      {detail}
+                    </span>
+                  )}
+                  {/* **본문 줄만의 것이다.** 열기 전에 왜 떴는지를 말한다(결정 6) — 한 줄에
+                      안 들어가는 만큼은 여기서 줄인다. 코어는 맞은 문단을 통째로 펴서 보내고,
+                      「한 줄에 얼마나 보일까」는 화면 폭이 정하는 것이라 그 판정이 여기 있다. */}
+                  {snippet !== undefined && (
+                    <span className="truncate text-[12px] text-tertiary">{snippet}</span>
                   )}
                   {/* 아카이브는 **가는 화면이 다르다** — 고르기 전에 그것을 알아야 한다. */}
                   {isArchived(hit) && (

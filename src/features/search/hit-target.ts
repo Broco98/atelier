@@ -29,6 +29,7 @@ export type HitTarget =
  *   work·다른 work가 함께 풀린다 — 같은 work이면 그 기억이 지금 화면과 같게 유지되고 있고,
  *   다른 work이면 그 work의 마지막 화면이 씨앗이 된다. 그래서 **분할해 둔 채로 문서를 골라도
  *   분할이 안 무너진다.** 탭은 spec으로 돌아온다(결정 50).
+ * - **본문 줄은 문서 줄과 같은 주소를 짓는다.** 갈래가 갈리는 것은 「왜 떴는가」뿐이다.
  * - **work 줄은 그 work의 마지막 화면을 그대로 세운다**(결정 14) — 문서·탭·분할 셋 다
  *   기억에서 온다(#156 수용 기준 2). 문서 줄과 갈리는 자리는 **문서를 골랐는가**다: 문서
  *   줄은 고른 문서를 얹으며 spec으로 돌아오고(결정 50), work 줄은 아무것도 안 골랐으므로
@@ -55,7 +56,12 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
           };
     case "project":
       return { to: "/projects/$slug", params: { slug: hit.slug } };
+    // **본문 줄은 문서 줄과 같은 곳으로 간다.** 갈래가 갈리는 것은 「왜 떴는가」이지 「어디로
+    // 가는가」가 아니다 — 둘 다 그 문서를 여는 한 가지 뜻이라(결정 1), 여기서 갈리면 같은
+    // 문서를 여는 길이 둘인데 도착지가 다른 세상이 생긴다. 매치를 품은 헤딩까지 데려가는
+    // 것은 판 03의 몫이고, 주소는 그때도 이 값 그대로다(결정 8).
     case "doc":
+    case "text":
       return hit.archived
         ? { to: "/archive/$slug", params: { slug: hit.slug }, search: { file: hit.path } }
         : {
