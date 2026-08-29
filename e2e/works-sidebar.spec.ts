@@ -196,10 +196,10 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 2 — work 행 **둘째 줄이 상태를 말한다**: 셸 수와 **도는 것의 로고**.
+// 결정 2·3 — work 행 **둘째 줄이 상태를 말한다**: 무리마다 글리프와 **그 무리의 셸 수**.
 //
 // **이 경로는 어느 층도 통째로 안 지나간다.** `Sidebar.test.tsx`는 값(`runningKindsOf`)과
-// 배선(구독 리터럴)을 따로 못박고 `SidebarWorkList.test.tsx`는 그림을 정적 마크업으로 보는데,
+// 배선(구독 리터럴)을 따로 못박고 `shell-meta.test.tsx`는 그림을 정적 마크업으로 보는데,
 // 셋을 잇는 **한 바퀴** —— 이벤트가 스토어에 앉고 그 행이 다시 그려져 로고가 실제로 서는가 ——
 // 는 아무도 안 돈다. 탭 줄 쪽은 `terminal-tabs.spec.ts`가 그 바퀴를 돈다.
 test("도는 명령의 로고가 work 행 둘째 줄에 선다", async ({ page }) => {
@@ -217,6 +217,38 @@ test("도는 명령의 로고가 work 행 둘째 줄에 선다", async ({ page }
   // 그 work에서 claude가 돈다는 사실이 사이드바에 선다 —— 화면이 터미널이 아니어도 보이는
   // 자리이고(결정 2), 스크롤로 밀려난 칸에서 도는 것을 알 유일한 자리다.
   await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
+
+  // **그 셸은 이제 한 번만 세어진다**(결정 3). 셸이 하나이고 거기서 claude가 도니 무리는
+  // 하나이고, 한때 그 옆에 함께 서던 `⌨1`이 사라졌다 —— 그 두 `1`은 같은 셸이었다.
+  await expect(subrow).toHaveText("1");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 4 — **nav `Terminal`도 같은 어휘를 쓴다.** 최상위 셸에서 claude가 돌면 거기에도
+// 로고가 뜬다: 무리가 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
+//
+// **여기서 보는 것은 자리가 아니라 어휘가 같은가다.** 그리고 이 층에서만 보인다 —
+// `Sidebar.tsx`는 `terminal-store`를 물어 정적 마크업 seam이 닿지 않고(Sidebar.test.tsx
+// 머리말), 최상위 셸은 이 화면의 진입 이펙트(`ensureShell`)를 태워야 생긴다.
+test("최상위 셸에서 도는 명령의 로고가 nav `Terminal`에도 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+
+  // 표식은 안 단다(결정 14) — nav는 **접근성 이름**으로 집는다. 배경 상자가 행이고 그 안에
+  // 이름 버튼과 메타가 형제로 선다.
+  const navRow = page
+    .locator("nav")
+    .getByRole("button", { name: "Terminal", exact: true })
+    .locator("xpath=..");
+  // **먼저 로고가 없음을 센다.** 이것이 없으면 아래 단언이 「원래 있던 것」으로도 초록이 된다.
+  await expect(navRow.locator('[role="img"]')).toHaveCount(0);
+  // 셸 하나가 이미 떠 있으므로(`ensureShell`) 그 자리에는 그 밖의 셸 무리가 서 있다.
+  await expect(navRow).toContainText("1");
+
+  await markRunning(page, "claude");
+
+  await expect(navRow.getByRole("img", { name: "claude" })).toHaveCount(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

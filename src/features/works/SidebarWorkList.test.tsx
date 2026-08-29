@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { RunningMarks, WorkSectionList } from "./SidebarWorkList";
+import { WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -36,12 +36,13 @@ function render(
   {
     selectedSlug = null,
     shellCounts = {},
-    // 둘째 줄의 로고는 슬롯으로 온다 — 값을 고르는 자리가 Sidebar라서다(RunningMarks 머리말).
-    renderRunning = (work: WorkView) => <i data-running={work.slug} />,
+    // 둘째 줄의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
+    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯을 부르는가**뿐이다.
+    renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
-    renderRunning?: (work: WorkView) => ReactNode;
+    renderShellMeta?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -55,7 +56,7 @@ function render(
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
-      renderRunning={renderRunning}
+      renderShellMeta={renderShellMeta}
     />,
   );
 }
@@ -247,78 +248,40 @@ describe("work 행의 둘째 줄", () => {
     expect(subrowsOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
   });
 
-  it("그 work의 셸 수를 적는다", () => {
-    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 3, 나: 1 } });
-    expect(subrowsOf(markup).map((one) => spansOf(one.html)[0])).toEqual(["3", "1"]);
-  });
-
   it("도는 것이 없어도 줄은 그대로 선다", () => {
     // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
     // 순간 바뀌어서(pty.rs가 1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이
     // 접혔다 펴지고 아래 work들이 계속 밀린다. 줄이 서는 조건은 **안 변하는 값**(셸을
     // 포함하는가)이고 변하는 것은 줄 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도
     // 줄은 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderRunning: () => null });
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderShellMeta: () => null });
     expect(subrowsOf(markup)).toHaveLength(1);
   });
 
-  it("로고는 그 줄 **안에** 있고, 셸이 없는 행에는 아예 안 붙는다", () => {
+  it("메타는 그 줄 **안에** 있고, 셸이 없는 행에는 슬롯을 아예 안 부른다", () => {
     // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
     // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
     const [가] = subrowsOf(markup);
-    expect(가.html).toContain('data-running="가"');
-    expect(markup).not.toContain('data-running="나"');
+    expect(가.html).toContain('data-meta="가"');
+    expect(markup).not.toContain('data-meta="나"');
+  });
+
+  it("셸 수도 무리도 **이 파일이 적지 않는다** — 든 것은 슬롯 하나뿐이다", () => {
+    // 결정 3·13. 「그 밖의 셸」의 수는 셸 수와 도는 것을 둘 다 아는 자리에서만 나오므로
+    // 두 값이 `ShellMeta` 하나로 합쳐졌다. 여기가 셸 수를 다시 적으면 그 수가 무리들의
+    // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다.
+    const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
+    expect(가.html).not.toContain(">3<");
+    expect(spansOf(가.html)).toEqual([]);
   });
 
   it("아무것도 눌리지 않는다", () => {
-    // 결정 5. 로고가 **종류만** 말하므로(결정 4) 로고와 셸이 1:1이 아니다 — 누르면 어느
-    // 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아 그 work로 간다.
+    // 결정 5. 무리 하나가 셸 **여럿**을 접으므로(결정 3) 무리와 셸이 1:1이 아니다 — 누르면
+    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아 그 work로 간다.
     const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
     expect(가.html).not.toContain("<button");
     expect(가.html).not.toContain("<a ");
-  });
-});
-
-// 결정 4·15. **표는 agent-mark 하나다** — 탭 칸과 이 줄이 각자 표를 들면 둘이 갈린다.
-// **세는 일이 여기다**(결정 28) — 값 쪽은 중복을 그대로 둔다(shell-registry.test.ts).
-describe("둘째 줄의 로고", () => {
-  const marks = (running: string[]) => renderToStaticMarkup(<RunningMarks running={running} />);
-  const labelsOf = (html: string) => [...html.matchAll(/aria-label="(.*?)"/g)].map((m) => m[1]);
-
-  it("종류마다 하나씩, 받은 순서 그대로다", () => {
-    expect(labelsOf(marks(["codex", "claude"]))).toEqual(["codex 1개", "claude 1개"]);
-  });
-
-  it("같은 것이 여럿이면 로고 하나에 **수**가 붙는다", () => {
-    // 결정 28. 한 줄 안에서 셸에만 수가 붙고 에이전트에는 안 붙으면 세는 단위가 둘로 갈린다.
-    const html = marks(["claude", "codex", "claude"]);
-    expect(labelsOf(html)).toEqual(["claude 2개", "codex 1개"]);
-    expect(html).toContain(">2<");
-    expect(html).toContain("tabular-nums");
-  });
-
-  it("모르는 것에는 아무것도 안 띄운다", () => {
-    // 셸에서 도는 것의 대부분(`node`·`cargo`·`vim`)이 그 자리에 온다 — 그때마다 무엇인가
-    // 뜨면 줄이 시끄러워져 「어느 work에서 에이전트가 도나」가 오히려 안 보인다.
-    expect(marks(["node", "cargo"])).toBe("");
-    expect(marks([])).toBe("");
-  });
-
-  it("줄보다 한 단 진하다 — 대비 바닥이 그 이유다", () => {
-    // 결정 15가 로고를 `currentColor`로 칠한 근거가 「대비 바닥 4.5를 저절로 넘는다」인데,
-    // 이 줄의 색(tertiary)은 사이드바 배경에서 그 아래다(≈2.9). 줄 색을 그대로 물려받으면
-    // 결정 15의 근거가 이 자리에서만 거짓이 된다.
-    expect(marks(["claude"])).toContain("text-muted-foreground");
-  });
-
-  it("이름은 눈이 아니라 접근성으로만 읽는다 — 누를 수도 없다", () => {
-    const html = marks(["claude"]);
-    // 좁은 사이드바에서 이름까지 적으면 종류가 둘일 때 제목보다 그 줄이 길어진다.
-    expect(html).not.toContain(">claude<");
-    // `title`을 안 다는 것은 이 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹치기 때문이다.
-    expect(html).not.toContain("title=");
-    expect(html).not.toContain("<button");
   });
 });
 
@@ -360,7 +323,7 @@ describe("사이드바 목록은 터미널을 모른다", () => {
   it("terminal feature를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가**
     // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 도는 것의
-    // 로고가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderRunning`) 이유가 그것이고,
+    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderShellMeta`) 이유가 그것이고,
     // `components/ui/agent-mark`가 `features/terminal`이 아니라 거기 사는 이유도 같다.
     //
     // **주석에 적어도 빨개진다.** 세는 것이 import가 아니라 리터럴이라 그렇고, 그 성질은

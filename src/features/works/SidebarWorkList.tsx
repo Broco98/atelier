@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ChevronDown, Pin, SquareTerminal } from "lucide-react";
+import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { agentMarkOf } from "@/components/ui/agent-mark";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { recallView, viewSearch, workSlugOf } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
@@ -27,19 +26,24 @@ const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 function SidebarWorkList({
   open,
   shellCounts,
-  renderRunning,
+  renderShellMeta,
 }: {
   open: boolean;
   /**
-   * work별 셸 개수 — 둘째 줄이 서는 조건이자 그 줄이 적는 값이다(결정 2·3).
+   * work별 셸 개수 — **둘째 줄이 서는 조건**이다(결정 2·3). 그 줄이 무엇을 적는지는 이제
+   * 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의 셸」의 수를
+   * 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
    *
-   * **이 파일은 터미널 스토어를 모른다.** 개수도 로고도 위(Sidebar)에서 내려온다:
+   * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
    * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
    * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다).
    */
   shellCounts: Record<string, number>;
-  /** 둘째 줄의 로고들. 같은 이유로 슬롯이다 — 그리는 것은 여기 있다(`RunningMarks`). */
-  renderRunning: (work: WorkView) => ReactNode;
+  /**
+   * 둘째 줄의 **셸 메타**. 같은 이유로 슬롯이다 — 그리는 것은 `components/shell/shell-meta`의
+   * `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는 Sidebar다(결정 13).
+   */
+  renderShellMeta: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
@@ -164,7 +168,7 @@ function SidebarWorkList({
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            renderRunning={renderRunning}
+            renderShellMeta={renderShellMeta}
           />
         </div>
       </div>
@@ -204,7 +208,7 @@ export function WorkSectionList({
   onHover,
   onLeave,
   onTogglePin,
-  renderRunning,
+  renderShellMeta,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
@@ -215,7 +219,7 @@ export function WorkSectionList({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  renderRunning: (work: WorkView) => ReactNode;
+  renderShellMeta: (work: WorkView) => ReactNode;
 }) {
   const { pinned, main, drafts } = sections;
   // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 셋이 된다.
@@ -229,7 +233,7 @@ export function WorkSectionList({
       onHover={onHover}
       onLeave={onLeave}
       onTogglePin={onTogglePin}
-      running={renderRunning(work)}
+      shellMeta={renderShellMeta(work)}
     />
   );
   return (
@@ -456,7 +460,7 @@ function WorkRow({
   onLeave,
   onTogglePin,
   shellCount,
-  running,
+  shellMeta,
 }: {
   work: WorkView;
   active: boolean;
@@ -464,10 +468,10 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  /** 이 work의 셸 수 — **둘째 줄이 서는 조건이자 그 줄이 적는 값이다**(결정 2·3). */
+  /** 이 work의 셸 수 — **둘째 줄이 서는 조건이다**(결정 2·3). */
   shellCount: number;
-  /** 둘째 줄의 로고들. 슬롯으로 온다 — 그리는 것은 `RunningMarks`다. */
-  running: ReactNode;
+  /** 둘째 줄의 **셸 메타**. 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
+  shellMeta: ReactNode;
 }) {
   return (
     <div
@@ -530,9 +534,15 @@ function WorkRow({
           「명령이 도는 동안만 선다」는 **기각됐다**: 그 값은 매 순간 바뀌어서(백엔드가
           1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이 접혔다 펴지고 아래
           work들이 계속 위아래로 밀린다. 줄이 서는 조건은 **안 변하는 값**이고, 변하는 것은
-          줄 **안에서**만 변한다 — 그래서 로고가 하나도 없어도 이 줄은 그대로 선다.
+          줄 **안에서**만 변한다 — 그래서 도는 것이 하나도 없어도 이 줄은 그대로 선다.
 
-          **표시 전용이다**(결정 5). 로고가 종류만 말하므로(결정 4) 로고와 셸이 1:1이 아니고,
+          **이 줄이 적는 것은 「무리」의 나열이다**(결정 3). 무리 하나 = 글리프 + 그 무리의
+          셸 수이고, **숫자를 다 더하면 이 work의 셸 수**다. 셸 수를 여기서 직접 적지 않는
+          이유가 그 불변조건이다 — 「그 밖의 셸」의 수는 셸 수와 도는 것을 **둘 다 아는
+          자리**에서만 나오므로, 세는 규칙도 규격도 `ShellMeta` 하나가 든다(결정 13).
+          이 줄은 자리(높이·들여쓰기·표식)만 든다.
+
+          **표시 전용이다**(결정 5). 무리 하나가 셸 여럿을 접으므로 무리와 셸이 1:1이 아니고,
           누르면 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아
           그 work로 간다. _감수한 것_: 이 줄의 배경은 눌러도 아무 일이 없는 자리다 — 누를 수
           있게 하려면 이름 버튼 안에 넣어야 하는데, 그러면 셸 수와 로고 이름이 그 버튼의
@@ -543,72 +553,12 @@ function WorkRow({
       {shellCount > 0 && (
         <div
           data-subrow={work.slug}
-          className="col-span-2 flex h-[22px] items-center gap-1.5 pl-[calc(9px+var(--tree-step))] pr-1.5 text-[11.5px] text-tertiary"
+          className="col-span-2 flex h-[22px] items-center pl-[calc(9px+var(--tree-step))]"
         >
-          <SquareTerminal className="size-3 shrink-0" strokeWidth={1.8} />
-          <span className="tabular-nums">{shellCount}</span>
-          {running}
+          {shellMeta}
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * 둘째 줄의 **로고들** — 그 work에서 도는 것의 종류다(결정 4). 종류마다 하나이고, 중복을
- * 세는 것은 여기이지 `runningAgentsOf`가 아니다 — 그쪽은 중복을 **일부러 남긴다**(그 머리말:
- * claude가 둘 돌면 두 번 들어 있다). 얕은 비교가 먹는 문자열 배열로 주고 접는 일은 그리는
- * 쪽이 한다는 분담이라, 같은 판정이 두 벌이 되지 않는다.
- *
- * **그림은 여기 있고 값은 슬롯으로 온다.** 값을 고르는 자리는 행마다 터미널 스토어를
- * 구독하는 자리라 이 파일에 둘 수 없고(위 `shellCounts` 주석의 계약), 반대로 그림을
- * Sidebar에 두면 이 저장소의 유일한 컴포넌트 seam인 정적 마크업이 닿지 못한다 — 그 파일은
- * `terminal-store`를 import해서 `@xterm/*`를 딸고 온다. 그래서 값과 그림이 갈렸다.
- *
- * `agent-mark`를 여기서 들이는 것은 계약 위반이 아니다 — 그 모듈은 react 말고 아무것도 안
- * 끌어오고, 계약이 막는 것은 터미널 feature가 딸고 오는 무게다(그쪽 머리말이 이 자리를
- * 미리 적어 뒀다). **그 경로를 여기 적을 수도 없다** — 계약 검사가 세는 것은 import가
- * 아니라 리터럴이라 주석에 한 번 쓰는 것만으로 빨개진다(실측). 그것이 그 그물의 성질이다.
- *
- * **모르는 이름에는 아무것도 안 띄운다**(`agentMarkOf`가 `null`을 준다). 셸에서 도는 것의
- * 대부분(`node`·`cargo`·`vim`)이 그 자리에 오는데 그때마다 무엇인가 뜨면 줄이 시끄러워져
- * 「어느 work에서 에이전트가 도나」라는 이 줄의 물음이 오히려 안 보인다.
- */
-export function RunningMarks({ running }: { running: ReadonlyArray<string> }) {
-  // **세는 일이 여기다**(결정 28). 값 쪽은 중복을 그대로 둔 문자열 배열이라야 사이드바 행의
-  // 얕은 비교가 먹는다(`runningAgentsOf` 머리말) — 접는 것은 그리는 자리의 몫이다.
-  // `Map`이 넣은 순서를 지키므로 로고 자리가 초마다 재배열되지 않는다.
-  const counted = new Map<string, number>();
-  for (const one of running) counted.set(one, (counted.get(one) ?? 0) + 1);
-  return (
-    <>
-      {[...counted].map(([kind, count]) => {
-        const mark = agentMarkOf(kind);
-        if (mark === null) return null;
-        return (
-          // 이름은 **눈이 아니라 접근성으로만** 읽는다 — 좁은 사이드바에서 이름까지 적으면
-          // 종류가 둘일 때 그 줄이 제목보다 길어진다. `title`은 안 단다: 이 행에 머물면
-          // 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다(핀 버튼과 같은 이유).
-          //
-          // **줄의 색을 그대로 따르지 않는다.** 로고는 `currentColor`로 칠하는데(결정 15)
-          // 그 결정이 든 근거가 「대비 바닥 4.5를 저절로 넘는다」이고, 이 줄의 tertiary는
-          // 사이드바 배경에서 그 아래다(#8e8e97 대 #f7f7f9 ≈ 3.0, 다크 ≈ 3.9). 개수는
-          // 부차적이라 그 색이 맞지만 로고는 **이 줄이 있는 이유**다(결정 2) — 한 단 올린다.
-          <span
-            key={kind}
-            role="img"
-            // 수까지 함께 읽힌다 — 눈에 보이는 것과 같은 말이어야 한다.
-            aria-label={`${mark.label} ${count}개`}
-            className="flex shrink-0 items-center gap-1 text-muted-foreground"
-          >
-            <mark.Glyph className="size-3" />
-            {/* 셸 수와 **같은 대접이다**(결정 28). 한 줄 안에서 셸에만 수가 붙고 에이전트에는
-                안 붙으면, 그 줄이 세는 단위가 둘로 갈린다. `tabular-nums`도 그쪽과 같다. */}
-            <span className="tabular-nums">{count}</span>
-          </span>
-        );
-      })}
-    </>
   );
 }
 
