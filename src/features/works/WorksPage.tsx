@@ -57,6 +57,7 @@ import {
   specHeadLabel,
 } from "./split-view";
 import type { DragSource, SplitHalf } from "./split-view";
+import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
 import WorkMetaMenu from "./WorkMetaMenu";
@@ -432,17 +433,16 @@ function WorksPage({
   const specFiles = panelWork?.specFiles ?? [];
   const currentSpec =
     currentFile && specFiles.includes(currentFile) ? currentFile : defaultFile(specFiles);
-  // 결정 6: 비-md 파일은 마크다운 렌더 대신 줄번호 코드뷰 고정 (소스 토글과 무관)
-  const isMarkdown = currentSpec?.toLowerCase().endsWith(".md") ?? true;
   // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 셋이다: 본문이 셸일 때(터미널 탭 —
-  // `</>`가 적용될 곳이 아예 없다), 비-md 파일(결정 6), spec 문서가 하나도 없는 작업.
-  // 마지막 것에서 `currentSpec`은 null이고 위 `?? true`가 마크다운으로 떨어뜨리는데, 그
-  // 기본값은 **본문 분기(예쁜 보기)를 위한 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은
-  // "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다(결정 11·21).
-  const sourceLocked = !specStands || !currentSpec || !isMarkdown;
-  // 본문은 **버튼의 켜짐에 파일 종류를 얹어** 정한다. 둘을 같은 식으로 묶으면 비-md 파일을
-  // 열 때마다 누른 적도 없는 버튼이 켜졌다 꺼진다 — WorkPanel의 `</>` 주석에 적어 뒀다.
-  const sourceView = showSource || !isMarkdown;
+  // `</>`가 적용될 곳이 아예 없다), 파일 종류가 토글을 무시할 때(그림·비-md), spec 문서가
+  // 하나도 없는 작업.
+  //
+  // **앞 둘만 이 화면의 것이다.** 파일 종류로 갈리는 일은 표가 안다(`doc-refs`의 표) —
+  // 여기서 다시 풀면 본문·트리·아카이브가 다른 말을 할 자리가 생긴다. 문서가 하나도 없는
+  // 작업에서 표는 마크다운으로 떨어지는데, 그 기본값은 **본문 분기(예쁜 보기)를 위한
+  // 것이지 "누를 것이 있다"는 뜻이 아니다** — 본문은 "아직 spec이 없어요"에 고정이라
+  // 눌러도 아무 일이 없다(결정 11·21). 그래서 `!currentSpec`이 따로 얹힌다.
+  const sourceLocked = !specStands || !currentSpec || ignoresSourceToggle(currentSpec);
 
   // 머리행은 **본문 열 안에서만** 산다. 작업 패널이 이 열의 형제이자 머리행과 같은 층이라
   // (창 맨 위에서 시작해 아래까지 내려온다) 머리행이 그 위를 지나갈 수 없다. 그래서 화면이
@@ -697,7 +697,7 @@ function WorksPage({
       panelOpen={workPanelOpen}
       sidebarOpen={sidebarOpen}
       file={currentSpec}
-      sourceView={sourceView}
+      showSource={showSource}
       onNavigate={followLink}
       onCopy={copyText}
     />

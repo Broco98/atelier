@@ -1,6 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { PrettyView, SourceView } from "./SpecViewer";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import SpecViewer, { PrettyView, SourceView } from "./SpecViewer";
+import { useSpecFile } from "./hooks";
+import type { WorkView } from "./types";
+
+// 이 화면이 파일을 **읽는지**를 세려면 조회 계층을 걷어내야 한다. 정적 렌더는 이펙트를
+// 돌리지 않아 IPC가 나가지는 않지만, 훅이 어떤 인자로 불렸는가는 그 자리에서만 보인다.
+vi.mock("./hooks", () => ({
+  useSpecFile: vi.fn(() => ({ data: undefined })),
+  useHomeDir: () => ({ data: undefined }),
+}));
 
 // 참조 복사 버튼은 최상위 블록 하나당 정확히 하나이고, 그 블록 바깥에 선다. 이 불변조건이
 // 뚫리면 버튼이 겹쳐 보인다 — 인용은 자기 자신과 안쪽 첫 문단의 시작 라인이 같아서,
@@ -185,5 +194,69 @@ describe("PrettyView 콜아웃", () => {
     expect(html.match(/강조/g)).toHaveLength(1);
     expect(html).toContain("Note");
     expect(html).toContain("본문이다");
+  });
+});
+
+// 본문이 무엇으로 서는가는 **표 하나가 정한다**(doc-refs의 `docBody`). 이 화면은 그 값으로
+// 갈리기만 한다 — 자기 식을 들면 트리·아카이브와 다른 말을 하게 된다.
+//
+// **읽을지 말지도 그 값에서 나온다.** 그림을 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고
+// 화면이 줄번호 `1` 하나가 된다(실물에서 그랬다). 읽기만 따로 그림 판정을 부르면, 표가
+// 바뀔 때 그 자리만 옛 규칙을 따른다 — 그래서 부르는 자리를 아예 없앴고, 여기서 그것을 센다.
+describe("SpecViewer 본문 갈래", () => {
+  const work: WorkView = {
+    slug: "some-work",
+    title: "어떤 작업",
+    status: "active",
+    branch: "feat/some-work",
+    createdAt: "2026-08-16",
+    projects: [],
+    pinned: false,
+    worktrees: [],
+    specDir: "~/.atelier/works/some-work/spec",
+    specFiles: ["overview.md", "샷.png", "notes.txt"],
+  };
+
+  function viewer(file: string, showSource = false): string {
+    return renderToStaticMarkup(
+      <SpecViewer
+        work={work}
+        panelOpen={false}
+        sidebarOpen={false}
+        file={file}
+        showSource={showSource}
+        onNavigate={() => {}}
+        onCopy={() => {}}
+      />,
+    );
+  }
+
+  beforeEach(() => {
+    vi.mocked(useSpecFile).mockClear();
+  });
+
+  it("그림은 읽지 않는다", () => {
+    viewer("샷.png");
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
+  });
+
+  it.each(["overview.md", "notes.txt"])("%s는 읽는다", (file) => {
+    viewer(file);
+    expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
+  });
+
+  it("그림은 토글을 켜도 그림이다", () => {
+    // 켬/끔이 갈리면 원문을 볼 수 있다는 말이 되는데, 그림에는 읽어 온 소스가 아예 없다
+    expect(viewer("샷.png", true)).toBe(viewer("샷.png", false));
+  });
+
+  it("비-md는 토글과 무관하게 소스다", () => {
+    expect(viewer("notes.txt")).toContain("[tab-size:4]");
+    expect(viewer("notes.txt", true)).toContain("[tab-size:4]");
+  });
+
+  it("마크다운은 토글이 갈린다", () => {
+    expect(viewer("overview.md")).not.toContain("[tab-size:4]");
+    expect(viewer("overview.md", true)).toContain("[tab-size:4]");
   });
 });

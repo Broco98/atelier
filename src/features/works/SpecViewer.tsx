@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
-import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
+import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
@@ -38,10 +38,10 @@ interface SpecViewerProps {
   // 화면(WorksPage)이 이미 풀어서 내려준다 — 트리의 "지금 이 문서" 표시와 본문이 같은
   // 값을 봐야 하고, 그 트리가 이제 형제 컬럼에 살기 때문이다.
   file: string | null;
-  // 본문이 소스 보기인가. **버튼의 켜짐 그대로가 아니다** — 거기에 파일 종류가 얹혀 있다
-  // (결정 6의 비-md 고정). 그 식도 화면이 든다: 켜짐은 패널 버튼이, 본문은 여기가 쓰는데
-  // 둘의 공통 조상이 화면뿐이다.
-  sourceView: boolean;
+  // `[소스]`가 켜져 있는가 — **사람이 정한 값 그대로**다. 파일 종류를 얹는 일은 표
+  // (`docBody`)가 하므로 화면은 식을 안 든다. 상태의 주인이 화면인 것은 그대로다:
+  // 켜짐은 패널 버튼이, 본문은 여기가 쓰는데 둘의 공통 조상이 화면뿐이다.
+  showSource: boolean;
   // 문서 안 링크를 따라갈 때. 히스토리를 **만든다** — 따라 들어갔으면 돌아올 수 있어야 한다.
   // (히스토리를 만들지 않는 트리 훑기는 패널 쪽 길이라 여기를 지나지 않는다.)
   onNavigate: (path: string) => void;
@@ -55,17 +55,20 @@ function SpecViewer({
   panelOpen,
   sidebarOpen,
   file,
-  sourceView,
+  showSource,
   onNavigate,
   onCopy,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  // **그림은 안 읽는다.** PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은 줄번호
-  // `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로 건다.
-  const image = isImageFile(file);
-  const { data: content } = useSpecFile(work.slug, image ? null : file);
+  // 본문이 무엇으로 서는가 — **표가 정한다**(결정 7). 이 화면은 그 값으로 갈리기만 한다.
+  //
+  // **읽을지 말지도 그 값이다**: PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은
+  // 줄번호 `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로
+  // 건다. 여기서 그림 판정을 따로 부르면 표가 바뀔 때 읽기만 옛 규칙을 따른다.
+  const body = docBody(file, showSource);
+  const { data: content } = useSpecFile(work.slug, body === "image" ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
@@ -105,11 +108,9 @@ function SpecViewer({
                 </code>
               </div>
             </div>
-          ) : image ? (
+          ) : body === "image" ? (
             <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />
-          ) : sourceView ? (
-            <SourceView content={content ?? ""} wide={wide} />
-          ) : (
+          ) : body === "pretty" ? (
             <PrettyView
               file={file ?? ""}
               content={content ?? ""}
@@ -119,6 +120,8 @@ function SpecViewer({
               onNavigate={onNavigate}
               specRoot={specRoot}
             />
+          ) : (
+            <SourceView content={content ?? ""} wide={wide} />
           )}
         </div>
       </div>
@@ -133,8 +136,11 @@ function SpecViewer({
  * 렌더러) — 같은 「그릴 수 없다」가 어디서 났느냐에 따라 달리 보이면 안 된다.
  *
  * `specRoot`를 모르면(아카이브 화면, 홈을 아직 못 읽음) 그릴 수 없다.
+ *
+ * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 그림 자리만 화면마다 다른
+ * 것을 그리면 그 표가 「유일한 자리」가 아니게 된다. 아래 두 보기와 같은 근거다.
  */
-function ImageDoc({ path, name }: { path: string | null; name: string }) {
+export function ImageDoc({ path, name }: { path: string | null; name: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (

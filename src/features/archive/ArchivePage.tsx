@@ -3,7 +3,8 @@ import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import PageHeader from "@/components/shell/PageHeader";
-import { PrettyView, SourceView } from "@/features/works/SpecViewer";
+import { ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
+import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
 import ArchiveList from "./ArchiveList";
@@ -51,7 +52,11 @@ function ArchivePage({
   const { data: content } = useArchivedFile(selected?.slug ?? null, current);
 
   const [showSource, setShowSource] = useState(false);
-  const isMarkdown = current?.toLowerCase().endsWith(".md") ?? true;
+  // 본문 갈래는 Works 화면과 **같은 표**가 정한다(결정 7·11). 여기서 식을 한 벌 더 들면
+  // 같은 spec이 어디서 열렸느냐에 따라 다르게 보인다 — 실제로 그랬다: 그림이 줄번호 `1`
+  // 하나로 섰고, 비-md에서 토글이 안 잠겨 **선 칸만 「문서」로 옮겨 가고 본문은 소스에
+  // 눌러앉았다**(눌리는데 아무 일도 안 나는 그 어긋남, 결정 21).
+  const body = docBody(current, showSource);
 
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
@@ -159,7 +164,15 @@ function ArchivePage({
             <>
               {/* 글자 하나로 「소스」라고만 적던 자리다 — 여기도 같은 컨트롤을 쓴다(결정 33).
                   한 화면에서만 다른 어휘를 쓰면 같은 일이 두 모양으로 읽힌다. */}
-              {selected && <SourceToggle on={showSource} onChange={setShowSource} />}
+              {selected && (
+                <SourceToggle
+                  on={showSource}
+                  // 잠김도 표에서 나온다 — 본문이 토글을 안 따르는 파일에서 두 칸이 살아
+                  // 있으면 선 칸과 본문이 서로 다른 말을 한다(결정 11).
+                  locked={ignoresSourceToggle(current)}
+                  onChange={setShowSource}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => setPanelOpen((open) => !open)}
@@ -209,9 +222,12 @@ function ArchivePage({
                 <div className="flex flex-1 items-center justify-center p-10 text-[14px] text-tertiary">
                   남은 문서가 없어요
                 </div>
-              ) : showSource || !isMarkdown ? (
-                <SourceView content={content ?? ""} wide={wide} />
-              ) : (
+              ) : body === "image" ? (
+                // 아카이브 목록은 경량이라 문서 위치를 담지 않는다 — **뜨지는 않고**
+                // 자리표시가 선다. 그래도 줄번호 `1` 하나보다 낫다: 그쪽은 빈 문서라는
+                // 거짓말이고 자리표시는 사실이다. 경로를 내려 주는 일은 다음 판이다.
+                <ImageDoc path={null} name={current} />
+              ) : body === "pretty" ? (
                 <PrettyView
                   file={current}
                   content={content ?? ""}
@@ -223,6 +239,8 @@ function ArchivePage({
                   // 자리표시로 남고, 그 자리를 채우려면 코어가 경로를 함께 내려야 한다
                   specRoot={null}
                 />
+              ) : (
+                <SourceView content={content ?? ""} wide={wide} />
               )}
             </div>
           )}

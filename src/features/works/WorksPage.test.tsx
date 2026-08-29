@@ -176,6 +176,16 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     expect(button).not.toContain("toggle-on");
   });
 
+  // 그림도 「토글을 무시하는 파일」이다. 비-md와 **본문이 다르다** — 코드뷰가 아니라
+  // 그림 자리다. 표를 한 자리로 모으면서 이 두 칸이 붙었으므로 함께 고정한다.
+  it("그림 문서를 열면 본문이 그림 자리이고 토글이 잠긴다", () => {
+    const markup = render({ specFiles: ["샷.png"] });
+    expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
+    // 홈을 아직 못 읽어 asset URL이 없다 — 그림 본문의 자리표시가 그 자리를 채운다
+    expect(markup).toContain("border-dashed");
+    expect(toggle(markup)).toMatch(/\sdisabled=""/);
+  });
+
   it("spec 문서가 하나도 없으면 토글이 잠긴다", () => {
     // 본문이 "아직 spec이 없어요"에 고정이라 눌러도 아무 일이 없다 — 결정 21이 없애려는
     // 바로 그 어긋남이다. 비-md 파일보다 **먼저** 만나는 화면이기도 하다: 새로 만든
