@@ -255,7 +255,7 @@ describe("SpecViewer 본문 갈래", () => {
     expect(viewer("샷.png", true)).toBe(viewer("샷.png", false));
   });
 
-  it("비-md는 토글과 무관하게 소스다", () => {
+  it("md도 html도 아닌 것은 토글과 무관하게 소스다", () => {
     expect(viewer("notes.txt")).toContain("[tab-size:4]");
     expect(viewer("notes.txt", true)).toContain("[tab-size:4]");
   });
