@@ -434,8 +434,8 @@ function WorksPage({
   const currentSpec =
     currentFile && specFiles.includes(currentFile) ? currentFile : defaultFile(specFiles);
   // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 셋이다: 본문이 셸일 때(터미널 탭 —
-  // `</>`가 적용될 곳이 아예 없다), 파일 종류가 토글을 무시할 때(그림·비-md), spec 문서가
-  // 하나도 없는 작업.
+  // `</>`가 적용될 곳이 아예 없다), 파일 종류가 토글을 무시할 때(그림 · md도 html도 아닌
+  // 것), spec 문서가 하나도 없는 작업.
   //
   // **앞 둘만 이 화면의 것이다.** 파일 종류로 갈리는 일은 표가 안다(`doc-refs`의 표) —
   // 여기서 다시 풀면 본문·트리·아카이브가 다른 말을 할 자리가 생긴다. 문서가 하나도 없는
