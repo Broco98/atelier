@@ -115,7 +115,7 @@ describe("최상위 터미널의 머리행", () => {
   it("사이드바가 접히면 신호등을 피한다", () => {
     // 왼쪽에 남은 것이 사이드바뿐이라, 접히면 이 줄이 창 왼쪽 끝에 붙어 신호등에 깔린다.
     expect(headerTag(html(false))).toContain("pl-(--titlebar-inset-tabs)");
-    expect(headerTag(html(true))).toContain("pl-4");
+    expect(headerTag(html(true))).toContain("pl-(--tab-lead)");
   });
 });
 

@@ -383,6 +383,66 @@ describe("칸이 `memo` 경계다", () => {
   });
 });
 
+// 결정 25 — `spec` 칸이 셸 칸과 **다른 종류**로 읽혀야 한다. 그 칸이 지는 사실 넷(늘 맨 앞 ·
+// `×`가 없음 · 스크롤 상자 밖 · 프로세스가 아님) 중 어느 것도 모양에 없었다: 두 칸이 같은
+// 알약이고 꺼지면 글자색까지 같았다.
+//
+// **판단이 갈리는 것은 꺼진 상태다.** 켜져 있으면 어느 안이든 `toggle-on`이 말해 준다.
+describe("`spec` 칸은 셸 칸과 다른 종류로 선다", () => {
+  const spec = (markup: string) => markup.match(/<button[^>]*data-tab="spec"[^>]*>/)![0];
+  const firstShell = (markup: string) => markup.match(/<div[^>]*data-tab="shell"[^>]*>/)![0];
+
+  it("꺼져도 상자를 갖는다 — 셸 칸은 안 갖는다", () => {
+    // 이 대비가 이 판의 전부다. 한쪽만 보면 「상자가 있다」까지이고, 둘을 함께 봐야
+    // 「그래서 갈린다」가 된다.
+    const markup = render(opened(2).state, { spec: { on: false, onSelect: () => {} } });
+    expect(spec(markup)).toContain("bg-inset");
+    expect(spec(markup)).toContain("border");
+    expect(firstShell(markup)).not.toContain("bg-inset");
+  });
+
+  it("켜지면 테두리를 지운다", () => {
+    // inset과 toggle-on(state-3)의 농도 차가 작아 그것만으로는 켜짐이 흐려진다 — 두 상태가
+    // **테두리의 있고 없음**으로도 갈린다. 어휘는 그대로 `aria-pressed` + `toggle-on` 하나다.
+    const tag = spec(render(opened(2).state, { spec: { on: true, onSelect: () => {} } }));
+    expect(tag).toContain("toggle-on");
+    expect(tag).toContain("border-transparent");
+  });
+
+  it("꺼진 칸의 hover가 `quiet-hover`다 — `bg-state-1`이 아니다", () => {
+    // 바탕이 생겼으므로 state-1(3%)은 inset보다 **옅어서** hover에 칸이 오히려 밝아진다.
+    // 그 유틸리티의 계약대로 꺼진 가지 안에만 있다(toggle-on과 겹치면 규칙이 두 벌이 된다).
+    const off = spec(render(opened(2).state, { spec: { on: false, onSelect: () => {} } }));
+    expect(off).toContain("quiet-hover");
+    expect(off).not.toContain("hover:bg-state-1");
+    expect(spec(render(opened(2).state, { spec: { on: true, onSelect: () => {} } }))).not.toContain(
+      "quiet-hover",
+    );
+  });
+
+  it("세로선이 `spec`와 스크롤 상자 **사이**에 선다", () => {
+    // 순서가 곧 뜻이다 — 상자 뒤에 서면 「셸 칸들과 `+` 사이」를 가르는 선이 된다.
+    const markup = render(opened(2).state);
+    const rule = markup.indexOf("data-tab-rule");
+    expect(rule).toBeGreaterThan(-1);
+    expect(markup.indexOf('data-tab="spec"')).toBeLessThan(rule);
+    expect(markup.indexOf("data-tab-strip")).toBeGreaterThan(rule);
+  });
+
+  it("`/terminal`에는 세로선이 없다", () => {
+    // 그 화면에는 `spec` 칸이 없어(결정 8) 가를 것이 없다 — 조건 없이 두면 줄 맨 앞에
+    // 이유 없는 선 하나가 남는다.
+    expect(render(opened(2).state, { spec: null })).not.toContain("data-tab-rule");
+  });
+
+  it("세로선이 창 끄는 자리를 뺏지 않는다", () => {
+    // 이 줄은 타이틀바를 겸하므로 속성 없는 자식은 그만큼 죽은 자리가 된다.
+    const tag = render(opened(2).state).match(/<span[^>]*data-tab-rule[^>]*>/)![0];
+    expect(tag).toContain("data-tauri-drag-region");
+    expect(tag).toContain("aria-hidden");
+  });
+});
+
 describe("켜짐을 말하는 법", () => {
   it("`aria-pressed`와 `toggle-on`으로 말한다 — `role=\"tab\"`을 쓰지 않는다", () => {
     // 분할이면 **켜진 탭이 둘**이다(결정 12) — tablist에서 `aria-selected`가 둘이면 잘못된
@@ -548,7 +608,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   // 결정 20. 칸이 최소 폭까지 고르게 줄고(위 describe), **그 아래로는 스크롤한다**.
   // 티켓 #143이 처음 요구한 「좁은 창에서도 한 줄에 다 들어간다」는 산술로 불가능했다 —
   // 이 줄이 받는 폭은 창 폭이 아니라 창에서 사이드바와 작업 패널을 뺀 나머지라, 900px
-  // 창에서 290px인데 여덟 칸이 최소 폭이어도 줄에 685px이 든다.
+  // 창에서 290px인데 여덟 칸만 380px이다(그 합은 e2e가 잰다 — 손으로 더한 수가 세 번 틀렸다).
   //
   // **여기서 보는 것은 구조뿐이다.** 실제로 안 넘치는지는 폭을 재야 알고 그것은
   // e2e(terminal-tabs.spec.ts)의 `spill`이 든다 — 이 seam에는 DOM이 없어 겹침을 못 본다.
@@ -638,7 +698,7 @@ describe("타이틀바 몫", () => {
 
   it("사이드바가 접히면 왼쪽 여백이 신호등을 피한다", () => {
     expect(headerTagOf(render(NO_SHELLS, { inset: true }))).toContain("pl-(--titlebar-inset-tabs)");
-    expect(headerTagOf(render(NO_SHELLS, { inset: false }))).toContain("pl-4");
+    expect(headerTagOf(render(NO_SHELLS, { inset: false }))).toContain("pl-(--tab-lead)");
   });
 
   it("여백이 사이드바 폭과 같은 곡선으로 따라온다", () => {

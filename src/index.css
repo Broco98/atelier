@@ -101,13 +101,19 @@
     --titlebar-inset: calc(
         var(--titlebar-controls-left) + var(--titlebar-controls-width) + 12px
     );
-    /* **탭 줄의 첫 칸은 글자가 아니다** — 결정 10이 제목을 빼면서 그 자리에 알약(`spec`)이나
-       버튼(`+`)이 선다. 그래서 위 --titlebar-inset(글자용 12px)이 아니라 컨트롤 간격으로
-       이어 붙인다: 글자는 제 상자에 여백이 없지만 알약·버튼은 이미 갖고 있어, 12px을 주면
-       그만큼 더 벌어져 첫 칸만 혼자 떨어져 보인다. 목록 패널이 같은 이유로 같은 값을 쓴다. */
+    /* **탭 줄이 왼쪽의 것과 벌어지는 거리 — 한 값이다**(결정 24).
+       사이드바가 열렸으면 그 경계선에서, 접혔으면 셸 컨트롤에서 재는데 **두 경우가 같은 값을
+       쓴다.** 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직이고, 화면으로는
+       「접으면 왜 더 멀어지지」로만 보인다.
+
+       값이 --titlebar-control-gap인 것은 이 줄의 첫 칸이 **글자가 아니기 때문이다** — 결정 10이
+       제목을 빼면서 그 자리에 알약(`spec`)이나 버튼(`+`)이 섰고, 그것들은 제 상자에 여백을 이미
+       갖고 있다. 브레드크럼용 --titlebar-inset(12px)을 그대로 쓰면 그만큼 더 벌어져 첫 칸만
+       혼자 떨어져 보인다. 목록 패널 헤더가 같은 이유로 이미 같은 값을 쓴다. */
+    --tab-lead: var(--titlebar-control-gap);
+    /* 사이드바가 접혔을 때 — 위 거리를 셸 컨트롤 끝에서 잰 값이다. */
     --titlebar-inset-tabs: calc(
-        var(--titlebar-controls-left) + var(--titlebar-controls-width) +
-            var(--titlebar-control-gap)
+        var(--titlebar-controls-left) + var(--titlebar-controls-width) + var(--tab-lead)
     );
     /* 목록 패널 헤더의 첫 칸은 셸 컨트롤과 같은 간격으로 이어 붙인다 — 넷이 한 줄에 나란히
        서 있어서 여기만 간격이 다르면 그 하나만 따로 떨어진 것처럼 읽힌다.

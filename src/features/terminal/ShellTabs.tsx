@@ -172,9 +172,10 @@ function ShellTabs({
       className={cn(
         // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다(PageHeader와 같다).
         "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-4 transition-[padding] duration-[220ms] ease-panel",
-        // **`--titlebar-inset`이 아니다**(index.css의 그 토큰 주석) — 그쪽은 브레드크럼
-        // 글자용 12px이고 이 줄의 첫 칸은 알약이나 버튼이라 자기 여백을 이미 갖고 있다.
-        inset ? "pl-(--titlebar-inset-tabs)" : "pl-4",
+        // **왼쪽 여백은 두 경우가 같은 값을 쓴다**(결정 24 · index.css의 `--tab-lead`).
+        // 접혔으면 셸 컨트롤에서, 펼쳤으면 사이드바 경계선에서 재는 것뿐이고 거리는 하나다 —
+        // 갈라 두면 ⌘B로 접었다 펴는 동안 첫 칸이 두 리듬으로 움직인다.
+        inset ? "pl-(--titlebar-inset-tabs)" : "pl-(--tab-lead)",
       )}
     >
       {/* 맨 앞 고정 칸. **`×`가 없다**(결정 7) — 문서로 돌아가는 자리가 셸 개수와 무관하게
@@ -203,13 +204,51 @@ function ShellTabs({
             // 비례해서** 깎아, 좁은 칸(66px)과 셸 칸(180px)이 나란히 6할씩 잃는다. 그러면
             // 이 칸이 글리프도 못 담는 27px가 되면서 정작 셸 칸은 73px로 멀쩡하다.
             // 줄어드는 것을 셸 칸 여덟으로 몰아 두는 것이 「균등」이 성립하는 조건이다.
-            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] pl-2 pr-2.5 text-[12.5px] transition-colors",
-            spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+            //
+            // **꺼져도 상자가 있다**(결정 25). 셸 칸은 꺼지면 글자만 남는데 이 칸은 눌린 자리에
+            // 앉아 있어, 「늘 거기 있는 것」이 그 차이로 읽힌다 — 옆의 세로선이 「묶음이 다르다」를
+            // 말하고 이 상자가 「종류가 다르다」를 말한다.
+            //
+            // 여백이 7·9px인 것은 **테두리 1px을 물린 값**이다(8·10에서 각 1px). 안 물리면 이
+            // 칸만 2px 넓어져 라벨이 셸 칸의 첫 글자와 어긋난다.
+            //
+            // hover가 `bg-state-1`이 아니라 `quiet-hover`인 것은 **바탕이 생겼기 때문이다** —
+            // state-1(3%)은 inset보다 옅어서 hover에 칸이 오히려 밝아진다. quiet-hover는 한 단계
+            // 진해지고(state-2) 글자색까지 함께 가며, 그 유틸리티의 계약대로 **꺼진 가지 안에만**
+            // 있다(index.css의 경고 — toggle-on과 겹치면 hover 규칙이 두 벌이 된다).
+            "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] border pl-[7px] pr-[9px] text-[12.5px] transition-colors",
+            spec.on
+              // 켜지면 **테두리를 지운다.** inset과 toggle-on의 농도 차가 작아 그것만으로는
+              // 「지금 문서를 보고 있나」가 흐려진다 — 두 상태가 농도뿐 아니라 테두리의
+              // 있고 없음으로도 갈린다. 켜짐을 말하는 어휘는 그대로 하나다
+              // (`aria-pressed` + `toggle-on`).
+              ? "toggle-on border-transparent font-medium"
+              : "bg-inset text-muted-foreground quiet-hover",
           )}
         >
           <File className="size-3.5 shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 truncate">spec</span>
         </button>
+      )}
+
+      {/* `spec`와 셸 칸 **사이**의 세로선(결정 25). 말하는 것은 「묶음이 다르다」 하나다 —
+          왼쪽은 고정된 한 칸이고 오른쪽은 스크롤하는 상자다. 종류가 다르다는 말은 위 칸의
+          바탕이 따로 한다.
+
+          **`spec`가 있을 때만 선다.** `/terminal`에는 그 칸이 없어(결정 8) 가를 것이 없는데,
+          조건 없이 두면 그 화면에서 줄 맨 앞에 이유 없는 선 하나가 남는다.
+
+          창을 끄는 자리를 뺏지 않는다 — 이 줄은 타이틀바를 겸하므로(머리말) 속성이 없는
+          자식은 그만큼 죽은 자리가 된다. 아래 `min-w-4 flex-1` 여백과 같은 이유다. */}
+      {spec && (
+        <span
+          aria-hidden
+          data-tauri-drag-region
+          data-tab-rule
+          // 좌우 2px이다 — 줄의 gap 4px과 합쳐 8px씩 벌어진다. 더 벌리면 **900px 창에서 줄이
+          // 넘친다**(결정 20의 산술이 이 선까지 센다: mx-1이면 1px 모자랐다, 실측).
+          className="mx-0.5 h-[18px] w-px shrink-0 bg-border-strong"
+        />
       )}
 
       {/* 셸 칸만 **가로로 스크롤한다**(결정 20). `spec`·`+`·조작은 이 상자 밖이라 자리가
@@ -219,11 +258,16 @@ function ShellTabs({
 
           칸은 그 전에 먼저 균등하게 줄어든다(결정 11). 스크롤은 여덟 칸이 다 최소 폭에
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
-          여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 자리가 고정된 것들이 그 옆에
-          `spec 65 + + 24 + 끄는 여백 16 + 조작 152 + gap 16 = 273`, 줄 좌우 패딩이 32다 —
-          도합 685px. 그런데 창이 더 작아질 수 없는 900px에서 이 줄이 받는 폭은 290px뿐이다
+          여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
+          (`spec` · 세로선 · `+` · 끄는 여백 · 조작 · 줄 사이 gap · 좌우 패딩)이 이어 선다.
+          그런데 창이 더 작아질 수 없는 900px에서 이 줄이 받는 폭은 **290px뿐이다**
           (사이드바 280과 작업 패널 330을 뺀 나머지 — **줄의 폭은 창 폭이 아니다**). 둘을 각자의
           최소로 좁혀도 400px이라, 어떤 최소 폭을 골라도 여덟 칸은 안 들어간다.
+
+          **합을 여기 숫자로 안 적는다.** 이 자리에 손으로 더한 수가 세 번 적혔고 세 번 다
+          틀렸다(569 → 657 → 685 — 항을 빠뜨리거나 더했다 다시 뺐다). 그 합은
+          `e2e/terminal-tabs.spec.ts`가 세 폭에서 실제로 재고 `spill ≤ 0`으로 든다 —
+          지금 900px에서 여유가 3.5px이라, 이 줄에 고정된 것을 늘리면 그만큼만 남는다.
 
           **스크롤 막대를 숨긴다.** 이 저장소의 `scroll-quiet`은 11px 막대를 세우는데,
           44px 타이틀바에서는 그만큼 칸이 눌린다. 닿는 길은 트랙패드 가로 스크롤과
