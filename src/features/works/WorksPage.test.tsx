@@ -675,6 +675,17 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       .slice(1)
       .map((chunk) => chunk.slice(0, chunk.indexOf('"')));
 
+  // **켜진 칸**의 종류. `+` 뒤 조각은 세지 않는다 — 거기엔 오른쪽 끝 조작이 딸려 오고
+  // 분할 토글이 자기 켜짐을 **같은 말**로 하므로(`aria-pressed`) 칸으로 세면 분할을 켤
+  // 때마다 켜진 칸이 하나 더 있는 것으로 읽힌다.
+  const tabsOn = (markup: string) =>
+    markup
+      .split('data-tab="')
+      .slice(1)
+      .map((chunk) => ({ kind: chunk.slice(0, chunk.indexOf('"')), markup: chunk }))
+      .filter((cell) => cell.kind !== "new" && cell.markup.includes('aria-pressed="true"'))
+      .map((cell) => cell.kind);
+
   it("이 Work의 셸이 `spec` 뒤에 칸으로 선다", () => {
     seed(2, work.slug, "~/.atelier/works/some-work/trees/atelier");
     // 남의 work의 셸이 섞이면 안 된다 — `owner`가 이 화면의 것이어야 한다.
@@ -724,6 +735,39 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     );
     expect(kindsOf(headerOf(markup))).toEqual([]);
     expect(headerOf(markup)).toContain("Works");
+  });
+
+  // 결정 12 — **분할 중에는 켜진 탭이 둘이다.** 「둘이면 둘을 켠다」는 줄 쪽 seam이 들고
+  // (ShellTabs.test.tsx), 여기서 보는 것은 **이 화면이 실제로 둘을 주는가**다: `spec.on`에
+  // `specStands`를, `showing`에 `terminalStands`를 주는데 분할이면 둘 다 참이다.
+  it("분할이면 켜진 칸이 문서 칸과 그 셸 둘이다", () => {
+    seed(1, work.slug, "~/.atelier/works/some-work/trees/atelier");
+    expect(tabsOn(headerOf(render({}, "terminal", "lr")))).toEqual(["spec", "shell"]);
+    // 단일 뷰에서는 하나다 — 이것이 없으면 위가 「늘 둘을 켠다」로도 통과한다. 그리고
+    // `tab`에 따라 **다른 칸**이 켜지는 것이 「지금 보고 있는 것이 하나」라는 말이다.
+    expect(tabsOn(headerOf(render({}, "terminal", null)))).toEqual(["shell"]);
+    expect(tabsOn(headerOf(render({}, "spec", null)))).toEqual(["spec"]);
+  });
+
+  // 결정 12 — 칸을 본문 위로 끄는 자리를 **이 화면이 만든다.** 탭 줄이 스스로 만들면
+  // `terminal → works` 방향이 값 차원에서 생겨 반대 방향과 맞물린다(ShellTabs의 그 prop
+  // 주석·ShellBranch의 `onDragRow`가 같은 함정을 든다).
+  //
+  // 배선은 렌더로 못 본다(핸들러는 직렬화되지 않는다). **정규식으로 블록을 잘라내지
+  // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
+  // 어느 갈래가 뒤집혀도 반드시 빨개진다.
+  it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 셸 칸을 가른다", () => {
+    expect(countOf(
+      source("WorksPage.tsx"),
+      `onDragTab={(shellId, from) =>
+        armDrag(
+          shellId === null
+            ? { kind: "spec", slug: panelWork.slug, shellId: null }
+            : { kind: "shell", slug: panelWork.slug, shellId },
+          from,
+        )
+      }`,
+    )).toBe(1);
   });
 });
 

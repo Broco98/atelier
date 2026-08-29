@@ -47,6 +47,22 @@ interface ShellTabsProps {
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
   /**
+   * 이 줄의 칸을 본문 위로 끌 수 있다면(결정 12) — 떨구면 화면이 좌우로 갈린다.
+   *
+   * 맨 앞 문서 칸은 `null`, 셸 칸은 그 셸의 id다. **갈래를 새로 만들지 않는다** —
+   * `DragSource`가 `shellId`로 이미 그 둘을 가르고 있고(「`kind`가 `shell`일 때만 있다」)
+   * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다.
+   *
+   * **없으면 안 끌린다.** 떨굴 자리인 분할은 work 화면의 것이라 `/terminal`은 이 콜백을
+   * 주지 않는다 — `ShellList.onDragRow`와 같은 계약이다.
+   *
+   * **드래그 모듈을 여기서 import하지 않는다.** 이 파일이 `features/works`를 **값으로**
+   * import하는 순간 `terminal → works` 방향이 값 차원에서 처음 생겨(지금까지는
+   * `import type`뿐이었다) 반대 방향과 맞물린다 — `ShellBranch.onDragRow`가 같은 함정을
+   * 적어 뒀다. 만드는 것은 양쪽을 이미 아는 화면(WorksPage)이 한다.
+   */
+  onDragTab?: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
+  /**
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
@@ -85,6 +101,7 @@ function ShellTabs({
   onSelect,
   onClose,
   onOpen,
+  onDragTab,
   actions,
   inset = false,
 }: ShellTabsProps) {
@@ -126,6 +143,10 @@ function ShellTabs({
           data-tab="spec"
           aria-pressed={spec.on}
           onClick={spec.onSelect}
+          // 본문 위로 끌면 그 절반에 문서가 선다(결정 12) — 사이드바의 `spec` 잎이 하던
+          // 몫이 이 칸으로 왔다. **누르는 것과 끄는 것이 한 버튼에 산다**: 5px 문턱이
+          // 둘을 가르므로(`armDrag`) 문턱 안쪽의 눌림은 그냥 클릭이다.
+          onPointerDown={onDragTab && ((event) => onDragTab(null, event))}
           className={cn(
             "flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] pl-2 pr-2.5 text-[12.5px] transition-colors",
             spec.on ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
@@ -185,6 +206,9 @@ function ShellTabs({
               type="button"
               aria-pressed={active}
               onClick={() => onSelect(shell.id)}
+              // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
+              // 분할이 켜진다. `ShellList`의 셸 행이 같은 자리에 같은 모양으로 걸어 뒀다.
+              onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}
               className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left"
             >
               {/* 이름 **앞**에 서고 `shrink-0`이다 — 줄어드는 것은 옆의 이름(`truncate`)

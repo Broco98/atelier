@@ -48,6 +48,7 @@ import {
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import {
+  armDrag,
   clearHalf,
   dragStore,
   dropSplit,
@@ -483,6 +484,23 @@ function WorksPage({
         openNewShell(origin);
         onSelectTab("terminal");
       }}
+      // 칸을 본문 위로 끌면 그 절반에 선다(결정 12) — 사이드바 행이 하던 몸짓 그대로이고
+      // **바뀐 것은 출발점뿐이다**(놓일 자리도 분할 계산도 그대로다).
+      //
+      // **끄는 자리를 여기서 만든다.** 탭 줄이 스스로 만들면 `terminal → works` 방향이
+      // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — Sidebar가 `ShellBranch`에
+      // 같은 이유로 같은 일을 해 준다). 이 화면은 이미 양쪽을 다 알고 있다.
+      //
+      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 `slug`가 하나로 정해진다 — 남의 work을
+      // 떨구는 길(결정 101)은 사이드바에만 있다.
+      onDragTab={(shellId, from) =>
+        armDrag(
+          shellId === null
+            ? { kind: "spec", slug: panelWork.slug, shellId: null }
+            : { kind: "shell", slug: panelWork.slug, shellId },
+          from,
+        )
+      }
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //

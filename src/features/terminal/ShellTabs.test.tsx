@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// 끄는 배선 한 건 때문에 Node 타입을 끌어온다 — 아래 「칸을 본문 위로 끄는 자리」가
+// 이 줄의 소스를 문자열로 읽는다. 근거는 WorksPage.test.tsx의 같은 머리말과 같다.
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { agentMarkOf } from "@/components/ui/agent-mark";
@@ -380,6 +385,36 @@ describe("칸 하나의 규격", () => {
     // 도달할 수 없다(SpecTree.test.tsx·ShellList.test.tsx가 같은 것을 지킨다).
     const markup = render(opened(2).state);
     expect(markup).not.toMatch(/<button(?:(?!<\/button>)[\s\S])*<button/);
+  });
+});
+
+describe("칸을 본문 위로 끄는 자리", () => {
+  const sourceCells = () =>
+    cellsOf(readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8"));
+  const cellOf = (kind: string) => sourceCells().find((cell) => cell.kind === kind)!.markup;
+
+  it("문서 칸과 셸 칸이 끄는 자리를 갖는다", () => {
+    // 맨 앞 문서 칸은 셸이 아니라는 뜻으로 `null`을 낸다 — `DragSource`가 `shellId`로
+    // 이미 그 둘을 가르고 있어(「`kind`가 `shell`일 때만 있다」) 갈래를 새로 만들지 않는다.
+    expect(cellOf("spec")).toContain("onPointerDown={onDragTab && ((event) => onDragTab(null, event))}");
+    // 셸 칸에서는 **이름 버튼**이 끄는 자리다 — 형제인 `×`가 끌리면 닫으려다 분할이 켜진다.
+    expect(cellOf("shell")).toContain(
+      "onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}",
+    );
+  });
+
+  it("콜백이 없으면 안 붙는다", () => {
+    // 떨굴 자리인 분할은 **work 화면의 것이다** — `/terminal`은 이 콜백을 안 주고, 그때
+    // 칸은 안 끌린다(`ShellList.onDragRow`와 같은 계약). `onDragTab &&`가 그 계약이고,
+    // prop이 optional이라는 것은 그 화면이 컴파일되는 것으로 L0가 잰다.
+    expect(cellOf("spec")).toContain("onDragTab && ");
+    expect(cellOf("shell")).toContain("onDragTab && ");
+  });
+
+  it("`+`는 안 끌린다", () => {
+    // 새 셸을 여는 버튼이다 — 끌 것이 아직 없다. (이 조각에는 오른쪽 끝 조작까지 딸려
+    // 오므로 「끄는 자리가 이 줄에서 둘뿐이다」도 함께 선다.)
+    expect(cellOf("new")).not.toContain("onPointerDown");
   });
 });
 

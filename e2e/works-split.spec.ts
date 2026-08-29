@@ -129,6 +129,99 @@ test("셸 행을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// ─── 결정 12(판 03): 분할을 **탭**에서 만든다 ───
+//
+// 사이드바 행이 하던 몸짓의 출발점이 머리행의 탭 줄로 옮겨 왔다(adr-03이 그 행을 걷는다).
+// **놓일 자리도 분할 계산도 그대로다** — 바뀌는 것은 끌 수 있는 것뿐이라, 위 사이드바
+// 검사들은 판 04가 그 행을 걷을 때까지 그대로 산다.
+//
+// 이 층이 아니면 아무것도 안 보인다: 배선은 핸들러라 마크업 seam에 없고, 5px 문턱과
+// 겹판은 포인터가 있어야 선다.
+
+/**
+ * 셸 탭의 **이름 버튼** — 끄는 자리다. 형제인 `×`는 안 끌린다(닫으려다 분할이 켜지면 안 된다).
+ *
+ * 켜짐을 말하는 쪽이 이름 버튼이라 그 속성으로 집는다 — 사이드바 행이 `data-shell-row`로
+ * 하던 일이고, 모양(클래스·자식 순서)으로 집지 않는 이유도 그쪽과 같다.
+ */
+async function shellTab(page: Page) {
+  const tab = page.locator('[data-tab="shell"] button[aria-pressed]');
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error("셸 탭의 상자를 못 읽었다");
+  return box;
+}
+
+/** 맨 앞 문서 칸. 고정 탭이라 `×`가 없어 칸 자체가 버튼이다(결정 7). */
+async function specTab(page: Page) {
+  const tab = page.locator('[data-tab="spec"]');
+  await expect(tab).toBeVisible();
+  const box = await tab.boundingBox();
+  if (!box) throw new Error("문서 탭의 상자를 못 읽었다");
+  return box;
+}
+
+// 수용 기준 「탭을 본문 오른쪽으로 끌면 분할이 켜지고 그 탭이 오른쪽 열에 선다」.
+// **분할이 아닌 화면에서 출발한다** — 켜지는 것까지가 이 기준이다. 셸 칸이 서려면 그
+// 화면에 셸이 있어야 해서 `tab=terminal`로 들어간다(진입 이펙트가 「없으면 하나 띄운다」).
+test("셸 탭을 오른쪽 절반에 떨구면 터미널이 오른쪽 열이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator("[data-column]")).toHaveCount(0);
+
+  await startDrag(page, await shellTab(page));
+  await moveOnto(page, "right");
+  await page.mouse.up();
+
+  // 떨군 것이 그 절반에 선다 — 터미널이 오른쪽이면 spec이 왼쪽으로 밀린다(결정 87).
+  await expect(page).toHaveURL(/split=lr/);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "spec");
+  await expect(page.locator("[data-column]").last()).toHaveAttribute("data-column", "terminal");
+  // 떨군 뒤 `tab`이 가리키는 쪽 — 나중에 `×`로 분할을 닫으면 이 값이 남는다(결정 97).
+  // **이 한 줄만으로는 `tabOfDrag`를 못 가른다**: 터미널 열이 서면 xterm이 포커스를
+  // 가져가고 그 자체가 `tab`을 terminal로 민다(아래 「문서 탭」 검사의 머리말이 실측을 든다).
+  await expect(page).toHaveURL(/tab=terminal/);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 수용 기준 「탭을 왼쪽으로 끌면 반대로 선다」. **같은 탭을 반대쪽으로** 끈다 — 한쪽만
+// 재면 좌우를 상수로 적어 둔 것과 구분이 안 된다.
+test("셸 탭을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  await startDrag(page, await shellTab(page));
+  await moveOnto(page, "left");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=rl/);
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
+  await expect(page.locator("[data-column]").last()).toHaveAttribute("data-column", "spec");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 맨 앞 **문서 칸**도 끌린다 — 사이드바의 `spec` 잎이 하던 몫이 이 칸으로 왔다.
+// 출발이 **꺼진 칸**이라는 것도 함께 선다(이 화면은 터미널을 보는 중이다): 끄는 것은
+// 켜진 칸의 특권이 아니다.
+//
+// **`tab`은 여기서 재지 않는다.** 떨군 직후 터미널 열이 서면서 xterm이 포커스를 가져가고,
+// 결정 97이 「포커스가 들어간 열이 곧 `tab`」이라 값이 곧바로 terminal로 간다 —
+// 사이드바의 `spec` 잎을 떨구는 위 검사가 `tab`을 안 보는 것도 같은 이유다(실측:
+// `tab` 없이 들어가 문서를 떨궈도 주소가 `split=rl&tab=terminal`로 끝난다).
+test("문서 탭을 오른쪽 절반에 떨구면 문서가 오른쪽 열이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  await startDrag(page, await specTab(page));
+  await moveOnto(page, "right");
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/split=rl/);
+  await expect(page.locator("[data-column]").last()).toHaveAttribute("data-column", "spec");
+  await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 결정 88의 「사람이 다시 열면 그 뜻을 존중한다 — 억지로 닫지 않는다」. 접는 판정이
 // 「`split`이 null이 아니다」로 넓어지면 이미 분할인 화면에서 좌우를 맞바꾸기만 해도
 // 사람이 열어 둔 패널이 닫힌다. **소스 문자열이 아니라 동작으로 본다.**
