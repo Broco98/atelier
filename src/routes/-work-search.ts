@@ -115,16 +115,23 @@ export function splitSearch<T extends object>(
 }
 
 /**
- * work마다 **마지막으로 보던 화면**(결정 77·97). 본문과 분할 여부를 함께 든다.
+ * work마다 **마지막으로 보던 화면**(결정 77·97). 보던 문서·본문·분할을 함께 든다.
  *
  * **화면을 정하는 것은 주소이고 이 기억은 씨앗이다**(결정 97). work을 옮길 때 새 주소를
  * 무엇으로 지을지만 말한다 — 머물러 있는 동안의 정본은 언제나 주소다.
  *
- * 앞 판은 work을 옮길 때 search를 통째로 비웠다. 그래야 하는 것은 `file` 하나였는데 —
+ * 앞 판은 work을 옮길 때 search를 통째로 비웠다. 비워야 하는 것은 **떠나는 주소**다 —
  * 문서 경로는 그 work 안에서만 뜻이 있어 딸려가면 새 work에 없는 파일을 가리킨 채 주소만
- * 남는다 — `tab`은 그 이유에 해당하지 않는다. `spec`도 `terminal`도 어느 work에나 있고,
+ * 남는다. `tab`은 그 이유에 해당하지 않는다: `spec`도 `terminal`도 어느 work에나 있고,
  * 터미널을 보다 옆 work을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 결정 77이
- * 없애려는 것이다. **`file`은 계속 떨어뜨린다.**
+ * 없애려는 것이다.
+ *
+ * **`file`도 그 work 자신의 것이면 해당하지 않는다.** 이 기억이 slug별 지도라 여기 적히는
+ * 경로는 언제나 그 work 안의 것이고, 그래서 「문서 경로는 그 work 안에서만 뜻이 있다」가
+ * 되살리는 쪽에서는 오히려 지켜진다 — 떠나는 주소를 버리는 일은 `viewSearch`가 **빈 객체
+ * 위에** 얹는 것이 계속 한다. 셋을 함께 들어야 「마지막 보던 화면」이 온전하다(#156 수용
+ * 기준 2 — 「문서·탭·분할이 살아 있다」). 적어 둔 문서가 그 사이에 사라져도 안전하다:
+ * 주소가 없는 파일을 가리키면 화면이 기본 문서로 눕힌다(`WorksPage`의 `currentSpec`).
  *
  * **영속시키지 않는다.** 「무엇을 보고 있었나」는 위치이지 설정이 아니다 — 사이드바 접힘이
  * localStorage에 살고 slug 기억이 세션에만 사는 그 구분과 같은 쪽이다(shell-store).
@@ -136,6 +143,8 @@ export function splitSearch<T extends object>(
 export interface WorkMemory {
   tab: ViewTab;
   split: SplitSide | null;
+  /** 보던 문서. `null`은 주소에 `file`이 없는 것과 같은 뜻이다 — 기본 문서를 본다. */
+  file: string | null;
 }
 
 const lastView = new Map<string, WorkMemory>();
@@ -145,16 +154,21 @@ export function rememberView(slug: string, view: WorkMemory): void {
 }
 
 export function recallView(slug: string): WorkMemory {
-  return lastView.get(slug) ?? { tab: "spec", split: null };
+  return lastView.get(slug) ?? { tab: "spec", split: null, file: null };
 }
 
 /**
- * 기억을 **빈 주소 위에 얹어** 새 주소를 짓는다 — 그래서 `file`이 안 딸려간다(위 주석).
- * 짓는 자리가 둘이라(주소 정규화·사이드바 행) 몸통을 여기 하나에 둔다.
+ * 기억을 **빈 주소 위에 얹어** 새 주소를 짓는다 — 그래서 **떠나는 주소의** `file`이 안
+ * 딸려가고, 얹히는 `file`은 언제나 그 work 자신의 것이다(위 주석). 짓는 자리가 둘이라
+ * (주소 정규화·사이드바 행) 몸통을 여기 하나에 둔다.
+ *
+ * `fileSearch`를 쓰지 않는다 — 그쪽은 문서를 **고른** 자리의 규칙이라 `tab`을 spec으로
+ * 눕히는데(결정 50), 여기서는 아무것도 안 골랐고 보던 화면을 그대로 세우는 것이라
+ * 터미널을 보던 work은 터미널로 돌아와야 한다.
  */
 export function viewSearch<T extends object>(
   prev: T,
   view: WorkMemory,
-): T & { tab?: "terminal"; split?: SplitSide } {
-  return splitSearch(tabSearch(prev, view.tab), view.split);
+): T & { tab?: "terminal"; split?: SplitSide; file?: string } {
+  return { ...splitSearch(tabSearch(prev, view.tab), view.split), file: view.file ?? undefined };
 }
