@@ -14,7 +14,7 @@ pub struct ProjectPatch {
 /// 층이 이것을 부른다(결정 23): 순서를 거기서 다시 적으면 팔레트가 Projects 화면과 어긋난다.
 ///
 /// **폴더가 없으면 빈 목록이다 — 만들지 않는다**(`read_works`와 같은 규칙).
-pub fn read_projects(root: &Path) -> Result<Vec<Project>> {
+pub(crate) fn read_projects(root: &Path) -> Result<Vec<Project>> {
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

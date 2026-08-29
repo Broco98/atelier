@@ -353,7 +353,7 @@ fn collect_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
 ///
 /// **폴더가 없으면 빈 목록이다 — 만들지 않는다.** 만드는 것은 `list_works`의 일이다(첫 실행이
 /// 그 자리를 지난다). 조회가 폴더를 만들면 「읽기만 한다」가 거짓이 된다(`list_archive`와 같은 규칙).
-pub fn read_works(works_root: &Path) -> Result<Vec<Work>> {
+pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
     let entries = match std::fs::read_dir(works_root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
