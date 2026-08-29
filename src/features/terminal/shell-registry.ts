@@ -585,6 +585,65 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
+ * ⇧를 두 번 누른 것으로 치는 **두 번 사이의 간격**. 너무 길면 대문자를 치다 열리고, 너무
+ * 짧으면 두 번 눌러도 안 열린다.
+ *
+ * **상한이 오발동을 막는 유일한 그물은 아니다** — 사이에 끼는 keydown 하나가 이미 무장을
+ * 풀어서, `A`를 대문자로 치는 동안에는 간격이 얼마든 안 열린다. 이 값이 정하는 것은
+ * 「두 번 누른다」가 한 동작으로 읽히는 폭이다.
+ */
+export const SEARCH_GAP_MS = 300;
+
+/**
+ * ⇧⇧ 감지기가 돌려주는 것. `armedAt`은 **다음 판정에 그대로 도로 들어간다** — 이 함수가
+ * 상태를 들지 않으므로 부르는 쪽이 그 한 값만 들고 있으면 된다.
+ */
+export interface SearchArm {
+  open: boolean;
+  armedAt: number | null;
+}
+
+/**
+ * ⇧를 두 번 누르면 검색을 연다(결정 3·4). **타이머 없는 순수 리듀서다** — 직전 ⇧의 시각을
+ * 인자로 받고 다음 상태를 돌려주므로, DOM도 가짜 시계도 없이 취소 규칙을 전부 잴 수 있다.
+ *
+ * 무장하는 것은 **⇧ 단독 keydown** 하나다(다른 수식키가 안 붙은 `ShiftLeft`·`ShiftRight`).
+ * 푸는 것은 셋인데 여기서 드는 것은 둘이다.
+ *
+ * - **그 밖의 모든 keydown.** 이 한 줄이 「⇧를 누른 채 다른 키가 오면 취소」와 「사이에
+ *   다른 키가 끼면 취소」를 함께 푼다 — `Shift↓ A↓ Shift↓`에서 가운데 `A↓`가 무장을 풀어
+ *   대문자를 치는 동안 안 열린다.
+ * - **간격 초과**(`SEARCH_GAP_MS`). 넘기면 안 열리고 **그 ⇧가 다시 무장한다** — 세 번째
+ *   ⇧가 붙으면 열려야 하기 때문이다.
+ * - 셋째는 **mousedown**인데 그것은 키가 아니라 이 함수 밖에 산다(결정 30). 키만 보면
+ *   ⇧+클릭 두 번이 팔레트를 연다 — 그 사이에 keydown이 하나도 안 끼기 때문이다.
+ *   부르는 쪽(앱 셸)이 mousedown에 무장을 비운다.
+ *
+ * **셸 안에서는 듣고 폼 입력칸에서는 비킨다** — `shellNavFromWindow`와 같은 규칙이고 같은
+ * 판정을 딛는다(결정 4). 이 함수를 새 모듈에 다시 적지 않는 이유가 그 한 줄이다.
+ *
+ * **대화상자는 여기서 안 본다.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠
+ * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
+ *
+ * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
+ */
+export function searchHotkey(event: KeyFromWindow & { at: number }, armedAt: number | null): SearchArm {
+  // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
+  // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
+  if (event.type !== "keydown") return { open: false, armedAt };
+  if (typesInto(event.target) && !isShellInput(event.target)) return { open: false, armedAt: null };
+  // **`shiftKey`로 가르지 않는다** — ⇧ 자신의 keydown에는 그 값이 이미 참이다.
+  const bareShift =
+    (event.code === "ShiftLeft" || event.code === "ShiftRight") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey;
+  if (!bareShift) return { open: false, armedAt: null };
+  if (armedAt !== null && event.at - armedAt <= SEARCH_GAP_MS) return { open: true, armedAt: null };
+  return { open: false, armedAt: event.at };
+}
+
+/**
  * 두 상태가 **이 화면에게 같은가.**
  *
  * 한 화면의 탭 줄이 그리는 것은 둘뿐이다 — 자기 셸들과 그중 켜진 칸. 남의 work의 셸이

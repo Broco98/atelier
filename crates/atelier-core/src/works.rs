@@ -251,7 +251,7 @@ fn work_dir(works_root: &Path, slug: &str) -> Result<PathBuf> {
     Ok(works_root.join(slug))
 }
 
-fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
+pub(crate) fn read_work(works_root: &Path, slug: &str) -> Result<Work> {
     let path = work_dir(works_root, slug)?.join("work.json");
     let content =
         std::fs::read_to_string(&path).map_err(|_| Error::WorkNotFound(slug.to_string()))?;
@@ -302,7 +302,7 @@ fn worktrees_dir(work_dir: &Path) -> PathBuf {
 
 /// spec 문서를 두는 디렉터리. 뷰가 알려주는 위치와 목록이 읽는 위치가 어긋나지
 /// 않도록 경로를 만드는 곳은 여기 하나다 (work_dir와 같은 규칙).
-fn spec_dir(work_dir: &Path) -> PathBuf {
+pub(crate) fn spec_dir(work_dir: &Path) -> PathBuf {
     work_dir.join("spec")
 }
 
@@ -322,7 +322,7 @@ const HEAD_LABEL: &str = "- 워크트리 HEAD:";
 const COMMITS_HEADING: &str = "### 커밋";
 
 /// spec/ 아래 파일들의 상대 경로 (정렬, dotfile 제외)
-fn spec_files(work_dir: &Path) -> Vec<String> {
+pub(crate) fn spec_files(work_dir: &Path) -> Vec<String> {
     let mut files = Vec::new();
     collect_files(&spec_dir(work_dir), "", &mut files);
     files.sort();
@@ -346,10 +346,21 @@ fn collect_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
-pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
-    std::fs::create_dir_all(works_root)?;
-    let mut views = Vec::new();
-    for entry in std::fs::read_dir(works_root)? {
+/// 작업 목록의 **순서와 걷는 법**. 무거운 것은 안 단다 — 워크트리마다 `git status`를 부르는
+/// 것은 `to_view`이고(`is_dirty`), **글자마다 부르는 자리는 그것을 탈 수 없다.** 검색의 작업
+/// 층이 이것을 부른다(결정 23): 순서를 거기서 다시 적으면 팔레트가 사이드바와 어긋난 두
+/// 세상을 만든다.
+///
+/// **폴더가 없으면 빈 목록이다 — 만들지 않는다.** 만드는 것은 `list_works`의 일이다(첫 실행이
+/// 그 자리를 지난다). 조회가 폴더를 만들면 「읽기만 한다」가 거짓이 된다(`list_archive`와 같은 규칙).
+pub fn read_works(works_root: &Path) -> Result<Vec<Work>> {
+    let entries = match std::fs::read_dir(works_root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut works = Vec::new();
+    for entry in entries {
         let entry = entry?;
         let slug = entry.file_name().to_string_lossy().to_string();
         if slug.starts_with('.') || !entry.path().is_dir() {
@@ -357,21 +368,25 @@ pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
         }
         // AI가 망가뜨린 파일 하나가 전체 목록을 막지 않도록 파싱 실패는 건너뜀
         if let Ok(work) = read_work(works_root, &slug) {
-            views.push(to_view(works_root, work));
+            works.push(work);
         }
     }
     // **고정이 먼저다** (결정 100). 사이드바가 고정 구획을 맨 위에 세우므로, 그 순서를
     // 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이
     // 갈린다 — 이슈 #58이 정확히 그것이었다. 여기서 먼저 주면 어떤 조합에서도 저절로
     // 성립하고, 앱·MCP·CLI가 같은 순서를 본다.
-    views.sort_by(|a, b| {
-        b.work
-            .pinned
-            .cmp(&a.work.pinned)
-            .then_with(|| b.work.created_at.cmp(&a.work.created_at))
-            .then_with(|| a.work.slug.cmp(&b.work.slug))
+    works.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then_with(|| b.created_at.cmp(&a.created_at))
+            .then_with(|| a.slug.cmp(&b.slug))
     });
-    Ok(views)
+    Ok(works)
+}
+
+pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
+    std::fs::create_dir_all(works_root)?;
+    Ok(read_works(works_root)?.into_iter().map(|work| to_view(works_root, work)).collect())
 }
 
 /// **작업 루트만 본다.** 보존소로 넘어가는 폴백은 여기 넣지 않는다 — 데스크톱 앱의

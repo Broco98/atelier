@@ -113,8 +113,9 @@ describe("주소를 고치는 짝", () => {
   });
 });
 
-// 결정 77. work을 옮길 때 `file`은 떨어뜨리고 `tab`은 되살린다. 라우터 seam에서는 이것도
-// 안 보인다 — 그쪽은 주소에 적힌 것만 보고, 「새 주소를 무엇으로 짓는가」는 여기 있다.
+// 결정 77. work을 옮길 때 떠나던 주소는 버리고 **그 work의 기억**을 되살린다. 라우터
+// seam에서는 이것도 안 보인다 — 그쪽은 주소에 적힌 것만 보고, 「새 주소를 무엇으로
+// 짓는가」는 여기 있다.
 //
 // **모듈 스코프 Map이라 이 파일 안에서 새어 나간다.** 검사마다 다른 슬러그를 쓴다 —
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
@@ -138,44 +139,68 @@ describe("주소가 가리키는 work", () => {
 });
 
 describe("work마다 마지막으로 보던 화면", () => {
-  it("적어 두지 않은 work은 문서 단일 뷰다", () => {
-    expect(recallView("처음-보는-work")).toEqual({ tab: "spec", split: null });
+  it("적어 두지 않은 work은 기본 문서 단일 뷰다", () => {
+    expect(recallView("처음-보는-work")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   it("적어 둔 것을 그대로 돌려준다", () => {
-    rememberView("가", { tab: "terminal", split: "rl" });
-    expect(recallView("가")).toEqual({ tab: "terminal", split: "rl" });
+    rememberView("가", { tab: "terminal", split: "rl", file: "01-판/spec.md" });
+    expect(recallView("가")).toEqual({ tab: "terminal", split: "rl", file: "01-판/spec.md" });
     // 되돌아오는 것도 기억이다 — 켠 것만 적어 두면 끈 것을 못 적는다.
-    rememberView("가", { tab: "spec", split: null });
-    expect(recallView("가")).toEqual({ tab: "spec", split: null });
+    rememberView("가", { tab: "spec", split: null, file: null });
+    expect(recallView("가")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   it("work마다 따로 센다", () => {
-    rememberView("나", { tab: "terminal", split: "lr" });
-    expect(recallView("다")).toEqual({ tab: "spec", split: null });
+    rememberView("나", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
+    expect(recallView("다")).toEqual({ tab: "spec", split: null, file: null });
   });
 
   // 주소를 짓는 짝이 이 둘이다. `viewSearch`에 **빈 객체를 얹으므로** 이전 주소가 통째로
-  // 버려지고 `file`이 안 딸려간다 — 결정 77이 그대로 두기로 한 절반이다.
+  // 버려진다 — 실리는 것은 그 work의 기억뿐이라 **남의** `file`이 딸려갈 자리가 없다.
   it("빈 주소 위에 얹어 새 주소를 짓는다", () => {
-    rememberView("라", { tab: "terminal", split: "lr" });
-    expect(viewSearch({}, recallView("라"))).toEqual({ tab: "terminal", split: "lr" });
-    rememberView("마", { tab: "spec", split: null });
-    expect(viewSearch({}, recallView("마"))).toEqual({ tab: undefined, split: undefined });
+    rememberView("라", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
+    expect(viewSearch({}, recallView("라"))).toEqual({
+      tab: "terminal",
+      split: "lr",
+      file: "01-판/spec.md",
+    });
+    rememberView("마", { tab: "spec", split: null, file: null });
+    expect(viewSearch({}, recallView("마"))).toEqual({
+      tab: undefined,
+      split: undefined,
+      file: undefined,
+    });
   });
 
   // **분할로 두고 떠난 work은 분할로 돌아온다**(판 05 수용 기준의 마지막 줄). `tab`만
   // 씨앗에 실으면 이 한 줄이 조용히 빠진다.
   it("분할로 두고 떠난 work은 분할로 돌아온다", () => {
-    rememberView("바", { tab: "terminal", split: "rl" });
-    rememberView("사", { tab: "spec", split: null });
-    expect(viewSearch({}, recallView("바"))).toEqual({ tab: "terminal", split: "rl" });
+    rememberView("바", { tab: "terminal", split: "rl", file: null });
+    rememberView("사", { tab: "spec", split: null, file: null });
+    expect(viewSearch({}, recallView("바"))).toEqual({
+      tab: "terminal",
+      split: "rl",
+      file: undefined,
+    });
+  });
+
+  // **보던 문서도 씨앗에 실린다**(#156 수용 기준 2 — 「문서·탭·분할이 살아 있다」). `tab`과
+  // `split`만 실으면 돌아온 work이 기본 문서로 열려, 축 셋 중 하나가 조용히 빠진다 —
+  // 화면으로는 「가끔 다른 문서가 떠 있다」로만 보인다.
+  it("문서를 보다 떠난 work은 그 문서로 돌아온다", () => {
+    rememberView("아", { tab: "spec", split: null, file: "02-판/spec.md" });
+    expect(viewSearch({}, recallView("아"))).toEqual({
+      tab: undefined,
+      split: undefined,
+      file: "02-판/spec.md",
+    });
   });
 });
 
 // 배선. 주소를 짓는 자리가 둘이라(사이드바 행과 정규화) **한쪽만 고치면** 어느 길로
 // 옮겼느냐에 따라 돌아온 화면이 갈린다 — 화면으로는 「가끔 그런다」로만 보인다.
-describe("보던 본문을 되살리는 자리가 둘 다 배선돼 있다", () => {
+describe("보던 화면을 되살리는 자리가 둘 다 배선돼 있다", () => {
   const read = (file: string) =>
     readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
 
@@ -194,6 +219,8 @@ describe("보던 본문을 되살리는 자리가 둘 다 배선돼 있다", () 
     // 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다 — 길마다 적으면 한 길만 늙는다.
     const view = read("./-works-view.tsx");
     expect(view.split("rememberView(").length - 1).toBe(1);
-    expect(view).toContain("if (slug !== null && exists) rememberView(slug, { tab, split });");
+    expect(view).toContain(
+      "if (slug !== null && exists) rememberView(slug, { tab, split, file });",
+    );
   });
 });

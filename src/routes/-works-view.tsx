@@ -35,10 +35,11 @@ function WorksView({
 
   const exists = slug !== null && works.some((work) => work.slug === slug);
 
-  // 작업을 옮길 때 `file`은 떨어뜨리고 `tab`은 **기억에서 되살린다**(결정 77). 문서 경로는
-  // 그 작업 안에서만 뜻이 있어서 딸려가면 새 작업에 없는 파일을 가리킨 채 주소만 남지만,
-  // 「무엇을 보고 있었나」는 어느 작업에나 있는 값이다. 주소를 짓는 자리가 여기와
-  // 사이드바 둘이라 씨앗을 `-work-search.ts` 한 곳에 뒀다.
+  // 작업을 옮길 때 보던 화면을 **기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
+  // 떠나던 주소는 통째로 떨어진다: 문서 경로는 그 작업 안에서만 뜻이 있어서 딸려가면 새
+  // 작업에 없는 파일을 가리킨 채 주소만 남는다. 되살리는 `file`은 기억이 slug별이라 언제나
+  // **그 작업 자신의** 문서다. 주소를 짓는 자리가 여기와 사이드바 둘이라 씨앗을
+  // `-work-search.ts` 한 곳에 뒀다.
   const goTo = (next: string | null, replace = false) =>
     void (next
       ? navigate({
@@ -88,6 +89,8 @@ function WorksView({
   // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립한다**(결정 101) —
   // 그때는 work이 통째로 바뀌므로 `file`을 떨어뜨려야 하고, 같은 work이면 보던 문서를
   // 지켜야 한다. 그 갈림이 여기 하나뿐이라 `search`를 짓는 두 모양이 나란히 선다.
+  // 남의 work 쪽에 기억을 안 얹는 것은 **끌어 놓은 배치가 곧 말한 것**이기 때문이다 —
+  // 기억을 되세우는 것은 work 행을 눌러 옮기는 길의 일이다(위 `goTo`).
   const dropInto = useCallback(
     (source: DragSource, next: SplitSide) => {
       const nextTab = tabOfDrag(source.kind);
@@ -97,7 +100,7 @@ function WorksView({
         search:
           source.slug === slug
             ? (prev: object) => splitSearch(tabSearch(prev, nextTab), next)
-            : viewSearch({}, { tab: nextTab, split: next }),
+            : viewSearch({}, { tab: nextTab, split: next, file: null }),
         replace: true,
       });
     },
@@ -124,8 +127,8 @@ function WorksView({
   // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
   // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
   useEffect(() => {
-    if (slug !== null && exists) rememberView(slug, { tab, split });
-  }, [slug, exists, tab, split]);
+    if (slug !== null && exists) rememberView(slug, { tab, split, file });
+  }, [slug, exists, tab, split, file]);
 
   // 주소와 화면을 목록 변화에 맞춰 계속 붙여 둔다.
   // beforeLoad는 이동할 때만 돌기 때문에, 머물러 있는 동안 목록이 바뀌어 생기는 어긋남은
