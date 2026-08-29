@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import ShellTabs from "./ShellTabs";
+import type { SpecTab } from "./ShellTabs";
 import {
   markExited,
   markFailed,
@@ -64,7 +65,7 @@ function render(
   {
     owner = WORK as string | null,
     projects = [] as string[],
-    spec = SPEC as { on: boolean; onSelect: () => void } | null,
+    spec = SPEC as SpecTab | null,
     showing = true,
     inset = false,
     actions = undefined as React.ReactNode,
@@ -298,12 +299,15 @@ describe("칸이 무엇이 도는지 말한다", () => {
 
 // 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안 계속 갈아 끼운다(adr-04).
 //
-// **이 seam에는 리렌더가 없다** — 정적 마크업이라 「몇 번 그렸나」를 셀 자리가 없다. 대신
-// 그 아래 깔린 성질을 잰다: 한 칸의 그림이 **그 칸의 셸에만** 달렸는가, 그리고 안 바뀐 칸이
-// 같은 객체로 남는가. 둘이 함께 서면 「다른 칸은 다시 그릴 것이 없다」가 된다.
+// **이 seam에는 리렌더가 없다** — 정적 마크업이라 「몇 번 그렸나」를 셀 자리가 없다. 그래서
+// 사이드바와 같은 방식으로 둘로 나눠 본다(Sidebar.test.tsx 머리말):
 //
-// **못 보는 것**: React가 실제로 다시 그리는 횟수. 그것은 구독하는 쪽의 몫이고
-// (`WorksPage`의 `sameBranch`), 이 줄은 상태와 콜백만 받는다.
+// 1. **값** — 한 칸의 그림이 그 칸의 셸에만 달렸는가, 안 바뀐 칸이 같은 객체로 남는가.
+// 2. **배선** — 그 성질을 실제로 쓰는 `memo` 경계가 있는가(아래 「칸이 `memo` 경계다」).
+//
+// 1만 있으면 「다시 그릴 것이 없다」까지이고 React는 그래도 여덟 칸을 전부 다시 그린다 —
+// 값이 같아도 경계가 없으면 렌더 함수는 돈다. 2만 있으면 무엇을 막는지 아무도 안 적은
+// change-detector다. 티켓 #140의 「다른 칸이 다시 안 그려진다」는 둘이 함께 서야 참이다.
 describe("한 칸이 흔들려도 다른 칸은 그대로다", () => {
   it("한 칸의 타이틀만 갈리면 그 칸만 갈린다", () => {
     const { state, ids } = opened(3);
@@ -336,6 +340,46 @@ describe("한 칸이 흔들려도 다른 칸은 그대로다", () => {
     expect(next.shells[0]).not.toBe(state.shells[0]);
     expect(next.shells[1]).toBe(state.shells[1]);
     expect(next.shells[2]).toBe(state.shells[2]);
+  });
+});
+
+// 위 「값」의 짝. 안 바뀐 칸이 같은 객체로 남아도 경계가 없으면 React는 그 칸의 렌더 함수를
+// 다시 돌린다 — 티켓 #140이 「잴 수 있는 검사로 건다」고 못박은 것이 이 절반이다.
+describe("칸이 `memo` 경계다", () => {
+  const source = () => readFileSync(fileURLToPath(new URL("./ShellTabs.tsx", import.meta.url)), "utf8");
+  // 줄 안에 선 `<ShellTab … />` 한 조각. 자기 닫는 태그라 `/>`까지가 전부다.
+  const shellTabTag = (src: string) => {
+    const at = src.indexOf("<ShellTab\n");
+    return at < 0 ? "" : src.slice(at, src.indexOf("/>", at) + 2);
+  };
+
+  it("칸이 제 컴포넌트로 서고 `memo`로 감싸여 있다", () => {
+    const src = source();
+    // **그물 가드.** 파일을 못 읽었거나 이름이 바뀌면 아래 단언들이 빈 문자열 위에서
+    // 조용히 갈린다 — 먼저 이 줄이 실제로 읽혔는지를 센다.
+    expect(src).toContain("function ShellTabs({");
+    expect(src).toContain("const ShellTab = memo(function ShellTab({");
+  });
+
+  it("칸에 내려보내는 콜백이 회차를 넘어 같다", () => {
+    // `memo`는 얕은 비교라 **콜백 하나가 회차마다 새 화살표면 경계가 아무것도 안 막는다.**
+    // 부르는 쪽(WorksPage)이 `onSelect`·`onDragTab`을 인라인 화살표로 주므로, 안정성을
+    // 이 줄이 스스로 진다(`tabHandlers`). 그 계약이 깨지는 모양은 하나뿐이다 — 이 태그
+    // 안에 화살표가 다시 나타나는 것.
+    const tag = shellTabTag(source());
+    expect(tag).toContain("shell={shell}");
+    expect(tag).not.toContain("=>");
+    expect(tag).toContain("onSelect={tabHandlers.onSelect}");
+    expect(tag).toContain("onClose={tabHandlers.onClose}");
+    expect(tag).toContain("onDragTab={onDragTab && tabHandlers.onDragTab}");
+  });
+
+  it("그 콜백을 한 번만 만든다", () => {
+    // `useMemo`의 의존성이 비어 있어야 회차를 넘어 같은 객체다. 최신 값은 ref로 읽으므로
+    // (이벤트에서만 불린다) 의존성을 비워도 지난 회차의 클로저가 남지 않는다.
+    const src = source();
+    expect(src).toContain("const tabHandlers = useMemo(");
+    expect(src).toContain("latest.current = { onSelect, onClose, onDragTab };");
   });
 });
 
@@ -504,7 +548,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   // 결정 20. 칸이 최소 폭까지 고르게 줄고(위 describe), **그 아래로는 스크롤한다**.
   // 티켓 #143이 처음 요구한 「좁은 창에서도 한 줄에 다 들어간다」는 산술로 불가능했다 —
   // 이 줄이 받는 폭은 창 폭이 아니라 창에서 사이드바와 작업 패널을 뺀 나머지라, 900px
-  // 창에서 290px인데 여덟 칸이 최소 폭이어도 줄에 약 657px이 든다.
+  // 창에서 290px인데 여덟 칸이 최소 폭이어도 줄에 685px이 든다.
   //
   // **여기서 보는 것은 구조뿐이다.** 실제로 안 넘치는지는 폭을 재야 알고 그것은
   // e2e(terminal-tabs.spec.ts)의 `spill`이 든다 — 이 seam에는 DOM이 없어 겹침을 못 본다.
@@ -531,10 +575,11 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   it("가로로만 스크롤하고 막대는 안 보인다", () => {
     // 세로로도 스크롤하면 44px 줄 안에서 칸이 위아래로 흔들린다. 막대를 숨기는 것은
     // `scroll-quiet`이 11px를 세우기 때문이다 — 타이틀바에서는 그만큼 칸이 눌린다.
-    const tag = stripTagOf(render(opened(2).state));
+    // 정적 마크업이라 클래스 문자열의 `&`가 `&amp;`로 온다 — 이스케이프를 되돌려 **소스에
+    // 적힌 그대로** 본다. 엔티티까지 물면 규격이 아니라 직렬화 방식에 검사가 매인다.
+    const tag = stripTagOf(render(opened(2).state)).replace(/&amp;/g, "&");
     expect(tag).toContain("overflow-x-auto");
-    // `&`가 `&amp;`로 온다 — 정적 마크업이라 클래스 문자열도 HTML로 이스케이프된다.
-    expect(tag).toContain("[&amp;::-webkit-scrollbar]:hidden");
+    expect(tag).toContain("[&::-webkit-scrollbar]:hidden");
   });
 
   it("줄어드는 몫을 이 상자 하나가 받는다 — 형제는 안 줄어든다", () => {

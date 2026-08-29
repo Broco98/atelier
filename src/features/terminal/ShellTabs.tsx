@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, LoaderCircle, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,18 @@ import {
   shellRowName,
   shellsOf,
 } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import type { Shell, ShellsState } from "./shell-registry";
+
+/**
+ * 탭 줄 맨 앞에 고정으로 서는 문서 칸(결정 7·8).
+ *
+ * `on`은 **본문이 문서인가**이지 마지막으로 누른 칸이 아니다 — 분할이면 이것과 `showing`이
+ * 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
+ */
+export interface SpecTab {
+  on: boolean;
+  onSelect: () => void;
+}
 
 interface ShellTabsProps {
   /**
@@ -34,7 +45,7 @@ interface ShellTabsProps {
    * `on`은 **본문이 문서인가**이지 마지막으로 누른 칸이 아니다 — 분할이면 이것과 아래
    * `showing`이 함께 참이고, 그때 켜진 칸이 둘이다(결정 12).
    */
-  spec: { on: boolean; onSelect: () => void } | null;
+  spec: SpecTab | null;
   /**
    * **본문이 이 화면의 셸을 보여주는가.** 켜진 칸 표시를 그때만 준다.
    *
@@ -112,6 +123,26 @@ function ShellTabs({
   const shells = shellsOf(state, owner);
   const activeId = activeIdOf(state, owner);
 
+  // 칸에 내려보내는 콜백을 **회차를 넘어 같은 것으로** 만든다(#140). `ShellTab`이 `memo`라
+  // 여기서 회차마다 새 화살표를 주면 그 경계가 아무것도 안 막는다 — 부르는 쪽(WorksPage)이
+  // `onSelect`·`onDragTab`을 인라인 화살표로 주는데, 그 자리를 고치는 대신 이 줄이 계약을
+  // 진다: 콜백이 안정적이어야 한다는 것은 **이 컴포넌트의 성질**이지 부르는 쪽이 기억해야
+  // 할 규칙이 아니고, 규칙으로 두면 다음에 인라인 화살표 하나가 조용히 되돌린다.
+  //
+  // 최신 값을 ref로 읽는다. 이 셋은 **이벤트에서만** 불리므로(클릭·포인터다운) 그리는
+  // 중에 읽히지 않고, 따라서 지난 회차의 클로저가 남지 않는다.
+  const latest = useRef({ onSelect, onClose, onDragTab });
+  latest.current = { onSelect, onClose, onDragTab };
+  const tabHandlers = useMemo(
+    () => ({
+      onSelect: (id: number) => latest.current.onSelect(id),
+      onClose: (id: number) => latest.current.onClose(id),
+      onDragTab: (id: number, from: { clientX: number; clientY: number }) =>
+        latest.current.onDragTab?.(id, from),
+    }),
+    [],
+  );
+
   // 프로젝트가 여럿인 Work에서만 `+`가 묻는다. 앵커가 그 버튼이라 여기 산다.
   const asks = projects.length > 1;
   const plusRef = useRef<HTMLButtonElement>(null);
@@ -186,7 +217,7 @@ function ShellTabs({
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 자리가 고정된 것들이 그 옆에
           `spec 65 + + 24 + 끄는 여백 16 + 조작 152 + gap 16 = 273`, 줄 좌우 패딩이 32다 —
-          도합 약 657px. 그런데 창이 더 작아질 수 없는 900px에서 이 줄이 받는 폭은 290px뿐이다
+          도합 685px. 그런데 창이 더 작아질 수 없는 900px에서 이 줄이 받는 폭은 290px뿐이다
           (사이드바 280과 작업 패널 330을 뺀 나머지 — **줄의 폭은 창 폭이 아니다**). 둘을 각자의
           최소로 좁혀도 400px이라, 어떤 최소 폭을 골라도 여덟 칸은 안 들어간다.
 
@@ -200,169 +231,18 @@ function ShellTabs({
         data-tab-strip
         className="flex w-max min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {shells.map((shell) => {
-          const active = showing && shell.id === activeId;
-          // 결정 18. 이름을 정하는 자리는 앱에서 이 함수 하나다 — 프로젝트가 여럿인 work에서만
-          // 앞에 프로젝트가 붙으므로 대부분의 칸은 타이틀만 적는다. 셋 중 하나를 **골라서**
-          // 적던 `shellLabel`은 되살리지 않는다: 타이틀이 오는 순간 어느 워크트리의 셸인지가
-          // 사라지는 실물 사고를 냈고 사용처가 0이 되어 지워졌다(결정 104).
-          const name = shellRowName(shell);
-          const end = shellEndLabels(shell);
-          // 결정 4 — **탭 줄은 칸마다**다. 사이드바가 종류만 말하는 것(`runningKindsOf`)과
-          // 갈리는 자리이고, 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
-          // 갈린다. 판정도 표도 새로 짓지 않는다: 「끝난 칸은 아무것도 안 돈다」는 `runningOn`
-          // 하나가 알고(`shell.running`을 직접 읽으면 죽은 칸에 로고가 굳는다), 이름→그림은
-          // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
-          const running = runningOn(shell);
-          const mark = agentMarkOf(running);
-
-          return (
-            // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
-            // 바깥이 가진 padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무
-            // 일이 없는 죽은 자리가 된다(커밋 c0978b1이 spec 트리에서 없앤 것).
-            //
-            // hover는 **꺼진 가지 안에만** 둔다. toggle-on이 자기 hover를 품으므로 함께 얹으면
-            // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
-            // 꺼진 칸이 `quiet-hover`(2)가 아니라 1인 것은 2가 **행이 선택된** 농도라서다 —
-            // 꺼진 칸을 2로 밝히면 「선택됨」으로 읽힌다.
-            //
-            // **폭을 이름이 정하지 않는다**(결정 20). 칸마다 같은 폭을 주고 넘칠 때도 그 값에서
-            // 깎이게 둔다 — flex가 넘친 폭을 기준 폭에 비례해 나누므로, 기준이 같으면 여덟 칸이
-            // **같은 만큼** 줄어든다. 내용 폭으로 두면 도는 칸만 로고·스피너(30px)만큼 넓어지고,
-            // 그보다 나쁜 것은 셸이 프롬프트마다 쏘는 OSC 타이틀에 칸 폭이 매달린다는 것이다 —
-            // claude가 도는 동안 줄 전체가 계속 들썩인다.
-            //
-            // **`basis-[180px]`이 아니라 `w-[180px]`이다** — 이 칸이 `@container`라서다(실측).
-            // `container-type: inline-size`는 「폭을 속으로 정하지 않는다」는 격리라, 이 칸의
-            // 내재 폭이 0으로 계산되고 `min-w`만 남는다. 스크롤 상자가 그 내재 폭을 더해 제
-            // 폭을 잡으므로, 기준을 `flex-basis`로만 주면 상자가 `44×칸수`로 잡혀 **칸이 늘
-            // 최소 폭에 붙는다**(한 칸일 때도 44px였다). `width`로 주면 폭이 정해진 값이라
-            // 격리와 무관하게 서고, flex는 그것을 기준으로 깎는다.
-            //
-            // 폭의 세 수는 한 뺄셈에서 나온다: 이름 버튼 좌우 여백 14 + 로고·스피너 30 + 닫기 24.
-            // `min-w-[44px]`가 **아이콘만 남은 칸**(14+30)이고, 아래 두 문턱이 거기에 닫기와
-            // 이름을 얹은 폭이다. **여기가 바닥이고 그 아래는 스크롤이다**(결정 20) — 한때
-            // 이 자리에 「여덟 칸이 최소 폭이어도 900px 창에 여유가 남는다」고 적혀 있었는데,
-            // 그것은 창 폭을 잰 것이었다. 이 줄이 받는 폭은 창에서 사이드바와 작업 패널을
-            // 뺀 나머지다(위 스크롤 상자 주석의 산술).
-            //
-            // `@container`가 **칸마다 자기 폭을 재게** 한다. 줄(header)을 재면 안 되는 것은 한
-            // 칸의 폭이 줄 폭이 아니라 `줄 폭 ÷ 칸 수`이고 칸 수를 CSS가 모르기 때문이다.
-            // `container-type: inline-size`가 내용으로 폭을 정하는 길을 막지만 여기서는 손해가
-            // 아니다 — 이 칸의 폭은 이미 flex가 정한다.
-            <div
-              key={shell.id}
-              data-tab="shell"
-              className={cn(
-                "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
-                active ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
-              )}
-            >
-              {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
-                  분할 중에는 켜진 칸이 둘인데(결정 12) tablist에서 selected가 둘이면 잘못된
-                  ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고
-                  있어(분할 토글·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
-
-                  이름 버튼이 자기 오른쪽 여백까지 품는다. h-full은 칸 높이 전체가 눌리게 한다 —
-                  items-center는 자식을 내용 높이로 줄인다.
-
-                  gap-1.5가 로고·스피너와 이름 사이를 벌린다(결정 4). */}
-              <button
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSelect(shell.id)}
-                // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
-                // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
-                onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}
-                // 이름이 숨은 폭에서는 글리프를 **가운데로** 보낸다 — 왼쪽에 붙여 두면 오른쪽
-                // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.
-                className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
-              >
-                {/* 이름 **앞**에 서고 `shrink-0`이다 — 줄어드는 것은 옆의 이름(`truncate`)
-                    뿐이라, 균등 축소가 오는 뒤 티켓에서 「로고와 스피너는 끝까지 남는다」
-                    (결정 11)를 지킬 자리가 여기 이미 잡혀 있다.
-
-                    **로고와 스피너를 나란히 세운다** — 겹치는 안은 기각했다: 로고 없이 도는
-                    칸(모르는 명령)에 빈 고리만 남고, 14px 실루엣 위의 고리는 이 줄의 아이콘
-                    규격(size-3.5)을 넘긴다.
-
-                    **바깥 조건이 `mark`가 아니라 `running`이다.** 아는 에이전트가 아니어도
-                    「그 칸이 일하는 중」은 참이고, 그 사실이 이 판이 답하려는 물음이다 —
-                    로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다. 모르는 것에
-                    물음표를 세우지 않는 것(결정 4)은 그대로다: 그때는 스피너만 돈다.
-
-                    색을 안 준다. 로고는 `currentColor`라야 다크·라이트 둘 다 살고(결정 15)
-                    스피너도 같은 색이라야 둘이 한 덩어리로 읽힌다 — 켜진 칸에서는 toggle-on
-                    글자색을 그대로 받는다(죽은 칸의 꼬리표가 자기 색을 박는 것과 반대 방향
-                    이고, 그쪽은 「꺼진 것」을 말해야 해서 그렇다).
-
-                    글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는
-                    칸이 **눈에만** 보인다. 이 저장소는 아이콘에 이름을 `aria-label`로 다는데
-                    그 자리가 늘 버튼이었고 여기는 버튼 **안**이라 `role="img"`을 함께 준다 —
-                    역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않는다.
-                    이름 버튼의 접근성 이름은 이름 **앞에** 이 한 마디가 붙는 것으로 끝난다
-                    (닫기 버튼은 `shellRowName`을 따로 딛으므로 그대로다). */}
-                {running !== null && (
-                  <span
-                    role="img"
-                    aria-label={mark ? `${mark.label} 실행 중` : "명령 실행 중"}
-                    className="flex shrink-0 items-center gap-1"
-                  >
-                    {mark && <mark.Glyph className="size-3.5" />}
-                    <LoaderCircle className="size-3 animate-spin" strokeWidth={1.8} />
-                  </span>
-                )}
-                {/* **빈 칸을 만들지 않는다**(결정 20). 이름이 숨는 폭에서 로고가 없는 칸에는
-                    아무 글리프도 안 남아 칸이 텅 빈다 — 크롬에서 그 일이 없는 것은 파비콘이
-                    늘 있어서다. 그 폭에서만 서는 대체 글리프를 두어 자리를 채운다: 평소 폭에서는
-                    `hidden`이라 판 03이 세운 줄의 모습이 안 바뀐다.
-
-                    **로고가 돌거나 꼬리표가 있으면 안 선다** — 그 자리를 이미 먹고 있어서다.
-                    글리프가 사이드바 둘째 줄이 셸 수 옆에 쓰는 것과 같은 `SquareTerminal`인 것은
-                    결정 4와 같은 규칙이다: 같은 것을 두 자리에서 다른 모양으로 그리면 한쪽이
-                    다른 종류의 것으로 읽힌다. */}
-                {running === null && !end && (
-                  <SquareTerminal
-                    className="hidden size-3.5 shrink-0 @max-[88px]:block"
-                    strokeWidth={1.8}
-                  />
-                )}
-                {/* 좁아지면 **먼저 말줄임으로 줄고**(`truncate`), 이름 몇 글자도 못 세우는 폭에서
-                    자리를 비운다(결정 11). `hidden`이 아니라 `sr-only`인 것은 이름 버튼의
-                    접근성 이름이 이 글자 하나라서다 — `display:none`으로 지우면 좁은 창에서 그
-                    칸이 스크린리더에 「버튼」으로만 불린다. 자리는 안 먹고 이름은 남긴다. */}
-                <span className="min-w-0 truncate @max-[88px]:sr-only">{name}</span>
-                {/* 죽은 칸을 **누르지 않고** 알아보는 자리다(결정 17). 왜 죽었는지 한 문장은
-                    그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
-                    안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
-                    쓴 것과 정면으로 어긋난다.
-                    직접 선언한 색이라 켜진 칸의 toggle-on 글자색에 안 덮인다. */}
-                {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
-              </button>
-              {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span
-                  role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
-                  것을 지킨다). 셸을 죽이는 길은 여전히 확인을 거치는 하나다(결정 22·92) —
-                  부르는 쪽이 `requestCloseShell`을 준다. */}
-              <button
-                type="button"
-                aria-label={`${name} 닫기`}
-                title="셸 닫기"
-                onClick={() => onClose(shell.id)}
-                className={cn(
-                  "icon-button-quiet shrink-0 text-tertiary",
-                  // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
-                  // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
-                  // 켜진 칸도 68px(=14+30+24) 아래에서는 함께 접는다: 거기부터는 로고·스피너와
-                  // 닫기가 한 칸에 못 서고, 둘 중 남는 쪽은 로고다(결정 11). 그 폭에서 닫는
-                  // 길은 ⌘W다(결정 13) — 새로 만드는 길이 아니라 이미 있는 길이다.
-                  active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
-                )}
-              >
-                <X className="size-3" strokeWidth={1.8} />
-              </button>
-            </div>
-          );
-        })}
+        {shells.map((shell) => (
+          <ShellTab
+            key={shell.id}
+            shell={shell}
+            active={showing && shell.id === activeId}
+            onSelect={tabHandlers.onSelect}
+            onClose={tabHandlers.onClose}
+            // 없으면 안 끌린다(위 prop 주석) — 그 갈래를 여기서 유지한다. 값은 둘 다
+            // 회차를 넘어 같으므로 `memo`의 얕은 비교가 이 자리에서 안 어긋난다.
+            onDragTab={onDragTab && tabHandlers.onDragTab}
+          />
+        ))}
       </div>
 
       {/* 잠긴 이유가 `title`(hover) 뒤에 있다. 결정 47이 세로 목록에서 그 문장을 꺼내 보이는
@@ -391,7 +271,10 @@ function ShellTabs({
           if (asks) setPicking((open) => !open);
           else onOpen(null);
         }}
-        className={cn("shrink-0 text-tertiary", full ? "icon-button opacity-40" : "icon-button-quiet")}
+        className={cn(
+          "shrink-0 text-tertiary",
+          full ? "icon-button opacity-40" : "icon-button-quiet",
+        )}
       >
         <Plus className="size-3.5" strokeWidth={1.8} />
       </button>
@@ -416,5 +299,192 @@ function ShellTabs({
     </header>
   );
 }
+
+interface ShellTabProps {
+  shell: Shell;
+  /** 본문이 지금 이 셸을 보여주는가. 켜진 칸 표시가 그때만 선다. */
+  active: boolean;
+  onSelect: (id: number) => void;
+  onClose: (id: number) => void;
+  onDragTab?: (id: number, from: { clientX: number; clientY: number }) => void;
+}
+
+// 칸 하나. **`memo`인 것이 이 파일의 계약 하나다**(#140).
+//
+// 셸은 프롬프트마다 OSC 타이틀을 쏘고 `claude`는 도는 동안 계속 갈아 끼운다(adr-04).
+// 그때마다 갈리는 것은 **그 셸 객체 하나**이고(`patch`가 안 바뀐 셸에는 같은 객체를 준다),
+// 화면의 구독은 `sameBranch`가 이미 남의 work을 걸러 낸다. 남은 마지막 한 겹이 여기다 —
+// 이 경계가 없으면 한 칸의 타이틀 한 번에 여덟 칸의 그림이 전부 다시 돈다.
+//
+// **비교는 기본 얕은 비교다.** 직접 쓴 비교 함수는 콜백을 빼고 보게 되는데, 그러면 칸이
+// 예전 회차의 클로저를 쥔 채 남는다. 대신 부르는 쪽이 회차마다 새 화살표를 줘도 되도록
+// `ShellTabs`가 콜백을 한 번만 만들어 내려보낸다(`tabHandlers`).
+const ShellTab = memo(function ShellTab({
+  shell,
+  active,
+  onSelect,
+  onClose,
+  onDragTab,
+}: ShellTabProps) {
+  // 결정 18. 이름을 정하는 자리는 앱에서 이 함수 하나다 — 프로젝트가 여럿인 work에서만
+  // 앞에 프로젝트가 붙으므로 대부분의 칸은 타이틀만 적는다. 셋 중 하나를 **골라서**
+  // 적던 `shellLabel`은 되살리지 않는다: 타이틀이 오는 순간 어느 워크트리의 셸인지가
+  // 사라지는 실물 사고를 냈고 사용처가 0이 되어 지워졌다(결정 104).
+  const name = shellRowName(shell);
+  const end = shellEndLabels(shell);
+  // 결정 4 — **탭 줄은 칸마다**다. 사이드바가 종류만 말하는 것(`runningKindsOf`)과
+  // 갈리는 자리이고, 여기서 줄 단위로 뽑으면 한 칸이 claude를 켜는 순간 모든 칸이
+  // 갈린다. 판정도 표도 새로 짓지 않는다: 「끝난 칸은 아무것도 안 돈다」는 `runningOn`
+  // 하나가 알고(`shell.running`을 직접 읽으면 죽은 칸에 로고가 굳는다), 이름→그림은
+  // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
+  const running = runningOn(shell);
+  const mark = agentMarkOf(running);
+
+  return (
+    // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
+    // 바깥이 가진 padding은 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무
+    // 일이 없는 죽은 자리가 된다(커밋 c0978b1이 spec 트리에서 없앤 것).
+    //
+    // hover는 **꺼진 가지 안에만** 둔다. toggle-on이 자기 hover를 품으므로 함께 얹으면
+    // 규칙이 두 벌이 되어 승자를 유틸리티 정렬 순서가 정한다(index.css의 경고).
+    // 꺼진 칸이 `quiet-hover`(2)가 아니라 1인 것은 2가 **행이 선택된** 농도라서다 —
+    // 꺼진 칸을 2로 밝히면 「선택됨」으로 읽힌다.
+    //
+    // **폭을 이름이 정하지 않는다**(결정 20). 칸마다 같은 폭을 주고 넘칠 때도 그 값에서
+    // 깎이게 둔다 — flex가 넘친 폭을 기준 폭에 비례해 나누므로, 기준이 같으면 여덟 칸이
+    // **같은 만큼** 줄어든다. 내용 폭으로 두면 도는 칸만 로고·스피너(30px)만큼 넓어지고,
+    // 그보다 나쁜 것은 셸이 프롬프트마다 쏘는 OSC 타이틀에 칸 폭이 매달린다는 것이다 —
+    // claude가 도는 동안 줄 전체가 계속 들썩인다.
+    //
+    // **`basis-[180px]`이 아니라 `w-[180px]`이다** — 이 칸이 `@container`라서다(실측).
+    // `container-type: inline-size`는 「폭을 속으로 정하지 않는다」는 격리라, 이 칸의
+    // 내재 폭이 0으로 계산되고 `min-w`만 남는다. 스크롤 상자가 그 내재 폭을 더해 제
+    // 폭을 잡으므로, 기준을 `flex-basis`로만 주면 상자가 `44×칸수`로 잡혀 **칸이 늘
+    // 최소 폭에 붙는다**(한 칸일 때도 44px였다). `width`로 주면 폭이 정해진 값이라
+    // 격리와 무관하게 서고, flex는 그것을 기준으로 깎는다.
+    //
+    // 폭의 세 수는 한 뺄셈에서 나온다: 이름 버튼 좌우 여백 14 + 로고·스피너 30 + 닫기 24.
+    // `min-w-[44px]`가 **아이콘만 남은 칸**(14+30)이고, 아래 두 문턱이 거기에 닫기와
+    // 이름을 얹은 폭이다. **여기가 바닥이고 그 아래는 스크롤이다**(결정 20) — 한때
+    // 이 자리에 「여덟 칸이 최소 폭이어도 900px 창에 여유가 남는다」고 적혀 있었는데,
+    // 그것은 창 폭을 잰 것이었다. 이 줄이 받는 폭은 창에서 사이드바와 작업 패널을
+    // 뺀 나머지다(위 스크롤 상자 주석의 산술).
+    //
+    // `@container`가 **칸마다 자기 폭을 재게** 한다. 줄(header)을 재면 안 되는 것은 한
+    // 칸의 폭이 줄 폭이 아니라 `줄 폭 ÷ 칸 수`이고 칸 수를 CSS가 모르기 때문이다.
+    // `container-type: inline-size`가 내용으로 폭을 정하는 길을 막지만 여기서는 손해가
+    // 아니다 — 이 칸의 폭은 이미 flex가 정한다.
+    <div
+      data-tab="shell"
+      className={cn(
+        "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
+        active ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+      )}
+    >
+      {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
+          분할 중에는 켜진 칸이 둘인데(결정 12) tablist에서 selected가 둘이면 잘못된
+          ARIA다. 그리고 이 저장소는 켜짐을 이미 `aria-pressed`+`toggle-on`으로 말하고
+          있어(분할 토글·소스 토글) 새 어휘를 들이면 화면 안에서 말이 두 벌이 된다.
+
+          이름 버튼이 자기 오른쪽 여백까지 품는다. h-full은 칸 높이 전체가 눌리게 한다 —
+          items-center는 자식을 내용 높이로 줄인다.
+
+          gap-1.5가 로고·스피너와 이름 사이를 벌린다(결정 4). */}
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={() => onSelect(shell.id)}
+        // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
+        // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
+        onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}
+        // 이름이 숨은 폭에서는 글리프를 **가운데로** 보낸다 — 왼쪽에 붙여 두면 오른쪽
+        // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
+      >
+        {/* 이름 **앞**에 서고 `shrink-0`이다 — 줄어드는 것은 옆의 이름(`truncate`)
+            뿐이라, 균등 축소가 오는 뒤 티켓에서 「로고와 스피너는 끝까지 남는다」
+            (결정 11)를 지킬 자리가 여기 이미 잡혀 있다.
+
+            **로고와 스피너를 나란히 세운다** — 겹치는 안은 기각했다: 로고 없이 도는
+            칸(모르는 명령)에 빈 고리만 남고, 14px 실루엣 위의 고리는 이 줄의 아이콘
+            규격(size-3.5)을 넘긴다.
+
+            **바깥 조건이 `mark`가 아니라 `running`이다.** 아는 에이전트가 아니어도
+            「그 칸이 일하는 중」은 참이고, 그 사실이 이 판이 답하려는 물음이다 —
+            로고에 매달면 `cargo`가 도는 칸이 노는 칸과 똑같아 보인다. 모르는 것에
+            물음표를 세우지 않는 것(결정 4)은 그대로다: 그때는 스피너만 돈다.
+
+            색을 안 준다. 로고는 `currentColor`라야 다크·라이트 둘 다 살고(결정 15)
+            스피너도 같은 색이라야 둘이 한 덩어리로 읽힌다 — 켜진 칸에서는 toggle-on
+            글자색을 그대로 받는다(죽은 칸의 꼬리표가 자기 색을 박는 것과 반대 방향
+            이고, 그쪽은 「꺼진 것」을 말해야 해서 그렇다).
+
+            글리프 svg가 `aria-hidden`이라(agent-mark의 계약) 이름을 따로 안 달면 도는
+            칸이 **눈에만** 보인다. 이 저장소는 아이콘에 이름을 `aria-label`로 다는데
+            그 자리가 늘 버튼이었고 여기는 버튼 **안**이라 `role="img"`을 함께 준다 —
+            역할 없는 span의 `aria-label`은 읽히는 것이 보장되지 않는다.
+            이름 버튼의 접근성 이름은 이름 **앞에** 이 한 마디가 붙는 것으로 끝난다
+            (닫기 버튼은 `shellRowName`을 따로 딛으므로 그대로다). */}
+        {running !== null && (
+          <span
+            role="img"
+            aria-label={mark ? `${mark.label} 실행 중` : "명령 실행 중"}
+            className="flex shrink-0 items-center gap-1"
+          >
+            {mark && <mark.Glyph className="size-3.5" />}
+            <LoaderCircle className="size-3 animate-spin" strokeWidth={1.8} />
+          </span>
+        )}
+        {/* **빈 칸을 만들지 않는다**(결정 20). 이름이 숨는 폭에서 로고가 없는 칸에는
+            아무 글리프도 안 남아 칸이 텅 빈다 — 크롬에서 그 일이 없는 것은 파비콘이
+            늘 있어서다. 그 폭에서만 서는 대체 글리프를 두어 자리를 채운다: 평소 폭에서는
+            `hidden`이라 판 03이 세운 줄의 모습이 안 바뀐다.
+
+            **로고가 돌거나 꼬리표가 있으면 안 선다** — 그 자리를 이미 먹고 있어서다.
+            글리프가 사이드바 둘째 줄이 셸 수 옆에 쓰는 것과 같은 `SquareTerminal`인 것은
+            결정 4와 같은 규칙이다: 같은 것을 두 자리에서 다른 모양으로 그리면 한쪽이
+            다른 종류의 것으로 읽힌다. */}
+        {running === null && !end && (
+          <SquareTerminal
+            className="hidden size-3.5 shrink-0 @max-[88px]:block"
+            strokeWidth={1.8}
+          />
+        )}
+        {/* 좁아지면 **먼저 말줄임으로 줄고**(`truncate`), 이름 몇 글자도 못 세우는 폭에서
+            자리를 비운다(결정 11). `hidden`이 아니라 `sr-only`인 것은 이름 버튼의
+            접근성 이름이 이 글자 하나라서다 — `display:none`으로 지우면 좁은 창에서 그
+            칸이 스크린리더에 「버튼」으로만 불린다. 자리는 안 먹고 이름은 남긴다. */}
+        <span className="min-w-0 truncate @max-[88px]:sr-only">{name}</span>
+        {/* 죽은 칸을 **누르지 않고** 알아보는 자리다(결정 17). 왜 죽었는지 한 문장은
+            그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
+            안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로
+            쓴 것과 정면으로 어긋난다.
+            직접 선언한 색이라 켜진 칸의 toggle-on 글자색에 안 덮인다. */}
+        {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
+      </button>
+      {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span
+          role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
+          것을 지킨다). 셸을 죽이는 길은 여전히 확인을 거치는 하나다(결정 22·92) —
+          부르는 쪽이 `requestCloseShell`을 준다. */}
+      <button
+        type="button"
+        aria-label={`${name} 닫기`}
+        title="셸 닫기"
+        onClick={() => onClose(shell.id)}
+        className={cn(
+          "icon-button-quiet shrink-0 text-tertiary",
+          // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
+          // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
+          // 켜진 칸도 68px(=14+30+24) 아래에서는 함께 접는다: 거기부터는 로고·스피너와
+          // 닫기가 한 칸에 못 서고, 둘 중 남는 쪽은 로고다(결정 11). 그 폭에서 닫는
+          // 길은 ⌘W다(결정 13) — 새로 만드는 길이 아니라 이미 있는 길이다.
+          active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
+        )}
+      >
+        <X className="size-3" strokeWidth={1.8} />
+      </button>
+    </div>
+  );
+});
 
 export default ShellTabs;
