@@ -176,7 +176,15 @@ function ArchivePage({
                   on={showSource}
                   // 잠김도 표에서 나온다 — 본문이 토글을 안 따르는 파일에서 두 칸이 살아
                   // 있으면 선 칸과 본문이 서로 다른 말을 한다(결정 11).
-                  locked={ignoresSourceToggle(current)}
+                  //
+                  // **`current === null`이 따로 얹힌다** — Works의 `!currentSpec`과 같은
+                  // 항이다(`WorksPage.tsx`의 `sourceLocked`). 남은 문서가 하나도 없으면
+                  // 표는 마크다운으로 떨어지지만 그 기본값은 **본문 분기를 위한 것이지
+                  // 「누를 것이 있다」는 뜻이 아니다** — 표 스스로 「잠그는 것은 화면의
+                  // 사정이다」로 이 항을 여기 넘겨 뒀다(`doc-refs`의 표 머리말). 본문은
+                  // 아래에서 "남은 문서가 없어요"에 고정이라, 안 얹으면 두 칸이 멀쩡히
+                  // 눌리고 칩만 미끄러진다(결정 21).
+                  locked={current === null || ignoresSourceToggle(current)}
                   onChange={setShowSource}
                 />
               )}
