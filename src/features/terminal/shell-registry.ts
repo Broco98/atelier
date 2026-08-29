@@ -632,8 +632,14 @@ export interface SearchArm {
  * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
  *
  * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
+ *
+ * 시각도 **DOM 이름 그대로** 받는다(`timeStamp`) — `KeyFromWindow`가 그러는 것과 같은 이유고,
+ * 그래서 이웃 셋처럼 부르는 쪽이 이벤트를 통째로 넘긴다.
  */
-export function searchHotkey(event: KeyFromWindow & { at: number }, armedAt: number | null): SearchArm {
+export function searchHotkey(
+  event: KeyFromWindow & { timeStamp: number },
+  armedAt: number | null,
+): SearchArm {
   // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
   // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
   if (event.type !== "keydown") return { open: false, armedAt };
@@ -645,8 +651,9 @@ export function searchHotkey(event: KeyFromWindow & { at: number }, armedAt: num
     !event.ctrlKey &&
     !event.altKey;
   if (!bareShift) return { open: false, armedAt: null };
-  if (armedAt !== null && event.at - armedAt <= SEARCH_GAP_MS) return { open: true, armedAt: null };
-  return { open: false, armedAt: event.at };
+  if (armedAt !== null && event.timeStamp - armedAt <= SEARCH_GAP_MS)
+    return { open: true, armedAt: null };
+  return { open: false, armedAt: event.timeStamp };
 }
 
 /**

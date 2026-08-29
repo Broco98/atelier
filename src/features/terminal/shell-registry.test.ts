@@ -1207,14 +1207,14 @@ describe("⇧⇧가 검색을 연다", () => {
     // 무장하지 않는다 — 여기 기본값이 그 함정을 그대로 재현해 둔 것이다.
     shiftKey: true,
     target: el("DIV"),
-    at: 1000,
+    timeStamp: 1000,
     ...over,
   });
 
   /** ⇧를 두 번 눌러 본다 — 둘째의 시각만 갈린다. */
   const twice = (gap: number, first: Partial<ShiftT> = {}, second: Partial<ShiftT> = {}) => {
-    const armed = searchHotkey(key({ at: 1000, ...first }), null);
-    return searchHotkey(key({ at: 1000 + gap, ...second }), armed.armedAt);
+    const armed = searchHotkey(key({ timeStamp: 1000, ...first }), null);
+    return searchHotkey(key({ timeStamp: 1000 + gap, ...second }), armed.armedAt);
   };
 
   it("간격 안에 두 번 누르면 열린다", () => {
@@ -1240,18 +1240,18 @@ describe("⇧⇧가 검색을 연다", () => {
   // 세 번째 ⇧가 붙으면 열려야 한다 — 위 「다시 무장한다」가 그것을 위한 것이다.
   it("느리게 눌러 놓친 뒤 한 번 더 누르면 열린다", () => {
     const late = twice(SEARCH_GAP_MS + 1);
-    expect(searchHotkey(key({ at: 2000 }), late.armedAt).open).toBe(false);
-    const third = searchHotkey(key({ at: 1000 + SEARCH_GAP_MS + 1 + 100 }), late.armedAt);
+    expect(searchHotkey(key({ timeStamp: 2000 }), late.armedAt).open).toBe(false);
+    const third = searchHotkey(key({ timeStamp: 1000 + SEARCH_GAP_MS + 1 + 100 }), late.armedAt);
     expect(third.open).toBe(true);
   });
 
   // **사이에 다른 키가 끼면 취소다.** 대문자 `A`를 치는 동안이 그 모양이고(`Shift↓ A↓ Shift↓`),
   // 한글 입력기가 켜져 있으면 `ㄲ`이 같은 자리다 — 그래서 `key`가 아니라 `code`로 본다.
   it("⇧ 사이에 다른 키가 끼면 안 열린다", () => {
-    const armed = searchHotkey(key({ at: 1000 }), null);
-    const typed = searchHotkey(key({ at: 1050, code: "KeyA" }), armed.armedAt);
+    const armed = searchHotkey(key({ timeStamp: 1000 }), null);
+    const typed = searchHotkey(key({ timeStamp: 1050, code: "KeyA" }), armed.armedAt);
     expect(typed).toEqual({ open: false, armedAt: null });
-    expect(searchHotkey(key({ at: 1100 }), typed.armedAt).open).toBe(false);
+    expect(searchHotkey(key({ timeStamp: 1100 }), typed.armedAt).open).toBe(false);
   });
 
   it("⇧에 다른 수식키가 붙으면 무장하지 않는다", () => {
@@ -1264,7 +1264,7 @@ describe("⇧⇧가 검색을 연다", () => {
     // ⇧를 눌렀다 떼는 것 자체가 keydown·keyup 한 쌍이다. 뗀 것을 취소로 읽으면 한 번도
     // 안 열리고, 무장으로 읽으면 한 번 눌러 열린다.
     expect(searchHotkey(key({ type: "keyup" }), null)).toEqual({ open: false, armedAt: null });
-    expect(searchHotkey(key({ type: "keyup", at: 1050 }), 1000)).toEqual({
+    expect(searchHotkey(key({ type: "keyup", timeStamp: 1050 }), 1000)).toEqual({
       open: false,
       armedAt: 1000,
     });
