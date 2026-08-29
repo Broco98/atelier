@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, ProjectPatch, ProjectView, SearchResults,
-    WorkView,
+    archive_dir, projects_dir, works_dir, ArchiveEntry, Destination, ProjectPatch, ProjectView,
+    SearchResults, WorkView,
 };
 
 use std::sync::Arc;
@@ -120,13 +120,19 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
 }
 
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
-/// 프런트와 갈리면 어긋나도 화면에 티가 안 난다. 여기는 루트 둘과 질의를 건네는 위임뿐이다.
+/// 프런트와 갈리면 어긋나도 화면에 티가 안 난다. 여기는 루트 셋과 질의, 그리고 프런트가
+/// 들고 온 목적지 목록을 건네는 위임뿐이다.
+///
+/// **목적지는 인자로 받는다**(결정 21). main nav의 라우트 문자열은 프런트 것이라 코어가
+/// 알면 목적지가 늘 때마다 Rust를 고쳐야 하고, 그렇다고 프런트가 그 층만 직접 맞추면
+/// AND·대소문자 규칙과 층 순서가 두 곳으로 갈린다.
 ///
 /// **디바운스도 캐시도 여기 없다**(결정 29). 치는 동안 매번 부르고, 늦게 온 응답을 버리는
 /// 것은 부르는 쪽이 한다 — 막아야 할 것은 비용이 아니라 순서 뒤바뀜이다.
 #[tauri::command]
-pub async fn search(query: String) -> CmdResult<SearchResults> {
-    atelier_core::search(&works_dir(), &archive_dir(), &query).map_err(err)
+pub async fn search(query: String, destinations: Vec<Destination>) -> CmdResult<SearchResults> {
+    atelier_core::search(&works_dir(), &archive_dir(), &projects_dir(), &query, &destinations)
+        .map_err(err)
 }
 
 #[tauri::command]
