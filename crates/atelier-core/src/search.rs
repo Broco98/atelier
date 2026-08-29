@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use crate::store::read_projects;
 use crate::works::{read_works, spec_dir, spec_files};
-use crate::{list_archive, list_archived_docs, Result};
+use crate::{list_archive, list_archived_docs, Result, Work};
 
 /// 프런트가 건네는 **「무엇이 있는가」**(결정 21). main nav의 라우트 문자열은 프런트 것이고,
 /// 코어가 그것을 알면 목적지가 늘 때마다 Rust를 고쳐야 한다 — `nav-items.ts`가 「앞으로 늘어날
@@ -23,10 +23,10 @@ pub struct Destination {
 /// 팔레트가 보여 주는 한 줄. **결과 종류마다 무엇을 실어 오는가를 못 박는 자리다.**
 ///
 /// 갈래를 태그로 두는 것은 화면이 줄마다 다른 것을 그리기 때문이고, 그 태그가 없으면
-/// 프런트가 필드 유무로 종류를 되짚어야 한다. 본문은 아직 없다 — 판 02가 변형으로 더한다.
+/// 프런트가 필드 유무로 종류를 되짚어야 한다.
 ///
 /// **셸은 여기 없다**(결정 2). 셸을 고르는 자리는 이미 둘이고(머리행 탭·⌘1~9) 세 번째를
-/// 만들 이유가 없다. **실행되는 것도 없다**(결정 1): 갈래 넷이 전부 「가는 곳」이라
+/// 만들 이유가 없다. **실행되는 것도 없다**(결정 1): 갈래 다섯이 전부 「가는 곳」이라
 /// Enter가 언제나 한 가지 뜻이다.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -53,6 +53,25 @@ pub enum SearchHit {
         /// 뜻이 둘인 것이 아니라 하나이고, 어느 화면인지는 `archived`가 말한다.
         path: String,
         archived: bool,
+    },
+    /// 본문에서 맞은 문서. **문서 줄과 같은 곳으로 가고**(둘 다 그 문서를 연다) 실린 것도
+    /// 하나만 다르다 — 왜 떴는지를 말하는 스니펫이다.
+    ///
+    /// **`heading`은 아직 없다**(결정 31). 판 03이 그때 더한다 — 그전까지 실어 두면 아무도
+    /// 안 읽는 필드로 살고, 쓰임이 없으면 틀려도 안 드러난다.
+    Text {
+        slug: String,
+        title: String,
+        path: String,
+        archived: bool,
+        /// **맞은 문단을 한 줄로 편 것.** 문단이 단위인 것은 이 문서들이 손으로 접혀 있기
+        /// 때문인데(결정 10), 그러면 스니펫도 접힌 채로는 토큰을 다 못 보여 준다 — 편 줄
+        /// 하나여야 「왜 떴는지」가 그 줄 안에서 설명된다.
+        ///
+        /// **자르지 않는다.** 자르려면 어디를 남길지에 새 규칙과 새 숫자가 필요하고, 화면은
+        /// 이미 한 줄에 맞춰 줄이는 자리를 갖고 있다 — 상한이 두 자리에 사는 것을 피한
+        /// 것과 같은 이유다(`SearchResults::truncated`).
+        snippet: String,
     },
 }
 
@@ -83,14 +102,16 @@ pub struct SearchResults {
 
 /// 질의에 맞는 것들. **인덱스도 캐시도 없다** — 부를 때마다 디스크를 걷는다.
 ///
-/// 실측(2026-08-29): 전량 2.69MB(164파일)을 훑는 데 셸 grep으로 10~20ms이고 여기서는
-/// 파일을 열지도 않는다(디렉터리만 걷고 mtime만 읽는다). 인덱스가 없으면 무효화를 정할
-/// 필요가 없고, **세션이 밖에서 문서를 고쳐도 늘 최신**이라는 성질이 공짜로 따라온다.
+/// **파일을 읽는 것은 본문 층뿐이고** 나머지 층은 디렉터리만 걷는다. 실측(2026-08-30):
+/// 실제 코퍼스 216파일 3.7MB에서 본문 층이 얹는 값이 **약 18ms**다(빈 질의 대비, 릴리스
+/// 빌드). 인덱스가 없으면 무효화를 정할 필요가 없고, **세션이 밖에서 문서를 고쳐도 늘
+/// 최신**이라는 성질이 공짜로 따라온다 — 이 앱에서 spec은 늘 밖에서 바뀐다.
 ///
-/// **층 순서는 「가는 곳 → 작업 → 프로젝트 → 문서」다**(결정 13). 활성과 아카이브는 **각 층
-/// 안에서** 가르고 **층을 가로질러 앞서지 않는다** — 아카이브 work 이름을 정확히 쳤는데 그
-/// 문서들이 활성 work의 어설픈 매치보다 아래로 밀리면, 아카이브를 포함시킨 것(결정 5)이
-/// 오히려 방해가 된다.
+/// **층 순서는 「가는 곳 → 작업 → 프로젝트 → 문서 → 본문」이다**(결정 13). **본문이 맨
+/// 아래인 것은 「이름을 안다」가 「내용이 들었다」보다 항상 정확하기 때문이다.** 활성과
+/// 아카이브는 **각 층 안에서** 가르고 **층을 가로질러 앞서지 않는다** — 아카이브 work
+/// 이름을 정확히 쳤는데 그 문서들이 활성 work의 어설픈 매치보다 아래로 밀리면, 아카이브를
+/// 포함시킨 것(결정 5)이 오히려 방해가 된다.
 ///
 /// **상한은 층마다 20줄이다**(결정 24). 전체 상한이면 앞 층이 그것을 먹고 뒤 층이 영영 안 보인다.
 pub fn search(
@@ -106,6 +127,7 @@ pub fn search(
         work_hits(works_root, archive_root, &tokens)?,
         project_hits(projects_root, &tokens)?,
         doc_hits(works_root, archive_root, &tokens)?,
+        text_hits(works_root, archive_root, &tokens)?,
     ];
 
     let mut hits = Vec::new();
@@ -213,11 +235,62 @@ fn project_hits(projects_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit
 /// **질의가 비면 전부 맞는다** — 「최근 고쳐진 문서」가 별도 갈래가 아니라 토큰 0개의 자연스러운
 /// 답이다(결정 11). 그래서 이 층에는 질의 있는 길과 없는 길이 따로 없다.
 ///
-/// **본문은 안 본다.** 파일을 열지 않으므로 이 층은 디렉터리만 걷는다(판 02의 몫이다).
+/// **본문은 안 본다** — 파일을 열지 않는다. 그 일은 아래 본문 층의 몫이고, 둘이 **같은
+/// 걷기와 같은 정렬**(`doc_layer`)을 쓰되 맞추는 재료만 다르다.
 fn doc_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
-    let mut docs = recent_docs(works_root, false, tokens)?;
-    docs.extend(recent_docs(archive_root, true, tokens)?);
-    Ok(docs.into_iter().map(|dated| dated.hit).collect())
+    doc_layer(works_root, archive_root, &mut |work, rel, _, archived| {
+        matches(&format!("{}/{}", work.title, rel), tokens).then(|| SearchHit::Doc {
+            slug: work.slug.clone(),
+            title: work.title.clone(),
+            path: rel.to_string(),
+            archived,
+        })
+    })
+}
+
+/// 「본문」 층. 맞추는 것은 **문단 하나**다(결정 10) — 빈 줄로 나눈 덩어리를 한 줄로 펴서
+/// 거기에 토큰을 전부 건다.
+///
+/// **줄이 단위일 수 없는 이유는 이 문서들의 생김새 자체다**: 실측으로 `decisions.md`가
+/// 581줄에 문단 201개, 평균 57자 — 한 문장이 손으로 접혀 여러 줄에 걸친다. 그래서 「주소
+/// tab」이 줄 기준으로는 **조용히** 안 잡힌다. **문서 전체가 단위일 수 없는 이유는 반대쪽이다**:
+/// 그 크기면 흔한 단어 둘로 거의 항상 맞고, 스니펫이 모든 토큰을 못 보여줘 왜 떴는지를 설명
+/// 못 하게 된다.
+///
+/// **여기서 처음 파일을 읽는다.** 그래도 인덱스도 캐시도 디바운스도 두지 않는다 —
+/// 실측(2026-08-30) 코퍼스 216파일 3.7MB 전량을 읽고 문단을 거는 데 약 18ms이고, 인덱스가
+/// 없으면 세션이 밖에서 문서를 고쳐도 늘 최신이다(결정 29).
+///
+/// **질의가 비면 안 선다**(결정 25). 토큰이 없으면 문단마다 공허참으로 맞아 문서마다 줄이
+/// 하나씩 더 서는데, 빈 팔레트의 노림수는 「최근 고쳐진 문서」 하나다.
+fn text_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
+    if silent_when_empty(tokens) {
+        return Ok(Vec::new());
+    }
+    doc_layer(works_root, archive_root, &mut |work, rel, abs, archived| {
+        first_paragraph(abs, tokens).map(|snippet| SearchHit::Text {
+            slug: work.slug.clone(),
+            title: work.title.clone(),
+            path: rel.to_string(),
+            archived,
+            snippet,
+        })
+    })
+}
+
+/// 문서를 재료로 삼는 층의 **몸통**. 활성이 먼저 서고 아카이브가 그 아래이며(결정 5·13),
+/// 각 루트 안에서는 mtime 내림차순이다(결정 11·23).
+///
+/// 문서 층과 본문 층이 이것을 함께 쓴다. **줄을 짓는 규칙만 부르는 쪽이 준다** — 걷는 법과
+/// 순서를 층마다 다시 적으면, 한쪽만 고쳐진 채 두 층의 순서가 어긋나도 화면에 티가 안 난다.
+fn doc_layer(
+    works_root: &Path,
+    archive_root: &Path,
+    row: &mut dyn FnMut(&Work, &str, &Path, bool) -> Option<SearchHit>,
+) -> Result<Vec<SearchHit>> {
+    let mut dated = walk_docs(works_root, false, row)?;
+    dated.extend(walk_docs(archive_root, true, row)?);
+    Ok(dated.into_iter().map(|d| d.hit).collect())
 }
 
 /// 고쳐진 때를 단 줄. 시각은 정렬에만 쓰이고 화면까지 가지 않는다 — 화면이 그것을 그리는
@@ -227,41 +300,69 @@ struct Dated {
     hit: SearchHit,
 }
 
-/// 한 루트에서 **질의에 맞는** 문서들을 **mtime 내림차순**으로(결정 11·23).
+/// 한 루트의 문서를 전부 걷고, 줄이 선 것만 **mtime 내림차순**으로 세운다.
 ///
 /// 루트가 없으면 빈 목록이다 — 아카이브 폴더는 첫 아카이빙이 만드므로 그전까지 없는 것이
 /// 정상이고(`list_archive`와 같은 규칙), 검색이 그것을 만들어서도 안 된다.
-fn recent_docs(root: &Path, archived: bool, tokens: &[String]) -> Result<Vec<Dated>> {
+fn walk_docs(
+    root: &Path,
+    archived: bool,
+    row: &mut dyn FnMut(&Work, &str, &Path, bool) -> Option<SearchHit>,
+) -> Result<Vec<Dated>> {
     let mut docs = Vec::new();
     for work in read_works(root)? {
+        let base = doc_base(root, &work.slug, archived);
         for rel in doc_paths(root, &work.slug, archived) {
-            if !matches(&format!("{}/{}", work.title, rel), tokens) {
-                continue;
-            }
-            let at = modified_at(&doc_base(root, &work.slug, archived).join(&rel));
-            docs.push(Dated {
-                at,
-                hit: SearchHit::Doc {
-                    slug: work.slug.clone(),
-                    title: work.title.clone(),
-                    path: rel,
-                    archived,
-                },
-            });
+            let abs = base.join(&rel);
+            let Some(hit) = row(&work, &rel, &abs, archived) else { continue };
+            docs.push(Dated { at: modified_at(&abs), hit });
         }
     }
     // 같은 시각이면 순서를 디스크가 정하게 두지 않는다 — 목록이 새로고침마다 흔들린다.
-    docs.sort_by(|a, b| {
-        b.at.cmp(&a.at).then_with(|| match (&a.hit, &b.hit) {
-            (
-                SearchHit::Doc { slug: x, path: p, .. },
-                SearchHit::Doc { slug: y, path: q, .. },
-            ) => x.cmp(y).then_with(|| p.cmp(q)),
-            // 이 함수는 문서 줄만 짓는다 — 다른 갈래가 여기 오면 그것이 버그다.
-            _ => std::cmp::Ordering::Equal,
-        })
-    });
+    docs.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| tie(&a.hit).cmp(&tie(&b.hit))));
     Ok(docs)
+}
+
+/// 같은 시각일 때의 갈림돌. **문서 줄과 본문 줄이 같은 것으로 갈린다** — 둘 다 그 문서를
+/// 가리키므로 (slug, 경로)면 족하다.
+fn tie(hit: &SearchHit) -> (&str, &str) {
+    match hit {
+        SearchHit::Doc { slug, path, .. } | SearchHit::Text { slug, path, .. } => (slug, path),
+        // 이 몸통은 문서·본문 줄만 짓는다 — 다른 갈래가 여기 오면 그것이 버그다.
+        _ => ("", ""),
+    }
+}
+
+/// **처음 맞은 문단**을 한 줄로 편 것(결정 26). 맞는 문단이 없으면 `None`이다.
+///
+/// 문단은 **빈 줄로 나눈 덩어리 하나**이고, 이어 붙일 때 줄마다의 들여쓰기는 접기의 흔적이라
+/// 남기지 않는다. 「제일 좋은 문단」을 점수로 정의하지 않는 것은 **설명 못 하는 순서가 목록을
+/// 못 믿게 만들기** 때문이다.
+///
+/// **UTF-8로 안 읽히면 글이 아니다**(결정 27). 확장자 목록으로 가르지 않는다 — 프런트에
+/// 이미 이미지 확장자 목록이 있어서 코어에 또 두면 판정이 갈리고, 새 이진 형식이 들어오면
+/// 둘 다 고쳐야 한다. **읽기 실패가 곧 판정이라 목록이 필요 없다.**
+fn first_paragraph(path: &Path, tokens: &[String]) -> Option<String> {
+    let body = std::fs::read_to_string(path).ok()?;
+    let mut para: Vec<&str> = Vec::new();
+    // 마지막 빈 줄을 하나 얹어 **끝난 문단도 같은 길로** 판정한다 — 안 얹으면 파일 끝의
+    // 문단만 루프 밖에서 다시 판정해야 하고, 그 갈래가 조용히 낡는다.
+    for line in body.lines().chain(std::iter::once("")) {
+        let line = line.trim();
+        if !line.is_empty() {
+            para.push(line);
+            continue;
+        }
+        if para.is_empty() {
+            continue;
+        }
+        let folded = para.join(" ");
+        if matches(&folded, tokens) {
+            return Some(folded);
+        }
+        para.clear();
+    }
+    None
 }
 
 /// 그 work이 가진 문서들의 **`?file=` 값**. 활성과 아카이브가 갈리는 자리는 여기 하나다.
@@ -315,9 +416,15 @@ mod tests {
     /// 문서 하나를 놓고 **고쳐진 때를 못 박는다.** 파일을 연달아 쓰면 mtime이 같아질 수
     /// 있어, 순서를 재는 검사가 파일시스템의 해상도에 걸린다.
     fn doc(root: &Path, slug: &str, rel: &str, at: u64) {
+        doc_with(root, slug, rel, at, "본문\n".as_bytes());
+    }
+
+    /// 본문까지 못 박는 문서. **바이트로 받는다** — 본문 층이 「UTF-8로 읽히면 뒤지고 아니면
+    /// 뺀다」로 가르므로(결정 27), 글이 아닌 것을 놓을 수 있어야 그 판정을 잰다.
+    fn doc_with(root: &Path, slug: &str, rel: &str, at: u64, body: &[u8]) {
         let path = root.join(slug).join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "본문\n").unwrap();
+        std::fs::write(&path, body).unwrap();
         std::fs::File::options()
             .write(true)
             .open(&path)
@@ -362,6 +469,20 @@ mod tests {
                 SearchHit::Doc { slug, path, archived, .. } => {
                     format!("문서 {slug}/{path}{}", if *archived { " (아카이브)" } else { "" })
                 }
+                SearchHit::Text { slug, path, archived, .. } => {
+                    format!("본문 {slug}/{path}{}", if *archived { " (아카이브)" } else { "" })
+                }
+            })
+            .collect()
+    }
+
+    /// 본문 줄들이 든 스니펫. **다른 갈래가 오면 터진다** — 조용히 걸러내면 층이 새어 나온
+    /// 것을 검사가 못 본다(`rows`와 같은 규칙).
+    fn snippets(hits: &[SearchHit]) -> Vec<&str> {
+        hits.iter()
+            .map(|hit| match hit {
+                SearchHit::Text { snippet, .. } => snippet.as_str(),
+                other => panic!("본문 줄이 아니다: {other:?}"),
             })
             .collect()
     }
@@ -656,15 +777,210 @@ mod tests {
         );
     }
 
-    /// **이 판의 검색은 파일을 안 읽는다** — 디렉터리만 걷는다. `doc`이 넣는 본문이 「본문」인데,
-    /// 그 말은 어느 이름에도 없다: 본문을 뒤졌다면 여기가 빨개진다. (본문 층은 판 02다.)
+    // ── 본문 층 (결정 10·13·26·27·31)
+
+    /// 「그 표현이 어디 있었더라」에 답하는 자리다. **이름에 없는 말을 치면 본문에서 찾고**,
+    /// 그 줄은 「문서」가 아니라 **「본문」 층에** 선다 — 갈래가 갈려야 화면이 왜 떴는지를
+    /// 말할 수 있다.
     #[test]
-    fn 본문은_안_뒤진다() {
+    fn 이름에_없는_말은_본문에서_찾는다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/overview.md", 100, "빈자리인 것도 확인했다\n".as_bytes());
+
+        let hits = search(&works, &archive, &projects, "빈자리", &nav()).unwrap().hits;
+        assert_eq!(lines(&hits), vec!["본문 가/overview.md"]);
+        // 스니펫 한 줄이 **맞은 대목**을 보여 준다 — 열기 전에 왜 떴는지가 그 줄 안에서 설명된다.
+        assert_eq!(snippets(&hits), vec!["빈자리인 것도 확인했다"]);
+    }
+
+    /// 결정 10. **AND의 범위는 문단이다** — 문서 전체를 단위로 삼으면 581줄짜리 문서가 흔한
+    /// 단어 둘로 거의 항상 맞고, 스니펫이 모든 토큰을 못 보여줘 왜 떴는지를 설명 못 하게 된다.
+    #[test]
+    fn 토큰들이_한_문단에_있어야_맞는다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(
+            &works,
+            "가",
+            "spec/흩어진.md",
+            100,
+            "앞 문단에 주소가 있다\n\n뒤 문단에 tab이 있다\n".as_bytes(),
+        );
+        doc_with(&works, "가", "spec/모인.md", 200, "한 문단에 주소와 tab이 함께 있다\n".as_bytes());
+
+        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        assert_eq!(lines(&hits), vec!["본문 가/모인.md"]);
+    }
+
+    /// 결정 10. 실측: `decisions.md`는 581줄에 문단 201개, 평균 57자 — **한 문장이 손으로
+    /// 접혀 여러 줄에 걸친다.** 줄을 단위로 삼으면 「주소 tab」이 **조용히** 안 잡힌다.
+    #[test]
+    fn 줄이_갈려_있어도_맞는다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(
+            &works,
+            "가",
+            "spec/접힌.md",
+            100,
+            "주소가 위치의 정본이라 문서는 `?file=`,\n  탭은 `tab`으로 산다\n".as_bytes(),
+        );
+
+        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        assert_eq!(lines(&hits), vec!["본문 가/접힌.md"]);
+        // **스니펫도 한 줄이다** — 접힌 것을 펴서 내보내야 토큰이 그 줄 안에 함께 선다.
+        // 이어 붙이는 자리의 들여쓰기는 접기의 흔적이라 남기지 않는다.
+        assert_eq!(
+            snippets(&hits),
+            vec!["주소가 위치의 정본이라 문서는 `?file=`, 탭은 `tab`으로 산다"]
+        );
+    }
+
+    /// 결정 6·26. 「제일 좋은」을 점수로 정의하면 그 점수를 설명해야 하고, **설명 못 하는
+    /// 순서는 목록을 못 믿게 만든다.** 그래서 **처음 맞은 문단**이고, 문서 하나에 줄은 하나다.
+    #[test]
+    fn 여러_문단이_맞아도_처음_맞은_문단_한_줄이다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(
+            &works,
+            "가",
+            "spec/여럿.md",
+            100,
+            "먼저 맞는 문단\n\n사이에 낀 문단\n\n나중에 맞는 문단\n".as_bytes(),
+        );
+
+        let hits = search(&works, &archive, &projects, "맞는", &nav()).unwrap().hits;
+        assert_eq!(lines(&hits), vec!["본문 가/여럿.md"]);
+        assert_eq!(snippets(&hits), vec!["먼저 맞는 문단"]);
+    }
+
+    /// 결정 27. **확장자 목록으로 가르지 않는다** — 프런트에 이미 이미지 확장자 목록이 있어서
+    /// 코어에 또 두면 판정이 갈리고, 새 이진 형식이 들어오면 둘 다 고쳐야 한다. **UTF-8로
+    /// 읽히면 뒤지고 아니면 뺀다.** 그리고 **이름 층은 그대로 전부 낸다** — 그림도 앱이 열 수
+    /// 있는 문서다.
+    #[test]
+    fn utf8로_안_읽히면_본문_층에서_빠지고_이름_층에는_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/cat.png", 100, b"\x89PNG\r\n\x1a\n\xff\xfe cat");
+        doc_with(&works, "가", "spec/cat.md", 200, "cat 이야기\n".as_bytes());
+
+        let hits = search(&works, &archive, &projects, "cat", &nav()).unwrap().hits;
+        assert_eq!(lines(&hits), vec!["문서 가/cat.md", "문서 가/cat.png", "본문 가/cat.md"]);
+    }
+
+    /// 결정 5·13. **본문 층은 맨 아래다** — 「이름을 안다」는 「내용이 들었다」보다 항상
+    /// 정확하다. 활성과 아카이브는 **그 층 안에서** 갈리고 층을 가로질러 앞서지 않는다.
+    #[test]
+    fn 본문_층은_맨_아래이고_활성이_아카이브보다_위다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "활성것", "가 작업");
+        doc_with(&works, "활성것", "spec/메아리.md", 100, "다른 말\n".as_bytes());
+        doc_with(&works, "활성것", "spec/본문것.md", 50, "메아리가 여기 있다\n".as_bytes());
+        work(&archive, "옛것", "옛 작업");
+        // **아카이브 본문이 활성 본문보다 최근이다** — mtime만 보면 위로 올라올 자리다.
+        doc_with(&archive, "옛것", "record.md", 999, "메아리가 저기 있다\n".as_bytes());
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            vec![
+                "문서 활성것/메아리.md",
+                "본문 활성것/본문것.md",
+                "본문 옛것/record.md (아카이브)",
+            ]
+        );
+    }
+
+    /// **이름으로도 본문으로도 맞으면 두 층에 선다.** 두 층이 답하는 물음이 다르기 때문이다 —
+    /// 「이름에 그 말이 있다」와 「본문에 그 말이 있다」는 서로를 대신하지 못하고, 구획 머리가
+    /// 그 둘을 갈라 말한다. 한쪽을 지우려면 「어느 쪽을 지우는가」에 새 규칙이 필요한데,
+    /// 스펙에 그 규칙이 없다.
+    #[test]
+    fn 이름과_본문이_함께_맞으면_두_층에_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/메아리.md", 100, "메아리가 이름에도 본문에도 있다\n".as_bytes());
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            vec!["문서 가/메아리.md", "본문 가/메아리.md"]
+        );
+    }
+
+    /// 결정 23. 본문 층도 **mtime 내림차순**이다 — 팔레트에 시간 규칙이 하나만 남는다.
+    #[test]
+    fn 본문도_mtime_내림차순이다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/먼저.md", 100, "메아리\n".as_bytes());
+        doc_with(&works, "가", "spec/나중.md", 300, "메아리\n".as_bytes());
+        doc_with(&works, "가", "spec/가운데.md", 200, "메아리\n".as_bytes());
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            vec!["본문 가/나중.md", "본문 가/가운데.md", "본문 가/먼저.md"]
+        );
+    }
+
+    /// 결정 24. **상한은 층마다다.** 본문 층도 그 자리에서 잘리고, 잘렸다는 것을 답이 말한다.
+    #[test]
+    fn 본문도_스무_줄에서_자른다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        for n in 0..LAYER_LIMIT + 5 {
+            doc_with(&works, "가", &format!("spec/{n:02}.md"), 100 + n as u64, "메아리\n".as_bytes());
+        }
+
+        let results = search(&works, &archive, &projects, "메아리", &nav()).unwrap();
+        assert_eq!(results.hits.len(), LAYER_LIMIT);
+        assert!(results.truncated, "잘렸는데 잘렸다고 말하지 않았다");
+    }
+
+    /// **인덱스도 캐시도 없다** — 부를 때마다 디스크에서 읽는다. 이 앱에서 spec은 늘 밖에서
+    /// 바뀌므로(세션이 병렬로 문서를 쓴다), 밖에서 고친 직후에 검색하면 새 내용이 잡혀야 한다.
+    #[test]
+    fn 밖에서_고친_내용이_바로_잡힌다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/overview.md", 100, "예전 말\n".as_bytes());
+        assert!(search(&works, &archive, &projects, "새말", &nav()).unwrap().hits.is_empty());
+
+        doc_with(&works, "가", "spec/overview.md", 200, "새말이 들어왔다\n".as_bytes());
+
+        let hits = search(&works, &archive, &projects, "새말", &nav()).unwrap().hits;
+        assert_eq!(snippets(&hits), vec!["새말이 들어왔다"]);
+    }
+
+    /// 결정 25. 질의가 비면 **최근 고쳐진 문서만** 선다 — 본문 층도 안 선다. 토큰이 없으면
+    /// 문단마다 공허참으로 맞아 문서마다 줄이 하나씩 더 서고, 빈 팔레트의 노림수(「걔가 방금
+    /// 뭐 썼지가 키 두 번」)가 그만큼 밀린다.
+    #[test]
+    fn 질의가_비면_본문_층은_안_선다() {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        assert!(search(&works, &archive, &projects, "본문", &[]).unwrap().hits.is_empty());
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
+            vec!["문서 가/overview.md"]
+        );
+    }
+
+    /// 결정 31. **`heading`은 판 03이 더한다** — 그때까지 아무도 안 읽는 필드로 살면 틀려도
+    /// 안 드러난다. 계약에 아직 없다는 것을 여기서 못 박는다.
+    #[test]
+    fn 본문_줄에_heading이_없다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        doc_with(&works, "가", "spec/overview.md", 100, "메아리\n".as_bytes());
+
+        let hits = search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits;
+        let json = serde_json::to_value(&hits[0]).unwrap();
+        let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, vec!["archived", "kind", "path", "slug", "snippet", "title"]);
     }
 
     /// 결정 18. 범위는 **건네받은 루트들뿐**이다 — 저장소의 `CONTEXT.md`·`docs/`·소스는
