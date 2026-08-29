@@ -6,7 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { terminalApi } from "./api";
+import { onPtyRunning, terminalApi } from "./api";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -16,6 +16,7 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
+  setRunning,
   setShellName,
   setTitle,
   shellHotkey,
@@ -164,7 +165,7 @@ export function openNewShell(origin: ShellOrigin): void {
   // 잠긴 `+` 행도 같은 문장을 읽는다(결정 47). 판정을 이리로 되돌리면 계약의 절반이 검사
   // 밖으로 샌다: 여는 길은 열리는 순간 xterm을 세워 **성공 경로를 테스트에서 못 돈다.**
   // 「열렸으면 아무 말도 안 한다」가 안 걸린 채 새면 열 때마다 거절 문구가 뜬다.
-  const notice = shellOpenNotice(terminalStore.state, opened);
+  const notice = shellOpenNotice(terminalStore.state, opened, origin.owner);
   if (notice !== null) {
     for (const listen of openRejectedListeners) listen(notice);
   }
@@ -273,6 +274,52 @@ async function commandRunning(id: number): Promise<boolean | null> {
 }
 
 /**
+ * pty id로 그 칸의 **레지스트리 id**를 되찾는다. **둘은 다른 번호다** — 레지스트리는 자기
+ * 번호를 스스로 발급하고(`openShell`의 주석: 못 뜬 칸에는 pty id라는 것이 아예 없다),
+ * 백엔드는 그것을 모른다. 위 `commandRunning`이 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
+ *
+ * **모르는 pty id가 실제로 온다.** 이벤트가 오는 사이에 그 칸이 `×`로 닫혔거나 스스로
+ * 끝났으면 `ptyId`가 이미 null로 눕혀져 있다. 그때는 `null`이고, 부르는 쪽이 건너뛴다.
+ *
+ * 훑는 것이 화면마다 최대 8칸이라(결정 23) 뒤집힌 색인을 따로 들지 않는다 — 앱 전체로는
+ * 화면 수만큼 곱해지지만 사람이 동시에 여는 화면은 손에 꼽는다. 그 색인은 `ptyId`가
+ * 바뀌는 자리 셋(spawn 응답·종료 프레임·`×`)과 늘 맞춰야 하고, 어긋나면 값이 남의 칸에 앉는다.
+ */
+function shellOfPty(ptyId: number): number | null {
+  for (const instance of instances.values()) {
+    if (instance.ptyId === ptyId) return instance.id;
+  }
+  return null;
+}
+
+/**
+ * 도는 명령을 **상시 구독한다**(adr-04). 백엔드가 1초마다 재서 **바뀐 셸만** 실어 보낸다.
+ *
+ * **모듈 최상위에 건다 — 이펙트가 아니다.** `onTitleChange`를 인스턴스에 붙이는 것과 같은
+ * 이유다: 이펙트에 두면 배경 칸(결정 21로 React 트리 밖에 사는 칸)이 못 받는다. 받는 쪽이
+ * React가 아니라 모듈 싱글턴 스토어라 붙일 화면도 필요 없다.
+ *
+ * **한 번의 `setState`로 끝낸다.** 회차마다 여러 셸이 실려 오는데 칸마다 setState를 부르면
+ * 그 수만큼 구독자가 깨어난다.
+ *
+ * **못 걸어도 셸은 뜬다.** 웹뷰 밖(노드 seam)에서는 이 통로가 없어 여기가 실제로 거절당한다.
+ * 멈추면 터미널을 통째로 못 쓰는데 로고 하나를 못 얻은 값으로는 과하다 — `loadTerminalSettings`
+ * 와 같은 판단이고, 이유만 남긴다.
+ */
+void onPtyRunning((changed) => {
+  terminalStore.setState((state) => {
+    let next = state;
+    for (const one of changed) {
+      const id = shellOfPty(one.id);
+      if (id !== null) next = setRunning(next, id, one.running);
+    }
+    return next;
+  });
+}).catch((error) => {
+  console.warn("atelier: 도는 명령을 구독하지 못했다 — 로고가 안 뜬다", error);
+});
+
+/**
  * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
  *
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
@@ -321,6 +368,22 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     // 색을 우리가 고르는 것이 아니다 — 팔레트는 그대로 두고 **그리는 순간의 바닥만**
     // 준다. 기본을 어둡게로 옮긴 이 판이 만든 경로라, 고치는 자리도 이 판이다.
     minimumContrastRatio: 4.5,
+    // **막대 자리를 예약하지 않는다 — 그래야 오른쪽 끝까지 글자가 간다**(결정 26).
+    //
+    // `FitAddon`이 `cols`를 셀 때 `showScrollbar`면 폭에서 **14px 빼고** 나눈다
+    // (`addon-fit`의 `proposeDimensions`). xterm 6의 막대는 `position: absolute`로 화면 위에
+    // **겹쳐** 뜨는 것이라(VS Code식 `xterm-scrollable-element`) 그 14px은 「막대가 글자를
+    // 덮지 않게」 비워 두는 자리다 — 실측으로 오른쪽에 22px이 남았고, 그중 14가 이것,
+    // 나머지 8이 `cols` 내림 잉여였다.
+    //
+    // **그 막대는 평소 `opacity: 0`이다**(`xterm-invisible`) — 스크롤·hover에만 잠깐 뜬다.
+    // 늘 보이지도 않는 것을 위해 한 화면의 오른쪽 끝을 늘 비워 두는 셈이라, 오른쪽에 붙는
+    // 프롬프트를 쓰는 셸에서는 그 자리가 「끝나지 않은 여백」으로 보인다.
+    //
+    // _한때 감수했던 것_: 스크롤백 10,000줄에 위치를 알려 주는 막대가 없었다. 결정 32가
+    // 그것을 돌려줬다 — 앱 공통 막대가 콘텐츠 **위에** 떠서 폭을 한 칸도 안 먹는다
+    // (`open()` 뒤에 `xterm-viewport`에 `scroll-quiet`을 건다).
+    scrollbar: { showScrollbar: false },
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -520,6 +583,10 @@ function openOrReattach(instance: ShellInstance) {
   if (first) {
     try {
       instance.term.open(instance.wrapper);
+      // **막대도 앱의 것 하나로 통일한다**(결정 32). xterm의 막대는 꺼 둔 채다(결정 26 —
+      // 켜면 `FitAddon`이 폭에서 14px을 뺀다). `xterm-viewport`는 진짜로 구르는 상자라
+      // (`overflow-y: scroll`) 문서 하나가 받는 그 리스너에 이 클래스만으로 걸린다.
+      instance.wrapper.querySelector(".xterm-viewport")?.classList.add("scroll-quiet");
       // **`open()`이 돌아온 뒤에 세운다.** 앞에 세우면 여기서 터졌을 때 열리지도 않은 채
       // "열렸다"로 굳어, 다음 마운트부터는 spawn도 관측도 없는 죽은 화면이 된다.
       instance.opened = true;
@@ -599,8 +666,8 @@ async function spawn(instance: ShellInstance) {
       // **결정 48의 나머지 반쪽이 여기다.** 정상 종료한 칸은 목록에서 스스로 빠지는데,
       // 빠지면 그 칸은 다시 그려지지 않아 `×`가 영영 안 생긴다 — 즉 `closeShell`이 그 id로
       // 불릴 길이 그 순간 사라진다. 여기서 안 거두면 인스턴스가 WebGL 컨텍스트와 스크롤백
-      // 10,000줄을 쥔 채 리로드까지 살고, 상한 8은 컨텍스트 수를 말하는 값인데(결정 30)
-      // `atCap`은 목록을 세므로 **새는 것을 못 본다.**
+      // 10,000줄을 쥔 채 리로드까지 살고, `atCap`은 목록을 세므로 **새는 것을 못 본다.**
+      // (상한이 화면마다가 된 뒤에도 같다 — 결정 23이 바꾼 것은 세는 범위뿐이다.)
       //
       // **조건을 여기 다시 적지 않는다.** `exitCode === 0 && signal === null`은
       // `markExited`가 아는 것이고, 우리는 그 결과에 "뺐느냐"만 묻는다. 두 곳에 적으면

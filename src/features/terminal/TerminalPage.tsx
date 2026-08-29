@@ -1,42 +1,57 @@
 import { useEffect } from "react";
 import { useStore } from "@tanstack/react-store";
-import PageHeader from "@/components/shell/PageHeader";
+import ShellTabs from "./ShellTabs";
 import TerminalPane from "./TerminalPane";
 import {
   activeIdOf,
-  activeShellOf,
+  closesShellFromWindow,
   opensShellFromWindow,
+  sameScreen,
   shellForNav,
   shellNavFromWindow,
-  shellRowName,
   shellsOf,
   TOP_TERMINAL,
 } from "./shell-registry";
-import { openNewShell, selectShell, terminalStore } from "./terminal-store";
+import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
 // 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
 //
-// **머리행이 돌아왔다**(결정 72). 앞 판은 이 자리를 가로 탭 줄이 겸했다 — 브레드크럼에
-// 적을 것이 `Terminal` 한 낱말뿐이라 44px 한 층을 아끼려던 것이었는데, 셸을 고르는 자리가
-// 사이드바 가지로 가면서 그 줄 자체가 없어졌다. 그러면 이 화면 맨 위에 창을 끌 영역도
-// 신호등을 피할 여백도 남지 않는다 — 둘 다 그 줄이 물려받고 있던 몫이라, 자리를 다시
-// `PageHeader`에 돌려준다.
+// **머리행이 탭 줄이다**(결정 8 · adr-03) — 그것도 work 화면과 같은 컴포넌트이고, 갈리는
+// 것은 맨 앞 한 칸뿐이다: 이 화면에는 문서가 없어 `spec` 칸이 없고 ⌘1부터가 셸이다.
+//
+// **이 44px 한 층의 내력을 적어 둔다 — 안 적으면 다음 사람이 되돌린다.** 처음에 이 자리를
+// 겸하던 것이 가로 탭 줄이었다(브레드크럼에 적을 것이 `Terminal` 한 낱말뿐이라 층을 아끼려던
+// 것 — 결정 44). 셸을 고르는 자리가 사이드바 가지로 가면서 그 줄이 없어지자 창을 끌 영역도
+// 신호등을 피할 여백도 남지 않아, 자리를 `PageHeader`에 돌려줬다(결정 72). 이번 판이 셸을
+// 고르는 자리를 화면 안으로 되돌리므로(adr-03) 그 층을 다시 탭 줄이 가져간다 — 브레드크럼은
+// 함께 사라지지만 두 몫(창 드래그·신호등 회피)은 이제 조건이 아니라 그 줄의 성질이다
+// (ShellTabs 머리말).
+//
+// **셸이 0개일 때 여는 자리는 이 줄의 `+` 하나다**(결정 19). 한때 본문 가운데에도 목록이
+// 덮여 있었는데(결정 102), 그 자리의 근거가 「탭 줄이 걷힌 뒤로 여는 길이 여기뿐이다」
+// 하나여서 이 판이 그 줄을 되살리며 사라졌다. 본문에 남은 것은 조작이 아니라 **비었다는
+// 표시와 여는 법**이고, 상한에 닿았을 때의 문장도 거기서 읽힌다 — `TerminalPane`의 주석이
+// 사정을 든다.
 function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   /**
-   * 브레드크럼 말단에 서는 **지금 켜진 셸**(결정 72).
+   * 탭 줄이 그리는 것 — **스토어를 구독하는 자리가 화면이다.** 줄 자체는 상태와 콜백만
+   * 받는다(ShellTabs 머리말): 그 파일이 terminal-store를 import하면 `@xterm/*`와 그 CSS가
+   * 따라 들어와 정적 마크업 검사가 통째로 죽는다.
    *
-   * 결정 44가 이 화면의 머리행을 아꼈던 이유는 「적을 것이 `Terminal` 하나뿐」이었다.
-   * 셸을 고르는 자리가 사이드바로 가면서 그 말이 거짓이 됐다 — 화면에는 그중 하나가 서
-   * 있는데 어느 것인지는 사이드바를 봐야 알 수 있게 됐다. 말단이 그것을 말한다.
+   * 좁히지 않고 통째로 읽는 것은 셀렉터를 빼면 컴파일이 안 되기 때문이다(TS2554). 대신
+   * 다시 그릴지는 `sameScreen`가 가른다 — 셸은 프롬프트마다 OSC 타이틀을 쏘는데 남의
+   * work의 타이틀 하나에 이 화면이 다시 그려질 이유가 없다. `WorksPage`가 같은 자리에서
+   * 같은 것을 한다.
    *
-   * 이름은 `shellRowName`이다 — **사이드바 셸 행과 같은 이름**이어야 한 셸로 읽힌다.
-   *
-   * 칸 하나를 구독한다. 프롬프트마다 갈리는 값이지만 이 화면은 본문이 이미 스토어를 통째로
-   * 읽고 있어(TerminalPane) 새로 드는 비용이 없고, 셀렉터가 칸 하나를 돌려주므로 남의
-   * 화면 셸이 쏘는 타이틀에는 안 흔들린다.
+   * 한때 여기서 `activeShellOf`로 **칸 하나**를 구독했다 — 브레드크럼 말단에 켜진 셸의
+   * 이름을 적으려던 것이었는데(결정 72), 그 자리가 브레드크럼과 함께 통째로 없어졌다.
    */
-  const active = useStore(terminalStore, (state) => activeShellOf(state, null));
+  const shellState = useStore(
+    terminalStore,
+    (whole) => whole,
+    (a, b) => sameScreen(a, b, null),
+  );
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
@@ -68,9 +83,38 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       e.preventDefault();
       const state = terminalStore.state;
       const shells = shellsOf(state, null);
-      // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다.
+      // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다. 아래 탭 줄도 같은
+      // 이유로 셸부터 세우므로(`spec={null}`) 보이는 순서와 이 키가 고르는 것이 같다.
       const next = shellForNav(shells, activeIdOf(state, null), nav, 1);
       if (next !== null) selectShell(next);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  /**
+   * ⌘W — **켜진 칸을 닫는다**(결정 13). 이 화면에도 겨눌 칸이 서게 된 것이 그 근거다(adr-03).
+   *
+   * **`shellClosedByTab`(WorksPage)을 부르지 않는다.** 그 함수가 가르는 것은 「`spec`이
+   * 켜져 있으면 아무 일도 안 한다」인데 이 화면에는 그 칸이 없고, 게다가 `owner`가 `null`이면
+   * 그 함수는 언제나 `null`을 돌려준다 — 고른 작업이 없는 work 화면의 ⌘W가 **여기 셸을**
+   * 죽이지 않게 막는 가드다. 그것을 여기서 부르면 이 키가 조용히 아무 일도 안 한다.
+   *
+   * 닫는 길은 여전히 `requestCloseShell` 하나다 — 확인 창을 우회하는 길을 새로 만들지
+   * 않는다(결정 92가 `closeShell`을 밖으로 안 내보내는 그 이유). 셸 안에서는 xterm 핸들러가
+   * 이미 같은 함수로 보내고 `stopPropagation`으로 여기까지 안 올라오므로 창이 두 번 안 뜬다.
+   *
+   * **겨눌 칸이 없으면 `preventDefault`도 안 부른다.** 이 앱의 메뉴에는 `close_window()`가
+   * 없어(src-tauri/src/lib.rs) ⌘W는 원래 아무 일도 안 하는 키다 — 삼키는 시늉을 해 두면
+   * 나중에 그 자리에 무엇이 생겼을 때 왜 안 오는지가 이 줄에 숨는다.
+   */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!closesShellFromWindow(e)) return;
+      const id = activeIdOf(terminalStore.state, null);
+      if (id === null) return;
+      e.preventDefault();
+      void requestCloseShell(id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -79,11 +123,24 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="relative flex min-w-0 flex-1 flex-col">
-        {/* 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 본문이 창 왼쪽 끝에 붙는다 */}
-        <PageHeader
-          root="Terminal"
-          leaf={active && shellRowName(active)}
+        <ShellTabs
+          state={shellState}
+          // 이 화면의 셸은 Work에 안 매인다 — `shellsOf`의 계약상 그 소유자가 `null`이다.
+          owner={null}
+          // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
+          // work뿐이고(결정 24) 이 화면은 work가 아니다.
+          projects={[]}
+          // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
+          // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
+          spec={null}
+          // 본문이 늘 셸이다 — work 화면처럼 문서로 갈아탈 자리가 없어 조건이 아니다.
+          showing
+          // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 이 줄이 창 왼쪽 끝에 붙는다
           inset={!sidebarOpen}
+          onSelect={selectShell}
+          // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
+          onClose={requestCloseShell}
+          onOpen={() => openNewShell(TOP_TERMINAL)}
         />
         <TerminalPane work={null} />
       </main>

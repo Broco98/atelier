@@ -193,7 +193,7 @@ function TreeRows({
                   <span className="min-w-0 flex-1 truncate">{node.name}</span>
                 </button>
                 {onCopy && (
-                  // 페이드 없이 뜨는 것은 icon-button-quiet이 정한다 — 행 높이가 28px뿐이라
+                  // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
                   // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
                   // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
                   // 거터 복사 버튼이 이미 같은 답을 하고 있다
@@ -202,7 +202,7 @@ function TreeRows({
                     aria-label={`${node.name} 경로 복사`}
                     title="경로 복사"
                     onClick={() => onCopy(node.path)}
-                    className="icon-button-quiet text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+                    className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
                   >
                     <Copy className="size-3" strokeWidth={1.8} />
                   </button>

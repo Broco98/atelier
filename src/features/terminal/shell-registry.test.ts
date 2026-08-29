@@ -17,22 +17,26 @@ import {
   needsCloseConfirm,
   NO_SHELLS,
   openShell,
+  closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
+  runningAgentsOf,
+  runningOn,
   runningShellsOf,
+  setRunning,
   setShellName,
   setTitle,
   shellCapNotice,
+  shellCountsOf,
   shellEndLabels,
   shellOpenNotice,
   shellRewrite,
   shellNavFromWindow,
   shellNavKey,
   shellRowName,
-  shellRowStatus,
   shellsOf,
   cycleShell,
-  sameBranch,
+  sameScreen,
   shellForNav,
   shellHotkey,
   TOP_TERMINAL,
@@ -361,7 +365,7 @@ describe("셸 수에는 앱 전체 상한이 있다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n <= MAX_SHELLS; n += 1) {
       const refused = openShell(state, TOP_TERMINAL);
-      expect(atCap(state), `${n}개일 때 갈렸다`).toBe(refused === null);
+      expect(atCap(state, TOP_TERMINAL.owner), `${n}개일 때 갈렸다`).toBe(refused === null);
       if (!refused) break;
       state = refused.state;
     }
@@ -577,16 +581,25 @@ describe("셸은 자기 화면 것만 보인다", () => {
     expect(runningShellsOf(state, null)).toBe(0);
   });
 
-  // 상한만은 화면이 아니라 앱 전체가 센다(결정 30). 나눠 담아도 합이 8에서 멈춘다.
-  it("소유자가 갈려도 상한은 합으로 센다", () => {
+  // **상한도 화면마다다**(결정 23이 결정 30을 뒤집었다). 한 화면을 꽉 채워도 남의 화면과
+  // 최상위 터미널은 자기 몫을 그대로 갖는다 — 앱 전체로 세면 남이 연 셸 때문에 이 화면의
+  // `+`가 잠기고, 왜 잠겼는지가 이 화면에 안 보인다.
+  it("한 화면을 꽉 채워도 다른 화면은 자기 몫을 갖는다", () => {
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      const next = openShell(state, { owner: n % 2 === 0 ? "가" : "나", project: null, cwd: null });
+      const next = openShell(state, { owner: "가", project: null, cwd: null });
       expect(next, `${n}번째에서 거부됐다`).not.toBeNull();
       state = next!.state;
     }
-    expect(openShell(state, { owner: "다", project: null, cwd: null })).toBeNull();
-    expect(atCap(state)).toBe(true);
+    // 꽉 찬 화면은 거부한다 — 이것이 없으면 아래 둘은 「상한이 아예 없어서」도 초록이다.
+    expect(openShell(state, { owner: "가", project: null, cwd: null })).toBeNull();
+    expect(atCap(state, "가")).toBe(true);
+
+    // 남의 work도, 최상위 터미널도 그대로 연다.
+    expect(atCap(state, "나")).toBe(false);
+    expect(openShell(state, { owner: "나", project: null, cwd: null })).not.toBeNull();
+    expect(atCap(state, null)).toBe(false);
+    expect(openShell(state, TOP_TERMINAL)).not.toBeNull();
   });
 });
 
@@ -733,42 +746,24 @@ describe("셸 행의 두 줄", () => {
     const { state, id } = 칸("cli", "~/w/trees/cli");
     expect(shellRowName(shellOf(state, id))).not.toBe("cli · cli");
   });
-
-  it("도는 셸의 둘째 줄은 cwd다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    expect(shellRowStatus(shellOf(state, id))).toBe("~/w/trees/atelier");
-  });
-
-  it("끝난 셸의 둘째 줄은 종료 사유로 바뀐다 — cwd가 그 자리를 넘긴다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    expect(shellRowStatus(shellOf(markExited(state, id, EXIT_42), id))).toBe("종료 코드 42");
-  });
-
-  it("못 뜬 셸의 둘째 줄은 그 이유다", () => {
-    const { state, id } = 칸(null, "~/w/trees/atelier");
-    const reason = "$SHELL을 실행할 수 없습니다: /nonexistent";
-    expect(shellRowStatus(shellOf(markFailed(state, id, reason), id))).toBe(reason);
-  });
-
-  it("cwd가 없어도 둘째 줄이 비지 않는다 — 행이 두 줄로 서기 때문이다", () => {
-    const { state, id } = 칸(null, null);
-    expect(shellRowStatus(shellOf(state, id)).trim()).not.toBe("");
-  });
 });
 
 // 결정 47. 잠긴 `+` 행이 적는 문장과 ⌘T가 거절당했을 때 뜨는 토스트가 **같은 문장**이다.
 describe("상한에 닿았을 때 하는 말", () => {
   it("상한과 지금 수를 함께 말한다", () => {
     const state = opened(MAX_SHELLS).state;
-    expect(shellCapNotice(state)).toBe(`셸은 ${MAX_SHELLS}개까지예요 — 지금 ${MAX_SHELLS}개`);
+    expect(shellCapNotice(state, TOP_TERMINAL.owner)).toBe(
+      `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${MAX_SHELLS}개`,
+    );
   });
 
-  it("지금 수는 **앱 전체**다 — 화면 하나가 아니다", () => {
-    // 화면이 세면 Work마다 8개가 된다(결정 30). 문장이 이 화면의 수를 말하면 「지금 0개인데
-    // 왜 못 열지」가 된다.
+  it("수는 **이 화면**의 것이다 — 앱 전체가 아니다", () => {
+    // 결정 23. 앱 전체를 세면 「여기 3개인데 8개까지라면서 왜 못 열지」가 된다 — 사람이
+    // 세는 단위가 이 화면이라서다. 남의 work의 셸은 이 문장에 안 섞인다.
     let state = opened(3, { owner: "가", project: null, cwd: null }).state;
     state = openShell(state, { owner: "나", project: null, cwd: null })!.state;
-    expect(shellCapNotice(state)).toContain("지금 4개");
+    expect(shellCapNotice(state, "가")).toContain("여기 3개");
+    expect(shellCapNotice(state, "나")).toContain("여기 1개");
   });
 
   // 아래 둘은 **`openShell`을 실제로 통과시켜** 본다. 거절 여부와 할 말이 한 자리에서
@@ -778,12 +773,14 @@ describe("상한에 닿았을 때 하는 말", () => {
     // 걸렸다** — 그 함수는 열리는 순간 xterm을 세워 DOM 없는 seam에서 못 돈다. 거절을
     // 알리는 줄이 성공 경로로 새면 ⌘T·`+`가 열 때마다 「셸은 8개까지예요」를 뱉는다.
     const state = opened(MAX_SHELLS - 1).state;
-    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBeNull();
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL), TOP_TERMINAL.owner)).toBeNull();
   });
 
   it("거부당하면 잠긴 `+`와 같은 문장이 온다", () => {
     const state = opened(MAX_SHELLS).state;
-    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL))).toBe(shellCapNotice(state));
+    expect(shellOpenNotice(state, openShell(state, TOP_TERMINAL), TOP_TERMINAL.owner)).toBe(
+      shellCapNotice(state, TOP_TERMINAL.owner),
+    );
   });
 });
 
@@ -1032,9 +1029,10 @@ describe("window에서 듣는 ⌘T", () => {
     expect(opensShellFromWindow(key({ target: null }))).toBe(true);
   });
 
-  // **⌘W는 안 넓힌다**(결정 98) — 「이 칸을 닫는다」는 겨눌 칸이 있어야 하고, 그 칸은
-  // 셸에 포커스가 있을 때만 뚜렷하다.
-  it("⌘W는 여기서 안 듣는다", () => {
+  // 판정 둘이 **갈려 있다.** ⌘W도 이제 window에서 듣지만(결정 13) 그것은 아래 describe의
+  // 함수다 — 한 함수가 둘을 겸하면 부르는 쪽이 「무엇이 눌렸나」를 다시 갈라야 하고,
+  // ⌘T만 듣는 화면(셸 0개)에서 ⌘W가 함께 새어 들어온다.
+  it("⌘W는 이 판정으로는 안 온다", () => {
     expect(opensShellFromWindow(key({ code: "KeyW" }))).toBe(false);
   });
 
@@ -1044,6 +1042,59 @@ describe("window에서 듣는 ⌘T", () => {
 
   it("⌘ 없이 T만은 아니다 — 그냥 글자다", () => {
     expect(opensShellFromWindow(key({ metaKey: false }))).toBe(false);
+  });
+});
+
+// ⌘W도 window에서 듣는다(결정 13). `opensShellFromWindow`의 머리말은 한때 그 반대를
+// 적고 있었다 — 「겨눌 칸은 셸에 포커스가 있을 때만 뚜렷하다」. **탭 줄이 그 전제를
+// 없앤다**(adr-03): 켜진 칸이 화면에 서 있으므로 포커스가 탭 버튼에 있든 `+`에 있든
+// 겨눌 것이 하나로 정해진다. 무엇을 닫을지는 화면이 알고, 여기서는 「그 키가 맞나」만 본다.
+describe("window에서 듣는 ⌘W", () => {
+  const el = (tagName: string) => Object.assign(new EventTarget(), { tagName });
+
+  type WindowT = Parameters<typeof closesShellFromWindow>[0];
+  const key = (over: Partial<WindowT> = {}): WindowT => ({
+    type: "keydown",
+    code: "KeyW",
+    ctrlKey: false,
+    metaKey: true,
+    altKey: false,
+    shiftKey: false,
+    target: el("DIV"),
+    ...over,
+  });
+
+  // 탭을 눌러 고른 직후가 이 자리다 — 그때 포커스는 그 버튼에 있고 xterm에 없다.
+  it("본문·탭 줄에 포커스가 있으면 닫는다", () => {
+    expect(closesShellFromWindow(key())).toBe(true);
+  });
+
+  // **xterm의 입력 자리가 숨은 <textarea>다.** 셸 안에서는 그쪽 핸들러가 이미 같은 길
+  // (`requestCloseShell`)로 보내므로 여기서 또 들으면 확인 창이 두 번 뜬다.
+  it("셸 안에서는 안 듣는다 — xterm 핸들러가 이미 가져갔다", () => {
+    expect(closesShellFromWindow(key({ target: el("TEXTAREA") }))).toBe(false);
+  });
+
+  it("글을 치는 자리에서는 안 듣는다", () => {
+    expect(closesShellFromWindow(key({ target: el("INPUT") }))).toBe(false);
+    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
+    expect(closesShellFromWindow(key({ target: editable }))).toBe(false);
+  });
+
+  it("포커스가 아무 데도 없어도 안 터진다", () => {
+    expect(closesShellFromWindow(key({ target: null }))).toBe(true);
+  });
+
+  it("⌘T는 이 판정으로는 안 온다", () => {
+    expect(closesShellFromWindow(key({ code: "KeyT" }))).toBe(false);
+  });
+
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 붙으면 아니다", (extra) => {
+    expect(closesShellFromWindow(key({ [extra]: true }))).toBe(false);
+  });
+
+  it("⌘ 없이 W만은 아니다 — 그냥 글자다", () => {
+    expect(closesShellFromWindow(key({ metaKey: false }))).toBe(false);
   });
 });
 
@@ -1173,31 +1224,31 @@ describe("가지가 다시 그려져야 하는가", () => {
 
   it("남의 셸이 타이틀을 쏘면 안 다시 그린다", () => {
     const { state, theirs } = two();
-    expect(sameBranch(state, setTitle(state, theirs, "claude"), "가")).toBe(true);
+    expect(sameScreen(state, setTitle(state, theirs, "claude"), "가")).toBe(true);
   });
 
   it("내 셸이 타이틀을 쏘면 다시 그린다", () => {
     const { state, mine } = two();
-    expect(sameBranch(state, setTitle(state, mine, "claude"), "가")).toBe(false);
+    expect(sameScreen(state, setTitle(state, mine, "claude"), "가")).toBe(false);
   });
 
   // 상한 문구가 **앱 전체**를 센다(결정 30) — 남의 화면에 셸이 하나 늘면 「지금 N개」가 바뀐다.
   it("남의 셸이 열리면 다시 그린다 — 상한 문구가 앱 전체를 센다", () => {
     const { state } = two();
     const more = openShell(state, { owner: "나", project: null, cwd: "~/나" })!.state;
-    expect(sameBranch(state, more, "가")).toBe(false);
+    expect(sameScreen(state, more, "가")).toBe(false);
   });
 
   it("내 켜진 칸이 바뀌면 다시 그린다", () => {
     const { state, mine } = two();
     const another = openShell(state, { owner: "가", project: null, cwd: "~/가" })!;
-    expect(sameBranch(another.state, activateShell(another.state, mine), "가")).toBe(false);
+    expect(sameScreen(another.state, activateShell(another.state, mine), "가")).toBe(false);
   });
 
   // 최상위 터미널의 가지도 같은 규칙을 딛는다 — owner가 `null`일 뿐이다.
   it("최상위 가지도 남의 타이틀에 안 흔들린다", () => {
     const { state, mine } = two();
-    expect(sameBranch(state, setTitle(state, mine, "claude"), null)).toBe(true);
+    expect(sameScreen(state, setTitle(state, mine, "claude"), null)).toBe(true);
   });
 });
 
@@ -1312,12 +1363,13 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // 저장소에서 여기뿐이라 다른 층이 받아 주지 않는다.
     // **가드만 보면 핸들러가 window에 안 걸려도 초록이다.** 등록 한 줄을 지워도 가드는
     // `onKeyDown` 안에 그대로 남고, 정리 함수가 그것을 계속 참조하므로 tsc도 안 막는다.
-    // 이 화면이 window에서 듣는 자리는 **둘이다** — ⌘T(결정 93·98)와 본문을 옮기는
-    // ⌘1~9·⌃Tab(결정 78·79). 하나로 줄면 그중 한 벌이 통째로 죽은 것이다.
+    // 이 화면이 window에서 듣는 자리는 **셋이다** — ⌘T(결정 93·98), 본문을 옮기는
+    // ⌘1~9·⌃Tab(결정 78·79), 그리고 **⌘W**(결정 13 — 탭 줄이 서면서 겨눌 칸이 화면에
+    // 생겼다). 하나로 줄면 그중 한 벌이 통째로 죽은 것이다.
     expect(
       countOf(page, 'window.addEventListener("keydown", onKeyDown);'),
-      "window에서 키를 듣는 자리가 둘이 아니다 — ⌘T와 ⌘1~9·⌃Tab",
-    ).toBe(2);
+      "window에서 키를 듣는 자리가 셋이 아니다 — ⌘T · ⌘1~9·⌃Tab · ⌘W",
+    ).toBe(3);
   });
 
   // 결정 78·79·109. work 화면과 갈리는 자리는 ⌘1 하나뿐이고(거기서는 spec), 여기서는
@@ -1329,5 +1381,157 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(page).toContain("const shells = shellsOf(state, null);");
     // 자리를 밀지 않는다 — `2`가 되면 ⌘1이 아무 일도 안 하고 ⌘2가 첫 셸이 된다.
     expect(page).toContain("shellForNav(shells, activeIdOf(state, null), nav, 1)");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// adr-04. 백엔드가 1초마다 재서 **바뀐 셸만** 실어 보내는 「지금 도는 것」이 목록에 앉는다.
+// 뒤에 오는 두 화면(탭 칸의 로고 · 사이드바 행의 로고)이 **같은 함수**를 봐야 해서 여기 있다 —
+// 두 곳이 각자 세면 「사이드바는 종류만, 탭은 칸마다」(결정 4)가 화면마다 갈린다.
+
+describe("셸에 「지금 도는 것」이 앉는다", () => {
+  it("이름이 그 칸에 그대로 앉는다 — 접지 않는다", () => {
+    const { state, ids } = opened(1);
+    // 원문 그대로여야 한다(adr-04). 백엔드가 「claude냐」를 알면 에이전트가 늘 때마다
+    // Rust를 고쳐야 하고, 프런트가 여기서 접으면 로고 매핑이 두 벌이 된다.
+    expect(setRunning(state, ids[0], "claude").shells[0].running).toBe("claude");
+  });
+
+  it("아직 아무것도 안 온 칸은 비어 있다", () => {
+    expect(opened(1).state.shells[0].running).toBeNull();
+  });
+
+  it("명령이 끝나면 지워진다", () => {
+    const { state, ids } = opened(1);
+    const 도는중 = setRunning(state, ids[0], "cargo");
+    expect(setRunning(도는중, ids[0], null).shells[0].running).toBeNull();
+  });
+
+  // **초마다 모든 화면이 다시 그려지는 것을 막는 자리다.** 백엔드가 안 바뀐 값을 안 쏘지만
+  // (`changes`) 그 한 겹에만 기대지 않는다 — 같은 값이 두 번 오면 여기서 끊긴다.
+  it("같은 값이 다시 와도 상태가 그대로다", () => {
+    const { state, ids } = opened(1);
+    const 앉은뒤 = setRunning(state, ids[0], "claude");
+    expect(setRunning(앉은뒤, ids[0], "claude")).toBe(앉은뒤);
+    expect(setRunning(state, ids[0], null)).toBe(state);
+  });
+
+  // 이벤트와 제거가 경주한다 — 이미 닫힌 칸에 대한 값이 늦게 도착한다.
+  it("모르는 id로는 아무것도 앉지 않는다", () => {
+    const { state } = opened(1);
+    expect(setRunning(state, 9999, "claude")).toBe(state);
+  });
+});
+
+describe("끝난 칸은 아무것도 안 돌린다", () => {
+  it("도는 칸은 앉은 값을 그대로 준다", () => {
+    const { state, ids } = opened(1);
+    expect(runningOn(setRunning(state, ids[0], "claude").shells[0])).toBe("claude");
+  });
+
+  // **마지막 값이 굳는 것을 막는다.** 백엔드도 풀에서 빠진 셸을 한 번 지우지만(`changes`),
+  // 그 이벤트와 종료 프레임의 순서는 보장되지 않는다 — 지움이 먼저 오면 죽은 칸에 claude
+  // 로고가 그대로 남는다. 상태로 가르면 순서가 무의미해진다.
+  it("신호로 죽은 칸은 돌던 것이 있어도 없다", () => {
+    const { state, ids } = opened(1);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    const 죽은뒤 = markExited(돌던칸, ids[0], { exitCode: 1, signal: "Terminated: 15" });
+    expect(runningOn(죽은뒤.shells[0])).toBeNull();
+  });
+
+  it("못 뜬 칸도 없다", () => {
+    const { state, ids } = opened(1);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    expect(runningOn(markFailed(돌던칸, ids[0], "폴더가 없습니다").shells[0])).toBeNull();
+  });
+});
+
+describe("work가 도는 것의 **종류**를 말한다", () => {
+  const 가 = { owner: "가", project: null, cwd: null };
+
+  // 결정 4. claude가 둘 돌아도 사이드바의 로고는 하나다 — 목록은 「뭐가 도나」를 말하지
+  // 「몇 개 도나」를 말하지 않는다(개수는 `⌨3`이 이미 말한다).
+  it("같은 것이 둘 돌면 **두 번** 들어 있다 — 세는 일은 그리는 쪽이다", () => {
+    // 결정 28. 여기서 접으면 `Map`이나 `Record`가 되고, 그러면 회차마다 새 객체라 사이드바
+    // 행의 얕은 비교가 늘 어긋나 목록 전체가 초마다 다시 그려진다(`shellCountsOf`의 함정).
+    const { state, ids } = opened(2, 가);
+    let 지금 = setRunning(state, ids[0], "claude");
+    지금 = setRunning(지금, ids[1], "claude");
+    expect(runningAgentsOf(지금, "가")).toEqual(["claude", "claude"]);
+  });
+
+  it("다른 것이 돌면 둘 다 말하고, 순서는 칸 순서다", () => {
+    const { state, ids } = opened(2, 가);
+    let 지금 = setRunning(state, ids[0], "codex");
+    지금 = setRunning(지금, ids[1], "claude");
+    expect(runningAgentsOf(지금, "가")).toEqual(["codex", "claude"]);
+  });
+
+  it("아무것도 안 도는 work는 빈 목록이다", () => {
+    expect(runningAgentsOf(opened(2, 가).state, "가")).toEqual([]);
+  });
+
+  it("남의 work에서 도는 것은 안 센다", () => {
+    const { state, ids } = opened(1, 가);
+    const 나 = openShell(state, { owner: "나", project: null, cwd: null })!;
+    let 지금 = setRunning(나.state, ids[0], "claude");
+    지금 = setRunning(지금, 나.id, "cargo");
+    expect(runningAgentsOf(지금, "가")).toEqual(["claude"]);
+    expect(runningAgentsOf(지금, "나")).toEqual(["cargo"]);
+  });
+
+  // `runningOn`을 딛는다 — 여기서 상태를 한 번 더 가르면 같은 판정이 두 벌이 된다.
+  it("죽은 칸이 돌던 것은 안 센다", () => {
+    const { state, ids } = opened(1, 가);
+    const 돌던칸 = setRunning(state, ids[0], "claude");
+    const 죽은뒤 = markFailed(돌던칸, ids[0], "폴더가 없습니다");
+    expect(runningAgentsOf(죽은뒤, "가")).toEqual([]);
+  });
+});
+
+// 결정 2·3. 둘째 줄의 `⌨수`이자 **그 줄이 서는 조건**이다. 세는 자리를 새로 만들지 않고
+// 이미 있는 이것으로 되는지 여기서 못박는다.
+describe("work마다 셸이 몇 개인가", () => {
+  const 가 = { owner: "가", project: null, cwd: null };
+
+  it("소유자별로 센다", () => {
+    const { state } = opened(2, 가);
+    const 나 = openShell(state, { owner: "나", project: null, cwd: null })!;
+    expect(shellCountsOf(나.state)).toEqual({ 가: 2, 나: 1 });
+  });
+
+  it("최상위 터미널의 셸은 어느 work에도 안 걸린다", () => {
+    expect(shellCountsOf(opened(2).state)).toEqual({});
+  });
+
+  // **끝난 칸도 센다 — 그것이 결정 3이 원하는 것이다.** 줄이 서는 조건은 **안 변하는 값**
+  // (셸을 포함하는가)이어야 하고, 명령이 끝날 때마다 값이 흔들리면 목록이 접혔다 펴진다.
+  it("끝난 칸도 센다 — 행 높이가 명령마다 출렁이면 안 된다", () => {
+    const { state, ids } = opened(1, 가);
+    const 죽은뒤 = markFailed(state, ids[0], "폴더가 없습니다");
+    expect(shellCountsOf(죽은뒤)).toEqual({ 가: 1 });
+  });
+});
+
+// 위 함수들은 순수해서 전수됐지만 **그것을 실제로 쓰는 자리**는 스토어라 어느 seam에도
+// 안 보인다(위 「판정 셋이 실제로 배선돼 있다」와 같은 자리·같은 이유). 소스로 못박는다.
+describe("도는 명령이 프런트 상태까지 오는 배선", () => {
+  it("이벤트 이름이 백엔드와 **같은 문자열**이다", () => {
+    // 이 둘은 문자열로만 이어져 있다 — 한쪽을 고치면 아무 일도 안 일어나고 컴파일도
+    // 타입 검사도 통과한다(`tauri-commands.test.ts`가 invoke 이름에 대해 막는 것과 같다).
+    expect(read("../../../src-tauri/src/pty.rs")).toContain(
+      'const RUNNING_EVENT: &str = "pty:running";',
+    );
+    expect(read("./api.ts")).toContain('const PTY_RUNNING = "pty:running";');
+  });
+
+  it("pty id를 레지스트리 id로 바꿔 앉힌다", () => {
+    const store = read("./terminal-store.ts");
+    // **이 한 줄이 없으면 값이 엉뚱한 칸에 앉는다.** 이벤트가 싣는 것은 pty id이고
+    // 레지스트리의 id는 이 모듈이 따로 발급한 번호라 둘은 다른 값이다(`ShellInstance.ptyId`).
+    expect(store).toContain("const id = shellOfPty(one.id);");
+    // 모르는 pty id는 건너뛴다 — 이 왕복 사이에 `×`로 닫힌 칸이 실제로 온다. 그리고 값은
+    // **그대로** 앉는다: 여기서 접으면 로고 매핑이 두 벌이 된다(adr-04).
+    expect(store).toContain("if (id !== null) next = setRunning(next, id, one.running);");
   });
 });

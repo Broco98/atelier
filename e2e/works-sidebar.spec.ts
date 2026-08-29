@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, markRunning, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
 // 그 화면이 부르는 것까지 하네스가 답해야 하는데, 여기서 볼 것은 사이드바뿐이다.
@@ -50,145 +50,55 @@ test("`고정` 구획을 접으면 다음 실행에도 접혀 있다", async ({ 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 사이드바 트리(판 04). **이 층에서만 마운트된다** — 정적 마크업 seam은 가지의 속을 슬롯
-// 표식으로 대신하므로, 스토어를 구독하는 진짜 컴포넌트(`ShellBranch`)가 실제로 서는지는
-// 여기서만 드러난다. 실제로 그 자리에서 훅 순서를 뒤집는 사고를 한 번 냈고, 그때 L2도 L3도
-// 전부 초록이었다 — 이 화면을 여는 검사가 저장소에 하나도 없었기 때문이다.
+// 판 04. **행 아래에 아무것도 딸리지 않는다**(결정 6) — 셸을 고르는 자리가 화면 안 탭 줄로
+// 되돌아갔으므로(adr-03) 사이드바에 남은 것은 「누르면 간다」뿐이다.
 //
-// Works 화면으로 들어가므로 그 화면이 부르는 것까지 하네스가 답해야 한다. `plain-work`은
-// spec 파일이 없어(fixtures) 본문이 빈 상태로 서고 문서를 읽지 않는다.
-test("고른 work 아래에 트리가 서고, 가지 접힘은 세션까지만 산다", async ({ page }) => {
+// 정적 마크업 seam(SidebarWorkList.test.tsx)이 「그 마크업에 없다」까지는 보지만, **진짜
+// 앱에서 그 자리가 비었는가**는 여기서만 드러난다 — 트리를 마운트하던 자리가 사이드바가
+// 아니라 화면(Works)이었고, 그 화면을 여는 검사가 이 층에만 있다.
+test("고른 work의 행 아래에 아무것도 서지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-
-  // 표식으로 집는다 — 패널에도 `spec`이라 적힌 탭이 있어 글자로 집으면 갈린다.
-  await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
-
-  // **표식에 값이 실린다** — 한 화면에 가지가 여럿이다(work 블럭 · 그 안의 `terminal` ·
-  // nav `Terminal`). 빈 값으로 집으면 어느 것을 잡았는지가 화면 구성에 따라 갈린다.
-  const branch = page.locator('[data-branch="terminal"]');
-  // 가지의 속. 접혀도 DOM에는 남으므로(펴는 쪽도 애니메이션되어야 한다) **보이는가**로는
-  // 가릴 수 없다 — 넘침에 잘릴 뿐이라 상자 크기는 그대로다. 닿을 수 없게 만드는 것이
-  // `inert`이고, 그것이 이 계약의 관찰 가능한 형태다.
-  const body = page.locator('[data-branch="terminal"] + div');
-
-  // 처음 고른 work의 가지는 펼쳐진다(결정 107). 그 속이 실제로 서는 것까지 본다.
-  await expect(branch).toHaveAttribute("aria-expanded", "true");
-  await expect(body).not.toHaveAttribute("inert", "");
-  await expect(page.getByRole("button", { name: "셸 열기" })).toBeVisible();
-
-  await branch.click();
-  await expect(branch).toHaveAttribute("aria-expanded", "false");
-  await expect(body).toHaveAttribute("inert", "");
-
-  // **세션 메모리다**(결정 107) — 구획 접힘(위 검사)이 localStorage에 남는 것과 갈리는
-  // 자리다. 다시 띄우면 기본값으로 돌아온다.
-  await page.reload();
-  await expect(branch).toHaveAttribute("aria-expanded", "true");
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// 트리 행의 **배경이 work 행과 같은 왼쪽 끝에서 시작한다**. 한 컬럼에서 배경 폭이 갈리면
-// 켜진 행과 hover가 앞에 빈 자리를 두고 시작해, 같은 목록의 행들이 다른 종류로 읽힌다.
-//
-// **이 층에서만 보인다** — 들여쓰기가 `--tree-indent` + `calc()`로 내려가므로 진짜 CSS가
-// 있어야 재진다. 정적 마크업으로는 클래스 문자열밖에 못 본다.
-test("트리 행의 배경은 work 행과 나란히 서고, 글자만 들여쓴다", async ({ page }) => {
-  await installFixtureBackend(page);
-  // 본문을 터미널로 두고 들어간다 — 그래야 셸이 하나 서서 **두 번째 단**까지 잴 수 있다.
+  // 본문을 터미널로 두고 들어간다 — 셸이 하나 서는 상태가 옛 트리가 가장 무성했던 때다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toBeVisible();
 
-  // work 행의 배경 상자는 핀 버튼의 **부모**다 — 라벨·핀·화살표가 그 안의 형제라서다.
-  // 핀으로 집는 것은 제목이 브레드크럼 말단에도 같은 글자로 서기 때문이다.
-  const row = await page
-    .getByRole("button", { name: `${plainWork.title} 고정` })
-    .evaluate((el) => el.parentElement!.getBoundingClientRect().x);
+  const aside = page.locator("aside");
+  // 잎(`spec`)도, 가지 머리행(`terminal`)도, 셸 행도 없다.
+  await expect(aside.locator("[data-leaf]")).toHaveCount(0);
+  await expect(aside.locator("[data-branch]")).toHaveCount(0);
+  await expect(aside.locator("[data-shell-row]")).toHaveCount(0);
+  // 셸을 여는 자리도 사이드바에 없다 — 탭 줄의 `+` 하나다(결정 19).
+  await expect(aside.getByRole("button", { name: "셸 열기" })).toHaveCount(0);
 
-  const leaf = page.locator('[data-leaf="spec"]');
-  const branch = page.locator('[data-branch="terminal"]');
-  await expect(leaf).toBeVisible();
-  expect(Math.round((await leaf.boundingBox())!.x)).toBe(Math.round(row));
-  expect(Math.round((await branch.boundingBox())!.x)).toBe(Math.round(row));
-
-  // 배경만 나란한 것이지 **속은 한 단 들어가 있다.** 이 줄이 없으면 들여쓰기를 통째로
-  // 잃은 것도 초록이다 — `calc()`가 안 먹어 padding이 0이 되는 경우가 정확히 그것이다.
-  //
-  // 재는 것은 **속이 시작하는 자리**이지 글자가 아니다 — 행마다 앞에 오는 것이 다르다
-  // (잎은 아이콘, 셸 행은 이름이 바로 온다). 글자끼리 대면 모양 차이를 깊이로 오독한다.
-  const leafInsetX = await leaf.evaluate((el) => el.firstElementChild!.getBoundingClientRect().x);
-  expect(leafInsetX).toBeGreaterThan(row + 18);
-
-  // 셸 행은 **두 단**이다(work 행 → `terminal` → 셸). 배경은 여전히 같은 끝에서 시작한다.
-  const shell = page.locator("[data-shell-row]");
-  await expect(shell).toBeVisible();
-  expect(Math.round((await shell.evaluate((el) => el.parentElement!.getBoundingClientRect().x)))).toBe(
-    Math.round(row),
-  );
-  const shellInsetX = await shell.evaluate((el) => el.firstElementChild!.getBoundingClientRect().x);
-  expect(shellInsetX).toBeGreaterThan(leafInsetX);
-
-  // **한 컬럼에서 세로 간격이 하나다.** 「머리행 아래」가 「행 사이」보다 넓으면 같은 목록의
-  // 행들이 다른 무리로 읽힌다 — 접히는 상자가 부모의 gap 위에 자기 여백을 한 번 더 물면
-  // 정확히 그렇게 된다(실측으로 6px 대 3px이었다).
-  const gaps = await page.evaluate(() => {
-    const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
-    const workRow = document.querySelector("[data-branch]")!.parentElement!.getBoundingClientRect();
-    const leaf = box('[data-leaf="spec"]');
-    const branch = box('[data-branch="terminal"]');
-    const shellRow = document.querySelector("[data-shell-row]")!.parentElement!.getBoundingClientRect();
-    return [leaf.top - workRow.bottom, branch.top - leaf.bottom, shellRow.top - branch.bottom];
-  });
-  expect(gaps).toEqual([gaps[0], gaps[0], gaps[0]]);
-
-  // **트리 한 단이 「글리프 칸 하나」다**(index.css의 `--tree-step`). 그래서 아래 단의
-  // 글리프가 위 단의 글자와 같은 x에 선다 — 한 컬럼에 세로줄이 둘만 남는다.
-  // 숫자를 따로 골라 두면 글리프 크기를 손보는 날 이 관계가 조용히 깨진다.
-  const columns = await page.evaluate(() => {
-    const x = (el: Element | null) => Math.round(el!.getBoundingClientRect().x);
-    const work = document.querySelector("[data-branch]:not([data-branch='terminal'])")!;
-    const leaf = document.querySelector('[data-leaf="spec"]')!;
-    const branch = document.querySelector('[data-branch="terminal"]')!;
-    return {
-      // 아이콘은 SVG라 `getBoundingClientRect`가 획 넘침까지 재므로 글자로만 잰다.
-      workText: x(work.children[1]),
-      leafText: x(leaf.lastElementChild),
-      branchText: x(branch.children[1]),
-      shellText: x(document.querySelector("[data-shell-row]")!.firstElementChild),
-    };
-  });
-  // 같은 단의 글자는 서로 맞고, 한 단 아래는 그만큼만 들어간다.
-  expect(columns.branchText).toBe(columns.leafText);
-  expect(columns.shellText).toBe(columns.leafText);
-  expect(columns.leafText - columns.workText).toBe(columns.workText - 17);
+  // 접히는 것은 구획 헤더 셋뿐이다. work 행에도 nav `Terminal`에도 여닫이가 없다.
+  const expandable = aside.locator("[aria-expanded]");
+  await expect(expandable).toHaveCount(await aside.locator("[data-section]").count());
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 고른 work가 **하나의 블럭**이 됐다 — 행이 머리행이고 `spec`·`terminal`·셸이 그 속이다.
-// 접기는 nav 항목이 자기 가지를 이는 모양과 같은 겹이라 애니메이션도 같은 것을 쓴다.
-test("고른 work 블럭을 통째로 접을 수 있고, 남의 work에는 그 토글이 없다", async ({ page }) => {
+// **행을 누르면 그 work로 가고, 마지막에 보던 자리가 열린다**(결정 5·77 — `recallView`).
+// 남의 work 셸을 눌러 그리로 가던 길(결정 101)이 이 하나로 줄었다: 로고가 종류만 말해
+// (결정 4) 어느 셸로 갈지가 정해지지 않으므로, 행이 가는 곳은 「그 work의 마지막 자리」다.
+//
+// 기억이 사는 곳이 sessionStorage라 이 층에서만 왕복이 진짜다.
+test("남의 work 행을 누르면 그 work의 마지막 자리가 열린다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
-
-  const block = page.locator(`[data-branch="${plainWork.slug}"]`);
-  // 블럭의 속은 행 상자의 **다음 형제**다 — 화살표가 그 상자 안에 산다.
-  const body = block.locator("xpath=../following-sibling::div[1]");
-
-  await expect(block).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator('[data-leaf="spec"]')).toBeVisible();
-  await expect(body).not.toHaveAttribute("inert", "");
-
-  await block.click();
-  await expect(block).toHaveAttribute("aria-expanded", "false");
-  // 접혀도 속은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 닿을 수 없다.
-  await expect(body).toHaveAttribute("inert", "");
-
-  // 결정 101. 남의 work 항목을 건드리면 그 work로 **간다** — 접히는 것이 아니다.
-  // 행 하나가 두 가지 일을 하게 됐으므로 갈림을 여기서 함께 본다.
   const [pinnedWork] = WORKS;
-  await expect(page.locator(`[data-branch="${pinnedWork.slug}"]`)).toHaveCount(0);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toBeVisible();
+
+  // 옆 work을 들여다본다 — 그쪽은 본 적이 없어 문서에서 시작한다.
   await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await expect(page).not.toHaveURL(/tab=terminal/);
+
+  // 돌아오면 **터미널을 보던 자리 그대로**다. 이 줄이 없으면 「행을 누르면 간다」까지만
+  // 참이고, 터미널을 보다 옆을 잠깐 들여다본 사람이 문서로 떨어지는 것(결정 77이
+  // 없애려는 것)이 그대로 지나간다.
+  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(/tab=terminal/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -196,13 +106,16 @@ test("고른 work 블럭을 통째로 접을 수 있고, 남의 work에는 그 �
 // 확인 창이 **이 앱의 것**이다 — OS 시트가 아니다. 창 하나만 남의 글꼴·남의 모서리로 뜨면
 // 그것이 앱 밖의 일처럼 읽힌다. 이 층에서만 보인다: 정적 마크업 seam에는 클릭이 없고,
 // 「OS에 안 물었다」는 IPC 기록으로만 드러난다.
+//
+// **누르는 자리가 사이드바에서 탭 줄로 옮겨 왔다**(결정 7·22·92) — 닫는 길은 여전히 하나라
+// 계약은 그대로이고, 이 검사가 그 계약을 보는 저장소의 유일한 자리라 함께 옮겼다.
 test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const shell = page.locator("[data-shell-row]");
-  await expect(shell).toBeVisible();
-  await page.getByRole("button", { name: /닫기$/ }).first().click();
+  const tab = page.locator('[data-tab="shell"]');
+  await expect(tab).toBeVisible();
+  await tab.getByRole("button", { name: /닫기$/ }).click();
 
   // 앱이 그리는 창이다 — 이 요소가 DOM에 있다는 것 자체가 OS 시트가 아니라는 뜻이다.
   const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
@@ -212,47 +125,20 @@ test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ pa
   // 취소하면 셸이 그대로 남는다 — 「물었고, 아니라고 하면 안 닫는다」(결정 92).
   await dialog.getByRole("button", { name: "취소" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(shell).toBeVisible();
+  await expect(tab).toBeVisible();
 
   // 다시 물어 이번엔 닫는다.
-  await page.getByRole("button", { name: /닫기$/ }).first().click();
+  await tab.getByRole("button", { name: /닫기$/ }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "닫기" }).click();
-  await expect(shell).toHaveCount(0);
+  await expect(tab).toHaveCount(0);
 
   // **마지막 칸이 닫히면 본문이 문서로 돌아온다.** 셸 0개인 터미널 본문은 볼 것이 없는
-  // 화면이라(빈 자리와 `+` 하나) 사람을 거기 남겨 두면 다음에 무엇을 할지가 본문 밖에 있다.
+  // 화면이라(안내 한 판 — 결정 19) 사람을 거기 남겨 두면 다음에 무엇을 할지가 본문 밖에 있다.
   await expect(page).not.toHaveURL(/tab=terminal/);
 
   // **OS에는 한 번도 안 물었다.** `confirm`도 `message`도 와이어에서는 이 커맨드로 나간다.
   const calls = (await readIpcRecord(page))?.calls ?? [];
   expect(calls.filter((call) => call.startsWith("plugin:dialog"))).toEqual([]);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// **남의 work의 `spec` 잎이 남는다.** 한때 고른 work에만 섰는데, 그러면 옆 work을 잠깐
-// 들여다보는 동안 방금까지 읽던 work의 문서가 트리에서 사라졌다 — 셸이 도는 work은 블럭이
-// 서 있는데 그 안에 `terminal`만 남는 모양이었다.
-test("남의 work의 spec 잎이 남고, 누르면 그 work으로 간다", async ({ page }) => {
-  await installFixtureBackend(page);
-  // 터미널로 들어가 셸을 하나 띄운다 — 그래야 이 work을 떠나도 블럭이 선다.
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await expect(page.locator("[data-shell-row]")).toBeVisible();
-
-  const [pinnedWork] = WORKS;
-  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
-
-  // 블럭이 선 work마다 잎이 있다 — 떠나온 것과 지금 고른 것 둘.
-  const leaves = page.locator('[data-leaf="spec"]');
-  await expect(leaves).toHaveCount(2);
-  // 켜진 것은 **고른 work의 것 하나**다. 둘 다 켜지면 「지금 보고 있는 것」이 둘이 된다.
-  await expect(page.locator('[data-leaf="spec"][aria-current]')).toHaveCount(1);
-
-  // 남의 잎을 누르면 그 work으로 간다(결정 101). **켜지지 않은 것**이 남의 것이다 —
-  // 순서로 집으면 구획(고정·작업)에 따라 갈린다.
-  await page.locator('[data-leaf="spec"]:not([aria-current])').click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
-  await expect(page).not.toHaveURL(/tab=terminal/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -278,58 +164,24 @@ test("spec 트리의 그림은 그림으로 선다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **한 번 연 블럭은 work을 옮겨도 남는다**(사용자 결정). 한때 「고른 work」에만 섰는데,
-// 그러면 옆 work을 잠깐 들여다보는 것만으로 앞 work의 트리가 통째로 접혀, 돌아왔을 때
-// 펼쳐 둔 것이 사라져 있었다.
-test("work을 옮겨도 앞 work의 블럭이 남는다", async ({ page }) => {
-  await installFixtureBackend(page);
-  const [pinnedWork] = WORKS;
-  await page.goto(`/works/${plainWork.slug}`);
-  await expect(page.locator(`[data-branch="${plainWork.slug}"]`)).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-
-  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
-  await page.waitForTimeout(300);
-
-  // 떠나온 work의 속이 그대로 있다 — `spec` 잎이 둘, 셸을 여는 자리도 둘.
-  await expect(page.locator('[data-leaf="spec"]')).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "셸 열기" })).toHaveCount(2);
-
-  // **접는 길은 그 work을 다시 골라 행을 누르는 것**이다(결정 101 — 토글은 고른 행에만).
-  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
-  const branch = page.locator(`[data-branch="${plainWork.slug}"]`);
-  await expect(branch).toHaveAttribute("aria-expanded", "true");
-  await branch.click();
-  await expect(branch).toHaveAttribute("aria-expanded", "false");
-
-  // 접어 둔 것은 다시 골라도 접힌 채다(결정 107과 같은 판정).
-  await page.getByRole("button", { name: pinnedWork.title, exact: true }).click();
-  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
-  await expect(branch).toHaveAttribute("aria-expanded", "false");
-
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
 // **접히는 것이 보인다.** 조건이 바뀌는 순간 걷어 버리면 아래 행들이 그만큼 순간이동한다 —
-// 실물에서 다른 work을 누를 때 목록이 68px 튀는 모습으로 났다(실측). 지금은 앞 work의
-// 블럭이 남으므로 그 길로는 안 나지만, 접는 길에서는 그대로 난다.
+// 실물에서 다른 work을 누를 때 목록이 68px 튀는 모습으로 났다(실측). 판 04가 걷은 것은
+// 그 사고를 냈던 블럭이고, 같은 상자로 접히는 **구획**은 그대로 남았다.
 //
 // 이 층에서만 보인다: 정적 마크업에는 시간이 없다.
-test("블럭을 접으면 한 번에 사라지지 않고 접힌다", async ({ page }) => {
+test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}`);
+  await page.goto("/projects");
 
-  const branch = page.locator(`[data-branch="${plainWork.slug}"]`);
-  const body = branch.locator("xpath=../following-sibling::div[1]");
+  const header = page.getByRole("button", { name: PINNED_HEADER, exact: true });
+  // 구획의 속은 헤더의 **다음 형제**다.
+  const body = header.locator("xpath=following-sibling::div[1]");
   const height = async () => (await body.boundingBox())?.height ?? 0;
 
   const before = await height();
   expect(before).toBeGreaterThan(20);
 
-  await branch.click();
+  await header.click();
   await page.waitForTimeout(40);
   const mid = await height();
   await page.waitForTimeout(400);
@@ -340,6 +192,64 @@ test("블럭을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
   // **가는 중이 있었다.** 한 번에 사라지면 40ms에 이미 0이라 이 줄이 빨개진다.
   expect(mid).toBeGreaterThan(0);
   expect(mid).toBeLessThan(before);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 2 — work 행 **둘째 줄이 상태를 말한다**: 셸 수와 **도는 것의 로고**.
+//
+// **이 경로는 어느 층도 통째로 안 지나간다.** `Sidebar.test.tsx`는 값(`runningKindsOf`)과
+// 배선(구독 리터럴)을 따로 못박고 `SidebarWorkList.test.tsx`는 그림을 정적 마크업으로 보는데,
+// 셋을 잇는 **한 바퀴** —— 이벤트가 스토어에 앉고 그 행이 다시 그려져 로고가 실제로 서는가 ——
+// 는 아무도 안 돈다. 탭 줄 쪽은 `terminal-tabs.spec.ts`가 그 바퀴를 돈다.
+test("도는 명령의 로고가 work 행 둘째 줄에 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  // 들어오면 이 work의 셸 하나가 뜬다(`ensureShell`) — 둘째 줄이 서는 조건이 그것이다(결정 3).
+  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  await expect(subrow).toHaveCount(1);
+  // **먼저 로고가 없음을 센다.** 이것이 없으면 아래 단언이 「원래 있던 것」으로도 초록이 된다.
+  await expect(subrow.locator('[role="img"]')).toHaveCount(0);
+
+  await markRunning(page, "claude");
+
+  // 그 work에서 claude가 돈다는 사실이 사이드바에 선다 —— 화면이 터미널이 아니어도 보이는
+  // 자리이고(결정 2), 스크롤로 밀려난 칸에서 도는 것을 알 유일한 자리다.
+  await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 30 — 호버 카드는 **행 옆에 뜬다**. 사이드바 경계선 밖으로 밀어내던 판을 걷은 자리다:
+// 경계에서 재면 카드가 그 선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼 읽혔다(실물).
+//
+// 이 층에서만 보인다 — 카드는 body 직계에 뜨는 fixed 상자라 자리가 진짜 레이아웃에서만 난다.
+test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 올라선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+
+  // 앵커는 이름 버튼이 아니라 **행 상자**다 — 그 오른쪽 끝과 이름 버튼 사이에 핀 칸이 있다.
+  const row = page.getByRole("button", { name: plainWork.title, exact: true }).locator("xpath=..");
+  const card = page.locator("[data-popover]");
+  // **먼저 없음을 센다** — 이것이 없으면 아래가 「원래 떠 있던 것」으로도 초록이 된다.
+  await expect(card).toHaveCount(0);
+
+  await row.hover();
+  // 350ms 머물러야 뜬다(HOVER_DELAY_MS). 자리를 재기 전 한 프레임은 invisible이라
+  // toBeVisible이 그 프레임까지 함께 기다린다.
+  await expect(card).toBeVisible();
+
+  const rowBox = (await row.boundingBox())!;
+  const cardBox = (await card.boundingBox())!;
+  const aside = (await page.locator("aside").boundingBox())!;
+
+  // **행에서 4px이다.** 경계선에서 재던 값은 눈에 19px 더 벌어져 보였다 — 거터 8px과
+  // 늘 예약된 스크롤바 11px이 행과 경계선 사이에 있기 때문이다.
+  expect(Math.round(cardBox.x - (rowBox.x + rowBox.width))).toBe(4);
+  // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
+  // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
+  expect(cardBox.x).toBeLessThan(aside.x + aside.width);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
