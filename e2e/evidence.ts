@@ -107,4 +107,4 @@ export { expect } from "@playwright/test";
 // e2e에서 Playwright로 통하는 문은 이 파일 하나다. 타입까지 여기서 내보내야 그 규칙이
 // "다른 파일에는 이 문자열이 아예 없다"는 한 줄 검사로 지켜진다 — 임포트 문법을 파싱해
 // 값과 타입을 가리려 들면 그 파서가 새는 순간 조용히 통과한다.
-export type { Page } from "@playwright/test";
+export type { Locator, Page } from "@playwright/test";
