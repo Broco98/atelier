@@ -257,7 +257,7 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
   it("도는 것이 없어도 자리는 그대로 선다", () => {
     // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
     // 순간 바뀌어서(pty.rs가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이
-    // 생겼다 사라지고 제목의 말줄임 지점이 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
+    // 생겼다 사라지고 제목이 끊기는 자리가 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
     // (셸을 포함하는가)이고 변하는 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안
     // 그려도 자리는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderShellMeta: () => null });
@@ -305,7 +305,7 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
   });
 
   it("2열이 한 무리분을 **바닥으로** 예약한다", () => {
-    // 결정 2·5. `auto`로 두면 로고가 붙을 때마다 칸이 넓어져 제목의 말줄임 지점이 초마다
+    // 결정 2·5. `auto`로 두면 로고가 붙을 때마다 칸이 넓어져 제목이 끊기는 자리가 초마다
     // 밀린다 — 판 04가 행 높이에서 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프
     // 12 + 간격 4 + 숫자 7 = 23px에 오른쪽 여백 5px을 더한 **28px**이 그 바닥이다.
     //
@@ -327,19 +327,20 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
   // 상자와 그 **안쪽 글자**를 함께 집는다. 둘이 갈려 있는 것이 이 판의 구조 전부다 —
   // 상자가 컨테이너이자 마스크이고, 흐르는 것은 그 안의 글자다(결정 10).
   const titleOf = (markup: string) => {
-    const found = /<span data-title="" class="([^"]*)"><span class="([^"]*)">([^<]*)<\/span><\/span>/.exec(
-      markup,
-    );
-    return found && { box: found[1], text: found[2], title: found[3] };
+    const found = /<span data-title="" class="([^"]*)"><span>([^<]*)<\/span><\/span>/.exec(markup);
+    return found && { box: found[1], title: found[2] };
   };
 
   it("제목이 상자 **안쪽 글자**로 서고, 말줄임이 아니다", () => {
     // `…`을 그리던 `truncate`가 사라진 자리다(결정 9). 흐르는 것이 글자라 상자와 갈려야
     // 하고, 상자에 걸린 마스크가 그 끝을 흐린다 — 그 둘은 e2e가 실측으로 본다.
+    //
+    // **안쪽 글자에 클래스가 없는 것이 계약이다**(결정 10) — 규격은 `index.css`가 든다.
+    // 그래서 이 층이 아는 것은 `titleOf`의 정규식이 이미 잡는 **자식 span이 있는가**와 상자에
+    // `truncate`가 없는가뿐이고, 그 글자가 `max-content`로 서는지는 e2e의 넘침이 잰다.
     const one = titleOf(render(works("가")))!;
     expect(one.title).toBe("가");
     expect(one.box).not.toContain("truncate");
-    expect(one.text).toContain("w-max");
   });
 
   it("상자는 폭을 **밖에서** 받는다", () => {

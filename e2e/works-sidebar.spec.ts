@@ -19,16 +19,44 @@ const MAIN_HEADER = "작업 1";
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
 const TITLE_FADE = 24;
 
+// 흐르는 **속도**(px/s) — `SidebarWorkList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
+// 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
+// 한다. 실측이 들어야 하는 밴드는 ±12%다 — `speedOf`가 잰 시각으로 나누므로 이만큼 좁힐 수
+// 있고, 좁아야 고정 지속시간이 두 자리를 다 통과하지 못한다.
+const MARQUEE_SPEED = 50;
+const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
+
 /** 제목 상자 — 마스크가 걸리고 넘침을 재는 자리다. 흐르는 것은 그 **안쪽 글자**다. */
 const titleBoxOf = (page: Page, title: string) =>
   page.getByRole("button", { name: title, exact: true }).locator("[data-title]");
 
-/** 흐른 거리. `transform`이 문자열이라 행렬에서 x만 꺼낸다 — 안 흐르면 `none`이라 0이다. */
-const shiftOf = (box: Locator) =>
+/** 흐른 거리와 **그것을 읽은 시각**. 속도를 실제 시간으로 재려면 둘이 한 번에 나와야 한다. */
+const sampleOf = (box: Locator) =>
   box.locator("span").evaluate((el) => {
     const transform = getComputedStyle(el).transform;
-    return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
+    return {
+      shift: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41,
+      at: performance.now(),
+    };
   });
+
+/** 흐른 거리. `transform`이 문자열이라 행렬에서 x만 꺼낸다 — 안 흐르면 `none`이라 0이다. */
+const shiftOf = async (box: Locator) => (await sampleOf(box)).shift;
+
+/** 흐르는 **속도**(px/s) — 0.4초를 사이에 두고 찍은 두 점의 기울기다.
+ *
+ * 나누는 것은 재운 시간이 아니라 **잰 시각의 차**다. `waitForTimeout`은 명목값이라 실제로는
+ * 늘 그보다 길게 자고, 그 명목값으로 나누면 속도가 실제보다 빠르게 읽혀 밴드를 넓게 열
+ * 수밖에 없다. 그런데 「속도가 제목 길이와 무관하게 일정하다」를 재는 방법은 **넘침이 다른 두
+ * 자리에서 이 값이 같은 밴드에 드는가**뿐이라, 밴드가 넓으면 고정 지속시간(기각안 「마퀴 —
+ * 완전 CSS」)이 그 사이로 빠져나간다: ±40%면 1.5~3.5초짜리 고정 지속시간이 두 자리를 다
+ * 통과한다. 트랜지션이 `linear`라(index.css) 기울기가 곧 속도다. */
+const speedOf = async (box: Locator) => {
+  const 앞 = await sampleOf(box);
+  await box.page().waitForTimeout(400);
+  const 뒤 = await sampleOf(box);
+  return ((앞.shift - 뒤.shift) / (뒤.at - 앞.at)) * 1000;
+};
 
 /** 넘친 폭. 0보다 커야 흐를 것이 있다. */
 const overflowOf = (box: Locator) => box.evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -307,7 +335,7 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
   expect(await rightOf(메타숫자)).toBe(await rightOf(헤더개수));
 
   // **셸이 있는 행과 없는 행의 제목 폭이 같다**(결정 2·5). 예약이 2열 자체에 걸려 있어서다 —
-  // 메타 상자에만 걸면 셸이 없는 행만 핀의 24px로 줄어 말줄임 지점이 행마다 갈린다.
+  // 메타 상자에만 걸면 셸이 없는 행만 핀의 24px로 줄어 제목이 끊기는 자리가 행마다 갈린다.
   const titleWidth = async (title: string) =>
     (await page.getByRole("button", { name: title, exact: true }).boundingBox())!.width;
   expect(await titleWidth(plainWork.title)).toBe(await titleWidth(pinnedWork.title));
@@ -357,7 +385,7 @@ test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안
   await title.hover();
   await expect(pin).toHaveCSS("opacity", "1");
   await expect(shells).toHaveCSS("opacity", "0");
-  // **자리는 남는다.** 폭이 그대로여야 제목의 말줄임 지점이 hover마다 안 뛴다(결정 6).
+  // **자리는 남는다.** 폭이 그대로여야 제목이 끊기는 자리가 hover마다 안 뛴다(결정 6).
   expect((await title.boundingBox())!.width).toBe(평소);
 
   // **겹친 자리라 메타가 핀의 클릭을 가로채면 안 된다** — 메타가 DOM에서 뒤라 위에 그려진다.
@@ -394,7 +422,14 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // 넘치지 않는 제목에도 걸려 있다(결정 12 — 거의 꽉 찬 제목의 끝 글자가 옅어지는 대가).
   await expect(긴제목).toHaveCSS("text-overflow", "clip");
   for (const box of [긴제목, 짧은제목]) {
-    expect(await box.evaluate((el) => getComputedStyle(el).maskImage)).toContain("linear-gradient");
+    const mask = await box.evaluate((el) => getComputedStyle(el).maskImage);
+    expect(mask).toContain("linear-gradient");
+    // **오른쪽만이다**(결정 18) — 왼쪽은 글자가 흘러 들어오는 쪽이라 하드 컷이다. 방향을
+    // 뒤집어도 흐름도 정지도 복귀도 그대로라, 이 두 줄이 없으면 **AC가 요구한 것의 정반대**가
+    // 초록으로 들어온다. 폭까지 보는 것은 `index.css`의 `--title-fade`와 여기 `TITLE_FADE`가
+    // 「같은 수여야 한다」는 주석상의 계약을 실측으로 묶기 위해서다.
+    expect(mask).toContain("to right");
+    expect(mask).toContain(`${TITLE_FADE}px`);
   }
   // 쉴 때는 제자리다 — 쉴 때 계측도 없다(결정 12).
   expect(await shiftOf(긴제목)).toBe(0);
@@ -409,18 +444,19 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   await page.waitForTimeout(80);
   expect(-(await shiftOf(긴제목))).toBeLessThan(2);
 
-  // **그다음 천천히 흐른다 — 50px/s, 거리에 비례**(결정 11). 이 네 줄이 없으면 「툭 튀어
+  // **그다음 천천히 흐른다 — 50px/s, 거리에 비례**(결정 11). 이 단언들이 없으면 「툭 튀어
   // 끝으로 갔다」도 초록이 된다: 실제로 그렇게 났다(실측) — 마퀴를 `:hover`로 켜면 그 행을
   // **처음** 가리킬 때 트랜지션이 지속시간 없이 만들어져 0ms로 굳는다(index.css의 표식 주석).
+  //
+  // **같은 밴드를 다른 넘침에서 한 번 더 건다**(아래 드래그 검사) — 한 길이에서만 재면
+  // 「길이와 무관하게 일정」은 아무것도 안 잰 것이 된다.
   await page.waitForTimeout(370);
-  const 중간 = -(await shiftOf(긴제목));
-  await page.waitForTimeout(400);
-  const 나중 = -(await shiftOf(긴제목));
-  expect(중간).toBeGreaterThan(4);
-  expect(나중).toBeLessThan(거리 - 4);
-  const 속도 = (나중 - 중간) / 0.4;
-  expect(속도).toBeGreaterThan(30);
-  expect(속도).toBeLessThan(70);
+  // 두 점이 **다 흐르는 도중**이어야 기울기가 속도다 — 출발 전이나 도착 뒤를 짚으면 0이 난다.
+  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
+  const 속도 = await speedOf(긴제목);
+  expect(-(await shiftOf(긴제목))).toBeLessThan(거리 - 4);
+  expect(속도).toBeGreaterThan(속도밴드[0]);
+  expect(속도).toBeLessThan(속도밴드[1]);
 
   await expect
     .poll(async () => Math.abs((await shiftOf(긴제목)) + 거리) <= 2, {
@@ -486,6 +522,17 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
 
   // **다시 그리지도, 다시 재지도 않았는데** 흐르는 거리가 새 폭에 맞는다.
   await 긴제목.hover();
+
+  // **속도는 넘침이 달라져도 같다** — AC 「흐르는 속도가 제목 길이와 무관하게 일정하다」를
+  // 재는 자리가 여기다. 위 검사가 첫 넘침에서 건 밴드를 좁힌 뒤의 넘침에서도 걸어야 그 말이
+  // 처음으로 실측된다: 고정 지속시간(기각안 「마퀴 — 완전 CSS」)은 거리가 늘면 속도가 함께
+  // 늘어서 두 자리가 같은 값을 못 낸다. 이 줄들이 없으면 그 기각안이 전부 초록으로 들어온다.
+  await page.waitForTimeout(450);
+  expect(-(await shiftOf(긴제목))).toBeGreaterThan(4);
+  const 속도 = await speedOf(긴제목);
+  expect(속도).toBeGreaterThan(속도밴드[0]);
+  expect(속도).toBeLessThan(속도밴드[1]);
+
   await expect
     .poll(async () => Math.abs((await shiftOf(긴제목)) + (좁힌뒤 + TITLE_FADE)) <= 2, {
       timeout: 8000,
