@@ -340,10 +340,11 @@ function useFrameFocused(frameRef: RefObject<HTMLIFrameElement | null>) {
 const FRAME_HINT_WIDTH = 300;
 
 /**
- * 프레임이 포커스를 쥔 **동안에만** 서서, 앱 단축키가 지금 안 먹는다는 것과 **돌아오는
- * 길**을 말한다 — 이슈 #153의 **완화**다. 근본 수정이 아니다: 단축키는 여전히 안 먹고,
- * 정본을 네이티브 메뉴로 올리는 일이 그 이슈에 남아 있다. 여기가 갚는 것은 그 이슈가 짚은
- * 다른 한 가지, 「원인이 화면 어디에도 없다」쪽이다.
+ * 프레임이 포커스를 쥔 **동안에만** 서서, 지금 안 먹는 키와 **돌아오는 길**을 말한다.
+ *
+ * **한때 일곱 키를 적었고 지금은 셋이다.** ⌘1~9·⌘B·⌘T·⌘↩은 네이티브 메뉴가 대신 받아
+ * 되살아났다(#153 · `components/shell/menu-hotkey.ts`). 남은 셋(⌃Tab·⌘W·⇧⇧)은 그 길에
+ * 못 실리거나 일부러 안 실은 것이라, 이 카드는 **줄어들 뿐 사라지지 않는다.**
  *
  * **#153이 이미 기각한 셋을 다시 걷지 않는다.** 포커스를 도로 안 뺏고(프레임 안 토글이
  * 계속 눌려야 한다 — 결정 4), 덮개를 안 두며(`pointer-events-none`이라 클릭이 그대로
@@ -368,9 +369,14 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
         <span className="text-[13px] font-semibold tracking-[-0.01em]">앱 단축키가 지금 안 먹어요</span>
+        {/* **셋만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩은 네이티브 메뉴가 대신 받아 되살아난다
+            (`components/shell/menu-hotkey.ts`). 여기 남은 셋은 그 길에 못 실린다 —
+            ⌃ 계열은 항목이 서는데도 accelerator 경로가 죽고(실측 0/6·0/3), ⇧⇧는 「같은
+            수식키를 300ms 안에 두 번」이라는 몸짓이라 accelerator 문법에 자리가 없다.
+            ⌘W는 실을 수는 있지만 **일부러 뺐다**: 창이 닫히면 이 앱은 창이 하나뿐이라
+            돌던 셸이 전부 죽고, 얻는 것은 「칸 닫기」 하나다(`src-tauri/src/lib.rs`). */}
         <span className="text-[12.5px] leading-[1.6] text-tertiary">
-          ⌘1~9·⌃Tab·⌘B·⌘T·⌘W·⌘↩·⇧⇧가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면
-          돌아와요.
+          ⌃Tab·⌘W·⇧⇧가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
     </PopoverPortal>
