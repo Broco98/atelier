@@ -152,12 +152,32 @@ export function SearchList({
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
+  // **떠 있는 동안 스크롤 막대를 걷는다.** 막대는 `z-index: 45`이고 이 오버레이가 `z-50`이라
+  // 막대가 **아래**에 깔리는데, 오버레이가 반투명이라 그대로 비쳐 보인다 — 팔레트를 열기
+  // 직전까지 굴리던 화면의 막대가 오버레이 너머로 남아 페이드되는 것이 그 모양이다
+  // (`HIDE_DELAY_MS` 420ms + 페이드 180ms).
+  //
+  // 막대를 위로 올려 해결하지 않는다: 뒤 화면은 **팔레트가 떠 있는 동안 구를 수 없고**
+  // (오버레이가 포인터를 다 받는다) 구를 수 없는 것의 막대는 거짓이다. 팔레트 제 목록의
+  // 막대도 함께 걷힌다 — 어차피 카드(`bg-background`, z-50)가 그 자리를 덮어 보인 적이 없다.
+  //
+  // 자리가 `body`인 것은 막대가 `body` 직계 fixed라서다(`lib/scroll-quiet.ts`) — 이 컴포넌트의
+  // 서브트리 안에서는 그 노드에 닿는 선택자를 쓸 수 없다.
+  useEffect(() => {
+    document.body.dataset.paletteOpen = "";
+    return () => {
+      delete document.body.dataset.paletteOpen;
+    };
+  }, []);
+
   return (
     <div
       // 바깥을 눌러도 닫힌다 — 확인 창과 같은 규칙이고, 여는 것 말고는 아무 일도 안 하는
       // 표면이라 닫는 데 잃는 것이 없다.
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-background/55 p-8 pt-[12vh] backdrop-blur-[2px]"
+      // 막은 **확인 창과 같은 것을 쓴다**(`modal-scrim` — 뒤를 흐리지 않고 어둡게만 한다).
+      // 뜨는 자리만 여기가 정한다: 팔레트는 위쪽 12vh에 서고 확인 창은 가운데다.
+      className="modal-scrim flex items-start justify-center p-8 pt-[12vh]"
     >
       <div
         onClick={(event) => event.stopPropagation()}

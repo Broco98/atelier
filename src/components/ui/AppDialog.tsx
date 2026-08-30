@@ -46,7 +46,8 @@ function AppDialog() {
       aria-label={pending.title}
       // 바깥을 눌러도 닫힌다 — 되돌릴 수 없는 일이어도 **취소로** 닫으므로 안전하다.
       onClick={() => pending.answer(false)}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/55 p-8 backdrop-blur-[2px]"
+      // 막은 **팔레트와 같은 것을 쓴다**(`modal-scrim`). 뜨는 자리만 갈린다 — 이쪽은 가운데다.
+      className="modal-scrim flex items-center justify-center p-8"
     >
       <div
         onClick={(event) => event.stopPropagation()}

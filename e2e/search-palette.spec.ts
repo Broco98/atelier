@@ -263,3 +263,50 @@ test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => 
   await expect(ask).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **떠 있는 동안 뒤가 어두워지고, 스크롤 막대가 사라진다.**
+//
+// 이 층에서만 보인다: `backdrop-filter`도 막대의 `display`도 진짜 CSS가 있어야 나고, 막대는
+// **구르기 전엔 DOM에 노드조차 없다**(`lib/scroll-quiet.ts` — 문서에 한 쌍을 게을리 만든다).
+// 그래서 먼저 굴려 막대를 세운 다음 팔레트를 연다.
+//
+// 막대를 걷는 이유가 층 순서에 있다 — 막대는 `z-index: 45`이고 막이 `z-50`이라 막대가
+// **아래**에 깔리는데, 막이 반투명이라 그대로 비친다. 올려서 풀지 않는 것은 뒤 화면이 팔레트가
+// 떠 있는 동안 구를 수 없기 때문이다(막이 포인터를 다 받는다) — 구를 수 없는 것의 막대는
+// 거짓말이다. 사람이 실물에서 그것을 보고 말했다: 「스크롤바가 뒤에서 튀는게 보임」.
+test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 걷힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  // 사이드바 목록이 넘치도록 창을 낮춘다 — 고정 데이터의 work은 넷이라 기본 높이로는 안
+  // 넘치고, 안 넘치면 굴러도 막대가 안 선다(scrollbar.spec.ts와 같은 준비).
+  await page.setViewportSize({ width: 1280, height: 240 });
+  await page.goto("/projects");
+
+  // 굴려서 막대를 세운다 — 이게 없으면 아래 단언이 「없는 노드」를 보고 초록이 된다.
+  const list = page.locator("aside .scroll-quiet");
+  await list.evaluate((el) => el.scrollBy(0, 40));
+  const bar = page.locator('[data-scrollbar="vertical"]');
+  await expect(bar).toHaveAttribute("data-on", "");
+
+  await doubleShift(page);
+  await expect(palette(page)).toBeVisible();
+
+  // **막대가 걷힌다.** `opacity: 0`이 아니라 `display: none`인 것은, 스크립트가 `data-on`을
+  // 다시 걸면 opacity 싸움에서 이기기 때문이다.
+  await expect(bar).toHaveCSS("display", "none");
+
+  // **흐리지 않는다.** `backdrop-blur`는 뒤 화면의 글자를 뭉개 무엇 위에 떠 있는지를 지웠다.
+  // **막을 클래스로 집는다.** 이 저장소는 보통 모양이 아니라 표식으로 가르지만, 여기서는
+  // 「세 모달이 같은 유틸리티를 쓴다」 자체가 계약이라 그 이름이 곧 정체성이다.
+  const scrim = page.locator("div.modal-scrim");
+  await expect(scrim).toHaveCount(1);
+  await expect(scrim).toHaveCSS("backdrop-filter", "none");
+  // **어둡게만 한다** — 배경색을 덮으면 라이트 테마에서 뒤가 오히려 밝아진다.
+  await expect(scrim).toHaveCSS("background-color", "rgba(0, 0, 0, 0.25)");
+
+  // 닫으면 표식이 걷혀 막대가 되돌아온다 — 남으면 앱이 도는 내내 막대가 없다.
+  await page.keyboard.press("Escape");
+  await expect(palette(page)).toHaveCount(0);
+  await expect(bar).not.toHaveCSS("display", "none");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

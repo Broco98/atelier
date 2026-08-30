@@ -84,7 +84,7 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           안 켜진다 — disabled={false}로 부르면 화면에 절대 안 서는 상태를 계약으로만 들고
           있게 된다.
 
-          **떠 있을 때 눌리는 일은 없다.** 팔레트는 fixed inset-0 z-50 배경을 깔고 이 행은
+          **떠 있을 때 눌리는 일은 없다.** 팔레트는 `modal-scrim`(z-50)을 깔고 이 행은
           z-20이라, 그동안 이 자리를 누르면 그 배경이 먼저 받아 팔레트가 닫힌다(바깥 클릭
           규칙). 그래서 토글로 만들 것이 없다 — 여는 갈래 하나면 된다. 여는 함수 자체도
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
