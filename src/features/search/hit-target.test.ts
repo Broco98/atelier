@@ -6,7 +6,7 @@ import type { SearchHit } from "./types";
 // 고른 줄이 **어디로 가는가.** 이 판정만 순수 함수로 떼어 두는 것은 실제 이동을 재는 층이
 // L3인데 그쪽 픽스처가 아카이브 화면까지 태우지 않기 때문이다 — 그리고 여기서 재는 것이
 // 「주소를 짓는 규칙을 다시 적지 않았다」이기도 하다: 값이 `fileSearch`·`viewSearch`·
-// `nav-items.ts`에서 나오므로, 그것들이 바뀌면 여기가 함께 움직인다.
+// `destinations.ts`에서 나오므로, 그것들이 바뀌면 여기가 함께 움직인다.
 
 const doc = (over: Partial<Extract<SearchHit, { kind: "doc" }>> = {}): SearchHit => ({
   kind: "doc",
@@ -132,11 +132,15 @@ describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
   });
 
   // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를 주소로 푸는
-  // 자리가 `nav-items.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
-  it("목적지 줄은 main nav가 가는 곳으로 간다", () => {
+  // 자리가 `destinations.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
+  it("목적지 줄은 사이드바가 가는 곳으로 간다", () => {
     expect(hitTarget({ kind: "destination", key: "projects" })).toEqual({ to: "/projects" });
     expect(hitTarget({ kind: "destination", key: "terminal" })).toEqual({ to: "/terminal" });
     expect(hitTarget({ kind: "destination", key: "archive" })).toEqual({ to: "/archive" });
+    // **설정은 `navItems`에 없다**(결정 51 — 사이드바 바닥에 고정된 자리를 줬다). 그래도 갈
+    // 수 있는 화면이라 여기서 풀려야 한다: 그 배열만 훑으면 팔레트 목록에는 뜨는데 Enter가
+    // 아무 일도 안 하는 줄이 되고, **그 실패는 목록만 보면 안 보인다.**
+    expect(hitTarget({ kind: "destination", key: "settings" })).toEqual({ to: "/settings" });
   });
 
   // 코어는 여기서 건넨 key만 돌려주므로(결정 21) 모르는 key는 계약이 깨진 것이다.

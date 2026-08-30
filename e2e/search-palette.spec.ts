@@ -1,7 +1,7 @@
 import { SEARCH_GAP_MS } from "@/features/terminal/shell-registry";
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { SEARCH_HITS, WORKS } from "./fixtures";
+import { SEARCH_DESTINATION_QUERY, SEARCH_HITS, WORKS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 — ⇧⇧로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
@@ -76,6 +76,39 @@ test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) =
   await expect.poll(() => askedFor(page)).toEqual(["", "고", "고정"]);
   // 치는 사이에 목록이 비지 않는다 — 픽스처가 질의를 안 보므로 줄 수는 내내 같다.
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 21·51. **설정은 사이드바 nav 줄에 없지만 팔레트는 갈 수 있다** — 「nav 줄에 서는가」와
+// 「팔레트가 갈 수 있는가」가 다른 물음이라, 설정만 `navItems` 밖에 산다(`destinations.ts`).
+//
+// 이 층이 드는 것은 그 갈림이 **화면에서 끝까지 도는가**다: 코어는 `key` 하나만 돌려주므로
+// (결정 21) 프런트가 그것으로 라벨을 되찾아 그리고, 주소를 되찾아 실제로 그 화면을 세운다.
+// **둘을 한 검사에서 본다** — 뜨기만 하고 안 가면 안 고친 것과 같고, `navItems`만 훑던
+// 시절의 실패가 정확히 그 모양이었다(목록에는 뜨는데 Enter가 아무 일도 안 한다).
+//
+// 좁혀지는 것은 여기서 안 잰다 — 이 질의 하나에만 답이 심겨 있다(fixtures의 머리말).
+test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  await doubleShift(page);
+  await expect(box(page)).toBeFocused();
+  await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
+
+  // **`exact`가 있어야 한다.** 이름 맞추기는 대소문자를 접으므로, 라벨 되찾기가 통째로 죽어
+  // key(`settings`)가 그대로 서도 `exact` 없이는 초록이 된다.
+  const row = page.getByRole("option", { name: "Settings", exact: true });
+  await expect(rows(page)).toHaveCount(1);
+  await expect(row).toHaveAttribute("aria-selected", "true");
+
+  await page.keyboard.press("Enter");
+
+  await expect(palette(page)).toHaveCount(0);
+  await expect(page).toHaveURL("/settings");
+  // **주소만 보면 화면이 안 서도 초록이다.** 설정 화면의 구획 머리가 그 자리에 선다.
+  await expect(page.getByRole("heading", { name: "터미널" })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

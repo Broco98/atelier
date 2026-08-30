@@ -105,7 +105,7 @@ export const ARCHIVE: ArchiveEntry[] = [
 /**
  * 팔레트가 그리는 줄들. **이 표는 질의를 못 본다** — 이름 → 고정 값이라 어떤 질의에도 같은
  * 답이 온다. 좁혀지는 것을 여기서 재려 하지 말 것: 그것은 코어 단위의 몫이고 이 층이
- * 재는 것은 배선이다.
+ * 재는 것은 배선이다. (예외가 딱 하나 있고, 그 이유는 아래 `SEARCH_DESTINATION_QUERY`가 든다.)
  *
  * 경로는 `pinned-work`가 **실제로 가진 spec 파일 그대로**여야 한다. 주소의 `file`이 그
  * work의 목록에 없으면 본문이 기본 문서로 되돌아가, 「고른 것이 열렸다」가 조용히 거짓이 된다.
@@ -123,6 +123,24 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
  * 가르는 것은 코어 단위가 든다(딱 20줄과 잘린 것을 여기서 흉내내면 상한이 두 자리에 산다).
  */
 export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
+
+/**
+ * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
+ * 안 서는데, 그러면 **목록에는 뜨는데 Enter가 아무 일도 안 하는** 실패를 아무 층도 못 잡는다:
+ * 목적지의 `key`를 주소로 푸는 자리가 프런트에 따로 있고(`destinations.ts`), 설정은 `navItems`
+ * 밖에 사는 유일한 목적지라 바로 그 자리에서 빠지기 쉽다(결정 51).
+ *
+ * 좁혀지는 것을 흉내내는 것이 **아니다** — 맞추는 규칙과 상한은 그대로 코어 단위의 몫이고,
+ * 여기서 재는 것은 **그 줄을 골랐을 때 실제로 그 화면에 가는가** 하나다. 그래서 심는 질의도
+ * 하나뿐이고 나머지는 전부 위 고정 답으로 떨어진다 — 앞 검사들이 그대로 돈다.
+ */
+export const SEARCH_DESTINATION_QUERY = "Set";
+export const SEARCH_DESTINATION_RESULTS: SearchResults = {
+  // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
+  // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
+  hits: [{ kind: "destination", key: "settings" }],
+  truncated: false,
+};
 
 /**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
@@ -250,6 +268,9 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  */
 export const FIXTURE_BY_ARG: Record<string, { arg: string; answers: Record<string, unknown> }> = {
   read_spec_file: { arg: "path", answers: SPEC_FILE_BODIES },
+  // 심어 둔 질의 하나만 다른 답을 받고 나머지는 위 고정 답으로 떨어진다 — 왜 하나뿐인지는
+  // `SEARCH_DESTINATION_QUERY` 머리말이 든다.
+  search: { arg: "query", answers: { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS } },
   list_archived_docs: { arg: "slug", answers: ARCHIVED_DOCS },
   read_archived_file: { arg: "path", answers: ARCHIVED_FILE_BODIES },
 };
