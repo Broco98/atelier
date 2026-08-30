@@ -206,7 +206,11 @@ function ArchiveList({
             </span>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto scroll-quiet">
+          <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 scroll-quiet">
+            {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
+                패널 가장자리로 간다. 이 목록은 행 오른쪽 끝에 날짜가 서서 막대와 **0px**까지
+                붙어 있었다(실측 콘텐츠 619 · 막대 619~625). 뚫고 나간 지금은 12px 떨어진다.
+                같은 병이 사이드바 work 목록에 있었고 그쪽 주석이 내력을 든다. */}
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}
