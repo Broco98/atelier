@@ -215,30 +215,38 @@ describe("핀 버튼", () => {
     expect(pinsOf(render(works("pin:가", "나", "draft:다")))).toHaveLength(3);
   });
 
-  it("**격자 밖에 선다** — 자리를 안 잡으므로 격자 배치가 없다", () => {
-    // 결정 1은 이 핀을 메타와 같은 2열 1행에 놓아 칸 폭을 `max(메타, 핀)`으로 겹치게 했다.
-    // 그러면 이 24px이 **셸이 0개인 행에서도 늘 예약**이라, 「아이콘 생기면 그때 가변된다」로
-    // 2열의 28px 바닥을 걷어낸 것이 그 자리에서 헛일이 된다 — 바닥을 걷어도 핀이 대신
-    // 트랙을 잡아 제목이 4px밖에 안 돌아온다(실측).
-    //
-    // **격자에 남긴 채로는 답이 없다**: `opacity-0`이면 자리는 늘 잡혀 있고,
-    // `display:none`으로 걷으면 hover마다 칸이 0↔24로 뛰어 제목이 좌우로 밀린다.
-    // 그래서 행의 `relative`에 대고 `absolute right-1`이다 — 겹침은 그대로이고(둘 다 268px
-    // 에서 끝난다) hover 밀림이 0.00px이다. 그 둘은 e2e가 실측으로 잰다.
-    //
-    // **격자 배치가 남아 있으면 죽은 클래스다** — `absolute`면 위치를 안 정한다(걷기 전후로
-    // 핀 상자가 244~268px 그대로였다). `shrink-0`도 같다: flex 항목이 아니고
-    // `icon-button`이 이미 `flex-shrink: 0`을 든다.
+  // 결정 1·2·5 — **핀은 2열에 메타와 겹쳐 서고, 폭은 hover에만 갖는다.**
+  //
+  // 사람이 실물 앱에서 고른 모양이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
+  // 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」 그러려면 칸이 핀의 폭을 **알아야**
+  // 하므로 핀이 격자 안에 있어야 하고, 그러면서도 안 뜬 동안은 폭이 **0**이어야 한다.
+  //
+  // 한때 `absolute right-1`로 격자 밖에 세운 적이 있다. 그때는 hover 밀림이 0.00px이었지만
+  // 칸이 핀을 몰라 **핀이 제목 글자 위에 얹혔다** — 페이드 띠와 글리프가 둘 다 250~262px에
+  // 섰다(실측). 그 겹침을 없애는 값이 hover의 24px 뜀이다.
+  //
+  // **폭을 걷는 것이 `max-w-0`인 것은 두 이유가 겹쳐서다.** `w-0`은 `icon-button`의
+  // `width: 24px`과 같은 레이어라 승자가 Tailwind의 정렬 순서에 걸리고, `display:none`은
+  // 요소를 지워 **포커스가 안 들어간다** — 이 핀은 포커스에도 떠야 하므로(결정 7, 바로 위
+  // 검사) 그 길이 막힌다. 실제 폭과 겹침은 e2e가 실측으로 잰다.
+  it("2열에 서고, 폭은 hover·포커스에만 갖는다", () => {
     for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
-      expect(pin).toContain("absolute");
-      expect(pin).toContain("right-1");
-      expect(pin).not.toContain("col-start-2");
-      expect(pin).not.toContain("row-start-1");
-      expect(pin).not.toContain("justify-self-end");
-      expect(pin).not.toContain("shrink-0");
+      // 칸이 핀의 폭을 세려면 격자 안이어야 한다.
+      expect(pin).toContain("col-start-2");
+      expect(pin).toContain("row-start-1");
+      expect(pin).not.toContain("absolute");
+      // 쉴 때 트랙 기여가 0 — 그리고 뜰 때 되돌아온다.
+      expect(pin).toContain("max-w-0");
+      expect(pin).toContain("group-hover:max-w-6");
+      expect(pin).toContain("focus-visible:max-w-6");
+      // 0폭 상자 밖으로 글리프가 새지 않게.
+      expect(pin).toContain("overflow-hidden");
+      // 칸이 핀보다 넓을 때(메타가 선 행) stretch되면 글리프가 가운데로 밀린다.
+      expect(pin).toContain("justify-self-end");
     }
-    // 기준을 드는 자리가 행 상자다 — 없으면 핀이 엉뚱한 조상에 대고 선다.
-    expect(render(works("가"))).toContain("group relative grid");
+    // 핀이 격자로 돌아왔으므로 행에 위치 기준이 필요 없다 — 남으면 죽은 클래스다.
+    expect(render(works("가"))).toContain("group grid");
+    expect(render(works("가"))).not.toContain("group relative grid");
   });
 });
 

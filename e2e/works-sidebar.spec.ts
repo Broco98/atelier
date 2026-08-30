@@ -26,6 +26,12 @@ const TITLE_FADE = 12;
 const MARQUEE_SPEED = 50;
 const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
 
+// 핀 상자의 폭(`icon-button`). **셸이 0개인 행은 hover에 제목 상자가 정확히 이만큼 줄어든다** —
+// 핀이 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(SidebarWorkList의 핀 주석).
+// 그래서 흐르는 거리를 **hover 중의 넘침**으로 재야 한다: 쉴 때 넘침으로 재면 이만큼 모자라
+// 마지막 글자가 페이드에 남는다.
+const PIN_WIDTH = 24;
+
 /** 제목 상자 — 마스크가 걸리고 넘침을 재는 자리다. 흐르는 것은 그 **안쪽 글자**다. */
 const titleBoxOf = (page: Page, title: string) =>
   page.getByRole("button", { name: title, exact: true }).locator("[data-title]");
@@ -358,14 +364,17 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 겹쳐 보이는 것은 이제 같은
-// 칸이라서가 아니다: 핀은 격자 밖에서 `absolute right-1`로 서고, 메타는 2열 끝에 붙어 **둘 다
-// 행의 같은 x에서 끝난다.** 그래서 메타는 지워지는 게 아니라 **투명해진다** — `display:none`
-// 으로 빼면 2열이 폭 계산에서 통째로 빠져 **0으로 무너지고**, 핀이 격자 밖이라 그 폭을 아무도
-// 안 받아 **hover마다 제목이 27.91px씩 뛴다**(핀이 칸 안에 있던 때는 24px로 줄었다).
+// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 둘은 **2열 1행에 겹쳐**
+// 서고 칸 폭이 `max(메타, 핀)`이다. 그래서 메타는 지워지는 게 아니라 **투명해진다** —
+// `display:none`으로 빼면 칸이 핀의 24px로 줄어 제목이 hover마다 3.91px 튄다.
 //
-// **핀이 격자 밖인 것을 이 검사가 든다.** 셸 메타가 없는 행에는 2열에 아무것도 없어서, 핀을
-// 격자로 되돌리면 그 행에서 제목이 24px 짧아지거나(늘 서는 트랙) hover마다 0↔24로 뛴다.
+// **핀이 폭을 hover에만 갖는 것을 이 검사가 든다.** 사람이 실물 앱에서 고른 모양이다:
+// 「호버하면, 자동으로 아이콘 위치만큼 text의 최대 크기가 조정되지? 이런걸 원하는거임.
+// (안겹치게)」 그래서 두 행이 **다르게** 움직인다 — 메타가 이미 선 행은 안 움직이고
+// (27.91 > 24), 셸이 0개인 행만 hover에 24px 줄어든다. 둘 중 하나만 세면 이 모양이 아니다.
+//
+// 한때 핀이 `absolute right-1`로 격자 밖에 서서 두 행 다 0.00px이었는데, 칸이 핀을 몰라
+// **핀이 제목 글자 위에 얹혔다.** 마지막 단언(제목 끝 < 핀 시작)이 그 회귀를 막는다.
 //
 // **키보드로 닿을 때도 같다.** 핀은 hover뿐 아니라 포커스에도 뜨므로 hover만 물리면 Tab으로
 // 닿았을 때 둘이 겹쳐 그려진다(결정 7). 반대로 「행 안 어디든 포커스」로 넓히면 이름 버튼에
@@ -373,7 +382,7 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
 //
 // **이 층에서만 보인다**: 겹침도 칸 폭도 `focus-visible`도 진짜 CSS와 레이아웃이 있어야 난다.
 // 셸이 있는 화면에서 보는 이유는 위 검사와 같다.
-test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안 움직인다", async ({ page }) => {
+test("hover·포커스로 핀에 닿으면 메타가 물러나고, 핀은 글자를 안 덮는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
@@ -405,30 +414,36 @@ test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안
   await title.hover();
   await expect(pin).toHaveCSS("opacity", "1");
   await expect(shells).toHaveCSS("opacity", "0");
-  // **자리는 남는다.** 폭이 그대로여야 제목이 끊기는 자리가 hover마다 안 뛴다(결정 6).
-  // 메타를 `display:none`으로 걷으면 2열이 **0으로** 무너져 —— 핀이 격자 밖이라 그 폭을
-  // 아무도 안 받는다 —— 여기가 27.91px 벌어진다.
+  // **메타가 선 행은 안 움직인다.** 칸 폭이 `max(메타 27.91, 핀 24)`이라 핀이 그 안에 들어가
+  // 앉는다. 메타를 `display:none`으로 걷으면 칸이 24px로 줄어 여기가 3.91px 벌어진다.
   expect((await title.boundingBox())!.width).toBe(평소);
 
-  // **셸 메타가 없는 행에서도 안 움직인다 — 이 모양을 고른 이유가 이 세 줄이다.** 저쪽 행은
-  // 메타가 폭을 들고 있어 핀이 격자 안에 있어도 안 뛰지만, 이 행에는 2열에 아무것도 없다.
-  // 핀을 격자에 되돌리면(`col-start-2`) 그 순간 24px짜리 트랙이 hover와 무관하게 늘 서서
-  // 제목이 그만큼 짧아지고, `display:none`으로 hover에만 세우면 여기가 0↔24로 뛴다.
+  // **셸 메타가 없는 행은 hover에 정확히 핀만큼 줄어든다 — 이 모양을 고른 이유가 여기다.**
+  // 저쪽 행은 메타가 이미 더 넓은 폭을 들고 있어 아무 일도 안 나지만, 이 행은 2열이 비어
+  // 있어 핀이 서는 만큼이 곧 칸 폭이다. 줄지 않으면 핀이 격자 밖으로 돌아간 것이고,
+  // 그러면 글자 위에 얹힌다(아래 마지막 단언).
   const 빈행제목 = page.getByRole("button", { name: pinnedWork.title, exact: true });
   const 빈행핀 = page.getByRole("button", { name: `${pinnedWork.title} 고정` });
   await expect(page.locator(`[data-shells="${pinnedWork.slug}"]`)).toHaveCount(0);
   const 빈행평소 = (await 빈행제목.boundingBox())!.width;
   await 빈행제목.hover();
   await expect(빈행핀).toHaveCSS("opacity", "1");
-  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소);
+  const 빈행핀상자 = (await 빈행핀.boundingBox())!;
+  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소 - 빈행핀상자.width);
 
-  // **핀은 2열이 무엇을 하든 같은 자리에 선다** — 격자 밖이라 폭 계산에 안 들어간다.
-  // 이 두 줄이 없으면 「안 움직인다」가 핀이 아예 다른 데 가 있어도 초록이 된다.
+  // **핀은 2열이 무엇을 하든 같은 자리에 선다** — `justify-self-end`가 칸 끝에 붙든다.
+  // 이것이 없으면 메타가 선 행에서 핀 상자가 칸만큼 늘어나 글리프가 가운데로 밀린다.
   const 오른끝 = async (target: Locator) => {
     const box = (await target.boundingBox())!;
     return Math.round(box.x + box.width);
   };
   expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
+
+  // **핀이 글자를 안 덮는다 — 이 판이 산 것이 이 한 줄이다.** 격자 밖에 세우면 hover 밀림은
+  // 0이지만 칸이 핀을 몰라 제목 상자가 핀 아래까지 뻗고, 페이드 띠와 글리프가 같은 자리에
+  // 겹쳐 끝 글자가 뭉개진다. 실측으로 제목 끝 238.00px · 핀 시작 244.00px이다.
+  const 빈행제목상자 = (await 빈행제목.locator("[data-title]").boundingBox())!;
+  expect(빈행제목상자.x + 빈행제목상자.width).toBeLessThanOrEqual(빈행핀상자.x);
 
   await title.hover();
 
@@ -481,7 +496,13 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 12px이
   // 없으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다(결정 11).
   await 긴제목.hover();
-  const 거리 = 넘침 + TITLE_FADE;
+  // **넘침을 hover 중에 다시 잰다.** 이 행은 셸이 0개라 hover에 핀이 서면서 제목 상자가
+  // `PIN_WIDTH`만큼 줄고, 흐르는 거리는 **그 줄어든 상자** 기준이다 — 거리를 CSS가 `100cqw`로
+  // 푸는데(결정 10) 그 `cqw`가 hover 상태의 폭이기 때문이다. 두 값이 갈리는 것을 함께 세는
+  // 것은, 안 갈리면 핀이 격자 밖으로 돌아가 글자를 덮고 있다는 뜻이라서다(핀 검사와 한 쌍).
+  const hover넘침 = await overflowOf(긴제목);
+  expect(hover넘침).toBe(넘침 + PIN_WIDTH);
+  const 거리 = hover넘침 + TITLE_FADE;
 
   // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않고, 호버
   // 카드(350ms)보다는 먼저 답한다.
@@ -566,6 +587,9 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
 
   // **다시 그리지도, 다시 재지도 않았는데** 흐르는 거리가 새 폭에 맞는다.
   await 긴제목.hover();
+  // 위 검사와 같은 이유로 hover 중에 다시 잰다 — 이 행도 셸이 0개다.
+  const hover넘침 = await overflowOf(긴제목);
+  expect(hover넘침).toBe(좁힌뒤 + PIN_WIDTH);
 
   // **속도는 넘침이 달라져도 같다** — AC 「흐르는 속도가 제목 길이와 무관하게 일정하다」를
   // 재는 자리가 여기다. 위 검사가 첫 넘침에서 건 밴드를 좁힌 뒤의 넘침에서도 걸어야 그 말이
@@ -578,7 +602,7 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   expect(속도).toBeLessThan(속도밴드[1]);
 
   await expect
-    .poll(async () => Math.abs((await shiftOf(긴제목)) + (좁힌뒤 + TITLE_FADE)) <= 2, {
+    .poll(async () => Math.abs((await shiftOf(긴제목)) + (hover넘침 + TITLE_FADE)) <= 2, {
       timeout: 8000,
       message: "좁힌 뒤의 넘침에 흐르는 거리가 안 맞는다",
     })
