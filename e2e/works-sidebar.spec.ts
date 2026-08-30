@@ -232,17 +232,35 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
   const before = await height();
   expect(before).toBeGreaterThan(20);
 
+  // **「가는 중」을 브라우저 안에서 듣는다.** 한때 이 자리가 `waitForTimeout(40)` 뒤에 높이를
+  // 한 번 재고 그 값이 0보다 큰지 봤는데, `boundingBox()`가 **프로토콜 왕복**이라 관찰 시점이
+  // 러너 속도에 매였다: 느린 러너에서는 40ms를 노린 그 한 번이 트랜지션(180ms)이 **끝난 뒤에**
+  // 도착해 0을 읽는다. macOS CI에서 2/2 빨간불이었고 로컬 macOS 3회·리눅스 CI에서는 안 났다 —
+  // 코드가 아니라 검사가 흔들린 것이다(v0.11.0 릴리즈가 그 자리에서 두 번 멎었다).
+  //
+  // 리스너는 **클릭 전에** 걸고 결과는 나중에 읽으므로 왕복이 타이밍에 안 낀다. 그리고 이쪽이
+  // 재려던 것을 더 곧게 잰다: 「한 번에 사라지지 않는다」 = **`grid-template-rows`가 전이됐다**
+  // 이고, 높이 표본은 그것의 간접 증거였다.
+  await body.evaluate((el) => {
+    (window as unknown as { __collapsed: string[] }).__collapsed = [];
+    el.addEventListener("transitionend", (e) => {
+      (window as unknown as { __collapsed: string[] }).__collapsed.push(
+        (e as TransitionEvent).propertyName,
+      );
+    });
+  });
+
   await header.click();
-  await page.waitForTimeout(40);
-  const mid = await height();
   await page.waitForTimeout(400);
   const after = await height();
+  const transitioned = await page.evaluate(
+    () => (window as unknown as { __collapsed: string[] }).__collapsed,
+  );
 
   // 끝내 접힌다.
   expect(after).toBe(0);
-  // **가는 중이 있었다.** 한 번에 사라지면 40ms에 이미 0이라 이 줄이 빨개진다.
-  expect(mid).toBeGreaterThan(0);
-  expect(mid).toBeLessThan(before);
+  // **가는 중이 있었다.** 한 번에 사라지면 전이가 안 일어나 이 줄이 빨개진다.
+  expect(transitioned).toContain("grid-template-rows");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
