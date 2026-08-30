@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { RunningMarks, WorkSectionList } from "./SidebarWorkList";
+import { WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -36,12 +36,13 @@ function render(
   {
     selectedSlug = null,
     shellCounts = {},
-    // 둘째 줄의 로고는 슬롯으로 온다 — 값을 고르는 자리가 Sidebar라서다(RunningMarks 머리말).
-    renderRunning = (work: WorkView) => <i data-running={work.slug} />,
+    // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
+    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
+    renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
-    renderRunning?: (work: WorkView) => ReactNode;
+    renderShellMeta?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -55,7 +56,7 @@ function render(
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
-      renderRunning={renderRunning}
+      renderShellMeta={renderShellMeta}
     />,
   );
 }
@@ -102,11 +103,13 @@ const rowsBySection = (markup: string) =>
       rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
     }));
 
-// 행의 **둘째 줄**만 잘라낸다(결정 2). 「행 안에서」 봐야 뜻이 있다 — 마크업 전체에서 숫자를
-// 세면 다른 행의 줄이나 구획 개수와 섞여, 줄이 엉뚱한 work에 서도 초록이 된다.
-// 이 줄 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 줄 전부다.
-const subrowsOf = (markup: string) =>
-  [...markup.matchAll(/<div[^>]*data-subrow="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
+// 행 오른쪽 끝의 **셸 메타 상자**만 잘라낸다(결정 14). 표식이 「둘째 줄」이라는 자리 설명이
+// 아니라 **그 자리에 있는 것**의 이름인 것은 이 저장소의 다른 표식들과 같은 규칙이다
+// (`data-branch`·`data-section`). 「행 안에서」 봐야 뜻이 있다 — 마크업 전체에서 숫자를 세면
+// 다른 행의 메타나 구획 개수와 섞여, 메타가 엉뚱한 work에 서도 초록이 된다.
+// 이 상자 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 상자 전부다.
+const shellBoxesOf = (markup: string) =>
+  [...markup.matchAll(/<div[^>]*data-shells="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
     slug: m[1],
     html: m[0],
   }));
@@ -211,6 +214,40 @@ describe("핀 버튼", () => {
     // 결정 83. 초안도 고정할 수 있다.
     expect(pinsOf(render(works("pin:가", "나", "draft:다")))).toHaveLength(3);
   });
+
+  // 결정 1·2·5 — **핀은 2열에 메타와 겹쳐 서고, 폭은 hover에만 갖는다.**
+  //
+  // 사람이 실물 앱에서 고른 모양이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
+  // 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」 그러려면 칸이 핀의 폭을 **알아야**
+  // 하므로 핀이 격자 안에 있어야 하고, 그러면서도 안 뜬 동안은 폭이 **0**이어야 한다.
+  //
+  // 한때 `absolute right-1`로 격자 밖에 세운 적이 있다. 그때는 hover 밀림이 0.00px이었지만
+  // 칸이 핀을 몰라 **핀이 제목 글자 위에 얹혔다** — 페이드 띠와 글리프가 둘 다 250~262px에
+  // 섰다(실측). 그 겹침을 없애는 값이 hover의 24px 뜀이다.
+  //
+  // **폭을 걷는 것이 `max-w-0`인 것은 두 이유가 겹쳐서다.** `w-0`은 `icon-button`의
+  // `width: 24px`과 같은 레이어라 승자가 Tailwind의 정렬 순서에 걸리고, `display:none`은
+  // 요소를 지워 **포커스가 안 들어간다** — 이 핀은 포커스에도 떠야 하므로(결정 7, 바로 위
+  // 검사) 그 길이 막힌다. 실제 폭과 겹침은 e2e가 실측으로 잰다.
+  it("2열에 서고, 폭은 hover·포커스에만 갖는다", () => {
+    for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
+      // 칸이 핀의 폭을 세려면 격자 안이어야 한다.
+      expect(pin).toContain("col-start-2");
+      expect(pin).toContain("row-start-1");
+      expect(pin).not.toContain("absolute");
+      // 쉴 때 트랙 기여가 0 — 그리고 뜰 때 되돌아온다.
+      expect(pin).toContain("max-w-0");
+      expect(pin).toContain("group-hover:max-w-6");
+      expect(pin).toContain("focus-visible:max-w-6");
+      // 0폭 상자 밖으로 글리프가 새지 않게.
+      expect(pin).toContain("overflow-hidden");
+      // 칸이 핀보다 넓을 때(메타가 선 행) stretch되면 글리프가 가운데로 밀린다.
+      expect(pin).toContain("justify-self-end");
+    }
+    // 핀이 격자로 돌아왔으므로 행에 위치 기준이 필요 없다 — 남으면 죽은 클래스다.
+    expect(render(works("가"))).toContain("group grid");
+    expect(render(works("가"))).not.toContain("group relative grid");
+  });
 });
 
 describe("구획 접기", () => {
@@ -238,87 +275,160 @@ describe("구획 접기", () => {
 });
 
 // 결정 2~5. **이 work의 절반이 이 물음 하나를 위한 것이다: 목록만 훑고도 어느 work에서
-// 무엇이 돌고 있는지 안다.** 그래서 이 줄의 주인공은 지금 보고 있지 **않은** work다 —
+// 무엇이 돌고 있는지 안다.** 그래서 이 자리의 주인공은 지금 보고 있지 **않은** work다 —
 // 보고 있는 work에서 뭐가 도는지는 본문의 탭 줄이 이미 말한다.
-describe("work 행의 둘째 줄", () => {
-  it("셸이 하나라도 있는 행에만 선다 — 높이가 곧 신호다", () => {
-    // 결정 3. 셸이 0개인 work는 한 줄로 남아 **행 높이 자체가 「여기서 일이 돌고 있다」**가 된다.
+//
+// 한때 이것이 **둘째 줄**이었다. 판 02가 그 줄을 걷어 행 오른쪽 끝으로 옮겼다(결정 0) —
+// 자리와 높이는 아래 e2e가 실측으로 재고, 여기서 보는 것은 **마크업이 무엇을 말하는가**다.
+describe("work 행 오른쪽 끝의 셸 메타", () => {
+  it("셸이 하나라도 있는 행에만 선다", () => {
+    // 셸이 0개인 work의 행에는 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다.
+    // (행 **높이**는 이제 신호가 아니다 — 모든 행이 32px이다. 결정 0.)
     const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2, 다: 1 } });
-    expect(subrowsOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
+    expect(shellBoxesOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
   });
 
-  it("그 work의 셸 수를 적는다", () => {
-    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 3, 나: 1 } });
-    expect(subrowsOf(markup).map((one) => spansOf(one.html)[0])).toEqual(["3", "1"]);
-  });
-
-  it("도는 것이 없어도 줄은 그대로 선다", () => {
+  it("도는 것이 없어도 자리는 그대로 선다", () => {
     // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
-    // 순간 바뀌어서(pty.rs가 1초마다 잰다) 행 높이에 매면 claude가 답을 마칠 때마다 목록이
-    // 접혔다 펴지고 아래 work들이 계속 밀린다. 줄이 서는 조건은 **안 변하는 값**(셸을
-    // 포함하는가)이고 변하는 것은 줄 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도
-    // 줄은 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderRunning: () => null });
-    expect(subrowsOf(markup)).toHaveLength(1);
+    // 순간 바뀌어서(pty.rs가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이
+    // 생겼다 사라지고 제목이 끊기는 자리가 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
+    // (셸을 포함하는가)이고 변하는 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안
+    // 그려도 자리는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderShellMeta: () => null });
+    expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
-  it("로고는 그 줄 **안에** 있고, 셸이 없는 행에는 아예 안 붙는다", () => {
-    // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
-    // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
+  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯이 안 선다", () => {
+    // 슬롯을 **부르는** 것은 `SidebarWorkList.tsx`가 모든 work에서 한다 — 여기서 재는 것은
+    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `ShellMetaFor`의 몸통이 안 돌아
+    // 구독도 안 붙는다: 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」로 뒤집히는
+    // 자리는 마운트다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
-    const [가] = subrowsOf(markup);
-    expect(가.html).toContain('data-running="가"');
-    expect(markup).not.toContain('data-running="나"');
+    const [가] = shellBoxesOf(markup);
+    expect(가.html).toContain('data-meta="가"');
+    expect(markup).not.toContain('data-meta="나"');
+  });
+
+  it("셸 수도 무리도 **이 파일이 적지 않는다** — 든 것은 슬롯 하나뿐이다", () => {
+    // 결정 3·13. 「그 밖의 셸」의 수는 셸 수와 도는 것을 둘 다 아는 자리에서만 나오므로
+    // 두 값이 `ShellMeta` 하나로 합쳐졌다. 여기가 셸 수를 다시 적으면 그 수가 무리들의
+    // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다.
+    const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
+    expect(가.html).not.toContain(">3<");
+    expect(spansOf(가.html)).toEqual([]);
   });
 
   it("아무것도 눌리지 않는다", () => {
-    // 결정 5. 로고가 **종류만** 말하므로(결정 4) 로고와 셸이 1:1이 아니다 — 누르면 어느
-    // 셸로 갈지 정해지지 않는다. 행을 누르는 것은 위 줄의 이름 버튼이 받아 그 work로 간다.
-    const [가] = subrowsOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
+    // 결정 5. 무리 하나가 셸 **여럿**을 접으므로(결정 3) 무리와 셸이 1:1이 아니다 — 누르면
+    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 이름 버튼이 받아 그 work로 간다.
+    const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
     expect(가.html).not.toContain("<button");
     expect(가.html).not.toContain("<a ");
   });
+
+  it("**둘째 줄이 없다** — 메타는 2열에 서고, 이름 버튼은 행의 직계 자식이다", () => {
+    // 결정 0·1. 두 칸을 걸쳐 아래에 서던 줄이 사라졌다. 래퍼를 세우지 않는 것이 핵심이다 —
+    // 이름 버튼이 행 상자의 직계 자식으로 남아야 한다(호버 카드 자리를 재는 e2e의 불변조건).
+    // 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다(결정 14).
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
+    expect(markup).not.toContain("col-span-2");
+    expect(markup).not.toContain("data-subrow");
+    expect(shellBoxesOf(markup)[0].html).toContain("col-start-2");
+    expect(shellBoxesOf(markup)[0].html).toContain("row-start-1");
+  });
+
+  it("**2열은 아무것도 예약하지 않는다** — 그냥 `auto`다", () => {
+    // 결정 2·5가 여기에 한 무리분(28px)을 **바닥으로** 깔라고 했고, 그것이 실물 앱을 보고
+    // 기각됐다: 「아이콘을 고려해서 미리 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게
+    // 맞아.」 자리는 무리가 **설 때** 나고, 안 서면 그 폭은 제목의 것이다.
+    //
+    // **이 한 줄이 되찾는 것과 치르는 것을 함께 정한다** — 셸이 0개인 행의 제목 상자가
+    // 27.91px 넓어지고, 그 대신 첫 셸이 붙는 순간 같은 값만큼 제목이 짧아진다. 두 수가
+    // 실제로 그렇게 나오는지는 e2e가 실측으로 잰다(여기서는 폭이 안 난다).
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
+    expect(markup).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(markup).not.toContain("minmax(28px,auto)");
+  });
+
+  it("**메타는 칸을 늘리지 않는다** — `justify-self-end`가 없다", () => {
+    // 트랙이 `auto`라 칸 폭이 곧 이 상자의 폭이다. 끝에 붙이든 늘리든 같은 상자가 나므로
+    // (실측 240.09~268px, 걷기 전후 동일) `justify-self-end`는 아무것도 안 정한다 —
+    // 예약이 있던 때는 28px 칸 안에서 23px 상자를 오른쪽에 붙이는 일을 했다.
+    expect(shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 1 } }))[0].html).not.toContain(
+      "justify-self-end",
+    );
+  });
 });
 
-// 결정 4·15. **표는 agent-mark 하나다** — 탭 칸과 이 줄이 각자 표를 들면 둘이 갈린다.
-// **세는 일이 여기다**(결정 28) — 값 쪽은 중복을 그대로 둔다(shell-registry.test.ts).
-describe("둘째 줄의 로고", () => {
-  const marks = (running: string[]) => renderToStaticMarkup(<RunningMarks running={running} />);
-  const labelsOf = (html: string) => [...html.matchAll(/aria-label="(.*?)"/g)].map((m) => m[1]);
+// 결정 9~12 — **제목이 `…` 대신 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
+// 읽힌다.** 폭으로는 이 문제를 못 푼다: 핀을 띄워도 +24px, 이름 버튼 여백을 없애도 +6px,
+// 기본 사이드바 폭 조정은 저장된 폭이 이겨 0px이다 — 다 합쳐도 두 글자다.
+//
+// **여기서 보는 것은 마크업이 그 자리를 만들어 두는가뿐이다.** 페이드가 실제로 걸리는지도,
+// 글자가 흐르는지도 진짜 CSS가 있어야 나므로 e2e가 그쪽의 유일한 그물이다(결정 15).
+describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
+  // 상자와 그 **안쪽 글자**를 함께 집는다. 둘이 갈려 있는 것이 이 판의 구조 전부다 —
+  // 상자가 컨테이너이자 마스크이고, 흐르는 것은 그 안의 글자다(결정 10).
+  const titleOf = (markup: string) => {
+    const found = /<span data-title="" class="([^"]*)"><span>([^<]*)<\/span><\/span>/.exec(markup);
+    return found && { box: found[1], title: found[2] };
+  };
 
-  it("종류마다 하나씩, 받은 순서 그대로다", () => {
-    expect(labelsOf(marks(["codex", "claude"]))).toEqual(["codex 1개", "claude 1개"]);
+  it("제목이 상자 **안쪽 글자**로 서고, 말줄임이 아니다", () => {
+    // `…`을 그리던 `truncate`가 사라진 자리다(결정 9). 흐르는 것이 글자라 상자와 갈려야
+    // 하고, 상자에 걸린 마스크가 그 끝을 흐린다 — 그 둘은 e2e가 실측으로 본다.
+    //
+    // **안쪽 글자에 클래스가 없는 것이 계약이다**(결정 10) — 규격은 `index.css`가 든다.
+    // 그래서 이 층이 아는 것은 `titleOf`의 정규식이 이미 잡는 **자식 span이 있는가**와 상자에
+    // `truncate`가 없는가뿐이고, 그 글자가 `max-content`로 서는지는 e2e의 넘침이 잰다.
+    const one = titleOf(render(works("가")))!;
+    expect(one.title).toBe("가");
+    expect(one.box).not.toContain("truncate");
   });
 
-  it("같은 것이 여럿이면 로고 하나에 **수**가 붙는다", () => {
-    // 결정 28. 한 줄 안에서 셸에만 수가 붙고 에이전트에는 안 붙으면 세는 단위가 둘로 갈린다.
-    const html = marks(["claude", "codex", "claude"]);
-    expect(labelsOf(html)).toEqual(["claude 2개", "codex 1개"]);
-    expect(html).toContain(">2<");
-    expect(html).toContain("tabular-nums");
+  it("상자는 폭을 **밖에서** 받는다", () => {
+    // 결정 10의 딸린 조정이다. `container-type: inline-size`는 「내 폭이 내용에 안
+    // 달렸다」는 선언이라, 내용 기반 flex-basis로 두면 상자가 **0으로 무너져** 제목이
+    // 통째로 사라진다. `flex-1`(basis 0)과 `min-w-0`이 함께 가야 한다.
+    const one = titleOf(render(works("가")))!;
+    expect(one.box).toContain("flex-1");
+    expect(one.box).toContain("min-w-0");
   });
 
-  it("모르는 것에는 아무것도 안 띄운다", () => {
-    // 셸에서 도는 것의 대부분(`node`·`cargo`·`vim`)이 그 자리에 온다 — 그때마다 무엇인가
-    // 뜨면 줄이 시끄러워져 「어느 work에서 에이전트가 도나」가 오히려 안 보인다.
-    expect(marks(["node", "cargo"])).toBe("");
-    expect(marks([])).toBe("");
+  it("**관찰자를 새로 달지 않는다** — 흐르는 거리는 CSS가 정한다", () => {
+    // 결정 10. `100cqw`가 상자 폭을 되읽으므로 사이드바 폭을 드래그해도 CSS가 스스로 다시
+    // 푼다 — 폭이 바뀌는 이 화면에서 그게 결정적이다. 재는 것은 **속도 하나**이고 그 자리는
+    // 호버 카드 타이머를 이미 거는 핸들러다(결정 12): 쉴 때 계측도, 관찰자도 없다.
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(source).not.toContain("ResizeObserver");
+    // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
+    expect(source.split("scrollWidth").length - 1).toBe(1);
   });
 
-  it("줄보다 한 단 진하다 — 대비 바닥이 그 이유다", () => {
-    // 결정 15가 로고를 `currentColor`로 칠한 근거가 「대비 바닥 4.5를 저절로 넘는다」인데,
-    // 이 줄의 색(tertiary)은 사이드바 배경에서 그 아래다(≈2.9). 줄 색을 그대로 물려받으면
-    // 결정 15의 근거가 이 자리에서만 거짓이 된다.
-    expect(marks(["claude"])).toContain("text-muted-foreground");
-  });
-
-  it("이름은 눈이 아니라 접근성으로만 읽는다 — 누를 수도 없다", () => {
-    const html = marks(["claude"]);
-    // 좁은 사이드바에서 이름까지 적으면 종류가 둘일 때 제목보다 그 줄이 길어진다.
-    expect(html).not.toContain(">claude<");
-    // `title`을 안 다는 것은 이 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹치기 때문이다.
-    expect(html).not.toContain("title=");
-    expect(html).not.toContain("<button");
+  // 페이드 폭은 **한 값인데 두 언어에 적혀 있다** — `calc()`가 길이를 시간으로 못 바꾸는 것이
+  // 그 이유 전부다(결정 12). 정본은 `index.css`이고(결정 10) `TITLE_FADE`는 그것을 시간으로
+  // 바꾸려고 옮겨 적은 쪽이다. 옮겨 적은 쪽이 뒤처져도 타입 검사도 화면도 조용하다:
+  // 어긋남은 마퀴 **속도**로만 나타나고(넘침 100px에서 12↔24로 갈리면 10%쯤) e2e의 속도 밴드
+  // (`MARQUEE_SPEED * [0.88, 1.12]`) 안에 숨는다. e2e가 이미 묶는 짝은 CSS↔e2e 하나뿐이라
+  // 이 짝은 여기서 본다 — `theme-tokens.test.ts`가 앱 팔레트↔터미널에 하는 것과 같다.
+  it("`TITLE_FADE`가 `index.css`의 `--title-fade`와 같은 수다", () => {
+    // 못 찾으면 던진다 — 어느 쪽 이름이 바뀌면 조용히 통과하는 대신 여기가 깨져야 한다.
+    const px = (source: string, pattern: RegExp, where: string) => {
+      const found = pattern.exec(source);
+      if (!found) throw new Error(`${where}에서 페이드 폭을 찾지 못했다`);
+      return found[1];
+    };
+    const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(px(source, /const TITLE_FADE = (\d+);/, "SidebarWorkList.tsx")).toBe(
+      px(css, /--title-fade:\s*(\d+)px;/, "index.css"),
+    );
   });
 });
 
@@ -360,7 +470,7 @@ describe("사이드바 목록은 터미널을 모른다", () => {
   it("terminal feature를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가**
     // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 도는 것의
-    // 로고가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderRunning`) 이유가 그것이고,
+    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderShellMeta`) 이유가 그것이고,
     // `components/ui/agent-mark`가 `features/terminal`이 아니라 거기 사는 이유도 같다.
     //
     // **주석에 적어도 빨개진다.** 세는 것이 import가 아니라 리터럴이라 그렇고, 그 성질은

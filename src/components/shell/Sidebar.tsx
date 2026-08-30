@@ -1,10 +1,12 @@
+import type { ReactNode } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
-import SidebarWorkList, { RunningMarks } from "@/features/works/SidebarWorkList";
+import SidebarWorkList from "@/features/works/SidebarWorkList";
 import { runningAgentsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
+import { ShellMeta } from "./shell-meta";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -40,7 +42,7 @@ function Sidebar({
   // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
   const shellCounts = useStore(terminalStore, shellCountsOf, shallow);
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
-  // 숫자 하나라 얕은 비교가 필요 없다.
+  // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
   const topShells = useStore(terminalStore, (state) => shellsOf(state, null).length);
 
   return (
@@ -86,10 +88,17 @@ function Sidebar({
               active={item.key === activeKey}
               onClick={() => onSelect(item.key)}
               // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
-              // 아니다). work 행이 둘째 줄로 「여기서 일이 돌고 있다」를 말하는 것과 같은
+              // 아니다). work 행이 오른쪽 끝 메타로 「여기서 일이 돌고 있다」를 말하는 것과 같은
               // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
               // 그 화면에 들어가야만 보인다.
-              count={item.key === "terminal" ? topShells : 0}
+              //
+              // **개수가 아니라 메타 슬롯이다**(결정 4·13). 같은 어휘를 쓰므로 최상위
+              // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
+              // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
+              // 선다」도 슬롯 안으로 내려갔다.
+              meta={
+                item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null
+              }
             />
           ))}
         </nav>
@@ -97,10 +106,14 @@ function Sidebar({
         <SidebarWorkList
           open={open}
           shellCounts={shellCounts}
-          // 둘째 줄의 로고도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
+          // 행 오른쪽 끝의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
           // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
-          // 않는다. 구독이 행마다 따로인 이유는 `RowRunning`이 든다.
-          renderRunning={(work) => <RowRunning slug={work.slug} />}
+          // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
+          // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
+          // 따로인 이유는 `ShellMetaFor`가 든다.
+          renderShellMeta={(work) => (
+            <ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
+          )}
         />
 
         {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
@@ -125,7 +138,8 @@ function Sidebar({
 }
 
 /**
- * work 행 하나가 **자기 것만** 구독한다(결정 2).
+ * 셸 메타 하나가 **자기 것만** 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서 그림
+ * (`ShellMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적 마크업 seam에 산다.
  *
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
@@ -134,12 +148,16 @@ function Sidebar({
  * 머리말이 그 근거를 든다). 행마다 자기 것을 고르면 안 바뀐 행은 같은 배열을 받아 그
  * 자리에 머문다.
  *
- * **개수는 반대로 위에서 한 번에 읽는다**(`shellCounts`) — 그 값은 셸이 열리고 닫힐 때만
- * 바뀌어 얕은 비교가 실제로 걸린다. 둘이 갈리는 자리가 여기다.
+ * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
+ * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
+ *
+ * **`owner`가 `null`이면 최상위, 곧 nav `Terminal`이다.** work 행과 nav가 이 컴포넌트
+ * **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가 하나」가
+ * 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function RowRunning({ slug }: { slug: string }) {
-  const running = useStore(terminalStore, (state) => runningAgentsOf(state, slug), shallow);
-  return <RunningMarks running={running} />;
+function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
+  const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
+  return <ShellMeta shellCount={shellCount} running={running} />;
 }
 
 // nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어
@@ -151,26 +169,30 @@ function RowRunning({ slug }: { slug: string }) {
 // 행에 누를 것이 둘이었는데(결정 72), 셸을 고르는 자리가 화면 안 탭 줄로 되돌아가면서
 // (adr-03) 그것이 통째로 걷혔다 — 이 항목은 다시 **더 갈라지지 않는 줄**이다.
 //
-// 남은 숫자는 **접힌 가지의 잔재가 아니다**: 그 work에서 몇 개가 도는지를 말하는 work 행의
-// 둘째 줄과 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
+// 남은 메타는 **접힌 가지의 잔재가 아니다**: 그 work에서 무엇이 몇 개 도는지를 말하는 work
+// 행 오른쪽 끝의 메타와 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
 // 배경(선택·hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 — 바깥이 가진 padding은
 // 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다.
-// 숫자가 행 전체를 누르는 데 걸리적거리지 않게 이름 버튼 **안**에 두지 않는다: 그러면 셸
-// 수가 이 항목의 접근성 이름에 섞여 「이름으로 nav를 집는다」가 깨진다(WorkRow의 둘째 줄과
+// 메타가 행 전체를 누르는 데 걸리적거리지 않게 이름 버튼 **안**에 두지 않는다: 그러면 셸
+// 수가 이 항목의 접근성 이름에 섞여 「이름으로 nav를 집는다」가 깨진다(WorkRow의 메타와
 // 같은 함정이다).
 function SidebarItem({
   icon: Icon,
   label,
   active,
   onClick,
-  count = 0,
+  meta = null,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
   onClick: () => void;
-  /** 이 항목이 안고 있는 셸 수. 0이면 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다. */
-  count?: number;
+  /**
+   * 이 항목이 안고 있는 셸의 **메타**(결정 13). 개수가 아니라 슬롯인 것은 그 값이 터미널
+   * 스토어를 구독해야 나오기 때문이고, 「없으면 아무것도 안 선다」는 규칙도 그 안으로
+   * 내려갔다 — `ShellMeta`가 셸 0개일 때 아무것도 돌려주지 않는다.
+   */
+  meta?: ReactNode;
 }) {
   return (
     <div
@@ -189,10 +211,10 @@ function SidebarItem({
       </button>
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로
           붙어 서는 둘이 다른 무게로 읽히지 않는다(GUTTER 주석과 같은 계약). 오른쪽 끝도
-          그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다. */}
-      {count > 0 && (
-        <span className="shrink-0 pr-[5px] text-[11.5px] tabular-nums text-tertiary">{count}</span>
-      )}
+          그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
+          **그 규격을 이제 `ShellMeta`가 든다**(결정 13·14) — work 행과 여기가 같은 조각을
+          쓰므로 규격이 한 자리에 있고, 둘이 앞으로도 안 갈린다. */}
+      {meta}
     </div>
   );
 }

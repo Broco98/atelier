@@ -64,9 +64,10 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
     expect(shallow(runningAgentsOf(뒤, "나"), runningAgentsOf(state, "나"))).toBe(false);
   });
 
-  it("명령이 끝나도 **줄이 서는 조건**은 안 바뀐다", () => {
-    // 결정 3. 행 높이를 정하는 값(셸 수)이 초마다 흔들리면 claude가 답을 마칠 때마다
-    // 목록이 접혔다 펴진다. 도는 것이 붙었다 떨어지는 동안 이 값은 같은 값이어야 한다.
+  it("명령이 끝나도 **메타가 서는 조건**은 안 바뀐다", () => {
+    // 결정 3. 메타가 서는 조건(셸 수)이 초마다 흔들리면 claude가 답을 마칠 때마다 그 칸이
+    // 생겼다 사라져 제목이 끊기는 자리가 좌우로 뛴다. 도는 것이 붙었다 떨어지는 동안 이
+    // 값은 같은 값이어야 한다.
     const { state, 나 } = twoWorks();
     const 도는중 = setRunning(state, 나, "claude");
     const 끝난뒤 = setRunning(도는중, 나, null);
@@ -78,27 +79,40 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
 describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("종류는 **행마다 자기 것만** 구독한다", () => {
+  it("종류는 **자리마다 자기 것만** 구독한다", () => {
     // 얕은 비교가 빠지면 셀렉터가 회차마다 새 배열을 돌려주므로 위 검사들이 전부 초록인
     // 채로 모든 행이 초마다 다시 그려진다 — 값과 배선을 함께 봐야 하는 이유가 이것이다.
+    //
+    // 인자가 슬러그가 아니라 `owner`인 것은 nav `Terminal`이 같은 컴포넌트를 쓰기 때문이다
+    // (결정 4·13) — `null`이 최상위다.
     expect(sidebar).toContain(
-      "useStore(terminalStore, (state) => runningAgentsOf(state, slug), shallow)",
+      "useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow)",
     );
   });
 
-  it("종류를 Record로 한 번에 읽지 않는다", () => {
+  it("종류를 Record로 한 번에 읽지 않고, 부르는 자리도 하나다", () => {
     // `shellCountsOf`처럼 Record로 주면 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘
     // 어긋나고, work 하나에서 명령이 시작될 때마다 **목록 전체**가 다시 그려진다
     // (`runningAgentsOf` 머리말이 그 근거를 든다). 부르는 자리가 하나뿐임을 세어 못박는다.
     // 이름이 아니라 **부르는 자리**를 센다 — 이름만 세면 import 줄과 주석의 산문까지
     // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다.
+    //
+    // **nav `Terminal`이 같은 어휘를 쓰게 되면서 이 검사가 하나를 더 막는다**(결정 4·13):
+    // 「nav를 위해 구독을 하나 더 판다」. 구독 컴포넌트 하나를 work 행과 nav가 함께 쓰므로
+    // 부르는 자리는 여전히 하나여야 한다.
     expect(countOf(sidebar, "runningAgentsOf(")).toBe(1);
   });
 
-  it("그 값이 work 행의 둘째 줄로 내려간다", () => {
+  it("그 값이 work 행 오른쪽 끝의 메타로 내려간다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
-    expect(sidebar).toContain("renderRunning={(work) => <RowRunning slug={work.slug} />}");
+    //
+    // **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8). 그 값이
+    // 함께 가야 하는 것은 「그 밖의 셸」의 수가 셸 수와 도는 것을 **둘 다 아는 자리**에서만
+    // 나오기 때문이고(결정 3), 그 자리가 `ShellMeta` 하나다.
+    expect(sidebar).toContain(
+      "<ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />",
+    );
   });
 });
 
@@ -134,9 +148,15 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     }
   });
 
-  it("`Terminal`이 안고 있는 셸 수는 남는다", () => {
+  it("`Terminal`이 안고 있는 셸 수는 남되, work 행과 **같은 어휘**로 선다", () => {
     // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
-    // 사이드바 어디에도 안 남는다(work 행은 둘째 줄이 그 몫을 한다 — 결정 2·3).
-    expect(sidebar).toContain('count={item.key === "terminal" ? topShells : 0}');
+    // 사이드바 어디에도 안 남는다(work 행은 오른쪽 끝의 메타가 그 몫을 한다 — 결정 2·3).
+    //
+    // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
+    // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
+    // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
+    expect(sidebar).toContain(
+      'item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null',
+    );
   });
 });

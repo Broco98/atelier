@@ -1,4 +1,15 @@
-import { Children, cloneElement, isValidElement, memo, useCallback, useMemo, useRef } from "react";
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -13,10 +24,11 @@ import {
   OctagonAlert,
   TriangleAlert,
 } from "lucide-react";
+import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
-import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
-import type { CalloutKind } from "./doc-refs";
+import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
+import type { CalloutKind, DocBody } from "./doc-refs";
 import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
@@ -38,10 +50,10 @@ interface SpecViewerProps {
   // 화면(WorksPage)이 이미 풀어서 내려준다 — 트리의 "지금 이 문서" 표시와 본문이 같은
   // 값을 봐야 하고, 그 트리가 이제 형제 컬럼에 살기 때문이다.
   file: string | null;
-  // 본문이 소스 보기인가. **버튼의 켜짐 그대로가 아니다** — 거기에 파일 종류가 얹혀 있다
-  // (결정 6의 비-md 고정). 그 식도 화면이 든다: 켜짐은 패널 버튼이, 본문은 여기가 쓰는데
-  // 둘의 공통 조상이 화면뿐이다.
-  sourceView: boolean;
+  // `[소스]`가 켜져 있는가 — **사람이 정한 값 그대로**다. 파일 종류를 얹는 일은 표
+  // (`docBody`)가 하므로 화면은 식을 안 든다. 상태의 주인이 화면인 것은 그대로다:
+  // 켜짐은 패널 버튼이, 본문은 여기가 쓰는데 둘의 공통 조상이 화면뿐이다.
+  showSource: boolean;
   // 문서 안 링크를 따라갈 때. 히스토리를 **만든다** — 따라 들어갔으면 돌아올 수 있어야 한다.
   // (히스토리를 만들지 않는 트리 훑기는 패널 쪽 길이라 여기를 지나지 않는다.)
   onNavigate: (path: string) => void;
@@ -55,17 +67,20 @@ function SpecViewer({
   panelOpen,
   sidebarOpen,
   file,
-  sourceView,
+  showSource,
   onNavigate,
   onCopy,
 }: SpecViewerProps) {
   // 화면을 비웠을 때만 넓어진다 — 사이드바 하나만 접은 상태는 아직 비운 것이 아니다
   const wide = !sidebarOpen && !panelOpen;
   const files = work.specFiles;
-  // **그림은 안 읽는다.** PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은 줄번호
-  // `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로 건다.
-  const image = isImageFile(file);
-  const { data: content } = useSpecFile(work.slug, image ? null : file);
+  // 본문이 무엇으로 서는가 — **표가 정한다**(결정 7). 이 화면은 그 값으로 갈리기만 한다.
+  //
+  // **읽을지 말지도 그 값이다**: PNG를 UTF-8 문자열로 읽으면 쓸 수 없는 값이 오고, 화면은
+  // 줄번호 `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로
+  // 건다. 여기서 그림 판정을 따로 부르면 표가 바뀔 때 읽기만 옛 규칙을 따른다.
+  const body = docBody(file, showSource);
+  const { data: content } = useSpecFile(work.slug, body === "image" ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
@@ -77,6 +92,41 @@ function SpecViewer({
     },
     [work.slug, file, onCopy],
   );
+
+  // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
+  // (`doc-refs.ts`의 표 머리말이 이미 다섯째 칸의 여지를 말한다) 여기가 컴파일에서 깨진다.
+  // 마지막을 `else`로 두면 새 칸이 **조용히 소스 보기로** 떨어지고 아무 데서도 안 잡힌다.
+  // 아카이브 화면에도 같은 네 갈래가 있고(인자와 근거가 갈려 한 컴포넌트로는 안 묶는다)
+  // 거기도 같은 모양이다 — 칸이 늘면 두 자리가 함께 깨져야 한다.
+  const bodyView = (body: DocBody): React.ReactNode => {
+    switch (body) {
+      case "image":
+        return <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />;
+      case "html":
+        // `?? ""`로 뭉개지 않는다 — 안 온 것과 빈 파일이 프레임 경로에서 갈린다(결정 9)
+        return <HtmlDoc content={content} name={file ?? ""} />;
+      case "pretty":
+        return (
+          <PrettyView
+            file={file ?? ""}
+            content={content ?? ""}
+            onCopyBlock={copyRef}
+            wide={wide}
+            files={files}
+            onNavigate={onNavigate}
+            specRoot={specRoot}
+          />
+        );
+      case "source":
+        return <SourceView content={content ?? ""} wide={wide} />;
+      // 반환 타입만으로는 빠진 칸이 안 잡힌다 — `ReactNode`가 `undefined`를 품는다. 이웃
+      // `hitTarget`이 `default` 없이 사는 것은 그 반환 타입이 좁아서다.
+      default: {
+        const unhandled: never = body;
+        return unhandled;
+      }
+    }
+  };
 
   return (
     // 본문 열 — 스크롤 경계는 여기까지다. 작업 패널은 이 열의 형제이고 **이제 화면이
@@ -105,20 +155,8 @@ function SpecViewer({
                 </code>
               </div>
             </div>
-          ) : image ? (
-            <ImageDoc path={specRoot && file ? `${specRoot}/${file}` : null} name={file ?? ""} />
-          ) : sourceView ? (
-            <SourceView content={content ?? ""} wide={wide} />
           ) : (
-            <PrettyView
-              file={file ?? ""}
-              content={content ?? ""}
-              onCopyBlock={copyRef}
-              wide={wide}
-              files={files}
-              onNavigate={onNavigate}
-              specRoot={specRoot}
-            />
+            bodyView(body)
           )}
         </div>
       </div>
@@ -133,8 +171,11 @@ function SpecViewer({
  * 렌더러) — 같은 「그릴 수 없다」가 어디서 났느냐에 따라 달리 보이면 안 된다.
  *
  * `specRoot`를 모르면(아카이브 화면, 홈을 아직 못 읽음) 그릴 수 없다.
+ *
+ * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 그림 자리만 화면마다 다른
+ * 것을 그리면 그 표가 「유일한 자리」가 아니게 된다. 아래 두 보기와 같은 근거다.
  */
-function ImageDoc({ path, name }: { path: string | null; name: string }) {
+export function ImageDoc({ path, name }: { path: string | null; name: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-8">
       {path === null ? (
@@ -152,6 +193,190 @@ function ImageDoc({ path, name }: { path: string | null; name: string }) {
         />
       )}
     </div>
+  );
+}
+
+// ─── HTML 프레임 ───
+
+/**
+ * 아티팩트 발행 껍데기 — **발행 쪽에서 그대로 베낀 것이다**(결정 2).
+ *
+ * `data-theme="light"`를 박는 것은 앱이 라이트 전용이기 때문이다(결정 3). 아티팩트는
+ * 뷰어의 명시적 선택을 root에 찍고 목업이 그 값으로 갈리므로, 이 값이 「뷰어가 라이트를
+ * 골랐다」와 같은 상태가 되어 1:1이 성립한다.
+ *
+ * **전부 베끼는 근거는 「지금 이 파일」이 아니라 「다음 파일」이다.** 실측상 지금 목업이
+ * 여기서 실제로 얻는 것은 `body{margin:0}` 한 줄뿐이지만(`srcdoc` 문서는 doctype이 없어도
+ * quirks mode로 안 떨어져, 갈리는 것이 그 여백 하나다 — e2e/spec-html.spec.ts 머리말),
+ * 앞으로 들어올 조각이 어느 줄에 기댈지는 미리 알 수 없고 비용은 CSS 네 줄이다.
+ *
+ * **아래 문자열은 발행본 원문에서 떠 온 것이다** — 2026-08-29, 그 목업의 발행본
+ * (artifact `99087708`)의 `<head>`. 따옴표 유무까지 그대로다: 「근사해 그리지 않는다」가
+ * 규칙이라(결정 2) 다음 사람이 발행본과 **문자열로** 견줄 수 있어야 한다. 발행 쪽의
+ * 프레임 런타임 스크립트와 `<base>`는 안 베낀다 — 그것은 문서 리셋이 아니라 호스트다.
+ * `<html>`에 `data-theme`는 발행 시점엔 없고 런타임이 뷰어 테마로 찍는다(결정 3).
+ *
+ * 처음 판은 이 값을 **말로 풀어 쓴 설명에서 근사해** 적었고 네 자리가 어긋나 있었다
+ * (`background` `#fbfbfc`→`#faf9f5`, `color` 누락, 글꼴 `system-ui`, `padding:0` 누락,
+ * `[hidden]`의 `:not([hidden=until-found])`). 목업은 배경·글자색·글꼴을 자기가 정해서
+ * 화소로 안 갈렸지만(실측: 1000px 폭 12,800,000화소 전부 일치), **껍데기에 기대는 조각을
+ * 하나 세우자 전 화소가 갈렸다** — 이 상수가 지키려던 「다음 파일」이 바로 그것이다.
+ */
+const ARTIFACT_SHELL_HEAD =
+  '<!doctype html>\n<html data-theme="light">\n<head>\n' +
+  '<meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">\n' +
+  "<style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}\n" +
+  "img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style>\n" +
+  "</head><body>";
+const ARTIFACT_SHELL_TAIL = "</body></html>";
+
+/**
+ * 파일 내용을 프레임이 항해할 문서로 만든다 — **껍데기는 없을 때만 씌운다**(결정 2).
+ *
+ * 내용이 `<!doctype` 또는 `<html`로 시작하면 온전한 문서로 보고 그대로 통과시킨다.
+ * 온전한 문서에 껍데기를 또 씌우면 `<html>`이 겹치고, 반대로 늘 안 씌우면 아티팩트 조각이
+ * 발행본과 갈린다. 가르는 값이 doctype 하나라 규칙이 한 줄이다.
+ *
+ * 판정은 **BOM과 선행 공백을 버린 뒤 대소문자를 무시한다** — spec 문서는 사람이 손으로도
+ * 넣는 파일이라 셋 다 실재한다.
+ */
+export function htmlSrcdoc(content: string): string {
+  const head = content.replace(/^\uFEFF/, "").trimStart().toLowerCase();
+  if (head.startsWith("<!doctype") || head.startsWith("<html")) return content;
+  return ARTIFACT_SHELL_HEAD + content + ARTIFACT_SHELL_TAIL;
+}
+
+/**
+ * HTML 문서 한 장을 본문에 **렌더로** 세운다 — `ImageDoc`과 같은 자리, 같은 모양이다.
+ *
+ * 프레임은 본문 열을 채우고 **자기 안에서** 구른다(결정 9). 바깥 스크롤 상자는 넘치지
+ * 않으므로 막대가 한 개만 산다. 좁은 열에서는 프레임 안이 가로로도 구른다 — 안 잘라낸다.
+ * **본문 열 폭 규격(900/1200px)을 안 쓴다**: 아티팩트 1:1이 목적이다.
+ *
+ * **그 한 개는 저장소 공통 막대가 아니다 — 결정 32의 유일한 예외다.** 구르는 것은 프레임
+ * **안** 문서라 `scroll-quiet`이 닿을 자리가 없고(그 문서의 CSS는 `ARTIFACT_SHELL_HEAD`가
+ * 전부다), `allow-same-origin`이 없어 부모는 그 스크롤을 **볼 수도 없다**. 맞추려면 껍데기에
+ * `scrollbar-width:none`을 얹어야 하는데 그것은 결정 2(「발행본 원문에서 떠 온 것이다 —
+ * 따옴표 유무까지 그대로」)와 정면으로 부딪히고, 발행본도 브라우저에서 네이티브 막대로
+ * 보이므로 1:1이 목적인 여기서는 네이티브가 오히려 맞다. `scroll-overlay.test.ts`의 소스
+ * 스캔은 이 안을 **구조적으로 못 본다** — 그래서 예외가 여기 적혀 있어야 한다.
+ *
+ * 아카이브 화면도 이것을 쓴다 — 같은 표(`docBody`)로 갈리는데 프레임만 화면마다 다르면
+ * 그 표가 「유일한 자리」가 아니게 된다.
+ *
+ * **감수 — 프레임에 포커스가 들어가면 앱 단축키가 죽는다**(결정 13 · 이슈 #153). ⌘1~9·⌃Tab·
+ * ⌘B·⌘T·⌘W·⌘↩가 전부 부모 창의 리스너라 프레임 경계를 안 넘는다. **⇧⇧(검색 팔레트)도
+ * 같이 죽는다** — 이 목록을 처음 적을 때는 그 키가 아직 없었고, 판 03이 들이면서 같은
+ * 리스너에 붙었다. 프레임 밖을 한 번 클릭하면 돌아온다 — 뿌리는 iframe이 아니라 「단축키의
+ * 정본이 JS window 리스너다」이고, 거기서 고친다.
+ *
+ * **「원인이 화면 어디에도 없다」는 이 판으로 거짓이 됐다** — 죽는 것은 그대로 죽고
+ * (`FrameFocusHint` 머리말), 그 사실과 돌아오는 길을 화면이 말한다. 감수가 없어진 것이
+ * 아니라 **보이게 된 것이다.**
+ */
+export function HtmlDoc({ content, name }: { content: string | undefined; name: string }) {
+  // 카드가 붙을 앵커이자 「포커스가 여기 있나」의 대조 대상이다 — 훅이 이 ref로 잰다.
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  // **훅은 이른 반환보다 위에 있어야 한다.** 아래 `content === undefined` 갈래가 훅을
+  // 건너뛰면 렌더마다 훅 개수가 갈린다.
+  const focused = useFrameFocused(frameRef);
+  // **안 온 것과 빈 파일을 가른다.** 안 왔으면 아예 안 그린다 — 빈 문서로 한 번 항해했다
+  // 다시 항해하는 깜빡임을 만들지 않는다(결정 9). 빈 문자열은 **온 것이라** 껍데기를
+  // 씌워 그린다: `?? ""`로 뭉치면 진짜 빈 `.html`이 영영 빈 화면이 된다.
+  if (content === undefined) return null;
+  return (
+    <>
+      <iframe
+        ref={frameRef}
+        // 이름이 없으면 「프레임」으로만 읽힌다. 그림 본문이 `alt`에 파일 경로를 넣는
+        // 관습을 그대로 따른다.
+        title={name}
+        // **React가 값으로만 넣는다**(결정 5). 마크업을 문자열로 조립하거나
+        // `dangerouslySetInnerHTML`로 넣으면 파일 안의 따옴표가 속성을 깨고 나와 **부모
+        // 문서에** 스크립트를 심고, 그 순간 아래 sandbox도 IPC 키도 우회된다.
+        srcDoc={htmlSrcdoc(content)}
+        // **값에 조건을 달지 않는다**(결정 5). 「신뢰하는 파일이면」 같은 갈래를 만드는 순간
+        // 그 갈래가 구멍이다. `allow-scripts`는 필요하고(목업의 토글이 스크립트다),
+        // `allow-same-origin`은 **주면 안 된다** — 둘을 함께 주면 프레임이 앱과 같은 출처가
+        // 되어 부모에 있는 자기 sandbox 속성을 지우고 리로드할 수 있다(결정 4).
+        sandbox="allow-scripts"
+        className="min-h-0 w-full flex-1 border-0"
+      />
+      {focused && <FrameFocusHint anchorRef={frameRef} />}
+    </>
+  );
+}
+
+/**
+ * 프레임이 지금 포커스를 쥐고 있는가 — **부모 `window`의 `blur`/`focus`로 알고,
+ * `document.activeElement`로 가른다.**
+ *
+ * **`focusin`/`focusout`은 안 온다.** 프레임 안을 클릭했을 때 부모 문서가 받는 것은 그 둘이
+ * 아니라 `window`의 `blur` 하나뿐이다 — L3로 쟀다(2026-08-30 · WebKit, 앱이 사는
+ * WKWebView와 같은 엔진). 프로그램으로 `iframe.focus()`를 부를 때만 `focusin`이 온다.
+ * 그러니 「프레임에 포커스가 갔다」를 그 둘로 들으면 사람이 클릭하는 실제 경로에서 한 번도
+ * 안 선다. 대신 그 `blur` 핸들러 시점에 `activeElement`는 **이미** 그 `<iframe>`이다.
+ *
+ * **`blur`만으로도 못 가른다.** 다른 앱으로 넘어갈 때도 같은 이벤트가 오는데, 그때
+ * `activeElement`는 프레임이 아니다(같은 실측). 그래서 이벤트는 「무엇인가 움직였다」만
+ * 알리고 판정은 `activeElement`가 든다 — `focus` 쪽도 같은 이유로 같은 식이다(프레임 밖을
+ * 클릭해 돌아온 것과, 프레임을 쥔 채 앱으로 돌아온 것이 갈린다).
+ */
+function useFrameFocused(frameRef: RefObject<HTMLIFrameElement | null>) {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const sync = () => setFocused(document.activeElement === frameRef.current);
+    window.addEventListener("blur", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      window.removeEventListener("blur", sync);
+      window.removeEventListener("focus", sync);
+    };
+  }, [frameRef]);
+  return focused;
+}
+
+// 두 줄이 각각 한 번씩만 접히는 폭. 확인 창의 `w-[330px]`과 같은 가족이다.
+const FRAME_HINT_WIDTH = 300;
+
+/**
+ * 프레임이 포커스를 쥔 **동안에만** 서서, 지금 안 먹는 키와 **돌아오는 길**을 말한다.
+ *
+ * **한때 일곱 키를 적었고 지금은 셋이다.** ⌘1~9·⌘B·⌘T·⌘↩은 네이티브 메뉴가 대신 받아
+ * 되살아났다(#153 · `components/shell/menu-hotkey.ts`). 남은 셋(⌃Tab·⌘W·⇧⇧)은 그 길에
+ * 못 실리거나 일부러 안 실은 것이라, 이 카드는 **줄어들 뿐 사라지지 않는다.**
+ *
+ * **#153이 이미 기각한 셋을 다시 걷지 않는다.** 포커스를 도로 안 뺏고(프레임 안 토글이
+ * 계속 눌려야 한다 — 결정 4), 덮개를 안 두며(`pointer-events-none`이라 클릭이 그대로
+ * 통과한다), 껍데기에 스크립트를 안 넣는다(그러면 doctype 있는 파일은 여전히 죽는다).
+ *
+ * 표면은 **새로 안 짓는다** — 호버 카드와 같은 `PopoverPortal`이다. `bottom`+`right`로
+ * 프레임에 매면 그 카드의 화면 물리기 규칙이 창 오른쪽 아래로 끌어당겨, 프레임 위에 뜨되
+ * 본문 시작 자리는 안 가린다. 등장 모션이 없는 것도 이 저장소의 떠 있는 표면 그대로다
+ * (아카이브 토스트) — 움직이는 것이 없어 `prefers-reduced-motion`이 끌 것도 없다.
+ */
+function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement | null> }) {
+  return (
+    <PopoverPortal
+      anchorRef={anchorRef}
+      align="right"
+      width={FRAME_HINT_WIDTH}
+      // **덮개가 아니라는 증거가 이 한 줄이다.** 포인터를 안 받으므로 카드 밑의 프레임이
+      // 계속 눌린다. `onClose`도 안 넘긴다 — 그쪽은 바깥 클릭을 받는 투명 막을 함께 깔고,
+      // 그 막이 곧 덮개다.
+      className="pointer-events-none px-3.5 py-2.5"
+    >
+      {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
+      <div data-frame-hint role="status" className="flex flex-col gap-1">
+        <span className="text-[13px] font-semibold tracking-[-0.01em]">단축키 셋이 지금 안 먹어요</span>
+        {/* **셋만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩은 네이티브 메뉴가 대신 받아 되살아난다
+            (`components/shell/menu-hotkey.ts`). 남은 셋이 왜 그 길에 못 실리는지는
+            `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 셋의 사정이 서로 다르다. */}
+        <span className="text-[12.5px] leading-[1.6] text-tertiary">
+          ⌃Tab·⌘W·⇧⇧가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
+        </span>
+      </div>
+    </PopoverPortal>
   );
 }
 
@@ -488,7 +713,7 @@ export const PrettyView = memo(function PrettyView({
       input: ({ node, ...props }) => (
         <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
       ),
-      pre: (({ node, children, ...props }: any) => {
+      pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
         const lang: string | undefined = code?.properties?.className
           ?.find?.((c: string) => c.startsWith("language-"))
@@ -501,7 +726,18 @@ export const PrettyView = memo(function PrettyView({
               className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
               {...props}
             >
-              {children}
+              {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
+                  아래 `code` 컴포넌트는 「`language-`가 없으면 인라인 코드」로 가르는데,
+                  **언어를 안 적은 코드블록도 className이 없다.** 그대로 흘리면 여러 줄짜리
+                  블록이 인라인 껍데기(테두리·둥근 모서리·배경·0.88em)를 뒤집어쓰고, 인라인
+                  요소의 테두리가 줄마다 끊겨 **줄 사이에 선이 그어진 것처럼** 보인다
+                  (실물에서 그렇게 났다 — 사람이 「이상하게 겹친거잖아?」라고 지적한 그 화면).
+                  ```mermaid처럼 언어를 적은 블록은 멀쩡해서 오래 안 걸렸다.
+
+                  우리가 JSX로 쓴 이 `<code>`는 마크다운 변환을 안 거치므로 그 갈래에 아예
+                  들어가지 않는다. `language-*`는 그대로 실어 둔다 — 지금 읽는 것은 없지만
+                  하이라이팅을 붙이는 날 그 이름이 붙을 자리다. */}
+              <code className={lang ? `language-${lang}` : undefined}>{hastText(code)}</code>
             </pre>
           );
         const range = lines(node);

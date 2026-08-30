@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { calloutKind, expandHome, isImageFile, resolveHref, resolveImageSrc } from "./doc-refs";
+import {
+  calloutKind,
+  docBody,
+  expandHome,
+  ignoresSourceToggle,
+  resolveHref,
+  resolveImageSrc,
+} from "./doc-refs";
 
 // spec 폴더의 실제 모양을 흉내낸 목록 — 한글 폴더명이 들어 있는 것이 중요하다.
 // 마크다운 렌더러가 비ASCII 경로를 퍼센트 인코딩해 넘기기 때문이다.
@@ -220,32 +227,62 @@ describe("calloutKind", () => {
   });
 });
 
-// 트리에서 고른 파일이 그림인데 글로 읽으면 화면이 텅 빈다 — PNG를 UTF-8로 읽은 결과가
-// 줄번호 `1` 하나로 서는 것이 실물에서 난 모습이다.
-describe("그림으로 세울 수 있는 파일", () => {
-  it.each(["샷.png", "a/b/c.JPG", "x.jpeg", "x.gif", "x.webp", "x.svg", "x.avif"])(
-    "%s는 그림이다",
-    (path) => {
-      expect(isImageFile(path)).toBe(true);
-    },
-  );
-
-  it.each(["spec.md", "overview.MD", "notes.txt", "a/b/spec.md", "Makefile"])(
-    "%s는 글이다",
-    (path) => {
-      expect(isImageFile(path)).toBe(false);
-    },
-  );
-
-  // 고른 문서가 없을 때가 실재한다(spec이 하나도 없는 work).
-  it("문서가 없으면 그림이 아니다", () => {
-    expect(isImageFile(null)).toBe(false);
+// 「어떤 파일을 어떻게 그리는가」의 표. **본문이 무엇으로 서는지를 정하는 유일한 자리이고,**
+// 트리·본문·아카이브가 전부 이 값으로 갈린다 — 여기 없는 판정을 화면이 따로 들면 같은
+// 파일이 어디서 열렸느냐에 따라 다르게 보인다.
+describe("파일 종류 표", () => {
+  // 표 그대로다. `[파일, 토글 끔, 토글 켬]`
+  it.each([
+    ["overview.md", "pretty", "source"],
+    ["01-판/spec.MD", "pretty", "source"],
+    // html은 **볼 것이면서 글이기도 하다** — 그림과 갈리는 지점이다. 렌더가 기본이고
+    // 원문 쪽이 살아 있다. 둘을 함께 넣어야 한다: 렌더만 켜고 토글을 잠그면 소스를 볼
+    // 길이 사라진다.
+    ["목업/조각.html", "html", "source"],
+    ["a/b/c.HTML", "html", "source"],
+    ["옛것.htm", "html", "source"],
+    // 그림은 토글과 무관하다 — 읽을 소스가 없다
+    ["샷.png", "image", "image"],
+    ["a/b/c.JPG", "image", "image"],
+    ["x.jpeg", "image", "image"],
+    ["x.gif", "image", "image"],
+    ["x.webp", "image", "image"],
+    ["x.avif", "image", "image"],
+    // svg는 마크업이기도 하지만 **그림 칸이다** — 표는 그림을 먼저 본다
+    ["도해.svg", "image", "image"],
+    // 그 외는 소스 고정
+    ["notes.txt", "source", "source"],
+    ["diagram.puml", "source", "source"],
+    ["Makefile", "source", "source"],
+    // 확장자처럼 보이지만 아닌 것들. 점으로 시작하는 이름은 확장자가 없는 것이다
+    [".png", "source", "source"],
+    ["png", "source", "source"],
+    ["shot.png.md", "pretty", "source"],
+  ])("%s → %s / %s", (file, off, on) => {
+    expect(docBody(file, false)).toBe(off);
+    expect(docBody(file, true)).toBe(on);
   });
 
-  // 확장자처럼 보이지만 아닌 것들. 점으로 시작하는 이름은 확장자가 없는 것이다.
-  it("점이 이름의 일부인 것을 확장자로 읽지 않는다", () => {
-    expect(isImageFile(".png")).toBe(false);
-    expect(isImageFile("png")).toBe(false);
-    expect(isImageFile("shot.png.md")).toBe(false);
+  // 고른 문서가 없을 때가 실재한다(spec이 하나도 없는 work). 마크다운으로 떨어지는 것은
+  // **본문 분기를 위한 기본값이지 「누를 것이 있다」는 뜻이 아니다** — 잠그는 것은 화면의
+  // 사정(`!currentSpec`)이 따로 얹는다.
+  it("고른 문서가 없으면 마크다운 칸이다", () => {
+    expect(docBody(null, false)).toBe("pretty");
+    expect(docBody(null, true)).toBe("source");
+  });
+
+  // 토글 무시는 표에서 파생한다 — 「켜든 끄든 본문이 같다」가 곧 「누를 것이 없다」다.
+  // 술어를 따로 들면 표가 바뀔 때 한쪽만 늙는다.
+  it.each([
+    ["overview.md", false],
+    ["shot.png.md", false],
+    ["목업/조각.html", false],
+    ["옛것.htm", false],
+    ["샷.png", true],
+    ["도해.svg", true],
+    ["notes.txt", true],
+    ["diagram.puml", true],
+  ])("%s의 토글 무시 = %s", (file, ignores) => {
+    expect(ignoresSourceToggle(file)).toBe(ignores);
   });
 });

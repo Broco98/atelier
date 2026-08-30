@@ -1,11 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
+import { dialogStore } from "@/components/ui/confirm-store";
+import SearchPalette from "@/features/search/SearchPalette";
+import { searchHotkey } from "@/features/terminal/shell-registry";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
+import { menuHotkeyInit } from "./menu-hotkey";
 import { shellStore, toggleSidebar } from "./shell-store";
 import { navItems, type NavKey } from "./nav-items";
 
@@ -47,6 +51,18 @@ function AppShell() {
     };
   }, [navigate]);
 
+  // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
+  // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open` 바로 옆인 것은 그쪽도
+  // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
+  useEffect(() => {
+    const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
+      window.dispatchEvent(new KeyboardEvent("keydown", menuHotkeyInit(code)));
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === "KeyB") {
@@ -56,6 +72,43 @@ function AppShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // ⇧⇧로 검색을 연다(결정 3·4). ⌘B가 이미 이 자리에 있으므로 새 자리를 만들지 않는다.
+  //
+  // **여는 길이 이 키 하나는 아니다** — 셸 컨트롤 행의 검색 버튼이 아래에서 같은
+  // `setSearchOpen`을 부른다. 키 판정만 여기 있고, 떠 있는가는 이 state 하나가 안다.
+  //
+  // **판정은 순수 함수가 하고, 그것이 안 보는 둘을 여기서 든다.**
+  //  - **직전 ⇧의 시각.** 리듀서라 상태를 밖에 둔다 — `useRef`인 것은 이 값이 화면에 안
+  //    그려지기 때문이다. state로 두면 ⇧를 누를 때마다 앱 셸이 통째로 다시 그려진다.
+  //  - **mousedown**(결정 30). 키만 보면 **⇧+클릭 두 번이 팔레트를 연다** — 그 사이에
+  //    keydown이 하나도 안 끼기 때문이다. 본문에서 선택을 늘리는 흔한 동작이 그 모양이라
+  //    무장을 비운다.
+  //  - **떠 있는 확인 창.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠 있나」는
+  //    다른 물음이고 주인도 다르다 — 이 앱의 창은 전역 스토어 하나가 든다. 구독하지 않고
+  //    그 순간의 값만 읽는다: 창이 뜨고 지는 것으로 이 리스너를 다시 걸 이유가 없다.
+  const armedAt = useRef<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (dialogStore.state !== null) {
+        armedAt.current = null;
+        return;
+      }
+      const arm = searchHotkey(e, armedAt.current);
+      armedAt.current = arm.armedAt;
+      if (arm.open) setSearchOpen(true);
+    };
+    const onMouseDown = () => {
+      armedAt.current = null;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
   }, []);
 
   return (
@@ -83,7 +136,19 @@ function AppShell() {
         />
         <Outlet />
       </div>
-      <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+      {/* 검색 버튼이 부르는 것이 **바로 위 ⇧⇧ 리스너가 부르는 그 setter다.** 여는 길을
+          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
+          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
+          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석). */}
+      <ShellControls
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
+      {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 확인 창 **앞에** 서는 것은
+          층 순서다: 창이 떠 있는 동안에는 ⇧⇧가 안 먹으므로 둘이 겹칠 일이 없지만, 겹친다면
+          답해야 하는 물음이 위여야 한다. */}
+      {searchOpen && <SearchPalette onClose={() => setSearchOpen(false)} />}
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />

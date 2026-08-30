@@ -9,10 +9,19 @@ pub struct ProjectPatch {
     pub base_branch: Option<String>,
 }
 
-pub fn list_projects(root: &Path) -> Result<Vec<ProjectView>> {
-    std::fs::create_dir_all(root)?;
-    let mut views = Vec::new();
-    for entry in std::fs::read_dir(root)? {
+/// 프로젝트 목록의 **순서와 걷는 법**. 무거운 것은 안 단다 — 폴더마다 git을 캐묻는 것은
+/// `to_view`이고(`git::detect`), **글자마다 부르는 자리는 그것을 탈 수 없다.** 검색의 프로젝트
+/// 층이 이것을 부른다(결정 23): 순서를 거기서 다시 적으면 팔레트가 Projects 화면과 어긋난다.
+///
+/// **폴더가 없으면 빈 목록이다 — 만들지 않는다**(`read_works`와 같은 규칙).
+pub(crate) fn read_projects(root: &Path) -> Result<Vec<Project>> {
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut projects = Vec::new();
+    for entry in entries {
         let entry = entry?;
         let file_name = entry.file_name().to_string_lossy().to_string();
         if file_name.starts_with('.') || !file_name.ends_with(".md") {
@@ -22,11 +31,16 @@ pub fn list_projects(root: &Path) -> Result<Vec<ProjectView>> {
         let content = std::fs::read_to_string(entry.path())?;
         // AI가 망가뜨린 파일 하나가 전체 목록을 막지 않도록 파싱 실패는 건너뜀
         if let Ok(project) = parse_project(&slug, &content) {
-            views.push(to_view(project));
+            projects.push(project);
         }
     }
-    views.sort_by(|a, b| a.project.name.to_lowercase().cmp(&b.project.name.to_lowercase()));
-    Ok(views)
+    projects.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(projects)
+}
+
+pub fn list_projects(root: &Path) -> Result<Vec<ProjectView>> {
+    std::fs::create_dir_all(root)?;
+    Ok(read_projects(root)?.into_iter().map(to_view).collect())
 }
 
 pub fn get_project(root: &Path, slug: &str) -> Result<ProjectView> {

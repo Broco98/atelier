@@ -74,6 +74,15 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
     }),
+    ("search", |a| {
+        ok(atelier_core::search(
+            &works_dir(),
+            &archive_dir(),
+            &projects_dir(),
+            &text(a, "query")?,
+            &destinations(a)?,
+        ))
+    }),
     // 셸 다섯은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
@@ -116,6 +125,15 @@ fn text(args: &Args, key: &str) -> Result<String, String> {
 
 fn maybe_text(args: &Args, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// 프런트가 건네는 「가는 곳」 목록(결정 21). **여기서 모양을 손보지 않는다** — 라벨은
+/// 프런트 것이고 코어가 그것으로 맞춘다.
+fn destinations(args: &Args) -> Result<Vec<atelier_core::Destination>, String> {
+    let value = args
+        .get("destinations")
+        .ok_or_else(|| "인자 'destinations'(배열)가 필요합니다".to_string())?;
+    serde_json::from_value(value.clone()).map_err(err)
 }
 
 fn flag(args: &Args, key: &str) -> Result<bool, String> {

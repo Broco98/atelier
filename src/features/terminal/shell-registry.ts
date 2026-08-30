@@ -1,9 +1,15 @@
 import type { WorkView } from "@/features/works/types";
 import type { PtyExit } from "./types";
 
-// 셸 목록과 그 목록에 관한 규칙만 아는 순수 모듈. import는 타입뿐이라 DOM 없는 기본 환경에서
-// 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례). 그 성질은 주석이 아니라
-// shell-registry.test.ts의 소스 스캔이 지킨다.
+// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
+// 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
+// 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+//
+// **키 판정 중 `searchHotkey`(⇧⇧)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
+// 그런데도 여기 사는 것은 「어디서 눌렸으면 비키는가」를 정하는 `typesInto`·`isShellInput`을
+// 이웃 키 판정들과 **함께** 딛기 때문이다. 그 둘을 공용 모듈로 빼면 이 모듈이 그것을 **값으로**
+// import하게 되는데, 바로 위 소스 스캔(「값 import가 하나도 없다」)이 그 길을 막아 뒀다.
+// 팔레트 쪽에서 여는 키를 찾는 사람을 위해 `SearchPalette.tsx` 머리말이 이 자리를 가리킨다.
 //
 // 이 모듈이 React 밖에 있는 것은 취향이 아니다 — 결정 21이 "비활성 셸의 xterm 인스턴스는
 // React 트리 밖에 산다"를 요구하고, 그 인스턴스를 가리키는 목록이 컴포넌트 state에 있으면
@@ -262,8 +268,8 @@ export function runningShellsOf(state: ShellsState, owner: string | null): numbe
 
 /** 이 화면에서 켜진 칸. */
 /**
- * 소유자별 셸 개수 — 사이드바 work 행의 **둘째 줄이 서는 조건이자 그 줄이 적는 값**이다
- * (결정 2·3).
+ * 소유자별 셸 개수 — 사이드바 work 행 **오른쪽 끝의 메타가 서는 조건**이다(결정 2·3). 그
+ * 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를 다 더하면 이 값이다.
  *
  * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
  * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
@@ -433,7 +439,7 @@ export function runningOn(shell: Shell): string | null {
  * **개수를 여기서 접지 않는 이유**는 얕은 비교다. `Map`이나 `Record`로 접어 주면 회차마다
  * 새 객체라 사이드바 행의 `shallow`가 늘 어긋나고, work 하나에서 명령이 시작될 때마다
  * 목록 전체가 다시 그려진다(`shellCountsOf` 머리말이 든 그 함정). 문자열 배열은 얕은
- * 비교가 그대로 먹으므로 **세는 일은 그리는 쪽**(`RunningMarks`)이 한다.
+ * 비교가 그대로 먹으므로 **세는 일은 그리는 쪽**(`ShellMeta`)이 한다.
  *
  * 한때 종류만 담았다(중복 없음) — 「뭐가 도나」만 말하고 개수는 `shellCountsOf`가 셸 수로
  * 말한다는 것이었는데, 그러면 한 줄 안에서 셸에는 수가 붙고 에이전트에는 안 붙는다.
@@ -582,6 +588,72 @@ function isShellInput(target: EventTarget | null): boolean {
   if (!target || !("className" in target)) return false;
   const name = target.className;
   return typeof name === "string" && name.includes("xterm-helper-textarea");
+}
+
+/**
+ * ⇧를 두 번 누른 것으로 치는 **두 번 사이의 간격**. 너무 길면 대문자를 치다 열리고, 너무
+ * 짧으면 두 번 눌러도 안 열린다.
+ *
+ * **상한이 오발동을 막는 유일한 그물은 아니다** — 사이에 끼는 keydown 하나가 이미 무장을
+ * 풀어서, `A`를 대문자로 치는 동안에는 간격이 얼마든 안 열린다. 이 값이 정하는 것은
+ * 「두 번 누른다」가 한 동작으로 읽히는 폭이다.
+ */
+export const SEARCH_GAP_MS = 300;
+
+/**
+ * ⇧⇧ 감지기가 돌려주는 것. `armedAt`은 **다음 판정에 그대로 도로 들어간다** — 이 함수가
+ * 상태를 들지 않으므로 부르는 쪽이 그 한 값만 들고 있으면 된다.
+ */
+export interface SearchArm {
+  open: boolean;
+  armedAt: number | null;
+}
+
+/**
+ * ⇧를 두 번 누르면 검색을 연다(결정 3·4). **타이머 없는 순수 리듀서다** — 직전 ⇧의 시각을
+ * 인자로 받고 다음 상태를 돌려주므로, DOM도 가짜 시계도 없이 취소 규칙을 전부 잴 수 있다.
+ *
+ * 무장하는 것은 **⇧ 단독 keydown** 하나다(다른 수식키가 안 붙은 `ShiftLeft`·`ShiftRight`).
+ * 푸는 것은 셋인데 여기서 드는 것은 둘이다.
+ *
+ * - **그 밖의 모든 keydown.** 이 한 줄이 「⇧를 누른 채 다른 키가 오면 취소」와 「사이에
+ *   다른 키가 끼면 취소」를 함께 푼다 — `Shift↓ A↓ Shift↓`에서 가운데 `A↓`가 무장을 풀어
+ *   대문자를 치는 동안 안 열린다.
+ * - **간격 초과**(`SEARCH_GAP_MS`). 넘기면 안 열리고 **그 ⇧가 다시 무장한다** — 세 번째
+ *   ⇧가 붙으면 열려야 하기 때문이다.
+ * - 셋째는 **mousedown**인데 그것은 키가 아니라 이 함수 밖에 산다(결정 30). 키만 보면
+ *   ⇧+클릭 두 번이 팔레트를 연다 — 그 사이에 keydown이 하나도 안 끼기 때문이다.
+ *   부르는 쪽(앱 셸)이 mousedown에 무장을 비운다.
+ *
+ * **셸 안에서는 듣고 폼 입력칸에서는 비킨다** — `shellNavFromWindow`와 같은 규칙이고 같은
+ * 판정을 딛는다(결정 4). 이 함수를 새 모듈에 다시 적지 않는 이유가 그 한 줄이다.
+ *
+ * **대화상자는 여기서 안 본다.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠
+ * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
+ *
+ * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
+ *
+ * 시각도 **DOM 이름 그대로** 받는다(`timeStamp`) — `KeyFromWindow`가 그러는 것과 같은 이유고,
+ * 그래서 이웃 셋처럼 부르는 쪽이 이벤트를 통째로 넘긴다.
+ */
+export function searchHotkey(
+  event: KeyFromWindow & { timeStamp: number },
+  armedAt: number | null,
+): SearchArm {
+  // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
+  // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
+  if (event.type !== "keydown") return { open: false, armedAt };
+  if (typesInto(event.target) && !isShellInput(event.target)) return { open: false, armedAt: null };
+  // **`shiftKey`로 가르지 않는다** — ⇧ 자신의 keydown에는 그 값이 이미 참이다.
+  const bareShift =
+    (event.code === "ShiftLeft" || event.code === "ShiftRight") &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey;
+  if (!bareShift) return { open: false, armedAt: null };
+  if (armedAt !== null && event.timeStamp - armedAt <= SEARCH_GAP_MS)
+    return { open: true, armedAt: null };
+  return { open: false, armedAt: event.timeStamp };
 }
 
 /**
