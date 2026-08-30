@@ -20,6 +20,8 @@ const [specWork] = WORKS;
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
 const box = (page: Page) => page.getByRole("textbox", { name: "검색어" });
+/** 셸 컨트롤 행 맨 오른쪽 칸. `exact`가 없으면 팔레트의 「검색어」·「검색 결과」까지 문다. */
+const searchButton = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
 /**
  * 검색 명령이 **어떤 질의로** 나갔는가. 같은 질의가 두 번 나가는 것은 세지 않는다 —
@@ -211,6 +213,42 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
 
 // 결정 4. 「어디서 눌렸나」와 「화면에 무엇이 떠 있나」는 다른 물음이고, 뒤엣것은 부르는
 // 쪽(앱 셸)이 든다 — 물음에 답하는 중에 화면이 가려지면 안 된다.
+// 판 01의 ⇧⇧에 **누를 수 있는 자리**가 하나 붙었다 — 셸 컨트롤 행의 마지막 칸이다.
+// 이 층이 드는 것은 「버튼이 있다」가 아니라 **「눌러서 실제로 팔레트가 뜬다」**다: 정적 마크업
+// seam에는 이벤트가 없어 아무 데도 배선되지 않은 버튼을 초록으로 통과시킨다.
+//
+// **함께 드는 것이 「여는 자리가 하나인가」다.** 뜨는 것이 ⇧⇧가 여는 것과 같은 조각이어야
+// 하므로 위 검사들과 같은 기준으로 잰다 — 줄 수, 그리고 그 조각만 하는 일인 포커스 빌리기.
+//
+// 마지막 줄은 **떠 있을 때 그 자리가 무엇인가**다. 팔레트 배경이 셸 컨트롤 행을 덮으므로
+// 다시 누르면 닫힌다 — 버튼이 토글을 따로 안 드는 근거가 그것이라, 안 재면 「눌러도 아무 일도
+// 안 난다」로 퇴화해도 티가 안 난다.
+test("검색 버튼이 ⇧⇧와 같은 팔레트를 연다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  // **누를 자리를 미리 잰다** — 열리고 나면 팔레트 배경이 덮어 버튼을 locator로 못 누른다.
+  const at = await searchButton(page).boundingBox();
+  expect(at, "셸 컨트롤 행에 검색 버튼이 없다").not.toBeNull();
+  const point = { x: at!.x + at!.width / 2, y: at!.y + at!.height / 2 };
+
+  await searchButton(page).click();
+
+  // **뜨는 것이 하나여야 한다** — locator가 strict라 팔레트가 둘이면 이 줄에서 터진다.
+  // 버튼이 제 상태를 따로 들면 정확히 그 모양이 된다.
+  await expect(palette(page)).toBeVisible();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⇧⇧로 연 것과 같은 것이 떴다는 뜻이다.
+  await expect(box(page)).toBeFocused();
+
+  // 같은 자리를 다시 누른다. 그 위에 있는 것은 버튼이 아니라 팔레트의 배경이라 닫힌다.
+  await page.mouse.click(point.x, point.y);
+
+  await expect(palette(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");

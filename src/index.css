@@ -84,10 +84,14 @@
        24px 상자에 16px 글리프라 좌우 4px씩이 이미 비어 있어, 여기 값이 작으면 글리프끼리
        붙어 보인다 */
     --titlebar-control-gap: 6px;
-    /* 사이드바 토글 · 뒤로 · 앞으로 세 칸. ShellControls가 이 폭을 그대로 쓰므로
-       칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다 */
+    /* 사이드바 토글 · 뒤로 · 앞으로 · 검색 네 칸. ShellControls가 이 폭을 그대로 쓰므로
+       칸 수가 어긋나면 인셋만 틀어지는 게 아니라 버튼 행이 그 자리에서 넘친다.
+       **칸 사이는 한 값뿐이다** — 검색을 「지나온 길」과 무리로 가르려고 이 식에 넓은 틈을
+       하나 더 두지 않는다. 그러면 이 폭 뒤에 --titlebar-control-gap으로 이어 붙는 탭 줄·
+       패널 첫 칸(결정 24)보다 행 안쪽이 더 벌어져, 마지막 칸이 오른쪽 줄에 붙어 보인다
+       (ShellControls의 검색 버튼 주석) */
     --titlebar-controls-width: calc(
-        3 * var(--titlebar-control-size) + 2 * var(--titlebar-control-gap)
+        4 * var(--titlebar-control-size) + 3 * var(--titlebar-control-gap)
     );
     /* 셸 헤더는 글자가 놓이는 자리라 컨트롤 간격보다 넉넉히 띄운다 */
     --titlebar-inset: calc(

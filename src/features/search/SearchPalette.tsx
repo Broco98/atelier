@@ -7,7 +7,8 @@ import { hitTarget } from "./hit-target";
 import type { SearchHit } from "./types";
 
 /**
- * ⇧⇧로 여는 검색 팔레트.
+ * ⇧⇧로, 또는 셸 컨트롤 행의 검색 버튼으로 여는 검색 팔레트. **여는 자리는 그래도 하나다** —
+ * 버튼은 키 리스너와 같은 state를 켤 뿐이다(`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **떠 있는 표면의 규격은 확인 창(`AppDialog`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
