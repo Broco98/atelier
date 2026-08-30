@@ -214,6 +214,32 @@ describe("핀 버튼", () => {
     // 결정 83. 초안도 고정할 수 있다.
     expect(pinsOf(render(works("pin:가", "나", "draft:다")))).toHaveLength(3);
   });
+
+  it("**격자 밖에 선다** — 자리를 안 잡으므로 격자 배치가 없다", () => {
+    // 결정 1은 이 핀을 메타와 같은 2열 1행에 놓아 칸 폭을 `max(메타, 핀)`으로 겹치게 했다.
+    // 그러면 이 24px이 **셸이 0개인 행에서도 늘 예약**이라, 「아이콘 생기면 그때 가변된다」로
+    // 2열의 28px 바닥을 걷어낸 것이 그 자리에서 헛일이 된다 — 바닥을 걷어도 핀이 대신
+    // 트랙을 잡아 제목이 4px밖에 안 돌아온다(실측).
+    //
+    // **격자에 남긴 채로는 답이 없다**: `opacity-0`이면 자리는 늘 잡혀 있고,
+    // `display:none`으로 걷으면 hover마다 칸이 0↔24로 뛰어 제목이 좌우로 밀린다.
+    // 그래서 행의 `relative`에 대고 `absolute right-1`이다 — 겹침은 그대로이고(둘 다 268px
+    // 에서 끝난다) hover 밀림이 0.00px이다. 그 둘은 e2e가 실측으로 잰다.
+    //
+    // **격자 배치가 남아 있으면 죽은 클래스다** — `absolute`면 위치를 안 정한다(걷기 전후로
+    // 핀 상자가 244~268px 그대로였다). `shrink-0`도 같다: flex 항목이 아니고
+    // `icon-button`이 이미 `flex-shrink: 0`을 든다.
+    for (const pin of pinsOf(render(works("pin:가", "나", "draft:다")))) {
+      expect(pin).toContain("absolute");
+      expect(pin).toContain("right-1");
+      expect(pin).not.toContain("col-start-2");
+      expect(pin).not.toContain("row-start-1");
+      expect(pin).not.toContain("justify-self-end");
+      expect(pin).not.toContain("shrink-0");
+    }
+    // 기준을 드는 자리가 행 상자다 — 없으면 핀이 엉뚱한 조상에 대고 선다.
+    expect(render(works("가"))).toContain("group relative grid");
+  });
 });
 
 describe("구획 접기", () => {
@@ -292,29 +318,36 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
     expect(가.html).not.toContain("<a ");
   });
 
-  it("**둘째 줄이 없다** — 메타와 핀이 2열 같은 칸에 겹친다", () => {
-    // 결정 0·1. 두 칸을 걸쳐 아래에 서던 줄이 사라졌다. 래퍼를 세우지 않고 **둘 다** 2열
-    // 1행에 놓는 것이 겹치는 방법 전부다 — 칸 폭은 `max(메타, 핀)`으로 저절로 정해지고,
-    // 이름 버튼은 행 상자의 직계 자식으로 남는다(호버 카드 자리를 재는 e2e의 불변조건).
+  it("**둘째 줄이 없다** — 메타는 2열에 서고, 이름 버튼은 행의 직계 자식이다", () => {
+    // 결정 0·1. 두 칸을 걸쳐 아래에 서던 줄이 사라졌다. 래퍼를 세우지 않는 것이 핵심이다 —
+    // 이름 버튼이 행 상자의 직계 자식으로 남아야 한다(호버 카드 자리를 재는 e2e의 불변조건).
     // 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다(결정 14).
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
     expect(markup).not.toContain("col-span-2");
     expect(markup).not.toContain("data-subrow");
-    for (const html of [shellBoxesOf(markup)[0].html, pinsOf(markup)[0]]) {
-      expect(html).toContain("col-start-2");
-      expect(html).toContain("row-start-1");
-    }
+    expect(shellBoxesOf(markup)[0].html).toContain("col-start-2");
+    expect(shellBoxesOf(markup)[0].html).toContain("row-start-1");
   });
 
-  it("2열이 한 무리분을 **바닥으로** 예약한다", () => {
-    // 결정 2·5. `auto`로 두면 로고가 붙을 때마다 칸이 넓어져 제목이 끊기는 자리가 초마다
-    // 밀린다 — 판 04가 행 높이에서 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프
-    // 12 + 간격 4 + 숫자 7 = 23px에 오른쪽 여백 5px을 더한 **28px**이 그 바닥이다.
+  it("**2열은 아무것도 예약하지 않는다** — 그냥 `auto`다", () => {
+    // 결정 2·5가 여기에 한 무리분(28px)을 **바닥으로** 깔라고 했고, 그것이 실물 앱을 보고
+    // 기각됐다: 「아이콘을 고려해서 미리 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게
+    // 맞아.」 자리는 무리가 **설 때** 나고, 안 서면 그 폭은 제목의 것이다.
     //
-    // **바닥이지 상한이 아니다** — `minmax`의 위쪽이 `auto`라 무리가 둘이면 넘어서 넓어진다.
-    // 그 폭이 실제로 나오는지, 셸이 없는 행도 같은 제목 폭을 갖는지는 e2e가 실측으로 잰다.
-    expect(render(works("가"), ALL, { shellCounts: { 가: 1 } })).toContain(
-      "grid-cols-[minmax(0,1fr)_minmax(28px,auto)]",
+    // **이 한 줄이 되찾는 것과 치르는 것을 함께 정한다** — 셸이 0개인 행의 제목 상자가
+    // 27.91px 넓어지고, 그 대신 첫 셸이 붙는 순간 같은 값만큼 제목이 짧아진다. 두 수가
+    // 실제로 그렇게 나오는지는 e2e가 실측으로 잰다(여기서는 폭이 안 난다).
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
+    expect(markup).toContain("grid-cols-[minmax(0,1fr)_auto]");
+    expect(markup).not.toContain("minmax(28px,auto)");
+  });
+
+  it("**메타는 칸을 늘리지 않는다** — `justify-self-end`가 없다", () => {
+    // 트랙이 `auto`라 칸 폭이 곧 이 상자의 폭이다. 끝에 붙이든 늘리든 같은 상자가 나므로
+    // (실측 240.09~268px, 걷기 전후 동일) `justify-self-end`는 아무것도 안 정한다 —
+    // 예약이 있던 때는 28px 칸 안에서 23px 상자를 오른쪽에 붙이는 일을 했다.
+    expect(shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 1 } }))[0].html).not.toContain(
+      "justify-self-end",
     );
   });
 });

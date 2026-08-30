@@ -249,9 +249,11 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
 // 셋을 잇는 **한 바퀴** —— 이벤트가 스토어에 앉고 그 행이 다시 그려져 로고가 실제로 서는가 ——
 // 는 아무도 안 돈다. 탭 줄 쪽은 `terminal-tabs.spec.ts`가 그 바퀴를 돈다.
 //
-// **제목 폭도 여기서 잰다**(결정 2·5). 2열이 한 무리분(28px)을 바닥으로 예약하므로 셸이
-// 하나인 행은 claude가 켜지고 꺼져도 제목이 안 움직이고, **무리가 둘이 되는 순간에만** 한 번
-// 움직인다. 예약이 `auto`로 돌아가면 앞이, 상한이 되면 뒤가 빨개진다.
+// **제목 폭도 여기서 잰다.** 2열은 아무것도 예약하지 않는다 — 결정 2·5가 깔아 둔 28px 바닥이
+// 「아이콘 생기면 그때 가변되는게 맞아」로 기각됐다. 그래도 **셸이 하나인 행은 claude가 켜지고
+// 꺼져도 제목이 안 움직인다**(결정 3이 무리를 하나로 접어서다). 움직이는 것은 **무리가 둘이
+// 되는 순간** 한 번뿐이고, 그 뜀은 예약이 있던 때와 똑같다. 28px 바닥이 돌아오면 뒤가,
+// 상한이 되면 그것도 뒤가 빨개진다.
 test("도는 명령의 로고가 work 행 오른쪽 끝에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -275,12 +277,15 @@ test("도는 명령의 로고가 work 행 오른쪽 끝에 선다", async ({ pag
   // 하나이고, 한때 그 옆에 함께 서던 `⌨1`이 사라졌다 —— 그 두 `1`은 같은 셸이었다.
   await expect(shells).toHaveText("1");
 
-  // **claude를 켜도 제목이 안 움직인다.** `⌨1`과 `✳1`은 둘 다 무리 하나라 같은 폭이고
-  // (결정 3이 흔한 경우의 뜀을 원천적으로 없앴다), 예약이 그 폭을 바닥으로 잡고 있다.
+  // **claude를 켜도 제목이 안 움직인다.** 이제 이 한 줄을 드는 것은 예약이 아니라 **결정 3**
+  // 하나다 — `⌨1`과 `✳1`은 둘 다 무리 하나라 칸이 같은 폭을 내고, 그래서 예약 없이도 흔한
+  // 경우의 뜀이 없다. 무리를 셸마다 세던 때로 되돌리면 여기가 빨개진다.
   expect((await title.boundingBox())!.width).toBe(한무리);
 
-  // **예약은 바닥이지 상한이 아니다**(결정 5). 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 되어
-  // 28px을 넘어 넓어지고, 그 순간 한 번 제목이 짧아진다. 두 숫자의 합(1+1)이 곧 셸 수다.
+  // **무리가 둘이 되면 그때 넓어진다.** 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 되어 칸이
+  // 넓어지고, 그 순간 한 번 제목이 짧아진다(194.09 → 165.19px). 두 숫자의 합(1+1)이 곧 셸
+  // 수다. **자리가 무리를 따라간다는 것이 이 판의 전부이고**, 아래 검사가 그 반대쪽 —— 무리가
+  // 하나도 없으면 칸이 통째로 없다 —— 을 잰다.
   await page.locator('[data-tab="new"]').click();
   await expect(shells.locator("span.tabular-nums")).toHaveText(["1", "1"]);
   expect((await title.boundingBox())!.width).toBeLessThan(한무리);
@@ -334,18 +339,33 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
   await expect(메타숫자).toHaveCount(1);
   expect(await rightOf(메타숫자)).toBe(await rightOf(헤더개수));
 
-  // **셸이 있는 행과 없는 행의 제목 폭이 같다**(결정 2·5). 예약이 2열 자체에 걸려 있어서다 —
-  // 메타 상자에만 걸면 셸이 없는 행만 핀의 24px로 줄어 제목이 끊기는 자리가 행마다 갈린다.
+  // **셸 메타가 없는 행은 2열에 자리를 안 뺏긴다** — 이 판이 산 것이 이 한 줄이다. 결정 2·5는
+  // 여기를 「두 행의 제목 폭이 **같다**」로 못박고 있었다: 28px 바닥이 2열 자체에 걸려 있어
+  // 무리가 하나도 없는 행도 같은 폭을 냈다. 그것이 **기각됐다** —— 「아이콘을 고려해서 미리
+  // 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게 맞아.」
+  //
+  // **차이가 곧 메타의 폭이어야 한다.** 그냥 「더 넓다」로 두면 예약을 28에서 4로 줄이기만 해도
+  // 초록이 된다. 두 수가 붙어 있으면 2열에 남은 예약이 1px이라도 여기서 빨개진다.
   const titleWidth = async (title: string) =>
     (await page.getByRole("button", { name: title, exact: true }).boundingBox())!.width;
-  expect(await titleWidth(plainWork.title)).toBe(await titleWidth(pinnedWork.title));
+  const 메타폭 = (await shells.boundingBox())!.width;
+  expect(메타폭).toBeGreaterThan(0);
+  expect(await titleWidth(pinnedWork.title)).toBeCloseTo(
+    (await titleWidth(plainWork.title)) + 메타폭,
+    1,
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 둘은 2열 같은 칸에 겹쳐
-// 있고, 메타는 지워지는 게 아니라 **투명해진다**: `display:none`으로 빼면 그 칸의 폭 계산에서
-// 빠져 칸이 핀의 24px로 줄고 **hover마다 제목이 좌우로 뛴다.**
+// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 겹쳐 보이는 것은 이제 같은
+// 칸이라서가 아니다: 핀은 격자 밖에서 `absolute right-1`로 서고, 메타는 2열 끝에 붙어 **둘 다
+// 행의 같은 x에서 끝난다.** 그래서 메타는 지워지는 게 아니라 **투명해진다** — `display:none`
+// 으로 빼면 2열이 폭 계산에서 통째로 빠져 **0으로 무너지고**, 핀이 격자 밖이라 그 폭을 아무도
+// 안 받아 **hover마다 제목이 27.91px씩 뛴다**(핀이 칸 안에 있던 때는 24px로 줄었다).
+//
+// **핀이 격자 밖인 것을 이 검사가 든다.** 셸 메타가 없는 행에는 2열에 아무것도 없어서, 핀을
+// 격자로 되돌리면 그 행에서 제목이 24px 짧아지거나(늘 서는 트랙) hover마다 0↔24로 뛴다.
 //
 // **키보드로 닿을 때도 같다.** 핀은 hover뿐 아니라 포커스에도 뜨므로 hover만 물리면 Tab으로
 // 닿았을 때 둘이 겹쳐 그려진다(결정 7). 반대로 「행 안 어디든 포커스」로 넓히면 이름 버튼에
@@ -386,7 +406,31 @@ test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안
   await expect(pin).toHaveCSS("opacity", "1");
   await expect(shells).toHaveCSS("opacity", "0");
   // **자리는 남는다.** 폭이 그대로여야 제목이 끊기는 자리가 hover마다 안 뛴다(결정 6).
+  // 메타를 `display:none`으로 걷으면 2열이 **0으로** 무너져 —— 핀이 격자 밖이라 그 폭을
+  // 아무도 안 받는다 —— 여기가 27.91px 벌어진다.
   expect((await title.boundingBox())!.width).toBe(평소);
+
+  // **셸 메타가 없는 행에서도 안 움직인다 — 이 모양을 고른 이유가 이 세 줄이다.** 저쪽 행은
+  // 메타가 폭을 들고 있어 핀이 격자 안에 있어도 안 뛰지만, 이 행에는 2열에 아무것도 없다.
+  // 핀을 격자에 되돌리면(`col-start-2`) 그 순간 24px짜리 트랙이 hover와 무관하게 늘 서서
+  // 제목이 그만큼 짧아지고, `display:none`으로 hover에만 세우면 여기가 0↔24로 뛴다.
+  const 빈행제목 = page.getByRole("button", { name: pinnedWork.title, exact: true });
+  const 빈행핀 = page.getByRole("button", { name: `${pinnedWork.title} 고정` });
+  await expect(page.locator(`[data-shells="${pinnedWork.slug}"]`)).toHaveCount(0);
+  const 빈행평소 = (await 빈행제목.boundingBox())!.width;
+  await 빈행제목.hover();
+  await expect(빈행핀).toHaveCSS("opacity", "1");
+  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소);
+
+  // **핀은 2열이 무엇을 하든 같은 자리에 선다** — 격자 밖이라 폭 계산에 안 들어간다.
+  // 이 두 줄이 없으면 「안 움직인다」가 핀이 아예 다른 데 가 있어도 초록이 된다.
+  const 오른끝 = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    return Math.round(box.x + box.width);
+  };
+  expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
+
+  await title.hover();
 
   // **겹친 자리라 메타가 핀의 클릭을 가로채면 안 된다** — 메타가 DOM에서 뒤라 위에 그려진다.
   await pin.click();
