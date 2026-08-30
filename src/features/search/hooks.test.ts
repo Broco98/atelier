@@ -25,7 +25,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const results = (path: string): SearchResults => ({
   hits: [{ kind: "doc", slug: "가", title: "가 작업", path, archived: false }],
-  truncated: false,
 });
 
 /** 붙잡아 둔 답을 놓아 주고 자리가 잡히기를 기다린다. */

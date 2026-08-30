@@ -21,7 +21,7 @@ const MARQUEE_SPEED = 50; // px/s
 // 자리가 여기라서 둘이 같은 수를 읽는다. `calc()`가 길이를 시간으로 못 바꾸는 것이 이
 // 한 값이 두 언어에 걸치는 이유 전부다(결정 12). 그 「같은 수」는 주석이 아니라
 // `SidebarWorkList.test.tsx`의 소스 스캔이 지킨다 — 어긋나도 화면에는 속도 오차로만 나타난다.
-const TITLE_FADE = 24; // px
+const TITLE_FADE = 12; // px
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
 // 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
@@ -160,16 +160,33 @@ function SidebarWorkList({
 
   return (
     <>
-      {/* 거터를 스크롤 상자 **바깥**에 둔다. 스크롤바는 padding이 아니라 border 안쪽 끝에
-          놓이므로, 스크롤 상자가 사이드바 폭을 그대로 쓰면 스크롤바가 폭 조절 핸들(오른쪽 5px)
-          아래로 들어가 막대를 잡으려다 폭 드래그가 시작된다.
-          두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
+      {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="flex min-h-0 flex-1 flex-col px-2">
         {/* **자리를 예약하지 않는다**(결정 32). 한때 scroll이었다 — 폭을 갖는 클래식 막대라
             auto로 두면 넘치는 순간 콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 밀렸다
             (실측 264→253). 이제 막대가 콘텐츠 **위에** 떠서(scroll-quiet) 폭을 안 먹으므로
-            예약할 것이 없고, 그만큼 행이 넓어진다. */}
-        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-1 scroll-quiet">
+            예약할 것이 없고, 그만큼 행이 넓어진다.
+
+            **`-mx-2 px-2`가 거터를 뚫고 나갔다 되돌린다.** 상자가 사이드바 폭을 통째로 쓰고
+            (0~280) 안쪽 패딩이 콘텐츠를 제자리(8~272)에 둔다 — 보이는 것은 하나도 안 움직이고
+            **막대만** 옮겨 간다.
+
+            한때 거터가 이 상자 **바깥**에 있었고, 근거는 「스크롤바는 padding이 아니라 border
+            안쪽 끝에 놓이므로 상자가 사이드바 폭을 그대로 쓰면 막대가 폭 조절 핸들 아래로
+            들어가 막대를 잡으려다 폭 드래그가 시작된다」였다. **그 근거는 죽었다** — 결정 32가
+            네이티브 막대를 걷고 우리가 그리면서 막대에 `pointer-events: none`이 붙었다(그쪽
+            주석). 잡을 수 없는 것이 핸들을 가릴 일이 없다.
+
+            대신 그 바깥 거터가 병을 하나 만들고 있었다. 막대는 **상자 안쪽 3~9px**에 서므로
+            (`lib/scroll-quiet.ts`의 EDGE·THICKNESS), 상자가 이미 8px 들여쓰여 있으면 막대가
+            사이드바 경계에서 **11~17px** 안쪽 — 즉 행 한가운데로 들어온다. 실측으로 핀·셸
+            메타 상자(~268px)를 **5px 침범**했고, 사람이 실물에서 그것을 보고 말했다:
+            「스크롤이 아직도 좀 이상한대?」 뚫고 나간 지금은 막대가 271~277에 서서 헤더 개수
+            (263px)와 **8px**, 핀·메타 상자와 **3px** 떨어진다.
+
+            같은 병이 프로젝트·아카이브 목록에도 있었고 같은 한 줄로 고쳤다(그쪽 `-mx-3 px-3`).
+            바깥 거터가 없는 상자들(본문·설정)은 처음부터 막대가 경계에서 3~9px이라 성했다. */}
+        <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
             open={sectionsOpen}
@@ -522,20 +539,40 @@ function WorkRow({
         onLeave();
       }}
       className={cn(
-        // **flex가 아니라 grid다**(결정 1). 메타와 핀이 **2열 같은 칸에 겹쳐** 서야 하는데,
-        // 그 둘을 상자 하나로 묶으면 요소만 늘고 칸 폭 계산은 똑같다. 그리고 첫 줄을 상자로
-        // 한 겹 싸면 **이름 버튼의 부모**가 그 상자가 되어, 그것으로 배경 상자를 집는 자리가
-        // 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를 잰다.
-        // (한때 이 주석이 「핀의 `parentElement`」라고 적어 뒀는데 그런 자리는 없다. 그
-        // 한 줄이 스펙까지 물려가 안 하나를 잘못 기각했다 — 결정 1이 그 내력을 든다.)
+        // **flex가 아니라 grid다**(결정 1). 메타와 핀이 **2열 같은 칸에 겹쳐** 서고 칸 폭이
+        // `max(메타, 핀)`이 된다 — flex로는 두 형제를 같은 자리에 포개면서 폭만 큰 쪽을
+        // 따르게 할 수 없다.
         //
-        // **2열은 한 무리분(28px)을 바닥으로 예약한다**(결정 2·5). `auto`로 두면 로고가
-        // 붙을 때마다 칸이 넓어져 제목이 끊기는 자리가 초마다 밀린다 — 판 04가 행 높이에서
-        // 기각한 그 흔들림을 90도 돌린 것이다. 한 무리 = 글리프 12 + 간격 4 + 숫자 7 = 23px,
-        // 오른쪽 여백 5px. 셸이 하나인 work은 무리가 늘 정확히 하나라 제목이 영영 안 움직이고,
-        // 셸이 0개인 행도 같은 폭을 내 제목이 끊기는 자리가 행마다 갈리지 않는다.
-        // **바닥이지 상한이 아니다** — 무리가 둘 이상이면 `minmax`의 위쪽(`auto`)이 받는다.
-        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_minmax(28px,auto)] items-center rounded-[10px] pr-1 transition-colors",
+        // 대신 안 바뀐 것이 하나 있다: **첫 줄을 상자로 한 겹 싸지 않는다.** 싸면 **이름
+        // 버튼의 부모**가 그 상자가 되어, 그것으로 배경 상자를 집는 자리가 조용히 어긋난다 —
+        // e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를 잰다. (한때 이 주석이 「핀의
+        // `parentElement`」라고 적어 뒀는데 그런 자리는 없다. 그 한 줄이 스펙까지 물려가 안
+        // 하나를 잘못 기각했다 — 결정 1이 그 내력을 든다.)
+        //
+        // **2열은 아무것도 예약하지 않는다 — 그냥 `auto`다.** 결정 2·5는 여기에 한 무리분
+        // (28px)을 **바닥으로** 깔라고 했고, 그것이 실물 앱을 보고 **기각됐다**:
+        // 「아이콘을 고려해서 미리 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게 맞아.」
+        // 자리는 선 것이 **실제로 있을 때** 난다. 그 「선 것」에 **핀도 든다** — 핀은 hover에만
+        // 뜨므로 칸도 hover에만 24px이 된다(핀 주석).
+        //
+        // **그래서 이 칸의 폭은 행에 따라 다르게 움직인다**(L3 WebKit 실측 2026-08-30 ·
+        // 사이드바 280px, 제목 상자 폭으로 적는다):
+        //
+        //   셸 0개 · 쉴 때 **222.00px** → hover **198.00px**  (빈 칸에 핀 24px이 선다)
+        //   1무리  · 쉴 때 **194.09px** → hover **194.09px**  (메타 27.91 > 핀 24 — 안 움직인다)
+        //
+        // 즉 **hover에 제목이 줄어드는 것은 셸이 0개인 행뿐이고**, 메타가 이미 서 있는 행은
+        // 핀이 그 폭 안에 들어가 앉아 아무 일도 안 난다.
+        //
+        // **이 24px의 뜀이 이 판이 산 것이다.** 한때 핀을 격자 밖(`absolute right-1`)에 세워
+        // 뜀을 0으로 만든 적이 있는데, 그러면 칸이 핀을 모르므로 핀이 **제목 글자 위에 얹혔다**
+        // (실물에서 그 겹침을 보고 되돌렸다). 사람이 고른 것이 그 갈림이다:
+        // 「호버하면, 자동으로 아이콘 위치만큼 text의 최대 크기가 조정되지? 이런걸 원하는거임.
+        // (안겹치게)」 **뜀을 없애는 남은 길은 다시 예약을 까는 것뿐**이라 위 기각과 한 몸이다.
+        //
+        // 셸이 붙고 떨어질 때 제목이 끊기는 자리가 튀는 것은 그대로다 — 첫 셸이 서면
+        // 27.91px, 무리가 둘이 되면 다시 28.90px 짧아진다.
+        "group grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-[10px] pr-1 transition-colors",
         active ? "selected-row" : "text-muted-foreground hover:bg-state-1",
       )}
     >
@@ -586,17 +623,47 @@ function WorkRow({
           켜짐은 aria-pressed가 말한다(WorkPanel의 `</>` 토글과 같은 규칙). title은 두지
           않는다 — 행에 머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다.
 
-          **메타와 같은 칸에 선다**(결정 1) — 2열 1행에 둘 다 놓으면 겹침이 이미 되고 칸 폭은
-          `max(메타, 핀)`이다. `peer`는 **아래 메타가 이 버튼의 포커스를 보기 위한 것**이다
-          (결정 7): 이 핀은 hover뿐 아니라 포커스에도 뜨므로, 메타를 `group-hover`로만 물리면
-          Tab으로 닿았을 때 둘이 겹쳐 그려진다. 후행 형제에만 걸리는 선택자인데 DOM 순서가
-          이미 `이름 버튼 → 핀 → 메타`라 그대로 먹는다. */}
+          **메타와 같은 2열 1행에 겹쳐 선다**(결정 1). 그래서 칸 폭이 `max(메타, 핀)`이고,
+          **핀이 폭을 가질 때만** 그 24px이 칸에 더해진다.
+
+          **쉴 때 폭을 걷는 것이 `max-w-0`이다** — `width`가 아니라 `max-width`인 것은
+          `icon-button`이 `width: 24px`을 들기 때문이다. 둘 다 유틸리티 레이어라 `w-0`으로
+          덮으려 들면 승자가 Tailwind의 정렬 순서에 걸리는데, `max-width`는 다른 속성이라
+          그 싸움 밖에 선다. 격자 트랙은 아이템의 max-content 기여를 `max-width`로 clamp하므로
+          쉴 때 기여가 **0**이다(실측: 핀 상자가 268.0~268.0).
+
+          **`display:none`은 안 된다 — 포커스가 안 들어간다.** 이 핀은 hover뿐 아니라
+          **포커스에도** 떠야 하는데(결정 7) `display:none`인 요소는 `.focus()`를 받지 못해,
+          e2e가 `pin.focus()`로 세는 그 계약이 통째로 무너진다. `max-w-0`은 상자를 지우지
+          않으므로 포커스가 그대로 들어가고 `focus-visible:max-w-6`이 폭을 되돌린다.
+          `overflow-hidden`은 그 0폭 상자 밖으로 글리프가 삐져나오지 않게 하는 것이다.
+
+          **트랜지션을 안 건다.** `icon-button-tint`가 `transition-property: color`뿐이라
+          폭은 즉시 바뀌는데, 그게 맞다 — 행의 `onMouseEnter`가 hover 스타일이 **이미 적용된
+          뒤에** `clientWidth`를 읽어 마퀴 거리를 잰다(실측: 셸 0개 행에서 `client=198`,
+          `scroll=284`, 넘침 86 + 페이드 12 = 98px → 1960ms). 폭에 트랜지션이 걸리면 그
+          순간의 중간값이 잡혀 마퀴가 끝까지 못 흐른다.
+
+          **`justify-self-end`가 자리를 붙든다.** 칸이 핀보다 넓을 때(메타 27.91px) 격자
+          기본값 stretch면 핀 상자가 칸만큼 늘어나 글리프가 가운데로 밀린다. 끝에 붙이면
+          셸이 있든 없든 **244~268px 한 자리**다(실측, 두 행 모두).
+
+          **겹침이 없다.** 칸이 핀의 폭을 세므로 제목 상자가 그만큼 물러난다 — hover에
+          제목 끝이 셸 0개 행에서 238.00px, 핀 시작이 244.00px로 **6px 떨어진다**(이름 버튼의
+          `pr-1.5`). 페이드 띠(226~238px)와 핀 글리프(250~262px)도 갈린다. 한때 핀을 격자
+          밖에 세웠을 때는 이 둘이 250~262px에서 **정확히 겹쳐** 끝 글자가 뭉개졌고, 사람이
+          실물에서 그것을 보고 되돌렸다(행 상자 주석).
+
+          `peer`는 **아래 메타가 이 버튼의 포커스를 보기 위한 것**이다(결정 7): 이 핀은
+          hover뿐 아니라 포커스에도 뜨므로, 메타를 `group-hover`로만 물리면 Tab으로 닿았을 때
+          둘이 겹쳐 그려진다. 후행 형제에만 걸리는 선택자인데 DOM 순서가 이미
+          `이름 버튼 → 핀 → 메타`라 그대로 먹는다. */}
       <button
         type="button"
         aria-label={`${work.title} 고정`}
         aria-pressed={work.pinned}
         onClick={() => onTogglePin(work)}
-        className="peer icon-button-tint col-start-2 row-start-1 shrink-0 justify-self-end text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+        className="peer icon-button-tint col-start-2 row-start-1 max-w-0 justify-self-end overflow-hidden text-tertiary opacity-0 outline-none focus-visible:max-w-6 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:max-w-6 group-hover:opacity-100"
       >
         <Pin
           className="size-3"
@@ -622,22 +689,28 @@ function WorkRow({
           바깥인 이 상자가 드는 것은 **격자 칸 · hover 페이드 · 표식** 셋뿐이다(결정 14) —
           그림 컴포넌트는 슬러그를 모르므로 표식이 여기 있다.
 
-          **핀과 같은 칸에 겹친다**(결정 1). hover하면 메타가 **투명해지고**(`hidden`이 아니다 —
-          `display:none`은 칸 폭 계산에서 빠져 칸이 핀의 24px로 줄고 hover마다 제목이 좌우로
-          뛴다) 그 자리에 핀이 선다. `visibility:hidden`도 아니다: 셸 수가 마우스 위치에 따라
-          있다 없다 하는 정보가 되면 안 된다(결정 6). 트랜지션은 안 건다 — 옆 행으로 옮겨 갈 때
-          두 페이드가 겹쳐 미끄러져 보인다(icon-button-tint가 opacity를 뺀 것과 같은 이유).
+          **핀과 같은 2열 1행에 겹쳐 선다**(결정 1) — 칸 폭은 `max(메타, 핀)`이다.
+          1무리 27.91px · 2무리 56.81px이라 **둘 다 핀 24px보다 넓고**, 그래서 셸이 있는 행은
+          hover에도 칸이 안 움직인다(실측 제목 상자 194.09px 그대로). 움직이는 것은 이 상자가
+          아예 없는 셸 0개 행뿐이다(핀 주석).
+
+          hover하면 메타가 **투명해진다**(`hidden`이 아니다 — `display:none`은 칸 폭 계산에서
+          빠져 2열이 핀의 24px로 **줄고**, 제목이 hover마다 3.91px 튄다).
+          `visibility:hidden`도 아니다: 셸 수가 마우스 위치에 따라 있다 없다 하는 정보가
+          되면 안 된다(결정 6). 트랜지션은 안 건다 — 옆 행으로 옮겨 갈 때 두 페이드가 겹쳐
+          미끄러져 보인다(icon-button-tint가 opacity를 뺀 것과 같은 이유).
           **`peer-focus-visible`이 함께 가는 이유는 핀이 포커스에도 뜨기 때문이다**(결정 7).
           `group-focus-within`은 틀린 답이다 — 이름 버튼에 포커스가 가도 메타가 물러나는데
           그때는 핀이 안 떠서 그 자리가 통째로 빈다.
 
           **표시 전용이다**(결정 5). 무리 하나가 셸 여럿을 접으므로 무리와 셸이 1:1이 아니고,
           누르면 어느 셸로 갈지 정해지지 않는다. 그래서 `pointer-events-none`이 상시다 —
-          누를 것이 없을 뿐 아니라, 겹친 자리라 이것이 위에 있으면 **핀의 클릭을 가로챈다.** */}
+          누를 것이 없을 뿐 아니라, 같은 칸에 겹쳐 서고 DOM에서 핀보다 **뒤**라 이것이 위에
+          그려진다: 그대로 두면 핀의 클릭을 가로챈다. */}
       {shellCount > 0 && (
         <div
           data-shells={work.slug}
-          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end group-hover:opacity-0 peer-focus-visible:opacity-0"
+          className="pointer-events-none col-start-2 row-start-1 flex items-center group-hover:opacity-0 peer-focus-visible:opacity-0"
         >
           {shellMeta}
         </div>

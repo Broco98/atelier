@@ -17,7 +17,7 @@ const MAIN_HEADER = "작업 1";
 
 // 오른쪽 끝 페이드의 폭이자 **마퀴가 넘침 위에 더 가는 거리**다(결정 11) — 그만큼 더 가지
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
-const TITLE_FADE = 24;
+const TITLE_FADE = 12;
 
 // 흐르는 **속도**(px/s) — `SidebarWorkList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
@@ -25,6 +25,12 @@ const TITLE_FADE = 24;
 // 있고, 좁아야 고정 지속시간이 두 자리를 다 통과하지 못한다.
 const MARQUEE_SPEED = 50;
 const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
+
+// 핀 상자의 폭(`icon-button`). **셸이 0개인 행은 hover에 제목 상자가 정확히 이만큼 줄어든다** —
+// 핀이 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(SidebarWorkList의 핀 주석).
+// 그래서 흐르는 거리를 **hover 중의 넘침**으로 재야 한다: 쉴 때 넘침으로 재면 이만큼 모자라
+// 마지막 글자가 페이드에 남는다.
+const PIN_WIDTH = 24;
 
 /** 제목 상자 — 마스크가 걸리고 넘침을 재는 자리다. 흐르는 것은 그 **안쪽 글자**다. */
 const titleBoxOf = (page: Page, title: string) =>
@@ -249,9 +255,11 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
 // 셋을 잇는 **한 바퀴** —— 이벤트가 스토어에 앉고 그 행이 다시 그려져 로고가 실제로 서는가 ——
 // 는 아무도 안 돈다. 탭 줄 쪽은 `terminal-tabs.spec.ts`가 그 바퀴를 돈다.
 //
-// **제목 폭도 여기서 잰다**(결정 2·5). 2열이 한 무리분(28px)을 바닥으로 예약하므로 셸이
-// 하나인 행은 claude가 켜지고 꺼져도 제목이 안 움직이고, **무리가 둘이 되는 순간에만** 한 번
-// 움직인다. 예약이 `auto`로 돌아가면 앞이, 상한이 되면 뒤가 빨개진다.
+// **제목 폭도 여기서 잰다.** 2열은 아무것도 예약하지 않는다 — 결정 2·5가 깔아 둔 28px 바닥이
+// 「아이콘 생기면 그때 가변되는게 맞아」로 기각됐다. 그래도 **셸이 하나인 행은 claude가 켜지고
+// 꺼져도 제목이 안 움직인다**(결정 3이 무리를 하나로 접어서다). 움직이는 것은 **무리가 둘이
+// 되는 순간** 한 번뿐이고, 그 뜀은 예약이 있던 때와 똑같다. 28px 바닥이 돌아오면 뒤가,
+// 상한이 되면 그것도 뒤가 빨개진다.
 test("도는 명령의 로고가 work 행 오른쪽 끝에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -275,12 +283,15 @@ test("도는 명령의 로고가 work 행 오른쪽 끝에 선다", async ({ pag
   // 하나이고, 한때 그 옆에 함께 서던 `⌨1`이 사라졌다 —— 그 두 `1`은 같은 셸이었다.
   await expect(shells).toHaveText("1");
 
-  // **claude를 켜도 제목이 안 움직인다.** `⌨1`과 `✳1`은 둘 다 무리 하나라 같은 폭이고
-  // (결정 3이 흔한 경우의 뜀을 원천적으로 없앴다), 예약이 그 폭을 바닥으로 잡고 있다.
+  // **claude를 켜도 제목이 안 움직인다.** 이제 이 한 줄을 드는 것은 예약이 아니라 **결정 3**
+  // 하나다 — `⌨1`과 `✳1`은 둘 다 무리 하나라 칸이 같은 폭을 내고, 그래서 예약 없이도 흔한
+  // 경우의 뜀이 없다. 무리를 셸마다 세던 때로 되돌리면 여기가 빨개진다.
   expect((await title.boundingBox())!.width).toBe(한무리);
 
-  // **예약은 바닥이지 상한이 아니다**(결정 5). 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 되어
-  // 28px을 넘어 넓어지고, 그 순간 한 번 제목이 짧아진다. 두 숫자의 합(1+1)이 곧 셸 수다.
+  // **무리가 둘이 되면 그때 넓어진다.** 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 되어 칸이
+  // 넓어지고, 그 순간 한 번 제목이 짧아진다(194.09 → 165.19px). 두 숫자의 합(1+1)이 곧 셸
+  // 수다. **자리가 무리를 따라간다는 것이 이 판의 전부이고**, 아래 검사가 그 반대쪽 —— 무리가
+  // 하나도 없으면 칸이 통째로 없다 —— 을 잰다.
   await page.locator('[data-tab="new"]').click();
   await expect(shells.locator("span.tabular-nums")).toHaveText(["1", "1"]);
   expect((await title.boundingBox())!.width).toBeLessThan(한무리);
@@ -334,18 +345,36 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
   await expect(메타숫자).toHaveCount(1);
   expect(await rightOf(메타숫자)).toBe(await rightOf(헤더개수));
 
-  // **셸이 있는 행과 없는 행의 제목 폭이 같다**(결정 2·5). 예약이 2열 자체에 걸려 있어서다 —
-  // 메타 상자에만 걸면 셸이 없는 행만 핀의 24px로 줄어 제목이 끊기는 자리가 행마다 갈린다.
+  // **셸 메타가 없는 행은 2열에 자리를 안 뺏긴다** — 이 판이 산 것이 이 한 줄이다. 결정 2·5는
+  // 여기를 「두 행의 제목 폭이 **같다**」로 못박고 있었다: 28px 바닥이 2열 자체에 걸려 있어
+  // 무리가 하나도 없는 행도 같은 폭을 냈다. 그것이 **기각됐다** —— 「아이콘을 고려해서 미리
+  // 빼놨다는건 말이 안됨. 아이콘 생기면 그때 가변되는게 맞아.」
+  //
+  // **차이가 곧 메타의 폭이어야 한다.** 그냥 「더 넓다」로 두면 예약을 28에서 4로 줄이기만 해도
+  // 초록이 된다. 두 수가 붙어 있으면 2열에 남은 예약이 1px이라도 여기서 빨개진다.
   const titleWidth = async (title: string) =>
     (await page.getByRole("button", { name: title, exact: true }).boundingBox())!.width;
-  expect(await titleWidth(plainWork.title)).toBe(await titleWidth(pinnedWork.title));
+  const 메타폭 = (await shells.boundingBox())!.width;
+  expect(메타폭).toBeGreaterThan(0);
+  expect(await titleWidth(pinnedWork.title)).toBeCloseTo(
+    (await titleWidth(plainWork.title)) + 메타폭,
+    1,
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 둘은 2열 같은 칸에 겹쳐
-// 있고, 메타는 지워지는 게 아니라 **투명해진다**: `display:none`으로 빼면 그 칸의 폭 계산에서
-// 빠져 칸이 핀의 24px로 줄고 **hover마다 제목이 좌우로 뛴다.**
+// 결정 1·6·7 — **hover하면 메타가 물러나고 그 자리에 핀이 선다.** 둘은 **2열 1행에 겹쳐**
+// 서고 칸 폭이 `max(메타, 핀)`이다. 그래서 메타는 지워지는 게 아니라 **투명해진다** —
+// `display:none`으로 빼면 칸이 핀의 24px로 줄어 제목이 hover마다 3.91px 튄다.
+//
+// **핀이 폭을 hover에만 갖는 것을 이 검사가 든다.** 사람이 실물 앱에서 고른 모양이다:
+// 「호버하면, 자동으로 아이콘 위치만큼 text의 최대 크기가 조정되지? 이런걸 원하는거임.
+// (안겹치게)」 그래서 두 행이 **다르게** 움직인다 — 메타가 이미 선 행은 안 움직이고
+// (27.91 > 24), 셸이 0개인 행만 hover에 24px 줄어든다. 둘 중 하나만 세면 이 모양이 아니다.
+//
+// 한때 핀이 `absolute right-1`로 격자 밖에 서서 두 행 다 0.00px이었는데, 칸이 핀을 몰라
+// **핀이 제목 글자 위에 얹혔다.** 마지막 단언(제목 끝 < 핀 시작)이 그 회귀를 막는다.
 //
 // **키보드로 닿을 때도 같다.** 핀은 hover뿐 아니라 포커스에도 뜨므로 hover만 물리면 Tab으로
 // 닿았을 때 둘이 겹쳐 그려진다(결정 7). 반대로 「행 안 어디든 포커스」로 넓히면 이름 버튼에
@@ -353,7 +382,7 @@ test("메타 숫자가 구획 헤더의 개수와 같은 x에 서고, 셸이 있
 //
 // **이 층에서만 보인다**: 겹침도 칸 폭도 `focus-visible`도 진짜 CSS와 레이아웃이 있어야 난다.
 // 셸이 있는 화면에서 보는 이유는 위 검사와 같다.
-test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안 움직인다", async ({ page }) => {
+test("hover·포커스로 핀에 닿으면 메타가 물러나고, 핀은 글자를 안 덮는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
@@ -385,8 +414,38 @@ test("hover·포커스로 핀에 닿으면 메타가 물러나고, 제목은 안
   await title.hover();
   await expect(pin).toHaveCSS("opacity", "1");
   await expect(shells).toHaveCSS("opacity", "0");
-  // **자리는 남는다.** 폭이 그대로여야 제목이 끊기는 자리가 hover마다 안 뛴다(결정 6).
+  // **메타가 선 행은 안 움직인다.** 칸 폭이 `max(메타 27.91, 핀 24)`이라 핀이 그 안에 들어가
+  // 앉는다. 메타를 `display:none`으로 걷으면 칸이 24px로 줄어 여기가 3.91px 벌어진다.
   expect((await title.boundingBox())!.width).toBe(평소);
+
+  // **셸 메타가 없는 행은 hover에 정확히 핀만큼 줄어든다 — 이 모양을 고른 이유가 여기다.**
+  // 저쪽 행은 메타가 이미 더 넓은 폭을 들고 있어 아무 일도 안 나지만, 이 행은 2열이 비어
+  // 있어 핀이 서는 만큼이 곧 칸 폭이다. 줄지 않으면 핀이 격자 밖으로 돌아간 것이고,
+  // 그러면 글자 위에 얹힌다(아래 마지막 단언).
+  const 빈행제목 = page.getByRole("button", { name: pinnedWork.title, exact: true });
+  const 빈행핀 = page.getByRole("button", { name: `${pinnedWork.title} 고정` });
+  await expect(page.locator(`[data-shells="${pinnedWork.slug}"]`)).toHaveCount(0);
+  const 빈행평소 = (await 빈행제목.boundingBox())!.width;
+  await 빈행제목.hover();
+  await expect(빈행핀).toHaveCSS("opacity", "1");
+  const 빈행핀상자 = (await 빈행핀.boundingBox())!;
+  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소 - 빈행핀상자.width);
+
+  // **핀은 2열이 무엇을 하든 같은 자리에 선다** — `justify-self-end`가 칸 끝에 붙든다.
+  // 이것이 없으면 메타가 선 행에서 핀 상자가 칸만큼 늘어나 글리프가 가운데로 밀린다.
+  const 오른끝 = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    return Math.round(box.x + box.width);
+  };
+  expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
+
+  // **핀이 글자를 안 덮는다 — 이 판이 산 것이 이 한 줄이다.** 격자 밖에 세우면 hover 밀림은
+  // 0이지만 칸이 핀을 몰라 제목 상자가 핀 아래까지 뻗고, 페이드 띠와 글리프가 같은 자리에
+  // 겹쳐 끝 글자가 뭉개진다. 실측으로 제목 끝 238.00px · 핀 시작 244.00px이다.
+  const 빈행제목상자 = (await 빈행제목.locator("[data-title]").boundingBox())!;
+  expect(빈행제목상자.x + 빈행제목상자.width).toBeLessThanOrEqual(빈행핀상자.x);
+
+  await title.hover();
 
   // **겹친 자리라 메타가 핀의 클릭을 가로채면 안 된다** — 메타가 DOM에서 뒤라 위에 그려진다.
   await pin.click();
@@ -418,7 +477,7 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   expect(넘침).toBeGreaterThan(0);
   expect(await overflowOf(짧은제목)).toBeLessThanOrEqual(0);
 
-  // **`…`이 아니다**(결정 9·18). 끊는 것은 오른쪽 끝 24px 그라디언트이고, 마스크는 상시라
+  // **`…`이 아니다**(결정 9·18). 끊는 것은 오른쪽 끝 12px 그라디언트이고, 마스크는 상시라
   // 넘치지 않는 제목에도 걸려 있다(결정 12 — 거의 꽉 찬 제목의 끝 글자가 옅어지는 대가).
   await expect(긴제목).toHaveCSS("text-overflow", "clip");
   for (const box of [긴제목, 짧은제목]) {
@@ -434,10 +493,16 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // 쉴 때는 제자리다 — 쉴 때 계측도 없다(결정 12).
   expect(await shiftOf(긴제목)).toBe(0);
 
-  // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 24px이
+  // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 12px이
   // 없으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다(결정 11).
   await 긴제목.hover();
-  const 거리 = 넘침 + TITLE_FADE;
+  // **넘침을 hover 중에 다시 잰다.** 이 행은 셸이 0개라 hover에 핀이 서면서 제목 상자가
+  // `PIN_WIDTH`만큼 줄고, 흐르는 거리는 **그 줄어든 상자** 기준이다 — 거리를 CSS가 `100cqw`로
+  // 푸는데(결정 10) 그 `cqw`가 hover 상태의 폭이기 때문이다. 두 값이 갈리는 것을 함께 세는
+  // 것은, 안 갈리면 핀이 격자 밖으로 돌아가 글자를 덮고 있다는 뜻이라서다(핀 검사와 한 쌍).
+  const hover넘침 = await overflowOf(긴제목);
+  expect(hover넘침).toBe(넘침 + PIN_WIDTH);
+  const 거리 = hover넘침 + TITLE_FADE;
 
   // **200ms는 기다린다**(결정 11) — 목록을 훑고 지나갈 때 제목이 흔들리지 않고, 호버
   // 카드(350ms)보다는 먼저 답한다.
@@ -479,7 +544,7 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   await expect.poll(() => shiftOf(긴제목)).toBe(0);
 
   // **안 넘치는 제목은 hover해도 가만히 있다** — 시작 지연이 지나도 0이다. `min`이 0을
-  // 고르기 때문이고(결정 10), 페이드 폭을 그냥 빼면 여기가 24px까지 흐른다.
+  // 고르기 때문이고(결정 10), 페이드 폭을 그냥 빼면 여기가 12px까지 흐른다.
   await page.waitForTimeout(500);
   expect(await shiftOf(짧은제목)).toBe(0);
 
@@ -522,6 +587,9 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
 
   // **다시 그리지도, 다시 재지도 않았는데** 흐르는 거리가 새 폭에 맞는다.
   await 긴제목.hover();
+  // 위 검사와 같은 이유로 hover 중에 다시 잰다 — 이 행도 셸이 0개다.
+  const hover넘침 = await overflowOf(긴제목);
+  expect(hover넘침).toBe(좁힌뒤 + PIN_WIDTH);
 
   // **속도는 넘침이 달라져도 같다** — AC 「흐르는 속도가 제목 길이와 무관하게 일정하다」를
   // 재는 자리가 여기다. 위 검사가 첫 넘침에서 건 밴드를 좁힌 뒤의 넘침에서도 걸어야 그 말이
@@ -534,7 +602,7 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   expect(속도).toBeLessThan(속도밴드[1]);
 
   await expect
-    .poll(async () => Math.abs((await shiftOf(긴제목)) + (좁힌뒤 + TITLE_FADE)) <= 2, {
+    .poll(async () => Math.abs((await shiftOf(긴제목)) + (hover넘침 + TITLE_FADE)) <= 2, {
       timeout: 8000,
       message: "좁힌 뒤의 넘침에 흐르는 거리가 안 맞는다",
     })

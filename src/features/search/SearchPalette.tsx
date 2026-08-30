@@ -7,7 +7,8 @@ import { hitTarget } from "./hit-target";
 import type { SearchHit } from "./types";
 
 /**
- * ⇧⇧로 여는 검색 팔레트.
+ * ⇧⇧로, 또는 셸 컨트롤 행의 검색 버튼으로 여는 검색 팔레트. **여는 자리는 그래도 하나다** —
+ * 버튼은 키 리스너와 같은 state를 켤 뿐이다(`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **떠 있는 표면의 규격은 확인 창(`AppDialog`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
@@ -98,7 +99,6 @@ export function SearchList({
   query,
   hits,
   state,
-  truncated,
   selected,
   onQuery,
   onGo,
@@ -121,8 +121,6 @@ export function SearchList({
    * - `"failed"` — 못 물었다. 재시도는 없으므로(hooks.ts) **다음 타자가 곧 다음 시도**다.
    */
   state: "pending" | "ready" | "failed";
-  /** 상한에 걸려 못 나온 줄이 있는가. **코어가 말해 준다** — 줄 수로는 못 가른다. */
-  truncated: boolean;
   /** 지금 골라진 줄. 목록이 비면 아무 줄도 안 골라진다(`-1`). */
   selected: number;
   onQuery: (query: string) => void;
@@ -151,12 +149,32 @@ export function SearchList({
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
+  // **떠 있는 동안 스크롤 막대를 걷는다.** 막대는 `z-index: 45`이고 이 오버레이가 `z-50`이라
+  // 막대가 **아래**에 깔리는데, 오버레이가 반투명이라 그대로 비쳐 보인다 — 팔레트를 열기
+  // 직전까지 굴리던 화면의 막대가 오버레이 너머로 남아 페이드되는 것이 그 모양이다
+  // (`HIDE_DELAY_MS` 420ms + 페이드 180ms).
+  //
+  // 막대를 위로 올려 해결하지 않는다: 뒤 화면은 **팔레트가 떠 있는 동안 구를 수 없고**
+  // (오버레이가 포인터를 다 받는다) 구를 수 없는 것의 막대는 거짓이다. 팔레트 제 목록의
+  // 막대도 함께 걷힌다 — 어차피 카드(`bg-background`, z-50)가 그 자리를 덮어 보인 적이 없다.
+  //
+  // 자리가 `body`인 것은 막대가 `body` 직계 fixed라서다(`lib/scroll-quiet.ts`) — 이 컴포넌트의
+  // 서브트리 안에서는 그 노드에 닿는 선택자를 쓸 수 없다.
+  useEffect(() => {
+    document.body.dataset.paletteOpen = "";
+    return () => {
+      delete document.body.dataset.paletteOpen;
+    };
+  }, []);
+
   return (
     <div
       // 바깥을 눌러도 닫힌다 — 확인 창과 같은 규칙이고, 여는 것 말고는 아무 일도 안 하는
       // 표면이라 닫는 데 잃는 것이 없다.
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-background/55 p-8 pt-[12vh] backdrop-blur-[2px]"
+      // 막은 **확인 창과 같은 것을 쓴다**(`modal-scrim` — 뒤를 흐리지 않고 어둡게만 한다).
+      // 뜨는 자리만 여기가 정한다: 팔레트는 위쪽 12vh에 서고 확인 창은 가운데다.
+      className="modal-scrim flex items-start justify-center p-8 pt-[12vh]"
     >
       <div
         onClick={(event) => event.stopPropagation()}
@@ -182,7 +200,10 @@ export function SearchList({
           role="listbox"
           aria-label="검색 결과"
           // 구르는 상자는 저장소 공통 막대를 쓴다(결정 32) — 한 자리만 다른 막대를 쓰면
-          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다.
+          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다. 다만 팔레트가
+          // 떠 있는 동안은 그 막대가 걷힌다(위 `data-paletteOpen` 주석) — 그래서 **바닥이
+          // 「더 있다」를 말하는 유일한 자리**이고, 그 일을 `data-more-fade`가 든다.
+          data-more-fade=""
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
           {hits.map((hit, at) => {
@@ -257,20 +278,6 @@ export function SearchList({
             </p>
           )}
         </div>
-        {/* 결정 24. **「더 보기」는 안 만든다** — 걸리면 좁히는 것이 답이고, 목록은 걸렸다는
-            것만 말한다. 목록 밖에 두는 것은 구르는 상자 안이면 끝까지 내려야 보이기 때문이다.
-
-            **수를 적지 않는다.** 상한(`LAYER_LIMIT`)은 코어에 살고 여기로 오지 않는데, 여기에
-            베껴 적으면 상한이 두 자리에 살게 된다 — `truncated`를 값으로 실어 온 이유가 바로
-            그것이라, 그 줄에서 수를 말하면 고치는 날 화면만 거짓말을 한다. */}
-        {truncated && (
-          <p
-            data-note=""
-            className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground"
-          >
-            일부만 보입니다 — 더 치면 좁혀집니다
-          </p>
-        )}
       </div>
     </div>
   );
@@ -332,7 +339,6 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
       query={query}
       hits={hits}
       state={state}
-      truncated={data?.truncated ?? false}
       selected={at}
       onQuery={(next) => {
         setQuery(next);

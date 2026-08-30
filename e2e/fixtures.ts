@@ -33,14 +33,20 @@ export const PROJECTS: ProjectView[] = [
 // 그 둘이기 때문이다(결정 82의 구획, 결정 85의 채운 핀). 순서는 코어가 정하므로
 // (결정 100) 고정된 것이 먼저 온다.
 //
-// **제목 길이도 둘로 갈라 둔다**(결정 9~12). 사이드바 280px에서 제목에 남는 폭은 194px이라
-// 첫 제목은 넘치고 둘째는 안 넘치는데, 「넘치면 흐르고 안 넘치면 가만히 있다」를 보려면
+// **제목 길이도 둘로 갈라 둔다**(결정 9~12). 「넘치면 흐르고 안 넘치면 가만히 있다」를 보려면
 // 그 둘이 다 있어야 한다 — 짧은 제목만 두면 마퀴 검사가 **아무것도 안 흐르는 화면에서도**
 // 초록이 된다.
+//
+// **넘치는 쪽은 넉넉히 넘쳐야 한다.** 사이드바 280px · 셸이 없는 행에서 제목에 남는 폭이
+// 222px이고 첫 제목이 283.52px이라 넘침이 61.52px이다(L3 WebKit 실측 2026-08-30). 이 여유가
+// 마퀴 속도를 재는 그물의 폭이다: 흐르는 시간이 「(넘침 + 페이드 12) ÷ 50px/s」인데 두 점을
+// 0.4초 사이에 두고 찍으므로, 넘침이 25px 아래로 내려가면 두 점이 **도착한 뒤**로 밀려 기울기가
+// 0이 된다. 2열의 28px 예약을 걷어 제목이 27.91px 넓어졌을 때 실제로 그렇게 됐고(넘침
+// 51.14 → 23.23px), 그래서 제목을 그만큼 늘려 여유를 되돌렸다.
 export const WORKS: WorkView[] = [
   {
     slug: "pinned-work",
-    title: "고정된 일 — 사이드바에서 잘리는 아주 긴 제목",
+    title: "고정된 일 — 사이드바에서 잘리고도 남는 아주 긴 제목",
     status: "active",
     branch: "feat/pinned-work",
     createdAt: "2026-08-20",
@@ -122,7 +128,7 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
  * 한 질의의 답 통째. **「잘렸다」는 안 켠다** — 이 층이 재는 것은 배선이고, 상한에 걸렸는지를
  * 가르는 것은 코어 단위가 든다(딱 20줄과 잘린 것을 여기서 흉내내면 상한이 두 자리에 산다).
  */
-export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
+export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS };
 
 /**
  * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
@@ -139,7 +145,6 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
   // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
   // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
   hits: [{ kind: "destination", key: "settings" }],
-  truncated: false,
 };
 
 /**

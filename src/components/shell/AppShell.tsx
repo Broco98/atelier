@@ -63,6 +63,9 @@ function AppShell() {
 
   // ⇧⇧로 검색을 연다(결정 3·4). ⌘B가 이미 이 자리에 있으므로 새 자리를 만들지 않는다.
   //
+  // **여는 길이 이 키 하나는 아니다** — 셸 컨트롤 행의 검색 버튼이 아래에서 같은
+  // `setSearchOpen`을 부른다. 키 판정만 여기 있고, 떠 있는가는 이 state 하나가 안다.
+  //
   // **판정은 순수 함수가 하고, 그것이 안 보는 둘을 여기서 든다.**
   //  - **직전 ⇧의 시각.** 리듀서라 상태를 밖에 둔다 — `useRef`인 것은 이 값이 화면에 안
   //    그려지기 때문이다. state로 두면 ⇧를 누를 때마다 앱 셸이 통째로 다시 그려진다.
@@ -120,7 +123,15 @@ function AppShell() {
         />
         <Outlet />
       </div>
-      <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+      {/* 검색 버튼이 부르는 것이 **바로 위 ⇧⇧ 리스너가 부르는 그 setter다.** 여는 길을
+          둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
+          이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
+          덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석). */}
+      <ShellControls
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 확인 창 **앞에** 서는 것은
           층 순서다: 창이 떠 있는 동안에는 ⇧⇧가 안 먹으므로 둘이 겹칠 일이 없지만, 겹친다면
           답해야 하는 물음이 위여야 한다. */}

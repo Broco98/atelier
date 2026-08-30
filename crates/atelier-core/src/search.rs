@@ -69,8 +69,8 @@ pub enum SearchHit {
         /// 하나여야 「왜 떴는지」가 그 줄 안에서 설명된다.
         ///
         /// **자르지 않는다.** 자르려면 어디를 남길지에 새 규칙과 새 숫자가 필요하고, 화면은
-        /// 이미 한 줄에 맞춰 줄이는 자리를 갖고 있다 — 상한이 두 자리에 사는 것을 피한
-        /// 것과 같은 이유다(`SearchResults::truncated`).
+        /// 이미 한 줄에 맞춰 줄이는 자리를 갖고 있다 — 상한(`LAYER_LIMIT`)이 이 파일 한
+        /// 자리에만 사는 것과 같은 이유다.
         snippet: String,
     },
 }
@@ -91,14 +91,13 @@ pub(crate) const LAYER_LIMIT: usize = 20;
 #[serde(rename_all = "camelCase")]
 pub struct SearchResults {
     pub hits: Vec<SearchHit>,
-    /// **어느 층인가에서** 상한에 걸려 못 나온 줄이 있는가. 「더 보기」는 만들지 않는다
-    /// (결정 24) — 걸리면 질의를 좁히는 것이 답이고, 목록이 그렇게 말하려면 이 한 값이 필요하다.
-    ///
-    /// **층마다 가르지 않는다.** 화면이 하는 말이 「일부만 보입니다 — 더 치면 좁혀집니다」
-    /// 하나이고, 그 말은 어느 층이 걸렸든 똑같이 참이다. 층마다 실으면 아무도 안 읽는 값이
-    /// 계약에 눌러앉는다.
-    pub truncated: bool,
 }
+
+// **한때 `truncated: bool`이 함께 실려 나갔다.** 화면이 바닥에 「일부만 보입니다 — 더 치면
+// 좁혀집니다」를 세우기 위한 값이었는데, 그 줄이 걷히면서(결정 24 — 이제 바닥이 **녹아서**
+// 말한다) 읽는 자리가 하나도 안 남았다. 실측이 그 줄을 편들지 않았다: 빈 질의가 문서 층을
+// 전량 세우므로 `truncated`는 **팔레트를 열 때마다 참**이었고, 늘 켜진 신호가 나르는 정보는
+// 0이다. 아무도 안 읽는 값을 계약에 남기면 다음 사람이 그것을 뜻 있는 것으로 읽는다.
 
 /// 질의에 맞는 것들. **인덱스도 캐시도 없다** — 부를 때마다 디스크를 걷는다.
 ///
@@ -131,13 +130,11 @@ pub fn search(
     ];
 
     let mut hits = Vec::new();
-    let mut truncated = false;
     for mut layer in layers {
-        truncated |= layer.len() > LAYER_LIMIT;
         layer.truncate(LAYER_LIMIT);
         hits.extend(layer);
     }
-    Ok(SearchResults { hits, truncated })
+    Ok(SearchResults { hits })
 }
 
 /// 질의를 **공백으로 나눈 소문자 토막들**로(결정 9). 여기서 소문자로 접어 두면 문서마다
@@ -558,13 +555,12 @@ mod tests {
         assert_eq!(rows(&results.hits)[0], ("가", "00.md", false));
         assert_eq!(rows(&results.hits)[LAYER_LIMIT - 1], ("가", "19.md", false));
         // 「더 보기」는 안 만든다(결정 24). 걸렸다는 것만 말하고, 좁히는 것은 사람이 한다.
-        assert!(results.truncated, "잘렸는데 잘렸다고 말하지 않았다");
     }
 
     /// 상한과 **같은 수**는 잘린 것이 아니다. 목록 길이만으로는 이 둘이 같은 모양이라,
     /// 「잘렸다」를 세는 자리가 코어 밖으로 나가면 여기서 조용히 거짓말을 하게 된다.
     #[test]
-    fn 딱_스무_줄이면_안_잘렸다고_한다() {
+    fn 딱_스무_줄이면_스무_줄이_그대로_나간다() {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "가", "가 작업");
         for n in 0..LAYER_LIMIT {
@@ -573,7 +569,6 @@ mod tests {
 
         let results = search(&works, &archive, &projects, "", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
-        assert!(!results.truncated, "안 잘렸는데 잘렸다고 말했다");
     }
 
     /// 결정 28. `path`는 파일 시스템 경로가 아니라 **그 화면이 `?file=`로 읽는 값**이다 —
@@ -656,7 +651,6 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
 
         let json = serde_json::to_value(search(&works, &archive, &projects, "", &[]).unwrap()).unwrap();
-        assert_eq!(json["truncated"], false);
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "doc");
         assert_eq!(row["slug"], "가");
@@ -935,7 +929,6 @@ mod tests {
 
         let results = search(&works, &archive, &projects, "메아리", &nav()).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
-        assert!(results.truncated, "잘렸는데 잘렸다고 말하지 않았다");
     }
 
     /// **인덱스도 캐시도 없다** — 부를 때마다 디스크에서 읽는다. 이 앱에서 spec은 늘 밖에서
@@ -1155,6 +1148,5 @@ mod tests {
         // 작업 층이 스무 줄에서 잘려도 **문서 층은 그대로 선다.**
         assert_eq!(results.hits.len(), LAYER_LIMIT + 1);
         assert_eq!(lines(&results.hits)[LAYER_LIMIT], "문서 문서집/overview.md");
-        assert!(results.truncated, "잘렸는데 잘렸다고 말하지 않았다");
     }
 }
