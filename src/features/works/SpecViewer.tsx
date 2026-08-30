@@ -710,7 +710,7 @@ export const PrettyView = memo(function PrettyView({
       input: ({ node, ...props }) => (
         <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
       ),
-      pre: (({ node, children, ...props }: any) => {
+      pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
         const lang: string | undefined = code?.properties?.className
           ?.find?.((c: string) => c.startsWith("language-"))
@@ -723,7 +723,18 @@ export const PrettyView = memo(function PrettyView({
               className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
               {...props}
             >
-              {children}
+              {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
+                  아래 `code` 컴포넌트는 「`language-`가 없으면 인라인 코드」로 가르는데,
+                  **언어를 안 적은 코드블록도 className이 없다.** 그대로 흘리면 여러 줄짜리
+                  블록이 인라인 껍데기(테두리·둥근 모서리·배경·0.88em)를 뒤집어쓰고, 인라인
+                  요소의 테두리가 줄마다 끊겨 **줄 사이에 선이 그어진 것처럼** 보인다
+                  (실물에서 그렇게 났다 — 사람이 「이상하게 겹친거잖아?」라고 지적한 그 화면).
+                  ```mermaid처럼 언어를 적은 블록은 멀쩡해서 오래 안 걸렸다.
+
+                  우리가 JSX로 쓴 이 `<code>`는 마크다운 변환을 안 거치므로 그 갈래에 아예
+                  들어가지 않는다. `language-*`는 그대로 실어 둔다 — 지금 읽는 것은 없지만
+                  하이라이팅을 붙이는 날 그 이름이 붙을 자리다. */}
+              <code className={lang ? `language-${lang}` : undefined}>{hastText(code)}</code>
             </pre>
           );
         const range = lines(node);
