@@ -48,16 +48,14 @@ const render = (
   {
     selected = 0,
     query = "",
-    truncated = false,
     state = "ready",
-  }: { selected?: number; query?: string; truncated?: boolean; state?: SearchState } = {},
+  }: { selected?: number; query?: string; state?: SearchState } = {},
 ) =>
   renderToStaticMarkup(
     <SearchList
       query={query}
       hits={hits}
       state={state}
-      truncated={truncated}
       selected={selected}
       onQuery={() => {}}
       onGo={() => {}}
@@ -156,11 +154,15 @@ describe("치는 자리와 목록이 하는 말", () => {
     expect(markup).not.toContain('role="option"');
   });
 
-  // 결정 24. 상한에 걸린 것을 말하지 않으면, 안 나온 문서가 **없는 것처럼** 보인다.
-  // **수는 안 센다.** 상한은 코어 한 자리에 살고(`LAYER_LIMIT`) 화면으로 오지 않으므로,
-  // 여기서 수를 세면 상한을 고치는 날 화면과 검사가 함께 낡는다.
-  it("잘렸을 때만 잘렸다고 말한다", () => {
-    expect(render([doc("가", "overview.md")], { truncated: true })).toContain("일부만 보입니다");
+  // 결정 24 — **「더 있다」를 글로 말하지 않는다.** 한때 바닥에 「일부만 보입니다 — 더 치면
+  // 좁혀집니다」가 서 있었고, 사람이 걷으라고 했다. 실측이 그 줄을 편들지 않았다: `truncated`는
+  // 팔레트를 열 때마다 참이라(빈 질의가 문서 층을 전량 세운다) 늘 켜진 신호였고, 늘 켜진
+  // 신호가 나르는 정보는 0이다. 이제 바닥이 녹는 것으로 말한다(`index.css`의 `[data-more-fade]`).
+  //
+  // **여기서는 표식이 붙는지만 센다.** 페이드도 바닥 여백도 진짜 CSS가 있어야 나므로 그것은
+  // e2e가 실측으로 든다 — 이 층에 값을 베껴 적으면 두 자리가 함께 낡는다.
+  it("목록 바닥이 「더 있다」를 말할 표식을 단다", () => {
+    expect(render([doc("가", "overview.md")])).toContain('data-more-fade=""');
     expect(render([doc("가", "overview.md")])).not.toContain("일부만 보입니다");
   });
 });

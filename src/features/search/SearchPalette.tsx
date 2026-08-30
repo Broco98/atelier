@@ -99,7 +99,6 @@ export function SearchList({
   query,
   hits,
   state,
-  truncated,
   selected,
   onQuery,
   onGo,
@@ -122,8 +121,6 @@ export function SearchList({
    * - `"failed"` — 못 물었다. 재시도는 없으므로(hooks.ts) **다음 타자가 곧 다음 시도**다.
    */
   state: "pending" | "ready" | "failed";
-  /** 상한에 걸려 못 나온 줄이 있는가. **코어가 말해 준다** — 줄 수로는 못 가른다. */
-  truncated: boolean;
   /** 지금 골라진 줄. 목록이 비면 아무 줄도 안 골라진다(`-1`). */
   selected: number;
   onQuery: (query: string) => void;
@@ -203,7 +200,10 @@ export function SearchList({
           role="listbox"
           aria-label="검색 결과"
           // 구르는 상자는 저장소 공통 막대를 쓴다(결정 32) — 한 자리만 다른 막대를 쓰면
-          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다.
+          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다. 다만 팔레트가
+          // 떠 있는 동안은 그 막대가 걷힌다(위 `data-paletteOpen` 주석) — 그래서 **바닥이
+          // 「더 있다」를 말하는 유일한 자리**이고, 그 일을 `data-more-fade`가 든다.
+          data-more-fade=""
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
           {hits.map((hit, at) => {
@@ -278,20 +278,6 @@ export function SearchList({
             </p>
           )}
         </div>
-        {/* 결정 24. **「더 보기」는 안 만든다** — 걸리면 좁히는 것이 답이고, 목록은 걸렸다는
-            것만 말한다. 목록 밖에 두는 것은 구르는 상자 안이면 끝까지 내려야 보이기 때문이다.
-
-            **수를 적지 않는다.** 상한(`LAYER_LIMIT`)은 코어에 살고 여기로 오지 않는데, 여기에
-            베껴 적으면 상한이 두 자리에 살게 된다 — `truncated`를 값으로 실어 온 이유가 바로
-            그것이라, 그 줄에서 수를 말하면 고치는 날 화면만 거짓말을 한다. */}
-        {truncated && (
-          <p
-            data-note=""
-            className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground"
-          >
-            일부만 보입니다 — 더 치면 좁혀집니다
-          </p>
-        )}
       </div>
     </div>
   );
@@ -353,7 +339,6 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
       query={query}
       hits={hits}
       state={state}
-      truncated={data?.truncated ?? false}
       selected={at}
       onQuery={(next) => {
         setQuery(next);

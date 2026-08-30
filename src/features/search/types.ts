@@ -80,5 +80,4 @@ export type Destination = { key: string; label: string };
  */
 export type SearchResults = {
   hits: SearchHit[];
-  truncated: boolean;
 };

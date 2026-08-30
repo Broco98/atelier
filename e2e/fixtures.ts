@@ -128,7 +128,7 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
  * 한 질의의 답 통째. **「잘렸다」는 안 켠다** — 이 층이 재는 것은 배선이고, 상한에 걸렸는지를
  * 가르는 것은 코어 단위가 든다(딱 20줄과 잘린 것을 여기서 흉내내면 상한이 두 자리에 산다).
  */
-export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
+export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS };
 
 /**
  * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
@@ -145,7 +145,6 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
   // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
   // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
   hits: [{ kind: "destination", key: "settings" }],
-  truncated: false,
 };
 
 /**

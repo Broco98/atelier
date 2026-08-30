@@ -310,3 +310,59 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 결정 24 — **바닥이 녹으면 더 있다는 뜻이다.** 한때 「일부만 보입니다 — 더 치면 좁혀집니다」가
+// 목록 아래 서 있었고 사람이 걷으라고 했다: 「맨 아래는, 만약 더 있다면, 더 있다고 인식될
+// 만한 디자인이 필요할 것 같음」.
+//
+// **묘수는 페이드와 같은 길이의 바닥 여백이다.** 마스크는 상자에 상시 걸려 스크롤을 따라
+// 움직이지 않으므로 아래 24px이 늘 녹는데, 콘텐츠 끝에 같은 길이의 빈 여백을 두면 바닥까지
+// 구른 순간 그 여백이 페이드 자리로 올라온다 — **지울 글자가 없다.** 중간에서만 다음 줄이
+// 녹는다. 이 층에서만 보인다: 마스크도 여백도 진짜 CSS와 레이아웃이 있어야 나고, 「바닥에서
+// 마지막 줄이 온전한가」는 실제로 굴려 봐야 답이 난다.
+test("목록 바닥이 녹아 「더 있다」를 말하고, 바닥에 닿으면 지울 것이 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  // 목록이 넘치도록 낮춘다 — 안 넘치면 「바닥까지 굴린다」가 아무것도 안 잰다.
+  // 고정 데이터의 줄은 넷뿐이라 카드(`max-h-[60vh]`)를 이만큼 눌러야 넘친다.
+  await page.setViewportSize({ width: 1280, height: 240 });
+  await page.goto("/projects");
+  // 버튼으로 연다 — `goto` 직후에는 ⇧⇧가 갈 곳이 아직 없다. 키로 여는 길은 위 검사들이 든다.
+  await searchButton(page).click();
+  await expect(palette(page)).toBeVisible();
+
+  const list = palette(page);
+  const 규격 = await list.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      mask: cs.maskImage,
+      pb: cs.paddingBottom,
+      over: el.scrollHeight > el.clientHeight + 1,
+    };
+  });
+  expect(규격.over, "목록이 안 넘쳐서 아래를 아무것도 못 잰다").toBe(true);
+  expect(규격.mask).toContain("linear-gradient");
+  // **페이드 길이와 바닥 여백이 같은 수여야 한다** — 다르면 바닥에서 마지막 줄이 녹거나
+  // (여백이 짧다) 빈 자리가 남는다(여백이 길다). 그 「같음」이 이 판의 전부다.
+  expect(규격.mask).toContain(규격.pb.replace(/px$/, "px"));
+  expect(규격.pb).toBe("24px");
+
+  // 바닥까지 구른다.
+  await list.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect
+    .poll(() => list.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
+    .toBeLessThanOrEqual(1);
+
+  // **마지막 줄이 페이드 밖에 선다.** 여백이 없으면 여기가 페이드 안으로 들어와 흐려진다.
+  const 여유 = await list.evaluate((el) => {
+    const rows = el.querySelectorAll("[data-row]");
+    const last = rows[rows.length - 1].getBoundingClientRect();
+    const fade = parseFloat(getComputedStyle(el).paddingBottom);
+    return el.getBoundingClientRect().bottom - fade - last.bottom;
+  });
+  expect(여유, "바닥까지 굴렸는데 마지막 줄이 페이드에 걸린다").toBeGreaterThanOrEqual(0);
+
+  // 그리고 걷힌 줄은 돌아오지 않는다.
+  await expect(page.getByText("일부만 보입니다")).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
