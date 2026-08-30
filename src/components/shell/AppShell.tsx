@@ -9,7 +9,7 @@ import { searchHotkey } from "@/features/terminal/shell-registry";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
-import { framePreemptsHotkeys, menuHotkeyInit } from "./menu-hotkey";
+import { menuHotkeyInit } from "./menu-hotkey";
 import { shellStore, toggleSidebar } from "./shell-store";
 import { navItems, type NavKey } from "./nav-items";
 
@@ -56,7 +56,6 @@ function AppShell() {
   // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
   useEffect(() => {
     const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
-      if (!framePreemptsHotkeys(document.activeElement)) return;
       window.dispatchEvent(new KeyboardEvent("keydown", menuHotkeyInit(code)));
     });
     return () => {

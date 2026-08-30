@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { framePreemptsHotkeys, keyOfCode, menuHotkeyInit } from "./menu-hotkey";
+import { keyOfCode, menuHotkeyInit } from "./menu-hotkey";
 
 // #153 — 프레임이 삼킨 단축키를 네이티브 메뉴가 대신 받아 창에 되돌린다.
 //
@@ -18,23 +18,6 @@ describe("code에서 key를 되찾는다", () => {
     ["Enter", "Enter"],
   ])("%s → %s", (code, key) => {
     expect(keyOfCode(code)).toBe(key);
-  });
-});
-
-describe("프레임이 쥐고 있을 때만 흘린다", () => {
-  // 앱 포커스일 때는 웹뷰가 그 키를 이미 받았다. 여기서 또 흘리면 한 번 눌러 두 번 돈다.
-  it.each([
-    ["iframe", "IFRAME", true],
-    ["본문 버튼", "BUTTON", false],
-    ["입력칸", "INPUT", false],
-    ["body", "BODY", false],
-  ])("%s에 포커스가 있으면 %s", (_name, tagName, expected) => {
-    expect(framePreemptsHotkeys({ tagName } as Element)).toBe(expected);
-  });
-
-  // 포커스가 아무 데도 없는 순간이 있다 — 그때 터지면 안 된다.
-  it("activeElement가 없어도 안 터진다", () => {
-    expect(framePreemptsHotkeys(null)).toBe(false);
   });
 });
 

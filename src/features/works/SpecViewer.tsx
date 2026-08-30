@@ -368,13 +368,10 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
-        <span className="text-[13px] font-semibold tracking-[-0.01em]">앱 단축키가 지금 안 먹어요</span>
+        <span className="text-[13px] font-semibold tracking-[-0.01em]">단축키 셋이 지금 안 먹어요</span>
         {/* **셋만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩은 네이티브 메뉴가 대신 받아 되살아난다
-            (`components/shell/menu-hotkey.ts`). 여기 남은 셋은 그 길에 못 실린다 —
-            ⌃ 계열은 항목이 서는데도 accelerator 경로가 죽고(실측 0/6·0/3), ⇧⇧는 「같은
-            수식키를 300ms 안에 두 번」이라는 몸짓이라 accelerator 문법에 자리가 없다.
-            ⌘W는 실을 수는 있지만 **일부러 뺐다**: 창이 닫히면 이 앱은 창이 하나뿐이라
-            돌던 셸이 전부 죽고, 얻는 것은 「칸 닫기」 하나다(`src-tauri/src/lib.rs`). */}
+            (`components/shell/menu-hotkey.ts`). 남은 셋이 왜 그 길에 못 실리는지는
+            `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 셋의 사정이 서로 다르다. */}
         <span className="text-[12.5px] leading-[1.6] text-tertiary">
           ⌃Tab·⌘W·⇧⇧가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>

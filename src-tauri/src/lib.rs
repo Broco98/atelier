@@ -25,35 +25,62 @@ const SETTINGS_MENU_ID: &str = "settings";
 /// 두 언어를 함께 고쳐야 한다.
 const HOTKEY_PREFIX: &str = "hotkey:";
 
-/// 되살리는 키들 — `(code, 메뉴에 적히는 이름, accelerator)`.
+/// 되살리는 키들 — `(code, 메뉴에 적히는 이름)`.
+///
+/// **accelerator는 안 적는다 — `accelerator_of`가 code에서 만든다.** 손으로 적으면 두
+/// 문자열이 한 줄에 나란히 서서 눈으로는 잘 맞아 보이는데, 어긋나는 순간 사람이 누른 키와
+/// 앱이 도는 동작이 **다른 키가 된다.**
+///
+/// 이름은 `CONTEXT.md`의 말이다. ⌘1~9가 옮기는 것은 **탭**이다 — 「work·터미널 화면 머리행의
+/// 한 칸. `spec`과 셸들이 거기 선다」가 그 문서의 정의이고 ⌘1이 spec, ⌘2~9가 셸이라
+/// 정확히 겹친다. **「열」이 아니다**: 열은 분할했을 때만 생기고 늘 둘이라 아홉이 될 수 없고,
+/// 그 문서가 열을 「칸·패널·페인」으로 부르지 말라고 못 박고 있다.
 ///
 /// **⌘W는 여기 없다.** 창이 닫히면 이 앱은 창이 하나뿐이라 그대로 종료되고 돌던 셸이 전부
 /// 죽는다(`build_menu` 주석의 그 사고). 실측으로는 커스텀 id 항목이 `performClose:`에 안 매여
 /// 창이 살아 있었지만 **dev 빌드에서만 쟀고**, 얻는 것이 「칸 닫기」 하나인데 잃을 수 있는
 /// 것이 셸 전부라 저울이 한쪽으로 명백히 기운다.
 ///
-/// **⌃Tab·⌃⇧Tab·⇧⇧도 없다 — 넣어도 안 분다.** ⌃ 계열은 항목이 제대로 서는데도 accelerator
-/// 경로가 죽고(실측 0/6 · 0/3), ⇧⇧는 「같은 수식키를 300ms 안에 두 번」이라는 몸짓이라
-/// accelerator 문법에 실을 자리가 아예 없다. `Shift+Shift`는 파싱에 실패하는데 Tauri가 그
-/// 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는 항목이 선다** —
-/// 빌드가 통과하는 것이 곧 등록된 것이 아니다.
-///
-/// 이름이 중립적인 것은 **메뉴가 화면을 모르기 때문이다.** ⌘1~9는 works에서 문서와 셸을
-/// 가리키지만 다른 화면에는 없고, ⌘↩은 화면마다 접는 패널이 다르다. 그 표는 프런트에만 산다.
-const HOTKEYS: &[(&str, &str, &str)] = &[
-    ("KeyB", "Sidebar", "CmdOrCtrl+B"),
-    ("Enter", "Expand Body", "CmdOrCtrl+Enter"),
-    ("KeyT", "New Shell", "CmdOrCtrl+T"),
-    ("Digit1", "Pane 1", "CmdOrCtrl+1"),
-    ("Digit2", "Pane 2", "CmdOrCtrl+2"),
-    ("Digit3", "Pane 3", "CmdOrCtrl+3"),
-    ("Digit4", "Pane 4", "CmdOrCtrl+4"),
-    ("Digit5", "Pane 5", "CmdOrCtrl+5"),
-    ("Digit6", "Pane 6", "CmdOrCtrl+6"),
-    ("Digit7", "Pane 7", "CmdOrCtrl+7"),
-    ("Digit8", "Pane 8", "CmdOrCtrl+8"),
-    ("Digit9", "Pane 9", "CmdOrCtrl+9"),
+/// **⌃Tab·⌃⇧Tab·⇧⇧도 없다 — 셋의 사정이 다르다.**
+///  - ⌃Tab·⌃⇧Tab은 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다) **accelerator
+///    경로만 죽는다** — 실제로 던져서 0/6 · 0/3이었다.
+///  - ⇧⇧는 **등록 자체가 안 된다.** 「같은 수식키를 300ms 안에 두 번」이라는 몸짓이라
+///    accelerator 문법에 실을 자리가 없고, `Shift+Shift`는 파싱에 실패한다. 그런데 Tauri가
+///    그 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는 항목이 선다** —
+///    빌드가 통과하는 것이 곧 등록된 것이 아니다. 그러니 눌러도 안 불리는 것은 결과가 아니라
+///    **당연한 귀결**이고, 프로브가 4번 던져 확인한 것은 그 귀결이지 별도의 사실이 아니다.
+const HOTKEYS: &[(&str, &str)] = &[
+    ("KeyB", "Sidebar"),
+    ("Enter", "Panel"),
+    ("KeyT", "New Shell"),
+    ("Digit1", "Tab 1"),
+    ("Digit2", "Tab 2"),
+    ("Digit3", "Tab 3"),
+    ("Digit4", "Tab 4"),
+    ("Digit5", "Tab 5"),
+    ("Digit6", "Tab 6"),
+    ("Digit7", "Tab 7"),
+    ("Digit8", "Tab 8"),
+    ("Digit9", "Tab 9"),
 ];
+
+/// `KeyboardEvent.code`에서 그 키의 accelerator를 만든다.
+///
+/// **프런트의 `keyOfCode`와 짝이지만 만드는 것이 다르다** — 그쪽은 `code`에서 `key`를,
+/// 이쪽은 `code`에서 accelerator 문자열을 만든다. 같은 해체(`Digit*` · `Key*`)를 두 언어가
+/// 각각 하는 것은 그 사이에 건널 다리가 없어서다: 메뉴를 세우는 것은 Rust이고 이벤트를
+/// 만드는 것은 프런트다. **잇는 끈은 `code` 문자열 하나**이고, 그것이 `HOTKEY_PREFIX`가
+/// id에 code를 그대로 싣는 이유다.
+fn accelerator_of(code: &str) -> String {
+    if let Some(n) = code.strip_prefix("Digit") {
+        format!("CmdOrCtrl+{n}")
+    } else if let Some(c) = code.strip_prefix("Key") {
+        format!("CmdOrCtrl+{c}")
+    } else {
+        // Enter처럼 이름이 곧 키인 것들.
+        format!("CmdOrCtrl+{code}")
+    }
+}
 
 /// macOS 기본 메뉴에서 **`Close Window`(⌘W)만 뺀 것.**
 ///
@@ -106,14 +133,16 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
     // 프런트에 남는다 — 같은 키가 화면마다 다른 것을 가리키므로(HOTKEYS 주석) 동작을 여기
     // 두면 그 표가 Rust로 새고, 화면이 하나 늘 때마다 두 언어를 고쳐야 한다.
     let mut view = SubmenuBuilder::new(handle, "View");
-    for (i, (code, label, accel)) in HOTKEYS.iter().enumerate() {
-        // 셋(⌘B·⌘↩·⌘T)과 칸 번호 사이에 금 하나 — 앞의 셋은 화면의 얼개를 만지고
-        // 뒤의 아홉은 그 안에서 자리를 옮긴다.
-        if i == 3 {
+    let mut drew_line = false;
+    for (code, label) in HOTKEYS {
+        // 얼개를 만지는 것들(⌘B·⌘↩·⌘T)과 탭 번호 사이에 금 하나. **자리를 세지 않는다** —
+        // 「번호가 처음 나오는 곳」이 곧 그 경계라, 항목을 끼워도 금이 따라 움직인다.
+        if !drew_line && code.starts_with("Digit") {
             view = view.separator();
+            drew_line = true;
         }
         let item = MenuItemBuilder::with_id(format!("{HOTKEY_PREFIX}{code}"), label)
-            .accelerator(accel)
+            .accelerator(accelerator_of(code))
             .build(handle)?;
         view = view.item(&item);
     }
@@ -217,46 +246,33 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    /// **⌘W가 이 표에 있으면 안 된다** (#153).
-    ///
-    /// 있으면 OS 메뉴가 웹뷰보다 먼저 그 키를 먹는다. 커스텀 id 항목이라 `performClose:`에
-    /// 안 매인다는 것이 실측이지만 **dev 빌드에서만 쟀고**, 틀리면 창이 닫히고 이 앱은 창이
-    /// 하나뿐이라 그대로 종료되며 **돌던 셸이 전부 죽는다** — 실물에서 한 번 그렇게 잃었다.
-    /// 얻는 것은 「칸 닫기」 하나다.
-    ///
-    /// 눈으로는 표를 늘리다 무심코 한 줄 더 적는 것을 못 막는다. 이 검사가 그 자리다.
+    /// **⌘W가 이 표에 있으면 안 된다** (#153). 근거는 `HOTKEYS` 독이 든다 — 여기가 막는 것은
+    /// 표를 늘리다 무심코 한 줄 더 적는 것이고, 그 한 줄의 값이 **돌던 셸 전부**다.
     #[test]
     fn 표에_cmd_w가_없다() {
-        for (code, label, accel) in HOTKEYS {
+        for (code, label) in HOTKEYS {
             assert_ne!(*code, "KeyW", "{label}이 ⌘W를 든다");
-            assert!(!accel.ends_with("+W"), "{label}의 accelerator가 ⌘W다: {accel}");
         }
     }
 
-    /// **accelerator와 code가 짝이 맞아야 한다.**
+    /// `accelerator_of`가 muda가 아는 문자열을 만드는가.
     ///
-    /// 어긋나면 메뉴는 accelerator대로 키를 잡는데 프런트에는 code가 실려 가, 사람이 누른
-    /// 키와 앱이 도는 동작이 **다른 키가 된다.** 두 문자열이 한 줄에 나란히 있어서 눈으로는
-    /// 잘 맞아 보이는 종류의 어긋남이다.
+    /// **한때 이 자리에 「표의 셋째 칸이 code와 짝이 맞는가」가 있었다.** 그 검사의 본문이
+    /// 곧 유도 함수였다 — 검사가 유도를 알고 있다면 그 유도는 코드에 있어야 한다. 셋째 칸을
+    /// 걷고 `accelerator_of`를 세우면서 그 검사도 함께 사라졌고, 남은 것이 이것이다.
     #[test]
-    fn accelerator가_code와_짝이_맞는다() {
-        for (code, label, accel) in HOTKEYS {
-            let expected = if let Some(n) = code.strip_prefix("Digit") {
-                format!("CmdOrCtrl+{n}")
-            } else if let Some(c) = code.strip_prefix("Key") {
-                format!("CmdOrCtrl+{c}")
-            } else {
-                // Enter처럼 이름이 곧 키인 것들.
-                format!("CmdOrCtrl+{code}")
-            };
-            assert_eq!(*accel, expected, "{label}의 code와 accelerator가 어긋난다");
-        }
+    fn accelerator를_code에서_만든다() {
+        assert_eq!(accelerator_of("Digit1"), "CmdOrCtrl+1");
+        assert_eq!(accelerator_of("Digit9"), "CmdOrCtrl+9");
+        assert_eq!(accelerator_of("KeyB"), "CmdOrCtrl+B");
+        assert_eq!(accelerator_of("KeyT"), "CmdOrCtrl+T");
+        assert_eq!(accelerator_of("Enter"), "CmdOrCtrl+Enter");
     }
 
     /// id가 겹치면 뒤 항목의 클릭이 앞 항목으로 간다 — 메뉴는 그것을 오류로 말하지 않는다.
     #[test]
     fn id가_겹치지_않는다() {
-        let mut ids: Vec<&str> = HOTKEYS.iter().map(|(code, _, _)| *code).collect();
+        let mut ids: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
         ids.sort_unstable();
         let count = ids.len();
         ids.dedup();
@@ -264,13 +280,10 @@ mod tests {
     }
 
     /// 살리기로 한 넷이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.
-    ///
-    /// **⌃Tab·⌃⇧Tab·⇧⇧는 여기 없다.** 넣어도 안 분다(실측 0/6 · 0/3 · 0/4) — ⌃ 계열은
-    /// 항목이 서는데도 accelerator 경로가 죽고, ⇧⇧는 「같은 수식키를 300ms 안에 두 번」이라는
-    /// 몸짓이라 accelerator 문법에 자리가 없다. 그 셋은 카드가 계속 안내한다.
+    /// 무엇이 왜 빠졌는지는 `HOTKEYS` 독이 든다.
     #[test]
     fn 살리기로_한_키가_다_있다() {
-        let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _, _)| *code).collect();
+        let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
         for want in ["KeyB", "KeyT", "Enter"] {
             assert!(codes.contains(&want), "{want}가 표에 없다");
         }
