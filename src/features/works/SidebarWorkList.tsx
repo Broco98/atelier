@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { recallView, viewSearch, workSlugOf } from "@/routes/-work-search";
+import { recallSearch, workSlugOf } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -19,7 +19,8 @@ const MARQUEE_SPEED = 50; // px/s
 // 오른쪽 끝 페이드의 폭. **`index.css`의 `--title-fade`와 같은 수여야 한다** — 흐르는 거리가
 // 「넘침 + 이 값」이고(결정 11), 거리는 CSS가 정하는데(결정 10) 그것을 **시간으로 바꾸는**
 // 자리가 여기라서 둘이 같은 수를 읽는다. `calc()`가 길이를 시간으로 못 바꾸는 것이 이
-// 한 값이 두 언어에 걸치는 이유 전부다(결정 12).
+// 한 값이 두 언어에 걸치는 이유 전부다(결정 12). 그 「같은 수」는 주석이 아니라
+// `SidebarWorkList.test.tsx`의 소스 스캔이 지킨다 — 어긋나도 화면에는 속도 오차로만 나타난다.
 const TITLE_FADE = 24; // px
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
@@ -139,14 +140,14 @@ function SidebarWorkList({
 
   // 작업을 옮긴다. **보던 화면을 기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
   // 터미널을 보다 옆 작업을 잠깐 들여다보고 돌아왔을 때 문서로 떨어지는 것이 그 결정이
-  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `viewSearch`가 빈 객체 위에 얹으므로
+  // 없애려는 것이다. 떠나던 주소는 딸려가지 않는다: `recallSearch`가 빈 객체 위에 얹으므로
   // 실리는 것은 **이 작업의 기억**뿐이고, 그 `file`도 이 작업 안의 문서다.
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
       to: "/works/$slug",
       params: { slug },
-      search: viewSearch({}, recallView(slug)),
+      search: recallSearch(slug),
     });
   };
 

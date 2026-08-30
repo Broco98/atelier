@@ -2,10 +2,15 @@
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SearchList } from "./SearchPalette";
 import type { SearchHit } from "./types";
+
+// 세 상태는 저쪽 계약에서 그대로 받아 온다 — 여기에 리터럴로 베껴 적으면 상태가 하나 느는 날
+// 검사만 옛 목록을 든 채로 초록이다.
+type SearchState = ComponentProps<typeof SearchList>["state"];
 
 // 팔레트가 **그리는 것**을 본다. 순서와 층 규칙은 코어가 정하므로(결정 15) 여기서 재는 것은
 // 「받은 줄이 화면에 어떻게 서는가」뿐이다.
@@ -40,13 +45,18 @@ const destination = (key: string): SearchHit => ({ kind: "destination", key });
 
 const render = (
   hits: SearchHit[],
-  { selected = 0, query = "", truncated = false, ready = true } = {},
+  {
+    selected = 0,
+    query = "",
+    truncated = false,
+    state = "ready",
+  }: { selected?: number; query?: string; truncated?: boolean; state?: SearchState } = {},
 ) =>
   renderToStaticMarkup(
     <SearchList
       query={query}
       hits={hits}
-      ready={ready}
+      state={state}
       truncated={truncated}
       selected={selected}
       onQuery={() => {}}
@@ -129,8 +139,21 @@ describe("치는 자리와 목록이 하는 말", () => {
   // 답이 오기 전의 빈 목록은 **「없다」가 아니다.** 팔레트는 열 때마다 새로 마운트되고 캐시도
   // 안 남기므로(hooks.ts), 이것을 안 가르면 여는 것마다 첫 답이 올 때까지 「맞는 것이
   // 없습니다」가 선다 — 「치는 동안 즉시 따라온다」의 반대다.
-  it("아직 답이 안 왔으면 없다고 말하지 않는다", () => {
-    expect(render([], { selected: -1, ready: false })).not.toContain("맞는 것이 없습니다");
+  it("아직 답이 안 왔으면 아무 말도 안 한다", () => {
+    const markup = render([], { selected: -1, state: "pending" });
+    expect(markup).not.toContain("맞는 것이 없습니다");
+    // 「못 물었다」도 아니다 — 셋이 갈리지 않으면 여는 것마다 이 줄이 깜빡인다.
+    expect(markup).not.toContain("검색하지 못했습니다");
+  });
+
+  // **못 물은 것과 없는 것은 다르다.** 이 줄이 없으면 첫 질의가 실패했을 때 입력칸과 빈 상자만
+  // 남아, 사용자가 「고장」이 아니라 「결과가 없다」로 읽는다.
+  it("못 물었으면 없다고 하지 않고 못했다고 말한다", () => {
+    const markup = render([], { selected: -1, query: "가", state: "failed" });
+    expect(markup).toContain("검색하지 못했습니다");
+    expect(markup).not.toContain("맞는 것이 없습니다");
+    // 그 줄도 **고를 수 있는 것이 아니다** — 방향키가 서면 Enter가 갈 곳이 없다.
+    expect(markup).not.toContain('role="option"');
   });
 
   // 결정 24. 상한에 걸린 것을 말하지 않으면, 안 나온 문서가 **없는 것처럼** 보인다.

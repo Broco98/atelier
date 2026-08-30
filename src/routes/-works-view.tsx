@@ -4,7 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import WorksPage from "@/features/works/WorksPage";
 import {
   fileSearch,
-  recallView,
+  recallSearch,
   rememberView,
   splitSearch,
   tabSearch,
@@ -38,14 +38,14 @@ function WorksView({
   // 작업을 옮길 때 보던 화면을 **기억에서 되살린다**(결정 77) — 문서·본문·분할 셋이다.
   // 떠나던 주소는 통째로 떨어진다: 문서 경로는 그 작업 안에서만 뜻이 있어서 딸려가면 새
   // 작업에 없는 파일을 가리킨 채 주소만 남는다. 되살리는 `file`은 기억이 slug별이라 언제나
-  // **그 작업 자신의** 문서다. 주소를 짓는 자리가 여기와 사이드바 둘이라 씨앗을
-  // `-work-search.ts` 한 곳에 뒀다.
+  // **그 작업 자신의** 문서다. 주소를 짓는 자리가 여럿이라 씨앗은 `-work-search.ts`의
+  // `recallSearch` 하나가 든다 — 그 머리말에 문이 몇이고 하나를 빠뜨리면 무엇이 나는지가 있다.
   const goTo = (next: string | null, replace = false) =>
     void (next
       ? navigate({
           to: "/works/$slug",
           params: { slug: next },
-          search: viewSearch({}, recallView(next)),
+          search: recallSearch(next),
           replace,
         })
       : navigate({ to: "/works", replace }));

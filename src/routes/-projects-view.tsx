@@ -4,6 +4,7 @@ import { useStore } from "@tanstack/react-store";
 import ProjectsPage from "@/features/projects/ProjectsPage";
 import { useProjects } from "@/features/projects/hooks";
 import { pickSlug, selectProject, shellStore } from "@/components/shell/shell-store";
+import { recallSearch } from "./-work-search";
 
 // /projects와 /projects/$slug가 그리는 화면은 같다 — works 쪽과 같은 구조다 (-works-view.tsx 참조)
 function ProjectsView({ slug }: { slug: string | null }) {
@@ -39,9 +40,15 @@ function ProjectsView({ slug }: { slug: string | null }) {
       // "보던 대상이 사라짐"이라 replace다 — push하면 지운 프로젝트를 가리키는 죽은 칸이 남아
       // 뒤로가기 한 번이 아무 일도 하지 않게 된다
       onSelect={(next) => goTo(next, next === null)}
+      // 「이 프로젝트에서 시작된 작업」 행도 **work을 여는 문이다** — 그 work의 마지막 화면을
+      // 씨앗으로 삼는다(결정 77·97, `recallSearch`). 오래 `search` 없이 이동해서, 이 문으로
+      // 연 work은 spec 기본 문서로 떨어졌을 뿐 아니라 도착한 주소를 적어 두는
+      // effect(-works-view.tsx)가 그 기본값으로 **그 work의 기억을 덮어썼다** — 다음에
+      // 사이드바나 팔레트로 돌아와도 마지막 화면이 안 섰다. 목록의 「Works에서 모두 보기」
+      // (work === null)는 work을 여는 것이 아니라 목록으로 가는 것이라 씨앗이 없다.
       onOpenWork={(work) =>
         void (work
-          ? navigate({ to: "/works/$slug", params: { slug: work } })
+          ? navigate({ to: "/works/$slug", params: { slug: work }, search: recallSearch(work) })
           : navigate({ to: "/works" }))
       }
     />

@@ -1,9 +1,11 @@
 /// <reference types="node" />
-// 소스 스캔 두 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+// (되살리는 자리를 원문으로 세던 두 건은 `recallSearch`의 값 검사로 옮겼다 — 아래 describe.)
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
+  recallSearch,
   recallView,
   rememberView,
   splitOf,
@@ -11,7 +13,6 @@ import {
   splitSearch,
   tabSearch,
   validateWorkSearch,
-  viewSearch,
   viewTab,
   workSlugOf,
 } from "./-work-search";
@@ -156,17 +157,19 @@ describe("work마다 마지막으로 보던 화면", () => {
     expect(recallView("다")).toEqual({ tab: "spec", split: null, file: null });
   });
 
-  // 주소를 짓는 짝이 이 둘이다. `viewSearch`에 **빈 객체를 얹으므로** 이전 주소가 통째로
-  // 버려진다 — 실리는 것은 그 work의 기억뿐이라 **남의** `file`이 딸려갈 자리가 없다.
+  // **work을 여는 문이 전부 이 값을 쓴다** — `recallSearch`가 그 합성의 이름이다. 빈 객체
+  // 위에 얹으므로 이전 주소가 통째로 버려진다: 실리는 것은 그 work의 기억뿐이라 **남의**
+  // `file`이 딸려갈 자리가 없다. 아래 넷이 이 함수의 **값**을 재는 것이 문마다 원문을
+  // 대조하는 것을 대신한다 — 문은 늘지만 값은 하나다.
   it("빈 주소 위에 얹어 새 주소를 짓는다", () => {
     rememberView("라", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
-    expect(viewSearch({}, recallView("라"))).toEqual({
+    expect(recallSearch("라")).toEqual({
       tab: "terminal",
       split: "lr",
       file: "01-판/spec.md",
     });
     rememberView("마", { tab: "spec", split: null, file: null });
-    expect(viewSearch({}, recallView("마"))).toEqual({
+    expect(recallSearch("마")).toEqual({
       tab: undefined,
       split: undefined,
       file: undefined,
@@ -178,7 +181,7 @@ describe("work마다 마지막으로 보던 화면", () => {
   it("분할로 두고 떠난 work은 분할로 돌아온다", () => {
     rememberView("바", { tab: "terminal", split: "rl", file: null });
     rememberView("사", { tab: "spec", split: null, file: null });
-    expect(viewSearch({}, recallView("바"))).toEqual({
+    expect(recallSearch("바")).toEqual({
       tab: "terminal",
       split: "rl",
       file: undefined,
@@ -190,7 +193,7 @@ describe("work마다 마지막으로 보던 화면", () => {
   // 화면으로는 「가끔 다른 문서가 떠 있다」로만 보인다.
   it("문서를 보다 떠난 work은 그 문서로 돌아온다", () => {
     rememberView("아", { tab: "spec", split: null, file: "02-판/spec.md" });
-    expect(viewSearch({}, recallView("아"))).toEqual({
+    expect(recallSearch("아")).toEqual({
       tab: undefined,
       split: undefined,
       file: "02-판/spec.md",
@@ -198,21 +201,17 @@ describe("work마다 마지막으로 보던 화면", () => {
   });
 });
 
-// 배선. 주소를 짓는 자리가 둘이라(사이드바 행과 정규화) **한쪽만 고치면** 어느 길로
-// 옮겼느냐에 따라 돌아온 화면이 갈린다 — 화면으로는 「가끔 그런다」로만 보인다.
-describe("보던 화면을 되살리는 자리가 둘 다 배선돼 있다", () => {
+// 배선. **되살리는 자리는 원문으로 세지 않는다.** 앞 판은 두 파일의 `search:` 줄을 문자열로
+// 대조했는데, 그 사이 문이 다섯으로 늘도록 목록이 둘에 멈춰 있었다 — 늘어난 문 하나
+// (Projects의 work 행)는 계약을 아예 안 탄 채로 그물이 초록이었다. 이제 다섯이 전부
+// `recallSearch` 하나를 부르므로 그 값을 재는 위 검사들이 이 배선의 계약이고, 문이 여섯째로
+// 늘어도 여기를 함께 고칠 일이 없다.
+//
+// 원문 대조가 여기 하나 남는 것은 **모양이 아니라 수**를 세기 때문이다 — 아래가 재는 것은
+// 「적어 두는 자리가 몇이냐」이고, 그 수는 함수 하나로 옮길 수 있는 종류가 아니다.
+describe("보던 화면을 적어 두는 자리", () => {
   const read = (file: string) =>
     readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
-
-  it("주소 정규화로 옮겨 갈 때", () => {
-    expect(read("./-works-view.tsx")).toContain("search: viewSearch({}, recallView(next)),");
-  });
-
-  it("사이드바에서 작업 행을 눌렀을 때", () => {
-    expect(read("../features/works/SidebarWorkList.tsx")).toContain(
-      "search: viewSearch({}, recallView(slug)),",
-    );
-  });
 
   it("도착한 주소를 적어 두는 자리가 하나다", () => {
     // 화면을 옮기는 길이 여럿이다(`spec` 잎 · 셸 행 · ⌘1~9 · ⌃Tab · 분할 토글 · 드래그).

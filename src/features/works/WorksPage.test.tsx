@@ -163,7 +163,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     expect(toggle(markup)).not.toMatch(/\sdisabled=""/);
   });
 
-  it("비-md 문서를 열면 본문이 코드뷰로 고정되고 토글이 잠긴다", () => {
+  it("md도 html도 아닌 문서를 열면 본문이 코드뷰로 고정되고 토글이 잠긴다", () => {
     // 본문과 버튼을 **함께** 본다. 하나만 보면 "코드뷰인데 버튼은 멀쩡히 살아 있다"는
     // 바로 그 어긋남(결정 21)이 통과한다.
     const markup = render({ specFiles: ["diagram.puml"] });

@@ -81,7 +81,7 @@ pub enum SearchHit {
 /// **20은 실측이 하한을 정했다**: work 하나가 가진 문서가 최대 11개라 그보다 작으면
 /// 「work 이름을 치면 그 문서가 전부 뜬다」가 잘린다. 상한이 필요한 것도 실측이다 —
 /// 빈 질의가 낼 줄이 197개(활성 38 + 아카이브 159)다.
-pub const LAYER_LIMIT: usize = 20;
+pub(crate) const LAYER_LIMIT: usize = 20;
 
 /// 팔레트가 한 번에 받는 것. **줄들만으로는 「잘렸다」를 말할 수 없다** — 딱 20줄이 온 것과
 /// 21번째부터 잘린 것이 목록으로는 같은 모양이라, 화면이 그것을 가르려면 상한을 자기도
@@ -311,8 +311,8 @@ fn walk_docs(
 ) -> Result<Vec<Dated>> {
     let mut docs = Vec::new();
     for work in read_works(root)? {
-        let base = doc_base(root, &work.slug, archived);
-        for rel in doc_paths(root, &work.slug, archived) {
+        let (base, rels) = docs_of(root, &work.slug, archived);
+        for rel in rels {
             let abs = base.join(&rel);
             let Some(hit) = row(&work, &rel, &abs, archived) else { continue };
             docs.push(Dated { at: modified_at(&abs), hit });
@@ -365,22 +365,22 @@ fn first_paragraph(path: &Path, tokens: &[String]) -> Option<String> {
     None
 }
 
-/// 그 work이 가진 문서들의 **`?file=` 값**. 활성과 아카이브가 갈리는 자리는 여기 하나다.
-fn doc_paths(root: &Path, slug: &str, archived: bool) -> Vec<String> {
-    if archived {
-        // 기록(`record.md`)이 spec 밖에 있어서 아카이브 화면은 work 루트를 기준으로 읽는다.
-        // 그 목록을 짓는 규칙이 이미 한 자리에 있으므로 여기서 다시 적지 않는다.
-        list_archived_docs(root, slug).unwrap_or_default()
-    } else {
-        spec_files(&root.join(slug))
-    }
-}
-
-/// 위 경로들이 딛는 디렉터리. `doc_paths`와 **짝이다** — 한쪽만 고치면 mtime을 엉뚱한
-/// 파일에서 읽어 순서가 조용히 무너진다.
-fn doc_base(root: &Path, slug: &str, archived: bool) -> PathBuf {
+/// 그 work이 가진 문서들의 **`?file=` 값**과 그 값들이 딛는 **디렉터리**. 활성과 아카이브가
+/// 갈리는 자리는 여기 하나다.
+///
+/// **둘을 함께 돌려주는 것이 이 함수의 이유다.** 따로 두면 한쪽만 고쳐도 컴파일이 통과하고,
+/// 그때 mtime을 엉뚱한 파일에서 읽어 **순서가 조용히 무너진다** — 못 읽은 것은 에러가 아니라
+/// `UNIX_EPOCH`로 떨어져(`modified_at`) 목록 맨 아래로 밀릴 뿐이라 검사도 화면도 조용하다.
+///
+/// 아카이브가 spec이 아니라 **work 루트**를 딛는 것은 기록(`record.md`)이 spec 밖에 있어서다.
+/// 그 목록을 짓는 규칙이 이미 한 자리에 있으므로 여기서 다시 적지 않는다.
+fn docs_of(root: &Path, slug: &str, archived: bool) -> (PathBuf, Vec<String>) {
     let dir = root.join(slug);
-    if archived { dir } else { spec_dir(&dir) }
+    if archived {
+        (dir, list_archived_docs(root, slug).unwrap_or_default())
+    } else {
+        (spec_dir(&dir), spec_files(&dir))
+    }
 }
 
 /// 못 읽으면 **가장 오래된 것으로 친다.** 걷는 사이에 지워진 파일이 목록 맨 위에 서는 것이

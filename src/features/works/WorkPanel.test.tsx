@@ -394,7 +394,7 @@ describe("WorkPanel 소스 토글", () => {
   });
 
   it("잠기면 흐려지고 눌리지 않는다", () => {
-    // 비-md 파일은 토글과 무관하게 코드뷰로 고정된다 (결정 6·21). 흐리게만 하고
+    // 토글을 무시하는 파일은 켜든 끄든 같은 것이 선다 (결정 6·21). 흐리게만 하고
     // disabled를 빠뜨리면 눌리는데 아무 일도 없는 오늘 그대로다 — 둘을 함께 본다.
     const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
     expect(button).toMatch(/\sdisabled=""/);
@@ -403,9 +403,10 @@ describe("WorkPanel 소스 토글", () => {
   });
 
   it("잠김이 켜짐을 만들지 않는다", () => {
-    // 잠김과 켜짐은 **독립이다.** 비-md 파일도 본문은 코드뷰이므로 "본문이 소스니까
-    // 켜진 것"으로 그리고 싶어지는데, 그러면 트리에서 md와 비-md를 오갈 때마다 누른 적도
-    // 없는 버튼이 저 혼자 켜졌다 꺼진다. 잠김을 말하는 것은 흐림이지 켜짐이 아니다.
+    // 잠김과 켜짐은 **독립이다.** 토글을 무시하는 파일도 본문은 코드뷰이므로 "본문이 소스니까
+    // 켜진 것"으로 그리고 싶어지는데, 그러면 트리에서 토글을 따르는 파일과 무시하는 파일을
+    // 오갈 때마다 누른 적도 없는 버튼이 저 혼자 켜졌다 꺼진다. 잠김을 말하는 것은 흐림이지
+    // 켜짐이 아니다.
     const button = toggle(render(true, {}, undefined, { on: false, locked: true }));
     expect(button).toContain('aria-pressed="false"');
     expect(button).not.toContain("toggle-on");
@@ -413,7 +414,7 @@ describe("WorkPanel 소스 토글", () => {
 
   it("켜 둔 채 잠기면 켜짐이 유지된다", () => {
     // 반대 방향도 못 박는다 — 잠김이 켜짐을 **끄지도** 않는다. 사람이 켜 둔 값은
-    // 비-md 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
+    // 토글을 무시하는 파일을 스쳐도 그대로여야 다시 md로 돌아왔을 때 소스 보기가 살아 있다.
     const markup = render(true, {}, undefined, { on: true, locked: true });
     const button = toggle(markup);
     expect(button).toContain('aria-pressed="true"');

@@ -80,19 +80,7 @@ function AppShell() {
         armedAt.current = null;
         return;
       }
-      const arm = searchHotkey(
-        {
-          type: e.type,
-          code: e.code,
-          ctrlKey: e.ctrlKey,
-          metaKey: e.metaKey,
-          altKey: e.altKey,
-          shiftKey: e.shiftKey,
-          target: e.target,
-          at: e.timeStamp,
-        },
-        armedAt.current,
-      );
+      const arm = searchHotkey(e, armedAt.current);
       armedAt.current = arm.armedAt;
       if (arm.open) setSearchOpen(true);
     };

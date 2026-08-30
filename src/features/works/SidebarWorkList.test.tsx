@@ -37,7 +37,7 @@ function render(
     selectedSlug = null,
     shellCounts = {},
     // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
-    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯을 부르는가**뿐이다.
+    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
@@ -264,9 +264,11 @@ describe("work 행 오른쪽 끝의 셸 메타", () => {
     expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
-  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯을 아예 안 부른다", () => {
-    // 슬롯을 셸이 없는 행에서도 부르면 그 행마다 터미널 스토어 구독이 하나씩 붙는다 —
-    // 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」가 된다(Sidebar.test.tsx).
+  it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯이 안 선다", () => {
+    // 슬롯을 **부르는** 것은 `SidebarWorkList.tsx`가 모든 work에서 한다 — 여기서 재는 것은
+    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `ShellMetaFor`의 몸통이 안 돌아
+    // 구독도 안 붙는다: 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」로 뒤집히는
+    // 자리는 마운트다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
     const [가] = shellBoxesOf(markup);
     expect(가.html).toContain('data-meta="가"');
@@ -363,6 +365,29 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
     expect(source).not.toContain("ResizeObserver");
     // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
     expect(source.split("scrollWidth").length - 1).toBe(1);
+  });
+
+  // 페이드 폭은 **한 값인데 두 언어에 적혀 있다** — `calc()`가 길이를 시간으로 못 바꾸는 것이
+  // 그 이유 전부다(결정 12). 정본은 `index.css`이고(결정 10) `TITLE_FADE`는 그것을 시간으로
+  // 바꾸려고 옮겨 적은 쪽이다. 옮겨 적은 쪽이 뒤처져도 타입 검사도 화면도 조용하다:
+  // 어긋남은 마퀴 **속도**로만 나타나고(넘침 100px에서 24→12는 +10.7%) e2e의 속도 밴드
+  // (`MARQUEE_SPEED * [0.88, 1.12]`) 안에 숨는다. e2e가 이미 묶는 짝은 CSS↔e2e 하나뿐이라
+  // 이 짝은 여기서 본다 — `theme-tokens.test.ts`가 앱 팔레트↔터미널에 하는 것과 같다.
+  it("`TITLE_FADE`가 `index.css`의 `--title-fade`와 같은 수다", () => {
+    // 못 찾으면 던진다 — 어느 쪽 이름이 바뀌면 조용히 통과하는 대신 여기가 깨져야 한다.
+    const px = (source: string, pattern: RegExp, where: string) => {
+      const found = pattern.exec(source);
+      if (!found) throw new Error(`${where}에서 페이드 폭을 찾지 못했다`);
+      return found[1];
+    };
+    const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+    const source = readFileSync(
+      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(px(source, /const TITLE_FADE = (\d+);/, "SidebarWorkList.tsx")).toBe(
+      px(css, /--title-fade:\s*(\d+)px;/, "index.css"),
+    );
   });
 });
 

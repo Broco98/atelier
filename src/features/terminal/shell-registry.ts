@@ -1,9 +1,15 @@
 import type { WorkView } from "@/features/works/types";
 import type { PtyExit } from "./types";
 
-// 셸 목록과 그 목록에 관한 규칙만 아는 순수 모듈. import는 타입뿐이라 DOM 없는 기본 환경에서
-// 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례). 그 성질은 주석이 아니라
-// shell-registry.test.ts의 소스 스캔이 지킨다.
+// 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
+// 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
+// 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
+//
+// **키 판정 중 `searchHotkey`(⇧⇧)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
+// 그런데도 여기 사는 것은 「어디서 눌렸으면 비키는가」를 정하는 `typesInto`·`isShellInput`을
+// 이웃 키 판정들과 **함께** 딛기 때문이다. 그 둘을 공용 모듈로 빼면 이 모듈이 그것을 **값으로**
+// import하게 되는데, 바로 위 소스 스캔(「값 import가 하나도 없다」)이 그 길을 막아 뒀다.
+// 팔레트 쪽에서 여는 키를 찾는 사람을 위해 `SearchPalette.tsx` 머리말이 이 자리를 가리킨다.
 //
 // 이 모듈이 React 밖에 있는 것은 취향이 아니다 — 결정 21이 "비활성 셸의 xterm 인스턴스는
 // React 트리 밖에 산다"를 요구하고, 그 인스턴스를 가리키는 목록이 컴포넌트 state에 있으면
@@ -626,8 +632,14 @@ export interface SearchArm {
  * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
  *
  * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
+ *
+ * 시각도 **DOM 이름 그대로** 받는다(`timeStamp`) — `KeyFromWindow`가 그러는 것과 같은 이유고,
+ * 그래서 이웃 셋처럼 부르는 쪽이 이벤트를 통째로 넘긴다.
  */
-export function searchHotkey(event: KeyFromWindow & { at: number }, armedAt: number | null): SearchArm {
+export function searchHotkey(
+  event: KeyFromWindow & { timeStamp: number },
+  armedAt: number | null,
+): SearchArm {
   // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
   // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
   if (event.type !== "keydown") return { open: false, armedAt };
@@ -639,8 +651,9 @@ export function searchHotkey(event: KeyFromWindow & { at: number }, armedAt: num
     !event.ctrlKey &&
     !event.altKey;
   if (!bareShift) return { open: false, armedAt: null };
-  if (armedAt !== null && event.at - armedAt <= SEARCH_GAP_MS) return { open: true, armedAt: null };
-  return { open: false, armedAt: event.at };
+  if (armedAt !== null && event.timeStamp - armedAt <= SEARCH_GAP_MS)
+    return { open: true, armedAt: null };
+  return { open: false, armedAt: event.timeStamp };
 }
 
 /**

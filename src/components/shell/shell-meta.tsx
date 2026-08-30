@@ -40,8 +40,10 @@ export function ShellMeta({
    */
   running: ReadonlyArray<string>;
 }) {
-  // 셸이 0개면 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다. nav `Terminal`이 최상위
-  // 셸 없이 설 때 기대는 규칙이 이것이라, 부르는 쪽마다 조건을 다시 쓰지 않는다(결정 13).
+  // 셸이 0개면 아무것도 안 선다 — 「없음」은 숫자로 말하지 않는다(결정 13). nav `Terminal`이
+  // 최상위 셸 없이 설 때 기대는 규칙이 이것이다. work 행은 여기 안 기댄다: 바깥 상자가
+  // 표식(`data-shells`)과 격자 칸을 들어야 해서 같은 조건을 한 번 더 쓴다
+  // (`SidebarWorkList.tsx`) — **문턱을 고치면 두 자리다.**
   if (shellCount <= 0) return null;
 
   // 종류로 접는다. `Map`이 넣은 순서를 지키므로 무리 자리가 초마다 재배열되지 않는다.

@@ -1,4 +1,4 @@
-import { fileSearch, recallView, viewSearch } from "@/routes/-work-search";
+import { fileSearch, recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
 import type { FileSearch } from "@/routes/-file-search";
 import { destinationTo } from "./destinations";
@@ -7,7 +7,7 @@ import type { SearchHit } from "./types";
 /**
  * 고른 줄이 가리키는 **주소**. 라우터에 그대로 넘어간다.
  *
- * **갈래마다 가는 곳이 다르고, 그 갈림이 여기 한 자리다.** 목적지는 main nav가 가는 곳으로,
+ * **갈래마다 가는 곳이 다르고, 그 갈림이 여기 한 자리다.** 목적지는 사이드바가 가는 곳으로,
  * work은 그 work의 마지막 화면으로, 프로젝트는 그 프로젝트 화면으로, 문서는 그 문서로 간다 —
  * 넷 다 「가서 본다」 하나의 뜻이라 Enter가 갈래를 안 탄다(결정 1).
  *
@@ -22,7 +22,7 @@ export type HitTarget =
 
 /**
  * **모양을 여기서 다시 적지 않는다.** 주소를 짓는 규칙은 이미 한 자리씩 있고(`fileSearch` ·
- * `viewSearch` · `nav-items.ts`), 팔레트가 그것을 베껴 적으면 검사하는 쪽도 베껴 적게 되어
+ * `recallSearch` · `destinations.ts`), 팔레트가 그것을 베껴 적으면 검사하는 쪽도 베껴 적게 되어
  * 실제 이동이 퇴화해도 초록이 된다.
  *
  * - **문서 줄은 「그 work의 기억 위에 문서를 얹어」 간다**(결정 16·77). 합성 하나로 같은
@@ -52,7 +52,7 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
         : {
             to: "/works/$slug",
             params: { slug: hit.slug },
-            search: viewSearch({}, recallView(hit.slug)),
+            search: recallSearch(hit.slug),
           };
     case "project":
       return { to: "/projects/$slug", params: { slug: hit.slug } };
@@ -67,7 +67,7 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
         : {
             to: "/works/$slug",
             params: { slug: hit.slug },
-            search: fileSearch(viewSearch({}, recallView(hit.slug)), hit.path),
+            search: fileSearch(recallSearch(hit.slug), hit.path),
           };
   }
 }

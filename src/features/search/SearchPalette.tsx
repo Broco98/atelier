@@ -13,6 +13,10 @@ import type { SearchHit } from "./types";
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
  * 반지름·테두리·그림자를 쓰고 있어 새 어휘를 들일 이유가 없다.
  *
+ * **여는 키(⇧⇧)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 셸 키
+ * 판정들과 「어디서 눌렸으면 비키는가」를 같이 딛기 때문이고, 그 자리를 고른 이유는 거기
+ * 머리말이 든다. 무장·해제를 들고 그 함수를 부르는 자리는 앱 셸(`AppShell.tsx`)이다.
+ *
  * **터미널 스토어를 import하지 않는다.** 하면 `@xterm/*`와 그 CSS가 따라 들어와 이 파일의
  * 정적 마크업 검사가 서지 못한다(SearchPalette.test.tsx가 그 계약을 센다) — 사이드바 목록이
  * 같은 이유로 셸 개수를 슬롯으로 받는 그 자리와 같다.
@@ -93,7 +97,7 @@ function rowKey(hit: SearchHit): string {
 export function SearchList({
   query,
   hits,
-  ready,
+  state,
   truncated,
   selected,
   onQuery,
@@ -103,11 +107,20 @@ export function SearchList({
   query: string;
   hits: SearchHit[];
   /**
-   * 답이 왔는가. **빈 목록이 「없다」인지 「아직 모른다」인지는 줄들로 못 가른다** — 팔레트는
-   * 열 때마다 새로 마운트되고 캐시도 안 남기므로(hooks.ts), 첫 답이 오기 전 한 프레임을
-   * 「맞는 것이 없습니다」로 채우면 여는 것마다 그 줄이 깜빡인다.
+   * 물음이 어디까지 갔는가. **빈 목록으로는 셋을 못 가른다** — 아직 모른다 · 없다 · 못 물었다.
+   *
+   * `ready: boolean`이던 자리다. 그때 머리말은 「「없다」인지 「아직 모른다」인지」 둘만 셌고,
+   * 셋째가 첫째로 접혀 있었다: 첫 질의가 실패하면 `data`가 영영 `undefined`라 「맞는 것이
+   * 없습니다」조차 안 뜨고 **입력칸과 빈 상자만** 남았다 — 아래 「빈 목록은 아무 말도 안 하면
+   * 고장과 구별되지 않는다」가 막으려던 그 화면을, 진짜 고장일 때만 만들었다.
+   *
+   * - `"pending"` — 아직 모른다. **아무 말도 안 한다.** 팔레트는 열 때마다 새로 마운트되고
+   *   캐시도 안 남기므로(hooks.ts), 첫 답이 오기 전 한 프레임을 「맞는 것이 없습니다」로 채우면
+   *   여는 것마다 그 줄이 깜빡인다.
+   * - `"ready"` — 답이 왔다. 비어 있으면 없다고 말한다.
+   * - `"failed"` — 못 물었다. 재시도는 없으므로(hooks.ts) **다음 타자가 곧 다음 시도**다.
    */
-  ready: boolean;
+  state: "pending" | "ready" | "failed";
   /** 상한에 걸려 못 나온 줄이 있는가. **코어가 말해 준다** — 줄 수로는 못 가른다. */
   truncated: boolean;
   /** 지금 골라진 줄. 목록이 비면 아무 줄도 안 골라진다(`-1`). */
@@ -229,9 +242,18 @@ export function SearchList({
           })}
           {/* 빈 목록은 **아무 말도 안 하면 고장과 구별되지 않는다.** 줄이 아니므로 방향키가
               여기 서지 않는다(`role="option"`이 없다). */}
-          {ready && hits.length === 0 && (
+          {state === "ready" && hits.length === 0 && (
             <p data-note="" className="px-2.5 py-1.5 text-[13px] text-muted-foreground">
               맞는 것이 없습니다
+            </p>
+          )}
+          {/* **못 물은 것은 없는 것이 아니다.** 위 줄과 같은 규격으로 같은 자리에 선다 —
+              갈리는 것은 문장뿐이다. 말의 꼴은 이 저장소가 실패를 말하는 꼴 그대로다
+              (`showProblem`의 「…하지 못했습니다」). **이유는 안 적는다** — 여기로 오는 것은
+              IO 오류뿐이라 사용자 손에 고칠 것이 없고, 다시 치는 것이 곧 다시 묻는 것이다. */}
+          {state === "failed" && (
+            <p data-note="" className="px-2.5 py-1.5 text-[13px] text-muted-foreground">
+              검색하지 못했습니다
             </p>
           )}
         </div>
@@ -258,7 +280,11 @@ export function SearchList({
 function SearchPalette({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const { data } = useSearchHits(query);
+  // **셋을 여기서 가른다.** `data`만 꺼내면 「못 물었다」가 「아직 모른다」로 접힌다 —
+  // `keepPreviousData`는 앞 성공이 있을 때만 값을 주므로, 열자마자 나간 첫 질의가 실패하면
+  // `data`는 영영 `undefined`다.
+  const { data, isError } = useSearchHits(query);
+  const state = isError ? "failed" : data === undefined ? "pending" : "ready";
   const hits = data?.hits ?? [];
   const [selected, setSelected] = useState(0);
   // 목록이 뒤늦게 오거나 짧아져도 고른 자리가 목록 밖으로 나가지 않는다.
@@ -305,7 +331,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
     <SearchList
       query={query}
       hits={hits}
-      ready={data !== undefined}
+      state={state}
       truncated={data?.truncated ?? false}
       selected={at}
       onQuery={(next) => {
