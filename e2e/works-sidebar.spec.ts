@@ -17,7 +17,7 @@ const MAIN_HEADER = "작업 1";
 
 // 오른쪽 끝 페이드의 폭이자 **마퀴가 넘침 위에 더 가는 거리**다(결정 11) — 그만큼 더 가지
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
-const TITLE_FADE = 24;
+const TITLE_FADE = 12;
 
 // 흐르는 **속도**(px/s) — `SidebarWorkList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
@@ -418,7 +418,7 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   expect(넘침).toBeGreaterThan(0);
   expect(await overflowOf(짧은제목)).toBeLessThanOrEqual(0);
 
-  // **`…`이 아니다**(결정 9·18). 끊는 것은 오른쪽 끝 24px 그라디언트이고, 마스크는 상시라
+  // **`…`이 아니다**(결정 9·18). 끊는 것은 오른쪽 끝 12px 그라디언트이고, 마스크는 상시라
   // 넘치지 않는 제목에도 걸려 있다(결정 12 — 거의 꽉 찬 제목의 끝 글자가 옅어지는 대가).
   await expect(긴제목).toHaveCSS("text-overflow", "clip");
   for (const box of [긴제목, 짧은제목]) {
@@ -434,7 +434,7 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   // 쉴 때는 제자리다 — 쉴 때 계측도 없다(결정 12).
   expect(await shiftOf(긴제목)).toBe(0);
 
-  // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 24px이
+  // **hover하면 흐른다.** 200ms 뒤에 시작해 **넘침 + 페이드 폭**만큼 가는데, 그 12px이
   // 없으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다(결정 11).
   await 긴제목.hover();
   const 거리 = 넘침 + TITLE_FADE;
@@ -479,7 +479,7 @@ test("긴 제목은 hover에 흘러 끝까지 읽히고, 모션을 끄면 안 �
   await expect.poll(() => shiftOf(긴제목)).toBe(0);
 
   // **안 넘치는 제목은 hover해도 가만히 있다** — 시작 지연이 지나도 0이다. `min`이 0을
-  // 고르기 때문이고(결정 10), 페이드 폭을 그냥 빼면 여기가 24px까지 흐른다.
+  // 고르기 때문이고(결정 10), 페이드 폭을 그냥 빼면 여기가 12px까지 흐른다.
   await page.waitForTimeout(500);
   expect(await shiftOf(짧은제목)).toBe(0);
 
