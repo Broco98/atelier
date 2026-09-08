@@ -10,10 +10,6 @@ use std::path::PathBuf;
 use atelier_core::{archive_dir, projects_dir, works_dir, Mode, ProjectPatch};
 use serde_json::{Map, Value};
 
-/// 다리가 아직 아는 모드는 하나뿐이다. **명령이 `mode` 인자를 받는 것은 다음 티켓(#181)**
-/// 이고, 그때 이 상수가 인자로 바뀐다 (`commands.rs`의 같은 상수와 짝이다).
-const MODE: Mode = Mode::Atelier;
-
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
 type Args = Map<String, Value>;
 type Handled = Result<Value, String>;
@@ -44,45 +40,53 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
-    ("list_works", |_| ok(atelier_core::list_works(&works_dir(MODE)))),
-    ("get_work", |a| ok(atelier_core::get_work(&works_dir(MODE), &text(a, "slug")?))),
+    ("list_works", |a| ok(atelier_core::list_works(&works_dir(mode(a)?)))),
+    ("get_work", |a| ok(atelier_core::get_work(&works_dir(mode(a)?), &text(a, "slug")?))),
     ("set_work_title", |a| {
-        ok(atelier_core::update_work_title(&works_dir(MODE), &text(a, "slug")?, &text(a, "title")?))
+        ok(atelier_core::update_work_title(
+            &works_dir(mode(a)?),
+            &text(a, "slug")?,
+            &text(a, "title")?,
+        ))
     }),
     ("set_work_status", |a| {
         let status = text(a, "status")?.parse().map_err(err)?;
-        ok(atelier_core::update_work_status(&works_dir(MODE), &text(a, "slug")?, status))
+        ok(atelier_core::update_work_status(&works_dir(mode(a)?), &text(a, "slug")?, status))
     }),
     ("set_work_pinned", |a| {
         let pinned = flag(a, "pinned")?;
-        ok(atelier_core::update_work_pinned(&works_dir(MODE), &text(a, "slug")?, pinned))
+        ok(atelier_core::update_work_pinned(&works_dir(mode(a)?), &text(a, "slug")?, pinned))
     }),
     ("archive_work", |a| {
+        let mode = mode(a)?;
         ok(atelier_core::archive_work(
-            &works_dir(MODE),
-            &archive_dir(MODE),
-            Some(&projects_dir()),
+            &works_dir(mode),
+            &archive_dir(mode),
+            shared_projects_root(mode).as_deref(),
             &text(a, "slug")?,
         )
         .map(|_| ()))
     }),
     // commands.rs와 같이 force를 노출하지 않는다 — 커밋 안 된 변경이 있으면 거부한다.
-    ("remove_work", |a| ok(atelier_core::remove_work(&works_dir(MODE), &text(a, "slug")?, false))),
-    ("read_spec_file", |a| {
-        ok(atelier_core::read_spec_file(&works_dir(MODE), &text(a, "slug")?, &text(a, "path")?))
+    ("remove_work", |a| {
+        ok(atelier_core::remove_work(&works_dir(mode(a)?), &text(a, "slug")?, false))
     }),
-    ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir(MODE)))),
+    ("read_spec_file", |a| {
+        ok(atelier_core::read_spec_file(&works_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))
+    }),
+    ("list_archive", |a| ok(atelier_core::list_archive(&archive_dir(mode(a)?)))),
     ("list_archived_docs", |a| {
-        ok(atelier_core::list_archived_docs(&archive_dir(MODE), &text(a, "slug")?))
+        ok(atelier_core::list_archived_docs(&archive_dir(mode(a)?), &text(a, "slug")?))
     }),
     ("read_archived_file", |a| {
-        ok(atelier_core::read_work_file(&archive_dir(MODE), &text(a, "slug")?, &text(a, "path")?))
+        ok(atelier_core::read_work_file(&archive_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))
     }),
     ("search", |a| {
+        let mode = mode(a)?;
         ok(atelier_core::search(
-            &works_dir(MODE),
-            &archive_dir(MODE),
-            Some(&projects_dir()),
+            &works_dir(mode),
+            &archive_dir(mode),
+            shared_projects_root(mode).as_deref(),
             &text(a, "query")?,
             &destinations(a)?,
         ))
@@ -129,6 +133,29 @@ fn text(args: &Args, key: &str) -> Result<String, String> {
 
 fn maybe_text(args: &Args, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// 어느 세계의 명령인가. **없으면 Atelier인 것은 이 티켓에서만이다**(#181, expand) —
+/// `commands.rs`의 `or_atelier`와 짝이고, 필수로 닫는 것도 같은 티켓(#187)이다.
+/// 두 자리의 기본값이 갈리면 다리를 타는 L4가 앱과 다른 세계를 보게 된다.
+///
+/// 모르는 값은 **거절한다.** 오타를 Atelier로 눕히면 「Maison을 쓴다고 적었는데 일 목록이
+/// 나온다」가 되고, L4에서는 그것이 「기능이 안 된다」로만 보인다.
+fn mode(args: &Args) -> Result<Mode, String> {
+    match args.get("mode") {
+        None => Ok(Mode::Atelier),
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|e| format!("인자 'mode'를 읽지 못했습니다: {e}")),
+    }
+}
+
+/// 커널에 건네는 프로젝트 등록부. Maison에서는 「없음」이다 (결정 17) —
+/// `commands.rs`의 같은 이름 함수와 짝이다.
+fn shared_projects_root(mode: Mode) -> Option<PathBuf> {
+    match mode {
+        Mode::Atelier => Some(projects_dir()),
+        Mode::Maison => None,
+    }
 }
 
 /// 프런트가 건네는 「가는 곳」 목록(결정 21). **여기서 모양을 손보지 않는다** — 라벨은
@@ -362,18 +389,74 @@ mod tests {
     /// 파서가 새면 조용히 통과하는 검사다. 그래서 **이름이 등장하는 것 자체**를 거절한다.
     /// 지금 앱 소스에는 셋 다 한 번도 안 나오므로 이렇게 좁게 잠글 수 있다.
     ///
-    /// **앱이 그 값을 셸에 심는 것**은 규칙 위반이 아니라 이 판의 설계다 (결정 15). 그
-    /// 자리는 #181이 `pty.rs`에 연다 — 그때 이 검사를 **통째로 지우지 말고** 그 한 자리만
-    /// 예외로 좁혀 다시 잠가야 한다. 지우면 남는 그물이 없다.
+    /// **앱이 그 값을 셸에 심는 것**은 규칙 위반이 아니라 이 판의 설계다 (결정 15).
+    /// 「읽는 것」과 「심는 것」은 성격이 반대다 — 읽으면 앱의 한 자리가 프로세스에 값
+    /// 하나인 env를 따라 저쪽 세계로 새고, 심으면 앱이 아는 사실이 자식으로 내려간다.
+    /// 그래서 검사를 **지우지 않고** 그 한 자리만 예외로 좁혔다 (아래 상수).
     #[test]
     fn 앱은_모드를_환경에서_읽지_않는다() {
         for (file, source) in APP_SOURCES {
             for name in MODE_ENV_NAMES {
+                if (file, name) == MODE_ENV_PLANTED_AT {
+                    continue;
+                }
                 assert!(
                     !source.contains(name),
                     "src-tauri/src/{file}에 '{name}'가 있다 — 앱에서 모드는 인자로 내려온다"
                 );
             }
+        }
+    }
+
+    /// 앱이 모드를 **심는** 한 자리. `pty.rs`가 셸에 `ATELIER_MODE`를 넣을 때 변수 이름을
+    /// 코어의 상수로 부르므로, 그 파일에서 `MODE_ENV`라는 이름만 예외다 — 리터럴
+    /// (`ATELIER_MODE`)도, 읽는 파서(`mode_from_env`)도 여전히 앱 어디에서도 못 쓴다.
+    const MODE_ENV_PLANTED_AT: (&str, &str) = ("pty.rs", "MODE_ENV");
+
+    /// **예외는 낡을 수 있다.** 심는 자리가 사라지거나 다른 파일로 옮겨 가면 위 검사의
+    /// 구멍만 남는다 — 그 구멍으로 나중에 「읽는」 코드가 들어와도 아무도 모른다.
+    /// 그래서 예외가 **여전히 쓰이고 있는지**를 함께 잰다.
+    ///
+    /// 이 검사는 「그 이름이 있다」까지만 본다. 그 자리가 정말 셸에 값을 심는지는
+    /// `pty.rs`의 빌더 검사가 심긴 값을 직접 읽어 잰다.
+    #[test]
+    fn 모드를_심는_예외는_실제로_쓰이고_있다() {
+        let (file, name) = MODE_ENV_PLANTED_AT;
+        let source = APP_SOURCES
+            .iter()
+            .find(|(f, _)| *f == file)
+            .unwrap_or_else(|| panic!("{file}이 앱 소스 표에서 사라졌다"))
+            .1;
+        assert!(
+            source.contains(name),
+            "src-tauri/src/{file}이 '{name}'을 안 쓴다 — 예외가 낡았으니 지워라"
+        );
+    }
+
+    /// **명령은 루트를 인자에서 고른다** (결정 20). 상수를 박으면 그 명령 하나만 늘
+    /// Atelier를 읽고, 화면은 Maison인데 목록만 저쪽 세계인 채로 조용히 돈다.
+    ///
+    /// **파싱이 필요 없게 좁혔다.** 함수 몸통을 잘라 보는 판은 파서가 새는 순간 조용히
+    /// 통과한다 — 여기서는 루트 함수를 부르는 **모든** 자리가 `mode`라는 이름의 값을
+    /// 건네는지만 센다. 「하나라도 다른 것을 건네면 두 수가 어긋난다」가 전부다.
+    ///
+    /// `mode`가 무엇을 담는지(인자에서 왔는가)까지는 이 검사가 못 본다 — 그 몫은 다리의
+    /// 계약 테스트(`tests/mode_contract.rs`)가 같은 모양의 코드를 **실행**해서 든다.
+    #[test]
+    fn 명령이_모드_루트를_인자로_고른다() {
+        let source = APP_SOURCES
+            .iter()
+            .find(|(f, _)| *f == "commands.rs")
+            .expect("commands.rs가 앱 소스 표에서 사라졌다")
+            .1;
+        for root in ["works_dir(", "archive_dir("] {
+            let calls = source.matches(root).count();
+            assert!(calls > 0, "commands.rs가 '{root}'를 한 번도 안 부른다 — 표식이 낡았다");
+            assert_eq!(
+                source.matches(&format!("{root}mode)")).count(),
+                calls,
+                "commands.rs의 '{root}' 호출 하나가 인자 아닌 값으로 세계를 고른다"
+            );
         }
     }
 
