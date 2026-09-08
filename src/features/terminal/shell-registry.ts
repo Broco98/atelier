@@ -5,10 +5,11 @@ import type { PtyExit } from "./types";
 // 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
 // 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
 //
-// **키 판정 중 `searchHotkey`(⇧⇧)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
-// 그런데도 여기 사는 것은 「어디서 눌렸으면 비키는가」를 정하는 `typesInto`·`isShellInput`을
-// 이웃 키 판정들과 **함께** 딛기 때문이다. 그 둘을 공용 모듈로 빼면 이 모듈이 그것을 **값으로**
-// import하게 되는데, 바로 위 소스 스캔(「값 import가 하나도 없다」)이 그 길을 막아 뒀다.
+// **키 판정 중 `searchHotkey`(⌘K)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
+// 그런데도 여기 사는 것은 그 키가 **셸을 지나와야** 하기 때문이다: 셸이 ⌘K를 타이핑하지
+// 않는다는 것을 정하는 자리가 `shellHotkey`이고(`"app"`으로 흘려보낸다), 그 규칙은 이웃
+// 키 판정들과 한 벌이어야 갈리지 않는다. ⇧⇧였을 때의 근거(`typesInto`·`isShellInput`을
+// 함께 딛는다)는 ⌘K가 그 둘을 안 보게 되면서 사라졌다 — 자리는 남았고 이유가 바뀌었다.
 // 팔레트 쪽에서 여는 키를 찾는 사람을 위해 `SearchPalette.tsx` 머리말이 이 자리를 가리킨다.
 //
 // 이 모듈이 React 밖에 있는 것은 취향이 아니다 — 결정 21이 "비활성 셸의 xterm 인스턴스는
@@ -507,10 +508,14 @@ interface KeyFromWindow extends KeyPress {
 /**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
  *
- * **결정 29의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
- * 먹는다」인데, ⌘만은 앱이 가져가도 잃는 것이 없다 — 셸도 TUI도 ⌘를 안 쓴다(macOS
- * 터미널들이 ⌘를 자기 몫으로 두는 이유다). ⌃T였다면 zsh emacs 모드의 `transpose-chars`와
- * fzf의 파일 위젯을 뺏었을 것이다.
+ * **결정 29의 예외 중 이 함수가 드는 것은 셋이다** — ⌘T·⌘W, 그리고 팔레트를 여는 ⌘K.
+ * 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이 먹는다」인데, ⌘만은 앱이 가져가도 잃는
+ * 것이 없다 — 셸도 TUI도 ⌘를 안 쓴다(macOS 터미널들이 ⌘를 자기 몫으로 두는 이유다).
+ * ⌃T였다면 zsh emacs 모드의 `transpose-chars`와 fzf의 파일 위젯을 뺏었을 것이다.
+ *
+ * **⌘K를 셸에 돌려주지 않는다.** macOS 터미널들이 그 키를 스크롤백 지우기로 쓰고 있어
+ * 되돌릴 유인이 있는데, 이 앱에서 ⌘K는 **어디서든 팔레트를 여는 하나뿐인 키다**(결정 1·2).
+ * 셸에서만 다른 일을 하면 그 「어디서든」이 깨진다.
  *
  * **⌘W는 특히 앱이 가져가야 한다.** 안 가져가면 macOS 메뉴의 `Close Window`가 먹어
  * **창이 닫히고 셸이 전부 죽는다**(실물에서 그렇게 잃었다). 그 메뉴 항목은 이제 없다 —
@@ -528,7 +533,10 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
   // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
   // 처리는 여기서 하지 않는다 — 어느 본문으로 갈지는 화면이 알고, 셸은 그것을 모른다.
-  if (shellNavKey(event) !== null) return "app";
+  // 팔레트를 여는 ⌘K도 같은 갈래다 — 셸이 타이핑하지 않고 그대로 위로 흘려보내면,
+  // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
+  // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
+  if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
   if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
   if (event.code === "KeyT") return "new";
   if (event.code === "KeyW") return "close";
@@ -591,69 +599,30 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
- * ⇧를 두 번 누른 것으로 치는 **두 번 사이의 간격**. 너무 길면 대문자를 치다 열리고, 너무
- * 짧으면 두 번 눌러도 안 열린다.
+ * ⌘K가 검색 팔레트를 연다(결정 1·2). **여는 키 판정 전부가 이 순수 술어 하나다** — 무장
+ * 상태도, 「어디서 눌렸나」도 안 본다. ⇧⇧였을 때 그 둘이 필요했던 이유가 함께 사라졌다:
+ * 「같은 키를 300ms 안에 두 번」이라는 몸짓이 아니므로 리듀서가 없고, ⌘ 화음은 셸에도 폼
+ * 입력칸에도 글자를 남기지 않으므로 비킬 자리가 없다.
  *
- * **상한이 오발동을 막는 유일한 그물은 아니다** — 사이에 끼는 keydown 하나가 이미 무장을
- * 풀어서, `A`를 대문자로 치는 동안에는 간격이 얼마든 안 열린다. 이 값이 정하는 것은
- * 「두 번 누른다」가 한 동작으로 읽히는 폭이다.
+ * **폼 입력칸에서도 열린다**(결정 22). work 제목을 고치는 `<input>`은 blur에 커밋하므로
+ * 편집 중에 누르면 그 제목이 저장된 채로 팔레트가 뜬다 — 바깥을 클릭했을 때와 같고,
+ * Esc가 포커스를 돌려준다. ⇧⇧는 그 자리에서 아예 안 열렸는데, 그때는 대문자를 못 치게
+ * 되는 것이 대가였다. ⌘K에는 그 대가가 없다.
+ *
+ * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열). 여기서는 대가가
+ * 한 겹 더 있다: 네이티브 메뉴가 쏘는 합성 keydown은 `code`와 `key`를 **둘 다** 싣기 때문에,
+ * `key`로 봤다면 **메뉴로는 열리고 직접 누르면 한글 입력기에서만 죽는** 반쪽 고장이 난다.
+ *
+ * **수식키가 하나라도 더 붙으면 아니다** — ⌘⇧K·⌘⌥K는 결정 1이 명시로 배제한 화음이다
+ * (VS Code가 ⌘K를 화음 접두사로 쓰는 그 계열).
+ *
+ * **떠 있는 확인 창은 여기서 안 본다.** 「무슨 키인가」와 「화면에 무엇이 떠 있나」는 다른
+ * 물음이고 주인도 다르다 — 부르는 쪽(앱 셸)이 막는다.
  */
-export const SEARCH_GAP_MS = 300;
-
-/**
- * ⇧⇧ 감지기가 돌려주는 것. `armedAt`은 **다음 판정에 그대로 도로 들어간다** — 이 함수가
- * 상태를 들지 않으므로 부르는 쪽이 그 한 값만 들고 있으면 된다.
- */
-export interface SearchArm {
-  open: boolean;
-  armedAt: number | null;
-}
-
-/**
- * ⇧를 두 번 누르면 검색을 연다(결정 3·4). **타이머 없는 순수 리듀서다** — 직전 ⇧의 시각을
- * 인자로 받고 다음 상태를 돌려주므로, DOM도 가짜 시계도 없이 취소 규칙을 전부 잴 수 있다.
- *
- * 무장하는 것은 **⇧ 단독 keydown** 하나다(다른 수식키가 안 붙은 `ShiftLeft`·`ShiftRight`).
- * 푸는 것은 셋인데 여기서 드는 것은 둘이다.
- *
- * - **그 밖의 모든 keydown.** 이 한 줄이 「⇧를 누른 채 다른 키가 오면 취소」와 「사이에
- *   다른 키가 끼면 취소」를 함께 푼다 — `Shift↓ A↓ Shift↓`에서 가운데 `A↓`가 무장을 풀어
- *   대문자를 치는 동안 안 열린다.
- * - **간격 초과**(`SEARCH_GAP_MS`). 넘기면 안 열리고 **그 ⇧가 다시 무장한다** — 세 번째
- *   ⇧가 붙으면 열려야 하기 때문이다.
- * - 셋째는 **mousedown**인데 그것은 키가 아니라 이 함수 밖에 산다(결정 30). 키만 보면
- *   ⇧+클릭 두 번이 팔레트를 연다 — 그 사이에 keydown이 하나도 안 끼기 때문이다.
- *   부르는 쪽(앱 셸)이 mousedown에 무장을 비운다.
- *
- * **셸 안에서는 듣고 폼 입력칸에서는 비킨다** — `shellNavFromWindow`와 같은 규칙이고 같은
- * 판정을 딛는다(결정 4). 이 함수를 새 모듈에 다시 적지 않는 이유가 그 한 줄이다.
- *
- * **대화상자는 여기서 안 본다.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠
- * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
- *
- * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
- *
- * 시각도 **DOM 이름 그대로** 받는다(`timeStamp`) — `KeyFromWindow`가 그러는 것과 같은 이유고,
- * 그래서 이웃 셋처럼 부르는 쪽이 이벤트를 통째로 넘긴다.
- */
-export function searchHotkey(
-  event: KeyFromWindow & { timeStamp: number },
-  armedAt: number | null,
-): SearchArm {
-  // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
-  // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
-  if (event.type !== "keydown") return { open: false, armedAt };
-  if (typesInto(event.target) && !isShellInput(event.target)) return { open: false, armedAt: null };
-  // **`shiftKey`로 가르지 않는다** — ⇧ 자신의 keydown에는 그 값이 이미 참이다.
-  const bareShift =
-    (event.code === "ShiftLeft" || event.code === "ShiftRight") &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey;
-  if (!bareShift) return { open: false, armedAt: null };
-  if (armedAt !== null && event.timeStamp - armedAt <= SEARCH_GAP_MS)
-    return { open: true, armedAt: null };
-  return { open: false, armedAt: event.timeStamp };
+export function searchHotkey(event: KeyPress): boolean {
+  if (event.type !== "keydown") return false;
+  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+  return event.code === "KeyK";
 }
 
 /**

@@ -1,10 +1,9 @@
-import { SEARCH_GAP_MS } from "@/features/terminal/shell-registry";
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { SEARCH_DESTINATION_QUERY, SEARCH_HITS, WORKS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 판 01 — ⇧⇧로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
+// 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
 // **마크업 seam이 보는 것은 여기서 다시 보지 않는다.** 줄에 무엇이 적히는지·골라진 줄이
 // 하나인지·없다고 말하는 줄은 SearchPalette.test.tsx가 들고, 맞추는 규칙과 상한은 코어
@@ -12,8 +11,14 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // 이벤트가 있어야만 보이는 것들이다 — 셸을 지나오는 키, 마우스, 실제 이동, 「떠 있는 창이
 // 막는다」, 그리고 **친 것이 명령까지 가는 배선**.
 //
-// **가장 큰 것은 첫 검사다.** 「⇧ 단독 keydown이 xterm을 지나 window까지 오는가」는 실물
-// xterm이 붙어야만 답이 나오고, 다른 층은 전부 xterm 없이 돈다.
+// **가장 큰 것은 첫 검사다.** 「⌘K가 xterm을 지나 window까지 오는가」는 실물 xterm이 붙어야만
+// 답이 나오고, 다른 층은 전부 xterm 없이 돈다. 셸이 그 키를 타이핑하지 않는다는 판정은
+// 순수 모듈이 들지만(`shellHotkey`가 `"app"`), 그 판정이 xterm에 **실제로 물려 있는지**는
+// 여기서만 난다.
+//
+// **빈 화면에 어느 층이 서는지는 여기서 안 잰다.** 픽스처의 검색은 질의를 못 보고 늘 같은
+// 답을 주므로, 빈 질의 답을 심으면 자기가 심은 것을 다시 읽는 동어반복이 된다 —
+// **결정 6·7의 그물은 코어 단위(`search.rs`)에만 있다.**
 
 const [specWork] = WORKS;
 
@@ -35,24 +40,23 @@ async function askedFor(page: Page): Promise<string[]> {
   return [...new Set(asked)];
 }
 
-/** ⇧를 두 번 누른다. **사이에 아무 키도 안 낀다** — 끼면 무장이 풀린다. */
-async function doubleShift(page: Page) {
-  await page.keyboard.press("Shift");
-  await page.keyboard.press("Shift");
+/** 팔레트를 여는 키. 화음 하나라 준비도 상태도 없다(결정 1). */
+async function pressSearchKey(page: Page) {
+  await page.keyboard.press("Meta+k");
 }
 
 /** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
 const focusedClass = (page: Page) =>
   page.evaluate(() => document.activeElement?.className ?? "");
 
-test("⇧⇧가 셸에 포커스가 있는 동안에도 팔레트를 연다", async ({ page }) => {
+test("⌘K가 셸에 포커스가 있는 동안에도 팔레트를 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
   // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 「셸을 지나온다」를 아무것도 안 잰다.
   await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
 
-  await doubleShift(page);
+  await pressSearchKey(page);
 
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
@@ -67,7 +71,7 @@ test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) =
   await page.goto(`/works/${specWork.slug}`);
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   // **팔레트가 포커스를 가져와야 한다.** 안 가져오면 친 글자가 칸이 아니라 뒤 화면으로 간다.
   await expect(box(page)).toBeFocused();
 
@@ -95,7 +99,7 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(box(page)).toBeFocused();
   await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
 
@@ -114,26 +118,22 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 30. 키만 보면 **⇧+클릭 두 번이 팔레트를 연다** — 그 사이에 keydown이 하나도 안 끼기
-// 때문이다. 본문에서 선택을 늘리는 흔한 동작이 그 모양이고, 무장을 비우는 것이 순수 함수
-// 밖에 사는 유일한 규칙이라 **잴 수 있는 자리가 여기뿐이다.**
-test("⇧+클릭 두 번으로는 안 열린다", async ({ page }) => {
+// 결정 1. **⌘K에 수식키가 더 붙으면 아니다.** VS Code가 ⌘K를 화음 접두사로 쓰는 계열
+// (⌘K ⌘S 등)과 ⌘⇧K(「줄 삭제」)를 결정문이 명시로 배제했다 — 순수 모듈이 그 판정을 들지만
+// 여기서 한 번 더 재는 것은 **리스너가 그 술어를 실제로 통과시키는지**가 이 층의 물음이라서다.
+test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  const body = page.locator("main").getByRole("heading", { name: "개요" });
-  await expect(body).toBeVisible();
+  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  const startedAt = Date.now();
-  await body.click({ modifiers: ["Shift"] });
-  await body.click({ modifiers: ["Shift"] });
-  const elapsed = Date.now() - startedAt;
-
+  await page.keyboard.press("Meta+Shift+k");
   await expect(palette(page)).toHaveCount(0);
-  // **이 검사가 마우스 때문에 초록인지 시간 때문에 초록인지를 가른다.** 두 ⇧ 사이가 간격을
-  // 넘겼으면 mousedown 규칙을 통째로 지워도 초록이라, 아무것도 안 재고 지나간다.
-  expect(elapsed, "두 ⇧ 사이가 간격을 넘겼다 — 이 검사가 마우스를 재지 못한다").toBeLessThan(
-    SEARCH_GAP_MS,
-  );
+  await page.keyboard.press("Meta+Alt+k");
+  await expect(palette(page)).toHaveCount(0);
+
+  // **같은 자리에서 ⌘K는 열린다** — 안 재면 이 검사가 「키가 아예 안 온다」로도 초록이다.
+  await pressSearchKey(page);
+  await expect(palette(page)).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -143,7 +143,7 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
   await page.goto(`/works/${specWork.slug}?tab=terminal&split=lr`);
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(rows(page).nth(0)).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("ArrowDown");
@@ -177,7 +177,7 @@ test("마우스로도 고를 수 있다", async ({ page }) => {
   await page.goto(`/works/${specWork.slug}`);
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await rows(page).nth(1).click();
 
   await expect(palette(page)).toHaveCount(0);
@@ -197,7 +197,7 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
   const before = page.url();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(palette(page)).toBeVisible();
   // 입력칸이 생기면서 포커스가 셸을 떠난다 — 빌린 것이 있어야 돌려줄 것도 있다.
   await expect(box(page)).toBeFocused();
@@ -213,17 +213,17 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
 
 // 결정 4. 「어디서 눌렸나」와 「화면에 무엇이 떠 있나」는 다른 물음이고, 뒤엣것은 부르는
 // 쪽(앱 셸)이 든다 — 물음에 답하는 중에 화면이 가려지면 안 된다.
-// 판 01의 ⇧⇧에 **누를 수 있는 자리**가 하나 붙었다 — 셸 컨트롤 행의 마지막 칸이다.
+// 판 01의 ⌘K에 **누를 수 있는 자리**가 하나 붙었다 — 셸 컨트롤 행의 마지막 칸이다.
 // 이 층이 드는 것은 「버튼이 있다」가 아니라 **「눌러서 실제로 팔레트가 뜬다」**다: 정적 마크업
 // seam에는 이벤트가 없어 아무 데도 배선되지 않은 버튼을 초록으로 통과시킨다.
 //
-// **함께 드는 것이 「여는 자리가 하나인가」다.** 뜨는 것이 ⇧⇧가 여는 것과 같은 조각이어야
+// **함께 드는 것이 「여는 자리가 하나인가」다.** 뜨는 것이 ⌘K가 여는 것과 같은 조각이어야
 // 하므로 위 검사들과 같은 기준으로 잰다 — 줄 수, 그리고 그 조각만 하는 일인 포커스 빌리기.
 //
 // 마지막 줄은 **떠 있을 때 그 자리가 무엇인가**다. 팔레트 배경이 셸 컨트롤 행을 덮으므로
 // 다시 누르면 닫힌다 — 버튼이 토글을 따로 안 드는 근거가 그것이라, 안 재면 「눌러도 아무 일도
 // 안 난다」로 퇴화해도 티가 안 난다.
-test("검색 버튼이 ⇧⇧와 같은 팔레트를 연다", async ({ page }) => {
+test("검색 버튼이 ⌘K와 같은 팔레트를 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
@@ -239,7 +239,7 @@ test("검색 버튼이 ⇧⇧와 같은 팔레트를 연다", async ({ page }) =
   // 버튼이 제 상태를 따로 들면 정확히 그 모양이 된다.
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
-  // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⇧⇧로 연 것과 같은 것이 떴다는 뜻이다.
+  // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⌘K로 연 것과 같은 것이 떴다는 뜻이다.
   await expect(box(page)).toBeFocused();
 
   // 같은 자리를 다시 누른다. 그 위에 있는 것은 버튼이 아니라 팔레트의 배경이라 닫힌다.
@@ -256,10 +256,35 @@ test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => 
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
 
   await expect(palette(page)).toHaveCount(0);
   // 창은 그대로 서 있다 — 팔레트가 그 위를 덮지도, 창을 대신 닫지도 않는다.
+  await expect(ask).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **확인 창이 막는 것은 팔레트뿐이다** — 사이드바 토글은 그 뒤에서도 먹는다.
+//
+// 이 한 줄이 없으면 조용히 죽는다. 두 키가 같은 파일에서 window를 듣고 있어, 위 검사를
+// 초록으로 만드는 게이트를 핸들러 맨 위로 한 칸만 올리면 ⌘B가 함께 막히는데 **타입도
+// 다른 검사도 아무것도 안 잡는다**(⇧⇧ 리스너가 실제로 그 모양이었다). 그 키가 답을
+// 요구하지 않는다는 것이 갈리는 근거다 — 창은 그대로 서 있고 뒤 화면만 접힌다.
+test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  const sidebar = page.locator("aside").first();
+  const opened = (await sidebar.boundingBox())?.width ?? 0;
+  expect(opened, "사이드바가 처음부터 접혀 있으면 이 검사가 아무것도 못 잰다").toBeGreaterThan(0);
+
+  await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
+  const ask = page.getByRole("alertdialog");
+  await expect(ask).toBeVisible();
+
+  await page.keyboard.press("Meta+b");
+
+  await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBe(0);
+  // 창은 그대로다 — 접힌 것은 뒤 화면이고, 답해야 하는 물음은 그대로 서 있다.
   await expect(ask).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -287,7 +312,7 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   const bar = page.locator('[data-scrollbar="vertical"]');
   await expect(bar).toHaveAttribute("data-on", "");
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(palette(page)).toBeVisible();
 
   // **막대가 걷힌다.** `opacity: 0`이 아니라 `display: none`인 것은, 스크립트가 `data-on`을
@@ -326,7 +351,7 @@ test("목록 바닥이 녹아 「더 있다」를 말하고, 바닥에 닿으면
   // 고정 데이터의 줄은 넷뿐이라 카드(`max-h-[60vh]`)를 이만큼 눌러야 넘친다.
   await page.setViewportSize({ width: 1280, height: 240 });
   await page.goto("/projects");
-  // 버튼으로 연다 — `goto` 직후에는 ⇧⇧가 갈 곳이 아직 없다. 키로 여는 길은 위 검사들이 든다.
+  // 버튼으로 연다 — 여기서 재는 것은 목록 바닥이라 여는 길이 무엇이든 같다.
   await searchButton(page).click();
   await expect(palette(page)).toBeVisible();
 

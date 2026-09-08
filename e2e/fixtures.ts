@@ -175,7 +175,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 내용은 **한 줄이면 족하다**: 여기서 보는 것은 사이드바이고, 문서 렌더의 규칙은
   // SpecViewer.test.tsx가 든다.
   read_spec_file: "# 개요\n\n한 줄.\n",
-  // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
+  // ⌘K로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
   pty_spawn: { id: 1, shellName: "zsh" },

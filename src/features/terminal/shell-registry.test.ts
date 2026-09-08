@@ -23,7 +23,6 @@ import {
   runningAgentsOf,
   runningOn,
   runningShellsOf,
-  SEARCH_GAP_MS,
   searchHotkey,
   setRunning,
   setShellName,
@@ -832,6 +831,19 @@ describe("앱이 가져가는 키", () => {
     expect(shellHotkey(key({ code: "KeyN" }))).toBeNull();
   });
 
+  // **⌘K는 셸이 타이핑하지 않는다**(결정 2). `"app"`이면 xterm이 그 키를 처리하지 않고
+  // 그대로 위로 흘려보내, 셸에 포커스가 있어도 window의 리스너가 팔레트를 연다.
+  // 이 한 줄이 없으면 macOS 관례(스크롤백 지우기)로 되돌리는 길이 열려 있고, 그때
+  // 「어디서든 열린다」가 **포커스가 셸에 있는 시간 전부**에서 깨진다.
+  it("⌘K는 앱 몫이되 이 셸이 하지 않는다 — 위로 흘려보낸다", () => {
+    expect(shellHotkey(key({ code: "KeyK" }))).toBe("app");
+  });
+
+  it("⌘⇧K·⌘⌥K는 셸 몫이다 — 팔레트도 안 연다", () => {
+    expect(shellHotkey(key({ code: "KeyK", shiftKey: true }))).toBeNull();
+    expect(shellHotkey(key({ code: "KeyK", altKey: true }))).toBeNull();
+  });
+
   // **`code`로 보는 이유**가 이 줄이다. 한글 입력기가 켜져 있으면 `key`는 `ㅅ`으로 오는데
   // 물리 키는 그대로 `KeyT`다. `key`를 봤다면 이 검사가 빨갛다.
   it("입력기가 켜져 있어도 물리 키로 본다", () => {
@@ -1188,119 +1200,63 @@ describe("본문을 옮기는 키", () => {
   });
 });
 
-// 결정 3·4·30. ⇧를 두 번 누르면 검색이 열린다. **타이머 없는 순수 리듀서라** 가짜 시계가
-// 필요 없다 — 시각을 인자로 넣는다. 이 판정이 이 모듈에 있는 것은 「비키는 자리」 규칙이
-// 여기 한 벌 있어서다(`typesInto`·`isShellInput`): 새 모듈에 다시 적으면 판정이 둘로
-// 갈리고 한쪽만 고쳐진 채 오래 간다.
-describe("⇧⇧가 검색을 연다", () => {
-  const el = (tagName: string, className?: string) =>
-    Object.assign(new EventTarget(), className === undefined ? { tagName } : { tagName, className });
-
-  type ShiftT = Parameters<typeof searchHotkey>[0];
-  const key = (over: Partial<ShiftT> = {}): ShiftT => ({
+// 결정 1·2·22. ⌘K가 검색을 연다. **순수 술어 하나다** — 무장 상태도 「어디서 눌렸나」도
+// 안 받으므로 가짜 시계도 가짜 target도 필요 없다. ⇧⇧가 딛던 리듀서·간격 상수·무장 해제
+// 규칙이 그 몸짓과 함께 걷혔다.
+//
+// 이 판정이 이 모듈에 있는 것은 **셸이 이 키를 타이핑하지 않는다**를 정하는 자리가 여기라서다
+// (`shellHotkey`가 `"app"`으로 흘려보낸다) — 아래 「앱이 가져가는 키」 블록이 그 절반을 든다.
+describe("⌘K가 검색을 연다", () => {
+  type SearchT = Parameters<typeof searchHotkey>[0];
+  const key = (over: Partial<SearchT> = {}): SearchT => ({
     type: "keydown",
-    code: "ShiftLeft",
+    code: "KeyK",
     ctrlKey: false,
-    metaKey: false,
+    metaKey: true,
     altKey: false,
-    // **⇧ 자신의 keydown에는 이 값이 이미 참이다.** 판정이 `shiftKey`로 갈리면 한 번도
-    // 무장하지 않는다 — 여기 기본값이 그 함정을 그대로 재현해 둔 것이다.
-    shiftKey: true,
-    target: el("DIV"),
-    timeStamp: 1000,
+    shiftKey: false,
     ...over,
   });
 
-  /** ⇧를 두 번 눌러 본다 — 둘째의 시각만 갈린다. */
-  const twice = (gap: number, first: Partial<ShiftT> = {}, second: Partial<ShiftT> = {}) => {
-    const armed = searchHotkey(key({ timeStamp: 1000, ...first }), null);
-    return searchHotkey(key({ timeStamp: 1000 + gap, ...second }), armed.armedAt);
-  };
-
-  it("간격 안에 두 번 누르면 열린다", () => {
-    expect(searchHotkey(key(), null)).toEqual({ open: false, armedAt: 1000 });
-    expect(twice(120).open).toBe(true);
+  it("⌘K면 연다", () => {
+    expect(searchHotkey(key())).toBe(true);
   });
 
-  // 오른쪽 ⇧로 두 번, 좌우를 섞어도 같다 — 사람이 그렇게 누른다.
-  it("좌우 어느 ⇧든, 섞여도 열린다", () => {
-    expect(twice(120, { code: "ShiftRight" }, { code: "ShiftRight" }).open).toBe(true);
-    expect(twice(120, { code: "ShiftLeft" }, { code: "ShiftRight" }).open).toBe(true);
+  // **결정 1이 명시로 배제한 화음이다** — VS Code가 ⌘K를 접두사로 쓰는 그 계열(⌘K ⌘S 등).
+  // 이 한 줄이 없으면 ⌘⇧K(「줄 삭제」)까지 팔레트를 연다.
+  it.each(["ctrlKey", "altKey", "shiftKey"] as const)("%s가 더 붙으면 아니다", (extra) => {
+    expect(searchHotkey(key({ [extra]: true }))).toBe(false);
   });
 
-  // 상수가 **이름으로** 존재하고 그 값이 경계다. 여기서 값을 다시 적지 않는다 —
-  // 상수를 바꾸면 이 검사가 함께 따라가야 「그 값이 경계다」가 유지된다.
-  it("간격을 넘기면 안 열리고, 그 ⇧가 다시 무장한다", () => {
-    expect(twice(SEARCH_GAP_MS).open).toBe(true);
-    const late = twice(SEARCH_GAP_MS + 1);
-    expect(late.open).toBe(false);
-    expect(late.armedAt).toBe(1000 + SEARCH_GAP_MS + 1);
+  it("⌘ 없이 K만은 아니다 — 그냥 글자다", () => {
+    expect(searchHotkey(key({ metaKey: false }))).toBe(false);
   });
 
-  // 세 번째 ⇧가 붙으면 열려야 한다 — 위 「다시 무장한다」가 그것을 위한 것이다.
-  it("느리게 눌러 놓친 뒤 한 번 더 누르면 열린다", () => {
-    const late = twice(SEARCH_GAP_MS + 1);
-    expect(searchHotkey(key({ timeStamp: 2000 }), late.armedAt).open).toBe(false);
-    const third = searchHotkey(key({ timeStamp: 1000 + SEARCH_GAP_MS + 1 + 100 }), late.armedAt);
-    expect(third.open).toBe(true);
-  });
-
-  // **사이에 다른 키가 끼면 취소다.** 대문자 `A`를 치는 동안이 그 모양이고(`Shift↓ A↓ Shift↓`),
-  // 한글 입력기가 켜져 있으면 `ㄲ`이 같은 자리다 — 그래서 `key`가 아니라 `code`로 본다.
-  it("⇧ 사이에 다른 키가 끼면 안 열린다", () => {
-    const armed = searchHotkey(key({ timeStamp: 1000 }), null);
-    const typed = searchHotkey(key({ timeStamp: 1050, code: "KeyA" }), armed.armedAt);
-    expect(typed).toEqual({ open: false, armedAt: null });
-    expect(searchHotkey(key({ timeStamp: 1100 }), typed.armedAt).open).toBe(false);
-  });
-
-  it("⇧에 다른 수식키가 붙으면 무장하지 않는다", () => {
-    for (const extra of ["metaKey", "ctrlKey", "altKey"] as const) {
-      expect(searchHotkey(key({ [extra]: true }), null)).toEqual({ open: false, armedAt: null });
+  it("다른 키는 아니다", () => {
+    for (const code of ["KeyJ", "KeyL", "KeyT", "Digit1", "ShiftLeft"]) {
+      expect(searchHotkey(key({ code }))).toBe(false);
     }
   });
 
-  it("keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다", () => {
-    // ⇧를 눌렀다 떼는 것 자체가 keydown·keyup 한 쌍이다. 뗀 것을 취소로 읽으면 한 번도
-    // 안 열리고, 무장으로 읽으면 한 번 눌러 열린다.
-    expect(searchHotkey(key({ type: "keyup" }), null)).toEqual({ open: false, armedAt: null });
-    expect(searchHotkey(key({ type: "keyup", timeStamp: 1050 }), 1000)).toEqual({
-      open: false,
-      armedAt: 1000,
-    });
+  // 누른 것만 센다. keyup까지 세면 한 번 누른 것이 두 번으로 읽힌다.
+  it.each(["keypress", "keyup"])("%s는 아니다", (type) => {
+    expect(searchHotkey(key({ type }))).toBe(false);
   });
 
-  // 결정 4. 이 앱에서 포커스가 가 있는 시간이 제일 긴 곳이 셸이다 — 거기서 안 먹으면
-  // 검색이 「먼저 다른 데를 클릭하고 나서 여는 것」이 된다. ⇧ 단독은 셸이 아무 바이트도
-  // 안 보내므로 가로채도 잃는 것이 없다.
-  it("셸 안에서는 열린다 — xterm의 숨은 입력칸만 예외다", () => {
-    const shellInput = el("TEXTAREA", "xterm-helper-textarea");
-    expect(twice(120, { target: shellInput }, { target: shellInput }).open).toBe(true);
+  // **`key`가 아니라 `code`로 본다.** 한글 입력기가 켜져 있으면 `key`가 자모(`ㅏ`)로 온다.
+  // 네이티브 메뉴가 쏘는 합성 keydown은 `code`와 `key`를 둘 다 실으므로, `key`로 봤다면
+  // 메뉴로는 열리고 직접 누르면 한글에서만 죽는 반쪽 고장이 났을 것이다.
+  it("입력기가 켜져 있어도 물리 키로 본다", () => {
+    expect(searchHotkey({ ...key(), ...{ key: "ㅏ" } } as SearchT)).toBe(true);
   });
 
-  // work 이름을 고치는 입력칸에서는 비킨다 — 이름에 대문자를 쓸 수 있어야 한다.
-  it("글을 치는 자리에서는 안 열린다", () => {
-    for (const target of [el("INPUT"), el("TEXTAREA")]) {
-      expect(twice(120, { target }, { target }).open).toBe(false);
-    }
-    const editable = Object.assign(new EventTarget(), { isContentEditable: true });
-    expect(twice(120, { target: editable }, { target: editable }).open).toBe(false);
-  });
-
-  // 밖에서 무장한 뒤 입력칸으로 들어가도 안 열린다 — 그 자리의 키는 무장을 지키지도 않는다.
-  it("입력칸으로 들어가면 무장이 풀린다", () => {
-    expect(twice(120, {}, { target: el("INPUT") })).toEqual({ open: false, armedAt: null });
-  });
-
-  it("포커스가 아무 데도 없어도 안 터진다", () => {
-    expect(twice(120, { target: null }, { target: null }).open).toBe(true);
-  });
-
-  // **mousedown은 이 함수 밖이다**(결정 30). 키만 보면 ⇧+클릭 두 번이 팔레트를 여는데,
-  // 그 사이에 keydown이 하나도 안 끼기 때문이다 — 여기서는 그 사실을 못박아만 둔다.
-  // 실제로 무장을 비우는 것은 앱 셸이고, 그것을 재는 자리는 L3다.
-  it("클릭은 이 판정에 안 온다 — 무장이 그대로 남는다", () => {
-    expect(searchHotkey(key({ type: "mousedown" }), 1000)).toEqual({ open: false, armedAt: 1000 });
+  // **「어디서 눌렸나」를 안 본다**(결정 22). work 제목을 고치는 `<input>` 안에서도 열린다 —
+  // ⇧⇧는 그 자리에서 비켰지만 그것은 대문자를 못 치게 되기 때문이었고, ⌘ 화음에는 그 대가가
+  // 없다. 술어가 `target`을 아예 안 받는다는 것이 이 성질이다.
+  it("target을 안 받는다 — 어디서 눌렸든 같은 답이다", () => {
+    expect(searchHotkey.length).toBe(1);
+    const withTarget = { ...key(), target: { tagName: "INPUT" } } as SearchT;
+    expect(searchHotkey(withTarget)).toBe(true);
   });
 });
 
