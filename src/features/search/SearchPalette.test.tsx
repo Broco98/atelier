@@ -213,6 +213,41 @@ describe("갈래마다 다른 것을 그린다", () => {
   });
 });
 
+describe("모든 줄이 같은 거터를 예약한다", () => {
+  // 결정 17. 목적지 줄에만 글리프가 서고, **그것이 그 목적지의 글리프다.** 「svg가 하나
+  // 있다」만 세면 넷이 전부 같은 그림이어도 초록이다. 가르는 재료는 아이콘 라이브러리가
+  // 붙이는 **정체성 클래스**인데, 그것은 규격이 아니라 이름이라 크기를 손봐도 안 샌다
+  // (크기 클래스 문자열을 단언하는 것은 이 파일이 스스로 금지한 「모양으로 가르기」다).
+  it("목적지 줄에만, 그 목적지의 글리프가 선다", () => {
+    const rows = rowsOf(render([destination("projects"), destination("settings"), workHit("가")]));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toContain("lucide-folder");
+    expect(rows[1]).toContain("lucide-settings");
+    // 설정은 `navItems` 밖에 사는 유일한 목적지라(결정 51) 글리프가 빠지기 쉬운 자리다.
+    expect(rows[1]).not.toContain("lucide-folder");
+    expect(rows[2]).not.toContain("<svg");
+  });
+
+  // **슬롯은 줄마다 하나다.** 목적지가 아닌 줄이 빈 슬롯을 안 들면 그 줄만 26px 왼쪽에서
+  // 시작하고, 화면에는 「가는 곳 층만 한 단 들어갔다」로 보인다. 개수로 세는 것은 이것이
+  // 깨지는 모양에 가깝기 때문이다 — 빠지는 것은 늘 **한 갈래 전체**다.
+  it("슬롯이 줄마다 하나씩 선다", () => {
+    const rows = rowsOf(
+      render([
+        destination("projects"),
+        workHit("가"),
+        project("빌링", "빌링"),
+        doc("가", "overview.md"),
+        text("가", "overview.md", "맞은 문단"),
+      ]),
+    );
+    expect(rows).toHaveLength(5);
+    for (const row of rows) {
+      expect(row.split('data-gutter=""')).toHaveLength(2);
+    }
+  });
+});
+
 describe("구획 머리", () => {
   // 결정 17. 「가는 곳」·「작업」·「프로젝트」·「문서」·「본문」 — **사이드바 목록과 같은
   // 계통의 한국어다.** 순서는 코어가 정한 층 순서 그대로다.

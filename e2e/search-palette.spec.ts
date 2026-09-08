@@ -1,5 +1,5 @@
 import { expect, test } from "./evidence";
-import type { Page } from "./evidence";
+import type { Locator, Page } from "./evidence";
 import { SEARCH_DESTINATION_QUERY, SEARCH_HITS, WORKS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
@@ -185,6 +185,71 @@ test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
   // **같은 자리에서 ⌘K는 열린다** — 안 재면 이 검사가 「키가 아예 안 온다」로도 초록이다.
   await pressSearchKey(page);
   await expect(palette(page)).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/**
+ * 줄 하나의 **거터 기하**. 슬롯의 x, 그 다음 형제(=이름)의 x, 그리고 글리프와 줄의 세로
+ * 중심을 함께 잰다 — 세로는 `self-center`가 없으면 글자 베이스라인으로 내려앉는 값이고,
+ * 그 어긋남은 CSS가 있어야만 난다.
+ */
+async function gutterOf(row: Locator) {
+  return row.evaluate((el) => {
+    const slot = el.querySelector("[data-gutter]");
+    if (!slot) throw new Error("줄에 거터 슬롯이 없다");
+    const name = slot.nextElementSibling;
+    if (!name) throw new Error("슬롯 다음에 이름이 없다");
+    const rowBox = el.getBoundingClientRect();
+    const slotBox = slot.getBoundingClientRect();
+    const glyph = slot.querySelector("svg")?.getBoundingClientRect() ?? null;
+    return {
+      slotX: slotBox.x,
+      nameX: name.getBoundingClientRect().x,
+      rowMidY: rowBox.y + rowBox.height / 2,
+      slotMidY: slotBox.y + slotBox.height / 2,
+      glyphMidY: glyph === null ? null : glyph.y + glyph.height / 2,
+    };
+  });
+}
+
+// 결정 17·18. **글자 시작점이 층을 가로질러 하나다.**
+//
+// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 26px도 안 나오고, 크기 클래스
+// 문자열을 단언하는 것은 그 파일이 스스로 금지한 「모양으로 가르기」다. 여기서 재는 것 셋:
+// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 26px 갈린다.
+test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  await pressSearchKey(page);
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+
+  // 고정 답은 문서 줄이다 — 글리프가 없는 갈래이고, **빈 슬롯이 서야 하는** 쪽이다.
+  const docRow = await gutterOf(rows(page).first());
+  // **머리는 글자의 x를 잰다 — 상자가 아니다.** 상자는 줄과 같은 자리에서 시작하고 안쪽
+  // padding으로 글자를 미는데, 눈이 보는 세로선은 그 글자 쪽이다.
+  const headX = await page.locator("[data-head]").first().evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect().x;
+  });
+  expect(docRow.glyphMidY, "문서 줄에 글리프가 섰다").toBeNull();
+
+  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 26px 갈린다.**
+  expect(Math.round(headX)).toBe(Math.round(docRow.slotX));
+  expect(Math.round(docRow.nameX - headX)).toBe(26);
+
+  // 같은 팔레트에서 목적지 줄로 갈아 끼운다 — 층이 갈려도 이름의 x가 그대로여야 한다.
+  await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
+  await expect(rows(page)).toHaveCount(1);
+  const destRow = await gutterOf(rows(page).first());
+
+  expect(Math.round(destRow.nameX)).toBe(Math.round(docRow.nameX));
+  // **글리프가 실제로 섰고, 세로로 줄 한가운데다.** `self-center`가 빠지면 글자 베이스라인에
+  // 앉아 사이드바와 세로 위치가 갈리는데, 그 어긋남은 이 층에서만 보인다.
+  expect(destRow.glyphMidY, "목적지 줄에 글리프가 없다").not.toBeNull();
+  expect(Math.abs(destRow.glyphMidY! - destRow.rowMidY)).toBeLessThan(1.5);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
