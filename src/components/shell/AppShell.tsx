@@ -78,11 +78,11 @@ function AppShell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // ⌘K로 검색을 연다(결정 1·2). ⌘B가 이미 이 자리에 있으므로 새 자리를 만들지 않는다.
+  // ⌘K로 검색을 연다(팔레트 결정 1·2 — 이 파일에서 맨 `결정 N`은 앞 판들의 것이다). ⌘B가 이미 이 자리에 있으므로 새 자리를 만들지 않는다.
   //
   // **여는 길이 이 키 하나는 아니다** — 셸 컨트롤 행의 검색 버튼이 아래에서 같은
   // `setSearchOpen`을 부르고, 네이티브 메뉴의 `View ▸ Search`가 합성 keydown으로 이 리스너에
-  // 온다(결정 3). 키 판정만 여기 있고, 떠 있는가는 이 state 하나가 안다.
+  // 온다(팔레트 결정 3). 키 판정만 여기 있고, 떠 있는가는 이 state 하나가 안다.
   //
   // **판정은 순수 술어가 하고, 그것이 안 보는 하나를 여기서 든다 — 떠 있는 확인 창.**
   // 「무슨 키인가」와 「화면에 무엇이 떠 있나」는 다른 물음이고 주인도 다르다. 구독하지 않고
@@ -93,14 +93,14 @@ function AppShell() {
   // 함께 죽는다** — 지금은 먹고, 그것을 잡는 검사는 L3 한 줄뿐이다.
   //
   // ⇧⇧가 딛던 둘이 함께 사라졌다: 직전 ⇧의 시각을 드는 `useRef`와, ⇧+클릭 두 번을 막던
-  // mousedown 무장 해제(결정 30). 몸짓이 아니라 화음이라 무장이라는 상태 자체가 없다.
+  // mousedown 무장 해제(옛 결정 30). 몸짓이 아니라 화음이라 무장이라는 상태 자체가 없다.
   const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!searchHotkey(e)) return;
       if (dialogStore.state !== null) return;
       e.preventDefault();
-      // **여는 갈래뿐이다**(결정 4). 이미 떠 있으면 이 setter가 아무것도 안 바꾼다 —
+      // **여는 갈래뿐이다**(팔레트 결정 4). 이미 떠 있으면 이 setter가 아무것도 안 바꾼다 —
       // 토글이면 키가 두 번 도는 날 팔레트가 도로 닫히는데, 그것보다 이미 열린 것이 다시
       // 열리는 편이 낫다.
       setSearchOpen(true);

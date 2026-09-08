@@ -144,6 +144,12 @@ function WorksView({
   // 요구하는 이유이고, 바로 위 검사 주석에 그 사고가 적혀 있다).
   //
   // **실패는 삼키되 이유를 남긴다.** 맨 `void`로 두면 미처리 rejection이 콘솔로 샌다.
+  //
+  // **이 파일에서 유일하게 `features/works/api`를 직접 문다** — 다른 자리는 전부
+  // `features/works/hooks`를 지난다. 그쪽은 react-query 층이고, 이 부름은 **캐시에 닿지
+  // 않는다**: 답이 없고, 화면이 이 값을 도로 읽지 않으며(순서를 세우는 것은 코어의 검색이다),
+  // 무효화할 쿼리도 없다. `useMutation`으로 감싸면 effect 안에서 `mutate`를 부르는 자리가
+  // 하나 늘 뿐 얻는 것이 없다. `invoke` 경계(=`features/*/api.ts`)는 그대로 지킨다.
   useEffect(() => {
     if (slug === null || !exists) return;
     void worksApi
