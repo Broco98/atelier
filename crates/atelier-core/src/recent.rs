@@ -40,13 +40,16 @@ pub struct RecentWorks {
 ///
 /// 최상위 `extra`는 최상위에만 붙는데, 앞으로 늘 값(frecency — 횟수 가중·시간 감쇠)은
 /// **항목마다** 붙는 값이라 문자열 배열로는 못 자란다. 이 저장소의 선례가 그 모양이다
-/// (`work.json`의 `pinned`가 마이그레이션 없이 늘어난 자리). 항목의 모르는 칸도 그래서
-/// 함께 보존한다 — 안 그러면 그 값을 아직 모르는 판이 한 번 쓰는 것으로 조용히 지운다.
+/// (`work.json`의 `pinned`가 마이그레이션 없이 늘어난 자리).
+///
+/// **항목의 모르는 칸은 지금 보존하지 않는다 — 일부러다.** 팔레트 결정 25가 요구한 것은
+/// 「자랄 수 있는 모양」까지이고, 보존이 실제로 값을 갖는 것은 **판이 갈린 두 바이너리가
+/// 같은 파일을 번갈아 쓸 때**뿐이다(아직 없는 상황이다). frecency를 들이는 판이 그 칸과
+/// 함께 보존도 들이면 된다 — 그 자리가 여기 한 줄이다. 지금 넣어 두면 아무도 안 읽는
+/// 계약이 하나 늘고, 그것이 이 크레이트가 `truncated`를 걷을 때 든 근거다.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecentWork {
     pub slug: String,
-    #[serde(flatten)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 fn recent_path(root: &Path) -> PathBuf {
@@ -96,7 +99,7 @@ pub fn touch_recent_work(root: &Path, slug: &str) -> Result<()> {
     let mut recent = read_recent(root);
     let entry = match recent.works.iter().position(|work| work.slug == slug) {
         Some(at) => recent.works.remove(at),
-        None => RecentWork { slug: slug.to_string(), extra: serde_json::Map::new() },
+        None => RecentWork { slug: slug.to_string() },
     };
     recent.works.insert(0, entry);
     write_recent(root, &recent)
@@ -189,10 +192,14 @@ mod tests {
         assert_eq!(json, serde_json::json!({ "works": [{ "slug": "가" }] }));
     }
 
-    /// 모르는 칸은 **최상위에서도 항목에서도** 그대로 되쓴다. 앞으로 늘 값이 항목마다 붙는
-    /// 것이라, 항목 쪽을 안 지키면 그 값을 아직 모르는 판이 한 번 쓰는 것으로 지운다.
+    /// 모르는 **최상위** 칸은 그대로 되쓴다 — `work.json`·`settings.json`과 같은 규약이다.
+    ///
+    /// **항목의 모르는 칸은 안 지킨다.** 아래 둘째 단언이 그 한계를 눈에 보이게 못 박는다 —
+    /// 빠뜨린 것이 아니라 범위 밖으로 둔 것이고(위 `RecentWork` 독), frecency를 들이는 판이
+    /// 그 칸과 함께 보존도 들인다. 안 적으면 다음 사람이 항목에 값을 얹어 두고 그것이 조용히
+    /// 지워지는 것을 나중에야 만난다.
     #[test]
-    fn 모르는_칸을_그대로_되쓴다() {
+    fn 모르는_최상위_칸만_그대로_되쓴다() {
         let tmp = root();
         std::fs::write(
             tmp.path().join("recent.json"),
@@ -205,7 +212,7 @@ mod tests {
         let raw = std::fs::read_to_string(tmp.path().join("recent.json")).unwrap();
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(json["version"], 2);
-        assert_eq!(json["works"][1], serde_json::json!({ "slug": "가", "count": 7 }));
+        assert_eq!(json["works"][1], serde_json::json!({ "slug": "가" }));
     }
 
     /// 팔레트 결정 24. 깨진 파일은 **빈 이력으로 눕는다** — 검색이 글자마다 부르는 자리라 파일
