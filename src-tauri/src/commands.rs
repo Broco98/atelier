@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, Destination, ProjectPatch, ProjectView,
-    SearchResults, WorkView,
+    archive_dir, data_root, projects_dir, works_dir, ArchiveEntry, Destination, ProjectPatch,
+    ProjectView, SearchResults, WorkView,
 };
 
 use std::sync::Arc;
@@ -131,8 +131,24 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
 /// 것은 부르는 쪽이 한다 — 막아야 할 것은 비용이 아니라 순서 뒤바뀜이다.
 #[tauri::command]
 pub async fn search(query: String, destinations: Vec<Destination>) -> CmdResult<SearchResults> {
-    atelier_core::search(&works_dir(), &archive_dir(), &projects_dir(), &query, &destinations)
-        .map_err(err)
+    // **데이터 루트 하나만 넘긴다** — 층별 폴더는 코어가 파생한다(`paths.rs`). 넷을 따로
+    // 넘기던 때는 「반드시 코어의 것을 넘겨라」가 여기 주석으로만 서 있었고, 어긋나도
+    // 컴파일이 안 잡았다. 여기서 `~/.atelier`를 박으면 `ATELIER_HOME` 오버라이드가 이
+    // 자리에서만 죽는 것은 그대로다.
+    atelier_core::search(&data_root(), &query, &destinations).map_err(err)
+}
+
+/// 그 work 화면이 **떠 있게 됐다**(결정 12·14). 이력 맨 앞으로 옮긴다.
+///
+/// **세는 단위는 work이다** — 문서를 안 열고 터미널만 돌려도 「열었다」이고, 팔레트로 갔든
+/// 사이드바로 갔든 주소를 쳤든 같다. 「어느 문으로 들어왔나」로 예외를 만들면 그 예외가 곧
+/// 「왜 얘가 위에 없지」가 된다.
+///
+/// **루트를 여기서 정한다** — 코어의 함수들은 루트를 인자로 받는다(단위 검사가 임시 폴더를
+/// 넘기는 구조이고, 박으면 `cargo test`가 개발자의 진짜 홈을 읽고 쓴다).
+#[tauri::command]
+pub async fn touch_recent_work(slug: String) -> CmdResult<()> {
+    atelier_core::touch_recent_work(&data_root(), &slug).map_err(err)
 }
 
 #[tauri::command]

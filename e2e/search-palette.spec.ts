@@ -1,10 +1,9 @@
-import { SEARCH_GAP_MS } from "@/features/terminal/shell-registry";
 import { expect, test } from "./evidence";
-import type { Page } from "./evidence";
+import type { Locator, Page } from "./evidence";
 import { SEARCH_DESTINATION_QUERY, SEARCH_HITS, WORKS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 판 01 — ⇧⇧로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
+// 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
 // **마크업 seam이 보는 것은 여기서 다시 보지 않는다.** 줄에 무엇이 적히는지·골라진 줄이
 // 하나인지·없다고 말하는 줄은 SearchPalette.test.tsx가 들고, 맞추는 규칙과 상한은 코어
@@ -12,8 +11,14 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // 이벤트가 있어야만 보이는 것들이다 — 셸을 지나오는 키, 마우스, 실제 이동, 「떠 있는 창이
 // 막는다」, 그리고 **친 것이 명령까지 가는 배선**.
 //
-// **가장 큰 것은 첫 검사다.** 「⇧ 단독 keydown이 xterm을 지나 window까지 오는가」는 실물
-// xterm이 붙어야만 답이 나오고, 다른 층은 전부 xterm 없이 돈다.
+// **가장 큰 것은 첫 검사다.** 「⌘K가 xterm을 지나 window까지 오는가」는 실물 xterm이 붙어야만
+// 답이 나오고, 다른 층은 전부 xterm 없이 돈다. 셸이 그 키를 타이핑하지 않는다는 판정은
+// 순수 모듈이 들지만(`shellHotkey`가 `"app"`), 그 판정이 xterm에 **실제로 물려 있는지**는
+// 여기서만 난다.
+//
+// **빈 화면에 어느 층이 서는지는 여기서 안 잰다.** 픽스처의 검색은 질의를 못 보고 늘 같은
+// 답을 주므로, 빈 질의 답을 심으면 자기가 심은 것을 다시 읽는 동어반복이 된다 —
+// **결정 6·7의 그물은 코어 단위(`search.rs`)에만 있다.**
 
 const [specWork] = WORKS;
 
@@ -35,24 +40,23 @@ async function askedFor(page: Page): Promise<string[]> {
   return [...new Set(asked)];
 }
 
-/** ⇧를 두 번 누른다. **사이에 아무 키도 안 낀다** — 끼면 무장이 풀린다. */
-async function doubleShift(page: Page) {
-  await page.keyboard.press("Shift");
-  await page.keyboard.press("Shift");
+/** 팔레트를 여는 키. 화음 하나라 준비도 상태도 없다(결정 1). */
+async function pressSearchKey(page: Page) {
+  await page.keyboard.press("Meta+k");
 }
 
 /** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
 const focusedClass = (page: Page) =>
   page.evaluate(() => document.activeElement?.className ?? "");
 
-test("⇧⇧가 셸에 포커스가 있는 동안에도 팔레트를 연다", async ({ page }) => {
+test("⌘K가 셸에 포커스가 있는 동안에도 팔레트를 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
   // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 「셸을 지나온다」를 아무것도 안 잰다.
   await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
 
-  await doubleShift(page);
+  await pressSearchKey(page);
 
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
@@ -67,7 +71,7 @@ test("치면 그 글자가 그대로 명령으로 나간다", async ({ page }) =
   await page.goto(`/works/${specWork.slug}`);
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   // **팔레트가 포커스를 가져와야 한다.** 안 가져오면 친 글자가 칸이 아니라 뒤 화면으로 간다.
   await expect(box(page)).toBeFocused();
 
@@ -95,14 +99,16 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(box(page)).toBeFocused();
   await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
 
   // **`exact`가 있어야 한다.** 이름 맞추기는 대소문자를 접으므로, 라벨 되찾기가 통째로 죽어
   // key(`settings`)가 그대로 서도 `exact` 없이는 초록이 된다.
   const row = page.getByRole("option", { name: "Settings", exact: true });
-  await expect(rows(page)).toHaveCount(1);
+  // 이 답에는 거터를 재려고 심어 둔 작업·본문 줄이 함께 있다(fixtures) — **목적지가 맨 위이고
+  // 무선택 정규화가 고르는 것도 그것**이라는 게 여기서 함께 재진다.
+  await expect(rows(page)).toHaveCount(3);
   await expect(row).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("Enter");
@@ -114,26 +120,175 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 30. 키만 보면 **⇧+클릭 두 번이 팔레트를 연다** — 그 사이에 keydown이 하나도 안 끼기
-// 때문이다. 본문에서 선택을 늘리는 흔한 동작이 그 모양이고, 무장을 비우는 것이 순수 함수
-// 밖에 사는 유일한 규칙이라 **잴 수 있는 자리가 여기뿐이다.**
-test("⇧+클릭 두 번으로는 안 열린다", async ({ page }) => {
+// 결정 1. **⌘K에 수식키가 더 붙으면 아니다.** VS Code가 ⌘K를 화음 접두사로 쓰는 계열
+// (⌘K ⌘S 등)과 ⌘⇧K(「줄 삭제」)를 결정문이 명시로 배제했다 — 순수 모듈이 그 판정을 들지만
+// 여기서 한 번 더 재는 것은 **리스너가 그 술어를 실제로 통과시키는지**가 이 층의 물음이라서다.
+/**
+ * 네이티브 메뉴가 쏘는 것을 **손으로 쏜다.** 이 층의 브라우저에는 OS 메뉴가 없어서 항목을
+ * 누를 수가 없는데, 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나뿐이라
+ * 그 이벤트를 직접 쏘면 **메뉴 → 합성 keydown → 팔레트**의 나머지 전부가 실제로 돈다.
+ *
+ * 구독 id는 하네스가 적어 둔 IPC 기록에서 읽는다 — 상수로 적을 수 없다(`transformCallback`이
+ * 난수로 짓는다). 못 찾으면 던진다: 구독이 안 걸린 채 지나가면 아래 단언이 **아무것도 안
+ * 쏜 채로** 초록이 될 수 있다.
+ */
+async function fireMenuHotkey(page: Page, code: string) {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  // **`listen`만 고른다.** 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가 없다 —
+  // StrictMode가 붙였다 떼면서 마지막 줄이 그 해제가 된다. 살아 있는 것은 **마지막 구독**이다.
+  const listen = calls
+    .filter((call) => call.startsWith("plugin:event|listen") && call.includes('"hotkey:menu"'))
+    .reverse()[0];
+  const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
+  if (!handler) throw new Error(`hotkey:menu 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
+  await page.evaluate(
+    ([id, sent]) => {
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+        }
+      ).__TAURI_INTERNALS__;
+      internals.runCallback(Number(id), { event: "hotkey:menu", id: 0, payload: sent });
+    },
+    [handler, code],
+  );
+}
+
+// 결정 3. **`View ▸ Search`가 프레임 안에서도 팔레트를 연다.**
+//
+// ⇧⇧는 이 길에 실을 수가 없었다 — 「같은 수식키를 300ms 안에 두 번」은 accelerator 문법에
+// 자리가 없고, 파싱 실패를 Tauri가 조용히 버려 **단축키 없는 항목이 선다.** 여는 키를 바꾼
+// 값의 절반이 이 검사이고, **그 값이 실제로 도는지를 재는 유일한 층이 여기다.**
+test("메뉴가 쏜 ⌘K가 팔레트를 연다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await expect(palette(page)).toHaveCount(0);
+
+  await fireMenuHotkey(page, "KeyK");
+
+  await expect(palette(page)).toBeVisible();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  // 뜬 것이 키로 여는 것과 **같은 조각**이다 — 포커스를 가져오는 것이 그 조각의 일이다.
+  await expect(box(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
-  const body = page.locator("main").getByRole("heading", { name: "개요" });
-  await expect(body).toBeVisible();
+  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  const startedAt = Date.now();
-  await body.click({ modifiers: ["Shift"] });
-  await body.click({ modifiers: ["Shift"] });
-  const elapsed = Date.now() - startedAt;
-
+  await page.keyboard.press("Meta+Shift+k");
   await expect(palette(page)).toHaveCount(0);
-  // **이 검사가 마우스 때문에 초록인지 시간 때문에 초록인지를 가른다.** 두 ⇧ 사이가 간격을
-  // 넘겼으면 mousedown 규칙을 통째로 지워도 초록이라, 아무것도 안 재고 지나간다.
-  expect(elapsed, "두 ⇧ 사이가 간격을 넘겼다 — 이 검사가 마우스를 재지 못한다").toBeLessThan(
-    SEARCH_GAP_MS,
+  await page.keyboard.press("Meta+Alt+k");
+  await expect(palette(page)).toHaveCount(0);
+
+  // **같은 자리에서 ⌘K는 열린다** — 안 재면 이 검사가 「키가 아예 안 온다」로도 초록이다.
+  await pressSearchKey(page);
+  await expect(palette(page)).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/**
+ * 줄 하나의 **거터 기하**. 슬롯의 x, 그 다음 형제(=이름)의 x, 그리고 글리프와 줄의 세로
+ * 중심을 함께 잰다 — 세로는 `self-center`가 없으면 글자 베이스라인으로 내려앉는 값이고,
+ * 그 어긋남은 CSS가 있어야만 난다.
+ */
+async function gutterOf(row: Locator) {
+  return row.evaluate((el) => {
+    const slot = el.querySelector("[data-gutter]");
+    if (!slot) throw new Error("줄에 거터 슬롯이 없다");
+    const name = slot.nextElementSibling;
+    if (!name) throw new Error("슬롯 다음에 이름이 없다");
+    const rowBox = el.getBoundingClientRect();
+    const slotBox = slot.getBoundingClientRect();
+    const glyph = slot.querySelector("svg")?.getBoundingClientRect() ?? null;
+    return {
+      slotX: slotBox.x,
+      nameX: name.getBoundingClientRect().x,
+      rowMidY: rowBox.y + rowBox.height / 2,
+      slotMidY: slotBox.y + slotBox.height / 2,
+      glyphMidY: glyph === null ? null : glyph.y + glyph.height / 2,
+    };
+  });
+}
+
+// 결정 17·18. **글자 시작점이 층을 가로질러 하나다.**
+//
+// 이 층에서만 답이 난다 — 정적 마크업 seam에는 CSS가 없어 x도 26px도 안 나오고, 크기 클래스
+// 문자열을 단언하는 것은 그 파일이 스스로 금지한 「모양으로 가르기」다. 여기서 재는 것 셋:
+// 층이 달라도 이름의 x가 같다 · 구획 머리가 글리프와 같은 컬럼이다 · 그 둘이 26px 갈린다.
+test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+
+  await pressSearchKey(page);
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+
+  // 고정 답은 문서 줄이다 — 글리프가 없는 갈래이고, **빈 슬롯이 서야 하는** 쪽이다.
+  const docRow = await gutterOf(rows(page).first());
+  // **머리는 글자의 x를 잰다 — 상자가 아니다.** 상자는 줄과 같은 자리에서 시작하고 안쪽
+  // padding으로 글자를 미는데, 눈이 보는 세로선은 그 글자 쪽이다.
+  const headX = await page.locator("[data-head]").first().evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect().x;
+  });
+  expect(docRow.glyphMidY, "문서 줄에 글리프가 섰다").toBeNull();
+
+  // **구획 머리는 글리프와 같은 컬럼이고, 줄 글자와는 26px 갈린다.**
+  expect(Math.round(headX)).toBe(Math.round(docRow.slotX));
+  expect(Math.round(docRow.nameX - headX)).toBe(26);
+
+  // 같은 팔레트에서 층이 셋인 답으로 갈아 끼운다 — 가는 곳·작업·본문이 함께 선다.
+  // **작업 줄이 여기 있어야 하는 이유가 티켓의 문장이다**: 「이름의 x가 목적지 줄과 작업
+  // 줄에서 같다」. 고정 답은 문서 줄만 내므로 그 층은 이 답으로만 잴 수 있다.
+  await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
+  await expect(rows(page)).toHaveCount(3);
+  const [destRow, workRow, textRow] = [
+    await gutterOf(rows(page).nth(0)),
+    await gutterOf(rows(page).nth(1)),
+    await gutterOf(rows(page).nth(2)),
+  ];
+
+  // **세 층의 글자 시작점이 하나다.** 문서 줄은 위에서 이미 쟀다.
+  expect(Math.round(destRow.nameX)).toBe(Math.round(docRow.nameX));
+  expect(Math.round(workRow.nameX), "작업 줄의 글자 시작점이 갈렸다").toBe(
+    Math.round(docRow.nameX),
   );
+  expect(Math.round(textRow.nameX), "본문 줄의 글자 시작점이 갈렸다").toBe(
+    Math.round(docRow.nameX),
+  );
+  // 글리프를 드는 것은 **목적지 줄뿐이다**(결정 17). 나머지는 슬롯만 서고 비어 있다.
+  expect(workRow.glyphMidY, "작업 줄에 글리프가 섰다").toBeNull();
+  expect(textRow.glyphMidY, "본문 줄에 글리프가 섰다").toBeNull();
+
+  // **글리프가 실제로 섰고, 세로로 줄 한가운데다.** `self-center`가 빠지면 글자 베이스라인에
+  // 앉아 사이드바와 세로 위치가 갈리는데, 그 어긋남은 이 층에서만 보인다.
+  expect(destRow.glyphMidY, "목적지 줄에 글리프가 없다").not.toBeNull();
+  expect(Math.abs(destRow.glyphMidY! - destRow.rowMidY)).toBeLessThan(1.5);
+
+  // **거터가 스니펫 바닥을 안 깎았다.** 결정 18이 거터를 줄 padding이 아니라 flex 자식으로
+  // 문 이유가 이것이고, 지금까지 어느 층도 그것을 안 쟀다.
+  //
+  // `basis-1/3`은 **컨테이너 내용폭**의 1/3이라, padding으로 밀었다면 바닥이 그만큼 깎인다
+  // (26px ÷ 3 ≈ 8.7px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
+  // 설계에서 다 참이다. 재는 것은 **줄 상자에서 기본 padding만 뺀 값**의 1/3이고, 그래서
+  // 그 padding이 여전히 10px 두 쪽인 것을 바로 아래에서 따로 못박는다.
+  const floor = await rows(page).nth(2).evaluate((el) => {
+    const style = getComputedStyle(el);
+    const snippet = el.querySelectorAll("span");
+    return {
+      padX: parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
+      rowWidth: el.getBoundingClientRect().width,
+      snippetWidth: snippet[snippet.length - 1].getBoundingClientRect().width,
+    };
+  });
+  expect(floor.padX, "줄의 좌우 padding이 px-2.5가 아니다").toBe(20);
+  expect(floor.snippetWidth).toBeCloseTo((floor.rowWidth - floor.padX) / 3, 1);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -143,7 +298,7 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
   await page.goto(`/works/${specWork.slug}?tab=terminal&split=lr`);
   await expect(page.locator(".xterm")).toHaveCount(1);
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(rows(page).nth(0)).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("ArrowDown");
@@ -177,7 +332,7 @@ test("마우스로도 고를 수 있다", async ({ page }) => {
   await page.goto(`/works/${specWork.slug}`);
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await rows(page).nth(1).click();
 
   await expect(palette(page)).toHaveCount(0);
@@ -197,7 +352,7 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
   const before = page.url();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(palette(page)).toBeVisible();
   // 입력칸이 생기면서 포커스가 셸을 떠난다 — 빌린 것이 있어야 돌려줄 것도 있다.
   await expect(box(page)).toBeFocused();
@@ -213,17 +368,17 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
 
 // 결정 4. 「어디서 눌렸나」와 「화면에 무엇이 떠 있나」는 다른 물음이고, 뒤엣것은 부르는
 // 쪽(앱 셸)이 든다 — 물음에 답하는 중에 화면이 가려지면 안 된다.
-// 판 01의 ⇧⇧에 **누를 수 있는 자리**가 하나 붙었다 — 셸 컨트롤 행의 마지막 칸이다.
+// 판 01의 ⌘K에 **누를 수 있는 자리**가 하나 붙었다 — 셸 컨트롤 행의 마지막 칸이다.
 // 이 층이 드는 것은 「버튼이 있다」가 아니라 **「눌러서 실제로 팔레트가 뜬다」**다: 정적 마크업
 // seam에는 이벤트가 없어 아무 데도 배선되지 않은 버튼을 초록으로 통과시킨다.
 //
-// **함께 드는 것이 「여는 자리가 하나인가」다.** 뜨는 것이 ⇧⇧가 여는 것과 같은 조각이어야
+// **함께 드는 것이 「여는 자리가 하나인가」다.** 뜨는 것이 ⌘K가 여는 것과 같은 조각이어야
 // 하므로 위 검사들과 같은 기준으로 잰다 — 줄 수, 그리고 그 조각만 하는 일인 포커스 빌리기.
 //
 // 마지막 줄은 **떠 있을 때 그 자리가 무엇인가**다. 팔레트 배경이 셸 컨트롤 행을 덮으므로
 // 다시 누르면 닫힌다 — 버튼이 토글을 따로 안 드는 근거가 그것이라, 안 재면 「눌러도 아무 일도
 // 안 난다」로 퇴화해도 티가 안 난다.
-test("검색 버튼이 ⇧⇧와 같은 팔레트를 연다", async ({ page }) => {
+test("검색 버튼이 ⌘K와 같은 팔레트를 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
@@ -239,7 +394,7 @@ test("검색 버튼이 ⇧⇧와 같은 팔레트를 연다", async ({ page }) =
   // 버튼이 제 상태를 따로 들면 정확히 그 모양이 된다.
   await expect(palette(page)).toBeVisible();
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
-  // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⇧⇧로 연 것과 같은 것이 떴다는 뜻이다.
+  // 포커스를 가져오는 것은 팔레트 조각의 일이다 — ⌘K로 연 것과 같은 것이 떴다는 뜻이다.
   await expect(box(page)).toBeFocused();
 
   // 같은 자리를 다시 누른다. 그 위에 있는 것은 버튼이 아니라 팔레트의 배경이라 닫힌다.
@@ -256,10 +411,35 @@ test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => 
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();
 
-  await doubleShift(page);
+  await pressSearchKey(page);
 
   await expect(palette(page)).toHaveCount(0);
   // 창은 그대로 서 있다 — 팔레트가 그 위를 덮지도, 창을 대신 닫지도 않는다.
+  await expect(ask).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **확인 창이 막는 것은 팔레트뿐이다** — 사이드바 토글은 그 뒤에서도 먹는다.
+//
+// 이 한 줄이 없으면 조용히 죽는다. 두 키가 같은 파일에서 window를 듣고 있어, 위 검사를
+// 초록으로 만드는 게이트를 핸들러 맨 위로 한 칸만 올리면 ⌘B가 함께 막히는데 **타입도
+// 다른 검사도 아무것도 안 잡는다**(⇧⇧ 리스너가 실제로 그 모양이었다). 그 키가 답을
+// 요구하지 않는다는 것이 갈리는 근거다 — 창은 그대로 서 있고 뒤 화면만 접힌다.
+test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  const sidebar = page.locator("aside").first();
+  const opened = (await sidebar.boundingBox())?.width ?? 0;
+  expect(opened, "사이드바가 처음부터 접혀 있으면 이 검사가 아무것도 못 잰다").toBeGreaterThan(0);
+
+  await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
+  const ask = page.getByRole("alertdialog");
+  await expect(ask).toBeVisible();
+
+  await page.keyboard.press("Meta+b");
+
+  await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBe(0);
+  // 창은 그대로다 — 접힌 것은 뒤 화면이고, 답해야 하는 물음은 그대로 서 있다.
   await expect(ask).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -287,7 +467,7 @@ test("팔레트가 뜨면 뒤가 흐려지지 않고 어두워지며, 막대가 
   const bar = page.locator('[data-scrollbar="vertical"]');
   await expect(bar).toHaveAttribute("data-on", "");
 
-  await doubleShift(page);
+  await pressSearchKey(page);
   await expect(palette(page)).toBeVisible();
 
   // **막대가 걷힌다.** `opacity: 0`이 아니라 `display: none`인 것은, 스크립트가 `data-on`을
@@ -326,7 +506,7 @@ test("목록 바닥이 녹아 「더 있다」를 말하고, 바닥에 닿으면
   // 고정 데이터의 줄은 넷뿐이라 카드(`max-h-[60vh]`)를 이만큼 눌러야 넘친다.
   await page.setViewportSize({ width: 1280, height: 240 });
   await page.goto("/projects");
-  // 버튼으로 연다 — `goto` 직후에는 ⇧⇧가 갈 곳이 아직 없다. 키로 여는 길은 위 검사들이 든다.
+  // 버튼으로 연다 — 여기서 재는 것은 목록 바닥이라 여는 길이 무엇이든 같다.
   await searchButton(page).click();
   await expect(palette(page)).toBeVisible();
 

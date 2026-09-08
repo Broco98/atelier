@@ -1,3 +1,4 @@
+import { Settings, type LucideIcon } from "lucide-react";
 import { navItems } from "@/components/shell/nav-items";
 import type { Destination } from "./types";
 
@@ -28,11 +29,28 @@ const places = [
   //
   // **맨 뒤인 것도 그 자리 그대로다.** 코어는 건넨 순서로 줄을 세우므로(`search.rs`의
   // `destination_hits`), 「가는 곳」 줄들의 순서가 사이드바를 위에서 아래로 읽은 순서와 같다.
-  { key: "settings", label: "Settings", to: "/settings" },
-] as const satisfies readonly { key: string; label: string; to: string }[];
+  //
+  // **글리프도 그 버튼의 것이다**(결정 17). `navItems`의 셋은 이미 자기 아이콘을 들고 있고
+  // 이 한 줄만 비어 있었다 — 아래 `satisfies`가 `icon`을 요구하므로, 안 얹으면
+  // `destinationIcon`이 아니라 **이 배열이** 컴파일에 걸린다.
+  { key: "settings", label: "Settings", icon: Settings, to: "/settings" },
+] as const satisfies readonly { key: string; label: string; icon: LucideIcon; to: string }[];
 
 /** 코어에 건네는 「무엇이 있는가」. 순서도 그대로다 — 코어는 이 순서로 줄을 세운다. */
 export const destinations: Destination[] = places.map(({ key, label }) => ({ key, label }));
+
+/**
+ * 그 `key`의 자리. **되찾기가 셋이라 훑는 자리를 하나로 둔다** — 라벨·글리프·주소가 각자
+ * `find`를 부르면 「어느 목록을 훑는가」가 세 곳에 살고, 설정이 `navItems` 밖에 사는 지금
+ * 한 곳만 그 배열로 되돌아가도 **그 줄만 조용히 빠진다**(주소를 되찾는 쪽이 실제로 그렇게
+ * 틀렸던 자리다 — 아래 `destinationTo` 주석).
+ *
+ * 모르는 `key`가 `undefined`인 것은 **계약이 깨졌다는 뜻이다** — 코어는 여기서 건넨 것만
+ * 돌려준다. 그때 무엇을 보여 줄지는 되찾는 쪽이 각자 정한다.
+ */
+function placeOf(key: string) {
+  return places.find((item) => item.key === key);
+}
 
 /**
  * 목적지 줄에 서는 말. 모르는 `key`는 **지어내지 않고 그대로 보여 준다** — 코어는 여기서
@@ -40,7 +58,20 @@ export const destinations: Destination[] = places.map(({ key, label }) => ({ key
  * 지어내면 어디가 어긋났는지 보이지 않는다.
  */
 export function destinationLabel(key: string): string {
-  return places.find((item) => item.key === key)?.label ?? key;
+  return placeOf(key)?.label ?? key;
+}
+
+/**
+ * 그 목적지의 글리프. **사이드바가 그 줄에 세우는 것과 같은 것이다**(결정 17) — 같은 것이
+ * 두 화면에서 두 얼굴이면 안 된다. 모르는 `key`는 `null`이라 그 줄이 **빈 슬롯**을 든다:
+ * 글자 시작점은 층을 가로질러 하나여야 하므로 자리는 그대로 예약된다.
+ *
+ * **코어에 건네는 것은 계속 `key`와 `label` 둘뿐이다.** 글리프는 React 컴포넌트라 IPC로
+ * 나갈 수도 없고, 나갈 이유도 없다 — 「무엇이 있는가」는 코어가 알아야 하지만 「어떻게
+ * 생겼나」는 화면의 것이다.
+ */
+export function destinationIcon(key: string): LucideIcon | null {
+  return placeOf(key)?.icon ?? null;
 }
 
 /**
@@ -48,5 +79,5 @@ export function destinationLabel(key: string): string {
  * `navItems`만 보면 팔레트 목록에는 뜨는데 Enter가 아무 일도 안 하는 줄이 된다.
  */
 export function destinationTo(key: string): (typeof places)[number]["to"] | null {
-  return places.find((item) => item.key === key)?.to ?? null;
+  return placeOf(key)?.to ?? null;
 }

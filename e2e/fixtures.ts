@@ -142,9 +142,30 @@ export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS };
  */
 export const SEARCH_DESTINATION_QUERY = "Set";
 export const SEARCH_DESTINATION_RESULTS: SearchResults = {
-  // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
-  // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
-  hits: [{ kind: "destination", key: "settings" }],
+  hits: [
+    // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
+    // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
+    { kind: "destination", key: "settings" },
+    // **아래 둘은 거터를 재려고 있다**(결정 17·18). 위 고정 답이 문서 줄만 내므로, 이 답이
+    // 아니면 **작업 줄과 본문 줄이 이 층에 영영 안 선다** — 그런데 「글자 시작점이 층을
+    // 가로질러 하나다」는 층이 여럿 떠 있을 때만 재지는 성질이다. 순서는 코어의 층 순서
+    // 그대로다(가는 곳 → 작업 → … → 본문): 프런트는 받은 순서로 그리므로 여기서 뒤집으면
+    // 이 층이 실물과 다른 화면을 재게 된다.
+    { kind: "work", slug: WORKS[1].slug, title: WORKS[1].title, archived: false },
+    // **본문 줄이라야 스니펫이 선다.** 제목과 경로를 긴 쪽으로 잡는 것은 스니펫이 `grow`로
+    // 남는 폭을 다 먹으면 **바닥이 안 재지기 때문이다** — 줄이 꽉 차야 `basis-1/3`이 실제로
+    // 바닥으로 드러난다.
+    {
+      kind: "text",
+      slug: WORKS[0].slug,
+      title: WORKS[0].title,
+      path: WORKS[0].specFiles[0],
+      archived: false,
+      snippet:
+        "본문에서 맞은 문단을 한 줄로 편 것이다. 줄이 꽉 차도록 넉넉히 길게 둔다 — 짧으면 " +
+        "스니펫이 바닥이 아니라 제 내용 폭으로 서서, 바닥을 재려는 검사가 아무것도 안 잰다.",
+    },
+  ],
 };
 
 /**
@@ -175,9 +196,13 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 내용은 **한 줄이면 족하다**: 여기서 보는 것은 사이드바이고, 문서 렌더의 규칙은
   // SpecViewer.test.tsx가 든다.
   read_spec_file: "# 개요\n\n한 줄.\n",
-  // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
+  // ⌘K로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
+  // work 화면이 설 때마다 한 번 나간다(결정 14). 답은 안 쓰인다 — 순서를 세우는 것은 코어의
+  // 검색이고 화면은 이 값을 도로 안 읽는다. **표에서 빠뜨리면 work 화면을 여는 spec들이
+  // 한꺼번에 터지는데**, 하네스가 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
+  touch_recent_work: null,
   pty_spawn: { id: 1, shellName: "zsh" },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).

@@ -1,22 +1,23 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import { destinationLabel } from "./destinations";
+import { destinationIcon, destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
 import type { SearchHit } from "./types";
 
 /**
- * ⇧⇧로, 또는 셸 컨트롤 행의 검색 버튼으로 여는 검색 팔레트. **여는 자리는 그래도 하나다** —
- * 버튼은 키 리스너와 같은 state를 켤 뿐이다(`AppShell.tsx`의 `ShellControls` 호출부).
+ * ⌘K로, 셸 컨트롤 행의 검색 버튼으로, 또는 `View ▸ Search` 메뉴로 여는 검색 팔레트.
+ * **여는 자리는 그래도 하나다** — 버튼도 메뉴도 키 리스너와 같은 state를 켠다
+ * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **떠 있는 표면의 규격은 확인 창(`AppDialog`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
  * 반지름·테두리·그림자를 쓰고 있어 새 어휘를 들일 이유가 없다.
  *
- * **여는 키(⇧⇧)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 셸 키
- * 판정들과 「어디서 눌렸으면 비키는가」를 같이 딛기 때문이고, 그 자리를 고른 이유는 거기
- * 머리말이 든다. 무장·해제를 들고 그 함수를 부르는 자리는 앱 셸(`AppShell.tsx`)이다.
+ * **여는 키(⌘K)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 그 키가
+ * **셸을 지나와야** 하고, 셸이 그것을 타이핑하지 않는다는 것을 정하는 자리가 거기이기
+ * 때문이다. 그 함수를 부르고 확인 창을 보는 자리는 앱 셸(`AppShell.tsx`)이다.
  *
  * **터미널 스토어를 import하지 않는다.** 하면 `@xterm/*`와 그 CSS가 따라 들어와 이 파일의
  * 정적 마크업 검사가 서지 못한다(SearchPalette.test.tsx가 그 계약을 센다) — 사이드바 목록이
@@ -208,6 +209,9 @@ export function SearchList({
         >
           {hits.map((hit, at) => {
             const { name, detail, snippet } = rowText(hit);
+            // **목적지 줄만 글리프를 든다**(결정 17). 나머지 갈래는 `null`이라 빈 슬롯이 서고,
+            // 그래서 글자 시작점이 층을 가로질러 하나다.
+            const Glyph = hit.kind === "destination" ? destinationIcon(hit.key) : null;
             return (
               <Fragment key={rowKey(hit)}>
                 {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
@@ -229,14 +233,34 @@ export function SearchList({
                   aria-selected={at === selected}
                   onClick={() => onGo(hit)}
                   className={cn(
-                    "flex shrink-0 items-baseline gap-2 rounded-[8px] px-2.5 py-1.5 text-left",
+                    // 간격이 **9px**인 것은 사이드바 규격이다(결정 17·18) — 슬롯 17px과
+                    // 합쳐 거터가 26px이 되고, 그 값이 사이드바 nav 줄의 글자 시작점과 같다.
+                    "flex shrink-0 items-baseline gap-[9px] rounded-[8px] px-2.5 py-1.5 text-left",
                     at === selected ? "bg-state-2" : "hover:bg-state-1",
                   )}
                 >
+                  {/* **거터는 모든 줄이 예약한다**(결정 18). 목적지가 아닌 줄은 빈 슬롯을
+                      두는데, 안 두면 가는 곳 층만 한 단 들어간 것처럼 읽힌다 — 층이 갈려도
+                      눈이 따라가는 세로선은 하나여야 한다.
+
+                      **줄 padding이 아니라 flex 자식으로 문다.** padding으로 밀면 목적지
+                      줄에서 padding과 글리프가 이중으로 밀고, 아래 스니펫 바닥이 컨테이너
+                      **내용폭**의 1/3이라 padding이 그 바닥까지 175.3px → 166.7px로 깎는다.
+                      자식은 내용폭을 안 바꾼다.
+
+                      **`self-center`가 필요하다** — 줄이 `items-baseline`이라 없으면 글리프가
+                      글자 베이스라인에 앉아 사이드바(`items-center`)와 세로 위치가 갈린다. */}
+                  <span data-gutter="" className="size-[17px] shrink-0 self-center">
+                    {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
+                  </span>
                   {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
                       스니펫 혼자 무는데, 실측(2026-08-30, 줄 폭 526px)에서 제목이 39자인
                       work의 본문 줄이 스니펫에 남긴 폭이 106px, 한글 8자였다 — 제목이 더
-                      길면 0이 되고 줄이 가로로 넘친다. */}
+                      길면 0이 되고 줄이 가로로 넘친다.
+
+                      **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
+                      `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 26px이
+                      나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
                   <span className="truncate text-[13px] tracking-[-0.01em]">{name}</span>
                   {detail !== undefined && (
                     <span className="truncate text-[12px] text-tertiary">{detail}</span>
