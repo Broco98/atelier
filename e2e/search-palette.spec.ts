@@ -121,6 +121,57 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
 // 결정 1. **⌘K에 수식키가 더 붙으면 아니다.** VS Code가 ⌘K를 화음 접두사로 쓰는 계열
 // (⌘K ⌘S 등)과 ⌘⇧K(「줄 삭제」)를 결정문이 명시로 배제했다 — 순수 모듈이 그 판정을 들지만
 // 여기서 한 번 더 재는 것은 **리스너가 그 술어를 실제로 통과시키는지**가 이 층의 물음이라서다.
+/**
+ * 네이티브 메뉴가 쏘는 것을 **손으로 쏜다.** 이 층의 브라우저에는 OS 메뉴가 없어서 항목을
+ * 누를 수가 없는데, 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나뿐이라
+ * 그 이벤트를 직접 쏘면 **메뉴 → 합성 keydown → 팔레트**의 나머지 전부가 실제로 돈다.
+ *
+ * 구독 id는 하네스가 적어 둔 IPC 기록에서 읽는다 — 상수로 적을 수 없다(`transformCallback`이
+ * 난수로 짓는다). 못 찾으면 던진다: 구독이 안 걸린 채 지나가면 아래 단언이 **아무것도 안
+ * 쏜 채로** 초록이 될 수 있다.
+ */
+async function fireMenuHotkey(page: Page, code: string) {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  // **`listen`만 고른다.** 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가 없다 —
+  // StrictMode가 붙였다 떼면서 마지막 줄이 그 해제가 된다. 살아 있는 것은 **마지막 구독**이다.
+  const listen = calls
+    .filter((call) => call.startsWith("plugin:event|listen") && call.includes('"hotkey:menu"'))
+    .reverse()[0];
+  const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
+  if (!handler) throw new Error(`hotkey:menu 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
+  await page.evaluate(
+    ([id, sent]) => {
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+        }
+      ).__TAURI_INTERNALS__;
+      internals.runCallback(Number(id), { event: "hotkey:menu", id: 0, payload: sent });
+    },
+    [handler, code],
+  );
+}
+
+// 결정 3. **`View ▸ Search`가 프레임 안에서도 팔레트를 연다.**
+//
+// ⇧⇧는 이 길에 실을 수가 없었다 — 「같은 수식키를 300ms 안에 두 번」은 accelerator 문법에
+// 자리가 없고, 파싱 실패를 Tauri가 조용히 버려 **단축키 없는 항목이 선다.** 여는 키를 바꾼
+// 값의 절반이 이 검사이고, **그 값이 실제로 도는지를 재는 유일한 층이 여기다.**
+test("메뉴가 쏜 ⌘K가 팔레트를 연다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await expect(page.locator(".xterm")).toHaveCount(1);
+  await expect(palette(page)).toHaveCount(0);
+
+  await fireMenuHotkey(page, "KeyK");
+
+  await expect(palette(page)).toBeVisible();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  // 뜬 것이 키로 여는 것과 **같은 조각**이다 — 포커스를 가져오는 것이 그 조각의 일이다.
+  await expect(box(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("⌘⇧K·⌘⌥K로는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
