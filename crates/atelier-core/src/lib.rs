@@ -32,9 +32,11 @@ mod git;
 mod store;
 mod work;
 mod works;
+mod recent;
 mod search;
 
 pub use paths::{archive_dir, collapse_home, data_root, expand_home, projects_dir, works_dir};
+pub use recent::{read_recent, touch_recent_work, RecentWork, RecentWorks};
 pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
 pub use project::{parse_project, render_project, Project, ProjectView};
