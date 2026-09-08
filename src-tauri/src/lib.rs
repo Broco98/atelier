@@ -228,6 +228,7 @@ pub fn run() {
             commands::list_archived_docs,
             commands::read_archived_file,
             commands::search,
+            commands::touch_recent_work,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,

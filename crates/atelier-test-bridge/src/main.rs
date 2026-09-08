@@ -7,7 +7,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use atelier_core::{archive_dir, projects_dir, works_dir, ProjectPatch};
+use atelier_core::{archive_dir, data_root, projects_dir, works_dir, ProjectPatch};
 use serde_json::{Map, Value};
 
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
@@ -82,6 +82,14 @@ const HANDLERS: &[(&str, Handler)] = &[
             &text(a, "query")?,
             &destinations(a)?,
         ))
+    }),
+    // **진짜 핸들러다 — 스텁이 아니다.** 이 커맨드가 하는 일이 파일 한 장을 쓰는 것이고
+    // 그 코드가 코어에 살아서, 다리가 그대로 탈 수 있다. 스텁으로 때우면 L4가 관통하는
+    // 것이 「이력이 실제로 써진다」가 아니라 「호출이 나갔다」로 줄어든다.
+    //
+    // **루트는 반드시 코어의 것을 넘긴다** — 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)을 본다.
+    ("touch_recent_work", |a| {
+        ok(atelier_core::touch_recent_work(&data_root(), &text(a, "slug")?))
     }),
     // 셸 다섯은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.

@@ -178,6 +178,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // ⌘K로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
+  // work 화면이 설 때마다 한 번 나간다(결정 14). 답은 안 쓰인다 — 순서를 세우는 것은 코어의
+  // 검색이고 화면은 이 값을 도로 안 읽는다. **표에서 빠뜨리면 work 화면을 여는 spec들이
+  // 한꺼번에 터지는데**, 하네스가 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
+  touch_recent_work: null,
   pty_spawn: { id: 1, shellName: "zsh" },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
