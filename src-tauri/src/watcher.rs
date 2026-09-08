@@ -24,9 +24,12 @@ pub fn start(app: AppHandle) {
     // works는 spec/ 하위까지 재귀 감시하되, 코드 체크아웃인 trees/ 하위는
     // 빌드 등으로 이벤트가 폭주하므로 무시한다.
     // spec 라이브 리로드는 반응성이 중요해 더 짧게 디바운스한다 (스펙: 300ms)
+    //
+    // **Maison의 `rooms/`를 함께 보는 것은 다음 티켓(#181)이다.** 여기서 모드를 명시해
+    // 두면 그때 늘릴 자리가 이 인자 하나로 보인다.
     spawn_watch(
         app,
-        atelier_core::works_dir(),
+        atelier_core::works_dir(atelier_core::Mode::Atelier),
         RecursiveMode::Recursive,
         Duration::from_millis(300),
         "works:changed",

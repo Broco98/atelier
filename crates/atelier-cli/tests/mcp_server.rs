@@ -14,14 +14,59 @@ struct Server {
     init: Value,
 }
 
+/// 서버를 띄우는 명령 한 벌. **`Server::start`와 기동 실패를 보는 helper가 같은 것을
+/// 써야 한다** — 격리 env(홈·스킬 루트)가 한쪽에만 있으면 그쪽 검사가 개발자의 실제
+/// `~/.atelier`나 `~/.claude/skills`를 건드린다.
+fn spawn_command(home: &std::path::Path, mode: Option<&str>) -> Command {
+    let mut cmd = Command::cargo_bin("atelier").unwrap();
+    cmd.arg("mcp")
+        .env("ATELIER_HOME", home)
+        // 기동 시 정리(Δ11)가 개발자의 실제 ~/.claude/skills 를 건드리지 않게 한다.
+        .env("ATELIER_SKILLS_DIR", home.join("skills-guard"));
+    // **없음과 빈 값은 다르다** — 안 주는 것은 `env`를 아예 안 부르는 것이다.
+    // `.env(name, "")`으로 흉내 내면 서버가 그것을 모르는 값으로 거절한다.
+    match mode {
+        Some(mode) => cmd.env("ATELIER_MODE", mode),
+        None => cmd.env_remove("ATELIER_MODE"),
+    };
+    cmd
+}
+
+/// **핸드셰이크 전에 죽는 것**을 보는 자리. `Server::start`는 initialize 응답을 기다리므로
+/// 뜨지 않는 서버를 못 잰다 — 여기서는 프로세스가 끝나기를 기다려 종료 코드와 두 스트림을
+/// 통째로 본다.
+///
+/// 표준입력을 파이프로 열지 않는다: 규칙이 무너져 서버가 정상 기동해 버리면 즉시 EOF를
+/// 읽고 **0으로** 끝나므로, 매달리지 않고 종료 코드에서 빨개진다.
+fn spawn_expecting_startup_failure(
+    home: &std::path::Path,
+    mode: &str,
+) -> (std::process::ExitStatus, String, String) {
+    let out = spawn_command(home, Some(mode))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+    (
+        out.status,
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
 impl Server {
     fn start(home: &std::path::Path) -> Self {
-        let mut child = Command::cargo_bin("atelier")
-            .unwrap()
-            .arg("mcp")
-            .env("ATELIER_HOME", home)
-            // 기동 시 정리(Δ11)가 개발자의 실제 ~/.claude/skills 를 건드리지 않게 한다.
-            .env("ATELIER_SKILLS_DIR", home.join("skills-guard"))
+        Self::start_with_mode(home, None)
+    }
+
+    /// `mode`가 `None`이면 `ATELIER_MODE`를 **안 준다** — 앱 밖 셸에서 뜬 기존 MCP와 같은
+    /// 상태다. 이 파일의 나머지 검사 전부가 그 상태로 돌아, 「값이 없으면 지금과 한 글자도
+    /// 안 다르다」가 새 검사 하나가 아니라 기존 검사 전부로 붙들린다.
+    fn start_with_mode(home: &std::path::Path, mode: Option<&str>) -> Self {
+        let mut child = spawn_command(home, mode)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -176,7 +221,7 @@ fn list_works_returns_every_work() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트 아이템 추가",
         None,
         &["billing".to_string()],
@@ -200,7 +245,7 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트",
         None,
         &["billing".to_string()],
@@ -238,7 +283,7 @@ fn get_work_explains_what_the_spec_folder_names_mean() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트",
         None,
         &["billing".to_string()],
@@ -1759,6 +1804,238 @@ fn the_tool_surface_has_no_way_to_delete_a_project() {
             "project deletion must not be exposed as a tool: {name}"
         );
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 모드 — 같은 도구 표면이 다른 루트를 읽는다 (결정 15·20)
+//
+// **재는 것은 바깥 동작이다** — 「Maison 셸의 MCP가 rooms만 돌려준다」이지 「서버가
+// `maison/rooms`를 들고 있다」가 아니다. 그래서 여기서는 전부 서브프로세스를 띄우고,
+// 파일이 실제로 어느 폴더에 앉는지를 본다.
+
+/// 항목 하나를 **파일로** 심는다. 도구를 안 쓰는 것이 요점이다 — 도구로 심으면 「썼고
+/// 읽었다」가 같은 루트 계산을 두 번 지나서, 그 계산이 틀려도 앞뒤가 맞는다.
+fn plant(root: &std::path::Path, slug: &str, title: &str) {
+    std::fs::create_dir_all(root.join(slug).join("spec")).unwrap();
+    std::fs::write(
+        root.join(slug).join("work.json"),
+        format!(
+            r#"{{"title":"{title}","status":"active","createdAt":"2026-09-07","projects":[]}}"#
+        ),
+    )
+    .unwrap();
+}
+
+fn work_titles(server: &mut Server, id: u32) -> Vec<String> {
+    let res = server
+        .request(id, "tools/call", json!({ "name": "atelier_list_works", "arguments": {} }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let views: Value = serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap())
+        .unwrap();
+    views.as_array().unwrap().iter().map(|v| v["title"].as_str().unwrap().to_string()).collect()
+}
+
+/// **판 01의 첫 약속.** 같은 홈에 둘을 심어 두고 두 서버를 띄우면, 각자 자기 세계만 본다 —
+/// 규약이 아니라 구조로 갈리므로 목록을 읽는 쪽이 필터를 기억할 필요가 없다.
+#[test]
+fn each_mode_lists_only_its_own_root() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "spec-search", "spec 검색");
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    assert_eq!(work_titles(&mut maison, 2), vec!["금융"]);
+
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    assert_eq!(work_titles(&mut atelier, 2), vec!["spec 검색"]);
+
+    // 값이 없는 것은 Atelier와 같다 — 앱 밖 셸에서 뜬 기존 MCP가 지금과 똑같다.
+    let mut bare = Server::start(home.path());
+    assert_eq!(work_titles(&mut bare, 2), vec!["spec 검색"]);
+}
+
+/// Room을 만드는 길은 MCP 하나다. **`projects`도 `branch`도 없이** 불린 `start_work`가
+/// `maison/rooms/` 아래에 앉고, `specDir`가 그 아래를 가리킨다.
+#[test]
+fn maison_start_work_creates_a_room_and_points_the_spec_dir_at_it() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start_with_mode(home.path(), Some("maison"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "금융", "slug": "finance" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    let room = home.path().join("maison/rooms/finance");
+    assert!(room.join("work.json").is_file(), "Room이 rooms 아래에 없다");
+    assert!(!home.path().join("works/finance").exists(), "Atelier 루트에 새어 나갔다");
+    // Room에는 브랜치도 워크트리도 없다 (결정 17).
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["branch"].is_null(), "{view}");
+    assert!(view["worktrees"].as_array().unwrap().is_empty(), "{view}");
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_get_work",
+        "arguments": { "work_slug": "finance" }
+    }));
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let spec_dir = atelier_core::expand_home(view["specDir"].as_str().unwrap());
+    assert_eq!(spec_dir, room.join("spec"), "에이전트가 spec을 엉뚱한 자리에 쓴다");
+    assert!(spec_dir.is_dir());
+}
+
+/// MCP로 치운 Room이 앱의 Maison Archive에 보여야 한다 — 그러려면 `maison/archive/`로
+/// 가야 하고, Atelier 아카이브에 섞이면 안 된다 (스펙 US 25).
+#[test]
+fn maison_archive_work_moves_the_room_into_the_maison_archive() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+    let mut server = Server::start_with_mode(home.path(), Some("maison"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_archive_work",
+        "arguments": { "work_slug": "finance" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    assert!(!home.path().join("maison/rooms/finance").exists());
+    assert!(home.path().join("maison/archive/finance/work.json").is_file());
+    assert!(home.path().join("maison/archive/finance/record.md").is_file());
+    assert!(!home.path().join("archive/finance").exists(), "Atelier 아카이브에 섞였다");
+
+    // 목록에서 빠지고 같은 모드의 아카이브 목록에 선다.
+    assert!(work_titles(&mut server, 3).is_empty());
+    let res = server
+        .request(4, "tools/call", json!({ "name": "atelier_list_archive", "arguments": {} }));
+    let views: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(views[0]["slug"], "finance");
+}
+
+/// **`atelier`를 명시해도 한 글자도 안 달라진다** (결정 7·15). 앱은 두 모드 다 명시해서
+/// 심으므로 이 값이 정상값이어야 하고, 여기가 어긋나면 앱에서 뜬 셸만 조용히 다른 폴더를
+/// 쓰게 된다.
+///
+/// 읽기만이 아니라 **쓰기 경로까지** 잰다: 만들고 치우는 두 도구가 앉히는 자리를 본다.
+#[test]
+fn an_explicit_atelier_mode_writes_exactly_where_the_bare_server_does() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start_with_mode(home.path(), Some("atelier"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(home.path().join("works/cart/work.json").is_file());
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_archive_work",
+        "arguments": { "work_slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(home.path().join("archive/cart/work.json").is_file());
+
+    // Maison 루트는 **생기지도 않는다** — 「모드가 생겼다」가 Atelier 홈에 폴더를 늘리지 않는다.
+    assert!(!home.path().join("maison").exists(), "Atelier에서 maison/이 생겼다");
+}
+
+/// **Maison 서버는 프로젝트 등록부를 커널에 안 건넨다** — `shared_projects_root()`의
+/// Maison 갈래(`None`)를 재는 자리다.
+///
+/// 커널 쪽 `None` 갈래는 단위 테스트가 덮지만, **그 `None`을 실제로 건네는 배선**은 여기
+/// 말고 붙드는 데가 없다. 배선이 `Some`으로 뒤집히면 조용하지 않은 일이 벌어진다: 등록된
+/// 프로젝트를 실어 부른 `atelier_start_work`가 검증을 통과해 브랜치를 확정하고
+/// `maison/rooms/<slug>/trees/<project>`에 git 워크트리를 세운다 — 「Room은 토픽이고
+/// 저장소에 붙지 않는다」(결정 17)가 바로 그 자리에서 깨지는데 오류도 실패도 없다.
+///
+/// **등록부를 실제로 심는 것이 요점이다.** 등록 안 된 이름을 쓰면 Atelier 경로도
+/// 「project not registered」로 똑같이 실패해서, 이 검사가 재는 것이 「모드」인지
+/// 「이름이 없다」인지 흐려진다.
+///
+/// **순서가 붙들고 있는 것이 있다.** Maison을 **먼저** 부른다 — Atelier 대조를 앞에 두면
+/// 그쪽이 저장소에 `finance` 브랜치를 만들어 버려서, 배선이 뒤집힌 Maison 호출이
+/// 「이미 체크아웃된 브랜치」라는 **엉뚱한 이유**로 실패한다. 그러면 뒤집힌 배선이 초록으로
+/// 지나간다.
+///
+/// (도구 층에서 예쁜 오류로 거절하는 것은 #180의 몫이다. 여기서 재는 것은 거절의 **문구**가
+/// 아니라 「등록부가 커널에 안 갔다」는 사실이다.)
+#[test]
+fn maison_never_hands_the_project_registry_to_the_kernel() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let arguments = json!({ "title": "금융", "slug": "finance", "projects": ["billing"] });
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    let res = maison.request(
+        2,
+        "tools/call",
+        json!({ "name": "atelier_start_work", "arguments": arguments }),
+    );
+    assert_eq!(res["result"]["isError"], true, "Maison이 프로젝트를 받아 들였다: {res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("billing"), "무엇이 거절됐는지 안 적혀 있다: {text}");
+
+    // 거절은 **아무것도 안 만든다.** 반쪽만 앉은 Room이 남으면 다음 호출이 그것을 재개한다.
+    assert!(!home.path().join("maison/rooms/finance").exists(), "거절했는데 Room이 생겼다");
+
+    // 대조 — 같은 홈, 같은 인자, Atelier 서버. 여기서 성공하고 워크트리까지 서야
+    // 위 실패가 「모드 때문」임이 확정된다.
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    let res = atelier.request(
+        2,
+        "tools/call",
+        json!({ "name": "atelier_start_work", "arguments": arguments }),
+    );
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(
+        home.path().join("works/finance/trees/billing").is_dir(),
+        "대조가 안 섰다 — 위 실패가 모드 때문인지 알 수 없다"
+    );
+}
+
+/// 도구 표면은 **모드와 무관하게 같다** (결정 15). 여기가 갈리면 에이전트가 세계마다
+/// 다른 도구 이름을 외워야 하고, 지침 두 벌로는 못 메운다.
+#[test]
+fn the_tool_surface_is_the_same_in_both_modes() {
+    let home = tempfile::tempdir().unwrap();
+    let atelier = Server::start(home.path()).tool_names(2);
+    let maison = Server::start_with_mode(home.path(), Some("maison")).tool_names(2);
+    assert_eq!(atelier, maison);
+}
+
+/// **오타가 조용히 Atelier로 눕지 않는다** (스펙 US 46). 핸드셰이크는커녕 아무것도 하기 전에
+/// 끝나고, 표준에러에 받은 값과 허용값이 남는다. 표준출력은 JSON-RPC 전용이라 비어 있다 (Δ13).
+#[test]
+fn an_unknown_mode_dies_before_the_handshake_and_says_what_it_got() {
+    let home = tempfile::tempdir().unwrap();
+    let (status, stdout, stderr) = spawn_expecting_startup_failure(home.path(), "MAISON");
+
+    assert!(!status.success(), "모르는 값으로 서버가 떴다 (stderr: {stderr})");
+    assert!(stdout.is_empty(), "표준출력이 오염됐다: {stdout:?}");
+    assert!(stderr.contains("MAISON"), "받은 값이 안 적혔다: {stderr}");
+    for allowed in ["atelier", "maison"] {
+        assert!(stderr.contains(allowed), "허용값 '{allowed}'가 안 적혔다: {stderr}");
+    }
+
+    // 뜨지도 않은 서버가 파일은 지우는 일이 없어야 한다 — 기동 정리(Δ11)보다 앞이다.
+    let skills = home.path().join("skills-guard/atelier");
+    std::fs::create_dir_all(&skills).unwrap();
+    let (_, _, _) = spawn_expecting_startup_failure(home.path(), "mansion");
+    assert!(skills.is_dir(), "안 뜬 서버가 스킬 폴더를 지웠다");
+}
+
+/// 빈 값도 모르는 값이다 — `ATELIER_MODE=$UNSET`으로 값이 증발한 셸이 생활 쪽인지
+/// 일 쪽인지 아무도 모르는 채로 뜨면 안 된다.
+#[test]
+fn an_empty_mode_is_refused_rather_than_read_as_absent() {
+    let home = tempfile::tempdir().unwrap();
+    let (status, stdout, stderr) = spawn_expecting_startup_failure(home.path(), "");
+    assert!(!status.success(), "빈 값으로 서버가 떴다 (stderr: {stderr})");
+    assert!(stdout.is_empty(), "표준출력이 오염됐다: {stdout:?}");
+    assert!(stderr.contains("ATELIER_MODE"), "어느 변수가 문제인지 안 적혔다: {stderr}");
 }
 
 /// V4 전반부 — 지침이 실제로 클라이언트에게 전달되는 채널에 실린다.

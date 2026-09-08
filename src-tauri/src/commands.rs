@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, Destination, ProjectPatch, ProjectView,
-    SearchResults, WorkView,
+    archive_dir, projects_dir, works_dir, ArchiveEntry, Destination, Mode, ProjectPatch,
+    ProjectView, SearchResults, WorkView,
 };
 
 use std::sync::Arc;
@@ -10,6 +10,11 @@ use std::sync::Arc;
 use crate::pty;
 
 type CmdResult<T> = Result<T, String>;
+
+/// 이 층이 아직 아는 모드는 하나뿐이다. **명령이 `mode` 인자를 받는 것은 다음 티켓(#181)**
+/// 이고, 그때 이 상수가 인자로 바뀐다 — 여기에 상수가 서 있는 동안은 「모드를 안 고른 것」이
+/// 아니라 「Atelier를 고른 것」이라, 루트 함수가 모드를 요구하는 성질이 컴파일로 남는다.
+const MODE: Mode = Mode::Atelier;
 
 fn err(e: atelier_core::Error) -> String {
     e.to_string()
@@ -52,37 +57,37 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 
 #[tauri::command]
 pub async fn list_works() -> CmdResult<Vec<WorkView>> {
-    atelier_core::list_works(&works_dir()).map_err(err)
+    atelier_core::list_works(&works_dir(MODE)).map_err(err)
 }
 
 #[tauri::command]
 pub async fn get_work(slug: String) -> CmdResult<WorkView> {
-    atelier_core::get_work(&works_dir(), &slug).map_err(err)
+    atelier_core::get_work(&works_dir(MODE), &slug).map_err(err)
 }
 
 /// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
 #[tauri::command]
 pub async fn set_work_title(slug: String, title: String) -> CmdResult<WorkView> {
-    atelier_core::update_work_title(&works_dir(), &slug, &title).map_err(err)
+    atelier_core::update_work_title(&works_dir(MODE), &slug, &title).map_err(err)
 }
 
 #[tauri::command]
 pub async fn set_work_status(slug: String, status: String) -> CmdResult<WorkView> {
     let status = status.parse().map_err(err)?;
-    atelier_core::update_work_status(&works_dir(), &slug, status).map_err(err)
+    atelier_core::update_work_status(&works_dir(MODE), &slug, status).map_err(err)
 }
 
 /// 고정을 켜고 끈다. 목록 순서는 커널이 정한다 — 화면은 그 위에 정렬을 얹지 않는다 (결정 100).
 #[tauri::command]
 pub async fn set_work_pinned(slug: String, pinned: bool) -> CmdResult<WorkView> {
-    atelier_core::update_work_pinned(&works_dir(), &slug, pinned).map_err(err)
+    atelier_core::update_work_pinned(&works_dir(MODE), &slug, pinned).map_err(err)
 }
 
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]
 pub async fn archive_work(slug: String) -> CmdResult<()> {
-    atelier_core::archive_work(&works_dir(), &archive_dir(), &projects_dir(), &slug)
+    atelier_core::archive_work(&works_dir(MODE), &archive_dir(MODE), Some(&projects_dir()), &slug)
         .map(|_| ())
         .map_err(err)
 }
@@ -90,33 +95,33 @@ pub async fn archive_work(slug: String) -> CmdResult<()> {
 /// 통째로 지운다. MCP 도구와 같이 force를 노출하지 않는다 (atelier_remove_work와 같은 계약).
 #[tauri::command]
 pub async fn remove_work(slug: String) -> CmdResult<()> {
-    atelier_core::remove_work(&works_dir(), &slug, false).map_err(err)
+    atelier_core::remove_work(&works_dir(MODE), &slug, false).map_err(err)
 }
 
 #[tauri::command]
 pub async fn read_spec_file(slug: String, path: String) -> CmdResult<String> {
-    atelier_core::read_spec_file(&works_dir(), &slug, &path).map_err(err)
+    atelier_core::read_spec_file(&works_dir(MODE), &slug, &path).map_err(err)
 }
 
 /// 아카이브 목록. **경량이다** — spec 파일 목록도 워크트리도 담지 않는다.
 /// 아카이브는 쌓이기만 하므로 목록 조회가 무거워지면 갈수록 나빠진다.
 #[tauri::command]
 pub async fn list_archive() -> CmdResult<Vec<ArchiveEntry>> {
-    atelier_core::list_archive(&archive_dir()).map_err(err)
+    atelier_core::list_archive(&archive_dir(MODE)).map_err(err)
 }
 
 /// 아카이브된 work가 가진 문서 경로들. 상세 화면의 머리말(제목·상태·언제 치웠는지)은
 /// 목록이 이미 들고 있으므로 단건 조회를 따로 두지 않는다.
 #[tauri::command]
 pub async fn list_archived_docs(slug: String) -> CmdResult<Vec<String>> {
-    atelier_core::list_archived_docs(&archive_dir(), &slug).map_err(err)
+    atelier_core::list_archived_docs(&archive_dir(MODE), &slug).map_err(err)
 }
 
 /// 아카이브된 work의 문서 하나. 경로는 **work 루트 기준**이다 (`record.md`, `spec/overview.md`) —
 /// 기록이 spec 밖에 있어서, 화면이 둘을 한 트리로 보여주려면 창구가 하나여야 한다.
 #[tauri::command]
 pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String> {
-    atelier_core::read_work_file(&archive_dir(), &slug, &path).map_err(err)
+    atelier_core::read_work_file(&archive_dir(MODE), &slug, &path).map_err(err)
 }
 
 /// 팔레트가 보여 주는 줄들. **규칙은 전부 코어에 있다** — 맞추는 규칙도 순위도 층 규칙도
@@ -131,8 +136,14 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
 /// 것은 부르는 쪽이 한다 — 막아야 할 것은 비용이 아니라 순서 뒤바뀜이다.
 #[tauri::command]
 pub async fn search(query: String, destinations: Vec<Destination>) -> CmdResult<SearchResults> {
-    atelier_core::search(&works_dir(), &archive_dir(), &projects_dir(), &query, &destinations)
-        .map_err(err)
+    atelier_core::search(
+        &works_dir(MODE),
+        &archive_dir(MODE),
+        Some(&projects_dir()),
+        &query,
+        &destinations,
+    )
+    .map_err(err)
 }
 
 #[tauri::command]

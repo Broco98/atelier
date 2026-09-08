@@ -156,7 +156,8 @@ impl AtelierServer {
         match atelier_core::start_work(
             &self.works_root,
             &self.archive_root,
-            &self.projects_root,
+            // Maison에서는 「없음」이다 — 등록부를 안 읽고, `projects`가 오면 커널이 거절한다.
+            self.shared_projects_root(),
             &title,
             slug.as_deref(),
             &projects,
@@ -354,7 +355,9 @@ impl AtelierServer {
         match atelier_core::archive_work(
             &self.works_root,
             &self.archive_root,
-            &self.projects_root,
+            // 기록 렌더가 base 브랜치 한 줄에만 쓴다. Maison에는 프로젝트가 없으므로
+            // 프로젝트 0개와 같은 갈래로 지난다.
+            self.shared_projects_root(),
             &work_slug,
         ) {
             // 프로젝트가 없던 work는 브랜치도 워크트리도 없다 — "브랜치는 남아 있다"가

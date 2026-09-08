@@ -1,28 +1,55 @@
 use std::path::{Path, PathBuf};
 
+use crate::Mode;
+
 /// 데이터 루트. `ATELIER_HOME`은 테스트용 내부 오버라이드.
 ///
 /// **이 값을 부르는 쪽이 다시 계산하면 안 된다.** `~/.atelier`를 박아 두면 오버라이드가
 /// 그 자리에서만 죽어서, 테스트가 진짜 홈을 건드리는 것이 조용히 시작된다.
+/// **모드가 생겨도 이 규칙은 그대로다** — 아래 모드별 루트도 전부 여기서 자란다.
 pub fn data_root() -> PathBuf {
     std::env::var_os("ATELIER_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"))
 }
 
+/// 프로젝트 등록부. **모드를 안 받는다 — Atelier 전용이다** (결정 17). Room은 토픽이고
+/// 저장소에 붙지 않으므로 Maison에는 이 루트에 대응하는 자리가 아예 없다. 인자를 받게
+/// 만들면 「Maison의 프로젝트 폴더」라는 없는 것이 이름부터 생긴다.
 pub fn projects_dir() -> PathBuf {
     data_root().join("projects")
 }
 
-pub fn works_dir() -> PathBuf {
-    data_root().join("works")
+/// 모드의 홈. 최상위 터미널이 cwd 없이 뜰 때 서는 자리이기도 하다.
+///
+/// **Atelier의 홈이 데이터 루트 자신인 것은 의도다** — 기존 경로가 한 글자도 안 바뀌어야
+/// 하므로(결정 7) Atelier에는 자기 이름의 하위 폴더가 없다. Maison만 `maison/` 아래로
+/// 내려간다. 그래서 두 세계는 「같은 규칙을 다른 홈에」가 아니라 「Maison이 한 칸 더
+/// 깊다」로 갈린다.
+pub fn mode_home(mode: Mode) -> PathBuf {
+    match mode {
+        Mode::Atelier => data_root(),
+        Mode::Maison => data_root().join("maison"),
+    }
 }
 
-/// 끝난 work가 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
+/// 진행 중인 항목의 루트. Atelier에는 work가, Maison에는 Room이 산다.
+///
+/// **Maison 쪽 폴더 이름이 `works`가 아니라 `rooms`인 것은 화면의 말과 맞추기 위해서다** —
+/// 파일은 work.json 그대로이지만(결정 2) 그 폴더를 여는 사람에게 그것은 Room이다.
+pub fn works_dir(mode: Mode) -> PathBuf {
+    mode_home(mode).join(match mode {
+        Mode::Atelier => "works",
+        Mode::Maison => "rooms",
+    })
+}
+
+/// 끝난 것이 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
 /// 작업 목록을 읽는 코드는 이 루트를 보지 않으므로, 목록에서 빠지는 것이 규약이 아니라
-/// 구조가 된다.
-pub fn archive_dir() -> PathBuf {
-    data_root().join("archive")
+/// 구조가 된다. **두 세계가 갈리는 것도 같은 방식이다**: Maison의 아카이브는 Atelier
+/// 아카이브의 하위가 아니라 다른 홈 아래라, Atelier 목록이 읽을 길이 없다.
+pub fn archive_dir(mode: Mode) -> PathBuf {
+    mode_home(mode).join("archive")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {
@@ -58,5 +85,44 @@ mod tests {
     fn non_home_paths_pass_through() {
         assert_eq!(expand_home("/opt/x"), std::path::PathBuf::from("/opt/x"));
         assert_eq!(collapse_home(std::path::Path::new("/opt/x")), "/opt/x");
+    }
+
+    /// **Atelier 쪽 값이 한 글자도 안 바뀐다** (결정 7). 마이그레이션도, 깨지는 링크도,
+    /// 다시 적을 참조도 없다는 약속이 여기서 서고, 깨지면 사용자의 `~/.atelier`가 통째로
+    /// 안 보이게 된다.
+    ///
+    /// 루트가 `ATELIER_HOME`에서 자라므로 여기서는 env를 만지지 않고 `data_root()`와의
+    /// **관계**를 잰다 — env를 세우는 테스트는 한 프로세스 안에서 병렬로 돌면 서로의 값을
+    /// 덮는다.
+    #[test]
+    fn atelier_roots_stay_exactly_where_they_were() {
+        assert_eq!(works_dir(Mode::Atelier), data_root().join("works"));
+        assert_eq!(archive_dir(Mode::Atelier), data_root().join("archive"));
+        assert_eq!(mode_home(Mode::Atelier), data_root());
+        assert_eq!(projects_dir(), data_root().join("projects"));
+    }
+
+    /// Maison은 자기 홈 아래 한 칸씩이다. **`works/` 아래가 아니라 형제 홈이라는 것**이
+    /// 이 판의 전부다 — Atelier의 어떤 목록도 이 루트를 읽을 수 없다.
+    #[test]
+    fn maison_roots_live_under_their_own_home() {
+        let home = data_root().join("maison");
+        assert_eq!(mode_home(Mode::Maison), home);
+        assert_eq!(works_dir(Mode::Maison), home.join("rooms"));
+        assert_eq!(archive_dir(Mode::Maison), home.join("archive"));
+    }
+
+    /// 두 세계의 루트는 **어느 것도 서로의 하위가 아니다.** 하나라도 겹치면 재귀로 걷는
+    /// 자리(watcher·검색·문서 트리)가 저쪽 세계를 함께 읽는다.
+    #[test]
+    fn no_root_of_one_mode_sits_inside_the_other() {
+        let atelier = [works_dir(Mode::Atelier), archive_dir(Mode::Atelier), projects_dir()];
+        let maison = [works_dir(Mode::Maison), archive_dir(Mode::Maison)];
+        for a in &atelier {
+            for m in &maison {
+                assert!(!m.starts_with(a), "{} 가 {} 안에 있다", m.display(), a.display());
+                assert!(!a.starts_with(m), "{} 가 {} 안에 있다", a.display(), m.display());
+            }
+        }
     }
 }

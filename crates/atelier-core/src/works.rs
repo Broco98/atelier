@@ -25,10 +25,15 @@ pub struct WorkReport {
 ///
 /// 제목은 바뀔 수 있으므로 멱등 키가 될 수 없다(`update_work_title` 참조). slug는
 /// 불변이라 될 수 있다 — 그래서 slug를 아는 호출자는 제목이 어떻게 바뀌었든 재개된다.
+///
+/// **`projects_root`가 「없음」일 수 있다.** 프로젝트 등록부가 아예 없는 세계(Maison)가
+/// 이 함수를 부른다 — 거기서는 Room이 토픽이고 저장소에 붙지 않는다 (결정 17). 없음인데
+/// 프로젝트를 함께 주면 검증 오류다: 「등록부가 없다」와 「프로젝트를 붙여 달라」는 같이
+/// 설 수 없는 요구라, 조용히 프로젝트를 버리면 워크트리가 없는 이유를 아무도 모르게 된다.
 pub fn start_work(
     works_root: &Path,
     archive_root: &Path,
-    projects_root: &Path,
+    projects_root: Option<&Path>,
     title: &str,
     slug: Option<&str>,
     project_slugs: &[String],
@@ -104,6 +109,16 @@ pub fn start_work(
             }
         }
     };
+    // **등록부가 없는 세계에서 프로젝트를 붙이려는 것은 여기서 끝난다.** 새로 주는 것도
+    // 파일에 이미 적힌 것도 `work.projects`로 합쳐진 뒤라 한 자리에서 걸린다 — 재개까지
+    // 함께 막는 것이 요점이다. 여기서 안 막으면 아래 검증·생성 두 갈래를 조용히 건너뛰어
+    // 브랜치만 적힌 워크트리 없는 work가 서고, 왜 코드가 없는지 아무도 모르게 된다.
+    if projects_root.is_none() && !work.projects.is_empty() {
+        return Err(Error::Validation(format!(
+            "this mode has no projects, so {:?} cannot be attached",
+            work.projects
+        )));
+    }
     // 프로젝트가 없으면 워크트리도 없다. 쓰지도 않을 브랜치를 저장소에 남기지 않으려고
     // 이름을 정하지 않고 미룬다 — 첫 프로젝트가 붙을 때 확정된다 (attach_project).
     let nothing_to_decide =
@@ -116,8 +131,9 @@ pub fn start_work(
         work.projects.iter().filter(|p| !worktrees_dir(&dir).join(p.as_str()).is_dir()).collect();
     let mut reasons = Vec::new();
     let mut repos = Vec::new();
-    // 브랜치가 미정이면 프로젝트도 없다 — 검사할 워크트리가 아예 없다는 뜻이다
-    if let Some(branch) = work.branch.as_deref() {
+    // 브랜치가 미정이면 프로젝트도 없다 — 검사할 워크트리가 아예 없다는 뜻이다.
+    // 등록부가 없으면 프로젝트도 없다(바로 위에서 걸렀다) — 둘 다 「걷을 것이 없다」다.
+    if let (Some(branch), Some(projects_root)) = (work.branch.as_deref(), projects_root) {
         for p in &pending {
             match validate_for_worktree(projects_root, p, branch, resuming) {
                 Ok(repo_base) => repos.push(repo_base),
@@ -580,7 +596,7 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
 pub fn archive_work(
     works_root: &Path,
     archive_root: &Path,
-    projects_root: &Path,
+    projects_root: Option<&Path>,
     slug: &str,
 ) -> Result<WorkView> {
     let mut work = read_work(works_root, slug)?;
@@ -782,9 +798,13 @@ pub fn list_archived_docs(archive_root: &Path, slug: &str) -> Result<Vec<String>
 ///
 /// 프로젝트가 없는 work도 머리말만으로 문서를 갖는다 — 파일 존재가 조건부이면 읽는 쪽이
 /// 매번 분기해야 한다.
+///
+/// **`projects_root`가 「없음」이면 프로젝트 0개와 같은 갈래로 지난다.** 등록부는 아래
+/// 프로젝트 루프 **안에서만** 읽히므로(base 브랜치 한 줄), 등록부가 없는 세계(Maison)는
+/// 루프가 안 돌아 애초에 그 자리에 닿지 않는다.
 pub fn render_record(
     works_root: &Path,
-    projects_root: &Path,
+    projects_root: Option<&Path>,
     work: &Work,
     archived_at: &str,
 ) -> String {
@@ -806,7 +826,7 @@ pub fn render_record(
 
 fn push_worktree_record(
     out: &mut String,
-    projects_root: &Path,
+    projects_root: Option<&Path>,
     project: &str,
     worktree: &Path,
     work: &Work,
@@ -816,8 +836,11 @@ fn push_worktree_record(
     // 없으면 base 없이 간다 — **좌표까지 버리지는 않는다.** 커밋 목록을 통째로 담기로 한
     // 이유가 "프로젝트를 등록 해제하면 SHA로 복원이 안 된다"였는데, 바로 그 경우에
     // 아무것도 안 남기면 그 결정이 산 것을 그대로 잃는다.
-    let base = crate::get_project(projects_root, project)
-        .ok()
+    //
+    // 등록부 자체가 없는 세계(Maison)도 "등록이 사라졌다"와 같은 길로 간다 — 여기까지
+    // 오는 것은 손으로 프로젝트를 적어 넣은 work뿐이고, 그때도 좌표는 남겨야 한다.
+    let base = projects_root
+        .and_then(|root| crate::get_project(root, project).ok())
         .map(|view| view.project.base_branch)
         .or_else(|| git::origin_head(worktree));
     let Some(r) = git::inspect_worktree(worktree, base.as_deref(), work.branch.as_deref()) else {
@@ -949,7 +972,7 @@ mod tests {
     #[test]
     fn start_creates_meta_spec_and_worktrees() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "카트 아이템 추가", None, &slugs(&["fe", "be"]), Some("feat/cart"))
             .unwrap();
         assert!(report.errors.is_empty());
 
@@ -981,7 +1004,7 @@ mod tests {
     fn start_defaults_branch_to_slug() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "Cart Add", None, &slugs(&["fe"]), None).unwrap();
+            start_work(&works, &archive_root(&works), Some(&projects), "Cart Add", None, &slugs(&["fe"]), None).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("cart-add"));
         let worktree = works.join("cart-add/trees/fe");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "cart-add");
@@ -992,7 +1015,7 @@ mod tests {
     #[test]
     fn start_without_projects_creates_only_the_work_and_its_spec() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "언젠가 해볼 것", None, &[], None).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "언젠가 해볼 것", None, &[], None).unwrap();
         assert!(report.errors.is_empty());
 
         let w = &report.view.work;
@@ -1020,12 +1043,74 @@ mod tests {
         assert!(expand_home(&view.spec_dir).is_dir());
     }
 
+    // ── 등록부가 없는 세계 (결정 17·20) ──────────────────────────────────
+    // Maison에는 프로젝트가 없다. 「빈 등록부 폴더」로 흉내 내지 않는다 — 그러면 디스크에
+    // 「Maison에도 프로젝트 자리가 있다」는 거짓이 남고, 나중에 누가 그 폴더를 채운다.
+
+    /// 등록부 없이도 항목 하나가 선다 — Room을 만드는 길이 이 갈래다.
+    #[test]
+    fn start_works_with_no_project_registry_at_all() {
+        let (_tmp, works, _projects) = setup();
+        let report =
+            start_work(&works, &archive_root(&works), None, "금융", Some("finance"), &[], None)
+                .unwrap();
+
+        let w = &report.view.work;
+        assert_eq!(w.slug, "finance");
+        assert_eq!(w.branch, None, "브랜치는 프로젝트가 붙을 때만 정해진다");
+        assert!(w.projects.is_empty());
+        assert!(works.join("finance/work.json").is_file());
+        assert!(works.join("finance/spec").is_dir());
+        assert!(!works.join("finance/trees").exists());
+    }
+
+    /// **등록부가 없는데 프로젝트를 주면 검증 오류다.** 조용히 버리면 워크트리가 없는
+    /// 이유를 아무도 모른 채 「붙였다」고 적힌 work.json만 남는다.
+    #[test]
+    fn start_refuses_projects_when_there_is_no_registry() {
+        let (_tmp, works, _projects) = setup();
+        let err = start_work(
+            &works,
+            &archive_root(&works),
+            None,
+            "금융",
+            Some("finance"),
+            &slugs(&["fe"]),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("fe"), "무엇이 거절됐는지 안 적혀 있다: {err}");
+        assert!(!works.join("finance").exists(), "거절했는데 폴더가 생겼다");
+    }
+
+    /// **재개도 같은 자리에서 막힌다.** 프로젝트가 적힌 work.json을 등록부 없는 세계에서
+    /// 열면, 검증도 워크트리 생성도 건너뛴 채 성공으로 보고될 뻔한 갈래가 여기다.
+    #[test]
+    fn resuming_a_work_that_has_projects_needs_the_registry() {
+        let (_tmp, works, projects) = setup();
+        start_work(
+            &works,
+            &archive_root(&works),
+            Some(&projects),
+            "카트",
+            Some("cart"),
+            &slugs(&["fe"]),
+            Some("feat/cart"),
+        )
+        .unwrap();
+
+        let err =
+            start_work(&works, &archive_root(&works), None, "카트", Some("cart"), &[], None)
+                .unwrap_err();
+        assert!(err.to_string().contains("fe"), "{err}");
+    }
+
     /// 브랜치 이름만 미리 정해 두는 것도 된다. 그래도 붙일 프로젝트가 없으면
     /// 워크트리는 생기지 않는다 — 브랜치 확정과 워크트리 생성은 별개다.
     #[test]
     fn start_without_projects_still_records_an_explicit_branch() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "미리 정한 것", None, &[], Some("feat/planned")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "미리 정한 것", None, &[], Some("feat/planned")).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("feat/planned"));
         assert!(!works.join("미리-정한-것/trees").exists());
     }
@@ -1034,7 +1119,7 @@ mod tests {
     #[test]
     fn remove_project_less_work_deletes_only_its_folder() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "아이디어", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "아이디어", None, &[], None).unwrap();
         remove_work(&works, "아이디어", false).unwrap();
         assert!(!works.join("아이디어").exists());
     }
@@ -1069,7 +1154,7 @@ mod tests {
         let (tmp, works, projects) = setup();
         // be 저장소에 충돌 브랜치를 미리 만들어 사전검증이 실패하게 한다
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
-        let result = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
+        let result = start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe", "be"]), Some("feat/cart"));
         assert!(matches!(result, Err(Error::Validation(_))), "expected validation error");
         // 아무것도 만들지 않는다 — fe 워크트리도, work 디렉터리도
         assert!(!works.join("카트").exists());
@@ -1079,7 +1164,7 @@ mod tests {
     #[test]
     fn start_rejects_unknown_project() {
         let (_tmp, works, projects) = setup();
-        let result = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["nope"]), None);
+        let result = start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["nope"]), None);
         assert!(matches!(result, Err(Error::Validation(_))));
         assert!(!works.join("카트").exists());
     }
@@ -1087,10 +1172,10 @@ mod tests {
     #[test]
     fn start_resumes_missing_worktrees_idempotently() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 같은 제목으로 재실행 + 프로젝트 추가 → 새 slug가 아니라 기존 work에 이어서 생성
         let report =
-            start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty());
         assert_eq!(report.view.work.slug, "카트");
         assert_eq!(report.view.work.projects, vec!["fe", "be"]);
@@ -1102,8 +1187,8 @@ mod tests {
     #[test]
     fn list_derives_dirty_and_spec_files_and_sorts() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
-        start_work(&works, &archive_root(&works), &projects, "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "첫 작업", None, &slugs(&["fe"]), Some("b1")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "둘째 작업", None, &slugs(&["be"]), Some("b2")).unwrap();
 
         // 워크트리에 커밋 안 된 변경 → dirty, spec 파일 → specFiles
         std::fs::write(works.join("첫-작업/trees/fe/new.txt"), "x").unwrap();
@@ -1133,7 +1218,7 @@ mod tests {
     #[test]
     fn spec_files_stay_a_flat_sorted_list_whatever_the_folder_names_are() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &[], None).unwrap();
         let spec = works.join("카트/spec");
         for dir in ["01-첫-판/tickets", "02-둘째-판", "research", "explanation", "잡동사니"] {
             std::fs::create_dir_all(spec.join(dir)).unwrap();
@@ -1197,7 +1282,7 @@ mod tests {
     #[test]
     fn update_pinned_persists() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         assert!(!get_work(&works, "카트").unwrap().work.pinned);
 
         let view = update_work_pinned(&works, "카트", true).unwrap();
@@ -1215,7 +1300,7 @@ mod tests {
     #[test]
     fn update_status_persists() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         let view = update_work_status(&works, "카트", WorkStatus::Review).unwrap();
         assert_eq!(view.work.status, WorkStatus::Review);
         assert_eq!(get_work(&works, "카트").unwrap().work.status, WorkStatus::Review);
@@ -1234,7 +1319,7 @@ mod tests {
     #[test]
     fn draft_is_declared_and_changes_nothing_else() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let view = update_work_status(&works, "카트", WorkStatus::Draft).unwrap();
         assert_eq!(view.work.status, WorkStatus::Draft);
@@ -1251,7 +1336,7 @@ mod tests {
     #[test]
     fn attach_adds_project_with_worktree_and_is_idempotent() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
 
         let report = attach_project(&works, &projects, "카트", "be", None).unwrap();
         assert!(report.errors.is_empty());
@@ -1278,7 +1363,7 @@ mod tests {
     #[test]
     fn attach_fixes_the_branch_of_a_project_less_work() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "Late Branch", None, &[], None).unwrap();
         assert_eq!(get_work(&works, "late-branch").unwrap().work.branch, None);
 
         // 미정 + 명시 → 그 값으로 확정·저장되고 워크트리가 생긴다
@@ -1309,7 +1394,7 @@ mod tests {
     #[test]
     fn attach_without_a_branch_name_falls_back_to_the_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "Late Branch", None, &[], None).unwrap();
         let report = attach_project(&works, &projects, "late-branch", "fe", None).unwrap();
         assert_eq!(report.view.work.branch.as_deref(), Some("late-branch"));
     }
@@ -1328,14 +1413,14 @@ mod tests {
 
         // (1) 신규 work — 처음부터 막혔던 경로
         let (_t1, works, projects) = setup();
-        let new_work = start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some(bad));
+        let new_work = start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), Some(bad));
         assert!(matches!(new_work, Err(Error::Validation(_))), "{new_work:?}");
         assert!(!works.join("카트").exists(), "거부됐으면 아무것도 남지 않는다");
 
         // (2) 브랜치 미정 work를 재개하며 나쁜 이름을 넘긴다
         let (_t2, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "아이디어", Some("idea"), &[], None).unwrap();
-        let resumed = start_work(&works, &archive_root(&works), &projects, "아이디어", Some("idea"), &[], Some(bad));
+        start_work(&works, &archive_root(&works), Some(&projects), "아이디어", Some("idea"), &[], None).unwrap();
+        let resumed = start_work(&works, &archive_root(&works), Some(&projects), "아이디어", Some("idea"), &[], Some(bad));
         assert!(matches!(resumed, Err(Error::Validation(_))), "{resumed:?}");
         assert_eq!(
             get_work(&works, "idea").unwrap().work.branch, None,
@@ -1344,7 +1429,7 @@ mod tests {
 
         // (3) 프로젝트를 붙이며 slug가 브랜치로 승격되는 순간
         let (_t3, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "아이디어", Some(bad), &[], None)
+        start_work(&works, &archive_root(&works), Some(&projects), "아이디어", Some(bad), &[], None)
             .expect("slug로는 멀쩡한 이름이다 — 브랜치를 정하지 않는 경로는 통과해야 한다");
         let attached = attach_project(&works, &projects, bad, "fe", None);
         assert!(matches!(attached, Err(Error::Validation(_))), "{attached:?}");
@@ -1359,7 +1444,7 @@ mod tests {
     #[test]
     fn attach_saves_the_branch_before_it_tries_the_worktree() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "Late Branch", None, &[], None).unwrap();
         // 워크트리가 놓일 자리를 파일로 막아 git worktree add를 실패시킨다
         let tree = works.join("late-branch/trees/fe");
         std::fs::create_dir_all(tree.parent().unwrap()).unwrap();
@@ -1387,7 +1472,7 @@ mod tests {
     #[test]
     fn attach_saves_the_branch_even_when_the_tree_is_already_there() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "Late Branch", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "Late Branch", None, &[], None).unwrap();
         // 자리를 미리 채워 둔다 — attach는 만들 워크트리가 없다고 판단한다
         std::fs::create_dir_all(works.join("late-branch/trees/fe")).unwrap();
 
@@ -1409,7 +1494,7 @@ mod tests {
     #[test]
     fn attach_does_not_change_the_status() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "Draft Work", None, &[], None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "Draft Work", None, &[], None).unwrap();
         update_work_status(&works, "draft-work", WorkStatus::Draft).unwrap();
 
         let report =
@@ -1421,7 +1506,7 @@ mod tests {
     #[test]
     fn remove_refuses_dirty_worktrees_unless_forced() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         std::fs::write(works.join("카트/trees/be/wip.txt"), "uncommitted").unwrap();
 
         let result = remove_work(&works, "카트", false);
@@ -1449,7 +1534,7 @@ mod tests {
     #[test]
     fn remove_clean_work_without_force() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         remove_work(&works, "카트", false).unwrap();
         assert!(!works.join("카트").exists());
         assert!(list_works(&works).unwrap().is_empty());
@@ -1459,7 +1544,7 @@ mod tests {
     #[test]
     fn read_spec_file_reads_and_guards_traversal() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
@@ -1484,7 +1569,7 @@ mod tests {
     #[test]
     fn archived_docs_lead_with_the_record_and_omit_it_when_absent() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec/sub")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/spec/sub/arch.md"), "# 구조\n").unwrap();
@@ -1512,7 +1597,7 @@ mod tests {
     #[test]
     fn read_work_file_reaches_the_record_which_spec_reads_cannot() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::create_dir_all(works.join("카트/spec")).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
         std::fs::write(works.join("카트/record.md"), "# 기록\n").unwrap();
@@ -1539,13 +1624,13 @@ mod tests {
     #[test]
     fn resume_adopts_leftover_branch_instead_of_dead_ending() {
         let (tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), Some("feat/cart")).unwrap();
         // 부분 실패 잔재 시뮬레이션: be에 브랜치만 만들어지고 워크트리는 없는 상태
         run_git(&tmp.path().join("be"), &["branch", "feat/cart"]);
 
         // 재실행이 "branch already exists"로 막히면 영구 dead-end — 기존 브랜치를 채택해야 한다
         let report =
-            start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
+            start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe", "be"]), Some("feat/cart")).unwrap();
         assert!(report.errors.is_empty(), "resume must adopt the existing branch: {:?}", report.errors);
         let worktree = works.join("카트/trees/be");
         assert_eq!(run_git(&worktree, &["branch", "--show-current"]), "feat/cart");
@@ -1560,7 +1645,7 @@ mod tests {
     #[test]
     fn view_reports_spec_dir_next_to_spec_files() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트", None, &slugs(&["fe"]), None).unwrap();
         std::fs::write(works.join("카트/spec/overview.md"), "# 개요\n").unwrap();
 
         let view = get_work(&works, "카트").unwrap();
@@ -1582,10 +1667,10 @@ mod tests {
     #[test]
     fn start_with_different_title_gets_unique_slug() {
         let (_tmp, works, projects) = setup();
-        start_work(&works, &archive_root(&works), &projects, "카트 추가", None, &slugs(&["fe"]), None).unwrap();
+        start_work(&works, &archive_root(&works), Some(&projects), "카트 추가", None, &slugs(&["fe"]), None).unwrap();
         // slugify 결과가 같지만 제목이 다르면 별개 work
         let report =
-            start_work(&works, &archive_root(&works), &projects, "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
+            start_work(&works, &archive_root(&works), Some(&projects), "카트/추가", None, &slugs(&["be"]), Some("b2")).unwrap();
         assert_eq!(report.view.work.slug, "카트-추가-2");
     }
 
@@ -1609,7 +1694,7 @@ mod tests {
     fn record_reports_declared_branch_and_actual_head_separately() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "좌표", None, &slugs(&["fe"]), Some("feat/declared"))
+            start_work(&works, &archive_root(&works), Some(&projects), "좌표", None, &slugs(&["fe"]), Some("feat/declared"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1619,7 +1704,7 @@ mod tests {
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
         assert_ne!(head, declared_tip);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains(&format!("- 선언 브랜치: feat/declared — {declared_tip}")), "{doc}");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "{doc}");
     }
@@ -1636,7 +1721,7 @@ mod tests {
         let report = start_work(
             &works,
             &archive_root(&works),
-            &projects,
+            Some(&projects),
             "등급",
             None,
             &slugs(&["fe"]),
@@ -1653,19 +1738,19 @@ mod tests {
         }
 
         // 1등급 — 좌표는 있으나 담을 커밋이 없다 (막 만든 워크트리는 base와 같은 자리다)
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains(HEAD_LABEL), "좌표 라벨이 렌더러 출력에 없다: {doc}");
         assert_eq!(grade_of(&doc), 1, "커밋 없는 기록이 1등급으로 안 읽힌다: {doc}");
 
         // 2등급 — 커밋 표까지 담았다
         commit(&worktree, "b.txt", "y\n", "담길 커밋");
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains(COMMITS_HEADING), "커밋 표 제목이 렌더러 출력에 없다: {doc}");
         assert_eq!(grade_of(&doc), 2, "커밋 표를 담은 기록이 2등급으로 안 읽힌다: {doc}");
 
         // 0등급 — 워크트리를 읽을 수 없어 좌표조차 없다
         std::fs::remove_dir_all(&worktree).unwrap();
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert_eq!(grade_of(&doc), 0, "좌표 없는 기록이 0등급으로 안 읽힌다: {doc}");
     }
 
@@ -1676,7 +1761,7 @@ mod tests {
     fn record_traces_the_merge_commit_through_a_nested_merge() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "중첩", None, &slugs(&["fe"]), Some("feat/nested"))
+            start_work(&works, &archive_root(&works), Some(&projects), "중첩", None, &slugs(&["fe"]), Some("feat/nested"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1689,7 +1774,7 @@ mod tests {
         run_git(&repo, &["checkout", "main"]);
         run_git(&repo, &["merge", "--no-ff", "develop", "-m", "Merge develop into main"]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- base 반영: 예"), "{doc}");
         assert!(doc.contains("(PR #7)"), "머지 커밋을 못 찾았다: {doc}");
         assert!(doc.contains("기능 커밋"), "머지된 브랜치의 커밋이 비었다: {doc}");
@@ -1703,7 +1788,7 @@ mod tests {
     fn record_marks_a_fast_forwarded_branch_without_inventing_a_merge_commit() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "빨리감기", None, &slugs(&["fe"]), Some("feat/ff"))
+            start_work(&works, &archive_root(&works), Some(&projects), "빨리감기", None, &slugs(&["fe"]), Some("feat/ff"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
@@ -1714,7 +1799,7 @@ mod tests {
         // base가 더 나아가야 HEAD가 base의 진짜 조상이 된다 (HEAD == base가 아니라)
         commit(&repo, "after.txt", "a\n", "이후 커밋");
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- base 반영: 예"), "{doc}");
         assert!(doc.contains("fast-forward"), "머지 커밋이 없다는 사실이 빠졌다: {doc}");
         assert!(!doc.contains("(PR #"), "없는 머지 커밋을 지어냈다: {doc}");
@@ -1729,7 +1814,7 @@ mod tests {
     fn record_does_not_attribute_someone_elses_merge_to_a_branch_that_never_diverged() {
         let (tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "빈브랜치", None, &slugs(&["fe"]), Some("feat/empty"))
+            start_work(&works, &archive_root(&works), Some(&projects), "빈브랜치", None, &slugs(&["fe"]), Some("feat/empty"))
                 .unwrap();
         let work = report.view.work;
 
@@ -1740,7 +1825,7 @@ mod tests {
         let subject = "Merge pull request #99 from x/feat-other";
         run_git(&repo, &["merge", "--no-ff", "feat/other", "-m", subject]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(!doc.contains("(PR #99)"), "남의 머지를 이 브랜치 것으로 붙였다: {doc}");
         assert!(!doc.contains("남의 커밋"), "남의 커밋이 이 브랜치 것으로 섞였다: {doc}");
         assert!(doc.contains("커밋 0개 · 0파일"), "{doc}");
@@ -1761,7 +1846,7 @@ mod tests {
 
         // 브랜치는 여기서 갈라지고, 커밋을 하나도 만들지 않는다
         let report =
-            start_work(&works, &archive_root(&works), &projects, "분기만", None, &slugs(&["fe"]), Some("feat/branch-point"))
+            start_work(&works, &archive_root(&works), Some(&projects), "분기만", None, &slugs(&["fe"]), Some("feat/branch-point"))
                 .unwrap();
         let work = report.view.work;
 
@@ -1772,7 +1857,7 @@ mod tests {
         let subject = "Merge pull request #3 from Broco98/feat/other";
         run_git(&repo, &["merge", "--no-ff", "feat/other", "-m", subject]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(!doc.contains("(PR #3)"), "남의 머지를 물려받았다: {doc}");
         assert!(!doc.contains("남의 커밋") && !doc.contains("main 커밋"), "{doc}");
         assert!(doc.contains("커밋 0개 · 0파일"), "{doc}");
@@ -1782,14 +1867,14 @@ mod tests {
     fn record_reports_an_unmerged_branch_against_base() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "미반영", None, &slugs(&["fe"]), Some("feat/open"))
+            start_work(&works, &archive_root(&works), Some(&projects), "미반영", None, &slugs(&["fe"]), Some("feat/open"))
                 .unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         std::fs::write(worktree.join("one.txt"), "1\n").unwrap();
         commit(&worktree, "two.txt", "2\n", "미반영 커밋");
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- base 반영: 아니오"), "{doc}");
         assert!(doc.contains("커밋 1개 · 2파일 · +2 / −0"), "{doc}");
         assert!(doc.contains("| 미반영 커밋 |"), "커밋 표가 비었다: {doc}");
@@ -1800,13 +1885,32 @@ mod tests {
     #[test]
     fn record_for_a_work_without_projects_is_the_header_alone() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "리서치만", None, &[], None).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "리서치만", None, &[], None).unwrap();
 
-        let doc = render_record(&works, &projects, &report.view.work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &report.view.work, "2026-08-02");
         assert!(doc.starts_with("# 기록 — 리서치만\n"), "{doc}");
         assert!(doc.contains("- 아카이브: 2026-08-02"), "{doc}");
         assert!(doc.contains("- 아카이브 시점 상태: active"), "{doc}");
         assert!(!doc.contains("##"), "프로젝트 섹션이 없어야 한다: {doc}");
+    }
+
+    /// **등록부가 없는 세계도 기록은 같은 형식으로 남는다** — 아카이브 화면이 두 세계에서
+    /// 같은 것을 그려야 하므로(스펙 US 25) 여기서 문서 모양이 갈리면 안 된다.
+    ///
+    /// 등록부는 프로젝트 루프 **안에서만** 읽힌다. 프로젝트가 0개면 루프가 안 돌아 그
+    /// 자리에 닿지도 않는다는 것을, 루트를 주고 안 주고가 **같은 문자열**을 내는 것으로 잰다.
+    #[test]
+    fn record_without_a_project_registry_is_the_same_document() {
+        let (_tmp, works, projects) = setup();
+        let report =
+            start_work(&works, &archive_root(&works), None, "금융", Some("finance"), &[], None)
+                .unwrap();
+        let work = report.view.work;
+
+        let without = render_record(&works, None, &work, "2026-08-02");
+        assert!(without.starts_with("# 기록 — 금융\n"), "{without}");
+        assert!(!without.contains("##"), "프로젝트 섹션이 없어야 한다: {without}");
+        assert_eq!(without, render_record(&works, Some(&projects), &work, "2026-08-02"));
     }
 
     // ── 아카이브 실행 (archive_work) ──────────────────────────────────────
@@ -1815,7 +1919,7 @@ mod tests {
     /// 여러 프로젝트를 붙인 work를 세워 두고 (works_root, archive_root, slug)를 준다.
     fn started(works: &Path, projects: &Path, names: &[&str]) -> (PathBuf, String) {
         let report =
-            start_work(works, &archive_root(works), projects, "치울 것", None, &slugs(names), Some("feat/tidy"))
+            start_work(works, &archive_root(works), Some(projects), "치울 것", None, &slugs(names), Some("feat/tidy"))
                 .unwrap();
         assert!(report.errors.is_empty());
         (archive_root(works), report.view.work.slug)
@@ -1827,7 +1931,7 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
         std::fs::write(works.join(&slug).join("spec/overview.md"), "# 개요\n").unwrap();
 
-        let view = archive_work(&works, &archive, &projects, &slug).unwrap();
+        let view = archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         assert!(!works.join(&slug).exists(), "작업 루트에 남아 있다");
         assert!(archive.join(&slug).join("work.json").is_file());
@@ -1852,7 +1956,7 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
         commit(&works.join(&slug).join("trees/fe"), "x.txt", "x\n", "치울 커밋");
 
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let dir = archive.join(&slug);
         let record = std::fs::read_to_string(dir.join("record.md")).unwrap();
@@ -1869,7 +1973,7 @@ mod tests {
         let (tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe", "be"]);
 
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         for name in ["fe", "be"] {
             let repo = tmp.path().join(name);
@@ -1887,7 +1991,7 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
         update_work_status(&works, &slug, WorkStatus::Draft).unwrap();
 
-        let view = archive_work(&works, &archive, &projects, &slug).unwrap();
+        let view = archive_work(&works, &archive, Some(&projects), &slug).unwrap();
         assert_eq!(view.work.status, WorkStatus::Draft);
         assert_eq!(get_work(&archive, &slug).unwrap().work.status, WorkStatus::Draft);
     }
@@ -1899,7 +2003,7 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
 
         let before = chrono::Local::now().format("%Y-%m-%d").to_string();
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let raw = std::fs::read_to_string(archive.join(&slug).join("work.json")).unwrap();
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -1926,7 +2030,7 @@ mod tests {
         std::fs::create_dir_all(&occupied).unwrap();
         std::fs::write(occupied.join("record.md"), "먼저 있던 기록\n").unwrap();
 
-        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+        let err = archive_work(&works, &archive, Some(&projects), &slug).unwrap_err();
 
         assert!(err.to_string().contains("never overwritten"), "{err}");
         assert!(works.join(&slug).join("trees/fe").is_dir(), "워크트리를 이미 지웠다");
@@ -1955,7 +2059,7 @@ mod tests {
         // 말하게 되고, 앞 공백이 깎이는 첫 줄이라 경로 잘림도 이 줄이 함께 지킨다.
         std::fs::remove_file(worktree.join("a.txt")).unwrap();
 
-        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+        let err = archive_work(&works, &archive, Some(&projects), &slug).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("docs/plan.md"), "파일이 아니라 경로만 알려준다: {message}");
         assert!(message.contains("fe"), "{message}");
@@ -1981,7 +2085,7 @@ mod tests {
         let worktree = works.join(&slug).join("trees/fe");
         std::fs::write(worktree.join("dirty.txt"), "d\n").unwrap();
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
 
         assert!(works.join(&slug).join("work.json").is_file(), "work이 사라졌다");
         assert!(worktree.join("dirty.txt").is_file(), "커밋 안 된 파일이 사라졌다");
@@ -2002,7 +2106,7 @@ mod tests {
         // 원본 저장소가 사라진 워크트리 — 실제로 겪은 상태다
         std::fs::remove_dir_all(tmp.path().join("be")).unwrap();
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
 
         assert!(works.join(&slug).join("work.json").is_file());
         assert!(!archive.join(&slug).exists(), "하나가 실패했는데 옮겨졌다");
@@ -2013,13 +2117,29 @@ mod tests {
     fn archive_handles_a_work_that_has_no_worktree() {
         let (_tmp, works, projects) = setup();
         let archive = archive_root(&works);
-        start_work(&works, &archive, &projects, "리서치만", None, &[], None).unwrap();
+        start_work(&works, &archive, Some(&projects), "리서치만", None, &[], None).unwrap();
 
-        archive_work(&works, &archive, &projects, "리서치만").unwrap();
+        archive_work(&works, &archive, Some(&projects), "리서치만").unwrap();
 
         assert!(!works.join("리서치만").exists());
         let record = std::fs::read_to_string(archive.join("리서치만/record.md")).unwrap();
         assert!(record.starts_with("# 기록 — 리서치만\n"), "{record}");
+    }
+
+    /// 등록부가 없는 세계에서도 **치우는 길이 있다.** 아카이빙은 rooms에서 하나가 사라져
+    /// archive로 가는 일이고, 프로젝트는 그 길 어디에도 안 선다.
+    #[test]
+    fn archive_works_with_no_project_registry_at_all() {
+        let (_tmp, works, _projects) = setup();
+        let archive = archive_root(&works);
+        start_work(&works, &archive, None, "금융", Some("finance"), &[], None).unwrap();
+
+        archive_work(&works, &archive, None, "finance").unwrap();
+
+        assert!(!works.join("finance").exists());
+        assert!(archive.join("finance/work.json").is_file());
+        let record = std::fs::read_to_string(archive.join("finance/record.md")).unwrap();
+        assert!(record.starts_with("# 기록 — 금융\n"), "{record}");
     }
 
     /// 워크트리 제거와 이동 사이에서 멈춘 실행은 재실행이 흡수한다. 이 창에서 잃는 것은
@@ -2035,12 +2155,12 @@ mod tests {
 
         // 3단계까지 간 뒤 이동 직전에 멈춘 상태를 만든다
         let work = get_work(&works, &slug).unwrap().work;
-        let taken = render_record(&works, &projects, &work, "2026-08-02");
+        let taken = render_record(&works, Some(&projects), &work, "2026-08-02");
         std::fs::write(dir.join("record.md"), taken).unwrap();
         crate::git::worktree_remove(&dir.join("trees/fe"), false).unwrap();
         assert!(!run_git(&tmp.path().join("fe"), &["worktree", "list"]).contains("trees/"));
 
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         assert!(archive.join(&slug).join("work.json").is_file());
         let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
@@ -2058,13 +2178,13 @@ mod tests {
         let repo = tmp.path().join("fe");
         run_git(&repo, &["worktree", "lock", worktree.to_str().unwrap()]);
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
         assert!(works.join(&slug).join("record.md").is_file(), "1차 기록이 없다");
         assert!(worktree.is_dir(), "워크트리는 살아 있어야 하는 상황이다");
 
         run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
         commit(&worktree, "later.txt", "l\n", "1차 실패 뒤에 올린 커밋");
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
         assert!(record.contains("1차 실패 뒤에 올린 커밋"), "기록이 옛 시점에 고정됐다: {record}");
@@ -2085,14 +2205,14 @@ mod tests {
         commit(&worktree, "keep.txt", "k\n", "잃으면 안 되는 커밋");
         run_git(&repo, &["worktree", "lock", worktree.to_str().unwrap()]);
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
         let first = std::fs::read_to_string(works.join(&slug).join("record.md")).unwrap();
         assert!(first.contains("잃으면 안 되는 커밋"), "1차 기록에 커밋 표가 없다: {first}");
 
         // 재실행 전에 등록이 사라진다 — base를 못 읽어 커밋 범위를 특정할 수 없게 된다
         run_git(&repo, &["worktree", "unlock", worktree.to_str().unwrap()]);
         crate::delete_project(&projects, "fe").unwrap();
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let sealed = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
         assert!(sealed.contains("잃으면 안 되는 커밋"), "커밋 표가 사라졌다: {sealed}");
@@ -2111,12 +2231,12 @@ mod tests {
         let be_repo = tmp.path().join("be");
         run_git(&be_repo, &["worktree", "lock", be_worktree.to_str().unwrap()]);
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
         assert!(!dir.join("trees/fe").exists(), "fe는 제거됐어야 이 상황이 된다");
 
         run_git(&be_repo, &["worktree", "unlock", be_worktree.to_str().unwrap()]);
         commit(&be_worktree, "be.txt", "b\n", "be 커밋");
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let record = std::fs::read_to_string(archive.join(&slug).join("record.md")).unwrap();
         assert!(record.contains("fe 커밋"), "못 읽게 된 섹션을 빈 문서로 덮었다: {record}");
@@ -2132,7 +2252,7 @@ mod tests {
         let be_worktree = works.join(&slug).join("trees/be");
         run_git(&tmp.path().join("be"), &["worktree", "lock", be_worktree.to_str().unwrap()]);
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
 
         assert!(!archive.join(&slug).exists(), "부분 실패인데 옮겨졌다");
         assert!(works.join(&slug).join("work.json").is_file());
@@ -2153,7 +2273,7 @@ mod tests {
         perms.set_mode(0o500); // 안으로 새 항목을 만들 수 없다 — rename이 실패한다
         std::fs::set_permissions(&archive, perms.clone()).unwrap();
 
-        assert!(archive_work(&works, &archive, &projects, &slug).is_err());
+        assert!(archive_work(&works, &archive, Some(&projects), &slug).is_err());
 
         perms.set_mode(0o700);
         std::fs::set_permissions(&archive, perms).unwrap();
@@ -2171,18 +2291,18 @@ mod tests {
     fn start_does_not_reuse_a_slug_that_is_already_archived() {
         let (_tmp, works, projects) = setup();
         let archive = archive_root(&works);
-        start_work(&works, &archive, &projects, "카트", Some("cart"), &slugs(&["fe"]), Some("feat/cart"))
+        start_work(&works, &archive, Some(&projects), "카트", Some("cart"), &slugs(&["fe"]), Some("feat/cart"))
             .unwrap();
-        archive_work(&works, &archive, &projects, "cart").unwrap();
+        archive_work(&works, &archive, Some(&projects), "cart").unwrap();
 
         // 명시 경로: 재개가 아니다 — 아카이브는 되돌리지 않는다
         let err =
-            start_work(&works, &archive, &projects, "카트 다시", Some("cart"), &[], None).unwrap_err();
+            start_work(&works, &archive, Some(&projects), "카트 다시", Some("cart"), &[], None).unwrap_err();
         assert!(err.to_string().contains("archive"), "{err}");
         assert!(!works.join("cart").exists(), "거부됐는데 폴더가 생겼다");
 
         // 제목에서 파생하는 경로: 접미사가 붙는다
-        let report = start_work(&works, &archive, &projects, "cart", None, &[], None).unwrap();
+        let report = start_work(&works, &archive, Some(&projects), "cart", None, &[], None).unwrap();
         assert_eq!(report.view.work.slug, "cart-2");
     }
 
@@ -2196,7 +2316,7 @@ mod tests {
         let (archive, slug) = started(&works, &projects, &["fe"]);
         std::fs::write(works.join(&slug).join("spec/overview.md"), "# 개요\n").unwrap();
         let before = chrono::Local::now().format("%Y-%m-%d").to_string();
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         let listed = list_archive(&archive).unwrap();
         assert_eq!(listed.len(), 1);
@@ -2239,8 +2359,8 @@ mod tests {
         let (_tmp, works, projects) = setup();
         let archive = archive_root(&works);
         for slug in ["나중", "먼저"] {
-            start_work(&works, &archive, &projects, slug, Some(slug), &[], None).unwrap();
-            archive_work(&works, &archive, &projects, slug).unwrap();
+            start_work(&works, &archive, Some(&projects), slug, Some(slug), &[], None).unwrap();
+            archive_work(&works, &archive, Some(&projects), slug).unwrap();
         }
         let listed = list_archive(&archive).unwrap();
         let slugs: Vec<&str> = listed.iter().map(|e| e.slug.as_str()).collect();
@@ -2253,7 +2373,7 @@ mod tests {
     fn get_work_does_not_reach_into_the_archive() {
         let (_tmp, works, projects) = setup();
         let (archive, slug) = started(&works, &projects, &["fe"]);
-        archive_work(&works, &archive, &projects, &slug).unwrap();
+        archive_work(&works, &archive, Some(&projects), &slug).unwrap();
 
         assert!(matches!(get_work(&works, &slug), Err(Error::WorkNotFound(_))));
         // 같은 함수를 보존소 루트로 부르면 나온다 — 폴백은 호출부가 정한다
@@ -2268,7 +2388,7 @@ mod tests {
     #[test]
     fn record_still_finds_the_merge_after_the_branch_was_synced_onto_it() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "동기화", None, &slugs(&["fe"]), Some("feat/synced")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "동기화", None, &slugs(&["fe"]), Some("feat/synced")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "s.txt", "s\n", "동기화 전 커밋");
@@ -2278,7 +2398,7 @@ mod tests {
         run_git(&repo, &["merge", "--no-ff", "feat/synced", "-m", subject]);
         run_git(&worktree, &["merge", "--ff-only", "main"]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("(PR #8)"), "동기화 뒤 머지를 못 찾았다: {doc}");
         assert!(doc.contains("동기화 전 커밋"), "커밋이 통째로 사라졌다: {doc}");
         assert!(doc.contains("커밋 1개 · 1파일"), "{doc}");
@@ -2291,7 +2411,7 @@ mod tests {
     #[test]
     fn record_ignores_merges_that_pulled_base_into_the_branch() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "역방향", None, &slugs(&["fe"]), Some("feat/back")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "역방향", None, &slugs(&["fe"]), Some("feat/back")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         let repo = tmp.path().join("fe");
@@ -2304,7 +2424,7 @@ mod tests {
         run_git(&repo, &["merge", "--no-ff", "feat/back", "-m", "Merge pull request #6 from o/feat/back"]);
         run_git(&worktree, &["merge", "--ff-only", "main"]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("(PR #6)"), "{doc}");
         assert!(doc.contains("내 커밋"), "{doc}");
         assert!(!doc.contains("2번에 걸쳐"), "받는 쪽 머지를 구간으로 셌다: {doc}");
@@ -2317,7 +2437,7 @@ mod tests {
     #[test]
     fn record_does_not_take_the_merge_of_a_branch_whose_name_extends_its_own() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "짧은", Some("short"), &slugs(&["fe"]), Some("feat/x")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "짧은", Some("short"), &slugs(&["fe"]), Some("feat/x")).unwrap();
         let work = report.view.work;
         commit(&works.join("short/trees/fe"), "x.txt", "x\n", "내 커밋");
 
@@ -2328,7 +2448,7 @@ mod tests {
         let subject = "Merge pull request #9 from o/feat/x-followup";
         run_git(&repo, &["merge", "--no-ff", "feat/x-followup", "-m", subject]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(!doc.contains("(PR #9)"), "이름이 겹치는 남의 머지를 삼켰다: {doc}");
         assert!(!doc.contains("남의 커밋"), "남의 커밋이 이 work 것으로 기록됐다: {doc}");
     }
@@ -2336,7 +2456,7 @@ mod tests {
     #[test]
     fn record_covers_every_merge_when_a_branch_landed_twice() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "두번", None, &slugs(&["fe"]), Some("feat/twice")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "두번", None, &slugs(&["fe"]), Some("feat/twice")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         let repo = tmp.path().join("fe");
@@ -2346,7 +2466,7 @@ mod tests {
         commit(&worktree, "two.txt", "2\n", "둘째 커밋");
         run_git(&repo, &["merge", "--no-ff", "feat/twice", "-m", "Merge pull request #2 from o/feat/twice"]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("첫 커밋"), "첫 머지분이 통째로 빠졌다: {doc}");
         assert!(doc.contains("둘째 커밋"), "{doc}");
         assert!(doc.contains("커밋 2개 · 2파일"), "{doc}");
@@ -2358,14 +2478,14 @@ mod tests {
     #[test]
     fn record_says_the_declared_branch_is_gone_rather_than_passing_head_off_as_its_tip() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "사라진", None, &slugs(&["fe"]), Some("feat/gone")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "사라진", None, &slugs(&["fe"]), Some("feat/gone")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         run_git(&worktree, &["checkout", "-b", "release-x"]);
         run_git(&worktree, &["branch", "-D", "feat/gone"]);
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- 선언 브랜치: feat/gone — 이 저장소에 없다"), "{doc}");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "{doc}");
     }
@@ -2375,14 +2495,14 @@ mod tests {
     #[test]
     fn record_keeps_the_coordinates_when_the_project_is_no_longer_registered() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "o.txt", "o\n", "고아 커밋");
         let head = run_git(&worktree, &["rev-parse", "HEAD"]);
         crate::delete_project(&projects, "fe").unwrap();
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains(&format!("- 워크트리 HEAD: {head}")), "등록이 사라지자 좌표를 버렸다: {doc}");
         assert!(doc.contains("base: 알 수 없다"), "{doc}");
     }
@@ -2393,7 +2513,7 @@ mod tests {
     #[test]
     fn record_reads_the_base_from_the_remote_when_the_local_ref_lags() {
         let (tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "뒤처짐", None, &slugs(&["fe"]), Some("feat/lag")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "뒤처짐", None, &slugs(&["fe"]), Some("feat/lag")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "l.txt", "l\n", "머지될 커밋");
@@ -2405,7 +2525,7 @@ mod tests {
         run_git(&repo, &["update-ref", "refs/remotes/origin/main", &merged]);
         run_git(&repo, &["reset", "--hard", &format!("{merged}^1")]);
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- base 반영: 예"), "뒤처진 로컬 ref로 판정했다: {doc}");
         assert!(doc.contains("머지될 커밋"), "커밋 범위를 못 특정했다: {doc}");
     }
@@ -2417,7 +2537,7 @@ mod tests {
     #[test]
     fn record_falls_back_to_origin_head_when_the_project_is_gone() {
         let (_tmp, works, projects) = setup();
-        let report = start_work(&works, &archive_root(&works), &projects, "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
+        let report = start_work(&works, &archive_root(&works), Some(&projects), "고아", None, &slugs(&["fe"]), Some("feat/orphan")).unwrap();
         let work = report.view.work;
         let worktree = works.join(&work.slug).join("trees/fe");
         commit(&worktree, "o.txt", "o\n", "고아 커밋");
@@ -2429,7 +2549,7 @@ mod tests {
         run_git(&worktree, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
         crate::delete_project(&projects, "fe").unwrap();
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- base: main"), "origin/HEAD를 안 봤다: {doc}");
     }
 
@@ -2445,12 +2565,12 @@ mod tests {
         run_git(&tmp.path().join("fe"), &["merge", "--no-ff", "feat/tidy", "-m", subject]);
 
         let work = get_work(&works, &slug).unwrap().work;
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("- 한글 문서.md"), "파일명이 이스케이프됐다: {doc}");
 
         std::fs::create_dir_all(worktree.join("docs")).unwrap();
         std::fs::write(worktree.join("docs/설계 근거.md"), "메모\n").unwrap();
-        let err = archive_work(&works, &archive, &projects, &slug).unwrap_err();
+        let err = archive_work(&works, &archive, Some(&projects), &slug).unwrap_err();
         assert!(err.to_string().contains("docs/설계 근거.md"), "거부 사유를 못 읽는다: {err}");
     }
 
@@ -2459,12 +2579,12 @@ mod tests {
     fn record_has_a_section_per_project_even_when_a_worktree_is_gone() {
         let (_tmp, works, projects) = setup();
         let report =
-            start_work(&works, &archive_root(&works), &projects, "둘", None, &slugs(&["fe", "be"]), Some("feat/two"))
+            start_work(&works, &archive_root(&works), Some(&projects), "둘", None, &slugs(&["fe", "be"]), Some("feat/two"))
                 .unwrap();
         let work = report.view.work;
         std::fs::remove_dir_all(works.join(&work.slug).join("trees/be")).unwrap();
 
-        let doc = render_record(&works, &projects, &work, "2026-08-02");
+        let doc = render_record(&works, Some(&projects), &work, "2026-08-02");
         assert!(doc.contains("## fe") && doc.contains("## be"), "{doc}");
         assert_eq!(doc.matches("\n## ").count(), 2, "{doc}");
         assert!(doc.contains("기록 없음"), "읽지 못한 사실이 기록되지 않았다: {doc}");

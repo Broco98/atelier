@@ -13,12 +13,19 @@ fn plant_ghost(skills: &Path, name: &str) {
 /// `atelier mcp`를 띄우고 표준입력을 즉시 닫아 스스로 끝나게 한다.
 /// 정리는 serve() 이전에 동기적으로 돌기 때문에, 프로세스가 끝난 시점에는
 /// 반드시 끝나 있다.
+///
+/// **`ATELIER_MODE`를 지우는 것은 이 파일이 그 값을 안 재기 때문이다.** 서버는 모드를
+/// 스킬 정리보다 **먼저** 읽고 모르는 값이면 거기서 끝나므로, 개발자·CI 셸에 오타가
+/// 하나 떠 있으면 아래 검사들이 「유령 스킬이 남았다」로 빨개진다 — 실패 메시지가 원인을
+/// 전혀 안 가리킨다. 모드를 재는 것은 `mcp_server.rs`의 몫이고, 그쪽 `spawn_command`도
+/// 같은 이유로 같은 격리를 한다.
 fn run_server_to_completion(skills: &Path, data_home: &Path) -> std::process::Output {
     Command::cargo_bin("atelier")
         .unwrap()
         .arg("mcp")
         .env("ATELIER_SKILLS_DIR", skills)
         .env("ATELIER_HOME", data_home)
+        .env_remove("ATELIER_MODE")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -115,6 +122,9 @@ fn install_with_path(bin: &Path, skills: &Path) -> std::process::Output {
         .args(["mcp", "install"])
         .env("PATH", bin)                       // 진짜 claude로 새지 않는다
         .env("ATELIER_SKILLS_DIR", skills)
+        // 등록 경로는 오늘 모드를 안 읽지만, 위 helper와 **같은 환경**에서 돌아야 한다 —
+        // 한쪽만 격리하면 「같은 바이너리인데 여기서만 빨갛다」가 언젠가 돌아온다.
+        .env_remove("ATELIER_MODE")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

@@ -7,8 +7,12 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use atelier_core::{archive_dir, projects_dir, works_dir, ProjectPatch};
+use atelier_core::{archive_dir, projects_dir, works_dir, Mode, ProjectPatch};
 use serde_json::{Map, Value};
+
+/// 다리가 아직 아는 모드는 하나뿐이다. **명령이 `mode` 인자를 받는 것은 다음 티켓(#181)**
+/// 이고, 그때 이 상수가 인자로 바뀐다 (`commands.rs`의 같은 상수와 짝이다).
+const MODE: Mode = Mode::Atelier;
 
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
 type Args = Map<String, Value>;
@@ -40,45 +44,45 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
-    ("list_works", |_| ok(atelier_core::list_works(&works_dir()))),
-    ("get_work", |a| ok(atelier_core::get_work(&works_dir(), &text(a, "slug")?))),
+    ("list_works", |_| ok(atelier_core::list_works(&works_dir(MODE)))),
+    ("get_work", |a| ok(atelier_core::get_work(&works_dir(MODE), &text(a, "slug")?))),
     ("set_work_title", |a| {
-        ok(atelier_core::update_work_title(&works_dir(), &text(a, "slug")?, &text(a, "title")?))
+        ok(atelier_core::update_work_title(&works_dir(MODE), &text(a, "slug")?, &text(a, "title")?))
     }),
     ("set_work_status", |a| {
         let status = text(a, "status")?.parse().map_err(err)?;
-        ok(atelier_core::update_work_status(&works_dir(), &text(a, "slug")?, status))
+        ok(atelier_core::update_work_status(&works_dir(MODE), &text(a, "slug")?, status))
     }),
     ("set_work_pinned", |a| {
         let pinned = flag(a, "pinned")?;
-        ok(atelier_core::update_work_pinned(&works_dir(), &text(a, "slug")?, pinned))
+        ok(atelier_core::update_work_pinned(&works_dir(MODE), &text(a, "slug")?, pinned))
     }),
     ("archive_work", |a| {
         ok(atelier_core::archive_work(
-            &works_dir(),
-            &archive_dir(),
-            &projects_dir(),
+            &works_dir(MODE),
+            &archive_dir(MODE),
+            Some(&projects_dir()),
             &text(a, "slug")?,
         )
         .map(|_| ()))
     }),
     // commands.rs와 같이 force를 노출하지 않는다 — 커밋 안 된 변경이 있으면 거부한다.
-    ("remove_work", |a| ok(atelier_core::remove_work(&works_dir(), &text(a, "slug")?, false))),
+    ("remove_work", |a| ok(atelier_core::remove_work(&works_dir(MODE), &text(a, "slug")?, false))),
     ("read_spec_file", |a| {
-        ok(atelier_core::read_spec_file(&works_dir(), &text(a, "slug")?, &text(a, "path")?))
+        ok(atelier_core::read_spec_file(&works_dir(MODE), &text(a, "slug")?, &text(a, "path")?))
     }),
-    ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir()))),
+    ("list_archive", |_| ok(atelier_core::list_archive(&archive_dir(MODE)))),
     ("list_archived_docs", |a| {
-        ok(atelier_core::list_archived_docs(&archive_dir(), &text(a, "slug")?))
+        ok(atelier_core::list_archived_docs(&archive_dir(MODE), &text(a, "slug")?))
     }),
     ("read_archived_file", |a| {
-        ok(atelier_core::read_work_file(&archive_dir(), &text(a, "slug")?, &text(a, "path")?))
+        ok(atelier_core::read_work_file(&archive_dir(MODE), &text(a, "slug")?, &text(a, "path")?))
     }),
     ("search", |a| {
         ok(atelier_core::search(
-            &works_dir(),
-            &archive_dir(),
-            &projects_dir(),
+            &works_dir(MODE),
+            &archive_dir(MODE),
+            Some(&projects_dir()),
             &text(a, "query")?,
             &destinations(a)?,
         ))
@@ -255,6 +259,166 @@ mod tests {
                 "{name}이 다리에 의존한다 — 릴리스 산출물에 다리 코드가 섞인다"
             );
         }
+    }
+
+    /// 앱 크레이트 `src/` 아래의 소스 전부. **`include_str!`이라 파일이 사라지면 컴파일이
+    /// 깨진다** — 검사가 읽을 것을 못 찾아 조용히 통과하는 길이 없다 (위 등록부 스캔과
+    /// 같은 관례).
+    ///
+    /// **키는 `src/` 기준 상대 경로다.** 파일명만 적으면 `pty/mod.rs`처럼 하위 폴더로
+    /// 태어난 모듈을 적을 자리가 없고, 두 폴더의 같은 이름이 한 칸을 다툰다.
+    ///
+    /// `src-tauri/build.rs`는 일부러 밖이다 — 빌드 스크립트는 컴파일 시각에 돌고 앱
+    /// 프로세스가 아니라, 아래 검사가 막으려는 「도는 앱이 모드를 env에서 읽는다」가
+    /// 성립하지 않는다. 그래서 이 표가 덮는 것은 「앱 크레이트 전부」가 아니라
+    /// **`src-tauri/src/` 전부**다.
+    ///
+    /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
+    /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
+    const APP_SOURCES: [(&str, &str); 6] = [
+        ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
+        ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
+        ("main.rs", include_str!("../../../src-tauri/src/main.rs")),
+        ("pty.rs", include_str!("../../../src-tauri/src/pty.rs")),
+        ("settings.rs", include_str!("../../../src-tauri/src/settings.rs")),
+        ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
+    ];
+
+    /// CLI 크레이트 `src/` 아래의 소스 전부. 위 표와 짝이다 — 앱 쪽은 「env를 아예 안
+    /// 읽는다」를, 이쪽은 「읽는 자리가 하나뿐이다」를 붙든다.
+    const CLI_SOURCES: [(&str, &str); 9] = [
+        ("main.rs", include_str!("../../atelier-cli/src/main.rs")),
+        ("mcp/install.rs", include_str!("../../atelier-cli/src/mcp/install.rs")),
+        ("mcp/instructions.rs", include_str!("../../atelier-cli/src/mcp/instructions.rs")),
+        ("mcp/mod.rs", include_str!("../../atelier-cli/src/mcp/mod.rs")),
+        ("mcp/project_tools.rs", include_str!("../../atelier-cli/src/mcp/project_tools.rs")),
+        ("mcp/read_tools.rs", include_str!("../../atelier-cli/src/mcp/read_tools.rs")),
+        ("mcp/skill_cleanup.rs", include_str!("../../atelier-cli/src/mcp/skill_cleanup.rs")),
+        ("mcp/tool_error.rs", include_str!("../../atelier-cli/src/mcp/tool_error.rs")),
+        ("mcp/work_tools.rs", include_str!("../../atelier-cli/src/mcp/work_tools.rs")),
+    ];
+
+    /// `dir` 아래의 `.rs`를 **재귀로** 모아 `dir` 기준 상대 경로로 돌려준다.
+    ///
+    /// **재귀가 요점이다.** 한 겹만 읽으면 디렉터리 항목은 `.rs`로 안 끝나 필터에서 조용히
+    /// 버려지고, 하위 폴더로 태어난 모듈은 디스크 목록에도 표에도 없어 두 집합이 그대로
+    /// 맞는다 — 그 모듈이 무슨 짓을 하든 아래 검사들이 한 줄도 안 읽는다. 새 파일이 검사
+    /// 밖에서 태어나는 것을 막으려고 만든 커버리지 검사가 정확히 그 경우를 놓친다.
+    fn rust_sources_under(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+        let entries = std::fs::read_dir(dir)
+            .unwrap_or_else(|e| panic!("소스 폴더를 못 읽었다 ({}): {e}", dir.display()));
+        for entry in entries {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let path = entry.path();
+            if path.is_dir() {
+                rust_sources_under(&path, &format!("{prefix}{name}/"), out);
+            } else if name.ends_with(".rs") {
+                out.push(format!("{prefix}{name}"));
+            }
+        }
+    }
+
+    /// 표가 폴더를 **전부** 덮는지. 표에만 기대면 새 파일이 검사 밖에서 태어나고, 하필 그
+    /// 파일이 규칙을 깨는 파일일 수 있다. 폴더를 못 읽으면 순회에서 터지고, 한 개도 못
+    /// 모으면 여기서 터진다 — 「읽을 게 없어서 통과」가 이 검사에는 없다.
+    fn 표가_폴더를_덮는다(relative: &str, listed: &[(&str, &str)]) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        let mut on_disk = Vec::new();
+        rust_sources_under(&dir, "", &mut on_disk);
+        assert!(!on_disk.is_empty(), "{relative} 아래에서 소스를 하나도 못 읽었다 — 순회가 샜다");
+        on_disk.sort();
+
+        let mut listed: Vec<String> = listed.iter().map(|(name, _)| name.to_string()).collect();
+        listed.sort();
+
+        assert_eq!(listed, on_disk, "{relative}의 소스가 늘거나 줄었다 — 표에 함께 적어라");
+    }
+
+    #[test]
+    fn 앱_소스_표가_폴더_전체를_덮는다() {
+        표가_폴더를_덮는다("../../src-tauri/src", &APP_SOURCES);
+    }
+
+    #[test]
+    fn cli_소스_표가_폴더_전체를_덮는다() {
+        표가_폴더를_덮는다("../atelier-cli/src", &CLI_SOURCES);
+    }
+
+    /// 모드를 env에서 읽는 코드에 **반드시 나타나는 이름 셋.** 코어의 파서
+    /// (`mode_from_env`)·변수 이름 상수(`MODE_ENV`)·그 상수가 담은 문자열(`ATELIER_MODE`)
+    /// 이라, 어느 길로 읽든 소스에 이 중 하나는 적힌다.
+    const MODE_ENV_NAMES: [&str; 3] = ["mode_from_env", "MODE_ENV", "ATELIER_MODE"];
+
+    /// **앱은 모드를 환경에서 읽지 않는다** (결정 20).
+    ///
+    /// 앱은 두 세계를 한 프로세스에서 **함께** 그리므로, 프로세스에 값 하나인 env로는
+    /// 애초에 못 가른다 — 모드는 URL에서 나와 명령 인자로 내려간다. 앱 어딘가가 env를
+    /// 읽기 시작하면 그 자리만 저쪽 세계를 보게 되고, 화면과 데이터가 어긋난 채로 조용히
+    /// 돈다. 환경에서 모드를 읽는 자리는 **MCP 진입점 하나뿐이다** (아래 검사가 그 절반).
+    ///
+    /// **줄을 파싱하지 않는다.** 「읽는 호출과 변수 이름이 한 줄에 함께 선다」로 좁혔던
+    /// 판은 `let key = MODE_ENV;` / `let raw = var(key);` 두 줄이면 그대로 통과했다 —
+    /// 파서가 새면 조용히 통과하는 검사다. 그래서 **이름이 등장하는 것 자체**를 거절한다.
+    /// 지금 앱 소스에는 셋 다 한 번도 안 나오므로 이렇게 좁게 잠글 수 있다.
+    ///
+    /// **앱이 그 값을 셸에 심는 것**은 규칙 위반이 아니라 이 판의 설계다 (결정 15). 그
+    /// 자리는 #181이 `pty.rs`에 연다 — 그때 이 검사를 **통째로 지우지 말고** 그 한 자리만
+    /// 예외로 좁혀 다시 잠가야 한다. 지우면 남는 그물이 없다.
+    #[test]
+    fn 앱은_모드를_환경에서_읽지_않는다() {
+        for (file, source) in APP_SOURCES {
+            for name in MODE_ENV_NAMES {
+                assert!(
+                    !source.contains(name),
+                    "src-tauri/src/{file}에 '{name}'가 있다 — 앱에서 모드는 인자로 내려온다"
+                );
+            }
+        }
+    }
+
+    /// **env 파서를 부르는 자리는 MCP 진입점 하나뿐이다** (결정 20). 위 검사가 앱을
+    /// 잠그고 이 검사가 CLI를 잠근다 — 둘이 함께여야 「호출처가 하나」가 참이다.
+    ///
+    /// 왜 세는가: 도구 핸들러나 `install`이 env를 다시 읽기 시작하면 「루트는 기동 시 한 번
+    /// 확정한다」(`AtelierServer::for_mode`)가 조용히 거짓이 된다. 요청마다 env를 읽는
+    /// 서버는 한 프로세스 안에서 두 세계를 오갈 수 있고, 그 순간 도구가 어느 루트에
+    /// 썼는지는 호출 시점의 환경에 달린다 — 재현도 설명도 안 되는 자리다.
+    ///
+    /// 이름 셋 **전부**를 보는 것이 요점이다. `mode_from_env`만 세면
+    /// `std::env::var(MODE_ENV)`로 파서를 우회한 자리가 그대로 빠져나간다.
+    ///
+    /// **문서 문자열에 그 이름을 적는 것도 같이 걸린다.** 읽는 코드와 설명하는 글을 가르려면
+    /// 파싱이 필요하고, 파싱이 새면 이 검사가 조용히 통과한다 — 그 값을 치르느니 넓게
+    /// 잠근다. 지침(`instructions.rs`)이 그 이름을 적어야 하는 날에는 검사를 지우지 말고
+    /// 그 파일 하나를 예외로 좁혀라.
+    #[test]
+    fn cli에서_모드를_env로_읽는_자리는_진입점_하나뿐이다() {
+        const ENTRY: &str = "mcp/mod.rs";
+        for (file, source) in CLI_SOURCES {
+            if file == ENTRY {
+                continue;
+            }
+            for name in MODE_ENV_NAMES {
+                assert!(
+                    !source.contains(name),
+                    "crates/atelier-cli/src/{file}에 '{name}'가 있다 — 모드를 읽는 자리는 {ENTRY}뿐이다"
+                );
+            }
+        }
+
+        // 진입점 안에서도 **한 번**이다. 두 번 부르면 두 호출 사이에 env가 바뀔 수 있고,
+        // 그때 이 서버가 어느 세계인지가 부르는 순서에 달린다.
+        let entry = CLI_SOURCES
+            .iter()
+            .find(|(file, _)| *file == ENTRY)
+            .unwrap_or_else(|| panic!("{ENTRY}가 표에서 사라졌다"))
+            .1;
+        assert_eq!(
+            entry.matches("mode_from_env").count(),
+            1,
+            "{ENTRY}가 env 파서를 한 번이 아니라 여러 번 부른다"
+        );
     }
 
     /// 커맨드가 하나 늘었는데 다리가 그대로면, 그 커맨드를 쓰는 화면은 L4에서 조용히

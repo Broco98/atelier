@@ -114,10 +114,15 @@ pub struct SearchResults {
 /// 포함시킨 것(결정 5)이 오히려 방해가 된다.
 ///
 /// **상한은 층마다 20줄이다**(결정 24). 전체 상한이면 앞 층이 그것을 먹고 뒤 층이 영영 안 보인다.
+///
+/// **`projects_root`가 「없음」이면 프로젝트 층이 통째로 빈다.** 등록부가 없는 세계
+/// (Maison)에서 공부하다 ⇧⇧를 눌렀을 때 `feat/spec-search`가 뜨면 안 된다. 층을 뒤에서
+/// 걸러 내지 않고 **읽을 루트를 안 주는 것**이라, 걸러야 할 것을 잊는 자리가 안 생긴다 —
+/// 나머지 층은 이미 모드의 루트만 받고 있다.
 pub fn search(
     works_root: &Path,
     archive_root: &Path,
-    projects_root: &Path,
+    projects_root: Option<&Path>,
     query: &str,
     destinations: &[Destination],
 ) -> Result<SearchResults> {
@@ -215,10 +220,15 @@ fn work_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Resul
 
 /// 「프로젝트」 층. 순서는 `read_projects`가 주는 이름 사전순 그대로다(결정 23).
 /// 아카이브가 없는 층이라 갈래도 하나다.
-fn project_hits(projects_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
+///
+/// **루트가 없으면 층이 빈다** — 등록부가 없는 세계에는 이 층에 설 것이 없다. 빈 폴더를
+/// 걷게 하는 것과 결과는 같지만, 없는 폴더를 만들어 두는 쪽은 「Maison에도 프로젝트
+/// 자리가 있다」는 거짓을 디스크에 남긴다.
+fn project_hits(projects_root: Option<&Path>, tokens: &[String]) -> Result<Vec<SearchHit>> {
     if silent_when_empty(tokens) {
         return Ok(Vec::new());
     }
+    let Some(projects_root) = projects_root else { return Ok(Vec::new()) };
     Ok(read_projects(projects_root)?
         .into_iter()
         .filter(|project| matches(&project.name, tokens))
@@ -514,7 +524,7 @@ mod tests {
         doc(&works, "가", "spec/01-판/spec.md", 300);
         doc(&works, "가", "spec/decisions.md", 200);
 
-        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "", &[]).unwrap().hits;
         assert_eq!(
             rows(&hits),
             vec![
@@ -535,7 +545,7 @@ mod tests {
         doc(&archive, "옛일", "record.md", 999);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            rows(&search(&works, &archive, Some(&projects), "", &[]).unwrap().hits),
             vec![("가", "overview.md", false), ("옛일", "record.md", true)]
         );
     }
@@ -553,7 +563,7 @@ mod tests {
         work(&archive, "옛일", "옛 작업");
         doc(&archive, "옛일", "record.md", 5000);
 
-        let results = search(&works, &archive, &projects, "", &[]).unwrap();
+        let results = search(&works, &archive, Some(&projects), "", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
         assert_eq!(rows(&results.hits)[0], ("가", "00.md", false));
         assert_eq!(rows(&results.hits)[LAYER_LIMIT - 1], ("가", "19.md", false));
@@ -571,7 +581,7 @@ mod tests {
             doc(&works, "가", &format!("spec/{n:02}.md"), 1000 - n as u64);
         }
 
-        let results = search(&works, &archive, &projects, "", &[]).unwrap();
+        let results = search(&works, &archive, Some(&projects), "", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
         assert!(!results.truncated, "안 잘렸는데 잘렸다고 말했다");
     }
@@ -588,7 +598,7 @@ mod tests {
         doc(&archive, "옛일", "spec/overview.md", 80);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            rows(&search(&works, &archive, Some(&projects), "", &[]).unwrap().hits),
             vec![
                 ("가", "01-판/spec.md", false),
                 ("옛일", "record.md", true),
@@ -604,7 +614,7 @@ mod tests {
         work(&works, "가", "터미널 2판");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "", &[]).unwrap().hits;
         let SearchHit::Doc { title, .. } = &hits[0] else { panic!("문서 줄이 아니다") };
         assert_eq!(title, "터미널 2판");
     }
@@ -620,7 +630,7 @@ mod tests {
         std::fs::write(broken.join("work.json"), "not json").unwrap();
         doc(&works, "망가진것", "spec/overview.md", 999);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, Some(&projects), "", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
     }
 
     /// 아카이브 폴더는 첫 아카이빙이, 프로젝트 폴더는 첫 등록이 만든다 — **검색은 만들지
@@ -632,7 +642,7 @@ mod tests {
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, Some(&projects), "", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
         assert!(!archive.exists(), "조회가 아카이브 폴더를 만들었다");
         assert!(!projects.exists(), "조회가 프로젝트 폴더를 만들었다");
     }
@@ -644,7 +654,7 @@ mod tests {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "빈것", "빈 작업");
 
-        assert!(search(&works, &archive, &projects, "", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, Some(&projects), "", &[]).unwrap().hits.is_empty());
     }
 
     /// 갈래를 태그로 싣는다 — 프런트가 필드 유무로 종류를 되짚지 않게. 「잘렸다」가 줄이
@@ -655,7 +665,7 @@ mod tests {
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let json = serde_json::to_value(search(&works, &archive, &projects, "", &[]).unwrap()).unwrap();
+        let json = serde_json::to_value(search(&works, &archive, Some(&projects), "", &[]).unwrap()).unwrap();
         assert_eq!(json["truncated"], false);
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "doc");
@@ -682,7 +692,7 @@ mod tests {
 
         // **work 줄이 그 문서들 위에 함께 선다**(결정 14) — 층 순서가 「작업 → 문서」다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "네비게이션", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "네비게이션", &[]).unwrap().hits),
             vec![
                 "작업 가",
                 "문서 가/overview.md",
@@ -692,7 +702,7 @@ mod tests {
         );
         // 다 지우면 남의 것까지 도로 선다 — 가장 최근에 고쳐진 것이 맨 위다.
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits)[0],
+            rows(&search(&works, &archive, Some(&projects), "", &[]).unwrap().hits)[0],
             ("나", "overview.md", false)
         );
     }
@@ -707,7 +717,7 @@ mod tests {
         doc(&works, "가", "spec/02-둘째판/spec.md", 100);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "네비게이션 둘째", &[]).unwrap().hits),
+            rows(&search(&works, &archive, Some(&projects), "네비게이션 둘째", &[]).unwrap().hits),
             vec![("가", "02-둘째판/spec.md", false)]
         );
     }
@@ -721,7 +731,7 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "미널", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "미널", &[]).unwrap().hits),
             vec!["작업 가", "문서 가/overview.md"]
         );
     }
@@ -734,10 +744,10 @@ mod tests {
         doc(&works, "가", "spec/Overview.md", 100);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "cart OVERVIEW", &[]).unwrap().hits),
+            rows(&search(&works, &archive, Some(&projects), "cart OVERVIEW", &[]).unwrap().hits),
             vec![("가", "Overview.md", false)]
         );
-        assert!(search(&works, &archive, &projects, "cart 없는말", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, Some(&projects), "cart 없는말", &[]).unwrap().hits.is_empty());
     }
 
     /// 결정 22. **최소 질의 길이가 없다** — 주 쓰임이 「한 글자를 치는 순간」이다.
@@ -750,7 +760,7 @@ mod tests {
         doc(&works, "나", "spec/overview.md", 200);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "나", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "나", &[]).unwrap().hits),
             vec!["작업 나", "문서 나/overview.md"]
         );
     }
@@ -767,7 +777,7 @@ mod tests {
         // **층마다 따로 갈린다** — 아카이브 work이 활성 work 아래이되, 그 work의 문서가
         // 활성 work의 문서보다 위로 올라오지는 않는다(결정 13).
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "공통말", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "공통말", &[]).unwrap().hits),
             vec![
                 "작업 가",
                 "작업 옛일 (아카이브)",
@@ -788,7 +798,7 @@ mod tests {
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "빈자리인 것도 확인했다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "빈자리", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "빈자리", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/overview.md"]);
         // 스니펫 한 줄이 **맞은 대목**을 보여 준다 — 열기 전에 왜 떴는지가 그 줄 안에서 설명된다.
         assert_eq!(snippets(&hits), vec!["빈자리인 것도 확인했다"]);
@@ -809,7 +819,7 @@ mod tests {
         );
         doc_with(&works, "가", "spec/모인.md", 200, "한 문단에 주소와 tab이 함께 있다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "주소 tab", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/모인.md"]);
     }
 
@@ -827,7 +837,7 @@ mod tests {
             "주소가 위치의 정본이라 문서는 `?file=`,\n  탭은 `tab`으로 산다\n".as_bytes(),
         );
 
-        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "주소 tab", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/접힌.md"]);
         // **스니펫도 한 줄이다** — 접힌 것을 펴서 내보내야 토큰이 그 줄 안에 함께 선다.
         // 이어 붙이는 자리의 들여쓰기는 접기의 흔적이라 남기지 않는다.
@@ -851,7 +861,7 @@ mod tests {
             "먼저 맞는 문단\n\n사이에 낀 문단\n\n나중에 맞는 문단\n".as_bytes(),
         );
 
-        let hits = search(&works, &archive, &projects, "맞는", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "맞는", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/여럿.md"]);
         assert_eq!(snippets(&hits), vec!["먼저 맞는 문단"]);
     }
@@ -867,7 +877,7 @@ mod tests {
         doc_with(&works, "가", "spec/cat.png", 100, b"\x89PNG\r\n\x1a\n\xff\xfe cat");
         doc_with(&works, "가", "spec/cat.md", 200, "cat 이야기\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "cat", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "cat", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["문서 가/cat.md", "문서 가/cat.png", "본문 가/cat.md"]);
     }
 
@@ -884,7 +894,7 @@ mod tests {
         doc_with(&archive, "옛것", "record.md", 999, "메아리가 저기 있다\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "메아리", &nav()).unwrap().hits),
             vec![
                 "문서 활성것/메아리.md",
                 "본문 활성것/본문것.md",
@@ -904,7 +914,7 @@ mod tests {
         doc_with(&works, "가", "spec/메아리.md", 100, "메아리가 이름에도 본문에도 있다\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "메아리", &nav()).unwrap().hits),
             vec!["문서 가/메아리.md", "본문 가/메아리.md"]
         );
     }
@@ -919,7 +929,7 @@ mod tests {
         doc_with(&works, "가", "spec/가운데.md", 200, "메아리\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "메아리", &nav()).unwrap().hits),
             vec!["본문 가/나중.md", "본문 가/가운데.md", "본문 가/먼저.md"]
         );
     }
@@ -933,7 +943,7 @@ mod tests {
             doc_with(&works, "가", &format!("spec/{n:02}.md"), 100 + n as u64, "메아리\n".as_bytes());
         }
 
-        let results = search(&works, &archive, &projects, "메아리", &nav()).unwrap();
+        let results = search(&works, &archive, Some(&projects), "메아리", &nav()).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
         assert!(results.truncated, "잘렸는데 잘렸다고 말하지 않았다");
     }
@@ -945,11 +955,11 @@ mod tests {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "예전 말\n".as_bytes());
-        assert!(search(&works, &archive, &projects, "새말", &nav()).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, Some(&projects), "새말", &nav()).unwrap().hits.is_empty());
 
         doc_with(&works, "가", "spec/overview.md", 200, "새말이 들어왔다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "새말", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "새말", &nav()).unwrap().hits;
         assert_eq!(snippets(&hits), vec!["새말이 들어왔다"]);
     }
 
@@ -963,7 +973,7 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "", &nav()).unwrap().hits),
             vec!["문서 가/overview.md"]
         );
     }
@@ -976,7 +986,7 @@ mod tests {
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "메아리\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, Some(&projects), "메아리", &nav()).unwrap().hits;
         let json = serde_json::to_value(&hits[0]).unwrap();
         let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
@@ -992,7 +1002,7 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
         std::fs::write(tmp.path().join("CONTEXT.md"), "말의 정본\n").unwrap();
 
-        assert!(search(&works, &archive, &projects, "context", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, Some(&projects), "context", &[]).unwrap().hits.is_empty());
     }
 
     // ── 「가는 곳」·작업·프로젝트 층 (결정 13·14·21·23·25)
@@ -1006,16 +1016,16 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "Pro", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "Pro", &nav()).unwrap().hits),
             vec!["가는곳 projects", "작업 가", "문서 가/overview.md"]
         );
         // Terminal·Archive도 같다 — 셋이 같은 규칙 하나를 지난다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "term", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "term", &nav()).unwrap().hits),
             vec!["가는곳 terminal"]
         );
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "archi", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "archi", &nav()).unwrap().hits),
             vec!["가는곳 archive"]
         );
     }
@@ -1026,7 +1036,7 @@ mod tests {
     fn 목적지_줄은_key만_싣는다() {
         let (_tmp, works, archive, projects) = roots();
 
-        let answer = search(&works, &archive, &projects, "Pro", &nav()).unwrap();
+        let answer = search(&works, &archive, Some(&projects), "Pro", &nav()).unwrap();
         let json = serde_json::to_value(&answer).unwrap();
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "destination");
@@ -1044,7 +1054,30 @@ mod tests {
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "Pro", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "Pro", &[]).unwrap().hits),
+            vec!["작업 가", "문서 가/overview.md"]
+        );
+    }
+
+    /// **등록부가 없는 세계에서는 프로젝트 층이 통째로 빈다** — 공부하다 ⇧⇧를 눌렀을 때
+    /// `feat/spec-search`가 뜨면 판 01이 없애려던 누수가 검색에 그대로 남는다.
+    ///
+    /// 같은 코퍼스에 루트를 **주고 안 주고**만 갈라 잰다: 「원래 안 뜨는 질의였다」로
+    /// 초록이 되는 것을 막는 것이 요점이다.
+    #[test]
+    fn 프로젝트_루트가_없으면_그_층만_빈다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "빌링 작업");
+        doc(&works, "가", "spec/overview.md", 100);
+        project(&projects, "billing", "빌링");
+
+        assert_eq!(
+            lines(&search(&works, &archive, Some(&projects), "빌링", &nav()).unwrap().hits),
+            vec!["작업 가", "프로젝트 billing", "문서 가/overview.md"]
+        );
+        // 루트가 없으면 프로젝트 줄만 빠지고 나머지 층은 한 줄도 안 달라진다.
+        assert_eq!(
+            lines(&search(&works, &archive, None, "빌링", &nav()).unwrap().hits),
             vec!["작업 가", "문서 가/overview.md"]
         );
     }
@@ -1060,12 +1093,12 @@ mod tests {
         project(&projects, "billing", "빌링");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "", &nav()).unwrap().hits),
             vec!["문서 가/overview.md"]
         );
         // 공백만 친 것도 토큰 0개다 — 「비었다」의 판정이 한 자리다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "   ", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "   ", &nav()).unwrap().hits),
             vec!["문서 가/overview.md"]
         );
     }
@@ -1078,7 +1111,7 @@ mod tests {
         work(&works, "방금만든것", "방금 만든 작업");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "방금", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "방금", &[]).unwrap().hits),
             vec!["작업 방금만든것"]
         );
     }
@@ -1096,7 +1129,7 @@ mod tests {
         work_at(&works, "pinned", "묶음 고정", "2026-07-01", true);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "묶음", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "묶음", &[]).unwrap().hits),
             vec!["작업 pinned", "작업 new-a", "작업 new-b", "작업 old"]
         );
     }
@@ -1110,7 +1143,7 @@ mod tests {
         project(&projects, "g", "gamma");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "a", &[]).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "a", &[]).unwrap().hits),
             vec!["프로젝트 a", "프로젝트 b", "프로젝트 g"]
         );
     }
@@ -1129,7 +1162,7 @@ mod tests {
         project(&projects, "argo", "argo");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "ar", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, Some(&projects), "ar", &nav()).unwrap().hits),
             vec![
                 "가는곳 archive",
                 "작업 활성것",
@@ -1151,7 +1184,7 @@ mod tests {
         work(&works, "문서집", "묶음 문서집");
         doc(&works, "문서집", "spec/overview.md", 100);
 
-        let results = search(&works, &archive, &projects, "묶음", &[]).unwrap();
+        let results = search(&works, &archive, Some(&projects), "묶음", &[]).unwrap();
         // 작업 층이 스무 줄에서 잘려도 **문서 층은 그대로 선다.**
         assert_eq!(results.hits.len(), LAYER_LIMIT + 1);
         assert_eq!(lines(&results.hits)[LAYER_LIMIT], "문서 문서집/overview.md");
