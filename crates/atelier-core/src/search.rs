@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use crate::store::read_projects;
 use crate::works::{read_works, spec_dir, spec_files};
-use crate::{list_archive, list_archived_docs, Result, Work};
+use crate::{list_archive, list_archived_docs, Result, Work, WorkStatus};
 
 /// 프런트가 건네는 **「무엇이 있는가」**(결정 21). main nav의 라우트 문자열은 프런트 것이고,
 /// 코어가 그것을 알면 목적지가 늘 때마다 Rust를 고쳐야 한다 — `nav-items.ts`가 「앞으로 늘어날
@@ -79,8 +79,18 @@ pub enum SearchHit {
 /// 층이 영영 안 보인다.
 ///
 /// **20은 실측이 하한을 정했다**: work 하나가 가진 문서가 최대 11개라 그보다 작으면
-/// 「work 이름을 치면 그 문서가 전부 뜬다」가 잘린다. 상한이 필요한 것도 실측이다 —
-/// 빈 질의가 낼 줄이 197개(활성 38 + 아카이브 159)다.
+/// 「work 이름을 치면 그 문서가 전부 뜬다」가 잘린다.
+///
+/// **상한이 필요한 근거가 갈렸다.** 한때는 「빈 질의가 낼 줄이 197개(활성 38 + 아카이브
+/// 159)」였는데, 빈 질의가 문서·본문 층을 안 세우게 되면서(결정 5·6) 그 숫자가 사라졌다.
+/// 남은 근거는 **친 질의**다 — 흔한 토큰 하나면 문서·본문 층이 그만큼 나오고, 작업 층도
+/// 활성 18 + 아카이브 29를 함께 센다.
+///
+/// **결정 10의 표제(「작업 층에 상한을 두지 않는다」)와 이 상수가 어긋난 채로 남는다.**
+/// 결정문 자신이 「넘는 날 다시 볼 자리」로 넘겼는데, **넘는 날 아무도 안 알려준다** —
+/// 값이 안 바뀌므로 컴파일도 검사도 침묵한다. 그래서 작업 층이 이 값에 닿는 검사를 하나
+/// 세워 기록으로 남긴다(`빈_질의의_작업_층이_상한에_닿으면_잘린다`). 실측(2026-09-07)
+/// 빈 질의의 작업 층은 **가는 곳 4 + 작업 18로 여유가 2줄**이다.
 pub(crate) const LAYER_LIMIT: usize = 20;
 
 /// 팔레트가 한 번에 받는 것. **줄들만으로는 「잘렸다」를 말할 수 없다** — 딱 20줄이 온 것과
@@ -95,9 +105,13 @@ pub struct SearchResults {
 
 // **한때 `truncated: bool`이 함께 실려 나갔다.** 화면이 바닥에 「일부만 보입니다 — 더 치면
 // 좁혀집니다」를 세우기 위한 값이었는데, 그 줄이 걷히면서(결정 24 — 이제 바닥이 **녹아서**
-// 말한다) 읽는 자리가 하나도 안 남았다. 실측이 그 줄을 편들지 않았다: 빈 질의가 문서 층을
-// 전량 세우므로 `truncated`는 **팔레트를 열 때마다 참**이었고, 늘 켜진 신호가 나르는 정보는
-// 0이다. 아무도 안 읽는 값을 계약에 남기면 다음 사람이 그것을 뜻 있는 것으로 읽는다.
+// 말한다) 읽는 자리가 하나도 안 남았다. 그때 실측이 그 줄을 편들지 않았다: 빈 질의가 문서
+// 층을 전량 세우므로 `truncated`는 **팔레트를 열 때마다 참**이었고, 늘 켜진 신호가 나르는
+// 정보는 0이다. 아무도 안 읽는 값을 계약에 남기면 다음 사람이 그것을 뜻 있는 것으로 읽는다.
+//
+// **그 실측은 이제 사실이 아니다** — 빈 질의가 문서 층을 안 세운다(결정 5·6). 값을 되살릴
+// 이유는 여전히 없다: 읽는 자리가 없다는 첫째 근거가 그대로이고, 바닥이 녹어 말하는 그 길이
+// 「더 있다」를 화면에서 이미 답한다.
 
 /// 질의에 맞는 것들. **인덱스도 캐시도 없다** — 부를 때마다 디스크를 걷는다.
 ///
@@ -152,8 +166,11 @@ fn tokens(query: &str) -> Vec<String> {
 /// **맞추는 재료가 화면에 적히는 것과 같다.** 줄에 서는 말을 그대로 건네므로, 왜 떴는지가
 /// 줄 안에서 설명된다.
 fn matches(hay: &str, tokens: &[String]) -> bool {
-    // 빈 질의가 여기서 갈린다 — 접을 문자열도 안 만든다. (문서 층만 이 길로 온다: 나머지
-    // 층은 토큰이 없으면 아예 안 선다.)
+    // 빈 질의가 여기서 갈린다 — 접을 문자열도 안 만든다. **이 길로 오는 것은 목적지 층이다**
+    // (작업 층은 빈 질의에서 아예 다른 술어를 쓰고, 프로젝트·문서·본문은 안 선다).
+    //
+    // **이 한 줄이 「빈 팔레트가 가는 곳을 낸다」의 전부다.** 여기를 좁혀 「토큰이 없으면
+    // 거짓」으로 만들면 빈 화면이 통째로 빈다 — 그 갈래를 세는 검사가 코어 단위에 있다.
     if tokens.is_empty() {
         return true;
     }
@@ -161,19 +178,28 @@ fn matches(hay: &str, tokens: &[String]) -> bool {
     tokens.iter().all(|token| hay.contains(token))
 }
 
-/// **질의가 비면 문서 말고는 아무것도 안 선다**(결정 25). 토큰이 없으면 목적지·작업·프로젝트가
-/// 전부 공허참으로 맞아 늘 문서 위에 서는데, 빈 팔레트의 노림수가 「걔가 방금 뭐 썼지가 키
-/// 두 번」이다(결정 11) — 그것들이 위에 서면 방향키를 그만큼 더 눌러야 한다.
+/// **질의가 비면 프로젝트·문서·본문은 안 선다**(결정 5·6). 서는 것은 **가는 곳과 작업 둘**
+/// 이고, 빈 팔레트가 답하는 물음이 「나 어디로 갈까」 하나가 된다.
+///
+/// **결정 25를 개정한 결과다.** 그때는 정확히 반대였다 — 문서만 서고 나머지가 침묵했다.
+/// 뒤집은 근거는 실물로 그려 본 겹침이다: 빈 화면의 문서 줄 넷 중 셋이 **이미 위에 선
+/// work의 것**이라 같은 사실을 두 번 말했고, 정작 「Projects로 가자」·「그 work으로 가자」는
+/// 팔레트를 연 뒤에도 글자를 쳐야 시작됐다.
+///
+/// **부르는 자리가 셋이다 — 프로젝트·문서·본문.** 목적지·작업 층은 부르지 않는다. 이 집합이
+/// 곧 빈 화면의 모양이라, 한 자리만 어긋나도 화면이 통째로 갈린다(문서 층에 이 호출을 안
+/// 넣으면 빈 화면에 문서 줄이 그대로 남는데, 컴파일도 다른 검사도 그것을 안 잡는다).
 fn silent_when_empty(tokens: &[String]) -> bool {
     tokens.is_empty()
 }
 
 /// 「가는 곳」 층. **순서는 프런트가 건넨 그대로다** — 목적지가 사이드바에 선 순서이고,
 /// 코어가 그것을 다시 정렬하면 두 세상이 생긴다.
+///
+/// **빈 질의에 전부 선다**(결정 5·9). 침묵 가드를 안 부르고, 토큰 0개에 참을 주는
+/// `matches`가 그대로 통과시킨다 — 사이드바를 ⌘B로 접어 뒀을 때 그것을 펴는 것보다
+/// ⌘K 한 번이 먼저인 자리가 여기다. 넷뿐이라 상한에 닿을 일도 없다.
 fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<SearchHit> {
-    if silent_when_empty(tokens) {
-        return Vec::new();
-    }
     destinations
         .iter()
         .filter(|dest| matches(&dest.label, tokens))
@@ -181,22 +207,47 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
         .collect()
 }
 
-/// 「작업」 층. **순서를 새로 발명하지 않는다**(결정 23) — 활성은 목록 함수와 같은 비교자를
-/// 쓰는 `read_works`가 주고(고정 먼저 → 만든 순 → slug), 아카이브는 `list_archive`가 준다
+/// 「작업」 층. **순서를 새로 발명하지 않는다** — 활성은 목록 함수와 같은 비교자를 쓰는
+/// `read_works`가 주고(고정 먼저 → 만든 순 → slug), 아카이브는 `list_archive`가 준다
 /// (치운 순 → slug). 팔레트가 다른 순서를 쓰면 사이드바·Archive 화면과 어긋난 두 세상이 생긴다.
 ///
-/// **아카이브는 이 층 안에서 활성 아래다**(결정 5·13) — 층을 가로지르지는 않는다.
+/// **빈 질의와 친 질의가 가르는 것은 멤버십뿐이다 — 순서는 두 갈래 공통이다**(결정 16).
+/// 갈래를 순서까지 끌고 가면 **첫 타자에 작업 줄들이 서로 자리를 바꾼다**: 이 층에는
+/// 디바운스가 없어서 그 재배열이 즉시 일어난다.
+///
+/// **빈 질의의 술어는 `pinned || status != Draft`다**(결정 7). 화면 구획 함수
+/// (`work-sections.ts`)의 앞의 둘과 같은 정의이고, 거기서 **고정은 status와 무관하게 먼저
+/// 갈린다** — 고정된 초안은 고정 구획에 산다. `status != Draft`만 보면 그것을 떨어뜨리는데
+/// status 갈래가 넷(Draft·Active·Review·Done)이라 컴파일이 안 잡고, 실측 초안이 0건이라
+/// 실물에서도 티가 안 난다. **`status == Active`로 적으면 Review·Done까지 함께 죽는다.**
+/// 그리고 그것은 결정 11(「고정이 MRU를 이긴다 — 선언이 관찰에 지면 고정을 켜는 행위가
+/// 아무것도 안 바꾸는 날이 생긴다」)과 정면으로 어긋난다.
+///
+/// **빈 질의는 아카이브 목록을 아예 안 부른다**(결정 8). 부르면 실측(2026-09-07) 활성 18 +
+/// 아카이브 29 = 47줄이 나와 상한 20에서 **활성 18 + 아카이브 2**로 잘린다 — 치운 것과
+/// 지금 것이 스무 번째 자리를 두고 다툰다. IO가 함께 준다.
+///
+/// **아카이브는 친 질의에서만 서고, 그때 이 층 안에서 활성 아래다**(결정 8·13) — 층을
+/// 가로지르지는 않는다. 아카이브 본문까지 찾는 유일한 길이 그쪽이라 팔레트에서 빼지 않는다.
 ///
 /// 맞추는 재료는 **제목**이다: 줄에 서는 것이 그것이다.
 fn work_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
-    if silent_when_empty(tokens) {
-        return Ok(Vec::new());
-    }
+    let empty = silent_when_empty(tokens);
+    let standing = |work: &Work| {
+        if empty {
+            work.pinned || work.status != WorkStatus::Draft
+        } else {
+            matches(&work.title, tokens)
+        }
+    };
     let mut hits: Vec<SearchHit> = read_works(works_root)?
         .into_iter()
-        .filter(|work| matches(&work.title, tokens))
+        .filter(standing)
         .map(|work| SearchHit::Work { slug: work.slug, title: work.title, archived: false })
         .collect();
+    if empty {
+        return Ok(hits);
+    }
     hits.extend(
         list_archive(archive_root)?
             .into_iter()
@@ -229,12 +280,20 @@ fn project_hits(projects_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit
 /// (「A」→ a·b·c), 한 단어를 더하면 그 안에서 좁혀진다. 「부모를 맞추면 자식을 펼친다」는
 /// 별도 규칙이 필요 없다.
 ///
-/// **질의가 비면 전부 맞는다** — 「최근 고쳐진 문서」가 별도 갈래가 아니라 토큰 0개의 자연스러운
-/// 답이다(결정 11). 그래서 이 층에는 질의 있는 길과 없는 길이 따로 없다.
+/// **질의가 비면 안 선다**(결정 5). 이 층에 갈래가 생긴 것이 이 판이다 — 전에는 빈 질의가
+/// 「최근 고쳐진 문서」를 세우는 유일한 층이었고(옛 결정 11), 그래서 질의 있는 길과 없는
+/// 길이 따로 없었다. 걷어낸 근거는 실물로 그려 본 겹침이다: **빈 화면의 문서 줄 넷 중 셋이
+/// 이미 위에 선 work의 것**이었다.
+///
+/// **빈 질의 IO가 이 한 줄로 준다.** 전에는 팔레트를 열 때마다 두 루트의 work 목록을 걷고
+/// 문서마다 mtime을 쳤다 — 이제 빈 질의에서는 아무 폴더도 안 연다.
 ///
 /// **본문은 안 본다** — 파일을 열지 않는다. 그 일은 아래 본문 층의 몫이고, 둘이 **같은
 /// 걷기와 같은 정렬**(`doc_layer`)을 쓰되 맞추는 재료만 다르다.
 fn doc_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
+    if silent_when_empty(tokens) {
+        return Ok(Vec::new());
+    }
     doc_layer(works_root, archive_root, &mut |work, rel, _, archived| {
         matches(&format!("{}/{}", work.title, rel), tokens).then(|| SearchHit::Doc {
             slug: work.slug.clone(),
@@ -258,8 +317,8 @@ fn doc_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result
 /// 실측(2026-08-30) 코퍼스 216파일 3.7MB 전량을 읽고 문단을 거는 데 약 18ms이고, 인덱스가
 /// 없으면 세션이 밖에서 문서를 고쳐도 늘 최신이다(결정 29).
 ///
-/// **질의가 비면 안 선다**(결정 25). 토큰이 없으면 문단마다 공허참으로 맞아 문서마다 줄이
-/// 하나씩 더 서는데, 빈 팔레트의 노림수는 「최근 고쳐진 문서」 하나다.
+/// **질의가 비면 안 선다**(결정 6). 토큰이 없으면 문단마다 공허참으로 맞아 문서마다 줄이
+/// 하나씩 더 선다. 빈 팔레트가 답하는 물음은 「나 어디로 갈까」 하나다.
 fn text_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
     if silent_when_empty(tokens) {
         return Ok(Vec::new());
@@ -399,12 +458,25 @@ mod tests {
     /// 고정 여부와 만든 날을 못 박는 work. **작업 층의 순서를 재는 검사만 쓴다** — 나머지는
     /// 그 둘을 안 보므로 `work`이 기본값으로 덮는다.
     fn work_at(root: &Path, slug: &str, title: &str, created_at: &str, pinned: bool) {
+        work_full(root, slug, title, created_at, pinned, "active");
+    }
+
+    /// 상태까지 못 박는 work. **빈 질의의 멤버십을 재는 검사만 쓴다** — 그 술어가 보는 것이
+    /// 고정과 상태 둘이라, 갈래 넷(draft·active·review·done)을 실제로 놓을 수 있어야 한다.
+    fn work_full(
+        root: &Path,
+        slug: &str,
+        title: &str,
+        created_at: &str,
+        pinned: bool,
+        status: &str,
+    ) {
         let dir = root.join(slug);
         std::fs::create_dir_all(dir.join("spec")).unwrap();
         std::fs::write(
             dir.join("work.json"),
             format!(
-                r#"{{"title":"{title}","status":"active","createdAt":"{created_at}","projects":[],"pinned":{pinned}}}"#
+                r#"{{"title":"{title}","status":"{status}","createdAt":"{created_at}","projects":[],"pinned":{pinned}}}"#
             ),
         )
         .unwrap();
@@ -502,7 +574,13 @@ mod tests {
         (tmp, works, archive, projects)
     }
 
-    /// 결정 11. 「걔가 방금 뭐 썼지」가 키 두 번이 되려면 방금 고친 것이 맨 위여야 한다.
+    /// 결정 23. 문서 층 안의 순서는 **고쳐진 때 내림차순**이다 — 좁힌 뒤에도 방금 고친
+    /// 것이 위여야 「걔가 방금 뭐 썼지」가 짧아진다.
+    ///
+    /// **한때 빈 질의로 이것을 쟀다**(옛 결정 11). 빈 화면이 문서 층을 안 세우게 되면서
+    /// (결정 5) 재는 자리를 친 질의로 옮겼다 — 지운 것이 아니라 옮긴 것이고, 성질 자체는
+    /// 그대로 산다. 아래 여러 검사가 같은 이유로 `"md"`를 친다: 놓은 문서가 전부 `.md`라
+    /// **문서 층만** 서고, work 제목에도 목적지 라벨에도 그 토막이 없다.
     #[test]
     fn 최근_고쳐진_문서가_먼저_선다() {
         let (_tmp, works, archive, projects) = roots();
@@ -511,7 +589,7 @@ mod tests {
         doc(&works, "가", "spec/01-판/spec.md", 300);
         doc(&works, "가", "spec/decisions.md", 200);
 
-        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        let hits = search(&works, &archive, &projects, "md", &[]).unwrap().hits;
         assert_eq!(
             rows(&hits),
             vec![
@@ -532,13 +610,16 @@ mod tests {
         doc(&archive, "옛일", "record.md", 999);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits),
             vec![("가", "overview.md", false), ("옛일", "record.md", true)]
         );
     }
 
-    /// 결정 24. 빈 질의가 낼 줄이 실측 197개다 — 안 막으면 방향키로 훑는 것이 고르는 것보다
-    /// 비싸진다.
+    /// 결정 24. 한 층이 스무 줄에서 잘린다 — 안 막으면 방향키로 훑는 것이 고르는 것보다
+    /// 비싸진다. 흔한 토막 하나면 문서 층이 그만큼 나온다.
+    ///
+    /// **상한 그물이 이 검사와 바로 아래 검사 둘뿐이다.** 빈 질의로 재던 것을 친 질의로
+    /// 옮기면서 이 둘을 안 옮겼다면 상한을 재는 자리가 통째로 사라졌을 것이다.
     #[test]
     fn 스무_줄에서_자른다() {
         let (_tmp, works, archive, projects) = roots();
@@ -550,7 +631,7 @@ mod tests {
         work(&archive, "옛일", "옛 작업");
         doc(&archive, "옛일", "record.md", 5000);
 
-        let results = search(&works, &archive, &projects, "", &[]).unwrap();
+        let results = search(&works, &archive, &projects, "md", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
         assert_eq!(rows(&results.hits)[0], ("가", "00.md", false));
         assert_eq!(rows(&results.hits)[LAYER_LIMIT - 1], ("가", "19.md", false));
@@ -567,7 +648,7 @@ mod tests {
             doc(&works, "가", &format!("spec/{n:02}.md"), 1000 - n as u64);
         }
 
-        let results = search(&works, &archive, &projects, "", &[]).unwrap();
+        let results = search(&works, &archive, &projects, "md", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
     }
 
@@ -583,7 +664,7 @@ mod tests {
         doc(&archive, "옛일", "spec/overview.md", 80);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits),
             vec![
                 ("가", "01-판/spec.md", false),
                 ("옛일", "record.md", true),
@@ -599,7 +680,7 @@ mod tests {
         work(&works, "가", "터미널 2판");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        let hits = search(&works, &archive, &projects, "md", &[]).unwrap().hits;
         let SearchHit::Doc { title, .. } = &hits[0] else { panic!("문서 줄이 아니다") };
         assert_eq!(title, "터미널 2판");
     }
@@ -615,7 +696,7 @@ mod tests {
         std::fs::write(broken.join("work.json"), "not json").unwrap();
         doc(&works, "망가진것", "spec/overview.md", 999);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
     }
 
     /// 아카이브 폴더는 첫 아카이빙이, 프로젝트 폴더는 첫 등록이 만든다 — **검색은 만들지
@@ -627,19 +708,19 @@ mod tests {
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
         assert!(!archive.exists(), "조회가 아카이브 폴더를 만들었다");
         assert!(!projects.exists(), "조회가 프로젝트 폴더를 만들었다");
     }
 
     /// 문서가 하나도 없는 work은 **문서 층에** 줄을 안 낸다 — 그 work을 세우는 것은 작업
-    /// 층의 일이고, 빈 질의에는 그 층이 서지 않는다(결정 25).
+    /// 층의 일이다. 여기서 치는 `"md"`는 그 work의 제목에 없어서 작업 층도 안 선다.
     #[test]
     fn 문서가_없는_work은_문서_줄을_안_낸다() {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "빈것", "빈 작업");
 
-        assert!(search(&works, &archive, &projects, "", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, &projects, "md", &[]).unwrap().hits.is_empty());
     }
 
     /// 갈래를 태그로 싣는다 — 프런트가 필드 유무로 종류를 되짚지 않게. 「잘렸다」가 줄이
@@ -650,7 +731,7 @@ mod tests {
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let json = serde_json::to_value(search(&works, &archive, &projects, "", &[]).unwrap()).unwrap();
+        let json = serde_json::to_value(search(&works, &archive, &projects, "md", &[]).unwrap()).unwrap();
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "doc");
         assert_eq!(row["slug"], "가");
@@ -662,8 +743,7 @@ mod tests {
     // ── 질의로 좁히는 규칙 (결정 9·12·22)
 
     /// **주 쓰임이 이 검사다**(결정 12): work 이름을 치면 그 work의 문서가 전부 뜬다
-    /// (「A」→ a·b·c). 좁힌 안에서도 순서는 mtime 내림차순이고(결정 23), **질의를 다 지우면**
-    /// 최근 고쳐진 문서로 돌아온다(결정 11).
+    /// (「A」→ a·b·c). 좁힌 안에서도 순서는 mtime 내림차순이다(결정 23).
     #[test]
     fn work_이름을_치면_그_work의_문서가_전부_뜬다() {
         let (_tmp, works, archive, projects) = roots();
@@ -684,9 +764,9 @@ mod tests {
                 "문서 가/01-첫판/spec.md",
             ]
         );
-        // 다 지우면 남의 것까지 도로 선다 — 가장 최근에 고쳐진 것이 맨 위다.
+        // 넓히면 남의 것까지 도로 선다 — 가장 최근에 고쳐진 것이 맨 위다.
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "", &[]).unwrap().hits)[0],
+            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits)[0],
             ("나", "overview.md", false)
         );
     }
@@ -946,19 +1026,23 @@ mod tests {
         assert_eq!(snippets(&hits), vec!["새말이 들어왔다"]);
     }
 
-    /// 결정 25. 질의가 비면 **최근 고쳐진 문서만** 선다 — 본문 층도 안 선다. 토큰이 없으면
-    /// 문단마다 공허참으로 맞아 문서마다 줄이 하나씩 더 서고, 빈 팔레트의 노림수(「걔가 방금
-    /// 뭐 썼지가 키 두 번」)가 그만큼 밀린다.
+    /// 결정 6. 질의가 비면 **본문 층은 안 선다.** 토큰이 없으면 문단마다 공허참으로 맞아
+    /// 문서마다 줄이 하나씩 더 선다.
     #[test]
     fn 질의가_비면_본문_층은_안_선다() {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
-            vec!["문서 가/overview.md"]
+        let hits = search(&works, &archive, &projects, "", &nav()).unwrap().hits;
+        assert!(
+            !hits.iter().any(|hit| matches!(hit, SearchHit::Text { .. })),
+            "빈 질의에 본문 줄이 섰다: {hits:?}"
         );
+        // **같은 문서가 치면 본문으로 나온다** — 「놓은 것이 없어서 안 섰다」로 초록이 되지
+        // 않게. 이 한 줄이 없으면 본문 층을 통째로 지워도 위 단언이 초록이다.
+        let hits = search(&works, &archive, &projects, "본문", &nav()).unwrap().hits;
+        assert!(hits.iter().any(|hit| matches!(hit, SearchHit::Text { .. })));
     }
 
     /// 결정 31. **`heading`은 판 03이 더한다** — 그때까지 아무도 안 읽는 필드로 살면 틀려도
@@ -1042,11 +1126,15 @@ mod tests {
         );
     }
 
-    /// 결정 25. **질의가 비면 최근 고쳐진 문서만 선다.** 토큰이 없으면 목적지·작업·프로젝트가
-    /// 전부 공허참으로 맞아 늘 문서 위에 서는데, 빈 팔레트의 노림수가 「걔가 방금 뭐 썼지가
-    /// 키 두 번」이다(결정 11) — 그것들이 위에 서면 방향키를 그만큼 더 눌러야 한다.
+    /// 결정 5·6·9. **빈 질의에 서는 것은 가는 곳과 작업 둘뿐이다.** 팔레트를 열자마자
+    /// 답하는 물음이 「나 어디로 갈까」 하나가 된다 — 프로젝트·문서·본문은 글자를 쳐야 나온다.
+    ///
+    /// **결정 25를 개정한 결과다.** 그때는 정확히 반대였다(문서만 서고 나머지가 침묵).
+    /// 뒤집은 근거는 실물로 그려 본 겹침이다: 빈 화면의 문서 줄 넷 중 셋이 **이미 위에 선
+    /// work의 것**이었고, 정작 주 쓰임(Projects·Terminal·각 work을 오간다)에 대해 빈 화면이
+    /// 아무 말도 안 했다.
     #[test]
-    fn 질의가_비면_최근_고쳐진_문서만_선다() {
+    fn 빈_질의에_가는_곳과_작업만_선다() {
         let (_tmp, works, archive, projects) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
@@ -1054,13 +1142,121 @@ mod tests {
 
         assert_eq!(
             lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
-            vec!["문서 가/overview.md"]
+            vec!["가는곳 projects", "가는곳 terminal", "가는곳 archive", "작업 가"]
         );
         // 공백만 친 것도 토큰 0개다 — 「비었다」의 판정이 한 자리다.
         assert_eq!(
             lines(&search(&works, &archive, &projects, "   ", &nav()).unwrap().hits),
-            vec!["문서 가/overview.md"]
+            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits)
         );
+    }
+
+    /// **문서 줄이 하나도 안 선다는 것을 따로 센다**(결정 5). 위 검사는 층 구성을 통째로
+    /// 재는데, 문서 층에 침묵 가드를 안 넣은 실수는 그 목록이 어차피 갈리므로 **다른 이유로**
+    /// 빨개진다 — 고칠 때 문서 줄이 남은 채로 초록을 만들 수 있다. 그 한 갈래를 여기서 못박는다.
+    #[test]
+    fn 빈_질의에_문서_줄이_하나도_안_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        for n in 0..3 {
+            doc(&works, "가", &format!("spec/{n}.md"), 100 + n as u64);
+        }
+
+        let hits = search(&works, &archive, &projects, "", &nav()).unwrap().hits;
+        assert!(
+            !hits.iter().any(|hit| matches!(hit, SearchHit::Doc { .. })),
+            "빈 질의에 문서 줄이 섰다: {hits:?}"
+        );
+        // **그 문서들은 치면 나온다** — 「놓은 것이 없어서 안 섰다」로 초록이 되지 않게.
+        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits).len(), 3);
+    }
+
+    /// 결정 7·11. **고정된 초안은 빈 질의에 선다.** 화면 구획 함수에서 고정은 상태와 무관하게
+    /// 먼저 갈리고, 「고정이 관찰을 이긴다」가 결정 11이다 — 선언이 지면 고정을 켜는 행위가
+    /// 아무것도 안 바꾸는 날이 생긴다.
+    ///
+    /// **아래 검사와 한 몸으로 묶지 않는다.** 합치면 둘이 서로를 가려, 술어를
+    /// `status != Draft`로만 적은 실수가 초록으로 지나간다.
+    #[test]
+    fn 고정된_초안은_빈_질의에_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work_full(&works, "고정초안", "고정된 초안", "2026-08-01", true, "draft");
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            vec!["작업 고정초안"]
+        );
+    }
+
+    /// 결정 7. **고정 아닌 초안은 빈 질의에 안 선다.** 팔레트에는 층 안에 하위 구획이 없어서,
+    /// 초안이 진행 중인 것과 구별 없이 섞인다.
+    #[test]
+    fn 고정_아닌_초안은_빈_질의에_안_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work_full(&works, "초안", "그냥 초안", "2026-08-01", false, "draft");
+        work(&works, "도는것", "도는 작업");
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            vec!["작업 도는것"]
+        );
+        // **치면 나온다** — 빼는 것은 빈 화면의 자리 다툼 때문이지 초안을 감추려는 것이 아니다.
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "그냥", &[]).unwrap().hits),
+            vec!["작업 초안"]
+        );
+    }
+
+    /// 결정 7. **거르는 것은 초안 하나다** — review·done은 빈 질의에 그대로 선다. 술어를
+    /// `status == Active`로 적으면 그 둘이 함께 죽는데, 상태 갈래가 넷이라 컴파일이 안 잡는다.
+    #[test]
+    fn review와_done도_빈_질의에_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work_full(&works, "리뷰", "리뷰 중", "2026-08-02", false, "review");
+        work_full(&works, "끝난것", "끝난 작업", "2026-08-01", false, "done");
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            vec!["작업 리뷰", "작업 끝난것"]
+        );
+    }
+
+    /// 결정 8. **빈 질의는 아카이브 목록을 아예 안 부른다.** 부르면 실측(2026-09-07) 활성 18 +
+    /// 아카이브 29 = 47줄이 나와 상한 20에서 활성 18 + 아카이브 2로 잘린다 — 치운 것과 지금
+    /// 것이 스무 번째 자리를 두고 다툰다.
+    ///
+    /// **초안 검사에 묶지 않는다** — 하나가 다른 하나를 가린다.
+    #[test]
+    fn 빈_질의에_아카이브_work은_안_선다() {
+        let (_tmp, works, archive, projects) = roots();
+        work(&works, "가", "가 작업");
+        work(&archive, "옛일", "옛 작업");
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            vec!["작업 가"]
+        );
+        // **치면 활성 아래에 선다**(결정 8·13). 아카이브 본문까지 찾는 유일한 길이 그쪽이다.
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, "작업", &[]).unwrap().hits),
+            vec!["작업 가", "작업 옛일 (아카이브)"]
+        );
+    }
+
+    /// **결정 10의 표제와 코드가 어긋난 채로 남는 자리다.** 결정문은 「작업 층에 상한을 두지
+    /// 않는다」인데 코드는 여전히 `LAYER_LIMIT`에서 자른다. 결정문 자신이 「넘는 날 다시 볼
+    /// 자리」로 넘겼지만 **넘는 날 아무도 안 알려주므로**, 최소한 기록으로 남긴다.
+    ///
+    /// 실측(2026-09-07) 빈 질의의 작업 층은 18줄이라 여유가 **2줄**이다.
+    #[test]
+    fn 빈_질의의_작업_층이_상한에_닿으면_잘린다() {
+        let (_tmp, works, archive, projects) = roots();
+        for n in 0..LAYER_LIMIT + 5 {
+            work_at(&works, &format!("w{n:02}"), &format!("작업 {n:02}"), "2026-08-01", false);
+        }
+
+        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        assert_eq!(hits.len(), LAYER_LIMIT, "작업 층이 상한에서 잘린다 — 결정 10을 다시 볼 자리다");
     }
 
     /// 결정 14. **문서만 결과가 되면 spec 문서가 0개인 work은 검색에 영영 안 뜬다** —
