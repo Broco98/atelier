@@ -40,12 +40,25 @@ const places = [
 export const destinations: Destination[] = places.map(({ key, label }) => ({ key, label }));
 
 /**
+ * 그 `key`의 자리. **되찾기가 셋이라 훑는 자리를 하나로 둔다** — 라벨·글리프·주소가 각자
+ * `find`를 부르면 「어느 목록을 훑는가」가 세 곳에 살고, 설정이 `navItems` 밖에 사는 지금
+ * 한 곳만 그 배열로 되돌아가도 **그 줄만 조용히 빠진다**(주소를 되찾는 쪽이 실제로 그렇게
+ * 틀렸던 자리다 — 아래 `destinationTo` 주석).
+ *
+ * 모르는 `key`가 `undefined`인 것은 **계약이 깨졌다는 뜻이다** — 코어는 여기서 건넨 것만
+ * 돌려준다. 그때 무엇을 보여 줄지는 되찾는 쪽이 각자 정한다.
+ */
+function placeOf(key: string) {
+  return places.find((item) => item.key === key);
+}
+
+/**
  * 목적지 줄에 서는 말. 모르는 `key`는 **지어내지 않고 그대로 보여 준다** — 코어는 여기서
  * 건넨 것만 돌려주므로 그런 줄은 계약이 깨진 것이고, 그때 화면이 조용히 그럴듯한 말을
  * 지어내면 어디가 어긋났는지 보이지 않는다.
  */
 export function destinationLabel(key: string): string {
-  return places.find((item) => item.key === key)?.label ?? key;
+  return placeOf(key)?.label ?? key;
 }
 
 /**
@@ -58,7 +71,7 @@ export function destinationLabel(key: string): string {
  * 생겼나」는 화면의 것이다.
  */
 export function destinationIcon(key: string): LucideIcon | null {
-  return places.find((item) => item.key === key)?.icon ?? null;
+  return placeOf(key)?.icon ?? null;
 }
 
 /**
@@ -66,5 +79,5 @@ export function destinationIcon(key: string): LucideIcon | null {
  * `navItems`만 보면 팔레트 목록에는 뜨는데 Enter가 아무 일도 안 하는 줄이 된다.
  */
 export function destinationTo(key: string): (typeof places)[number]["to"] | null {
-  return places.find((item) => item.key === key)?.to ?? null;
+  return placeOf(key)?.to ?? null;
 }

@@ -11,18 +11,35 @@ pub fn data_root() -> PathBuf {
 }
 
 pub fn projects_dir() -> PathBuf {
-    data_root().join("projects")
+    projects_in(&data_root())
 }
 
 pub fn works_dir() -> PathBuf {
-    data_root().join("works")
+    works_in(&data_root())
 }
 
 /// 끝난 work가 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
 /// 작업 목록을 읽는 코드는 이 루트를 보지 않으므로, 목록에서 빠지는 것이 규약이 아니라
 /// 구조가 된다.
 pub fn archive_dir() -> PathBuf {
-    data_root().join("archive")
+    archive_in(&data_root())
+}
+
+// 아래 셋이 **배치의 정본이다** — 데이터 루트 아래 어느 폴더가 무엇인지를 아는 자리가 여기
+// 하나다. 위의 무인자 셋은 `data_root()`를 먹인 것뿐이고, 루트를 인자로 받는 코어 함수들
+// (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와
+// 검색이 보는 폴더가 갈리는데, 화면에는 「왜 안 뜨지」로만 나타난다.
+
+pub(crate) fn projects_in(root: &Path) -> PathBuf {
+    root.join("projects")
+}
+
+pub(crate) fn works_in(root: &Path) -> PathBuf {
+    root.join("works")
+}
+
+pub(crate) fn archive_in(root: &Path) -> PathBuf {
+    root.join("archive")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {

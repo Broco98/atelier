@@ -12,7 +12,7 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // 소스 스캔이 의존성 배열을 원문으로 못 박지만(`-work-search.test.ts`), 그것만으로는
 // **그 effect가 실제로 도는지**를 못 본다 — 둘이 짝이어야 그물이 된다.
 
-const [specWork] = WORKS;
+const [specWork, otherWork] = WORKS;
 
 const palette = (page: Page) => page.getByRole("listbox", { name: "검색 결과" });
 const rows = (page: Page) => page.getByRole("option");
@@ -63,5 +63,27 @@ test("work 화면이 서면 그 work을 열었다고 적고, 문서·탭을 바�
   await expect(page.locator(".xterm")).toHaveCount(1);
 
   expect(await touched(page), "탭을 바꾸는데 「열었다」가 또 나갔다").toEqual(afterOpen);
+
+  // ── ④ **다른 work으로 간다 — 여기서 「한 번」을 잰다.**
+  //
+  // 위에서 절대값을 포기한 이유는 마운트에 있다: StrictMode가 effect를 마운트마다 두 번
+  // 돌린다. 그런데 이 이동은 **마운트가 아니라 의존성 변화다** — 같은 라우트의 `slug`만
+  // 갈리므로 컴포넌트가 살아 있고, effect가 딱 한 번 다시 돈다. 그래서 이 단에서는 늘어난
+  // 수를 **절대값으로** 못박을 수 있고, 티켓이 요구한 「그 slug로 한 번」이 실제로 여기서
+  // 재진다. 늘어난 것이 둘이면 마운트가 일어났다는 뜻이라 이 셈 자체가 무너지므로,
+  // 그때도 이 줄이 빨개지는 것이 맞다.
+  // **앱 안에서 옮긴다 — `goto`가 아니다.** 새로 실으면 IPC 기록이 통째로 비워져서 위에서
+  // 모아 둔 `afterOpen`과 견줄 수가 없다(그러면 이 단이 재는 것이 아무것도 아니게 된다).
+  await page.getByRole("button", { name: otherWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${otherWork.slug}`));
+  await expect
+    .poll(() => touched(page).then((all) => all.length))
+    .toBeGreaterThan(afterOpen.length);
+  const afterMove = await touched(page);
+  expect(afterMove.slice(0, afterOpen.length), "앞서 나간 것이 바뀌었다").toEqual(afterOpen);
+  expect(afterMove.slice(afterOpen.length), "다른 work으로 갔는데 한 번이 아니다").toEqual([
+    otherWork.slug,
+  ]);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

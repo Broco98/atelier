@@ -131,17 +131,11 @@ pub async fn read_archived_file(slug: String, path: String) -> CmdResult<String>
 /// 것은 부르는 쪽이 한다 — 막아야 할 것은 비용이 아니라 순서 뒤바뀜이다.
 #[tauri::command]
 pub async fn search(query: String, destinations: Vec<Destination>) -> CmdResult<SearchResults> {
-    atelier_core::search(
-        &works_dir(),
-        &archive_dir(),
-        &projects_dir(),
-        // **이력 루트도 코어가 정한 자리다**(결정 13). 여기서 `~/.atelier`를 박으면
-        // `ATELIER_HOME` 오버라이드가 이 자리에서만 죽는다.
-        &data_root(),
-        &query,
-        &destinations,
-    )
-    .map_err(err)
+    // **데이터 루트 하나만 넘긴다** — 층별 폴더는 코어가 파생한다(`paths.rs`). 넷을 따로
+    // 넘기던 때는 「반드시 코어의 것을 넘겨라」가 여기 주석으로만 서 있었고, 어긋나도
+    // 컴파일이 안 잡았다. 여기서 `~/.atelier`를 박으면 `ATELIER_HOME` 오버라이드가 이
+    // 자리에서만 죽는 것은 그대로다.
+    atelier_core::search(&data_root(), &query, &destinations).map_err(err)
 }
 
 /// 그 work 화면이 **떠 있게 됐다**(결정 12·14). 이력 맨 앞으로 옮긴다.

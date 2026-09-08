@@ -106,7 +106,9 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   // **`exact`가 있어야 한다.** 이름 맞추기는 대소문자를 접으므로, 라벨 되찾기가 통째로 죽어
   // key(`settings`)가 그대로 서도 `exact` 없이는 초록이 된다.
   const row = page.getByRole("option", { name: "Settings", exact: true });
-  await expect(rows(page)).toHaveCount(1);
+  // 이 답에는 거터를 재려고 심어 둔 작업·본문 줄이 함께 있다(fixtures) — **목적지가 맨 위이고
+  // 무선택 정규화가 고르는 것도 그것**이라는 게 여기서 함께 재진다.
+  await expect(rows(page)).toHaveCount(3);
   await expect(row).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("Enter");
@@ -240,16 +242,53 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
   expect(Math.round(headX)).toBe(Math.round(docRow.slotX));
   expect(Math.round(docRow.nameX - headX)).toBe(26);
 
-  // 같은 팔레트에서 목적지 줄로 갈아 끼운다 — 층이 갈려도 이름의 x가 그대로여야 한다.
+  // 같은 팔레트에서 층이 셋인 답으로 갈아 끼운다 — 가는 곳·작업·본문이 함께 선다.
+  // **작업 줄이 여기 있어야 하는 이유가 티켓의 문장이다**: 「이름의 x가 목적지 줄과 작업
+  // 줄에서 같다」. 고정 답은 문서 줄만 내므로 그 층은 이 답으로만 잴 수 있다.
   await box(page).pressSequentially(SEARCH_DESTINATION_QUERY);
-  await expect(rows(page)).toHaveCount(1);
-  const destRow = await gutterOf(rows(page).first());
+  await expect(rows(page)).toHaveCount(3);
+  const [destRow, workRow, textRow] = [
+    await gutterOf(rows(page).nth(0)),
+    await gutterOf(rows(page).nth(1)),
+    await gutterOf(rows(page).nth(2)),
+  ];
 
+  // **세 층의 글자 시작점이 하나다.** 문서 줄은 위에서 이미 쟀다.
   expect(Math.round(destRow.nameX)).toBe(Math.round(docRow.nameX));
+  expect(Math.round(workRow.nameX), "작업 줄의 글자 시작점이 갈렸다").toBe(
+    Math.round(docRow.nameX),
+  );
+  expect(Math.round(textRow.nameX), "본문 줄의 글자 시작점이 갈렸다").toBe(
+    Math.round(docRow.nameX),
+  );
+  // 글리프를 드는 것은 **목적지 줄뿐이다**(결정 17). 나머지는 슬롯만 서고 비어 있다.
+  expect(workRow.glyphMidY, "작업 줄에 글리프가 섰다").toBeNull();
+  expect(textRow.glyphMidY, "본문 줄에 글리프가 섰다").toBeNull();
+
   // **글리프가 실제로 섰고, 세로로 줄 한가운데다.** `self-center`가 빠지면 글자 베이스라인에
   // 앉아 사이드바와 세로 위치가 갈리는데, 그 어긋남은 이 층에서만 보인다.
   expect(destRow.glyphMidY, "목적지 줄에 글리프가 없다").not.toBeNull();
   expect(Math.abs(destRow.glyphMidY! - destRow.rowMidY)).toBeLessThan(1.5);
+
+  // **거터가 스니펫 바닥을 안 깎았다.** 결정 18이 거터를 줄 padding이 아니라 flex 자식으로
+  // 문 이유가 이것이고, 지금까지 어느 층도 그것을 안 쟀다.
+  //
+  // `basis-1/3`은 **컨테이너 내용폭**의 1/3이라, padding으로 밀었다면 바닥이 그만큼 깎인다
+  // (26px ÷ 3 ≈ 8.7px). 그래서 「스니펫이 내용폭의 1/3이다」로는 못 잡는다 — 그 등식은 두
+  // 설계에서 다 참이다. 재는 것은 **줄 상자에서 기본 padding만 뺀 값**의 1/3이고, 그래서
+  // 그 padding이 여전히 10px 두 쪽인 것을 바로 아래에서 따로 못박는다.
+  const floor = await rows(page).nth(2).evaluate((el) => {
+    const style = getComputedStyle(el);
+    const snippet = el.querySelectorAll("span");
+    return {
+      padX: parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
+      rowWidth: el.getBoundingClientRect().width,
+      snippetWidth: snippet[snippet.length - 1].getBoundingClientRect().width,
+    };
+  });
+  expect(floor.padX, "줄의 좌우 padding이 px-2.5가 아니다").toBe(20);
+  expect(floor.snippetWidth).toBeCloseTo((floor.rowWidth - floor.padX) / 3, 1);
+
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
