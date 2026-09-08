@@ -1,6 +1,9 @@
+use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::recent::read_recent;
 use crate::store::read_projects;
 use crate::works::{read_works, spec_dir, spec_files};
 use crate::{list_archive, list_archived_docs, Result, Work, WorkStatus};
@@ -127,17 +130,27 @@ pub struct SearchResults {
 /// 포함시킨 것(결정 5)이 오히려 방해가 된다.
 ///
 /// **상한은 층마다 20줄이다**(결정 24). 전체 상한이면 앞 층이 그것을 먹고 뒤 층이 영영 안 보인다.
+///
+/// **넷째 루트가 이력이다**(결정 13·23). 「마지막으로 연 순」은 작업 층의 순서 규칙이고 순서
+/// 규칙은 코어의 것이라, 그 재료도 코어가 읽어야 한다 — 프런트가 정렬된 slug 배열을 건네게
+/// 되는 순간 정책이 바깥으로 샌다.
+///
+/// **루트를 인자로 받지, 안에서 `data_root()`를 부르지 않는다.** 코어의 어떤 함수도 그것을
+/// 부르지 않고, 단위 검사 전체가 임시 폴더를 넘기는 구조에 기대고 있다 — 박으면 `cargo test`가
+/// 개발자의 **진짜** `~/.atelier/recent.json`을 읽고 쓴다. 결정 13의 「`search` 계약은 안
+/// 는다」는 **IPC 계약**을 말한 것이고, 프런트가 보내는 것은 계속 질의와 목적지 둘뿐이다.
 pub fn search(
     works_root: &Path,
     archive_root: &Path,
     projects_root: &Path,
+    recent_root: &Path,
     query: &str,
     destinations: &[Destination],
 ) -> Result<SearchResults> {
     let tokens = tokens(query);
     let layers = [
         destination_hits(destinations, &tokens),
-        work_hits(works_root, archive_root, &tokens)?,
+        work_hits(works_root, archive_root, recent_root, &tokens)?,
         project_hits(projects_root, &tokens)?,
         doc_hits(works_root, archive_root, &tokens)?,
         text_hits(works_root, archive_root, &tokens)?,
@@ -207,9 +220,31 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
         .collect()
 }
 
-/// 「작업」 층. **순서를 새로 발명하지 않는다** — 활성은 목록 함수와 같은 비교자를 쓰는
-/// `read_works`가 주고(고정 먼저 → 만든 순 → slug), 아카이브는 `list_archive`가 준다
-/// (치운 순 → slug). 팔레트가 다른 순서를 쓰면 사이드바·Archive 화면과 어긋난 두 세상이 생긴다.
+/// 「작업」 층. **순서는 고정 먼저 → 각 무리 안에서 마지막으로 연 순 → 이력에 없는 것은 만든
+/// 순이다**(결정 11).
+///
+/// ```text
+/// pinned desc  →  recent_rank asc (이력에 없으면 MAX)  →  created_at desc  →  slug asc
+/// ```
+///
+/// 뒤의 둘은 **다시 안 적는다** — `read_works`가 이미 그 순서로 주고 아래 정렬이 안정 정렬이라
+/// 동점의 상대 순서가 그대로 남는다. 이력이 비면 결과가 만든 순 그대로인 것도 그래서다:
+/// 첫 화면이 판 02와 똑같고, 쓰면서 갈라진다.
+///
+/// **고정이 이력을 이긴다**(결정 11). 선언이 관찰에 지면 「이미 자주 여는 것을 고정했더니
+/// 아무것도 안 바뀌는」 날이 생기고, 그러면 고정을 켜는 행위가 뜻을 잃는다.
+///
+/// **한때 「순서를 새로 발명하지 않는다」였다** — 목록 함수와 같은 비교자를 그대로 썼다.
+/// 뒤집은 것은 결정 11이고, 바뀐 것은 **팔레트 쪽뿐이다**(결정 16): 목록 함수는 사이드바와
+/// 팔레트가 같이 쓰는 한 함수이고 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이라는
+/// 등식(#58)이 그 순서에 매달려 있어서, **사이드바는 MRU가 아니다** — 행이 손 밑에서
+/// 움직이면 클릭 대상이 어긋난다. 그래서 정렬은 **이 층 안에서만** 하고 목록 함수는 안 건드린다.
+///
+/// **아카이브는 이 정렬 밖이다.** 친 질의에서만 서고, 활성 아래에 `list_archive`가 주는 순서
+/// (치운 순 → slug) 그대로 붙는다 — 아카이브 work을 여는 문이 별도 화면이라 이력에 그 slug가
+/// 들어갈 길도 없다.
+///
+/// **층 자르기가 이 뒤에 돈다** — 상한이 먼저 잘리면 MRU가 상한 안에서만 도는 셈이 된다.
 ///
 /// **빈 질의와 친 질의가 가르는 것은 멤버십뿐이다 — 순서는 두 갈래 공통이다**(결정 16).
 /// 갈래를 순서까지 끌고 가면 **첫 타자에 작업 줄들이 서로 자리를 바꾼다**: 이 층에는
@@ -231,7 +266,12 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
 /// 가로지르지는 않는다. 아카이브 본문까지 찾는 유일한 길이 그쪽이라 팔레트에서 빼지 않는다.
 ///
 /// 맞추는 재료는 **제목**이다: 줄에 서는 것이 그것이다.
-fn work_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Result<Vec<SearchHit>> {
+fn work_hits(
+    works_root: &Path,
+    archive_root: &Path,
+    recent_root: &Path,
+    tokens: &[String],
+) -> Result<Vec<SearchHit>> {
     let empty = silent_when_empty(tokens);
     let standing = |work: &Work| {
         if empty {
@@ -240,9 +280,21 @@ fn work_hits(works_root: &Path, archive_root: &Path, tokens: &[String]) -> Resul
             matches(&work.title, tokens)
         }
     };
-    let mut hits: Vec<SearchHit> = read_works(works_root)?
+    let mut works: Vec<Work> = read_works(works_root)?.into_iter().filter(standing).collect();
+
+    // 이력에 **없는** 것은 무리 끝이다. 없는 slug를 청소하지 않는 것도 이 한 줄이 든다
+    // (결정 15) — 목록에 없으면 여기 rank를 못 받을 뿐이다.
+    let recent = read_recent(recent_root);
+    let rank: HashMap<&str, usize> =
+        recent.works.iter().enumerate().map(|(at, work)| (work.slug.as_str(), at)).collect();
+    // **안정 정렬이다.** 동점(둘 다 이력에 없음)의 상대 순서가 `read_works`의 것 그대로
+    // 남으므로 비교자의 뒤 두 단(만든 순 → slug)을 여기서 다시 적지 않는다.
+    works.sort_by_key(|work| {
+        (Reverse(work.pinned), rank.get(work.slug.as_str()).copied().unwrap_or(usize::MAX))
+    });
+
+    let mut hits: Vec<SearchHit> = works
         .into_iter()
-        .filter(standing)
         .map(|work| SearchHit::Work { slug: work.slug, title: work.title, archived: false })
         .collect();
     if empty {
@@ -502,6 +554,15 @@ mod tests {
             .unwrap();
     }
 
+    /// 이력을 심는다. **연 순서 그대로** 부른다 — 마지막에 부른 것이 맨 앞이 된다.
+    /// 파일을 손으로 적지 않고 진짜 쓰기 함수를 타는 것은, 이 검사들이 재는 순서가
+    /// **그 함수가 남긴 모양**을 딛기 때문이다.
+    fn opened(recent_root: &Path, slugs: &[&str]) {
+        for slug in slugs {
+            crate::recent::touch_recent_work(recent_root, slug).unwrap();
+        }
+    }
+
     /// 프로젝트 하나를 짓는다. 파일명이 slug이고 이름은 frontmatter에 산다.
     fn project(root: &Path, slug: &str, name: &str) {
         std::fs::create_dir_all(root).unwrap();
@@ -565,13 +626,17 @@ mod tests {
         vec![dest("projects", "Projects"), dest("terminal", "Terminal"), dest("archive", "Archive")]
     }
 
-    fn roots() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf) {
+    /// 루트 넷을 한 자리에서 준다. **이력 루트가 임시 폴더 자신이다** — 코어가 데이터 루트를
+    /// 스스로 부르지 않는 이유가 이 헬퍼 하나에 걸려 있다: 박아 두면 `cargo test`가 개발자의
+    /// 진짜 `~/.atelier/recent.json`을 읽고 쓴다.
+    fn roots() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf, PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
         let works = tmp.path().join("works");
         let archive = tmp.path().join("archive");
         let projects = tmp.path().join("projects");
+        let recent = tmp.path().to_path_buf();
         std::fs::create_dir_all(&works).unwrap();
-        (tmp, works, archive, projects)
+        (tmp, works, archive, projects, recent)
     }
 
     /// 결정 23. 문서 층 안의 순서는 **고쳐진 때 내림차순**이다 — 좁힌 뒤에도 방금 고친
@@ -583,13 +648,13 @@ mod tests {
     /// **문서 층만** 서고, work 제목에도 목적지 라벨에도 그 토막이 없다.
     #[test]
     fn 최근_고쳐진_문서가_먼저_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
         doc(&works, "가", "spec/01-판/spec.md", 300);
         doc(&works, "가", "spec/decisions.md", 200);
 
-        let hits = search(&works, &archive, &projects, "md", &[]).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits;
         assert_eq!(
             rows(&hits),
             vec![
@@ -603,14 +668,14 @@ mod tests {
     /// 결정 5·13. 아카이브가 아무리 최근이어도 **그 층 안에서** 활성 아래다.
     #[test]
     fn 활성이_아카이브보다_위다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
         work(&archive, "옛일", "옛 작업");
         doc(&archive, "옛일", "record.md", 999);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits),
             vec![("가", "overview.md", false), ("옛일", "record.md", true)]
         );
     }
@@ -622,7 +687,7 @@ mod tests {
     /// 옮기면서 이 둘을 안 옮겼다면 상한을 재는 자리가 통째로 사라졌을 것이다.
     #[test]
     fn 스무_줄에서_자른다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         for n in 0..25 {
             doc(&works, "가", &format!("spec/{n:02}.md"), 1000 - n as u64);
@@ -631,7 +696,7 @@ mod tests {
         work(&archive, "옛일", "옛 작업");
         doc(&archive, "옛일", "record.md", 5000);
 
-        let results = search(&works, &archive, &projects, "md", &[]).unwrap();
+        let results = search(&works, &archive, &projects, &recent, "md", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
         assert_eq!(rows(&results.hits)[0], ("가", "00.md", false));
         assert_eq!(rows(&results.hits)[LAYER_LIMIT - 1], ("가", "19.md", false));
@@ -642,13 +707,13 @@ mod tests {
     /// 「잘렸다」를 세는 자리가 코어 밖으로 나가면 여기서 조용히 거짓말을 하게 된다.
     #[test]
     fn 딱_스무_줄이면_스무_줄이_그대로_나간다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         for n in 0..LAYER_LIMIT {
             doc(&works, "가", &format!("spec/{n:02}.md"), 1000 - n as u64);
         }
 
-        let results = search(&works, &archive, &projects, "md", &[]).unwrap();
+        let results = search(&works, &archive, &projects, &recent, "md", &[]).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
     }
 
@@ -656,7 +721,7 @@ mod tests {
     /// 활성은 spec 루트 기준, 아카이브는 work 루트 기준이다.
     #[test]
     fn 경로가_그_화면의_file_값이다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/01-판/spec.md", 100);
         work(&archive, "옛일", "옛 작업");
@@ -664,7 +729,7 @@ mod tests {
         doc(&archive, "옛일", "spec/overview.md", 80);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits),
             vec![
                 ("가", "01-판/spec.md", false),
                 ("옛일", "record.md", true),
@@ -676,11 +741,11 @@ mod tests {
     /// 결정 12. 파일명은 어느 work의 것인지를 말하지 않는다 — 줄이 드는 이름은 work 제목이다.
     #[test]
     fn 문서_줄이_드는_이름은_work_제목이다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "터미널 2판");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let hits = search(&works, &archive, &projects, "md", &[]).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits;
         let SearchHit::Doc { title, .. } = &hits[0] else { panic!("문서 줄이 아니다") };
         assert_eq!(title, "터미널 2판");
     }
@@ -688,7 +753,7 @@ mod tests {
     /// `list_works`와 같은 규칙 — AI가 망가뜨린 파일 하나가 목록을 통째로 막지 않는다.
     #[test]
     fn 망가진_work_json은_건너뛴다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "성한것", "성한 작업");
         doc(&works, "성한것", "spec/overview.md", 100);
         let broken = works.join("망가진것");
@@ -696,7 +761,7 @@ mod tests {
         std::fs::write(broken.join("work.json"), "not json").unwrap();
         doc(&works, "망가진것", "spec/overview.md", 999);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits), vec![("성한것", "overview.md", false)]);
     }
 
     /// 아카이브 폴더는 첫 아카이빙이, 프로젝트 폴더는 첫 등록이 만든다 — **검색은 만들지
@@ -704,11 +769,11 @@ mod tests {
     /// 자리가 폴더를 만들면 「읽기만 한다」가 거짓이 된다.
     #[test]
     fn 없는_폴더가_있어도_돌고_만들지도_않는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
+        assert_eq!(rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits), vec![("가", "overview.md", false)]);
         assert!(!archive.exists(), "조회가 아카이브 폴더를 만들었다");
         assert!(!projects.exists(), "조회가 프로젝트 폴더를 만들었다");
     }
@@ -717,21 +782,21 @@ mod tests {
     /// 층의 일이다. 여기서 치는 `"md"`는 그 work의 제목에 없어서 작업 층도 안 선다.
     #[test]
     fn 문서가_없는_work은_문서_줄을_안_낸다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "빈것", "빈 작업");
 
-        assert!(search(&works, &archive, &projects, "md", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits.is_empty());
     }
 
     /// 갈래를 태그로 싣는다 — 프런트가 필드 유무로 종류를 되짚지 않게. 「잘렸다」가 줄이
     /// 아니라 **목록의 성질**로 실리는 것도 여기서 못 박는다.
     #[test]
     fn 문서_줄은_갈래를_달고_나간다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let json = serde_json::to_value(search(&works, &archive, &projects, "md", &[]).unwrap()).unwrap();
+        let json = serde_json::to_value(search(&works, &archive, &projects, &recent, "md", &[]).unwrap()).unwrap();
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "doc");
         assert_eq!(row["slug"], "가");
@@ -746,7 +811,7 @@ mod tests {
     /// (「A」→ a·b·c). 좁힌 안에서도 순서는 mtime 내림차순이다(결정 23).
     #[test]
     fn work_이름을_치면_그_work의_문서가_전부_뜬다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "네비게이션 개편");
         doc(&works, "가", "spec/overview.md", 300);
         doc(&works, "가", "spec/decisions.md", 200);
@@ -756,7 +821,7 @@ mod tests {
 
         // **work 줄이 그 문서들 위에 함께 선다**(결정 14) — 층 순서가 「작업 → 문서」다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "네비게이션", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "네비게이션", &[]).unwrap().hits),
             vec![
                 "작업 가",
                 "문서 가/overview.md",
@@ -766,7 +831,7 @@ mod tests {
         );
         // 넓히면 남의 것까지 도로 선다 — 가장 최근에 고쳐진 것이 맨 위다.
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits)[0],
+            rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits)[0],
             ("나", "overview.md", false)
         );
     }
@@ -775,13 +840,13 @@ mod tests {
     /// 이어 붙인 **한 문자열**이라, 토큰이 제목과 판 폴더에 걸쳐 있어도 맞는다.
     #[test]
     fn 단어를_더하면_그_안에서_좁혀진다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "네비게이션 개편");
         doc(&works, "가", "spec/01-첫판/spec.md", 200);
         doc(&works, "가", "spec/02-둘째판/spec.md", 100);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "네비게이션 둘째", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, &recent, "네비게이션 둘째", &[]).unwrap().hits),
             vec![("가", "02-둘째판/spec.md", false)]
         );
     }
@@ -790,12 +855,12 @@ mod tests {
     /// (「터미널 2판」) 앞 글자만으로는 못 좁히는 일이 많다.
     #[test]
     fn 이름의_가운데_토막으로도_맞는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "터미널 2판");
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "미널", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "미널", &[]).unwrap().hits),
             vec!["작업 가", "문서 가/overview.md"]
         );
     }
@@ -803,28 +868,28 @@ mod tests {
     /// 결정 9. 대소문자를 무시하고, **토큰이 하나라도 안 맞으면 안 뜬다**(AND).
     #[test]
     fn 대소문자를_무시하고_하나라도_안_맞으면_안_뜬다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "Cart 개편");
         doc(&works, "가", "spec/Overview.md", 100);
 
         assert_eq!(
-            rows(&search(&works, &archive, &projects, "cart OVERVIEW", &[]).unwrap().hits),
+            rows(&search(&works, &archive, &projects, &recent, "cart OVERVIEW", &[]).unwrap().hits),
             vec![("가", "Overview.md", false)]
         );
-        assert!(search(&works, &archive, &projects, "cart 없는말", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, &projects, &recent, "cart 없는말", &[]).unwrap().hits.is_empty());
     }
 
     /// 결정 22. **최소 질의 길이가 없다** — 주 쓰임이 「한 글자를 치는 순간」이다.
     #[test]
     fn 한_글자로도_좁혀진다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
         work(&works, "나", "나 작업");
         doc(&works, "나", "spec/overview.md", 200);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "나", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "나", &[]).unwrap().hits),
             vec!["작업 나", "문서 나/overview.md"]
         );
     }
@@ -832,7 +897,7 @@ mod tests {
     /// 결정 5·13. **좁힌 안에서도** 활성이 아카이브보다 위다.
     #[test]
     fn 좁힌_안에서도_활성이_아카이브보다_위다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "공통말 작업");
         doc(&works, "가", "spec/overview.md", 100);
         work(&archive, "옛일", "공통말 옛 작업");
@@ -841,7 +906,7 @@ mod tests {
         // **층마다 따로 갈린다** — 아카이브 work이 활성 work 아래이되, 그 work의 문서가
         // 활성 work의 문서보다 위로 올라오지는 않는다(결정 13).
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "공통말", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "공통말", &[]).unwrap().hits),
             vec![
                 "작업 가",
                 "작업 옛일 (아카이브)",
@@ -858,11 +923,11 @@ mod tests {
     /// 말할 수 있다.
     #[test]
     fn 이름에_없는_말은_본문에서_찾는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "빈자리인 것도 확인했다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "빈자리", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "빈자리", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/overview.md"]);
         // 스니펫 한 줄이 **맞은 대목**을 보여 준다 — 열기 전에 왜 떴는지가 그 줄 안에서 설명된다.
         assert_eq!(snippets(&hits), vec!["빈자리인 것도 확인했다"]);
@@ -872,7 +937,7 @@ mod tests {
     /// 단어 둘로 거의 항상 맞고, 스니펫이 모든 토큰을 못 보여줘 왜 떴는지를 설명 못 하게 된다.
     #[test]
     fn 토큰들이_한_문단에_있어야_맞는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(
             &works,
@@ -883,7 +948,7 @@ mod tests {
         );
         doc_with(&works, "가", "spec/모인.md", 200, "한 문단에 주소와 tab이 함께 있다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "주소 tab", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/모인.md"]);
     }
 
@@ -891,7 +956,7 @@ mod tests {
     /// 접혀 여러 줄에 걸친다.** 줄을 단위로 삼으면 「주소 tab」이 **조용히** 안 잡힌다.
     #[test]
     fn 줄이_갈려_있어도_맞는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(
             &works,
@@ -901,7 +966,7 @@ mod tests {
             "주소가 위치의 정본이라 문서는 `?file=`,\n  탭은 `tab`으로 산다\n".as_bytes(),
         );
 
-        let hits = search(&works, &archive, &projects, "주소 tab", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "주소 tab", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/접힌.md"]);
         // **스니펫도 한 줄이다** — 접힌 것을 펴서 내보내야 토큰이 그 줄 안에 함께 선다.
         // 이어 붙이는 자리의 들여쓰기는 접기의 흔적이라 남기지 않는다.
@@ -915,7 +980,7 @@ mod tests {
     /// 순서는 목록을 못 믿게 만든다.** 그래서 **처음 맞은 문단**이고, 문서 하나에 줄은 하나다.
     #[test]
     fn 여러_문단이_맞아도_처음_맞은_문단_한_줄이다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(
             &works,
@@ -925,7 +990,7 @@ mod tests {
             "먼저 맞는 문단\n\n사이에 낀 문단\n\n나중에 맞는 문단\n".as_bytes(),
         );
 
-        let hits = search(&works, &archive, &projects, "맞는", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "맞는", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["본문 가/여럿.md"]);
         assert_eq!(snippets(&hits), vec!["먼저 맞는 문단"]);
     }
@@ -936,12 +1001,12 @@ mod tests {
     /// 있는 문서다.
     #[test]
     fn utf8로_안_읽히면_본문_층에서_빠지고_이름_층에는_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/cat.png", 100, b"\x89PNG\r\n\x1a\n\xff\xfe cat");
         doc_with(&works, "가", "spec/cat.md", 200, "cat 이야기\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "cat", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "cat", &nav()).unwrap().hits;
         assert_eq!(lines(&hits), vec!["문서 가/cat.md", "문서 가/cat.png", "본문 가/cat.md"]);
     }
 
@@ -949,7 +1014,7 @@ mod tests {
     /// 정확하다. 활성과 아카이브는 **그 층 안에서** 갈리고 층을 가로질러 앞서지 않는다.
     #[test]
     fn 본문_층은_맨_아래이고_활성이_아카이브보다_위다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "활성것", "가 작업");
         doc_with(&works, "활성것", "spec/메아리.md", 100, "다른 말\n".as_bytes());
         doc_with(&works, "활성것", "spec/본문것.md", 50, "메아리가 여기 있다\n".as_bytes());
@@ -958,7 +1023,7 @@ mod tests {
         doc_with(&archive, "옛것", "record.md", 999, "메아리가 저기 있다\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "메아리", &nav()).unwrap().hits),
             vec![
                 "문서 활성것/메아리.md",
                 "본문 활성것/본문것.md",
@@ -973,12 +1038,12 @@ mod tests {
     /// 스펙에 그 규칙이 없다.
     #[test]
     fn 이름과_본문이_함께_맞으면_두_층에_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/메아리.md", 100, "메아리가 이름에도 본문에도 있다\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "메아리", &nav()).unwrap().hits),
             vec!["문서 가/메아리.md", "본문 가/메아리.md"]
         );
     }
@@ -986,14 +1051,14 @@ mod tests {
     /// 결정 23. 본문 층도 **mtime 내림차순**이다 — 팔레트에 시간 규칙이 하나만 남는다.
     #[test]
     fn 본문도_mtime_내림차순이다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/먼저.md", 100, "메아리\n".as_bytes());
         doc_with(&works, "가", "spec/나중.md", 300, "메아리\n".as_bytes());
         doc_with(&works, "가", "spec/가운데.md", 200, "메아리\n".as_bytes());
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "메아리", &nav()).unwrap().hits),
             vec!["본문 가/나중.md", "본문 가/가운데.md", "본문 가/먼저.md"]
         );
     }
@@ -1001,13 +1066,13 @@ mod tests {
     /// 결정 24. **상한은 층마다다.** 본문 층도 그 자리에서 잘리고, 잘렸다는 것을 답이 말한다.
     #[test]
     fn 본문도_스무_줄에서_자른다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         for n in 0..LAYER_LIMIT + 5 {
             doc_with(&works, "가", &format!("spec/{n:02}.md"), 100 + n as u64, "메아리\n".as_bytes());
         }
 
-        let results = search(&works, &archive, &projects, "메아리", &nav()).unwrap();
+        let results = search(&works, &archive, &projects, &recent, "메아리", &nav()).unwrap();
         assert_eq!(results.hits.len(), LAYER_LIMIT);
     }
 
@@ -1015,14 +1080,14 @@ mod tests {
     /// 바뀌므로(세션이 병렬로 문서를 쓴다), 밖에서 고친 직후에 검색하면 새 내용이 잡혀야 한다.
     #[test]
     fn 밖에서_고친_내용이_바로_잡힌다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "예전 말\n".as_bytes());
-        assert!(search(&works, &archive, &projects, "새말", &nav()).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, &projects, &recent, "새말", &nav()).unwrap().hits.is_empty());
 
         doc_with(&works, "가", "spec/overview.md", 200, "새말이 들어왔다\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "새말", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "새말", &nav()).unwrap().hits;
         assert_eq!(snippets(&hits), vec!["새말이 들어왔다"]);
     }
 
@@ -1030,18 +1095,18 @@ mod tests {
     /// 문서마다 줄이 하나씩 더 선다.
     #[test]
     fn 질의가_비면_본문_층은_안_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
-        let hits = search(&works, &archive, &projects, "", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "", &nav()).unwrap().hits;
         assert!(
             !hits.iter().any(|hit| matches!(hit, SearchHit::Text { .. })),
             "빈 질의에 본문 줄이 섰다: {hits:?}"
         );
         // **같은 문서가 치면 본문으로 나온다** — 「놓은 것이 없어서 안 섰다」로 초록이 되지
         // 않게. 이 한 줄이 없으면 본문 층을 통째로 지워도 위 단언이 초록이다.
-        let hits = search(&works, &archive, &projects, "본문", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "본문", &nav()).unwrap().hits;
         assert!(hits.iter().any(|hit| matches!(hit, SearchHit::Text { .. })));
     }
 
@@ -1049,11 +1114,11 @@ mod tests {
     /// 안 드러난다. 계약에 아직 없다는 것을 여기서 못 박는다.
     #[test]
     fn 본문_줄에_heading이_없다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc_with(&works, "가", "spec/overview.md", 100, "메아리\n".as_bytes());
 
-        let hits = search(&works, &archive, &projects, "메아리", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "메아리", &nav()).unwrap().hits;
         let json = serde_json::to_value(&hits[0]).unwrap();
         let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
@@ -1064,12 +1129,12 @@ mod tests {
     /// 결과가 아니다. 앱이 열 수 있는 것만 결과가 된다.
     #[test]
     fn 건네받은_루트_밖은_안_걷는다() {
-        let (tmp, works, archive, projects) = roots();
+        let (tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
         std::fs::write(tmp.path().join("CONTEXT.md"), "말의 정본\n").unwrap();
 
-        assert!(search(&works, &archive, &projects, "context", &[]).unwrap().hits.is_empty());
+        assert!(search(&works, &archive, &projects, &recent, "context", &[]).unwrap().hits.is_empty());
     }
 
     // ── 「가는 곳」·작업·프로젝트 층 (결정 13·14·21·23·25)
@@ -1078,21 +1143,21 @@ mod tests {
     /// 층 순서가 「가는 곳 → 작업 → 문서」라 같은 말이 다른 층에도 맞을 때 목적지가 먼저 선다.
     #[test]
     fn 목적지가_맨_위에_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "Projects 흉내낸 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "Pro", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "Pro", &nav()).unwrap().hits),
             vec!["가는곳 projects", "작업 가", "문서 가/overview.md"]
         );
         // Terminal·Archive도 같다 — 셋이 같은 규칙 하나를 지난다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "term", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "term", &nav()).unwrap().hits),
             vec!["가는곳 terminal"]
         );
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "archi", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "archi", &nav()).unwrap().hits),
             vec!["가는곳 archive"]
         );
     }
@@ -1101,9 +1166,9 @@ mod tests {
     /// 프런트가 건넨 말을 코어가 다시 말해 주는 순간, 어긋나는 날 어느 쪽이 맞는지 모른다.
     #[test]
     fn 목적지_줄은_key만_싣는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
 
-        let answer = search(&works, &archive, &projects, "Pro", &nav()).unwrap();
+        let answer = search(&works, &archive, &projects, &recent, "Pro", &nav()).unwrap();
         let json = serde_json::to_value(&answer).unwrap();
         let row = &json["hits"][0];
         assert_eq!(row["kind"], "destination");
@@ -1116,12 +1181,12 @@ mod tests {
     /// 답이고, 나머지 층은 그대로 돈다.
     #[test]
     fn 빈_목적지_목록을_넘겨도_나머지가_돈다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "Projects 흉내낸 작업");
         doc(&works, "가", "spec/overview.md", 100);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "Pro", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "Pro", &[]).unwrap().hits),
             vec!["작업 가", "문서 가/overview.md"]
         );
     }
@@ -1135,19 +1200,19 @@ mod tests {
     /// 아무 말도 안 했다.
     #[test]
     fn 빈_질의에_가는_곳과_작업만_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         doc(&works, "가", "spec/overview.md", 100);
         project(&projects, "billing", "빌링");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &nav()).unwrap().hits),
             vec!["가는곳 projects", "가는곳 terminal", "가는곳 archive", "작업 가"]
         );
         // 공백만 친 것도 토큰 0개다 — 「비었다」의 판정이 한 자리다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "   ", &nav()).unwrap().hits),
-            lines(&search(&works, &archive, &projects, "", &nav()).unwrap().hits)
+            lines(&search(&works, &archive, &projects, &recent, "   ", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &nav()).unwrap().hits)
         );
     }
 
@@ -1156,19 +1221,19 @@ mod tests {
     /// 빨개진다 — 고칠 때 문서 줄이 남은 채로 초록을 만들 수 있다. 그 한 갈래를 여기서 못박는다.
     #[test]
     fn 빈_질의에_문서_줄이_하나도_안_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         for n in 0..3 {
             doc(&works, "가", &format!("spec/{n}.md"), 100 + n as u64);
         }
 
-        let hits = search(&works, &archive, &projects, "", &nav()).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "", &nav()).unwrap().hits;
         assert!(
             !hits.iter().any(|hit| matches!(hit, SearchHit::Doc { .. })),
             "빈 질의에 문서 줄이 섰다: {hits:?}"
         );
         // **그 문서들은 치면 나온다** — 「놓은 것이 없어서 안 섰다」로 초록이 되지 않게.
-        assert_eq!(rows(&search(&works, &archive, &projects, "md", &[]).unwrap().hits).len(), 3);
+        assert_eq!(rows(&search(&works, &archive, &projects, &recent, "md", &[]).unwrap().hits).len(), 3);
     }
 
     /// 결정 7·11. **고정된 초안은 빈 질의에 선다.** 화면 구획 함수에서 고정은 상태와 무관하게
@@ -1179,11 +1244,11 @@ mod tests {
     /// `status != Draft`로만 적은 실수가 초록으로 지나간다.
     #[test]
     fn 고정된_초안은_빈_질의에_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work_full(&works, "고정초안", "고정된 초안", "2026-08-01", true, "draft");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits),
             vec!["작업 고정초안"]
         );
     }
@@ -1192,17 +1257,17 @@ mod tests {
     /// 초안이 진행 중인 것과 구별 없이 섞인다.
     #[test]
     fn 고정_아닌_초안은_빈_질의에_안_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work_full(&works, "초안", "그냥 초안", "2026-08-01", false, "draft");
         work(&works, "도는것", "도는 작업");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits),
             vec!["작업 도는것"]
         );
         // **치면 나온다** — 빼는 것은 빈 화면의 자리 다툼 때문이지 초안을 감추려는 것이 아니다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "그냥", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "그냥", &[]).unwrap().hits),
             vec!["작업 초안"]
         );
     }
@@ -1211,12 +1276,12 @@ mod tests {
     /// `status == Active`로 적으면 그 둘이 함께 죽는데, 상태 갈래가 넷이라 컴파일이 안 잡는다.
     #[test]
     fn review와_done도_빈_질의에_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work_full(&works, "리뷰", "리뷰 중", "2026-08-02", false, "review");
         work_full(&works, "끝난것", "끝난 작업", "2026-08-01", false, "done");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits),
             vec!["작업 리뷰", "작업 끝난것"]
         );
     }
@@ -1228,17 +1293,17 @@ mod tests {
     /// **초안 검사에 묶지 않는다** — 하나가 다른 하나를 가린다.
     #[test]
     fn 빈_질의에_아카이브_work은_안_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "가", "가 작업");
         work(&archive, "옛일", "옛 작업");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits),
             vec!["작업 가"]
         );
         // **치면 활성 아래에 선다**(결정 8·13). 아카이브 본문까지 찾는 유일한 길이 그쪽이다.
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "작업", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "작업", &[]).unwrap().hits),
             vec!["작업 가", "작업 옛일 (아카이브)"]
         );
     }
@@ -1250,12 +1315,12 @@ mod tests {
     /// 실측(2026-09-07) 빈 질의의 작업 층은 18줄이라 여유가 **2줄**이다.
     #[test]
     fn 빈_질의의_작업_층이_상한에_닿으면_잘린다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         for n in 0..LAYER_LIMIT + 5 {
             work_at(&works, &format!("w{n:02}"), &format!("작업 {n:02}"), "2026-08-01", false);
         }
 
-        let hits = search(&works, &archive, &projects, "", &[]).unwrap().hits;
+        let hits = search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits;
         assert_eq!(hits.len(), LAYER_LIMIT, "작업 층이 상한에서 잘린다 — 결정 10을 다시 볼 자리다");
     }
 
@@ -1263,21 +1328,27 @@ mod tests {
     /// 실측(2026-08-29) 활성 10개 중 3개가 그렇고, 방금 만든 것들이라 문서가 아직 없다.
     #[test]
     fn 문서가_0개인_work도_결과에_선다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "방금만든것", "방금 만든 작업");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "방금", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "방금", &[]).unwrap().hits),
             vec!["작업 방금만든것"]
         );
     }
 
-    /// 결정 23. **작업 층의 순서는 `list_works`가 쓰는 것과 같은 비교자다** — 고정 먼저,
-    /// 그다음 만든 순 내림차순, 같은 날이면 slug 오름차순. 팔레트가 다른 순서를 쓰면
-    /// 사이드바와 어긋난 두 세상이 생긴다.
+    /// **이력이 비면 만든 순 그대로다** — 고정 먼저, 그다음 만든 순 내림차순, 같은 날이면
+    /// slug 오름차순. 판 03의 첫 화면이 판 02와 똑같은 것이 이 성질이고, 쓰면서 갈라진다.
+    ///
+    /// **한때 이 검사의 이름이 「작업 층은 목록 함수와 같은 순서다」였다**(옛 결정 23).
+    /// 이제 그 문장은 거짓이다 — 팔레트는 MRU이고 사이드바는 아니다(결정 11·16). 그런데
+    /// **이 검사는 판 03 뒤에도 초록인 채로 남는다**: 이력이 비면 fallback이 만든 순이라
+    /// 결과가 그대로다. 이름과 독을 안 고치면 fallback만 태우는 이 상태를 다음 사람이
+    /// 「팔레트가 목록 함수와 같은 순서다」의 그물로 읽는다. **이력이 있는 경우는 바로
+    /// 아래 검사가 든다** — 둘이 같은 자리에 있어야 짝이 보인다.
     #[test]
-    fn 작업_층은_목록_함수와_같은_순서다() {
-        let (_tmp, works, archive, projects) = roots();
+    fn 이력이_비면_만든_순_그대로다() {
+        let (_tmp, works, archive, projects, recent) = roots();
         work_at(&works, "old", "묶음 오래된것", "2026-08-01", false);
         work_at(&works, "new-b", "묶음 새것 나", "2026-08-05", false);
         work_at(&works, "new-a", "묶음 새것 가", "2026-08-05", false);
@@ -1285,21 +1356,135 @@ mod tests {
         work_at(&works, "pinned", "묶음 고정", "2026-07-01", true);
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "묶음", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
             vec!["작업 pinned", "작업 new-a", "작업 new-b", "작업 old"]
+        );
+    }
+
+    /// 결정 11·16. **이력이 있으면 마지막으로 연 순이다 — 친 질의에서도 그렇다.**
+    ///
+    /// 위 검사와 **같은 씨앗에 이력만 얹는다.** 좁힌 뒤에도 최근에 **연** 것이 최근에
+    /// **만든** 것보다 위여야 한다(결정 16) — 빈 질의와 친 질의의 순서에 갈래를 두면
+    /// 디바운스가 없어 **첫 타자에 줄들이 서로 자리를 바꾼다.**
+    #[test]
+    fn 이력이_있으면_마지막으로_연_순이다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "old", "묶음 오래된것", "2026-08-01", false);
+        work_at(&works, "new-b", "묶음 새것 나", "2026-08-05", false);
+        work_at(&works, "new-a", "묶음 새것 가", "2026-08-05", false);
+        work_at(&works, "pinned", "묶음 고정", "2026-07-01", true);
+        // 만든 순으로는 꼴찌인 것을 마지막에 연다.
+        opened(&recent, &["new-a", "old"]);
+
+        // 고정은 그대로 맨 위다. 나머지는 연 순이 뒤집는다.
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
+            vec!["작업 pinned", "작업 old", "작업 new-a", "작업 new-b"]
+        );
+        // 빈 질의도 같은 순서다 — 갈리는 것은 멤버십뿐이다.
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "", &[]).unwrap().hits),
+            vec!["작업 pinned", "작업 old", "작업 new-a", "작업 new-b"]
+        );
+    }
+
+    /// 결정 11. **고정이 이력을 이긴다.** 선언이 관찰에 지면 「이미 자주 여는 것을 고정했더니
+    /// 아무것도 안 바뀌는」 날이 생기고, 그때 고정을 켜는 행위가 뜻을 잃는다.
+    #[test]
+    fn 고정이_이력을_이긴다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "고정", "묶음 고정", "2026-07-01", true);
+        work_at(&works, "그냥", "묶음 그냥", "2026-08-05", false);
+        // 고정 아닌 것을 **가장 최근에** 열었다.
+        opened(&recent, &["고정", "그냥"]);
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
+            vec!["작업 고정", "작업 그냥"]
+        );
+    }
+
+    /// 결정 11. **고정 무리 안에서도 최근에 연 것이 위다.** 고정을 셋 이상 둔 사람에게는
+    /// 그 안의 순서가 곧 목록의 순서다 — 「고정이 이긴다」를 「고정은 안 움직인다」로 읽으면
+    /// 그 무리가 통째로 만든 순에 얼어붙는다.
+    #[test]
+    fn 고정_무리_안에서도_최근에_연_것이_위다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "핀가", "묶음 핀 가", "2026-08-05", true);
+        work_at(&works, "핀나", "묶음 핀 나", "2026-08-03", true);
+        work_at(&works, "핀다", "묶음 핀 다", "2026-08-01", true);
+        opened(&recent, &["핀다"]);
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
+            vec!["작업 핀다", "작업 핀가", "작업 핀나"]
+        );
+    }
+
+    /// 결정 11. **이력에 없는 것은 무리 끝에 만든 순으로 붙는다** — 방금 만든 work이 목록
+    /// 밑바닥으로 사라지지 않게. 여기서 재는 것은 그 「끝」이 **만든 순**이라는 것이다.
+    #[test]
+    fn 이력에_없는_것은_무리_끝에_만든_순으로_붙는다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "연것", "묶음 연 것", "2026-07-01", false);
+        work_at(&works, "새것", "묶음 새것", "2026-08-05", false);
+        work_at(&works, "옛것", "묶음 옛것", "2026-08-01", false);
+        opened(&recent, &["연것"]);
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
+            vec!["작업 연것", "작업 새것", "작업 옛것"]
+        );
+    }
+
+    /// 결정 15. **이력에 남은 죽은 slug는 목록에 안 선다** — 지우거나 아카이브한 work이다.
+    /// 청소하는 자리를 따로 만들지 않는 근거가 이것이다: 목록 교집합에서 자연히 빠진다.
+    #[test]
+    fn 이력의_죽은_slug는_목록에_안_선다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "산것", "묶음 산 것", "2026-08-01", false);
+        opened(&recent, &["산것", "지운것"]);
+
+        assert_eq!(
+            lines(&search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits),
+            vec!["작업 산것"]
+        );
+    }
+
+    /// 결정 8·11. **아카이브는 이 정렬 밖이다.** 친 질의에서만 서고, 활성 아래에
+    /// `list_archive`가 주는 순서 그대로 붙는다 — 이력이 그 순서를 흔들지 않는다.
+    #[test]
+    fn 아카이브는_이_정렬_밖이다() {
+        let (_tmp, works, archive, projects, recent) = roots();
+        work_at(&works, "산것", "묶음 산 것", "2026-08-01", false);
+        work(&archive, "옛가", "묶음 옛 가");
+        work(&archive, "옛나", "묶음 옛 나");
+        // 아카이브 slug가 이력에 들어갈 길은 없지만(여는 문이 별도 화면이다), 들어가도
+        // 이 층의 순서를 안 흔든다는 것을 여기서 못 박는다.
+        opened(&recent, &["옛나"]);
+
+        let hits = search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap().hits;
+        assert_eq!(lines(&hits)[0], "작업 산것");
+        assert_eq!(
+            lines(&hits)[1..],
+            lines(
+                &search(&works, &archive, &projects, &tempfile::tempdir().unwrap().path(), "묶음", &[])
+                    .unwrap()
+                    .hits
+            )[1..]
         );
     }
 
     /// 결정 23. **프로젝트 층은 `list_projects`와 같은 이름 사전순이다**(대소문자 무시).
     #[test]
     fn 프로젝트_층은_이름_사전순이다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         project(&projects, "b", "beta");
         project(&projects, "a", "Alpha");
         project(&projects, "g", "gamma");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "a", &[]).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "a", &[]).unwrap().hits),
             vec!["프로젝트 a", "프로젝트 b", "프로젝트 g"]
         );
     }
@@ -1309,7 +1494,7 @@ mod tests {
     /// 어설픈 매치보다 아래로 밀리면, 아카이브를 포함시킨 것이 오히려 방해가 된다.
     #[test]
     fn 층을_가로질러_앞서지_않는다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         work(&works, "활성것", "arc 활성 작업");
         doc(&works, "활성것", "spec/overview.md", 100);
         work(&archive, "옛것", "옛 arc 작업");
@@ -1318,7 +1503,7 @@ mod tests {
         project(&projects, "argo", "argo");
 
         assert_eq!(
-            lines(&search(&works, &archive, &projects, "ar", &nav()).unwrap().hits),
+            lines(&search(&works, &archive, &projects, &recent, "ar", &nav()).unwrap().hits),
             vec![
                 "가는곳 archive",
                 "작업 활성것",
@@ -1333,14 +1518,14 @@ mod tests {
     /// 결정 24. **상한은 층마다다** — 앞 층이 전체 상한을 먹으면 뒤 층이 영영 안 보인다.
     #[test]
     fn 상한은_층마다_따로_센다() {
-        let (_tmp, works, archive, projects) = roots();
+        let (_tmp, works, archive, projects, recent) = roots();
         for n in 0..LAYER_LIMIT + 5 {
             work(&works, &format!("묶음{n:02}"), &format!("묶음 {n:02}"));
         }
         work(&works, "문서집", "묶음 문서집");
         doc(&works, "문서집", "spec/overview.md", 100);
 
-        let results = search(&works, &archive, &projects, "묶음", &[]).unwrap();
+        let results = search(&works, &archive, &projects, &recent, "묶음", &[]).unwrap();
         // 작업 층이 스무 줄에서 잘려도 **문서 층은 그대로 선다.**
         assert_eq!(results.hits.len(), LAYER_LIMIT + 1);
         assert_eq!(lines(&results.hits)[LAYER_LIMIT], "문서 문서집/overview.md");

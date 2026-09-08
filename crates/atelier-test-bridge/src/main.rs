@@ -79,6 +79,9 @@ const HANDLERS: &[(&str, Handler)] = &[
             &works_dir(),
             &archive_dir(),
             &projects_dir(),
+            // **반드시 코어의 데이터 루트다.** 다른 값을 넘기면 L4가 sandbox 밖(진짜 홈)의
+            // 이력을 읽어, 관통 검사가 개발자의 실제 사용 기록에 따라 초록·빨강을 오간다.
+            &data_root(),
             &text(a, "query")?,
             &destinations(a)?,
         ))
