@@ -23,6 +23,22 @@ use rmcp::{
 
 pub(crate) use tool_error::kernel_error;
 
+/// Maison의 거절 **첫 줄**. 다섯 자리(프로젝트 도구 넷 + `projects`나 `branch`가 실린
+/// `atelier_start_work`)가 이 한 문장을 공유한다 — 자리마다 다르게 적으면 에이전트가
+/// 「어떤 것은 없고 어떤 것은 안 된다」로 읽고 다음 문을 두드린다.
+///
+/// **영어인 것은 이 표면이 통째로 영어이기 때문이다** — 도구 설명도 지침도 커널 오류도
+/// 에이전트가 읽는 층이라 영어다. 스펙에 적힌 한국어 문장은 뜻이지 리터럴이 아니다.
+const NO_PROJECTS_IN_MAISON: &str =
+    "Maison has no projects — a Room is a topic and does not attach to a repository.";
+
+/// 프로젝트 도구가 Maison에서 거절될 때 붙는 다음 걸음. 넷이 같은 문장을 쓴다 — 넷 다
+/// 「없는 것을 만들려는 시도」라 안내가 갈릴 이유가 없고, 갈라 두면 하나를 고칠 때
+/// 나머지 셋이 낡는다.
+pub(crate) const DO_NOT_CALL_PROJECT_TOOLS: &str =
+    "Do not call the project tools here. A Room needs none of them: give atelier_start_work \
+     a `slug` and write the Room's documents into the `specDir` it hands back.";
+
 /// 무상태 도구 표면. 데이터 루트는 기동 시 한 번 확정하고, 모든 작업은 커널에 위임한다.
 #[derive(Clone)]
 pub struct AtelierServer {
@@ -62,13 +78,33 @@ impl AtelierServer {
     /// **모드를 함께 받는 커널 함수**에 건네는 프로젝트 루트. Maison에서는 「없음」이다.
     ///
     /// 없음인 것은 규약이 아니라 인자다 — 커널이 프로젝트 층을 안 걷고, `start_work`가
-    /// `projects`를 받으면 검증에서 걸린다. 프로젝트 **도구** 자체(`atelier_list_projects`·
-    /// `add`·`edit`·`attach`)를 거절하는 것은 다음 티켓(#180)이고, 그때까지 그 넷은
-    /// `projects_root`를 직접 읽어 Atelier 등록부를 본다.
+    /// `projects`를 받으면 검증에서 걸린다. 프로젝트 **도구** 자체는 아래
+    /// `refuse_project_work`가 커널에 닿기 전에 되돌려 보낸다.
     fn shared_projects_root(&self) -> Option<&Path> {
         match self.mode {
             Mode::Atelier => Some(&self.projects_root),
             Mode::Maison => None,
+        }
+    }
+
+    /// Maison이면 프로젝트를 건드리는 호출을 **도구 오류**로 되돌려 보낸다.
+    /// Atelier면 `None`이라 호출이 그대로 지나간다.
+    ///
+    /// **거절이 커널이 아니라 어댑터에 있는 이유.** 커널에 맡기면 이유가 엉뚱해진다 —
+    /// 등록부를 안 건넨 자리(`shared_projects_root`)는 「project not registered」로 실패하고,
+    /// `attach_project`는 등록부를 늘 필요로 해서 시그니처가 「없음」을 받지도 못하며,
+    /// `branch`만 온 `start_work`는 **아무 오류도 없이** 그 이름을 work.json에 적는다
+    /// (Room에는 브랜치가 없다 — 결정 17). 셋 다 에이전트에게는 「등록만 하면 되겠다」로
+    /// 읽혀 없는 것을 만들려 든다.
+    ///
+    /// `next_step`이 자리마다 다른 것은 이 표면의 규약이다 — 「무엇이 틀렸는가」에 「다음에
+    /// 무엇을 하라」를 늘 붙인다 (tool_error.rs).
+    fn refuse_project_work(&self, next_step: &str) -> Option<CallToolResult> {
+        match self.mode {
+            Mode::Atelier => None,
+            Mode::Maison => Some(CallToolResult::error(vec![ContentBlock::text(format!(
+                "{NO_PROJECTS_IN_MAISON}\n\n{next_step}"
+            ))])),
         }
     }
 }
@@ -81,9 +117,12 @@ impl ServerHandler for AtelierServer {
             // from_build_env()는 rmcp 자신의 이름을 내보내므로 쓰지 않는다.
             .with_server_info(Implementation::new("atelier", env!("CARGO_PKG_VERSION")))
             // 절차 지식은 여기 한 곳에만 있다. 스킬 문서는 없다.
+            // **지침은 모드별 두 벌이다** — 어휘 교체가 아니라 절차가 다르다 (결정 15).
+            // 인스턴스별로 고를 수 있는 것은 `get_info`가 `&self`를 받기 때문이고,
+            // 도구 설명(static attribute)은 그 길이 없어 모드 중립으로 적혀 있다.
             // 주의: #[tool_handler(instructions = ...)]는 get_info를 직접 쓴 이 impl에서
             // 조용히 무시된다 (rmcp-macros 2.2.0 tool_handler.rs:91).
-            .with_instructions(instructions::INSTRUCTIONS)
+            .with_instructions(instructions::for_mode(self.mode))
     }
 }
 
@@ -106,4 +145,36 @@ pub fn run() -> anyhow::Result<()> {
         service.waiting().await?;
         Ok::<_, anyhow::Error>(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **두 번째 자물쇠에 그물을 건다.** 지금 이 배선을 밖에서 관찰할 길이 하나도 없다 —
+    /// `shared_projects_root`를 부르는 자리는 둘뿐인데, `start_work`는 위
+    /// `refuse_project_work`가 커널 앞에서 되돌려 보내 프로젝트가 실린 호출이 애초에 못
+    /// 닿고, Room의 아카이브는 등록부가 `Some`이든 `None`이든 같은 기록을 낸다 (커널의
+    /// `record_without_a_project_registry_is_the_same_document`가 그 동치를 못박는다).
+    /// 그래서 `Mode::Maison => None`을 뒤집어도 stdio 통합 검사는 전부 초록으로 지나간다.
+    ///
+    /// 값을 정하는 **유일한 자리**에서 직접 재는 이유다. 어댑터의 거절이 언젠가 좁아지거나
+    /// 프로젝트를 커널에 넘기는 도구가 하나 늘면, 이 갈래가 Maison 서버를 Atelier 등록부에서
+    /// 떼어 놓는 마지막 방어선이 된다 — 그때 `maison/rooms/<slug>/trees/<project>`에 워크트리가
+    /// 서는 것을 막는 것이 여기다 (결정 17).
+    #[test]
+    fn the_maison_server_hands_the_kernel_no_project_registry() {
+        assert!(
+            AtelierServer::for_mode(Mode::Maison).shared_projects_root().is_none(),
+            "Maison 서버가 커널에 프로젝트 등록부를 건넨다 — Room 안에 워크트리가 선다"
+        );
+        // Atelier 쪽도 함께 잰다. 「없음」만 재면 둘 다 `None`으로 만들어도 초록이고,
+        // 그러면 프로젝트를 실은 work가 통째로 안 선다.
+        let atelier = AtelierServer::for_mode(Mode::Atelier);
+        assert_eq!(
+            atelier.shared_projects_root(),
+            Some(atelier.projects_root.as_path()),
+            "Atelier 서버가 등록부를 잃었다"
+        );
+    }
 }
