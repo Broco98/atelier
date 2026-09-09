@@ -7,7 +7,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use atelier_core::{archive_dir, projects_dir, works_dir, Mode, ProjectPatch};
+use atelier_core::{archive_dir, projects_dir, shared_projects_root, works_dir, Mode, ProjectPatch};
 use serde_json::{Map, Value};
 
 /// 커맨드 하나가 받는 인자. Tauri와 같게 **snake_case로 정규화된 뒤** 들어온다.
@@ -149,15 +149,6 @@ fn mode(args: &Args) -> Result<Mode, String> {
         None => Err("인자 'mode'가 필요합니다".to_string()),
         Some(value) => serde_json::from_value(value.clone())
             .map_err(|e| format!("인자 'mode'를 읽지 못했습니다: {e}")),
-    }
-}
-
-/// 커널에 건네는 프로젝트 등록부. Maison에서는 「없음」이다 (결정 17) —
-/// `commands.rs`의 같은 이름 함수와 짝이다.
-fn shared_projects_root(mode: Mode) -> Option<PathBuf> {
-    match mode {
-        Mode::Atelier => Some(projects_dir()),
-        Mode::Maison => None,
     }
 }
 
@@ -487,6 +478,37 @@ mod tests {
                 "commands.rs의 '{root}' 호출 하나가 인자 아닌 값으로 세계를 고른다"
             );
         }
+    }
+
+    /// **명령이 프로젝트 등록부를 제 손으로 고르지 않는다** (결정 17).
+    ///
+    /// 갈래(`Atelier => Some(…)` · `Maison => None`)는 코어 한 자리에 산다. 한때 앱 명령·MCP
+    /// 서버·이 다리가 **같은 `match`를 각자** 들고 있었다 — 몸통도 주석의 이유도 같은 사본
+    /// 셋이라, 하나가 뒤집혀도 나머지 둘의 검사는 그대로 초록이고 그 표면에서만
+    /// `maison/rooms/<slug>/trees/<project>`에 워크트리가 선다.
+    ///
+    /// 그래서 여기서 보는 것은 **부르는가**다. 갈래가 옳은지는 코어가
+    /// (`only_atelier_hands_the_kernel_a_project_registry`) 잰다.
+    ///
+    /// **파싱이 없다.** 표식 하나(그 함수를 인자로 부른다)와 절대금지 하나(이 파일에
+    /// `Mode::Maison` 갈래를 다시 적지 않는다)뿐이다 — 표식이 0이면 절대금지는 「없는 것을
+    /// 안 찾았다」가 되어 영영 초록이므로 둘을 함께 든다(위 두 검사와 같은 거래).
+    #[test]
+    fn 명령이_등록부를_제_손으로_고르지_않는다() {
+        let source = APP_SOURCES
+            .iter()
+            .find(|(f, _)| *f == "commands.rs")
+            .expect("commands.rs가 앱 소스 표에서 사라졌다")
+            .1;
+        assert!(
+            source.matches("shared_projects_root(mode)").count() > 0,
+            "commands.rs가 공유 등록부 함수를 한 번도 안 부른다 — 표식이 낡았다"
+        );
+        assert_eq!(
+            source.matches("Mode::Maison").count(),
+            0,
+            "commands.rs가 세계별 갈래를 제 손으로 다시 적는다 — 사본이 넷째로 늘었다"
+        );
     }
 
     /// **어느 명령도 모드를 기본값으로 안 갖는다** (#187, contract).

@@ -3,6 +3,7 @@ import { Copy, Folder, GitBranch, Info, PanelTop } from "lucide-react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { relativeToWorkDir } from "./WorkInfo";
 import { workDirRef, worktreeDirRef } from "./refs";
@@ -58,7 +59,7 @@ export function WorkMetaRows({
           정보 탭 쪽 주석과 같다: 코어는 프로젝트 0개인 Room에도 이름을 주면 브랜치를
           확정해 저장하고(works.rs), 손으로 고친 work.json은 워크트리까지 실어 온다.
           저 세계에 없는 개념을 화면에 세우지 않는 것이 이 조건이다. */}
-      {mode === "atelier" && work.branch !== null && (
+      {hasProjects(mode) && work.branch !== null && (
         <MetaRow
           glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
           value={work.branch}
@@ -75,7 +76,7 @@ export function WorkMetaRows({
           공유해서, 288px 안에서 꼬리를 자르면 두 줄의 보이는 글자가 완전히 같아진다 —
           그 줄을 구분해 주는 유일한 부분만 잘려 나간다. 기준 행이 바로 위에 있으니
           여기를 그것에 상대로 적을 수 있다 (정보 탭과 같은 계약). */}
-      {mode === "atelier" &&
+      {hasProjects(mode) &&
         work.worktrees.map((worktree) => (
           <MetaRow
             key={worktree.project}

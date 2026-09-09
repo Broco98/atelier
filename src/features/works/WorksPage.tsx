@@ -49,6 +49,7 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import {
   armDrag,
@@ -72,7 +73,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
-import { emptyScreenCopy } from "./work-sections";
+import { emptyScreenCopy, pageNameOf } from "./work-sections";
 import { archiveConfirmBody, removeConfirmBody } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
@@ -206,12 +207,12 @@ function WorksPage({
   // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
   const { data: projects = [], isPending: projectsPending } = useProjects(mode);
-  // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드를 맨 앞에
-  // 두는 것이 이 판정의 유일한 지점이라, 티켓 09가 프로젝트 쿼리를 Atelier에서만 켜서
-  // `projects`가 Maison에서 늘 빈 배열이 되는 날에도 이 갈래가 저쪽 세계에서 참으로 눕지
-  // 않는다 — 그때 화면은 Maison 한가운데에서 「먼저 프로젝트를 등록해요」라고 말한다.
+  // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드가 조건 맨
+  // 앞에 서는 것이 요점이다 — 위 쿼리가 Maison에서 아예 안 켜지므로(`useProjects`) 저 세계에서
+  // `projects`는 **늘** 빈 배열이고, 모드를 안 보면 이 갈래가 언제나 참으로 눕는다. 그때 화면은
+  // Maison 한가운데에서 「먼저 프로젝트를 등록해요」라고 말한다.
   const needsProject =
-    mode === "atelier" && !projectsPending && works.length === 0 && projects.length === 0;
+    hasProjects(mode) && !projectsPending && works.length === 0 && projects.length === 0;
   // 아무것도 안 골랐을 때 본문이 하는 말. **세계마다 다르다**(US 22) — 사이드바의 빈 구획과
   // 한 표에서 나온다(`work-sections.ts`). 여기서 리터럴로 적으면 목록은 Room 어휘인데 본문은
   // 「작업은 Claude Code에서 시작돼요」인 화면이 나고, 그것은 Room이 0개일 때만 보인다.
@@ -492,7 +493,6 @@ function WorksPage({
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
       //
-      //
       // **모드를 여기서 리터럴로 풀지 않는다**(US 26). 저 세계에는 고를 것이 없다는 판단이
       // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
       // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
@@ -611,7 +611,9 @@ function WorksPage({
     // (`ownerOf(mode, …)`) 고른 작업이 없으면 그 자리가 비고, 뒤가 빈 키는 **그 세계의
     // 최상위 터미널**이라 `/terminal`의 셸이 이 줄에 서게 된다. `+`도 열 자리가 없어
     // 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
-    <PageHeader root="Works" inset={!sidebarOpen} />
+    // 머리에 이는 이름도 **그 세계의 것**이다 — 이 갈래는 Room이 0개인 Maison에서 늘 서는데,
+    // 바로 아래 본문은 이미 「아직 Room이 없어요」라고 말한다(`emptyScreenCopy`).
+    <PageHeader root={pageNameOf(mode)} inset={!sidebarOpen} />
   );
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는

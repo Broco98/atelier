@@ -715,7 +715,7 @@ describe("셸의 소유자 키", () => {
   });
 
   // 최상위 키와 work 키가 안 겹치는 근거가 「slug는 비어 있을 수 없다」 한 줄이라, 빈 뒤꼬리는
-  // 최상위 말고 다른 뜻을 가질 수 없다. 이 한 줄이 `ownerKey`가 앞 판에서 들던 근거이기도 하다.
+  // 최상위 말고 다른 뜻을 가질 수 없다 — 코어가 빈 slug를 거절해서다(`is_safe_slug`).
   it("뒤가 비면 그 세계의 최상위다 — slug가 있는 키와 안 겹친다", () => {
     for (const mode of ALL_MODES) {
       expect(slugOfOwner(ownerOf(mode))).toBeNull();

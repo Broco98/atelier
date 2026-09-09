@@ -6,6 +6,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import type { DocBody } from "@/features/works/doc-refs";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
@@ -210,7 +211,7 @@ function ArchivePage({
                     정보 탭·목록 필터 쪽과 같다 — 손으로 고친 work.json이나 저쪽 세계에서
                     옮겨 온 폴더가 Room 아카이브에도 프로젝트 이름을 실어 올 수 있고,
                     「비면 안 그린다」로 두면 그날 여기에만 저 세계의 개념이 되살아난다. */}
-                {mode === "atelier" && (
+                {hasProjects(mode) && (
                   <span className="flex gap-1.5">
                     {selected.projects.map((project) => (
                       <span

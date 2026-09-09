@@ -1,8 +1,14 @@
+/// <reference types="node" />
+// node: 접두사를 쓰지 않는 이유는 `context-glossary.test.ts`의 주석과 같다.
+import { readdirSync, readFileSync, type Dirent } from "fs";
+import { join, relative } from "path";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
 import {
   ALL_MODES,
   destinationsOf,
+  hasProjects,
   modeOf,
   navItemsOf,
   navTargetOf,
@@ -235,4 +241,51 @@ describe("모드별 참조 접두사", () => {
   // 꺼내 쓰게 된 뒤로(#186), 표에서 뽑아 조립한 기대값은 구현을 베껴 적은 것이라 앞머리가
   // 통째로 뒤바뀌어도 초록으로 남는다. 완성된 참조는 `features/works/refs.test.ts`가
   // **글자 그대로** 잰다.
+});
+
+// **이 세계에 프로젝트가 있는가**(결정 17). 값 자체는 두 줄이면 끝나지만, 이 함수가 생긴
+// 이유는 값이 아니라 **물음에 이름이 없었다는 것**이다 — 같은 판정이 화면 여섯과 훅 하나에
+// 세계 이름을 리터럴로 맞대는 같은 모양으로 흩어져 있었다.
+describe("세계가 프로젝트를 갖는가", () => {
+  it("Atelier만 갖는다", () => {
+    expect(hasProjects("atelier")).toBe(true);
+    expect(hasProjects("maison")).toBe(false);
+  });
+
+  // **nav와 같은 답을 해야 한다.** 두 사실이 갈리면 Maison nav에 `Projects`가 없는데 화면은
+  // 프로젝트 구획을 그리거나, 그 반대가 된다 — 표가 하나라는 것이 이 동치의 근거이므로
+  // 표에서 두 칸을 따로 뽑아 맞대는 것이 그물이 된다.
+  it.each(ALL_MODES)("%s: nav의 `Projects` 유무와 같은 답이다", (mode) => {
+    const inNav = navItemsOf(mode).some((item) => item.label === "Projects");
+    expect(hasProjects(mode)).toBe(inNav);
+  });
+
+  // **리터럴 비교가 다시 태어나지 않는다.** 이 함수가 생기기 전에는 일곱 자리가 각자 늙었고,
+  // 새 자리가 하나 더 늘어도 아무 검사가 안 빨개졌다. 프로덕션 소스를 통째로 훑어 그 모양을
+  // 막는다 — 「값을 정하는 자리는 하나」를 구조로 세우는 마지막 한 칸이다.
+  //
+  // **`shell-registry.ts`가 유일한 예외다.** 그 모듈은 타입 말고 아무것도 import하지 않고
+  // (그 성질을 자기 소스 스캔이 지킨다) 그래야 `SidebarWorkList`가 정적 마크업 검사에서
+  // 그것을 쓸 수 있다 — 값 하나를 들이면 `@/mode`가 딸려 온다. 예외를 **목록으로 못박아**
+  // 두 번째 예외가 조용히 생기지 않게 한다.
+  //
+  // **fail-closed다**: 파일을 하나도 못 읽거나 예외 파일이 사라지면 「깨끗하다」가 아니라
+  // 빨개진다.
+  it("리터럴로 세계를 비교하는 자리가 예외 하나뿐이다", () => {
+    const root = fileURLToPath(new URL(".", import.meta.url));
+    const sources = (function walk(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    })(root);
+    expect(sources.length).toBeGreaterThan(50);
+
+    const ALLOWED = ["features/terminal/shell-registry.ts"];
+    const offenders = sources
+      .filter((path) => /mode === "(?:atelier|maison)"/.test(readFileSync(path, "utf8")))
+      .map((path) => relative(root, path).split("\\").join("/"));
+    expect(offenders.sort()).toEqual(ALLOWED);
+  });
 });

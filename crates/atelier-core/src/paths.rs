@@ -20,6 +20,26 @@ pub fn projects_dir() -> PathBuf {
     data_root().join("projects")
 }
 
+/// **모드를 함께 받는 커널 함수에 건네는** 프로젝트 등록부. Maison에서는 「없음」이다
+/// (결정 17).
+///
+/// **위 `projects_dir`와 다른 물음이다.** 그쪽은 「등록부가 어디 있나」이고 이쪽은 「이 세계에
+/// 등록부가 있나」다 — 그래서 이 함수는 모드를 받고도 「Maison의 프로젝트 폴더」라는 없는
+/// 자리를 만들지 않는다. 없음인 것은 규약이 아니라 **인자**다: 건네면 Maison에서도 커널이
+/// 프로젝트 층을 걷는다(⇧⇧ 결과에 Atelier 프로젝트가 서고 — US 49 — 아카이브 기록이 Room에
+/// 없는 구획을 렌더한다).
+///
+/// **표면 셋이 이 한 자리를 읽는다**: 앱 명령(`commands.rs`) · MCP 서버(`mcp/mod.rs`) ·
+/// 다리(`atelier-test-bridge`). 한때 셋이 같은 `match`를 각자 들고 있었다 — 몸통도 이유도
+/// 같은 사본 셋이라, 하나가 뒤집혀도 나머지 둘의 검사는 그대로 초록이고 그 표면에서만
+/// `maison/rooms/<slug>/trees/<project>`에 워크트리가 선다.
+pub fn shared_projects_root(mode: Mode) -> Option<PathBuf> {
+    match mode {
+        Mode::Atelier => Some(projects_dir()),
+        Mode::Maison => None,
+    }
+}
+
 /// 모드의 홈. 최상위 터미널이 cwd 없이 뜰 때 서는 자리이기도 하다.
 ///
 /// **Atelier의 홈이 데이터 루트 자신인 것은 의도다** — 기존 경로가 한 글자도 안 바뀌어야
@@ -73,6 +93,18 @@ pub fn collapse_home(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **세계가 등록부를 갖는가.** 두 갈래를 함께 잰다 — 「없음」만 재면 둘 다 `None`으로
+    /// 만들어도 초록이고, 그러면 프로젝트를 실은 work이 Atelier에서도 통째로 안 선다.
+    #[test]
+    fn only_atelier_hands_the_kernel_a_project_registry() {
+        assert_eq!(shared_projects_root(Mode::Atelier), Some(projects_dir()));
+        assert_eq!(
+            shared_projects_root(Mode::Maison),
+            None,
+            "Maison이 커널에 등록부를 건넨다 — Room 안에 워크트리가 선다"
+        );
+    }
 
     #[test]
     fn expand_and_collapse_are_inverse_for_home_paths() {

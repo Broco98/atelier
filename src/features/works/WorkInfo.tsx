@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronRight, Copy } from "lucide-react";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { specDirRef, worktreeDirRef, workDirRef } from "./refs";
 import { splitSpecFiles } from "./spec-sections";
@@ -84,7 +85,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
             확정해 저장하므로(works.rs), 이름을 준 채로 만들어진 Room에는 쓰지도 않을
             브랜치가 실려 온다. 그것을 이 줄이 그대로 읽으면 저 세계에 없는 개념이 화면에
             선다. */}
-        {mode === "atelier" && work.branch !== null && (
+        {hasProjects(mode) && work.branch !== null && (
           <Row label="브랜치" value={work.branch} />
         )}
         {/* 아래 상대 경로들의 **기준**이라 맨 위에 온다 — 기준이 먼저 나와야 읽힌다 */}
@@ -95,7 +96,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
           모든 Room이 「아직 프로젝트가 없어요」라는, 붙일 수도 없는 것을 기다리는 문장을
           띄운 빈 구획을 하나씩 이고 있게 된다 — 워크트리 줄도 이 구획 안에 살아서 셋이
           한 조건으로 함께 걷힌다. */}
-      {mode === "atelier" && (
+      {hasProjects(mode) && (
         <Section title="프로젝트">
           {work.projects.length === 0 ? (
             <p className="px-2 py-1 text-[12px] leading-normal text-tertiary">{noProjects}</p>

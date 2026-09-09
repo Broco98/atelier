@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { pickSlug } from "@/components/shell/shell-store";
 import { isDefaultSelectable } from "./hooks";
 import { ALL_MODES } from "@/mode";
-import { emptyMainNotice, emptyScreenCopy, listLabelOf, splitWorkSections } from "./work-sections";
+import {
+  emptyMainNotice,
+  emptyScreenCopy,
+  listLabelOf,
+  pageNameOf,
+  splitWorkSections,
+} from "./work-sections";
 import type { WorkView } from "./types";
 
 // 목록 순서·구역 분리 seam. 순수 함수 하나가 대상이라 렌더도 DOM도 없이 기본 환경(node)에서 돈다.
@@ -194,6 +200,25 @@ describe("고른 것이 없는 본문이 세계마다 자기 어휘로 말한다
   it.each(["작업", "Claude Code", "atelier로"])("Maison 본문에 `%s`가 없다", (word) => {
     const { title, body, code } = emptyScreenCopy("maison");
     expect(`${title}\n${body}\n${code}`).not.toContain(word);
+  });
+});
+
+// **머리에 이는 화면 이름도 세계를 탄다.** 이 갈래는 고른 항목이 없을 때만 서는데, Room이
+// 0개인 Maison에서는 그것이 **늘** 서는 상태다 — 그 자리가 리터럴 `"Works"`였던 동안, 본문
+// 한가운데가 「아직 Room이 없어요」라고 말하는 바로 그 화면의 머리가 `Works`였다.
+describe("화면이 머리에 이는 자기 이름", () => {
+  it("두 세계가 각자 자기 이름을 든다", () => {
+    expect(pageNameOf("atelier")).toBe("Works");
+    expect(pageNameOf("maison")).toBe("Rooms");
+  });
+
+  // **`label`과 갈린 값이라는 것을 함께 잰다.** 한 칸으로 접으면 Atelier 머리가 한국어
+  // `작업`으로 눕어 `Archive`·`Projects`와 다른 층이 되고, 그때 이 검사만 빨개진다.
+  it("사이드바 구획 라벨과 같은 값이 아니다", () => {
+    expect(pageNameOf("atelier")).not.toBe(listLabelOf("atelier"));
+    // Maison은 두 자리가 같은 낱말이다 — 우연이 아니라 그 세계에서 구획 머리와 화면 이름이
+    // 같은 층(대문자 영어)이라서다. 그 동치도 일부러 못박는다.
+    expect(pageNameOf("maison")).toBe(listLabelOf("maison"));
   });
 });
 

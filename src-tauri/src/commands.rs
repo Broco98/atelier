@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, works_dir, ArchiveEntry, Destination, Mode, ProjectPatch,
-    ProjectView, SearchResults, WorkView,
+    archive_dir, projects_dir, shared_projects_root, works_dir, ArchiveEntry, Destination, Mode,
+    ProjectPatch, ProjectView, SearchResults, WorkView,
 };
 
 use std::sync::Arc;
@@ -13,18 +13,6 @@ type CmdResult<T> = Result<T, String>;
 
 fn err(e: atelier_core::Error) -> String {
     e.to_string()
-}
-
-/// **모드를 함께 받는 커널 함수**에 건네는 프로젝트 등록부. Maison에서는 「없음」이다
-/// (결정 17) — MCP 서버의 `shared_projects_root`와 같은 갈래이고 이유도 같다.
-///
-/// 없음인 것은 규약이 아니라 인자다. 건네면 Maison에서도 커널이 프로젝트 층을 걷는다 —
-/// ⇧⇧ 결과에 Atelier 프로젝트가 서고(US 49), 아카이브 기록이 Room에 없는 구획을 렌더한다.
-fn shared_projects_root(mode: Mode) -> Option<PathBuf> {
-    match mode {
-        Mode::Atelier => Some(projects_dir()),
-        Mode::Maison => None,
-    }
 }
 
 #[tauri::command]
@@ -280,15 +268,10 @@ mod tests {
     // `모드를_받는_명령을_전부_maison으로_불러_본다`)가 **명령 하나하나를** 실제로 불러
     // 어느 루트를 읽었는지 재고, 목록은 이 파일에서 파생한다 — 명령이 늘면 저절로 따라온다.
 
-    /// **Maison에는 프로젝트 등록부가 없다** (결정 17). 건네면 커널이 Maison에서도
-    /// 프로젝트 층을 걸어 ⇧⇧ 결과에 Atelier 프로젝트가 서고(US 49·50), 아카이브 기록이
-    /// Room에 없는 구획을 렌더한다.
-    ///
-    /// Atelier 쪽을 함께 재는 것은 **「양쪽 다 없음」으로 눕히는 반대편 변형** 때문이다 —
-    /// 그러면 Atelier의 ⇧⇧에서 프로젝트 층이 조용히 사라진다.
-    #[test]
-    fn maison에는_프로젝트_등록부를_안_건넨다() {
-        assert_eq!(shared_projects_root(Mode::Maison), None);
-        assert_eq!(shared_projects_root(Mode::Atelier), Some(projects_dir()));
-    }
+    // **「Maison에는 등록부가 없다」를 재던 단위 테스트도 여기 없다.** 그 갈래가 이 파일을
+    // 떠나 코어로 갔기 때문이다(`atelier_core::shared_projects_root`) — 한때 앱·MCP·다리가
+    // 같은 `match`를 각자 들고 있었고, 몸통도 이유도 같은 사본 셋이라 하나가 뒤집혀도 나머지
+    // 둘의 검사는 그대로 초록이었다. 갈래 자체는 이제 코어의
+    // `only_atelier_hands_the_kernel_a_project_registry`가 재고, **이 파일이 그것을 부르는지**는
+    // 다리 크레이트의 소스 검사(`명령이_등록부를_제_손으로_고르지_않는다`)가 든다.
 }

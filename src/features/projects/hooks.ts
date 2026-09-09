@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { projectsApi } from "./api";
 import type { ProjectPatch } from "./types";
@@ -23,7 +24,7 @@ export const projectsQuery = (mode: Mode) =>
     queryKey: PROJECTS_KEY,
     queryFn: projectsApi.list,
     staleTime: 30_000,
-    enabled: mode === "atelier",
+    enabled: hasProjects(mode),
   });
 
 export function useProjects(mode: Mode) {

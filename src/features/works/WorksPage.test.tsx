@@ -891,13 +891,18 @@ describe("WorksPage 셸 조회가 한 세계로 눕지 않는다", () => {
     expect(countOf(worksPage, "runningShellsOf(state, ownerOf(mode, work.slug))")).toBe(1);
   });
 
-  // 세계 이름이 리터럴로 서도 되는 자리는 **둘뿐이다** — 빈 화면이 프로젝트 등록을 권하는
-  // 조건(Atelier에만 프로젝트가 있다)과 그 문구. 셋째가 생기면 그것은 조회가 누운 것이므로
-  // 여기서 먼저 빨개진다.
-  it("세계 이름 리터럴은 빈 화면의 그 둘뿐이다", () => {
-    expect(countOf(worksPage, '"atelier"')).toBe(1);
+  // 세계 이름이 리터럴로 서는 자리가 **하나도 없다.** 한때 하나 있었다 — 빈 화면이 프로젝트
+  // 등록을 권하는 조건(`mode === "atelier" && !projectsPending …`)이었고, 그 물음이 화면
+  // 여섯과 훅 하나에 같은 모양으로 흩어져 있다가 `@/mode`의 `hasProjects`로 이름을 얻으면서
+  // 여기서도 사라졌다. 리터럴이 하나라도 다시 서면 그것은 조회가 누웠거나 표를 안 읽은
+  // 것이므로 여기서 먼저 빨개진다.
+  //
+  // **fail-closed로 짠다**: 리터럴 0개만 재면 이 화면이 모드를 통째로 잊어도 초록이다.
+  // 세계를 함수에 넘기는 모양이 살아 있는지를 함께 든다.
+  it("세계 이름 리터럴이 하나도 없다", () => {
+    expect(countOf(worksPage, '"atelier"')).toBe(0);
     expect(countOf(worksPage, '"maison"')).toBe(0);
-    expect(worksPage).toContain('mode === "atelier" && !projectsPending');
+    expect(worksPage).toContain("hasProjects(mode) && !projectsPending");
   });
 });
 
@@ -1238,6 +1243,21 @@ describe("아무것도 안 골랐을 때의 본문", () => {
     // 분할 비율이 여기서 읽힌다 — 이 화면은 고른 것이 없어도 그 훅을 먼저 부른다.
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
+
+  // **머리도 그 세계의 이름을 인다.** 낱말은 `work-sections.test.ts`가 글자까지 재고 여기서
+  // 보는 것은 화면이 그 표를 부르는가다 — 이 자리가 리터럴 `"Works"`였고, 같은 화면 본문이
+  // 이미 「아직 Room이 없어요」라고 말하고 있었다(한 화면에 두 세계의 말).
+  it("Maison 머리가 `Rooms`이고 `Works`가 아니다", () => {
+    const html = renderEmpty("maison");
+    expect(html).toContain(">Rooms<");
+    expect(html).not.toContain(">Works<");
+  });
+
+  // 반대쪽. 이 줄이 없으면 두 세계를 다 `Rooms`로 눕혀도 위 검사가 초록이다.
+  it("Atelier 머리는 그대로 `Works`다", () => {
+    const html = renderEmpty("atelier");
+    expect(html).toContain(">Works<");
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -1262,8 +1282,8 @@ describe("아무것도 안 골랐을 때의 본문", () => {
   });
 
   // **프로젝트 갈래가 Maison에서 아예 안 선다**(결정 17). 프로젝트가 0개인 것은 이 세계의
-  // 정상 상태이고 — 티켓 09가 그 쿼리를 Atelier에서만 켜는 순간 **늘** 0개가 된다 — 그때
-  // 갈래가 참으로 누우면 Maison 한가운데가 「먼저 프로젝트를 등록해요」라고 말한다.
+  // 정상 상태다 — 쿼리가 Atelier에서만 켜지므로(`useProjects`) 저 세계에서는 **늘** 0개이고,
+  // 그때 갈래가 참으로 누우면 Maison 한가운데가 「먼저 프로젝트를 등록해요」라고 말한다.
   it("Maison에서는 프로젝트가 0개여도 등록을 시키지 않는다", () => {
     const html = renderEmpty("maison", []);
     expect(html).not.toContain("먼저 프로젝트를 등록해요");

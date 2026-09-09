@@ -98,16 +98,6 @@ export interface ShellsState {
 export const NO_SHELLS: ShellsState = { shells: [], activeByOwner: {}, nextId: 1 };
 
 /**
- * 소유자를 레코드 키로. **지금은 그대로 돌려준다 — 그래도 함수로 남긴다.**
- *
- * 한때 `owner ?? ""`였다(최상위가 `null`이던 판). 소유자가 늘 문자열이 된 지금 그 접기는
- * 사라졌지만, 이 함수가 없어지면 키를 짓는 자리가 `activeByOwner`·`activateShell`·
- * `removeShell` **셋으로 흩어진다** — 그 셋이 각자 키를 지으면 형식을 한 번 손보는 날
- * 한 곳만 옛 키를 짓고, 화면에는 「가끔 켜진 칸이 사라진다」로만 보인다.
- */
-const ownerKey = (owner: ShellOwner): string => owner;
-
-/**
  * 소유자 키를 가르는 글자. **모드에는 없고 slug에는 있을 수 있는 글자**다 — 코어의
  * `is_safe_slug`(`crates/atelier-core/src/slug.rs`)가 막는 것은 빈 값·앞머리의 `.`·`/`·`\`
  * 넷뿐이라, 사람이 `slug`를 손으로 주면 `:`가 그대로 들어온다(`slugify`는 `:`를 `-`로 바꾸지만
@@ -136,8 +126,7 @@ export type ShellOwner = `${Mode}${typeof OWNER_SEP}${string}`;
  * `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
  *
  * **키를 짓는 자리는 여기 하나다.** 부르는 쪽이 문자열을 손으로 이으면 형식을 달리 적는 자리가
- * 생기고, 그 화면만 조용히 남의 셸을 세거나 자기 셸을 못 찾는다 — `ownerKey`가 레코드 키를
- * 한 자리에서만 짓는 것과 같은 이유다.
+ * 생기고, 그 화면만 조용히 남의 셸을 세거나 자기 셸을 못 찾는다.
  */
 export function ownerOf(mode: Mode, slug?: string | null): ShellOwner {
   return `${mode}${OWNER_SEP}${slug ?? ""}`;
@@ -159,8 +148,7 @@ export function modeOfOwner(owner: ShellOwner): Mode {
  * 그 소유자의 slug. **`null`이면 그 세계의 최상위 터미널이다.**
  *
  * 빈 뒤꼬리가 다른 뜻을 가질 수 없는 것은 코어가 빈 slug를 거절하기 때문이다
- * (`is_safe_slug`) — `ownerKey`의 「Work slug가 비어 있을 수 없다」와 같은 근거이고,
- * 그 한 줄이 최상위 키와 work 키가 안 겹치는 것도 함께 보증한다.
+ * (`is_safe_slug`). 그 한 줄이 최상위 키와 work 키가 안 겹치는 것도 함께 보증한다.
  */
 export function slugOfOwner(owner: ShellOwner): string | null {
   return owner.slice(owner.indexOf(OWNER_SEP) + 1) || null;
@@ -211,6 +199,12 @@ export function topTerminal(mode: Mode): ShellOrigin {
  * 코어가 프로젝트 붙이기를 거절하기 때문인데, 그 거절 **하나에만** 걸어 두면 손으로 고친
  * work.json 하나로 Room이 프로젝트를 실어 오고 — 목록을 읽는 자리에는 검증이 없다 —
  * `+`가 있지도 않은 워크트리를 고르는 메뉴를 연다. 없는 것을 시도할 수 없어야 한다.
+ *
+ * **이 물음의 정본은 `@/mode`의 `hasProjects`이고, 여기만 그것을 못 부른다.** 이 모듈은
+ * 타입 말고는 아무것도 import하지 않는다(머리말) — 그 성질이 `SidebarWorkList`가 이 파일을
+ * 정적 마크업 검사에서 쓰게 해 주고, 소스 스캔이 그것을 지킨다. 값 하나를 들이는 순간
+ * `@/mode`가 딸려 오므로 여기서는 갈래를 손으로 적는다. 셋째 세계가 생기는 날 저 표를
+ * 고치면서 이 한 줄을 함께 찾아야 한다.
  */
 function shellTrees(mode: Mode, work: WorkView): WorktreeView[] {
   return mode === "atelier" ? work.worktrees : [];
@@ -374,7 +368,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
   return {
     state: {
       shells: [...state.shells, shell],
-      activeByOwner: { ...state.activeByOwner, [ownerKey(origin.owner)]: id },
+      activeByOwner: { ...state.activeByOwner, [origin.owner]: id },
       nextId: id + 1,
     },
     id,
@@ -430,7 +424,7 @@ export function shellCountsOf(state: ShellsState, mode: Mode): Record<string, nu
 }
 
 export function activeIdOf(state: ShellsState, owner: ShellOwner): number | null {
-  return state.activeByOwner[ownerKey(owner)] ?? null;
+  return state.activeByOwner[owner] ?? null;
 }
 
 /** 어느 화면에 셸이 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. */
@@ -619,7 +613,7 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   const shell = state.shells.find((one) => one.id === id);
   if (!shell) return state;
 
-  const key = ownerKey(shell.owner);
+  const key = shell.owner;
   if (state.activeByOwner[key] === id) return state;
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
@@ -1061,7 +1055,7 @@ export function removeShell(state: ShellsState, id: number): ShellsState {
   if (!gone) return state;
 
   const shells = state.shells.filter((shell) => shell.id !== id);
-  const key = ownerKey(gone.owner);
+  const key = gone.owner;
   if (state.activeByOwner[key] !== id) return { ...state, shells };
 
   const siblings = state.shells.filter((shell) => shell.owner === gone.owner);

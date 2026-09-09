@@ -82,6 +82,8 @@ interface ModeShape {
   readonly palette: readonly PaletteDestination[];
   readonly routes: ModeRoutes;
   readonly refs: ModeRefs;
+  /** 이 세계에 프로젝트라는 것이 있는가 (결정 17). 아래 `hasProjects` 머리말이 이유다. */
+  readonly projects: boolean;
 }
 
 /**
@@ -152,12 +154,14 @@ const TABLE = {
     palette: [...navItems, SETTINGS_PLACE],
     routes: ATELIER_ROUTES,
     refs: { work: "~/.atelier/works/", archive: "~/.atelier/archive/" },
+    projects: true,
   },
   maison: {
     nav: MAISON_NAV,
     palette: [...MAISON_NAV, SETTINGS_PLACE],
     routes: MAISON_ROUTES,
     refs: { work: "~/.atelier/maison/rooms/", archive: "~/.atelier/maison/archive/" },
+    projects: false,
   },
 } as const satisfies Record<Mode, ModeShape>;
 
@@ -196,6 +200,28 @@ export function slugOf(pathname: string): string | null {
   if (!pathname.startsWith(prefix)) return null;
   const segment = pathname.slice(prefix.length).split("/")[0];
   return segment ? decodeURIComponent(segment) : null;
+}
+
+/**
+ * 이 세계에 **프로젝트라는 것이 있는가**(결정 17). Room은 토픽이고 저장소에 안 붙어서,
+ * 프로젝트도 브랜치도 워크트리도 Maison에는 자리가 없다.
+ *
+ * **물음에 이름을 준 것이 요점이다.** 이 판정이 화면 여섯과 훅 하나에 흩어져 있었고
+ * (정보 탭의 구획과 브랜치 줄 · ⓘ 팝오버 · 사이드바 hover 카드 · 본문의 등록 안내 ·
+ * 아카이브의 프로젝트 메타 · `+`가 여는 워크트리 목록 · 프로젝트 쿼리의 `enabled`),
+ * 전부 세계 이름을 리터럴로 맞대는 **같은 모양**이었다 — 같은 물음이 일곱 자리에서 각자
+ * 늙는다는 뜻이라, 한 자리에 새 갈래가 필요해지는 날 나머지가 조용히 뒤처진다.
+ * (그 모양을 여기 산문으로도 안 적는다: `mode.test.ts`의 소스 스캔이 파싱 없이 글자만 보고,
+ * 파싱이 필요 없게 좁힌 것이 그 검사가 fail-closed인 근거다.)
+ * 세계 이름과 그 세계의 성질을 가르는 일이기도 하다: 셋째 세계가 생기면 이 표의 칸 하나가
+ * 답을 정하고, 리터럴 비교였다면 일곱 자리를 모두 찾아 고쳐야 한다.
+ *
+ * 판정은 「프로젝트가 0개인가」가 **아니다.** 손으로 고친 work.json이나 저쪽 세계에서 옮겨 온
+ * 폴더가 Room에도 프로젝트 이름을 실어 올 수 있어서, 값으로만 가르면 그날 그 화면에만 저
+ * 세계의 개념이 되살아난다.
+ */
+export function hasProjects(mode: Mode): boolean {
+  return TABLE[mode].projects;
 }
 
 /**

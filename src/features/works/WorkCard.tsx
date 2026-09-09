@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { formatCreated, STATUS_META } from "./status";
 import type { WorkView } from "./types";
@@ -43,7 +44,7 @@ export function WorkCard({ mode, work }: { mode: Mode; work: WorkView }) {
             일어날 수 없는 일을 기다리라고 말하는 문장이고, 코어는 이름을 준 채 만들어진
             Room에 브랜치를 실어 보낼 수 있어(works.rs의 nothing_to_decide) `null` 검사도
             안 문다. 세 자리가 **같은 조건 모양**이라 함께 늙는다. */}
-        {mode === "atelier" && (
+        {hasProjects(mode) && (
           <>
             <CardField label="브랜치" muted={work.branch === null} mono={work.branch !== null}>
               {work.branch ?? "프로젝트가 붙으면 정해져요"}

@@ -47,8 +47,18 @@ pub struct AtelierServer {
     /// 그래서 도구 이름도 시그니처도 모드를 안 받는다.
     mode: Mode,
     /// 프로젝트 등록부. **모드가 갈려도 하나뿐이다** — 프로젝트는 Atelier에만 있고
-    /// (결정 17), Maison 서버는 이 값을 커널에 안 건넨다 (`shared_projects_root`).
+    /// (결정 17), Maison 서버는 이 값을 커널에 안 건넨다 (아래 `shared_projects`).
+    ///
+    /// 프로젝트 **도구**는 이 값을 갈래 없이 쓴다. Maison에서 그 도구들이 커널에 닿기 전에
+    /// `refuse_project_work`가 되돌려 보내기 때문이다 — 그쪽이 「없는 것을 만들려는 시도」에
+    /// 이유를 붙여 답하는 자리라, 여기서 한 번 더 막으면 같은 사실을 두 곳이 말한다.
     projects_root: PathBuf,
+    /// **모드를 함께 받는 커널 함수**에 건네는 등록부. Maison에서는 「없음」이다.
+    ///
+    /// 갈래를 여기서 안 적는다 — `atelier_core::shared_projects_root`가 앱 명령·다리와
+    /// **같은 한 자리**에서 정한다. 세 표면이 각자 `match`를 들고 있던 판에는 하나가
+    /// 뒤집혀도 나머지 둘의 검사가 그대로 초록이었다.
+    shared_projects: Option<PathBuf>,
     works_root: PathBuf,
     /// 끝난 work가 옮겨가 머무는 루트. 작업 목록을 읽는 경로는 여기를 보지 않는다.
     archive_root: PathBuf,
@@ -68,6 +78,7 @@ impl AtelierServer {
         Self {
             mode,
             projects_root: atelier_core::projects_dir(),
+            shared_projects: atelier_core::shared_projects_root(mode),
             works_root: atelier_core::works_dir(mode),
             archive_root: atelier_core::archive_dir(mode),
             // 영역별 라우터를 합성한다. 도구를 추가하는 티켓은 파일과 라우터를 하나씩 늘린다.
@@ -81,10 +92,7 @@ impl AtelierServer {
     /// `projects`를 받으면 검증에서 걸린다. 프로젝트 **도구** 자체는 아래
     /// `refuse_project_work`가 커널에 닿기 전에 되돌려 보낸다.
     fn shared_projects_root(&self) -> Option<&Path> {
-        match self.mode {
-            Mode::Atelier => Some(&self.projects_root),
-            Mode::Maison => None,
-        }
+        self.shared_projects.as_deref()
     }
 
     /// Maison이면 프로젝트를 건드리는 호출을 **도구 오류**로 되돌려 보낸다.
@@ -158,10 +166,12 @@ mod tests {
     /// `record_without_a_project_registry_is_the_same_document`가 그 동치를 못박는다).
     /// 그래서 `Mode::Maison => None`을 뒤집어도 stdio 통합 검사는 전부 초록으로 지나간다.
     ///
-    /// 값을 정하는 **유일한 자리**에서 직접 재는 이유다. 어댑터의 거절이 언젠가 좁아지거나
-    /// 프로젝트를 커널에 넘기는 도구가 하나 늘면, 이 갈래가 Maison 서버를 Atelier 등록부에서
-    /// 떼어 놓는 마지막 방어선이 된다 — 그때 `maison/rooms/<slug>/trees/<project>`에 워크트리가
-    /// 서는 것을 막는 것이 여기다 (결정 17).
+    /// 그래서 이 서버가 **그 갈래를 실제로 태웠는지**를 여기서 직접 잰다. 갈래 자체는
+    /// 코어(`atelier_core::shared_projects_root`)가 세 표면을 통틀어 한 자리에서 정하고
+    /// 거기 자기 검사가 있지만, 그 함수를 이 서버가 부르는지는 그 검사가 못 본다 — 기동에서
+    /// 한 번 굳는 값이라(`for_mode`) 되돌리기 쉽고, 되돌아가면 Maison 서버가 Atelier 등록부를
+    /// 든 채로 뜬다. 그때 `maison/rooms/<slug>/trees/<project>`에 워크트리가 서는 것을 막는
+    /// 마지막 방어선이 이 배선이다 (결정 17).
     #[test]
     fn the_maison_server_hands_the_kernel_no_project_registry() {
         assert!(

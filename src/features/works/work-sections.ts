@@ -69,6 +69,7 @@ interface EmptyScreen {
 const COPY = {
   atelier: {
     label: "작업",
+    page: "Works",
     allPinned: "전부 고정돼 있어요.",
     noneActive: "진행 중인 작업이 없어요.",
     // 앱에 만드는 화면이 없어서 **어디서 시작하는지**를 말한다(아래 `screen`과 같은 몫).
@@ -83,6 +84,7 @@ const COPY = {
   },
   maison: {
     label: "Rooms",
+    page: "Rooms",
     // 고정은 세계를 안 타는 말이라 같은 문장이다 — 「작업」도 「Room」도 안 부른다.
     allPinned: "전부 고정돼 있어요.",
     noneActive: "진행 중인 Room이 없어요.",
@@ -101,13 +103,35 @@ const COPY = {
   },
 } as const satisfies Record<
   Mode,
-  { label: string; allPinned: string; noneActive: string; empty: string; screen: EmptyScreen }
+  {
+    label: string;
+    page: string;
+    allPinned: string;
+    noneActive: string;
+    empty: string;
+    screen: EmptyScreen;
+  }
 >;
 
 // 상주 목록의 머리(US 17). Atelier `작업` · Maison `Rooms` — 같은 규격으로 다른 것을 본다.
 // 대문자인 쪽은 nav 항목과 같은 층이라 그렇다(US 59). 결정 6은 여기가 아니라 nav 배열의 것이다.
 export function listLabelOf(mode: Mode): string {
   return COPY[mode].label;
+}
+
+// 이 화면이 **머리에 이는 자기 이름**. 고른 항목이 없을 때만 보인다 — 하나라도 골라 있으면
+// 그 자리는 탭 줄이다(`WorksPage`).
+//
+// **`label`과 다른 값이다.** 사이드바 머리는 구획 라벨이라 Atelier에서 한국어 `작업`인데
+// (US 17), 이쪽은 `Archive`·`Projects`와 나란히 서는 **화면 이름**이라 두 세계 다 대문자
+// 영어다(CONTEXT.md 「고르는 것의 라벨은 소문자 영어」의 대문자 층). 그래서 한 표에 두 칸이다 —
+// 한 칸으로 접으면 둘 중 하나가 제 층을 잃는다.
+//
+// 이 자리가 리터럴 `"Works"`였다. Maison에서 Room을 안 골랐을 때(Room이 0개면 **늘** 그렇다)
+// 본문 한가운데는 「아직 Room이 없어요」라고 하는데 그 바로 위 머리는 `Works`였다 — 한 화면이
+// 두 세계의 말을 동시에 하는 것이고, CONTEXT.md 「Room」 항목이 금지한 그 섞임이다.
+export function pageNameOf(mode: Mode): string {
+  return COPY[mode].page;
 }
 
 // 빈 상주 목록이 하는 말. 판정이 셋으로 갈리는 자리라 그림에서 꺼내 둔다 — 컴포넌트

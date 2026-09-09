@@ -37,7 +37,8 @@ mod search;
 
 pub use mode::{mode_from_env, Mode, MODE_ENV};
 pub use paths::{
-    archive_dir, collapse_home, data_root, expand_home, mode_home, projects_dir, works_dir,
+    archive_dir, collapse_home, data_root, expand_home, mode_home, projects_dir,
+    shared_projects_root, works_dir,
 };
 pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
