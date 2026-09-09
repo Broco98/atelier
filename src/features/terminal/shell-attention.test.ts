@@ -12,7 +12,9 @@ import {
   ptyIdOf,
   nextAttention,
   signalOf,
+  signalsByOwner,
   topSignal,
+  topSignalView,
 } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import type { Shell } from "./shell-registry";
@@ -312,6 +314,77 @@ describe("work 하나의 값은 최고 하나다", () => {
   it("죽은 칸은 안 센다", () => {
     const 죽은칸 = { ...칸(상태({ kind: "waiting" }), { kind: "failed", reason: "없어요" }), id: 9 };
     expect(topSignal([죽은칸])).toBeNull();
+  });
+});
+
+// **행이 그리는 것은 값 하나가 아니라 한 줄이다**(#203). 레인의 점·링은 화면값이 정하지만
+// 둘째 줄은 그 값을 **낸 셸**의 말과 시각과 마크까지 든다 — 그 넷이 다른 함수에서 나오면
+// 행이 「A 셸의 색으로 B 셸의 말」을 적을 수 있다. 스토리 79가 막으려는 어긋남이 그것이라
+// 이기는 셸을 고르는 자리를 하나로 둔다.
+describe("행이 읽는 한 줄", () => {
+  const 칸이 = (over: Partial<Shell>): Shell => ({ ...칸(null), ...over });
+
+  it("이긴 셸의 말·시각·도는 것이 값과 함께 나온다", () => {
+    const list = [
+      칸이({ id: 1, attention: 상태({ kind: "done", message: "PR 열었다", since: 30 }), running: "codex" }),
+      칸이({ id: 2, attention: 상태({ kind: "waiting", message: "커밋할까요?", since: 50 }), running: "claude" }),
+    ];
+    expect(topSignalView(list)).toEqual({
+      kind: "waiting",
+      message: "커밋할까요?",
+      since: 50,
+      running: "claude",
+    });
+  });
+
+  // **마크도 죽은 칸을 딛고 온다.** `runningOn`이 끝난 칸의 마지막 값을 가리는 것과 같은
+  // 가름이라, 여기서 `shell.running`을 그냥 읽으면 죽은 셸의 로고가 행에 남는다.
+  it("도는 것이 없으면 마크도 없다", () => {
+    const list = [칸이({ id: 1, attention: 상태({ kind: "waiting" }), running: null })];
+    expect(topSignalView(list)?.running).toBeNull();
+  });
+
+  it("화면값이 없으면 줄도 없다", () => {
+    expect(topSignalView(칸들(null, 상태({ kind: "done", seen: true })))).toBeNull();
+  });
+
+  // **`topSignal`이 이 함수를 딛는다.** 우선순위를 아는 자리가 둘이면 레인과 둘째 줄이
+  // 다른 셸을 고를 수 있다.
+  it("값만 묻는 자리도 같은 줄을 딛는다", () => {
+    const list = 칸들(상태({ kind: "working" }), 상태({ kind: "done" }));
+    expect(topSignal(list)).toBe(topSignalView(list)?.kind);
+  });
+});
+
+// 사이드바가 **한 번에** 읽는 값(#203). 행마다 구독하지 않는 것은 이 Record가 문자열만
+// 담기 때문이다 — 얕은 비교가 그대로 먹어 상태가 실제로 바뀔 때만 목록이 다시 그려진다
+// (`shellCountsOf` 머리말이 든 그 함정의 반대편).
+describe("소유자별 화면값", () => {
+  const 셸 = (owner: string | null, attention: Attention | null, id: number): Shell => ({
+    ...칸(attention),
+    id,
+    owner,
+  });
+
+  it("work마다 최고 하나이고, 값이 없는 work은 키 자체가 없다", () => {
+    const state = {
+      shells: [
+        셸("가", 상태({ kind: "working" }), 1),
+        셸("가", 상태({ kind: "waiting" }), 2),
+        셸("나", null, 3),
+        셸("다", 상태({ kind: "done" }), 4),
+      ],
+      activeByOwner: {},
+      nextId: 5,
+    };
+    expect(signalsByOwner(state)).toEqual({ 가: "waiting", 다: "done" });
+  });
+
+  // 최상위 셸은 어느 work의 것도 아니라 행이 없다 — 빈 문자열 키가 슬러그인 척하면
+  // 그 키를 읽는 행이 영영 안 나온다(`shellCountsOf`와 같은 가름).
+  it("최상위 셸은 안 든다", () => {
+    const state = { shells: [셸(null, 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
+    expect(signalsByOwner(state)).toEqual({});
   });
 });
 

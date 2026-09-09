@@ -3,6 +3,7 @@ import { WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
+  markAttention,
   markRunning,
   readIpcRecord,
   unknownIpcCalls,
@@ -445,36 +446,41 @@ test("모든 행이 두 줄이고 높이가 같다 — 둘째 줄이 셸이나 �
 // **라이트와 다크를 둘 다 잰다.** 다크 팔레트는 아직 앱에 켜는 손잡이가 없지만(`.dark`를
 // 붙이는 자리가 이 저장소에 없다) 토큰은 이미 서 있고, 손잡이가 생기는 날 이 줄이 그 팔레트를
 // 이미 지키고 있어야 한다 — 그날 대비를 다시 세는 사람은 없다.
+//
+// **계산은 색 문자열 둘을 받는 자리로 갈려 있다.** 아래 `대비를잰다`는 글자색을 재는데,
+// 레인의 점은 **배경색**을 재기 때문이다(#203) — 한쪽 모양에 매어 두면 점을 재는 자리가
+// 이 계산을 한 벌 더 갖는다.
+const 색대비 = (page: Page, 앞: string, 뒤: string) =>
+  page.evaluate(
+    ([앞, 뒤]: [string, string]) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext("2d")!;
+      const 휘도 = (color: string) => {
+        // 캔버스는 이전 칠을 들고 있으므로 매번 지운다 — 반투명 색을 그 위에 칠하면
+        // 앞의 것과 섞여, 「불투명한가」를 보는 아래 검사가 새어 나간다.
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+        if (a !== 255) throw new Error(`대비를 잴 수 없는 색이다(불투명하지 않다): ${color}`);
+        const 선형 = (one: number) => {
+          const c = one / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * 선형(r) + 0.7152 * 선형(g) + 0.0722 * 선형(b);
+      };
+      const [밝, 어] = [휘도(앞), 휘도(뒤)].sort((x, y) => y - x);
+      return (밝 + 0.05) / (어 + 0.05);
+    },
+    [앞, 뒤] as [string, string],
+  );
+
 const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
   Promise.all([
     글자.evaluate((el) => getComputedStyle(el).color),
     배경.evaluate((el) => getComputedStyle(el).backgroundColor),
-  ]).then(([앞, 뒤]) =>
-    page.evaluate(
-      ([앞, 뒤]: [string, string]) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 1;
-        const ctx = canvas.getContext("2d")!;
-        const 휘도 = (color: string) => {
-          // 캔버스는 이전 칠을 들고 있으므로 매번 지운다 — 반투명 색을 그 위에 칠하면
-          // 앞의 것과 섞여, 「불투명한가」를 보는 아래 검사가 새어 나간다.
-          ctx.clearRect(0, 0, 1, 1);
-          ctx.fillStyle = color;
-          ctx.fillRect(0, 0, 1, 1);
-          const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-          if (a !== 255) throw new Error(`대비를 잴 수 없는 색이다(불투명하지 않다): ${color}`);
-          const 선형 = (one: number) => {
-            const c = one / 255;
-            return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-          };
-          return 0.2126 * 선형(r) + 0.7152 * 선형(g) + 0.0722 * 선형(b);
-        };
-        const [밝, 어] = [휘도(앞), 휘도(뒤)].sort((x, y) => y - x);
-        return (밝 + 0.05) / (어 + 0.05);
-      },
-      [앞, 뒤] as [string, string],
-    ),
-  );
+  ]).then(([앞, 뒤]) => 색대비(page, 앞, 뒤));
 
 test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 두 갈래, 라이트·다크", async ({
   page,
@@ -527,11 +533,195 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// **상태 축이 처음 눈에 보이는 자리**(#203). 값이 프런트까지 오는 길은 이미 서 있고
+// (`shell-attention.spec.ts`) 여기서 보는 것은 **그 값이 행에 그려지는가**다.
+//
+// 이 층이 유일한 그물인 것 셋: 진짜 스토어를 한 바퀴 도는 것(이벤트 → 셀렉터 → 행), 색이
+// 실제로 칠해지는 것, 링이 실제로 도는 것. 마크업 seam은 「클래스가 붙었다」까지만 본다.
+
+/** 그 work 행의 레인 — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다. */
+const 레인 = (page: Page, slug: string) =>
+  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
+
+/** 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Stop`이 그 길이다(스펙 전이 표). */
+const 기다리게한다 = (page: Page, message: string, 지난ms = 0) =>
+  markAttention(page, {
+    agent: "claude",
+    event: "Stop",
+    at: Date.now() - 지난ms,
+    payload: { last_assistant_message: message },
+  });
+
+test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  const lane = 레인(page, plainWork.slug);
+  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  // **먼저 없음을 센다.** 이것이 없으면 아래 단언들이 「원래 그렇던 것」으로도 초록이 된다 —
+  // 그리고 이 줄이 곧 「값이 없으면 work 상태 아이콘이 되돌아온다」의 실물 확인이다(스토리 19).
+  await expect(lane.locator("svg")).toHaveCount(1);
+  await expect(lane.locator("[data-signal]")).toHaveCount(0);
+
+  await markRunning(page, "claude");
+  await 기다리게한다(page, "테스트 셋 통과\n커밋할까요?", 125_000);
+
+  // **레인이 앰버 점으로 갈린다.** work 상태 아이콘은 그 자리에서 물러난다 — 둘이 함께
+  // 서면 14px 한 칸이 두 말을 한다.
+  await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
+  await expect(lane.locator("svg")).toHaveCount(0);
+
+  // **둘째 줄이 셸의 마지막 말과 경과를 싣는다**(결정 4·5). 말은 `last_assistant_message`의
+  // **첫 줄**이고, 어댑터가 그것을 접었다는 사실까지 이 한 줄이 딛는다.
+  await expect(subrow).toHaveText("테스트 셋 통과2m");
+  // 마크는 그 자리에 남는다 — 「누구」를 말하는 자리다(판 04 결정 15).
+  await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
+
+  // **이름에 상태가 붙는다**(스토리 33) — 점은 `aria-hidden`이라 이 이름이 유일한 말이다.
+  await expect(
+    page.getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }),
+  ).toHaveCount(1);
+
+  // **hover에 핀이 떠도 레인과 둘째 줄이 남는다**(판 05 결정 6 뒤집음). 아래 hover 검사가
+  // 같은 것을 조용한 행에서 재는데, **띄우려는 것이 실제로 서 있을 때** 한 번 더 봐야 뜻이
+  // 있다 — 이 판이 무의미해지는 자리가 바로 여기다.
+  await subrow.locator("xpath=..").hover();
+  await expect(page.getByRole("button", { name: `${plainWork.title} 고정` })).toHaveCSS(
+    "opacity",
+    "1",
+  );
+  await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
+  await expect(lane).toHaveCSS("opacity", "1");
+  await expect(subrow).toHaveCSS("opacity", "1");
+
+  // **좁혀도 레인이 먼저 죽지 않는다**(스토리 34). 아래 드래그 검사가 조용한 행에서 같은
+  // 것을 재지만, 그때 레인에 선 것은 14px 아이콘이다 — 8px 점은 12px만 줄어도 사라지므로
+  // 부르는 행에서 한 번 더 본다.
+  const 앞 = { 레인: (await lane.boundingBox())!.width, 줄: (await subrow.boundingBox())!.width };
+  await 좁힌다(page, 40);
+  expect((await subrow.boundingBox())!.width).toBeLessThan(앞.줄);
+  expect((await lane.boundingBox())!.width).toBe(앞.레인);
+  await expect(subrow).toHaveText("테스트 셋 통과2m");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **앰버·초록이 라이트·다크 사이드바 배경에서 다 또렷하다**(결정 3·31).
+//
+// **재는 것이 둘이다: 대비와 「팔레트가 갈렸는가」.** 대비만 재면 다크 팔레트를 통째로
+// 빠뜨려도 초록이 된다 — 라이트 앰버는 다크 사이드바에서 5.63으로 오히려 **올라가기**
+// 때문이다(실측). 결정 3의 표는 색을 **넷**으로 못박았으므로(라이트 `amber-600`·`green-700`,
+// 다크 `amber-400`·`green-400`) 두 팔레트의 색이 서로 다른 것 자체가 계약이고, 그 한 줄이
+// 이 검사의 fail-closed 지점이다.
+//
+// **바닥이 라이트에서 2.9인 것은 색을 알고 골랐기 때문이다.** 앰버는 라이트 사이드바에서
+// **2.98**이다(실측) — 그림 요소의 바닥 3.0에 0.02 모자란다. 목업에서 사람이 눈으로 고른
+// 색이고, 점은 3px 후광이 면적을 벌어 그 자리를 메운다. 바닥을 4.5로 올리면 이 검사는
+// **결정을 어기라고 요구하는 검사**가 된다. 초록은 같은 배경에서 4.69다.
+//
+// 다크는 둘 다 10을 넘으므로(10.74 · 10.29) 바닥이 4.5여도 여유가 있다 — 그 바닥이 라이트
+// 팔레트가 다크로 새는 갈래를 하나 더 잡는다(그때 초록이 3.57로 떨어진다).
+test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  const aside = page
+    .locator("aside")
+    .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
+  const lane = 레인(page, plainWork.slug);
+  const 배경색 = () => aside.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const 점색 = async (kind: string) => {
+    const dot = lane.locator(`[data-signal="${kind}"]`);
+    await expect(dot).toHaveCount(1);
+    return dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  };
+
+  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **세션 종료**다
+  // (스펙 전이 표) — 턴 종료가 아니다.
+  const 점색둘 = async () => {
+    await 기다리게한다(page, "커밋할까요?");
+    const 앰버 = await 점색("waiting");
+    await markAttention(page, {
+      agent: "claude",
+      event: "SessionEnd",
+      payload: { session_end_reason: "logout" },
+    });
+    return { 앰버, 초록: await 점색("done") };
+  };
+
+  const 라이트배경 = await 배경색();
+  const 라이트 = await 점색둘();
+  for (const [자리, 색] of Object.entries(라이트)) {
+    expect(await 색대비(page, 색, 라이트배경), `라이트 · ${자리}`).toBeGreaterThanOrEqual(2.9);
+  }
+
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  // **팔레트가 정말 바뀌었는지를 먼저 센다** — 안 먹으면 아래가 라이트 값을 다시 재고
+  // 조용히 초록이 된다(옆 대비 검사와 같은 근거).
+  const 다크배경 = await 배경색();
+  expect(다크배경).not.toBe(라이트배경);
+  const 다크 = await 점색둘();
+  for (const [자리, 색] of Object.entries(다크)) {
+    expect(await 색대비(page, 색, 다크배경), `다크 · ${자리}`).toBeGreaterThanOrEqual(4.5);
+    // **다크는 한 단 밝은 색이다**(결정 3의 표). 라이트 색이 그대로 새면 여기가 터진다.
+    expect(색, `다크 · ${자리} — 라이트 색이 그대로다`).not.toBe(라이트[자리 as "앰버" | "초록"]);
+  }
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **링은 CSS로 돌고, 움직임을 끈 사람에게는 정지한 완전한 링이 선다**(스토리 30).
+//
+// **이 층이 유일한 그물이다.** 마크업 seam은 클래스 이름까지만 보고, 「자바스크립트 타이머가
+// 없다」는 소스 스캔은 **안 도는 링**도 초록으로 넘긴다 — 실제로 도는지와, 움직임을 껐을 때
+// 머리 색이 원주와 같아지는지는 계산된 스타일로만 난다.
+test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  // 프롬프트를 보낸 순간이 「도는 중」이다(스펙 전이 표의 `start`).
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
+  const ring = 레인(page, plainWork.slug).locator('[data-signal="working"]');
+  await expect(ring).toHaveCount(1);
+
+  const 재본다 = () =>
+    ring.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        name: style.animationName,
+        timing: style.animationTimingFunction,
+        duration: style.animationDuration,
+        머리: style.borderTopColor,
+        원주: style.borderRightColor,
+      };
+    });
+
+  const 돌때 = await 재본다();
+  expect(돌때.name).not.toBe("none");
+  // **`steps(12)` 1초다**(구현 결정 4) — 매끄러운 회전이 아니라 열두 칸으로 끊어 돈다.
+  expect(돌때.timing).toContain("steps(12");
+  expect(돌때.duration).toBe("1s");
+  // 머리만 앱 `primary`이고 원주는 옅은 색이다 — 둘이 같으면 도는 것이 안 보인다.
+  expect(돌때.머리).not.toBe(돌때.원주);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const 멈출때 = await 재본다();
+  expect(멈출때.name).toBe("none");
+  // **완전한 링이다** — 머리가 남으면 「멈춘 스피너」로 읽혀 사람이 「굳었나」를 묻는다.
+  expect(멈출때.머리).toBe(멈출때.원주);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 이 판이 **판 05 결정 6을 뒤집는다**: hover에 핀이 떠도 **레인과 둘째 줄은 안 사라진다.**
 // 판 05에서는 메타와 핀이 2열 한 칸에 겹쳐 서서, 핀이 뜨면 메타가 투명해지는 것이 유일한
 // 답이었다 — 자리가 하나뿐이었으니까. 이 판은 메타를 둘째 줄로 내려 그 겹침을 없앴고,
 // 그래서 **띄우려는 것이 hover에 지워지는** 일이 구조적으로 안 난다. 상태 축이 들어오면
-// (티켓 06) 레인의 점이 곧 이 판이 띄우려는 것이라, 그것이 마우스 위치에 따라 있다 없다 하면
+// (#203) 레인의 점이 곧 이 판이 띄우려는 것이라, 그것이 마우스 위치에 따라 있다 없다 하면
 // 이 판 전체가 무의미해진다.
 //
 // **핀이 폭을 hover에만 갖는 것은 그대로다.** 사람이 실물 앱에서 고른 모양이다:
@@ -631,7 +821,7 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
 });
 
 // **사이드바를 좁히면 글자가 먼저 잘리고 레인은 안 줄어든다**(이 판 결정 5). 레인은 상태 축이
-// 들어오면(티켓 06) 점·링이 서는 자리이므로, 폭이 모자랄 때 **가장 먼저 포기해도 되는 것**의
+// 들어온 지금(#203) 점·링이 서는 자리이므로, 폭이 모자랄 때 **가장 먼저 포기해도 되는 것**의
 // 정반대다. 제목과 둘째 줄은 잘려도 여전히 읽을 수 있지만, 8px 점은 12px만 줄어도 사라진다.
 //
 // **줄어드는 값을 수로 묶는다.** 「레인이 안 줄었다」만 재면 제목이 대신 안 줄고 행이 통째로
@@ -856,6 +1046,22 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   await markRunning(page, "claude");
 
   await expect(navRow.getByRole("img", { name: "claude" })).toHaveCount(1);
+
+  // **nav `Terminal`은 이 판에서 안 바뀐다**(스펙의 Out of Scope — 「셸 메타 규격의 nav
+  // `Terminal` 변경」). 최상위 셸이 스스로 말해도 이 자리는 **종류·수 그대로**다: 그 셸이
+  // 부르는 것을 받는 자리는 「확인할 것」 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
+  // 세우면 이 행이 work 행의 어휘를 반쯤 흉내 내는 자리가 된다.
+  //
+  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`ShellMetaFor`) 그 가름이 빠지기 쉽다 —
+  // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Stop",
+    at: Date.now(),
+    payload: { last_assistant_message: "커밋할까요?" },
+  });
+  await expect(navRow.getByRole("img", { name: "claude" })).toHaveCount(1);
+  await expect(navRow).not.toContainText("커밋할까요?");
 
   // **숫자로 집는다.** 재려는 것이 상자가 아니라 그 안의 옅은 숫자이고, 두 자리가 같은
   // 규격(11.5px · tabular)을 쓰는 것이 지키려는 그 계약이다.

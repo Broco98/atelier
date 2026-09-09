@@ -1,12 +1,19 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
-import { runningAgentsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import {
+  runningAgentsOf,
+  shellCountsOf,
+  shellsOf,
+  type ShellsState,
+} from "@/features/terminal/shell-registry";
+import { signalsByOwner, topSignalView } from "@/features/terminal/shell-attention";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
+import { SignalLine } from "./shell-signal";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -44,6 +51,10 @@ function Sidebar({
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
   const topShells = useStore(terminalStore, (state) => shellsOf(state, null).length);
+  // **화면값은 한 번에 읽어 내린다**(#203). 종류·수와 반대 방향인 것은 값의 모양 때문이다:
+  // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
+  // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
+  const signals = useStore(terminalStore, signalsByOwner, shallow);
 
   return (
     <aside
@@ -111,6 +122,7 @@ function Sidebar({
           // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
           // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
           // 따로인 이유는 `ShellMetaFor`가 든다.
+          signals={signals}
           renderShellMeta={(work) => (
             <ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
           )}
@@ -138,8 +150,14 @@ function Sidebar({
 }
 
 /**
- * 셸 메타 하나가 **자기 것만** 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서 그림
- * (`ShellMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적 마크업 seam에 산다.
+ * **둘째 줄의 셸 갈래** 하나가 자기 것만 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서
+ * 그림(`ShellMeta`·`SignalLine`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적
+ * 마크업 seam에 산다.
+ *
+ * **그 갈래가 이 판에서 둘이 됐다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크·message·경과)
+ * 이고, 아니면 지금까지처럼 종류·수다. 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을
+ * 둘로 나누면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다. 이름은 그대로 두되
+ * (부르는 자리가 셋이고 그중 둘을 검사가 리터럴로 못박는다) 하는 일은 이 문단이 적는다.
  *
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
@@ -157,7 +175,66 @@ function Sidebar({
  */
 function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
+  // **둘째 줄의 나머지 셋**(말·시각·마크, #203). 위 Record에 못 태우는 것은 문자열 하나로
+  // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
+  // 자리에서** 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로
+  // 나뉘면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다.
+  //
+  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 넷**이라서다(`SignalView`). 값이 없을
+  // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`).
+  const signal = useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow);
+  // 경과는 시각이 아니라 **지금과의 차**라 아무도 안 건드려도 늙는다. 도는 중과 조용한
+  // 셸에는 경과가 안 붙으므로(결정 13) 그때는 시계도 안 돈다.
+  const now = useNow(signal !== null && signal.kind !== "working");
+
+  if (signal !== null) {
+    return (
+      <SignalLine
+        kind={signal.kind}
+        message={signal.message}
+        running={signal.running}
+        since={signal.since}
+        now={now}
+      />
+    );
+  }
   return <ShellMeta shellCount={shellCount} running={running} />;
+}
+
+/**
+ * 그 자리가 그릴 화면값. **최상위 셸(nav `Terminal`)은 여기서 아무것도 안 그린다.**
+ *
+ * 스펙의 Out of Scope가 「셸 메타 규격의 nav `Terminal` 변경」을 이 판에서 빼 뒀다 — 그 행은
+ * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 「확인할 것」 띠다(#204, 결정 13의
+ * 다섯째). work 행과 **같은 구독 컴포넌트**를 쓰기 때문에 이 가름이 빠지기 쉬운데, 빠지면
+ * nav 행이 work 행의 어휘를 반쯤 흉내 낸다 — 실제로 한 번 그렇게 났고 L3가 잡았다.
+ */
+function rowSignalOf(state: ShellsState, owner: string | null) {
+  return owner === null ? null : topSignalView(shellsOf(state, owner));
+}
+
+/** 경과를 다시 그리는 주기. **1분보다 성기다** — 적히는 것이 분 단위다(`s`는 첫 1분뿐). */
+const ELAPSED_TICK = 30_000;
+
+/**
+ * 경과를 늙게 하는 시계.
+ *
+ * **링과 아무 상관이 없다.** 링을 도는 것은 CSS이고(`signal-ring`), 이 시계는 「몇 분
+ * 기다렸나」라는 **글자**의 것이다 — 그 가름이 흐려지면 스토리 30이 막으려던
+ * 「신호가 대가를 낸다」가 되돌아온다.
+ *
+ * 부르는 행에만 돌고, 그 행이 조용해지면 멎는다.
+ */
+function useNow(ticking: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    // 켜지는 순간 한 번 맞춘다 — 멎어 있던 동안 흘러간 시간이 첫 화면에 그대로 앉는다.
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), ELAPSED_TICK);
+    return () => window.clearInterval(timer);
+  }, [ticking]);
+  return now;
 }
 
 // nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어

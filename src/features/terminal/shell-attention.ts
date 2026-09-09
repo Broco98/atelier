@@ -1,11 +1,14 @@
 import { foldHookState } from "./agents";
 import type { AgentSignal, CanonicalEvent } from "./agents/types";
-import type { Shell } from "./shell-registry";
+import { runningOn } from "./shell-registry";
+import type { Shell, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
-// 왔는가」 셋을 합쳐 화면이 읽는 값 하나를 낸다. import는 어댑터 하나와 타입뿐이라 DOM 없는
-// 기본 환경에서 그대로 돈다(shell-registry.ts가 선례다).
+// 왔는가」 셋을 합쳐 화면이 읽는 값 하나를 낸다. 값으로 들이는 것은 어댑터와 레지스트리의
+// **가리개 둘**(`runningOn`)뿐이라 DOM 없는 기본 환경에서 그대로 돈다(shell-registry.ts가
+// 선례다). 저쪽을 부르는 것이 여기서 갚아지는 순환처럼 보이지만 아니다 — 레지스트리가 이
+// 파일에서 가져가는 것은 타입 하나뿐이라 실행 시점에는 한 방향이다.
 //
 // **시간 상수도 만료도 타이머도 없다**(결정 2·3). 「몇 초 조용하면 끝난 것」을 여기서 만들면
 // 앱이 모르는 것을 아는 척하게 된다 — 상태를 만드는 것은 에이전트가 말한 순간 하나뿐이고,
@@ -167,13 +170,82 @@ const RANK: Readonly<Record<ShellSignal, number>> = { waiting: 0, done: 1, worki
  * 골라 쥐고 있기 때문이다. 여기서 다시 고르면 「어느 화면인가」를 아는 자리가 둘이 된다.
  */
 export function topSignal(shells: ReadonlyArray<Shell>): ShellSignal | null {
-  let top: ShellSignal | null = null;
+  return topSignalView(shells)?.kind ?? null;
+}
+
+/**
+ * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·링은 `kind`가 정하고 둘째 줄은
+ * 나머지 셋이 정한다 — 셸의 마지막 말 · 그것이 도착한 시각 · 그 셸에서 도는 것(마크).
+ *
+ * **넷이 한 셸에서 나온다.** 값만 고르는 함수와 말만 고르는 함수를 따로 두면 행이 「A 셸의
+ * 색으로 B 셸의 말」을 적을 수 있는데, 그 어긋남은 화면에서 아무 표시도 안 난다 — 스토리
+ * 79가 막으려는 것이 그것이라 이기는 셸을 고르는 자리를 여기 하나로 둔다. `topSignal`도
+ * 이 함수를 딛는다.
+ *
+ * **마크의 재료가 `running` 원문인 것**은 표를 아는 자리가 `agentMarkOf` 하나이기 때문이다
+ * (판 04 결정 15) — 여기서 접으면 그 표가 두 벌이 된다. 죽은 칸을 가리는 것은 `runningOn`이
+ * 하므로 끝난 셸의 마지막 로고가 행에 남지 않는다.
+ */
+export interface SignalView {
+  kind: ShellSignal;
+  /** 셸이 마지막으로 한 말의 첫 줄. 어댑터가 접어 준 것 그대로이고, 없으면 `null`이다. */
+  message: string | null;
+  /** 그 사실이 도착한 시각. 둘째 줄의 경과가 이 값을 읽는다. */
+  since: number;
+  /** 그 셸에서 도는 것의 **원문**. 마크를 고르는 것은 그리는 쪽이다. */
+  running: string | null;
+}
+
+export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
+  let top: { shell: Shell; kind: ShellSignal } | null = null;
   for (const shell of shells) {
-    const signal = signalOf(shell);
-    if (signal === null) continue;
-    if (top === null || RANK[signal] < RANK[top]) top = signal;
+    const kind = signalOf(shell);
+    if (kind === null) continue;
+    if (top === null || RANK[kind] < RANK[top.kind]) top = { shell, kind };
   }
-  return top;
+  if (top === null) return null;
+
+  // 여기서 `attention`을 다시 묻는 것이 아니라 **가리는 문을 다시 딛는다** — `signalOf`가
+  // 이미 죽은 칸을 걸렀으므로 값이 있는 것은 확실하지만, 그 확신을 단언으로 적어 두면
+  // 다음 사람이 위 조건을 넓힐 때 조용히 거짓말이 된다.
+  const attention = attentionOn(top.shell);
+  return {
+    kind: top.kind,
+    message: attention?.message ?? null,
+    since: attention?.since ?? 0,
+    running: runningOn(top.shell),
+  };
+}
+
+/**
+ * work마다 화면값 하나. **사이드바가 목록 전체를 한 번에 읽는 값**이다(#203).
+ *
+ * **값이 문자열이라 얕은 비교가 그대로 먹는다** — 그것이 이 Record가 존재하는 이유 전부다.
+ * 객체를 담으면 회차마다 새것이라 비교가 늘 어긋나고, 어느 셸에서 명령이 시작될 때마다
+ * 목록 열여덟 행이 통째로 다시 그려진다(`runningAgentsOf` 머리말이 든 함정). 둘째 줄이
+ * 쓰는 나머지 셋(말·시각·마크)은 그래서 행마다 따로 구독한다.
+ *
+ * **값이 없는 work은 키 자체가 없다.** `null`을 적어 두면 조용한 work 열여덟이 전부 키를
+ * 갖고, 그 Record는 셸이 하나도 없어도 목록만큼 커진다.
+ *
+ * **최상위 셸은 안 든다** — 어느 work의 것도 아니라 행이 없다(`shellCountsOf`와 같은 가름).
+ * 그 셸이 부르는 것은 nav `Terminal`과 띠가 받는다(#204).
+ */
+export function signalsByOwner(state: ShellsState): Record<string, ShellSignal> {
+  const groups = new Map<string, Shell[]>();
+  for (const shell of state.shells) {
+    if (shell.owner === null) continue;
+    const group = groups.get(shell.owner);
+    if (group) group.push(shell);
+    else groups.set(shell.owner, [shell]);
+  }
+
+  const out: Record<string, ShellSignal> = {};
+  for (const [owner, group] of groups) {
+    const signal = topSignal(group);
+    if (signal !== null) out[owner] = signal;
+  }
+  return out;
 }
 
 /**

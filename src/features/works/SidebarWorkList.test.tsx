@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
@@ -46,12 +47,16 @@ function render(
   {
     selectedSlug = null,
     shellCounts = {},
+    // 화면값은 **문자열 Record**로 내려온다(#203) — 값을 고르는 자리는 Sidebar이고 이
+    // 목록은 터미널을 모른다(아래 계약). 여기서 보는 것은 그 값이 레인과 이름에 닿는가다.
+    signals = {},
     // 둘째 줄의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
     // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
+    signals?: Record<string, ShellSignal>;
     renderShellMeta?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
@@ -61,6 +66,7 @@ function render(
       open={open}
       selectedSlug={selectedSlug}
       shellCounts={shellCounts}
+      signals={signals}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
@@ -119,7 +125,7 @@ const rowsBySection = (markup: string) =>
 //
 // **이 하나만 자리로 이름 붙는다.** 아래 `data-shells`가 적는 규칙은 「표식은 그 자리에
 // 있는 것의 이름이다」인데(`data-branch`·`data-section`), 이 줄은 **싣는 것이 갈린다** —
-// 셸이 있으면 종류·수, 없으면 프로젝트 이름, 티켓 06부터는 셸의 마지막 말과 경과. 있는
+// 셸이 있으면 종류·수, 없으면 프로젝트 이름, 셸이 스스로 말했으면 그 마지막 말과 경과. 있는
 // 것으로 이름을 붙이면 그 이름이 세 갈래 중 둘에게 거짓이 되므로, 여기서만 **자리**가
 // 이름이다. 판 05가 걷은 옛 `data-subrow`와 글자가 같지만 가리키는 것이 다르다: 그때는
 // 행 아래에 딸리던 별개의 줄이었고, 지금은 행 안의 둘째 트랙이다.
@@ -149,9 +155,23 @@ const shellBoxesOf = (markup: string) =>
     html: m[0],
   }));
 
-// 첫 줄 왼쪽의 **레인** — 여는 태그만 본다(안에 드는 것은 지금 work 상태 아이콘이고,
-// 상태 축이 생기면 점·링이 그 자리를 가져간다).
+// 첫 줄 왼쪽의 **레인** — 여는 태그만 본다(안에 드는 것을 함께 보는 것은 아래 `lanesOf`다).
 const laneOf = (markup: string) => /<span data-lane=""[^>]*>/.exec(markup)?.[0] ?? "";
+
+// 이름 버튼의 **접근성 이름**. 화면값이 있는 행만 `aria-label`을 든다(#203) — 없으면
+// `null`이고, 그때 이름은 안에 든 제목 글자다. 값이 없을 때까지 함께 세지 않으면
+// 「모든 행에 말이 붙는다」도 초록이 된다.
+const namesOf = (markup: string) =>
+  [...markup.matchAll(/<button type="button"(?: aria-label="([^"]*)")? class="col-start-1/g)].map(
+    (found) => found[1] ?? null,
+  );
+
+// **레인 안에 실제로 선 것**까지 본다(#203). 여는 태그만 보면 점이 아이콘을 밀어냈는지
+// 아이콘이 그대로인지가 안 갈린다 — 이 판이 그 자리를 처음 갈라 쓴다.
+const lanesOf = (markup: string) =>
+  [...markup.matchAll(/<span data-lane=""[^>]*>([\s\S]*?)<\/span><span data-title/g)].map(
+    (found) => found[1],
+  );
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
   // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
@@ -406,7 +426,7 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 판 05에서는 메타와 핀이 2열 한 칸에 겹쳐 서서, 핀이 뜨면 메타가 투명해지는 것이
     // 유일한 답이었다(`group-hover:opacity-0` · `peer-focus-visible:opacity-0`). 이 판은
     // 겹침 자체를 없앴으므로 그 두 규칙이 남아 있을 이유가 없다 — 남아 있으면 상태 축이
-    // 들어왔을 때(티켓 06) **띄우려는 것이 마우스 위치에 따라 지워진다.**
+    // 들어온 지금(#203) **띄우려는 것이 마우스 위치에 따라 지워진다.**
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
     for (const 줄 of subrowsOf(markup)) {
       expect(줄.html).not.toContain("group-hover:opacity-0");
@@ -458,8 +478,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
   });
 
   it("**레인은 첫 줄에 서고 폭을 안 내준다**", () => {
-    // 이 판 결정 5 — 첫 줄 왼쪽 14px 한 칸. 지금 서는 것은 work 상태 아이콘 그대로이고,
-    // 상태 축이 생기면 화면값이 있을 때만 점·링이 그 자리를 가져간다(티켓 06).
+    // 이 판 결정 5 — 첫 줄 왼쪽 14px 한 칸. 화면값이 없는 행에는 work 상태 아이콘이 서고,
+    // 있으면 점·링이 그 자리를 가져간다(#203, 바로 위 검사).
     //
     // **폭을 실제로 지키는 것은 제목 상자다** — 그쪽이 `min-width: 0`이라 좁아지는 값을
     // 전부 흡수하므로 첫 줄이 넘칠 일이 없고, 그래서 `shrink-0`을 지워도 화면은 안 바뀐다
@@ -469,6 +489,43 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     const lane = laneOf(render(works("가")));
     expect(lane).toContain("size-3.5");
     expect(lane).toContain("shrink-0");
+  });
+
+  it("**화면값이 있으면 레인이 점·링으로 갈리고, 없으면 work 상태 아이콘이 되돌아온다**", () => {
+    // **이 판이 처음 눈에 보이는 자리다**(#203). 티켓 02가 이름만 붙여 둔 레인에 화면값이
+    // 들어선다 — 그리고 **없을 때 되돌아오는 것**을 함께 세는 것이 요점이다: 점만 재면
+    // draft·review·done을 가르던 아이콘이 통째로 사라져도 초록이 된다(스토리 19).
+    const markup = render(works("가", "나", "다"), ALL, {
+      shellCounts: { 가: 1, 나: 1, 다: 1 },
+      signals: { 가: "waiting", 나: "working" },
+    });
+    const [가, 나, 다] = lanesOf(markup);
+    expect(가).toContain('data-signal="waiting"');
+    expect(나).toContain("signal-ring");
+    // 화면값이 없는 행에만 아이콘이 선다. 부르는 행에 둘이 함께 서면 레인이 두 말을 한다.
+    expect(가).not.toContain("<svg");
+    expect(나).not.toContain("<svg");
+    expect(다).toContain("<svg");
+    expect(다).not.toContain("data-signal");
+  });
+
+  it("**화면값이 있는 행은 이름에 그 말이 붙는다**", () => {
+    // 스토리 33 — 색만이 신호여선 안 된다. 점·링은 `aria-hidden`이므로(shell-signal.tsx)
+    // 상태를 말하는 자리는 이 이름 하나다. 말은 결정 8의 것이고 탭·띠가 같은 표를 읽는다.
+    const markup = render(works("가", "나", "다"), ALL, {
+      signals: { 가: "waiting", 나: "done", 다: "working" },
+    });
+    expect(namesOf(markup)).toEqual([
+      "가 — 나를 기다림",
+      "나 — 확인할 것",
+      "다 — 도는 중",
+    ]);
+  });
+
+  it("화면값이 없으면 이름은 제목뿐이다", () => {
+    // 조용한 행에까지 말이 붙으면 「상태가 붙었다」가 아무 뜻도 없어진다. 그리고 이름으로
+    // 행을 집는 e2e 전부가 그 순간 갈린다.
+    expect(namesOf(render(works("가")))).toEqual([null]);
   });
 
   it("**행은 평평하다** — 채움은 고른 행 하나뿐이다", () => {

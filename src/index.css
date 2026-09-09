@@ -169,6 +169,14 @@
     --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
+    /* **상태 축의 색 넷**(#203, 결정 3). 행의 점·링 · 「확인할 것」 띠(#204) · 셸 탭 채움
+       (#205)이 같은 이름을 읽는다 — 자리마다 색을 다시 고르면 「세 자리가 한 사실을 말한다」
+       (스토리 79)가 색에서 먼저 깨진다. `-soft`는 같은 색의 알파 판이고 후광과 탭 채움이
+       쓴다. */
+    --color-wait: var(--signal-wait);
+    --color-wait-soft: var(--signal-wait-soft);
+    --color-done: var(--signal-done);
+    --color-done-soft: var(--signal-done-soft);
     --color-state-1: var(--state-1);
     --color-state-2: var(--state-2);
     --color-state-3: var(--state-3);
@@ -222,6 +230,17 @@
     --bg-inset: #f6f6f7;
     --border-strong: #d2d2d7;
     --text-tertiary: #8e8e97;
+    /* **상태 축의 색 넷**(#203). 목업 `행-신호-세-안.html`이 정본이고 결정 3의 표가 이름을
+       못박았다 — 앰버는 `amber-600`, 초록은 `green-700`. `-soft`는 같은 색 알파 0.14이고,
+       점의 3px 후광과 셸 탭 채움(#205)이 그것을 쓴다.
+
+       **앰버는 이 배경에서 대비 2.98이다**(L3 실측). 그림 요소의 바닥 3.0에 0.02 모자라는
+       것을 알고 고른 색이라(사람이 목업에서 눈으로 골랐다) 여기 적어 둔다 — 점은 3px 후광이
+       면적을 벌어 그 자리를 메운다. 초록은 4.69로 글자 바닥까지 넘는다. */
+    --signal-wait: #d97706;
+    --signal-wait-soft: rgba(217, 119, 6, 0.14);
+    --signal-done: #15803d;
+    --signal-done-soft: rgba(21, 128, 61, 0.14);
     /* 상태 농도 4단 — 선택·hover·켜짐을 말하는 무채색 스케일의 단일 출처.
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
          행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
@@ -289,6 +308,16 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    /* 다크에서는 한 단 밝은 쪽이다 — `amber-400`·`green-400`(결정 3), 알파는 0.16.
+       다크 사이드바에서 10.74 · 10.29다(L3 실측).
+
+       **이 넷이 빠져도 대비만으로는 안 잡힌다** — 라이트 앰버가 다크 배경에서는 오히려
+       5.63으로 올라간다. 그래서 e2e가 대비와 함께 **두 팔레트의 색이 서로 다른가**를 잰다:
+       결정 3의 표가 색을 넷으로 못박았으므로 그 다름 자체가 계약이다. */
+    --signal-wait: #fbbf24;
+    --signal-wait-soft: rgba(251, 191, 36, 0.16);
+    --signal-done: #4ade80;
+    --signal-done-soft: rgba(74, 222, 128, 0.16);
 }
 
 @layer base {
@@ -460,8 +489,12 @@ body.dragging-row * {
    0으로 무너진다).
 
    **마스크는 상시다**(결정 12). 넘침 여부를 모르므로 **거의 꽉 찬 제목**(끝이 마지막 12px
-   안에 드는 경우)은 끝 글자가 살짝 옅어진다 — 없애려면 쉴 때도 계측해야 해서 감수한다. */
-[data-title] {
+   안에 드는 경우)은 끝 글자가 살짝 옅어진다 — 없애려면 쉴 때도 계측해야 해서 감수한다.
+
+   **이 블록은 둘째 줄의 message와 나눠 쓴다**(#203) — 페이드 폭과 마스크가 그 몫이고,
+   컨테이너 선언만 제목의 것으로 아래에 따로 남는다(그쪽 주석). */
+[data-title],
+[data-fade] {
     /* 페이드 폭 — **한글 1.03글자**다. 한 글자가 11.6675px이다(Pretendard Variable
        13.5px/500 · L3 WebKit 실측 2026-08-30). 그래서 24px은 「≈1.8글자」가 아니라
        **2.06글자**였다 — 마스크는 상시라 그 두 글자가 늘 흐린 채였다. 12px로
@@ -471,11 +504,18 @@ body.dragging-row * {
        **`SidebarWorkList.tsx`의 `TITLE_FADE`와 같은 수다**: 흐르는 거리가 「넘침 + 이
        값」이라, 그 거리를 시간으로 바꾸는 쪽이 같은 수를 읽는다. */
     --title-fade: 12px;
-    container-type: inline-size;
     overflow: hidden;
     /* 오른쪽만 흐려진다. 왼쪽은 하드 컷이다(결정 11) — 글자가 흘러 들어오는 쪽이라
        그쪽까지 흐리면 읽던 줄의 시작이 계속 옅어진다. */
     mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent);
+}
+
+/* **둘째 줄의 message도 같은 페이드로 끝난다 — 마퀴는 없다**(#203, 구현 결정 4). 제목과
+   나눠 갖는 것은 페이드 **폭 하나**이고, 컨테이너 선언은 안 나눈다: `100cqw`를 되읽는 것은
+   흐르는 글자뿐이라 이 줄에는 쓸 데가 없고, 선언해 두면 「내 폭이 내용에 안 달렸다」가 되어
+   호출부가 폭을 밖에서 정해 주지 않으면 0으로 무너진다. */
+[data-title] {
+    container-type: inline-size;
 }
 
 /* 흐르는 것은 상자가 아니라 **안쪽 글자**다. 평소 자리는 0이고, 마우스가 떠날 때의 복귀도
@@ -517,6 +557,36 @@ body.dragging-row * {
     [data-title][data-marquee] > span {
         transform: none;
         transition: none;
+    }
+}
+
+/* **「도는 중」 링**(#203, 결정 3·5). 회전을 CSS가 드는 것이 이 규칙의 전부다 — 링 열셋이
+   같이 도는 화면에서 자바스크립트가 각도를 옮기면 그만큼의 리렌더가 나고(스토리 30), 무엇보다
+   「움직임을 끈 사람에게는 정지한 **완전한** 링」을 손으로 다시 물어야 한다.
+
+   `steps(12, end)` 1초는 목업이 고른 값이다 — 매끄럽게 도는 대신 열두 칸으로 끊어 돌아
+   시선을 덜 끈다. 원주는 옅고 머리만 앱 `primary`라, 그 하나가 어디 있는지로 회전이 읽힌다.
+
+   **`animation`을 유틸리티로 적지 않는 이유**는 아래 미디어 쿼리다. 정지는 회전을 끄는 것에
+   더해 **머리 색을 원주와 같게** 되돌리는 일이라(머리가 남으면 「멈춘 스피너」로 읽혀 사람이
+   「굳었나」를 묻는다) 두 속성이 한 규칙 안에 함께 있어야 한다. */
+.signal-ring {
+    border: 1.6px solid color-mix(in srgb, var(--text-tertiary) 40%, transparent);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: signal-spin 1s steps(12, end) infinite;
+}
+
+@keyframes signal-spin {
+    to {
+        rotate: 360deg;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .signal-ring {
+        animation: none;
+        border-top-color: color-mix(in srgb, var(--text-tertiary) 40%, transparent);
     }
 }
 

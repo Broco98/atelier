@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { SIGNAL_LABEL, SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
 import { recallSearch, workSlugOf } from "@/routes/-work-search";
 import { useSetWorkPinned, useWorks } from "./hooks";
 import { emptyMainNotice, splitWorkSections } from "./work-sections";
@@ -36,6 +37,7 @@ const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 function SidebarWorkList({
   open,
   shellCounts,
+  signals,
   renderShellMeta,
 }: {
   open: boolean;
@@ -50,6 +52,17 @@ function SidebarWorkList({
    * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다).
    */
   shellCounts: Record<string, number>;
+  /**
+   * work마다의 **화면값**(#203) — 레인이 점·링을 세울지 work 상태 아이콘을 세울지, 그리고
+   * 행 버튼의 이름에 상태 말이 붙을지를 가른다. 값이 없는 work은 **키 자체가 없다.**
+   *
+   * **개수와 같은 길로 온다**(위 주석) — 이 목록은 터미널을 모른다. 슬롯이 아니라 값인 것은
+   * 두 자리가 함께 읽기 때문이다: 레인은 마크업 안쪽이고 이름은 버튼의 속성이라, 슬롯 하나로는
+   * 둘째 자리에 닿지 않는다. **문자열 Record라 얕은 비교가 그대로 먹는다** — 객체를 담으면
+   * 회차마다 새것이라 어느 셸에서 명령이 시작될 때마다 목록 전체가 다시 그려진다
+   * (`signalsByOwner` 머리말).
+   */
+  signals: Record<string, ShellSignal>;
   /**
    * 둘째 줄의 **셸 메타**(종류·수). 같은 이유로 슬롯이다 — 그리는 것은
    * `components/shell/shell-meta`의 `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는
@@ -193,6 +206,7 @@ function SidebarWorkList({
             open={sectionsOpen}
             selectedSlug={selectedSlug}
             shellCounts={shellCounts}
+            signals={signals}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
@@ -233,6 +247,7 @@ export function WorkSectionList({
   open,
   selectedSlug,
   shellCounts,
+  signals,
   onToggleSection,
   onOpen,
   onHover,
@@ -244,6 +259,7 @@ export function WorkSectionList({
   open: SectionsOpen;
   selectedSlug: string | null;
   shellCounts: Record<string, number>;
+  signals: Record<string, ShellSignal>;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
@@ -259,6 +275,7 @@ export function WorkSectionList({
       work={work}
       active={work.slug === selectedSlug}
       shellCount={shellCounts[work.slug] ?? 0}
+      signal={signals[work.slug] ?? null}
       onOpen={onOpen}
       onHover={onHover}
       onLeave={onLeave}
@@ -501,6 +518,7 @@ function WorkRow({
   onLeave,
   onTogglePin,
   shellCount,
+  signal,
   shellMeta,
 }: {
   work: WorkView;
@@ -511,6 +529,11 @@ function WorkRow({
   onTogglePin: (work: WorkView) => void;
   /** 이 work의 셸 수 — **둘째 줄이 종류·수를 싣는가 프로젝트 이름을 싣는가**를 가른다. */
   shellCount: number;
+  /**
+   * 이 work의 **화면값**(#203). 셸이 여럿이면 그중 최고 하나이고(결정 3), 없으면 `null`이다 —
+   * 그때 레인은 work 상태 아이콘으로 되돌아가고 이름에도 아무 말이 안 붙는다.
+   */
+  signal: ShellSignal | null;
   /** 둘째 줄의 **셸 메타**(종류·수). 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
   shellMeta: ReactNode;
 }) {
@@ -609,10 +632,20 @@ function WorkRow({
     >
       <button
         type="button"
+        // **화면값이 있으면 이름에 그 말이 붙는다**(스토리 33 · 결정 8). 레인의 점·링은
+        // `aria-hidden`이라(shell-signal.tsx) 상태를 말하는 자리가 여기 하나다 — 색만이
+        // 신호여선 안 된다. 말은 `SIGNAL_LABEL` 하나에서 오고 탭(#205)·띠(#204)가 같은
+        // 표를 읽는다.
+        //
+        // **`aria-label`이지 숨은 글자가 아니다.** 이름을 이 속성이 통째로 정하면 붙는 자리와
+        // 순서가 한눈에 보이고(제목이 먼저, 상태가 뒤), 값이 없을 때는 속성 자체가 없어
+        // 이름이 안에 든 제목 글자 그대로가 된다 — 조용한 행의 이름으로 행을 집는 검사가
+        // 그대로 산다.
+        aria-label={signal === null ? undefined : `${work.title} — ${SIGNAL_LABEL[signal]}`}
         // **여는 것은 이 버튼이 아니라 행 상자다**(그쪽 주석) — 여기 onClick이 없는 것은
         // 클릭이 두 번 도는 것을 막기 위해서다. 그래도 버튼인 이유는 **이름과 포커스**다:
         // 「어느 행이든 누르면 그 work로 간다」(결정 6)를 스크린리더와 Tab에 말하는 자리가
-        // 여기 하나이고, 상태 축이 들어오면(티켓 06) 그 말이 이 버튼의 이름에 덧붙는다.
+        // 여기 하나이고, 상태 축이 들어오면서(#203) 그 말이 이 버튼의 이름에 덧붙었다(위 `aria-label`).
         // 한때 고른 work의 행만은 접기 토글이었는데(결정 101), 접을 것이 없어지면서 그
         // 갈래가 통째로 사라졌다 — 어느 행이든 같은 일을 하는 것이 이 목록에 남은 규칙이다.
         //
@@ -628,17 +661,21 @@ function WorkRow({
         // 아무것도 안 지킨다 — 제목 상자가 핀 바로 앞에서 끝나는 것을 L3가 잰다.
         className="col-start-1 row-start-1 flex h-[26px] min-w-0 items-center gap-(--glyph-gap) pl-[9px] pt-2 text-left"
       >
-        {/* **레인** — 첫 줄 왼쪽의 14px 한 칸(이 판 결정 5). 지금 서는 것은 work 상태
-            아이콘 그대로이고, 상태 축이 생기면 화면값이 있을 때만 그 자리를 점·링이
-            가져간다(티켓 06). **자리에 이름을 붙여 두는 것이 이 티켓의 몫이다** — 표식이
-            없으면 다음 판이 「그 자리」를 집는 방법이 클래스 문자열밖에 없다.
+        {/* **레인** — 첫 줄 왼쪽의 14px 한 칸(이 판 결정 5). **이 자리가 이 판에서 처음
+            눈에 보이는 곳이다**(#203): 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이
+            선다. 표식(`data-lane`)은 그 앞 티켓이 자리에 붙여 둔 이름이고, 검사 셋이
+            그것으로 이 칸을 집는다(마크업 seam · hover · 폭 드래그).
             **폭을 안 내준다.** 실제로 그것을 지키는 것은 옆 제목 상자다 — `[data-title]`이
             `min-width: 0`이라 좁아지는 값을 전부 흡수하므로 이 줄이 넘칠 일이 없고, 그래서
             `shrink-0`을 지워도 지금은 화면이 안 바뀐다(L3 실측). 그래도 적는 것은 제목 쪽
             규칙이 바뀌는 날 **이 자리가 먼저 찌그러지는 것**이 이 판에서 가장 나쁜 회귀라서다:
             제목은 잘려도 읽히지만 8px 점은 12px만 줄어도 사라진다. */}
         <span data-lane="" className="flex size-3.5 shrink-0 items-center justify-center">
-          <StatusIcon status={work.status} />
+          {/* **화면값이 있으면 그것이 이 자리를 가져간다**(결정 5). 없으면 work 상태 아이콘이
+              그대로 선다 — draft·review·done을 가르던 자리가 사라지지 않는 것이 스토리 19다.
+              둘이 함께 서는 갈래는 없다: 레인은 14px 한 칸이고, 거기서 두 글리프가 겹치면
+              「한 자리만 보면 된다」(스토리 18)가 깨진다. */}
+          {signal === null ? <StatusIcon status={work.status} /> : <SignalLane kind={signal} />}
         </span>
         {/* **제목은 `…`이 아니라 오른쪽 끝 페이드로 끝나고, 마우스를 올리면 흘러 끝까지
             읽힌다**(결정 9). 폭으로는 이 문제를 못 풀어서다 — 핀을 띄워도 +24px, 이 버튼의
@@ -768,7 +805,7 @@ function WorkRow({
 
           **표식이 자리 이름인 것은 여기뿐이다.** 이 저장소의 규칙은 「표식은 그 자리에 있는
           것의 이름」인데(`data-shells`·`data-branch`·`data-section`), 이 줄은 **싣는 것이
-          갈린다** — 셸이 있으면 종류·수, 없으면 프로젝트 이름, 티켓 06부터는 셸의 마지막
+          갈린다** — 셸이 있으면 종류·수, 없으면 프로젝트 이름, 셸이 스스로 말했으면 그 마지막
           말과 경과. 있는 것으로 이름을 붙이면 세 갈래 중 둘에게 그 이름이 거짓이 된다. */}
       <div
         data-subrow={work.slug}
