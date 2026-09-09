@@ -437,7 +437,21 @@ describe("띠에 서는 목록", () => {
       상태({ kind: "done", since: 10 }),
       상태({ kind: "waiting", since: 20 }),
     );
-    expect(callingShells(list).map((shell) => shell.id)).toEqual([4, 2, 3, 1]);
+    expect(callingShells(list).map((one) => one.shell.id)).toEqual([4, 2, 3, 1]);
+  });
+
+  // **판정을 안 버린다**(#204 리뷰). 「누가 부르나」를 정하면서 이미 읽은 것을 그대로
+  // 들려 보내야 읽는 쪽(`bandRows` · #206의 배지)이 같은 문을 다시 딛지 않는다 — 두 번
+  // 판정하면 두 자리가 **다르게** 판정하는 날이 오고, 실제로 그랬다(한쪽은 `?? 0`으로
+  // 1970년을 만들고 다른 쪽은 줄을 안 그렸다).
+  it("어떤 부름인지와 언제부터인지를 함께 들고 나온다", () => {
+    const list = 칸들(상태({ kind: "done", since: 30 }), 상태({ kind: "waiting", since: 50 }));
+    expect(callingShells(list).map((one) => ({ kind: one.kind, since: one.attention.since }))).toEqual(
+      [
+        { kind: "waiting", since: 50 },
+        { kind: "done", since: 30 },
+      ],
+    );
   });
 
   // 띠에 서는 것은 **부르는 셸**뿐이다(결정 8) — 도는 중과 본 완료와 조용한 셸은 안 든다.
@@ -448,7 +462,7 @@ describe("띠에 서는 목록", () => {
       null,
       상태({ kind: "waiting" }),
     );
-    expect(callingShells(list).map((shell) => shell.id)).toEqual([4]);
+    expect(callingShells(list).map((one) => one.shell.id)).toEqual([4]);
   });
 
   it("부르는 셸이 없으면 빈 목록이다 — 띠 자체가 없다", () => {

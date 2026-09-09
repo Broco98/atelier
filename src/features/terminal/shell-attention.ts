@@ -285,30 +285,61 @@ export function signalsByOwner(state: ShellsState): Record<string, ShellSignal> 
 }
 
 /**
+ * 부르는 셸 하나 — **그 판정까지 함께** 든다. 「누가 부르나」를 정하면서 이미 읽은 것
+ * (어떤 부름인가 · 언제부터인가)을 버리지 않는 것이 요점이다.
+ */
+export interface CallingShell {
+  shell: Shell;
+  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다. */
+  kind: "waiting" | "done";
+  /**
+   * 그 셸이 말한 사실 **통째로**. 정렬의 둘째 키(`since`)도 마크의 재료(`agent`)도 여기
+   * 있어서, 읽는 쪽이 문(`attentionOn`)을 다시 딛을 일이 없다 — 그것이 이 필드가 `since`
+   * 하나가 아닌 이유다.
+   */
+  attention: Attention;
+}
+
+/**
  * 「확인할 것」 띠에 서는 셸들 — **부르는 셸만**이다(결정 8). 도는 중과 본 완료와 조용한
  * 셸은 안 든다.
  *
  * 정렬은 기다림 먼저, 같은 종류 안에서는 **오래된 순**이다. 오래 기다린 것이 위에 서야
  * 사람이 밀린 순서대로 답한다.
  *
+ * **판정하는 자리가 여기 하나다.** 한때 이 함수가 셸만 돌려주고 `kind`·`since`를 버려서,
+ * 바로 아래 `bandRows`가 같은 셸에 `attentionOn`·`signalOf`를 **다시** 물었다 — 같은 사실을
+ * 두 자리에서 두 번 판정하는 모양이고(`topSignalView` 머리말의 「이기는 셸을 고르는 자리를
+ * 여기 하나로 둔다」와 반대다), 실제로 그 둘이 **다르게** 판정했다: 이쪽은 `?? 0`으로
+ * fail-open이라 1970년부터의 경과를 만들 수 있었고 저쪽은 줄을 아예 안 그렸다. 세는 자리가
+ * 늘면(#206의 독 배지가 「확인할 것의 수」를 여기서 세면) 그 갈림이 화면에 나온다.
+ *
  * **상한 3과 `+N 더`는 여기서 안 자른다**(#204). 자르는 것은 그리는 쪽의 일이고, 여기서
  * 자르면 헤더의 `N`이 셀 것이 사라진다.
  */
-export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<Shell> {
+export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<CallingShell> {
   // 화면값과 시각을 **한 번에** 뽑아 두고 그것으로 줄 세운다. 비교 함수 안에서 다시
   // 부르면 정렬이 도는 동안 같은 판정이 수십 번 돌고, 무엇보다 그 자리에서 `null`을
   // 단언으로 지워야 한다 — 걸러 낸 뒤라 안전하지만, 단언은 다음 사람이 조건을 넓힐 때
   // 조용히 거짓말이 된다.
-  const calling: { shell: Shell; rank: number; since: number }[] = [];
+  const calling: CallingShell[] = [];
   for (const shell of shells) {
-    const signal = signalOf(shell);
-    if (signal !== "waiting" && signal !== "done") continue;
-    calling.push({ shell, rank: RANK[signal], since: attentionOn(shell)?.since ?? 0 });
+    const kind = signalOf(shell);
+    if (kind !== "waiting" && kind !== "done") continue;
+    // **없으면 줄을 안 낸다.** `signalOf`가 이미 죽은 칸을 걸렀으므로 값이 있는 것은
+    // 확실하지만, 그 확신을 `?? 0`으로 메워 두면 다음 사람이 위 조건을 넓히는 날 이 셸이
+    // **1970년부터 기다린 것**으로 맨 위에 선다 — 사람이 읽는 글자라 틀린 값이 그대로 뜻이
+    // 된다(`topSignalView`가 같은 자리에서 같은 이유로 문을 다시 딛는다).
+    const attention = attentionOn(shell);
+    if (attention === null) continue;
+    calling.push({ shell, kind, attention });
   }
 
-  return calling
-    .sort((a, b) => (a.rank === b.rank ? a.since - b.since : a.rank - b.rank))
-    .map((one) => one.shell);
+  return calling.sort((a, b) =>
+    a.kind === b.kind
+      ? a.attention.since - b.attention.since
+      : RANK[a.kind] - RANK[b.kind],
+  );
 }
 
 /**
@@ -356,26 +387,19 @@ export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
   // 화면마다 **부르는** 셸이 몇인가. 조용한 형제는 안 센다 — 이름이 붙는 근거는 「띠에서
   // 두 줄이 같은 제목으로 선다」이지 「그 work에 셸이 여럿이다」가 아니다.
   const perOwner = new Map<string | null, number>();
-  for (const shell of calling) perOwner.set(shell.owner, (perOwner.get(shell.owner) ?? 0) + 1);
+  for (const { shell } of calling) perOwner.set(shell.owner, (perOwner.get(shell.owner) ?? 0) + 1);
 
-  const rows: BandRow[] = [];
-  for (const shell of calling) {
-    // `callingShells`가 이미 걸러 낸 뒤라 값이 있는 것은 확실하지만, 그 확신을 단언으로
-    // 적어 두면 다음 사람이 저쪽 조건을 넓힐 때 조용히 거짓말이 된다 — `topSignalView`가
-    // 같은 이유로 문을 다시 딛는다. 여기서도 없으면 **줄을 안 그린다.**
-    const attention = attentionOn(shell);
-    const kind = signalOf(shell);
-    if (attention === null || (kind !== "waiting" && kind !== "done")) continue;
-    rows.push({
-      id: shell.id,
-      owner: shell.owner,
-      kind,
-      since: attention.since,
-      running: runningOn(shell) ?? attention.agent,
-      shellName: (perOwner.get(shell.owner) ?? 0) > 1 ? shellRowName(shell) : null,
-    });
-  }
-  return rows;
+  // **여기서는 아무것도 다시 판정하지 않는다.** 부르는가 · 어떤 부름인가 · 언제부터인가는
+  // `callingShells`가 이미 정했고, 이 자리가 더하는 것은 그 줄을 **화면에 세우는 데만**
+  // 필요한 것 셋뿐이다 — 어느 칸을 켜는가 · 마크의 재료 · 이름을 붙이는가.
+  return calling.map(({ shell, kind, attention }) => ({
+    id: shell.id,
+    owner: shell.owner,
+    kind,
+    since: attention.since,
+    running: runningOn(shell) ?? attention.agent,
+    shellName: (perOwner.get(shell.owner) ?? 0) > 1 ? shellRowName(shell) : null,
+  }));
 }
 
 /**

@@ -617,7 +617,7 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
   // 좁히지 않으면 이 줄이 「행에 이름이 붙었다」가 아니라 「어딘가에 하나 있다」를 재게 된다.
   await expect(
     page
-      .locator("aside .scroll-quiet")
+      .locator("[data-worklist]")
       .getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }),
   ).toHaveCount(1);
 
@@ -853,7 +853,9 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
 
   // **헤더는 접힌 것까지 센다** — 보이는 줄은 셋인데 수는 넷이다.
   await expect(띠줄들(page)).toHaveCount(3);
-  await expect(띠(page).locator("span.tabular-nums").first()).toHaveText("4");
+  // **표식으로 집는다** — 자리(`.first()`)나 겉모습(`tabular-nums`)으로 고르면 헤더와 줄의
+  // 순서가 바뀌거나 그 클래스가 떨어지는 날 재는 대상이 조용히 다른 것이 된다.
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("4");
   // **한 화면에서 넷이 부르니 줄마다 셸 이름이 붙는다**(결정 5). 위에서 「안 붙는다」를
   // 먼저 셌으므로 이 줄은 「원래 붙어 있던 것」으로는 초록이 안 된다.
   for (const at of [0, 1, 2]) {
@@ -870,6 +872,16 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   await 띠(page).getByRole("button", { name: "+1 더" }).click();
   await expect(띠줄들(page)).toHaveCount(4);
   expect(await 저장된것()).toBe(펼치기전);
+
+  // **펼쳐도 바닥의 Settings가 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거).
+  // 낮은 창에서만 나는 일이라 여기서 창을 낮춘다: 띠 상자에 세로 한도와 자기 스크롤이
+  // 없으면, 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 목록이 0으로 무너진 뒤
+  // Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다.
+  await page.setViewportSize({ width: 1100, height: 300 });
+  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible();
+  const 바닥 = (await settings.boundingBox())!;
+  expect(바닥.y + 바닥.height).toBeLessThanOrEqual(300);
 
   // 같은 자리가 `접기`가 된다.
   await 띠(page).getByRole("button", { name: "접기" }).click();
@@ -922,6 +934,56 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **다른 work의 줄을 누르는 갈래**(결정 13의 넷째 · 결정 77·97). 위 검사가 미는 것은 늘
+// 「보고 있는 그 work」이라 `useOpenBand`의 **한쪽 갈래만** 지난다 — 그런데 이 띠가 존재하는
+// 이유의 절반이 반대쪽이다(스토리 36·43: 지금 안 보고 있는 work으로 건너뛴다).
+//
+// 그 갈래에서 주소를 짓는 모양이 다르다: 같은 work이면 보던 문서·분할을 지키는 **함수형**에
+// `replace`이고, 다른 work이면 그 work의 마지막 화면을 **빈 주소 위에** 얹는다
+// (`recallSearch`). 함수형을 양쪽에 쓰는 뮤테이션은 떠나던 work의 `file`을 남의 work 주소에
+// 딸려 보내고(`viewSearch` 머리말이 막으려는 그 사고), `replace`를 양쪽에 쓰는 뮤테이션은
+// 뒤로가기를 한 번 먹는다. 아래 두 단언이 각각 그것이다.
+test("다른 work의 띠 줄을 누르면 그 화면으로 건너뛰고, 보던 문서는 안 딸려간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  // **고정된 일**의 문서를 보고 있다. `goto`는 여기 한 번뿐이다 — 셸은 앱 메모리에 살아서
+  // 새로고침이 통째로 지운다(그 뒤 이동은 전부 앱 안에서 한다).
+  await page.goto(`/works/${pinnedWork.slug}?file=${encodeURIComponent(pinnedWork.specFiles[0])}`);
+  await expect(page).toHaveURL(/file=/);
+
+  // **그냥 일**에 셸을 하나 세워 부르게 한다.
+  await page.locator("[data-worklist]").getByRole("button", { name: plainWork.title, exact: true }).click();
+  await page.locator('[data-tab="new"]').click();
+  await awaitSpawned(page, 1);
+  await 기다리게한다(page, "커밋할까요?");
+
+  // 다시 **고정된 일**의 문서로 돌아온다 — 이 화면이 「떠나는 주소」다.
+  await page.locator("[data-worklist]").getByRole("button", { name: pinnedWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await expect(page).toHaveURL(/file=/);
+
+  await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
+
+  // 그 work의 터미널로 건너뛴다.
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(page).toHaveURL(/tab=terminal/);
+  // **떠나던 주소의 `file`이 안 딸려간다** — 문서 경로는 그 work 안에서만 뜻이 있다.
+  await expect(page).not.toHaveURL(/file=/);
+  // 그리고 그 셸 탭이 켜져 있다.
+  await expect(
+    page.locator('[data-tab="shell"]').first().locator("button[aria-pressed]"),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  // **`replace`가 아니다**(결정 13) — 화면이 통째로 바뀌는 쪽은 히스토리를 남기므로
+  // 뒤로가기 **한 번**이면 보던 문서로 돌아온다.
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+  await expect(page).toHaveURL(/file=/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **최상위 셸도 띠에 든다**(결정 13의 다섯째). 하나를 빼면 거기서 부를 때 어디에도 안
 // 보인다 — nav `Terminal`은 이 판에서 종류·수 그대로이기 때문이다(스펙의 Out of Scope).
 test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 그 화면으로 간다", async ({
@@ -959,7 +1021,7 @@ test("스크롤로 밀려난 work의 셸도 띠에서 보인다", async ({ page 
   await awaitSpawned(page, 1);
   await 기다리게한다(page, "커밋할까요?");
 
-  const list = page.locator("aside .scroll-quiet").first();
+  const list = page.locator("[data-worklist]");
   // **목록 안으로 좁혀 집는다.** 이 행은 지금 부르고 있어 이름에 상태가 붙어 있고
   // (`${plainWork.title} — 나를 기다림`, #203) 그 이름은 띠의 줄과 **글자가 같다**(결정 8) —
   // 화면 전체에서 집으면 둘이 함께 잡힌다. 스코프가 곧 이 검사가 가르려는 그 둘이다.

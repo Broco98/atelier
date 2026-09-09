@@ -18,11 +18,16 @@ import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
 // 들면 펼쳐진 띠를 마크업 seam에서 볼 길이 없어진다.
 
 /**
- * 띠의 이름(결정 8). **행·탭의 접근성 이름과 같은 말을 쓴다** — 「확인할 것」은
- * `SIGNAL_LABEL.done`이기도 하다: 띠에 서는 두 종류(답을 기다리는 셸 · 끝났는데 안 본 셸)
- * 중 「봤다」로 지워지는 쪽의 이름이 곧 띠 전체의 이름이다.
+ * 띠의 이름(결정 8). **행·탭의 접근성 이름과 같은 말이다** — 띠에 서는 두 종류(답을
+ * 기다리는 셸 · 끝났는데 안 본 셸) 중 「봤다」로 지워지는 쪽의 이름이 곧 띠 전체의
+ * 이름이라, 이 상수는 `SIGNAL_LABEL.done` **그 값 자체**다.
+ *
+ * 글자를 여기 다시 적지 않는 것이 요점이다. 「같은 말」이라고 주석에 적어 두고 값을 두 벌로
+ * 두면 이름을 고치는 날 한쪽만 바뀌어, **띠 헤더와 줄의 접근성 이름이 서로 다른 말을 한다** —
+ * `nav-items`가 `TERMINAL_LABEL`을 꺼낸 이유와 같고(「두 자리에 글자를 각각 적으면 … 「같은
+ * 곳」이 화면에서 두 이름을 갖는다」), 검사도 이 상수를 통해 견주므로 그 어긋남을 못 잡는다.
  */
-export const BAND_LABEL = "확인할 것";
+export const BAND_LABEL = SIGNAL_LABEL.done;
 
 /**
  * 몇 줄까지 보이나(결정 8). 「사람이 한 번에 관리할 수 있는 에이전트는 3~5개」의 아래끝이고,
@@ -75,7 +80,27 @@ export function AttentionBand({
   return (
     // 표식은 검사가 이 띠를 **정체성으로** 집기 위한 것이다 — 서고 사라지는 것 자체가
     // 이 판의 수용 기준이라(스토리 38) 「있는가」를 물을 자리가 필요하다.
-    <div data-band="" className="flex shrink-0 flex-col gap-(--row-gap) pt-1.5">
+    <div
+      data-band=""
+      className={cn(
+        "flex shrink-0 flex-col gap-(--row-gap)",
+        // **한 덩어리 상자다**(목업 `.strip` — 반지름 10 · 안쪽 위아래 6 · 아래 여백 8 ·
+        // 바닥 `state-1`). 목록 위에 **뜬 것**으로 읽혀야 「열여덟 행을 훑지 않고 거기만
+        // 본다」(스토리 36)가 성립하는데, 상자가 없으면 아래 work 행들과 같은 평면에 서서
+        // 눈에 띄는 근거가 점 색 하나로 줄어든다. 위 여백 6은 nav와 떼는 몫이다.
+        "mt-1.5 mb-2 rounded-[10px] bg-state-1 py-1.5",
+        // **펼쳐도 목록을 다 먹지는 않는다.** 결정 8이 「상한 없이 전부 보이는 안」을 기각한
+        // 근거가 「열이 부르면 사이드바 절반이 띠가 된다」인데, 펼침 뒤에는 그것을 막는 것이
+        // 아무것도 없었다 — 형제가 전부 `shrink-0`이고 목록만 `flex-1 min-h-0`이라 낮은
+        // 창에서 목록이 0까지 무너진 뒤 바닥 Settings가 `aside`의 `overflow-hidden` 밖으로
+        // 잘린다. 여기서 굴리면 「전부 펼쳐진다」는 지켜지면서 그 대가가 안 난다.
+        //
+        // 한도가 둘인 것은 재는 것이 둘이라서다 — `max-h`는 **넉넉한 창에서** 띠가 사이드바
+        // 절반을 먹는 것을 막고, `min-h-0`은 **낮은 창에서** 래퍼가 줄어들 때 이 상자가
+        // 따라 줄게 한다(그 래퍼의 주석에 왜 그 자리가 줄어야 하는지가 있다).
+        "max-h-[40vh] min-h-0 overflow-y-auto scroll-quiet",
+      )}
+    >
       {/* **누를 것이 없는 머리다** — 구획 헤더(`SectionHeader`)와 규격은 같되 접히지 않는다.
           띠가 접히는 것은 헤더가 아니라 아래 `+N 더`가 하는 일이고, 한 띠에 접는 것이 둘이면
           같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 수가 오른쪽 끝에 서는 것은 바로
@@ -85,7 +110,10 @@ export function AttentionBand({
         <span className="shrink-0 text-[13.5px] font-medium text-tertiary">{BAND_LABEL}</span>
         {/* **접힌 것까지 센다.** 보이는 줄을 세면 넷째부터가 화면 어디에도 안 남는다 —
             그것이 「열여덟 행을 훑지 않는다」는 이 띠의 이유를 반쯤 되돌린다. */}
-        <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary">
+        <span
+          data-band-count=""
+          className="ml-auto shrink-0 text-[11.5px] tabular-nums text-tertiary"
+        >
           {items.length}
         </span>
       </div>
@@ -101,7 +129,9 @@ export function AttentionBand({
           aria-expanded={expanded}
           // 들여쓰기가 줄의 제목과 맞는다(9 + 레인 14 + 간격 9 = 32) — 같은 열에 서야
           // 이 줄이 「목록에 딸린 것」으로 읽힌다.
-          className="flex h-6 w-full shrink-0 items-center rounded-[8px] pl-8 pr-[10px] text-left text-[11.5px] text-tertiary transition-colors hover:bg-state-1 hover:text-muted-foreground"
+          // hover가 **한 단 위**인 것은 상자 바닥이 이미 `state-1`이라서다 — 같은 값을 얹으면
+          // 눌러도 되는 줄이라는 것을 화면이 안 말한다(줄과 같은 이유, `BandLine` 참조).
+          className="flex h-6 w-full shrink-0 items-center rounded-[8px] pl-8 pr-[10px] text-left text-[11.5px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
         >
           {expanded ? "접기" : `+${items.length - shown.length} 더`}
         </button>
@@ -119,6 +149,13 @@ export function AttentionBand({
  *
  * **이름에 상태가 붙는다**(결정 8의 마지막 줄). 점은 `aria-hidden`이라(`SignalLane`)
  * 상태를 말하는 자리가 이 이름 하나다 — 색만이 신호여선 안 된다.
+ *
+ * **셸 이름도 그 이름에 실린다.** 스펙과 결정 8은 이름 모양을 `<work 제목> — 나를 기다림`
+ * 이라 적었는데, 그 「제목」은 이 줄이 눈에 보여 주는 제목이다: 셸 이름이 붙는 경우가 곧
+ * 「한 work에서 둘이 부른다」이므로(결정 5) 이름에서 그것을 빼면 두 줄의 접근성 이름이
+ * **완전히 같아진다** — 눈으로 가르라고 넣은 그 글자가 스크린리더에는 안 가고, 「색만이
+ * 신호여선 안 된다」가 셸 단위에서 깨진다. 사람에게 열어 둔 물음은
+ * `spec/물음-띠-줄의-접근성-이름.md`다.
  */
 function BandLine({
   item,
@@ -133,11 +170,19 @@ function BandLine({
   return (
     <button
       type="button"
-      aria-label={`${item.title} — ${SIGNAL_LABEL[item.kind]}`}
+      aria-label={`${nameOf(item)} — ${SIGNAL_LABEL[item.kind]}`}
       onClick={() => onOpen(item)}
       className={cn(
         "flex h-7 w-full shrink-0 items-center gap-(--glyph-gap) rounded-[8px] pl-[9px] pr-[10px] text-left text-[13.5px]",
-        "text-muted-foreground transition-colors hover:bg-state-1",
+        // **hover는 상자 바닥보다 한 단 위다** — 띠가 이미 `state-1` 위에 서 있어
+        // 같은 값을 얹으면 아무 일도 안 일어난 것처럼 보인다(목업이 안 만난 충돌이다:
+        // 저쪽 `.strip .it`에는 hover가 없다).
+        "transition-colors hover:bg-state-2",
+        // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(목업 `.strip .it` / `.it.d`).
+        // 기다림은 `foreground`, 안 본 완료만 한 단 내려간다 — 바로 아래 work 행이 통째로
+        // `text-muted-foreground`라(SidebarWorkList), 둘을 같은 색으로 두면 띠가 목록과
+        // 같은 무게로 읽히고 「기다림 › 안 본 완료」가 점 색에만 남는다.
+        item.kind === "waiting" ? "text-foreground" : "text-muted-foreground",
       )}
     >
       {/* 레인 — work 행과 **같은 14px 한 칸**이라 점이 같은 x에 선다. 두 자리가 어긋나면
@@ -167,4 +212,15 @@ function BandLine({
       </span>
     </button>
   );
+}
+
+/**
+ * 줄이 **눈에 보여 주는 이름**. 접근성 이름이 이 함수를 딛는다.
+ *
+ * 함수 하나인 이유는 짝이 둘이기 때문이다 — 위 상자가 그리는 글자와 `aria-label`이 같은
+ * 사실의 두 표현인데, 각자 이어 붙이면 한쪽만 늘어나는 날 눈과 귀가 다른 이름을 듣는다
+ * (`showsElapsed`가 같은 이유로 함수다).
+ */
+function nameOf(item: BandItem): string {
+  return item.shellName === null ? item.title : `${item.title} ${item.shellName}`;
 }

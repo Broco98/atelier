@@ -54,6 +54,25 @@ const textOf = (markup: string) => markup.replace(/<[^>]*>/g, "");
 const 이름들 = (markup: string) =>
   [...markup.matchAll(/<button[^>]*?aria-label="([^"]*)"/g)].map((m) => m[1]);
 
+/**
+ * 표식이 붙은 상자의 **여는 태그**. 겉모습 클래스가 아니라 이름으로 집는다.
+ *
+ * 못 찾으면 던진다 — 표식이 떨어진 날 검사가 「아무것도 못 봤다」로 조용히 초록이 되면
+ * 그물이 아니라 장식이다.
+ */
+const 여는태그 = (markup: string, 표식: string) => {
+  const found = new RegExp(`<[a-z]+[^>]*${표식}[^>]*>`).exec(markup);
+  if (!found) throw new Error(`${표식} 상자를 못 찾았다`);
+  return found[0];
+};
+
+/** 표식이 붙은 상자가 **품은 글자**. 「어느 상자가 그 수를 말하나」를 자리가 아니라 이름으로 집는다. */
+const 표식글자 = (markup: string, 표식: string) => {
+  const found = new RegExp(`<[a-z]+[^>]*${표식}[^>]*>([^<]*)<`).exec(markup);
+  if (!found) throw new Error(`${표식} 상자를 못 찾았다`);
+  return found[1];
+};
+
 describe("부르는 것이 없으면 띠 자체가 없다", () => {
   // 결정 5·8 — 「평소 화면이 지금과 같다」가 이 한 줄이다. 헤더만 남기거나 빈 상자를
   // 그리면 목록이 그만큼 밀리고, 그것이 스토리 38이 막으려는 것이다.
@@ -68,6 +87,13 @@ describe("헤더는 접힌 것까지 센다", () => {
     // **먼저 실제로 접혔는가** — 이것이 없으면 아래 「5」가 「안 접힌 채 다섯 줄」로도 초록이다.
     expect(이름들(markup)).toHaveLength(BAND_LIMIT);
     expect(textOf(markup)).toContain(`${BAND_LABEL}5`);
+  });
+
+  // **그 수를 표식으로 집을 수 있다.** 이 층은 글자로 견주면 되지만 L3는 상자를 집어야
+  // 하는데, 자리(`.first()`)나 겉모습 클래스(`tabular-nums`)로 고르면 헤더와 줄의 순서가
+  // 바뀌거나 그 클래스가 떨어지는 날 **엉뚱한 것을 재거나** 조용히 깨진다.
+  it("수는 표식이 붙은 상자에 선다", () => {
+    expect(표식글자(band(줄들(5)), "data-band-count")).toBe("5");
   });
 
   it("상한 안쪽이면 보이는 수와 같다", () => {
@@ -118,6 +144,14 @@ describe("줄 하나", () => {
     expect(textOf(band([줄({ shellName: null })]))).not.toContain("vite");
   });
 
+  // **눈으로 가르라고 넣은 글자가 이름에도 간다.** 셸 이름이 붙는 경우가 곧 「한 work에서
+  // 둘이 부른다」이므로(결정 5), 이름에서 그것을 빼면 그 두 줄의 접근성 이름이 **완전히
+  // 같아진다** — 점이 `aria-hidden`이라 이름이 유일한 말인데, 그 말이 둘을 못 가른다.
+  it("셸 이름이 있으면 이름에도 실린다", () => {
+    expect(이름들(band([줄({ shellName: "vite" })])))
+      .toEqual(["그냥 일 vite — 나를 기다림"]);
+  });
+
   it("마크와 경과가 함께 선다", () => {
     const markup = band([줄({ running: "codex", since: 0 })], { now: 125_000 });
     expect(markup).toContain('aria-label="codex"');
@@ -132,16 +166,41 @@ describe("줄 하나", () => {
   });
 });
 
+// **목업이 정본인 자리**(decisions.md 머리말 — 「눈으로 고른 것은 목업/행-신호-세-안.html이
+// 정본이다」). 결정 5는 띠의 위치·구성·치수만 다시 적었으므로 색과 상자는 여전히 목업이
+// 정한다. 그 목업에서 띠는 **한 덩어리 상자**(`background: var(--state-1)`)이고 줄은
+// 종류로 무게가 갈린다(`.it`은 foreground, `.it.d`만 muted) — 바로 아래 목록 행이 통째로
+// muted라, 이 둘이 없으면 띠가 목록과 **같은 무게**로 읽혀 「열여덟 행을 훑지 않고 거기만
+// 본다」(스토리 36)가 점 색 하나에만 매달린다.
+describe("띠는 목록 위에 뜬 상자다", () => {
+  it("상자가 바닥색과 반지름을 든다", () => {
+    const 상자 = 여는태그(band(줄들(1)), "data-band");
+    expect(상자).toContain("bg-state-1");
+    expect(상자).toContain("rounded-[10px]");
+  });
+
+  // 결정 3의 우선순위(기다림 › 안 본 완료)가 띠 **안에서도** 글자로 남는다. 점 색으로만
+  // 남기면 색을 못 가르는 사람에게 그 순서가 사라진다.
+  it("기다림 줄과 완료 줄의 무게가 갈린다", () => {
+    const 줄태그 = (kind: "waiting" | "done") =>
+      /<button[^>]*aria-label[^>]*>/.exec(band([줄({ kind })]))![0];
+    expect(줄태그("waiting")).not.toContain("text-muted-foreground");
+    expect(줄태그("done")).toContain("text-muted-foreground");
+  });
+
+  // **hover가 바닥에 안 묻는다.** 상자가 이미 state-1이라 줄의 hover도 state-1이면 눌러도
+  // 되는 줄이라는 것을 화면이 안 말한다 — 목업이 안 만난 충돌이라 여기서 한 단 올렸다.
+  it("hover는 상자 바닥보다 한 단 위다", () => {
+    const markup = band(줄들(4));
+    expect(markup).not.toContain("hover:bg-state-1");
+    expect(markup).toContain("hover:bg-state-2");
+  });
+});
+
 // **스토리 34** — 사이드바를 좁혀도 띠가 먼저 죽지 않는다. 실제로 무엇이 줄어드는지는
 // 진짜 레이아웃이 있어야 나므로 L3가 재고, 여기서는 그것을 가능하게 하는 **규격**을 본다:
 // 글자 상자만 줄어들 수 있고 점·마크·경과는 안 줄어든다.
 describe("좁아지면 글자가 먼저 잘린다", () => {
-  const 여는태그 = (markup: string, 표식: string) => {
-    const found = new RegExp(`<[a-z]+[^>]*${표식}[^>]*>`).exec(markup);
-    if (!found) throw new Error(`${표식} 상자를 못 찾았다`);
-    return found[0];
-  };
-
   it("말 상자만 줄어들고 경과는 안 줄어든다", () => {
     const markup = band([줄({ since: 0 })], { now: 1000 });
     expect(여는태그(markup, "data-fade")).toContain("min-w-0");

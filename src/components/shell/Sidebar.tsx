@@ -140,8 +140,20 @@ function Sidebar({
 
             **목록 밖에 서는 것이 이 띠의 값 절반이다**(스토리 43) — 스크롤로 밀려난 work의
             셸이 불러도 여기서는 보인다. 안에 넣으면 판 04 결정 21이 감수했던 「어디에도 안
-            보인다」가 그대로 남는다. */}
-        <div className={GUTTER}>
+            보인다」가 그대로 남는다.
+
+            **이 래퍼는 형제들과 달리 `shrink-0`이 아니라 `min-h-0`이다.** nav도 설정도
+            `shrink-0`을 다는데 여기서 따라 달면 낮은 창에서 띠가 자기 높이를 끝까지 우겨
+            바닥의 Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다 — 목록은 이미
+            `flex-1 min-h-0`인데 flex-basis가 0이라 줄일 것이 없고(줄어드는 몫은 base에
+            비례한다), 그래서 남는 것을 내놓을 수 있는 것이 이 자리뿐이다. `min-h-0`이
+            **명시**여야 하는 것은 자동 최소 크기 때문이다: 안쪽 띠가 스크롤 상자라 자기
+            최소는 0이지만, 그 사실이 이 래퍼의 `min-height: auto`까지 눕히지는 않아
+            래퍼가 안 줄어든다(실측 — 창 300px에서 Settings가 16px 잘렸다).
+
+            그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
+            Settings가 남는다」다(스토리 39). */}
+        <div className={cn("flex min-h-0 flex-col", GUTTER)}>
           <AttentionBand
             items={items}
             now={bandNow}
@@ -234,6 +246,8 @@ function bandItems(rows: ReadonlyArray<BandRow>, works: ReadonlyArray<WorkView>)
  * 주소를 짓는 모양이 둘인 것은 work이 같은가로 갈리기 때문이다 — 같으면 보던 문서와 분할을
  * 지켜야 해서 **함수형**이고(결정 15가 그 형태를 못박았다), 다르면 그 work의 마지막 화면을
  * 씨앗으로 삼는다(`recallSearch`, 결정 77·97). `dropInto`가 같은 갈림을 같은 모양으로 쓴다.
+ * **이 자리가 `recallSearch`를 부르는 여섯 문 중 하나다** — 그쪽 머리말이 그 문들을 이름으로
+ * 세고 있으니 여기가 늘거나 줄면 그 목록도 함께 고친다.
  *
  * 같은 work 안에서는 `replace`다(결정 13) — 탭을 한 번 옮겼는데 되돌리는 데 뒤로가기를
  * 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.

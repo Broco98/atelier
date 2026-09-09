@@ -205,7 +205,14 @@ function SidebarWorkList({
 
             같은 병이 프로젝트·아카이브 목록에도 있었고 같은 한 줄로 고쳤다(그쪽 `-mx-3 px-3`).
             바깥 거터가 없는 상자들(본문·설정)은 처음부터 막대가 경계에서 3~9px이라 성했다. */}
-        <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pb-1 scroll-quiet">
+        {/* **표식은 검사가 이 목록을 정체성으로 집기 위한 것이다.** 한때 L3가
+            `aside .scroll-quiet`로 집었는데, 그 클래스는 「굴러가는 상자」라는 겉모습이라
+            같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 「확인할 것」 띠가 펼쳐지면
+            그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
+        <div
+          data-worklist=""
+          className="-mx-2 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pb-1 scroll-quiet"
+        >
           <WorkSectionList
             sections={sections}
             open={sectionsOpen}
