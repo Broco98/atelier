@@ -6,7 +6,12 @@ import { expect } from "./evidence";
 import type { Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
-import { FIXTURE_BY_ARG, FIXTURE_COMMANDS, FIXTURE_SHELL_NAME } from "./fixtures";
+import {
+  FIXTURE_BY_ARG,
+  FIXTURE_COMMANDS,
+  FIXTURE_SEQUENCED,
+  FIXTURE_SHELL_NAME,
+} from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -61,6 +66,12 @@ interface InitArgs {
    * L4는 진짜 백엔드가 답하므로 비어 있다.
    */
   byArg: Record<string, { arg: string; answers: Record<string, unknown> }>;
+  /**
+   * **부를 때마다 답이 달라져야 하는** 커맨드들: 커맨드 이름 → 그 답에서 하나씩 올릴 키.
+   * 무엇을 왜 여기 넣는지는 `fixtures`의 `FIXTURE_SEQUENCED`가 든다. L4는 진짜 백엔드가
+   * 답하므로 비어 있다.
+   */
+  sequenced: Record<string, string>;
 }
 
 /**
@@ -72,6 +83,7 @@ export async function installFixtureBackend(page: Page): Promise<void> {
     responses: { ...FIXTURE_COMMANDS, ...PLUGINS },
     bridgeName: null,
     byArg: FIXTURE_BY_ARG,
+    sequenced: FIXTURE_SEQUENCED,
   });
 }
 
@@ -94,13 +106,14 @@ export async function installRealBackend(
     responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
     bridgeName: BRIDGE_FN,
     byArg: {},
+    sequenced: {},
   });
 }
 
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, byArg }: Omit<InitArgs, "recordKey">,
+  { responses, bridgeName, byArg, sequenced }: Omit<InitArgs, "recordKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -111,7 +124,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, bridgeName, byArg }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, bridgeName, byArg, sequenced }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -127,6 +140,10 @@ async function install(
       .__TAURI_INTERNALS__;
     internals.convertFileSrc ??= (filePath: string, protocol = "asset") =>
       `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+
+    // 수열이 걸린 커맨드가 지금까지 몇 번 불렸는가. 브라우저 안에서만 산다 — 답을 만드는
+    // 일이 여기서 일어나야 하는 이유는 `FIXTURE_SEQUENCED`의 머리말에 있다.
+    const seen = new Map<string, number>();
 
     const record: IpcRecord = { calls: [], unknown: [] };
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
@@ -153,7 +170,22 @@ async function install(
           return keyed.answers[key];
         }
       }
-      if (Object.prototype.hasOwnProperty.call(responses, cmd)) return responses[cmd];
+      if (Object.prototype.hasOwnProperty.call(responses, cmd)) {
+        const answer = responses[cmd];
+        if (!Object.prototype.hasOwnProperty.call(sequenced, cmd)) return answer;
+        // 수열이 걸린 커맨드다 — 표에 적힌 값을 **첫 값**으로 삼아 부를 때마다 하나씩 올린다.
+        const key = sequenced[cmd];
+        const base = (answer as Record<string, unknown>)[key];
+        // **여기서 조용히 넘어가지 않는다.** 키가 틀렸거나 답의 모양이 바뀌면 `base + n`이
+        // `undefined`나 문자열 이어붙이기가 되어 시나리오는 돌고 값만 이상해진다 — 그러면
+        // 「셸마다 다른 id」를 재는 검사가 무엇을 재고 있는지 아무도 모른다.
+        if (typeof base !== "number") {
+          throw new Error(`수열을 걸 값이 수가 아닙니다: ${cmd}.${key}`);
+        }
+        const n = seen.get(cmd) ?? 0;
+        seen.set(cmd, n + 1);
+        return { ...(answer as Record<string, unknown>), [key]: base + n };
+      }
       // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
       // 하네스가 낡았다는 뜻이다.
       if (bridgeName !== null && !cmd.startsWith("plugin:")) {
@@ -167,7 +199,7 @@ async function install(
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg });
+  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg, sequenced });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
@@ -198,33 +230,42 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
  * 난수로 짓는다. 못 찾으면 던진다: 구독이 안 걸린 채로 지나가면 아래 「로고가 남는다」가
  * **로고가 아예 없어서** 초록이 된다.
  *
- * 픽스처의 `pty_spawn`이 늘 같은 pty id(1)를 주므로 값이 앉는 칸은 **맨 앞 칸 하나**다
- * (`shellOfPty`가 먼저 찾은 인스턴스를 준다).
+ * **어느 셸에 앉힐지 `ptyId`로 고른다.** 픽스처의 `pty_spawn`이 부를 때마다 다른 id를 주므로
+ * (`FIXTURE_SEQUENCED`) 그 수가 곧 **몇 번째로 뜬 셸인가**다 — 첫 셸이 1이고, 안 주면 그
+ * 첫 셸이다. 모르는 id를 주면 `shellOfPty`가 null을 주어 아무 칸에도 안 앉고, 아래 기다림이
+ * 5초 뒤에 던진다.
  *
  * **앉을 때까지 다시 쏜다.** 스폰 **응답**이 앉기 전에 쏘면 그 값은 조용히 버려진다 —
  * 그 칸은 이미 화면에 있지만 아직 pty를 모르는 상태라 `shellOfPty`가 null을 주고,
  * `setRunning`이 아무 칸에도 안 닿는다. 병렬 l3에서 두 번에 한 번 그 사이가 벌어졌다.
  * 다시 쏘는 것이 상태를 흔들지 않는다: 「지금 이것이 돈다」는 몇 번 와도 같은 말이고,
  * `setRunning`이 같은 값이면 상태를 그대로 돌려준다.
+ *
+ * **그 재시도는 멱등한 값에만 안전하다 — 이 모양을 그대로 베끼지 마라.** 여기 실리는 것은
+ * 「지금 이 셸에서 이것이 돈다」는 **상태**라 같은 값이 쉰 번 와도 결과가 한 번 온 것과 같다.
+ * 이 판이 더할 `shell:attention`은 그렇지 않다 — 상태가 **바뀌는 순간**을 싣는 전이라,
+ * 알림이 그 엣지에서 한 번 울리게 되어 있다(스펙의 알림 판정). 그것을 쉰 번 쏘면 알림도
+ * 쉰 번 울리고, 그러면 「한 번만 울린다」를 재는 검사가 하네스 때문에 빨개진다. 전이를
+ * 흉내 내는 손잡이는 **구독이 걸렸는가**를 기다린 뒤 **한 번만** 쏴야 한다(티켓 05).
  */
-export async function markRunning(page: Page, running: string): Promise<void> {
+export async function markRunning(page: Page, running: string, ptyId = 1): Promise<void> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
   const listen = calls.filter((call) => call.includes('"pty:running"')).reverse()[0];
   const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
   if (!handler) throw new Error(`pty:running 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
   const fire = () =>
     page.evaluate(
-      ([id, name]) => {
+      ({ handler, running, ptyId }: { handler: number; running: string; ptyId: number }) => {
         const internals = (window as unknown as {
           __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
         }).__TAURI_INTERNALS__;
-        internals.runCallback(Number(id), {
+        internals.runCallback(handler, {
           event: "pty:running",
           id: 0,
-          payload: [{ id: 1, running: name }],
+          payload: [{ id: ptyId, running }],
         });
       },
-      [handler, running],
+      { handler: Number(handler), running, ptyId },
     );
 
   const mark = page.locator(`[role="img"][aria-label*="${running}"]`);
@@ -233,7 +274,7 @@ export async function markRunning(page: Page, running: string): Promise<void> {
     if ((await mark.count()) > 0) return;
     await page.waitForTimeout(100);
   }
-  throw new Error(`\`${running}\`이 도는 칸이 5초 안에 안 생겼다`);
+  throw new Error(`pty ${ptyId}에 \`${running}\`이 도는 칸이 5초 안에 안 생겼다`);
 }
 
 /**

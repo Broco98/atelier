@@ -121,16 +121,38 @@ async function rowOf(page: Page): Promise<Row> {
   });
 }
 
-/** 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30). */
+/**
+ * spawn **응답**을 받은 칸들. 이름이 픽스처의 것으로 바뀐 순간이 곧 pty가 앉은 순간이라는
+ * 것은 `harness`의 `awaitSpawned`가 든 근거 그대로다.
+ *
+ * **그런데 그쪽 함수를 이 파일에서는 못 쓴다.** 그것은 닫기 버튼을 **역할과 이름으로** 집는데,
+ * 이 줄에서 닫기는 칸이 88px 아래로 눌리면 꺼진 칸부터 `display:none`으로 접힌다(결정 20) —
+ * 상한까지 채우면 여덟 중 켜진 하나만 남아 「응답이 하나만 왔다」로 읽힌다. 속성 선택자는
+ * 접혀도 남는 DOM을 세므로 이 줄의 폭과 무관하다.
+ */
+const spawnedTabs = (page: Page) =>
+  page.locator(`[data-tab="shell"] button[aria-label$="${SHELL_NAME} 닫기"]`);
+
+/**
+ * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
+ *
+ * **칸마다 spawn 응답까지 기다린다.** 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
+ * (`awaitSpawned`의 머리말), 안 기다리면 여덟 번의 왕복이 서로 겹쳐 **몇 번째 칸이 몇 번
+ * pty를 받았는지가 실행마다 갈린다.** 픽스처가 부른 순서대로 id를 주기 시작한 뒤로
+ * (`FIXTURE_SEQUENCED`) 그 순서가 이 파일의 전제가 됐다 — 「둘째 칸 = pty 2」를 딛는 검사가
+ * 아래 있다.
+ */
 async function fillToCap(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   // 이미 몇 칸이 서 있어도 상관없이 상한까지 채운다 — 부르는 자리마다 시작 칸 수가 다르다.
   await tabs.first().waitFor();
   const plus = page.locator('[data-tab="new"]');
   for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) {
+    await expect(spawnedTabs(page)).toHaveCount(n);
     await plus.click();
     await expect(tabs).toHaveCount(n + 1);
   }
+  await expect(spawnedTabs(page)).toHaveCount(MAX_SHELLS);
   await expect(plus).toHaveAttribute("aria-disabled", "true");
 }
 
@@ -268,6 +290,44 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   // 스크린리더에는 그대로 불린다(이름 버튼의 접근성 이름이 이 글자 하나다).
   expect((await name.boundingBox())!.width).toBeLessThanOrEqual(1);
   await expect(name).toHaveCount(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── 티켓 #198: 백엔드가 **셸마다** 쏘는 값이 그 셸에 앉는다 ───
+//
+// 이 판(터미널 신호)의 검사는 거의 전부가 「서로 다른 상태의 셸 둘」을 필요로 한다 — 행의 점,
+// 띠의 줄, 물든 탭이 전부 「어느 셸인가」를 말하는 것들이라, 값이 늘 맨 앞 셸에만 앉으면 그
+// 검사들은 **자리가 옳은지를 아예 못 잰다.** 그 자리를 이 검사가 연다.
+//
+// 막고 있던 것은 고정 백엔드였다: `pty_spawn`이 늘 id 1을 답해 셸이 몇이든 백엔드 쪽 번호가
+// 하나뿐이었고, `shellOfPty`가 먼저 찾은 칸을 주므로 값이 전부 맨 앞 칸에 앉았다.
+//
+// **재는 자리가 탭 줄인 것은 「어느 셸인가」가 화면에 드러나는 자리가 여기뿐이라서다.**
+// 사이드바 메타는 줄 전체로 말하고(`runningAgentsOf` — 「claude 하나가 돈다」까지만 안다),
+// pty id는 화면 어디에도 안 적힌다. 칸이 여덟이라 이름이 자리를 비운 폭이어야 글리프가 서고
+// (결정 27), 그 폭을 만드는 것이 `fillToCap`이다.
+test("도는 명령은 그 셸의 칸에만 앉는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await fillToCap(page);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  const marks = page.locator('[data-tab="shell"] [role="img"]');
+  // **먼저 아무 칸도 안 물든 것을 센다.** 이것이 없으면 아래가 「원래 있던 것」으로도 초록이 된다.
+  await expect(marks).toHaveCount(0);
+
+  // 둘째 셸의 pty다. 칸이 서는 순서와 스폰 순서가 같다는 것은 `fillToCap`이 칸마다 응답을
+  // 기다려 세운다(그 머리말) — 그래서 여기서 2는 **둘째 칸**을 뜻한다.
+  await markRunning(page, "claude", 2);
+
+  // 그 칸 하나에만 앉는다. 세 단언이 각각 다른 것을 말한다: 둘째가 물들었다 · 첫째는 안
+  // 물들었다 · 그리고 **줄 전체에 하나뿐이다**(마지막이 없으면 셋째 칸까지 함께 물든 그림이
+  // 통과한다 — 값이 셸 단위가 아니라 줄 단위로 앉는 회귀가 정확히 그 모양이다).
+  await expect(tabs.nth(1).locator('[role="img"]')).toHaveCount(1);
+  await expect(tabs.nth(0).locator('[role="img"]')).toHaveCount(0);
+  await expect(marks).toHaveCount(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
