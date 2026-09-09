@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { BRIDGE_FN, callBridge } from "./bridge";
+import { expect } from "./evidence";
 import type { Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
-import { FIXTURE_BY_ARG, FIXTURE_COMMANDS } from "./fixtures";
+import { FIXTURE_BY_ARG, FIXTURE_COMMANDS, FIXTURE_SHELL_NAME } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -233,4 +234,33 @@ export async function markRunning(page: Page, running: string): Promise<void> {
     await page.waitForTimeout(100);
   }
   throw new Error(`\`${running}\`이 도는 칸이 5초 안에 안 생겼다`);
+}
+
+/**
+ * 셸 `count`개가 **spawn 응답을 받을 때까지** 기다린다.
+ *
+ * 칸이 화면에 서는 것과 그 칸이 pty를 갖는 것은 **다른 순간**이다 — 사이에 `pty_spawn`
+ * 왕복이 있다. 닫는 길(`×`·⌘W)은 그 pty로 「명령이 도는가」를 물어 확인 창을 띄우므로,
+ * 응답 전에 닫으면 **묻지 않고 닫는 것이 옳은 동작이다**(결정 92 — 물어볼 프로세스가 없고,
+ * `needsCloseConfirm`이 판정 `null`에 `false`를 준다). 그래서 **확인 창을 보는 검사는 이
+ * 전제를 먼저 세워야 한다.** 안 세우면 러너가 붐비는 날에만 빨개진다 — 병렬 l3 전체 실행
+ * 세 번에 두 번, `tab-keys`의 서로 다른 두 검사가 그렇게 깨졌다(2026-09-09 실측). 응답을
+ * 3초 늦추면 100% 재현된다.
+ *
+ * **재는 자리는 칸 이름이다.** `terminal-store`의 `spawn`이 응답을 받아 `ptyId`와 셸 이름을
+ * **같은 자리 연달아** 앉히므로, 이름이 픽스처의 것으로 바뀐 순간이 곧 pty가 앉은 순간이다.
+ * 이름이 오기 전 칸은 `셸`이라 `/닫기$/`로는 둘이 안 갈린다.
+ *
+ * 워크트리가 있는 work은 이름 앞에 프로젝트가 붙으므로(결정 18) 끝으로 맞춘다.
+ */
+export async function awaitSpawned(page: Page, count: number): Promise<void> {
+  // **기본 5초가 아니다.** 이 기다림은 IPC 왕복이 아니라 그 앞의 **진짜 브라우저 일**에
+  // 매여 있다 — 칸이 서면 xterm이 열리고 WebGL 애드온이 붙고 격자를 맞춘 **뒤에야**
+  // spawn이 나간다(`terminal-store`의 `openOrReattach`). 한가한 러너에서 그 전부가
+  // 70~130ms인데(실측), `cargo test --workspace` 직후의 `verify --full`에서 한 번
+  // 5초를 넘겼다. 여기서 시간을 아껴 봐야 얻는 것이 없고, 넘치면 **그 자리에서** 터져
+  // 원인이 이 줄을 가리킨다 — 예전처럼 「확인 창이 안 떴다」로 엉뚱한 곳을 가리키지 않는다.
+  await expect(
+    page.getByRole("button", { name: new RegExp(`${FIXTURE_SHELL_NAME} 닫기$`) }),
+  ).toHaveCount(count, { timeout: 20_000 });
 }

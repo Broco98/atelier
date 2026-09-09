@@ -151,6 +151,12 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  */
+/**
+ * 픽스처의 `pty_spawn`이 답하는 셸 이름. **검사가 이 값을 여러 자리에서 쓴다** — 칸에 적히는
+ * 이름이자, 그 칸이 spawn 응답을 받았다는 유일한 화면 신호다(`harness`의 `awaitSpawned`).
+ */
+export const FIXTURE_SHELL_NAME = "zsh";
+
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
   list_works: WORKS,
@@ -178,7 +184,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
-  pty_spawn: { id: 1, shellName: "zsh" },
+  pty_spawn: { id: 1, shellName: FIXTURE_SHELL_NAME },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,

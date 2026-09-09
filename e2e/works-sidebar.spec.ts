@@ -1,6 +1,12 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, markRunning, readIpcRecord, unknownIpcCalls } from "./harness";
+import {
+  awaitSpawned,
+  installFixtureBackend,
+  markRunning,
+  readIpcRecord,
+  unknownIpcCalls,
+} from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
 // 그 화면이 부르는 것까지 하네스가 답해야 하는데, 여기서 볼 것은 사이드바뿐이다.
@@ -167,6 +173,9 @@ test("셸을 닫을 때 앱 창이 뜨고, OS 시트는 안 뜬다", async ({ pa
 
   const tab = page.locator('[data-tab="shell"]');
   await expect(tab).toBeVisible();
+  // **pty가 앉기 전에 닫으면 안 묻는 것이 옳다**(`awaitSpawned`의 머리말) — 확인 창을 보는
+  // 이 검사는 그 전제를 먼저 세운다.
+  await awaitSpawned(page, 1);
   await tab.getByRole("button", { name: /닫기$/ }).click();
 
   // 앱이 그리는 창이다 — 이 요소가 DOM에 있다는 것 자체가 OS 시트가 아니라는 뜻이다.

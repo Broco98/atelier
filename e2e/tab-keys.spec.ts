@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
 
 // 판 03 — **키가 실제로 그 일을 하는가**, 그리고 **탭을 누르면 본문이 바뀌는가.**
 //
@@ -45,6 +45,8 @@ test("⌘T가 새 셸을 열고 그 칸이 켜진다", async ({ page }) => {
 test("셸이 0개인 화면에서도 ⌘T가 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
+  // **닫기가 확인 창을 거치려면 그 칸이 pty를 가져야 한다**(`awaitSpawned`의 머리말).
+  await awaitSpawned(page, 1);
 
   // 마지막 칸을 닫으면 새 셸이 저절로 안 뜬다(결정 19) — 그 자리를 만든다.
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
@@ -62,6 +64,9 @@ test("⌘W가 켜진 셸 칸을 닫는다 — 확인을 거쳐서", async ({ pag
   await page.goto("/terminal");
   await page.locator('[data-tab="new"]').click();
   await expect(shells(page)).toHaveCount(2);
+  // **칸이 선 것과 pty가 앉은 것은 다른 순간이다**(`awaitSpawned`의 머리말) — 안 기다리면
+  // 아래 확인 창이 「안 뜨는 것이 옳은」 상태에서 눌러 러너가 붐빌 때만 빨개진다.
+  await awaitSpawned(page, 2);
 
   await page.keyboard.press("Meta+w");
 

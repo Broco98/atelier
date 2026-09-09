@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { WORKS } from "./fixtures";
+import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import { installFixtureBackend, markRunning, unknownIpcCalls } from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
@@ -57,8 +57,8 @@ const [, plainWork] = WORKS;
 /** 셸 상한(결정 30). `shell-registry`의 `MAX_SHELLS`와 같은 수다 — 이 줄이 가장 붐비는 폭이다. */
 const MAX_SHELLS = 8;
 
-/** 픽스처의 `pty_spawn`이 주는 셸 이름. 이 work은 워크트리가 없어 앞에 프로젝트가 안 붙는다(결정 18). */
-const SHELL_NAME = "zsh";
+/** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
+const SHELL_NAME = FIXTURE_SHELL_NAME;
 
 interface Row {
   width: number;
