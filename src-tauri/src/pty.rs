@@ -15,7 +15,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
@@ -86,8 +86,13 @@ pub fn spawn(
     // 실어야 하니, 지금까지처럼 프로세스가 뜬 뒤에 발급하면 넘길 것이 없다. 앞으로 당겨도
     // 잃는 것은 「띄우기에 실패한 셸이 번호 하나를 태운다」뿐이다 — 번호는 세는 값이 아니라
     // 가르는 값이라 구멍이 나도 아무 데도 안 걸린다.
-    let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
-    let builder = shell_builder(&dir, &shell_id(id))?;
+    //
+    // 발급 자체를 `mint_shell_id`로 뺀 이유는 **검사가 그것을 실행으로 잴 수 있게** 하기
+    // 위해서다. `spawn`은 살아 있는 pty와 IPC 채널이 있어야 도는데 헤드리스 검사에는 둘 다
+    // 없어서, 여기 인라인으로 두면 「셸마다 다른 값이 난다」를 소스 자리로만 재게 된다 —
+    // 그러면 `let id = 0;`으로 굳히는 변형이 조용히 통과한다.
+    let (id, shell_id) = mint_shell_id(pool);
+    let builder = shell_builder(&dir, &shell_id)?;
     let shell_name = Path::new(&builder.get_shell())
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -648,22 +653,39 @@ fn shell_id(pty_id: u32) -> String {
     format!("{}-{pty_id}", instance_prefix())
 }
 
-/// 이 실행을 가리키는 접두사. **앱이 뜬 시각**(epoch 밀리초)이고, 프로세스가 사는 동안
-/// 안 바뀐다.
+/// 이 실행을 가리키는 접두사. 한 번 잡히면 프로세스가 사는 동안 안 바뀐다.
+///
+/// **잡히는 순간은 「앱이 뜬 때」가 아니라 이 함수가 처음 불린 때다** — `OnceLock`이
+/// 지연 초기화이기 때문이다. 지금은 첫 셸을 띄우는 순간이 그때다. 앱을 켜 두고 한 시간
+/// 뒤에 첫 셸을 열면 접두사는 그 한 시간 뒤 시각이다. 실행끼리 안 겹친다는 성질은 그래도
+/// 지켜지므로 이 판이 기대는 것은 다 선다. 다만 **뒤 티켓의 정리(`~/.atelier/shells/`에서
+/// 이번 접두사가 아닌 파일을 지운다)는 앱 시작 시각을 따로 재지 말고 반드시 이 함수를
+/// 불러야 한다** — 두 값이 갈라지면 정리가 살아 있는 셸의 상태 파일을 지운다.
+fn instance_prefix() -> &'static str {
+    static PREFIX: OnceLock<String> = OnceLock::new();
+    PREFIX.get_or_init(|| prefix_at(SystemTime::now()))
+}
+
+/// 시각 하나 → 접두사 하나. **시계를 인자로 뺀 것은 검사를 위해서다.** 접두사의 값은
+/// 「실행마다 바뀐다」인데, `SystemTime::now()`를 안에서 부르면 그 성질을 헤드리스로 잴
+/// 자리가 없어져 고정 문자열로 갈아도 아무 검사가 안 울린다 — 그러면 지난 실행이 남긴
+/// 파일이 새 셸에 그대로 붙는다는, 접두사를 둔 이유가 통째로 사라진다.
 ///
 /// 시각을 쓰는 이유는 실행끼리 겹치지 않으면서 **순서가 읽히기** 때문이다 — 남은 파일을
 /// 눈으로 볼 때 어느 실행 것인지 안다. 시계가 뒤로 가는 경우(`UNIX_EPOCH` 이전)는 0으로
 /// 눕힌다. 그때 두 실행이 같은 접두사를 가질 수 있지만, 그 상황에서 할 수 있는 더 나은
 /// 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
-fn instance_prefix() -> &'static str {
-    static PREFIX: OnceLock<String> = OnceLock::new();
-    PREFIX.get_or_init(|| {
-        let millis = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        format!("{millis}")
-    })
+fn prefix_at(t: SystemTime) -> String {
+    let millis = t.duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    format!("{millis}")
+}
+
+/// 이 셸의 번호와 ID를 **한 자리에서** 뽑는다. 셸마다 달라야 하는 값이 여기서만 나므로,
+/// 「두 번 부르면 둘 다 다르다」를 살아 있는 pty 없이 실행으로 잴 수 있다 — 값이 하나로
+/// 굳으면 상태 파일이 겹쳐 두 셸이 서로를 덮어쓴다.
+fn mint_shell_id(pool: &PtyPool) -> (u32, String) {
+    let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
+    (id, shell_id(id))
 }
 
 fn shell_builder(dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
@@ -704,7 +726,7 @@ fn executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::time::Duration;
+    use std::time::{Duration, UNIX_EPOCH};
 
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
@@ -733,23 +755,7 @@ mod tests {
     /// — 판정을 안 딛고 답을 새로 짓는 것 — 이고, 나머지는 실물 확인 몫이다.
     #[test]
     fn command_running_hands_both_values_to_the_verdict() {
-        let src = include_str!("pty.rs");
-        let body = src
-            .split_once("pub fn command_running(")
-            .expect("command_running이 있다")
-            .1
-            .split_once("\nfn ")
-            .expect("다음 함수가 있다")
-            .0;
-
-        // **잘라 낸 자리가 제 자신을 삼키면 안 된다.** 아래 두 `assert`가 찾는 리터럴은 그
-        // `assert`의 문자열로도 이 파일에 있다 — 슬라이스가 테스트 모듈까지 흘러가면 이
-        // 검사는 제 문장을 읽고 스스로 통과한다. 위 두 `expect`가 표식이 사라진 경우를
-        // 막고, 이 줄이 표식은 있는데 자리가 흘러간 경우를 막는다.
-        assert!(
-            !body.contains("mod tests"),
-            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 이 검사가 제 문자열을 읽고 통과한다"
-        );
+        let body = body_of("pub fn command_running(", "\nfn ");
 
         assert!(
             body.contains("process_group_leader()"),
@@ -768,14 +774,7 @@ mod tests {
     /// 주석만 두면 뚫린다는 것을 이 저장소가 이미 겪었다.
     #[test]
     fn pool_insert_precedes_the_reader_thread() {
-        let src = include_str!("pty.rs");
-        let spawn_fn = src
-            .split_once("pub fn spawn(")
-            .expect("spawn이 있다")
-            .1
-            .split_once("\npub fn ")
-            .expect("다음 함수가 있다")
-            .0;
+        let spawn_fn = spawn_source();
 
         let insert = spawn_fn.find("pool.lock().insert(").expect("풀에 앉히는 줄이 있다");
         let thread = spawn_fn.find("std::thread::spawn(").expect("읽기 스레드가 있다");
@@ -800,6 +799,12 @@ mod tests {
     #[test]
     fn a_shell_id_is_this_runs_prefix_and_the_pty_id() {
         let three = super::shell_id(3);
+        // **자는 것이 이 검사의 핵심이다 — 「느린 테스트」로 읽고 걷어 내지 마라.** 아래
+        // 마지막 단언이 재려는 것은 접두사의 메모이제이션(`instance_prefix`의 `OnceLock`)인데,
+        // 접두사는 **밀리초** 시계라 두 호출을 붙여 부르면 메모이제이션을 걷어 낸 판에서도
+        // 두 값이 우연히 같게 나온다(실측: 메모이제이션 없는 판으로 1만 번 돌려 1만 번
+        // 통과). 눈금보다 벌려야 그 변형이 빨개진다.
+        std::thread::sleep(Duration::from_millis(2));
         let seven = super::shell_id(7);
 
         let (prefix, id) = three.rsplit_once('-').expect("구분자가 있다");
@@ -827,21 +832,14 @@ mod tests {
     /// 둘 다 없다. 그래서 `pool_insert_precedes_the_reader_thread`와 같은 방식으로
     /// **자리로** 잰다.
     ///
-    /// 자리만으로는 「빌더를 부르되 빈 값을 넘긴다」를 못 막으므로 넘기는 값도 함께 못박는다
-    /// — 그 변형은 모든 셸이 같은 상태 파일을 쓰게 만드는데, 위 값 검사는 `shell_builder`
-    /// 안만 보므로 조용히 통과한다.
+    /// **이 검사가 재는 것은 순서뿐이다.** 「발급이 셸마다 다른 값을 낸다」는 자리로 못 재고,
+    /// 아래 `minting_twice_from_one_pool_yields_two_different_shells`가 실행으로 잰다. 여기서
+    /// 값을 함께 보는 것은 「발급해 놓고 안 넘긴다」 하나까지다.
     #[test]
     fn the_pty_id_is_minted_before_the_builder_is_built() {
-        let src = include_str!("pty.rs");
-        let spawn_fn = src
-            .split_once("pub fn spawn(")
-            .expect("spawn이 있다")
-            .1
-            .split_once("\npub fn ")
-            .expect("다음 함수가 있다")
-            .0;
+        let spawn_fn = spawn_source();
 
-        let mint = spawn_fn.find("next_id.fetch_add(").expect("id를 발급하는 줄이 있다");
+        let mint = spawn_fn.find("mint_shell_id(pool)").expect("id를 발급하는 줄이 있다");
         let build = spawn_fn.find("shell_builder(").expect("빌더를 세우는 줄이 있다");
 
         assert!(
@@ -849,9 +847,28 @@ mod tests {
             "발급({mint})이 빌더({build})보다 뒤에 있다 — 빌더에 넘길 셸 ID가 아직 없다"
         );
         assert!(
-            spawn_fn.contains("shell_builder(&dir, &shell_id(id))"),
-            "빌더에 이 셸의 ID를 안 넘긴다 — 모든 셸이 같은 값을 달고 상태 파일이 겹친다"
+            spawn_fn.contains("shell_builder(&dir, &shell_id)"),
+            "발급된 셸 ID를 빌더에 안 넘긴다 — 발급을 앞으로 당긴 뜻이 사라진다"
         );
+    }
+
+    /// **발급이 셸마다 다른 값을 낸다.** 위 검사는 자리와 리터럴만 보므로 `let id = 0;`을
+    /// 앞에 두고 발급을 값 버리는 문장으로 남기는 변형이 그대로 통과한다 — 그러면 모든 셸이
+    /// `<접두사>-0`을 달고 상태 파일 하나를 서로 덮어쓴다. 그 「다름」은 자리가 아니라
+    /// **실행**이 지켜야 한다.
+    ///
+    /// 살아 있는 pty 없이 잰다. `PtyPool`은 `Default`이고 번호는 `AtomicU32`라 풀 하나만
+    /// 있으면 발급 경로가 그대로 돈다 — pty·채널이 필요한 것은 `spawn`의 뒷부분뿐이다.
+    #[test]
+    fn minting_twice_from_one_pool_yields_two_different_shells() {
+        let pool = super::PtyPool::default();
+        let (first_id, first) = super::mint_shell_id(&pool);
+        let (second_id, second) = super::mint_shell_id(&pool);
+
+        assert_ne!(first_id, second_id, "같은 PTY 번호를 두 번 냈다 — 풀의 칸이 겹친다");
+        assert_ne!(first, second, "두 셸이 같은 ID를 받았다 — 상태 파일이 하나로 겹친다");
+        assert!(first.ends_with(&format!("-{first_id}")), "셸 ID의 꼬리가 그 셸의 번호가 아니다");
+        assert!(second.ends_with(&format!("-{second_id}")));
     }
 
     /// **값으로** 단언한다. 「`ATELIER_SHELL`이라는 리터럴이 소스에 있는가」만 보는 검사는
@@ -861,20 +878,51 @@ mod tests {
     #[test]
     fn each_shell_builder_carries_its_own_shell_id() {
         let dir = std::env::temp_dir();
-        let one = super::shell_builder(&dir, "0000-1").expect("빌더가 선다");
-        let two = super::shell_builder(&dir, "0000-2").expect("빌더가 선다");
+        // 리터럴 둘을 손으로 먹이면 마지막 `assert_ne!`가 **어떤 구현에서도 참**이라 아무것도
+        // 안 잰다. 발급 경로에서 뽑은 값을 먹여야 「다름」이 생산 코드의 성질이 된다.
+        let pool = super::PtyPool::default();
+        let (_, first) = super::mint_shell_id(&pool);
+        let (_, second) = super::mint_shell_id(&pool);
+        let one = super::shell_builder(&dir, &first).expect("빌더가 선다");
+        let two = super::shell_builder(&dir, &second).expect("빌더가 선다");
 
         assert_eq!(
             planted(&one).get("ATELIER_SHELL").map(String::as_str),
-            Some("0000-1"),
+            Some(first.as_str()),
             "빌더가 받은 셸 ID가 env에 안 실렸다 — 훅이 어느 셸인지 모른다"
         );
-        assert_eq!(planted(&two).get("ATELIER_SHELL").map(String::as_str), Some("0000-2"));
+        assert_eq!(
+            planted(&two).get("ATELIER_SHELL").map(String::as_str),
+            Some(second.as_str())
+        );
         assert_ne!(
             planted(&one).get("ATELIER_SHELL"),
             planted(&two).get("ATELIER_SHELL"),
             "두 셸에 같은 값이 실렸다 — 상태 파일이 하나로 겹친다"
         );
+    }
+
+    /// **접두사의 값은 「실행마다 바뀐다」이다.** 그것이 없으면 지난 실행이 남긴
+    /// `~/.atelier/shells/<접두사>-0.json`이 이번 실행의 첫 셸에 그대로 붙어 뜨자마자
+    /// 「나를 기다림」인 셸이 생긴다. `instance_prefix`를 고정 문자열로 갈아도 다른 검사는
+    /// 전부 초록이므로, 시계를 인자로 뺀 순수 함수 쪽에서 값으로 잰다.
+    #[test]
+    fn two_different_clocks_give_two_different_prefixes() {
+        let early = super::prefix_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_000));
+        let late = super::prefix_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_001));
+
+        assert_eq!(early, "1700000000000", "접두사가 epoch 밀리초가 아니다");
+        assert_ne!(early, late, "다른 시각이 같은 접두사를 냈다 — 실행을 못 가른다");
+    }
+
+    /// 시계가 `UNIX_EPOCH` 이전으로 가 있는 경우. 이 가지는 실물에서 거의 안 밟히지만
+    /// `unwrap_or(0)`이 조용히 사라지면 `duration_since`가 Err를 내는 자리라 이 함수가
+    /// 통째로 무너진다 — 값으로 눕는 것을 못박는다.
+    #[test]
+    fn a_clock_before_the_epoch_lies_down_at_zero() {
+        let before = super::prefix_at(UNIX_EPOCH - Duration::from_secs(1));
+
+        assert_eq!(before, "0", "epoch 이전 시각이 0으로 안 눕었다");
     }
 
     /// 셸 ID를 더하면서 **먼저 있던 것을 떨어뜨리지 않았는가.** 시그니처가 바뀌는 자리라
@@ -897,6 +945,35 @@ mod tests {
     /// 초록이었다(실측). 그러면 이 검사는 자기 프로세스의 환경을 읽고 스스로 통과한다.
     fn planted(cmd: &CommandBuilder) -> BTreeMap<String, String> {
         cmd.iter_extra_env_as_str().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    /// `spawn`의 본문. 셋 중 둘이 이것을 보므로 표식을 한 자리에만 적는다.
+    fn spawn_source() -> &'static str {
+        body_of("pub fn spawn(", "\npub fn ")
+    }
+
+    /// 소스를 잘라 함수 하나의 본문만 돌려준다. **가드가 여기 사는 것이 요점이다.**
+    ///
+    /// 이 파일을 읽어 자기 자신을 검사하는 방식은 조용히 새는 자리가 하나 있다: 소스 스캔이
+    /// 찾는 리터럴은 그것을 찾는 `assert`의 문자열로도 이 파일에 있으므로, 슬라이스가 테스트
+    /// 모듈까지 흘러가면 검사가 제 문장을 읽고 스스로 통과한다. 표식이 사라진 경우는 두
+    /// `expect`가 막고, 표식은 있는데 끝이 흘러간 경우는 아래 `assert`가 막는다. 호출자마다
+    /// 이 줄을 옮겨 적게 두면 언젠가 한 곳이 빠지므로 — 실제로 이 판에서 한 번 빠졌다 —
+    /// 슬라이스를 뽑는 유일한 자리에 둔다.
+    fn body_of(start: &str, end: &str) -> &'static str {
+        let src = include_str!("pty.rs");
+        let body = src
+            .split_once(start)
+            .expect("여는 표식이 있다")
+            .1
+            .split_once(end)
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
     }
 
     // ─────────────────────────────────────────────────────────────────────────
