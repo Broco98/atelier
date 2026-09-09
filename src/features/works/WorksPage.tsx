@@ -70,6 +70,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
+import { emptyScreenCopy } from "./work-sections";
 import type { ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -199,7 +200,16 @@ function WorksPage({
   // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
   const { data: projects = [], isPending: projectsPending } = useProjects();
-  const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
+  // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드를 맨 앞에
+  // 두는 것이 이 판정의 유일한 지점이라, 티켓 09가 프로젝트 쿼리를 Atelier에서만 켜서
+  // `projects`가 Maison에서 늘 빈 배열이 되는 날에도 이 갈래가 저쪽 세계에서 참으로 눕지
+  // 않는다 — 그때 화면은 Maison 한가운데에서 「먼저 프로젝트를 등록해요」라고 말한다.
+  const needsProject =
+    mode === "atelier" && !projectsPending && works.length === 0 && projects.length === 0;
+  // 아무것도 안 골랐을 때 본문이 하는 말. **세계마다 다르다**(US 22) — 사이드바의 빈 구획과
+  // 한 표에서 나온다(`work-sections.ts`). 여기서 리터럴로 적으면 목록은 Room 어휘인데 본문은
+  // 「작업은 Claude Code에서 시작돼요」인 화면이 나고, 그것은 Room이 0개일 때만 보인다.
+  const emptyScreen = emptyScreenCopy(mode);
 
   // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
   // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
@@ -777,19 +787,21 @@ function WorksPage({
               <Zap className="size-5" strokeWidth={1.6} />
             )}
           </div>
+          {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
+              여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
           <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-            {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
+            {needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}
           </span>
           <span className="text-[14px] leading-[1.65] text-tertiary">
             {needsProject
               ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-              : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
+              : emptyScreen.body}
           </span>
           {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. */}
           <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-            {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
+            {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
           </code>
         </div>
       </div>

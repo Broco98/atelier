@@ -177,13 +177,21 @@ describe("모드별 nav", () => {
     expect(navItemsOf("atelier").find((item) => item.key === "archive")?.to).toBe(routes.archive);
   });
 
-  // 사이드바는 아직 두 세계 모두에 **Atelier 배열**을 그린다(#183이 옮긴다). 그 배열의 항목이
-  // 화면에 서 있는 이상 어느 세계에서도 갈 곳이 있어야 한다 — 없으면 눌리는데 아무 일도 안
-  // 일어나는 버튼이 되고, 그것은 「앱이 멈췄나」로 읽힌다.
+  // 사이드바가 **그 세계의 배열**을 그리게 되면서(#183) 화면에 선 항목은 전부 그 배열의
+  // 것이다 — 그리는 자리가 실제로 `navItemsOf`를 도는지는 `Sidebar.test.tsx`가 본다.
   it.each(ALL_MODES)("%s에서 사이드바가 그리는 항목은 전부 갈 곳이 있다", (mode) => {
-    for (const item of navItems) {
+    for (const item of navItemsOf(mode)) {
       expect(navTargetOf(mode, item.key), item.key).toBeTruthy();
     }
+  });
+
+  // **되돌림이 걷혔다.** 사이드바가 두 세계에 Atelier 배열을 그리던 동안에는 Maison 화면에도
+  // `Projects`가 서 있어서 아무 데도 안 보내면 「눌리는데 아무 일도 없는 버튼」이었고, 그래서
+  // Atelier 벌로 떨어뜨렸다. 이제 그 항목은 화면에 없으니 갈 곳이 없다고 답하는 것이 정직하다 —
+  // 남겨 두면 그 항목이 어떤 이유로든 되살아나는 날 조용히 세계를 건넌다(결정 17).
+  it("그 세계에 없는 항목은 갈 곳이 없다", () => {
+    expect(navItemsOf("maison").some((item) => item.key === "projects")).toBe(false);
+    expect(navTargetOf("maison", "projects")).toBeUndefined();
   });
 
   // 되돌림이 **먼저 걸리면 안 된다** — 그러면 Maison의 Terminal·Archive가 Atelier 주소로 가서

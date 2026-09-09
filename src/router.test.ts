@@ -5,10 +5,17 @@ import { routeTree } from "./routeTree.gen";
 import { worksQuery } from "./features/works/hooks";
 import { projectsQuery } from "./features/projects/hooks";
 import { archiveQuery } from "./features/archive/hooks";
-import { lastMode, rememberVisit, shellMode, shellStore } from "./components/shell/shell-store";
+import {
+  lastMode,
+  modeSwitchTarget,
+  rememberVisit,
+  shellMode,
+  shellStore,
+} from "./components/shell/shell-store";
 import { trackCanGoForward } from "./can-go-forward";
 import { recallSearch, rememberView, tabSearch } from "./routes/-work-search";
 import type { ViewTab } from "./routes/-work-search";
+import type { Mode } from "./mode";
 import type { WorkView } from "./features/works/types";
 import type { ProjectView } from "./features/projects/types";
 import type { ArchiveEntry } from "./features/archive/types";
@@ -402,8 +409,9 @@ describe("같은 이름의 work과 Room", () => {
   });
 });
 
-// 세그먼트가 저쪽 세계로 건너갈 때 어디로 데려갈지가 이 칸에서 나온다(그 배선은 판 01의
-// 다음 티켓이다). 적는 자리가 라우트 트리의 뿌리 하나라, 화면이 늘어도 함께 늘지 않는다.
+// 세그먼트가 저쪽 세계로 건너갈 때 어디로 데려갈지가 이 칸에서 나온다(그것을 읽어 실제로
+// 건너는 것은 아래 describe다). 적는 자리가 라우트 트리의 뿌리 하나라, 화면이 늘어도 함께
+// 늘지 않는다.
 describe("모드별 마지막 주소", () => {
   it("도착한 주소가 그 세계의 칸에만 적힌다", async () => {
     const { router } = setup(["/works/work-a"]);
@@ -453,6 +461,116 @@ describe("모드별 마지막 주소", () => {
     rememberVisit("/maison/rooms/work-b"); // 저장소는 Maison
     expect(shellMode("/works/work-a")).toBe("atelier");
     expect(shellMode("/maison/rooms/work-a")).toBe("maison");
+  });
+});
+
+// 세그먼트를 눌러 세계를 건너는 일. **히스토리가 절반이다** — 어디에 도착하는가만큼이나 몇
+// 칸이 쌓이는가가 규칙이고, 그쪽이 틀리면 화면은 멀쩡한데 뒤로가기만 이상해진다(뒤로가기를
+// 여러 번 눌러야 이쪽으로 돌아오거나, 눌러도 화면이 그대로인 죽은 칸이 생긴다).
+describe("세그먼트가 세계를 건넌다", () => {
+  // 세그먼트를 누른 것과 같은 일. **규칙을 여기 안 적는다** — 목적지도 「같은 세계면 안 간다」도
+  // `modeSwitchTarget` 하나가 답하고, 셸(`AppShell`의 `onPickMode`)이 하는 것도 이 두 줄이다.
+  // 규칙을 이 파일에 베껴 적으면 그 함수가 무엇으로 바뀌어도 아래 케이스들이 초록으로 남는다.
+  const pick = async (router: ReturnType<typeof setup>["router"], from: Mode, to: Mode) => {
+    const go = modeSwitchTarget(from, to);
+    if (go) await router.navigate(go);
+  };
+
+  it("한 칸 건너가고, 뒤로가기가 이쪽으로 돌아온다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+    expect(history.length).toBe(1);
+
+    await pick(router, "atelier", "maison");
+    // 저쪽에 마지막 주소가 없으니 첫 화면이다. 그 주소는 무선택이라 정규화를 한 번 더 타지만
+    // 그 리다이렉트가 replace라(위 「정규화는 히스토리를 늘리지 않는다」) 칸은 하나만 는다.
+    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
+    expect(history.length).toBe(2);
+
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/works/work-a");
+
+    await goForward(router, history);
+    expect(router.state.location.pathname).toBe("/maison/rooms/work-a");
+  });
+
+  it("같은 세계를 다시 골라도 아무 데도 안 간다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+
+    await pick(router, "atelier", "atelier");
+    expect(router.state.location.pathname).toBe("/works/work-a");
+    expect(history.length).toBe(1);
+    expect(history.canGoBack()).toBe(false);
+  });
+
+  // 마지막 주소가 없을 때 첫 화면으로 가는 것은 위 첫 케이스가 잰다. 여기서 재는 것은 그
+  // 반대쪽이다 — **첫 화면이 아닌 곳**으로 가야 기억을 읽었다는 뜻이 된다.
+  it("건너간 곳은 그 세계의 마지막 주소다", async () => {
+    const { router } = setup(["/works/work-a"], { rooms: works("room-a", "room-b") });
+    await router.load();
+
+    // 저쪽 세계에서 첫 화면이 아닌 곳에 서 본다. **도착이 곧 기억이다**(`rememberVisit`) —
+    // `lastPlace`를 손으로 심으면 다음 `router.load()`가 뿌리의 `beforeLoad`에서 다시 덮어써,
+    // 무엇을 재고 있는지가 실행 순서에 달린다.
+    await router.navigate({ to: "/maison/rooms/$slug", params: { slug: "room-b" } });
+    await pick(router, "maison", "atelier");
+    expect(router.state.location.pathname).toBe("/works/work-a");
+
+    await pick(router, "atelier", "maison");
+    // 첫 화면이었다면 `/maison/rooms/room-a`다 — 목록 첫 Room이 그것이고, 이 세션의 Room
+    // 기억(`workSlug.maison`)은 화면이 적는 것이라 라우터만 태운 여기서는 비어 있다.
+    expect(router.state.location.pathname).toBe("/maison/rooms/room-b");
+  });
+
+  // **가드가 실제로 무는 자리가 여기다.** 다른 화면에서는 그 세계의 마지막 주소가 곧 지금
+  // 주소라, 가드가 없어도 제자리를 고쳐 쓰고 마는 이동이 된다. 설정은 어느 칸에도 안 적히므로
+  // (`rememberVisit`) 마지막 주소가 **떠나온 그 화면**이고, 그래서 가드가 없으면 켜져 있는
+  // 칸을 누른 것만으로 설정을 떠난다.
+  it("설정에서 떠나온 세계를 다시 골라도 안 움직인다", async () => {
+    const { router, history } = setup(["/maison/rooms/work-a"]);
+    await router.load();
+    await router.navigate({ to: "/settings" });
+    const length = history.length;
+
+    // 설정은 세계를 안 싣는 주소라, 셸이 드는 세계가 곧 떠나온 세계다.
+    const here = shellMode(router.state.location.pathname);
+    expect(here).toBe("maison");
+
+    await pick(router, here, "maison");
+    expect(router.state.location.pathname).toBe("/settings");
+    expect(history.length).toBe(length);
+  });
+
+  it("설정에서 저쪽을 고르면 그 세계로 건너간다", async () => {
+    const { router } = setup(["/maison/rooms/work-a"]);
+    await router.load();
+    await router.navigate({ to: "/settings" });
+
+    await pick(router, shellMode(router.state.location.pathname), "atelier");
+    // Atelier에는 아직 마지막 주소가 없다 — 첫 화면으로 간다.
+    expect(router.state.location.pathname).toBe("/works/work-a");
+  });
+
+  // **왕복이 기억을 지우면 안 된다.** `lastPlace`가 드는 것은 pathname뿐이라, 세그먼트가 씨앗
+  // 없이 이동하면 빈 `search`로 도착하고 그 순간 도착 주소를 적어 두는 effect가 기본값으로
+  // 기억을 덮어쓴다 — 손해가 그 한 번의 왕복에서 안 끝난다: 그 뒤에 사이드바 행이나 팔레트로
+  // 열어도 `recallSearch`가 방금 덮어써진 기본값을 돌려주므로 결정 77·97이 그 work에 대해
+  // 영영 풀린다. **pathname만 재는 위 케이스들은 그 변형에 전부 초록이다.**
+  it("저쪽에 다녀와도 그 work의 마지막 화면이 안 지워진다", async () => {
+    const { router } = setup(["/works/work-a"]);
+    await router.load();
+
+    // 터미널을 보던 중이다 — 이 기억을 심는 것도 **도착이다**(`-works-view`의 effect가 라우터
+    // 밖이라 여기서는 손으로 적는다. 씨앗이 실제로 실려 오는지는 도착 주소로 잰다).
+    rememberView("atelier", "work-a", { tab: "terminal", split: null, file: "spec/notes.md" });
+
+    await pick(router, "atelier", "maison");
+    await pick(router, "maison", "atelier");
+
+    expect(router.state.location.pathname).toBe("/works/work-a");
+    // 씨앗이 주소에 실려 왔다 — 실리지 않았다면 여기가 `{}`이고, 그 빈 주소가 곧 기억을 덮어쓴다.
+    expect(router.state.location.search).toEqual({ tab: "terminal", file: "spec/notes.md" });
   });
 });
 

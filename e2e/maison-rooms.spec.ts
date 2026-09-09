@@ -27,8 +27,9 @@ const ATELIER_BODY = paragraphOf(SPEC_FALLBACK_BODY);
 // 커밋된 표만 맞고 실제 번들에는 이 주소가 없다. 그때 L0도 L2도 초록인 채 앱만 빈 화면이
 // 된다. 여기서는 dev 서버가 실제로 만든 번들을 연다.
 //
-// 사이드바는 아직 Atelier 목록을 든다(`SidebarWorkList`의 `useWorks("atelier")`) — 이 티켓의
-// 범위가 아니라 여기서 아무것도 안 잰다. 다음 티켓이 세그먼트와 모드별 목록을 얹는다.
+// 사이드바는 이제 이 세계의 목록(`Rooms`)을 든다(#183). **여기서는 그것을 안 잰다** — 이
+// 파일이 보는 것은 「Maison 주소가 번들에 실려 그 Room의 문서가 선다」 하나이고, 세그먼트로
+// 건너가 목록이 갈리는 것은 자기 시나리오를 가진 `mode-switch.spec.ts`의 몫이다.
 test("`/maison/rooms/<slug>`로 가면 그 Room의 문서가 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/maison/rooms/${room.slug}`);

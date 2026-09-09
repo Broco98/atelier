@@ -3,9 +3,10 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { recallSearch, workSlugOf } from "@/routes/-work-search";
+import { recallSearch } from "@/routes/-work-search";
+import { routesOf, slugOf, type Mode } from "@/mode";
 import { useSetWorkPinned, useWorks } from "./hooks";
-import { emptyMainNotice, splitWorkSections } from "./work-sections";
+import { emptyMainNotice, listLabelOf, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
 import { formatCreated, StatusIcon, STATUS_META } from "./status";
 import type { WorkView } from "./types";
@@ -29,16 +30,27 @@ const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
 const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
-// 사이드바에 상주하는 작업 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 Works로 간다.
+// 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
+// 간다 — **어느 세계의 목록인가는 `mode`가 정한다**(Atelier `작업` · Maison `Rooms`).
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 function SidebarWorkList({
   open,
+  mode,
   shellCounts,
   renderShellMeta,
 }: {
   open: boolean;
+  /**
+   * 어느 세계의 목록인가. **읽는 곳과 가는 곳이 이 값 하나에서 함께 나온다**(#183) —
+   * 데이터만 모드로 갈면 Maison에서 목록은 Room인데 행을 누르면 Atelier로 튄다.
+   *
+   * 주소에서 다시 읽지 않고 셸이 내려준다: `/settings`에는 모드가 안 실려 마지막 모드를
+   * 얹어야 답이 나오는데(`shellMode`), 그 합성이 두 자리에 있으면 설정 화면에서만 목록과
+   * 세그먼트가 다른 세계를 가리킨다.
+   */
+  mode: Mode;
   /**
    * work별 셸 개수 — **행 오른쪽 끝의 메타가 서는 조건**이다(결정 2·3). 그것이 무엇을
    * 적는지는 이제 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의
@@ -56,12 +68,12 @@ function SidebarWorkList({
    */
   renderShellMeta: (work: WorkView) => ReactNode;
 }) {
-  // **아직 Atelier 고정이다.** 이 목록이 모드의 루트를 읽고(머리는 `Rooms`) 행이 그 세계의
-  // 주소로 옮기는 것은 #183의 몫이다 — 데이터만 먼저 모드로 갈면 Maison에서 목록은 Room인데
-  // 행을 누르면 Atelier로 튄다. 읽는 곳과 가는 곳은 한 티켓에서 함께 옮긴다.
-  const { data: works = [] } = useWorks("atelier");
+  const { data: works = [] } = useWorks(mode);
   const navigate = useNavigate();
-  const setPinned = useSetWorkPinned("atelier");
+  const setPinned = useSetWorkPinned(mode);
+  // 주소 리터럴이 박히는 자리는 모드 표 하나다(`-works-view.tsx`의 같은 줄) — 여기서
+  // `/works/$slug`를 다시 적으면 Maison에서 Room을 누를 때마다 Atelier로 튄다.
+  const routes = routesOf(mode);
   const [pinnedOpen, setPinnedOpen] = useState(
     () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
   );
@@ -87,8 +99,13 @@ function SidebarWorkList({
   // **읽는 것이 슬러그 하나다.** 한때 `tab`도 따로 구독했다 — 고른 work의 `spec` 잎이
   // 켜지는지가 그것으로 갈렸는데, 그 잎이 탭 줄로 가면서(결정 6·7) 이 목록에 「지금 보고
   // 있는 것」을 말하는 자리가 행 하나로 줄었다.
+  //
+  // **읽는 자리가 `@/mode`의 `slugOf` 하나다.** 이 목록이 두 세계의 항목 주소를 다 읽어야 해서
+  // 그리로 옮겼고, `/works/`를 박아 두던 `-work-search.ts`의 옛 파서는 호출부가 없어져 함께
+  // 걷었다 — 답이 갈리는 파서 둘(`/works/a/b`를 `"a/b"`로 읽던 쪽)이 남아 있으면 항목 아래로
+  // 화면이 갈라지는 날 다음 사람이 틀린 쪽을 고른다.
   const openSlug = useRouterState({
-    select: (state) => workSlugOf(state.location.pathname),
+    select: (state) => slugOf(state.location.pathname),
   });
 
   const sectionsOpen: SectionsOpen = {
@@ -148,9 +165,9 @@ function SidebarWorkList({
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
-      to: "/works/$slug",
+      to: routes.item,
       params: { slug },
-      search: recallSearch("atelier", slug),
+      search: recallSearch(mode, slug),
     });
   };
 
@@ -175,6 +192,7 @@ function SidebarWorkList({
         <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
+            mode={mode}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
             shellCounts={shellCounts}
@@ -215,6 +233,7 @@ function SidebarWorkList({
 // 한다(SidebarWorkList.test.tsx).
 export function WorkSectionList({
   sections,
+  mode,
   open,
   selectedSlug,
   shellCounts,
@@ -226,6 +245,8 @@ export function WorkSectionList({
   renderShellMeta,
 }: {
   sections: WorkSections;
+  /** 목록이 자기를 뭐라고 부르는가가 여기서 갈린다 — 머리 라벨과 빈 몸통의 문구 둘 다. */
+  mode: Mode;
   open: SectionsOpen;
   selectedSlug: string | null;
   shellCounts: Record<string, number>;
@@ -267,9 +288,11 @@ export function WorkSectionList({
         </>
       )}
 
-      {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
+      {/* 상주 목록의 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다.
+          **라벨이 세계를 탄다**(US 17): Atelier `작업` · Maison `Rooms`. 형제인 `고정`·`초안`은
+          상태의 이름이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이다. */}
       <SectionHeader
-        label="작업"
+        label={listLabelOf(mode)}
         className="mt-3"
         open={open.works}
         count={main.length}
@@ -278,7 +301,7 @@ export function WorkSectionList({
       <SectionBody open={open.works}>
         {main.length === 0 ? (
           <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-            {emptyMainNotice(sections)}
+            {emptyMainNotice(sections, mode)}
           </span>
         ) : (
           main.map(row)

@@ -7,6 +7,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
 import { worksQuery } from "./hooks";
+import { projectsQuery } from "@/features/projects/hooks";
+import type { ProjectView } from "@/features/projects/types";
+import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
@@ -1063,4 +1066,91 @@ it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 �
   expect(source("WorksPage.tsx")).toContain(
     'if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");',
   );
+});
+
+// 고른 항목이 하나도 없을 때의 본문. 목록을 비우고 `selectedSlug`를 `null`로 두면 그 화면이
+// 선다 — 프로젝트 목록은 캐시에 심어야 「아직 안 왔다」(`isPending`)와 「하나도 없다」가
+// 갈린다.
+function renderEmpty(mode: Mode, projects: ProjectView[] = []): string {
+  const client = new QueryClient();
+  client.setQueryData(worksQuery(mode).queryKey, []);
+  client.setQueryData(projectsQuery.queryKey, projects);
+  return renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <WorksPage
+        mode={mode}
+        sidebarOpen
+        selectedSlug={null}
+        currentFile={null}
+        onSelectFile={() => {}}
+        onOpenProject={() => {}}
+        tab="spec"
+        onSelectTab={() => {}}
+        split={null}
+        onSelectSplit={() => {}}
+        onDropInto={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+}
+
+const PROJECT: ProjectView = {
+  slug: "atelier",
+  name: "atelier",
+  path: "~/MyProjects/atelier",
+  baseBranch: "main",
+  createdAt: "2026-08-01",
+  description: "",
+  git: null,
+  missing: false,
+};
+
+// **빈 화면이 세계를 탄다**(US 22). 낱말의 계약은 `work-sections.test.ts`가 글자까지 재고,
+// 여기서 보는 것은 **화면이 그 표를 실제로 부르는가**다 — 사이드바만 갈리고 본문이 안 갈린
+// 채로 두 층이 따로 초록이던 자리가 정확히 여기다.
+describe("아무것도 안 골랐을 때의 본문", () => {
+  beforeEach(() => {
+    // 분할 비율이 여기서 읽힌다 — 이 화면은 고른 것이 없어도 그 훅을 먼저 부른다.
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("Atelier 문구 셋이 그대로 선다", () => {
+    const html = renderEmpty("atelier", [PROJECT]);
+    expect(html).toContain("아직 작업이 없어요");
+    expect(html).toContain("작업은 Claude Code에서 시작돼요.");
+    expect(html).toContain("새 작업");
+  });
+
+  // 따옴표가 `&quot;`로 이스케이프돼 나오므로 `atelier로 "새 작업" 시작해줘`를 통째로
+  // 붙들지 않는다 — 「Atelier의 말이 안 남았다」는 어휘 조각으로 센다.
+  it("Maison에서는 Room 어휘로 말하고 Atelier의 말이 한 조각도 안 남는다", () => {
+    const html = renderEmpty("maison", [PROJECT]);
+    expect(html).toContain("아직 Room이 없어요");
+    expect(html).toContain("Room은 Terminal에서 claude에게 부탁해서 만들어요.");
+    expect(html).toContain("새 Room 만들어줘");
+    expect(html).not.toContain("작업");
+    expect(html).not.toContain("Claude Code");
+    expect(html).not.toContain("atelier로");
+  });
+
+  // **프로젝트 갈래가 Maison에서 아예 안 선다**(결정 17). 프로젝트가 0개인 것은 이 세계의
+  // 정상 상태이고 — 티켓 09가 그 쿼리를 Atelier에서만 켜는 순간 **늘** 0개가 된다 — 그때
+  // 갈래가 참으로 누우면 Maison 한가운데가 「먼저 프로젝트를 등록해요」라고 말한다.
+  it("Maison에서는 프로젝트가 0개여도 등록을 시키지 않는다", () => {
+    const html = renderEmpty("maison", []);
+    expect(html).not.toContain("먼저 프로젝트를 등록해요");
+    expect(html).not.toContain("폴더 등록해줘");
+    expect(html).toContain("아직 Room이 없어요");
+  });
+
+  // 반대쪽 증거. 이 갈래가 Atelier에서는 그대로 살아 있어야 한다 — 위 검사가 「어디서도 안
+  // 뜬다」로 통과하면 첫 실행의 안내가 통째로 사라진 것을 못 본다.
+  it("Atelier에서는 프로젝트가 0개면 등록으로 이끈다", () => {
+    const html = renderEmpty("atelier", []);
+    expect(html).toContain("먼저 프로젝트를 등록해요");
+    expect(html).toContain("폴더 등록해줘");
+  });
 });

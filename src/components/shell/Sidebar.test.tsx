@@ -160,3 +160,37 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     );
   });
 });
+
+// 세그먼트가 **어디에 서고 무엇을 바꾸는가**. 그림 자체는 `ModeSwitch.test.tsx`가 정적
+// 마크업으로 보고(그래서 세그먼트가 순수 컴포넌트로 갈려 있다), 여기서 보는 것은 이 파일이
+// 그것을 **어느 자리에 꽂았는가**다 — 자리는 렌더가 아니라 소스에서만 보인다.
+describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () => {
+  const sidebar = read("Sidebar.tsx");
+
+  it("신호등 띠 **아래**, nav **위**다", () => {
+    // US 6이 정한 자리 그대로다. 순서가 뒤집히면 「어느 세계인가」가 nav 아래로 내려가
+    // 목적지 하나처럼 읽힌다.
+    const strip = sidebar.indexOf("data-tauri-drag-region");
+    const segment = sidebar.indexOf("<ModeSwitch");
+    const nav = sidebar.indexOf("<nav");
+    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
+    // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
+    expect([strip, segment, nav].every((at) => at > -1)).toBe(true);
+    expect(segment).toBeGreaterThan(strip);
+    expect(nav).toBeGreaterThan(segment);
+  });
+
+  it("nav가 **그 세계의 배열**을 돈다", () => {
+    // Atelier 배열을 두 세계에 그리면 Maison에 `Projects`가 서는데(결정 17이 없다고 한
+    // 것이다), 활성 판정은 이미 모드 배열을 보고 있어서 그 항목은 영영 안 켜진다.
+    expect(sidebar).toContain("navItemsOf(mode).map(");
+  });
+
+  it("어느 자리도 한 세계로 눕지 않는다", () => {
+    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다.** 목록·nav·세그먼트가 받는 값이
+    // 전부 하나(`mode`)에서 나와야 세 자리가 함께 움직이는데, 그 어긋남은 화면에서
+    // 「Maison인데 목록만 Atelier」처럼 **한 자리만** 틀린 모양으로 나타나 눈에 안 띈다.
+    expect(sidebar).not.toContain('"atelier"');
+    expect(sidebar).not.toContain('"maison"');
+  });
+});

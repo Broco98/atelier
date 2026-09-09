@@ -39,3 +39,39 @@ describe("앱 셸의 라우터 구독", () => {
     expect(source).not.toMatch(/select\s*\(/);
   });
 });
+
+// 세그먼트가 어디로 데려가는지도, 같은 세계를 다시 골랐을 때 안 움직이는 것도 `shell-store`의
+// `modeSwitchTarget` 하나가 답한다. 셸이 그 답을 안 쓰고 목적지를 스스로 지으면 `router.test.ts`의
+// 케이스들은 그 함수를 계속 재느라 **초록인 채로**, 화면에서만 규칙이 갈린다 — 클릭 핸들러라
+// 렌더가 필요해 여기서도 소스로 잰다(위 머리말과 같은 근거).
+describe("세그먼트의 목적지", () => {
+  // 넘기는 것이 **`mode`**여야 한다. `/settings`는 세계를 안 싣는 주소라 거기서 주소를 다시
+  // 읽으면 늘 Atelier가 나오고, 그 화면에서만 「같은 세계」 판정이 뒤집혀 켜져 있는 칸을 누른
+  // 것만으로 설정을 떠난다.
+  it("셸이 목적지를 스스로 짓지 않는다", () => {
+    expect(source).toContain("modeSwitchTarget(mode,");
+    expect(source).not.toContain("lastPlace");
+    // **이동 전체를 그대로 넘긴다.** 목적지만 꺼내 쓰면 그 함수가 얹는 씨앗(그 항목의 마지막
+    // 화면)이 조용히 떨어지고, 빈 `search`로 도착한 주소가 곧 그 기억을 덮어쓴다.
+    expect(source).toContain("navigate(go)");
+  });
+
+  // 세그먼트가 켜는 세계의 **배선**. 값을 어디서 읽어 어디로 내리는지는 렌더가 필요해
+  // 여기서도 소스로 잰다 — 그리고 이 두 줄이 없으면 어느 층도 이 자리를 안 본다:
+  // `AppShell.test.ts`의 위 검사들은 구독 수만 세고, `Sidebar`는 `terminal-store` 사슬 때문에
+  // 이 저장소의 마크업 seam에서 아예 안 서며, 잡는 것이 L3 하나뿐이었다(실측: `mode={mode}`를
+  // `mode="atelier"`로 바꿔도 L0·L2 940건이 전부 초록이었다).
+  it("셸이 그 세계를 사이드바에 내려 준다", () => {
+    // 이 값 하나에서 세그먼트가 켜는 칸·nav 배열·상주 목록의 루트가 함께 나온다. 리터럴로
+    // 눕히면 Maison 주소에 서 있어도 화면이 통째로 Atelier가 된다(`Projects`까지 선다).
+    expect(source).toContain("mode={mode}");
+  });
+
+  it("그 세계를 `/settings`가 눕히지 않는 쪽에서 읽는다", () => {
+    // `modeOf`는 접두사가 없는 주소를 전부 Atelier로 눕히므로 `/settings`에서 세그먼트가
+    // 저쪽으로 튀고, 거기서 nav를 누르면 세계를 건넌다. 마지막 모드를 얹는 합성이
+    // `shellMode`이고, 그것이 여기 서야 그 화면에서 떠나온 세계가 켜진다.
+    expect(source).toContain("shellMode(state.location.pathname)");
+    expect(source).not.toContain("modeOf(");
+  });
+});

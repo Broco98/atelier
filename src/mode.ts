@@ -198,17 +198,18 @@ export function navItemsOf(mode: Mode): readonly NavItem[] {
 }
 
 /**
- * 사이드바에서 그 항목을 눌렀을 때 갈 곳. **그 세계의 배열이 먼저다** — Maison에서 Terminal을
+ * 사이드바에서 그 항목을 눌렀을 때 갈 곳. **그 세계의 배열만 본다** — Maison에서 Terminal을
  * 눌렀는데 Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다.
  *
- * 못 찾으면 Atelier 벌로 떨어진다. 사이드바가 아직 **두 세계 모두에 Atelier 배열을 그리기
- * 때문이다**(#183이 옮긴다) — 그 사이 Maison 화면에도 `Projects`가 서 있고, 여기서 아무 데도
- * 안 보내면 눌리는데 아무 일도 안 일어나는 버튼이 된다(화면으로는 「앱이 멈췄나」로 읽힌다).
- * 그 한 항목은 세계를 떠나지만, Maison에 프로젝트가 없는 것이 결정 17이라 갈 곳이 저쪽뿐이다.
- * #183이 사이드바를 모드 배열로 옮기면 이 되돌림은 걸릴 일이 없어진다.
+ * 한때 못 찾으면 Atelier 벌로 떨어지는 **되돌림**이 있었다. 사이드바가 두 세계 모두에
+ * Atelier 배열을 그리던 동안(#183 전) Maison 화면에도 `Projects`가 서 있어서, 아무 데도 안
+ * 보내면 눌리는데 아무 일도 안 일어나는 버튼이 됐기 때문이다. #183이 사이드바를 모드 배열로
+ * 옮기면서 그 항목이 화면에서 사라졌고 되돌림도 함께 걷었다 — 남겨 두면 그 항목이 어떤
+ * 이유로든 되살아나는 날 조용히 세계를 건넌다(결정 17: Maison에 프로젝트는 없다).
+ * 없으면 `undefined`이고, 부르는 쪽(`AppShell`)이 이미 그때 아무 데도 안 간다.
  */
 export function navTargetOf(mode: Mode, key: NavKey): NavTo | undefined {
-  return [...navItemsOf(mode), ...navItems].find((item) => item.key === key)?.to;
+  return navItemsOf(mode).find((item) => item.key === key)?.to;
 }
 
 /**

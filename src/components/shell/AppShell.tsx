@@ -10,7 +10,7 @@ import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
-import { shellMode, shellStore, toggleSidebar } from "./shell-store";
+import { modeSwitchTarget, shellMode, shellStore, toggleSidebar } from "./shell-store";
 import type { NavKey } from "./nav-items";
 
 function AppShell() {
@@ -115,6 +115,20 @@ function AppShell() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           open={sidebarOpen}
+          mode={mode}
+          onPickMode={(pick) => {
+            // 목적지가 nav와 규칙이 다르다 — 그 세계의 **마지막 주소**이고 없으면 첫 화면이며,
+            // 항목 주소면 그 항목의 마지막 화면이 씨앗으로 얹힌다. 규칙은 하나도 여기 없다
+            // (`shell-store`의 `modeSwitchTarget`): 「같은 세계면 아무 데도 안 간다」도 그 씨앗도
+            // 답의 일부라, 셋 중 하나라도 이 자리에서 다시 지으면 그 함수를 재는 검사들이 초록인
+            // 채로 화면의 규칙만 갈린다. 그래서 **이동 전체를 받아 그대로 넘긴다.**
+            //
+            // 떠나온 세계로 **위 `mode`를 넘긴다.** `/settings`에서도 눌리는데 그 주소는 세계를
+            // 안 실으므로, 여기서 주소를 다시 읽으면 그 화면에서만 「같은 세계」 판정이 뒤집힌다.
+            const go = modeSwitchTarget(mode, pick);
+            if (!go) return;
+            void navigate(go);
+          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
@@ -123,9 +137,9 @@ function AppShell() {
             // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
             //
             // 목적지도 **그 세계의 배열**에서 나온다 — Maison에서 Terminal을 눌렀는데
-            // Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다. 사이드바가 아직 두
-            // 세계 모두에 Atelier 배열을 그리는 동안(#183) 그 세계에 없는 항목을 어디로
-            // 보낼지는 `navTargetOf`가 든다 — 그 머리말에 왜 되돌림이 있는지가 있다.
+            // Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다. 사이드바가 이제 같은
+            // 배열을 그리므로(#183) 그 세계에 없는 key는 여기 올 일이 없고, 그래도 오면
+            // `navTargetOf`가 `undefined`를 준다 — 아래 가드가 그때 아무 데도 안 간다.
             const target = navTargetOf(mode, key);
             if (!target || key === activeKey) return;
             void navigate({ to: target });

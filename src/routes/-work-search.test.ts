@@ -14,7 +14,6 @@ import {
   tabSearch,
   validateWorkSearch,
   viewTab,
-  workSlugOf,
 } from "./-work-search";
 
 // 주소 ↔ 화면 탭의 규칙. 라우터를 띄우는 seam(router.test.ts)에서는 **이것이 안 보인다** —
@@ -114,31 +113,19 @@ describe("주소를 고치는 짝", () => {
   });
 });
 
+// 주소에서 항목을 읽는 자리는 이 파일에 없다. `/works/`를 박아 두던 `workSlugOf`가 여기
+// 살았는데, #183이 마지막 호출부(사이드바 목록의 강조)를 `@/mode`의 `slugOf`로 옮기면서
+// 호출부가 0이 됐다 — 두 세계의 목록 주소를 다 읽어야 하고 항목 아래로 화면이 갈라지는 날
+// 첫 칸만 slug여야 하는데, 그쪽은 `/works/a/b`를 통째로 `"a/b"`라고 답했다. 답이 갈리는
+// 파서 둘을 남겨 두면 다음 사람이 어느 쪽을 집는지가 우연이 되므로 함께 걷었다.
+// 그물은 `mode.test.ts`의 「주소에서 slug를 읽는다」가 두 세계에서 더 촘촘하게 든다.
+
 // 결정 77. work을 옮길 때 떠나던 주소는 버리고 **그 work의 기억**을 되살린다. 라우터
 // seam에서는 이것도 안 보인다 — 그쪽은 주소에 적힌 것만 보고, 「새 주소를 무엇으로
 // 짓는가」는 여기 있다.
 //
 // **모듈 스코프 Map이라 이 파일 안에서 새어 나간다.** 검사마다 다른 슬러그를 쓴다 —
 // 비우는 함수를 내보내면 생산 코드에 아무도 안 부르는 이름이 하나 생긴다.
-// 주소에서 work을 읽는 자리. 읽는 쪽이 둘이라(사이드바 목록의 강조, 가지가 자기 화면인지
-// 아는 것) 한 곳에 뒀다.
-describe("주소가 가리키는 work", () => {
-  it("`/works/…`가 아니면 없다", () => {
-    expect(workSlugOf("/projects")).toBeNull();
-    expect(workSlugOf("/terminal")).toBeNull();
-  });
-
-  it("슬러그를 그대로 준다", () => {
-    expect(workSlugOf("/works/plain-work")).toBe("plain-work");
-  });
-
-  // **슬러그에 한글이 들어간다.** 디코드를 잊으면 한글 work에서만 조용히 어긋나 —
-  // 화면으로는 「가끔 강조가 안 된다」로만 보인다. 이 저장소에 그런 work가 실제로 있다.
-  it("한글 슬러그를 편다", () => {
-    expect(workSlugOf(`/works/${encodeURIComponent("세션-내-에이전트")}`)).toBe("세션-내-에이전트");
-  });
-});
-
 describe("work마다 마지막으로 보던 화면", () => {
   it("적어 두지 않은 work은 기본 문서 단일 뷰다", () => {
     expect(recallView("atelier", "처음-보는-work")).toEqual({ tab: "spec", split: null, file: null });
