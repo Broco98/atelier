@@ -2354,7 +2354,7 @@ fn tool_descriptions(server: &mut Server, id: u32) -> std::collections::BTreeMap
 ///
 /// 파서가 아니라 **되돌아옴 방지 그물**이다 (`BANNED_CLI`와 같은 수법). 실제로 걷어 낸 조각을
 /// 그대로 못박아 두고, 새 전제가 생기면 여기 한 줄을 더한다.
-const PRESUPPOSING: [(&str, &str); 10] = [
+const PRESUPPOSING: [(&str, &str); 12] = [
     ("one feature", "Room은 기능이 아니라 토픽이다 (결정 17)"),
     ("sharing a single branch name", "브랜치가 있음을 단정한다"),
     ("the shared branch", "정관사가 「어느 것에나 하나 있다」로 읽힌다"),
@@ -2374,7 +2374,20 @@ const PRESUPPOSING: [(&str, &str); 10] = [
         "`atelier_edit_work`의 설명에서 걷어 낸 문장이 `title` 인자에 남아 있던 자리",
     ),
     ("a folder and a branch name", "slug가 언제나 브랜치 이름이 된다고 단정한다"),
+    ("A branch they share is kept in every project repository", "관사만 갈아 낀 같은 단정"),
+    ("they share is kept in every repository", "관사만 갈아 낀 같은 단정"),
 ];
+
+/// 저 세계에 없는 것들. **낱말 자체는 금지가 아니다** — 아래 검사는 이 말이 나온 문장이
+/// **조건절을 달고 있는지**만 본다.
+const ABSENT_IN_MAISON: [&str; 3] = ["branch", "worktree", "repositor"];
+
+/// 그 문장이 조건절이라는 표식. 하나라도 있으면 「있을 때의 이야기」로 읽힌다.
+///
+/// `each project`·`per project`가 여기 있는 것은 Room에 프로젝트가 0개라 그 절이 Maison에서
+/// **한 번도 안 도는** 이야기이기 때문이다 — 단정이 아니라 범위다.
+const CONDITIONAL: [&str; 7] =
+    ["when", "When", "if ", "If ", "any", "each project", "spans project"];
 
 /// **도구 설명은 모드별로 못 가른다** (static attribute라 인스턴스가 없다). 그래서 하나뿐인
 /// 문장을 두 세계가 함께 읽고, 프로젝트·브랜치·워크트리를 **전제하는** 문장은 Maison
@@ -2397,6 +2410,32 @@ fn no_tool_description_presupposes_a_project_a_branch_or_a_worktree() {
             assert!(
                 !description.contains(fragment),
                 "{name}의 설명이 전제한다 ({why}): \"{fragment}\"\n{description}"
+            );
+        }
+    }
+
+    // **여기부터가 되돌아옴 방지를 넘어선다.** 위 표는 걷어 낸 조각을 그대로 못박는 것이라
+    // **관사만 갈아 끼우면 빠져나간다** — 실제로 한 판 동안 그렇게 빠져나가 있었다
+    // (`A branch they share is kept in every project repository`). 그래서 낱말이 아니라
+    // **문장의 모양**을 본다: 저 세계에 없는 것을 말하는 문장은 조건절을 달고 있어야 한다.
+    //
+    // 프로젝트 도구 넷은 밖이다 — 넷은 프로젝트 세계 자체이고 Maison에서 통째로 거절된다.
+    //
+    // **fail-closed다.** 새 문장이 조건절 없이 브랜치를 말하면 표에 한 줄을 안 더해도
+    // 그 자리에서 빨개진다. 반대 방향(조건절을 단 참인 문장)이 걸리는 것은 값이 싸다 —
+    // `when it spans projects` 한 마디를 붙이면 되고, 그 마디가 곧 이 검사가 원하는 것이다.
+    for (name, description) in &maison {
+        if PROJECT_TOOLS.contains(&name.as_str()) {
+            continue;
+        }
+        for sentence in description.split(". ") {
+            let Some(word) = ABSENT_IN_MAISON.iter().find(|w| sentence.contains(*w)) else {
+                continue;
+            };
+            assert!(
+                CONDITIONAL.iter().any(|c| sentence.contains(c)),
+                "{name}의 한 문장이 `{word}`를 조건절 없이 말한다 — Maison 에이전트는 그것을 \
+                 자기 Room의 사실로 읽는다. `when …`·`any …`로 조건을 달아라.\n  {sentence}"
             );
         }
     }

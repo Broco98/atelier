@@ -70,9 +70,9 @@ pub struct StartWorkParams {
     #[serde(default)]
     pub projects: Vec<String>,
     /// Branch name for the worktrees, for a work that spans projects: one name, checked
-    /// out in every one of them, defaulting to the work's slug. Follow the target
-    /// repositories' existing branch convention. A work with no projects has nothing to
-    /// check out, so there is nothing to pass here.
+    /// out in every one of them, defaulting to the work's slug. When it does span any,
+    /// follow those repositories' existing branch convention. A work with no projects has
+    /// nothing to check out, so there is nothing to pass here.
     pub branch: Option<String>,
 }
 
@@ -147,10 +147,10 @@ impl AtelierServer {
                        and no branch are created, only the work and its `specDir`; projects \
                        can be attached later if it ever reaches code. \
                        Calling it again with the same `slug` resumes it and only creates the \
-                       worktrees that are missing, so it is safe to retry — on a resume the \
+                       worktrees that are missing, if it has any, so it is safe to retry — on a resume the \
                        `title` you pass is ignored and the stored one is kept, because the user \
                        may have edited it. Returns `specDir` to write the spec documents into, \
-                       and the path of every worktree it made.",
+                       and the path of any worktree it made.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -323,10 +323,11 @@ impl AtelierServer {
 
     #[tool(
         description = "Remove a work: delete its metadata, its spec directory and any \
-                       worktrees it has. A branch they share is kept in every project repository, so \
-                       committed work is not lost. Refused when a worktree has uncommitted \
-                       or untracked files; the error names them and says which kind each is. \
-                       Commit them, or stash with `git stash -u`. There is no force option.",
+                       worktrees it has. When it spans projects, the branch those worktrees \
+                       share is kept in every one of those repositories, so committed work is \
+                       not lost. Refused when a worktree has uncommitted or untracked files; \
+                       the error names them and says which kind each is. Commit them, or stash \
+                       with `git stash -u`. There is no force option.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -370,8 +371,9 @@ impl AtelierServer {
                        `record.md` is sealed at the work's root first, while any worktrees are still \
                        alive: for each project it captures the declared branch, the worktree \
                        HEAD, whether the branch reached the project's base branch, and the \
-                       commits and files it carried. Any worktrees are then removed and a branch \
-                       they share is kept in every repository. Any status can be archived and \
+                       commits and files it carried. Any worktrees are then removed, and when \
+                       there were any, the branch they share is kept in each of those \
+                       repositories. Any status can be archived and \
                        the status is not changed — an abandoned approach is worth putting away \
                        too. Refused when a worktree has uncommitted or untracked files, and the \
                        error names them and says which kind each is. \
