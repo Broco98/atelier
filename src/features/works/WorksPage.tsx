@@ -47,6 +47,7 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import type { Mode } from "@/mode";
 import {
   armDrag,
   clearHalf,
@@ -73,6 +74,12 @@ import type { ShellsState, ShellTally } from "@/features/terminal/shell-registry
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
+  /**
+   * 어느 세계의 화면인가. **데이터가 여기서 갈린다** — 목록도 spec 본문도 생애주기 조작도
+   * 이 값으로 루트가 정해진다. 주소에서 다시 읽지 않는 이유는 `-works-view.tsx`의 같은
+   * prop 주석에 있다.
+   */
+  mode: Mode;
   sidebarOpen: boolean;
   selectedSlug: string | null;
   // 보고 있는 문서와 그것을 옮기는 길. 둘 다 주소가 정본이라 여기서 소유하지 않는다.
@@ -172,6 +179,7 @@ export function shellClosedByTab(
 }
 
 function WorksPage({
+  mode,
   sidebarOpen,
   selectedSlug,
   currentFile,
@@ -183,7 +191,7 @@ function WorksPage({
   onSelectSplit,
   onDropInto,
 }: WorksPageProps) {
-  const { data: works = [] } = useWorks();
+  const { data: works = [] } = useWorks(mode);
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
   //
@@ -195,8 +203,8 @@ function WorksPage({
 
   // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
   // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
-  const archive = useArchiveWork();
-  const remove = useRemoveWork();
+  const archive = useArchiveWork(mode);
+  const remove = useRemoveWork(mode);
   const running = archive.isPending
     ? { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" }
     : remove.isPending
@@ -509,13 +517,13 @@ function WorksPage({
       actions={
         selected && (
           <>
-            <StatusMenu work={selected} />
+            <StatusMenu mode={mode} work={selected} />
             {/* ⓘ와 ⋯가 **줄의 간격을 그대로 받는다**(결정 24). 한때 둘을 gap 0인 상자에
                 묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
                 것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
                 리듬이 갈리는 값이 크다. */}
             <WorkMetaMenu work={selected} />
-            <WorkMenu work={selected} archive={archive} remove={remove} />
+            <WorkMenu mode={mode} work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
                 지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
@@ -692,6 +700,7 @@ function WorksPage({
   const specBody = selected && (
     <SpecViewer
       key={selected.slug}
+      mode={mode}
       work={selected}
       header={split === null ? header : undefined}
       panelOpen={workPanelOpen}
@@ -1025,8 +1034,16 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // 끝나는 길이 셋이다 — Enter(적용) · Escape(버림) · 포커스 이탈(적용). 메뉴가 바깥 클릭으로
 // 닫히면 입력이 언마운트되며 그냥 사라진다: blur가 안 오는 경로라 그때는 안 고쳐지고,
 // 그것이 「메뉴를 닫았다」의 자연스러운 뜻이다.
-function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
-  const setTitle = useSetWorkTitle();
+function TitleEditor({
+  mode,
+  work,
+  onDone,
+}: {
+  mode: Mode;
+  work: WorkView;
+  onDone: () => void;
+}) {
+  const setTitle = useSetWorkTitle(mode);
   const [draft, setDraft] = useState(work.title);
   // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
   const finished = useRef(false);
@@ -1061,10 +1078,10 @@ function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
 }
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
-function StatusMenu({ work }: { work: WorkView }) {
+function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const setStatus = useSetWorkStatus();
+  const setStatus = useSetWorkStatus(mode);
   const meta = STATUS_META[work.status];
 
   useEffect(() => {
@@ -1137,10 +1154,12 @@ function StatusMenu({ work }: { work: WorkView }) {
 // 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
 // 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
 function WorkMenu({
+  mode,
   work,
   archive,
   remove,
 }: {
+  mode: Mode;
   work: WorkView;
   // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
   archive: ReturnType<typeof useArchiveWork>;
@@ -1282,6 +1301,7 @@ function WorkMenu({
         >
           {renaming ? (
             <TitleEditor
+              mode={mode}
               work={work}
               onDone={() => {
                 setRenaming(false);

@@ -56,9 +56,12 @@ function SidebarWorkList({
    */
   renderShellMeta: (work: WorkView) => ReactNode;
 }) {
-  const { data: works = [] } = useWorks();
+  // **아직 Atelier 고정이다.** 이 목록이 모드의 루트를 읽고(머리는 `Rooms`) 행이 그 세계의
+  // 주소로 옮기는 것은 #183의 몫이다 — 데이터만 먼저 모드로 갈면 Maison에서 목록은 Room인데
+  // 행을 누르면 Atelier로 튄다. 읽는 곳과 가는 곳은 한 티켓에서 함께 옮긴다.
+  const { data: works = [] } = useWorks("atelier");
   const navigate = useNavigate();
-  const setPinned = useSetWorkPinned();
+  const setPinned = useSetWorkPinned("atelier");
   const [pinnedOpen, setPinnedOpen] = useState(
     () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
   );
@@ -147,7 +150,7 @@ function SidebarWorkList({
     void navigate({
       to: "/works/$slug",
       params: { slug },
-      search: recallSearch(slug),
+      search: recallSearch("atelier", slug),
     });
   };
 

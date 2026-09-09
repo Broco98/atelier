@@ -38,7 +38,7 @@ describe("문서 줄이 가는 곳", () => {
   // 분할이 안 무너지고, 터미널을 보고 있었어도 문서를 골랐으면 spec으로 돌아온다.
   // 기억에 다른 문서가 적혀 있어도 **고른 문서**가 이긴다 — 문서 줄은 문서를 골랐다.
   it("분할은 그 work의 기억에서 살아남고 탭은 spec으로 돌아온다", () => {
-    rememberView("갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
+    rememberView("atelier", "갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
     expect(hitTarget(doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "갈라둔것" },
@@ -95,7 +95,7 @@ describe("work 줄이 가는 곳", () => {
   // (`SidebarWorkList`의 `goTo`): work을 고르는 길이 둘인데 도착지가 갈리면 어긋나도
   // 화면에 티가 안 난다.
   it("그 work을 마지막으로 보던 화면으로 간다 — 문서·탭·분할 셋 다", () => {
-    rememberView("터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
+    rememberView("atelier", "터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
     expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "터미널보던것" },

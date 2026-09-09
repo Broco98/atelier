@@ -54,10 +54,11 @@ function render(
   split: SplitSide | null = null,
 ): string {
   const client = new QueryClient();
-  client.setQueryData(worksQuery.queryKey, [{ ...work, ...overrides }]);
+  client.setQueryData(worksQuery("atelier").queryKey, [{ ...work, ...overrides }]);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <WorksPage
+        mode="atelier"
         sidebarOpen
         selectedSlug={work.slug}
         currentFile={null}
@@ -737,10 +738,11 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     // 버튼이 된다(결정 11·21이 금지하는 것).
     seed(2, null as unknown as string, "~/x");
     const client = new QueryClient();
-    client.setQueryData(worksQuery.queryKey, []);
+    client.setQueryData(worksQuery("atelier").queryKey, []);
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <WorksPage
+          mode="atelier"
           sidebarOpen
           selectedSlug={null}
           currentFile={null}

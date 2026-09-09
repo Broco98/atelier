@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { FIXTURE_BY_ARG, FIXTURE_COMMANDS } from "../e2e/fixtures";
+import { FIXTURE_BY_ARG, FIXTURE_BY_MODE, FIXTURE_COMMANDS } from "../e2e/fixtures";
 
 // 프런트엔드가 부르는 invoke 이름과 Rust가 등록한 명령 이름은 **문자열로만** 이어져 있다.
 // 어느 쪽을 빠뜨려도 컴파일도 타입 검사도 통과하고, 버튼을 누르는 순간에야 실패한다.
@@ -100,12 +100,20 @@ describe("Tauri 명령 배선", () => {
   // 실행 중에 터지긴 하지만 **그 커맨드를 태우는 테스트가 있을 때만**이라 여기서 못 박는다.
   // (L4는 이 목록이 없다 — `plugin:` 접두사가 아닌 것은 전부 다리로 가므로 낡을 자리가 없다.)
   //
-  // **두 표를 다 본다.** 인자를 한 겹 더 보는 커맨드는 `FIXTURE_BY_ARG`에만 있는 것이
-  // 있어(아카이브 둘), 한 표만 보면 그쪽이 이 검사의 눈 밖으로 통째로 빠진다.
+  // **세 표를 다 본다.** 이름으로만 갈리지 않는 커맨드는 저쪽 표에만 있는 것이 있어
+  // (아카이브 둘은 `FIXTURE_BY_ARG`에만, 모드로 갈리는 둘은 `FIXTURE_BY_MODE`에만),
+  // 한 표만 보면 그쪽이 이 검사의 눈 밖으로 통째로 빠진다.
   it("L3 하네스가 답하는 커맨드는 전부 등록돼 있다", () => {
-    const stale = [...Object.keys(FIXTURE_COMMANDS), ...Object.keys(FIXTURE_BY_ARG)].filter(
-      (name) => !registeredNames().includes(name),
-    );
+    const tables = { FIXTURE_COMMANDS, FIXTURE_BY_ARG, FIXTURE_BY_MODE };
+    // **표가 비어 있지 않은지를 먼저 본다.** 표가 하나 더 생겼는데 여기서 안 읽으면 그 표는
+    // 빈 목록을 훑고 조용히 초록이 되어, 이름이 낡아도 신호가 안 난다 — 이 검사가 막으려던
+    // 실패가 검사 자신에게 나는 모양이다. 그래서 fail-closed로 닫는다.
+    for (const [table, names] of Object.entries(tables)) {
+      expect(Object.keys(names), `${table}이 비었다 — 이 검사가 읽는 표가 맞나`).not.toEqual([]);
+    }
+    const stale = Object.values(tables)
+      .flatMap((table) => Object.keys(table))
+      .filter((name) => !registeredNames().includes(name));
     expect(stale, "하네스의 고정 데이터가 등록부에 없는 이름을 답하고 있다").toEqual([]);
   });
 

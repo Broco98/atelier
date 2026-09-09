@@ -48,7 +48,12 @@ function ProjectsView({ slug }: { slug: string | null }) {
       // (work === null)는 work을 여는 것이 아니라 목록으로 가는 것이라 씨앗이 없다.
       onOpenWork={(work) =>
         void (work
-          ? navigate({ to: "/works/$slug", params: { slug: work }, search: recallSearch(work) })
+          ? navigate({
+              to: "/works/$slug",
+              params: { slug: work },
+              // 프로젝트가 Atelier에만 있으므로(결정 17) 여는 work도 그 세계의 것이다.
+              search: recallSearch("atelier", work),
+            })
           : navigate({ to: "/works" }))
       }
     />

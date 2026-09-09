@@ -33,8 +33,12 @@ import { specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
+import type { Mode } from "@/mode";
 
 interface SpecViewerProps {
+  // 문서를 어느 루트에서 읽는가. `work.slug`만으로는 부족하다 — 같은 이름이 두 세계에 설 수
+  // 있어서(결정 10) 모드를 안 넘기면 Room의 spec 자리에 같은 이름 work의 문서가 뜬다.
+  mode: Mode;
   work: WorkView;
   // 화면의 머리행(브레드크럼)을 **본문 열 안에** 그린다.
   //
@@ -62,6 +66,7 @@ interface SpecViewerProps {
 }
 
 function SpecViewer({
+  mode,
   work,
   header,
   panelOpen,
@@ -80,7 +85,7 @@ function SpecViewer({
   // 줄번호 `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로
   // 건다. 여기서 그림 판정을 따로 부르면 표가 바뀔 때 읽기만 옛 규칙을 따른다.
   const body = docBody(file, showSource);
-  const { data: content } = useSpecFile(work.slug, body === "image" ? null : file);
+  const { data: content } = useSpecFile(mode, work.slug, body === "image" ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;

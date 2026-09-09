@@ -224,6 +224,7 @@ describe("SpecViewer 본문 갈래", () => {
   function viewer(file: string, showSource = false): string {
     return renderToStaticMarkup(
       <SpecViewer
+        mode="atelier"
         work={work}
         panelOpen={false}
         sidebarOpen={false}
@@ -242,12 +243,12 @@ describe("SpecViewer 본문 갈래", () => {
 
   it("그림은 읽지 않는다", () => {
     viewer("샷.png");
-    expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
+    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", null);
   });
 
   it.each(["overview.md", "notes.txt", "목업/조각.html"])("%s는 읽는다", (file) => {
     viewer(file);
-    expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
+    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", file);
   });
 
   it("그림은 토글을 켜도 그림이다", () => {

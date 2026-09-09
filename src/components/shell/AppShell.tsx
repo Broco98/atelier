@@ -6,25 +6,37 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette from "@/features/search/SearchPalette";
 import { searchHotkey } from "@/features/terminal/shell-registry";
+import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
-import { shellStore, toggleSidebar } from "./shell-store";
-import { navItems, type NavKey } from "./nav-items";
+import { shellMode, shellStore, toggleSidebar } from "./shell-store";
+import type { NavKey } from "./nav-items";
 
 function AppShell() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
   const navigate = useNavigate();
+  // 지금 어느 세계인가. **셋째 구독이고 값은 원시값이다** — 아래 둘과 한 select로 묶어
+  // 객체 하나로 돌려주면 매번 새 객체라 걸러내지 못해 주소가 바뀔 때마다 셸 전체가
+  // 리렌더한다(아래 두 주석이 지키는 그 최적화). 문자열 하나면 세계를 건널 때만 돈다.
+  //
+  // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 세계 밖이기 때문**이다 — 접두사가
+  // 없어 `modeOf`는 그 주소를 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 거쳐 nav를 누른
+  // 순간 아래 「nav 한 번에 세계를 안 떠난다」가 그 화면에서만 깨진다.
+  const mode = useRouterState({ select: (state) => shellMode(state.location.pathname) });
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
   // 사이드바 목록에서 그 작업 행이 강조되는 것으로 드러난다.
   // 파생을 select 안에서 끝낸다 — 밖에서 pathname을 구독하면 작업을 고를 때마다(주소의 slug가
   // 바뀔 때마다) 셸 전체가 리렌더한다. 여기서 걸러 두면 활성 항목이 실제로 바뀔 때만 돈다.
+  //
+  // **훑는 배열이 모드의 것이다.** Atelier 배열로 `/maison/terminal`을 재면 접두사가 하나도
+  // 안 맞아 활성 표시가 통째로 사라진다 — 그 세계에도 Terminal은 서 있는데.
   const activeKey = useRouterState({
     select: (state): NavKey | null =>
-      navItems.find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
+      navItemsOf(mode).find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
   });
   // 설정은 `navItems`에 없다(결정 51) — 활성 판정도 따로 한 줄이다. 위 select에 합쳐
   // 객체 하나로 돌려주지 않는 이유는 그 주석과 같다: 매번 새 객체를 돌려주면 걸러내지 못해
@@ -109,9 +121,14 @@ function AppShell() {
             // 정규화되는 경로라, 그냥 두면 지금과 똑같은 위치가 히스토리에 한 칸 더 쌓인다 —
             // 뒤로가기를 눌러도 화면이 그대로인 죽은 항목이 된다.
             // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
-            const target = navItems.find((item) => item.key === key);
+            //
+            // 목적지도 **그 세계의 배열**에서 나온다 — Maison에서 Terminal을 눌렀는데
+            // Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다. 사이드바가 아직 두
+            // 세계 모두에 Atelier 배열을 그리는 동안(#183) 그 세계에 없는 항목을 어디로
+            // 보낼지는 `navTargetOf`가 든다 — 그 머리말에 왜 되돌림이 있는지가 있다.
+            const target = navTargetOf(mode, key);
             if (!target || key === activeKey) return;
-            void navigate({ to: target.to });
+            void navigate({ to: target });
           }}
           settingsActive={settingsActive}
           // `/settings`에는 정규화 리다이렉트가 없어서 위와 같은 가드가 필요 없다 —

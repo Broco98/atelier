@@ -7,8 +7,11 @@ import SpecTree from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
+import type { Mode } from "@/mode";
 
 interface ArchiveListProps {
+  // 행을 펼칠 때 문서 목록을 어느 루트에서 읽는가 — 화면이 이미 아는 값을 그대로 받는다.
+  mode: Mode;
   entries: ArchiveEntry[];
   selectedSlug: string | null;
   // 목록이 아직 안 왔다 — 빈 배열을 "하나도 없다"로 읽으면 안 되는 동안
@@ -28,6 +31,7 @@ interface ArchiveListProps {
 //
 // 폭은 `ProjectList`와 키를 나눠 갖지 않는다 — 이쪽은 문서 트리까지 담아 쓸모 있는 폭이 다르다.
 function ArchiveList({
+  mode,
   entries,
   selectedSlug,
   loading,
@@ -210,6 +214,7 @@ function ArchiveList({
             {sorted.map((entry) => (
               <ArchiveRow
                 key={entry.slug}
+                mode={mode}
                 entry={entry}
                 expanded={expanded.has(entry.slug)}
                 onToggle={() =>
@@ -240,6 +245,7 @@ function ArchiveList({
 // 선택은 "지금 보고 있는 문서"에만 있고, 그 문서가 어느 아카이브 것인지는 트리의 들여쓰기와
 // 머리말의 제목이 말한다. 행까지 켜지면 화면에 켜진 것이 둘이 되어 어느 쪽이 본문인지 흐려진다.
 function ArchiveRow({
+  mode,
   entry,
   expanded,
   onToggle,
@@ -247,6 +253,7 @@ function ArchiveRow({
   onSelectDoc,
   onCopyDoc,
 }: {
+  mode: Mode;
   entry: ArchiveEntry;
   expanded: boolean;
   onToggle: () => void;
@@ -262,7 +269,7 @@ function ArchiveRow({
   useEffect(() => {
     if (expanded) setEverOpened(true);
   }, [expanded]);
-  const { data: docs, isPending } = useArchivedDocs(everOpened ? entry.slug : null);
+  const { data: docs, isPending } = useArchivedDocs(mode, everOpened ? entry.slug : null);
 
   return (
     <div className="flex shrink-0 flex-col">

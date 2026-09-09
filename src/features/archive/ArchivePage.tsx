@@ -6,12 +6,15 @@ import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
 import type { DocBody } from "@/features/works/doc-refs";
+import type { Mode } from "@/mode";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
 import ArchiveList from "./ArchiveList";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
 
 interface ArchivePageProps {
+  // 어느 세계의 아카이브인가 — 목록도 문서도 이 값으로 루트가 갈린다(WorksPage와 같은 계약).
+  mode: Mode;
   sidebarOpen: boolean;
   selectedSlug: string | null;
   // 보고 있는 문서는 주소가 정본이다 — 여기서 들면 문서를 옮긴 자취가 히스토리에 남지 않아
@@ -29,6 +32,7 @@ const PANEL_OPEN_KEY = "archive-panel-open";
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
 function ArchivePage({
+  mode,
   sidebarOpen,
   selectedSlug,
   currentFile,
@@ -39,12 +43,12 @@ function ArchivePage({
   // 그것으로 "없어요"라고 단언하므로 둘을 갈라 둔다. 목록이 캐시에 없는 채로 /archive/$slug에
   // 바로 닿는 경로가 있다 — 이 라우트에는 beforeLoad가 없고(세 $slug 라우트 모두 그렇다),
   // archiveQuery는 gcTime이 지나면 캐시에서 빠진다.
-  const { data: entries = [], isPending: entriesPending } = useArchive();
+  const { data: entries = [], isPending: entriesPending } = useArchive(mode);
   const selected = entries.find((entry) => entry.slug === selectedSlug) ?? null;
 
   // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
   // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
-  const { data: docs = [], isPending: docsPending } = useArchivedDocs(selected?.slug ?? null);
+  const { data: docs = [], isPending: docsPending } = useArchivedDocs(mode, selected?.slug ?? null);
   // 고른 문서가 **어느 아카이브의 것인지**는 이제 주소가 함께 들고 있다 — 아카이브를 옮길 때
   // 이동이 search를 비우므로, 이름이 같은 문서(record.md·overview.md)가 딸려가 엉뚱하게
   // 열리던 경로가 아예 없다. 목록에 없는 경로면 아래에서 기본값으로 떨어진다.
@@ -62,6 +66,7 @@ function ArchivePage({
   // read_to_string이라, 그냥 읽으면 고를 때마다 UTF-8 실패가 재시도까지 달고 나간다.
   // 읽기만 표 밖에 남기면 결정 11이 막으려던 **화면별 예외**가 여기 생긴다.
   const { data: content } = useArchivedFile(
+    mode,
     selected?.slug ?? null,
     body === "image" ? null : current,
   );
@@ -165,6 +170,7 @@ function ArchivePage({
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <ArchiveList
+        mode={mode}
         entries={entries}
         selectedSlug={selected?.slug ?? null}
         loading={entriesPending}

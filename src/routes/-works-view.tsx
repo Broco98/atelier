@@ -15,15 +15,22 @@ import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/features/works/split-view";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
+import { routesOf } from "@/mode";
+import type { Mode } from "@/mode";
 
 // /works와 /works/$slug가 그리는 화면은 같다 — 다른 것은 어떤 작업이 선택됐는지뿐이다.
+// **Maison의 Room 화면도 같은 이 컴포넌트다**: 두 세계가 다른 것은 어느 루트를 읽고 어느
+// 주소로 옮기는가뿐이라, 화면을 두 벌로 두면 한쪽만 고치는 날이 온다.
 // 파일명의 "-" 접두사는 라우트 생성기가 이 파일을 라우트로 취급하지 않게 한다.
 function WorksView({
+  mode,
   slug,
   file = null,
   tab = "spec",
   split = null,
 }: {
+  /** 어느 세계의 화면인가. 옮길 주소와 세션 기억의 칸이 여기서 나온다 — 라우트가 넘긴다. */
+  mode: Mode;
   slug: string | null;
   file?: string | null;
   tab?: ViewTab;
@@ -31,7 +38,10 @@ function WorksView({
 }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  const { data: works = [], isPending, isFetching } = useWorks();
+  const { data: works = [], isPending, isFetching } = useWorks(mode);
+  // 주소 리터럴이 박히는 자리는 모드 표 하나다 — 여기서 `/works/$slug`를 다시 적으면
+  // Maison에서 문서를 고를 때마다 Atelier로 튄다.
+  const routes = routesOf(mode);
 
   const exists = slug !== null && works.some((work) => work.slug === slug);
 
@@ -43,12 +53,12 @@ function WorksView({
   const goTo = (next: string | null, replace = false) =>
     void (next
       ? navigate({
-          to: "/works/$slug",
+          to: routes.item,
           params: { slug: next },
-          search: recallSearch(next),
+          search: recallSearch(mode, next),
           replace,
         })
-      : navigate({ to: "/works", replace }));
+      : navigate({ to: routes.list, replace }));
 
   // 문서 전환. **트리 훑기는 히스토리를 만들지 않고(replace), 링크를 따라간 것은 만든다.**
   // 이슈 #25가 못박은 "파일 전환은 히스토리 항목을 만들지 않는다"는 트리를 두고 한 말이다 —
@@ -61,13 +71,13 @@ function WorksView({
     (path: string, push: boolean) => {
       if (slug === null) return;
       void navigate({
-        to: "/works/$slug",
+        to: routes.item,
         params: { slug },
         search: (prev: object) => fileSearch(prev, path),
         replace: !push,
       });
     },
-    [navigate, slug],
+    [navigate, routes.item, slug],
   );
 
   // 분할 전환 — 켜기·끄기·좌우 맞바꾸기가 전부 여기다(결정 97). **`tab`을 함께 받는다**:
@@ -77,13 +87,13 @@ function WorksView({
     (next: SplitSide | null, nextTab: ViewTab) => {
       if (slug === null) return;
       void navigate({
-        to: "/works/$slug",
+        to: routes.item,
         params: { slug },
         search: (prev) => splitSearch(tabSearch(prev, nextTab), next),
         replace: true,
       });
     },
-    [navigate, slug],
+    [navigate, routes.item, slug],
   );
 
   // 사이드바에서 끌어다 놓은 것(결정 86). **남의 work을 떨궈도 성립한다**(결정 101) —
@@ -95,7 +105,7 @@ function WorksView({
     (source: DragSource, next: SplitSide) => {
       const nextTab = tabOfDrag(source.kind);
       void navigate({
-        to: "/works/$slug",
+        to: routes.item,
         params: { slug: source.slug },
         search:
           source.slug === slug
@@ -104,7 +114,7 @@ function WorksView({
         replace: true,
       });
     },
-    [navigate, slug],
+    [navigate, routes.item, slug],
   );
 
   // 화면 탭 전환. 갱신 자체는 `tabSearch`가 안다 — **함수형이어야 한다**(결정 15).
@@ -114,21 +124,21 @@ function WorksView({
     (next: ViewTab) => {
       if (slug === null) return;
       void navigate({
-        to: "/works/$slug",
+        to: routes.item,
         params: { slug },
         search: (prev) => tabSearch(prev, next),
         replace: true,
       });
     },
-    [navigate, slug],
+    [navigate, routes.item, slug],
   );
 
   // **보던 화면을 적어 둔다**(결정 77·97). 쓰는 자리가 여기 하나인 것은 주소가 정본이기
   // 때문이다 — 화면을 옮기는 길이 사이드바의 `spec` 잎, 셸 행, ⌘1~9, ⌃Tab, 분할 토글,
   // 드래그로 여럿인데, 전부 주소를 바꾸므로 도착한 주소를 한 번 적으면 다 덮는다.
   useEffect(() => {
-    if (slug !== null && exists) rememberView(slug, { tab, split, file });
-  }, [slug, exists, tab, split, file]);
+    if (slug !== null && exists) rememberView(mode, slug, { tab, split, file });
+  }, [mode, slug, exists, tab, split, file]);
 
   // 주소와 화면을 목록 변화에 맞춰 계속 붙여 둔다.
   // beforeLoad는 이동할 때만 돌기 때문에, 머물러 있는 동안 목록이 바뀌어 생기는 어긋남은
@@ -136,7 +146,7 @@ function WorksView({
   useEffect(() => {
     // 실제로 띄운 작업을 기억해 둔다 — /works로 돌아왔을 때 여기로 정규화된다
     if (slug !== null && exists) {
-      selectWork(slug);
+      selectWork(mode, slug);
       return;
     }
     // 목록이 아직 오는 중이면 판단을 미룬다. 방금 만들어진 항목이 목록에 반영되기 전에
@@ -145,14 +155,15 @@ function WorksView({
     // 주소가 실제 화면과 어긋나 있다. 둘 중 하나다 —
     //  (a) 무선택 주소인데 목록이 뒤늦게 채워졌다 (빈 상태로 열어둔 채 밖에서 작업을 시작한 경우)
     //  (b) 주소가 가리키는 작업이 사라졌다 (지워졌거나 잘못된 링크)
-    const next = pickSlug(shellStore.state.workSlug, works, isDefaultSelectable);
+    const next = pickSlug(shellStore.state.workSlug[mode], works, isDefaultSelectable);
     if (next === slug) return; // 목록이 비어 여전히 무선택 — 고칠 것이 없다
     goTo(next, true);
     // goTo는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다
-  }, [slug, exists, isPending, isFetching, works]);
+  }, [mode, slug, exists, isPending, isFetching, works]);
 
   return (
     <WorksPage
+      mode={mode}
       sidebarOpen={sidebarOpen}
       selectedSlug={exists ? slug : null}
       currentFile={file}

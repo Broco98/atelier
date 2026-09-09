@@ -3,6 +3,7 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
 import type { Settings } from "@/features/settings/types";
+import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
 // 생기면 무엇이 기대값인지가 테스트 수만큼 갈라진다.
@@ -72,6 +73,50 @@ export const WORKS: WorkView[] = [
     worktrees: [],
     specDir: "~/.atelier/works/plain-work/spec",
     specFiles: [],
+  },
+];
+
+/**
+ * Maison의 Rooms. **Atelier work과 겹치는 값이 하나도 없다** — slug도 제목도 문서 경로도
+ * 본문도 다르다. 같은 데이터를 두 세계가 나눠 쓰면 「maison으로 물었다」와 「atelier로
+ * 물었다」가 화면에서 갈리지 않아, `mode`를 통째로 빠뜨려도 초록이 된다. 백엔드에서 `mode`가
+ * 아직 **선택 인자**라(없으면 Atelier — #187이 닫는다) 빠뜨린 호출은 오류가 아니라 조용히
+ * Atelier 데이터를 받는다. 이 층에서 그것이 보이려면 답이 갈려 있어야 한다.
+ *
+ * 브랜치도 워크트리도 프로젝트도 없다 — Room은 토픽이고 저장소에 안 붙는다(결정 17).
+ * 그래서 `projects`·`worktrees`가 빈 것은 안 채운 게 아니라 이 세계의 모양이다.
+ *
+ * **초안이 먼저 온다.** `/maison/rooms`의 정규화가 「초안 아닌 첫 Room」을 고르는데, 목록이
+ * 초안 아닌 것뿐이면 그 규칙이 **그냥 첫 줄을 고르는 것**과 구별되지 않는다 — 규칙이 퇴화해도
+ * 초록이 된다.
+ */
+export const ROOMS: WorkView[] = [
+  {
+    slug: "draft-room",
+    title: "아직 초안인 방",
+    status: "draft",
+    branch: null,
+    createdAt: "2026-09-01",
+    projects: [],
+    pinned: false,
+    worktrees: [],
+    specDir: "~/.atelier/maison/rooms/draft-room/spec",
+    specFiles: [],
+  },
+  {
+    slug: "reading-room",
+    title: "읽는 방",
+    status: "active",
+    branch: null,
+    createdAt: "2026-09-02",
+    projects: [],
+    pinned: false,
+    worktrees: [],
+    specDir: "~/.atelier/maison/rooms/reading-room/spec",
+    // **`overview.md`가 아니다.** 그 이름은 화면이 기본 문서로 특별 대접하는 값이라
+    // (`WorksPage`의 `defaultFile`), Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 목록에서
+    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다.
+    specFiles: ["개요.md"],
   },
 ];
 
@@ -145,10 +190,17 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 /**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
+ *
+ * **모드로 갈리는 커맨드는 여기 없다** — 아래 `FIXTURE_BY_MODE`가 따로 든다. 이름으로만
+ * 답하는 줄을 남겨 두면 `mode`를 빠뜨린 호출이 그 줄로 조용히 떨어져, 이 층이 세운 그물이
+ * 통째로 무력해진다(그 표의 머리말).
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
-  list_works: WORKS,
+  // `list_archive`는 **모드를 안 본다.** 인자로는 실려 오지만(archiveApi) Maison 아카이브를
+  // 여는 시나리오가 아직 없어서 답을 가를 이유가 없다 — **태우지 않는 스텁은 조용히 낡는다**
+  // (이 파일의 `write_settings` 주석과 같은 규칙). 그 화면을 여는 판이 이 줄을
+  // `FIXTURE_BY_MODE`로 옮긴다.
   list_archive: ARCHIVE,
   // 핀을 누르면 나가는 쓰기다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을
   // 다시 읽어 오는 것이 화면을 고치는 자리다(useSetWorkPinned).
@@ -166,10 +218,6 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 —
   // 여기서 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도
   // 그것뿐이다(진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
-  // 사이드바 검사가 spec 파일이 있는 work으로 옮겨 가면서 태운다 — 본문 뷰어가 문서를 읽는다.
-  // 내용은 **한 줄이면 족하다**: 여기서 보는 것은 사이드바이고, 문서 렌더의 규칙은
-  // SpecViewer.test.tsx가 든다.
-  read_spec_file: "# 개요\n\n한 줄.\n",
   // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
@@ -184,11 +232,21 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
 };
 
 /**
+ * 경로별 답이 없을 때 Atelier가 내는 한 줄. 사이드바 검사가 spec 파일이 있는 work으로 옮겨
+ * 가면서 태운다 — 본문 뷰어가 문서를 읽는다. **한 줄이면 족하다**: 그 검사가 보는 것은
+ * 사이드바이고, 문서 렌더의 규칙은 SpecViewer.test.tsx가 든다.
+ *
+ * Maison 쪽에는 짝이 **없다**(아래 `FIXTURE_BY_MODE`) — 그 세계에서 열리는 문서가 하나뿐이라
+ * 폴백을 두면 아무도 안 태우는 답이 되고, 그러면 「Room 자신의 문서를 읽었다」가 **폴백이라서**
+ * 초록인지 정말 그 문서라서 초록인지 갈리지 않는다.
+ */
+export const SPEC_FALLBACK_BODY = "# 개요\n\n한 줄.\n";
+
+/**
  * spec 파일 읽기의 **경로별** 답. `read_spec_file`이 경로와 무관하게 한 문자열로 답하던
  * 자리를 넓힌 것이다 — 같은 시나리오에서 `.md`·`.html`·`.json`을 각각 열어야 한다.
  *
- * **여기 없는 경로는 위 `FIXTURE_COMMANDS.read_spec_file`의 그 한 줄이 계속 답한다** —
- * 앞 시나리오들이 그대로 돈다.
+ * **여기 없는 경로는 위 `SPEC_FALLBACK_BODY`가 계속 답한다** — 앞 시나리오들이 그대로 돈다.
  *
  * `.html`은 **실물 목업을 안 넣는다.** 27KB짜리 남의 work 파일이 이 저장소의 검사에
  * 들어오면 그 파일이 바뀔 때 여기가 깨지고, 그 문서가 증명하는 두 값(264px·32px)은
@@ -213,6 +271,15 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
     "",
   ].join("\n"),
   "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',
+};
+
+/**
+ * Room 문서의 본문 — **Atelier 쪽과 한 글자도 안 겹친다.** 겹치면 `mode`가 어긋난 읽기가
+ * 화면에서 안 보인다(`ROOMS` 머리말). 특히 위 `SPEC_FALLBACK_BODY`의 「한 줄.」이 여기 있으면,
+ * Maison 화면이 Atelier 문서를 읽어 와도 검사가 통과한다.
+ */
+export const ROOM_SPEC_FILE_BODIES: Record<string, string> = {
+  "개요.md": "# 읽는 방\n\n이 방에만 있는 문서다.\n",
 };
 
 // 여기 없는 pty 커맨드(`pty_write`)는 **일부러 뺐다.** 지금 타자를 치는 시나리오가 없고,
@@ -267,10 +334,49 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 이 표도 함께 대조해 잡는다.
  */
 export const FIXTURE_BY_ARG: Record<string, { arg: string; answers: Record<string, unknown> }> = {
-  read_spec_file: { arg: "path", answers: SPEC_FILE_BODIES },
   // 심어 둔 질의 하나만 다른 답을 받고 나머지는 위 고정 답으로 떨어진다 — 왜 하나뿐인지는
   // `SEARCH_DESTINATION_QUERY` 머리말이 든다.
   search: { arg: "query", answers: { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS } },
+  // 아카이브 둘은 **모드를 안 본다** — 위 `list_archive` 곁 주석과 같은 이유다.
   list_archived_docs: { arg: "slug", answers: ARCHIVED_DOCS },
   read_archived_file: { arg: "path", answers: ARCHIVED_FILE_BODIES },
+};
+
+/**
+ * 모드로 갈리는 커맨드의 **한 모드 몫**. 값 하나면 `value`, 인자를 한 겹 더 봐야 하면
+ * `arg`·`answers`를 함께 든다(그 모드에 기본 답이 있으면 `value`도 같이).
+ *
+ * `value`가 **선택인 것이 그물이다**: 없으면 그 모드는 표에 적힌 인자 값에만 답하고 나머지는
+ * 하네스가 문다. 폴백은 안 태우는 순간 낡으므로, 태울 것이 없는 모드는 안 두는 쪽이 맞다.
+ */
+export interface ModeAnswer {
+  readonly value?: unknown;
+  readonly arg?: string;
+  readonly answers?: Record<string, unknown>;
+}
+
+/**
+ * **모드로 갈리는 커맨드의 답.** 위 두 표보다 먼저 보고, **여기 있는 커맨드는 두 표로
+ * 안 떨어진다** — 답을 못 찾으면 하네스가 문다(harness.ts).
+ *
+ * 그 fail-closed가 이 표의 존재 이유다. 백엔드에서 `mode`가 아직 선택 인자라(#187) 프런트가
+ * 한 자리에서 빠뜨리면 **오류 없이 Atelier 데이터**가 오는데, 이름으로만 답하는 표로 떨어지게
+ * 두면 이 층에서도 똑같이 조용하다 — 「Maison 화면인데 Atelier 것이 떴다」가 아무 데도
+ * 안 걸린다.
+ *
+ * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
+ * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
+ *
+ * **여기 있는 커맨드가 둘뿐인 것은 지금 태우는 것이 둘뿐이기 때문이다.** 모드를 인자로
+ * 받는 커맨드는 더 있지만(아카이브 셋·쓰기들), 그 화면을 Maison에서 여는 시나리오가 아직
+ * 없다 — 그 판이 이리로 옮긴다.
+ */
+export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
+  list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
+  read_spec_file: {
+    atelier: { value: SPEC_FALLBACK_BODY, arg: "path", answers: SPEC_FILE_BODIES },
+    // 폴백이 없다 — 위 `SPEC_FALLBACK_BODY` 머리말의 이유다. Room이 자기 목록에 없는 문서를
+    // 읽으려 하면 그 자리에서 문다.
+    maison: { arg: "path", answers: ROOM_SPEC_FILE_BODIES },
+  },
 };

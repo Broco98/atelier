@@ -40,6 +40,9 @@ export type HitTarget =
  * 모르는 목적지 `key`에는 **`null`을 준다.** 코어는 프런트가 건넨 key만 돌려주므로(결정 21)
  * 그런 줄은 계약이 깨진 것이고, 여기서 대신 갈 곳을 지어내면 엉뚱한 화면으로 데려간다.
  */
+// 도착 주소가 아직 Atelier 리터럴이라 **기억도 같은 세계의 것을 읽는다** — 팔레트가 자기
+// 모드를 아는 것은 #185이고, 그때 이 파일의 리터럴과 아래 `recallSearch`의 모드가 함께 갈린다.
+// 한쪽만 옮기면 Maison에서 연 Room이 Atelier의 같은 이름 기억으로 열린다.
 export function hitTarget(hit: SearchHit): HitTarget | null {
   switch (hit.kind) {
     case "destination": {
@@ -52,7 +55,7 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
         : {
             to: "/works/$slug",
             params: { slug: hit.slug },
-            search: recallSearch(hit.slug),
+            search: recallSearch("atelier", hit.slug),
           };
     case "project":
       return { to: "/projects/$slug", params: { slug: hit.slug } };
@@ -67,7 +70,7 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
         : {
             to: "/works/$slug",
             params: { slug: hit.slug },
-            search: fileSearch(recallSearch(hit.slug), hit.path),
+            search: fileSearch(recallSearch("atelier", hit.slug), hit.path),
           };
   }
 }
