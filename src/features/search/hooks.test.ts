@@ -21,7 +21,7 @@ const { pending, asked, askedMode } = vi.hoisted(() => ({
    * 그 질의가 **어느 세계를 싣고 나갔는가**. 목적지와 따로 적는 것은 **둘이 따로 눕기**
    * 때문이다 — `run(mode, …)`의 첫 인자만 리터럴로 눕히는 변형은 목적지를 안 건드리므로 위
    * `asked`가 갈린 채 그대로고, 키에는 `mode`가 남아 있어 「세계를 건널 때」도 초록이다.
-   * 그때 Maison에서 누른 ⇧⇧가 Atelier의 works·아카이브를 뒤진다 — 리터럴로 누운 값도 멀쩡한
+   * 그때 Maison에서 누른 ⌘K가 Atelier의 works·아카이브를 뒤진다 — 리터럴로 누운 값도 멀쩡한
    * 인자라 백엔드도 안 나무란다(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다).
    */
   askedMode: new Map<string, string>(),

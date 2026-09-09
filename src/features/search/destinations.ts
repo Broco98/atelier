@@ -9,7 +9,7 @@ import type { Destination } from "./types";
 //
 // 재료는 `@/mode`의 `destinationsOf(mode)` **한 표다.** 한때 여기에 `navItems`에 설정 한 줄을
 // 얹은 배열을 따로 적어 뒀고, 세계가 하나이던 동안에는 그것으로 충분했다. 세계가 둘이 되면서
-// 그 배열은 「Atelier의 것」이 됐다 — 그대로 두면 Maison에서 누른 ⇧⇧에도 `Projects`가 서고
+// 그 배열은 「Atelier의 것」이 됐다 — 그대로 두면 Maison에서 누른 ⌘K에도 `Projects`가 서고
 // (그 세계에 프로젝트는 없다 — 결정 17), 고른 줄이 Atelier 주소로 데려간다.
 //
 // **설정 한 줄을 얹는 자리는 계속 그 표 안이다**(`mode.ts`의 `SETTINGS_PLACE`). 「사이드바

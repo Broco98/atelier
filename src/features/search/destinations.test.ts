@@ -45,7 +45,7 @@ describe("설정은 nav 줄에 없고 팔레트에는 있다", () => {
 
 describe("목적지는 그 세계의 것뿐이다", () => {
   // 결정 17. **Maison에 프로젝트는 없다** — 그 세계에서 `Projects`가 목록에 서면 뜨는데 갈
-  // 곳이 없는 줄이 되고, 갈 곳을 지어내면 ⇧⇧ 한 번에 세계를 떠난다. 양쪽을 함께 못 박는다:
+  // 곳이 없는 줄이 되고, 갈 곳을 지어내면 ⌘K 한 번에 세계를 떠난다. 양쪽을 함께 못 박는다:
   // 「Maison에 없다」만 세우면 목적지 표가 통째로 비어도 초록이다.
   it("Projects는 Atelier에만 있다", () => {
     expect(destinationsFor("maison").map(({ key }) => key)).not.toContain("projects");

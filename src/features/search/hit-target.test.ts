@@ -211,7 +211,7 @@ describe("Maison에서 고른 줄이 가는 곳", () => {
       to: "/settings",
     });
     // **Maison에 프로젝트는 없다**(결정 17). 그 줄이 오는 것은 계약이 깨진 것이고, 그때
-    // 갈 곳을 지어내면 ⇧⇧ 한 번에 세계를 떠난다.
+    // 갈 곳을 지어내면 ⌘K 한 번에 세계를 떠난다.
     expect(hitTarget("maison", { kind: "destination", key: "projects" })).toBeNull();
   });
 

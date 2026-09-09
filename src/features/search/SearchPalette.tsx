@@ -332,7 +332,7 @@ export function SearchList({
  *
  * **어느 세계인지를 받아서 안다**(결정 1). 스스로 주소를 보고 `modeOf`로 되짚지 않는 이유는
  * `/settings`가 세계 밖이기 때문이다 — 접두사가 없어 그 주소는 늘 Atelier로 눕고, 그러면
- * Maison에서 설정을 열어 둔 채 누른 ⇧⇧만 저쪽 세계를 뒤진다. 셸이 이미 그 합성을 들고 있어
+ * Maison에서 설정을 열어 둔 채 누른 ⌘K만 저쪽 세계를 뒤진다. 셸이 이미 그 합성을 들고 있어
  * (`AppShell.tsx`의 `shellMode`) 여기서 다시 구독할 이유도 없다.
  */
 function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
