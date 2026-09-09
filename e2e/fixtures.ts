@@ -212,16 +212,13 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
-  // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
-  // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
-  //
-  // 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 —
-  // 여기서 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도
-  // 그것뿐이다(진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
   // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
-  pty_spawn: { id: 1, shellName: "zsh" },
+  // **`pty_spawn`은 여기 없다** — 셸이 뜰 때 세계가 함께 나가므로(결정 10) 아래
+  // `FIXTURE_BY_MODE`가 든다. 이 줄을 되돌리면 `mode`를 빠뜨린 spawn이 이름으로 답을
+  // 받아, Maison 터미널이 Atelier 홈에서 뜨는 것을 이 층이 통째로 못 본다.
+
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,
@@ -367,12 +364,35 @@ export interface ModeAnswer {
  * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
  * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
  *
- * **여기 있는 커맨드가 둘뿐인 것은 지금 태우는 것이 둘뿐이기 때문이다.** 모드를 인자로
+ * **여기 있는 커맨드가 셋뿐인 것은 지금 태우는 것이 셋뿐이기 때문이다.** 모드를 인자로
  * 받는 커맨드는 더 있지만(아카이브 셋·쓰기들), 그 화면을 Maison에서 여는 시나리오가 아직
  * 없다 — 그 판이 이리로 옮긴다.
  */
 export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
   list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
+  /**
+   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
+   * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면
+   * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.
+   *
+   * 이 줄이 사는 이유는 **fail-closed 하나다.** 백엔드에서 `mode`가 선택 인자라(`or_atelier`)
+   * 빠뜨린 spawn은 오류 없이 Atelier 홈에서 뜨고 셸 env도 `atelier`가 된다 — 이름으로 답하는
+   * 표에 두면 이 층은 그때도 조용히 초록이다. 여기 있으면 하네스가 그 자리에서 문다.
+   *
+   * 그래서 **어느 모드가 실렸는지**까지는 이 표가 못 본다. 그 값을 읽는 자리는 IPC 기록이고
+   * (`terminal-worlds.spec.ts`), 셸 env까지 실물로 잇는 자리는 `src-tauri/tests/top_terminal.rs`다.
+   *
+   * 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 — 여기서
+   * 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도 그것뿐이다
+   * (진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
+   *
+   * 두 칸이 다 태워진다: Atelier는 work 화면의 터미널 열(결정 87)과 `/terminal`이,
+   * Maison은 `/maison/terminal`이 지난다.
+   */
+  pty_spawn: {
+    atelier: { value: { id: 1, shellName: "zsh" } },
+    maison: { value: { id: 1, shellName: "zsh" } },
+  },
   read_spec_file: {
     atelier: { value: SPEC_FALLBACK_BODY, arg: "path", answers: SPEC_FILE_BODIES },
     // 폴백이 없다 — 위 `SPEC_FALLBACK_BODY` 머리말의 이유다. Room이 자기 목록에 없는 문서를

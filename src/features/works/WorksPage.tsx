@@ -30,6 +30,7 @@ import {
   activeIdOf,
   closesShellFromWindow,
   opensShellFromWindow,
+  ownerOf,
   runningShellsOf,
   sameScreen,
   shellForNav,
@@ -71,7 +72,7 @@ import {
 } from "./hooks";
 import { STATUS_META } from "./status";
 import { emptyScreenCopy } from "./work-sections";
-import type { ShellsState, ShellTally } from "@/features/terminal/shell-registry";
+import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
@@ -161,9 +162,12 @@ export function togglesWorkPanel(event: {
  *   여기서 한 번 더 가를 것이 없다.
  * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다.
  *
- * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **소유자를 여기서 한 번 가르기**
- * 위해서다 — `owner`가 `null`이면 그 값은 `shellsOf`의 계약상 최상위 터미널을 가리켜,
- * 고른 작업이 없는 work 화면에서 ⌘W가 **`/terminal`의 셸을 닫는다.**
+ * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
+ * 가르기** 위해서다. 앞 판에는 `owner`가 `null`이면 그 값이 최상위 터미널을 가리켜 고른
+ * 작업이 없는 work 화면의 ⌘W가 **`/terminal`의 셸을 닫았다.** 지금은 소유자가 늘 문자열이라
+ * (`ShellOwner`) 그 사고를 L0가 먼저 막지만, 이 가드가 사라질 이유는 아니다 — 여전히 이
+ * 화면에는 「셸이 설 자리가 없는 상태」가 있고, 그것을 「닫을 것이 없다」로 옮기는 자리가
+ * 여기 하나다.
  *
  * **함수로 꺼낸 이유는 테스트다**(위 `togglesWorkPanel`과 같다). 이 저장소의 컴포넌트
  * seam은 정적 마크업이라 이펙트가 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를
@@ -172,7 +176,7 @@ export function togglesWorkPanel(event: {
  */
 export function shellClosedByTab(
   tab: ViewTab,
-  owner: string | null,
+  owner: ShellOwner | null,
   state: ShellsState,
 ): number | null {
   if (tab !== "terminal" || owner === null) return null;
@@ -342,7 +346,11 @@ function WorksPage({
    * **`tabOwner`가 위에 있어야 한다.** 비교 함수가 그것을 닫아 잡는데 그 함수는 `useStore`
    * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다.
    */
-  const tabOwner = panelWork?.slug ?? null;
+  // **세계가 실린 키다**(결정 10). 두 루트에 같은 slug가 설 수 있어 slug만으로는 Atelier의
+  // `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
+  // `null`은 그대로 **「고른 작업이 없다」**이지 최상위 터미널이 아니다 — 아래
+  // `shellClosedByTab`의 머리말이 그 갈래를 든다.
+  const tabOwner = panelWork ? ownerOf(mode, panelWork.slug) : null;
   const shellState = useStore(
     terminalStore,
     (whole) => whole,
@@ -366,14 +374,14 @@ function WorksPage({
       e.preventDefault();
       // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
       // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
-      const origin = panelWork && workShellOrigin(panelWork, null);
+      const origin = panelWork && workShellOrigin(mode, panelWork, null);
       if (!origin) return;
       openNewShell(origin);
       onSelectTab("terminal");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab]);
+  }, [mode, panelWork, onSelectTab]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
@@ -395,14 +403,18 @@ function WorksPage({
       if (!nav || !panelWork) return;
       e.preventDefault();
       const state = terminalStore.state;
-      const shells = shellsOf(state, panelWork.slug);
+      // 위 `tabOwner`와 **같은 값**인데 거기서 못 받는다 — 그쪽은 `ShellOwner | null`이라
+      // 여기서 다시 좁혀야 하고, 좁히는 가드가 「고른 작업이 없다」와 겹쳐 뜻이 흐려진다.
+      // 짓는 함수가 하나(`ownerOf`)라 두 값이 갈릴 수는 없다.
+      const owner = ownerOf(mode, panelWork.slug);
+      const shells = shellsOf(state, owner);
       // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
       // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
       if (nav.kind === "index" && nav.n === 1) {
         onSelectTab("spec");
         return;
       }
-      const next = shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2);
+      const next = shellForNav(shells, activeIdOf(state, owner), nav, 2);
       if (next !== null) {
         selectShell(next);
         onSelectTab("terminal");
@@ -410,7 +422,7 @@ function WorksPage({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab]);
+  }, [mode, panelWork, onSelectTab]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -473,7 +485,7 @@ function WorksPage({
   const header = panelWork ? (
     <ShellTabs
       state={shellState}
-      owner={panelWork.slug}
+      owner={ownerOf(mode, panelWork.slug)}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
@@ -496,7 +508,7 @@ function WorksPage({
       onOpen={(project) => {
         // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
         // 본문을 옮기지도 않는다(결정 24). ⌘T가 위에서 같은 규칙을 탄다.
-        const origin = workShellOrigin(panelWork, project);
+        const origin = workShellOrigin(mode, panelWork, project);
         if (!origin) return;
         openNewShell(origin);
         onSelectTab("terminal");
@@ -588,9 +600,10 @@ function WorksPage({
     />
   ) : (
     // 고른 작업이 없으면 **칸이 설 자리가 없다** — 문서도 셸도 없는 화면이라 탭 줄 대신
-    // 화면 이름만 이고 선다. 여기에 탭 줄을 세우면 `owner`가 `null`이 되는데 그 값은
-    // `shellsOf`의 계약상 **최상위 터미널**을 가리켜, `/terminal`의 셸이 이 줄에 서고
-    // `+`는 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
+    // 화면 이름만 이고 선다. 세울 소유자 자체가 없다: 그 값은 work의 slug에서 나오는데
+    // (`ownerOf(mode, …)`) 고른 작업이 없으면 그 자리가 비고, 뒤가 빈 키는 **그 세계의
+    // 최상위 터미널**이라 `/terminal`의 셸이 이 줄에 서게 된다. `+`도 열 자리가 없어
+    // 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
     <PageHeader root="Works" inset={!sidebarOpen} />
   );
 
@@ -646,17 +659,17 @@ function WorksPage({
    * 개수는 셸을 열고 닫을 때만 바뀐다.
    */
   const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, panelWork.slug).length : 0,
+    panelWork ? shellsOf(state, ownerOf(mode, panelWork.slug)).length : 0,
   );
-  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
+  const tally = useRef<ShellTally>({ owner: tabOwner, count: shellCount });
   useEffect(() => {
-    const now = { owner: panelWork?.slug ?? null, count: shellCount };
+    const now = { owner: tabOwner, count: shellCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
     // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
     // 화면에서 아무것도 안 바뀌어야 한다.
     if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
-  }, [shellCount, panelWork, tab, split, changeSplit]);
+  }, [shellCount, tabOwner, tab, split, changeSplit]);
 
   // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
@@ -700,7 +713,7 @@ function WorksPage({
       kind="terminal"
       // 탭 줄의 셸 칸과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
       // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
-      label={<ShellHeadName owner={terminalWork.slug} />}
+      label={<ShellHeadName owner={ownerOf(mode, terminalWork.slug)} />}
       closeLabel="terminal 열 닫기"
       onClose={() => changeSplit(null, otherTab("terminal"))}
     />
@@ -724,7 +737,7 @@ function WorksPage({
   const terminalBody = terminalWork && (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21). */}
-      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </div>
   );
 
@@ -770,7 +783,7 @@ function WorksPage({
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
           자리만 새로 잡힌다(결정 20·21). */}
-      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </main>
   ) : specBody ? (
     specBody
@@ -1191,7 +1204,9 @@ function WorkMenu({
   // 끝난 칸과 못 뜬 칸은 세지 않는다 — 그 칸들은 남아 있지만 죽일 프로세스가 없어서,
   // 함께 세면 "셸 2개가 닫혀요"라고 해놓고 실제로는 하나만 끝난다. **거두는 것은 그래도
   // 전부다**(아래): Work가 사라지는데 그 Work를 가리키는 칸만 남으면 닫을 길이 없다.
-  const liveShells = useStore(terminalStore, (state) => runningShellsOf(state, work.slug));
+  const liveShells = useStore(terminalStore, (state) =>
+    runningShellsOf(state, ownerOf(mode, work.slug)),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -1246,7 +1261,7 @@ function WorkMenu({
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
-    closeShellsOf(work.slug);
+    closeShellsOf(ownerOf(mode, work.slug));
   };
 
   // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면

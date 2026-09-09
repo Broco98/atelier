@@ -101,7 +101,7 @@ describe("Tauri 명령 배선", () => {
   // (L4는 이 목록이 없다 — `plugin:` 접두사가 아닌 것은 전부 다리로 가므로 낡을 자리가 없다.)
   //
   // **세 표를 다 본다.** 이름으로만 갈리지 않는 커맨드는 저쪽 표에만 있는 것이 있어
-  // (아카이브 둘은 `FIXTURE_BY_ARG`에만, 모드로 갈리는 둘은 `FIXTURE_BY_MODE`에만),
+  // (아카이브 둘은 `FIXTURE_BY_ARG`에만, 모드를 함께 보는 것들은 `FIXTURE_BY_MODE`에만),
   // 한 표만 보면 그쪽이 이 검사의 눈 밖으로 통째로 빠진다.
   it("L3 하네스가 답하는 커맨드는 전부 등록돼 있다", () => {
     const tables = { FIXTURE_COMMANDS, FIXTURE_BY_ARG, FIXTURE_BY_MODE };
@@ -117,9 +117,10 @@ describe("Tauri 명령 배선", () => {
     expect(stale, "하네스의 고정 데이터가 등록부에 없는 이름을 답하고 있다").toEqual([]);
   });
 
-  // 데스크톱 명령은 **어떤 테스트도 본문을 실행하지 않는다** — src-tauri의 테스트 수는 0이고,
-  // 위 두 검사는 이름만 본다. 두 줄짜리 위임 함수를 위해 크레이트에 테스트 하네스를 세우는
-  // 것은 비례하지 않으므로, 배선 사실로서 여기에 건다(이 파일이 이미 하는 일과 같은 종류다).
+  // 데스크톱 명령의 **본문을 실행하는 테스트는 없다** — 위 두 검사는 이름만 보고, src-tauri의
+  // 통합 테스트(`tests/top_terminal.rs`)는 커널(`pty::spawn`)을 직접 불러 이 위임 층을 지나지
+  // 않는다. 두 줄짜리 위임 함수를 위해 크레이트에 `tauri::State` 하네스를 세우는 것은
+  // 비례하지 않으므로, 배선 사실로서 여기에 건다(이 파일이 이미 하는 일과 같은 종류다).
   //
   // 걸어야 하는 이유: `false` → `true` 한 글자가 뒤집히면 ⋯ 메뉴의 "삭제"가 dirty 검사를
   // 통째로 건너뛰고 커밋 안 된 변경을 워크트리째 지운다. 확인 다이얼로그는 그렇게 된다고
@@ -131,5 +132,28 @@ describe("Tauri 명령 배선", () => {
     expect(call, "commands.rs에서 remove_work 호출을 찾지 못했다").not.toBeNull();
     const force = call![1].split(",").pop()!.trim();
     expect(force).toBe("false");
+  });
+
+  // 결정 10 — **셸이 뜨는 순간의 세계가 커널까지 그대로 간다.** 이 두 줄이 이 사슬에서
+  // 아무도 안 보는 유일한 칸이다: 프런트가 인자에 싣는 것은 `features/terminal/api.test.ts`가,
+  // 그 값이 셸 env(`ATELIER_MODE`)와 cwd를 정하는 것은 `src-tauri/tests/top_terminal.rs`가
+  // 살아 있는 셸로 잰다 — 그런데 뒤엣것은 `pty::spawn`을 직접 부르므로 이 위임을 건너뛴다.
+  //
+  // 걸어야 하는 이유: 여기서 `or_atelier(mode)`가 `Mode::Atelier`로 굳어도 **양쪽이 그대로
+  // 초록이고** 화면에도 오류가 안 난다. Maison 터미널이 Atelier 홈에서 뜨고 그 셸에서 띄운
+  // claude가 저쪽 세계의 목록을 보는데, 그 사실이 어디에도 안 남는다.
+  //
+  // 두 번째 인자를 **글자 그대로** 견준다. 「`mode`가 들어 있나」로 느슨하게 두면 상수를
+  // 박은 갈래가 통과할 수 있고(`Mode::Maison`도 그 물음에는 답한다), 이 검사가 지키는 것은
+  // 「인자에서 온다」 하나다. 호출을 못 찾으면 던진다 — 조용히 통과하는 소스 스캔은 그물이
+  // 아니다.
+  it("셸을 띄우는 명령은 받은 모드를 커널에 그대로 넘긴다", () => {
+    const source = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
+    // 인자 안에 `or_atelier(mode)`처럼 괄호가 한 겹 들어가므로 그만큼은 허용해야 한다
+    // (위 remove_work 검사와 같은 모양).
+    const call = source.match(/pty::spawn\(((?:[^()]|\([^()]*\))*)\)/);
+    expect(call, "commands.rs에서 pty::spawn 호출을 찾지 못했다").not.toBeNull();
+    const mode = call![1].split(",")[1]?.trim();
+    expect(mode).toBe("or_atelier(mode)");
   });
 });

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import TerminalPane from "./TerminalPane";
-import { markExited, MAX_SHELLS, NO_SHELLS, openShell } from "./shell-registry";
+import { markExited, MAX_SHELLS, NO_SHELLS, openShell, topTerminal } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
 
 // 터미널 본문의 **자리**만 본다. 정적 렌더라 이펙트가 안 돌아 xterm은 서지 않고, 셸도
@@ -13,13 +13,17 @@ describe("터미널 본문의 자리", () => {
   // 스토어는 모듈 싱글턴이라 이 파일 안에서 새어 나간다. 비우고 나간다.
   afterEach(() => terminalStore.setState(() => NO_SHELLS));
 
-  const html = () => renderToStaticMarkup(<TerminalPane work={null} />);
+  // `work={null}` + Atelier = **Atelier의 최상위 터미널**이다(결정 10). 세계가 갈리는 것을
+  // 이 seam에서는 못 본다(스토어가 모듈 싱글턴이라 두 번 그려도 같은 상태다) — 그 짝은
+  // `shell-registry.test.ts`의 `topTerminal` 검사가 값으로 든다.
+  const TOP = topTerminal("atelier");
+  const html = () => renderToStaticMarkup(<TerminalPane mode="atelier" work={null} />);
   const classesOf = (found: RegExpExecArray | null) => (found?.[1] ?? "").split(/\s+/);
   const padding = (classes: string[]) => classes.filter((one) => /^p[xytblr]?-/.test(one));
 
   /** 셸 하나를 띄운 화면. 돌려주는 것은 그 칸의 번호다 — 죽이는 쪽이 쓴다. */
   const openOne = () => {
-    const opened = openShell(NO_SHELLS, { owner: null, project: null, cwd: null });
+    const opened = openShell(NO_SHELLS, TOP);
     if (!opened) throw new Error("셸을 못 열었다");
     terminalStore.setState(() => opened.state);
     return opened.id;
@@ -100,7 +104,12 @@ describe("터미널 본문의 자리", () => {
     // 잠갔는데, 그때 이 화면에 보이는 것은 셸 0개 + 잠긴 `+`뿐이라 왜 잠겼는지가 없었다.
     let state = NO_SHELLS;
     for (let n = 0; n < MAX_SHELLS; n += 1) {
-      const opened = openShell(state, { owner: "남", project: null, cwd: null });
+      const opened = openShell(state, {
+        mode: "atelier",
+        owner: "atelier:남",
+        project: null,
+        cwd: null,
+      });
       if (!opened) throw new Error(`셸 ${MAX_SHELLS}개를 못 채웠다`);
       state = opened.state;
     }

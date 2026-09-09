@@ -1,12 +1,25 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Mode } from "@/mode";
 import type { PtyFrame, PtyRunning, PtySpawned } from "./types";
 
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
+//
+// **모드를 싣는 것은 `spawn` 하나다**(결정 10). 나머지 넷은 이미 뜬 셸을 id로 가리키고 그
+// 셸의 세계는 뜰 때 pty에 굳는다 — `commands.rs`가 같은 이유를 같은 말로 적어 두었고,
+// 인자를 더하면 「id와 모드가 어긋나면 어느 쪽이 이기나」라는 답 없는 갈래가 생긴다.
+//
+// **인자 객체가 평평해야 한다.** `tauri-commands.test.ts`의 인자 대조가 중첩 `{}`를 만나면
+// 그 호출을 통째로 못 보고 넘어간다(`features/works/api.ts`가 같은 이유를 적어 뒀다).
 export const terminalApi = {
-  spawn: (cwd: string | null, cols: number, rows: number, onFrame: Channel<PtyFrame>) =>
-    invoke<PtySpawned>("pty_spawn", { cwd, cols, rows, onFrame }),
+  spawn: (
+    mode: Mode,
+    cwd: string | null,
+    cols: number,
+    rows: number,
+    onFrame: Channel<PtyFrame>,
+  ) => invoke<PtySpawned>("pty_spawn", { mode, cwd, cols, rows, onFrame }),
   write: (id: number, data: string) => invoke<void>("pty_write", { id, data }),
   resize: (id: number, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),

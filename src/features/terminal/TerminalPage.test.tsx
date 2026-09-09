@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import TerminalPage from "./TerminalPage";
-import { NO_SHELLS, openShell, setTitle } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import { NO_SHELLS, openShell, ownerOf, setTitle, topTerminal } from "./shell-registry";
+import type { ShellOwner, ShellsState } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
 
 // 최상위 터미널의 머리행 — **탭 줄이다**(결정 8 · adr-03). work 화면과 **같은 컴포넌트**를
@@ -20,8 +20,13 @@ describe("최상위 터미널의 머리행", () => {
   // 스토어는 모듈 싱글턴이라 이 파일 안에서 새어 나간다. 비우고 나간다.
   afterEach(() => terminalStore.setState(() => NO_SHELLS));
 
+  // **어느 세계의 최상위인가**가 이 화면의 소유자를 정한다(결정 10). 여기서는 Atelier로
+  // 고정해 두고, 「그 값이 실제로 `mode`에서 나오는가」는 아래 소스 스캔이 리터럴로 든다 —
+  // 정적 렌더로는 두 세계가 서로 다른 목록을 그리는 것을 못 본다(스토어가 모듈 싱글턴이라
+  // 두 번 그려도 같은 상태를 본다).
+  const TOP = topTerminal("atelier").owner;
   const html = (sidebarOpen: boolean) =>
-    renderToStaticMarkup(<TerminalPage sidebarOpen={sidebarOpen} />);
+    renderToStaticMarkup(<TerminalPage mode="atelier" sidebarOpen={sidebarOpen} />);
   const headerTag = (markup: string) => /<header[^>]*>/.exec(markup)?.[0] ?? null;
 
   /**
@@ -40,12 +45,12 @@ describe("최상위 터미널의 머리행", () => {
       .filter((cell) => cell.kind === "shell")
       .map((cell) => cell.markup);
 
-  /** 셸 몇 개를 띄운 상태. `owner`가 `null`이면 이 화면의 것이다. */
-  function seed(count: number, owner: string | null, from: ShellsState = NO_SHELLS) {
+  /** 셸 몇 개를 띄운 상태. `owner`가 `TOP`이면 이 화면의 것이다. */
+  function seed(count: number, owner: ShellOwner, from: ShellsState = NO_SHELLS) {
     let state = from;
     const ids: number[] = [];
     for (let n = 0; n < count; n += 1) {
-      const next = openShell(state, { owner, project: null, cwd: null });
+      const next = openShell(state, { mode: "atelier", owner, project: null, cwd: null });
       if (!next) throw new Error(`셸 ${count}개를 띄우려 했는데 ${n}개에서 거부됐다`);
       state = next.state;
       ids.push(next.id);
@@ -56,7 +61,7 @@ describe("최상위 터미널의 머리행", () => {
   it("`spec` 칸이 없다 — 셸부터 선다", () => {
     // 결정 8. 이 화면에는 문서가 없다. `spec`이 서면 ⌘1이 가리키는 칸과 화면에 보이는
     // 첫 칸이 어긋나고, 그 순간 이 판이 한 일이 없어진다.
-    terminalStore.setState(() => seed(2, null).state);
+    terminalStore.setState(() => seed(2, TOP).state);
     const markup = html(true);
     expect(kindsOf(markup)).toEqual(["shell", "shell", "new"]);
     // 머리행이 **하나뿐이다** — 브레드크럼(`PageHeader`)이 남아 있으면 층이 둘이 되고,
@@ -66,15 +71,15 @@ describe("최상위 터미널의 머리행", () => {
 
   it("이 화면의 셸만 선다 — work의 셸은 안 온다", () => {
     // `owner`를 잘못 넘기면 남의 work 셸이 이 줄에 서고, `+`가 여는 자리와 칸이 가리키는
-    // 자리가 갈린다. 이 화면의 소유자는 `null`이다(`shellsOf`의 계약).
-    const mine = seed(1, null);
-    terminalStore.setState(() => seed(2, "가", mine.state).state);
+    // 자리가 갈린다. 이 화면의 소유자는 **그 세계의 뒤가 빈 키**다(결정 10).
+    const mine = seed(1, TOP);
+    terminalStore.setState(() => seed(2, ownerOf("atelier", "가"), mine.state).state);
     expect(shellCellsOf(html(true))).toHaveLength(1);
   });
 
   it("칸이 `shellsOf` 순서 그대로 선다 — ⌘1이 첫 칸이다", () => {
     // 화면에 보이는 순서와 ⌘1~9가 고르는 것이 어긋나면 안 된다(판 03의 핵심 증거).
-    const { state, ids } = seed(3, null);
+    const { state, ids } = seed(3, TOP);
     terminalStore.setState(() =>
       ids.reduce((acc, id, at) => setTitle(acc, id, `셸${at + 1}`), state),
     );
@@ -89,7 +94,7 @@ describe("최상위 터미널의 머리행", () => {
     // `showing`은 **본문이 이 화면의 셸을 보여주는가**다(ShellTabs의 그 prop). work 화면은
     // 문서를 읽는 중에 꺼지지만 여기에는 갈아탈 본문이 없어 늘 참이다 — 거짓으로 넘기면
     // 어느 칸이 지금인지가 화면 어디에도 안 남는다(사이드바 가지가 걷혔다 — 결정 6).
-    const { state, ids } = seed(2, null);
+    const { state, ids } = seed(2, TOP);
     terminalStore.setState(() => state);
     const cells = shellCellsOf(html(true));
     // 마지막에 연 칸이 켜진 칸이다(`openShell`이 그렇게 앉힌다).
@@ -108,7 +113,7 @@ describe("최상위 터미널의 머리행", () => {
   it("창을 끌 수 있다", () => {
     // 이 화면 맨 위가 이 줄이다. 없으면 창이 아예 안 끌린다 — `PageHeader`가 지고 있던 몫을
     // 그대로 물려받는다(ShellTabs 머리말).
-    terminalStore.setState(() => seed(1, null).state);
+    terminalStore.setState(() => seed(1, TOP).state);
     expect(headerTag(html(true))).toContain("data-tauri-drag-region");
   });
 
@@ -129,8 +134,11 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   it("⌘1이 첫 셸이다 — 화면마다 갈리는 것은 `firstKey` 하나다", () => {
     // 결정 8·78. work 화면은 ⌘1이 spec이라 `firstKey`가 2이고 여기는 1이다. 그 어긋남을
     // `shellForNav`가 인자 하나로 받으므로 **판정을 두 벌로 만들지 않는다.**
-    expect(source).toContain("const shells = shellsOf(state, null);");
-    expect(source).toContain("shellForNav(shells, activeIdOf(state, null), nav, 1)");
+    // **조회하는 소유자가 `mode`에서 나와야 한다**(결정 10) — 한쪽 세계로 박으면
+    // `/maison/terminal`이 Atelier 최상위의 셸을 세고 고른다.
+    expect(source).toContain("const owner = ownerOf(mode);");
+    expect(source).toContain("const shells = shellsOf(state, owner);");
+    expect(source).toContain("shellForNav(shells, activeIdOf(state, owner), nav, 1)");
     // work 화면의 spec 갈래가 여기 살면 ⌘1이 아무 데도 안 간다 — 이 화면에는 그 칸이 없다.
     expect(source).not.toMatch(/nav\.kind === "index" && nav\.n === 1/);
   });
@@ -138,7 +146,7 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   it("⌘W가 이 화면의 켜진 칸을 닫는다", () => {
     // 결정 13. 겨눌 칸이 화면에 서게 된 것이 이 키를 window에서 듣는 근거다(adr-03).
     expect(source).toContain("if (!closesShellFromWindow(e)) return;");
-    expect(source).toContain("const id = activeIdOf(terminalStore.state, null);");
+    expect(source).toContain("const id = activeIdOf(terminalStore.state, owner);");
     // **확인 창을 우회하는 길을 새로 만들지 않는다**(결정 92). 탭의 `×`도 같은 함수로 온다.
     expect(source).toContain("void requestCloseShell(id);");
     expect(source).toContain("onClose={requestCloseShell}");
@@ -166,6 +174,6 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
     // 읽는 것은 그 줄이 **앱 전체** 상한을 세야 해서이고(결정 30), 다시 그릴지는
     // `sameScreen`가 가른다 — 소유자를 잘못 넘기면 남의 work 타이틀마다 이 화면이 다시
     // 그려지거나(넓게) 이 화면의 칸이 아예 안 갱신된다(엉뚱한 가지).
-    expect(source).toContain("(a, b) => sameScreen(a, b, null),");
+    expect(source).toContain("(a, b) => sameScreen(a, b, owner),");
   });
 });

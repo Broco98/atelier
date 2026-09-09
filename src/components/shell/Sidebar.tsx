@@ -3,7 +3,13 @@ import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
-import { runningAgentsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import {
+  ownerOf,
+  runningAgentsOf,
+  shellCountsOf,
+  shellsOf,
+} from "@/features/terminal/shell-registry";
+import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItemsOf, type Mode } from "@/mode";
 import { ModeSwitch } from "./ModeSwitch";
@@ -57,10 +63,15 @@ function Sidebar({
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
-  const shellCounts = useStore(terminalStore, shellCountsOf, shallow);
+  // **이 세계의 것만 센다**(결정 10). 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한
+  // 루트 쌍 안에서만 본다) 안 거르면 저쪽 세계의 셸이 이 행의 숫자에 얹힌다. 키가 slug인
+  // 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
+  const shellCounts = useStore(terminalStore, (state) => shellCountsOf(state, mode), shallow);
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
-  const topShells = useStore(terminalStore, (state) => shellsOf(state, null).length);
+  // **그 세계의 최상위다** — 세계마다 화면이 하나씩이라(`/terminal`·`/maison/terminal`)
+  // 소유자도 갈린다(결정 10).
+  const topShells = useStore(terminalStore, (state) => shellsOf(state, ownerOf(mode)).length);
 
   return (
     <aside
@@ -130,7 +141,9 @@ function Sidebar({
               // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
               // 선다」도 슬롯 안으로 내려갔다.
               meta={
-                item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null
+                item.key === "terminal" ? (
+                  <ShellMetaFor owner={ownerOf(mode)} shellCount={topShells} />
+                ) : null
               }
             />
           ))}
@@ -148,7 +161,10 @@ function Sidebar({
           // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
           // 따로인 이유는 `ShellMetaFor`가 든다.
           renderShellMeta={(work) => (
-            <ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
+            <ShellMetaFor
+              owner={ownerOf(mode, work.slug)}
+              shellCount={shellCounts[work.slug] ?? 0}
+            />
           )}
         />
 
@@ -187,11 +203,11 @@ function Sidebar({
  * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
  * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
  *
- * **`owner`가 `null`이면 최상위, 곧 nav `Terminal`이다.** work 행과 nav가 이 컴포넌트
- * **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가 하나」가
- * 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
+ * **소유자의 slug가 비어 있으면 최상위, 곧 nav `Terminal`이다**(결정 10). work 행과 nav가
+ * 이 컴포넌트 **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가
+ * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
+function ShellMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
   return <ShellMeta shellCount={shellCount} running={running} />;
 }
