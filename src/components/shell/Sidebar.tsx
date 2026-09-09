@@ -13,7 +13,7 @@ import { signalsByOwner, topSignalView } from "@/features/terminal/shell-attenti
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { navItems, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
-import { SignalLine } from "./shell-signal";
+import { SignalLine, showsElapsed } from "./shell-signal";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -108,7 +108,7 @@ function Sidebar({
               // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
               // 선다」도 슬롯 안으로 내려갔다.
               meta={
-                item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null
+                item.key === "terminal" ? <SubrowFor owner={null} shellCount={topShells} /> : null
               }
             />
           ))}
@@ -121,10 +121,10 @@ function Sidebar({
           // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
           // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
           // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
-          // 따로인 이유는 `ShellMetaFor`가 든다.
+          // 따로인 이유는 `SubrowFor`가 든다.
           signals={signals}
-          renderShellMeta={(work) => (
-            <ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
+          renderSubrow={(work) => (
+            <SubrowFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
           )}
         />
 
@@ -156,8 +156,8 @@ function Sidebar({
  *
  * **그 갈래가 이 판에서 둘이 됐다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크·message·경과)
  * 이고, 아니면 지금까지처럼 종류·수다. 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을
- * 둘로 나누면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다. 이름은 그대로 두되
- * (부르는 자리가 셋이고 그중 둘을 검사가 리터럴로 못박는다) 하는 일은 이 문단이 적는다.
+ * 둘로 나누면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다. 이름이 `ShellMetaFor`
+ * 가 아닌 것은 그 때문이다: 이제 이 자리가 고르는 것은 셸 메타가 아니라 **둘째 줄 전체**다.
  *
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
@@ -173,7 +173,7 @@ function Sidebar({
  * **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가 하나」가
  * 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
+function SubrowFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
   // **둘째 줄의 나머지 셋**(말·시각·마크, #203). 위 Record에 못 태우는 것은 문자열 하나로
   // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
@@ -184,8 +184,10 @@ function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount:
   // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`).
   const signal = useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow);
   // 경과는 시각이 아니라 **지금과의 차**라 아무도 안 건드려도 늙는다. 도는 중과 조용한
-  // 셸에는 경과가 안 붙으므로(결정 13) 그때는 시계도 안 돈다.
-  const now = useNow(signal !== null && signal.kind !== "working");
+  // 셸에는 경과가 안 붙으므로(결정 13) 그때는 시계도 안 돈다 — 그 판정을 여기서 다시 적지
+  // 않고 그리는 쪽과 **같은 함수**를 딛는다(`showsElapsed`). 규칙이 바뀌는 날 한쪽만 고치면
+  // 값이 조용히 늙거나, 아무도 안 읽는 시계가 열여덟 행에서 돈다.
+  const now = useNow(signal !== null && showsElapsed(signal.kind));
 
   if (signal !== null) {
     return (
@@ -213,7 +215,14 @@ function rowSignalOf(state: ShellsState, owner: string | null) {
   return owner === null ? null : topSignalView(shellsOf(state, owner));
 }
 
-/** 경과를 다시 그리는 주기. **1분보다 성기다** — 적히는 것이 분 단위다(`s`는 첫 1분뿐). */
+/**
+ * 경과를 다시 그리는 주기.
+ *
+ * **첫 1분의 `s`가 반 칸 넘게 늙지 않는 값이다.** 적히는 것은 대개 분 단위라(`s`는 첫 1분뿐)
+ * 그 뒤로는 60초여도 충분하지만, 갓 부른 행이 `0s`에 59초 동안 앉아 있으면 「방금 불렀나」가
+ * 거짓이 된다 — 가장 자주 보는 순간이 그 첫 1분이다. 두 배로 촘촘하게 도는 대가는 행마다
+ * 30초에 한 번의 리렌더이고, 그것도 **부르는 행에만** 붙는다(`useNow`).
+ */
 const ELAPSED_TICK = 30_000;
 
 /**

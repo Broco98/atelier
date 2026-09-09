@@ -82,6 +82,7 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
       since: 100,
       seen: false,
       source: "hook",
+      agent: "claude",
     });
     // **먼저 실제로 달라졌는가** — 이것이 없으면 아래 「같다」가 「아무 일도 안 났다」로도 초록이다.
     expect(signalsByOwner(뒤)).toEqual({ 나: "waiting" });
@@ -161,7 +162,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 함께 가야 하는 것은 「그 밖의 셸」의 수가 셸 수와 도는 것을 **둘 다 아는 자리**에서만
     // 나오기 때문이고(결정 3), 그 자리가 `ShellMeta` 하나다.
     expect(sidebar).toContain(
-      "<ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />",
+      "<SubrowFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />",
     );
   });
 });
@@ -206,7 +207,7 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
     // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
     expect(sidebar).toContain(
-      'item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null',
+      'item.key === "terminal" ? <SubrowFor owner={null} shellCount={topShells} /> : null',
     );
   });
 });

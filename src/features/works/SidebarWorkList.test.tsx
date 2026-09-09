@@ -50,14 +50,15 @@ function render(
     // 화면값은 **문자열 Record**로 내려온다(#203) — 값을 고르는 자리는 Sidebar이고 이
     // 목록은 터미널을 모른다(아래 계약). 여기서 보는 것은 그 값이 레인과 이름에 닿는가다.
     signals = {},
-    // 둘째 줄의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
-    // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
-    renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
+    // 셸이 있는 행의 둘째 줄은 슬롯으로 온다 — 그리는 것은 `components/shell`의 `ShellMeta`
+    // 나 `SignalLine`이고(#203) 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은
+    // **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
+    renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
-    renderShellMeta?: (work: WorkView) => ReactNode;
+    renderSubrow?: (work: WorkView) => ReactNode;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -72,7 +73,7 @@ function render(
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
-      renderShellMeta={renderShellMeta}
+      renderSubrow={renderSubrow}
     />,
   );
 }
@@ -377,13 +378,13 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 생겼다 사라진다. 자리가 서는 조건은 **안 변하는 값**(셸을 포함하는가)이고 변하는
     // 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도 자리는 선다.
     // 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderShellMeta: () => null });
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderSubrow: () => null });
     expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
   it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯이 안 선다", () => {
     // 슬롯을 **부르는** 것은 `SidebarWorkList.tsx`가 모든 work에서 한다 — 여기서 재는 것은
-    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `ShellMetaFor`의 몸통이 안 돌아
+    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `SubrowFor`의 몸통이 안 돌아
     // 구독도 안 붙는다: 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」로 뒤집히는
     // 자리는 마운트다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
@@ -654,7 +655,7 @@ describe("사이드바 목록은 터미널을 모른다", () => {
   it("terminal feature를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가**
     // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 도는 것의
-    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderShellMeta`) 이유가 그것이고,
+    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderSubrow`) 이유가 그것이고,
     // `components/ui/agent-mark`가 `features/terminal`이 아니라 거기 사는 이유도 같다.
     //
     // **주석에 적어도 빨개진다.** 세는 것이 import가 아니라 리터럴이라 그렇고, 그 성질은

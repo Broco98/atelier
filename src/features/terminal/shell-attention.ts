@@ -41,6 +41,17 @@ export interface Attention {
   /** 사람이 그 셸을 본 뒤인가(결정 7). **안 본 완료만** 이 값으로 지워진다. */
   seen: boolean;
   source: AttentionSource;
+  /**
+   * **이 사실을 말한 에이전트**의 이름(`claude`·`codex`). 훅이 준 것 그대로이고, OSC·벨은
+   * 누가 말했는지를 모르므로 `null`이다.
+   *
+   * **둘째 줄의 마크가 이 값에 매달려 있다.** 마크의 재료를 「지금 그 PTY에서 도는 것」에서만
+   * 뽑으면 **초록 행에는 마크가 영영 안 선다** — 초록을 만드는 길 둘(세션 종료 · 벨)이 다
+   * 그 순간 도는 에이전트가 없는 자리이기 때문이다: 세션이 끝났다는 것은 프로세스가 나갔다는
+   * 뜻이라 1초 폴링이 다음 바퀴에 `running`을 눕히고, 벨은 정의상 「아는 마크가 없을 때」만
+   * 초록이 된다. 그래서 「누가 말했나」를 상태가 함께 들고 다닌다.
+   */
+  agent: string | null;
 }
 
 /** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
@@ -77,6 +88,12 @@ export function applySignal(
   signal: AgentSignal,
   at: number,
   source: AttentionSource,
+  /**
+   * 누가 말했나. **넘겨야 하는 자리**라 OSC·벨을 붙이는 쪽(#208)이 「모른다」를 손으로
+   * 적게 된다 — 기본값을 `null`로 두면 훅 길에서 이 값을 빠뜨려도 조용히 통과하고,
+   * 그 결과는 초록 행에서 마크가 사라지는 것뿐이라 화면에서 티가 안 난다.
+   */
+  agent: string | null,
 ): Attention {
   if (prev !== null && prev.source === "hook" && source !== "hook") return prev;
 
@@ -89,10 +106,14 @@ export function applySignal(
     since: at,
     seen: false,
     source,
+    // **직전 것을 이어받지 않는다.** 말을 한 것은 이번에 온 그 이벤트이고, 훅 길에서는 늘
+    // 값이 실려 온다. 이어받으면 OSC가 말한 상태에 옛 훅의 이름이 남아 「이 말은 claude가
+    // 했다」가 거짓이 된다.
+    agent,
   };
 }
 
-/** 다섯 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
+/** 여섯 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
 function same(a: Attention | null, b: Attention | null): boolean {
   if (a === null || b === null) return a === b;
   return (
@@ -100,7 +121,8 @@ function same(a: Attention | null, b: Attention | null): boolean {
     a.message === b.message &&
     a.since === b.since &&
     a.seen === b.seen &&
-    a.source === b.source
+    a.source === b.source &&
+    a.agent === b.agent
   );
 }
 
@@ -122,7 +144,7 @@ export function nextAttention(
   const signal = foldHookState(hook);
   if (signal === null) return prev;
 
-  const next = applySignal(prev, signal, hook.at, "hook");
+  const next = applySignal(prev, signal, hook.at, "hook", hook.agent);
   return same(prev, next) ? prev : next;
 }
 
@@ -182,7 +204,7 @@ export function topSignal(shells: ReadonlyArray<Shell>): ShellSignal | null {
  * 79가 막으려는 것이 그것이라 이기는 셸을 고르는 자리를 여기 하나로 둔다. `topSignal`도
  * 이 함수를 딛는다.
  *
- * **마크의 재료가 `running` 원문인 것**은 표를 아는 자리가 `agentMarkOf` 하나이기 때문이다
+ * **마크의 재료가 원문인 것**은 표를 아는 자리가 `agentMarkOf` 하나이기 때문이다
  * (판 04 결정 15) — 여기서 접으면 그 표가 두 벌이 된다. 죽은 칸을 가리는 것은 `runningOn`이
  * 하므로 끝난 셸의 마지막 로고가 행에 남지 않는다.
  */
@@ -192,7 +214,15 @@ export interface SignalView {
   message: string | null;
   /** 그 사실이 도착한 시각. 둘째 줄의 경과가 이 값을 읽는다. */
   since: number;
-  /** 그 셸에서 도는 것의 **원문**. 마크를 고르는 것은 그리는 쪽이다. */
+  /**
+   * **마크의 재료** — 지금 그 셸에서 도는 것의 원문이고, 그것이 없으면 **이 상태를 말한
+   * 에이전트**다(`Attention.agent`).
+   *
+   * 둘째 갈래가 필요한 이유는 초록이다: 세션 종료도 벨도 그 순간 도는 에이전트가 없어
+   * (`Attention.agent` 머리말) 앞쪽만 보면 초록 행의 둘째 줄이 늘 말과 경과 둘뿐이 된다.
+   * 앞쪽이 이기는 것은 「지금 무엇을 물고 있나」가 더 새로운 사실이기 때문이다 — 훅이
+   * claude라고 말한 뒤 사람이 codex를 띄웠으면 행은 codex를 보여야 한다.
+   */
   running: string | null;
 }
 
@@ -208,12 +238,18 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
   // 여기서 `attention`을 다시 묻는 것이 아니라 **가리는 문을 다시 딛는다** — `signalOf`가
   // 이미 죽은 칸을 걸렀으므로 값이 있는 것은 확실하지만, 그 확신을 단언으로 적어 두면
   // 다음 사람이 위 조건을 넓힐 때 조용히 거짓말이 된다.
+  //
+  // **없으면 줄을 안 그린다.** 한때 여기가 `since: attention?.since ?? 0`이었는데, 그것은
+  // 그 「넓히는 날」에 행이 1970년부터의 경과(`497000h` 꼴)를 조용히 그리는 fail-open이다 —
+  // 사람이 읽는 글자라 틀린 값이 그대로 뜻이 된다. 단언 없이 문을 닫으면 그때 무너지는
+  // 쪽이 「아무것도 안 그린다」가 된다.
   const attention = attentionOn(top.shell);
+  if (attention === null) return null;
   return {
     kind: top.kind,
-    message: attention?.message ?? null,
-    since: attention?.since ?? 0,
-    running: runningOn(top.shell),
+    message: attention.message,
+    since: attention.since,
+    running: runningOn(top.shell) ?? attention.agent,
   };
 }
 

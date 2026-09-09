@@ -482,16 +482,30 @@ const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
     배경.evaluate((el) => getComputedStyle(el).backgroundColor),
   ]).then(([앞, 뒤]) => 색대비(page, 앞, 뒤));
 
-test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 두 갈래, 라이트·다크", async ({
+/** 다크·라이트 팔레트를 손으로 갈아 끼운다 — 앱에 아직 켜는 손잡이가 없다. */
+const 팔레트 = (page: Page, dark: boolean) =>
+  page.evaluate(
+    (dark) => document.documentElement.classList.toggle("dark", dark),
+    dark,
+  );
+
+test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 세 갈래, 라이트·다크", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  // **셸이 있는 행과 없는 행을 함께 본다.** 둘째 줄은 갈래가 둘이고(종류·수 / 프로젝트
-  // 이름) 색을 정하는 자리도 둘이다 — `SidebarWorkList.tsx`의 상자가 바닥을 깔고,
-  // `ShellMeta` 안쪽이 그 위에서 자기 색을 다시 고른다. 프로젝트 갈래만 재면 **가장 자주
-  // 서는 갈래**가 통째로 안 재어진 채 남는다: 셸은 열려 있는데 우리가 아는 것은 안 도는
-  // 상태가 이 목록의 기본값이고(`shell-meta.tsx`), 그 행의 둘째 줄에 서는 것은 `⌨ N`뿐이다.
-  // 셸이 서는 것은 work 화면뿐이라(`ensureShell`) 여기로 들어온다.
+  // **셸이 있는 행과 없는 행을 함께 본다.** 둘째 줄은 갈래가 셋이고(종류·수 / 프로젝트
+  // 이름 / 셸이 스스로 한 말) 색을 정하는 자리도 여럿이다 — `SidebarWorkList.tsx`의 상자가
+  // 바닥을 깔고, `ShellMeta`와 `SignalLine` 안쪽이 그 위에서 자기 색을 다시 고른다.
+  // 프로젝트 갈래만 재면 **가장 자주 서는 갈래**가 통째로 안 재어진 채 남는다: 셸은 열려
+  // 있는데 우리가 아는 것은 안 도는 상태가 이 목록의 기본값이고(`shell-meta.tsx`), 그 행의
+  // 둘째 줄에 서는 것은 `⌨ N`뿐이다. 셸이 서는 것은 work 화면뿐이라(`ensureShell`) 여기로
+  // 들어온다.
+  //
+  // **셋째 갈래가 이 판에서 생겼다**(#203). 스토리 24가 이 자리의 수용 기준이고
+  // (「둘째 줄 글자가 지금의 오른쪽 메타보다 또렷하길 원한다 — 자리만 옮기고 읽기 어려움은
+  // 그대로인 일이 없다」), 그 갈래를 그물 밖에 두면 이 판이 고치려던 3.0짜리 한 줄을 이 판이
+  // 다시 만들어도 아무 층도 말하지 않는다. 부르는 말과 **도는 중의 말**을 따로 재는 것은
+  // 색을 고르는 가지가 그 둘로 갈리기 때문이다(`shell-signal.tsx`의 `TONE`).
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   // work 화면은 aside가 둘이다(사이드바 · 작업 패널) — 구획 헤더를 든 쪽이 사이드바다.
@@ -506,29 +520,45 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
   // 재면서 조용히 초록이 되지 않는다.
   const 무리 = page.locator(`[data-shells="${plainWork.slug}"] > span > span`);
   await expect(무리).toHaveCount(1);
+  const 말 = page.locator(`[data-subrow="${plainWork.slug}"] [data-fade]`);
 
   const 배경색 = () => aside.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const 잰다 = async () => ({
+  const 조용한둘 = async () => ({
     프로젝트: await 대비를잰다(page, 프로젝트, aside),
     무리: await 대비를잰다(page, 무리, aside),
   });
+  /** 부르는 말과 도는 중의 말을 **차례로** 세워 각각 잰다. 색을 고르는 가지가 둘이다. */
+  const 말둘 = async (이름: string) => {
+    await 기다리게한다(page, "테스트 셋 통과");
+    await expect(말).toHaveText("테스트 셋 통과");
+    expect(await 대비를잰다(page, 말, aside), `${이름} · 부르는 말`).toBeGreaterThanOrEqual(4.5);
+    // 프롬프트를 보내면 도는 중이 되고 직전 말이 남는다(전이 표의 `start`).
+    await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
+    await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(1);
+    expect(await 대비를잰다(page, 말, aside), `${이름} · 도는 중의 말`).toBeGreaterThanOrEqual(4.5);
+  };
 
   const 라이트 = await 배경색();
-  for (const [자리, 수] of Object.entries(await 잰다())) {
+  for (const [자리, 수] of Object.entries(await 조용한둘())) {
     expect(수, `라이트 · ${자리}`).toBeGreaterThanOrEqual(4.5);
   }
 
   // 다크 팔레트. 앱에 아직 켜는 손잡이가 없어 클래스를 손으로 붙인다 — `index.css`의
   // `.dark` 블록이 곧 그 팔레트의 정본이다.
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await 팔레트(page, true);
   // **팔레트가 정말 바뀌었는지를 먼저 센다.** `.dark`가 안 먹으면(선택자가 바뀌거나 토큰이
   // 다른 자리로 옮겨 가면) 아래가 라이트 값을 다시 재는데, 라이트는 이미 4.5를 넘으므로
   // **조용히 초록**이 된다 — 이 저장소가 금지하는 fail-open이고, 손잡이가 생기는 날
   // 「이 줄이 그 팔레트를 이미 지키고 있었다」는 말이 그때 처음 거짓으로 드러난다.
   expect(await 배경색()).not.toBe(라이트);
-  for (const [자리, 수] of Object.entries(await 잰다())) {
+  for (const [자리, 수] of Object.entries(await 조용한둘())) {
     expect(수, `다크 · ${자리}`).toBeGreaterThanOrEqual(4.5);
   }
+
+  // **셋째 갈래는 맨 뒤다** — 셸이 말하기 시작하면 종류·수 갈래가 그 행에서 물러난다.
+  await 말둘("다크");
+  await 팔레트(page, false);
+  await 말둘("라이트");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -621,6 +651,12 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
 // 색이고, 점은 3px 후광이 면적을 벌어 그 자리를 메운다. 바닥을 4.5로 올리면 이 검사는
 // **결정을 어기라고 요구하는 검사**가 된다. 초록은 같은 배경에서 4.69다.
 //
+// **그러니 이 바닥은 「통과」가 아니라 「사람이 아직 안 봤다」이다.** 2.9는 기준(그림 요소
+// 3.0)에 못 미치는 것을 **알고** 고정한 값이라, 이 줄이 초록인 것만으로 「앰버가 라이트에서
+// 또렷하다」가 닫히지 않는다 — 그 물음은 `spec/물음-둘째-줄의-색.md`에 열려 있고, 사람이
+// 「점도 한 단 어둡게(`amber-700`, 4.69)」로 정하면 여기 바닥이 3.0 이상으로 올라간다.
+// **말**의 색은 이 물음 밖이다 — 그쪽은 이미 `-ink` 토큰으로 갈라져 4.5를 넘는다(옆 검사).
+//
 // 다크는 둘 다 10을 넘으므로(10.74 · 10.29) 바닥이 4.5여도 여유가 있다 — 그 바닥이 라이트
 // 팔레트가 다크로 새는 갈래를 하나 더 잡는다(그때 초록이 3.57로 떨어진다).
 test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다", async ({ page }) => {
@@ -652,8 +688,19 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
     return { 앰버, 초록: await 점색("done") };
   };
 
+  // **앰버와 초록이 서로 다른가**를 팔레트마다 센다. 대비만 재면 이 축의 핵심 불변조건이
+  // 어느 층에도 안 남는다 — `--signal-done`을 앰버 값으로 갈아 끼워도 라이트 대비는
+  // 2.98 ≥ 2.9로 통과하고 다크 초록은 그대로라 아래 「라이트 색이 그대로다」도 통과하며,
+  // 마크업 seam은 클래스 이름(`bg-wait`/`bg-done`)만 보므로 역시 안 잡는다. 그러면
+  // 「기다림과 안 본 완료가 화면에서 갈린다」(결정 3)가 전 층에서 안 재어진 채 남는다.
+  // 결정 3의 표가 색을 넷으로 못박았으므로 **그 넷이 서로 다른 것 자체가 계약**이고, 그
+  // 논리는 팔레트 사이(아래 「라이트 색이 그대로다」)와 팔레트 안쪽에 똑같이 선다.
+  const 갈렸나 = (색둘: { 앰버: string; 초록: string }, 이름: string) =>
+    expect(색둘.앰버, `${이름} · 앰버와 초록이 같은 색이다`).not.toBe(색둘.초록);
+
   const 라이트배경 = await 배경색();
   const 라이트 = await 점색둘();
+  갈렸나(라이트, "라이트");
   for (const [자리, 색] of Object.entries(라이트)) {
     expect(await 색대비(page, 색, 라이트배경), `라이트 · ${자리}`).toBeGreaterThanOrEqual(2.9);
   }
@@ -664,11 +711,50 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
   const 다크배경 = await 배경색();
   expect(다크배경).not.toBe(라이트배경);
   const 다크 = await 점색둘();
+  갈렸나(다크, "다크");
   for (const [자리, 색] of Object.entries(다크)) {
     expect(await 색대비(page, 색, 다크배경), `다크 · ${자리}`).toBeGreaterThanOrEqual(4.5);
     // **다크는 한 단 밝은 색이다**(결정 3의 표). 라이트 색이 그대로 새면 여기가 터진다.
     expect(색, `다크 · ${자리} — 라이트 색이 그대로다`).not.toBe(라이트[자리 as "앰버" | "초록"]);
   }
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **초록 행의 둘째 줄도 마크·말·경과 셋을 낸다**(티켓 #203 · 구현-스펙의 둘째 줄 규칙).
+//
+// **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록을 만드는 길은 스펙 전이
+// 표에 둘뿐이고(세션 종료 · 벨) **둘 다 그 순간 그 PTY에 도는 에이전트가 없다** — 세션이
+// 끝났다는 것은 프로세스가 나갔다는 뜻이고, 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
+// 그래서 마크를 「지금 도는 것」에서만 뽑으면 초록 행은 **늘** 말과 경과 둘뿐이 되는데,
+// 도는 것을 손으로 넣어 주는 검사는 그 사라짐을 한 번도 못 본다(마크업 seam이 그 모양이다).
+// 목업의 초록 예시가 바로 `codex` 셸의 「PR #174 열었다」라 정본과 화면이 갈리는 자리다.
+test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어도", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  // 턴이 끝나 말이 남고, 그 뒤 세션이 끝난다 — 초록을 만드는 것은 **세션 종료**다.
+  // 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다(둘째 줄의 셋째 조각).
+  await markAttention(page, {
+    agent: "codex",
+    event: "Stop",
+    at: Date.now() - 125_000,
+    payload: { last_assistant_message: "PR #174 열었다" },
+  });
+  await markAttention(page, {
+    agent: "codex",
+    event: "SessionEnd",
+    at: Date.now() - 125_000,
+    payload: {},
+  });
+
+  await expect(레인(page, plainWork.slug).locator('[data-signal="done"]')).toHaveCount(1);
+  await expect(subrow).toHaveText("PR #174 열었다2m");
+  // **이 한 줄이 이 검사의 이유다.** 도는 것이 없으므로 마크의 재료는 「그 상태를 말한
+  // 에이전트」뿐이고, 그것을 상태가 안 들고 다니면 여기서 0이 된다.
+  await expect(subrow.getByRole("img", { name: "codex" })).toHaveCount(1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -1052,7 +1138,7 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   // 부르는 것을 받는 자리는 「확인할 것」 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
   // 세우면 이 행이 work 행의 어휘를 반쯤 흉내 내는 자리가 된다.
   //
-  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`ShellMetaFor`) 그 가름이 빠지기 쉽다 —
+  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`SubrowFor`) 그 가름이 빠지기 쉽다 —
   // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
   await markAttention(page, {
     agent: "claude",

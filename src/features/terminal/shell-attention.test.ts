@@ -133,6 +133,7 @@ const 직전 = {
   since: 1,
   seen: false,
   source: "hook",
+  agent: "claude",
 } as const;
 
 describe("전이 표", () => {
@@ -159,6 +160,9 @@ describe("전이 표", () => {
       since: 10,
       seen: false,
       source: "hook",
+      // **누가 말했는가도 이 표를 함께 탄다** — 이 값이 없으면 초록 행에 마크가 안 선다
+      // (`Attention.agent` 머리말). 훅 길에서는 늘 실린다.
+      agent,
     });
   });
 
@@ -170,6 +174,7 @@ describe("전이 표", () => {
       since: 10,
       seen: false,
       source: "hook",
+      agent: "claude",
     });
   });
 
@@ -211,34 +216,47 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     since: 100,
     seen: false,
     source: "hook",
+    agent: "claude",
   };
 
   it.each(["osc", "bell"] as const)("%s가 와도 그대로다 — 같은 객체다", (source) => {
-    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source);
+    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source, null);
     expect(그대로).toBe(훅이말한것);
   });
 
   // 훅이 안 온 셸은 OSC·벨이 바꾼다. 권위 규칙이 「아무도 못 바꾼다」로 넓어지면 훅을 안 깐
   // 사용자에게 이 판이 통째로 없는 것이 된다.
   it("훅이 안 온 셸은 OSC가 바꾼다", () => {
-    const osc가말한것: Attention = { ...훅이말한것, source: "osc" };
-    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc")).toEqual({
+    const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
+    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc", null)).toEqual({
       kind: "working",
       message: "커밋할까요?",
       since: 200,
       seen: false,
       source: "osc",
+      // **OSC·벨은 누가 말했는지를 모른다.** 본문이 어느 프로세스에서 나왔는지 PTY는 안
+      // 적는다 — 그 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다.
+      agent: null,
     });
   });
 
   // 반대 방향은 안 막는다 — 훅이 늦게 오면 그때부터 훅이 권위다.
   it("OSC가 말하던 셸에 훅이 오면 훅이 이긴다", () => {
-    const osc가말한것: Attention = { ...훅이말한것, source: "osc" };
-    expect(applySignal(osc가말한것, { event: "end", message: null }, 200, "hook").source).toBe("hook");
+    const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
+    expect(applySignal(osc가말한것, { event: "end", message: null }, 200, "hook", "claude").source).toBe(
+      "hook",
+    );
   });
 
   it("아무것도 안 온 셸은 벨이 바꾼다", () => {
-    expect(applySignal(null, { event: "end", message: null }, 200, "bell")?.kind).toBe("done");
+    expect(applySignal(null, { event: "end", message: null }, 200, "bell", null)?.kind).toBe("done");
+  });
+
+  // **누가 말했는가는 상태와 함께 앉는다**(#203). 초록을 만드는 이벤트가 왔을 때 그 셸에서
+  // 도는 것은 이미 없으므로, 이 값이 안 실리면 행의 둘째 줄이 마크를 낼 재료가 없다.
+  it("훅이 말한 상태는 그 에이전트를 함께 싣는다", () => {
+    const 상태값 = nextAttention(null, hook("codex", "SessionEnd", { reason: "logout" }));
+    expect(상태값?.agent).toBe("codex");
   });
 });
 
@@ -261,6 +279,9 @@ const 상태 = (over: Partial<Attention> = {}): Attention => ({
   since: 100,
   seen: false,
   source: "hook",
+  // 훅이 말한 상태에는 **늘** 누가 말했는지가 실려 있다 — 그것이 기본값인 이유다.
+  // 없는 쪽(OSC·벨)을 재는 자리에서만 `null`로 덮는다.
+  agent: "claude",
   ...over,
 });
 
@@ -339,9 +360,28 @@ describe("행이 읽는 한 줄", () => {
 
   // **마크도 죽은 칸을 딛고 온다.** `runningOn`이 끝난 칸의 마지막 값을 가리는 것과 같은
   // 가름이라, 여기서 `shell.running`을 그냥 읽으면 죽은 셸의 로고가 행에 남는다.
-  it("도는 것이 없으면 마크도 없다", () => {
-    const list = [칸이({ id: 1, attention: 상태({ kind: "waiting" }), running: null })];
+  it("도는 것도 말한 에이전트도 없으면 마크가 없다", () => {
+    const list = [칸이({ id: 1, attention: 상태({ kind: "waiting", agent: null }), running: null })];
     expect(topSignalView(list)?.running).toBeNull();
+  });
+
+  // **초록 행에 마크가 서는 자리가 여기다.** 스펙 전이 표에서 초록을 만드는 길은 둘뿐이고
+  // (세션 종료 · 벨) **둘 다 그 순간 `running`이 비어 있다** — 세션이 끝났다는 것은
+  // 에이전트 프로세스가 나갔다는 뜻이라 1초 폴링이 다음 바퀴에 `running`을 눕히고, 벨은
+  // 정의상 「아는 에이전트 마크가 없을 때」만 초록이 된다. 그래서 마크의 재료를 「지금 도는
+  // 것」에서만 뽑으면 초록 행의 둘째 줄은 **늘** 말과 경과 둘뿐이고, 티켓과 스펙이 못박은
+  // `[마크] [말] [경과]` 셋이 그 갈래에서만 조용히 깨진다(목업의 초록 예시가 바로 `codex`
+  // 셸이다). 상태가 「누가 말했나」를 함께 들고 다니는 것이 그 자리를 메운다.
+  it("세션이 끝나 도는 것이 없어도 말한 에이전트가 마크를 낸다", () => {
+    const list = [칸이({ id: 1, attention: 상태({ kind: "done", agent: "codex" }), running: null })];
+    expect(topSignalView(list)?.running).toBe("codex");
+  });
+
+  // 지금 도는 것이 있으면 그쪽이 이긴다 — 「이 셸이 지금 무엇을 물고 있나」가 더 새로운
+  // 사실이다. 훅이 claude라고 말한 뒤 사람이 codex를 띄웠으면 행은 codex를 보여야 한다.
+  it("도는 것이 있으면 그것이 마크를 낸다", () => {
+    const list = [칸이({ id: 1, attention: 상태({ kind: "done", agent: "claude" }), running: "codex" })];
+    expect(topSignalView(list)?.running).toBe("codex");
   });
 
   it("화면값이 없으면 줄도 없다", () => {
@@ -479,11 +519,18 @@ describe("상태 축에 시간이 없다", () => {
 });
 
 // **칸이 늘면 여기서 터진다.** `nextAttention`의 「안 바뀌면 받은 것을 그대로 준다」와
-// `shell-registry`의 `setAttention`이 그 판정 하나에 매달려 있는데, 견주는 칸이 다섯으로
-// 적혀 있어 여섯째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
-it("상태에 든 칸은 정확히 다섯이다", () => {
-  const 상태값 = applySignal(null, { event: "waiting", message: "물음" }, 10, "hook");
-  expect(Object.keys(상태값).sort()).toEqual(["kind", "message", "seen", "since", "source"]);
+// `shell-registry`의 `setAttention`이 그 판정 하나에 매달려 있는데, 견주는 칸이 여섯으로
+// 적혀 있어 일곱째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
+it("상태에 든 칸은 정확히 여섯이다", () => {
+  const 상태값 = applySignal(null, { event: "waiting", message: "물음" }, 10, "hook", "claude");
+  expect(Object.keys(상태값).sort()).toEqual([
+    "agent",
+    "kind",
+    "message",
+    "seen",
+    "since",
+    "source",
+  ]);
 });
 
 // 훅이 아는 이름과 레지스트리가 아는 번호를 잇는 자리. 셸 ID는 `<앱 인스턴스 접두사>-<pty

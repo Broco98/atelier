@@ -38,6 +38,19 @@ const 말of = (markup: string) => {
   return textOf(found[0]);
 };
 
+/**
+ * 말 상자에 **붙은 클래스만**. 색을 재는 자리가 이것으로 갈리는 것은 말 자체에 `text-`가
+ * 들어 있을 수 있기 때문이다(사람이 친 프롬프트가 그대로 오는 자리다) — 마크업 전체에서
+ * 글자를 찾으면 그 말이 검사를 통과시키거나 떨어뜨린다.
+ */
+const 말클래스 = (markup: string) => {
+  const 여는태그 = /<span[^>]*data-fade[^>]*>/.exec(markup);
+  if (!여는태그) throw new Error("말 상자를 못 찾았다");
+  const found = /class="([^"]*)"/.exec(여는태그[0]);
+  if (!found) throw new Error("말 상자에 클래스가 없다");
+  return found[1];
+};
+
 describe("레인 — 화면값 셋이 갈린다", () => {
   // 결정 3·5. 기다림은 앰버 점, 안 본 완료는 초록 점, 도는 중은 링이다. **셋이 갈리는
   // 것부터** 세지 않으면 아래 규격 검사들이 「어차피 다 같은 것」을 재게 된다.
@@ -130,7 +143,15 @@ describe("둘째 줄 — 마크 · 말 · 경과", () => {
   it("도는 중은 직전 말을 흐리게 남기고 경과를 안 붙인다", () => {
     const markup = line({ kind: "working", message: "커밋할까요?", now: 540_000 });
     expect(textOf(markup)).toBe("커밋할까요?");
-    expect(markup).toContain("text-tertiary");
+    // **흐림은 색을 더 내려서가 아니라 이 줄이 바닥에 그대로 있어서 난다.** 둘째 줄의
+    // 바닥은 `muted-foreground`이고(구현-스펙.md의 「대비 ≥ 4.5」) 앰버·초록만
+    // `font-medium` + 상태색으로 그 위로 올라온다 — 도는 중은 안 올라오므로 옆 행의
+    // 부름보다 흐리다. `tertiary`(≈3.0)로 한 단 더 내리는 것은 이 판이 고치려던 그
+    // 수치(오른쪽 메타의 3.0)를 **말**에서 다시 만드는 일이라 스펙이 토큰 이름까지 적어
+    // 막았다: 「지금의 `tertiary`를 그대로 내리지 않는다 — 경과 시간·종류 수 숫자는
+    // `tertiary`여도 된다」. 도는 중의 message는 경과도 숫자도 아니다.
+    expect(말클래스(markup), "도는 중의 말이 자기 색을 든다").not.toContain("text-");
+    expect(말클래스(markup), "도는 중의 말이 굵어졌다").not.toContain("font-medium");
   });
 
   // 훅이 말은 못 실어도 「그 이벤트가 났다」는 남긴다(페이로드 없는 `PermissionRequest`가
@@ -166,11 +187,16 @@ describe("마크는 상태색을 안 받는다", () => {
   // **글리프를 품은 상자에 상태색이 없는가**로 잰다 — 클래스가 있고 없고를 따로 세면
   // 상자가 바뀌는 날 조용히 샌다. 상태색이 붙은 상자를 잘라 내고, 그 안에 svg가 없음을 본다.
   const 색상자 = (markup: string, tone: string) => {
-    const found = new RegExp(`<span[^>]*text-${tone}[^>]*>[\\s\\S]*?</span>`).exec(markup);
-    if (!found) throw new Error(`상태색 상자를 못 찾았다: text-${tone}`);
+    const found = new RegExp(`<span[^>]*text-${tone}-ink[^>]*>[\\s\\S]*?</span>`).exec(markup);
+    if (!found) throw new Error(`상태색 상자를 못 찾았다: text-${tone}-ink`);
     return found[0];
   };
 
+  // **글자색 토큰이 점 색과 갈려 있다**(`-ink`). 점은 결정 3이 못박은 `amber-600`이고
+  // 라이트 사이드바에서 대비가 2.98인데, 그 색을 **글자**에 그대로 쓰면 이 판이 고치려던
+  // 3.0짜리 오른쪽 메타를 둘째 줄에서 다시 만든다(스토리 24) — 그래서 라이트의 말만 한 단
+  // 어둡게 갈랐다. 이 이름을 여기서 리터럴로 세는 것은 두 토큰이 다시 붙는 날 이 검사가
+  // 먼저 말하게 하려는 것이다.
   it.each([
     ["waiting", "wait"],
     ["done", "done"],

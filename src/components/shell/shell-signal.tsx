@@ -39,11 +39,30 @@ export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
  * **이름을 조각내 짓지 않는다**(`bg-${tone}`). Tailwind는 소스에 **글자 그대로 있는** 클래스만
  * 만들므로 이어 붙인 이름은 규칙이 아예 안 생기고, 화면에서는 「색이 투명하다」로만 나타난다 —
  * 실제로 그렇게 났고 L3의 대비 검사가 그것을 잡았다(2026-09-10).
+ *
+ * **점과 글자가 다른 토큰을 읽는다**(`-ink`). 결정 3의 표가 못박은 것은 점의 색인데
+ * (`amber-600`) 라이트 사이드바에서 그 색의 대비는 2.98이라, 같은 색을 **말**에 쓰면 이
+ * 판이 고치려던 3.0짜리 오른쪽 메타를 둘째 줄에서 다시 만든다(스토리 24). 점은 3px 후광이
+ * 면적을 벌지만 글자에는 그런 것이 없어서, 라이트의 글자만 한 단 어둡게 갈랐다 —
+ * 사람에게 열어 둔 물음은 `spec/물음-둘째-줄의-색.md`다.
  */
 const TONE: Readonly<Record<"waiting" | "done", { dot: string; text: string }>> = {
-  waiting: { dot: "bg-wait ring-wait-soft", text: "text-wait" },
-  done: { dot: "bg-done ring-done-soft", text: "text-done" },
+  waiting: { dot: "bg-wait ring-wait-soft", text: "text-wait-ink" },
+  done: { dot: "bg-done ring-done-soft", text: "text-done-ink" },
 };
+
+/**
+ * 이 화면값이 둘째 줄에 **경과를 다는가**(결정 13). 도는 중은 안 단다 — 레인의 링이 「지금
+ * 돈다」를 이미 말하니 둘째 줄은 맥락을 지킨다.
+ *
+ * **함수 하나인 이유는 짝이 둘이기 때문이다.** 그리는 쪽(`SignalLine`)과 시계를 켜는 쪽
+ * (`Sidebar.tsx`의 `useNow`)이 같은 사실의 두 표현인데, 각자 조건을 적어 두면 규칙이 바뀌는
+ * 날 한쪽만 고쳐도 화면이 멀쩡하다 — 값만 조용히 늙거나, 아무도 안 읽는 시계가 열여덟 행에서
+ * 돈다. 둘 다 이 함수를 딛으면 그 어긋남이 안 생긴다.
+ */
+export function showsElapsed(kind: ShellSignal): boolean {
+  return kind !== "working";
+}
 
 /**
  * 레인에 서는 글리프(결정 5). **첫 줄 왼쪽 14px 한 칸**에 들어가고, 화면값이 없으면 이것이
@@ -104,6 +123,12 @@ export function formatElapsed(ms: number): string {
  * 남기므로(`PermissionRequest`가 그렇다) 말 없는 상태가 실제로 온다 — 그때 줄이 통째로 비면
  * 행은 부르는데 둘째 줄만 조용하다. 이것은 **바닥**이지 이 줄의 내용이 아니다: 둘째 줄이
  * 상태 이름을 적는 안(목업 D)은 「A와 같은 정보를 더 높게」라는 이유로 기각됐다(결정 5).
+ *
+ * **그런데 그 바닥이 서는 화면은 기각된 D와 겉이 같다.** 그리고 그것은 사고가 아니라 정규
+ * 경로다 — 전이 표에 message 없는 상태가 둘 있고(벨로 뜬 `done`, `/clear` 뒤의 `working`),
+ * 벨로 뜬 초록 행은 **늘** 둘째 줄에 「확인할 것」이 앉는다. 스펙이 이 자리를 안 정했으므로
+ * 구현이 고른 것이고, 사람에게 물어 둔 것이 `spec/물음-둘째-줄의-색.md`의 둘째 물음이다
+ * (상태 이름인가 · 종류·수로 되돌아가는가 · 비워 두는가). 정해지기 전까지 이 모양을 둔다.
  */
 export function SignalLine({
   kind,
@@ -135,12 +160,19 @@ export function SignalLine({
         data-fade=""
         className={cn(
           "min-w-0 flex-1 whitespace-nowrap",
-          kind === "working" ? "text-tertiary" : cn("font-medium", TONE[kind].text),
+          // **도는 중은 아무 색도 안 든다** — 둘째 줄 상자가 깔아 둔 바닥
+          // (`muted-foreground`, 대비 6.9) 그대로다. 「직전 말을 흐리게」(결정 13)는
+          // 그 바닥에 **머무는 것**으로 이미 성립한다: 부르는 행은 `font-medium` +
+          // 상태색으로 그 위로 올라오므로 옆에 두면 이쪽이 흐리다. `tertiary`(≈3.0)로 한 단
+          // 더 내리는 안은 구현 결정 4가 토큰 이름까지 적어 막았다 — 「지금의 `tertiary`를
+          // 그대로 내리지 않는다 … 경과 시간·종류 수 숫자는 `tertiary`여도 된다」이고,
+          // 도는 중의 말은 경과도 숫자도 아니라 이 판이 고치려던 3.0을 말에서 다시 만든다.
+          kind !== "working" && cn("font-medium", TONE[kind].text),
         )}
       >
         {message ?? SIGNAL_LABEL[kind]}
       </span>
-      {kind !== "working" && (
+      {showsElapsed(kind) && (
         // 부차 정보라 한 단 내려간다 — 둘째 줄의 바닥(`muted-foreground`)이 아니라
         // `tertiary`인 것은 「얼마나 기다렸나」가 말보다 뒤에 읽혀야 해서다(구현 결정 4).
         <span className="shrink-0 tabular-nums text-tertiary">{formatElapsed(now - since)}</span>

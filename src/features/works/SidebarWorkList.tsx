@@ -38,7 +38,7 @@ function SidebarWorkList({
   open,
   shellCounts,
   signals,
-  renderShellMeta,
+  renderSubrow,
 }: {
   open: boolean;
   /**
@@ -64,11 +64,16 @@ function SidebarWorkList({
    */
   signals: Record<string, ShellSignal>;
   /**
-   * 둘째 줄의 **셸 메타**(종류·수). 같은 이유로 슬롯이다 — 그리는 것은
-   * `components/shell/shell-meta`의 `ShellMeta`이고, 값을 고르는 자리는 터미널 스토어를 아는
-   * Sidebar다(결정 13).
+   * 둘째 줄의 **셸 갈래**. 같은 이유로 슬롯이고, 값을 고르는 자리는 터미널 스토어를 아는
+   * Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
+   *
+   * **오는 것이 하나가 아니다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크 · message ·
+   * 경과, `components/shell/shell-signal`의 `SignalLine`)이고, 조용하면 지금까지처럼 종류·수
+   * (`shell-meta`의 `ShellMeta`)다. 셋째 갈래인 프로젝트 이름은 이 슬롯 밖이다 — 셸이 없는
+   * 행의 것이라 터미널을 몰라도 그릴 수 있다(아래 `WorkRow`). 타입이 `ReactNode`뿐이라
+   * 이 문단이 「이 슬롯에 무엇이 오나」를 묻는 유일한 자리다.
    */
-  renderShellMeta: (work: WorkView) => ReactNode;
+  renderSubrow: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks();
   const navigate = useNavigate();
@@ -212,7 +217,7 @@ function SidebarWorkList({
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            renderShellMeta={renderShellMeta}
+            renderSubrow={renderSubrow}
           />
         </div>
       </div>
@@ -253,7 +258,7 @@ export function WorkSectionList({
   onHover,
   onLeave,
   onTogglePin,
-  renderShellMeta,
+  renderSubrow,
 }: {
   sections: WorkSections;
   open: SectionsOpen;
@@ -265,7 +270,7 @@ export function WorkSectionList({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  renderShellMeta: (work: WorkView) => ReactNode;
+  renderSubrow: (work: WorkView) => ReactNode;
 }) {
   const { pinned, main, drafts } = sections;
   // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 셋이 된다.
@@ -280,7 +285,7 @@ export function WorkSectionList({
       onHover={onHover}
       onLeave={onLeave}
       onTogglePin={onTogglePin}
-      shellMeta={renderShellMeta(work)}
+      subrow={renderSubrow(work)}
     />
   );
   return (
@@ -519,7 +524,7 @@ function WorkRow({
   onTogglePin,
   shellCount,
   signal,
-  shellMeta,
+  subrow,
 }: {
   work: WorkView;
   active: boolean;
@@ -527,15 +532,19 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  /** 이 work의 셸 수 — **둘째 줄이 종류·수를 싣는가 프로젝트 이름을 싣는가**를 가른다. */
+  /** 이 work의 셸 수 — **둘째 줄이 아래 슬롯을 싣는가 프로젝트 이름을 싣는가**를 가른다. */
   shellCount: number;
   /**
    * 이 work의 **화면값**(#203). 셸이 여럿이면 그중 최고 하나이고(결정 3), 없으면 `null`이다 —
    * 그때 레인은 work 상태 아이콘으로 되돌아가고 이름에도 아무 말이 안 붙는다.
    */
   signal: ShellSignal | null;
-  /** 둘째 줄의 **셸 메타**(종류·수). 슬롯으로 온다 — 그리는 것은 `ShellMeta`다(결정 13). */
-  shellMeta: ReactNode;
+  /**
+   * 셸이 있는 행의 **둘째 줄 내용**. 슬롯으로 온다 — 그 셸이 스스로 말했으면 그 말
+   * (`SignalLine`), 아니면 종류·수(`ShellMeta`)다(#203). 셸이 없는 행의 프로젝트 이름은
+   * 이 슬롯 밖이고 아래에서 그린다.
+   */
+  subrow: ReactNode;
 }) {
   // 제목 상자 — **hover 진입 때만** 만진다(아래 onMouseEnter).
   const titleBox = useRef<HTMLSpanElement>(null);
@@ -806,14 +815,17 @@ function WorkRow({
           **표식이 자리 이름인 것은 여기뿐이다.** 이 저장소의 규칙은 「표식은 그 자리에 있는
           것의 이름」인데(`data-shells`·`data-branch`·`data-section`), 이 줄은 **싣는 것이
           갈린다** — 셸이 있으면 종류·수, 없으면 프로젝트 이름, 셸이 스스로 말했으면 그 마지막
-          말과 경과. 있는 것으로 이름을 붙이면 세 갈래 중 둘에게 그 이름이 거짓이 된다. */}
+          말과 경과. 있는 것으로 이름을 붙이면 세 갈래 중 둘에게 그 이름이 거짓이 된다.
+          안쪽 `data-shells`는 그 규칙을 그대로 지킨다 — 종류·수 갈래에만 붙는다(아래). */}
       <div
         data-subrow={work.slug}
         className="pointer-events-none col-span-2 row-start-2 flex min-w-0 items-center overflow-hidden pb-[7px] pl-[32px] pt-1 text-[11.5px] text-muted-foreground"
       >
         {shellCount > 0 ? (
-          /* **셸 메타 — 셸이 하나라도 있으면 선다**(결정 3). 「없음」은 숫자로 말하지
+          /* **셸 갈래 — 셸이 하나라도 있으면 선다**(결정 3). 「없음」은 숫자로 말하지
              않으므로 셸이 0개면 이 갈래가 통째로 없고, 대신 아래 프로젝트 이름이 선다.
+             안에 오는 것은 종류·수이거나 그 셸의 마지막 말이다(#203, 슬롯의 주석) —
+             아래 문단들이 「종류·수」를 말하는 것은 그 갈래를 두고 하는 말이다.
 
              「명령이 도는 동안만 선다」는 그때도 지금도 **기각이다**: 그 값은 매 순간
              바뀌어서(백엔드가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이
@@ -830,9 +842,20 @@ function WorkRow({
              아니고, 누르면 어느 셸로 갈지 정해지지 않는다. 그 사실을 구조로 적는
              `pointer-events-none`은 이제 **바깥 줄이 통째로 든다**(그쪽 주석) — 여기 한 번
              더 적으면 「이 상자만의 규칙」으로 읽혀, 옆 갈래(프로젝트 이름)는 클릭을 받아도
-             되는 것처럼 보인다. 둘 다 안 받는다. */
-          <div data-shells={work.slug} className="flex min-w-0 items-center">
-            {shellMeta}
+             되는 것처럼 보인다. 둘 다 안 받는다.
+
+             **표식은 종류·수일 때만 붙는다**(#203). 이 상자는 슬롯이라 셸이 말하기 시작하면
+             안에 드는 것이 신호 줄(마크·말·경과)로 갈리는데, 그때도 `data-shells`가 붙어
+             있으면 「이 표식 안은 무리 나열이고 숫자의 합 = 셸 수」라는 불변조건이 DOM에서
+             조용히 거짓이 된다 — 표식을 딛는 검사는 그 사실을 못 보고 엉뚱한 것을 센다.
+             가름을 여기서 다시 묻지 않고 행이 이미 쥔 `signal`로 하는 것이 요점이다: 레인이
+             점을 세우는 근거와 **같은 값**이라 둘이 어긋날 수 없다. 상자 자체는 남는다 —
+             레이아웃(`flex`)은 갈래와 무관하다. */
+          <div
+            data-shells={signal === null ? work.slug : undefined}
+            className="flex min-w-0 items-center"
+          >
+            {subrow}
           </div>
         ) : (
           /* **셸이 없으면 프로젝트 이름이다**(이 판 결정 5). 둘째 줄이 빈 채로 서지
