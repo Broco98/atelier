@@ -15,12 +15,14 @@ import {
   MAX_SHELLS,
   NO_SHELLS,
   openShell,
+  setAttention,
   setRunning,
   setShellName,
   setTitle,
   shellEndLabels,
 } from "./shell-registry";
 import type { ShellOrigin, ShellsState } from "./shell-registry";
+import type { Attention } from "./shell-attention";
 
 // work 화면의 머리행 — **탭 줄이다**(결정 7). `[spec][셸…][+]`가 서고 오른쪽 끝에 조작이
 // 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
@@ -752,5 +754,166 @@ describe("`+`", () => {
 
   it("상한 아래에서는 안 잠긴다", () => {
     expect(plusOf(render(opened(MAX_SHELLS - 1).state))).not.toMatch(/aria-disabled/);
+  });
+});
+
+// **칸이 물든다**(#205 · 결정 6 — 안 J3). 사이드바 행이 점으로 말하는 것을 이 줄은 **배경
+// 채움**으로 말한다: 6px 점은 180×28 칸의 0.03이라 탭 줄에서 안 보이고, 점을 세우면 그것이
+// 이름을 6px 밀어 상태가 바뀔 때마다 칸이 들썩인다.
+//
+// **여기서 보는 것은 「그 상태의 칸이 무슨 클래스를 다는가」다.** 색이 실제로 또렷한지는
+// 브라우저에서 재고(L3), 이 층이 지키는 것은 자리와 어휘 — 채움이 **칸 상자**에 붙는가(좁은
+// 폭에서도 남아야 한다) · 물들임이 폭·위치를 안 바꾸는가 · 이름에 상태가 붙는가.
+describe("칸이 물든다", () => {
+  const 말한다 = (kind: Attention["kind"], seen = false): Attention => ({
+    kind,
+    message: "커밋할까요?",
+    since: 1000,
+    seen,
+    source: "hook",
+    agent: "claude",
+  });
+
+  /**
+   * 칸 상자의 class. **정규식이 표식 바로 뒤에 붙어 있다** — `data-tab="shell"` 다음 속성이
+   * className이라 그 자리가 아니면 못 읽고, 못 읽으면 던진다. 「어디선가 그 글자가 보인다」로
+   * 판정하면 이름 버튼이나 닫기 버튼의 클래스가 칸 상자의 것으로 세어진다.
+   */
+  function tabClassOf(markup: string, at = 0): string {
+    const cell = shellCellsOf(markup)[at];
+    const match = cell === undefined ? null : /^shell" class="([^"]*)"/.exec(cell);
+    if (!match) throw new Error(`칸 ${at}의 class를 못 읽었다 — ${String(cell).slice(0, 160)}`);
+    return match[1];
+  }
+
+  const 물든칸 = (kind: Attention["kind"] | null, { active = false } = {}) => {
+    const { state, ids } = opened(1);
+    const 앉힌뒤 = kind === null ? state : setAttention(state, ids[0], 말한다(kind));
+    return tabClassOf(render(앉힌뒤, { showing: active }));
+  };
+
+  it("안 켜진 칸이 부르면 물든다 — 기다림은 앰버, 안 본 완료는 초록", () => {
+    // 색 이름을 여기서 새로 짓지 않는다 — 토큰 넷은 #203이 들였고(`index.css`) 행·띠가 이미
+    // 같은 이름을 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
+    const 기다림 = 물든칸("waiting");
+    expect(기다림).toContain("bg-wait-soft");
+    expect(기다림).toContain("text-wait-ink");
+
+    const 완료 = 물든칸("done");
+    expect(완료).toContain("bg-done-soft");
+    expect(완료).toContain("text-done-ink");
+
+    // **평소의 회색이 물러난다.** 남겨 두면 유틸리티 정렬 순서가 승자를 정한다(index.css의 경고).
+    expect(기다림).not.toContain("text-muted-foreground");
+    expect(완료).not.toContain("text-muted-foreground");
+  });
+
+  it("켜진 칸이 기다리면 앰버가 회색을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 `toggle-on`이 물러난다 — 안 물러나면
+    // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
+    // 회색 채움이 하던 말을 테두리가 받는다.
+    const 켜진기다림 = 물든칸("waiting", { active: true });
+    expect(켜진기다림).toContain("bg-wait-soft");
+    expect(켜진기다림).not.toContain("toggle-on");
+    // **`ring`이지 `border`가 아니다**(스토리 54) — 그림자는 폭을 안 먹는다. 아래 「폭·위치」
+    // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
+    expect(켜진기다림).toContain("ring-1");
+    expect(켜진기다림).toContain("ring-inset");
+    expect(켜진기다림).toContain("ring-wait");
+    expect(켜진기다림).not.toContain("border");
+
+    // 안 켜진 칸에는 테두리가 없다 — 있으면 여덟 칸이 다 고른 칸으로 보인다.
+    expect(물든칸("waiting")).not.toContain("ring-1");
+  });
+
+  it("이름에 상태가 붙는다 — 색만이 신호여선 안 된다", () => {
+    // 스토리 55 · 결정 8의 마지막 줄. **말은 `SIGNAL_LABEL` 하나에서 온다** — 행 버튼과 띠
+    // 줄이 이미 그 표를 읽고 있어서, 여기서 글자를 다시 적으면 한 화면이 같은 셸을 두 이름으로
+    // 부른다.
+    const 이름버튼 = (kind: Attention["kind"] | null) => {
+      const { state, ids } = opened(1, undefined, NO_SHELLS);
+      const 앉힌뒤 = kind === null ? state : setAttention(state, ids[0], 말한다(kind));
+      const cell = shellCellsOf(render(앉힌뒤))[0];
+      const match = /<button[^>]*aria-pressed[^>]*>/.exec(cell);
+      if (!match) throw new Error(`이름 버튼을 못 찾았다 — ${cell.slice(0, 160)}`);
+      return match[0];
+    };
+
+    expect(이름버튼("waiting")).toContain("— 나를 기다림");
+    expect(이름버튼("done")).toContain("— 확인할 것");
+
+    // **물들임이 없는 칸에는 안 붙는다.** 탭이 아무 색도 안 띤 채 스크린리더에만 「도는 중」을
+    // 말하면 눈과 귀가 다른 것을 듣는다 — 도는 것은 이미 이름(`✳ Claude`)과 좁은 폭의
+    // 마크가 말한다.
+    for (const kind of ["working", null] as const) {
+      expect(이름버튼(kind), String(kind)).not.toContain("aria-label");
+    }
+  });
+
+  it("물들임이 폭도 자리도 안 바꾼다 — 갈리는 것은 색뿐이다", () => {
+    // 스토리 54. 상태가 바뀔 때 칸이 튀면 「어디로 돌아가야 하나」를 보여 주려던 신호가
+    // 오히려 줄을 흔든다. 재는 법은 **클래스의 차집합**이다 — 네 상태의 class를 견줘,
+    // 달라지는 것이 아래 색 어휘 안에 드는지 본다. 여기 없는 클래스가 하나라도 갈리면
+    // (여백이든 폭이든 테두리든) 빨개진다.
+    //
+    // `ring-*`이 이 목록에 드는 것은 **그림자라 흐름을 안 건드리기 때문이다** — `border-*`는
+    // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
+    const 색어휘 = new Set([
+      "text-muted-foreground",
+      "hover:bg-state-1",
+      "toggle-on",
+      "font-medium",
+      "bg-wait-soft",
+      "text-wait-ink",
+      "bg-done-soft",
+      "text-done-ink",
+      "ring-1",
+      "ring-inset",
+      "ring-wait",
+      "ring-done",
+    ]);
+
+    const 바탕 = new Set(물든칸(null).split(" "));
+    for (const kind of ["waiting", "done", "working", null] as const) {
+      for (const active of [false, true]) {
+        const 이번 = new Set(물든칸(kind, { active }).split(" "));
+        const 갈린것 = [
+          ...[...이번].filter((one) => !바탕.has(one)),
+          ...[...바탕].filter((one) => !이번.has(one)),
+        ];
+        expect(갈린것.filter((one) => !색어휘.has(one)), `${kind}/${active}`).toEqual([]);
+      }
+    }
+  });
+
+  it("채움이 칸 상자에 붙는다 — 이름이 숨는 폭에서도 남는다", () => {
+    // 스토리 53. 좁아지면 이름 글자가 `sr-only`로 빠지고 글리프만 남는데(결정 11·20),
+    // 채움이 그 안쪽 어딘가에 붙어 있으면 **신호가 글자와 함께 죽는다** — 좁은 창일수록
+    // 탭 줄에서 찾기 어려운데 거기서 먼저 사라지는 셈이다.
+    //
+    // 「상자에 있다」를 **수로** 잰다: 칸 전체에서 그 글자가 한 번만 나오고 그 한 번이
+    // 상자의 class여야 한다. 「상자에 있다」만 보면 안쪽에 하나 더 붙어도 초록이다.
+    const { state, ids } = opened(1);
+    const cell = shellCellsOf(render(setAttention(state, ids[0], 말한다("waiting"))))[0];
+    expect(cell.split("bg-wait-soft").length - 1).toBe(1);
+    expect(tabClassOf(render(setAttention(state, ids[0], 말한다("waiting"))))).toContain(
+      "bg-wait-soft",
+    );
+    // 폭으로 갈리는 규칙이 상자에 얹히지 않았다 — 얹히면 위의 「한 번」이 조건부가 된다.
+    expect(tabClassOf(render(setAttention(state, ids[0], 말한다("waiting"))))).not.toContain(
+      "@max-",
+    );
+  });
+
+  it("도는 중과 아무 말 없는 칸은 지금 그대로다", () => {
+    // 스토리 52. **탭에는 링을 안 세운다** — 판 04 결정 27을 뒤집는 게 아니라 이 판은 링을
+    // 다른 자리(사이드바 레인)에 세운다. 여기서 물들이면 claude가 도는 동안 탭 줄 여덟이
+    // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
+    for (const kind of ["working", null] as const) {
+      const 칸 = 물든칸(kind);
+      expect(칸, String(kind)).toContain("text-muted-foreground");
+      expect(칸, String(kind)).not.toContain("bg-wait-soft");
+      expect(칸, String(kind)).not.toContain("bg-done-soft");
+    }
   });
 });

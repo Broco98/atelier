@@ -1,6 +1,6 @@
 import { foldHookState } from "./agents";
 import type { AgentSignal, CanonicalEvent } from "./agents/types";
-import { runningOn, shellRowName } from "./shell-registry";
+import { markSeen, runningOn, shellRowName } from "./shell-registry";
 import type { Shell, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
@@ -423,6 +423,29 @@ export interface ShellView {
  */
 export function isShellSeen(id: number, view: ShellView): boolean {
   return view.focused && view.activeIds.includes(id);
+}
+
+/**
+ * 지금 보고 있는 셸들에 「봤다」를 앉힌다 — **판정과 기록 사이의 유일한 문**이다(#205).
+ *
+ * 판정은 위 `isShellSeen` 하나이고 기록은 레지스트리의 `markSeen` 하나다. 그 둘을 잇는
+ * 자리가 여럿이면 탭 물들임과 알림 억제(#206)가 **다른 순간에** 같은 판정을 쓰게 된다 —
+ * 초록은 꺼졌는데 알림은 울리는(또는 그 반대인) 어긋남이고, 화면에서는 어느 쪽이 틀렸는지
+ * 안 보인다.
+ *
+ * **목록을 다 훑는다** — `view.activeIds`만 보고 앉히지 않는다. 판정을 아는 자리가
+ * `isShellSeen`이라 그것을 셸마다 물어야 하고, 그래야 조건이 넓어지는 날(예: 「호버 카드도
+ * 봤다」) 이 함수를 안 고쳐도 따라온다. 여덟 칸짜리 목록이라 값이 없다.
+ *
+ * **안 바뀌면 받은 것을 그대로 돌려준다** — `markSeen`이 그 계약을 지고 있고, 이 함수는
+ * 창 포커스가 오갈 때마다 불릴 자리라 그 성질이 없으면 창을 눌렀다 뗄 때마다 목록 전체가
+ * 다시 그려진다.
+ */
+export function markShellsSeen(state: ShellsState, view: ShellView): ShellsState {
+  return markSeen(
+    state,
+    state.shells.filter((shell) => isShellSeen(shell.id, view)).map((shell) => shell.id),
+  );
 }
 
 /**

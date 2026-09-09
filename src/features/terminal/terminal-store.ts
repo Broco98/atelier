@@ -7,7 +7,8 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
-import { nextAttention, ptyIdOf } from "./shell-attention";
+import { markShellsSeen, nextAttention, ptyIdOf } from "./shell-attention";
+import type { ShellView } from "./shell-attention";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -201,6 +202,74 @@ export function selectShell(id: number): void {
 }
 
 /**
+ * 지금 화면이 보여 주고 있는 셸들. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
+ * 「어느 칸이 켜져 있나」(`activeByOwner`)는 그 화면의 **기억**이라 문서를 읽는 중에도 남아
+ * 있고, 그것으로 「봤다」를 세우면 spec을 보는 내내 안 본 완료가 조용히 지워진다.
+ *
+ * 값을 채우는 자리는 `TerminalPane` 하나다 — 그 조각이 서 있다는 것이 곧 「본문이 셸을
+ * 보여준다」이고, 두 화면(work · `/terminal`)이 같은 조각을 쓴다.
+ */
+let shownShells: ReadonlyArray<number> = [];
+
+/**
+ * 앱 창이 포커스를 쥐고 있나(결정 7). 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
+ *
+ * **`document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다.** 이벤트만으로는 못
+ * 가른다 — 분할에서 spec 프레임을 누르면 부모 `window`에 `blur`가 오는데(SpecViewer의
+ * `useFrameFocused`가 그 실측을 들고 있다) 그때도 앱은 앞에 있다. `hasFocus()`는 그
+ * 경우에 참이고 다른 앱으로 넘어갔을 때만 거짓이라, 두 경우가 갈린다.
+ *
+ * **Tauri의 `onFocusChanged`를 안 쓴다.** 값은 더 정확하겠지만 IPC 구독이 하나 더 늘어
+ * 픽스처 백엔드가 모르는 호출이 되고(L3의 `unknownIpcCalls`), 얻는 것은 이 DOM 이벤트가
+ * 이미 주는 사실 하나다.
+ */
+function windowFocused(): boolean {
+  // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다. 참으로 두면 아무도 안 보는 곳에서
+  // 「봤다」가 서고, 그 fail-open은 초록이 뜨지 않는 것으로만 나타나 화면에서 안 보인다.
+  return typeof document !== "undefined" && document.hasFocus();
+}
+
+/** 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸들과 창 포커스(결정 7). */
+function currentView(): ShellView {
+  return { activeIds: shownShells, focused: windowFocused() };
+}
+
+/**
+ * 보고 있는 셸들에 「봤다」를 앉힌다. **판정은 `markShellsSeen` 하나**이고 이 자리는 그것에
+ * 「지금 무엇이 보이나」를 건네기만 한다 — 알림 억제(#206)가 같은 함수를 쓴다.
+ *
+ * 안 바뀌면 같은 상태가 그대로 돌아오므로(그 함수의 계약) 창을 눌렀다 뗄 때마다 목록이
+ * 다시 그려지지 않는다.
+ */
+function syncSeen(): void {
+  terminalStore.setState((state) => markShellsSeen(state, currentView()));
+}
+
+/**
+ * 본문이 지금 그리고 있는 셸을 알린다 — `TerminalPane`이 붙고 갈아타고 떠날 때마다 부른다.
+ * 안 보이면 빈 배열이다.
+ *
+ * **배열인 것은 분할 때문이다**(결정 7의 「켜진 탭이 둘」). 지금 이 앱의 분할은 `spec ▏터미널`
+ * 이라 셸 열이 하나뿐이지만, 판정(`isShellSeen`)이 이미 여럿을 받는 모양이라 여기서 하나로
+ * 좁히면 열이 둘이 되는 날 그 층만 조용히 늙는다.
+ */
+export function showShells(ids: ReadonlyArray<number>): void {
+  shownShells = ids;
+  syncSeen();
+}
+
+// **창이 앞으로 오는 것만으로도 「봤다」가 된다**(결정 7) — 다른 앱을 보다 돌아오면 그때
+// 켜져 있던 칸은 사람이 본 것이다. 모듈 최상위에 거는 것은 위 구독들과 같은 이유이고,
+// 웹뷰 밖(노드 seam)에서는 `window`가 없어 이 줄을 건너뛴다.
+if (typeof window !== "undefined") {
+  window.addEventListener("focus", syncSeen);
+  // **`blur`에서도 부른다.** 그때 「봤다」가 새로 서는 일은 없지만, 창이 앞에 있는 동안
+  // 도착한 완료를 뒤늦게 지우지 않으려면 이 함수가 포커스 변화마다 한 번은 돌아야 한다 —
+  // 그리고 안 바뀌면 같은 상태를 돌려주므로 값이 없는 호출은 아무 일도 안 한다.
+  window.addEventListener("blur", syncSeen);
+}
+
+/**
  * 인스턴스를 거둔다 — **이것이 유일한 정리 경로다.** 부르는 곳이 둘이다: `×`(`closeShell`)와
  * 정상 종료(결정 48로 목록에서 스스로 빠지는 칸). 흩어 놓으면 PTY만 죽고 인스턴스가
  * 남거나(WebGL 컨텍스트를 계속 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
@@ -344,7 +413,11 @@ void onShellAttention((changed) => {
       const prev = next.shells.find((shell) => shell.id === id)?.attention ?? null;
       next = setAttention(next, id, nextAttention(prev, one.state));
     }
-    return next;
+    // **막 도착한 사실도 「봤다」를 거친다.** `applySignal`이 `seen`을 늘 푸는데(그 머리말),
+    // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 초록으로
+    // 번쩍였다가 다음 포커스 변화에나 꺼지고, 같은 판정을 쓰는 알림(#206)이 「보고 있는데
+    // 울리는」 그림이 된다(스토리 58).
+    return markShellsSeen(next, currentView());
   });
 }).catch((error) => {
   console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);

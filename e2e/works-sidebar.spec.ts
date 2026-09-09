@@ -575,6 +575,19 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
 const 레인 = (page: Page, slug: string) =>
   page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
 
+/**
+ * 본문을 문서로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
+ *
+ * **초록을 세우려면 이 줄이 필요하다**(#205 · 결정 7). 그 셸을 보고 있는 동안 온 완료는 그
+ * 순간 「봤다」가 되어 화면에 안 선다 — 사람이 이미 보고 있으니 그것이 맞다. 그래서 「안 본
+ * 완료」를 재는 검사는 **안 보는 자리에서** 재야 하고, 그 자리가 이 앱에서는 문서다.
+ * 앰버는 이 줄과 무관하다(「봤다」로 안 꺼진다).
+ */
+const 셸에서눈을뗀다 = async (page: Page) => {
+  await page.locator('[data-tab="spec"]').click();
+  await expect(page).not.toHaveURL(/tab=terminal/);
+};
+
 /** 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Stop`이 그 길이다(스펙 전이 표). */
 const 기다리게한다 = (page: Page, message: string, 지난ms = 0) =>
   markAttention(page, {
@@ -670,6 +683,7 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  await 셸에서눈을뗀다(page);
 
   const aside = page
     .locator("aside")
@@ -740,6 +754,7 @@ test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어�
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  await 셸에서눈을뗀다(page);
 
   const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
   // 턴이 끝나 말이 남고, 그 뒤 세션이 끝난다 — 초록을 만드는 것은 **세션 종료**다.

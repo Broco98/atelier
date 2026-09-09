@@ -1,8 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
+import { signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
@@ -387,6 +389,15 @@ const ShellTab = memo(function ShellTab({
   // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
   const running = runningOn(shell);
   const mark = agentMarkOf(running);
+  // **물들임의 값도 칸마다다**(결정 6). 판정은 `signalOf` 하나이고 — 행도 띠도 알림도 그
+  // 함수를 딛는다 — 여기서 다시 짓지 않는다. 「안 본 완료」가 이 칸을 켜는 순간 사라지는
+  // 것도 그 함수 안에 있다: 「봤다」가 세워지면 `signalOf`가 아무것도 안 돌린다.
+  const signal = signalOf(shell);
+  const tint = signal === null ? null : signalTint(signal, active);
+  // **눈과 귀가 같은 조건에서 선다**(스토리 52·55). 이름에 붙는 상태 말이 채움과 갈리면
+  // 도는 중인 칸이 아무 색도 없이 귀에만 「도는 중」을 말한다 — 그래서 `tint`가 없으면
+  // 이름도 조용하다.
+  const spoken = signal !== null && tint !== null ? SIGNAL_LABEL[signal] : null;
 
   return (
     // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
@@ -427,7 +438,18 @@ const ShellTab = memo(function ShellTab({
       data-tab="shell"
       className={cn(
         "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
-        active ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+        // **채움이 이 상자에 붙는다** — 이름 버튼이 아니라. 안쪽에 두면 이름이 숨는 폭
+        // (`@max-[88px]`)에서 색이 글자와 함께 사라져, 좁은 창에서 신호가 먼저 죽는다
+        // (스토리 53). 상자는 늘 서 있고 늘 같은 자리다.
+        //
+        // **물들면 회색이 통째로 물러난다**(결정 6). 켜진 칸의 `toggle-on`까지 그렇다 —
+        // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
+        // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
+        tint ?? (active ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1"),
+        // 켜진 칸의 `font-medium`은 물들어도 남는다 — 물들임이 말하는 것은 「부른다」이지
+        // 「고른 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리
+        // 하나가 된다.
+        tint !== null && active && "font-medium",
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
@@ -442,6 +464,15 @@ const ShellTab = memo(function ShellTab({
       <button
         type="button"
         aria-pressed={active}
+        // **상태가 이름에 붙는다**(스토리 55 · 결정 8). 채움은 `aria-hidden`도 아니고 그냥
+        // 색이라 스크린리더에 아무것도 안 남긴다 — 색만이 신호여선 안 되므로 그 사실을
+        // 말하는 자리가 이 이름 하나다. 말은 `SIGNAL_LABEL` 하나에서 오고 행 버튼·띠 줄이
+        // 같은 표를 읽는다.
+        //
+        // **`aria-label`이지 숨은 글자가 아니다** — 사이드바 행이 같은 자리에서 같은 선택을
+        // 했다. 보이는 이름은 `truncate`로 줄고 좁은 폭에서는 `sr-only`로 남는데, 그 위에
+        // 숨은 글자를 하나 더 얹으면 이름이 두 조각으로 읽힌다.
+        aria-label={spoken === null ? undefined : `${name} — ${spoken}`}
         onClick={() => onSelect(shell.id)}
         // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
         // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.

@@ -13,7 +13,7 @@ import type { ShellOrigin } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
-import { attachShell, detachShell, ensureShell, terminalStore } from "./terminal-store";
+import { attachShell, detachShell, ensureShell, showShells, terminalStore } from "./terminal-store";
 import type { WorkView } from "@/features/works/types";
 
 /**
@@ -49,6 +49,18 @@ function TerminalPane({ work }: { work: WorkView | null }) {
     const origin = originOf(work);
     if (origin) ensureShell(origin);
   }, [owner]);
+
+  // **본문이 지금 무엇을 보여 주는지 알린다**(결정 7 · #205). 이 조각이 서 있다는 것이 곧
+  // 「본문이 셸을 보여준다」이고 두 화면이 같은 조각을 쓰므로, 「봤다」를 세우는 자리가 여기
+  // 하나다 — `activeByOwner`만 보고 세우면 spec을 읽는 내내 안 본 완료가 조용히 지워진다
+  // (그 값은 그 화면의 **기억**이지 지금 본문이 아니다).
+  //
+  // **떠날 때 비운다.** 안 비우면 터미널을 떠난 뒤에도 마지막 칸이 「보고 있는 것」으로 남아,
+  // 다른 화면을 보는 동안 도착한 완료가 곧바로 지워진다.
+  useEffect(() => {
+    showShells(activeId === null ? [] : [activeId]);
+    return () => showShells([]);
+  }, [activeId]);
 
   // 갈아탈 때도 이 이펙트가 돈다: 먼저 이전 칸의 집을 빼고, 그 다음 새 칸의 집을 들인다.
   // 뺀다고 죽지 않는다는 것이 판 01이 만든 성질이다.

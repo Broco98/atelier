@@ -46,10 +46,48 @@ export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
  * 면적을 벌지만 글자에는 그런 것이 없어서, 라이트의 글자만 한 단 어둡게 갈랐다 —
  * 사람에게 열어 둔 물음은 `spec/물음-둘째-줄의-색.md`다.
  */
-const TONE: Readonly<Record<"waiting" | "done", { dot: string; text: string }>> = {
-  waiting: { dot: "bg-wait ring-wait-soft", text: "text-wait-ink" },
-  done: { dot: "bg-done ring-done-soft", text: "text-done-ink" },
+const TONE: Readonly<
+  Record<"waiting" | "done", { dot: string; text: string; fill: string; edge: string }>
+> = {
+  waiting: {
+    dot: "bg-wait ring-wait-soft",
+    text: "text-wait-ink",
+    fill: "bg-wait-soft",
+    edge: "ring-wait",
+  },
+  done: {
+    dot: "bg-done ring-done-soft",
+    text: "text-done-ink",
+    fill: "bg-done-soft",
+    edge: "ring-done",
+  },
 };
+
+/**
+ * 셸 탭의 **물들임**(#205, 결정 6 — 안 J3). 칸 배경을 통째로 칠하고 글자를 같은 가족의
+ * 잉크로 바꾼다. 도는 중과 아무 말 없는 칸은 `null`이다 — 탭에는 링을 안 세운다(스토리 52).
+ *
+ * **이 함수가 여기 사는 것이 스토리 79다.** 탭은 채움이고 행은 점이라 **어휘가 둘인데**
+ * (결정 6: 「표면이 다르면 문법이 달라도 된다」) 색은 하나여야 한다 — 자리마다 토큰을 새로
+ * 고르면 같은 셸이 사이드바에서 앰버, 탭에서 초록이 되는 날이 오고 그것을 잡는 검사가
+ * 없다. 같은 표(`TONE`)를 딛으면 그 어긋남이 **생길 자리가 없다**.
+ *
+ * **켜진 칸에서 앰버가 회색을 이긴다**(결정 6). 「부르는 탭」이 「고른 탭」보다 위 사실이라
+ * `toggle-on` 대신 이 채움이 서고, 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다.
+ * 테두리를 `ring`(그림자)으로 그리는 것은 **폭을 안 먹기 때문이다**(스토리 54) — `border`로
+ * 그리면 안쪽 폭이 2px 줄어 상태가 바뀔 때마다 이름과 닫기가 옆으로 뛴다.
+ *
+ * **hover의 회색을 안 얹는다.** 채움과 겹치면 배경 유틸리티가 두 벌이 되어 승자를 정렬
+ * 순서가 정하고(index.css의 경고), 그 승부에서 회색이 이기면 마우스가 지나갈 때마다
+ * 부르는 칸이 조용해진다.
+ */
+export function signalTint(kind: ShellSignal, active: boolean): string | null {
+  if (kind === "working") return null;
+  const tone = TONE[kind];
+  // 이어 붙인 이름을 만들지 않는다 — 여기 서는 글자는 전부 `TONE`에 **그대로 있는** 것이라
+  // Tailwind가 규칙을 만든다(위 `TONE` 머리말의 그 사고).
+  return cn(tone.fill, tone.text, active && "ring-1 ring-inset", active && tone.edge);
+}
 
 /**
  * 이 화면값이 둘째 줄에 **경과를 다는가**(결정 13). 도는 중은 안 단다 — 레인의 링이 「지금

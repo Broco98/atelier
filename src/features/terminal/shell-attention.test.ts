@@ -10,6 +10,7 @@ import {
   bandRows,
   callingShells,
   isShellSeen,
+  markShellsSeen,
   ptyIdOf,
   nextAttention,
   signalOf,
@@ -580,6 +581,55 @@ describe("「봤다」", () => {
   // 입력 자체가 없다는 것이 이 줄이다.
   it("켜진 탭이 없으면 아무도 안 봤다", () => {
     expect(isShellSeen(3, { activeIds: [], focused: true })).toBe(false);
+  });
+});
+
+// **판정을 상태에 적어 넣는 자리**(#205). 위 `isShellSeen`이 「이 셸을 지금 보고 있나」를
+// 말하고, 이 함수가 그 답을 목록 전체에 한 번에 앉힌다 — 탭 물들임과 알림 억제가 **같은
+// 판정을 같은 순간에** 쓰려면 그 앉히는 자리도 하나여야 한다.
+describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
+  const 목록 = (...list: ReadonlyArray<Attention | null>): ShellsState => ({
+    shells: 칸들(...list),
+    activeByOwner: {},
+    nextId: list.length + 1,
+  });
+
+  it("켜진 칸의 안 본 완료가 지워지고, 기다림은 남는다", () => {
+    // 결정 7. 「봤다」가 지우는 것은 **안 본 완료 하나**다 — 본 것과 답한 것은 다르다.
+    const state = 목록(상태({ kind: "done" }), 상태({ kind: "waiting" }));
+    const 뒤 = markShellsSeen(state, { activeIds: [1, 2], focused: true });
+    expect(signalOf(뒤.shells[0])).toBeNull();
+    expect(signalOf(뒤.shells[1])).toBe("waiting");
+  });
+
+  it("창이 뒤에 있으면 아무것도 안 지워진다 — 상태도 그대로다", () => {
+    // 화면에 떠 있어도 사람이 본 것이 아니다. **같은 객체로 남는 것**까지 재는 것은
+    // 이 함수가 창을 눌렀다 뗄 때마다 불릴 자리라서다(`markSeen` 머리말).
+    const state = 목록(상태({ kind: "done" }));
+    expect(markShellsSeen(state, { activeIds: [1], focused: false })).toBe(state);
+  });
+
+  it("안 켜진 칸은 안 건드린다", () => {
+    const state = 목록(상태({ kind: "done" }), 상태({ kind: "done" }));
+    const 뒤 = markShellsSeen(state, { activeIds: [1], focused: true });
+    expect(signalOf(뒤.shells[0])).toBeNull();
+    expect(signalOf(뒤.shells[1])).toBe("done");
+  });
+
+  // **분할 중이면 켜진 칸이 둘이고 둘 다 봤다**(결정 7). 하나만 세면 다른 열의 초록이
+  // 안 꺼진다.
+  it("켜진 칸이 둘이면 둘 다 봤다", () => {
+    const state = 목록(상태({ kind: "done" }), null, 상태({ kind: "done" }));
+    const 뒤 = markShellsSeen(state, { activeIds: [1, 3], focused: true });
+    expect([signalOf(뒤.shells[0]), signalOf(뒤.shells[2])]).toEqual([null, null]);
+  });
+
+  // 판정이 두 벌이 되면 탭에서만 초록이 꺼지거나 알림만 조용해진다. 소스로 못박는다 —
+  // 이 함수는 스스로 조건을 적지 않고 `isShellSeen`을 부른다.
+  it("판정을 다시 적지 않고 `isShellSeen`을 부른다", () => {
+    const source = read("shell-attention.ts");
+    const 본문 = source.slice(source.indexOf("export function markShellsSeen"));
+    expect(본문).toContain("isShellSeen(");
   });
 });
 
