@@ -1,17 +1,23 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import type { WorkView } from "@/features/works/types";
+import { useWorks } from "@/features/works/hooks";
 import {
   runningAgentsOf,
   shellCountsOf,
   shellsOf,
   type ShellsState,
 } from "@/features/terminal/shell-registry";
-import { signalsByOwner, topSignalView } from "@/features/terminal/shell-attention";
-import { terminalStore } from "@/features/terminal/terminal-store";
-import { navItems, type NavKey } from "./nav-items";
+import { bandRows, signalsByOwner, topSignalView } from "@/features/terminal/shell-attention";
+import type { BandRow } from "@/features/terminal/shell-attention";
+import { selectShell, terminalStore } from "@/features/terminal/terminal-store";
+import { recallSearch, tabSearch, workSlugOf } from "@/routes/-work-search";
+import { AttentionBand, type BandItem } from "./attention-band";
+import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import { SignalLine, showsElapsed } from "./shell-signal";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
@@ -55,6 +61,20 @@ function Sidebar({
   // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
   // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
   const signals = useStore(terminalStore, signalsByOwner, shallow);
+  // **띠가 읽는 줄들**(#204). 이것만은 위 셋과 달리 얕은 비교로는 안 걸린다 — 값이 객체
+  // 배열이라 회차마다 새것이다. 그래서 비교를 한 겹 더 벗기는 `sameBand`를 쓴다(그쪽 주석):
+  // 띠는 셸이 프롬프트마다 쏘는 타이틀에도, 1초 폴링의 「도는 것」에도 안 흔들려야 한다.
+  const rows = useStore(terminalStore, bandRows, sameBand);
+  // **펼침은 여기 산다 — `useState`다.** 「앱이 떠 있는 동안만 기억한다」(결정 5)가 그 뜻이고,
+  // 이 앱의 「위치는 세션, 설정은 영속」에서 위치 쪽이다. localStorage에 적으면 어제 펼쳐 둔
+  // 것이 오늘 처음 뜨는 띠에 되살아난다 — 그때 부르는 셸은 어제의 그것들이 아니다.
+  const [bandOpen, setBandOpen] = useState(false);
+  // work 제목은 목록 API가 준다 — 터미널은 슬러그까지만 안다(`bandRows` 머리말).
+  const { data: works = [] } = useWorks();
+  const items = bandItems(rows, works);
+  // 띠의 줄은 늘 경과를 단다(부르는 것만 서므로) — 줄이 하나라도 있으면 시계가 돈다.
+  const bandNow = useNow(items.length > 0);
+  const openBand = useOpenBand();
 
   return (
     <aside
@@ -114,6 +134,23 @@ function Sidebar({
           ))}
         </nav>
 
+        {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
+            그 가름은 조각 안에 있다(`AttentionBand`의 첫 줄). 거터가 nav·설정과 같은 것은
+            그 셋이 한 컬럼에 세로로 붙어 서기 때문이다(GUTTER 주석).
+
+            **목록 밖에 서는 것이 이 띠의 값 절반이다**(스토리 43) — 스크롤로 밀려난 work의
+            셸이 불러도 여기서는 보인다. 안에 넣으면 판 04 결정 21이 감수했던 「어디에도 안
+            보인다」가 그대로 남는다. */}
+        <div className={GUTTER}>
+          <AttentionBand
+            items={items}
+            now={bandNow}
+            expanded={bandOpen}
+            onToggle={() => setBandOpen((on) => !on)}
+            onOpen={openBand}
+          />
+        </div>
+
         <SidebarWorkList
           open={open}
           shellCounts={shellCounts}
@@ -147,6 +184,81 @@ function Sidebar({
       {open && <ResizeHandle control={size} />}
     </aside>
   );
+}
+
+/**
+ * 띠의 줄들이 **다 같은가**. `useStore`의 얕은 비교를 한 겹 더 벗긴 것이다.
+ *
+ * 이 한 겹이 필요한 이유는 값의 모양이다: `bandRows`는 **객체 배열**을 새로 지어 돌려주므로
+ * 기본 얕은 비교는 늘 어긋나고, 그러면 셸이 프롬프트마다 쏘는 OSC 타이틀 하나에, 1초 폴링의
+ * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — `runningAgentsOf` 머리말이 목록에서 든
+ * 바로 그 함정이고, 여기서는 목록이 아니라 띠가 그 자리에 선다.
+ *
+ * 안쪽을 `shallow`로 견주는 것은 줄이 **원시값만** 담기 때문이다(`BandRow`). 한 겹 더 깊은
+ * 비교가 필요해지는 날은 줄에 객체가 들어오는 날이고, 그때는 이 비교가 아니라 그 값을 다시 봐야 한다.
+ */
+function sameBand(a: ReadonlyArray<BandRow>, b: ReadonlyArray<BandRow>): boolean {
+  return a.length === b.length && a.every((row, index) => shallow(row, b[index]));
+}
+
+/**
+ * 줄에 **화면의 이름**을 붙인다. 터미널은 슬러그까지만 알고(`bandRows` 머리말) 제목은 목록
+ * API가 주므로, 둘을 다 쥔 이 자리에서 만난다.
+ *
+ * 최상위 셸의 이름은 nav 항목의 것 그대로다(`TERMINAL_LABEL`) — 누르면 가는 곳이 그 항목이
+ * 가는 곳이라, 이름이 갈리면 같은 화면이 사이드바에서 두 이름을 갖는다.
+ *
+ * **모르는 슬러그는 슬러그를 적는다.** 목록이 아직 안 왔거나 그 사이 지워진 work의 셸이
+ * 부를 수 있는데, 그때 줄을 빼면 사람은 부르는 셸을 못 찾고 이름을 비우면 「— 나를 기다림」만
+ * 남는다. 둘 다 이 띠가 있는 이유를 스스로 무너뜨린다.
+ */
+function bandItems(rows: ReadonlyArray<BandRow>, works: ReadonlyArray<WorkView>): BandItem[] {
+  if (rows.length === 0) return [];
+  const titles = new Map(works.map((work) => [work.slug, work.title]));
+  return rows.map((row) => ({
+    ...row,
+    title: row.owner === null ? TERMINAL_LABEL : (titles.get(row.owner) ?? row.owner),
+  }));
+}
+
+/**
+ * 띠의 줄을 눌렀을 때 하는 일(결정 13의 넷째·다섯째). **둘로 갈린 일 하나다**: 셸을 켜는
+ * 것은 스토어의 일이라 주소와 무관하고, 화면을 옮기는 것은 주소를 쥔 쪽의 일이다 —
+ * `WorksPage`의 `dropHere`가 같은 분담을 이미 쓰고 있다.
+ *
+ * **spec을 보고 있었으면 터미널로 밀어낸다**(결정 13의 넷째) — 결정 10의 알림 클릭 규칙과
+ * 같은 자리로 간다. **분할은 안 건드린다**: 분할 중이면 두 열이 이미 서 있으므로 바뀌는
+ * 것은 터미널 열의 탭 하나뿐이고, 분할을 자동으로 여는 안은 「사람이 안 시킨 레이아웃
+ * 변경」이라 기각됐다.
+ *
+ * 주소를 짓는 모양이 둘인 것은 work이 같은가로 갈리기 때문이다 — 같으면 보던 문서와 분할을
+ * 지켜야 해서 **함수형**이고(결정 15가 그 형태를 못박았다), 다르면 그 work의 마지막 화면을
+ * 씨앗으로 삼는다(`recallSearch`, 결정 77·97). `dropInto`가 같은 갈림을 같은 모양으로 쓴다.
+ *
+ * 같은 work 안에서는 `replace`다(결정 13) — 탭을 한 번 옮겼는데 되돌리는 데 뒤로가기를
+ * 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.
+ */
+function useOpenBand(): (item: BandItem) => void {
+  const navigate = useNavigate();
+  const openSlug = useRouterState({ select: (state) => workSlugOf(state.location.pathname) });
+
+  return (item) => {
+    selectShell(item.id);
+    if (item.owner === null) {
+      void navigate({ to: "/terminal" });
+      return;
+    }
+    const slug = item.owner;
+    const here = slug === openSlug;
+    void navigate({
+      to: "/works/$slug",
+      params: { slug },
+      search: here
+        ? (prev: object) => tabSearch(prev, "terminal")
+        : tabSearch(recallSearch(slug), "terminal"),
+      replace: here,
+    });
+  };
 }
 
 /**

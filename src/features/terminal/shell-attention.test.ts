@@ -7,6 +7,7 @@ import { foldHookState } from "./agents";
 import {
   applySignal,
   attentionOn,
+  bandRows,
   callingShells,
   isShellSeen,
   ptyIdOf,
@@ -17,7 +18,7 @@ import {
   topSignalView,
 } from "./shell-attention";
 import type { Attention } from "./shell-attention";
-import type { Shell } from "./shell-registry";
+import type { Shell, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
 const read = (file: string) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
@@ -452,6 +453,90 @@ describe("띠에 서는 목록", () => {
 
   it("부르는 셸이 없으면 빈 목록이다 — 띠 자체가 없다", () => {
     expect(callingShells(칸들(상태({ kind: "working" }), null))).toEqual([]);
+  });
+});
+
+// **띠가 그리는 줄**(#204). 위 `callingShells`가 「누가 부르나」와 그 차례를 정하고, 여기서
+// 줄 하나가 지는 것이 붙는다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) ·
+// 마크의 재료 · 그리고 **셸 이름을 붙이는가**.
+//
+// 셸 이름의 조건이 이 함수 안에 있는 이유는 그것이 **줄 하나로는 못 내는 판정**이기
+// 때문이다: 「이 work에서 부르는 셸이 둘 이상인가」는 목록 전체를 봐야 안다. 그리는 쪽에
+// 두면 띠가 스스로 무리를 세게 되고, 그 셈이 정렬과 갈리면 이름이 엉뚱한 줄에 붙는다.
+describe("띠의 줄", () => {
+  const 칸이 = (over: Partial<Shell>): Shell => ({ ...칸(null), ...over });
+  const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
+    shells,
+    activeByOwner: {},
+    nextId: shells.length + 1,
+  });
+
+  it("부르는 셸이 없으면 줄이 하나도 없다 — 띠 자체가 없다", () => {
+    expect(bandRows(화면(칸이({ id: 1, owner: "가", attention: 상태({ kind: "working" }) })))).toEqual([]);
+  });
+
+  // **차례는 화면을 가리지 않는다.** 최상위 셸도 같은 줄 세우기에 든다(결정 13의 다섯째) —
+  // 빼면 거기서 부를 때 어디에도 안 보인다.
+  it("기다림 먼저, 같은 종류 안에서는 오래된 순이다 — 최상위 셸도 함께 선다", () => {
+    const rows = bandRows(
+      화면(
+        칸이({ id: 1, owner: "가", attention: 상태({ kind: "done", since: 30 }) }),
+        칸이({ id: 2, owner: null, attention: 상태({ kind: "waiting", since: 50 }) }),
+        칸이({ id: 3, owner: "나", attention: 상태({ kind: "waiting", since: 20 }) }),
+        칸이({ id: 4, owner: "가", attention: 상태({ kind: "done", since: 10 }) }),
+      ),
+    );
+    expect(rows.map((row) => row.id)).toEqual([3, 2, 4, 1]);
+    expect(rows.map((row) => row.owner)).toEqual(["나", null, "가", "가"]);
+    expect(rows.map((row) => row.kind)).toEqual(["waiting", "waiting", "done", "done"]);
+    expect(rows.map((row) => row.since)).toEqual([20, 50, 10, 30]);
+  });
+
+  // 한 화면에서 **부르는** 셸이 둘 이상일 때만 붙는다(결정 5). 이름은 탭에 적히는 것과
+  // 같은 규칙이라 그 함수를 딛는다 — 두 벌이 되면 띠와 탭이 같은 셸을 다르게 부른다.
+  it("한 화면에서 둘이 부르면 줄마다 셸 이름이 붙는다", () => {
+    const rows = bandRows(
+      화면(
+        칸이({ id: 1, owner: "가", title: "vite", attention: 상태({ kind: "waiting", since: 10 }) }),
+        칸이({ id: 2, owner: "가", title: "claude", attention: 상태({ kind: "waiting", since: 20 }) }),
+      ),
+    );
+    expect(rows.map((row) => row.shellName)).toEqual(["vite", "claude"]);
+  });
+
+  it("하나만 부르면 안 붙는다 — 그 화면에 조용한 셸이 더 있어도", () => {
+    const rows = bandRows(
+      화면(
+        칸이({ id: 1, owner: "가", title: "vite", attention: 상태({ kind: "waiting" }) }),
+        칸이({ id: 2, owner: "가", title: "claude", attention: null }),
+        칸이({ id: 3, owner: "가", title: "cargo", attention: 상태({ kind: "done", seen: true }) }),
+      ),
+    );
+    expect(rows.map((row) => row.shellName)).toEqual([null]);
+  });
+
+  // 최상위 셸도 한 화면이다 — 거기서 둘이 부르면 이름이 붙고, work의 셸과 섞이지 않는다.
+  it("최상위 셸끼리도 자기들끼리 센다", () => {
+    const rows = bandRows(
+      화면(
+        칸이({ id: 1, owner: null, title: "claude", attention: 상태({ kind: "waiting", since: 10 }) }),
+        칸이({ id: 2, owner: "가", title: "codex", attention: 상태({ kind: "waiting", since: 20 }) }),
+      ),
+    );
+    expect(rows.map((row) => row.shellName)).toEqual([null, null]);
+  });
+
+  // **마크의 재료는 행과 같은 규칙이다**(`topSignalView`) — 지금 도는 것이 먼저이고,
+  // 없으면 그 상태를 말한 에이전트다. 초록 줄에 마크가 서는 자리가 그 둘째 갈래다.
+  it("도는 것이 먼저, 없으면 말한 에이전트가 마크를 낸다", () => {
+    const rows = bandRows(
+      화면(
+        칸이({ id: 1, owner: "가", running: "codex", attention: 상태({ kind: "waiting", since: 10, agent: "claude" }) }),
+        칸이({ id: 2, owner: "나", running: null, attention: 상태({ kind: "waiting", since: 20, agent: "claude" }) }),
+        칸이({ id: 3, owner: "다", running: null, attention: 상태({ kind: "waiting", since: 30, agent: null }) }),
+      ),
+    );
+    expect(rows.map((row) => row.running)).toEqual(["codex", "claude", null]);
   });
 });
 

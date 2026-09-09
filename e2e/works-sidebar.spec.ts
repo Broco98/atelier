@@ -1,10 +1,11 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { WORKS } from "./fixtures";
+import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
   markAttention,
   markRunning,
+  openShell,
   readIpcRecord,
   unknownIpcCalls,
 } from "./harness";
@@ -610,8 +611,14 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
   await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
 
   // **이름에 상태가 붙는다**(스토리 33) — 점은 `aria-hidden`이라 이 이름이 유일한 말이다.
+  //
+  // **목록 안으로 좁혀 집는다.** 「확인할 것」 띠의 줄이 **같은 이름**을 쓰기 때문이다
+  // (#204, 결정 8) — 부르는 셸이 있으면 그 줄도 함께 서므로 화면 전체에서 세면 둘이다.
+  // 좁히지 않으면 이 줄이 「행에 이름이 붙었다」가 아니라 「어딘가에 하나 있다」를 재게 된다.
   await expect(
-    page.getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }),
+    page
+      .locator("aside .scroll-quiet")
+      .getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }),
   ).toHaveCount(1);
 
   // **hover에 핀이 떠도 레인과 둘째 줄이 남는다**(판 05 결정 6 뒤집음). 아래 hover 검사가
@@ -799,6 +806,220 @@ test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다",
   expect(멈출때.name).toBe("none");
   // **완전한 링이다** — 머리가 남으면 「멈춘 스피너」로 읽혀 사람이 「굳었나」를 묻는다.
   expect(멈출때.머리).toBe(멈출때.원주);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **「확인할 것」 띠**(#204). 값을 내는 자리(`bandRows`)와 그리는 자리(`AttentionBand`)는
+// 각자 자기 seam이 보고, 여기서만 보이는 것 넷을 잰다: 띠가 **서고 사라지는 것**, 펼침이
+// 어디에도 안 적히는 것, 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때
+// 무엇이 먼저 줄어드는가. 앞의 셋은 진짜 스토어와 라우터가 있어야 나고 마지막은 진짜
+// 레이아웃이 있어야 난다.
+
+/** 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(스토리 38). */
+const 띠 = (page: Page) => page.locator("[data-band]");
+
+/** 띠의 줄들 — 이름을 단 버튼만 센다(토글은 이름이 글자에 있어 안 걸린다). */
+const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]");
+
+/** 그 이름의 띠 줄. **띠 안으로 좁힌다** — 같은 이름이 사이드바 행에도 서기 때문이다. */
+const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
+
+test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼친다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  // **먼저 없음을 센다** — 이 판이 약속한 「평소 화면이 지금과 같다」가 이 한 줄이다.
+  await expect(띠(page)).toHaveCount(0);
+
+  await 기다리게한다(page, "커밋할까요?");
+  await expect(띠(page)).toHaveCount(1);
+  await expect(띠줄(page, `${plainWork.title} — 나를 기다림`)).toHaveCount(1);
+  // **하나뿐이면 셸 이름이 안 붙는다**(결정 5) — 제목만으로 어느 셸인지 정해진다.
+  await expect(띠(page)).not.toContainText(FIXTURE_SHELL_NAME);
+
+  // 셸 셋을 더 세워 넷이 함께 부르게 한다. `openShell`이 칸마다 spawn 응답을 기다리므로
+  // 여기서 세는 pty 번호가 곧 「n번째 칸」이다(그 함수의 머리말).
+  for (const ptyId of [2, 3, 4]) {
+    await openShell(page);
+    await markAttention(
+      page,
+      { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
+      ptyId,
+    );
+  }
+
+  // **헤더는 접힌 것까지 센다** — 보이는 줄은 셋인데 수는 넷이다.
+  await expect(띠줄들(page)).toHaveCount(3);
+  await expect(띠(page).locator("span.tabular-nums").first()).toHaveText("4");
+  // **한 화면에서 넷이 부르니 줄마다 셸 이름이 붙는다**(결정 5). 위에서 「안 붙는다」를
+  // 먼저 셌으므로 이 줄은 「원래 붙어 있던 것」으로는 초록이 안 된다.
+  for (const at of [0, 1, 2]) {
+    await expect(띠줄들(page).nth(at)).toContainText(FIXTURE_SHELL_NAME);
+  }
+
+  // **펼침이 어디에도 안 적힌다**(결정 5 — 「앱이 떠 있는 동안만」). 새로고침해 다시 재는
+  // 대신 저장소를 통째로 견준다: 새로고침을 넘겨 살아남는 길이 그 둘뿐이라 여기서 아무것도
+  // 안 늘었다는 것이 곧 「껐다 켜면 잊힌다」이고, 이쪽은 셸 넷을 다시 세울 필요가 없다.
+  const 저장된것 = () =>
+    page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
+  const 펼치기전 = await 저장된것();
+
+  await 띠(page).getByRole("button", { name: "+1 더" }).click();
+  await expect(띠줄들(page)).toHaveCount(4);
+  expect(await 저장된것()).toBe(펼치기전);
+
+  // 같은 자리가 `접기`가 된다.
+  await 띠(page).getByRole("button", { name: "접기" }).click();
+  await expect(띠줄들(page)).toHaveCount(3);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **줄을 누르면 그 work의 터미널로 가고 그 셸 탭이 켜진다**(결정 13의 넷째). spec을 보고
+// 있었으면 터미널로 밀어내고, 분할 중이면 분할은 그대로 두고 탭만 바꾼다 — 사람이 안 시킨
+// 레이아웃 변경(분할 자동 열기)은 기각됐다.
+test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도, 분할 중이어도", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await openShell(page);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  const lit = (at: number) => tabs.nth(at).locator("button[aria-pressed]");
+  // 부르는 것은 **둘째 칸**이고 켜 두는 것은 첫째다 — 그래야 「탭이 바뀌었다」가 보인다.
+  await markAttention(
+    page,
+    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: "커밋할까요?" } },
+    2,
+  );
+  await lit(0).click();
+  await expect(lit(0)).toHaveAttribute("aria-pressed", "true");
+
+  // spec으로 옮긴다 — 주소에서 `tab`이 빠지는 것이 이 앱의 규칙이다(결정 14).
+  await page.locator('[data-tab="spec"]').click();
+  await expect(page).not.toHaveURL(/tab=terminal/);
+
+  await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
+  // **spec을 밀어낸다.**
+  await expect(page).toHaveURL(/tab=terminal/);
+  await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
+
+  // 분할을 켜고 첫 칸으로 되돌린 뒤 다시 누른다.
+  const 분할 = page.locator('button[title="분할 켜기"]');
+  await 분할.click();
+  await expect(page).toHaveURL(/split=/);
+  await lit(0).click();
+  await expect(lit(0)).toHaveAttribute("aria-pressed", "true");
+
+  await 띠줄(page, `${plainWork.title} — 나를 기다림`).click();
+  // **분할이 그대로다** — 열은 둘 그대로이고 바뀐 것은 터미널 열의 탭뿐이다.
+  await expect(page).toHaveURL(/split=/);
+  await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **최상위 셸도 띠에 든다**(결정 13의 다섯째). 하나를 빼면 거기서 부를 때 어디에도 안
+// 보인다 — nav `Terminal`은 이 판에서 종류·수 그대로이기 때문이다(스펙의 Out of Scope).
+test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 그 화면으로 간다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await 기다리게한다(page, "커밋할까요?");
+
+  await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);
+
+  // work 화면으로 옮겨도 그 줄이 남는다 — 띠는 **전 화면**의 부르는 셸을 모은다.
+  await page.getByRole("button", { name: plainWork.title, exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);
+
+  await 띠줄(page, "Terminal — 나를 기다림").click();
+  await expect(page).toHaveURL(/\/terminal$/);
+  await expect(page.locator('[data-tab="shell"]').first().locator("button[aria-pressed]")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **스크롤로 밀려난 work의 셸도 띠에서 보인다**(스토리 43) — 판 04 결정 21이 감수했던
+// 「어디에도 안 보인다」가 여기서 절반 닫힌다. 띠가 목록 **밖**에 서는 것이 그 전부이고,
+// 그 사실은 목록이 실제로 넘칠 때만 보이므로 창을 낮춘다.
+test("스크롤로 밀려난 work의 셸도 띠에서 보인다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.setViewportSize({ width: 1100, height: 320 });
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 기다리게한다(page, "커밋할까요?");
+
+  const list = page.locator("aside .scroll-quiet").first();
+  // **목록 안으로 좁혀 집는다.** 이 행은 지금 부르고 있어 이름에 상태가 붙어 있고
+  // (`${plainWork.title} — 나를 기다림`, #203) 그 이름은 띠의 줄과 **글자가 같다**(결정 8) —
+  // 화면 전체에서 집으면 둘이 함께 잡힌다. 스코프가 곧 이 검사가 가르려는 그 둘이다.
+  const row = list.getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true });
+
+  // **목록이 정말 넘치는가부터 센다** — 안 넘치면 아래 「밀려났다」가 아무것도 안 잰 채
+  // 초록이 된다. 넘치게 만드는 것은 창 높이 하나다.
+  const 넘침 = await list.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(넘침).toBeGreaterThan(0);
+  await list.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+
+  // **`boundingBox`가 아니라 `evaluate`로 잰다.** 저쪽은 요소가 **보일 때까지** 기다리는데,
+  // 여기서 재려는 것이 바로 「안 보인다」라서 그 기다림이 30초 뒤 시간 초과로 끝난다
+  // (실측 — 이 검사의 첫 판이 그렇게 죽었다). `evaluate`는 붙어 있기만 하면 답한다.
+  const 자리 = (target: Locator) =>
+    target.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom };
+    });
+
+  const listAt = await 자리(list);
+  const rowAt = await 자리(row);
+  // 그 행은 목록의 보이는 칸 아래로 밀려났다.
+  expect(rowAt.top).toBeGreaterThanOrEqual(listAt.bottom);
+
+  // 그런데 띠의 줄은 목록 **위**에 그대로 서 있다 — 그리고 실제로 보인다.
+  const bandRow = 띠줄(page, `${plainWork.title} — 나를 기다림`);
+  await expect(bandRow).toBeVisible();
+  expect((await 자리(bandRow)).bottom).toBeLessThanOrEqual(listAt.top);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **스토리 34** — 사이드바를 좁혀도 띠가 먼저 죽지 않는다. 마크업 seam은 규격(`shrink-0`)
+// 까지만 보고, 그것이 실제로 무엇을 지키는지는 진짜 레이아웃에서만 난다.
+test("사이드바를 좁혀도 띠의 점과 경과는 그대로고 제목이 먼저 잘린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 기다리게한다(page, "커밋할까요?", 125_000);
+
+  const row = 띠줄(page, `${plainWork.title} — 나를 기다림`);
+  const 재본다 = async () => ({
+    점: (await row.locator("[data-signal]").boundingBox())!.width,
+    경과: (await row.locator("[data-elapsed]").boundingBox())!.width,
+    제목: (await row.locator("[data-fade]").boundingBox())!.width,
+  });
+
+  const 앞 = await 재본다();
+  await 좁힌다(page, 40);
+  const 뒤 = await 재본다();
+
+  expect(뒤.제목).toBeLessThan(앞.제목);
+  expect(뒤.점).toBe(앞.점);
+  expect(뒤.경과).toBe(앞.경과);
+  // 띠는 그대로 서 있고 경과도 그대로 읽힌다 — 죽는 것은 글자뿐이다.
+  await expect(띠(page)).toHaveCount(1);
+  await expect(row.locator("[data-elapsed]")).toHaveText("2m");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

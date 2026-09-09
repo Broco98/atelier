@@ -154,6 +154,18 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(sidebar).toContain("owner === null ? null : topSignalView(shellsOf(state, owner))");
   });
 
+  it("띠의 줄들은 **한 겹 더 벗긴 비교**로 구독한다", () => {
+    // 여기만 `shallow`가 아니다(#204). `bandRows`는 객체 배열을 새로 지어 돌려주므로
+    // 기본 얕은 비교는 **한 번도 안 걸리고**, 그러면 셸이 프롬프트마다 쏘는 타이틀 하나에
+    // 띠가 통째로 다시 그려진다 — 위 두 검사가 목록에서 막는 그 함정이 띠에서 되살아난다.
+    // 비교가 갈리는 자리라 리터럴로 못박는다: `shallow`로 되돌려도 화면은 멀쩡하고
+    // (값은 맞다) 값싼 그림이 초마다 도는 것만 남아 어느 층에서도 안 보인다.
+    expect(sidebar).toContain("useStore(terminalStore, bandRows, sameBand)");
+    // 자르는 자리가 그리는 쪽 하나여야 헤더의 `N`이 셀 것이 남는다(결정 8) — 값을 내는
+    // 쪽에서 미리 자르면 「접힌 것까지 센다」가 어디서도 성립할 수 없다.
+    expect(sidebar).not.toContain("BAND_LIMIT");
+  });
+
   it("그 값이 work 행 둘째 줄의 메타로 내려간다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.

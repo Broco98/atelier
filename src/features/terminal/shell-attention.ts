@@ -1,6 +1,6 @@
 import { foldHookState } from "./agents";
 import type { AgentSignal, CanonicalEvent } from "./agents/types";
-import { runningOn } from "./shell-registry";
+import { runningOn, shellRowName } from "./shell-registry";
 import type { Shell, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
@@ -309,6 +309,73 @@ export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<Shell
   return calling
     .sort((a, b) => (a.rank === b.rank ? a.since - b.since : a.rank - b.rank))
     .map((one) => one.shell);
+}
+
+/**
+ * 「확인할 것」 띠의 **줄 하나**(#204). `callingShells`가 정한 차례 그대로이고, 줄이 지는
+ * 것은 넷이다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) · 마크의 재료 ·
+ * 그리고 셸 이름을 붙이는가.
+ *
+ * **work 제목은 여기 없다.** 그 값은 목록 API가 주는 것이라 터미널이 모르고, 알려면 이
+ * 모듈이 works를 물어야 한다 — 띠를 그리는 자리(`Sidebar.tsx`)가 이미 둘 다 쥐고 있으므로
+ * 거기서 붙인다. 최상위 셸의 `Terminal`도 화면의 말이라 그쪽이 든다(CONTEXT.md의 표기 —
+ * 대문자 `Terminal`은 nav가 가는 곳의 이름이다).
+ */
+export interface BandRow {
+  /** 레지스트리의 칸 번호. 누르면 이 칸이 켜진다(`selectShell`). */
+  id: number;
+  /** 어느 화면인가. `null`이면 최상위 셸이고 누르면 `/terminal`로 간다(결정 13). */
+  owner: string | null;
+  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다. */
+  kind: "waiting" | "done";
+  /** 경과가 읽는 시각. 정렬의 둘째 키이기도 하다. */
+  since: number;
+  /** 마크의 재료. 규칙은 행과 같다(`SignalView.running`) — 도는 것이 먼저, 없으면 말한 쪽. */
+  running: string | null;
+  /**
+   * 탭에 적히는 그 이름. **한 화면에서 부르는 셸이 둘 이상일 때만** 찬다(결정 5) —
+   * 하나뿐이면 제목만으로 어느 셸인지 정해지므로 붙일 이유가 없다.
+   */
+  shellName: string | null;
+}
+
+/**
+ * 띠에 서는 줄 전부. **자르지 않는다** — 상한 3과 `+N 더`는 그리는 쪽의 일이고, 여기서
+ * 자르면 헤더의 `N`이 셀 것이 사라진다(`callingShells` 머리말과 같은 가름).
+ *
+ * **셸 이름의 조건이 이 안에 있는 것**은 그것이 줄 하나로는 못 내는 판정이어서다:
+ * 「이 화면에서 부르는 셸이 둘 이상인가」는 목록 전체를 봐야 안다. 그리는 쪽에 두면 띠가
+ * 스스로 무리를 세게 되고, 그 셈이 정렬과 갈리는 날 이름이 엉뚱한 줄에 붙는다.
+ *
+ * 무리를 가르는 키가 `owner`인 것은 **켜지는 자리가 화면마다 따로이기 때문이다**
+ * (`activeByOwner`) — 최상위 셸 둘이 부르면 그 둘도 서로 갈려야 한다.
+ */
+export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
+  const calling = callingShells(state.shells);
+
+  // 화면마다 **부르는** 셸이 몇인가. 조용한 형제는 안 센다 — 이름이 붙는 근거는 「띠에서
+  // 두 줄이 같은 제목으로 선다」이지 「그 work에 셸이 여럿이다」가 아니다.
+  const perOwner = new Map<string | null, number>();
+  for (const shell of calling) perOwner.set(shell.owner, (perOwner.get(shell.owner) ?? 0) + 1);
+
+  const rows: BandRow[] = [];
+  for (const shell of calling) {
+    // `callingShells`가 이미 걸러 낸 뒤라 값이 있는 것은 확실하지만, 그 확신을 단언으로
+    // 적어 두면 다음 사람이 저쪽 조건을 넓힐 때 조용히 거짓말이 된다 — `topSignalView`가
+    // 같은 이유로 문을 다시 딛는다. 여기서도 없으면 **줄을 안 그린다.**
+    const attention = attentionOn(shell);
+    const kind = signalOf(shell);
+    if (attention === null || (kind !== "waiting" && kind !== "done")) continue;
+    rows.push({
+      id: shell.id,
+      owner: shell.owner,
+      kind,
+      since: attention.since,
+      running: runningOn(shell) ?? attention.agent,
+      shellName: (perOwner.get(shell.owner) ?? 0) > 1 ? shellRowName(shell) : null,
+    });
+  }
+  return rows;
 }
 
 /**
