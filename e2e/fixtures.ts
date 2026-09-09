@@ -79,9 +79,9 @@ export const WORKS: WorkView[] = [
 /**
  * Maison의 Rooms. **Atelier work과 겹치는 값이 하나도 없다** — slug도 제목도 문서 경로도
  * 본문도 다르다. 같은 데이터를 두 세계가 나눠 쓰면 「maison으로 물었다」와 「atelier로
- * 물었다」가 화면에서 갈리지 않아, `mode`를 통째로 빠뜨려도 초록이 된다. 백엔드에서 `mode`가
- * 아직 **선택 인자**라(없으면 Atelier — #187이 닫는다) 빠뜨린 호출은 오류가 아니라 조용히
- * Atelier 데이터를 받는다. 이 층에서 그것이 보이려면 답이 갈려 있어야 한다.
+ * 물었다」가 화면에서 갈리지 않아, `mode`가 어긋나도 초록이 된다. 백엔드가 이제 `mode`를
+ * **필수로** 받으므로(#187) 통째로 빠뜨린 호출은 거절되지만, **저쪽 세계의 값을 실은**
+ * 갈래는 여전히 멀쩡한 인자다 — 그것이 보이려면 이 층의 답이 갈려 있어야 한다.
  *
  * 브랜치도 워크트리도 프로젝트도 없다 — Room은 토픽이고 저장소에 안 붙는다(결정 17).
  * 그래서 `projects`·`worktrees`가 빈 것은 안 채운 게 아니라 이 세계의 모양이다.
@@ -233,20 +233,19 @@ export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
- * **모드로 갈리는 커맨드는 여기 없다** — 아래 `FIXTURE_BY_MODE`가 따로 든다. 이름으로만
- * 답하는 줄을 남겨 두면 `mode`를 빠뜨린 호출이 그 줄로 조용히 떨어져, 이 층이 세운 그물이
- * 통째로 무력해진다(그 표의 머리말).
+ * **모드를 받는 커맨드는 여기 하나도 없다** — 아래 `FIXTURE_BY_MODE`가 전부 든다. 이름으로만
+ * 답하는 줄을 남겨 두면 `mode`가 없거나 모르는 값인 호출이 그 줄로 조용히 떨어져, 이 층이
+ * 세운 그물이 통째로 무력해진다(그 표의 머리말).
+ *
+ * **그 경계를 눈으로 지키지 않는다**(#187). `src/tauri-commands.test.ts`가 `commands.rs`에서
+ * 「`mode: Mode`를 받는 명령」을 뽑아 이 표와 겹치는 이름이 하나라도 있으면 문다 — 새 명령이
+ * 모드를 받기 시작했는데 답을 여기에 적는 것이 그 검사가 막는 실패다.
  */
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
+  // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
+  // `shared_projects_root`) 이 명령은 세계를 묻지 않는다. 그래서 이름으로 답해도 위 경계에
+  // 안 걸린다.
   list_projects: PROJECTS,
-  // `list_archive`는 **모드를 안 본다.** 인자로는 실려 오지만(archiveApi) Maison 아카이브를
-  // 여는 시나리오가 아직 없어서 답을 가를 이유가 없다 — **태우지 않는 스텁은 조용히 낡는다**
-  // (이 파일의 `write_settings` 주석과 같은 규칙). 그 화면을 여는 판이 이 줄을
-  // `FIXTURE_BY_MODE`로 옮긴다.
-  list_archive: ARCHIVE,
-  // 핀을 누르면 나가는 쓰기다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을
-  // 다시 읽어 오는 것이 화면을 고치는 자리다(useSetWorkPinned).
-  set_work_pinned: null,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
   // 시나리오도 이 호출을 지나므로 표에 없으면 화이트리스트 탐지기가 그때마다 문다.
   //
@@ -254,14 +253,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
-  // **`search`도 여기 없다** — 팔레트는 지금 서 있는 세계만 본다(#185). 이 줄을 되돌리면
-  // `mode`를 빠뜨린 물음이 이름으로 답을 받아, Maison에서 누른 ⇧⇧에 Atelier work이 서는 것을
-  // 이 층이 통째로 못 본다. 아래 `FIXTURE_BY_MODE`가 든다.
-
-  // **`pty_spawn`은 여기 없다** — 셸이 뜰 때 세계가 함께 나가므로(결정 10) 아래
-  // `FIXTURE_BY_MODE`가 든다. 이 줄을 되돌리면 `mode`를 빠뜨린 spawn이 이름으로 답을
-  // 받아, Maison 터미널이 Atelier 홈에서 뜨는 것을 이 층이 통째로 못 본다.
-
+  // 남은 셋은 **id로 이미 뜬 셸을 가리킨다** — 그 셸의 세계는 뜰 때 pty에 굳으므로 인자에
+  // 모드가 없다(`features/terminal/api.ts`). `pty_spawn`이 여기 없는 것도 같은 사정의
+  // 반대쪽이다: 셸이 **뜨는** 순간에는 세계가 함께 나가므로(결정 10) 아래 표가 든다.
+  //
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,
@@ -362,29 +357,14 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
 };
 
 /**
- * **인자를 한 겹 더 보는** 커맨드들의 답: 커맨드 이름 → 가르는 인자 이름 + 그 값별 답.
- *
- * 위 `FIXTURE_COMMANDS`는 커맨드 이름으로만 갈리는데, 한 시나리오가 문서 셋을 열어야 하고
- * (`read_spec_file`·`read_archived_file`) 아카이브 둘이 서로 다른 문서 목록을 가져야 한다
- * (`list_archived_docs`). 여기서 못 찾은 값은 그대로 `FIXTURE_COMMANDS`가 답한다 —
- * `read_spec_file`의 그 한 줄이 앞 시나리오들을 그대로 돌린다.
- *
- * 아카이브 쪽 둘은 **여기에만** 있다. `FIXTURE_COMMANDS`에 폴백을 두면 표에 없는 경로가
- * 조용히 답을 받아, 위 `ARCHIVED_FILE_BODIES`가 그림으로 세운 그물이 무력해진다.
- * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 이 표도 함께 대조해 잡는다.
- */
-export const FIXTURE_BY_ARG: Record<string, { arg: string; answers: Record<string, unknown> }> = {
-  // 아카이브 둘은 **모드를 안 본다** — 위 `list_archive` 곁 주석과 같은 이유다.
-  list_archived_docs: { arg: "slug", answers: ARCHIVED_DOCS },
-  read_archived_file: { arg: "path", answers: ARCHIVED_FILE_BODIES },
-};
-
-/**
  * 모드로 갈리는 커맨드의 **한 모드 몫**. 값 하나면 `value`, 인자를 한 겹 더 봐야 하면
  * `arg`·`answers`를 함께 든다(그 모드에 기본 답이 있으면 `value`도 같이).
  *
  * `value`가 **선택인 것이 그물이다**: 없으면 그 모드는 표에 적힌 인자 값에만 답하고 나머지는
  * 하네스가 문다. 폴백은 안 태우는 순간 낡으므로, 태울 것이 없는 모드는 안 두는 쪽이 맞다.
+ * 칸을 통째로 비우면(`{}`) 그 세계의 그 명령은 **아무 답도 없다** — 아직 아무도 안 태우는
+ * 세계를 그렇게 적는다. 지어낸 답을 앉히는 것보다 낫다: 지어낸 답은 그 화면이 생기는 날
+ * 아무도 안 고치는 채로 초록을 준다.
  */
 export interface ModeAnswer {
   readonly value?: unknown;
@@ -393,31 +373,86 @@ export interface ModeAnswer {
 }
 
 /**
- * **모드로 갈리는 커맨드의 답.** 위 두 표보다 먼저 보고, **여기 있는 커맨드는 두 표로
+ * **모드로 갈리는 커맨드의 답.** 위 이름 표보다 먼저 보고, **여기 있는 커맨드는 그 표로
  * 안 떨어진다** — 답을 못 찾으면 하네스가 문다(harness.ts).
  *
- * 그 fail-closed가 이 표의 존재 이유다. 백엔드에서 `mode`가 아직 선택 인자라(#187) 프런트가
- * 한 자리에서 빠뜨리면 **오류 없이 Atelier 데이터**가 오는데, 이름으로만 답하는 표로 떨어지게
- * 두면 이 층에서도 똑같이 조용하다 — 「Maison 화면인데 Atelier 것이 떴다」가 아무 데도
- * 안 걸린다.
+ * 그 fail-closed가 이 표의 존재 이유다. 백엔드는 이제 `mode`를 필수로 받지만(#187) 그 거절은
+ * **실물에서만** 온다 — L3의 백엔드는 이 표이고, 이름으로만 답하는 표로 떨어지게 두면 `mode`가
+ * 없거나 모르는 값인 호출이 조용히 Atelier 데이터를 받아 「Maison 화면인데 Atelier 것이 떴다」가
+ * 아무 데도 안 걸린다. 그 fail-closed를 **음성 케이스로** 세우는 자리는
+ * `e2e/mode-fail-closed.spec.ts`이고, 이 표의 이름을 그대로 훑으므로 줄이 늘면 저절로 따라온다.
  *
  * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
  * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
  *
- * **여기 있는 커맨드가 넷뿐인 것은 지금 태우는 것이 넷뿐이기 때문이다.** 모드를 인자로
- * 받는 커맨드는 더 있지만(아카이브 셋·쓰기들), 그 화면을 Maison에서 여는 시나리오가 아직
- * 없다 — 그 판이 이리로 옮긴다.
+ * **모드를 받는 커맨드는 전부 여기 있어야 한다**(#187) — 그 경계는 `src/tauri-commands.test.ts`가
+ * `commands.rs`에서 뽑아 **양쪽으로** 지킨다: 이름 표에 있으면 물고, 여기 없어도 문다.
+ * 그래서 아직 어느 시나리오도 안 태우는 커맨드도 여기 있고, 그 칸은 비어 있다
+ * (`ModeAnswer` 머리말). 한 방향만 잠그면 새로 모드를 받기 시작한 커맨드가 **어느 표에도
+ * 없는 채로** 초록이 되고, 그러면 위 음성 케이스가 그것을 안 본다.
  */
 export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
   list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
+  /**
+   * **두 칸이 다 빈 다섯.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
+   * 아직 하나도 안 태운다 — 목록 화면은 `list_works`가, 문서는 `read_spec_file`이 답한다.
+   *
+   * 그래도 **여기 있어야 한다.** 없으면 하네스가 이름 표로 떨어뜨리는 것이 아니라 화이트리스트
+   * 탐지기로 보내니 당장은 똑같이 물리지만, 위 머리말이 든 경계가 그만큼 헐거워져 「전부
+   * 여기 있다」가 거짓이 된다 — 그리고 `mode-fail-closed.spec.ts`의 음성 케이스가 이 표를
+   * 훑으므로, 안 적힌 명령은 「mode를 빼면 답이 없다」를 **한 번도 안 재고** 지나간다.
+   *
+   * 답을 지어내 앉히지 않는 것은 위 `ModeAnswer` 머리말 그대로다. 이 중 하나를 태우는
+   * 화면이 생기는 날 그 호출이 하네스에 물려, 그때 이 칸을 채우라고 말해 준다.
+   */
+  get_work: { atelier: {}, maison: {} },
+  set_work_title: { atelier: {}, maison: {} },
+  set_work_status: { atelier: {}, maison: {} },
+  archive_work: { atelier: {}, maison: {} },
+  remove_work: { atelier: {}, maison: {} },
+  /**
+   * 아카이브 목록. **Maison 칸이 비었다** — 저 세계의 아카이브를 여는 시나리오가 아직 없다.
+   * 값을 지어내면 아무도 안 태우는 답이 되어 조용히 낡고(이 파일의 `write_settings` 주석과
+   * 같은 규칙), 그 화면이 생기는 날 Maison에서 나간 첫 호출이 하네스에 물려 여기를 채우라고
+   * 말한다.
+   *
+   * 한때 이 줄은 **이름 표에** 있었다(#187이 옮겼다). 거기서는 `mode`가 어긋난 호출도 답을
+   * 받아, 「Maison 아카이브를 열었는데 Atelier 것이 떴다」가 이 층에 안 걸렸다.
+   */
+  list_archive: { atelier: { value: ARCHIVE }, maison: {} },
+  /**
+   * 아카이브의 문서 목록과 본문 — **인자를 한 겹 더 본다.** 한 시나리오가 아카이브 둘의
+   * 서로 다른 목록을 보고, 그 안의 문서를 각각 연다.
+   *
+   * 두 칸 다 **폴백(`value`)이 없다.** 표에 없는 경로로 읽기가 나가면 그 자리에서 물려,
+   * 아카이브가 그림을 **안 읽는다**는 것이 신호로 잡힌다(위 `ARCHIVED_FILE_BODIES` 머리말) —
+   * 폴백을 두면 그 그물이 통째로 사라진다. Maison 칸이 빈 것은 위 `list_archive`와 같은 이유다.
+   *
+   * 이 둘은 한때 모드를 안 보는 **따로 있는 표**(`FIXTURE_BY_ARG`)가 들었다. #187이 이리로
+   * 옮기면서 그 표는 마지막 줄까지 비어 통째로 사라졌다 — 하네스의 갈래도 함께 걷었다.
+   */
+  list_archived_docs: {
+    atelier: { arg: "slug", answers: ARCHIVED_DOCS },
+    maison: {},
+  },
+  read_archived_file: {
+    atelier: { arg: "path", answers: ARCHIVED_FILE_BODIES },
+    maison: {},
+  },
+  /**
+   * 핀을 누르면 나가는 쓰기. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는
+   * 것이 화면을 고치는 자리다(`useSetWorkPinned`). Maison 칸이 빈 것도, 이 줄이 이름 표에서
+   * 온 것도 위 `list_archive`와 같다.
+   */
+  set_work_pinned: { atelier: { value: null }, maison: {} },
   /**
    * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
    * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면
    * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.
    *
-   * 이 줄이 사는 이유는 **fail-closed 하나다.** 백엔드에서 `mode`가 선택 인자라(`or_atelier`)
-   * 빠뜨린 spawn은 오류 없이 Atelier 홈에서 뜨고 셸 env도 `atelier`가 된다 — 이름으로 답하는
-   * 표에 두면 이 층은 그때도 조용히 초록이다. 여기 있으면 하네스가 그 자리에서 문다.
+   * 이 줄이 사는 이유는 **fail-closed 하나다.** 이름으로 답하는 표에 두면 `mode`를 빠뜨린
+   * spawn도 답을 받아, 이 층은 조용히 초록인 채 Maison 터미널이 Atelier 홈에서 뜨는 것을
+   * 못 본다. 여기 있으면 하네스가 그 자리에서 문다 — 실물 백엔드의 거절(#187)은 L3에 안 온다.
    *
    * 그래서 **어느 모드가 실렸는지**까지는 이 표가 못 본다. 그 값을 읽는 자리는 IPC 기록이고
    * (`terminal-worlds.spec.ts`), 셸 env까지 실물로 잇는 자리는 `src-tauri/tests/top_terminal.rs`다.

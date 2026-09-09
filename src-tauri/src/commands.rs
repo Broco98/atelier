@@ -15,19 +15,6 @@ fn err(e: atelier_core::Error) -> String {
     e.to_string()
 }
 
-/// 명령이 받은 모드. **없으면 Atelier인 것은 이 티켓에서만이다**(#181, expand).
-///
-/// 프런트는 아직 모드를 안 보낸다 — 주소가 `/maison/...`으로 갈리는 것은 #182다. 그래서
-/// 새 형태(인자)를 옛 형태(인자 없음) **옆에** 세워 지금 도는 화면이 한 글자도 안 바뀌게
-/// 한다. 빠진 인자를 오류로 되돌려 주는 것은 마지막 contract 티켓(#187)이고, 그때
-/// `Option`과 이 함수가 함께 사라진다.
-///
-/// **기본값을 정하는 자리는 여기 하나다.** 명령마다 `unwrap_or`를 적으면 하나가 다른 값으로
-/// 눕는 날 그 명령만 저쪽 세계를 읽고, 화면과 데이터가 어긋난 채로 조용히 돈다.
-fn or_atelier(mode: Option<Mode>) -> Mode {
-    mode.unwrap_or(Mode::Atelier)
-}
-
 /// **모드를 함께 받는 커널 함수**에 건네는 프로젝트 등록부. Maison에서는 「없음」이다
 /// (결정 17) — MCP 서버의 `shared_projects_root`와 같은 갈래이고 이유도 같다.
 ///
@@ -77,57 +64,51 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 
 // 아래 명령들이 받는 `mode`가 **어느 세계의 목록인가**를 정한다. 이름은 안 바뀐다 —
 // Maison은 같은 명령이 다른 루트를 읽는 것이지 다른 명령이 아니다 (결정 1).
+//
+// **빠뜨리면 오류다** (#187, contract). expand 동안에는 이 인자가 선택이었고 「없으면
+// Atelier」를 정하는 함수가 한 자리에 있었다 — 프런트가 아직 모드를 안 보내던 때의
+// 발판이다. 호출처가 전부 옮겨 온 지금 그 기본값은 그물이 아니라 **구멍**이다: 인자를
+// 빠뜨린 새 호출이 오류 없이 저쪽 세계의 데이터로 답하고, 화면에는 「목록이 이상하다」로만
+// 보여 어디가 잘못됐는지가 안 남는다. 인자가 필수라 **Tauri의 인자 역직렬화가 거절하고**,
+// 그 거절은 부른 자리에서 즉시 보인다.
+//
+// 그래서 이 파일에는 이제 모드의 기본값이 한 자리도 없다 — 선택 인자로 되돌리든 받은 값을
+// 제 손으로 갈아 끼우든, 다리 크레이트의 소스 검사
+// (`어느_명령도_모드를_기본값으로_안_정한다`)가 빨개진다. 그 검사가 여기가 아니라 저기
+// 사는 것은 **제 자신을 안 읽기 때문이다**(같은 파일의 `APP_SOURCES` 머리말).
 
 #[tauri::command]
-pub async fn list_works(mode: Option<Mode>) -> CmdResult<Vec<WorkView>> {
-    let mode = or_atelier(mode);
+pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkView>> {
     atelier_core::list_works(&works_dir(mode)).map_err(err)
 }
 
 #[tauri::command]
-pub async fn get_work(mode: Option<Mode>, slug: String) -> CmdResult<WorkView> {
-    let mode = or_atelier(mode);
+pub async fn get_work(mode: Mode, slug: String) -> CmdResult<WorkView> {
     atelier_core::get_work(&works_dir(mode), &slug).map_err(err)
 }
 
 /// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
 #[tauri::command]
-pub async fn set_work_title(
-    mode: Option<Mode>,
-    slug: String,
-    title: String,
-) -> CmdResult<WorkView> {
-    let mode = or_atelier(mode);
+pub async fn set_work_title(mode: Mode, slug: String, title: String) -> CmdResult<WorkView> {
     atelier_core::update_work_title(&works_dir(mode), &slug, &title).map_err(err)
 }
 
 #[tauri::command]
-pub async fn set_work_status(
-    mode: Option<Mode>,
-    slug: String,
-    status: String,
-) -> CmdResult<WorkView> {
-    let mode = or_atelier(mode);
+pub async fn set_work_status(mode: Mode, slug: String, status: String) -> CmdResult<WorkView> {
     let status = status.parse().map_err(err)?;
     atelier_core::update_work_status(&works_dir(mode), &slug, status).map_err(err)
 }
 
 /// 고정을 켜고 끈다. 목록 순서는 커널이 정한다 — 화면은 그 위에 정렬을 얹지 않는다 (결정 100).
 #[tauri::command]
-pub async fn set_work_pinned(
-    mode: Option<Mode>,
-    slug: String,
-    pinned: bool,
-) -> CmdResult<WorkView> {
-    let mode = or_atelier(mode);
+pub async fn set_work_pinned(mode: Mode, slug: String, pinned: bool) -> CmdResult<WorkView> {
     atelier_core::update_work_pinned(&works_dir(mode), &slug, pinned).map_err(err)
 }
 
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]
-pub async fn archive_work(mode: Option<Mode>, slug: String) -> CmdResult<()> {
-    let mode = or_atelier(mode);
+pub async fn archive_work(mode: Mode, slug: String) -> CmdResult<()> {
     atelier_core::archive_work(
         &works_dir(mode),
         &archive_dir(mode),
@@ -140,42 +121,33 @@ pub async fn archive_work(mode: Option<Mode>, slug: String) -> CmdResult<()> {
 
 /// 통째로 지운다. MCP 도구와 같이 force를 노출하지 않는다 (atelier_remove_work와 같은 계약).
 #[tauri::command]
-pub async fn remove_work(mode: Option<Mode>, slug: String) -> CmdResult<()> {
-    let mode = or_atelier(mode);
+pub async fn remove_work(mode: Mode, slug: String) -> CmdResult<()> {
     atelier_core::remove_work(&works_dir(mode), &slug, false).map_err(err)
 }
 
 #[tauri::command]
-pub async fn read_spec_file(mode: Option<Mode>, slug: String, path: String) -> CmdResult<String> {
-    let mode = or_atelier(mode);
+pub async fn read_spec_file(mode: Mode, slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_spec_file(&works_dir(mode), &slug, &path).map_err(err)
 }
 
 /// 아카이브 목록. **경량이다** — spec 파일 목록도 워크트리도 담지 않는다.
 /// 아카이브는 쌓이기만 하므로 목록 조회가 무거워지면 갈수록 나빠진다.
 #[tauri::command]
-pub async fn list_archive(mode: Option<Mode>) -> CmdResult<Vec<ArchiveEntry>> {
-    let mode = or_atelier(mode);
+pub async fn list_archive(mode: Mode) -> CmdResult<Vec<ArchiveEntry>> {
     atelier_core::list_archive(&archive_dir(mode)).map_err(err)
 }
 
 /// 아카이브된 work가 가진 문서 경로들. 상세 화면의 머리말(제목·상태·언제 치웠는지)은
 /// 목록이 이미 들고 있으므로 단건 조회를 따로 두지 않는다.
 #[tauri::command]
-pub async fn list_archived_docs(mode: Option<Mode>, slug: String) -> CmdResult<Vec<String>> {
-    let mode = or_atelier(mode);
+pub async fn list_archived_docs(mode: Mode, slug: String) -> CmdResult<Vec<String>> {
     atelier_core::list_archived_docs(&archive_dir(mode), &slug).map_err(err)
 }
 
 /// 아카이브된 work의 문서 하나. 경로는 **work 루트 기준**이다 (`record.md`, `spec/overview.md`) —
 /// 기록이 spec 밖에 있어서, 화면이 둘을 한 트리로 보여주려면 창구가 하나여야 한다.
 #[tauri::command]
-pub async fn read_archived_file(
-    mode: Option<Mode>,
-    slug: String,
-    path: String,
-) -> CmdResult<String> {
-    let mode = or_atelier(mode);
+pub async fn read_archived_file(mode: Mode, slug: String, path: String) -> CmdResult<String> {
     atelier_core::read_work_file(&archive_dir(mode), &slug, &path).map_err(err)
 }
 
@@ -195,11 +167,10 @@ pub async fn read_archived_file(
 /// 없다.
 #[tauri::command]
 pub async fn search(
-    mode: Option<Mode>,
+    mode: Mode,
     query: String,
     destinations: Vec<Destination>,
 ) -> CmdResult<SearchResults> {
-    let mode = or_atelier(mode);
     atelier_core::search(
         &works_dir(mode),
         &archive_dir(mode),
@@ -233,13 +204,13 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
 #[tauri::command]
 pub async fn pty_spawn(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
-    mode: Option<Mode>,
+    mode: Mode,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
     on_frame: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> CmdResult<pty::PtySpawned> {
-    pty::spawn(&pool, or_atelier(mode), cwd, cols, rows, on_frame)
+    pty::spawn(&pool, mode, cwd, cols, rows, on_frame)
 }
 
 #[tauri::command]
@@ -300,28 +271,14 @@ pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()
 mod tests {
     use super::*;
 
-    /// **없으면 Atelier다** (#181, expand). 프런트가 아직 모드를 안 보내므로 **이 갈래가
-    /// 지금 도는 화면 전부다** — 뒤집히면 열셋이 한꺼번에 저쪽 세계의 루트를 읽어 일 목록이
-    /// 통째로 빈다.
-    ///
-    /// **그물이 여기 있어야 하는 이유.** 다리의 `mode()`가 같은 기본값을 갖고
-    /// `tests/mode_contract.rs`가 그것을 실행으로 재지만 그것은 **두 번째 사본**이다 —
-    /// 두 자리의 기본값이 갈리면 L4는 앱과 다른 세계를 보고, 앱 쪽 갈래는 아무 층에서도
-    /// 안 돈다(L3는 fixture가 `invoke`를 가로채고, L4는 다리 바이너리를 부른다).
-    /// 소스 검사(`명령이_모드_루트를_인자로_고른다`)도 `mode`가 건네지는지만 세지
-    /// 무엇이 담겼는지는 안 본다.
-    #[test]
-    fn 모드를_안_준_호출은_atelier로_간다() {
-        assert_eq!(or_atelier(None), Mode::Atelier);
-    }
-
-    /// 받은 값은 **그대로** 내려간다. 위 갈래만 재면 「늘 Atelier」로 눕히는 변형이
-    /// 살아남고, 그러면 #182가 모드를 보내기 시작해도 Maison 화면이 Atelier를 읽는다.
-    #[test]
-    fn 받은_모드는_바뀌지_않는다() {
-        assert_eq!(or_atelier(Some(Mode::Maison)), Mode::Maison);
-        assert_eq!(or_atelier(Some(Mode::Atelier)), Mode::Atelier);
-    }
+    // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던
+    // 「없으면 Atelier」 함수가 #187에서 사라졌고, 이제 명령은 받은 값을 루트 함수에 그대로
+    // 건네는 한 줄뿐이라 이 크레이트에서 부를 수 있는 로직이 남지 않았다
+    // (`#[tauri::command]`는 런타임 없이 못 부른다).
+    //
+    // 그 자리를 무엇이 대신하는가: 다리의 계약 테스트(`tests/mode_contract.rs`의
+    // `모드를_받는_명령을_전부_maison으로_불러_본다`)가 **명령 하나하나를** 실제로 불러
+    // 어느 루트를 읽었는지 재고, 목록은 이 파일에서 파생한다 — 명령이 늘면 저절로 따라온다.
 
     /// **Maison에는 프로젝트 등록부가 없다** (결정 17). 건네면 커널이 Maison에서도
     /// 프로젝트 층을 걸어 ⇧⇧ 결과에 Atelier 프로젝트가 서고(US 49·50), 아카이브 기록이

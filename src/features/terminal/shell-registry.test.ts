@@ -1599,8 +1599,9 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // 결정 10. **셸이 뜨는 순간 세계가 백엔드로 나간다** — `pty_spawn`의 `mode`가 cwd의
   // 홈(`resolve_cwd`)과 셸 env의 `ATELIER_MODE`(`shell_builder`)를 함께 정한다. 래퍼가
   // 그 인자를 받는 것은 `api.test.ts`가 값으로 재지만, **스토어가 그것을 실제로 넘기는지**는
-  // 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 빠뜨려도 조용하다 —
-  // 백엔드의 `or_atelier`가 없는 모드를 Atelier로 답해서 Maison 셸이 Atelier 홈에서 뜬다.
+  // 어느 seam에도 안 보인다(이 모듈은 `@xterm/*`를 끌고 온다). 빠뜨리면 백엔드가 거절하지만
+  // (#187) 그 신호는 셸을 띄우려는 순간에야 오고, 저쪽 세계의 값을 실은 갈래는 아예 안
+  // 잡힌다 — Maison 셸이 Atelier 홈에서 조용히 뜬다.
   it("spawn이 origin의 세계를 그대로 넘긴다 — owner를 파싱하지 않는다", () => {
     expect(store).toContain("      instance.origin.mode,\n      instance.origin.cwd,");
     // `modeOfOwner`로 뽑으면 `as`로 좁힌 값이 백엔드에 나간다(`ShellOrigin.mode` 머리말).

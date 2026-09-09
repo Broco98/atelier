@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { searchApi } from "./api";
 
-// **검색도 세계를 싣고 나간다.** 백엔드에서 `mode`는 아직 선택 인자라(없으면 Atelier,
-// 필수화는 #187) 빠뜨린 호출은 오류가 아니라 **조용히 Atelier 코퍼스**를 뒤진다 — Maison에서
-// 누른 ⇧⇧에 Atelier work이 서는 그 실패는 오류 하나 없이 조용하다.
+// **검색도 세계를 싣고 나간다.** 백엔드에서 `mode`는 이제 **필수 인자다**(#187) — 빠뜨린
+// 물음은 거절된다. 여기서 재는 것은 그 앞자리다: **저쪽 세계의 값을 실은** 물음은 어디서도
+// 오류가 아니라, Maison에서 누른 ⇧⇧에 Atelier work이 서는 화면으로만 나타난다.
 //
 // 래퍼를 이름으로 훑는 것은 works 쪽과 같은 이유다(`works/api.test.ts`): 명령이 하나 늘면
 // 이 검사가 저절로 그것도 본다. 손으로 적은 목록은 늘어난 것을 조용히 빼놓는다.
@@ -32,5 +32,17 @@ describe("search 명령", () => {
     expect(calls.map((call) => Object.keys(call.args).sort())).toEqual([
       ["destinations", "mode", "query"],
     ]);
+  });
+
+  // 타입이 `mode`를 막는 것도 works 쪽과 같은 계약이고, 두 모양이 각각 어느 변형을 무는지도
+  // 거기 적혀 있다(`works/api.test.ts`).
+  it("mode 없이는 부를 수 없다 — 타입이 막는다", () => {
+    const withoutMode = () => [
+      // @ts-expect-error `mode` 인자가 통째로 사라지면 이 줄이 합법이 된다
+      searchApi.run("가", []),
+      // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
+      searchApi.run(undefined, "가", []),
+    ];
+    expect(withoutMode).toBeInstanceOf(Function);
   });
 });

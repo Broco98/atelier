@@ -309,8 +309,8 @@ test("세계를 건너면 ⇧⇧가 저쪽 세계를 안 본다", async ({ page 
   // **줄 수부터 갈린다** — 저쪽 답이 왔으면 넷이 선다(픽스처의 `MAISON_SEARCH_HITS`).
   await expect(rows(page)).toHaveCount(MAISON_SEARCH_HITS.length);
   await expect(page.getByRole("option", { name: room.title }).first()).toBeVisible();
-  // 반대쪽 증거. 백엔드에서 `mode`가 아직 선택 인자라(#187) 프런트가 한 자리에서 빠뜨려도
-  // 오류가 아니라 조용히 Atelier 것이 오는데, 그때 이 제목이 네 줄에 다 선다.
+  // 반대쪽 증거. 프런트가 한 자리에서 **저쪽 세계의 값**을 실으면 그것은 어디서도 오류가
+  // 아니라(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다), 그때 이 제목이 네 줄에 다 선다.
   await expect(page.getByRole("option", { name: specWork.title })).toHaveCount(0);
   // `Projects`가 빠진 것은 줄인 게 아니라 이 세계에 프로젝트가 없어서다(결정 17).
   await expect.poll(() => destinationsAsked(page)).toEqual(["terminal", "archive", "settings"]);

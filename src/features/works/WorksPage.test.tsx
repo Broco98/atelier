@@ -633,8 +633,8 @@ describe("WorksPage ⌘Enter", () => {
     // 모든 키가 셸을 여는데, 그렇게 뒤집어도 초록이었다. 리터럴 그대로 못박는다.
     expect(worksPage).toContain("if (!opensShellFromWindow(e)) return;");
     // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
-    // **세계가 origin에 실린다**(결정 10) — 빠지면 이 화면이 저쪽 루트의 work에서 셸을
-    // 열고, `pty_spawn`도 조용히 Atelier로 답한다(`or_atelier`).
+    // **세계가 origin에 실린다**(결정 10) — 어긋나면 이 화면이 저쪽 루트의 work에서 셸을
+    // 열고, `pty_spawn`도 그 세계의 홈에서 뜬다(둘 다 멀쩡한 값이라 아무도 안 나무란다).
     expect(worksPage).toContain("workShellOrigin(mode, panelWork, null)");
     // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
     expect(worksPage).toContain("onSelectTab(\"terminal\")");

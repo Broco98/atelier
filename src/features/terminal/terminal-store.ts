@@ -682,8 +682,9 @@ async function spawn(instance: ShellInstance) {
     const cols = instance.term.cols;
     const rows = instance.term.rows;
     // **세계도 함께 나간다**(결정 10). cwd가 `null`인 최상위 셸은 백엔드가 그 세계의 홈에
-    // 세우고, 셸 env의 `ATELIER_MODE`도 이 값이 정한다 — 안 실으면 `or_atelier`가 조용히
-    // Atelier로 답해서 Maison 터미널이 Atelier 홈에서 뜬다(화면에는 아무 오류도 안 난다).
+    // 세우고, 셸 env의 `ATELIER_MODE`도 이 값이 정한다 — 안 실으면 백엔드가 인자를 거절해
+    // 셸이 아예 안 뜨고(#187), 저쪽 세계의 값을 실으면 Maison 터미널이 Atelier 홈에서
+    // 조용히 뜬다.
     // **owner를 파싱해서 뽑지 않는다** — origin이 `Mode`로 직접 든다(`ShellOrigin.mode`).
     const spawned = await terminalApi.spawn(
       instance.origin.mode,

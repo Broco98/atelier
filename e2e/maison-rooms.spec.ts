@@ -15,8 +15,8 @@ const paragraphOf = (markdown: string) => markdown.split("\n\n")[1].trim();
 
 const ROOM_BODY = paragraphOf(ROOM_SPEC_FILE_BODIES[ROOM_DOC]);
 // Atelier가 경로별 답이 없을 때 내는 한 줄. **이 글자가 화면에 있으면 Maison 화면이 Atelier
-// 문서를 읽어 온 것이다** — 백엔드에서 `mode`가 아직 선택 인자라(#187) 프런트가 한 자리에서
-// 빠뜨려도 오류가 아니라 조용히 저쪽 데이터가 온다.
+// 문서를 읽어 온 것이다** — 프런트가 한 자리에서 **저쪽 세계의 값**을 실으면 그것은 어디서도
+// 오류가 아니다(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다).
 const ATELIER_BODY = paragraphOf(SPEC_FALLBACK_BODY);
 
 // `/maison/...`이 **브라우저에서** 산다.
@@ -53,10 +53,14 @@ test("`/maison/rooms/<slug>`로 가면 그 Room의 문서가 선다", async ({ p
   // 비어 있다 — 한 자리가 `mode`를 빠뜨려 저 세계의 등록부를 읽어도 아무것도 안 빨개진다.
   //
   // **`startsWith`다 — 완전 일치가 아니다.** 하네스가 기록하는 값은 이름이 아니라
-  // `` `${cmd}${detail}` ``이라(harness.ts) 지금 인자가 없어 우연히 이름과 같을 뿐이고,
-  // 티켓 10(#187)이 프런트 래퍼에 `mode`를 필수로 만드는 날 이 줄은 **Maison에서 호출이
-  // 나가도 영원히 초록**이 된다. 그 명령은 이름 표(fixtures.ts)가 답하므로
-  // `unknownIpcCalls`도 안 문다 — 신호가 아무 데도 안 남는다.
+  // `` `${cmd}${detail}` ``이라(harness.ts), 이 명령에 인자가 붙는 날에도 이 줄이 그대로
+  // 잡도록 앞머리로 본다.
+  //
+  // 한때 여기에 **「#187이 이 줄을 죽인다」**고 적혀 있었다 — 래퍼가 `mode`를 싣기 시작하면
+  // 기록이 `list_projects {…}`가 되어 이름만 세는 검사가 영영 초록이 된다는 경고였다. 그 판이
+  // 왔고, 이 명령은 **모드를 안 받는 채로 남았다**: Maison에는 프로젝트 등록부가 없어 물을
+  // 세계가 없다(`commands.rs`의 `shared_projects_root`). 그래서 기록은 여전히 이름뿐이고
+  // 이 줄은 살아 있다. 인자가 붙는 날에도 위 `startsWith`가 그대로 든다.
   const calls = (await readIpcRecord(page))?.calls ?? [];
   expect(calls.filter((call) => call.startsWith("list_projects"))).toEqual([]);
 

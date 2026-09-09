@@ -17,11 +17,12 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 //      `/terminal`과 `/maison/terminal`이 같은 컴포넌트라 `mode` 하나만 안 갈려도 두 세계가
 //      한 목록을 나눠 쓰는데, L0도 L2도 그 화면을 두 번 그리지 않는다.
 //
-// **그리고 spawn 인자의 모드를 함께 읽는다.** 그것이 안 실리면 백엔드의 `or_atelier`가 조용히
-// Atelier로 답해 Maison 셸이 저쪽 홈에서 뜨고 env도 `atelier`가 된다 — 화면에는 아무 오류도
-// 안 난다. 「안 실렸다」는 픽스처 표가 문다(`FIXTURE_BY_MODE`의 `pty_spawn`); **어느 것이
-// 실렸는지**는 그 표가 못 보므로 여기서 IPC 기록을 직접 읽는다. 그 값이 셸 env까지 정말
-// 내려가는지는 `src-tauri/tests/top_terminal.rs`가 살아 있는 셸로 잰다.
+// **그리고 spawn 인자의 모드를 함께 읽는다.** 「안 실렸다」는 픽스처 표가 문다
+// (`FIXTURE_BY_MODE`의 `pty_spawn`) — 실물 백엔드도 이제 그것을 거절한다(#187). 그런데
+// **저쪽 세계의 값이 실린** 갈래는 둘 다 못 본다: 멀쩡한 인자라 아무 데서도 오류가 안 나고,
+// Maison 셸이 Atelier 홈에서 뜨고 env도 `atelier`가 되는 것으로만 나타난다. 그래서 여기서
+// IPC 기록을 직접 읽는다. 그 값이 셸 env까지 정말 내려가는지는
+// `src-tauri/tests/top_terminal.rs`가 살아 있는 셸로 잰다.
 
 /** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room. 첫 줄은 초안이라 건너뛴다. */
 const [, room] = ROOMS;

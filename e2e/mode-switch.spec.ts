@@ -51,9 +51,9 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
   await expect(aside.getByRole("button", { name: "작업 1", exact: true })).toHaveCount(0);
 
   // 그리고 그 목록에 **정말 이 세계의 것**이 서 있다. 반대쪽 증거(Atelier work이 없다)가
-  // 함께 있어야 한다: 백엔드에서 `mode`가 아직 선택 인자라(#187) 프런트가 한 자리에서
-  // 빠뜨려도 오류가 아니라 조용히 Atelier 데이터가 오는데, 그때 머리만 `Rooms`이고 줄은
-  // 저쪽 것인 화면이 된다.
+  // 함께 있어야 한다: 프런트가 한 자리에서 **저쪽 세계의 값**을 실으면 그것은 어디서도
+  // 오류가 아니라(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다), 머리만 `Rooms`이고
+  // 줄은 저쪽 것인 화면이 된다.
   await expect(aside.getByRole("button", { name: room.title, exact: true })).toBeVisible();
   for (const work of WORKS) {
     await expect(aside.getByRole("button", { name: work.title, exact: true })).toHaveCount(0);

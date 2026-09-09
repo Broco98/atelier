@@ -6,10 +6,11 @@ import type { WorkView } from "@/features/works/types";
 // **셸이 뜨는 순간 세계가 백엔드로 나간다**(결정 10). `pty_spawn`의 `mode`가 정하는 것은
 // 둘이다 — cwd가 `null`일 때의 홈(`resolve_cwd`)과 셸 env의 `ATELIER_MODE`(`shell_builder`).
 //
-// **빠뜨려도 오류가 아니다.** 백엔드에서 `mode`는 선택 인자이고 `or_atelier`가 없으면
-// Atelier로 답하므로, 안 실으면 Maison 터미널이 **조용히 Atelier 홈에서** 뜬다. L3도
-// 잡지 못한다: 하네스의 고정 데이터가 이름으로 답해서 인자를 안 본다. 실물에서만 보이는
-// 실패라 이 자리에 그물을 건다(`features/works/api.test.ts`가 같은 이유로 있다).
+// **빠뜨리면 이제 오류다**(#187) — 백엔드가 `mode`를 필수로 받는다. 그래도 그물은 여기
+// 그대로 둔다: 백엔드의 거절은 셸을 띄우려고 버튼을 누른 뒤에야 보이고, 이 자리는 그 전에
+// 「인자에 실렸나」를 값으로 잰다. **틀린 값을 실은 갈래는 백엔드도 못 잡는다** —
+// `Mode::Atelier`가 실려도 그것은 멀쩡한 인자라, Maison 터미널이 Atelier 홈에서 뜨는
+// 것으로만 나타난다(`features/works/api.test.ts`가 같은 이유로 있다).
 const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (name: string, args: Record<string, unknown>) => {
@@ -75,5 +76,18 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
     await terminalApi.commandRunning(1);
     expect(calls).toHaveLength(4);
     expect(calls.filter((call) => "mode" in call.args)).toEqual([]);
+  });
+
+  // 타입이 `mode`를 막는 것도 works 쪽과 같은 계약이고, 두 모양이 각각 어느 변형을 무는지도
+  // 거기 적혀 있다(`works/api.test.ts`). **`spawn` 하나만 본다** — 나머지 넷은 모드를 안 받는
+  // 것이 계약이라(결정 10) 위 검사가 반대쪽을 든다.
+  it("mode 없이는 spawn할 수 없다 — 타입이 막는다", () => {
+    const withoutMode = () => [
+      // @ts-expect-error `mode` 인자가 통째로 사라지면 이 줄이 합법이 된다
+      terminalApi.spawn(null, 80, 24, null as never),
+      // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
+      terminalApi.spawn(undefined, null, 80, 24, null as never),
+    ];
+    expect(withoutMode).toBeInstanceOf(Function);
   });
 });

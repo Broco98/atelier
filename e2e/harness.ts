@@ -5,7 +5,7 @@ import { BRIDGE_FN, callBridge } from "./bridge";
 import type { Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
-import { FIXTURE_BY_ARG, FIXTURE_BY_MODE, FIXTURE_COMMANDS, type ModeAnswer } from "./fixtures";
+import { FIXTURE_BY_MODE, FIXTURE_COMMANDS, type ModeAnswer } from "./fixtures";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -53,19 +53,16 @@ interface InitArgs {
   /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
   bridgeName: string | null;
   /**
-   * **인자를 한 겹 더 보는** 커맨드들의 답: 커맨드 이름 → 가르는 인자 이름 + 그 값별 답.
-   * `responses`는 커맨드 이름으로만 갈리는데 한 시나리오가 문서 셋을 열어야 하고
-   * (`read_spec_file`·`read_archived_file`), 아카이브 둘이 서로 다른 문서 목록을 가져야
-   * 한다(`list_archived_docs`). 여기서 못 찾은 값은 그대로 `responses`가 답한다 —
-   * L4는 진짜 백엔드가 답하므로 비어 있다.
-   */
-  byArg: Record<string, { arg: string; answers: Record<string, unknown> }>;
-  /**
-   * **모드로 갈리는** 커맨드의 답: 커맨드 이름 → 모드 → 그 몫. 위 두 표보다 먼저 보고,
-   * 여기 있는 커맨드는 **두 표로 안 떨어진다** — 못 찾으면 문다(`fixtures.ts`의 머리말).
+   * **모드로 갈리는** 커맨드의 답: 커맨드 이름 → 모드 → 그 몫. `responses`보다 먼저 보고,
+   * 여기 있는 커맨드는 **그 표로 안 떨어진다** — 못 찾으면 문다(`fixtures.ts`의 머리말).
+   * 인자를 한 겹 더 봐야 하는 커맨드(문서 읽기·아카이브 문서 목록)도 여기서 함께 든다:
+   * 그것들이 전부 모드를 받으므로(#187) 인자만 보는 표는 따로 설 자리가 없다 — 한때 있던
+   * `byArg`가 그 자리였고, 마지막 두 줄이 `byMode`로 옮겨 가면서 통째로 사라졌다.
+   *
    * 값이 `Record<string, …>`인 것은 와이어에서 온 `mode`가 아무 문자열일 수 있어서다:
    * `Mode`로 좁히면 그 인덱싱에 캐스트가 필요해지고, 캐스트는 모르는 값을 아는 값처럼 만든다.
-   * L4는 진짜 백엔드가 답하므로 비어 있다.
+   * L4는 진짜 백엔드가 답하므로 비어 있다 — 거기서 `mode`를 빠뜨린 호출은 하네스가 아니라
+   * **다리가** 거절한다(`crates/atelier-test-bridge`).
    */
   byMode: Record<string, Record<string, ModeAnswer>>;
 }
@@ -78,7 +75,6 @@ export async function installFixtureBackend(page: Page): Promise<void> {
   await install(page, {
     responses: { ...FIXTURE_COMMANDS, ...PLUGINS },
     bridgeName: null,
-    byArg: FIXTURE_BY_ARG,
     byMode: FIXTURE_BY_MODE,
   });
 }
@@ -101,7 +97,6 @@ export async function installRealBackend(
   await install(page, {
     responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
     bridgeName: BRIDGE_FN,
-    byArg: {},
     byMode: {},
   });
 }
@@ -109,7 +104,7 @@ export async function installRealBackend(
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, byArg, byMode }: Omit<InitArgs, "recordKey">,
+  { responses, bridgeName, byMode }: Omit<InitArgs, "recordKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -120,7 +115,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, bridgeName, byArg, byMode }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, bridgeName, byMode }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -151,11 +146,12 @@ async function install(
         detail = " (인자를 적지 못했습니다)";
       }
       record.calls.push(`${cmd}${detail}`);
-      // **모드로 갈리는 커맨드가 맨 먼저다.** 그리고 여기 있는 커맨드는 아래 두 표로 **안
-      // 떨어진다** — 답을 못 찾으면 이름 표가 아니라 화이트리스트 탐지기로 간다. 백엔드에서
-      // `mode`가 아직 선택 인자라(#187) `mode`를 빠뜨린 호출은 오류 없이 Atelier 데이터를
-      // 받는데, 아래로 떨어지게 두면 이 층도 똑같이 조용해져 「Maison 화면에 Atelier 것이
-      // 떴다」가 아무 데도 안 걸린다.
+      // **모드로 갈리는 커맨드가 맨 먼저다.** 그리고 여기 있는 커맨드는 아래 이름 표로 **안
+      // 떨어진다** — 답을 못 찾으면 그 표가 아니라 화이트리스트 탐지기로 간다. 실물 백엔드는
+      // `mode`를 필수로 받지만(#187) 그 거절은 L3에 안 온다: 여기서 백엔드 노릇을 하는 것이
+      // 이 표라, 아래로 떨어지게 두면 `mode`가 없거나 모르는 값인 호출이 조용히 Atelier
+      // 데이터를 받아 「Maison 화면에 Atelier 것이 떴다」가 아무 데도 안 걸린다.
+      // 그 물림을 음성 케이스로 세우는 자리는 `mode-fail-closed.spec.ts`다.
       const forCmd = Object.prototype.hasOwnProperty.call(byMode, cmd) ? byMode[cmd] : null;
       if (forCmd) {
         const mode = (args as Record<string, unknown> | undefined)?.mode;
@@ -182,17 +178,6 @@ async function install(
         record.unknown.push(`${cmd}${detail}`);
         throw new Error(`하네스가 모드로 답하지 못하는 IPC 호출입니다: ${cmd}${detail}`);
       }
-      // 문서 읽기·아카이브 문서 목록은 인자를 한 겹 더 본다 — 표에 있는 값이면 그 답을
-      // 주고, 없으면 아래 커맨드 표가 그대로 답한다(앞 시나리오들이 그대로 돈다).
-      // 아래 표에도 없으면 화이트리스트 밖이다 — 아카이브의 「그림은 안 읽는다」가 그 신호로
-      // 잡힌다(fixtures의 `ARCHIVED_FILE_BODIES` 머리말).
-      const keyed = Object.prototype.hasOwnProperty.call(byArg, cmd) ? byArg[cmd] : null;
-      if (keyed) {
-        const key = (args as Record<string, unknown> | undefined)?.[keyed.arg];
-        if (typeof key === "string" && Object.prototype.hasOwnProperty.call(keyed.answers, key)) {
-          return keyed.answers[key];
-        }
-      }
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) return responses[cmd];
       // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
       // 하네스가 낡았다는 뜻이다.
@@ -207,7 +192,7 @@ async function install(
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg, byMode });
+  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byMode });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
