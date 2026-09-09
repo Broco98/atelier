@@ -2,10 +2,13 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import {
+  fireWindowEvent,
   installFixtureBackend,
   markAttention,
   markRunning,
   openShell,
+  setWindowFocused,
+  stubWindowFocus,
   unknownIpcCalls,
 } from "./harness";
 
@@ -376,15 +379,23 @@ const 칸배경 = (page: Page, at: number) =>
  * `rgba(217, 119, 6, 0.14)`를 여기 박아 두면 팔레트를 손보는 날 이 줄이 정본과 갈리고,
  * 무엇보다 「탭이 #203의 토큰을 그대로 읽는가」(수용 기준)를 못 재게 된다.
  */
-const 토큰색 = (page: Page, name: string) =>
-  page.evaluate((one: string) => {
+const 토큰색 = async (page: Page, name: string) => {
+  const 색 = await page.evaluate((one: string) => {
     const probe = document.createElement("div");
     probe.style.backgroundColor = `var(${one})`;
     document.body.appendChild(probe);
-    const 색 = getComputedStyle(probe).backgroundColor;
+    const 값 = getComputedStyle(probe).backgroundColor;
     probe.remove();
-    return 색;
+    return 값;
   }, name);
+  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가
+  // 초기값으로 떨어지는데, 그 값이 바로 위 `안물듦`이다(WebKit 실측). 그대로 돌려주면 팔레트가
+  // 지워지는 날 이 파일의 견줌이 **양쪽 다 투명**이라 전부 초록이 된다 — `--signal-wait-soft`가
+  // 죽으면 `--color-wait-soft`(index.css)도 같이 죽어 `bg-wait-soft` 규칙 자체가 안 생기므로
+  // 칸도 투명해지기 때문이다. 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
+  if (색 === 안물듦 || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
+  return 색;
+};
 
 test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -523,6 +534,79 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
     "aria-label",
     /확인할 것$/,
   );
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **포커스가 판정에 실제로 든다**(결정 7 · 스토리 10). 「봤다」는 켜진 칸과 창 포커스가
+// **만나는** 순간인데, 한쪽(창 포커스)에는 지금까지 아무 그물도 없었다 — `windowFocused()`를
+// `return true`로 바꿔도 L1~L4가 전부 초록이었다. 그 fail-open은 「초록이 안 뜬다」로만
+// 나타나므로 화면에서 안 보인다.
+//
+// 헤드리스 WebKit은 배경 페이지에서도 `document.hasFocus()`가 참이라 진짜로 포커스를 뺏을
+// 길이 없다(`stubWindowFocus` 머리말의 실측). 그래서 브라우저가 답하는 그 한 줄을 손으로
+// 잡고 **앱이 그것을 딛는지**를 잰다.
+test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 그 순간 꺼진다", async ({ page }) => {
+  await stubWindowFocus(page);
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  await setWindowFocused(page, false);
+  await markAttention(
+    page,
+    { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } },
+    1,
+  );
+
+  // 그 셸을 **보고 있는데도** 안 꺼진다 — 창이 뒤에 있으면 사람이 본 것이 아니다.
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
+    .toBe(초록);
+
+  // 값만 바꾸고 이벤트를 안 쏘면 화면은 그대로다 — 다시 재는 것은 리스너의 일이다.
+  await setWindowFocused(page, true);
+  expect(await 칸배경(page, 0), "이벤트 없이 초록이 꺼졌다").toBe(초록);
+
+  // **알림을 눌러 돌아온 순간이 이것이다**(스토리 10) — 「알림이 왔는데 아무것도 없다」가
+  // 아니라 「와서 봤다」로 읽히려면 그 순간 꺼져야 한다.
+  await fireWindowEvent(page, "focus");
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 앞으로 왔는데 초록이 안 꺼졌다" })
+    .not.toBe(초록);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **`blur`가 「봤다」를 세우는 길이 하나 있다** — 그 하나 때문에 그 리스너가 산다.
+// 다른 앱을 보다가 분할된 화면의 spec 프레임을 **바로 눌러** 돌아오면, 포커스가 자식 문서로
+// 들어가므로 부모 `window`에는 `focus` 없이 `blur`만 온다. 그때 창은 앞에 있다
+// (`document.hasFocus()`가 참이고, SpecViewer의 `useFrameFocused`가 그 실측을 들고 있다).
+// 이 줄이 없으면 눈앞의 셸이 다음 이벤트가 올 때까지 초록인 채로 남는다.
+test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임을 바로 누른 길", async ({ page }) => {
+  await stubWindowFocus(page);
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  await setWindowFocused(page, false);
+  await markAttention(
+    page,
+    { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } },
+    1,
+  );
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
+    .toBe(초록);
+
+  // 앱이 앞으로 오면서 포커스가 프레임으로 들어간다 — 부모가 받는 것은 `blur` 하나다.
+  await setWindowFocused(page, true);
+  await fireWindowEvent(page, "blur");
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 앞에 있는데 blur에 초록이 안 꺼졌다" })
+    .not.toBe(초록);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

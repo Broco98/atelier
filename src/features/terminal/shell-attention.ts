@@ -407,7 +407,16 @@ export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
  * 아니다**(사이드바 hover · 클릭 · 호버 카드, 결정 7).
  */
 export interface ShellView {
-  /** 켜진 탭의 셸 id들. **분할 중이면 둘이다** — 열마다 켜진 탭이 하나씩이다. */
+  /**
+   * 지금 **보고 있는** 셸 id들.
+   *
+   * **여럿을 받는 것은 이 함수의 계약이지 지금 화면이 아니다.** 결정 7이 「분할 중이면
+   * 켜진 탭이 둘」이라 적었지만, 이 판의 분할은 조합이 늘 `spec ▏터미널`이라(결정 87 ·
+   * `WorksPage`) 셸 열이 둘이 되는 화면이 없다 — 배선(`terminal-store`의 `shownShell`)은
+   * 그래서 하나로 좁혀 있고, 여기만 여럿을 진다. 순수 함수라 그 값이 공짜이고, 열이 둘이
+   * 되는 날 고칠 자리가 배선 하나로 남는다. 사람에게 열어 둔 물음은
+   * `spec/물음-봤다의-셋째-조건.md`의 둘째 물음이다.
+   */
   activeIds: ReadonlyArray<number>;
   /** 앱 창이 포커스를 가졌나. 이 앱은 창이 하나라 어느 창인지 물을 것이 없다. */
   focused: boolean;

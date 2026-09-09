@@ -13,7 +13,7 @@ import type { ShellOrigin } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
-import { attachShell, detachShell, ensureShell, showShells, terminalStore } from "./terminal-store";
+import { attachShell, detachShell, ensureShell, showShell, terminalStore } from "./terminal-store";
 import type { WorkView } from "@/features/works/types";
 
 /**
@@ -58,8 +58,8 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // **떠날 때 비운다.** 안 비우면 터미널을 떠난 뒤에도 마지막 칸이 「보고 있는 것」으로 남아,
   // 다른 화면을 보는 동안 도착한 완료가 곧바로 지워진다.
   useEffect(() => {
-    showShells(activeId === null ? [] : [activeId]);
-    return () => showShells([]);
+    showShell(activeId);
+    return () => showShell(null);
   }, [activeId]);
 
   // 갈아탈 때도 이 이펙트가 돈다: 먼저 이전 칸의 집을 빼고, 그 다음 새 칸의 집을 들인다.

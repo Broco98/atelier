@@ -411,3 +411,48 @@ export async function markAttention(
     },
   );
 }
+
+/**
+ * 창 포커스를 **손으로 잡는다**(#205 · 결정 7). 헤드리스 WebKit에서는 진짜로 포커스를 뺏을
+ * 길이 없다 — 실측(2026-09-10): 한 컨텍스트에 페이지 둘을 띄우고 `bringToFront`로 번갈아
+ * 앞세워도 양쪽 다 `document.hasFocus()`가 참이다. 그래서 **브라우저가 답하는 그 한 줄만**
+ * 갈아 끼우고, 앱이 그것을 실제로 딛는지를 잰다: 여기서 거짓을 돌려주는데도 「봤다」가 서면
+ * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서
+ * 안 보인다 — `terminal-store.ts`의 `windowFocused` 머리말).
+ *
+ * **값과 이벤트를 갈라 둔다.** `hasFocus`가 바뀌는 것과 `focus`/`blur`가 도착하는 것은 다른
+ * 사실이고, 한 손잡이에 묶으면 「리스너가 일한다」와 「판정이 값을 읽는다」 중 무엇이 초록을
+ * 만들었는지 갈리지 않는다.
+ *
+ * **페이지가 뜨기 전에 깔아야 한다** — `installFixtureBackend`와 같은 자리다.
+ */
+export async function stubWindowFocus(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    let focused = true;
+    Object.defineProperty(document, "hasFocus", { configurable: true, value: () => focused });
+    Object.defineProperty(window, "__setWindowFocused", {
+      configurable: true,
+      value: (next: boolean) => {
+        focused = next;
+      },
+    });
+  });
+}
+
+/**
+ * 위 손잡이가 답할 값을 바꾼다 — **이벤트는 안 쏜다.** 안 깔았으면 여기서 던진다(없는 것을
+ * 조용히 지나가면 아래 단언이 「원래 그렇던 것」으로 초록이 된다).
+ */
+export async function setWindowFocused(page: Page, focused: boolean): Promise<void> {
+  await page.evaluate((next: boolean) => {
+    const set = (window as unknown as { __setWindowFocused?: (one: boolean) => void })
+      .__setWindowFocused;
+    if (!set) throw new Error("stubWindowFocus를 먼저 깔아야 한다");
+    set(next);
+  }, focused);
+}
+
+/** 창 이벤트 하나를 쏜다. `hasFocus`가 답할 값은 **안 건드린다**. */
+export async function fireWindowEvent(page: Page, name: "focus" | "blur"): Promise<void> {
+  await page.evaluate((one: string) => window.dispatchEvent(new Event(one)), name);
+}

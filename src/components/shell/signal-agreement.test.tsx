@@ -118,14 +118,22 @@ function 띠(state: ShellsState): string {
   );
 }
 
-function 탭(state: ShellsState): string {
+/**
+ * **켜짐을 인자로 받는다.** 탭 물들임의 주 경로는 「다른 셸을 보는 동안 부르는 칸」 —
+ * 즉 **안 켜진** 칸이고, 켜진 칸은 회색이 물러나고 테두리가 서는 유일한 자리라(결정 6)
+ * 색을 다시 고르기 가장 쉬운 자리다. 한쪽만 그리면 나머지 한쪽이 이 그물 밖에 남는다.
+ *
+ * `showing`이 거짓이면 그 화면의 셸 칸이 하나도 안 켜진다(`ShellTabs`의 그 prop) —
+ * 본문이 문서인 화면이 그 모양이고, 부르는 칸을 탭 줄에서 **찾는** 화면이 바로 그것이다.
+ */
+function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
   return renderToStaticMarkup(
     <ShellTabs
       state={state}
       owner={WORK.slug}
       projects={["atelier"]}
-      spec={{ on: false, onSelect: () => {} }}
-      showing
+      spec={{ on: !켜짐, onSelect: () => {} }}
+      showing={켜짐}
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
@@ -136,7 +144,13 @@ function 탭(state: ShellsState): string {
 describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
   it.each(["waiting", "done"] as const)("%s — 세 자리가 같은 색 가족을 쓴다", (kind) => {
     const state = 셸하나(kind);
-    const 셋 = { 행: 행(state), 띠: 띠(state), 탭: 탭(state) };
+    // 탭이 둘인 것은 켜짐이 색을 다시 고를 수 있는 유일한 갈래이기 때문이다(`탭` 머리말).
+    const 셋 = {
+      행: 행(state),
+      띠: 띠(state),
+      "탭(안 켜진 칸)": 탭(state, { 켜짐: false }),
+      "탭(켜진 칸)": 탭(state, { 켜짐: true }),
+    };
 
     for (const [자리, markup] of Object.entries(셋)) {
       // **정확히 그 가족 하나다.** 「그 색이 있다」만 보면 둘 다 쓰는 그림이 통과한다.
@@ -147,20 +161,18 @@ describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
     }
   });
 
-  // **켠 탭에서도 갈리면 안 된다.** 켜진 칸은 회색이 물러나고 테두리가 서는 유일한 자리라
-  // (결정 6) 색을 다시 고르기 가장 쉬운 자리이기도 하다.
-  it("켜진 탭도 같은 가족을 쓴다", () => {
-    const state = 셸하나("waiting");
-    expect([...색가족(탭(state))]).toEqual(["wait"]);
-  });
-
   // 「봤다」로 지워진 완료는 **세 자리 모두에서** 사라진다 — 한 자리만 남으면 그 자리는
   // 없는 사실을 말한다.
   it("본 완료는 세 자리 어디에도 안 남는다", () => {
     const opened = openShell(NO_SHELLS, { owner: WORK.slug, project: "atelier", cwd: "~/x" });
     if (!opened) throw new Error("셸을 못 띄웠다");
     const state = setAttention(opened.state, opened.id, { ...말한다("done"), seen: true });
-    for (const [자리, markup] of Object.entries({ 행: 행(state), 띠: 띠(state), 탭: 탭(state) })) {
+    for (const [자리, markup] of Object.entries({
+      행: 행(state),
+      띠: 띠(state),
+      "탭(안 켜진 칸)": 탭(state, { 켜짐: false }),
+      "탭(켜진 칸)": 탭(state, { 켜짐: true }),
+    })) {
       expect([...색가족(markup)], `${자리} — 색`).toEqual([]);
       expect([...말가족(markup)], `${자리} — 말`).toEqual([]);
     }

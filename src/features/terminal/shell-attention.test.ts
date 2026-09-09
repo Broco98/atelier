@@ -616,8 +616,13 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
     expect(signalOf(뒤.shells[1])).toBe("done");
   });
 
-  // **분할 중이면 켜진 칸이 둘이고 둘 다 봤다**(결정 7). 하나만 세면 다른 열의 초록이
-  // 안 꺼진다.
+  // **여럿을 받는 계약**(결정 7의 「분할 중이면 켜진 탭이 둘」). 하나만 세면 다른 열의
+  // 초록이 안 꺼진다.
+  //
+  // **이 앱은 아직 그 화면을 못 만든다** — 분할의 조합이 늘 `spec ▏터미널`이라(결정 87)
+  // 셸 열이 하나뿐이고, 배선(`terminal-store`의 `shownShell`)도 그래서 하나다. 그러니
+  // 스토리 51이 사는 자리는 지금 이 층뿐이고, 그 사정은
+  // `spec/물음-봤다의-셋째-조건.md`가 사람에게 열어 두고 있다.
   it("켜진 칸이 둘이면 둘 다 봤다", () => {
     const state = 목록(상태({ kind: "done" }), null, 상태({ kind: "done" }));
     const 뒤 = markShellsSeen(state, { activeIds: [1, 3], focused: true });
@@ -627,9 +632,18 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
   // 판정이 두 벌이 되면 탭에서만 초록이 꺼지거나 알림만 조용해진다. 소스로 못박는다 —
   // 이 함수는 스스로 조건을 적지 않고 `isShellSeen`을 부른다.
   it("판정을 다시 적지 않고 `isShellSeen`을 부른다", () => {
+    // **본문의 끝을 표식으로 닫는다.** 파일 끝까지를 「본문」으로 삼으면 이 함수 **아래**에
+    // 사는 아무 함수·주석이 그 글자를 갖게 되는 날, 본문이 조건을 손으로 다시 적어도 초록이
+    // 된다 — 이 저장소는 그 fail-open으로 이미 데었다(`ShellTabs.test.tsx`의 `cellsOf`
+    // 머리말). 시작 표식이 없으면 `slice(-1)`이 되어 빨개지고, 끝 표식이 없으면 여기서
+    // 던진다: 경계가 표식이면 샐 자리가 없다.
     const source = read("shell-attention.ts");
-    const 본문 = source.slice(source.indexOf("export function markShellsSeen"));
-    expect(본문).toContain("isShellSeen(");
+    const 시작 = source.indexOf("export function markShellsSeen");
+    if (시작 < 0) throw new Error("`markShellsSeen`을 못 찾았다 — 이름이 바뀌었나");
+    const 뒤 = source.slice(시작);
+    const 끝 = 뒤.indexOf("\n}\n");
+    if (끝 < 0) throw new Error("`markShellsSeen`의 끝을 못 찾았다");
+    expect(뒤.slice(0, 끝)).toContain("isShellSeen(");
   });
 });
 

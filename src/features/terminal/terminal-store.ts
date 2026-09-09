@@ -202,14 +202,22 @@ export function selectShell(id: number): void {
 }
 
 /**
- * 지금 화면이 보여 주고 있는 셸들. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
+ * 지금 본문이 보여 주고 있는 셸. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
  * 「어느 칸이 켜져 있나」(`activeByOwner`)는 그 화면의 **기억**이라 문서를 읽는 중에도 남아
  * 있고, 그것으로 「봤다」를 세우면 spec을 보는 내내 안 본 완료가 조용히 지워진다.
  *
  * 값을 채우는 자리는 `TerminalPane` 하나다 — 그 조각이 서 있다는 것이 곧 「본문이 셸을
  * 보여준다」이고, 두 화면(work · `/terminal`)이 같은 조각을 쓴다.
+ *
+ * **하나다.** 한때 배열이었고 그 근거가 「분할이면 켜진 탭이 둘」이었는데, 이 앱의 분할은
+ * 조합이 늘 `spec ▏터미널`이라(결정 87 · `WorksPage`) **셸 열이 둘이 되는 화면이 없다**.
+ * 그리고 배열이어도 그 날에 대비가 안 됐다 — 채우는 쪽이 목록을 통째로 대체하므로 둘째
+ * pane의 `[B]`가 첫째의 `[A]`를 지우고, 정리(`showShell(null)`)는 살아 있는 쪽까지 비운다.
+ * 그러니 배열은 「분할 때문」이 아니라 그저 없는 화면을 흉내 낸 모양이었다. 판정 쪽
+ * (`ShellView.activeIds`)은 여전히 여럿을 받는데, 그것은 순수 함수의 계약이라 이 배선과
+ * 무관하게 산다 — 열이 둘이 되는 날 고칠 자리는 여기 하나다.
  */
-let shownShells: ReadonlyArray<number> = [];
+let shownShell: number | null = null;
 
 /**
  * 앱 창이 포커스를 쥐고 있나(결정 7). 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
@@ -222,20 +230,24 @@ let shownShells: ReadonlyArray<number> = [];
  * **Tauri의 `onFocusChanged`를 안 쓴다.** 값은 더 정확하겠지만 IPC 구독이 하나 더 늘어
  * 픽스처 백엔드가 모르는 호출이 되고(L3의 `unknownIpcCalls`), 얻는 것은 이 DOM 이벤트가
  * 이미 주는 사실 하나다.
+ *
+ * **이 줄에 그물이 걸려 있다.** 여기가 참을 늘 돌려주면 아무도 안 보는 곳에서 「봤다」가
+ * 서는데 그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서 안 보인다 — 헤드리스
+ * WebKit은 `document.hasFocus()`가 늘 참이라 브라우저에 맡길 수 없어서, L3가 그 함수를
+ * 손으로 잡고 「창이 뒤에 있으면 초록이 선다」를 잰다(`e2e/terminal-tabs.spec.ts`).
  */
 function windowFocused(): boolean {
-  // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다. 참으로 두면 아무도 안 보는 곳에서
-  // 「봤다」가 서고, 그 fail-open은 초록이 뜨지 않는 것으로만 나타나 화면에서 안 보인다.
+  // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다.
   return typeof document !== "undefined" && document.hasFocus();
 }
 
-/** 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸들과 창 포커스(결정 7). */
+/** 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(결정 7). */
 function currentView(): ShellView {
-  return { activeIds: shownShells, focused: windowFocused() };
+  return { activeIds: shownShell === null ? [] : [shownShell], focused: windowFocused() };
 }
 
 /**
- * 보고 있는 셸들에 「봤다」를 앉힌다. **판정은 `markShellsSeen` 하나**이고 이 자리는 그것에
+ * 보고 있는 셸에 「봤다」를 앉힌다. **판정은 `markShellsSeen` 하나**이고 이 자리는 그것에
  * 「지금 무엇이 보이나」를 건네기만 한다 — 알림 억제(#206)가 같은 함수를 쓴다.
  *
  * 안 바뀌면 같은 상태가 그대로 돌아오므로(그 함수의 계약) 창을 눌렀다 뗄 때마다 목록이
@@ -247,25 +259,25 @@ function syncSeen(): void {
 
 /**
  * 본문이 지금 그리고 있는 셸을 알린다 — `TerminalPane`이 붙고 갈아타고 떠날 때마다 부른다.
- * 안 보이면 빈 배열이다.
- *
- * **배열인 것은 분할 때문이다**(결정 7의 「켜진 탭이 둘」). 지금 이 앱의 분할은 `spec ▏터미널`
- * 이라 셸 열이 하나뿐이지만, 판정(`isShellSeen`)이 이미 여럿을 받는 모양이라 여기서 하나로
- * 좁히면 열이 둘이 되는 날 그 층만 조용히 늙는다.
+ * 안 보이면 `null`이다.
  */
-export function showShells(ids: ReadonlyArray<number>): void {
-  shownShells = ids;
+export function showShell(id: number | null): void {
+  shownShell = id;
   syncSeen();
 }
 
-// **창이 앞으로 오는 것만으로도 「봤다」가 된다**(결정 7) — 다른 앱을 보다 돌아오면 그때
-// 켜져 있던 칸은 사람이 본 것이다. 모듈 최상위에 거는 것은 위 구독들과 같은 이유이고,
-// 웹뷰 밖(노드 seam)에서는 `window`가 없어 이 줄을 건너뛴다.
+// **창이 앞으로 오는 것만으로도 「봤다」가 된다**(결정 7 · 스토리 10) — 알림을 눌러 돌아오면
+// 그때 보고 있던 셸의 초록이 그 순간 꺼져야 「와서 봤다」로 읽힌다. 모듈 최상위에 거는 것은
+// 위 구독들과 같은 이유이고, 웹뷰 밖(노드 seam)에서는 `window`가 없어 이 줄을 건너뛴다.
 if (typeof window !== "undefined") {
   window.addEventListener("focus", syncSeen);
-  // **`blur`에서도 부른다.** 그때 「봤다」가 새로 서는 일은 없지만, 창이 앞에 있는 동안
-  // 도착한 완료를 뒤늦게 지우지 않으려면 이 함수가 포커스 변화마다 한 번은 돌아야 한다 —
-  // 그리고 안 바뀌면 같은 상태를 돌려주므로 값이 없는 호출은 아무 일도 안 한다.
+  // **`blur`에서도 부르는 것은 iframe 하나 때문이다.** 진짜 blur(다른 앱으로 넘어감)에서는
+  // 이 호출이 아무 일도 안 한다 — `hasFocus()`가 거짓이라 「봤다」가 하나도 안 서고, 안
+  // 바뀐 상태가 그대로 돌아온다. 값이 나는 것은 **blur는 오는데 `hasFocus()`는 참인** 경우
+  // 뿐이고(위 `windowFocused` 머리말의 그 사례), 그 길이 실재한다: 다른 앱을 보다가 분할된
+  // 화면의 spec 프레임을 **바로 눌러** 돌아오면 포커스가 자식 문서로 들어가므로 부모
+  // `window`에는 `focus` 없이 `blur`만 온다. 그때 이 줄이 없으면 눈앞의 셸이 초록인 채로
+  // 남는다 — 다음 이벤트가 올 때까지.
   window.addEventListener("blur", syncSeen);
 }
 
