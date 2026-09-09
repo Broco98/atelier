@@ -170,6 +170,34 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
 export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
 
 /**
+ * Maison에서 ⇧⇧를 눌렀을 때 오는 줄들. **Atelier의 답과 수도 값도 겹치지 않는다** — 겹치면
+ * `mode`를 통째로 빠뜨려도 화면이 같아 보인다(`ROOMS` 머리말). 줄 수가 갈리는 것이 제일 굵은
+ * 그물이다: 저쪽 답이 오면 넷이 서고 이쪽은 둘이다.
+ *
+ * 갈래가 둘인 것은 **도착지가 둘**이기 때문이다 — Room 자체와 그 안의 문서(같은 주소에
+ * `file`이 얹힌다). 순서는 코어가 세우는 층 순서 그대로다(작업 → 문서).
+ *
+ * **아카이브 줄은 없다.** `/maison/archive/<slug>`로 가는 것은 순수 함수 층이 들고
+ * (`hit-target.test.ts`), 이 층에서 그 화면을 세우려면 아카이브 목록도 세계별로 갈라야 하는데
+ * 그 시나리오가 아직 없다 — **태우지 않는 스텁은 조용히 낡는다**(아래 `write_settings` 주석).
+ */
+export const MAISON_SEARCH_HITS: SearchHit[] = [
+  { kind: "work", slug: ROOMS[1].slug, title: ROOMS[1].title, archived: false },
+  {
+    kind: "doc",
+    slug: ROOMS[1].slug,
+    title: ROOMS[1].title,
+    // Room이 **실제로 가진** 문서여야 한다(위 `SEARCH_HITS` 머리말과 같은 규칙). 여기서는 한
+    // 겹 더 물린다: Maison 쪽 `read_spec_file`에는 폴백이 없어, 목록에 없는 경로를 도착지로
+    // 삼으면 본문이 조용히 되돌아가는 게 아니라 하네스가 그 자리에서 문다.
+    path: ROOMS[1].specFiles[0],
+    archived: false,
+  },
+];
+
+export const MAISON_SEARCH_RESULTS: SearchResults = { hits: MAISON_SEARCH_HITS, truncated: false };
+
+/**
  * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
  * 안 서는데, 그러면 **목록에는 뜨는데 Enter가 아무 일도 안 하는** 실패를 아무 층도 못 잡는다:
  * 목적지의 `key`를 주소로 푸는 자리가 프런트에 따로 있고(`destinations.ts`), 설정은 `navItems`
@@ -184,6 +212,20 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
   // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
   // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
   hits: [{ kind: "destination", key: "settings" }],
+  truncated: false,
+};
+
+/**
+ * Maison 쪽에 심어 둔 질의. 위 `Settings`를 그대로 쓰지 **않는** 이유는 그 화면에 모드
+ * 접두사가 없어서다 — 두 세계가 같은 `/settings`로 가므로, 고르고 나서도 어느 세계의 표에서
+ * 주소를 풀었는지가 화면에 안 남는다. `Terminal`은 남는다(`/maison/terminal`).
+ *
+ * 라벨도 여기서 함께 걸린다: 코어는 `key`만 돌려주므로(결정 21) 줄에 말이 서려면 프런트가
+ * **그 세계의 표에서** 되찾아야 한다.
+ */
+export const MAISON_SEARCH_DESTINATION_QUERY = "Ter";
+export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
+  hits: [{ kind: "destination", key: "terminal" }],
   truncated: false,
 };
 
@@ -212,9 +254,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
-  // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
-  // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
-  search: SEARCH_RESULTS,
+  // **`search`도 여기 없다** — 팔레트는 지금 서 있는 세계만 본다(#185). 이 줄을 되돌리면
+  // `mode`를 빠뜨린 물음이 이름으로 답을 받아, Maison에서 누른 ⇧⇧에 Atelier work이 서는 것을
+  // 이 층이 통째로 못 본다. 아래 `FIXTURE_BY_MODE`가 든다.
+
   // **`pty_spawn`은 여기 없다** — 셸이 뜰 때 세계가 함께 나가므로(결정 10) 아래
   // `FIXTURE_BY_MODE`가 든다. 이 줄을 되돌리면 `mode`를 빠뜨린 spawn이 이름으로 답을
   // 받아, Maison 터미널이 Atelier 홈에서 뜨는 것을 이 층이 통째로 못 본다.
@@ -331,9 +374,6 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 이 표도 함께 대조해 잡는다.
  */
 export const FIXTURE_BY_ARG: Record<string, { arg: string; answers: Record<string, unknown> }> = {
-  // 심어 둔 질의 하나만 다른 답을 받고 나머지는 위 고정 답으로 떨어진다 — 왜 하나뿐인지는
-  // `SEARCH_DESTINATION_QUERY` 머리말이 든다.
-  search: { arg: "query", answers: { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS } },
   // 아카이브 둘은 **모드를 안 본다** — 위 `list_archive` 곁 주석과 같은 이유다.
   list_archived_docs: { arg: "slug", answers: ARCHIVED_DOCS },
   read_archived_file: { arg: "path", answers: ARCHIVED_FILE_BODIES },
@@ -364,7 +404,7 @@ export interface ModeAnswer {
  * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
  * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
  *
- * **여기 있는 커맨드가 셋뿐인 것은 지금 태우는 것이 셋뿐이기 때문이다.** 모드를 인자로
+ * **여기 있는 커맨드가 넷뿐인 것은 지금 태우는 것이 넷뿐이기 때문이다.** 모드를 인자로
  * 받는 커맨드는 더 있지만(아카이브 셋·쓰기들), 그 화면을 Maison에서 여는 시나리오가 아직
  * 없다 — 그 판이 이리로 옮긴다.
  */
@@ -398,5 +438,28 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
     // 폴백이 없다 — 위 `SPEC_FALLBACK_BODY` 머리말의 이유다. Room이 자기 목록에 없는 문서를
     // 읽으려 하면 그 자리에서 문다.
     maison: { arg: "path", answers: ROOM_SPEC_FILE_BODIES },
+  },
+  /**
+   * 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
+   *
+   * **두 세계의 답이 실제로 갈려 있다**(`MAISON_SEARCH_HITS`). 여기가 이름 표에 있으면 세계를
+   * 안 실은 물음도 답을 받아, Maison에서 누른 ⇧⇧에 Atelier work이 서는 화면이 오류 하나 없이
+   * 지나간다.
+   *
+   * 모드마다 **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위
+   * `SEARCH_DESTINATION_QUERY` 머리말이 들고, 나머지 질의는 전부 그 모드의 `value`로 떨어진다 —
+   * 좁혀지는 규칙은 여기서 흉내내지 않는다.
+   */
+  search: {
+    atelier: {
+      value: SEARCH_RESULTS,
+      arg: "query",
+      answers: { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
+    },
+    maison: {
+      value: MAISON_SEARCH_RESULTS,
+      arg: "query",
+      answers: { [MAISON_SEARCH_DESTINATION_QUERY]: MAISON_SEARCH_DESTINATION_RESULTS },
+    },
   },
 };

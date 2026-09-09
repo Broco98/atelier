@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { Mode } from "@/mode";
 import { SearchList } from "./SearchPalette";
 import type { SearchHit } from "./types";
 
@@ -43,6 +44,8 @@ const project = (slug: string, name: string): SearchHit => ({ kind: "project", s
 
 const destination = (key: string): SearchHit => ({ kind: "destination", key });
 
+// **세계는 Atelier가 벌이다** — 아래 검사 대부분이 「무엇이 어떻게 서는가」이고 그것은 두
+// 세계가 같다. 갈리는 자리(목적지 라벨)만 모드를 넘겨 따로 잰다.
 const render = (
   hits: SearchHit[],
   {
@@ -50,10 +53,18 @@ const render = (
     query = "",
     truncated = false,
     state = "ready",
-  }: { selected?: number; query?: string; truncated?: boolean; state?: SearchState } = {},
+    mode = "atelier",
+  }: {
+    selected?: number;
+    query?: string;
+    truncated?: boolean;
+    state?: SearchState;
+    mode?: Mode;
+  } = {},
 ) =>
   renderToStaticMarkup(
     <SearchList
+      mode={mode}
       query={query}
       hits={hits}
       state={state}
@@ -176,6 +187,16 @@ describe("갈래마다 다른 것을 그린다", () => {
     expect(rows[1]).toContain("Terminal");
   });
 
+  // **그 표가 세계마다 다르다.** `Projects`는 Atelier에만 있으므로(결정 17) Maison에서 그
+  // key가 오는 것은 계약이 깨진 것이고, 그때 화면은 **말을 지어내지 않고 받은 key를 그대로**
+  // 세운다 — 모드를 무시하고 Atelier 표로 되돌리는 변형이 여기서 빨개진다. 라벨이 같은
+  // 목적지(`Terminal`)로는 그 변형을 못 가른다.
+  it("목적지 라벨은 그 세계의 표에서 풀린다", () => {
+    const [row] = rowsOf(render([destination("projects")], { mode: "maison" }));
+    expect(row).not.toContain("Projects");
+    expect(row).toContain("projects");
+  });
+
   // 결정 14. **문서가 0개인 work도 한 줄로 선다** — 줄이 드는 것은 그 work의 제목이다.
   it("work 줄에 제목이 서고 아카이브 work만 아카이브라고 말한다", () => {
     const rows = rowsOf(render([workHit("가"), workHit("옛일", true)]));
@@ -264,6 +285,24 @@ describe("팔레트에는 프리뷰가 없다", () => {
     const outside = (at: number) =>
       render(hits, { selected: at }).replace(/<button[^>]*data-row=""[\s\S]*?<\/button>/g, "[줄]");
     expect(outside(0)).toBe(outside(1));
+  });
+});
+
+// **세계는 받아서 안다** — 스스로 주소를 보고 되짚지 않는다(`SearchPalette.tsx`의 머리말).
+describe("팔레트는 세계를 되짚지 않는다", () => {
+  // 그 되돌림(주소를 스스로 구독해 `modeOf`로 푸는 것)을 **무는 층이 하나도 없었다**: L0는
+  // 통과하고, 이 파일의 나머지는 `SearchList`만 세우며(그쪽은 모드를 인자로 받는다), 새 L3 셋은
+  // 전부 `/terminal`·`/maison/terminal`·`/maison/rooms/…`에서 여는데 **그 주소들에서는 `modeOf`와
+  // `shellMode`의 답이 같다.** 실물에서 갈리는 화면은 `/settings` 하나다 — 접두사가 없어 늘
+  // Atelier로 눕고, Maison에서 설정을 열어 둔 채 누른 ⇧⇧만 저쪽 코퍼스를 뒤지며 목적지에
+  // `Projects`가 선다.
+  //
+  // 셸 쪽 같은 성질은 `AppShell.test.ts`가 같은 수법으로 잠가 뒀다(`not.toContain("modeOf(")`).
+  // 여기도 **주석에 적어도 빨개진다** — 세는 것이 import가 아니라 리터럴이고, 그 성질은 위
+  // 두 검사와 같은 이유로 그대로 둔다.
+  it("주소를 스스로 구독하지 않는다", () => {
+    expect(countOf("useRouterState")).toBe(0);
+    expect(countOf("modeOf(")).toBe(0);
   });
 });
 

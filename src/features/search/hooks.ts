@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import type { Mode } from "@/mode";
 import { searchApi } from "./api";
-import { destinations } from "./destinations";
+import { destinationsFor } from "./destinations";
 
 /**
  * 한 질의가 무엇을 어떻게 물어 오는가. **옵션을 값으로 떼어 둔 것은 seam이다** — 이 저장소의
@@ -26,20 +27,37 @@ import { destinations } from "./destinations";
  * 캐시도 없어 **다음 타자가 곧 다음 시도**이고, 그것이 `gcTime: 0`을 고른 근거와 같은 결이다.
  * 대신 실패를 화면이 받아야 한다 — 안 그러면 재시도도 안 하고 아무 말도 안 하는 자리가 된다
  * (`SearchPalette.tsx`의 `state`).
+ *
+ * **세계도 키에 실린다.** 질의를 키에 넣은 이유(늦게 온 답이 자기 자리에 앉는다)가 여기서
+ * 한 겹 더 필요하다 — 두 세계가 같은 키를 쓰면 `가`로 물은 Atelier의 답이 Maison에서 `가`를
+ * 칠 때 캐시에서 그대로 선다. `gcTime: 0`이 그것을 다 막지는 못한다: 캐시를 안 남기는 것과
+ * **지금 살아 있는 질의를 나눠 쓰는 것**은 다른 이야기라, 세계를 건넌 직후가 정확히 그
+ * 자리다. 키에서 `mode`를 빼는 변형은 hooks.test.ts가 문다.
  */
-export function searchQuery(query: string) {
+export function searchQuery(mode: Mode, query: string) {
   return {
-    queryKey: ["search", query],
-    // **목적지는 키에 안 실린다**(결정 21). `destinations.ts`가 정하는 모듈 상수라 앱이 도는
-    // 동안 변하지 않는다 — 키에 넣으면 늘 같은 값이 질의 옆에 붙어 다니는 소음이 된다.
-    queryFn: () => searchApi.run(query, destinations),
+    // **세계가 질의보다 앞이다** — 뒤지는 루트를 고르는 값이라 명령의 인자 순서와 같다
+    // (`api.ts`의 `run`). 사람이 키를 읽을 때도 좁은 것에서 넓은 것 순으로 읽힌다.
+    queryKey: ["search", mode, query],
+    // **묻는 목적지도 그 세계의 것이다**(`destinations.ts`) — Atelier의 목록을 그대로 보내면
+    // 코어가 Maison에서도 `Projects` 줄을 세우고(그 세계에 프로젝트는 없다 — 결정 17),
+    // 그 줄은 뜨는데 갈 곳이 없다.
+    //
+    // 그래도 **키에는 안 실린다**(결정 21). 목적지가 모드에서 파생되는 값이라 같은 모드면
+    // 언제나 같고, 모드는 이미 위 키에 있다 — 키에 넣으면 `mode`를 두 번 적는 것이다.
+    queryFn: () => searchApi.run(mode, query, destinationsFor(mode)),
     gcTime: 0,
     retry: false,
     placeholderData: keepPreviousData,
   };
 }
 
-/** 팔레트가 그릴 줄들. 팔레트가 떠 있는 동안에만 마운트되므로, 여는 것이 곧 다시 묻는 것이다. */
-export function useSearchHits(query: string) {
-  return useQuery(searchQuery(query));
+/**
+ * 팔레트가 그릴 줄들. 팔레트가 떠 있는 동안에만 마운트되므로, 여는 것이 곧 다시 묻는 것이다 —
+ * **세계를 건넌 뒤 처음 여는 ⇧⇧가 저쪽 결과를 안 스치는 나머지 절반이 이 성질이다**(위 키가
+ * 절반). 한 관찰자가 계속 살아 있으면 `keepPreviousData`가 키를 갈아탄 한 프레임 동안 앞
+ * 세계의 목록을 세운다.
+ */
+export function useSearchHits(mode: Mode, query: string) {
+  return useQuery(searchQuery(mode, query));
 }

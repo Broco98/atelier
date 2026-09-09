@@ -154,8 +154,11 @@ function AppShell() {
       <ShellControls sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
       {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 확인 창 **앞에** 서는 것은
           층 순서다: 창이 떠 있는 동안에는 ⇧⇧가 안 먹으므로 둘이 겹칠 일이 없지만, 겹친다면
-          답해야 하는 물음이 위여야 한다. */}
-      {searchOpen && <SearchPalette onClose={() => setSearchOpen(false)} />}
+          답해야 하는 물음이 위여야 한다.
+
+          **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
+          늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
+      {searchOpen && <SearchPalette mode={mode} onClose={() => setSearchOpen(false)} />}
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />

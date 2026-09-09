@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
+import type { Mode } from "@/mode";
 import { destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
@@ -49,11 +50,14 @@ const GROUP: Record<SearchHit["kind"], string> = {
 /**
  * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
  * 목적지의 라벨은 프런트 것이라(결정 21) 코어가 준 `key`로 여기서 되찾는다.
+ *
+ * **되찾는 표가 세계마다 다르다** — 그래서 이 함수만 모드를 받는다. 나머지 넷은 코어가 준
+ * 말을 그대로 세우므로 세계를 알 필요가 없다.
  */
-function rowText(hit: SearchHit): { name: string; detail?: string; snippet?: string } {
+function rowText(mode: Mode, hit: SearchHit): { name: string; detail?: string; snippet?: string } {
   switch (hit.kind) {
     case "destination":
-      return { name: destinationLabel(hit.key) };
+      return { name: destinationLabel(mode, hit.key) };
     case "work":
       return { name: hit.title };
     case "project":
@@ -95,6 +99,7 @@ function rowKey(hit: SearchHit): string {
  * 그려지는 것 전부. **상태와 콜백만 받는다** — 이 조각이 정적 마크업 seam에서 재는 것이다.
  */
 export function SearchList({
+  mode,
   query,
   hits,
   state,
@@ -104,6 +109,12 @@ export function SearchList({
   onGo,
   onClose,
 }: {
+  /**
+   * 어느 세계의 목록인가. **그리는 데 이것이 필요한 자리는 목적지 라벨 하나다**(`rowText`) —
+   * 코어가 목적지는 `key`만 돌려주고(결정 21) 그 key를 말로 푸는 표가 세계마다 다르다.
+   * 여기서 안 받고 주소로 되짚으면 `/settings`가 늘 Atelier로 눕는다(`mode.ts`의 `modeOf`).
+   */
+  mode: Mode;
   query: string;
   hits: SearchHit[];
   /**
@@ -186,7 +197,7 @@ export function SearchList({
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
           {hits.map((hit, at) => {
-            const { name, detail, snippet } = rowText(hit);
+            const { name, detail, snippet } = rowText(mode, hit);
             return (
               <Fragment key={rowKey(hit)}>
                 {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
@@ -276,14 +287,21 @@ export function SearchList({
   );
 }
 
-/** 친 것을 들고 목록을 물어 오고 키를 듣는 자리. 그리는 일은 위가 한다. */
-function SearchPalette({ onClose }: { onClose: () => void }) {
+/**
+ * 친 것을 들고 목록을 물어 오고 키를 듣는 자리. 그리는 일은 위가 한다.
+ *
+ * **어느 세계인지를 받아서 안다**(결정 1). 스스로 주소를 보고 `modeOf`로 되짚지 않는 이유는
+ * `/settings`가 세계 밖이기 때문이다 — 접두사가 없어 그 주소는 늘 Atelier로 눕고, 그러면
+ * Maison에서 설정을 열어 둔 채 누른 ⇧⇧만 저쪽 세계를 뒤진다. 셸이 이미 그 합성을 들고 있어
+ * (`AppShell.tsx`의 `shellMode`) 여기서 다시 구독할 이유도 없다.
+ */
+function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   // **셋을 여기서 가른다.** `data`만 꺼내면 「못 물었다」가 「아직 모른다」로 접힌다 —
   // `keepPreviousData`는 앞 성공이 있을 때만 값을 주므로, 열자마자 나간 첫 질의가 실패하면
   // `data`는 영영 `undefined`다.
-  const { data, isError } = useSearchHits(query);
+  const { data, isError } = useSearchHits(mode, query);
   const state = isError ? "failed" : data === undefined ? "pending" : "ready";
   const hits = data?.hits ?? [];
   const [selected, setSelected] = useState(0);
@@ -294,7 +312,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
   // 화면에 티가 안 난다. 갈 곳이 없으면(모르는 목적지 `key`) 닫지도 않는다: 계약이 깨진
   // 것이므로 조용히 사라지는 것보다 그 자리에 서 있는 편이 낫다.
   const go = (hit: SearchHit) => {
-    const target = hitTarget(hit);
+    const target = hitTarget(mode, hit);
     if (target === null) return;
     onClose();
     void navigate(target);
@@ -329,6 +347,7 @@ function SearchPalette({ onClose }: { onClose: () => void }) {
 
   return (
     <SearchList
+      mode={mode}
       query={query}
       hits={hits}
       state={state}

@@ -34,11 +34,18 @@ interface NavItem {
   readonly to: NavTo;
 }
 
-/** ⇧⇧ 팔레트의 「가는 곳」 줄. nav 항목에서 아이콘을 뺀 것에 설정 한 줄이 얹힌다. */
+/**
+ * ⇧⇧ 팔레트의 「가는 곳」 줄. nav 항목에서 아이콘을 뺀 것에 설정 한 줄이 얹힌다.
+ *
+ * **`to`가 `NavTo`와 같은 이유로 좁은 유니온이다** — 팔레트가 고른 줄의 주소를 그대로
+ * `navigate({ to })`로 넘기므로(`hit-target.ts`), `string`으로 두면 라우터가 주소를 못 좁혀
+ * 그 자리에서 L0가 빨개진다. 설정 한 줄만 `NavTo` 밖이라 여기서 얹는다 — 그 리터럴이 아래
+ * `SETTINGS_PLACE`의 것과 갈리면 그 선언의 `satisfies`가 잡는다.
+ */
 interface PaletteDestination {
   readonly key: string;
   readonly label: string;
-  readonly to: string;
+  readonly to: NavTo | "/settings";
 }
 
 /**
@@ -220,6 +227,10 @@ export function navTargetOf(mode: Mode, key: NavKey): NavTo | undefined {
 /**
  * 그 모드의 팔레트 「가는 곳」. **nav 배열과 같지 않다** — 설정은 nav 줄에 안 서지만(결정 51)
  * 갈 수 있는 화면인 것은 그대로라, 그 한 줄이 여기서만 얹힌다.
+ *
+ * 팔레트가 코어에 건네는 목록도, 고른 줄을 라벨과 주소로 푸는 것도 **이 표 하나에서**
+ * 나온다(`features/search/destinations.ts`). 목적지 표가 둘이면 늘어난 목적지가 목록에는
+ * 서는데 Enter가 아무 일도 안 하고, 그 어긋남은 목록만 보면 안 보인다.
  */
 export function destinationsOf(mode: Mode): readonly PaletteDestination[] {
   return TABLE[mode].palette;

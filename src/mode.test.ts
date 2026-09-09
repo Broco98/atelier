@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
-import { destinationTo, destinations } from "@/features/search/destinations";
 import {
   ALL_MODES,
   destinationsOf,
@@ -211,17 +210,13 @@ describe("모드별 팔레트 목적지", () => {
     ]);
   });
 
-  // **아직 배선 전이라 표가 둘이다** — 팔레트는 계속 `destinations.ts`를 읽고(#185가 이
-  // 표로 옮긴다), 그 사이 두 표가 갈리면 「Maison에서만 목적지가 다르다」가 아니라
-  // 「Atelier에서 팔레트가 낡았다」가 된다. 이 줄이 그 갈림을 막는다.
-  it("Atelier 목적지가 지금 팔레트의 것과 같다", () => {
-    expect(destinationsOf("atelier").map(({ key, label }) => ({ key, label }))).toEqual(
-      destinations,
-    );
-    for (const place of destinationsOf("atelier")) {
-      expect(destinationTo(place.key)).toBe(place.to);
-    }
-  });
+  // 한때 여기에 **두 표를 잇는 다리**가 있었다 — 팔레트가 계속 `destinations.ts`의 Atelier
+  // 전용 배열을 읽던 동안, 그 배열과 이 표가 갈리는 것을 막던 줄이다. #185가 팔레트를 이
+  // 표로 옮기면서 저쪽 배열이 없어졌고, 그때부터 그 줄은 **자기 자신을 재는 검사**가 됐다
+  // (양쪽이 같은 표에서 나오므로 무엇을 바꿔도 함께 움직인다). 그래서 걷었다.
+  //
+  // 그 다리가 지키던 결정 51은 `features/search/destinations.test.ts`가 두 모드 모두에서
+  // 든다 — 「설정은 nav 줄에 없고 팔레트에는 있다」의 양쪽을 함께 못 박는 그 검사다.
 });
 
 describe("모드별 참조 접두사", () => {

@@ -1,3 +1,5 @@
+import { routesOf } from "@/mode";
+import type { Mode } from "@/mode";
 import { fileSearch, recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
 import type { FileSearch } from "@/routes/-file-search";
@@ -13,12 +15,20 @@ import type { SearchHit } from "./types";
  *
  * 화면이 둘로 갈리는 것은 `archived` 하나다 — 아카이브 것은 아카이브 화면에서 열린다.
  * `file` 검증기는 두 화면이 이미 공유하므로(`-file-search.ts`) 경로의 뜻은 하나다.
+ *
+ * **주소 리터럴을 여기 안 적는다.** 갈래마다 `routesOf(mode)`가 든 이름을 쓰므로 같은 갈래가
+ * 두 세계에서 각자의 주소로 풀린다 — 리터럴로 적으면 Maison에서 고른 Room이 `/works/…`로
+ * 가고, 그 이동은 「없는 work」 화면 하나로만 보인다.
  */
 export type HitTarget =
-  | { to: "/works/$slug"; params: { slug: string }; search: WorkSearch }
-  | { to: "/archive/$slug"; params: { slug: string }; search: FileSearch }
+  | { to: ModeRoutes["item"]; params: { slug: string }; search: WorkSearch }
+  | { to: ModeRoutes["archiveItem"]; params: { slug: string }; search: FileSearch }
+  // 프로젝트는 **Atelier에만 있다**(결정 17) — 저쪽 코퍼스에는 프로젝트 층이 아예 없어서
+  // 이 줄은 Maison에서 오지 않는다. 그래서 여기만 주소가 안 갈린다.
   | { to: "/projects/$slug"; params: { slug: string } }
   | { to: NonNullable<ReturnType<typeof destinationTo>> };
+
+type ModeRoutes = ReturnType<typeof routesOf>;
 
 /**
  * **모양을 여기서 다시 적지 않는다.** 주소를 짓는 규칙은 이미 한 자리씩 있고(`fileSearch` ·
@@ -39,23 +49,26 @@ export type HitTarget =
  *
  * 모르는 목적지 `key`에는 **`null`을 준다.** 코어는 프런트가 건넨 key만 돌려주므로(결정 21)
  * 그런 줄은 계약이 깨진 것이고, 여기서 대신 갈 곳을 지어내면 엉뚱한 화면으로 데려간다.
+ *
+ * **주소와 기억이 같은 세계에서 나와야 한다.** `recallSearch`는 (mode, slug)로 기억을 찾는데
+ * (`-work-search.ts`의 `lastView`), 결정 10이 두 세계에 같은 slug를 허용하므로 그 이름은 실제로
+ * 겹칠 수 있다 — 주소만 옮기고 기억을 Atelier로 두면 Maison에서 연 Room이 저쪽 세계의 같은
+ * 이름 기억(탭·분할·문서)으로 열린다. 화면은 뜨므로 그 어긋남은 조용하다.
  */
-// 도착 주소가 아직 Atelier 리터럴이라 **기억도 같은 세계의 것을 읽는다** — 팔레트가 자기
-// 모드를 아는 것은 #185이고, 그때 이 파일의 리터럴과 아래 `recallSearch`의 모드가 함께 갈린다.
-// 한쪽만 옮기면 Maison에서 연 Room이 Atelier의 같은 이름 기억으로 열린다.
-export function hitTarget(hit: SearchHit): HitTarget | null {
+export function hitTarget(mode: Mode, hit: SearchHit): HitTarget | null {
+  const routes = routesOf(mode);
   switch (hit.kind) {
     case "destination": {
-      const to = destinationTo(hit.key);
+      const to = destinationTo(mode, hit.key);
       return to ? { to } : null;
     }
     case "work":
       return hit.archived
-        ? { to: "/archive/$slug", params: { slug: hit.slug }, search: {} }
+        ? { to: routes.archiveItem, params: { slug: hit.slug }, search: {} }
         : {
-            to: "/works/$slug",
+            to: routes.item,
             params: { slug: hit.slug },
-            search: recallSearch("atelier", hit.slug),
+            search: recallSearch(mode, hit.slug),
           };
     case "project":
       return { to: "/projects/$slug", params: { slug: hit.slug } };
@@ -66,11 +79,11 @@ export function hitTarget(hit: SearchHit): HitTarget | null {
     case "doc":
     case "text":
       return hit.archived
-        ? { to: "/archive/$slug", params: { slug: hit.slug }, search: { file: hit.path } }
+        ? { to: routes.archiveItem, params: { slug: hit.slug }, search: { file: hit.path } }
         : {
-            to: "/works/$slug",
+            to: routes.item,
             params: { slug: hit.slug },
-            search: fileSearch(recallSearch("atelier", hit.slug), hit.path),
+            search: fileSearch(recallSearch(mode, hit.slug), hit.path),
           };
   }
 }
