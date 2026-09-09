@@ -7,6 +7,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
+import { nextAttention, ptyIdOf } from "./shell-attention";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -16,6 +17,7 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
+  setAttention,
   setRunning,
   setShellName,
   setTitle,
@@ -321,16 +323,29 @@ void onPtyRunning((changed) => {
 
 /**
  * 셸이 훅으로 **스스로 말한 것**을 상시 구독한다. 자리와 이유는 바로 위와 같다 — 모듈
- * 최상위라야 배경 칸(결정 21)도 받는다.
+ * 최상위라야 배경 칸(결정 21)도 받는다. 회차 하나를 **`setState` 한 번**으로 끝내는 것도
+ * 같은 이유다.
  *
- * **이 판에서는 받기만 한다.** 상태 축(나를 기다림 · 안 본 완료 · 도는 중)을 세우고 이 값을
- * 레지스트리에 앉히는 것은 다음 티켓이다(#202). 그때 이 콜백이 위 `onPtyRunning`처럼
- * `setState` 한 번으로 바뀐다. 지금 남기는 한 줄은 **길이 뚫렸는지 사람이 실물로 볼 수 있는
- * 자국**이다 — 훅을 걸고 claude를 돌렸을 때 이것이 devtools에 찍히면 훅→파일→감시→프런트가
- * 끝까지 이어진 것이다.
+ * 번호를 두 번 옮긴다: 셸 ID → pty 번호(`ptyIdOf`) → 레지스트리 번호(`shellOfPty`). 훅은
+ * env로 받은 문자열 하나만 알고, 백엔드는 pty 번호만 알고, 목록은 자기 번호를 스스로
+ * 발급하기 때문이다. **모르는 번호가 실제로 온다** — 파일이 사라진 알림이 오는 사이에 그
+ * 칸이 닫혔으면 이을 것이 없고, 그때는 그냥 건너뛴다.
+ *
+ * **무엇이 되는지는 여기서 안 정한다.** 접는 것은 `nextAttention` 하나이고 이 자리는 그
+ * 답을 칸에 앉히기만 한다 — 규칙이 스토어로 새면 검사가 DOM 있는 seam으로 올라간다.
  */
 void onShellAttention((changed) => {
-  for (const one of changed) console.debug("atelier: shell:attention", one);
+  terminalStore.setState((state) => {
+    let next = state;
+    for (const one of changed) {
+      const ptyId = ptyIdOf(one.shellId);
+      const id = ptyId === null ? null : shellOfPty(ptyId);
+      if (id === null) continue;
+      const prev = next.shells.find((shell) => shell.id === id)?.attention ?? null;
+      next = setAttention(next, id, nextAttention(prev, one.state));
+    }
+    return next;
+  });
 }).catch((error) => {
   console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);
 });

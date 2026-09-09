@@ -338,3 +338,65 @@ export async function openShell(page: Page): Promise<void> {
   await expect(tabs).toHaveCount(before + 1);
   await awaitSpawned(page, before + 1);
 }
+
+/**
+ * 셸 하나가 **스스로 말하게 만든다.** 백엔드의 감시가 상태 파일을 읽어 쏘는
+ * `shell:attention`을 손으로 한 번 쏘는 것이다(#201·#202) — 픽스처 백엔드는 커맨드에만
+ * 답하지 이벤트를 쏘지 않는다.
+ *
+ * **`markRunning`과 결정적으로 다른 것이 하나 있다: 한 번만 쏜다.** 저쪽은 값이 화면에 앉을
+ * 때까지 최대 쉰 번 다시 쏘는데, 그것이 안전한 이유는 실리는 것이 「지금 이것이 돈다」는
+ * **상태**라 몇 번 와도 결과가 같기 때문이다. 이쪽에 실리는 것은 상태가 **바뀌는 순간**인
+ * 전이라(훅 이벤트 한 장), 쉰 번 쏘면 「봤다」가 쉰 번 풀리고 알림 엣지가 쉰 번 발화한다.
+ * 그러면 「진입당 한 번만 울린다」를 재는 검사가 하네스 때문에 빨개진다.
+ *
+ * **그래서 재시도 조건이 「값이 앉았는가」가 아니라 「구독이 걸렸는가」다.** 못 걸린 채
+ * 쏘면 아무 데도 안 닿고, 그 조용함은 「전이가 아무것도 안 바꿨다」와 화면에서 구분되지
+ * 않는다 — 그 자리를 fail-open으로 두면 이 값을 읽는 검사 전부가 무엇을 재는지 모르게 된다.
+ * 구독이 안 보이면 기다렸다 다시 보고, 끝내 없으면 **던진다.**
+ *
+ * 셸 ID는 `<앱 인스턴스 접두사>-<pty id>`다(`pty.rs`의 `shell_id`). 프런트가 되뽑는 것은
+ * 마지막 `-` 뒤의 번호뿐이라(`ptyIdOf`) 접두사는 아무 문자열이어도 된다. **어느 셸에 앉힐지
+ * `ptyId`로 고르는 규칙은 `markRunning`과 같다** — 픽스처가 세는 것은 `pty_spawn`이 불린
+ * 순서라, 칸마다 응답을 기다려 세우는 `openShell`을 써야 그 수가 「n번째 칸」과 같아진다.
+ *
+ * `state`에 `null`을 주면 「그 셸의 상태가 사라졌다」(파일이 지워졌다)를 흉내 낸다.
+ */
+export async function markAttention(
+  page: Page,
+  state: { agent: string; event: string; at?: number; payload?: unknown } | null,
+  ptyId = 1,
+): Promise<void> {
+  let handler: string | undefined;
+  for (let tries = 0; tries < 50 && !handler; tries += 1) {
+    const calls = (await readIpcRecord(page))?.calls ?? [];
+    const listen = calls.filter((call) => call.includes('"shell:attention"')).reverse()[0];
+    handler = (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
+    if (!handler) await page.waitForTimeout(100);
+  }
+  if (!handler) {
+    const calls = (await readIpcRecord(page))?.calls ?? [];
+    throw new Error(`shell:attention 구독이 5초 안에 안 걸렸다 — IPC 기록: ${JSON.stringify(calls)}`);
+  }
+
+  await page.evaluate(
+    ({ handler, payload }: { handler: number; payload: unknown }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      internals.runCallback(handler, { event: "shell:attention", id: 0, payload });
+    },
+    {
+      handler: Number(handler),
+      payload: [
+        {
+          shellId: `l3-${ptyId}`,
+          state:
+            state === null
+              ? null
+              : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
+        },
+      ],
+    },
+  );
+}
