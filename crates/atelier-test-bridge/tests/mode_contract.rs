@@ -319,6 +319,9 @@ enum Reads {
     /// 목록·검색처럼 저쪽 세계에서도 멀쩡히 **빈 답**을 내는 명령. 「오류인가」로는 두 세계가
     /// 안 갈리므로, 답 안에 심은 이름이 섰는지로 가른다.
     Listing(&'static str),
+    /// 답이 아니라 **파일 한 장**으로 세계를 드러내는 명령. 두 세계에서 다 성공하고 답도
+    /// 같아서(`null`), 어느 홈 아래에 썼는지로만 갈린다.
+    Writes(&'static str),
 }
 
 /// 명령마다 **모드 말고 무엇이 더 필요한가**. 이름은 위에서 파생하고, 여기 적는 것은 그
@@ -345,6 +348,8 @@ fn calls() -> Vec<(&'static str, Value, Reads)> {
         // 다리가 인자를 보기 전에 거절한다(`in_app_only`) — 그래서 무엇을 적어도 같다.
         // 그래도 실제 서명대로 적는다: 빈 객체로 두면 「이 명령은 인자가 없다」로 읽힌다.
         ("pty_spawn", json!({ "cwd": null, "cols": 80, "rows": 24 }), Reads::Slug),
+        // 이력은 답을 안 낸다 — 세계는 **쓴 자리**로만 드러난다(`maison/recent.json`).
+        ("touch_recent_work", json!({ "slug": "finance" }), Reads::Writes("recent.json")),
     ]
 }
 
@@ -361,6 +366,10 @@ fn plant_world(home: &Path) {
     plant(home, "maison/archive/shelved", "치운 방");
     std::fs::write(home.join("maison/archive/shelved/record.md"), "# 치운 방\n").unwrap();
 }
+
+/// 쓰기 갈래가 홈 아래에서 찾는 파일. **한 장뿐이다** — 여러 장이 되면 갈래마다 다른
+/// 자리를 재게 되고, 그때는 표에 적힌 이름과 실제로 재는 이름이 갈릴 수 있다.
+const WROTE_PROBE: &str = "recent.json";
 
 fn with_mode(args: &Value, mode: &str) -> Value {
     let mut args = args.clone();
@@ -394,6 +403,11 @@ fn 모드를_받는_명령을_전부_maison으로_불러_본다() {
         let maison_home = temp_home(&format!("all-{name}-maison"));
         plant_world(&maison_home);
         let maison = call(&maison_home, name, with_mode(&args, "maison"));
+        // **지우기 전에 디스크를 본다.** 답이 아니라 쓴 자리로 세계가 갈리는 명령이 있다.
+        let maison_wrote = |rel: &str| {
+            (maison_home.join("maison").join(rel).exists(), maison_home.join(rel).exists())
+        };
+        let maison_disk = maison_wrote(WROTE_PROBE);
         let _ = std::fs::remove_dir_all(&maison_home);
 
         if let Err(message) = &maison {
@@ -406,6 +420,9 @@ fn 모드를_받는_명령을_전부_maison으로_불러_본다() {
         let atelier_home = temp_home(&format!("all-{name}-atelier"));
         plant_world(&atelier_home);
         let atelier = call(&atelier_home, name, with_mode(&args, "atelier"));
+        let atelier_disk =
+            (atelier_home.join("maison").join(WROTE_PROBE).exists(),
+             atelier_home.join(WROTE_PROBE).exists());
         let _ = std::fs::remove_dir_all(&atelier_home);
 
         match reads {
@@ -414,6 +431,21 @@ fn 모드를_받는_명령을_전부_maison으로_불러_본다() {
                 assert!(
                     atelier.is_err(),
                     "{name}이 atelier로 불렸는데 Maison의 Room을 찾아냈다 — 루트를 안 가른다"
+                );
+            }
+            Reads::Writes(file) => {
+                assert_eq!(file, WROTE_PROBE, "쓰기 갈래가 재는 파일이 하나뿐이라는 전제가 깨졌다");
+                assert!(maison.is_ok(), "{name}이 Maison에서 실패했다: {maison:?}");
+                assert!(atelier.is_ok(), "{name}이 Atelier에서 실패했다: {atelier:?}");
+                assert_eq!(
+                    maison_disk,
+                    (true, false),
+                    "{name}이 maison으로 불렸는데 `maison/{file}`이 아니라 Atelier 자리에 썼다"
+                );
+                assert_eq!(
+                    atelier_disk,
+                    (false, true),
+                    "{name}이 atelier로 불렸는데 Maison 자리에 썼다"
                 );
             }
             Reads::Listing(needle) => {

@@ -19,6 +19,18 @@ import { installFixtureBackend, unknownIpcCalls } from "./harness";
 const [specWork, plainWork] = WORKS;
 
 const shells = (page: import("./evidence").Page) => page.locator('[data-tab="shell"]');
+/**
+ * **그 칸의 pty가 실제로 떴다**는 신호. 칸(`[data-tab="shell"]`)은 spawn이 **답하기 전에**
+ * 이미 서 있고, xterm은 답이 온 뒤에 붙는다.
+ *
+ * **켜진 칸의 것만 붙는다** — 안 켜진 칸은 xterm을 안 들므로 이 수는 칸 수가 아니라 늘 1이다.
+ *
+ * 닫기 확인 창을 지나는 검사는 이것을 먼저 기다려야 한다. `ptyId`가 아직 null인 칸은
+ * `commandRunning`이 `null`을 내고, 그러면 `needsCloseConfirm`이 **안 묻고 바로 닫는다**
+ * (결정 92의 「모르는 것을 이유로 닫는 길을 막지 않는다」). 그 갈래로 떨어지면 창을
+ * 기다리는 줄이 30초를 채우고 죽는데, 화면에는 「셸이 그냥 닫혔다」로만 보인다.
+ */
+const shellsUp = (page: import("./evidence").Page) => page.locator(".xterm");
 /** 켜짐을 말하는 쪽은 이름 버튼이다 — 칸 자체가 아니라 그 속성으로 집는다. */
 const lit = (page: import("./evidence").Page, at: number) =>
   shells(page).nth(at).locator("button[aria-pressed]");
@@ -45,6 +57,8 @@ test("⌘T가 새 셸을 열고 그 칸이 켜진다", async ({ page }) => {
 test("셸이 0개인 화면에서도 ⌘T가 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
+  // **pty가 뜨기를 기다린 뒤에 닫는다** — 위 `shellsUp` 머리말의 이유다.
+  await expect(shellsUp(page)).toHaveCount(1);
 
   // 마지막 칸을 닫으면 새 셸이 저절로 안 뜬다(결정 19) — 그 자리를 만든다.
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();

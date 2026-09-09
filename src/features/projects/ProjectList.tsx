@@ -109,7 +109,11 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto pb-2 scroll-quiet">
+        <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-3 pb-2 scroll-quiet">
+          {/* **`-mx-3 px-3`가 거터를 뚫고 나갔다 되돌린다** — 보이는 것은 안 움직이고 막대만
+              패널 가장자리로 간다. 상자가 바깥 거터 안에 들어앉아 있으면 막대(상자 안쪽 3~9px)가
+              그만큼 더 안쪽에 서서 행 위로 들어온다. 사이드바 work 목록이 그 병을 실측으로
+              드러냈고(그쪽 주석), 이 목록은 행이 짧아 눈에 덜 띄었을 뿐 같은 자리였다. */}
           {filtered.map((project) => {
             const active = project.slug === selectedSlug;
             return (

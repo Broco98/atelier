@@ -260,4 +260,18 @@ describe("두 view의 배선", () => {
   it.each(["./-works-view.tsx", "./-archive-view.tsx"])("%s에는 박힌 세계가 없다", (file) => {
     expect(read(file).match(/["'](?:atelier|maison)["']/g) ?? []).toEqual([]);
   });
+
+  // **「열었다」를 적는 자리도 하나다**(결정 14) — 그리고 위와 **다른 effect**여야 한다.
+  //
+  // 세는 단위가 갈린다: 저쪽은 보던 **화면**(문서·탭·분할까지)이고 이쪽은 **work**이다
+  // (결정 12). 위 effect에 얹으면 문서를 옮길 때마다 IPC와 파일 쓰기가 나가는데, 화면에는
+  // 아무 티도 안 난다 — 그래서 의존성 배열을 **원문으로** 못 박는다.
+  //
+  // **소스 스캔만으로는 그 effect가 실제로 도는지 못 본다.** 짝이 L3에 있다
+  // (`works-recent.spec.ts`: 화면이 서면 한 번 나가고, 문서·탭을 바꿔도 다시 안 나간다).
+  it("work을 열었다고 적는 자리가 하나이고, 의존성이 work까지다", () => {
+    const view = read("./-works-view.tsx");
+    expect(view.split("touchRecent(").length - 1).toBe(1);
+    expect(view.split("}, [mode, slug, exists]);").length - 1).toBe(1);
+  });
 });

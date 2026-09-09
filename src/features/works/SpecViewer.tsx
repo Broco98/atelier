@@ -276,10 +276,14 @@ export function htmlSrcdoc(content: string): string {
  * 그 표가 「유일한 자리」가 아니게 된다.
  *
  * **감수 — 프레임에 포커스가 들어가면 앱 단축키가 죽는다**(결정 13 · 이슈 #153). ⌘1~9·⌃Tab·
- * ⌘B·⌘T·⌘W·⌘↩가 전부 부모 창의 리스너라 프레임 경계를 안 넘는다. **⇧⇧(검색 팔레트)도
- * 같이 죽는다** — 이 목록을 처음 적을 때는 그 키가 아직 없었고, 판 03이 들이면서 같은
- * 리스너에 붙었다. 프레임 밖을 한 번 클릭하면 돌아온다 — 뿌리는 iframe이 아니라 「단축키의
- * 정본이 JS window 리스너다」이고, 거기서 고친다.
+ * ⌘B·⌘T·⌘W·⌘↩·⌘K가 전부 부모 창의 리스너라 프레임 경계를 안 넘는다. 프레임 밖을 한 번
+ * 클릭하면 돌아온다 — 뿌리는 iframe이 아니라 「단축키의 정본이 JS window 리스너다」이고,
+ * 거기서 고친다.
+ *
+ * **팔레트를 여는 키만은 이 감수를 벗어났다**(팔레트 결정 2·3). ⇧⇧였을 때는 여기 함께 죽었고
+ * 되살릴 길도 없었다 — 「같은 수식키를 300ms 안에 두 번」은 accelerator 문법에 실을 자리가
+ * 없다. ⌘K로 바꾸면서 네이티브 메뉴에 실렸고, 문서를 읽다 검색하는 흐름이 이 앱에서 가장
+ * 흔하다는 것이 그 키를 바꾼 값의 절반이다.
  *
  * **「원인이 화면 어디에도 없다」는 이 판으로 거짓이 됐다** — 죽는 것은 그대로 죽고
  * (`FrameFocusHint` 머리말), 그 사실과 돌아오는 길을 화면이 말한다. 감수가 없어진 것이
@@ -351,10 +355,11 @@ function useFrameFocused(frameRef: RefObject<HTMLIFrameElement | null>) {
 const FRAME_HINT_WIDTH = 300;
 
 /**
- * 프레임이 포커스를 쥔 **동안에만** 서서, 앱 단축키가 지금 안 먹는다는 것과 **돌아오는
- * 길**을 말한다 — 이슈 #153의 **완화**다. 근본 수정이 아니다: 단축키는 여전히 안 먹고,
- * 정본을 네이티브 메뉴로 올리는 일이 그 이슈에 남아 있다. 여기가 갚는 것은 그 이슈가 짚은
- * 다른 한 가지, 「원인이 화면 어디에도 없다」쪽이다.
+ * 프레임이 포커스를 쥔 **동안에만** 서서, 지금 안 먹는 키와 **돌아오는 길**을 말한다.
+ *
+ * **한때 일곱 키를 적었고 지금은 둘이다.** ⌘1~9·⌘B·⌘T·⌘↩·⌘K는 네이티브 메뉴가 대신 받아
+ * 되살아났다(#153 · 팔레트 결정 3 · `components/shell/menu-hotkey.ts`). 남은 둘(⌃Tab·⌘W)은 그 길에
+ * 못 실리거나 일부러 안 실은 것이라, 이 카드는 **줄어들 뿐 사라지지 않는다.**
  *
  * **#153이 이미 기각한 셋을 다시 걷지 않는다.** 포커스를 도로 안 뺏고(프레임 안 토글이
  * 계속 눌려야 한다 — 결정 4), 덮개를 안 두며(`pointer-events-none`이라 클릭이 그대로
@@ -378,10 +383,16 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
       <div data-frame-hint role="status" className="flex flex-col gap-1">
-        <span className="text-[13px] font-semibold tracking-[-0.01em]">앱 단축키가 지금 안 먹어요</span>
+        <span className="text-[13px] font-semibold tracking-[-0.01em]">단축키 둘이 지금 안 먹어요</span>
+        {/* **둘만 남았다.** ⌘1~9·⌘B·⌘T·⌘↩·⌘K는 네이티브 메뉴가 대신 받아 되살아난다
+            (`components/shell/menu-hotkey.ts`). 남은 둘이 왜 그 길에 못 실리는지는
+            `src-tauri/src/lib.rs`의 `HOTKEYS` 독이 든다 — 둘의 사정이 서로 다르다.
+
+            **⇧⇧가 여기서 빠진 것은 걷혔기 때문이다**(팔레트 결정 2). 그 몸짓은 accelerator 문법에
+            실을 자리가 없어 메뉴로 되살릴 수도 없었는데, 그것을 ⌘K로 바꾼 값의 절반이
+            정확히 이 자리다 — 프레임 안에서도 열린다. */}
         <span className="text-[12.5px] leading-[1.6] text-tertiary">
-          ⌘1~9·⌃Tab·⌘B·⌘T·⌘W·⌘↩·⇧⇧가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면
-          돌아와요.
+          ⌃Tab·⌘W가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
     </PopoverPortal>
@@ -721,7 +732,7 @@ export const PrettyView = memo(function PrettyView({
       input: ({ node, ...props }) => (
         <input {...props} className={cn(checkboxGutter, "size-[13px] align-middle accent-primary")} />
       ),
-      pre: (({ node, children, ...props }: any) => {
+      pre: (({ node, ...props }: any) => {
         const code = node?.children?.[0];
         const lang: string | undefined = code?.properties?.className
           ?.find?.((c: string) => c.startsWith("language-"))
@@ -734,7 +745,18 @@ export const PrettyView = memo(function PrettyView({
               className="overflow-x-auto rounded-[12px] border bg-inset px-4 py-3.5 font-mono text-[12.5px] leading-[1.7] scroll-quiet"
               {...props}
             >
-              {children}
+              {/* **안쪽 `<code>`를 여기서 직접 쓴다 — `children`을 그리면 안 된다.**
+                  아래 `code` 컴포넌트는 「`language-`가 없으면 인라인 코드」로 가르는데,
+                  **언어를 안 적은 코드블록도 className이 없다.** 그대로 흘리면 여러 줄짜리
+                  블록이 인라인 껍데기(테두리·둥근 모서리·배경·0.88em)를 뒤집어쓰고, 인라인
+                  요소의 테두리가 줄마다 끊겨 **줄 사이에 선이 그어진 것처럼** 보인다
+                  (실물에서 그렇게 났다 — 사람이 「이상하게 겹친거잖아?」라고 지적한 그 화면).
+                  ```mermaid처럼 언어를 적은 블록은 멀쩡해서 오래 안 걸렸다.
+
+                  우리가 JSX로 쓴 이 `<code>`는 마크다운 변환을 안 거치므로 그 갈래에 아예
+                  들어가지 않는다. `language-*`는 그대로 실어 둔다 — 지금 읽는 것은 없지만
+                  하이라이팅을 붙이는 날 그 이름이 붙을 자리다. */}
+              <code className={lang ? `language-${lang}` : undefined}>{hastText(code)}</code>
             </pre>
           );
         const range = lines(node);

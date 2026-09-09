@@ -34,14 +34,20 @@ export const PROJECTS: ProjectView[] = [
 // 그 둘이기 때문이다(결정 82의 구획, 결정 85의 채운 핀). 순서는 코어가 정하므로
 // (결정 100) 고정된 것이 먼저 온다.
 //
-// **제목 길이도 둘로 갈라 둔다**(결정 9~12). 사이드바 280px에서 제목에 남는 폭은 194px이라
-// 첫 제목은 넘치고 둘째는 안 넘치는데, 「넘치면 흐르고 안 넘치면 가만히 있다」를 보려면
+// **제목 길이도 둘로 갈라 둔다**(결정 9~12). 「넘치면 흐르고 안 넘치면 가만히 있다」를 보려면
 // 그 둘이 다 있어야 한다 — 짧은 제목만 두면 마퀴 검사가 **아무것도 안 흐르는 화면에서도**
 // 초록이 된다.
+//
+// **넘치는 쪽은 넉넉히 넘쳐야 한다.** 사이드바 280px · 셸이 없는 행에서 제목에 남는 폭이
+// 222px이고 첫 제목이 283.52px이라 넘침이 61.52px이다(L3 WebKit 실측 2026-08-30). 이 여유가
+// 마퀴 속도를 재는 그물의 폭이다: 흐르는 시간이 「(넘침 + 페이드 12) ÷ 50px/s」인데 두 점을
+// 0.4초 사이에 두고 찍으므로, 넘침이 25px 아래로 내려가면 두 점이 **도착한 뒤**로 밀려 기울기가
+// 0이 된다. 2열의 28px 예약을 걷어 제목이 27.91px 넓어졌을 때 실제로 그렇게 됐고(넘침
+// 51.14 → 23.23px), 그래서 제목을 그만큼 늘려 여유를 되돌렸다.
 export const WORKS: WorkView[] = [
   {
     slug: "pinned-work",
-    title: "고정된 일 — 사이드바에서 잘리는 아주 긴 제목",
+    title: "고정된 일 — 사이드바에서 잘리고도 남는 아주 긴 제목",
     status: "active",
     branch: "feat/pinned-work",
     createdAt: "2026-08-20",
@@ -167,7 +173,7 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
  * 한 질의의 답 통째. **「잘렸다」는 안 켠다** — 이 층이 재는 것은 배선이고, 상한에 걸렸는지를
  * 가르는 것은 코어 단위가 든다(딱 20줄과 잘린 것을 여기서 흉내내면 상한이 두 자리에 산다).
  */
-export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS, truncated: false };
+export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS };
 
 /**
  * Maison에서 ⇧⇧를 눌렀을 때 오는 줄들. **Atelier의 답과 수도 값도 겹치지 않는다** — 겹치면
@@ -195,7 +201,7 @@ export const MAISON_SEARCH_HITS: SearchHit[] = [
   },
 ];
 
-export const MAISON_SEARCH_RESULTS: SearchResults = { hits: MAISON_SEARCH_HITS, truncated: false };
+export const MAISON_SEARCH_RESULTS: SearchResults = { hits: MAISON_SEARCH_HITS };
 
 /**
  * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
@@ -209,10 +215,30 @@ export const MAISON_SEARCH_RESULTS: SearchResults = { hits: MAISON_SEARCH_HITS, 
  */
 export const SEARCH_DESTINATION_QUERY = "Set";
 export const SEARCH_DESTINATION_RESULTS: SearchResults = {
-  // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
-  // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
-  hits: [{ kind: "destination", key: "settings" }],
-  truncated: false,
+  hits: [
+    // **`key`뿐이다**(결정 21). 라벨과 라우트는 프런트가 되찾는 것이고, 그 되찾기가 실제로
+    // 도는지가 이 층이 보려는 것이라 — 여기에 라벨을 실으면 그것을 안 보고도 초록이 된다.
+    { kind: "destination", key: "settings" },
+    // **아래 둘은 거터를 재려고 있다**(결정 17·18). 위 고정 답이 문서 줄만 내므로, 이 답이
+    // 아니면 **작업 줄과 본문 줄이 이 층에 영영 안 선다** — 그런데 「글자 시작점이 층을
+    // 가로질러 하나다」는 층이 여럿 떠 있을 때만 재지는 성질이다. 순서는 코어의 층 순서
+    // 그대로다(가는 곳 → 작업 → … → 본문): 프런트는 받은 순서로 그리므로 여기서 뒤집으면
+    // 이 층이 실물과 다른 화면을 재게 된다.
+    { kind: "work", slug: WORKS[1].slug, title: WORKS[1].title, archived: false },
+    // **본문 줄이라야 스니펫이 선다.** 제목과 경로를 긴 쪽으로 잡는 것은 스니펫이 `grow`로
+    // 남는 폭을 다 먹으면 **바닥이 안 재지기 때문이다** — 줄이 꽉 차야 `basis-1/3`이 실제로
+    // 바닥으로 드러난다.
+    {
+      kind: "text",
+      slug: WORKS[0].slug,
+      title: WORKS[0].title,
+      path: WORKS[0].specFiles[0],
+      archived: false,
+      snippet:
+        "본문에서 맞은 문단을 한 줄로 편 것이다. 줄이 꽉 차도록 넉넉히 길게 둔다 — 짧으면 " +
+        "스니펫이 바닥이 아니라 제 내용 폭으로 서서, 바닥을 재려는 검사가 아무것도 안 잰다.",
+    },
+  ],
 };
 
 /**
@@ -226,7 +252,6 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 export const MAISON_SEARCH_DESTINATION_QUERY = "Ter";
 export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
   hits: [{ kind: "destination", key: "terminal" }],
-  truncated: false,
 };
 
 /**
@@ -468,6 +493,17 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
     atelier: { value: { id: 1, shellName: "zsh" } },
     maison: { value: { id: 1, shellName: "zsh" } },
   },
+  /**
+   * work 화면이 설 때마다 한 번 나간다(팔레트 결정 14). 답은 안 쓰인다 — 순서를 세우는 것은
+   * 코어의 검색이고 화면은 이 값을 도로 안 읽는다. **표에서 빠뜨리면 work 화면을 여는
+   * spec들이 한꺼번에 터지는데**, 하네스가 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
+   *
+   * **두 칸이 다 `null`이다 — 그래도 여기다.** 답이 세계를 안 타는 것은 `pty_spawn`과 같은
+   * 사정이고(위 머리말), 이 줄이 이름 표가 아니라 여기 사는 이유도 같다: 이력은 세계마다
+   * 한 장이라 `mode`를 빠뜨린 호출은 저쪽 장부에 적는다. 이름으로 답하면 그 어긋남이 이
+   * 층에서 조용히 초록이다.
+   */
+  touch_recent_work: { atelier: { value: null }, maison: { value: null } },
   read_spec_file: {
     atelier: { value: SPEC_FALLBACK_BODY, arg: "path", answers: SPEC_FILE_BODIES },
     // 폴백이 없다 — 위 `SPEC_FALLBACK_BODY` 머리말의 이유다. Room이 자기 목록에 없는 문서를

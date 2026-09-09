@@ -21,6 +21,77 @@ use tauri::{Emitter, Manager};
 /// 그 상황이다.
 const SETTINGS_MENU_ID: &str = "settings";
 
+/// 프레임에 포커스가 갔을 때 죽던 단축키들을 되살리는 항목의 id 접두사.
+///
+/// **뒤에 붙는 것은 그 키의 `KeyboardEvent.code`다** (`hotkey:KeyB` · `hotkey:Digit3`).
+/// 그렇게 두면 프런트가 받은 문자열을 **그대로** 합성 keydown의 `code`에 넣을 수 있어,
+/// 「메뉴 항목 ↔ 키」를 잇는 표가 어느 쪽에도 안 생긴다. 표가 생기면 키를 하나 옮길 때마다
+/// 두 언어를 함께 고쳐야 한다.
+const HOTKEY_PREFIX: &str = "hotkey:";
+
+/// 되살리는 키들 — `(code, 메뉴에 적히는 이름)`.
+///
+/// **accelerator는 안 적는다 — `accelerator_of`가 code에서 만든다.** 손으로 적으면 두
+/// 문자열이 한 줄에 나란히 서서 눈으로는 잘 맞아 보이는데, 어긋나는 순간 사람이 누른 키와
+/// 앱이 도는 동작이 **다른 키가 된다.**
+///
+/// 이름은 `CONTEXT.md`의 말이다. ⌘1~9가 옮기는 것은 **탭**이다 — 「work·터미널 화면 머리행의
+/// 한 칸. `spec`과 셸들이 거기 선다」가 그 문서의 정의이고 ⌘1이 spec, ⌘2~9가 셸이라
+/// 정확히 겹친다. **「열」이 아니다**: 열은 분할했을 때만 생기고 늘 둘이라 아홉이 될 수 없고,
+/// 그 문서가 열을 「칸·패널·페인」으로 부르지 말라고 못 박고 있다.
+///
+/// **⌘W는 여기 없다.** 창이 닫히면 이 앱은 창이 하나뿐이라 그대로 종료되고 돌던 셸이 전부
+/// 죽는다(`build_menu` 주석의 그 사고). 실측으로는 커스텀 id 항목이 `performClose:`에 안 매여
+/// 창이 살아 있었지만 **dev 빌드에서만 쟀고**, 얻는 것이 「칸 닫기」 하나인데 잃을 수 있는
+/// 것이 셸 전부라 저울이 한쪽으로 명백히 기운다.
+///
+/// **⌃Tab·⌃⇧Tab은 없다.** 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다)
+/// **accelerator 경로만 죽는다** — 실제로 던져서 0/6 · 0/3이었다.
+///
+/// **⇧⇧는 여기 실을 수 없었고, 그래서 키를 바꿨다**(결정 1·2). 「같은 수식키를 300ms 안에
+/// 두 번」은 몸짓이라 accelerator 문법에 실을 자리가 없고, `Shift+Shift`는 파싱에 실패한다.
+/// 그런데 Tauri가 그 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는
+/// 항목이 선다** — 빌드가 통과하는 것이 곧 등록된 것이 아니다. 그 사실이 이 표의 성질을
+/// 하나 못 박는다: **여기 실을 수 있느냐가 여는 키를 고르는 조건**이었고, ⌘K는 실린다.
+///
+/// **`Search`가 맨 앞이다**(결정 3). 화면을 안 타고 어디서나 여는 유일한 항목이라 목록 첫
+/// 줄에 서는 것이 읽힌다 — 나머지는 전부 「지금 이 화면의」 무엇이다. 그 자리를 검사가
+/// 못 박는다(`검색이_표의_맨_앞이다`): 메뉴를 세우는 함수가 tauri 핸들을 요구해 단위 검사가
+/// 안 태우므로, 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
+const HOTKEYS: &[(&str, &str)] = &[
+    ("KeyK", "Search"),
+    ("KeyB", "Sidebar"),
+    ("Enter", "Panel"),
+    ("KeyT", "New Shell"),
+    ("Digit1", "Tab 1"),
+    ("Digit2", "Tab 2"),
+    ("Digit3", "Tab 3"),
+    ("Digit4", "Tab 4"),
+    ("Digit5", "Tab 5"),
+    ("Digit6", "Tab 6"),
+    ("Digit7", "Tab 7"),
+    ("Digit8", "Tab 8"),
+    ("Digit9", "Tab 9"),
+];
+
+/// `KeyboardEvent.code`에서 그 키의 accelerator를 만든다.
+///
+/// **프런트의 `keyOfCode`와 짝이지만 만드는 것이 다르다** — 그쪽은 `code`에서 `key`를,
+/// 이쪽은 `code`에서 accelerator 문자열을 만든다. 같은 해체(`Digit*` · `Key*`)를 두 언어가
+/// 각각 하는 것은 그 사이에 건널 다리가 없어서다: 메뉴를 세우는 것은 Rust이고 이벤트를
+/// 만드는 것은 프런트다. **잇는 끈은 `code` 문자열 하나**이고, 그것이 `HOTKEY_PREFIX`가
+/// id에 code를 그대로 싣는 이유다.
+fn accelerator_of(code: &str) -> String {
+    if let Some(n) = code.strip_prefix("Digit") {
+        format!("CmdOrCtrl+{n}")
+    } else if let Some(c) = code.strip_prefix("Key") {
+        format!("CmdOrCtrl+{c}")
+    } else {
+        // Enter처럼 이름이 곧 키인 것들.
+        format!("CmdOrCtrl+{code}")
+    }
+}
+
 /// macOS 기본 메뉴에서 **`Close Window`(⌘W)만 뺀 것.**
 ///
 /// 그 항목이 있으면 ⌘W를 **OS 메뉴가 웹뷰보다 먼저 먹는다.** 프런트에서
@@ -63,13 +134,37 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
         .select_all()
         .build()?;
 
+    // **이 메뉴가 서는 이유는 보이기 위해서가 아니다**(#153). spec 문서의 `<iframe>`에
+    // 포커스가 들어가면 그 안에서 친 키가 부모 창을 못 넘어와 앱 단축키가 통째로 죽는데,
+    // OS 메뉴는 그 경계를 모른다 — 위 `SETTINGS_MENU_ID` 주석이 「OS 메뉴가 웹뷰보다 먼저
+    // 먹는다」고 적어 둔 그 성질을 여기서 한 번 더 유리하게 쓴다.
+    //
+    // **항목이 동작을 들지 않는다.** 아래 `on_menu_event`가 「그 키가 눌렸다」만 쏘고 판정은
+    // 프런트에 남는다 — 같은 키가 화면마다 다른 것을 가리키므로(HOTKEYS 주석) 동작을 여기
+    // 두면 그 표가 Rust로 새고, 화면이 하나 늘 때마다 두 언어를 고쳐야 한다.
+    let mut view = SubmenuBuilder::new(handle, "View");
+    let mut drew_line = false;
+    for (code, label) in HOTKEYS {
+        // 얼개를 만지는 것들(⌘B·⌘↩·⌘T)과 탭 번호 사이에 금 하나. **자리를 세지 않는다** —
+        // 「번호가 처음 나오는 곳」이 곧 그 경계라, 항목을 끼워도 금이 따라 움직인다.
+        if !drew_line && code.starts_with("Digit") {
+            view = view.separator();
+            drew_line = true;
+        }
+        let item = MenuItemBuilder::with_id(format!("{HOTKEY_PREFIX}{code}"), label)
+            .accelerator(accelerator_of(code))
+            .build(handle)?;
+        view = view.item(&item);
+    }
+    let view = view.build()?;
+
     // `close_window()`가 **없다.** 위 주석이 그 자리의 전부다.
     let window = SubmenuBuilder::new(handle, "Window")
         .minimize()
         .fullscreen()
         .build()?;
 
-    MenuBuilder::new(handle).items(&[&app, &edit, &window]).build()
+    MenuBuilder::new(handle).items(&[&app, &edit, &view, &window]).build()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -80,8 +175,13 @@ pub fn run() {
         // 안다(`/settings`). 배선은 `watcher.rs`가 `works:changed`를 쏘고 프런트가 `listen`으로
         // 받는 그 길과 같다(AppShell).
         .on_menu_event(|app, event| {
-            if event.id() == SETTINGS_MENU_ID {
+            let id = event.id().as_ref();
+            if id == SETTINGS_MENU_ID {
                 let _ = app.emit("settings:open", ());
+            } else if let Some(code) = id.strip_prefix(HOTKEY_PREFIX) {
+                // **키 이름 하나만 실어 보낸다**(#153). 이 키가 무엇을 가리키는지는 화면마다
+                // 다르고 그 표는 프런트에만 있다 — 여기서 아는 것은 「이 code가 눌렸다」뿐이다.
+                let _ = app.emit("hotkey:menu", code.to_string());
             }
         })
         .plugin(tauri_plugin_opener::init())
@@ -132,6 +232,7 @@ pub fn run() {
             commands::list_archived_docs,
             commands::read_archived_file,
             commands::search,
+            commands::touch_recent_work,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,
@@ -150,4 +251,85 @@ pub fn run() {
                 pty::reap_all(&app.state::<Arc<pty::PtyPool>>());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **⌘W가 이 표에 있으면 안 된다** (#153). 근거는 `HOTKEYS` 독이 든다 — 여기가 막는 것은
+    /// 표를 늘리다 무심코 한 줄 더 적는 것이고, 그 한 줄의 값이 **돌던 셸 전부**다.
+    #[test]
+    fn 표에_cmd_w가_없다() {
+        for (code, label) in HOTKEYS {
+            assert_ne!(*code, "KeyW", "{label}이 ⌘W를 든다");
+        }
+    }
+
+    /// `accelerator_of`가 muda가 아는 문자열을 만드는가.
+    ///
+    /// **한때 이 자리에 「표의 셋째 칸이 code와 짝이 맞는가」가 있었다.** 그 검사의 본문이
+    /// 곧 유도 함수였다 — 검사가 유도를 알고 있다면 그 유도는 코드에 있어야 한다. 셋째 칸을
+    /// 걷고 `accelerator_of`를 세우면서 그 검사도 함께 사라졌고, 남은 것이 이것이다.
+    #[test]
+    fn accelerator를_code에서_만든다() {
+        assert_eq!(accelerator_of("KeyK"), "CmdOrCtrl+K");
+        assert_eq!(accelerator_of("Digit1"), "CmdOrCtrl+1");
+        assert_eq!(accelerator_of("Digit9"), "CmdOrCtrl+9");
+        assert_eq!(accelerator_of("KeyB"), "CmdOrCtrl+B");
+        assert_eq!(accelerator_of("KeyT"), "CmdOrCtrl+T");
+        assert_eq!(accelerator_of("Enter"), "CmdOrCtrl+Enter");
+    }
+
+    /// id가 겹치면 뒤 항목의 클릭이 앞 항목으로 간다 — 메뉴는 그것을 오류로 말하지 않는다.
+    #[test]
+    fn id가_겹치지_않는다() {
+        let mut ids: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
+        ids.sort_unstable();
+        let count = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), count, "HOTKEYS에 같은 code가 두 번 있다");
+    }
+
+    /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.
+    /// 무엇이 왜 빠졌는지는 `HOTKEYS` 독이 든다.
+    #[test]
+    fn 살리기로_한_키가_다_있다() {
+        let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
+        for want in ["KeyK", "KeyB", "KeyT", "Enter"] {
+            assert!(codes.contains(&want), "{want}가 표에 없다");
+        }
+        for n in 1..=9 {
+            let want = format!("Digit{n}");
+            assert!(codes.contains(&want.as_str()), "{want}가 표에 없다");
+        }
+    }
+
+    /// 결정 3. **`Search`가 View 메뉴 맨 위다.** 다른 항목이 전부 「지금 이 화면의」 무엇인데
+    /// 이것만 화면을 안 타고 어디서나 열어서, 목록 첫 줄에 서는 것이 읽힌다.
+    ///
+    /// **자리를 세는 검사가 여기 필요한 이유가 있다.** 메뉴를 실제로 세우는 `build_menu`는
+    /// tauri 핸들을 요구해 단위 검사가 못 태우므로, 표의 순서가 곧 화면의 순서인데 그 순서를
+    /// 아무도 안 본다 — 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
+    /// 위 「다 있다」는 자리를 안 보므로 이것을 대신하지 못한다.
+    #[test]
+    fn 검색이_표의_맨_앞이다() {
+        assert_eq!(HOTKEYS[0], ("KeyK", "Search"));
+    }
+
+    /// **구분선이 한 자리에만 그어진다.** `build_menu`는 「첫 `Digit*` 항목 앞」에서 한 번만
+    /// 금을 긋는데(자리를 안 세고 갈래로 가른다), 그 규칙이 뜻대로 되려면 번호 항목들이
+    /// **표 뒤쪽에 몰려 있어야** 한다. 섞이면 금이 엉뚱한 자리에 서고 뒤에 오는 번호들이
+    /// 얼개 항목들과 한 무리로 읽힌다 — 눈으로만 보이는 어긋남이라 아무도 안 잡는다.
+    ///
+    /// ⌘K를 맨 앞에 끼운 것이 금을 안 움직인다는 것도 이 성질이 말한다.
+    #[test]
+    fn 번호_항목이_표_뒤쪽에_몰려_있다() {
+        let first_digit =
+            HOTKEYS.iter().position(|(code, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
+        assert!(
+            HOTKEYS[first_digit..].iter().all(|(code, _)| code.starts_with("Digit")),
+            "번호 항목 사이에 다른 항목이 끼었다 — 구분선이 엉뚱한 자리에 선다"
+        );
+    }
 }

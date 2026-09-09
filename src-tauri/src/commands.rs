@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, projects_dir, shared_projects_root, works_dir, ArchiveEntry, Destination, Mode,
-    ProjectPatch, ProjectView, SearchResults, WorkView,
+    archive_dir, mode_home, projects_dir, shared_projects_root, works_dir, ArchiveEntry,
+    Destination, Mode, ProjectPatch, ProjectView, SearchResults, WorkView,
 };
 
 use std::sync::Arc;
@@ -159,14 +159,25 @@ pub async fn search(
     query: String,
     destinations: Vec<Destination>,
 ) -> CmdResult<SearchResults> {
-    atelier_core::search(
-        &works_dir(mode),
-        &archive_dir(mode),
-        shared_projects_root(mode).as_deref(),
-        &query,
-        &destinations,
-    )
-    .map_err(err)
+    // **그 세계의 홈 하나만 넘긴다** — 층별 폴더는 코어가 파생한다(`paths.rs`). 넷을 따로
+    // 넘기던 때는 「반드시 코어의 것을 넘겨라」가 여기 주석으로만 서 있었고, 어긋나도
+    // 컴파일이 안 잡았다. 여기서 `~/.atelier`를 박으면 `ATELIER_HOME` 오버라이드가 이
+    // 자리에서만 죽는 것은 그대로다.
+    atelier_core::search(&mode_home(mode), mode, &query, &destinations).map_err(err)
+}
+
+/// 그 work 화면이 **떠 있게 됐다**(팔레트 결정 12·14). 이력 맨 앞으로 옮긴다.
+///
+/// **세는 단위는 work이다** — 문서를 안 열고 터미널만 돌려도 「열었다」이고, 팔레트로 갔든
+/// 사이드바로 갔든 주소를 쳤든 같다. 「어느 문으로 들어왔나」로 예외를 만들면 그 예외가 곧
+/// 「왜 얘가 위에 없지」가 된다.
+///
+/// **이력은 세계마다 한 장이다** — 루트를 `mode_home(mode)`로 잡으므로 Maison의 것은
+/// `maison/recent.json`에 따로 쌓인다. 한 장으로 합치면 두 세계에 같은 slug가 설 수 있다는
+/// 것(결정 10)이 그대로 새어, Maison에서 연 Room이 저쪽 팔레트의 같은 이름을 맨 위로 올린다.
+#[tauri::command]
+pub async fn touch_recent_work(mode: Mode, slug: String) -> CmdResult<()> {
+    atelier_core::touch_recent_work(&mode_home(mode), &slug).map_err(err)
 }
 
 #[tauri::command]

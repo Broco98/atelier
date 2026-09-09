@@ -17,7 +17,7 @@ pub fn data_root() -> PathBuf {
 /// 저장소에 붙지 않으므로 Maison에는 이 루트에 대응하는 자리가 아예 없다. 인자를 받게
 /// 만들면 「Maison의 프로젝트 폴더」라는 없는 것이 이름부터 생긴다.
 pub fn projects_dir() -> PathBuf {
-    data_root().join("projects")
+    projects_in(&data_root())
 }
 
 /// **모드를 함께 받는 커널 함수에 건네는** 프로젝트 등록부. Maison에서는 「없음」이다
@@ -58,10 +58,7 @@ pub fn mode_home(mode: Mode) -> PathBuf {
 /// **Maison 쪽 폴더 이름이 `works`가 아니라 `rooms`인 것은 화면의 말과 맞추기 위해서다** —
 /// 파일은 work.json 그대로이지만(결정 2) 그 폴더를 여는 사람에게 그것은 Room이다.
 pub fn works_dir(mode: Mode) -> PathBuf {
-    mode_home(mode).join(match mode {
-        Mode::Atelier => "works",
-        Mode::Maison => "rooms",
-    })
+    works_in(&mode_home(mode), mode)
 }
 
 /// 끝난 것이 옮겨가 머무는 곳. **status가 아니라 장소로** 관심 밖에 둔다 —
@@ -69,7 +66,31 @@ pub fn works_dir(mode: Mode) -> PathBuf {
 /// 구조가 된다. **두 세계가 갈리는 것도 같은 방식이다**: Maison의 아카이브는 Atelier
 /// 아카이브의 하위가 아니라 다른 홈 아래라, Atelier 목록이 읽을 길이 없다.
 pub fn archive_dir(mode: Mode) -> PathBuf {
-    mode_home(mode).join("archive")
+    archive_in(&mode_home(mode))
+}
+
+// 아래 셋이 **배치의 정본이다** — 어느 홈 아래 어느 폴더가 무엇인지를 아는 자리가 여기
+// 하나다. 위의 모드별 셋은 `mode_home(mode)`를 먹인 것뿐이고, 루트를 인자로 받는 코어 함수들
+// (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와
+// 검색이 보는 폴더가 갈리는데, 화면에는 「왜 안 뜨지」로만 나타난다.
+
+pub(crate) fn projects_in(root: &Path) -> PathBuf {
+    root.join("projects")
+}
+
+/// **이 하나만 모드를 함께 받는다.** 진행 중인 항목의 폴더 이름은 세계마다 다르다
+/// (`works`/`rooms` — 결정 18의 「사람이 보는 층에만 새 말」). 루트만으로 파생하면
+/// Maison에서 `maison/works`를 걷게 되고, 그 자리는 늘 비어 있어 **검색이 조용히 빈 답을
+/// 준다** — 오류가 아니라 「왜 안 뜨지」로만 보이는 종류다.
+pub(crate) fn works_in(root: &Path, mode: Mode) -> PathBuf {
+    root.join(match mode {
+        Mode::Atelier => "works",
+        Mode::Maison => "rooms",
+    })
+}
+
+pub(crate) fn archive_in(root: &Path) -> PathBuf {
+    root.join("archive")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {

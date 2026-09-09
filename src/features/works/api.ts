@@ -23,5 +23,17 @@ export const worksApi = {
   readSpec: (mode: Mode, slug: string, path: string) =>
     invoke<string>("read_spec_file", { mode, slug, path }),
   archive: (mode: Mode, slug: string) => invoke<void>("archive_work", { mode, slug }),
+  /**
+   * 그 work 화면이 **떠 있게 됐다**고 알린다(팔레트 결정 12·14) — 이력 맨 앞으로 간다.
+   *
+   * 답이 없는 부름이다. 화면이 이 값을 도로 읽지 않으므로(순서를 세우는 것은 코어의 검색이다)
+   * 실패해도 화면에 아무 일이 없어야 한다 — 부르는 쪽이 삼키되 **이유는 한 줄 남긴다.**
+   *
+   * **세계를 싣는다.** 이력은 세계마다 한 장이라(`maison/recent.json`), 안 실으면 Maison에서
+   * 연 Room이 Atelier 팔레트의 같은 이름을 맨 위로 올린다 — 두 세계에 같은 slug가 설 수
+   * 있다는 것이 결정 10이다.
+   */
+  touchRecent: (mode: Mode, slug: string) =>
+    invoke<void>("touch_recent_work", { mode, slug }),
   remove: (mode: Mode, slug: string) => invoke<void>("remove_work", { mode, slug }),
 };

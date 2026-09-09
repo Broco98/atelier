@@ -3,21 +3,23 @@ import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "@/features/works/work-sections";
-import { destinationLabel } from "./destinations";
+import { destinationIcon, destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
 import type { SearchHit } from "./types";
 
 /**
- * ⇧⇧로 여는 검색 팔레트.
+ * ⌘K로, 셸 컨트롤 행의 검색 버튼으로, 또는 `View ▸ Search` 메뉴로 여는 검색 팔레트.
+ * **여는 자리는 그래도 하나다** — 버튼도 메뉴도 키 리스너와 같은 state를 켠다
+ * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
  * **떠 있는 표면의 규격은 확인 창(`AppDialog`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
  * 반지름·테두리·그림자를 쓰고 있어 새 어휘를 들일 이유가 없다.
  *
- * **여는 키(⇧⇧)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 셸 키
- * 판정들과 「어디서 눌렸으면 비키는가」를 같이 딛기 때문이고, 그 자리를 고른 이유는 거기
- * 머리말이 든다. 무장·해제를 들고 그 함수를 부르는 자리는 앱 셸(`AppShell.tsx`)이다.
+ * **여는 키(⌘K)의 판정은 여기 없다** — `shell-registry.ts`의 `searchHotkey`가 든다. 그 키가
+ * **셸을 지나와야** 하고, 셸이 그것을 타이핑하지 않는다는 것을 정하는 자리가 거기이기
+ * 때문이다. 그 함수를 부르고 확인 창을 보는 자리는 앱 셸(`AppShell.tsx`)이다.
  *
  * **터미널 스토어를 import하지 않는다.** 하면 `@xterm/*`와 그 CSS가 따라 들어와 이 파일의
  * 정적 마크업 검사가 서지 못한다(SearchPalette.test.tsx가 그 계약을 센다) — 사이드바 목록이
@@ -112,7 +114,6 @@ export function SearchList({
   query,
   hits,
   state,
-  truncated,
   selected,
   onQuery,
   onGo,
@@ -141,8 +142,6 @@ export function SearchList({
    * - `"failed"` — 못 물었다. 재시도는 없으므로(hooks.ts) **다음 타자가 곧 다음 시도**다.
    */
   state: "pending" | "ready" | "failed";
-  /** 상한에 걸려 못 나온 줄이 있는가. **코어가 말해 준다** — 줄 수로는 못 가른다. */
-  truncated: boolean;
   /** 지금 골라진 줄. 목록이 비면 아무 줄도 안 골라진다(`-1`). */
   selected: number;
   onQuery: (query: string) => void;
@@ -171,12 +170,32 @@ export function SearchList({
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
+  // **떠 있는 동안 스크롤 막대를 걷는다.** 막대는 `z-index: 45`이고 이 오버레이가 `z-50`이라
+  // 막대가 **아래**에 깔리는데, 오버레이가 반투명이라 그대로 비쳐 보인다 — 팔레트를 열기
+  // 직전까지 굴리던 화면의 막대가 오버레이 너머로 남아 페이드되는 것이 그 모양이다
+  // (`HIDE_DELAY_MS` 420ms + 페이드 180ms).
+  //
+  // 막대를 위로 올려 해결하지 않는다: 뒤 화면은 **팔레트가 떠 있는 동안 구를 수 없고**
+  // (오버레이가 포인터를 다 받는다) 구를 수 없는 것의 막대는 거짓이다. 팔레트 제 목록의
+  // 막대도 함께 걷힌다 — 어차피 카드(`bg-background`, z-50)가 그 자리를 덮어 보인 적이 없다.
+  //
+  // 자리가 `body`인 것은 막대가 `body` 직계 fixed라서다(`lib/scroll-quiet.ts`) — 이 컴포넌트의
+  // 서브트리 안에서는 그 노드에 닿는 선택자를 쓸 수 없다.
+  useEffect(() => {
+    document.body.dataset.paletteOpen = "";
+    return () => {
+      delete document.body.dataset.paletteOpen;
+    };
+  }, []);
+
   return (
     <div
       // 바깥을 눌러도 닫힌다 — 확인 창과 같은 규칙이고, 여는 것 말고는 아무 일도 안 하는
       // 표면이라 닫는 데 잃는 것이 없다.
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-background/55 p-8 pt-[12vh] backdrop-blur-[2px]"
+      // 막은 **확인 창과 같은 것을 쓴다**(`modal-scrim` — 뒤를 흐리지 않고 어둡게만 한다).
+      // 뜨는 자리만 여기가 정한다: 팔레트는 위쪽 12vh에 서고 확인 창은 가운데다.
+      className="modal-scrim flex items-start justify-center p-8 pt-[12vh]"
     >
       <div
         onClick={(event) => event.stopPropagation()}
@@ -202,11 +221,17 @@ export function SearchList({
           role="listbox"
           aria-label="검색 결과"
           // 구르는 상자는 저장소 공통 막대를 쓴다(결정 32) — 한 자리만 다른 막대를 쓰면
-          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다.
+          // 그 자리에서 폭이 달라지고, 화면에는 「목록이 밀렸다」로 보인다. 다만 팔레트가
+          // 떠 있는 동안은 그 막대가 걷힌다(위 `data-paletteOpen` 주석) — 그래서 **바닥이
+          // 「더 있다」를 말하는 유일한 자리**이고, 그 일을 `data-more-fade`가 든다.
+          data-more-fade=""
           className="flex min-h-0 flex-col gap-px overflow-y-auto p-1.5 scroll-quiet"
         >
           {hits.map((hit, at) => {
             const { name, detail, snippet } = rowText(mode, hit);
+            // **목적지 줄만 글리프를 든다**(결정 17). 나머지 갈래는 `null`이라 빈 슬롯이 서고,
+            // 그래서 글자 시작점이 층을 가로질러 하나다.
+            const Glyph = hit.kind === "destination" ? destinationIcon(mode, hit.key) : null;
             return (
               <Fragment key={rowKey(hit)}>
                 {/* **결과가 없는 그룹은 머리도 안 선다** — 갈래가 바뀌는 자리에서만 한 줄
@@ -228,14 +253,34 @@ export function SearchList({
                   aria-selected={at === selected}
                   onClick={() => onGo(hit)}
                   className={cn(
-                    "flex shrink-0 items-baseline gap-2 rounded-[8px] px-2.5 py-1.5 text-left",
+                    // 간격이 **9px**인 것은 사이드바 규격이다(결정 17·18) — 슬롯 17px과
+                    // 합쳐 거터가 26px이 되고, 그 값이 사이드바 nav 줄의 글자 시작점과 같다.
+                    "flex shrink-0 items-baseline gap-[9px] rounded-[8px] px-2.5 py-1.5 text-left",
                     at === selected ? "bg-state-2" : "hover:bg-state-1",
                   )}
                 >
+                  {/* **거터는 모든 줄이 예약한다**(결정 18). 목적지가 아닌 줄은 빈 슬롯을
+                      두는데, 안 두면 가는 곳 층만 한 단 들어간 것처럼 읽힌다 — 층이 갈려도
+                      눈이 따라가는 세로선은 하나여야 한다.
+
+                      **줄 padding이 아니라 flex 자식으로 문다.** padding으로 밀면 목적지
+                      줄에서 padding과 글리프가 이중으로 밀고, 아래 스니펫 바닥이 컨테이너
+                      **내용폭**의 1/3이라 padding이 그 바닥까지 175.3px → 166.7px로 깎는다.
+                      자식은 내용폭을 안 바꾼다.
+
+                      **`self-center`가 필요하다** — 줄이 `items-baseline`이라 없으면 글리프가
+                      글자 베이스라인에 앉아 사이드바(`items-center`)와 세로 위치가 갈린다. */}
+                  <span data-gutter="" className="size-[17px] shrink-0 self-center">
+                    {Glyph !== null && <Glyph className="size-[17px]" strokeWidth={1.7} />}
+                  </span>
                   {/* **셋이 다 줄어든다.** 이름과 경로가 둘 다 안 줄면 줄에 남는 폭을
                       스니펫 혼자 무는데, 실측(2026-08-30, 줄 폭 526px)에서 제목이 39자인
                       work의 본문 줄이 스니펫에 남긴 폭이 106px, 한글 8자였다 — 제목이 더
-                      길면 0이 되고 줄이 가로로 넘친다. */}
+                      길면 0이 되고 줄이 가로로 넘친다.
+
+                      **그 숫자는 스니펫에 바닥이 생기기 전의 것이다.** 지금 스니펫은
+                      `basis-1/3` 아래로 안 내려가므로(같은 폭에서 175.3px), 거터 26px이
+                      나가는 곳은 스니펫이 아니라 **이름과 경로**다. */}
                   <span className="truncate text-[13px] tracking-[-0.01em]">{name}</span>
                   {detail !== undefined && (
                     <span className="truncate text-[12px] text-tertiary">{detail}</span>
@@ -277,20 +322,6 @@ export function SearchList({
             </p>
           )}
         </div>
-        {/* 결정 24. **「더 보기」는 안 만든다** — 걸리면 좁히는 것이 답이고, 목록은 걸렸다는
-            것만 말한다. 목록 밖에 두는 것은 구르는 상자 안이면 끝까지 내려야 보이기 때문이다.
-
-            **수를 적지 않는다.** 상한(`LAYER_LIMIT`)은 코어에 살고 여기로 오지 않는데, 여기에
-            베껴 적으면 상한이 두 자리에 살게 된다 — `truncated`를 값으로 실어 온 이유가 바로
-            그것이라, 그 줄에서 수를 말하면 고치는 날 화면만 거짓말을 한다. */}
-        {truncated && (
-          <p
-            data-note=""
-            className="shrink-0 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground"
-          >
-            일부만 보입니다 — 더 치면 좁혀집니다
-          </p>
-        )}
       </div>
     </div>
   );
@@ -360,7 +391,6 @@ function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
       query={query}
       hits={hits}
       state={state}
-      truncated={data?.truncated ?? false}
       selected={at}
       onQuery={(next) => {
         setQuery(next);

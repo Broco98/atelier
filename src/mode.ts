@@ -1,4 +1,4 @@
-import { Archive, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
 import { navItems, type NavKey } from "@/components/shell/nav-items";
 
 /**
@@ -35,7 +35,7 @@ interface NavItem {
 }
 
 /**
- * ⇧⇧ 팔레트의 「가는 곳」 줄. nav 항목에서 아이콘을 뺀 것에 설정 한 줄이 얹힌다.
+ * ⇧⇧ 팔레트의 「가는 곳」 줄. nav 항목에 설정 한 줄이 얹힌 것이다.
  *
  * **`to`가 `NavTo`와 같은 이유로 좁은 유니온이다** — 팔레트가 고른 줄의 주소를 그대로
  * `navigate({ to })`로 넘기므로(`hit-target.ts`), `string`으로 두면 라우터가 주소를 못 좁혀
@@ -45,6 +45,12 @@ interface NavItem {
 interface PaletteDestination {
   readonly key: string;
   readonly label: string;
+  /**
+   * 그 줄의 글리프. **사이드바가 같은 목적지에 세우는 것과 같은 것이다**(`spec-search`의
+   * 결정 17) — 같은 것이 두 화면에서 두 얼굴이면 안 된다. `icon`을 규격이 요구하므로,
+   * 설정 한 줄을 아이콘 없이 얹으면 `destinationIcon`이 아니라 **그 선언이** L0에 걸린다.
+   */
+  readonly icon: LucideIcon;
   readonly to: NavTo | "/settings";
 }
 
@@ -137,6 +143,9 @@ const MAISON_NAV = [
 const SETTINGS_PLACE = {
   key: "settings",
   label: "Settings",
+  // 라벨·라우트·글리프 셋 다 **사이드바 바닥의 그 버튼에서 온 값이다** — 설정으로 가는 길이
+  // 둘인데 이름이나 도착지나 얼굴이 갈리면 「같은 곳」이라는 것이 화면에서 안 읽힌다.
+  icon: Settings,
   to: "/settings",
 } as const satisfies PaletteDestination;
 

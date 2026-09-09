@@ -51,13 +51,11 @@ const render = (
   {
     selected = 0,
     query = "",
-    truncated = false,
     state = "ready",
     mode = "atelier",
   }: {
     selected?: number;
     query?: string;
-    truncated?: boolean;
     state?: SearchState;
     mode?: Mode;
   } = {},
@@ -68,7 +66,6 @@ const render = (
       query={query}
       hits={hits}
       state={state}
-      truncated={truncated}
       selected={selected}
       onQuery={() => {}}
       onGo={() => {}}
@@ -167,11 +164,15 @@ describe("치는 자리와 목록이 하는 말", () => {
     expect(markup).not.toContain('role="option"');
   });
 
-  // 결정 24. 상한에 걸린 것을 말하지 않으면, 안 나온 문서가 **없는 것처럼** 보인다.
-  // **수는 안 센다.** 상한은 코어 한 자리에 살고(`LAYER_LIMIT`) 화면으로 오지 않으므로,
-  // 여기서 수를 세면 상한을 고치는 날 화면과 검사가 함께 낡는다.
-  it("잘렸을 때만 잘렸다고 말한다", () => {
-    expect(render([doc("가", "overview.md")], { truncated: true })).toContain("일부만 보입니다");
+  // 결정 24 — **「더 있다」를 글로 말하지 않는다.** 한때 바닥에 「일부만 보입니다 — 더 치면
+  // 좁혀집니다」가 서 있었고, 사람이 걷으라고 했다. 실측이 그 줄을 편들지 않았다: `truncated`는
+  // 팔레트를 열 때마다 참이라(빈 질의가 문서 층을 전량 세운다) 늘 켜진 신호였고, 늘 켜진
+  // 신호가 나르는 정보는 0이다. 이제 바닥이 녹는 것으로 말한다(`index.css`의 `[data-more-fade]`).
+  //
+  // **여기서는 표식이 붙는지만 센다.** 페이드도 바닥 여백도 진짜 CSS가 있어야 나므로 그것은
+  // e2e가 실측으로 든다 — 이 층에 값을 베껴 적으면 두 자리가 함께 낡는다.
+  it("목록 바닥이 「더 있다」를 말할 표식을 단다", () => {
+    expect(render([doc("가", "overview.md")])).toContain('data-more-fade=""');
     expect(render([doc("가", "overview.md")])).not.toContain("일부만 보입니다");
   });
 });
@@ -229,6 +230,41 @@ describe("갈래마다 다른 것을 그린다", () => {
     expect(rows[0]).toContain("빌링");
     // slug는 화면에 안 선다 — 사이드바·Projects 화면이 이름으로 부르는 것과 같다.
     expect(rows[0]).not.toContain("billing");
+  });
+});
+
+describe("모든 줄이 같은 거터를 예약한다", () => {
+  // 결정 17. 목적지 줄에만 글리프가 서고, **그것이 그 목적지의 글리프다.** 「svg가 하나
+  // 있다」만 세면 넷이 전부 같은 그림이어도 초록이다. 가르는 재료는 아이콘 라이브러리가
+  // 붙이는 **정체성 클래스**인데, 그것은 규격이 아니라 이름이라 크기를 손봐도 안 샌다
+  // (크기 클래스 문자열을 단언하는 것은 이 파일이 스스로 금지한 「모양으로 가르기」다).
+  it("목적지 줄에만, 그 목적지의 글리프가 선다", () => {
+    const rows = rowsOf(render([destination("projects"), destination("settings"), workHit("가")]));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toContain("lucide-folder");
+    expect(rows[1]).toContain("lucide-settings");
+    // 설정은 `navItems` 밖에 사는 유일한 목적지라(결정 51) 글리프가 빠지기 쉬운 자리다.
+    expect(rows[1]).not.toContain("lucide-folder");
+    expect(rows[2]).not.toContain("<svg");
+  });
+
+  // **슬롯은 줄마다 하나다.** 목적지가 아닌 줄이 빈 슬롯을 안 들면 그 줄만 26px 왼쪽에서
+  // 시작하고, 화면에는 「가는 곳 층만 한 단 들어갔다」로 보인다. 개수로 세는 것은 이것이
+  // 깨지는 모양에 가깝기 때문이다 — 빠지는 것은 늘 **한 갈래 전체**다.
+  it("슬롯이 줄마다 하나씩 선다", () => {
+    const rows = rowsOf(
+      render([
+        destination("projects"),
+        workHit("가"),
+        project("빌링", "빌링"),
+        doc("가", "overview.md"),
+        text("가", "overview.md", "맞은 문단"),
+      ]),
+    );
+    expect(rows).toHaveLength(5);
+    for (const row of rows) {
+      expect(row.split('data-gutter=""')).toHaveLength(2);
+    }
   });
 });
 

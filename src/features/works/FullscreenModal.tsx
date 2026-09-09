@@ -31,7 +31,12 @@ function FullscreenModal({
     // 포털이어도 이벤트는 React 트리를 따라 오르므로 바깥 블록과의 관계는 그대로다.
     createPortal(
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-9"
+        // 막은 **다른 모달과 같은 것을 쓴다**(`modal-scrim`). 한때 여기만 `bg-black/40`이었고
+        // 팔레트·확인 창은 `bg-background/55 backdrop-blur-[2px]`였다 — 뒤를 어둡게 한다는
+        // 답은 이 자리가 먼저 냈는데 규칙으로 서질 못했다. 값이 40%에서 25%로 옅어졌지만
+        // 이 자리에서는 거의 안 보인다: 카드가 `h-full w-full max-w-[1280px]`이라 막이
+        // 드러나는 곳이 위아래 36px과 창이 1280보다 넓을 때의 좌우뿐이다.
+        className="modal-scrim flex items-center justify-center p-9"
         // 바깥을 눌러 닫는 판단은 click이 아니라 눌린 자리로 한다. click은 눌린 곳과 뗀 곳의
         // 공통 조상에서 나므로, 카드 안에서 시작한 드래그를 여기서 놓기만 해도 이 상자에서
         // click이 나 모달이 닫힌다 — 표 셀의 글자를 끌어 선택하다 여백에서 손을 떼는 길이다.

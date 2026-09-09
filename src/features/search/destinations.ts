@@ -1,5 +1,6 @@
 import { destinationsOf } from "@/mode";
 import type { Mode } from "@/mode";
+import type { LucideIcon } from "lucide-react";
 import type { Destination } from "./types";
 
 // 「가는 곳」 층을 **그 세계의 표에서 푼다.** 코어는 `key`만 주고받고, **라벨과 라우트는
@@ -28,12 +29,44 @@ export function destinationsFor(mode: Mode): Destination[] {
 }
 
 /**
+ * 그 `key`의 자리. **되찾기가 셋이라 훑는 자리를 하나로 둔다** — 라벨·글리프·주소가 각자
+ * `find`를 부르면 「어느 목록을 훑는가」가 세 곳에 살고, 설정이 `navItems` 밖에 사는 지금
+ * 한 곳만 그 배열로 되돌아가도 **그 줄만 조용히 빠진다**(주소를 되찾는 쪽이 실제로 그렇게
+ * 틀렸던 자리다 — 아래 `destinationTo` 주석).
+ *
+ * 모르는 `key`가 `undefined`인 것은 **계약이 깨졌다는 뜻이다** — 코어는 여기서 건넨 것만
+ * 돌려준다. 그때 무엇을 보여 줄지는 되찾는 쪽이 각자 정한다.
+ *
+ * **세계를 함께 받는다.** 표가 모드마다 다르므로(Maison에는 `Projects`가 없다) 모드를 빼면
+ * 「어느 목록을 훑는가」가 다시 애매해진다 — 그 애매함이 이 함수를 만든 이유다.
+ */
+function placeOf(mode: Mode, key: string) {
+  return destinationsOf(mode).find((item) => item.key === key);
+}
+
+/**
  * 목적지 줄에 서는 말. 모르는 `key`는 **지어내지 않고 그대로 보여 준다** — 코어는 여기서
  * 건넨 것만 돌려주므로 그런 줄은 계약이 깨진 것이고, 그때 화면이 조용히 그럴듯한 말을
  * 지어내면 어디가 어긋났는지 보이지 않는다.
  */
 export function destinationLabel(mode: Mode, key: string): string {
-  return destinationsOf(mode).find((place) => place.key === key)?.label ?? key;
+  return placeOf(mode, key)?.label ?? key;
+}
+
+/**
+ * 그 목적지의 글리프. **사이드바가 그 줄에 세우는 것과 같은 것이다**(결정 17) — 같은 것이
+ * 두 화면에서 두 얼굴이면 안 된다. 모르는 `key`는 `null`이라 그 줄이 **빈 슬롯**을 든다:
+ * 글자 시작점은 층을 가로질러 하나여야 하므로 자리는 그대로 예약된다.
+ *
+ * **세계를 함께 받는다** — 두 세계의 목적지 표가 다르므로(Maison에는 `Projects`가 없다),
+ * 모드 없이 풀면 저쪽 세계에만 있는 key가 조용히 빈 슬롯이 된다.
+ *
+ * **코어에 건네는 것은 계속 `key`와 `label` 둘뿐이다.** 글리프는 React 컴포넌트라 IPC로
+ * 나갈 수도 없고, 나갈 이유도 없다 — 「무엇이 있는가」는 코어가 알아야 하지만 「어떻게
+ * 생겼나」는 화면의 것이다.
+ */
+export function destinationIcon(mode: Mode, key: string): LucideIcon | null {
+  return placeOf(mode, key)?.icon ?? null;
 }
 
 /**
@@ -44,5 +77,5 @@ export function destinationLabel(mode: Mode, key: string): string {
  * 지어내면 엉뚱한 화면으로 데려가고, 그것이 조용하다.
  */
 export function destinationTo(mode: Mode, key: string) {
-  return destinationsOf(mode).find((place) => place.key === key)?.to ?? null;
+  return placeOf(mode, key)?.to ?? null;
 }
