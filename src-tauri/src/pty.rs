@@ -14,7 +14,7 @@ use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -82,7 +82,12 @@ pub fn spawn(
     on_frame: Channel<InvokeResponseBody>,
 ) -> Result<PtySpawned, String> {
     let dir = resolve_cwd(cwd)?;
-    let builder = shell_builder(&dir)?;
+    // **id를 빌더보다 먼저 발급한다.** 셸 ID의 꼬리가 이 번호이고 빌더가 그것을 env에
+    // 실어야 하니, 지금까지처럼 프로세스가 뜬 뒤에 발급하면 넘길 것이 없다. 앞으로 당겨도
+    // 잃는 것은 「띄우기에 실패한 셸이 번호 하나를 태운다」뿐이다 — 번호는 세는 값이 아니라
+    // 가르는 값이라 구멍이 나도 아무 데도 안 걸린다.
+    let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
+    let builder = shell_builder(&dir, &shell_id(id))?;
     let shell_name = Path::new(&builder.get_shell())
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -110,7 +115,6 @@ pub fn spawn(
         Err(e) => return Err(abandon(&mut child, e)),
     };
     let pid = child.process_id();
-    let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
 
     // **스레드보다 먼저 풀에 앉힌다.** 아래 스레드는 끝나며 자기 자리를 치우는데
     // (`owner.lock().remove`), 그 치움이 등록보다 **먼저** 돌 수 있다 — `$SHELL`이 즉시
@@ -273,7 +277,7 @@ type Running = BTreeMap<u32, Option<String>>;
 /// 커널에서는 물음 자체가 성립하지 않는다. 그래도 태그마다 돈다 — 릴리스 워크플로의
 /// `pnpm verify`는 macOS 러너에서 돌고 거기 L1이 들어 있다.
 #[cfg(target_os = "macos")]
-use std::{os::raw::c_int, ptr, sync::OnceLock};
+use std::{os::raw::c_int, ptr};
 
 /// 이 pgid의 프로세스 **이름**. 못 읽으면 `None`이고, 그 경우가 실제로 온다 — 재는 사이에
 /// 끝난 프로세스, 권한이 없는 프로세스.
@@ -631,7 +635,38 @@ fn resolve_cwd(cwd: Option<String>) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn shell_builder(dir: &Path) -> Result<CommandBuilder, String> {
+/// 이 셸의 ID — `<앱 인스턴스 접두사>-<PTY id>`.
+///
+/// **접두사가 실행마다 바뀌는 것이 이 모양의 값이다.** 상태 파일은 셸 ID로 이름 지어지는데,
+/// 앱을 껐다 켜면 PTY id는 다시 0부터 나므로 접두사가 없으면 지난 실행이 남긴 파일이 이번
+/// 실행의 새 셸에 그대로 붙는다 — 뜨자마자 「나를 기다림」인 셸이 생긴다. 접두사가 갈라
+/// 준다.
+///
+/// 구분자를 **하나만** 둔다. 파일 이름에서 PTY id를 되뽑는 쪽이 뒤에서 한 번만 자르면
+/// 되도록.
+fn shell_id(pty_id: u32) -> String {
+    format!("{}-{pty_id}", instance_prefix())
+}
+
+/// 이 실행을 가리키는 접두사. **앱이 뜬 시각**(epoch 밀리초)이고, 프로세스가 사는 동안
+/// 안 바뀐다.
+///
+/// 시각을 쓰는 이유는 실행끼리 겹치지 않으면서 **순서가 읽히기** 때문이다 — 남은 파일을
+/// 눈으로 볼 때 어느 실행 것인지 안다. 시계가 뒤로 가는 경우(`UNIX_EPOCH` 이전)는 0으로
+/// 눕힌다. 그때 두 실행이 같은 접두사를 가질 수 있지만, 그 상황에서 할 수 있는 더 나은
+/// 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
+fn instance_prefix() -> &'static str {
+    static PREFIX: OnceLock<String> = OnceLock::new();
+    PREFIX.get_or_init(|| {
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        format!("{millis}")
+    })
+}
+
+fn shell_builder(dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
     // `$SHELL`이 실행 불가면 크레이트는 `log::warn` 한 줄만 남기고 passwd DB로, 그것도
     // 안 되면 `/bin/sh`로 조용히 내려간다. 구독자를 안 붙였으니 완전히 무음이다.
     if let Some(shell) = std::env::var_os("SHELL") {
@@ -652,6 +687,10 @@ fn shell_builder(dir: &Path) -> Result<CommandBuilder, String> {
     // 스위치이고, 사용자가 셸에서 `/tui`를 한 번 치면 앱이 심은 값이 무의미해지는데 앱은
     // 그것을 모른다. 권장 기본값으로만 둔다 — 셸에서 덮어쓰면 그쪽이 이긴다.
     cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
+    // **이 셸만의 ID.** 훅 페이로드에는 tty가 없고 훅 프로세스는 부모 환경을 물려받으니,
+    // 셸 안에서 돌아간 훅이 「내가 어느 셸인지」를 아는 길은 이 값 하나뿐이다. 그래서
+    // 셸마다 **달라야** 한다 — 값이 하나로 굳으면 상태 파일이 겹쳐 두 셸이 서로를 덮는다.
+    cmd.env("ATELIER_SHELL", shell_id);
     Ok(cmd)
 }
 
@@ -746,6 +785,118 @@ mod tests {
             "등록({insert})이 스레드({thread})보다 뒤에 있다 — 셸이 즉시 끝나면 \
              스레드의 remove가 먼저 돌아 죽은 셸이 되살아나고, 재사용된 pgid를 쏘게 된다"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 이 판. 셸마다 **자기만의 ID**가 env에 실린다 — 훅 페이로드엔 tty가 없고 훅 프로세스는
+    // 부모 환경을 물려받으니, 「내가 어느 셸인지」를 아는 길이 이 값 하나뿐이다.
+
+    /// 셸 ID의 **모양**. `<앱 인스턴스 접두사>-<PTY id>`이고, 접두사는 한 실행 안에서
+    /// 안 바뀐다. 접두사가 실행마다 바뀌는 것이 이 모양의 값이다 — 앱을 껐다 켜면 지난
+    /// 실행이 남긴 상태 파일이 새 셸에 안 붙는다.
+    ///
+    /// 구분자가 **하나**인 것도 함께 잰다. 상태 파일 이름에서 PTY id를 되뽑는 쪽이
+    /// 갈라 읽을 자리가 둘이면 어느 쪽이 접두사인지 알 수 없다.
+    #[test]
+    fn a_shell_id_is_this_runs_prefix_and_the_pty_id() {
+        let three = super::shell_id(3);
+        let seven = super::shell_id(7);
+
+        let (prefix, id) = three.rsplit_once('-').expect("구분자가 있다");
+        assert_eq!(id, "3", "꼬리가 PTY id가 아니다");
+        assert_eq!(seven.rsplit_once('-').expect("구분자가 있다").1, "7");
+        assert!(!prefix.is_empty(), "접두사가 비었다 — 실행을 못 가른다");
+        assert_eq!(
+            three.matches('-').count(),
+            1,
+            "구분자가 하나가 아니다 — 파일 이름에서 PTY id를 되뽑을 자리가 흐려진다"
+        );
+
+        assert_eq!(
+            seven.rsplit_once('-').expect("구분자가 있다").0,
+            prefix,
+            "한 실행 안에서 접두사가 바뀌었다 — 같은 실행의 셸들이 남남이 된다"
+        );
+    }
+
+    /// **id 발급이 빌더 호출보다 앞에 서야 한다.** 빌더가 셸 ID를 인자로 받는데 그 ID의
+    /// 꼬리가 PTY id이기 때문이다 — 지금까지처럼 프로세스가 뜬 뒤에 발급하면 넘길 것이
+    /// 없다.
+    ///
+    /// 실행으로는 못 잰다. `spawn`은 살아 있는 pty와 IPC 채널이 있어야 도는데 이 seam에는
+    /// 둘 다 없다. 그래서 `pool_insert_precedes_the_reader_thread`와 같은 방식으로
+    /// **자리로** 잰다.
+    ///
+    /// 자리만으로는 「빌더를 부르되 빈 값을 넘긴다」를 못 막으므로 넘기는 값도 함께 못박는다
+    /// — 그 변형은 모든 셸이 같은 상태 파일을 쓰게 만드는데, 위 값 검사는 `shell_builder`
+    /// 안만 보므로 조용히 통과한다.
+    #[test]
+    fn the_pty_id_is_minted_before_the_builder_is_built() {
+        let src = include_str!("pty.rs");
+        let spawn_fn = src
+            .split_once("pub fn spawn(")
+            .expect("spawn이 있다")
+            .1
+            .split_once("\npub fn ")
+            .expect("다음 함수가 있다")
+            .0;
+
+        let mint = spawn_fn.find("next_id.fetch_add(").expect("id를 발급하는 줄이 있다");
+        let build = spawn_fn.find("shell_builder(").expect("빌더를 세우는 줄이 있다");
+
+        assert!(
+            mint < build,
+            "발급({mint})이 빌더({build})보다 뒤에 있다 — 빌더에 넘길 셸 ID가 아직 없다"
+        );
+        assert!(
+            spawn_fn.contains("shell_builder(&dir, &shell_id(id))"),
+            "빌더에 이 셸의 ID를 안 넘긴다 — 모든 셸이 같은 값을 달고 상태 파일이 겹친다"
+        );
+    }
+
+    /// **값으로** 단언한다. 「`ATELIER_SHELL`이라는 리터럴이 소스에 있는가」만 보는 검사는
+    /// 셸마다 **다른** 값이 들어가는지를 못 재는데, 이 판의 신호 길 전체가 기대는 것이
+    /// 정확히 그 「다름」이다 — 값이 하나로 굳으면 훅 파일도 하나로 겹쳐 두 셸이 서로의
+    /// 상태를 덮어쓴다. 빌더가 받은 것을 그대로 env에서 되읽어 잰다.
+    #[test]
+    fn each_shell_builder_carries_its_own_shell_id() {
+        let dir = std::env::temp_dir();
+        let one = super::shell_builder(&dir, "0000-1").expect("빌더가 선다");
+        let two = super::shell_builder(&dir, "0000-2").expect("빌더가 선다");
+
+        assert_eq!(
+            planted(&one).get("ATELIER_SHELL").map(String::as_str),
+            Some("0000-1"),
+            "빌더가 받은 셸 ID가 env에 안 실렸다 — 훅이 어느 셸인지 모른다"
+        );
+        assert_eq!(planted(&two).get("ATELIER_SHELL").map(String::as_str), Some("0000-2"));
+        assert_ne!(
+            planted(&one).get("ATELIER_SHELL"),
+            planted(&two).get("ATELIER_SHELL"),
+            "두 셸에 같은 값이 실렸다 — 상태 파일이 하나로 겹친다"
+        );
+    }
+
+    /// 셸 ID를 더하면서 **먼저 있던 것을 떨어뜨리지 않았는가.** 시그니처가 바뀌는 자리라
+    /// 이 셋이 조용히 사라져도 검사가 하나도 안 울렸다 — 그러면 앱 안 셸의 색이 죽고
+    /// (`TERM`·`COLORTERM`) claude가 전체 화면 렌더러로 돌아간다(`CLAUDE_CODE_NO_FLICKER`).
+    /// 어느 것도 터지지 않고 화면만 나빠지는 종류라 눈으로 늦게 안다.
+    #[test]
+    fn the_env_that_was_already_there_still_rides_along() {
+        let dir = std::env::temp_dir();
+        let planted = planted(&super::shell_builder(&dir, "0000-1").expect("빌더가 선다"));
+
+        assert_eq!(planted.get("TERM").map(String::as_str), Some("xterm-256color"));
+        assert_eq!(planted.get("COLORTERM").map(String::as_str), Some("truecolor"));
+        assert_eq!(planted.get("CLAUDE_CODE_NO_FLICKER").map(String::as_str), Some("1"));
+    }
+
+    /// **우리가 심은 것만** 꺼낸다. `get_env`는 빌더가 부모에게서 복사해 온 값도 같이
+    /// 돌려주는데, 이 검사가 찾는 이름 셋 중 둘(`TERM`·`COLORTERM`)은 개발자의 터미널에
+    /// 같은 값으로 이미 서 있다 — 실제로 `cmd.env("COLORTERM", …)` 줄을 걷어 내고 돌려도
+    /// 초록이었다(실측). 그러면 이 검사는 자기 프로세스의 환경을 읽고 스스로 통과한다.
+    fn planted(cmd: &CommandBuilder) -> BTreeMap<String, String> {
+        cmd.iter_extra_env_as_str().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
