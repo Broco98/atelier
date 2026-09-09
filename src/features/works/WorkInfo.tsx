@@ -1,6 +1,7 @@
 import { ArrowRight, ChevronRight, Copy } from "lucide-react";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
+import { itemNameOf } from "./work-sections";
 import { specDirRef, worktreeDirRef, workDirRef } from "./refs";
 import { splitSpecFiles } from "./spec-sections";
 import type { WorkView } from "./types";
@@ -67,7 +68,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
   return (
     // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다 (spec 탭과 같은 경계)
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
-      <Section title="작업">
+      <Section title={itemNameOf(mode)}>
         {/* 제목과 달리 절대 바뀌지 않는 이름이다. 작업 폴더 경로에 들어 있긴 하지만
             따로 읽을 수 있어야 하고, **읽는 것만으로는 절반이다** — 제목이 바뀌어도 같은
             작업을 가리키려면 그 이름이 클립보드로 나가야 한다 (스토리 10). 경로가 아니므로
@@ -89,7 +90,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
           <Row label="브랜치" value={work.branch} />
         )}
         {/* 아래 상대 경로들의 **기준**이라 맨 위에 온다 — 기준이 먼저 나와야 읽힌다 */}
-        <PathRow label="작업 폴더" path={workDir} onCopy={onCopy} />
+        <PathRow label={`${itemNameOf(mode)} 폴더`} path={workDir} onCopy={onCopy} />
       </Section>
 
       {/* **Maison에서는 구획째로 없다**(US 27). 프로젝트 0개 갈래를 그대로 두면 저 세계의

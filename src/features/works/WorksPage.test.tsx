@@ -280,6 +280,29 @@ describe("WorksPage 머리행 배치", () => {
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
 
+  // **이름표가 세계를 탄다.** ⓘ·⋯·패널 여닫이·제목 편집의 접근성 이름이 전부 리터럴
+  // 「작업 …」이었다 — 이 판이 사이드바·본문·아카이브·⋯ 메뉴의 문장은 갈라 놓고 화면의
+  // **이름표**는 안 집었고, 그래서 Maison에서 스크린 리더가 Room을 통째로 「작업」이라
+  // 불렀다(CONTEXT.md 「Room」 항목이 금지한 것).
+  //
+  // **화면을 통째로 훑는다.** 이름표를 하나씩 세면 새 이름표가 하나 늘 때 그것만 조용히
+  // Atelier 말로 남는다 — 이 자리가 정확히 그렇게 생긴 구멍이었다.
+  it("Maison 화면에는 「작업」이라는 말이 한 군데도 없다", () => {
+    const markup = render({}, "spec", null, "maison");
+    expect(markup).not.toContain("작업");
+    // fail-closed: 화면이 통째로 안 서면 위 줄은 「없다」가 아니라 「아무것도 없다」다.
+    expect(markup).toContain('aria-label="Room 메뉴"');
+    expect(markup).toContain('aria-label="Room 메타"');
+  });
+
+  // 반대쪽. 이 줄이 없으면 두 세계를 다 Room 어휘로 눕혀도 위 검사가 초록이다.
+  it("Atelier 화면의 이름표는 한 글자도 안 바뀐다", () => {
+    const markup = render();
+    expect(markup).toContain('aria-label="작업 메뉴"');
+    expect(markup).toContain('aria-label="작업 메타"');
+    expect(markup).not.toContain("Room");
+  });
+
   it("조작이 전부 오른쪽 끝 한 묶음에 있다", () => {
     // 결정 10. 상태 배지 · ⓘ · ⋯ · 분할이 한 자리에 모인다(패널 열기는 패널이 닫혔을
     // 때만이라 여기 안 보인다 — 그쪽은 아래 「분할인 채 들어와도」가 센다).

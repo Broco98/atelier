@@ -83,7 +83,9 @@ test("심은 Room은 Maison 목록에만 서고, 아카이빙하면 Maison 아�
   await modeButton(page, "Maison").click();
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/maison/rooms/${ROOM.slug}`);
 
-  await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
+  // 이름표가 이 세계의 말이다(`itemNameOf`) — Atelier에서는 `작업 메뉴`다. 그 되돌림은
+  // 여기서 「버튼을 못 찾는다」로 곧장 걸린다.
+  await page.getByRole("button", { name: "Room 메뉴", exact: true }).click();
   await page.getByRole("button", { name: "아카이빙", exact: true }).click();
   // 확인 창은 **앱의 것**이다(OS 시트가 아니다) — 제목이 그 Room을 이름하는지까지 본다.
   // 이 창이 저쪽 세계의 문구를 띄우는지는 `work-menu-copy` 쪽이 따로 재므로 여기서는 안 센다.

@@ -5,6 +5,7 @@ import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
+import { itemNameOf } from "./work-sections";
 import { relativeToWorkDir } from "./WorkInfo";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
@@ -166,7 +167,7 @@ function WorkMetaMenu({ mode, work }: { mode: Mode; work: WorkView }) {
         ref={anchor}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="작업 메타"
+        aria-label={`${itemNameOf(mode)} 메타`}
         aria-expanded={open}
         title="메타"
         className="icon-button-quiet text-tertiary"

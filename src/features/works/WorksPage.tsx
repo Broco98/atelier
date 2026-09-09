@@ -73,7 +73,7 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
-import { emptyScreenCopy, pageNameOf } from "./work-sections";
+import { emptyScreenCopy, itemNameOf, pageNameOf } from "./work-sections";
 import { archiveConfirmBody, removeConfirmBody } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
@@ -593,9 +593,9 @@ function WorksPage({
               <button
                 type="button"
                 onClick={() => setWorkPanelOpen(true)}
-                aria-label="작업 패널 펼치기"
+                aria-label={`${itemNameOf(mode)} 패널 펼치기`}
                 aria-expanded={false}
-                title="작업 패널 펼치기"
+                title={`${itemNameOf(mode)} 패널 펼치기`}
                 className="icon-button-quiet text-tertiary"
               >
                 <PanelRight className="size-4" strokeWidth={2} />
@@ -1097,7 +1097,7 @@ function TitleEditor({
   return (
     <input
       autoFocus
-      aria-label="작업 이름"
+      aria-label={`${itemNameOf(mode)} 이름`}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => finish(true)}
@@ -1291,10 +1291,10 @@ function WorkMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        aria-label="작업 메뉴"
+        aria-label={`${itemNameOf(mode)} 메뉴`}
         aria-expanded={open}
         aria-busy={busy}
-        title={busy ? "처리 중이에요" : "작업 메뉴"}
+        title={busy ? "처리 중이에요" : `${itemNameOf(mode)} 메뉴`}
         // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
         // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
         // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.

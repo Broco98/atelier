@@ -240,15 +240,31 @@ describe("WorkInfo가 세계를 탄다", () => {
   });
 
   it("남는 구획 둘은 Maison에서도 그대로다", () => {
-    // 걷히는 것이 셋뿐이라는 뜻이다 — 「작업」과 「문서」까지 함께 사라지면 정보 탭이
+    // 걷히는 것이 셋뿐이라는 뜻이다 — 항목 구획과 「문서」까지 함께 사라지면 정보 탭이
     // 저 세계에서 빈 탭이 되는데, 위 검사들만으로는 그 화면도 초록이다.
     const markup = render(room, {}, "maison");
     expect(rowValue(markup, "slug")).toBe("some-work");
     expect(rowValue(markup, "생성일")).toBe("2026-08-16");
     // **경로도 저 세계의 것이다**(#186). Atelier 루트가 남아 있으면 사용자는 여기서 복사한
     // 줄을 그대로 열었다가 없는 폴더를 만난다 — 값이 그럴듯해서 화면에서는 안 보인다.
-    expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/maison/rooms/some-work/");
+    expect(rowValue(markup, "Room 폴더")).toBe("~/.atelier/maison/rooms/some-work/");
     expect(rowValue(markup, "spec")).toBe("spec/");
+  });
+
+  // **낱말도 세계를 탄다.** 구획 머리와 폴더 줄의 이름표가 Atelier 말로 남아 있었다 —
+  // 이 판이 사이드바·본문·아카이브의 어휘를 갈라 놓고도 정보 탭을 안 집었고, 그래서
+  // Maison의 정보 탭이 Room을 통째로 「작업」이라 불렀다(CONTEXT.md 「Room」 항목).
+  it("Maison 정보 탭에는 「작업」이라는 말이 없다", () => {
+    const markup = render(room, {}, "maison");
+    expect(markup).not.toContain("작업");
+    expect(markup).toContain("Room");
+  });
+
+  // 반대쪽. 이 줄이 없으면 두 세계를 다 Room 어휘로 눕혀도 위 검사가 초록이다.
+  it("Atelier 정보 탭의 낱말은 한 글자도 안 바뀐다", () => {
+    const markup = render(room, {}, "atelier");
+    expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/works/some-work/");
+    expect(markup).not.toContain("Room");
   });
 });
 

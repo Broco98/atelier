@@ -255,6 +255,23 @@ describe("구획 머리", () => {
     expect(headsOf(render([]))).toEqual([]);
   });
 
+  // **항목 갈래의 머리는 세계를 탄다**(#186의 어휘 표). 이 자리가 리터럴 `"작업"`이었다 —
+  // Maison에서 사이드바는 `Rooms`이고 본문은 「아직 Room이 없어요」인데 ⇧⇧만 결과 위에
+  // 「작업」이라고 적었다. CONTEXT.md 「Room」 항목이 금지한 그 섞임이다.
+  //
+  // 두 세계를 함께 잰다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다. 나머지 넷이
+  // 그대로인 것도 함께 본다: 세계를 타는 것은 항목 하나뿐이다.
+  it("항목 갈래만 그 세계의 말로 선다", () => {
+    const hits = [
+      destination("terminal"),
+      workHit("가"),
+      doc("가", "overview.md"),
+      text("가", "decisions.md", "맞은 대목"),
+    ];
+    expect(headsOf(render(hits))).toEqual(["가는 곳", "작업", "문서", "본문"]);
+    expect(headsOf(render(hits, { mode: "maison" }))).toEqual(["가는 곳", "Room", "문서", "본문"]);
+  });
+
   // 머리는 **고를 수 있는 것이 아니다.** 방향키가 여기 서면 Enter가 갈 곳이 없는 자리가
   // 생기고, 코어가 세는 줄 수와 화면이 고를 수 있는 자리 수가 갈린다.
   it("머리에는 방향키가 서지 않는다", () => {

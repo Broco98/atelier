@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { Mode } from "@/mode";
+import { itemNameOf } from "@/features/works/work-sections";
 import { destinationLabel } from "./destinations";
 import { useSearchHits } from "./hooks";
 import { hitTarget } from "./hit-target";
@@ -39,13 +40,21 @@ import type { SearchHit } from "./types";
  * 따르지 않는다. 부수 효과가 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
  * 머리이기도 한** 자리가 생기지 않는다.
  */
-const GROUP: Record<SearchHit["kind"], string> = {
-  destination: "가는 곳",
-  work: "작업",
-  project: "프로젝트",
-  doc: "문서",
-  text: "본문",
-};
+function groupNameOf(mode: Mode, kind: SearchHit["kind"]): string {
+  // **항목 갈래만 세계를 탄다.** 나머지 넷은 두 세계가 같은 말로 부르는 것들이고
+  // (`프로젝트`는 Atelier에서만 결과로 올라온다 — 결정 17), 항목 하나만 Atelier에서 `작업`
+  // Maison에서 `Room`이다. 그 낱말의 정본은 목록의 어휘 표다(`work-sections.ts`) —
+  // 여기 리터럴로 다시 적으면 사이드바는 Room 어휘인데 팔레트 구획 머리만 「작업」인,
+  // **한 화면에 두 세계의 말이 서는** 판이 난다.
+  const table: Record<SearchHit["kind"], string> = {
+    destination: "가는 곳",
+    work: itemNameOf(mode),
+    project: "프로젝트",
+    doc: "문서",
+    text: "본문",
+  };
+  return table[kind];
+}
 
 /**
  * 줄에 서는 말. **갈래마다 다르다** — 코어가 태그를 달아 보내는 이유가 이것이다.
@@ -208,7 +217,7 @@ export function SearchList({
                     data-head=""
                     className="shrink-0 px-2.5 pb-0.5 pt-2 text-[11px] text-muted-foreground first:pt-0.5"
                   >
-                    {GROUP[hit.kind]}
+                    {groupNameOf(mode, hit.kind)}
                   </p>
                 )}
                 <button

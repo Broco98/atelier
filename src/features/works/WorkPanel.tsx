@@ -5,6 +5,7 @@ import { SourceToggle } from "@/components/ui/SourceToggle";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import type { Mode } from "@/mode";
+import { itemNameOf } from "./work-sections";
 import { specRef } from "./refs";
 import SpecSection from "./SpecSection";
 import WorkInfo, { type ProjectBase } from "./WorkInfo";
@@ -222,8 +223,8 @@ function WorkPanel({
             <button
               type="button"
               onClick={onClose}
-              aria-label="작업 패널 접기"
-              title="작업 패널 접기"
+              aria-label={`${itemNameOf(mode)} 패널 접기`}
+              title={`${itemNameOf(mode)} 패널 접기`}
               className="icon-button-quiet text-tertiary"
             >
               <X className="size-4" strokeWidth={2} />

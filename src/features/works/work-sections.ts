@@ -70,6 +70,7 @@ const COPY = {
   atelier: {
     label: "작업",
     page: "Works",
+    item: "작업",
     allPinned: "전부 고정돼 있어요.",
     noneActive: "진행 중인 작업이 없어요.",
     // 앱에 만드는 화면이 없어서 **어디서 시작하는지**를 말한다(아래 `screen`과 같은 몫).
@@ -85,6 +86,7 @@ const COPY = {
   maison: {
     label: "Rooms",
     page: "Rooms",
+    item: "Room",
     // 고정은 세계를 안 타는 말이라 같은 문장이다 — 「작업」도 「Room」도 안 부른다.
     allPinned: "전부 고정돼 있어요.",
     noneActive: "진행 중인 Room이 없어요.",
@@ -106,6 +108,7 @@ const COPY = {
   {
     label: string;
     page: string;
+    item: string;
     allPinned: string;
     noneActive: string;
     empty: string;
@@ -117,6 +120,19 @@ const COPY = {
 // 대문자인 쪽은 nav 항목과 같은 층이라 그렇다(US 59). 결정 6은 여기가 아니라 nav 배열의 것이다.
 export function listLabelOf(mode: Mode): string {
   return COPY[mode].label;
+}
+
+// 이 세계의 **항목 하나를 부르는 말**. 문장과 이름표가 쓰는 값이라 Atelier에서 한국어
+// `작업`, Maison에서 `Room`이다 — 위 `page`(화면 이름)와 달리 두 세계가 같은 층이 아니다.
+//
+// **`Room 폴더`·`Room 메뉴`처럼 뒤에 붙여 쓴다.** 그 합성을 자리마다 리터럴로 적으면 낱말이
+// 하나 바뀔 때 여덟 자리가 따로 늙는다 — 실제로 이 판이 사이드바·본문·아카이브·⋯ 메뉴의
+// 어휘를 갈라 놓고도 정보 탭의 구획 머리, 작업 폴더 줄, ⇧⇧의 구획 머리, 그리고 이름표
+// 여섯(`… 패널 접기`·`… 이름`·`… 메뉴`·`… 메타`)을 Atelier 말로 남겨 뒀다. Maison에서
+// 그 화면들은 Room을 통째로 「작업」이라 불렀고, CONTEXT.md 「Room」 항목이 금지한 것이
+// 정확히 그것이다.
+export function itemNameOf(mode: Mode): string {
+  return COPY[mode].item;
 }
 
 // 이 화면이 **머리에 이는 자기 이름**. 고른 항목이 없을 때만 보인다 — 하나라도 골라 있으면

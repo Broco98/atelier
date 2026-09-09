@@ -101,15 +101,16 @@ test("Room의 정보 탭에는 프로젝트 자리가 없다", async ({ page }) 
     page.getByRole("button", { name: `slug ${room.slug}`, exact: true }),
   ).toBeVisible();
 
-  // 작업 폴더가 **Room 뿌리**를 그대로 적는다(결정 7). 여기가 `refs.ts`의 모드 인자가 화면에
+  // 폴더 줄이 **Room 뿌리**를 그대로 적는다(결정 7). 여기가 `refs.ts`의 모드 인자가 화면에
   // 드러나는 유일한 자리다 — 빠뜨리면 `~/.atelier/works/…`가 뜬다.
   await expect(
     page.getByRole("button", {
-      name: `작업 폴더 ~/.atelier/maison/rooms/${room.slug}/`,
+      // 이름표도 이 세계의 말이다 — 저 세계에서는 `작업 폴더`다(`itemNameOf`).
+      name: `Room 폴더 ~/.atelier/maison/rooms/${room.slug}/`,
       exact: true,
     }),
   ).toBeVisible();
-  // 그 반대쪽. 화면 어디에도 저쪽 세계의 뿌리가 없어야 한다 — spec 행은 작업 폴더 기준으로
+  // 그 반대쪽. 화면 어디에도 저쪽 세계의 뿌리가 없어야 한다 — spec 행은 그 폴더 기준으로
   // 접혀 있어 위 한 줄만으로는 그 행이 어느 뿌리로 지어졌는지 안 보인다.
   await expect(page.getByText("~/.atelier/works/")).toHaveCount(0);
 
