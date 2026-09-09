@@ -42,6 +42,24 @@ fn plant(home: &Path, relative: &str, title: &str) {
     .unwrap();
 }
 
+/// 프로젝트 등록 한 장을 **손으로 심는다.** `create_project`는 진짜 git 저장소를 요구하는데
+/// 여기서 재는 것은 「등록부를 걷는가」이지 등록 절차가 아니다 — 파일 모양은
+/// `render_project`가 내는 것과 같은 프런트매터다.
+///
+/// `path`가 없는 폴더를 가리켜도 상관없다. `read_projects`는 파일만 읽고, 검색이 맞추는
+/// 재료도 `name` 하나다.
+fn plant_project(home: &Path, slug: &str, name: &str) {
+    let dir = home.join("projects");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(format!("{slug}.md")),
+        format!(
+            "---\nname: {name}\npath: ~/dev/{slug}\nbaseBranch: main\ncreatedAt: 2026-09-08\n---\n"
+        ),
+    )
+    .unwrap();
+}
+
 /// 다리를 브라우저가 부르듯 부른다. 성공하면 표준출력의 JSON, 실패하면 표준에러 그대로.
 fn call(home: &Path, command: &str, args: Value) -> Result<Value, String> {
     let out = Command::new(env!("CARGO_BIN_EXE_atelier-test-bridge"))
@@ -138,6 +156,53 @@ fn maison에서_치운_room은_maison_아카이브로_간다() {
     assert!(
         slugs(&call(&home, "list_archive", json!({})).unwrap()).is_empty(),
         "Atelier 아카이브 목록에 Room이 섞였다"
+    );
+
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// **Maison의 ⇧⇧에는 프로젝트 층이 없다** (결정 17, US 49·50).
+///
+/// 루트를 가르는 것만으로는 안 되는 자리다 — 프로젝트 등록부(`projects/`)는 모드를 안 받는
+/// 공용 루트라, 「Maison에는 안 건넨다」를 명령이 직접 정한다. 뒤집으면 공부하다 팔레트를
+/// 연 사람에게 `feat/spec-search`가 선다.
+///
+/// **아카이브 쪽 계약 테스트로는 이 갈래가 안 잡힌다.** `archive_work`도 등록부를 받지만
+/// 그것을 읽는 것은 `work.projects` 루프 **안**이고, 심는 work.json은 `projects: []`라
+/// 루프가 안 돈다 — `Some`이든 `None`이든 record.md가 한 글자도 안 다르다. 등록부가
+/// 실제로 걸어지는 명령은 검색뿐이라 여기서 잰다.
+///
+/// **`destinations`는 빈 배열로 충분하다.** 그 층은 프런트가 건넨 목록만 보고
+/// 등록부와 무관하다 — 빈 목록은 「나는 목적지가 없다」는 멀쩡한 답이다.
+#[test]
+fn maison_검색은_프로젝트_등록부를_안_걷는다() {
+    let home = temp_home("search");
+    plant_project(&home, "spec-search", "spec 검색");
+    // 같은 질의에 걸리는 Room을 함께 심는다. **Maison 검색이 통째로 죽어도 「프로젝트가
+    // 없다」는 참이 되므로**, 그 쪽이 살아 있다는 것을 같은 호출에서 함께 재야 한다.
+    plant(&home, "maison/rooms/study", "spec 검색 공부");
+
+    let hits = |mode: Option<&str>| -> Vec<Value> {
+        let mut args = json!({ "query": "spec 검색", "destinations": [] });
+        if let Some(mode) = mode {
+            args["mode"] = json!(mode);
+        }
+        call(&home, "search", args).unwrap()["hits"].as_array().unwrap().clone()
+    };
+
+    let project = json!({ "kind": "project", "slug": "spec-search", "name": "spec 검색" });
+    let room = json!({ "kind": "work", "slug": "study", "title": "spec 검색 공부", "archived": false });
+
+    // 같은 질의가 Atelier에서는 그 프로젝트를 낸다 — **양쪽 다 비게 눕히는 변형**을 여기서
+    // 막는다. 등록부를 아예 안 건네도 「Maison에는 없다」만 재면 초록이기 때문이다.
+    assert_eq!(hits(Some("atelier")), vec![project.clone()], "Atelier 검색이 등록부를 안 걷는다");
+    assert_eq!(hits(None), vec![project], "모드를 안 준 검색이 Atelier와 다르게 굴었다");
+
+    assert_eq!(
+        hits(Some("maison")),
+        vec![room],
+        "Maison 검색이 Atelier 프로젝트를 냈거나 제 Room을 못 봤다 — \
+         공부하다 ⇧⇧를 누르면 저쪽 세계가 보인다"
     );
 
     let _ = std::fs::remove_dir_all(&home);

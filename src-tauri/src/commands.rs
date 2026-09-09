@@ -295,3 +295,43 @@ pub async fn read_settings() -> CmdResult<crate::settings::Settings> {
 pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()> {
     crate::settings::write(&atelier_core::data_root(), &settings)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **없으면 Atelier다** (#181, expand). 프런트가 아직 모드를 안 보내므로 **이 갈래가
+    /// 지금 도는 화면 전부다** — 뒤집히면 열셋이 한꺼번에 저쪽 세계의 루트를 읽어 일 목록이
+    /// 통째로 빈다.
+    ///
+    /// **그물이 여기 있어야 하는 이유.** 다리의 `mode()`가 같은 기본값을 갖고
+    /// `tests/mode_contract.rs`가 그것을 실행으로 재지만 그것은 **두 번째 사본**이다 —
+    /// 두 자리의 기본값이 갈리면 L4는 앱과 다른 세계를 보고, 앱 쪽 갈래는 아무 층에서도
+    /// 안 돈다(L3는 fixture가 `invoke`를 가로채고, L4는 다리 바이너리를 부른다).
+    /// 소스 검사(`명령이_모드_루트를_인자로_고른다`)도 `mode`가 건네지는지만 세지
+    /// 무엇이 담겼는지는 안 본다.
+    #[test]
+    fn 모드를_안_준_호출은_atelier로_간다() {
+        assert_eq!(or_atelier(None), Mode::Atelier);
+    }
+
+    /// 받은 값은 **그대로** 내려간다. 위 갈래만 재면 「늘 Atelier」로 눕히는 변형이
+    /// 살아남고, 그러면 #182가 모드를 보내기 시작해도 Maison 화면이 Atelier를 읽는다.
+    #[test]
+    fn 받은_모드는_바뀌지_않는다() {
+        assert_eq!(or_atelier(Some(Mode::Maison)), Mode::Maison);
+        assert_eq!(or_atelier(Some(Mode::Atelier)), Mode::Atelier);
+    }
+
+    /// **Maison에는 프로젝트 등록부가 없다** (결정 17). 건네면 커널이 Maison에서도
+    /// 프로젝트 층을 걸어 ⇧⇧ 결과에 Atelier 프로젝트가 서고(US 49·50), 아카이브 기록이
+    /// Room에 없는 구획을 렌더한다.
+    ///
+    /// Atelier 쪽을 함께 재는 것은 **「양쪽 다 없음」으로 눕히는 반대편 변형** 때문이다 —
+    /// 그러면 Atelier의 ⇧⇧에서 프로젝트 층이 조용히 사라진다.
+    #[test]
+    fn maison에는_프로젝트_등록부를_안_건넨다() {
+        assert_eq!(shared_projects_root(Mode::Maison), None);
+        assert_eq!(shared_projects_root(Mode::Atelier), Some(projects_dir()));
+    }
+}
