@@ -1,4 +1,4 @@
-import type { WorkView } from "@/features/works/types";
+import type { WorkView, WorktreeView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { PtyExit } from "./types";
 
@@ -201,6 +201,31 @@ export function topTerminal(mode: Mode): ShellOrigin {
 }
 
 /**
+ * 셸을 여는 두 함수가 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
+ * 그 아래 `workShellOrigin`은 「어디에 열까」를 여기서만 읽는다 — **둘이 같은 값을 보는 것을
+ * 함수 하나로 세운다.** 조건을 두 자리에 나눠 적으면 한쪽만 갈린 커밋이 「메뉴는 열리는데
+ * 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안 열리는데 열 자리도 없다」)를 만들고,
+ * 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이 금지하는 것).
+ *
+ * **Maison에서는 언제나 빈 배열이다**(결정 17 · US 26). 저 세계에 워크트리가 없는 것은
+ * 코어가 프로젝트 붙이기를 거절하기 때문인데, 그 거절 **하나에만** 걸어 두면 손으로 고친
+ * work.json 하나로 Room이 프로젝트를 실어 오고 — 목록을 읽는 자리에는 검증이 없다 —
+ * `+`가 있지도 않은 워크트리를 고르는 메뉴를 연다. 없는 것을 시도할 수 없어야 한다.
+ */
+function shellTrees(mode: Mode, work: WorkView): WorktreeView[] {
+  return mode === "atelier" ? work.worktrees : [];
+}
+
+/**
+ * 이 Work에서 `+`가 **고르라고 물어볼 수 있는** 프로젝트들 — 아래 `workShellOrigin`이
+ * 「어디에 열까」를 답한다면 이쪽은 「고를 것이 있나」를 답한다. 같은 기준을 보는 것은
+ * 위 `shellTrees` 하나가 세운다.
+ */
+export function workShellProjects(mode: Mode, work: WorkView): string[] {
+  return shellTrees(mode, work).map((tree) => tree.project);
+}
+
+/**
  * 이 Work에서 셸 하나를 여는 자리(결정 24). **`null`이면 열지 않는다.**
  *
  * | Work의 모양 | cwd |
@@ -215,6 +240,12 @@ export function topTerminal(mode: Mode): ShellOrigin {
  * **`mode`를 받는다 — `work`에서 유도하지 않는다**(결정 10). `WorkView`에는 어느 루트에서
  * 읽어 온 것인지가 안 실려 있고(코어가 그 필드를 안 준다), 두 루트에 같은 slug가 설 수
  * 있어 slug만으로는 셸 목록·상한·켜진 칸이 통째로 섞인다.
+ *
+ * **워크트리는 `shellTrees`로만 본다** — Maison에서는 그것이 빈 배열이라 위 표의 마지막
+ * 줄(프로젝트 0개 → Work 폴더)로 언제나 떨어진다. `work.worktrees`를 여기서 직접 읽으면
+ * 값이 실려 온 Room에서 `+`가 묻지도 않고(`workShellProjects`가 `[]`니까) 열지도 못하는
+ * (`project === null`이라 `null`) 버튼이 되고, 하나만 실려 온 Room은 Room 폴더가 아니라
+ * 저쪽 세계의 워크트리에서 셸이 뜬다.
  */
 export function workShellOrigin(
   mode: Mode,
@@ -222,7 +253,7 @@ export function workShellOrigin(
   project: string | null,
 ): ShellOrigin | null {
   const owner = ownerOf(mode, work.slug);
-  const trees = work.worktrees;
+  const trees = shellTrees(mode, work);
   if (trees.length === 0) return { mode, cwd: workDir(work), owner, project: null };
   // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
   if (trees.length === 1) return { mode, cwd: trees[0].path, owner, project: null };
@@ -232,9 +263,9 @@ export function workShellOrigin(
 }
 
 /**
- * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는
- * `~/.atelier/works/…`를 손으로 적는데 그쪽은 클립보드로 나가는 참조 형식이라 그래도 된다.
- * 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
+ * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는 세계별
+ * 앞머리를 표에서 꺼내 **앱이 짓는데**(#186), 그쪽은 클립보드로 나가는 참조 형식이라 그래도
+ * 된다. 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
  * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
  */
 function workDir(work: WorkView): string {

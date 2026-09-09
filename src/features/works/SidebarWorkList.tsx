@@ -6,9 +6,10 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { recallSearch } from "@/routes/-work-search";
 import { routesOf, slugOf, type Mode } from "@/mode";
 import { useSetWorkPinned, useWorks } from "./hooks";
+import { WorkCard } from "./WorkCard";
 import { emptyMainNotice, listLabelOf, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
-import { formatCreated, StatusIcon, STATUS_META } from "./status";
+import { StatusIcon } from "./status";
 import type { WorkView } from "./types";
 
 // 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
@@ -220,7 +221,7 @@ function SidebarWorkList({
           width={272}
           className="p-3.5"
         >
-          <WorkCard work={hovered} />
+          <WorkCard mode={mode} work={hovered} />
         </PopoverPortal>
       )}
     </>
@@ -322,68 +323,6 @@ export function WorkSectionList({
         </>
       )}
     </>
-  );
-}
-
-// 정보 전용이다 — 누를 수 있는 것을 넣지 않는다. 클릭 대상이 생기면 마우스가 행에서 카드로
-// 건너가는 경로(safe triangle)를 살려둬야 하고, 열림 상태의 소유가 행에서 카드로 넘어간다.
-//
-// 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 숫자 단축키로 작업을 고르는 경로에서는
-// 이 정보가 보이지 않는다. 감수한다.
-function WorkCard({ work }: { work: WorkView }) {
-  const meta = STATUS_META[work.status];
-  return (
-    <div className="flex flex-col gap-2.5">
-      <span className="text-[13.5px] font-medium leading-snug">{work.title}</span>
-      <span className="flex items-center gap-2">
-        <span
-          className={cn(
-            "shrink-0 rounded-[6px] px-1.5 py-px text-[11px] font-medium",
-            meta.badgeClass,
-          )}
-        >
-          {meta.label}
-        </span>
-        <span className="text-[11.5px] text-tertiary">{formatCreated(work.createdAt)}</span>
-      </span>
-      <div className="flex flex-col gap-1 border-t pt-2.5 text-[12px]">
-        {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다 */}
-        <CardField label="브랜치" muted={work.branch === null} mono={work.branch !== null}>
-          {work.branch ?? "프로젝트가 붙으면 정해져요"}
-        </CardField>
-        <CardField label="프로젝트" muted={work.projects.length === 0}>
-          {work.projects.length === 0 ? "아직 없어요" : work.projects.join(", ")}
-        </CardField>
-        <CardField label="spec">{`${work.specFiles.length}개`}</CardField>
-      </div>
-    </div>
-  );
-}
-
-function CardField({
-  label,
-  muted = false,
-  mono = false,
-  children,
-}: {
-  label: string;
-  muted?: boolean;
-  mono?: boolean;
-  children: string;
-}) {
-  return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="w-[46px] shrink-0 text-tertiary">{label}</span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          muted ? "text-tertiary" : "text-muted-foreground",
-          mono && "font-mono",
-        )}
-      >
-        {children}
-      </span>
-    </span>
   );
 }
 

@@ -10,7 +10,8 @@ import { recallSearch } from "./-work-search";
 function ProjectsView({ slug }: { slug: string | null }) {
   const navigate = useNavigate();
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  const { data: projects = [], isPending, isFetching } = useProjects();
+  // 라우트가 `/projects`·`/projects/$slug` 둘뿐이라 이 화면의 세계는 Atelier로 고정이다.
+  const { data: projects = [], isPending, isFetching } = useProjects("atelier");
 
   const exists = slug !== null && projects.some((project) => project.slug === slug);
 

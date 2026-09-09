@@ -4,12 +4,16 @@ import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
+import type { Mode } from "@/mode";
 import { specRef } from "./refs";
 import SpecSection from "./SpecSection";
 import WorkInfo, { type ProjectBase } from "./WorkInfo";
 import type { WorkView } from "./types";
 
 interface WorkPanelProps {
+  // 어느 세계의 패널인가. 정보 탭에 그대로 내려가고, **프로젝트 조회를 켤지도 이 값이
+  // 정한다**(결정 17) — Maison에서는 `list_projects`가 아예 안 나간다.
+  mode: Mode;
   work: WorkView;
   currentFile: string | null;
   onSelectFile: (path: string) => void;
@@ -44,6 +48,7 @@ type PanelTab = "spec" | "info";
 // **사이드바 가지로 갔다**(결정 71). 같은 것을 두 자리에서 고르게 두면 어느 쪽이 지금인지가
 // 화면마다 갈린다. PR 연동 카드는 v2.
 function WorkPanel({
+  mode,
   work,
   currentFile,
   onSelectFile,
@@ -55,7 +60,7 @@ function WorkPanel({
   onToggleSource,
   open,
 }: WorkPanelProps) {
-  const { data: projects } = useProjects();
+  const { data: projects } = useProjects(mode);
   // 화면 오른쪽에 놓인 패널이다 — 핸들이 왼쪽 가장자리에 붙고 왼쪽으로 끌면 넓어진다.
   // 저장 키는 이 패널 전용이다: 목록 패널과 같은 키를 쓰면 폭 범위가 다른 둘이 서로를 덮는다.
   // 기본 폭 330 — 296은 좁았다. 여기 들어오는 것이 **경로와 파일 이름**이라 꼬리가 잘리면
@@ -111,6 +116,10 @@ function WorkPanel({
   // **`= []` 기본값을 두지 않는다.** 두면 "목록이 아직 안 왔다"가 "등록이 하나도 없다"와
   // 완전히 같은 값이 되어, 화면이 로딩 중에도 "알 수 없다"를 내보인다. 이 화면은 프로젝트
   // 목록을 프리로드하지 않으므로 그 순간이 매번 실재한다.
+  //
+  // **Maison에서는 도는 것이 없다** — 저 세계에는 워크트리가 없고(코어가 프로젝트 붙이기를
+  // 거절한다) 정보 탭이 프로젝트 구획을 아예 안 그린다. 그래서 조회가 꺼져 `projects`가
+  // 계속 `undefined`인 것이 여기서 무해하다.
   const bases: Record<string, ProjectBase> = Object.fromEntries(
     work.worktrees.map((worktree) => {
       const project = projects?.find((p) => p.slug === worktree.project);
@@ -230,11 +239,12 @@ function WorkPanel({
               files={work.specFiles}
               current={currentFile}
               onSelect={onSelectFile}
-              onCopy={(path) => onCopy(specRef(work.slug, path))}
+              onCopy={(path) => onCopy(specRef(mode, work.slug, path))}
             />
           </TabPanel>
           <TabPanel active={tab === "info"}>
             <WorkInfo
+              mode={mode}
               work={work}
               bases={bases}
               onCopy={onCopy}

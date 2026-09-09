@@ -38,6 +38,7 @@ import {
   shellsEmptied,
   shellsOf,
   workShellOrigin,
+  workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
@@ -72,6 +73,7 @@ import {
 } from "./hooks";
 import { STATUS_META } from "./status";
 import { emptyScreenCopy } from "./work-sections";
+import { archiveConfirmBody, removeConfirmBody } from "./work-menu-copy";
 import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
@@ -203,7 +205,7 @@ function WorksPage({
   // isPending을 함께 보는 이유: 이 화면이 앱의 첫 화면이 되면서 프로젝트 목록을 처음 읽는
   // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
-  const { data: projects = [], isPending: projectsPending } = useProjects();
+  const { data: projects = [], isPending: projectsPending } = useProjects(mode);
   // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드를 맨 앞에
   // 두는 것이 이 판정의 유일한 지점이라, 티켓 09가 프로젝트 쿼리를 Atelier에서만 켜서
   // `projects`가 Maison에서 늘 빈 배열이 되는 날에도 이 갈래가 저쪽 세계에서 참으로 눕지
@@ -489,7 +491,12 @@ function WorksPage({
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
-      projects={panelWork.worktrees.map((tree) => tree.project)}
+      //
+      //
+      // **모드를 여기서 리터럴로 풀지 않는다**(US 26). 저 세계에는 고를 것이 없다는 판단이
+      // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
+      // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
+      projects={workShellProjects(mode, panelWork)}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
@@ -544,7 +551,7 @@ function WorksPage({
                 묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
                 것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
                 리듬이 갈리는 값이 크다. */}
-            <WorkMetaMenu work={selected} />
+            <WorkMetaMenu mode={mode} work={selected} />
             <WorkMenu mode={mode} work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
@@ -851,6 +858,7 @@ function WorksPage({
           두 navigate가 한 틱에 겹친다. */}
       {panelWork && (
         <WorkPanel
+          mode={mode}
           work={panelWork}
           currentFile={currentSpec}
           onSelectFile={selectFromTree}
@@ -1264,29 +1272,15 @@ function WorkMenu({
     closeShellsOf(ownerOf(mode, work.slug));
   };
 
-  // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면
-  // 대비로 인해 삭제가 커밋까지 지우는 것처럼 읽히고(브랜치는 양쪽 다 남는다), 워크트리
-  // 제거가 gitignore된 파일(.env·로컬 DB·빌드 산출물)까지 가져간다는 사실은 **양쪽 다**
-  // 적는다. 그 파일들은 dirty 검사에 잡히지 않으므로 이 문구가 유일한 경고이고, 둘 다
-  // 같은 worktree_remove를 탄다 — 삭제 쪽은 스펙까지 지우니 더 잃는다.
+  // **문구는 세계마다 다르다**(#186) — 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는
+  // 꺼내 쓰기만 한다. 그림 안에 리터럴로 두면 이 창을 두 세계로 나란히 재는 길이 없다:
+  // `askDanger`는 OS가 아니라 앱의 창이지만 여기서는 프로미스 뒤에 있어, 이 저장소의
+  // 정적 마크업 seam에 문장이 아예 안 걸린다.
   const handleArchive = () =>
-    run(
-      "아카이빙",
-      "스펙과 기록은 남고 워크트리 폴더가 정리돼요. 브랜치와 커밋은 그대로예요.\n" +
-        "다만 git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)은 폴더와 함께 사라져요.\n" +
-        "되돌릴 수 없어요.",
-      () => archive.mutateAsync(work.slug),
-    );
+    run("아카이빙", archiveConfirmBody(mode), () => archive.mutateAsync(work.slug));
 
   const handleRemove = () =>
-    run(
-      "삭제",
-      "워크트리 폴더와 스펙 문서가 모두 지워져요. 브랜치와 커밋은 남지만 기록은 안 남아요 —\n" +
-        "남길 것이 있다면 아카이빙을 쓰세요.\n" +
-        "git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)도 폴더와 함께 사라져요.\n" +
-        "되돌릴 수 없어요.",
-      () => remove.mutateAsync(work.slug),
-    );
+    run("삭제", removeConfirmBody(mode), () => remove.mutateAsync(work.slug));
 
   return (
     <span className="relative flex">

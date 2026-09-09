@@ -46,6 +46,7 @@ import {
   slugOfOwner,
   topTerminal,
   workShellOrigin,
+  workShellProjects,
 } from "./shell-registry";
 import type { Shell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import type { WorkView, WorktreeView } from "@/features/works/types";
@@ -808,6 +809,48 @@ describe("cwd는 Work의 모양이 정한다", () => {
         expect(origin?.owner, `${mode}`).toBe(ownerOf(mode, "w"));
       }
     }
+  });
+});
+
+// US 26. `+`가 「어디에 열까」를 묻기 전에 「고를 것이 있나」를 이 함수가 답한다 —
+// `workShellOrigin`과 **같은 값(`shellTrees`)** 을 봐야 메뉴는 열리는데 고른 값으로 셸이
+// 안 생기는 일이 없다. 그래서 이 describe는 두 함수를 **나란히** 잰다: 한쪽만 재면 둘이
+// 갈린 판이 여기서 초록으로 지나간다.
+describe("고를 수 있는 프로젝트와 열리는 자리", () => {
+  it("Atelier에서는 워크트리의 프로젝트들이다", () => {
+    expect(workShellProjects("atelier", w(["atelier", "cli"]))).toEqual(["atelier", "cli"]);
+    // 하나면 `+`가 안 묻는다(ShellTabs의 `asks`) — 그 판단의 입력이 여기다
+    expect(workShellProjects("atelier", w(["atelier"]))).toEqual(["atelier"]);
+    expect(workShellProjects("atelier", w([]))).toEqual([]);
+  });
+
+  // **값이 비어 있으니 어차피 빈 배열이다는 근거로 삼지 않는다.** 저 세계에 워크트리가
+  // 없는 것은 코어가 프로젝트 붙이기를 거절해서인데, 목록을 **읽는** 자리에는 그 검증이
+  // 없다 — 손으로 고친 work.json 하나면 Room이 프로젝트를 실어 온다. 그래서 실려 온 값을
+  // 넣고 잰다.
+  it("Maison에서는 값이 실려 와도 고를 것이 없다", () => {
+    expect(workShellProjects("maison", w(["atelier", "cli"]))).toEqual([]);
+  });
+
+  // **위 검사와 짝이다.** 「고를 것이 없다」만 재고 「그래서 어디에 여는가」를 안 재면 이 판이
+  // 만든 것은 방어가 아니라 **눌러도 아무 일이 없는 `+`**다: 메뉴는 안 열리고(`asks`가 거짓),
+  // `onOpen(null)`은 `workShellOrigin`이 워크트리를 그대로 읽어 `null`을 줘서 조용히 끝난다.
+  // 둘이 한 함수(`shellTrees`)를 보는 것이 그 판을 막고, 그 사실을 여기서 값으로 잰다.
+  it("Maison에서는 워크트리가 실려 와도 Room 폴더에서 연다", () => {
+    for (const room of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
+      const origin = workShellOrigin("maison", room, null);
+      // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
+      expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
+      expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
+    }
+  });
+
+  // 같은 값이 Atelier에서는 갈래를 그대로 탄다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다.
+  it("Atelier에서는 같은 값이 워크트리로 간다", () => {
+    expect(workShellOrigin("atelier", w(["atelier"]), null)?.cwd).toBe(
+      "~/.atelier/works/w/trees/atelier",
+    );
+    expect(workShellOrigin("atelier", w(["atelier", "cli"]), null)).toBeNull();
   });
 });
 

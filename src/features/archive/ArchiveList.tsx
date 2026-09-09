@@ -5,6 +5,7 @@ import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizable
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import SpecTree from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
+import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
 import type { Mode } from "@/mode";
@@ -53,6 +54,9 @@ function ArchiveList({
   const [filterOpen, setFilterOpen] = useState(false);
   const filterAnchor = useRef<HTMLButtonElement>(null);
 
+  // 이 세계에 프로젝트라는 것이 있는가(결정 17). 필터 버튼과, 좁혀서 0개일 때 하는 말이
+  // 이 한 값에서 함께 나온다 — 표가 그 둘을 한 칸으로 든다(archive-copy.ts).
+  const canFilter = hasProjectFilter(mode);
   const projectOptions = [...new Set(entries.flatMap((e) => e.projects))].sort();
   const q = query.trim().toLowerCase();
   const filtered = entries.filter(
@@ -123,56 +127,62 @@ function ArchiveList({
               {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
               {sidebarOpen && "치운 날"}
             </button>
-            <span className="relative flex min-w-0">
-              <button
-                ref={filterAnchor}
-                type="button"
-                onClick={() => setFilterOpen((v) => !v)}
-                title={projectFilter ?? "모든 프로젝트"}
-                className={cn(
-                  "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
-                  projectFilter
-                    ? "toggle-on"
-                    : "text-muted-foreground quiet-hover",
-                )}
-              >
-                <Filter className="size-3 shrink-0" strokeWidth={2} />
-                {sidebarOpen && (
-                  <>
-                    <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
-                    <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
-                  </>
-                )}
-              </button>
-              {filterOpen && (
-                <PopoverPortal
-                  anchorRef={filterAnchor}
-                  align="right"
-                  width={200}
-                  onClose={() => setFilterOpen(false)}
-                  className="flex flex-col gap-px p-[5px]"
+            {/* **프로젝트 필터는 Atelier에만 선다**(결정 17). 값으로 가르지 않는 이유는
+                정보 탭 쪽과 같다 — 손으로 고친 work.json이 Room에도 프로젝트를 실어 올 수
+                있어서, 「옵션이 비면 안 그린다」로 두면 그날 저 세계에 없는 개념이 화면에
+                선다. 좁혀도 0개일 때 하는 말과 **같은 값**에서 나온다(archive-copy.ts). */}
+            {canFilter && (
+              <span className="relative flex min-w-0">
+                <button
+                  ref={filterAnchor}
+                  type="button"
+                  onClick={() => setFilterOpen((v) => !v)}
+                  title={projectFilter ?? "모든 프로젝트"}
+                  className={cn(
+                    "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                    projectFilter
+                      ? "toggle-on"
+                      : "text-muted-foreground quiet-hover",
+                  )}
                 >
-                  {[null, ...projectOptions].map((option) => (
-                    <button
-                      key={option ?? "*"}
-                      type="button"
-                      onClick={() => {
-                        setProjectFilter(option);
-                        setFilterOpen(false);
-                      }}
-                      className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
-                        {option ?? "모든 프로젝트"}
-                      </span>
-                      {projectFilter === option && (
-                        <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                      )}
-                    </button>
-                  ))}
-                </PopoverPortal>
-              )}
-            </span>
+                  <Filter className="size-3 shrink-0" strokeWidth={2} />
+                  {sidebarOpen && (
+                    <>
+                      <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
+                      <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                    </>
+                  )}
+                </button>
+                {filterOpen && (
+                  <PopoverPortal
+                    anchorRef={filterAnchor}
+                    align="right"
+                    width={200}
+                    onClose={() => setFilterOpen(false)}
+                    className="flex flex-col gap-px p-[5px]"
+                  >
+                    {[null, ...projectOptions].map((option) => (
+                      <button
+                        key={option ?? "*"}
+                        type="button"
+                        onClick={() => {
+                          setProjectFilter(option);
+                          setFilterOpen(false);
+                        }}
+                        className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
+                          {option ?? "모든 프로젝트"}
+                        </span>
+                        {projectFilter === option && (
+                          <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
+                        )}
+                      </button>
+                    ))}
+                  </PopoverPortal>
+                )}
+              </span>
+            )}
           </span>
         </div>
 
@@ -196,18 +206,20 @@ function ArchiveList({
         {loading ? null : entries.length === 0 ? (
           <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
             <Archive className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
+            {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
             <span className="text-[13.5px] font-medium text-muted-foreground">
-              아직 치운 작업이 없어요
+              {emptyListCopy(mode).title}
             </span>
             <span className="text-[12.5px] leading-normal text-tertiary">
-              끝난 작업의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.
+              {emptyListCopy(mode).body}
             </span>
           </div>
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
-            <span className="text-[13px] text-tertiary">
-              {q ? "검색 결과가 없어요" : "해당 프로젝트의 아카이브가 없어요"}
-            </span>
+            {/* 좁힌 것이 검색어인지 필터인지를 말한다. **필터가 없는 세계에서는 검색어
+                없이 이 갈래에 닿을 수 없으므로**, 「해당 프로젝트의…」를 여기 리터럴로
+                두면 Maison에서 영영 안 뜨는 문장이 화면 코드에 남는다(archive-copy.ts). */}
+            <span className="text-[13px] text-tertiary">{narrowedNotice(mode, q !== "")}</span>
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto scroll-quiet">

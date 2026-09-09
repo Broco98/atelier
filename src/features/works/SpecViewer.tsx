@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
-import { specRef } from "./refs";
+import { specDirRef, specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
@@ -93,9 +93,9 @@ function SpecViewer({
   const copyRef = useCallback(
     (start: number, end: number) => {
       if (!file) return;
-      onCopy(specRef(work.slug, file, start, end));
+      onCopy(specRef(mode, work.slug, file, start, end));
     },
-    [work.slug, file, onCopy],
+    [mode, work.slug, file, onCopy],
   );
 
   // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
@@ -155,8 +155,14 @@ function SpecViewer({
                 <span className="text-[14px] leading-[1.65] text-tertiary">
                   AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
                 </span>
+                {/* **경로를 여기서 짓지 않는다.** 한때 Atelier 루트를 JSX에 손으로 적고
+                    있었는데, 그 리터럴은 Maison에서 있지도 않은 폴더를 안내한다 — 게다가
+                    사람이 그대로 붙여 넣으라고 내놓는 줄이라 참조 생성기가 내는 것과
+                    **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와 에이전트가 읽는
+                    자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
+                    `SpecViewer.test.tsx`의 소스 검사가 리터럴이 되돌아오는 것을 막는다. */}
                 <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                  ~/.atelier/works/{work.slug}/spec/
+                  {specDirRef(mode, work.slug)}
                 </code>
               </div>
             </div>

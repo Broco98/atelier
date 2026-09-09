@@ -18,7 +18,9 @@ interface ProjectsPageProps {
 const PANEL_OPEN_KEY = "projects-panel-open";
 
 function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
-  const { data: projects = [] } = useProjects();
+  // 이 화면은 `/projects` 주소에만 산다 — Maison 접두사가 붙을 수 없어 모드가 상수다
+  // (결정 17: Maison에 프로젝트는 없다).
+  const { data: projects = [] } = useProjects("atelier");
   const [panelOpen, setPanelOpen] = useState(
     () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
   );

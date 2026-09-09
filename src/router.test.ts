@@ -101,7 +101,7 @@ function setup(initialEntries: Array<string>, options: SetupOptions = {}) {
   queryClient.setQueryData(worksQuery("atelier").queryKey, worksSeed);
   queryClient.setQueryData(worksQuery("maison").queryKey, options.rooms ?? worksSeed);
   queryClient.setQueryData(
-    projectsQuery.queryKey,
+    projectsQuery("atelier").queryKey,
     options.projects ?? projects("proj-a", "proj-b"),
   );
   queryClient.setQueryData(archiveQuery("atelier").queryKey, archiveSeed);

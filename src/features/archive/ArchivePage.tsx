@@ -9,6 +9,7 @@ import type { DocBody } from "@/features/works/doc-refs";
 import type { Mode } from "@/mode";
 import { archiveRef } from "@/features/works/refs";
 import { formatCreated, STATUS_META } from "@/features/works/status";
+import { emptyScreenCopy } from "./archive-copy";
 import ArchiveList from "./ArchiveList";
 import { useArchive, useArchivedDocs, useArchivedFile } from "./hooks";
 
@@ -112,9 +113,9 @@ function ArchivePage({
   const copyBlockRef = useCallback(
     (start: number, end: number) => {
       if (!slug || !current) return;
-      copyText(archiveRef(slug, current, start, end));
+      copyText(archiveRef(mode, slug, current, start, end));
     },
-    [slug, current, copyText],
+    [mode, slug, current, copyText],
   );
 
   // 이 화면의 접이식은 사이드바와 목록 패널 둘이다. 화면을 비웠는지를 말하는 값이
@@ -178,7 +179,7 @@ function ArchivePage({
         // 문서를 고르는 것이 곧 아카이브를 고르는 것이다 — 목록 행은 펼침만 맡는다.
         // 둘은 한 번의 이동으로 함께 옮겨진다(주소가 둘 다 들고 있다).
         onSelectDoc={onSelectDoc}
-        onCopyDoc={(docSlug, path) => copyText(archiveRef(docSlug, path))}
+        onCopyDoc={(docSlug, path) => copyText(archiveRef(mode, docSlug, path))}
         sidebarOpen={sidebarOpen}
         open={panelOpen}
       />
@@ -205,16 +206,22 @@ function ArchivePage({
                     {formatCreated(selected.archivedAt)}에 치움
                   </span>
                 )}
-                <span className="flex gap-1.5">
-                  {selected.projects.map((project) => (
-                    <span
-                      key={project}
-                      className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground"
-                    >
-                      {project}
-                    </span>
-                  ))}
-                </span>
+                {/* **Maison에는 프로젝트가 없다**(결정 17). 값으로만 가르지 않는 이유는
+                    정보 탭·목록 필터 쪽과 같다 — 손으로 고친 work.json이나 저쪽 세계에서
+                    옮겨 온 폴더가 Room 아카이브에도 프로젝트 이름을 실어 올 수 있고,
+                    「비면 안 그린다」로 두면 그날 여기에만 저 세계의 개념이 되살아난다. */}
+                {mode === "atelier" && (
+                  <span className="flex gap-1.5">
+                    {selected.projects.map((project) => (
+                      <span
+                        key={project}
+                        className="rounded-[7px] bg-accent px-2 py-[3px] text-[12px] text-muted-foreground"
+                      >
+                        {project}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </span>
             )
           }
@@ -271,12 +278,16 @@ function ArchivePage({
                 {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
                     왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
                     stale한 slug가 남았을 때 실제로 그렇게 된다. */}
+                {/* 「하나도 없다」는 세계마다 낱말이 다르고(#183), 「그 slug를 못 찾겠다」는
+                    두 세계가 같은 말을 한다 — 아카이브도 slug도 이 세계 저 세계 이름이 아니다. */}
                 <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  {entries.length === 0 ? "아직 치운 작업이 없어요" : "그 아카이브를 찾을 수 없어요"}
+                  {entries.length === 0
+                    ? emptyScreenCopy(mode).title
+                    : "그 아카이브를 찾을 수 없어요"}
                 </span>
                 <span className="text-[14px] leading-[1.65] text-tertiary">
                   {entries.length === 0
-                    ? "끝난 작업의 ⋯ 메뉴에서 아카이빙하면 워크트리는 정리되고 스펙과 기록이 여기 남아요."
+                    ? emptyScreenCopy(mode).body
                     : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
                 </span>
               </div>

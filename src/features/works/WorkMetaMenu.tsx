@@ -3,6 +3,7 @@ import { Copy, Folder, GitBranch, Info, PanelTop } from "lucide-react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
+import type { Mode } from "@/mode";
 import { relativeToWorkDir } from "./WorkInfo";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
@@ -35,10 +36,14 @@ export function sharedBase(projects: ProjectView[] | undefined, slugs: string[])
  * 계속 그쪽에 있다. 여기 있는 것은 "한 클릭에 복사하고 싶은 것"만이다.
  */
 export function WorkMetaRows({
+  mode,
   work,
   base,
   onCopy,
 }: {
+  // 어느 세계의 값인가. **prop이다** — 여기서 물으면 이 줄들을 프로바이더 없이 그릴 수
+  // 없어져 위 계약이 무너진다 (정보 탭과 같은 이유).
+  mode: Mode;
   work: WorkView;
   // 브랜치 줄의 꼬리에 적을 base. 한 줄로 말할 수 없으면 null이다 (위 sharedBase).
   base: string | null;
@@ -47,8 +52,13 @@ export function WorkMetaRows({
   return (
     <>
       {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다.
-          빈 줄로 남기면 누를 수는 있는데 아무것도 복사되지 않는 줄이 된다. */}
-      {work.branch !== null && (
+          빈 줄로 남기면 누를 수는 있는데 아무것도 복사되지 않는 줄이 된다.
+
+          **Maison에는 브랜치도 워크트리도 없다**(결정 17) — 값으로만 가르지 않는 이유는
+          정보 탭 쪽 주석과 같다: 코어는 프로젝트 0개인 Room에도 이름을 주면 브랜치를
+          확정해 저장하고(works.rs), 손으로 고친 work.json은 워크트리까지 실어 온다.
+          저 세계에 없는 개념을 화면에 세우지 않는 것이 이 조건이다. */}
+      {mode === "atelier" && work.branch !== null && (
         <MetaRow
           glyph={<GitBranch className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
           value={work.branch}
@@ -58,22 +68,23 @@ export function WorkMetaRows({
       )}
       <MetaRow
         glyph={<Folder className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
-        value={workDirRef(work.slug)}
+        value={workDirRef(mode, work.slug)}
         onCopy={onCopy}
       />
       {/* **작업 폴더 기준으로 접는다.** 두 경로는 `~/.atelier/works/<slug>/`를 통째로
           공유해서, 288px 안에서 꼬리를 자르면 두 줄의 보이는 글자가 완전히 같아진다 —
           그 줄을 구분해 주는 유일한 부분만 잘려 나간다. 기준 행이 바로 위에 있으니
           여기를 그것에 상대로 적을 수 있다 (정보 탭과 같은 계약). */}
-      {work.worktrees.map((worktree) => (
-        <MetaRow
-          key={worktree.project}
-          glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
-          value={worktreeDirRef(worktree.path)}
-          relativeTo={workDirRef(work.slug)}
-          onCopy={onCopy}
-        />
-      ))}
+      {mode === "atelier" &&
+        work.worktrees.map((worktree) => (
+          <MetaRow
+            key={worktree.project}
+            glyph={<PanelTop className="size-[13px] shrink-0 text-tertiary" strokeWidth={1.7} />}
+            value={worktreeDirRef(worktree.path)}
+            relativeTo={workDirRef(mode, work.slug)}
+            onCopy={onCopy}
+          />
+        ))}
     </>
   );
 }
@@ -131,10 +142,13 @@ function MetaRow({
  * 닫혀 있어도, 어느 탭을 보고 있어도 같은 자리에 있다. 패널 안에 두면 "지금 무엇을
  * 보고 있는가"에 딸린 값이 되어 버린다.
  */
-function WorkMetaMenu({ work }: { work: WorkView }) {
+function WorkMetaMenu({ mode, work }: { mode: Mode; work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const { data: projects } = useProjects();
+  // **Maison에서는 이 조회가 아예 안 나간다**(결정 17). 꼬리에 적을 base는 등록부에서만
+  // 나오는데 저 세계에는 등록부가 없다 — `work.projects`도 늘 비어 `sharedBase`가 이미
+  // null이라, 조회를 끄면서 잃는 것이 없다.
+  const { data: projects } = useProjects(mode);
 
   useEffect(() => {
     if (!open) return;
@@ -172,6 +186,7 @@ function WorkMetaMenu({ work }: { work: WorkView }) {
               결정 47이 토스트를 화면(WorksPage)으로 올려 이제 헤더에서도 띄울 수는
               있지만, 배선하지 않았다 — 팝오버가 사라지는 것으로 이미 신호가 선다. */}
           <WorkMetaRows
+            mode={mode}
             work={work}
             base={sharedBase(projects, work.projects)}
             onCopy={(text) => {

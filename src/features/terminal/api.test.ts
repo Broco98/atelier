@@ -20,12 +20,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {},
 }));
 
-// 워크트리 하나짜리 Work. `workShellOrigin`이 갈래를 안 타는 가장 짧은 모양이다.
-const work = (slug: string): WorkView =>
+// 워크트리 하나짜리 Work. **뿌리를 받는다** — Maison에서는 `workShellOrigin`이 워크트리를
+// 아예 안 보고 Work 폴더로 떨어지므로(`shellTrees`), 뿌리가 저쪽 세계의 것이면 이 파일이
+// 재는 cwd가 「Maison 셸이 Atelier 폴더에서 떴다」를 기대값으로 못박게 된다.
+const work = (slug: string, root = "~/.atelier/works"): WorkView =>
   ({
     slug,
-    specDir: `~/.atelier/works/${slug}/spec`,
-    worktrees: [{ project: "atelier", path: `~/.atelier/works/${slug}/trees/atelier` }],
+    specDir: `${root}/${slug}/spec`,
+    worktrees: [{ project: "atelier", path: `${root}/${slug}/trees/atelier` }],
   }) as unknown as WorkView;
 
 describe("셸을 띄울 때 세계가 함께 나간다", () => {
@@ -45,10 +47,11 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
 
   it("Work의 셸도 그 Work를 읽은 세계로 뜬다", async () => {
     calls.length = 0;
-    const origin = workShellOrigin("maison", work("finance"), null)!;
+    const origin = workShellOrigin("maison", work("finance", "~/.atelier/maison/rooms"), null)!;
     await terminalApi.spawn(origin.mode, origin.cwd, 80, 24, null as never);
     expect(calls[0].args.mode).toBe("maison");
-    expect(calls[0].args.cwd).toBe("~/.atelier/works/finance/trees/atelier");
+    // Room 폴더다 — 실려 온 워크트리가 아니다(결정 17: 저 세계에는 그것이 없다).
+    expect(calls[0].args.cwd).toBe("~/.atelier/maison/rooms/finance");
   });
 
   // **인자 객체가 평평해야 한다.** `tauri-commands.test.ts`의 인자 대조가 중첩 `{}`를

@@ -59,6 +59,11 @@ interface ModeRoutes {
 /**
  * 클립보드로 나가는 참조의 앞머리. 뒤에 `<slug>/`가 붙는다 — 형식을 짓는 것은 계속
  * `features/works/refs.ts`이고 여기는 **어느 루트인가**만 든다.
+ *
+ * **MCP 서버 지침과 한 몸이다.** 앱이 복사해 준 참조를 에이전트가 그대로 여는 것이 이 값의
+ * 쓸모라, 지침이 읽는 뿌리와 갈리면 없는 경로가 된다. `instructions.rs`의
+ * `the_instructions_read_the_roots_the_app_writes`가 이 파일을 **글자로** 읽어 그 결합을
+ * 지킨다 — 아래 표의 값이나 이 두 필드 이름을 갈면 같은 커밋에서 지침도 함께 갱신해야 한다.
  */
 interface ModeRefs {
   readonly work: string;

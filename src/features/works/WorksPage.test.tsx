@@ -1199,7 +1199,7 @@ it("마지막 셸이 닫히면 분할째로 걷고, 문서만 읽던 중이면 �
 function renderEmpty(mode: Mode, projects: ProjectView[] = []): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery(mode).queryKey, []);
-  client.setQueryData(projectsQuery.queryKey, projects);
+  client.setQueryData(projectsQuery("atelier").queryKey, projects);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <WorksPage
@@ -1277,5 +1277,53 @@ describe("아무것도 안 골랐을 때의 본문", () => {
     const html = renderEmpty("atelier", []);
     expect(html).toContain("먼저 프로젝트를 등록해요");
     expect(html).toContain("폴더 등록해줘");
+  });
+});
+
+// **프로젝트를 고르는 `+`는 Atelier의 것이다**(US 26). 갈리는 값(`projects`)이 워크트리에서
+// 나오고 Maison에는 워크트리가 없으니 저 세계에서는 어차피 안 물어야 맞다 — 그런데 그
+// 사실을 지키는 것이 **코어의 거절 하나뿐**이라, 손으로 고친 work.json 하나면 저 세계의
+// Room에도 프로젝트가 실려 와 이 줄이 없는 워크트리를 고르는 메뉴를 연다. 그래서 값이
+// 왔다고 가정하고 두 세계를 함께 잰다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다.
+describe("프로젝트를 고르는 `+`", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // `+`의 것만 본다 — `aria-haspopup`을 마크업 전체에서 세면 나중에 다른 팝오버가
+  // 하나 생기는 날 이 검사가 조용히 무의미해진다.
+  const asks = (markup: string) => /data-tab="new"[^>]*aria-haspopup="menu"/.test(markup);
+  const twoTrees: Partial<WorkView> = {
+    projects: ["atelier", "notes"],
+    worktrees: [
+      { project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false },
+      { project: "notes", path: "~/.atelier/works/some-work/trees/notes", exists: true, dirty: false },
+    ],
+  };
+
+  it("Atelier에서 워크트리가 둘이면 어디에 열지 물어본다", () => {
+    expect(asks(render(twoTrees, "spec", null, "atelier"))).toBe(true);
+  });
+
+  it("Maison에서는 같은 값이 와도 묻지 않는다", () => {
+    expect(asks(render(twoTrees, "spec", null, "maison"))).toBe(false);
+  });
+});
+
+// 확인 대화의 문장은 `askDanger` 프로미스 뒤에 있어 이 저장소의 정적 마크업 seam에 아예
+// 안 걸린다 — 낱말의 계약은 `work-menu-copy.test.ts`가 글자까지 재고, 여기서 보는 것은
+// **화면이 그 표를 부르는가**뿐이다(`work-sections`·`archive-copy`와 같은 나눔).
+describe("⋯ 메뉴의 확인 대화가 세계를 탄다", () => {
+  it("문장을 손으로 안 적고 표에서 꺼낸다", () => {
+    const worksPage = source("WorksPage.tsx");
+    expect(worksPage).toContain("archiveConfirmBody(mode)");
+    expect(worksPage).toContain("removeConfirmBody(mode)");
+    // **리터럴이 남아 있으면 안 된다.** 표를 부르면서 옛 문장을 그대로 둔 판은 위 두 줄로는
+    // 안 걸리고, 그 순간 두 벌이 따로 늙기 시작한다.
+    expect(worksPage).not.toContain("워크트리 폴더가 정리돼요");
+    expect(worksPage).not.toContain("워크트리 폴더와 스펙 문서가 모두 지워져요");
   });
 });

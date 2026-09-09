@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import { ROOMS, ROOM_SPEC_FILE_BODIES, SPEC_FALLBACK_BODY } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 목록의 첫 줄은 **초안 Room**이다(픽스처의 `ROOMS`) — 정규화가 그것을 건너뛰는지를 아래
 // 둘째 검사가 본다. 여기서 여는 것은 문서를 가진 둘째다.
@@ -45,6 +45,21 @@ test("`/maison/rooms/<slug>`로 가면 그 Room의 문서가 선다", async ({ p
   // 답하도록 퇴화해도 위 두 줄이 그대로 초록이다.
   await expect(page.getByText(ATELIER_BODY)).toHaveCount(0);
 
+  // **프로젝트를 읽지도 않는다**(US 29). 이 화면에서 `list_projects`를 부르는 자리가 셋인데
+  // (본문의 빈 화면 갈래 · 작업 패널의 base · 헤더 ⓘ) 셋 다 조회를 Atelier에서만 켠다.
+  //
+  // **호출 기록으로만 증명된다.** 픽스처의 `FIXTURE_COMMANDS`는 이 명령에 **이름만 보고**
+  // 답하므로(모드로 갈리는 표가 아니다) 호출이 나가도 화면은 멀쩡하고 `unknownIpcCalls`도
+  // 비어 있다 — 한 자리가 `mode`를 빠뜨려 저 세계의 등록부를 읽어도 아무것도 안 빨개진다.
+  //
+  // **`startsWith`다 — 완전 일치가 아니다.** 하네스가 기록하는 값은 이름이 아니라
+  // `` `${cmd}${detail}` ``이라(harness.ts) 지금 인자가 없어 우연히 이름과 같을 뿐이고,
+  // 티켓 10(#187)이 프런트 래퍼에 `mode`를 필수로 만드는 날 이 줄은 **Maison에서 호출이
+  // 나가도 영원히 초록**이 된다. 그 명령은 이름 표(fixtures.ts)가 답하므로
+  // `unknownIpcCalls`도 안 문다 — 신호가 아무 데도 안 남는다.
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  expect(calls.filter((call) => call.startsWith("list_projects"))).toEqual([]);
+
   // `mode`를 빠뜨린 호출은 하네스가 문다(harness.ts의 `byMode`) — 그 신호가 여기 모인다.
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -59,6 +74,53 @@ test("`/maison/rooms`는 초안을 건너뛴 첫 Room으로 정규화된다", as
   // 리다이렉트는 번들이 뜬 **뒤** 일어나므로 `goto`가 돌아온 시점에는 아직 목록 주소다.
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/maison/rooms/${room.slug}`);
   await expect(page.getByText(ROOM_BODY)).toBeVisible();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 정보 탭에 **프로젝트 자리가 통째로 없다**(US 27·30). 마크업 seam(`WorkInfo.test.tsx`)은 이
+// 조각에 `mode`를 손으로 넘겨 그리므로, 화면에서 그 값이 실제로 저 안까지 내려가는지는 이
+// 층에서만 보인다 — `WorksPage` → `WorkPanel` → `WorkInfo` 세 층 중 하나만 빠뜨려도 앞의
+// 두 층은 그대로 초록이다(그 셋에 `mode` prop이 생긴 것이 이 판이다).
+//
+// 참조 뿌리를 **글자로** 함께 재는 자리이기도 하다. `refs.ts`가 세계별 앞머리를 `mode.ts`의
+// 표에서 꺼내 오는데, 그 인자를 한 자리에서 빠뜨리면 화면은 멀쩡한 채 복사되는 경로만 남의
+// 세계를 가리킨다 — 붙여 넣기 전에는 아무도 모른다.
+test("Room의 정보 탭에는 프로젝트 자리가 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/maison/rooms/${room.slug}`);
+
+  await page.getByRole("button", { name: "info", exact: true }).click();
+
+  // **탭이 정말 섰다**는 앵커. 없으면 아래 「없다」 넷은 탭이 안 열려서도 전부 초록이다.
+  await expect(
+    page.getByRole("button", { name: `slug ${room.slug}`, exact: true }),
+  ).toBeVisible();
+
+  // 작업 폴더가 **Room 뿌리**를 그대로 적는다(결정 7). 여기가 `refs.ts`의 모드 인자가 화면에
+  // 드러나는 유일한 자리다 — 빠뜨리면 `~/.atelier/works/…`가 뜬다.
+  await expect(
+    page.getByRole("button", {
+      name: `작업 폴더 ~/.atelier/maison/rooms/${room.slug}/`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  // 그 반대쪽. 화면 어디에도 저쪽 세계의 뿌리가 없어야 한다 — spec 행은 작업 폴더 기준으로
+  // 접혀 있어 위 한 줄만으로는 그 행이 어느 뿌리로 지어졌는지 안 보인다.
+  await expect(page.getByText("~/.atelier/works/")).toHaveCount(0);
+
+  // 프로젝트 구획이 **없다** — 「아직 프로젝트가 없어요」라는 빈 구획도 아니다(US 27).
+  // 브랜치 행도 같은 이유로 없다: Room에는 그 개념이 없는데 코어는 이름을 준 채로 만들어진
+  // Room에 브랜치를 실어 보낼 수 있다.
+  await expect(page.getByText("프로젝트", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("아직 프로젝트가 없어요")).toHaveCount(0);
+  await expect(page.getByText("브랜치", { exact: true })).toHaveCount(0);
+
+  // 탭을 연 뒤에도 **프로젝트를 읽지 않는다.** 위 첫 검사는 마운트 시점만 보는데, 정보 탭의
+  // base 조회는 그 탭을 실제로 여는 사람 쪽에서 나갈 수도 있는 자리다.
+  // 인자가 붙어도 문다 — 근거는 위 검사의 주석과 같다.
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  expect(calls.filter((call) => call.startsWith("list_projects"))).toEqual([]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
 import { destinationTo, destinations } from "@/features/search/destinations";
-import { archiveRef, workDirRef } from "@/features/works/refs";
 import {
   ALL_MODES,
   destinationsOf,
@@ -237,12 +236,8 @@ describe("모드별 참조 접두사", () => {
     expect(refPrefixesOf("atelier").archive).not.toBe(refPrefixesOf("maison").archive);
   });
 
-  // 생성기 넷을 갈아 끼우는 것은 #186이고, 그때까지 `refs.ts`가 앞머리를 박아 둔 채다.
-  // 어긋난 채로 옮기면 Maison만 고쳤는데 Atelier 참조가 바뀌는 사고가 나므로, 옮기기 전에
-  // **지금 값과 같다**를 여기서 붙든다.
-  it("Atelier 접두사가 지금 참조 생성기의 것과 같다", () => {
-    const refs = refPrefixesOf("atelier");
-    expect(workDirRef("spec-search")).toBe(`${refs.work}spec-search/`);
-    expect(archiveRef("shipped-work", "record.md")).toBe(`${refs.archive}shipped-work/record.md`);
-  });
+  // 생성기 넷이 이 표를 실제로 읽는지는 여기서 안 잰다 — `refs.ts`가 표에서 앞머리를
+  // 꺼내 쓰게 된 뒤로(#186), 표에서 뽑아 조립한 기대값은 구현을 베껴 적은 것이라 앞머리가
+  // 통째로 뒤바뀌어도 초록으로 남는다. 완성된 참조는 `features/works/refs.test.ts`가
+  // **글자 그대로** 잰다.
 });
