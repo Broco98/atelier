@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 shell-registry.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { foldHookState } from "./agents";
@@ -31,14 +31,28 @@ const hook = (agent: string, event: string, payload: unknown = null): ShellHookS
   payload,
 });
 
+// **페이로드는 지어내지 않는다.** 아래 픽스처의 키는 전부 이 work의 정본 연구에서 그대로
+// 옮긴 것이고, 옆에 그 줄 번호를 단다 — 구현이 읽기로 한 키를 픽스처에 그대로 심으면
+// 「구현의 가정」을 재는 검사가 되어, 키가 틀려도 표가 통째로 초록이다.
+// 출처: `spec/research/claude-codex-first-party.md`의 B-2 표(claude) · B-1 표(codex).
 describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", () => {
   it.each([
-    ["UserPromptSubmit", { prompt: "고쳐 줘" }, "start", null],
-    ["PermissionRequest", { tool_name: "Bash", tool_input: { command: "git status" } }, "waiting", "Bash · git status"],
-    ["Elicitation", { message: "어느 쪽으로 할까요?" }, "waiting", "어느 쪽으로 할까요?"],
-    ["Stop", { last_assistant_message: "테스트 셋 통과\n커밋할까요?" }, "stop", "테스트 셋 통과"],
+    // B-2:158 `UserPromptSubmit` 고유 필드는 `prompt_text` 하나다.
+    ["UserPromptSubmit", { prompt_text: "고쳐 줘" }, "start", null],
+    // B-2:149 `tool_name`·`tool_input`·`tool_use_id`.
+    ["PermissionRequest", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_01" }, "waiting", "Bash · git status"],
+    // B-2:150 `mcp_server_name`·`message`·`mode`·`url`·`elicitation_id`·`requested_schema`.
+    ["Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", mode: "form", elicitation_id: "el_1" }, "waiting", "어느 쪽으로 할까요?"],
+    // B-2:152 `last_assistant_message`·`agent_id`·`agent_type`.
+    ["Stop", { last_assistant_message: "테스트 셋 통과\n커밋할까요?", agent_id: "a1", agent_type: "general" }, "stop", "테스트 셋 통과"],
+    // B-2:157 `SessionEnd`의 고유 필드는 **`session_end_reason`**이다 — `reason`이 아니다.
+    // 이 한 글자가 틀리면 `/clear` 줄이 실물에서 한 번도 안 서고, 방금 지운 화면에 초록이 뜬다.
+    ["SessionEnd", { session_end_reason: "clear" }, "clear", null],
+    ["SessionEnd", { session_end_reason: "logout" }, "end", null],
+    // **대체 키 `reason`도 살아 있는 길이다.** 실물을 아직 한 번도 안 봤으므로
+    // (`spec/훅-실물-확인.md`의 「확인 결과」) 문서 판이 갈렸을 때를 대비해 둘 다 읽는다.
+    // 재는 값이 문자열 `clear` 하나뿐이라 넓게 읽어 잃는 것이 없다.
     ["SessionEnd", { reason: "clear" }, "clear", null],
-    ["SessionEnd", { reason: "logout" }, "end", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("claude", event, payload))).toEqual({ event: canonical, message });
   });
@@ -69,18 +83,34 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
 
 describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () => {
   it.each([
-    ["UserPromptSubmit", { prompt: "고쳐 줘" }, "start", null],
-    ["PermissionRequest", { tool_name: "shell", tool_input: { command: "cargo test" } }, "waiting", "shell · cargo test"],
-    ["Stop", { last_assistant_message: "PR #174 열었다" }, "stop", "PR #174 열었다"],
-    ["SessionEnd", { reason: "exit" }, "end", null],
+    // B-1:324 codex의 `UserPromptSubmit` 고유 필드는 `permission_mode`다 — 프롬프트 본문이 없다.
+    ["UserPromptSubmit", { permission_mode: "default" }, "start", null],
+    // B-1:317 `turn_id`·`tool_name`·`tool_input`(+`tool_input.description`).
+    ["PermissionRequest", { turn_id: "t1", tool_name: "shell", tool_input: { command: "cargo test" } }, "waiting", "shell · cargo test"],
+    // B-1:318 `turn_id`·`stop_hook_active`·`last_assistant_message`.
+    ["Stop", { turn_id: "t1", stop_hook_active: false, last_assistant_message: "PR #174 열었다" }, "stop", "PR #174 열었다"],
+    // B-1:323 codex `SessionEnd`에는 **고유 필드가 없다**(`—`). 이유를 물을 것이 없으니 늘 끝이다.
+    ["SessionEnd", {}, "end", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("codex", event, payload))).toEqual({ event: canonical, message });
   });
 
+  // **`clear`는 claude 줄이다.** 스펙 전이 표는 `end` 줄에만 codex를 적고 `clear` 줄에서는
+  // 뺐다(구현 스펙 162~163줄) — 연구가 codex `SessionEnd`의 고유 필드를 `—`로 적었으니
+  // 이유를 실어 오는 길 자체가 없다. 그래도 이 갈래를 검사로 못박는 이유는, 이유가 실려 와도
+  // codex에서는 그것이 `clear`가 **안 되는** 것이 스펙의 읽기이기 때문이다.
+  it("codex의 `SessionEnd`는 이유가 `clear`여도 끝이다", () => {
+    expect(foldHookState(hook("codex", "SessionEnd", { session_end_reason: "clear" }))).toEqual({
+      event: "end",
+      message: null,
+    });
+  });
+
   // **`Interrupt`는 직전 말을 지우지 않는다**(전이 표). 사람이 esc로 끊은 것이라 방금까지
   // 하던 말이 곧 맥락이고, 그 자리를 비우면 둘째 줄이 이유 없이 빈다.
+  // B-1:321 고유 필드는 `turn_id`·`permission_mode`다.
   it("`Interrupt`는 멈추되 직전 말을 그대로 둔다", () => {
-    expect(foldHookState(hook("codex", "Interrupt", { reason: "user" }))).toEqual({
+    expect(foldHookState(hook("codex", "Interrupt", { turn_id: "t1", permission_mode: "default" }))).toEqual({
       event: "stop",
       message: null,
     });
@@ -104,18 +134,22 @@ const 직전 = {
 } as const;
 
 describe("전이 표", () => {
+  // 여기 실린 페이로드도 **연구 표의 키 그대로**다(위 어댑터 표와 같은 규율). 이 줄들이
+  // 실물과 다른 모양 위에 서면 전이 표 전체가 「구현이 읽기로 한 키」를 재게 된다.
   it.each([
-    ["claude", "UserPromptSubmit", { prompt: "고쳐" }, "working", "직전에 하던 말"],
-    ["codex", "UserPromptSubmit", { prompt: "고쳐" }, "working", "직전에 하던 말"],
-    ["claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" } }, "waiting", "Bash · git push"],
-    ["codex", "PermissionRequest", { tool_name: "shell", tool_input: { command: "rm -rf ." } }, "waiting", "shell · rm -rf ."],
-    ["claude", "Elicitation", { message: "어느 쪽으로 할까요?" }, "waiting", "어느 쪽으로 할까요?"],
-    ["claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?" }, "waiting", "테스트 셋 통과 — 커밋할까요?"],
-    ["codex", "Stop", { last_assistant_message: "PR #174 열었다" }, "waiting", "PR #174 열었다"],
-    ["codex", "Interrupt", { reason: "user" }, "waiting", "직전에 하던 말"],
-    ["claude", "SessionEnd", { reason: "logout" }, "done", "직전에 하던 말"],
-    ["codex", "SessionEnd", { reason: "exit" }, "done", "직전에 하던 말"],
-    ["claude", "SessionEnd", { reason: "clear" }, "working", null],
+    ["claude", "UserPromptSubmit", { prompt_text: "고쳐" }, "working", "직전에 하던 말"],
+    ["codex", "UserPromptSubmit", { permission_mode: "default" }, "working", "직전에 하던 말"],
+    ["claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" }, tool_use_id: "toolu_02" }, "waiting", "Bash · git push"],
+    ["codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }, "waiting", "shell · rm -rf ."],
+    ["claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", elicitation_id: "el_2" }, "waiting", "어느 쪽으로 할까요?"],
+    ["claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?", agent_id: "a2" }, "waiting", "테스트 셋 통과 — 커밋할까요?"],
+    ["codex", "Stop", { turn_id: "t2", last_assistant_message: "PR #174 열었다" }, "waiting", "PR #174 열었다"],
+    ["codex", "Interrupt", { turn_id: "t2", permission_mode: "default" }, "waiting", "직전에 하던 말"],
+    ["claude", "SessionEnd", { session_end_reason: "logout" }, "done", "직전에 하던 말"],
+    // codex `SessionEnd`는 고유 필드가 없다 — 빈 페이로드가 실물의 모양이다.
+    ["codex", "SessionEnd", {}, "done", "직전에 하던 말"],
+    // **`clear` 줄**. 스펙 전이 표에서 이 줄은 claude 전용이고, 실물 키는 `session_end_reason`이다.
+    ["claude", "SessionEnd", { session_end_reason: "clear" }, "working", null],
   ] as const)("%s %s → %s", (agent, event, payload, kind, message) => {
     expect(nextAttention(직전, hook(agent, event, payload))).toEqual({
       kind,
@@ -128,7 +162,7 @@ describe("전이 표", () => {
 
   // 훅이 처음 오는 셸에는 직전이 없다. 「직전 유지」가 그때 무엇이 되는지가 이 줄이다.
   it("직전이 없으면 「직전 유지」는 없음이다", () => {
-    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }))).toEqual({
+    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt_text: "고쳐" }))).toEqual({
       kind: "working",
       message: null,
       since: 10,
@@ -160,7 +194,9 @@ describe("전이 표", () => {
   // 삼켜짐」이 그대로 난다 — 끝난 셸을 한 번 보고 나면 그 뒤 진짜 완료가 영영 안 뜬다.
   it("에이전트가 새로 말하면 「봤다」가 풀린다", () => {
     const 본것 = { ...직전, kind: "done", seen: true } as const;
-    expect(nextAttention(본것, hook("claude", "SessionEnd", { reason: "logout" }))?.seen).toBe(false);
+    expect(nextAttention(본것, hook("claude", "SessionEnd", { session_end_reason: "logout" }))?.seen).toBe(
+      false,
+    );
   });
 });
 
@@ -397,4 +433,36 @@ describe("셸 ID에서 pty 번호를 되뽑는다", () => {
       expect(ptyIdOf(shellId)).toBeNull();
     },
   );
+});
+
+// **`shell.attention`을 직접 만지는 파일은 셋뿐이다.**
+//
+// 죽은 칸을 가리는 자리를 「눕히는 쪽」이 아니라 **읽는 쪽**(`attentionOn`)에 둔 것이 이
+// 판의 선택이다(구현 결정 1의 문구는 「눕힌다」인데 `runningOn`과 같은 이유로 가리는 쪽을
+// 골랐다 — 늦게 도착한 훅 이벤트까지 같은 문에서 막힌다). 그 선택이 성립하려면 **읽는 쪽이
+// 늘 그 문을 딛어야** 하는데, 지금까지 그것을 지키는 것은 `attentionOn`의 주석 한 줄뿐이었다.
+// 이 값을 읽을 자리 넷이 아직 안 붙었고(#203 레인 · #204 띠 · #205 탭 · #206 알림), 그중
+// 하나가 `shell.attention`을 직접 읽으면 **죽은 칸이 사람을 영영 부른다.** 주석만이던 보장에
+// 검사를 건다.
+//
+// 파싱하지 않는다 — 파일 전체에서 문자열 하나를 세고, 나온 파일의 목록이 허용 목록과
+// **정확히 같은지**를 본다. 「적어도 셋에 있다」가 아니라 「이 셋뿐이다」라서, 필드 이름이
+// 바뀌어 스캔이 통째로 헛돌면 그것도 여기서 터진다(fail-closed).
+const 상태값을만지는파일 = [
+  // 쓰는 자리. `setAttention`이 칸에 앉히고 `markSeen`이 「봤다」를 세운다.
+  "features/terminal/shell-registry.ts",
+  // 가리는 자리. `attentionOn`이 죽은 칸을 여기서 끊는다.
+  "features/terminal/shell-attention.ts",
+  // 잇는 자리. 직전 값을 `nextAttention`에 넘긴다 — 화면이 아니라 리듀서의 입력이다.
+  "features/terminal/terminal-store.ts",
+];
+
+it("상태 값을 직접 만지는 파일은 셋뿐이다 — 나머지는 `attentionOn`을 딛는다", () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const 만지는것 = readdirSync(root, { recursive: true, encoding: "utf8" })
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+    .map((file) => file.split("\\").join("/"))
+    .filter((file) => readFileSync(root + file, "utf8").includes(".attention"));
+
+  expect(만지는것.sort()).toEqual([...상태값을만지는파일].sort());
 });

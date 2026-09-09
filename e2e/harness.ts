@@ -360,6 +360,15 @@ export async function openShell(page: Page): Promise<void> {
  * `ptyId`로 고르는 규칙은 `markRunning`과 같다** — 픽스처가 세는 것은 `pty_spawn`이 불린
  * 순서라, 칸마다 응답을 기다려 세우는 `openShell`을 써야 그 수가 「n번째 칸」과 같아진다.
  *
+ * **구독 말고 하나를 더 기다린다: 그 pty가 앉았는가.** 값이 칸에 닿으려면 `shellOfPty(ptyId)`가
+ * 그 번호를 알아야 하는데, 칸이 화면에 서는 순간과 그 칸이 pty를 갖는 순간은 다른 순간이라
+ * (`awaitSpawned`의 독 — 2026-09-09 실측으로 병렬 l3 세 번에 두 번 그 사이가 벌어졌다) 그 앞에
+ * 쏘면 값이 **조용히 버려진다.** 저쪽 `markRunning`은 멱등해서 다시 쏘아 메우지만 이쪽은
+ * 일부러 한 번만 쏘므로 재시도가 그 창을 못 메운다 — 기다리는 것 말고 길이 없다. 그 규율을
+ * 부르는 쪽에 넘겨 뒀더니 유일한 호출자가 안 지켰다. 여기서 기다리면 「전이를 여러 번 쏘지
+ * 않는다」와도 안 부딪힌다: `awaitSpawned`는 아무것도 쏘지 않고 착석만 본다. `ptyId`가 곧
+ * 「n번째로 spawn 응답을 받은 셸」이라 기다릴 수도 그 수 그대로다.
+ *
  * `state`에 `null`을 주면 「그 셸의 상태가 사라졌다」(파일이 지워졌다)를 흉내 낸다.
  */
 export async function markAttention(
@@ -367,6 +376,8 @@ export async function markAttention(
   state: { agent: string; event: string; at?: number; payload?: unknown } | null,
   ptyId = 1,
 ): Promise<void> {
+  await awaitSpawned(page, ptyId);
+
   let handler: string | undefined;
   for (let tries = 0; tries < 50 && !handler; tries += 1) {
     const calls = (await readIpcRecord(page))?.calls ?? [];

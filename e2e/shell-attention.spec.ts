@@ -38,8 +38,10 @@ const firesOf = (page: import("./evidence").Page) =>
 test("셸이 말한 것을 심는 손잡이가 전이를 한 번만 쏜다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?tab=terminal`);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
+  // **칸이 선 것을 여기서 안 기다린다** — `markAttention`이 spawn **응답**까지 기다린다.
+  // 칸이 서는 순간과 그 칸이 pty를 갖는 순간은 다른 순간이라, 칸만 세고 쏘면 값이 조용히
+  // 버려진 채로 이 검사가 초록이 된다(`harness.ts`의 `markAttention` 독).
   await watchFires(page);
   await markAttention(page, { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } });
 
@@ -55,7 +57,6 @@ test("셸이 말한 것을 심는 손잡이가 전이를 한 번만 쏜다", asy
 test("구독이 없으면 손잡이가 던진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${work.slug}?tab=terminal`);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
 
   // 걸린 뒤에 지운다 — 지우기 전에 구독이 있었다는 것까지 이 검사가 딛는다.
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });

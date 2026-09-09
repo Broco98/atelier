@@ -1,5 +1,5 @@
 import type { ShellHookState } from "../types";
-import { firstLine, permissionLine, sessionEnd, stringAt } from "./payload";
+import { firstLine, permissionLine, stringAt } from "./payload";
 import type { AgentAdapter, AgentSignal } from "./types";
 
 /**
@@ -24,7 +24,11 @@ export const codex: AgentAdapter = {
         // 그대로 맥락이라 message는 직전 것을 둔다(전이 표).
         return { event: "stop", message: null };
       case "SessionEnd":
-        return { event: sessionEnd(payload), message: null };
+        // **이유를 안 묻는다** — 스펙 전이 표의 `clear` 줄은 claude 전용이고, 연구도 codex
+        // `SessionEnd`의 고유 페이로드 필드를 `—`(없음)로 적는다(B-1 표). 물을 것이 없는
+        // 자리에서 물으면, 언젠가 codex가 다른 뜻으로 `reason`을 실었을 때 그것이 조용히
+        // 「세션이 이어진다」로 읽힌다. claude 쪽 규칙은 `payload.ts`의 `sessionEnd`다.
+        return { event: "end", message: null };
       default:
         return null;
     }

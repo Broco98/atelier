@@ -1764,19 +1764,39 @@ describe("「봤다」가 그 칸에 앉는다", () => {
 // 통로를 못박고, 이 검사는 그 통로 끝이 상태 축에 이어졌는지를 본다 — 구독만 걸려 있고
 // 앉히지 않으면 훅을 걸어도 화면이 영영 조용하고, 그때 빨개지는 검사가 하나도 없다.
 describe("셸이 말한 것이 상태 축까지 온다", () => {
-  it("받은 것을 어댑터로 접어 그 칸에 앉힌다", () => {
+  /**
+   * 구독 콜백 한 덩이만 떼어 온다. **못 떼면 그 자리에서 터진다** — 표식이 사라졌는데 빈
+   * 조각을 세면 아래 셈이 전부 0이 되어, 배선이 통째로 없어져도 조용히 지나간다.
+   */
+  const 콜백 = () => {
     const store = read("./terminal-store.ts");
-    expect(store).toContain("const ptyId = ptyIdOf(one.shellId);");
-    expect(store).toContain("next = setAttention(next, id, nextAttention(prev, one.state));");
-  });
+    const 시작 = store.indexOf("void onShellAttention(");
+    expect(시작, "onShellAttention 구독이 terminal-store에 없다").toBeGreaterThan(-1);
+    const 끝 = store.indexOf("}).catch(", 시작);
+    expect(끝, "onShellAttention 구독의 끝을 못 찾았다").toBeGreaterThan(시작);
+    return store.slice(시작, 끝);
+  };
+
+  // **구현 문장을 통째로 베끼지 않는다.** 예전에는 이 자리가 `const ptyId = ptyIdOf(...)` 같은
+  // 한 줄을 글자 그대로 못박았는데, 그러면 `one`을 `entry`로 바꾸는 것처럼 **동작을 하나도 안
+  // 바꾸는 변경에 빨개지고** 정작 진짜 갈림은 문자열 밖이라 안 잡힌다. 여기서 재는 것은
+  // 「거쳐야 하는 자리를 다 거쳤는가」다 — 셸 ID를 번호로 되뽑고(`ptyIdOf`), 그 번호로 칸을
+  // 찾고(`shellOfPty`), 어댑터로 접어(`nextAttention`) 그 칸에 앉힌다(`setAttention`).
+  //
+  // **못 재는 것**: 값이 실제로 그 칸에 앉는가. 이 판에는 그 값을 읽는 화면이 아직 없어서
+  // (#203~#206) 어느 층에서도 못 본다 — L3 하네스도 「전이를 쐈다」까지만 본다. #203이 화면을
+  // 세우는 순간 그 층에서 재고, 그때까지 이 검사가 지키는 것은 통로의 모양뿐이다.
+  it.each(["ptyIdOf(", "shellOfPty(", "nextAttention(", "setAttention("])(
+    "받은 것이 %s를 거쳐 그 칸에 앉는다",
+    (자리) => {
+      expect(countOf(콜백(), 자리), `${자리} — 거쳐야 하는 자리다`).toBe(1);
+    },
+  );
 
   // `onPtyRunning`과 **같은 한 번의 `setState`**다. 회차마다 여러 셸이 실려 오는데 칸마다
   // 부르면 그 수만큼 구독자가 깨어난다.
   it("회차 하나를 setState 한 번으로 끝낸다", () => {
-    const store = read("./terminal-store.ts");
-    const 구독 = store.slice(store.indexOf("void onShellAttention("));
-    const 콜백 = 구독.slice(0, 구독.indexOf("}).catch("));
-    expect(countOf(콜백, "terminalStore.setState(")).toBe(1);
+    expect(countOf(콜백(), "terminalStore.setState(")).toBe(1);
   });
 });
 
