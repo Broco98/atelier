@@ -75,6 +75,26 @@ const speedOf = async (box: Locator) => {
 /** 넘친 폭. 0보다 커야 흐를 것이 있다. */
 const overflowOf = (box: Locator) => box.evaluate((el) => el.scrollWidth - el.clientWidth);
 
+/** 사이드바를 `px`만큼 **좁힌다.**
+ *
+ * 폭 핸들은 사이드바의 오른쪽 가장자리에 얹힌 5px 띠다. work 화면에는 작업 패널에도 같은
+ * 핸들이 있으므로(aside 둘) 구획 헤더를 든 쪽으로 고른다 — 그것이 사이드바다. 이 여섯 줄이
+ * 한때 이 파일 두 자리에 복사로 있었는데, 핸들 규격이 바뀌는 날 고칠 자리가 둘이 된다. */
+const 좁힌다 = async (page: Page, px: number) => {
+  const sidebar = page
+    .locator("aside")
+    .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
+  const box = await sidebar
+    .locator('[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]')
+    .boundingBox();
+  if (!box) throw new Error("사이드바 폭 핸들의 상자를 못 읽었다");
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - px, y, { steps: 5 });
+  await page.mouse.up();
+};
+
 test("핀은 hover에만 뜨고, 누르면 그 사실이 백엔드로 나간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/projects");
@@ -91,6 +111,10 @@ test("핀은 hover에만 뜨고, 누르면 그 사실이 백엔드로 나간다"
   expect((await readIpcRecord(page))?.calls).toContain(
     `set_work_pinned {"slug":"${plainWork.slug}","pinned":true}`,
   );
+  // **핀은 그 work를 열지 않는다.** 행 전체가 눌리게 되면서(아래 검사) 이 버튼의 클릭도
+  // 행 상자로 올라갈 수 있게 됐다 — 끊는 것이 `stopPropagation` 한 줄이고, 그것이 빠지면
+  // 핀을 누를 때마다 화면이 그 work로 넘어간다.
+  await expect(page).toHaveURL(/\/projects/);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -159,6 +183,31 @@ test("남의 work 행을 누르면 그 work의 마지막 자리가 열린다", a
   await page.getByRole("button", { name: plainWork.title, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
   await expect(page).toHaveURL(/tab=terminal/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **행의 아래쪽을 눌러도 그 work로 간다.** 행이 두 줄(55px)이 되면서 이 자리에 처음으로
+// 「배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리」가 날 수 있게 됐다: 이름 버튼이 첫 줄
+// 26px만 덮으면 아래 29px이 어느 버튼에도 안 속하는데, 배경(선택·hover)은 55px 전체에
+// 깔린다. `SidebarWorkList.tsx`가 두 자리에서 금지 사유로 드는 모양이 바로 그것이고
+// (행 상자 주석 · 이름 버튼 주석), 게다가 그 29px은 프로젝트 이름·종류·수가 실리는
+// **내용이 있는 줄**이라 사람이 가장 누르기 쉬운 자리다 — 행의 절반 이상이 그렇게 되는 것은
+// 판 05에는 없던 회귀다(그때는 이름 버튼이 `h-8`로 행 전체를 덮었다).
+//
+// **이 층에서만 보인다** — 좌표로 눌러야 나고, 정적 마크업에는 클릭도 픽셀도 없다.
+test("행의 둘째 줄을 눌러도 그 work로 간다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+
+  const 행 = page.getByRole("button", { name: pinnedWork.title, exact: true }).locator("xpath=..");
+  const box = (await 행.boundingBox())!;
+  // 행 55px 중 아래 29px이 둘째 줄이다 — 그 한가운데를 누른다. 위 14px은 여전히 이름
+  // 버튼이므로, 이 좌표가 아니면 이 검사는 아무것도 새로 재지 않는다.
+  expect(box.height).toBe(55);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 14);
+
+  await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -427,22 +476,53 @@ const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
     ),
   );
 
-test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 라이트·다크 둘 다", async ({
+test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 두 갈래, 라이트·다크", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  await page.goto("/projects");
+  // **셸이 있는 행과 없는 행을 함께 본다.** 둘째 줄은 갈래가 둘이고(종류·수 / 프로젝트
+  // 이름) 색을 정하는 자리도 둘이다 — `SidebarWorkList.tsx`의 상자가 바닥을 깔고,
+  // `ShellMeta` 안쪽이 그 위에서 자기 색을 다시 고른다. 프로젝트 갈래만 재면 **가장 자주
+  // 서는 갈래**가 통째로 안 재어진 채 남는다: 셸은 열려 있는데 우리가 아는 것은 안 도는
+  // 상태가 이 목록의 기본값이고(`shell-meta.tsx`), 그 행의 둘째 줄에 서는 것은 `⌨ N`뿐이다.
+  // 셸이 서는 것은 work 화면뿐이라(`ensureShell`) 여기로 들어온다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const 줄 = page.locator(`[data-subrow="${pinnedWork.slug}"]`);
+  // work 화면은 aside가 둘이다(사이드바 · 작업 패널) — 구획 헤더를 든 쪽이 사이드바다.
+  const aside = page
+    .locator("aside")
+    .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
+  const 프로젝트 = page.locator(`[data-subrow="${pinnedWork.slug}"]`);
   // 먼저 잴 것이 실제로 서 있는가 — 빈 줄의 색을 재도 수는 나온다.
-  await expect(줄).toHaveText(pinnedWork.projects.join(" · "));
+  await expect(프로젝트).toHaveText(pinnedWork.projects.join(" · "));
+  // 셸 갈래에서 **글리프를 실제로 칠하는 자리**는 무리 상자다(바깥 상자의 색을 무리가 다시
+  // 덮는다). 무리가 하나임을 먼저 세어 두면 구조가 바뀌는 날 이 검사가 엉뚱한 상자를
+  // 재면서 조용히 초록이 되지 않는다.
+  const 무리 = page.locator(`[data-shells="${plainWork.slug}"] > span > span`);
+  await expect(무리).toHaveCount(1);
 
-  expect(await 대비를잰다(page, 줄, page.locator("aside"))).toBeGreaterThanOrEqual(4.5);
+  const 배경색 = () => aside.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const 잰다 = async () => ({
+    프로젝트: await 대비를잰다(page, 프로젝트, aside),
+    무리: await 대비를잰다(page, 무리, aside),
+  });
+
+  const 라이트 = await 배경색();
+  for (const [자리, 수] of Object.entries(await 잰다())) {
+    expect(수, `라이트 · ${자리}`).toBeGreaterThanOrEqual(4.5);
+  }
 
   // 다크 팔레트. 앱에 아직 켜는 손잡이가 없어 클래스를 손으로 붙인다 — `index.css`의
   // `.dark` 블록이 곧 그 팔레트의 정본이다.
   await page.evaluate(() => document.documentElement.classList.add("dark"));
-  expect(await 대비를잰다(page, 줄, page.locator("aside"))).toBeGreaterThanOrEqual(4.5);
+  // **팔레트가 정말 바뀌었는지를 먼저 센다.** `.dark`가 안 먹으면(선택자가 바뀌거나 토큰이
+  // 다른 자리로 옮겨 가면) 아래가 라이트 값을 다시 재는데, 라이트는 이미 4.5를 넘으므로
+  // **조용히 초록**이 된다 — 이 저장소가 금지하는 fail-open이고, 손잡이가 생기는 날
+  // 「이 줄이 그 팔레트를 이미 지키고 있었다」는 말이 그때 처음 거짓으로 드러난다.
+  expect(await 배경색()).not.toBe(라이트);
+  for (const [자리, 수] of Object.entries(await 잰다())) {
+    expect(수, `다크 · ${자리}`).toBeGreaterThanOrEqual(4.5);
+  }
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -471,12 +551,17 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
 
   const shells = page.locator(`[data-shells="${plainWork.slug}"]`);
   const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
-  const lane = page.locator(`[data-subrow="${plainWork.slug}"]`).locator("xpath=..").locator("[data-lane]");
+  const lane = subrow.locator("xpath=..").locator("[data-lane]");
   const pin = page.getByRole("button", { name: `${plainWork.title} 고정` });
   const title = page.getByRole("button", { name: plainWork.title, exact: true });
   await expect(shells).toHaveCount(1);
   await expect(pin).toHaveCSS("opacity", "0");
   const 평소 = (await title.boundingBox())!.width;
+  // **둘째 줄 폭은 쉴 때 찍는다.** 한때 이 줄이 `title.hover()` **뒤에** 있었는데, 그러면
+  // 같은 상태의 같은 값을 두 번 재는 것이라 아래 단언이 **무조건** 초록이었다 —
+  // `col-span-2`를 `col-start-1`로 바꾸는 뮤테이션이 그대로 통과한다(그때는 이 값 자체가
+  // 이미 좁아진 값으로 잡힌다).
+  const 줄폭 = (await subrow.boundingBox())!.width;
 
   // **핀에 포커스가 가도 레인과 둘째 줄은 그대로다.** 판 05에서는 이 자리에서 메타가
   // `opacity: 0`이 됐다(`peer-focus-visible:opacity-0`). 그 규칙이 남아 있으면 여기가 빨개진다.
@@ -490,15 +575,15 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
   await expect(pin).toHaveCSS("opacity", "1");
   await expect(subrow).toHaveCSS("opacity", "1");
   await expect(lane).toHaveCSS("opacity", "1");
-  // **둘째 줄은 폭도 안 변한다** — 두 칸을 다 쓰므로 핀 아래를 지나간다. 1열에만 두면
-  // 여기가 24px 좁아져 프로젝트 이름이 hover마다 잘렸다 폈다 한다.
-  const 줄폭 = (await subrow.boundingBox())!.width;
 
   // **제목만 핀만큼 줄어든다 — 셸이 있든 없든 같다.** 판 05에서는 메타(27.91px)가 이미 선
   // 행이 안 움직이고 셸 0개인 행만 24px 줄었는데, 그 갈림이 곧 「셸이 붙고 떨어질 때 제목이
   // 끊기는 자리가 뛴다」의 다른 쪽 얼굴이었다.
   const 핀상자 = (await pin.boundingBox())!;
   expect((await title.boundingBox())!.width).toBe(평소 - 핀상자.width);
+  // **둘째 줄만은 폭이 안 변한다** — 두 칸을 다 쓰므로 핀 아래를 지나간다(`col-span-2`).
+  // 1열에만 두면 여기가 24px 좁아져 프로젝트 이름이 hover마다 잘렸다 폈다 한다. 비교할
+  // 값은 hover **전에** 찍은 것이라야 한다(위 주석).
   expect((await subrow.boundingBox())!.width).toBe(줄폭);
 
   // **핀은 첫 줄 글자와 눈높이가 맞는다.** 격자 1행이 위 8px 여백까지 안고 있어, 아무것도
@@ -527,10 +612,13 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
   };
   expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
 
-  // **핀이 글자를 안 덮는다.** 격자 밖에 세우면 hover 밀림은 0이지만 칸이 핀을 몰라 제목
-  // 상자가 핀 아래까지 뻗고, 페이드 띠와 글리프가 같은 자리에 겹쳐 끝 글자가 뭉개진다.
+  // **핀이 글자를 안 덮는다 — 그리고 그 앞까지는 제목의 것이다.** 격자 밖에 세우면 hover
+  // 밀림은 0이지만 칸이 핀을 몰라 제목 상자가 핀 아래까지 뻗고, 페이드 띠와 글리프가 같은
+  // 자리에 겹쳐 끝 글자가 뭉개진다. 반대로 이름 버튼이 자기 오른쪽 여백을 다시 물면
+  // (판 05의 `pr-1.5`) 우 여백이 행의 10에 더해져 **16**이 되고, 셸이 없는 행의 제목이
+  // 판 05보다 좁아진다 — 스토리 25가 넓히라고 한 그 자리다. 둘 다 이 한 줄이 잡는다.
   const 빈행제목상자 = (await 빈행제목.locator("[data-title]").boundingBox())!;
-  expect(빈행제목상자.x + 빈행제목상자.width).toBeLessThanOrEqual(빈행핀상자.x);
+  expect(빈행제목상자.x + 빈행제목상자.width).toBeCloseTo(빈행핀상자.x, 1);
 
   await title.hover();
   // **둘째 줄이 핀의 클릭을 가로채면 안 된다** — 그 줄은 핀 아래를 지나간다.
@@ -570,19 +658,7 @@ test("사이드바를 좁히면 제목과 둘째 줄이 잘리고 레인은 그�
   // 초록이 된다.
   expect(앞.셸행.레인).toBe(14);
 
-  // 폭 핸들은 사이드바의 **오른쪽 가장자리**에 얹힌 5px 띠다. work 화면에는 작업 패널에도
-  // 같은 핸들이 있으므로(aside 둘) 구획 헤더를 들고 있는 쪽으로 좁힌다 — 그것이 사이드바다.
-  const sidebar = page
-    .locator("aside")
-    .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
-  const box = (await sidebar
-    .locator('[title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]')
-    .boundingBox())!;
-  const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + box.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 - 40, y, { steps: 5 });
-  await page.mouse.up();
+  await 좁힌다(page, 40);
 
   const 뒤 = { 셸행: await 잰다(plainWork), 빈행: await 잰다(pinnedWork) };
   // 실제로 좁아졌는가 — 이것이 없으면 아래 전부가 「끌지도 못했다」를 초록으로 읽는다.
@@ -715,15 +791,7 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
   const 긴제목 = titleBoxOf(page, pinnedWork.title);
   const 처음넘침 = await overflowOf(긴제목);
 
-  // 폭 핸들은 사이드바의 **오른쪽 가장자리**에 얹힌 5px 띠다 — 좌표는 그 상자에서 읽는다.
-  const handle = page.locator('aside [title="드래그로 폭 조절 · 더블클릭으로 기본 폭"]');
-  const box = await handle.boundingBox();
-  if (!box) throw new Error("사이드바 폭 핸들의 상자를 못 읽었다");
-  const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + box.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 - 30, y, { steps: 5 });
-  await page.mouse.up();
+  await 좁힌다(page, 30);
 
   // 좁아진 만큼 넘침이 늘었다 — 이것이 안 서면 아래는 「끌지도 못했다」를 초록으로 읽는다.
   const 좁힌뒤 = await overflowOf(긴제목);

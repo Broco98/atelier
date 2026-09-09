@@ -67,6 +67,11 @@ export function ShellMeta({
   const others = Math.max(0, shellCount - marked);
 
   return (
+    // **바깥의 `text-tertiary`는 이제 아무 글자도 안 칠한다 — 그래도 남긴다.** 무리 둘이
+    // 각자 한 단 올린 색을 들므로(아래) 이 값은 덮이기만 하는데, 덮이는 그 순간이 곧 이
+    // 자리의 그물이다: 어느 무리가 자기 색을 잃으면 글자가 곧장 tertiary로 떨어져 work 행
+    // 둘째 줄의 대비 검사(L3)가 빨개진다. 지우면 그때 색이 부모의 것(둘 다
+    // `muted-foreground`)으로 조용히 대체돼 **그 검사가 아무것도 못 잡는다.**
     <span className="flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px] text-tertiary">
       {[...marks].map(([kind, { mark, count }]) => (
         // 이름은 **눈이 아니라 접근성으로만** 읽는다 — 좁은 사이드바에서 이름까지 적으면
@@ -90,9 +95,16 @@ export function ShellMeta({
       ))}
       {/* 「셸은 열려 있는데 우리가 아는 것은 안 돈다」 — 이 목록의 기본값이고, ⌘W로 닫을
           셸을 찾던 길이 그 자리에 그대로 남는다. 글리프는 셸 탭이 이름을 숨기는 폭에서
-          세우는 것과 같다(결정 20·4) — 두 자리가 같은 규칙을 쓰는 것이 「통일성」이다. */}
+          세우는 것과 같다(결정 20·4) — 두 자리가 같은 규칙을 쓰는 것이 「통일성」이다.
+
+          **색도 마크 무리와 같이 한 단 올린다.** 위 무리가 tertiary를 안 쓰는 근거(로고는
+          이 자리가 있는 이유다)가 이 글리프에도 그대로 걸리는데, 여기만 바깥의 tertiary를
+          물려받아 사이드바 배경에서 ≈3.0이었다. 그 값이 **가장 자주 서는 무리**의 값이라
+          (바로 위 문장이 「이 목록의 기본값」이라 부른다) work 행 둘째 줄이 통째로 3.0으로
+          서던 자리다 — 이 판이 시작된 말이 「이 한 줄이 가독성이 안 좋다」였으니 자리만
+          옮기고 이 갈래를 두고 오면 답이 안 된다. 두 갈래의 대비를 L3가 계산해 잰다. */}
       {others > 0 && (
-        <span className="flex shrink-0 items-center gap-1">
+        <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
           <SquareTerminal className="size-3 shrink-0" strokeWidth={1.8} />
           <span className="tabular-nums">{others}</span>
         </span>

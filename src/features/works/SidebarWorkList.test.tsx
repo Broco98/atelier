@@ -46,7 +46,7 @@ function render(
   {
     selectedSlug = null,
     shellCounts = {},
-    // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
+    // 둘째 줄의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
     // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
@@ -116,6 +116,13 @@ const rowsBySection = (markup: string) =>
 // **둘째 줄** 상자들 — 행마다 하나씩이다(이 판 결정 4). 표식이 슬러그를 들고 있어야
 // 「어느 행의 줄인가」가 나온다: 마크업 전체에서 글자를 세면 다른 행의 줄과 섞여, 줄이
 // 엉뚱한 work에 서도 초록이 된다.
+//
+// **이 하나만 자리로 이름 붙는다.** 아래 `data-shells`가 적는 규칙은 「표식은 그 자리에
+// 있는 것의 이름이다」인데(`data-branch`·`data-section`), 이 줄은 **싣는 것이 갈린다** —
+// 셸이 있으면 종류·수, 없으면 프로젝트 이름, 티켓 06부터는 셸의 마지막 말과 경과. 있는
+// 것으로 이름을 붙이면 그 이름이 세 갈래 중 둘에게 거짓이 되므로, 여기서만 **자리**가
+// 이름이다. 판 05가 걷은 옛 `data-subrow`와 글자가 같지만 가리키는 것이 다르다: 그때는
+// 행 아래에 딸리던 별개의 줄이었고, 지금은 행 안의 둘째 트랙이다.
 //
 // **끝을 세어서 자른다.** 이 상자 안에는 `<div>`가 하나 더 들 수 있어(셸 메타 상자) 첫
 // `</div>`로 끊으면 셸이 있는 행에서 절반만 잘린다 — 그런 검사는 조용히 샌다.
@@ -416,6 +423,17 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     const [가] = subrowsOf(render(works("가@billing")));
     expect(가.html).toContain("text-muted-foreground");
     expect(가.html).not.toContain("text-tertiary");
+  });
+
+  it("둘째 줄은 **두 칸을 다 쓴다**(`col-span-2`) — 핀이 떠도 폭이 안 변한다", () => {
+    // 2열에는 핀이 서지만 그것은 1행뿐이라, 두 칸을 다 쓰는 이 줄은 **핀 아래를 지나간다.**
+    // 1열에만 두면(`col-start-1`) 핀이 뜰 때마다 이 줄이 24px 좁아져 프로젝트 이름이
+    // hover마다 잘렸다 폈다 한다. 실측은 L3가 하지만(hover 전후의 폭) 그 층이 없는
+    // 자리에서도 이 불변조건이 값싸게 고정돼 있어야 한다 — 클래스 하나로 뒤집히는 값이다.
+    for (const 줄 of subrowsOf(render(works("가@billing", "나"), ALL, { shellCounts: { 가: 1 } }))) {
+      expect(줄.html).toContain("col-span-2");
+      expect(줄.html).not.toContain("col-start-1");
+    }
   });
 
   it("이름 버튼은 여전히 **행 상자의 직계 자식**이다", () => {
