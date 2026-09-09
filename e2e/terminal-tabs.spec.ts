@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { installFixtureBackend, markRunning, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, markRunning, openShell, unknownIpcCalls } from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
 // 것 둘이다**: 키 이벤트(정적 마크업 seam에는 이벤트가 없어 이펙트가 아예 안 돈다)와,
@@ -122,38 +122,19 @@ async function rowOf(page: Page): Promise<Row> {
 }
 
 /**
- * spawn **응답**을 받은 칸들. 이름이 픽스처의 것으로 바뀐 순간이 곧 pty가 앉은 순간이라는
- * 것은 `harness`의 `awaitSpawned`가 든 근거 그대로다.
- *
- * **그런데 그쪽 함수를 이 파일에서는 못 쓴다.** 그것은 닫기 버튼을 **역할과 이름으로** 집는데,
- * 이 줄에서 닫기는 칸이 88px 아래로 눌리면 꺼진 칸부터 `display:none`으로 접힌다(결정 20) —
- * 상한까지 채우면 여덟 중 켜진 하나만 남아 「응답이 하나만 왔다」로 읽힌다. 속성 선택자는
- * 접혀도 남는 DOM을 세므로 이 줄의 폭과 무관하다.
- */
-const spawnedTabs = (page: Page) =>
-  page.locator(`[data-tab="shell"] button[aria-label$="${SHELL_NAME} 닫기"]`);
-
-/**
  * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
  *
- * **칸마다 spawn 응답까지 기다린다.** 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
+ * 칸은 `openShell`로 **하나씩** 연다 — 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
  * (`awaitSpawned`의 머리말), 안 기다리면 여덟 번의 왕복이 서로 겹쳐 **몇 번째 칸이 몇 번
  * pty를 받았는지가 실행마다 갈린다.** 픽스처가 부른 순서대로 id를 주기 시작한 뒤로
- * (`FIXTURE_SEQUENCED`) 그 순서가 이 파일의 전제가 됐다 — 「둘째 칸 = pty 2」를 딛는 검사가
- * 아래 있다.
+ * (`FIXTURE_INCREMENTING_KEYS`) 그 순서가 이 판의 전제가 됐다.
  */
 async function fillToCap(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   // 이미 몇 칸이 서 있어도 상관없이 상한까지 채운다 — 부르는 자리마다 시작 칸 수가 다르다.
   await tabs.first().waitFor();
-  const plus = page.locator('[data-tab="new"]');
-  for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) {
-    await expect(spawnedTabs(page)).toHaveCount(n);
-    await plus.click();
-    await expect(tabs).toHaveCount(n + 1);
-  }
-  await expect(spawnedTabs(page)).toHaveCount(MAX_SHELLS);
-  await expect(plus).toHaveAttribute("aria-disabled", "true");
+  for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) await openShell(page);
+  await expect(page.locator('[data-tab="new"]')).toHaveAttribute("aria-disabled", "true");
 }
 
 test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", async ({ page }) => {
@@ -305,29 +286,62 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
 //
 // **재는 자리가 탭 줄인 것은 「어느 셸인가」가 화면에 드러나는 자리가 여기뿐이라서다.**
 // 사이드바 메타는 줄 전체로 말하고(`runningAgentsOf` — 「claude 하나가 돈다」까지만 안다),
-// pty id는 화면 어디에도 안 적힌다. 칸이 여덟이라 이름이 자리를 비운 폭이어야 글리프가 서고
-// (결정 27), 그 폭을 만드는 것이 `fillToCap`이다.
+// pty id는 화면 어디에도 안 적힌다.
+//
+// **셸 둘이면 족하고 창 폭은 아무래도 좋다.** 도는 명령의 글리프는 폭과 무관하게 **DOM에 늘
+// 있고**(`ShellTabs`의 `@max-[88px]:flex` — 좁은 폭에서 바뀌는 것은 `display`뿐이다), 여기서
+// 세는 것은 그 DOM이다. 「이름이 숨는 폭에서만 눈에 선다」를 재는 것은 마크업 seam
+// (`ShellTabs.test.tsx`)의 몫이고, 이 검사의 물음은 **값이 어느 칸에 앉나** 하나다 — 상한까지
+// 채우면 그 물음이 상한·접힘 규칙에 공연히 매인다.
 test("도는 명령은 그 셸의 칸에만 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await fillToCap(page);
 
+  // 들어오면 이 work의 셸 하나가 뜬다(`ensureShell`). 둘째 칸은 **응답까지 기다려** 연다 —
+  // 「둘째 칸 = pty 2」가 그 기다림 위에 선다(`openShell`의 머리말).
   const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await expect(tabs).toHaveCount(2);
+
   const marks = page.locator('[data-tab="shell"] [role="img"]');
   // **먼저 아무 칸도 안 물든 것을 센다.** 이것이 없으면 아래가 「원래 있던 것」으로도 초록이 된다.
   await expect(marks).toHaveCount(0);
 
-  // 둘째 셸의 pty다. 칸이 서는 순서와 스폰 순서가 같다는 것은 `fillToCap`이 칸마다 응답을
-  // 기다려 세운다(그 머리말) — 그래서 여기서 2는 **둘째 칸**을 뜻한다.
   await markRunning(page, "claude", 2);
 
   // 그 칸 하나에만 앉는다. 세 단언이 각각 다른 것을 말한다: 둘째가 물들었다 · 첫째는 안
-  // 물들었다 · 그리고 **줄 전체에 하나뿐이다**(마지막이 없으면 셋째 칸까지 함께 물든 그림이
+  // 물들었다 · 그리고 **줄 전체에 하나뿐이다**(마지막이 없으면 두 칸이 함께 물든 그림이
   // 통과한다 — 값이 셸 단위가 아니라 줄 단위로 앉는 회귀가 정확히 그 모양이다).
   await expect(tabs.nth(1).locator('[role="img"]')).toHaveCount(1);
   await expect(tabs.nth(0).locator('[role="img"]')).toHaveCount(0);
   await expect(marks).toHaveCount(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **손잡이가 「앉았다」를 잘못 말하면 위 검사가 무엇을 재는지 아무도 모른다.** `markRunning`은
+// 값이 앉을 때까지 다시 쏘는데, 앉았는지를 마크의 수로 판정한다 — 그 판정이 화면 전체에서
+// 「하나라도 있는가」였을 때는 같은 에이전트의 마크가 이미 서 있으면(사이드바 행·nav도 같은
+// 마크를 세운다) 값이 대상 pty에 **안 앉아도** 곧바로 성공을 냈다. 이 판의 뒤쪽 티켓들이
+// 같은 에이전트를 셸 둘에 앉히므로(#203~#205) 그 fail-open이 정확히 그 그림에서 난다.
+test("도는 명령 손잡이는 이미 선 마크에 안 속는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await markRunning(page, "claude", 2);
+  await expect(page.locator('[data-tab="shell"] [role="img"]')).toHaveCount(1);
+
+  // 모르는 pty를 주면 `shellOfPty`가 null을 주어 값이 **아무 칸에도 안 앉는다.** 그러면
+  // 손잡이는 5초를 다 쓰고 던져야 한다 — 위 claude 하나를 보고 돌아가면 안 된다.
+  const 던진말 = await markRunning(page, "claude", 99).then(
+    () => "던지지 않았다",
+    (error: Error) => error.message,
+  );
+  expect(던진말).toContain("pty 99");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

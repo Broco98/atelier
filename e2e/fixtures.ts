@@ -158,7 +158,9 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 export const FIXTURE_SHELL_NAME = "zsh";
 
 /**
- * 부를 때마다 답의 한 값을 **하나씩 올리는** 커맨드: 커맨드 이름 → 그 키(`harness`의 `sequenced`).
+ * 부를 때마다 답의 한 값을 **하나씩 올리는** 커맨드: 커맨드 이름 → 그 답에서 올릴 키
+ * (`harness`의 `incrementing`). 이름이 곧 하는 일이다 — 아래 표의 값은 **첫 값**이고,
+ * 여기 적힌 커맨드는 부를 때마다 그 키가 1씩 커진 답을 받는다.
  *
  * `pty_spawn`이 늘 같은 id를 답하면 셸이 몇이든 백엔드 쪽 번호가 하나뿐이고, 백엔드가
  * **셸마다** 쏘는 값(`pty:running`, 그리고 이 판이 더할 것들)이 전부 맨 앞 칸에 앉는다
@@ -169,7 +171,7 @@ export const FIXTURE_SHELL_NAME = "zsh";
  * 인자로 직렬화되어 브라우저로 건너가므로 함수는 그 길을 못 지난다 — 수를 올리는 일은
  * 브라우저 안에서 일어나야 하고, 여기는 **어느 커맨드의 어느 키인가**만 말한다.
  */
-export const FIXTURE_SEQUENCED: Record<string, string> = { pty_spawn: "id" };
+export const FIXTURE_INCREMENTING_KEYS: Record<string, string> = { pty_spawn: "id" };
 
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   list_projects: PROJECTS,
@@ -198,8 +200,8 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // ⇧⇧로 여는 팔레트가 뜨자마자 부르고, 글자를 칠 때마다 다시 부른다 — 캐시도 디바운스도
   // 없다. **답은 질의와 무관하게 늘 같다**(위 표의 머리말).
   search: SEARCH_RESULTS,
-  // **id는 고정값이 아니다** — `FIXTURE_SEQUENCED`가 부를 때마다 하나씩 올린다. 여기 적힌
-  // 1은 그 수열의 **첫 값**이다.
+  // **id는 고정값이 아니다** — `FIXTURE_INCREMENTING_KEYS`가 부를 때마다 하나씩 올린다.
+  // 여기 적힌 1은 그 **첫 값**이다.
   pty_spawn: { id: 1, shellName: FIXTURE_SHELL_NAME },
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
@@ -209,6 +211,21 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   pty_command_running: true,
   pty_kill: null,
 };
+
+// **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 위 두 표를 잇는 것은 커맨드 이름 문자열
+// 하나뿐인데, 하네스는 `responses`에 든 커맨드가 불릴 때만 올릴 키를 찾아본다 — 이름이 틀렸거나
+// 개명돼 짝이 끊기면 그 행은 **아무 데도 안 걸린 채 조용히 지나가고** `pty_spawn`은 다시 고정
+// id를 답한다. 그때 나는 유일한 신호는 한참 뒤 `markRunning`이 「pty 2에 도는 칸이 안 생겼다」로
+// 던지는 것이고, 그 말은 표가 아니라 검사를 가리켜 원인을 한 칸 옆으로 옮겨 놓는다.
+for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
+  const answer = FIXTURE_COMMANDS[cmd] as Record<string, unknown> | undefined;
+  if (answer === undefined) {
+    throw new Error(`수를 올릴 커맨드가 고정 답 표에 없습니다: ${cmd}`);
+  }
+  if (typeof answer[key] !== "number") {
+    throw new Error(`수를 올릴 값이 수가 아닙니다: ${cmd}.${key}`);
+  }
+}
 
 /**
  * spec 파일 읽기의 **경로별** 답. `read_spec_file`이 경로와 무관하게 한 문자열로 답하던

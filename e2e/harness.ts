@@ -9,7 +9,7 @@ import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import {
   FIXTURE_BY_ARG,
   FIXTURE_COMMANDS,
-  FIXTURE_SEQUENCED,
+  FIXTURE_INCREMENTING_KEYS,
   FIXTURE_SHELL_NAME,
 } from "./fixtures";
 
@@ -68,10 +68,10 @@ interface InitArgs {
   byArg: Record<string, { arg: string; answers: Record<string, unknown> }>;
   /**
    * **부를 때마다 답이 달라져야 하는** 커맨드들: 커맨드 이름 → 그 답에서 하나씩 올릴 키.
-   * 무엇을 왜 여기 넣는지는 `fixtures`의 `FIXTURE_SEQUENCED`가 든다. L4는 진짜 백엔드가
-   * 답하므로 비어 있다.
+   * 무엇을 왜 여기 넣는지는 `fixtures`의 `FIXTURE_INCREMENTING_KEYS`가 든다. L4는 진짜
+   * 백엔드가 답하므로 비어 있다.
    */
-  sequenced: Record<string, string>;
+  incrementing: Record<string, string>;
 }
 
 /**
@@ -83,7 +83,7 @@ export async function installFixtureBackend(page: Page): Promise<void> {
     responses: { ...FIXTURE_COMMANDS, ...PLUGINS },
     bridgeName: null,
     byArg: FIXTURE_BY_ARG,
-    sequenced: FIXTURE_SEQUENCED,
+    incrementing: FIXTURE_INCREMENTING_KEYS,
   });
 }
 
@@ -106,14 +106,14 @@ export async function installRealBackend(
     responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
     bridgeName: BRIDGE_FN,
     byArg: {},
-    sequenced: {},
+    incrementing: {},
   });
 }
 
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, byArg, sequenced }: Omit<InitArgs, "recordKey">,
+  { responses, bridgeName, byArg, incrementing }: Omit<InitArgs, "recordKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -124,7 +124,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, bridgeName, byArg, sequenced }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, bridgeName, byArg, incrementing }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -141,8 +141,8 @@ async function install(
     internals.convertFileSrc ??= (filePath: string, protocol = "asset") =>
       `${protocol}://localhost/${encodeURIComponent(filePath)}`;
 
-    // 수열이 걸린 커맨드가 지금까지 몇 번 불렸는가. 브라우저 안에서만 산다 — 답을 만드는
-    // 일이 여기서 일어나야 하는 이유는 `FIXTURE_SEQUENCED`의 머리말에 있다.
+    // 수를 올리는 커맨드가 지금까지 몇 번 불렸는가. 브라우저 안에서만 산다 — 답을 만드는
+    // 일이 여기서 일어나야 하는 이유는 `FIXTURE_INCREMENTING_KEYS`의 머리말에 있다.
     const seen = new Map<string, number>();
 
     const record: IpcRecord = { calls: [], unknown: [] };
@@ -172,15 +172,15 @@ async function install(
       }
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) {
         const answer = responses[cmd];
-        if (!Object.prototype.hasOwnProperty.call(sequenced, cmd)) return answer;
-        // 수열이 걸린 커맨드다 — 표에 적힌 값을 **첫 값**으로 삼아 부를 때마다 하나씩 올린다.
-        const key = sequenced[cmd];
+        if (!Object.prototype.hasOwnProperty.call(incrementing, cmd)) return answer;
+        // 수를 올리는 커맨드다 — 표에 적힌 값을 **첫 값**으로 삼아 부를 때마다 하나씩 올린다.
+        const key = incrementing[cmd];
         const base = (answer as Record<string, unknown>)[key];
         // **여기서 조용히 넘어가지 않는다.** 키가 틀렸거나 답의 모양이 바뀌면 `base + n`이
         // `undefined`나 문자열 이어붙이기가 되어 시나리오는 돌고 값만 이상해진다 — 그러면
         // 「셸마다 다른 id」를 재는 검사가 무엇을 재고 있는지 아무도 모른다.
         if (typeof base !== "number") {
-          throw new Error(`수열을 걸 값이 수가 아닙니다: ${cmd}.${key}`);
+          throw new Error(`수를 올릴 값이 수가 아닙니다: ${cmd}.${key}`);
         }
         const n = seen.get(cmd) ?? 0;
         seen.set(cmd, n + 1);
@@ -199,7 +199,7 @@ async function install(
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg, sequenced });
+  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byArg, incrementing });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
@@ -231,8 +231,10 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
  * **로고가 아예 없어서** 초록이 된다.
  *
  * **어느 셸에 앉힐지 `ptyId`로 고른다.** 픽스처의 `pty_spawn`이 부를 때마다 다른 id를 주므로
- * (`FIXTURE_SEQUENCED`) 그 수가 곧 **몇 번째로 뜬 셸인가**다 — 첫 셸이 1이고, 안 주면 그
- * 첫 셸이다. 모르는 id를 주면 `shellOfPty`가 null을 주어 아무 칸에도 안 앉고, 아래 기다림이
+ * (`FIXTURE_INCREMENTING_KEYS`) 그 수는 **n번째로 spawn 응답을 받은 셸**을 가리킨다 — 첫 셸이
+ * 1이고, 안 주면 그 첫 셸이다. **그 수가 「n번째 칸」과 같으려면 부르는 쪽이 칸마다 응답을
+ * 기다려 세워야 한다**(`openShell`) — 픽스처가 세는 것은 칸이 선 순서가 아니라 `pty_spawn`이
+ * 불린 순서다. 모르는 id를 주면 `shellOfPty`가 null을 주어 아무 칸에도 안 앉고, 아래 기다림이
  * 5초 뒤에 던진다.
  *
  * **앉을 때까지 다시 쏜다.** 스폰 **응답**이 앉기 전에 쏘면 그 값은 조용히 버려진다 —
@@ -243,10 +245,10 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
  *
  * **그 재시도는 멱등한 값에만 안전하다 — 이 모양을 그대로 베끼지 마라.** 여기 실리는 것은
  * 「지금 이 셸에서 이것이 돈다」는 **상태**라 같은 값이 쉰 번 와도 결과가 한 번 온 것과 같다.
- * 이 판이 더할 `shell:attention`은 그렇지 않다 — 상태가 **바뀌는 순간**을 싣는 전이라,
+ * 이 판이 더할 `shell:attention`(티켓 #202)은 그렇지 않다 — 상태가 **바뀌는 순간**을 싣는 전이라,
  * 알림이 그 엣지에서 한 번 울리게 되어 있다(스펙의 알림 판정). 그것을 쉰 번 쏘면 알림도
  * 쉰 번 울리고, 그러면 「한 번만 울린다」를 재는 검사가 하네스 때문에 빨개진다. 전이를
- * 흉내 내는 손잡이는 **구독이 걸렸는가**를 기다린 뒤 **한 번만** 쏴야 한다(티켓 05).
+ * 흉내 내는 손잡이는 **구독이 걸렸는가**를 기다린 뒤 **한 번만** 쏴야 한다(티켓 #202).
  */
 export async function markRunning(page: Page, running: string, ptyId = 1): Promise<void> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
@@ -269,9 +271,15 @@ export async function markRunning(page: Page, running: string, ptyId = 1): Promi
     );
 
   const mark = page.locator(`[role="img"][aria-label*="${running}"]`);
+  // **부르기 전 수보다 늘었는가**를 본다 — 「하나라도 있는가」가 아니다. 이 마크는 탭 칸만이
+  // 아니라 사이드바 work 행과 nav `Terminal` 행에도 서므로, 같은 에이전트가 화면 어딘가에 이미
+  // 있으면 값이 대상 pty에 **안 앉아도** 첫 바퀴에 성공으로 돌아간다. 그러면 위 「모르는 id를
+  // 주면 던진다」가 거짓말이 되고, 같은 에이전트를 셸 둘에 앉히는 그림(티켓 #203~#205)에서
+  // 정확히 그 fail-open이 난다 — 이 저장소의 검사는 fail-closed여야 한다.
+  const before = await mark.count();
   for (let tries = 0; tries < 50; tries += 1) {
     await fire();
-    if ((await mark.count()) > 0) return;
+    if ((await mark.count()) > before) return;
     await page.waitForTimeout(100);
   }
   throw new Error(`pty ${ptyId}에 \`${running}\`이 도는 칸이 5초 안에 안 생겼다`);
@@ -288,11 +296,17 @@ export async function markRunning(page: Page, running: string, ptyId = 1): Promi
  * 세 번에 두 번, `tab-keys`의 서로 다른 두 검사가 그렇게 깨졌다(2026-09-09 실측). 응답을
  * 3초 늦추면 100% 재현된다.
  *
- * **재는 자리는 칸 이름이다.** `terminal-store`의 `spawn`이 응답을 받아 `ptyId`와 셸 이름을
- * **같은 자리 연달아** 앉히므로, 이름이 픽스처의 것으로 바뀐 순간이 곧 pty가 앉은 순간이다.
- * 이름이 오기 전 칸은 `셸`이라 `/닫기$/`로는 둘이 안 갈린다.
+ * **재는 자리는 칸의 닫기 버튼 이름이다.** `terminal-store`의 `spawn`이 응답을 받아 `ptyId`와
+ * 셸 이름을 **같은 자리 연달아** 앉히므로, 그 이름이 픽스처의 것으로 바뀐 순간이 곧 pty가 앉은
+ * 순간이다. 이름이 오기 전 칸은 `셸`이라 「`닫기`로 끝난다」만 보면 둘이 안 갈린다.
  *
  * 워크트리가 있는 work은 이름 앞에 프로젝트가 붙으므로(결정 18) 끝으로 맞춘다.
+ *
+ * **역할과 이름으로 집지 않는다**(`getByRole`). 탭 줄의 닫기는 칸이 88px 아래로 눌리면 꺼진
+ * 칸부터 `display:none`으로 접히는데(결정 20) 접근성 트리는 그것을 아예 안 보므로, 칸이 붐비는
+ * 폭에서 부르면 **조용히 적게 세고 곧바로 초록이 된다** — 「응답이 하나만 왔다」로 읽고 지나가는
+ * fail-open이다. 속성 선택자는 접혀도 남는 DOM을 세니 이 기다림이 줄의 폭과 무관해진다. 라벨이
+ * 겹칠 위험은 없다: `<이름> 닫기`를 다는 곳은 `ShellTabs` 하나뿐이다.
  */
 export async function awaitSpawned(page: Page, count: number): Promise<void> {
   // **기본 5초가 아니다.** 이 기다림은 IPC 왕복이 아니라 그 앞의 **진짜 브라우저 일**에
@@ -302,6 +316,25 @@ export async function awaitSpawned(page: Page, count: number): Promise<void> {
   // 5초를 넘겼다. 여기서 시간을 아껴 봐야 얻는 것이 없고, 넘치면 **그 자리에서** 터져
   // 원인이 이 줄을 가리킨다 — 예전처럼 「확인 창이 안 떴다」로 엉뚱한 곳을 가리키지 않는다.
   await expect(
-    page.getByRole("button", { name: new RegExp(`${FIXTURE_SHELL_NAME} 닫기$`) }),
+    page.locator(`[data-tab="shell"] button[aria-label$="${FIXTURE_SHELL_NAME} 닫기"]`),
   ).toHaveCount(count, { timeout: 20_000 });
+}
+
+/**
+ * 셸 한 칸을 **열고 그 칸이 spawn 응답을 받을 때까지** 기다린다.
+ *
+ * **칸을 세우는 길이 여기 하나여야 하는 이유는 `markRunning`의 `ptyId`다.** 픽스처는 칸이
+ * 선 순서가 아니라 `pty_spawn`이 **불린 순서**로 id를 준다 — 둘이 같으려면 왕복이 겹치면
+ * 안 되고, 겹치지 않게 하는 것이 이 함수의 기다림이다. `+`를 연달아 눌러 칸부터 세우면
+ * 「둘째 칸 = pty 2」가 실행마다 갈리고, 그러면 엉뚱한 칸을 재고도 초록이 될 수 있다.
+ */
+export async function openShell(page: Page): Promise<void> {
+  const tabs = page.locator('[data-tab="shell"]');
+  const before = await tabs.count();
+  // **이미 선 칸들이 먼저 앉은 뒤에 누른다.** 이 줄이 없으면 첫 칸의 `pty_spawn`이 둘째 칸의
+  // 것보다 늦게 나갈 수 있고, 그러면 「첫 칸 = pty 1」부터 어긋난다.
+  await awaitSpawned(page, before);
+  await page.locator('[data-tab="new"]').click();
+  await expect(tabs).toHaveCount(before + 1);
+  await awaitSpawned(page, before + 1);
 }
