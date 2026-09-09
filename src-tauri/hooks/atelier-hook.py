@@ -5,7 +5,7 @@
 받는 것은 argv 둘(에이전트 이름 · 훅 이벤트 이름)과 stdin의 페이로드 JSON이고, 남기는 것은
 `~/.atelier/shells/<셸 ID>.json` 한 장이다. 그 파일을 앱의 감시가 보고 화면까지 나른다.
 
-**아무것도 안 하고 0으로 끝나는 길이 정상 경로다.** 사용자가 이 훅을 깔면 그것은 아틀리에
+**아무것도 안 남기고 0으로 끝나는 길이 정상 경로다.** 사용자가 이 훅을 깔면 그것은 아틀리에
 밖에서 띄운 터미널의 claude·codex에서도 돈다 — 거기엔 `ATELIER_SHELL`이 없다. 그때 파일을
 남기면 남의 홈에 쓰레기를 쌓는 것이고, 0이 아닌 코드로 끝나거나 무언가를 출력하면 Claude·
 Codex 둘 다 그것을 훅 실패로 읽어 사람에게 오류를 보인다(둘 다 「출력 없이 종료 코드 0이면
@@ -28,8 +28,21 @@ import time
 
 
 def main():
-    # **env를 stdin보다 먼저 본다.** 아틀리에 밖에서는 여기서 끝나야 하고, stdin을 먼저
-    # 읽으면 그 터미널의 훅이 파이프를 기다리며 에이전트의 턴을 붙잡는다.
+    # **stdin을 무엇보다 먼저, 끝까지 비운다 — 여기서 그냥 나갈 때도 그렇다.**
+    #
+    # 안 읽고 나가면 페이로드를 쓰던 에이전트가 파이프 반대편에서 `EPIPE`를 받는다. 짧은
+    # 페이로드는 파이프 버퍼(64KB) 안에 다 들어가 커널이 대신 받아 주므로 안 터지고, 긴
+    # 프롬프트가 실린 `UserPromptSubmit`이나 긴 `last_assistant_message`만 그 선을 넘는다 —
+    # **가끔만 터지는 모양**이라 더 나쁘다. 이 훅은 아틀리에 **밖의** 터미널에서도 도는데,
+    # 거기서 남의 에이전트에 오류를 안기는 것이 이 판에서 가장 피하고 싶은 일이다.
+    #
+    # 「먼저 읽으면 턴을 붙잡는다」는 걱정은 안 산다: Claude·Codex 둘 다 페이로드를 다 쓰고
+    # 파이프를 닫으므로 `read()`는 그 EOF에서 바로 돌아온다. 기다릴 것은 이미 쓰인 바이트뿐이다.
+    try:
+        raw = sys.stdin.read()
+    except Exception:
+        raw = ""
+
     shell = os.environ.get("ATELIER_SHELL", "")
     if not shell:
         return
@@ -44,7 +57,6 @@ def main():
         return
     agent, event = sys.argv[1], sys.argv[2]
 
-    raw = sys.stdin.read()
     try:
         payload = json.loads(raw) if raw.strip() else None
     except ValueError:

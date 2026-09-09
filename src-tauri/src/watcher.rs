@@ -42,6 +42,13 @@ pub fn start(app: AppHandle) {
     );
 }
 
+/// 폴더 하나를 디바운스로 보며 **종만 친다** — 무엇이 바뀌었는지는 안 싣고, 프런트가 그
+/// 종을 듣고 다시 물어본다.
+///
+/// **`shells.rs`의 `watch_into`와 짝이다.** 디바운서를 세우는 앞 절반(`create_dir_all` →
+/// 채널 → `new_debouncer` → `watch` → 회차 루프)이 줄 단위로 같고 오류 문구까지 겹친다.
+/// 그쪽이 따로 선 근거는 **나가는 것**이지(바뀐 셸을 페이로드로 싣는다) 이 배선이 아니므로,
+/// notify의 API가 바뀌거나 오류 처리를 고칠 때는 두 자리를 함께 고쳐야 한다.
 fn spawn_watch(
     app: AppHandle,
     dir: PathBuf,

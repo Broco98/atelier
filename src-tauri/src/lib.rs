@@ -322,16 +322,12 @@ mod tests {
         );
     }
 
-    /// **접두사를 여기서 따로 재면 안 된다.** 상태 파일의 이름은 `pty.rs`가 발급한
-    /// 접두사로 지어지는데(`instance_prefix`), 정리가 자기 시계로 다른 값을 만들면 살아
-    /// 있는 셸의 상태 파일을 지운다 — 셸이 말해도 그 값이 곧 지워진다.
-    #[test]
-    fn the_sweep_uses_the_prefix_the_shells_are_named_with() {
-        assert!(
-            !setup_source().contains("SystemTime"),
-            "정리가 시각을 따로 잰다 — 셸 ID의 접두사와 갈린다"
-        );
-    }
+    // 「정리가 접두사를 따로 재지 않는다」를 `!setup_source().contains("SystemTime")`으로 재던
+    // 검사가 여기 있었다. **걷었다.** 위 검사가 호출 문자열을 통째로 못박으므로 그것이 잡는
+    // 변형은 전부 위가 먼저 잡고, 반대로 그것만 통과하는 변형은 널려 있었다 — `"atelier"` 같은
+    // 고정 접두사도, `chrono`로 잰 값도 `SystemTime`이라는 토큰을 안 쓴다. 두 접두사가 갈리는
+    // 것은 이제 `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 **값으로**
+    // 잰다 — 진짜 셸 ID로 이름 지은 파일이 진짜 접두사의 쓸기에서 살아남는가.
 
     /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
     /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.

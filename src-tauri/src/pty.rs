@@ -670,18 +670,21 @@ fn resolve_cwd(cwd: Option<String>) -> Result<PathBuf, String> {
 ///
 /// 구분자를 **하나만** 둔다. 파일 이름에서 PTY id를 되뽑는 쪽이 뒤에서 한 번만 자르면
 /// 되도록.
-fn shell_id(pty_id: u32) -> String {
+pub(crate) fn shell_id(pty_id: u32) -> String {
     format!("{}-{pty_id}", instance_prefix())
 }
 
 /// 이 실행을 가리키는 접두사. 한 번 잡히면 프로세스가 사는 동안 안 바뀐다.
 ///
-/// **잡히는 순간은 「앱이 뜬 때」가 아니라 이 함수가 처음 불린 때다** — `OnceLock`이
-/// 지연 초기화이기 때문이다. 지금은 첫 셸을 띄우는 순간이 그때다. 앱을 켜 두고 한 시간
-/// 뒤에 첫 셸을 열면 접두사는 그 한 시간 뒤 시각이다. 실행끼리 안 겹친다는 성질은 그래도
-/// 지켜지므로 이 판이 기대는 것은 다 선다. 다만 **뒤 티켓의 정리(`~/.atelier/shells/`에서
-/// 이번 접두사가 아닌 파일을 지운다)는 앱 시작 시각을 따로 재지 말고 반드시 이 함수를
-/// 불러야 한다** — 두 값이 갈라지면 정리가 살아 있는 셸의 상태 파일을 지운다.
+/// **잡히는 순간은 이 함수가 처음 불린 때다** — `OnceLock`이 지연 초기화이기 때문이다.
+/// 지금 그 첫 호출자는 `lib.rs`의 `setup`에서 도는 `shells::sweep(&root, instance_prefix())`
+/// 라, 값은 사실상 **앱이 뜬 시각**이다. 이 함수가 기대는 성질은 그것이 아니라 「실행끼리
+/// 안 겹친다」 하나이므로 첫 호출자가 누구든 다 서지만, 남은 파일을 눈으로 볼 때 시각이
+/// 앱을 켠 때와 맞는 것은 그 배선 덕이다.
+///
+/// **정리(`shells::sweep`)는 접두사를 반드시 이 함수에서 받아야 한다** — 앱 시작 시각을
+/// 따로 재면 두 값이 갈라져 살아 있는 셸의 상태 파일을 지운다. 그 둘이 갈리는 순간은
+/// `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 값으로 잡는다.
 pub(crate) fn instance_prefix() -> &'static str {
     static PREFIX: OnceLock<String> = OnceLock::new();
     PREFIX.get_or_init(|| prefix_at(SystemTime::now()))
