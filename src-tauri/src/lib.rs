@@ -1,6 +1,7 @@
 mod commands;
 mod pty;
 mod settings;
+mod shells;
 mod watcher;
 
 use std::sync::Arc;
@@ -186,6 +187,25 @@ pub fn run() {
             // 전에 뜰 수 있는 코드가 되고, 그때 나는 것은 조용한 패닉 하나다 — 폴링이
             // 통째로 죽는데 앱은 멀쩡히 돈다.
             pty::watch_running(app.handle().clone(), Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+
+            // 셸이 **스스로 말하는** 길(#201). 위 둘이 앱이 물어서 아는 값이라면 이쪽은
+            // 에이전트의 훅이 파일 한 장을 놓고 가는 길이고, 여기가 그 길의 세 자리다.
+            let root = atelier_core::data_root();
+            // (1) 지난 실행이 남긴 상태 파일을 걷는다. PTY 번호는 실행마다 0부터 다시
+            // 나므로 안 걷으면 지난 실행의 `…-0.json`이 이번 첫 셸에 붙어 **뜨자마자
+            // 사람을 부르는 셸**이 생긴다. 접두사는 반드시 셸 ID를 짓는 그 함수에서 온다 —
+            // 여기서 시각을 다시 재면 두 값이 갈려 살아 있는 셸의 파일을 지운다.
+            shells::sweep(&root, pty::instance_prefix());
+            // (2) 훅 스크립트를 홈에 세운다. **설치 버튼(다음 티켓)이 아니라 여기서** 쓰는
+            // 이유는 두 가지다 — 사람이 손으로 훅을 걸어 보려면 걸 것이 이미 있어야 하고,
+            // 앱을 고쳐도 사용자 홈의 스크립트가 낡은 채 남아 있으면 안 된다. 스크립트는
+            // 아무 설정에도 안 걸려 있으면 그냥 안 불리는 파일이라 세워 두는 것이 무해하다.
+            if let Err(e) = shells::write_hook_script(&root) {
+                eprintln!("atelier: {e}");
+            }
+            // (3) 상태 폴더를 본다. 배선은 위 둘과 같은 길이다 — 스레드 하나가 emit하고
+            // 프런트가 `listen`으로 받는다.
+            shells::watch(app.handle().clone(), shells::shells_dir(&root));
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -277,6 +297,58 @@ mod tests {
         let count = ids.len();
         ids.dedup();
         assert_eq!(ids.len(), count, "HOTKEYS에 같은 code가 두 번 있다");
+    }
+
+    /// **셸 신호의 세 자리가 앱이 뜰 때 다 서는가.** 셋 다 헤드리스로는 못 돌린다 —
+    /// `run()`은 창과 웹뷰가 있어야 하고, 여기 없으면 나는 일은 조용한 무음이다: 훅을 깔
+    /// 스크립트가 홈에 없고(사람이 「설치했는데 아무 일도 안 난다」를 만난다), 지난 실행의
+    /// 상태 파일이 남아 뜨자마자 사람을 부르는 셸이 생기고, 감시가 없어 셸이 무슨 말을 해도
+    /// 화면이 조용하다. 그래서 **자리로** 잰다(`pty.rs`의 순서 검사와 같은 방식).
+    #[test]
+    fn the_shell_signal_is_wired_when_the_app_comes_up() {
+        let setup = setup_source();
+
+        assert!(
+            setup.contains("shells::write_hook_script(&root)"),
+            "훅 스크립트를 안 쓴다 — 사용자가 걸 것이 홈에 없다"
+        );
+        assert!(
+            setup.contains("shells::sweep(&root, pty::instance_prefix())"),
+            "지난 실행의 상태 파일을 안 걷는다 — 뜨자마자 사람을 부르는 셸이 생긴다"
+        );
+        assert!(
+            setup.contains("shells::watch(app.handle().clone(), shells::shells_dir(&root))"),
+            "상태 폴더를 안 본다 — 셸이 말해도 화면까지 안 온다"
+        );
+    }
+
+    /// **접두사를 여기서 따로 재면 안 된다.** 상태 파일의 이름은 `pty.rs`가 발급한
+    /// 접두사로 지어지는데(`instance_prefix`), 정리가 자기 시계로 다른 값을 만들면 살아
+    /// 있는 셸의 상태 파일을 지운다 — 셸이 말해도 그 값이 곧 지워진다.
+    #[test]
+    fn the_sweep_uses_the_prefix_the_shells_are_named_with() {
+        assert!(
+            !setup_source().contains("SystemTime"),
+            "정리가 시각을 따로 잰다 — 셸 ID의 접두사와 갈린다"
+        );
+    }
+
+    /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
+    /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.
+    fn setup_source() -> &'static str {
+        let src = include_str!("lib.rs");
+        let body = src
+            .split_once(".setup(|app| {")
+            .expect("여는 표식이 있다")
+            .1
+            .split_once("\n        })")
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
     }
 
     /// 살리기로 한 넷이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.

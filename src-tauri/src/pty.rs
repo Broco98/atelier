@@ -58,6 +58,24 @@ struct Shell {
     /// 읽는 동안(큰 붙여넣기 등) pty 버퍼가 차면 `write_all`이 막히는데, 그때 풀 잠금까지
     /// 쥐고 있으면 다른 셸의 resize·kill은 물론 **앱 종료의 동기 회수까지 막혀 앱이 안 닫힌다.**
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    /// 이 셸이 훅으로 남기는 상태 파일. **경로를 들고 다니는 것은 아래 `Drop` 때문이다** —
+    /// 거두는 자리에서 데이터 루트를 다시 계산하면 `ATELIER_HOME` 오버라이드가 그 사이에
+    /// 바뀌었을 때 남의 파일을 지운다.
+    state_file: PathBuf,
+}
+
+/// **셸이 사라지면 그 셸이 남긴 말도 사라진다.** 안 지우면 닫힌 셸이 사이드바에서 영영
+/// 사람을 부르고, 다음 실행이 같은 PTY 번호를 쓸 때 그 값을 새 셸이 뒤집어쓴다.
+///
+/// **`Drop`인 것이 요점이다.** 셸이 풀에서 빠지는 자리가 셋이다 — 사용자가 `exit`를 쳐서
+/// 리더 스레드가 자기 자리를 치울 때, `×`로 죽일 때(`kill`), 앱이 닫히거나 웹뷰가 다시 뜰
+/// 때(`reap_all`). 셋 다 결국 이 값을 떨구므로 여기 한 자리에 두면 빠지는 길이 하나 더
+/// 생겨도 따라온다. 세 곳에 손으로 적으면 언젠가 한 곳이 빠지고, 그때 나는 것은 조용히
+/// 남는 앰버 점 하나다.
+impl Drop for Shell {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.state_file);
+    }
 }
 
 #[derive(Default)]
@@ -127,7 +145,10 @@ pub fn spawn(
     // 가능한 상태다. 다음 `reap_all`이 그 자리에 앉은 남의 프로세스 그룹을 쏜다 —
     // 아래 스레드의 주석이 막으려는 바로 그것이다. 순서를 이렇게 두면 그 창이 닫힌다:
     // 치움은 언제 돌아도 `remove`일 뿐이다.
-    pool.lock().insert(id, Shell { pid, master: pair.master, writer });
+    // 상태 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가 루트를
+    // 다시 계산하지 않게.
+    let state_file = crate::shells::state_path(&atelier_core::data_root(), &shell_id);
+    pool.lock().insert(id, Shell { pid, master: pair.master, writer, state_file });
 
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
@@ -661,7 +682,7 @@ fn shell_id(pty_id: u32) -> String {
 /// 지켜지므로 이 판이 기대는 것은 다 선다. 다만 **뒤 티켓의 정리(`~/.atelier/shells/`에서
 /// 이번 접두사가 아닌 파일을 지운다)는 앱 시작 시각을 따로 재지 말고 반드시 이 함수를
 /// 불러야 한다** — 두 값이 갈라지면 정리가 살아 있는 셸의 상태 파일을 지운다.
-fn instance_prefix() -> &'static str {
+pub(crate) fn instance_prefix() -> &'static str {
     static PREFIX: OnceLock<String> = OnceLock::new();
     PREFIX.get_or_init(|| prefix_at(SystemTime::now()))
 }
@@ -729,6 +750,34 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+
+    /// **닫힌 셸은 자기 상태 파일을 데리고 나간다.** 안 그러면 사이드바에서 죽은 셸이
+    /// 영영 사람을 부르고, 다음 실행이 같은 PTY 번호를 쓸 때 그 값을 새 셸이 뒤집어쓴다.
+    ///
+    /// 살아 있는 pty가 필요하지만 셸을 띄우지는 않는다 — `openpty` 하나면 `Shell`이 선다.
+    #[test]
+    fn a_closed_shell_takes_its_state_file_with_it() {
+        let dir = std::env::temp_dir().join(format!("atelier-pty-drop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = dir.join("1700-9.json");
+        std::fs::write(&state, r#"{"agent":"claude"}"#).unwrap();
+
+        let size = PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+        let pair = native_pty_system().openpty(size).expect("pty가 열린다");
+        let writer = pair.master.take_writer().expect("writer가 나온다");
+        let shell = super::Shell {
+            pid: None,
+            master: pair.master,
+            writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
+            state_file: state.clone(),
+        };
+
+        drop(shell);
+
+        assert!(!state.exists(), "셸이 닫혔는데 상태 파일이 남았다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// 결정 92의 판정. 실행으로는 pty가 있어야 재지만 값 둘로는 여기서 전수된다.
     #[test]

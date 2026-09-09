@@ -6,7 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { onPtyRunning, terminalApi } from "./api";
+import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -317,6 +317,22 @@ void onPtyRunning((changed) => {
   });
 }).catch((error) => {
   console.warn("atelier: 도는 명령을 구독하지 못했다 — 로고가 안 뜬다", error);
+});
+
+/**
+ * 셸이 훅으로 **스스로 말한 것**을 상시 구독한다. 자리와 이유는 바로 위와 같다 — 모듈
+ * 최상위라야 배경 칸(결정 21)도 받는다.
+ *
+ * **이 판에서는 받기만 한다.** 상태 축(나를 기다림 · 안 본 완료 · 도는 중)을 세우고 이 값을
+ * 레지스트리에 앉히는 것은 다음 티켓이다(#202). 그때 이 콜백이 위 `onPtyRunning`처럼
+ * `setState` 한 번으로 바뀐다. 지금 남기는 한 줄은 **길이 뚫렸는지 사람이 실물로 볼 수 있는
+ * 자국**이다 — 훅을 걸고 claude를 돌렸을 때 이것이 devtools에 찍히면 훅→파일→감시→프런트가
+ * 끝까지 이어진 것이다.
+ */
+void onShellAttention((changed) => {
+  for (const one of changed) console.debug("atelier: shell:attention", one);
+}).catch((error) => {
+  console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);
 });
 
 /**

@@ -1655,3 +1655,22 @@ describe("도는 명령이 프런트 상태까지 오는 배선", () => {
     expect(store).toContain("if (id !== null) next = setRunning(next, id, one.running);");
   });
 });
+
+// 셸이 스스로 말한 것이 오는 **두 번째** 통로. 위와 같은 모양이고 같은 이유로 소스로
+// 못박는다 — 이름이 갈리면 컴파일도 타입 검사도 통과하고 화면만 영영 조용하다.
+describe("셸이 말한 것이 프런트까지 오는 배선", () => {
+  it("이벤트 이름이 백엔드와 **같은 문자열**이다", () => {
+    expect(read("../../../src-tauri/src/shells.rs")).toContain(
+      'const ATTENTION_EVENT: &str = "shell:attention";',
+    );
+    expect(read("./api.ts")).toContain('const SHELL_ATTENTION = "shell:attention";');
+  });
+
+  // **이펙트가 아니라 모듈 최상위다.** 배경 칸(결정 21로 React 트리 밖에 사는 칸)도 받아야
+  // 하고, 받는 쪽이 React가 아니라 모듈 싱글턴 스토어라 붙일 화면이 필요 없다 — 바로 위
+  // `onPtyRunning`과 같은 자리·같은 이유다. 이펙트로 내려가면 그 칸들이 조용해진다.
+  it("도는 명령 구독 곁에서 모듈 최상위로 듣는다", () => {
+    // 줄머리에 선다 — 함수 안이면 앞에 공백이 붙어 이 문자열이 안 맞는다.
+    expect(read("./terminal-store.ts")).toContain("\nvoid onShellAttention((changed) => {");
+  });
+});
