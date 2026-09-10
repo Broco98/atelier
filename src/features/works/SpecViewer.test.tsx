@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SpecViewer, { HtmlDoc, PrettyView, SourceView, htmlSrcdoc } from "./SpecViewer";
 import { useSpecFile } from "./hooks";
+import { ALL_MODES, refPrefixesOf, type Mode } from "@/mode";
 import type { WorkView } from "./types";
 
 // 이 화면이 파일을 **읽는지**를 세려면 조회 계층을 걷어내야 한다. 정적 렌더는 이펙트를
@@ -246,6 +249,7 @@ describe("SpecViewer 본문 갈래", () => {
   function viewer(file: string, showSource = false): string {
     return renderToStaticMarkup(
       <SpecViewer
+        mode="atelier"
         work={work}
         panelOpen={false}
         sidebarOpen={false}
@@ -264,12 +268,12 @@ describe("SpecViewer 본문 갈래", () => {
 
   it("그림은 읽지 않는다", () => {
     viewer("샷.png");
-    expect(useSpecFile).toHaveBeenCalledWith("some-work", null);
+    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", null);
   });
 
   it.each(["overview.md", "notes.txt", "목업/조각.html"])("%s는 읽는다", (file) => {
     viewer(file);
-    expect(useSpecFile).toHaveBeenCalledWith("some-work", file);
+    expect(useSpecFile).toHaveBeenCalledWith("atelier", "some-work", file);
   });
 
   it("그림은 토글을 켜도 그림이다", () => {
@@ -377,5 +381,70 @@ describe("HtmlDoc 프레임", () => {
     expect(markup).not.toContain("<script");
     // 그러면서 내용은 잃지 않는다 — 이스케이프된 채 속성 안에 그대로 있다.
     expect(markup).toContain("&lt;script&gt;");
+  });
+});
+
+describe("spec이 없을 때 안내하는 폴더", () => {
+  const empty: WorkView = {
+    slug: "some-work",
+    title: "어떤 작업",
+    status: "active",
+    branch: null,
+    createdAt: "2026-08-16",
+    projects: [],
+    pinned: false,
+    worktrees: [],
+    specDir: "~/.atelier/works/some-work/spec",
+    // **여기가 비어야 빈 화면이 뜬다** — 파일이 하나라도 있으면 본문 갈래로 빠진다.
+    specFiles: [],
+  };
+
+  const notice = (mode: Mode, slug = "some-work") =>
+    renderToStaticMarkup(
+      <SpecViewer
+        mode={mode}
+        work={{ ...empty, slug }}
+        panelOpen={false}
+        sidebarOpen={false}
+        file={null}
+        showSource={false}
+        onNavigate={() => {}}
+        onCopy={() => {}}
+      />,
+    );
+
+  // 이 줄은 사람이 **그대로 붙여 넣는** 경로다. 세계를 안 타면 Maison에서 있지도 않은
+  // 폴더를 안내하고(결정 17: Room은 자기 홈 아래 산다), 사용자는 거기에 문서를 놓는다.
+  it("Atelier는 works 폴더를 안내한다", () => {
+    expect(notice("atelier")).toContain("~/.atelier/works/some-work/spec/");
+  });
+
+  it("Maison은 rooms 폴더를 안내한다", () => {
+    const markup = notice("maison", "금융");
+    expect(markup).toContain("~/.atelier/maison/rooms/금융/spec/");
+    expect(markup).not.toContain("~/.atelier/works/");
+  });
+
+  // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴 두 벌을 모드로 갈라 적어도 위 둘은
+  // 초록이다. 그렇게 적힌 순간 이 줄과 참조 생성기가 따로 늙기 시작하고, 그 어긋남은
+  // 클립보드에 나가는 참조와 화면이 시키는 자리가 다른 모양으로만 드러난다.
+  //
+  // **fail-closed로 짠다**: 파일이 옮겨지면 readFileSync가 던져 빨개지고, 빈 화면 자체가
+  // 사라지거나 생성기 호출이 빠져도 아래 두 줄이 빨개진다. 「못 찾았으니 깨끗하다」로
+  // 떨어지는 길이 없어야 검사다.
+  it("빈 화면이 경로를 손으로 적지 않는다", () => {
+    const src = readFileSync(fileURLToPath(new URL("./SpecViewer.tsx", import.meta.url)), "utf8");
+
+    // 잴 대상이 아직 거기 있다는 것부터 — 없으면 아래 「리터럴이 없다」는 공허하게 참이다
+    expect(src).toContain("아직 spec이 없어요");
+    expect(src).toMatch(/specDirRef\(\s*mode\s*,/);
+
+    // 표가 드는 루트 전부가 이 파일에 글자로 없어야 한다. 세계가 하나 더 서는 날 이 검사가
+    // 함께 넓어진다 — 리터럴 두 개를 손으로 적어 두면 셋째 세계는 조용히 빠진다.
+    for (const mode of ALL_MODES) {
+      const refs = refPrefixesOf(mode);
+      expect(src, `${mode} work 루트`).not.toContain(refs.work);
+      expect(src, `${mode} archive 루트`).not.toContain(refs.archive);
+    }
   });
 });

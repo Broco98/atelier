@@ -17,10 +17,11 @@ import {
   openShell,
   setRunning,
   setShellName,
+  ownerOf,
   setTitle,
   shellEndLabels,
 } from "./shell-registry";
-import type { ShellOrigin, ShellsState } from "./shell-registry";
+import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 
 // work 화면의 머리행 — **탭 줄이다**(결정 7). `[spec][셸…][+]`가 서고 오른쪽 끝에 조작이
 // 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
@@ -34,9 +35,13 @@ import type { ShellOrigin, ShellsState } from "./shell-registry";
 // prop으로 갈랐는데(그 화면이 `/terminal` 하나였다) 이제는 **늘 겸한다** — 그래서 창 드래그
 // 영역·신호등 회피·트랜지션 곡선이 조건이 아니라 이 줄의 성질이다(아래 「타이틀바 몫」).
 
-const WORK = "가";
+// **소유자는 `ownerOf`가 짓는다**(결정 10) — 이 줄이 받는 값과 셸에 앉는 값이 같은 함수에서
+// 나와야 「이 화면의 셸만 그린다」가 실제로 그 화면을 재는 것이 된다.
+const ownerFor = (slug: string) => ownerOf("atelier", slug);
+const WORK = ownerFor("가");
 
 const origin = (project: string | null, cwd: string | null): ShellOrigin => ({
+  mode: "atelier",
   owner: WORK,
   project,
   cwd,
@@ -63,7 +68,7 @@ const SPEC = { on: false, onSelect: () => {} };
 function render(
   state: ShellsState,
   {
-    owner = WORK as string | null,
+    owner = WORK as ShellOwner,
     projects = [] as string[],
     spec = SPEC as SpecTab | null,
     showing = true,
@@ -140,9 +145,13 @@ describe("줄에 서는 것과 그 순서", () => {
 
   it("이 화면의 셸만 그린다 — 남의 work 것은 안 선다", () => {
     const 가 = opened(2);
-    const 나 = opened(3, { owner: "나", project: null, cwd: "~/x" }, 가.state);
-    expect(shellCellsOf(render(나.state, { owner: "가" }))).toHaveLength(2);
-    expect(shellCellsOf(render(나.state, { owner: "나" }))).toHaveLength(3);
+    const 나 = opened(
+      3,
+      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      가.state,
+    );
+    expect(shellCellsOf(render(나.state, { owner: ownerFor("가") }))).toHaveLength(2);
+    expect(shellCellsOf(render(나.state, { owner: ownerFor("나") }))).toHaveLength(3);
   });
 
   it("셸이 0개여도 `spec`과 `+`는 선다", () => {
@@ -738,11 +747,20 @@ describe("`+`", () => {
   it("이 화면이 상한이면 잠긴다 — 남의 화면은 안 센다", () => {
     // **결정 23이 결정 30을 뒤집었다.** 한때 남의 work의 셸 여덟이 이 줄의 `+`를 잠갔는데,
     // 그 화면에는 칸이 하나도 없어 왜 잠겼는지가 안 보였다.
-    const 남 = opened(MAX_SHELLS, { owner: "남", project: null, cwd: "~/x" }).state;
-    expect(plusOf(render(남, { owner: "나" }))).not.toMatch(/aria-disabled/);
+    const 남 = opened(MAX_SHELLS, {
+      mode: "atelier",
+      owner: ownerFor("남"),
+      project: null,
+      cwd: "~/x",
+    }).state;
+    expect(plusOf(render(남, { owner: ownerFor("나") }))).not.toMatch(/aria-disabled/);
 
-    const 나 = opened(MAX_SHELLS, { owner: "나", project: null, cwd: "~/x" }, 남).state;
-    const plus = plusOf(render(나, { owner: "나" }));
+    const 나 = opened(
+      MAX_SHELLS,
+      { mode: "atelier", owner: ownerFor("나"), project: null, cwd: "~/x" },
+      남,
+    ).state;
+    const plus = plusOf(render(나, { owner: ownerFor("나") }));
     expect(plus).toMatch(/aria-disabled="true"/);
     // 이유는 hover 뒤에 있다 — **칸 하나에 문장을 넣을 폭이 없어서다**(결정 47이 세로
     // 목록에서 문장을 꺼낸 것과 같은 근거가 반대 방향을 가리킨다). work 화면에서는 ⌘T가

@@ -1,5 +1,9 @@
 mod commands;
-mod pty;
+/// **밖으로 열린 유일한 모듈이다.** 최상위 터미널이 어느 세계에서 뜨는지는 살아 있는 셸
+/// 없이는 못 재고, 그 검사는 `ATELIER_HOME`을 세워야 해서 단위 테스트 프로세스에 둘 수
+/// 없다(같은 프로세스의 다른 테스트 루트까지 함께 옮긴다). 그래서 통합 테스트
+/// (`tests/top_terminal.rs`)가 자기 프로세스에서 이 모듈을 부른다.
+pub mod pty;
 mod settings;
 mod watcher;
 

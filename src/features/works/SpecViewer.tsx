@@ -29,12 +29,16 @@ import { cn } from "@/lib/utils";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
-import { specRef } from "./refs";
+import { specDirRef, specRef } from "./refs";
 import MermaidBlock from "./MermaidBlock";
 import SpecTable, { ColumnResizeHandle } from "./SpecTable";
 import type { WorkView } from "./types";
+import type { Mode } from "@/mode";
 
 interface SpecViewerProps {
+  // 문서를 어느 루트에서 읽는가. `work.slug`만으로는 부족하다 — 같은 이름이 두 세계에 설 수
+  // 있어서(결정 10) 모드를 안 넘기면 Room의 spec 자리에 같은 이름 work의 문서가 뜬다.
+  mode: Mode;
   work: WorkView;
   // 화면의 머리행(브레드크럼)을 **본문 열 안에** 그린다.
   //
@@ -62,6 +66,7 @@ interface SpecViewerProps {
 }
 
 function SpecViewer({
+  mode,
   work,
   header,
   panelOpen,
@@ -80,7 +85,7 @@ function SpecViewer({
   // 줄번호 `1` 하나만 있는 빈 소스 보기가 된다(실물에서 그랬다). 그림은 asset URL로 바로
   // 건다. 여기서 그림 판정을 따로 부르면 표가 바뀔 때 읽기만 옛 규칙을 따른다.
   const body = docBody(file, showSource);
-  const { data: content } = useSpecFile(work.slug, body === "image" ? null : file);
+  const { data: content } = useSpecFile(mode, work.slug, body === "image" ? null : file);
   // 이미지가 읽힐 자리. 코어는 홈을 축약해 내려 주므로(`~/.atelier/…`) 펴 두어야 URL이 된다
   const { data: home } = useHomeDir();
   const specRoot = home ? expandHome(work.specDir, home) : null;
@@ -88,9 +93,9 @@ function SpecViewer({
   const copyRef = useCallback(
     (start: number, end: number) => {
       if (!file) return;
-      onCopy(specRef(work.slug, file, start, end));
+      onCopy(specRef(mode, work.slug, file, start, end));
     },
-    [work.slug, file, onCopy],
+    [mode, work.slug, file, onCopy],
   );
 
   // 표의 값 하나가 본문 하나로 간다. **`switch`인 것이 계약이다** — 표에 칸이 하나 늘면
@@ -150,8 +155,14 @@ function SpecViewer({
                 <span className="text-[14px] leading-[1.65] text-tertiary">
                   AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
                 </span>
+                {/* **경로를 여기서 짓지 않는다.** 한때 Atelier 루트를 JSX에 손으로 적고
+                    있었는데, 그 리터럴은 Maison에서 있지도 않은 폴더를 안내한다 — 게다가
+                    사람이 그대로 붙여 넣으라고 내놓는 줄이라 참조 생성기가 내는 것과
+                    **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와 에이전트가 읽는
+                    자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
+                    `SpecViewer.test.tsx`의 소스 검사가 리터럴이 되돌아오는 것을 막는다. */}
                 <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                  ~/.atelier/works/{work.slug}/spec/
+                  {specDirRef(mode, work.slug)}
                 </code>
               </div>
             </div>

@@ -25,6 +25,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+mod mode;
 mod paths;
 mod slug;
 mod project;
@@ -35,7 +36,11 @@ mod works;
 mod recent;
 mod search;
 
-pub use paths::{archive_dir, collapse_home, data_root, expand_home, projects_dir, works_dir};
+pub use mode::{mode_from_env, Mode, MODE_ENV};
+pub use paths::{
+    archive_dir, collapse_home, data_root, expand_home, mode_home, projects_dir,
+    shared_projects_root, works_dir,
+};
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
 // (`search.rs`가 `crate::recent::read_recent`로 직접 부른다) 나머지를 내면 아무도 안 읽는
 // 값이 계약에 남는다 — 이 크레이트가 `truncated`를 걷을 때 든 근거가 그것이다.

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WorkMetaRows, sharedBase } from "./WorkMetaMenu";
+import type { Mode } from "@/mode";
 import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
 
@@ -22,9 +23,15 @@ const work: WorkView = {
   specFiles: [],
 };
 
-function render(overrides: Partial<WorkView> = {}, base: string | null = "develop"): string {
+// **세계는 맨 뒤 인자다** — 기본값이 Atelier라 아래 기존 검사들이 그대로 「Atelier 팝오버는
+// 안 바뀐다」의 증거가 된다.
+function render(
+  overrides: Partial<WorkView> = {},
+  base: string | null = "develop",
+  mode: Mode = "atelier",
+): string {
   return renderToStaticMarkup(
-    <WorkMetaRows work={{ ...work, ...overrides }} base={base} onCopy={() => {}} />,
+    <WorkMetaRows mode={mode} work={{ ...work, ...overrides }} base={base} onCopy={() => {}} />,
   );
 }
 
@@ -103,6 +110,20 @@ describe("WorkMetaRows", () => {
       "trees/atelier/",
       "trees/notes/",
     ]);
+  });
+
+  it("Maison에는 작업 폴더 한 줄만 남는다", () => {
+    // Room에는 브랜치도 워크트리도 없다(결정 17). 값으로만 가르면 안 되는 이유는
+    // 정보 탭 쪽과 같다 — 코어는 프로젝트 0개인 Room에도 이름을 주면 브랜치를 확정하고,
+    // 손으로 고친 work.json은 워크트리까지 실어 온다. 그래서 **둘 다 들고 있는** 값을
+    // 넘겨 조건이 실제로 그것들을 걷는지 본다.
+    // 남는 한 줄의 **경로도 저 세계의 것이다**(#186) — 복사되는 값이라 여기서 안 재면
+    // Atelier 루트가 남은 채로도 「한 줄만 남는다」는 초록이다.
+    expect(rowValues(render({}, "develop", "maison"))).toEqual([
+      "~/.atelier/maison/rooms/some-work/",
+    ]);
+    // 같은 값이 Atelier에서는 세 줄이다 — 한쪽만 재면 조건을 통째로 지워도 초록이다
+    expect(rowValues(render({}, "develop", "atelier"))).toHaveLength(3);
   });
 
   it("모든 줄이 복사되는 진짜 버튼이다", () => {
