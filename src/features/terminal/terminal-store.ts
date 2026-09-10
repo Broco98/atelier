@@ -9,9 +9,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
-import { markShellsSeen, nextAttention, ptyIdOf } from "./shell-attention";
-import type { ShellView } from "./shell-attention";
+import { applySignal, markShellsSeen, nextAttention, nextOnOutput, ptyIdOf } from "./shell-attention";
+import type { AttentionSource, ShellView } from "./shell-attention";
+import { bellSignal, oscSignal } from "./shell-osc";
 import { createNotifier, notifyShells, outgoing } from "./shell-notify";
 import type { NotifyPayload } from "./shell-notify";
 import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
@@ -24,6 +26,7 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
+  runningOn,
   setAttention,
   setRunning,
   setShellName,
@@ -441,6 +444,48 @@ void onShellAttention((changed) => {
   console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);
 });
 
+/**
+ * **훅 없는 셸의 보너스 길**이 상태를 앉히는 자리(#208 · 결정 11의 P). OSC 9·777과 벨이 여기
+ * 하나로 모인다 — 아래 `createInstance`가 인스턴스마다 셋을 걸고, 무엇이 되는지는
+ * `shell-osc.ts`(정규 이벤트)와 `shell-attention.ts`(화면값)가 나눠 안다.
+ *
+ * **훅 길과 같은 문으로 들어간다.** `applySignal` 하나만 딛으므로 권위 규칙(훅이 한 번이라도
+ * 말한 셸에서는 무시)이 이 길에도 저절로 걸린다 — 여기서 칸을 직접 짜면 그 규칙을 두 번
+ * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다.
+ *
+ * **누가 말했는지는 `null`이다.** PTY는 그 바이트가 어느 프로세스에서 나왔는지 안 적는다 —
+ * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`).
+ *
+ * **번호를 안 옮긴다.** 여기 오는 것은 xterm 인스턴스의 **레지스트리 id**라 훅 길이 하는
+ * 두 번의 변환(셸 ID → pty 번호 → 레지스트리 번호)이 필요 없다.
+ *
+ * 「봤다」를 마지막에 한 번 거치는 것은 훅 길과 같은 이유다 — 지금 보고 있는 셸에 도착한
+ * 완료는 사람이 이미 본 것이라, 안 거치면 켜진 칸이 초록으로 번쩍였다 꺼지고 알림이 운다.
+ */
+function applyBonusSignal(id: number, signal: AgentSignal | null, source: AttentionSource): void {
+  if (signal === null) return;
+  terminalStore.setState((state) => {
+    const prev = state.shells.find((shell) => shell.id === id)?.attention ?? null;
+    const next = setAttention(state, id, applySignal(prev, signal, Date.now(), source, null));
+    return markShellsSeen(next, currentView());
+  });
+}
+
+/**
+ * **출력이 도착했다**를 그 칸에 알린다 — 이 판에서 상태를 푸는 유일한 이벤트다(#208).
+ *
+ * **`setState` 앞에서 먼저 판정한다.** 이 함수는 PTY 프레임마다 불리는데(초당 수십 번),
+ * 스토어는 값이 안 바뀌어도 부르면 구독자를 깨운다 — 그대로 두면 셸이 글자를 뱉는 내내
+ * 사이드바 열여덟 행이 다시 그려진다. `nextOnOutput`이 안 바뀔 때 **받은 것을 그대로**
+ * 돌려주는 것이 그래서 계약이고, 이 자리는 그 항등성만 보고 문을 연다.
+ */
+function noteOutput(id: number): void {
+  const prev = terminalStore.state.shells.find((shell) => shell.id === id)?.attention ?? null;
+  const next = nextOnOutput(prev, Date.now());
+  if (next === prev) return;
+  terminalStore.setState((state) => setAttention(state, id, next));
+}
+
 // ── 알림과 독 배지 (#206 · 결정 10)
 //
 // **판정은 여기 없다.** 무엇이 울리는지는 `shell-notify.ts`의 순수 함수 둘이 정하고
@@ -662,6 +707,38 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // React 트리 밖에 사는 칸)의 이름이 갱신되지 않는다: 그 칸에는 도는 이펙트가 없다.
   term.onTitleChange((title) => {
     terminalStore.setState((state) => setTitle(state, id, title));
+  });
+
+  // **훅 없는 셸의 보너스 길 셋**(#208 · 결정 11의 P). 붙이는 자리가 바로 위와 같고 이유도
+  // 같다 — 배경 칸이 부르는 것도 띠와 알림이 받아야 한다. 사람이 다른 work을 보는 동안
+  // 뒤에서 도는 셸이 정확히 이 길로 말을 건다.
+  //
+  // **9와 777이 같은 함수를 탄다.** 스펙이 둘을 한 줄로 묶었고(「그 밖의 OSC 9·777은 전부
+  // `done`」), 갈라 두면 같은 판정이 두 벌이 된다.
+  //
+  // **`true`를 돌려주는 것은 「우리가 처리했다」다.** 이 xterm 버전에는 9·777의 기본 핸들러가
+  // 없어(`lib/xterm.js`의 `registerOscHandler` 등록 목록에 0·1·2·4·8·10~12·104·110~112뿐)
+  // 밀려날 곳도 없지만, `false`를 돌려주면 파서가 그 시퀀스를 「처리 못 함」으로 흘린다.
+  const osc = (body: string): boolean => {
+    applyBonusSignal(id, oscSignal(body), "osc");
+    return true;
+  };
+  term.parser.registerOscHandler(9, osc);
+  term.parser.registerOscHandler(777, osc);
+
+  // **포커스 보고(DEC 1004)는 여기서 켤 것이 없다.** xterm이 스스로 진다 — `?1004h`를 받으면
+  // `decPrivateModes.sendFocus`를 세우고, 그 뒤 포커스/블러마다 `ESC [I`·`ESC [O`를
+  // `triggerDataEvent`로 흘린다(`lib/xterm.js` 확인). 그 데이터는 위 `onData` 하나를 지나
+  // 그대로 PTY로 나가므로, Codex의 `notification_condition = unfocused`가 딛는 신호가
+  // 이 앱에서도 셸까지 닿는다. **아직 실물로는 못 봤다** — 남은 물음은 macOS 창이 뒤로 갈 때
+  // WKWebView가 xterm의 숨은 입력칸에 실제로 블러를 주는가이고, 그것은 사람이 봐야 안다.
+
+  // **벨의 「모르는 명령」 판정은 울린 그 순간의 값으로 한다**(구현 결정 1). 1초 폴링이라
+  // 경계에서 어긋날 수 있고, 어긋나면 초록이 하나 더 뜨는 쪽으로 틀린다 — 스펙이 택한 방향이다.
+  // 죽은 칸을 가리는 것은 `runningOn` 하나가 한다.
+  term.onBell(() => {
+    const shell = terminalStore.state.shells.find((one) => one.id === id);
+    applyBonusSignal(id, bellSignal(shell ? runningOn(shell) : null), "bell");
   });
 
   // PTY resize는 `cols`/`rows`가 **실제로 바뀔 때만** 나가야 한다(⌘B의 220ms 폭 트랜지션이
@@ -886,6 +963,12 @@ async function spawn(instance: ShellInstance) {
       // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다.
       if (frame instanceof ArrayBuffer) {
         instance.term.write(new Uint8Array(frame));
+        // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
+        // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
+        // 이 판에 없다(결정 2·3). 값을 쓰는 것이 아니라 **파싱한 뒤**에 알리는 것은 같은
+        // 프레임 안의 OSC가 먼저 앉아야 해서다: 순서가 바뀌면 승인 요청과 그 뒤 한 글자가
+        // 한 프레임에 실려 온 자리에서 방금 선 앰버가 그 자리에서 꺼진다.
+        noteOutput(instance.id);
         return;
       }
       instance.ptyId = null;

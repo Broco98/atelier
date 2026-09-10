@@ -13,6 +13,7 @@ import {
   markShellsSeen,
   ptyIdOf,
   nextAttention,
+  nextOnOutput,
   signalOf,
   signalsByOwner,
   topSignal,
@@ -252,6 +253,45 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
 
   it("아무것도 안 온 셸은 벨이 바꾼다", () => {
     expect(applySignal(null, { event: "end", message: null }, 200, "bell", null)?.kind).toBe("done");
+  });
+
+  // **훅 없는 Codex 셸의 앰버를 푸는 것은 출력이다**(스펙 전이 표의 마지막 줄 · 구현 스펙
+  // 3절). Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보내므로, OSC가 세운 앰버를
+  // 풀 OSC가 영영 안 온다 — 사람이 승인한 뒤 다시 흐르기 시작한 **출력 자체**가 답이다.
+  //
+  // **훅 셸에는 안 건다.** claude는 답을 기다리는 동안에도 커서를 다시 그리느라 출력을
+  // 내므로, 여기가 권위 규칙 밖으로 넓어지면 훅이 세운 앰버가 곧바로 꺼진다.
+  describe("출력이 도착하면 OSC가 세운 기다림만 풀린다", () => {
+    const osc가세운기다림: Attention = { ...훅이말한것, source: "osc", agent: null };
+
+    it("OSC가 세운 기다림은 도는 중으로 간다 — 말은 그대로 남는다", () => {
+      expect(nextOnOutput(osc가세운기다림, 300)).toEqual({
+        kind: "working",
+        message: "커밋할까요?",
+        since: 300,
+        seen: false,
+        source: "osc",
+        agent: null,
+      });
+    });
+
+    it("훅이 세운 기다림은 안 풀린다 — 같은 객체다", () => {
+      expect(nextOnOutput(훅이말한것, 300)).toBe(훅이말한것);
+    });
+
+    // **초록은 출력으로 안 꺼진다.** 스펙이 푸는 것은 「화면값이 `waiting`」인 자리 하나이고,
+    // 안 본 완료를 지우는 것은 사람이 본 순간뿐이다(결정 7) — 여기서 넓히면 벨이 세운 초록이
+    // 다음 프롬프트가 그려지는 순간 사라져 아무도 못 본다.
+    it.each(["done", "working"] as const)("%s는 출력이 안 건드린다 — 같은 객체다", (kind) => {
+      const 그것: Attention = { ...osc가세운기다림, kind };
+      expect(nextOnOutput(그것, 300)).toBe(그것);
+    });
+
+    // 아무 주장도 없는 셸은 출력이 와도 조용하다 — 출력 정지 시간으로도, 출력 도착으로도
+    // 상태를 **만들지** 않는다(결정 3).
+    it("아무것도 안 온 셸은 출력이 아무것도 안 만든다", () => {
+      expect(nextOnOutput(null, 300)).toBeNull();
+    });
   });
 
   // **누가 말했는가는 상태와 함께 앉는다**(#203). 초록을 만드는 이벤트가 왔을 때 그 셸에서

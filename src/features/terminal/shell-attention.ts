@@ -113,6 +113,30 @@ export function applySignal(
   };
 }
 
+/**
+ * **출력이 도착했다**는 사실 하나를 앉힌다 — 스펙 전이 표의 마지막 줄이고, 이 판에서 상태를
+ * 만드는 것이 아니라 **푸는** 유일한 이벤트다.
+ *
+ * **왜 필요한가**: 훅을 안 깐 Codex 셸에서 승인 요청 OSC가 앰버를 세우면, 그것을 풀 OSC가
+ * 영영 안 온다 — Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보내기 때문이다(구현
+ * 스펙 3절). 사람이 승인한 뒤 **다시 흐르기 시작한 출력**이 그 자리에서 유일한 답이다.
+ *
+ * **문 셋을 다 지난 것만 푼다.** 화면값이 `waiting`이고 · 그것을 세운 것이 OSC이고 ·
+ * 그래서 훅 권위에 안 걸릴 때. 하나라도 넓히면 각각 이렇게 무너진다: `done`까지 풀면 벨이
+ * 세운 초록이 다음 프롬프트 한 줄에 사라져 아무도 못 보고, `source`를 안 보면 claude가
+ * 답을 기다리며 찍는 커서 갱신에 훅이 세운 앰버가 꺼진다(권위 규칙이 막으려는 바로 그것).
+ *
+ * **부르는 자리가 PTY 프레임마다다.** 그래서 안 바뀌면 **받은 것을 그대로** 돌려주는 것이
+ * 성능 얘기가 아니라 계약이다 — 부르는 쪽은 이 항등성만 보고 스토어를 건드릴지 정한다.
+ * 한 번 `working`이 되고 나면 첫 문에서 되돌아 나오므로 그다음 프레임들은 공짜다.
+ */
+export function nextOnOutput(prev: Attention | null, at: number): Attention | null {
+  if (prev === null || prev.kind !== "waiting" || prev.source !== "osc") return prev;
+  // **`applySignal`을 딛는다 — 여기서 칸을 직접 짜지 않는다.** 권위 규칙도 「봤다」를 푸는
+  // 규칙도 저기 하나에 있고, 손으로 짜면 그 둘이 이 자리에서만 조용히 늙는다.
+  return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent);
+}
+
 /** 여섯 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
 function same(a: Attention | null, b: Attention | null): boolean {
   if (a === null || b === null) return a === b;

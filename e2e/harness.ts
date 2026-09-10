@@ -550,3 +550,64 @@ export async function badgeCalls(page: Page): Promise<Array<number | null>> {
 
 /** 배지가 나가는 IPC 커맨드 이름. 위 손잡이가 호출을 고르고 인자를 잘라 내는 기준이다. */
 const BADGE_COMMAND = "plugin:window|set_badge_count";
+
+/**
+ * 그 셸의 PTY에서 **바이트가 흘러나오게 만든다.** 백엔드가 채널로 흘려보내는 출력 프레임
+ * 한 장을 손으로 밀어 넣는 것이다 — 픽스처 백엔드는 커맨드에만 답하지 프레임을 안 보낸다.
+ *
+ * **이것이 이 판에서 유일하게 「진짜 xterm」을 지나는 길이다**(#208). OSC 9·777과 벨은
+ * xterm의 파서가 만드는 것이라, 프런트에서 흉내 낸 이벤트로는 「핸들러가 실제로 붙었나」를
+ * 한 글자도 못 잰다. 여기 넣은 바이트는 진짜 파서를 지나 진짜 핸들러를 때린다.
+ *
+ * **채널 id는 IPC 기록에서 읽는다.** Tauri의 `Channel`은 직렬화될 때 자기를 
+ * `__CHANNEL__:<id>`로 적고(`@tauri-apps/api`의 `SERIALIZE_TO_IPC_FN`), 하네스가 `pty_spawn`의
+ * 인자를 통째로 적어 두므로 거기 그 문자열이 남는다. **상수로 적을 수 없다** —
+ * `transformCallback`이 난수로 짓는다. 못 찾으면 **던진다**: 못 찾은 채 지나가면 아래
+ * 단언들이 「바이트가 아무 데도 안 갔다」를 「핸들러가 아무 일도 안 했다」와 구분 못 한다.
+ *
+ * **어느 셸에 넣을지 `ptyId`로 고르는 규칙은 `markRunning`·`markAttention`과 같다** —
+ * 픽스처가 세는 것은 `pty_spawn`이 **불린 순서**라, 칸마다 응답을 기다려 세우는 `openShell`을
+ * 써야 그 수가 「n번째 칸」과 같아진다.
+ *
+ * **기다리는 것이 `awaitSpawned`가 아니라 그 채널이 기록에 나타나는 것**이다. 저쪽은 셸이
+ * 정확히 n개일 때까지 기다리는 것이라 칸이 더 열린 화면에서는 영영 안 끝나고, 무엇보다 이
+ * 길에는 **응답이 필요 없다** — xterm도 핸들러도 `pty_spawn`을 **부르기 전에** 이미 서 있고
+ * (`createInstance`), 채널의 `onmessage`도 그때 걸린다. 기다릴 것은 「그 부름이 나갔는가」뿐이다.
+ *
+ * **순번(`index`)을 채널마다 세는 것**은 `Channel`이 순서를 지키려고 그 수를 보기 때문이다:
+ * 기대하는 번호가 아니면 프레임을 **큐에 넣고 조용히 기다린다.** 늘 0으로 보내면 두 번째
+ * 프레임부터 영영 안 도착하고, 그 조용함은 「핸들러가 아무 일도 안 했다」와 화면에서 구분되지
+ * 않는다 — 그래서 페이지 안에 채널별 카운터를 둔다.
+ */
+export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<void> {
+  let channel: string | undefined;
+  let spawns: string[] = [];
+  for (let tries = 0; tries < 50 && !channel; tries += 1) {
+    const calls = (await readIpcRecord(page))?.calls ?? [];
+    spawns = calls.filter((call) => call.startsWith("pty_spawn "));
+    channel = (spawns[ptyId - 1] && /__CHANNEL__:(\d+)/.exec(spawns[ptyId - 1])?.[1]) || undefined;
+    if (!channel) await page.waitForTimeout(100);
+  }
+  if (!channel) {
+    throw new Error(`pty ${ptyId}의 출력 채널이 5초 안에 안 나타났다 — IPC 기록: ${JSON.stringify(spawns)}`);
+  }
+
+  await page.evaluate(
+    ({ channel, bytes }: { channel: number; bytes: string }) => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+        __ATELIER_FRAME_INDEX__?: Record<number, number>;
+      };
+      const seen = (win.__ATELIER_FRAME_INDEX__ ??= {});
+      const index = seen[channel] ?? 0;
+      seen[channel] = index + 1;
+      // 백엔드가 보내는 것과 **같은 모양**이어야 한다 — 출력 프레임은 ArrayBuffer이고
+      // 종료 프레임만 객체다(`terminal-store`의 `spawn`이 `instanceof`로 가른다).
+      win.__TAURI_INTERNALS__.runCallback(channel, {
+        index,
+        message: new TextEncoder().encode(bytes).buffer,
+      });
+    },
+    { channel: Number(channel), bytes },
+  );
+}
