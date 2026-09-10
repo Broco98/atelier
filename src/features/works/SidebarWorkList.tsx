@@ -860,7 +860,19 @@ function WorkRow({
              레이아웃(`flex`)은 갈래와 무관하다. */
           <div
             data-shells={signal === null ? work.slug : undefined}
-            className="flex min-w-0 items-center"
+            /* **남는 폭을 다 차지한다**(`flex-1`) — 안에 드는 것이 신호 줄일 때 그 성질이
+               결정적이다. `SignalLine`의 말 상자는 `flex-1`이라 이 상자가 내용에 붙어 앉으면
+               (`flex: 0 1 auto`) 폭이 정확히 글자 폭이 되고, `[data-fade]`의 마스크는
+               **상시라**(index.css · 결정 12) 오른쪽 끝 12px이 빈 자리가 아니라 **실제
+               글자** 위에 떨어진다 — 넘치지도 않는 짧은 말이 늘 잘린 것처럼 읽혔다.
+               띠(`attention-band.tsx`의 줄은 `w-full` 버튼 안이다)와 목업(`.row2 .l2`는 세로
+               flex의 자식이라 stretch로 행 폭을 다 쓴다)은 둘 다 이 상자를 늘린다 — 행만
+               어긋나 있었다. 종류·수 갈래는 안쪽이 왼쪽 정렬 `shrink-0`이라 화면이 그대로다.
+
+               **조각 사이를 6px 띄운다**(`gap-1.5`, 목업 `.row2 .l2 { gap: 6px }`). 마크
+               글리프는 `viewBox 0 0 16 16`을 거의 꽉 채우므로 0이면 로고가 첫 글자에 그대로
+               닿는다. 자식이 하나인 종류·수 갈래에는 아무 영향이 없다. */
+            className="flex min-w-0 flex-1 items-center gap-1.5"
           >
             {subrow}
           </div>

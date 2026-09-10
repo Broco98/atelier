@@ -210,6 +210,26 @@ export function signalOf(shell: Shell): ShellSignal | null {
 const RANK: Readonly<Record<ShellSignal, number>> = { waiting: 0, done: 1, working: 2 };
 
 /**
+ * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
+ * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
+ *
+ * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
+ * `AttentionKind`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
+ * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
+ * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
+ * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다.
+ */
+export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
+
+/**
+ * 그 화면값이 「확인할 것」인가. **이 판정의 유일한 자리다** — 넓히는 날 고칠 곳이 이 한 줄
+ * 이어야 띠·배지·알림이 함께 따라온다(위 `CallingKind` 머리말).
+ */
+export function isCalling(kind: ShellSignal | null): kind is CallingKind {
+  return kind === "waiting" || kind === "done";
+}
+
+/**
  * 이 셸들의 값 **하나**. work 행의 레인이 읽는다 — 셸이 여럿인 work도 점은 하나다(합의 8).
  *
  * 받는 것이 `ShellsState`가 아니라 칸 배열인 것은 부르는 쪽이 이미 `shellsOf`로 자기 화면을
@@ -314,8 +334,8 @@ export function signalsByOwner(state: ShellsState): Record<string, ShellSignal> 
  */
 export interface CallingShell {
   shell: Shell;
-  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다. */
-  kind: "waiting" | "done";
+  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
+  kind: CallingKind;
   /**
    * 그 셸이 말한 사실 **통째로**. 정렬의 둘째 키(`since`)도 마크의 재료(`agent`)도 여기
    * 있어서, 읽는 쪽이 문(`attentionOn`)을 다시 딛을 일이 없다 — 그것이 이 필드가 `since`
@@ -349,7 +369,9 @@ export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<Calli
   const calling: CallingShell[] = [];
   for (const shell of shells) {
     const kind = signalOf(shell);
-    if (kind !== "waiting" && kind !== "done") continue;
+    // **갈래의 이름을 딛는다.** 리터럴 둘로 좁히면 축이 느는 날 새 값이 조용히 걸러져
+    // 띠·독 배지·알림 셋이 함께 침묵한다(`CallingKind` 머리말).
+    if (!isCalling(kind)) continue;
     // **없으면 줄을 안 낸다.** `signalOf`가 이미 죽은 칸을 걸렀으므로 값이 있는 것은
     // 확실하지만, 그 확신을 `?? 0`으로 메워 두면 다음 사람이 위 조건을 넓히는 날 이 셸이
     // **1970년부터 기다린 것**으로 맨 위에 선다 — 사람이 읽는 글자라 틀린 값이 그대로 뜻이
@@ -381,8 +403,8 @@ export interface BandRow {
   id: number;
   /** 어느 화면인가. `null`이면 최상위 셸이고 누르면 `/terminal`로 간다(결정 13). */
   owner: string | null;
-  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다. */
-  kind: "waiting" | "done";
+  /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
+  kind: CallingKind;
   /** 경과가 읽는 시각. 정렬의 둘째 키이기도 하다. */
   since: number;
   /** 마크의 재료. 규칙은 행과 같다(`SignalView.running`) — 도는 것이 먼저, 없으면 말한 쪽. */

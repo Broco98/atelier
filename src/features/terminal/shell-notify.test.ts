@@ -25,6 +25,10 @@ import type { Shell, ShellsState } from "./shell-registry";
 const base: NotifyInput = {
   prev: null,
   next: "waiting",
+  // **직전과 새 사실의 시각이 같다** — 그래야 아래 표의 「머무름」 두 줄이 「같은 값이 그대로
+  // 앉아 있는 것」을 재고, 「같은 값으로 새 사실이 도착한 것」은 그 시각을 갈라 따로 잰다.
+  prevSince: 5_000,
+  since: 5_000,
   visible: false,
   lastNotifiedAt: null,
   now: 10_000,
@@ -82,6 +86,29 @@ describe("어느 전이가 울리나", () => {
     expect(decide({ prev: null, next: "waiting" })).not.toBeNull();
     expect(decide({ prev: "waiting", next: "working" })).toBeNull();
     expect(decide({ prev: "working", next: "waiting" })).not.toBeNull();
+  });
+
+  // **훅 셸에는 화면값이 `waiting`을 벗어나는 길이 사실상 없다.** 결정 6의 소거 규칙은
+  // 「`UserPromptSubmit` · 출력」 둘인데 구현 결정 1이 출력을 권위 규칙 **안쪽**으로
+  // 좁혔고(`nextOnOutput`은 `source: "osc"`만 푼다), 승인 클릭은 `UserPromptSubmit`을
+  // 안 낸다 — 설치되는 훅 다섯에 「승인 완료」 이벤트가 없다. 그래서 승인 요청이 연달아
+  // 오는 동안 화면값은 `waiting`에 계속 앉아 있고, **화면값 하나로만 재면 둘째 프롬프트
+  // 부터 전부 삼켜진다** — 결정 10이 이름 붙여 막으려던 그 실패다(Agent Deck).
+  //
+  // 그래서 「머무름」의 판정을 화면값이 아니라 **그 사실의 정체**로 넓힌다: `applySignal`이
+  // 이벤트마다 새 `since`를 찍으므로, 같은 값이 그대로 앉아 있는 것과 같은 값으로 새 사실이
+  // 도착한 것이 그 한 칸으로 갈린다.
+  it("같은 화면값이라도 새 사실이면 울린다", () => {
+    expect(
+      decide({ prev: "waiting", next: "waiting", prevSince: 1_000, since: 2_000 }),
+    ).not.toBeNull();
+    expect(decide({ prev: "done", next: "done", prevSince: 1_000, since: 2_000 })).not.toBeNull();
+  });
+
+  // 그 반대쪽 — 같은 사실이 다시 그려지는 것(다른 칸이 바뀌어 회차가 도는 것)은 조용하다.
+  // 이 줄이 없으면 위 넓히기가 「늘 울린다」로 무너져도 초록이다.
+  it("같은 사실이 다시 와도 안 울린다", () => {
+    expect(decide({ prev: "waiting", next: "waiting", prevSince: 2_000, since: 2_000 })).toBeNull();
   });
 });
 
@@ -141,6 +168,7 @@ describe("판정을 회차에 걸어 두는 것", () => {
     id: 1,
     owner: "signal",
     kind: "waiting",
+    since: 0,
     visible: false,
     title: "터미널 신호",
     shellName: "atelier · claude",
@@ -153,6 +181,17 @@ describe("판정을 회차에 걸어 두는 것", () => {
     expect(notifier.step([shell()], 0)).toHaveLength(1);
     expect(notifier.step([shell()], 1000)).toHaveLength(0);
     expect(notifier.step([shell()], 60_000)).toHaveLength(0);
+  });
+
+  // **이것이 훅 셸의 실물 경로다**(위 판정 검사의 짝). claude가 `Bash` 승인을 묻고, 사람이
+  // 가서 승인하고, 3분 뒤 `Edit` 승인을 묻는다 — 훅 셸에서 그 사이 화면값은 `waiting`에
+  // 그대로 앉아 있고 바뀌는 것은 `since`·`message`뿐이다. 회차가 화면값만 기억하면 둘째
+  // 승인 요청이 삼켜져, 다른 앱을 보던 사람은 claude가 멈춰 선 것을 모른다.
+  it("같은 화면값으로 새 승인이 오면 두 번째도 울린다", () => {
+    const notifier = createNotifier();
+    expect(notifier.step([shell({ since: 0, message: "Bash · git status" })], 0)).toHaveLength(1);
+    const 다음 = notifier.step([shell({ since: 180_000, message: "Edit · src/pty.rs" })], 180_000);
+    expect(다음.map((one) => one.body)).toEqual(["Edit · src/pty.rs"]);
   });
 
   // 스토리 60의 반대쪽 — 「그쳤다가 다시 부르면」이 회차에서도 산다.
@@ -258,6 +297,9 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     );
     expect(rows.map((one) => one.id)).toEqual([2, 1]);
     expect(rows.map((one) => one.kind)).toEqual(["waiting", "done"]);
+    // **시각도 함께 온다** — 판정이 「같은 값으로 새 사실이 왔나」를 이 칸으로 가른다.
+    // 여기서 빠지면 위 판정 검사가 아무리 맞아도 실물에서는 둘째 승인이 삼켜진다.
+    expect(rows.map((one) => one.since)).toEqual([20, 30]);
   });
 
   // 「봤다」 판정은 **한 자리**다(스토리 80) — 탭 물들임과 같은 함수(`isShellSeen`)를 딛는다.

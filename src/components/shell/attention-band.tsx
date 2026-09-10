@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import type { BandRow } from "@/features/terminal/shell-attention";
+import type { BandRow, CallingKind } from "@/features/terminal/shell-attention";
 import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
 
 // 「확인할 것」 띠(#204, 결정 5·8). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
@@ -37,6 +37,20 @@ export const BAND_LABEL = SIGNAL_LABEL.done;
  * 거기서 자르면 헤더의 `N`이 셀 것이 사라진다.
  */
 export const BAND_LIMIT = 3;
+
+/**
+ * 줄 **글자**의 무게(결정 3의 우선순위). 기다림은 `foreground`, 안 본 완료만 한 단
+ * 내려간다 — 바로 아래 work 행이 통째로 `text-muted-foreground`라(SidebarWorkList), 둘을
+ * 같은 색으로 두면 띠가 목록과 같은 무게로 읽히고 「기다림 › 안 본 완료」가 점 색에만 남는다.
+ *
+ * **삼항이 아니라 표다.** 갈래가 느는 날(실패 — 결정 12) 삼항은 새 값을 조용히 아래쪽
+ * 가지로 흘려보내는데, `Record<CallingKind, …>`는 그 자리에서 컴파일이 막는다 —
+ * `SIGNAL_LABEL`·`TONE`이 같은 이유로 표인 것과 같다.
+ */
+const WEIGHT: Readonly<Record<CallingKind, string>> = {
+  waiting: "text-foreground",
+  done: "text-muted-foreground",
+};
 
 /**
  * 띠의 줄 하나. **`bandRows`의 값에 화면의 이름이 붙은 모양이다** — 값을 다시 적지 않고
@@ -179,10 +193,8 @@ function BandLine({
         // 저쪽 `.strip .it`에는 hover가 없다).
         "transition-colors hover:bg-state-2",
         // **결정 3의 우선순위가 띠 안에서도 글자로 남는다**(목업 `.strip .it` / `.it.d`).
-        // 기다림은 `foreground`, 안 본 완료만 한 단 내려간다 — 바로 아래 work 행이 통째로
-        // `text-muted-foreground`라(SidebarWorkList), 둘을 같은 색으로 두면 띠가 목록과
-        // 같은 무게로 읽히고 「기다림 › 안 본 완료」가 점 색에만 남는다.
-        item.kind === "waiting" ? "text-foreground" : "text-muted-foreground",
+        // 표는 위 `WEIGHT` 하나다.
+        WEIGHT[item.kind],
       )}
     >
       {/* 레인 — work 행과 **같은 14px 한 칸**이라 점이 같은 x에 선다. 두 자리가 어긋나면

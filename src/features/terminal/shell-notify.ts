@@ -1,6 +1,6 @@
 import { SIGNAL_LABEL } from "@/components/shell/shell-signal";
 import type { NotifyChoice } from "@/features/settings/notifications";
-import { callingShells, isShellSeen } from "./shell-attention";
+import { callingShells, isCalling, isShellSeen } from "./shell-attention";
 import type { ShellSignal, ShellView } from "./shell-attention";
 import { shellRowName } from "./shell-registry";
 import type { ShellsState } from "./shell-registry";
@@ -32,8 +32,17 @@ export interface NotifyContent {
 export interface NotifyInput {
   /** 직전 화면값. 앱이 켜진 뒤 이 셸을 한 번도 못 봤으면 `null`이다. */
   prev: ShellSignal | null;
+  /**
+   * 직전 사실이 도착한 시각. 값을 한 번도 못 본 셸은 `null`이다.
+   *
+   * **`prev`와 짝이다** — 「같은 값이 그대로 앉아 있는 것」과 「같은 값으로 **새 사실**이
+   * 도착한 것」을 가르는 칸이 이것 하나다(아래 `decideNotification` 머리말).
+   */
+  prevSince: number | null;
   /** 새 화면값. `signalOf`가 낸 그 값이라 **본 완료는 이미 `null`**이다. */
   next: ShellSignal | null;
+  /** 새 사실이 도착한 시각(`Attention.since`). `applySignal`이 이벤트마다 새로 찍는다. */
+  since: number;
   /** 지금 사람이 그 셸을 보고 있나(결정 7의 판정 — `isShellSeen`). */
   visible: boolean;
   /** 그 work에서 마지막으로 울린 시각. 없으면 `null`. */
@@ -50,8 +59,20 @@ export interface NotifyInput {
  *
  * **재무장을 따로 기억하지 않는다.** 「나갔다 다시 들어왔는가」를 플래그로 들면 그 플래그를
  * 언제 푸는지가 곧 재무장 조건이 되고, 그것을 잘못 잡으면 **두 번째 진짜 프롬프트가
- * 삼켜진다**(Agent Deck 소스의 실패 사례 — 결정 10). 여기서는 그 조건이 `prev !== next`
- * 하나로 접힌다: `working`이나 `null`을 지나 돌아오면 그 비교가 저절로 참이 된다.
+ * 삼켜진다**(Agent Deck 소스의 실패 사례 — 결정 10). 여기서는 그 조건이 「화면값과 시각이
+ * 둘 다 그대로인가」로 접힌다: `working`이나 `null`을 지나 돌아오면 화면값이 갈리고,
+ * 화면값이 안 갈려도 새 사실이면 시각이 갈린다.
+ *
+ * **「같은 kind의 새 사실도 진입이다.」** 화면값 하나로만 재던 판정이 훅 셸에서 새던 자리가
+ * 여기다 — 훅 셸에는 `waiting`을 푸는 길이 사실상 없다: 결정 6의 소거 규칙 둘 중 「출력」을
+ * 구현 결정 1이 권위 규칙 안쪽으로 좁혔고(`nextOnOutput`은 `source: "osc"`만 푼다), 남은
+ * `UserPromptSubmit`을 **승인 클릭은 안 낸다**(설치되는 훅 다섯에 승인 완료 이벤트가 없다).
+ * 그래서 승인 요청이 연달아 오는 동안 화면값이 `waiting`에 계속 앉아 있고, 그 사이 앱은
+ * `since`·`message`를 새로 받으면서도 알림만 조용했다. `applySignal`이 이벤트마다 새 `since`를
+ * 찍으므로 그 한 칸이 「그대로 앉아 있는 값」과 「새로 도착한 같은 값」을 가른다.
+ *
+ * `waiting → waiting`이 짧은 간격으로 이어지는 것은 5초 창(`COALESCE_MS`)이 이미 받아 준다 —
+ * 이 넓히기가 「매 프레임 울린다」가 되지 않는 이유가 그것이다.
  *
  * `waiting → done`처럼 둘 사이를 오가는 것도 **「들어감」이다** — 같은 셸이 답을 기다리다
  * 세션을 마친 것은 새 사실이라 한 번 더 알린다.
@@ -62,8 +83,11 @@ export interface NotifyInput {
 export function decideNotification(input: NotifyInput): NotifyContent | null {
   const { next } = input;
   // 「확인할 것」 둘로 들어가는 것만이 울릴 일이다. 도는 중과 없음은 여기서 함께 걸린다.
-  if (next !== "waiting" && next !== "done") return null;
-  if (next === input.prev) return null;
+  // **갈래의 이름을 딛는다**(`isCalling`) — 축이 느는 날 띠·배지와 여기가 갈리지 않게.
+  if (!isCalling(next)) return null;
+  // **시각까지 같아야 「머무름」이다.** 화면값만 견주면 훅 셸의 둘째 승인 요청이 삼켜진다
+  // (위 머리말).
+  if (next === input.prev && input.since === input.prevSince) return null;
   if (input.visible) return null;
   // **접히는 것은 뒤에 온 쪽이다**(결정 10 — 첫 것만). 턴 종료와 권한 요청이 연달아 오는
   // 그 순간이 이 창이 있는 이유다.
@@ -85,6 +109,11 @@ export interface NotifyShell {
   /** 5초 창을 나누는 키 — work 슬러그다. 최상위 셸은 어느 work의 것도 아니라 `null`. */
   owner: string | null;
   kind: ShellSignal | null;
+  /**
+   * 그 사실이 도착한 시각(`Attention.since`). **`kind`와 함께 기억된다** — 회차가 화면값
+   * 하나만 들면 같은 값으로 도착한 새 사실이 「계속 같은 값이 온 것」으로 삼켜진다.
+   */
+  since: number;
   visible: boolean;
   /** 알림 제목에 설 이름 — work 제목, 최상위 셸이면 nav 항목의 이름이다. */
   title: string;
@@ -117,19 +146,25 @@ export interface Notifier {
  * 뒤의 것이 접히므로, 부르는 쪽은 우선순위대로 줄 세운 목록을 준다(`callingShells`).
  */
 export function createNotifier(): Notifier {
-  let previous = new Map<number, ShellSignal | null>();
+  // **기억하는 것이 화면값 하나가 아니라 「그 사실의 정체」다**(`decideNotification` 머리말).
+  // 훅 셸은 `waiting`을 벗어나는 길이 사실상 없어서, 값만 들면 승인 요청이 연달아 오는 동안
+  // 둘째부터 전부 삼켜진다.
+  let previous = new Map<number, { kind: ShellSignal | null; since: number }>();
   const lastByOwner = new Map<string | null, number>();
 
   return {
     step(shells, now) {
       const fired: NotifyContent[] = [];
-      const next = new Map<number, ShellSignal | null>();
+      const next = new Map<number, { kind: ShellSignal | null; since: number }>();
 
       for (const shell of shells) {
-        next.set(shell.id, shell.kind);
+        next.set(shell.id, { kind: shell.kind, since: shell.since });
+        const was = previous.get(shell.id) ?? null;
         const content = decideNotification({
-          prev: previous.get(shell.id) ?? null,
+          prev: was?.kind ?? null,
+          prevSince: was?.since ?? null,
           next: shell.kind,
+          since: shell.since,
           visible: shell.visible,
           lastNotifiedAt: lastByOwner.get(shell.owner) ?? null,
           now,
@@ -173,6 +208,7 @@ export function notifyShells(
     id: shell.id,
     owner: shell.owner,
     kind,
+    since: attention.since,
     // 결정 7의 판정 **그 함수**를 딛는다(스토리 80) — 탭 물들임과 두 벌이 되면 초록은
     // 꺼졌는데 알림은 울리는(또는 그 반대인) 어긋남이 난다.
     visible: isShellSeen(shell.id, view),

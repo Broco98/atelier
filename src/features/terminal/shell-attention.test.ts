@@ -128,6 +128,50 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
   });
 });
 
+// **설치되는 이벤트 = 어댑터가 접는 이벤트.** 이 둘은 argv → `atelier-hook.py` → 상태 파일의
+// **문자열 하나**로만 이어져 있고 그 사이에 타입이 없다 — 어긋나면 훅은 정상 종료하고 파일도
+// 정상으로 쓰이고 어댑터는 `null`을 돌려주며(`shell-attention.ts`의 「모르는 이벤트면 직전
+// 그대로」) **어느 층도 안 빨개진다.** 이름 하나를 어댑터에만 더하면 그 훅이 사용자 설정에
+// 아예 안 깔려 이벤트가 한 번도 안 오고, 설치 쪽에만 더하면 훅이 매 턴 파일을 쓰는데
+// 어댑터가 버려 사용자 홈의 설정만 더러워진다. 그 그물이 필요해지는 바로 그 변경(실패 축의
+// `StopFailure` — 결정 12)이 다음 판이라 지금 걸어 둔다.
+//
+// 같은 위험을 이 판은 **한 자리에서 이미 인정했다** — `shell-registry.test.ts`가 `shells.rs`와
+// `api.ts`를 함께 읽어 `"shell:attention"`이 같은지 못박는다(스토리 85). 이것은 같은 방식을
+// 훅 어휘에 한 번 더 쓰는 것이다.
+describe("훅이 나르는 어휘가 Rust와 TS에서 같다", () => {
+  const 소스 = (path: string) =>
+    readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+
+  /** `pub const <이름>: &[&str] = &[…];`에서 문자열들을 뽑는다. */
+  const rust이벤트 = (name: string): string[] => {
+    const 본문 = new RegExp(`pub const ${name}: &\\[&str\\] =\\s*&\\[([^\\]]*)\\]`).exec(
+      소스("../../../src-tauri/src/hooks.rs"),
+    );
+    // **파서가 새면 통과가 아니라 터진다**(fail-closed). 선언 모양이 바뀌어 아무것도 못
+    // 뽑으면 아래 비교는 「빈 집합 = 빈 집합」으로 조용히 초록이 된다.
+    expect(본문, `${name} 선언을 못 찾았습니다`).not.toBeNull();
+    return [...본문![1].matchAll(/"([^"]+)"/g)].map((one) => one[1]);
+  };
+
+  /** 어댑터의 `case "…":` 이름들. */
+  const ts이벤트 = (file: string): string[] =>
+    [...소스(`./agents/${file}`).matchAll(/case "([^"]+)":/g)].map((one) => one[1]);
+
+  it.each([
+    ["claude", "CLAUDE_EVENTS", "claude.ts"],
+    ["codex", "CODEX_EVENTS", "codex.ts"],
+  ])("%s가 거는 훅과 접는 훅이 **정확히 같다**", (_agent, konst, file) => {
+    const 깔리는것 = rust이벤트(konst).sort();
+    const 접는것 = ts이벤트(file).sort();
+    // 스캔이 헛돌지 않았음을 먼저 센다 — 둘 다 비면 아래 한 줄이 읽은 것 없이 초록이다.
+    expect(깔리는것.length).toBeGreaterThan(0);
+    expect(접는것.length).toBeGreaterThan(0);
+    // **양방향이다.** 「적어도 있다」가 아니라 「이것뿐이다」라서 어느 쪽이 늘어도 터진다.
+    expect(접는것).toEqual(깔리는것);
+  });
+});
+
 // 스펙의 **전이 표 그대로**다. 재는 것은 「어느 훅 이벤트가 오면 화면이 읽는 kind와 message가
 // 무엇이 되는가」 하나 — 어댑터가 무엇으로 접었는지는 이 표의 관심이 아니다.
 const 직전 = {

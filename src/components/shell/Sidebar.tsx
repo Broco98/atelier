@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
@@ -71,8 +71,11 @@ function Sidebar({
   const [bandOpen, setBandOpen] = useState(false);
   // work 제목은 목록 API가 준다 — 터미널은 슬러그까지만 안다(`bandRows` 머리말).
   const { data: works = [] } = useWorks();
-  const items = bandItems(rows, works);
-  useNotifyTitles(works);
+  // **규칙 하나를 둘이 나눠 쓴다**(`titleResolver` 머리말). `useMemo`인 것은 이 함수가 곧
+  // 알림 배선의 의존이기 때문이다 — 회차마다 새로 지으면 목록이 안 바뀌어도 배선이 다시 걸린다.
+  const resolveTitle = useMemo(() => titleResolver(works), [works]);
+  const items = bandItems(rows, resolveTitle);
+  useNotifyTitles(resolveTitle);
   // 띠의 줄은 늘 경과를 단다(부르는 것만 서므로) — 줄이 하나라도 있으면 시계가 돈다.
   const bandNow = useNow(items.length > 0);
   const openBand = useOpenBand();
@@ -215,42 +218,51 @@ function sameBand(a: ReadonlyArray<BandRow>, b: ReadonlyArray<BandRow>): boolean
 }
 
 /**
- * 줄에 **화면의 이름**을 붙인다. 터미널은 슬러그까지만 알고(`bandRows` 머리말) 제목은 목록
- * API가 주므로, 둘을 다 쥔 이 자리에서 만난다.
+ * 셸이 앉은 자리(`owner`)를 **화면의 이름**으로 바꾸는 규칙 — 그리고 **이 규칙이 적히는
+ * 유일한 자리**다. 터미널은 슬러그까지만 알고(`bandRows` 머리말) 제목은 목록 API가 주므로,
+ * 둘을 다 쥔 이 컴포넌트가 그 자리다.
+ *
+ * **띠와 알림이 같은 함수를 딛는다.** 한때 이 규칙이 스무 줄 사이에 **글자 그대로 두 벌**로
+ * 있었다(`bandItems`와 `useNotifyTitles`가 각자 같은 Map을 짓고 같은 삼항을 적었다) — 두
+ * 티켓이 서로 못 본 채 넣은 것이고, 둘이 같은 값을 내야 하는 것은 우연이 아니라 계약이다:
+ * 띠 줄을 눌러 가는 곳과 알림이 가리키는 곳이 같은 화면이다. 「지워진 work을 뭐라 적나」
+ * 같은 물음이 한 번이라도 늘면 한쪽만 고쳐지고, 그러면 같은 셸이 띠에서는 `결제 정산`,
+ * 알림에서는 `payment-recon`이 된다 — 알림은 화면 밖에서 오는 것이라 대조할 것이 없다.
+ * `TERMINAL_LABEL`·`BAND_LABEL`·`showsElapsed`가 전부 같은 이유로 한 자리에 서 있다.
  *
  * 최상위 셸의 이름은 nav 항목의 것 그대로다(`TERMINAL_LABEL`) — 누르면 가는 곳이 그 항목이
  * 가는 곳이라, 이름이 갈리면 같은 화면이 사이드바에서 두 이름을 갖는다.
  *
  * **모르는 슬러그는 슬러그를 적는다.** 목록이 아직 안 왔거나 그 사이 지워진 work의 셸이
  * 부를 수 있는데, 그때 줄을 빼면 사람은 부르는 셸을 못 찾고 이름을 비우면 「— 나를 기다림」만
- * 남는다. 둘 다 이 띠가 있는 이유를 스스로 무너뜨린다.
+ * 남는다. 둘 다 이 띠가 있는 이유를 스스로 무너뜨린다. (배선 전 기본값도 같은 답을 낸다 —
+ * `terminal-store.ts`의 `notifyTitleOf`.)
  */
-function bandItems(rows: ReadonlyArray<BandRow>, works: ReadonlyArray<WorkView>): BandItem[] {
-  if (rows.length === 0) return [];
+function titleResolver(works: ReadonlyArray<WorkView>): (owner: string | null) => string {
   const titles = new Map(works.map((work) => [work.slug, work.title]));
-  return rows.map((row) => ({
-    ...row,
-    title: row.owner === null ? TERMINAL_LABEL : (titles.get(row.owner) ?? row.owner),
-  }));
+  return (owner) => (owner === null ? TERMINAL_LABEL : (titles.get(owner) ?? owner));
+}
+
+/** 줄에 화면의 이름을 붙인다. 규칙은 위 하나이고 여기는 그것을 줄마다 부르기만 한다. */
+function bandItems(
+  rows: ReadonlyArray<BandRow>,
+  resolve: (owner: string | null) => string,
+): BandItem[] {
+  if (rows.length === 0) return [];
+  return rows.map((row) => ({ ...row, title: resolve(row.owner) }));
 }
 
 /**
- * 알림 제목이 읽을 이름표를 배선에 건넨다(#206).
- *
- * **여기인 이유는 띠와 같다** — 슬러그와 제목을 둘 다 쥔 자리가 이 컴포넌트뿐이고
- * (`bandItems` 머리말), 알림은 터미널 쪽 모듈 구독이 쏘므로 그쪽은 목록 API를 모른다.
- * 모르는 슬러그를 슬러그 그대로 적는 것도 띠와 같은 규칙이다.
+ * 알림 제목이 읽을 이름표를 배선에 건넨다(#206). **띠가 쓰는 그 함수 그대로다**(위
+ * `titleResolver` 머리말) — 알림은 터미널 쪽 모듈 구독이 쏘므로 그쪽은 목록 API를 모른다.
  *
  * **이 사이드바는 늘 서 있다**(`AppShell`) — 접혀도 렌더된다. 그래서 「알림이 배선을 못 찾는
- * 화면」이 없다. 최상위 셸의 이름은 nav 항목의 것 그대로다(`TERMINAL_LABEL`).
+ * 화면」이 없다.
  */
-function useNotifyTitles(works: ReadonlyArray<WorkView>): void {
+function useNotifyTitles(resolve: (owner: string | null) => string): void {
   useEffect(() => {
-    const titles = new Map(works.map((work) => [work.slug, work.title]));
-    setNotifyTitles((owner) =>
-      owner === null ? TERMINAL_LABEL : (titles.get(owner) ?? owner),
-    );
-  }, [works]);
+    setNotifyTitles(resolve);
+  }, [resolve]);
 }
 
 /**

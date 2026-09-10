@@ -29,6 +29,12 @@ const MAIN_HEADER = "작업 1";
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
 const TITLE_FADE = 12;
 
+/**
+ * 행 둘째 줄에서 마크·말·경과가 서로 떨어지는 거리. 목업 정본(`행-신호-세-안.html`의
+ * `.row2 .l2 { gap: 6px }`)의 수이고, 화면에서는 `gap-1.5`가 그 값이다.
+ */
+const SUBROW_GAP = 6;
+
 // 흐르는 **속도**(px/s) — `SidebarWorkList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
 // 한다. 실측이 들어야 하는 밴드는 ±12%다 — `speedOf`가 잰 시각으로 나누므로 이만큼 좁힐 수
@@ -620,6 +626,32 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
   await expect(subrow).toHaveText("테스트 셋 통과2m");
   // 마크는 그 자리에 남는다 — 「누구」를 말하는 자리다(판 04 결정 15).
   await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
+
+  // **세 조각이 서로 붙지 않는다**(목업 `행-신호-세-안.html`의 `.row2 .l2 { gap: 6px }`).
+  // 마크 글리프는 `viewBox 0 0 16 16`을 거의 꽉 채우므로 간격이 0이면 로고가 첫 글자에
+  // 그대로 닿고, `통과2m`처럼 말과 경과가 한 낱말로 읽힌다 — 바로 위 띠는 **같은 어휘**를
+  // 9px 간격으로 그리므로, 여기만 0이면 같은 말이 두 자리에서 다른 리듬으로 선다.
+  const 상자 = async (one: Locator) => (await one.boundingBox())!;
+  const 마크 = await 상자(subrow.getByRole("img", { name: "claude" }));
+  const 말 = await 상자(subrow.locator("[data-fade]"));
+  const 경과 = await 상자(subrow.locator("[data-elapsed]"));
+  expect(말.x - (마크.x + 마크.width)).toBeGreaterThanOrEqual(SUBROW_GAP);
+  expect(경과.x - (말.x + 말.width)).toBeGreaterThanOrEqual(SUBROW_GAP);
+
+  // **말 상자가 남는 폭까지 자란다 — 페이드가 빈 자리에 떨어지게.** 마스크는 상시라
+  // (`index.css`의 `[data-fade]`, 결정 12) 상자가 글자 폭에 딱 붙어 앉으면 오른쪽 끝 12px이
+  // **실제 글자** 위에 떨어져 끝 한 글자가 늘 유령이 된다 — 넘치지도 않는 짧은 말이 잘린
+  // 것처럼 읽히고, 이 판을 시작한 말이 하필 「이 한 줄이 가독성이 안 좋다」였다. 띠와 목업은
+  // 같은 상자를 남는 폭까지 늘려 그 램프가 여백에 떨어지게 한다.
+  //
+  // 재는 것은 `scrollWidth`가 아니라 **글자 자체의 폭**이다 — 안 넘치는 상자는 `scrollWidth`가
+  // `clientWidth`와 같아져 「얼마나 남았나」를 못 말한다.
+  const 여유 = await subrow.locator("[data-fade]").evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return el.getBoundingClientRect().width - range.getBoundingClientRect().width;
+  });
+  expect(여유).toBeGreaterThanOrEqual(TITLE_FADE);
 
   // **이름에 상태가 붙는다**(스토리 33) — 점은 `aria-hidden`이라 이 이름이 유일한 말이다.
   //

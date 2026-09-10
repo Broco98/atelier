@@ -4,6 +4,15 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+/// 에이전트의 이름. **훅 명령줄에 박히는 그 글자이자 화면·상태 파일의 `agent`다** —
+/// 훅 스크립트가 argv로 받아 상태 파일에 그대로 적고, 프런트의 어댑터 표(`agents/index.ts`)가
+/// 같은 글자로 고른다. 한때 명령을 짓는 자리와 `AGENTS` 표가 이 글자를 각각 적고 있었다:
+/// 세 벌이면 한쪽만 고치는 날 **훅은 정상으로 돌고 파일도 정상으로 쓰이는데 어댑터만 못
+/// 알아본다**(어느 층도 안 빨개지는 그 모양이다).
+pub const CLAUDE: &str = "claude";
+/// 위와 같다.
+pub const CODEX: &str = "codex";
+
 /// Claude에 거는 이벤트 다섯 (구현 결정 8).
 pub const CLAUDE_EVENTS: &[&str] =
     &["UserPromptSubmit", "PermissionRequest", "Elicitation", "Stop", "SessionEnd"];
@@ -23,7 +32,7 @@ fn is_ours(command: &str) -> bool {
 /// 우리가 이벤트 배열에 넣는 항목 하나 — matcher 없는 그룹 안에 명령 훅 하나.
 fn claude_group(script: &Path, event: &str) -> Value {
     json!({
-        "hooks": [{ "type": "command", "command": command_line(script, "claude", event) }]
+        "hooks": [{ "type": "command", "command": command_line(script, CLAUDE, event) }]
     })
 }
 
@@ -99,7 +108,7 @@ fn codex_block_for(script: &Path, events: &[&str]) -> String {
         // 자리가 아니라 이벤트 전부를 받는다.
         out.push_str(&format!(
             "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
-            toml_basic_string(&command_line(script, "codex", event))
+            toml_basic_string(&command_line(script, CODEX, event))
         ));
     }
     out.push_str(CODEX_END);
@@ -356,7 +365,7 @@ struct Agent {
 
 const AGENTS: &[Agent] = &[
     Agent {
-        name: "claude",
+        name: CLAUDE,
         path: claude_settings_path,
         merge: merge_claude,
         unmerge: unmerge_claude,
@@ -365,7 +374,7 @@ const AGENTS: &[Agent] = &[
         remains: claude_remains,
     },
     Agent {
-        name: "codex",
+        name: CODEX,
         path: codex_config_path,
         merge: merge_codex,
         unmerge: unmerge_codex,
@@ -952,7 +961,7 @@ trust_level = "trusted"
         for event in CODEX_EVENTS {
             out.push_str(&format!(
                 "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
-                toml_basic_string(&command_line(script, "codex", event))
+                toml_basic_string(&command_line(script, CODEX, event))
             ));
         }
         out

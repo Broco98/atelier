@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import type { ShellSignal } from "@/features/terminal/shell-attention";
+import type { CallingKind, ShellSignal } from "@/features/terminal/shell-attention";
 
 export type { ShellSignal };
 
@@ -47,7 +47,7 @@ export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
  * 사람에게 열어 둔 물음은 `spec/물음-둘째-줄의-색.md`다.
  */
 const TONE: Readonly<
-  Record<"waiting" | "done", { dot: string; text: string; fill: string; edge: string }>
+  Record<CallingKind, { dot: string; text: string; fill: string; edge: string }>
 > = {
   waiting: {
     dot: "bg-wait ring-wait-soft",
@@ -232,7 +232,11 @@ export function SignalLine({
       {showsElapsed(kind) && (
         // 부차 정보라 한 단 내려간다 — 둘째 줄의 바닥(`muted-foreground`)이 아니라
         // `tertiary`인 것은 「얼마나 기다렸나」가 말보다 뒤에 읽혀야 해서다(구현 결정 4).
-        <span className="shrink-0 tabular-nums text-tertiary">{formatElapsed(now - since)}</span>
+        // 표식은 띠의 경과와 같은 것을 쓴다(`attention-band.tsx`) — 같은 조각이라 집는
+        // 이름도 하나여야 한다.
+        <span data-elapsed="" className="shrink-0 tabular-nums text-tertiary">
+          {formatElapsed(now - since)}
+        </span>
       )}
     </>
   );
