@@ -432,7 +432,7 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   expect(await 칸배경(page, 0)).not.toBe(앰버);
 
   // 세션이 끝나면 초록이다(스펙 전이 표 — 턴 종료가 아니다).
-  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } }, 2);
+  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
   const 초록 = await 토큰색(page, "--signal-done-soft");
   expect(앰버, "앰버와 초록이 같은 색이다").not.toBe(초록);
   await expect.poll(() => 칸배경(page, 1), { message: "둘째 칸이 초록으로 안 물들었다" }).toBe(초록);
@@ -462,7 +462,7 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
   const 앰버 = await 토큰색(page, "--signal-wait-soft");
   const 켜기 = (at: number) => tabs.nth(at).locator("button[aria-pressed]").click();
 
-  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } }, 2);
+  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
   await expect.poll(() => 칸배경(page, 1)).toBe(초록);
   // 이름에도 붙어 있다 — 꺼지는 것이 색만이 아니라는 것을 아래에서 같은 자리로 잰다.
   await expect(tabs.nth(1).locator("button[aria-pressed]")).toHaveAttribute(
@@ -508,7 +508,7 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
   const 끝난다 = () =>
     markAttention(
       page,
-      { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } },
+      { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
       1,
     );
 
@@ -556,7 +556,7 @@ test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 �
   await setWindowFocused(page, false);
   await markAttention(
     page,
-    { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } },
+    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
     1,
   );
 
@@ -594,7 +594,7 @@ test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임�
   await setWindowFocused(page, false);
   await markAttention(
     page,
-    { agent: "claude", event: "SessionEnd", payload: { session_end_reason: "logout" } },
+    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
     1,
   );
   await expect

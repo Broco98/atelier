@@ -79,16 +79,23 @@ export function permissionLine(payload: unknown): string | null {
  * 적어(B-1 표), 이유가 실려 올 길 자체가 없다. 그래서 codex 어댑터는 이 함수를 안 딛고 늘
  * `end`로 접는다. 이유를 보는 자리를 둘 다로 넓히면 스펙이 갈라 둔 두 줄이 한 줄이 된다.
  *
- * **읽는 키가 `session_end_reason`이다.** 정본 연구가 그렇게 적는다
- * (`spec/research/claude-codex-first-party.md`의 B-2 표 — `session_end_reason`이 matcher이자
- * 고유 필드다). 훅 스크립트는 stdin JSON을 손대지 않고 그대로 나르므로(`atelier-hook.py`)
- * 여기 도착하는 것도 그 이름이다. 예전 구현이 읽던 `reason`을 **뒤에 남겨 둔 것**은 이 work의
- * 실물 확인 관문이 아직 안 닫혔기 때문이다(`spec/훅-실물-확인.md`의 「확인 결과」 — claude가
- * 우리가 가정한 모양으로 주는지를 사람이 아직 한 번도 안 봤다). 견주는 값이 문자열 `clear`
- * 하나뿐이라 둘을 다 읽어 잃는 것이 없고, 반대로 키 하나가 어긋나면 `/clear` 줄이 실물에서
- * 한 번도 안 서서 **방금 지운 화면에 초록이 뜬다.** 둘 다 검사에 줄이 있다.
+ * **읽는 키는 `reason`이다 — 실측이다**(2026-09-10). 진짜 claude 2.1.267에 훅만 걸어 한 턴을
+ * 돌리고 훅 프로세스가 stdin으로 받은 JSON을 그대로 봤다: `{ session_id, transcript_path, cwd,
+ * prompt_id, hook_event_name: "SessionEnd", reason: "other" }`. 배포된 그 바이너리 안의 훅 입력
+ * 스키마도 같은 이름이고(`{ hook_event_name: "SessionEnd", reason: <"clear"|"resume"|"logout"|
+ * "prompt_input_exit"|"other"> }`), matcher가 견주는 필드도 `reason`이다.
+ *
+ * **`session_end_reason`은 걷어냈다.** 이 work의 정본 연구가 그 이름을 적었지만
+ * (`spec/research/claude-codex-first-party.md`의 B-2:157) 그 글자는 배포 바이너리 어디에도 없다
+ * (0회) — 훅 matcher 문서의 이름을 필드 이름으로 옮겨 적은 것으로 보인다. 실물이 안 흐르는
+ * 갈래를 「혹시 몰라」 남겨 두면 **검사만 초록인 죽은 길**이 하나 서고, 다음 사람이 그것을
+ * 근거로 읽는다. 같은 이유로 이 파일은 위에서 `tool`·`input` 갈래도 걷어냈다.
+ *
+ * 이 한 글자가 걸린 자리가 `/clear`다 — 어긋나면 `clear` 줄이 실물에서 한 번도 안 서서
+ * **방금 지운 화면에 초록이 뜬다.** 그 실패는 조용해서(사람은 「원래 그런가 보다」로 읽는다)
+ * 실측 픽스처 한 장과 「지어낸 키는 안 읽는다」 한 줄을 검사에 함께 걸어 둔다
+ * (`shell-attention.test.ts`).
  */
 export function sessionEnd(payload: unknown): "end" | "clear" {
-  const reason = stringAt(payload, "session_end_reason") ?? stringAt(payload, "reason");
-  return reason === "clear" ? "clear" : "end";
+  return stringAt(payload, "reason") === "clear" ? "clear" : "end";
 }

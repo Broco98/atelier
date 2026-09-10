@@ -734,7 +734,7 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
     await markAttention(page, {
       agent: "claude",
       event: "SessionEnd",
-      payload: { session_end_reason: "logout" },
+      payload: { reason: "logout" },
     });
     return { 앰버, 초록: await 점색("done") };
   };

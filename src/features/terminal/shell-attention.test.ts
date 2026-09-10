@@ -36,28 +36,116 @@ const hook = (agent: string, event: string, payload: unknown = null): ShellHookS
   payload,
 });
 
-// **페이로드는 지어내지 않는다.** 아래 픽스처의 키는 전부 이 work의 정본 연구에서 그대로
-// 옮긴 것이고, 옆에 그 줄 번호를 단다 — 구현이 읽기로 한 키를 픽스처에 그대로 심으면
-// 「구현의 가정」을 재는 검사가 되어, 키가 틀려도 표가 통째로 초록이다.
-// 출처: `spec/research/claude-codex-first-party.md`의 B-2 표(claude) · B-1 표(codex).
+// **페이로드는 지어내지 않는다.** 아래 픽스처의 키는 지어낸 것이 아니라 밖에서 온 것이고,
+// 옆에 그 출처를 단다 — 구현이 읽기로 한 키를 픽스처에 그대로 심으면 「구현의 가정」을 재는
+// 검사가 되어, 키가 틀려도 표가 통째로 초록이다.
+//
+// **출처가 두 층이고, 층마다 힘이 다르다.**
+// - **실측**(가장 셈): 아래 `실측_…` 상수들. 진짜 claude를 돌려 우리 훅 스크립트와 같은
+//   모양의 프로세스가 stdin으로 받은 JSON 그대로다.
+// - **연구 표**: `spec/research/claude-codex-first-party.md`의 B-2 표(claude) · B-1 표(codex).
+//   실측이 없는 자리(`PermissionRequest`·`Elicitation`은 헤드리스로 못 띄운다)와 codex 전부가
+//   아직 이 층에 있다.
+//
+// **그 둘이 갈린 자리가 실제로 있었다.** 연구 표 B-2:157이 `SessionEnd`의 이유 필드를
+// `session_end_reason`으로 적었는데 실물은 **`reason`**이다(아래 실측). 연구 표가 옮겨 적은 것은
+// 훅 matcher 문서의 이름이었던 듯하고, 그 한 글자 위에 `/clear` 줄 전체가 서 있었다. 그래서
+// 실측이 있는 자리에서는 실측이 이긴다 — 연구 표는 실측 앞에서 근거가 못 된다.
+
+// 진짜 claude(2.1.267)를 `--settings`로 훅만 걸어 한 턴 돌리고, 그 훅 프로세스가 stdin으로
+// 받은 JSON을 그대로 옮긴 것이다(2026-09-10 실측). 값만 짧게 줄였고 키는 하나도 안 건드렸다.
+// `hook_event_name`·`session_id`·`transcript_path`·`cwd`처럼 우리가 안 읽는 키까지 남겨 두는
+// 것은, 어댑터가 **모르는 키가 섞인 실물**을 그대로 받는지도 이 표가 함께 재기 때문이다.
+const 실측_UserPromptSubmit = {
+  session_id: "7a1c0355-dbe8-4b50-9bb5-729ffc94d8d0",
+  transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355.jsonl",
+  cwd: "/tmp/probe",
+  prompt_id: "48c64dd3-9a9a-437f-bfb6-62af9063e1b9",
+  permission_mode: "default",
+  hook_event_name: "UserPromptSubmit",
+  // **`prompt_text`가 아니라 `prompt`다** — 연구 표 B-2:158이 갈린 둘째 자리다. 어댑터가 이
+  // 키를 안 읽어(전이 표에서 `start`의 message는 「직전 유지」다) 동작은 안 갈렸지만, 픽스처가
+  // 실물과 다른 채로 남으면 다음 사람이 그것을 근거로 읽는다.
+  prompt: "고쳐 줘",
+};
+const 실측_Stop = {
+  session_id: "7a1c0355-dbe8-4b50-9bb5-729ffc94d8d0",
+  transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355.jsonl",
+  cwd: "/tmp/probe",
+  prompt_id: "48c64dd3-9a9a-437f-bfb6-62af9063e1b9",
+  permission_mode: "default",
+  hook_event_name: "Stop",
+  stop_hook_active: false,
+  background_tasks: [],
+  session_crons: [],
+  last_assistant_message: "ok done\nsecond line here",
+};
+const 실측_SessionEnd = {
+  session_id: "7a1c0355-dbe8-4b50-9bb5-729ffc94d8d0",
+  transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355.jsonl",
+  cwd: "/tmp/probe",
+  prompt_id: "48c64dd3-9a9a-437f-bfb6-62af9063e1b9",
+  hook_event_name: "SessionEnd",
+  reason: "other",
+};
+
+describe("claude 어댑터가 실측 페이로드를 그대로 받는다", () => {
+  // **이 세 줄이 「우리 가정」이 아니라 「실물」을 재는 자리다.** 나머지 표는 우리가 고른 키만
+  // 남긴 축약본이라, 실물 한 장이 통째로 지나가는 것을 보는 자리가 따로 있어야 한다.
+  it("실측 `UserPromptSubmit` 한 장 → 도는 중", () => {
+    expect(foldHookState(hook("claude", "UserPromptSubmit", 실측_UserPromptSubmit))).toEqual({
+      event: "start",
+      message: null,
+    });
+  });
+
+  it("실측 `Stop` 한 장 → 기다림, 말은 첫 줄", () => {
+    expect(foldHookState(hook("claude", "Stop", 실측_Stop))).toEqual({
+      event: "stop",
+      message: "ok done",
+    });
+  });
+
+  it("실측 `SessionEnd` 한 장 → 끝(이유가 `clear`가 아니다)", () => {
+    expect(foldHookState(hook("claude", "SessionEnd", 실측_SessionEnd))).toEqual({
+      event: "end",
+      message: null,
+    });
+  });
+
+  it("실측 `SessionEnd`의 이유만 `clear`로 바꾸면 `/clear` 줄이 선다", () => {
+    expect(
+      foldHookState(hook("claude", "SessionEnd", { ...실측_SessionEnd, reason: "clear" })),
+    ).toEqual({ event: "clear", message: null });
+  });
+
+  // **fail-closed.** `session_end_reason`은 연구 표가 적었지만 실물에는 **없는** 키다 — 배포된
+  // claude 2.1.267 바이너리의 SessionEnd 훅 스키마가 `{ hook_event_name, reason }` 하나뿐이고,
+  // matcher가 견주는 필드도 `reason`이며, `session_end_reason`이라는 글자는 그 바이너리 어디에도
+  // 없다(0회). 그런 키를 「혹시 몰라」 함께 읽으면 그 갈래에는 실물이 영영 안 흘러 검사만 초록인
+  // 죽은 길이 하나 남고, 다음 사람이 그것을 근거로 읽는다 — 같은 이유로 이 파일은 이미
+  // `tool`·`input` 갈래를 걷어냈다(`payload.ts`의 `permissionLine` 머리말).
+  it("지어낸 키 `session_end_reason`은 안 읽는다 — 이유가 없는 것과 같다", () => {
+    expect(
+      foldHookState(hook("claude", "SessionEnd", { session_end_reason: "clear" })),
+    ).toEqual({ event: "end", message: null });
+  });
+});
+
 describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", () => {
   it.each([
-    // B-2:158 `UserPromptSubmit` 고유 필드는 `prompt_text` 하나다.
-    ["UserPromptSubmit", { prompt_text: "고쳐 줘" }, "start", null],
+    // 실측: `UserPromptSubmit`이 프롬프트를 싣는 키는 `prompt`다(위 실측 픽스처).
+    ["UserPromptSubmit", { prompt: "고쳐 줘" }, "start", null],
     // B-2:149 `tool_name`·`tool_input`·`tool_use_id`.
     ["PermissionRequest", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_01" }, "waiting", "Bash · git status"],
     // B-2:150 `mcp_server_name`·`message`·`mode`·`url`·`elicitation_id`·`requested_schema`.
     ["Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", mode: "form", elicitation_id: "el_1" }, "waiting", "어느 쪽으로 할까요?"],
     // B-2:152 `last_assistant_message`·`agent_id`·`agent_type`.
     ["Stop", { last_assistant_message: "테스트 셋 통과\n커밋할까요?", agent_id: "a1", agent_type: "general" }, "stop", "테스트 셋 통과"],
-    // B-2:157 `SessionEnd`의 고유 필드는 **`session_end_reason`**이다 — `reason`이 아니다.
+    // **실측**: `SessionEnd`가 이유를 싣는 키는 **`reason`**이다(위 실측 픽스처).
     // 이 한 글자가 틀리면 `/clear` 줄이 실물에서 한 번도 안 서고, 방금 지운 화면에 초록이 뜬다.
-    ["SessionEnd", { session_end_reason: "clear" }, "clear", null],
-    ["SessionEnd", { session_end_reason: "logout" }, "end", null],
-    // **대체 키 `reason`도 살아 있는 길이다.** 실물을 아직 한 번도 안 봤으므로
-    // (`spec/훅-실물-확인.md`의 「확인 결과」) 문서 판이 갈렸을 때를 대비해 둘 다 읽는다.
-    // 재는 값이 문자열 `clear` 하나뿐이라 넓게 읽어 잃는 것이 없다.
     ["SessionEnd", { reason: "clear" }, "clear", null],
+    ["SessionEnd", { reason: "logout" }, "end", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("claude", event, payload))).toEqual({ event: canonical, message });
   });
@@ -105,7 +193,7 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
   // 이유를 실어 오는 길 자체가 없다. 그래도 이 갈래를 검사로 못박는 이유는, 이유가 실려 와도
   // codex에서는 그것이 `clear`가 **안 되는** 것이 스펙의 읽기이기 때문이다.
   it("codex의 `SessionEnd`는 이유가 `clear`여도 끝이다", () => {
-    expect(foldHookState(hook("codex", "SessionEnd", { session_end_reason: "clear" }))).toEqual({
+    expect(foldHookState(hook("codex", "SessionEnd", { reason: "clear" }))).toEqual({
       event: "end",
       message: null,
     });
@@ -184,10 +272,11 @@ const 직전 = {
 } as const;
 
 describe("전이 표", () => {
-  // 여기 실린 페이로드도 **연구 표의 키 그대로**다(위 어댑터 표와 같은 규율). 이 줄들이
-  // 실물과 다른 모양 위에 서면 전이 표 전체가 「구현이 읽기로 한 키」를 재게 된다.
+  // 여기 실린 페이로드도 **밖에서 온 키 그대로**다(위 어댑터 표와 같은 규율 — claude의
+  // `prompt`·`last_assistant_message`·`reason`은 실측, 나머지는 연구 표). 이 줄들이 실물과
+  // 다른 모양 위에 서면 전이 표 전체가 「구현이 읽기로 한 키」를 재게 된다.
   it.each([
-    ["claude", "UserPromptSubmit", { prompt_text: "고쳐" }, "working", "직전에 하던 말"],
+    ["claude", "UserPromptSubmit", { prompt: "고쳐" }, "working", "직전에 하던 말"],
     ["codex", "UserPromptSubmit", { permission_mode: "default" }, "working", "직전에 하던 말"],
     ["claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" }, tool_use_id: "toolu_02" }, "waiting", "Bash · git push"],
     ["codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }, "waiting", "shell · rm -rf ."],
@@ -195,11 +284,11 @@ describe("전이 표", () => {
     ["claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?", agent_id: "a2" }, "waiting", "테스트 셋 통과 — 커밋할까요?"],
     ["codex", "Stop", { turn_id: "t2", last_assistant_message: "PR #174 열었다" }, "waiting", "PR #174 열었다"],
     ["codex", "Interrupt", { turn_id: "t2", permission_mode: "default" }, "waiting", "직전에 하던 말"],
-    ["claude", "SessionEnd", { session_end_reason: "logout" }, "done", "직전에 하던 말"],
+    ["claude", "SessionEnd", { reason: "logout" }, "done", "직전에 하던 말"],
     // codex `SessionEnd`는 고유 필드가 없다 — 빈 페이로드가 실물의 모양이다.
     ["codex", "SessionEnd", {}, "done", "직전에 하던 말"],
-    // **`clear` 줄**. 스펙 전이 표에서 이 줄은 claude 전용이고, 실물 키는 `session_end_reason`이다.
-    ["claude", "SessionEnd", { session_end_reason: "clear" }, "working", null],
+    // **`clear` 줄**. 스펙 전이 표에서 이 줄은 claude 전용이고, 실물 키는 `reason`이다(실측).
+    ["claude", "SessionEnd", { reason: "clear" }, "working", null],
   ] as const)("%s %s → %s", (agent, event, payload, kind, message) => {
     expect(nextAttention(직전, hook(agent, event, payload))).toEqual({
       kind,
@@ -215,7 +304,7 @@ describe("전이 표", () => {
 
   // 훅이 처음 오는 셸에는 직전이 없다. 「직전 유지」가 그때 무엇이 되는지가 이 줄이다.
   it("직전이 없으면 「직전 유지」는 없음이다", () => {
-    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt_text: "고쳐" }))).toEqual({
+    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }))).toEqual({
       kind: "working",
       message: null,
       since: 10,
@@ -248,7 +337,7 @@ describe("전이 표", () => {
   // 삼켜짐」이 그대로 난다 — 끝난 셸을 한 번 보고 나면 그 뒤 진짜 완료가 영영 안 뜬다.
   it("에이전트가 새로 말하면 「봤다」가 풀린다", () => {
     const 본것 = { ...직전, kind: "done", seen: true } as const;
-    expect(nextAttention(본것, hook("claude", "SessionEnd", { session_end_reason: "logout" }))?.seen).toBe(
+    expect(nextAttention(본것, hook("claude", "SessionEnd", { reason: "logout" }))?.seen).toBe(
       false,
     );
   });
