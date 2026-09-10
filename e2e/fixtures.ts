@@ -187,6 +187,16 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
+  // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
+  // (`SettingsPage.tsx`의 `save`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
+  // 답이 없으면 L3에서 쓰기가 거절당해 `save`가 오류 가지로 빠지고, 그러면 저장 뒤의
+  // 배선을 재는 검사가 **아무것도 못 재면서 초록**이 된다.
+  //
+  // **태우는 시나리오와 함께 들어왔다** — 「설정에서 소리를 끄면 그 자리에서 조용해진다」
+  // (`shell-notify.spec.ts`). 태우지 않는 스텁은 조용히 낡는다는 것이 이 표의 규칙이고,
+  // 그래서 이 자리는 그 검사가 사는 동안만 정당하다.
+  write_settings: null,
   // 설정 화면이 뜨자마자 한 번 부른다(#207). **깔린 것이 없는 상태를 답한다** — 그것이
   // 처음 여는 사람의 화면이고, 미리보기·경로·상태가 그때도 다 서는지를 L3가 본다.
   //
@@ -289,9 +299,9 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
   "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',
 };
 
-// `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은
-// 조용히 낡는다**(harness.ts의 플러그인 표가 같은 이유로 둘을 비워 뒀다). 그 시나리오를
-// 쓰는 판이 같이 넣는다.
+// (`write_settings`는 위 표에 있다 — 설정 화면의 저장을 태우는 시나리오가 생기면서 그
+// 시나리오와 함께 들어왔다. 아직 없는 것은 `plugin:opener|open_url` 쪽이고, 그 규율은
+// harness.ts의 플러그인 표가 든다.)
 
 /**
  * 아카이브의 문서 목록 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과

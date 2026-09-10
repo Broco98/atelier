@@ -1,6 +1,7 @@
 import { expect, test } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import {
+  awaitSpawned,
   badgeCalls,
   installFixtureBackend,
   markAttention,
@@ -114,9 +115,11 @@ test("독 배지에 확인할 것의 수가 뜨고, 0이면 사라진다", async
 // 읽어 배선에 먹이는 길(`loadNotifySettings` → `notifyChoice` → `outgoing`)은 이 층에서만
 // 이어진다 — 그 길이 끊기면 「껐는데 울린다」와 「켰는데 조용하다」가 둘 다 조용히 산다.
 //
-// **파일에서 시작한다.** 설정 화면을 거치지 않고 `read_settings`의 답만 바꾸는 것은, 앱이
-// 뜨면서 그 파일을 읽는 것이 이 배선의 정상 경로이기 때문이다(`main.tsx`). 화면에서 고른
-// 값이 저장을 지나 같은 자리로 오는 것은 마크업 seam이 잰다(`SettingsPage.test.tsx`).
+// **아래 둘은 파일에서 시작한다.** 설정 화면을 거치지 않고 `read_settings`의 답만 바꾸는
+// 것은, 앱이 뜨면서 그 파일을 읽는 것이 이 배선의 정상 경로이기 때문이다(`main.tsx`).
+// **화면에서 고른 값이 저장을 지나 같은 자리로 오는 길은 이 파일 맨 아래 검사가 잰다** —
+// 마크업 seam(`SettingsPage.test.tsx`)이 재는 것은 그 길의 양 끝(`notificationChoice`·
+// `patchNotifications`)뿐이고, 둘을 잇는 `save()`의 접착 한 줄은 그 층에서는 안 걸린다.
 const 설정 = (notifications: { enabled?: boolean; sound?: boolean }) => ({
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" }, notifications },
 });
@@ -160,6 +163,58 @@ test("소리만 껐으면 알림은 오되 소리가 안 실린다", async ({ pa
   // 껐다는 것은 **소리 칸이 비는 것**이지 알림이 안 오는 것이 아니다(스토리 64).
   expect(one.sound, "소리를 껐는데 실려 나갔다").toBeUndefined();
   expect(one.body, "본문까지 사라졌다").toBe("테스트 셋 통과");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **설정 화면에서 고른 값이 그 자리에서 먹는가**(스토리 66·64). 위 둘이 재는 것은 「파일에
+// 이렇게 적혀 있으면」이라, 앱이 뜰 때 한 번 도는 `loadNotifySettings`만 지나간다 — 사람이
+// 화면에서 끄는 길은 그 뒤에 오는 **다른 줄**이다(`SettingsPage.tsx`의 `save`가 쓰기에
+// 성공한 뒤 부르는 `applyNotifySettings`). 그 한 줄이 사라져도 저장은 성공하고 화면은 껐다고
+// 그린 채로 남아, 사람은 **앱을 껐다 켤 때까지** 계속 울리는 것을 앱 고장으로 읽는다.
+//
+// 그 줄은 어느 층에서도 안 걸렸다: 마크업 seam은 양 끝의 순수 함수만 돌리고(고른 값을
+// 파일 모양으로 접는 `patchNotifications`, 파일을 선택으로 펴는 `notificationChoice`),
+// 둘을 잇는 접착은 컴포넌트 안에 있어 그 층이 못 닿는다.
+//
+// **앱을 다시 안 띄우는 것이 이 검사의 전부다.** 새로 `goto`하면 부팅이 파일을 다시 읽어
+// 위 두 검사와 같은 길이 되고, 재려던 그 줄은 통째로 우회된다 — 그래서 사이드바를 눌러
+// 같은 페이지 안에서 옮긴다. 고르는 것은 **소리**다: 껐을 때도 알림 자체는 오므로
+// (스토리 64) 「소리 칸이 빈 알림 하나」가 서고, 그러면 이 검사의 초록이 「배선이 끊겨서
+// 조용한 것」과 갈린다.
+test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가 빠진다", async ({ page }) => {
+  await stubNotifications(page);
+  await stubWindowFocus(page);
+  await installFixtureBackend(page);
+
+  // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
+  await page.goto("/settings");
+  const 소리끔 = page.getByRole("button", { name: "알림에 소리 끔" });
+  await expect(소리끔, "알림 구획이 안 섰다").toBeVisible();
+  await 소리끔.click();
+
+  const 저장 = page.getByRole("button", { name: "저장", exact: true });
+  await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();
+  await 저장.click();
+  // **쓰기가 실제로 돌아온 순간을 기다린다.** 저장이 끝나면 고칠 것이 없어져 버튼이 잠긴다 —
+  // 이걸 안 기다리면 아래 알림이 저장 **전에** 울려 놓고 통과할 수 있다.
+  await expect(저장, "저장이 안 끝났다").toBeDisabled();
+
+  await page.getByRole("button", { name: "Terminal", exact: true }).click();
+  await awaitSpawned(page, 1);
+
+  await setWindowFocused(page, false);
+  await markAttention(page, 기다림);
+
+  await expect
+    .poll(async () => (await sentNotifications(page)).length, { message: "알림이 안 울렸다" })
+    .toBe(1);
+
+  const [one] = await sentNotifications(page);
+  // 저장한 그 선택이 도착했다. 배선이 저장을 안 지나면 여기 소리가 실려 나간다.
+  expect(one.sound, "화면에서 껐는데 소리가 실려 나갔다").toBeUndefined();
+  // 알림 자체는 온다 — 이 줄이 없으면 「배선이 통째로 죽어서 조용한 것」이 초록이 된다.
+  expect(one.body, "알림이 통째로 안 왔다").toBe("테스트 셋 통과");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
