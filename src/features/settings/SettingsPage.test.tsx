@@ -6,13 +6,15 @@ import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   parseFontSize,
+  NotificationSection,
   patchTerminal,
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
+import { notificationChoice, patchNotifications } from "./notifications";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
-import type { Settings } from "./types";
+import type { NotificationSettings, Settings } from "./types";
 
 // 이 화면이 지켜야 하는 것은 화면으로는 안 잡히는 종류다.
 //
@@ -241,5 +243,107 @@ describe("이 판이 열지 않은 것", () => {
     const markup = render(settings());
     expect(markup).not.toContain("스크롤백");
     expect(markup).not.toContain("ANSI");
+  });
+});
+
+// ── 알림 구획 (#206 · 결정 10)
+//
+// 이 구획이 지켜야 하는 것도 화면으로는 안 잡히는 종류다.
+//
+// 1. **고르지 않은 값이 파일에 안 적히는 것** — 기본(둘 다 켬)은 프런트가 들고 백엔드는
+//    「고른 것만」 적는다(`settings.rs`). 화면이 기본값을 그대로 저장으로 흘려보내면 안
+//    고른 것이 고른 것이 되고, 그 뒤로는 기본이 바뀌어도 이 사용자만 옛 값에 묶인다.
+// 2. **셋째 선택이 없는 것**(결정 10 · 스토리 67) — 「배경일 때만」은 명시적으로 기각됐다.
+// 3. **권한 거부가 이 화면에 적히는 것**(스토리 69) — 인앱 토스트로 대체하지 않는다.
+//    거부된 채 조용하면 사람은 「알림 기능이 고장 났다」로 읽는다.
+
+const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
+  terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+  notifications: { enabled: null, sound: null, ...patch },
+});
+
+function renderNotifications(value: Settings, granted: boolean | null = true): string {
+  return renderToStaticMarkup(
+    <NotificationSection settings={value} granted={granted} onChange={() => {}} />,
+  );
+}
+
+describe("알림 설정의 기본은 프런트가 든다", () => {
+  // 백엔드는 구획째 안 쓸 수 있다(`settings.rs`의 `is_empty`) — 그 파일이 여기 그대로 온다.
+  it("구획이 아예 없어도 둘 다 켬이다", () => {
+    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    expect(notificationChoice(bare)).toEqual({ enabled: true, sound: true });
+  });
+
+  it("안 고른 값은 켬이다", () => {
+    expect(notificationChoice(withNotifications())).toEqual({ enabled: true, sound: true });
+  });
+
+  // **`false`가 살아남아야 한다.** `?? true`가 아니라 `|| true`로 적으면 껐다는 선택이
+  // 조용히 켬으로 돌아오고, 화면에서는 「껐는데 다시 켜졌다」로만 보인다.
+  it("끈 것은 끈 채로 온다", () => {
+    expect(notificationChoice(withNotifications({ enabled: false, sound: false }))).toEqual({
+      enabled: false,
+      sound: false,
+    });
+  });
+});
+
+describe("알림 설정을 고친다", () => {
+  it("구획이 없어도 만들어 얹는다", () => {
+    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    expect(patchNotifications(bare, { sound: false }).notifications).toEqual({ sound: false });
+  });
+
+  // `patchTerminal`과 같은 규칙이다 — 읽은 것을 펼쳐 고쳐야 모르는 키가 산다.
+  it("우리가 모르는 키는 구획 안팎 모두 살아남는다", () => {
+    const read = {
+      editor: { tabWidth: 2 },
+      terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+      notifications: { enabled: true, quietHours: "22-08" },
+    } as unknown as Settings;
+
+    const next = patchNotifications(read, { sound: false }) as unknown as {
+      editor: unknown;
+      notifications: { quietHours: string; enabled: boolean; sound: boolean };
+    };
+
+    expect(next.editor, "모르는 구획이 사라졌다").toEqual({ tabWidth: 2 });
+    expect(next.notifications.quietHours, "모르는 키가 사라졌다").toBe("22-08");
+    expect(next.notifications.enabled, "옆 값이 사라졌다").toBe(true);
+    expect(next.notifications.sound).toBe(false);
+  });
+});
+
+describe("알림 구획의 화면", () => {
+  // 결정 10 · 스토리 67 — 켬/끔과 소리 켬/끔 **둘뿐**이다.
+  it("고르는 것이 둘뿐이다", () => {
+    const html = renderNotifications(withNotifications());
+    expect(html).toContain("알림");
+    expect(html).toContain("소리");
+    // 칩은 둘씩 두 줄 — 넷이다. 셋째 선택이 생기면 여기서 먼저 걸린다.
+    expect(html.match(/aria-pressed=/g) ?? []).toHaveLength(4);
+    expect(html, "기각된 셋째 선택이 화면에 있다").not.toContain("배경");
+  });
+
+  it.each([
+    [{}, ["true", "false", "true", "false"]],
+    [{ enabled: false }, ["false", "true", "true", "false"]],
+    [{ sound: false }, ["true", "false", "false", "true"]],
+  ] as ReadonlyArray<readonly [Partial<NotificationSettings>, string[]]>)(
+    "고른 쪽만 켜진다 %s",
+    (patch, pressed) => {
+      const html = renderNotifications(withNotifications(patch));
+      expect([...html.matchAll(/aria-pressed="(\w+)"/g)].map((one) => one[1])).toEqual(pressed);
+    },
+  );
+
+  // 스토리 69 — 거부된 채 조용하면 왜 안 울리는지 어디에도 안 적힌다.
+  it("권한이 거부돼 있으면 그 사실이 이 화면에 적힌다", () => {
+    expect(renderNotifications(withNotifications(), false)).toContain("권한");
+  });
+
+  it.each([true, null])("권한이 %s면 아무 말도 안 한다", (granted) => {
+    expect(renderNotifications(withNotifications(), granted)).not.toContain("권한");
   });
 });

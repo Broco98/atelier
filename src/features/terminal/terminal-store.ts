@@ -1,14 +1,20 @@
 import { Store } from "@tanstack/react-store";
 import { Channel } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
+import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import { markShellsSeen, nextAttention, ptyIdOf } from "./shell-attention";
 import type { ShellView } from "./shell-attention";
+import { createNotifier, notificationPayload, notifyShells } from "./shell-notify";
+import type { NotifyContent } from "./shell-notify";
+import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
   CLOSE_NOTICE,
@@ -434,6 +440,112 @@ void onShellAttention((changed) => {
 }).catch((error) => {
   console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);
 });
+
+// ── 알림과 독 배지 (#206 · 결정 10)
+//
+// **판정은 여기 없다.** 무엇이 울리는지는 `shell-notify.ts`의 순수 함수 둘이 정하고
+// (`decideNotification`과 그것을 회차에 거는 `createNotifier`), 이 자리가 하는 일은 셋이다 —
+// 회차마다 재료를 뽑아 건네고, 나온 답을 채널로 내보내고, 배지를 맞춘다.
+//
+// **자리가 여기인 이유는 「보고 있는가」다.** 알림 억제는 결정 7의 판정을 그대로 쓰는데
+// (스토리 80) 그 값(`currentView`)은 이 모듈의 것이다. 사이드바에 두면 「봤다」를 아는 자리가
+// 둘이 되고, 그러면 탭의 초록과 알림이 다른 순간에 같은 판정을 쓰게 된다.
+//
+// **이펙트가 아니라 모듈 구독인 것**도 위 두 구독과 같은 이유다: 배경 칸(결정 21)이 부르는
+// 것도 알려야 하고, `main.tsx`가 StrictMode라 이펙트에 두면 개발 중에 판정기가 두 벌이 된다.
+
+const notifier = createNotifier();
+
+/**
+ * 슬러그를 사람이 읽는 이름으로 바꾸는 함수. **밖에서 온다** — 터미널은 슬러그까지만 알고
+ * (`bandRows` 머리말) work 제목은 목록 API의 것이다. 채우는 자리는 사이드바 하나이고
+ * (`setNotifyTitles`), 아직 안 왔으면 슬러그가 그대로 제목이 된다 — 띠가 모르는 슬러그를
+ * 다루는 방식과 같다.
+ */
+let notifyTitleOf: (owner: string | null) => string = (owner) => owner ?? TERMINAL_LABEL;
+
+/**
+ * 알림 제목이 읽을 이름표를 건넨다. 사이드바가 목록을 받을 때마다 부른다 — 그쪽이 슬러그와
+ * 제목을 둘 다 쥔 유일한 자리다(`bandItems`가 같은 이유로 거기 산다).
+ */
+export function setNotifyTitles(resolve: (owner: string | null) => string): void {
+  notifyTitleOf = resolve;
+}
+
+/** 지금 독에 붙어 있는 수. 안 바뀌면 IPC를 안 태운다 — 이 배선은 상태가 바뀔 때마다 돈다. */
+let badgeShown = 0;
+
+/**
+ * 회차 하나. **구독이 부르고, 설정이 바뀔 때도 부른다.**
+ *
+ * **판정기는 알림이 꺼져 있어도 돈다.** 안 돌리면 꺼 둔 동안의 전이가 기억에 안 앉고, 다시
+ * 켜는 순간 그동안 쌓인 것이 한꺼번에 「처음 들어옴」으로 울린다 — 조용히 있으라고 끈
+ * 사람에게 가장 나쁜 모양이다.
+ */
+function notifyTick(): void {
+  const rows = notifyShells(terminalStore.state, currentView(), notifyTitleOf);
+  const fired = notifier.step(rows, Date.now());
+  // **끄면 앱이 아무 신호도 안 낸다**(스토리 66). 배지도 함께 내린다 — 결정 10의 채널 칸이
+  // 「알림 + 소리 + 독 배지」 셋을 한 묶음으로 적었고, 설정 칸은 그 묶음에 스위치를 하나만
+  // 뒀다. 배지만 남기는 안은 그 스위치를 둘로 쪼개는 것이라 결정 10 밖이다.
+  const { enabled, sound } = notifyChoice();
+  setBadge(enabled ? rows.length : 0);
+  if (!enabled) return;
+  for (const one of fired) show(one, sound);
+}
+
+/**
+ * 독 아이콘의 수(스토리 65). **크로스 플랫폼 API라 `cfg` 분기가 없다** — Windows에서만
+ * 조용히 무시된다.
+ *
+ * `undefined`가 「배지를 없앤다」다(`setBadgeCount`의 계약) — 0을 넘기면 동그라미 안에 0이
+ * 앉는다.
+ */
+function setBadge(count: number): void {
+  if (count === badgeShown) return;
+  badgeShown = count;
+  getCurrentWindow()
+    .setBadgeCount(count === 0 ? undefined : count)
+    .catch((error) => {
+      console.warn("atelier: 독 배지를 못 붙였다", error);
+    });
+}
+
+/**
+ * 알림 하나를 내보낸다. 셋을 둘로 접는 것은 `notificationPayload`가 한다(부제 칸이 없다).
+ *
+ * **소리 이름을 손으로 적는다.** 이 채널은 소리를 안 주면 조용하고(`mac-notification-sys`가
+ * 이름 없는 알림에 `""`를 넘긴다), macOS의 기본 알림음을 부르는 이름이 이 상수다. 「시스템
+ * 기본 알림음」(결정 10)이 여기서는 그렇게 적힌다. **이 이름이 실제로 소리를 내는지는
+ * 헤드리스로 못 잰다** — 실물 확인이 남아 있는 자리다.
+ *
+ * **클릭에 붙일 것이 없다.** 스펙은 「되면 셸 탭까지, 안 되면 창 앞세우기까지」라 적었는데,
+ * 이 플러그인의 데스크톱 경로는 **클릭을 아예 안 받는다** — `desktop.rs`의
+ * `NotificationBuilder::show()`가 `notify_rust`에 title·body·icon·sound만 넘기고 응답
+ * 핸들러를 걸지 않으며(그래서 `notify_rust`의 `wait_for_click`도 안 탄다), 액션 API는
+ * 모바일 전용이다. 그래서 **앱이 붙일 수 있는 것이 없고**, 창이 앞으로 오는 것은 macOS가
+ * 번들 앱의 알림에 기본으로 해 주는 동작뿐이다. 그 뒤는 스토리 10이 받는다 — 창이 포커스를
+ * 얻는 순간 켜져 있던 셸의 초록이 꺼진다(`syncSeen`의 `focus` 리스너).
+ */
+function show(content: NotifyContent, sound: boolean): void {
+  const { title, body } = notificationPayload(content);
+  try {
+    sendNotification({ title, body, sound: sound ? MAC_DEFAULT_SOUND : undefined });
+  } catch (error) {
+    // 웹뷰 밖(노드 seam)이나 채널이 없는 자리에서 여기가 실제로 터진다. 알림 하나를 못 낸
+    // 값으로 상태 갱신을 멈추지 않는다 — 화면은 이미 같은 사실을 그리고 있다.
+    console.warn("atelier: 알림을 못 띄웠다", error);
+  }
+}
+
+const MAC_DEFAULT_SOUND = "NSUserNotificationDefaultSoundName";
+
+// **구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
+// 머리말 — 그 이유가 여기서 났다) 이 콜백이 읽어도 딸려 오는 의존이 없다.
+terminalStore.subscribe(notifyTick);
+// 설정이 바뀌면 배지가 그 자리에서 따라와야 한다 — 끈 순간 독에 수가 남아 있으면 「껐는데
+// 아직 부른다」로 읽힌다.
+onNotifySettingsChanged(notifyTick);
 
 /**
  * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).

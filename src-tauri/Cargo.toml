@@ -22,6 +22,10 @@ tauri-build = { version = "2", features = [] }
 # (여기와 tauri.conf.json의 assetProtocol) 한쪽만 있으면 빌드가 거부한다.
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
+# OS 알림(#206 · 결정 10). 이 크레이트가 웹뷰에 `window.Notification` 폴리필을 깔아 주므로,
+# 프런트는 표준 API 모양 그대로 부르고 실제 알림은 여기로 나간다 — 안 걸면 브라우저의
+# `Notification`이 그것을 받아 **아무 소리도 안 내고 오류도 안 낸다.**
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 atelier-core = { path = "../crates/atelier-core" }

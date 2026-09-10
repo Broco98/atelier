@@ -58,12 +58,42 @@ pub struct TerminalSettings {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// 파일 전체. 지금 구획은 `terminal` 하나다(결정 52) — 다른 구획이 생기면 여기 한 줄이다.
+/// 알림 구획 (#206 · 결정 10). **둘뿐이다** — 켬/끔과 소리 켬/끔. 「배경일 때만」 같은
+/// 셋째 선택은 없다(Codex 앱의 3단은 과하다고 봤다).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    /// **고르지 않았으면 파일에 줄 자체가 없다.** `terminal` 쪽과 규칙이 갈리는 자리다 —
+    /// 그쪽은 `null` 줄이 「여기를 고치면 된다」는 표시라 남기지만, 알림의 기본(둘 다 켬)은
+    /// 프런트가 들고 있어서 `null`을 적어 두면 「안 골랐다」와 「껐다」가 글자로만 갈린다.
+    /// 이 파일의 규칙 「사용자가 고른 것만 적는다」가 이쪽에서는 그렇게 읽힌다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sound: Option<bool>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+impl NotificationSettings {
+    /// 사용자가 이 구획에 아무것도 안 남겼나. **모르는 키까지 센다** — 손으로 적어 둔 줄이
+    /// 있으면 빈 구획이 아니고, 그것을 안 세면 다음 저장이 그 줄을 통째로 지운다.
+    fn is_empty(&self) -> bool {
+        self.enabled.is_none() && self.sound.is_none() && self.extra.is_empty()
+    }
+}
+
+/// 파일 전체. 구획이 `terminal`·`notifications` 둘이다 — 다른 구획이 생기면 여기 한 줄이다.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(default)]
     pub terminal: TerminalSettings,
+    /// **아무것도 안 고르면 구획째 안 적힌다.** 지금까지 쓰던 설정 파일이 알림 한 줄
+    /// 때문에 통째로 다시 쓰이지 않는다 — 이 파일은 사람이 손으로 여는 것이라 안 건드린
+    /// 자리가 그대로 남는 편이 낫다.
+    #[serde(default, skip_serializing_if = "NotificationSettings::is_empty")]
+    pub notifications: NotificationSettings,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -165,6 +195,11 @@ mod tests {
                 theme: TerminalTheme::Light,
                 extra: Default::default(),
             },
+            notifications: NotificationSettings {
+                enabled: Some(false),
+                sound: Some(true),
+                extra: Default::default(),
+            },
             extra: Default::default(),
         };
         write(&root, &s).unwrap();
@@ -252,6 +287,67 @@ mod tests {
         let out = std::fs::read_to_string(settings_path(&root)).unwrap();
         assert!(out.contains("\"tabWidth\""), "모르는 구획이 사라졌다: {out}");
         assert!(out.contains("\"bell\""), "모르는 키가 사라졌다: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **새 구획이 늘어도 모르는 키가 산다**(#206). 위 왕복 검사가 최상위와 `terminal`만
+    /// 보는 사이에 구획이 하나 늘었고, 그 안쪽은 그때 아무도 안 보고 있었다 — 「손으로 고칠
+    /// 수 있다」가 구획마다 따로 무너질 수 있는 자리다.
+    #[test]
+    fn unknown_fields_inside_notifications_survive_a_roundtrip() {
+        let root = temp_root("extra-notifications");
+        std::fs::write(
+            settings_path(&root),
+            r#"{"notifications":{"enabled":true,"quietHours":"22-08"}}"#,
+        )
+        .unwrap();
+
+        let s = read(&root).unwrap();
+        assert_eq!(s.notifications.enabled, Some(true));
+        write(&root, &s).unwrap();
+
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(out.contains("\"quietHours\""), "모르는 키가 사라졌다: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **고르지 않은 알림 값은 파일에 안 적힌다**(#206 · 결정 10). `terminal`과 규칙이
+    /// 다른 자리다 — 그쪽은 `null` 줄이 「여기를 고치면 된다」는 표시라 남기지만, 알림의
+    /// 기본(둘 다 켬)은 프런트가 들고 있어서 `null`을 적으면 「껐다」와 글자로만 갈린다.
+    #[test]
+    fn unchosen_notification_values_are_not_written() {
+        let root = temp_root("notifications-unchosen");
+        write(&root, &Settings::default()).unwrap();
+
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(!out.contains("\"enabled\""), "안 고른 켬/끔이 적혔다: {out}");
+        assert!(!out.contains("\"sound\""), "안 고른 소리가 적혔다: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 고른 것만 적힌다 — 하나를 골라도 나머지 한 줄이 따라 들어오지 않는다.
+    #[test]
+    fn a_chosen_notification_value_is_written_alone() {
+        let root = temp_root("notifications-one");
+        let mut s = Settings::default();
+        s.notifications.sound = Some(false);
+        write(&root, &s).unwrap();
+
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(out.contains("\"sound\": false"), "고른 값이 안 적혔다: {out}");
+        assert!(!out.contains("\"enabled\""), "안 고른 켬/끔이 함께 적혔다: {out}");
+        assert_eq!(read(&root).unwrap(), s);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 구획이 통째로 빠진 파일도 정상 경로다 — 지금까지 쓰던 설정 파일이 전부 그렇다.
+    #[test]
+    fn a_file_without_the_notifications_section_reads_as_unchosen() {
+        let root = temp_root("notifications-missing");
+        std::fs::write(settings_path(&root), r#"{"terminal":{"theme":"light"}}"#).unwrap();
+        let s = read(&root).unwrap();
+        assert_eq!(s.notifications.enabled, None);
+        assert_eq!(s.notifications.sound, None);
         let _ = std::fs::remove_dir_all(&root);
     }
 

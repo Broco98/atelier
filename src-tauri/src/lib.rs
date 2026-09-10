@@ -177,6 +177,9 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
+        // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
+        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
         .setup(|app| {
             watcher::start(app.handle().clone());
@@ -338,6 +341,57 @@ mod tests {
             .expect("여는 표식이 있다")
             .1
             .split_once("\n        })")
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
+    }
+
+    /// **알림 채널이 앱에 걸려 있는가**(#206 · 결정 10). 이것도 헤드리스로는 못 돌린다 —
+    /// 플러그인이 빠지면 나는 일은 조용한 무음이다: 프런트가 `sendNotification`을 불러도
+    /// 웹뷰에 폴리필이 안 깔려 브라우저의 `Notification`이 받고, 권한 없는 그 객체는
+    /// **아무 소리도 안 내고 오류도 안 낸다.** 그래서 자리로 잰다(위 검사와 같은 방식).
+    #[test]
+    fn 알림_채널이_빌더에_걸려_있다() {
+        assert!(
+            builder_source().contains(".plugin(tauri_plugin_notification::init())"),
+            "알림 플러그인이 안 걸려 있다 — 프런트가 울려도 아무 소리가 안 난다"
+        );
+    }
+
+    /// **권한이 안 열려 있으면 그 호출은 거절당한다.** capabilities는 사람이 손으로 적는
+    /// JSON이라 오타 하나로 조용히 빠지고, 그 실패는 앱을 띄워야만 보인다.
+    ///
+    /// **파싱해서 본다 — 글자 찾기가 아니다.** 파일이 깨지거나 `permissions`가 배열이
+    /// 아니게 되면 여기서 터진다(fail-closed). 문자열로 훑으면 주석이나 다른 구획에 같은
+    /// 글자가 있어도 통과한다.
+    #[test]
+    fn 알림과_배지의_권한이_열려_있다() {
+        let src = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(src).expect("capabilities가 JSON이다");
+        let perms: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("permissions가 배열이다")
+            .iter()
+            .map(|one| one.as_str().expect("권한 하나는 문자열이다"))
+            .collect();
+        for want in ["notification:default", "core:window:allow-set-badge-count"] {
+            assert!(perms.contains(&want), "{want}가 capabilities에 없다 — {perms:?}");
+        }
+    }
+
+    /// 빌더에 무엇이 걸렸는지를 볼 소스. 자르는 이유는 `setup_source`와 같다 — 테스트
+    /// 모듈까지 흘러가면 스캔이 **제 문자열을 읽고 스스로 통과한다.**
+    fn builder_source() -> &'static str {
+        let src = include_str!("lib.rs");
+        let body = src
+            .split_once("tauri::Builder::default()")
+            .expect("여는 표식이 있다")
+            .1
+            .split_once("#[cfg(test)]")
             .expect("닫는 표식이 있다")
             .0;
         assert!(

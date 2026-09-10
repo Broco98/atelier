@@ -17,6 +17,21 @@ export interface TerminalSettings {
   theme: TerminalTheme;
 }
 
+// 알림 구획 (#206 · 결정 10). **둘뿐이다** — 켬/끔과 소리 켬/끔. 「배경일 때만」 같은 셋째
+// 선택은 없다(스토리 67).
+//
+// **둘 다 `null`이 「안 골랐다」이고 기본(둘 다 켬)은 프런트가 든다.** 백엔드는 고른 것만
+// 적으므로(`settings.rs`의 `skip_serializing_if`) 여기에 기본을 적어 두면 값을 정하는 자리가
+// 둘이 된다 — 그 하나를 `notificationChoice`가 진다(`SettingsPage.tsx`).
+export interface NotificationSettings {
+  enabled: boolean | null;
+  sound: boolean | null;
+}
+
 export interface Settings {
   terminal: TerminalSettings;
+  // **없을 수 있다.** 아무것도 안 고른 파일에는 이 구획이 통째로 없고(`settings.rs`의
+  // `is_empty`) 백엔드는 읽은 그대로 실어 보낸다 — 「있다」고 적으면 지금까지 쓰던 설정
+  // 파일 전부에서 이 타입이 거짓말이 된다.
+  notifications?: NotificationSettings;
 }

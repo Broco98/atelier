@@ -14,7 +14,7 @@ import {
 } from "@/features/terminal/shell-registry";
 import { bandRows, signalsByOwner, topSignalView } from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
-import { selectShell, terminalStore } from "@/features/terminal/terminal-store";
+import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch, workSlugOf } from "@/routes/-work-search";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { navItems, TERMINAL_LABEL, type NavKey } from "./nav-items";
@@ -72,6 +72,7 @@ function Sidebar({
   // work 제목은 목록 API가 준다 — 터미널은 슬러그까지만 안다(`bandRows` 머리말).
   const { data: works = [] } = useWorks();
   const items = bandItems(rows, works);
+  useNotifyTitles(works);
   // 띠의 줄은 늘 경과를 단다(부르는 것만 서므로) — 줄이 하나라도 있으면 시계가 돈다.
   const bandNow = useNow(items.length > 0);
   const openBand = useOpenBand();
@@ -231,6 +232,25 @@ function bandItems(rows: ReadonlyArray<BandRow>, works: ReadonlyArray<WorkView>)
     ...row,
     title: row.owner === null ? TERMINAL_LABEL : (titles.get(row.owner) ?? row.owner),
   }));
+}
+
+/**
+ * 알림 제목이 읽을 이름표를 배선에 건넨다(#206).
+ *
+ * **여기인 이유는 띠와 같다** — 슬러그와 제목을 둘 다 쥔 자리가 이 컴포넌트뿐이고
+ * (`bandItems` 머리말), 알림은 터미널 쪽 모듈 구독이 쏘므로 그쪽은 목록 API를 모른다.
+ * 모르는 슬러그를 슬러그 그대로 적는 것도 띠와 같은 규칙이다.
+ *
+ * **이 사이드바는 늘 서 있다**(`AppShell`) — 접혀도 렌더된다. 그래서 「알림이 배선을 못 찾는
+ * 화면」이 없다. 최상위 셸의 이름은 nav 항목의 것 그대로다(`TERMINAL_LABEL`).
+ */
+function useNotifyTitles(works: ReadonlyArray<WorkView>): void {
+  useEffect(() => {
+    const titles = new Map(works.map((work) => [work.slug, work.title]));
+    setNotifyTitles((owner) =>
+      owner === null ? TERMINAL_LABEL : (titles.get(owner) ?? owner),
+    );
+  }, [works]);
 }
 
 /**

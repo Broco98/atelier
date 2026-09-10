@@ -37,6 +37,15 @@ const PLUGINS: Record<string, unknown> = {
   // 쓴다(`useHomeDir`). 값이 화면에 드러나는 자리는 이미지 경로 하나뿐이라 아무 경로여도
   // 되지만, **`~`가 아닌 절대 경로**여야 편 결과가 편 것처럼 보인다.
   "plugin:path|resolve_directory": "/Users/tester",
+  // 설정 화면이 「알림 권한이 있나」를 묻는 길(#206 · 스토리 69). 헤드리스 WebKit의
+  // `Notification.permission`이 `default`라 플러그인 JS가 여기까지 온다 — 답이 없으면
+  // 설정 화면을 여는 시나리오(`search-palette.spec.ts`)가 화이트리스트 밖으로 샌다.
+  // **`true`다**: 거부된 화면을 재는 것은 마크업 seam의 일이고(`SettingsPage.test.tsx`),
+  // 여기서 거짓을 주면 설정 화면 검사가 매번 그 문구를 지고 선다.
+  "plugin:notification|is_permission_granted": true,
+  // 독 배지(#206 · 스토리 65). 값은 안 쓰이지만 **답이 있어야 화이트리스트를 안 넘는다** —
+  // 실제로 무엇이 실려 나갔는지는 IPC 기록에서 읽는다(`e2e/shell-notify.spec.ts`).
+  "plugin:window|set_badge_count": null,
 };
 
 // `plugin:dialog|open`(폴더 선택창)은 고정값이 될 수 없다 — 테스트가 미리 만든 임시
@@ -455,4 +464,56 @@ export async function setWindowFocused(page: Page, focused: boolean): Promise<vo
 /** 창 이벤트 하나를 쏜다. `hasFocus`가 답할 값은 **안 건드린다**. */
 export async function fireWindowEvent(page: Page, name: "focus" | "blur"): Promise<void> {
   await page.evaluate((one: string) => window.dispatchEvent(new Event(one)), name);
+}
+
+/**
+ * 알림 채널을 **손으로 잡는다**(#206). 실물에서는 Rust 플러그인이 웹뷰에 `window.Notification`
+ * 폴리필을 깔아 그 생성자가 곧 IPC가 되는데(`tauri-plugin-notification`의 init 스크립트),
+ * L3는 앱 번들만 도는 맨 브라우저라 그 폴리필이 없다 — 그러면 헤드리스 WebKit의 진짜
+ * `Notification`이 그것을 받아 **권한이 없다는 이유로 아무 소리도 안 내고 오류도 안 낸다.**
+ * 그 조용함은 「안 울렸다」와 화면에서 구분되지 않아, 이 층의 알림 검사가 전부 fail-open이 된다.
+ *
+ * 그래서 그 생성자 하나만 갈아 끼우고 **앱이 실제로 그것을 부르는지**를 잰다. 권한을
+ * `granted`로 세워 두는 것은 플러그인의 `isPermissionGranted`가 그 값을 먼저 보기 때문이다 —
+ * `default`로 두면 앱이 IPC로 권한을 물으러 가고, 그 커맨드는 여기 표에 없다.
+ *
+ * **페이지가 뜨기 전에 깔아야 한다** — `installFixtureBackend`와 같은 자리다.
+ */
+export async function stubNotifications(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const sent: Array<{ title: string; body?: string; sound?: string }> = [];
+    (window as unknown as { __atelierNotifications: typeof sent }).__atelierNotifications = sent;
+    const stub = function (title: string, options?: { body?: string; sound?: string }) {
+      sent.push({ title, body: options?.body, sound: options?.sound });
+    } as unknown as typeof window.Notification;
+    Object.defineProperty(stub, "permission", { configurable: true, get: () => "granted" });
+    Object.defineProperty(window, "Notification", { configurable: true, value: stub });
+  });
+}
+
+/** 위 손잡이가 받아 적은 알림들. 안 깔았으면 던진다 — 없는 것을 「안 울렸다」로 읽지 않는다. */
+export async function sentNotifications(
+  page: Page,
+): Promise<Array<{ title: string; body?: string; sound?: string }>> {
+  return page.evaluate(() => {
+    const sent = (window as unknown as {
+      __atelierNotifications?: Array<{ title: string; body?: string; sound?: string }>;
+    }).__atelierNotifications;
+    if (!sent) throw new Error("stubNotifications를 먼저 깔아야 한다");
+    return sent;
+  });
+}
+
+/**
+ * 독 배지로 나간 값들, 나간 순서대로. `undefined`는 「배지를 없앤다」이고 와이어에서는 키가
+ * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
+ */
+export async function badgeCalls(page: Page): Promise<Array<number | null>> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls
+    .filter((call) => call.startsWith("plugin:window|set_badge_count"))
+    .map((call) => {
+      const value = /"value":(\d+)/.exec(call);
+      return value ? Number(value[1]) : null;
+    });
 }
