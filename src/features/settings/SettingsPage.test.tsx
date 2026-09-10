@@ -363,18 +363,36 @@ describe("알림 구획의 화면", () => {
 //    무엇이 어디에 들어가는지 보여야 한다. 그 글자는 백엔드가 낸 것을 그대로 그린다.
 // 3. **되돌릴 길이 화면에 있는 것**(스토리 74) — 설치만 있고 제거가 없으면 훅이 남아
 //    있는지 몰라 헤맨다.
+// 4. **아는 사실이 「모른다」로 안 지워지는 것** — 쓰기가 실패한 것(`writeError`)과 판정을
+//    못 한 것(`error`)은 다른 사실이다. 읽기는 되는데 쓰기만 실패한 파일에서 「확인 못 함」이라
+//    적으면, 낱말 셋(설치됨·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
 
 const hook = (patch: Partial<HookStatus> = {}): HookStatus => ({
   agent: "claude",
   path: "~/.claude/settings.json",
   installed: false,
   error: null,
+  writeError: null,
   preview: '{\n  "hooks": {}\n}\n',
   ...patch,
 });
 
 function renderHooks(statuses: HookStatus[]): string {
-  return renderToStaticMarkup(<HooksSection statuses={statuses} />);
+  return renderToStaticMarkup(
+    <HooksSection
+      statuses={statuses}
+      busy={false}
+      error={null}
+      onInstall={() => {}}
+      onUninstall={() => {}}
+    />,
+  );
+}
+
+/** 이 마크업의 버튼들이 사람에게 보이는 글자. **버튼만 걸린다** — 상태 낱말이 같은 화면에
+ *  있어 `toContain("설치")`는 버튼을 통째로 지워도 통과한다. */
+function buttonLabels(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
 }
 
 describe("훅이 지금 어떤지 한 낱말로", () => {
@@ -398,10 +416,12 @@ describe("훅 구획의 화면", () => {
       hook({ agent: "codex", path: "~/.codex/config.toml", preview: "코덱스 조각" }),
     ]);
 
-    expect(html).toContain("claude");
+    // **이름 칸을 걸어 잰다.** 그냥 `toContain("claude")`이면 아래 경로에 그 글자가 이미
+    // 있어 에이전트 이름 칸을 통째로 지워도 통과한다.
+    expect(html).toContain(">claude</span>");
+    expect(html).toContain(">codex</span>");
     expect(html).toContain("~/.claude/settings.json");
     expect(html).toContain("설치됨");
-    expect(html).toContain("codex");
     expect(html).toContain("~/.codex/config.toml");
     expect(html).toContain("설치 안 됨");
     // 스토리 73 — 누르기 전에 무엇이 들어가는지 보인다. 화면이 따로 적은 글이 아니라
@@ -410,11 +430,37 @@ describe("훅 구획의 화면", () => {
     expect(html).toContain("코덱스 조각");
   });
 
-  // 스토리 74 — 되돌릴 길이 없으면 훅이 남아 있는지 몰라 헤맨다.
-  it("설치와 제거가 둘 다 있다", () => {
+  // 스토리 70·74 — 버튼 하나로 깔리고, 되돌릴 길이 화면에 있다.
+  it("설치와 제거가 버튼으로 둘 다 있다", () => {
+    expect(buttonLabels(renderHooks([hook()]))).toEqual(["설치", "제거"]);
+  });
+
+  // 스토리 73 — claude 쪽 미리보기는 **빈 설정에 병합한 결과**라 그대로 두면 「내 파일이
+  // 이걸로 바뀐다」로 읽힌다. 예순 줄짜리 설정을 가진 사람이 볼 그림이 그것이면 이 구획이
+  // 없애려던 불안을 되레 키운다.
+  it("미리보기가 「더해지는 것」임을 말한다", () => {
     const html = renderHooks([hook()]);
-    expect(html).toContain("설치");
-    expect(html).toContain("제거");
+    expect(html).toContain("이미 있는 내용은 그대로 두고");
+  });
+
+  // 읽기는 됐는데 **쓰기만** 실패한 자리. 파일이 읽기 전용이면 그렇다 — 그때 우리는
+  // 설치 여부를 안다. 아는 것을 「확인 못 함」으로 지우면 안 된다.
+  it("쓰기가 실패해도 아는 상태는 그대로 적고 까닭을 덧붙인다", () => {
+    const status = hook({ installed: true, writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
+    expect(hookStateLabel(status)).toBe("설치됨");
+
+    const html = renderHooks([status]);
+    expect(html).toContain("설치됨");
+    expect(html).not.toContain("확인 못 함");
+    expect(html).toContain("설정을 쓰지 못했습니다");
+  });
+
+  // 깨진 파일에서는 쓰기도 판정도 같은 까닭으로 실패한다 — 그때 같은 줄이 두 번 서면
+  // 사람은 두 가지 일이 났다고 읽는다.
+  it("같은 까닭은 두 번 안 적는다", () => {
+    const why = "설정 파일이 잘못됐습니다 — 손대지 않았습니다";
+    const html = renderHooks([hook({ error: why, writeError: why })]);
+    expect(html.split(why).length - 1).toBe(1);
   });
 
   // 깨진 파일의 까닭은 **화면에 적힌다.** 조용히 삼키면 사람은 버튼이 고장 났다고 읽는다.

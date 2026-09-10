@@ -560,18 +560,18 @@ export function hookStateLabel(status: HookStatus): string {
  */
 export function HooksSection({
   statuses,
-  busy = false,
-  error = null,
-  onInstall = () => {},
-  onUninstall = () => {},
+  busy,
+  error,
+  onInstall,
+  onUninstall,
 }: {
   statuses: HookStatus[];
   /** 넣거나 걷는 중인가. 연타를 막는다 — 같은 파일에 두 쓰기가 겹치면 안 된다. */
-  busy?: boolean;
+  busy: boolean;
   /** 명령 자체가 실패했으면 그 까닭(스크립트를 못 세운 경우). */
-  error?: string | null;
-  onInstall?: () => void;
-  onUninstall?: () => void;
+  error: string | null;
+  onInstall: () => void;
+  onUninstall: () => void;
 }) {
   return (
     <section className="flex flex-col gap-5 pt-2">
@@ -581,7 +581,12 @@ export function HooksSection({
           전에 알아야 마음이 놓인다. */}
       <p className="text-[13px] leading-[1.7] text-tertiary">
         누른 순간 아래 파일에 적용돼요(저장 버튼과 별개예요). 고치기 전에 같은 자리에{" "}
-        <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.
+        <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.{" "}
+        {/* **아래 글자가 「더해지는 것」임을 말한다.** claude 쪽 미리보기는 설정이 비어
+            있을 때의 결과 파일이라, 이 줄이 없으면 예순 줄짜리 설정을 가진 사람에게는
+            「내 파일이 이걸로 바뀐다」로 읽힌다 — 이 구획이 없애려던 그 불안이다. */}
+        아래는 <strong className="font-medium">더해지는 부분</strong>이에요 — 이미 있는
+        내용은 그대로 두고 여기에만 얹어요.
       </p>
 
       {statuses.map((status) => (
@@ -594,6 +599,13 @@ export function HooksSection({
             </div>
             {status.error !== null && (
               <p className="text-[13px] leading-[1.7] text-red-600">{status.error}</p>
+            )}
+            {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
+                낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
+                경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
+                두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
+            {status.writeError !== null && status.writeError !== status.error && (
+              <p className="text-[13px] leading-[1.7] text-red-600">{status.writeError}</p>
             )}
             {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
             <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-[12px] leading-[1.6] scroll-quiet">

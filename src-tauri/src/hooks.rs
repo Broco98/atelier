@@ -84,9 +84,15 @@ const CODEX_END: &str = "# <<< atelier 셸 신호 훅 <<<";
 /// 파일 끝에 덧붙는 글자 그대로. **미리보기도 이 함수가 낸다** — 화면이 따로 적으면
 /// 「무엇이 들어가는지 보여 준다」는 약속이 실제로 들어가는 것과 갈릴 수 있다.
 pub fn codex_block(script: &Path) -> String {
+    codex_block_for(script, CODEX_EVENTS)
+}
+
+/// 이벤트 몇 개짜리 구획. **전부가 아닐 수 있는 이유:** 사람이 울타리 밖에 손으로 적어 둔
+/// 우리 명령이 있으면 그 이벤트는 다시 안 붙인다(`merge_codex`) — 붙이면 두 벌이 된다.
+fn codex_block_for(script: &Path, events: &[&str]) -> String {
     let mut out = String::from(CODEX_BEGIN);
     out.push('\n');
-    for event in CODEX_EVENTS {
+    for event in events {
         // **두 블록이 짝이다**(구현 결정 8). `[[hooks.<Event>]]`가 matcher 그룹이고
         // `[[hooks.<Event>.hooks]]`가 그 안의 명령이다 — 앞의 것 없이 뒤의 것만 적으면
         // 붙일 그룹이 없어 TOML이 거부한다. matcher는 안 적는다: 도구 이름으로 거르는
@@ -117,9 +123,20 @@ fn toml_basic_string(value: &str) -> String {
 /// **먼저 우리 구획을 걷고 다시 붙인다.** 그래야 두 번 눌러도 한 번이고, 홈이 옮겨져
 /// 경로가 낡았을 때 설치가 그것을 고친다.
 pub fn merge_codex(source: &str, script: &Path) -> Result<String, String> {
-    validate_toml(source)?;
+    parse_codex(source)?;
 
     let mut out = strip_codex_block(source);
+
+    // **울타리 밖에 이미 우리 명령이 있으면 그 이벤트는 안 붙인다.** 사람이 손으로 적어 둔
+    // 훅 위에 우리 구획을 그대로 얹으면 같은 명령이 두 벌이 되어 이벤트마다 훅이 두 번
+    // 돈다 — claude 쪽이 `claude_group_is_ours`로 막는 그 자리(스토리 72)의 codex 판이다.
+    let present = codex_ours(&parse_codex(&out)?);
+    let missing: Vec<&str> =
+        CODEX_EVENTS.iter().copied().filter(|event| !present.contains(event)).collect();
+    if missing.is_empty() {
+        return Ok(out);
+    }
+
     if !out.is_empty() {
         // **파일 끝 개행 유무를 본다.** 없는데 그냥 이으면 사용자의 마지막 키와 우리
         // 주석이 한 줄에 붙어 파일이 통째로 깨진다.
@@ -128,7 +145,7 @@ pub fn merge_codex(source: &str, script: &Path) -> Result<String, String> {
         }
         out.push('\n');
     }
-    out.push_str(&codex_block(script));
+    out.push_str(&codex_block_for(script, &missing));
     Ok(out)
 }
 
@@ -137,18 +154,41 @@ pub fn merge_codex(source: &str, script: &Path) -> Result<String, String> {
 /// **파일 끝 개행을 하나로 고른다.** 잘라낸 자리 앞에 우리가 넣었던 빈 줄이 남으면
 /// 설치·제거를 되풀이할 때마다 파일 끝에 빈 줄이 쌓인다.
 pub fn unmerge_codex(source: &str) -> Result<String, String> {
-    validate_toml(source)?;
+    parse_codex(source)?;
     Ok(strip_codex_block(source))
 }
 
-/// 설치됐나 — **파일을 읽어 판정한다.** 우리 구획이 서 있고 그 안에 이벤트 다섯이 다
-/// 있어야 설치된 것이다(Claude 쪽과 같은 규칙).
+/// 설치됐나 — **파일을 읽어, 우리 명령 문자열로 판정한다**(구현 결정 8 · claude 쪽과 같은
+/// 잣대). 다섯이 다 있어야 설치된 것이다.
+///
+/// **울타리를 세지 않는다.** 헤더 줄만 보면 사람이 `command` 줄을 지운 파일이 「설치됨」이
+/// 되어 설치 버튼이 잠기고(반쯤 깔린 것은 「아님」이라야 채울 길이 있다), 손으로 적어 둔
+/// 훅은 「아님」이 되어 그 위에 사본이 하나 더 붙는다.
 pub fn codex_installed(source: &str) -> Result<bool, String> {
-    validate_toml(source)?;
-    let Some(block) = codex_block_span(source).map(|(from, to)| &source[from..to]) else {
-        return Ok(false);
+    Ok(codex_ours(&parse_codex(source)?).len() == CODEX_EVENTS.len())
+}
+
+/// 이 내용에서 **우리 명령이 앉아 있는** 이벤트들. 울타리 안인지 밖인지는 안 본다 —
+/// 근거는 파일에 적힌 명령 문자열 하나다.
+fn codex_ours(table: &toml::Table) -> Vec<&'static str> {
+    let Some(hooks) = table.get("hooks").and_then(toml::Value::as_table) else {
+        return Vec::new();
     };
-    Ok(CODEX_EVENTS.iter().all(|event| block.contains(&format!("[[hooks.{event}.hooks]]"))))
+    CODEX_EVENTS
+        .iter()
+        .copied()
+        .filter(|event| {
+            hooks.get(*event).and_then(toml::Value::as_array).is_some_and(|groups| {
+                groups.iter().any(|group| {
+                    group.get("hooks").and_then(toml::Value::as_array).is_some_and(|inner| {
+                        inner.iter().any(|hook| {
+                            hook.get("command").and_then(toml::Value::as_str).is_some_and(is_ours)
+                        })
+                    })
+                })
+            })
+        })
+        .collect()
 }
 
 /// 우리 구획이 앉은 자리 — 울타리 두 줄을 포함한 바이트 범위.
@@ -250,9 +290,13 @@ pub struct HookStatus {
     /// 사람이 읽는 경로 — `~/.claude/settings.json`.
     pub path: String,
     pub installed: bool,
-    /// 파일이 깨져 **판정도 설치도 못 했으면** 그 까닭. 그때 `installed`는 거짓이지만
-    /// 「안 깔렸다」가 아니라 「모른다」다 — 화면이 그 둘을 갈라 적는다.
+    /// 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 거짓이지만 「안 깔렸다」가
+    /// 아니라 「모른다」다 — 화면이 그 둘을 갈라 적는다.
     pub error: Option<String>,
+    /// 방금 **넣거나 걷다** 난 오류. `error`와 한 칸을 쓰면 안 되는 이유가 있다 — 파일이
+    /// 읽기 전용이면 쓰기만 실패하고 판정은 멀쩡히 되는데, 그때 화면이 「확인 못 함」이라
+    /// 적으면 아는 사실을 「모른다」로 지우는 것이 된다.
+    pub write_error: Option<String>,
     /// 그 파일에 실제로 들어가는 글자. **쓰는 함수와 같은 곳에서 나온다**(스토리 73) —
     /// 화면이 따로 적으면 「무엇이 들어가는지 보여 준다」는 약속이 실물과 갈릴 수 있다.
     pub preview: String,
@@ -326,7 +370,8 @@ pub fn uninstall(home: &Path, script: &Path) -> Vec<HookStatus> {
 }
 
 /// 한 에이전트의 지금 모습을 **파일에서** 만든다. `failed`는 방금 넣거나 걷다 난 오류다 —
-/// 그것이 있으면 판정보다 그쪽을 적는다(사람이 알아야 하는 것은 방금 무슨 일이 났나다).
+/// **판정과 다른 칸에 싣는다.** 둘은 다른 사실이고(하나는 방금 한 일, 하나는 지금 아는 것),
+/// 한 칸에 겹치면 「쓰기는 실패했지만 설치된 것은 안다」가 「확인 못 함」으로 지워진다.
 fn look(agent: &Agent, home: &Path, script: &Path, failed: Option<String>) -> HookStatus {
     let path = (agent.path)(home);
     let read = read_or_empty(&path).and_then(|source| (agent.installed)(&source));
@@ -334,7 +379,8 @@ fn look(agent: &Agent, home: &Path, script: &Path, failed: Option<String>) -> Ho
         agent: agent.name.to_string(),
         path: atelier_core::collapse_home(&path),
         installed: read.clone().unwrap_or(false),
-        error: failed.or_else(|| read.err()),
+        error: read.err(),
+        write_error: failed,
         preview: (agent.preview)(script),
     }
 }
@@ -351,11 +397,10 @@ fn read_or_empty(path: &Path) -> Result<String, String> {
     }
 }
 
-/// **깨진 TOML은 거부한다.** 여기서만 파서를 쓴다 — 쓰는 것은 텍스트 덧붙이기이고,
-/// 파서가 하는 일은 「손대도 되는 파일인가」를 답하는 것 하나다.
-fn validate_toml(source: &str) -> Result<(), String> {
+/// **깨진 TOML은 거부한다.** 쓰는 것은 텍스트 덧붙이기라, 파서가 하는 일은 둘뿐이다 —
+/// 「손대도 되는 파일인가」와 「우리 명령이 어디에 앉아 있나」(`codex_ours`).
+fn parse_codex(source: &str) -> Result<toml::Table, String> {
     toml::from_str::<toml::Table>(source)
-        .map(|_| ())
         .map_err(|e| format!("설정 파일이 잘못됐습니다: {e} — 손대지 않았습니다"))
 }
 
@@ -366,24 +411,57 @@ fn validate_toml(source: &str) -> Result<(), String> {
 /// 목록 밖으로 나가 **영영 못 걷는 훅**이 된다. 근거는 목록이 아니라 명령 문자열이다.
 ///
 /// 빈 껍데기는 함께 걷는다 — 우리가 만들어 둔 그룹·배열·`hooks` 구획이 알맹이 없이
-/// 남으면 「되돌렸다」가 파일에서는 거짓이 된다.
+/// 남으면 「되돌렸다」가 파일에서는 거짓이 된다. **다만 「지금 비어 있는 것」이 아니라
+/// 「이번 제거가 비운 것」만이다** — 사람이 손으로 적어 둔 빈 그룹·빈 배열·빈 `hooks`는
+/// 우리가 만든 껍데기가 아니라 그 사람의 내용이라, 걷으면 「우리 항목만 걷어낸다」가 깨진다.
 pub fn unmerge_claude(source: &str) -> Result<String, String> {
+    // 원문이 비어 있으면 걷을 것이 없다. 여기서 `{}`를 내면 claude를 한 번도 안 쓴 사람이
+    // 「제거」를 누른 것만으로 `~/.claude/settings.json`이 생긴다 — codex 쪽은 빈 원문을
+    // 빈 채로 돌려줘 아무것도 안 쓰는데, 같은 층에서 둘이 갈릴 이유가 없다.
+    if source.trim().is_empty() {
+        return Ok(source.to_string());
+    }
+
     let mut root = parse_claude(source)?;
 
     if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
-        for (_event, list) in hooks.iter_mut() {
+        let mut emptied_events: Vec<String> = Vec::new();
+        for (event, list) in hooks.iter_mut() {
             let Some(list) = list.as_array_mut() else { continue };
-            for group in list.iter_mut() {
-                let Some(inner) = group["hooks"].as_array_mut() else { continue };
+
+            // 이번 제거가 **비운** 그룹의 자리. 처음부터 비어 있던 그룹은 여기 안 든다.
+            let mut emptied: Vec<usize> = Vec::new();
+            for (at, group) in list.iter_mut().enumerate() {
+                // **`group["hooks"]`(IndexMut)를 안 쓴다.** serde_json의 그 구현은 없는 키를
+                // `null`로 심고(남의 그룹에 우리가 키를 남긴다), 객체가 아닌 원소에서는
+                // **패닉한다** — 거부가 아니라 폭발이라, 사람이 보는 것은 「제거를 눌렀더니
+                // 앱이 이상해졌다」이고 그 명령의 프로미스가 안 끝나 버튼 둘이 잠긴다.
+                let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
+                    continue;
+                };
+                let before = inner.len();
                 inner.retain(|h| !h["command"].as_str().is_some_and(is_ours));
+                if inner.len() < before && inner.is_empty() {
+                    emptied.push(at);
+                }
             }
-            // 알맹이가 없어진 그룹만 걷는다. **처음부터 빈 그룹은 남긴다** — 우리가 비운
-            // 것이 아니라 사람이 그렇게 적어 둔 것이다.
-            list.retain(|group| !group["hooks"].as_array().is_some_and(Vec::is_empty));
+            if emptied.is_empty() {
+                continue;
+            }
+            let mut at = 0;
+            list.retain(|_| {
+                let keep = !emptied.contains(&at);
+                at += 1;
+                keep
+            });
+            if list.is_empty() {
+                emptied_events.push(event.clone());
+            }
         }
-        hooks.retain(|_event, list| !list.as_array().is_some_and(Vec::is_empty));
-        let empty = hooks.is_empty();
-        if empty {
+        for event in &emptied_events {
+            hooks.remove(event);
+        }
+        if !emptied_events.is_empty() && hooks.is_empty() {
             root.remove("hooks");
         }
     }
@@ -557,6 +635,55 @@ mod tests {
         assert!(unmerge_claude("{ 잘렸").is_err());
     }
 
+    /// 원문의 **내용은 그대로 두고** 제거가 쓰는 모양으로만 옮겨 적은 것.
+    fn pretty(source: &str) -> String {
+        let value: Value = serde_json::from_str(source).expect("JSON이다");
+        let mut out = serde_json::to_string_pretty(&value).expect("옮겨 적힌다");
+        out.push('\n');
+        out
+    }
+
+    /// **우리 훅이 하나도 없는 파일은 제거를 지나도 안 바뀐다.** 이 한 줄이 세 자리를
+    /// 한꺼번에 지킨다 — 없는 `hooks` 키를 우리가 심지 않는 것, 객체가 아닌 원소에서
+    /// 터지지 않는 것, 사람이 적어 둔 빈 구조를 우리가 비운 것으로 오인해 걷지 않는 것.
+    ///
+    /// **견주는 값이 원문이 아니라 `pretty(원문)`인 이유:** 제거는 늘 파싱 후 재직렬화라
+    /// 들여쓰기까지 같을 수는 없다. 여기서 재는 것은 **내용이 하나도 안 바뀌는 것**이고,
+    /// 그 잣대에서는 `null` 한 칸이 심어져도 빈 배열 하나가 사라져도 단언이 깨진다.
+    #[test]
+    fn a_file_without_our_hooks_is_untouched_by_removal() {
+        for source in [
+            // 사람이 손으로 적어 둔 남의 그룹 — 안쪽 `hooks` 키가 아예 없다.
+            r#"{"hooks":{"Stop":[{"matcher":"Bash"}]}}"#,
+            // JSON으로는 멀쩡한데 모양만 다른 것. 여기서 **패닉**이 나면 거부가 아니라
+            // 폭발이고, Tauri 명령의 프로미스가 안 끝나 화면의 버튼 둘이 영영 잠긴다.
+            r#"{"hooks":{"Stop":["oops",null,123]}}"#,
+            // 사람이 적어 둔 빈 구조 셋. 우리가 비운 것이 아니라 원래 그렇게 적힌 것이다.
+            r#"{"model":"opus","hooks":{"Stop":[{"hooks":[]}],"Notification":[]}}"#,
+            r#"{"model":"opus","hooks":{}}"#,
+        ] {
+            assert_eq!(
+                unmerge_claude(source).expect("제거가 된다"),
+                pretty(source),
+                "제거가 남의 내용을 바꿨다: {source}"
+            );
+        }
+    }
+
+    /// **없던 파일은 제거가 만들지 않는다.** claude를 한 번도 안 쓴 사람이 「제거」를 누르면
+    /// `~/.claude/settings.json`이 `{}` 한 줄로 생기던 자리다 — codex 쪽은 빈 원문을 빈 채로
+    /// 돌려줘 아무것도 안 쓰는데, 같은 층에서 두 에이전트가 갈릴 이유가 없다.
+    #[test]
+    fn removing_from_an_empty_file_writes_nothing() {
+        assert_eq!(unmerge_claude("").expect("제거가 된다"), "");
+
+        let home = temp_home("remove-empty");
+        uninstall(&home, &script());
+        assert!(!claude_settings_path(&home).exists(), "제거가 없던 파일을 만들었다");
+        assert!(!codex_config_path(&home).exists(), "제거가 없던 파일을 만들었다");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
     /// **설치 여부는 파일이 답한다.** 앱이 따로 기억하는 상태가 없다는 말이 이렇게
     /// 읽힌다 — 손으로 적어 둔 훅도 「설치됨」이고, 손으로 지운 훅은 「아님」이다.
     #[test]
@@ -707,6 +834,71 @@ trust_level = "trusted"
         let broken = installed.replace("[[hooks.Stop.hooks]]\ntype", "type");
         toml::from_str::<toml::Table>(&broken).expect("여전히 TOML이다");
         assert!(!codex_installed(&broken).unwrap());
+    }
+
+    /// 이 내용에서 그 이벤트에 우리 명령이 앉아 있는가 — 검사 쪽 잣대. 판정 함수와 같은
+    /// 길을 따로 걷는다(구현을 그대로 부르면 구현이 틀려도 검사가 같이 틀린다).
+    fn codex_ours_count(source: &str, event: &str) -> usize {
+        let value: toml::Table = toml::from_str(source).expect("TOML이다");
+        let Some(groups) = value.get("hooks").and_then(|h| h.get(event)).and_then(toml::Value::as_array)
+        else {
+            return 0;
+        };
+        groups
+            .iter()
+            .filter(|group| {
+                group
+                    .get("hooks")
+                    .and_then(toml::Value::as_array)
+                    .is_some_and(|inner| {
+                        inner.iter().any(|h| {
+                            h.get("command").and_then(toml::Value::as_str).is_some_and(is_ours)
+                        })
+                    })
+            })
+            .count()
+    }
+
+    /// 우리 블록과 같은 모양을 **울타리 없이** 손으로 적어 둔 파일.
+    fn codex_by_hand(script: &Path) -> String {
+        let mut out = String::from(CODEX_REAL);
+        for event in CODEX_EVENTS {
+            out.push_str(&format!(
+                "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
+                toml_basic_string(&command_line(script, "codex", event))
+            ));
+        }
+        out
+    }
+
+    /// **울타리는 있는데 우리 명령이 없으면 「아님」이다.** 판정 근거는 헤더 줄이 아니라
+    /// 명령 문자열이다(구현 결정 8) — 사람이 `command` 줄만 지웠는데 「설치됨」이라 답하면
+    /// 설치 버튼이 잠겨 채울 길이 사라진다(claude 쪽 `a_half_installed_file_is_not_installed`와 같은 자리).
+    #[test]
+    fn a_codex_block_without_our_command_is_not_installed() {
+        let installed = merge_codex(CODEX_REAL, &script()).unwrap();
+        let line =
+            format!("command = {}\n", toml_basic_string(&command_line(&script(), "codex", "Stop")));
+        let gutted = installed.replace(&line, "");
+        assert_ne!(gutted, installed, "지울 줄을 못 찾았다 — 검사가 아무것도 안 재고 있다");
+        toml::from_str::<toml::Table>(&gutted).expect("여전히 TOML이다");
+
+        assert!(!codex_installed(&gutted).unwrap(), "명령이 없는데 「설치됨」이다");
+    }
+
+    /// **손으로 적어 둔 codex 훅도 「설치됨」이다** — claude 쪽 짝
+    /// (`a_hand_written_hook_reads_as_installed`)과 같은 잣대여야 한다. 그리고 그 위에
+    /// 설치를 눌러도 **사본이 하나 더 붙지 않는다**: 붙으면 이벤트마다 훅이 두 번 돈다.
+    #[test]
+    fn a_hand_written_codex_hook_reads_as_installed_and_is_not_doubled() {
+        let by_hand = codex_by_hand(&script());
+        assert!(codex_installed(&by_hand).unwrap(), "손으로 적은 훅이 「안 깔림」이다");
+
+        let merged = merge_codex(&by_hand, &script()).expect("병합이 된다");
+        toml::from_str::<toml::Table>(&merged).expect("TOML이다");
+        for event in CODEX_EVENTS {
+            assert_eq!(codex_ours_count(&merged, event), 1, "`{event}`에 우리 명령이 두 벌이다");
+        }
     }
 
     // ── 디스크에 넣는 층
@@ -869,8 +1061,12 @@ trust_level = "trusted"
 
     /// **미리보기는 실제로 들어가는 글자다**(스토리 73). 화면이 따로 적으면 「무엇이
     /// 어디에 들어가는지 보여 준다」는 약속이 실물과 조용히 갈린다.
+    ///
+    /// **이름이 「빈 홈」인 이유:** claude 쪽 미리보기는 `merge_claude("{}")`, 곧 설정이
+    /// 비어 있을 때의 결과다. 이미 내용이 있는 파일에서는 그 등식이 안 선다 — 거기서
+    /// 지켜야 하는 것은 「미리보기가 보인 것이 다 들어간다」이고, 그것은 아래 검사가 잰다.
     #[test]
-    fn the_preview_is_what_actually_goes_in() {
+    fn the_preview_is_what_goes_into_an_empty_home() {
         let home = temp_home("preview");
         let before = status(&home, &script());
         install(&home, &script());
@@ -881,9 +1077,63 @@ trust_level = "trusted"
         let codex = std::fs::read_to_string(codex_config_path(&home)).unwrap();
         assert!(codex.contains(&agent(&before, "codex").preview), "미리보기가 실물과 다르다");
 
-        for one in &before {
-            assert!(one.path.contains(".c"), "어느 파일인지 안 적혔다: {}", one.path);
+        // **어느 파일인지 값으로 못박는다.** 「`.c`가 들어 있다」는 두 경로 아무 데나
+        // 걸려, 두 에이전트의 경로가 뒤바뀌어도 검사가 아무 말을 안 한다. (여기서 `~`로
+        // 안 접히는 것은 임시 홈이 진짜 홈이 아니어서다 — 접는 자리는 `collapse_home`이다.)
+        assert_eq!(
+            agent(&before, "claude").path,
+            claude_settings_path(&home).to_string_lossy(),
+            "claude 칸이 claude 파일을 안 가리킨다"
+        );
+        assert_eq!(
+            agent(&before, "codex").path,
+            codex_config_path(&home).to_string_lossy(),
+            "codex 칸이 codex 파일을 안 가리킨다"
+        );
+        assert!(agent(&before, "claude").path.ends_with("/.claude/settings.json"));
+        assert!(agent(&before, "codex").path.ends_with("/.codex/config.toml"));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **내용이 이미 있는 파일에서도 미리보기가 보인 것은 다 들어간다.** 실물이 그
+    /// 경우다(구현 결정 8 — 사용자의 `settings.json`에 codegraph 훅이 이미 있다).
+    #[test]
+    fn an_existing_file_gets_everything_the_preview_showed() {
+        let home = temp_home("preview-existing");
+        let before = r#"{"model":"opus","hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"codegraph prompt-hook"}]}]}}"#;
+        std::fs::write(claude_settings_path(&home), before).unwrap();
+
+        let shown = agent(&status(&home, &script()), "claude").preview.clone();
+        install(&home, &script());
+        let after: Value =
+            serde_json::from_str(&std::fs::read_to_string(claude_settings_path(&home)).unwrap())
+                .unwrap();
+
+        assert_eq!(after["model"], "opus", "우리 키 밖의 내용이 사라졌다");
+        let shown: Value = serde_json::from_str(&shown).expect("미리보기가 JSON이다");
+        for (event, groups) in shown["hooks"].as_object().expect("미리보기에 `hooks`가 있다") {
+            let ours = groups[0]["hooks"][0]["command"].as_str().expect("명령이 있다");
+            let landed = after["hooks"][event]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|g| g["hooks"][0]["command"] == ours));
+            assert!(landed, "미리보기가 보인 `{event}`이 파일에 없다");
         }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **쓰기가 실패했다고 아는 사실을 「모른다」로 지우지 않는다.** 파일이 읽기 전용이면
+    /// 제거의 쓰기만 실패하고 판정은 멀쩡히 된다 — 그때 화면이 「확인 못 함」이라 적으면
+    /// 이 판이 세운 낱말 셋(설치됨·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+    /// 그래서 칸이 둘이다: `write_error`는 방금 난 일, `error`는 판정을 못 한 까닭.
+    #[test]
+    fn a_write_failure_does_not_erase_what_we_know() {
+        let home = temp_home("write-failed");
+        install(&home, &script());
+
+        let one = look(&AGENTS[0], &home, &script(), Some("설정을 쓰지 못했습니다".to_string()));
+        assert!(one.installed, "읽어서 아는 사실을 쓰기 실패가 지웠다");
+        assert_eq!(one.error, None, "판정은 됐는데 「확인 못 함」 칸에 적혔다");
+        assert_eq!(one.write_error.as_deref(), Some("설정을 쓰지 못했습니다"));
         let _ = std::fs::remove_dir_all(&home);
     }
 }

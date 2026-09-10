@@ -192,13 +192,14 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   //
   // `preview`는 **짧은 합성**이다: 백엔드가 내는 진짜 조각을 여기 베껴 두면 병합 함수를
   // 고칠 때마다 이 표가 낡고, 그 낡음은 「미리보기가 실물과 같은가」를 재지도 못한다 —
-  // 그 물음은 Rust 쪽 `the_preview_is_what_actually_goes_in`이 실물로 잰다.
+  // 그 물음은 Rust 쪽 `the_preview_is_what_goes_into_an_empty_home`이 실물로 잰다.
   agent_hooks: [
     {
       agent: "claude",
       path: "~/.claude/settings.json",
       installed: false,
       error: null,
+      writeError: null,
       preview: '{ "hooks": { "Stop": [] } }',
     },
     {
@@ -206,6 +207,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
       path: "~/.codex/config.toml",
       installed: false,
       error: null,
+      writeError: null,
       preview: "[[hooks.Stop]]",
     },
   ] satisfies HookStatus[],
