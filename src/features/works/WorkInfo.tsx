@@ -1,4 +1,7 @@
 import { ArrowRight, ChevronRight, Copy } from "lucide-react";
+import { hasProjects } from "@/mode";
+import type { Mode } from "@/mode";
+import { itemNameOf } from "./work-sections";
 import { specDirRef, worktreeDirRef, workDirRef } from "./refs";
 import { splitSpecFiles } from "./spec-sections";
 import type { WorkView } from "./types";
@@ -14,6 +17,10 @@ export interface ProjectBase {
 }
 
 interface WorkInfoProps {
+  // 어느 세계의 화면인가. **prop이다 — 여기서 물으면 안 된다.** 이 컴포넌트가 훅을 하나라도
+  // 부르는 순간 프로바이더 없이 그릴 수 없어져, 「정보 탭 본문은 순수 표현이다」를 지키는
+  // 유일한 검사(WorkInfo.test.tsx가 프로바이더를 안 세우는 것)가 통째로 사라진다.
+  mode: Mode;
   work: WorkView;
   // 프로젝트 slug → base 판정. **조회는 WorkPanel이 한다** — 이 컴포넌트가 스스로 조회하면
   // 쿼리 프로바이더 없이 그릴 수 없어져 정적 마크업 테스트가 닫힌다.
@@ -43,9 +50,9 @@ export function relativeToWorkDir(path: string, workDir: string): string {
 //
 // **순수 표현 컴포넌트다.** 데이터를 스스로 조회하지 않고 전부 prop으로 받는다.
 // 상태 배지는 헤더에만 둔다 — 여기에 읽기 전용으로 한 번 더 쓰지 않는다.
-function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
-  const workDir = workDirRef(work.slug);
-  const specDir = specDirRef(work.slug);
+function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
+  const workDir = workDirRef(mode, work.slug);
+  const specDir = specDirRef(mode, work.slug);
   // 판은 폴더, 문서는 파일이라 **단위가 달라 더할 수 없고**, 문서 개수는 판 안 문서를
   // 포함한다. spec 탭의 `Documents` 구획(판 **밖** 문서만)과 다른 집합이라, 한 클릭
   // 거리에서 같은 이름이 다른 집합을 가리키지 않도록 `(전체)`를 붙인다.
@@ -61,7 +68,7 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
   return (
     // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다 (spec 탭과 같은 경계)
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
-      <Section title="작업">
+      <Section title={itemNameOf(mode)}>
         {/* 제목과 달리 절대 바뀌지 않는 이름이다. 작업 폴더 경로에 들어 있긴 하지만
             따로 읽을 수 있어야 하고, **읽는 것만으로는 절반이다** — 제목이 바뀌어도 같은
             작업을 가리키려면 그 이름이 클립보드로 나가야 한다 (스토리 10). 경로가 아니므로
@@ -72,66 +79,80 @@ function WorkInfo({ work, bases, onCopy, onOpenProject }: WorkInfoProps) {
             답하지 못한다. 어휘 통일보다 사실 보존이 앞서는 자리다. */}
         <Row label="생성일" value={work.createdAt} />
         {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다.
-            프로젝트 유무와는 **독립이다** (위 noProjects 주석). */}
-        {work.branch !== null && <Row label="브랜치" value={work.branch} />}
+            프로젝트 유무와는 **독립이다** (위 noProjects 주석).
+
+            **Maison에는 브랜치라는 것이 없다**(결정 17) — `work.branch !== null` 하나로는
+            안 된다: 코어의 nothing_to_decide는 프로젝트가 0개여도 브랜치 이름을 **받으면**
+            확정해 저장하므로(works.rs), 이름을 준 채로 만들어진 Room에는 쓰지도 않을
+            브랜치가 실려 온다. 그것을 이 줄이 그대로 읽으면 저 세계에 없는 개념이 화면에
+            선다. */}
+        {hasProjects(mode) && work.branch !== null && (
+          <Row label="브랜치" value={work.branch} />
+        )}
         {/* 아래 상대 경로들의 **기준**이라 맨 위에 온다 — 기준이 먼저 나와야 읽힌다 */}
-        <PathRow label="작업 폴더" path={workDir} onCopy={onCopy} />
+        <PathRow label={`${itemNameOf(mode)} 폴더`} path={workDir} onCopy={onCopy} />
       </Section>
 
-      <Section title="프로젝트">
-        {work.projects.length === 0 ? (
-          <p className="px-2 py-1 text-[12px] leading-normal text-tertiary">{noProjects}</p>
-        ) : (
-          // **워크트리 목록만 돈다.** 코어의 뷰 변환이 워크트리를 프로젝트에서 1:1로 만들어
-          // 개수도 순서도 같고 각 항목이 이름·경로·존재·변경을 모두 들고 있다. 두 배열을
-          // 맞춰보는 코드는 절대 실행되지 않는 분기가 된다.
-          work.worktrees.map((worktree) => {
-            const { base, unregistered } = bases[worktree.project];
-            const dir = worktreeDirRef(worktree.path);
-            return (
-              <div key={worktree.project} className="flex flex-col pb-1">
-                <button
-                  type="button"
-                  onClick={() => onOpenProject(worktree.project)}
-                  aria-label={`${worktree.project} 프로젝트 상세로 이동`}
-                  title="프로젝트 상세로 이동"
-                  className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
-                >
-                  <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
-                  <ChevronRight
-                    className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-                    strokeWidth={2}
-                  />
-                </button>
-                {/* 덩어리 안은 한 칸 들어간다 — 어느 값이 어느 프로젝트 것인지가 위치로 이어진다 */}
-                <div className="flex flex-col pl-2.5">
-                  {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
-                      어느 base가 어느 프로젝트 것인지 그 줄에서 사라진다.
-                      못 찾는 두 경우는 다른 말을 한다 — 그러라고 값이 둘로 갈려 온다. */}
-                  {unregistered ? (
-                    <Note>알 수 없다 — 프로젝트가 등록돼 있지 않다</Note>
-                  ) : (
-                    base !== null && (
-                      <span className="flex h-6 items-center gap-1 px-2 font-mono text-[12px] text-tertiary">
-                        <ArrowRight className="size-2.5 shrink-0" strokeWidth={2} />
-                        <span className="min-w-0 truncate">{base}</span>
-                      </span>
-                    )
-                  )}
-                  <PathRow label="worktree" path={dir} relativeTo={workDir} onCopy={onCopy} />
-                  {/* 아카이빙과 삭제는 커밋 안 된 변경이 있으면 거부되는데, 지금 화면
-                      어디에도 그 사실이 없어 거부 대화상자를 보고서야 알게 된다. */}
-                  {!worktree.exists ? (
-                    <Note>없음</Note>
-                  ) : worktree.dirty ? (
-                    <Note>변경 있음</Note>
-                  ) : null}
+      {/* **Maison에서는 구획째로 없다**(US 27). 프로젝트 0개 갈래를 그대로 두면 저 세계의
+          모든 Room이 「아직 프로젝트가 없어요」라는, 붙일 수도 없는 것을 기다리는 문장을
+          띄운 빈 구획을 하나씩 이고 있게 된다 — 워크트리 줄도 이 구획 안에 살아서 셋이
+          한 조건으로 함께 걷힌다. */}
+      {hasProjects(mode) && (
+        <Section title="프로젝트">
+          {work.projects.length === 0 ? (
+            <p className="px-2 py-1 text-[12px] leading-normal text-tertiary">{noProjects}</p>
+          ) : (
+            // **워크트리 목록만 돈다.** 코어의 뷰 변환이 워크트리를 프로젝트에서 1:1로 만들어
+            // 개수도 순서도 같고 각 항목이 이름·경로·존재·변경을 모두 들고 있다. 두 배열을
+            // 맞춰보는 코드는 절대 실행되지 않는 분기가 된다.
+            work.worktrees.map((worktree) => {
+              const { base, unregistered } = bases[worktree.project];
+              const dir = worktreeDirRef(worktree.path);
+              return (
+                <div key={worktree.project} className="flex flex-col pb-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(worktree.project)}
+                    aria-label={`${worktree.project} 프로젝트 상세로 이동`}
+                    title="프로젝트 상세로 이동"
+                    className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
+                    <ChevronRight
+                      className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+                      strokeWidth={2}
+                    />
+                  </button>
+                  {/* 덩어리 안은 한 칸 들어간다 — 어느 값이 어느 프로젝트 것인지가 위치로 이어진다 */}
+                  <div className="flex flex-col pl-2.5">
+                    {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
+                        어느 base가 어느 프로젝트 것인지 그 줄에서 사라진다.
+                        못 찾는 두 경우는 다른 말을 한다 — 그러라고 값이 둘로 갈려 온다. */}
+                    {unregistered ? (
+                      <Note>알 수 없다 — 프로젝트가 등록돼 있지 않다</Note>
+                    ) : (
+                      base !== null && (
+                        <span className="flex h-6 items-center gap-1 px-2 font-mono text-[12px] text-tertiary">
+                          <ArrowRight className="size-2.5 shrink-0" strokeWidth={2} />
+                          <span className="min-w-0 truncate">{base}</span>
+                        </span>
+                      )
+                    )}
+                    <PathRow label="worktree" path={dir} relativeTo={workDir} onCopy={onCopy} />
+                    {/* 아카이빙과 삭제는 커밋 안 된 변경이 있으면 거부되는데, 지금 화면
+                        어디에도 그 사실이 없어 거부 대화상자를 보고서야 알게 된다. */}
+                    {!worktree.exists ? (
+                      <Note>없음</Note>
+                    ) : worktree.dirty ? (
+                      <Note>변경 있음</Note>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </Section>
+              );
+            })
+          )}
+        </Section>
+      )}
 
       <Section title="문서">
         {/* 세 경로 중 spec만 복사 행이 없었다 */}

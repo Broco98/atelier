@@ -30,6 +30,7 @@ import {
   activeIdOf,
   closesShellFromWindow,
   opensShellFromWindow,
+  ownerOf,
   runningShellsOf,
   sameScreen,
   shellForNav,
@@ -37,6 +38,7 @@ import {
   shellsEmptied,
   shellsOf,
   workShellOrigin,
+  workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
@@ -47,6 +49,8 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
+import { hasProjects } from "@/mode";
+import type { Mode } from "@/mode";
 import {
   armDrag,
   clearHalf,
@@ -69,10 +73,18 @@ import {
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
-import type { ShellsState, ShellTally } from "@/features/terminal/shell-registry";
+import { emptyScreenCopy, itemNameOf, pageNameOf } from "./work-sections";
+import { archiveConfirmBody, removeConfirmBody } from "./work-menu-copy";
+import type { ShellOwner, ShellsState, ShellTally } from "@/features/terminal/shell-registry";
 import type { WorkStatus, WorkView } from "./types";
 
 interface WorksPageProps {
+  /**
+   * 어느 세계의 화면인가. **데이터가 여기서 갈린다** — 목록도 spec 본문도 생애주기 조작도
+   * 이 값으로 루트가 정해진다. 주소에서 다시 읽지 않는 이유는 `-works-view.tsx`의 같은
+   * prop 주석에 있다.
+   */
+  mode: Mode;
   sidebarOpen: boolean;
   selectedSlug: string | null;
   // 보고 있는 문서와 그것을 옮기는 길. 둘 다 주소가 정본이라 여기서 소유하지 않는다.
@@ -153,9 +165,12 @@ export function togglesWorkPanel(event: {
  *   여기서 한 번 더 가를 것이 없다.
  * - **겨눌 칸이 없다.** 고른 작업이 없거나, 그 화면의 셸이 0개인 경우다.
  *
- * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **소유자를 여기서 한 번 가르기**
- * 위해서다 — `owner`가 `null`이면 그 값은 `shellsOf`의 계약상 최상위 터미널을 가리켜,
- * 고른 작업이 없는 work 화면에서 ⌘W가 **`/terminal`의 셸을 닫는다.**
+ * `activeIdOf`를 그냥 부르지 않고 이 함수를 두는 것은 **「고른 작업이 없다」를 여기서 한 번
+ * 가르기** 위해서다. 앞 판에는 `owner`가 `null`이면 그 값이 최상위 터미널을 가리켜 고른
+ * 작업이 없는 work 화면의 ⌘W가 **`/terminal`의 셸을 닫았다.** 지금은 소유자가 늘 문자열이라
+ * (`ShellOwner`) 그 사고를 L0가 먼저 막지만, 이 가드가 사라질 이유는 아니다 — 여전히 이
+ * 화면에는 「셸이 설 자리가 없는 상태」가 있고, 그것을 「닫을 것이 없다」로 옮기는 자리가
+ * 여기 하나다.
  *
  * **함수로 꺼낸 이유는 테스트다**(위 `togglesWorkPanel`과 같다). 이 저장소의 컴포넌트
  * seam은 정적 마크업이라 이펙트가 돌지 않고 키 이벤트도 없다 — 핸들러 안에 두면 소스를
@@ -164,7 +179,7 @@ export function togglesWorkPanel(event: {
  */
 export function shellClosedByTab(
   tab: ViewTab,
-  owner: string | null,
+  owner: ShellOwner | null,
   state: ShellsState,
 ): number | null {
   if (tab !== "terminal" || owner === null) return null;
@@ -172,6 +187,7 @@ export function shellClosedByTab(
 }
 
 function WorksPage({
+  mode,
   sidebarOpen,
   selectedSlug,
   currentFile,
@@ -183,20 +199,29 @@ function WorksPage({
   onSelectSplit,
   onDropInto,
 }: WorksPageProps) {
-  const { data: works = [] } = useWorks();
+  const { data: works = [] } = useWorks(mode);
   // 앱을 처음 켠 사람이 가장 먼저 보는 화면이 여기다. 프로젝트가 하나도 없으면
   // "새 작업을 시켜라"는 안내를 그대로 따라 해도 실패한다 — 그때는 등록으로 유도한다.
   //
   // isPending을 함께 보는 이유: 이 화면이 앱의 첫 화면이 되면서 프로젝트 목록을 처음 읽는
   // 자리도 여기가 됐다. 길이만 보면 "아직 안 왔다"를 "하나도 없다"로 읽어, 이미 등록해 둔
   // 사람에게 매 실행마다 등록하라는 안내가 한 프레임 스친다.
-  const { data: projects = [], isPending: projectsPending } = useProjects();
-  const needsProject = !projectsPending && works.length === 0 && projects.length === 0;
+  const { data: projects = [], isPending: projectsPending } = useProjects(mode);
+  // **프로젝트 갈래는 Atelier의 것이다**(결정 17: Maison에 프로젝트는 없다). 모드가 조건 맨
+  // 앞에 서는 것이 요점이다 — 위 쿼리가 Maison에서 아예 안 켜지므로(`useProjects`) 저 세계에서
+  // `projects`는 **늘** 빈 배열이고, 모드를 안 보면 이 갈래가 언제나 참으로 눕는다. 그때 화면은
+  // Maison 한가운데에서 「먼저 프로젝트를 등록해요」라고 말한다.
+  const needsProject =
+    hasProjects(mode) && !projectsPending && works.length === 0 && projects.length === 0;
+  // 아무것도 안 골랐을 때 본문이 하는 말. **세계마다 다르다**(US 22) — 사이드바의 빈 구획과
+  // 한 표에서 나온다(`work-sections.ts`). 여기서 리터럴로 적으면 목록은 Room 어휘인데 본문은
+  // 「작업은 Claude Code에서 시작돼요」인 화면이 나고, 그것은 Room이 0개일 때만 보인다.
+  const emptyScreen = emptyScreenCopy(mode);
 
   // 생애주기 조작은 ⋯ 메뉴가 부르지만 **상태는 여기서 소유한다** — 진행 표시가 메뉴 하나가
   // 아니라 본문 전체를 덮기 때문이다. 메뉴 안에 두면 그 표시를 메뉴 크기 안에서만 할 수 있다.
-  const archive = useArchiveWork();
-  const remove = useRemoveWork();
+  const archive = useArchiveWork(mode);
+  const remove = useRemoveWork(mode);
   const running = archive.isPending
     ? { verb: "아카이빙", detail: "워크트리를 정리하고 있어요" }
     : remove.isPending
@@ -324,7 +349,11 @@ function WorksPage({
    * **`tabOwner`가 위에 있어야 한다.** 비교 함수가 그것을 닫아 잡는데 그 함수는 `useStore`
    * 안에서 **곧바로** 불린다 — 선언보다 아래 있으면 TDZ로 터진다.
    */
-  const tabOwner = panelWork?.slug ?? null;
+  // **세계가 실린 키다**(결정 10). 두 루트에 같은 slug가 설 수 있어 slug만으로는 Atelier의
+  // `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
+  // `null`은 그대로 **「고른 작업이 없다」**이지 최상위 터미널이 아니다 — 아래
+  // `shellClosedByTab`의 머리말이 그 갈래를 든다.
+  const tabOwner = panelWork ? ownerOf(mode, panelWork.slug) : null;
   const shellState = useStore(
     terminalStore,
     (whole) => whole,
@@ -348,14 +377,14 @@ function WorksPage({
       e.preventDefault();
       // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
       // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
-      const origin = panelWork && workShellOrigin(panelWork, null);
+      const origin = panelWork && workShellOrigin(mode, panelWork, null);
       if (!origin) return;
       openNewShell(origin);
       onSelectTab("terminal");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab]);
+  }, [mode, panelWork, onSelectTab]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
@@ -377,14 +406,18 @@ function WorksPage({
       if (!nav || !panelWork) return;
       e.preventDefault();
       const state = terminalStore.state;
-      const shells = shellsOf(state, panelWork.slug);
+      // 위 `tabOwner`와 **같은 값**인데 거기서 못 받는다 — 그쪽은 `ShellOwner | null`이라
+      // 여기서 다시 좁혀야 하고, 좁히는 가드가 「고른 작업이 없다」와 겹쳐 뜻이 흐려진다.
+      // 짓는 함수가 하나(`ownerOf`)라 두 값이 갈릴 수는 없다.
+      const owner = ownerOf(mode, panelWork.slug);
+      const shells = shellsOf(state, owner);
       // **⌘1만 이 화면의 것이다** — 문서는 셸이 아니라 여기서 가른다. 나머지는 한 칸
       // 밀린 셸 자리이고, 그 밀림은 `shellForNav`가 `firstKey`로 받는다.
       if (nav.kind === "index" && nav.n === 1) {
         onSelectTab("spec");
         return;
       }
-      const next = shellForNav(shells, activeIdOf(state, panelWork.slug), nav, 2);
+      const next = shellForNav(shells, activeIdOf(state, owner), nav, 2);
       if (next !== null) {
         selectShell(next);
         onSelectTab("terminal");
@@ -392,7 +425,7 @@ function WorksPage({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [panelWork, onSelectTab]);
+  }, [mode, panelWork, onSelectTab]);
 
   /**
    * ⌘W — **켜진 탭을 닫는다**(결정 13).
@@ -455,11 +488,15 @@ function WorksPage({
   const header = panelWork ? (
     <ShellTabs
       state={shellState}
-      owner={panelWork.slug}
+      owner={ownerOf(mode, panelWork.slug)}
       // **`worktrees`에서 뽑는다 — `projects`가 아니다.** `workShellOrigin`이 갈리는 기준이
       // `worktrees`라, 둘이 어긋나면 메뉴는 열리는데 고른 값으로 셸이 안 생긴다 — 눌러도
       // 아무 일이 없는 버튼(결정 11·21이 금지하는 것)이 된다.
-      projects={panelWork.worktrees.map((tree) => tree.project)}
+      //
+      // **모드를 여기서 리터럴로 풀지 않는다**(US 26). 저 세계에는 고를 것이 없다는 판단이
+      // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
+      // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
+      projects={workShellProjects(mode, panelWork)}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
@@ -478,7 +515,7 @@ function WorksPage({
       onOpen={(project) => {
         // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
         // 본문을 옮기지도 않는다(결정 24). ⌘T가 위에서 같은 규칙을 탄다.
-        const origin = workShellOrigin(panelWork, project);
+        const origin = workShellOrigin(mode, panelWork, project);
         if (!origin) return;
         openNewShell(origin);
         onSelectTab("terminal");
@@ -509,13 +546,13 @@ function WorksPage({
       actions={
         selected && (
           <>
-            <StatusMenu work={selected} />
+            <StatusMenu mode={mode} work={selected} />
             {/* ⓘ와 ⋯가 **줄의 간격을 그대로 받는다**(결정 24). 한때 둘을 gap 0인 상자에
                 묶어 뒀는데 — hover 배경이 한 버튼에서 다음으로 끊김 없이 옮겨가게 하려던
                 것이었다 — 그 둘만 붙어 있어 한 줄 안에 간격이 두 벌이 됐다. 붙이는 이득보다
                 리듬이 갈리는 값이 크다. */}
-            <WorkMetaMenu work={selected} />
-            <WorkMenu work={selected} archive={archive} remove={remove} />
+            <WorkMetaMenu mode={mode} work={selected} />
+            <WorkMenu mode={mode} work={selected} archive={archive} remove={remove} />
             {/* 본문을 고르던 `spec｜terminal` 토글이 여기 있었다 — **사이드바 트리가
                 그 일을 가져갔다**(결정 70). 같은 것을 두 자리에서 고르게 두면 어느 쪽이
                 지금인지가 화면마다 갈린다. 그리고 이번 판이 그 일을 다시 가져와 **탭 줄**에
@@ -556,9 +593,9 @@ function WorksPage({
               <button
                 type="button"
                 onClick={() => setWorkPanelOpen(true)}
-                aria-label="작업 패널 펼치기"
+                aria-label={`${itemNameOf(mode)} 패널 펼치기`}
                 aria-expanded={false}
-                title="작업 패널 펼치기"
+                title={`${itemNameOf(mode)} 패널 펼치기`}
                 className="icon-button-quiet text-tertiary"
               >
                 <PanelRight className="size-4" strokeWidth={2} />
@@ -570,10 +607,13 @@ function WorksPage({
     />
   ) : (
     // 고른 작업이 없으면 **칸이 설 자리가 없다** — 문서도 셸도 없는 화면이라 탭 줄 대신
-    // 화면 이름만 이고 선다. 여기에 탭 줄을 세우면 `owner`가 `null`이 되는데 그 값은
-    // `shellsOf`의 계약상 **최상위 터미널**을 가리켜, `/terminal`의 셸이 이 줄에 서고
-    // `+`는 열 자리가 없어 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
-    <PageHeader root="Works" inset={!sidebarOpen} />
+    // 화면 이름만 이고 선다. 세울 소유자 자체가 없다: 그 값은 work의 slug에서 나오는데
+    // (`ownerOf(mode, …)`) 고른 작업이 없으면 그 자리가 비고, 뒤가 빈 키는 **그 세계의
+    // 최상위 터미널**이라 `/terminal`의 셸이 이 줄에 서게 된다. `+`도 열 자리가 없어
+    // 눌러도 아무 일이 없는 버튼이 된다(결정 11·21이 금지하는 것).
+    // 머리에 이는 이름도 **그 세계의 것**이다 — 이 갈래는 Room이 0개인 Maison에서 늘 서는데,
+    // 바로 아래 본문은 이미 「아직 Room이 없어요」라고 말한다(`emptyScreenCopy`).
+    <PageHeader root={pageNameOf(mode)} inset={!sidebarOpen} />
   );
 
   // 열에 포커스가 들어가면 `tab`이 **그 열**을 가리킨다(결정 97) — 토글을 끌 때 남는
@@ -628,17 +668,17 @@ function WorksPage({
    * 개수는 셸을 열고 닫을 때만 바뀐다.
    */
   const shellCount = useStore(terminalStore, (state) =>
-    panelWork ? shellsOf(state, panelWork.slug).length : 0,
+    panelWork ? shellsOf(state, ownerOf(mode, panelWork.slug)).length : 0,
   );
-  const tally = useRef<ShellTally>({ owner: panelWork?.slug ?? null, count: shellCount });
+  const tally = useRef<ShellTally>({ owner: tabOwner, count: shellCount });
   useEffect(() => {
-    const now = { owner: panelWork?.slug ?? null, count: shellCount };
+    const now = { owner: tabOwner, count: shellCount };
     const emptied = shellsEmptied(tally.current, now);
     tally.current = now;
     // 본문에 터미널이 서 있을 때만 걷는다 — 문서를 읽는 중에 사이드바로 셸을 닫은 것은
     // 화면에서 아무것도 안 바뀌어야 한다.
     if (emptied && (tab === "terminal" || split !== null)) changeSplit(null, "spec");
-  }, [shellCount, panelWork, tab, split, changeSplit]);
+  }, [shellCount, tabOwner, tab, split, changeSplit]);
 
   // 떨궜다. **셸은 여기서 켜고**(스토어의 일이라 주소와 무관하다) 이동은 주소를 쥔 쪽이
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
@@ -682,7 +722,7 @@ function WorksPage({
       kind="terminal"
       // 탭 줄의 셸 칸과 **같은 이름**이어야 한 셸로 읽힌다(결정 104). 그 이름은 셸이
       // 프롬프트마다 쏘는 타이틀에 바뀌므로 조각 하나가 따로 구독한다.
-      label={<ShellHeadName owner={terminalWork.slug} />}
+      label={<ShellHeadName owner={ownerOf(mode, terminalWork.slug)} />}
       closeLabel="terminal 열 닫기"
       onClose={() => changeSplit(null, otherTab("terminal"))}
     />
@@ -692,6 +732,7 @@ function WorksPage({
   const specBody = selected && (
     <SpecViewer
       key={selected.slug}
+      mode={mode}
       work={selected}
       header={split === null ? header : undefined}
       panelOpen={workPanelOpen}
@@ -705,7 +746,7 @@ function WorksPage({
   const terminalBody = terminalWork && (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21). */}
-      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </div>
   );
 
@@ -751,7 +792,7 @@ function WorksPage({
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
           자리만 새로 잡힌다(결정 20·21). */}
-      <TerminalPane key={terminalWork.slug} work={terminalWork} />
+      <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </main>
   ) : specBody ? (
     specBody
@@ -768,19 +809,21 @@ function WorksPage({
               <Zap className="size-5" strokeWidth={1.6} />
             )}
           </div>
+          {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
+              여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
           <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-            {needsProject ? "먼저 프로젝트를 등록해요" : "아직 작업이 없어요"}
+            {needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}
           </span>
           <span className="text-[14px] leading-[1.65] text-tertiary">
             {needsProject
               ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-              : "작업은 Claude Code에서 시작돼요. 작업이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요."}
+              : emptyScreen.body}
           </span>
           {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
               atelier_add_project / atelier_start_work를 부른다.
               아래 문구는 그대로 붙여 넣는 것이다. */}
           <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-            {needsProject ? "atelier에 이 폴더 등록해줘" : 'atelier로 "새 작업" 시작해줘'}
+            {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
           </code>
         </div>
       </div>
@@ -817,6 +860,7 @@ function WorksPage({
           두 navigate가 한 틱에 겹친다. */}
       {panelWork && (
         <WorkPanel
+          mode={mode}
           work={panelWork}
           currentFile={currentSpec}
           onSelectFile={selectFromTree}
@@ -1025,8 +1069,16 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
 // 끝나는 길이 셋이다 — Enter(적용) · Escape(버림) · 포커스 이탈(적용). 메뉴가 바깥 클릭으로
 // 닫히면 입력이 언마운트되며 그냥 사라진다: blur가 안 오는 경로라 그때는 안 고쳐지고,
 // 그것이 「메뉴를 닫았다」의 자연스러운 뜻이다.
-function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
-  const setTitle = useSetWorkTitle();
+function TitleEditor({
+  mode,
+  work,
+  onDone,
+}: {
+  mode: Mode;
+  work: WorkView;
+  onDone: () => void;
+}) {
+  const setTitle = useSetWorkTitle(mode);
   const [draft, setDraft] = useState(work.title);
   // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
   const finished = useRef(false);
@@ -1045,7 +1097,7 @@ function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
   return (
     <input
       autoFocus
-      aria-label="작업 이름"
+      aria-label={`${itemNameOf(mode)} 이름`}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => finish(true)}
@@ -1061,10 +1113,10 @@ function TitleEditor({ work, onDone }: { work: WorkView; onDone: () => void }) {
 }
 
 // 브레드크럼 상태 배지 + 변경 드롭다운
-function StatusMenu({ work }: { work: WorkView }) {
+function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const setStatus = useSetWorkStatus();
+  const setStatus = useSetWorkStatus(mode);
   const meta = STATUS_META[work.status];
 
   useEffect(() => {
@@ -1137,10 +1189,12 @@ function StatusMenu({ work }: { work: WorkView }) {
 // 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
 // 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
 function WorkMenu({
+  mode,
   work,
   archive,
   remove,
 }: {
+  mode: Mode;
   work: WorkView;
   // 상태를 위에서 받는다 — 진행 표시가 본문 전체를 덮으므로 소유자가 WorksPage다
   archive: ReturnType<typeof useArchiveWork>;
@@ -1160,7 +1214,9 @@ function WorkMenu({
   // 끝난 칸과 못 뜬 칸은 세지 않는다 — 그 칸들은 남아 있지만 죽일 프로세스가 없어서,
   // 함께 세면 "셸 2개가 닫혀요"라고 해놓고 실제로는 하나만 끝난다. **거두는 것은 그래도
   // 전부다**(아래): Work가 사라지는데 그 Work를 가리키는 칸만 남으면 닫을 길이 없다.
-  const liveShells = useStore(terminalStore, (state) => runningShellsOf(state, work.slug));
+  const liveShells = useStore(terminalStore, (state) =>
+    runningShellsOf(state, ownerOf(mode, work.slug)),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -1215,32 +1271,18 @@ function WorkMenu({
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
-    closeShellsOf(work.slug);
+    closeShellsOf(ownerOf(mode, work.slug));
   };
 
-  // 문구는 실제로 남는 것과 사라지는 것을 **둘 다** 말한다. 아카이빙 쪽만 "보존"을 말하면
-  // 대비로 인해 삭제가 커밋까지 지우는 것처럼 읽히고(브랜치는 양쪽 다 남는다), 워크트리
-  // 제거가 gitignore된 파일(.env·로컬 DB·빌드 산출물)까지 가져간다는 사실은 **양쪽 다**
-  // 적는다. 그 파일들은 dirty 검사에 잡히지 않으므로 이 문구가 유일한 경고이고, 둘 다
-  // 같은 worktree_remove를 탄다 — 삭제 쪽은 스펙까지 지우니 더 잃는다.
+  // **문구는 세계마다 다르다**(#186) — 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는
+  // 꺼내 쓰기만 한다. 그림 안에 리터럴로 두면 이 창을 두 세계로 나란히 재는 길이 없다:
+  // `askDanger`는 OS가 아니라 앱의 창이지만 여기서는 프로미스 뒤에 있어, 이 저장소의
+  // 정적 마크업 seam에 문장이 아예 안 걸린다.
   const handleArchive = () =>
-    run(
-      "아카이빙",
-      "스펙과 기록은 남고 워크트리 폴더가 정리돼요. 브랜치와 커밋은 그대로예요.\n" +
-        "다만 git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)은 폴더와 함께 사라져요.\n" +
-        "되돌릴 수 없어요.",
-      () => archive.mutateAsync(work.slug),
-    );
+    run("아카이빙", archiveConfirmBody(mode), () => archive.mutateAsync(work.slug));
 
   const handleRemove = () =>
-    run(
-      "삭제",
-      "워크트리 폴더와 스펙 문서가 모두 지워져요. 브랜치와 커밋은 남지만 기록은 안 남아요 —\n" +
-        "남길 것이 있다면 아카이빙을 쓰세요.\n" +
-        "git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)도 폴더와 함께 사라져요.\n" +
-        "되돌릴 수 없어요.",
-      () => remove.mutateAsync(work.slug),
-    );
+    run("삭제", removeConfirmBody(mode), () => remove.mutateAsync(work.slug));
 
   return (
     <span className="relative flex">
@@ -1249,10 +1291,10 @@ function WorkMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        aria-label="작업 메뉴"
+        aria-label={`${itemNameOf(mode)} 메뉴`}
         aria-expanded={open}
         aria-busy={busy}
-        title={busy ? "처리 중이에요" : "작업 메뉴"}
+        title={busy ? "처리 중이에요" : `${itemNameOf(mode)} 메뉴`}
         // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
         // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
         // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
@@ -1282,6 +1324,7 @@ function WorkMenu({
         >
           {renaming ? (
             <TitleEditor
+              mode={mode}
               work={work}
               onDone={() => {
                 setRenaming(false);

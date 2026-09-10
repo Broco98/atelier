@@ -4,12 +4,14 @@ import { SquareTerminal } from "lucide-react";
 import {
   activeIdOf,
   activeShellOf,
+  ownerOf,
   shellEndLabels,
   shellsOf,
-  TOP_TERMINAL,
+  topTerminal,
   workShellOrigin,
 } from "./shell-registry";
 import type { ShellOrigin } from "./shell-registry";
+import type { Mode } from "@/mode";
 import { terminalLook } from "./terminal-defaults";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
@@ -25,10 +27,10 @@ import type { WorkView } from "@/features/works/types";
  * 이 화면이 사라져도 그대로 산다(결정 20·21). 여기서 하는 일은 활성 칸의 집을 자리에 들이고
  * 갈아탈 때·나갈 때 도로 빼는 것이다.
  *
- * **`work` 하나가 나머지를 전부 정한다** — 소유자·cwd·프로젝트 목록이 거기서 나온다.
- * `null`이면 최상위 터미널이다.
+ * **`work`와 `mode` 둘이 나머지를 전부 정한다** — 소유자·cwd·프로젝트 목록이 거기서
+ * 나온다. `work`가 `null`이면 **그 세계의** 최상위 터미널이다(결정 10).
  */
-function TerminalPane({ work }: { work: WorkView | null }) {
+function TerminalPane({ mode, work }: { mode: Mode; work: WorkView | null }) {
   const hostRef = useRef<HTMLDivElement>(null);
   // 좁히지 않고 통째로 읽는다 — 아래에서 이 화면의 셸·켜진 칸·종료 줄을 다 봐야 한다.
   // **셀렉터를 빼면 컴파일이 안 된다** — 이 버전의 `useStore`는 인자 둘을 요구한다(TS2554).
@@ -36,7 +38,10 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // 새 상태를 **바뀔 때만** 만드는 것은 레지스트리가 지킨다(patch가 무변화에 같은 객체를
   // 돌려준다). 그래서 이 셀렉터는 프롬프트마다 오는 같은 타이틀에 다시 그리지 않는다.
   const state = useStore(terminalStore, (whole) => whole);
-  const owner = work?.slug ?? null;
+  // **조회하는 소유자와 여는 origin이 같은 인자에서 나와야 한다.** 갈리면 `ensureShell`의
+  // 「비었나」가 영영 참이라 이 화면에 들어올 때마다 새 셸이 하나씩 뜬다 — 둘 다 `mode`와
+  // `work`만 딛게 두는 것이 그 짝을 지키는 방법 전부다(`originOf`).
+  const owner = ownerOf(mode, work?.slug);
   const activeId = activeIdOf(state, owner);
 
   // **화면에 들어올 때만** 「없으면 하나 띄운다」다. 마지막 칸을 `×`로 닫은 자리에서는
@@ -45,8 +50,10 @@ function TerminalPane({ work }: { work: WorkView | null }) {
   // 의존성이 `owner` 하나인 것은 의도다. `work`는 목록이 갱신될 때마다 새 객체로 오는데
   // (dirty·exists를 다시 재서 온다) 그때마다 이 이펙트가 돌면 `×`로 비운 화면에 셸이
   // 저절로 돌아온다. 여기서 읽는 것은 그 순간의 `work`이고, 소유자가 그대로면 cwd도 그대로다.
+  // **세계가 그 값에 실려 있어**(결정 10) 모드를 갈면 이 이펙트가 다시 돈다 — 저쪽 세계의
+  // 화면은 자기 셸이 0개인 새 화면이라 하나 띄우는 것이 맞다.
   useEffect(() => {
-    const origin = originOf(work);
+    const origin = originOf(mode, work);
     if (origin) ensureShell(origin);
   }, [owner]);
 
@@ -179,14 +186,15 @@ function TerminalPane({ work }: { work: WorkView | null }) {
 }
 
 /**
- * Work가 없으면 최상위 터미널이다 — 그 자리는 백엔드의 데이터 루트다(결정 25).
+ * Work가 없으면 **그 세계의** 최상위 터미널이다 — 그 자리는 백엔드가 아는 세계의 홈이다
+ * (결정 10·25).
  *
  * **프로젝트를 안 받는다.** 한때 받았다 — 이 본문이 셸을 여는 자리를 갖고 있어서
  * 「어느 워크트리에」를 물어야 했다(결정 24). 결정 19가 그 자리를 탭 줄로 보내면서
  * 여기 남은 부름은 「없으면 하나 띄운다」 하나가 됐고, 그것은 늘 안 고른 자리에서 뜬다.
  */
-function originOf(work: WorkView | null): ShellOrigin | null {
-  return work ? workShellOrigin(work, null) : TOP_TERMINAL;
+function originOf(mode: Mode, work: WorkView | null): ShellOrigin | null {
+  return work ? workShellOrigin(mode, work, null) : topTerminal(mode);
 }
 
 export default TerminalPane;

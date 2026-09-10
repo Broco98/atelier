@@ -14,14 +14,59 @@ struct Server {
     init: Value,
 }
 
+/// 서버를 띄우는 명령 한 벌. **`Server::start`와 기동 실패를 보는 helper가 같은 것을
+/// 써야 한다** — 격리 env(홈·스킬 루트)가 한쪽에만 있으면 그쪽 검사가 개발자의 실제
+/// `~/.atelier`나 `~/.claude/skills`를 건드린다.
+fn spawn_command(home: &std::path::Path, mode: Option<&str>) -> Command {
+    let mut cmd = Command::cargo_bin("atelier").unwrap();
+    cmd.arg("mcp")
+        .env("ATELIER_HOME", home)
+        // 기동 시 정리(Δ11)가 개발자의 실제 ~/.claude/skills 를 건드리지 않게 한다.
+        .env("ATELIER_SKILLS_DIR", home.join("skills-guard"));
+    // **없음과 빈 값은 다르다** — 안 주는 것은 `env`를 아예 안 부르는 것이다.
+    // `.env(name, "")`으로 흉내 내면 서버가 그것을 모르는 값으로 거절한다.
+    match mode {
+        Some(mode) => cmd.env("ATELIER_MODE", mode),
+        None => cmd.env_remove("ATELIER_MODE"),
+    };
+    cmd
+}
+
+/// **핸드셰이크 전에 죽는 것**을 보는 자리. `Server::start`는 initialize 응답을 기다리므로
+/// 뜨지 않는 서버를 못 잰다 — 여기서는 프로세스가 끝나기를 기다려 종료 코드와 두 스트림을
+/// 통째로 본다.
+///
+/// 표준입력을 파이프로 열지 않는다: 규칙이 무너져 서버가 정상 기동해 버리면 즉시 EOF를
+/// 읽고 **0으로** 끝나므로, 매달리지 않고 종료 코드에서 빨개진다.
+fn spawn_expecting_startup_failure(
+    home: &std::path::Path,
+    mode: &str,
+) -> (std::process::ExitStatus, String, String) {
+    let out = spawn_command(home, Some(mode))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+    (
+        out.status,
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
 impl Server {
     fn start(home: &std::path::Path) -> Self {
-        let mut child = Command::cargo_bin("atelier")
-            .unwrap()
-            .arg("mcp")
-            .env("ATELIER_HOME", home)
-            // 기동 시 정리(Δ11)가 개발자의 실제 ~/.claude/skills 를 건드리지 않게 한다.
-            .env("ATELIER_SKILLS_DIR", home.join("skills-guard"))
+        Self::start_with_mode(home, None)
+    }
+
+    /// `mode`가 `None`이면 `ATELIER_MODE`를 **안 준다** — 앱 밖 셸에서 뜬 기존 MCP와 같은
+    /// 상태다. 이 파일의 나머지 검사 전부가 그 상태로 돌아, 「값이 없으면 지금과 한 글자도
+    /// 안 다르다」가 새 검사 하나가 아니라 기존 검사 전부로 붙들린다.
+    fn start_with_mode(home: &std::path::Path, mode: Option<&str>) -> Self {
+        let mut child = spawn_command(home, mode)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -176,7 +221,7 @@ fn list_works_returns_every_work() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트 아이템 추가",
         None,
         &["billing".to_string()],
@@ -200,7 +245,7 @@ fn get_work_hands_over_the_spec_directory_to_write_into() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트",
         None,
         &["billing".to_string()],
@@ -238,7 +283,7 @@ fn get_work_explains_what_the_spec_folder_names_mean() {
     atelier_core::start_work(
         &home.path().join("works"),
         &home.path().join("archive"),
-        &home.path().join("projects"),
+        Some(&home.path().join("projects")),
         "카트",
         None,
         &["billing".to_string()],
@@ -1761,6 +1806,239 @@ fn the_tool_surface_has_no_way_to_delete_a_project() {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 모드 — 같은 도구 표면이 다른 루트를 읽는다 (결정 15·20)
+//
+// **재는 것은 바깥 동작이다** — 「Maison 셸의 MCP가 rooms만 돌려준다」이지 「서버가
+// `maison/rooms`를 들고 있다」가 아니다. 그래서 여기서는 전부 서브프로세스를 띄우고,
+// 파일이 실제로 어느 폴더에 앉는지를 본다.
+
+/// 항목 하나를 **파일로** 심는다. 도구를 안 쓰는 것이 요점이다 — 도구로 심으면 「썼고
+/// 읽었다」가 같은 루트 계산을 두 번 지나서, 그 계산이 틀려도 앞뒤가 맞는다.
+fn plant(root: &std::path::Path, slug: &str, title: &str) {
+    std::fs::create_dir_all(root.join(slug).join("spec")).unwrap();
+    std::fs::write(
+        root.join(slug).join("work.json"),
+        format!(
+            r#"{{"title":"{title}","status":"active","createdAt":"2026-09-07","projects":[]}}"#
+        ),
+    )
+    .unwrap();
+}
+
+fn work_titles(server: &mut Server, id: u32) -> Vec<String> {
+    let res = server
+        .request(id, "tools/call", json!({ "name": "atelier_list_works", "arguments": {} }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    let views: Value = serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap())
+        .unwrap();
+    views.as_array().unwrap().iter().map(|v| v["title"].as_str().unwrap().to_string()).collect()
+}
+
+/// **판 01의 첫 약속.** 같은 홈에 둘을 심어 두고 두 서버를 띄우면, 각자 자기 세계만 본다 —
+/// 규약이 아니라 구조로 갈리므로 목록을 읽는 쪽이 필터를 기억할 필요가 없다.
+#[test]
+fn each_mode_lists_only_its_own_root() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "spec-search", "spec 검색");
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    assert_eq!(work_titles(&mut maison, 2), vec!["금융"]);
+
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    assert_eq!(work_titles(&mut atelier, 2), vec!["spec 검색"]);
+
+    // 값이 없는 것은 Atelier와 같다 — 앱 밖 셸에서 뜬 기존 MCP가 지금과 똑같다.
+    let mut bare = Server::start(home.path());
+    assert_eq!(work_titles(&mut bare, 2), vec!["spec 검색"]);
+}
+
+/// Room을 만드는 길은 MCP 하나다. **`projects`도 `branch`도 없이** 불린 `start_work`가
+/// `maison/rooms/` 아래에 앉고, `specDir`가 그 아래를 가리킨다.
+#[test]
+fn maison_start_work_creates_a_room_and_points_the_spec_dir_at_it() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start_with_mode(home.path(), Some("maison"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "금융", "slug": "finance" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    let room = home.path().join("maison/rooms/finance");
+    assert!(room.join("work.json").is_file(), "Room이 rooms 아래에 없다");
+    assert!(!home.path().join("works/finance").exists(), "Atelier 루트에 새어 나갔다");
+    // Room에는 브랜치도 워크트리도 없다 (결정 17).
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["branch"].is_null(), "{view}");
+    assert!(view["worktrees"].as_array().unwrap().is_empty(), "{view}");
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_get_work",
+        "arguments": { "work_slug": "finance" }
+    }));
+    let view: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let spec_dir = atelier_core::expand_home(view["specDir"].as_str().unwrap());
+    assert_eq!(spec_dir, room.join("spec"), "에이전트가 spec을 엉뚱한 자리에 쓴다");
+    assert!(spec_dir.is_dir());
+}
+
+/// MCP로 치운 Room이 앱의 Maison Archive에 보여야 한다 — 그러려면 `maison/archive/`로
+/// 가야 하고, Atelier 아카이브에 섞이면 안 된다 (스펙 US 25).
+#[test]
+fn maison_archive_work_moves_the_room_into_the_maison_archive() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+    let mut server = Server::start_with_mode(home.path(), Some("maison"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_archive_work",
+        "arguments": { "work_slug": "finance" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+
+    assert!(!home.path().join("maison/rooms/finance").exists());
+    assert!(home.path().join("maison/archive/finance/work.json").is_file());
+    assert!(home.path().join("maison/archive/finance/record.md").is_file());
+    assert!(!home.path().join("archive/finance").exists(), "Atelier 아카이브에 섞였다");
+
+    // 목록에서 빠지고 같은 모드의 아카이브 목록에 선다.
+    assert!(work_titles(&mut server, 3).is_empty());
+    let res = server
+        .request(4, "tools/call", json!({ "name": "atelier_list_archive", "arguments": {} }));
+    let views: Value =
+        serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(views[0]["slug"], "finance");
+}
+
+/// **`atelier`를 명시해도 한 글자도 안 달라진다** (결정 7·15). 앱은 두 모드 다 명시해서
+/// 심으므로 이 값이 정상값이어야 하고, 여기가 어긋나면 앱에서 뜬 셸만 조용히 다른 폴더를
+/// 쓰게 된다.
+///
+/// 읽기만이 아니라 **쓰기 경로까지** 잰다: 만들고 치우는 두 도구가 앉히는 자리를 본다.
+#[test]
+fn an_explicit_atelier_mode_writes_exactly_where_the_bare_server_does() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start_with_mode(home.path(), Some("atelier"));
+
+    let res = server.request(2, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(home.path().join("works/cart/work.json").is_file());
+
+    let res = server.request(3, "tools/call", json!({
+        "name": "atelier_archive_work",
+        "arguments": { "work_slug": "cart" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(home.path().join("archive/cart/work.json").is_file());
+
+    // Maison 루트는 **생기지도 않는다** — 「모드가 생겼다」가 Atelier 홈에 폴더를 늘리지 않는다.
+    assert!(!home.path().join("maison").exists(), "Atelier에서 maison/이 생겼다");
+}
+
+/// **등록된 프로젝트를 실어 불러도 Maison에는 아무것도 안 앉는다** — 디스크로 보는 US 42다.
+///
+/// **이름이 재는 것을 바꿔 달았다.** #180 전에는 이 검사가 `shared_projects_root()`의
+/// Maison 갈래(`None`)를 재고 있었다 — 호출이 커널까지 가서 「project not registered」로
+/// 실패했으므로, 배선을 `Some`으로 뒤집으면 성공해 버려 여기서 빨개졌다. 지금은 어댑터의
+/// 거절이 커널 앞에서 되돌려 보내므로 그 배선은 이 경로에서 관찰되지 않는다. 그래서 그
+/// 불변조건은 값을 정하는 자리로 옮겨 갔다 — mcp/mod.rs의
+/// `the_maison_server_hands_the_kernel_no_project_registry`. 여기 남은 것은 바깥 사실
+/// 하나다: **Maison 루트에 아무것도 안 앉는다.**
+///
+/// **등록부를 실제로 심는 것이 요점이다.** 등록 안 된 이름을 쓰면 Atelier 경로도
+/// 「project not registered」로 똑같이 실패해서, 이 검사가 재는 것이 「모드」인지
+/// 「이름이 없다」인지 흐려진다.
+///
+/// **순서가 붙들고 있는 것이 있다.** Maison을 **먼저** 부른다 — Atelier 대조를 앞에 두면
+/// 그쪽이 저장소에 `finance` 브랜치를 만들어 버려서, 거절이 무너진 Maison 호출이
+/// 「이미 체크아웃된 브랜치」라는 **엉뚱한 이유**로 실패한다. 그러면 무너진 거절이 초록으로
+/// 지나간다.
+///
+/// 거절의 문구와 재개 경로를 재는 것은 아래
+/// `maison_start_work_refuses_projects_or_branch_on_a_new_room_and_on_a_resume`다.
+#[test]
+fn maison_start_work_with_registered_projects_lands_nothing() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let arguments = json!({ "title": "금융", "slug": "finance", "projects": ["billing"] });
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    let res = maison.request(
+        2,
+        "tools/call",
+        json!({ "name": "atelier_start_work", "arguments": arguments }),
+    );
+    assert_eq!(res["result"]["isError"], true, "Maison이 프로젝트를 받아 들였다: {res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("billing"), "무엇이 거절됐는지 안 적혀 있다: {text}");
+
+    // 거절은 **아무것도 안 만든다.** 반쪽만 앉은 Room이 남으면 다음 호출이 그것을 재개한다.
+    assert!(!home.path().join("maison/rooms/finance").exists(), "거절했는데 Room이 생겼다");
+
+    // 대조 — 같은 홈, 같은 인자, Atelier 서버. 여기서 성공하고 워크트리까지 서야
+    // 위 실패가 「모드 때문」임이 확정된다.
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    let res = atelier.request(
+        2,
+        "tools/call",
+        json!({ "name": "atelier_start_work", "arguments": arguments }),
+    );
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(
+        home.path().join("works/finance/trees/billing").is_dir(),
+        "대조가 안 섰다 — 위 실패가 모드 때문인지 알 수 없다"
+    );
+}
+
+/// 도구 표면은 **모드와 무관하게 같다** (결정 15). 여기가 갈리면 에이전트가 세계마다
+/// 다른 도구 이름을 외워야 하고, 지침 두 벌로는 못 메운다.
+#[test]
+fn the_tool_surface_is_the_same_in_both_modes() {
+    let home = tempfile::tempdir().unwrap();
+    let atelier = Server::start(home.path()).tool_names(2);
+    let maison = Server::start_with_mode(home.path(), Some("maison")).tool_names(2);
+    assert_eq!(atelier, maison);
+}
+
+/// **오타가 조용히 Atelier로 눕지 않는다** (스펙 US 46). 핸드셰이크는커녕 아무것도 하기 전에
+/// 끝나고, 표준에러에 받은 값과 허용값이 남는다. 표준출력은 JSON-RPC 전용이라 비어 있다 (Δ13).
+#[test]
+fn an_unknown_mode_dies_before_the_handshake_and_says_what_it_got() {
+    let home = tempfile::tempdir().unwrap();
+    let (status, stdout, stderr) = spawn_expecting_startup_failure(home.path(), "MAISON");
+
+    assert!(!status.success(), "모르는 값으로 서버가 떴다 (stderr: {stderr})");
+    assert!(stdout.is_empty(), "표준출력이 오염됐다: {stdout:?}");
+    assert!(stderr.contains("MAISON"), "받은 값이 안 적혔다: {stderr}");
+    for allowed in ["atelier", "maison"] {
+        assert!(stderr.contains(allowed), "허용값 '{allowed}'가 안 적혔다: {stderr}");
+    }
+
+    // 뜨지도 않은 서버가 파일은 지우는 일이 없어야 한다 — 기동 정리(Δ11)보다 앞이다.
+    let skills = home.path().join("skills-guard/atelier");
+    std::fs::create_dir_all(&skills).unwrap();
+    let (_, _, _) = spawn_expecting_startup_failure(home.path(), "mansion");
+    assert!(skills.is_dir(), "안 뜬 서버가 스킬 폴더를 지웠다");
+}
+
+/// 빈 값도 모르는 값이다 — `ATELIER_MODE=$UNSET`으로 값이 증발한 셸이 생활 쪽인지
+/// 일 쪽인지 아무도 모르는 채로 뜨면 안 된다.
+#[test]
+fn an_empty_mode_is_refused_rather_than_read_as_absent() {
+    let home = tempfile::tempdir().unwrap();
+    let (status, stdout, stderr) = spawn_expecting_startup_failure(home.path(), "");
+    assert!(!status.success(), "빈 값으로 서버가 떴다 (stderr: {stderr})");
+    assert!(stdout.is_empty(), "표준출력이 오염됐다: {stdout:?}");
+    assert!(stderr.contains("ATELIER_MODE"), "어느 변수가 문제인지 안 적혔다: {stderr}");
+}
+
 /// V4 전반부 — 지침이 실제로 클라이언트에게 전달되는 채널에 실린다.
 /// 클라이언트는 이 필드를 모델의 시스템 프롬프트에 주입하도록 의도돼 있다.
 #[test]
@@ -1782,5 +2060,468 @@ fn initialize_carries_server_instructions() {
     assert!(
         instructions.contains("specDir"),
         "spec convention lost the location field: {instructions}"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Maison에는 프로젝트가 없다 (결정 17 · 스펙 US 42·44)
+//
+// 도구 표면은 두 세계가 **같이** 쓴다(위 `the_tool_surface_is_the_same_in_both_modes`).
+// 그래서 「Maison엔 없다」를 말하는 자리가 셋이다 — 부르면 돌아오는 **거절**, 상주하는
+// **지침**, 그리고 늘 읽히는 **도구 설명**. 아래 넷이 그 셋을 각각 붙든다.
+
+/// Maison에서 거절되는 프로젝트 도구 넷. 이 목록이 곧 스펙 US 42의 대상이다.
+const PROJECT_TOOLS: [&str; 4] = [
+    "atelier_list_projects",
+    "atelier_add_project",
+    "atelier_edit_project",
+    "atelier_attach_project",
+];
+
+/// 거절이 말해야 하는 것. 문장 전체를 못박지 않고 **조각**으로 본다 — 「없다」와 「왜
+/// 없는가」는 다섯 자리가 공유하고(`NO_PROJECTS_IN_MAISON`), 「다음에 무엇을」은 자리마다
+/// 다르므로 부르는 쪽이 `next_step`으로 준다.
+///
+/// **다음 걸음을 함께 재는 이유.** 안내가 통째로 비어도 앞의 두 조각은 그대로라 검사가
+/// 초록으로 남는다. 그러면 Maison 에이전트는 무엇이 없는지만 듣고 무엇을 대신 하라는지는
+/// 모른 채 다음 문을 두드린다 — mcp/mod.rs가 이 표면의 규약으로 적어 둔 「무엇이 틀렸는가
+/// + 다음에 무엇을 하라」의 뒤 절반이 통째로 풀린다. 이 저장소의 다른 오류 경로는 전부
+/// 그 뒤 절반을 테스트로 지킨다 (`edit_unknown_project_points_at_the_listing_tool`).
+fn assert_refused_as_maison(res: &Value, what: &str, next_step: &[&str]) {
+    // 프로토콜 오류가 아니다 — 도구는 실재하고 라우팅도 됐으며, 이 세계에서 할 일이 없을 뿐이다.
+    assert!(res["error"].is_null(), "{what}: 프로토콜 오류로 나갔다: {res}");
+    assert_eq!(res["result"]["isError"], true, "{what}가 Maison에서 실행됐다: {res}");
+    let text = res["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Maison has no projects"), "{what}: 「없다」가 없다: {text}");
+    assert!(
+        text.contains("a Room is a topic"),
+        "{what}: 왜 없는지가 없다 — 에이전트가 등록으로 우회한다: {text}"
+    );
+    assert!(!next_step.is_empty(), "{what}: 재야 할 다음 걸음을 안 줬다");
+    for fragment in next_step {
+        assert!(
+            text.contains(fragment),
+            "{what}: 다음에 무엇을 하라가 없다 ({fragment}): {text}"
+        );
+    }
+}
+
+/// **US 42의 절반** — 프로젝트 도구 넷이 거절되고, 거절이 파일 시스템에 아무것도 안 남긴다.
+///
+/// **등록부를 실제로 심어 두고 부르는 것이 요점이다.** 없는 이름을 쓰면 Atelier에서도
+/// 「project not registered」로 똑같이 빨개져, 이 검사가 재는 것이 「모드」인지 「이름이
+/// 없다」인지 흐려진다. 마지막의 Atelier 대조가 그 판별을 마저 세운다.
+#[test]
+fn maison_refuses_the_four_project_tools_and_leaves_the_disk_alone() {
+    let (home, code) = fixture_with(&["billing"]);
+    // 등록 **안 된** 폴더 하나 — add_project가 지나가면 여기에 등록부 파일이 생긴다.
+    let unregistered = code.path().join("shipping");
+    std::fs::create_dir(&unregistered).unwrap();
+    // Room 하나를 심어 둔다 — attach가 「work가 없다」로 빨개지면 무엇을 재는지 흐려진다.
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+
+    let calls = [
+        json!({ "name": "atelier_list_projects", "arguments": {} }),
+        json!({
+            "name": "atelier_add_project",
+            "arguments": { "folder_path": unregistered.to_str().unwrap() }
+        }),
+        json!({
+            "name": "atelier_edit_project",
+            "arguments": { "project_slug": "billing", "description": "Maison이 적은 설명" }
+        }),
+        json!({
+            "name": "atelier_attach_project",
+            "arguments": { "work_slug": "finance", "project_slug": "billing" }
+        }),
+    ];
+    // 표와 호출이 어긋나면 검사가 도구 하나를 조용히 안 부른다. **길이를 먼저 못박는다** —
+    // `zip`은 짧은 쪽에서 끝나므로, 호출을 하나 지우면 이름 대조는 전부 통과하고 뒤의 실행
+    // 루프도 그 도구를 안 부른다. 「넷을 잰다」가 조용히 셋으로 줄어든다.
+    assert_eq!(calls.len(), PROJECT_TOOLS.len(), "거절 호출 표가 도구 하나를 빠뜨렸다");
+    for (call, name) in calls.iter().zip(PROJECT_TOOLS) {
+        assert_eq!(call["name"], name, "거절 호출 표가 어긋났다");
+    }
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    for (i, call) in calls.iter().enumerate() {
+        let res = maison.request(2 + i as u32, "tools/call", call.clone());
+        // 넷이 같은 다음 걸음을 받는다 — 「프로젝트 도구를 부르지 말고, Room은 slug와
+        // specDir로 만들어라」 (mcp/mod.rs의 `DO_NOT_CALL_PROJECT_TOOLS`).
+        assert_refused_as_maison(
+            &res,
+            call["name"].as_str().unwrap(),
+            &["atelier_start_work", "`slug`", "`specDir`"],
+        );
+    }
+
+    // 아무것도 안 만들었다 — 프로젝트는 `projects/<slug>.md` 하나로 산다.
+    assert!(!home.path().join("projects/shipping.md").exists(), "Maison이 프로젝트를 등록했다");
+    let billing = std::fs::read_to_string(home.path().join("projects/billing.md")).unwrap();
+    assert!(!billing.contains("Maison이 적은 설명"), "거절했는데 등록부가 바뀌었다: {billing}");
+    assert!(
+        !home.path().join("maison/rooms/finance/trees").exists(),
+        "거절했는데 Room에 워크트리 자리가 생겼다"
+    );
+    // Room 자체는 멀쩡하다 — 거절이 남의 것을 치우지 않는다.
+    assert_eq!(work_titles(&mut maison, 20), vec!["금융"]);
+
+    // 대조 — 같은 홈, 같은 두 호출, Atelier 서버. 여기서 지나가야 위 거절이 「모드 때문」이다.
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    let listed = atelier.request(2, "tools/call", calls[0].clone());
+    assert_eq!(listed["result"]["isError"], false, "대조가 안 섰다: {listed}");
+    let views: Value =
+        serde_json::from_str(listed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(views[0]["slug"], "billing", "{views}");
+    let added = atelier.request(3, "tools/call", calls[1].clone());
+    assert_eq!(added["result"]["isError"], false, "대조가 안 섰다: {added}");
+    assert!(home.path().join("projects/shipping.md").exists(), "대조가 등록을 안 했다");
+}
+
+/// **US 42의 나머지 절반** — `projects`나 `branch`가 실린 `atelier_start_work`.
+///
+/// `branch`를 함께 막는 이유가 이 검사의 요점이다: 프로젝트 없이 `branch`만 오면 커널은
+/// **아무 오류도 없이** 그 이름을 work.json에 적는다. Room에는 브랜치가 없으므로(결정 17)
+/// 그것은 조용히 어긋난 데이터이고, 화면에도 오류로 안 뜬다.
+///
+/// **재개까지 본다.** 신규만 막으면 「먼저 맨몸으로 만들고 같은 slug로 브랜치를 얹는」 길이
+/// 열린 채로 남는다 — 그 길이 정확히 위의 조용한 어긋남이다.
+#[test]
+fn maison_start_work_refuses_projects_or_branch_on_a_new_room_and_on_a_resume() {
+    let (home, _code) = fixture_with(&["billing"]);
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    let room = home.path().join("maison/rooms/finance");
+
+    // ── 신규 ──
+    for (id, arguments) in [
+        (2, json!({ "title": "금융", "slug": "finance", "projects": ["billing"] })),
+        (3, json!({ "title": "금융", "slug": "finance", "branch": "feat/finance" })),
+    ] {
+        let res = maison
+            .request(id, "tools/call", json!({ "name": "atelier_start_work", "arguments": arguments }));
+        // 다음 걸음은 여기서만 다르다 — 「부르지 말라」가 아니라 「둘 다 빼고 다시 부르라」다.
+        assert_refused_as_maison(
+            &res,
+            "atelier_start_work",
+            &["Call atelier_start_work again with neither"],
+        );
+        // 무엇이 걸렸는지 이름으로 적혀 있다 — 안 적히면 에이전트가 하나만 빼고 다시 부른다.
+        let text = res["result"]["content"][0]["text"].as_str().unwrap();
+        let carried = if arguments["branch"].is_null() { "billing" } else { "feat/finance" };
+        assert!(text.contains(carried), "무엇이 거절됐는지 안 적혀 있다: {text}");
+        // 거절은 **아무것도 안 만든다.** 반쪽만 앉은 Room이 남으면 다음 호출이 그것을 재개한다.
+        assert!(!room.exists(), "거절했는데 Room이 생겼다: {arguments}");
+    }
+
+    // ── 맨몸으로는 지나간다. 재개의 대조군이자, 거절이 도구 자체를 막은 게 아니라는 증거다.
+    let res = maison.request(4, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "금융", "slug": "finance" }
+    }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    assert!(room.join("work.json").is_file());
+
+    // ── 재개 ── 같은 slug로 다시 부르며 프로젝트·브랜치를 얹으려 한다
+    for (id, arguments) in [
+        (5, json!({ "title": "금융", "slug": "finance", "projects": ["billing"] })),
+        (6, json!({ "title": "금융", "slug": "finance", "branch": "feat/finance" })),
+    ] {
+        let res = maison
+            .request(id, "tools/call", json!({ "name": "atelier_start_work", "arguments": arguments }));
+        assert_refused_as_maison(
+            &res,
+            "atelier_start_work (재개)",
+            &["Call atelier_start_work again with neither"],
+        );
+    }
+
+    // 막으려던 조용한 어긋남 — 브랜치 이름이 work.json에 앉지 않았다
+    let stored = std::fs::read_to_string(room.join("work.json")).unwrap();
+    assert!(!stored.contains("feat/finance"), "브랜치가 Room에 적혔다: {stored}");
+    assert!(!stored.contains("billing"), "프로젝트가 Room에 적혔다: {stored}");
+    assert!(!room.join("trees").exists(), "Room에 워크트리 자리가 생겼다");
+
+    // 응답으로도 같은 것이 보인다 — 파일만 보면 필드 이름이 바뀌는 날 검사가 눈을 감는다
+    let got = maison.request(7, "tools/call", json!({
+        "name": "atelier_get_work", "arguments": { "work_slug": "finance" }
+    }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(view["branch"].is_null(), "{view}");
+    assert!(view["projects"].as_array().unwrap().is_empty(), "{view}");
+}
+
+/// 서버가 초기화 응답에 싣는 지침. 호스트가 시스템 프롬프트에 넣는 바로 그 값이다.
+fn instructions_of(server: &Server) -> String {
+    server.init["result"]["instructions"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no instructions in initialize result: {}", server.init))
+        .to_string()
+}
+
+/// **US 44** — Maison 셸의 에이전트가 받는 절차는 Room의 절차다. 「먼저 프로젝트 목록을
+/// 부르라」가 남아 있으면 에이전트는 거절당하고 나서야 그 사실을 안다.
+#[test]
+fn the_maison_instructions_teach_the_room_procedure_instead_of_the_project_one() {
+    let home = tempfile::tempdir().unwrap();
+    let text = instructions_of(&Server::start_with_mode(home.path(), Some("maison")));
+
+    assert!(text.contains("no project, no branch and no worktree"), "「없다」가 없다: {text}");
+    assert!(
+        text.contains("~/.atelier/maison/rooms/<slug>/spec/overview.md:L19-27"),
+        "Room 참조 뿌리가 없다: {text}"
+    );
+    assert!(text.contains("~/.atelier/maison/archive/<slug>/"), "아카이브 뿌리가 없다: {text}");
+    assert!(text.contains("specDir"), "spec을 쓸 자리가 없다: {text}");
+    for atelier_only in PROJECT_TOOLS {
+        assert!(!text.contains(atelier_only), "Atelier 절차가 샜다 ({atelier_only}): {text}");
+    }
+}
+
+/// **Atelier 벌은 지금 그대로다.** 값 없이 뜬 서버와 `atelier`를 명시한 서버가 **같은 글자**를
+/// 내고, 그것이 Maison 벌과 **다르다** — 뒤 절반이 없으면 「두 벌」이 배선 안 된 판(늘 한 벌만
+/// 나가는 판)이 초록으로 지나간다.
+#[test]
+fn the_atelier_instructions_are_unchanged_and_the_two_sets_really_differ() {
+    let home = tempfile::tempdir().unwrap();
+    let bare = instructions_of(&Server::start(home.path()));
+    let explicit = instructions_of(&Server::start_with_mode(home.path(), Some("atelier")));
+    let maison = instructions_of(&Server::start_with_mode(home.path(), Some("maison")));
+
+    assert_eq!(bare, explicit, "값을 명시했다고 지침이 갈렸다");
+    assert_ne!(bare, maison, "모드별 선택이 배선 안 됐다 — 두 세계가 같은 지침을 받는다");
+    // 절차 셋이 그대로 서 있다 (내용 가드 전체는 instructions.rs의 단위 테스트가 든다)
+    assert!(bare.contains("Call atelier_list_projects first"), "{bare}");
+    assert!(bare.contains("git.localBranches"), "{bare}");
+    assert!(bare.contains("worktrees[].path"), "{bare}");
+}
+
+/// JSON에 실린 **문자열 값**을 전부 모은다. 키는 안 본다 — 인자 이름은 문장이 아니다.
+///
+/// `properties.*.description`만 집으면, schemars가 `title`로도 내보내기 시작하는 날
+/// (doc 주석이 `#`로 시작하면 그렇게 된다) 그 문장이 조용히 그물 밖에 남는다.
+fn collect_prose(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(s) => out.push(s.clone()),
+        Value::Array(items) => items.iter().for_each(|v| collect_prose(v, out)),
+        Value::Object(map) => map.values().for_each(|v| collect_prose(v, out)),
+        _ => {}
+    }
+}
+
+/// 도구 이름별로, `tools/list` 한 항목에서 **에이전트가 읽는 문장 전부**.
+///
+/// **인자 스키마까지 걷는 것이 요점이다.** 도구 설명과 인자 doc은 같은 응답에 함께 실려
+/// 한 덩어리로 읽히고, 이 파일은 이미 두 자리에서 그렇게 재고 있다
+/// (`format!("{} {}", tool["description"], tool["inputSchema"])`). `description`만 읽으면
+/// 중립화가 절반에서 멈춰도 초록이다 — 실제로 그랬다: `atelier_edit_work`의 설명에서
+/// 걷어 낸 문장이 `EditWorkParams.title`의 doc에 그대로 살아 있었다.
+///
+/// **공백을 고른다.** schemars는 doc 주석의 줄바꿈을 그대로 `description`에 싣는데
+/// (rmcp가 재수출하는 1.2.1), 아래 조각 대조는 리터럴이라 줄바꿈 한 번에 조용히 빗나간다.
+///
+/// **fail-closed** — 도구 수가 달라지거나, 도구든 인자든 설명이 하나라도 없으면 여기서 터진다.
+fn tool_descriptions(server: &mut Server, id: u32) -> std::collections::BTreeMap<String, String> {
+    let res = server.request(id, "tools/list", json!({}));
+    let tools = res["result"]["tools"].as_array().unwrap_or_else(|| panic!("no tools: {res}"));
+    assert_eq!(tools.len(), 12, "도구 수가 달라졌다 — 설명 검사가 무엇을 읽는지 다시 세라: {res}");
+    tools
+        .iter()
+        .map(|tool| {
+            let name = tool["name"].as_str().unwrap().to_string();
+            let description = tool["description"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{name}에 설명이 없다 — 못 읽으면 통과가 아니다: {tool}"));
+            assert!(description.len() > 40, "{name}의 설명이 사라지다시피 했다: {description}");
+            // 인자에 설명이 없으면 그물이 아니라 **에이전트**가 못 읽는다 — 무엇을 실어야
+            // 하는지 모르는 인자가 하나라도 생기면 여기서 터져야 한다.
+            if let Some(props) = tool["inputSchema"]["properties"].as_object() {
+                for (field, prop) in props {
+                    let described = prop["description"].as_str().unwrap_or("");
+                    assert!(!described.trim().is_empty(), "{name}.{field}에 설명이 없다: {prop}");
+                }
+            }
+            let mut prose = vec![description.to_string()];
+            collect_prose(&tool["inputSchema"], &mut prose);
+            (name, prose.join(" ").split_whitespace().collect::<Vec<_>>().join(" "))
+        })
+        .collect()
+}
+
+/// 걷어 낸 **전제**. 뜻이 아니라 전제를 잰다 — 「프로젝트」라는 낱말 자체는 금지가 아니고
+/// (프로젝트 도구는 프로젝트를 설명해야 한다), 금지되는 것은 **있음을 단정하는 형태**와
+/// **Atelier에만 있는 순서**다. 조건절 안의 같은 말(`when it spans projects`)은 참이라 남는다.
+///
+/// 파서가 아니라 **되돌아옴 방지 그물**이다 (`BANNED_CLI`와 같은 수법). 실제로 걷어 낸 조각을
+/// 그대로 못박아 두고, 새 전제가 생기면 여기 한 줄을 더한다.
+const PRESUPPOSING: [(&str, &str); 12] = [
+    ("one feature", "Room은 기능이 아니라 토픽이다 (결정 17)"),
+    ("sharing a single branch name", "브랜치가 있음을 단정한다"),
+    ("the shared branch", "정관사가 「어느 것에나 하나 있다」로 읽힌다"),
+    ("one git worktree per project", "워크트리가 늘 생긴다고 단정한다"),
+    ("the per-project worktree paths", "워크트리가 있음을 단정한다"),
+    ("Call this first", "Atelier에만 있는 순서 — 절차는 지침이 든다"),
+    // 여기부터는 **인자 스키마**에서 걷어 낸 것들. 도구 설명만 고치고 인자 doc을 두면 같은
+    // 문장이 스무 줄 아래에서 되살아난다 — 실제로 그 상태로 한 번 초록이었다.
+    ("shared by every project's worktree", "`start_work`의 `branch` 인자가 워크트리를 단정한다"),
+    (
+        "the branch simply stays undecided",
+        "`projects` 없이 `branch`만 실은 호출을 정상 선택지로 안내한다 — 그것이 Maison에서 \
+         거절되는 바로 그 호출이다",
+    ),
+    (
+        "the branch and the worktree paths are untouched",
+        "`atelier_edit_work`의 설명에서 걷어 낸 문장이 `title` 인자에 남아 있던 자리",
+    ),
+    ("a folder and a branch name", "slug가 언제나 브랜치 이름이 된다고 단정한다"),
+    ("A branch they share is kept in every project repository", "관사만 갈아 낀 같은 단정"),
+    ("they share is kept in every repository", "관사만 갈아 낀 같은 단정"),
+];
+
+/// 저 세계에 없는 것들. **낱말 자체는 금지가 아니다** — 아래 검사는 이 말이 나온 문장이
+/// **조건절을 달고 있는지**만 본다.
+const ABSENT_IN_MAISON: [&str; 3] = ["branch", "worktree", "repositor"];
+
+/// 그 문장이 조건절이라는 표식. 하나라도 있으면 「있을 때의 이야기」로 읽힌다.
+///
+/// `each project`·`per project`가 여기 있는 것은 Room에 프로젝트가 0개라 그 절이 Maison에서
+/// **한 번도 안 도는** 이야기이기 때문이다 — 단정이 아니라 범위다.
+const CONDITIONAL: [&str; 7] =
+    ["when", "When", "if ", "If ", "any", "each project", "spans project"];
+
+/// **도구 설명은 모드별로 못 가른다** (static attribute라 인스턴스가 없다). 그래서 하나뿐인
+/// 문장을 두 세계가 함께 읽고, 프로젝트·브랜치·워크트리를 **전제하는** 문장은 Maison
+/// 에이전트를 없는 것으로 보낸다. 절차와 세계별 사실은 지침 두 벌이 든다.
+///
+/// 앞머리의 「두 세계가 같은 설명을 읽는다」 대조가 이 검사의 근거다 — 갈 수 있었다면
+/// 애초에 이 검사가 필요 없다.
+///
+/// 재는 표면은 도구 설명 **더하기 인자 스키마**다 (`tool_descriptions` 참조) — 에이전트는
+/// 둘을 한 덩어리로 읽으므로, 절반만 재는 검사는 「걷어 냈다」를 절반만 강제한다.
+#[test]
+fn no_tool_description_presupposes_a_project_a_branch_or_a_worktree() {
+    let home = tempfile::tempdir().unwrap();
+    let atelier = tool_descriptions(&mut Server::start(home.path()), 2);
+    let maison = tool_descriptions(&mut Server::start_with_mode(home.path(), Some("maison")), 2);
+    assert_eq!(atelier, maison, "설명이 모드별로 갈렸다 — 그럴 수 있었다면 이 검사는 필요 없다");
+
+    for (name, description) in &maison {
+        for (fragment, why) in PRESUPPOSING {
+            assert!(
+                !description.contains(fragment),
+                "{name}의 설명이 전제한다 ({why}): \"{fragment}\"\n{description}"
+            );
+        }
+    }
+
+    // **여기부터가 되돌아옴 방지를 넘어선다.** 위 표는 걷어 낸 조각을 그대로 못박는 것이라
+    // **관사만 갈아 끼우면 빠져나간다** — 실제로 한 판 동안 그렇게 빠져나가 있었다
+    // (`A branch they share is kept in every project repository`). 그래서 낱말이 아니라
+    // **문장의 모양**을 본다: 저 세계에 없는 것을 말하는 문장은 조건절을 달고 있어야 한다.
+    //
+    // 프로젝트 도구 넷은 밖이다 — 넷은 프로젝트 세계 자체이고 Maison에서 통째로 거절된다.
+    //
+    // **fail-closed다.** 새 문장이 조건절 없이 브랜치를 말하면 표에 한 줄을 안 더해도
+    // 그 자리에서 빨개진다. 반대 방향(조건절을 단 참인 문장)이 걸리는 것은 값이 싸다 —
+    // `when it spans projects` 한 마디를 붙이면 되고, 그 마디가 곧 이 검사가 원하는 것이다.
+    for (name, description) in &maison {
+        if PROJECT_TOOLS.contains(&name.as_str()) {
+            continue;
+        }
+        for sentence in description.split(". ") {
+            let Some(word) = ABSENT_IN_MAISON.iter().find(|w| sentence.contains(*w)) else {
+                continue;
+            };
+            assert!(
+                CONDITIONAL.iter().any(|c| sentence.contains(c)),
+                "{name}의 한 문장이 `{word}`를 조건절 없이 말한다 — Maison 에이전트는 그것을 \
+                 자기 Room의 사실로 읽는다. `when …`·`any …`로 조건을 달아라.\n  {sentence}"
+            );
+        }
+    }
+}
+
+/// **Room이 쓰는 도구는 프로젝트 도구를 가리키면 안 된다.** 지침이 「부르지 말라」고 해도
+/// 인자 스키마가 이름을 대며 부르라고 하면 에이전트는 부른다 — 그리고 거절당하고 나서야
+/// 안다. US 44가 없애려던 것이 정확히 그 순서다. (`atelier_start_work`의 `projects` doc이
+/// 실제로 `atelier_list_projects`를 이름으로 불렀다.)
+///
+/// 프로젝트 도구 넷은 이 검사 밖이다 — 넷은 프로젝트 세계 자체이고 Maison에서 통째로
+/// 거절되므로, 자기들끼리 이름을 부르는 것이 맞다 (`atelier_add_project`의 설명이
+/// `atelier_edit_project`를 가리키는 것처럼). 표를 손으로 적지 않고 `PROJECT_TOOLS`의
+/// 여집합으로 두는 것이 요점이다 — 도구가 하나 늘면 검사가 저절로 그것을 덮는다.
+#[test]
+fn the_tools_a_room_needs_do_not_send_the_agent_to_a_project_tool() {
+    let home = tempfile::tempdir().unwrap();
+    let surface = tool_descriptions(&mut Server::start_with_mode(home.path(), Some("maison")), 2);
+    let room_tools: Vec<_> =
+        surface.iter().filter(|(name, _)| !PROJECT_TOOLS.contains(&name.as_str())).collect();
+    // 여집합이 비면 이 검사는 아무것도 안 잰다 — 12 − 4 = 8.
+    assert_eq!(room_tools.len(), 8, "Room이 쓰는 도구가 여덟이 아니다: {:?}", surface.keys());
+
+    for (name, text) in room_tools {
+        for project_tool in PROJECT_TOOLS {
+            assert!(
+                !text.contains(project_tool),
+                "{name}가 Maison에서 거절되는 도구를 부르라고 한다: {project_tool}\n{text}"
+            );
+        }
+    }
+}
+
+/// **아카이브된 Room을 열면 없는 브랜치를 약속하지 않는다.**
+///
+/// `atelier_get_work`의 아카이브 안내는 `#[tool(description)]`과 달리 `&self` 메서드가
+/// 내보내므로 **갈 수 있다** — 「도구 설명은 모드별로 못 가른다」는 이 티켓의 전제가 여기엔
+/// 안 걸린다. 안 가르면 Room을 치운 뒤 여는 에이전트가 「워크트리는 사라졌고 브랜치는
+/// 프로젝트 저장소에 남아 있다」를 읽고 없는 브랜치를 찾으러 간다 — 커널은 이미 같은 교훈을
+/// 배웠고(`archiving_a_project_less_work_does_not_promise_a_surviving_branch`), 이 안내가
+/// 가리키는 `record.md`에는 프로젝트가 없으면 git 좌표 섹션 자체가 안 실린다.
+///
+/// **두 갈래를 함께 잰다.** 부정 단언만 두면 언제나 「없음」 문구를 쓰도록 회귀시켜도
+/// 통과한다 (`archiving_a_work_with_a_branch_says_the_commits_are_recoverable`가 같은 이유로
+/// 짝을 이룬다).
+#[test]
+fn opening_an_archived_room_does_not_point_at_a_branch_that_never_existed() {
+    let (home, _code) = fixture_with(&["billing"]);
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    maison.request(2, "tools/call", json!({
+        "name": "atelier_start_work", "arguments": { "title": "금융", "slug": "finance" }
+    }));
+    let archived = maison.request(3, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "finance" } }));
+    assert_eq!(archived["result"]["isError"], false, "{archived}");
+
+    let got = maison.request(4, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "finance" } }));
+    let view: Value =
+        serde_json::from_str(got["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(view["origin"], "archive", "{view}");
+    let note = got["result"]["content"][1]["text"].as_str().unwrap();
+    assert!(
+        !note.contains("the branch is still in the project repositories"),
+        "Room에 없는 브랜치를 약속했다: {note}"
+    );
+    assert!(!note.contains("worktrees"), "Room에 없던 워크트리를 말한다: {note}");
+    assert!(!note.contains("git coordinates"), "Room의 record.md엔 좌표가 없다: {note}");
+    // 아카이브의 규약은 그대로 있어야 한다 — 갈랐다고 「여기 쓰지 마라」까지 잃으면 안 된다.
+    assert!(note.contains("Do not write into `specDir`"), "{note}");
+
+    // 반대 갈래 — 프로젝트가 있던 work는 여전히 브랜치를 가리킨다. 없으면 언제나 「없음」
+    // 문구를 쓰도록 회귀시켜도 이 검사가 초록으로 남는다.
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    atelier.request(2, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "slug": "cart", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    atelier.request(3, "tools/call",
+        json!({ "name": "atelier_archive_work", "arguments": { "work_slug": "cart" } }));
+    let got = atelier.request(4, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": "cart" } }));
+    let note = got["result"]["content"][1]["text"].as_str().unwrap();
+    assert!(
+        note.contains("the branch is still in the project repositories"),
+        "코드가 있던 work의 브랜치 좌표가 사라졌다: {note}"
     );
 }

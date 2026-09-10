@@ -14,5 +14,7 @@ export const Route = createFileRoute("/terminal")({
 // 이 라우트는 넘길 것이 하나뿐이라 별도 `-terminal-view.tsx`를 두지 않는다.
 function TerminalRoute() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  return <TerminalPage sidebarOpen={sidebarOpen} />;
+  // **주소가 세계의 정본이다**(결정 8) — 그 리터럴을 여기서 한 번만 적는다. 셸의 소유자가
+  // 이 값에서 나오므로(결정 10) 어긋나면 이 화면이 저쪽 세계의 셸을 그린다.
+  return <TerminalPage mode="atelier" sidebarOpen={sidebarOpen} />;
 }

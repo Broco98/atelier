@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use atelier_core::Mode;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -92,14 +93,17 @@ impl PtyPool {
     }
 }
 
+/// 셸 하나를 띄운다. **`mode`는 그 셸이 사는 세계다** — cwd가 없을 때 어디서 뜨는지와,
+/// 셸 안에서 뜬 에이전트가 어느 루트를 보는지를 함께 정한다.
 pub fn spawn(
     pool: &Arc<PtyPool>,
+    mode: Mode,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
     on_frame: Channel<InvokeResponseBody>,
 ) -> Result<PtySpawned, String> {
-    let dir = resolve_cwd(cwd)?;
+    let dir = resolve_cwd(mode, cwd)?;
     // **id를 빌더보다 먼저 발급한다.** 셸 ID의 꼬리가 이 번호이고 빌더가 그것을 env에
     // 실어야 하니, 지금까지처럼 프로세스가 뜬 뒤에 발급하면 넘길 것이 없다. 앞으로 당겨도
     // 잃는 것은 「띄우기에 실패한 셸이 번호 하나를 태운다」뿐이다 — 번호는 세는 값이 아니라
@@ -110,7 +114,7 @@ pub fn spawn(
     // 없어서, 여기 인라인으로 두면 「셸마다 다른 값이 난다」를 소스 자리로만 재게 된다 —
     // 그러면 `let id = 0;`으로 굳히는 변형이 조용히 통과한다.
     let (id, shell_id) = mint_shell_id(pool);
-    let builder = shell_builder(&dir, &shell_id)?;
+    let builder = shell_builder(mode, &dir, &shell_id)?;
     let shell_name = Path::new(&builder.get_shell())
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -645,11 +649,29 @@ fn gone(id: u32) -> String {
     format!("이미 끝난 터미널입니다 (id {id})")
 }
 
-fn resolve_cwd(cwd: Option<String>) -> Result<PathBuf, String> {
-    // 프런트가 `"~/.atelier"`를 박으면 `ATELIER_HOME` 오버라이드가 죽는다. 데이터 루트가
-    // 어디인지는 atelier-core만 안다.
+/// cwd가 「없음」이면 **모드의 홈**이 자리다 — Atelier는 `~/.atelier`, Maison은
+/// `~/.atelier/maison`. 최상위 터미널이 그 길로 뜬다.
+///
+/// 프런트가 `"~/.atelier"`를 박으면 `ATELIER_HOME` 오버라이드가 죽는다. 데이터 루트가
+/// 어디인지는 atelier-core만 안다 — 모드별 홈도 마찬가지라 여기서 `maison`을 잇지 않는다.
+fn resolve_cwd(mode: Mode, cwd: Option<String>) -> Result<PathBuf, String> {
+    cwd_or_mode_home(atelier_core::mode_home(mode), cwd)
+}
+
+/// 위 함수의 **판정만** 떼어 놓은 것. 모드의 홈을 값으로 받으므로 테스트가 임시 폴더를
+/// 건네 잴 수 있다 — 진짜 홈을 만들지 않고도 「어느 갈래가 폴더를 만드나」를 못박는다.
+fn cwd_or_mode_home(home: PathBuf, cwd: Option<String>) -> Result<PathBuf, String> {
     let dir = match cwd {
-        None => atelier_core::data_root(),
+        // **폴더를 만드는 것은 이 갈래뿐이다.** Maison 홈은 첫 Room이 생기기 전엔 없을 수
+        // 있어서, 안 만들면 최상위 터미널이 아래 검사에 걸려 안 뜬다. 명시 cwd에까지
+        // 넓히면 아카이브로 사라진 work 폴더가 터미널을 여는 것만으로 빈 폴더로
+        // 되살아난다 — 그 순간 아래 방어가 통째로 무의미해진다.
+        None => {
+            // 실패를 삼킨다. 못 만든 이유는 아래 `is_dir`가 같은 문장으로 말해 준다 —
+            // 여기서 따로 오류를 지으면 「폴더가 없습니다」가 두 벌이 된다.
+            let _ = std::fs::create_dir_all(&home);
+            home
+        }
         Some(raw) => atelier_core::expand_home(&raw),
     };
     // `portable-pty`는 없는 cwd를 **아무 신호 없이 홈으로 떨어뜨린다**(`as_command`의
@@ -712,7 +734,7 @@ fn mint_shell_id(pool: &PtyPool) -> (u32, String) {
     (id, shell_id(id))
 }
 
-fn shell_builder(dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
+fn shell_builder(mode: Mode, dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
     // `$SHELL`이 실행 불가면 크레이트는 `log::warn` 한 줄만 남기고 passwd DB로, 그것도
     // 안 되면 `/bin/sh`로 조용히 내려간다. 구독자를 안 붙였으니 완전히 무음이다.
     if let Some(shell) = std::env::var_os("SHELL") {
@@ -737,6 +759,26 @@ fn shell_builder(dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
     // 셸 안에서 돌아간 훅이 「내가 어느 셸인지」를 아는 길은 이 값 하나뿐이다. 그래서
     // 셸마다 **달라야** 한다 — 값이 하나로 굳으면 상태 파일이 겹쳐 두 셸이 서로를 덮는다.
     cmd.env("ATELIER_SHELL", shell_id);
+    // **이 셸이 어느 세계의 것인지.** 셸 → claude·codex → MCP 서버로 상속되어, 생활 쪽
+    // 셸에서 뜬 에이전트가 rooms만 보게 된다 (결정 15).
+    //
+    // **두 모드 다 심는다.** 「없으면 Atelier」는 앱 **밖** 셸을 위한 규칙이고, 앱은 늘
+    // 명시한다 — 그래야 값이 있는 셸과 없는 셸이 「앱이 띄운 것인가」로 갈리고, 앱이 심는
+    // 쪽에는 「안 심긴 자리」라는 갈래가 아예 없다.
+    //
+    // **위 셋과 성격이 반대다.** 저것들은 권장 기본값이라 사용자가 셸에서 덮어쓰면 그쪽이
+    // 이기지만, 이 값은 앱이 아는 사실이다 — 이 셸이 어느 목록에서 열렸는지는 앱만 알고,
+    // 덮어쓴 값은 화면과 어긋난 세계를 가리킬 뿐이다. (앱 밖에서 손으로 넣어 claude를
+    // 띄우는 것은 다른 이야기이고 그것도 성립한다 — US 47.)
+    //
+    // 변수 이름을 여기 적지 않는다. 심는 자리와 읽는 자리는 코어의 상수 하나로만 이어지고,
+    // 양쪽에 문자열을 박으면 한쪽 오타가 조용히 Atelier로 눕는다.
+    //
+    // 이 파일에서 그 상수를 부르는 자리는 **심는 모양뿐이어야 한다** — 다리의
+    // `모드를_심는_예외는_심는_자리에만_쓰인다`가 그 수를 센다. 산문으로라도 그 이름을 적으면
+    // 수가 어긋나 빨개지는데, 그것이 값이다: 예외가 이름 하나를 통째로 건너뛰면 그 구멍으로
+    // 「읽는」 코드가 들어와도 아무도 모른다.
+    cmd.env(atelier_core::MODE_ENV, mode.as_str());
     Ok(cmd)
 }
 
@@ -750,8 +792,11 @@ fn executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::ffi::OsStr;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, UNIX_EPOCH};
 
+    use atelier_core::Mode;
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
     /// **닫힌 셸은 자기 상태 파일을 데리고 나간다.** 안 그러면 사이드바에서 죽은 셸이
@@ -780,6 +825,78 @@ mod tests {
 
         assert!(!state.exists(), "셸이 닫혔는데 상태 파일이 남았다");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 셸에 심기는 env. **두 모드 모두 값이 명시된다** — 「없으면 Atelier」는 앱 밖 셸의
+    /// 규칙이라, 앱이 띄운 셸에 값이 없으면 그 규칙에 기대 조용히 Atelier로 눕는다.
+    ///
+    /// **소스 스캔이 아니라 값으로 잰다.** 스펙은 기존 `pty.rs`의 소스 스캔 방식을 예로
+    /// 들었지만, 그 방식은 살아 있는 pty 없이 못 재는 자리에 쓰는 것이다 —
+    /// `CommandBuilder`는 심은 값을 그대로 되돌려 주므로 여기서는 「적혀 있는가」가 아니라
+    /// 「무엇이 심겼는가」를 물을 수 있다. 리터럴만 보는 검사는 값을 갈아 끼우는 변형을
+    /// 그대로 통과시킨다.
+    #[test]
+    fn the_builder_plants_the_mode_beside_the_env_it_already_planted() {
+        for (mode, planted) in [(Mode::Atelier, "atelier"), (Mode::Maison, "maison")] {
+            let cmd = super::shell_builder(mode, Path::new("/"), "1700-0")
+                .unwrap_or_else(|e| panic!("빌더를 세우지 못했다 ({mode}): {e}"));
+
+            assert_eq!(
+                cmd.get_env(atelier_core::MODE_ENV),
+                Some(OsStr::new(planted)),
+                "{mode} 셸이 자기 세계를 모른 채 뜬다 — 그 안의 claude가 저쪽 목록을 본다"
+            );
+            // **기존 셋 옆이다.** 새 값을 심다가 `env_clear`나 덮어쓰기로 저것들을 밀어내면
+            // 터미널이 색을 잃고(TERM) claude가 fullscreen 렌더러로 돌아간다.
+            assert_eq!(cmd.get_env("TERM"), Some(OsStr::new("xterm-256color")));
+            assert_eq!(cmd.get_env("COLORTERM"), Some(OsStr::new("truecolor")));
+            assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(OsStr::new("1")));
+            let dir = std::ffi::OsString::from("/");
+            assert_eq!(cmd.get_cwd(), Some(&dir), "받은 자리를 안 쓴다");
+        }
+    }
+
+    fn temp_home(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("atelier-pty-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    /// **폴더를 만드는 것은 cwd가 「없음」일 때뿐이다.** 최상위 터미널은 아직 없는 모드
+    /// 홈에서도 떠야 하지만(Maison은 첫 Room 전에 홈이 없다), 그 편의를 명시 cwd에까지
+    /// 넓히면 아카이브로 사라진 work 폴더가 **터미널을 여는 것만으로** 빈 폴더로
+    /// 되살아난다 — 그리고 없는 cwd를 막는 검사가 영영 아무것도 안 막게 된다.
+    #[test]
+    fn only_the_missing_cwd_branch_creates_a_folder() {
+        let home = temp_home("home");
+        assert_eq!(
+            super::cwd_or_mode_home(home.clone(), None),
+            Ok(home.clone()),
+            "최상위 터미널이 아직 없는 모드 홈에서 안 뜬다"
+        );
+        assert!(home.is_dir(), "모드 홈을 안 만들었다");
+
+        let gone = home.join("archived-work");
+        let refused = super::cwd_or_mode_home(home.clone(), Some(gone.display().to_string()));
+        assert!(refused.is_err(), "없는 명시 cwd가 통과했다 — 셸이 조용히 홈에서 열린다");
+        assert!(!gone.exists(), "없는 cwd를 만들어 냈다 — 지운 work가 빈 폴더로 되살아난다");
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// 있는 폴더를 명시하면 그대로 쓴다. 위 검사만 두면 「명시 cwd는 늘 거절」로 만들어도
+    /// 초록이다 — work 셸이 통째로 안 뜬다.
+    #[test]
+    fn an_explicit_folder_that_exists_is_used_as_is() {
+        let home = temp_home("explicit");
+        let work = home.join("reading");
+        std::fs::create_dir_all(&work).unwrap();
+        assert_eq!(
+            super::cwd_or_mode_home(home.clone(), Some(work.display().to_string())),
+            Ok(work),
+            "있는 폴더를 명시했는데 안 쓴다"
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// 결정 92의 판정. 실행으로는 pty가 있어야 재지만 값 둘로는 여기서 전수된다.
@@ -899,7 +1016,7 @@ mod tests {
             "발급({mint})이 빌더({build})보다 뒤에 있다 — 빌더에 넘길 셸 ID가 아직 없다"
         );
         assert!(
-            spawn_fn.contains("shell_builder(&dir, &shell_id)"),
+            spawn_fn.contains("shell_builder(mode, &dir, &shell_id)"),
             "발급된 셸 ID를 빌더에 안 넘긴다 — 발급을 앞으로 당긴 뜻이 사라진다"
         );
     }
@@ -935,8 +1052,8 @@ mod tests {
         let pool = super::PtyPool::default();
         let (_, first) = super::mint_shell_id(&pool);
         let (_, second) = super::mint_shell_id(&pool);
-        let one = super::shell_builder(&dir, &first).expect("빌더가 선다");
-        let two = super::shell_builder(&dir, &second).expect("빌더가 선다");
+        let one = super::shell_builder(Mode::Atelier, &dir, &first).expect("빌더가 선다");
+        let two = super::shell_builder(Mode::Atelier, &dir, &second).expect("빌더가 선다");
 
         assert_eq!(
             planted(&one).get("ATELIER_SHELL").map(String::as_str),
@@ -984,7 +1101,7 @@ mod tests {
     #[test]
     fn the_env_that_was_already_there_still_rides_along() {
         let dir = std::env::temp_dir();
-        let planted = planted(&super::shell_builder(&dir, "0000-1").expect("빌더가 선다"));
+        let planted = planted(&super::shell_builder(Mode::Atelier, &dir, "0000-1").expect("빌더가 선다"));
 
         assert_eq!(planted.get("TERM").map(String::as_str), Some("xterm-256color"));
         assert_eq!(planted.get("COLORTERM").map(String::as_str), Some("truecolor"));

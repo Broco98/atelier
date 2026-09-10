@@ -14,7 +14,7 @@ import {
   shellRowName,
   shellsOf,
 } from "./shell-registry";
-import type { Shell, ShellsState } from "./shell-registry";
+import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 
 /**
  * 탭 줄 맨 앞에 고정으로 서는 문서 칸(결정 7·8).
@@ -35,8 +35,16 @@ interface ShellTabsProps {
    * (결정 23) `atCap`이 `owner`를 함께 받아 이 화면만 센다.
    */
   state: ShellsState;
-  /** 이 줄이 그리는 화면. 최상위 터미널은 `null`이다. */
-  owner: string | null;
+  /**
+   * 이 줄이 그리는 화면 — **어느 세계의 무엇인가**(결정 10). **소유자의 slug가 비어 있으면
+   * 그 세계의 최상위 터미널**이고(`"atelier:"`·`"maison:"`), `null`이라는 갈래는 없다.
+   *
+   * **이 파일에서 `null`은 다른 뜻이다.** 아래 `spec`의 `null`은 「문서 칸이 없다」,
+   * `onDragTab`의 `shellId === null`은 「그 문서 칸」이다 — 최상위 터미널과는 상관이 없다.
+   * 부르는 쪽(WorksPage)의 `null`은 또 「고른 작업이 없다」이고, 그 화면은 셸이 설 자리가
+   * 아예 없어 이 줄을 세우지 않는다.
+   */
+  owner: ShellOwner;
   /** 이 Work의 프로젝트들. 둘 이상이면 `+`가 어디에 띄울지 물어본다(결정 24). */
   projects: string[];
   /**

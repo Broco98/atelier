@@ -1,6 +1,10 @@
 mod commands;
 mod hooks;
-mod pty;
+/// **밖으로 열린 유일한 모듈이다.** 최상위 터미널이 어느 세계에서 뜨는지는 살아 있는 셸
+/// 없이는 못 재고, 그 검사는 `ATELIER_HOME`을 세워야 해서 단위 테스트 프로세스에 둘 수
+/// 없다(같은 프로세스의 다른 테스트 루트까지 함께 옮긴다). 그래서 통합 테스트
+/// (`tests/top_terminal.rs`)가 자기 프로세스에서 이 모듈을 부른다.
+pub mod pty;
 mod settings;
 mod shells;
 mod watcher;
@@ -43,15 +47,21 @@ const HOTKEY_PREFIX: &str = "hotkey:";
 /// 창이 살아 있었지만 **dev 빌드에서만 쟀고**, 얻는 것이 「칸 닫기」 하나인데 잃을 수 있는
 /// 것이 셸 전부라 저울이 한쪽으로 명백히 기운다.
 ///
-/// **⌃Tab·⌃⇧Tab·⇧⇧도 없다 — 셋의 사정이 다르다.**
-///  - ⌃Tab·⌃⇧Tab은 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다) **accelerator
-///    경로만 죽는다** — 실제로 던져서 0/6 · 0/3이었다.
-///  - ⇧⇧는 **등록 자체가 안 된다.** 「같은 수식키를 300ms 안에 두 번」이라는 몸짓이라
-///    accelerator 문법에 실을 자리가 없고, `Shift+Shift`는 파싱에 실패한다. 그런데 Tauri가
-///    그 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는 항목이 선다** —
-///    빌드가 통과하는 것이 곧 등록된 것이 아니다. 그러니 눌러도 안 불리는 것은 결과가 아니라
-///    **당연한 귀결**이고, 프로브가 4번 던져 확인한 것은 그 귀결이지 별도의 사실이 아니다.
+/// **⌃Tab·⌃⇧Tab은 없다.** 항목이 제대로 서는데도(AX로 `mods=12 vk=48`을 확인했다)
+/// **accelerator 경로만 죽는다** — 실제로 던져서 0/6 · 0/3이었다.
+///
+/// **⇧⇧는 여기 실을 수 없었고, 그래서 키를 바꿨다**(결정 1·2). 「같은 수식키를 300ms 안에
+/// 두 번」은 몸짓이라 accelerator 문법에 실을 자리가 없고, `Shift+Shift`는 파싱에 실패한다.
+/// 그런데 Tauri가 그 오류를 조용히 버려(`menu/normal.rs`의 `parse().ok()`) **단축키 없는
+/// 항목이 선다** — 빌드가 통과하는 것이 곧 등록된 것이 아니다. 그 사실이 이 표의 성질을
+/// 하나 못 박는다: **여기 실을 수 있느냐가 여는 키를 고르는 조건**이었고, ⌘K는 실린다.
+///
+/// **`Search`가 맨 앞이다**(결정 3). 화면을 안 타고 어디서나 여는 유일한 항목이라 목록 첫
+/// 줄에 서는 것이 읽힌다 — 나머지는 전부 「지금 이 화면의」 무엇이다. 그 자리를 검사가
+/// 못 박는다(`검색이_표의_맨_앞이다`): 메뉴를 세우는 함수가 tauri 핸들을 요구해 단위 검사가
+/// 안 태우므로, 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
 const HOTKEYS: &[(&str, &str)] = &[
+    ("KeyK", "Search"),
     ("KeyB", "Sidebar"),
     ("Enter", "Panel"),
     ("KeyT", "New Shell"),
@@ -248,6 +258,7 @@ pub fn run() {
             commands::list_archived_docs,
             commands::read_archived_file,
             commands::search,
+            commands::touch_recent_work,
             commands::pty_spawn,
             commands::pty_write,
             commands::pty_resize,
@@ -291,6 +302,7 @@ mod tests {
     /// 걷고 `accelerator_of`를 세우면서 그 검사도 함께 사라졌고, 남은 것이 이것이다.
     #[test]
     fn accelerator를_code에서_만든다() {
+        assert_eq!(accelerator_of("KeyK"), "CmdOrCtrl+K");
         assert_eq!(accelerator_of("Digit1"), "CmdOrCtrl+1");
         assert_eq!(accelerator_of("Digit9"), "CmdOrCtrl+9");
         assert_eq!(accelerator_of("KeyB"), "CmdOrCtrl+B");
@@ -409,17 +421,45 @@ mod tests {
         body
     }
 
-    /// 살리기로 한 넷이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.
+    /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.
     /// 무엇이 왜 빠졌는지는 `HOTKEYS` 독이 든다.
     #[test]
     fn 살리기로_한_키가_다_있다() {
         let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
-        for want in ["KeyB", "KeyT", "Enter"] {
+        for want in ["KeyK", "KeyB", "KeyT", "Enter"] {
             assert!(codes.contains(&want), "{want}가 표에 없다");
         }
         for n in 1..=9 {
             let want = format!("Digit{n}");
             assert!(codes.contains(&want.as_str()), "{want}가 표에 없다");
         }
+    }
+
+    /// 결정 3. **`Search`가 View 메뉴 맨 위다.** 다른 항목이 전부 「지금 이 화면의」 무엇인데
+    /// 이것만 화면을 안 타고 어디서나 열어서, 목록 첫 줄에 서는 것이 읽힌다.
+    ///
+    /// **자리를 세는 검사가 여기 필요한 이유가 있다.** 메뉴를 실제로 세우는 `build_menu`는
+    /// tauri 핸들을 요구해 단위 검사가 못 태우므로, 표의 순서가 곧 화면의 순서인데 그 순서를
+    /// 아무도 안 본다 — 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
+    /// 위 「다 있다」는 자리를 안 보므로 이것을 대신하지 못한다.
+    #[test]
+    fn 검색이_표의_맨_앞이다() {
+        assert_eq!(HOTKEYS[0], ("KeyK", "Search"));
+    }
+
+    /// **구분선이 한 자리에만 그어진다.** `build_menu`는 「첫 `Digit*` 항목 앞」에서 한 번만
+    /// 금을 긋는데(자리를 안 세고 갈래로 가른다), 그 규칙이 뜻대로 되려면 번호 항목들이
+    /// **표 뒤쪽에 몰려 있어야** 한다. 섞이면 금이 엉뚱한 자리에 서고 뒤에 오는 번호들이
+    /// 얼개 항목들과 한 무리로 읽힌다 — 눈으로만 보이는 어긋남이라 아무도 안 잡는다.
+    ///
+    /// ⌘K를 맨 앞에 끼운 것이 금을 안 움직인다는 것도 이 성질이 말한다.
+    #[test]
+    fn 번호_항목이_표_뒤쪽에_몰려_있다() {
+        let first_digit =
+            HOTKEYS.iter().position(|(code, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
+        assert!(
+            HOTKEYS[first_digit..].iter().all(|(code, _)| code.starts_with("Digit")),
+            "번호 항목 사이에 다른 항목이 끼었다 — 구분선이 엉뚱한 자리에 선다"
+        );
     }
 }

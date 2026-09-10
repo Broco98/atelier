@@ -1,7 +1,8 @@
 import { foldHookState } from "./agents";
 import type { AgentSignal, CanonicalEvent } from "./agents/types";
-import { markSeen, runningOn, shellRowName } from "./shell-registry";
-import type { Shell, ShellsState } from "./shell-registry";
+import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
+import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+import type { Mode } from "@/mode";
 import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
@@ -310,20 +311,27 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
  *
  * **최상위 셸은 안 든다** — 어느 work의 것도 아니라 행이 없다(`shellCountsOf`와 같은 가름).
  * 그 셸이 부르는 것은 nav `Terminal`과 띠가 받는다(#204).
+ *
+ * **그 세계의 것만, 키는 slug다** — `shellCountsOf`와 같은 사정이다. 목록은 터미널을 모르므로
+ * (SidebarWorkList의 import 계약) 소유자로 키를 주면 `work.slug`로 꺼내다 늘 빈손이 되고,
+ * 그때 행은 「신호가 없다」로 조용히 그려진다. 두 루트에 같은 slug가 설 수 있어 거르는 것도
+ * 여기서 함께 한다 — 안 거르면 저쪽 세계의 셸이 이 행을 물들인다.
  */
-export function signalsByOwner(state: ShellsState): Record<string, ShellSignal> {
+export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellSignal> {
   const groups = new Map<string, Shell[]>();
   for (const shell of state.shells) {
-    if (shell.owner === null) continue;
-    const group = groups.get(shell.owner);
+    if (modeOfOwner(shell.owner) !== mode) continue;
+    const slug = slugOfOwner(shell.owner);
+    if (slug === null) continue;
+    const group = groups.get(slug);
     if (group) group.push(shell);
-    else groups.set(shell.owner, [shell]);
+    else groups.set(slug, [shell]);
   }
 
   const out: Record<string, ShellSignal> = {};
-  for (const [owner, group] of groups) {
+  for (const [slug, group] of groups) {
     const signal = topSignal(group);
-    if (signal !== null) out[owner] = signal;
+    if (signal !== null) out[slug] = signal;
   }
   return out;
 }
@@ -401,8 +409,16 @@ export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<Calli
 export interface BandRow {
   /** 레지스트리의 칸 번호. 누르면 이 칸이 켜진다(`selectShell`). */
   id: number;
-  /** 어느 화면인가. `null`이면 최상위 셸이고 누르면 `/terminal`로 간다(결정 13). */
-  owner: string | null;
+  /**
+   * 어느 화면인가 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 최상위 셸이고
+   * 누르면 그 세계의 터미널로 간다(결정 13).
+   *
+   * 줄이 이미 한 세계로 걸러져 나오므로 slug만 실어도 이 화면은 정해진다. 그런데도 키를
+   * 통째로 싣는 것은 **알림이 같은 키를 싣기 때문이다**(`NotifyShell.owner`) — 제목을 붙이는
+   * 함수는 하나이고(`Sidebar`의 `titleResolver`) 띠와 알림이 그것을 나눠 쓴다. 모양이 갈리면
+   * 그 함수가 한쪽에서 늘 빈손이 되는데, 화면에는 「제목 자리에 슬러그가 떴다」로만 보인다.
+   */
+  owner: ShellOwner;
   /** 부르는 줄만 서므로 **둘 중 하나**다 — 도는 중은 여기 못 온다(`CallingKind`). */
   kind: CallingKind;
   /** 경과가 읽는 시각. 정렬의 둘째 키이기도 하다. */
@@ -427,12 +443,17 @@ export interface BandRow {
  * 무리를 가르는 키가 `owner`인 것은 **켜지는 자리가 화면마다 따로이기 때문이다**
  * (`activeByOwner`) — 최상위 셸 둘이 부르면 그 둘도 서로 갈려야 한다.
  */
-export function bandRows(state: ShellsState): ReadonlyArray<BandRow> {
-  const calling = callingShells(state.shells);
+export function bandRows(state: ShellsState, mode: Mode): ReadonlyArray<BandRow> {
+  const calling = callingShells(
+    // **이 세계의 셸만 선다**(결정 10). 저쪽 세계가 부르는 것을 여기 세우면 누를 자리가 없다 —
+    // 줄의 제목은 이 세계의 목록에서 오고(`titleResolver`) 가는 곳도 이 세계의 주소다. 저쪽에
+    // 도는 것을 알리는 자리는 세그먼트의 점이고, 그것은 판 02다.
+    state.shells.filter((shell) => modeOfOwner(shell.owner) === mode),
+  );
 
   // 화면마다 **부르는** 셸이 몇인가. 조용한 형제는 안 센다 — 이름이 붙는 근거는 「띠에서
   // 두 줄이 같은 제목으로 선다」이지 「그 work에 셸이 여럿이다」가 아니다.
-  const perOwner = new Map<string | null, number>();
+  const perOwner = new Map<ShellOwner, number>();
   for (const { shell } of calling) perOwner.set(shell.owner, (perOwner.get(shell.owner) ?? 0) + 1);
 
   // **여기서는 아무것도 다시 판정하지 않는다.** 부르는가 · 어떤 부름인가 · 언제부터인가는

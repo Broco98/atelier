@@ -3,7 +3,7 @@ import type { NotifyChoice } from "@/features/settings/notifications";
 import { callingShells, isCalling, isShellSeen } from "./shell-attention";
 import type { ShellSignal, ShellView } from "./shell-attention";
 import { shellRowName } from "./shell-registry";
-import type { ShellsState } from "./shell-registry";
+import type { ShellOwner, ShellsState } from "./shell-registry";
 
 // 알림을 **울릴지 정하는 자리 하나**(#206 · 결정 10). Rust는 여기서 나온 답을 받아 띄우기만
 // 한다 — 판정이 백엔드로 새면 「보고 있으면 안 울린다」가 화면의 사실(결정 7)과 갈린다.
@@ -106,8 +106,15 @@ export function decideNotification(input: NotifyInput): NotifyContent | null {
  */
 export interface NotifyShell {
   id: number;
-  /** 5초 창을 나누는 키 — work 슬러그다. 최상위 셸은 어느 work의 것도 아니라 `null`. */
-  owner: string | null;
+  /**
+   * 5초 창을 나누는 키 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 그 세계의
+   * 최상위 셸이다.
+   *
+   * **슬러그만으로는 못 가른다.** 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한 루트 쌍
+   * 안에서만 본다) 저쪽 세계의 같은 이름 work이 이 창을 나눠 쓰게 된다 — 한쪽이 부르는 동안
+   * 다른 쪽의 부름이 「같은 창의 반복」으로 삼켜진다.
+   */
+  owner: ShellOwner;
   kind: ShellSignal | null;
   /**
    * 그 사실이 도착한 시각(`Attention.since`). **`kind`와 함께 기억된다** — 회차가 화면값
@@ -202,7 +209,7 @@ export function createNotifier(): Notifier {
 export function notifyShells(
   state: ShellsState,
   view: ShellView,
-  titleOf: (owner: string | null) => string,
+  titleOf: (owner: ShellOwner) => string,
 ): ReadonlyArray<NotifyShell> {
   return callingShells(state.shells).map(({ shell, kind, attention }) => ({
     id: shell.id,

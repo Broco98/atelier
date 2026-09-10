@@ -1,5 +1,6 @@
 import { validateFileSearch } from "./-file-search";
 import type { FileSearch } from "./-file-search";
+import type { Mode } from "@/mode";
 
 // 보고 있는 **화면 탭**도 주소에 둔다 — `file`과 같은 이유다(이슈 #25). 탭이 주소에 없으면
 // 링크와 새로고침이 늘 spec으로 떨어진다.
@@ -16,19 +17,6 @@ export type ViewTab = "spec" | "terminal";
  * (결정 87) 좌우 하나로 족하다 — 열마다 상태를 따로 들면 `spec▏spec`이 표현 가능해진다.
  */
 export type SplitSide = "lr" | "rl";
-
-/**
- * 주소가 가리키는 work. `/works/…`가 아니면 `null`이다.
- *
- * **디코드가 필요하다** — 슬러그에 한글이 들어간다. 읽는 자리가 둘이라(사이드바 목록의
- * 강조, 가지가 자기 화면인지 아는 것) 한쪽만 디코드를 잊으면 한글 work에서만 조용히
- * 어긋난다 — 화면으로는 「가끔 강조가 안 된다」로만 보인다.
- */
-export function workSlugOf(pathname: string): string | null {
-  return pathname.startsWith("/works/")
-    ? decodeURIComponent(pathname.slice("/works/".length))
-    : null;
-}
 
 export interface WorkSearch extends FileSearch {
   /**
@@ -147,14 +135,27 @@ export interface WorkMemory {
   file: string | null;
 }
 
-const lastView = new Map<string, WorkMemory>();
+/**
+ * **키가 `(mode, slug)`다.** 두 세계에 같은 이름이 설 수 있다(결정 10) — slug 하나로 키를
+ * 잡으면 `가`라는 work과 `가`라는 Room이 서로의 문서·탭·분할을 덮어써서, 한쪽에서 터미널을
+ * 보다 저쪽 세계의 같은 이름을 열면 그 화면이 딸려온다.
+ *
+ * 모드별 Map을 나란히 두는 것은 `"maison:가"` 같은 **합성 키를 안 쓰기 위해서다**: 합성 키는
+ * slug에 구분자가 들어가는 날 조용히 뭉개지고(한글 slug에 `:`를 못 쓸 이유가 없다), 무엇보다
+ * 짓는 자리와 읽는 자리가 갈릴 수 있다. 표를 리터럴로 적어 두면 모드가 하나 느는 날 칸을
+ * 빠뜨린 것을 L0가 잡는다.
+ */
+const lastView: Record<Mode, Map<string, WorkMemory>> = {
+  atelier: new Map(),
+  maison: new Map(),
+};
 
-export function rememberView(slug: string, view: WorkMemory): void {
-  lastView.set(slug, view);
+export function rememberView(mode: Mode, slug: string, view: WorkMemory): void {
+  lastView[mode].set(slug, view);
 }
 
-export function recallView(slug: string): WorkMemory {
-  return lastView.get(slug) ?? { tab: "spec", split: null, file: null };
+export function recallView(mode: Mode, slug: string): WorkMemory {
+  return lastView[mode].get(slug) ?? { tab: "spec", split: null, file: null };
 }
 
 /**
@@ -195,4 +196,4 @@ export function viewSearch<T extends object>(
  * 않는다(`-work-search.test.ts`). 원문 대조는 문이 늘 때마다 함께 늘어야 하는데, 늘지
  * 않은 것이 위 「둘」이다.
  */
-export const recallSearch = (slug: string) => viewSearch({}, recallView(slug));
+export const recallSearch = (mode: Mode, slug: string) => viewSearch({}, recallView(mode, slug));

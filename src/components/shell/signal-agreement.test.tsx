@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import {
   bandRows,
-  signalsByOwner,
+  signalsOf,
   topSignalView,
 } from "@/features/terminal/shell-attention";
 import type { Attention } from "@/features/terminal/shell-attention";
 import {
   NO_SHELLS,
   openShell,
+  ownerOf,
   setAttention,
   shellsOf,
 } from "@/features/terminal/shell-registry";
@@ -49,9 +50,15 @@ const 말한다 = (kind: "waiting" | "done"): Attention => ({
   agent: "claude",
 });
 
+/**
+ * 이 work의 소유자 키. **모드를 여기서만 적는다** — 이 파일이 재는 것은 세 자리의 합의라
+ * 세계는 배경이다.
+ */
+const 소유 = ownerOf("atelier", WORK.slug);
+
 /** 그 상태의 셸 하나를 가진 목록. 세 자리가 **같은 이 상태**에서 출발한다. */
 function 셸하나(kind: "waiting" | "done"): ShellsState {
-  const opened = openShell(NO_SHELLS, { owner: WORK.slug, project: "atelier", cwd: "~/x" });
+  const opened = openShell(NO_SHELLS, { mode: "atelier", owner: 소유, project: "atelier", cwd: "~/x" });
   if (!opened) throw new Error("셸을 못 띄웠다");
   return setAttention(opened.state, opened.id, 말한다(kind));
 }
@@ -84,10 +91,11 @@ function 말가족(markup: string): Set<string> {
 }
 
 function 행(state: ShellsState): string {
-  const signals = signalsByOwner(state);
+  const signals = signalsOf(state, "atelier");
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections([WORK], { pinned: true, works: true, drafts: true })}
+      mode="atelier"
       open={{ pinned: true, works: true, drafts: true }}
       selectedSlug={null}
       shellCounts={{ [WORK.slug]: 1 }}
@@ -99,7 +107,7 @@ function 행(state: ShellsState): string {
       onTogglePin={() => {}}
       renderSubrow={(work) => {
         // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`) — 값을 고르는 길이 행마다 따로다.
-        const view = topSignalView(shellsOf(state, work.slug));
+        const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
         return view === null ? null : <SignalLine {...view} now={view.since} />;
       }}
     />,
@@ -109,7 +117,7 @@ function 행(state: ShellsState): string {
 function 띠(state: ShellsState): string {
   return renderToStaticMarkup(
     <AttentionBand
-      items={bandRows(state).map((row) => ({ ...row, title: WORK.title }))}
+      items={bandRows(state, "atelier").map((row) => ({ ...row, title: WORK.title }))}
       now={1000}
       expanded={false}
       onToggle={() => {}}
@@ -130,7 +138,7 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
   return renderToStaticMarkup(
     <ShellTabs
       state={state}
-      owner={WORK.slug}
+      owner={소유}
       projects={["atelier"]}
       spec={{ on: !켜짐, onSelect: () => {} }}
       showing={켜짐}
@@ -164,7 +172,7 @@ describe("행·띠·탭이 같은 셸에 같은 것을 말한다", () => {
   // 「봤다」로 지워진 완료는 **세 자리 모두에서** 사라진다 — 한 자리만 남으면 그 자리는
   // 없는 사실을 말한다.
   it("본 완료는 세 자리 어디에도 안 남는다", () => {
-    const opened = openShell(NO_SHELLS, { owner: WORK.slug, project: "atelier", cwd: "~/x" });
+    const opened = openShell(NO_SHELLS, { mode: "atelier", owner: 소유, project: "atelier", cwd: "~/x" });
     if (!opened) throw new Error("셸을 못 띄웠다");
     const state = setAttention(opened.state, opened.id, { ...말한다("done"), seen: true });
     for (const [자리, markup] of Object.entries({

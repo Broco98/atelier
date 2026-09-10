@@ -1,5 +1,6 @@
 import { useStore } from "@tanstack/react-store";
 import { activeShellOf, shellRowName } from "./shell-registry";
+import type { ShellOwner } from "./shell-registry";
 import { terminalStore } from "./terminal-store";
 
 /**
@@ -10,7 +11,7 @@ import { terminalStore } from "./terminal-store";
  * 화면(WorksPage)이 그것을 구독하면 마크다운 본문이 그 빈도로 다시 그려진다. 셀렉터가
  * 문자열을 돌려주므로 이름이 실제로 바뀔 때만 이 조각이 다시 그려진다.
  */
-function ShellHeadName({ owner }: { owner: string | null }) {
+function ShellHeadName({ owner }: { owner: ShellOwner }) {
   const name = useStore(terminalStore, (state) => {
     const shell = activeShellOf(state, owner);
     return shell ? shellRowName(shell) : "";

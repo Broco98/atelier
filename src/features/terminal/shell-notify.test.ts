@@ -11,7 +11,14 @@ import {
 import type { NotifyContent, NotifyInput, NotifyShell } from "./shell-notify";
 import type { NotifyChoice } from "@/features/settings/notifications";
 import type { Attention, ShellSignal } from "./shell-attention";
-import type { Shell, ShellsState } from "./shell-registry";
+import { ownerOf, slugOfOwner } from "./shell-registry";
+import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+
+/**
+ * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 알림 판정이라 세계는
+ * 배경이다. 인자가 없으면 그 세계의 최상위 셸.
+ */
+const 소유 = (slug = "") => ownerOf("atelier", slug);
 
 // 알림 판정 seam(#206 · 스토리 81). 순수 함수 하나가 대상이라 렌더도 DOM도 없이 기본
 // 환경(node)에서 돈다 — `shell-attention.test.ts`가 선례다.
@@ -166,7 +173,7 @@ describe("무엇이 실리나", () => {
 describe("판정을 회차에 걸어 두는 것", () => {
   const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => ({
     id: 1,
-    owner: "signal",
+    owner: 소유("signal"),
     kind: "waiting",
     since: 0,
     visible: false,
@@ -222,7 +229,7 @@ describe("판정을 회차에 걸어 두는 것", () => {
   it("다른 work은 같은 순간에도 각자 울린다", () => {
     const notifier = createNotifier();
     const fired = notifier.step(
-      [shell({ id: 1, owner: "signal" }), shell({ id: 2, owner: "papercuts", title: "ux 종이베임" })],
+      [shell({ id: 1, owner: 소유("signal") }), shell({ id: 2, owner: 소유("papercuts"), title: "ux 종이베임" })],
       0,
     );
     expect(fired.map((one) => one.title)).toEqual(["터미널 신호", "ux 종이베임"]);
@@ -232,7 +239,7 @@ describe("판정을 회차에 걸어 두는 것", () => {
   it("최상위 셸도 자기 창을 갖는다", () => {
     const notifier = createNotifier();
     const fired = notifier.step(
-      [shell({ id: 1, owner: null, title: "Terminal" }), shell({ id: 2, owner: "signal" })],
+      [shell({ id: 1, owner: 소유(), title: "Terminal" }), shell({ id: 2, owner: 소유("signal") })],
       0,
     );
     expect(fired.map((one) => one.title)).toEqual(["Terminal", "터미널 신호"]);
@@ -259,7 +266,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     status: { kind: "running" },
     title: null,
     shellName: "zsh",
-    owner: null,
+    owner: 소유(),
     project: null,
     cwd: null,
     running: null,
@@ -280,17 +287,20 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     activeByOwner: {},
     nextId: shells.length + 1,
   });
-  const 제목 = (owner: string | null) => (owner === null ? "Terminal" : `《${owner}》`);
+  const 제목 = (owner: ShellOwner) => {
+    const slug = slugOfOwner(owner);
+    return slug === null ? "Terminal" : `《${slug}》`;
+  };
 
   // **띠와 같은 목록이다.** 부르는 셸만 들고 차례도 그쪽이 정한 그대로다 — 접히는 차례가
   // 우선순위와 갈리면 5초 창에서 급한 것이 접히고 덜 급한 것이 울린다.
   it("부르는 셸만, 띠의 차례 그대로 든다", () => {
     const rows = notifyShells(
       화면(
-        칸({ id: 1, owner: "가", attention: 상태({ kind: "done", since: 30 }) }),
-        칸({ id: 2, owner: "나", attention: 상태({ kind: "waiting", since: 20 }) }),
-        칸({ id: 3, owner: "다", attention: 상태({ kind: "working" }) }),
-        칸({ id: 4, owner: "라", attention: null }),
+        칸({ id: 1, owner: 소유("가"), attention: 상태({ kind: "done", since: 30 }) }),
+        칸({ id: 2, owner: 소유("나"), attention: 상태({ kind: "waiting", since: 20 }) }),
+        칸({ id: 3, owner: 소유("다"), attention: 상태({ kind: "working" }) }),
+        칸({ id: 4, owner: 소유("라"), attention: null }),
       ),
       { activeIds: [], focused: true },
       제목,
@@ -306,8 +316,8 @@ describe("레지스트리에서 재료를 뽑는다", () => {
   it("보고 있는 셸에 보임이 선다", () => {
     const rows = notifyShells(
       화면(
-        칸({ id: 1, owner: "가", attention: 상태() }),
-        칸({ id: 2, owner: "나", attention: 상태() }),
+        칸({ id: 1, owner: 소유("가"), attention: 상태() }),
+        칸({ id: 2, owner: 소유("나"), attention: 상태() }),
       ),
       { activeIds: [2], focused: true },
       제목,
@@ -321,7 +331,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
   // 창이 뒤에 있으면 켜진 탭도 「보는 중」이 아니다(결정 7) — 그래야 다른 앱을 보는 동안 울린다.
   it("창이 뒤에 있으면 켜진 탭도 안 보는 것이다", () => {
     const rows = notifyShells(
-      화면(칸({ id: 2, owner: "나", attention: 상태() })),
+      화면(칸({ id: 2, owner: 소유("나"), attention: 상태() })),
       { activeIds: [2], focused: false },
       제목,
     );
@@ -332,12 +342,12 @@ describe("레지스트리에서 재료를 뽑는다", () => {
   // 탭에 적히는 그것과 같은 함수를 딛는다(`shellRowName`).
   it("제목과 셸 이름과 말이 실린다", () => {
     const rows = notifyShells(
-      화면(칸({ id: 1, owner: "가", title: "claude", project: "atelier", attention: 상태() })),
+      화면(칸({ id: 1, owner: 소유("가"), title: "claude", project: "atelier", attention: 상태() })),
       { activeIds: [], focused: true },
       제목,
     );
     expect(rows[0]).toMatchObject({
-      owner: "가",
+      owner: 소유("가"),
       title: "《가》",
       shellName: "atelier · claude",
       message: "커밋할까요?",
@@ -346,7 +356,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
 
   it("최상위 셸의 제목도 밖이 정한다", () => {
     const rows = notifyShells(
-      화면(칸({ id: 1, owner: null, attention: 상태() })),
+      화면(칸({ id: 1, owner: 소유(), attention: 상태() })),
       { activeIds: [], focused: true },
       제목,
     );

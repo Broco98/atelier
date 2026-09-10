@@ -15,12 +15,13 @@ import {
   nextAttention,
   nextOnOutput,
   signalOf,
-  signalsByOwner,
+  signalsOf,
   topSignal,
   topSignalView,
 } from "./shell-attention";
 import type { Attention } from "./shell-attention";
-import type { Shell, ShellsState } from "./shell-registry";
+import { ownerOf } from "./shell-registry";
+import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
 
 const read = (file: string) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8");
@@ -435,13 +436,20 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   });
 });
 
+/**
+ * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 상태 축이라 세계는
+ * 배경이고, 리터럴로 흩어 두면 소유자 모양이 바뀌는 날 스무 자리가 함께 빨개진다.
+ * 인자가 없으면 그 세계의 최상위다.
+ */
+const 소유 = (slug = "") => ownerOf("atelier", slug);
+
 // 셸 한 칸을 세운다. 여기서 재는 것은 상태 축뿐이라 이름·소유자 같은 칸은 아무 값이나 든다.
 const 칸 = (attention: Attention | null, status: Shell["status"] = { kind: "running" }): Shell => ({
   id: 1,
   status,
   title: null,
   shellName: "zsh",
-  owner: null,
+  owner: 소유(),
   project: null,
   cwd: null,
   running: null,
@@ -575,7 +583,7 @@ describe("행이 읽는 한 줄", () => {
 // 담기 때문이다 — 얕은 비교가 그대로 먹어 상태가 실제로 바뀔 때만 목록이 다시 그려진다
 // (`shellCountsOf` 머리말이 든 그 함정의 반대편).
 describe("소유자별 화면값", () => {
-  const 셸 = (owner: string | null, attention: Attention | null, id: number): Shell => ({
+  const 셸 = (owner: ShellOwner, attention: Attention | null, id: number): Shell => ({
     ...칸(attention),
     id,
     owner,
@@ -584,22 +592,22 @@ describe("소유자별 화면값", () => {
   it("work마다 최고 하나이고, 값이 없는 work은 키 자체가 없다", () => {
     const state = {
       shells: [
-        셸("가", 상태({ kind: "working" }), 1),
-        셸("가", 상태({ kind: "waiting" }), 2),
-        셸("나", null, 3),
-        셸("다", 상태({ kind: "done" }), 4),
+        셸(소유("가"), 상태({ kind: "working" }), 1),
+        셸(소유("가"), 상태({ kind: "waiting" }), 2),
+        셸(소유("나"), null, 3),
+        셸(소유("다"), 상태({ kind: "done" }), 4),
       ],
       activeByOwner: {},
       nextId: 5,
     };
-    expect(signalsByOwner(state)).toEqual({ 가: "waiting", 다: "done" });
+    expect(signalsOf(state, "atelier")).toEqual({ 가: "waiting", 다: "done" });
   });
 
   // 최상위 셸은 어느 work의 것도 아니라 행이 없다 — 빈 문자열 키가 슬러그인 척하면
   // 그 키를 읽는 행이 영영 안 나온다(`shellCountsOf`와 같은 가름).
   it("최상위 셸은 안 든다", () => {
-    const state = { shells: [셸(null, 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
-    expect(signalsByOwner(state)).toEqual({});
+    const state = { shells: [셸(소유(), 상태({ kind: "waiting" }), 1)], activeByOwner: {}, nextId: 2 };
+    expect(signalsOf(state, "atelier")).toEqual({});
   });
 });
 
@@ -660,7 +668,8 @@ describe("띠의 줄", () => {
   });
 
   it("부르는 셸이 없으면 줄이 하나도 없다 — 띠 자체가 없다", () => {
-    expect(bandRows(화면(칸이({ id: 1, owner: "가", attention: 상태({ kind: "working" }) })))).toEqual([]);
+    expect(bandRows(
+      화면(칸이({ id: 1, owner: 소유("가"), attention: 상태({ kind: "working" }) })), "atelier")).toEqual([]);
   });
 
   // **차례는 화면을 가리지 않는다.** 최상위 셸도 같은 줄 세우기에 든다(결정 13의 다섯째) —
@@ -668,14 +677,15 @@ describe("띠의 줄", () => {
   it("기다림 먼저, 같은 종류 안에서는 오래된 순이다 — 최상위 셸도 함께 선다", () => {
     const rows = bandRows(
       화면(
-        칸이({ id: 1, owner: "가", attention: 상태({ kind: "done", since: 30 }) }),
-        칸이({ id: 2, owner: null, attention: 상태({ kind: "waiting", since: 50 }) }),
-        칸이({ id: 3, owner: "나", attention: 상태({ kind: "waiting", since: 20 }) }),
-        칸이({ id: 4, owner: "가", attention: 상태({ kind: "done", since: 10 }) }),
+        칸이({ id: 1, owner: 소유("가"), attention: 상태({ kind: "done", since: 30 }) }),
+        칸이({ id: 2, owner: 소유(), attention: 상태({ kind: "waiting", since: 50 }) }),
+        칸이({ id: 3, owner: 소유("나"), attention: 상태({ kind: "waiting", since: 20 }) }),
+        칸이({ id: 4, owner: 소유("가"), attention: 상태({ kind: "done", since: 10 }) }),
       ),
+    "atelier",
     );
     expect(rows.map((row) => row.id)).toEqual([3, 2, 4, 1]);
-    expect(rows.map((row) => row.owner)).toEqual(["나", null, "가", "가"]);
+    expect(rows.map((row) => row.owner)).toEqual([소유("나"), 소유(), 소유("가"), 소유("가")]);
     expect(rows.map((row) => row.kind)).toEqual(["waiting", "waiting", "done", "done"]);
     expect(rows.map((row) => row.since)).toEqual([20, 50, 10, 30]);
   });
@@ -685,9 +695,10 @@ describe("띠의 줄", () => {
   it("한 화면에서 둘이 부르면 줄마다 셸 이름이 붙는다", () => {
     const rows = bandRows(
       화면(
-        칸이({ id: 1, owner: "가", title: "vite", attention: 상태({ kind: "waiting", since: 10 }) }),
-        칸이({ id: 2, owner: "가", title: "claude", attention: 상태({ kind: "waiting", since: 20 }) }),
+        칸이({ id: 1, owner: 소유("가"), title: "vite", attention: 상태({ kind: "waiting", since: 10 }) }),
+        칸이({ id: 2, owner: 소유("가"), title: "claude", attention: 상태({ kind: "waiting", since: 20 }) }),
       ),
+    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual(["vite", "claude"]);
   });
@@ -695,10 +706,11 @@ describe("띠의 줄", () => {
   it("하나만 부르면 안 붙는다 — 그 화면에 조용한 셸이 더 있어도", () => {
     const rows = bandRows(
       화면(
-        칸이({ id: 1, owner: "가", title: "vite", attention: 상태({ kind: "waiting" }) }),
-        칸이({ id: 2, owner: "가", title: "claude", attention: null }),
-        칸이({ id: 3, owner: "가", title: "cargo", attention: 상태({ kind: "done", seen: true }) }),
+        칸이({ id: 1, owner: 소유("가"), title: "vite", attention: 상태({ kind: "waiting" }) }),
+        칸이({ id: 2, owner: 소유("가"), title: "claude", attention: null }),
+        칸이({ id: 3, owner: 소유("가"), title: "cargo", attention: 상태({ kind: "done", seen: true }) }),
       ),
+    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual([null]);
   });
@@ -707,9 +719,10 @@ describe("띠의 줄", () => {
   it("최상위 셸끼리도 자기들끼리 센다", () => {
     const rows = bandRows(
       화면(
-        칸이({ id: 1, owner: null, title: "claude", attention: 상태({ kind: "waiting", since: 10 }) }),
-        칸이({ id: 2, owner: "가", title: "codex", attention: 상태({ kind: "waiting", since: 20 }) }),
+        칸이({ id: 1, owner: 소유(), title: "claude", attention: 상태({ kind: "waiting", since: 10 }) }),
+        칸이({ id: 2, owner: 소유("가"), title: "codex", attention: 상태({ kind: "waiting", since: 20 }) }),
       ),
+    "atelier",
     );
     expect(rows.map((row) => row.shellName)).toEqual([null, null]);
   });
@@ -719,10 +732,11 @@ describe("띠의 줄", () => {
   it("도는 것이 먼저, 없으면 말한 에이전트가 마크를 낸다", () => {
     const rows = bandRows(
       화면(
-        칸이({ id: 1, owner: "가", running: "codex", attention: 상태({ kind: "waiting", since: 10, agent: "claude" }) }),
-        칸이({ id: 2, owner: "나", running: null, attention: 상태({ kind: "waiting", since: 20, agent: "claude" }) }),
-        칸이({ id: 3, owner: "다", running: null, attention: 상태({ kind: "waiting", since: 30, agent: null }) }),
+        칸이({ id: 1, owner: 소유("가"), running: "codex", attention: 상태({ kind: "waiting", since: 10, agent: "claude" }) }),
+        칸이({ id: 2, owner: 소유("나"), running: null, attention: 상태({ kind: "waiting", since: 20, agent: "claude" }) }),
+        칸이({ id: 3, owner: 소유("다"), running: null, attention: 상태({ kind: "waiting", since: 30, agent: null }) }),
       ),
+    "atelier",
     );
     expect(rows.map((row) => row.running)).toEqual(["codex", "claude", null]);
   });
@@ -846,19 +860,20 @@ const 시계 = [
 ];
 
 // **여기 이름을 더하는 것은 「이 파일은 시간을 안다」는 선언이다.** 상태 축이 그 목록에
-// 들어오면 결정 2·3이 깨진 것이다 — 셋 다 상태 축 밖의 이유로 시간을 안다.
+// 들어오면 결정 2·3이 깨진 것이다 — 둘 다 상태 축 밖의 이유로 시간을 안다.
+//
+// 한때 `shell-registry.ts`가 셋째였다 — ⇧⇧ 사이의 간격(`SEARCH_GAP_MS`)을 재느라. 팔레트
+// 판이 그 키를 ⌘K로 갈면서 상수가 통째로 걷혔고, 그 파일은 다시 시간을 모른다.
 const 시간을아는파일 = [
   // 신호가 **도착한 순간**을 재료로 넣는 자리(`Date.now()` → `applySignal`의 `since`).
   // 재는 것이지 판정하는 것이 아니다 — 그 값으로 무엇이 되는지를 정하는 코드는 없다.
   "terminal-store.ts",
-  // ⇧⇧ 사이의 간격(`SEARCH_GAP_MS`). 팔레트를 여는 키의 것이고 상태 축과 무관하다.
-  "shell-registry.ts",
   // 같은 work의 알림을 접는 5초 창(`COALESCE_MS` · 결정 10). **알림의 시간이지 상태의
   // 시간이 아니다** — 화면값은 그 5초에 한 글자도 안 매인다.
   "shell-notify.ts",
 ];
 
-it("터미널에서 시간을 아는 파일은 셋뿐이다 — 상태 축엔 시계도 타이머도 없다", () => {
+it("터미널에서 시간을 아는 파일은 둘뿐이다 — 상태 축엔 시계도 타이머도 없다", () => {
   const root = fileURLToPath(new URL("./", import.meta.url));
   const 아는것 = readdirSync(root, { recursive: true, encoding: "utf8" })
     .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))

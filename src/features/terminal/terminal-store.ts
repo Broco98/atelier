@@ -36,8 +36,9 @@ import {
   shellOpenNotice,
   shellRewrite,
   shellsOf,
+  slugOfOwner,
 } from "./shell-registry";
-import type { OpenedShell, ShellOrigin, ShellsState } from "./shell-registry";
+import type { OpenedShell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
@@ -164,9 +165,9 @@ function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
  * 셸을 하나 띄운다 — **사람이 누른 길이다**: `+`와 ⌘T. **상한에서는 열지 않고 알리기만
  * 한다**(결정 30·47).
  *
- * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `TOP_TERMINAL`, Work 화면은
- * `workShellOrigin(work, project)`. 그 함수가 `null`을 주면(프로젝트를 안 골랐다) 여기까지
- * 오지 않는다.
+ * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal(mode)`, Work 화면은
+ * `workShellOrigin(mode, work, project)`. 그 함수가 `null`을 주면(프로젝트를 안 골랐다)
+ * 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
   const opened = openShellQuietly(origin);
@@ -507,13 +508,13 @@ const notifier = createNotifier();
  * (`setNotifyTitles`), 아직 안 왔으면 슬러그가 그대로 제목이 된다 — 띠가 모르는 슬러그를
  * 다루는 방식과 같다.
  */
-let notifyTitleOf: (owner: string | null) => string = (owner) => owner ?? TERMINAL_LABEL;
+let notifyTitleOf: (owner: ShellOwner) => string = (owner) => slugOfOwner(owner) ?? TERMINAL_LABEL;
 
 /**
  * 알림 제목이 읽을 이름표를 건넨다. 사이드바가 목록을 받을 때마다 부른다 — 그쪽이 슬러그와
  * 제목을 둘 다 쥔 유일한 자리다(`bandItems`가 같은 이유로 거기 산다).
  */
-export function setNotifyTitles(resolve: (owner: string | null) => string): void {
+export function setNotifyTitles(resolve: (owner: ShellOwner) => string): void {
   notifyTitleOf = resolve;
 }
 
@@ -597,7 +598,7 @@ onNotifySettingsChanged(notifyTick);
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
  */
-export function closeShellsOf(owner: string): void {
+export function closeShellsOf(owner: ShellOwner): void {
   for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);
 }
 
@@ -1002,7 +1003,18 @@ async function spawn(instance: ShellInstance) {
     // (결정 25). `null`이면 데이터 루트이고 그 자리가 어디인지도 백엔드만 안다.
     const cols = instance.term.cols;
     const rows = instance.term.rows;
-    const spawned = await terminalApi.spawn(instance.origin.cwd, cols, rows, channel);
+    // **세계도 함께 나간다**(결정 10). cwd가 `null`인 최상위 셸은 백엔드가 그 세계의 홈에
+    // 세우고, 셸 env의 `ATELIER_MODE`도 이 값이 정한다 — 안 실으면 백엔드가 인자를 거절해
+    // 셸이 아예 안 뜨고(#187), 저쪽 세계의 값을 실으면 Maison 터미널이 Atelier 홈에서
+    // 조용히 뜬다.
+    // **owner를 파싱해서 뽑지 않는다** — origin이 `Mode`로 직접 든다(`ShellOrigin.mode`).
+    const spawned = await terminalApi.spawn(
+      instance.origin.mode,
+      instance.origin.cwd,
+      cols,
+      rows,
+      channel,
+    );
     // **이 왕복 사이에 `×`가 눌렸을 수 있다.** 그때 `closeShell`은 `ptyId`가 아직 null이라
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —

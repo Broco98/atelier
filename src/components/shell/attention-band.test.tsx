@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AttentionBand, BAND_LABEL, BAND_LIMIT } from "./attention-band";
 import type { BandItem } from "./attention-band";
+import { ownerOf } from "@/features/terminal/shell-registry";
 
 // 정적 마크업 seam — 「확인할 것」 띠의 그림을 여기서 본다(#204). `shell-signal.tsx`와 같은
 // 조건으로 산다: props만 받는 순수 컴포넌트라 터미널 스토어도 DOM도 안 물고, 값을 고르는
@@ -13,7 +14,7 @@ import type { BandItem } from "./attention-band";
 
 const 줄 = (over: Partial<BandItem> = {}): BandItem => ({
   id: 1,
-  owner: "plain",
+  owner: ownerOf("atelier", "plain"),
   title: "그냥 일",
   shellName: null,
   kind: "waiting",

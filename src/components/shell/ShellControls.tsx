@@ -30,7 +30,7 @@ interface ShellControlsProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   /**
-   * 검색 팔레트를 연다. **⇧⇧가 부르는 것과 같은 함수여야 한다** — 앱 셸이 그 하나를
+   * 검색 팔레트를 연다. **⌘K가 부르는 것과 같은 함수여야 한다** — 앱 셸이 그 하나를
    * 내려보낸다(AppShell의 호출부 주석). 여기서 따로 상태를 들면 키로 연 것과 버튼으로 연
    * 것이 서로를 모른다.
    */
@@ -90,18 +90,20 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
 
           **이 행에서 유일하게 title을 든다 — 알릴 것이 글리프 밖에 있기 때문이다.** 이웃
-          셋은 그림이 곧 이름이지만(패널·화살표), 이 버튼의 값은 「누를 수 있다」보다 **⇧⇧라는
+          셋은 그림이 곧 이름이지만(패널·화살표), 이 버튼의 값은 「누를 수 있다」보다 **⌘K라는
           키가 있다는 것을 알리는 것**에 가깝다. 사이드바 목록의 핀이 title을 피한 이유(행에
           머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다)는 여기 없다 — 타이틀바에는 뜨는
           카드가 없다.
-          **키는 aria-label이 아니라 title에 적는다.** 읽어 주는 이름에 ⇧⇧가 들어가면 글리프
-          두 개를 그대로 읽어 소음이 되고, aria-keyshortcuts로는 애초에 못 적는다 — 그 값은
-          **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 아니라 「⇧ 또는 ⇧」로 읽힌다. */}
+          **키를 aria-keyshortcuts로도 적는다 — ⇧⇧ 때는 못 적었다**(결정 21). 그 값은
+          **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 「⇧ 또는 ⇧」로 읽혔는데, 화음인
+          ⌘K는 `Meta+K` 하나로 정확히 적힌다. aria-label은 여전히 이름만 든다 — 읽어 주는
+          이름에 키가 섞이면 소음이 되고, 그 값을 읽는 자리는 이제 따로 있다. */}
       <button
         type="button"
         onClick={onOpenSearch}
         aria-label="검색"
-        title="검색 (⇧⇧)"
+        title="검색 (⌘K)"
+        aria-keyshortcuts="Meta+K"
         className="icon-button-quiet text-muted-foreground"
       >
         <Search className="size-4" strokeWidth={1.7} />

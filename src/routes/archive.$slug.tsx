@@ -10,5 +10,5 @@ export const Route = createFileRoute("/archive/$slug")({
 function ArchiveRoute() {
   const { slug } = Route.useParams();
   const { file } = Route.useSearch();
-  return <ArchiveView slug={slug} file={file ?? null} />;
+  return <ArchiveView mode="atelier" slug={slug} file={file ?? null} />;
 }

@@ -1,4 +1,5 @@
-import type { WorkView } from "@/features/works/types";
+import type { WorkView, WorktreeView } from "@/features/works/types";
+import type { Mode } from "@/mode";
 import type { Attention } from "./shell-attention";
 import type { PtyExit } from "./types";
 
@@ -6,10 +7,19 @@ import type { PtyExit } from "./types";
 // 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
 // 그 성질은 주석이 아니라 shell-registry.test.ts의 소스 스캔이 지킨다.
 //
-// **키 판정 중 `searchHotkey`(⇧⇧)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
-// 그런데도 여기 사는 것은 「어디서 눌렸으면 비키는가」를 정하는 `typesInto`·`isShellInput`을
-// 이웃 키 판정들과 **함께** 딛기 때문이다. 그 둘을 공용 모듈로 빼면 이 모듈이 그것을 **값으로**
-// import하게 되는데, 바로 위 소스 스캔(「값 import가 하나도 없다」)이 그 길을 막아 뒀다.
+// **키 판정 중 `searchHotkey`(⌘K)만은 셸의 것이 아니다** — 그것이 여는 것은 검색 팔레트다.
+// (이 파일에서 `팔레트 결정 N`은 `palette-key-and-home`의 결정문이다 — 맨 `결정 N`이
+// 이 터미널 판들의 것이라 같은 번호가 겹친다.)
+// 그런데도 여기 사는 것은 그 키가 **셸을 지나와야** 하기 때문이다: 셸이 ⌘K를 타이핑하지
+// 않는다는 것을 정하는 자리가 `shellHotkey`이고(`"app"`으로 흘려보낸다), 그 규칙은 이웃
+// 키 판정들과 한 벌이어야 갈리지 않는다. ⇧⇧였을 때의 근거(`typesInto`·`isShellInput`을
+// 함께 딛는다)는 ⌘K가 그 둘을 안 보게 되면서 사라졌다 — 자리는 남았고 이유가 바뀌었다.
+//
+// **`features/search`로 옮기는 안은 기각했다 — 막는 것이 바로 위 소스 스캔이다.** 그쪽으로
+// 빼면 `shellHotkey`가 그것을 **값으로** import해야 하는데, 스캔이 「값 import가 하나도
+// 없다」를 본다. 그 스캔은 일부러 넓게 친 그물이고(막으려는 것은 React·xterm이 딸려 오는
+// 길이다), 순수 술어 하나를 위해 화이트리스트를 내면 **fail-closed였던 검사가 열린다.**
+// 판정을 양쪽에 한 벌씩 적는 안은 더 나쁘다 — 여는 키의 정본이 둘이 된다.
 // 팔레트 쪽에서 여는 키를 찾는 사람을 위해 `SearchPalette.tsx` 머리말이 이 자리를 가리킨다.
 //
 // 이 모듈이 React 밖에 있는 것은 취향이 아니다 — 결정 21이 "비활성 셸의 xterm 인스턴스는
@@ -49,8 +59,11 @@ export interface Shell {
   title: string | null;
   /** `$SHELL`의 basename. 백엔드가 spawn 응답에 실어 준다(결정 8) — 프런트는 모른다. */
   shellName: string | null;
-  /** 어느 Work의 셸인가(결정 26). 최상위 터미널은 `null`이다 — Work가 아니다. */
-  owner: string | null;
+  /**
+   * 어느 세계의 무엇인가(결정 10·26). 형식과 뜻은 아래 `ShellOwner`가 든다 — 그 세계의
+   * 최상위 터미널은 뒤가 빈 키이고, `null`이라는 갈래는 없다.
+   */
+  owner: ShellOwner;
   /** 이름의 가운데 갈래(결정 31). 프로젝트가 여럿인 Work에서만 찬다. */
   project: string | null;
   /**
@@ -92,8 +105,8 @@ export interface Shell {
 export interface ShellsState {
   shells: ReadonlyArray<Shell>;
   /**
-   * **켜진 칸은 화면마다 따로다.** 키는 소유자이고 최상위 터미널은 빈 문자열이다
-   * (Work slug는 비어 있을 수 없다).
+   * **켜진 칸은 화면마다 따로다.** 키는 소유자 그대로이고, 그 세계의 최상위 터미널은
+   * 뒤가 빈 `"<mode>:"`다 — Work slug는 비어 있을 수 없어 둘이 안 겹친다(`slugOfOwner`).
    *
    * 하나로 두면 Work 가에서 나로 갔다 오는 것만으로 가의 줄에 켜진 칸이 없어지고,
    * 그 자리에서 「없으면 하나 띄운다」가 돌면 이미 있는 셸 옆에 셸이 또 뜬다. `×`의
@@ -106,22 +119,127 @@ export interface ShellsState {
 
 export const NO_SHELLS: ShellsState = { shells: [], activeByOwner: {}, nextId: 1 };
 
-/** 소유자를 레코드 키로. Work slug가 비어 있을 수 없어서 최상위와 안 겹친다. */
-const ownerKey = (owner: string | null) => owner ?? "";
+/**
+ * 소유자 키를 가르는 글자. **모드에는 없고 slug에는 있을 수 있는 글자**다 — 코어의
+ * `is_safe_slug`(`crates/atelier-core/src/slug.rs`)가 막는 것은 빈 값·앞머리의 `.`·`/`·`\`
+ * 넷뿐이라, 사람이 `slug`를 손으로 주면 `:`가 그대로 들어온다(`slugify`는 `:`를 `-`로 바꾸지만
+ * 그 길은 제목에서 파생할 때만 지난다).
+ *
+ * 그래서 읽는 쪽은 **첫 `:`에서만** 가른다. 마지막 `:`로 가르면 `atelier:a:b`의 slug가 `b`가
+ * 되어 왕복이 제자리로 안 오고, 그때 화면은 「가끔 셸이 남의 것으로 보인다」로만 보인다.
+ */
+const OWNER_SEP = ":";
+
+/**
+ * 셸의 소유자 — **어느 세계의 무엇인가**(결정 10). `atelier:spec-search`·`maison:finance`이고,
+ * 그 세계의 최상위 터미널은 뒤가 빈 `atelier:`·`maison:`이다.
+ *
+ * **타입이 형식을 든다.** 아래 읽는 함수 둘이 「앞머리는 모드다」에 기대는데, 이 모듈은
+ * 값 import가 하나도 없어(머리말) 모드 목록을 값으로 확인할 길이 없다 — 그 확인을 타입이
+ * 대신한다. 손으로 이은 문자열은 여기 못 앉는다.
+ */
+export type ShellOwner = `${Mode}${typeof OWNER_SEP}${string}`;
+
+/**
+ * 소유자 키를 짓는다. slug를 안 주면 그 세계의 **최상위 터미널**이다.
+ *
+ * **모드가 들어가는 이유는 최상위가 둘이 되어서만이 아니다**(결정 10). 두 루트에 같은 slug가
+ * 설 수 있고(코어의 유일성은 한 루트 쌍 안에서만 본다), owner가 slug뿐이면 Atelier의
+ * `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
+ *
+ * **키를 짓는 자리는 여기 하나다.** 부르는 쪽이 문자열을 손으로 이으면 형식을 달리 적는 자리가
+ * 생기고, 그 화면만 조용히 남의 셸을 세거나 자기 셸을 못 찾는다.
+ */
+export function ownerOf(mode: Mode, slug?: string | null): ShellOwner {
+  return `${mode}${OWNER_SEP}${slug ?? ""}`;
+}
+
+/**
+ * 그 소유자의 세계.
+ *
+ * **`as`가 여기 서는 것은 인자 타입이 이미 형식을 들기 때문이다** — `ShellOwner`가 아닌
+ * 문자열은 이 함수에 못 들어오므로 앞머리는 모드일 수밖에 없다. 값으로 한 번 더 확인하려면
+ * `ALL_MODES`를 **값으로** import해야 하는데, 머리말의 「값 import가 하나도 없다」가 그 길을
+ * 막아 뒀다(그 성질을 이 모듈의 소스 스캔이 지킨다). 형식은 `ownerOf` 하나가 짓는다.
+ */
+export function modeOfOwner(owner: ShellOwner): Mode {
+  return owner.slice(0, owner.indexOf(OWNER_SEP)) as Mode;
+}
+
+/**
+ * 그 소유자의 slug. **`null`이면 그 세계의 최상위 터미널이다.**
+ *
+ * 빈 뒤꼬리가 다른 뜻을 가질 수 없는 것은 코어가 빈 slug를 거절하기 때문이다
+ * (`is_safe_slug`). 그 한 줄이 최상위 키와 work 키가 안 겹치는 것도 함께 보증한다.
+ */
+export function slugOfOwner(owner: ShellOwner): string | null {
+  return owner.slice(owner.indexOf(OWNER_SEP) + 1) || null;
+}
 
 /**
  * 새 셸 하나를 여는 데 필요한 것 전부. **`cwd`가 `null`이면 데이터 루트**이고, 그 자리가
  * 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25).
  */
 export interface ShellOrigin {
+  /**
+   * 어느 세계에서 뜨는가. **이 값이 그대로 `pty_spawn`의 `mode`로 나간다**(결정 10) —
+   * 셸의 cwd와 `ATELIER_MODE`를 정하는 것이 백엔드의 그 인자다.
+   *
+   * **`owner`에서 뽑지 않는다.** 같은 사실이 거기에도 실려 있지만 꺼내는 길이
+   * `modeOfOwner`뿐이고 그 함수는 `as`로 좁힌다(그 머리말) — 형식이 어긋난 키가 오면
+   * 조용히 아닌 값을 백엔드에 싣고, 그때 나는 것은 「Maison 셸이 Atelier 홈에서 떴다」다.
+   * `Mode`로 들면 그 자리를 컴파일러가 지킨다. 둘이 어긋날 수 없는 것은 origin을 짓는
+   * 자리가 아래 둘뿐이고 **둘 다 같은 인자로 `ownerOf`를 부르기** 때문이다.
+   */
+  mode: Mode;
   /** `~` 축약 표기의 cwd 후보. 펴는 것은 백엔드 한 곳이다 — 여기서 홈을 붙이지 않는다. */
   cwd: string | null;
-  owner: string | null;
+  owner: ShellOwner;
   project: string | null;
 }
 
-/** 최상위 터미널(`/terminal`)이 셸을 여는 자리. Work가 아니라 소유자가 없다. */
-export const TOP_TERMINAL: ShellOrigin = { cwd: null, owner: null, project: null };
+/**
+ * **그 세계의** 최상위 터미널이 셸을 여는 자리. Work가 아니라 slug가 없다.
+ *
+ * **상수가 아니라 함수인 것이 결정 10이다.** 최상위 화면이 세계마다 하나씩이라(`/terminal`과
+ * `/maison/terminal`) 값 하나로는 둘을 못 든다 — 한 값으로 두면 두 화면이 같은 셸 목록·같은
+ * 상한·같은 켜진 칸을 나눠 쓰고, 모드를 갈아도 저쪽 셸이 계속 도는 것(결정 16의 점이 세는
+ * 그것)을 화면이 표현할 수 없다.
+ */
+export function topTerminal(mode: Mode): ShellOrigin {
+  return { mode, cwd: null, owner: ownerOf(mode), project: null };
+}
+
+/**
+ * 셸을 여는 두 함수가 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
+ * 그 아래 `workShellOrigin`은 「어디에 열까」를 여기서만 읽는다 — **둘이 같은 값을 보는 것을
+ * 함수 하나로 세운다.** 조건을 두 자리에 나눠 적으면 한쪽만 갈린 커밋이 「메뉴는 열리는데
+ * 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안 열리는데 열 자리도 없다」)를 만들고,
+ * 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이 금지하는 것).
+ *
+ * **Maison에서는 언제나 빈 배열이다**(결정 17 · US 26). 저 세계에 워크트리가 없는 것은
+ * 코어가 프로젝트 붙이기를 거절하기 때문인데, 그 거절 **하나에만** 걸어 두면 손으로 고친
+ * work.json 하나로 Room이 프로젝트를 실어 오고 — 목록을 읽는 자리에는 검증이 없다 —
+ * `+`가 있지도 않은 워크트리를 고르는 메뉴를 연다. 없는 것을 시도할 수 없어야 한다.
+ *
+ * **이 물음의 정본은 `@/mode`의 `hasProjects`이고, 여기만 그것을 못 부른다.** 이 모듈은
+ * 타입 말고는 아무것도 import하지 않는다(머리말) — 그 성질이 `SidebarWorkList`가 이 파일을
+ * 정적 마크업 검사에서 쓰게 해 주고, 소스 스캔이 그것을 지킨다. 값 하나를 들이는 순간
+ * `@/mode`가 딸려 오므로 여기서는 갈래를 손으로 적는다. 셋째 세계가 생기는 날 저 표를
+ * 고치면서 이 한 줄을 함께 찾아야 한다.
+ */
+function shellTrees(mode: Mode, work: WorkView): WorktreeView[] {
+  return mode === "atelier" ? work.worktrees : [];
+}
+
+/**
+ * 이 Work에서 `+`가 **고르라고 물어볼 수 있는** 프로젝트들 — 아래 `workShellOrigin`이
+ * 「어디에 열까」를 답한다면 이쪽은 「고를 것이 있나」를 답한다. 같은 기준을 보는 것은
+ * 위 `shellTrees` 하나가 세운다.
+ */
+export function workShellProjects(mode: Mode, work: WorkView): string[] {
+  return shellTrees(mode, work).map((tree) => tree.project);
+}
 
 /**
  * 이 Work에서 셸 하나를 여는 자리(결정 24). **`null`이면 열지 않는다.**
@@ -134,21 +252,36 @@ export const TOP_TERMINAL: ShellOrigin = { cwd: null, owner: null, project: null
  *
  * `worktrees[].exists`는 보지 않는다. 폴더가 없으면 spawn이 실패하고 결정 23의 「그 칸에
  * 이유를 적는다」를 그대로 탄다 — 여기서 한 번 더 판정하면 같은 사실을 두 곳이 말한다.
+ *
+ * **`mode`를 받는다 — `work`에서 유도하지 않는다**(결정 10). `WorkView`에는 어느 루트에서
+ * 읽어 온 것인지가 안 실려 있고(코어가 그 필드를 안 준다), 두 루트에 같은 slug가 설 수
+ * 있어 slug만으로는 셸 목록·상한·켜진 칸이 통째로 섞인다.
+ *
+ * **워크트리는 `shellTrees`로만 본다** — Maison에서는 그것이 빈 배열이라 위 표의 마지막
+ * 줄(프로젝트 0개 → Work 폴더)로 언제나 떨어진다. `work.worktrees`를 여기서 직접 읽으면
+ * 값이 실려 온 Room에서 `+`가 묻지도 않고(`workShellProjects`가 `[]`니까) 열지도 못하는
+ * (`project === null`이라 `null`) 버튼이 되고, 하나만 실려 온 Room은 Room 폴더가 아니라
+ * 저쪽 세계의 워크트리에서 셸이 뜬다.
  */
-export function workShellOrigin(work: WorkView, project: string | null): ShellOrigin | null {
-  const trees = work.worktrees;
-  if (trees.length === 0) return { cwd: workDir(work), owner: work.slug, project: null };
+export function workShellOrigin(
+  mode: Mode,
+  work: WorkView,
+  project: string | null,
+): ShellOrigin | null {
+  const owner = ownerOf(mode, work.slug);
+  const trees = shellTrees(mode, work);
+  if (trees.length === 0) return { mode, cwd: workDir(work), owner, project: null };
   // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
-  if (trees.length === 1) return { cwd: trees[0].path, owner: work.slug, project: null };
+  if (trees.length === 1) return { mode, cwd: trees[0].path, owner, project: null };
 
   const picked = project === null ? undefined : trees.find((tree) => tree.project === project);
-  return picked ? { cwd: picked.path, owner: work.slug, project: picked.project } : null;
+  return picked ? { mode, cwd: picked.path, owner, project: picked.project } : null;
 }
 
 /**
- * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는
- * `~/.atelier/works/…`를 손으로 적는데 그쪽은 클립보드로 나가는 참조 형식이라 그래도 된다.
- * 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
+ * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는 세계별
+ * 앞머리를 표에서 꺼내 **앱이 짓는데**(#186), 그쪽은 클립보드로 나가는 참조 형식이라 그래도
+ * 된다. 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
  * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
  */
 function workDir(work: WorkView): string {
@@ -156,8 +289,9 @@ function workDir(work: WorkView): string {
 }
 
 /**
- * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 최상위
- * 터미널(`owner`가 `null`)도 자기 몫으로 이만큼이다.
+ * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 각 세계의
+ * 최상위 터미널(`slugOfOwner`가 `null`인 소유자)도 자기 몫으로 이만큼이다 — 세계가
+ * 둘이라 최상위 몫도 둘이다(결정 10). 화면이 늘었을 뿐이라 상한을 새로 만들지 않는다.
  *
  * **결정 30을 뒤집었다** — 그때는 앱 전체 하나였다. 근거는 WebGL 컨텍스트가 웹뷰의
  * 자원이고 결정 21이 비활성 셸의 xterm을 React 트리 밖에 두어 **안 보이는 칸도 컨텍스트를
@@ -177,7 +311,7 @@ export const MAX_SHELLS = 8;
  * **`owner`를 반드시 받는다**(결정 23). 기본값을 두면 빠뜨린 자리가 조용히 다른 화면을
  * 세고, 그때 나는 것은 「눌러도 아무 일이 없는 `+`」다.
  */
-export function atCap(state: ShellsState, owner: string | null): boolean {
+export function atCap(state: ShellsState, owner: ShellOwner): boolean {
   return shellsOf(state, owner).length >= MAX_SHELLS;
 }
 
@@ -188,7 +322,7 @@ export function atCap(state: ShellsState, owner: string | null): boolean {
  *
  * 라벨은 소문자 영어여도 **문장은 한국어다**(CONTEXT.md). 「셸」이 프로세스를 세는 단위다.
  */
-export function shellCapNotice(state: ShellsState, owner: string | null): string {
+export function shellCapNotice(state: ShellsState, owner: ShellOwner): string {
   return `셸은 화면마다 ${MAX_SHELLS}개까지예요 — 여기 ${shellsOf(state, owner).length}개`;
 }
 
@@ -209,7 +343,7 @@ export function shellCapNotice(state: ShellsState, owner: string | null): string
 export function shellOpenNotice(
   state: ShellsState,
   opened: OpenedShell | null,
-  owner: string | null,
+  owner: ShellOwner,
 ): string | null {
   return opened ? null : shellCapNotice(state, owner);
 }
@@ -259,7 +393,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
   return {
     state: {
       shells: [...state.shells, shell],
-      activeByOwner: { ...state.activeByOwner, [ownerKey(origin.owner)]: id },
+      activeByOwner: { ...state.activeByOwner, [origin.owner]: id },
       nextId: id + 1,
     },
     id,
@@ -269,7 +403,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
 /**
  * 이 화면이 보여줄 칸들. **상한도 이것으로 센다**(결정 23) — `atCap`이 이 함수를 딛는다.
  */
-export function shellsOf(state: ShellsState, owner: string | null): ReadonlyArray<Shell> {
+export function shellsOf(state: ShellsState, owner: ShellOwner): ReadonlyArray<Shell> {
   return state.shells.filter((shell) => shell.owner === owner);
 }
 
@@ -278,38 +412,54 @@ export function shellsOf(state: ShellsState, owner: string | null): ReadonlyArra
  * 없어서 세지 않는다 — 아카이브 확인 대화가 「셸 N개가 닫혀요」라고 말할 때의 N이 이것이다
  * (결정 26). 함께 세면 2개라고 해놓고 하나만 끝난다.
  */
-export function runningShellsOf(state: ShellsState, owner: string | null): number {
+export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
   return shellsOf(state, owner).filter((shell) => shell.status.kind === "running").length;
 }
 
 /** 이 화면에서 켜진 칸. */
 /**
- * 소유자별 셸 개수 — 사이드바 work 행 **둘째 줄이 종류·수를 싣는 조건**이다(결정 2·3). 그
- * 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를 다 더하면 이 값이다.
+ * **그 세계의** work별 셸 개수 — 사이드바 work 행 **둘째 줄이 종류·수를 싣는 조건**이다
+ * (결정 2·3). 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를 다 더하면
+ * 이 값이다.
+ *
+ * **키는 소유자가 아니라 slug다.** 사이드바 목록은 터미널을 한 번도 참조하지 않아
+ * (SidebarWorkList의 import 계약) 그 안에서 `ownerOf`를 부를 수 없다 — 소유자로 키를 주면
+ * 목록이 `work.slug`로 꺼내다 늘 빈손이 되고, 그때 화면은 「숫자가 0」이 아니라 **메타 상자가
+ * 아예 안 서서**(`shellCount > 0`) 「셸이 없는 행」으로 보인다. 그래서 세계를 여기서 받아
+ * 걸러 내고 나간다 — 목록이 그 세계 것만 그리므로 잃는 것도 없다.
  *
  * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
  * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
  * 없다(Sidebar.tsx의 `shellCounts`).
  *
  * **최상위 터미널의 셸은 여기 없다.** 그쪽은 어느 work의 것도 아니라 세는 자리가 따로다
- * (`shellsOf(state, null)`) — 한 Record에 섞으면 빈 문자열 키가 슬러그인 척하게 된다.
+ * (`shellsOf(state, ownerOf(mode))`) — 한 Record에 섞으면 빈 키가 슬러그인 척하게 된다.
+ * 가르는 것은 **slug가 비었는가**이지 소유자가 `null`인가가 아니다: 소유자가 늘 문자열이
+ * 된 뒤로 후자는 아무도 안 빼고 조용히 통과하는 판정이다.
  */
-export function shellCountsOf(state: ShellsState): Record<string, number> {
+export function shellCountsOf(state: ShellsState, mode: Mode): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const shell of state.shells) {
-    if (shell.owner === null) continue;
-    counts[shell.owner] = (counts[shell.owner] ?? 0) + 1;
+    if (modeOfOwner(shell.owner) !== mode) continue;
+    const slug = slugOfOwner(shell.owner);
+    if (slug === null) continue;
+    counts[slug] = (counts[slug] ?? 0) + 1;
   }
   return counts;
 }
 
-export function activeIdOf(state: ShellsState, owner: string | null): number | null {
-  return state.activeByOwner[ownerKey(owner)] ?? null;
+export function activeIdOf(state: ShellsState, owner: ShellOwner): number | null {
+  return state.activeByOwner[owner] ?? null;
 }
 
 /** 어느 화면에 셸이 몇 개인가 — 아래 판정이 앞뒤로 비교하는 값. */
 export interface ShellTally {
-  owner: string | null;
+  /**
+   * **`null`이 남아 있다 — 「고른 작업이 없다」다.** 그 화면에는 셸이 설 자리가 아예 없어
+   * 어느 소유자의 것도 아니고, 그래도 앞뒤를 비교하려면 그 상태에도 이름이 필요하다
+   * (`shellsEmptied`가 「work이 바뀐 것은 세지 않는다」를 이 값으로 가른다).
+   */
+  owner: ShellOwner | null;
   count: number;
 }
 
@@ -339,7 +489,7 @@ export function shellsEmptied(before: ShellTally, now: ShellTally): boolean {
  * (터미널 본문·최상위 머리행·분할 열 머리). 「켜진 것이 무엇인가」를 정하는 지점이 셋이면
  * 한 곳만 고쳐도 화면마다 다른 셸을 켜진 것으로 부른다.
  */
-export function activeShellOf(state: ShellsState, owner: string | null): Shell | null {
+export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | null {
   const id = activeIdOf(state, owner);
   return shellsOf(state, owner).find((shell) => shell.id === id) ?? null;
 }
@@ -538,7 +688,10 @@ export function runningOfId(state: ShellsState, id: number): string | null {
  * 안쪽 배열이 회차마다 새 객체라 얕은 비교가 늘 어긋나고, work 하나에서 명령이 시작될
  * 때마다 목록 전체가 다시 그려진다. 행마다 자기 것을 고르게 두면 그 행만 바뀐다.
  */
-export function runningAgentsOf(state: ShellsState, owner: string | null): ReadonlyArray<string> {
+export function runningAgentsOf(
+  state: ShellsState,
+  owner: ShellOwner,
+): ReadonlyArray<string> {
   const out: string[] = [];
   for (const shell of shellsOf(state, owner)) {
     // 「죽은 칸은 안 센다」를 여기서 다시 가르지 않는다 — 그 판정은 `runningOn` 하나다.
@@ -556,7 +709,7 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   const shell = state.shells.find((one) => one.id === id);
   if (!shell) return state;
 
-  const key = ownerKey(shell.owner);
+  const key = shell.owner;
   if (state.activeByOwner[key] === id) return state;
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
 }
@@ -594,10 +747,14 @@ interface KeyFromWindow extends KeyPress {
 /**
  * ⌘T는 새 칸, ⌘W는 이 칸 닫기. Terminal.app·iTerm·VS Code가 같은 키다.
  *
- * **결정 29의 예외는 여기 둘뿐이다.** 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이
- * 먹는다」인데, ⌘만은 앱이 가져가도 잃는 것이 없다 — 셸도 TUI도 ⌘를 안 쓴다(macOS
- * 터미널들이 ⌘를 자기 몫으로 두는 이유다). ⌃T였다면 zsh emacs 모드의 `transpose-chars`와
- * fzf의 파일 위젯을 뺏었을 것이다.
+ * **결정 29의 예외 중 이 함수가 드는 것은 셋이다** — ⌘T·⌘W, 그리고 팔레트를 여는 ⌘K.
+ * 그 결정은 「포커스가 터미널에 있으면 ⌘까지 셸이 먹는다」인데, ⌘만은 앱이 가져가도 잃는
+ * 것이 없다 — 셸도 TUI도 ⌘를 안 쓴다(macOS 터미널들이 ⌘를 자기 몫으로 두는 이유다).
+ * ⌃T였다면 zsh emacs 모드의 `transpose-chars`와 fzf의 파일 위젯을 뺏었을 것이다.
+ *
+ * **⌘K를 셸에 돌려주지 않는다.** macOS 터미널들이 그 키를 스크롤백 지우기로 쓰고 있어
+ * 되돌릴 유인이 있는데, 이 앱에서 ⌘K는 **어디서든 팔레트를 여는 하나뿐인 키다**(팔레트 결정 1·2).
+ * 셸에서만 다른 일을 하면 그 「어디서든」이 깨진다.
  *
  * **⌘W는 특히 앱이 가져가야 한다.** 안 가져가면 macOS 메뉴의 `Close Window`가 먹어
  * **창이 닫히고 셸이 전부 죽는다**(실물에서 그렇게 잃었다). 그 메뉴 항목은 이제 없다 —
@@ -615,7 +772,10 @@ export function shellHotkey(event: KeyPress): ShellHotkey | null {
   // **본문을 옮기는 키는 셸이 타이핑하지 않는다**(결정 99). 셸을 붙일 때마다 xterm이 스스로
   // 포커스를 가져가므로, 여기서 안 가르면 터미널 화면에서 ⌘2~9와 ⌃Tab이 영영 안 먹는다.
   // 처리는 여기서 하지 않는다 — 어느 본문으로 갈지는 화면이 알고, 셸은 그것을 모른다.
-  if (shellNavKey(event) !== null) return "app";
+  // 팔레트를 여는 ⌘K도 같은 갈래다 — 셸이 타이핑하지 않고 그대로 위로 흘려보내면,
+  // window에서 듣는 앱 셸이 그것을 받아 연다. 셸에 포커스가 있는 시간이 이 앱에서 제일
+  // 길기 때문에 이 한 줄이 「어디서든 열린다」의 절반을 든다.
+  if (shellNavKey(event) !== null || searchHotkey(event)) return "app";
   if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
   if (event.code === "KeyT") return "new";
   if (event.code === "KeyW") return "close";
@@ -678,69 +838,30 @@ function isShellInput(target: EventTarget | null): boolean {
 }
 
 /**
- * ⇧를 두 번 누른 것으로 치는 **두 번 사이의 간격**. 너무 길면 대문자를 치다 열리고, 너무
- * 짧으면 두 번 눌러도 안 열린다.
+ * ⌘K가 검색 팔레트를 연다(팔레트 결정 1·2). **여는 키 판정 전부가 이 순수 술어 하나다** — 무장
+ * 상태도, 「어디서 눌렸나」도 안 본다. ⇧⇧였을 때 그 둘이 필요했던 이유가 함께 사라졌다:
+ * 「같은 키를 300ms 안에 두 번」이라는 몸짓이 아니므로 리듀서가 없고, ⌘ 화음은 셸에도 폼
+ * 입력칸에도 글자를 남기지 않으므로 비킬 자리가 없다.
  *
- * **상한이 오발동을 막는 유일한 그물은 아니다** — 사이에 끼는 keydown 하나가 이미 무장을
- * 풀어서, `A`를 대문자로 치는 동안에는 간격이 얼마든 안 열린다. 이 값이 정하는 것은
- * 「두 번 누른다」가 한 동작으로 읽히는 폭이다.
+ * **폼 입력칸에서도 열린다**(팔레트 결정 22). work 제목을 고치는 `<input>`은 blur에 커밋하므로
+ * 편집 중에 누르면 그 제목이 저장된 채로 팔레트가 뜬다 — 바깥을 클릭했을 때와 같고,
+ * Esc가 포커스를 돌려준다. ⇧⇧는 그 자리에서 아예 안 열렸는데, 그때는 대문자를 못 치게
+ * 되는 것이 대가였다. ⌘K에는 그 대가가 없다.
+ *
+ * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열). 여기서는 대가가
+ * 한 겹 더 있다: 네이티브 메뉴가 쏘는 합성 keydown은 `code`와 `key`를 **둘 다** 싣기 때문에,
+ * `key`로 봤다면 **메뉴로는 열리고 직접 누르면 한글 입력기에서만 죽는** 반쪽 고장이 난다.
+ *
+ * **수식키가 하나라도 더 붙으면 아니다** — ⌘⇧K·⌘⌥K는 팔레트 결정 1이 명시로 배제한 화음이다
+ * (VS Code가 ⌘K를 화음 접두사로 쓰는 그 계열).
+ *
+ * **떠 있는 확인 창은 여기서 안 본다.** 「무슨 키인가」와 「화면에 무엇이 떠 있나」는 다른
+ * 물음이고 주인도 다르다 — 부르는 쪽(앱 셸)이 막는다.
  */
-export const SEARCH_GAP_MS = 300;
-
-/**
- * ⇧⇧ 감지기가 돌려주는 것. `armedAt`은 **다음 판정에 그대로 도로 들어간다** — 이 함수가
- * 상태를 들지 않으므로 부르는 쪽이 그 한 값만 들고 있으면 된다.
- */
-export interface SearchArm {
-  open: boolean;
-  armedAt: number | null;
-}
-
-/**
- * ⇧를 두 번 누르면 검색을 연다(결정 3·4). **타이머 없는 순수 리듀서다** — 직전 ⇧의 시각을
- * 인자로 받고 다음 상태를 돌려주므로, DOM도 가짜 시계도 없이 취소 규칙을 전부 잴 수 있다.
- *
- * 무장하는 것은 **⇧ 단독 keydown** 하나다(다른 수식키가 안 붙은 `ShiftLeft`·`ShiftRight`).
- * 푸는 것은 셋인데 여기서 드는 것은 둘이다.
- *
- * - **그 밖의 모든 keydown.** 이 한 줄이 「⇧를 누른 채 다른 키가 오면 취소」와 「사이에
- *   다른 키가 끼면 취소」를 함께 푼다 — `Shift↓ A↓ Shift↓`에서 가운데 `A↓`가 무장을 풀어
- *   대문자를 치는 동안 안 열린다.
- * - **간격 초과**(`SEARCH_GAP_MS`). 넘기면 안 열리고 **그 ⇧가 다시 무장한다** — 세 번째
- *   ⇧가 붙으면 열려야 하기 때문이다.
- * - 셋째는 **mousedown**인데 그것은 키가 아니라 이 함수 밖에 산다(결정 30). 키만 보면
- *   ⇧+클릭 두 번이 팔레트를 연다 — 그 사이에 keydown이 하나도 안 끼기 때문이다.
- *   부르는 쪽(앱 셸)이 mousedown에 무장을 비운다.
- *
- * **셸 안에서는 듣고 폼 입력칸에서는 비킨다** — `shellNavFromWindow`와 같은 규칙이고 같은
- * 판정을 딛는다(결정 4). 이 함수를 새 모듈에 다시 적지 않는 이유가 그 한 줄이다.
- *
- * **대화상자는 여기서 안 본다.** 「어디서 눌렸나」(이벤트의 target)와 「화면에 무엇이 떠
- * 있나」(대화상자 스토어)는 다른 물음이고 주인도 다르다 — 부르는 쪽이 막는다.
- *
- * **`key`가 아니라 `code`로 본다.** 이웃한 판정들과 같은 이유다(IME·배열).
- *
- * 시각도 **DOM 이름 그대로** 받는다(`timeStamp`) — `KeyFromWindow`가 그러는 것과 같은 이유고,
- * 그래서 이웃 셋처럼 부르는 쪽이 이벤트를 통째로 넘긴다.
- */
-export function searchHotkey(
-  event: KeyFromWindow & { timeStamp: number },
-  armedAt: number | null,
-): SearchArm {
-  // keyup은 아무것도 안 한다 — 무장을 세우지도 풀지도 않는다. ⇧를 눌렀다 떼는 것 자체가
-  // keydown·keyup 한 쌍이라, 뗀 것을 취소로 읽으면 한 번도 안 열린다.
-  if (event.type !== "keydown") return { open: false, armedAt };
-  if (typesInto(event.target) && !isShellInput(event.target)) return { open: false, armedAt: null };
-  // **`shiftKey`로 가르지 않는다** — ⇧ 자신의 keydown에는 그 값이 이미 참이다.
-  const bareShift =
-    (event.code === "ShiftLeft" || event.code === "ShiftRight") &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.altKey;
-  if (!bareShift) return { open: false, armedAt: null };
-  if (armedAt !== null && event.timeStamp - armedAt <= SEARCH_GAP_MS)
-    return { open: true, armedAt: null };
-  return { open: false, armedAt: event.timeStamp };
+export function searchHotkey(event: KeyPress): boolean {
+  if (event.type !== "keydown") return false;
+  if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+  return event.code === "KeyK";
 }
 
 /**
@@ -759,7 +880,15 @@ export function searchHotkey(
  * 칸을 **개수가 아니라 정체로** 본다 — `patch`가 안 바뀐 칸에는 같은 객체를 돌려주므로
  * 타이틀이 갈린 칸만 새 객체다. 개수만 세면 이름이 바뀌어도 안 다시 그린다.
  */
-export function sameScreen(a: ShellsState, b: ShellsState, owner: string | null): boolean {
+export function sameScreen(
+  a: ShellsState,
+  b: ShellsState,
+  owner: ShellOwner | null,
+): boolean {
+  // **`null`은 화면이 아니다 — 「고른 작업이 없다」다**(WorksPage). 그 화면에는 탭 줄도
+  // 셸도 안 서므로 어떤 셸 변화도 다시 그릴 이유가 되지 않는다. 한때 이 자리가 최상위
+  // 터미널을 뜻해서, 고른 작업이 없는 work 화면이 `/terminal`의 타이틀마다 다시 그려졌다.
+  if (owner === null) return true;
   if (a === b) return true;
   if (a.shells.length !== b.shells.length) return false;
   if (activeIdOf(a, owner) !== activeIdOf(b, owner)) return false;
@@ -990,7 +1119,7 @@ export function removeShell(state: ShellsState, id: number): ShellsState {
   if (!gone) return state;
 
   const shells = state.shells.filter((shell) => shell.id !== id);
-  const key = ownerKey(gone.owner);
+  const key = gone.owner;
   if (state.activeByOwner[key] !== id) return { ...state, shells };
 
   const siblings = state.shells.filter((shell) => shell.owner === gone.owner);

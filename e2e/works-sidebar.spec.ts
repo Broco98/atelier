@@ -119,7 +119,7 @@ test("핀은 hover에만 뜨고, 누르면 그 사실이 백엔드로 나간다"
   // 고정은 화면 설정이 아니라 그 작업에 대한 사실이라 백엔드로 나간다(결정 81).
   // 누른 것이 안 고정된 행이므로 나가는 값은 true다.
   expect((await readIpcRecord(page))?.calls).toContain(
-    `set_work_pinned {"slug":"${plainWork.slug}","pinned":true}`,
+    `set_work_pinned {"mode":"atelier","slug":"${plainWork.slug}","pinned":true}`,
   );
   // **핀은 그 work를 열지 않는다.** 행 전체가 눌리게 되면서(아래 검사) 이 버튼의 클릭도
   // 행 상자로 올라갈 수 있게 됐다 — 끊는 것이 `stopPropagation` 한 줄이고, 그것이 빠지면
@@ -1225,7 +1225,7 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
   // **둘째 줄이 핀의 클릭을 가로채면 안 된다** — 그 줄은 핀 아래를 지나간다.
   await pin.click();
   expect((await readIpcRecord(page))?.calls).toContain(
-    `set_work_pinned {"slug":"${plainWork.slug}","pinned":true}`,
+    `set_work_pinned {"mode":"atelier","slug":"${plainWork.slug}","pinned":true}`,
   );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
