@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 /// 앱이 설치하는 훅 스크립트의 이름.
-const SCRIPT_NAME: &str = "atelier-hook.py";
+pub const SCRIPT_NAME: &str = "atelier-hook.py";
 
 /// 훅 스크립트의 본문. **소스 트리의 진짜 파일을 그대로 굽는다** — 문자열 리터럴로 Rust
 /// 안에 적으면 그 언어의 문법 검사도, 편집기의 손도 닿지 않는 코드가 된다.
@@ -43,7 +43,8 @@ pub fn hooks_dir(root: &Path) -> PathBuf {
     root.join("hooks")
 }
 
-fn script_path(root: &Path) -> PathBuf {
+/// 설치된 훅 스크립트의 자리. 훅 설치가 사용자의 설정에 적어 넣는 경로가 이것이다.
+pub fn script_path(root: &Path) -> PathBuf {
     hooks_dir(root).join(SCRIPT_NAME)
 }
 

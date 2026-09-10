@@ -99,6 +99,13 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 코어로 옮기면 위 항목들처럼 진짜 핸들러가 된다.
     ("read_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
     ("write_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
+    // 에이전트 훅 셋(#207)도 같은 이유다 — 병합 모듈이 앱 크레이트에 산다
+    // (`src-tauri/src/hooks.rs`). 게다가 이쪽이 고치는 것은 `~/.atelier` 밖의 파일
+    // (`~/.claude`·`~/.codex`)이라, 다리가 그것을 진짜로 태우면 검증 한 번이 이 기계를
+    // 쓰는 사람의 설정을 고친다. **여기서 그 길을 열지 않는다.**
+    ("agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
+    ("install_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
+    ("uninstall_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가

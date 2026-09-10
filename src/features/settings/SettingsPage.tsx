@@ -6,9 +6,15 @@ import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
-import { settingsApi } from "./api";
+import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
-import type { NotificationSettings, Settings, TerminalSettings, TerminalTheme } from "./types";
+import type {
+  HookStatus,
+  NotificationSettings,
+  Settings,
+  TerminalSettings,
+  TerminalTheme,
+} from "./types";
 
 // 앱 전역 설정 화면 (결정 51·52·54). 지금 구획은 `터미널` 하나이고, 다음 구획이 생기면
 // 아래 `<section>` 하나가 는다.
@@ -154,6 +160,12 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   // 한다** — 모르는 것을 「거부됐다」로 적으면 앱이 없는 사실을 만든다. 물어보는 것이 이
   // 화면인 이유는 사람이 「왜 안 울리지」를 들고 오는 자리가 여기라서다.
   const [granted, setGranted] = useState<boolean | null>(null);
+  // 에이전트 훅 (#207). **저장 버튼을 안 지난다** — 이 둘은 우리 파일이 아니라 사용자의
+  // claude·codex 설정을 고치는 일이라 「고치고 나중에 저장」이라는 초안이 있을 수 없다.
+  // 그래서 상태도 위 `draft`와 따로 든다.
+  const [hooks, setHooks] = useState<HookStatus[]>([]);
+  const [hooksBusy, setHooksBusy] = useState(false);
+  const [hooksError, setHooksError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -192,6 +204,38 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    hooksApi.status().then(
+      (list) => {
+        if (alive) setHooks(list);
+      },
+      // **판정이 통째로 실패하는 길**(홈을 못 읽는 등)과 파일 한 장이 깨진 것은 다르다 —
+      // 뒤엣것은 `HookStatus.error`로 그 줄에 붙어 오고, 여기 오는 것은 앞엣것뿐이다.
+      (error) => {
+        if (alive) setHooksError(String(error));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 넣는 것도 걷는 것도 **끝난 뒤의 상태를 그 자리에서 돌려받는다** — 다시 물어보지 않는다.
+  // 연타를 막는 것은 같은 파일에 두 쓰기가 겹치면 안 되기 때문이다.
+  const runHooks = async (run: () => Promise<HookStatus[]>) => {
+    if (hooksBusy) return;
+    setHooksBusy(true);
+    setHooksError(null);
+    try {
+      setHooks(await run());
+    } catch (error) {
+      setHooksError(String(error));
+    } finally {
+      setHooksBusy(false);
+    }
+  };
 
   // 키 순서는 읽은 것을 펼쳐 만들었으므로 그대로다 — 문자열 비교로 충분하다.
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved);
@@ -285,6 +329,16 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                 </div>
               </>
             )}
+            {/* **읽기 실패의 바깥에 선다.** 이 구획이 고치는 것은 `~/.atelier/settings.json`이
+                아니라 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔
+                이유가 없다. */}
+            <HooksSection
+              statuses={hooks}
+              busy={hooksBusy}
+              error={hooksError}
+              onInstall={() => void runHooks(hooksApi.install)}
+              onUninstall={() => void runHooks(hooksApi.uninstall)}
+            />
           </div>
         </div>
       </main>
@@ -478,6 +532,99 @@ export function NotificationSection({
           onPick={(sound) => onChange({ sound })}
           label="알림에 소리"
         />
+      </Row>
+    </section>
+  );
+}
+
+/**
+ * 훅이 지금 어떤가를 **한 낱말로**. 셋이고, 셋째가 이 함수가 있는 이유다.
+ *
+ * `installed`만 보면 「깨져서 판정을 못 했다」가 「안 깔렸다」와 같은 낱말이 된다. 백엔드는
+ * 그때 판정을 안 하고 `installed: false`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
+ * 화면이 그 둘을 한 낱말로 접으면 **없는 사실을 만들고** 사람을 실패하는 버튼으로 보낸다.
+ */
+export function hookStateLabel(status: HookStatus): string {
+  if (status.error !== null) return "확인 못 함";
+  return status.installed ? "설치됨" : "설치 안 됨";
+}
+
+/**
+ * `에이전트 훅` 구획 — 에이전트마다 상태·경로·미리보기, 그리고 버튼 둘 (스토리 70~74).
+ *
+ * **미리보기가 필수다**(스토리 73). 내 설정을 앱에 맡기는 일이라 누르기 전에 무엇이 어디에
+ * 들어가는지 보여야 하고, 그 글자는 화면이 따로 적는 것이 아니라 **실제로 넣는 함수가 낸
+ * 값**이다(`hooks.rs`의 `preview`) — 두 벌로 적으면 약속이 실물과 조용히 갈린다.
+ *
+ * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ */
+export function HooksSection({
+  statuses,
+  busy = false,
+  error = null,
+  onInstall = () => {},
+  onUninstall = () => {},
+}: {
+  statuses: HookStatus[];
+  /** 넣거나 걷는 중인가. 연타를 막는다 — 같은 파일에 두 쓰기가 겹치면 안 된다. */
+  busy?: boolean;
+  /** 명령 자체가 실패했으면 그 까닭(스크립트를 못 세운 경우). */
+  error?: string | null;
+  onInstall?: () => void;
+  onUninstall?: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-5 pt-2">
+      <h2 className="text-[14px] font-semibold text-muted-foreground">에이전트 훅</h2>
+      {/* **아래 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
+          설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
+          전에 알아야 마음이 놓인다. */}
+      <p className="text-[13px] leading-[1.7] text-tertiary">
+        누른 순간 아래 파일에 적용돼요(저장 버튼과 별개예요). 고치기 전에 같은 자리에{" "}
+        <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.
+      </p>
+
+      {statuses.map((status) => (
+        <Row key={status.agent} label={status.agent}>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              {/* 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다. */}
+              <span className="text-[13px] font-medium">{hookStateLabel(status)}</span>
+              <span className="text-[13px] text-tertiary">{status.path}</span>
+            </div>
+            {status.error !== null && (
+              <p className="text-[13px] leading-[1.7] text-red-600">{status.error}</p>
+            )}
+            {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
+            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-[12px] leading-[1.6] scroll-quiet">
+              {status.preview}
+            </pre>
+          </div>
+        </Row>
+      ))}
+
+      <Row label="">
+        <div className="flex items-center gap-3">
+          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 아래
+              한 자리뿐이고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
+          <button
+            type="button"
+            onClick={onInstall}
+            disabled={busy}
+            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
+          >
+            설치
+          </button>
+          <button
+            type="button"
+            onClick={onUninstall}
+            disabled={busy}
+            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
+          >
+            제거
+          </button>
+          {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
+        </div>
       </Row>
     </section>
   );

@@ -41,3 +41,23 @@ export interface Settings {
   // 파일 전부에서 이 타입이 거짓말이 된다.
   notifications?: NotificationSettings;
 }
+
+// 에이전트 훅이 지금 어디에 어떻게 깔려 있나 (#207 · 구현 결정 8). **정본은
+// `src-tauri/src/hooks.rs`의 `HookStatus`**이고 여기는 그 응답의 타입이다.
+//
+// **앱이 따로 기억하는 값이 아니다.** 부를 때마다 설정 파일을 읽어 만든 것이라, 사람이
+// 파일을 손으로 고쳐도 다음 조회가 그것을 그대로 말한다.
+export interface HookStatus {
+  /** `claude` · `codex`. */
+  agent: string;
+  /** 사람이 읽는 경로 — `~/.claude/settings.json`. */
+  path: string;
+  installed: boolean;
+  /**
+   * 파일이 깨져 **판정도 설치도 못 했으면** 그 까닭. 그때 `installed`는 `false`지만
+   * 뜻은 「안 깔렸다」가 아니라 **「모른다」**다 — 화면이 그 둘을 갈라 적는다.
+   */
+  error: string | null;
+  /** 그 파일에 실제로 들어가는 글자(스토리 73). 백엔드의 병합 함수가 낸 값 그대로다. */
+  preview: string;
+}

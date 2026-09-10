@@ -215,3 +215,43 @@ pub async fn read_settings() -> CmdResult<crate::settings::Settings> {
 pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()> {
     crate::settings::write(&atelier_core::data_root(), &settings)
 }
+
+// 에이전트 훅 설치 셋 (#207 · 구현 결정 8). 본체는 `hooks.rs`에 있고 여기는 위임만 한다 —
+// 설정 둘과 같은 규칙이다.
+//
+// **홈이 둘이다.** 훅 스크립트가 사는 곳은 `atelier_core::data_root()`(테스트가
+// `ATELIER_HOME`으로 옮기는 우리 폴더)이고, 고쳐야 할 설정이 사는 곳은 **진짜 홈**이다 —
+// `~/.claude`·`~/.codex`는 우리 것이 아니라서 그 오버라이드가 걸리면 안 된다.
+
+/// 사용자의 홈. `~/.claude`·`~/.codex`가 여기 산다.
+fn agent_home() -> PathBuf {
+    atelier_core::expand_home("~/")
+}
+
+/// 사용자의 설정에 적어 넣을 훅 스크립트의 경로.
+fn hook_script() -> PathBuf {
+    crate::shells::script_path(&atelier_core::data_root())
+}
+
+/// 지금 깔려 있나 — **설정 파일을 읽어 답한다.** 앱이 따로 기억하는 상태가 없다.
+#[tauri::command]
+pub async fn agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
+    Ok(crate::hooks::status(&agent_home(), &hook_script()))
+}
+
+/// 훅 스크립트를 세우고 두 설정에 병합한다.
+///
+/// **스크립트를 못 쓰면 거기서 멈춘다.** 설정만 고쳐 두면 사용자의 claude가 매 턴 없는
+/// 파일을 부른다 — 병합이 성공한 것이 오히려 나쁜 상태다.
+#[tauri::command]
+pub async fn install_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
+    crate::shells::write_hook_script(&atelier_core::data_root())?;
+    Ok(crate::hooks::install(&agent_home(), &hook_script()))
+}
+
+/// 두 설정에서 우리 항목만 걷는다. **스크립트 파일은 남긴다** — 남아도 무해하고, 지우면
+/// 아직 살아 있는 셸의 훅이 그 순간부터 없는 파일을 부른다.
+#[tauri::command]
+pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
+    Ok(crate::hooks::uninstall(&agent_home(), &hook_script()))
+}

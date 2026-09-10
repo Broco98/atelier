@@ -1,4 +1,5 @@
 mod commands;
+mod hooks;
 mod pty;
 mod settings;
 mod shells;
@@ -252,6 +253,9 @@ pub fn run() {
             commands::pty_command_running,
             commands::read_settings,
             commands::write_settings,
+            commands::agent_hooks,
+            commands::install_agent_hooks,
+            commands::uninstall_agent_hooks,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

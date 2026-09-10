@@ -2,7 +2,7 @@ import type { ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
-import type { Settings } from "@/features/settings/types";
+import type { HookStatus, Settings } from "@/features/settings/types";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
 // 생기면 무엇이 기대값인지가 테스트 수만큼 갈라진다.
@@ -187,6 +187,28 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 설정 화면이 뜨자마자 한 번 부른다(#207). **깔린 것이 없는 상태를 답한다** — 그것이
+  // 처음 여는 사람의 화면이고, 미리보기·경로·상태가 그때도 다 서는지를 L3가 본다.
+  //
+  // `preview`는 **짧은 합성**이다: 백엔드가 내는 진짜 조각을 여기 베껴 두면 병합 함수를
+  // 고칠 때마다 이 표가 낡고, 그 낡음은 「미리보기가 실물과 같은가」를 재지도 못한다 —
+  // 그 물음은 Rust 쪽 `the_preview_is_what_actually_goes_in`이 실물로 잰다.
+  agent_hooks: [
+    {
+      agent: "claude",
+      path: "~/.claude/settings.json",
+      installed: false,
+      error: null,
+      preview: '{ "hooks": { "Stop": [] } }',
+    },
+    {
+      agent: "codex",
+      path: "~/.codex/config.toml",
+      installed: false,
+      error: null,
+      preview: "[[hooks.Stop]]",
+    },
+  ] satisfies HookStatus[],
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //

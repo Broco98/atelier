@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   canSave,
+  HooksSection,
+  hookStateLabel,
   FONT_PRESETS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
@@ -14,7 +16,7 @@ import {
 import { notificationChoice, patchNotifications } from "./notifications";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
-import type { NotificationSettings, Settings } from "./types";
+import type { HookStatus, NotificationSettings, Settings } from "./types";
 
 // 이 화면이 지켜야 하는 것은 화면으로는 안 잡히는 종류다.
 //
@@ -347,5 +349,78 @@ describe("알림 구획의 화면", () => {
 
   it.each([true, null])("권한이 %s면 아무 말도 안 한다", (granted) => {
     expect(renderNotifications(withNotifications(), granted)).not.toContain("권한");
+  });
+});
+
+// ── 에이전트 훅 구획 (#207 · 구현 결정 8)
+//
+// 이 구획이 지켜야 하는 것도 화면으로는 안 잡히는 종류다.
+//
+// 1. **「모른다」와 「안 깔렸다」가 갈리는 것** — 설정 파일이 깨져 판정을 못 한 것을
+//    「설치 안 됨」이라 적으면, 사람은 설치 버튼을 누르고 실패하는 길로 보내진다.
+//    백엔드는 그때 `installed: false`에 `error`를 함께 실어 보낸다(`hooks.rs`).
+// 2. **미리보기가 화면에 서는 것**(스토리 73) — 내 설정을 앱에 맡기는 일이라, 누르기 전에
+//    무엇이 어디에 들어가는지 보여야 한다. 그 글자는 백엔드가 낸 것을 그대로 그린다.
+// 3. **되돌릴 길이 화면에 있는 것**(스토리 74) — 설치만 있고 제거가 없으면 훅이 남아
+//    있는지 몰라 헤맨다.
+
+const hook = (patch: Partial<HookStatus> = {}): HookStatus => ({
+  agent: "claude",
+  path: "~/.claude/settings.json",
+  installed: false,
+  error: null,
+  preview: '{\n  "hooks": {}\n}\n',
+  ...patch,
+});
+
+function renderHooks(statuses: HookStatus[]): string {
+  return renderToStaticMarkup(<HooksSection statuses={statuses} />);
+}
+
+describe("훅이 지금 어떤지 한 낱말로", () => {
+  it("깔렸으면 설치됨, 아니면 설치 안 됨이다", () => {
+    expect(hookStateLabel(hook({ installed: true }))).toBe("설치됨");
+    expect(hookStateLabel(hook())).toBe("설치 안 됨");
+  });
+
+  // **`installed`만 보면 둘이 같은 낱말이 된다.** 깨진 파일에서 백엔드는 판정을 안 하고
+  // `false`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
+  // 만들고 사람을 실패하는 버튼으로 보낸다.
+  it("판정을 못 했으면 안 깔렸다고 하지 않는다", () => {
+    expect(hookStateLabel(hook({ error: "설정 파일이 잘못됐습니다" }))).toBe("확인 못 함");
+  });
+});
+
+describe("훅 구획의 화면", () => {
+  it("에이전트마다 어디에 무엇이 들어가는지와 지금 상태가 선다", () => {
+    const html = renderHooks([
+      hook({ installed: true, preview: "클로드 조각" }),
+      hook({ agent: "codex", path: "~/.codex/config.toml", preview: "코덱스 조각" }),
+    ]);
+
+    expect(html).toContain("claude");
+    expect(html).toContain("~/.claude/settings.json");
+    expect(html).toContain("설치됨");
+    expect(html).toContain("codex");
+    expect(html).toContain("~/.codex/config.toml");
+    expect(html).toContain("설치 안 됨");
+    // 스토리 73 — 누르기 전에 무엇이 들어가는지 보인다. 화면이 따로 적은 글이 아니라
+    // 백엔드가 낸 그 글자다.
+    expect(html).toContain("클로드 조각");
+    expect(html).toContain("코덱스 조각");
+  });
+
+  // 스토리 74 — 되돌릴 길이 없으면 훅이 남아 있는지 몰라 헤맨다.
+  it("설치와 제거가 둘 다 있다", () => {
+    const html = renderHooks([hook()]);
+    expect(html).toContain("설치");
+    expect(html).toContain("제거");
+  });
+
+  // 깨진 파일의 까닭은 **화면에 적힌다.** 조용히 삼키면 사람은 버튼이 고장 났다고 읽는다.
+  it("판정을 못 한 까닭이 그 자리에 적힌다", () => {
+    const html = renderHooks([hook({ error: "설정 파일이 잘못됐습니다 — 손대지 않았습니다" })]);
+    expect(html).toContain("손대지 않았습니다");
+    expect(html).toContain("확인 못 함");
   });
 });
