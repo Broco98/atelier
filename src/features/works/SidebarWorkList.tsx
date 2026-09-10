@@ -318,7 +318,18 @@ export function WorkSectionList({
       />
       <SectionBody open={open.works}>
         {main.length === 0 ? (
-          <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
+          // **`mr-1`이 막대 자리를 비운다.** 이 span은 `SectionBody`의 grid 안에 있어
+          // **블록으로 눕고**(grid item), 그래서 글자 길이와 무관하게 상자 폭을 통째로 쓴다 —
+          // 8~272다. 바깥 상자가 `-mx-2 px-2`로 거터를 뚫고 나가 있어 막대는 271~277에 서므로
+          // (`lib/scroll-quiet.ts`의 EDGE·THICKNESS) 그 272가 막대 자리를 4px 먹는다. 이웃한
+          // 행들은 같은 272까지 오지만 **잎이 아니라** 안쪽 잎(핀·메타)이 268에서 멎어 성했고,
+          // 폭을 통째로 쓰는 잎은 이것 하나뿐이라 여기만 어긋나 있었다. 아카이브의 같은 모양이
+          // 성한 것은 그쪽 거터가 `-mx-3 px-3`이라 12px여서다.
+          //
+          // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
+          // 그때는 대개 목록이 안 넘치는데, 사이드바 최상단에 모드 세그먼트가 서면서 넘치는
+          // 창이 넓어졌다 — 목록이 오기 전 한 프레임에 이 문구가 서는 그 창이다.
+          <span className="mr-1 px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
             {emptyMainNotice(sections, mode)}
           </span>
         ) : (
