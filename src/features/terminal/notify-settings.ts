@@ -32,8 +32,14 @@ const listeners = new Set<() => void>();
  * 값이 바뀌면 알려 준다 — 배선이 배지를 그 자리에서 맞추기 위해서다. 끈 순간 독에 수가
  * 남아 있으면 「껐는데 아직 부른다」로 읽힌다.
  *
- * Set인 것은 StrictMode 때문이다(`openRejectedListeners`와 같은 이유) — 지금 거는 쪽은
- * 모듈 최상위 하나뿐이지만, 같은 함수를 두 번 걸어도 한 번만 돈다.
+ * **해지가 없다.** 거는 쪽이 `terminal-store.ts`의 모듈 최상위 한 줄뿐이고 모듈 본문은
+ * 앱이 사는 동안 한 번만 돌기 때문이다 — 그래서 여기는 `openRejectedListeners`(저쪽은 React
+ * 이펙트가 마운트마다 걸어서 해지 함수를 돌려준다)와 **다른 물건**이다. Set인 것도 같은
+ * 자리의 값이다: 해지가 없는 API에서는 같은 함수를 두 번 거는 것이 곧 새는 것이라, 한 번만
+ * 돌게 접어 둔다.
+ *
+ * **React에서 걸지 마라.** 이 모양으로는 언마운트에서 뗄 길이 없다 — 화면이 이 값을 봐야
+ * 하는 날이 오면 그때 `onShellOpenRejected`처럼 해지 함수를 돌려주게 고쳐야 한다.
  */
 export function onNotifySettingsChanged(listen: () => void): void {
   listeners.add(listen);

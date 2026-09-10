@@ -12,8 +12,8 @@ import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import { markShellsSeen, nextAttention, ptyIdOf } from "./shell-attention";
 import type { ShellView } from "./shell-attention";
-import { createNotifier, notificationPayload, notifyShells } from "./shell-notify";
-import type { NotifyContent } from "./shell-notify";
+import { createNotifier, notifyShells, outgoing } from "./shell-notify";
+import type { NotifyPayload } from "./shell-notify";
 import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
@@ -485,13 +485,12 @@ let badgeShown = 0;
 function notifyTick(): void {
   const rows = notifyShells(terminalStore.state, currentView(), notifyTitleOf);
   const fired = notifier.step(rows, Date.now());
-  // **끄면 앱이 아무 신호도 안 낸다**(스토리 66). 배지도 함께 내린다 — 결정 10의 채널 칸이
-  // 「알림 + 소리 + 독 배지」 셋을 한 묶음으로 적었고, 설정 칸은 그 묶음에 스위치를 하나만
-  // 뒀다. 배지만 남기는 안은 그 스위치를 둘로 쪼개는 것이라 결정 10 밖이다.
-  const { enabled, sound } = notifyChoice();
-  setBadge(enabled ? rows.length : 0);
-  if (!enabled) return;
-  for (const one of fired) show(one, sound);
+  // **고른 값이 무엇을 바꾸는지도 여기 없다**(`outgoing`). 「끄면 조용하다」·「소리만 끈다」를
+  // 이 배선 안의 `if`로 들면 그 두 줄을 지워도 어느 층도 빨개지지 않는다 — 순수 함수로
+  // 내려야 표가 그것을 잡는다(2026-09-10 리뷰).
+  const { toShow, badge } = outgoing(fired, rows.length, notifyChoice());
+  setBadge(badge);
+  for (const one of toShow) show(one);
 }
 
 /**
@@ -512,33 +511,33 @@ function setBadge(count: number): void {
 }
 
 /**
- * 알림 하나를 내보낸다. 셋을 둘로 접는 것은 `notificationPayload`가 한다(부제 칸이 없다).
+ * 알림 하나를 내보낸다. **모양은 이미 정해져 왔다**(`notificationPayload`) — 이 함수가 아는
+ * 것은 채널 하나뿐이다.
  *
- * **소리 이름을 손으로 적는다.** 이 채널은 소리를 안 주면 조용하고(`mac-notification-sys`가
- * 이름 없는 알림에 `""`를 넘긴다), macOS의 기본 알림음을 부르는 이름이 이 상수다. 「시스템
- * 기본 알림음」(결정 10)이 여기서는 그렇게 적힌다. **이 이름이 실제로 소리를 내는지는
- * 헤드리스로 못 잰다** — 실물 확인이 남아 있는 자리다.
- *
- * **클릭에 붙일 것이 없다.** 스펙은 「되면 셸 탭까지, 안 되면 창 앞세우기까지」라 적었는데,
+ * **앱이 클릭에 걸 것이 없다.** 스펙은 「되면 셸 탭까지, 안 되면 창 앞세우기까지」라 적었는데,
  * 이 플러그인의 데스크톱 경로는 **클릭을 아예 안 받는다** — `desktop.rs`의
  * `NotificationBuilder::show()`가 `notify_rust`에 title·body·icon·sound만 넘기고 응답
  * 핸들러를 걸지 않으며(그래서 `notify_rust`의 `wait_for_click`도 안 탄다), 액션 API는
- * 모바일 전용이다. 그래서 **앱이 붙일 수 있는 것이 없고**, 창이 앞으로 오는 것은 macOS가
- * 번들 앱의 알림에 기본으로 해 주는 동작뿐이다. 그 뒤는 스토리 10이 받는다 — 창이 포커스를
- * 얻는 순간 켜져 있던 셸의 초록이 꺼진다(`syncSeen`의 `focus` 리스너).
+ * 모바일 전용이다.
+ *
+ * **그래도 창 앞세우기는 OS가 한다** — 같은 `show()`가 macOS에서
+ * `notify_rust::set_application(…)`으로 알림 주체를 세우는데, 그 인자가 릴리스에서는 앱의
+ * 번들 id이고 **`tauri::is_dev()`이면 `com.apple.Terminal`이다**(2.4.0 `desktop.rs`). 그래서
+ * 이 자리의 실물 확인은 **번들된 `.app`으로 해야 한다**: `tauri dev`로 누르면 앞으로 오는
+ * 것은 터미널 앱이고, 그것을 「안 된다」로 읽으면 기준이 거짓 음성으로 닫힌다.
+ *
+ * 창이 앞으로 온 뒤는 스토리 10이 받는다 — 포커스를 얻는 순간 켜져 있던 셸의 초록이
+ * 꺼진다(`syncSeen`의 `focus` 리스너).
  */
-function show(content: NotifyContent, sound: boolean): void {
-  const { title, body } = notificationPayload(content);
+function show(payload: NotifyPayload): void {
   try {
-    sendNotification({ title, body, sound: sound ? MAC_DEFAULT_SOUND : undefined });
+    sendNotification(payload);
   } catch (error) {
     // 웹뷰 밖(노드 seam)이나 채널이 없는 자리에서 여기가 실제로 터진다. 알림 하나를 못 낸
     // 값으로 상태 갱신을 멈추지 않는다 — 화면은 이미 같은 사실을 그리고 있다.
     console.warn("atelier: 알림을 못 띄웠다", error);
   }
 }
-
-const MAC_DEFAULT_SOUND = "NSUserNotificationDefaultSoundName";
 
 // **구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
 // 머리말 — 그 이유가 여기서 났다) 이 콜백이 읽어도 딸려 오는 의존이 없다.

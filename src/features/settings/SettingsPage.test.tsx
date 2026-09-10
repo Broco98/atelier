@@ -257,9 +257,11 @@ describe("이 판이 열지 않은 것", () => {
 // 3. **권한 거부가 이 화면에 적히는 것**(스토리 69) — 인앱 토스트로 대체하지 않는다.
 //    거부된 채 조용하면 사람은 「알림 기능이 고장 났다」로 읽는다.
 
+// **안 고른 값은 키가 없다** — 백엔드가 이 구획만 `skip_serializing_if`로 줄째 빼기
+// 때문이고(`settings.rs`), 그래서 아무것도 안 준 기본이 빈 구획 `{}`다.
 const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
   terminal: { fontFamily: null, fontSize: null, theme: "dark" },
-  notifications: { enabled: null, sound: null, ...patch },
+  notifications: { ...patch },
 });
 
 function renderNotifications(value: Settings, granted: boolean | null = true): string {

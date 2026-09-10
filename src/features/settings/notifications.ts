@@ -22,12 +22,15 @@ export function patchNotifications(
   settings: Settings,
   patch: Partial<NotificationSettings>,
 ): Settings {
-  return { ...settings, notifications: { ...settings.notifications, ...patch } as NotificationSettings };
+  // **캐스트가 없다.** 있던 자리는 타입이 「둘 다 늘 있다」고 적어 두던 때의 흔적이었다 —
+  // 안 고른 값은 키째 없으므로(`types.ts`) 펼친 결과가 그대로 이 타입이다.
+  return { ...settings, notifications: { ...settings.notifications, ...patch } };
 }
 
 /**
  * **알림의 기본을 드는 유일한 자리**(결정 10 — 둘 다 켬). 백엔드는 「사용자가 고른 것만」
- * 적으므로(`settings.rs`) `null`은 「안 골랐다」이지 「껐다」가 아니다.
+ * 적으므로(`settings.rs`의 `skip_serializing_if`) **키가 없는 것**이 「안 골랐다」이지
+ * 「껐다」가 아니다.
  *
  * **`??`다 — `||`가 아니다.** 껐다는 선택(`false`)이 `||`에서는 조용히 켬으로 돌아오고,
  * 화면에서는 「껐는데 다시 켜졌다」로만 보인다.

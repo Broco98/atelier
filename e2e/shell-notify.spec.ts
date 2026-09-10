@@ -109,3 +109,57 @@ test("독 배지에 확인할 것의 수가 뜨고, 0이면 사라진다", async
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **고른 값이 채널까지 가는가**(스토리 66·64). 판정과 접기는 L2의 표가 재지만, 설정을
+// 읽어 배선에 먹이는 길(`loadNotifySettings` → `notifyChoice` → `outgoing`)은 이 층에서만
+// 이어진다 — 그 길이 끊기면 「껐는데 울린다」와 「켰는데 조용하다」가 둘 다 조용히 산다.
+//
+// **파일에서 시작한다.** 설정 화면을 거치지 않고 `read_settings`의 답만 바꾸는 것은, 앱이
+// 뜨면서 그 파일을 읽는 것이 이 배선의 정상 경로이기 때문이다(`main.tsx`). 화면에서 고른
+// 값이 저장을 지나 같은 자리로 오는 것은 마크업 seam이 잰다(`SettingsPage.test.tsx`).
+const 설정 = (notifications: { enabled?: boolean; sound?: boolean }) => ({
+  read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" }, notifications },
+});
+
+test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ page }) => {
+  await stubNotifications(page);
+  await stubWindowFocus(page);
+  await installFixtureBackend(page, 설정({ enabled: false }));
+  await page.goto(`/works/${work.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  await setWindowFocused(page, false);
+  await markAttention(page, 기다림);
+
+  // **이 두 줄이 함께 있어야 한다.** 화면은 그 사실을 그렸는데(둘째 줄에 셸이 한 말이 선다)
+  // 밖으로는 아무것도 안 나갔다 — 위 첫 검사가 같은 길로 **울리는 것**을 이미 세워 뒀으므로,
+  // 여기의 조용함은 「배선이 끊겼다」가 아니라 「껐다」다.
+  await expect(page.getByText("테스트 셋 통과")).toBeVisible();
+  expect(await sentNotifications(page), "껐는데 알림이 울렸다").toEqual([]);
+  // 배지도 함께 내린다 — 독에 수가 남으면 「껐는데 아직 부른다」로 읽힌다.
+  expect(await badgeCalls(page), "껐는데 배지가 붙었다").toEqual([]);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("소리만 껐으면 알림은 오되 소리가 안 실린다", async ({ page }) => {
+  await stubNotifications(page);
+  await stubWindowFocus(page);
+  await installFixtureBackend(page, 설정({ sound: false }));
+  await page.goto(`/works/${work.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  await setWindowFocused(page, false);
+  await markAttention(page, 기다림);
+
+  await expect
+    .poll(async () => (await sentNotifications(page)).length, { message: "알림이 안 울렸다" })
+    .toBe(1);
+
+  const [one] = await sentNotifications(page);
+  // 껐다는 것은 **소리 칸이 비는 것**이지 알림이 안 오는 것이 아니다(스토리 64).
+  expect(one.sound, "소리를 껐는데 실려 나갔다").toBeUndefined();
+  expect(one.body, "본문까지 사라졌다").toBe("테스트 셋 통과");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

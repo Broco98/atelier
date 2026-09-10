@@ -3,10 +3,13 @@ import {
   COALESCE_MS,
   createNotifier,
   decideNotification,
+  MAC_DEFAULT_SOUND,
   notificationPayload,
   notifyShells,
+  outgoing,
 } from "./shell-notify";
-import type { NotifyInput, NotifyShell } from "./shell-notify";
+import type { NotifyContent, NotifyInput, NotifyShell } from "./shell-notify";
+import type { NotifyChoice } from "@/features/settings/notifications";
 import type { Attention, ShellSignal } from "./shell-attention";
 import type { Shell, ShellsState } from "./shell-registry";
 
@@ -15,8 +18,9 @@ import type { Shell, ShellsState } from "./shell-registry";
 //
 // **표로 재는 것이 이 검사의 존재 이유다**(스토리 81 · 결정 10). 엣지 트리거의 재무장 조건이
 // 어긋나면 **두 번째 진짜 프롬프트가 삼켜지는데**, 그 실패는 화면에 아무 표시도 안 난다 —
-// 알림이 안 온 것과 부를 일이 없던 것이 사람에게 똑같이 보인다. 그래서 전이 아홉을 한 표에
-// 늘어놓고 하나씩 센다.
+// 알림이 안 온 것과 부를 일이 없던 것이 사람에게 똑같이 보인다. 그래서 **전이 열여섯**을 한
+// 표에 늘어놓고 하나씩 센다 — 그 수는 아래 `TRANSITIONS`가 들고, 표가 조용히 줄어드는 것은
+// 그 길이를 재는 검사가 막는다(수를 문단에 손으로 적어 두면 줄이 사라져도 아무 신호가 없다).
 
 const base: NotifyInput = {
   prev: null,
@@ -31,36 +35,46 @@ const base: NotifyInput = {
 
 const decide = (patch: Partial<NotifyInput>) => decideNotification({ ...base, ...patch });
 
+/**
+ * 화면값 넷(`waiting`·`done`·`working`·없음)이 서로 오가는 길 **열여섯 전부**. 왼쪽이 직전
+ * 화면값, 가운데가 새 화면값, 오른쪽이 「울리는가」다.
+ *
+ * **밖으로 꺼낸 것은 길이를 재기 위해서다** — 표가 한 줄 줄어도 남은 줄은 전부 통과하므로
+ * 조용하다. 4×4가 다 서 있다는 사실을 검사가 들면 그 침묵이 사라진다.
+ */
+const TRANSITIONS = [
+  // **들어감** — 확인할 것 둘로 처음 들어오는 길 넷.
+  [null, "waiting", true],
+  [null, "done", true],
+  ["working", "waiting", true],
+  ["working", "done", true],
+  // **둘 사이를 오가는 것도 들어감이다**(결정 10). 답을 기다리다 세션을 마친 것은 새 사실이다.
+  ["waiting", "done", true],
+  ["done", "waiting", true],
+  // **머무름** — 같은 값으로 남아 있는 동안은 조용하다(스토리 60).
+  ["waiting", "waiting", false],
+  ["done", "done", false],
+  // **나감** — 재무장하는 자리라 여기서는 안 울린다.
+  ["waiting", "working", false],
+  ["done", "working", false],
+  ["waiting", null, false],
+  ["done", null, false],
+  // **도는 중은 어느 방향으로도 안 울린다**(스토리 68).
+  [null, "working", false],
+  ["working", "working", false],
+  ["working", null, false],
+  [null, null, false],
+] as ReadonlyArray<readonly [ShellSignal | null, ShellSignal | null, boolean]>;
+
 describe("어느 전이가 울리나", () => {
-  // 왼쪽이 직전 화면값, 가운데가 새 화면값, 오른쪽이 「울리는가」다.
-  it.each([
-    // **들어감** — 확인할 것 둘로 처음 들어오는 길 넷.
-    [null, "waiting", true],
-    [null, "done", true],
-    ["working", "waiting", true],
-    ["working", "done", true],
-    // **둘 사이를 오가는 것도 들어감이다**(결정 10). 답을 기다리다 세션을 마친 것은 새 사실이다.
-    ["waiting", "done", true],
-    ["done", "waiting", true],
-    // **머무름** — 같은 값으로 남아 있는 동안은 조용하다(스토리 60).
-    ["waiting", "waiting", false],
-    ["done", "done", false],
-    // **나감** — 재무장하는 자리라 여기서는 안 울린다.
-    ["waiting", "working", false],
-    ["done", "working", false],
-    ["waiting", null, false],
-    ["done", null, false],
-    // **도는 중은 어느 방향으로도 안 울린다**(스토리 68).
-    [null, "working", false],
-    ["working", "working", false],
-    ["working", null, false],
-    [null, null, false],
-  ] as ReadonlyArray<readonly [ShellSignal | null, ShellSignal | null, boolean]>)(
-    "%s → %s 는 %s",
-    (prev, next, fires) => {
-      expect(decide({ prev, next }) !== null).toBe(fires);
-    },
-  );
+  // 화면값 넷이 서로 오가는 길은 4×4다. 줄이 사라지면 여기서 터진다.
+  it("전이 열여섯이 다 서 있다", () => {
+    expect(TRANSITIONS).toHaveLength(16);
+  });
+
+  it.each(TRANSITIONS)("%s → %s 는 %s", (prev, next, fires) => {
+    expect(decide({ prev, next }) !== null).toBe(fires);
+  });
 
   // **이것이 이 표가 있는 이유다**(결정 10 — Agent Deck 「두 번째 진짜 프롬프트가 삼켜짐」).
   // 재무장 조건을 잘못 잡으면 위 줄 하나하나는 통과하면서 이어 붙인 이 길에서만 무너진다.
@@ -298,22 +312,73 @@ describe("레지스트리에서 재료를 뽑는다", () => {
   });
 });
 
-// **채널이 부제를 못 나른다**(#206 실측 — `tauri-plugin-notification` 2.4.0의 `desktop.rs`가
-// 데스크톱 알림에 싣는 것은 title·body·icon·sound 넷뿐이다). 판정은 스펙대로 셋을 내고,
-// 그 셋을 채널의 둘로 접는 자리가 여기 하나다 — 접는 규칙이 부르는 자리마다 갈리면 같은
-// 알림이 실행마다 다른 모양으로 뜬다.
+// **이 플러그인이 부제를 안 노출한다**(#206 실측 — `tauri-plugin-notification` 2.4.0의
+// `desktop.rs`가 데스크톱 알림에 싣는 것은 title·body·icon·sound 넷뿐이다. 그 아래
+// `notify-rust`는 macOS에서 부제를 실을 수 있다 — 못 나르는 것은 채널이 아니라 이 층이다).
+// 판정은 스펙대로 셋을 내고, 그 셋을 채널이 받는 모양으로 접는 자리가 여기 하나다 — 접는
+// 규칙이 부르는 자리마다 갈리면 같은 알림이 실행마다 다른 모양으로 뜬다.
 describe("채널이 나를 수 있는 모양으로 접는다", () => {
   it("셸 이름이 제목 줄에 함께 선다", () => {
     expect(
-      notificationPayload({ title: "터미널 신호", body: "커밋할까요?", subtitle: "atelier · claude" }),
-    ).toEqual({ title: "터미널 신호 · atelier · claude", body: "커밋할까요?" });
+      notificationPayload(
+        { title: "터미널 신호", body: "커밋할까요?", subtitle: "atelier · claude" },
+        true,
+      ),
+    ).toEqual({ title: "터미널 신호 · atelier · claude", body: "커밋할까요?", sound: MAC_DEFAULT_SOUND });
   });
 
   // **말이 사라지지 않는다.** 부제를 본문에 앞세우는 안은 기각했다 — 알림에서 사람이 읽는
   // 것은 셸이 한 말이고, 그 앞에 이름을 붙이면 잘리는 쪽이 말이 된다.
   it("본문은 셸이 한 말 그대로다", () => {
-    expect(notificationPayload({ title: "가", body: "나를 기다림", subtitle: "zsh" }).body).toBe(
+    expect(notificationPayload({ title: "가", body: "나를 기다림", subtitle: "zsh" }, true).body).toBe(
       "나를 기다림",
     );
+  });
+});
+
+// **설정 스위치 둘이 무엇을 바꾸는지**(#206 · 스토리 64·66). 이 표가 없던 판에서는
+// `if (!enabled) return;`을 지워도, 소리를 늘 싣게 굳혀도 검증이 통째로 초록이었다 —
+// 동작을 바꾸는 뮤테이션이 그물 없이 지나가는 자리였고, 그 실패는 화면에 아무 표시도
+// 안 난다(끈 사람에게는 「원래 조용한 것」과 같아 보인다).
+describe("설정이 무엇을 바꾸나", () => {
+  const 하나: NotifyContent = { title: "터미널 신호", body: "커밋할까요?", subtitle: "atelier · claude" };
+  const 둘: NotifyContent = { title: "터미널 신호", body: "권한을 줄까요?", subtitle: "atelier · codex" };
+
+  // 왼쪽이 고른 값, 가운데가 나가는 알림 수와 거기 실리는 소리, 오른쪽이 독 배지의 수다.
+  it.each([
+    // 둘 다 켬 — 기본이다(안 고른 파일이 여기로 온다).
+    [{ enabled: true, sound: true }, 2, MAC_DEFAULT_SOUND, 3],
+    // **소리만 끈다**(스토리 64) — 알림은 그대로 나가고 소리 칸만 빈다.
+    [{ enabled: true, sound: false }, 2, undefined, 3],
+    // **끄면 조용하다**(스토리 66) — 나가는 것이 없고 배지도 0이다.
+    [{ enabled: false, sound: true }, 0, undefined, 0],
+    [{ enabled: false, sound: false }, 0, undefined, 0],
+  ] as ReadonlyArray<readonly [NotifyChoice, number, string | undefined, number]>)(
+    "%o 이면 알림 %i개(소리 %s) · 배지 %i",
+    (choice, count, sound, badge) => {
+      const out = outgoing([하나, 둘], 3, choice);
+      expect(out.toShow).toHaveLength(count);
+      expect(out.badge).toBe(badge);
+      for (const one of out.toShow) expect(one.sound).toBe(sound);
+    },
+  );
+
+  // 소리를 껐다는 것은 **키가 아예 없는 것**이다 — 채널이 「이름 없는 소리」를 조용함으로
+  // 읽는지에 기대지 않는다(`sound: undefined`를 실어 보내는 것과 뜻이 같아 보이지만,
+  // 그 동치는 이 저장소가 정한 것이 아니라 남의 구현이 정한 것이다).
+  it("소리를 끄면 소리 칸이 아예 안 실린다", () => {
+    const [one] = outgoing([하나], 1, { enabled: true, sound: false }).toShow;
+    expect("sound" in one, "빈 소리 칸이 실려 나갔다").toBe(false);
+  });
+
+  // 끈 동안에도 **배지만 남기지 않는다**: 독에 수가 남아 있으면 「껐는데 아직 부른다」로
+  // 읽힌다. 스위치는 하나이고 채널 셋(알림·소리·배지)이 그 하나에 달렸다(결정 10의 채널 칸).
+  it("끄면 부르는 셸이 있어도 배지가 0이다", () => {
+    expect(outgoing([하나], 7, { enabled: false, sound: true }).badge).toBe(0);
+  });
+
+  // 울린 것이 없어도 배지는 **지금 부르는 수**다 — 접혀서 안 울린 셸도 독에는 센다.
+  it("안 울린 회차에도 배지는 부르는 수를 센다", () => {
+    expect(outgoing([], 2, { enabled: true, sound: true })).toEqual({ toShow: [], badge: 2 });
   });
 });

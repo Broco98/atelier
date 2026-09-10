@@ -20,12 +20,18 @@ export interface TerminalSettings {
 // 알림 구획 (#206 · 결정 10). **둘뿐이다** — 켬/끔과 소리 켬/끔. 「배경일 때만」 같은 셋째
 // 선택은 없다(스토리 67).
 //
-// **둘 다 `null`이 「안 골랐다」이고 기본(둘 다 켬)은 프런트가 든다.** 백엔드는 고른 것만
-// 적으므로(`settings.rs`의 `skip_serializing_if`) 여기에 기본을 적어 두면 값을 정하는 자리가
-// 둘이 된다 — 그 하나를 `notificationChoice`가 진다(`SettingsPage.tsx`).
+// **키가 아예 없는 것이 「안 골랐다」다** — `terminal` 구획과 규칙이 갈리는 자리다. 백엔드가
+// 이 구획의 필드에만 `skip_serializing_if = "Option::is_none"`을 달아 안 고른 값을 줄째
+// 빼기 때문이고(`settings.rs`, 그 규칙을 `unchosen_notification_values_are_not_written`이
+// 지킨다), 그래서 여기 오는 값은 `null`이 아니라 **없음**이다. 위 `TerminalSettings`처럼
+// `boolean | null`로 적으면 이 타입이 응답의 모양을 거짓말하고, 그 거짓말은 `enabled === null`을
+// 「안 골랐다」로 읽는 다음 코드에서 영영 참이 안 되는 분기로 나타난다.
+//
+// **기본(둘 다 켬)은 프런트가 든다.** 여기에 기본을 적어 두면 값을 정하는 자리가 둘이 된다 —
+// 그 하나를 `notificationChoice`가 진다(`notifications.ts`).
 export interface NotificationSettings {
-  enabled: boolean | null;
-  sound: boolean | null;
+  enabled?: boolean;
+  sound?: boolean;
 }
 
 export interface Settings {

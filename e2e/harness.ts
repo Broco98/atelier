@@ -87,9 +87,26 @@ interface InitArgs {
  * L3: 우리 커맨드에 고정 데이터가 답한다. 빠르고 결정론적이라 자가수리 루프가 수십 번
  * 돌아도 안 깨진다.
  */
-export async function installFixtureBackend(page: Page): Promise<void> {
+export async function installFixtureBackend(
+  page: Page,
+  /**
+   * 이 시나리오에서만 다른 답을 줄 커맨드들. 표를 통째로 갈지 않고 **덮어쓴다** — 알림
+   * 설정처럼 「파일이 이렇게 적혀 있을 때」를 재는 검사가 `read_settings` 하나만 바꾸면
+   * 되게 하려는 것이고, 표에 없는 이름은 아래에서 거절하므로 새 커맨드를 세우는 자리로는
+   * 못 쓴다(그것은 `FIXTURE_COMMANDS`의 몫이다).
+   */
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  for (const cmd of Object.keys(overrides)) {
+    // **모르는 이름은 여기서 터진다.** 커맨드가 개명되면 덮어쓰기가 아무 데도 안 걸린 채
+    // 지나가고, 검사는 고정 표의 답을 받은 채로 「설정이 이랬는데도 조용했다」를 초록으로
+    // 낸다 — 그 침묵이 이 층에서 가장 읽기 어려운 실패다.
+    if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, cmd)) {
+      throw new Error(`덮어쓸 커맨드가 고정 답 표에 없습니다: ${cmd}`);
+    }
+  }
   await install(page, {
-    responses: { ...FIXTURE_COMMANDS, ...PLUGINS },
+    responses: { ...FIXTURE_COMMANDS, ...PLUGINS, ...overrides },
     bridgeName: null,
     byArg: FIXTURE_BY_ARG,
     incrementing: FIXTURE_INCREMENTING_KEYS,
@@ -511,9 +528,25 @@ export async function sentNotifications(
 export async function badgeCalls(page: Page): Promise<Array<number | null>> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
   return calls
-    .filter((call) => call.startsWith("plugin:window|set_badge_count"))
+    .filter((call) => call.startsWith(BADGE_COMMAND))
     .map((call) => {
-      const value = /"value":(\d+)/.exec(call);
-      return value ? Number(value[1]) : null;
+      // **먼저 호출의 모양을 세운다.** 이 커맨드의 인자에는 어느 창인지가 늘 실리므로
+      // (`label`) 그것이 안 보이면 읽고 있는 것이 이 호출이 아니거나 기록 형식이 바뀐
+      // 것이다 — 거기서 조용히 `null`을 내면 **모든 호출이 「배지를 없앴다」로 읽혀**
+      // 「배지가 사라졌다」를 재는 단언이 통째로 fail-open이 된다. 위 구독 손잡이 둘이
+      // 정규식이 안 맞을 때 IPC 기록을 실어 던지는 것과 같은 이유다.
+      const args: unknown = JSON.parse(call.slice(BADGE_COMMAND.length).trim() || "null");
+      if (typeof args !== "object" || args === null || !("label" in args)) {
+        throw new Error(`배지 호출의 모양이 낯설다 — ${call}`);
+      }
+      // **여기서만 `null`이 나온다.** `undefined`가 「배지를 없앤다」인데(`setBadgeCount`의
+      // 계약) 와이어에서는 키가 통째로 빠진다(`JSON.stringify`) — 그 없음이 곧 뜻이다.
+      if (!("value" in args)) return null;
+      const value = (args as { value: unknown }).value;
+      if (typeof value !== "number") throw new Error(`배지 값이 수가 아니다 — ${call}`);
+      return value;
     });
 }
+
+/** 배지가 나가는 IPC 커맨드 이름. 위 손잡이가 호출을 고르고 인자를 잘라 내는 기준이다. */
+const BADGE_COMMAND = "plugin:window|set_badge_count";
