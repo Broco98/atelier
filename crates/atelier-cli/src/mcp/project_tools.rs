@@ -5,7 +5,7 @@
 
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData};
 
-use super::{kernel_error, AtelierServer};
+use super::{kernel_error, AtelierServer, DO_NOT_CALL_PROJECT_TOOLS};
 
 /// `atelier_add_project`의 인자.
 #[derive(Debug, serde::Deserialize, rmcp::schemars::JsonSchema)]
@@ -53,6 +53,12 @@ impl AtelierServer {
         &self,
         Parameters(AddProjectParams { folder_path }): Parameters<AddProjectParams>,
     ) -> Result<CallToolResult, ErrorData> {
+        // **경로를 풀기도 전에 거절한다.** Maison에서 이 도구는 「없는 것을 만드는 일」이라
+        // 인자가 옳은지 그른지는 물을 것도 아니다 — 상대 경로 안내가 먼저 나가면
+        // 에이전트는 절대 경로로 고쳐 다시 부른다.
+        if let Some(refusal) = self.refuse_project_work(DO_NOT_CALL_PROJECT_TOOLS) {
+            return Ok(refusal);
+        }
         // 이 표면이 내보내는 경로는 전부 `~` 축약형이다. 그대로 되돌려 받아도 동작해야 한다.
         let folder = atelier_core::expand_home(&folder_path);
         // 상대 경로는 이 서버 프로세스의 작업 디렉터리 기준으로 풀린다 — 호스트가 정하는 값이라
@@ -93,6 +99,11 @@ impl AtelierServer {
             EditProjectParams,
         >,
     ) -> Result<CallToolResult, ErrorData> {
+        // 빈 패치 안내보다 **앞이다.** 없는 세계에서 「무엇을 바꿀지 말해라」가 먼저 나가면
+        // 에이전트가 필드를 채워 다시 부른다.
+        if let Some(refusal) = self.refuse_project_work(DO_NOT_CALL_PROJECT_TOOLS) {
+            return Ok(refusal);
+        }
         // 커널은 빈 패치를 성공으로 받아 파일을 다시 쓴다. 에이전트에게는 아무 일도
         // 안 일어난 것으로 보여 혼란만 남으므로, 무엇을 줘야 하는지 말해준다.
         if name.is_none() && description.is_none() && base_branch.is_none() {

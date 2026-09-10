@@ -7,6 +7,9 @@ import type { SearchHit } from "./types";
 // L3인데 그쪽 픽스처가 아카이브 화면까지 태우지 않기 때문이다 — 그리고 여기서 재는 것이
 // 「주소를 짓는 규칙을 다시 적지 않았다」이기도 하다: 값이 `fileSearch`·`viewSearch`·
 // `destinations.ts`에서 나오므로, 그것들이 바뀌면 여기가 함께 움직인다.
+//
+// **아래 세 벌은 Atelier의 것이고, 같은 물음을 Maison에서 다시 묻는 벌이 파일 끝에 있다** —
+// 한 세계만 재면 모드 인자를 통째로 버리는 변형이 그 세계에서는 초록이다.
 
 const doc = (over: Partial<Extract<SearchHit, { kind: "doc" }>> = {}): SearchHit => ({
   kind: "doc",
@@ -27,7 +30,7 @@ const workHit = (over: Partial<Extract<SearchHit, { kind: "work" }>> = {}): Sear
 
 describe("문서 줄이 가는 곳", () => {
   it("활성 문서는 그 work의 spec 화면에서 열린다", () => {
-    expect(hitTarget(doc())).toEqual({
+    expect(hitTarget("atelier", doc())).toEqual({
       to: "/works/$slug",
       params: { slug: "가" },
       search: { file: "overview.md", tab: undefined, split: undefined },
@@ -38,8 +41,8 @@ describe("문서 줄이 가는 곳", () => {
   // 분할이 안 무너지고, 터미널을 보고 있었어도 문서를 골랐으면 spec으로 돌아온다.
   // 기억에 다른 문서가 적혀 있어도 **고른 문서**가 이긴다 — 문서 줄은 문서를 골랐다.
   it("분할은 그 work의 기억에서 살아남고 탭은 spec으로 돌아온다", () => {
-    rememberView("갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
-    expect(hitTarget(doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
+    rememberView("atelier", "갈라둔것", { tab: "terminal", split: "rl", file: "기억에적힌것.md" });
+    expect(hitTarget("atelier", doc({ slug: "갈라둔것", path: "01-판/spec.md" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "갈라둔것" },
       search: { file: "01-판/spec.md", tab: undefined, split: "rl" },
@@ -49,12 +52,14 @@ describe("문서 줄이 가는 곳", () => {
   // 아카이브 문서는 **아카이브 화면**으로 간다. 경로는 work 루트 기준이고(`record.md`가
   // spec 밖에 있다) `file` 검증기는 두 화면이 이미 공유한다.
   it("아카이브 문서는 아카이브 화면에서 열린다", () => {
-    expect(hitTarget(doc({ slug: "옛일", path: "record.md", archived: true }))).toEqual({
+    expect(hitTarget("atelier", doc({ slug: "옛일", path: "record.md", archived: true }))).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: { file: "record.md" },
     });
-    expect(hitTarget(doc({ slug: "옛일", path: "spec/overview.md", archived: true }))).toEqual({
+    expect(
+      hitTarget("atelier", doc({ slug: "옛일", path: "spec/overview.md", archived: true })),
+    ).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: { file: "spec/overview.md" },
@@ -78,12 +83,12 @@ describe("본문 줄이 가는 곳", () => {
   });
 
   it("활성 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
-    expect(hitTarget(text())).toEqual(hitTarget(doc()));
+    expect(hitTarget("atelier", text())).toEqual(hitTarget("atelier", doc()));
   });
 
   it("아카이브 본문 줄은 그 문서 줄과 같은 곳으로 간다", () => {
-    expect(hitTarget(text({ slug: "옛일", path: "record.md", archived: true }))).toEqual(
-      hitTarget(doc({ slug: "옛일", path: "record.md", archived: true })),
+    expect(hitTarget("atelier", text({ slug: "옛일", path: "record.md", archived: true }))).toEqual(
+      hitTarget("atelier", doc({ slug: "옛일", path: "record.md", archived: true })),
     );
   });
 });
@@ -95,8 +100,8 @@ describe("work 줄이 가는 곳", () => {
   // (`SidebarWorkList`의 `goTo`): work을 고르는 길이 둘인데 도착지가 갈리면 어긋나도
   // 화면에 티가 안 난다.
   it("그 work을 마지막으로 보던 화면으로 간다 — 문서·탭·분할 셋 다", () => {
-    rememberView("터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
-    expect(hitTarget(workHit({ slug: "터미널보던것" }))).toEqual({
+    rememberView("atelier", "터미널보던것", { tab: "terminal", split: "lr", file: "03-판/spec.md" });
+    expect(hitTarget("atelier", workHit({ slug: "터미널보던것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "터미널보던것" },
       search: { tab: "terminal", split: "lr", file: "03-판/spec.md" },
@@ -106,7 +111,7 @@ describe("work 줄이 가는 곳", () => {
   // 기억이 없으면 기본값이다 — 방금 만들어 아직 안 열어 본 work이 그 자리다(결정 14가
   // 세우려는 것이 바로 그런 work이다).
   it("아직 안 본 work은 기본 화면으로 간다", () => {
-    expect(hitTarget(workHit({ slug: "방금만든것" }))).toEqual({
+    expect(hitTarget("atelier", workHit({ slug: "방금만든것" }))).toEqual({
       to: "/works/$slug",
       params: { slug: "방금만든것" },
       search: { tab: undefined, split: undefined, file: undefined },
@@ -115,7 +120,7 @@ describe("work 줄이 가는 곳", () => {
 
   // 아카이브 work은 **가는 화면이 다르다.** 문서를 안 골랐으므로 `file`도 없다.
   it("아카이브 work은 아카이브 화면으로 간다", () => {
-    expect(hitTarget(workHit({ slug: "옛일", archived: true }))).toEqual({
+    expect(hitTarget("atelier", workHit({ slug: "옛일", archived: true }))).toEqual({
       to: "/archive/$slug",
       params: { slug: "옛일" },
       search: {},
@@ -125,27 +130,101 @@ describe("work 줄이 가는 곳", () => {
 
 describe("프로젝트 줄과 목적지 줄이 가는 곳", () => {
   it("프로젝트 줄은 그 프로젝트 화면으로 간다", () => {
-    expect(hitTarget({ kind: "project", slug: "billing", name: "빌링" })).toEqual({
+    expect(hitTarget("atelier", { kind: "project", slug: "billing", name: "빌링" })).toEqual({
       to: "/projects/$slug",
       params: { slug: "billing" },
     });
   });
 
-  // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를 주소로 푸는
-  // 자리가 `destinations.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
+  // 결정 21. 라우트는 **프런트 것이다** — 코어는 `key`만 돌려주고, 그 key를 그 세계의
+  // 주소로 푸는 자리가 `destinations.ts` 하나다. 사이드바가 가는 곳과 같은 값이 나온다.
   it("목적지 줄은 사이드바가 가는 곳으로 간다", () => {
-    expect(hitTarget({ kind: "destination", key: "projects" })).toEqual({ to: "/projects" });
-    expect(hitTarget({ kind: "destination", key: "terminal" })).toEqual({ to: "/terminal" });
-    expect(hitTarget({ kind: "destination", key: "archive" })).toEqual({ to: "/archive" });
+    expect(hitTarget("atelier", { kind: "destination", key: "projects" })).toEqual({
+      to: "/projects",
+    });
+    expect(hitTarget("atelier", { kind: "destination", key: "terminal" })).toEqual({
+      to: "/terminal",
+    });
+    expect(hitTarget("atelier", { kind: "destination", key: "archive" })).toEqual({
+      to: "/archive",
+    });
     // **설정은 `navItems`에 없다**(결정 51 — 사이드바 바닥에 고정된 자리를 줬다). 그래도 갈
     // 수 있는 화면이라 여기서 풀려야 한다: 그 배열만 훑으면 팔레트 목록에는 뜨는데 Enter가
     // 아무 일도 안 하는 줄이 되고, **그 실패는 목록만 보면 안 보인다.**
-    expect(hitTarget({ kind: "destination", key: "settings" })).toEqual({ to: "/settings" });
+    expect(hitTarget("atelier", { kind: "destination", key: "settings" })).toEqual({
+      to: "/settings",
+    });
   });
 
   // 코어는 여기서 건넨 key만 돌려주므로(결정 21) 모르는 key는 계약이 깨진 것이다.
   // **갈 곳을 지어내지 않는다** — 지어내면 엉뚱한 화면으로 데려가고 그것이 조용하다.
   it("모르는 목적지는 갈 곳이 없다고 말한다", () => {
-    expect(hitTarget({ kind: "destination", key: "없는목적지" })).toBeNull();
+    expect(hitTarget("atelier", { kind: "destination", key: "없는목적지" })).toBeNull();
+  });
+});
+
+// 같은 물음을 **저쪽 세계에서 다시 묻는다.** 위 벌이 전부 Atelier라, 모드 인자를 무시하고
+// 주소를 리터럴로 되돌리는 변형은 여기서만 빨개진다 — 갈래마다(work·아카이브·문서·목적지)
+// 다시 물어야 한다: 주소가 갈래마다 한 번씩 풀리므로 되돌림도 갈래마다 따로 일어난다.
+describe("Maison에서 고른 줄이 가는 곳", () => {
+  it("Room 줄은 그 Room을 마지막으로 보던 화면으로 간다", () => {
+    rememberView("maison", "읽는방", { tab: "terminal", split: "lr", file: "개요.md" });
+    expect(hitTarget("maison", workHit({ slug: "읽는방" }))).toEqual({
+      to: "/maison/rooms/$slug",
+      params: { slug: "읽는방" },
+      search: { tab: "terminal", split: "lr", file: "개요.md" },
+    });
+  });
+
+  it("Maison 아카이브 줄은 Maison 아카이브 화면으로 간다", () => {
+    expect(hitTarget("maison", workHit({ slug: "닫은방", archived: true }))).toEqual({
+      to: "/maison/archive/$slug",
+      params: { slug: "닫은방" },
+      search: {},
+    });
+  });
+
+  // 문서·본문 줄도 **같은 갈림을 탄다** — `archived` 하나로 화면이 갈리는 것은 두 세계가
+  // 같고, 갈리는 것은 어느 세계의 그 화면인가뿐이다.
+  it("Room 문서와 아카이브 문서가 각각 그 세계의 화면에서 열린다", () => {
+    expect(hitTarget("maison", doc({ slug: "새방", path: "개요.md" }))).toEqual({
+      to: "/maison/rooms/$slug",
+      params: { slug: "새방" },
+      search: { file: "개요.md", tab: undefined, split: undefined },
+    });
+    expect(hitTarget("maison", doc({ slug: "닫은방", path: "record.md", archived: true }))).toEqual({
+      to: "/maison/archive/$slug",
+      params: { slug: "닫은방" },
+      search: { file: "record.md" },
+    });
+  });
+
+  it("목적지 줄은 그 세계의 화면으로 간다", () => {
+    expect(hitTarget("maison", { kind: "destination", key: "terminal" })).toEqual({
+      to: "/maison/terminal",
+    });
+    expect(hitTarget("maison", { kind: "destination", key: "archive" })).toEqual({
+      to: "/maison/archive",
+    });
+    // 설정만 두 세계에서 같은 곳이다 — 세계 밖 화면이라 그렇다(공용 `settings.json`, 결정 20).
+    expect(hitTarget("maison", { kind: "destination", key: "settings" })).toEqual({
+      to: "/settings",
+    });
+    // **Maison에 프로젝트는 없다**(결정 17). 그 줄이 오는 것은 계약이 깨진 것이고, 그때
+    // 갈 곳을 지어내면 ⌘K 한 번에 세계를 떠난다.
+    expect(hitTarget("maison", { kind: "destination", key: "projects" })).toBeNull();
+  });
+
+  // **기억도 세계를 탄다.** `lastView`는 (mode, slug)로 적히는데(`-work-search.ts`) 결정 10이
+  // 두 세계에 같은 slug를 허용하므로 그 이름은 실제로 겹칠 수 있다 — 주소만 옮기고 기억을
+  // Atelier로 두면 Maison에서 연 Room이 저쪽 세계의 화면(탭·분할·문서)으로 열린다. 화면은
+  // 뜨므로 그 어긋남은 조용하다.
+  it("같은 이름이 두 세계에 있어도 저쪽 기억으로 안 열린다", () => {
+    rememberView("atelier", "겹치는이름", { tab: "terminal", split: "rl", file: "저쪽문서.md" });
+    expect(hitTarget("maison", workHit({ slug: "겹치는이름" }))).toEqual({
+      to: "/maison/rooms/$slug",
+      params: { slug: "겹치는이름" },
+      search: { tab: undefined, split: undefined, file: undefined },
+    });
   });
 });

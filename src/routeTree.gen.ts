@@ -14,10 +14,15 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TerminalRouteImport } from './routes/terminal'
 import { Route as ArchiveIndexRouteImport } from './routes/archive.index'
 import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
+import { Route as MaisonTerminalRouteImport } from './routes/maison.terminal'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
+import { Route as MaisonArchiveIndexRouteImport } from './routes/maison.archive.index'
+import { Route as MaisonArchiveSlugRouteImport } from './routes/maison.archive.$slug'
+import { Route as MaisonRoomsIndexRouteImport } from './routes/maison.rooms.index'
+import { Route as MaisonRoomsSlugRouteImport } from './routes/maison.rooms.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -44,6 +49,11 @@ const ArchiveSlugRoute = ArchiveSlugRouteImport.update({
   path: '/archive/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MaisonTerminalRoute = MaisonTerminalRouteImport.update({
+  id: '/maison/terminal',
+  path: '/maison/terminal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -64,28 +74,58 @@ const WorksSlugRoute = WorksSlugRouteImport.update({
   path: '/works/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MaisonArchiveIndexRoute = MaisonArchiveIndexRouteImport.update({
+  id: '/maison/archive/',
+  path: '/maison/archive/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaisonArchiveSlugRoute = MaisonArchiveSlugRouteImport.update({
+  id: '/maison/archive/$slug',
+  path: '/maison/archive/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaisonRoomsIndexRoute = MaisonRoomsIndexRouteImport.update({
+  id: '/maison/rooms/',
+  path: '/maison/rooms/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaisonRoomsSlugRoute = MaisonRoomsSlugRouteImport.update({
+  id: '/maison/rooms/$slug',
+  path: '/maison/rooms/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/works/': typeof WorksIndexRoute
+  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
+  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/maison/archive/': typeof MaisonArchiveIndexRoute
+  '/maison/rooms/': typeof MaisonRoomsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/works': typeof WorksIndexRoute
+  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
+  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/maison/archive': typeof MaisonArchiveIndexRoute
+  '/maison/rooms': typeof MaisonRoomsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -93,11 +133,16 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/works/': typeof WorksIndexRoute
+  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
+  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/maison/archive/': typeof MaisonArchiveIndexRoute
+  '/maison/rooms/': typeof MaisonRoomsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,33 +151,48 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/terminal'
     | '/projects/$slug'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
     | '/works/'
+    | '/maison/archive/$slug'
+    | '/maison/rooms/$slug'
+    | '/maison/archive/'
+    | '/maison/rooms/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/terminal'
     | '/projects/$slug'
     | '/works/$slug'
     | '/archive'
     | '/projects'
     | '/works'
+    | '/maison/archive/$slug'
+    | '/maison/rooms/$slug'
+    | '/maison/archive'
+    | '/maison/rooms'
   id:
     | '__root__'
     | '/'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/terminal'
     | '/projects/$slug'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
     | '/works/'
+    | '/maison/archive/$slug'
+    | '/maison/rooms/$slug'
+    | '/maison/archive/'
+    | '/maison/rooms/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -140,11 +200,16 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
+  MaisonTerminalRoute: typeof MaisonTerminalRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
+  MaisonArchiveSlugRoute: typeof MaisonArchiveSlugRoute
+  MaisonRoomsSlugRoute: typeof MaisonRoomsSlugRoute
+  MaisonArchiveIndexRoute: typeof MaisonArchiveIndexRoute
+  MaisonRoomsIndexRoute: typeof MaisonRoomsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -184,6 +249,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArchiveSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/maison/terminal': {
+      id: '/maison/terminal'
+      path: '/maison/terminal'
+      fullPath: '/maison/terminal'
+      preLoaderRoute: typeof MaisonTerminalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/': {
       id: '/projects/'
       path: '/projects'
@@ -212,6 +284,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorksSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/maison/archive/': {
+      id: '/maison/archive/'
+      path: '/maison/archive'
+      fullPath: '/maison/archive/'
+      preLoaderRoute: typeof MaisonArchiveIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maison/archive/$slug': {
+      id: '/maison/archive/$slug'
+      path: '/maison/archive/$slug'
+      fullPath: '/maison/archive/$slug'
+      preLoaderRoute: typeof MaisonArchiveSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maison/rooms/': {
+      id: '/maison/rooms/'
+      path: '/maison/rooms'
+      fullPath: '/maison/rooms/'
+      preLoaderRoute: typeof MaisonRoomsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maison/rooms/$slug': {
+      id: '/maison/rooms/$slug'
+      path: '/maison/rooms/$slug'
+      fullPath: '/maison/rooms/$slug'
+      preLoaderRoute: typeof MaisonRoomsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -220,11 +320,16 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
+  MaisonTerminalRoute: MaisonTerminalRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
+  MaisonArchiveSlugRoute: MaisonArchiveSlugRoute,
+  MaisonRoomsSlugRoute: MaisonRoomsSlugRoute,
+  MaisonArchiveIndexRoute: MaisonArchiveIndexRoute,
+  MaisonRoomsIndexRoute: MaisonRoomsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -3,11 +3,13 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { recallSearch, workSlugOf } from "@/routes/-work-search";
+import { recallSearch } from "@/routes/-work-search";
+import { routesOf, slugOf, type Mode } from "@/mode";
 import { useSetWorkPinned, useWorks } from "./hooks";
-import { emptyMainNotice, splitWorkSections } from "./work-sections";
+import { WorkCard } from "./WorkCard";
+import { emptyMainNotice, listLabelOf, splitWorkSections } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
-import { formatCreated, StatusIcon, STATUS_META } from "./status";
+import { StatusIcon } from "./status";
 import type { WorkView } from "./types";
 
 // 목록을 훑어 지나가는 동안 카드가 연달아 튀어나오지 않을 만큼은 머물러야 한다
@@ -29,16 +31,27 @@ const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
 const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
-// 사이드바에 상주하는 작업 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 Works로 간다.
+// 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
+// 간다 — **어느 세계의 목록인가는 `mode`가 정한다**(Atelier `작업` · Maison `Rooms`).
 //
 // 이건 전역 컨텍스트가 아니라 **전환 수단**이다 — "선택된 작업"이 앱 전체에 걸리는 개념은
 // 도입하지 않는다. 다른 화면들은 작업 선택과 무관하게 독립 동작한다.
 function SidebarWorkList({
   open,
+  mode,
   shellCounts,
   renderShellMeta,
 }: {
   open: boolean;
+  /**
+   * 어느 세계의 목록인가. **읽는 곳과 가는 곳이 이 값 하나에서 함께 나온다**(#183) —
+   * 데이터만 모드로 갈면 Maison에서 목록은 Room인데 행을 누르면 Atelier로 튄다.
+   *
+   * 주소에서 다시 읽지 않고 셸이 내려준다: `/settings`에는 모드가 안 실려 마지막 모드를
+   * 얹어야 답이 나오는데(`shellMode`), 그 합성이 두 자리에 있으면 설정 화면에서만 목록과
+   * 세그먼트가 다른 세계를 가리킨다.
+   */
+  mode: Mode;
   /**
    * work별 셸 개수 — **행 오른쪽 끝의 메타가 서는 조건**이다(결정 2·3). 그것이 무엇을
    * 적는지는 이제 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는 자리**에서만 「그 밖의
@@ -56,9 +69,12 @@ function SidebarWorkList({
    */
   renderShellMeta: (work: WorkView) => ReactNode;
 }) {
-  const { data: works = [] } = useWorks();
+  const { data: works = [] } = useWorks(mode);
   const navigate = useNavigate();
-  const setPinned = useSetWorkPinned();
+  const setPinned = useSetWorkPinned(mode);
+  // 주소 리터럴이 박히는 자리는 모드 표 하나다(`-works-view.tsx`의 같은 줄) — 여기서
+  // `/works/$slug`를 다시 적으면 Maison에서 Room을 누를 때마다 Atelier로 튄다.
+  const routes = routesOf(mode);
   const [pinnedOpen, setPinnedOpen] = useState(
     () => localStorage.getItem(PINNED_OPEN_KEY) !== "0",
   );
@@ -84,8 +100,13 @@ function SidebarWorkList({
   // **읽는 것이 슬러그 하나다.** 한때 `tab`도 따로 구독했다 — 고른 work의 `spec` 잎이
   // 켜지는지가 그것으로 갈렸는데, 그 잎이 탭 줄로 가면서(결정 6·7) 이 목록에 「지금 보고
   // 있는 것」을 말하는 자리가 행 하나로 줄었다.
+  //
+  // **읽는 자리가 `@/mode`의 `slugOf` 하나다.** 이 목록이 두 세계의 항목 주소를 다 읽어야 해서
+  // 그리로 옮겼고, `/works/`를 박아 두던 `-work-search.ts`의 옛 파서는 호출부가 없어져 함께
+  // 걷었다 — 답이 갈리는 파서 둘(`/works/a/b`를 `"a/b"`로 읽던 쪽)이 남아 있으면 항목 아래로
+  // 화면이 갈라지는 날 다음 사람이 틀린 쪽을 고른다.
   const openSlug = useRouterState({
-    select: (state) => workSlugOf(state.location.pathname),
+    select: (state) => slugOf(state.location.pathname),
   });
 
   const sectionsOpen: SectionsOpen = {
@@ -145,9 +166,9 @@ function SidebarWorkList({
   const goTo = (slug: string) => {
     closeCard();
     void navigate({
-      to: "/works/$slug",
+      to: routes.item,
       params: { slug },
-      search: recallSearch(slug),
+      search: recallSearch(mode, slug),
     });
   };
 
@@ -189,6 +210,7 @@ function SidebarWorkList({
         <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-(--row-gap) overflow-y-auto px-2 pb-1 scroll-quiet">
           <WorkSectionList
             sections={sections}
+            mode={mode}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
             shellCounts={shellCounts}
@@ -216,7 +238,7 @@ function SidebarWorkList({
           width={272}
           className="p-3.5"
         >
-          <WorkCard work={hovered} />
+          <WorkCard mode={mode} work={hovered} />
         </PopoverPortal>
       )}
     </>
@@ -229,6 +251,7 @@ function SidebarWorkList({
 // 한다(SidebarWorkList.test.tsx).
 export function WorkSectionList({
   sections,
+  mode,
   open,
   selectedSlug,
   shellCounts,
@@ -240,6 +263,8 @@ export function WorkSectionList({
   renderShellMeta,
 }: {
   sections: WorkSections;
+  /** 목록이 자기를 뭐라고 부르는가가 여기서 갈린다 — 머리 라벨과 빈 몸통의 문구 둘 다. */
+  mode: Mode;
   open: SectionsOpen;
   selectedSlug: string | null;
   shellCounts: Record<string, number>;
@@ -281,9 +306,11 @@ export function WorkSectionList({
         </>
       )}
 
-      {/* '작업' 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다 */}
+      {/* 상주 목록의 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다.
+          **라벨이 세계를 탄다**(US 17): Atelier `작업` · Maison `Rooms`. 형제인 `고정`·`초안`은
+          상태의 이름이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이다. */}
       <SectionHeader
-        label="작업"
+        label={listLabelOf(mode)}
         className="mt-3"
         open={open.works}
         count={main.length}
@@ -291,8 +318,19 @@ export function WorkSectionList({
       />
       <SectionBody open={open.works}>
         {main.length === 0 ? (
-          <span className="px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
-            {emptyMainNotice(sections)}
+          // **`mr-1`이 막대 자리를 비운다.** 이 span은 `SectionBody`의 grid 안에 있어
+          // **블록으로 눕고**(grid item), 그래서 글자 길이와 무관하게 상자 폭을 통째로 쓴다 —
+          // 8~272다. 바깥 상자가 `-mx-2 px-2`로 거터를 뚫고 나가 있어 막대는 271~277에 서므로
+          // (`lib/scroll-quiet.ts`의 EDGE·THICKNESS) 그 272가 막대 자리를 4px 먹는다. 이웃한
+          // 행들은 같은 272까지 오지만 **잎이 아니라** 안쪽 잎(핀·메타)이 268에서 멎어 성했고,
+          // 폭을 통째로 쓰는 잎은 이것 하나뿐이라 여기만 어긋나 있었다. 아카이브의 같은 모양이
+          // 성한 것은 그쪽 거터가 `-mx-3 px-3`이라 12px여서다.
+          //
+          // **목록이 넘칠 때만 보이는 병이라 오래 안 보였다.** 이 자리는 work이 0개일 때만 서고
+          // 그때는 대개 목록이 안 넘치는데, 사이드바 최상단에 모드 세그먼트가 서면서 넘치는
+          // 창이 넓어졌다 — 목록이 오기 전 한 프레임에 이 문구가 서는 그 창이다.
+          <span className="mr-1 px-[9px] pb-1 text-[12.5px] leading-normal text-tertiary">
+            {emptyMainNotice(sections, mode)}
           </span>
         ) : (
           main.map(row)
@@ -313,68 +351,6 @@ export function WorkSectionList({
         </>
       )}
     </>
-  );
-}
-
-// 정보 전용이다 — 누를 수 있는 것을 넣지 않는다. 클릭 대상이 생기면 마우스가 행에서 카드로
-// 건너가는 경로(safe triangle)를 살려둬야 하고, 열림 상태의 소유가 행에서 카드로 넘어간다.
-//
-// 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 숫자 단축키로 작업을 고르는 경로에서는
-// 이 정보가 보이지 않는다. 감수한다.
-function WorkCard({ work }: { work: WorkView }) {
-  const meta = STATUS_META[work.status];
-  return (
-    <div className="flex flex-col gap-2.5">
-      <span className="text-[13.5px] font-medium leading-snug">{work.title}</span>
-      <span className="flex items-center gap-2">
-        <span
-          className={cn(
-            "shrink-0 rounded-[6px] px-1.5 py-px text-[11px] font-medium",
-            meta.badgeClass,
-          )}
-        >
-          {meta.label}
-        </span>
-        <span className="text-[11.5px] text-tertiary">{formatCreated(work.createdAt)}</span>
-      </span>
-      <div className="flex flex-col gap-1 border-t pt-2.5 text-[12px]">
-        {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다 */}
-        <CardField label="브랜치" muted={work.branch === null} mono={work.branch !== null}>
-          {work.branch ?? "프로젝트가 붙으면 정해져요"}
-        </CardField>
-        <CardField label="프로젝트" muted={work.projects.length === 0}>
-          {work.projects.length === 0 ? "아직 없어요" : work.projects.join(", ")}
-        </CardField>
-        <CardField label="spec">{`${work.specFiles.length}개`}</CardField>
-      </div>
-    </div>
-  );
-}
-
-function CardField({
-  label,
-  muted = false,
-  mono = false,
-  children,
-}: {
-  label: string;
-  muted?: boolean;
-  mono?: boolean;
-  children: string;
-}) {
-  return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="w-[46px] shrink-0 text-tertiary">{label}</span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          muted ? "text-tertiary" : "text-muted-foreground",
-          mono && "font-mono",
-        )}
-      >
-        {children}
-      </span>
-    </span>
   );
 }
 

@@ -6,13 +6,15 @@ import {
   activeIdOf,
   closesShellFromWindow,
   opensShellFromWindow,
+  ownerOf,
   sameScreen,
   shellForNav,
   shellNavFromWindow,
   shellsOf,
-  TOP_TERMINAL,
+  topTerminal,
 } from "./shell-registry";
 import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
+import type { Mode } from "@/mode";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
 // 데이터 루트다(결정 12·25). 본문은 Work의 터미널과 **같은 컴포넌트**다.
@@ -33,7 +35,21 @@ import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./t
 // 하나여서 이 판이 그 줄을 되살리며 사라졌다. 본문에 남은 것은 조작이 아니라 **비었다는
 // 표시와 여는 법**이고, 상한에 닿았을 때의 문장도 거기서 읽힌다 — `TerminalPane`의 주석이
 // 사정을 든다.
-function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
+function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean }) {
+  /**
+   * 이 화면의 소유자 — **그 세계의 최상위**다(결정 10). 화면이 둘이라(`/terminal`과
+   * `/maison/terminal`) 이 값이 안 갈리면 두 세계가 같은 셸 목록·같은 상한·같은 켜진 칸을
+   * 나눠 쓰고, 모드를 갈아도 저쪽 셸이 계속 도는 것을 화면이 표현할 수 없다.
+   *
+   * **여는 자리는 `topTerminal(mode)`이고 조회하는 자리는 이 값인데, 둘은 갈릴 수 없다** —
+   * 그 함수가 같은 인자로 `ownerOf`를 부른다(레지스트리의 검사가 그 짝을 붙든다). 갈리면
+   * 셸은 목록에 앉은 채 어느 화면에도 안 뜬다.
+   *
+   * 문자열이라 **값으로** 안정적이다 — 아래 이펙트 셋의 의존성이 `mode` 하나인 것이 그
+   * 성질에 기댄다(객체로 들면 렌더마다 새 참조라 핸들러가 매번 다시 붙는다).
+   */
+  const owner = ownerOf(mode);
+
   /**
    * 탭 줄이 그리는 것 — **스토어를 구독하는 자리가 화면이다.** 줄 자체는 상태와 콜백만
    * 받는다(ShellTabs 머리말): 그 파일이 terminal-store를 import하면 `@xterm/*`와 그 CSS가
@@ -50,7 +66,7 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   const shellState = useStore(
     terminalStore,
     (whole) => whole,
-    (a, b) => sameScreen(a, b, null),
+    (a, b) => sameScreen(a, b, owner),
   );
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
@@ -63,11 +79,11 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      openNewShell(TOP_TERMINAL);
+      openNewShell(topTerminal(mode));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [mode]);
 
   /**
    * ⌘1~9와 ⌃Tab이 **이 화면의 셸**을 고른다(결정 78·79·109).
@@ -82,23 +98,23 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       if (!nav) return;
       e.preventDefault();
       const state = terminalStore.state;
-      const shells = shellsOf(state, null);
+      const shells = shellsOf(state, owner);
       // 첫 셸이 ⌘1이다 — 이 화면에는 문서가 없어 자리를 밀지 않는다. 아래 탭 줄도 같은
       // 이유로 셸부터 세우므로(`spec={null}`) 보이는 순서와 이 키가 고르는 것이 같다.
-      const next = shellForNav(shells, activeIdOf(state, null), nav, 1);
+      const next = shellForNav(shells, activeIdOf(state, owner), nav, 1);
       if (next !== null) selectShell(next);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [owner]);
 
   /**
    * ⌘W — **켜진 칸을 닫는다**(결정 13). 이 화면에도 겨눌 칸이 서게 된 것이 그 근거다(adr-03).
    *
    * **`shellClosedByTab`(WorksPage)을 부르지 않는다.** 그 함수가 가르는 것은 「`spec`이
-   * 켜져 있으면 아무 일도 안 한다」인데 이 화면에는 그 칸이 없고, 게다가 `owner`가 `null`이면
-   * 그 함수는 언제나 `null`을 돌려준다 — 고른 작업이 없는 work 화면의 ⌘W가 **여기 셸을**
-   * 죽이지 않게 막는 가드다. 그것을 여기서 부르면 이 키가 조용히 아무 일도 안 한다.
+   * 켜져 있으면 아무 일도 안 한다」인데 이 화면에는 그 칸이 없고, 그 함수의 `owner`는
+   * 「고른 작업」이라 `null`이 들어올 수 있다 — 그때 언제나 `null`을 돌려주는 가드가 붙어
+   * 있다. 그것을 여기서 부르면 이 키가 조용히 아무 일도 안 한다.
    *
    * 닫는 길은 여전히 `requestCloseShell` 하나다 — 확인 창을 우회하는 길을 새로 만들지
    * 않는다(결정 92가 `closeShell`을 밖으로 안 내보내는 그 이유). 셸 안에서는 xterm 핸들러가
@@ -111,22 +127,22 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!closesShellFromWindow(e)) return;
-      const id = activeIdOf(terminalStore.state, null);
+      const id = activeIdOf(terminalStore.state, owner);
       if (id === null) return;
       e.preventDefault();
       void requestCloseShell(id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [owner]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="relative flex min-w-0 flex-1 flex-col">
         <ShellTabs
           state={shellState}
-          // 이 화면의 셸은 Work에 안 매인다 — `shellsOf`의 계약상 그 소유자가 `null`이다.
-          owner={null}
+          // 이 화면의 셸은 Work에 안 매인다 — 소유자의 slug가 비어 있는 쪽이다(결정 10).
+          owner={owner}
           // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
           // work뿐이고(결정 24) 이 화면은 work가 아니다.
           projects={[]}
@@ -140,9 +156,9 @@ function TerminalPage({ sidebarOpen }: { sidebarOpen: boolean }) {
           onSelect={selectShell}
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
           onClose={requestCloseShell}
-          onOpen={() => openNewShell(TOP_TERMINAL)}
+          onOpen={() => openNewShell(topTerminal(mode))}
         />
-        <TerminalPane work={null} />
+        <TerminalPane mode={mode} work={null} />
       </main>
     </div>
   );

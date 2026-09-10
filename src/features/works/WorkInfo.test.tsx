@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import WorkInfo, { relativeToWorkDir, type ProjectBase } from "./WorkInfo";
+import type { Mode } from "@/mode";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
 
@@ -33,12 +34,16 @@ const registered: Record<string, ProjectBase> = {
   atelier: { base: "develop", unregistered: false },
 };
 
+// **세계는 맨 뒤 인자다** — 기본값이 Atelier라 아래 기존 검사들은 그대로다. 그 뜻은
+// 이것들이 전부 「Atelier 정보 탭은 한 글자도 안 바뀐다」의 증거이기도 하다는 것이다.
 function render(
   overrides: Partial<WorkView> = {},
   bases: Record<string, ProjectBase> = registered,
+  mode: Mode = "atelier",
 ): string {
   return renderToStaticMarkup(
     <WorkInfo
+      mode={mode}
       work={{ ...work, ...overrides }}
       bases={bases}
       onCopy={() => {}}
@@ -195,13 +200,81 @@ describe("WorkInfo 작업 · 문서 구획", () => {
   });
 });
 
+// **두 세계를 함께 잰다.** 한쪽만 재면 조건이 어느 쪽으로 누워도 초록인 검사가 된다 —
+// Maison만 보면 구획을 통째로 지워도(그래서 Atelier에서도 안 나와도) 통과하고, Atelier만
+// 보면 조건을 뒤집어도 통과한다. 같은 값을 두 모드로 그려 **차이 자체**를 못박는다.
+describe("WorkInfo가 세계를 탄다", () => {
+  // 실재하는 Room이다 — 코어의 nothing_to_decide는 세 조건을 **모두** 요구하므로
+  // (works.rs) 이름을 주고 만든 Room에는 프로젝트가 0개여도 브랜치가 실려 온다.
+  // 「값이 비어 있으니 어차피 안 그려진다」가 성립하지 않는 자리가 여기다.
+  const room: Partial<WorkView> = { projects: [], worktrees: [], branch: "feat/some-room" };
+
+  // **값이 실려 온 채로 잰다.** 프로젝트도 워크트리도 없는 픽스처로만 재면
+  // 「worktree 줄이 없다」가 공허하게 참이다 — 그 줄은 `work.projects.length > 0`일 때만
+  // 도는 map 안에 살아서, 조건을 통째로 지워도(Atelier에서도) 안 그려진다. 지금은 같은
+  // 게이트가 「프로젝트」 구획까지 감싸고 있어 그쪽 어서션이 대신 물지만, 워크트리 줄이
+  // 자기 구획으로 나가는 날 Maison 렌더를 잡을 그물이 사라진다.
+  it("Maison에는 프로젝트·브랜치·워크트리가 한 글자도 없다", () => {
+    const markup = render({}, registered, "maison");
+    // 구획 제목도, 그 안의 프로젝트 이름도, 워크트리 줄의 라벨도 함께 걷힌다
+    expect(markup).not.toContain("프로젝트");
+    expect(markup).not.toContain("worktree");
+    expect(markup).not.toContain("trees/atelier");
+    expect(rowValue(markup, "브랜치")).toBeNull();
+    expect(markup).not.toContain("feat/some-work");
+  });
+
+  // 프로젝트가 0개인 Room도 같은 자리에 선다 — 걷히는 이유가 「값이 비어서」가 아니라
+  // 「세계가 달라서」임을 이 짝이 못박는다(코어는 이름을 준 Room에 브랜치를 실어 보낸다).
+  it("프로젝트 0개 Room에도 브랜치가 안 뜬다", () => {
+    const markup = render(room, {}, "maison");
+    expect(markup).not.toContain("프로젝트");
+    expect(rowValue(markup, "브랜치")).toBeNull();
+    expect(markup).not.toContain("feat/some-room");
+  });
+
+  it("같은 Room을 Atelier로 그리면 브랜치 줄과 프로젝트 구획이 선다", () => {
+    const markup = render(room, {}, "atelier");
+    expect(rowValue(markup, "브랜치")).toBe("feat/some-room");
+    expect(markup).toContain("아직 프로젝트가 없어요.");
+  });
+
+  it("남는 구획 둘은 Maison에서도 그대로다", () => {
+    // 걷히는 것이 셋뿐이라는 뜻이다 — 항목 구획과 「문서」까지 함께 사라지면 정보 탭이
+    // 저 세계에서 빈 탭이 되는데, 위 검사들만으로는 그 화면도 초록이다.
+    const markup = render(room, {}, "maison");
+    expect(rowValue(markup, "slug")).toBe("some-work");
+    expect(rowValue(markup, "생성일")).toBe("2026-08-16");
+    // **경로도 저 세계의 것이다**(#186). Atelier 루트가 남아 있으면 사용자는 여기서 복사한
+    // 줄을 그대로 열었다가 없는 폴더를 만난다 — 값이 그럴듯해서 화면에서는 안 보인다.
+    expect(rowValue(markup, "Room 폴더")).toBe("~/.atelier/maison/rooms/some-work/");
+    expect(rowValue(markup, "spec")).toBe("spec/");
+  });
+
+  // **낱말도 세계를 탄다.** 구획 머리와 폴더 줄의 이름표가 Atelier 말로 남아 있었다 —
+  // 이 판이 사이드바·본문·아카이브의 어휘를 갈라 놓고도 정보 탭을 안 집었고, 그래서
+  // Maison의 정보 탭이 Room을 통째로 「작업」이라 불렀다(CONTEXT.md 「Room」 항목).
+  it("Maison 정보 탭에는 「작업」이라는 말이 없다", () => {
+    const markup = render(room, {}, "maison");
+    expect(markup).not.toContain("작업");
+    expect(markup).toContain("Room");
+  });
+
+  // 반대쪽. 이 줄이 없으면 두 세계를 다 Room 어휘로 눕혀도 위 검사가 초록이다.
+  it("Atelier 정보 탭의 낱말은 한 글자도 안 바뀐다", () => {
+    const markup = render(room, {}, "atelier");
+    expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/works/some-work/");
+    expect(markup).not.toContain("Room");
+  });
+});
+
 describe("relativeToWorkDir", () => {
   it("화면에 보이는 값은 복사되는 값의 꼬리다", () => {
     // 표기만 줄이는 것이고 클립보드로 나가는 것은 전체 경로다. 둘이 갈리면 화면을 믿고
     // 붙여 넣은 경로가 다른 곳을 가리킨다.
     const full = worktreeDirRef(work.worktrees[0].path);
-    expect(full.endsWith(relativeToWorkDir(full, workDirRef(work.slug)))).toBe(true);
-    expect(relativeToWorkDir(full, workDirRef(work.slug))).toBe("trees/atelier/");
+    expect(full.endsWith(relativeToWorkDir(full, workDirRef("atelier", work.slug)))).toBe(true);
+    expect(relativeToWorkDir(full, workDirRef("atelier", work.slug))).toBe("trees/atelier/");
   });
 
   it("접두어가 맞지 않으면 전체를 그대로 보인다", () => {

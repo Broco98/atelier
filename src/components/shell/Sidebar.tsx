@@ -3,14 +3,33 @@ import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
-import { runningAgentsOf, shellCountsOf, shellsOf } from "@/features/terminal/shell-registry";
+import {
+  ownerOf,
+  runningAgentsOf,
+  shellCountsOf,
+  shellsOf,
+} from "@/features/terminal/shell-registry";
+import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { terminalStore } from "@/features/terminal/terminal-store";
-import { navItems, type NavKey } from "./nav-items";
+import { navItemsOf, type Mode } from "@/mode";
+import { ModeSwitch } from "./ModeSwitch";
+import { type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
+  /**
+   * 지금 어느 세계인가. 세그먼트가 켜는 칸·nav에 서는 항목·상주 목록이 읽는 루트가 전부 이
+   * 값 하나에서 나온다 — 갈래마다 따로 물으면 세 자리가 조용히 어긋나고, 그때 화면은
+   * 「Maison인데 목록만 Atelier」로 보인다. URL이 정본이고 셸이 읽어 내린다(AppShell).
+   */
+  mode: Mode;
+  /**
+   * 저쪽 세계를 골랐다. **선 칸을 눌러도 그대로 온다** — 「같은 세계면 아무 일도 없다」는
+   * 목적지를 아는 쪽이 정한다(아래 `onSelect`가 `key === activeKey`를 그쪽에 둔 것과 같다).
+   */
+  onPickMode: (mode: Mode) => void;
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
   activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
@@ -24,6 +43,8 @@ interface SidebarProps {
 // 맞았다. 막대가 콘텐츠 위로 뜨면서(결정 32) 목록이 그 11px을 돌려받았고, 이 거터도 함께
 // 돌아왔다. 둘이 세로로 붙어 있어 어긋나면 그 자리에서 보인다.
 // **바닥의 설정도 같은 거터를 쓴다** — 결정 51이 이 정렬 계약의 경계를 하나 늘렸다.
+// **최상단의 세그먼트까지 셋이다**(#183). 목업은 좌우 10px이지만 그 값은 240px 목업
+// 사이드바의 것이고, 여기 옮기면 세그먼트만 2px 안쪽으로 들어가 아래 둘과 왼쪽 끝이 어긋난다.
 const GUTTER = "pl-2 pr-2";
 
 // 고정 nav 블록 + 상주하는 작업 목록 + 바닥에 고정된 설정. 어느 화면에 있든 이 사이드바는
@@ -31,6 +52,8 @@ const GUTTER = "pl-2 pr-2";
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
+  mode,
+  onPickMode,
   activeKey,
   onSelect,
   settingsActive,
@@ -40,10 +63,15 @@ function Sidebar({
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
   // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
-  const shellCounts = useStore(terminalStore, shellCountsOf, shallow);
+  // **이 세계의 것만 센다**(결정 10). 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한
+  // 루트 쌍 안에서만 본다) 안 거르면 저쪽 세계의 셸이 이 행의 숫자에 얹힌다. 키가 slug인
+  // 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
+  const shellCounts = useStore(terminalStore, (state) => shellCountsOf(state, mode), shallow);
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
-  const topShells = useStore(terminalStore, (state) => shellsOf(state, null).length);
+  // **그 세계의 최상위다** — 세계마다 화면이 하나씩이라(`/terminal`·`/maison/terminal`)
+  // 소유자도 갈린다(결정 10).
+  const topShells = useStore(terminalStore, (state) => shellsOf(state, ownerOf(mode)).length);
 
   return (
     <aside
@@ -78,9 +106,25 @@ function Sidebar({
             why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
 
-        {/* 거터는 GUTTER 하나가 정한다 — 위 주석의 정렬 계약이 이제 두 자리에 걸린다 */}
+        {/* **신호등 띠 바로 아래, nav 위**다(US 6) — 이 자리가 「어느 세계인가」가 nav보다
+            위에 있다는 말이고, 사이드바 안에 살아서 ⌘B로 함께 접힌다(US 15).
+
+            거터는 GUTTER를 그대로 쓴다. 목업의 `0 10px 12px` 중 좌우 10px은 240px 목업
+            사이드바의 값이라 여기 옮기면 세그먼트만 2px 안쪽으로 들어가 nav·설정과 왼쪽 끝이
+            어긋난다 — 그 셋은 한 컬럼에 세로로 붙어 있어 어긋나면 그 자리에서 보인다(위
+            GUTTER 주석이 그 셋을 든다).
+            아래 12px은 목업 그대로다: nav는 위 여백을 안 갖고 띠가 그 몫을 했는데(위 주석),
+            이제 그 자리를 세그먼트가 차지해서 둘을 떼어 놓는 값이 하나 필요해졌다. */}
+        <div className={cn("shrink-0 pb-3", GUTTER)}>
+          <ModeSwitch mode={mode} onPick={onPickMode} />
+        </div>
+
+        {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
         <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
-          {navItems.map((item) => (
+          {/* **그 세계의 배열을 돈다**(#183). Atelier 배열을 두 세계에 그리면 Maison에
+              `Projects`가 서고(결정 17이 없다고 한 것이다), 활성 판정은 이미 모드 배열을
+              보고 있어서 그 항목은 영영 안 켜진다. 배열이 갈리는 자리는 `@/mode`의 표 하나다. */}
+          {navItemsOf(mode).map((item) => (
             <SidebarItem
               key={item.key}
               icon={item.icon}
@@ -97,7 +141,9 @@ function Sidebar({
               // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
               // 선다」도 슬롯 안으로 내려갔다.
               meta={
-                item.key === "terminal" ? <ShellMetaFor owner={null} shellCount={topShells} /> : null
+                item.key === "terminal" ? (
+                  <ShellMetaFor owner={ownerOf(mode)} shellCount={topShells} />
+                ) : null
               }
             />
           ))}
@@ -105,6 +151,9 @@ function Sidebar({
 
         <SidebarWorkList
           open={open}
+          // nav와 **같은 값**을 받는다 — 목록이 스스로 주소를 다시 읽으면 `/settings`에서
+          // 갈린다(그 주소에는 모드가 안 실려 마지막 모드를 얹어야 답이 나온다).
+          mode={mode}
           shellCounts={shellCounts}
           // 행 오른쪽 끝의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
           // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
@@ -112,7 +161,10 @@ function Sidebar({
           // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
           // 따로인 이유는 `ShellMetaFor`가 든다.
           renderShellMeta={(work) => (
-            <ShellMetaFor owner={work.slug} shellCount={shellCounts[work.slug] ?? 0} />
+            <ShellMetaFor
+              owner={ownerOf(mode, work.slug)}
+              shellCount={shellCounts[work.slug] ?? 0}
+            />
           )}
         />
 
@@ -151,11 +203,11 @@ function Sidebar({
  * **개수는 반대로 위에서 한 번에 읽어 prop으로 내려온다**(`shellCounts`) — 그 값은 셸이
  * 열리고 닫힐 때만 바뀌어 얕은 비교가 실제로 걸린다(결정 8). 둘이 갈리는 자리가 여기다.
  *
- * **`owner`가 `null`이면 최상위, 곧 nav `Terminal`이다.** work 행과 nav가 이 컴포넌트
- * **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가 하나」가
- * 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
+ * **소유자의 slug가 비어 있으면 최상위, 곧 nav `Terminal`이다**(결정 10). work 행과 nav가
+ * 이 컴포넌트 **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가
+ * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function ShellMetaFor({ owner, shellCount }: { owner: string | null; shellCount: number }) {
+function ShellMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
   return <ShellMeta shellCount={shellCount} running={running} />;
 }

@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import type { Mode } from "@/mode";
 import { WorkSectionList } from "./SidebarWorkList";
 import { splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
@@ -30,16 +31,20 @@ const works = (...raws: string[]) =>
 const ALL: SectionsOpen = { pinned: true, works: true, drafts: true };
 
 // 기본값은 **아무 work도 안 고른 상태**다 — 아래 구획 검사들이 그 위에서 돈다.
+// 세계도 기본값이 있다(Atelier): 구획이 서는 조건과 핀의 생김새는 세계를 안 타므로 그 검사들이
+// 세계를 말하지 않아도 뜻이 온전하다. 세계가 갈리는 것만 아래 마지막 describe가 둘 다 잰다.
 function render(
   list: WorkView[],
   open: SectionsOpen = ALL,
   {
+    mode = "atelier",
     selectedSlug = null,
     shellCounts = {},
     // 행 오른쪽 끝의 셸 메타는 슬롯으로 온다 — 그리는 것은 `components/shell/shell-meta`이고
     // 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은 **슬롯이 서는가**뿐이다.
     renderShellMeta = (work: WorkView) => <i data-meta={work.slug} />,
   }: {
+    mode?: Mode;
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     renderShellMeta?: (work: WorkView) => ReactNode;
@@ -48,6 +53,7 @@ function render(
   return renderToStaticMarkup(
     <WorkSectionList
       sections={splitWorkSections(list, open)}
+      mode={mode}
       open={open}
       selectedSlug={selectedSlug}
       shellCounts={shellCounts}
@@ -177,6 +183,44 @@ describe("빈 `작업` 구획이 하는 말", () => {
     const markup = render(works("가"));
     expect(markup).not.toContain("고정돼 있어요");
     expect(markup).not.toContain("Claude Code에서 시작돼요");
+  });
+});
+
+// 같은 목록이 세계마다 다른 이름으로 선다(#183, US 17). 문구 자체는 순수 함수라
+// `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서 보는 것은 호출부다** — 화면이
+// 그 함수들에 지금 세계를 실제로 넘기는가.
+//
+// **두 세계를 함께 잰다.** 한쪽만 재면 「모드를 안 보고 Atelier로 눕히는」 변형이 그 검사에서
+// 초록이다 — 화면으로는 Maison에 갔는데 목록 머리만 `작업`인 모양으로만 보인다.
+describe("상주 목록이 세계를 따라 이름을 바꾼다", () => {
+  it("머리가 Atelier `작업` · Maison `Rooms`다", () => {
+    const labels = (mode: Mode) =>
+      headersOf(render(works("가"), ALL, { mode })).map((one) => one.label);
+    expect(labels("atelier")).toEqual(["작업"]);
+    expect(labels("maison")).toEqual(["Rooms"]);
+  });
+
+  // 형제 머리는 **상태의 이름**이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이고,
+  // 여기가 함께 갈리면 L3가 접근성 이름(`고정 1`)으로 집는 자리가 세계마다 달라진다.
+  it("`고정`·`초안`은 두 세계에서 같다", () => {
+    const siblings = (mode: Mode) =>
+      headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode }))
+        .map((one) => one.label)
+        .filter((label) => label !== "작업" && label !== "Rooms");
+    expect(siblings("atelier")).toEqual(["고정", "초안"]);
+    expect(siblings("maison")).toEqual(["고정", "초안"]);
+  });
+
+  // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
+  // 계약은 `work-sections.test.ts`가 지고, 여기서는 **어느 세계의 말이 나왔는가**만 본다.
+  it("Room이 없으면 Terminal에서 만들라고 하고, Atelier 문구는 그대로다", () => {
+    const maison = render([], ALL, { mode: "maison" });
+    expect(maison).toContain("새 Room 만들어줘");
+    expect(maison).not.toContain("Claude Code에서 시작돼요");
+
+    const atelier = render([], ALL, { mode: "atelier" });
+    expect(atelier).toContain("작업은 Claude Code에서 시작돼요.");
+    expect(atelier).not.toContain("새 Room 만들어줘");
   });
 });
 
@@ -477,6 +521,22 @@ describe("사이드바 목록은 터미널을 모른다", () => {
     // 일부러 그대로 둔다: 「여기서는 그 모듈을 부를 수 없다」를 가장 싸게 지키는 방법이다.
     expect(countOf("@/features/terminal")).toBe(0);
     expect(countOf("./terminal-store")).toBe(0);
+  });
+
+  it("읽는 곳도 가는 곳도 한 세계로 눕지 않는다", () => {
+    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다**(#183). 목록이 읽는 루트
+    // (`useWorks`·`useSetWorkPinned`)와 행이 가는 주소(`routesOf`·`recallSearch`)가 전부
+    // 같은 `mode` 하나에서 나와야 한다 — 데이터만 모드로 갈면 Maison에서 목록은 Room인데
+    // 행을 누르면 Atelier로 튀고, 반대면 목록만 낡는다. 둘 다 훅과 라우터를 타서 이 저장소의
+    // 정적 마크업 seam에는 안 걸리고, 화면에서도 저쪽 세계에 건너가 봐야만 드러난다.
+    expect(countOf('"atelier"')).toBe(0);
+    expect(countOf('"maison"')).toBe(0);
+    // **주소도 센다.** 위 두 줄은 모드의 낱말만 보므로 `routes.item`을 `/works/$slug`로
+    // 되돌리는 변형이 그대로 빠져나간다 — 그 리터럴에는 세계의 이름이 안 들어 있고, L0는
+    // 그 필드의 타입이 두 주소의 유니온이라 통과하며, 이 파일의 마크업 seam은 행의 `onOpen`이
+    // 목업이라 목적지를 아예 안 본다(실측으로 확인했다: L0·L2 940건이 전부 초록이었다).
+    expect(countOf('"/works/')).toBe(0);
+    expect(countOf('"/maison/rooms/')).toBe(0);
   });
 
   it("window에서 키를 듣지 않는다", () => {
