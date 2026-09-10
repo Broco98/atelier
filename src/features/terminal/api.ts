@@ -1,7 +1,7 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Mode } from "@/mode";
-import type { PtyFrame, PtyRunning, PtySpawned } from "./types";
+import type { PtyFrame, PtyRunning, PtySpawned, ShellAttention } from "./types";
 
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
@@ -54,4 +54,21 @@ const PTY_RUNNING = "pty:running";
  */
 export function onPtyRunning(listener: (changed: PtyRunning[]) => void): Promise<UnlistenFn> {
   return listen<PtyRunning[]>(PTY_RUNNING, (event) => listener(event.payload));
+}
+
+/**
+ * 셸이 훅으로 말한 것이 오는 이벤트 이름. 위 `PTY_RUNNING`과 같은 성질이다 — 문자열
+ * 하나가 두 언어를 잇고, 갈리면 아무 일도 안 일어난다.
+ */
+const SHELL_ATTENTION = "shell:attention";
+
+/**
+ * 셸이 스스로 말한 것이 **바뀐 셸만** 실려 온다. 통로의 모양은 위 `onPtyRunning`과 같다 —
+ * 백엔드의 스레드 하나가 emit하고 여기가 `listen`으로 받는다. 다른 것은 재는 쪽이다:
+ * 저쪽은 1초마다 앱이 물어서 알고, 이쪽은 에이전트가 훅으로 말해 줘서 안다.
+ */
+export function onShellAttention(
+  listener: (changed: ShellAttention[]) => void,
+): Promise<UnlistenFn> {
+  return listen<ShellAttention[]>(SHELL_ATTENTION, (event) => listener(event.payload));
 }

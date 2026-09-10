@@ -22,8 +22,17 @@ tauri-build = { version = "2", features = [] }
 # (여기와 tauri.conf.json의 assetProtocol) 한쪽만 있으면 빌드가 거부한다.
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
+# OS 알림(#206 · 결정 10). 이 크레이트가 웹뷰에 `window.Notification` 폴리필을 깔아 주므로,
+# 프런트는 표준 API 모양 그대로 부르고 실제 알림은 여기로 나간다 — 안 걸면 브라우저의
+# `Notification`이 그것을 받아 **아무 소리도 안 내고 오류도 안 낸다.**
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order`: 사용자의 손으로 고친 설정 파일을 **키 순서까지** 그대로 돌려주기
+# 위해서다(`hooks.rs`). 이 기능이 없으면 serde_json의 맵이 키를 알파벳순으로 다시 늘어놓아,
+# 훅 다섯 줄을 더한 대가로 `~/.claude/settings.json` 예순 줄이 통째로 뒤섞인다 — 사람이
+# 손으로 여는 파일이라 그 자체가 손해다. 제거가 설치 전 파일로 **글자까지** 돌아오는지를
+# 잴 수 있게 되는 것도 여기서 온다.
+serde_json = { version = "1", features = ["preserve_order"] }
 atelier-core = { path = "../crates/atelier-core" }
 tauri-plugin-dialog = "2"
 notify-debouncer-mini = "0.7"
@@ -32,3 +41,7 @@ notify-debouncer-mini = "0.7"
 portable-pty = "0.9"
 libc = "0.2"
 
+# Codex 설정은 TOML이라 **깨졌는지 판정할 파서가 필요하다**(구현 결정 8: 깨진 입력은
+# 거부하고 손대지 않는다). 쓰기는 파일 끝에 덧붙이는 텍스트라 재직렬화는 안 한다 —
+# 488줄짜리 실물의 주석과 순서를 파서에 통째로 맡길 이유가 없다.
+toml = "0.9"

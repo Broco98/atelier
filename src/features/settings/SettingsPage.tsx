@@ -3,9 +3,18 @@ import PageHeader from "@/components/shell/PageHeader";
 import { cn } from "@/lib/utils";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
+import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
-import { settingsApi } from "./api";
-import type { Settings, TerminalSettings, TerminalTheme } from "./types";
+import { isPermissionGranted } from "@tauri-apps/plugin-notification";
+import { hooksApi, settingsApi } from "./api";
+import { notificationChoice, patchNotifications } from "./notifications";
+import type {
+  HookStatus,
+  NotificationSettings,
+  Settings,
+  TerminalSettings,
+  TerminalTheme,
+} from "./types";
 
 // 앱 전역 설정 화면 (결정 51·52·54). 지금 구획은 `터미널` 하나이고, 다음 구획이 생기면
 // 아래 `<section>` 하나가 는다.
@@ -147,6 +156,16 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
   // 다시 읽기 — 깨진 파일은 손으로 고치는 것이 정상 경로라(결정 53) 앱을 껐다 켜지 않고
   // 그 자리에서 다시 읽을 길이 있어야 한다.
   const [attempt, setAttempt] = useState(0);
+  // OS가 알림 권한을 줬나(스토리 69). **아직 못 물어봤으면 `null`이고 그때는 아무 말도 안
+  // 한다** — 모르는 것을 「거부됐다」로 적으면 앱이 없는 사실을 만든다. 물어보는 것이 이
+  // 화면인 이유는 사람이 「왜 안 울리지」를 들고 오는 자리가 여기라서다.
+  const [granted, setGranted] = useState<boolean | null>(null);
+  // 에이전트 훅 (#207). **저장 버튼을 안 지난다** — 이 둘은 우리 파일이 아니라 사용자의
+  // claude·codex 설정을 고치는 일이라 「고치고 나중에 저장」이라는 초안이 있을 수 없다.
+  // 그래서 상태도 위 `draft`와 따로 든다.
+  const [hooks, setHooks] = useState<HookStatus[]>([]);
+  const [hooksBusy, setHooksBusy] = useState(false);
+  const [hooksError, setHooksError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -169,6 +188,55 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     };
   }, [attempt]);
 
+  useEffect(() => {
+    let alive = true;
+    isPermissionGranted().then(
+      (ok) => {
+        if (alive) setGranted(ok);
+      },
+      // **못 물어본 것과 거부된 것은 다르다.** 채널이 없는 자리(웹뷰 밖)에서 여기가 실제로
+      // 터지는데, 그것을 「거부됐다」로 적으면 시스템 설정을 열라는 말이 거짓이 된다.
+      () => {
+        if (alive) setGranted(null);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    hooksApi.status().then(
+      (list) => {
+        if (alive) setHooks(list);
+      },
+      // **판정이 통째로 실패하는 길**(홈을 못 읽는 등)과 파일 한 장이 깨진 것은 다르다 —
+      // 뒤엣것은 `HookStatus.error`로 그 줄에 붙어 오고, 여기 오는 것은 앞엣것뿐이다.
+      (error) => {
+        if (alive) setHooksError(String(error));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 넣는 것도 걷는 것도 **끝난 뒤의 상태를 그 자리에서 돌려받는다** — 다시 물어보지 않는다.
+  // 연타를 막는 것은 같은 파일에 두 쓰기가 겹치면 안 되기 때문이다.
+  const runHooks = async (run: () => Promise<HookStatus[]>) => {
+    if (hooksBusy) return;
+    setHooksBusy(true);
+    setHooksError(null);
+    try {
+      setHooks(await run());
+    } catch (error) {
+      setHooksError(String(error));
+    } finally {
+      setHooksBusy(false);
+    }
+  };
+
   // 키 순서는 읽은 것을 펼쳐 만들었으므로 그대로다 — 문자열 비교로 충분하다.
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved);
   // 파일이 준 크기의 원문. 칸의 글자가 이것과 같은 동안에는 그 값이 범위 밖이어도 저장을
@@ -177,6 +245,12 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
 
   const change = (patch: Partial<TerminalSettings>) => {
     setDraft((current) => (current === null ? current : patchTerminal(current, patch)));
+    setSaveError(null);
+  };
+
+  // 알림 칩도 같은 규칙을 지난다 — 읽은 것을 펼쳐 고친다(`patchNotifications`).
+  const changeNotify = (patch: Partial<NotificationSettings>) => {
+    setDraft((current) => (current === null ? current : patchNotifications(current, patch)));
     setSaveError(null);
   };
 
@@ -197,6 +271,8 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       // **파일에 들어간 뒤에 먹인다.** 먼저 먹이면 쓰기가 실패했을 때 셸만 새 값으로 남아
       // 다음 실행에 되돌아간다 — 「저장이 안 됐는데 바뀌었다」가 가장 읽기 어려운 상태다.
       applyTerminalSettings(draft.terminal);
+      // 알림 배선도 같은 규칙이다 — **파일에 들어간 뒤에** 먹인다.
+      applyNotifySettings(notificationChoice(draft));
     } catch (error) {
       setSaveError(String(error));
     } finally {
@@ -233,6 +309,7 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                   onChange={change}
                   onChangeSize={changeSize}
                 />
+                <NotificationSection settings={draft} granted={granted} onChange={changeNotify} />
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -252,6 +329,16 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
                 </div>
               </>
             )}
+            {/* **읽기 실패의 바깥에 선다.** 이 구획이 고치는 것은 `~/.atelier/settings.json`이
+                아니라 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔
+                이유가 없다. */}
+            <HooksSection
+              statuses={hooks}
+              busy={hooksBusy}
+              error={hooksError}
+              onInstall={() => void runHooks(hooksApi.install)}
+              onUninstall={() => void runHooks(hooksApi.uninstall)}
+            />
           </div>
         </div>
       </main>
@@ -381,6 +468,202 @@ export function TerminalSection({
   );
 }
 
+/**
+ * `알림` 구획 — **고르는 것이 둘뿐이다**(결정 10 · 스토리 67). 「배경일 때만」 같은 셋째
+ * 선택은 기각됐다: 이 앱은 창이 하나이고 「그 셸을 보고 있는가」가 이미 억제를 맡고 있어
+ * (결정 7) 셋째 단이 더할 것이 없다.
+ *
+ * **권한이 거부돼 있으면 그 사실을 여기 적는다**(스토리 69). 인앱 토스트로 대체하지
+ * 않는다 — 거부는 앱이 고칠 수 없는 상태라 「지금 벌어진 일」이 아니라 **설정의 사실**이고,
+ * 사람이 왜 안 울리는지 찾으러 오는 자리가 여기다. 아직 못 물어봤으면(`null`) 아무 말도
+ * 안 한다: 모르는 것을 「거부됐다」로 적으면 앱이 없는 사실을 만든다.
+ *
+ * **다만 이 줄은 지금 채널로는 설 수 없다 — 「거의 없다」가 아니라 길이 없다.** 알림
+ * 플러그인의 데스크톱 구현은 `permission_state()`가 **늘 `Granted`를 돌려주고**
+ * (2.4.0 `desktop.rs`), 플러그인이 웹뷰에 까는 init 스크립트가 뜨자마자 그 답으로
+ * `window.Notification.permission`을 `granted`로 굳힌다. JS `isPermissionGranted()`는 그
+ * 값을 먼저 보므로 **실물에서 `granted === false`가 되는 길이 없다** — macOS 시스템 설정에서
+ * 아틀리에의 알림을 꺼 둬도 앱은 그것을 못 읽는다. 그래서 스토리 69는 이 판에서 **반쪽만
+ * 선다**: 구현-스펙의 미확인 목록에 그대로 올려 뒀고, 채우려면 다른 길(자체 Rust 명령이
+ * `UNUserNotificationCenter`를 묻는 것)이 필요하다.
+ *
+ * 그래도 이 줄을 두는 것은 판정이 **진짜 API를 딛고 있어서다**: 그 길이 생기는 날 화면이
+ * 저절로 따라온다. 여기서 「거부됐을 것 같다」를 우리가 지어내지는 않는다(결정 3의 그 규칙).
+ *
+ * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ */
+export function NotificationSection({
+  settings,
+  granted,
+  onChange,
+}: {
+  settings: Settings;
+  /** OS가 알림 권한을 줬나. 아직 못 물어봤으면 `null`이다. */
+  granted: boolean | null;
+  onChange: (patch: Partial<NotificationSettings>) => void;
+}) {
+  const choice = notificationChoice(settings);
+
+  return (
+    <section className="flex flex-col gap-5 pt-2">
+      <h2 className="text-[14px] font-semibold text-muted-foreground">알림</h2>
+
+      <Row label="알림">
+        <div className="flex flex-col gap-2">
+          <Switch
+            value={choice.enabled}
+            onPick={(enabled) => onChange({ enabled })}
+            label="셸이 나를 부르면 알림"
+          />
+          {granted === false && (
+            // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
+            // 아니라 OS가 안 준 것이라, 사람이 갈 곳을 적는 것이 이 줄이 하는 일 전부다.
+            <p className="text-[13px] leading-[1.7] text-tertiary">
+              macOS가 알림 권한을 안 줬어요. 시스템 설정 › 알림에서 아틀리에를 켜 주세요.
+            </p>
+          )}
+        </div>
+      </Row>
+
+      {/* 소리만 따로 끌 수 있다(스토리 64) — 소리는 시스템 기본 알림음이다. */}
+      <Row label="소리">
+        <Switch
+          value={choice.sound}
+          onPick={(sound) => onChange({ sound })}
+          label="알림에 소리"
+        />
+      </Row>
+    </section>
+  );
+}
+
+/**
+ * 훅이 지금 어떤가를 **한 낱말로**. 셋이고, 셋째가 이 함수가 있는 이유다.
+ *
+ * `installed`만 보면 「깨져서 판정을 못 했다」가 「안 깔렸다」와 같은 낱말이 된다. 백엔드는
+ * 그때 판정을 안 하고 `installed: false`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
+ * 화면이 그 둘을 한 낱말로 접으면 **없는 사실을 만들고** 사람을 실패하는 버튼으로 보낸다.
+ */
+export function hookStateLabel(status: HookStatus): string {
+  if (status.error !== null) return "확인 못 함";
+  return status.installed ? "설치됨" : "설치 안 됨";
+}
+
+/**
+ * `에이전트 훅` 구획 — 에이전트마다 상태·경로·미리보기, 그리고 버튼 둘 (스토리 70~74).
+ *
+ * **미리보기가 필수다**(스토리 73). 내 설정을 앱에 맡기는 일이라 누르기 전에 무엇이 어디에
+ * 들어가는지 보여야 하고, 그 글자는 화면이 따로 적는 것이 아니라 **실제로 넣는 함수가 낸
+ * 값**이다(`hooks.rs`의 `preview`) — 두 벌로 적으면 약속이 실물과 조용히 갈린다.
+ *
+ * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ */
+export function HooksSection({
+  statuses,
+  busy,
+  error,
+  onInstall,
+  onUninstall,
+}: {
+  statuses: HookStatus[];
+  /** 넣거나 걷는 중인가. 연타를 막는다 — 같은 파일에 두 쓰기가 겹치면 안 된다. */
+  busy: boolean;
+  /** 명령 자체가 실패했으면 그 까닭(스크립트를 못 세운 경우). */
+  error: string | null;
+  onInstall: () => void;
+  onUninstall: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-5 pt-2">
+      <h2 className="text-[14px] font-semibold text-muted-foreground">에이전트 훅</h2>
+      {/* **아래 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
+          설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
+          전에 알아야 마음이 놓인다. */}
+      <p className="text-[13px] leading-[1.7] text-tertiary">
+        누른 순간 아래 파일에 적용돼요(저장 버튼과 별개예요). 고치기 전에 같은 자리에{" "}
+        <code>.bak</code> 한 벌을 떠 두고, 다른 도구의 훅은 그대로 둬요.{" "}
+        {/* **아래 글자가 「더해지는 것」임을 말한다.** claude 쪽 미리보기는 설정이 비어
+            있을 때의 결과 파일이라, 이 줄이 없으면 예순 줄짜리 설정을 가진 사람에게는
+            「내 파일이 이걸로 바뀐다」로 읽힌다 — 이 구획이 없애려던 그 불안이다. */}
+        아래는 <strong className="font-medium">더해지는 부분</strong>이에요 — 이미 있는
+        내용은 그대로 두고 여기에만 얹어요.
+      </p>
+
+      {statuses.map((status) => (
+        <Row key={status.agent} label={status.agent}>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              {/* 색만으로는 상태가 안 읽힌다 — 낱말이 곧 상태다. */}
+              <span className="text-[13px] font-medium">{hookStateLabel(status)}</span>
+              <span className="text-[13px] text-tertiary">{status.path}</span>
+            </div>
+            {status.error !== null && (
+              <p className="text-[13px] leading-[1.7] text-red-600">{status.error}</p>
+            )}
+            {/* **판정과 다른 줄이다.** 쓰기가 실패해도 설치 여부는 파일이 답해 주므로 위
+                낱말은 그대로 서고, 방금 무슨 일이 났는지만 여기 적힌다. 다만 파일이 깨진
+                경우엔 쓰기도 판정도 같은 까닭으로 실패하므로, 같은 글이면 한 번만 적는다 —
+                두 줄이면 사람은 두 가지 일이 났다고 읽는다. */}
+            {status.writeError !== null && status.writeError !== status.error && (
+              <p className="text-[13px] leading-[1.7] text-red-600">{status.writeError}</p>
+            )}
+            {/* 무엇이 어디에 들어가는가 — 넣는 함수가 낸 글자 그대로다(스토리 73). */}
+            <pre className="max-h-[168px] overflow-auto rounded-[10px] bg-muted px-3 py-2.5 text-[12px] leading-[1.6] scroll-quiet">
+              {status.preview}
+            </pre>
+          </div>
+        </Row>
+      ))}
+
+      <Row label="">
+        <div className="flex items-center gap-3">
+          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 아래
+              한 자리뿐이고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
+          <button
+            type="button"
+            onClick={onInstall}
+            disabled={busy}
+            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
+          >
+            설치
+          </button>
+          <button
+            type="button"
+            onClick={onUninstall}
+            disabled={busy}
+            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
+          >
+            제거
+          </button>
+          {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
+        </div>
+      </Row>
+    </section>
+  );
+}
+
+/**
+ * 켬/끔 한 쌍. 규격은 위 `Chip`을 그대로 쓴다 — 이 화면에 스위치라는 어휘가 따로 없고,
+ * 테마 칸이 이미 「둘 중 하나」를 칩 쌍으로 그리고 있다.
+ */
+function Switch({
+  value,
+  onPick,
+  label,
+}: {
+  value: boolean;
+  onPick: (next: boolean) => void;
+  /** 접근성 이름의 앞머리. 칩 글자가 「켬」·「끔」뿐이라 그것만으로는 무엇의 켬인지 모른다. */
+  label: string;
+}) {
+  return (
+    <div className="flex gap-1.5">
+      <Chip label="켬" active={value} onClick={() => onPick(true)} name={`${label} 켬`} />
+      <Chip label="끔" active={!value} onClick={() => onPick(false)} name={`${label} 끔`} />
+    </div>
+  );
+}
+
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4">
@@ -397,15 +680,19 @@ function Chip({
   label,
   active,
   onClick,
+  name,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  /** 글자만으로 무엇의 칩인지 모를 때 접근성 이름을 따로 준다(알림의 「켬」·「끔」). */
+  name?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={name}
       // 색만으로는 어느 쪽이 켜졌는지 접근성 트리에 드러나지 않는다.
       aria-pressed={active}
       className={cn(

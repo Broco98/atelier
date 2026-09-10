@@ -2,17 +2,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   canSave,
+  HooksSection,
+  hookStateLabel,
   FONT_PRESETS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   parseFontSize,
+  NotificationSection,
   patchTerminal,
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
+import { notificationChoice, patchNotifications } from "./notifications";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
-import type { Settings } from "./types";
+import type { HookStatus, NotificationSettings, Settings } from "./types";
 
 // 이 화면이 지켜야 하는 것은 화면으로는 안 잡히는 종류다.
 //
@@ -241,5 +245,228 @@ describe("이 판이 열지 않은 것", () => {
     const markup = render(settings());
     expect(markup).not.toContain("스크롤백");
     expect(markup).not.toContain("ANSI");
+  });
+});
+
+// ── 알림 구획 (#206 · 결정 10)
+//
+// 이 구획이 지켜야 하는 것도 화면으로는 안 잡히는 종류다.
+//
+// 1. **고르지 않은 값이 파일에 안 적히는 것** — 기본(둘 다 켬)은 프런트가 들고 백엔드는
+//    「고른 것만」 적는다(`settings.rs`). 화면이 기본값을 그대로 저장으로 흘려보내면 안
+//    고른 것이 고른 것이 되고, 그 뒤로는 기본이 바뀌어도 이 사용자만 옛 값에 묶인다.
+// 2. **셋째 선택이 없는 것**(결정 10 · 스토리 67) — 「배경일 때만」은 명시적으로 기각됐다.
+// 3. **권한 거부가 이 화면에 적히는 것**(스토리 69) — 인앱 토스트로 대체하지 않는다.
+//    거부된 채 조용하면 사람은 「알림 기능이 고장 났다」로 읽는다.
+
+// **안 고른 값은 키가 없다** — 백엔드가 이 구획만 `skip_serializing_if`로 줄째 빼기
+// 때문이고(`settings.rs`), 그래서 아무것도 안 준 기본이 빈 구획 `{}`다.
+const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
+  terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+  notifications: { ...patch },
+});
+
+function renderNotifications(value: Settings, granted: boolean | null = true): string {
+  return renderToStaticMarkup(
+    <NotificationSection settings={value} granted={granted} onChange={() => {}} />,
+  );
+}
+
+describe("알림 설정의 기본은 프런트가 든다", () => {
+  // 백엔드는 구획째 안 쓸 수 있다(`settings.rs`의 `is_empty`) — 그 파일이 여기 그대로 온다.
+  it("구획이 아예 없어도 둘 다 켬이다", () => {
+    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    expect(notificationChoice(bare)).toEqual({ enabled: true, sound: true });
+  });
+
+  it("안 고른 값은 켬이다", () => {
+    expect(notificationChoice(withNotifications())).toEqual({ enabled: true, sound: true });
+  });
+
+  // **`false`가 살아남아야 한다.** `?? true`가 아니라 `|| true`로 적으면 껐다는 선택이
+  // 조용히 켬으로 돌아오고, 화면에서는 「껐는데 다시 켜졌다」로만 보인다.
+  it("끈 것은 끈 채로 온다", () => {
+    expect(notificationChoice(withNotifications({ enabled: false, sound: false }))).toEqual({
+      enabled: false,
+      sound: false,
+    });
+  });
+});
+
+describe("알림 설정을 고친다", () => {
+  it("구획이 없어도 만들어 얹는다", () => {
+    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    expect(patchNotifications(bare, { sound: false }).notifications).toEqual({ sound: false });
+  });
+
+  // `patchTerminal`과 같은 규칙이다 — 읽은 것을 펼쳐 고쳐야 모르는 키가 산다.
+  it("우리가 모르는 키는 구획 안팎 모두 살아남는다", () => {
+    const read = {
+      editor: { tabWidth: 2 },
+      terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+      notifications: { enabled: true, quietHours: "22-08" },
+    } as unknown as Settings;
+
+    const next = patchNotifications(read, { sound: false }) as unknown as {
+      editor: unknown;
+      notifications: { quietHours: string; enabled: boolean; sound: boolean };
+    };
+
+    expect(next.editor, "모르는 구획이 사라졌다").toEqual({ tabWidth: 2 });
+    expect(next.notifications.quietHours, "모르는 키가 사라졌다").toBe("22-08");
+    expect(next.notifications.enabled, "옆 값이 사라졌다").toBe(true);
+    expect(next.notifications.sound).toBe(false);
+  });
+});
+
+describe("알림 구획의 화면", () => {
+  // 결정 10 · 스토리 67 — 켬/끔과 소리 켬/끔 **둘뿐**이다.
+  it("고르는 것이 둘뿐이다", () => {
+    const html = renderNotifications(withNotifications());
+    expect(html).toContain("알림");
+    expect(html).toContain("소리");
+    // 칩은 둘씩 두 줄 — 넷이다. 셋째 선택이 생기면 여기서 먼저 걸린다.
+    expect(html.match(/aria-pressed=/g) ?? []).toHaveLength(4);
+    expect(html, "기각된 셋째 선택이 화면에 있다").not.toContain("배경");
+  });
+
+  it.each([
+    [{}, ["true", "false", "true", "false"]],
+    [{ enabled: false }, ["false", "true", "true", "false"]],
+    [{ sound: false }, ["true", "false", "false", "true"]],
+  ] as ReadonlyArray<readonly [Partial<NotificationSettings>, string[]]>)(
+    "고른 쪽만 켜진다 %s",
+    (patch, pressed) => {
+      const html = renderNotifications(withNotifications(patch));
+      expect([...html.matchAll(/aria-pressed="(\w+)"/g)].map((one) => one[1])).toEqual(pressed);
+    },
+  );
+
+  // 스토리 69 — 거부된 채 조용하면 왜 안 울리는지 어디에도 안 적힌다.
+  it("권한이 거부돼 있으면 그 사실이 이 화면에 적힌다", () => {
+    expect(renderNotifications(withNotifications(), false)).toContain("권한");
+  });
+
+  it.each([true, null])("권한이 %s면 아무 말도 안 한다", (granted) => {
+    expect(renderNotifications(withNotifications(), granted)).not.toContain("권한");
+  });
+});
+
+// ── 에이전트 훅 구획 (#207 · 구현 결정 8)
+//
+// 이 구획이 지켜야 하는 것도 화면으로는 안 잡히는 종류다.
+//
+// 1. **「모른다」와 「안 깔렸다」가 갈리는 것** — 설정 파일이 깨져 판정을 못 한 것을
+//    「설치 안 됨」이라 적으면, 사람은 설치 버튼을 누르고 실패하는 길로 보내진다.
+//    백엔드는 그때 `installed: false`에 `error`를 함께 실어 보낸다(`hooks.rs`).
+// 2. **미리보기가 화면에 서는 것**(스토리 73) — 내 설정을 앱에 맡기는 일이라, 누르기 전에
+//    무엇이 어디에 들어가는지 보여야 한다. 그 글자는 백엔드가 낸 것을 그대로 그린다.
+// 3. **되돌릴 길이 화면에 있는 것**(스토리 74) — 설치만 있고 제거가 없으면 훅이 남아
+//    있는지 몰라 헤맨다.
+// 4. **아는 사실이 「모른다」로 안 지워지는 것** — 쓰기가 실패한 것(`writeError`)과 판정을
+//    못 한 것(`error`)은 다른 사실이다. 읽기는 되는데 쓰기만 실패한 파일에서 「확인 못 함」이라
+//    적으면, 낱말 셋(설치됨·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+
+const hook = (patch: Partial<HookStatus> = {}): HookStatus => ({
+  agent: "claude",
+  path: "~/.claude/settings.json",
+  installed: false,
+  error: null,
+  writeError: null,
+  preview: '{\n  "hooks": {}\n}\n',
+  ...patch,
+});
+
+function renderHooks(statuses: HookStatus[]): string {
+  return renderToStaticMarkup(
+    <HooksSection
+      statuses={statuses}
+      busy={false}
+      error={null}
+      onInstall={() => {}}
+      onUninstall={() => {}}
+    />,
+  );
+}
+
+/** 이 마크업의 버튼들이 사람에게 보이는 글자. **버튼만 걸린다** — 상태 낱말이 같은 화면에
+ *  있어 `toContain("설치")`는 버튼을 통째로 지워도 통과한다. */
+function buttonLabels(html: string): string[] {
+  return [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+}
+
+describe("훅이 지금 어떤지 한 낱말로", () => {
+  it("깔렸으면 설치됨, 아니면 설치 안 됨이다", () => {
+    expect(hookStateLabel(hook({ installed: true }))).toBe("설치됨");
+    expect(hookStateLabel(hook())).toBe("설치 안 됨");
+  });
+
+  // **`installed`만 보면 둘이 같은 낱말이 된다.** 깨진 파일에서 백엔드는 판정을 안 하고
+  // `false`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
+  // 만들고 사람을 실패하는 버튼으로 보낸다.
+  it("판정을 못 했으면 안 깔렸다고 하지 않는다", () => {
+    expect(hookStateLabel(hook({ error: "설정 파일이 잘못됐습니다" }))).toBe("확인 못 함");
+  });
+});
+
+describe("훅 구획의 화면", () => {
+  it("에이전트마다 어디에 무엇이 들어가는지와 지금 상태가 선다", () => {
+    const html = renderHooks([
+      hook({ installed: true, preview: "클로드 조각" }),
+      hook({ agent: "codex", path: "~/.codex/config.toml", preview: "코덱스 조각" }),
+    ]);
+
+    // **이름 칸을 걸어 잰다.** 그냥 `toContain("claude")`이면 아래 경로에 그 글자가 이미
+    // 있어 에이전트 이름 칸을 통째로 지워도 통과한다.
+    expect(html).toContain(">claude</span>");
+    expect(html).toContain(">codex</span>");
+    expect(html).toContain("~/.claude/settings.json");
+    expect(html).toContain("설치됨");
+    expect(html).toContain("~/.codex/config.toml");
+    expect(html).toContain("설치 안 됨");
+    // 스토리 73 — 누르기 전에 무엇이 들어가는지 보인다. 화면이 따로 적은 글이 아니라
+    // 백엔드가 낸 그 글자다.
+    expect(html).toContain("클로드 조각");
+    expect(html).toContain("코덱스 조각");
+  });
+
+  // 스토리 70·74 — 버튼 하나로 깔리고, 되돌릴 길이 화면에 있다.
+  it("설치와 제거가 버튼으로 둘 다 있다", () => {
+    expect(buttonLabels(renderHooks([hook()]))).toEqual(["설치", "제거"]);
+  });
+
+  // 스토리 73 — claude 쪽 미리보기는 **빈 설정에 병합한 결과**라 그대로 두면 「내 파일이
+  // 이걸로 바뀐다」로 읽힌다. 예순 줄짜리 설정을 가진 사람이 볼 그림이 그것이면 이 구획이
+  // 없애려던 불안을 되레 키운다.
+  it("미리보기가 「더해지는 것」임을 말한다", () => {
+    const html = renderHooks([hook()]);
+    expect(html).toContain("이미 있는 내용은 그대로 두고");
+  });
+
+  // 읽기는 됐는데 **쓰기만** 실패한 자리. 파일이 읽기 전용이면 그렇다 — 그때 우리는
+  // 설치 여부를 안다. 아는 것을 「확인 못 함」으로 지우면 안 된다.
+  it("쓰기가 실패해도 아는 상태는 그대로 적고 까닭을 덧붙인다", () => {
+    const status = hook({ installed: true, writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
+    expect(hookStateLabel(status)).toBe("설치됨");
+
+    const html = renderHooks([status]);
+    expect(html).toContain("설치됨");
+    expect(html).not.toContain("확인 못 함");
+    expect(html).toContain("설정을 쓰지 못했습니다");
+  });
+
+  // 깨진 파일에서는 쓰기도 판정도 같은 까닭으로 실패한다 — 그때 같은 줄이 두 번 서면
+  // 사람은 두 가지 일이 났다고 읽는다.
+  it("같은 까닭은 두 번 안 적는다", () => {
+    const why = "설정 파일이 잘못됐습니다 — 손대지 않았습니다";
+    const html = renderHooks([hook({ error: why, writeError: why })]);
+    expect(html.split(why).length - 1).toBe(1);
+  });
+
+  // 깨진 파일의 까닭은 **화면에 적힌다.** 조용히 삼키면 사람은 버튼이 고장 났다고 읽는다.
+  it("판정을 못 한 까닭이 그 자리에 적힌다", () => {
+    const html = renderHooks([hook({ error: "설정 파일이 잘못됐습니다 — 손대지 않았습니다" })]);
+    expect(html).toContain("손대지 않았습니다");
+    expect(html).toContain("확인 못 함");
   });
 });

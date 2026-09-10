@@ -2,7 +2,7 @@ import type { ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
-import type { Settings } from "@/features/settings/types";
+import type { HookStatus, Settings } from "@/features/settings/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -266,6 +266,28 @@ export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
  * 「`mode: Mode`를 받는 명령」을 뽑아 이 표와 겹치는 이름이 하나라도 있으면 문다 — 새 명령이
  * 모드를 받기 시작했는데 답을 여기에 적는 것이 그 검사가 막는 실패다.
  */
+/**
+ * 픽스처의 `pty_spawn`이 답하는 셸 이름. **검사가 이 값을 여러 자리에서 쓴다** — 칸에 적히는
+ * 이름이자, 그 칸이 spawn 응답을 받았다는 유일한 화면 신호다(`harness`의 `awaitSpawned`).
+ */
+export const FIXTURE_SHELL_NAME = "zsh";
+
+/**
+ * 부를 때마다 답의 한 값을 **하나씩 올리는** 커맨드: 커맨드 이름 → 그 답에서 올릴 키
+ * (`harness`의 `incrementing`). 이름이 곧 하는 일이다 — 아래 표의 값은 **첫 값**이고,
+ * 여기 적힌 커맨드는 부를 때마다 그 키가 1씩 커진 답을 받는다.
+ *
+ * `pty_spawn`이 늘 같은 id를 답하면 셸이 몇이든 백엔드 쪽 번호가 하나뿐이고, 백엔드가
+ * **셸마다** 쏘는 값(`pty:running`, 그리고 이 판이 더할 것들)이 전부 맨 앞 칸에 앉는다
+ * — `shellOfPty`가 그 id를 가진 첫 인스턴스를 주기 때문이다. 그래서 「서로 다른 상태의
+ * 셸 둘」이라는 그림 자체를 못 세운다(terminal-tabs.spec.ts의 티켓 #198 마디).
+ *
+ * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** `responses`는 `addInitScript`의
+ * 인자로 직렬화되어 브라우저로 건너가므로 함수는 그 길을 못 지난다 — 수를 올리는 일은
+ * 브라우저 안에서 일어나야 하고, 여기는 **어느 커맨드의 어느 키인가**만 말한다.
+ */
+export const FIXTURE_INCREMENTING_KEYS: Record<string, string> = { pty_spawn: "id" };
+
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
   // `shared_projects_root`) 이 명령은 세계를 묻지 않는다. 그래서 이름으로 답해도 위 경계에
@@ -278,6 +300,46 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
+  // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
+  // (`SettingsPage.tsx`의 `save`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
+  // 답이 없으면 L3에서 쓰기가 거절당해 `save`가 오류 가지로 빠지고, 그러면 저장 뒤의
+  // 배선을 재는 검사가 **아무것도 못 재면서 초록**이 된다.
+  //
+  // **태우는 시나리오와 함께 들어왔다** — 「설정에서 소리를 끄면 그 자리에서 조용해진다」
+  // (`shell-notify.spec.ts`). 태우지 않는 스텁은 조용히 낡는다는 것이 이 표의 규칙이고,
+  // 그래서 이 자리는 그 검사가 사는 동안만 정당하다.
+  write_settings: null,
+  // 설정 화면이 뜨자마자 한 번 부른다(#207). **깔린 것이 없는 상태를 답한다** — 그것이
+  // 처음 여는 사람의 화면이고, 미리보기·경로·상태가 그때도 다 서는지를 L3가 본다.
+  //
+  // `preview`는 **짧은 합성**이다: 백엔드가 내는 진짜 조각을 여기 베껴 두면 병합 함수를
+  // 고칠 때마다 이 표가 낡고, 그 낡음은 「미리보기가 실물과 같은가」를 재지도 못한다 —
+  // 그 물음은 Rust 쪽 `the_preview_is_what_goes_into_an_empty_home`이 실물로 잰다.
+  agent_hooks: [
+    {
+      agent: "claude",
+      path: "~/.claude/settings.json",
+      installed: false,
+      error: null,
+      writeError: null,
+      preview: '{ "hooks": { "Stop": [] } }',
+    },
+    {
+      agent: "codex",
+      path: "~/.codex/config.toml",
+      installed: false,
+      error: null,
+      writeError: null,
+      preview: "[[hooks.Stop]]",
+    },
+  ] satisfies HookStatus[],
+  // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
+  // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
+  //
+  // 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 —
+  // 여기서 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도
+  // 그것뿐이다(진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
   // 남은 셋은 **id로 이미 뜬 셸을 가리킨다** — 그 셸의 세계는 뜰 때 pty에 굳으므로 인자에
   // 모드가 없다(`features/terminal/api.ts`). `pty_spawn`이 여기 없는 것도 같은 사정의
   // 반대쪽이다: 셸이 **뜨는** 순간에는 세계가 함께 나가므로(결정 10) 아래 표가 든다.
@@ -289,6 +351,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 셸 닫기 확인 창이 이 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다.
   pty_command_running: true,
   pty_kill: null,
+  // **타자를 치는 시나리오가 이 판에 생겼다**(#208 리뷰). 사람이 키를 친 직후의 첫 프레임만
+  // xterm이 **동기로** 파싱하는데(`WriteBuffer.write`의 `_didUserInput` 갈래), 그 갈래에서
+  // 출력 알림과 OSC의 순서가 뒤집히면 방금 선 앰버가 그 자리에서 꺼진다 — 그 순서를 재려면
+  // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
+  // **답이 있어야 화이트리스트를 안 넘는다.**
+  pty_write: null,
 };
 
 /**
@@ -342,13 +410,9 @@ export const ROOM_SPEC_FILE_BODIES: Record<string, string> = {
   "개요.md": "# 읽는 방\n\n이 방에만 있는 문서다.\n",
 };
 
-// 여기 없는 pty 커맨드(`pty_write`)는 **일부러 뺐다.** 지금 타자를 치는 시나리오가 없고,
-// 아래 `write_settings` 주석이 적어 둔 규칙이 그대로 걸린다 — **태우지 않는 스텁은 조용히
-// 낡는다.** 그 시나리오를 쓰는 판이 같이 넣는다.
-
-// `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은
-// 조용히 낡는다**(harness.ts의 플러그인 표가 같은 이유로 둘을 비워 뒀다). 그 시나리오를
-// 쓰는 판이 같이 넣는다.
+// (`write_settings`는 위 표에 있다 — 설정 화면의 저장을 태우는 시나리오가 생기면서 그
+// 시나리오와 함께 들어왔다. 아직 없는 것은 `plugin:opener|open_url` 쪽이고, 그 규율은
+// harness.ts의 플러그인 표가 든다.)
 
 /**
  * 아카이브의 문서 목록 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
@@ -490,8 +554,8 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * Maison은 `/maison/terminal`이 지난다.
    */
   pty_spawn: {
-    atelier: { value: { id: 1, shellName: "zsh" } },
-    maison: { value: { id: 1, shellName: "zsh" } },
+    atelier: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
+    maison: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
   },
   /**
    * work 화면이 설 때마다 한 번 나간다(팔레트 결정 14). 답은 안 쓰인다 — 순서를 세우는 것은
@@ -534,3 +598,26 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
     },
   },
 };
+
+// **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 두 표를 잇는 것은 커맨드 이름 문자열
+// 하나뿐인데, 하네스는 답을 찾은 커맨드에 대해서만 올릴 키를 찾아본다 — 이름이 틀렸거나
+// 개명돼 짝이 끊기면 그 행은 **아무 데도 안 걸린 채 조용히 지나가고** `pty_spawn`은 다시 고정
+// id를 답한다. 그때 나는 유일한 신호는 한참 뒤 `markRunning`이 「pty 2에 도는 칸이 안 생겼다」로
+// 던지는 것이고, 그 말은 표가 아니라 검사를 가리켜 원인을 한 칸 옆으로 옮겨 놓는다.
+//
+// **모드 표를 본다** — 수를 올리는 유일한 커맨드(`pty_spawn`)가 #187에서 이 표로 옮겨 갔다.
+// 모드마다 따로 세는 것이 아니라 값 하나가 호출 순서대로 오르므로(하네스의 `seen`), 여기서는
+// **모든 칸의 첫 값이 수인가**를 본다 — 한 칸만 모양이 달라도 그 모드의 시나리오에서만
+// `base + n`이 조용히 문자열이 된다.
+for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
+  const forCmd = FIXTURE_BY_MODE[cmd];
+  if (forCmd === undefined) {
+    throw new Error(`수를 올릴 커맨드가 모드 표에 없습니다: ${cmd}`);
+  }
+  for (const [mode, answer] of Object.entries(forCmd)) {
+    const value = answer.value as Record<string, unknown> | undefined;
+    if (value === undefined || typeof value[key] !== "number") {
+      throw new Error(`수를 올릴 값이 수가 아닙니다: ${cmd}.${mode}.${key}`);
+    }
+  }
+}

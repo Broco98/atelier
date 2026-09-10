@@ -6,6 +6,7 @@ import { router } from "./router";
 import { queryClient } from "./query-client";
 import { installScrollQuiet } from "./lib/scroll-quiet";
 import { loadTerminalSettings } from "./features/terminal/terminal-settings";
+import { loadNotifySettings } from "./features/terminal/notify-settings";
 import "./index.css";
 
 installScrollQuiet();
@@ -15,6 +16,9 @@ installScrollQuiet();
 // 렌더보다 먼저 걸어 두면 첫 셸이 뜨는 순간 값이 이미 와 있을 가능성이 가장 크다.
 // 늦게 와도 이미 떠 있는 칸이 따라오고, 못 읽으면 기본값으로 간다 — 둘 다 그 모듈이 진다.
 void loadTerminalSettings();
+// 알림 구획도 같은 자리에서 한 번 읽는다(#206). 읽는 쪽이 React 밖이고(모듈 구독이 쏜다)
+// 되읽을 신호가 없는 것까지 위와 같다 — 왜 한 번으로 안 합쳤는지는 그 모듈이 든다.
+void loadNotifySettings();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

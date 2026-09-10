@@ -1,14 +1,25 @@
 import { Store } from "@tanstack/react-store";
 import { Channel } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { sendNotification } from "@tauri-apps/plugin-notification";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { onPtyRunning, terminalApi } from "./api";
+import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import type { AgentSignal } from "./agents/types";
+import { onPtyRunning, onShellAttention, terminalApi } from "./api";
+import { applySignal, markShellsSeen, nextAttention, nextOnOutput, ptyIdOf } from "./shell-attention";
+import type { AttentionSource, ShellView } from "./shell-attention";
+import { bellSignal, oscSignal } from "./shell-osc";
+import { createNotifier, notifyShells, outgoing } from "./shell-notify";
+import type { NotifyPayload } from "./shell-notify";
+import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
+  attentionOfId,
   CLOSE_NOTICE,
   confirmClose,
   markExited,
@@ -16,6 +27,8 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
+  runningOfId,
+  setAttention,
   setRunning,
   setShellName,
   setTitle,
@@ -23,6 +36,7 @@ import {
   shellOpenNotice,
   shellRewrite,
   shellsOf,
+  slugOfOwner,
 } from "./shell-registry";
 import type { OpenedShell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
@@ -199,6 +213,86 @@ export function selectShell(id: number): void {
 }
 
 /**
+ * 지금 본문이 보여 주고 있는 셸. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
+ * 「어느 칸이 켜져 있나」(`activeByOwner`)는 그 화면의 **기억**이라 문서를 읽는 중에도 남아
+ * 있고, 그것으로 「봤다」를 세우면 spec을 보는 내내 안 본 완료가 조용히 지워진다.
+ *
+ * 값을 채우는 자리는 `TerminalPane` 하나다 — 그 조각이 서 있다는 것이 곧 「본문이 셸을
+ * 보여준다」이고, 두 화면(work · `/terminal`)이 같은 조각을 쓴다.
+ *
+ * **하나다.** 한때 배열이었고 그 근거가 「분할이면 켜진 탭이 둘」이었는데, 이 앱의 분할은
+ * 조합이 늘 `spec ▏터미널`이라(결정 87 · `WorksPage`) **셸 열이 둘이 되는 화면이 없다**.
+ * 그리고 배열이어도 그 날에 대비가 안 됐다 — 채우는 쪽이 목록을 통째로 대체하므로 둘째
+ * pane의 `[B]`가 첫째의 `[A]`를 지우고, 정리(`showShell(null)`)는 살아 있는 쪽까지 비운다.
+ * 그러니 배열은 「분할 때문」이 아니라 그저 없는 화면을 흉내 낸 모양이었다. 판정 쪽
+ * (`ShellView.activeIds`)은 여전히 여럿을 받는데, 그것은 순수 함수의 계약이라 이 배선과
+ * 무관하게 산다 — 열이 둘이 되는 날 고칠 자리는 여기 하나다.
+ */
+let shownShell: number | null = null;
+
+/**
+ * 앱 창이 포커스를 쥐고 있나(결정 7). 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
+ *
+ * **`document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다.** 이벤트만으로는 못
+ * 가른다 — 분할에서 spec 프레임을 누르면 부모 `window`에 `blur`가 오는데(SpecViewer의
+ * `useFrameFocused`가 그 실측을 들고 있다) 그때도 앱은 앞에 있다. `hasFocus()`는 그
+ * 경우에 참이고 다른 앱으로 넘어갔을 때만 거짓이라, 두 경우가 갈린다.
+ *
+ * **Tauri의 `onFocusChanged`를 안 쓴다.** 값은 더 정확하겠지만 IPC 구독이 하나 더 늘어
+ * 픽스처 백엔드가 모르는 호출이 되고(L3의 `unknownIpcCalls`), 얻는 것은 이 DOM 이벤트가
+ * 이미 주는 사실 하나다.
+ *
+ * **이 줄에 그물이 걸려 있다.** 여기가 참을 늘 돌려주면 아무도 안 보는 곳에서 「봤다」가
+ * 서는데 그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서 안 보인다 — 헤드리스
+ * WebKit은 `document.hasFocus()`가 늘 참이라 브라우저에 맡길 수 없어서, L3가 그 함수를
+ * 손으로 잡고 「창이 뒤에 있으면 초록이 선다」를 잰다(`e2e/terminal-tabs.spec.ts`).
+ */
+function windowFocused(): boolean {
+  // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다.
+  return typeof document !== "undefined" && document.hasFocus();
+}
+
+/** 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(결정 7). */
+function currentView(): ShellView {
+  return { activeIds: shownShell === null ? [] : [shownShell], focused: windowFocused() };
+}
+
+/**
+ * 보고 있는 셸에 「봤다」를 앉힌다. **판정은 `markShellsSeen` 하나**이고 이 자리는 그것에
+ * 「지금 무엇이 보이나」를 건네기만 한다 — 알림 억제(#206)가 같은 함수를 쓴다.
+ *
+ * 안 바뀌면 같은 상태가 그대로 돌아오므로(그 함수의 계약) 창을 눌렀다 뗄 때마다 목록이
+ * 다시 그려지지 않는다.
+ */
+function syncSeen(): void {
+  terminalStore.setState((state) => markShellsSeen(state, currentView()));
+}
+
+/**
+ * 본문이 지금 그리고 있는 셸을 알린다 — `TerminalPane`이 붙고 갈아타고 떠날 때마다 부른다.
+ * 안 보이면 `null`이다.
+ */
+export function showShell(id: number | null): void {
+  shownShell = id;
+  syncSeen();
+}
+
+// **창이 앞으로 오는 것만으로도 「봤다」가 된다**(결정 7 · 스토리 10) — 알림을 눌러 돌아오면
+// 그때 보고 있던 셸의 초록이 그 순간 꺼져야 「와서 봤다」로 읽힌다. 모듈 최상위에 거는 것은
+// 위 구독들과 같은 이유이고, 웹뷰 밖(노드 seam)에서는 `window`가 없어 이 줄을 건너뛴다.
+if (typeof window !== "undefined") {
+  window.addEventListener("focus", syncSeen);
+  // **`blur`에서도 부르는 것은 iframe 하나 때문이다.** 진짜 blur(다른 앱으로 넘어감)에서는
+  // 이 호출이 아무 일도 안 한다 — `hasFocus()`가 거짓이라 「봤다」가 하나도 안 서고, 안
+  // 바뀐 상태가 그대로 돌아온다. 값이 나는 것은 **blur는 오는데 `hasFocus()`는 참인** 경우
+  // 뿐이고(위 `windowFocused` 머리말의 그 사례), 그 길이 실재한다: 다른 앱을 보다가 분할된
+  // 화면의 spec 프레임을 **바로 눌러** 돌아오면 포커스가 자식 문서로 들어가므로 부모
+  // `window`에는 `focus` 없이 `blur`만 온다. 그때 이 줄이 없으면 눈앞의 셸이 초록인 채로
+  // 남는다 — 다음 이벤트가 올 때까지.
+  window.addEventListener("blur", syncSeen);
+}
+
+/**
  * 인스턴스를 거둔다 — **이것이 유일한 정리 경로다.** 부르는 곳이 둘이다: `×`(`closeShell`)와
  * 정상 종료(결정 48로 목록에서 스스로 빠지는 칸). 흩어 놓으면 PTY만 죽고 인스턴스가
  * 남거나(WebGL 컨텍스트를 계속 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
@@ -320,6 +414,185 @@ void onPtyRunning((changed) => {
 });
 
 /**
+ * 셸이 훅으로 **스스로 말한 것**을 상시 구독한다. 자리와 이유는 바로 위와 같다 — 모듈
+ * 최상위라야 배경 칸(결정 21)도 받는다. 회차 하나를 **`setState` 한 번**으로 끝내는 것도
+ * 같은 이유다.
+ *
+ * 번호를 두 번 옮긴다: 셸 ID → pty 번호(`ptyIdOf`) → 레지스트리 번호(`shellOfPty`). 훅은
+ * env로 받은 문자열 하나만 알고, 백엔드는 pty 번호만 알고, 목록은 자기 번호를 스스로
+ * 발급하기 때문이다. **모르는 번호가 실제로 온다** — 파일이 사라진 알림이 오는 사이에 그
+ * 칸이 닫혔으면 이을 것이 없고, 그때는 그냥 건너뛴다.
+ *
+ * **무엇이 되는지는 여기서 안 정한다.** 접는 것은 `nextAttention` 하나이고 이 자리는 그
+ * 답을 칸에 앉히기만 한다 — 규칙이 스토어로 새면 검사가 DOM 있는 seam으로 올라간다.
+ */
+void onShellAttention((changed) => {
+  terminalStore.setState((state) => {
+    let next = state;
+    for (const one of changed) {
+      const ptyId = ptyIdOf(one.shellId);
+      const id = ptyId === null ? null : shellOfPty(ptyId);
+      if (id === null) continue;
+      next = setAttention(next, id, nextAttention(attentionOfId(next, id), one.state));
+    }
+    // **막 도착한 사실도 「봤다」를 거친다.** `applySignal`이 `seen`을 늘 푸는데(그 머리말),
+    // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 초록으로
+    // 번쩍였다가 다음 포커스 변화에나 꺼지고, 같은 판정을 쓰는 알림(#206)이 「보고 있는데
+    // 울리는」 그림이 된다(스토리 58).
+    return markShellsSeen(next, currentView());
+  });
+}).catch((error) => {
+  console.warn("atelier: 셸이 말한 것을 구독하지 못했다 — 상태가 안 뜬다", error);
+});
+
+/**
+ * **훅 없는 셸의 보너스 길**이 상태를 앉히는 자리(#208 · 결정 11의 P). OSC 9·777과 벨이 여기
+ * 하나로 모인다 — 아래 `createInstance`가 인스턴스마다 셋을 걸고, 무엇이 되는지는
+ * `shell-osc.ts`(정규 이벤트)와 `shell-attention.ts`(화면값)가 나눠 안다.
+ *
+ * **훅 길과 같은 문으로 들어간다.** `applySignal` 하나만 딛으므로 권위 규칙(훅이 한 번이라도
+ * 말한 셸에서는 무시)이 이 길에도 저절로 걸린다 — 여기서 칸을 직접 짜면 그 규칙을 두 번
+ * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다.
+ *
+ * **누가 말했는지는 `null`이다.** PTY는 그 바이트가 어느 프로세스에서 나왔는지 안 적는다 —
+ * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`).
+ *
+ * **번호를 안 옮긴다.** 여기 오는 것은 xterm 인스턴스의 **레지스트리 id**라 훅 길이 하는
+ * 두 번의 변환(셸 ID → pty 번호 → 레지스트리 번호)이 필요 없다.
+ *
+ * 「봤다」를 마지막에 한 번 거치는 것은 훅 길과 같은 이유다 — 지금 보고 있는 셸에 도착한
+ * 완료는 사람이 이미 본 것이라, 안 거치면 켜진 칸이 초록으로 번쩍였다 꺼지고 알림이 운다.
+ */
+function applyBonusSignal(id: number, signal: AgentSignal | null, source: AttentionSource): void {
+  if (signal === null) return;
+  terminalStore.setState((state) => {
+    const prev = attentionOfId(state, id);
+    const next = setAttention(state, id, applySignal(prev, signal, Date.now(), source, null));
+    return markShellsSeen(next, currentView());
+  });
+}
+
+/**
+ * **출력이 도착했다**를 그 칸에 알린다 — 이 판에서 상태를 푸는 유일한 이벤트다(#208).
+ *
+ * **`setState` 앞에서 먼저 판정한다.** 이 함수는 PTY 프레임마다 불리는데(초당 수십 번),
+ * 스토어는 값이 안 바뀌어도 부르면 구독자를 깨운다 — 그대로 두면 셸이 글자를 뱉는 내내
+ * 사이드바 열여덟 행이 다시 그려진다. `nextOnOutput`이 안 바뀔 때 **받은 것을 그대로**
+ * 돌려주는 것이 그래서 계약이고, 이 자리는 그 항등성만 보고 문을 연다.
+ */
+function noteOutput(id: number): void {
+  const prev = attentionOfId(terminalStore.state, id);
+  const next = nextOnOutput(prev, Date.now());
+  if (next === prev) return;
+  terminalStore.setState((state) => setAttention(state, id, next));
+}
+
+// ── 알림과 독 배지 (#206 · 결정 10)
+//
+// **판정은 여기 없다.** 무엇이 울리는지는 `shell-notify.ts`의 순수 함수 둘이 정하고
+// (`decideNotification`과 그것을 회차에 거는 `createNotifier`), 이 자리가 하는 일은 셋이다 —
+// 회차마다 재료를 뽑아 건네고, 나온 답을 채널로 내보내고, 배지를 맞춘다.
+//
+// **자리가 여기인 이유는 「보고 있는가」다.** 알림 억제는 결정 7의 판정을 그대로 쓰는데
+// (스토리 80) 그 값(`currentView`)은 이 모듈의 것이다. 사이드바에 두면 「봤다」를 아는 자리가
+// 둘이 되고, 그러면 탭의 초록과 알림이 다른 순간에 같은 판정을 쓰게 된다.
+//
+// **이펙트가 아니라 모듈 구독인 것**도 위 두 구독과 같은 이유다: 배경 칸(결정 21)이 부르는
+// 것도 알려야 하고, `main.tsx`가 StrictMode라 이펙트에 두면 개발 중에 판정기가 두 벌이 된다.
+
+const notifier = createNotifier();
+
+/**
+ * 슬러그를 사람이 읽는 이름으로 바꾸는 함수. **밖에서 온다** — 터미널은 슬러그까지만 알고
+ * (`bandRows` 머리말) work 제목은 목록 API의 것이다. 채우는 자리는 사이드바 하나이고
+ * (`setNotifyTitles`), 아직 안 왔으면 슬러그가 그대로 제목이 된다 — 띠가 모르는 슬러그를
+ * 다루는 방식과 같다.
+ */
+let notifyTitleOf: (owner: ShellOwner) => string = (owner) => slugOfOwner(owner) ?? TERMINAL_LABEL;
+
+/**
+ * 알림 제목이 읽을 이름표를 건넨다. 사이드바가 목록을 받을 때마다 부른다 — 그쪽이 슬러그와
+ * 제목을 둘 다 쥔 유일한 자리다(`bandItems`가 같은 이유로 거기 산다).
+ */
+export function setNotifyTitles(resolve: (owner: ShellOwner) => string): void {
+  notifyTitleOf = resolve;
+}
+
+/** 지금 독에 붙어 있는 수. 안 바뀌면 IPC를 안 태운다 — 이 배선은 상태가 바뀔 때마다 돈다. */
+let badgeShown = 0;
+
+/**
+ * 회차 하나. **구독이 부르고, 설정이 바뀔 때도 부른다.**
+ *
+ * **판정기는 알림이 꺼져 있어도 돈다.** 안 돌리면 꺼 둔 동안의 전이가 기억에 안 앉고, 다시
+ * 켜는 순간 그동안 쌓인 것이 한꺼번에 「처음 들어옴」으로 울린다 — 조용히 있으라고 끈
+ * 사람에게 가장 나쁜 모양이다.
+ */
+function notifyTick(): void {
+  const rows = notifyShells(terminalStore.state, currentView(), notifyTitleOf);
+  const fired = notifier.step(rows, Date.now());
+  // **고른 값이 무엇을 바꾸는지도 여기 없다**(`outgoing`). 「끄면 조용하다」·「소리만 끈다」를
+  // 이 배선 안의 `if`로 들면 그 두 줄을 지워도 어느 층도 빨개지지 않는다 — 순수 함수로
+  // 내려야 표가 그것을 잡는다(2026-09-10 리뷰).
+  const { toShow, badge } = outgoing(fired, rows.length, notifyChoice());
+  setBadge(badge);
+  for (const one of toShow) show(one);
+}
+
+/**
+ * 독 아이콘의 수(스토리 65). **크로스 플랫폼 API라 `cfg` 분기가 없다** — Windows에서만
+ * 조용히 무시된다.
+ *
+ * `undefined`가 「배지를 없앤다」다(`setBadgeCount`의 계약) — 0을 넘기면 동그라미 안에 0이
+ * 앉는다.
+ */
+function setBadge(count: number): void {
+  if (count === badgeShown) return;
+  badgeShown = count;
+  getCurrentWindow()
+    .setBadgeCount(count === 0 ? undefined : count)
+    .catch((error) => {
+      console.warn("atelier: 독 배지를 못 붙였다", error);
+    });
+}
+
+/**
+ * 알림 하나를 내보낸다. **모양은 이미 정해져 왔다**(`notificationPayload`) — 이 함수가 아는
+ * 것은 채널 하나뿐이다.
+ *
+ * **앱이 클릭에 걸 것이 없다.** 스펙은 「되면 셸 탭까지, 안 되면 창 앞세우기까지」라 적었는데,
+ * 이 플러그인의 데스크톱 경로는 **클릭을 아예 안 받는다** — `desktop.rs`의
+ * `NotificationBuilder::show()`가 `notify_rust`에 title·body·icon·sound만 넘기고 응답
+ * 핸들러를 걸지 않으며(그래서 `notify_rust`의 `wait_for_click`도 안 탄다), 액션 API는
+ * 모바일 전용이다.
+ *
+ * **그래도 창 앞세우기는 OS가 한다** — 같은 `show()`가 macOS에서
+ * `notify_rust::set_application(…)`으로 알림 주체를 세우는데, 그 인자가 릴리스에서는 앱의
+ * 번들 id이고 **`tauri::is_dev()`이면 `com.apple.Terminal`이다**(2.4.0 `desktop.rs`). 그래서
+ * 이 자리의 실물 확인은 **번들된 `.app`으로 해야 한다**: `tauri dev`로 누르면 앞으로 오는
+ * 것은 터미널 앱이고, 그것을 「안 된다」로 읽으면 기준이 거짓 음성으로 닫힌다.
+ *
+ * 창이 앞으로 온 뒤는 스토리 10이 받는다 — 포커스를 얻는 순간 켜져 있던 셸의 초록이
+ * 꺼진다(`syncSeen`의 `focus` 리스너).
+ */
+function show(payload: NotifyPayload): void {
+  try {
+    sendNotification(payload);
+  } catch (error) {
+    // 웹뷰 밖(노드 seam)이나 채널이 없는 자리에서 여기가 실제로 터진다. 알림 하나를 못 낸
+    // 값으로 상태 갱신을 멈추지 않는다 — 화면은 이미 같은 사실을 그리고 있다.
+    console.warn("atelier: 알림을 못 띄웠다", error);
+  }
+}
+
+// **구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
+// 머리말 — 그 이유가 여기서 났다) 이 콜백이 읽어도 딸려 오는 의존이 없다.
+terminalStore.subscribe(notifyTick);
+// 설정이 바뀌면 배지가 그 자리에서 따라와야 한다 — 끈 순간 독에 수가 남아 있으면 「껐는데
+// 아직 부른다」로 읽힌다.
+onNotifySettingsChanged(notifyTick);
+
+/**
  * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
  *
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
@@ -435,6 +708,39 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // React 트리 밖에 사는 칸)의 이름이 갱신되지 않는다: 그 칸에는 도는 이펙트가 없다.
   term.onTitleChange((title) => {
     terminalStore.setState((state) => setTitle(state, id, title));
+  });
+
+  // **훅 없는 셸의 보너스 길 셋**(#208 · 결정 11의 P). 붙이는 자리가 바로 위와 같고 이유도
+  // 같다 — 배경 칸이 부르는 것도 띠와 알림이 받아야 한다. 사람이 다른 work을 보는 동안
+  // 뒤에서 도는 셸이 정확히 이 길로 말을 건다.
+  //
+  // **9와 777이 같은 함수를 탄다.** 스펙이 둘을 한 줄로 묶었고(「그 밖의 OSC 9·777은 전부
+  // `done`」), 갈라 두면 같은 판정이 두 벌이 된다.
+  //
+  // **`true`를 돌려주는 것은 「우리가 처리했다」다.** 이 xterm 버전에는 9·777의 기본 핸들러가
+  // 없어(`lib/xterm.js`의 `registerOscHandler` 등록 목록에 0·1·2·4·8·10~12·104·110~112뿐)
+  // 밀려날 곳도 없지만, `false`를 돌려주면 파서가 그 시퀀스를 「처리 못 함」으로 흘린다.
+  const osc = (body: string): boolean => {
+    applyBonusSignal(id, oscSignal(body), "osc");
+    return true;
+  };
+  term.parser.registerOscHandler(9, osc);
+  term.parser.registerOscHandler(777, osc);
+
+  // **포커스 보고(DEC 1004)는 여기서 켤 것이 없다.** xterm이 스스로 진다 — `?1004h`를 받으면
+  // `decPrivateModes.sendFocus`를 세우고, 그 뒤 포커스/블러마다 `ESC [I`·`ESC [O`를
+  // `triggerDataEvent`로 흘린다(`lib/xterm.js` 확인). 그 데이터는 위 `onData` 하나를 지나
+  // 그대로 PTY로 나가므로, Codex의 `notification_condition = unfocused`가 딛는 신호가
+  // 이 앱에서도 셸까지 닿는다. **아직 실물로는 못 봤다** — 남은 물음은 macOS 창이 뒤로 갈 때
+  // WKWebView가 xterm의 숨은 입력칸에 실제로 블러를 주는가이고, 그것은 사람이 봐야 안다.
+  // 무엇을 어떤 순서로 눌러 보고 결과를 어디에 적는지는 이 work의 `spec/OSC-벨-실물-확인.md`
+  // 3절에 있다(선례: 티켓 04의 `spec/훅-실물-확인.md`).
+
+  // **벨의 「모르는 명령」 판정은 울린 그 순간의 값으로 한다**(구현 결정 1). 1초 폴링이라
+  // 경계에서 어긋날 수 있고, 어긋나면 초록이 하나 더 뜨는 쪽으로 틀린다 — 스펙이 택한 방향이다.
+  // 죽은 칸을 가리는 것은 `runningOfId`가 딛는 `runningOn` 하나다.
+  term.onBell(() => {
+    applyBonusSignal(id, bellSignal(runningOfId(terminalStore.state, id)), "bell");
   });
 
   // PTY resize는 `cols`/`rows`가 **실제로 바뀔 때만** 나가야 한다(⌘B의 220ms 폭 트랜지션이
@@ -658,6 +964,22 @@ async function spawn(instance: ShellInstance) {
       // **떼어 둔 사이에도 그대로 받아 적는다.** 그것이 결정 20이다 — 다른 화면에 가 있는
       // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다.
       if (frame instanceof ArrayBuffer) {
+        // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
+        // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
+        // 이 판에 없다(결정 2·3).
+        //
+        // **쓰기 전에 알린다.** 이 프레임에 실려 온 OSC는 **이 프레임보다 새 사실**이라
+        // 나중에 앉아야 한다: 순서가 바뀌면 승인 요청과 그 뒤 몇 글자가 한 프레임에 실려 온
+        // 자리에서 방금 선 앰버가 그 자리에서 꺼진다. 훅 없는 codex에서 사람이 `y`로 승인한
+        // 직후가 정확히 그 모양이라(다음 승인 요청이 첫 프레임에 실려 온다) 이 판이 존재하는
+        // 이유가 통째로 사라진다.
+        //
+        // **`write()` 뒤에 두면 그 순서가 안 지켜진다** — 한때 「파싱한 뒤에 알린다」로 적혀
+        // 있었고 근거가 뒤집혀 있었다. xterm의 `write()`는 평소 파싱을 다음 tick으로 미루지만
+        // (`WriteBuffer._scheduleInnerWrite`), **바로 앞에 사람 입력이 있었으면 그 한 번은
+        // 동기로 파싱한다**(`_didUserInput` 갈래). 그래서 뒤에 두면 평소에는 우연히 맞고 키를
+        // 친 직후에만 뒤집혔다. 앞에 두면 두 갈래가 같은 순서를 탄다.
+        noteOutput(instance.id);
         instance.term.write(new Uint8Array(frame));
         return;
       }

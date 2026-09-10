@@ -1,8 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
+import { signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
@@ -395,6 +397,24 @@ const ShellTab = memo(function ShellTab({
   // `agentMarkOf` 하나가 안다 — 사이드바 행과 갈리면 같은 상태가 두 말을 한다.
   const running = runningOn(shell);
   const mark = agentMarkOf(running);
+  // **물들임의 값도 칸마다다**(결정 6). 판정은 `signalOf` 하나이고 — 행도 띠도 알림도 그
+  // 함수를 딛는다 — 여기서 다시 짓지 않는다. 「안 본 완료」가 이 칸을 켜는 순간 사라지는
+  // 것도 그 함수 안에 있다: 「봤다」가 세워지면 `signalOf`가 아무것도 안 돌린다.
+  const signal = signalOf(shell);
+  const tint = signal === null ? null : signalTint(signal, active);
+  // **눈과 귀가 같은 조건에서 선다**(스토리 52·55). 이름에 붙는 상태 말이 채움과 갈리면
+  // 도는 중인 칸이 아무 색도 없이 귀에만 「도는 중」을 말한다 — 그래서 `tint`가 없으면
+  // 이름도 조용하다.
+  const spoken = signal !== null && tint !== null ? SIGNAL_LABEL[signal] : null;
+  // **접근성 이름을 한 자리에서 조립한다.** `aria-label`은 자손 글자를 통째로 대체하므로,
+  // 여기에 상태만 적으면 이름이 숨는 폭에서만 서는 아래 마크 마디(「claude 실행 중」)가 그
+  // 폭의 접근성 이름에서 **사라진다** — 그 마디가 있는 이유가 「글리프가 `aria-hidden`이라
+  // 도는 칸이 눈에만 보인다」인데 하필 부르는 칸에서만 그것을 잃는다. 그래서 도는 것도
+  // 여기서 함께 싣는다. `undefined`면 라벨 자체가 없고 그때는 보이는 글자가 이름이 된다.
+  const spokenName =
+    spoken === null
+      ? undefined
+      : [name, mark && `${mark.label} 실행 중`, spoken].filter(Boolean).join(" — ");
 
   return (
     // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
@@ -435,7 +455,26 @@ const ShellTab = memo(function ShellTab({
       data-tab="shell"
       className={cn(
         "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
-        active ? "toggle-on font-medium" : "text-muted-foreground hover:bg-state-1",
+        // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
+        // 칸이다」가 아니라서, 무게까지 함께 걷으면 켜진 칸을 가리는 것이 1px 테두리 하나가
+        // 된다. 물들임과 무관한 사실이라 그 갈림 **밖**에 한 번만 적는다.
+        active && "font-medium",
+        // **채움이 이 상자에 붙는다** — 이름 버튼이 아니라. 안쪽에 두면 이름이 숨는 폭
+        // (`@max-[88px]`)에서 색이 글자와 함께 사라져, 좁은 창에서 신호가 먼저 죽는다
+        // (스토리 53). 상자는 늘 서 있고 늘 같은 자리다.
+        //
+        // **잉크는 여기 없다**(판 04 결정 15). 상자에 얹으면 안쪽이 통째로 `currentColor`로
+        // 물들어 에이전트 마크까지 상태색을 받는다 — 잉크가 붙는 자리는 이름 글자 하나이고
+        // 그 근거는 `signalTint` 머리말이 든다. 그래서 물든 칸도 회색 잉크를 그대로 쓴다.
+        //
+        // **물들면 회색 배경이 물러난다**(결정 6). 켜진 칸의 `toggle-on`까지 그렇다 —
+        // 「부르는 탭」이 「고른 탭」보다 위 사실이라, 둘을 겹쳐 두면 유틸리티 정렬 순서가
+        // 승자를 정하고 보고만 있는 셸이 답한 셸로 오인된다(스토리 49).
+        tint === null
+          ? active
+            ? "toggle-on"
+            : "text-muted-foreground hover:bg-state-1"
+          : cn("text-muted-foreground", tint.cell),
       )}
     >
       {/* 켜짐을 `aria-pressed`로 말한다 — **`role="tab"`/`aria-selected`를 쓰지 않는다.**
@@ -450,6 +489,15 @@ const ShellTab = memo(function ShellTab({
       <button
         type="button"
         aria-pressed={active}
+        // **상태가 이름에 붙는다**(스토리 55 · 결정 8). 채움은 `aria-hidden`도 아니고 그냥
+        // 색이라 스크린리더에 아무것도 안 남긴다 — 색만이 신호여선 안 되므로 그 사실을
+        // 말하는 자리가 이 이름 하나다. 말은 `SIGNAL_LABEL` 하나에서 오고 행 버튼·띠 줄이
+        // 같은 표를 읽는다.
+        //
+        // **`aria-label`이지 숨은 글자가 아니다** — 사이드바 행이 같은 자리에서 같은 선택을
+        // 했다. 보이는 이름은 `truncate`로 줄고 좁은 폭에서는 `sr-only`로 남는데, 그 위에
+        // 숨은 글자를 하나 더 얹으면 이름이 두 조각으로 읽힌다.
+        aria-label={spokenName}
         onClick={() => onSelect(shell.id)}
         // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
         // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
@@ -493,7 +541,9 @@ const ShellTab = memo(function ShellTab({
             자리를 비운다(결정 11). `hidden`이 아니라 `sr-only`인 것은 이름 버튼의
             접근성 이름이 이 글자 하나라서다 — `display:none`으로 지우면 좁은 창에서 그
             칸이 스크린리더에 「버튼」으로만 불린다. 자리는 안 먹고 이름은 남긴다. */}
-        <span className="min-w-0 truncate @max-[88px]:sr-only">{name}</span>
+        {/* **잉크가 여기 붙는다**(판 04 결정 15). 칸 상자가 아니라 이 글자 하나다 —
+            상자에 얹으면 좁은 폭의 마크가 함께 물든다(`signalTint` 머리말). */}
+        <span className={cn("min-w-0 truncate @max-[88px]:sr-only", tint?.ink)}>{name}</span>
         {/* 죽은 칸을 **누르지 않고** 알아보는 자리다(결정 17). 왜 죽었는지 한 문장은
             그 칸을 켰을 때 종료 줄이 말한다(결정 22 그대로) — 여기 `title`로 띄우는
             안은 기각됐다. 결정 45가 상한 문구를 `title`에서 꺼내 그 자리에 문장으로

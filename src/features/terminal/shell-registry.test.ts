@@ -13,6 +13,7 @@ import {
   confirmClose,
   markExited,
   markFailed,
+  markSeen,
   MAX_SHELLS,
   needsCloseConfirm,
   NO_SHELLS,
@@ -24,6 +25,7 @@ import {
   runningOn,
   runningShellsOf,
   searchHotkey,
+  setAttention,
   setRunning,
   setShellName,
   setTitle,
@@ -48,6 +50,8 @@ import {
   workShellProjects,
 } from "./shell-registry";
 import type { Shell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import { attentionOn } from "./shell-attention";
+import type { Attention } from "./shell-attention";
 import type { WorkView, WorktreeView } from "@/features/works/types";
 // 모드 목록을 **표에서** 받는다 — 여기 손으로 둘을 적으면 세계가 셋이 되는 날 이 파일만
 // 조용히 둘을 재고, 그때 빠지는 것이 정확히 이 판이 지키려는 불변식이다.
@@ -1748,8 +1752,8 @@ describe("work가 도는 것의 **종류**를 말한다", () => {
   });
 });
 
-// 결정 2·3. **행 오른쪽 끝의 메타가 서는 조건**이자 그 자리의 **무리마다의 수를 다 더한
-// 값**이다(`⌨수`는 여기서 마크가 붙은 셸 수를 뺀 나머지다 — `ShellMeta`). 세는 자리를
+// 결정 2·3. **work 행 둘째 줄이 종류·수를 싣는 조건**이자 그 자리의 **무리마다의 수를 다
+// 더한 값**이다(`⌨수`는 여기서 마크가 붙은 셸 수를 뺀 나머지다 — `ShellMeta`). 세는 자리를
 // 새로 만들지 않고 이미 있는 이것으로 되는지 여기서 못박는다.
 describe("work마다 셸이 몇 개인가", () => {
   const 가 = originFor("가");
@@ -1816,5 +1820,176 @@ describe("도는 명령이 프런트 상태까지 오는 배선", () => {
     // 모르는 pty id는 건너뛴다 — 이 왕복 사이에 `×`로 닫힌 칸이 실제로 온다. 그리고 값은
     // **그대로** 앉는다: 여기서 접으면 로고 매핑이 두 벌이 된다(adr-04).
     expect(store).toContain("if (id !== null) next = setRunning(next, id, one.running);");
+  });
+});
+
+// 셸이 스스로 말한 것이 오는 **두 번째** 통로. 위와 같은 모양이고 같은 이유로 소스로
+// 못박는다 — 이름이 갈리면 컴파일도 타입 검사도 통과하고 화면만 영영 조용하다.
+describe("셸이 말한 것이 프런트까지 오는 배선", () => {
+  it("이벤트 이름이 백엔드와 **같은 문자열**이다", () => {
+    expect(read("../../../src-tauri/src/shells.rs")).toContain(
+      'const ATTENTION_EVENT: &str = "shell:attention";',
+    );
+    expect(read("./api.ts")).toContain('const SHELL_ATTENTION = "shell:attention";');
+  });
+
+  // **이펙트가 아니라 모듈 최상위다.** 배경 칸(결정 21로 React 트리 밖에 사는 칸)도 받아야
+  // 하고, 받는 쪽이 React가 아니라 모듈 싱글턴 스토어라 붙일 화면이 필요 없다 — 바로 위
+  // `onPtyRunning`과 같은 자리·같은 이유다. 이펙트로 내려가면 그 칸들이 조용해진다.
+  it("도는 명령 구독 곁에서 모듈 최상위로 듣는다", () => {
+    // 줄머리에 선다 — 함수 안이면 앞에 공백이 붙어 이 문자열이 안 맞는다.
+    expect(read("./terminal-store.ts")).toContain("\nvoid onShellAttention((changed) => {");
+  });
+});
+
+// 셸이 스스로 말한 것이 그 칸에 앉는다(#202). 리듀서가 아는 것은 「앉힌다」뿐이고 「무엇이
+// 되는가」는 `shell-attention.ts`가 안다 — 그 가름이 이 파일의 값 import 금지 때문이라는 것은
+// `Shell.attention`의 머리말이 든다.
+describe("셸에 「스스로 말한 것」이 앉는다", () => {
+  const 기다림: Attention = {
+    kind: "waiting",
+    message: "커밋할까요?",
+    since: 100,
+    seen: false,
+    source: "hook",
+    agent: "claude",
+  };
+
+  it("그 칸에 그대로 앉는다", () => {
+    const { state, ids } = opened(1);
+    expect(setAttention(state, ids[0], 기다림).shells[0].attention).toBe(기다림);
+  });
+
+  it("아직 아무것도 안 온 칸은 비어 있다", () => {
+    expect(opened(1).state.shells[0].attention).toBeNull();
+  });
+
+  // **바뀐 셸만 갈아 끼운다.** 감시가 회차마다 여러 셸을 실어 오는데, 안 바뀐 칸까지 새
+  // 객체가 되면 사이드바와 탭 줄이 통째로 다시 그려진다.
+  it("옆 칸은 안 건드린다 — 같은 객체 그대로다", () => {
+    const { state, ids } = opened(2);
+    const 앉힌뒤 = setAttention(state, ids[0], 기다림);
+    expect(앉힌뒤.shells[1]).toBe(state.shells[1]);
+  });
+
+  // 판정은 `nextAttention`이 「안 바뀌면 받은 것을 그대로 준다」로 이미 하고, 여기서는 그
+  // 항등성만 본다 — 다섯 칸을 견주는 자리가 두 벌이 되면 한쪽만 늙는다.
+  it("같은 것이 다시 와도 상태가 그대로다", () => {
+    const { state, ids } = opened(1);
+    const 앉은뒤 = setAttention(state, ids[0], 기다림);
+    expect(setAttention(앉은뒤, ids[0], 기다림)).toBe(앉은뒤);
+    expect(setAttention(state, ids[0], null)).toBe(state);
+  });
+
+  // 이벤트와 제거가 경주한다 — 이미 닫힌 칸의 파일이 늦게 사라지고 그 알림이 늦게 온다.
+  it("모르는 id로는 아무것도 앉지 않는다", () => {
+    const { state } = opened(1);
+    expect(setAttention(state, 9999, 기다림)).toBe(state);
+  });
+});
+
+// 「봤다」가 그 칸에 앉는다(결정 7). **누가 봤는지 고르는 것은 이 리듀서가 아니다** —
+// 판정은 `shell-attention.ts`의 `isShellSeen` 하나이고 여기는 그 답을 받아 적기만 한다.
+describe("「봤다」가 그 칸에 앉는다", () => {
+  const 완료: Attention = {
+    kind: "done",
+    message: "PR #174 열었다",
+    since: 100,
+    seen: false,
+    source: "hook",
+    agent: "claude",
+  };
+
+  it("본 칸의 상태에 「봤다」가 선다", () => {
+    const { state, ids } = opened(1);
+    const 앉은뒤 = setAttention(state, ids[0], 완료);
+    expect(markSeen(앉은뒤, [ids[0]]).shells[0].attention?.seen).toBe(true);
+  });
+
+  it("안 본 칸은 안 건드린다 — 같은 객체 그대로다", () => {
+    const { state, ids } = opened(2);
+    const 앉은뒤 = setAttention(state, ids[0], 완료);
+    expect(markSeen(앉은뒤, [ids[1]]).shells[0]).toBe(앉은뒤.shells[0]);
+  });
+
+  it("이미 본 칸도, 아무 주장도 없는 칸도 상태를 그대로 둔다", () => {
+    const { state, ids } = opened(1);
+    const 본뒤 = markSeen(setAttention(state, ids[0], 완료), [ids[0]]);
+    expect(markSeen(본뒤, [ids[0]])).toBe(본뒤);
+    expect(markSeen(state, [ids[0]])).toBe(state);
+  });
+
+  it("모르는 id는 무시한다", () => {
+    const { state } = opened(1);
+    expect(markSeen(state, [9999])).toBe(state);
+  });
+});
+
+// 셸이 말한 것이 **레지스트리까지** 온다. 위 「이벤트 이름이 백엔드와 같은 문자열이다」가
+// 통로를 못박고, 이 검사는 그 통로 끝이 상태 축에 이어졌는지를 본다 — 구독만 걸려 있고
+// 앉히지 않으면 훅을 걸어도 화면이 영영 조용하고, 그때 빨개지는 검사가 하나도 없다.
+describe("셸이 말한 것이 상태 축까지 온다", () => {
+  /**
+   * 구독 콜백 한 덩이만 떼어 온다. **못 떼면 그 자리에서 터진다** — 표식이 사라졌는데 빈
+   * 조각을 세면 아래 셈이 전부 0이 되어, 배선이 통째로 없어져도 조용히 지나간다.
+   */
+  const 콜백 = () => {
+    const store = read("./terminal-store.ts");
+    const 시작 = store.indexOf("void onShellAttention(");
+    expect(시작, "onShellAttention 구독이 terminal-store에 없다").toBeGreaterThan(-1);
+    const 끝 = store.indexOf("}).catch(", 시작);
+    expect(끝, "onShellAttention 구독의 끝을 못 찾았다").toBeGreaterThan(시작);
+    return store.slice(시작, 끝);
+  };
+
+  // **구현 문장을 통째로 베끼지 않는다.** 예전에는 이 자리가 `const ptyId = ptyIdOf(...)` 같은
+  // 한 줄을 글자 그대로 못박았는데, 그러면 `one`을 `entry`로 바꾸는 것처럼 **동작을 하나도 안
+  // 바꾸는 변경에 빨개지고** 정작 진짜 갈림은 문자열 밖이라 안 잡힌다. 여기서 재는 것은
+  // 「거쳐야 하는 자리를 다 거쳤는가」다 — 셸 ID를 번호로 되뽑고(`ptyIdOf`), 그 번호로 칸을
+  // 찾고(`shellOfPty`), 어댑터로 접어(`nextAttention`) 그 칸에 앉힌다(`setAttention`).
+  //
+  // **못 재는 것**: 값이 실제로 그 칸에 앉는가. 이 판에는 그 값을 읽는 화면이 아직 없어서
+  // (#203~#206) 어느 층에서도 못 본다 — L3 하네스도 「전이를 쐈다」까지만 본다. #203이 화면을
+  // 세우는 순간 그 층에서 재고, 그때까지 이 검사가 지키는 것은 통로의 모양뿐이다.
+  it.each(["ptyIdOf(", "shellOfPty(", "nextAttention(", "setAttention("])(
+    "받은 것이 %s를 거쳐 그 칸에 앉는다",
+    (자리) => {
+      expect(countOf(콜백(), 자리), `${자리} — 거쳐야 하는 자리다`).toBe(1);
+    },
+  );
+
+  // `onPtyRunning`과 **같은 한 번의 `setState`**다. 회차마다 여러 셸이 실려 오는데 칸마다
+  // 부르면 그 수만큼 구독자가 깨어난다.
+  it("회차 하나를 setState 한 번으로 끝낸다", () => {
+    expect(countOf(콜백(), "terminalStore.setState(")).toBe(1);
+  });
+});
+
+// 죽은 셸의 상태(구현 결정 1). 가름이 둘로 갈린다 — 정상 종료는 칸이 통째로 빠져 상태도
+// 같이 가고, 비정상 종료는 칸이 남으므로 읽는 자리에서 가린다(`attentionOn`).
+describe("죽은 셸의 상태", () => {
+  const 기다림: Attention = {
+    kind: "waiting",
+    message: "커밋할까요?",
+    since: 100,
+    seen: false,
+    source: "hook",
+    agent: "claude",
+  };
+
+  it("정상 종료는 칸과 함께 사라진다", () => {
+    const { state, ids } = opened(1);
+    const 부르던칸 = setAttention(state, ids[0], 기다림);
+    expect(markExited(부르던칸, ids[0], { exitCode: 0, signal: null }).shells).toEqual([]);
+  });
+
+  // **칸은 남는다**(결정 22 — 죽은 이유를 읽는 것이 이 터미널의 핵심 용도다). 상태 값도
+  // 그 칸에 그대로 남아 있고, 화면이 그것을 안 읽는 것은 `attentionOn`의 몫이다.
+  it("비정상 종료는 칸을 남긴다 — 가리는 자리는 읽는 쪽이다", () => {
+    const { state, ids } = opened(1);
+    const 부르던칸 = setAttention(state, ids[0], 기다림);
+    const 죽은뒤 = markExited(부르던칸, ids[0], { exitCode: 1, signal: "Terminated: 15" });
+    expect(죽은뒤.shells).toHaveLength(1);
+    expect(attentionOn(죽은뒤.shells[0])).toBeNull();
   });
 });
