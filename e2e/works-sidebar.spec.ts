@@ -8,6 +8,8 @@ import {
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  띠,
+  레인,
 } from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
@@ -571,10 +573,6 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
 // 이 층이 유일한 그물인 것 셋: 진짜 스토어를 한 바퀴 도는 것(이벤트 → 셀렉터 → 행), 색이
 // 실제로 칠해지는 것, 링이 실제로 도는 것. 마크업 seam은 「클래스가 붙었다」까지만 본다.
 
-/** 그 work 행의 레인 — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다. */
-const 레인 = (page: Page, slug: string) =>
-  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
-
 /**
  * 본문을 문서로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
  *
@@ -831,9 +829,6 @@ test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다",
 // 어디에도 안 적히는 것, 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때
 // 무엇이 먼저 줄어드는가. 앞의 셋은 진짜 스토어와 라우터가 있어야 나고 마지막은 진짜
 // 레이아웃이 있어야 난다.
-
-/** 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(스토리 38). */
-const 띠 = (page: Page) => page.locator("[data-band]");
 
 /** 띠의 줄들 — 이름을 단 버튼만 센다(토글은 이름이 글자에 있어 안 걸린다). */
 const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]");
@@ -1125,7 +1120,7 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
 
   const shells = page.locator(`[data-shells="${plainWork.slug}"]`);
   const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
-  const lane = subrow.locator("xpath=..").locator("[data-lane]");
+  const lane = 레인(page, plainWork.slug);
   const pin = page.getByRole("button", { name: `${plainWork.title} 고정` });
   const title = page.getByRole("button", { name: plainWork.title, exact: true });
   await expect(shells).toHaveCount(1);

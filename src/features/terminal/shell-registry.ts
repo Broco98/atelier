@@ -478,6 +478,22 @@ export function markSeen(state: ShellsState, ids: ReadonlyArray<number>): Shells
 }
 
 /**
+ * 그 번호의 칸이 **마지막으로 말한 것**. 없는 칸은 `null`이다.
+ *
+ * **리듀서의 입력이지 화면이 읽는 값이 아니다.** 화면은 `attentionOn`·`signalOf`를 딛어야
+ * 죽은 칸이 걸러지는데(`shell-attention.ts`), 이 함수는 거꾸로 「직전에 무엇이었나」를 그대로
+ * 돌려준다 — 다음 값을 접는 함수들이 재료로 쓰는 자리라 여기서 가리면 죽은 칸에 늦게 도착한
+ * 신호가 **직전 없음** 위에 새 상태를 세운다.
+ *
+ * **「없는 칸은 `null`」을 아는 자리가 여기 하나다.** 신호가 들어오는 문이 셋이라(훅·보너스
+ * 길·출력) 부르는 쪽마다 적으면 셋이 되고, 그중 하나가 모르는 번호에 다른 답을 내는 날
+ * 그 어긋남은 화면에서 아무 표시도 안 난다.
+ */
+export function attentionOfId(state: ShellsState, id: number): Attention | null {
+  return state.shells.find((shell) => shell.id === id)?.attention ?? null;
+}
+
+/**
  * 그 칸에서 **지금 도는 것**. 탭 한 칸이 읽는 자리다(결정 4의 「탭 줄은 칸마다」).
  *
  * **끝난 칸은 아무것도 안 돌린다.** 죽은 칸에 마지막 값이 굳어 있으면 claude 로고가 영영
@@ -489,6 +505,18 @@ export function markSeen(state: ShellsState, ids: ReadonlyArray<number>): Shells
  */
 export function runningOn(shell: Shell): string | null {
   return shell.status.kind === "running" ? shell.running : null;
+}
+
+/**
+ * 그 **번호**의 칸에서 지금 도는 것. 없는 칸도 죽은 칸도 `null`이다.
+ *
+ * 칸이 아니라 번호를 쥔 자리가 부른다(벨이 그렇다 — 울린 것은 xterm 인스턴스이고 그것이 아는
+ * 것은 자기 번호뿐이다). **가름을 손으로 다시 적지 않게** 여기서 `runningOn`을 딛는다:
+ * 부르는 쪽이 `shell ? runningOn(shell) : null`을 적으면 죽은 칸을 가리는 자리가 둘이 된다.
+ */
+export function runningOfId(state: ShellsState, id: number): string | null {
+  const shell = state.shells.find((one) => one.id === id);
+  return shell === undefined ? null : runningOn(shell);
 }
 
 /**

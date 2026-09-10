@@ -234,6 +234,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 셸 닫기 확인 창이 이 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다.
   pty_command_running: true,
   pty_kill: null,
+  // **타자를 치는 시나리오가 이 판에 생겼다**(#208 리뷰). 사람이 키를 친 직후의 첫 프레임만
+  // xterm이 **동기로** 파싱하는데(`WriteBuffer.write`의 `_didUserInput` 갈래), 그 갈래에서
+  // 출력 알림과 OSC의 순서가 뒤집히면 방금 선 앰버가 그 자리에서 꺼진다 — 그 순서를 재려면
+  // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
+  // **답이 있어야 화이트리스트를 안 넘는다.**
+  pty_write: null,
 };
 
 // **표가 낡으면 이 자리에서, 표를 가리키며 터진다.** 위 두 표를 잇는 것은 커맨드 이름 문자열
@@ -282,10 +288,6 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
   ].join("\n"),
   "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',
 };
-
-// 여기 없는 pty 커맨드(`pty_write`)는 **일부러 뺐다.** 지금 타자를 치는 시나리오가 없고,
-// 아래 `write_settings` 주석이 적어 둔 규칙이 그대로 걸린다 — **태우지 않는 스텁은 조용히
-// 낡는다.** 그 시나리오를 쓰는 판이 같이 넣는다.
 
 // `write_settings`는 아직 없다 — 설정을 저장하는 시나리오가 없고, **태우지 않는 스텁은
 // 조용히 낡는다**(harness.ts의 플러그인 표가 같은 이유로 둘을 비워 뒀다). 그 시나리오를

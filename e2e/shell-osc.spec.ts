@@ -13,6 +13,8 @@ import {
   stubWindowFocus,
   unknownIpcCalls,
   writeShell,
+  띠,
+  레인,
 } from "./harness";
 
 const [, plainWork] = WORKS;
@@ -34,9 +36,6 @@ const [, plainWork] = WORKS;
 const ESC = "\x1b";
 /** 벨 한 번. OSC를 끝내는 문자이기도 하다(BEL 종결). */
 const BEL = "\x07";
-
-/** 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204). */
-const 띠 = (page: Page) => page.locator("[data-band]");
 
 /** 셸을 살려 둔 채 **안 보는 자리**로 간다 — 그 칸은 배경 칸이 된다(결정 21). */
 const 눈을뗀다 = async (page: Page) => {
@@ -77,6 +76,32 @@ test("접두사 없는 OSC 9는 초록을 세우고 그 본문을 그대로 보�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **등록 줄 하나를 딛는 검사다**(#208 리뷰). 파싱은 9와 777이 **같은 함수**를 타므로
+// (`oscSignal`) 순수 함수 seam의 표는 777을 한 글자도 못 잰다 — 777이 실제로 파서에 붙어
+// 있는지를 아는 자리는 이 층뿐이고, 이 검사가 없으면 `registerOscHandler(777, osc)`를 지워도
+// 전 층이 초록이다. 티켓의 수용 기준이 「9·777·벨 **셋을** 붙인다」라 그 셋이 다 그물 안에
+// 있어야 한다.
+//
+// **바꾸는 것은 번호 하나뿐이다.** 종결도 위와 같은 BEL이고 본문도 같다 — 여기서 ST 종결까지
+// 함께 바꾸면 빨개졌을 때 「777이 안 붙었다」와 「ST를 못 읽는다」가 갈리지 않는다.
+test("OSC 777도 같은 문으로 들어온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 눈을뗀다(page);
+
+  await expect(띠(page)).toHaveCount(0);
+
+  await writeShell(page, `${ESC}]777;PR #174 열었다${BEL}`);
+
+  await expect(
+    띠(page).getByRole("button", { name: `${plainWork.title} — 확인할 것`, exact: true }),
+  ).toHaveCount(1);
+  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("PR #174 열었다");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 출력이 그것을 푼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -85,10 +110,7 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
 
   await writeShell(page, `${ESC}]9;Approval requested: Bash(git push)${BEL}`);
 
-  const lane = page
-    .locator(`[data-subrow="${plainWork.slug}"]`)
-    .locator("xpath=..")
-    .locator("[data-lane]");
+  const lane = 레인(page, plainWork.slug);
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
   // **접두사 뒤가 말이 된다** — 접두사 자체는 앱이 이미 상태로 옮겼으니 두 번 말하지 않는다.
   await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
@@ -97,7 +119,7 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
   // **Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보낸다** — 앰버를 푸는 것은 사람이
   // 승인한 뒤 **다시 흐르기 시작한 출력**이다(스펙 전이 표의 마지막 줄). 이 줄이 없으면
   // 훅 없는 Codex 셸이 승인 뒤에도 영영 앰버로 남는다.
-  await writeShell(page, "running git push...\\r\\n");
+  await writeShell(page, "running git push...\r\n");
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
   // 부르는 셸이 아니게 됐으니 띠가 통째로 사라진다(도는 중은 띠에 못 온다 — 결정 8).
@@ -168,6 +190,43 @@ test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 
   await expect(tabs.nth(0)).toHaveAttribute("aria-label", /나를 기다림/);
   // 말도 훅이 준 것 그대로다 — OSC 본문이 덮지 않았다.
   await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("커밋할까요?");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
+const focusedClass = (page: Page) => page.evaluate(() => document.activeElement?.className ?? "");
+
+// **사람이 키를 친 직후의 첫 프레임만 다른 길로 간다**(#208 리뷰). xterm의 `write()`는 평소
+// 파싱을 다음 tick으로 미루는데(`WriteBuffer._scheduleInnerWrite`), 바로 앞에 사람 입력이
+// 있었으면 그 한 번은 **`write()` 안에서 동기로** 파싱한다(`_didUserInput` 갈래). 그래서
+// 출력 알림과 OSC 핸들러의 **순서가 이 갈래에서만 뒤집히고**, 뒤집힌 순서에서는 방금 선
+// 앰버를 같은 프레임의 출력 알림이 그 자리에서 지운다.
+//
+// 그 자리가 정확히 이 판이 존재하는 이유다: 훅 없는 codex에서 사람이 `y`로 승인하면 그다음
+// 승인 요청이 첫 프레임에 실려 오고, 그 프레임이 바로 이 동기 갈래를 탄다. 위 검사들은 키를
+// 한 번도 안 쳐서 늘 비동기 갈래만 지났다 — 그물이 fail-open이었다.
+test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰버로 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 xterm이 그 키를 「사람 입력」으로 안
+  // 세고(`coreService.onUserInput`), 그러면 다음 프레임이 동기 갈래를 안 타 이 검사가
+  // 아무것도 안 잰다 — 늘 초록인 검사가 된다.
+  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  // 사람이 승인한다. 이 한 글자가 PTY로 나가면서 xterm에 「방금 사람이 쳤다」가 선다.
+  await page.keyboard.type("y");
+
+  // 승인 뒤 codex가 곧바로 다음 승인을 묻는다 — 그 프레임이 동기로 파싱된다.
+  await writeShell(page, `${ESC}]9;Approval requested: Bash(git push)${BEL}`);
+
+  const lane = 레인(page, plainWork.slug);
+  await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
+  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
+  // **앰버가 도는 중으로 뒤집히지 않았다**를 못박는다. 위 한 줄만 보면 「아직 안 앉았다」와
+  // 「앉았다 꺼졌다」가 갈리지 않는데, 이 갈래의 실패는 늘 후자다.
+  await expect(lane.locator('[data-signal="working"]')).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

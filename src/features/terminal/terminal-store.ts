@@ -19,6 +19,7 @@ import type { NotifyPayload } from "./shell-notify";
 import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
+  attentionOfId,
   CLOSE_NOTICE,
   confirmClose,
   markExited,
@@ -26,7 +27,7 @@ import {
   NO_SHELLS,
   openShell,
   removeShell,
-  runningOn,
+  runningOfId,
   setAttention,
   setRunning,
   setShellName,
@@ -431,8 +432,7 @@ void onShellAttention((changed) => {
       const ptyId = ptyIdOf(one.shellId);
       const id = ptyId === null ? null : shellOfPty(ptyId);
       if (id === null) continue;
-      const prev = next.shells.find((shell) => shell.id === id)?.attention ?? null;
-      next = setAttention(next, id, nextAttention(prev, one.state));
+      next = setAttention(next, id, nextAttention(attentionOfId(next, id), one.state));
     }
     // **막 도착한 사실도 「봤다」를 거친다.** `applySignal`이 `seen`을 늘 푸는데(그 머리말),
     // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 초록으로
@@ -465,7 +465,7 @@ void onShellAttention((changed) => {
 function applyBonusSignal(id: number, signal: AgentSignal | null, source: AttentionSource): void {
   if (signal === null) return;
   terminalStore.setState((state) => {
-    const prev = state.shells.find((shell) => shell.id === id)?.attention ?? null;
+    const prev = attentionOfId(state, id);
     const next = setAttention(state, id, applySignal(prev, signal, Date.now(), source, null));
     return markShellsSeen(next, currentView());
   });
@@ -480,7 +480,7 @@ function applyBonusSignal(id: number, signal: AgentSignal | null, source: Attent
  * 돌려주는 것이 그래서 계약이고, 이 자리는 그 항등성만 보고 문을 연다.
  */
 function noteOutput(id: number): void {
-  const prev = terminalStore.state.shells.find((shell) => shell.id === id)?.attention ?? null;
+  const prev = attentionOfId(terminalStore.state, id);
   const next = nextOnOutput(prev, Date.now());
   if (next === prev) return;
   terminalStore.setState((state) => setAttention(state, id, next));
@@ -732,13 +732,14 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 그대로 PTY로 나가므로, Codex의 `notification_condition = unfocused`가 딛는 신호가
   // 이 앱에서도 셸까지 닿는다. **아직 실물로는 못 봤다** — 남은 물음은 macOS 창이 뒤로 갈 때
   // WKWebView가 xterm의 숨은 입력칸에 실제로 블러를 주는가이고, 그것은 사람이 봐야 안다.
+  // 무엇을 어떤 순서로 눌러 보고 결과를 어디에 적는지는 이 work의 `spec/OSC-벨-실물-확인.md`
+  // 3절에 있다(선례: 티켓 04의 `spec/훅-실물-확인.md`).
 
   // **벨의 「모르는 명령」 판정은 울린 그 순간의 값으로 한다**(구현 결정 1). 1초 폴링이라
   // 경계에서 어긋날 수 있고, 어긋나면 초록이 하나 더 뜨는 쪽으로 틀린다 — 스펙이 택한 방향이다.
-  // 죽은 칸을 가리는 것은 `runningOn` 하나가 한다.
+  // 죽은 칸을 가리는 것은 `runningOfId`가 딛는 `runningOn` 하나다.
   term.onBell(() => {
-    const shell = terminalStore.state.shells.find((one) => one.id === id);
-    applyBonusSignal(id, bellSignal(shell ? runningOn(shell) : null), "bell");
+    applyBonusSignal(id, bellSignal(runningOfId(terminalStore.state, id)), "bell");
   });
 
   // PTY resize는 `cols`/`rows`가 **실제로 바뀔 때만** 나가야 한다(⌘B의 220ms 폭 트랜지션이
@@ -962,13 +963,23 @@ async function spawn(instance: ShellInstance) {
       // **떼어 둔 사이에도 그대로 받아 적는다.** 그것이 결정 20이다 — 다른 화면에 가 있는
       // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다.
       if (frame instanceof ArrayBuffer) {
-        instance.term.write(new Uint8Array(frame));
         // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
         // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
-        // 이 판에 없다(결정 2·3). 값을 쓰는 것이 아니라 **파싱한 뒤**에 알리는 것은 같은
-        // 프레임 안의 OSC가 먼저 앉아야 해서다: 순서가 바뀌면 승인 요청과 그 뒤 한 글자가
-        // 한 프레임에 실려 온 자리에서 방금 선 앰버가 그 자리에서 꺼진다.
+        // 이 판에 없다(결정 2·3).
+        //
+        // **쓰기 전에 알린다.** 이 프레임에 실려 온 OSC는 **이 프레임보다 새 사실**이라
+        // 나중에 앉아야 한다: 순서가 바뀌면 승인 요청과 그 뒤 몇 글자가 한 프레임에 실려 온
+        // 자리에서 방금 선 앰버가 그 자리에서 꺼진다. 훅 없는 codex에서 사람이 `y`로 승인한
+        // 직후가 정확히 그 모양이라(다음 승인 요청이 첫 프레임에 실려 온다) 이 판이 존재하는
+        // 이유가 통째로 사라진다.
+        //
+        // **`write()` 뒤에 두면 그 순서가 안 지켜진다** — 한때 「파싱한 뒤에 알린다」로 적혀
+        // 있었고 근거가 뒤집혀 있었다. xterm의 `write()`는 평소 파싱을 다음 tick으로 미루지만
+        // (`WriteBuffer._scheduleInnerWrite`), **바로 앞에 사람 입력이 있었으면 그 한 번은
+        // 동기로 파싱한다**(`_didUserInput` 갈래). 그래서 뒤에 두면 평소에는 우연히 맞고 키를
+        // 친 직후에만 뒤집혔다. 앞에 두면 두 갈래가 같은 순서를 탄다.
         noteOutput(instance.id);
+        instance.term.write(new Uint8Array(frame));
         return;
       }
       instance.ptyId = null;

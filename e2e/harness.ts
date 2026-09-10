@@ -249,6 +249,47 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
 }
 
 /**
+ * IPC 기록에서 **무엇인가가 나타나기를** 기다린다. 하네스가 백엔드 흉내를 내려면 브라우저가
+ * 난수로 지은 번호(구독 핸들러 id · 채널 id)를 알아야 하는데, 그 번호는 앱이 실제로 그
+ * 호출을 내보낸 뒤에야 기록에 남는다.
+ *
+ * **못 찾으면 던진다.** 이 자리를 fail-open으로 두면(못 찾은 채 그냥 지나가면) 뒤따르는
+ * 단언들이 「값이 아무 데도 안 갔다」와 「값이 갔는데 앱이 아무 일도 안 했다」를 구분하지
+ * 못한다 — 이 층에서 가장 읽기 어려운 침묵이다. 그래서 5초를 다 쓰고 나서는 기록을 통째로
+ * 실어 던지고, **기다리는 수와 그 규율이 이 함수 하나에** 있다(부르는 자리 둘이 각자
+ * 적으면 한쪽만 늙는다).
+ */
+async function awaitIpcMatch(
+  page: Page,
+  pick: (calls: ReadonlyArray<string>) => string | undefined,
+  label: string,
+): Promise<string> {
+  let found: string | undefined;
+  for (let tries = 0; tries < 50 && found === undefined; tries += 1) {
+    found = pick((await readIpcRecord(page))?.calls ?? []);
+    if (found === undefined) await page.waitForTimeout(100);
+  }
+  if (found === undefined) {
+    const calls = (await readIpcRecord(page))?.calls ?? [];
+    throw new Error(`${label}이(가) 5초 안에 안 나타났다 — IPC 기록: ${JSON.stringify(calls)}`);
+  }
+  return found;
+}
+
+/**
+ * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
+ *
+ * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
+ * **형제**라(`SidebarWorkList`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
+ * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
+ */
+export const 레인 = (page: Page, slug: string) =>
+  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
+
+/** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
+export const 띠 = (page: Page) => page.locator("[data-band]");
+
+/**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
  * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
  *
@@ -404,17 +445,14 @@ export async function markAttention(
 ): Promise<void> {
   await awaitSpawned(page, ptyId);
 
-  let handler: string | undefined;
-  for (let tries = 0; tries < 50 && !handler; tries += 1) {
-    const calls = (await readIpcRecord(page))?.calls ?? [];
-    const listen = calls.filter((call) => call.includes('"shell:attention"')).reverse()[0];
-    handler = (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
-    if (!handler) await page.waitForTimeout(100);
-  }
-  if (!handler) {
-    const calls = (await readIpcRecord(page))?.calls ?? [];
-    throw new Error(`shell:attention 구독이 5초 안에 안 걸렸다 — IPC 기록: ${JSON.stringify(calls)}`);
-  }
+  const handler = await awaitIpcMatch(
+    page,
+    (calls) => {
+      const listen = calls.filter((call) => call.includes('"shell:attention"')).reverse()[0];
+      return (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
+    },
+    "shell:attention 구독",
+  );
 
   await page.evaluate(
     ({ handler, payload }: { handler: number; payload: unknown }) => {
@@ -580,17 +618,14 @@ const BADGE_COMMAND = "plugin:window|set_badge_count";
  * 않는다 — 그래서 페이지 안에 채널별 카운터를 둔다.
  */
 export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<void> {
-  let channel: string | undefined;
-  let spawns: string[] = [];
-  for (let tries = 0; tries < 50 && !channel; tries += 1) {
-    const calls = (await readIpcRecord(page))?.calls ?? [];
-    spawns = calls.filter((call) => call.startsWith("pty_spawn "));
-    channel = (spawns[ptyId - 1] && /__CHANNEL__:(\d+)/.exec(spawns[ptyId - 1])?.[1]) || undefined;
-    if (!channel) await page.waitForTimeout(100);
-  }
-  if (!channel) {
-    throw new Error(`pty ${ptyId}의 출력 채널이 5초 안에 안 나타났다 — IPC 기록: ${JSON.stringify(spawns)}`);
-  }
+  const channel = await awaitIpcMatch(
+    page,
+    (calls) => {
+      const spawn = calls.filter((call) => call.startsWith("pty_spawn "))[ptyId - 1];
+      return (spawn && /__CHANNEL__:(\d+)/.exec(spawn)?.[1]) || undefined;
+    },
+    `pty ${ptyId}의 출력 채널`,
+  );
 
   await page.evaluate(
     ({ channel, bytes }: { channel: number; bytes: string }) => {

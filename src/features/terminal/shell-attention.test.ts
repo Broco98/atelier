@@ -691,34 +691,48 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
 // 말한 순간 하나뿐이고 지우는 것은 사람이 본 순간 하나뿐이다 — 「몇 초 조용하면 끝난 것」이
 // 한 줄이라도 들어오면 앱이 모르는 것을 아는 척하기 시작한다.
 //
+// **대상을 손으로 적지 않는다**(#208 리뷰). 한때 축의 파일 여섯을 목록으로 들고 있었는데,
+// 그 모양은 축에 파일이 하나 늘 때 **조용히 빠진다** — 이 판이 더한 `shell-osc.ts`가 실제로
+// 그렇게 빠졌다. 그래서 터미널 트리를 통째로 읽어 **시간을 아는 파일의 목록이 아래 셋과
+// 정확히 같은지**를 본다(옆의 `상태값을만지는파일`과 같은 모양). 「축에 없다」가 아니라
+// 「이 셋뿐이다」라서, 새 파일이 시계를 들이면 여기서 이름을 대며 터지고 스캔이 통째로
+// 헛돌아도 터진다(fail-closed).
+//
 // 소스를 **문자열로만** 본다. 자르거나 파싱하는 정규식은 파서가 새는 순간 조용히 통과하고,
 // 이 저장소는 그것을 fail-open이라 부른다(shell-registry.test.ts 머리말).
-describe("상태 축에 시간이 없다", () => {
-  it.each([
-    "./shell-attention.ts",
-    "./agents/index.ts",
-    "./agents/claude.ts",
-    "./agents/codex.ts",
-    "./agents/payload.ts",
-    "./agents/types.ts",
-  ])("%s에 시계도 타이머도 없다", (file) => {
-    const source = read(file);
-    for (const forbidden of [
-      "setTimeout",
-      "setInterval",
-      "requestAnimationFrame",
-      "Date.now",
-      "performance.now",
-      "new Date",
-      "expire",
-      "_MS",
-      "TIMEOUT",
-    ]) {
-      expect(source, `${forbidden} — 이 축은 시간으로 아무것도 정하지 않는다`).not.toContain(
-        forbidden,
-      );
-    }
-  });
+const 시계 = [
+  "setTimeout",
+  "setInterval",
+  "requestAnimationFrame",
+  "Date.now",
+  "performance.now",
+  "new Date",
+  "expire",
+  "_MS",
+  "TIMEOUT",
+];
+
+// **여기 이름을 더하는 것은 「이 파일은 시간을 안다」는 선언이다.** 상태 축이 그 목록에
+// 들어오면 결정 2·3이 깨진 것이다 — 셋 다 상태 축 밖의 이유로 시간을 안다.
+const 시간을아는파일 = [
+  // 신호가 **도착한 순간**을 재료로 넣는 자리(`Date.now()` → `applySignal`의 `since`).
+  // 재는 것이지 판정하는 것이 아니다 — 그 값으로 무엇이 되는지를 정하는 코드는 없다.
+  "terminal-store.ts",
+  // ⇧⇧ 사이의 간격(`SEARCH_GAP_MS`). 팔레트를 여는 키의 것이고 상태 축과 무관하다.
+  "shell-registry.ts",
+  // 같은 work의 알림을 접는 5초 창(`COALESCE_MS` · 결정 10). **알림의 시간이지 상태의
+  // 시간이 아니다** — 화면값은 그 5초에 한 글자도 안 매인다.
+  "shell-notify.ts",
+];
+
+it("터미널에서 시간을 아는 파일은 셋뿐이다 — 상태 축엔 시계도 타이머도 없다", () => {
+  const root = fileURLToPath(new URL("./", import.meta.url));
+  const 아는것 = readdirSync(root, { recursive: true, encoding: "utf8" })
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+    .map((file) => file.split("\\").join("/"))
+    .filter((file) => 시계.some((one) => readFileSync(root + file, "utf8").includes(one)));
+
+  expect(아는것.sort()).toEqual([...시간을아는파일].sort());
 });
 
 // **칸이 늘면 여기서 터진다.** `nextAttention`의 「안 바뀌면 받은 것을 그대로 준다」와
@@ -758,29 +772,32 @@ describe("셸 ID에서 pty 번호를 되뽑는다", () => {
   );
 });
 
-// **`shell.attention`을 직접 만지는 파일은 셋뿐이다.**
+// **`shell.attention`을 직접 만지는 파일은 둘뿐이다.**
 //
 // 죽은 칸을 가리는 자리를 「눕히는 쪽」이 아니라 **읽는 쪽**(`attentionOn`)에 둔 것이 이
 // 판의 선택이다(구현 결정 1의 문구는 「눕힌다」인데 `runningOn`과 같은 이유로 가리는 쪽을
 // 골랐다 — 늦게 도착한 훅 이벤트까지 같은 문에서 막힌다). 그 선택이 성립하려면 **읽는 쪽이
 // 늘 그 문을 딛어야** 하는데, 지금까지 그것을 지키는 것은 `attentionOn`의 주석 한 줄뿐이었다.
-// 이 값을 읽을 자리 넷이 아직 안 붙었고(#203 레인 · #204 띠 · #205 탭 · #206 알림), 그중
-// 하나가 `shell.attention`을 직접 읽으면 **죽은 칸이 사람을 영영 부른다.** 주석만이던 보장에
+// 이 값을 읽는 자리 넷이 붙어 있고(#203 레인 · #204 띠 · #205 탭 · #206 알림), 그중 하나가
+// `shell.attention`을 직접 읽으면 **죽은 칸이 사람을 영영 부른다.** 주석만이던 보장에
 // 검사를 건다.
 //
+// **셋이 둘이 됐다**(#208 리뷰). 스토어가 「직전 값」을 뽑는 자리 셋에서 같은 조회를 손으로
+// 적고 있었는데, 그것을 레지스트리의 `attentionOfId` 하나로 모으면서 이 필드를 아는 파일이
+// 하나 줄었다.
+//
 // 파싱하지 않는다 — 파일 전체에서 문자열 하나를 세고, 나온 파일의 목록이 허용 목록과
-// **정확히 같은지**를 본다. 「적어도 셋에 있다」가 아니라 「이 셋뿐이다」라서, 필드 이름이
+// **정확히 같은지**를 본다. 「적어도 둘에 있다」가 아니라 「이 둘뿐이다」라서, 필드 이름이
 // 바뀌어 스캔이 통째로 헛돌면 그것도 여기서 터진다(fail-closed).
 const 상태값을만지는파일 = [
-  // 쓰는 자리. `setAttention`이 칸에 앉히고 `markSeen`이 「봤다」를 세운다.
+  // 쓰는 자리. `setAttention`이 칸에 앉히고 `markSeen`이 「봤다」를 세우며, `attentionOfId`가
+  // 「직전에 무엇이었나」를 그대로 돌려준다(리듀서의 입력이다).
   "features/terminal/shell-registry.ts",
   // 가리는 자리. `attentionOn`이 죽은 칸을 여기서 끊는다.
   "features/terminal/shell-attention.ts",
-  // 잇는 자리. 직전 값을 `nextAttention`에 넘긴다 — 화면이 아니라 리듀서의 입력이다.
-  "features/terminal/terminal-store.ts",
 ];
 
-it("상태 값을 직접 만지는 파일은 셋뿐이다 — 나머지는 `attentionOn`을 딛는다", () => {
+it("상태 값을 직접 만지는 파일은 둘뿐이다 — 나머지는 `attentionOn`을 딛는다", () => {
   const root = fileURLToPath(new URL("../../", import.meta.url));
   const 만지는것 = readdirSync(root, { recursive: true, encoding: "utf8" })
     .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
