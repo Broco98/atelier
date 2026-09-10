@@ -168,6 +168,12 @@ pub fn codex_installed(source: &str) -> Result<bool, String> {
     Ok(codex_ours(&parse_codex(source)?).len() == CODEX_EVENTS.len())
 }
 
+/// 이 내용에 우리 명령이 **하나라도** 남아 있나 — 걷고 난 뒤에 재는 물음(`leftover`).
+/// 깨진 파일에서는 거짓이다: 그때 사람이 먼저 볼 것은 `error` 칸의 「손대지 않았습니다」다.
+fn codex_remains(source: &str) -> bool {
+    parse_codex(source).is_ok_and(|table| !codex_ours(&table).is_empty())
+}
+
 /// 이 내용에서 **우리 명령이 앉아 있는** 이벤트들. 울타리 안인지 밖인지는 안 본다 —
 /// 근거는 파일에 적힌 명령 문자열 하나다.
 fn codex_ours(table: &toml::Table) -> Vec<&'static str> {
@@ -247,6 +253,20 @@ pub fn codex_config_path(home: &Path) -> PathBuf {
 /// **원자성이 필요한 이유:** 반쯤 쓰인 `settings.json`은 claude가 **아예 안 뜨는** 상태다.
 /// 같은 폴더의 tmp에 다 쓰고 rename하면 파일이 반쯤인 순간이 없다(`settings.rs`의 같은 규칙 —
 /// tmp를 다른 폴더에 두면 경계를 넘어 복사-삭제가 되어 그 보장이 깨진다).
+///
+/// **원자적 교체의 대가 둘을 여기서 물어낸다** — 그리고 그 둘은 `settings.rs`의 같은
+/// 관용구에는 없던 값이다. 그쪽이 쓰는 것은 우리 파일(`~/.atelier/settings.json`)이고,
+/// 이 판이 같은 길을 **남의 홈**으로 옮기면서 새로 생긴 노출이다.
+///
+/// 1. **모드.** 새로 만든 tmp의 모드는 `0666 & !umask`(보통 0644)이고 rename은 그것을
+///    목적지로 그대로 옮긴다 — 원본이 어떤 모드였는지는 아무 데서도 안 읽는다. 실물 둘 다
+///    0600이고 `env` 구획이 앉아 있어 사람이 일부러 좁혀 둔 파일이다. `.bak`은
+///    `std::fs::copy`라 모드가 따라가므로, 안 고치면 **백업만 좁고 살아 있는 설정이 넓어지는**
+///    뒤집힌 모양이 된다. 그래서 원본이 있으면 그 모드를 tmp에 얹고 나서 rename한다.
+/// 2. **심링크.** dotfiles 저장소에서 이 파일을 심링크로 걸어 둔 사람은 설치 한 번에 그것이
+///    보통 파일로 갈리고, 그 뒤 저장소를 고쳐도 에이전트에 안 닿는다 — 조용하고 되돌리기
+///    어렵다. 그래서 rename의 목적지를 `canonicalize`한 **실물**로 고른다. 벌은 사람이 찾는
+///    자리(원래 경로 옆)에 그대로 뜬다.
 fn apply(path: &Path, transform: impl Fn(&str) -> Result<String, String>) -> Result<(), String> {
     let before = read_or_empty(path)?;
     let after = transform(&before)?;
@@ -254,8 +274,11 @@ fn apply(path: &Path, transform: impl Fn(&str) -> Result<String, String>) -> Res
         return Ok(());
     }
 
-    let dir = path.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|e| format!("설정 폴더를 만들지 못했습니다: {e}"))?;
+    // 없던 파일을 새로 만드는 길에서는 `canonicalize`가 실패한다 — 그때는 경로가 곧 실물이다.
+    let target = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+    let dir = target.parent().unwrap_or(Path::new(".")).to_path_buf();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("설정 폴더를 만들지 못했습니다: {e}"))?;
 
     // 벌은 **원문이 있을 때만** 뜬다. 없던 파일을 새로 만드는 길에는 되돌릴 것이 없다.
     if path.exists() {
@@ -264,10 +287,18 @@ fn apply(path: &Path, transform: impl Fn(&str) -> Result<String, String>) -> Res
             .map_err(|e| format!("설정을 백업하지 못했습니다 ({}): {e}", backup.display()))?;
     }
 
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // 원본의 권한. `Permissions`째로 나르므로 `cfg`가 안 든다 — CI 게이트가 리눅스라
+    // macOS 전용 심벌을 여기 들이면 그쪽에서만 안 선다.
+    let mode = std::fs::metadata(&target).ok().map(|m| m.permissions());
+
+    let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let tmp = dir.join(format!(".{name}.atelier.tmp"));
     std::fs::write(&tmp, after).map_err(|e| format!("설정을 쓰지 못했습니다: {e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("설정을 바꿔 넣지 못했습니다: {e}"))
+    if let Some(mode) = mode {
+        std::fs::set_permissions(&tmp, mode)
+            .map_err(|e| format!("설정의 권한을 그대로 두지 못했습니다: {e}"))?;
+    }
+    std::fs::rename(&tmp, &target).map_err(|e| format!("설정을 바꿔 넣지 못했습니다: {e}"))
 }
 
 /// `settings.json` → `settings.json.bak`. **확장자를 갈아 끼우지 않는다** — `with_extension`은
@@ -318,6 +349,9 @@ struct Agent {
     unmerge: fn(&str) -> Result<String, String>,
     installed: fn(&str) -> Result<bool, String>,
     preview: fn(&Path) -> String,
+    /// 이 내용에 **우리 명령이 하나라도** 앉아 있나. `installed`(다섯이 다 있나)와 다른
+    /// 물음이다 — 이쪽은 「걷고 났는데 뭐가 남았나」를 재는 자리라 하나만 남아도 참이다.
+    remains: fn(&str) -> bool,
 }
 
 const AGENTS: &[Agent] = &[
@@ -328,6 +362,7 @@ const AGENTS: &[Agent] = &[
         unmerge: unmerge_claude,
         installed: claude_installed,
         preview: claude_preview,
+        remains: claude_remains,
     },
     Agent {
         name: "codex",
@@ -336,6 +371,7 @@ const AGENTS: &[Agent] = &[
         unmerge: unmerge_codex,
         installed: codex_installed,
         preview: codex_block,
+        remains: codex_remains,
     },
 ];
 
@@ -358,15 +394,44 @@ pub fn install(home: &Path, script: &Path) -> Vec<HookStatus> {
 }
 
 /// 둘 다에서 걷어낸다. **스크립트 파일은 남긴다**(구현 결정 8).
+///
+/// **걷고 난 뒤에 남은 것이 있으면 그것도 말한다**(아래 `leftover`). 못 걷은 것을 조용히
+/// 두면 화면이 「설치됨」인 채 버튼만 무위가 되고, 사람에게는 그 사실을 알 칸이 없다.
 pub fn uninstall(home: &Path, script: &Path) -> Vec<HookStatus> {
     AGENTS
         .iter()
         .map(|agent| {
             let unmerge = agent.unmerge;
-            let failed = apply(&(agent.path)(home), |source| unmerge(source)).err();
+            let path = (agent.path)(home);
+            let failed = apply(&path, |source| unmerge(source)).err().or_else(|| leftover(agent, &path));
             look(agent, home, script, failed)
         })
         .collect()
+}
+
+/// 걷고 난 파일에 **우리 명령이 아직 남아 있으면** 그 사실을 사람의 말로.
+///
+/// **두 에이전트의 잣대가 갈리는 자리를 메운다.** claude는 넣는 것도 빼는 것도 명령
+/// 문자열(`is_ours`)이 근거라 손으로 적어 둔 훅도 함께 걷힌다. codex는 판정만 명령
+/// 문자열이고(`codex_ours`) 제거는 울타리 두 줄(`strip_codex_block`)이다 — 그래서 울타리
+/// 밖에 손으로 적어 둔 우리 훅은 살아남는데 판정은 「설치됨」이다. 그때 `unmerge_codex`가
+/// 원문을 그대로 돌려주고 `apply`가 `after == before`로 아무것도 안 쓰므로, **오류도
+/// 없고 바뀐 것도 없고 화면은 여전히 「설치됨」**이 된다.
+///
+/// **여기서 TOML을 파싱해 마저 걷지 않는 이유:** 넣는 것도 걷는 것도 텍스트라는 것이
+/// 구현 결정 8이고(488줄짜리 실물의 주석과 순서를 파서에 맡길 이유가 없다), 우리가 안 쓴
+/// 모양의 항목을 텍스트로 잘라 내는 일은 사람의 파일을 깨뜨릴 길이 우리가 얻는 것보다
+/// 넓다. 그래서 **아는 것만 말한다** — 어느 파일의 무엇을 지우면 되는지.
+fn leftover(agent: &Agent, path: &Path) -> Option<String> {
+    let source = read_or_empty(path).ok()?;
+    if !(agent.remains)(&source) {
+        return None;
+    }
+    Some(format!(
+        "손으로 적어 둔 훅이 남아 있어 앱이 못 걷었습니다 — {}을 열어 `{}`이 든 줄을 직접 지워 주세요.",
+        atelier_core::collapse_home(path),
+        crate::shells::SCRIPT_NAME
+    ))
 }
 
 /// 한 에이전트의 지금 모습을 **파일에서** 만든다. `failed`는 방금 넣거나 걷다 난 오류다 —
@@ -424,6 +489,16 @@ pub fn unmerge_claude(source: &str) -> Result<String, String> {
 
     let mut root = parse_claude(source)?;
 
+    // **이번 제거가 실제로 걷어낸 것이 있나.** 없으면 원문을 글자 그대로 돌려준다 —
+    // 그러면 `apply`의 `after == before`가 참이 되어 디스크에 손이 안 간다. 이 플래그가
+    // 없으면 비지 않은 파일은 언제나 파싱 후 재직렬화라, 사람이 4칸 들여쓰기로 관리하던
+    // 파일이 **우리 것이 하나도 없어도** 통째로 다시 쓰이고 `.bak`이 뜬다. 우리가 지운 것은
+    // 없는데 남의 파일만 바뀌어 있는 자리다(git dotfiles라면 전체가 diff로 뜬다).
+    // `apply`의 독이 「바뀔 것이 없으면 아무것도 안 쓴다」라고 적고, `unmerge_claude`의 독이
+    // 「codex 쪽은 아무것도 안 쓰는데 같은 층에서 둘이 갈릴 이유가 없다」고 적어 둔 그
+    // 불변조건을 — 말이 아니라 값으로 — 세우는 한 줄이다.
+    let mut removed = false;
+
     if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
         let mut emptied_events: Vec<String> = Vec::new();
         for (event, list) in hooks.iter_mut() {
@@ -441,8 +516,11 @@ pub fn unmerge_claude(source: &str) -> Result<String, String> {
                 };
                 let before = inner.len();
                 inner.retain(|h| !h["command"].as_str().is_some_and(is_ours));
-                if inner.len() < before && inner.is_empty() {
-                    emptied.push(at);
+                if inner.len() < before {
+                    removed = true;
+                    if inner.is_empty() {
+                        emptied.push(at);
+                    }
                 }
             }
             if emptied.is_empty() {
@@ -466,6 +544,10 @@ pub fn unmerge_claude(source: &str) -> Result<String, String> {
         }
     }
 
+    if !removed {
+        return Ok(source.to_string());
+    }
+
     let mut out = serde_json::to_string_pretty(&Value::Object(root))
         .map_err(|e| format!("설정을 옮겨 적지 못했습니다: {e}"))?;
     out.push('\n');
@@ -487,6 +569,18 @@ pub fn claude_installed(source: &str) -> Result<bool, String> {
             .and_then(Value::as_array)
             .is_some_and(|list| list.iter().any(claude_group_is_ours))
     }))
+}
+
+/// claude 쪽 짝(`codex_remains` 참조). 이쪽은 제거가 명령 문자열로 걷으므로 정상 경로에서
+/// 늘 거짓이다 — 그래도 자리를 비워 두지 않는 것은, 걷는 규칙이 바뀌어 못 걷는 자리가
+/// 생기면 화면이 침묵하는 대신 그것을 말하게 하기 위해서다.
+fn claude_remains(source: &str) -> bool {
+    let Ok(root) = parse_claude(source) else { return false };
+    root.get("hooks").and_then(Value::as_object).is_some_and(|hooks| {
+        hooks.values().any(|list| {
+            list.as_array().is_some_and(|groups| groups.iter().any(claude_group_is_ours))
+        })
+    })
 }
 
 /// 빈 파일은 `{}`와 같다 — 첫 실행이 정상 경로다. **깨진 JSON은 거부한다**: 조용히
@@ -635,21 +729,14 @@ mod tests {
         assert!(unmerge_claude("{ 잘렸").is_err());
     }
 
-    /// 원문의 **내용은 그대로 두고** 제거가 쓰는 모양으로만 옮겨 적은 것.
-    fn pretty(source: &str) -> String {
-        let value: Value = serde_json::from_str(source).expect("JSON이다");
-        let mut out = serde_json::to_string_pretty(&value).expect("옮겨 적힌다");
-        out.push('\n');
-        out
-    }
-
     /// **우리 훅이 하나도 없는 파일은 제거를 지나도 안 바뀐다.** 이 한 줄이 세 자리를
     /// 한꺼번에 지킨다 — 없는 `hooks` 키를 우리가 심지 않는 것, 객체가 아닌 원소에서
     /// 터지지 않는 것, 사람이 적어 둔 빈 구조를 우리가 비운 것으로 오인해 걷지 않는 것.
     ///
-    /// **견주는 값이 원문이 아니라 `pretty(원문)`인 이유:** 제거는 늘 파싱 후 재직렬화라
-    /// 들여쓰기까지 같을 수는 없다. 여기서 재는 것은 **내용이 하나도 안 바뀌는 것**이고,
-    /// 그 잣대에서는 `null` 한 칸이 심어져도 빈 배열 하나가 사라져도 단언이 깨진다.
+    /// **견주는 값이 원문 그대로다.** 한때 이 자리가 `pretty(원문)`이었다 — 제거가 늘 파싱
+    /// 후 재직렬화라 들여쓰기까지 같을 수는 없다는 인정이었고, 그 인정이 **디스크 층까지
+    /// 이어지지 않아** 우리 것이 하나도 없는 남의 파일이 통째로 재작성되던 자리다. 이제
+    /// 걷은 것이 없으면 원문을 글자 그대로 돌려주므로, 여기서도 글자로 잰다.
     #[test]
     fn a_file_without_our_hooks_is_untouched_by_removal() {
         for source in [
@@ -664,8 +751,8 @@ mod tests {
         ] {
             assert_eq!(
                 unmerge_claude(source).expect("제거가 된다"),
-                pretty(source),
-                "제거가 남의 내용을 바꿨다: {source}"
+                source,
+                "제거가 남의 파일을 다시 썼다: {source}"
             );
         }
     }
@@ -938,6 +1025,122 @@ trust_level = "trusted"
             .filter(|n| n.ends_with(".tmp"))
             .collect();
         assert!(leftovers.is_empty(), "임시 파일이 남았다: {leftovers:?}");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **원본의 권한을 그대로 물려준다.** 이 판이 새로 여는 자리는 **남의 홈**이라
+    /// (`~/.claude/settings.json` · `~/.codex/config.toml`) 여기서 넓어지는 것은 우리 파일이
+    /// 아니라 사람이 일부러 좁혀 둔 파일이다 — 실물 둘 다 0600이고 `env` 구획이 앉아 있다.
+    ///
+    /// **원자적 교체가 바로 그 자리다.** 새로 만든 tmp의 모드는 `0666 & !umask`(보통 0644)이고
+    /// rename은 그 모드를 목적지로 그대로 옮긴다. `.bak`은 `std::fs::copy`라 0600으로 남으므로,
+    /// 안 고치면 **백업만 좁고 살아 있는 설정이 넓어지는** 뒤집힌 모양이 된다.
+    #[cfg(unix)]
+    #[test]
+    fn writing_keeps_the_files_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = temp_home("mode");
+        let path = claude_settings_path(&home);
+        std::fs::write(&path, "{\n  \"model\": \"opus\"\n}\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        apply(&path, |source| merge_claude(source, &script())).expect("넣는다");
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            format!("{mode:o}"),
+            "600",
+            "설치 한 번이 남의 설정을 이 기계의 다른 사용자에게 열었다"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **심링크를 끊지 않는다.** dotfiles 저장소에서 `~/.claude/settings.json`을 심링크로 걸어
+    /// 둔 사람은 설치 한 번에 그것이 보통 파일로 갈리고, 그 뒤 저장소를 고쳐도 claude에
+    /// 안 닿는다 — 조용하고 되돌리기 어려운 손해라 rename의 목적지를 실물로 고른다.
+    #[cfg(unix)]
+    #[test]
+    fn writing_does_not_break_a_symlink() {
+        let home = temp_home("symlink");
+        let real = home.join("dotfiles-settings.json");
+        std::fs::write(&real, "{\n  \"model\": \"opus\"\n}\n").unwrap();
+        let path = claude_settings_path(&home);
+        std::os::unix::fs::symlink(&real, &path).unwrap();
+
+        apply(&path, |source| merge_claude(source, &script())).expect("넣는다");
+
+        assert!(
+            std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink(),
+            "심링크가 보통 파일로 갈렸다 — 저장소를 고쳐도 이제 claude에 안 닿는다"
+        );
+        assert!(
+            std::fs::read_to_string(&real).unwrap().contains("atelier-hook.py"),
+            "심링크 너머의 진짜 파일이 안 바뀌었다"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **걷은 것이 하나도 없으면 디스크에 손이 안 간다.** 순수 함수 층의
+    /// `a_file_without_our_hooks_is_untouched_by_removal`이 「내용이 안 바뀐다」까지만 재고,
+    /// 그 인정이 여기까지 안 이어져 있었다 — `apply`의 판정은 **글자 일치**라, 사람이 손으로
+    /// 4칸 들여쓰기로 관리하던 파일은 우리 것이 하나도 없어도 통째로 재작성되고 `.bak`이 뜬다.
+    /// 우리가 지운 것은 없는데 남의 파일만 바뀌어 있는 자리다(git dotfiles라면 전체가 diff).
+    #[test]
+    fn removing_touches_nothing_when_there_was_nothing_of_ours() {
+        let home = temp_home("remove-untouched");
+        let path = claude_settings_path(&home);
+        // 4칸 들여쓰기 · 끝 개행 없음 — serde_json의 pretty 출력과 글자가 다르다.
+        let before = "{\n    \"model\": \"opus\"\n}";
+        std::fs::write(&path, before).unwrap();
+
+        uninstall(&home, &script());
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            before,
+            "우리 것이 하나도 없는데 남의 파일을 다시 썼다"
+        );
+        assert!(!path.with_extension("json.bak").exists(), "걷은 것이 없는데 벌을 떴다");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// **못 걷은 것이 있으면 화면이 그것을 말한다.** codex 쪽 제거는 우리 울타리 두 줄만 보고
+    /// 잘라내므로(`strip_codex_block`), 사람이 울타리 밖에 손으로 적어 둔 우리 훅은 그대로
+    /// 산다 — 그런데 판정(`codex_installed`)은 명령 문자열이라 「설치됨」이다. 두 잣대가
+    /// 갈린 채 침묵하면 사람은 「제거를 눌렀는데 아무 일도 안 나고 여전히 설치됨」을 만나고,
+    /// 화면에는 그 사실을 알릴 칸이 없다.
+    ///
+    /// claude 쪽은 명령 문자열로 걷으니 손글씨도 사라진다 — 그래서 그쪽은 아무 말도 안 한다.
+    #[test]
+    fn a_hook_we_could_not_remove_is_said_out_loud() {
+        let home = temp_home("codex-by-hand");
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        std::fs::write(codex_config_path(&home), codex_by_hand(&script())).unwrap();
+
+        let by_hand: serde_json::Map<String, Value> = CLAUDE_EVENTS
+            .iter()
+            .map(|event| ((*event).to_string(), json!([claude_group(&script(), event)])))
+            .collect();
+        std::fs::write(
+            claude_settings_path(&home),
+            json!({ "hooks": Value::Object(by_hand) }).to_string(),
+        )
+        .unwrap();
+
+        let gone = uninstall(&home, &script());
+
+        let codex = agent(&gone, "codex");
+        assert!(codex.installed, "이 파일은 여전히 우리 명령을 들고 있다");
+        let said = codex.write_error.clone().unwrap_or_default();
+        assert!(
+            said.contains("config.toml") && said.contains(crate::shells::SCRIPT_NAME),
+            "제거가 조용히 아무 일도 안 했다 — 어느 파일의 무엇을 지워야 하는지 화면이 말할 것이 없다: {said:?}"
+        );
+
+        let claude = agent(&gone, "claude");
+        assert!(!claude.installed, "claude 쪽 손글씨가 안 걷혔다");
+        assert_eq!(claude.write_error, None, "다 걷었는데 남았다고 말한다");
         let _ = std::fs::remove_dir_all(&home);
     }
 

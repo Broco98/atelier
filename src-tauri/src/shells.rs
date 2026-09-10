@@ -90,22 +90,34 @@ pub struct ShellHookState {
 /// 회차마다 흔들리지 않게 하기 위해서다(`pty.rs`의 `Running`과 같은 이유).
 type Attention = BTreeMap<String, ShellHookState>;
 
-/// 상태 폴더를 통째로 한 번 읽는다.
+/// 상태 폴더를 통째로 한 번 읽는다 — **이번 실행의 것만.**
 ///
 /// **깨진 파일은 없는 것으로 친다.** 훅이 원자적으로 쓰니 반쯤인 파일은 안 생기지만, 사람이
 /// 손으로 들여다보다 저장할 수도 있고 디스크가 찰 수도 있다. 그때 감시가 죽으면 **그 뒤로
 /// 어느 셸도 말을 못 한다** — 한 장 때문에 통로 전체를 잃는 것이라 조용히 건너뛴다.
-fn scan(dir: &Path) -> Attention {
+///
+/// **접두사를 여기서 못박는다**(fail-closed). 접두사는 「실행끼리 안 겹치게」 하는 값인데,
+/// 그것을 견주는 자리가 `sweep` 하나뿐이면 그 보장은 앱이 뜰 때 한 번 도는 **파괴적
+/// 청소**에만 걸려 있는 것이지 읽는 길에는 아무 데도 없다. `~/.atelier`는 빌드마다 안
+/// 갈리고(`data_root()`) single-instance도 안 걸려 있어 설치본과 `pnpm tauri dev`가 같은
+/// 폴더를 나눠 쓰는데, 그때 남의 인스턴스가 놓고 간 `<남의 접두사>-0.json`이 그대로 실려
+/// 나가고 프런트는 마지막 `-` 뒤 번호만 읽으므로(`ptyIdOf`) **전혀 다른 셸에 남의 claude
+/// 상태와 남의 마지막 말**이 앉는다. 오류 한 줄 없이 조용한 종류라 읽는 쪽에서 닫는다.
+///
+/// 구분자까지 견주는 것은 `sweep`과 같은 이유다 — `1700`만 보면 `17000-1`이 이번 실행의
+/// 것으로 읽힌다.
+fn scan(dir: &Path, prefix: &str) -> Attention {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Attention::new();
     };
+    let mine = format!("{prefix}-");
     entries
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             // 이름이 곧 셸 ID다. dotfile(훅이 쓰는 중인 임시 파일)은 여기서 걸린다 —
             // `.abc.json.9.tmp`의 stem은 `.abc.json.9`라 점으로 시작한다.
             let id = path.file_stem()?.to_str()?.to_string();
-            if id.starts_with('.') || path.extension()? != "json" {
+            if id.starts_with('.') || path.extension()? != "json" || !id.starts_with(&mine) {
                 return None;
             }
             let content = std::fs::read_to_string(&path).ok()?;
@@ -185,9 +197,12 @@ pub fn sweep(root: &Path, prefix: &str) {
 /// **한 번 흔들릴 때마다 폴더를 통째로 다시 읽는다.** 이벤트가 든 경로만 읽으면 지워진
 /// 파일을 못 보고(그 셸이 화면에서 영영 안 지워진다) 감시가 놓친 회차도 못 따라잡는다.
 /// 파일 수는 셸 수(화면마다 8)라 통째로 읽어도 싸다.
-pub fn watch(app: AppHandle, dir: PathBuf) {
+///
+/// **접두사를 받는다.** 이번 실행의 셸만 읽는 자리가 `scan`이고, 그 값이 여기까지 실려
+/// 와야 판정이 `sweep`(파괴적 일회성 청소)에 매이지 않는다.
+pub fn watch(app: AppHandle, dir: PathBuf, prefix: &'static str) {
     std::thread::spawn(move || {
-        watch_into(&dir, |changed| {
+        watch_into(&dir, prefix, |changed| {
             let _ = app.emit(ATTENTION_EVENT, changed);
         });
     });
@@ -203,7 +218,7 @@ pub fn watch(app: AppHandle, dir: PathBuf) {
 /// 아니므로, notify의 API가 바뀌거나 오류 처리를 고칠 때는 **두 자리를 함께** 고쳐야 한다.
 /// 뽑아낼 자리는 「폴더 하나를 디바운스로 보며 회차마다 콜백을 부른다」인데, 이 판에서는
 /// 안 뽑는다 — 감시 셋이 다 서고 나서 볼 일이다.
-fn watch_into(dir: &Path, mut emit: impl FnMut(Vec<ShellAttention>)) {
+fn watch_into(dir: &Path, prefix: &str, mut emit: impl FnMut(Vec<ShellAttention>)) {
     let _ = std::fs::create_dir_all(dir);
     let (tx, rx) = std::sync::mpsc::channel();
     let mut debouncer = match new_debouncer(DEBOUNCE, tx) {
@@ -222,7 +237,7 @@ fn watch_into(dir: &Path, mut emit: impl FnMut(Vec<ShellAttention>)) {
     let mut sent = Attention::new();
     for result in rx {
         let Ok(_events) = result else { continue };
-        let now = scan(dir);
+        let now = scan(dir, prefix);
         let changed = changes(&sent, &now);
         if !changed.is_empty() {
             emit(changed);
@@ -416,10 +431,42 @@ mod tests {
         std::fs::write(dir.join("prefix-2.json"), "{ 여기서 잘렸").unwrap();
         std::fs::write(dir.join(".prefix-3.json.9.tmp"), "{}").unwrap();
 
-        let seen = scan(&dir);
+        let seen = scan(&dir, "prefix");
 
         assert_eq!(seen.keys().collect::<Vec<_>>(), vec!["prefix-1"], "실린 셸이 다르다");
         assert_eq!(seen["prefix-1"].event, "Stop");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **읽는 쪽이 접두사를 본다.** 접두사는 「실행끼리 안 겹치게」 하는 값인데, 그것을
+    /// 견주는 자리가 `sweep` 하나뿐이면 그 보장은 **파괴적 일회성 청소**에만 걸려 있다 —
+    /// 필터가 아니다. `~/.atelier`는 빌드마다 안 갈리고 single-instance도 안 걸려 있어
+    /// 설치본과 `pnpm tauri dev`가 같은 폴더를 나눠 쓰는데, 그때 남의 인스턴스가 놓고 간
+    /// 파일이 그대로 실려 나가고 프런트는 마지막 `-` 뒤 번호만 읽어 **전혀 다른 셸에 남의
+    /// claude 상태와 남의 마지막 말**을 앉힌다. 오류 한 줄 없이 조용하다.
+    ///
+    /// 그래서 fail-closed다 — 이번 실행의 접두사가 아니면 안 싣는다. `17000-1`은
+    /// 구분자까지 견주는 자리라 함께 잰다(`1700`으로 시작하지만 남의 것이다).
+    #[test]
+    fn another_instances_files_are_not_read() {
+        let root = temp_root("scan-prefix");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["1700-1.json", "1699-1.json", "17000-1.json"] {
+            std::fs::write(
+                dir.join(name),
+                r#"{"agent":"claude","event":"Stop","at":7,"payload":null}"#,
+            )
+            .unwrap();
+        }
+
+        let seen = scan(&dir, "1700");
+
+        assert_eq!(
+            seen.keys().collect::<Vec<_>>(),
+            vec!["1700-1"],
+            "남의 인스턴스가 놓고 간 파일이 실렸다 — 그 값이 이번 실행의 엉뚱한 셸에 앉는다"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -559,7 +606,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let watched = dir.clone();
         std::thread::spawn(move || {
-            watch_into(&watched, |changed| {
+            watch_into(&watched, "1700", |changed| {
                 let _ = tx.send(changed);
             });
         });

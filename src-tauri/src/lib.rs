@@ -208,8 +208,10 @@ pub fn run() {
                 eprintln!("atelier: {e}");
             }
             // (3) 상태 폴더를 본다. 배선은 위 둘과 같은 길이다 — 스레드 하나가 emit하고
-            // 프런트가 `listen`으로 받는다.
-            shells::watch(app.handle().clone(), shells::shells_dir(&root));
+            // 프런트가 `listen`으로 받는다. **접두사를 함께 넘긴다**: 읽는 쪽이 그것을
+            // 안 보면 이번 실행의 것만 싣는다는 보장이 (1)의 파괴적 청소에만 걸려 있게 되고,
+            // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
+            shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix());
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -324,8 +326,10 @@ mod tests {
             "지난 실행의 상태 파일을 안 걷는다 — 뜨자마자 사람을 부르는 셸이 생긴다"
         );
         assert!(
-            setup.contains("shells::watch(app.handle().clone(), shells::shells_dir(&root))"),
-            "상태 폴더를 안 본다 — 셸이 말해도 화면까지 안 온다"
+            setup.contains(
+                "shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix())"
+            ),
+            "상태 폴더를 안 보거나 접두사 없이 본다 — 셸이 말해도 화면까지 안 오거나, 남의 인스턴스 것까지 온다"
         );
     }
 
