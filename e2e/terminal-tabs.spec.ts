@@ -1,7 +1,16 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { WORKS } from "./fixtures";
-import { installFixtureBackend, markRunning, unknownIpcCalls } from "./harness";
+import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
+import {
+  fireWindowEvent,
+  installFixtureBackend,
+  markAttention,
+  markRunning,
+  openShell,
+  setWindowFocused,
+  stubWindowFocus,
+  unknownIpcCalls,
+} from "./harness";
 
 // 판 03 — `/terminal`의 머리행도 **같은 탭 줄**이다(결정 8 · adr-03). **이 층에서만 보이는
 // 것 둘이다**: 키 이벤트(정적 마크업 seam에는 이벤트가 없어 이펙트가 아예 안 돈다)와,
@@ -57,8 +66,8 @@ const [, plainWork] = WORKS;
 /** 셸 상한(결정 30). `shell-registry`의 `MAX_SHELLS`와 같은 수다 — 이 줄이 가장 붐비는 폭이다. */
 const MAX_SHELLS = 8;
 
-/** 픽스처의 `pty_spawn`이 주는 셸 이름. 이 work은 워크트리가 없어 앞에 프로젝트가 안 붙는다(결정 18). */
-const SHELL_NAME = "zsh";
+/** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
+const SHELL_NAME = FIXTURE_SHELL_NAME;
 
 interface Row {
   width: number;
@@ -121,17 +130,20 @@ async function rowOf(page: Page): Promise<Row> {
   });
 }
 
-/** 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30). */
+/**
+ * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
+ *
+ * 칸은 `openShell`로 **하나씩** 연다 — 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
+ * (`awaitSpawned`의 머리말), 안 기다리면 여덟 번의 왕복이 서로 겹쳐 **몇 번째 칸이 몇 번
+ * pty를 받았는지가 실행마다 갈린다.** 픽스처가 부른 순서대로 id를 주기 시작한 뒤로
+ * (`FIXTURE_INCREMENTING_KEYS`) 그 순서가 이 판의 전제가 됐다.
+ */
 async function fillToCap(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   // 이미 몇 칸이 서 있어도 상관없이 상한까지 채운다 — 부르는 자리마다 시작 칸 수가 다르다.
   await tabs.first().waitFor();
-  const plus = page.locator('[data-tab="new"]');
-  for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) {
-    await plus.click();
-    await expect(tabs).toHaveCount(n + 1);
-  }
-  await expect(plus).toHaveAttribute("aria-disabled", "true");
+  for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) await openShell(page);
+  await expect(page.locator('[data-tab="new"]')).toHaveAttribute("aria-disabled", "true");
 }
 
 test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", async ({ page }) => {
@@ -268,6 +280,333 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   // 스크린리더에는 그대로 불린다(이름 버튼의 접근성 이름이 이 글자 하나다).
   expect((await name.boundingBox())!.width).toBeLessThanOrEqual(1);
   await expect(name).toHaveCount(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── 티켓 #198: 백엔드가 **셸마다** 쏘는 값이 그 셸에 앉는다 ───
+//
+// 이 판(터미널 신호)의 검사는 거의 전부가 「서로 다른 상태의 셸 둘」을 필요로 한다 — 행의 점,
+// 띠의 줄, 물든 탭이 전부 「어느 셸인가」를 말하는 것들이라, 값이 늘 맨 앞 셸에만 앉으면 그
+// 검사들은 **자리가 옳은지를 아예 못 잰다.** 그 자리를 이 검사가 연다.
+//
+// 막고 있던 것은 고정 백엔드였다: `pty_spawn`이 늘 id 1을 답해 셸이 몇이든 백엔드 쪽 번호가
+// 하나뿐이었고, `shellOfPty`가 먼저 찾은 칸을 주므로 값이 전부 맨 앞 칸에 앉았다.
+//
+// **재는 자리가 탭 줄인 것은 「어느 셸인가」가 화면에 드러나는 자리가 여기뿐이라서다.**
+// 사이드바 메타는 줄 전체로 말하고(`runningAgentsOf` — 「claude 하나가 돈다」까지만 안다),
+// pty id는 화면 어디에도 안 적힌다.
+//
+// **셸 둘이면 족하고 창 폭은 아무래도 좋다.** 도는 명령의 글리프는 폭과 무관하게 **DOM에 늘
+// 있고**(`ShellTabs`의 `@max-[88px]:flex` — 좁은 폭에서 바뀌는 것은 `display`뿐이다), 여기서
+// 세는 것은 그 DOM이다. 「이름이 숨는 폭에서만 눈에 선다」를 재는 것은 마크업 seam
+// (`ShellTabs.test.tsx`)의 몫이고, 이 검사의 물음은 **값이 어느 칸에 앉나** 하나다 — 상한까지
+// 채우면 그 물음이 상한·접힘 규칙에 공연히 매인다.
+test("도는 명령은 그 셸의 칸에만 앉는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  // 들어오면 이 work의 셸 하나가 뜬다(`ensureShell`). 둘째 칸은 **응답까지 기다려** 연다 —
+  // 「둘째 칸 = pty 2」가 그 기다림 위에 선다(`openShell`의 머리말).
+  const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await expect(tabs).toHaveCount(2);
+
+  const marks = page.locator('[data-tab="shell"] [role="img"]');
+  // **먼저 아무 칸도 안 물든 것을 센다.** 이것이 없으면 아래가 「원래 있던 것」으로도 초록이 된다.
+  await expect(marks).toHaveCount(0);
+
+  await markRunning(page, "claude", 2);
+
+  // 그 칸 하나에만 앉는다. 세 단언이 각각 다른 것을 말한다: 둘째가 물들었다 · 첫째는 안
+  // 물들었다 · 그리고 **줄 전체에 하나뿐이다**(마지막이 없으면 두 칸이 함께 물든 그림이
+  // 통과한다 — 값이 셸 단위가 아니라 줄 단위로 앉는 회귀가 정확히 그 모양이다).
+  await expect(tabs.nth(1).locator('[role="img"]')).toHaveCount(1);
+  await expect(tabs.nth(0).locator('[role="img"]')).toHaveCount(0);
+  await expect(marks).toHaveCount(1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **손잡이가 「앉았다」를 잘못 말하면 위 검사가 무엇을 재는지 아무도 모른다.** `markRunning`은
+// 값이 앉을 때까지 다시 쏘는데, 앉았는지를 마크의 수로 판정한다 — 그 판정이 화면 전체에서
+// 「하나라도 있는가」였을 때는 같은 에이전트의 마크가 이미 서 있으면(사이드바 행·nav도 같은
+// 마크를 세운다) 값이 대상 pty에 **안 앉아도** 곧바로 성공을 냈다. 이 판의 뒤쪽 티켓들이
+// 같은 에이전트를 셸 둘에 앉히므로(#203~#205) 그 fail-open이 정확히 그 그림에서 난다.
+test("도는 명령 손잡이는 이미 선 마크에 안 속는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await markRunning(page, "claude", 2);
+  await expect(page.locator('[data-tab="shell"] [role="img"]')).toHaveCount(1);
+
+  // 모르는 pty를 주면 `shellOfPty`가 null을 주어 값이 **아무 칸에도 안 앉는다.** 그러면
+  // 손잡이는 5초를 다 쓰고 던져야 한다 — 위 claude 하나를 보고 돌아가면 안 된다.
+  const 던진말 = await markRunning(page, "claude", 99).then(
+    () => "던지지 않았다",
+    (error: Error) => error.message,
+  );
+  expect(던진말).toContain("pty 99");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── 티켓 #205: 칸이 **물든다**(결정 6 — 안 J3) ───
+//
+// **이 층이 아니면 아무것도 안 보인다.** 마크업 seam(`ShellTabs.test.tsx`)이 드는 것은 클래스
+// 문자열이고, 여기서 재는 것은 셋이다 — 그 클래스가 실제로 **토큰 값으로** 칠해지는가 ·
+// 스토어를 한 바퀴 돈 값이 그 칸에 앉는가 · 그리고 **칸을 켜면 초록이 꺼지는가**. 마지막
+// 것은 정적 마크업에 아예 없다: 「봤다」는 창 포커스와 켜진 칸이 만나는 순간이라 이벤트가
+// 도는 층에서만 난다.
+
+/**
+ * 안 물든 칸의 배경. 브라우저가 `transparent`를 이 글자로 돌려준다 — 토큰이 아니라 **없음**
+ * 이라 `토큰색`으로 못 뽑고, 그래서 여기 한 번 적는다. 브라우저가 다른 글자를 돌려주는 날은
+ * 이 줄이 그 자리에서 터진다(조용히 통과하지 않는다).
+ */
+const 안물듦 = "rgba(0, 0, 0, 0)";
+
+/** 그 칸의 실제 배경색. 채움이 칸 상자에 붙으므로(스토리 53) 재는 것도 그 상자다. */
+const 칸배경 = (page: Page, at: number) =>
+  page.locator('[data-tab="shell"]').nth(at).evaluate((el) => getComputedStyle(el).backgroundColor);
+
+/**
+ * 토큰 하나를 브라우저가 쓰는 색 문자열로 바꾼다. **값을 검사에 손으로 적지 않기 위해서다** —
+ * `rgba(217, 119, 6, 0.14)`를 여기 박아 두면 팔레트를 손보는 날 이 줄이 정본과 갈리고,
+ * 무엇보다 「탭이 #203의 토큰을 그대로 읽는가」(수용 기준)를 못 재게 된다.
+ */
+const 토큰색 = async (page: Page, name: string) => {
+  const 색 = await page.evaluate((one: string) => {
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = `var(${one})`;
+    document.body.appendChild(probe);
+    const 값 = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return 값;
+  }, name);
+  // **fail-closed.** 없는 `var()`는 computed 시점에 그 선언을 통째로 무효로 만들고 프로퍼티가
+  // 초기값으로 떨어지는데, 그 값이 바로 위 `안물듦`이다(WebKit 실측). 그대로 돌려주면 팔레트가
+  // 지워지는 날 이 파일의 견줌이 **양쪽 다 투명**이라 전부 초록이 된다 — `--signal-wait-soft`가
+  // 죽으면 `--color-wait-soft`(index.css)도 같이 죽어 `bg-wait-soft` 규칙 자체가 안 생기므로
+  // 칸도 투명해지기 때문이다. 여기서 끊으면 그날 검사가 색이 아니라 **원인**을 말한다.
+  if (색 === 안물듦 || 색 === "") throw new Error(`토큰 ${name}이 안 풀렸다 — ${색 || "빈 값"}`);
+  return 색;
+};
+
+test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await expect(tabs).toHaveCount(2);
+  // 부르는 것은 **둘째 칸**이고 보고 있는 것은 첫째다 — 켜진 칸을 부르게 하면 「봤다」가
+  // 곧바로 초록을 지워, 이 검사가 무엇을 재는지 모르게 된다.
+  await tabs.nth(0).locator("button[aria-pressed]").click();
+
+  // **먼저 아무 칸도 안 물든 것을 센다.** 이것이 없으면 아래가 「원래 그렇던 것」으로도 초록이다.
+  //
+  // 값을 한 번 재서 들고 있지 않고 **폴링으로 견준다** — 칸에 `transition-colors`가 걸려 있어
+  // 켜짐이 옮겨 가는 150ms 동안 `getComputedStyle`이 중간 색을 돌려준다(실측: 켜짐이 빠지는
+  // 도중에 `rgba(20, 20, 28, 0.09)`). 그 순간값을 기준으로 잡으면 마지막 「도는 중은 안
+  // 물든다」가 존재하지 않는 색과 견주게 된다.
+  await expect
+    .poll(() => 칸배경(page, 1), { message: "안 부르는 칸이 물들어 있다" })
+    .toBe(안물듦);
+
+  await markAttention(
+    page,
+    { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } },
+    2,
+  );
+  const 앰버 = await 토큰색(page, "--signal-wait-soft");
+  await expect
+    .poll(() => 칸배경(page, 1), { message: "둘째 칸이 앰버로 안 물들었다" })
+    .toBe(앰버);
+  // 옆 칸은 그대로다 — 값이 줄 단위로 앉는 회귀가 여기서 터진다.
+  expect(await 칸배경(page, 0)).not.toBe(앰버);
+
+  // 세션이 끝나면 초록이다(스펙 전이 표 — 턴 종료가 아니다).
+  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  expect(앰버, "앰버와 초록이 같은 색이다").not.toBe(초록);
+  await expect.poll(() => 칸배경(page, 1), { message: "둘째 칸이 초록으로 안 물들었다" }).toBe(초록);
+
+  // **도는 중은 안 물든다**(스토리 52). 탭 칸에는 링을 안 세우므로 여기서 물들이면 claude가
+  // 도는 내내 줄이 색을 띤 채라 「부른다」가 뜻을 잃는다.
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 2);
+  await expect
+    .poll(() => 칸배경(page, 1), { message: "도는 중인 칸이 안 돌아왔다" })
+    .toBe(안물듦);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **켜면 초록이 꺼지고 앰버는 남는다**(결정 6·7 · 스토리 49·50). 판정은 `isShellSeen` 하나이고
+// 알림 억제(#206)가 같은 함수를 쓴다 — 여기서 꺼지는 것이 곧 그쪽에서 안 울리는 것이다.
+test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 남는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  await expect(tabs).toHaveCount(1);
+  await openShell(page);
+  await tabs.nth(0).locator("button[aria-pressed]").click();
+
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  const 앰버 = await 토큰색(page, "--signal-wait-soft");
+  const 켜기 = (at: number) => tabs.nth(at).locator("button[aria-pressed]").click();
+
+  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
+  await expect.poll(() => 칸배경(page, 1)).toBe(초록);
+  // 이름에도 붙어 있다 — 꺼지는 것이 색만이 아니라는 것을 아래에서 같은 자리로 잰다.
+  await expect(tabs.nth(1).locator("button[aria-pressed]")).toHaveAttribute(
+    "aria-label",
+    /확인할 것$/,
+  );
+
+  await 켜기(1);
+  // **켜는 순간 봤다다.** 색도 이름도 함께 걷힌다.
+  await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 초록이 안 꺼졌다" }).not.toBe(초록);
+  await expect(tabs.nth(1).locator("button[aria-pressed]")).not.toHaveAttribute(
+    "aria-label",
+    /확인할 것$/,
+  );
+
+  // **기다림은 켜도 안 꺼진다** — 본 것과 답한 것은 다르다(결정 7). 켜진 칸이라 회색
+  // (`toggle-on`)이 서야 할 자리인데 앰버가 이긴다(결정 6).
+  await markAttention(
+    page,
+    { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } },
+    2,
+  );
+  await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 앰버가 꺼졌다" }).toBe(앰버);
+  // 「고른 칸이다」는 1px 안쪽 테두리가 대신 말한다 — 그림자라 폭을 안 먹는다(스토리 54).
+  const 그림자 = await tabs.nth(1).evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(그림자, `켜진 앰버 칸에 안쪽 테두리가 없다 — ${그림자}`).toContain("inset");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **「봤다」는 그 셸을 **보고 있을 때**만이다**(결정 7). 칸이 켜져 있어도 본문이 문서면 사람은
+// 그 셸을 안 보고 있다 — 켜진 칸(`activeByOwner`)은 그 화면의 **기억**이라 spec을 읽는 동안에도
+// 남아 있어서, 그것만 보고 「봤다」를 세우면 문서를 읽는 내내 완료가 조용히 지워진다.
+//
+// 분할이 그 반대쪽이다: 열 둘 중 하나가 터미널이면 그 셸은 **보고 있는 것**이다.
+test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  const tabs = page.locator('[data-tab="shell"]');
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  const 끝난다 = () =>
+    markAttention(
+      page,
+      { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
+      1,
+    );
+
+  // 문서로 옮긴다 — 칸은 그대로 켜져 있고 본문만 바뀐다(주소에서 `tab`이 빠진다, 결정 14).
+  await page.locator('[data-tab="spec"]').click();
+  await expect(page).not.toHaveURL(/tab=terminal/);
+  await 끝난다();
+  // **안 꺼진다.** 켜진 칸이라는 이유로 지워지면 여기가 초록이 아니다.
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "문서를 읽는 중인데 초록이 안 섰다" })
+    .toBe(초록);
+
+  // 분할을 켠다 — 열 하나가 터미널이라 그 셸은 보고 있는 것이다(결정 7).
+  await page.locator('button[title="분할 켜기"]').click();
+  await expect(page).toHaveURL(/split=/);
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "분할로 보고 있는데 초록이 안 꺼졌다" })
+    .not.toBe(초록);
+
+  // 그리고 분할 중에 온 완료도 곧바로 봤다다 — 스토리 58이 알림 쪽에서 같은 말을 한다.
+  await 끝난다();
+  await expect(tabs.nth(0).locator("button[aria-pressed]")).not.toHaveAttribute(
+    "aria-label",
+    /확인할 것$/,
+  );
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **포커스가 판정에 실제로 든다**(결정 7 · 스토리 10). 「봤다」는 켜진 칸과 창 포커스가
+// **만나는** 순간인데, 한쪽(창 포커스)에는 지금까지 아무 그물도 없었다 — `windowFocused()`를
+// `return true`로 바꿔도 L1~L4가 전부 초록이었다. 그 fail-open은 「초록이 안 뜬다」로만
+// 나타나므로 화면에서 안 보인다.
+//
+// 헤드리스 WebKit은 배경 페이지에서도 `document.hasFocus()`가 참이라 진짜로 포커스를 뺏을
+// 길이 없다(`stubWindowFocus` 머리말의 실측). 그래서 브라우저가 답하는 그 한 줄을 손으로
+// 잡고 **앱이 그것을 딛는지**를 잰다.
+test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 그 순간 꺼진다", async ({ page }) => {
+  await stubWindowFocus(page);
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  await setWindowFocused(page, false);
+  await markAttention(
+    page,
+    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
+    1,
+  );
+
+  // 그 셸을 **보고 있는데도** 안 꺼진다 — 창이 뒤에 있으면 사람이 본 것이 아니다.
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
+    .toBe(초록);
+
+  // 값만 바꾸고 이벤트를 안 쏘면 화면은 그대로다 — 다시 재는 것은 리스너의 일이다.
+  await setWindowFocused(page, true);
+  expect(await 칸배경(page, 0), "이벤트 없이 초록이 꺼졌다").toBe(초록);
+
+  // **알림을 눌러 돌아온 순간이 이것이다**(스토리 10) — 「알림이 왔는데 아무것도 없다」가
+  // 아니라 「와서 봤다」로 읽히려면 그 순간 꺼져야 한다.
+  await fireWindowEvent(page, "focus");
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 앞으로 왔는데 초록이 안 꺼졌다" })
+    .not.toBe(초록);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **`blur`가 「봤다」를 세우는 길이 하나 있다** — 그 하나 때문에 그 리스너가 산다.
+// 다른 앱을 보다가 분할된 화면의 spec 프레임을 **바로 눌러** 돌아오면, 포커스가 자식 문서로
+// 들어가므로 부모 `window`에는 `focus` 없이 `blur`만 온다. 그때 창은 앞에 있다
+// (`document.hasFocus()`가 참이고, SpecViewer의 `useFrameFocused`가 그 실측을 들고 있다).
+// 이 줄이 없으면 눈앞의 셸이 다음 이벤트가 올 때까지 초록인 채로 남는다.
+test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임을 바로 누른 길", async ({ page }) => {
+  await stubWindowFocus(page);
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+
+  const 초록 = await 토큰색(page, "--signal-done-soft");
+  await setWindowFocused(page, false);
+  await markAttention(
+    page,
+    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
+    1,
+  );
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
+    .toBe(초록);
+
+  // 앱이 앞으로 오면서 포커스가 프레임으로 들어간다 — 부모가 받는 것은 `blur` 하나다.
+  await setWindowFocused(page, true);
+  await fireWindowEvent(page, "blur");
+  await expect
+    .poll(() => 칸배경(page, 0), { message: "창이 앞에 있는데 blur에 초록이 안 꺼졌다" })
+    .not.toBe(초록);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

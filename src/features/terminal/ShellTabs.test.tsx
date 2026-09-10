@@ -15,6 +15,7 @@ import {
   MAX_SHELLS,
   NO_SHELLS,
   openShell,
+  setAttention,
   setRunning,
   setShellName,
   ownerOf,
@@ -22,6 +23,7 @@ import {
   shellEndLabels,
 } from "./shell-registry";
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import type { Attention } from "./shell-attention";
 
 // work 화면의 머리행 — **탭 줄이다**(결정 7). `[spec][셸…][+]`가 서고 오른쪽 끝에 조작이
 // 고정된다(결정 10). 셸을 고르는 자리가 사이드바에서 화면 안으로 돌아온 것이라, 여기서
@@ -770,5 +772,265 @@ describe("`+`", () => {
 
   it("상한 아래에서는 안 잠긴다", () => {
     expect(plusOf(render(opened(MAX_SHELLS - 1).state))).not.toMatch(/aria-disabled/);
+  });
+});
+
+// **칸이 물든다**(#205 · 결정 6 — 안 J3). 사이드바 행이 점으로 말하는 것을 이 줄은 **배경
+// 채움**으로 말한다: 6px 점은 180×28 칸의 0.03이라 탭 줄에서 안 보이고, 점을 세우면 그것이
+// 이름을 6px 밀어 상태가 바뀔 때마다 칸이 들썩인다.
+//
+// **여기서 보는 것은 「그 상태의 칸이 무슨 클래스를 다는가」다.** 색이 실제로 또렷한지는
+// 브라우저에서 재고(L3), 이 층이 지키는 것은 자리와 어휘 — 채움이 **칸 상자**에 붙는가(좁은
+// 폭에서도 남아야 한다) · 물들임이 폭·위치를 안 바꾸는가 · 이름에 상태가 붙는가.
+describe("칸이 물든다", () => {
+  const 말한다 = (kind: Attention["kind"], seen = false): Attention => ({
+    kind,
+    message: "커밋할까요?",
+    since: 1000,
+    seen,
+    source: "hook",
+    agent: "claude",
+  });
+
+  /**
+   * 칸 상자의 class. **정규식이 표식 바로 뒤에 붙어 있다** — `data-tab="shell"` 다음 속성이
+   * className이라 그 자리가 아니면 못 읽고, 못 읽으면 던진다. 「어디선가 그 글자가 보인다」로
+   * 판정하면 이름 버튼이나 닫기 버튼의 클래스가 칸 상자의 것으로 세어진다.
+   */
+  function tabClassOf(markup: string, at = 0): string {
+    const cell = shellCellsOf(markup)[at];
+    const match = cell === undefined ? null : /^shell" class="([^"]*)"/.exec(cell);
+    if (!match) throw new Error(`칸 ${at}의 class를 못 읽었다 — ${String(cell).slice(0, 160)}`);
+    return match[1];
+  }
+
+  const 물든칸 = (kind: Attention["kind"] | null, { active = false } = {}) => {
+    const { state, ids } = opened(1);
+    const 앉힌뒤 = kind === null ? state : setAttention(state, ids[0], 말한다(kind));
+    return tabClassOf(render(앉힌뒤, { showing: active }));
+  };
+
+  /**
+   * 그 상태의 칸 **통째로**. 이름과 도는 것을 함께 앉히는 것은 잉크가 어디까지 흐르는지를
+   * 보려면 칸 안에 글자와 글리프가 둘 다 서 있어야 해서다.
+   */
+  const 물든칸통째 = (kind: Attention["kind"] | null, { running = "claude" as string | null } = {}) => {
+    const { state, ids } = opened(1);
+    const 이름붙인 = setRunning(setTitle(state, ids[0], "zsh"), ids[0], running);
+    const 앉힌뒤 = kind === null ? 이름붙인 : setAttention(이름붙인, ids[0], 말한다(kind));
+    return shellCellsOf(render(앉힌뒤))[0];
+  };
+
+  /**
+   * 이름 글자를 적는 `<span>`의 **class**. 이름을 표식으로 삼아 그 앞의 span을 집는다 —
+   * 못 집으면 던진다(위 `tabClassOf`와 같은 규율: 못 읽은 것이 「없다」로 읽히지 않는다).
+   */
+  const 이름span = (cell: string) => {
+    const head = cell.slice(0, cell.indexOf(">zsh<"));
+    const match = /^<span class="([^"]*)"$/.exec(head.slice(head.lastIndexOf("<span")));
+    if (!match) throw new Error(`이름 span을 못 집었다 — ${cell.slice(0, 200)}`);
+    return match[1];
+  };
+
+  /** 좁은 폭에서만 서는 마크 마디의 열린 태그(`role="img"`). 없으면 던진다. */
+  const 마크span = (cell: string) => {
+    const head = cell.slice(0, cell.indexOf('role="img"'));
+    const tag = head.slice(head.lastIndexOf("<span"));
+    if (!tag.startsWith("<span")) throw new Error(`마크 span을 못 집었다 — ${cell.slice(0, 200)}`);
+    return `${tag}${cell.slice(cell.indexOf('role="img"')).split(">")[0]}`;
+  };
+
+  it("안 켜진 칸이 부르면 물든다 — 기다림은 앰버, 안 본 완료는 초록", () => {
+    // 색 이름을 여기서 새로 짓지 않는다 — 토큰 넷은 #203이 들였고(`index.css`) 행·띠가 이미
+    // 같은 이름을 읽는다. 같은 색을 두 번 적으면 자리마다 색이 갈리는 날 아무도 못 본다.
+    expect(물든칸("waiting")).toContain("bg-wait-soft");
+    expect(물든칸("done")).toContain("bg-done-soft");
+
+    // **잉크는 상자가 아니라 이름 글자에 붙는다**(아래 「마크는 상태색을 안 받는다」).
+    expect(이름span(물든칸통째("waiting"))).toContain("text-wait-ink");
+    expect(이름span(물든칸통째("done"))).toContain("text-done-ink");
+  });
+
+  it("켜진 칸이 기다리면 앰버가 회색을 이기고, 1px 안쪽 테두리가 그 자리를 대신 말한다", () => {
+    // 결정 6. 「부르는 탭」이 「고른 탭」보다 위 사실이라 `toggle-on`이 물러난다 — 안 물러나면
+    // 보고만 있는 셸이 답한 셸로 오인된다(스토리 49). 그런데 켜짐 자체도 사라지면 안 되므로
+    // 회색 채움이 하던 말을 테두리가 받는다.
+    const 켜진기다림 = 물든칸("waiting", { active: true });
+    expect(켜진기다림).toContain("bg-wait-soft");
+    expect(켜진기다림).not.toContain("toggle-on");
+    // **`ring`이지 `border`가 아니다**(스토리 54) — 그림자는 폭을 안 먹는다. 아래 「폭·위치」
+    // 검사가 그 결과를 재고, 여기서는 어느 어휘를 골랐는지를 못박는다.
+    expect(켜진기다림).toContain("ring-1");
+    expect(켜진기다림).toContain("ring-inset");
+    expect(켜진기다림).toContain("ring-wait");
+    expect(켜진기다림).not.toContain("border");
+
+    // 안 켜진 칸에는 테두리가 없다 — 있으면 여덟 칸이 다 고른 칸으로 보인다.
+    expect(물든칸("waiting")).not.toContain("ring-1");
+  });
+
+  it("이름에 상태가 붙는다 — 색만이 신호여선 안 된다", () => {
+    // 스토리 55 · 결정 8의 마지막 줄. **말은 `SIGNAL_LABEL` 하나에서 온다** — 행 버튼과 띠
+    // 줄이 이미 그 표를 읽고 있어서, 여기서 글자를 다시 적으면 한 화면이 같은 셸을 두 이름으로
+    // 부른다.
+    const 이름버튼 = (kind: Attention["kind"] | null) => {
+      const { state, ids } = opened(1, undefined, NO_SHELLS);
+      const 앉힌뒤 = kind === null ? state : setAttention(state, ids[0], 말한다(kind));
+      const cell = shellCellsOf(render(앉힌뒤))[0];
+      const match = /<button[^>]*aria-pressed[^>]*>/.exec(cell);
+      if (!match) throw new Error(`이름 버튼을 못 찾았다 — ${cell.slice(0, 160)}`);
+      return match[0];
+    };
+
+    expect(이름버튼("waiting")).toContain("— 나를 기다림");
+    expect(이름버튼("done")).toContain("— 확인할 것");
+
+    // **물들임이 없는 칸에는 안 붙는다.** 탭이 아무 색도 안 띤 채 스크린리더에만 「도는 중」을
+    // 말하면 눈과 귀가 다른 것을 듣는다 — 도는 것은 이미 이름(`✳ Claude`)과 좁은 폭의
+    // 마크가 말한다.
+    for (const kind of ["working", null] as const) {
+      expect(이름버튼(kind), String(kind)).not.toContain("aria-label");
+    }
+  });
+
+  it("물들임이 폭도 자리도 안 바꾼다 — 갈리는 것은 색뿐이다", () => {
+    // 스토리 54. 상태가 바뀔 때 칸이 튀면 「어디로 돌아가야 하나」를 보여 주려던 신호가
+    // 오히려 줄을 흔든다. 재는 법은 **클래스의 차집합**이다 — 네 상태의 class를 견줘,
+    // 달라지는 것이 아래 색 어휘 안에 드는지 본다. 여기 없는 클래스가 하나라도 갈리면
+    // (여백이든 폭이든 테두리든) 빨개진다.
+    //
+    // `ring-*`이 이 목록에 드는 것은 **그림자라 흐름을 안 건드리기 때문이다** — `border-*`는
+    // 여기 없으므로 테두리로 갈아타는 날 이 검사가 잡는다.
+    // **잉크 이름(`text-*-ink`)은 여기 없다.** 그것이 상자로 되돌아오는 날 이 검사가 잡는다 —
+    // 상자에 얹으면 안쪽이 통째로 물들어 마크가 상태색을 받는다(아래 「마크는 상태색을 안
+    // 받는다」가 그 자리를 따로 지킨다).
+    const 색어휘 = new Set([
+      "text-muted-foreground",
+      "hover:bg-state-1",
+      "toggle-on",
+      "font-medium",
+      "bg-wait-soft",
+      "bg-done-soft",
+      "ring-1",
+      "ring-inset",
+      "ring-wait",
+      "ring-done",
+    ]);
+
+    const 차집합 = (a: string, b: string) => {
+      const 왼 = new Set(a.split(" "));
+      const 오 = new Set(b.split(" "));
+      return [...[...왼].filter((one) => !오.has(one)), ...[...오].filter((one) => !왼.has(one))];
+    };
+
+    const 바탕 = 물든칸(null);
+    for (const kind of ["waiting", "done", "working", null] as const) {
+      for (const active of [false, true]) {
+        const 갈린것 = 차집합(물든칸(kind, { active }), 바탕);
+        expect(갈린것.filter((one) => !색어휘.has(one)), `${kind}/${active}`).toEqual([]);
+      }
+    }
+
+    // **이름 글자도 같은 규율을 진다.** 잉크가 상자에서 이름으로 내려왔으므로(아래 「마크는
+    // 상태색을 안 받는다」) 여기도 색만 갈려야 한다 — 잉크를 얹으면서 `font-*`나 여백을
+    // 함께 건드리면 물든 칸의 글자만 다른 자리에 앉는다.
+    for (const kind of ["waiting", "done"] as const) {
+      const 갈린것 = 차집합(이름span(물든칸통째(kind)), 이름span(물든칸통째(null)));
+      expect(갈린것, kind).toEqual([kind === "waiting" ? "text-wait-ink" : "text-done-ink"]);
+    }
+  });
+
+  it("채움이 칸 상자에 붙는다 — 이름이 숨는 폭에서도 남는다", () => {
+    // 스토리 53. 좁아지면 이름 글자가 `sr-only`로 빠지고 글리프만 남는데(결정 11·20),
+    // 채움이 그 안쪽 어딘가에 붙어 있으면 **신호가 글자와 함께 죽는다** — 좁은 창일수록
+    // 탭 줄에서 찾기 어려운데 거기서 먼저 사라지는 셈이다.
+    //
+    // 「상자에 있다」를 **수로** 잰다: 칸 전체에서 그 글자가 한 번만 나오고 그 한 번이
+    // 상자의 class여야 한다. 「상자에 있다」만 보면 안쪽에 하나 더 붙어도 초록이다.
+    const { state, ids } = opened(1);
+    const cell = shellCellsOf(render(setAttention(state, ids[0], 말한다("waiting"))))[0];
+    expect(cell.split("bg-wait-soft").length - 1).toBe(1);
+    expect(tabClassOf(render(setAttention(state, ids[0], 말한다("waiting"))))).toContain(
+      "bg-wait-soft",
+    );
+    // 폭으로 갈리는 규칙이 상자에 얹히지 않았다 — 얹히면 위의 「한 번」이 조건부가 된다.
+    expect(tabClassOf(render(setAttention(state, ids[0], 말한다("waiting"))))).not.toContain(
+      "@max-",
+    );
+  });
+
+  it("도는 중과 아무 말 없는 칸은 지금 그대로다", () => {
+    // 스토리 52. **탭에는 링을 안 세운다** — 판 04 결정 27을 뒤집는 게 아니라 이 판은 링을
+    // 다른 자리(사이드바 레인)에 세운다. 여기서 물들이면 claude가 도는 동안 탭 줄 여덟이
+    // 내내 색을 띤 채라 「부른다」가 뜻을 잃는다.
+    for (const kind of ["working", null] as const) {
+      const 칸 = 물든칸(kind);
+      expect(칸, String(kind)).toContain("text-muted-foreground");
+      expect(칸, String(kind)).not.toContain("bg-wait-soft");
+      expect(칸, String(kind)).not.toContain("bg-done-soft");
+    }
+  });
+
+  it("마크는 상태색을 안 받는다 — 물든 칸에서도 단색이다", () => {
+    // **판 04 결정 15**(마크는 단색) · 스토리 32. 마크는 늘 「누구」이고 색은 늘 「어떤
+    // 상태」다 — 정체엔 색을 안 쓰고 상태엔 쓴다. 사이드바 둘째 줄은 그 규칙을 **자리로**
+    // 지킨다(`SignalLine`: 색이 붙는 상자는 말 하나뿐이고 마크는 그 **밖**에 선다).
+    //
+    // 탭에서는 그럴 수가 없다 — 마크가 칸 상자 **안**에 서므로, 잉크를 상자에 붙이면 이름이
+    // 숨는 폭(`@max-[88px]`)에서만 서는 그 글리프가 `currentColor`로 물든다. 하필 스토리 53이
+    // 「거기서도 신호가 살아야 한다」고 적은 그 폭에서 claude 로고가 앰버가 되는 것이다.
+    // 그래서 **잉크는 이름 글자에만** 붙는다.
+    for (const [kind, ink] of [
+      ["waiting", "text-wait-ink"],
+      ["done", "text-done-ink"],
+    ] as const) {
+      const cell = 물든칸통째(kind);
+      // 칸 안에 잉크가 **딱 한 번** 선다. 상자에도 마크에도 없고 이름 글자에만 있다 —
+      // 수로 재면 「어딘가 하나 더 붙었다」까지 함께 잡힌다.
+      expect(cell.split(ink).length - 1, kind).toBe(1);
+      expect(이름span(cell), kind).toContain(ink);
+      expect(마크span(cell), kind).not.toContain("-ink");
+      // **상자에 없다**가 핵심이다 — 있으면 안쪽 전부가 `currentColor`로 상속받는다. 켜진
+      // 칸도 같다: 물들임이 이기는 자리라 잉크가 거기서 되살아나기 가장 쉽다.
+      expect(물든칸(kind), kind).not.toContain("-ink");
+      expect(물든칸(kind, { active: true }), kind).not.toContain("-ink");
+    }
+  });
+
+  it("물든 좁은 칸도 「누가 도는가」를 스크린리더에 남긴다", () => {
+    // `aria-label`은 자손 글자를 **통째로 대체한다.** 이름 버튼에 상태만 적으면, 이름이 숨는
+    // 폭에서만 서는 마크 마디(`role="img"` · 「claude 실행 중」)가 그 폭의 접근성 이름에서
+    // 사라진다 — 그 마디가 있는 이유가 「글리프 svg가 `aria-hidden`이라 도는 칸이 **눈에만**
+    // 보인다」인데, 하필 부르는 칸에서만 그것을 잃는다.
+    //
+    // 그래서 상태 말을 붙이는 자리가 **한 곳에서 조립하고 도는 것도 함께 싣는다**.
+    const label = /aria-label="([^"]*)"/.exec(
+      /<button[^>]*aria-pressed[^>]*>/.exec(물든칸통째("waiting"))![0],
+    )![1];
+    expect(label).toContain("zsh");
+    expect(label).toContain("claude 실행 중");
+    expect(label.endsWith("나를 기다림"), label).toBe(true);
+
+    // 도는 것이 없으면 그 마디도 없다 — 없는 사실을 이름이 지어내지 않는다.
+    const 안돌때 = /aria-label="([^"]*)"/.exec(
+      /<button[^>]*aria-pressed[^>]*>/.exec(물든칸통째("waiting", { running: null }))![0],
+    )![1];
+    expect(안돌때).not.toContain("실행 중");
+  });
+
+  it("물든 칸은 hover 회색을 안 얹는다 — 채움이 이미 그 자리를 쓴다", () => {
+    // **감수한 것이지 놓친 것이 아니다.** 회색 hover를 채움 위에 얹으면 배경 유틸리티가 두
+    // 벌이 되어 승자를 정렬 순서가 정하고(index.css의 경고), 그 승부에서 회색이 이기면
+    // 마우스가 지나갈 때마다 부르는 칸이 조용해진다. 대가는 물든 칸이 hover에 아무 반응도
+    // 안 하는 것이다 — 채움과 안 겹치는 어휘(테두리)는 이 줄에서 이미 「고른 칸이다」를
+    // 뜻하므로 hover에 쓰면 여덟 칸이 다 고른 칸으로 읽힌다.
+    //
+    // **위 「폭·자리」 검사는 이 사실을 감춘다** — `hover:bg-state-1`이 그 허용 목록에 들어
+    // 있어 차집합에서 조용히 지나간다. 그래서 여기서 이름으로 말한다.
+    for (const kind of ["waiting", "done"] as const) {
+      expect(물든칸(kind), kind).not.toContain("hover:");
+      expect(물든칸(kind, { active: true }), kind).not.toContain("hover:");
+    }
+    expect(물든칸(null)).toContain("hover:bg-state-1");
   });
 });

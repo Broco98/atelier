@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Settings } from "./types";
+import type { HookStatus, Settings } from "./types";
 
 // 설정은 `localStorage`가 아니라 `~/.atelier/settings.json` 한 장에 산다(결정 53) —
 // 그래서 창구가 Rust 커맨드 둘이다. 경로를 여기서 말하지 않는 이유는 그 자리를 아는 곳이
@@ -13,4 +13,12 @@ export const settingsApi = {
   // 객체를 만들어 보내면 그 키들이 조용히 사라진다 — 읽은 것을 펼쳐서 고쳐라
   // (`{ ...settings, terminal: { ...settings.terminal, fontSize: 16 } }`).
   write: (settings: Settings) => invoke<void>("write_settings", { settings }),
+};
+
+// 에이전트 훅 설치 (#207 · 구현 결정 8). **셋 다 같은 모양으로 답한다** — 지금 상태
+// 둘이다. 설치·제거가 끝난 뒤의 상태를 그 자리에서 돌려주므로 화면이 다시 물어보지 않는다.
+export const hooksApi = {
+  status: () => invoke<HookStatus[]>("agent_hooks"),
+  install: () => invoke<HookStatus[]>("install_agent_hooks"),
+  uninstall: () => invoke<HookStatus[]>("uninstall_agent_hooks"),
 };

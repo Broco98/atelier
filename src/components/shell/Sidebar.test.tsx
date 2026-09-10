@@ -9,11 +9,13 @@ import {
   openShell,
   ownerOf,
   runningAgentsOf,
+  setAttention,
   setRunning,
   setTitle,
   shellCountsOf,
   type ShellsState,
 } from "@/features/terminal/shell-registry";
+import { signalsOf } from "@/features/terminal/shell-attention";
 
 // **사이드바가 터미널 상태를 읽어 내리는 자리**를 본다(결정 2). `Sidebar.tsx`를 여기로
 // 들일 수는 없다 — 그 파일은 `terminal-store`를 import하고 그 사슬에 `@xterm/*`와 그 CSS가
@@ -79,6 +81,31 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
     );
   });
 
+  // **화면값도 같은 규칙 위에 선다**(#203). 이 Record가 문자열만 담는 것이 그 이유 전부라,
+  // 「안 바뀐 work에는 같은 값」이 여기서도 성립해야 목록이 초마다 다시 안 그려진다.
+  it("타이틀은 화면값도 안 흔든다", () => {
+    const { state, 나 } = twoWorks();
+    const 뒤 = setTitle(state, 나, "~/atelier — nvim");
+    expect(shallow(signalsOf(뒤, "atelier"), signalsOf(state, "atelier"))).toBe(true);
+  });
+
+  it("셸이 말하면 그 work의 화면값만 달라진다", () => {
+    const { state, 나 } = twoWorks();
+    const 뒤 = setAttention(state, 나, {
+      kind: "waiting",
+      message: "커밋할까요?",
+      since: 100,
+      seen: false,
+      source: "hook",
+      agent: "claude",
+    });
+    // **먼저 실제로 달라졌는가** — 이것이 없으면 아래 「같다」가 「아무 일도 안 났다」로도 초록이다.
+    expect(signalsOf(뒤, "atelier")).toEqual({ 나: "waiting" });
+    expect(shallow(signalsOf(뒤, "atelier"), signalsOf(state, "atelier"))).toBe(false);
+    // 남의 work은 키가 없는 채 그대로다.
+    expect(signalsOf(뒤, "atelier")["가"]).toBeUndefined();
+  });
+
   it("명령이 끝나도 **메타가 서는 조건**은 안 바뀐다", () => {
     // 결정 3. 메타가 서는 조건(셸 수)이 초마다 흔들리면 claude가 답을 마칠 때마다 그 칸이
     // 생겼다 사라져 제목이 끊기는 자리가 좌우로 뛴다. 도는 것이 붙었다 떨어지는 동안 이
@@ -118,7 +145,43 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(countOf(sidebar, "runningAgentsOf(")).toBe(1);
   });
 
-  it("그 값이 work 행 오른쪽 끝의 메타로 내려간다", () => {
+  it("화면값은 **한 번에** 읽어 목록으로 내린다", () => {
+    // 이쪽은 위와 반대다(#203) — 값이 문자열이라 Record 하나로 읽는 것이 맞다. 행마다
+    // 구독하면 열여덟 개가 같은 셀렉터를 각자 돌면서 얻는 것이 없다. 값을 고르는 자리가
+    // 여기 하나라는 것을 리터럴로 못박는다.
+    expect(sidebar).toContain("signals={signals}");
+    // **부르는 자리를 센다 — 이름이 아니다.** 이름만 세면 import 줄과 주석의 산문까지
+    // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다(위 검사와 같은 근거).
+    expect(countOf(sidebar, "(state) => signalsOf(state, mode)")).toBe(1);
+  });
+
+  it("둘째 줄의 **말·시각·마크**는 행마다 자기 것만 구독한다", () => {
+    // 이 셋은 문자열 하나로 안 접히므로 위 Record에 못 태운다 — 객체를 담으면 회차마다
+    // 새것이라 얕은 비교가 늘 어긋나고 목록 전체가 다시 그려진다(`runningAgentsOf` 머리말).
+    // 그래서 종류·수와 **같은 구독 컴포넌트 안**에서 자기 것만 고른다: 자리가 하나여야
+    // 레인과 둘째 줄이 같은 셸을 고른다(스토리 79).
+    expect(sidebar).toContain("useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow)");
+    expect(countOf(sidebar, "topSignalView(")).toBe(1);
+    // **최상위 셸은 그 셀렉터가 아무것도 안 준다.** 스펙의 Out of Scope가 nav `Terminal`을
+    // 이 판에서 뺐는데 같은 컴포넌트를 쓰므로 그 가름이 빠지기 쉽다 — 화면에서 그것이 실제로
+    // 어떻게 나는지는 L3가 잡고(`nav Terminal`에 셸의 말이 앉는다), 여기서는 가름이 셀렉터
+    // 안에 있음을 못박는다: 밖에 두면 nav가 안 쓰는 값을 계속 구독한다.
+    expect(sidebar).toContain("slugOfOwner(owner) === null ? null : topSignalView(shellsOf(state, owner))");
+  });
+
+  it("띠의 줄들은 **한 겹 더 벗긴 비교**로 구독한다", () => {
+    // 여기만 `shallow`가 아니다(#204). `bandRows`는 객체 배열을 새로 지어 돌려주므로
+    // 기본 얕은 비교는 **한 번도 안 걸리고**, 그러면 셸이 프롬프트마다 쏘는 타이틀 하나에
+    // 띠가 통째로 다시 그려진다 — 위 두 검사가 목록에서 막는 그 함정이 띠에서 되살아난다.
+    // 비교가 갈리는 자리라 리터럴로 못박는다: `shallow`로 되돌려도 화면은 멀쩡하고
+    // (값은 맞다) 값싼 그림이 초마다 도는 것만 남아 어느 층에서도 안 보인다.
+    expect(sidebar).toContain("(state) => bandRows(state, mode)");
+    // 자르는 자리가 그리는 쪽 하나여야 헤더의 `N`이 셀 것이 남는다(결정 8) — 값을 내는
+    // 쪽에서 미리 자르면 「접힌 것까지 센다」가 어디서도 성립할 수 없다.
+    expect(sidebar).not.toContain("BAND_LIMIT");
+  });
+
+  it("그 값이 work 행 둘째 줄의 메타로 내려간다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
     //
@@ -132,10 +195,10 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 그 사정 때문이다.
     expect(sidebar).toContain("owner={ownerOf(mode, work.slug)}");
     expect(sidebar).toContain("shellCount={shellCounts[work.slug] ?? 0}");
-    // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `ShellMetaFor`가
+    // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `SubrowFor`가
     // 서는 곳은 둘뿐이다(nav `Terminal` 하나, work 행 하나). 늘어나면 위 두 조각이 어느
     // 것의 것인지가 갈리지 않는다.
-    expect(countOf(sidebar, "<ShellMetaFor")).toBe(2);
+    expect(countOf(sidebar, "<SubrowFor")).toBe(2);
   });
 });
 
@@ -171,16 +234,34 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     }
   });
 
+  // **띠와 알림이 같은 이름을 말한다**(#204·#206 · 결정 13의 다섯째). 둘이 같은 값을 내야
+  // 하는 것은 우연이 아니라 계약이다 — 띠 줄을 눌러 가는 곳과 알림이 가리키는 곳이 같은
+  // 화면이다. 한때 이 규칙이 스무 줄 사이에 **글자 그대로 두 벌**로 있었고(두 티켓이 서로
+  // 못 본 채 각자 넣었다), 그때 「지워진 work을 뭐라 적나」를 한쪽만 고치면 같은 셸이 띠에서와
+  // 알림에서 다른 이름을 갖는다 — 알림은 화면 밖에서 오는 것이라 대조할 것이 없어 사람은
+  // 어느 쪽이 틀렸는지도 못 본다. 그 어긋남은 마크업으로도 e2e로도 안 잡혀서(양쪽 다 오늘은
+  // 같은 글자를 낸다) **규칙이 한 번만 적혀 있다**를 소스로 센다.
+  it("슬러그를 이름으로 바꾸는 규칙이 이 파일에 한 벌뿐이다", () => {
+    // **셋을 함께 센다.** 하나만 보면 규칙을 반쯤 베낀 사본이 통과한다 — 그리고 0이 아니라
+    // 1인지를 보므로, 이름이 바뀌어 스캔이 헛돌면 그것도 여기서 터진다(fail-closed).
+    expect(countOf(sidebar, "new Map(works.map(")).toBe(1);
+    expect(countOf(sidebar, "titles.get(")).toBe(1);
+    // 주석에 이름이 나오는 것까지 세지 않으려고 코드 모양 그대로 집는다. 소유자가
+    // `<모드>:<slug>`가 된 뒤로 삼항이 아니라 이른 반환이다 — 최상위 판정이 `slugOfOwner`를
+    // 한 번 지나야 해서 한 식으로 안 접힌다.
+    expect(countOf(sidebar, "return TERMINAL_LABEL;")).toBe(1);
+  });
+
   it("`Terminal`이 안고 있는 셸 수는 남되, work 행과 **같은 어휘**로 선다", () => {
     // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
-    // 사이드바 어디에도 안 남는다(work 행은 오른쪽 끝의 메타가 그 몫을 한다 — 결정 2·3).
+    // 사이드바 어디에도 안 남는다(work 행은 둘째 줄의 메타가 그 몫을 한다 — 결정 2·3).
     //
     // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
     // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
     // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
     // **최상위도 세계마다다**(결정 10) — 화면이 `/terminal`과 `/maison/terminal` 둘이라
     // 한 값으로 두면 두 세계의 셸 수가 한 숫자로 합쳐진다.
-    expect(sidebar).toContain("<ShellMetaFor owner={ownerOf(mode)} shellCount={topShells} />");
+    expect(sidebar).toContain("<SubrowFor owner={ownerOf(mode)} shellCount={topShells} />");
   });
 });
 

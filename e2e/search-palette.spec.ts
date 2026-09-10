@@ -9,7 +9,7 @@ import {
   SEARCH_HITS,
   WORKS,
 } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
@@ -167,6 +167,11 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   await expect(page).toHaveURL("/settings");
   // **주소만 보면 화면이 안 서도 초록이다.** 설정 화면의 구획 머리가 그 자리에 선다.
   await expect(page.getByRole("heading", { name: "터미널" })).toBeVisible();
+  // 훅 구획은 **백엔드가 답해 줘야 서는 자리**다(#207) — 상태·경로·미리보기가 전부
+  // `agent_hooks`의 답에서 오므로, 여기까지 오면 그 왕복이 실제로 돈 것이다.
+  await expect(page.getByRole("heading", { name: "에이전트 훅" })).toBeVisible();
+  await expect(page.getByText("~/.codex/config.toml")).toBeVisible();
+  await expect(page.getByText("[[hooks.Stop]]")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -457,6 +462,8 @@ test("검색 버튼이 ⌘K와 같은 팔레트를 연다", async ({ page }) => 
 test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
+  // **pty가 앉은 뒤에 닫아야 확인 창이 뜬다**(`awaitSpawned`의 머리말).
+  await awaitSpawned(page, 1);
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();

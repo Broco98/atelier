@@ -1,20 +1,30 @@
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
+import type { WorkView } from "@/features/works/types";
+import { useWorks } from "@/features/works/hooks";
 import {
   ownerOf,
   runningAgentsOf,
   shellCountsOf,
   shellsOf,
+  slugOfOwner,
+  type ShellsState,
 } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { terminalStore } from "@/features/terminal/terminal-store";
-import { navItemsOf, type Mode } from "@/mode";
+import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
+import type { BandRow } from "@/features/terminal/shell-attention";
+import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
+import { recallSearch, tabSearch } from "@/routes/-work-search";
+import { navItemsOf, routesOf, slugOf, type Mode } from "@/mode";
+import { AttentionBand, type BandItem } from "./attention-band";
 import { ModeSwitch } from "./ModeSwitch";
-import { type NavKey } from "./nav-items";
+import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
+import { SignalLine, showsElapsed } from "./shell-signal";
 import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -72,6 +82,30 @@ function Sidebar({
   // **그 세계의 최상위다** — 세계마다 화면이 하나씩이라(`/terminal`·`/maison/terminal`)
   // 소유자도 갈린다(결정 10).
   const topShells = useStore(terminalStore, (state) => shellsOf(state, ownerOf(mode)).length);
+  // **화면값은 한 번에 읽어 내린다**(#203). 종류·수와 반대 방향인 것은 값의 모양 때문이다:
+  // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
+  // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
+  const signals = useStore(terminalStore, (state) => signalsOf(state, mode), shallow);
+  // **띠가 읽는 줄들**(#204). 이것만은 위 셋과 달리 얕은 비교로는 안 걸린다 — 값이 객체
+  // 배열이라 회차마다 새것이다. 그래서 비교를 한 겹 더 벗기는 `sameBand`를 쓴다(그쪽 주석):
+  // 띠는 셸이 프롬프트마다 쏘는 타이틀에도, 1초 폴링의 「도는 것」에도 안 흔들려야 한다.
+  const rows = useStore(terminalStore, (state) => bandRows(state, mode), sameBand);
+  // **펼침은 여기 산다 — `useState`다.** 「앱이 떠 있는 동안만 기억한다」(결정 5)가 그 뜻이고,
+  // 이 앱의 「위치는 세션, 설정은 영속」에서 위치 쪽이다. localStorage에 적으면 어제 펼쳐 둔
+  // 것이 오늘 처음 뜨는 띠에 되살아난다 — 그때 부르는 셸은 어제의 그것들이 아니다.
+  const [bandOpen, setBandOpen] = useState(false);
+  // work 제목은 목록 API가 준다 — 터미널은 슬러그까지만 안다(`bandRows` 머리말).
+  // **그 세계의 목록이다.** 띠의 줄이 이미 이 세계로 걸러져 나오므로(`bandRows`) 제목을
+  // 저쪽 목록에서 찾으면 늘 빈손이고, 그때 줄은 제목 자리에 slug를 그대로 세운다.
+  const { data: works = [] } = useWorks(mode);
+  // **규칙 하나를 둘이 나눠 쓴다**(`titleResolver` 머리말). `useMemo`인 것은 이 함수가 곧
+  // 알림 배선의 의존이기 때문이다 — 회차마다 새로 지으면 목록이 안 바뀌어도 배선이 다시 걸린다.
+  const resolveTitle = useMemo(() => titleResolver(works), [works]);
+  const items = bandItems(rows, resolveTitle);
+  useNotifyTitles(resolveTitle);
+  // 띠의 줄은 늘 경과를 단다(부르는 것만 서므로) — 줄이 하나라도 있으면 시계가 돈다.
+  const bandNow = useNow(items.length > 0);
+  const openBand = useOpenBand(mode);
 
   return (
     <aside
@@ -132,7 +166,7 @@ function Sidebar({
               active={item.key === activeKey}
               onClick={() => onSelect(item.key)}
               // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
-              // 아니다). work 행이 오른쪽 끝 메타로 「여기서 일이 돌고 있다」를 말하는 것과 같은
+              // 아니다). work 행이 둘째 줄로 「여기서 일이 돌고 있다」를 말하는 것과 같은
               // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
               // 그 화면에 들어가야만 보인다.
               //
@@ -142,12 +176,41 @@ function Sidebar({
               // 선다」도 슬롯 안으로 내려갔다.
               meta={
                 item.key === "terminal" ? (
-                  <ShellMetaFor owner={ownerOf(mode)} shellCount={topShells} />
+                  <SubrowFor owner={ownerOf(mode)} shellCount={topShells} />
                 ) : null
               }
             />
           ))}
         </nav>
+
+        {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
+            그 가름은 조각 안에 있다(`AttentionBand`의 첫 줄). 거터가 nav·설정과 같은 것은
+            그 셋이 한 컬럼에 세로로 붙어 서기 때문이다(GUTTER 주석).
+
+            **목록 밖에 서는 것이 이 띠의 값 절반이다**(스토리 43) — 스크롤로 밀려난 work의
+            셸이 불러도 여기서는 보인다. 안에 넣으면 판 04 결정 21이 감수했던 「어디에도 안
+            보인다」가 그대로 남는다.
+
+            **이 래퍼는 형제들과 달리 `shrink-0`이 아니라 `min-h-0`이다.** nav도 설정도
+            `shrink-0`을 다는데 여기서 따라 달면 낮은 창에서 띠가 자기 높이를 끝까지 우겨
+            바닥의 Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다 — 목록은 이미
+            `flex-1 min-h-0`인데 flex-basis가 0이라 줄일 것이 없고(줄어드는 몫은 base에
+            비례한다), 그래서 남는 것을 내놓을 수 있는 것이 이 자리뿐이다. `min-h-0`이
+            **명시**여야 하는 것은 자동 최소 크기 때문이다: 안쪽 띠가 스크롤 상자라 자기
+            최소는 0이지만, 그 사실이 이 래퍼의 `min-height: auto`까지 눕히지는 않아
+            래퍼가 안 줄어든다(실측 — 창 300px에서 Settings가 16px 잘렸다).
+
+            그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
+            Settings가 남는다」다(스토리 39). */}
+        <div className={cn("flex min-h-0 flex-col", GUTTER)}>
+          <AttentionBand
+            items={items}
+            now={bandNow}
+            expanded={bandOpen}
+            onToggle={() => setBandOpen((on) => !on)}
+            onOpen={openBand}
+          />
+        </div>
 
         <SidebarWorkList
           open={open}
@@ -155,13 +218,14 @@ function Sidebar({
           // 갈린다(그 주소에는 모드가 안 실려 마지막 모드를 얹어야 답이 나온다).
           mode={mode}
           shellCounts={shellCounts}
-          // 행 오른쪽 끝의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
+          // 둘째 줄의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
           // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
           // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
           // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
-          // 따로인 이유는 `ShellMetaFor`가 든다.
-          renderShellMeta={(work) => (
-            <ShellMetaFor
+          // 따로인 이유는 `SubrowFor`가 든다.
+          signals={signals}
+          renderSubrow={(work) => (
+            <SubrowFor
               owner={ownerOf(mode, work.slug)}
               shellCount={shellCounts[work.slug] ?? 0}
             />
@@ -190,8 +254,128 @@ function Sidebar({
 }
 
 /**
- * 셸 메타 하나가 **자기 것만** 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서 그림
- * (`ShellMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적 마크업 seam에 산다.
+ * 띠의 줄들이 **다 같은가**. `useStore`의 얕은 비교를 한 겹 더 벗긴 것이다.
+ *
+ * 이 한 겹이 필요한 이유는 값의 모양이다: `bandRows`는 **객체 배열**을 새로 지어 돌려주므로
+ * 기본 얕은 비교는 늘 어긋나고, 그러면 셸이 프롬프트마다 쏘는 OSC 타이틀 하나에, 1초 폴링의
+ * 「도는 것」 한 칸에, 띠가 통째로 다시 그려진다 — `runningAgentsOf` 머리말이 목록에서 든
+ * 바로 그 함정이고, 여기서는 목록이 아니라 띠가 그 자리에 선다.
+ *
+ * 안쪽을 `shallow`로 견주는 것은 줄이 **원시값만** 담기 때문이다(`BandRow`). 한 겹 더 깊은
+ * 비교가 필요해지는 날은 줄에 객체가 들어오는 날이고, 그때는 이 비교가 아니라 그 값을 다시 봐야 한다.
+ */
+function sameBand(a: ReadonlyArray<BandRow>, b: ReadonlyArray<BandRow>): boolean {
+  return a.length === b.length && a.every((row, index) => shallow(row, b[index]));
+}
+
+/**
+ * 셸이 앉은 자리(`owner`)를 **화면의 이름**으로 바꾸는 규칙 — 그리고 **이 규칙이 적히는
+ * 유일한 자리**다. 터미널은 슬러그까지만 알고(`bandRows` 머리말) 제목은 목록 API가 주므로,
+ * 둘을 다 쥔 이 컴포넌트가 그 자리다.
+ *
+ * **띠와 알림이 같은 함수를 딛는다.** 한때 이 규칙이 스무 줄 사이에 **글자 그대로 두 벌**로
+ * 있었다(`bandItems`와 `useNotifyTitles`가 각자 같은 Map을 짓고 같은 삼항을 적었다) — 두
+ * 티켓이 서로 못 본 채 넣은 것이고, 둘이 같은 값을 내야 하는 것은 우연이 아니라 계약이다:
+ * 띠 줄을 눌러 가는 곳과 알림이 가리키는 곳이 같은 화면이다. 「지워진 work을 뭐라 적나」
+ * 같은 물음이 한 번이라도 늘면 한쪽만 고쳐지고, 그러면 같은 셸이 띠에서는 `결제 정산`,
+ * 알림에서는 `payment-recon`이 된다 — 알림은 화면 밖에서 오는 것이라 대조할 것이 없다.
+ * `TERMINAL_LABEL`·`BAND_LABEL`·`showsElapsed`가 전부 같은 이유로 한 자리에 서 있다.
+ *
+ * 최상위 셸의 이름은 nav 항목의 것 그대로다(`TERMINAL_LABEL`) — 누르면 가는 곳이 그 항목이
+ * 가는 곳이라, 이름이 갈리면 같은 화면이 사이드바에서 두 이름을 갖는다.
+ *
+ * **모르는 슬러그는 슬러그를 적는다.** 목록이 아직 안 왔거나 그 사이 지워진 work의 셸이
+ * 부를 수 있는데, 그때 줄을 빼면 사람은 부르는 셸을 못 찾고 이름을 비우면 「— 나를 기다림」만
+ * 남는다. 둘 다 이 띠가 있는 이유를 스스로 무너뜨린다. (배선 전 기본값도 같은 답을 낸다 —
+ * `terminal-store.ts`의 `notifyTitleOf`.)
+ */
+function titleResolver(works: ReadonlyArray<WorkView>): (owner: ShellOwner) => string {
+  const titles = new Map(works.map((work) => [work.slug, work.title]));
+  return (owner) => {
+    const slug = slugOfOwner(owner);
+    if (slug === null) return TERMINAL_LABEL;
+    // **못 찾으면 슬러그다 — 소유자 키가 아니다.** 알림은 세계를 안 가리고 나가는데(앱 밖에서
+    // 받는 것이라 「지금 보고 있는 세계」가 뜻을 안 갖는다) 이 목록은 지금 세계의 것뿐이라,
+    // 저쪽 세계의 셸이 부르면 여기서 늘 빈손이 된다. 그때 `maison:reading`을 그대로 제목에
+    // 세우면 사람이 안 쓰는 말이 화면에 뜬다.
+    return titles.get(slug) ?? slug;
+  };
+}
+
+/** 줄에 화면의 이름을 붙인다. 규칙은 위 하나이고 여기는 그것을 줄마다 부르기만 한다. */
+function bandItems(
+  rows: ReadonlyArray<BandRow>,
+  resolve: (owner: ShellOwner) => string,
+): BandItem[] {
+  if (rows.length === 0) return [];
+  return rows.map((row) => ({ ...row, title: resolve(row.owner) }));
+}
+
+/**
+ * 알림 제목이 읽을 이름표를 배선에 건넨다(#206). **띠가 쓰는 그 함수 그대로다**(위
+ * `titleResolver` 머리말) — 알림은 터미널 쪽 모듈 구독이 쏘므로 그쪽은 목록 API를 모른다.
+ *
+ * **이 사이드바는 늘 서 있다**(`AppShell`) — 접혀도 렌더된다. 그래서 「알림이 배선을 못 찾는
+ * 화면」이 없다.
+ */
+function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
+  useEffect(() => {
+    setNotifyTitles(resolve);
+  }, [resolve]);
+}
+
+/**
+ * 띠의 줄을 눌렀을 때 하는 일(결정 13의 넷째·다섯째). **둘로 갈린 일 하나다**: 셸을 켜는
+ * 것은 스토어의 일이라 주소와 무관하고, 화면을 옮기는 것은 주소를 쥔 쪽의 일이다 —
+ * `WorksPage`의 `dropHere`가 같은 분담을 이미 쓰고 있다.
+ *
+ * **spec을 보고 있었으면 터미널로 밀어낸다**(결정 13의 넷째) — 결정 10의 알림 클릭 규칙과
+ * 같은 자리로 간다. **분할은 안 건드린다**: 분할 중이면 두 열이 이미 서 있으므로 바뀌는
+ * 것은 터미널 열의 탭 하나뿐이고, 분할을 자동으로 여는 안은 「사람이 안 시킨 레이아웃
+ * 변경」이라 기각됐다.
+ *
+ * 주소를 짓는 모양이 둘인 것은 work이 같은가로 갈리기 때문이다 — 같으면 보던 문서와 분할을
+ * 지켜야 해서 **함수형**이고(결정 15가 그 형태를 못박았다), 다르면 그 work의 마지막 화면을
+ * 씨앗으로 삼는다(`recallSearch`, 결정 77·97). `dropInto`가 같은 갈림을 같은 모양으로 쓴다.
+ * **이 자리가 `recallSearch`를 부르는 여섯 문 중 하나다** — 그쪽 머리말이 그 문들을 이름으로
+ * 세고 있으니 여기가 늘거나 줄면 그 목록도 함께 고친다.
+ *
+ * 같은 work 안에서는 `replace`다(결정 13) — 탭을 한 번 옮겼는데 되돌리는 데 뒤로가기를
+ * 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.
+ */
+function useOpenBand(mode: Mode): (item: BandItem) => void {
+  const navigate = useNavigate();
+  const routes = routesOf(mode);
+  const openSlug = useRouterState({ select: (state) => slugOf(state.location.pathname) });
+
+  return (item) => {
+    selectShell(item.id);
+    const slug = slugOfOwner(item.owner);
+    if (slug === null) {
+      void navigate({ to: routes.terminal });
+      return;
+    }
+    const here = slug === openSlug;
+    void navigate({
+      to: routes.item,
+      params: { slug },
+      search: here
+        ? (prev: object) => tabSearch(prev, "terminal")
+        : tabSearch(recallSearch(mode, slug), "terminal"),
+      replace: here,
+    });
+  };
+}
+
+/**
+ * **둘째 줄의 셸 갈래** 하나가 자기 것만 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서
+ * 그림(`ShellMeta`·`SignalLine`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적
+ * 마크업 seam에 산다.
+ *
+ * **그 갈래가 이 판에서 둘이 됐다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크·message·경과)
+ * 이고, 아니면 지금까지처럼 종류·수다. 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을
+ * 둘로 나누면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다. 이름이 `ShellMetaFor`
+ * 가 아닌 것은 그 때문이다: 이제 이 자리가 고르는 것은 셸 메타가 아니라 **둘째 줄 전체**다.
  *
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
@@ -207,9 +391,77 @@ function Sidebar({
  * 이 컴포넌트 **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가
  * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function ShellMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
+function SubrowFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
+  // **둘째 줄의 나머지 셋**(말·시각·마크, #203). 위 Record에 못 태우는 것은 문자열 하나로
+  // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
+  // 자리에서** 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로
+  // 나뉘면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다.
+  //
+  // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 넷**이라서다(`SignalView`). 값이 없을
+  // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`).
+  const signal = useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow);
+  // 경과는 시각이 아니라 **지금과의 차**라 아무도 안 건드려도 늙는다. 도는 중과 조용한
+  // 셸에는 경과가 안 붙으므로(결정 13) 그때는 시계도 안 돈다 — 그 판정을 여기서 다시 적지
+  // 않고 그리는 쪽과 **같은 함수**를 딛는다(`showsElapsed`). 규칙이 바뀌는 날 한쪽만 고치면
+  // 값이 조용히 늙거나, 아무도 안 읽는 시계가 열여덟 행에서 돈다.
+  const now = useNow(signal !== null && showsElapsed(signal.kind));
+
+  if (signal !== null) {
+    return (
+      <SignalLine
+        kind={signal.kind}
+        message={signal.message}
+        running={signal.running}
+        since={signal.since}
+        now={now}
+      />
+    );
+  }
   return <ShellMeta shellCount={shellCount} running={running} />;
+}
+
+/**
+ * 그 자리가 그릴 화면값. **최상위 셸(nav `Terminal`)은 여기서 아무것도 안 그린다.**
+ *
+ * 스펙의 Out of Scope가 「셸 메타 규격의 nav `Terminal` 변경」을 이 판에서 빼 뒀다 — 그 행은
+ * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 「확인할 것」 띠다(#204, 결정 13의
+ * 다섯째). work 행과 **같은 구독 컴포넌트**를 쓰기 때문에 이 가름이 빠지기 쉬운데, 빠지면
+ * nav 행이 work 행의 어휘를 반쯤 흉내 낸다 — 실제로 한 번 그렇게 났고 L3가 잡았다.
+ */
+function rowSignalOf(state: ShellsState, owner: ShellOwner) {
+  return slugOfOwner(owner) === null ? null : topSignalView(shellsOf(state, owner));
+}
+
+/**
+ * 경과를 다시 그리는 주기.
+ *
+ * **첫 1분의 `s`가 반 칸 넘게 늙지 않는 값이다.** 적히는 것은 대개 분 단위라(`s`는 첫 1분뿐)
+ * 그 뒤로는 60초여도 충분하지만, 갓 부른 행이 `0s`에 59초 동안 앉아 있으면 「방금 불렀나」가
+ * 거짓이 된다 — 가장 자주 보는 순간이 그 첫 1분이다. 두 배로 촘촘하게 도는 대가는 행마다
+ * 30초에 한 번의 리렌더이고, 그것도 **부르는 행에만** 붙는다(`useNow`).
+ */
+const ELAPSED_TICK = 30_000;
+
+/**
+ * 경과를 늙게 하는 시계.
+ *
+ * **링과 아무 상관이 없다.** 링을 도는 것은 CSS이고(`signal-ring`), 이 시계는 「몇 분
+ * 기다렸나」라는 **글자**의 것이다 — 그 가름이 흐려지면 스토리 30이 막으려던
+ * 「신호가 대가를 낸다」가 되돌아온다.
+ *
+ * 부르는 행에만 돌고, 그 행이 조용해지면 멎는다.
+ */
+function useNow(ticking: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    // 켜지는 순간 한 번 맞춘다 — 멎어 있던 동안 흘러간 시간이 첫 화면에 그대로 앉는다.
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), ELAPSED_TICK);
+    return () => window.clearInterval(timer);
+  }, [ticking]);
+  return now;
 }
 
 // nav 항목과 바닥의 설정이 **같은 컴포넌트**를 쓴다. 둘은 한 컬럼에 세로로 붙어 있어
@@ -222,7 +474,7 @@ function ShellMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: nu
 // (adr-03) 그것이 통째로 걷혔다 — 이 항목은 다시 **더 갈라지지 않는 줄**이다.
 //
 // 남은 메타는 **접힌 가지의 잔재가 아니다**: 그 work에서 무엇이 몇 개 도는지를 말하는 work
-// 행 오른쪽 끝의 메타와 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
+// 행 둘째 줄의 메타와 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
 // 배경(선택·hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 — 바깥이 가진 padding은
 // 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다.
 // 메타가 행 전체를 누르는 데 걸리적거리지 않게 이름 버튼 **안**에 두지 않는다: 그러면 셸
@@ -264,8 +516,13 @@ function SidebarItem({
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로
           붙어 서는 둘이 다른 무게로 읽히지 않는다(GUTTER 주석과 같은 계약). 오른쪽 끝도
           그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
-          **그 규격을 이제 `ShellMeta`가 든다**(결정 13·14) — work 행과 여기가 같은 조각을
-          쓰므로 규격이 한 자리에 있고, 둘이 앞으로도 안 갈린다. */}
+          **이제 그 계약이 사는 자리는 여기 하나뿐이다** — work 행이 메타를 둘째 줄로 내리면서
+          판 05 결정 13의 「두 자리」가 한 자리가 됐다. 그래서 「같은 x에 오른쪽 끝이 선다」를
+          실측으로 재는 검사도 work 행에서 이 행으로 따라왔다(works-sidebar.spec.ts).
+          규격 자체는 여전히 `ShellMeta`가 든다 — **그 계약**이 한 자리로 줄었어도 그 조각을
+          도로 이 파일에 펴 놓지 않는 것은, work 행의 둘째 줄이 같은 「무리 나열」 규칙을 계속
+          쓰기 때문이다. 줄어든 것은 사용처가 아니라 **이 x 계약**이다: 그 조각을 쓰는 자리는
+          여전히 둘이고(`shell-meta.tsx` 머리말), 오른쪽 여백만 여기서만 뜻을 갖는다. */}
       {meta}
     </div>
   );

@@ -1,10 +1,12 @@
 mod commands;
+mod hooks;
 /// **밖으로 열린 유일한 모듈이다.** 최상위 터미널이 어느 세계에서 뜨는지는 살아 있는 셸
 /// 없이는 못 재고, 그 검사는 `ATELIER_HOME`을 세워야 해서 단위 테스트 프로세스에 둘 수
 /// 없다(같은 프로세스의 다른 테스트 루트까지 함께 옮긴다). 그래서 통합 테스트
 /// (`tests/top_terminal.rs`)가 자기 프로세스에서 이 모듈을 부른다.
 pub mod pty;
 mod settings;
+mod shells;
 mod watcher;
 
 use std::sync::Arc;
@@ -186,6 +188,9 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
+        // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
+        .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
         .setup(|app| {
             watcher::start(app.handle().clone());
@@ -196,6 +201,27 @@ pub fn run() {
             // 전에 뜰 수 있는 코드가 되고, 그때 나는 것은 조용한 패닉 하나다 — 폴링이
             // 통째로 죽는데 앱은 멀쩡히 돈다.
             pty::watch_running(app.handle().clone(), Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+
+            // 셸이 **스스로 말하는** 길(#201). 위 둘이 앱이 물어서 아는 값이라면 이쪽은
+            // 에이전트의 훅이 파일 한 장을 놓고 가는 길이고, 여기가 그 길의 세 자리다.
+            let root = atelier_core::data_root();
+            // (1) 지난 실행이 남긴 상태 파일을 걷는다. PTY 번호는 실행마다 0부터 다시
+            // 나므로 안 걷으면 지난 실행의 `…-0.json`이 이번 첫 셸에 붙어 **뜨자마자
+            // 사람을 부르는 셸**이 생긴다. 접두사는 반드시 셸 ID를 짓는 그 함수에서 온다 —
+            // 여기서 시각을 다시 재면 두 값이 갈려 살아 있는 셸의 파일을 지운다.
+            shells::sweep(&root, pty::instance_prefix());
+            // (2) 훅 스크립트를 홈에 세운다. **설치 버튼(다음 티켓)이 아니라 여기서** 쓰는
+            // 이유는 두 가지다 — 사람이 손으로 훅을 걸어 보려면 걸 것이 이미 있어야 하고,
+            // 앱을 고쳐도 사용자 홈의 스크립트가 낡은 채 남아 있으면 안 된다. 스크립트는
+            // 아무 설정에도 안 걸려 있으면 그냥 안 불리는 파일이라 세워 두는 것이 무해하다.
+            if let Err(e) = shells::write_hook_script(&root) {
+                eprintln!("atelier: {e}");
+            }
+            // (3) 상태 폴더를 본다. 배선은 위 둘과 같은 길이다 — 스레드 하나가 emit하고
+            // 프런트가 `listen`으로 받는다. **접두사를 함께 넘긴다**: 읽는 쪽이 그것을
+            // 안 보면 이번 실행의 것만 싣는다는 보장이 (1)의 파괴적 청소에만 걸려 있게 되고,
+            // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
+            shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix());
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -240,6 +266,9 @@ pub fn run() {
             commands::pty_command_running,
             commands::read_settings,
             commands::write_settings,
+            commands::agent_hooks,
+            commands::install_agent_hooks,
+            commands::uninstall_agent_hooks,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -289,6 +318,107 @@ mod tests {
         let count = ids.len();
         ids.dedup();
         assert_eq!(ids.len(), count, "HOTKEYS에 같은 code가 두 번 있다");
+    }
+
+    /// **셸 신호의 세 자리가 앱이 뜰 때 다 서는가.** 셋 다 헤드리스로는 못 돌린다 —
+    /// `run()`은 창과 웹뷰가 있어야 하고, 여기 없으면 나는 일은 조용한 무음이다: 훅을 깔
+    /// 스크립트가 홈에 없고(사람이 「설치했는데 아무 일도 안 난다」를 만난다), 지난 실행의
+    /// 상태 파일이 남아 뜨자마자 사람을 부르는 셸이 생기고, 감시가 없어 셸이 무슨 말을 해도
+    /// 화면이 조용하다. 그래서 **자리로** 잰다(`pty.rs`의 순서 검사와 같은 방식).
+    #[test]
+    fn the_shell_signal_is_wired_when_the_app_comes_up() {
+        let setup = setup_source();
+
+        assert!(
+            setup.contains("shells::write_hook_script(&root)"),
+            "훅 스크립트를 안 쓴다 — 사용자가 걸 것이 홈에 없다"
+        );
+        assert!(
+            setup.contains("shells::sweep(&root, pty::instance_prefix())"),
+            "지난 실행의 상태 파일을 안 걷는다 — 뜨자마자 사람을 부르는 셸이 생긴다"
+        );
+        assert!(
+            setup.contains(
+                "shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix())"
+            ),
+            "상태 폴더를 안 보거나 접두사 없이 본다 — 셸이 말해도 화면까지 안 오거나, 남의 인스턴스 것까지 온다"
+        );
+    }
+
+    // 「정리가 접두사를 따로 재지 않는다」를 `!setup_source().contains("SystemTime")`으로 재던
+    // 검사가 여기 있었다. **걷었다.** 위 검사가 호출 문자열을 통째로 못박으므로 그것이 잡는
+    // 변형은 전부 위가 먼저 잡고, 반대로 그것만 통과하는 변형은 널려 있었다 — `"atelier"` 같은
+    // 고정 접두사도, `chrono`로 잰 값도 `SystemTime`이라는 토큰을 안 쓴다. 두 접두사가 갈리는
+    // 것은 이제 `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 **값으로**
+    // 잰다 — 진짜 셸 ID로 이름 지은 파일이 진짜 접두사의 쓸기에서 살아남는가.
+
+    /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
+    /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.
+    fn setup_source() -> &'static str {
+        let src = include_str!("lib.rs");
+        let body = src
+            .split_once(".setup(|app| {")
+            .expect("여는 표식이 있다")
+            .1
+            .split_once("\n        })")
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
+    }
+
+    /// **알림 채널이 앱에 걸려 있는가**(#206 · 결정 10). 이것도 헤드리스로는 못 돌린다 —
+    /// 플러그인이 빠지면 나는 일은 조용한 무음이다: 프런트가 `sendNotification`을 불러도
+    /// 웹뷰에 폴리필이 안 깔려 브라우저의 `Notification`이 받고, 권한 없는 그 객체는
+    /// **아무 소리도 안 내고 오류도 안 낸다.** 그래서 자리로 잰다(위 검사와 같은 방식).
+    #[test]
+    fn 알림_채널이_빌더에_걸려_있다() {
+        assert!(
+            builder_source().contains(".plugin(tauri_plugin_notification::init())"),
+            "알림 플러그인이 안 걸려 있다 — 프런트가 울려도 아무 소리가 안 난다"
+        );
+    }
+
+    /// **권한이 안 열려 있으면 그 호출은 거절당한다.** capabilities는 사람이 손으로 적는
+    /// JSON이라 오타 하나로 조용히 빠지고, 그 실패는 앱을 띄워야만 보인다.
+    ///
+    /// **파싱해서 본다 — 글자 찾기가 아니다.** 파일이 깨지거나 `permissions`가 배열이
+    /// 아니게 되면 여기서 터진다(fail-closed). 문자열로 훑으면 주석이나 다른 구획에 같은
+    /// 글자가 있어도 통과한다.
+    #[test]
+    fn 알림과_배지의_권한이_열려_있다() {
+        let src = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(src).expect("capabilities가 JSON이다");
+        let perms: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("permissions가 배열이다")
+            .iter()
+            .map(|one| one.as_str().expect("권한 하나는 문자열이다"))
+            .collect();
+        for want in ["notification:default", "core:window:allow-set-badge-count"] {
+            assert!(perms.contains(&want), "{want}가 capabilities에 없다 — {perms:?}");
+        }
+    }
+
+    /// 빌더에 무엇이 걸렸는지를 볼 소스. 자르는 이유는 `setup_source`와 같다 — 테스트
+    /// 모듈까지 흘러가면 스캔이 **제 문자열을 읽고 스스로 통과한다.**
+    fn builder_source() -> &'static str {
+        let src = include_str!("lib.rs");
+        let body = src
+            .split_once("tauri::Builder::default()")
+            .expect("여는 표식이 있다")
+            .1
+            .split_once("#[cfg(test)]")
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
     }
 
     /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.

@@ -183,9 +183,10 @@ export function viewSearch<T extends object>(
 /**
  * **work을 여는 주소.** 그 work의 마지막 화면을 씨앗으로 삼는다(결정 77·97).
  *
- * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 다섯이기 때문이다** — 주소
- * 정규화(`-works-view`), 사이드바의 work 행, 팔레트의 work 줄과 문서·본문 줄
- * (`hit-target`), 그리고 Projects의 「이 프로젝트에서 시작된 작업」 행(`-projects-view`).
+ * 몸통은 한 줄인데 이름이 있어야 하는 것은 **부르는 자리가 여섯이기 때문이다** — 주소
+ * 정규화(`-works-view`), 사이드바의 work 행, 「확인할 것」 띠의 줄(`Sidebar.tsx`의
+ * `useOpenBand`), 팔레트의 work 줄과 문서·본문 줄(`hit-target`), 그리고 Projects의
+ * 「이 프로젝트에서 시작된 작업」 행(`-projects-view`).
  * 합성을 자리마다 손으로 다시 적으면 **빠뜨린 문 하나가 조용하다**: 그 문으로 들어온 work은
  * 기본 화면으로 열리고, 도착한 주소를 적어 두는 effect(`-works-view`의 `rememberView`)가
  * 그 기본값으로 **기억을 덮어써** 다음에 다른 문으로 돌아와도 마지막 화면이 안 선다.

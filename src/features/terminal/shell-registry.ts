@@ -1,5 +1,6 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import type { Mode } from "@/mode";
+import type { Attention } from "./shell-attention";
 import type { PtyExit } from "./types";
 
 // 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
@@ -87,6 +88,18 @@ export interface Shell {
    * **읽을 때는 `runningOn`을 쓴다** — 끝난 칸에 남은 마지막 값을 가르는 자리가 거기다.
    */
   running: string | null;
+  /**
+   * 이 셸이 **스스로 말한 것**(#202). 훅·OSC·벨 어느 것도 안 왔으면 `null`이고, 그것이
+   * 「모르면 아무 주장도 안 한다」다(결정 3) — 출력이 멎은 시간으로 이 값을 만드는 코드는
+   * 어디에도 없다.
+   *
+   * **읽을 때는 `attentionOn`·`signalOf`를 쓴다**(`shell-attention.ts`) — 죽은 칸을 가르는
+   * 자리가 거기고, `runningOn`이 `running`에 하는 일과 같다.
+   *
+   * 규칙이 이 파일에 없는 것은 값 import 금지 때문이다(머리말): 정규 이벤트로 접는 어댑터를
+   * 부르려면 값을 들여야 해서, 이 파일에는 「그 칸에 앉힌다」는 리듀서만 둔다.
+   */
+  attention: Attention | null;
 }
 
 export interface ShellsState {
@@ -373,6 +386,9 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     cwd: origin.cwd,
     // 첫 값은 백엔드의 다음 회차가 준다(adr-04) — 최대 1초다. 여기서 미리 채울 것이 없다.
     running: null,
+    // **막 뜬 셸은 아무 주장도 안 한다**(결정 3). 여기에 「도는 중」을 미리 앉히면 훅도
+    // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 링은 영영 안 꺼진다.
+    attention: null,
   };
   return {
     state: {
@@ -402,7 +418,7 @@ export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
 
 /** 이 화면에서 켜진 칸. */
 /**
- * **그 세계의** work별 셸 개수 — 사이드바 work 행 **오른쪽 끝의 메타가 서는 조건**이다
+ * **그 세계의** work별 셸 개수 — 사이드바 work 행 **둘째 줄이 종류·수를 싣는 조건**이다
  * (결정 2·3). 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를 다 더하면
  * 이 값이다.
  *
@@ -569,6 +585,65 @@ export function setRunning(state: ShellsState, id: number, running: string | nul
 }
 
 /**
+ * 셸이 **스스로 말한 것**을 그 칸에 앉힌다(#202).
+ *
+ * **판정을 안 한다.** 무엇이 되는지는 `shell-attention.ts`의 `nextAttention`이 이미 정했고,
+ * 그것이 「안 바뀌면 받은 것을 그대로 준다」를 지키므로 여기서는 **항등성만** 본다 —
+ * 다섯 칸을 견주는 자리가 두 벌이 되면 한쪽만 늙는다. 그래서 위 `setRunning`과 달리 값
+ * 비교가 아니라 `===`다.
+ *
+ * 나머지 성질은 `patch`의 관용구 그대로다: 모르는 id는 무시하고, 안 바뀐 칸은 같은 객체로
+ * 남는다. 감시가 회차마다 여러 셸을 실어 오므로 그 둘이 없으면 안 바뀐 칸까지 다시 그려진다.
+ */
+export function setAttention(
+  state: ShellsState,
+  id: number,
+  attention: Attention | null,
+): ShellsState {
+  return patch(state, id, (shell) =>
+    shell.attention === attention ? shell : { ...shell, attention },
+  );
+}
+
+/**
+ * 사람이 본 칸들에 「봤다」를 세운다(결정 7).
+ *
+ * **누가 봤는지는 여기서 안 정한다** — 판정은 `shell-attention.ts`의 `isShellSeen` 하나이고
+ * 이 리듀서는 그 답을 받아 적기만 한다. 판정이 여기까지 내려오면 탭 물들임과 알림 억제가
+ * 서로 다른 자리를 딛게 된다.
+ *
+ * 아무 주장도 없는 칸과 이미 본 칸은 **같은 객체로 남는다**. 이 함수는 창 포커스가 오갈
+ * 때마다 불릴 자리라, 그렇지 않으면 창을 눌렀다 뗄 때마다 목록 전체가 다시 그려진다.
+ */
+export function markSeen(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
+  let next = state;
+  for (const id of ids) {
+    next = patch(next, id, (shell) =>
+      shell.attention === null || shell.attention.seen
+        ? shell
+        : { ...shell, attention: { ...shell.attention, seen: true } },
+    );
+  }
+  return next;
+}
+
+/**
+ * 그 번호의 칸이 **마지막으로 말한 것**. 없는 칸은 `null`이다.
+ *
+ * **리듀서의 입력이지 화면이 읽는 값이 아니다.** 화면은 `attentionOn`·`signalOf`를 딛어야
+ * 죽은 칸이 걸러지는데(`shell-attention.ts`), 이 함수는 거꾸로 「직전에 무엇이었나」를 그대로
+ * 돌려준다 — 다음 값을 접는 함수들이 재료로 쓰는 자리라 여기서 가리면 죽은 칸에 늦게 도착한
+ * 신호가 **직전 없음** 위에 새 상태를 세운다.
+ *
+ * **「없는 칸은 `null`」을 아는 자리가 여기 하나다.** 신호가 들어오는 문이 셋이라(훅·보너스
+ * 길·출력) 부르는 쪽마다 적으면 셋이 되고, 그중 하나가 모르는 번호에 다른 답을 내는 날
+ * 그 어긋남은 화면에서 아무 표시도 안 난다.
+ */
+export function attentionOfId(state: ShellsState, id: number): Attention | null {
+  return state.shells.find((shell) => shell.id === id)?.attention ?? null;
+}
+
+/**
  * 그 칸에서 **지금 도는 것**. 탭 한 칸이 읽는 자리다(결정 4의 「탭 줄은 칸마다」).
  *
  * **끝난 칸은 아무것도 안 돌린다.** 죽은 칸에 마지막 값이 굳어 있으면 claude 로고가 영영
@@ -580,6 +655,18 @@ export function setRunning(state: ShellsState, id: number, running: string | nul
  */
 export function runningOn(shell: Shell): string | null {
   return shell.status.kind === "running" ? shell.running : null;
+}
+
+/**
+ * 그 **번호**의 칸에서 지금 도는 것. 없는 칸도 죽은 칸도 `null`이다.
+ *
+ * 칸이 아니라 번호를 쥔 자리가 부른다(벨이 그렇다 — 울린 것은 xterm 인스턴스이고 그것이 아는
+ * 것은 자기 번호뿐이다). **가름을 손으로 다시 적지 않게** 여기서 `runningOn`을 딛는다:
+ * 부르는 쪽이 `shell ? runningOn(shell) : null`을 적으면 죽은 칸을 가리는 자리가 둘이 된다.
+ */
+export function runningOfId(state: ShellsState, id: number): string | null {
+  const shell = state.shells.find((one) => one.id === id);
+  return shell === undefined ? null : runningOn(shell);
 }
 
 /**

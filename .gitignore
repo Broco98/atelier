@@ -41,4 +41,5 @@ target/
 .superpowers/
 .playwright/
 .playwright-cli/
+.playwright-mcp/
 .codegraph
