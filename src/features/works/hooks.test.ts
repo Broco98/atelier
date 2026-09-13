@@ -195,22 +195,8 @@ describe("옮기기와 works:changed의 경쟁", () => {
     expect(seen.slice(seen.indexOf("cab"))).not.toContain("abc");
   });
 
-  // **이벤트만이 아니라 mutation도 같은 문을 탄다.** 옮기는 사이 고정 토글·제목 바꾸기의 응답이 오면
-  // 그 무효화도 쓰기 전 파일을 읽은 재조회를 띄운다 — 문 옆에 따로 선 대기는 그 길을 못 막는다.
-  it("진행 중 mutation이 연 무효화도 끝난 뒤로 미룬다", async () => {
-    const { client } = await listed();
-    move(client);
-    await settle();
-    void invalidateWorks(client);
-    await settle();
-    expect(waiting("list_works")).toHaveLength(0);
-
-    answer("move_work", NEW);
-    await settle();
-    await settle();
-    expect(waiting("list_works")).toHaveLength(1);
-  });
-
+  // 부르는 쪽이 이벤트든 mutation의 `onSuccess`(고정 토글·제목)든 같은 문이라 이 한 검사가 둘을 덮는다 —
+  // 문이 하나뿐인 것은 위 「무효화하는 문」의 개수 검사가 지킨다.
   it("미룬 무효화는 끝난 뒤 한 번 돈다", async () => {
     const { client } = await listed();
     move(client);
