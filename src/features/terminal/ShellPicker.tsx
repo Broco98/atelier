@@ -58,7 +58,9 @@ function ShellPicker({
       default:
         return;
     }
-    // 이 메뉴가 먹은 키는 위로 안 올린다 — 창 리스너(끌기 취소의 Esc 등)가 한 번 더 받지 않게.
+    // 이 메뉴가 먹은 키는 위로 안 올린다 — 창에 **버블로** 건 keydown 리스너(전체 화면 보기·메뉴의
+    // Esc 닫기 같은 것)가 한 번 더 받지 않게. 끌기 취소의 Esc는 캡처로 걸려 이보다 먼저 돌므로 여기서
+    // 막히지 않는다 — 문턱을 넘은 끌기와 열린 메뉴가 겹칠 일도 없다.
     event.preventDefault();
     event.stopPropagation();
   };
