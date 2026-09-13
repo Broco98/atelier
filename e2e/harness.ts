@@ -385,7 +385,7 @@ export async function fireEvent(
  * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
  *
  * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
- * **형제**라(`SidebarWorkList`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
+ * **형제**라(`WorkSectionList`의 `WorkRow`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
  * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
  */
 export const 레인 = (page: Page, slug: string) =>

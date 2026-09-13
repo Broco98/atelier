@@ -85,7 +85,7 @@ test("`/maison/rooms`는 첫 줄이 초안이어도 그 Room으로 정규화된�
   // 리다이렉트는 번들이 뜬 **뒤** 일어나므로 `goto`가 돌아온 시점에는 아직 목록 주소다.
   await expect.poll(() => new URL(page.url()).pathname).toBe(`/maison/rooms/${draft.slug}`);
   // 강조가 **그 초안 행**에 선다 — 보이는 첫 줄과 열린 것이 같은 행이다. 강조는 행 상자의
-  // `selected-row`다(`SidebarWorkList`의 `WorkRow`). 이름 버튼의 부모가 그 행 상자다.
+  // `selected-row`다(`WorkSectionList`의 `WorkRow`). 이름 버튼의 부모가 그 행 상자다.
   const rowOf = (title: string) =>
     page.locator("aside").getByRole("button", { name: title, exact: true }).locator("xpath=..");
   await expect(rowOf(draft.title)).toHaveClass(/\bselected-row\b/);

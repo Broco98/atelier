@@ -6,8 +6,9 @@ import { awaitSpawned, installFixtureBackend, markAttention, unknownIpcCalls, �
 // 답이 나는 것이라 이 층이 든다: hover 배경은 `:hover`가 실제로 걸려야 계산되고, 「선이 서도
 // 한 픽셀도 안 밀린다」는 픽셀이 답이다.
 //
-// `works-sidebar.spec.ts`와 따로 사는 것은 그 파일이 행 끌기(05·06)의 검사를 함께 받기
-// 때문이다 — 여기서 재는 것은 목록의 **테두리**뿐이다.
+// `works-sidebar.spec.ts`와 따로 사는 것은 그 파일이 이미 마퀴·고정·대비·폭 조절로 1500줄에
+// 가깝기 때문이다(행 끌기 05·06은 `work-row-drag.spec.ts`에 산다) — 여기서 재는 것은 목록의
+// **테두리**뿐이다.
 
 const [pinnedWork, plainWork] = WORKS;
 
