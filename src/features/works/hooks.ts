@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
 import {
   hashKey,
+  mutationOptions,
   queryOptions,
   useMutation,
   useQuery,
@@ -10,9 +11,11 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { invalidateArchive } from "@/features/archive/hooks";
+import { showProblem } from "@/components/ui/confirm-store";
 import { worksApi } from "./api";
+import { movedWorks, type RowGap } from "./row-drop";
 import type { Mode } from "@/mode";
-import type { WorkStatus } from "./types";
+import type { WorkStatus, WorkView } from "./types";
 
 // ["works"]로 시작하는 모든 쿼리(두 세계의 목록·spec 파일)가 works:changed 한 번에 무효화된다.
 // **모드는 이 접두사 바로 뒤에 실린다** — 그래야 여기서 한 번 지우는 것이 두 세계를 다 덮는다.
@@ -62,8 +65,8 @@ export function useWorks(mode: Mode) {
 
   useEffect(() => {
     const unlisten = listen("works:changed", () => {
-      // 이벤트에는 기다릴 사람이 없다 — 여기서만 반환을 버린다.
-      void invalidateWorks(queryClient);
+      // 이벤트에는 기다릴 사람이 없다 — 여기서만 반환을 버린다. 옮기기가 떠 있으면 미룬다(`worksChanged`).
+      void worksChanged(queryClient);
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -125,6 +128,90 @@ export function useSetWorkPinned(mode: Mode) {
       worksApi.setPinned(mode, slug, pinned),
     onSuccess: () => invalidateWorks(queryClient),
   });
+}
+
+/** 끌어 놓은 행 하나 — 틈(`row-drop`)이 정한 `(pinned, before)`에 끈 slug를 더한 것. */
+export interface MoveWorkArgs extends RowGap {
+  slug: string;
+}
+
+/**
+ * 캐시마다 **옮기기가 몇 개 떠 있는가**와 그동안 미룬 무효화가 있는가. 모듈 변수가 아니라 캐시에
+ * 매는 것은 L2가 캐시를 검사마다 새로 세우기 때문이다 — 전역이면 앞 검사의 미룸이 뒤로 샌다.
+ */
+const moves = new WeakMap<QueryClient, { flying: number; deferred: boolean }>();
+const movesOf = (queryClient: QueryClient) => {
+  let state = moves.get(queryClient);
+  if (!state) moves.set(queryClient, (state = { flying: 0, deferred: false }));
+  return state;
+};
+
+/**
+ * `works:changed`를 받았다. **옮기기가 떠 있으면 끝난 뒤로 미뤄 한 번** 돈다(스펙 S9).
+ *
+ * 곧바로 돌리면 쓰기 **전** 파일을 읽은 느린 재조회(워크트리마다 상태를 묻는다)가 옮기기 응답
+ * **뒤에** 도착해 옛 순서로 덮는다. 순서만 바뀐 쓰기는 감시자가 안 쏘므로(점 파일) 그 옛 순서가
+ * `staleTime` 동안 남는다. 미룬 것도 버리지 않는 것은 그 사이 온 이벤트가 순서 말고 다른 것
+ * (spec 쓰기 · 제목)을 알렸을 수 있어서다 — 몇 번 왔든 다시 읽기 한 번이면 다 덮는다.
+ *
+ * 지우는 문은 여전히 `invalidateWorks` 하나다(아래 「무효화하는 문」 검사).
+ */
+export function worksChanged(queryClient: QueryClient) {
+  const state = movesOf(queryClient);
+  if (state.flying > 0) {
+    state.deferred = true;
+    return Promise.resolve();
+  }
+  return invalidateWorks(queryClient);
+}
+
+/**
+ * 작업 행을 끌어 놓았다(스펙 §5). **훅 밖에 두는 것은 경쟁을 렌더 없이 재기 위해서다** —
+ * `hooks.test.ts`가 실물 `QueryClient`에 이 옵션을 그대로 물려 답의 순서를 뒤집는다.
+ *
+ * 1. 그 세계 목록 질의를 **취소**한다 — 이미 날아오던 재조회가 낙관적 목록을 덮지 않게.
+ * 2. 틈의 결과를 **낙관적으로** 쓴다. 놓는 순간 행이 그 자리에 서야 끌기가 끝난 것으로 읽힌다.
+ * 3. 응답(새 목록 전체)으로 **갈아 끼운다.** 순서 파일은 감시자가 안 쏘므로 다시 읽기를 기다리면
+ *    화면이 안 바뀐다.
+ * 4. 실패하면 원래 목록으로 되돌리고 앱의 오류 창으로 알린다.
+ *
+ * **`onSettled`에서 무효화하지 않는다.** 응답이 곧 새 목록이라 다시 물을 것이 없고, L3 fixture
+ * 백엔드는 그 재조회에 옛 `WORKS`로 답해 3이 화면에서 안 보이게 된다. 미룬 이벤트가 있을 때만 돈다.
+ */
+export function moveWorkOptions(queryClient: QueryClient, mode: Mode) {
+  // 목록 **하나만** 겨눈다(`exact`). 접두사로 취소하면 같은 세계의 spec 본문 질의까지 끊긴다.
+  const { queryKey } = worksQuery(mode);
+  return mutationOptions({
+    mutationFn: ({ slug, pinned, before }: MoveWorkArgs) => worksApi.move(mode, slug, pinned, before),
+    onMutate: async (args) => {
+      // 세기는 **기다리기 전에** 한다 — 취소를 기다리는 사이 온 이벤트도 미뤄야 한다.
+      movesOf(queryClient).flying += 1;
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      const previous = queryClient.getQueryData<WorkView[]>(queryKey);
+      if (previous) queryClient.setQueryData(queryKey, movedWorks(previous, args.slug, args));
+      return { previous };
+    },
+    onSuccess: (works) => {
+      queryClient.setQueryData(queryKey, works);
+    },
+    onError: (error, _args, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+      void showProblem(`순서를 바꾸지 못했습니다: ${error}`);
+    },
+    onSettled: () => {
+      const state = movesOf(queryClient);
+      state.flying -= 1;
+      if (state.flying > 0 || !state.deferred) return;
+      state.deferred = false;
+      // 기다리지 않는다 — 돌려주면 `isPending`이 그 재조회까지 서서 다음 끌기가 그만큼 미뤄 보인다.
+      void worksChanged(queryClient);
+    },
+  });
+}
+
+export function useMoveWork(mode: Mode) {
+  const queryClient = useQueryClient();
+  return useMutation(moveWorkOptions(queryClient, mode));
 }
 
 // 아카이브와 삭제 모두 작업 목록에서 사라지게 만든다. 다만 아카이브는 **반대편에 하나를
