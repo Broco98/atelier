@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { navigatePlace } from "@/components/shell/navigate-place";
+import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { cn } from "@/lib/utils";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "@/features/works/work-sections";
@@ -353,13 +353,13 @@ function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
   // 화면에 티가 안 난다. 갈 곳이 없으면(모르는 목적지 `key`) 닫지도 않는다: 계약이 깨진
   // 것이므로 조용히 사라지는 것보다 그 자리에 서 있는 편이 낫다.
   //
-  // 옮기는 것은 **셸의 문과 같은 함수**다(`navigatePlace`) — 설정 안에서 `Settings` 줄을 골라도
-  // 보던 항목에 머물고 칸이 안 는다(UI개선 S18). 팔레트가 곧장 `navigate`하면 이 문만 샌다.
+  // 옮기는 것은 **셸의 문과 같은 함수**다(`navigateGuardingSettings`) — 설정 안에서 `Settings`
+  // 줄을 골라도 보던 항목에 머물고 칸이 안 는다(UI개선 S18). 팔레트가 곧장 옮기면 이 문만 샌다.
   const go = (hit: SearchHit) => {
     const target = hitTarget(mode, hit);
     if (target === null) return;
     onClose();
-    void navigatePlace(router, target);
+    void navigateGuardingSettings(router, target);
   };
 
   useEffect(() => {

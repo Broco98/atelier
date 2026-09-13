@@ -90,9 +90,9 @@ export function lastMode(): Mode {
 
 /**
  * 셸이 드는 세계. **모드를 안 싣는 주소에서는 떠나온 세계를 이어 든다** — `modeOf`로 물으면
- * `/settings`가 언제나 Atelier라, Maison에서 설정을 열고 nav의 `Archive`를 누르면 Atelier의
- * `/archive`로 간다. 마지막 모드는 여전히 Maison인데 화면만 조용히 세계를 건너는 것이고,
- * AppShell이 「nav 한 번에 세계를 안 떠난다」고 적어 둔 그 계약이 거기서 깨진다.
+ * `/settings`가 언제나 Atelier라, Maison에서 설정을 열고 「앱으로 돌아가기」를 누르면 Atelier로
+ * 가고, 설정을 연 채 누른 ⌘K는 저쪽 세계를 뒤진다. 마지막 모드는 여전히 Maison인데 화면만
+ * 조용히 세계를 건너는 것이다.
  *
  * 저장소를 읽는 것은 `placeModeOf`가 `null`을 주는 자리(`/`·`/settings`)뿐이다. 그 화면에
  * 머무는 동안 값이 낡을 수 없다 — 세계 밖 주소는 `rememberVisit`이 어느 칸에도 안 적으므로

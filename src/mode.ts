@@ -1,5 +1,6 @@
 import { Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
 import { navItems, type NavKey } from "@/components/shell/nav-items";
+import { SETTINGS_ENTRY } from "@/features/settings/pages";
 
 /**
  * 어느 세계의 것인가. **화면이 아니라 루트를 가르는 축**이다(결정 1) — 같은 컴포넌트가 다른
@@ -39,8 +40,8 @@ interface NavItem {
  *
  * **`to`가 `NavTo`와 같은 이유로 좁은 유니온이다** — 팔레트가 고른 줄의 주소를 그대로
  * `navigate({ to })`로 넘기므로(`hit-target.ts`), `string`으로 두면 라우터가 주소를 못 좁혀
- * 그 자리에서 L0가 빨개진다. 설정 한 줄만 `NavTo` 밖이라 여기서 얹는다 — 그 리터럴이 아래
- * `SETTINGS_PLACE`의 것과 갈리면 그 선언의 `satisfies`가 잡는다.
+ * 그 자리에서 L0가 빨개진다. 설정 한 줄만 `NavTo` 밖이라 여기서 얹는다 — 아래 `SETTINGS_PLACE`와
+ * 같은 상수(`SETTINGS_ENTRY`)를 읽으므로 둘이 갈릴 수 없다.
  */
 interface PaletteDestination {
   readonly key: string;
@@ -51,7 +52,7 @@ interface PaletteDestination {
    * 설정 한 줄을 아이콘 없이 얹으면 `destinationIcon`이 아니라 **그 선언이** L0에 걸린다.
    */
   readonly icon: LucideIcon;
-  readonly to: NavTo | "/settings";
+  readonly to: NavTo | typeof SETTINGS_ENTRY;
 }
 
 /**
@@ -139,8 +140,9 @@ const MAISON_NAV = [
  * 돌아가기」가 그리로 간다.
  *
  * 목적지는 **첫 항목이 아니라 `/settings` 그대로다** — 첫 항목으로 치환하는 것은 라우트이고
- * (`settings.index.tsx`), 설정 안에서 이 줄을 고르면 무동작인 것은 셸의 문(`navigate-place.ts`)이
- * 이 주소를 알아보기 때문이다. 리터럴이 그쪽 `SETTINGS_ENTRY`와 같은지는 `mode.test.ts`가 본다.
+ * (`settings.index.tsx`), 설정 안에서 이 줄을 고르면 무동작인 것은 셸의 문(`navigate-guarding-settings.ts`)이
+ * 이 주소를 알아보기 때문이다. 그래서 리터럴을 여기 다시 적지 않고 그쪽 `SETTINGS_ENTRY`를 그대로
+ * 쓴다 — 둘이 갈리면 가드가 조용히 안 문다.
  *
  * 팔레트 목록의 **맨 뒤**인 것은 `destinations.ts`의 그 자리 그대로다 — 코어가 건넨 순서로
  * 줄을 세우므로 그 순서가 사이드바를 위에서 아래로 읽은 순서와 같다.
@@ -151,7 +153,7 @@ const SETTINGS_PLACE = {
   // 라벨·라우트·글리프 셋 다 **사이드바 바닥의 그 버튼에서 온 값이다** — 설정으로 가는 길이
   // 둘인데 이름이나 도착지나 얼굴이 갈리면 「같은 곳」이라는 것이 화면에서 안 읽힌다.
   icon: Settings,
-  to: "/settings",
+  to: SETTINGS_ENTRY,
 } as const satisfies PaletteDestination;
 
 /**

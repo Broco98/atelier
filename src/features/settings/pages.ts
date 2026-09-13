@@ -3,7 +3,7 @@ import { Bell, SquareTerminal, Webhook, type LucideIcon } from "lucide-react";
 /**
  * 설정으로 들어가는 주소. **문 셋이 다 여기로 간다**(사이드바 바닥 · ⌘, · 팔레트) — 첫 항목으로
  * 치환되는 것은 라우트(`settings.index.tsx`)의 일이고, 문은 어느 항목이 첫째인지 모른다.
- * 팔레트 목적지(`mode.ts`의 `SETTINGS_PLACE`)도 이 값 그대로다.
+ * 팔레트 목적지(`mode.ts`의 `SETTINGS_PLACE`)도 리터럴을 다시 적지 않고 이 값을 가져다 쓴다.
  */
 export const SETTINGS_ENTRY = "/settings";
 
@@ -17,7 +17,7 @@ export const SETTINGS_ENTRY = "/settings";
  * 사이드바의 설정 nav와 본문 머리(`Settings / 터미널`)가 **이 표 하나**를 읽는다 — 둘이 각자
  * 라벨을 들면 이름을 고치는 날 한쪽만 바뀐다.
  */
-export const SETTINGS_PAGES = [
+export const SETTINGS_ITEMS = [
   { key: "terminal", label: "터미널", icon: SquareTerminal, to: "/settings/terminal" },
   { key: "notifications", label: "알림", icon: Bell, to: "/settings/notifications" },
   { key: "hooks", label: "에이전트 훅", icon: Webhook, to: "/settings/hooks" },
@@ -28,11 +28,11 @@ export const SETTINGS_PAGES = [
   to: `${typeof SETTINGS_ENTRY}/${string}`;
 }[];
 
-export type SettingsPageKey = (typeof SETTINGS_PAGES)[number]["key"];
+export type SettingsItemKey = (typeof SETTINGS_ITEMS)[number]["key"];
 
 /** 그 항목의 규격. 표에 없는 key는 타입이 막는다. */
-export function settingsItem(key: SettingsPageKey): (typeof SETTINGS_PAGES)[number] {
-  return SETTINGS_PAGES.find((page) => page.key === key)!;
+export function settingsItem(key: SettingsItemKey): (typeof SETTINGS_ITEMS)[number] {
+  return SETTINGS_ITEMS.find((item) => item.key === key)!;
 }
 
 /**
@@ -42,12 +42,12 @@ export function settingsItem(key: SettingsPageKey): (typeof SETTINGS_PAGES)[numb
  * 주소가 바뀔 때마다 셸 전체가 리렌더한다. 그리고 이 값 하나가 「사이드바가 설정 nav인가」와
  * 「어느 항목이 켜졌나」를 함께 답한다 — 둘을 따로 구독하면 구독이 하나 는다.
  */
-export function settingsPageOf(pathname: string): SettingsPageKey | null {
-  return SETTINGS_PAGES.find((page) => page.to === pathname)?.key ?? null;
+export function settingsItemOf(pathname: string): SettingsItemKey | null {
+  return SETTINGS_ITEMS.find((item) => item.to === pathname)?.key ?? null;
 }
 
 /**
- * 설정 안인가. 치환 전의 `/settings`도 안이다 — 문의 가드(`navigate-place.ts`)가 묻는 것이
+ * 설정 안인가. 치환 전의 `/settings`도 안이다 — 문의 가드(`navigate-guarding-settings.ts`)가 묻는 것이
  * 이것이고, 그 가드는 「보던 항목에 머문다」를 지키려고 있다.
  */
 export function inSettings(pathname: string): boolean {

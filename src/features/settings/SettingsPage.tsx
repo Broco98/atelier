@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import PageHeader from "@/components/shell/PageHeader";
 import { cn } from "@/lib/utils";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
@@ -8,7 +8,7 @@ import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
-import { settingsItem, type SettingsPageKey } from "./pages";
+import { settingsItem, type SettingsItemKey } from "./pages";
 import { saveSettingsSection, type SettingsSectionKey } from "./save-section";
 import type {
   HookStatus,
@@ -150,33 +150,42 @@ const THEME_LABELS: Record<TerminalTheme, string> = {
 };
 
 /**
+ * 설정 항목마다 본문에 서는 조각. **항목 표(`SETTINGS_ITEMS`)의 key 전부를 받는 `Record`다** — 항목을
+ * 하나 더하고 본문을 잊으면 사이드바에 항목만 서고 본문이 비는데, 이 모양이면 그 자리에서 L0가
+ * 빨개진다.
+ */
+const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
+  terminal: () => (
+    <SettingsFileGate>{(settings) => <TerminalSettingsPage initial={settings} />}</SettingsFileGate>
+  ),
+  notifications: () => (
+    <SettingsFileGate>
+      {(settings) => <NotificationSettingsPage initial={settings} />}
+    </SettingsFileGate>
+  ),
+  // **읽기 실패의 게이트가 없다.** 이 항목이 고치는 것은 `~/.atelier/settings.json`이 아니라
+  // 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔 이유가 없다.
+  hooks: () => <AgentHooksPage />,
+};
+
+/**
  * 설정 항목 하나의 화면(UI개선 결정 22). 머리는 `Settings / 터미널`이고 본문은 그 항목 하나다.
  *
  * **초안은 항목 페이지 안에 산다**(결정 26) — 항목을 옮기면 주소가 바뀌어 페이지가 내려가고,
  * 저장 안 한 편집이 함께 버려진다. 경고하지 않는다: 설정 화면을 떠날 때 이미 그랬고, 같은 규칙이
  * 항목 경계에도 걸리는 것이다.
  */
-function SettingsPage({ sidebarOpen, page }: { sidebarOpen: boolean; page: SettingsPageKey }) {
+function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader root="Settings" leaf={settingsItem(page).label} inset={!sidebarOpen} />
+        <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
           <div className="flex max-w-[620px] flex-col gap-6">
-            {page === "terminal" && (
-              <SettingsFileGate>
-                {(settings) => <TerminalSettingsPage initial={settings} />}
-              </SettingsFileGate>
-            )}
-            {page === "notifications" && (
-              <SettingsFileGate>
-                {(settings) => <NotificationSettingsPage initial={settings} />}
-              </SettingsFileGate>
-            )}
-            {/* **읽기 실패의 게이트가 없다.** 이 항목이 고치는 것은 `~/.atelier/settings.json`이
-                아니라 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔
-                이유가 없다. */}
-            {page === "hooks" && <AgentHooksPage />}
+            {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
+                항목을 옮길 때 게이트를 이어 써 옛 사본을 들고 파일을 다시 안 읽을 수 있다 —
+                항목마다 새로 서야 초안도 사본도 따라오지 않는다(위 결정 26). */}
+            <Fragment key={item}>{ITEM_BODIES[item]()}</Fragment>
           </div>
         </div>
       </main>
@@ -190,7 +199,7 @@ function SettingsPage({ sidebarOpen, page }: { sidebarOpen: boolean; page: Setti
  *
  * 항목 페이지마다 제 게이트를 둔다(한 화면에 조각이 하나다). 조각이 받는 것은 **화면을 열 때의
  * 사본**일 뿐이고, 저장은 그 사본이 아니라 쓰는 순간의 최신을 딛는다(`save-section.ts`) — 그래서
- * 알림을 저장하고 터미널로 옮겨 온 페이지가 새로 읽은 사본을 들어도, 옛 사본을 들어도 덮어쓰기가 없다.
+ * 알림 설정을 저장하고 터미널 설정으로 옮겨 온 페이지가 새로 읽은 사본을 들어도, 옛 사본을 들어도 덮어쓰기가 없다.
  */
 export function SettingsFileGate({
   children,

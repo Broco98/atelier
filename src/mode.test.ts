@@ -5,7 +5,7 @@ import { join, relative } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
-import { SETTINGS_ENTRY, SETTINGS_PAGES } from "@/features/settings/pages";
+import { SETTINGS_ITEMS } from "@/features/settings/pages";
 import {
   ALL_MODES,
   destinationsOf,
@@ -48,14 +48,6 @@ describe("주소가 세계를 말한다", () => {
     expect(settings?.to).toBe("/settings");
     expect(modeOf(settings?.to ?? "")).toBe("atelier");
   });
-
-  // 설정 안에서 팔레트의 `Settings` 줄이 무동작인 것은 셸의 문이 **이 주소를 알아보기 때문이다**
-  // (`navigate-place.ts`의 `SETTINGS_ENTRY`). 두 리터럴이 갈리면 가드가 조용히 안 물고, 그 줄을
-  // 고를 때마다 보던 항목을 떠나 칸이 쌓인다.
-  it.each(["atelier", "maison"] as const)("%s 팔레트의 설정 줄이 셸의 문이 가리는 주소다", (mode) => {
-    const settings = destinationsOf(mode).find((place) => place.key === "settings");
-    expect(settings?.to).toBe(SETTINGS_ENTRY);
-  });
 });
 
 // 「어느 세계에 있었다고 적어 둘 것인가」는 `modeOf`로 물으면 안 된다 — 그 함수의 기본값은
@@ -69,7 +61,7 @@ describe("적어 둘 세계를 묻는다", () => {
   // 조용히 마지막 모드를 덮어쓰고, 「앱으로 돌아가기」가 떠나온 세계를 잃는다.
   it("설정 아래 화면도 세계 밖이다", () => {
     expect(placeModeOf("/settings/일반")).toBeNull();
-    for (const page of SETTINGS_PAGES) expect(placeModeOf(page.to), page.to).toBeNull();
+    for (const item of SETTINGS_ITEMS) expect(placeModeOf(item.to), item.to).toBeNull();
   });
 
   // 모드를 싣는 주소는 `modeOf`와 **같은 답**이어야 한다. 갈리면 적어 둔 세계와 지금 켜진

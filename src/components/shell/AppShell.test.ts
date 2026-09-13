@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 // 렌더로는 못 잰다(이 저장소의 L2에는 DOM이 없고, 정적 마크업에는 리렌더가 없다). 그래서
 // **모양이 아니라 수와 금지된 한 조각**을 센다: 파싱이 없어 파서가 샐 자리도 없다.
 const source = readFileSync(fileURLToPath(new URL("./AppShell.tsx", import.meta.url)), "utf8");
+const countIn = (text: string, literal: string) => text.split(literal).length - 1;
 
 describe("앱 셸의 라우터 구독", () => {
   // **구독 수와 select 수를 함께 센다.** 개수만 세면 `useRouterState()`를 select 없이 부르는
@@ -85,31 +86,20 @@ describe("세그먼트의 목적지", () => {
   });
 });
 
-// 설정 nav(UI개선 결정 21·27 · S18). 셋 다 클릭·이벤트 핸들러라 렌더가 필요해 여기서도 소스로 잰다.
-describe("설정의 문과 돌아가기", () => {
-  it("켜진 설정 항목을 **원시값** select 하나로 든다", () => {
-    // 불리언이던 「설정이 켜졌나」를 항목 key로 넓혔다 — 구독 수는 그대로다(위 「셋으로 갈리고」).
-    expect(source).toContain("select: (state) => settingsPageOf(state.location.pathname)");
-    expect(source).not.toContain('startsWith("/settings")');
-  });
-
+// 설정의 문(UI개선 S18). ⌘,와 바닥 버튼은 클릭·이벤트 핸들러라 렌더가 필요해 여기서도 소스로 잰다.
+// 켜진 항목·돌아가기 목적지는 행동으로 재는 층이 따로 있다(`router.test.ts` · L3 `settings-nav`).
+describe("설정의 문", () => {
   // 설정 안에서 `/settings`로 가는 문이 무동작인 가드는 **이동 함수 한 자리**에 산다. 문이 그
   // 함수를 안 지나고 곧장 `navigate`하면 그 문만 보던 항목을 떠나 칸을 쌓는다.
+  //
+  // **입구 상수가 서는 자리를 전부 센다** — 금지 문자열 하나만 보면 `navigate({ to: SETTINGS_ENTRY })`
+  // 처럼 다르게 적은 새 문이 그대로 샌다. 이 파일에서 그 상수는 import 한 번과 가드를 지나는 문
+  // 둘(⌘,의 네이티브 메뉴 · 사이드바 바닥)에만 서야 한다: 가드 없이 쓰는 자리가 하나라도 생기면
+  // 앞의 수가 뒤의 수보다 커져 빨개진다. 리터럴로 적은 문은 셋째 줄이 문다.
   it("설정으로 가는 문이 가드를 지난다", () => {
-    expect(source).not.toContain('navigate({ to: "/settings" })');
-    // ⌘,(네이티브 메뉴) 하나, 사이드바 바닥 하나.
-    expect(source.split("navigatePlace(router, { to: SETTINGS_ENTRY })").length - 1).toBe(2);
-    const palette = readFileSync(
-      fileURLToPath(new URL("../../features/search/SearchPalette.tsx", import.meta.url)),
-      "utf8",
-    );
-    expect(palette).toContain("navigatePlace(router, target)");
-    expect(palette).not.toContain("navigate(target)");
-  });
-
-  // 돌아가기는 **떠나온 모드 그대로** 몸통 함수를 부른다 — 세그먼트 함수를 부르면 같은 모드라
-  // 늘 `null`이다. 목적지를 셸이 짓지 않는 것은 위 「셸이 목적지를 스스로 짓지 않는다」가 든다.
-  it("돌아가기가 떠나온 모드로 목적지 몸통을 부른다", () => {
-    expect(source).toContain("navigate(modeEntryTarget(mode))");
+    const guarded = "navigateGuardingSettings(router, { to: SETTINGS_ENTRY })";
+    expect(countIn(source, guarded)).toBe(2);
+    expect(countIn(source, "SETTINGS_ENTRY")).toBe(countIn(source, guarded) + 1);
+    expect(source).not.toMatch(/["']\/settings["']/);
   });
 });

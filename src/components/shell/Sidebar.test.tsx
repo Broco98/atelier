@@ -274,13 +274,25 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
   it("신호등 띠 **아래**, nav **위**다", () => {
     // US 6이 정한 자리 그대로다. 순서가 뒤집히면 「어느 세계인가」가 nav 아래로 내려가
     // 목적지 하나처럼 읽힌다.
-    const strip = sidebar.indexOf("data-tauri-drag-region");
-    const segment = sidebar.indexOf("<ModeSwitch");
-    const nav = sidebar.indexOf("<nav");
-    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
+    //
+    // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
+    // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
+    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 모드 전환 < nav. 띠가 파일에 **하나뿐**인
+    // 것도 센다 — 갈래가 제 띠를 따로 그리면 앞의 비교가 그 띠를 안 본다.
+    expect(countOf(sidebar, "data-tauri-drag-region")).toBe(1);
+    const frameAt = sidebar.indexOf("function SidebarFrame(");
+    const frame = frameAt > -1 ? sidebar.slice(frameAt, sidebar.indexOf("\n}\n", frameAt)) : "";
+    const strip = frame.indexOf("data-tauri-drag-region");
+    const slot = frame.indexOf("{children}");
+    // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
+    const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
+    const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
+    const segment = app.indexOf("<ModeSwitch");
+    const nav = app.indexOf("<nav");
+    // **넷이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
     // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, segment, nav].every((at) => at > -1)).toBe(true);
-    expect(segment).toBeGreaterThan(strip);
+    expect([strip, slot, segment, nav].every((at) => at > -1)).toBe(true);
+    expect(slot).toBeGreaterThan(strip);
     expect(nav).toBeGreaterThan(segment);
   });
 
@@ -303,7 +315,7 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
 // 서므로(맨 위 머리말) 갈래가 **어디에 섰는가**를 소스로 잰다 — 무엇이 그려지는지는 L3가 본다.
 describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
   const sidebar = read("Sidebar.tsx");
-  const branchAt = sidebar.indexOf("if (settingsPage !== null) {");
+  const branchAt = sidebar.indexOf("if (currentSettingsItem !== null) {");
   // 갈래 몸통 — 여는 줄부터 그 블록을 닫는 두 칸 들여쓴 `}`까지.
   const branch = branchAt > -1 ? sidebar.slice(branchAt, sidebar.indexOf("\n  }\n", branchAt)) : "";
 
@@ -340,7 +352,6 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
   it("항목의 켜짐이 `<Link>` 활성 매칭이 아니다", () => {
     expect(sidebar).not.toContain("<Link");
     expect(sidebar).not.toContain("activeProps");
-    expect(sidebar).toContain("SETTINGS_PAGES.map(");
-    expect(sidebar).toContain("active={page.key === current}");
+    expect(sidebar).toContain("SETTINGS_ITEMS.map(");
   });
 });

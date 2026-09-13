@@ -19,14 +19,14 @@ import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-at
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
-import { SETTINGS_PAGES, type SettingsPageKey } from "@/features/settings/pages";
+import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { navItemsOf, routesOf, slugOf, type Mode } from "@/mode";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { ModeSwitch } from "./ModeSwitch";
 import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import { SignalLine, showsElapsed } from "./shell-signal";
-import useResizableWidth, { ResizeHandle } from "./useResizableWidth";
+import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
   open: boolean;
@@ -48,10 +48,10 @@ interface SidebarProps {
    * 지금 선 설정 항목. **`null`이 아니면 사이드바가 설정 nav를 그린다**(UI개선 결정 21) — 한 값이
    * 「설정 nav인가」와 「어느 항목이 켜졌나」를 함께 답한다. 앱 셸이 원시값 select로 읽어 내린다.
    */
-  settingsPage: SettingsPageKey | null;
+  currentSettingsItem: SettingsItemKey | null;
   // 설정은 nav 항목이 아니라 바닥에 따로 산다(결정 51)
   onOpenSettings: () => void;
-  onPickSettingsPage: (key: SettingsPageKey) => void;
+  onPickSettingsItem: (key: SettingsItemKey) => void;
   /** 설정 nav 맨 위 「앱으로 돌아가기」. 어디로 가는지는 앱 셸이 안다(결정 27). */
   onLeaveSettings: () => void;
 }
@@ -65,8 +65,8 @@ interface SidebarProps {
 // 사이드바의 것이고, 여기 옮기면 세그먼트만 2px 안쪽으로 들어가 아래 둘과 왼쪽 끝이 어긋난다.
 const GUTTER = "pl-2 pr-2";
 
-// 고정 nav 블록 + 상주하는 작업 목록 + 바닥에 고정된 설정. 어느 화면에 있든 이 사이드바는
-// 바뀌지 않는다.
+// 고정 nav 블록 + 상주하는 작업 목록 + 바닥에 고정된 설정. 앱의 어느 화면에 있든 이 사이드바는
+// 바뀌지 않고, 설정에서만 설정 nav로 갈아 선다(UI개선 결정 21).
 // 목록이 여기 살면서 셸이 작업 데이터를 직접 읽게 됐다 — 순수 프레젠테이션이 아니다.
 function Sidebar({
   open,
@@ -74,9 +74,9 @@ function Sidebar({
   onPickMode,
   activeKey,
   onSelect,
-  settingsPage,
+  currentSettingsItem,
   onOpenSettings,
-  onPickSettingsPage,
+  onPickSettingsItem,
   onLeaveSettings,
 }: SidebarProps) {
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
@@ -125,149 +125,168 @@ function Sidebar({
   // (그 셸이 보이면 안 울리는 규칙 그대로이고, 설정에서는 어느 셸도 안 보인다). 띠를 펼친 상태도
   // 여기 살아 있어 돌아가면 띠가 그대로다.
   //
-  // 겉 상자(`aside`·안쪽 열·신호등 띠)는 아래 앱 갈래와 **같은 자리에 같은 요소**라 React가 그대로
-  // 이어 쓴다 — 폭 트랜지션도 접힘도 새로 시작하지 않는다. 접힌 채 들어오면 접힌 채다(새 규칙 없음).
-  if (settingsPage !== null) {
+  // 겉 상자(`SidebarFrame`)는 두 갈래가 **같은 컴포넌트**라 React가 그대로 이어 쓴다 — 폭 트랜지션도
+  // 접힘도 새로 시작하지 않는다. 접힌 채 들어오면 접힌 채다(새 규칙 없음).
+  if (currentSettingsItem !== null) {
     return (
-      <aside style={sidebarWidth(size.width)} className={asideClass(open, size.dragging)}>
-        <div className={columnClass(open)}>
-          <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
-          <SettingsNav
-            current={settingsPage}
-            onLeave={onLeaveSettings}
-            onPick={onPickSettingsPage}
-          />
-        </div>
-        {open && <ResizeHandle control={size} />}
-      </aside>
+      <SidebarFrame open={open} size={size}>
+        <SettingsNav
+          current={currentSettingsItem}
+          onLeave={onLeaveSettings}
+          onPick={onPickSettingsItem}
+        />
+      </SidebarFrame>
     );
   }
 
   return (
-    <aside style={sidebarWidth(size.width)} className={asideClass(open, size.dragging)}>
+    <SidebarFrame open={open} size={size}>
+      {/* **신호등 띠 바로 아래, nav 위**다(US 6) — 이 자리가 「어느 세계인가」가 nav보다
+          위에 있다는 말이고, 사이드바 안에 살아서 ⌘B로 함께 접힌다(US 15).
+
+          거터는 GUTTER를 그대로 쓴다. 목업의 `0 10px 12px` 중 좌우 10px은 240px 목업
+          사이드바의 값이라 여기 옮기면 세그먼트만 2px 안쪽으로 들어가 nav·설정과 왼쪽 끝이
+          어긋난다 — 그 셋은 한 컬럼에 세로로 붙어 있어 어긋나면 그 자리에서 보인다(위
+          GUTTER 주석이 그 셋을 든다).
+          아래 12px은 목업 그대로다: nav는 위 여백을 안 갖고 띠가 그 몫을 했는데
+          (`SidebarFrame`의 띠 주석), 이제 그 자리를 세그먼트가 차지해서 둘을 떼어 놓는 값이
+          하나 필요해졌다. */}
+      <div className={cn("shrink-0 pb-3", GUTTER)}>
+        <ModeSwitch mode={mode} onPick={onPickMode} />
+      </div>
+
+      {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
+      <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+        {/* **그 세계의 배열을 돈다**(#183). Atelier 배열을 두 세계에 그리면 Maison에
+            `Projects`가 서고(결정 17이 없다고 한 것이다), 활성 판정은 이미 모드 배열을
+            보고 있어서 그 항목은 영영 안 켜진다. 배열이 갈리는 자리는 `@/mode`의 표 하나다. */}
+        {navItemsOf(mode).map((item) => (
+          <SidebarItem
+            key={item.key}
+            icon={item.icon}
+            label={item.label}
+            active={item.key === activeKey}
+            onClick={() => onSelect(item.key)}
+            // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
+            // 아니다). work 행이 둘째 줄로 「여기서 일이 돌고 있다」를 말하는 것과 같은
+            // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
+            // 그 화면에 들어가야만 보인다.
+            //
+            // **개수가 아니라 메타 슬롯이다**(결정 4·13). 같은 어휘를 쓰므로 최상위
+            // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
+            // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
+            // 선다」도 슬롯 안으로 내려갔다.
+            meta={
+              item.key === "terminal" ? (
+                <SubrowFor owner={ownerOf(mode)} shellCount={topShells} />
+              ) : null
+            }
+          />
+        ))}
+      </nav>
+
+      {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
+          그 가름은 조각 안에 있다(`AttentionBand`의 첫 줄). 거터가 nav·설정과 같은 것은
+          그 셋이 한 컬럼에 세로로 붙어 서기 때문이다(GUTTER 주석).
+
+          **목록 밖에 서는 것이 이 띠의 값 절반이다**(스토리 43) — 스크롤로 밀려난 work의
+          셸이 불러도 여기서는 보인다. 안에 넣으면 판 04 결정 21이 감수했던 「어디에도 안
+          보인다」가 그대로 남는다.
+
+          **이 래퍼는 형제들과 달리 `shrink-0`이 아니라 `min-h-0`이다.** nav도 설정도
+          `shrink-0`을 다는데 여기서 따라 달면 낮은 창에서 띠가 자기 높이를 끝까지 우겨
+          바닥의 Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다 — 목록은 이미
+          `flex-1 min-h-0`인데 flex-basis가 0이라 줄일 것이 없고(줄어드는 몫은 base에
+          비례한다), 그래서 남는 것을 내놓을 수 있는 것이 이 자리뿐이다. `min-h-0`이
+          **명시**여야 하는 것은 자동 최소 크기 때문이다: 안쪽 띠가 스크롤 상자라 자기
+          최소는 0이지만, 그 사실이 이 래퍼의 `min-height: auto`까지 눕히지는 않아
+          래퍼가 안 줄어든다(실측 — 창 300px에서 Settings가 16px 잘렸다).
+
+          그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
+          Settings가 남는다」다(스토리 39). */}
+      <div className={cn("flex min-h-0 flex-col", GUTTER)}>
+        <AttentionBand
+          items={items}
+          now={bandNow}
+          expanded={bandOpen}
+          onToggle={() => setBandOpen((on) => !on)}
+          onOpen={openBand}
+        />
+      </div>
+
+      <SidebarWorkList
+        open={open}
+        // nav와 **같은 값**을 받는다 — 세계를 판정하는 자리가 셸 하나여야 목록·nav·세그먼트가
+        // 함께 움직인다(`SidebarWorkList`의 `mode` 주석).
+        mode={mode}
+        shellCounts={shellCounts}
+        // 둘째 줄의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
+        // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
+        // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
+        // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
+        // 따로인 이유는 `SubrowFor`가 든다.
+        signals={signals}
+        renderSubrow={(work) => (
+          <SubrowFor
+            owner={ownerOf(mode, work.slug)}
+            shellCount={shellCounts[work.slug] ?? 0}
+          />
+        )}
+      />
+
+      {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
+          `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날
+          목적지는 이 배열에 한 줄」로 길을 열어 뒀지만, 설정은 그 목적지들이 아니다.
+          대가는 여기 그대로 있다 — 작업 목록 아래에 새 영역이 생기고, 위 nav와 같은
+          규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
+          하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다. */}
+      <div className={cn("shrink-0 pt-1.5", GUTTER)}>
+        {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
+        <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
+      </div>
+    </SidebarFrame>
+  );
+}
+
+/**
+ * 사이드바의 겉 상자 — `aside` · 폭이 고정된 안쪽 열 · 신호등 띠 · 폭 손잡이. 두 갈래(앱·설정)가
+ * **이 컴포넌트 하나**를 지나서, 「같은 자리에 같은 요소」가 주석이 아니라 구조가 된다 — 한쪽만
+ * 고치면 설정에 들어갈 때 폭이 튀거나 트랜지션이 새로 시작한다.
+ */
+function SidebarFrame({
+  open,
+  size,
+  children,
+}: {
+  open: boolean;
+  size: ResizableWidth;
+  children: ReactNode;
+}) {
+  return (
+    <aside
+      style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
+      className={asideClass(open, size.dragging)}
+    >
       {/* fixed inner width so text doesn't reflow while the width animates */}
-      <div className={columnClass(open)}>
+      <div
+        className={cn(
+          "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
+          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
+        )}
+      >
         {/* traffic light strip — same height as the main header (the header no
             longer draws a bottom border; the 44px strip is what keeps the two
             columns aligned). It is also the nav's top breathing room, which is
             why the nav below carries no top padding of its own. */}
         <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
-
-        {/* **신호등 띠 바로 아래, nav 위**다(US 6) — 이 자리가 「어느 세계인가」가 nav보다
-            위에 있다는 말이고, 사이드바 안에 살아서 ⌘B로 함께 접힌다(US 15).
-
-            거터는 GUTTER를 그대로 쓴다. 목업의 `0 10px 12px` 중 좌우 10px은 240px 목업
-            사이드바의 값이라 여기 옮기면 세그먼트만 2px 안쪽으로 들어가 nav·설정과 왼쪽 끝이
-            어긋난다 — 그 셋은 한 컬럼에 세로로 붙어 있어 어긋나면 그 자리에서 보인다(위
-            GUTTER 주석이 그 셋을 든다).
-            아래 12px은 목업 그대로다: nav는 위 여백을 안 갖고 띠가 그 몫을 했는데(위 주석),
-            이제 그 자리를 세그먼트가 차지해서 둘을 떼어 놓는 값이 하나 필요해졌다. */}
-        <div className={cn("shrink-0 pb-3", GUTTER)}>
-          <ModeSwitch mode={mode} onPick={onPickMode} />
-        </div>
-
-        {/* 거터는 GUTTER 하나가 정한다 — 그 정렬 계약이 걸리는 자리는 GUTTER 주석이 든다 */}
-        <nav className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
-          {/* **그 세계의 배열을 돈다**(#183). Atelier 배열을 두 세계에 그리면 Maison에
-              `Projects`가 서고(결정 17이 없다고 한 것이다), 활성 판정은 이미 모드 배열을
-              보고 있어서 그 항목은 영영 안 켜진다. 배열이 갈리는 자리는 `@/mode`의 표 하나다. */}
-          {navItemsOf(mode).map((item) => (
-            <SidebarItem
-              key={item.key}
-              icon={item.icon}
-              label={item.label}
-              active={item.key === activeKey}
-              onClick={() => onSelect(item.key)}
-              // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
-              // 아니다). work 행이 둘째 줄로 「여기서 일이 돌고 있다」를 말하는 것과 같은
-              // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
-              // 그 화면에 들어가야만 보인다.
-              //
-              // **개수가 아니라 메타 슬롯이다**(결정 4·13). 같은 어휘를 쓰므로 최상위
-              // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
-              // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
-              // 선다」도 슬롯 안으로 내려갔다.
-              meta={
-                item.key === "terminal" ? (
-                  <SubrowFor owner={ownerOf(mode)} shellCount={topShells} />
-                ) : null
-              }
-            />
-          ))}
-        </nav>
-
-        {/* **목록 위, nav 아래**(결정 5). 부르는 셸이 없으면 이 자리에 아무것도 없다 —
-            그 가름은 조각 안에 있다(`AttentionBand`의 첫 줄). 거터가 nav·설정과 같은 것은
-            그 셋이 한 컬럼에 세로로 붙어 서기 때문이다(GUTTER 주석).
-
-            **목록 밖에 서는 것이 이 띠의 값 절반이다**(스토리 43) — 스크롤로 밀려난 work의
-            셸이 불러도 여기서는 보인다. 안에 넣으면 판 04 결정 21이 감수했던 「어디에도 안
-            보인다」가 그대로 남는다.
-
-            **이 래퍼는 형제들과 달리 `shrink-0`이 아니라 `min-h-0`이다.** nav도 설정도
-            `shrink-0`을 다는데 여기서 따라 달면 낮은 창에서 띠가 자기 높이를 끝까지 우겨
-            바닥의 Settings가 `aside`의 `overflow-hidden` 밖으로 잘린다 — 목록은 이미
-            `flex-1 min-h-0`인데 flex-basis가 0이라 줄일 것이 없고(줄어드는 몫은 base에
-            비례한다), 그래서 남는 것을 내놓을 수 있는 것이 이 자리뿐이다. `min-h-0`이
-            **명시**여야 하는 것은 자동 최소 크기 때문이다: 안쪽 띠가 스크롤 상자라 자기
-            최소는 0이지만, 그 사실이 이 래퍼의 `min-height: auto`까지 눕히지는 않아
-            래퍼가 안 줄어든다(실측 — 창 300px에서 Settings가 16px 잘렸다).
-
-            그래서 낮은 창에서 양보하는 쪽이 「띠가 굴러간다」이고 지키는 쪽이 「목록과
-            Settings가 남는다」다(스토리 39). */}
-        <div className={cn("flex min-h-0 flex-col", GUTTER)}>
-          <AttentionBand
-            items={items}
-            now={bandNow}
-            expanded={bandOpen}
-            onToggle={() => setBandOpen((on) => !on)}
-            onOpen={openBand}
-          />
-        </div>
-
-        <SidebarWorkList
-          open={open}
-          // nav와 **같은 값**을 받는다 — 목록이 스스로 주소를 다시 읽으면 `/settings`에서
-          // 갈린다(그 주소에는 모드가 안 실려 마지막 모드를 얹어야 답이 나온다).
-          mode={mode}
-          shellCounts={shellCounts}
-          // 둘째 줄의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
-          // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
-          // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
-          // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
-          // 따로인 이유는 `SubrowFor`가 든다.
-          signals={signals}
-          renderSubrow={(work) => (
-            <SubrowFor
-              owner={ownerOf(mode, work.slug)}
-              shellCount={shellCounts[work.slug] ?? 0}
-            />
-          )}
-        />
-
-        {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
-            `navItems` 배열에 한 줄 넣는 안은 기각됐다: 그 배열의 주석이 「앞으로 늘어날
-            목적지는 이 배열에 한 줄」로 길을 열어 뒀지만, 설정은 그 목적지들이 아니다.
-            대가는 여기 그대로 있다 — 작업 목록 아래에 새 영역이 생기고, 위 nav와 같은
-            규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
-            하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다. */}
-        <div className={cn("shrink-0 pt-1.5", GUTTER)}>
-          {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
-          <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
-        </div>
+        {children}
       </div>
-
       {open && <ResizeHandle control={size} />}
     </aside>
   );
 }
 
-/** 사이드바 폭을 CSS 변수로 내린다. 두 갈래(앱·설정)가 같은 값을 쓴다. */
-function sidebarWidth(width: number): React.CSSProperties {
-  return { "--sidebar-width": `${width}px` } as React.CSSProperties;
-}
-
-/** 바깥 상자. 두 갈래(앱·설정)가 같은 규격이라 한 자리에 둔다 — 갈리면 설정에 들어갈 때 폭이 튄다. */
+/** 바깥 상자의 규격 — 접힘과 드래그만 받는다. */
 function asideClass(open: boolean, dragging: boolean): string {
   return cn(
     "relative shrink-0 overflow-hidden border-r bg-sidebar",
@@ -286,14 +305,6 @@ function asideClass(open: boolean, dragging: boolean): string {
   );
 }
 
-/** 폭이 고정된 안쪽 열 — 폭이 움직이는 동안 글자가 다시 흐르지 않는다. */
-function columnClass(open: boolean): string {
-  return cn(
-    "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
-    open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
-  );
-}
-
 /**
  * 설정 nav(UI개선 결정 21). 맨 위 「← 앱으로 돌아가기」, 그 아래 항목 셋.
  *
@@ -309,9 +320,9 @@ function SettingsNav({
   onLeave,
   onPick,
 }: {
-  current: SettingsPageKey;
+  current: SettingsItemKey;
   onLeave: () => void;
-  onPick: (key: SettingsPageKey) => void;
+  onPick: (key: SettingsItemKey) => void;
 }) {
   return (
     <>
@@ -319,13 +330,13 @@ function SettingsNav({
         <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
       </div>
       <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
-        {SETTINGS_PAGES.map((page) => (
+        {SETTINGS_ITEMS.map((item) => (
           <SidebarItem
-            key={page.key}
-            icon={page.icon}
-            label={page.label}
-            active={page.key === current}
-            onClick={() => onPick(page.key)}
+            key={item.key}
+            icon={item.icon}
+            label={item.label}
+            active={item.key === current}
+            onClick={() => onPick(item.key)}
           />
         ))}
       </nav>

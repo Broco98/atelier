@@ -5,7 +5,8 @@ import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette from "@/features/search/SearchPalette";
-import { SETTINGS_ENTRY, settingsItem, settingsPageOf } from "@/features/settings/pages";
+import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
+import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
 import { quitShellCounts } from "@/features/terminal/terminal-store";
 import { navItemsOf, navTargetOf } from "@/mode";
@@ -14,7 +15,6 @@ import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
-import { navigatePlace } from "./navigate-place";
 import {
   modeEntryTarget,
   modeSwitchTarget,
@@ -34,8 +34,8 @@ function AppShell() {
   // 리렌더한다(아래 두 주석이 지키는 그 최적화). 문자열 하나면 세계를 건널 때만 돈다.
   //
   // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 세계 밖이기 때문**이다 — 접두사가
-  // 없어 `modeOf`는 그 주소를 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 거쳐 nav를 누른
-  // 순간 아래 「nav 한 번에 세계를 안 떠난다」가 그 화면에서만 깨진다.
+  // 없어 `modeOf`는 그 주소를 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 연 채 누른 ⌘K가
+  // 저쪽 세계를 뒤지고 「앱으로 돌아가기」가 Atelier로 간다(설정에는 nav가 없다 — UI개선 결정 21).
   const mode = useRouterState({ select: (state) => shellMode(state.location.pathname) });
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
@@ -54,10 +54,10 @@ function AppShell() {
   // 켜졌나」를 함께 답해서, 불리언에서 넓혀도 구독 수가 그대로다. 위 select에 합쳐 객체 하나로
   // 돌려주지 않는 이유는 그 주석과 같다: 매번 새 객체를 돌려주면 걸러내지 못해 주소가 바뀔 때마다
   // 셸 전체가 리렌더한다.
-  const settingsPage = useRouterState({
-    select: (state) => settingsPageOf(state.location.pathname),
+  const currentSettingsItem = useRouterState({
+    select: (state) => settingsItemOf(state.location.pathname),
   });
-  // 문의 가드가 **부를 때** 주소를 읽는 데 쓴다(`navigatePlace`) — 구독이 아니다.
+  // 문의 가드가 **부를 때** 주소를 읽는 데 쓴다(`navigateGuardingSettings`) — 구독이 아니다.
   const router = useRouter();
 
   // 네이티브 메뉴의 `atelier ▸ Settings…`(⌘,)가 여기로 온다(결정 51).
@@ -70,10 +70,10 @@ function AppShell() {
   // `router`는 라우터가 고정해 준다 (SidebarWorkList의 `navigate` 주석과 같다).
   //
   // **설정 안에서 누르면 아무 일도 없다**(UI개선 S18) — 가드는 이 문이 아니라 문 셋이 함께 지나는
-  // `navigatePlace`에 있다.
+  // `navigateGuardingSettings`에 있다.
   useEffect(() => {
     const unlisten = listen("settings:open", () => {
-      void navigatePlace(router, { to: SETTINGS_ENTRY });
+      void navigateGuardingSettings(router, { to: SETTINGS_ENTRY });
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -189,14 +189,15 @@ function AppShell() {
             if (!target || key === activeKey) return;
             void navigate({ to: target });
           }}
-          settingsPage={settingsPage}
+          currentSettingsItem={currentSettingsItem}
           // `/settings`는 첫 항목으로 치환되므로(UI개선 결정 22) 설정 안에서 보내면 보던 항목을
           // 떠나 칸이 쌓인다 — 설정 안에서는 이 버튼이 안 보이지만 ⌘,·팔레트와 **같은 문**을
-          // 지나게 둔다(`navigatePlace`). 문마다 가드를 적으면 한 문이 잊는 날 그 문만 샌다.
-          onOpenSettings={() => void navigatePlace(router, { to: SETTINGS_ENTRY })}
+          // 지나게 둔다(`navigateGuardingSettings`). 문마다 가드를 적으면 한 문이 잊는 날 그 문만
+          // 샌다.
+          onOpenSettings={() => void navigateGuardingSettings(router, { to: SETTINGS_ENTRY })}
           // 항목끼리는 주소가 따로라 push다 — 뒤로가기가 앞 항목으로 간다(결정 22). 지금 항목을
           // 다시 눌러도 같은 위치로 가는 이동이라 칸이 안 는다(router.test.ts).
-          onPickSettingsPage={(key) => void navigate({ to: settingsItem(key).to })}
+          onPickSettingsItem={(key) => void navigate({ to: settingsItem(key).to })}
           onLeaveSettings={() => {
             // 들어오기 직전 자리로 **한 번에** 간다(결정 27) — 항목을 몇 번 옮겼든 뒤로가기가
             // 아니라 push다. 넘기는 것은 **떠나온 모드 그대로**다: 설정은 세계를 안 실어 위

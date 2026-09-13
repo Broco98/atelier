@@ -13,7 +13,7 @@ import {
   shellMode,
   shellStore,
 } from "./components/shell/shell-store";
-import { navigatePlace } from "./components/shell/navigate-place";
+import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
 import { recallSearch, rememberView, tabSearch } from "./routes/-work-search";
 import type { ViewTab } from "./routes/-work-search";
@@ -875,8 +875,8 @@ describe("화면 탭의 주소", () => {
 // 결정 22) `/settings`는 **첫 항목으로 치환**된다.
 //
 // 설정으로 가는 문은 셋이다(사이드바 바닥 · ⌘, · 팔레트). 셋 다 `/settings`로 가고, **설정 안에서는
-// 무동작이다**(S18) — 치환이 있으니 가드가 없으면 보던 항목을 떠나 터미널로 가며 칸이 는다.
-// 그 가드는 이동 함수 한 자리(`navigatePlace`)에 산다.
+// 무동작이다**(S18) — 치환이 있으니 가드가 없으면 보던 항목을 떠나 터미널 설정으로 가며 칸이 는다.
+// 그 가드는 이동 함수 한 자리(`navigateGuardingSettings`)에 산다.
 describe("설정 화면의 주소", () => {
   it("`/settings`로 들어오면 첫 항목으로 치환된다 — 칸이 안 는다", async () => {
     const { router, history } = setup(["/settings"], { lastWork: "work-b" });
@@ -905,7 +905,7 @@ describe("설정 화면의 주소", () => {
     const { router, history } = setup(["/works/work-a"]);
     await router.load();
 
-    await navigatePlace(router, { to: "/settings" });
+    await navigateGuardingSettings(router, { to: "/settings" });
     expect(router.state.location.pathname).toBe("/settings/terminal");
     expect(history.length).toBe(2);
 
@@ -927,11 +927,11 @@ describe("설정 화면의 주소", () => {
   it("설정 안에서 다시 열어도 보던 항목에 머물고 히스토리가 늘지 않는다", async () => {
     const { router, history } = setup(["/works/work-a"]);
     await router.load();
-    await navigatePlace(router, { to: "/settings" });
+    await navigateGuardingSettings(router, { to: "/settings" });
     await router.navigate({ to: "/settings/notifications" });
     const length = history.length;
 
-    await navigatePlace(router, { to: "/settings" });
+    await navigateGuardingSettings(router, { to: "/settings" });
     expect(router.state.location.pathname).toBe("/settings/notifications");
     expect(history.length).toBe(length);
   });
@@ -942,7 +942,7 @@ describe("설정 화면의 주소", () => {
     const { router } = setup(["/settings/hooks"]);
     await router.load();
 
-    await navigatePlace(router, { to: "/terminal" });
+    await navigateGuardingSettings(router, { to: "/terminal" });
     expect(router.state.location.pathname).toBe("/terminal");
   });
 });
