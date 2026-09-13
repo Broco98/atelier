@@ -62,10 +62,27 @@ const PLUGINS: Record<string, unknown> = {
 // 자리이기 때문이다. 그 시나리오를 쓰는 판이 같이 넣는다.
 // (`plugin:path|resolve_directory`는 판 04가 Works 화면을 여는 검사를 들이면서 태웠다.)
 
+/**
+ * 답 대신 **거절**을 싣는 표시의 키. 값으로는 실패를 못 적어서(`null`도 `false`도 멀쩡한 답이다)
+ * 이 키 하나를 가진 객체만 거절로 읽는다 — 앱의 데이터에 이 모양이 우연히 나올 일은 없다.
+ */
+const IPC_FAILURE_KEY = "__atelierIpcFailure";
+
+/**
+ * `installFixtureBackend`의 덮어쓰기에 넣으면 그 커맨드가 **이 문구로 거절된다.** 실물 백엔드의
+ * 거절도 문자열이라(`CmdResult`의 오류 · IPC 층의 오류) 문자열 그대로 던진다 — `Error`로 싸면
+ * 앱이 `${e}`로 적을 때 「Error: 」가 붙어 실물과 다른 문구를 재게 된다.
+ */
+export const ipcFailure = (message: string): Record<string, string> => ({
+  [IPC_FAILURE_KEY]: message,
+});
+
 /** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
 interface InitArgs {
   responses: Record<string, unknown>;
   recordKey: string;
+  /** 답 대신 거절을 싣는 표시의 키(`ipcFailure`). 브라우저 쪽이 모듈 상수를 못 읽어 함께 싣는다. */
+  failureKey: string;
   /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
   bridgeName: string | null;
   /**
@@ -145,7 +162,7 @@ export async function installRealBackend(
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, byMode, incrementing }: Omit<InitArgs, "recordKey">,
+  { responses, bridgeName, byMode, incrementing }: Omit<InitArgs, "recordKey" | "failureKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -156,7 +173,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, bridgeName, byMode, incrementing }: InitArgs) => {
+  await page.addInitScript(({ responses, recordKey, failureKey, bridgeName, byMode, incrementing }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -244,7 +261,15 @@ async function install(
       }
       // 표에 적힌 값을 **첫 값**으로 삼아, 올릴 커맨드면 부를 때마다 하나씩 올린다.
       if (Object.prototype.hasOwnProperty.call(responses, cmd)) {
-        return bump(cmd, responses[cmd]);
+        const answer = responses[cmd];
+        if (
+          typeof answer === "object" &&
+          answer !== null &&
+          Object.prototype.hasOwnProperty.call(answer, failureKey)
+        ) {
+          throw (answer as Record<string, string>)[failureKey];
+        }
+        return bump(cmd, answer);
       }
       // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
       // 하네스가 낡았다는 뜻이다.
@@ -259,7 +284,14 @@ async function install(
       record.unknown.push(cmd);
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
-  }, { responses, recordKey: IPC_RECORD_KEY, bridgeName, byMode, incrementing });
+  }, {
+    responses,
+    recordKey: IPC_RECORD_KEY,
+    failureKey: IPC_FAILURE_KEY,
+    bridgeName,
+    byMode,
+    incrementing,
+  });
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */

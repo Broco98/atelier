@@ -4,6 +4,7 @@ import {
   callCount,
   fireEvent,
   installFixtureBackend,
+  ipcFailure,
   openShell,
   readIpcRecord,
   unknownIpcCalls,
@@ -268,5 +269,31 @@ test("팔레트가 떠 있을 때의 요청은 팔레트를 닫지 않고 그 �
   await expect(quitDialog(page)).toHaveCount(0);
   await expect(palette).toBeVisible();
   expect(await callCount(page, "quit_app")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 끄기가 실패하면 ──
+// 「종료」를 눌렀는데 `quit_app`이 거절되면(IPC 층의 오류 · 명령 실패) 앱은 **안 꺼진 채 창만 닫힌다.**
+// 사람은 앱이 꺼지는 중이라 믿고 기다리게 되므로, 못 껐다는 것을 앱의 오류 창(`showProblem`)으로
+// 알려야 하고, 그 뒤의 요청에 다시 물어 다시 끌 수 있어야 한다.
+
+test("「종료」가 실패하면 오류 창이 뜨고, 다음 요청에 다시 물어 다시 끈다", async ({ page }) => {
+  await installFixtureBackend(page, { quit_app: ipcFailure("종료 명령이 거절되었습니다") });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await fireQuitRequest(page);
+  await quitDialog(page).getByRole("button", { name: "종료", exact: true }).click();
+  await expect.poll(() => callCount(page, "quit_app")).toBe(1);
+
+  const problem = page.getByRole("alertdialog", { name: "오류" });
+  await expect(problem).toBeVisible();
+  await expect(problem).toContainText("종료 명령이 거절되었습니다");
+  await problem.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+
+  await fireQuitRequest(page);
+  await quitDialog(page).getByRole("button", { name: "종료", exact: true }).click();
+  await expect.poll(() => callCount(page, "quit_app")).toBe(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
