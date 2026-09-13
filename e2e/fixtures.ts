@@ -165,6 +165,17 @@ export const ROOMS: WorkView[] = [
  */
 export const MAISON_LANDING_ROOM: WorkView = ROOMS[0];
 
+/**
+ * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
+ * 원래 목록을 뒤집어 짓는다** — fixture 백엔드에는 상태가 없어 「옮긴 결과」를 지을 수 없으니,
+ * 원래와 **확실히 다른** 순서를 주어 「응답으로 캐시를 갈아 끼웠다」를 화면에서 잰다.
+ *
+ * 리터럴로 적지 않고 파생한다: `WORKS` 끝에 줄이 더해져도(티켓 08) 이 값이 저절로 따라온다.
+ * 뒤집어도 `pinned`는 그대로라 화면의 구획은 안 흔들리고 구획 **안** 순서만 뒤집힌다.
+ */
+export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
+export const ROOMS_MOVED: WorkView[] = [...ROOMS].reverse();
+
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
 // 분기를 위한 것이지 「누를 것이 있다」는 뜻이 아니라, 화면이 `current === null`을 따로
@@ -581,13 +592,12 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    */
   set_work_pinned: { atelier: { value: null }, maison: {} },
   /**
-   * 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3). **두 칸이 다 비었다** — 이 명령을 부르는 화면은
-   * 사이드바 끌기(티켓 05)가 세우고, 그 전에는 아무 시나리오도 안 태운다. 답(재배열된 목록)은
-   * 그 장이 채운다: 지금 지어내 앉히면 아무도 안 태우는 답이 조용히 낡는다(`ModeAnswer` 머리말).
-   *
-   * 칸이 비어도 여기 있어야 하는 이유는 위 「두 칸이 다 빈 다섯」과 같다.
+   * 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와
+   * 무관하다(`WORKS_MOVED` 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가
+   * 그 순서로 잰다. 두 세계의 답이 갈리는 것은 `list_works`와 같은 이유다: 한 벌을 나눠 쓰면
+   * 「maison으로 물었다」가 화면에서 안 갈린다.
    */
-  move_work: { atelier: {}, maison: {} },
+  move_work: { atelier: { value: WORKS_MOVED }, maison: { value: ROOMS_MOVED } },
   /**
    * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
    * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면

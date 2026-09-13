@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
 import type { ShellSignal } from "@/components/shell/shell-signal";
-import { WorkSectionList } from "./SidebarWorkList";
+import { WorkSectionList } from "./WorkSectionList";
 import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
@@ -58,12 +58,16 @@ function render(
     // 나 `SignalLine`이고(#203) 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은
     // **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
     renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
+    draggedSlug = null,
+    gapLineY = null,
   }: {
     mode?: Mode;
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
     renderSubrow?: (work: WorkView) => ReactNode;
+    draggedSlug?: string | null;
+    gapLineY?: number | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -80,6 +84,9 @@ function render(
       onLeave={() => {}}
       onTogglePin={() => {}}
       renderSubrow={renderSubrow}
+      draggedSlug={draggedSlug}
+      gapLineY={gapLineY}
+      onDragStart={() => {}}
     />,
   );
 }
@@ -523,7 +530,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 집는 자리가 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를
     // 잰다. 둘째 줄이 돌아와도 그 계약은 안 깨진다: 줄이 **형제로** 서기 때문이다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
-    const row = /<div class="group grid[^"]*">(<button|<div)/.exec(markup);
+    // 행 상자는 끌기 표식(`data-work-row`)을 클래스 앞에 든다 — 여는 태그를 통째로 넘긴다.
+    const row = /<div data-work-row="[^"]*" class="group grid[^"]*">(<button|<div)/.exec(markup);
     expect(row?.[1]).toBe("<button");
   });
 
@@ -595,7 +603,9 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 게시판이 된다. 행이 두 줄이 되면서 그 유혹이 커진 자리라 검사로 못박는다 —
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
-    const rows = [...markup.matchAll(/<div class="(group grid[^"]*)">/g)].map((m) => m[1]);
+    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
+      (m) => m[1],
+    );
     expect(rows).toHaveLength(2);
     expect(rows.filter((one) => one.includes("selected-row"))).toHaveLength(1);
     for (const row of rows) {
@@ -645,10 +655,11 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
     // 결정 10. `100cqw`가 상자 폭을 되읽으므로 사이드바 폭을 드래그해도 CSS가 스스로 다시
     // 푼다 — 폭이 바뀌는 이 화면에서 그게 결정적이다. 재는 것은 **속도 하나**이고 그 자리는
     // 호버 카드 타이머를 이미 거는 핸들러다(결정 12): 쉴 때 계측도, 관찰자도 없다.
-    const source = readFileSync(
-      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
-      "utf8",
-    );
+    // 두 파일을 이어 센다 — 행은 구획 목록 파일로 떨어져 나갔고(아래 「훅을 안 부른다」), 끄는
+    // 동안 기하를 재는 자리는 사이드바 목록에 남았다. 한쪽만 세면 다른 쪽에 관찰자가 붙어도 초록이다.
+    const source = ["./SidebarWorkList.tsx", "./WorkSectionList.tsx"]
+      .map((file) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"))
+      .join("\n");
     expect(source).not.toContain("ResizeObserver");
     // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
     expect(source.split("scrollWidth").length - 1).toBe(1);
@@ -668,11 +679,12 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
       return found[1];
     };
     const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+    // 행과 함께 구획 목록 파일로 옮겨 갔다 — 마퀴 거리를 시간으로 바꾸는 자리가 행의 hover 핸들러다.
     const source = readFileSync(
-      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      fileURLToPath(new URL("./WorkSectionList.tsx", import.meta.url)),
       "utf8",
     );
-    expect(px(source, /const TITLE_FADE = (\d+);/, "SidebarWorkList.tsx")).toBe(
+    expect(px(source, /const TITLE_FADE = (\d+);/, "WorkSectionList.tsx")).toBe(
       px(css, /--title-fade:\s*(\d+)px;/, "index.css"),
     );
   });
@@ -704,11 +716,70 @@ describe("행 아래에 아무것도 딸리지 않는다", () => {
 // **여기서 세는 것은 그림이 아니라 import다.** 아래 둘은 `ShellBranch.test.ts`가 지고 있던
 // 계약인데, 그 파일이 판 04에서 가지와 함께 사라졌다 — 계약이 겨누는 것(`SidebarWorkList.tsx`)은
 // 그대로라 자리를 옮겨 살린다. 겨누는 파일 옆이 원래 있어야 할 자리이기도 하다.
+// **그림과 상태의 경계**(UI개선 스펙 §4). 끄는 동안의 틈·끌리는 slug는 사이드바 목록이 구독해
+// prop으로 내리고, 구획 목록은 받은 것만 그린다 — 이 파일의 seam이 DOM 없는 정적 마크업이라
+// 훅을 부르는 순간 위 검사 전부가 서지 못한다. 그래서 구획 목록을 **제 파일로 떼어** 파일 단위로
+// 센다(컴포넌트 단위로 자르는 파서는 샌다).
+//
+// 세는 모양은 「`use` + 대문자 + 여는 괄호」다. 주석에 적어도 빨개진다 — 이웃 검사들과 같은 성질이다.
+// 끄는 동안 이 그림이 받는 것 둘(UI개선 스펙 §4) — 끌리는 행과 틈 선의 자리. 선이 **실제로** 틈에
+// 서는지는 레이아웃이 있어야 해서 L3(`work-row-drag.spec.ts`)가 재고, 여기서는 받은 값이 한 행과 한
+// 선에만 닿는지를 본다.
+describe("끄는 동안의 그림", () => {
+  const rowClasses = (markup: string) =>
+    new Map(
+      [...markup.matchAll(/<div data-work-row="([^"]*)" class="([^"]*)"/g)].map((m) => [m[1], m[2]]),
+    );
+
+  it("끌리는 행 **하나만** 흐려진다", () => {
+    const rows = rowClasses(render(works("pin:가", "나", "다"), ALL, { draggedSlug: "나" }));
+    expect(rows.size).toBe(3);
+    expect([...rows].filter(([, cls]) => cls.includes("opacity-40")).map(([slug]) => slug)).toEqual(["나"]);
+  });
+
+  it("안 끌 때는 아무 행도 안 흐려지고 선도 없다", () => {
+    const markup = render(works("pin:가", "나"));
+    expect(rowClasses(markup).size).toBe(2);
+    expect([...rowClasses(markup).values()].some((cls) => cls.includes("opacity-40"))).toBe(false);
+    expect(markup).not.toContain("data-drop-line");
+  });
+
+  it("틈 선은 받은 내용 좌표에 **하나** 서고, 누를 수 없다", () => {
+    const markup = render(works("pin:가", "나"), ALL, { draggedSlug: "나", gapLineY: 41.5 });
+    const lines = markup.match(/<div data-drop-line=""[^>]*>/g) ?? [];
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("top:41.5px");
+    expect(lines[0]).toContain("pointer-events-none");
+    expect(lines[0]).toContain("absolute");
+  });
+
+  it("구획 머리가 어느 구획인지 말한다 — 기하를 재는 자리가 이것으로 집는다", () => {
+    const heads = [...render(works("pin:가", "나")).matchAll(/data-drop-head="([^"]*)"/g)].map((m) => m[1]);
+    expect(heads).toEqual(["pinned", "works"]);
+  });
+});
+
+describe("구획 목록 파일은 훅을 안 부른다", () => {
+  const hookCalls = (file: string) =>
+    readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8").match(/\buse[A-Z]\w*\(/g) ?? [];
+
+  // **알려진 양성.** 세는 방법이 새면(정규식이 안 맞으면) 아래 0이 빈 초록이다 — 훅을 부르는 것이
+  // 확실한 옆 파일에서 같은 모양이 잡혀야 한다.
+  it("사이드바 목록 파일에서는 잡힌다", () => {
+    expect(hookCalls("./SidebarWorkList.tsx")).toEqual(expect.arrayContaining(["useWorks(", "useState("]));
+  });
+
+  it("구획 목록 파일에서 0개다", () => {
+    expect(hookCalls("./WorkSectionList.tsx")).toEqual([]);
+  });
+});
+
 describe("사이드바 목록은 터미널을 모른다", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
-    "utf8",
-  );
+  // **두 파일을 이어 센다.** 구획 목록이 제 파일로 떨어져 나가면서(위 검사) 그림의 절반이 그리로
+  // 갔다 — 한 파일만 세면 떨어져 나간 쪽이 터미널을 불러도 초록이다.
+  const source = ["./SidebarWorkList.tsx", "./WorkSectionList.tsx"]
+    .map((file) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"))
+    .join("\n");
   // 리터럴로 센다 — 정규식으로 import 블록을 잘라내는 판정은 다른 곳에서 출발해 남의
   // 코드를 읽고도 초록이었다(판 02·03 리뷰가 잡은 것). 리터럴은 파서가 샐 자리가 없다.
   const countOf = (literal: string) => source.split(literal).length - 1;
