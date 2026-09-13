@@ -22,6 +22,7 @@ import {
   attentionOfId,
   CLOSE_NOTICE,
   confirmClose,
+  countQuitShells,
   markExited,
   markFailed,
   NO_SHELLS,
@@ -38,7 +39,7 @@ import {
   shellsOf,
   slugOfOwner,
 } from "./shell-registry";
-import type { OpenedShell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import type { OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
@@ -381,6 +382,15 @@ export async function requestCloseShell(id: number): Promise<void> {
   const ask = () => askDialog({ title: "셸 닫기", body: CLOSE_NOTICE, confirm: "닫기", danger: true });
   if (!(await confirmClose(shell, await commandRunning(id), ask))) return;
   closeShell(id);
+}
+
+/**
+ * 종료 확인이 적을 수(결정 15). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는 세계마다 갈리지
+ * 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지는 셸 닫기 확인과 **같은 물음**으로 지금
+ * 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 `countQuitShells`가 혼자 안다.
+ */
+export function quitShellCounts(): Promise<QuitCounts> {
+  return countQuitShells(terminalStore.state.shells, commandRunning);
 }
 
 /**

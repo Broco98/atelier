@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import { dialogStore } from "./confirm-store";
@@ -13,12 +13,17 @@ import { dialogStore } from "./confirm-store";
 function AppDialog() {
   const pending = useStore(dialogStore, (state) => state);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const bodyId = useId();
   const answer = pending?.answer;
 
-  // 진행 버튼에 포커스를 준다. **셸에서 열렸을 때 이것이 중요하다** — xterm이 포커스를
-  // 쥐고 있으면 키가 전부 그쪽으로 가서, 창이 떠 있는데 Enter도 Esc도 안 듣는다.
+  // 물음이 고른 버튼에 포커스를 준다 — 안 고르면 진행 버튼이다. **셸에서 열렸을 때 이것이
+  // 중요하다** — xterm이 포커스를 쥐고 있으면 키가 전부 그쪽으로 가서, 창이 떠 있는데 Enter도
+  // Esc도 안 듣는다. 알림에는 취소가 없으므로 그때는 진행 버튼으로 떨어진다.
   useEffect(() => {
-    if (pending) confirmRef.current?.focus();
+    if (!pending) return;
+    const target = pending.focus === "cancel" ? cancelRef.current : null;
+    (target ?? confirmRef.current)?.focus();
   }, [pending]);
 
   // Esc는 취소다. **알림에는 취소가 없지만 Esc는 듣는다** — 버튼이 하나뿐이라 닫는 것이
@@ -44,6 +49,8 @@ function AppDialog() {
       role="alertdialog"
       aria-modal="true"
       aria-label={pending.title}
+      // 본문이 창의 **설명**이다 — 읽기 도구가 제목 다음에 읽는다. 본문이 없는 물음에는 가리킬 것이 없다.
+      aria-describedby={pending.body ? bodyId : undefined}
       // 바깥을 눌러도 닫힌다 — 되돌릴 수 없는 일이어도 **취소로** 닫으므로 안전하다.
       onClick={() => pending.answer(false)}
       // 막은 **팔레트와 같은 것을 쓴다**(`modal-scrim`). 뜨는 자리만 갈린다 — 이쪽은 가운데다.
@@ -54,14 +61,21 @@ function AppDialog() {
         className="flex w-[330px] max-w-full flex-col rounded-[13px] border border-border-strong bg-background p-4 shadow-lg"
       >
         <span className="text-[14px] font-semibold tracking-[-0.01em]">{pending.title}</span>
-        <span className="mt-1.5 text-[13px] leading-[1.6] text-tertiary">{pending.body}</span>
+        {/* 본문이 없는 물음이 있다 — 셸이 0개인 종료 확인은 그 줄이 **아예 없다**(결정 15). 빈 줄의
+            여백만 남기지 않는다. */}
+        {pending.body && (
+          <span id={bodyId} className="mt-1.5 text-[13px] leading-[1.6] text-tertiary">
+            {pending.body}
+          </span>
+        )}
         <div className="mt-4 flex justify-end gap-1.5">
           {/* 알림에는 취소가 없다 — 되돌릴 것이 없는데 두 갈래를 주면 무엇이 다른지를 묻게 된다. */}
           {!pending.notice && (
             <button
+              ref={cancelRef}
               type="button"
               onClick={() => pending.answer(false)}
-              className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-state-1"
+              className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-state-1 focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               취소
             </button>
