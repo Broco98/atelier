@@ -1,6 +1,7 @@
 import { Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
 import { navItems, type NavKey } from "@/components/shell/nav-items";
 import { SETTINGS_ENTRY } from "@/features/settings/pages";
+import { isAtOrUnder } from "@/lib/path-prefix";
 
 /**
  * 어느 세계의 것인가. **화면이 아니라 루트를 가르는 축**이다(결정 1) — 같은 컴포넌트가 다른
@@ -196,9 +197,7 @@ export const ALL_MODES = Object.keys(TABLE) as Mode[];
  * 「Maison이 아니면 Atelier」 말고 다른 규칙을 세울 수 없다.
  */
 export function modeOf(pathname: string): Mode {
-  return pathname === MAISON_PREFIX || pathname.startsWith(`${MAISON_PREFIX}/`)
-    ? "maison"
-    : "atelier";
+  return isAtOrUnder(pathname, MAISON_PREFIX) ? "maison" : "atelier";
 }
 
 /**
@@ -312,8 +311,6 @@ const MODELESS_PLACES = ["/", SETTINGS_PLACE.to] as const;
  */
 export function placeModeOf(pathname: string): Mode | null {
   if (modeOf(pathname) === "maison") return "maison";
-  const outside = MODELESS_PLACES.some(
-    (place) => pathname === place || pathname.startsWith(`${place}/`),
-  );
+  const outside = MODELESS_PLACES.some((place) => isAtOrUnder(pathname, place));
   return outside ? null : "atelier";
 }

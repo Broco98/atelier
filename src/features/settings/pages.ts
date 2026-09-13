@@ -1,4 +1,5 @@
 import { Bell, SquareTerminal, Webhook, type LucideIcon } from "lucide-react";
+import { isAtOrUnder } from "@/lib/path-prefix";
 
 /**
  * 설정으로 들어가는 주소. **문 셋이 다 여기로 간다**(사이드바 바닥 · ⌘, · 팔레트) — 첫 항목으로
@@ -51,5 +52,5 @@ export function settingsItemOf(pathname: string): SettingsItemKey | null {
  * 이것이고, 그 가드는 「보던 항목에 머문다」를 지키려고 있다.
  */
 export function inSettings(pathname: string): boolean {
-  return pathname === SETTINGS_ENTRY || pathname.startsWith(`${SETTINGS_ENTRY}/`);
+  return isAtOrUnder(pathname, SETTINGS_ENTRY);
 }
