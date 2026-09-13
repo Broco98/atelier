@@ -1,14 +1,19 @@
 import { settingsApi } from "./api";
+import type { SettingsItemKey } from "./pages";
 import type { Settings } from "./types";
 
-// 설정 구획 하나를 **저장하는 규칙**(#225 · 결정 21). 터미널 설정과 알림 설정이 각자 저장
+// 설정 구획 하나를 **저장하는 규칙**(#225 · S17 · 결정 22·26). 터미널 설정과 알림 설정이 각자 저장
 // 버튼을 갖게 되면서 화면에서 꺼냈다 — 렌더 없이 L2가 잴 수 있어야 하고, 두 구획이 한 줄을
 // 함께 서야 해서다(아래 `tail`).
 //
 // 에이전트 훅은 여기 없다 — 앱 설정 파일이 아니라 사용자의 claude·codex 설정에 산다.
 
-/** 앱 설정 파일에서 **저장 버튼을 가진** 구획들. */
-export type SettingsSectionKey = "terminal" | "notifications";
+/**
+ * 앱 설정 파일에서 **저장 버튼을 가진** 구획들 — 설정 항목 표(`SETTINGS_ITEMS`)에서 훅만 뺀다.
+ * 손으로 적으면 저장할 항목을 표에 더한 날 이 목록만 조용히 낡는다. 빼는 쪽으로 적어서, 더한
+ * 항목이 `Settings`에 칸이 없으면 `Settings[K]`가 타입에서 빨개진다.
+ */
+export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks">;
 
 /**
  * `(읽기, 쓰기) → 저장`. 돌려받은 `save(key, value)`는 **쓰는 순간 최신 설정을 읽어 그 구획

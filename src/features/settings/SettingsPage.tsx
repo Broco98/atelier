@@ -206,7 +206,7 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
  * 사본**일 뿐이고, 저장은 그 사본이 아니라 쓰는 순간의 최신을 딛는다(`save-section.ts`) — 그래서
  * 알림 설정을 저장하고 터미널 설정으로 옮겨 온 페이지가 새로 읽은 사본을 들어도, 옛 사본을 들어도 덮어쓰기가 없다.
  */
-export function SettingsFileGate({
+function SettingsFileGate({
   children,
 }: {
   children: (settings: Settings) => React.ReactNode;
@@ -315,10 +315,10 @@ function useSectionSave<K extends SettingsSectionKey>(
 
 /**
  * 「터미널 설정」 페이지 조각 — 구획 + 제 저장 버튼. **초안을 제가 든다**(#225): 알림 설정과
- * 초안을 함께 들면 알림을 저장할 때 고치다 만 터미널 값이 따라 나간다. 13이 이것을 제 주소의
- * 페이지로 옮긴다.
+ * 초안을 함께 들면 알림을 저장할 때 고치다 만 터미널 값이 따라 나간다. 이 조각은
+ * `/settings/terminal` 페이지 하나에 선다.
  */
-export function TerminalSettingsPage({ initial }: { initial: Settings }) {
+function TerminalSettingsPage({ initial }: { initial: Settings }) {
   const section = useSectionSave("terminal", initial.terminal, (written) =>
     applyTerminalSettings(written.terminal),
   );
@@ -370,7 +370,7 @@ export function TerminalSettingsPage({ initial }: { initial: Settings }) {
  * 저장 조건이 터미널보다 짧다 — 잘못 적힐 수 있는 자유 입력 칸이 없어 「고친 것이 있고 쓰는
  * 중이 아니다」가 전부다.
  */
-export function NotificationSettingsPage({ initial }: { initial: Settings }) {
+function NotificationSettingsPage({ initial }: { initial: Settings }) {
   const section = useSectionSave("notifications", initial.notifications, (written) =>
     applyNotifySettings(notificationChoice(written)),
   );
@@ -419,7 +419,7 @@ export function NotificationSettingsPage({ initial }: { initial: Settings }) {
  * 「에이전트 훅」 조각. **저장 버튼을 안 지난다** — 이 둘은 우리 파일이 아니라 사용자의
  * claude·codex 설정을 고치는 일이라 「고치고 나중에 저장」이라는 초안이 있을 수 없다.
  */
-export function AgentHooksPage() {
+function AgentHooksPage() {
   const [hooks, setHooks] = useState<HookStatus[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
