@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { BRIDGE_FN, callBridge } from "./bridge";
 import { expect } from "./evidence";
-import type { Page } from "./evidence";
+import type { Locator, Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import {
@@ -283,6 +283,35 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
 }
 
 /**
+ * 지금까지 나간 `pty_spawn`의 **cwd를 부른 순서대로**. 인자에 cwd가 없으면 그 호출을 통째로
+ * 남긴다 — `undefined`로 접으면 「안 실렸다」와 「못 읽었다」가 같은 얼굴이 된다.
+ *
+ * 기록에서 읽는 것은 픽스처의 답이 자리와 무관해서다(그것이 실물 그대로다) — 답으로는 셸이
+ * 어디서 떴는지가 안 갈린다.
+ */
+export async function spawnedCwds(page: Page): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls
+    .filter((call) => call.startsWith("pty_spawn "))
+    .map((call) => /"cwd":"([^"]*)"/.exec(call)?.[1] ?? `(cwd가 없다: ${call})`);
+}
+
+/**
+ * 지금까지 그 커맨드로 나간 호출의 수. 이름이 **정확히** 같은 것만 센다(`ipcCallArgs`와 같은 거름) —
+ * 앞머리로 세면 뒷날 `pty_write_*` 같은 이웃 커맨드가 함께 세어진다.
+ */
+export async function callCount(page: Page, command: string): Promise<number> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls.filter((call) => call === command || call.startsWith(`${command} `)).length;
+}
+
+/**
+ * 경로 한 단계 위 — 「모든 프로젝트」(워크트리들의 부모)와 Work 폴더(`specDir`의 부모)의
+ * 기대값을 픽스처 경로에서 **파생한다**(폴더 이름을 검사에 안 적는다).
+ */
+export const parentPath = (path: string): string => path.slice(0, path.lastIndexOf("/"));
+
+/**
  * IPC 기록에서 **무엇인가가 나타나기를** 기다린다. 하네스가 백엔드 흉내를 내려면 브라우저가
  * 난수로 지은 번호(구독 핸들러 id · 채널 id)를 알아야 하는데, 그 번호는 앱이 실제로 그
  * 호출을 내보낸 뒤에야 기록에 남는다.
@@ -311,14 +340,136 @@ async function awaitIpcMatch(
 }
 
 /**
+ * 백엔드가 쏘는 이벤트 `event`를 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아.**
+ * 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
+ *
+ * 구독 id는 IPC 기록에서 읽는다 — **상수로 적을 수 없다**(`transformCallback`이 난수로 짓는다).
+ * **`listen`만 고르고 마지막 구독을 쓴다**: 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가
+ * 없고, StrictMode가 붙였다 떼면서 살아 있는 것은 마지막 구독이다. 구독이 아직 안 보이면
+ * 기다리고 끝내 없으면 **던진다**(`awaitIpcMatch`) — 아무것도 안 쏜 채 지나가면 「아무 일도 안
+ * 일어났다」를 재는 단언이 초록이 된다.
+ *
+ * **한 번 쏘는 것이 기본이다.** 전이를 싣는 이벤트(`shell:attention`)는 여러 번 쏘면 그 수만큼
+ * 발화한다 — 멱등한 값을 앉을 때까지 다시 쏘는 것은 `markRunning`의 일이다.
+ */
+export async function fireEvent(
+  page: Page,
+  event: string,
+  payload: unknown,
+  times = 1,
+): Promise<void> {
+  const handler = await awaitIpcMatch(
+    page,
+    (calls) => {
+      const listen = calls
+        .filter((call) => call.startsWith("plugin:event|listen") && call.includes(`"${event}"`))
+        .reverse()[0];
+      return (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
+    },
+    `${event} 구독`,
+  );
+  await page.evaluate(
+    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      for (let n = 0; n < times; n += 1) {
+        internals.runCallback(handler, { event, id: 0, payload });
+      }
+    },
+    { handler: Number(handler), event, payload, times },
+  );
+}
+
+/**
  * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
  *
  * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
- * **형제**라(`SidebarWorkList`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
+ * **형제**라(`WorkSectionList`의 `WorkRow`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
  * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
  */
 export const 레인 = (page: Page, slug: string) =>
   page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
+
+/** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
+export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+
+/** 사이드바에 선 작업 행의 slug, 위에서부터. */
+export const shownWorkOrder = (page: Page) =>
+  page.locator("[data-work-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-work-row")));
+
+export type RowPoint = "upper" | "lower" | "middle";
+
+/** 상자 안의 한 점 — 윗 사분의 일 · 아랫 사분의 일 · 가운데. 중심선에 바짝 붙이면 반올림에 흔들린다. */
+export async function pointIn(target: Locator, where: RowPoint) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("끌 자리의 상자를 못 읽었다");
+  const ratio = { upper: 0.25, lower: 0.75, middle: 0.5 }[where];
+  return { x: box.x + box.width / 2, y: box.y + box.height * ratio };
+}
+
+/**
+ * 작업 행을 눌러 **문턱을 넘긴 채** 멈춘다. 문턱을 넘었다는 증거로 끌리는 행이 흐려진 것을 먼저 본다 —
+ * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
+ *
+ * L3·L4가 함께 딛는다 — 손짓을 spec마다 적으면 문턱이나 흐려짐이 바뀌는 날 고칠 자리가 여럿이 된다.
+ */
+export async function pickUpRow(page: Page, slug: string) {
+  const from = await pointIn(workRow(page, slug), "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y + 12, { steps: 3 });
+  await expect(workRow(page, slug)).toHaveCSS("opacity", "0.4");
+}
+
+/** 끄는 중인 포인터를 그 자리로 옮긴다 — 여러 걸음으로, 실물처럼. */
+export async function hoverRowPoint(page: Page, target: Locator, where: RowPoint) {
+  const to = await pointIn(target, where);
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+}
+
+/** 작업 행을 끌어 놓는다 — 놓기 전에 틈 선이 섰는지 본다(놓을 곳이 있는 끌기만 부른다). */
+export async function dragRowOnto(page: Page, slug: string, target: Locator, where: RowPoint) {
+  await pickUpRow(page, slug);
+  await hoverRowPoint(page, target, where);
+  await expect(page.locator("[data-drop-line]")).toBeVisible();
+  await page.mouse.up();
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/** 상자의 한가운데. */
+export const middle = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+
+/**
+ * 탭을 눌러 **분할 끌기를 시작시킨다**(`works-split`·`drag-gesture`가 함께 딛는다). 겹판이 설
+ * 때까지가 여기까지이고, 어디에 놓을지는 부르는 쪽이 정한다. 돌려주는 것은 누른 자리다.
+ *
+ * 임계값을 넘기는 이동과 목적지로 가는 이동을 **나눈다.** 겹판이 서는 것은 임계값을 넘은
+ * 그 이동에서인데, 그때 포인터 아래에는 아직 겹판이 없어 절반이 「내 위다」를 말하는 것은
+ * 다음 이동부터다. 실물에서는 구멍이 아니다 — 임계값은 출발점에서 5px이라 사이드바 위에서
+ * 넘고, 본문까지 오는 동안 이동이 수십 번 더 온다.
+ *
+ * 12px는 문턱(5px)을 넉넉히 넘기면서 누른 탭 밖으로는 안 나가는 거리다. `tab-order`의 누름과
+ * `pickUpRow`도 12를 쓰지만 각자 자리의 기하가 정한 수라 여기로 묶지 않는다.
+ */
+export async function startSplitDrag(page: Page, box: Box) {
+  const from = middle(box);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y);
+  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+  return from;
+}
+
+/** 끄는 중인 포인터를 그 절반 한가운데로 민다. **좌표를 손으로 적지 않는다** — 겹판이 자기 상자를 말한다. */
+export async function moveOntoHalf(page: Page, half: "left" | "right") {
+  const box = await page.locator(`[data-drop-half="${half}"]`).boundingBox();
+  if (!box) throw new Error(`${half} 절반의 상자를 못 읽었다`);
+  const at = middle(box);
+  await page.mouse.move(at.x, at.y);
+  await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
+}
 
 /** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
@@ -471,43 +622,41 @@ export async function openShell(page: Page): Promise<void> {
  * 「n번째로 spawn 응답을 받은 셸」이라 기다릴 수도 그 수 그대로다.
  *
  * `state`에 `null`을 주면 「그 셸의 상태가 사라졌다」(파일이 지워졌다)를 흉내 낸다.
+ *
+ * **탭 줄이 없는 화면에서는 이 함수를 못 쓴다** — 착석을 칸의 닫기 버튼으로 재므로(`awaitSpawned`)
+ * 설정처럼 탭 줄이 없는 화면에서는 기다림이 던진다. 그때는 착석을 탭 줄이 있는 화면에서 먼저
+ * 기다려 두고 옮긴 뒤 `fireAttention`으로 쏜다.
  */
 export async function markAttention(
   page: Page,
-  state: { agent: string; event: string; at?: number; payload?: unknown } | null,
+  state: AttentionState | null,
   ptyId = 1,
 ): Promise<void> {
   await awaitSpawned(page, ptyId);
+  await fireAttention(page, state, ptyId);
+}
 
-  const handler = await awaitIpcMatch(
-    page,
-    (calls) => {
-      const listen = calls.filter((call) => call.includes('"shell:attention"')).reverse()[0];
-      return (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
-    },
-    "shell:attention 구독",
-  );
+type AttentionState = { agent: string; event: string; at?: number; payload?: unknown };
 
-  await page.evaluate(
-    ({ handler, payload }: { handler: number; payload: unknown }) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      internals.runCallback(handler, { event: "shell:attention", id: 0, payload });
-    },
+/**
+ * `markAttention`에서 **착석 기다림을 뺀 쏘기**(#226). 착석은 부르는 쪽이 이미 확인했어야 한다 —
+ * 안 앉은 pty에 쏘면 값이 조용히 버려진다(`markAttention` 머리말). 구독이 걸렸는지는 여전히
+ * 기다리고, 끝내 없으면 던진다(`fireEvent`).
+ */
+export async function fireAttention(
+  page: Page,
+  state: AttentionState | null,
+  ptyId = 1,
+): Promise<void> {
+  await fireEvent(page, "shell:attention", [
     {
-      handler: Number(handler),
-      payload: [
-        {
-          shellId: `l3-${ptyId}`,
-          state:
-            state === null
-              ? null
-              : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
-        },
-      ],
+      shellId: `l3-${ptyId}`,
+      state:
+        state === null
+          ? null
+          : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
     },
-  );
+  ]);
 }
 
 /**
@@ -598,25 +747,40 @@ export async function sentNotifications(
  * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
  */
 export async function badgeCalls(page: Page): Promise<Array<number | null>> {
+  // **먼저 호출의 모양을 세운다.** 이 커맨드의 인자에는 어느 창인지가 늘 실리므로
+  // (`label`) 그것이 안 보이면 읽고 있는 것이 이 호출이 아니거나 기록 형식이 바뀐
+  // 것이다 — 거기서 조용히 `null`을 내면 **모든 호출이 「배지를 없앴다」로 읽혀**
+  // 「배지가 사라졌다」를 재는 단언이 통째로 fail-open이 된다(`ipcCallArgs`가 던진다).
+  return (await ipcCallArgs(page, BADGE_COMMAND, "label")).map(({ call, args }) => {
+    // **여기서만 `null`이 나온다.** `undefined`가 「배지를 없앤다」인데(`setBadgeCount`의
+    // 계약) 와이어에서는 키가 통째로 빠진다(`JSON.stringify`) — 그 없음이 곧 뜻이다.
+    if (!("value" in args)) return null;
+    const value = args.value;
+    if (typeof value !== "number") throw new Error(`배지 값이 수가 아니다 — ${call}`);
+    return value;
+  });
+}
+
+/**
+ * 그 커맨드로 나간 호출들의 인자, 나간 순서대로. **늘 실리는 키 하나**(`requiredKey`)가 안 보이면
+ * 던진다 — 읽고 있는 것이 그 호출이 아니거나 기록 형식이 바뀐 것이고, 거기서 조용히 넘기면 그
+ * 인자를 재는 단언이 통째로 fail-open이 된다. 위 구독 손잡이 둘이 정규식이 안 맞을 때 IPC
+ * 기록을 실어 던지는 것과 같은 이유다.
+ */
+export async function ipcCallArgs(
+  page: Page,
+  command: string,
+  requiredKey: string,
+): Promise<Array<{ call: string; args: Record<string, unknown> }>> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
   return calls
-    .filter((call) => call.startsWith(BADGE_COMMAND))
+    .filter((call) => call === command || call.startsWith(`${command} `))
     .map((call) => {
-      // **먼저 호출의 모양을 세운다.** 이 커맨드의 인자에는 어느 창인지가 늘 실리므로
-      // (`label`) 그것이 안 보이면 읽고 있는 것이 이 호출이 아니거나 기록 형식이 바뀐
-      // 것이다 — 거기서 조용히 `null`을 내면 **모든 호출이 「배지를 없앴다」로 읽혀**
-      // 「배지가 사라졌다」를 재는 단언이 통째로 fail-open이 된다. 위 구독 손잡이 둘이
-      // 정규식이 안 맞을 때 IPC 기록을 실어 던지는 것과 같은 이유다.
-      const args: unknown = JSON.parse(call.slice(BADGE_COMMAND.length).trim() || "null");
-      if (typeof args !== "object" || args === null || !("label" in args)) {
-        throw new Error(`배지 호출의 모양이 낯설다 — ${call}`);
+      const args: unknown = JSON.parse(call.slice(command.length).trim() || "null");
+      if (typeof args !== "object" || args === null || !(requiredKey in args)) {
+        throw new Error(`${command} 호출의 모양이 낯설다 — ${call}`);
       }
-      // **여기서만 `null`이 나온다.** `undefined`가 「배지를 없앤다」인데(`setBadgeCount`의
-      // 계약) 와이어에서는 키가 통째로 빠진다(`JSON.stringify`) — 그 없음이 곧 뜻이다.
-      if (!("value" in args)) return null;
-      const value = (args as { value: unknown }).value;
-      if (typeof value !== "number") throw new Error(`배지 값이 수가 아니다 — ${call}`);
-      return value;
+      return { call, args: args as Record<string, unknown> };
     });
 }
 
@@ -652,6 +816,23 @@ const BADGE_COMMAND = "plugin:window|set_badge_count";
  * 않는다 — 그래서 페이지 안에 채널별 카운터를 둔다.
  */
 export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<void> {
+  await sendFrame(page, ptyId, { bytes });
+}
+
+/**
+ * 셸 하나가 **스스로 끝난 것처럼** 종료 프레임을 쏜다. 코드 0이면 그 칸이 줄에서 스스로 빠진다
+ * (결정 48 — `markExited`). 채널과 순번 규칙은 `writeShell`과 같아서 같은 자리에서 쏜다 — 순번을
+ * 따로 세면 뒤에 오는 출력 프레임이 영영 큐에 갇힌다.
+ */
+export async function exitShell(page: Page, ptyId = 1, exitCode = 0): Promise<void> {
+  await sendFrame(page, ptyId, { exit: { exitCode, signal: null } });
+}
+
+async function sendFrame(
+  page: Page,
+  ptyId: number,
+  frame: { bytes: string } | { exit: { exitCode: number; signal: string | null } },
+): Promise<void> {
   const channel = await awaitIpcMatch(
     page,
     (calls) => {
@@ -662,7 +843,7 @@ export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<
   );
 
   await page.evaluate(
-    ({ channel, bytes }: { channel: number; bytes: string }) => {
+    ({ channel, frame }) => {
       const win = window as unknown as {
         __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
         __ATELIER_FRAME_INDEX__?: Record<number, number>;
@@ -674,9 +855,9 @@ export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<
       // 종료 프레임만 객체다(`terminal-store`의 `spawn`이 `instanceof`로 가른다).
       win.__TAURI_INTERNALS__.runCallback(channel, {
         index,
-        message: new TextEncoder().encode(bytes).buffer,
+        message: "bytes" in frame ? new TextEncoder().encode(frame.bytes).buffer : frame.exit,
       });
     },
-    { channel: Number(channel), bytes },
+    { channel: Number(channel), frame },
   );
 }

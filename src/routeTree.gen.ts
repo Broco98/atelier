@@ -17,6 +17,10 @@ import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
 import { Route as MaisonTerminalRouteImport } from './routes/maison.terminal'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
+import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
+import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
+import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
 import { Route as MaisonArchiveIndexRouteImport } from './routes/maison.archive.index'
@@ -64,6 +68,26 @@ const ProjectsSlugRoute = ProjectsSlugRouteImport.update({
   path: '/projects/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsHooksRoute = SettingsHooksRouteImport.update({
+  id: '/hooks',
+  path: '/hooks',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsTerminalRoute = SettingsTerminalRouteImport.update({
+  id: '/terminal',
+  path: '/terminal',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const WorksIndexRoute = WorksIndexRouteImport.update({
   id: '/works/',
   path: '/works/',
@@ -97,14 +121,18 @@ const MaisonRoomsSlugRoute = MaisonRoomsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/hooks': typeof SettingsHooksRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/terminal': typeof SettingsTerminalRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
@@ -113,14 +141,17 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/hooks': typeof SettingsHooksRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/terminal': typeof SettingsTerminalRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive': typeof ArchiveIndexRoute
   '/projects': typeof ProjectsIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/works': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
@@ -130,14 +161,18 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/settings/hooks': typeof SettingsHooksRoute
+  '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/terminal': typeof SettingsTerminalRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
   '/projects/': typeof ProjectsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
@@ -153,9 +188,13 @@ export interface FileRouteTypes {
     | '/archive/$slug'
     | '/maison/terminal'
     | '/projects/$slug'
+    | '/settings/hooks'
+    | '/settings/notifications'
+    | '/settings/terminal'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
+    | '/settings/'
     | '/works/'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
@@ -164,14 +203,17 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/settings'
     | '/terminal'
     | '/archive/$slug'
     | '/maison/terminal'
     | '/projects/$slug'
+    | '/settings/hooks'
+    | '/settings/notifications'
+    | '/settings/terminal'
     | '/works/$slug'
     | '/archive'
     | '/projects'
+    | '/settings'
     | '/works'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
@@ -185,9 +227,13 @@ export interface FileRouteTypes {
     | '/archive/$slug'
     | '/maison/terminal'
     | '/projects/$slug'
+    | '/settings/hooks'
+    | '/settings/notifications'
+    | '/settings/terminal'
     | '/works/$slug'
     | '/archive/'
     | '/projects/'
+    | '/settings/'
     | '/works/'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
@@ -197,7 +243,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
   MaisonTerminalRoute: typeof MaisonTerminalRoute
@@ -270,6 +316,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/hooks': {
+      id: '/settings/hooks'
+      path: '/hooks'
+      fullPath: '/settings/hooks'
+      preLoaderRoute: typeof SettingsHooksRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/notifications': {
+      id: '/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof SettingsNotificationsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/terminal': {
+      id: '/settings/terminal'
+      path: '/terminal'
+      fullPath: '/settings/terminal'
+      preLoaderRoute: typeof SettingsTerminalRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/works/': {
       id: '/works/'
       path: '/works'
@@ -315,9 +389,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsHooksRoute: typeof SettingsHooksRoute
+  SettingsNotificationsRoute: typeof SettingsNotificationsRoute
+  SettingsTerminalRoute: typeof SettingsTerminalRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsHooksRoute: SettingsHooksRoute,
+  SettingsNotificationsRoute: SettingsNotificationsRoute,
+  SettingsTerminalRoute: SettingsTerminalRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
   MaisonTerminalRoute: MaisonTerminalRoute,

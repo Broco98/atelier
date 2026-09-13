@@ -1,6 +1,8 @@
 /// <reference types="node" />
-// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
+// 소스 스캔(파일 읽기·디렉터리 훑기) 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts
+// 머리말과 같다.
+import { readdirSync, readFileSync, type Dirent } from "fs";
+import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,15 +13,21 @@ import {
   atCap,
   CLOSE_NOTICE,
   confirmClose,
+  countQuitShells,
   markExited,
   markFailed,
   markSeen,
+  isInPlaceGap,
   MAX_SHELLS,
+  moveShell,
   needsCloseConfirm,
   NO_SHELLS,
   openShell,
+  placeHint,
+  placeOrigin,
   closesShellFromWindow,
   opensShellFromWindow,
+  quitNotice,
   removeShell,
   runningAgentsOf,
   runningOn,
@@ -40,12 +48,14 @@ import {
   shellsOf,
   cycleShell,
   modeOfOwner,
+  ownerIn,
   ownerOf,
   sameScreen,
   shellForNav,
   shellHotkey,
   slugOfOwner,
   topTerminal,
+  workDefaultOrigin,
   workShellOrigin,
   workShellProjects,
 } from "./shell-registry";
@@ -717,6 +727,22 @@ describe("셸의 소유자 키", () => {
     }
   });
 
+  // 공용 끌기 모듈은 이 타입을 못 불러 소유자를 `string`으로 싣는다(UI개선 티켓 03). 받는
+  // 쪽이 `as`로 좁히면 형식 보증이 주석 하나로 내려앉는다 — 손으로 이은 문자열(`work.slug`)이
+  // 그대로 앉아 slug가 조용히 틀린다. 좁히기는 **값을 보고** 여기서 한다.
+  it("`ownerIn`은 그 세계가 지은 키만 소유자로 받는다", () => {
+    for (const mode of ALL_MODES) {
+      expect(ownerIn(mode, ownerOf(mode))).toBe(ownerOf(mode));
+      for (const slug of SLUGS) {
+        expect(ownerIn(mode, ownerOf(mode, slug)), String(slug)).toBe(ownerOf(mode, slug));
+      }
+    }
+    // slug만 실은 것 · 남의 세계 키 · 구분자 없는 모드 이름은 소유자가 아니다.
+    expect(ownerIn("atelier", "finance")).toBeNull();
+    expect(ownerIn("atelier", ownerOf("maison", "finance"))).toBeNull();
+    expect(ownerIn("atelier", "atelier")).toBeNull();
+  });
+
   // 최상위 키와 work 키가 안 겹치는 근거가 「slug는 비어 있을 수 없다」 한 줄이라, 빈 뒤꼬리는
   // 최상위 말고 다른 뜻을 가질 수 없다 — 코어가 빈 slug를 거절해서다(`is_safe_slug`).
   it("뒤가 비면 그 세계의 최상위다 — slug가 있는 키와 안 겹친다", () => {
@@ -815,6 +841,104 @@ describe("cwd는 Work의 모양이 정한다", () => {
   });
 });
 
+// UI개선 결정 17~19·30. **자리를 묻는 물음이 셋으로 갈린다** — 기본 자리(⌘T), 고른 프로젝트(메뉴),
+// 들어갈 때 셸을 세우는 자리. 뒤의 둘은 위 `workShellOrigin`이 그대로 맡고(멀티 프로젝트에 안
+// 고르면 `null` — 위 「프로젝트가 여럿인데 안 고르면 셸이 생기지 않는다」가 UI개선 결정 30 그대로다),
+// 앞의 하나가 **`null`이 없는** 이 함수다. 둘을 한 함수의 인자로 섞으면 「들어갈 때」가 기본
+// 자리를 타는 날 멀티 프로젝트 work에 저장소가 아닌 폴더의 셸이 저절로 쌓인다.
+describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모든 프로젝트」", () => {
+  it("프로젝트가 여럿이면 첫 워크트리 경로의 부모에서 연다 — 프로젝트 앞말이 없다", () => {
+    expect(workDefaultOrigin("atelier", w(["atelier", "cli"]))).toEqual({
+      mode: "atelier",
+      cwd: "~/.atelier/works/w/trees",
+      owner: ownerOf("atelier", "w"),
+      project: null,
+    });
+  });
+
+  // **폴더 이름을 앱이 짓지 않는다** — 워크트리 경로는 코어가 만든 값이고, 그 부모를 읽을
+  // 뿐이다. 이름으로 지으면 코어가 자리를 옮기는 날 셸이 없는 폴더에서 뜬다.
+  it("이름이 아니라 부모를 읽는다 — 끝의 슬래시도 같은 자리다", () => {
+    const work = w(["atelier", "cli"]);
+    const moved = {
+      ...work,
+      worktrees: [
+        { ...work.worktrees[0], path: "~/딴데/w/나무/atelier/" },
+        { ...work.worktrees[1], path: "~/딴데/w/나무/cli" },
+      ],
+    };
+    expect(workDefaultOrigin("atelier", moved).cwd).toBe("~/딴데/w/나무");
+  });
+
+  // 0·1개 work과 Room은 **지금과 같다**(UI개선 스펙 §11). 두 세계를 함께 돈다 — Maison은 워크트리가
+  // 실려 와도 Room 폴더다(`shellTrees`).
+  it("0·1개 work과 Maison은 지금 자리와 같다", () => {
+    for (const mode of ALL_MODES) {
+      for (const work of [w([]), w(["atelier"])]) {
+        expect(workDefaultOrigin(mode, work), `${mode} ${work.worktrees.length}개`).toEqual(
+          workShellOrigin(mode, work, null),
+        );
+      }
+    }
+    expect(workDefaultOrigin("maison", w(["atelier", "cli"]))).toEqual(
+      workShellOrigin("maison", w(["atelier", "cli"]), null),
+    );
+  });
+
+  // UI개선 결정 18·19. `+` 메뉴의 「모든 프로젝트」와 묻지 않는 `+`는 ⌘T와 **같은 자리**다 — 그 규칙이
+  // 서는 곳이 `placeOrigin` 하나라 여기서 값으로 잰다. 세계·모양을 전부 돈다: 한 갈래만 기본
+  // 자리를 안 타면 그 모양의 work에서만 `+`와 ⌘T가 다른 자리에 연다.
+  it("「모든 프로젝트」는 ⌘T와 같은 자리, 프로젝트 줄은 그 워크트리다", () => {
+    for (const mode of ALL_MODES) {
+      for (const work of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
+        expect(placeOrigin(mode, work, { kind: "default" }), `${mode} ${work.worktrees.length}개`).toEqual(
+          workDefaultOrigin(mode, work),
+        );
+      }
+    }
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })).toEqual(
+      workShellOrigin("atelier", w(["atelier", "cli"]), "cli"),
+    );
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })?.cwd).toBe(
+      "~/.atelier/works/w/trees/cli",
+    );
+    // 열린 사이 work이 바뀌어 고른 이름이 없으면 자리가 안 정해진다(결정 24).
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "없음" })).toBeNull();
+  });
+
+  // `+` 메뉴의 「모든 프로젝트」 옆 옅은 글자(UI개선 결정 20). 이름을 적지 않고 **그 자리의 마지막
+  // 마디**를 읽는다 — 제품 코드가 그렇다는 것은 아래 소스 스캔이 문다(테스트 파일은 안 본다).
+  it("옅은 경로는 기본 자리 경로의 마지막 마디 + `/`다", () => {
+    expect(placeHint(workDefaultOrigin("atelier", w(["atelier", "cli"])).cwd)).toBe("trees/");
+    expect(placeHint("~/딴데/w/나무/")).toBe("나무/");
+    // 최상위 터미널은 데이터 루트라 cwd가 없다 — 보일 경로가 없다.
+    expect(placeHint(topTerminal("atelier").cwd)).toBeNull();
+  });
+
+  // **프런트는 「모든 프로젝트」 폴더의 이름을 모른다**(UI개선 스펙 §7) — 위 함수가 부모를 읽는 것이
+  // 그 약속의 절반이고, 이 스캔이 나머지 절반이다: 누가 경로 조각을 손으로 이으면 코어가
+  // 자리를 옮기는 날 그 한 곳만 없는 폴더를 가리킨다. 한 줄 리터럴만 본다(파싱하지 않는다).
+  //
+  // **fail-closed**: 파일을 하나도 못 읽으면 「조각이 0개」가 저절로 참이 된다. 그래서 같은
+  // 스캔이 `worktrees`를 찾아야 한다 — 그 낱말이 소스에 있다는 것이 실제로 읽었다는 증거다.
+  it("테스트가 아닌 프런트 소스에 그 폴더 이름의 경로 조각이 없다", () => {
+    const root = fileURLToPath(new URL("../..", import.meta.url));
+    const sources = (function walk(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    })(root);
+    const text = sources.map((path) => readFileSync(path, "utf8")).join("\n");
+
+    expect(countOf(text, "worktrees"), "소스를 못 읽었다 — `worktrees`가 하나도 없다").toBeGreaterThan(0);
+    for (const piece of ['"trees', "'trees", "`trees", "trees/", "/trees"]) {
+      expect(countOf(text, piece), piece).toBe(0);
+    }
+  });
+});
+
 // US 26. `+`가 「어디에 열까」를 묻기 전에 「고를 것이 있나」를 이 함수가 답한다 —
 // `workShellOrigin`과 **같은 값(`shellTrees`)** 을 봐야 메뉴는 열리는데 고른 값으로 셸이
 // 안 생기는 일이 없다. 그래서 이 describe는 두 함수를 **나란히** 잰다: 한쪽만 재면 둘이
@@ -837,14 +961,17 @@ describe("고를 수 있는 프로젝트와 열리는 자리", () => {
 
   // **위 검사와 짝이다.** 「고를 것이 없다」만 재고 「그래서 어디에 여는가」를 안 재면 이 판이
   // 만든 것은 방어가 아니라 **눌러도 아무 일이 없는 `+`**다: 메뉴는 안 열리고(`asks`가 거짓),
-  // `onOpen(null)`은 `workShellOrigin`이 워크트리를 그대로 읽어 `null`을 줘서 조용히 끝난다.
-  // 둘이 한 함수(`shellTrees`)를 보는 것이 그 판을 막고, 그 사실을 여기서 값으로 잰다.
+  // 묻지 않는 `+`는 `onOpen({ kind: "default" })`로 기본 자리(`workDefaultOrigin` — `placeOrigin`
+  // 이 탄다)에 연다. 그 함수와 메뉴의 판단이 한 함수(`shellTrees`)를 보는 것이 「워크트리를 그대로
+  // 읽어 엉뚱한 곳에 연다」를 막고, 그 사실을 여기서 값으로 잰다. 진입 셸이 타는
+  // `workShellOrigin(…, null)`도 같은 자리여야 한다(UI개선 스펙 §11) — 함께 잰다.
   it("Maison에서는 워크트리가 실려 와도 Room 폴더에서 연다", () => {
     for (const room of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
-      const origin = workShellOrigin("maison", room, null);
-      // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
-      expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
-      expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
+      for (const origin of [workDefaultOrigin("maison", room), workShellOrigin("maison", room, null)]) {
+        // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
+        expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
+        expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
+      }
     }
   });
 
@@ -1529,7 +1656,11 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   const store = read("./terminal-store.ts");
 
   it("⌘T·⌘W가 셸 안에서 갈리는 자리", () => {
-    expect(store).toContain('if (hotkey === "new") openNewShell(instance.origin);');
+    // **셸 안 ⌘T는 자리를 정하지 않는다**(UI개선 결정 19). 그 셸의 화면에 「새 셸」을 요청하고, 화면이
+    // 창 단축키와 같은 기본 자리 함수로 연다. `instance.origin`으로 스스로 열면 프로젝트 셸
+    // 안의 ⌘T만 그 프로젝트에서 떠 셸 안과 밖이 다른 자리가 된다.
+    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(countOf(store, "openNewShell(instance.origin)"), "셸이 제 자리로 스스로 연다").toBe(0);
     expect(store).toContain("else void requestCloseShell(instance.id);");
   });
 
@@ -1991,5 +2122,132 @@ describe("죽은 셸의 상태", () => {
     const 죽은뒤 = markExited(부르던칸, ids[0], { exitCode: 1, signal: "Terminated: 15" });
     expect(죽은뒤.shells).toHaveLength(1);
     expect(attentionOn(죽은뒤.shells[0])).toBeNull();
+  });
+});
+
+// 종료 확인이 적는 수(UI개선 결정 15 · #223). 창과 「묻는 중」 표시는 `quit-request.test.ts`가 본다.
+describe("종료 확인이 세는 셸", () => {
+  // **물음이 실패해도 던지지 않는다.** 던지면 창이 안 뜨는데 부르는 쪽의 표시만 선 채 남을 수 있고,
+  // 그러면 다음 종료 요청이 전부 무시된다 — 앱을 끌 길이 강제 종료뿐이 된다.
+  it("거부하는 물음은 그 셸을 안 도는 것으로 센다", async () => {
+    const { shells } = opened(2).state;
+    // 셸마다 **던지는** 물음이다 — 한 셸의 실패가 나머지 셸의 세기를 끌고 가면 안 된다.
+    const counts = await countQuitShells(shells, () => Promise.reject(new Error("IPC 실패")));
+    expect(counts).toEqual({ live: 2, running: 0 });
+  });
+
+  it("모르면(`null`) 안 도는 것으로 센다 — 셸 닫기 확인과 같은 판정이다", async () => {
+    const { shells } = opened(3).state;
+    const answers = [true, null, false];
+    const counts = await countQuitShells(shells, async (id) => answers[shells.findIndex((s) => s.id === id)]);
+    expect(counts).toEqual({ live: 3, running: 1 });
+  });
+
+  // 끝난 칸은 목록에 남아 있지만 닫힐 프로세스가 없다 — 물어볼 것도 없다(`needsCloseConfirm`과 같은 규칙).
+  it("끝난 칸은 세지도 묻지도 않는다", async () => {
+    const two = opened(2).state;
+    const state = markExited(two, two.shells[0].id, { exitCode: 1, signal: null });
+    const asked: number[] = [];
+    const counts = await countQuitShells(state.shells, async (id) => {
+      asked.push(id);
+      return true;
+    });
+    expect(counts).toEqual({ live: 1, running: 1 });
+    expect(asked).toEqual([state.shells[1].id]);
+  });
+});
+
+describe("종료 확인의 본문", () => {
+  it("셸이 있으면 셸 수와 명령이 도는 셸 수를 적는다", () => {
+    expect(quitNotice({ live: 2, running: 1 })).toBe("셸 2 · 명령이 도는 셸 1");
+  });
+
+  it("셸이 0개면 그 줄이 없다", () => {
+    expect(quitNotice({ live: 0, running: 0 })).toBeUndefined();
+  });
+});
+
+// UI개선 결정 11 · UI개선 스펙 §6 — 탭을 끌어 놓으면 **그 화면 셸들의 상대 순서만** 바뀐다. `gap`은 그 화면
+// 셸들 사이의 틈 번호(0..n)다 — 0이 첫 칸 앞, n이 마지막 칸 뒤다. ⌘1~9·⌃Tab·`×` 이웃
+// 규칙은 같은 배열을 세므로 여기서 순서가 맞으면 따라온다(새 규칙이 없다).
+describe("셸 탭을 틈으로 옮긴다", () => {
+  // 네 칸짜리 최상위 화면. id가 곧 자리 순서라 기대값을 id로 적는다.
+  const four = () => opened(4);
+
+  it.each([
+    ["오른쪽 끝으로", 0, 4, [1, 2, 3, 0]],
+    ["오른쪽 한 칸 건너", 0, 2, [1, 0, 2, 3]],
+    ["왼쪽 끝으로", 3, 0, [3, 0, 1, 2]],
+    ["왼쪽 한 칸 건너", 2, 1, [0, 2, 1, 3]],
+  ] as const)("%s — %i번째 칸을 틈 %i에 놓는다", (_, from, gap, order) => {
+    const { state, ids } = four();
+    const moved = moveShell(state, ids[from], gap);
+    expect(idsOf(moved)).toEqual(order.map((at) => ids[at]));
+  });
+
+  // 제자리 — 원래 자리 `i`의 양옆 틈(`i`·`i+1`)이다. **같은 객체**를 돌려줘야 구독이
+  // 안 흔들린다(`sameScreen`의 `a === b`).
+  it.each([0, 1, 2, 3])("%i번째 칸을 제 양옆 틈에 놓으면 같은 상태다", (from) => {
+    const { state, ids } = four();
+    expect(moveShell(state, ids[from], from)).toBe(state);
+    expect(moveShell(state, ids[from], from + 1)).toBe(state);
+  });
+
+  // 제자리 판정은 **한 곳**이다 — 탭 줄의 틈 선(`tabGap`)도 이것을 불러 선을 안 세운다. 둘이
+  // 각자 적으면 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이 안 선다.
+  it.each([
+    [2, 1, false],
+    [2, 2, true],
+    [2, 3, true],
+    [2, 4, false],
+    [0, 0, true],
+    [0, 1, true],
+  ] as const)("%i번째 칸의 틈 %i은 제자리인가 — %s", (from, gap, inPlace) => {
+    expect(isInPlaceGap(from, gap)).toBe(inPlace);
+  });
+
+  it("모르는 id는 같은 상태다", () => {
+    const { state } = four();
+    expect(moveShell(state, 999, 0)).toBe(state);
+  });
+
+  // 전역 배열에는 여러 화면의 셸이 섞여 산다. 틈 번호는 **이 화면 셸들 사이**의 것이라,
+  // 전역 자리로 세면 남의 셸을 건너뛰는 몫만큼 어긋나고 남의 셸이 밀린다.
+  it("남의 화면 셸은 전역 배열에서 제자리다", () => {
+    let state = NO_SHELLS;
+    const ids: Record<string, number> = {};
+    for (const [name, seed] of [
+      ["가1", originFor("가")],
+      ["나1", originFor("나")],
+      ["가2", originFor("가")],
+      ["top", TOP],
+      ["가3", originFor("가")],
+    ] as const) {
+      const next = openShell(state, seed)!;
+      state = next.state;
+      ids[name] = next.id;
+    }
+    const moved = moveShell(state, ids["가3"], 0);
+    expect(idsOf(moved)).toEqual([ids["가3"], ids["나1"], ids["가1"], ids["top"], ids["가2"]]);
+    expect(shellsOf(moved, ownerFor("가")).map((shell) => shell.id)).toEqual([
+      ids["가3"],
+      ids["가1"],
+      ids["가2"],
+    ]);
+  });
+
+  it("켜진 칸은 안 바뀐다", () => {
+    const { state, ids } = four();
+    const lit = activateShell(state, ids[1]);
+    const moved = moveShell(lit, ids[1], 4);
+    expect(activeTop(moved)).toBe(ids[1]);
+    expect(moved.activeByOwner).toEqual(lit.activeByOwner);
+  });
+
+  // 순서만 바뀐 상태를 화면이 **다시 그려야** 한다 — 개수도 켜진 칸도 같아 자리마다의
+  // 정체를 보지 않으면 옮긴 탭이 화면에 안 선다.
+  it("순서만 바뀌어도 화면이 다시 그려진다", () => {
+    const { state, ids } = four();
+    expect(sameScreen(state, moveShell(state, ids[0], 4), TOP.owner)).toBe(false);
   });
 });

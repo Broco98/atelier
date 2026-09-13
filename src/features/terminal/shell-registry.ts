@@ -177,6 +177,21 @@ export function slugOfOwner(owner: ShellOwner): string | null {
 }
 
 /**
+ * `string`으로 실려 온 값이 **그 세계가 지은 소유자 키**인가. 아니면 `null`.
+ *
+ * 공용 끌기 모듈(`@/lib/pointer-drag`)은 기능 폴더를 타입으로도 못 불러 소유자를 `string`으로
+ * 싣는다. 받는 쪽이 `as ShellOwner`로 좁히면 위 「타입이 형식을 든다」가 주석 하나로 내려앉아,
+ * 손으로 이은 문자열(`work.slug`)이 그대로 앉고 `slugOfOwner`가 조용히 틀린 slug를 낸다.
+ *
+ * **`as`를 안 쓰고 `ownerOf`로 다시 짓는다** — 키를 짓는 자리가 여전히 하나이고, 앞머리가
+ * 이 세계의 것인지를 값으로 본다. 남의 세계 키는 이 화면이 받을 것이 아니라 `null`이다.
+ */
+export function ownerIn(mode: Mode, value: string): ShellOwner | null {
+  const prefix = ownerOf(mode);
+  return value.startsWith(prefix) ? ownerOf(mode, value.slice(prefix.length)) : null;
+}
+
+/**
  * 새 셸 하나를 여는 데 필요한 것 전부. **`cwd`가 `null`이면 데이터 루트**이고, 그 자리가
  * 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25).
  */
@@ -211,11 +226,12 @@ export function topTerminal(mode: Mode): ShellOrigin {
 }
 
 /**
- * 셸을 여는 두 함수가 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
- * 그 아래 `workShellOrigin`은 「어디에 열까」를 여기서만 읽는다 — **둘이 같은 값을 보는 것을
- * 함수 하나로 세운다.** 조건을 두 자리에 나눠 적으면 한쪽만 갈린 커밋이 「메뉴는 열리는데
- * 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안 열리는데 열 자리도 없다」)를 만들고,
- * 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이 금지하는 것).
+ * 셸을 여는 함수들이 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
+ * 그 아래 `workShellOrigin`·`workDefaultOrigin`은 「어디에 열까」를 여기서만 읽는다 —
+ * **셋이 같은 값을 보는 것을 함수 하나로 세운다.** 조건을 여러 자리에 나눠 적으면 한쪽만
+ * 갈린 커밋이 「메뉴는 열리는데 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안
+ * 열리는데 열 자리도 없다」)를 만들고, 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이
+ * 금지하는 것).
  *
  * **Maison에서는 언제나 빈 배열이다**(결정 17 · US 26). 저 세계에 워크트리가 없는 것은
  * 코어가 프로젝트 붙이기를 거절하기 때문인데, 그 거절 **하나에만** 걸어 두면 손으로 고친
@@ -268,14 +284,72 @@ export function workShellOrigin(
   work: WorkView,
   project: string | null,
 ): ShellOrigin | null {
-  const owner = ownerOf(mode, work.slug);
   const trees = shellTrees(mode, work);
-  if (trees.length === 0) return { mode, cwd: workDir(work), owner, project: null };
-  // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
-  if (trees.length === 1) return { mode, cwd: trees[0].path, owner, project: null };
+  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
 
   const picked = project === null ? undefined : trees.find((tree) => tree.project === project);
-  return picked ? { mode, cwd: picked.path, owner, project: picked.project } : null;
+  return picked
+    ? { mode, cwd: picked.path, owner: ownerOf(mode, work.slug), project: picked.project }
+    : null;
+}
+
+/**
+ * 이 Work에서 ⌘T가 셸을 여는 **기본 자리**(UI개선 결정 17~19). **`null`이 없다** — ⌘T가 「안 먹는」
+ * 경우를 없애는 것이 이 함수가 따로 선 이유다(스토리 45).
+ *
+ * | Work의 모양 | cwd |
+ * |---|---|
+ * | 프로젝트 0·1개 · Room | `workShellOrigin(mode, work, null)`과 같다 |
+ * | 프로젝트 여럿 | 「모든 프로젝트」 — **첫 워크트리 경로의 부모**, `project: null` |
+ *
+ * **위 `workShellOrigin`을 대신하지 않는다.** 그 함수는 「고른 프로젝트」와 「들어갈 때 셸을
+ * 세우는 자리」를 그대로 맡고, 멀티 프로젝트에 안 고르면 `null`인 것이 UI개선 결정 30(들어가도 셸이
+ * 저절로 안 선다)과 정확히 같다. 둘을 인자 하나로 섞으면 진입이 이 자리를 타는 날 저장소가
+ * 아닌 폴더에 원치 않는 셸이 쌓인다.
+ *
+ * **폴더 이름을 여기서 짓지 않는다** — 워크트리 경로는 코어가 work 폴더에서 한 규칙으로
+ * 만든 값이라 부모가 늘 같고, 그 부모를 읽을 뿐이다(`workDir`이 `specDir`에서 하는 것과
+ * 같은 이유). 폴더가 없으면 spawn이 실패해 그 칸에 이유가 선다 — 없는 워크트리와 같은 길이다.
+ *
+ * 탭 이름에 프로젝트 앞말이 없는 것은 `project: null`에서 저절로 나온다(결정 31).
+ */
+export function workDefaultOrigin(mode: Mode, work: WorkView): ShellOrigin {
+  const trees = shellTrees(mode, work);
+  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
+  return { mode, cwd: parentDir(trees[0].path), owner: ownerOf(mode, work.slug), project: null };
+}
+
+/**
+ * `+` 메뉴에서 **고른 것**. 「모든 프로젝트」와 프로젝트 이름이 모양으로 갈린다(UI개선 스펙 §7 · S13).
+ *
+ * **「모든 프로젝트」를 `null`로 접지 않는다.** 메뉴의 `onPick`에서 `null`은 이미 「안 고르고
+ * 닫았다」다 — 둘을 한 값에 실으면 Esc가 셸을 연다. 그래서 기본 자리는 `null`이 아닌 값으로 온다.
+ *
+ * `default`라는 이름은 ⌘T와 같은 **기본 자리**라서다(UI개선 결정 19) — 멀티 프로젝트 work에서는 그것이
+ * 「모든 프로젝트」이고, 묻지 않는 `+`(프로젝트 0·1개)도 같은 값으로 연다.
+ */
+export type ShellPlace = { kind: "default" } | { kind: "project"; project: string };
+
+/**
+ * `+`로 고른 자리를 셸이 뜰 자리로(UI개선 결정 18·19). **「모든 프로젝트」는 ⌘T와 같은 함수다** — 둘이
+ * 다른 자리를 고르면 「⌘T와 `+`가 다르게 군다」가 되살아나고, 그 규칙이 설 곳이 여기 하나다.
+ * 프로젝트 줄은 그 워크트리고, 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) `null`이다.
+ */
+export function placeOrigin(mode: Mode, work: WorkView, place: ShellPlace): ShellOrigin | null {
+  return place.kind === "default"
+    ? workDefaultOrigin(mode, work)
+    : workShellOrigin(mode, work, place.project);
+}
+
+/**
+ * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work과
+ * Room은 기본 자리와 「안 고른」 자리가 같아야 한다 — UI개선 스펙 §11).
+ */
+function unpickedOrigin(mode: Mode, work: WorkView, trees: WorktreeView[]): ShellOrigin {
+  const owner = ownerOf(mode, work.slug);
+  // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
+  const cwd = trees.length === 0 ? workDir(work) : trees[0].path;
+  return { mode, cwd, owner, project: null };
 }
 
 /**
@@ -285,7 +359,24 @@ export function workShellOrigin(
  * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
  */
 function workDir(work: WorkView): string {
-  return work.specDir.replace(/\/+[^/]+\/*$/, "");
+  return parentDir(work.specDir);
+}
+
+/** 경로 한 단계 위. 끝의 슬래시는 같은 자리로 읽는다. `~` 표기 그대로다 — 펴지 않는다. */
+function parentDir(path: string): string {
+  return path.replace(/\/+[^/]+\/*$/, "");
+}
+
+/**
+ * 셸이 뜰 자리를 **옅게 보이는 글자**로 — 경로의 마지막 마디 + `/`(UI개선 결정 20의 `+` 메뉴 맨 윗줄).
+ * `null`이면 보일 경로가 없다(최상위 터미널의 데이터 루트).
+ *
+ * **이름을 적지 않고 자리에서 읽는다.** 「모든 프로젝트」 폴더의 이름을 프런트가 아는 순간이
+ * 코어가 자리를 옮기는 날 틀린 글자를 보이는 순간이다 — 위 `parentDir`과 같은 약속의 나머지다.
+ */
+export function placeHint(cwd: string | null): string | null {
+  const tail = cwd?.replace(/\/+$/, "").split("/").pop();
+  return tail ? `${tail}/` : null;
 }
 
 /**
@@ -413,7 +504,15 @@ export function shellsOf(state: ShellsState, owner: ShellOwner): ReadonlyArray<S
  * (결정 26). 함께 세면 2개라고 해놓고 하나만 끝난다.
  */
 export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
-  return shellsOf(state, owner).filter((shell) => shell.status.kind === "running").length;
+  return shellsOf(state, owner).filter(isAlive).length;
+}
+
+/**
+ * 닫힐 프로세스가 **있는** 칸인가. 끝난 칸·못 뜬 칸은 목록에 남아도(결정 22) 아니다 — 세는 자리
+ * (`runningShellsOf` · `countQuitShells`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
+ */
+function isAlive(shell: Shell): boolean {
+  return shell.status.kind === "running";
 }
 
 /** 이 화면에서 켜진 칸. */
@@ -712,6 +811,51 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
   const key = shell.owner;
   if (state.activeByOwner[key] === id) return state;
   return { ...state, activeByOwner: { ...state.activeByOwner, [key]: id } };
+}
+
+/**
+ * 자리 `from`의 칸을 틈 `gap`에 놓으면 **제자리**인가 — 제 양옆 틈(`from`·`from + 1`)이다.
+ *
+ * **이 판정은 여기 하나다.** 옮기는 쪽(`moveShell`)과 선을 그리는 쪽(탭 줄의 `tabGap`)이 함께
+ * 부른다 — 각자 적으면 한쪽이 바뀔 때 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이
+ * 안 선다.
+ */
+export function isInPlaceGap(from: number, gap: number): boolean {
+  return gap === from || gap === from + 1;
+}
+
+/**
+ * 칸을 **그 화면 셸들 사이의 틈**으로 옮긴다(UI개선 결정 11 · UI개선 스펙 §6). `gap`은
+ * 0..n이다 — 0이 그 화면 첫 칸 앞, n이 마지막 칸 뒤이고, 끄는 칸도 세어진 채의 번호다.
+ *
+ * **틈이 전역 배열의 자리가 아닌 것**은 이 배열에 여러 화면의 셸이 섞여 살아서다. 전역
+ * 자리로 받으면 부르는 쪽(탭 줄)이 남의 셸 수를 알아야 하고, 옮기는 김에 남의 셸이 밀린다.
+ * 그래서 이 화면 셸들의 상대 순서만 바꾸고, 그 셸들이 앉아 있던 **전역 자리 묶음**에
+ * 새 순서로 다시 앉힌다 — 남의 셸은 한 칸도 안 움직인다.
+ *
+ * 원래 자리 `i`의 양옆 틈(`i`·`i+1`)은 제자리라 **받은 상태를 그대로** 돌려준다. 모르는
+ * id도 같다(그리는 것과 놓는 것 사이에 칸이 빠질 수 있다 — `activateShell`과 같은 이유).
+ * 켜진 칸은 id로 적혀 있어 순서와 무관하게 그대로다.
+ *
+ * ⌘1~9·⌃Tab·`×` 이웃 규칙·에이전트 목록은 이 배열을 세므로 **새 규칙 없이 따라온다.**
+ * 순서는 메모리에만 있다(UI개선 결정 12).
+ */
+export function moveShell(state: ShellsState, id: number, gap: number): ShellsState {
+  const shell = state.shells.find((one) => one.id === id);
+  if (!shell) return state;
+
+  const mine = state.shells.filter((one) => one.owner === shell.owner);
+  const from = mine.indexOf(shell);
+  if (isInPlaceGap(from, gap) || gap < 0 || gap > mine.length) return state;
+
+  const rest = mine.filter((one) => one !== shell);
+  // 틈 번호는 끄는 칸이 **아직 있는** 줄에서 센 것이다 — 그 뒤쪽 틈은 빠진 한 칸만큼 당겨진다.
+  const at = gap > from ? gap - 1 : gap;
+  const order = [...rest.slice(0, at), shell, ...rest.slice(at)];
+
+  let next = 0;
+  const shells = state.shells.map((one) => (one.owner === shell.owner ? order[next++] : one));
+  return { ...state, shells };
 }
 
 /**
@@ -1071,7 +1215,7 @@ export function needsCloseConfirm(
   shell: Shell | undefined,
   commandRunning: boolean | null,
 ): boolean {
-  if (!shell || shell.status.kind !== "running") return false;
+  if (!shell || !isAlive(shell)) return false;
   return commandRunning === true;
 }
 
@@ -1101,6 +1245,49 @@ export async function confirmClose(
 ): Promise<boolean> {
   if (!needsCloseConfirm(shell, commandRunning)) return true;
   return ask();
+}
+
+/** 종료하면 닫힐 셸 수와, 그중 명령이 도는 셸 수(UI개선 결정 15). 명령의 개수가 아니다. */
+export interface QuitCounts {
+  live: number;
+  running: number;
+}
+
+/**
+ * 종료 확인이 적을 수(UI개선 결정 15 · #223). 받은 목록을 **세계를 가리지 않고** 전부 센다 — 종료는 두
+ * 세계의 셸을 함께 죽인다. 명령이 도는지는 셸마다 **지금 물어서** 센다 — 1초 폴링 값
+ * (`Shell.running`)은 늦을 수 있다. 물음은 병렬로 나간다.
+ *
+ * **「도는 셸」은 셸 닫기가 물을 셸이다** — 판정을 `needsCloseConfirm`에서 그대로 빌려, 닫기와
+ * 종료가 「모르면 안 돈다」·「끝난 칸은 안 센다」에서 갈라질 수 없다. 물음이 **실패해도** 「모름」으로
+ * 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는 길은 곧 끌 수 없는 길이다.
+ *
+ * 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.**
+ */
+export async function countQuitShells(
+  shells: ReadonlyArray<Shell>,
+  commandRunning: (id: number) => Promise<boolean | null>,
+): Promise<QuitCounts> {
+  const live = shells.filter(isAlive);
+  const answers = await Promise.all(
+    live.map((shell) => commandRunning(shell.id).catch(() => null)),
+  );
+  return {
+    live: live.length,
+    running: live.filter((shell, n) => needsCloseConfirm(shell, answers[n])).length,
+  };
+}
+
+/**
+ * 종료 확인의 본문. **셸이 0개면 없다**(`undefined`) — 그 줄이 아예 서지 않는다(UI개선 결정 15). 그래도
+ * 창은 뜬다: 셸이 없을 때의 실수 종료도 조건 밖에 남기지 않는다(UI개선 결정 14).
+ *
+ * 「셸」·「명령」은 `CONTEXT.md`의 말이다 — 명령은 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
+ * 문구가 여기 있는 이유는 `CLOSE_NOTICE`와 같다.
+ */
+export function quitNotice({ live, running }: QuitCounts): string | undefined {
+  if (live === 0) return undefined;
+  return `셸 ${live} · 명령이 도는 셸 ${running}`;
 }
 
 /**

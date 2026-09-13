@@ -20,6 +20,9 @@ export const worksApi = {
     invoke<WorkView>("set_work_status", { mode, slug, status }),
   setPinned: (mode: Mode, slug: string, pinned: boolean) =>
     invoke<WorkView>("set_work_pinned", { mode, slug, pinned }),
+  /** `before: null`은 구획의 끝이다. 인자와 응답의 뜻은 코어 `move_work`에 있다. */
+  move: (mode: Mode, slug: string, pinned: boolean, before: string | null) =>
+    invoke<WorkView[]>("move_work", { mode, slug, pinned, before }),
   readSpec: (mode: Mode, slug: string, path: string) =>
     invoke<string>("read_spec_file", { mode, slug, path }),
   archive: (mode: Mode, slug: string) => invoke<void>("archive_work", { mode, slug }),

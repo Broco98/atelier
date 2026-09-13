@@ -245,11 +245,12 @@ dependencies = [
 
 [[package]]
 name = "atelier-app"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "atelier-core",
  "libc",
  "notify-debouncer-mini",
+ "objc2",
  "portable-pty",
  "serde",
  "serde_json",
@@ -263,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-cli"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -280,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -293,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "atelier-test-bridge"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "atelier-core",
  "serde",

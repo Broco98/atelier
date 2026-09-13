@@ -24,8 +24,10 @@ import {
 } from "@/features/terminal/shell-registry";
 import type { ShellOrigin } from "@/features/terminal/shell-registry";
 import {
+  onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
+  requestNewShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 
@@ -658,10 +660,20 @@ describe("WorksPage ⌘Enter", () => {
     // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
     // **세계가 origin에 실린다**(결정 10) — 어긋나면 이 화면이 저쪽 루트의 work에서 셸을
     // 열고, `pty_spawn`도 그 세계의 홈에서 뜬다(둘 다 멀쩡한 값이라 아무도 안 나무란다).
-    expect(worksPage).toContain("workShellOrigin(mode, panelWork, null)");
+    //
+    // **기본 자리 함수다 — `null`이 없다**(UI개선 결정 17~19). 옛 `workShellOrigin(…, null)`은 멀티
+    // 프로젝트 work에서 `null`을 줘 ⌘T가 조용히 안 먹었다(스토리 45). 그 함수는 「고른
+    // 프로젝트」와 「들어갈 때」의 것으로 남는다.
+    expect(worksPage).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
+    expect(worksPage).not.toContain("workShellOrigin(mode, panelWork, null)");
     // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
     expect(worksPage).toContain("onSelectTab(\"terminal\")");
-    expect(worksPage).toContain("openNewShell(origin);");
+    // **셸 안 ⌘T도 이 자리로 온다**(UI개선 결정 19). xterm 핸들러는 요청만 보내고 화면이 연다 —
+    // 구독이 빠지면 셸에 포커스가 있는 동안 ⌘T가 죽는다. 창 keydown 리스너로 짓지 않는다
+    // (아래 개수가 그대로다). 여기서는 **구독하는가**만 본다 — 이 화면의 셸만 듣는 규칙은
+    // 스토어가 쥐고 값으로 재며(「셸 안 ⌘T의 요청은 그 셸의 화면에만 간다」), 포커스를 둔
+    // 셸의 ⌘T가 기본 자리로 이어지는 사슬은 `e2e/shell-origin.spec.ts`가 잰다.
+    expect(worksPage).toContain("onNewShellRequested(tabOwner");
     // **등록을 따로 센다.** 위 리터럴은 전부 핸들러 **본문**이라, 핸들러가 window에 안
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
@@ -873,21 +885,33 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // `terminal → works` 방향이 값 차원에서 생겨 반대 방향과 맞물린다(ShellTabs의 그 prop
   // 주석이 같은 함정을 든다).
   //
+  // 원천이 slug가 아니라 **owner**다(UI개선 스펙 S4) — `/terminal` 셸에는 slug가 없어
+  // 공용 제스처가 slug를 실으면 그 화면이 못 끈다. 모양을 이 리터럴이 못박는다.
+  //
   // 배선은 렌더로 못 본다(핸들러는 직렬화되지 않는다). **정규식으로 블록을 잘라내지
   // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
   it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 셸 칸을 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
-      `onDragTab={(shellId, from) =>
+      `onDragTab={(shellId, from) => {
+        const owner = ownerOf(mode, panelWork.slug);
         armDrag(
-          shellId === null
-            ? { kind: "spec", slug: panelWork.slug, shellId: null }
-            : { kind: "shell", slug: panelWork.slug, shellId },
+          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
-        )
-      }`,
+        );
+      }}`,
     )).toBe(1);
+  });
+
+  // 같은 눌림의 **둘째 소비자**가 탭 줄이다(UI개선 스펙 S10) — 줄은 스토어를 모르므로
+  // 틈을 적는 자리와 놓았을 때 옮기는 자리를 이 화면이 준다. 둘 다 모듈 함수라 회차를 넘어
+  // 같다. 틈 표시는 드래그 상태에서 읽어 내린다.
+  it("탭 줄의 틈을 적고 놓으면 옮기는 자리를 이 화면이 준다", () => {
+    const page = source("WorksPage.tsx");
+    expect(countOf(page, "slot={drag.slot}")).toBe(1);
+    expect(countOf(page, "onSlot={hoverSlot}")).toBe(1);
+    expect(countOf(page, "onDropSlot={dropShellOnSlot}")).toBe(1);
   });
 });
 
@@ -1103,10 +1127,36 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     // ⌘T가 React 트리 밖(`attachCustomKeyEventHandler`)에 살아 렌더로는 못 본다. 그래서
     // 소스를 읽되 **못 찾으면 실패한다** — 못 찾은 것을 통과로 읽으면 이 검사가 지키는 것은
     // 배선이 아니라 자기 자신이다.
+    //
+    // **셸 안 ⌘T는 이제 요청만 보낸다**(UI개선 결정 19) — 여는 것은 그 요청을 받은 화면이다. 그래서
+    // 사슬의 두 고리를 함께 본다: 핸들러가 요청을 보내고, 화면이 받은 요청을 알리는 쪽
+    // (`openNewShell`)으로 연다(위 「⌘T를 window에서 듣고…」가 그 리터럴을 못박는다).
     const store = source("../terminal/terminal-store.ts");
-    const branch = store.match(/if \(hotkey === "new"\)[\s\S]{0,120}/)?.[0] ?? "";
-    expect(branch, "⌘T가 새 셸을 여는 자리를 찾지 못했다").not.toBe("");
-    expect(branch).toContain("openNewShell");
+    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
+  });
+});
+
+describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
+  // UI개선 결정 19. 셸 안 ⌘T는 요청만 보내고 **그 셸의 소유자 화면**이 연다. 가려 받는 규칙이 화면마다
+  // 있으면 규칙을 잊은 화면 하나가 남의 셸의 ⌘T에 제 셸을 연다 — 한 번 눌러 두 화면에 셸이
+  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다. 같은 slug가
+  // 두 세계에 설 수 있어(결정 10) 세계만 다른 소유자도 남이다.
+  it("구독한 소유자의 요청만 듣고, 끊으면 안 듣는다", () => {
+    const mine = ownerOf("atelier", "가");
+    let heard = 0;
+    const stop = onNewShellRequested(mine, () => heard++);
+    requestNewShell(ownerOf("atelier", "나"));
+    requestNewShell(ownerOf("maison", "가"));
+    requestNewShell(ownerOf("atelier"));
+    expect(heard, "남의 셸의 요청을 들었다").toBe(0);
+    requestNewShell(mine);
+    expect(heard).toBe(1);
+    stop();
+    requestNewShell(mine);
+    expect(heard, "끊은 뒤에도 들었다").toBe(1);
+    // 요청이 셸을 **스스로 열지 않는다** — 자리를 정하는 것은 받은 화면이다.
+    expect(terminalStore.state).toBe(NO_SHELLS);
   });
 });
 

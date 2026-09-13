@@ -1,6 +1,6 @@
 [package]
 name = "atelier-app"
-version = "0.13.0"
+version = "0.14.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -45,3 +45,9 @@ libc = "0.2"
 # 거부하고 손대지 않는다). 쓰기는 파일 끝에 덧붙이는 텍스트라 재직렬화는 안 한다 —
 # 488줄짜리 실물의 주석과 순서를 파서에 통째로 맡길 이유가 없다.
 toml = "0.9"
+
+# ⌘Q · 메뉴 Quit · Dock 종료를 묻게 하는 델리게이트 훅(#224 · `terminate.rs`). tao가
+# `applicationShouldTerminate:`를 구현하지 않아 그 메서드를 런타임에 붙이는 데만 쓴다 — 잠금 파일에
+# 이미 있는 판이라 새 패키지가 들지 않는다. macOS 대상에만 든다: 리눅스 CI에는 붙일 클래스가 없다.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"

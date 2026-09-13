@@ -5,6 +5,7 @@ import { join, relative } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
+import { SETTINGS_ITEMS } from "@/features/settings/pages";
 import {
   ALL_MODES,
   destinationsOf,
@@ -40,8 +41,8 @@ describe("주소가 세계를 말한다", () => {
   );
 
   // `/settings`가 Atelier로 떨어지는 것은 **판정이 아니라 기본값**이다 — 설정에는 모드
-  // 접두사가 없어서(공용 `settings.json`) URL로는 어느 세계에서 왔는지 모른다. 그 화면의
-  // 세그먼트는 마지막 모드 값을 써야 하고, 이 줄이 그 사실을 남긴다.
+  // 접두사가 없어서(공용 `settings.json`) URL로는 어느 세계에서 왔는지 모른다. 설정이 지니는
+  // 모드는 마지막 모드 값이어야 하고(「앱으로 돌아가기」가 그리로 간다), 이 줄이 그 사실을 남긴다.
   it("설정 주소는 모드를 안 싣는다", () => {
     const settings = destinationsOf("maison").find((place) => place.key === "settings");
     expect(settings?.to).toBe("/settings");
@@ -56,10 +57,11 @@ describe("적어 둘 세계를 묻는다", () => {
     expect(placeModeOf(pathname)).toBeNull();
   });
 
-  // 설정 아래로 화면이 갈라지는 날(`/settings/일반`) 그 칸도 세계 밖이다 — 접두사로 보지
-  // 않으면 그날 하나가 조용히 마지막 모드를 덮어쓴다.
+  // 설정 아래 화면(항목 페이지, UI개선 결정 22)도 세계 밖이다 — 접두사로 보지 않으면 항목 하나가
+  // 조용히 마지막 모드를 덮어쓰고, 「앱으로 돌아가기」가 떠나온 세계를 잃는다.
   it("설정 아래 화면도 세계 밖이다", () => {
     expect(placeModeOf("/settings/일반")).toBeNull();
+    for (const item of SETTINGS_ITEMS) expect(placeModeOf(item.to), item.to).toBeNull();
   });
 
   // 모드를 싣는 주소는 `modeOf`와 **같은 답**이어야 한다. 갈리면 적어 둔 세계와 지금 켜진

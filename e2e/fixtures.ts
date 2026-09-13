@@ -80,6 +80,36 @@ export const WORKS: WorkView[] = [
     specDir: "~/.atelier/works/plain-work/spec",
     specFiles: [],
   },
+  // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
+  // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
+  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 테스트마다 못 덮으므로 여기 한 벌을 둔다.
+  //
+  // **끝에 더한다** — 앞 두 줄을 자리로 집는 검사가 여럿이다(`const [pinnedWork, plainWork] = WORKS`).
+  {
+    slug: "multi-work",
+    title: "두 저장소 일",
+    status: "active",
+    branch: "feat/multi-work",
+    createdAt: "2026-08-22",
+    projects: ["billing", "ledger"],
+    pinned: false,
+    worktrees: [
+      {
+        project: "billing",
+        path: "~/.atelier/works/multi-work/trees/billing",
+        exists: true,
+        dirty: false,
+      },
+      {
+        project: "ledger",
+        path: "~/.atelier/works/multi-work/trees/ledger",
+        exists: true,
+        dirty: false,
+      },
+    ],
+    specDir: "~/.atelier/works/multi-work/spec",
+    specFiles: [],
+  },
 ];
 
 /**
@@ -92,9 +122,10 @@ export const WORKS: WorkView[] = [
  * 브랜치도 워크트리도 프로젝트도 없다 — Room은 토픽이고 저장소에 안 붙는다(결정 17).
  * 그래서 `projects`·`worktrees`가 빈 것은 안 채운 게 아니라 이 세계의 모양이다.
  *
- * **초안이 먼저 온다.** `/maison/rooms`의 정규화가 「초안 아닌 첫 Room」을 고르는데, 목록이
- * 초안 아닌 것뿐이면 그 규칙이 **그냥 첫 줄을 고르는 것**과 구별되지 않는다 — 규칙이 퇴화해도
- * 초록이 된다.
+ * **초안이 먼저 온다.** `/maison/rooms`의 정규화는 상태와 무관하게 「목록 첫 줄」을 고른다
+ * (UI개선 결정 6). 첫 줄이 초안이 아니면 옛 규칙(「초안 아닌 첫 Room」)이 되살아나도 같은 줄을
+ * 골라 초록이 된다 — 초안이 첫 줄이어야 그 되돌림이 갈린다. 사이드바에서 초안이 따로 된 구역
+ * 없이 `Rooms` 안에 서는 것(UI개선 결정 5)을 재는 것도 이 줄이다.
  */
 export const ROOMS: WorkView[] = [
   {
@@ -125,6 +156,32 @@ export const ROOMS: WorkView[] = [
     specFiles: ["개요.md"],
   },
 ];
+
+/**
+ * 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — **목록 첫 줄**이고, 초안이어도 안
+ * 건너뛴다(UI개선 결정 6). 규칙이 바뀌면 이 한 줄만 고친다: spec마다 `ROOMS`를 따로 풀어
+ * 이름을 붙이면 규칙이 갈릴 때 여러 파일을 함께 고쳐야 하고, 같은 `room`이 파일마다 다른
+ * Room을 가리키게 된다. 이것이 초안이어야 하는 까닭은 위 `ROOMS` 머리말이다.
+ */
+export const MAISON_LANDING_ROOM: WorkView = ROOMS[0];
+
+/**
+ * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
+ * 원래 목록을 뒤집어 짓는다** — fixture 백엔드에는 상태가 없어 「옮긴 결과」를 지을 수 없으니,
+ * 원래와 **확실히 다른** 순서를 주어 「응답으로 캐시를 갈아 끼웠다」를 화면에서 잰다.
+ *
+ * 리터럴로 적지 않고 파생한다: `WORKS` 끝에 줄이 더해져도(티켓 08) 이 값이 저절로 따라온다.
+ * 뒤집어도 `pinned`는 그대로라 화면의 구획은 안 흔들리고 구획 **안** 순서만 뒤집힌다.
+ */
+export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
+export const ROOMS_MOVED: WorkView[] = [...ROOMS].reverse();
+
+// 사이드바 구획 머리의 접근성 이름. 라벨과 옅은 숫자가 같은 버튼 안이라 **이름에 개수가 함께
+// 든다.** 수는 `WORKS`에서 파생한다 — 줄이 더해질 때마다(티켓 08의 멀티 프로젝트 work) 숫자를
+// 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
+// 않게 여기 한 벌만 둔다.
+export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
+export const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
@@ -302,13 +359,16 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
   // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
   // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
-  // (`SettingsPage.tsx`의 `save`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
+  // (`SettingsPage.tsx`의 `useSectionSave`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
   // 답이 없으면 L3에서 쓰기가 거절당해 `save`가 오류 가지로 빠지고, 그러면 저장 뒤의
   // 배선을 재는 검사가 **아무것도 못 재면서 초록**이 된다.
   //
   // **태우는 시나리오와 함께 들어왔다** — 「설정에서 소리를 끄면 그 자리에서 조용해진다」
-  // (`shell-notify.spec.ts`). 태우지 않는 스텁은 조용히 낡는다는 것이 이 표의 규칙이고,
-  // 그래서 이 자리는 그 검사가 사는 동안만 정당하다.
+  // (`shell-notify.spec.ts`), 그리고 「알림 저장에 터미널 초안이 안 실린다」(`settings-save.spec.ts`).
+  // **이 답은 쓰기를 기억하지 않는다** — 저장이 쓰기 직전에 다시 읽는 `read_settings`는 늘 위
+  // 고정 값을 돌려준다(#225). 「그사이 저장된 값을 안 덮는다」는 그래서 L2가 잰다.
+  // 태우지 않는 스텁은 조용히 낡는다는 것이 이 표의 규칙이고, 그래서 이 자리는 그 검사들이
+  // 사는 동안만 정당하다.
   write_settings: null,
   // 설정 화면이 뜨자마자 한 번 부른다(#207). **깔린 것이 없는 상태를 답한다** — 그것이
   // 처음 여는 사람의 화면이고, 미리보기·경로·상태가 그때도 다 서는지를 L3가 본다.
@@ -357,6 +417,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
+  // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
+  // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
+  // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.
+  quit_app: null,
 };
 
 /**
@@ -534,6 +598,13 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * 온 것도 위 `list_archive`와 같다.
    */
   set_work_pinned: { atelier: { value: null }, maison: {} },
+  /**
+   * 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와
+   * 무관하다(`WORKS_MOVED` 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가
+   * 그 순서로 잰다. 두 세계의 답이 갈리는 것은 `list_works`와 같은 이유다: 한 벌을 나눠 쓰면
+   * 「maison으로 물었다」가 화면에서 안 갈린다.
+   */
+  move_work: { atelier: { value: WORKS_MOVED }, maison: { value: ROOMS_MOVED } },
   /**
    * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
    * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면

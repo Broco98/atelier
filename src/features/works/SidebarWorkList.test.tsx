@@ -7,8 +7,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
 import type { ShellSignal } from "@/components/shell/shell-signal";
-import { WorkSectionList } from "./SidebarWorkList";
-import { splitWorkSections, type SectionsOpen } from "./work-sections";
+import { WorkSectionList } from "./WorkSectionList";
+import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
 // 사이드바 목록이 **그리는 것**을 본다. 어느 구역에 무엇이 놓이는지는 work-sections.test.ts가
@@ -39,7 +39,7 @@ const works = (...raws: string[]) =>
     };
   }) as WorkView[];
 
-const ALL: SectionsOpen = { pinned: true, works: true, drafts: true };
+const ALL: SectionsOpen = { pinned: true, works: true };
 
 // 기본값은 **아무 work도 안 고른 상태**다 — 아래 구획 검사들이 그 위에서 돈다.
 // 세계도 기본값이 있다(Atelier): 구획이 서는 조건과 핀의 생김새는 세계를 안 타므로 그 검사들이
@@ -58,12 +58,18 @@ function render(
     // 나 `SignalLine`이고(#203) 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은
     // **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
     renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
+    draggedSlug = null,
+    lineY = null,
+    litEmptySlot = null,
   }: {
     mode?: Mode;
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
     renderSubrow?: (work: WorkView) => ReactNode;
+    draggedSlug?: string | null;
+    lineY?: number | null;
+    litEmptySlot?: keyof SectionsOpen | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -80,6 +86,10 @@ function render(
       onLeave={() => {}}
       onTogglePin={() => {}}
       renderSubrow={renderSubrow}
+      draggedSlug={draggedSlug}
+      lineY={lineY}
+      litEmptySlot={litEmptySlot}
+      onArmDrag={() => {}}
     />,
   );
 }
@@ -181,31 +191,50 @@ const lanesOf = (markup: string) =>
   );
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
-  // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
+  // 결정 82. 아무것도 없는 구획의 헤더는 자리만 먹는다.
   it("고정된 것이 없으면 헤더가 아예 없다", () => {
-    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual([
-      "작업",
-      "초안",
-    ]);
+    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["작업"]);
   });
 
   it("고정된 것이 있으면 `작업` 위에 선다", () => {
     expect(headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label)).toEqual([
       "고정",
       "작업",
-      "초안",
     ]);
   });
 
-  it("개수는 그 구획의 것을 적는다", () => {
+  it("개수는 그 구획의 것을 적는다 — 초안도 `작업`의 수에 든다", () => {
     const headers = headersOf(render(works("pin:가", "pin:draft:나", "다", "draft:라")));
-    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 1", "초안 1"]);
+    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 2"]);
+  });
+});
+
+// UI개선 결정 5. 초안은 따로 접힌 구역이 아니라 **다른 항목들 사이에** 서고, 상태 아이콘으로만 갈린다.
+describe("초안은 `작업` 구획 안에 선다", () => {
+  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `작업`에 선다", () => {
+    const markup = render(works("draft:가", "나", "draft:다"));
+    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나", "다"] }]);
+    // 머리 목록만 보면 초안 머리가 **표식 없이** 되살아나도 초록이다 — 글자로도 센다.
+    expect(markup).not.toMatch(/>초안</);
+  });
+
+  it("모든 항목이 초안이어도 빈 문구가 아니라 그 초안들이 보인다", () => {
+    const markup = render(works("draft:가", "draft:나"));
+    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나"] }]);
+    // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
+    // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
+    const notices = [
+      emptyMainNotice(splitWorkSections([], ALL), "atelier"),
+      emptyMainNotice(splitWorkSections(works("pin:가"), ALL), "atelier"),
+    ];
+    expect(new Set(notices).size).toBe(2);
+    for (const notice of notices) expect(markup).not.toContain(notice);
   });
 });
 
 describe("고정된 work은 한 구획에만 있다", () => {
-  // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 숫자 단축키가 같은 작업을
-  // 두 번 세고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
+  // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 같은 작업이
+  // 두 줄로 서고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
   it("고정된 작업은 `작업`에서 빠진다", () => {
     expect(rowsBySection(render(works("pin:가", "나")))).toEqual([
       { label: "고정", rows: ["가"] },
@@ -213,12 +242,11 @@ describe("고정된 work은 한 구획에만 있다", () => {
     ]);
   });
 
-  it("고정된 초안은 `초안`에서 빠진다", () => {
-    // 결정 83 — 초안도 고정할 수 있고, 고정되면 `초안`이 아니라 `고정`에 선다.
+  it("고정된 초안은 `작업`에서 빠진다", () => {
+    // 결정 83 — 초안도 고정할 수 있고, 고정되면 `고정`에 선다.
     expect(rowsBySection(render(works("pin:draft:가", "draft:나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: [] },
-      { label: "초안", rows: ["나"] },
+      { label: "작업", rows: ["나"] },
     ]);
   });
 });
@@ -235,8 +263,8 @@ describe("빈 `작업` 구획이 하는 말", () => {
     expect(render([])).toContain("작업은 Claude Code에서 시작돼요.");
   });
 
-  it("초안만 있으면 「진행 중인 작업이 없어요」다", () => {
-    expect(render(works("draft:가"))).toContain("진행 중인 작업이 없어요.");
+  it("고정된 것이 초안뿐이어도 「전부 고정돼 있어요」다", () => {
+    expect(render(works("pin:draft:가"))).toContain("전부 고정돼 있어요.");
   });
 
   it("작업이 있으면 아무 말도 하지 않는다", () => {
@@ -262,13 +290,13 @@ describe("상주 목록이 세계를 따라 이름을 바꾼다", () => {
 
   // 형제 머리는 **상태의 이름**이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이고,
   // 여기가 함께 갈리면 L3가 접근성 이름(`고정 1`)으로 집는 자리가 세계마다 달라진다.
-  it("`고정`·`초안`은 두 세계에서 같다", () => {
+  it("`고정`은 두 세계에서 같다", () => {
     const siblings = (mode: Mode) =>
       headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode }))
         .map((one) => one.label)
         .filter((label) => label !== "작업" && label !== "Rooms");
-    expect(siblings("atelier")).toEqual(["고정", "초안"]);
-    expect(siblings("maison")).toEqual(["고정", "초안"]);
+    expect(siblings("atelier")).toEqual(["고정"]);
+    expect(siblings("maison")).toEqual(["고정"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
@@ -355,13 +383,12 @@ describe("핀 버튼", () => {
 });
 
 describe("구획 접기", () => {
-  // 결정 108의 마지막 줄 — `고정` 구획도 `초안`과 같은 규칙으로 접힌다.
+  // 결정 108의 마지막 줄 — `고정` 구획도 `작업`과 같은 규칙으로 접힌다.
   it("접힌 구획은 헤더가 그렇다고 말하고 높이만 0이 된다", () => {
     const markup = render(works("pin:가", "나", "draft:다"), { ...ALL, pinned: false });
     expect(headersOf(markup).map((one) => `${one.label} ${one.open}`)).toEqual([
       "고정 false",
       "작업 true",
-      "초안 true",
     ]);
     const [pinnedBody, mainBody] = bodiesOf(markup);
     // 접혀도 항목은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 inert다.
@@ -506,7 +533,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 집는 자리가 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를
     // 잰다. 둘째 줄이 돌아와도 그 계약은 안 깨진다: 줄이 **형제로** 서기 때문이다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
-    const row = /<div class="group grid[^"]*">(<button|<div)/.exec(markup);
+    // 행 상자는 끌기 표식(`data-work-row`)을 클래스 앞에 든다 — 여는 태그를 통째로 넘긴다.
+    const row = /<div data-work-row="[^"]*" class="group grid[^"]*">(<button|<div)/.exec(markup);
     expect(row?.[1]).toBe("<button");
   });
 
@@ -578,7 +606,9 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     // 게시판이 된다. 행이 두 줄이 되면서 그 유혹이 커진 자리라 검사로 못박는다 —
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
-    const rows = [...markup.matchAll(/<div class="(group grid[^"]*)">/g)].map((m) => m[1]);
+    const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
+      (m) => m[1],
+    );
     expect(rows).toHaveLength(2);
     expect(rows.filter((one) => one.includes("selected-row"))).toHaveLength(1);
     for (const row of rows) {
@@ -628,10 +658,11 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
     // 결정 10. `100cqw`가 상자 폭을 되읽으므로 사이드바 폭을 드래그해도 CSS가 스스로 다시
     // 푼다 — 폭이 바뀌는 이 화면에서 그게 결정적이다. 재는 것은 **속도 하나**이고 그 자리는
     // 호버 카드 타이머를 이미 거는 핸들러다(결정 12): 쉴 때 계측도, 관찰자도 없다.
-    const source = readFileSync(
-      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
-      "utf8",
-    );
+    // 두 파일을 이어 센다 — 행은 구획 목록 파일로 떨어져 나갔고(아래 「훅을 안 부른다」), 끄는
+    // 동안 기하를 재는 자리는 사이드바 목록에 남았다. 한쪽만 세면 다른 쪽에 관찰자가 붙어도 초록이다.
+    const source = ["./SidebarWorkList.tsx", "./WorkSectionList.tsx"]
+      .map((file) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"))
+      .join("\n");
     expect(source).not.toContain("ResizeObserver");
     // **재는 자리도 하나다** — hover 진입 핸들러의 그 한 줄이고, 쉴 때는 아무것도 안 잰다.
     expect(source.split("scrollWidth").length - 1).toBe(1);
@@ -651,11 +682,12 @@ describe("제목은 페이드로 끝나고 hover에 흐른다", () => {
       return found[1];
     };
     const css = readFileSync(fileURLToPath(new URL("../../index.css", import.meta.url)), "utf8");
+    // 행과 함께 구획 목록 파일로 옮겨 갔다 — 마퀴 거리를 시간으로 바꾸는 자리가 행의 hover 핸들러다.
     const source = readFileSync(
-      fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
+      fileURLToPath(new URL("./WorkSectionList.tsx", import.meta.url)),
       "utf8",
     );
-    expect(px(source, /const TITLE_FADE = (\d+);/, "SidebarWorkList.tsx")).toBe(
+    expect(px(source, /const TITLE_FADE = (\d+);/, "WorkSectionList.tsx")).toBe(
       px(css, /--title-fade:\s*(\d+)px;/, "index.css"),
     );
   });
@@ -683,15 +715,124 @@ describe("행 아래에 아무것도 딸리지 않는다", () => {
   });
 });
 
+// 끄는 동안 이 그림이 받는 것 둘(UI개선 스펙 §4) — 끌리는 행과 틈 선의 자리. 선이 **실제로** 틈에
+// 서는지는 레이아웃이 있어야 해서 L3(`work-row-drag.spec.ts`)가 재고, 여기서는 받은 값이 한 행과 한
+// 선에만 닿는지를 본다.
+describe("끄는 동안의 그림", () => {
+  const rowClasses = (markup: string) =>
+    new Map(
+      [...markup.matchAll(/<div data-work-row="([^"]*)" class="([^"]*)"/g)].map((m) => [m[1], m[2]]),
+    );
+
+  it("끌리는 행 **하나만** 흐려진다", () => {
+    const rows = rowClasses(render(works("pin:가", "나", "다"), ALL, { draggedSlug: "나" }));
+    expect(rows.size).toBe(3);
+    expect([...rows].filter(([, cls]) => cls.includes("opacity-40")).map(([slug]) => slug)).toEqual(["나"]);
+  });
+
+  it("안 끌 때는 아무 행도 안 흐려지고 선도 없다", () => {
+    const markup = render(works("pin:가", "나"));
+    expect(rowClasses(markup).size).toBe(2);
+    expect([...rowClasses(markup).values()].some((cls) => cls.includes("opacity-40"))).toBe(false);
+    expect(markup).not.toContain("data-drop-line");
+  });
+
+  it("틈 선은 받은 내용 좌표에 **하나** 서고, 누를 수 없다", () => {
+    const markup = render(works("pin:가", "나"), ALL, { draggedSlug: "나", lineY: 41.5 });
+    const lines = markup.match(/<div data-drop-line=""[^>]*>/g) ?? [];
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("top:41.5px");
+    expect(lines[0]).toContain("pointer-events-none");
+    expect(lines[0]).toContain("absolute");
+  });
+
+  it("구획 머리가 어느 구획인지 말한다 — 기하를 재는 자리가 이것으로 집는다", () => {
+    const heads = [...render(works("pin:가", "나")).matchAll(/data-drop-head="([^"]*)"/g)].map((m) => m[1]);
+    expect(heads).toEqual(["pinned", "works"]);
+  });
+});
+
+// **빈 받침**(UI개선 티켓 06 · 스펙 S7). 행이 하나도 없는 구획에 **끄는 동안만** 선다 — 첫 고정도(`고정` 0개),
+// 마지막 고정 해제도(모두 고정이라 `작업` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
+// (`list_works`를 테스트마다 못 덮는다) 여기가 그 갈래를 재는 유일한 자리다.
+describe("빈 받침", () => {
+  const slotsOf = (markup: string) => [...markup.matchAll(/data-empty-slot="([^"]*)"/g)].map((m) => m[1]);
+
+  it("끄는 중이고 `작업`이 비었으면(모두 고정) `작업`에 받침이 선다", () => {
+    const markup = render(works("pin:가", "pin:나"), ALL, { draggedSlug: "가" });
+    expect(slotsOf(markup)).toEqual(["works"]);
+    // `작업` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
+    expect(markup.indexOf('data-empty-slot="works"')).toBeGreaterThan(markup.indexOf('data-drop-head="works"'));
+  });
+
+  it("끄는 중이 아니면 모두 고정이어도 받침이 없다", () => {
+    expect(slotsOf(render(works("pin:가", "pin:나")))).toEqual([]);
+  });
+
+  it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `작업` 머리 위에 선다", () => {
+    const markup = render(works("가", "나"), ALL, { draggedSlug: "가" });
+    expect(slotsOf(markup)).toEqual(["pinned"]);
+    expect(markup.indexOf('data-empty-slot="pinned"')).toBeLessThan(markup.indexOf('data-drop-head="works"'));
+    // 받침은 머리를 되살리지 않는다 — 결정 82의 「빈 `고정`엔 머리가 없다」는 끄는 동안에도 그대로다.
+    expect(headersOf(markup).map((one) => one.label)).toEqual(["작업"]);
+  });
+
+  it("끄는 중이 아니면 `고정`이 비어도 받침이 없다", () => {
+    expect(slotsOf(render(works("가", "나")))).toEqual([]);
+  });
+
+  it("두 구획이 다 차 있으면 끄는 중이어도 받침이 없다", () => {
+    expect(slotsOf(render(works("pin:가", "나"), ALL, { draggedSlug: "나" }))).toEqual([]);
+  });
+
+  // 틈이 받침에 떨어지면 선 대신 받침이 밝아진다(`gapMark`가 받침 구획엔 선 대신 받침을 준다).
+  it("받은 구획의 받침만 밝아진다", () => {
+    const slotTag = (markup: string) => markup.match(/<div data-empty-slot="pinned"[^>]*>/)?.[0] ?? "";
+    const idle = slotTag(render(works("가"), ALL, { draggedSlug: "가" }));
+    const lit = slotTag(render(works("가"), ALL, { draggedSlug: "가", litEmptySlot: "pinned" }));
+    expect(idle).not.toBe("");
+    expect(idle).not.toContain("data-lit");
+    expect(lit).toContain('data-lit=""');
+  });
+});
+
+// **그림과 상태의 경계**(UI개선 스펙 §4). 끄는 동안의 틈·끌리는 slug는 사이드바 목록이 구독해
+// prop으로 내리고, 구획 목록은 받은 것만 그린다 — 이 파일의 seam이 DOM 없는 정적 마크업이라
+// 훅을 부르는 순간 위 검사 전부가 서지 못한다. 그래서 구획 목록을 **제 파일로 떼어** 파일 단위로
+// 센다(컴포넌트 단위로 자르는 파서는 샌다).
+//
+// 세는 모양은 「`use` + 대문자 + 여는 괄호 **또는 타입 인자의 `<`**」다. 주석에 적어도 빨개진다 —
+// 이웃 검사들과 같은 성질이고, 넓게 잡는 쪽으로 틀리는 것은 일부러다(닫힌 쪽으로 실패한다).
+describe("구획 목록 파일은 훅을 안 부른다", () => {
+  const hookCalls = (file: string) =>
+    readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8").match(/\buse[A-Z]\w*\s*[<(]/g) ?? [];
+
+  // **알려진 양성.** 세는 방법이 새면(정규식이 안 맞으면) 아래 0이 빈 초록이다 — 훅을 부르는 것이
+  // 확실한 옆 파일에서 같은 모양이 잡혀야 한다.
+  it("사이드바 목록 파일에서는 잡힌다", () => {
+    expect(hookCalls("./SidebarWorkList.tsx")).toEqual(expect.arrayContaining(["useWorks(", "useState("]));
+  });
+
+  // 타입 인자가 이름과 괄호 사이에 끼는 호출(`useRef<HTMLDivElement>(`)도 잡혀야 한다. 판 05가 구획
+  // 목록에서 걷어 낸 것이 바로 그 모양이다 — 「대문자 + 여는 괄호」로만 세면 그것을 되돌려도 초록이다.
+  it("타입 인자를 단 호출도 잡힌다", () => {
+    expect(hookCalls("./SidebarWorkList.tsx")).toContain("useRef<");
+  });
+
+  it("구획 목록 파일에서 0개다", () => {
+    expect(hookCalls("./WorkSectionList.tsx")).toEqual([]);
+  });
+});
 
 // **여기서 세는 것은 그림이 아니라 import다.** 아래 둘은 `ShellBranch.test.ts`가 지고 있던
-// 계약인데, 그 파일이 판 04에서 가지와 함께 사라졌다 — 계약이 겨누는 것(`SidebarWorkList.tsx`)은
-// 그대로라 자리를 옮겨 살린다. 겨누는 파일 옆이 원래 있어야 할 자리이기도 하다.
+// 계약인데, 그 파일이 판 04에서 가지와 함께 사라졌다 — 계약이 겨누는 파일(사이드바 목록과, 판 05에서
+// 거기서 떨어져 나간 구획 목록)은 그대로라 자리를 옮겨 살린다. 겨누는 파일 옆이 원래 있어야 할 자리다.
 describe("사이드바 목록은 터미널을 모른다", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("./SidebarWorkList.tsx", import.meta.url)),
-    "utf8",
-  );
+  // **두 파일을 이어 센다.** 구획 목록이 제 파일로 떨어져 나가면서(위 검사) 그림의 절반이 그리로
+  // 갔다 — 한 파일만 세면 떨어져 나간 쪽이 터미널을 불러도 초록이다.
+  const source = ["./SidebarWorkList.tsx", "./WorkSectionList.tsx"]
+    .map((file) => readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8"))
+    .join("\n");
   // 리터럴로 센다 — 정규식으로 import 블록을 잘라내는 판정은 다른 곳에서 출발해 남의
   // 코드를 읽고도 초록이었다(판 02·03 리뷰가 잡은 것). 리터럴은 파서가 샐 자리가 없다.
   const countOf = (literal: string) => source.split(literal).length - 1;

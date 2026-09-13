@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, middle, moveOntoHalf, startSplitDrag, unknownIpcCalls } from "./harness";
 
 // 판 05 — 분할. **이 층에서만 보이는 것 셋이다**: 포인터 제스처(정적 마크업 seam에는
 // 이벤트가 없다), 끄는 동안 그려지는 겹판, 그리고 열 폭이 실제로 PTY 격자까지 내려가는 것.
@@ -34,41 +34,6 @@ async function specTab(page: Page) {
   return box;
 }
 
-const middle = (box: { x: number; y: number; width: number; height: number }) => ({
-  x: box.x + box.width / 2,
-  y: box.y + box.height / 2,
-});
-
-/**
- * 행을 눌러 **드래그를 시작시킨다.** 겹판이 설 때까지가 여기까지이고, 어디에 놓을지는
- * 부르는 쪽이 정한다.
- *
- * 임계값을 넘기는 이동과 목적지로 가는 이동을 **나눈다.** 겹판이 서는 것은 임계값을 넘은
- * 그 이동에서인데, 그때 포인터 아래에는 아직 겹판이 없어 절반이 「내 위다」를 말하는 것은
- * 다음 이동부터다. 실물에서는 구멍이 아니다 — 임계값은 출발점에서 5px이라 사이드바 위에서
- * 넘고, 본문까지 오는 동안 이동이 수십 번 더 온다.
- */
-async function startDrag(page: Page, box: { x: number; y: number; width: number; height: number }) {
-  const from = middle(box);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x + 12, from.y);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-  return from;
-}
-
-/** 그 절반 한가운데로 민다. **좌표를 손으로 적지 않는다** — 겹판이 자기 상자를 말한다. */
-async function moveOnto(page: Page, half: "left" | "right") {
-  const box = await page.locator(`[data-drop-half="${half}"]`).boundingBox();
-  if (!box) throw new Error(`${half} 절반의 상자를 못 읽었다`);
-  const at = middle(box);
-  await page.mouse.move(at.x, at.y);
-  await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
-}
-
-const resizeCalls = async (page: Page) =>
-  ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_resize")).length;
-
 test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
   await installFixtureBackend(page);
   // 이미 문서가 오른쪽인 분할에서 출발한다 — 같은 종류를 반대쪽에 떨구는 것이
@@ -76,8 +41,8 @@ test("왼쪽 절반에 떨구면 좌우가 맞바뀐다", async ({ page }) => {
   await page.goto(`/works/${plainWork.slug}?split=rl`);
   await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "terminal");
 
-  await startDrag(page, await specTab(page));
-  await moveOnto(page, "left");
+  await startSplitDrag(page, await specTab(page));
+  await moveOntoHalf(page, "left");
   await page.mouse.up();
 
   await expect(page).toHaveURL(/split=lr/);
@@ -102,8 +67,8 @@ test("셸 탭을 오른쪽 절반에 떨구면 터미널이 오른쪽 열이 된
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await expect(page.locator("[data-column]")).toHaveCount(0);
 
-  await startDrag(page, await shellTab(page));
-  await moveOnto(page, "right");
+  await startSplitDrag(page, await shellTab(page));
+  await moveOntoHalf(page, "right");
   await page.mouse.up();
 
   // 떨군 것이 그 절반에 선다 — 터미널이 오른쪽이면 spec이 왼쪽으로 밀린다(결정 87).
@@ -123,8 +88,8 @@ test("셸 탭을 왼쪽 절반에 떨구면 터미널이 왼쪽 열이 된다", 
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  await startDrag(page, await shellTab(page));
-  await moveOnto(page, "left");
+  await startSplitDrag(page, await shellTab(page));
+  await moveOntoHalf(page, "left");
   await page.mouse.up();
 
   await expect(page).toHaveURL(/split=rl/);
@@ -141,8 +106,8 @@ test("이미 분할인 화면에서 셸 탭을 반대쪽에 떨구면 `tab`도 �
   await page.goto(`/works/${plainWork.slug}?split=lr`);
   await expect(page.locator("[data-column]").first()).toHaveAttribute("data-column", "spec");
 
-  await startDrag(page, await shellTab(page));
-  await moveOnto(page, "left");
+  await startSplitDrag(page, await shellTab(page));
+  await moveOntoHalf(page, "left");
   await page.mouse.up();
 
   await expect(page).toHaveURL(/split=rl/);
@@ -180,7 +145,7 @@ test("문서 탭을 오른쪽 절반에 떨구면 문서가 오른쪽 열이 된
   // 넘기면 겹판이 서고, 포인터가 있는 절반**만** 밝아진다.
   await page.mouse.move(from.x + 12, from.y);
   await expect(page.locator("[data-drop-half]")).toHaveCount(2);
-  await moveOnto(page, "right");
+  await moveOntoHalf(page, "right");
   await expect(page.locator('[data-drop-half="left"]')).not.toHaveAttribute("data-over", "");
 
   await page.mouse.up();
@@ -206,8 +171,8 @@ test("이미 분할인 화면에서 좌우를 바꿔도 열어 둔 패널이 닫
   await expect(opener).toHaveCount(0);
 
   // 좌우를 맞바꾼다 — 분할을 **켜는** 것이 아니다.
-  await startDrag(page, await specTab(page));
-  await moveOnto(page, "right");
+  await startSplitDrag(page, await specTab(page));
+  await moveOntoHalf(page, "right");
   await page.mouse.up();
   await expect(page).toHaveURL(/split=rl/);
 
@@ -238,9 +203,9 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const from = await startDrag(page, await specTab(page));
+  const from = await startSplitDrag(page, await specTab(page));
   // 본문까지 갔다가 다시 칸 위로. 머리행은 겹판이 안 덮으므로 칸이 그대로 포인터를 받는다.
-  await moveOnto(page, "right");
+  await moveOntoHalf(page, "right");
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
 
@@ -258,7 +223,7 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
   await page.goto(`/works/${plainWork.slug}?split=lr`);
   // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다.
   await expect(page.locator('[data-tab="shell"]')).toBeVisible();
-  const before = await resizeCalls(page);
+  const before = await callCount(page, "pty_resize");
 
   // 폭 핸들은 왼쪽 열의 **오른쪽 가장자리**에 얹힌 5px 띠다. 열 머리가 그 열의 폭을 그대로
   // 쓰므로 오른쪽 끝을 머리행에서 읽는다 — 좌표를 손으로 적지 않는다.
@@ -278,7 +243,7 @@ test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
     .poll(async () => (await page.locator('[data-column="spec"]').boundingBox())?.width ?? 0)
     .toBeLessThan(head.width - 100);
 
-  await expect.poll(() => resizeCalls(page)).toBeGreaterThan(before);
+  await expect.poll(() => callCount(page, "pty_resize")).toBeGreaterThan(before);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -370,8 +335,8 @@ test("겹판 밖으로 나가면 밝기가 꺼지고, 거기서 놓아도 분할
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}`);
 
-  const from = await startDrag(page, await specTab(page));
-  await moveOnto(page, "right");
+  const from = await startSplitDrag(page, await specTab(page));
+  await moveOntoHalf(page, "right");
 
   // 출발한 탭 줄로 되돌아간다 — 겹판이 안 덮는 자리다.
   await page.mouse.move(from.x, from.y);

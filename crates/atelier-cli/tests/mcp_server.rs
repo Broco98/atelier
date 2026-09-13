@@ -1072,9 +1072,7 @@ fn edit_work_takes_only_the_slug_the_title_and_the_pin() {
     for field in ["status", "branch", "slug", "projects"] {
         assert!(!props.contains_key(field), "{field} must not be editable here: {tool}");
     }
-    // 고정이 무엇인지 한 줄로 말한다 — 에이전트가 읽는 것은 이 문장뿐이다
-    let described = format!("{} {}", tool["description"], props["pinned"]);
-    assert!(described.contains("top"), "what pinning does is undocumented: {described}");
+    // 고정이 무엇을 하는지는 `pin_and_list_descriptions_say_where_a_pin_lands_and_who_orders_the_list`가 잰다
 }
 
 /// 에이전트도 고정할 수 있다 (결정 81). **제목을 함께 주지 않아도 된다** — 둘 다 선택
@@ -1155,6 +1153,86 @@ fn list_works_puts_pinned_first() {
     let order: Vec<&str> =
         listed.as_array().unwrap().iter().map(|w| w["slug"].as_str().unwrap()).collect();
     assert_eq!(order, vec!["b-work", "a-work"], "pinned must come first: {listed}");
+}
+
+/// UI개선 결정 1·2. 작업 루트의 순서 파일(`.order.json`)이 이 표면에도 먹는다 — 사람이 사이드바에서
+/// 본 「맨 위의 일」과 에이전트가 받는 맨 위가 같다(스토리 32). 파일은 **손으로** 적는다: 순서를
+/// 바꾸는 도구는 없다.
+#[test]
+fn list_works_follows_the_order_file() {
+    let home = tempfile::tempdir().unwrap();
+    for slug in ["a-work", "b-work", "c-work"] {
+        plant(&home.path().join("works"), slug, slug);
+    }
+    // 같은 날이라 지금 규칙(slug 오름차순)으로는 a·b·c다 — 뒤집어 적는다.
+    std::fs::write(
+        home.path().join("works/.order.json"),
+        r#"{"order":["c-work","b-work","a-work"]}"#,
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    assert_eq!(work_titles(&mut server, 2), vec!["c-work", "b-work", "a-work"]);
+}
+
+/// UI개선 결정 28 · 스토리 34·35. 에이전트가 `pinned`를 바꾸면 앱의 핀 버튼과 **같은 자리**에 선다 —
+/// 켜면 고정 구획 맨 위, 끄면 비고정 구획 맨 위. 이미 그 값이면 **아무 파일도 안 바뀐다**: 순서
+/// 파일이 안 생기고, 심은 한 줄 `work.json`이 렌더러의 들여쓴 모양으로 다시 써지지 않는다.
+#[test]
+fn edit_work_pins_to_the_top_of_the_section_and_repeating_it_changes_no_file() {
+    let home = tempfile::tempdir().unwrap();
+    let works = home.path().join("works");
+    for slug in ["a-work", "b-work", "c-work"] {
+        plant(&works, slug, slug);
+    }
+    let mut server = Server::start(home.path());
+    let pin = |server: &mut Server, id: u32, slug: &str, pinned: bool| {
+        let res = server.request(id, "tools/call", json!({
+            "name": "atelier_edit_work", "arguments": { "work_slug": slug, "pinned": pinned }
+        }));
+        assert_eq!(res["result"]["isError"], false, "{res}");
+    };
+
+    // 같은 날이라 옛 규칙(slug 오름차순)이면 고정 구획이 b·c다 — 나중에 고정한 c가 위여야 한다.
+    pin(&mut server, 3, "b-work", true);
+    pin(&mut server, 4, "c-work", true);
+    assert_eq!(work_titles(&mut server, 5), vec!["c-work", "b-work", "a-work"], "고정 구획 맨 위가 아니다");
+    pin(&mut server, 6, "c-work", false);
+    assert_eq!(work_titles(&mut server, 7), vec!["b-work", "c-work", "a-work"], "비고정 구획 맨 위가 아니다");
+
+    let order = works.join(".order.json");
+    std::fs::remove_file(&order).unwrap();
+    let planted = r#"{"title":"b-work","status":"active","createdAt":"2026-09-07","projects":[],"pinned":true}"#;
+    std::fs::write(works.join("b-work/work.json"), planted).unwrap();
+    pin(&mut server, 8, "b-work", true);
+    assert!(!order.exists(), "같은 값 고정이 순서 파일을 썼다");
+    assert_eq!(std::fs::read_to_string(works.join("b-work/work.json")).unwrap(), planted);
+}
+
+/// 설명 두 자리(도구 설명 · `pinned` 인자)가 **고정 구획 맨 위**라고 말한다 — 「모든 목록 맨 위」는
+/// 순서 파일이 생긴 뒤로 거짓이다. `atelier_list_works`는 순서를 사람이 정하고 **바꾸는 도구가
+/// 없다**고 말한다(결정 2 · 스토리 33) — 안 말하면 에이전트가 없는 도구를 찾거나 파일을 손댄다.
+#[test]
+fn pin_and_list_descriptions_say_where_a_pin_lands_and_who_orders_the_list() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tools = res["result"]["tools"].as_array().unwrap();
+    let find = |name: &str| {
+        tools.iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("{name} not listed: {res}"))
+    };
+    let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    let edit = find("atelier_edit_work");
+    let described = normalize(edit["description"].as_str().unwrap());
+    let pinned = normalize(edit["inputSchema"]["properties"]["pinned"]["description"].as_str().unwrap());
+    for (place, text) in [("tool description", &described), ("pinned argument", &pinned)] {
+        assert!(text.contains("top of the pinned section"), "{place}: {text}");
+        assert!(!text.contains("every listing") && !text.contains("every work listing"), "{place}: {text}");
+    }
+
+    let list = normalize(find("atelier_list_works")["description"].as_str().unwrap());
+    assert!(list.contains("no tool that changes the order"), "{list}");
 }
 
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
@@ -1852,6 +1930,27 @@ fn each_mode_lists_only_its_own_root() {
     // 값이 없는 것은 Atelier와 같다 — 앱 밖 셸에서 뜬 기존 MCP가 지금과 똑같다.
     let mut bare = Server::start(home.path());
     assert_eq!(work_titles(&mut bare, 2), vec!["spec 검색"]);
+}
+
+/// UI개선 결정 8 · 스토리 31. **Room 루트의 순서 파일은 Room 목록에만 먹는다.** 순서 파일이
+/// 모드 홈이 아니라 진행 중 루트 안에 사는 까닭이 이것이다(S1) — 두 세계에 같은 slug를 같은
+/// 날로 심고 `rooms/`에만 뒤집은 순서를 적으면, Atelier 목록은 지금 규칙 그대로 남아야 한다.
+#[test]
+fn a_rooms_order_file_orders_only_the_room_list() {
+    let home = tempfile::tempdir().unwrap();
+    for root in ["works", "maison/rooms"] {
+        for slug in ["a-one", "b-two"] {
+            plant(&home.path().join(root), slug, slug);
+        }
+    }
+    std::fs::write(home.path().join("maison/rooms/.order.json"), r#"{"order":["b-two","a-one"]}"#)
+        .unwrap();
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    assert_eq!(work_titles(&mut maison, 2), vec!["b-two", "a-one"]);
+
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    assert_eq!(work_titles(&mut atelier, 2), vec!["a-one", "b-two"], "Room의 순서가 Atelier로 샜다");
 }
 
 /// Room을 만드는 길은 MCP 하나다. **`projects`도 `branch`도 없이** 불린 `start_work`가

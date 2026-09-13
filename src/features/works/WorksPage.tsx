@@ -36,12 +36,15 @@ import {
   shellForNav,
   shellNavFromWindow,
   shellsEmptied,
+  placeOrigin,
   shellsOf,
-  workShellOrigin,
+  workDefaultOrigin,
   workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
+  dropShellOnSlot,
+  onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
   requestCloseShell,
@@ -51,16 +54,9 @@ import {
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
-import {
-  armDrag,
-  clearHalf,
-  dragStore,
-  dropSplit,
-  hoverHalf,
-  otherTab,
-  specHeadLabel,
-} from "./split-view";
-import type { DragSource, SplitHalf } from "./split-view";
+import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot, tabDragOf } from "@/lib/pointer-drag";
+import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
+import { dropSplit, otherTab, specHeadLabel } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -311,7 +307,7 @@ function WorksPage({
   const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx).
-  // "기본 선택은 초안을 건너뛴다"는 규칙도 그쪽 pickSlug가 들고 있다.
+  // 「기억한 것 → 목록 첫 줄」 규칙도 그쪽 pickSlug가 들고 있다.
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
 
   // **마지막으로 고른 작업을 붙들고 있는다.** 목록이 한 프레임이라도 이 작업을 잃으면
@@ -371,20 +367,35 @@ function WorksPage({
   // 그리고 **xterm의 숨은 `<textarea>`** — `togglesWorkPanel`이 적어 둔 함정과 같은 자리다).
   //
   // 딛고 선 작업은 `panelWork`다 — 본문이 셸을 보여주는데 다른 작업의 셸을 여는 일이 없다.
+  //
+  // **자리는 기본 자리 함수 하나가 정한다**(UI개선 결정 17~19). 프로젝트가 여럿인 work이면 「모든
+  // 프로젝트」이고 `null`이 없어, 프로젝트를 안 골랐다고 ⌘T가 안 먹는 경우가 사라졌다. `+`
+  // 메뉴의 프로젝트 줄과 진입 셸은 여전히 `workShellOrigin`을 탄다 — 들어가도 셸이 저절로
+  // 안 서는 것(UI개선 결정 30)이 그쪽의 `null`이다.
+  //
+  // **셸 안 ⌘T도 여기로 온다.** xterm 핸들러는 요청만 보내고(`requestNewShell`) 이 화면이
+  // 같은 `open`으로 연다 — 셸 안과 밖이 언제나 같은 자리다. 요청은 **이 화면의 셸**이 보낸
+  // 것만 받는다 — 거르는 자리는 스토어다(`onNewShellRequested`). 창 keydown 리스너를 하나 더 거는 모양으로 짓지 않는다(결정 93의
+  // `stopPropagation`이 막아 둔 두 번 열기를 되살린다).
   useEffect(() => {
+    const open = () => {
+      if (!panelWork) return;
+      openNewShell(workDefaultOrigin(mode, panelWork));
+      onSelectTab("terminal");
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
-      // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
-      const origin = panelWork && workShellOrigin(mode, panelWork, null);
-      if (!origin) return;
-      openNewShell(origin);
-      onSelectTab("terminal");
+      open();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mode, panelWork, onSelectTab]);
+    // 고른 작업이 없으면 이 화면의 셸도 없다 — 들을 요청이 없다.
+    const stop = tabOwner === null ? () => {} : onNewShellRequested(tabOwner, open);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      stop();
+    };
+  }, [mode, panelWork, tabOwner, onSelectTab]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).
@@ -497,6 +508,9 @@ function WorksPage({
       // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
       // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
       projects={workShellProjects(mode, panelWork)}
+      // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(UI개선 결정 20). ⌘T와 「모든 프로젝트」가 여는
+      // 자리와 **같은 함수**(`workDefaultOrigin` — `placeOrigin`이 그것을 탄다)에서 읽는다.
+      defaultCwd={workDefaultOrigin(mode, panelWork).cwd}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
       spec={{ on: specStands, onSelect: () => onSelectTab("spec") }}
@@ -512,31 +526,37 @@ function WorksPage({
       }}
       // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
       onClose={requestCloseShell}
-      onOpen={(project) => {
-        // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
-        // 본문을 옮기지도 않는다(결정 24). ⌘T가 위에서 같은 규칙을 탄다.
-        const origin = workShellOrigin(mode, panelWork, project);
+      onOpen={(place) => {
+        // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
+        // (UI개선 결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
+        // 그때는 열지도, 본문을 옮기지도 않는다(결정 24).
+        const origin = placeOrigin(mode, panelWork, place);
         if (!origin) return;
         openNewShell(origin);
         onSelectTab("terminal");
       }}
-      // 칸을 본문 위로 끌면 그 절반에 선다(결정 12) — 사이드바 행이 하던 몸짓 그대로이고
-      // **바뀐 것은 출발점뿐이다**(놓일 자리도 분할 계산도 그대로다).
+      // 칸을 끌면 **한 눌림을 두 소비자가 나눠 본다**(UI개선 스펙 S10) — 본문 절반에
+      // 놓으면 그 절반에 서고(결정 12, 아래 받침), 이 줄의 틈에 놓으면 순서가 바뀐다(UI개선 결정 11).
+      // 놓은 곳이 이긴다.
       //
-      // **끄는 자리를 여기서 만든다.** 탭 줄이 스스로 만들면 `terminal → works` 방향이
-      // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — 걷히기 전 Sidebar가 셸
-      // 가지에 같은 이유로 같은 일을 해 줬다). 이 화면은 이미 양쪽을 다 알고 있다.
+      // **끄는 자리를 여기서 만든다.** 탭 줄은 스토어도 제스처 모듈도 모르는 그림이라(그쪽
+      // prop 주석) 드래그 상태를 구독하는 이 화면이 건다. `/terminal`도 같은 모양으로 건다.
       //
-      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 `slug`가 하나로 정해진다 — 남의 work을
-      // 떨구는 길(결정 101)은 사이드바에만 있다.
-      onDragTab={(shellId, from) =>
+      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
+      // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
+      // 때문이다.
+      onDragTab={(shellId, from) => {
+        const owner = ownerOf(mode, panelWork.slug);
         armDrag(
-          shellId === null
-            ? { kind: "spec", slug: panelWork.slug, shellId: null }
-            : { kind: "shell", slug: panelWork.slug, shellId },
+          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
-        )
-      }
+        );
+      }}
+      // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
+      // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
+      slot={drag.slot}
+      onSlot={hoverSlot}
+      onDropSlot={dropShellOnSlot}
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //
@@ -760,7 +780,10 @@ function WorksPage({
     split === "lr" ? [specColumn, terminalColumn] : [terminalColumn, specColumn];
 
   // `drag.source`를 그대로 쓰면 아래 클로저 안에서 타입이 안 좁혀진다 — 한 번 받아 둔다.
-  const dragSource = drag.source;
+  //
+  // **사이드바 작업 행은 본문이 안 받는다**(UI개선 스펙 §4) — 그 끌기가 놓일 자리는 목록의 틈이다.
+  // 여기서 거르지 않으면 행을 끄는 순간 분할 겹판이 서고, 본문에 놓으면 화면이 갈린다.
+  const dragSource = tabDragOf(drag);
 
   // 본문 열 — 셋 중 하나다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
   // 패널은 그 형제로 아래 return에서 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널

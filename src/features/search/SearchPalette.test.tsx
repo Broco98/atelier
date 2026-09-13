@@ -370,3 +370,13 @@ describe("팔레트는 터미널을 모른다", () => {
     expect(countOf("@/features/terminal")).toBe(0);
   });
 });
+
+// 설정 줄도 **셸의 문과 같은 가드**를 지난다(UI개선 S18) — 고르는 자리가 클릭·키 핸들러라 정적
+// 마크업으로는 못 부르고, 그래서 소스로 센다. 옮기는 호출이 가드를 지나는 한 번뿐이어야 한다:
+// 어느 모양으로든 라우터를 곧장 부르는 자리가 생기면 둘째 줄이 빨개진다.
+describe("팔레트의 설정 줄", () => {
+  it("옮기는 길이 설정 가드 하나다", () => {
+    expect(countOf("navigateGuardingSettings(router, target)")).toBe(1);
+    expect(countOf("navigate(")).toBe(0);
+  });
+});

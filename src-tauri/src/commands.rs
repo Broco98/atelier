@@ -93,6 +93,17 @@ pub async fn set_work_pinned(mode: Mode, slug: String, pinned: bool) -> CmdResul
     atelier_core::update_work_pinned(&works_dir(mode), &slug, pinned).map_err(err)
 }
 
+/// 작업 하나를 옮기고 새 목록 전체를 돌려준다 — 인자와 응답의 뜻은 코어 `move_work`에 있다.
+#[tauri::command]
+pub async fn move_work(
+    mode: Mode,
+    slug: String,
+    pinned: bool,
+    before: Option<String>,
+) -> CmdResult<Vec<WorkView>> {
+    atelier_core::move_work(&works_dir(mode), &slug, pinned, before.as_deref()).map_err(err)
+}
+
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]
@@ -304,6 +315,18 @@ pub async fn install_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
 #[tauri::command]
 pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
     Ok(crate::hooks::uninstall(&agent_home(), &hook_script()))
+}
+
+/// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
+/// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
+/// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).
+///
+/// 모드를 안 받는다 — 앱 하나를 끄는 일이라 세계가 없다.
+#[tauri::command]
+pub async fn quit_app(app: tauri::AppHandle) -> CmdResult<()> {
+    crate::quit::confirm();
+    app.exit(0);
+    Ok(())
 }
 
 #[cfg(test)]

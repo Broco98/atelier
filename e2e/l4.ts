@@ -38,6 +38,24 @@ export const test = base.extend<{ sandbox: Sandbox }>({
   },
 });
 
+/**
+ * work 하나를 **손으로 심는다** — 만든 날까지 못 박아서(기본 순서가 만든 날에서 나온다).
+ *
+ * sandbox에는 work이 하나도 없고 **앱에도 다리에도 work을 만드는 커맨드가 없다**(work 생성은 MCP
+ * 전용이다). 씨를 안 뿌리면 목록이 비어 주소가 정규화되고 화면이 아무것도 안 하는데, 실패는 엉뚱한
+ * 곳을 가리킨다. 모양은 코어가 읽는 `work.json` 그대로다 — 여러 spec이 베껴 쓰면 그 모양이 바뀌는 날
+ * 고칠 자리가 여럿이 된다.
+ */
+export function seedWork(home: string, slug: string, title: string, createdAt: string) {
+  const dir = join(home, "works", slug);
+  mkdirSync(join(dir, "spec"), { recursive: true });
+  writeFileSync(
+    join(dir, "work.json"),
+    JSON.stringify({ title, status: "active", createdAt, projects: [], pinned: false }),
+  );
+  writeFileSync(join(dir, "spec", "overview.md"), "# 개요\n\n한 줄.\n");
+}
+
 function treeReport(home: string): string {
   const entries = readdirSync(home, { recursive: true, encoding: "utf8" });
   const lines = entries.map((name) => `  ${name}`);

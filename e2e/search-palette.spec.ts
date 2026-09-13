@@ -1,6 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
 import {
+  MAISON_LANDING_ROOM,
   MAISON_SEARCH_DESTINATION_QUERY,
   MAISON_SEARCH_HITS,
   ROOMS,
@@ -9,7 +10,7 @@ import {
   SEARCH_HITS,
   WORKS,
 } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { awaitSpawned, fireEvent, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
@@ -35,7 +36,10 @@ import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } f
 // **결정 6·7의 그물은 코어 단위(`search.rs`)에만 있다.**
 
 const [specWork] = WORKS;
-/** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — 첫 줄은 초안이라 건너뛴다. */
+/**
+ * `room`은 팔레트의 Maison 답(`MAISON_SEARCH_HITS`)이 싣는 **문서를 가진 둘째**다. 무선택
+ * 주소가 고르는 `MAISON_LANDING_ROOM`과 한때 같은 Room이었다(정규화가 초안을 건너뛰던 때).
+ */
 const [, room] = ROOMS;
 const [ROOM_DOC] = room.specFiles;
 /**
@@ -164,12 +168,16 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
   await page.keyboard.press("Enter");
 
   await expect(palette(page)).toHaveCount(0);
-  await expect(page).toHaveURL("/settings");
-  // **주소만 보면 화면이 안 서도 초록이다.** 설정 화면의 구획 머리가 그 자리에 선다.
-  await expect(page.getByRole("heading", { name: "터미널" })).toBeVisible();
+  // 팔레트 목적지는 `/settings` 그대로이고 첫 항목으로 치환된다(UI개선 결정 22).
+  await expect(page).toHaveURL("/settings/terminal");
+  // **주소만 보면 화면이 안 서도 초록이다.** 설정 항목 페이지의 제목과 그 구획이 그 자리에 선다.
+  await expect(page.getByRole("heading", { name: "터미널", exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "터미널 설정", exact: true })).toBeVisible();
   // 훅 구획은 **백엔드가 답해 줘야 서는 자리**다(#207) — 상태·경로·미리보기가 전부
-  // `agent_hooks`의 답에서 오므로, 여기까지 오면 그 왕복이 실제로 돈 것이다.
-  await expect(page.getByRole("heading", { name: "에이전트 훅" })).toBeVisible();
+  // `agent_hooks`의 답에서 오므로, 여기까지 오면 그 왕복이 실제로 돈 것이다. 항목이 따로라
+  // 그 페이지로 옮겨 본다.
+  await page.locator("aside").getByRole("button", { name: "에이전트 훅", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "에이전트 훅", exact: true })).toBeVisible();
   await expect(page.getByText("~/.codex/config.toml")).toBeVisible();
   await expect(page.getByText("[[hooks.Stop]]")).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -182,32 +190,8 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
  * 네이티브 메뉴가 쏘는 것을 **손으로 쏜다.** 이 층의 브라우저에는 OS 메뉴가 없어서 항목을
  * 누를 수가 없는데, 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나뿐이라
  * 그 이벤트를 직접 쏘면 **메뉴 → 합성 keydown → 팔레트**의 나머지 전부가 실제로 돈다.
- *
- * 구독 id는 하네스가 적어 둔 IPC 기록에서 읽는다 — 상수로 적을 수 없다(`transformCallback`이
- * 난수로 짓는다). 못 찾으면 던진다: 구독이 안 걸린 채 지나가면 아래 단언이 **아무것도 안
- * 쏜 채로** 초록이 될 수 있다.
  */
-async function fireMenuHotkey(page: Page, code: string) {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  // **`listen`만 고른다.** 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가 없다 —
-  // StrictMode가 붙였다 떼면서 마지막 줄이 그 해제가 된다. 살아 있는 것은 **마지막 구독**이다.
-  const listen = calls
-    .filter((call) => call.startsWith("plugin:event|listen") && call.includes('"hotkey:menu"'))
-    .reverse()[0];
-  const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
-  if (!handler) throw new Error(`hotkey:menu 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
-  await page.evaluate(
-    ([id, sent]) => {
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-        }
-      ).__TAURI_INTERNALS__;
-      internals.runCallback(Number(id), { event: "hotkey:menu", id: 0, payload: sent });
-    },
-    [handler, code],
-  );
-}
+const fireMenuHotkey = (page: Page, code: string) => fireEvent(page, "hotkey:menu", code);
 
 // 결정 3. **`View ▸ Search`가 프레임 안에서도 팔레트를 연다.**
 //
@@ -503,7 +487,7 @@ test("세계를 건너면 ⌘K가 저쪽 세계를 안 본다", async ({ page })
   await page.keyboard.press("Escape");
 
   await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
 
   await pressSearchKey(page);
   // **줄 수부터 갈린다** — 저쪽 답이 왔으면 넷이 선다(픽스처의 `MAISON_SEARCH_HITS`).
@@ -602,6 +586,9 @@ test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
   const opened = (await sidebar.boundingBox())?.width ?? 0;
   expect(opened, "사이드바가 처음부터 접혀 있으면 이 검사가 아무것도 못 잰다").toBeGreaterThan(0);
 
+  // **pty가 앉은 뒤에 닫는다**(`awaitSpawned`의 머리말) — 그 전의 `×`는 물을 것이 없어 확인
+  // 창 없이 닫히는 것이 옳고, 그러면 아래 단언이 붐비는 러너에서만 빨개진다.
+  await awaitSpawned(page, 1);
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();

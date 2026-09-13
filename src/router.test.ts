@@ -7,11 +7,13 @@ import { projectsQuery } from "./features/projects/hooks";
 import { archiveQuery } from "./features/archive/hooks";
 import {
   lastMode,
+  modeEntryTarget,
   modeSwitchTarget,
   rememberVisit,
   shellMode,
   shellStore,
 } from "./components/shell/shell-store";
+import { navigateGuardingSettings } from "./features/settings/navigate-guarding-settings";
 import { trackCanGoForward } from "./can-go-forward";
 import { recallSearch, rememberView, tabSearch } from "./routes/-work-search";
 import type { ViewTab } from "./routes/-work-search";
@@ -34,8 +36,9 @@ import type { ArchiveEntry } from "./features/archive/types";
 // origin을 함께 넘기는 이유 — 클라이언트로 판단한 라우터는 origin이 비어 있으면
 // window.origin을 읽는데, node에는 window 자체가 없어 ReferenceError가 난다.
 
-// 정규화는 목록에서 slug와 status만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
-// "draft:" 접두사를 붙인 slug는 초안이 된다 (기본 선택이 건너뛰는 대상).
+// 정규화는 목록에서 slug만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
+// status를 남기는 것은 초안을 목록에 **세우기** 위해서다: "draft:" 접두사를 붙인 slug는 초안이
+// 되고, 기본 선택은 그것을 **안** 건너뛴다(UI개선 결정 6).
 const works = (...slugs: Array<string>) =>
   slugs.map((raw) => {
     const draft = raw.startsWith("draft:");
@@ -146,7 +149,7 @@ async function goForward(
 }
 
 // 앱을 켜면 작업 화면이다 — 작업이 본업이고 프로젝트는 설정에 가깝다.
-// 진입은 무선택 주소를 한 번 더 거치므로 그쪽 규칙(초안 건너뛰기 포함)을 그대로 물려받는다.
+// 진입은 무선택 주소를 한 번 더 거치므로 그쪽 규칙을 그대로 물려받는다.
 describe("진입 정규화", () => {
   it("'/'로 들어오면 작업 목록의 첫 항목까지 정규화된다", async () => {
     const { router } = setup(["/"]);
@@ -276,17 +279,18 @@ describe("무선택 주소의 정규화", () => {
   });
 });
 
-// 사이드바 목록은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
-// 목록 어디에도 강조가 없다 — 그래서 아무도 고르지 않았을 때만 초안을 건너뛴다.
-// 직접 고른 초안은 건드리지 않는다.
-describe("기본 선택은 초안을 건너뛴다", () => {
-  it("마지막으로 보던 것이 없으면 초안이 아닌 첫 항목으로 간다", async () => {
+// 초안도 다른 작업들 사이에 서므로(UI개선 결정 5) 기본 선택이 초안을 가리지 않는다(UI개선 결정 6) —
+// **기억한 것 → 목록 첫 줄**, 그것이 초안이어도. 한때 초안을 건너뛰었는데, 그것은 초안이
+// 접힌 별도 구역에 살아 거기로 떨어지면 강조가 안 보였기 때문이다. 구역이 사라진 지금
+// 건너뛰면 도리어 보이는 첫 줄과 열리는 것이 갈린다.
+describe("기본 선택은 초안이어도 목록 첫 줄이다", () => {
+  it("마지막으로 보던 것이 없으면 첫 줄이 초안이어도 그리로 간다", async () => {
     const { router } = setup(["/works"], { works: works("draft:초안", "진행중"), lastWork: null });
     await router.load();
-    expect(router.state.location.pathname).toBe("/works/진행중");
+    expect(router.state.location.pathname).toBe("/works/초안");
   });
 
-  it("초안밖에 없으면 첫 초안으로 간다 — 빈 화면보다는 낫다", async () => {
+  it("초안밖에 없으면 첫 초안으로 간다", async () => {
     const { router } = setup(["/works"], {
       works: works("draft:초안-a", "draft:초안-b"),
       lastWork: null,
@@ -313,13 +317,13 @@ describe("Maison 무선택 주소의 정규화", () => {
     expect(router.state.location.pathname).toBe("/maison/rooms/work-b");
   });
 
-  it("처음 여는 것이면 초안이 아닌 첫 Room으로 간다", async () => {
+  it("처음 여는 것이면 첫 줄의 Room으로 간다 — 초안이어도", async () => {
     const { router } = setup(["/maison/rooms"], {
       works: works("draft:초안", "진행중"),
       lastRoom: null,
     });
     await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/진행중");
+    expect(router.state.location.pathname).toBe("/maison/rooms/초안");
   });
 
   it("Room이 하나도 없으면 정규화하지 않고 머문다", async () => {
@@ -523,34 +527,8 @@ describe("세그먼트가 세계를 건넌다", () => {
     expect(router.state.location.pathname).toBe("/maison/rooms/room-b");
   });
 
-  // **가드가 실제로 무는 자리가 여기다.** 다른 화면에서는 그 세계의 마지막 주소가 곧 지금
-  // 주소라, 가드가 없어도 제자리를 고쳐 쓰고 마는 이동이 된다. 설정은 어느 칸에도 안 적히므로
-  // (`rememberVisit`) 마지막 주소가 **떠나온 그 화면**이고, 그래서 가드가 없으면 켜져 있는
-  // 칸을 누른 것만으로 설정을 떠난다.
-  it("설정에서 떠나온 세계를 다시 골라도 안 움직인다", async () => {
-    const { router, history } = setup(["/maison/rooms/work-a"]);
-    await router.load();
-    await router.navigate({ to: "/settings" });
-    const length = history.length;
-
-    // 설정은 세계를 안 싣는 주소라, 셸이 드는 세계가 곧 떠나온 세계다.
-    const here = shellMode(router.state.location.pathname);
-    expect(here).toBe("maison");
-
-    await pick(router, here, "maison");
-    expect(router.state.location.pathname).toBe("/settings");
-    expect(history.length).toBe(length);
-  });
-
-  it("설정에서 저쪽을 고르면 그 세계로 건너간다", async () => {
-    const { router } = setup(["/maison/rooms/work-a"]);
-    await router.load();
-    await router.navigate({ to: "/settings" });
-
-    await pick(router, shellMode(router.state.location.pathname), "atelier");
-    // Atelier에는 아직 마지막 주소가 없다 — 첫 화면으로 간다.
-    expect(router.state.location.pathname).toBe("/works/work-a");
-  });
+  // 설정에는 세그먼트가 없다(UI개선 결정 21) — 한때 여기 있던 「설정에서 떠나온 세계를 다시
+  // 골라도 안 움직인다」는 그 화면이 사라지며 아래 「앱으로 돌아가기」 describe로 옮겨 갔다.
 
   // **왕복이 기억을 지우면 안 된다.** `lastPlace`가 드는 것은 pathname뿐이라, 세그먼트가 씨앗
   // 없이 이동하면 빈 `search`로 도착하고 그 순간 도착 주소를 적어 두는 effect가 기본값으로
@@ -571,6 +549,76 @@ describe("세그먼트가 세계를 건넌다", () => {
     expect(router.state.location.pathname).toBe("/works/work-a");
     // 씨앗이 주소에 실려 왔다 — 실리지 않았다면 여기가 `{}`이고, 그 빈 주소가 곧 기억을 덮어쓴다.
     expect(router.state.location.search).toEqual({ tab: "terminal", file: "spec/notes.md" });
+  });
+});
+
+// 설정 nav의 「앱으로 돌아가기」(UI개선 결정 27). **세그먼트와 목적지 몸통이 같다** — 그 모드의
+// 마지막 자리, 없으면 목록 주소, work 주소면 기억한 보기·탭을 되붙인다. 갈리는 것은 하나다:
+// 세그먼트는 같은 모드면 안 가고, 돌아가기는 **떠나온 모드 그대로** 간다. 세그먼트 함수를 그대로
+// 부르면 같은 모드라 늘 `null`이 나와 버튼이 죽는다.
+//
+// 규칙을 여기 안 적는다 — 셸이 하는 것도 `navigate(modeEntryTarget(mode))` 한 줄이다.
+describe("앱으로 돌아가기", () => {
+  const leave = async (router: ReturnType<typeof setup>["router"]) =>
+    router.navigate(modeEntryTarget(shellMode(router.state.location.pathname)));
+
+  it("항목을 몇 번 옮겼든 한 번에 들어오기 직전 주소로 간다 — 보기·탭까지", async () => {
+    const { router, history } = setup(["/works/work-b"]);
+    await router.load();
+    rememberView("atelier", "work-b", { tab: "terminal", split: null, file: null });
+
+    await router.navigate({ to: "/settings" });
+    await router.navigate({ to: "/settings/notifications" });
+    await router.navigate({ to: "/settings/hooks" });
+    const length = history.length;
+
+    await leave(router);
+    expect(router.state.location.pathname).toBe("/works/work-b");
+    expect(router.state.location.search).toEqual({ tab: "terminal" });
+    // **push다** — 뒤로가기가 아니다(뒤로가기였다면 칸이 줄고 `/settings/notifications`에 선다).
+    expect(history.length).toBe(length + 1);
+  });
+
+  it("work 밖에서 들어왔으면 그 주소로 간다", async () => {
+    const { router } = setup(["/projects/proj-b"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    await router.navigate({ to: "/settings/hooks" });
+    await leave(router);
+    expect(router.state.location.pathname).toBe("/projects/proj-b");
+  });
+
+  it("Maison에서 들어왔으면 Maison으로 간다", async () => {
+    const { router } = setup(["/maison/terminal"]);
+    await router.load();
+
+    await router.navigate({ to: "/settings" });
+    await leave(router);
+    expect(router.state.location.pathname).toBe("/maison/terminal");
+  });
+
+  // 앱을 켜자마자 ⌘, — 기억할 주소가 없다. 목록 주소는 무선택이라 정규화가 한 번 더 탄다.
+  it("기억이 없으면 그 모드의 목록 주소다", async () => {
+    // `setup`이 기억을 비운다 — 앞 케이스가 적어 둔 자리가 새면 이 케이스가 그것을 잰다.
+    const { router } = setup(["/settings"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/settings/terminal");
+
+    expect(modeEntryTarget("atelier")).toEqual({ to: "/works" });
+    expect(modeEntryTarget("maison")).toEqual({ to: "/maison/rooms" });
+  });
+
+  // **세그먼트 함수와 갈리는 단 한 자리다.** 떠나온 모드는 늘 「지금 모드」라, 이 함수가 같은
+  // 모드에 `null`을 주면 돌아가기가 어느 화면에서 들어왔든 아무 데도 안 간다.
+  it("같은 모드여도 값이 나온다", async () => {
+    const { router } = setup(["/works/work-a"]);
+    await router.load();
+    await router.navigate({ to: "/settings" });
+
+    expect(shellMode(router.state.location.pathname)).toBe("atelier");
+    expect(modeEntryTarget("atelier")).toEqual({ to: "/works/work-a", search: expect.anything() });
+    expect(modeSwitchTarget("atelier", "atelier")).toBeNull();
   });
 });
 
@@ -823,41 +871,79 @@ describe("화면 탭의 주소", () => {
 });
 
 // 설정은 목록도 선택도 없는 화면이라(결정 51·52) 위 규칙 둘이 **걸리지 않아야 한다** —
-// 무선택 주소 정규화도, 마지막으로 보던 항목도 여기엔 없다. 그리고 사이드바 바닥과 네이티브
-// 메뉴(⌘,) 둘이 같은 이동을 하므로, 그 이동이 히스토리에 어떻게 남는지가 두 자리의 공통
-// 계약이다 — AppShell이 nav 항목에만 「이미 그 화면이면 가만히 있는다」 가드를 두고 설정에는
-// 두지 않은 근거가 아래 마지막 줄이다.
+// 마지막으로 보던 항목도 목록 정규화도 여기엔 없다. 대신 항목이 셋이라 주소가 갈렸고(UI개선
+// 결정 22) `/settings`는 **첫 항목으로 치환**된다.
+//
+// 설정으로 가는 문은 셋이다(사이드바 바닥 · ⌘, · 팔레트). 셋 다 `/settings`로 가고, **설정 안에서는
+// 무동작이다**(S18) — 치환이 있으니 가드가 없으면 보던 항목을 떠나 터미널 설정으로 가며 칸이 는다.
+// 그 가드는 이동 함수 한 자리(`navigateGuardingSettings`)에 산다.
 describe("설정 화면의 주소", () => {
-  it("`/settings`로 들어오면 그대로 머문다 — 정규화가 건드리지 않는다", async () => {
-    const { router } = setup(["/settings"], { lastWork: "work-b" });
+  it("`/settings`로 들어오면 첫 항목으로 치환된다 — 칸이 안 는다", async () => {
+    const { router, history } = setup(["/settings"], { lastWork: "work-b" });
     await router.load();
-    expect(router.state.location.pathname).toBe("/settings");
+    expect(router.state.location.pathname).toBe("/settings/terminal");
     expect(router.state.location.search).toEqual({});
     // 주소만 보면 **라우트가 없어도 초록이다** — 못 찾은 주소도 위치는 그대로 남는다.
     // 실제로 그 화면에 닿았는지는 매치를 봐야 안다.
-    expect(router.state.matches.map((match) => match.routeId)).toContain("/settings");
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/settings/terminal");
+    // 치환은 **동기** `beforeLoad`의 REPLACE다 — async로 두면 이 칸이 둘이 된다(`index.tsx` 머리말).
+    expect(history.length).toBe(1);
   });
+
+  it.each(["terminal", "notifications", "hooks"] as const)(
+    "`/settings/%s`는 제 화면에 선다",
+    async (page) => {
+      const { router } = setup([`/settings/${page}`]);
+      await router.load();
+      expect(router.state.location.pathname).toBe(`/settings/${page}`);
+      expect(router.state.matches.map((match) => match.routeId)).toContain(`/settings/${page}`);
+    },
+  );
 
   // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
   it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {
     const { router, history } = setup(["/works/work-a"]);
     await router.load();
 
-    await router.navigate({ to: "/settings" });
-    expect(router.state.location.pathname).toBe("/settings");
+    await navigateGuardingSettings(router, { to: "/settings" });
+    expect(router.state.location.pathname).toBe("/settings/terminal");
     expect(history.length).toBe(2);
 
     await goBack(router, history);
     expect(router.state.location.pathname).toBe("/works/work-a");
   });
 
-  it("이미 설정에 있을 때 다시 열어도 히스토리가 늘지 않는다", async () => {
-    const { router, history } = setup(["/settings"]);
+  // 항목마다 주소가 따로라(결정 22) 뒤로가기가 앞 항목으로 간다.
+  it("항목을 옮기면 칸이 늘고 뒤로가기가 앞 항목으로 간다", async () => {
+    const { router, history } = setup(["/settings/terminal"]);
     await router.load();
 
-    await router.navigate({ to: "/settings" });
-    expect(history.length).toBe(1);
-    expect(history.canGoBack()).toBe(false);
+    await router.navigate({ to: "/settings/notifications" });
+    expect(history.length).toBe(2);
+    await goBack(router, history);
+    expect(router.state.location.pathname).toBe("/settings/terminal");
+  });
+
+  it("설정 안에서 다시 열어도 보던 항목에 머물고 히스토리가 늘지 않는다", async () => {
+    const { router, history } = setup(["/works/work-a"]);
+    await router.load();
+    await navigateGuardingSettings(router, { to: "/settings" });
+    await router.navigate({ to: "/settings/notifications" });
+    const length = history.length;
+
+    await navigateGuardingSettings(router, { to: "/settings" });
+    expect(router.state.location.pathname).toBe("/settings/notifications");
+    expect(history.length).toBe(length);
+  });
+
+  // 가드가 **설정으로 가는 문에만** 문다 — 설정 안에서 다른 곳으로 가는 이동까지 삼키면 팔레트가
+  // 설정 화면에서 죽는다(같은 함수를 모든 줄이 지난다).
+  it("설정 안에서 다른 곳으로 가는 이동은 그대로 간다", async () => {
+    const { router } = setup(["/settings/hooks"]);
+    await router.load();
+
+    await navigateGuardingSettings(router, { to: "/terminal" });
+    expect(router.state.location.pathname).toBe("/terminal");
   });
 });
 

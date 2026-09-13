@@ -160,6 +160,17 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
     );
   });
 
+  // UI개선 결정 19. 셸 안 ⌘T는 xterm 핸들러가 **요청만** 보내고 화면이 연다. 이 화면이 그 요청을
+  // 안 들으면 셸에 포커스가 있는 동안 ⌘T가 죽는다 — 이 화면은 셸이 늘 포커스를 쥐고 있어
+  // 사실상 ⌘T 전부다. 창 keydown 리스너로 짓지 않는다(아래 개수가 그대로다).
+  //
+  // 여기서는 **구독하는가**만 본다 — 지역 이름을 못박지 않는다. 포커스를 둔 셸에서 누른 ⌘T가
+  // 새 셸로 이어지는 사슬은 `e2e/shell-origin.spec.ts`가 진짜 xterm으로 잰다.
+  it("셸 안 ⌘T의 요청을 듣고, 이 세계의 최상위에 연다", () => {
+    expect(source).toContain("onNewShellRequested(");
+    expect(source).toContain("openNewShell(topTerminal(mode))");
+  });
+
   it("window에서 듣는 자리가 셋이다", () => {
     // ⌘T(셸 열기 — 결정 93) · ⌘1~9·⌃Tab(결정 78·79) · ⌘W(켜진 칸 닫기 — 결정 13).
     // 줄어들면 그중 한 벌이 통째로 죽은 것이다.
@@ -167,6 +178,15 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
       countOf(source, 'window.addEventListener("keydown", onKeyDown);'),
       "window에서 키를 듣는 자리가 셋이 아니다 — ⌘T · ⌘1~9·⌃Tab · ⌘W",
     ).toBe(3);
+  });
+
+  // UI개선 결정 11 — **이 화면도 탭을 끌어 순서를 바꾼다.** 떨굴 분할이 없어 소비자는 탭 줄 하나다.
+  // 제스처는 기능 폴더 밖 공용 모듈이라 `features/works`를 안 부른다(위 import 검사 그대로).
+  it("탭을 끄는 자리와 틈 소비자를 이 화면이 준다", () => {
+    expect(source).toContain("if (shellId !== null) armDrag({ kind: \"shell\", owner, shellId }, from);");
+    expect(source).toContain("slot={slot}");
+    expect(source).toContain("onSlot={hoverSlot}");
+    expect(source).toContain("onDropSlot={dropShellOnSlot}");
   });
 
   it("구독이 이 화면의 가지로 좁혀져 있다", () => {
