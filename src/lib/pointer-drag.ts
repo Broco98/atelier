@@ -43,7 +43,10 @@ export interface DragSource {
 
 /**
  * 사이드바에서 끈 **작업 행**(UI개선 스펙 §4). 놓일 자리는 목록의 틈이고 본문은 받지 않는다 —
- * 그래서 탭의 원천과 종류가 갈린다: 한 타입에 섞으면 분할 겹판이 작업 행 끌기에도 선다.
+ * 그래서 탭의 원천과 종류가 갈린다. 다만 상태(`DragState.source`)에는 둘이 함께 실린다: 한 번에
+ * 하나만 끌리고, 탭 줄·사이드바가 「무엇이든 끌리는 중인가」를 한 값으로 읽는다. 탭만 받는 쪽은
+ * 아래 `tabDragOf`로 읽는다 — 거르는 자리가 받는 쪽마다 흩어지면 하나가 빠진 날 분할 겹판이 작업 행
+ * 끌기에도 선다.
  *
  * owner가 아니라 **slug**를 싣는다. 이 원천을 만드는 사이드바 목록은 터미널을 모르고(그쪽 import
  * 금지 검사), owner는 셸 레지스트리의 말이다 — 작업 행에는 셸이 없어도 slug는 늘 있다.
@@ -61,6 +64,11 @@ export interface DragState {
 }
 
 export const dragStore = new Store<DragState>({ source: null, half: null });
+
+/** 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`). */
+export function tabDragOf(state: DragState): DragSource | null {
+  return state.source?.kind === "work" ? null : state.source;
+}
 
 /**
  * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 탭을 못

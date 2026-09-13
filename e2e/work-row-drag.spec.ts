@@ -1,12 +1,18 @@
-import { expect, test, type Locator, type Page } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { ROOMS, ROOMS_MOVED, WORKS, WORKS_MOVED } from "./fixtures";
 import {
   awaitSpawned,
+  dragRowOnto,
+  hoverRowPoint,
   installFixtureBackend,
   ipcCallArgs,
   markAttention,
   markRunning,
+  pickUpRow,
+  pointIn,
+  shownWorkOrder,
   unknownIpcCalls,
+  workRow,
   레인,
 } from "./harness";
 
@@ -21,51 +27,10 @@ import {
 
 const [pinnedWork, plainWork, multiWork] = WORKS;
 
-const rowOf = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
 const headOf = (page: Page, section: "pinned" | "works") => page.locator(`[data-drop-head="${section}"]`);
 const line = (page: Page) => page.locator("[data-drop-line]");
 
-type Where = "upper" | "lower" | "middle";
-
-/** 상자 안의 한 점 — 윗 사분의 일 · 아랫 사분의 일 · 가운데. 중심선에 바짝 붙이면 반올림에 흔들린다. */
-async function pointIn(target: Locator, where: Where) {
-  const box = await target.boundingBox();
-  if (!box) throw new Error("끌 자리의 상자를 못 읽었다");
-  const ratio = { upper: 0.25, lower: 0.75, middle: 0.5 }[where];
-  return { x: box.x + box.width / 2, y: box.y + box.height * ratio };
-}
-
-/**
- * 행을 눌러 **문턱을 넘긴 채** 멈춘다. 문턱을 넘었다는 증거로 끌리는 행이 흐려진 것을 먼저 본다 —
- * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
- */
-async function pickUp(page: Page, slug: string) {
-  const from = await pointIn(rowOf(page, slug), "middle");
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x, from.y + 12, { steps: 3 });
-  await expect(rowOf(page, slug)).toHaveCSS("opacity", "0.4");
-}
-
-/** 끄는 중인 포인터를 그 자리로 옮긴다 — 여러 걸음으로, 실물처럼. */
-async function hoverOver(page: Page, target: Locator, where: Where) {
-  const to = await pointIn(target, where);
-  await page.mouse.move(to.x, to.y, { steps: 6 });
-}
-
-/** 끌어 놓는다 — 놓기 전에 선이 섰는지 본다(놓을 곳이 있는 끌기만 부른다). */
-async function dragOnto(page: Page, slug: string, target: Locator, where: Where) {
-  await pickUp(page, slug);
-  await hoverOver(page, target, where);
-  await expect(line(page)).toBeVisible();
-  await page.mouse.up();
-}
-
 const moves = (page: Page) => ipcCallArgs(page, "move_work", "slug").then((calls) => calls.map((one) => one.args));
-
-/** 화면에 선 행의 slug, 위에서부터. */
-const shownOrder = (page: Page) =>
-  page.locator("[data-work-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-work-row")));
 
 /** 코어가 돌려준 목록이 화면에 서는 순서 — 구획이 먼저 갈린다(`splitWorkSections`). */
 const sectioned = (list: typeof WORKS) => [
@@ -97,15 +62,15 @@ test("끄는 동안 틈 선이 서고, 놓으면 move_work가 나가고 그 작�
   await openList(page);
   await expect(line(page)).toHaveCount(0);
 
-  await pickUp(page, multiWork.slug);
+  await pickUpRow(page, multiWork.slug);
   // 제자리(자기 앞)에서는 선이 없다 — 놓아도 아무것도 안 바뀌는 자리다.
   await expect(line(page)).toHaveCount(0);
-  await hoverOver(page, rowOf(page, plainWork.slug), "upper");
+  await hoverRowPoint(page, workRow(page, plainWork.slug), "upper");
   await expect(line(page)).toBeVisible();
 
   // 선은 **틈에** 선다 — 앞 머리의 아랫변과 그 행의 윗변 사이. 행을 밀지 않는다.
   const lineBox = (await line(page).boundingBox())!;
-  const rowBox = (await rowOf(page, plainWork.slug).boundingBox())!;
+  const rowBox = (await workRow(page, plainWork.slug).boundingBox())!;
   const headBox = (await headOf(page, "works").boundingBox())!;
   expect(lineBox.y + lineBox.height / 2).toBeGreaterThanOrEqual(headBox.y + headBox.height - 1);
   expect(lineBox.y + lineBox.height / 2).toBeLessThanOrEqual(rowBox.y + 1);
@@ -117,13 +82,13 @@ test("끄는 동안 틈 선이 서고, 놓으면 move_work가 나가고 그 작�
   // 끌어 놓은 행은 **안 열린다** — 놓는 순간의 클릭을 제스처가 삼킨다.
   await stayedHome(page);
   await expect(line(page)).toHaveCount(0);
-  await expect(rowOf(page, multiWork.slug)).toHaveCSS("opacity", "1");
+  await expect(workRow(page, multiWork.slug)).toHaveCSS("opacity", "1");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다", async ({ page }) => {
   await openList(page);
-  const from = await pointIn(rowOf(page, plainWork.slug), "middle");
+  const from = await pointIn(workRow(page, plainWork.slug), "middle");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + 3, from.y);
@@ -137,7 +102,7 @@ test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다
 test.describe("놓은 구획이 고정 여부를 정한다", () => {
   test("같은 구획 안에서 끌면 고정 여부가 그대로다", async ({ page }) => {
     await openList(page);
-    await dragOnto(page, plainWork.slug, rowOf(page, multiWork.slug), "lower");
+    await dragRowOnto(page, plainWork.slug, workRow(page, multiWork.slug), "lower");
     await expect.poll(() => moves(page)).toEqual([
       { mode: "atelier", slug: plainWork.slug, pinned: false, before: null },
     ]);
@@ -145,7 +110,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
 
   test("고정 아닌 행을 `고정` 행 사이에 놓으면 `pinned: true`", async ({ page }) => {
     await openList(page);
-    await dragOnto(page, plainWork.slug, rowOf(page, pinnedWork.slug), "upper");
+    await dragRowOnto(page, plainWork.slug, workRow(page, pinnedWork.slug), "upper");
     await expect.poll(() => moves(page)).toEqual([
       { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
     ]);
@@ -153,7 +118,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
 
   test("`고정` 행을 고정 아닌 행 사이에 놓으면 `pinned: false`", async ({ page }) => {
     await openList(page);
-    await dragOnto(page, pinnedWork.slug, rowOf(page, plainWork.slug), "lower");
+    await dragRowOnto(page, pinnedWork.slug, workRow(page, plainWork.slug), "lower");
     await expect.poll(() => moves(page)).toEqual([
       { mode: "atelier", slug: pinnedWork.slug, pinned: false, before: multiWork.slug },
     ]);
@@ -163,7 +128,7 @@ test.describe("놓은 구획이 고정 여부를 정한다", () => {
 test.describe("구획 머리 위에 놓으면 그 구획 맨 위", () => {
   test("펼친 머리", async ({ page }) => {
     await openList(page);
-    await dragOnto(page, multiWork.slug, headOf(page, "works"), "middle");
+    await dragRowOnto(page, multiWork.slug, headOf(page, "works"), "middle");
     await expect.poll(() => moves(page)).toEqual([
       { mode: "atelier", slug: multiWork.slug, pinned: false, before: plainWork.slug },
     ]);
@@ -174,7 +139,7 @@ test.describe("구획 머리 위에 놓으면 그 구획 맨 위", () => {
     await headOf(page, "pinned").click();
     await expect(headOf(page, "pinned")).toHaveAttribute("aria-expanded", "false");
 
-    await dragOnto(page, plainWork.slug, headOf(page, "pinned"), "middle");
+    await dragRowOnto(page, plainWork.slug, headOf(page, "pinned"), "middle");
     await expect.poll(() => moves(page)).toEqual([
       { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
     ]);
@@ -184,8 +149,8 @@ test.describe("구획 머리 위에 놓으면 그 구획 맨 위", () => {
 test.describe("아무 일도 없는 끝", () => {
   test("목록 밖에 놓으면 명령이 안 나가고 아무 데도 안 간다", async ({ page }) => {
     await openList(page);
-    await pickUp(page, plainWork.slug);
-    await hoverOver(page, rowOf(page, pinnedWork.slug), "upper");
+    await pickUpRow(page, plainWork.slug);
+    await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
     await expect(line(page)).toBeVisible();
 
     // 본문 한가운데로 나간다 — 선이 걷혀야 「여기 놓인다」가 거짓말을 안 한다.
@@ -193,22 +158,48 @@ test.describe("아무 일도 없는 끝", () => {
     await expect(line(page)).toHaveCount(0);
     await page.mouse.up();
 
-    await expect(rowOf(page, plainWork.slug)).toHaveCSS("opacity", "1");
+    await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "1");
+    expect(await moves(page)).toEqual([]);
+    await stayedHome(page);
+  });
+
+  // **`pointercancel`은 놓음이 아니다**(`DragHandlers.drop`의 계약) — 시스템이 제스처를 가로챈 것이라
+  // 사람이 고른 자리가 없다. 탭 끌기는 받는 쪽 손잡이가 없어(`drag-gesture.spec.ts`) 이 계약이 거기서는
+  // 안 보인다: 틈이 선 채 가로채이는 이 자리에서만 「놓음을 부르면 명령이 나간다」로 드러난다.
+  // Playwright 마우스로는 못 만들어 창에 직접 쏜다 — 리스너가 창에 걸려 실물과 같은 자리에 닿는다.
+  test("pointercancel이면 틈이 서 있어도 명령이 안 나가고 표시가 걷힌다", async ({ page }) => {
+    await openList(page);
+    await pickUpRow(page, plainWork.slug);
+    const at = await pointIn(workRow(page, pinnedWork.slug), "upper");
+    await page.mouse.move(at.x, at.y, { steps: 6 });
+    await expect(line(page)).toBeVisible();
+
+    // **틈 위의 좌표를 싣는다.** 좌표 없이(0,0) 쏘면 목록 밖이라, 취소를 놓음으로 읽는 변형도 명령을
+    // 안 내 이 검사가 빈 초록이 된다.
+    await page.evaluate(
+      ({ x, y }) => window.dispatchEvent(new PointerEvent("pointercancel", { clientX: x, clientY: y })),
+      at,
+    );
+    // `end`가 돌았다 — 선과 흐려짐이 걷힌다.
+    await expect(line(page)).toHaveCount(0);
+    await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "1");
+    await page.mouse.up();
+
     expect(await moves(page)).toEqual([]);
     await stayedHome(page);
   });
 
   test("Esc면 명령이 안 나가고, 떼도 그 행이 안 열린다", async ({ page }) => {
     await openList(page);
-    await pickUp(page, plainWork.slug);
-    await hoverOver(page, rowOf(page, pinnedWork.slug), "upper");
+    await pickUpRow(page, plainWork.slug);
+    await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
     await expect(line(page)).toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(line(page)).toHaveCount(0);
-    await expect(rowOf(page, plainWork.slug)).toHaveCSS("opacity", "1");
+    await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "1");
     // 출발한 행 위로 돌아와 뗀다 — 취소한 끌기가 「그 행을 눌렀다」로 읽히면 안 된다.
-    await hoverOver(page, rowOf(page, plainWork.slug), "middle");
+    await hoverRowPoint(page, workRow(page, plainWork.slug), "middle");
     await page.mouse.up();
 
     expect(await moves(page)).toEqual([]);
@@ -219,15 +210,15 @@ test.describe("아무 일도 없는 끝", () => {
 test("끄는 동안 호버 카드가 안 뜨고, 떠 있던 카드는 문턱을 넘는 순간 닫힌다", async ({ page }) => {
   await openList(page);
   const card = page.locator("[data-popover]");
-  await rowOf(page, plainWork.slug).hover();
+  await workRow(page, plainWork.slug).hover();
   // 먼저 뜬 것을 본다 — 이것이 없으면 아래 「없다」가 원래 안 떴던 것으로도 초록이다.
   await expect(card).toBeVisible();
 
-  await pickUp(page, plainWork.slug);
+  await pickUpRow(page, plainWork.slug);
   await expect(card).toHaveCount(0);
 
   // 다른 행 위에 카드가 뜰 만큼(350ms) 머문다.
-  await hoverOver(page, rowOf(page, multiWork.slug), "middle");
+  await hoverRowPoint(page, workRow(page, multiWork.slug), "middle");
   await page.waitForTimeout(700);
   await expect(card).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -243,11 +234,11 @@ test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", 
   await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
   await expect(레인(page, plainWork.slug).locator('[data-signal="waiting"]')).toHaveCount(1);
 
-  await pickUp(page, plainWork.slug);
+  await pickUpRow(page, plainWork.slug);
   // work 화면 위에서 끌어도 **분할 겹판이 안 선다** — 작업 행 끌기는 본문이 안 받는다. 끄는
   // **동안** 센다: 놓은 뒤에는 원천이 비어 겹판이 어차피 없다.
   await expect(page.locator("[data-drop-half]")).toHaveCount(0);
-  await hoverOver(page, rowOf(page, pinnedWork.slug), "upper");
+  await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
   await expect(line(page)).toBeVisible();
   await page.mouse.up();
 
@@ -263,11 +254,11 @@ test("Maison Room도 같은 손짓이고 `mode: \"maison\"`이 실린다", async
   await page.goto(`/maison/rooms/${firstRoom.slug}`);
   await expect(page.locator("[data-work-row]")).toHaveCount(ROOMS.length);
 
-  await dragOnto(page, secondRoom.slug, rowOf(page, firstRoom.slug), "upper");
+  await dragRowOnto(page, secondRoom.slug, workRow(page, firstRoom.slug), "upper");
   await expect.poll(() => moves(page)).toEqual([
     { mode: "maison", slug: secondRoom.slug, pinned: false, before: firstRoom.slug },
   ]);
-  await expect.poll(() => shownOrder(page)).toEqual(sectioned(ROOMS_MOVED));
+  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(ROOMS_MOVED));
   await expect(page).toHaveURL(new RegExp(`/maison/rooms/${firstRoom.slug}`));
 });
 
@@ -276,13 +267,13 @@ test("Maison Room도 같은 손짓이고 `mode: \"maison\"`이 실린다", async
 // 나머지 순서가 뒤집혔다. 둘이 같은 끌기를 고르면 「응답으로 갈아 끼웠다」를 화면이 말하지 못한다.
 test("move_work의 응답으로 화면이 그 순서로 선다", async ({ page }) => {
   await openList(page);
-  expect(await shownOrder(page)).toEqual(sectioned(WORKS));
+  expect(await shownWorkOrder(page)).toEqual(sectioned(WORKS));
   expect(sectioned(WORKS_MOVED)).not.toEqual(sectioned(WORKS));
 
-  await dragOnto(page, pinnedWork.slug, rowOf(page, multiWork.slug), "lower");
+  await dragRowOnto(page, pinnedWork.slug, workRow(page, multiWork.slug), "lower");
   await expect.poll(() => moves(page)).toEqual([
     { mode: "atelier", slug: pinnedWork.slug, pinned: false, before: null },
   ]);
-  await expect.poll(() => shownOrder(page)).toEqual(sectioned(WORKS_MOVED));
+  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(WORKS_MOVED));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

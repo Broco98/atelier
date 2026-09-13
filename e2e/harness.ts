@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { BRIDGE_FN, callBridge } from "./bridge";
 import { expect } from "./evidence";
-import type { Page } from "./evidence";
+import type { Locator, Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import {
@@ -381,6 +381,51 @@ export async function fireEvent(
  */
 export const 레인 = (page: Page, slug: string) =>
   page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
+
+/** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
+export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+
+/** 사이드바에 선 작업 행의 slug, 위에서부터. */
+export const shownWorkOrder = (page: Page) =>
+  page.locator("[data-work-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-work-row")));
+
+export type RowPoint = "upper" | "lower" | "middle";
+
+/** 상자 안의 한 점 — 윗 사분의 일 · 아랫 사분의 일 · 가운데. 중심선에 바짝 붙이면 반올림에 흔들린다. */
+export async function pointIn(target: Locator, where: RowPoint) {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("끌 자리의 상자를 못 읽었다");
+  const ratio = { upper: 0.25, lower: 0.75, middle: 0.5 }[where];
+  return { x: box.x + box.width / 2, y: box.y + box.height * ratio };
+}
+
+/**
+ * 작업 행을 눌러 **문턱을 넘긴 채** 멈춘다. 문턱을 넘었다는 증거로 끌리는 행이 흐려진 것을 먼저 본다 —
+ * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
+ *
+ * L3·L4가 함께 딛는다 — 손짓을 spec마다 적으면 문턱이나 흐려짐이 바뀌는 날 고칠 자리가 여럿이 된다.
+ */
+export async function pickUpRow(page: Page, slug: string) {
+  const from = await pointIn(workRow(page, slug), "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x, from.y + 12, { steps: 3 });
+  await expect(workRow(page, slug)).toHaveCSS("opacity", "0.4");
+}
+
+/** 끄는 중인 포인터를 그 자리로 옮긴다 — 여러 걸음으로, 실물처럼. */
+export async function hoverRowPoint(page: Page, target: Locator, where: RowPoint) {
+  const to = await pointIn(target, where);
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+}
+
+/** 작업 행을 끌어 놓는다 — 놓기 전에 틈 선이 섰는지 본다(놓을 곳이 있는 끌기만 부른다). */
+export async function dragRowOnto(page: Page, slug: string, target: Locator, where: RowPoint) {
+  await pickUpRow(page, slug);
+  await hoverRowPoint(page, target, where);
+  await expect(page.locator("[data-drop-line]")).toBeVisible();
+  await page.mouse.up();
+}
 
 /** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");

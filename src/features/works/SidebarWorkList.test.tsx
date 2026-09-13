@@ -59,7 +59,7 @@ function render(
     // **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
     renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
     draggedSlug = null,
-    gapLineY = null,
+    lineY = null,
   }: {
     mode?: Mode;
     selectedSlug?: string | null;
@@ -67,7 +67,7 @@ function render(
     signals?: Record<string, ShellSignal>;
     renderSubrow?: (work: WorkView) => ReactNode;
     draggedSlug?: string | null;
-    gapLineY?: number | null;
+    lineY?: number | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -85,8 +85,8 @@ function render(
       onTogglePin={() => {}}
       renderSubrow={renderSubrow}
       draggedSlug={draggedSlug}
-      gapLineY={gapLineY}
-      onDragStart={() => {}}
+      lineY={lineY}
+      onArmDrag={() => {}}
     />,
   );
 }
@@ -712,16 +712,6 @@ describe("행 아래에 아무것도 딸리지 않는다", () => {
   });
 });
 
-
-// **여기서 세는 것은 그림이 아니라 import다.** 아래 둘은 `ShellBranch.test.ts`가 지고 있던
-// 계약인데, 그 파일이 판 04에서 가지와 함께 사라졌다 — 계약이 겨누는 것(`SidebarWorkList.tsx`)은
-// 그대로라 자리를 옮겨 살린다. 겨누는 파일 옆이 원래 있어야 할 자리이기도 하다.
-// **그림과 상태의 경계**(UI개선 스펙 §4). 끄는 동안의 틈·끌리는 slug는 사이드바 목록이 구독해
-// prop으로 내리고, 구획 목록은 받은 것만 그린다 — 이 파일의 seam이 DOM 없는 정적 마크업이라
-// 훅을 부르는 순간 위 검사 전부가 서지 못한다. 그래서 구획 목록을 **제 파일로 떼어** 파일 단위로
-// 센다(컴포넌트 단위로 자르는 파서는 샌다).
-//
-// 세는 모양은 「`use` + 대문자 + 여는 괄호」다. 주석에 적어도 빨개진다 — 이웃 검사들과 같은 성질이다.
 // 끄는 동안 이 그림이 받는 것 둘(UI개선 스펙 §4) — 끌리는 행과 틈 선의 자리. 선이 **실제로** 틈에
 // 서는지는 레이아웃이 있어야 해서 L3(`work-row-drag.spec.ts`)가 재고, 여기서는 받은 값이 한 행과 한
 // 선에만 닿는지를 본다.
@@ -745,7 +735,7 @@ describe("끄는 동안의 그림", () => {
   });
 
   it("틈 선은 받은 내용 좌표에 **하나** 서고, 누를 수 없다", () => {
-    const markup = render(works("pin:가", "나"), ALL, { draggedSlug: "나", gapLineY: 41.5 });
+    const markup = render(works("pin:가", "나"), ALL, { draggedSlug: "나", lineY: 41.5 });
     const lines = markup.match(/<div data-drop-line=""[^>]*>/g) ?? [];
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("top:41.5px");
@@ -759,9 +749,16 @@ describe("끄는 동안의 그림", () => {
   });
 });
 
+// **그림과 상태의 경계**(UI개선 스펙 §4). 끄는 동안의 틈·끌리는 slug는 사이드바 목록이 구독해
+// prop으로 내리고, 구획 목록은 받은 것만 그린다 — 이 파일의 seam이 DOM 없는 정적 마크업이라
+// 훅을 부르는 순간 위 검사 전부가 서지 못한다. 그래서 구획 목록을 **제 파일로 떼어** 파일 단위로
+// 센다(컴포넌트 단위로 자르는 파서는 샌다).
+//
+// 세는 모양은 「`use` + 대문자 + 여는 괄호 **또는 타입 인자의 `<`**」다. 주석에 적어도 빨개진다 —
+// 이웃 검사들과 같은 성질이고, 넓게 잡는 쪽으로 틀리는 것은 일부러다(닫힌 쪽으로 실패한다).
 describe("구획 목록 파일은 훅을 안 부른다", () => {
   const hookCalls = (file: string) =>
-    readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8").match(/\buse[A-Z]\w*\(/g) ?? [];
+    readFileSync(fileURLToPath(new URL(file, import.meta.url)), "utf8").match(/\buse[A-Z]\w*\s*[<(]/g) ?? [];
 
   // **알려진 양성.** 세는 방법이 새면(정규식이 안 맞으면) 아래 0이 빈 초록이다 — 훅을 부르는 것이
   // 확실한 옆 파일에서 같은 모양이 잡혀야 한다.
@@ -769,11 +766,20 @@ describe("구획 목록 파일은 훅을 안 부른다", () => {
     expect(hookCalls("./SidebarWorkList.tsx")).toEqual(expect.arrayContaining(["useWorks(", "useState("]));
   });
 
+  // 타입 인자가 이름과 괄호 사이에 끼는 호출(`useRef<HTMLDivElement>(`)도 잡혀야 한다. 판 05가 구획
+  // 목록에서 걷어 낸 것이 바로 그 모양이다 — 「대문자 + 여는 괄호」로만 세면 그것을 되돌려도 초록이다.
+  it("타입 인자를 단 호출도 잡힌다", () => {
+    expect(hookCalls("./SidebarWorkList.tsx")).toContain("useRef<");
+  });
+
   it("구획 목록 파일에서 0개다", () => {
     expect(hookCalls("./WorkSectionList.tsx")).toEqual([]);
   });
 });
 
+// **여기서 세는 것은 그림이 아니라 import다.** 아래 둘은 `ShellBranch.test.ts`가 지고 있던
+// 계약인데, 그 파일이 판 04에서 가지와 함께 사라졌다 — 계약이 겨누는 파일(사이드바 목록과, 판 05에서
+// 거기서 떨어져 나간 구획 목록)은 그대로라 자리를 옮겨 살린다. 겨누는 파일 옆이 원래 있어야 할 자리다.
 describe("사이드바 목록은 터미널을 모른다", () => {
   // **두 파일을 이어 센다.** 구획 목록이 제 파일로 떨어져 나가면서(위 검사) 그림의 절반이 그리로
   // 갔다 — 한 파일만 세면 떨어져 나간 쪽이 터미널을 불러도 초록이다.

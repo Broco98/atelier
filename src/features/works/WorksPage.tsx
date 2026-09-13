@@ -53,7 +53,7 @@ import {
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
-import { armDrag, dragStore } from "@/lib/pointer-drag";
+import { armDrag, dragStore, tabDragOf } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
 import { clearHalf, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
@@ -777,7 +777,7 @@ function WorksPage({
   //
   // **사이드바 작업 행은 본문이 안 받는다**(UI개선 스펙 §4) — 그 끌기가 놓일 자리는 목록의 틈이다.
   // 여기서 거르지 않으면 행을 끄는 순간 분할 겹판이 서고, 본문에 놓으면 화면이 갈린다.
-  const dragSource = drag.source?.kind === "work" ? null : drag.source;
+  const dragSource = tabDragOf(drag);
 
   // 본문 열 — 셋 중 하나다. **패널은 여기 들어오지 않는다**(결정 49): 어느 본문이 서 있든
   // 패널은 그 형제로 아래 return에서 딱 한 번 그려진다. 그래서 뷰 탭을 오가도 패널

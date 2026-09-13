@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { dialogStore } from "@/components/ui/confirm-store";
-import { invalidateWorks, moveWorkOptions, specFileQuery, worksChanged, worksQuery } from "./hooks";
+import { invalidateWorks, moveWorkOptions, specFileQuery, worksQuery } from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
@@ -177,7 +177,7 @@ describe("옮기기와 works:changed의 경쟁", () => {
     const { client, seen, shown } = await listed();
     move(client);
     await settle();
-    void worksChanged(client);
+    void invalidateWorks(client);
     await settle();
 
     // 응답이 먼저, 쓰기 전 파일을 읽은 재조회의 답이 나중에 온다.
@@ -195,13 +195,13 @@ describe("옮기기와 works:changed의 경쟁", () => {
     expect(seen.slice(seen.indexOf("cab"))).not.toContain("abc");
   });
 
-  it("미룬 무효화는 끝난 뒤 한 번 돈다", async () => {
+  // **이벤트만이 아니라 mutation도 같은 문을 탄다.** 옮기는 사이 고정 토글·제목 바꾸기의 응답이 오면
+  // 그 무효화도 쓰기 전 파일을 읽은 재조회를 띄운다 — 문 옆에 따로 선 대기는 그 길을 못 막는다.
+  it("진행 중 mutation이 연 무효화도 끝난 뒤로 미룬다", async () => {
     const { client } = await listed();
     move(client);
     await settle();
-    void worksChanged(client);
-    void worksChanged(client);
-    void worksChanged(client);
+    void invalidateWorks(client);
     await settle();
     expect(waiting("list_works")).toHaveLength(0);
 
@@ -211,8 +211,23 @@ describe("옮기기와 works:changed의 경쟁", () => {
     expect(waiting("list_works")).toHaveLength(1);
   });
 
-  // `onSettled` 무효화를 두지 않는다(티켓 05) — L3 fixture 백엔드가 그 재조회에 옛 `WORKS`로 답해
-  // 「응답으로 갈아 끼운다」가 화면에서 안 보이게 된다. 응답이 곧 새 목록이라 다시 물을 것도 없다.
+  it("미룬 무효화는 끝난 뒤 한 번 돈다", async () => {
+    const { client } = await listed();
+    move(client);
+    await settle();
+    void invalidateWorks(client);
+    void invalidateWorks(client);
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(0);
+
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  // `onSettled` 무효화를 두지 않는다(티켓 05) — 응답이 곧 새 목록이라 다시 물을 것이 없다.
   it("아무것도 안 왔으면 끝난 뒤에도 다시 묻지 않는다", async () => {
     const { client, shown } = await listed();
     move(client);
@@ -245,7 +260,7 @@ describe("옮기기와 works:changed의 경쟁", () => {
     await settle();
     await settle();
 
-    void worksChanged(client);
+    void invalidateWorks(client);
     await settle();
     expect(waiting("list_works")).toHaveLength(1);
   });

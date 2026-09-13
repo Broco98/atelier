@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SIGNAL_LABEL, SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
+import type { DragPoint } from "@/lib/pointer-drag";
 import type { Mode } from "@/mode";
 import { emptyMainNotice, listLabelOf } from "./work-sections";
 import type { SectionsOpen, WorkSections } from "./work-sections";
@@ -41,8 +42,8 @@ export function WorkSectionList({
   onTogglePin,
   renderSubrow,
   draggedSlug,
-  gapLineY,
-  onDragStart,
+  lineY,
+  onArmDrag,
 }: {
   sections: WorkSections;
   /** 목록이 자기를 뭐라고 부르는가가 여기서 갈린다 — 머리 라벨과 빈 몸통의 문구 둘 다. */
@@ -63,9 +64,9 @@ export function WorkSectionList({
    */
   draggedSlug: string | null;
   /** 틈 선이 설 **스크롤 내용 좌표** y(`row-drop`의 `gapLineY`). 놓을 곳이 없으면 `null`이다. */
-  gapLineY: number | null;
+  lineY: number | null;
   /** 행이 눌렸다 — 끌기를 무장하는 것은 위의 일이다(기하를 재는 자리가 거기다). */
-  onDragStart: (slug: string, from: { clientX: number; clientY: number }) => void;
+  onArmDrag: (slug: string, from: DragPoint) => void;
 }) {
   const { pinned, main } = sections;
   // 두 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 둘이 된다.
@@ -81,7 +82,7 @@ export function WorkSectionList({
       onHover={onHover}
       onLeave={onLeave}
       onTogglePin={onTogglePin}
-      onDragStart={onDragStart}
+      onArmDrag={onArmDrag}
       subrow={renderSubrow(work)}
     />
   );
@@ -90,12 +91,12 @@ export function WorkSectionList({
       {/* **틈 선 — 놓일 자리에 가로 선 하나**(UI개선 스펙 §4). 절대 위치라 행을 안 민다: 끄는 동안
           행이 비켜서면 재어 둔 기하가 그 순간 틀어진다. 기준은 스크롤 상자(`relative`)의 내용
           좌표라 목록이 굴러도 선이 행과 함께 간다. 좌우는 행의 둥근 모서리 안쪽에서 멎는다. */}
-      {gapLineY !== null && (
+      {lineY !== null && (
         <div
           data-drop-line=""
           aria-hidden
           className="pointer-events-none absolute inset-x-3 z-10 h-0.5 -translate-y-1/2 rounded-full bg-primary"
-          style={{ top: gapLineY }}
+          style={{ top: lineY }}
         />
       )}
       {/* '고정' 헤더는 고정된 것이 있을 때만 — 아무것도 없는 구획의 헤더는 자리만 먹는다(결정 82) */}
@@ -279,7 +280,7 @@ function WorkRow({
   onHover,
   onLeave,
   onTogglePin,
-  onDragStart,
+  onArmDrag,
   dragging,
   shellCount,
   signal,
@@ -293,7 +294,7 @@ function WorkRow({
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  onDragStart: (slug: string, from: { clientX: number; clientY: number }) => void;
+  onArmDrag: (slug: string, from: DragPoint) => void;
   /** 이 work의 셸 수 — **둘째 줄이 아래 슬롯을 싣는가 프로젝트 이름을 싣는가**를 가른다. */
   shellCount: number;
   /**
@@ -320,7 +321,7 @@ function WorkRow({
       // (공용 제스처 `lib/pointer-drag`). 주 버튼만 받는다: 보조 클릭으로 끌리면 메뉴를 열려던 손이
       // 순서를 흔든다.
       onPointerDown={(event) => {
-        if (event.button === 0) onDragStart(work.slug, event);
+        if (event.button === 0) onArmDrag(work.slug, event);
       }}
       // **누르면 그 work로 간다 — 행 어디를 눌러도 그렇다**(결정 6). 이 자리가 이름 버튼이
       // 아니라 바깥 상자인 것은 **행이 두 줄이 되면서** 정해졌다: 이름 버튼은 첫 줄 26px만

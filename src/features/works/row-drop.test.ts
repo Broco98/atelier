@@ -68,10 +68,17 @@ describe("틈 표", () => {
     ["둘째 머리 아랫부분 → 그 구획 맨 위", OPEN, "p1", 194, { pinned: false, before: "m1" }],
     ["머리와 첫 행 사이 → 그 구획 맨 위", OPEN, "p1", 197, { pinned: false, before: "m1" }],
     ["첫 머리 → 그 구획 맨 위", OPEN, "m1", 20, { pinned: true, before: "p1" }],
+    // 첫 머리 위 여백(`mt-3`)은 위에 사각형이 없어 규칙 5가 답하지 못한다 — 그 머리의 판정(규칙 2)을
+    // 준다. 06이 규칙 3(빈 받침)을 이 근처에 더할 때 「표에 없는 동작」으로 오독하지 않게 줄로 둔다.
+    ["첫 머리 위 여백 → 그 구획 맨 위", OPEN, "m1", 5, { pinned: true, before: "p1" }],
+    // **`고정` 구획 안**의 순서 바꾸기 — 고정 여부는 그대로 `true`다(티켓 05 L3 기준 · 스토리 4).
+    ["`고정` 안에서 앞 행 앞으로 → 고정 그대로", OPEN, "p2", 50, { pinned: true, before: "p1" }],
+    ["`고정` 안에서 구획 끝으로 → 고정 그대로", OPEN, "p1", 150, { pinned: true, before: null }],
     ["접힌 구획 머리 → 그 구획 맨 위", PINNED_SHUT, "m2", 30, { pinned: true, before: "p1" }],
     ["접힌 구획 머리 아래 → 그 구획 맨 위", PINNED_SHUT, "m2", 46, { pinned: true, before: "p1" }],
     ["마지막 행 아래 → 마지막 구획 끝", OPEN, "p1", 450, { pinned: false, before: null }],
     ["자기 앞 → 없음", OPEN, "m1", 200, null],
+    ["`고정` 안에서 자기 바로 뒤 행의 윗 절반 → 없음", OPEN, "p1", 110, null],
     ["자기 아래 절반 → 없음", OPEN, "m1", 250, null],
     ["자기 바로 뒤 행의 윗 절반 → 없음", OPEN, "m1", 260, null],
     ["자기 바로 위 행의 아래 절반 → 없음", OPEN, "m2", 240, null],

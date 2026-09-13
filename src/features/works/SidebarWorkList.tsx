@@ -250,7 +250,7 @@ function SidebarWorkList({
     };
   };
 
-  const gapAt = (slug: string, point: DragPoint): RowGap | null =>
+  const gapUnder = (slug: string, point: DragPoint): RowGap | null =>
     geometry.current && listBox.current
       ? rowGap(geometry.current, slug, {
           x: point.clientX,
@@ -266,12 +266,12 @@ function SidebarWorkList({
       },
       // 같은 틈이면 같은 객체를 둔다 — 포인터 이동마다 새 객체를 내면 그 빈도로 목록이 다시 그려진다.
       move: (point) => {
-        const next = gapAt(slug, point);
+        const next = gapUnder(slug, point);
         setGap((now) => (now?.pinned === next?.pinned && now?.before === next?.before ? now : next));
       },
       // 놓인 자리를 **놓는 순간의 포인터로 다시** 판정한다 — 마지막 이동과 떼기 사이에 굴렀을 수 있다.
       drop: (point) => {
-        const at = gapAt(slug, point);
+        const at = gapUnder(slug, point);
         if (at) moveWork.mutate({ slug, ...at });
       },
       end: () => {
@@ -353,8 +353,8 @@ function SidebarWorkList({
             onTogglePin={togglePin}
             renderSubrow={renderSubrow}
             draggedSlug={draggedSlug}
-            gapLineY={lineY}
-            onDragStart={startDrag}
+            lineY={lineY}
+            onArmDrag={startDrag}
           />
         </div>
       </div>
