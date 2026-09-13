@@ -9,7 +9,7 @@ import {
   SEARCH_HITS,
   WORKS,
 } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { awaitSpawned, fireEvent, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
@@ -182,32 +182,8 @@ test("설정 줄을 고르면 설정 화면이 선다", async ({ page }) => {
  * 네이티브 메뉴가 쏘는 것을 **손으로 쏜다.** 이 층의 브라우저에는 OS 메뉴가 없어서 항목을
  * 누를 수가 없는데, 메뉴가 하는 일은 `hotkey:menu`에 code를 실어 보내는 것 하나뿐이라
  * 그 이벤트를 직접 쏘면 **메뉴 → 합성 keydown → 팔레트**의 나머지 전부가 실제로 돈다.
- *
- * 구독 id는 하네스가 적어 둔 IPC 기록에서 읽는다 — 상수로 적을 수 없다(`transformCallback`이
- * 난수로 짓는다). 못 찾으면 던진다: 구독이 안 걸린 채 지나가면 아래 단언이 **아무것도 안
- * 쏜 채로** 초록이 될 수 있다.
  */
-async function fireMenuHotkey(page: Page, code: string) {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  // **`listen`만 고른다.** 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가 없다 —
-  // StrictMode가 붙였다 떼면서 마지막 줄이 그 해제가 된다. 살아 있는 것은 **마지막 구독**이다.
-  const listen = calls
-    .filter((call) => call.startsWith("plugin:event|listen") && call.includes('"hotkey:menu"'))
-    .reverse()[0];
-  const handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
-  if (!handler) throw new Error(`hotkey:menu 구독을 못 찾았다 — IPC 기록: ${JSON.stringify(calls)}`);
-  await page.evaluate(
-    ([id, sent]) => {
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-        }
-      ).__TAURI_INTERNALS__;
-      internals.runCallback(Number(id), { event: "hotkey:menu", id: 0, payload: sent });
-    },
-    [handler, code],
-  );
-}
+const fireMenuHotkey = (page: Page, code: string) => fireEvent(page, "hotkey:menu", code);
 
 // 결정 3. **`View ▸ Search`가 프레임 안에서도 팔레트를 연다.**
 //

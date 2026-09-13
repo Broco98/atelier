@@ -623,6 +623,65 @@ mod tests {
         );
     }
 
+    /// **「확인됨」을 세우는 것은 `quit_app` 하나이고, 끄기 전에 세운다**(결정 14 · #223).
+    ///
+    /// 표시를 뒤집는 L1(`quit.rs`)은 표시가 뒤집히는지만 본다. 지키려는 것은 그 너머다 —
+    /// `quit_app`이 세우지 않으면 #224의 `terminate:` 훅이 「종료」를 누른 사람 앞에서 다시 막고,
+    /// 다른 자리가 세우면 빨간 버튼이 묻지 않고 앱을 끈다. L3의 픽스처는 `quit_app`에 `null`로만
+    /// 답하므로 이 둘은 **여기서만** 잰다. 이 검사가 다리에 사는 이유는 `APP_SOURCES`의 머리말과
+    /// 같다 — 앱 크레이트 안에 두면 찾는 낱말을 제 문자열로 읽는다.
+    ///
+    /// **부르는 모양을 가리지 않고 센다.** `quit::confirm()`만 세면 `use crate::quit::confirm;`
+    /// 뒤의 맨 `confirm()`이 안 보인다 — 그래서 주석 줄을 뺀 소스에서 낱말 `confirm`(뒤에
+    /// `ed`가 붙은 `confirmed`는 다른 낱말)을 전부 세고, 정의 파일 밖에서는 한 번뿐이어야 한다.
+    #[test]
+    fn 확인됨은_quit_app만_끄기_전에_세운다() {
+        fn words(source: &str) -> Vec<usize> {
+            let code: String = source
+                .lines()
+                .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bytes = code.as_bytes();
+            code.match_indices("confirm")
+                .filter(|(at, word)| {
+                    let before = at.checked_sub(1).map(|i| bytes[i]);
+                    let after = bytes.get(at + word.len()).copied();
+                    let ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+                    !before.is_some_and(ident) && !after.is_some_and(ident)
+                })
+                .map(|(at, _)| at)
+                .collect()
+        }
+
+        let mut callers = Vec::new();
+        for (file, source) in APP_SOURCES {
+            if file == "quit.rs" {
+                continue;
+            }
+            for _ in words(source) {
+                callers.push(file);
+            }
+        }
+        assert_eq!(
+            callers,
+            ["commands.rs"],
+            "「확인됨」을 세우는 자리가 `quit_app` 하나가 아니다 — 없으면 끄는 길이 다시 막히고, 늘면 안 묻고 끈다"
+        );
+
+        let commands = APP_SOURCES.iter().find(|(file, _)| *file == "commands.rs").unwrap().1;
+        let body = commands
+            .split_once("pub async fn quit_app(")
+            .expect("commands.rs에 `quit_app`이 없다")
+            .1
+            .split_once("\n}\n")
+            .expect("`quit_app`의 끝을 못 찾았다")
+            .0;
+        let confirm = body.find("crate::quit::confirm();").expect("`quit_app`이 「확인됨」을 안 세운다");
+        let exit = body.find("app.exit(0);").expect("`quit_app`이 앱을 안 끈다");
+        assert!(confirm < exit, "`quit_app`이 끈 뒤에 「확인됨」을 세운다 — 끄는 사이의 `terminate:`가 다시 막는다");
+    }
+
     /// 커맨드가 하나 늘었는데 다리가 그대로면, 그 커맨드를 쓰는 화면은 L4에서 조용히
     /// 실패한다 — "이 다리가 모르는 커맨드"라는 말은 테스트를 돌려 봐야만 나온다.
     /// 그래서 목록이 어긋나는 순간 여기서 먼저 빨간불이 켜진다.

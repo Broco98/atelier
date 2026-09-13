@@ -8,8 +8,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { countQuitShells } from "@/components/shell/quit-request";
-import type { QuitCounts } from "@/components/shell/quit-request";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
@@ -24,6 +22,7 @@ import {
   attentionOfId,
   CLOSE_NOTICE,
   confirmClose,
+  countQuitShells,
   markExited,
   markFailed,
   NO_SHELLS,
@@ -40,7 +39,7 @@ import {
   shellsOf,
   slugOfOwner,
 } from "./shell-registry";
-import type { OpenedShell, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import type { OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";

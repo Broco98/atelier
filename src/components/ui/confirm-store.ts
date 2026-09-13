@@ -12,7 +12,8 @@ import { Store } from "@tanstack/react-store";
 
 export interface DialogAsk {
   title: string;
-  body: string;
+  /** 제목 아래 한 줄. **없으면 그 줄이 서지 않는다** — 셸이 0개인 종료 확인이 그렇다(결정 15). */
+  body?: string;
   /**
    * 진행 버튼의 글자. **할 일을 적는다** — 「예」는 무엇에 예인지를 말하지 않아, 확인 창을
    * 빠르게 넘기는 사람에게 아무 정보도 안 준다.
@@ -25,7 +26,7 @@ export interface DialogAsk {
   /**
    * 창이 뜰 때 포커스를 받는 버튼. 안 주면 진행 버튼이다(지금까지의 모든 물음).
    *
-   * **종료 확인만 `cancel`로 부른다**(S16) — ⌘Q 뒤에 반사적으로 친 Enter가 앱을 끄면 실수 종료라는
+   * **종료 확인만 `cancel`로 부른다**(#223) — ⌘Q 뒤에 반사적으로 친 Enter가 앱을 끄면 실수 종료라는
    * 원래 문제가 그대로 돌아온다. 어느 쪽이든 포커스가 창 **안으로** 오는 성질은 같다.
    */
   focus?: "confirm" | "cancel";

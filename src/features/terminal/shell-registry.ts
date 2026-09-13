@@ -413,7 +413,15 @@ export function shellsOf(state: ShellsState, owner: ShellOwner): ReadonlyArray<S
  * (결정 26). 함께 세면 2개라고 해놓고 하나만 끝난다.
  */
 export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
-  return shellsOf(state, owner).filter((shell) => shell.status.kind === "running").length;
+  return shellsOf(state, owner).filter(isAlive).length;
+}
+
+/**
+ * 닫힐 프로세스가 **있는** 칸인가. 끝난 칸·못 뜬 칸은 목록에 남아도(결정 22) 아니다 — 세는 자리
+ * (`runningShellsOf` · `countQuitShells`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
+ */
+function isAlive(shell: Shell): boolean {
+  return shell.status.kind === "running";
 }
 
 /** 이 화면에서 켜진 칸. */
@@ -1071,7 +1079,7 @@ export function needsCloseConfirm(
   shell: Shell | undefined,
   commandRunning: boolean | null,
 ): boolean {
-  if (!shell || shell.status.kind !== "running") return false;
+  if (!shell || !isAlive(shell)) return false;
   return commandRunning === true;
 }
 
@@ -1101,6 +1109,49 @@ export async function confirmClose(
 ): Promise<boolean> {
   if (!needsCloseConfirm(shell, commandRunning)) return true;
   return ask();
+}
+
+/** 종료하면 닫힐 셸 수와, 그중 명령이 도는 셸 수(결정 15). 명령의 개수가 아니다. */
+export interface QuitCounts {
+  live: number;
+  running: number;
+}
+
+/**
+ * 종료 확인이 적을 수(결정 15 · #223). 받은 목록을 **세계를 가리지 않고** 전부 센다 — 종료는 두
+ * 세계의 셸을 함께 죽인다. 명령이 도는지는 셸마다 **지금 물어서** 센다 — 1초 폴링 값
+ * (`Shell.running`)은 늦을 수 있다. 물음은 병렬로 나간다.
+ *
+ * **「도는 셸」은 셸 닫기가 물을 셸이다** — 판정을 `needsCloseConfirm`에서 그대로 빌려, 닫기와
+ * 종료가 「모르면 안 돈다」·「끝난 칸은 안 센다」에서 갈라질 수 없다. 물음이 **실패해도** 「모름」으로
+ * 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(결정 31) 창이 못 뜨는 길은 곧 끌 수 없는 길이다.
+ *
+ * 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.**
+ */
+export async function countQuitShells(
+  shells: ReadonlyArray<Shell>,
+  commandRunning: (id: number) => Promise<boolean | null>,
+): Promise<QuitCounts> {
+  const live = shells.filter(isAlive);
+  const answers = await Promise.all(
+    live.map((shell) => commandRunning(shell.id).catch(() => null)),
+  );
+  return {
+    live: live.length,
+    running: live.filter((shell, n) => needsCloseConfirm(shell, answers[n])).length,
+  };
+}
+
+/**
+ * 종료 확인의 본문. **셸이 0개면 없다**(`undefined`) — 그 줄이 아예 서지 않는다(결정 15). 그래도
+ * 창은 뜬다: 셸이 없을 때의 실수 종료도 조건 밖에 남기지 않는다(결정 14).
+ *
+ * 「셸」·「명령」은 `CONTEXT.md`의 말이다 — 명령은 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
+ * 문구가 여기 있는 이유는 `CLOSE_NOTICE`와 같다.
+ */
+export function quitNotice({ live, running }: QuitCounts): string | undefined {
+  if (live === 0) return undefined;
+  return `셸 ${live} · 명령이 도는 셸 ${running}`;
 }
 
 /**

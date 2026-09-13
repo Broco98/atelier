@@ -11,6 +11,7 @@ import {
   atCap,
   CLOSE_NOTICE,
   confirmClose,
+  countQuitShells,
   markExited,
   markFailed,
   markSeen,
@@ -20,6 +21,7 @@ import {
   openShell,
   closesShellFromWindow,
   opensShellFromWindow,
+  quitNotice,
   removeShell,
   runningAgentsOf,
   runningOn,
@@ -1991,5 +1993,47 @@ describe("죽은 셸의 상태", () => {
     const 죽은뒤 = markExited(부르던칸, ids[0], { exitCode: 1, signal: "Terminated: 15" });
     expect(죽은뒤.shells).toHaveLength(1);
     expect(attentionOn(죽은뒤.shells[0])).toBeNull();
+  });
+});
+
+// 종료 확인이 적는 수(결정 15 · #223). 창과 「묻는 중」 표시는 `quit-request.test.ts`가 본다.
+describe("종료 확인이 세는 셸", () => {
+  // **물음이 실패해도 던지지 않는다.** 던지면 창이 안 뜨는데 부르는 쪽의 표시만 선 채 남을 수 있고,
+  // 그러면 다음 종료 요청이 전부 무시된다 — 앱을 끌 길이 강제 종료뿐이 된다.
+  it("거부하는 물음은 그 셸을 안 도는 것으로 센다", async () => {
+    const { shells } = opened(2).state;
+    // 셸마다 **던지는** 물음이다 — 한 셸의 실패가 나머지 셸의 세기를 끌고 가면 안 된다.
+    const counts = await countQuitShells(shells, () => Promise.reject(new Error("IPC 실패")));
+    expect(counts).toEqual({ live: 2, running: 0 });
+  });
+
+  it("모르면(`null`) 안 도는 것으로 센다 — 셸 닫기 확인과 같은 판정이다", async () => {
+    const { shells } = opened(3).state;
+    const answers = [true, null, false];
+    const counts = await countQuitShells(shells, async (id) => answers[shells.findIndex((s) => s.id === id)]);
+    expect(counts).toEqual({ live: 3, running: 1 });
+  });
+
+  // 끝난 칸은 목록에 남아 있지만 닫힐 프로세스가 없다 — 물어볼 것도 없다(`needsCloseConfirm`과 같은 규칙).
+  it("끝난 칸은 세지도 묻지도 않는다", async () => {
+    const two = opened(2).state;
+    const state = markExited(two, two.shells[0].id, { exitCode: 1, signal: null });
+    const asked: number[] = [];
+    const counts = await countQuitShells(state.shells, async (id) => {
+      asked.push(id);
+      return true;
+    });
+    expect(counts).toEqual({ live: 1, running: 1 });
+    expect(asked).toEqual([state.shells[1].id]);
+  });
+});
+
+describe("종료 확인의 본문", () => {
+  it("셸이 있으면 셸 수와 명령이 도는 셸 수를 적는다", () => {
+    expect(quitNotice({ live: 2, running: 1 })).toBe("셸 2 · 명령이 도는 셸 1");
+  });
+
+  it("셸이 0개면 그 줄이 없다", () => {
+    expect(quitNotice({ live: 0, running: 0 })).toBeUndefined();
   });
 });

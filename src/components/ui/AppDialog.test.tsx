@@ -41,12 +41,28 @@ describe("앱 창이 그려지는 자리", () => {
 });
 
 // 셸이 0개인 종료 확인은 본문 줄이 **아예 없다**(결정 15). 빈 줄을 그리면 제목 아래 여백만 남는다.
-describe("본문이 빈 물음", () => {
-  it("본문 줄을 그리지 않는다 — 제목만 선다", () => {
-    void askDialog({ title: "Atelier 종료", body: "", confirm: "종료", danger: true });
-    expect(render().match(/<span/g)).toHaveLength(1);
+// 재는 것은 창의 **설명**이다 — 본문이 있으면 창이 그 줄을 가리키고(읽기 도구가 제목 다음에 읽는다),
+// 없으면 가리킬 줄이 없다. 빈 줄을 그리는 변형은 가리키는 곳을 비워 둔 채 남긴다.
+describe("본문이 없는 물음", () => {
+  const description = (markup: string) => {
+    const id = /aria-describedby="([^"]+)"/.exec(markup)?.[1];
+    if (!id) return null;
+    const line = new RegExp(`id="${id}"[^>]*>([^<]*)<`).exec(markup);
+    if (!line) throw new Error("창이 가리키는 설명 줄이 없다");
+    return line[1];
+  };
+
+  it("본문이 있으면 창의 설명이 그 줄이다", () => {
     void askDialog({ title: "Atelier 종료", body: "셸 1 · 명령이 도는 셸 0", confirm: "종료" });
-    expect(render().match(/<span/g)).toHaveLength(2);
+    expect(description(render())).toBe("셸 1 · 명령이 도는 셸 0");
+  });
+
+  it("본문이 없으면 설명도 본문 줄도 없다 — 제목만 선다", () => {
+    void askDialog({ title: "Atelier 종료", confirm: "종료", danger: true });
+    const markup = render();
+    expect(description(markup)).toBeNull();
+    expect(markup).toContain("Atelier 종료");
+    expect(markup).not.toMatch(/ id="/);
   });
 });
 

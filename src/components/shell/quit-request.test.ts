@@ -4,19 +4,12 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it } from "vitest";
 import { askDialog, dialogStore } from "@/components/ui/confirm-store";
-import { markExited, NO_SHELLS, openShell, topTerminal } from "@/features/terminal/shell-registry";
-import type { ShellsState } from "@/features/terminal/shell-registry";
-import {
-  countQuitShells,
-  QUIT_REQUESTED_EVENT,
-  QUIT_TITLE,
-  quitNotice,
-  requestQuit,
-  type QuitCounts,
-} from "./quit-request";
+import type { QuitCounts } from "@/features/terminal/shell-registry";
+import { QUIT_REQUESTED_EVENT, QUIT_TITLE, requestQuit } from "./quit-request";
 
-// 종료 확인(결정 14·15 · S16). 브라우저를 거쳐 창이 뜨고 키가 먹는 것은 L3가
-// (`e2e/quit-confirm.spec.ts`), 여기는 **세기와 「묻는 중」 표시가 내려가는 길**을 값으로 본다 —
+// 종료 확인(결정 14·15 · #223). 브라우저를 거쳐 창이 뜨고 키가 먹는 것은 L3가
+// (`e2e/quit-confirm.spec.ts`), 무엇을 세는지는 `shell-registry.test.ts`가, 여기는 **「묻는 중」
+// 표시가 내려가는 길**을 값으로 본다 —
 // 안전판이 없어서(결정 31) 표시가 한 번이라도 선 채 남으면 그 뒤로 앱을 끌 길이 강제 종료뿐이다.
 
 // **떠 있는 창을 다 접고, 표시가 내려갈 틈을 준다.** 모듈 수준 표시는 테스트 사이에도 살아 있어서,
@@ -28,59 +21,8 @@ afterEach(async () => {
   }
 });
 
-function shellsOf(count: number): ShellsState {
-  let state = NO_SHELLS;
-  for (let n = 0; n < count; n += 1) {
-    const opened = openShell(state, topTerminal("atelier"));
-    if (!opened) throw new Error("셸을 못 열었다");
-    state = opened.state;
-  }
-  return state;
-}
-
 /** 답이 풀릴 때까지 마이크로태스크를 넘긴다 — 세기가 끝나야 창이 선다. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-describe("세기", () => {
-  // **물음이 실패해도 던지지 않는다.** 던지면 창이 안 뜨는데 부르는 쪽의 표시만 선 채 남을 수 있고,
-  // 그러면 다음 종료 요청이 전부 무시된다 — 앱을 끌 길이 강제 종료뿐이 된다.
-  it("거부하는 물음은 그 셸을 안 도는 것으로 센다", async () => {
-    const { shells } = shellsOf(2);
-    // 셸마다 **던지는** 물음이다 — 한 셸의 실패가 나머지 셸의 세기를 끌고 가면 안 된다.
-    const counts = await countQuitShells(shells, () => Promise.reject(new Error("IPC 실패")));
-    expect(counts).toEqual({ live: 2, running: 0 });
-  });
-
-  it("모르면(`null`) 안 도는 것으로 센다 — 셸 닫기 확인과 같은 판정이다", async () => {
-    const { shells } = shellsOf(3);
-    const answers = [true, null, false];
-    const counts = await countQuitShells(shells, async (id) => answers[shells.findIndex((s) => s.id === id)]);
-    expect(counts).toEqual({ live: 3, running: 1 });
-  });
-
-  // 끝난 칸은 목록에 남아 있지만 닫힐 프로세스가 없다 — 물어볼 것도 없다(`needsCloseConfirm`과 같은 규칙).
-  it("끝난 칸은 세지도 묻지도 않는다", async () => {
-    const two = shellsOf(2);
-    const state = markExited(two, two.shells[0].id, { exitCode: 1, signal: null });
-    const asked: number[] = [];
-    const counts = await countQuitShells(state.shells, async (id) => {
-      asked.push(id);
-      return true;
-    });
-    expect(counts).toEqual({ live: 1, running: 1 });
-    expect(asked).toEqual([state.shells[1].id]);
-  });
-});
-
-describe("본문", () => {
-  it("셸이 있으면 셸 수와 명령이 도는 셸 수를 적는다", () => {
-    expect(quitNotice({ live: 2, running: 1 })).toBe("셸 2 · 명령이 도는 셸 1");
-  });
-
-  it("셸이 0개면 그 줄이 없다", () => {
-    expect(quitNotice({ live: 0, running: 0 })).toBe("");
-  });
-});
 
 describe("묻는 중 표시", () => {
   const counter = (counts: QuitCounts = { live: 1, running: 0 }) => {
@@ -106,7 +48,6 @@ describe("묻는 중 표시", () => {
   it("창이 「Atelier 종료」이고 기본 포커스가 취소다", async () => {
     void requestQuit(counter().fn, quitter().fn);
     await settle();
-    expect(dialogStore.state?.title).toBe(QUIT_TITLE);
     expect(dialogStore.state?.title).toBe("Atelier 종료");
     expect(dialogStore.state?.confirm).toBe("종료");
     expect(dialogStore.state?.danger).toBe(true);

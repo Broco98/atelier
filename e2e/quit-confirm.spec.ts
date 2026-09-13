@@ -1,13 +1,14 @@
 import { expect, test, type Page } from "./evidence";
 import {
   awaitSpawned,
+  fireEvent,
   installFixtureBackend,
   openShell,
   readIpcRecord,
   unknownIpcCalls,
 } from "./harness";
 
-// 티켓 #223 — **빨간 버튼이 앱을 바로 끄지 않고 앱의 확인 창을 띄운다**(결정 14·15 · S16).
+// 티켓 #223 — **빨간 버튼이 앱을 바로 끄지 않고 앱의 확인 창을 띄운다**(결정 14·15).
 //
 // 이 층의 브라우저에는 창도 빨간 버튼도 없다. 빨간 버튼이 하는 일은 Rust가 창 닫기를 막고
 // 종료 요청 이벤트를 쏘는 것 하나라(`src-tauri/src/quit.rs`), 그 이벤트를 **손으로 쏘면** 세기 →
@@ -29,43 +30,15 @@ async function callsOf(page: Page, name: string): Promise<number> {
 }
 
 /**
- * 백엔드가 쏘는 종료 요청을 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아.** 둘째가
- * 첫째의 세기(비동기)보다 먼저 닿아야 「세는 동안의 요청」을 잰다.
- *
- * 구독 id는 IPC 기록에서 읽는다(`search-palette.spec.ts`의 `fireMenuHotkey`와 같은 방식) —
- * `transformCallback`이 난수로 짓는다. `listen`만 고르고 **마지막 구독**을 쓴다: StrictMode가
- * 붙였다 뗀다. 구독이 아직 안 보이면 기다리고, 끝내 없으면 **던진다** — 아무것도 안 쏜 채 지나가면
- * 「창이 안 뜬다」를 재는 단언이 초록이 된다.
+ * 백엔드가 쏘는 종료 요청을 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아**(`fireEvent`).
+ * 둘째가 첫째의 세기(비동기)보다 먼저 닿아야 「세는 동안의 요청」을 잰다.
  *
  * 쏜 뒤 한 틱을 넘기고 돌아온다 — 무시되어야 할 요청이 **무시되지 않았다면** 그 세기의 물음이
  * 기록에 남을 틈을 준다.
  */
 async function fireQuitRequest(page: Page, times = 1): Promise<void> {
-  let handler: string | undefined;
-  await expect
-    .poll(async () => {
-      const calls = (await readIpcRecord(page))?.calls ?? [];
-      const listen = calls
-        .filter((call) => call.startsWith("plugin:event|listen") && call.includes(`"${QUIT_EVENT}"`))
-        .reverse()[0];
-      handler = listen && /"handler":(\d+)/.exec(listen)?.[1];
-      return handler;
-    }, { message: `${QUIT_EVENT} 구독을 못 찾았다` })
-    .toBeTruthy();
-  await page.evaluate(
-    async ([id, event, count]) => {
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-        }
-      ).__TAURI_INTERNALS__;
-      for (let n = 0; n < Number(count); n += 1) {
-        internals.runCallback(Number(id), { event, id: 0, payload: null });
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    },
-    [handler!, QUIT_EVENT, String(times)] as const,
-  );
+  await fireEvent(page, QUIT_EVENT, null, times);
+  await page.waitForTimeout(50);
 }
 
 test("종료 요청이 OS 시트가 아니라 앱의 확인 창을 띄운다", async ({ page }) => {
@@ -278,5 +251,27 @@ test("셸 닫기 확인이 떠 있을 때의 요청은 종료 확인으로 갈�
   await expect(page.getByRole("alertdialog", { name: "셸 닫기" })).toHaveCount(0);
   await expect(shells(page)).toHaveCount(1);
   expect(await callsOf(page, "pty_kill")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 확인 창이 아닌 것은 **닫지 않고 그 위에 띄운다**(#223). 팔레트를 닫거나 창보다 위에 두는 변형은
+// 둘째 단언이나 「취소」 클릭(가려지면 Playwright가 누르지 못한다)에서 빨개진다.
+test("팔레트가 떠 있을 때의 요청은 팔레트를 닫지 않고 그 위에 창을 띄운다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await page.keyboard.press("Meta+k");
+  const palette = page.getByRole("listbox", { name: "검색 결과" });
+  await expect(palette).toBeVisible();
+
+  await fireQuitRequest(page);
+
+  await expect(quitDialog(page)).toBeVisible();
+  await expect(palette).toBeVisible();
+  await quitDialog(page).getByRole("button", { name: "취소", exact: true }).click();
+  await expect(quitDialog(page)).toHaveCount(0);
+  await expect(palette).toBeVisible();
+  expect(await callsOf(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

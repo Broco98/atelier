@@ -311,6 +311,48 @@ async function awaitIpcMatch(
 }
 
 /**
+ * 백엔드가 쏘는 이벤트 `event`를 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아.**
+ * 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
+ *
+ * 구독 id는 IPC 기록에서 읽는다 — **상수로 적을 수 없다**(`transformCallback`이 난수로 짓는다).
+ * **`listen`만 고르고 마지막 구독을 쓴다**: 같은 이름이 `unlisten` 줄에도 있는데 그쪽에는 handler가
+ * 없고, StrictMode가 붙였다 떼면서 살아 있는 것은 마지막 구독이다. 구독이 아직 안 보이면
+ * 기다리고 끝내 없으면 **던진다**(`awaitIpcMatch`) — 아무것도 안 쏜 채 지나가면 「아무 일도 안
+ * 일어났다」를 재는 단언이 초록이 된다.
+ *
+ * **한 번 쏘는 것이 기본이다.** 전이를 싣는 이벤트(`shell:attention`)는 여러 번 쏘면 그 수만큼
+ * 발화한다 — 멱등한 값을 앉을 때까지 다시 쏘는 것은 `markRunning`의 일이다.
+ */
+export async function fireEvent(
+  page: Page,
+  event: string,
+  payload: unknown,
+  times = 1,
+): Promise<void> {
+  const handler = await awaitIpcMatch(
+    page,
+    (calls) => {
+      const listen = calls
+        .filter((call) => call.startsWith("plugin:event|listen") && call.includes(`"${event}"`))
+        .reverse()[0];
+      return (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
+    },
+    `${event} 구독`,
+  );
+  await page.evaluate(
+    ({ handler, event, payload, times }: { handler: number; event: string; payload: unknown; times: number }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      for (let n = 0; n < times; n += 1) {
+        internals.runCallback(handler, { event, id: 0, payload });
+      }
+    },
+    { handler: Number(handler), event, payload, times },
+  );
+}
+
+/**
  * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
  *
  * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
@@ -479,35 +521,15 @@ export async function markAttention(
 ): Promise<void> {
   await awaitSpawned(page, ptyId);
 
-  const handler = await awaitIpcMatch(
-    page,
-    (calls) => {
-      const listen = calls.filter((call) => call.includes('"shell:attention"')).reverse()[0];
-      return (listen && /"handler":(\d+)/.exec(listen)?.[1]) || undefined;
-    },
-    "shell:attention 구독",
-  );
-
-  await page.evaluate(
-    ({ handler, payload }: { handler: number; payload: unknown }) => {
-      const internals = (window as unknown as {
-        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
-      }).__TAURI_INTERNALS__;
-      internals.runCallback(handler, { event: "shell:attention", id: 0, payload });
-    },
+  await fireEvent(page, "shell:attention", [
     {
-      handler: Number(handler),
-      payload: [
-        {
-          shellId: `l3-${ptyId}`,
-          state:
-            state === null
-              ? null
-              : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
-        },
-      ],
+      shellId: `l3-${ptyId}`,
+      state:
+        state === null
+          ? null
+          : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
     },
-  );
+  ]);
 }
 
 /**
