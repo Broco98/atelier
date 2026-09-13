@@ -1,14 +1,63 @@
-//! 여러 쓰기가 겹칠 수 있는 파일의 원자적 쓰기 — `recent.json`과 진행 중 루트의 `.order.json`이
-//! 함께 딛는다.
+//! 여러 쓰기가 겹칠 수 있는 JSON 파일 한 장의 읽기·쓰기 — `recent.json`과 진행 중 루트의
+//! `.order.json`이 함께 딛는다.
 //!
 //! **둘이 한 자리를 쓰는 것은 「tmp 이름이 쓰기마다 다르다」가 둘 다에 필요해서다.** 한쪽만
 //! 고정 이름으로 돌아가면 겹친 rename이 반쯤 쓰인 파일을 남기는데, 그 차이는 검사로도 실물로도
-//! 좀처럼 안 드러난다.
+//! 좀처럼 안 드러난다. 읽기(없음·깨짐 = 기본값 + stderr 한 줄)도 같은 까닭으로 여기 한 벌이다 —
+//! 파일이 하나 더 늘 때 두 모듈의 사본과 그 사본을 세는 주석이 함께 늘지 않게.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use serde::{de::DeserializeOwned, Serialize};
+
 use crate::Result;
+
+/// JSON 파일 한 장을 읽는다. **실패하지 않는다 — 없으면 기본값, 못 읽거나 깨졌으면 기본값 +
+/// stderr 한 줄.** 기본값으로 눕는 판단 자체는 부르는 쪽 모듈에 적혀 있다(`recent.rs`의
+/// `read_recent`, `order.rs`의 `read_order`). `label`은 그 줄에서 어느 파일인지 가리는 이름이다.
+///
+/// **이 크레이트에서 stderr로 나가는 자리는 여기 하나다 — 알고 그렇게 뒀다.** 나머지 진단은 전부
+/// 호스트(`src-tauri`·CLI)의 몫이고, 층으로 보면 「어떻게 알리나」는 기전이라 바깥의 것이 맞다.
+/// 그런데 이 읽기는 **오류를 안 돌려준다**(그것이 부르는 쪽 결정의 전부다) — 알릴 것을 밖으로
+/// 내보내려면 반환 모양을 바꾸거나 검색 전체에 진단 채널을 하나 꿰야 하고, 그 값은 셋뿐인
+/// 호스트가 전부 stderr를 진단 채널로 쓰고 있어서 0이다(MCP는 stdout이 프로토콜이라 특히
+/// 그렇다). 진단 채널이 생기는 날 이 두 줄이 그리로 간다.
+///
+/// **파일도 폴더도 만들지 않는다.** 글자마다 부르는 자리가 무엇을 만들면 「읽기만 한다」가
+/// 거짓이 된다.
+pub(crate) fn read_json_or_default<T: DeserializeOwned + Default>(path: &Path, label: &str) -> T {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        // 없는 것은 정상이다 — 첫 실행, 순서를 한 번도 안 만진 루트가 그 자리다.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return T::default(),
+        Err(e) => {
+            eprintln!("atelier: {label} read failed ({}): {e}", path.display());
+            return T::default();
+        }
+    };
+    match serde_json::from_str(&content) {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("atelier: {label} parse failed ({}): {e}", path.display());
+            T::default()
+        }
+    }
+}
+
+/// 값을 보기 좋은 JSON(끝 줄바꿈 포함)으로 옮겨 `write_atomically`로 쓴다. `what`은 직렬화
+/// 실패 메시지의 목적어다(「순서를」·「이력을」).
+pub(crate) fn write_json_atomically<T: Serialize>(
+    dir: &Path,
+    file_name: &str,
+    value: &T,
+    what: &str,
+) -> Result<()> {
+    let mut json = serde_json::to_string_pretty(value)
+        .map_err(|e| crate::Error::Validation(format!("{what} 옮겨 적지 못했습니다: {e}")))?;
+    json.push('\n');
+    write_atomically(dir, file_name, &json)
+}
 
 /// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (`work.json`·projects·설정과 같은 규칙).
 /// rename은 같은 파일시스템 안에서 원자적이라 파일이 반쯤인 순간이 없고, 그래서 tmp도

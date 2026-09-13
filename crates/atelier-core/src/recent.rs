@@ -55,45 +55,21 @@ fn recent_path(root: &Path) -> PathBuf {
     root.join(RECENT_FILE)
 }
 
-/// 이력을 읽는다. **실패하지 않는다 — 못 읽으면 빈 이력이다.**
+/// 이력을 읽는다. **실패하지 않는다 — 못 읽으면 빈 이력이다**(읽기·진단 한 줄의 기전과 stderr를
+/// 쓰는 이유는 `atomic.rs`의 `read_json_or_default`에 있다).
 ///
 /// **설정 파일과 반대로 간다.** 그쪽은 「실패로 말하고 파일은 그대로 둔다」인데, 갈리는 축은
-/// **「사람이 손으로 고치는 값인가」**다. 설정은 손으로 고치는 파일이라 조용히 기본값으로
-/// 넘어가면 다음 저장이 그 손질을 덮어쓴다. 이력은 **관찰의 부산물**이고, 검색이 글자마다
-/// 부르는 자리라 파일 한 장 때문에 팔레트가 통째로 못 뜨면 안 된다.
+/// **「조용히 기본값으로 넘어가면 다음 쓰기가 사람의 손질을 덮어쓰는가」**다. 설정은 손으로
+/// 고치는 파일이고 저장이 화면의 값을 통째로 되쓰니 그렇다. 이력은 **관찰의 부산물**이라 덮일
+/// 손질이 없고, 검색이 글자마다 부르는 자리라 파일 한 장 때문에 팔레트가 통째로 못 뜨면 안 된다.
+/// 진행 중 루트의 순서 파일은 손으로도 고치지만 같은 편에 선다 — 쓰는 쪽이 깨진 파일을 안
+/// 덮어서 축의 답이 「아니오」다(`order.rs`의 `read_order`).
 ///
 /// **파일은 안 지운다.** 눕는 것은 이 판정 하나이고, 다음 쓰기가 정상 모양으로 덮는다.
 /// 무슨 일이 있었는지는 **한 줄로 남긴다** — 조용히 비면 「이력이 왜 초기화됐지」에 답할
 /// 자리가 아무 데도 없다.
-///
-/// **이 크레이트에서 stderr로 나가는 자리는 둘이다 — 이것과 진행 중 루트의 순서 파일
-/// 읽기(`order.rs`의 `read_order`) — 알고 그렇게 뒀다.** 둘이 같은 판단을 진다. 나머지 진단은 전부
-/// 호스트(`src-tauri`·CLI)의 몫이고, 층으로 보면 「어떻게 알리나」는 기전이라 바깥의 것이 맞다.
-/// 그런데 이 함수는 **오류를 안 돌려준다**(그것이 위 결정의 전부다) — 알릴 것을 밖으로
-/// 내보내려면 반환 모양을 바꾸거나 검색 전체에 진단 채널을 하나 꿰야 하고, 그 값은 셋뿐인
-/// 호스트가 전부 stderr를 진단 채널로 쓰고 있어서 0이다(MCP는 stdout이 프로토콜이라 특히
-/// 그렇다). 진단 채널이 생기는 날 두 자리의 줄들이 함께 그리로 간다.
-///
-/// **파일도 폴더도 만들지 않는다.** 글자마다 부르는 자리가 무엇을 만들면 「읽기만 한다」가
-/// 거짓이 된다 — 검색의 다른 층들이 이미 같은 규칙을 진다.
 pub(crate) fn read_recent(root: &Path) -> RecentWorks {
-    let path = recent_path(root);
-    let content = match std::fs::read_to_string(&path) {
-        Ok(content) => content,
-        // 없는 것은 정상이다 — 첫 실행이 그 자리다.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return RecentWorks::default(),
-        Err(e) => {
-            eprintln!("atelier: recent read failed ({}): {e}", path.display());
-            return RecentWorks::default();
-        }
-    };
-    match serde_json::from_str(&content) {
-        Ok(recent) => recent,
-        Err(e) => {
-            eprintln!("atelier: recent parse failed ({}): {e}", path.display());
-            RecentWorks::default()
-        }
-    }
+    crate::atomic::read_json_or_default(&recent_path(root), "recent")
 }
 
 /// 그 work을 **맨 앞으로** 옮긴다. 이미 있으면 지우고 다시 넣는 대신 **그 항목을 통째로
@@ -121,13 +97,9 @@ pub fn touch_recent_work(root: &Path, slug: &str) -> Result<()> {
     write_recent(root, &recent)
 }
 
-/// 원자적으로 쓴다 — 규칙과 tmp 이름의 이유는 `atomic.rs`에 있다(진행 중 루트의 순서 파일과
-/// 같은 자리를 딛는다).
+/// 원자적으로 쓴다 — 규칙과 tmp 이름의 이유는 `atomic.rs`에 있다.
 fn write_recent(root: &Path, recent: &RecentWorks) -> Result<()> {
-    let mut json = serde_json::to_string_pretty(recent)
-        .map_err(|e| crate::Error::Validation(format!("이력을 옮겨 적지 못했습니다: {e}")))?;
-    json.push('\n');
-    crate::atomic::write_atomically(root, RECENT_FILE, &json)
+    crate::atomic::write_json_atomically(root, RECENT_FILE, recent, "이력을")
 }
 
 #[cfg(test)]
@@ -241,22 +213,5 @@ mod tests {
 
         assert!(!missing.exists(), "읽기가 폴더를 만들었다");
         assert!(!tmp.path().join("recent.json").exists(), "읽기가 파일을 만들었다");
-    }
-
-    /// 쓰고 나면 **찌꺼기가 없다.** 고유 이름을 붙였으므로 지우는 자리가 확실해야 한다 —
-    /// 남으면 dotfile이라 화면에도 안 뜬 채 쌓인다.
-    #[test]
-    fn 쓰고_나면_tmp가_안_남는다() {
-        let tmp = root();
-        touch_recent_work(tmp.path(), "가").unwrap();
-        touch_recent_work(tmp.path(), "나").unwrap();
-
-        let leftovers: Vec<String> = std::fs::read_dir(tmp.path())
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".tmp"))
-            .collect();
-        assert!(leftovers.is_empty(), "tmp가 남았다: {leftovers:?}");
     }
 }

@@ -412,7 +412,7 @@ pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
 /// 3. 그 아래로 파일에 적힌 순서.
 /// 4. 파일에 있는데 폴더가 없는 slug는 흘려보낸다 — 여기서는 `works`에 없으니 저절로다.
 ///
-/// **파일이 없으면 2만 남아 옛 순서와 한 글자도 다르지 않다**(결정 4의 회귀 기준).
+/// **파일이 없으면 2만 남아 옛 순서와 한 글자도 다르지 않다**(UI개선 결정 4의 회귀 기준).
 ///
 /// **이 규칙을 `list_works`(바깥)로 옮기지 않는다.** 검색의 작업 층이 이 함수를 거치지 않고
 /// `read_works`를 직접 부르므로, 바깥에 두면 사이드바·MCP는 새 순서·팔레트는 옛 순서가 된다.
@@ -1330,7 +1330,7 @@ mod tests {
         .unwrap();
     }
 
-    fn write_order(works: &Path, body: &str) {
+    fn write_raw_order(works: &Path, body: &str) {
         std::fs::create_dir_all(works).unwrap();
         std::fs::write(works.join(".order.json"), body).unwrap();
     }
@@ -1339,7 +1339,7 @@ mod tests {
         list_works(works).unwrap().into_iter().map(|v| v.work.slug).collect()
     }
 
-    /// 결정 1·4 — 규칙 1~3. 구획(`pinned`)이 먼저 갈리고, 그 안에서 **파일에 없는 것이 먼저**
+    /// UI개선 결정 1·4 — 규칙 1~3. 구획(`pinned`)이 먼저 갈리고, 그 안에서 **파일에 없는 것이 먼저**
     /// (지금 규칙대로), 그 아래로 파일에 적힌 순서다. 파일이 구획을 가로질러 적혀 있어도
     /// 구획은 안 섞인다.
     #[test]
@@ -1353,12 +1353,12 @@ mod tests {
         plant(&works, "다", "2026-08-03", false);
         plant(&works, "라", "2026-08-09", false);
         // 만든 순(라·나·다·가)과 반대로 적는다. `라`는 안 적어 파일 밖이다.
-        write_order(&works, r#"{"order":["가","핀-옛것","다","나"]}"#);
+        write_raw_order(&works, r#"{"order":["가","핀-옛것","다","나"]}"#);
 
         assert_eq!(listed(&works), slugs(&["핀-새것", "핀-옛것", "라", "가", "다", "나"]));
     }
 
-    /// 결정 2 — 규칙 4. 폴더가 없는 slug는 흘려보낸다(아카이브·삭제가 남긴 흔적). 루트의
+    /// UI개선 결정 2 — 규칙 4. 폴더가 없는 slug는 흘려보낸다(아카이브·삭제가 남긴 흔적). 루트의
     /// 순서 파일 자신도 work로 안 읽힌다 — 점 파일이다.
     #[test]
     fn slugs_without_a_folder_are_skipped_and_the_order_file_is_not_a_work() {
@@ -1366,9 +1366,22 @@ mod tests {
         let works = tmp.path().join("works");
         plant(&works, "옛것", "2026-08-01", false);
         plant(&works, "새것", "2026-08-05", false);
-        write_order(&works, r#"{"order":["유령","옛것","치운것","새것"]}"#);
+        write_raw_order(&works, r#"{"order":["유령","옛것","치운것","새것"]}"#);
 
         assert_eq!(listed(&works), slugs(&["옛것", "새것"]));
+    }
+
+    /// 같은 slug가 두 번 적혔으면 **첫 자리가 이긴다** — 손으로 고친 파일에서 흔한 실수라
+    /// `order_works` 한 자리가 정한다. 뒷자리가 이기면 `나`가 `가` 아래로 내려간다.
+    #[test]
+    fn a_slug_listed_twice_takes_its_first_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        write_raw_order(&works, r#"{"order":["나","가","나"]}"#);
+
+        assert_eq!(listed(&works), slugs(&["나", "가"]));
     }
 
     /// 깨진 파일은 **빈 순서**다 — 목록이 지금 규칙 그대로 뜨고 파일은 안 건드린다
@@ -1379,7 +1392,7 @@ mod tests {
         let works = tmp.path().join("works");
         plant(&works, "옛것", "2026-08-01", false);
         plant(&works, "새것", "2026-08-05", false);
-        write_order(&works, r#"{"order":["옛것","#);
+        write_raw_order(&works, r#"{"order":["옛것","#);
 
         assert_eq!(listed(&works), slugs(&["새것", "옛것"]));
         assert_eq!(
@@ -1401,7 +1414,7 @@ mod tests {
     }
 
     /// S2 · 스토리 20. **지운 slug는 파일에서 빠진다** — 지운 slug는 다시 쓸 수 있어서, 안
-    /// 빼면 같은 이름으로 새로 만든 작업이 옛 자리에 선다(결정 4 위반).
+    /// 빼면 같은 이름으로 새로 만든 작업이 옛 자리에 선다(UI개선 결정 4 위반).
     #[test]
     fn a_work_recreated_after_removal_leads_its_section_instead_of_its_old_place() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1410,7 +1423,7 @@ mod tests {
         plant(&works, "옛것", "2026-01-01", false);
         plant(&works, "더옛것", "2026-01-02", false);
         start_work(&works, &archive, None, "카트", Some("cart"), &[], None).unwrap();
-        write_order(&works, r#"{"order":["옛것","cart","더옛것"]}"#);
+        write_raw_order(&works, r#"{"order":["옛것","cart","더옛것"]}"#);
 
         remove_work(&works, "cart", false).unwrap();
         let raw: serde_json::Value =
@@ -1430,7 +1443,7 @@ mod tests {
         let works = tmp.path().join("works");
         plant(&works, "가", "2026-08-01", false);
         plant(&works, "나", "2026-08-02", false);
-        write_order(&works, r#"{"order":["가","나"],"version":2,"note":{"by":"사람"}}"#);
+        write_raw_order(&works, r#"{"order":["가","나"],"version":2,"note":{"by":"사람"}}"#);
 
         remove_work(&works, "가", false).unwrap();
 
@@ -1455,7 +1468,7 @@ mod tests {
         remove_work(&works, "가", false).unwrap();
         assert!(!works.join(".order.json").exists(), "지우기가 없던 순서 파일을 만들었다");
 
-        write_order(&works, r#"{"order":["나","#);
+        write_raw_order(&works, r#"{"order":["나","#);
         remove_work(&works, "나", false).unwrap();
         assert_eq!(
             std::fs::read_to_string(works.join(".order.json")).unwrap(),

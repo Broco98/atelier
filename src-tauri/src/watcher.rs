@@ -176,13 +176,19 @@ mod tests {
             !relevant(&rooms.join("finance/.DS_Store")),
             "dotfile이 새어 들어온다 — 자기 쓰기의 .tmp 단계가 스스로를 다시 읽게 한다"
         );
-        // 루트의 순서 파일과 그 원자 쓰기 tmp도 점 파일이다(UI개선 S1). 순서만 바뀐 쓰기는
-        // 종을 안 친다 — 앱은 자기 쓰기의 응답으로 캐시를 갈아 끼운다.
-        assert!(!relevant(&rooms.join(".order.json")), "순서 파일이 새어 들어온다");
-        assert!(
-            !relevant(&rooms.join(".order.json.4242.0.tmp")),
-            "순서 파일 쓰기의 tmp 단계가 새어 들어온다"
-        );
+        // 루트의 순서 파일과 그 원자 쓰기 tmp도 점 파일이다(UI개선 S1) — 두 세계 루트 다.
+        // 순서만 바뀐 쓰기는 종을 안 친다. 지금 순서 파일을 쓰는 길은 지우기뿐이고 그 쓰기는
+        // 폴더도 지워 어차피 종을 친다. 손으로 고친 순서는 새로고침에야 보인다 — 알고 둔
+        // 틈이고, 앱이 자기 쓰기의 응답으로 캐시를 갈아 끼우는 길은 순서를 옮기는 장(04·05)이 연다.
+        for root in [rooms.clone(), atelier_core::works_dir(Mode::Atelier)] {
+            let relevant = watch_on(&root).relevant;
+            assert!(!relevant(&root.join(".order.json")), "{}: 순서 파일이 새어 들어온다", root.display());
+            assert!(
+                !relevant(&root.join(".order.json.4242.0.tmp")),
+                "{}: 순서 파일 쓰기의 tmp 단계가 새어 들어온다",
+                root.display()
+            );
+        }
     }
 
     /// 프로젝트 쪽 규칙은 그대로다 — `.md` 하나가 프로젝트 하나이므로 그 밖은 소식이 아니다.
