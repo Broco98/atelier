@@ -594,8 +594,8 @@ export async function markRunning(page: Page, running: string, ptyId = 1): Promi
  */
 export async function awaitSpawned(page: Page, count: number): Promise<void> {
   // **기본 5초가 아니다.** 이 기다림은 IPC 왕복이 아니라 그 앞의 **진짜 브라우저 일**에
-  // 매여 있다 — 칸이 서면 xterm이 열리고 WebGL 애드온이 붙고 격자를 맞춘 **뒤에야**
-  // spawn이 나간다(`terminal-store`의 `openOrReattach`). 한가한 러너에서 그 전부가
+  // 매여 있다 — 칸이 서면 글꼴을 기다리고, 붙어 있으면 xterm이 열리고 WebGL 애드온이 붙고
+  // 격자를 맞춘 **뒤에야** spawn이 나간다(`terminal-store`의 `loadFont`). 한가한 러너에서 그 전부가
   // 70~130ms인데(실측), `cargo test --workspace` 직후의 `verify --full`에서 한 번
   // 5초를 넘겼다. 여기서 시간을 아껴 봐야 얻는 것이 없고, 넘치면 **그 자리에서** 터져
   // 원인이 이 줄을 가리킨다 — 예전처럼 「확인 창이 안 떴다」로 엉뚱한 곳을 가리키지 않는다.
@@ -607,17 +607,18 @@ export async function awaitSpawned(page: Page, count: number): Promise<void> {
 /**
  * 셸 한 칸을 **열고 그 칸이 spawn 응답을 받을 때까지** 기다린다.
  *
- * **칸을 세우는 길이 여기 하나여야 하는 이유는 `markRunning`의 `ptyId`다.** 픽스처는 칸이
- * 선 순서가 아니라 `pty_spawn`이 **불린 순서**로 id를 준다 — 둘이 같으려면 왕복이 겹치면
- * 안 되고, 겹치지 않게 하는 것이 이 함수의 기다림이다. `+`를 연달아 눌러 칸부터 세우면
- * 「둘째 칸 = pty 2」가 실행마다 갈리고, 그러면 엉뚱한 칸을 재고도 초록이 될 수 있다.
+ * **이 기다림은 순서를 만들지 않는다 — 순서는 앱이 지킨다.** 픽스처는 칸이 선 순서가 아니라
+ * `pty_spawn`이 **불린 순서**로 id를 주는데, 앱은 칸을 연 순서대로 부른다(글꼴이 오면 붙었든
+ * 떼어졌든 띄운다 — `terminal-store`의 `loadFont`). 그래서 `+`를 연달아 눌러도 「둘째 칸 = pty 2」다
+ * (`shell-cold-start.spec.ts`가 여덟 칸으로 잰다). 여기서 기다리는 것은 **pty가 앉았다**는 것 하나로,
+ * 그 번호로 값을 앉히는 손잡이들(`markRunning`·`markAttention`)과 확인 창을 보는 닫기가 그것을 딛는다.
+ *
+ * _한때 누르기 전에도 기다렸다_ — 첫 칸이 글꼴을 기다린 뒤 붙어 있을 때만 떠서, 그 전에 새 칸이
+ * 켜지면 첫 칸의 spawn이 둘째 칸보다 늦게(또는 영영 안) 나갔다. 그 기다림은 앱의 결함을 덮고 있었다.
  */
 export async function openShell(page: Page): Promise<void> {
   const tabs = page.locator('[data-tab="shell"]');
   const before = await tabs.count();
-  // **이미 선 칸들이 먼저 앉은 뒤에 누른다.** 이 줄이 없으면 첫 칸의 `pty_spawn`이 둘째 칸의
-  // 것보다 늦게 나갈 수 있고, 그러면 「첫 칸 = pty 1」부터 어긋난다.
-  await awaitSpawned(page, before);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs).toHaveCount(before + 1);
   await awaitSpawned(page, before + 1);
@@ -892,4 +893,136 @@ async function sendFrame(
     },
     { channel: Number(channel), frame },
   );
+}
+
+/**
+ * 터미널 글꼴 응답을 **붙잡는다** — 돌려받은 함수를 부르면 놓는다. 셸은 글꼴이 온 뒤에야 열리고
+ * 뜨므로(`terminal-store`의 `loadFont`) 이 틈이 「글꼴이 오는 사이에 사람이 한 일」의 자리다.
+ *
+ * **붙잡지 않으면 그 틈이 러너 속도에 매인다.** 글꼴은 저장소에 든 0.94MB 파일이라 한가한
+ * 러너에서는 먼저 와서 초록이고, 붐비는 러너에서만 틈이 벌어진다 — 918fbc5가 검사들에 기다림을
+ * 넣어 덮은 것이 바로 그 모양이었다.
+ *
+ * **`page.goto`는 `waitUntil: "domcontentloaded"`로 불러야 한다.** `load`는 붙잡아 둔 글꼴을
+ * 기다려 거기서 멈춘다. 페이지가 뜨기 전에 깔아야 한다(`installFixtureBackend`와 같은 자리).
+ */
+export async function holdTerminalFonts(page: Page): Promise<() => Promise<void>> {
+  let open!: () => void;
+  const held = new Promise<void>((resolve) => (open = resolve));
+  let caught = 0;
+  await page.route("**/JetBrainsMonoNLNerdFont-*.woff2*", async (route) => {
+    caught += 1;
+    await held;
+    await route.continue();
+  });
+  // **놓기 전에 붙잡았는지부터 본다 — fail-closed다.** 글꼴 파일의 이름·경로·싣는 길이 바뀌어
+  // 이 route가 아무것도 못 잡으면 글꼴이 먼저 와서 틈이 안 서고, 이 도우미를 딛는 검사가 전부
+  // 러너 속도에 매인 초록으로 돌아간다. 붙잡기가 이 도우미의 계약이라 여기서 터뜨린다.
+  return async () => {
+    await expect
+      .poll(() => caught, { message: "터미널 글꼴 요청을 하나도 못 붙잡았다 — route 패턴이 낡았다" })
+      .toBeGreaterThan(0);
+    open();
+  };
+}
+
+/**
+ * `pty_spawn`의 **응답을 붙잡는다** — 「셸을 띄우러 나갔는데 아직 안 돌아왔다」의 틈을 결정적으로
+ * 세운다. 붙잡힌 부름의 수는 `heldSpawns`로 읽고, `releaseSpawns`로 한꺼번에 놓는다.
+ *
+ * **기록은 놓은 뒤에 남는다** — 하네스의 기록(`readIpcRecord`)은 답하는 자리에서 적으므로, 붙잡힌
+ * 동안의 부름은 거기 없다. 그래서 수를 따로 센다: 기록으로 기다리면 「아직 안 나갔다」와
+ * 「나갔는데 붙잡혔다」가 같은 얼굴이다. 놓는 순서는 부른 순서 그대로라 픽스처의 번호도 그대로다.
+ *
+ * `installFixtureBackend` **뒤에** 깔아야 한다 — 그쪽이 세운 `invoke`를 감싼다.
+ */
+export async function holdPtySpawn(page: Page): Promise<void> {
+  await interceptPtySpawn(page, { hold: true });
+}
+
+/**
+ * **첫 `pty_spawn` 하나를 그 이유로 거절한다** — 나머지는 그대로 답한다(결정 23의 「못 띄운 이유」).
+ * `installFixtureBackend` **뒤에** 깔아야 한다(`holdPtySpawn`과 같다).
+ */
+export async function refuseFirstSpawn(page: Page, reason: string): Promise<void> {
+  await interceptPtySpawn(page, { refuseFirst: reason });
+}
+
+/**
+ * `pty_spawn`을 가로채는 초기화 스크립트 **한 벌.** 붙잡기·거절이 `invoke`를 감싸는 모양을 나눠
+ * 쓴다 — 픽스처의 `invoke` 모양이 바뀌면 여기 하나만 고친다. 초기화 스크립트는 직렬화되어
+ * 페이지로 가므로 동작을 함수가 아니라 값으로 받는다.
+ */
+async function interceptPtySpawn(page: Page, behaviour: { hold?: boolean; refuseFirst?: string }): Promise<void> {
+  await page.addInitScript(({ hold, refuseFirst }: { hold?: boolean; refuseFirst?: string }) => {
+    const internals = (window as unknown as {
+      __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
+    }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const gate = { count: 0, release };
+    if (hold) (window as unknown as { __ATELIER_SPAWN_GATE__: typeof gate }).__ATELIER_SPAWN_GATE__ = gate;
+    let refused = false;
+    internals.invoke = async (cmd, args, options) => {
+      if (cmd !== "pty_spawn") return invoke(cmd, args, options);
+      if (refuseFirst !== undefined && !refused) {
+        refused = true;
+        throw new Error(refuseFirst);
+      }
+      if (hold) {
+        gate.count += 1;
+        await held;
+      }
+      return invoke(cmd, args, options);
+    };
+  }, behaviour);
+}
+
+/** 붙잡힌 `pty_spawn` 부름의 수(`holdPtySpawn`). 안 깔았으면 던진다. */
+export async function heldSpawns(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const gate = (window as unknown as { __ATELIER_SPAWN_GATE__?: { count: number } }).__ATELIER_SPAWN_GATE__;
+    if (!gate) throw new Error("holdPtySpawn을 먼저 깔아야 한다");
+    return gate.count;
+  });
+}
+
+/** 붙잡은 `pty_spawn` 응답을 한꺼번에 놓는다(`holdPtySpawn`). */
+export async function releaseSpawns(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const gate = (window as unknown as { __ATELIER_SPAWN_GATE__?: { release: () => void } }).__ATELIER_SPAWN_GATE__;
+    if (!gate) throw new Error("holdPtySpawn을 먼저 깔아야 한다");
+    gate.release();
+  });
+}
+
+/**
+ * pty마다 **지금 백엔드가 아는 격자** — spawn에 실린 값에서 시작해 그 뒤 `pty_resize`로 덮는다.
+ * 키는 픽스처의 pty 번호다: `pty_spawn`이 **불린 순서**로 1부터 준다(`FIXTURE_INCREMENTING_KEYS`).
+ *
+ * 화면에서 세지 않는 것은 셀이 캔버스에 그려져 DOM에 없어서다(`terminal-fill.spec.ts`와 같은 사정).
+ * 값의 모양이 낯설면 던진다(`ipcCallArgs`) — 조용히 넘기면 격자를 재는 단언이 fail-open이 된다.
+ */
+export async function ptyGrids(page: Page): Promise<Map<number, { cols: number; rows: number }>> {
+  const grids = new Map<number, { cols: number; rows: number }>();
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  let spawned = 0;
+  for (const call of calls) {
+    const isSpawn = call.startsWith("pty_spawn ");
+    if (!isSpawn && !call.startsWith("pty_resize ")) continue;
+    const args = JSON.parse(call.slice(call.indexOf(" ") + 1)) as Record<string, unknown>;
+    const { cols, rows } = args;
+    if (typeof cols !== "number" || typeof rows !== "number") {
+      throw new Error(`격자가 수가 아니다 — ${call}`);
+    }
+    if (isSpawn) {
+      spawned += 1;
+      grids.set(spawned, { cols, rows });
+    } else {
+      if (typeof args.id !== "number") throw new Error(`resize에 id가 없다 — ${call}`);
+      grids.set(args.id, { cols, rows });
+    }
+  }
+  return grids;
 }

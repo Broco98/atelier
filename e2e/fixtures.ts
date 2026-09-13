@@ -547,7 +547,7 @@ export interface ModeAnswer {
 export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
   list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
   /**
-   * **두 칸이 다 빈 다섯.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
+   * **두 칸이 다 빈 넷.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
    * 아직 하나도 안 태운다 — 목록 화면은 `list_works`가, 문서는 `read_spec_file`이 답한다.
    *
    * 그래도 **여기 있어야 한다.** 없으면 하네스가 이름 표로 떨어뜨리는 것이 아니라 화이트리스트
@@ -561,8 +561,13 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
   get_work: { atelier: {}, maison: {} },
   set_work_title: { atelier: {}, maison: {} },
   set_work_status: { atelier: {}, maison: {} },
-  archive_work: { atelier: {}, maison: {} },
   remove_work: { atelier: {}, maison: {} },
+  /**
+   * **Atelier 칸만 찼다** — 아카이빙이 셸을 거두는 자리(`closeShellsOf`)를 태우는 시나리오가
+   * 생겼다(`shell-cold-start.spec.ts`). 답은 비어 있다: 코어가 돌려주는 것이 없고, 화면은
+   * 성공인지만 본다. 목록은 그대로 그 work을 답하므로 행이 안 사라지지만, 거기서 재는 것은 셸뿐이다.
+   */
+  archive_work: { atelier: { value: null }, maison: {} },
   /**
    * 아카이브 목록. **Maison 칸이 비었다** — 저 세계의 아카이브를 여는 시나리오가 아직 없다.
    * 값을 지어내면 아무도 안 태우는 답이 되어 조용히 낡고(이 파일의 `write_settings` 주석과

@@ -61,7 +61,9 @@ test("종료 요청이 OS 시트가 아니라 앱의 확인 창을 띄운다", a
 test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   await fireQuitRequest(page);
@@ -73,7 +75,9 @@ test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) =>
 test("물음이 「안 돈다」면 도는 셸이 0으로 적힌다", async ({ page }) => {
   await installFixtureBackend(page, { pty_command_running: false });
   await page.goto("/terminal");
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   await fireQuitRequest(page);
@@ -85,7 +89,9 @@ test("물음이 「안 돈다」면 도는 셸이 0으로 적힌다", async ({ p
 test("물음이 「모름」이면 안 도는 것으로 센다", async ({ page }) => {
   await installFixtureBackend(page, { pty_command_running: null });
   await page.goto("/terminal");
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   await fireQuitRequest(page);
@@ -210,7 +216,9 @@ for (const [label, dismiss] of dismissals) {
 test("세는 동안과 창이 떠 있을 때의 요청은 창을 안 바꾼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   // 한 `evaluate` 안에서 두 번 — 둘째는 첫째의 세기가 끝나기 전에 닿는다.
