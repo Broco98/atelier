@@ -189,11 +189,13 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
 
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
   await page.goto("/settings");
-  const 소리끔 = page.getByRole("button", { name: "알림에 소리 끔" });
+  // 저장 버튼이 구획마다 있다(#225) — **알림 설정 안에서** 집어야 누른 것이 이 구획의 저장이다.
+  const 알림 = page.getByRole("group", { name: "알림 설정", exact: true });
+  const 소리끔 = 알림.getByRole("button", { name: "알림에 소리 끔" });
   await expect(소리끔, "알림 구획이 안 섰다").toBeVisible();
   await 소리끔.click();
 
-  const 저장 = page.getByRole("button", { name: "저장", exact: true });
+  const 저장 = 알림.getByRole("button", { name: "저장", exact: true });
   await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();
   await 저장.click();
   // **쓰기가 실제로 돌아온 순간을 기다린다.** 저장이 끝나면 고칠 것이 없어져 버튼이 잠긴다 —
