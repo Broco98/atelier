@@ -40,6 +40,7 @@ import {
   shellsOf,
   cycleShell,
   modeOfOwner,
+  ownerIn,
   ownerOf,
   sameScreen,
   shellForNav,
@@ -715,6 +716,22 @@ describe("셸의 소유자 키", () => {
         expect(slugOfOwner(owner), owner).toBe(slug);
       }
     }
+  });
+
+  // 공용 끌기 모듈은 이 타입을 못 불러 소유자를 `string`으로 싣는다(ui-improvement 03). 받는
+  // 쪽이 `as`로 좁히면 형식 보증이 주석 하나로 내려앉는다 — 손으로 이은 문자열(`work.slug`)이
+  // 그대로 앉아 slug가 조용히 틀린다. 좁히기는 **값을 보고** 여기서 한다.
+  it("`ownerIn`은 그 세계가 지은 키만 소유자로 받는다", () => {
+    for (const mode of ALL_MODES) {
+      expect(ownerIn(mode, ownerOf(mode))).toBe(ownerOf(mode));
+      for (const slug of SLUGS) {
+        expect(ownerIn(mode, ownerOf(mode, slug)), String(slug)).toBe(ownerOf(mode, slug));
+      }
+    }
+    // slug만 실은 것 · 남의 세계 키 · 구분자 없는 모드 이름은 소유자가 아니다.
+    expect(ownerIn("atelier", "finance")).toBeNull();
+    expect(ownerIn("atelier", ownerOf("maison", "finance"))).toBeNull();
+    expect(ownerIn("atelier", "atelier")).toBeNull();
   });
 
   // 최상위 키와 work 키가 안 겹치는 근거가 「slug는 비어 있을 수 없다」 한 줄이라, 빈 뒤꼬리는

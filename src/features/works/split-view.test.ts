@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DRAG_THRESHOLD, dropSplit, farEnough, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
+import { DRAG_THRESHOLD, farEnough } from "@/lib/pointer-drag";
+import { dropSplit, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
 // 이펙트도 돌지 않아, 떨군 자리가 어느 쪽을 spec으로 만드는지가 마크업에 드러나지 않는다.

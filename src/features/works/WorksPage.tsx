@@ -51,16 +51,9 @@ import {
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
-import {
-  armDrag,
-  clearHalf,
-  dragStore,
-  dropSplit,
-  hoverHalf,
-  otherTab,
-  specHeadLabel,
-} from "./split-view";
-import type { DragSource, SplitHalf } from "./split-view";
+import { armDrag, dragStore } from "@/lib/pointer-drag";
+import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
+import { clearHalf, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -527,16 +520,16 @@ function WorksPage({
       // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — 걷히기 전 Sidebar가 셸
       // 가지에 같은 이유로 같은 일을 해 줬다). 이 화면은 이미 양쪽을 다 알고 있다.
       //
-      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 `slug`가 하나로 정해진다 — 남의 work을
-      // 떨구는 길(결정 101)은 사이드바에만 있다.
-      onDragTab={(shellId, from) =>
+      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다 — 남의 work을
+      // 떨구는 길(결정 101)은 사이드바에만 있다. 원천이 slug가 아니라 owner인 것은 공용
+      // 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기 때문이다.
+      onDragTab={(shellId, from) => {
+        const owner = ownerOf(mode, panelWork.slug);
         armDrag(
-          shellId === null
-            ? { kind: "spec", slug: panelWork.slug, shellId: null }
-            : { kind: "shell", slug: panelWork.slug, shellId },
+          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
-        )
-      }
+        );
+      }}
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //
