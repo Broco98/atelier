@@ -578,6 +578,14 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    */
   set_work_pinned: { atelier: { value: null }, maison: {} },
   /**
+   * 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3). **두 칸이 다 비었다** — 이 명령을 부르는 화면은
+   * 사이드바 끌기(티켓 05)가 세우고, 그 전에는 아무 시나리오도 안 태운다. 답(재배열된 목록)은
+   * 그 장이 채운다: 지금 지어내 앉히면 아무도 안 태우는 답이 조용히 낡는다(`ModeAnswer` 머리말).
+   *
+   * 칸이 비어도 여기 있어야 하는 이유는 위 「두 칸이 다 빈 다섯」과 같다.
+   */
+  move_work: { atelier: {}, maison: {} },
+  /**
    * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
    * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면
    * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.

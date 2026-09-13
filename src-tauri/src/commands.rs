@@ -93,6 +93,19 @@ pub async fn set_work_pinned(mode: Mode, slug: String, pinned: bool) -> CmdResul
     atelier_core::update_work_pinned(&works_dir(mode), &slug, pinned).map_err(err)
 }
 
+/// 작업 하나를 옮긴다 — `pinned`가 목표 구획, `before`가 그 안에서 앞에 설 slug(없으면 구획 끝).
+/// **새 목록 전체를 돌려준다**: 순서만 바뀐 쓰기는 감시자가 못 보므로(점 파일) 화면은 이 응답으로
+/// 목록 캐시를 갈아 끼운다(UI개선 S3).
+#[tauri::command]
+pub async fn move_work(
+    mode: Mode,
+    slug: String,
+    pinned: bool,
+    before: Option<String>,
+) -> CmdResult<Vec<WorkView>> {
+    atelier_core::move_work(&works_dir(mode), &slug, pinned, before.as_deref()).map_err(err)
+}
+
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.
 /// 되돌리기가 없으므로 force도 없다 — 커밋 안 된 변경이 있으면 어느 파일인지 말하며 거부한다.
 #[tauri::command]

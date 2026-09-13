@@ -59,6 +59,16 @@ const HANDLERS: &[(&str, Handler)] = &[
         let pinned = flag(a, "pinned")?;
         ok(atelier_core::update_work_pinned(&works_dir(mode(a)?), &text(a, "slug")?, pinned))
     }),
+    // `before`는 없어도 된다(= 목표 구획의 끝) — 프런트는 `null`로 싣고, 그것이 여기서 「없음」이다.
+    ("move_work", |a| {
+        let pinned = flag(a, "pinned")?;
+        ok(atelier_core::move_work(
+            &works_dir(mode(a)?),
+            &text(a, "slug")?,
+            pinned,
+            maybe_text(a, "before").as_deref(),
+        ))
+    }),
     ("archive_work", |a| {
         let mode = mode(a)?;
         ok(atelier_core::archive_work(
