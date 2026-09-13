@@ -357,6 +357,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
+  // 종료 확인의 「종료」(결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
+  // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
+  // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.
+  quit_app: null,
 };
 
 /**

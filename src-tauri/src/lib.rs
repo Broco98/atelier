@@ -5,6 +5,7 @@ mod hooks;
 /// 없다(같은 프로세스의 다른 테스트 루트까지 함께 옮긴다). 그래서 통합 테스트
 /// (`tests/top_terminal.rs`)가 자기 프로세스에서 이 모듈을 부른다.
 pub mod pty;
+mod quit;
 mod settings;
 mod shells;
 mod watcher;
@@ -186,6 +187,21 @@ pub fn run() {
                 let _ = app.emit("hotkey:menu", code.to_string());
             }
         })
+        // **빨간 버튼은 창을 닫지 않고 묻는다**(결정 14 · 스펙 §8 훅 2). 창이 하나라 닫기 = 종료이고,
+        // 그 한 번에 돌던 셸이 전부 죽는다. 막고 이벤트만 쏜다 — 묻는 것은 프런트의 확인 창이다
+        // (`quit-request.ts`). 「종료」를 고르면 `quit_app`이 「확인됨」을 세우고 끄므로, 그 뒤에
+        // 오는 닫기는 막지 않는다.
+        //
+        // ⌘Q·메뉴 Quit·Dock 종료는 여기로 안 온다 — tao가 `ExitRequested` 없이 바로 끝낸다(tauri#9198).
+        // 그 길은 11이 델리게이트 훅으로 같은 이벤트를 쏘게 붙인다.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if !quit::confirmed() {
+                    api.prevent_close();
+                    let _ = window.app_handle().emit(quit::REQUESTED_EVENT, ());
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
@@ -269,6 +285,7 @@ pub fn run() {
             commands::agent_hooks,
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
+            commands::quit_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -419,6 +436,30 @@ mod tests {
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
         body
+    }
+
+    /// **빨간 버튼이 창을 닫지 않고 묻게 걸려 있는가**(결정 14 · 스펙 §8 훅 2). `run()`은 창이
+    /// 있어야 돌아 헤드리스로 못 태운다 — 빠지면 나는 일은 조용한 옛 동작이다: 빨간 버튼 한 번에
+    /// 앱이 꺼지고 돌던 셸이 전부 죽는다. 그래서 위 검사들처럼 **자리로** 잰다.
+    ///
+    /// 막는 조건이 「확인됨」이어야 하는 것도 함께 본다 — 조건 없이 막으면 `quit_app`이 부른 종료가
+    /// 창 닫기에서 다시 막힐 수 있다.
+    #[test]
+    fn 빨간_버튼이_창을_막고_종료_요청을_쏜다() {
+        let builder = builder_source();
+        assert!(
+            builder.contains("tauri::WindowEvent::CloseRequested { api, .. }"),
+            "창 닫기 요청을 안 받는다 — 빨간 버튼이 묻지 않고 끈다"
+        );
+        assert!(
+            builder.contains("if !quit::confirmed() {"),
+            "창 닫기를 「확인됨」으로 가르지 않는다"
+        );
+        assert!(builder.contains("api.prevent_close();"), "창 닫기를 안 막는다");
+        assert!(
+            builder.contains(".emit(quit::REQUESTED_EVENT, ())"),
+            "종료 요청 이벤트를 안 쏜다 — 창은 막혔는데 아무도 안 묻는다(앱을 끌 길이 없다)"
+        );
     }
 
     /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.

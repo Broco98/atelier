@@ -306,6 +306,18 @@ pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>>
     Ok(crate::hooks::uninstall(&agent_home(), &hook_script()))
 }
 
+/// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 그 뒤에
+/// 오는 창 닫기(와 11의 `terminate:`)가 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
+/// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).
+///
+/// 모드를 안 받는다 — 앱 하나를 끄는 일이라 세계가 없다.
+#[tauri::command]
+pub async fn quit_app(app: tauri::AppHandle) -> CmdResult<()> {
+    crate::quit::confirm();
+    app.exit(0);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,11 +6,13 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette from "@/features/search/SearchPalette";
 import { searchHotkey } from "@/features/terminal/shell-registry";
+import { quitShellCounts } from "@/features/terminal/terminal-store";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
+import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
 import { modeSwitchTarget, shellMode, shellStore, toggleSidebar } from "./shell-store";
 import type { NavKey } from "./nav-items";
 
@@ -69,6 +71,19 @@ function AppShell() {
   useEffect(() => {
     const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
       window.dispatchEvent(new KeyboardEvent("keydown", menuHotkeyInit(code)));
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // **앱을 끄려는 요청이 여기로 온다**(결정 14 · S16) — 지금은 빨간 버튼이고, 11이 ⌘Q·메뉴 Quit·Dock을
+  // 같은 이벤트로 붙인다. 셸이 하나도 없어도 묻는다. 무엇을 세고 언제 무시하고 어디서 「묻는 중」을
+  // 내리는지는 `quit-request.ts`가 전부 든다 — 이 자리는 배선뿐이고, 셸 목록을 쥔 스토어의 세기와
+  // 끄는 명령을 건넨다. 다른 확인 창이 떠 있으면 스토어가 그것을 「아니오」로 접고 갈아 끼운다.
+  useEffect(() => {
+    const unlisten = listen(QUIT_REQUESTED_EVENT, () => {
+      void requestQuit(quitShellCounts, quitApp);
     });
     return () => {
       void unlisten.then((fn) => fn());
