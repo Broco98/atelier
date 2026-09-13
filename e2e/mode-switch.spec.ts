@@ -76,19 +76,22 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// `/settings`에는 모드 접두사가 없어 **주소만 보면 언제나 Atelier다**(`modeOf`). 그 기본값이
-// 그대로 화면에 나오면 Maison에서 설정을 한 번 여는 것만으로 세그먼트가 저쪽으로 튀고, 거기서
-// nav를 누르면 세계를 건넌다. 셸이 마지막 모드를 얹어 읽는 것(`shellMode`)이 **브라우저에서**
-// 실제로 도는지는 여기서만 보인다 — 그 합성은 저장소(`last-mode`)를 거치고, 저장소가 진짜인
-// 층이 이 층이다.
-test("설정 화면에서도 세그먼트는 떠나온 세계를 켠다", async ({ page }) => {
+// `/settings`에는 모드 접두사가 없어 **주소만 보면 언제나 Atelier다**(`modeOf`). 설정에는
+// 세그먼트가 없고(UI개선 결정 21) 설정이 지니는 모드는 떠나온 모드 하나다 — 그 기본값이 새면
+// Maison에서 설정을 한 번 여는 것만으로 「앱으로 돌아가기」가 Atelier로 데려간다. 셸이 마지막
+// 모드를 얹어 읽는 것(`shellMode`)이 **브라우저에서** 실제로 도는지는 여기서만 보인다 — 그 합성은
+// 저장소(`last-mode`)를 거치고, 저장소가 진짜인 층이 이 층이다.
+test("설정에는 세그먼트가 없고, 돌아가면 떠나온 세계가 켜져 있다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/maison/rooms/${room.slug}`);
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
 
   await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL("/settings");
+  await expect(page).toHaveURL("/settings/terminal");
+  await expect(page.getByRole("group", { name: "모드 선택" })).toHaveCount(0);
 
+  await page.locator("aside").getByRole("button", { name: "앱으로 돌아가기", exact: true }).click();
+  await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
   await expect(modeButton(page, "Atelier")).toHaveAttribute("aria-pressed", "false");
 

@@ -84,3 +84,32 @@ describe("세그먼트의 목적지", () => {
     expect(source).not.toContain("modeOf(");
   });
 });
+
+// 설정 nav(UI개선 결정 21·27 · S18). 셋 다 클릭·이벤트 핸들러라 렌더가 필요해 여기서도 소스로 잰다.
+describe("설정의 문과 돌아가기", () => {
+  it("켜진 설정 항목을 **원시값** select 하나로 든다", () => {
+    // 불리언이던 「설정이 켜졌나」를 항목 key로 넓혔다 — 구독 수는 그대로다(위 「셋으로 갈리고」).
+    expect(source).toContain("select: (state) => settingsPageOf(state.location.pathname)");
+    expect(source).not.toContain('startsWith("/settings")');
+  });
+
+  // 설정 안에서 `/settings`로 가는 문이 무동작인 가드는 **이동 함수 한 자리**에 산다. 문이 그
+  // 함수를 안 지나고 곧장 `navigate`하면 그 문만 보던 항목을 떠나 칸을 쌓는다.
+  it("설정으로 가는 문이 가드를 지난다", () => {
+    expect(source).not.toContain('navigate({ to: "/settings" })');
+    // ⌘,(네이티브 메뉴) 하나, 사이드바 바닥 하나.
+    expect(source.split("navigatePlace(router, { to: SETTINGS_ENTRY })").length - 1).toBe(2);
+    const palette = readFileSync(
+      fileURLToPath(new URL("../../features/search/SearchPalette.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(palette).toContain("navigatePlace(router, target)");
+    expect(palette).not.toContain("navigate(target)");
+  });
+
+  // 돌아가기는 **떠나온 모드 그대로** 몸통 함수를 부른다 — 세그먼트 함수를 부르면 같은 모드라
+  // 늘 `null`이다. 목적지를 셸이 짓지 않는 것은 위 「셸이 목적지를 스스로 짓지 않는다」가 든다.
+  it("돌아가기가 떠나온 모드로 목적지 몸통을 부른다", () => {
+    expect(source).toContain("navigate(modeEntryTarget(mode))");
+  });
+});

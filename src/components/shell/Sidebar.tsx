@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
 import SidebarWorkList from "@/features/works/SidebarWorkList";
@@ -19,6 +19,7 @@ import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-at
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
+import { SETTINGS_PAGES, type SettingsPageKey } from "@/features/settings/pages";
 import { navItemsOf, routesOf, slugOf, type Mode } from "@/mode";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { ModeSwitch } from "./ModeSwitch";
@@ -43,9 +44,16 @@ interface SidebarProps {
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
   activeKey: NavKey | null;
   onSelect: (key: NavKey) => void;
-  // 설정은 nav 항목이 아니라 바닥에 따로 산다(결정 51) — 활성 판정도 그래서 따로 온다
-  settingsActive: boolean;
+  /**
+   * 지금 선 설정 항목. **`null`이 아니면 사이드바가 설정 nav를 그린다**(UI개선 결정 21) — 한 값이
+   * 「설정 nav인가」와 「어느 항목이 켜졌나」를 함께 답한다. 앱 셸이 원시값 select로 읽어 내린다.
+   */
+  settingsPage: SettingsPageKey | null;
+  // 설정은 nav 항목이 아니라 바닥에 따로 산다(결정 51)
   onOpenSettings: () => void;
+  onPickSettingsPage: (key: SettingsPageKey) => void;
+  /** 설정 nav 맨 위 「앱으로 돌아가기」. 어디로 가는지는 앱 셸이 안다(결정 27). */
+  onLeaveSettings: () => void;
 }
 
 // 좌우 8px로 같다. 한때 오른쪽만 19px(= 거터 8 + 스크롤바 11)이었다 — 가운데 작업 목록이
@@ -66,8 +74,10 @@ function Sidebar({
   onPickMode,
   activeKey,
   onSelect,
-  settingsActive,
+  settingsPage,
   onOpenSettings,
+  onPickSettingsPage,
+  onLeaveSettings,
 }: SidebarProps) {
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
@@ -107,33 +117,36 @@ function Sidebar({
   const bandNow = useNow(items.length > 0);
   const openBand = useOpenBand(mode);
 
+  // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — 모드 전환·nav·띠·작업 목록·바닥 Settings가
+  // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
+  //
+  // **훅을 다 부른 뒤, 이 컴포넌트 안에서 가른다.** 사이드바를 통째로 바꿔 끼우면 위의 알림 제목
+  // 배선(`useNotifyTitles`)이 설정에 있는 동안 멎는다 — 설정에서도 셸이 부르면 OS 알림은 운다
+  // (그 셸이 보이면 안 울리는 규칙 그대로이고, 설정에서는 어느 셸도 안 보인다). 띠를 펼친 상태도
+  // 여기 살아 있어 돌아가면 띠가 그대로다.
+  //
+  // 겉 상자(`aside`·안쪽 열·신호등 띠)는 아래 앱 갈래와 **같은 자리에 같은 요소**라 React가 그대로
+  // 이어 쓴다 — 폭 트랜지션도 접힘도 새로 시작하지 않는다. 접힌 채 들어오면 접힌 채다(새 규칙 없음).
+  if (settingsPage !== null) {
+    return (
+      <aside style={sidebarWidth(size.width)} className={asideClass(open, size.dragging)}>
+        <div className={columnClass(open)}>
+          <div data-tauri-drag-region className="h-(--titlebar-height) shrink-0" />
+          <SettingsNav
+            current={settingsPage}
+            onLeave={onLeaveSettings}
+            onPick={onPickSettingsPage}
+          />
+        </div>
+        {open && <ResizeHandle control={size} />}
+      </aside>
+    );
+  }
+
   return (
-    <aside
-      style={{ "--sidebar-width": `${size.width}px` } as React.CSSProperties}
-      className={cn(
-        "relative shrink-0 overflow-hidden border-r bg-sidebar",
-        // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
-        // 곡선은 --ease-panel — 접히는 패널 넷이 같은 값을 읽는다 (index.css)
-        !size.dragging &&
-          "transition-[width,border-color] duration-[220ms] ease-panel",
-        // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
-        // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
-        // 전부를 밀어 --titlebar-inset-panel 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
-        // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다. 목록 패널 둘도 같은 이유로 같은 처리를 한다.
-        //
-        // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
-        // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만
-        // 1↔2 디바이스픽셀로 튄다 (열림 끝에 툭 굵어진다). 폭은 그냥 끊어 바꾸는 편이 낫다.
-        open ? "w-(--sidebar-width)" : "w-0 border-transparent border-r-0",
-      )}
-    >
+    <aside style={sidebarWidth(size.width)} className={asideClass(open, size.dragging)}>
       {/* fixed inner width so text doesn't reflow while the width animates */}
-      <div
-        className={cn(
-          "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
-          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
-        )}
-      >
+      <div className={columnClass(open)}>
         {/* traffic light strip — same height as the main header (the header no
             longer draws a bottom border; the 44px strip is what keeps the two
             columns aligned). It is also the nav's top breathing room, which is
@@ -239,17 +252,84 @@ function Sidebar({
             규격을 쓰면서 자리가 갈린다. 그래서 규격은 `SidebarItem` 하나로, 거터는 GUTTER
             하나로 묶어 「같은 규격」이 주석이 아니라 구조가 되게 했다. */}
         <div className={cn("shrink-0 pt-1.5", GUTTER)}>
-          <SidebarItem
-            icon={Settings}
-            label="Settings"
-            active={settingsActive}
-            onClick={onOpenSettings}
-          />
+          {/* 켜질 일이 없다 — 설정에 들어가면 이 칸째 설정 nav로 바뀐다(UI개선 결정 21). */}
+          <SidebarItem icon={Settings} label="Settings" active={false} onClick={onOpenSettings} />
         </div>
       </div>
 
       {open && <ResizeHandle control={size} />}
     </aside>
+  );
+}
+
+/** 사이드바 폭을 CSS 변수로 내린다. 두 갈래(앱·설정)가 같은 값을 쓴다. */
+function sidebarWidth(width: number): React.CSSProperties {
+  return { "--sidebar-width": `${width}px` } as React.CSSProperties;
+}
+
+/** 바깥 상자. 두 갈래(앱·설정)가 같은 규격이라 한 자리에 둔다 — 갈리면 설정에 들어갈 때 폭이 튄다. */
+function asideClass(open: boolean, dragging: boolean): string {
+  return cn(
+    "relative shrink-0 overflow-hidden border-r bg-sidebar",
+    // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다.
+    // 곡선은 --ease-panel — 접히는 패널 넷이 같은 값을 읽는다 (index.css)
+    !dragging && "transition-[width,border-color] duration-[220ms] ease-panel",
+    // 접을 때 테두리 폭을 0으로 보낸다. border-transparent는 색만 지우고 1px 자리를 남기는데,
+    // box-sizing이 border-box라 사용 폭이 0이 아니라 1px에서 바닥을 친다. 그 1px이 오른쪽
+    // 전부를 밀어 --titlebar-inset-panel 계산이 어긋났고(간격 6px가 7px), 접힘이 끝난 뒤에도
+    // 창 왼쪽 끝에 사이드바 배경 한 줄이 남았다. 목록 패널 둘도 같은 이유로 같은 처리를 한다.
+    //
+    // border-width는 위 트랜지션 목록에 **넣지 않는다.** WebKit이 0보다 큰 테두리를 디바이스
+    // 픽셀 하나로 올림해서, 보간해 봐야 폭 바닥은 그대로인 채 레티나에서 구분선 두께만
+    // 1↔2 디바이스픽셀로 튄다 (열림 끝에 툭 굵어진다). 폭은 그냥 끊어 바꾸는 편이 낫다.
+    open ? "w-(--sidebar-width)" : "w-0 border-transparent border-r-0",
+  );
+}
+
+/** 폭이 고정된 안쪽 열 — 폭이 움직이는 동안 글자가 다시 흐르지 않는다. */
+function columnClass(open: boolean): string {
+  return cn(
+    "flex h-full w-(--sidebar-width) flex-col pb-2.5 transition-opacity",
+    open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
+  );
+}
+
+/**
+ * 설정 nav(UI개선 결정 21). 맨 위 「← 앱으로 돌아가기」, 그 아래 항목 셋.
+ *
+ * **규격은 main nav와 같은 `SidebarItem`이고 거터도 GUTTER다** — 같은 사이드바 자리에 갈아 서는
+ * 것이라 규격이 갈리면 들어가는 순간 행이 튄다. 켜짐은 앱 셸이 내린 원시값과 견준다 — 라우터 링크의
+ * 활성 매칭은 링크마다 주소를 구독한다.
+ *
+ * 돌아가기와 항목 사이를 떼는 값은 세그먼트와 nav 사이의 것(`pb-3`)과 같다 — 둘 다 「고르는 것」
+ * 위에 선 「어디에 있나」다.
+ */
+function SettingsNav({
+  current,
+  onLeave,
+  onPick,
+}: {
+  current: SettingsPageKey;
+  onLeave: () => void;
+  onPick: (key: SettingsPageKey) => void;
+}) {
+  return (
+    <>
+      <div className={cn("shrink-0 pb-3", GUTTER)}>
+        <SidebarItem icon={ArrowLeft} label="앱으로 돌아가기" active={false} onClick={onLeave} />
+      </div>
+      <nav aria-label="설정" className={cn("flex shrink-0 flex-col gap-(--row-gap)", GUTTER)}>
+        {SETTINGS_PAGES.map((page) => (
+          <SidebarItem
+            key={page.key}
+            icon={page.icon}
+            label={page.label}
+            active={page.key === current}
+            onClick={() => onPick(page.key)}
+          />
+        ))}
+      </nav>
+    </>
   );
 }
 
