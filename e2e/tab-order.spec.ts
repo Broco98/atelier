@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
+import { awaitSpawned, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(ui-improvement 07 · 결정 11~13 · 스펙 §6·S10). **한 눌림을 두
@@ -290,5 +290,26 @@ test("`/terminal`에서도 끌어 순서를 바꾸고 ⌘1이 새 순서를 따�
   await page.keyboard.press("Meta+1");
   await expect.poll(() => litName(page)).toBe("셋");
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **끄는 도중 줄의 셸 목록이 바뀐다**(UI개선 결정 11 · 결정 48). 누를 때 잰 기하는 그 순간의 칸
+// 목록에 매여 있어서, 칸 하나가 스스로 빠지면 틈 번호가 옛 줄로 셈된다 — 선이 서는 자리와 놓았을 때
+// 옮기는 자리가 어긋난다. 네 칸에서 셋째를 들고 첫 칸이 끝나면 새 줄은 셋이고 끄는 칸은 둘째다:
+// 마지막 칸 오른쪽은 새 줄의 틈 3(끝)인데, 옛 기하로는 끄는 칸(옛 셋째)의 제자리 틈이라 선이 안 선다.
+test("끄는 도중 셸 하나가 끝나 줄이 바뀌어도 틈이 새 줄로 서고 거기 놓인다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/terminal");
+  await nameShells(page, ["하나", "둘", "셋", "넷"]);
+
+  await pressAndCross(page, 2);
+  await exitShell(page, 1);
+  await expect.poll(() => namesOf(page)).toEqual(["둘", "셋", "넷"]);
+
+  await moveToGap(page, 3);
+  await page.mouse.up();
+
+  await expect.poll(() => namesOf(page)).toEqual(["둘", "넷", "셋"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

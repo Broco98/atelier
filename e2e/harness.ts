@@ -772,6 +772,23 @@ const BADGE_COMMAND = "plugin:window|set_badge_count";
  * 않는다 — 그래서 페이지 안에 채널별 카운터를 둔다.
  */
 export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<void> {
+  await sendFrame(page, ptyId, { bytes });
+}
+
+/**
+ * 셸 하나가 **스스로 끝난 것처럼** 종료 프레임을 쏜다. 코드 0이면 그 칸이 줄에서 스스로 빠진다
+ * (결정 48 — `markExited`). 채널과 순번 규칙은 `writeShell`과 같아서 같은 자리에서 쏜다 — 순번을
+ * 따로 세면 뒤에 오는 출력 프레임이 영영 큐에 갇힌다.
+ */
+export async function exitShell(page: Page, ptyId = 1, exitCode = 0): Promise<void> {
+  await sendFrame(page, ptyId, { exit: { exitCode, signal: null } });
+}
+
+async function sendFrame(
+  page: Page,
+  ptyId: number,
+  frame: { bytes: string } | { exit: { exitCode: number; signal: string | null } },
+): Promise<void> {
   const channel = await awaitIpcMatch(
     page,
     (calls) => {
@@ -782,7 +799,7 @@ export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<
   );
 
   await page.evaluate(
-    ({ channel, bytes }: { channel: number; bytes: string }) => {
+    ({ channel, frame }) => {
       const win = window as unknown as {
         __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
         __ATELIER_FRAME_INDEX__?: Record<number, number>;
@@ -794,9 +811,9 @@ export async function writeShell(page: Page, bytes: string, ptyId = 1): Promise<
       // 종료 프레임만 객체다(`terminal-store`의 `spawn`이 `instanceof`로 가른다).
       win.__TAURI_INTERNALS__.runCallback(channel, {
         index,
-        message: new TextEncoder().encode(bytes).buffer,
+        message: "bytes" in frame ? new TextEncoder().encode(frame.bytes).buffer : frame.exit,
       });
     },
-    { channel: Number(channel), bytes },
+    { channel: Number(channel), frame },
   );
 }

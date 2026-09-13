@@ -192,19 +192,39 @@ function ShellTabs({
   // 에서 읽는다(위 `latest`와 같은 방향). 둘을 바꾸는 자리는 아래 `press` 하나다.
   const [geometry, setGeometry] = useState<TabStripGeometry | null>(null);
   const pressed = useRef<TabStripGeometry | null>(null);
+  // 누른 셸의 id — 줄이 바뀌면 이것으로 **다시 잰다**(아래 효과). 기하만 들면 `from`이 옛 줄의 번호라
+  // 새 줄에서 그 셸이 몇 번째인지 되찾을 길이 없다.
+  const pressedId = useRef<number | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  const press = (id: number | null, next: TabStripGeometry | null) => {
+    pressedId.current = next ? id : null;
+    pressed.current = next;
+    setGeometry(next);
+  };
+
+  // **끄는 도중 줄의 셸 목록이 바뀌면 기하를 다시 잰다.** 누를 때 잰 칸 사각형과 `from`은 그 순간의
+  // 목록에 매여 있다 — 칸 하나가 스스로 빠지거나(결정 48) ⌘T로 하나가 서면 줄이 흘러, 옛 기하로 셈한
+  // 틈은 선이 선 자리와 놓았을 때 `moveShell`이 옮기는 자리가 어긋난다(`isInPlaceGap`이 지키려던 약속).
+  // 사이드바 행 끌기는 같은 자리에서 끌기를 거둔다(UI개선 스펙 S8) — 탭은 **거두지 않고 다시 잰다**:
+  // 이 줄은 스토어도 드래그 모듈도 안 부르고(아래 `onDragTab` 계약), 순서가 메모리에만 있어(UI개선
+  // 결정 12) 끌기를 살려도 잃을 것이 없다. 끄는 셸이 빠졌으면 기하가 `null`이 되어 틈이 안 선다.
+  //
+  // 이미 적힌 틈은 옛 줄의 번호라 **지운다** — 포인터가 안 움직인 채 떼면 그 번호로 옮긴다.
+  const idSequence = shellIds.current.join(",");
+  useEffect(() => {
+    const id = pressedId.current;
+    if (id === null) return;
+    press(id, measureStrip(stripRef.current, shellIds.current.indexOf(id)));
+    latest.current.onSlot(null);
+  }, [idSequence]);
 
   const tabHandlers = useMemo(
     () => ({
       onSelect: (id: number) => latest.current.onSelect(id),
       onClose: (id: number) => latest.current.onClose(id),
       onDragTab: (id: number, from: { clientX: number; clientY: number }) => {
-        const press = (next: TabStripGeometry | null) => {
-          pressed.current = next;
-          setGeometry(next);
-        };
         const measured = measureStrip(stripRef.current, shellIds.current.indexOf(id));
-        press(measured);
+        press(id, measured);
         if (measured) {
           // **이 정리는 끌기가 아니라 누름의 것이다** — 끄는 중 표시와 드래그 상태는 제스처
           // (`armDrag`)가 한 곳에서 걷고, 여기서 버리는 것은 이 줄이 잰 자기 칸 사각형뿐이다.
@@ -214,7 +234,7 @@ function ShellTabs({
           // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
           // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
           const drop = () => {
-            press(null);
+            press(null, null);
             window.removeEventListener("pointerup", drop);
             window.removeEventListener("pointercancel", drop);
           };
