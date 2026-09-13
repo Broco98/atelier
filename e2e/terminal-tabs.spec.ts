@@ -1,6 +1,8 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
+import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
+import type { Row } from "./tab-row";
 import {
   fireWindowEvent,
   installFixtureBackend,
@@ -63,88 +65,8 @@ test("⌘1이 탭 줄에 보이는 첫 칸을 고른다", async ({ page }) => {
 
 const [, plainWork] = WORKS;
 
-/** 셸 상한(결정 30). `shell-registry`의 `MAX_SHELLS`와 같은 수다 — 이 줄이 가장 붐비는 폭이다. */
-const MAX_SHELLS = 8;
-
 /** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
 const SHELL_NAME = FIXTURE_SHELL_NAME;
-
-interface Row {
-  width: number;
-  spec: number;
-  /** 줄 높이. 한 줄이면 `--titlebar-height`(44px) 그대로다 — 넘겨 접히면 커진다. */
-  height: number;
-  /** 줄이 제 상자 밖으로 넘친 폭. **0이어야 한다** — 넘치면 오른쪽 끝 조작이 창 밖으로 밀린다. */
-  spill: number;
-  /** 창 전체의 가로 넘침. 스크롤 막대가 서는 그 값이다. */
-  pageSpill: number;
-  /**
-   * 셸 칸 상자(결정 20). `scrollWidth > clientWidth`면 **그 안에서** 스크롤이 선 것이다 —
-   * 줄이 넘친 것이 아니라 넘칠 몫을 이 상자가 받아 준 것이라, 위 `spill`은 그대로 0이다.
-   */
-  strip: { width: number; scrollWidth: number; clientWidth: number };
-  /** 셸 칸들의 폭. 이것들이 서로 같아야 「균등」이다. */
-  tabs: number[];
-  /** 도는 칸의 로고+스피너 — 폭과, 제 칸 밖으로 삐져나온 양. */
-  mark: { width: number; over: number } | null;
-  /** 오른쪽 끝 조작 — 폭과, 줄 밖으로 밀려난 양. */
-  actions: { width: number; over: number };
-}
-
-/**
- * 줄을 통째로 잰다. **한 번의 evaluate로 끝낸다** — 폭을 하나씩 물어 오면 그 사이에
- * 레이아웃이 갈릴 수 있고, 실패했을 때 어느 값이 어느 순간의 것인지가 흐려진다.
- *
- * 조작 묶음은 **헤더의 마지막 자식**이다(`WorksPage.test.tsx`가 같은 자리를 그렇게 짚는다).
- */
-async function rowOf(page: Page): Promise<Row> {
-  return page.evaluate(() => {
-    const header = document.querySelector("header")!;
-    const box = header.getBoundingClientRect();
-    const strip = document.querySelector("[data-tab-strip]")!;
-    const cells = [...document.querySelectorAll('[data-tab="shell"]')];
-    const mark = document.querySelector('[data-tab="shell"] [role="img"]');
-    const markCell = mark?.closest('[data-tab="shell"]') ?? null;
-    const actions = header.lastElementChild!.getBoundingClientRect();
-    return {
-      height: box.height,
-      width: box.width,
-      spec: document.querySelector('[data-tab="spec"]')?.getBoundingClientRect().width ?? 0,
-      spill: header.scrollWidth - header.clientWidth,
-      pageSpill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      strip: {
-        width: strip.getBoundingClientRect().width,
-        scrollWidth: strip.scrollWidth,
-        clientWidth: strip.clientWidth,
-      },
-      tabs: cells.map((cell) => cell.getBoundingClientRect().width),
-      mark:
-        mark && markCell
-          ? {
-              width: mark.getBoundingClientRect().width,
-              over: mark.getBoundingClientRect().right - markCell.getBoundingClientRect().right,
-            }
-          : null,
-      actions: { width: actions.width, over: actions.right - box.right },
-    };
-  });
-}
-
-/**
- * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
- *
- * 칸은 `openShell`로 **하나씩** 연다 — 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고
- * (`awaitSpawned`의 머리말), 안 기다리면 여덟 번의 왕복이 서로 겹쳐 **몇 번째 칸이 몇 번
- * pty를 받았는지가 실행마다 갈린다.** 픽스처가 부른 순서대로 id를 주기 시작한 뒤로
- * (`FIXTURE_INCREMENTING_KEYS`) 그 순서가 이 판의 전제가 됐다.
- */
-async function fillToCap(page: Page): Promise<void> {
-  const tabs = page.locator('[data-tab="shell"]');
-  // 이미 몇 칸이 서 있어도 상관없이 상한까지 채운다 — 부르는 자리마다 시작 칸 수가 다르다.
-  await tabs.first().waitFor();
-  for (let n = await tabs.count(); n < MAX_SHELLS; n += 1) await openShell(page);
-  await expect(page.locator('[data-tab="new"]')).toHaveAttribute("aria-disabled", "true");
-}
 
 test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -260,12 +182,14 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const tabs = page.locator('[data-tab="shell"]');
-  const plus = page.locator('[data-tab="new"]');
   const name = tabs.first().getByText(SHELL_NAME, { exact: true });
 
   await expect(tabs).toHaveCount(1);
-  await plus.click();
-  await plus.click();
+  // **`+`를 연달아 누르지 않는다** — 첫 칸은 글꼴을 기다린 뒤 **DOM에 붙어 있을 때만** 열리고
+  // spawn한다(`terminal-store`의 `openOrReattach`). 그 전에 새 칸이 켜지면 첫 칸이 떼어져
+  // 영영 `셸`로 남아, 아래 이름 단언이 붐비는 러너에서만 30초를 기다리다 빨개진다.
+  await openShell(page);
+  await openShell(page);
   await expect(tabs).toHaveCount(3);
   // 셋일 때는 이름이 보인다.
   expect((await name.boundingBox())!.width).toBeGreaterThan(10);

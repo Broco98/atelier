@@ -250,6 +250,7 @@ dependencies = [
  "atelier-core",
  "libc",
  "notify-debouncer-mini",
+ "objc2",
  "portable-pty",
  "serde",
  "serde_json",

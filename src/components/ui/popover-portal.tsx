@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ export function PopoverPortal({
   gap = 4,
   width,
   onClose,
+  onPlaced,
   className,
   children,
 }: {
@@ -35,6 +36,10 @@ export function PopoverPortal({
   // 넘기면 바깥 클릭을 받아 닫는 투명 막이 함께 깔린다. 호버로 여닫는 쪽은 넘기지 않는다 —
   // 막이 포인터를 가로채면 앵커에서 곧바로 mouseleave가 나 열자마자 닫힌다.
   onClose?: () => void;
+  // 자리가 처음 정해져 **보이게 된 뒤** 한 번 부른다. 포커스를 줄 자리가 여기다 — 그 전
+  // 한 프레임은 카드가 `invisible`이라, 그때 준 포커스는 조용히 안 먹는다(숨은 요소는 포커스를
+  // 못 받는다). 부르는 쪽이 제 이펙트에서 주면 그 프레임에 걸린다.
+  onPlaced?: (card: HTMLDivElement) => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -72,6 +77,15 @@ export function PopoverPortal({
       window.removeEventListener("scroll", place, true);
     };
   }, [anchorRef, side, align, gap, width]);
+
+  // 최신 콜백을 ref로 읽는다 — 부르는 쪽이 인라인 화살표를 줘도 「처음 한 번」이 안 흔들린다.
+  const onPlacedRef = useRef(onPlaced);
+  onPlacedRef.current = onPlaced;
+  const placed = pos !== null;
+  useEffect(() => {
+    // 이 이펙트는 `visible`이 커밋된 **뒤에** 돈다 — 레이아웃 이펙트의 `setPos`가 부른 회차다.
+    if (placed && cardRef.current) onPlacedRef.current?.(cardRef.current);
+  }, [placed]);
 
   return createPortal(
     <>

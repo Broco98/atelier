@@ -5,8 +5,10 @@ mod hooks;
 /// 없다(같은 프로세스의 다른 테스트 루트까지 함께 옮긴다). 그래서 통합 테스트
 /// (`tests/top_terminal.rs`)가 자기 프로세스에서 이 모듈을 부른다.
 pub mod pty;
+mod quit;
 mod settings;
 mod shells;
+mod terminate;
 mod watcher;
 
 use std::sync::Arc;
@@ -186,6 +188,21 @@ pub fn run() {
                 let _ = app.emit("hotkey:menu", code.to_string());
             }
         })
+        // **빨간 버튼은 창을 닫지 않고 묻는다**(결정 14 · #223). 창이 하나라 닫기 = 종료이고,
+        // 그 한 번에 돌던 셸이 전부 죽는다. 막고 이벤트만 쏜다 — 묻는 것은 프런트의 확인 창이다
+        // (`quit-request.ts`). 「확인됨」이 서 있으면 막지 않는다 — #224의 `terminate:` 훅과 같은
+        // 규칙 한 벌이다. `quit_app`의 `app.exit`는 지금 이 자리를 안 지난다(`quit.rs`의 `confirm`).
+        //
+        // ⌘Q·메뉴 Quit·Dock 종료는 여기로 안 온다 — tao가 `ExitRequested` 없이 바로 끝낸다(tauri#9198).
+        // 그 길은 아래 셋업의 델리게이트 훅(`terminate.rs`)이 같은 이벤트를 쏜다.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if !quit::confirmed() {
+                    api.prevent_close();
+                    let _ = window.app_handle().emit(quit::REQUESTED_EVENT, ());
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
@@ -193,6 +210,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
         .setup(|app| {
+            // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
+            // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
+            terminate::install(app.handle());
             watcher::start(app.handle().clone());
             // 도는 명령을 1초마다 재서 **바뀐 셸만** 쏜다(adr-04). 배선은 바로 위 watcher와
             // 같은 길이다 — 스레드 하나가 emit하고 프런트가 `listen`으로 받는다.
@@ -251,6 +271,7 @@ pub fn run() {
             commands::set_work_title,
             commands::set_work_status,
             commands::set_work_pinned,
+            commands::move_work,
             commands::archive_work,
             commands::remove_work,
             commands::read_spec_file,
@@ -269,6 +290,7 @@ pub fn run() {
             commands::agent_hooks,
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
+            commands::quit_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -354,7 +376,7 @@ mod tests {
 
     /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
     /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.
-    fn setup_source() -> &'static str {
+    fn setup_source() -> String {
         let src = include_str!("lib.rs");
         let body = src
             .split_once(".setup(|app| {")
@@ -367,7 +389,25 @@ mod tests {
             !body.contains("mod tests"),
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
-        body
+        without_comment_lines(body)
+    }
+
+    /// 주석 줄(`//`로 시작하는 줄)을 비운다. 자리 검사가 **주석 처리된 호출에 속지 않게** —
+    /// `// terminate::install(app.handle());`로 꺼 두어도 글자는 남아 검사가 통과한다(fail-closed).
+    /// `terminate.rs`의 자리 검사도 이것을 쓴다. 다리(`atelier-test-bridge`)는 크레이트가 달라 사본을 든다.
+    pub(crate) fn without_comment_lines(body: &str) -> String {
+        body.lines()
+            .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn 자리_검사는_주석_처리된_호출에_안_속는다() {
+        let body = "            // terminate::install(app.handle());\n            watcher::start(app.handle().clone());";
+        let code = without_comment_lines(body);
+        assert!(!code.contains("terminate::install(app.handle());"), "주석으로 꺼 둔 호출을 살아 있다고 읽는다");
+        assert!(code.contains("watcher::start(app.handle().clone());"), "주석이 아닌 줄까지 지운다");
     }
 
     /// **알림 채널이 앱에 걸려 있는가**(#206 · 결정 10). 이것도 헤드리스로는 못 돌린다 —
@@ -405,7 +445,7 @@ mod tests {
 
     /// 빌더에 무엇이 걸렸는지를 볼 소스. 자르는 이유는 `setup_source`와 같다 — 테스트
     /// 모듈까지 흘러가면 스캔이 **제 문자열을 읽고 스스로 통과한다.**
-    fn builder_source() -> &'static str {
+    fn builder_source() -> String {
         let src = include_str!("lib.rs");
         let body = src
             .split_once("tauri::Builder::default()")
@@ -418,7 +458,42 @@ mod tests {
             !body.contains("mod tests"),
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
-        body
+        without_comment_lines(body)
+    }
+
+    /// **빨간 버튼이 창을 닫지 않고 묻게 걸려 있는가**(결정 14 · #223). `run()`은 창이
+    /// 있어야 돌아 헤드리스로 못 태운다 — 빠지면 나는 일은 조용한 옛 동작이다: 빨간 버튼 한 번에
+    /// 앱이 꺼지고 돌던 셸이 전부 죽는다. 그래서 위 검사들처럼 **자리로** 잰다.
+    ///
+    /// 막는 조건이 「확인됨」인 것도 함께 본다 — #224의 `terminate:` 훅과 같은 규칙을 쓰게. 이 조건이
+    /// 지금 풀어 주는 길은 없다: tauri-runtime-wry 2.11의 `app.exit`는 `CloseRequested`를 안 지난다.
+    #[test]
+    fn 빨간_버튼이_창을_막고_종료_요청을_쏜다() {
+        let builder = builder_source();
+        assert!(
+            builder.contains("tauri::WindowEvent::CloseRequested { api, .. }"),
+            "창 닫기 요청을 안 받는다 — 빨간 버튼이 묻지 않고 끈다"
+        );
+        assert!(
+            builder.contains("if !quit::confirmed() {"),
+            "창 닫기를 「확인됨」으로 가르지 않는다"
+        );
+        assert!(builder.contains("api.prevent_close();"), "창 닫기를 안 막는다");
+        assert!(
+            builder.contains(".emit(quit::REQUESTED_EVENT, ())"),
+            "종료 요청 이벤트를 안 쏜다 — 창은 막혔는데 아무도 안 묻는다(앱을 끌 길이 없다)"
+        );
+    }
+
+    /// **⌘Q·메뉴 Quit·Dock 종료의 훅이 셋업 안에서 붙는가**(결정 14 · #224). 훅 자체는 AppKit이 있어야
+    /// 돌아 헤드리스로 못 태운다 — 빠지면 나는 일은 조용한 옛 동작이다: ⌘Q 한 번에 묻지 않고 꺼진다.
+    /// 셋업 밖(예: `run` 앞)으로 옮기면 델리게이트가 아직 없어 붙이기가 한 줄 로그로 끝나므로 자리까지 본다.
+    #[test]
+    fn 셋업이_종료_훅을_붙인다() {
+        assert!(
+            setup_source().contains("terminate::install(app.handle());"),
+            "셋업이 `terminate:` 훅을 안 붙인다 — ⌘Q·메뉴 Quit·Dock이 묻지 않고 끈다"
+        );
     }
 
     /// 살리기로 한 것이 다 있는가 — 표가 조용히 줄어드는 것을 막는다.

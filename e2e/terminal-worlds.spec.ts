@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
-import { ROOMS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { MAISON_LANDING_ROOM } from "./fixtures";
+import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 · 티켓 #184 — **두 세계의 최상위 터미널이 서로 다른 셸이다**(결정 10).
 //
@@ -24,8 +24,6 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // IPC 기록을 직접 읽는다. 그 값이 셸 env까지 정말 내려가는지는
 // `src-tauri/tests/top_terminal.rs`가 살아 있는 셸로 잰다.
 
-/** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room. 첫 줄은 초안이라 건너뛴다. */
-const [, room] = ROOMS;
 
 /** 세그먼트의 한 칸(`ModeSwitch`). `mode-switch.spec.ts`가 같은 규격으로 집는다. */
 const modeButton = (page: Page, label: string) =>
@@ -61,6 +59,10 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // 들어오면 하나가 뜬다(`ensureShell`). **한 칸 더 연다** — 저쪽과 수가 같으면 소유자가
   // 통째로 섞여도 두 화면이 똑같아 보여서, 아래 단언이 무엇을 봐도 초록이 된다.
   await expect(tabs).toHaveCount(1);
+  // **첫 칸이 spawn한 뒤에 연다.** 그 칸은 글꼴을 기다린 뒤 DOM에 붙어 있을 때만 열리므로
+  // (`terminal-store`의 `openOrReattach`), 그 전에 새 칸이 켜지면 첫 칸이 떼어져 spawn이 영영
+  // 안 나가고 아래 `["atelier", "atelier"]`가 붐비는 러너에서만 하나로 빨개진다.
+  await awaitSpawned(page, 1);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs).toHaveCount(2);
   // 사이드바도 같은 수를 말한다. 이 숫자는 `ownerOf(mode)`로 세므로(`Sidebar`의 `topShells`)
@@ -77,7 +79,7 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // nav로 터미널까지 간다. 주소를 직접 치면 페이지가 새로 뜨면서 스토어가 통째로 비어,
   // 이 검사가 재려는 「살아남는가」가 사라진다.
   await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
   await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
   await expect(page).toHaveURL("/maison/terminal");
 

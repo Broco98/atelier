@@ -70,6 +70,8 @@ describe("works 명령", () => {
       // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
       worksApi.setPinned(undefined, "가", true),
       // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
+      worksApi.move(undefined, "가", true, null),
+      // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
       worksApi.readSpec(undefined, "가", "overview.md"),
       // @ts-expect-error `mode`가 선택으로 되돌아가면 이 줄이 합법이 된다
       worksApi.archive(undefined, "가"),

@@ -13,8 +13,9 @@ import {
 } from "./-work-search";
 import type { SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
-import type { DragSource } from "@/features/works/split-view";
-import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
+import type { DragSource } from "@/lib/pointer-drag";
+import { ownerIn, slugOfOwner } from "@/features/terminal/shell-registry";
+import { useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 import { routesOf } from "@/mode";
 import type { Mode } from "@/mode";
@@ -102,20 +103,29 @@ function WorksView({
   // 지켜야 한다. 그 갈림이 여기 하나뿐이라 `search`를 짓는 두 모양이 나란히 선다.
   // 남의 work 쪽에 기억을 안 얹는 것은 **끌어 놓은 배치가 곧 말한 것**이기 때문이다 —
   // 기억을 되세우는 것은 work 행을 눌러 옮기는 길의 일이다(위 `goTo`).
+  //
+  // 원천은 slug가 아니라 **owner**를 싣는다(공용 제스처 — `/terminal` 셸에는 slug가 없다).
+  // 이 층은 두 기능 폴더를 다 부를 수 있어 여기서 slug를 되뽑는다. 공용 모듈이 그 타입을 못
+  // 불러 `string`으로 싣기 때문에 **`as`가 아니라 `ownerIn`으로 값을 보고** 좁힌다 — 싣는
+  // 자리가 늘어나도(작업 행 · `/terminal` 탭) 형식이 틀린 원천은 여기서 걸린다. 이 세계의 키가
+  // 아니거나 slug가 없으면(최상위 터미널) 갈 work이 없다 — 아무것도 안 한다.
   const dropInto = useCallback(
     (source: DragSource, next: SplitSide) => {
+      const owner = ownerIn(mode, source.owner);
+      const target = owner === null ? null : slugOfOwner(owner);
+      if (target === null) return;
       const nextTab = tabOfDrag(source.kind);
       void navigate({
         to: routes.item,
-        params: { slug: source.slug },
+        params: { slug: target },
         search:
-          source.slug === slug
+          target === slug
             ? (prev: object) => splitSearch(tabSearch(prev, nextTab), next)
             : viewSearch({}, { tab: nextTab, split: next, file: null }),
         replace: true,
       });
     },
-    [navigate, routes.item, slug],
+    [mode, navigate, routes.item, slug],
   );
 
   // 화면 탭 전환. 갱신 자체는 `tabSearch`가 안다 — **함수형이어야 한다**(결정 15).
@@ -185,7 +195,7 @@ function WorksView({
     // 주소가 실제 화면과 어긋나 있다. 둘 중 하나다 —
     //  (a) 무선택 주소인데 목록이 뒤늦게 채워졌다 (빈 상태로 열어둔 채 밖에서 작업을 시작한 경우)
     //  (b) 주소가 가리키는 작업이 사라졌다 (지워졌거나 잘못된 링크)
-    const next = pickSlug(shellStore.state.workSlug[mode], works, isDefaultSelectable);
+    const next = pickSlug(shellStore.state.workSlug[mode], works);
     if (next === slug) return; // 목록이 비어 여전히 무선택 — 고칠 것이 없다
     goTo(next, true);
     // goTo는 의존성에 넣지 않는다 — navigate 하나만 닫아 잡고 그건 라우터가 고정해준다

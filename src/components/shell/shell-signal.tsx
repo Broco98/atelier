@@ -123,7 +123,7 @@ export function showsElapsed(kind: ShellSignal): boolean {
 
 /**
  * 레인에 서는 글리프(결정 5). **첫 줄 왼쪽 14px 한 칸**에 들어가고, 화면값이 없으면 이것이
- * 아니라 work 상태 아이콘이 그 자리에 선다 — 그 갈림은 행이 한다(`SidebarWorkList.tsx`).
+ * 아니라 work 상태 아이콘이 그 자리에 선다 — 그 갈림은 행이 한다(`WorkSectionList.tsx`).
  *
  * **점은 8px이고 후광은 3px인데 자리를 안 먹는다.** 후광을 `ring`(그림자)으로 그리는 것이
  * 목업의 `box-shadow: 0 0 0 3px`와 같은 모양이고, 테두리로 그리면 점이 14px 칸을 꽉 채워

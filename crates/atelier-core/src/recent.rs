@@ -13,7 +13,6 @@
 //! (팔레트 결정 14), 그 순서로 목록을 세우는 것은 검색이 한다.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -56,44 +55,21 @@ fn recent_path(root: &Path) -> PathBuf {
     root.join(RECENT_FILE)
 }
 
-/// 이력을 읽는다. **실패하지 않는다 — 못 읽으면 빈 이력이다.**
+/// 이력을 읽는다. **실패하지 않는다 — 못 읽으면 빈 이력이다**(읽기·진단 한 줄의 기전과 stderr를
+/// 쓰는 이유는 `atomic.rs`의 `read_json_or_default`에 있다).
 ///
 /// **설정 파일과 반대로 간다.** 그쪽은 「실패로 말하고 파일은 그대로 둔다」인데, 갈리는 축은
-/// **「사람이 손으로 고치는 값인가」**다. 설정은 손으로 고치는 파일이라 조용히 기본값으로
-/// 넘어가면 다음 저장이 그 손질을 덮어쓴다. 이력은 **관찰의 부산물**이고, 검색이 글자마다
-/// 부르는 자리라 파일 한 장 때문에 팔레트가 통째로 못 뜨면 안 된다.
+/// **「조용히 기본값으로 넘어가면 다음 쓰기가 사람의 손질을 덮어쓰는가」**다. 설정은 손으로
+/// 고치는 파일이고 저장이 화면의 값을 통째로 되쓰니 그렇다. 이력은 **관찰의 부산물**이라 덮일
+/// 손질이 없고, 검색이 글자마다 부르는 자리라 파일 한 장 때문에 팔레트가 통째로 못 뜨면 안 된다.
+/// 진행 중 루트의 순서 파일은 손으로도 고치지만 같은 편에 선다 — 까닭은 `order.rs`의
+/// `read_order` 머리말에 있다.
 ///
 /// **파일은 안 지운다.** 눕는 것은 이 판정 하나이고, 다음 쓰기가 정상 모양으로 덮는다.
 /// 무슨 일이 있었는지는 **한 줄로 남긴다** — 조용히 비면 「이력이 왜 초기화됐지」에 답할
 /// 자리가 아무 데도 없다.
-///
-/// **이 크레이트에서 stderr로 나가는 유일한 자리다 — 알고 그렇게 뒀다.** 나머지 진단은 전부
-/// 호스트(`src-tauri`·CLI)의 몫이고, 층으로 보면 「어떻게 알리나」는 기전이라 바깥의 것이 맞다.
-/// 그런데 이 함수는 **오류를 안 돌려준다**(그것이 위 결정의 전부다) — 알릴 것을 밖으로
-/// 내보내려면 반환 모양을 바꾸거나 검색 전체에 진단 채널을 하나 꿰야 하고, 그 값은 셋뿐인
-/// 호스트가 전부 stderr를 진단 채널로 쓰고 있어서 0이다(MCP는 stdout이 프로토콜이라 특히
-/// 그렇다). 진단 채널이 생기는 날 이 두 줄이 그리로 간다.
-///
-/// **파일도 폴더도 만들지 않는다.** 글자마다 부르는 자리가 무엇을 만들면 「읽기만 한다」가
-/// 거짓이 된다 — 검색의 다른 층들이 이미 같은 규칙을 진다.
 pub(crate) fn read_recent(root: &Path) -> RecentWorks {
-    let path = recent_path(root);
-    let content = match std::fs::read_to_string(&path) {
-        Ok(content) => content,
-        // 없는 것은 정상이다 — 첫 실행이 그 자리다.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return RecentWorks::default(),
-        Err(e) => {
-            eprintln!("atelier: recent read failed ({}): {e}", path.display());
-            return RecentWorks::default();
-        }
-    };
-    match serde_json::from_str(&content) {
-        Ok(recent) => recent,
-        Err(e) => {
-            eprintln!("atelier: recent parse failed ({}): {e}", path.display());
-            RecentWorks::default()
-        }
-    }
+    crate::atomic::read_json_or_default(&recent_path(root), "recent")
 }
 
 /// 그 work을 **맨 앞으로** 옮긴다. 이미 있으면 지우고 다시 넣는 대신 **그 항목을 통째로
@@ -110,7 +86,7 @@ pub(crate) fn read_recent(root: &Path) -> RecentWorks {
 /// 이긴다: 서로 다른 slug였다면 앞의 것이 목록에서 빠질 수 있다. 대가가 「방금 연 work이
 /// 이력에 안 들어간 채로 남는다」 하나이고 다음 부름이 그것을 고치는 반면, 잠금은 이 크레이트에
 /// 없는 기전(락 파일·전역 뮤텍스)을 하나 들이고 그 수명이 앱·MCP·CLI 세 프로세스에 걸친다.
-/// 겹친 쓰기가 **반쯤 쓰인 파일**을 남기는 것은 다른 얘기이고, 그쪽은 아래 tmp 이름이 막는다.
+/// 겹친 쓰기가 **반쯤 쓰인 파일**을 남기는 것은 다른 얘기이고, 그쪽은 `atomic.rs`의 tmp 이름이 막는다.
 pub fn touch_recent_work(root: &Path, slug: &str) -> Result<()> {
     let mut recent = read_recent(root);
     let entry = match recent.works.iter().position(|work| work.slug == slug) {
@@ -121,43 +97,9 @@ pub fn touch_recent_work(root: &Path, slug: &str) -> Result<()> {
     write_recent(root, &recent)
 }
 
-/// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (`work.json`·projects·설정과 같은 규칙).
-/// rename은 같은 파일시스템 안에서 원자적이라 파일이 반쯤인 순간이 없고, 그래서 tmp도
-/// 반드시 **같은 디렉터리**에 둔다. 점 접두사는 감시자가 자기 쓰기의 중간 단계를
-/// 되돌려주지 않게 하는 규약이다(`watcher.rs`의 「dotfile은 무시한다」).
-///
-/// **tmp 이름에 고유값을 붙인다 — 이웃들과 갈리는 자리다.** 설정 파일은 고정 이름을 쓰되
-/// 「쓰기는 한 번에 하나다」를 **명시로 깔아 두고** 그렇게 했는데(설정을 쓰는 곳이 저장
-/// 하나뿐이다), 이력에는 그 전제가 안 선다: **work을 옮길 때마다** 쓰이고, 커맨드가
-/// async이며, 앱이 StrictMode 아래라 dev에서 effect가 마운트마다 두 번 돈다. 고정 이름이면
-/// 겹친 rename이 다른 쪽이 아직 쓰는 중인 tmp를 옮겨 **반쯤 쓰인 파일**을 남긴다.
+/// 원자적으로 쓴다 — 규칙과 tmp 이름의 이유는 `atomic.rs`에 있다.
 fn write_recent(root: &Path, recent: &RecentWorks) -> Result<()> {
-    // 첫 쓰기가 데이터 루트가 아직 없는 상태일 수 있다. **쓰기는 만들어도 된다** —
-    // 만들지 않기로 한 것은 읽기 쪽이다.
-    std::fs::create_dir_all(root)?;
-
-    let mut json = serde_json::to_string_pretty(recent)
-        .map_err(|e| crate::Error::Validation(format!("이력을 옮겨 적지 못했습니다: {e}")))?;
-    json.push('\n');
-
-    let tmp = root.join(tmp_name());
-    std::fs::write(&tmp, json)?;
-    if let Err(e) = std::fs::rename(&tmp, recent_path(root)) {
-        // 바꿔 넣지 못했으면 **찌꺼기를 남기지 않는다.** 남으면 다음 사람이 그 파일을
-        // 이력으로 착각할 여지가 생기고, 감시자가 무시하는 dotfile이라 화면에도 안 뜬다.
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e.into());
-    }
-    Ok(())
-}
-
-/// 이 쓰기만의 tmp 이름. 프로세스와 호출을 함께 세므로 **한 기계 안에서 안 겹친다** —
-/// 시계를 안 쓰는 것은 같은 밀리초에 두 번 쓰는 것이 정확히 이 파일의 흔한 경우라서다
-/// (StrictMode가 effect를 두 번 돌린다).
-fn tmp_name() -> String {
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    format!(".{RECENT_FILE}.{}.{n}.tmp", std::process::id())
+    crate::atomic::write_json_atomically(root, RECENT_FILE, recent, "이력을")
 }
 
 #[cfg(test)]
@@ -271,30 +213,5 @@ mod tests {
 
         assert!(!missing.exists(), "읽기가 폴더를 만들었다");
         assert!(!tmp.path().join("recent.json").exists(), "읽기가 파일을 만들었다");
-    }
-
-    /// **tmp 이름에 고유값이 붙는다.** 설정 파일이 깔아 둔 전제(「쓰기는 한 번에 하나다」)가
-    /// 여기서는 안 선다 — work을 옮길 때마다 쓰이고, 커맨드가 async이며, dev에서 effect가
-    /// 두 번 돈다. 고정 이름이면 겹친 rename이 반쯤 쓰인 파일을 남긴다.
-    #[test]
-    fn tmp_이름이_쓰기마다_다르다() {
-        assert_ne!(tmp_name(), tmp_name());
-    }
-
-    /// 쓰고 나면 **찌꺼기가 없다.** 고유 이름을 붙였으므로 지우는 자리가 확실해야 한다 —
-    /// 남으면 dotfile이라 화면에도 안 뜬 채 쌓인다.
-    #[test]
-    fn 쓰고_나면_tmp가_안_남는다() {
-        let tmp = root();
-        touch_recent_work(tmp.path(), "가").unwrap();
-        touch_recent_work(tmp.path(), "나").unwrap();
-
-        let leftovers: Vec<String> = std::fs::read_dir(tmp.path())
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".tmp"))
-            .collect();
-        assert!(leftovers.is_empty(), "tmp가 남았다: {leftovers:?}");
     }
 }

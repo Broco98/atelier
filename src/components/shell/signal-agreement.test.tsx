@@ -15,7 +15,7 @@ import {
   shellsOf,
 } from "@/features/terminal/shell-registry";
 import type { ShellsState } from "@/features/terminal/shell-registry";
-import { WorkSectionList } from "@/features/works/SidebarWorkList";
+import { WorkSectionList } from "@/features/works/WorkSectionList";
 import { splitWorkSections } from "@/features/works/work-sections";
 import type { WorkView } from "@/features/works/types";
 import { AttentionBand } from "./attention-band";
@@ -94,9 +94,9 @@ function 행(state: ShellsState): string {
   const signals = signalsOf(state, "atelier");
   return renderToStaticMarkup(
     <WorkSectionList
-      sections={splitWorkSections([WORK], { pinned: true, works: true, drafts: true })}
+      sections={splitWorkSections([WORK], { pinned: true, works: true })}
       mode="atelier"
-      open={{ pinned: true, works: true, drafts: true }}
+      open={{ pinned: true, works: true }}
       selectedSlug={null}
       shellCounts={{ [WORK.slug]: 1 }}
       signals={signals}
@@ -105,6 +105,10 @@ function 행(state: ShellsState): string {
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
+      draggedSlug={null}
+      lineY={null}
+      litEmptySlot={null}
+      onArmDrag={() => {}}
       renderSubrow={(work) => {
         // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`) — 값을 고르는 길이 행마다 따로다.
         const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
@@ -140,11 +144,16 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       state={state}
       owner={소유}
       projects={["atelier"]}
+      defaultCwd={null}
       spec={{ on: !켜짐, onSelect: () => {} }}
       showing={켜짐}
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
+      onDragTab={() => {}}
+      slot={null}
+      onSlot={() => {}}
+      onDropSlot={() => {}}
     />,
   );
 }

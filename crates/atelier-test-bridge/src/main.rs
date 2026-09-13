@@ -59,6 +59,16 @@ const HANDLERS: &[(&str, Handler)] = &[
         let pinned = flag(a, "pinned")?;
         ok(atelier_core::update_work_pinned(&works_dir(mode(a)?), &text(a, "slug")?, pinned))
     }),
+    // `before`는 없어도 된다(= 목표 구획의 끝) — 프런트는 `null`로 싣고, 그것이 여기서 「없음」이다.
+    ("move_work", |a| {
+        let pinned = flag(a, "pinned")?;
+        ok(atelier_core::move_work(
+            &works_dir(mode(a)?),
+            &text(a, "slug")?,
+            pinned,
+            maybe_text(a, "before").as_deref(),
+        ))
+    }),
     ("archive_work", |a| {
         let mode = mode(a)?;
         ok(atelier_core::archive_work(
@@ -127,6 +137,8 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("install_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("uninstall_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
+    // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
+    ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
@@ -316,14 +328,16 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 8] = [
+    const APP_SOURCES: [(&str, &str); 10] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
         ("main.rs", include_str!("../../../src-tauri/src/main.rs")),
         ("pty.rs", include_str!("../../../src-tauri/src/pty.rs")),
+        ("quit.rs", include_str!("../../../src-tauri/src/quit.rs")),
         ("settings.rs", include_str!("../../../src-tauri/src/settings.rs")),
         ("shells.rs", include_str!("../../../src-tauri/src/shells.rs")),
+        ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
     ];
 
@@ -618,6 +632,68 @@ mod tests {
             1,
             "{ENTRY}가 env 파서를 한 번이 아니라 여러 번 부른다"
         );
+    }
+
+    /// **「확인됨」을 세우는 것은 `quit_app` 하나이고, 끄기 전에 세운다**(결정 14 · #223).
+    ///
+    /// 표시를 뒤집는 L1(`quit.rs`)은 표시가 뒤집히는지만 본다. 지키려는 것은 그 너머다 —
+    /// `quit_app`이 세우지 않으면 #224의 `terminate:` 훅이 「종료」를 누른 사람 앞에서 다시 막고,
+    /// 다른 자리가 세우면 빨간 버튼이 묻지 않고 앱을 끈다. L3의 픽스처는 `quit_app`에 `null`로만
+    /// 답하므로 이 둘은 **여기서만** 잰다. 이 검사가 다리에 사는 이유는 `APP_SOURCES`의 머리말과
+    /// 같다 — 앱 크레이트 안에 두면 찾는 낱말을 제 문자열로 읽는다.
+    ///
+    /// **부르는 모양을 가리지 않고 센다.** `quit::confirm()`만 세면 `use crate::quit::confirm;`
+    /// 뒤의 맨 `confirm()`이 안 보인다 — 그래서 주석 줄을 뺀 소스에서 낱말 `confirm`(뒤에
+    /// `ed`가 붙은 `confirmed`는 다른 낱말)을 전부 세고, 정의 파일 밖에서는 한 번뿐이어야 한다.
+    #[test]
+    fn 확인됨은_quit_app만_끄기_전에_세운다() {
+        fn words(source: &str) -> Vec<usize> {
+            // 주석 줄 비우기는 `src-tauri/src/lib.rs`의 `without_comment_lines`와 같은 규칙의 사본이다 —
+            // 다리는 바이너리 크레이트라 그것을 못 가져온다. 규칙을 바꾸면 둘을 함께 고치고, 규칙의
+            // 검사(`자리_검사는_주석_처리된_호출에_안_속는다`)는 그쪽에 산다.
+            let code: String = source
+                .lines()
+                .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bytes = code.as_bytes();
+            code.match_indices("confirm")
+                .filter(|(at, word)| {
+                    let before = at.checked_sub(1).map(|i| bytes[i]);
+                    let after = bytes.get(at + word.len()).copied();
+                    let ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+                    !before.is_some_and(ident) && !after.is_some_and(ident)
+                })
+                .map(|(at, _)| at)
+                .collect()
+        }
+
+        let mut callers = Vec::new();
+        for (file, source) in APP_SOURCES {
+            if file == "quit.rs" {
+                continue;
+            }
+            for _ in words(source) {
+                callers.push(file);
+            }
+        }
+        assert_eq!(
+            callers,
+            ["commands.rs"],
+            "「확인됨」을 세우는 자리가 `quit_app` 하나가 아니다 — 없으면 끄는 길이 다시 막히고, 늘면 안 묻고 끈다"
+        );
+
+        let commands = APP_SOURCES.iter().find(|(file, _)| *file == "commands.rs").unwrap().1;
+        let body = commands
+            .split_once("pub async fn quit_app(")
+            .expect("commands.rs에 `quit_app`이 없다")
+            .1
+            .split_once("\n}\n")
+            .expect("`quit_app`의 끝을 못 찾았다")
+            .0;
+        let confirm = body.find("crate::quit::confirm();").expect("`quit_app`이 「확인됨」을 안 세운다");
+        let exit = body.find("app.exit(0);").expect("`quit_app`이 앱을 안 끈다");
+        assert!(confirm < exit, "`quit_app`이 끈 뒤에 「확인됨」을 세운다 — 끄는 사이의 `terminate:`가 다시 막는다");
     }
 
     /// 커맨드가 하나 늘었는데 다리가 그대로면, 그 커맨드를 쓰는 화면은 L4에서 조용히

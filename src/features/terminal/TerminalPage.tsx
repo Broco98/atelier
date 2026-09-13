@@ -13,7 +13,15 @@ import {
   shellsOf,
   topTerminal,
 } from "./shell-registry";
-import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
+import {
+  dropShellOnSlot,
+  onNewShellRequested,
+  openNewShell,
+  requestCloseShell,
+  selectShell,
+  terminalStore,
+} from "./terminal-store";
+import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 import type { Mode } from "@/mode";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
@@ -69,20 +77,34 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
     (a, b) => sameScreen(a, b, owner),
   );
 
+  // 끄는 동안 탭 줄에 세울 틈(UI개선 결정 11). **틈 하나만 구독한다** — 이 화면에는 분할 받침이 없어
+  // 드래그 상태의 나머지(원천 · 절반)로 그릴 것이 없고, 통째로 읽으면 끌기를 걸고 걷을 때마다
+  // 이 화면이 다시 그려진다.
+  const slot = useStore(dragStore, (state) => state.slot);
+
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
   //
   // 이 화면에는 옮길 본문이 없다(결정 98이 work 화면에 준 절반) — 본문이 이미 터미널이고
   // 여는 자리도 하나뿐이다. 언제 듣고 언제 비켜야 하는지는 `opensShellFromWindow`가 혼자
-  // 안다: 셸 안에서는 xterm이 이미 열고 `stopPropagation`으로 여기까지 못 오게 막는다.
+  // 안다: 셸 안에서는 xterm이 받아 `stopPropagation`으로 여기까지 못 오게 막는다.
+  //
+  // **셸 안 ⌘T는 요청으로 온다**(UI개선 결정 19) — xterm 핸들러가 자리를 정하지 않고 이 화면에
+  // 요청만 보낸다. 이 구독이 빠지면 셸에 포커스가 있는 동안(이 화면에서는 거의 늘) ⌘T가
+  // 죽는다. work 화면과 같은 모양이다.
   useEffect(() => {
+    const open = () => openNewShell(topTerminal(mode));
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      openNewShell(topTerminal(mode));
+      open();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    const stop = onNewShellRequested(owner, open);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      stop();
+    };
   }, [mode]);
 
   /**
@@ -146,6 +168,8 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
           // work뿐이고(결정 24) 이 화면은 work가 아니다.
           projects={[]}
+          // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
+          defaultCwd={topTerminal(mode).cwd}
           // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
           // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
           spec={null}
@@ -157,6 +181,15 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
           onClose={requestCloseShell}
           onOpen={() => openNewShell(topTerminal(mode))}
+          // **이 화면도 탭을 끈다**(UI개선 결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
+          // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
+          // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
+          onDragTab={(shellId, from) => {
+            if (shellId !== null) armDrag({ kind: "shell", owner, shellId }, from);
+          }}
+          slot={slot}
+          onSlot={hoverSlot}
+          onDropSlot={dropShellOnSlot}
         />
         <TerminalPane mode={mode} work={null} />
       </main>

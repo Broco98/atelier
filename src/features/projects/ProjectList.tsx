@@ -25,9 +25,9 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
   // 이제 이 목록만 쓰는 폭이다 — 사이드바는 자기 키(sidebar-width)를 따로 갖는다
   const size = useResizableWidth("panel-width", 360, 280, 560);
 
-  // 숫자 단축키는 여기에 없다. 화면과 무관하게 항상 사이드바 작업 목록을 세도록 옮겼다
-  // (SidebarWorkList) — 어디에 있든 작업으로 한 번에 돌아갈 수 있다는 보장이다.
-  // 남겨두면 이 화면에서 같은 키 하나에 이동이 둘 걸린다.
+  // 숫자 단축키는 여기에 없다 — 사이드바 작업 목록에도 없다. 한때 사이드바 N번째 작업을
+  // 여는 키였는데, ⌘1~9가 한 화면 안에서 본문을 옮기는 키로 바뀌면서 걷혔다
+  // (`shell-registry.ts`의 ⌘1~9 머리말). 목록 순서가 바뀌어도 따라 바꿀 키가 없다.
 
   return (
     // Sidebar와 같은 접힘 패턴 — 바깥은 폭 애니메이션, 안쪽은 고정 폭으로 리플로 방지

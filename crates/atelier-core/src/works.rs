@@ -374,9 +374,20 @@ fn collect_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
 /// 세우므로, **그쪽에 조건이 붙으면 여기도 함께 봐야 한다** — 안 그러면 목록에서 사라진
 /// work의 문서가 문서·본문 층에는 계속 뜬다.
 ///
+/// 우연히 같은 것이 하나 더 있다: **순서 파일은 진행 중 루트에만 산다**(`order.rs`). 아카이브
+/// 루트에서 부르면 파일이 없어 `order_works`의 규칙 2만 남는다 — 쓰는 것이 열거뿐이라 지금은
+/// 무해하지만, 아카이브 루트에 순서 파일이 생기거나 문서 층이 이 순서를 쓰기 시작하면 함께 본다.
+///
 /// **폴더가 없으면 빈 목록이다 — 만들지 않는다.** 만드는 것은 `list_works`의 일이다(첫 실행이
 /// 그 자리를 지난다). 조회가 폴더를 만들면 「읽기만 한다」가 거짓이 된다(`list_archive`와 같은 규칙).
 pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
+    read_works_in(works_root, &crate::order::read_order(works_root).order)
+}
+
+/// `read_works`의 몸통 — 순서 파일을 **이미 읽은** 값으로 받는다. `reorder`가 파일을 한 번만 읽고
+/// 그 한 벌로 보이는 순서도 세우고 다시 쓰게 하려는 것이다. 두 번 읽으면 사이에 끼어든 쓰기가
+/// 자리와 모르는 키(`extra`)를 서로 다른 판에서 가져오고, 깨진 파일의 stderr 줄도 두 번 남는다.
+fn read_works_in(works_root: &Path, order: &[String]) -> Result<Vec<Work>> {
     let entries = match std::fs::read_dir(works_root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -394,17 +405,43 @@ pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
             works.push(work);
         }
     }
-    // **고정이 먼저다** (결정 100). 사이드바가 고정 구획을 맨 위에 세우므로, 그 순서를
-    // 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이
-    // 갈린다 — 이슈 #58이 정확히 그것이었다. 여기서 먼저 주면 어떤 조합에서도 저절로
-    // 성립하고, 앱·MCP·CLI가 같은 순서를 본다.
-    works.sort_by(|a, b| {
-        b.pinned
-            .cmp(&a.pinned)
-            .then_with(|| b.created_at.cmp(&a.created_at))
-            .then_with(|| a.slug.cmp(&b.slug))
-    });
+    order_works(&mut works, order);
     Ok(works)
+}
+
+/// 작업 목록의 순서를 정하는 **유일한 자리**다. 순수 함수다 — 파일은 `read_works`(와 `reorder`)가 읽어 넘긴다.
+///
+/// 1. `pinned` 내림차순 — **고정이 먼저다**(결정 100 · UI개선 결정 3). 사이드바가 고정 구획을 맨 위에
+///    세우므로, 그 순서를 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는
+///    항목」이 갈린다 — 이슈 #58이 정확히 그것이었다.
+/// 2. 같은 구획 안에서 **순서 파일에 없는 것이 먼저**, 그들끼리는 `createdAt` 내림차순 → slug
+///    오름차순(옛 규칙 그대로). 새 작업이 자기 구획 맨 위에 서는 것이 이 줄이다(스토리 16).
+/// 3. 그 아래로 파일에 적힌 순서.
+/// 4. 파일에 있는데 폴더가 없는 slug는 흘려보낸다 — 여기서는 `works`에 없으니 저절로다.
+///
+/// **파일이 없으면 2만 남아 옛 순서와 한 글자도 다르지 않다**(UI개선 결정 4의 회귀 기준).
+///
+/// **이 규칙을 `list_works`(바깥)로 옮기지 않는다.** 검색의 작업 층이 이 함수를 거치지 않고
+/// `read_works`를 직접 부르므로, 바깥에 두면 사이드바·MCP는 새 순서·팔레트는 옛 순서가 된다.
+/// 검색의 `(고정, 이력 순위)` 안정 정렬이 동점에서 이 순서를 물려받으므로 거기 사본은 없다.
+fn order_works(works: &mut [Work], order: &[String]) {
+    // 같은 slug가 두 번 적혔으면 **첫 자리**가 이긴다 — 손으로 고친 파일에서 흔한 실수다.
+    let mut position = std::collections::HashMap::new();
+    for (at, slug) in order.iter().enumerate() {
+        position.entry(slug.as_str()).or_insert(at);
+    }
+    works.sort_by(|a, b| {
+        b.pinned.cmp(&a.pinned).then_with(|| {
+            match (position.get(a.slug.as_str()), position.get(b.slug.as_str())) {
+                (None, None) => {
+                    b.created_at.cmp(&a.created_at).then_with(|| a.slug.cmp(&b.slug))
+                }
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (Some(x), Some(y)) => x.cmp(y),
+            }
+        })
+    });
 }
 
 pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
@@ -486,13 +523,101 @@ pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> 
     Ok(to_view(works_root, work))
 }
 
-/// 고정을 켜고 끈다. **목록 순서가 함께 바뀐다** — 고정된 것은 `list_works`가 먼저 준다
-/// (결정 100). 그 외에는 상태와 마찬가지로 아무것도 건드리지 않는다.
+/// 고정을 켜고 끈다. **옮겨 간 구획의 맨 위에 선다**(UI개선 결정 4·28) — 켜면 고정 구획 맨 위,
+/// 끄면 비고정 구획 맨 위. 앱의 핀 버튼·다리·MCP `atelier_edit_work`가 모두 이 함수를 부르므로
+/// 셋이 저절로 같은 자리에 세운다.
+///
+/// 순서 파일과 `pinned` 말고는 건드리지 않는다 — 상태도 브랜치도 그대로다(결정 9).
+///
+/// **값이 이미 그렇다면 아무 파일도 안 쓴다**(스토리 35). 한때는 늘 `work.json`을 다시 써서
+/// 감시자를 깨웠다 — 에이전트가 같은 값을 거듭 주는 것만으로 앱이 목록을 다시 읽었다.
 pub fn update_work_pinned(works_root: &Path, slug: &str, pinned: bool) -> Result<WorkView> {
-    let mut work = read_work(works_root, slug)?;
-    work.pinned = pinned;
-    write_work(works_root, &work)?;
+    let work = reorder(works_root, slug, pinned, Placement::Top)?;
     Ok(to_view(works_root, work))
+}
+
+/// 작업 하나를 옮긴다 — **자리를 정해 순서를 쓰는 유일한 길이다**(UI개선 결정 2 · S3; 삭제가 slug를
+/// 빼는 `forget_in_order`는 자리를 안 정한다). `pinned`는 목표 구획이고 `before`는 그 구획 안에서
+/// 이 작업이 앞에 설 slug, 없으면 목표 구획의 끝이다. 새 목록 전체를 돌려준다 — 순서만 바뀐
+/// 쓰기는 감시자가 못 보므로(점 파일) 앱이 이 응답으로 캐시를 갈아 끼운다.
+pub fn move_work(
+    works_root: &Path,
+    slug: &str,
+    pinned: bool,
+    before: Option<&str>,
+) -> Result<Vec<WorkView>> {
+    let placement = match before {
+        Some(before) => Placement::Before(before),
+        None => Placement::End,
+    };
+    reorder(works_root, slug, pinned, placement)?;
+    list_works(works_root)
+}
+
+/// 목표 구획(`to_pinned`) 안의 어느 자리인가.
+enum Placement<'a> {
+    /// 구획의 보이는 첫 작업 앞 — 고정 토글.
+    Top,
+    /// 그 slug 앞 — 끌어 놓기.
+    Before(&'a str),
+    /// 구획의 끝.
+    End,
+}
+
+/// `move_work`·고정 토글의 몸통. 목록 전체의 뷰(워크트리마다 `git status`)는 안 만들고 옮긴
+/// `Work`를 돌려준다 — 고정 토글은 한 건만 돌려주므로 그 값을 치를 까닭이 없다.
+///
+/// 0. **`Top`인데 값이 이미 그렇다면 아무것도 안 쓴다**(스토리 35). 같은 구획 끌기(`Before`·
+///    `End`)는 자리가 바뀌므로 순서 파일을 쓴다.
+/// 1. **검증이 먼저다.** 실패하면 아무것도 안 쓴다.
+/// 2. 지금 **보이는 순서 전체**를 굳혀 적는다 — 파일에 없던 작업도 제자리로 적혀서, 옮김 한
+///    번이 그들의 위치를 흔들지 않는다. 폴더 없는 slug는 보이는 순서에 없으니 여기서 떨어진다.
+/// 3. **순서 파일을 먼저** 쓰고, `pinned`가 다를 때만 `work.json`을 쓴다. `work.json` 쓰기가
+///    감시자를 깨우므로, 그 재조회가 새 순서를 읽게 하려는 차례다. 그 쓰기가 실패해도 순서
+///    파일은 안 되돌린다 — 정렬이 `pinned`로 먼저 가르므로 남은 순서가 다른 구획을 안 흔든다.
+fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement) -> Result<Work> {
+    let mut work = read_work(works_root, slug)?;
+    if matches!(placement, Placement::Top) && work.pinned == to_pinned {
+        return Ok(work);
+    }
+    let mut order = crate::order::read_order(works_root);
+    let mut visible = read_works_in(works_root, &order.order)?;
+    visible.retain(|other| other.slug != work.slug);
+    // 보이는 순서가 고정 먼저로 서 있으므로 고정 구획은 `[0, 고정의 수)`, 비고정은 그 뒤다.
+    let pinned_count = visible.iter().filter(|other| other.pinned).count();
+    let at = match placement {
+        Placement::Top if to_pinned => 0,
+        Placement::Top => pinned_count,
+        Placement::End if to_pinned => pinned_count,
+        Placement::End => visible.len(),
+        Placement::Before(before) if before == work.slug => {
+            return Err(Error::Validation(format!(
+                "'{slug}' cannot be placed before itself"
+            )))
+        }
+        Placement::Before(before) => {
+            match visible.iter().position(|other| other.slug == before) {
+                Some(at) if visible[at].pinned == to_pinned => at,
+                Some(_) => {
+                    return Err(Error::Validation(format!(
+                        "'{before}' is not in the {} section",
+                        if to_pinned { "pinned" } else { "unpinned" }
+                    )))
+                }
+                None => return Err(Error::WorkNotFound(before.to_string())),
+            }
+        }
+    };
+    let mut slugs: Vec<String> = visible.into_iter().map(|other| other.slug).collect();
+    slugs.insert(at, work.slug.clone());
+
+    order.order = slugs;
+    crate::order::write_order(works_root, &order)?;
+    if work.pinned != to_pinned {
+        work.pinned = to_pinned;
+        write_work(works_root, &work)?;
+    }
+    Ok(work)
 }
 
 /// 프로젝트를 붙인다. `branch`는 **브랜치가 아직 미정인 work를 위한 것**이다 —
@@ -572,6 +697,11 @@ pub fn remove_work(works_root: &Path, slug: &str, force: bool) -> Result<()> {
             return Err(Error::DirtyWorktrees(dirty.join("; ")));
         }
     }
+    // 순서 파일에서 slug를 **무엇이든 지우기 전에** 뺀다(S2). 거꾸로면 이 쓰기가 실패했을 때
+    // work는 이미 사라졌는데 오류로 보고되고, 옛 자리가 남아 같은 이름의 새 작업이 거기 선다.
+    // 이 순서면 이 쓰기의 실패는 「아무것도 안 지웠다」로 끝나고, 뒤의 지우기가 실패해도 남은
+    // work가 자기 구획 맨 위로 올라갈 뿐이다(규칙 2).
+    crate::order::forget_in_order(works_root, &work.slug)?;
     for (_, worktree) in &existing {
         git::worktree_remove(worktree, force).map_err(Error::Git)?;
     }
@@ -1256,26 +1386,374 @@ mod tests {
     /// 고정 구획이 바로 그 얹는 정렬이다. 앱·MCP·CLI가 같은 순서를 보려면 여기가 유일한 자리다.
     #[test]
     fn list_puts_pinned_first_even_when_it_is_older() {
-        let (_tmp, works, _projects) = setup();
-        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일을 직접 쓴다
-        let write = |slug: &str, created: &str, pinned: bool| {
-            let dir = works.join(slug);
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(
-                dir.join("work.json"),
-                format!(
-                    r#"{{"title":"{slug}","status":"active","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
-                ),
-            )
-            .unwrap();
-        };
-        write("새-것", "2026-08-20", false);
-        write("오래된-것", "2026-01-02", true);
-        write("고정-최신", "2026-08-22", true);
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일로 심는다(`plant`)
+        plant(&works, "새-것", "2026-08-20", false);
+        plant(&works, "오래된-것", "2026-01-02", true);
+        plant(&works, "고정-최신", "2026-08-22", true);
 
-        let listed: Vec<String> =
-            list_works(&works).unwrap().into_iter().map(|v| v.work.slug).collect();
-        assert_eq!(listed, slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
+        assert_eq!(listed(&works), slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
+    }
+
+    // ── 순서 파일 (`.order.json`) ──────────────────────────────────────────
+    // 저장소가 필요 없는 검사라 `setup()`의 git 두 벌을 안 탄다 — 작업 루트 하나면 된다.
+
+    /// 날짜와 고정을 못 박은 work 하나를 **파일로** 심는다. `start_work`는 오늘 날짜를 박아
+    /// 「파일 순서가 만든 순을 뒤집는다」를 못 벌린다.
+    fn plant(works: &Path, slug: &str, created: &str, pinned: bool) {
+        plant_with_status(works, slug, created, pinned, "active");
+    }
+
+    fn write_raw_order(works: &Path, body: &str) {
+        std::fs::create_dir_all(works).unwrap();
+        std::fs::write(works.join(".order.json"), body).unwrap();
+    }
+
+    fn listed(works: &Path) -> Vec<String> {
+        list_works(works).unwrap().into_iter().map(|v| v.work.slug).collect()
+    }
+
+    /// UI개선 결정 1·4 — 규칙 1~3. 구획(`pinned`)이 먼저 갈리고, 그 안에서 **파일에 없는 것이 먼저**
+    /// (지금 규칙대로), 그 아래로 파일에 적힌 순서다. 파일이 구획을 가로질러 적혀 있어도
+    /// 구획은 안 섞인다.
+    #[test]
+    fn works_missing_from_the_order_file_lead_their_section_then_the_file_order_follows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "핀-옛것", "2026-01-01", true);
+        plant(&works, "핀-새것", "2026-08-01", true);
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-05", false);
+        plant(&works, "다", "2026-08-03", false);
+        plant(&works, "라", "2026-08-09", false);
+        // 만든 순(라·나·다·가)과 반대로 적는다. `라`는 안 적어 파일 밖이다.
+        write_raw_order(&works, r#"{"order":["가","핀-옛것","다","나"]}"#);
+
+        assert_eq!(listed(&works), slugs(&["핀-새것", "핀-옛것", "라", "가", "다", "나"]));
+    }
+
+    /// UI개선 결정 2 — 규칙 4. 폴더가 없는 slug는 흘려보낸다(아카이브·삭제가 남긴 흔적). 루트의
+    /// 순서 파일 자신도 work로 안 읽힌다 — 점 파일이다.
+    #[test]
+    fn slugs_without_a_folder_are_skipped_and_the_order_file_is_not_a_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "옛것", "2026-08-01", false);
+        plant(&works, "새것", "2026-08-05", false);
+        write_raw_order(&works, r#"{"order":["유령","옛것","치운것","새것"]}"#);
+
+        assert_eq!(listed(&works), slugs(&["옛것", "새것"]));
+    }
+
+    /// 같은 slug가 두 번 적혔으면 **첫 자리가 이긴다** — 손으로 고친 파일에서 흔한 실수라
+    /// `order_works` 한 자리가 정한다. 뒷자리가 이기면 `나`가 `가` 아래로 내려간다.
+    #[test]
+    fn a_slug_listed_twice_takes_its_first_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        write_raw_order(&works, r#"{"order":["나","가","나"]}"#);
+
+        assert_eq!(listed(&works), slugs(&["나", "가"]));
+    }
+
+    /// 깨진 파일은 **빈 순서**다 — 목록이 지금 규칙 그대로 뜨고 파일은 안 건드린다
+    /// (스토리 21). `recent.json`과 같은 판단: 파일 한 장 때문에 목록이 막히면 안 된다.
+    #[test]
+    fn a_broken_order_file_reads_as_no_order_and_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "옛것", "2026-08-01", false);
+        plant(&works, "새것", "2026-08-05", false);
+        write_raw_order(&works, r#"{"order":["옛것","#);
+
+        assert_eq!(listed(&works), slugs(&["새것", "옛것"]));
+        assert_eq!(
+            std::fs::read_to_string(works.join(".order.json")).unwrap(),
+            r#"{"order":["옛것","#
+        );
+    }
+
+    /// **읽기가 순서 파일을 안 만든다.** 검색이 글자마다 부르는 자리라 무엇을 만들면
+    /// 「읽기만 한다」가 거짓이 된다(`recent.json`과 같은 규칙).
+    #[test]
+    fn listing_does_not_create_the_order_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+
+        listed(&works);
+        assert!(!works.join(".order.json").exists(), "읽기가 순서 파일을 만들었다");
+    }
+
+    /// S2 · 스토리 20. **지운 slug는 파일에서 빠진다** — 지운 slug는 다시 쓸 수 있어서, 안
+    /// 빼면 같은 이름으로 새로 만든 작업이 옛 자리에 선다(UI개선 결정 4 위반).
+    #[test]
+    fn a_work_recreated_after_removal_leads_its_section_instead_of_its_old_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        let archive = archive_root(&works);
+        plant(&works, "옛것", "2026-01-01", false);
+        plant(&works, "더옛것", "2026-01-02", false);
+        start_work(&works, &archive, None, "카트", Some("cart"), &[], None).unwrap();
+        write_raw_order(&works, r#"{"order":["옛것","cart","더옛것"]}"#);
+
+        remove_work(&works, "cart", false).unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap())
+                .unwrap();
+        assert_eq!(raw["order"], serde_json::json!(["옛것", "더옛것"]), "지운 slug가 남았다");
+
+        start_work(&works, &archive, None, "카트", Some("cart"), &[], None).unwrap();
+        assert_eq!(listed(&works), slugs(&["cart", "옛것", "더옛것"]));
+    }
+
+    /// 모르는 최상위 키는 순서 파일을 **고쳐 쓴 뒤에도** 남는다 — `recent.json`·`work.json`과
+    /// 같은 규약. 지우기 길로 잰다(옮기기 길은 `moving_drops_slugs_that_have_no_folder_from_the_file`).
+    #[test]
+    fn removing_a_work_keeps_the_order_files_unknown_top_level_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        write_raw_order(&works, r#"{"order":["가","나"],"version":2,"note":{"by":"사람"}}"#);
+
+        remove_work(&works, "가", false).unwrap();
+
+        let raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            raw,
+            serde_json::json!({ "order": ["나"], "version": 2, "note": { "by": "사람" } })
+        );
+    }
+
+    /// 지울 slug가 파일에 없으면 **아무것도 안 쓴다** — 없던 파일을 만들지도, 깨진 파일을
+    /// 빈 순서로 덮지도 않는다. 깨진 파일을 덮으면 사람이 손으로 고치던 순서가 사라진다.
+    #[test]
+    fn removing_a_work_the_order_file_does_not_name_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-01", false);
+
+        remove_work(&works, "가", false).unwrap();
+        assert!(!works.join(".order.json").exists(), "지우기가 없던 순서 파일을 만들었다");
+
+        write_raw_order(&works, r#"{"order":["나","#);
+        remove_work(&works, "나", false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(works.join(".order.json")).unwrap(),
+            r#"{"order":["나","#
+        );
+    }
+
+    // ── 옮기기 (`move_work`) · 고정 토글 ────────────────────────────────────
+
+    /// 상태를 못 박은 work 하나를 심는다 — 「구획을 옮겨도 상태는 그대로」를 `active` 아닌 값으로 잰다.
+    fn plant_with_status(works: &Path, slug: &str, created: &str, pinned: bool, status: &str) {
+        let dir = works.join(slug);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("work.json"),
+            format!(
+                r#"{{"title":"{slug}","status":"{status}","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    /// 순서 파일 날것 전체 — 모르는 키까지 본다.
+    fn order_json(works: &Path) -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap()).unwrap()
+    }
+
+    /// 파일에 **적힌** 순서. 목록 읽기(`listed`)와 달리 규칙을 안 거친 날것이다.
+    fn order_on_disk(works: &Path) -> Vec<String> {
+        serde_json::from_value(order_json(works)["order"].clone()).unwrap()
+    }
+
+    fn slugs_of(views: &[WorkView]) -> Vec<String> {
+        views.iter().map(|v| v.work.slug.clone()).collect()
+    }
+
+    /// UI개선 결정 2 · S3. **보이는 순서 전체를 굳힌 뒤** 옮긴다 — 파일에 없던 `라`·`나`도 제자리로
+    /// 적힌다. 안 굳히면 옮긴 slug만 파일에 들어가 파일 밖의 둘이 그 위로 올라서고, 옮김 한 번이
+    /// 다른 작업의 위치를 흔든다.
+    #[test]
+    fn moving_writes_the_whole_visible_order_then_moves_the_one_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-05", false);
+        plant(&works, "다", "2026-08-03", false);
+        plant(&works, "라", "2026-08-09", false);
+        write_raw_order(&works, r#"{"order":["가","다"]}"#);
+        assert_eq!(listed(&works), slugs(&["라", "나", "가", "다"]), "전제: 파일 밖의 둘이 먼저다");
+
+        let moved = move_work(&works, "다", false, Some("나")).unwrap();
+
+        assert_eq!(order_on_disk(&works), slugs(&["라", "다", "나", "가"]));
+        assert_eq!(slugs_of(&moved), slugs(&["라", "다", "나", "가"]), "새 목록 전체를 돌려준다");
+        assert_eq!(listed(&works), slugs_of(&moved), "돌려준 목록과 다시 읽은 목록이 다르다");
+    }
+
+    /// 결정 2 — 폴더 없는 slug는 **굳힐 때 떨어진다.** 보이는 순서에서 파일을 다시 쓰므로 흔적이
+    /// 거기서 저절로 치워진다.
+    #[test]
+    fn moving_drops_slugs_that_have_no_folder_from_the_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        write_raw_order(&works, r#"{"order":["유령","가","치운것","나"],"version":2}"#);
+
+        move_work(&works, "나", false, Some("가")).unwrap();
+
+        assert_eq!(order_on_disk(&works), slugs(&["나", "가"]));
+        let raw = order_json(&works);
+        assert_eq!(raw["version"], 2, "모르는 최상위 키가 옮기기에서 사라졌다: {raw}");
+    }
+
+    /// 결정 9 — 다른 구획으로 옮기면 **`pinned`만** 바뀐다. `before`가 없으면 목표 구획의 **끝**이다:
+    /// 고정 구획이면 고정의 마지막 뒤(비고정의 맨 위가 아니다), 비고정이면 목록 끝.
+    #[test]
+    fn moving_across_sections_changes_only_pinned_and_no_before_means_the_end() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "핀1", "2026-08-01", true);
+        plant(&works, "핀2", "2026-08-02", true);
+        plant_with_status(&works, "리뷰", "2026-08-09", false, "review");
+        plant(&works, "가", "2026-08-03", false);
+        // `리뷰`를 `가` 아래에 적는다 — 고정 구획의 **맨 위**로 넣는 변형과 끝으로 넣는 것이 갈리게.
+        write_raw_order(&works, r#"{"order":["핀2","핀1","가","리뷰"]}"#);
+
+        let moved = move_work(&works, "리뷰", true, None).unwrap();
+        assert_eq!(slugs_of(&moved), slugs(&["핀2", "핀1", "리뷰", "가"]));
+        let view = get_work(&works, "리뷰").unwrap();
+        assert!(view.work.pinned, "고정 구획으로 옮겼는데 pinned가 안 바뀌었다");
+        assert_eq!(view.work.status, WorkStatus::Review, "옮기기가 상태를 건드렸다");
+
+        let back = move_work(&works, "핀2", false, None).unwrap();
+        assert_eq!(slugs_of(&back), slugs(&["핀1", "리뷰", "가", "핀2"]));
+        assert!(!get_work(&works, "핀2").unwrap().work.pinned);
+    }
+
+    /// **읽기 전용이 된 work 폴더에서도 성공한다** — `work.json`을 다시 쓰면 실패하는 자리다.
+    /// 쓰기가 tmp → rename이라 파일 한 장의 권한으로는 못 막고(rename은 폴더 권한을 본다) 폴더를
+    /// 잠근다. 같은 내용을 다시 쓰는 변형은 결과 파일이 같아 내용 비교로는 안 잡히므로 이 모양이다.
+    #[cfg(unix)]
+    #[test]
+    fn a_same_section_move_and_a_same_value_pin_leave_work_json_unwritten() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        plant(&works, "핀", "2026-08-03", true);
+        let locked = works.join("가");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // 기준선: 이 폴더에서 정말 쓰기가 실패하는가. 루트로 돌면 권한이 안 먹어 아래 두 성공이
+        // 아무것도 안 잰다 — 그때는 여기서 터진다.
+        let baseline = update_work_title(&works, "가", "새 이름");
+
+        let same_section = move_work(&works, "가", false, Some("나"));
+        let same_value = update_work_pinned(&works, "가", false);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(baseline.is_err(), "잠근 폴더에 work.json이 써졌다 — 이 검사가 아무것도 안 잰다");
+        assert_eq!(slugs_of(&same_section.unwrap()), slugs(&["핀", "가", "나"]));
+        assert!(!same_value.unwrap().work.pinned);
+    }
+
+    /// 검증 실패는 **아무것도 안 쓴다** — 순서 파일도 `work.json`도 생기거나 바뀌지 않는다.
+    #[test]
+    fn a_refused_move_writes_neither_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        plant(&works, "핀", "2026-08-03", true);
+        let work_json = |slug: &str| std::fs::read(works.join(slug).join("work.json")).unwrap();
+        let before_files = (work_json("가"), work_json("나"), work_json("핀"));
+
+        let refused = [
+            ("없는 slug", move_work(&works, "없음", false, None)),
+            ("없는 before", move_work(&works, "가", false, Some("없음"))),
+            ("다른 구획의 before", move_work(&works, "가", true, Some("나"))),
+            ("자기 자신 before", move_work(&works, "가", false, Some("가"))),
+        ];
+        for (case, outcome) in refused {
+            assert!(outcome.is_err(), "{case}: 거절해야 한다");
+        }
+        assert!(matches!(move_work(&works, "없음", false, None), Err(Error::WorkNotFound(_))));
+        assert!(!works.join(".order.json").exists(), "거절한 옮기기가 순서 파일을 만들었다");
+        assert_eq!((work_json("가"), work_json("나"), work_json("핀")), before_files);
+
+        // 파일이 이미 있으면 그대로 남는다
+        write_raw_order(&works, r#"{"order": ["나", "가"]}"#);
+        assert!(move_work(&works, "가", true, Some("나")).is_err());
+        assert_eq!(
+            std::fs::read_to_string(works.join(".order.json")).unwrap(),
+            r#"{"order": ["나", "가"]}"#
+        );
+    }
+
+    /// 결정 4·28 — 고정을 켜면 **고정 구획 맨 위**, 끄면 **비고정 구획 맨 위**. 파일에 없는 새
+    /// 작업(`핀새`·`신규`·`나중`)이 규칙 2로 구획 맨 위에 서 있어도 그 위다 — 토글이 굳히기를 안 하면
+    /// 새 작업들이 옮긴 것 위에 남는다.
+    #[test]
+    fn toggling_the_pin_puts_the_work_at_the_top_of_the_section_it_moves_to() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "핀A", "2026-08-01", true);
+        plant(&works, "핀B", "2026-08-02", true);
+        plant(&works, "핀새", "2026-08-03", true);
+        plant(&works, "가", "2026-08-04", false);
+        plant(&works, "나", "2026-08-05", false);
+        plant(&works, "신규", "2026-08-06", false);
+        write_raw_order(&works, r#"{"order":["핀A","핀B","가","나"]}"#);
+        assert_eq!(listed(&works), slugs(&["핀새", "핀A", "핀B", "신규", "가", "나"]));
+
+        let on = update_work_pinned(&works, "나", true).unwrap();
+        assert!(on.work.pinned);
+        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀A", "핀B", "신규", "가"]));
+
+        // 끄기 쪽에도 파일에 없는 새 작업을 세운다 — 첫 토글이 `신규`를 이미 파일에 적었으므로.
+        plant(&works, "나중", "2026-08-07", false);
+        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀A", "핀B", "나중", "신규", "가"]));
+
+        let off = update_work_pinned(&works, "핀A", false).unwrap();
+        assert!(!off.work.pinned);
+        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀B", "핀A", "나중", "신규", "가"]));
+    }
+
+    /// 스토리 35 — 이미 그 값이면 **아무 파일도 안 바뀐다.** 순서 파일이 없으면 안 생기고, 있으면
+    /// 글자 하나 안 바뀌며, `work.json`도 심은 모양(한 줄 JSON) 그대로다 — 다시 쓰면 렌더러의
+    /// 들여쓴 모양으로 바뀐다.
+    #[test]
+    fn pinning_to_the_value_it_already_has_writes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "핀", "2026-08-02", true);
+        let raw = |slug: &str| std::fs::read_to_string(works.join(slug).join("work.json")).unwrap();
+        let (planted_plain, planted_pinned) = (raw("가"), raw("핀"));
+
+        update_work_pinned(&works, "가", false).unwrap();
+        update_work_pinned(&works, "핀", true).unwrap();
+        assert!(!works.join(".order.json").exists(), "같은 값 고정이 순서 파일을 만들었다");
+        assert_eq!((raw("가"), raw("핀")), (planted_plain, planted_pinned));
+
+        write_raw_order(&works, r#"{ "order" : [ "핀", "가" ] }"#);
+        update_work_pinned(&works, "핀", true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(works.join(".order.json")).unwrap(),
+            r#"{ "order" : [ "핀", "가" ] }"#
+        );
     }
 
     /// 상태와 같은 모양의 한 필드 쓰기 — 파일에 남고 조회가 같은 값을 준다 (결정 81).

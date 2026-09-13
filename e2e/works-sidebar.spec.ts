@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
+import { FIXTURE_SHELL_NAME, MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
@@ -21,10 +21,6 @@ import {
 
 const [pinnedWork, plainWork] = WORKS;
 
-// 헤더의 접근성 이름에는 개수가 함께 들어간다 — 라벨과 옅은 숫자가 같은 버튼 안이다.
-const PINNED_HEADER = "고정 1";
-const MAIN_HEADER = "작업 1";
-
 // 오른쪽 끝 페이드의 폭이자 **마퀴가 넘침 위에 더 가는 거리**다(결정 11) — 그만큼 더 가지
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.
 const TITLE_FADE = 12;
@@ -35,7 +31,7 @@ const TITLE_FADE = 12;
  */
 const SUBROW_GAP = 6;
 
-// 흐르는 **속도**(px/s) — `SidebarWorkList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
+// 흐르는 **속도**(px/s) — `WorkSectionList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
 // 한다. 실측이 들어야 하는 밴드는 ±12%다 — `speedOf`가 잰 시각으로 나누므로 이만큼 좁힐 수
 // 있고, 좁아야 고정 지속시간이 두 자리를 다 통과하지 못한다.
@@ -43,7 +39,7 @@ const MARQUEE_SPEED = 50;
 const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
 
 // 핀 상자의 폭(`icon-button`). **행은 hover에 제목 상자가 정확히 이만큼 줄어든다** — 핀이
-// 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(SidebarWorkList의 핀 주석). 판 05에서는
+// 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(WorkSectionList의 핀 주석). 판 05에서는
 // 셸이 0개인 행에서만 그랬는데, 이 판이 셸 메타를 둘째 줄로 내리면서 **2열에 남은 것이 핀
 // 하나뿐이라** 모든 행이 같이 움직인다.
 // 그래서 흐르는 거리를 **hover 중의 넘침**으로 재야 한다: 쉴 때 넘침으로 재면 이만큼 모자라
@@ -200,7 +196,7 @@ test("남의 work 행을 누르면 그 work의 마지막 자리가 열린다", a
 // **행의 아래쪽을 눌러도 그 work로 간다.** 행이 두 줄(55px)이 되면서 이 자리에 처음으로
 // 「배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리」가 날 수 있게 됐다: 이름 버튼이 첫 줄
 // 26px만 덮으면 아래 29px이 어느 버튼에도 안 속하는데, 배경(선택·hover)은 55px 전체에
-// 깔린다. `SidebarWorkList.tsx`가 두 자리에서 금지 사유로 드는 모양이 바로 그것이고
+// 깔린다. `WorkSectionList.tsx`가 두 자리에서 금지 사유로 드는 모양이 바로 그것이고
 // (행 상자 주석 · 이름 버튼 주석), 게다가 그 29px은 프로젝트 이름·종류·수가 실리는
 // **내용이 있는 줄**이라 사람이 가장 누르기 쉬운 자리다 — 행의 절반 이상이 그렇게 되는 것은
 // 판 05에는 없던 회귀다(그때는 이름 버튼이 `h-8`로 행 전체를 덮었다).
@@ -503,7 +499,7 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
 }) => {
   await installFixtureBackend(page);
   // **셸이 있는 행과 없는 행을 함께 본다.** 둘째 줄은 갈래가 셋이고(종류·수 / 프로젝트
-  // 이름 / 셸이 스스로 한 말) 색을 정하는 자리도 여럿이다 — `SidebarWorkList.tsx`의 상자가
+  // 이름 / 셸이 스스로 한 말) 색을 정하는 자리도 여럿이다 — `WorkSectionList.tsx`의 상자가
   // 바닥을 깔고, `ShellMeta`와 `SignalLine` 안쪽이 그 위에서 자기 색을 다시 고른다.
   // 프로젝트 갈래만 재면 **가장 자주 서는 갈래**가 통째로 안 재어진 채 남는다: 셸은 열려
   // 있는데 우리가 아는 것은 안 도는 상태가 이 목록의 기본값이고(`shell-meta.tsx`), 그 행의

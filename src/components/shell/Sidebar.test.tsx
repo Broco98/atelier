@@ -274,13 +274,25 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
   it("신호등 띠 **아래**, nav **위**다", () => {
     // US 6이 정한 자리 그대로다. 순서가 뒤집히면 「어느 세계인가」가 nav 아래로 내려가
     // 목적지 하나처럼 읽힌다.
-    const strip = sidebar.indexOf("data-tauri-drag-region");
-    const segment = sidebar.indexOf("<ModeSwitch");
-    const nav = sidebar.indexOf("<nav");
-    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
+    //
+    // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
+    // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
+    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 모드 전환 < nav. 띠가 파일에 **하나뿐**인
+    // 것도 센다 — 갈래가 제 띠를 따로 그리면 앞의 비교가 그 띠를 안 본다.
+    expect(countOf(sidebar, "data-tauri-drag-region")).toBe(1);
+    const frameAt = sidebar.indexOf("function SidebarFrame(");
+    const frame = frameAt > -1 ? sidebar.slice(frameAt, sidebar.indexOf("\n}\n", frameAt)) : "";
+    const strip = frame.indexOf("data-tauri-drag-region");
+    const slot = frame.indexOf("{children}");
+    // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
+    const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
+    const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
+    const segment = app.indexOf("<ModeSwitch");
+    const nav = app.indexOf("<nav");
+    // **넷이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
     // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, segment, nav].every((at) => at > -1)).toBe(true);
-    expect(segment).toBeGreaterThan(strip);
+    expect([strip, slot, segment, nav].every((at) => at > -1)).toBe(true);
+    expect(slot).toBeGreaterThan(strip);
     expect(nav).toBeGreaterThan(segment);
   });
 
@@ -296,5 +308,50 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
     // 「Maison인데 목록만 Atelier」처럼 **한 자리만** 틀린 모양으로 나타나 눈에 안 띈다.
     expect(sidebar).not.toContain('"atelier"');
     expect(sidebar).not.toContain('"maison"');
+  });
+});
+
+// 설정에 들어가면 사이드바가 **설정 nav**로 바뀐다(UI개선 결정 21). 이 파일은 마크업 seam에 못
+// 서므로(맨 위 머리말) 갈래가 **어디에 섰는가**를 소스로 잰다 — 무엇이 그려지는지는 L3가 본다.
+describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
+  const sidebar = read("Sidebar.tsx");
+  const branchAt = sidebar.indexOf("if (currentSettingsItem !== null) {");
+  // 갈래 몸통 — 여는 줄부터 그 블록을 닫는 두 칸 들여쓴 `}`까지.
+  const branch = branchAt > -1 ? sidebar.slice(branchAt, sidebar.indexOf("\n  }\n", branchAt)) : "";
+
+  it("갈래가 훅을 **다 부른 뒤에** 선다", () => {
+    // 사이드바를 통째로 바꿔 끼우거나 훅 앞에서 갈라지면 늘 서 있어야 하는 알림 제목 배선
+    // (`useNotifyTitles`)이 설정에 있는 동안 멎는다 — 셸이 불러도 알림 제목이 낡거나 안 걸린다.
+    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이라 아래 비교가 읽은 것 없이 선다.
+    const lastHooks = ["useNotifyTitles(resolveTitle);", "useOpenBand(mode);"].map((hook) =>
+      sidebar.indexOf(hook),
+    );
+    expect([branchAt, ...lastHooks].every((at) => at > -1)).toBe(true);
+    for (const at of lastHooks) expect(branchAt).toBeGreaterThan(at);
+    // 갈래 뒤 사이드바 몸통에 훅이 또 서면 설정에서만 훅 수가 달라진다(React가 던진다).
+    const rest = sidebar.slice(branchAt, sidebar.indexOf("function sameBand"));
+    expect(rest.length).toBeGreaterThan(branch.length);
+    expect(rest).not.toMatch(/\buse[A-Z]\w*\(/);
+  });
+
+  it("그 갈래에는 돌아가기와 항목만 서고, 모드 전환·nav·띠·목록·바닥 Settings는 없다", () => {
+    expect(branch).toContain("<SettingsNav");
+    for (const gone of [
+      "<ModeSwitch",
+      "navItemsOf(",
+      "<AttentionBand",
+      "<SidebarWorkList",
+      'label="Settings"',
+    ]) {
+      expect(branch, gone).not.toContain(gone);
+    }
+  });
+
+  // 켜진 항목은 앱 셸이 내린 **원시값 하나**로 가른다. `<Link>`의 활성 매칭은 링크마다 주소를
+  // 구독해, 앱 셸이 구독 수를 셋으로 지킨 것(`AppShell.test.ts`)이 여기서 조용히 늘어난다.
+  it("항목의 켜짐이 `<Link>` 활성 매칭이 아니다", () => {
+    expect(sidebar).not.toContain("<Link");
+    expect(sidebar).not.toContain("activeProps");
+    expect(sidebar).toContain("SETTINGS_ITEMS.map(");
   });
 });

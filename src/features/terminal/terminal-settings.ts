@@ -38,7 +38,7 @@ export function applyTerminalSettings(terminal: TerminalSettings): void {
  * 흐르고 이유만 콘솔에 남긴다.
  *
  * **고칠 자리를 말하는 것은 설정 화면의 몫이다.** 같은 에러를 그 화면이 「다시 읽기」와 함께
- * 띄운다(`SettingsPage`의 `readError`). 여기서 화면 없는 알림을 새로 짓지 않는다.
+ * 띄운다(`SettingsPage.tsx`의 `SettingsFileGate`). 여기서 화면 없는 알림을 새로 짓지 않는다.
  */
 export async function loadTerminalSettings(): Promise<void> {
   try {

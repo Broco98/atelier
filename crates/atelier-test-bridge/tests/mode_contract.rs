@@ -165,6 +165,32 @@ fn maison에서_치운_room은_maison_아카이브로_간다() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 옮기기의 순서 파일은 **그 세계의 진행 중 루트에** 선다(UI개선 S1·S3) — Maison이면
+/// `maison/rooms/.order.json`이고, Atelier의 `works/.order.json`은 안 생긴다. 열거 테스트의
+/// `Reads::Slug`는 「찾았나」의 한 비트라 **읽기는 Maison, 쓰기는 Atelier**인 변형을 못 본다.
+///
+/// Atelier 쪽에도 같은 slug를 심는다 — 비워 두면 그 변형이 저쪽에서 `WorkNotFound`로 실패해
+/// 파일을 못 쓰고, 이 검사가 우연히 초록이 된다.
+#[test]
+fn maison에서_옮기면_room_루트의_순서_파일에만_쓴다() {
+    let home = temp_home("move");
+    plant(&home, "maison/rooms/finance", "금융");
+    plant(&home, "maison/rooms/study", "공부");
+    plant(&home, "works/finance", "금융 일");
+    plant(&home, "works/study", "공부 일");
+
+    let moved =
+        call(&home, "move_work", json!({ "mode": "maison", "slug": "finance", "pinned": true, "before": null }))
+            .unwrap();
+
+    assert_eq!(slugs(&moved), ["finance", "study"], "Maison 목록이 새 순서로 안 왔다");
+    assert!(home.join("maison/rooms/.order.json").is_file(), "Room 루트에 순서 파일이 안 섰다");
+    assert!(!home.join("works/.order.json").exists(), "Maison 옮기기가 Atelier 순서 파일을 썼다");
+    assert!(!home.join("maison/.order.json").exists(), "순서 파일이 모드 홈에 섰다 — 진행 중 루트여야 한다");
+
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// **Maison의 ⇧⇧에는 프로젝트 층이 없다** (결정 17, US 49·50).
 ///
 /// 루트를 가르는 것만으로는 안 되는 자리다 — 프로젝트 등록부(`projects/`)는 모드를 안 받는
@@ -338,6 +364,10 @@ fn calls() -> Vec<(&'static str, Value, Reads)> {
         ("set_work_title", json!({ "slug": "finance", "title": "새 이름" }), Reads::Slug),
         ("set_work_status", json!({ "slug": "finance", "status": "done" }), Reads::Slug),
         ("set_work_pinned", json!({ "slug": "finance", "pinned": true }), Reads::Slug),
+        // 순서 파일도 쓰지만 **쓰기 갈래로 안 넓힌다** — 두 세계의 상대 경로가 달라
+        // (`maison/rooms/.order.json` · `works/.order.json`) `WROTE_PROBE` 한 장의 모양에 안 맞는다.
+        // 쓴 자리는 `maison에서_옮기면_room_루트의_순서_파일에만_쓴다`가 잰다.
+        ("move_work", json!({ "slug": "finance", "pinned": true, "before": null }), Reads::Slug),
         ("archive_work", json!({ "slug": "finance" }), Reads::Slug),
         ("remove_work", json!({ "slug": "finance" }), Reads::Slug),
         ("read_spec_file", json!({ "slug": "finance", "path": "overview.md" }), Reads::Slug),

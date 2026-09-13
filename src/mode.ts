@@ -1,5 +1,7 @@
 import { Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
 import { navItems, type NavKey } from "@/components/shell/nav-items";
+import { SETTINGS_ENTRY } from "@/features/settings/pages";
+import { isAtOrUnder } from "@/lib/path-prefix";
 
 /**
  * 어느 세계의 것인가. **화면이 아니라 루트를 가르는 축**이다(결정 1) — 같은 컴포넌트가 다른
@@ -39,8 +41,8 @@ interface NavItem {
  *
  * **`to`가 `NavTo`와 같은 이유로 좁은 유니온이다** — 팔레트가 고른 줄의 주소를 그대로
  * `navigate({ to })`로 넘기므로(`hit-target.ts`), `string`으로 두면 라우터가 주소를 못 좁혀
- * 그 자리에서 L0가 빨개진다. 설정 한 줄만 `NavTo` 밖이라 여기서 얹는다 — 그 리터럴이 아래
- * `SETTINGS_PLACE`의 것과 갈리면 그 선언의 `satisfies`가 잡는다.
+ * 그 자리에서 L0가 빨개진다. 설정 한 줄만 `NavTo` 밖이라 여기서 얹는다 — 아래 `SETTINGS_PLACE`와
+ * 같은 상수(`SETTINGS_ENTRY`)를 읽으므로 둘이 갈릴 수 없다.
  */
 interface PaletteDestination {
   readonly key: string;
@@ -51,7 +53,7 @@ interface PaletteDestination {
    * 설정 한 줄을 아이콘 없이 얹으면 `destinationIcon`이 아니라 **그 선언이** L0에 걸린다.
    */
   readonly icon: LucideIcon;
-  readonly to: NavTo | "/settings";
+  readonly to: NavTo | typeof SETTINGS_ENTRY;
 }
 
 /**
@@ -134,8 +136,14 @@ const MAISON_NAV = [
 
 /**
  * 설정은 **모드 밖이다.** `settings.json`이 공용이고(결정 20의 「루트 바로 아래 그대로」),
- * `/settings`에는 모드 접두사가 안 붙는다 — 그래서 `modeOf`가 이 주소에서 모드를 못 읽고,
- * 그때 세그먼트는 떠나온 모드를 켠다.
+ * `/settings`에는 모드 접두사가 안 붙는다 — 그래서 `modeOf`가 이 주소에서 모드를 못 읽는다.
+ * 설정에는 세그먼트가 없고(UI개선 결정 21), 설정이 지니는 모드는 떠나온 모드 하나다 — 「앱으로
+ * 돌아가기」가 그리로 간다.
+ *
+ * 목적지는 **첫 항목이 아니라 `/settings` 그대로다** — 첫 항목으로 치환하는 것은 라우트이고
+ * (`settings.index.tsx`), 설정 안에서 이 줄을 고르면 무동작인 것은 셸의 문(`navigate-guarding-settings.ts`)이
+ * 이 주소를 알아보기 때문이다. 그래서 리터럴을 여기 다시 적지 않고 그쪽 `SETTINGS_ENTRY`를 그대로
+ * 쓴다 — 둘이 갈리면 가드가 조용히 안 문다.
  *
  * 팔레트 목록의 **맨 뒤**인 것은 `destinations.ts`의 그 자리 그대로다 — 코어가 건넨 순서로
  * 줄을 세우므로 그 순서가 사이드바를 위에서 아래로 읽은 순서와 같다.
@@ -146,7 +154,7 @@ const SETTINGS_PLACE = {
   // 라벨·라우트·글리프 셋 다 **사이드바 바닥의 그 버튼에서 온 값이다** — 설정으로 가는 길이
   // 둘인데 이름이나 도착지나 얼굴이 갈리면 「같은 곳」이라는 것이 화면에서 안 읽힌다.
   icon: Settings,
-  to: "/settings",
+  to: SETTINGS_ENTRY,
 } as const satisfies PaletteDestination;
 
 /**
@@ -189,9 +197,7 @@ export const ALL_MODES = Object.keys(TABLE) as Mode[];
  * 「Maison이 아니면 Atelier」 말고 다른 규칙을 세울 수 없다.
  */
 export function modeOf(pathname: string): Mode {
-  return pathname === MAISON_PREFIX || pathname.startsWith(`${MAISON_PREFIX}/`)
-    ? "maison"
-    : "atelier";
+  return isAtOrUnder(pathname, MAISON_PREFIX) ? "maison" : "atelier";
 }
 
 /**
@@ -296,17 +302,15 @@ const MODELESS_PLACES = ["/", SETTINGS_PLACE.to] as const;
  * 이 주소가 선 화면의 세계. **모드를 안 싣는 주소에는 `null`이다** — `modeOf`와 다른 점이
  * 그것 하나다.
  *
- * 「지금 어느 세계를 보고 있나」를 묻는 자리(셸의 nav, 그리고 세그먼트)는 이 함수에 **마지막
- * 모드를 얹어** 쓴다 — `shell-store`의 `shellMode`가 그 합성이다. 설정 화면에서도 무언가는
- * 켜져야 하고 그때 켜지는 것은 떠나온 모드인데, `modeOf`로 물으면 `/settings`가 언제나
- * Atelier라 그 화면에서 nav가 통째로 저쪽 세계가 된다. 「어느 세계에 있었다고 적어 둘
+ * 「지금 어느 세계를 보고 있나」를 묻는 자리(셸의 nav·세그먼트·팔레트, 그리고 설정의 「앱으로
+ * 돌아가기」)는 이 함수에 **마지막 모드를 얹어** 쓴다 — `shell-store`의 `shellMode`가 그 합성이다.
+ * 설정이 지니는 모드는 떠나온 모드인데, `modeOf`로 물으면 `/settings`가 언제나 Atelier라 Maison에서
+ * 들어온 설정이 Atelier로 돌아가고 팔레트가 저쪽 세계를 뒤진다. 「어느 세계에 있었다고 적어 둘
  * 것인가」를 묻는 자리는 아무것도 안 얹고 이 함수 그대로다 — 적는 일에는 기본값이 거짓말이
  * 된다.
  */
 export function placeModeOf(pathname: string): Mode | null {
   if (modeOf(pathname) === "maison") return "maison";
-  const outside = MODELESS_PLACES.some(
-    (place) => pathname === place || pathname.startsWith(`${place}/`),
-  );
+  const outside = MODELESS_PLACES.some((place) => isAtOrUnder(pathname, place));
   return outside ? null : "atelier";
 }

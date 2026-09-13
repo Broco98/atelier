@@ -144,8 +144,9 @@ pub fn read(root: &Path) -> Result<Settings, String> {
 ///
 /// **전제 하나 — 쓰기는 한 번에 하나다.** tmp 이름이 고정이라(코어의 `.work.json.tmp`와
 /// 같은 규칙), 두 쓰기가 겹치면 한쪽의 rename이 다른 쪽이 아직 쓰는 중인 tmp를 옮길 수
-/// 있다. 지금 그 경로는 없다 — 설정을 쓰는 곳이 저장 하나뿐이다. 설정 화면이 연타를
-/// 허용하게 되면 그 화면이 직렬화를 지거나 여기 이름에 고유값을 붙여야 한다.
+/// 있다. 저장 버튼이 구획마다 생긴 뒤로 그 전제는 프런트의 `saveSettingsSection`이 진다
+/// (`src/features/settings/save-section.ts` — 모든 구획 저장이 한 줄을 선다). 그 줄 밖에서
+/// 설정을 쓰는 길이 생기면 여기 이름에 고유값을 붙여야 한다.
 pub fn write(root: &Path, settings: &Settings) -> Result<(), String> {
     // 첫 저장이 `~/.atelier`가 아직 없는 상태일 수 있다.
     std::fs::create_dir_all(root).map_err(|e| format!("설정 폴더를 만들지 못했습니다: {e}"))?;

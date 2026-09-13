@@ -136,7 +136,8 @@ describe("저장이 열리는 조건", () => {
   });
 
   // `settings.rs`가 tmp 이름을 고정해 두고 「쓰기는 한 번에 하나」를 전제로 적었다 —
-  // 겹치면 한쪽의 rename이 남이 아직 쓰는 중인 tmp를 옮긴다. 직렬화는 이 화면의 몫이다.
+  // 겹치면 한쪽의 rename이 남이 아직 쓰는 중인 tmp를 옮긴다. 구획 사이의 직렬화는
+  // `saveSettingsSection`이 지고, 이 칸은 한 구획 안의 연타를 막는다.
   it("이미 쓰는 중이면 잠긴다", () => {
     expect(state({ saving: true })).toBe(false);
   });
@@ -468,5 +469,18 @@ describe("훅 구획의 화면", () => {
     const html = renderHooks([hook({ error: "설정 파일이 잘못됐습니다 — 손대지 않았습니다" })]);
     expect(html).toContain("손대지 않았습니다");
     expect(html).toContain("확인 못 함");
+  });
+});
+
+// UI개선 결정 22 — 항목 하나가 페이지 하나가 되면서 제목은 페이지(`SettingsPage`)가 든다.
+// 구획이 제 제목을 또 들면 머리 `Settings / 터미널` 바로 밑에 같은 낱말이 한 번 더 서고, 그
+// 글자는 `SETTINGS_ITEMS`가 아닌 리터럴이라 이름을 고치는 날 한쪽만 바뀐다.
+describe("구획은 제 제목을 들지 않는다", () => {
+  const headings = (html: string) => html.match(/<h[1-6][\s>]/g) ?? [];
+
+  it("터미널 · 알림 · 에이전트 훅 구획 어디에도 제목 요소가 없다", () => {
+    expect(headings(render(settings()))).toEqual([]);
+    expect(headings(renderNotifications(withNotifications()))).toEqual([]);
+    expect(headings(renderHooks([hook()]))).toEqual([]);
   });
 });
