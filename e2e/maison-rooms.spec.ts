@@ -1,9 +1,10 @@
 import { expect, test } from "./evidence";
-import { ROOMS, ROOM_SPEC_FILE_BODIES, SPEC_FALLBACK_BODY } from "./fixtures";
+import { MAISON_LANDING_ROOM, ROOMS, ROOM_SPEC_FILE_BODIES, SPEC_FALLBACK_BODY } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 목록의 첫 줄은 **초안 Room**이다(픽스처의 `ROOMS`) — 정규화가 그것을 건너뛰는지를 아래
-// 둘째 검사가 본다. 여기서 여는 것은 문서를 가진 둘째다.
+// 정규화가 고르는 Room은 **초안**이다(`MAISON_LANDING_ROOM`) — 그것을 **안** 건너뛰는지를
+// 아래 검사가 본다(UI개선 결정 6). 문서를 여는 검사들이 여는 것은 문서를 가진 둘째다.
+const draft = MAISON_LANDING_ROOM;
 const [, room] = ROOMS;
 const [ROOM_DOC] = room.specFiles;
 
@@ -71,13 +72,53 @@ test("`/maison/rooms/<slug>`로 가면 그 Room의 문서가 선다", async ({ p
 // 무선택 주소의 정규화도 Atelier와 **같은 몸통**을 탄다(`routes/-list-slug.ts`). 메모리
 // 히스토리에서 이미 재지만, 그쪽은 캐시를 손으로 심는다 — 진짜 `queryClient`가 IPC로
 // Maison 목록을 받아 와 그것으로 고르는 길은 여기서만 돈다.
-test("`/maison/rooms`는 초안을 건너뛴 첫 Room으로 정규화된다", async ({ page }) => {
+//
+// **첫 줄이 초안이어도 그것이 열린다**(UI개선 결정 6). 보이는 첫 줄과 열리는 것이 같아야 한다 —
+// 사이드바의 강조가 그 첫 줄에 서는 것까지 함께 잰다. 주소만 보면 강조가 둘째 줄에 서도 초록이다.
+//
+// **Atelier가 아니라 Maison으로 잰다.** fixture의 Atelier `WORKS`엔 초안이 없고 첫 줄이 고정이며,
+// `list_works`가 모드 표에 있어 테스트마다 못 덮는다 — Atelier 쪽은 `router.test.ts`가 든다.
+test("`/maison/rooms`는 첫 줄이 초안이어도 그 Room으로 정규화된다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/maison/rooms");
 
   // 리다이렉트는 번들이 뜬 **뒤** 일어나므로 `goto`가 돌아온 시점에는 아직 목록 주소다.
-  await expect.poll(() => new URL(page.url()).pathname).toBe(`/maison/rooms/${room.slug}`);
-  await expect(page.getByText(ROOM_BODY)).toBeVisible();
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/maison/rooms/${draft.slug}`);
+  // 강조가 **그 초안 행**에 선다 — 보이는 첫 줄과 열린 것이 같은 행이다. 강조는 행 상자의
+  // `selected-row`다(`SidebarWorkList`의 `WorkRow`). 이름 버튼의 부모가 그 행 상자다.
+  const rowOf = (title: string) =>
+    page.locator("aside").getByRole("button", { name: title, exact: true }).locator("xpath=..");
+  await expect(rowOf(draft.title)).toHaveClass(/\bselected-row\b/);
+  await expect(rowOf(room.title)).not.toHaveClass(/\bselected-row\b/);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 초안은 따로 접힌 구역이 아니라 **`Rooms` 구획 안에** 선다(UI개선 결정 5). 정적 마크업
+// (`SidebarWorkList.test.tsx`)이 이미 재지만, 그쪽은 구획 함수에 목록을 손으로 넘긴다 — 진짜
+// IPC 목록이 셸의 사이드바까지 내려와 그 모양으로 서는 것은 여기서만 보인다.
+test("초안 Room이 `Rooms` 구획 안에 서고 초안 구획 머리가 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/maison/rooms/${room.slug}`);
+
+  const aside = page.locator("aside");
+  // 두 Room이 **다** 이 구획의 수에 든다 — 초안이 따로 빠졌다면 `Rooms 1`이다.
+  const header = aside.getByRole("button", { name: `Rooms ${ROOMS.length}`, exact: true });
+  await expect(header).toBeVisible();
+  // 구획 머리는 이 하나뿐이다(고정된 Room이 없다). 초안 머리가 되살아나면 둘이 된다.
+  await expect(aside.locator("[data-section]")).toHaveCount(1);
+  await expect(aside.getByRole("button", { name: /^초안 \d+$/ })).toHaveCount(0);
+
+  // 초안 행이 **그 구획의 속** 안에 있다 — 구획의 속은 머리의 다음 형제다(`works-sidebar.spec.ts`).
+  const body = header.locator("xpath=following-sibling::div[1]");
+  const draftRow = body.getByRole("button", { name: draft.title, exact: true });
+  await expect(draftRow).toBeVisible();
+  // 받은 순서 그대로다 — 초안이 첫 줄이다(`ROOMS` 머리말).
+  const titles = body.locator("[data-title]");
+  await expect(titles).toHaveText(ROOMS.map((one) => one.title));
+  // 접힌 구역에 가려 있지 않다 — 정말 눌린다.
+  await draftRow.click();
+  await expect(page).toHaveURL(`/maison/rooms/${draft.slug}`);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

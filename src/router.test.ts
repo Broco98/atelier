@@ -34,8 +34,9 @@ import type { ArchiveEntry } from "./features/archive/types";
 // origin을 함께 넘기는 이유 — 클라이언트로 판단한 라우터는 origin이 비어 있으면
 // window.origin을 읽는데, node에는 window 자체가 없어 ReferenceError가 난다.
 
-// 정규화는 목록에서 slug와 status만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
-// "draft:" 접두사를 붙인 slug는 초안이 된다 (기본 선택이 건너뛰는 대상).
+// 정규화는 목록에서 slug만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
+// status를 남기는 것은 초안을 목록에 **세우기** 위해서다: "draft:" 접두사를 붙인 slug는 초안이
+// 되고, 기본 선택은 그것을 **안** 건너뛴다(UI개선 결정 6).
 const works = (...slugs: Array<string>) =>
   slugs.map((raw) => {
     const draft = raw.startsWith("draft:");
@@ -146,7 +147,7 @@ async function goForward(
 }
 
 // 앱을 켜면 작업 화면이다 — 작업이 본업이고 프로젝트는 설정에 가깝다.
-// 진입은 무선택 주소를 한 번 더 거치므로 그쪽 규칙(초안 건너뛰기 포함)을 그대로 물려받는다.
+// 진입은 무선택 주소를 한 번 더 거치므로 그쪽 규칙을 그대로 물려받는다.
 describe("진입 정규화", () => {
   it("'/'로 들어오면 작업 목록의 첫 항목까지 정규화된다", async () => {
     const { router } = setup(["/"]);
@@ -276,17 +277,18 @@ describe("무선택 주소의 정규화", () => {
   });
 });
 
-// 사이드바 목록은 초안을 접힌 별도 구역에 둔다. 기본 선택이 거기로 떨어지면 본문에는 열려 있는데
-// 목록 어디에도 강조가 없다 — 그래서 아무도 고르지 않았을 때만 초안을 건너뛴다.
-// 직접 고른 초안은 건드리지 않는다.
-describe("기본 선택은 초안을 건너뛴다", () => {
-  it("마지막으로 보던 것이 없으면 초안이 아닌 첫 항목으로 간다", async () => {
+// 초안도 다른 작업들 사이에 서므로(UI개선 결정 5) 기본 선택이 초안을 가리지 않는다(UI개선 결정 6) —
+// **기억한 것 → 목록 첫 줄**, 그것이 초안이어도. 한때 초안을 건너뛰었는데, 그것은 초안이
+// 접힌 별도 구역에 살아 거기로 떨어지면 강조가 안 보였기 때문이다. 구역이 사라진 지금
+// 건너뛰면 도리어 보이는 첫 줄과 열리는 것이 갈린다.
+describe("기본 선택은 초안이어도 목록 첫 줄이다", () => {
+  it("마지막으로 보던 것이 없으면 첫 줄이 초안이어도 그리로 간다", async () => {
     const { router } = setup(["/works"], { works: works("draft:초안", "진행중"), lastWork: null });
     await router.load();
-    expect(router.state.location.pathname).toBe("/works/진행중");
+    expect(router.state.location.pathname).toBe("/works/초안");
   });
 
-  it("초안밖에 없으면 첫 초안으로 간다 — 빈 화면보다는 낫다", async () => {
+  it("초안밖에 없으면 첫 초안으로 간다", async () => {
     const { router } = setup(["/works"], {
       works: works("draft:초안-a", "draft:초안-b"),
       lastWork: null,
@@ -313,13 +315,13 @@ describe("Maison 무선택 주소의 정규화", () => {
     expect(router.state.location.pathname).toBe("/maison/rooms/work-b");
   });
 
-  it("처음 여는 것이면 초안이 아닌 첫 Room으로 간다", async () => {
+  it("처음 여는 것이면 첫 줄의 Room으로 간다 — 초안이어도", async () => {
     const { router } = setup(["/maison/rooms"], {
       works: works("draft:초안", "진행중"),
       lastRoom: null,
     });
     await router.load();
-    expect(router.state.location.pathname).toBe("/maison/rooms/진행중");
+    expect(router.state.location.pathname).toBe("/maison/rooms/초안");
   });
 
   it("Room이 하나도 없으면 정규화하지 않고 머문다", async () => {

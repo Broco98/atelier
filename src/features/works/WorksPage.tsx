@@ -306,7 +306,7 @@ function WorksPage({
   const followLink = useCallback((path: string) => onSelectFile(path, true), [onSelectFile]);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/works.index.tsx).
-  // "기본 선택은 초안을 건너뛴다"는 규칙도 그쪽 pickSlug가 들고 있다.
+  // 「기억한 것 → 목록 첫 줄」 규칙도 그쪽 pickSlug가 들고 있다.
   const selected = works.find((w) => w.slug === selectedSlug) ?? null;
 
   // **마지막으로 고른 작업을 붙들고 있는다.** 목록이 한 프레임이라도 이 작업을 잃으면

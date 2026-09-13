@@ -27,10 +27,10 @@ const MARQUEE_SPEED = 50; // px/s
 const TITLE_FADE = 12; // px
 
 // 접기는 "설정"이라 영속한다 — 이 앱의 "설정은 영속, 위치는 세션" 원칙에서 사이드바 접힘과 같은 쪽이다.
-// 초안만 기본 접힘이다: 백로그를 상시 노출하지 않는 것이 초안 구역을 만든 이유다.
+// 한때 초안 구역의 접힘(`sidebar-drafts-open`)도 여기 있었다 — 구역이 걷히면서(UI개선 결정 5) 키도
+// 걷었다. 남은 값은 읽지 않고 버려 둔다: 지울 이유가 없고, 지우는 코드는 영영 남는다.
 const PINNED_OPEN_KEY = "sidebar-pinned-open";
 const WORKS_OPEN_KEY = "sidebar-works-open";
-const DRAFTS_OPEN_KEY = "sidebar-drafts-open";
 
 // 사이드바에 상주하는 목록. 어느 화면에 있든 그대로 있고, 항목을 누르면 그 항목의 화면으로
 // 간다 — **어느 세계의 목록인가는 `mode`가 정한다**(Atelier `작업` · Maison `Rooms`).
@@ -100,9 +100,6 @@ function SidebarWorkList({
   const [worksOpen, setWorksOpen] = useState(
     () => localStorage.getItem(WORKS_OPEN_KEY) !== "0",
   );
-  const [draftsOpen, setDraftsOpen] = useState(
-    () => localStorage.getItem(DRAFTS_OPEN_KEY) === "1",
-  );
 
   useEffect(() => {
     localStorage.setItem(PINNED_OPEN_KEY, pinnedOpen ? "1" : "0");
@@ -110,9 +107,6 @@ function SidebarWorkList({
   useEffect(() => {
     localStorage.setItem(WORKS_OPEN_KEY, worksOpen ? "1" : "0");
   }, [worksOpen]);
-  useEffect(() => {
-    localStorage.setItem(DRAFTS_OPEN_KEY, draftsOpen ? "1" : "0");
-  }, [draftsOpen]);
 
   // 어느 항목을 강조할지는 URL이 정한다 — 셸은 그것을 비출 뿐이다 (AppShell의 activeKey와 같은 규칙).
   //
@@ -131,13 +125,12 @@ function SidebarWorkList({
   const sectionsOpen: SectionsOpen = {
     pinned: pinnedOpen,
     works: worksOpen,
-    drafts: draftsOpen,
   };
   const sections = splitWorkSections(works, sectionsOpen);
   const { visible } = sections;
   // 어느 구획을 접었는지만 아래에서 올라온다 — 어느 setState인지는 여기서 고른다.
   const toggleSection = (section: keyof SectionsOpen) => {
-    ({ pinned: setPinnedOpen, works: setWorksOpen, drafts: setDraftsOpen })[section]((v) => !v);
+    ({ pinned: setPinnedOpen, works: setWorksOpen })[section]((v) => !v);
   };
   // 목록에 없는 슬러그는 강조하지 않는다 — 지워진 작업을 가리키는 주소로 들어온 순간이 있다
   const selectedSlug = works.some((work) => work.slug === openSlug) ? openSlug : null;
@@ -151,8 +144,8 @@ function SidebarWorkList({
   const hoverTimer = useRef<number | null>(null);
   // visible에서 찾는다 — works가 아니다. 작업이 지워질 때뿐 아니라 **화면에서만 빠질 때**도
   // 카드가 따라 사라져야 한다. 행이 언마운트되면 mouseleave가 오지 않아 카드를 닫을 사람이
-  // 없고, 앵커가 문서에서 떨어져 위치 계산이 0,0으로 무너진다. (예: 초안이 접힌 채로
-  // 호버 중인 작업의 상태가 draft로 바뀌면 그 행이 접힌 구역으로 옮겨져 사라진다)
+  // 없고, 앵커가 문서에서 떨어져 위치 계산이 0,0으로 무너진다. (예: `고정`이 접힌 채로
+  // 호버 중인 작업을 고정하면 그 행이 접힌 구획으로 옮겨져 사라진다)
   const hovered = visible.find((work) => work.slug === hoveredSlug) ?? null;
 
   const closeCard = () => {
@@ -304,8 +297,8 @@ export function WorkSectionList({
   onTogglePin: (work: WorkView) => void;
   renderSubrow: (work: WorkView) => ReactNode;
 }) {
-  const { pinned, main, drafts } = sections;
-  // 세 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 셋이 된다.
+  const { pinned, main } = sections;
+  // 두 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 둘이 된다.
   const row = (work: WorkView) => (
     <WorkRow
       key={work.slug}
@@ -322,7 +315,7 @@ export function WorkSectionList({
   );
   return (
     <>
-      {/* '고정' 헤더도 고정된 것이 있을 때만 — '초안'과 같은 규칙이다(결정 82) */}
+      {/* '고정' 헤더는 고정된 것이 있을 때만 — 아무것도 없는 구획의 헤더는 자리만 먹는다(결정 82) */}
       {pinned.length > 0 && (
         <>
           <SectionHeader
@@ -337,7 +330,7 @@ export function WorkSectionList({
       )}
 
       {/* 상주 목록의 헤더는 목록이 비어도 남는다 — 섹션이 있다는 사실 자체가 정보다.
-          **라벨이 세계를 탄다**(US 17): Atelier `작업` · Maison `Rooms`. 형제인 `고정`·`초안`은
+          **라벨이 세계를 탄다**(US 17): Atelier `작업` · Maison `Rooms`. 형제인 `고정`은
           상태의 이름이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이다. */}
       <SectionHeader
         label={listLabelOf(mode)}
@@ -366,20 +359,6 @@ export function WorkSectionList({
           main.map(row)
         )}
       </SectionBody>
-
-      {/* '초안' 헤더는 초안이 있을 때만 — 아무것도 없는 섹션의 헤더는 자리만 먹는다 */}
-      {drafts.length > 0 && (
-        <>
-          <SectionHeader
-            label="초안"
-            className="mt-3"
-            open={open.drafts}
-            count={drafts.length}
-            onToggle={() => onToggleSection("drafts")}
-          />
-          <SectionBody open={open.drafts}>{drafts.map(row)}</SectionBody>
-        </>
-      )}
     </>
   );
 }

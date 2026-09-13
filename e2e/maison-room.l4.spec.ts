@@ -135,7 +135,7 @@ function plant(home: string, relative: string, title: string): void {
     join(dir, "work.json"),
     JSON.stringify({
       title,
-      // `active`여야 상주 목록에 선다 — `draft`는 접힌 초안 구획으로 간다.
+      // 상태는 목록 자리를 안 가른다(초안도 같은 구획에 선다) — 흔한 쪽을 둔다.
       status: "active",
       createdAt: "2026-09-08T00:00:00Z",
       // **프로젝트 0개다.** 워크트리가 없어야 아카이빙이 git을 안 탄다(임시 홈에는 저장소가

@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "./evidence";
-import { PROJECTS, ROOMS, WORKS } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROJECTS, ROOMS, WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
-// 목록의 첫 줄은 초안 Room이고, 무선택 주소(`/maison/rooms`)의 정규화가 고르는 것은 둘째다
-// (`fixtures.ts`의 `ROOMS` 머리말). 세그먼트가 데려다 놓는 자리가 그 둘째다.
-const [draft, room] = ROOMS;
+// 세그먼트가 데려다 놓는 자리는 무선택 주소의 정규화가 고르는 Room이다(`MAISON_LANDING_ROOM`).
+// `room`은 그것이 아닌 둘째 — 거기서 출발해 첫 줄로 돌아오는 길을 잰다.
+const landing = MAISON_LANDING_ROOM;
+const [, room] = ROOMS;
 // 출발점. `/projects`도 무선택 주소라 첫 프로젝트로 정규화된다 — 뒤로가기가 돌아올 자리를
 // 못박으려면 그 정규화가 끝난 주소를 알아야 한다.
 const [project] = PROJECTS;
@@ -33,7 +34,7 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
 
   // 목적지는 그 세계의 **첫 화면**이다 — 아직 Maison에 가 본 적이 없어 기억할 마지막 주소가
   // 없다(`modeSwitchTarget`). 그 첫 화면이 무선택 주소라 도착하자마자 한 번 더 정규화된다.
-  await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
 
   // nav가 **둘**이다. `Projects`가 없는 것은 빠뜨린 게 아니라 이 세계에 프로젝트가 없기
@@ -46,18 +47,20 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
 
   const aside = page.locator("aside");
   // 상주 목록의 머리가 `Rooms`다. 접근성 이름에 개수가 함께 들어간다 — 라벨과 옅은 숫자가
-  // 같은 버튼 안이다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 규격).
-  await expect(aside.getByRole("button", { name: "Rooms 1", exact: true })).toBeVisible();
-  // 개수는 픽스처에서 파생한다 — 숫자를 적어 두면 `WORKS`에 줄이 늘 때 이 부재 검사가 없는
-  // 이름을 찾아 늘 초록이 된다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 식).
-  const atelierMainHeader = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
-  await expect(aside.getByRole("button", { name: atelierMainHeader, exact: true })).toHaveCount(0);
+  // 같은 버튼 안이다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 규격). 초안도 이 구획에
+  // 서므로(UI개선 결정 5) 두 Room이 다 수에 든다.
+  await expect(
+    aside.getByRole("button", { name: `Rooms ${ROOMS.length}`, exact: true }),
+  ).toBeVisible();
+  await expect(aside.getByRole("button", { name: /^작업 \d+$/ })).toHaveCount(0);
 
   // 그리고 그 목록에 **정말 이 세계의 것**이 서 있다. 반대쪽 증거(Atelier work이 없다)가
   // 함께 있어야 한다: 프런트가 한 자리에서 **저쪽 세계의 값**을 실으면 그것은 어디서도
   // 오류가 아니라(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다), 머리만 `Rooms`이고
   // 줄은 저쪽 것인 화면이 된다.
-  await expect(aside.getByRole("button", { name: room.title, exact: true })).toBeVisible();
+  for (const one of ROOMS) {
+    await expect(aside.getByRole("button", { name: one.title, exact: true })).toBeVisible();
+  }
   for (const work of WORKS) {
     await expect(aside.getByRole("button", { name: work.title, exact: true })).toHaveCount(0);
   }
@@ -98,23 +101,17 @@ test("설정 화면에서도 세그먼트는 떠나온 세계를 켠다", async 
 // 리터럴 검사만 빨개진다. **정말 눌러 보는 자리는 여기뿐이다** — 그 되돌림이 살아 있으면
 // Maison에서 Room을 누를 때마다 `/works/<slug>`로 가서 nav도 목록도 통째로 Atelier가 된다.
 //
-// 지금 서 있는 Room이 아닌 줄(초안 구획의 첫 줄)을 누른다 — 같은 줄을 누르면 주소가 안 움직인
-// 것과 「아무 일도 안 일어났다」가 구분되지 않는다.
+// 지금 서 있는 Room이 아닌 줄(`Rooms` 첫 줄의 초안)을 누른다 — 같은 줄을 누르면 주소가 안
+// 움직인 것과 「아무 일도 안 일어났다」가 구분되지 않는다.
 test("Maison에서 Room 행을 누르면 Maison 안에 머문다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/maison/rooms/${room.slug}`);
   await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
 
-  // **초안 구획은 기본이 접힘이다**(`SidebarWorkList`의 `DRAFTS_OPEN_KEY`). 접힌 동안에도
-  // 행은 DOM에 남아 있어 로케이터는 잡히지만 `inert`와 0높이에 가려 눌리지 않는다 — 머리를
-  // 먼저 눌러 편다. 펴진 것을 함께 재는 것은, 접힘 기본값이 바뀌는 날 이 줄이 조용히
-  // 「접는」 동작이 되어 아래 클릭이 다시 안 닿는 것을 여기서 잡기 위해서다.
+  // 한때 여기서 접힌 초안 구획을 먼저 폈다. 초안이 `Rooms` 안에 서면서(UI개선 결정 5) 펼 머리가
+  // 없다 — 초안 행이 다른 Room과 같은 자리에서 곧장 눌린다.
   const aside = page.locator("aside");
-  await aside.getByRole("button", { name: "초안 1", exact: true }).click();
-  await expect(aside.getByRole("button", { name: "초안 1", exact: true })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
+  const [draft] = ROOMS;
 
   await aside.getByRole("button", { name: draft.title, exact: true }).click();
   await expect(page).toHaveURL(`/maison/rooms/${draft.slug}`);

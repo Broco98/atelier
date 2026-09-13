@@ -18,7 +18,7 @@ import type { WorkView } from "./types";
 // 정보 전용이다 — 누를 수 있는 것을 넣지 않는다. 클릭 대상이 생기면 마우스가 행에서 카드로
 // 건너가는 경로(safe triangle)를 살려둬야 하고, 열림 상태의 소유가 행에서 카드로 넘어간다.
 //
-// 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 숫자 단축키로 작업을 고르는 경로에서는
+// 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 키보드로 작업을 고르는 경로(팔레트)에서는
 // 이 정보가 보이지 않는다. 감수한다.
 export function WorkCard({ mode, work }: { mode: Mode; work: WorkView }) {
   const meta = STATUS_META[work.status];
