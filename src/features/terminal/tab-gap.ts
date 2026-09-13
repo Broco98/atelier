@@ -1,3 +1,5 @@
+import { isInPlaceGap } from "./shell-registry";
+
 // 탭 줄 위의 포인터가 **몇 번째 틈**인가(결정 11 · ui-improvement 스펙 §6). DOM을 안 읽는
 // 순수 함수다 — 기하는 탭 줄이 끌기를 시작할 때 한 번 재서 넘기고(`ShellTabs`), 여기는
 // 그 숫자만 본다. 그래서 DOM 없는 기본 환경에서 표로 잰다(tab-gap.test.ts).
@@ -27,8 +29,8 @@ export interface TabStripGeometry {
  * 넘으면 그 칸 뒤다.
  *
  * `null`인 경우가 셋이다: 줄 상자 밖(`spec` 칸 · `+` · 조작 위) · 셸 칸이 없음 · **끄는 칸의
- * 양옆 틈**. 마지막은 놓아도 제자리라(레지스트리 `moveShell`도 같은 상태를 돌려준다) 선을
- * 세우면 화면이 「여기 놓인다」고 말해 놓고 아무것도 안 하는 셈이다.
+ * 양옆 틈**. 마지막은 놓아도 제자리라(레지스트리 `isInPlaceGap` — `moveShell`이 같은 판정으로
+ * 같은 상태를 돌려준다) 선을 세우면 화면이 「여기 놓인다」고 말해 놓고 아무것도 안 하는 셈이다.
  */
 export function tabGap(geometry: TabStripGeometry, clientX: number, scrollLeft: number): number | null {
   const { tabs, view, from } = geometry;
@@ -37,7 +39,7 @@ export function tabGap(geometry: TabStripGeometry, clientX: number, scrollLeft: 
 
   const x = clientX + scrollLeft;
   const gap = tabs.filter((tab) => (tab.left + tab.right) / 2 < x).length;
-  return gap === from || gap === from + 1 ? null : gap;
+  return isInPlaceGap(from, gap) ? null : gap;
 }
 
 /** 틈 선의 폭(px). 그리는 쪽(`ShellTabs`의 `w-px`)과 같은 값이다. */

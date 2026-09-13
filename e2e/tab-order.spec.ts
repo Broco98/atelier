@@ -56,7 +56,8 @@ async function nameShells(page: Page, names: string[]): Promise<void> {
 
 /**
  * 칸 `from`을 눌러 문턱을 넘긴다. 옆으로 12px은 **제 칸 안**이라 틈이 아직 없다 — 제자리
- * 틈에는 선이 안 선다. 받침이 있는 화면이면 그것이 선 것으로 문턱을 확인한다.
+ * 틈에는 선이 안 선다. 문턱은 두 화면 공통인 body의 끄는 중 표시로 확인한다(`/terminal`에는
+ * 받침이 없다).
  */
 async function pressAndCross(page: Page, from: number) {
   const box = await boxOf(page, from);
@@ -119,7 +120,8 @@ test.describe("work 화면", () => {
     // ⌘2가 **보이는** 첫 셸이다(⌘1은 spec). 옛 순서면 「하나」다.
     await page.keyboard.press("Meta+2");
     await expect.poll(() => litName(page)).toBe("둘");
-    // ⌃Tab이 보이는 순서의 다음 칸이다. 옛 순서면 「하나」 다음인 「셋」이 아니라 「둘」 다음 「셋」.
+    // ⌃Tab이 보이는 순서의 다음 칸이다 — 새 순서(둘·하나·셋)면 「둘」 다음은 「하나」다. 옛
+    // 순서(하나·둘·셋)였다면 「셋」이 켜진다.
     await page.keyboard.press("Control+Tab");
     await expect.poll(() => litName(page)).toBe("하나");
 
@@ -190,6 +192,8 @@ test.describe("work 화면", () => {
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
   //
   // 셸이 여덟이라 줄이 가로로 스크롤된다(결정 20) — 그래도 틈이 맞는지를 **놓아서** 본다.
+  // 스크롤은 **누른 뒤에** 한 칸만큼 더 민다: 누른 순간과 움직이는 순간의 `scrollLeft`가 달라야
+  // 내용 좌표(`tab-gap.ts`)가 실제로 쓰인다 — 같으면 뷰포트 좌표로 재고 셈해도 초록이다.
   test("끄는 동안 줄이 안 넘치고, 스크롤된 줄에서도 틈이 맞는다", async ({ page }) => {
     const names = Array.from({ length: MAX_SHELLS }, (_, at) => `셸${at + 1}`);
     await openWork(page, names);
@@ -219,16 +223,29 @@ test.describe("work 화면", () => {
       await expect.poll(async () => (await rowOf(page)).pageSpill, { timeout: 5000 }).toBeLessThanOrEqual(0);
       const before = await rowOf(page);
 
-      // 끄는 두 칸(끝의 둘)이 보이게 줄을 **끝까지 민다** — 켜진 칸이 옮겨 가 있어 줄이 스스로
-      // 거기 와 있지 않다. 이 폭들에서는 줄이 이미 넘쳐 스크롤이 0이 아니어야 이 검사가
-      // 「스크롤된 줄에서도」를 잰다.
-      const scrolled = await page.locator("[data-tab-strip]").evaluate((strip) => {
-        strip.scrollLeft = strip.scrollWidth;
-        return strip.scrollLeft;
-      });
-      expect(scrolled, at).toBeGreaterThan(0);
+      // 끄는 칸(끝에서 둘째)이 보이게, 끝에서 **반 칸 모자라게** 줄을 민다 — 켜진 칸이 옮겨 가
+      // 있어 줄이 스스로 거기 와 있지 않다. 이 폭들에서는 줄이 이미 넘쳐 스크롤이 0이 아니어야
+      // 이 검사가 「스크롤된 줄에서도」를 잰다. 반 칸인 것은 넘침이 한 칸보다 작은 폭(1280)이
+      // 있어서고, 4분의 1 칸을 넘으면 아래 포인터가 뷰포트 좌표로는 다른 틈으로 읽힌다.
+      const strip = page.locator("[data-tab-strip]");
+      const step = await shellTabs(page)
+        .nth(MAX_SHELLS - 1)
+        .evaluate((cell) => cell.getBoundingClientRect().width);
+      const pressedAt = await strip.evaluate((el, half) => {
+        const max = el.scrollWidth - el.clientWidth;
+        el.scrollLeft = max - Math.min(half, max - 1);
+        return el.scrollLeft;
+      }, Math.ceil(step / 2));
+      expect(pressedAt, at).toBeGreaterThan(0);
 
       await pressAndCross(page, MAX_SHELLS - 2);
+      // 누른 채 끝까지 민다 — 누를 때 잰 기하가 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸
+      // 앞(끄는 칸의 제자리 틈)으로 읽혀 선이 안 선다.
+      const movedTo = await strip.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+        return el.scrollLeft;
+      });
+      expect(movedTo, at).toBeGreaterThan(pressedAt);
       await moveToGap(page, MAX_SHELLS);
 
       const row = await rowOf(page);

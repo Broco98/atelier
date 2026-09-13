@@ -172,7 +172,6 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
   // 결정 11 — **이 화면도 탭을 끌어 순서를 바꾼다.** 떨굴 분할이 없어 소비자는 탭 줄 하나다.
   // 제스처는 기능 폴더 밖 공용 모듈이라 `features/works`를 안 부른다(위 import 검사 그대로).
   it("탭을 끄는 자리와 틈 소비자를 이 화면이 준다", () => {
-    expect(source).toContain('import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";');
     expect(source).toContain("if (shellId !== null) armDrag({ kind: \"shell\", owner, shellId }, from);");
     expect(source).toContain("slot={slot}");
     expect(source).toContain("onSlot={hoverSlot}");

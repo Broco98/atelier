@@ -83,9 +83,9 @@ interface ShellTabsProps {
    * work 화면의 것이었다). 이제 그 화면도 순서를 바꾸려고 끌므로(결정 11) 선택으로 두면
    * 한 화면이 빼먹어도 컴파일되고 조용히 안 끌린다.
    *
-   * **드래그 모듈도 스토어도 여기서 import하지 않는다.** 이 줄은 상태와 콜백만 받는 그림이다
-   * (머리말) — 끌기를 거는 것, 틈을 적는 것, 놓았을 때 옮기는 것은 스토어를 이미 구독하는
-   * 화면이 준다. 제스처는 기능 폴더 밖 `@/lib/pointer-drag`에 살아 두 화면 다 딛는다.
+   * **드래그 모듈도 스토어도 여기서 import하지 않는다.** 이 줄이 스스로 하는 것은 누른 동안
+   * 제 칸 사각형을 재고 포인터 아래 틈 번호를 셈하는 데까지다 — 끌기를 거는 것, 틈을 적는 것,
+   * 놓았을 때 옮기는 것은 스토어를 이미 구독하는 화면이 준다. 제스처는 기능 폴더 밖 `@/lib/pointer-drag`에 살아 두 화면 다 딛는다.
    */
   onDragTab: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
   /**
@@ -173,7 +173,13 @@ function ShellTabs({
   // 셸 칸을 누른 동안의 줄 기하(`tab-gap.ts`). **누를 때 한 번 재고** 손을 떼면 버린다 —
   // 움직일 때마다 재면 포인터 이동마다 레이아웃을 읽고, 버리지 않으면 다음에 문서 칸을
   // 끌 때 옛 기하로 틈이 선다.
-  const geometry = useRef<TabStripGeometry | null>(null);
+  //
+  // **같은 값을 두 곳에 둔다 — 읽는 쪽이 둘이라서다.** 틈 선은 그리는 중에 읽으므로 상태
+  // (`geometry`)에서 읽고 — ref를 그리는 중에 읽으면 선이 서는지가 다시 그려진 순서라는
+  // 우연에 걸린다 — 포인터 이벤트는 회차를 넘어 같은 핸들러 묶음에서 읽으므로 ref(`pressed`)
+  // 에서 읽는다(위 `latest`와 같은 방향). 둘을 바꾸는 자리는 아래 `press` 하나다.
+  const [geometry, setGeometry] = useState<TabStripGeometry | null>(null);
+  const pressed = useRef<TabStripGeometry | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
 
   const tabHandlers = useMemo(
@@ -181,15 +187,25 @@ function ShellTabs({
       onSelect: (id: number) => latest.current.onSelect(id),
       onClose: (id: number) => latest.current.onClose(id),
       onDragTab: (id: number, from: { clientX: number; clientY: number }) => {
-        geometry.current = measureStrip(stripRef.current, shellIds.current.indexOf(id));
-        if (geometry.current) {
+        const press = (next: TabStripGeometry | null) => {
+          pressed.current = next;
+          setGeometry(next);
+        };
+        const measured = measureStrip(stripRef.current, shellIds.current.indexOf(id));
+        press(measured);
+        if (measured) {
+          // **이 정리는 끌기가 아니라 누름의 것이다** — 끄는 중 표시와 드래그 상태는 제스처
+          // (`armDrag`)가 한 곳에서 걷고, 여기서 버리는 것은 이 줄이 잰 자기 칸 사각형뿐이다.
+          // 수명도 다르다: Esc로 끌기를 걷어도 손은 아직 눌린 채라 기하는 뗄 때까지 산다
+          // (그 사이의 틈 알림은 `hoverSlot`이 끄는 중이 아니라서 버린다).
+          //
+          // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
+          // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
           const drop = () => {
-            geometry.current = null;
+            press(null);
             window.removeEventListener("pointerup", drop);
             window.removeEventListener("pointercancel", drop);
           };
-          // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
-          // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
           window.addEventListener("pointerup", drop);
           window.addEventListener("pointercancel", drop);
         }
@@ -197,14 +213,14 @@ function ShellTabs({
       },
       onSlotMove: (event: React.PointerEvent) => {
         const strip = stripRef.current;
-        if (!geometry.current || !strip) return;
-        latest.current.onSlot(tabGap(geometry.current, event.clientX, strip.scrollLeft));
+        if (!pressed.current || !strip) return;
+        latest.current.onSlot(tabGap(pressed.current, event.clientX, strip.scrollLeft));
       },
       onSlotLeave: () => {
-        if (geometry.current) latest.current.onSlot(null);
+        if (pressed.current) latest.current.onSlot(null);
       },
       onSlotDrop: () => {
-        if (geometry.current) latest.current.onDropSlot();
+        if (pressed.current) latest.current.onDropSlot();
       },
     }),
     [],
@@ -354,13 +370,13 @@ function ShellTabs({
             900px 창에서 줄이 넘친다(여유 3.5px). 높이는 이 상자(28px) 안이다: 스크롤 상자라
             세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자 밖으로 안 나간다(`gapLineLeft`).
 
-            기하는 누른 순간 잰 ref다 — 틈 번호(`slot`)가 바뀌어 다시 그려질 때 읽는다. */}
-        {slot !== null && geometry.current && (
+            기하는 누른 순간 잰 **상태**다 — 그리는 중에 ref를 읽지 않는다(위 `geometry` 주석). */}
+        {slot !== null && geometry && (
           <span
             aria-hidden
             data-tab-gap={slot}
             className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-primary"
-            style={{ left: gapLineLeft(geometry.current, slot) }}
+            style={{ left: gapLineLeft(geometry, slot) }}
           />
         )}
       </div>

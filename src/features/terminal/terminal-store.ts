@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { dragStore } from "@/lib/pointer-drag";
+import { dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
@@ -225,10 +225,9 @@ export function selectShell(id: number): void {
  * 순서는 메모리에만 있다(결정 12).
  */
 export function dropShellOnSlot(): void {
-  const { source, slot } = dragStore.state;
-  if (source?.kind !== "shell" || source.shellId === null || slot === null) return;
-  const id = source.shellId;
-  terminalStore.setState((state) => moveShell(state, id, slot));
+  const move = shellMoveOf(dragStore.state);
+  if (move === null) return;
+  terminalStore.setState((state) => moveShell(state, move.shellId, move.slot));
 }
 
 /**

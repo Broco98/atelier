@@ -730,6 +730,17 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
 }
 
 /**
+ * 자리 `from`의 칸을 틈 `gap`에 놓으면 **제자리**인가 — 제 양옆 틈(`from`·`from + 1`)이다.
+ *
+ * **이 판정은 여기 하나다.** 옮기는 쪽(`moveShell`)과 선을 그리는 쪽(탭 줄의 `tabGap`)이 함께
+ * 부른다 — 각자 적으면 한쪽이 바뀔 때 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이
+ * 안 선다.
+ */
+export function isInPlaceGap(from: number, gap: number): boolean {
+  return gap === from || gap === from + 1;
+}
+
+/**
  * 칸을 **그 화면 셸들 사이의 틈**으로 옮긴다(결정 11 · ui-improvement 스펙 §6). `gap`은
  * 0..n이다 — 0이 그 화면 첫 칸 앞, n이 마지막 칸 뒤이고, 끄는 칸도 세어진 채의 번호다.
  *
@@ -751,7 +762,7 @@ export function moveShell(state: ShellsState, id: number, gap: number): ShellsSt
 
   const mine = state.shells.filter((one) => one.owner === shell.owner);
   const from = mine.indexOf(shell);
-  if (gap === from || gap === from + 1 || gap < 0 || gap > mine.length) return state;
+  if (isInPlaceGap(from, gap) || gap < 0 || gap > mine.length) return state;
 
   const rest = mine.filter((one) => one !== shell);
   // 틈 번호는 끄는 칸이 **아직 있는** 줄에서 센 것이다 — 그 뒤쪽 틈은 빠진 한 칸만큼 당겨진다.

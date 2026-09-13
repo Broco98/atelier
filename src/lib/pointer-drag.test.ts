@@ -1,8 +1,9 @@
 /// <reference types="node" />
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync, type Dirent } from "fs";
+import { join, relative } from "path";
 import { fileURLToPath } from "url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { dragStore, hoverSlot } from "./pointer-drag";
+import { clearHalf, dragStore, hoverHalf, hoverSlot, shellMoveOf } from "./pointer-drag";
 import type { DragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
@@ -52,8 +53,9 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
 
 // 한 눌림을 두 소비자가 나눠 본다(ui-improvement 스펙 S10) — 탭 줄은 「몇 번째 틈」을, 본문
 // 받침은 「어느 절반」을 적는다. **둘이 동시에 켜지면 놓은 곳이 이긴다가 깨진다**: 떼는 순간
-// 두 소비자가 각자 제 값을 보고 순서도 바꾸고 분할도 켠다. 그 불변식을 값을 적는 자리에 건다.
-describe("탭 줄의 틈", () => {
+// 두 소비자가 각자 제 값을 보고 순서도 바꾸고 분할도 켠다. 그 불변식을 **값을 적는 유일한
+// 자리**(이 모듈의 `hover`)에 건다 — 적는 함수 셋이 모두 거기를 지난다.
+describe("한 눌림의 두 소비자", () => {
   const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 1 };
 
   beforeEach(() => {
@@ -70,23 +72,66 @@ describe("탭 줄의 틈", () => {
 
   // 문턱 전에는 드래그가 아니다 — 누른 채 탭 위를 조금 움직여도 틈이 서면 안 된다. Esc로
   // 취소한 뒤(상태가 비었다) 손을 떼기 전까지 움직여도 마찬가지다.
-  it("끄는 중이 아니면 아무것도 안 적는다", () => {
+  it("끄는 중이 아니면 틈을 안 적는다", () => {
     const before = dragStore.state;
     hoverSlot(2);
     expect(dragStore.state).toBe(before);
   });
 
-  it("틈이 켜지면 절반이 꺼진다", () => {
-    dragStore.setState(() => ({ source: shell, half: "left", slot: null }));
-    hoverSlot(1);
-    expect(dragStore.state).toMatchObject({ half: null, slot: 1 });
+  // 두 방향을 한 표에 둔다 — 한쪽 적는 함수만 상대를 끄면 다른 쪽 줄이 빨개진다.
+  it.each([
+    { name: "틈이 켜지면 절반이 꺼진다", from: { half: "left", slot: null }, act: () => hoverSlot(1), to: { half: null, slot: 1 } },
+    { name: "절반이 켜지면 틈이 꺼진다", from: { half: null, slot: 2 }, act: () => hoverHalf("right"), to: { half: "right", slot: null } },
+    { name: "틈을 끄면 절반은 그대로다", from: { half: "left", slot: null }, act: () => hoverSlot(null), to: { half: "left", slot: null } },
+    { name: "절반을 끄면 틈은 그대로다", from: { half: null, slot: 2 }, act: () => clearHalf(), to: { half: null, slot: 2 } },
+  ] as const)("$name", ({ from, act, to }) => {
+    dragStore.setState(() => ({ source: shell, ...from }));
+    act();
+    expect(dragStore.state).toMatchObject(to);
   });
 
-  // 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다(`hoverHalf`와 같은 이유).
-  it("같은 틈이면 같은 상태다", () => {
-    dragStore.setState(() => ({ source: shell, half: null, slot: 1 }));
+  // 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다 — 본문엔 마크다운
+  // 트리가 통째로 들어 있다.
+  it.each([
+    { name: "같은 틈", from: { half: null, slot: 1 }, act: () => hoverSlot(1) },
+    { name: "같은 절반", from: { half: "right", slot: null }, act: () => hoverHalf("right") },
+    { name: "이미 꺼진 절반", from: { half: null, slot: 1 }, act: () => clearHalf() },
+  ] as const)("$name이면 같은 상태다", ({ from, act }) => {
+    dragStore.setState(() => ({ source: shell, ...from }));
     const before = dragStore.state;
-    hoverSlot(1);
+    act();
     expect(dragStore.state).toBe(before);
+  });
+
+  // **적는 자리가 이 모듈 하나인가.** 다른 모듈이 스토어를 직접 고치면 위 표를 안 지나서
+  // 두 값이 함께 켜질 수 있다. fail-closed: 파일을 못 읽으면 빨갛고, 이 모듈의 양성이 먼저 선다.
+  it("드래그 상태를 고치는 곳이 이 모듈뿐이다", () => {
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const sources = (function walk(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    })(root);
+    expect(sources.length).toBeGreaterThan(50);
+    const writers = sources
+      .filter((path) => readFileSync(path, "utf8").includes("dragStore.setState"))
+      .map((path) => relative(root, path).split("\\").join("/"));
+    expect(writers).toEqual(["lib/pointer-drag.ts"]);
+  });
+});
+
+// 놓을 때 탭 줄이 읽는 몫 — 터미널 스토어가 드래그 상태의 모양을 몰라도 되게 여기서 꺼낸다.
+describe("탭 줄에 놓인 셸", () => {
+  const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 7 };
+
+  it.each([
+    { name: "셸을 틈 위에서 놓으면 그 둘이다", state: { source: shell, half: null, slot: 3 }, want: { shellId: 7, slot: 3 } },
+    { name: "틈이 없으면 없다", state: { source: shell, half: "left", slot: null }, want: null },
+    { name: "끄는 중이 아니면 없다", state: { source: null, half: null, slot: null }, want: null },
+    { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "atelier:", shellId: null }, half: null, slot: 0 }, want: null },
+  ] as const)("$name", ({ state, want }) => {
+    expect(shellMoveOf(state)).toEqual(want);
   });
 });

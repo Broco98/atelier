@@ -15,7 +15,8 @@ import { Store } from "@tanstack/react-store";
  * 다시 그려진다.
  *
  * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽의 일이다
- * (`split-view.ts` · 탭 줄). 여기 있는 것은 그들이 적는 **칸**뿐이다.
+ * (`split-view.ts` · 탭 줄). 여기 있는 것은 그들이 적는 **칸**과, 그 칸에 적는 함수뿐이다 —
+ * 두 소비자의 값이 동시에 안 켜진다는 불변식을 한 곳에서 지키려고 적는 함수는 여기 모인다.
  */
 
 /** 본문의 어느 절반인가. 열이 아니라 **화면의 절반**이다 — 아직 분할이 아닐 때도 성립한다. */
@@ -50,8 +51,8 @@ export interface DragState {
    *
    * **한 눌림을 두 소비자가 나눠 본다**(S10) — 받침은 `half`를, 탭 줄은 이것을 적고, 떼는
    * 순간 포인터 아래의 소비자가 제 값을 읽는다. 그래서 **`half`와 동시에 켜지지 않는다**:
-   * 둘이 함께 켜져 있으면 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다. 적는 자리 둘(`hoverSlot` ·
-   * 분할 모듈의 `hoverHalf`)이 서로의 값을 끈다.
+   * 둘이 함께 켜져 있으면 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다. 그 판정은 이 모듈의
+   * `hover` 한 곳이 한다.
    */
   slot: number | null;
 }
@@ -144,18 +145,60 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
 }
 
 /**
- * 포인터가 탭 줄의 이 틈 위를 지난다(`null`이면 틈이 아닌 자리). **바뀔 때만 새 상태를
- * 만든다** — 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다.
+ * 한 눌림의 두 소비자(받침의 절반 · 탭 줄의 틈)가 값을 적는 **유일한 자리**다(ui-improvement
+ * 스펙 S10). 아래 적는 함수 셋이 모두 이것을 지나고, 이 모듈 밖에서는 `dragStore`를 고치지
+ * 않는다(pointer-drag.test.ts가 소스를 훑어 센다).
+ *
+ * - **한쪽이 켜지면 다른 쪽이 꺼진다.** 둘이 함께 켜져 있으면 떼는 순간 두 소비자가 각자 제 값을
+ *   보고 순서도 바꾸고 분할도 켠다 — 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다.
+ * - 끄는 것(`null`)은 **제 값만** 끈다 — 틈을 떠났다고 받침의 절반까지 꺼지면 안 된다.
+ * - **바뀔 때만 새 상태를 만든다** — 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로
+ *   다시 그려지고, 본문에는 마크다운 트리가 통째로 들어 있다.
+ */
+function hover(next: { half: SplitHalf | null } | { slot: number | null }): void {
+  dragStore.setState((state) => {
+    const half = "half" in next ? next.half : next.slot === null ? state.half : null;
+    const slot = "slot" in next ? next.slot : next.half === null ? state.slot : null;
+    return state.half === half && state.slot === slot ? state : { ...state, half, slot };
+  });
+}
+
+/**
+ * 포인터가 탭 줄의 이 틈 위를 지난다(`null`이면 틈이 아닌 자리).
  *
  * **끄는 중일 때만 적는다.** 탭 줄은 누른 순간부터 이동을 보고하는데(문턱은 여기서만 안다),
  * 문턱 전이나 Esc로 취소한 뒤에 틈이 서면 드래그가 아닌 눌림이 순서를 바꾼다.
- *
- * 틈이 켜지면 절반을 끈다 — 두 소비자의 값이 동시에 켜지지 않는다(`DragState.slot`).
  */
 export function hoverSlot(slot: number | null): void {
-  dragStore.setState((state) => {
-    if (state.source === null) return state;
-    if (state.slot === slot && (slot === null || state.half === null)) return state;
-    return { ...state, slot, half: slot === null ? state.half : null };
-  });
+  if (dragStore.state.source === null) return;
+  hover({ slot });
+}
+
+/**
+ * 포인터가 본문의 이 절반 위를 지난다. 받침(겹판)은 끄는 중에만 서므로 따로 거르지 않는다.
+ * 어느 절반인지를 **정하는 것**은 받는 쪽(`split-view.ts` · 겹판)이다 — 여기는 적기만 한다.
+ */
+export function hoverHalf(half: SplitHalf): void {
+  hover({ half });
+}
+
+/**
+ * 포인터가 겹판 **밖으로** 나갔다. 밝아짐을 끈다.
+ *
+ * **놓을 수 없는 자리인데 밝아 있으면 안 된다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
+ * 이라, 탭 줄로 되돌아가 손을 떼면 분할은 안 켜진다(거기서는 틈이 받는다 — `DragState.slot`).
+ * 그때까지 반쪽이 밝은 채면 화면이 「여기 놓인다」고 말해 놓고 다른 일을 하는 셈이다.
+ */
+export function clearHalf(): void {
+  hover({ half: null });
+}
+
+/**
+ * 탭 줄에서 손을 뗀 순간 옮길 것 — 끄는 것이 셸이고 틈이 켜져 있을 때만 있다. 받는 쪽(터미널
+ * 스토어)이 드래그 상태의 모양(원천 · 틈)을 몰라도 되게 여기서 꺼낸다.
+ */
+export function shellMoveOf(state: DragState): { shellId: number; slot: number } | null {
+  const { source, slot } = state;
+  if (source?.kind !== "shell" || source.shellId === null || slot === null) return null;
+  return { shellId: source.shellId, slot };
 }

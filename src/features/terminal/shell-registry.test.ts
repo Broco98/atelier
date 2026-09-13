@@ -14,6 +14,7 @@ import {
   markExited,
   markFailed,
   markSeen,
+  isInPlaceGap,
   MAX_SHELLS,
   moveShell,
   needsCloseConfirm,
@@ -2036,6 +2037,19 @@ describe("셸 탭을 틈으로 옮긴다", () => {
     const { state, ids } = four();
     expect(moveShell(state, ids[from], from)).toBe(state);
     expect(moveShell(state, ids[from], from + 1)).toBe(state);
+  });
+
+  // 제자리 판정은 **한 곳**이다 — 탭 줄의 틈 선(`tabGap`)도 이것을 불러 선을 안 세운다. 둘이
+  // 각자 적으면 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이 안 선다.
+  it.each([
+    [2, 1, false],
+    [2, 2, true],
+    [2, 3, true],
+    [2, 4, false],
+    [0, 0, true],
+    [0, 1, true],
+  ] as const)("%i번째 칸의 틈 %i은 제자리인가 — %s", (from, gap, inPlace) => {
+    expect(isInPlaceGap(from, gap)).toBe(inPlace);
   });
 
   it("모르는 id는 같은 상태다", () => {

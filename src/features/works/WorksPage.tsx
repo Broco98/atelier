@@ -52,9 +52,9 @@ import {
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
-import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
+import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
-import { clearHalf, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
+import { dropSplit, otherTab, specHeadLabel } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";

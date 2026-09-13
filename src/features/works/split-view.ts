@@ -1,5 +1,4 @@
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
-import { dragStore } from "@/lib/pointer-drag";
 import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
 
 /**
@@ -10,7 +9,8 @@ import type { DragKind, SplitHalf } from "@/lib/pointer-drag";
  * 반대 탭 · 열 머리 문서 이름)이다.
  *
  * **여기에 DOM 조회가 없다.** 놓일 절반을 정하는 것은 본문이 그리는 겹판이고(그 위를
- * 지나가는 포인터가 스스로 말한다), 이 모듈은 「어느 절반 위인가」만 상태에 적는다. 좌표로
+ * 지나가는 포인터가 스스로 말한다), 그 값을 상태에 적는 것은 `@/lib/pointer-drag`의
+ * `hoverHalf`다 — 탭 줄의 틈과 동시에 안 켜지는 판정이 거기 한 곳에 산다. 좌표로
  * 절반을 계산하면 본문 영역의 사각형을 여기서 알아야 한다.
  */
 
@@ -40,30 +40,6 @@ export function tabOfDrag(kind: DragKind): ViewTab {
  */
 export function otherTab(tab: ViewTab): ViewTab {
   return tab === "spec" ? "terminal" : "spec";
-}
-
-/**
- * 포인터가 이 절반 위를 지난다. **바뀔 때만 새 상태를 만든다** — 포인터 이동마다 새
- * 객체를 내면 본문이 그 빈도로 다시 그려지고, 거기엔 마크다운 트리가 통째로 들어 있다.
- *
- * 받침 위로 오면 **탭 줄의 틈을 끈다**(ui-improvement 스펙 S10) — 한 눌림의 두 소비자 값이
- * 동시에 켜지면 떼는 순간 순서도 바뀌고 분할도 켜진다(`DragState.slot`).
- */
-export function hoverHalf(half: SplitHalf): void {
-  dragStore.setState((state) =>
-    state.half === half && state.slot === null ? state : { ...state, half, slot: null },
-  );
-}
-
-/**
- * 포인터가 겹판 **밖으로** 나갔다. 밝아짐을 끈다.
- *
- * **놓을 수 없는 자리인데 밝아 있으면 안 된다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
- * 이라, 탭 줄로 되돌아가 손을 떼면 분할은 안 켜진다(거기서는 틈이 받는다 — `DragState.slot`).
- * 그때까지 반쪽이 밝은 채면 화면이 「여기 놓인다」고 말해 놓고 다른 일을 하는 셈이다.
- */
-export function clearHalf(): void {
-  dragStore.setState((state) => (state.half === null ? state : { ...state, half: null }));
 }
 
 /**
