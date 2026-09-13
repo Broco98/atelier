@@ -7,7 +7,7 @@ use crate::paths::{archive_in, projects_in, works_in};
 use crate::recent::read_recent;
 use crate::store::read_projects;
 use crate::works::{read_works, spec_dir, spec_files};
-use crate::{list_archive, list_archived_docs, Mode, Result, Work, WorkStatus};
+use crate::{list_archive, list_archived_docs, Mode, Result, Work};
 
 // **이 파일에는 결정 번호 두 벌이 산다.** 맨 `결정 N`은 이 검색을 지은 판(`spec-search`,
 // 이슈 #149)의 것이고, **`팔레트 결정 N`**은 그 뒤 판(`palette-key-and-home`, 이슈 #176)의
@@ -281,6 +281,7 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
 /// 팔레트가 같이 쓰는 한 함수이고 「보이는 첫 항목 = 무선택 정규화가 고르는 항목」이라는
 /// 등식(#58)이 그 순서에 매달려 있어서, **사이드바는 MRU가 아니다** — 행이 손 밑에서
 /// 움직이면 클릭 대상이 어긋난다. 그래서 정렬은 **이 층 안에서만** 하고 목록 함수는 안 건드린다.
+/// **거르는 것도 이 층이 따로 하지 않는다** — 빈 질의에 서는 작업은 목록 함수가 준 전부다(아래).
 ///
 /// **아카이브는 이 정렬 밖이다.** 친 질의에서만 서고, 활성 아래에 `list_archive`가 주는 순서
 /// (치운 순 → slug) 그대로 붙는다 — 아카이브 work을 여는 문이 별도 화면이라 이력에 그 slug가
@@ -292,13 +293,12 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
 /// 갈래를 순서까지 끌고 가면 **첫 타자에 작업 줄들이 서로 자리를 바꾼다**: 이 층에는
 /// 디바운스가 없어서 그 재배열이 즉시 일어난다.
 ///
-/// **빈 질의의 술어는 `pinned || status != Draft`다**(팔레트 결정 7). 화면 구획 함수
-/// (`work-sections.ts`)의 앞의 둘과 같은 정의이고, 거기서 **고정은 status와 무관하게 먼저
-/// 갈린다** — 고정된 초안은 고정 구획에 산다. `status != Draft`만 보면 그것을 떨어뜨리는데
-/// status 갈래가 넷(Draft·Active·Review·Done)이라 컴파일이 안 잡고, 실측 초안이 0건이라
-/// 실물에서도 티가 안 난다. **`status == Active`로 적으면 Review·Done까지 함께 죽는다.**
-/// 그리고 그것은 팔레트 결정 11(「고정이 MRU를 이긴다 — 선언이 관찰에 지면 고정을 켜는 행위가
-/// 아무것도 안 바꾸는 날이 생긴다」)과 정면으로 어긋난다.
+/// **빈 질의에는 상태 술어가 없다 — 모든 작업이 선다**(UI개선 결정 29). 한때
+/// `pinned || status != Draft`였다(팔레트 결정 7): 사이드바가 초안을 접힌 구역에 격리했으므로
+/// 팔레트도 첫 화면에서 뺐다. 그 구역이 사라져 초안이 다른 작업들 사이에 서면서(UI개선 결정 5)
+/// 술어를 걷었다 — 사이드바에 서는 것과 팔레트 빈 화면에 서는 것이 **같은 멤버십**이다.
+/// 초안이 뒤로 밀리지도 않는다: 이력에 없는 것들의 동점은 아래 안정 정렬이 목록 함수의
+/// 순서를 그대로 남긴다.
 ///
 /// **빈 질의는 아카이브 목록을 아예 안 부른다**(팔레트 결정 8). 부르면 실측(2026-09-07) 활성 18 +
 /// 아카이브 29 = 47줄이 나와 상한 20에서 **활성 18 + 아카이브 2**로 잘린다 — 치운 것과
@@ -315,13 +315,8 @@ fn work_hits(
     tokens: &[String],
 ) -> Result<Vec<SearchHit>> {
     let empty = query_is_empty(tokens);
-    let standing = |work: &Work| {
-        if empty {
-            work.pinned || work.status != WorkStatus::Draft
-        } else {
-            matches(&work.title, tokens)
-        }
-    };
+    // 빈 질의는 **아무것도 거르지 않는다**(UI개선 결정 29) — 위 머리말.
+    let standing = |work: &Work| empty || matches(&work.title, tokens);
     let mut works: Vec<Work> = read_works(works_root)?.into_iter().filter(standing).collect();
 
     // 이력에 **없는** 것은 무리 끝이다. 없는 slug를 청소하지 않는 것도 이 한 줄이 든다
@@ -1359,53 +1354,41 @@ mod tests {
         assert_eq!(rows(&search(&at.root, at.mode, "md", &[]).unwrap().hits).len(), 3);
     }
 
-    /// 팔레트 결정 7·11. **고정된 초안은 빈 질의에 선다.** 화면 구획 함수에서 고정은 상태와 무관하게
-    /// 먼저 갈리고, 「고정이 관찰을 이긴다」가 팔레트 결정 11이다 — 선언이 지면 고정을 켜는 행위가
-    /// 아무것도 안 바꾸는 날이 생긴다.
+    /// UI개선 결정 29. **고정 아닌 초안도 빈 질의에 선다** — 사이드바에서 초안이 따로 된 구역
+    /// 없이 다른 작업들 사이에 서므로(UI개선 결정 5) 팔레트도 그것을 다른 작업처럼 세운다.
+    /// 한때 이 검사는 정반대(`고정_아닌_초안은_빈_질의에_안_선다`)였다.
     ///
-    /// **아래 검사와 한 몸으로 묶지 않는다.** 합치면 둘이 서로를 가려, 술어를
-    /// `status != Draft`로만 적은 실수가 초록으로 지나간다.
+    /// **순서는 목록 함수의 것을 그대로 받는다** — 둘 다 이력에 없어 동점이고, 안정 정렬이라
+    /// 초안이라는 까닭으로 뒤로 밀리지 않는다. 만든 날을 갈라 두는 것은 그 순서가 slug로
+    /// 우연히 맞는 모양이 되지 않게 해서다.
     #[test]
-    fn 고정된_초안은_빈_질의에_선다() {
+    fn 고정_아닌_초안도_빈_질의에_선다() {
         let (_tmp, at) = roots();
-        work_full(&at.works, "고정초안", "고정된 초안", "2026-08-01", true, "draft");
+        work_full(&at.works, "초안", "그냥 초안", "2026-08-02", false, "draft");
+        work_full(&at.works, "도는것", "도는 작업", "2026-08-01", false, "active");
 
         assert_eq!(
             lines(&search(&at.root, at.mode, "", &[]).unwrap().hits),
-            vec!["작업 고정초안"]
+            vec!["작업 초안", "작업 도는것"]
         );
     }
 
-    /// 팔레트 결정 7. **고정 아닌 초안은 빈 질의에 안 선다.** 팔레트에는 층 안에 하위 구획이 없어서,
-    /// 초안이 진행 중인 것과 구별 없이 섞인다.
+    /// **빈 질의에 거르는 상태가 없다** — 넷(Draft·Active·Review·Done)이 고정 여부와 무관하게
+    /// 다 선다. 옛 술어(`pinned || status != Draft`)를 지키던 두 검사(`고정된_초안은…`·
+    /// `review와_done도…`)는 술어가 사라지면서 뜻이 이 한 줄로 접혔다: 상태로 거르는 무엇이
+    /// 되살아나면 그 갈래가 여기서 빠진다.
     #[test]
-    fn 고정_아닌_초안은_빈_질의에_안_선다() {
+    fn 빈_질의에_상태와_무관하게_모든_작업이_선다() {
         let (_tmp, at) = roots();
-        work_full(&at.works, "초안", "그냥 초안", "2026-08-01", false, "draft");
-        work(&at.works, "도는것", "도는 작업");
-
-        assert_eq!(
-            lines(&search(&at.root, at.mode, "", &[]).unwrap().hits),
-            vec!["작업 도는것"]
-        );
-        // **치면 나온다** — 빼는 것은 빈 화면의 자리 다툼 때문이지 초안을 감추려는 것이 아니다.
-        assert_eq!(
-            lines(&search(&at.root, at.mode, "그냥", &[]).unwrap().hits),
-            vec!["작업 초안"]
-        );
-    }
-
-    /// 팔레트 결정 7. **거르는 것은 초안 하나다** — review·done은 빈 질의에 그대로 선다. 술어를
-    /// `status == Active`로 적으면 그 둘이 함께 죽는데, 상태 갈래가 넷이라 컴파일이 안 잡는다.
-    #[test]
-    fn review와_done도_빈_질의에_선다() {
-        let (_tmp, at) = roots();
+        work_full(&at.works, "고정초안", "고정된 초안", "2026-08-05", true, "draft");
+        work_full(&at.works, "초안", "그냥 초안", "2026-08-04", false, "draft");
+        work_full(&at.works, "도는것", "도는 작업", "2026-08-03", false, "active");
         work_full(&at.works, "리뷰", "리뷰 중", "2026-08-02", false, "review");
         work_full(&at.works, "끝난것", "끝난 작업", "2026-08-01", false, "done");
 
         assert_eq!(
             lines(&search(&at.root, at.mode, "", &[]).unwrap().hits),
-            vec!["작업 리뷰", "작업 끝난것"]
+            vec!["작업 고정초안", "작업 초안", "작업 도는것", "작업 리뷰", "작업 끝난것"]
         );
     }
 
@@ -1413,7 +1396,7 @@ mod tests {
     /// 아카이브 29 = 47줄이 나와 상한 20에서 활성 18 + 아카이브 2로 잘린다 — 치운 것과 지금
     /// 것이 스무 번째 자리를 두고 다툰다.
     ///
-    /// **초안 검사에 묶지 않는다** — 하나가 다른 하나를 가린다.
+    /// **상태 멤버십 검사에 묶지 않는다** — 하나가 다른 하나를 가린다.
     #[test]
     fn 빈_질의에_아카이브_work은_안_선다() {
         let (_tmp, at) = roots();
