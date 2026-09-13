@@ -21,6 +21,7 @@ import {
   NO_SHELLS,
   openShell,
   placeHint,
+  placeOrigin,
   closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
@@ -880,12 +881,31 @@ describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모
     );
   });
 
-  // `+` 메뉴의 「모든 프로젝트」 옆 옅은 글자(결정 20). 이름을 적지 않고 **그 자리의 마지막
-  // 마디**를 읽는다 — 아래 소스 스캔이 그 이름의 리터럴을 문다.
-  it("옅은 경로는 기본 자리 경로의 마지막 마디 + `/`다", () => {
-    expect(placeHint(workDefaultOrigin("atelier", w(["atelier", "cli"])).cwd)).toBe(
-      `${"~/.atelier/works/w/trees".split("/").pop()}/`,
+  // 결정 18·19. `+` 메뉴의 「모든 프로젝트」와 묻지 않는 `+`는 ⌘T와 **같은 자리**다 — 그 규칙이
+  // 서는 곳이 `placeOrigin` 하나라 여기서 값으로 잰다. 세계·모양을 전부 돈다: 한 갈래만 기본
+  // 자리를 안 타면 그 모양의 work에서만 `+`와 ⌘T가 다른 자리에 연다.
+  it("「모든 프로젝트」는 ⌘T와 같은 자리, 프로젝트 줄은 그 워크트리다", () => {
+    for (const mode of ALL_MODES) {
+      for (const work of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
+        expect(placeOrigin(mode, work, { kind: "default" }), `${mode} ${work.worktrees.length}개`).toEqual(
+          workDefaultOrigin(mode, work),
+        );
+      }
+    }
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })).toEqual(
+      workShellOrigin("atelier", w(["atelier", "cli"]), "cli"),
     );
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "cli" })?.cwd).toBe(
+      "~/.atelier/works/w/trees/cli",
+    );
+    // 열린 사이 work이 바뀌어 고른 이름이 없으면 자리가 안 정해진다(결정 24).
+    expect(placeOrigin("atelier", w(["atelier", "cli"]), { kind: "project", project: "없음" })).toBeNull();
+  });
+
+  // `+` 메뉴의 「모든 프로젝트」 옆 옅은 글자(결정 20). 이름을 적지 않고 **그 자리의 마지막
+  // 마디**를 읽는다 — 제품 코드가 그렇다는 것은 아래 소스 스캔이 문다(테스트 파일은 안 본다).
+  it("옅은 경로는 기본 자리 경로의 마지막 마디 + `/`다", () => {
+    expect(placeHint(workDefaultOrigin("atelier", w(["atelier", "cli"])).cwd)).toBe("trees/");
     expect(placeHint("~/딴데/w/나무/")).toBe("나무/");
     // 최상위 터미널은 데이터 루트라 cwd가 없다 — 보일 경로가 없다.
     expect(placeHint(topTerminal("atelier").cwd)).toBeNull();
@@ -937,14 +957,17 @@ describe("고를 수 있는 프로젝트와 열리는 자리", () => {
 
   // **위 검사와 짝이다.** 「고를 것이 없다」만 재고 「그래서 어디에 여는가」를 안 재면 이 판이
   // 만든 것은 방어가 아니라 **눌러도 아무 일이 없는 `+`**다: 메뉴는 안 열리고(`asks`가 거짓),
-  // `onOpen(null)`은 `workShellOrigin`이 워크트리를 그대로 읽어 `null`을 줘서 조용히 끝난다.
-  // 둘이 한 함수(`shellTrees`)를 보는 것이 그 판을 막고, 그 사실을 여기서 값으로 잰다.
+  // 묻지 않는 `+`는 `onOpen({ kind: "default" })`로 기본 자리(`workDefaultOrigin` — `placeOrigin`
+  // 이 탄다)에 연다. 그 함수와 메뉴의 판단이 한 함수(`shellTrees`)를 보는 것이 「워크트리를 그대로
+  // 읽어 엉뚱한 곳에 연다」를 막고, 그 사실을 여기서 값으로 잰다. 진입 셸이 타는
+  // `workShellOrigin(…, null)`도 같은 자리여야 한다(스펙 §11) — 함께 잰다.
   it("Maison에서는 워크트리가 실려 와도 Room 폴더에서 연다", () => {
     for (const room of [w([]), w(["atelier"]), w(["atelier", "cli"])]) {
-      const origin = workShellOrigin("maison", room, null);
-      // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
-      expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
-      expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
+      for (const origin of [workDefaultOrigin("maison", room), workShellOrigin("maison", room, null)]) {
+        // `null`이 아니다 — `+`가 열 자리를 언제나 답한다
+        expect(origin?.cwd, `${room.worktrees.length}개`).toBe("~/.atelier/works/w");
+        expect(origin?.project, `${room.worktrees.length}개`).toBeNull();
+      }
     }
   });
 

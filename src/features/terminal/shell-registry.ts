@@ -320,6 +320,28 @@ export function workDefaultOrigin(mode: Mode, work: WorkView): ShellOrigin {
 }
 
 /**
+ * `+` 메뉴에서 **고른 것**. 「모든 프로젝트」와 프로젝트 이름이 모양으로 갈린다(스펙 §7 · S13).
+ *
+ * **「모든 프로젝트」를 `null`로 접지 않는다.** 메뉴의 `onPick`에서 `null`은 이미 「안 고르고
+ * 닫았다」다 — 둘을 한 값에 실으면 Esc가 셸을 연다. 그래서 기본 자리는 `null`이 아닌 값으로 온다.
+ *
+ * `default`라는 이름은 ⌘T와 같은 **기본 자리**라서다(결정 19) — 멀티 프로젝트 work에서는 그것이
+ * 「모든 프로젝트」이고, 묻지 않는 `+`(프로젝트 0·1개)도 같은 값으로 연다.
+ */
+export type ShellPlace = { kind: "default" } | { kind: "project"; project: string };
+
+/**
+ * `+`로 고른 자리를 셸이 뜰 자리로(결정 18·19). **「모든 프로젝트」는 ⌘T와 같은 함수다** — 둘이
+ * 다른 자리를 고르면 「⌘T와 `+`가 다르게 군다」가 되살아나고, 그 규칙이 설 곳이 여기 하나다.
+ * 프로젝트 줄은 그 워크트리고, 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) `null`이다.
+ */
+export function placeOrigin(mode: Mode, work: WorkView, place: ShellPlace): ShellOrigin | null {
+  return place.kind === "default"
+    ? workDefaultOrigin(mode, work)
+    : workShellOrigin(mode, work, place.project);
+}
+
+/**
  * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work과
  * Room은 기본 자리와 「안 고른」 자리가 같아야 한다 — 스펙 §11).
  */

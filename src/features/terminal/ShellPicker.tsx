@@ -1,16 +1,6 @@
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-
-/**
- * 메뉴에서 **고른 것**. 「모든 프로젝트」와 프로젝트 이름이 모양으로 갈린다(스펙 §7 · S13).
- *
- * **「모든 프로젝트」를 `null`로 접지 않는다.** `onPick`의 `null`은 이미 「안 고르고 닫았다」다 —
- * 둘을 한 값에 실으면 Esc가 셸을 연다. 그래서 기본 자리는 `null`이 아닌 값으로 온다.
- *
- * `default`라는 이름은 ⌘T와 같은 **기본 자리**라서다(결정 19) — 멀티 프로젝트 work에서는 그것이
- * 「모든 프로젝트」이고, 묻지 않는 `+`(프로젝트 0·1개)도 같은 값으로 연다.
- */
-export type ShellPlace = { kind: "default" } | { kind: "project"; project: string };
+import type { ShellPlace } from "./shell-registry";
 
 /**
  * `+`가 「어디에 띄울까」를 묻는 메뉴(결정 18·24).
@@ -51,18 +41,18 @@ function ShellPicker({
         move(1);
         break;
       case "ArrowUp":
-        // 포커스가 항목 밖이면(`at === -1`) 맨 아랫줄로 간다 — ↓의 맨 윗줄과 짝이다.
-        move(at === -1 ? 0 : -1);
+        // 포커스가 항목 밖이면 맨 아랫줄로 간다 — ↓가 맨 윗줄로 가는 것과 짝이다.
+        if (at === -1) items[items.length - 1]?.focus();
+        else move(-1);
         break;
-      // Esc는 **닫기만** 한다 — 바깥 클릭과 같은 `null`이다. 포커스는 `+`로 돌려준다: 메뉴가
-      // body 끝에 떠 있어서, 안 돌려주면 포커스가 문서 밖으로 떨어져 키보드가 길을 잃는다.
+      // Esc와 Tab은 **닫기만** 한다 — 바깥 클릭과 같은 `null`이다(Tab이 닫는 것은 메뉴 버튼의
+      // 관례다). 둘 다 포커스를 `+`로 돌려준다: 메뉴가 body 끝에 떠 있어서, 안 돌려주면 포커스든
+      // 항목이 사라지며 `<body>`로 떨어져 키보드가 길을 잃는다. Tab의 기본 동작은 아래에서 막는다 —
+      // 막지 않으면 사라지는 카드 안에서 다음 자리를 찾아 어디로 갈지 정해지지 않는다.
       case "Escape":
-        onPick(null);
-        anchorRef.current?.focus();
-        break;
-      // Tab은 메뉴를 닫는다(메뉴 버튼의 관례). 포커스가 떠 있는 카드에서 문서 끝으로 새지 않는다.
       case "Tab":
         onPick(null);
+        anchorRef.current?.focus();
         break;
       // Enter는 따로 안 받는다 — 항목이 `<button>`이라 브라우저가 클릭으로 바꾼다.
       default:
@@ -115,7 +105,9 @@ function Item({ onClick, children }: { onClick: () => void; children: ReactNode 
       // 항목 사이는 화살표로 옮긴다 — Tab 순서에는 안 선다(한 번의 Tab이 메뉴를 닫는다).
       tabIndex={-1}
       onClick={onClick}
-      className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
+      // **포커스도 호버와 같은 바탕이다**(결정 18 「맨 윗줄이 선택된 채」). 마우스로 연 메뉴에 준
+      // 스크립트 포커스는 `:focus-visible`에 안 걸려 윤곽이 안 그려진다 — 그래서 `focus:`다.
+      className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left outline-none transition-colors hover:bg-state-2 focus:bg-state-2"
     >
       {children}
     </button>

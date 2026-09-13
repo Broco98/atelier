@@ -4,13 +4,13 @@ import { agentMarkOf } from "@/components/ui/agent-mark";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
-import type { ShellPlace } from "./ShellPicker";
 import { signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
   placeHint,
   runningOn,
+  type ShellPlace,
   shellCapNotice,
   shellEndLabels,
   shellRowName,

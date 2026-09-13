@@ -36,9 +36,9 @@ import {
   shellForNav,
   shellNavFromWindow,
   shellsEmptied,
+  placeOrigin,
   shellsOf,
   workDefaultOrigin,
-  workShellOrigin,
   workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
@@ -507,8 +507,8 @@ function WorksPage({
       // `workShellOrigin`과 같은 기준을 봐야 해서 그 옆에 산다 — 이 화면의 세계 판정이
       // 전부 `mode`를 함수에 넘기는 모양인 것도 같은 이유다(아래 셸 조회들).
       projects={workShellProjects(mode, panelWork)}
-      // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(결정 20). ⌘T와 **같은 함수**에서 읽는다 —
-      // 보이는 글자와 실제로 여는 자리가 한 값이다.
+      // 메뉴 맨 윗줄 「모든 프로젝트」 옆의 옅은 경로(결정 20). ⌘T와 「모든 프로젝트」가 여는
+      // 자리와 **같은 함수**(`workDefaultOrigin` — `placeOrigin`이 그것을 탄다)에서 읽는다.
       defaultCwd={workDefaultOrigin(mode, panelWork).cwd}
       // 맨 앞 고정 칸(결정 7). **켜짐은 「본문이 문서인가」이지 마지막으로 누른 칸이 아니다** —
       // 분할이면 이 값과 아래 `showing`이 함께 참이고, 그때 켜진 탭이 둘이다(결정 12).
@@ -526,14 +526,10 @@ function WorksPage({
       // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
       onClose={requestCloseShell}
       onOpen={(place) => {
-        // 「모든 프로젝트」(와 묻지 않는 `+`)는 ⌘T와 **같은 함수**로 연다(결정 18·19) — 둘이
-        // 다른 자리를 고르면 「⌘T와 `+`가 다르게 군다」가 되살아난다. 프로젝트 줄은 그 워크트리다.
-        // 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 — 그때는
-        // 열지도, 본문을 옮기지도 않는다(결정 24).
-        const origin =
-          place.kind === "default"
-            ? workDefaultOrigin(mode, panelWork)
-            : workShellOrigin(mode, panelWork, place.project);
+        // 「모든 프로젝트」(와 묻지 않는 `+`)가 ⌘T와 같은 자리라는 규칙은 `placeOrigin`이 든다
+        // (결정 18·19). 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) 자리가 안 정해진다 —
+        // 그때는 열지도, 본문을 옮기지도 않는다(결정 24).
+        const origin = placeOrigin(mode, panelWork, place);
         if (!origin) return;
         openNewShell(origin);
         onSelectTab("terminal");

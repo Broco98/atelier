@@ -283,6 +283,26 @@ export async function readIpcRecord(page: Page): Promise<IpcRecord | null> {
 }
 
 /**
+ * 지금까지 나간 `pty_spawn`의 **cwd를 부른 순서대로**. 인자에 cwd가 없으면 그 호출을 통째로
+ * 남긴다 — `undefined`로 접으면 「안 실렸다」와 「못 읽었다」가 같은 얼굴이 된다.
+ *
+ * 기록에서 읽는 것은 픽스처의 답이 자리와 무관해서다(그것이 실물 그대로다) — 답으로는 셸이
+ * 어디서 떴는지가 안 갈린다.
+ */
+export async function spawnedCwds(page: Page): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls
+    .filter((call) => call.startsWith("pty_spawn "))
+    .map((call) => /"cwd":"([^"]*)"/.exec(call)?.[1] ?? `(cwd가 없다: ${call})`);
+}
+
+/**
+ * 경로 한 단계 위 — 「모든 프로젝트」(워크트리들의 부모)와 Work 폴더(`specDir`의 부모)의
+ * 기대값을 픽스처 경로에서 **파생한다**(폴더 이름을 검사에 안 적는다).
+ */
+export const parentPath = (path: string): string => path.slice(0, path.lastIndexOf("/"));
+
+/**
  * IPC 기록에서 **무엇인가가 나타나기를** 기다린다. 하네스가 백엔드 흉내를 내려면 브라우저가
  * 난수로 지은 번호(구독 핸들러 id · 채널 id)를 알아야 하는데, 그 번호는 앱이 실제로 그
  * 호출을 내보낸 뒤에야 기록에 남는다.

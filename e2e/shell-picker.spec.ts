@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, parentPath, spawnedCwds, unknownIpcCalls } from "./harness";
 
 // 티켓 09(#222) — **`+` 메뉴에 「모든 프로젝트」와 키보드**(결정 18·20, 스펙 §7 · S13).
 //
@@ -14,22 +14,13 @@ import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } f
 
 const [singleWork, plainWork, multiWork] = WORKS;
 
-/** 「모든 프로젝트」 — 워크트리들의 부모. 기대값은 픽스처의 경로에서 **파생한다**(이름을 안 적는다). */
-const allProjectsOf = (work: (typeof WORKS)[number]) =>
-  work.worktrees[0].path.slice(0, work.worktrees[0].path.lastIndexOf("/"));
+/** 「모든 프로젝트」 — 워크트리들의 부모. */
+const allProjectsOf = (work: (typeof WORKS)[number]) => parentPath(work.worktrees[0].path);
 
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
 const menu = (page: Page) => page.getByRole("menu");
 // **계산된 이름으로 집는다 — `exact`다.** 옅은 경로가 이름에 섞이면 이 로케이터가 못 찾는다.
 const allItem = (page: Page) => menu(page).getByRole("menuitem", { name: "모든 프로젝트", exact: true });
-
-/** 지금까지 나간 `pty_spawn`의 cwd를 부른 순서대로(`shell-origin.spec.ts`와 같은 캐내기). */
-async function spawnedCwds(page: Page): Promise<string[]> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls
-    .filter((call) => call.startsWith("pty_spawn "))
-    .map((call) => /"cwd":"([^"]*)"/.exec(call)?.[1] ?? `(cwd가 없다: ${call})`);
-}
 
 async function openMenu(page: Page): Promise<void> {
   await page.goto(`/works/${multiWork.slug}?tab=terminal`);
@@ -101,12 +92,24 @@ test("`+` → ↑ → 맨 아랫줄로 돈다 · ↓ → 다시 맨 윗줄", asy
   await expect(allItem(page)).toBeFocused();
 });
 
-for (const [how, close] of [
-  ["Esc", (page: Page) => page.keyboard.press("Escape")],
-  // 메뉴 버튼의 관례 — 안 닫으면 포커스가 떠 있는 카드에서 문서 끝으로 새고 메뉴만 남는다.
-  ["Tab", (page: Page) => page.keyboard.press("Tab")],
-  // 메뉴도 `+`도 아닌 자리 — 본문 한가운데를 누른다.
-  ["바깥 클릭", (page: Page) => page.mouse.click(600, 500)],
+// 닫힌 뒤 포커스가 어디 있어야 하는지를 **표에 함께 적는다** — 한 갈래만 포커스를 재면 나머지
+// 갈래가 포커스를 문서 밖으로 떨궈도 초록이다(리뷰가 Tab에서 그것을 찾았다).
+for (const [how, close, focusBackToPlus] of [
+  // Esc·Tab은 키보드에서 온다 — 포커스를 `+`로 돌려준다. 메뉴가 body 끝에 떠 있어서, 안 돌려주면
+  // 포커스가 `<body>`로 떨어져 키보드가 길을 잃는다.
+  ["Esc", (page: Page) => page.keyboard.press("Escape"), true],
+  ["Tab", (page: Page) => page.keyboard.press("Tab"), true],
+  // 메뉴도 `+`도 아닌 자리 — 창의 가운데 아래를 누른다(창 크기에서 잰다). 마우스로 닫았으니
+  // 포커스는 누른 자리의 몫이라 재지 않는다.
+  [
+    "바깥 클릭",
+    (page: Page) => {
+      const size = page.viewportSize();
+      if (!size) throw new Error("창 크기를 모른다");
+      return page.mouse.click(size.width / 2, size.height * 0.75);
+    },
+    false,
+  ],
 ] as const) {
   test(`\`+\` → ${how} → 메뉴가 닫히고 셸이 안 뜬다`, async ({ page }) => {
     await installFixtureBackend(page);
@@ -116,8 +119,7 @@ for (const [how, close] of [
     await close(page);
 
     await expect(menu(page)).toHaveCount(0);
-    // Esc는 포커스를 `+`로 돌려준다 — 메뉴가 body 끝에 떠 있어서, 안 돌려주면 키보드가 길을 잃는다.
-    if (how === "Esc") await expect(page.locator('[data-tab="new"]')).toBeFocused();
+    if (focusBackToPlus) await expect(page.locator('[data-tab="new"]')).toBeFocused();
     // **0을 재는 검사라 기다림이 없으면 너무 일찍 초록이다.** 고른 셸이 설 틈을 준다.
     await page.waitForTimeout(500);
     await expect(shells(page)).toHaveCount(0);
@@ -126,11 +128,29 @@ for (const [how, close] of [
   });
 }
 
+// 결정 18 「맨 윗줄이 **선택된 상태로** 열린다」. DOM 포커스(`toBeFocused`)만 재면 마우스로 연
+// 메뉴에서 아무 표시가 없어도 초록이다 — 스크립트 포커스는 `:focus-visible`에 안 걸려 윤곽이 안
+// 그려진다. 그래서 **보이는 모습**을 잰다: 포인터가 안 올라간 두 줄 중 포커스 든 줄만 바탕이 있다.
+test("마우스로 연 메뉴에서도 맨 윗줄이 선택돼 보인다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openMenu(page);
+  await expect(allItem(page)).toBeFocused();
+  // 포인터를 메뉴 밖으로 치운다 — 호버 바탕이 섞이면 무엇을 쟀는지 갈리지 않는다.
+  await page.mouse.move(0, 0);
+
+  const background = (index: number) =>
+    menu(page)
+      .getByRole("menuitem")
+      .nth(index)
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect.poll(() => background(0)).not.toBe(await background(1));
+});
+
 // 묻는 조건은 그대로다 — 프로젝트가 둘 이상일 때만(결정 18). 0·1개 work은 들어갈 때 셸이
 // 하나 서므로(결정 30은 멀티 프로젝트만이다) 그것이 앉은 뒤에 누른다.
 for (const [label, work, cwd] of [
   ["1개", singleWork, singleWork.worktrees[0].path],
-  ["0개", plainWork, plainWork.specDir.slice(0, plainWork.specDir.lastIndexOf("/"))],
+  ["0개", plainWork, parentPath(plainWork.specDir)],
 ] as const) {
   test(`프로젝트 ${label} work에서 \`+\`는 메뉴 없이 바로 연다`, async ({ page }) => {
     await installFixtureBackend(page);
