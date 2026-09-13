@@ -43,6 +43,7 @@ export function WorkSectionList({
   renderSubrow,
   draggedSlug,
   lineY,
+  litEmptySlot,
   onArmDrag,
 }: {
   sections: WorkSections;
@@ -63,12 +64,23 @@ export function WorkSectionList({
    * 이 파일이 훅을 부르면 정적 마크업 seam이 서지 못한다(그 계약을 소스 검사가 센다).
    */
   draggedSlug: string | null;
-  /** 틈 선이 설 **스크롤 내용 좌표** y(`row-drop`의 `gapLineY`). 놓을 곳이 없으면 `null`이다. */
+  /** 틈 선이 설 **스크롤 내용 좌표** y(`row-drop`의 `gapMark`). 선이 아니면 `null`이다. */
   lineY: number | null;
+  /**
+   * 틈이 떨어진 **빈 받침**의 구획 — 그 받침이 밝아진다. `lineY`와 함께 켜지지 않는다(둘 다 `gapMark`
+   * 하나에서 온다). 받침이 서는지는 여기서 정한다(끄는 중 · 그 구획이 비었다); 이 값은 불만 켠다.
+   */
+  litEmptySlot: keyof SectionsOpen | null;
   /** 행이 눌렸다 — 끌기를 무장하는 것은 위의 일이다(기하를 재는 자리가 거기다). */
   onArmDrag: (slug: string, from: DragPoint) => void;
 }) {
   const { pinned, main } = sections;
+  // **받침은 끄는 동안만, 행이 하나도 없는 구획에만 선다**(티켓 06 · 스펙 S7). 끄는 것이 작업 행일 때만이다 —
+  // 탭이 사이드바를 스쳐 가도 여기 놓을 수는 없다(`draggedSlug`는 작업 행 끌기에서만 온다).
+  const emptySlotFor = (section: keyof SectionsOpen, list: WorkView[]) =>
+    draggedSlug !== null && list.length === 0 ? (
+      <EmptySlot section={section} lit={litEmptySlot === section} />
+    ) : null;
   // 두 구획이 같은 것을 그린다 — 한 벌로 묶어 두지 않으면 행의 모양을 정하는 자리가 둘이 된다.
   const row = (work: WorkView) => (
     <WorkRow
@@ -99,7 +111,10 @@ export function WorkSectionList({
           style={{ top: lineY }}
         />
       )}
-      {/* '고정' 헤더는 고정된 것이 있을 때만 — 아무것도 없는 구획의 헤더는 자리만 먹는다(결정 82) */}
+      {/* '고정' 헤더는 고정된 것이 있을 때만 — 아무것도 없는 구획의 헤더는 자리만 먹는다(결정 82).
+          **끄는 동안엔 머리 대신 받침이 선다** — 머리까지 되살리면 끌기가 시작되는 순간 목록이 한 줄 더
+          내려앉는다. 받침이 곧 「여기가 `고정`」을 말한다. */}
+      {emptySlotFor("pinned", pinned)}
       {pinned.length > 0 && (
         <>
           <SectionHeader
@@ -126,7 +141,9 @@ export function WorkSectionList({
         onToggle={() => onToggleSection("works")}
       />
       <SectionBody open={open.works}>
-        {main.length === 0 ? (
+        {/* 끄는 동안엔 빈 문구 자리에 받침이 선다 — 둘을 함께 세우면 받침이 문구만큼 밀려 내려간다. */}
+        {emptySlotFor("works", main) ??
+          (main.length === 0 ? (
           // **`mr-1`이 막대 자리를 비운다.** 이 span은 `SectionBody`의 grid 안에 있어
           // **블록으로 눕고**(grid item), 그래서 글자 길이와 무관하게 상자 폭을 통째로 쓴다 —
           // 8~272다. 바깥 상자가 `-mx-2 px-2`로 거터를 뚫고 나가 있어 막대는 271~277에 서므로
@@ -143,11 +160,45 @@ export function WorkSectionList({
           </span>
         ) : (
           main.map(row)
-        )}
+        ))}
       </SectionBody>
     </>
   );
 }
+
+/**
+ * **빈 받침** — 행이 없는 구획에 끄는 동안만 서는 놓을 자리(UI개선 티켓 06 · 스펙 S7). 첫 고정도 마지막
+ * 고정 해제도 행 사이에 놓는 것과 같은 손짓이게 한다.
+ *
+ * - **표식이 어느 구획인지 말한다**(`data-empty-slot`) — 끄는 동안 기하를 재는 자리가 이것으로 집는다.
+ *   탭 끌기의 `slot`(탭 사이 틈)과 다른 것이라 이름을 달리한다.
+ * - 밝아짐은 `data-lit`로 싣는다 — 클래스로만 두면 검사가 규격 문자열을 집어야 한다.
+ * - 누를 것이 아니다(`pointer-events-none`). 놓기는 창의 떼기가 받고 틈은 좌표로 정한다.
+ * - 구획마다 갈리는 것은 아래 표 한 자리다. 빈 `고정`의 받침은 머리 자리에 서므로 머리와 같은 윗 여백
+ *   `mt-3`을 받고, `작업`의 받침은 머리 아래 몸통 안이라 몸통의 `gap`이 이미 띄워 여백을 안 받는다.
+ */
+function EmptySlot({ section, lit }: { section: keyof SectionsOpen; lit: boolean }) {
+  const { margin, copy } = EMPTY_SLOT_LOOK[section];
+  return (
+    <div
+      data-empty-slot={section}
+      data-lit={lit ? "" : undefined}
+      aria-hidden
+      className={cn(
+        "pointer-events-none flex h-9 shrink-0 items-center justify-center rounded-[10px] border border-dashed text-[12.5px] transition-colors",
+        margin,
+        lit ? "border-primary bg-primary/10 text-foreground" : "border-border text-tertiary",
+      )}
+    >
+      {copy}
+    </div>
+  );
+}
+
+const EMPTY_SLOT_LOOK: Record<keyof SectionsOpen, { margin: string | null; copy: string }> = {
+  pinned: { margin: "mt-3", copy: "여기 놓으면 고정돼요" },
+  works: { margin: null, copy: "여기 놓으면 고정이 풀려요" },
+};
 
 /**
  * 구획의 속 — 접기 애니메이션은 `grid-template-rows`를 0fr↔1fr로 보간한다. `height:auto`는
