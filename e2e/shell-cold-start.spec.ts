@@ -5,6 +5,7 @@ import { MAX_SHELLS } from "./tab-row";
 import {
   badgeCalls,
   callCount,
+  exitShell,
   heldSpawns,
   holdPtySpawn,
   holdTerminalFonts,
@@ -12,6 +13,7 @@ import {
   ipcCallArgs,
   markRunning,
   ptyGrids,
+  refuseFirstSpawn,
   releaseSpawns,
   sentNotifications,
   setWindowFocused,
@@ -57,6 +59,50 @@ async function expectEveryTabStarted(page: Page, count: number): Promise<void> {
 const ESC = "\x1b";
 const BEL = "\x07";
 
+const OPEN_FAILURE = "L3가 xterm 열기를 터뜨렸다";
+
+/**
+ * xterm이 제 상자를 붙이는 `appendChild` 하나를 가로챌 준비를 한다 — 켜기 전에는 아무것도 안 한다
+ * (`failXtermOpen`). 그 밖의 DOM은 그대로 둔다. 페이지가 뜨기 전에 깔아야 한다.
+ */
+async function armXtermOpenFailure(page: Page): Promise<void> {
+  await page.addInitScript((message: string) => {
+    const append = Node.prototype.appendChild;
+    Node.prototype.appendChild = function <T extends Node>(this: Node, child: T): T {
+      const win = window as unknown as { __ATELIER_FAIL_XTERM_OPEN__?: boolean };
+      if (win.__ATELIER_FAIL_XTERM_OPEN__ && child instanceof Element && child.classList.contains("xterm")) {
+        const counted = window as unknown as { __ATELIER_XTERM_OPEN_FAILURES__?: number };
+        counted.__ATELIER_XTERM_OPEN_FAILURES__ = (counted.__ATELIER_XTERM_OPEN_FAILURES__ ?? 0) + 1;
+        throw new Error(message);
+      }
+      return append.call(this, child) as T;
+    };
+  }, OPEN_FAILURE);
+}
+
+/** 터뜨린 열기의 수(`armXtermOpenFailure`). */
+const xtermOpenFailures = (page: Page) =>
+  page.evaluate(
+    () => (window as unknown as { __ATELIER_XTERM_OPEN_FAILURES__?: number }).__ATELIER_XTERM_OPEN_FAILURES__ ?? 0,
+  );
+
+/**
+ * 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「없다」를 재기 전에 부른다**:
+ * `not.toContainText`는 되풀이하다 참인 순간 멈추므로, 덮어쓰기가 아직 안 그려진 순간에 초록이 된다.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
+/** 이 뒤로 처음 여는 xterm이 터진다(`armXtermOpenFailure`). */
+async function failXtermOpen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __ATELIER_FAIL_XTERM_OPEN__?: boolean }).__ATELIER_FAIL_XTERM_OPEN__ = true;
+  });
+}
+
 // ─── ⌘T를 여러 번 — 상한까지 ───
 //
 // 사람이 가장 빨리 칸을 여는 길이 ⌘T 연타다. 글꼴이 오기 전이라 셸에 포커스가 없고, 그래서
@@ -84,7 +130,7 @@ test("글꼴이 오기 전에 ⌘T로 상한까지 열어도 여덟 셸이 연 �
   await page.keyboard.press("Meta+t");
   await expect(tabs(page)).toHaveCount(MAX_SHELLS);
 
-  releaseFonts();
+  await releaseFonts();
 
   await expectEveryTabStarted(page, MAX_SHELLS);
   expect(await callCount(page, "pty_spawn"), "셸마다 한 번씩만 떠야 한다").toBe(MAX_SHELLS);
@@ -120,7 +166,7 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
   await expect(tabs(page)).toHaveCount(1);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
-  releaseFonts();
+  await releaseFonts();
   await expectEveryTabStarted(page, 2);
 
   // 둘째 칸은 붙은 채 열리고 떴다 — 그 격자가 이 자리의 화면 격자다.
@@ -132,12 +178,16 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
   // 맞춘 **뒤에** 띄운다(`loadFont`). 거꾸로 띄우면 보이는 셸까지 기본 격자로 떴다가 곧바로
   // SIGWINCH를 받는데, 격자만 보면 그 둘이 끝에서 같은 값이 된다.
   expect(await ipcCallArgs(page, "pty_resize", "id")).toEqual([]);
+  // **첫 칸은 다른 격자로 떴다** — 아래 「화면 격자로 맞춰졌다」가 resize 없이 우연히 같은 값으로
+  // 초록이 되는 자리를 먼저 닫는다.
+  expect((await ptyGrids(page)).get(1), "첫 칸이 이미 화면 격자로 떴다 — 맞춤을 잴 수 없다").not.toEqual(shown);
 
   await tabs(page).nth(0).locator("button[aria-pressed]").click();
   await expect(tabs(page).nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
 
   await expect.poll(async () => (await ptyGrids(page)).get(1), { message: "첫 칸의 PTY 격자가 화면에 안 맞았다" })
     .toEqual(shown);
+  expect((await ipcCallArgs(page, "pty_resize", "id")).map(({ args }) => args.id)).toEqual([1]);
   // 둘째 칸은 떼어졌을 뿐 격자가 안 바뀌었다 — 떼는 것이 2×1 같은 헛격자를 보내면 여기서 갈린다.
   expect((await ptyGrids(page)).get(2)).toEqual(shown);
   expect(await callCount(page, "pty_spawn")).toBe(2);
@@ -160,7 +210,7 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   await expect(page).toHaveURL("/terminal");
   await expect(tabs(page)).toHaveCount(1);
 
-  releaseFonts();
+  await releaseFonts();
   await expectEveryTabStarted(page, 1);
   // **둘 다 떴고, 연 순서대로다** — 두고 온 work 셸이 먼저다.
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
@@ -191,7 +241,7 @@ for (const [from, to, url] of [
     await expect(page).not.toHaveURL(url);
     await expect(tabs(page)).toHaveCount(0);
 
-    releaseFonts();
+    await releaseFonts();
     await expect
       .poll(async () => (await ipcCallArgs(page, "pty_spawn", "mode")).map(({ args }) => args.mode), {
         message: "두고 온 셸이 안 떴거나 다른 세계로 떴다",
@@ -220,7 +270,7 @@ test("글꼴이 오기 전에 닫은 칸은 안 뜨고, 남은 칸만 뜬다", a
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(tabs(page)).toHaveCount(1);
 
-  releaseFonts();
+  await releaseFonts();
   await expectEveryTabStarted(page, 1);
   expect(await callCount(page, "pty_spawn")).toBe(1);
   expect(await callCount(page, "pty_kill")).toBe(0);
@@ -239,7 +289,7 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
 
-  releaseFonts();
+  await releaseFonts();
   // **두 칸 다 띄우러 나갔다** — 첫 칸은 떼어진 채다.
   await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
 
@@ -266,7 +316,7 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
 
-  releaseFonts();
+  await releaseFonts();
   await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
 
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
@@ -289,27 +339,14 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
 test("안 본 칸의 셸이 못 뜨면 그 칸을 볼 때 이유가 보이고, 옆 칸은 멀쩡히 뜬다", async ({ page }) => {
   const reason = "L3가 첫 spawn을 거절했다";
   await installFixtureBackend(page);
-  await page.addInitScript((reason: string) => {
-    const internals = (window as unknown as {
-      __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
-    }).__TAURI_INTERNALS__;
-    const invoke = internals.invoke;
-    let refused = false;
-    internals.invoke = async (cmd, args, options) => {
-      if (cmd === "pty_spawn" && !refused) {
-        refused = true;
-        throw new Error(reason);
-      }
-      return invoke(cmd, args, options);
-    };
-  }, reason);
+  await refuseFirstSpawn(page, reason);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
 
-  releaseFonts();
+  await releaseFonts();
   // 거절당한 것은 **먼저 연** 첫 칸이다 — 둘째 칸이 뜬다.
   await expect(closeOf(page, 1, FIXTURE_SHELL_NAME)).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator("[data-shell-notice]")).toHaveCount(0);
@@ -332,30 +369,19 @@ for (const replied of [true, false]) {
   }) => {
     await installFixtureBackend(page);
     if (!replied) await holdPtySpawn(page);
-    await page.addInitScript(() => {
-      const append = Node.prototype.appendChild;
-      Node.prototype.appendChild = function <T extends Node>(this: Node, child: T): T {
-        const win = window as unknown as { __ATELIER_FAIL_XTERM_OPEN__?: boolean };
-        if (win.__ATELIER_FAIL_XTERM_OPEN__ && child instanceof Element && child.classList.contains("xterm")) {
-          throw new Error("L3가 xterm 열기를 터뜨렸다");
-        }
-        return append.call(this, child) as T;
-      };
-    });
+    await armXtermOpenFailure(page);
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto("/terminal", { waitUntil: "domcontentloaded" });
     await expect(tabs(page)).toHaveCount(1);
     await page.locator('[data-tab="new"]').click();
     await expect(tabs(page)).toHaveCount(2);
-    releaseFonts();
+    await releaseFonts();
     if (replied) await expectEveryTabStarted(page, 2);
     else await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
 
-    await page.evaluate(() => {
-      (window as unknown as { __ATELIER_FAIL_XTERM_OPEN__?: boolean }).__ATELIER_FAIL_XTERM_OPEN__ = true;
-    });
+    await failXtermOpen(page);
     await tabs(page).nth(0).locator("button[aria-pressed]").click();
-    await expect(page.locator("[data-shell-notice]")).toContainText("L3가 xterm 열기를 터뜨렸다");
+    await expect(page.locator("[data-shell-notice]")).toContainText(OPEN_FAILURE);
     if (!replied) await releaseSpawns(page);
 
     await expect
@@ -364,7 +390,70 @@ for (const replied of [true, false]) {
     // 옆 칸은 그대로 돈다. 거둔 칸에는 셸 이름이 안 앉는다 — 이유가 그대로 남는다.
     await expect(closeOf(page, 1, FIXTURE_SHELL_NAME)).toHaveCount(1, { timeout: 20_000 });
     await expect(closeOf(page, 0, FIXTURE_SHELL_NAME)).toHaveCount(replied ? 1 : 0);
-    await expect(page.locator("[data-shell-notice]")).toContainText("L3가 xterm 열기를 터뜨렸다");
+    await expect(page.locator("[data-shell-notice]")).toContainText(OPEN_FAILURE);
+
+    // **죽인 셸의 종료 프레임이 뒤따라 와도 이유가 그대로다.** 실물은 SIGHUP을 받은 셸이 종료 프레임을
+    // 한 번 더 보내는데 픽스처의 `pty_kill`은 안 보내서, 여기서 손으로 쏜다. 채널이 그 프레임을
+    // 거둔 칸(`broken`)에서 거르지 않으면 이유가 「종료 코드 129」로 덮인다.
+    await exitShell(page, 1, 129);
+    // 그 프레임이 도착한 것을 본다 — 같은 채널 길로 뒤에 쏜 옆 칸 출력이 그려지면 앞의 것도 왔다.
+    await writeShell(page, `${ESC}]0;뒤따른 출력${BEL}`, 2);
+    await expect(closeOf(page, 1, "뒤따른 출력")).toHaveCount(1);
+    await settle(page);
+    await expect(page.locator("[data-shell-notice]")).toContainText(OPEN_FAILURE);
+    await expect(page.locator("[data-shell-notice]")).not.toContainText("종료 코드");
+    await expect(tabs(page)).toHaveCount(2);
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+// **이미 적힌 이유를 열기 실패가 덮지 않는다**(결정 22·23). 떼어진 채 뜬 셸은 사람이 그 칸을 한 번도
+// 안 본 사이에 끝나거나(종료 코드) 못 뜰 수 있다(거절 이유). 그 칸을 처음 여는 `open()`이 그 뒤에
+// 터지면, 사람이 읽어야 하는 것은 먼저 적힌 셸의 이유다 — 화면 문제로 덮으면 「claude가 조용히 죽은
+// 이유」가 사라진다.
+for (const [before, arrange, shown] of [
+  [
+    "끝난",
+    async (page: Page) => {
+      await expectEveryTabStarted(page, 2);
+      await exitShell(page, 1, 129);
+      // 그 프레임이 앉은 것을 본다 — 같은 길로 뒤에 쏜 옆 칸 타이틀이 그려지면 앞의 것도 왔다.
+      await writeShell(page, `${ESC}]0;옆 칸${BEL}`, 2);
+      await expect(closeOf(page, 1, "옆 칸")).toHaveCount(1);
+    },
+    "종료 코드 129",
+  ],
+  [
+    "못 뜬",
+    async (page: Page) => {
+      await expect(closeOf(page, 1, FIXTURE_SHELL_NAME)).toHaveCount(1, { timeout: 20_000 });
+    },
+    "L3가 첫 spawn을 거절했다",
+  ],
+] as const) {
+  test(`안 본 사이 ${before} 셸의 칸이 처음 열리다 터져도 먼저 적힌 이유가 남는다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    if (before === "못 뜬") await refuseFirstSpawn(page, shown);
+    await armXtermOpenFailure(page);
+    const releaseFonts = await holdTerminalFonts(page);
+    await page.goto("/terminal", { waitUntil: "domcontentloaded" });
+    await expect(tabs(page)).toHaveCount(1);
+    await page.locator('[data-tab="new"]').click();
+    await expect(tabs(page)).toHaveCount(2);
+    await releaseFonts();
+    await arrange(page);
+
+    await failXtermOpen(page);
+    await tabs(page).nth(0).locator("button[aria-pressed]").click();
+    await expect(tabs(page).nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+    // 열기가 실제로 터졌다는 것을 먼저 본다 — 안 터지면 아래는 아무것도 안 잰다.
+    await expect.poll(() => xtermOpenFailures(page)).toBe(1);
+    await settle(page);
+    await expect(page.locator("[data-shell-notice]")).toContainText(shown);
+    await expect(page.locator("[data-shell-notice]")).not.toContainText(OPEN_FAILURE);
+    // 끝났거나 못 뜬 셸이라 거둘 PTY가 없다.
+    expect(await callCount(page, "pty_kill")).toBe(0);
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
@@ -381,7 +470,7 @@ test("한 번도 안 연 칸의 셸이 OSC 9로 부르면 띠·알림·배지가
   await expect(tabs(page)).toHaveCount(1);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs(page)).toHaveCount(2);
-  releaseFonts();
+  await releaseFonts();
   await expectEveryTabStarted(page, 2);
   await setWindowFocused(page, false);
 
@@ -402,8 +491,11 @@ test("한 번도 안 연 칸의 셸이 OSC 9로 부르면 띠·알림·배지가
 });
 
 // **글꼴 크기를 바꿔도** 떼어진 채 뜬 셸들이 따라온다(결정 52). 두 칸이 다 떼어진 채 설정에서
-// 크기를 고치고 돌아오면, 두 셸의 PTY 격자는 같은 자리의 같은 격자여야 한다 — 한쪽이 옛 크기로
-// 남으면 갈린다.
+// 크기를 고치고 돌아오면, 두 셸의 PTY 격자는 **새 크기의 격자**여야 한다 — 옛 크기로 열리면 갈린다.
+//
+// **기준은 그 뒤에 새로 연 셋째 칸이다.** 글꼴이 이미 와 있어 붙은 채 새 크기로 열리고 그 격자를
+// spawn에 싣는다. 두 칸끼리만 견주면 둘 다 옛 크기로 열려도, 둘 다 xterm 기본 격자(80×24)에 머물러도
+// 서로 같아 초록이다.
 test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 새 격자로 맞춰진다", async ({ page }) => {
   await installFixtureBackend(page, { write_settings: null });
   const releaseFonts = await holdTerminalFonts(page);
@@ -419,26 +511,32 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   await terminal.getByRole("button", { name: "저장", exact: true }).click();
   await expect(terminal.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
 
-  releaseFonts();
+  await releaseFonts();
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
   await page.locator("aside").getByRole("button", { name: "앱으로 돌아가기", exact: true }).click();
   await expect(page).toHaveURL("/terminal");
   await expectEveryTabStarted(page, 2);
-  await tabs(page).nth(0).locator("button[aria-pressed]").click();
-  await expect(tabs(page).nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
-  await tabs(page).nth(1).locator("button[aria-pressed]").click();
-  await expect(tabs(page).nth(1).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+
+  // 셋째 칸 — 붙은 채 새 크기로 열려 제 격자로 뜬다.
+  await page.locator('[data-tab="new"]').click();
+  await expectEveryTabStarted(page, 3);
+  const fresh = (await ptyGrids(page)).get(3);
+  expect(fresh, "셋째 칸의 격자를 못 읽었다").toBeDefined();
+  // 기본 격자가 아니다 — 아니면 「안 맞춘 칸」과 구별이 안 된다.
+  expect(fresh).not.toEqual({ cols: 80, rows: 24 });
+
+  for (const at of [0, 1]) {
+    await tabs(page).nth(at).locator("button[aria-pressed]").click();
+    await expect(tabs(page).nth(at).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  }
 
   await expect
     .poll(async () => {
       const grids = await ptyGrids(page);
-      return JSON.stringify(grids.get(1)) === JSON.stringify(grids.get(2)) ? grids.get(1) : null;
-    }, { message: "두 셸의 격자가 갈렸다" })
-    .not.toBeNull();
-  const grid = (await ptyGrids(page)).get(1)!;
-  expect(grid.cols).toBeGreaterThan(2);
-  expect(grid.rows).toBeGreaterThan(1);
+      return [grids.get(1), grids.get(2)];
+    }, { message: "떼어진 채 뜬 셸이 새 크기의 격자로 안 맞춰졌다" })
+    .toEqual([fresh, fresh]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

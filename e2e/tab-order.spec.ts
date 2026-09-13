@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
+import { exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
@@ -44,11 +44,13 @@ async function boxOf(page: Page, at: number): Promise<Box> {
 }
 
 /**
- * 셸을 `names.length`개 띄우고 칸마다 이름을 붙인다. 칸은 응답까지 기다려 하나씩 연다 —
- * 「n번째 칸 = pty n」이 그 기다림 위에 선다(`openShell`의 머리말).
+ * 셸을 `names.length`개 띄우고 칸마다 이름을 붙인다. 「n번째 칸 = pty n」은 앱이 칸을 연 순서대로
+ * 띄워서다(`terminal-store`의 `loadFont` · `shell-cold-start.spec.ts`가 여덟 칸으로 잰다) — 기다림이
+ * 만드는 것이 아니다(`openShell`의 머리말).
  */
 async function nameShells(page: Page, names: string[]): Promise<void> {
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 센다 — 그 전에 세면 0에서 시작해 한 칸을 더 연다.
+  await expect(shellTabs(page).first()).toBeVisible();
   for (let n = await shellTabs(page).count(); n < names.length; n += 1) await openShell(page);
   for (const [at, name] of names.entries()) await writeShell(page, `${ESC}]0;${name}${BEL}`, at + 1);
   await expect.poll(() => namesOf(page)).toEqual(names);

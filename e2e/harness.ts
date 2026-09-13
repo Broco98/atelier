@@ -874,14 +874,24 @@ async function sendFrame(
  * **`page.goto`는 `waitUntil: "domcontentloaded"`로 불러야 한다.** `load`는 붙잡아 둔 글꼴을
  * 기다려 거기서 멈춘다. 페이지가 뜨기 전에 깔아야 한다(`installFixtureBackend`와 같은 자리).
  */
-export async function holdTerminalFonts(page: Page): Promise<() => void> {
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => (release = resolve));
+export async function holdTerminalFonts(page: Page): Promise<() => Promise<void>> {
+  let open!: () => void;
+  const held = new Promise<void>((resolve) => (open = resolve));
+  let caught = 0;
   await page.route("**/JetBrainsMonoNLNerdFont-*.woff2*", async (route) => {
+    caught += 1;
     await held;
     await route.continue();
   });
-  return release;
+  // **놓기 전에 붙잡았는지부터 본다 — fail-closed다.** 글꼴 파일의 이름·경로·싣는 길이 바뀌어
+  // 이 route가 아무것도 못 잡으면 글꼴이 먼저 와서 틈이 안 서고, 이 도우미를 딛는 검사가 전부
+  // 러너 속도에 매인 초록으로 돌아간다. 붙잡기가 이 도우미의 계약이라 여기서 터뜨린다.
+  return async () => {
+    await expect
+      .poll(() => caught, { message: "터미널 글꼴 요청을 하나도 못 붙잡았다 — route 패턴이 낡았다" })
+      .toBeGreaterThan(0);
+    open();
+  };
 }
 
 /**
@@ -895,7 +905,24 @@ export async function holdTerminalFonts(page: Page): Promise<() => void> {
  * `installFixtureBackend` **뒤에** 깔아야 한다 — 그쪽이 세운 `invoke`를 감싼다.
  */
 export async function holdPtySpawn(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await interceptPtySpawn(page, { hold: true });
+}
+
+/**
+ * **첫 `pty_spawn` 하나를 그 이유로 거절한다** — 나머지는 그대로 답한다(결정 23의 「못 띄운 이유」).
+ * `installFixtureBackend` **뒤에** 깔아야 한다(`holdPtySpawn`과 같다).
+ */
+export async function refuseFirstSpawn(page: Page, reason: string): Promise<void> {
+  await interceptPtySpawn(page, { refuseFirst: reason });
+}
+
+/**
+ * `pty_spawn`을 가로채는 초기화 스크립트 **한 벌.** 붙잡기·거절이 `invoke`를 감싸는 모양을 나눠
+ * 쓴다 — 픽스처의 `invoke` 모양이 바뀌면 여기 하나만 고친다. 초기화 스크립트는 직렬화되어
+ * 페이지로 가므로 동작을 함수가 아니라 값으로 받는다.
+ */
+async function interceptPtySpawn(page: Page, behaviour: { hold?: boolean; refuseFirst?: string }): Promise<void> {
+  await page.addInitScript(({ hold, refuseFirst }: { hold?: boolean; refuseFirst?: string }) => {
     const internals = (window as unknown as {
       __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
     }).__TAURI_INTERNALS__;
@@ -903,14 +930,21 @@ export async function holdPtySpawn(page: Page): Promise<void> {
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     const gate = { count: 0, release };
-    (window as unknown as { __ATELIER_SPAWN_GATE__: typeof gate }).__ATELIER_SPAWN_GATE__ = gate;
+    if (hold) (window as unknown as { __ATELIER_SPAWN_GATE__: typeof gate }).__ATELIER_SPAWN_GATE__ = gate;
+    let refused = false;
     internals.invoke = async (cmd, args, options) => {
       if (cmd !== "pty_spawn") return invoke(cmd, args, options);
-      gate.count += 1;
-      await held;
+      if (refuseFirst !== undefined && !refused) {
+        refused = true;
+        throw new Error(refuseFirst);
+      }
+      if (hold) {
+        gate.count += 1;
+        await held;
+      }
       return invoke(cmd, args, options);
     };
-  });
+  }, behaviour);
 }
 
 /** 붙잡힌 `pty_spawn` 부름의 수(`holdPtySpawn`). 안 깔았으면 던진다. */

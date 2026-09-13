@@ -67,7 +67,9 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
 
   // 둘 다 이 세계로 나갔다. **`toEqual`로 통째로 견준다** — 「하나는 atelier였다」로 좁히면
   // 나머지 하나가 모드 없이 나가도 통과한다.
-  await expect.poll(() => spawnedModes(page)).toEqual(["atelier", "atelier"]);
+  // **20초다** — 첫 spawn은 글꼴·xterm 열기·WebGL 뒤에 나가서 붐비는 러너에서 5초를 넘긴 적이 있다
+  // (`awaitSpawned`의 머리말). 기다리는 시간은 순서를 안 바꾸므로 결함을 덮지 않는다.
+  await expect.poll(() => spawnedModes(page), { timeout: 20_000 }).toEqual(["atelier", "atelier"]);
   const beforeCrossing = (await spawnedModes(page)).length;
 
   // ── 저쪽 세계로 ──

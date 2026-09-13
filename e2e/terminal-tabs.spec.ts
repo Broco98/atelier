@@ -232,8 +232,8 @@ test("도는 명령은 그 셸의 칸에만 앉는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  // 들어오면 이 work의 셸 하나가 뜬다(`ensureShell`). 둘째 칸은 **응답까지 기다려** 연다 —
-  // 「둘째 칸 = pty 2」가 그 기다림 위에 선다(`openShell`의 머리말).
+  // 들어오면 이 work의 셸 하나가 뜬다(`ensureShell`). 「둘째 칸 = pty 2」는 앱이 칸을 연 순서대로
+  // 띄워서다(`terminal-store`의 `loadFont`) — `openShell`의 기다림은 pty가 앉은 것만 본다(그 머리말).
   const tabs = page.locator('[data-tab="shell"]');
   await expect(tabs).toHaveCount(1);
   await openShell(page);
@@ -564,7 +564,7 @@ for (const [where, url] of [
     await page.locator('[data-tab="new"]').click();
     await expect(tabs).toHaveCount(2);
 
-    releaseFonts();
+    await releaseFonts();
 
     // 칸마다 본다 — 전체 수로 세면 어느 칸이 안 떴는지가 안 남는다. 이름이 픽스처의 셸 이름으로
     // 바뀐 것이 그 칸이 spawn 응답을 받았다는 화면 신호다(`FIXTURE_SHELL_NAME`의 머리말).

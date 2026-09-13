@@ -101,10 +101,6 @@ interface ShellInstance {
   origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
-  // **PTY를 띄우러 나갔는가.** 여는 것(`opened`)과 따로 선다 — 셸은 글꼴이 오는 순간 뜨고
-  // 화면에 붙었는지는 묻지 않는다(`loadFont` 머리말). `spawn`이 **await 앞에서** 세운다:
-  // 응답이 오기 전에 한 번 더 부르는 길이 있으면(응답 전 첫 attach) 셸이 둘 뜬다.
-  spawned: boolean;
   // **여는 데 실패했다.** 이미 뜬 PTY를 거두고 이 칸에 다시는 쓰지 않는다 — 떠 있는데 볼 수
   // 없는 셸은 상한만 갉아먹는다(`failOpen`).
   broken: boolean;
@@ -769,7 +765,6 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     origin,
     fontsReady: false,
     opened: false,
-    spawned: false,
     broken: false,
     closed: false,
   };
@@ -933,8 +928,12 @@ async function loadFont(instance: ShellInstance) {
   instance.fontsReady = true;
   openOrReattach(instance);
   // **스스로 거른다** — 글꼴을 기다리는 사이 `×`·아카이빙으로 거둔 칸(`closed`)과, 바로 위에서
-  // 열다 터진 칸(`broken`)은 띄우지 않는다. 한 번만 나가는 것은 `spawned`가 지킨다.
-  if (instance.closed || instance.broken || instance.spawned) return;
+  // 열다 터진 칸(`broken`)은 띄우지 않는다.
+  //
+  // **셸마다 한 번 뜨는 것은 부르는 자리가 지킨다 — 플래그가 아니다.** `spawn`을 부르는 곳은 이
+  // 줄 하나이고, 이 함수는 `openShellQuietly`가 인스턴스를 세울 때 한 번 부른다. 다시 붙는 길
+  // (`openOrReattach`)은 열기만 한다. 부르는 자리를 하나 더 만들면 그때 셸이 둘 뜬다.
+  if (instance.closed || instance.broken) return;
   void spawn(instance);
 }
 
@@ -1029,10 +1028,16 @@ function openOrReattach(instance: ShellInstance) {
  *
  * 다시 붙는 길에서 터지는 것은 여기 오지 않는다(`openOrReattach`의 아래 `try`) — 그쪽은
  * 이미 적힌 종료 코드를 덮어쓰면 안 되는 화면 문제다.
+ *
+ * **처음 여는 길에도 먼저 적힌 이유가 있을 수 있다.** 떼어진 채 뜬 셸은 사람이 그 칸을 보기 전에
+ * 끝나거나(종료 코드 — 결정 22) 못 뜰(거절 이유 — 결정 23) 수 있다. 그때는 적지 않는다 — 사람이
+ * 읽어야 하는 것은 셸의 이유고, 열기 실패로 덮으면 「claude가 조용히 죽은 이유」가 사라진다.
+ * 칸은 그래도 `broken`이다: 반쯤 연 xterm에 다시 `open()`하지 않는다.
  */
 function failOpen(instance: ShellInstance, error: unknown) {
   instance.broken = true;
-  fail(instance, error);
+  const shell = terminalStore.state.shells.find((candidate) => candidate.id === instance.id);
+  if (shell?.status.kind === "running") fail(instance, error);
   if (instance.ptyId !== null) {
     ignoreGone(terminalApi.kill(instance.ptyId));
     instance.ptyId = null;
@@ -1075,9 +1080,6 @@ function refit(instance: ShellInstance) {
 }
 
 async function spawn(instance: ShellInstance) {
-  // **await 앞에서 세운다**(`ShellInstance.spawned`). 응답을 기다리는 사이에 부르는 길이
-  // 하나라도 생기면 이 줄이 셸이 둘 뜨는 것을 막는 자리다.
-  instance.spawned = true;
   try {
     const channel = new Channel<PtyFrame>();
     channel.onmessage = (frame) => {
