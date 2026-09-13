@@ -1157,6 +1157,26 @@ fn list_works_puts_pinned_first() {
     assert_eq!(order, vec!["b-work", "a-work"], "pinned must come first: {listed}");
 }
 
+/// UI개선 결정 1·2. 작업 루트의 순서 파일(`.order.json`)이 이 표면에도 먹는다 — 사람이 사이드바에서
+/// 본 「맨 위의 일」과 에이전트가 받는 맨 위가 같다(스토리 32). 파일은 **손으로** 적는다: 순서를
+/// 바꾸는 도구는 없다.
+#[test]
+fn list_works_follows_the_order_file() {
+    let home = tempfile::tempdir().unwrap();
+    for slug in ["a-work", "b-work", "c-work"] {
+        plant(&home.path().join("works"), slug, slug);
+    }
+    // 같은 날이라 지금 규칙(slug 오름차순)으로는 a·b·c다 — 뒤집어 적는다.
+    std::fs::write(
+        home.path().join("works/.order.json"),
+        r#"{"order":["c-work","b-work","a-work"]}"#,
+    )
+    .unwrap();
+
+    let mut server = Server::start(home.path());
+    assert_eq!(work_titles(&mut server, 2), vec!["c-work", "b-work", "a-work"]);
+}
+
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
 #[test]
 fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {
@@ -1852,6 +1872,27 @@ fn each_mode_lists_only_its_own_root() {
     // 값이 없는 것은 Atelier와 같다 — 앱 밖 셸에서 뜬 기존 MCP가 지금과 똑같다.
     let mut bare = Server::start(home.path());
     assert_eq!(work_titles(&mut bare, 2), vec!["spec 검색"]);
+}
+
+/// UI개선 결정 8 · 스토리 31. **Room 루트의 순서 파일은 Room 목록에만 먹는다.** 순서 파일이
+/// 모드 홈이 아니라 진행 중 루트 안에 사는 까닭이 이것이다(S1) — 두 세계에 같은 slug를 같은
+/// 날로 심고 `rooms/`에만 뒤집은 순서를 적으면, Atelier 목록은 지금 규칙 그대로 남아야 한다.
+#[test]
+fn a_rooms_order_file_orders_only_the_room_list() {
+    let home = tempfile::tempdir().unwrap();
+    for root in ["works", "maison/rooms"] {
+        for slug in ["a-one", "b-two"] {
+            plant(&home.path().join(root), slug, slug);
+        }
+    }
+    std::fs::write(home.path().join("maison/rooms/.order.json"), r#"{"order":["b-two","a-one"]}"#)
+        .unwrap();
+
+    let mut maison = Server::start_with_mode(home.path(), Some("maison"));
+    assert_eq!(work_titles(&mut maison, 2), vec!["b-two", "a-one"]);
+
+    let mut atelier = Server::start_with_mode(home.path(), Some("atelier"));
+    assert_eq!(work_titles(&mut atelier, 2), vec!["a-one", "b-two"], "Room의 순서가 Atelier로 샜다");
 }
 
 /// Room을 만드는 길은 MCP 하나다. **`projects`도 `branch`도 없이** 불린 `start_work`가
