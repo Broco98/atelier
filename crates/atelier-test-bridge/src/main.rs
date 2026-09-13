@@ -648,6 +648,9 @@ mod tests {
     #[test]
     fn 확인됨은_quit_app만_끄기_전에_세운다() {
         fn words(source: &str) -> Vec<usize> {
+            // 주석 줄 비우기는 `src-tauri/src/lib.rs`의 `without_comment_lines`와 같은 규칙의 사본이다 —
+            // 다리는 바이너리 크레이트라 그것을 못 가져온다. 규칙을 바꾸면 둘을 함께 고치고, 규칙의
+            // 검사(`자리_검사는_주석_처리된_호출에_안_속는다`)는 그쪽에 산다.
             let code: String = source
                 .lines()
                 .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
