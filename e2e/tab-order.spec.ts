@@ -89,7 +89,10 @@ async function moveToGap(page: Page, gap: number) {
   await expect(gapLine(page)).toHaveAttribute("data-tab-gap", String(gap));
 }
 
-/** 셸 탭이 꺼진 채(본문이 문서) 출발한다 — 끌어 놓은 칸이 켜지는지를 모습으로 보려면. */
+/**
+ * 셸들을 이름 붙여 띄운 채 출발한다 — 마지막으로 연 칸이 켜져 있다. `onSpec`이면 본문을 문서로
+ * 돌려 **셸 탭이 꺼진 채** 출발한다 — 끌어 놓은 칸이 켜지는지를 모습으로 보려면.
+ */
 async function openWork(page: Page, names: string[], { onSpec = false } = {}) {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -249,7 +252,6 @@ test.describe("work 화면", () => {
       await moveToGap(page, MAX_SHELLS);
 
       const row = await rowOf(page);
-      console.log(at, JSON.stringify(row));
       expect(row.spill, at).toBeLessThanOrEqual(0);
       expect(row.height, at).toBe(44);
       // 선이 칸 상자를 넓히지도, 세로로 넘치게 하지도 않는다.
