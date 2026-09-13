@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
+import { awaitSpawned, callCount, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
@@ -314,4 +314,68 @@ test("끄는 도중 셸 하나가 끝나 줄이 바뀌어도 틈이 새 줄로 �
 
   await expect.poll(() => namesOf(page)).toEqual(["둘", "넷", "셋"]);
   expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **끄는 셸 자신이 끝난다**(UI개선 결정 48). 위 검사는 「남의 칸이 빠졌다」라 끌기가 살 이유가 있지만,
+// 끄는 것이 사라지면 놓을 것이 없다 — 사이드바 행 끌기가 목록이 바뀌면 끌기를 거두듯(UI개선 스펙 S8)
+// 거둬야 한다. 안 거두면 원천에 닫힌 셸의 id가 실린 채 받침이 서 있어, 본문 절반에 놓는 순간 **없는
+// 셸로** 분할이 켜진다. 그래서 둘을 본다: 끝난 순간 끄는 중 모습(받침 · 끄는 커서)이 걷히는가, 그리고
+// 그 뒤 손을 떼도 화면(분할 · 순서 · 켜진 칸)과 셸이 그대로인가.
+test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
+  test("work 화면 — 본문 절반에 놓아도 분할이 안 켜진다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"]);
+    expect(await litName(page)).toBe("둘");
+    const spawned = await callCount(page, "pty_spawn");
+    const written = await callCount(page, "pty_write");
+
+    await pressAndCross(page, 0);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+
+    // 끝난 순간 끄는 중 모습이 걷힌다 — 받침도, 끄는 커서도.
+    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+
+    // 받침이 서 있던 오른쪽 절반으로 가서 뗀다 — 아무 일도 안 난다.
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+
+    await expect(page.locator("[data-column]")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/split=/);
+    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+    expect(await litName(page)).toBe("둘");
+    expect(await callCount(page, "pty_spawn")).toBe(spawned);
+    expect(await callCount(page, "pty_write")).toBe(written);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  test("`/terminal` — 끄는 모습이 걷히고 줄에 놓아도 순서가 그대로다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/terminal");
+    await nameShells(page, ["하나", "둘", "셋"]);
+    const written = await callCount(page, "pty_write");
+
+    await pressAndCross(page, 0);
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
+
+    // 끝난 순간 끄는 커서가 걷힌다 — 이 화면에는 받침이 없어 끄는 중 모습이 이것뿐이다.
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+
+    // 새 줄의 끝 틈으로 가서 뗀다 — 선도 안 서고 순서도 그대로다.
+    const at = await gapPoint(page, 2);
+    await page.mouse.move(at.x, at.y, { steps: 4 });
+    await expect(gapLine(page)).toHaveCount(0);
+    await page.mouse.up();
+
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
+    expect(await litName(page)).toBe("셋");
+    expect(await callCount(page, "pty_write")).toBe(written);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
 });
