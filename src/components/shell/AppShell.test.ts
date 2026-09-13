@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 // 렌더로는 못 잰다(이 저장소의 L2에는 DOM이 없고, 정적 마크업에는 리렌더가 없다). 그래서
 // **모양이 아니라 수와 금지된 한 조각**을 센다: 파싱이 없어 파서가 샐 자리도 없다.
 const source = readFileSync(fileURLToPath(new URL("./AppShell.tsx", import.meta.url)), "utf8");
-const countIn = (text: string, literal: string) => text.split(literal).length - 1;
+const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
 describe("앱 셸의 라우터 구독", () => {
   // **구독 수와 select 수를 함께 센다.** 개수만 세면 `useRouterState()`를 select 없이 부르는
@@ -21,8 +21,8 @@ describe("앱 셸의 라우터 구독", () => {
   // 정확히 죽고, 화면으로는 「좀 무겁다」로만 보인다. 둘이 함께 3이어야 셋이 전부 좁혀져
   // 있다는 뜻이 된다.
   it("셋으로 갈리고 셋 다 좁혀져 있다", () => {
-    expect(source.split("useRouterState(").length - 1).toBe(3);
-    expect(source.split("select:").length - 1).toBe(3);
+    expect(countOf(source, "useRouterState(")).toBe(3);
+    expect(countOf(source, "select:")).toBe(3);
   });
 
   // `=> ({ … })`도 `=> { … }`도 걸린다. 뒤쪽은 원시값을 돌려주는 블록일 수도 있지만, 그때는
@@ -71,7 +71,7 @@ describe("세그먼트의 목적지", () => {
     // mode="atelier"/>`로 눕혀도 L0는 통과하고(리터럴이 `Mode`다) 무는 L2가 없다(팔레트를
     // 렌더하는 검사가 없다). 소비자가 느는 날 이 줄이 빨개지는 것이 맞다 — 새로 내려 주는
     // 자리도 세계를 받아야 하고, 그것을 여기서 한 번 보고 지나가는 것이 이 검사의 값이다.
-    expect(source.split("mode={mode}").length - 1).toBe(2);
+    expect(countOf(source, "mode={mode}")).toBe(2);
     // 어느 쪽이 눕었는지가 실패에 남게 팔레트 몫은 이름으로도 못 박는다 — `Sidebar`는 여러
     // 줄에 걸쳐 서 있어 이 수법이 안 통한다.
     expect(source).toContain("<SearchPalette mode={mode}");
@@ -98,8 +98,8 @@ describe("설정의 문", () => {
   // 앞의 수가 뒤의 수보다 커져 빨개진다. 리터럴로 적은 문은 셋째 줄이 문다.
   it("설정으로 가는 문이 가드를 지난다", () => {
     const guarded = "navigateGuardingSettings(router, { to: SETTINGS_ENTRY })";
-    expect(countIn(source, guarded)).toBe(2);
-    expect(countIn(source, "SETTINGS_ENTRY")).toBe(countIn(source, guarded) + 1);
+    expect(countOf(source, guarded)).toBe(2);
+    expect(countOf(source, "SETTINGS_ENTRY")).toBe(countOf(source, guarded) + 1);
     expect(source).not.toMatch(/["']\/settings["']/);
   });
 });

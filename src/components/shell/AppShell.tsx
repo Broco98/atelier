@@ -67,7 +67,7 @@ function AppShell() {
   // 성질을 유리하게 쓴다.
   //
   // 배선은 `watcher.rs`가 `works:changed`를 쏘고 프런트가 `listen`으로 받는 그 길과 같다.
-  // `router`는 라우터가 고정해 준다 (SidebarWorkList의 `navigate` 주석과 같다).
+  // `router`는 라우터가 고정해 준다 (`-works-view.tsx`의 `goTo` 주석과 같다).
   //
   // **설정 안에서 누르면 아무 일도 없다**(UI개선 S18) — 가드는 이 문이 아니라 문 셋이 함께 지나는
   // `navigateGuardingSettings`에 있다.
