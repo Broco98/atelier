@@ -160,6 +160,16 @@ describe("최상위 터미널의 키 — 판정은 한 벌이다", () => {
     );
   });
 
+  // 결정 19. 셸 안 ⌘T는 xterm 핸들러가 **요청만** 보내고 화면이 연다. 이 화면이 그 요청을
+  // 안 들으면 셸에 포커스가 있는 동안 ⌘T가 죽는다 — 이 화면은 셸이 늘 포커스를 쥐고 있어
+  // 사실상 ⌘T 전부다. 창 keydown 리스너로 짓지 않는다(아래 개수가 그대로다).
+  it("셸 안 ⌘T의 요청을 듣고, 창 단축키와 같은 자리로 연다", () => {
+    expect(source).toContain("const stop = onNewShellRequested((from) => {");
+    expect(source).toContain("if (from === owner) open();");
+    expect(source).toContain("const open = () => openNewShell(topTerminal(mode));");
+    expect(countOf(source, "open();"), "창 단축키와 요청이 같은 여는 함수를 안 딛는다").toBe(2);
+  });
+
   it("window에서 듣는 자리가 셋이다", () => {
     // ⌘T(셸 열기 — 결정 93) · ⌘1~9·⌃Tab(결정 78·79) · ⌘W(켜진 칸 닫기 — 결정 13).
     // 줄어들면 그중 한 벌이 통째로 죽은 것이다.

@@ -13,7 +13,13 @@ import {
   shellsOf,
   topTerminal,
 } from "./shell-registry";
-import { openNewShell, requestCloseShell, selectShell, terminalStore } from "./terminal-store";
+import {
+  onNewShellRequested,
+  openNewShell,
+  requestCloseShell,
+  selectShell,
+  terminalStore,
+} from "./terminal-store";
 import type { Mode } from "@/mode";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
@@ -74,16 +80,27 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
   //
   // 이 화면에는 옮길 본문이 없다(결정 98이 work 화면에 준 절반) — 본문이 이미 터미널이고
   // 여는 자리도 하나뿐이다. 언제 듣고 언제 비켜야 하는지는 `opensShellFromWindow`가 혼자
-  // 안다: 셸 안에서는 xterm이 이미 열고 `stopPropagation`으로 여기까지 못 오게 막는다.
+  // 안다: 셸 안에서는 xterm이 받아 `stopPropagation`으로 여기까지 못 오게 막는다.
+  //
+  // **셸 안 ⌘T는 요청으로 온다**(결정 19) — xterm 핸들러가 자리를 정하지 않고 이 화면에
+  // 요청만 보낸다. 이 구독이 빠지면 셸에 포커스가 있는 동안(이 화면에서는 거의 늘) ⌘T가
+  // 죽는다. work 화면과 같은 모양이다.
   useEffect(() => {
+    const open = () => openNewShell(topTerminal(mode));
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      openNewShell(topTerminal(mode));
+      open();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mode]);
+    const stop = onNewShellRequested((from) => {
+      if (from === owner) open();
+    });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      stop();
+    };
+  }, [mode, owner]);
 
   /**
    * ⌘1~9와 ⌃Tab이 **이 화면의 셸**을 고른다(결정 78·79·109).

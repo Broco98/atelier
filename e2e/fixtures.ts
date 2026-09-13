@@ -80,6 +80,36 @@ export const WORKS: WorkView[] = [
     specDir: "~/.atelier/works/plain-work/spec",
     specFiles: [],
   },
+  // **프로젝트가 둘인 work**(결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
+  // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
+  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 테스트마다 못 덮으므로 여기 한 벌을 둔다.
+  //
+  // **끝에 더한다** — 앞 두 줄을 자리로 집는 검사가 여럿이다(`const [pinnedWork, plainWork] = WORKS`).
+  {
+    slug: "multi-work",
+    title: "두 저장소 일",
+    status: "active",
+    branch: "feat/multi-work",
+    createdAt: "2026-08-22",
+    projects: ["billing", "ledger"],
+    pinned: false,
+    worktrees: [
+      {
+        project: "billing",
+        path: "~/.atelier/works/multi-work/trees/billing",
+        exists: true,
+        dirty: false,
+      },
+      {
+        project: "ledger",
+        path: "~/.atelier/works/multi-work/trees/ledger",
+        exists: true,
+        dirty: false,
+      },
+    ],
+    specDir: "~/.atelier/works/multi-work/spec",
+    specFiles: [],
+  },
 ];
 
 /**

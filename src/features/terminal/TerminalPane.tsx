@@ -192,6 +192,10 @@ function TerminalPane({ mode, work }: { mode: Mode; work: WorkView | null }) {
  * **프로젝트를 안 받는다.** 한때 받았다 — 이 본문이 셸을 여는 자리를 갖고 있어서
  * 「어느 워크트리에」를 물어야 했다(결정 24). 결정 19가 그 자리를 탭 줄로 보내면서
  * 여기 남은 부름은 「없으면 하나 띄운다」 하나가 됐고, 그것은 늘 안 고른 자리에서 뜬다.
+ *
+ * **⌘T의 기본 자리(`workDefaultOrigin`)를 여기 쓰지 않는다**(결정 30). 멀티 프로젝트
+ * work에서는 안 고른 자리가 `null`이라 들어가도 셸이 저절로 안 서는데, 기본 자리를 타면
+ * 들어갈 때마다 저장소가 아닌 폴더에 셸이 선다. 기본 자리와 진입 자리는 다른 물음이다.
  */
 function originOf(mode: Mode, work: WorkView | null): ShellOrigin | null {
   return work ? workShellOrigin(mode, work, null) : topTerminal(mode);

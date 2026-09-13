@@ -23,7 +23,9 @@ const [pinnedWork, plainWork] = WORKS;
 
 // 헤더의 접근성 이름에는 개수가 함께 들어간다 — 라벨과 옅은 숫자가 같은 버튼 안이다.
 const PINNED_HEADER = "고정 1";
-const MAIN_HEADER = "작업 1";
+// **수는 픽스처에서 파생한다** — `WORKS` 끝에 줄이 더해질 때마다(티켓 08의 멀티 프로젝트 work)
+// 여기 숫자를 손으로 고치지 않게. 고정 아닌 것이 전부 이 구획이다.
+const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
 
 // 오른쪽 끝 페이드의 폭이자 **마퀴가 넘침 위에 더 가는 거리**다(결정 11) — 그만큼 더 가지
 // 않으면 다 흐른 뒤에도 마지막 글자가 페이드에 먹힌다. `index.css`의 `--title-fade`와 같은 수다.

@@ -93,9 +93,8 @@ interface ShellInstance {
   // 이 셸을 어디서 띄웠는가. cwd는 `~` 축약 표기 그대로 넘긴다 — 펴는 것은 백엔드다(결정 25).
   // `cwd`가 `null`이면 데이터 루트다(최상위 터미널).
   //
-  // **cwd만이 아니라 origin 통째로 든다.** Ctrl+T가 「이 칸과 같은 자리에」 새 칸을 여는데,
-  // 프로젝트가 여럿인 Work에서는 소유자만으로 자리가 안 정해진다(`workShellOrigin`이 null을
-  // 준다). 지금 칸이 어느 프로젝트에서 떴는지는 그 칸만 안다.
+  // **새 칸의 자리가 아니다.** 셸 안 ⌘T는 이 값의 `owner`로 화면에 요청만 보내고, 자리는
+  // 화면의 기본 자리 함수가 정한다(결정 19). 여기서 읽는 것은 spawn의 세계·cwd와 그 소유자다.
   origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
@@ -136,6 +135,35 @@ export function onShellOpenRejected(listen: (notice: string) => void): () => voi
 }
 
 /**
+ * 셸 **안에서** 누른 ⌘T가 그 셸의 화면에 「새 셸」을 요청하는 통로(결정 19).
+ *
+ * **셸이 자리를 정하지 않는다.** 한때 xterm 핸들러가 그 셸이 뜬 자리(`instance.origin`)로
+ * 스스로 열었는데, 그러면 프로젝트 셸 안의 ⌘T만 그 프로젝트에서 떠 셸 안과 밖이 다른 자리가
+ * 됐다. 자리는 **창 단축키와 같은 기본 자리 함수**로 화면이 정한다 — work에 프로젝트가 붙어
+ * 기본 자리가 바뀌어도 그 순간의 값을 쓴다. 그래서 요청에 실리는 것은 소유자 하나다.
+ *
+ * 통로가 위 거절 알림과 같은 모양인 것도 같은 이유다: 핸들러가 **React 트리 밖**이라 화면을
+ * 부를 길이 이것뿐이다. 창 keydown 리스너로 짓지 않는 것은 `stopPropagation`으로 막아 둔 그
+ * 리스너와 한 번 눌러 두 번 여는 길을 다시 잇지 않기 위해서다.
+ *
+ * **듣는 화면이 둘이다** — work 화면과 최상위 터미널. 한쪽이 안 들으면 그 화면에서 셸에
+ * 포커스가 있는 동안 ⌘T가 죽는다. 듣는 화면이 없으면 아무 일도 안 일어난다.
+ */
+const newShellRequestListeners = new Set<(owner: ShellOwner) => void>();
+
+export function onNewShellRequested(listen: (owner: ShellOwner) => void): () => void {
+  newShellRequestListeners.add(listen);
+  return () => {
+    newShellRequestListeners.delete(listen);
+  };
+}
+
+/** 그 소유자의 화면에 새 셸을 요청한다. **여기서 열지 않는다** — 위 머리말. */
+export function requestNewShell(owner: ShellOwner): void {
+  for (const listen of newShellRequestListeners) listen(owner);
+}
+
+/**
  * 셸 한 칸을 목록에 더하고 그 인스턴스를 세운다. **거절을 알리는 일은 여기 없다** — 그래야
  * 부르는 쪽이 「누가 눌렀나」로 갈릴 수 있다(`openNewShell` / `ensureShell`).
  *
@@ -166,8 +194,8 @@ function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
  * 한다**(결정 30·47).
  *
  * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal(mode)`, Work 화면은
- * `workShellOrigin(mode, work, project)`. 그 함수가 `null`을 주면(프로젝트를 안 골랐다)
- * 여기까지 오지 않는다.
+ * ⌘T가 `workDefaultOrigin(mode, work)`(결정 19), `+` 메뉴가 `workShellOrigin(mode, work,
+ * project)`. 뒤 함수가 `null`을 주면(프로젝트를 안 골랐다) 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
   const opened = openShellQuietly(origin);
@@ -762,8 +790,9 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // **여기서 가르는 것이 둘이다.** 앱이 가져가는 키(위 둘)와, 셸에 가되 **바이트가 갈리는**
   // 키(⇧Enter — 결정 91). 판정도 그래서 둘이고, 아래 두 분기가 각각을 탄다.
   //
-  // **새 칸은 자기 origin으로 연다.** 프로젝트를 다시 묻지 않는 이유는 답이 이미 있어서다 —
-  // 이 칸이 뜬 자리가 곧 새 칸의 자리다. 상한에 닿으면 `openNewShell`이 열지 않고
+  // **새 칸의 자리를 여기서 정하지 않는다**(결정 19). 이 칸의 화면에 요청만 보내고, 화면이
+  // 창 단축키와 같은 기본 자리 함수로 연다 — 셸 안과 밖의 ⌘T가 언제나 같은 자리다
+  // (`requestNewShell` 머리말). 상한에 닿으면 화면이 부른 `openNewShell`이 열지 않고
   // 거절을 알리고, 듣는 화면이 그것을 말한다(결정 47).
   //
   // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
@@ -781,7 +810,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
       // (셸이 0개인 화면 때문이다) 이 키를 듣는 자리가 둘이 됐다 — `preventDefault`만으로는
       // window 리스너가 안 막혀 한 번 눌러 셸이 둘 열린다.
       event.stopPropagation();
-      if (hotkey === "new") openNewShell(instance.origin);
+      if (hotkey === "new") requestNewShell(instance.origin.owner);
       // 확인을 거치는 길로 간다(결정 92) — `×`와 **같은 함수**다.
       else void requestCloseShell(instance.id);
       return false;

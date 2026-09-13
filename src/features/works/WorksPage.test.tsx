@@ -24,8 +24,10 @@ import {
 } from "@/features/terminal/shell-registry";
 import type { ShellOrigin } from "@/features/terminal/shell-registry";
 import {
+  onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
+  requestNewShell,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 
@@ -658,10 +660,20 @@ describe("WorksPage ⌘Enter", () => {
     // 딛고 선 작업. `selected`로 바꾸면 본문이 보여주는 셸과 **다른 작업의** 셸이 열린다.
     // **세계가 origin에 실린다**(결정 10) — 어긋나면 이 화면이 저쪽 루트의 work에서 셸을
     // 열고, `pty_spawn`도 그 세계의 홈에서 뜬다(둘 다 멀쩡한 값이라 아무도 안 나무란다).
-    expect(worksPage).toContain("workShellOrigin(mode, panelWork, null)");
+    //
+    // **기본 자리 함수다 — `null`이 없다**(결정 17~19). 옛 `workShellOrigin(…, null)`은 멀티
+    // 프로젝트 work에서 `null`을 줘 ⌘T가 조용히 안 먹었다(스토리 45). 그 함수는 「고른
+    // 프로젝트」와 「들어갈 때」의 것으로 남는다.
+    expect(worksPage).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
+    expect(worksPage).not.toContain("workShellOrigin(mode, panelWork, null)");
     // 결정 98이 넓힌 절반이다. 열기만 하고 본문을 안 옮기면 ⌘1·⌘2~9 한 벌에서 혼자 어긋난다.
     expect(worksPage).toContain("onSelectTab(\"terminal\")");
-    expect(worksPage).toContain("openNewShell(origin);");
+    // **셸 안 ⌘T도 이 자리로 온다**(결정 19). xterm 핸들러는 요청만 보내고 화면이 연다 —
+    // 구독이 빠지면 셸에 포커스가 있는 동안 ⌘T가 죽는다. 창 keydown 리스너로 짓지 않는다
+    // (아래 개수가 그대로다). 요청은 **이 화면의 셸**이 보낸 것만 받는다.
+    expect(worksPage).toContain("const stop = onNewShellRequested((owner) => {");
+    expect(worksPage).toContain("if (panelWork && owner === ownerOf(mode, panelWork.slug)) open();");
+    expect(countOf(worksPage, "open();"), "창 단축키와 요청이 같은 여는 함수를 안 딛는다").toBe(2);
     // **등록을 따로 센다.** 위 리터럴은 전부 핸들러 **본문**이라, 핸들러가 window에 안
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
@@ -1103,10 +1115,24 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     // ⌘T가 React 트리 밖(`attachCustomKeyEventHandler`)에 살아 렌더로는 못 본다. 그래서
     // 소스를 읽되 **못 찾으면 실패한다** — 못 찾은 것을 통과로 읽으면 이 검사가 지키는 것은
     // 배선이 아니라 자기 자신이다.
+    //
+    // **셸 안 ⌘T는 이제 요청만 보낸다**(결정 19) — 여는 것은 그 요청을 받은 화면이다. 그래서
+    // 사슬의 두 고리를 함께 본다: 핸들러가 요청을 보내고, 화면이 받은 요청을 알리는 쪽
+    // (`openNewShell`)으로 연다(위 「⌘T를 window에서 듣고…」가 그 리터럴을 못박는다).
     const store = source("../terminal/terminal-store.ts");
-    const branch = store.match(/if \(hotkey === "new"\)[\s\S]{0,120}/)?.[0] ?? "";
-    expect(branch, "⌘T가 새 셸을 여는 자리를 찾지 못했다").not.toBe("");
-    expect(branch).toContain("openNewShell");
+    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
+  });
+
+  it("셸 안 ⌘T의 요청은 구독한 화면에만 가고, 끊으면 안 간다", () => {
+    const heard: string[] = [];
+    const stop = onNewShellRequested((owner) => heard.push(owner));
+    requestNewShell(ownerOf("atelier", "가"));
+    stop();
+    requestNewShell(ownerOf("atelier", "나"));
+    // 요청이 셸을 **스스로 열지 않는다** — 자리를 정하는 것은 받은 화면이다.
+    expect(heard).toEqual([ownerOf("atelier", "가")]);
+    expect(terminalStore.state).toBe(NO_SHELLS);
   });
 });
 

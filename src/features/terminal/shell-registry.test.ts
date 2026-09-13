@@ -1,6 +1,7 @@
 /// <reference types="node" />
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
+import { readdirSync, readFileSync, type Dirent } from "fs";
+import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import {
@@ -46,6 +47,7 @@ import {
   shellHotkey,
   slugOfOwner,
   topTerminal,
+  workDefaultOrigin,
   workShellOrigin,
   workShellProjects,
 } from "./shell-registry";
@@ -815,6 +817,74 @@ describe("cwd는 Work의 모양이 정한다", () => {
   });
 });
 
+// 결정 17~19·30. **자리를 묻는 물음이 셋으로 갈린다** — 기본 자리(⌘T), 고른 프로젝트(메뉴),
+// 들어갈 때 셸을 세우는 자리. 뒤의 둘은 위 `workShellOrigin`이 그대로 맡고(멀티 프로젝트에 안
+// 고르면 `null` — 위 「프로젝트가 여럿인데 안 고르면 셸이 생기지 않는다」가 결정 30 그대로다),
+// 앞의 하나가 **`null`이 없는** 이 함수다. 둘을 한 함수의 인자로 섞으면 「들어갈 때」가 기본
+// 자리를 타는 날 멀티 프로젝트 work에 저장소가 아닌 폴더의 셸이 저절로 쌓인다.
+describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모든 프로젝트」", () => {
+  it("프로젝트가 여럿이면 첫 워크트리 경로의 부모에서 연다 — 프로젝트 앞말이 없다", () => {
+    expect(workDefaultOrigin("atelier", w(["atelier", "cli"]))).toEqual({
+      mode: "atelier",
+      cwd: "~/.atelier/works/w/trees",
+      owner: ownerOf("atelier", "w"),
+      project: null,
+    });
+  });
+
+  // **폴더 이름을 앱이 짓지 않는다** — 워크트리 경로는 코어가 만든 값이고, 그 부모를 읽을
+  // 뿐이다. 이름으로 지으면 코어가 자리를 옮기는 날 셸이 없는 폴더에서 뜬다.
+  it("이름이 아니라 부모를 읽는다 — 끝의 슬래시도 같은 자리다", () => {
+    const work = w(["atelier", "cli"]);
+    const moved = {
+      ...work,
+      worktrees: [
+        { ...work.worktrees[0], path: "~/딴데/w/나무/atelier/" },
+        { ...work.worktrees[1], path: "~/딴데/w/나무/cli" },
+      ],
+    };
+    expect(workDefaultOrigin("atelier", moved).cwd).toBe("~/딴데/w/나무");
+  });
+
+  // 0·1개 work과 Room은 **지금과 같다**(스펙 §11). 두 세계를 함께 돈다 — Maison은 워크트리가
+  // 실려 와도 Room 폴더다(`shellTrees`).
+  it("0·1개 work과 Maison은 지금 자리와 같다", () => {
+    for (const mode of ALL_MODES) {
+      for (const work of [w([]), w(["atelier"])]) {
+        expect(workDefaultOrigin(mode, work), `${mode} ${work.worktrees.length}개`).toEqual(
+          workShellOrigin(mode, work, null),
+        );
+      }
+    }
+    expect(workDefaultOrigin("maison", w(["atelier", "cli"]))).toEqual(
+      workShellOrigin("maison", w(["atelier", "cli"]), null),
+    );
+  });
+
+  // **프런트는 「모든 프로젝트」 폴더의 이름을 모른다**(스펙 §7) — 위 함수가 부모를 읽는 것이
+  // 그 약속의 절반이고, 이 스캔이 나머지 절반이다: 누가 경로 조각을 손으로 이으면 코어가
+  // 자리를 옮기는 날 그 한 곳만 없는 폴더를 가리킨다. 한 줄 리터럴만 본다(파싱하지 않는다).
+  //
+  // **fail-closed**: 파일을 하나도 못 읽으면 「조각이 0개」가 저절로 참이 된다. 그래서 같은
+  // 스캔이 `worktrees`를 찾아야 한다 — 그 낱말이 소스에 있다는 것이 실제로 읽었다는 증거다.
+  it("테스트가 아닌 프런트 소스에 그 폴더 이름의 경로 조각이 없다", () => {
+    const root = fileURLToPath(new URL("../..", import.meta.url));
+    const sources = (function walk(dir: string): string[] {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    })(root);
+    const text = sources.map((path) => readFileSync(path, "utf8")).join("\n");
+
+    expect(countOf(text, "worktrees"), "소스를 못 읽었다 — `worktrees`가 하나도 없다").toBeGreaterThan(0);
+    for (const piece of ['"trees', "'trees", "`trees", "trees/", "/trees"]) {
+      expect(countOf(text, piece), piece).toBe(0);
+    }
+  });
+});
+
 // US 26. `+`가 「어디에 열까」를 묻기 전에 「고를 것이 있나」를 이 함수가 답한다 —
 // `workShellOrigin`과 **같은 값(`shellTrees`)** 을 봐야 메뉴는 열리는데 고른 값으로 셸이
 // 안 생기는 일이 없다. 그래서 이 describe는 두 함수를 **나란히** 잰다: 한쪽만 재면 둘이
@@ -1529,7 +1599,11 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   const store = read("./terminal-store.ts");
 
   it("⌘T·⌘W가 셸 안에서 갈리는 자리", () => {
-    expect(store).toContain('if (hotkey === "new") openNewShell(instance.origin);');
+    // **셸 안 ⌘T는 자리를 정하지 않는다**(결정 19). 그 셸의 화면에 「새 셸」을 요청하고, 화면이
+    // 창 단축키와 같은 기본 자리 함수로 연다. `instance.origin`으로 스스로 열면 프로젝트 셸
+    // 안의 ⌘T만 그 프로젝트에서 떠 셸 안과 밖이 다른 자리가 된다.
+    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(countOf(store, "openNewShell(instance.origin)"), "셸이 제 자리로 스스로 연다").toBe(0);
     expect(store).toContain("else void requestCloseShell(instance.id);");
   });
 

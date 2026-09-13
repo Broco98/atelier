@@ -37,11 +37,13 @@ import {
   shellNavFromWindow,
   shellsEmptied,
   shellsOf,
+  workDefaultOrigin,
   workShellOrigin,
   workShellProjects,
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
+  onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
   requestCloseShell,
@@ -371,19 +373,35 @@ function WorksPage({
   // 그리고 **xterm의 숨은 `<textarea>`** — `togglesWorkPanel`이 적어 둔 함정과 같은 자리다).
   //
   // 딛고 선 작업은 `panelWork`다 — 본문이 셸을 보여주는데 다른 작업의 셸을 여는 일이 없다.
+  //
+  // **자리는 기본 자리 함수 하나가 정한다**(결정 17~19). 프로젝트가 여럿인 work이면 「모든
+  // 프로젝트」이고 `null`이 없어, 프로젝트를 안 골랐다고 ⌘T가 안 먹는 경우가 사라졌다. `+`
+  // 메뉴의 프로젝트 줄과 진입 셸은 여전히 `workShellOrigin`을 탄다 — 들어가도 셸이 저절로
+  // 안 서는 것(결정 30)이 그쪽의 `null`이다.
+  //
+  // **셸 안 ⌘T도 여기로 온다.** xterm 핸들러는 요청만 보내고(`requestNewShell`) 이 화면이
+  // 같은 `open`으로 연다 — 셸 안과 밖이 언제나 같은 자리다. 요청은 **이 화면의 셸**이 보낸
+  // 것만 받는다. 창 keydown 리스너를 하나 더 거는 모양으로 짓지 않는다(결정 93의
+  // `stopPropagation`이 막아 둔 두 번 열기를 되살린다).
   useEffect(() => {
+    const open = () => {
+      if (!panelWork) return;
+      openNewShell(workDefaultOrigin(mode, panelWork));
+      onSelectTab("terminal");
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (!opensShellFromWindow(e)) return;
       e.preventDefault();
-      // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도, 본문을
-      // 옮기지도 않는다(결정 24). `+`가 그 화면에서 프로젝트를 묻는 것과 같은 규칙이다.
-      const origin = panelWork && workShellOrigin(mode, panelWork, null);
-      if (!origin) return;
-      openNewShell(origin);
-      onSelectTab("terminal");
+      open();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    const stop = onNewShellRequested((owner) => {
+      if (panelWork && owner === ownerOf(mode, panelWork.slug)) open();
+    });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      stop();
+    };
   }, [mode, panelWork, onSelectTab]);
 
   /**
@@ -514,7 +532,8 @@ function WorksPage({
       onClose={requestCloseShell}
       onOpen={(project) => {
         // 프로젝트가 여럿인데 안 골랐으면 셸이 설 자리가 안 정해진다 — 그때는 열지도,
-        // 본문을 옮기지도 않는다(결정 24). ⌘T가 위에서 같은 규칙을 탄다.
+        // 본문을 옮기지도 않는다(결정 24). ⌘T는 이 규칙을 **안 탄다** — 기본 자리(「모든
+        // 프로젝트」)로 연다(결정 19, 위 ⌘T 이펙트).
         const origin = workShellOrigin(mode, panelWork, project);
         if (!origin) return;
         openNewShell(origin);

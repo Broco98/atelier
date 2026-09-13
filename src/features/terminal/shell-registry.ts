@@ -211,9 +211,9 @@ export function topTerminal(mode: Mode): ShellOrigin {
 }
 
 /**
- * 셸을 여는 두 함수가 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
- * 그 아래 `workShellOrigin`은 「어디에 열까」를 여기서만 읽는다 — **둘이 같은 값을 보는 것을
- * 함수 하나로 세운다.** 조건을 두 자리에 나눠 적으면 한쪽만 갈린 커밋이 「메뉴는 열리는데
+ * 셸을 여는 함수들이 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
+ * 그 아래 `workShellOrigin`·`workDefaultOrigin`은 「어디에 열까」를 여기서만 읽는다 —
+ * **둘이 같은 값을 보는 것을 함수 하나로 세운다.** 조건을 두 자리에 나눠 적으면 한쪽만 갈린 커밋이 「메뉴는 열리는데
  * 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안 열리는데 열 자리도 없다」)를 만들고,
  * 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이 금지하는 것).
  *
@@ -268,14 +268,50 @@ export function workShellOrigin(
   work: WorkView,
   project: string | null,
 ): ShellOrigin | null {
-  const owner = ownerOf(mode, work.slug);
   const trees = shellTrees(mode, work);
-  if (trees.length === 0) return { mode, cwd: workDir(work), owner, project: null };
-  // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
-  if (trees.length === 1) return { mode, cwd: trees[0].path, owner, project: null };
+  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
 
   const picked = project === null ? undefined : trees.find((tree) => tree.project === project);
-  return picked ? { mode, cwd: picked.path, owner, project: picked.project } : null;
+  return picked
+    ? { mode, cwd: picked.path, owner: ownerOf(mode, work.slug), project: picked.project }
+    : null;
+}
+
+/**
+ * 이 Work에서 ⌘T가 셸을 여는 **기본 자리**(결정 17~19). **`null`이 없다** — ⌘T가 「안 먹는」
+ * 경우를 없애는 것이 이 함수가 따로 선 이유다(스토리 45).
+ *
+ * | Work의 모양 | cwd |
+ * |---|---|
+ * | 프로젝트 0·1개 · Room | `workShellOrigin(mode, work, null)`과 같다 |
+ * | 프로젝트 여럿 | 「모든 프로젝트」 — **첫 워크트리 경로의 부모**, `project: null` |
+ *
+ * **위 `workShellOrigin`을 대신하지 않는다.** 그 함수는 「고른 프로젝트」와 「들어갈 때 셸을
+ * 세우는 자리」를 그대로 맡고, 멀티 프로젝트에 안 고르면 `null`인 것이 결정 30(들어가도 셸이
+ * 저절로 안 선다)과 정확히 같다. 둘을 인자 하나로 섞으면 진입이 이 자리를 타는 날 저장소가
+ * 아닌 폴더에 원치 않는 셸이 쌓인다.
+ *
+ * **폴더 이름을 여기서 짓지 않는다** — 워크트리 경로는 코어가 work 폴더에서 한 규칙으로
+ * 만든 값이라 부모가 늘 같고, 그 부모를 읽을 뿐이다(`workDir`이 `specDir`에서 하는 것과
+ * 같은 이유). 폴더가 없으면 spawn이 실패해 그 칸에 이유가 선다 — 없는 워크트리와 같은 길이다.
+ *
+ * 탭 이름에 프로젝트 앞말이 없는 것은 `project: null`에서 저절로 나온다(결정 31).
+ */
+export function workDefaultOrigin(mode: Mode, work: WorkView): ShellOrigin {
+  const trees = shellTrees(mode, work);
+  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
+  return { mode, cwd: parentDir(trees[0].path), owner: ownerOf(mode, work.slug), project: null };
+}
+
+/**
+ * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work과
+ * Room은 기본 자리와 「안 고른」 자리가 같아야 한다 — 스펙 §11).
+ */
+function unpickedOrigin(mode: Mode, work: WorkView, trees: WorktreeView[]): ShellOrigin {
+  const owner = ownerOf(mode, work.slug);
+  // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
+  const cwd = trees.length === 0 ? workDir(work) : trees[0].path;
+  return { mode, cwd, owner, project: null };
 }
 
 /**
@@ -285,7 +321,12 @@ export function workShellOrigin(
  * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
  */
 function workDir(work: WorkView): string {
-  return work.specDir.replace(/\/+[^/]+\/*$/, "");
+  return parentDir(work.specDir);
+}
+
+/** 경로 한 단계 위. 끝의 슬래시는 같은 자리로 읽는다. `~` 표기 그대로다 — 펴지 않는다. */
+function parentDir(path: string): string {
+  return path.replace(/\/+[^/]+\/*$/, "");
 }
 
 /**
