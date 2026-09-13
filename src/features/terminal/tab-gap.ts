@@ -1,6 +1,6 @@
 import { isInPlaceGap } from "./shell-registry";
 
-// 탭 줄 위의 포인터가 **몇 번째 틈**인가(결정 11 · ui-improvement 스펙 §6). DOM을 안 읽는
+// 탭 줄 위의 포인터가 **몇 번째 틈**인가(UI개선 결정 11 · UI개선 스펙 §6). DOM을 안 읽는
 // 순수 함수다 — 기하는 탭 줄이 끌기를 시작할 때 한 번 재서 넘기고(`ShellTabs`), 여기는
 // 그 숫자만 본다. 그래서 DOM 없는 기본 환경에서 표로 잰다(tab-gap.test.ts).
 //

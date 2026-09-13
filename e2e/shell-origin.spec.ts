@@ -2,7 +2,7 @@ import { expect, test, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, parentPath, readIpcRecord, spawnedCwds, unknownIpcCalls } from "./harness";
 
-// 티켓 08(#221) — **⌘T가 언제나 「모든 프로젝트」에 연다**(결정 17~19·30, 스펙 §7).
+// 티켓 08(#221) — **⌘T가 언제나 「모든 프로젝트」에 연다**(UI개선 결정 17~19·30, UI개선 스펙 §7).
 //
 // **이 층에서만 보인다.** 자리 함수는 L2가 값으로 재지만(`shell-registry.test.ts`), ⌘T가 그
 // 함수에 닿는 길은 둘이고 둘 다 이벤트가 있어야 돈다: 셸 밖에서는 창 keydown 리스너가, 셸
@@ -30,7 +30,7 @@ async function focusShell(page: Page): Promise<void> {
     .toBe(true);
 }
 
-// 결정 30. 기본 자리와 진입 자리는 **다른 물음이다** — 진입이 기본 자리를 타면 git이 안 되는
+// UI개선 결정 30. 기본 자리와 진입 자리는 **다른 물음이다** — 진입이 기본 자리를 타면 git이 안 되는
 // 폴더에 원치 않는 셸이 쌓인다. 지금도 참이다: 진입이 새 기본 자리 함수를 타는 변형을 무는 그물.
 test("멀티 프로젝트 work의 터미널에 들어가면 셸이 저절로 안 선다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -64,7 +64,7 @@ test("셸 포커스 없이 ⌘T → 「모든 프로젝트」에서 뜨고, 탭�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 결정 19. 옛 규칙은 셸 안 ⌘T가 **그 셸이 뜬 자리**로 열었다 — 진입 셸이 없으니 이 검사의 첫
+// UI개선 결정 19. 옛 규칙은 셸 안 ⌘T가 **그 셸이 뜬 자리**로 열었다 — 진입 셸이 없으니 이 검사의 첫
 // 셸은 메뉴로 고른 프로젝트 셸이고, 옛 규칙이면 둘째 cwd가 그 워크트리가 되어 여기가 문다.
 test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝트」에서 뜬다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -90,7 +90,7 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 0·1개 work은 **지금과 같다**(스펙 §11). ⌘T가 닿는 길이 둘이라 둘 다 잰다 — 진입 셸에
+// 0·1개 work은 **지금과 같다**(UI개선 스펙 §11). ⌘T가 닿는 길이 둘이라 둘 다 잰다 — 진입 셸에
 // 포커스를 둔 채 한 번(요청 길), 포커스를 걷고 한 번(창 리스너 — 옛 `workShellOrigin(…, null)`
 // 자리에 기본 자리 함수가 들어간 곳이다).
 test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다 — 셸 안에서도, 밖에서도", async ({ page }) => {

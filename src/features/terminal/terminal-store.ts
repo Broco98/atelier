@@ -97,7 +97,7 @@ interface ShellInstance {
   // `cwd`가 `null`이면 데이터 루트다(최상위 터미널).
   //
   // **새 칸의 자리가 아니다.** 셸 안 ⌘T는 이 값의 `owner`로 화면에 요청만 보내고, 자리는
-  // 화면의 기본 자리 함수가 정한다(결정 19). 여기서 읽는 것은 spawn의 세계·cwd와 그 소유자다.
+  // 화면의 기본 자리 함수가 정한다(UI개선 결정 19). 여기서 읽는 것은 spawn의 세계·cwd와 그 소유자다.
   origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
@@ -138,7 +138,7 @@ export function onShellOpenRejected(listen: (notice: string) => void): () => voi
 }
 
 /**
- * 셸 **안에서** 누른 ⌘T가 그 셸의 화면에 「새 셸」을 요청하는 통로(결정 19).
+ * 셸 **안에서** 누른 ⌘T가 그 셸의 화면에 「새 셸」을 요청하는 통로(UI개선 결정 19).
  *
  * **셸이 자리를 정하지 않는다.** 한때 xterm 핸들러가 그 셸이 뜬 자리(`instance.origin`)로
  * 스스로 열었는데, 그러면 프로젝트 셸 안의 ⌘T만 그 프로젝트에서 떠 셸 안과 밖이 다른 자리가
@@ -202,7 +202,7 @@ function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
  * 한다**(결정 30·47).
  *
  * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal(mode)`, Work 화면은
- * ⌘T와 `+` 메뉴의 「모든 프로젝트」가 `workDefaultOrigin(mode, work)`(결정 18·19), 메뉴의
+ * ⌘T와 `+` 메뉴의 「모든 프로젝트」가 `workDefaultOrigin(mode, work)`(UI개선 결정 18·19), 메뉴의
  * 프로젝트 줄이 `workShellOrigin(mode, work, project)`. 뒤 함수가 `null`을 주면 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
@@ -250,13 +250,13 @@ export function selectShell(id: number): void {
 
 /**
  * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 셸을 그 틈으로 옮긴다
- * (결정 11 · ui-improvement 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
+ * (UI개선 결정 11 · UI개선 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
  * 준다** — 탭 줄은 스토어를 모르고, 「놓은 곳이 이긴다」의 탭 줄 몫을 화면마다 적으면 한쪽만
  * 늙는다.
  *
  * 틈이 없으면(탭 줄 밖에서 틈이 꺼졌다 · 제자리 · Esc로 취소해 상태가 비었다) 아무것도 안
  * 한다. 켜진 탭은 안 바뀐다 — 끌어 놓은 탭은 켜지지 않는다(제스처가 클릭을 삼킨다).
- * 순서는 메모리에만 있다(결정 12).
+ * 순서는 메모리에만 있다(UI개선 결정 12).
  */
 export function dropShellOnSlot(): void {
   const move = shellMoveOf(dragStore.state);
@@ -403,7 +403,7 @@ export async function requestCloseShell(id: number): Promise<void> {
 }
 
 /**
- * 종료 확인이 적을 수(결정 15). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는 세계마다 갈리지
+ * 종료 확인이 적을 수(UI개선 결정 15). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는 세계마다 갈리지
  * 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지는 셸 닫기 확인과 **같은 물음**으로 지금
  * 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 `countQuitShells`가 혼자 안다.
  */
@@ -823,7 +823,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // **여기서 가르는 것이 둘이다.** 앱이 가져가는 키(위 둘)와, 셸에 가되 **바이트가 갈리는**
   // 키(⇧Enter — 결정 91). 판정도 그래서 둘이고, 아래 두 분기가 각각을 탄다.
   //
-  // **새 칸의 자리를 여기서 정하지 않는다**(결정 19). 이 칸의 화면에 요청만 보내고, 화면이
+  // **새 칸의 자리를 여기서 정하지 않는다**(UI개선 결정 19). 이 칸의 화면에 요청만 보내고, 화면이
   // 창 단축키와 같은 기본 자리 함수로 연다 — 셸 안과 밖의 ⌘T가 언제나 같은 자리다
   // (`requestNewShell` 머리말). 상한에 닿으면 화면이 부른 `openNewShell`이 열지 않고
   // 거절을 알리고, 듣는 화면이 그것을 말한다(결정 47).

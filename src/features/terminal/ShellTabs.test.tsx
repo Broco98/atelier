@@ -401,7 +401,7 @@ describe("칸이 `memo` 경계다", () => {
     expect(src).toContain("latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };");
   });
 
-  // 틈 알림(ui-improvement 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
+  // 틈 알림(UI개선 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
   // 알림을 따로 화살표로 만들면 묶음이 두 자리가 되고 다음 콜백이 어느 쪽에 붙을지가 갈린다.
   it("틈 알림이 같은 묶음에서 나온다", () => {
     const src = source();
@@ -692,7 +692,7 @@ describe("칸을 본문 위로 끄는 자리", () => {
 
   it("두 화면 다 끈다 — 조건 없이 붙는다", () => {
     // 한때 「콜백이 없으면 안 끌린다」였다 — 떨굴 자리인 분할이 work 화면의 것이라 `/terminal`은
-    // 콜백을 안 줬다. 이제 그 화면도 **순서를 바꾸려고** 끈다(결정 11) — 조건부가 남으면 한
+    // 콜백을 안 줬다. 이제 그 화면도 **순서를 바꾸려고** 끈다(UI개선 결정 11) — 조건부가 남으면 한
     // 화면이 콜백을 빼먹어도 컴파일되고 조용히 안 끌린다. prop이 필수인 것은 L0가 잰다.
     expect(cellOf("spec")).not.toContain("onDragTab && ");
     expect(cellOf("shell")).not.toContain("onDragTab && ");

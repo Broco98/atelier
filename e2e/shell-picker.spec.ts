@@ -2,7 +2,7 @@ import { expect, test, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, parentPath, spawnedCwds, unknownIpcCalls } from "./harness";
 
-// 티켓 09(#222) — **`+` 메뉴에 「모든 프로젝트」와 키보드**(결정 18·20, 스펙 §7 · S13).
+// 티켓 09(#222) — **`+` 메뉴에 「모든 프로젝트」와 키보드**(UI개선 결정 18·20, UI개선 스펙 §7 · S13).
 //
 // **이 층에서만 보인다.** 메뉴는 `+`를 눌러야 서고(정적 마크업에는 없다), 포커스·키·바깥 클릭은
 // 진짜 브라우저의 이벤트가 있어야 돈다. 「맨 윗줄에 포커스」는 특히 그렇다 — 팝오버가 위치를
@@ -41,7 +41,7 @@ test("`+` → 「모든 프로젝트」에 포커스가 있고 옆에 경로가 
   await installFixtureBackend(page);
   await openMenu(page);
 
-  // 맨 윗줄이다 — 항목의 순서가 [모든 프로젝트 · 프로젝트들]이다(결정 18).
+  // 맨 윗줄이다 — 항목의 순서가 [모든 프로젝트 · 프로젝트들]이다(UI개선 결정 18).
   const items = menu(page).getByRole("menuitem");
   await expect(items).toHaveCount(1 + multiWork.worktrees.length);
   await expect(items.first()).toHaveAccessibleName("모든 프로젝트");
@@ -57,7 +57,7 @@ test("`+` → 「모든 프로젝트」에 포커스가 있고 옆에 경로가 
   await expect(menu(page)).toHaveCount(0);
   await awaitSpawned(page, 1);
   expect(await spawnedCwds(page)).toEqual([all]);
-  // **앞말이 없다**(결정 20) — 특정 프로젝트가 아니라는 말이 그것이다.
+  // **앞말이 없다**(UI개선 결정 20) — 특정 프로젝트가 아니라는 말이 그것이다.
   await expectOnlyTabName(page, FIXTURE_SHELL_NAME);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -128,7 +128,7 @@ for (const [how, close, focusBackToPlus] of [
   });
 }
 
-// 결정 18 「맨 윗줄이 **선택된 상태로** 열린다」. DOM 포커스(`toBeFocused`)만 재면 마우스로 연
+// UI개선 결정 18 「맨 윗줄이 **선택된 상태로** 열린다」. DOM 포커스(`toBeFocused`)만 재면 마우스로 연
 // 메뉴에서 아무 표시가 없어도 초록이다 — 스크립트 포커스는 `:focus-visible`에 안 걸려 윤곽이 안
 // 그려진다. 그래서 **보이는 모습**을 잰다: 포인터가 안 올라간 두 줄 중 포커스 든 줄만 바탕이 있다.
 test("마우스로 연 메뉴에서도 맨 윗줄이 선택돼 보인다", async ({ page }) => {
@@ -146,8 +146,8 @@ test("마우스로 연 메뉴에서도 맨 윗줄이 선택돼 보인다", async
   await expect.poll(() => background(0)).not.toBe(await background(1));
 });
 
-// 묻는 조건은 그대로다 — 프로젝트가 둘 이상일 때만(결정 18). 0·1개 work은 들어갈 때 셸이
-// 하나 서므로(결정 30은 멀티 프로젝트만이다) 그것이 앉은 뒤에 누른다.
+// 묻는 조건은 그대로다 — 프로젝트가 둘 이상일 때만(UI개선 결정 18). 0·1개 work은 들어갈 때 셸이
+// 하나 서므로(UI개선 결정 30은 멀티 프로젝트만이다) 그것이 앉은 뒤에 누른다.
 for (const [label, work, cwd] of [
   ["1개", singleWork, singleWork.worktrees[0].path],
   ["0개", plainWork, parentPath(plainWork.specDir)],

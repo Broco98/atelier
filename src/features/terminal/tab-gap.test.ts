@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { gapLineLeft, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
-// 결정 11 · 스펙 §6 — 탭 줄 위의 포인터가 **몇 번째 틈**인가. DOM 없이 도는 순수 함수라 기하를
+// UI개선 결정 11 · UI개선 스펙 §6 — 탭 줄 위의 포인터가 **몇 번째 틈**인가. DOM 없이 도는 순수 함수라 기하를
 // 손으로 짓는다: 줄은 뷰포트 x 100에서 시작하고(그 왼쪽이 `spec` 칸과 세로선이다), 셸 칸은
 // 폭 80 · 간격 4로 넷이 선다.
 //

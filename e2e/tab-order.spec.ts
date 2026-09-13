@@ -4,7 +4,7 @@ import { WORKS } from "./fixtures";
 import { awaitSpawned, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
 import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
 
-// 셸 탭을 끌어 순서를 바꾼다(ui-improvement 07 · 결정 11~13 · 스펙 §6·S10). **한 눌림을 두
+// 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
 // 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
 // 이긴다. 틈 계산 자체(내용 좌표 · `spec` 뒤부터 · 제자리 틈)는 L2(`tab-gap.test.ts`)와
 // 레지스트리의 `moveShell` 표가 들고, 여기서 보는 것은 **이벤트가 있어야 서는 것**이다: 끄는
@@ -187,7 +187,7 @@ test.describe("work 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창의 여유가 3.5px이라 폭을 먹는
+  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창의 여유가 3.5px이라 폭을 먹는
   // 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
   //

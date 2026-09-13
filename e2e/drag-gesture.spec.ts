@@ -3,7 +3,7 @@ import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 끌기 제스처의 **끝나는 길**(ui-improvement 03 · 스펙 S5). 제스처는 기능 폴더 밖 공용 모듈이
+// 끌기 제스처의 **끝나는 길**(UI개선 티켓 03 · UI개선 스펙 S5). 제스처는 기능 폴더 밖 공용 모듈이
 // 쥐고(`src/lib/pointer-drag.ts`), 이 파일은 그 모듈이 어느 화면에서 부르든 지켜야 하는 것을
 // 셸 탭 하나로 잰다 — 놓음 · `pointercancel` · 문턱 전 뗌 · Esc 넷이 **같은 정리**를 한다.
 //

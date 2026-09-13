@@ -3,7 +3,7 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import type { ShellPlace } from "./shell-registry";
 
 /**
- * `+`가 「어디에 띄울까」를 묻는 메뉴(결정 18·24).
+ * `+`가 「어디에 띄울까」를 묻는 메뉴(UI개선 결정 18 · 결정 24).
  *
  * **입구가 옮겨 다니는 동안 메뉴는 하나였다.** `+`가 선 자리가 세 번 갈렸다 — 가로 탭 줄의
  * 아이콘, 사이드바 가지와 셸 0개인 본문의 글자 있는 행, 그리고 다시 **탭 줄의 아이콘
@@ -29,7 +29,7 @@ function ShellPicker({
    */
   onPick: (place: ShellPlace | null) => void;
 }) {
-  // 키보드는 **이 메뉴가 듣는다**(스펙 §7) — 포커스가 메뉴 안에 있는 동안만 오므로 창 전체의
+  // 키보드는 **이 메뉴가 듣는다**(UI개선 스펙 §7) — 포커스가 메뉴 안에 있는 동안만 오므로 창 전체의
   // 단축키(⌘T·⌘1~9)와 겨루지 않는다. 항목은 DOM 순서가 곧 화면 순서다.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -71,7 +71,7 @@ function ShellPicker({
       align="left"
       width={190}
       onClose={() => onPick(null)}
-      // 맨 윗줄(「모든 프로젝트」)이 **선택된 채** 열린다(결정 18) — Enter 한 번이 ⌘T와 같다.
+      // 맨 윗줄(「모든 프로젝트」)이 **선택된 채** 열린다(UI개선 결정 18) — Enter 한 번이 ⌘T와 같다.
       // 자기 이펙트에서 주지 않는 이유는 팝오버의 그 콜백 주석이다(숨은 한 프레임).
       onPlaced={(card) => card.querySelector<HTMLElement>('[role="menuitem"]')?.focus()}
     >
@@ -105,7 +105,7 @@ function Item({ onClick, children }: { onClick: () => void; children: ReactNode 
       // 항목 사이는 화살표로 옮긴다 — Tab 순서에는 안 선다(한 번의 Tab이 메뉴를 닫는다).
       tabIndex={-1}
       onClick={onClick}
-      // **포커스도 호버와 같은 바탕이다**(결정 18 「맨 윗줄이 선택된 채」). 마우스로 연 메뉴에 준
+      // **포커스도 호버와 같은 바탕이다**(UI개선 결정 18 「맨 윗줄이 선택된 채」). 마우스로 연 메뉴에 준
       // 스크립트 포커스는 `:focus-visible`에 안 걸려 윤곽이 안 그려진다 — 그래서 `focus:`다.
       className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left outline-none transition-colors hover:bg-state-2 focus:bg-state-2"
     >
