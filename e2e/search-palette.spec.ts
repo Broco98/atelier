@@ -602,6 +602,9 @@ test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
   const opened = (await sidebar.boundingBox())?.width ?? 0;
   expect(opened, "사이드바가 처음부터 접혀 있으면 이 검사가 아무것도 못 잰다").toBeGreaterThan(0);
 
+  // **pty가 앉은 뒤에 닫는다**(`awaitSpawned`의 머리말) — 그 전의 `×`는 물을 것이 없어 확인
+  // 창 없이 닫히는 것이 옳고, 그러면 아래 단언이 붐비는 러너에서만 빨개진다.
+  await awaitSpawned(page, 1);
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();

@@ -260,12 +260,14 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const tabs = page.locator('[data-tab="shell"]');
-  const plus = page.locator('[data-tab="new"]');
   const name = tabs.first().getByText(SHELL_NAME, { exact: true });
 
   await expect(tabs).toHaveCount(1);
-  await plus.click();
-  await plus.click();
+  // **`+`를 연달아 누르지 않는다** — 첫 칸은 글꼴을 기다린 뒤 **DOM에 붙어 있을 때만** 열리고
+  // spawn한다(`terminal-store`의 `openOrReattach`). 그 전에 새 칸이 켜지면 첫 칸이 떼어져
+  // 영영 `셸`로 남아, 아래 이름 단언이 붐비는 러너에서만 30초를 기다리다 빨개진다.
+  await openShell(page);
+  await openShell(page);
   await expect(tabs).toHaveCount(3);
   // 셋일 때는 이름이 보인다.
   expect((await name.boundingBox())!.width).toBeGreaterThan(10);
