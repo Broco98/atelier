@@ -14,23 +14,24 @@ import { Store } from "@tanstack/react-store";
  * 도착점(본문)의 공통 조상이 앱 루트 가까이라, 거기에 드래그 상태를 얹으면 끄는 동안 앱 전체가
  * 다시 그려진다.
  *
- * 놓일 자리의 판정(어느 절반 · 떨궈 분할)은 여기 없다 — 받는 쪽 모듈(`split-view.ts`)의 일이다.
+ * 놓일 자리의 판정(어느 절반 · 떨군 분할)은 여기 없다 — 받는 쪽 모듈(`split-view.ts`)의 일이다.
  */
 
 /** 본문의 어느 절반인가. 열이 아니라 **화면의 절반**이다 — 아직 분할이 아닐 때도 성립한다. */
 export type SplitHalf = "left" | "right";
 
-/** 끌 수 있는 것 둘(결정 90) — 문서 칸과 셸 칸. */
+/** 끌 수 있는 것 둘(결정 90) — 문서 탭과 셸 탭. */
 export type DragKind = "spec" | "shell";
 
 export interface DragSource {
   kind: DragKind;
   /**
-   * 끈 것이 딸린 **화면의 주인**(셸 레지스트리의 소유자 키). slug가 아닌 것은 `/terminal`
+   * 끈 것이 딸린 화면의 **소유자**(셸 레지스트리의 소유자 키). slug가 아닌 것은 `/terminal`
    * 셸에 slug가 없어서다 — 그 화면도 같은 몸짓으로 끈다.
    *
    * **`string`으로 싣는다.** 그 키의 타입은 터미널 기능 폴더에 살아 여기서 부를 수 없다(머리말).
-   * 좁히기는 받는 쪽이 한다 — 싣는 쪽이 늘 그 레지스트리의 `ownerOf`로 짓는다.
+   * 좁히기는 받는 쪽이 **값을 보고** 한다(그 레지스트리의 `ownerIn`) — `as`로 좁히면 싣는 자리가
+   * 늘어날 때 손으로 이은 문자열이 조용히 틀린 slug가 된다.
    */
   owner: string;
   /** `kind`가 `shell`일 때만 있다. 떨군 셸이 터미널 열에 서야 해서 필요하다. */
@@ -47,8 +48,8 @@ export interface DragState {
 export const dragStore = new Store<DragState>({ source: null, half: null });
 
 /**
- * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 칸을 못
- * 누른다** — 끌리는 것들은 누르는 것이 본업이고 끄는 것이 덤이다.
+ * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 탭을 못
+ * 누른다** — 끌리는 것(탭 · 행)은 누르는 것이 본업이고 끄는 것이 덤이다.
  */
 export const DRAG_THRESHOLD = 5;
 
@@ -95,7 +96,7 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
   // **끄는 동안만** 건다 — 문턱 전에는 드래그가 아니라 그 Esc는 원래 주인의 것이다.
   //
   // 창의 떼기 리스너는 남긴다: 취소해도 손은 아직 눌린 채라, 뗀 순간의 클릭을 아래 `end`가
-  // 삼켜야 한다 — 출발한 칸 위에서 떼면 취소한 끌기가 「칸을 눌렀다」로 읽힌다. 겹판은
+  // 삼켜야 한다 — 출발한 탭 위에서 떼면 취소한 끌기가 「탭을 눌렀다」로 읽힌다. 겹판은
   // 상태가 비면서 이미 걷혀 떼기를 받을 것이 없다.
   const cancel = (event: KeyboardEvent) => {
     if (event.key !== "Escape") return;
@@ -110,9 +111,9 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     settle();
     if (!started) return;
 
-    // **끈 것이 눌린 것으로도 읽히면 안 된다.** 5px을 넘긴 뒤 출발한 칸 위로 되돌아와
+    // **끈 것이 눌린 것으로도 읽히면 안 된다.** 5px을 넘긴 뒤 출발한 탭 위로 되돌아와
     // 놓으면 pointerdown/up이 같은 버튼이라 브라우저가 `click`을 낸다 — 그러면 한 제스처가
-    // 「분할을 안 켰다」와 「칸을 눌렀다」 둘을 함께 하게 된다.
+    // 「분할을 안 켰다」와 「탭을 눌렀다」 둘을 함께 하게 된다.
     //
     // 한 번만 삼키고 **곧바로 거둔다.** `once: true`로 두면 클릭이 안 오는 경우(본문에서
     // 놓았을 때)에 이 리스너가 남아 다음에 아무 데나 누른 클릭을 먹는다.

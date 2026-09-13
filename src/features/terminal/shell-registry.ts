@@ -177,6 +177,21 @@ export function slugOfOwner(owner: ShellOwner): string | null {
 }
 
 /**
+ * `string`으로 실려 온 값이 **그 세계가 지은 소유자 키**인가. 아니면 `null`.
+ *
+ * 공용 끌기 모듈(`@/lib/pointer-drag`)은 기능 폴더를 타입으로도 못 불러 소유자를 `string`으로
+ * 싣는다. 받는 쪽이 `as ShellOwner`로 좁히면 위 「타입이 형식을 든다」가 주석 하나로 내려앉아,
+ * 손으로 이은 문자열(`work.slug`)이 그대로 앉고 `slugOfOwner`가 조용히 틀린 slug를 낸다.
+ *
+ * **`as`를 안 쓰고 `ownerOf`로 다시 짓는다** — 키를 짓는 자리가 여전히 하나이고, 앞머리가
+ * 이 세계의 것인지를 값으로 본다. 남의 세계 키는 이 화면이 받을 것이 아니라 `null`이다.
+ */
+export function ownerIn(mode: Mode, value: string): ShellOwner | null {
+  const prefix = ownerOf(mode);
+  return value.startsWith(prefix) ? ownerOf(mode, value.slice(prefix.length)) : null;
+}
+
+/**
  * 새 셸 하나를 여는 데 필요한 것 전부. **`cwd`가 `null`이면 데이터 루트**이고, 그 자리가
  * 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25).
  */

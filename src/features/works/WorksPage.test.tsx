@@ -882,14 +882,13 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   it("칸을 끄는 자리를 이 화면이 만들고, 문서 칸과 셸 칸을 가른다", () => {
     expect(countOf(
       source("WorksPage.tsx"),
-      `onDragTab={(shellId, from) =>
+      `onDragTab={(shellId, from) => {
+        const owner = ownerOf(mode, panelWork.slug);
         armDrag(
-          shellId === null
-            ? { kind: "spec", owner: ownerOf(mode, panelWork.slug), shellId: null }
-            : { kind: "shell", owner: ownerOf(mode, panelWork.slug), shellId },
+          shellId === null ? { kind: "spec", owner, shellId: null } : { kind: "shell", owner, shellId },
           from,
-        )
-      }`,
+        );
+      }}`,
     )).toBe(1);
   });
 });

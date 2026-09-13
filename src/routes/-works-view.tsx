@@ -14,8 +14,7 @@ import {
 import type { SplitSide, ViewTab } from "./-work-search";
 import { tabOfDrag } from "@/features/works/split-view";
 import type { DragSource } from "@/lib/pointer-drag";
-import { slugOfOwner } from "@/features/terminal/shell-registry";
-import type { ShellOwner } from "@/features/terminal/shell-registry";
+import { ownerIn, slugOfOwner } from "@/features/terminal/shell-registry";
 import { isDefaultSelectable, useWorks } from "@/features/works/hooks";
 import { pickSlug, selectWork, shellStore } from "@/components/shell/shell-store";
 import { routesOf } from "@/mode";
@@ -106,12 +105,14 @@ function WorksView({
   // 기억을 되세우는 것은 work 행을 눌러 옮기는 길의 일이다(위 `goTo`).
   //
   // 원천은 slug가 아니라 **owner**를 싣는다(공용 제스처 — `/terminal` 셸에는 slug가 없다).
-  // 이 층은 두 기능 폴더를 다 부를 수 있어 여기서 slug를 되뽑는다. `as`로 좁히는 것은 공용
-  // 모듈이 그 타입을 못 불러 `string`으로 싣기 때문이고, 싣는 자리(WorksPage)가 늘 `ownerOf`로
-  // 짓는다. slug가 없으면(최상위 터미널) 갈 work이 없다 — 아무것도 안 한다.
+  // 이 층은 두 기능 폴더를 다 부를 수 있어 여기서 slug를 되뽑는다. 공용 모듈이 그 타입을 못
+  // 불러 `string`으로 싣기 때문에 **`as`가 아니라 `ownerIn`으로 값을 보고** 좁힌다 — 싣는
+  // 자리가 늘어나도(작업 행 · `/terminal` 탭) 형식이 틀린 원천은 여기서 걸린다. 이 세계의 키가
+  // 아니거나 slug가 없으면(최상위 터미널) 갈 work이 없다 — 아무것도 안 한다.
   const dropInto = useCallback(
     (source: DragSource, next: SplitSide) => {
-      const target = slugOfOwner(source.owner as ShellOwner);
+      const owner = ownerIn(mode, source.owner);
+      const target = owner === null ? null : slugOfOwner(owner);
       if (target === null) return;
       const nextTab = tabOfDrag(source.kind);
       void navigate({
@@ -124,7 +125,7 @@ function WorksView({
         replace: true,
       });
     },
-    [navigate, routes.item, slug],
+    [mode, navigate, routes.item, slug],
   );
 
   // 화면 탭 전환. 갱신 자체는 `tabSearch`가 안다 — **함수형이어야 한다**(결정 15).

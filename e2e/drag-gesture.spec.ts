@@ -25,12 +25,23 @@ async function boxOf(page: Page, selector: string): Promise<Box> {
   return box;
 }
 
+async function shellNameCenter(page: Page) {
+  const box = await shellName(page).boundingBox();
+  if (!box) throw new Error("셸 탭의 상자를 못 읽었다");
+  return middle(box);
+}
+
 /**
  * body의 끄는 중 표시. **이 표시가 남으면 다시는 글을 선택할 수 없는 앱이 된다** — 끝나는
- * 길마다 걷혀야 하는 것이 그래서다.
+ * 길마다 걷혀야 하는 것이 그래서다. 클래스 이름이 아니라 **그 결과(글 선택 막힘)**를 읽는다 —
+ * CSS 규칙이 깨져도 여기서 드러난다.
  */
 const dragging = (page: Page) =>
-  page.evaluate(() => document.body.classList.contains("dragging-row"));
+  page.evaluate(() => {
+    // WKWebView(과 L3의 WebKit)는 계산값을 접두사 이름으로만 낸다.
+    const style = getComputedStyle(document.body);
+    return (style.getPropertyValue("user-select") || style.getPropertyValue("-webkit-user-select")) === "none";
+  });
 
 /** 셸이 앉은 work 화면(터미널 본문)에서 출발한다. */
 async function openTerminal(page: Page) {
@@ -39,9 +50,19 @@ async function openTerminal(page: Page) {
   await awaitSpawned(page, 1);
 }
 
+/**
+ * 셸을 띄운 뒤 본문을 문서로 돌려 **셸 탭이 꺼진 채** 출발한다 — 켜지는 것이 클릭이 살아
+ * 있다는 모습이라, 이미 켜져 있으면 눌려도 모습이 안 바뀐다.
+ */
+async function openTerminalOnSpec(page: Page) {
+  await openTerminal(page);
+  await page.locator('[data-tab="spec"]').click();
+  await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
+}
+
 /** 셸 탭을 눌러 문턱을 넘긴다. **표시가 섰는지 먼저 본다** — 안 서면 아래 「걷혔다」가 빈 초록이다. */
 async function startDrag(page: Page) {
-  const from = middle(await boxOf(page, '[data-tab="shell"] button[aria-pressed]'));
+  const from = await shellNameCenter(page);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + 12, from.y);
@@ -87,14 +108,9 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
   // 문턱 전에 떼면 **표시가 애초에 안 선다** — 그리고 그 눌림은 그냥 클릭이다(탭이 켜진다).
   // 떼기 전을 한 번 보는 것은 「뗀 뒤에 걷혔다」와 「선 적이 없다」가 둘 다 false라서다.
   test("문턱 전에 뗌", async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-    await awaitSpawned(page, 1);
-    // 본문을 문서로 돌려 셸 탭이 꺼진 채로 출발한다 — 켜지는 것이 클릭이 살아 있다는 모습이다.
-    await page.locator('[data-tab="spec"]').click();
-    await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
+    await openTerminalOnSpec(page);
 
-    const from = middle(await boxOf(page, '[data-tab="shell"] button[aria-pressed]'));
+    const from = await shellNameCenter(page);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(from.x + 3, from.y);
@@ -145,11 +161,8 @@ test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력�
 // **끌어 놓은 탭은 켜지지 않는다**(S5) — 출발한 탭 위로 되돌아와 떼면 pointerdown/up이 같은
 // 버튼이라 브라우저가 `click`을 낸다. 제스처가 그 한 번을 삼킨다.
 //
-// 본문을 문서로 둔 채 출발한다 — 셸 탭이 이미 켜져 있으면 눌려도 모습이 안 바뀐다.
 test("끌었다 셸 탭 위에서 떼면 그 탭이 켜지지 않는다", async ({ page }) => {
-  await openTerminal(page);
-  await page.locator('[data-tab="spec"]').click();
-  await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
+  await openTerminalOnSpec(page);
 
   const from = await startDrag(page);
   await moveOnto(page, "right");
@@ -165,9 +178,7 @@ test("끌었다 셸 탭 위에서 떼면 그 탭이 켜지지 않는다", async 
 // Esc로 취소한 끌기도 **문턱을 넘은 끌기**다 — 그 뒤 출발한 탭 위에서 떼도 탭이 안 켜진다.
 // 취소가 「아무 일도 안 일어난다」인데 뗀 순간 탭이 켜지면 한 일이 생긴다.
 test("Esc로 취소한 뒤 셸 탭 위에서 떼도 그 탭이 켜지지 않는다", async ({ page }) => {
-  await openTerminal(page);
-  await page.locator('[data-tab="spec"]').click();
-  await expect(shellName(page)).toHaveAttribute("aria-pressed", "false");
+  await openTerminalOnSpec(page);
 
   const from = await startDrag(page);
   await page.keyboard.press("Escape");

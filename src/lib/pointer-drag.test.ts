@@ -30,4 +30,20 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
     expect(countOf(gesture, "@/features/")).toBe(0);
     expect(countOf(gesture, "../features")).toBe(0);
   });
+
+  // 위 둘은 **직접** 부르는 것만 잡는다. 기능 폴더 밖 모듈이 이미 기능 폴더를 부른다
+  // (`components/shell/shell-signal.tsx` → `features/terminal`) — 이 모듈이 그런 것을 들이면
+  // 위 0도 이웃 검사 둘도 초록인 채 경계가 뚫린다. 그래서 **허용 목록**으로 닫는다: 모든
+  // `from "…"`이 목록 안의 것이어야 한다. 새 의존은 무엇이든 여기서 빨개지고, 목록을 넓히는
+  // 사람이 그 모듈이 기능 폴더를 안 부르는지를 본다.
+  it("import는 허용 목록 안의 것뿐이다", () => {
+    const allowed = ['from "@tanstack/react-store"'];
+    const allowedCount = allowed.reduce((sum, literal) => sum + countOf(gesture, literal), 0);
+    // 알려진 양성 — 세는 방법이 새면 둘 다 0이라 아래 등식이 빈 초록이다.
+    expect(allowedCount).toBeGreaterThan(0);
+    expect(countOf(gesture, 'from "')).toBe(allowedCount);
+    expect(countOf(gesture, "from '")).toBe(0);
+    expect(countOf(gesture, "import(")).toBe(0);
+    expect(countOf(gesture, "require(")).toBe(0);
+  });
 });
