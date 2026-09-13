@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { ROOMS } from "./fixtures";
+import { MAISON_LANDING_ROOM } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 // 판 01 · 티켓 #184 — **두 세계의 최상위 터미널이 서로 다른 셸이다**(결정 10).
@@ -24,8 +24,6 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // IPC 기록을 직접 읽는다. 그 값이 셸 env까지 정말 내려가는지는
 // `src-tauri/tests/top_terminal.rs`가 살아 있는 셸로 잰다.
 
-/** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — 첫 줄이다. 초안이어도 건너뛰지 않는다. */
-const [room] = ROOMS;
 
 /** 세그먼트의 한 칸(`ModeSwitch`). `mode-switch.spec.ts`가 같은 규격으로 집는다. */
 const modeButton = (page: Page, label: string) =>
@@ -77,7 +75,7 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // nav로 터미널까지 간다. 주소를 직접 치면 페이지가 새로 뜨면서 스토어가 통째로 비어,
   // 이 검사가 재려는 「살아남는가」가 사라진다.
   await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
   await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
   await expect(page).toHaveURL("/maison/terminal");
 

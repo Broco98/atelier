@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "./evidence";
-import { PROJECTS, ROOMS, WORKS } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROJECTS, ROOMS, WORKS } from "./fixtures";
 import { installFixtureBackend, unknownIpcCalls } from "./harness";
 
-// 목록의 첫 줄은 초안 Room이고, 무선택 주소(`/maison/rooms`)의 정규화가 고르는 것도 그 첫 줄이다
-// — 초안이어도 건너뛰지 않는다(UI개선 결정 6, `fixtures.ts`의 `ROOMS` 머리말). 세그먼트가 데려다
-// 놓는 자리가 그 첫 줄이다.
-const [draft, room] = ROOMS;
+// 세그먼트가 데려다 놓는 자리는 무선택 주소의 정규화가 고르는 Room이다(`MAISON_LANDING_ROOM`).
+// `room`은 그것이 아닌 둘째 — 거기서 출발해 첫 줄로 돌아오는 길을 잰다.
+const landing = MAISON_LANDING_ROOM;
+const [, room] = ROOMS;
 // 출발점. `/projects`도 무선택 주소라 첫 프로젝트로 정규화된다 — 뒤로가기가 돌아올 자리를
 // 못박으려면 그 정규화가 끝난 주소를 알아야 한다.
 const [project] = PROJECTS;
@@ -34,7 +34,7 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
 
   // 목적지는 그 세계의 **첫 화면**이다 — 아직 Maison에 가 본 적이 없어 기억할 마지막 주소가
   // 없다(`modeSwitchTarget`). 그 첫 화면이 무선택 주소라 도착하자마자 한 번 더 정규화된다.
-  await expect(page).toHaveURL(`/maison/rooms/${draft.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
 
   // nav가 **둘**이다. `Projects`가 없는 것은 빠뜨린 게 아니라 이 세계에 프로젝트가 없기
@@ -111,6 +111,7 @@ test("Maison에서 Room 행을 누르면 Maison 안에 머문다", async ({ page
   // 한때 여기서 접힌 초안 구획을 먼저 폈다. 초안이 `Rooms` 안에 서면서(UI개선 결정 5) 펼 머리가
   // 없다 — 초안 행이 다른 Room과 같은 자리에서 곧장 눌린다.
   const aside = page.locator("aside");
+  const [draft] = ROOMS;
 
   await aside.getByRole("button", { name: draft.title, exact: true }).click();
   await expect(page).toHaveURL(`/maison/rooms/${draft.slug}`);

@@ -34,8 +34,9 @@ import type { ArchiveEntry } from "./features/archive/types";
 // origin을 함께 넘기는 이유 — 클라이언트로 판단한 라우터는 origin이 비어 있으면
 // window.origin을 읽는데, node에는 window 자체가 없어 ReferenceError가 난다.
 
-// 정규화는 목록에서 slug와 status만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
-// "draft:" 접두사를 붙인 slug는 초안이 된다 (기본 선택이 **안** 건너뛰는 대상 — UI개선 결정 6).
+// 정규화는 목록에서 slug만 본다 — 나머지 필드는 이 seam의 관심사가 아니라 좁게 만든다.
+// status를 남기는 것은 초안을 목록에 **세우기** 위해서다: "draft:" 접두사를 붙인 slug는 초안이
+// 되고, 기본 선택은 그것을 **안** 건너뛴다(UI개선 결정 6).
 const works = (...slugs: Array<string>) =>
   slugs.map((raw) => {
     const draft = raw.startsWith("draft:");

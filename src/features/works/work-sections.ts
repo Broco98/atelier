@@ -58,7 +58,8 @@ interface EmptyScreen {
 // (`WorkSectionList`와 `WorksPage`)이라 목록의 판정이 사는 곳에 함께 둔다.
 //
 // `satisfies Record<Mode, …>`가 그물이다: 모드를 빠뜨리면 그 자리에서 L0가 빨개진다.
-// Atelier 문구는 **한 글자도 안 바뀐 채** 옮겨 왔다(구획 문구는 결정 108, 화면 셋은 그 이전부터. 초안 갈래는 UI개선 결정 5가 걷었다).
+// Atelier 문구는 **한 글자도 안 바뀐 채** 옮겨 왔다 — 구획 문구는 결정 108, 화면 셋은 그
+// 이전부터다. 빠진 것은 빈 구획의 초안 갈래 하나이고, 그것은 UI개선 결정 5가 걷었다.
 const COPY = {
   atelier: {
     label: "작업",

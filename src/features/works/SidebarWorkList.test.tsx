@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
 import type { ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./SidebarWorkList";
-import { splitWorkSections, type SectionsOpen } from "./work-sections";
+import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
 
 // 사이드바 목록이 **그리는 것**을 본다. 어느 구역에 무엇이 놓이는지는 work-sections.test.ts가
@@ -211,8 +211,14 @@ describe("초안은 `작업` 구획 안에 선다", () => {
   it("모든 항목이 초안이어도 빈 문구가 아니라 그 초안들이 보인다", () => {
     const markup = render(works("draft:가", "draft:나"));
     expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나"] }]);
-    expect(markup).not.toContain("없어요");
-    expect(markup).not.toContain("시작돼요");
+    // 빈 구획이 낼 수 있는 두 말을 **판정 함수에서** 받아 댄다 — 글자 조각으로 대면 문구가
+    // 바뀌는 날 이 두 줄이 아무것도 안 재는 채 초록으로 남는다.
+    const notices = [
+      emptyMainNotice(splitWorkSections([], ALL), "atelier"),
+      emptyMainNotice(splitWorkSections(works("pin:가"), ALL), "atelier"),
+    ];
+    expect(new Set(notices).size).toBe(2);
+    for (const notice of notices) expect(markup).not.toContain(notice);
   });
 });
 

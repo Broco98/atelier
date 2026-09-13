@@ -1,6 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
 import {
+  MAISON_LANDING_ROOM,
   MAISON_SEARCH_DESTINATION_QUERY,
   MAISON_SEARCH_HITS,
   ROOMS,
@@ -36,11 +37,10 @@ import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } f
 
 const [specWork] = WORKS;
 /**
- * `landing`은 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — 첫 줄이다(초안이어도 안
- * 건너뛴다, UI개선 결정 6). `room`은 팔레트의 Maison 답(`MAISON_SEARCH_HITS`)이 싣는 **문서를
- * 가진 둘째**다. 둘이 한때 같은 Room이었다(정규화가 초안을 건너뛰던 때).
+ * `room`은 팔레트의 Maison 답(`MAISON_SEARCH_HITS`)이 싣는 **문서를 가진 둘째**다. 무선택
+ * 주소가 고르는 `MAISON_LANDING_ROOM`과 한때 같은 Room이었다(정규화가 초안을 건너뛰던 때).
  */
-const [landing, room] = ROOMS;
+const [, room] = ROOMS;
 const [ROOM_DOC] = room.specFiles;
 /**
  * 픽스처 마크다운의 **문단** 한 줄. 머리말은 안 쓴다 — Room의 머리말(`# 읽는 방`)이 제목과
@@ -507,7 +507,7 @@ test("세계를 건너면 ⌘K가 저쪽 세계를 안 본다", async ({ page })
   await page.keyboard.press("Escape");
 
   await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
+  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
 
   await pressSearchKey(page);
   // **줄 수부터 갈린다** — 저쪽 답이 왔으면 넷이 선다(픽스처의 `MAISON_SEARCH_HITS`).

@@ -1,10 +1,11 @@
 import { expect, test } from "./evidence";
-import { ROOMS, ROOM_SPEC_FILE_BODIES, SPEC_FALLBACK_BODY } from "./fixtures";
+import { MAISON_LANDING_ROOM, ROOMS, ROOM_SPEC_FILE_BODIES, SPEC_FALLBACK_BODY } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
-// 목록의 첫 줄은 **초안 Room**이다(픽스처의 `ROOMS`) — 정규화가 그것을 **안** 건너뛰는지를
+// 정규화가 고르는 Room은 **초안**이다(`MAISON_LANDING_ROOM`) — 그것을 **안** 건너뛰는지를
 // 아래 검사가 본다(UI개선 결정 6). 문서를 여는 검사들이 여는 것은 문서를 가진 둘째다.
-const [draft, room] = ROOMS;
+const draft = MAISON_LANDING_ROOM;
+const [, room] = ROOMS;
 const [ROOM_DOC] = room.specFiles;
 
 /**

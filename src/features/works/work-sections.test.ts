@@ -96,7 +96,7 @@ describe("구획 접힘", () => {
 // 빈 `작업` 구획이 무슨 말을 하는지도 판정이다 (결정 108). 컴포넌트 안에 두면 이 저장소의
 // 정적 마크업 seam에 아예 안 걸리므로 여기로 꺼내 둔다.
 //
-// **갈래는 둘이다**(스펙 §3). 초안이 `작업` 안에 서면서 「초안만 남았다」는 갈래가 사라졌다 —
+// **갈래는 둘이다**(UI개선 결정 5). 초안이 `작업` 안에 서면서 「초안만 남았다」는 갈래가 사라졌다 —
 // 초안이 하나라도 있으면 구획은 빈 것이 아니다.
 describe("빈 작업 구획이 하는 말", () => {
   const notice = (...args: Array<string>) =>
@@ -112,18 +112,22 @@ describe("빈 작업 구획이 하는 말", () => {
     expect(notice()).toBe("작업은 Claude Code에서 시작돼요.");
   });
 
-  // 두 세계·모든 모양에서 나올 수 있는 말을 통째로 센다. 초안 갈래(「진행 중인 … 없어요」)가
-  // 되살아나면 여기서 셋째 문장이 선다.
+  // `작업`이 비는 모양(아무것도 없음·고정만·고정된 초안만)을 두 세계에서 다 돌려 **나온 말을
+  // 글자로** 댄다. 초안 갈래(「진행 중인 … 없어요」)가 되살아나 고정된 초안에 셋째 문장을 주면
+  // 여기서 갈린다. 초안이 고정 밖에 있는 모양은 `작업`이 안 비므로 이 판정에 안 닿는다(위 둘째 describe).
   it("나올 수 있는 말은 「고정만 있다」·「아무것도 없다」 둘뿐이다", () => {
-    const shapes = [[], ["pin:고정"], ["pin:draft:고정초안"], ["draft:초안"], ["pin:고정", "draft:초안"]];
+    const expected = {
+      atelier: ["작업은 Claude Code에서 시작돼요.", "전부 고정돼 있어요."],
+      maison: ['Terminal에서 claude에게 "새 Room 만들어줘"', "전부 고정돼 있어요."],
+    };
+    const shapes = [[], ["pin:고정"], ["pin:draft:고정초안"]];
     for (const mode of ALL_MODES) {
-      const said = new Set(
-        shapes
-          .map((shape) => splitWorkSections(works(...shape), ALL))
-          .filter((sections) => sections.main.length === 0)
-          .map((sections) => emptyMainNotice(sections, mode)),
-      );
-      expect(said.size).toBe(2);
+      const said = shapes.map((shape) => {
+        const sections = splitWorkSections(works(...shape), ALL);
+        expect(sections.main, `${mode} ${shape.join(",")}`).toEqual([]);
+        return emptyMainNotice(sections, mode);
+      });
+      expect([...new Set(said)], mode).toEqual(expected[mode]);
     }
   });
 });
