@@ -4,7 +4,9 @@ import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
 import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
+  callCount,
   fireWindowEvent,
+  holdTerminalFonts,
   installFixtureBackend,
   markAttention,
   markRunning,
@@ -182,14 +184,14 @@ test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const tabs = page.locator('[data-tab="shell"]');
+  const plus = page.locator('[data-tab="new"]');
   const name = tabs.first().getByText(SHELL_NAME, { exact: true });
 
   await expect(tabs).toHaveCount(1);
-  // **`+`를 연달아 누르지 않는다** — 첫 칸은 글꼴을 기다린 뒤 **DOM에 붙어 있을 때만** 열리고
-  // spawn한다(`terminal-store`의 `openOrReattach`). 그 전에 새 칸이 켜지면 첫 칸이 떼어져
-  // 영영 `셸`로 남아, 아래 이름 단언이 붐비는 러너에서만 30초를 기다리다 빨개진다.
-  await openShell(page);
-  await openShell(page);
+  // **`+`를 연달아 누른다** — 사람이 그렇게 연다. 첫 칸이 떼어진 채 글꼴이 와도 그 셸은 뜨고
+  // 이름이 앉는다(`terminal-store`의 `loadFont`).
+  await plus.click();
+  await plus.click();
   await expect(tabs).toHaveCount(3);
   // 셋일 때는 이름이 보인다.
   expect((await name.boundingBox())!.width).toBeGreaterThan(10);
@@ -553,12 +555,7 @@ for (const [where, url] of [
 ] as const) {
   test(`글꼴이 오기 전에 둘째 칸을 열어도 두 셸이 다 뜬다 — ${where}`, async ({ page }) => {
     await installFixtureBackend(page);
-    let releaseFonts!: () => void;
-    const fontsHeld = new Promise<void>((resolve) => (releaseFonts = resolve));
-    await page.route("**/JetBrainsMonoNLNerdFont-*.woff2*", async (route) => {
-      await fontsHeld;
-      await route.continue();
-    });
+    const releaseFonts = await holdTerminalFonts(page);
     // `load`를 기다리지 않는다 — 그 이벤트가 붙잡아 둔 글꼴을 기다려 여기서 멈춘다.
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
@@ -577,6 +574,9 @@ for (const [where, url] of [
         `${at + 1}번째 칸의 셸이 안 떴다`,
       ).toHaveCount(1, { timeout: 20_000 });
     }
+    // **셸마다 한 번이다.** 칸의 이름만 보면 한 칸이 둘 뜬 것이 안 보인다. 나머지 갈래(⌘T·화면을
+    // 떠남·닫기·격자)는 `shell-cold-start.spec.ts`가 든다.
+    expect(await callCount(page, "pty_spawn")).toBe(2);
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
