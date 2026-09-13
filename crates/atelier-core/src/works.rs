@@ -381,6 +381,13 @@ fn collect_files(dir: &Path, prefix: &str, out: &mut Vec<String>) {
 /// **폴더가 없으면 빈 목록이다 — 만들지 않는다.** 만드는 것은 `list_works`의 일이다(첫 실행이
 /// 그 자리를 지난다). 조회가 폴더를 만들면 「읽기만 한다」가 거짓이 된다(`list_archive`와 같은 규칙).
 pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
+    read_works_in(works_root, &crate::order::read_order(works_root).order)
+}
+
+/// `read_works`의 몸통 — 순서 파일을 **이미 읽은** 값으로 받는다. `reorder`가 파일을 한 번만 읽고
+/// 그 한 벌로 보이는 순서도 세우고 다시 쓰게 하려는 것이다. 두 번 읽으면 사이에 끼어든 쓰기가
+/// 자리와 모르는 키(`extra`)를 서로 다른 판에서 가져오고, 깨진 파일의 stderr 줄도 두 번 남는다.
+fn read_works_in(works_root: &Path, order: &[String]) -> Result<Vec<Work>> {
     let entries = match std::fs::read_dir(works_root) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -398,11 +405,11 @@ pub(crate) fn read_works(works_root: &Path) -> Result<Vec<Work>> {
             works.push(work);
         }
     }
-    order_works(&mut works, &crate::order::read_order(works_root).order);
+    order_works(&mut works, order);
     Ok(works)
 }
 
-/// 작업 목록의 순서를 정하는 **유일한 자리**다. 순수 함수다 — 파일은 `read_works`가 읽어 넘긴다.
+/// 작업 목록의 순서를 정하는 **유일한 자리**다. 순수 함수다 — 파일은 `read_works`(와 `reorder`)가 읽어 넘긴다.
 ///
 /// 1. `pinned` 내림차순 — **고정이 먼저다**(결정 100 · UI개선 결정 3). 사이드바가 고정 구획을 맨 위에
 ///    세우므로, 그 순서를 화면이 백엔드 순서 위에 얹으면 「보이는 첫 항목 = 무선택 정규화가 고르는
@@ -573,7 +580,8 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     if matches!(placement, Placement::Top) && work.pinned == to_pinned {
         return Ok(work);
     }
-    let mut visible = read_works(works_root)?;
+    let mut order = crate::order::read_order(works_root);
+    let mut visible = read_works_in(works_root, &order.order)?;
     visible.retain(|other| other.slug != work.slug);
     // 보이는 순서가 고정 먼저로 서 있으므로 고정 구획은 `[0, 고정의 수)`, 비고정은 그 뒤다.
     let pinned_count = visible.iter().filter(|other| other.pinned).count();
@@ -603,7 +611,6 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     let mut slugs: Vec<String> = visible.into_iter().map(|other| other.slug).collect();
     slugs.insert(at, work.slug.clone());
 
-    let mut order = crate::order::read_order(works_root);
     order.order = slugs;
     crate::order::write_order(works_root, &order)?;
     if work.pinned != to_pinned {
