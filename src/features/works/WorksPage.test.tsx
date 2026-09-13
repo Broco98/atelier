@@ -873,6 +873,9 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
   // `terminal → works` 방향이 값 차원에서 생겨 반대 방향과 맞물린다(ShellTabs의 그 prop
   // 주석이 같은 함정을 든다).
   //
+  // 원천이 slug가 아니라 **owner**다(ui-improvement 스펙 S4) — `/terminal` 셸에는 slug가 없어
+  // 공용 제스처가 slug를 실으면 그 화면이 못 끈다. 모양을 이 리터럴이 못박는다.
+  //
   // 배선은 렌더로 못 본다(핸들러는 직렬화되지 않는다). **정규식으로 블록을 잘라내지
   // 않는다** — 이 파일이 그 fail-open을 이미 겪었다. 리터럴 하나로 통째로 못박으면
   // 어느 갈래가 뒤집혀도 반드시 빨개진다.
@@ -882,8 +885,8 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       `onDragTab={(shellId, from) =>
         armDrag(
           shellId === null
-            ? { kind: "spec", slug: panelWork.slug, shellId: null }
-            : { kind: "shell", slug: panelWork.slug, shellId },
+            ? { kind: "spec", owner: ownerOf(mode, panelWork.slug), shellId: null }
+            : { kind: "shell", owner: ownerOf(mode, panelWork.slug), shellId },
           from,
         )
       }`,
