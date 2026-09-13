@@ -346,6 +346,18 @@ function parentDir(path: string): string {
 }
 
 /**
+ * 셸이 뜰 자리를 **옅게 보이는 글자**로 — 경로의 마지막 마디 + `/`(결정 20의 `+` 메뉴 맨 윗줄).
+ * `null`이면 보일 경로가 없다(최상위 터미널의 데이터 루트).
+ *
+ * **이름을 적지 않고 자리에서 읽는다.** 「모든 프로젝트」 폴더의 이름을 프런트가 아는 순간이
+ * 코어가 자리를 옮기는 날 틀린 글자를 보이는 순간이다 — 위 `parentDir`과 같은 약속의 나머지다.
+ */
+export function placeHint(cwd: string | null): string | null {
+  const tail = cwd?.replace(/\/+$/, "").split("/").pop();
+  return tail ? `${tail}/` : null;
+}
+
+/**
  * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 각 세계의
  * 최상위 터미널(`slugOfOwner`가 `null`인 소유자)도 자기 몫으로 이만큼이다 — 세계가
  * 둘이라 최상위 몫도 둘이다(결정 10). 화면이 늘었을 뿐이라 상한을 새로 만들지 않는다.

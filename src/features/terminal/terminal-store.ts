@@ -199,8 +199,8 @@ function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
  * 한다**(결정 30·47).
  *
  * `origin`이 어디서 오는가가 판 03이다 — 최상위 터미널은 `topTerminal(mode)`, Work 화면은
- * ⌘T가 `workDefaultOrigin(mode, work)`(결정 19), `+` 메뉴가 `workShellOrigin(mode, work,
- * project)`. 뒤 함수가 `null`을 주면(프로젝트를 안 골랐다) 여기까지 오지 않는다.
+ * ⌘T와 `+` 메뉴의 「모든 프로젝트」가 `workDefaultOrigin(mode, work)`(결정 18·19), 메뉴의
+ * 프로젝트 줄이 `workShellOrigin(mode, work, project)`. 뒤 함수가 `null`을 주면 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
   const opened = openShellQuietly(origin);

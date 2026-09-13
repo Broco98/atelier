@@ -84,7 +84,7 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   const [first] = multiWork.worktrees;
 
   await page.locator('[data-tab="new"]').click();
-  await page.locator("[data-popover]").getByRole("button", { name: first.project, exact: true }).click();
+  await page.locator("[data-popover]").getByRole("menuitem", { name: first.project, exact: true }).click();
   await expect(shells(page)).toHaveCount(1);
   await expect(shells(page).locator("button[aria-label$=' 닫기']")).toHaveAttribute(
     "aria-label",

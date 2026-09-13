@@ -20,6 +20,7 @@ import {
   needsCloseConfirm,
   NO_SHELLS,
   openShell,
+  placeHint,
   closesShellFromWindow,
   opensShellFromWindow,
   removeShell,
@@ -877,6 +878,17 @@ describe("기본 자리는 언제나 답한다 — 멀티 프로젝트면 「모
     expect(workDefaultOrigin("maison", w(["atelier", "cli"]))).toEqual(
       workShellOrigin("maison", w(["atelier", "cli"]), null),
     );
+  });
+
+  // `+` 메뉴의 「모든 프로젝트」 옆 옅은 글자(결정 20). 이름을 적지 않고 **그 자리의 마지막
+  // 마디**를 읽는다 — 아래 소스 스캔이 그 이름의 리터럴을 문다.
+  it("옅은 경로는 기본 자리 경로의 마지막 마디 + `/`다", () => {
+    expect(placeHint(workDefaultOrigin("atelier", w(["atelier", "cli"])).cwd)).toBe(
+      `${"~/.atelier/works/w/trees".split("/").pop()}/`,
+    );
+    expect(placeHint("~/딴데/w/나무/")).toBe("나무/");
+    // 최상위 터미널은 데이터 루트라 cwd가 없다 — 보일 경로가 없다.
+    expect(placeHint(topTerminal("atelier").cwd)).toBeNull();
   });
 
   // **프런트는 「모든 프로젝트」 폴더의 이름을 모른다**(스펙 §7) — 위 함수가 부모를 읽는 것이
