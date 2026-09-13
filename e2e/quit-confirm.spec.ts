@@ -297,3 +297,44 @@ test("「종료」가 실패하면 오류 창이 뜨고, 다음 요청에 다시
   await expect.poll(() => callCount(page, "quit_app")).toBe(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 팔레트는 확인 창이 아니라 종료 확인이 그 위에 뜬다(위 팔레트 테스트). **끄기가 실패해 오류 창이
+// 그 자리를 이어받아도** 팔레트는 그대로 남고, 오류 창을 닫은 뒤에도 쓸 수 있어야 한다.
+test("팔레트가 떠 있을 때 「종료」가 실패하면 오류 창이 팔레트 위에 뜨고, 닫으면 팔레트가 남는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, { quit_app: ipcFailure("종료 명령이 거절되었습니다") });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await page.keyboard.press("Meta+k");
+  const palette = page.getByRole("listbox", { name: "검색 결과" });
+  await expect(palette).toBeVisible();
+
+  await fireQuitRequest(page);
+  await quitDialog(page).getByRole("button", { name: "종료", exact: true }).click();
+
+  const problem = page.getByRole("alertdialog", { name: "오류" });
+  await expect(problem).toContainText("종료 명령이 거절되었습니다");
+  await expect(palette).toBeVisible();
+  await problem.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(palette).toBeVisible();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 결정 14 — 오류 창이 떠 있을 때의 요청도 **무시되지 않고** 종료 확인으로 갈아 끼운다.
+test("오류 창이 떠 있을 때의 종료 요청은 종료 확인으로 갈아 끼운다", async ({ page }) => {
+  await installFixtureBackend(page, { quit_app: ipcFailure("종료 명령이 거절되었습니다") });
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await fireQuitRequest(page);
+  await quitDialog(page).getByRole("button", { name: "종료", exact: true }).click();
+  await expect(page.getByRole("alertdialog", { name: "오류" })).toBeVisible();
+
+  await fireQuitRequest(page);
+  await expect(quitDialog(page)).toBeVisible();
+  await expect(page.getByRole("alertdialog")).toHaveCount(1);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
