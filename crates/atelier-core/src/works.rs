@@ -1386,26 +1386,14 @@ mod tests {
     /// 고정 구획이 바로 그 얹는 정렬이다. 앱·MCP·CLI가 같은 순서를 보려면 여기가 유일한 자리다.
     #[test]
     fn list_puts_pinned_first_even_when_it_is_older() {
-        let (_tmp, works, _projects) = setup();
-        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일을 직접 쓴다
-        let write = |slug: &str, created: &str, pinned: bool| {
-            let dir = works.join(slug);
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(
-                dir.join("work.json"),
-                format!(
-                    r#"{{"title":"{slug}","status":"active","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
-                ),
-            )
-            .unwrap();
-        };
-        write("새-것", "2026-08-20", false);
-        write("오래된-것", "2026-01-02", true);
-        write("고정-최신", "2026-08-22", true);
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        // start_work는 오늘 날짜를 박으므로 날짜를 벌리려면 파일로 심는다(`plant`)
+        plant(&works, "새-것", "2026-08-20", false);
+        plant(&works, "오래된-것", "2026-01-02", true);
+        plant(&works, "고정-최신", "2026-08-22", true);
 
-        let listed: Vec<String> =
-            list_works(&works).unwrap().into_iter().map(|v| v.work.slug).collect();
-        assert_eq!(listed, slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
+        assert_eq!(listed(&works), slugs(&["고정-최신", "오래된-것", "새-것"]), "pinned must sort first");
     }
 
     // ── 순서 파일 (`.order.json`) ──────────────────────────────────────────
