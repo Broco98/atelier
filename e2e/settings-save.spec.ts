@@ -40,9 +40,8 @@ test("터미널 설정과 알림 설정에 저장 버튼이 각자 있고, 에�
   await 항목(page, "에이전트 훅").click();
   // 훅 구획은 **서 있는 것을 먼저 세운다** — 구획이 통째로 안 그려져도 「저장 버튼이 없다」는
   // 참이 되기 때문이다.
-  const 훅 = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "에이전트 훅", exact: true }) });
+  await expect(page.getByRole("heading", { name: "에이전트 훅", exact: true })).toBeVisible();
+  const 훅 = page.locator("main");
   await expect(훅.getByRole("button", { name: "설치", exact: true })).toBeVisible();
   await expect(page.getByRole("button", 저장)).toHaveCount(0);
 

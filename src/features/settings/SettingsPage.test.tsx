@@ -471,3 +471,16 @@ describe("훅 구획의 화면", () => {
     expect(html).toContain("확인 못 함");
   });
 });
+
+// UI개선 결정 22 — 항목 하나가 페이지 하나가 되면서 제목은 페이지(`SettingsPage`)가 든다.
+// 구획이 제 제목을 또 들면 머리 `Settings / 터미널` 바로 밑에 같은 낱말이 한 번 더 서고, 그
+// 글자는 `SETTINGS_ITEMS`가 아닌 리터럴이라 이름을 고치는 날 한쪽만 바뀐다.
+describe("구획은 제 제목을 들지 않는다", () => {
+  const headings = (html: string) => html.match(/<h[1-6][\s>]/g) ?? [];
+
+  it("터미널 · 알림 · 에이전트 훅 구획 어디에도 제목 요소가 없다", () => {
+    expect(headings(render(settings()))).toEqual([]);
+    expect(headings(renderNotifications(withNotifications()))).toEqual([]);
+    expect(headings(renderHooks([hook()]))).toEqual([]);
+  });
+});

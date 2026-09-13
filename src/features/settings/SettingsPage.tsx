@@ -182,6 +182,11 @@ function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: Setti
         <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
           <div className="flex max-w-[620px] flex-col gap-6">
+            {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다.** 한 화면에 구획이 셋이던 때는
+                구획마다 보이는 머리가 있었는데, 항목이 페이지가 되면서 머리 바로 밑에 같은 낱말이
+                한 번 더 섰다. 다만 `PageHeader`는 제목 역할이 없는 글자라, 이것마저 지우면 페이지에
+                제목이 하나도 없다. 글자는 머리와 같은 표(`SETTINGS_ITEMS`)에서 읽는다. */}
+            <h2 className="sr-only">{settingsItem(item).label}</h2>
             {/* **항목이 곧 key다.** 두 항목의 본문이 같은 게이트로 시작해, key가 없으면 React가
                 항목을 옮길 때 게이트를 이어 써 옛 사본을 들고 파일을 다시 안 읽을 수 있다 —
                 항목마다 새로 서야 초안도 사본도 따라오지 않는다(위 결정 26). */}
@@ -518,8 +523,6 @@ export function TerminalSection({
 
   return (
     <section className="flex flex-col gap-5 pt-2">
-      <h2 className="text-[14px] font-semibold text-muted-foreground">터미널</h2>
-
       {/* 글꼴 — 프리셋은 지름길일 뿐이고 **값은 아래 칸 하나가 든다.** 둘을 따로 들면
           「프리셋을 골랐는데 칸에는 옛 이름이 남은」 상태가 생기고, 그때 무엇이 저장되는지
           화면에서 읽을 수 없다. 비우면 「고르지 않음」이다(크기 칸과 같은 규칙). */}
@@ -653,8 +656,6 @@ export function NotificationSection({
 
   return (
     <section className="flex flex-col gap-5 pt-2">
-      <h2 className="text-[14px] font-semibold text-muted-foreground">알림</h2>
-
       <Row label="알림">
         <div className="flex flex-col gap-2">
           <Switch
@@ -722,7 +723,6 @@ export function HooksSection({
 }) {
   return (
     <section className="flex flex-col gap-5 pt-2">
-      <h2 className="text-[14px] font-semibold text-muted-foreground">에이전트 훅</h2>
       {/* **다른 구획의 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
           설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
           전에 알아야 마음이 놓인다. */}
