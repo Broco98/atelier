@@ -324,7 +324,7 @@ test("끄는 도중 셸 하나가 끝나 줄이 바뀌어도 틈이 새 줄로 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **끄는 셸 자신이 끝난다**(UI개선 결정 48). 위 검사는 「남의 칸이 빠졌다」라 끌기가 살 이유가 있지만,
+// **끄는 셸 자신이 끝난다**(결정 48 · UI개선 스펙 S8). 위 검사는 「남의 칸이 빠졌다」라 끌기가 살 이유가 있지만,
 // 끄는 것이 사라지면 놓을 것이 없다 — 사이드바 행 끌기가 목록이 바뀌면 끌기를 거두듯(UI개선 스펙 S8)
 // 거둬야 한다. 안 거두면 원천에 닫힌 셸의 id가 실린 채 받침이 서 있어, 본문 절반에 놓는 순간 **없는
 // 셸로** 분할이 켜진다. 그래서 둘을 본다: 끝난 순간 끄는 중 모습(받침 · 끄는 커서)이 걷히는가, 그리고
@@ -351,6 +351,7 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 받침이 서 있던 오른쪽 절반으로 가서 뗀다 — 아무 일도 안 난다.
     await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
     await page.mouse.up();
+    await settle(page);
 
     await expect(page.locator("[data-column]")).toHaveCount(0);
     await expect(page).not.toHaveURL(/split=/);
@@ -375,8 +376,9 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 끝난 순간 끄는 커서가 걷힌다 — 이 화면에는 받침이 없어 끄는 중 모습이 이것뿐이다.
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    // 새 줄의 끝 틈으로 가서 — 선도 안 선다 — **안 켜진 칸 위에서** 뗀다. 거둔 끌기의 떼기가
-    // 「그 칸을 눌렀다」로 읽히면 켜진 칸이 「둘」로 바뀐다(켜진 「셋」 위에서 떼면 그 사고가 안 보인다).
+    // 새 줄의 끝 틈으로 가서 — 선도 안 선다 — **안 켜진 칸 위에서** 뗀다. 여기서 재는 것은 떼도 순서와
+    // 켜진 칸이 그대로라는 것뿐이다. 거둔 끌기의 떼기가 클릭으로 새는 사고(클릭 삼키기)는 이 자리에서
+    // 안 보인다 — 누른 이름 버튼은 셸이 끝나며 내려가, 뗀 곳이 다른 칸이어도 클릭이 서지 않는다.
     const at = await gapPoint(page, 2);
     await page.mouse.move(at.x, at.y, { steps: 4 });
     await expect(gapLine(page)).toHaveCount(0);
@@ -518,6 +520,8 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     await settle(page);
 
     await expect(page).not.toHaveURL(/split=/);
+    await expect(page.locator("[data-column]")).toHaveCount(0);
+    expect(await litName(page)).toBe("하나");
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
@@ -526,14 +530,24 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     await installFixtureBackend(page);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/maison/terminal");
-    await nameShells(page, ["하나", "둘"]);
+    await nameShells(page, ["하나", "둘", "셋"]);
+    const written = await callCount(page, "pty_write");
 
     await pressAndCross(page, 0);
     await exitShell(page, 1);
-    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
-    await page.mouse.up();
 
+    // 새 줄의 끝 틈에서 뗀다 — 선도 안 서고, 떼도 순서 · 켜진 칸 · 셸이 그대로다.
+    const at = await gapPoint(page, 2);
+    await page.mouse.move(at.x, at.y, { steps: 4 });
+    await expect(gapLine(page)).toHaveCount(0);
+    await page.mouse.up();
+    await settle(page);
+
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
+    expect(await litName(page)).toBe("셋");
+    expect(await callCount(page, "pty_write")).toBe(written);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });
@@ -547,6 +561,9 @@ test.describe("끌기가 사는 경우", () => {
 
     await pressAndCross(page, 0);
     await exitShell(page, 1, 1);
+    // 종료가 실제로 닿았음을 먼저 본다 — 아래 단언들은 종료 전에도 참이라, 이것 없이는 종료 프레임이
+    // 안 와도 초록이다. 끝난 칸은 줄에 남아 코드 꼬리표(`shellEndLabels`의 `mark`)를 단다.
+    await expect(nameButton(page, 0).locator("span.text-tertiary")).toHaveText("1");
     await settle(page);
     await expect.poll(() => namesOf(page)).toHaveLength(2);
     await expect(page.locator("body")).toHaveClass(/dragging-row/);

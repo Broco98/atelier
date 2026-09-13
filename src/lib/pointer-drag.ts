@@ -138,7 +138,7 @@ export function cancelDrag(): void {
 let armed: { source: DragSource | RowDragSource; disarm: () => void } | null = null;
 
 /**
- * **끄는 셸이 사라졌으면 끌기를 거둔다**(UI개선 결정 48 · 스펙 S8). 원천의 `shellId`는 누른 순간
+ * **끄는 셸이 사라졌으면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 원천의 `shellId`는 누른 순간
  * 실려 떼기까지 안 바뀌어서, 그 셸이 끝나도(pty exit · `×` · ⌘W · 아카이빙의 회수) 안 거두면 받침이
  * 선 채 **없는 셸로** 분할이 켜진다. `alive`는 그 셸이 아직 있는지를 아는 쪽(터미널 스토어)이 준다 —
  * 이 모듈은 기능 폴더를 못 부른다(머리말).

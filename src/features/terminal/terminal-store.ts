@@ -260,22 +260,23 @@ export function selectShell(id: number): void {
  */
 export function dropShellOnSlot(): void {
   const move = shellMoveOf(dragStore.state);
-  // 끈 셸이 이미 없으면 놓을 것이 없다 — 아래 구독이 끌기를 먼저 거두지만, 받는 자리에서도 한 번 더
-  // 본다(본문 받침의 `dropHere`와 같은 판정).
-  if (move === null || !hasShell(move.shellId)) return;
+  if (move === null) return;
   terminalStore.setState((state) => moveShell(state, move.shellId, move.slot));
 }
 
 /** 이 id의 셸이 아직 목록에 있나. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. */
-export function hasShell(id: number): boolean {
+function hasShell(id: number): boolean {
   return terminalStore.state.shells.some((shell) => shell.id === id);
 }
 
-// **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(UI개선 결정 48 · 스펙 S8). 셸이 사라지는 길은 여럿인데
+// **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
 // (정상 종료 · `×`·⌘W · 아카이빙의 회수) 모두 이 스토어의 상태를 바꾸므로, 길마다 부르는 대신 **상태를
 // 보고** 거둔다 — 한 길만 빠뜨리면 받침이 선 채 없는 셸로 분할이 켜진다. 두 화면(work · `/terminal`)이
 // 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 세계(Atelier·Maison)마다 다르지만 id는 하나다.
 // 끝났어도 목록에 남은 칸(0 아닌 코드 · 시그널 — `markExited`)은 살아 있는 원천이라 끌기가 산다.
+// **판정하는 자리는 이 구독 하나다.** 받는 자리(`dropShellOnSlot` · 본문 받침의 `dropHere`)는 다시 보지
+// 않는다 — 구독이 상태 변경과 같은 틱에 끌기를 걷어 받침도 틈도 사라지므로 거기까지 닿을 길이 없고,
+// 닿지 않는 검사는 어떤 시험도 붙들지 못한다.
 terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
 
 /**
@@ -660,7 +661,7 @@ function show(payload: NotifyPayload): void {
   }
 }
 
-// **알림의 구독은 이 하나다**(다른 구독은 끌기를 거두는 `hasShell` 옆의 것뿐이다). 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
+// **알림의 구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
 // 머리말 — 그 이유가 여기서 났다) 이 콜백이 읽어도 딸려 오는 의존이 없다.
 terminalStore.subscribe(notifyTick);
 // 설정이 바뀌면 배지가 그 자리에서 따라와야 한다 — 끈 순간 독에 수가 남아 있으면 「껐는데
