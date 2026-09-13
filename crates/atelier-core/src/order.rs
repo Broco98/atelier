@@ -77,9 +77,11 @@ pub(crate) fn read_order_to_rewrite(works_root: &Path) -> Result<OrderToRewrite>
             return Ok(OrderToRewrite { order: WorkOrder::default(), broken: None })
         }
         Err(e) => {
-            return Err(crate::Error::Validation(format!(
-                "순서 파일을 읽지 못해 순서를 바꾸지 않았습니다 ({}): {e}",
-                path.display()
+            // 인자가 아니라 로컬 파일 탓이다 — `Validation`이면 MCP가 에이전트에게 「인자를 고쳐 다시
+            // 불러라」라고 시킨다(`atelier-cli`의 `tool_error.rs`). `Io`는 「사람에게 알려라」로 간다.
+            return Err(crate::Error::Io(std::io::Error::new(
+                e.kind(),
+                format!("순서 파일을 읽지 못해 순서를 바꾸지 않았습니다 ({}): {e}", path.display()),
             )))
         }
     };
@@ -109,7 +111,10 @@ pub(crate) fn rewrite_order(works_root: &Path, rewrite: OrderToRewrite) -> Resul
 /// 원자적으로 쓴다(`atomic.rs`). **잠그지 않는다** — 앱·MCP·CLI가 겹쳐 쓰면 나중 쓰기가 이긴다.
 /// 대가는 「방금 옮긴 자리가 한 번 풀린다」이고 다음 옮김이 고치는 반면, 잠금은 세 프로세스에
 /// 걸친 기전을 하나 들인다(`recent.json`과 같은 판단).
-pub(crate) fn write_order(works_root: &Path, order: &WorkOrder) -> Result<()> {
+///
+/// **이 모듈 밖으로 안 연다** — 밖에서 `read_order`(깨진 파일 = 빈 순서)와 짝지으면 D2가 돌아온다.
+/// 다시 쓰는 길은 `rewrite_order`(벌을 먼저 뜬다)나 `forget_in_order`(뺄 것이 없으면 안 쓴다)다.
+fn write_order(works_root: &Path, order: &WorkOrder) -> Result<()> {
     crate::atomic::write_json_atomically(works_root, ORDER_FILE, order, "순서를")
 }
 

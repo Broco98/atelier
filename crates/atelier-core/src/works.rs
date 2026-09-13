@@ -582,8 +582,8 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     }
     // 목록 읽기(`read_order`)가 아니라 **다시 쓰기용 읽기**다 — 깨진 파일을 빈 순서로 눕힌 채
     // 굳혀 쓰면 사람이 손으로 고치던 바이트가 흔적 없이 덮인다(D2). 원문은 쓰기 직전에 벌로 남는다.
-    let mut order = crate::order::read_order_to_rewrite(works_root)?;
-    let mut visible = read_works_in(works_root, &order.order.order)?;
+    let mut rewrite = crate::order::read_order_to_rewrite(works_root)?;
+    let mut visible = read_works_in(works_root, &rewrite.order.order)?;
     visible.retain(|other| other.slug != work.slug);
     // 보이는 순서가 고정 먼저로 서 있으므로 고정 구획은 `[0, 고정의 수)`, 비고정은 그 뒤다.
     let pinned_count = visible.iter().filter(|other| other.pinned).count();
@@ -613,8 +613,8 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     let mut slugs: Vec<String> = visible.into_iter().map(|other| other.slug).collect();
     slugs.insert(at, work.slug.clone());
 
-    order.order.order = slugs;
-    crate::order::rewrite_order(works_root, order)?;
+    rewrite.order.order = slugs;
+    crate::order::rewrite_order(works_root, rewrite)?;
     if work.pinned != to_pinned {
         work.pinned = to_pinned;
         write_work(works_root, &work)?;
@@ -1553,6 +1553,35 @@ mod tests {
         );
     }
 
+    // ── 옮기기 (`move_work`) · 고정 토글 ────────────────────────────────────
+
+    /// 상태를 못 박은 work 하나를 심는다 — 「구획을 옮겨도 상태는 그대로」를 `active` 아닌 값으로 잰다.
+    fn plant_with_status(works: &Path, slug: &str, created: &str, pinned: bool, status: &str) {
+        let dir = works.join(slug);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("work.json"),
+            format!(
+                r#"{{"title":"{slug}","status":"{status}","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    /// 순서 파일 날것 전체 — 모르는 키까지 본다.
+    fn order_json(works: &Path) -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap()).unwrap()
+    }
+
+    /// 파일에 **적힌** 순서. 목록 읽기(`listed`)와 달리 규칙을 안 거친 날것이다.
+    fn order_on_disk(works: &Path) -> Vec<String> {
+        serde_json::from_value(order_json(works)["order"].clone()).unwrap()
+    }
+
+    fn slugs_of(views: &[WorkView]) -> Vec<String> {
+        views.iter().map(|v| v.work.slug.clone()).collect()
+    }
+
     /// 작업 루트 아래(하위 폴더 포함)에서 내용이 `bytes`와 똑같은 파일을 찾는다 — 백업의 이름은
     /// 이 검사가 정하지 않는다. 사람에게 중요한 것은 「손으로 고치던 바이트가 어딘가 남았다」이다.
     fn file_holding(root: &Path, bytes: &str) -> Option<PathBuf> {
@@ -1592,7 +1621,7 @@ mod tests {
                 "{root}: 깨진 순서 파일의 바이트가 옮기기 한 번에 사라졌다 — 남은 순서 파일: {:?}",
                 std::fs::read_to_string(works.join(".order.json")).ok()
             );
-            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 백업이 목록에 끼었다");
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 목록이 옮긴 뒤 순서가 아니다");
         }
     }
 
@@ -1615,7 +1644,7 @@ mod tests {
                 "{root}: 깨진 순서 파일의 바이트가 고정 토글 한 번에 사라졌다 — 남은 순서 파일: {:?}",
                 std::fs::read_to_string(works.join(".order.json")).ok()
             );
-            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 백업이 목록에 끼었다");
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 목록이 옮긴 뒤 순서가 아니다");
         }
     }
 
@@ -1648,6 +1677,7 @@ mod tests {
             write_raw_order(&works, first);
             move_work(&works, "가", false, Some("나")).unwrap();
             assert_eq!(order_on_disk(&works), slugs(&["가", "나"]), "{root}: 옮긴 뒤 순서 파일이 온전하지 않다");
+            assert_eq!(loose_files(&works).len(), 1, "{root}: 첫 깨짐 한 번에 벌이 하나가 아니다");
 
             let second = r#"{"order":["나", 둘째 손질"#;
             write_raw_order(&works, second);
@@ -1666,7 +1696,7 @@ mod tests {
             if root == "maison/rooms" {
                 assert!(loose_files(&tmp.path().join("maison")).is_empty(), "벌이 모드 홈에 섰다");
             }
-            assert_eq!(listed(&works), slugs(&["나", "가"]), "{root}: 벌이 목록에 끼었다");
+            assert_eq!(listed(&works), slugs(&["나", "가"]), "{root}: 목록이 고정한 뒤 순서가 아니다");
         }
     }
 
@@ -1712,7 +1742,9 @@ mod tests {
         let pinned = update_work_pinned(&works, "가", true);
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        assert!(matches!(moved, Err(Error::Validation(_))), "못 읽는 순서 파일 위에서 옮기기가 됐다: {moved:?}");
+        // 인자 탓이 아니라 로컬 파일 탓이다 — MCP가 「인자를 고쳐 다시 불러라」가 아니라 「사람에게
+        // 알려라」로 옮기는 갈래(`tool_error.rs`)여야 한다.
+        assert!(matches!(moved, Err(Error::Io(_))), "못 읽는 순서 파일 위에서 옮기기가 인자 오류로 거절되거나 됐다: {moved:?}");
         assert!(pinned.is_err(), "못 읽는 순서 파일 위에서 고정이 됐다");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), r#"{"order":["나","가"]}"#);
         assert!(loose_files(&works).is_empty(), "거절한 옮기기가 벌을 떴다");
@@ -1750,33 +1782,29 @@ mod tests {
         assert!(loose_files(&works).is_empty(), "덮지 않은 길이 벌을 떴다: {:?}", loose_files(&works));
     }
 
-    // ── 옮기기 (`move_work`) · 고정 토글 ────────────────────────────────────
+    /// D2 — **온전한** 순서 파일을 다시 쓸 때는 벌이 안 뜬다. 뜨면 끌기·핀 한 번마다
+    /// `.order.json.N.bak`이 끝없이 쌓인다(`keep_aside`의 「깨졌을 때만 뜬다」가 거짓이 된다).
+    #[test]
+    fn rewriting_a_valid_order_file_leaves_no_backup() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-02", false);
+            plant(&works, "다", "2026-08-03", false);
+            write_raw_order(&works, r#"{"order":["가","나","다"]}"#);
 
-    /// 상태를 못 박은 work 하나를 심는다 — 「구획을 옮겨도 상태는 그대로」를 `active` 아닌 값으로 잰다.
-    fn plant_with_status(works: &Path, slug: &str, created: &str, pinned: bool, status: &str) {
-        let dir = works.join(slug);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("work.json"),
-            format!(
-                r#"{{"title":"{slug}","status":"{status}","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
-            ),
-        )
-        .unwrap();
-    }
+            move_work(&works, "다", false, Some("가")).unwrap();
+            move_work(&works, "나", true, None).unwrap();
+            update_work_pinned(&works, "가", true).unwrap();
+            update_work_pinned(&works, "나", false).unwrap();
 
-    /// 순서 파일 날것 전체 — 모르는 키까지 본다.
-    fn order_json(works: &Path) -> serde_json::Value {
-        serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap()).unwrap()
-    }
-
-    /// 파일에 **적힌** 순서. 목록 읽기(`listed`)와 달리 규칙을 안 거친 날것이다.
-    fn order_on_disk(works: &Path) -> Vec<String> {
-        serde_json::from_value(order_json(works)["order"].clone()).unwrap()
-    }
-
-    fn slugs_of(views: &[WorkView]) -> Vec<String> {
-        views.iter().map(|v| v.work.slug.clone()).collect()
+            assert_eq!(listed(&works), slugs(&["가", "나", "다"]), "{root}: 옮기기·고정이 안 먹었다");
+            assert!(loose_files(&works).is_empty(), "{root}: 온전한 순서 파일 위에서 벌이 떴다: {:?}", loose_files(&works));
+            if root == "maison/rooms" {
+                assert!(loose_files(&tmp.path().join("maison")).is_empty(), "벌이 모드 홈에 섰다");
+            }
+        }
     }
 
     /// UI개선 결정 2 · S3. **보이는 순서 전체를 굳힌 뒤** 옮긴다 — 파일에 없던 `라`·`나`도 제자리로
