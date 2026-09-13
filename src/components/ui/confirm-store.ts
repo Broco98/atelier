@@ -22,6 +22,13 @@ export interface DialogAsk {
   danger?: boolean;
   /** 물음이 아니라 **알림**이면. 취소 버튼이 서지 않고 답은 늘 `true`다. */
   notice?: boolean;
+  /**
+   * 창이 뜰 때 포커스를 받는 버튼. 안 주면 진행 버튼이다(지금까지의 모든 물음).
+   *
+   * **종료 확인만 `cancel`로 부른다**(S16) — ⌘Q 뒤에 반사적으로 친 Enter가 앱을 끄면 실수 종료라는
+   * 원래 문제가 그대로 돌아온다. 어느 쪽이든 포커스가 창 **안으로** 오는 성질은 같다.
+   */
+  focus?: "confirm" | "cancel";
 }
 
 type Pending = DialogAsk & { answer: (ok: boolean) => void };

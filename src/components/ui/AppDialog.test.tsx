@@ -40,6 +40,16 @@ describe("앱 창이 그려지는 자리", () => {
   });
 });
 
+// 셸이 0개인 종료 확인은 본문 줄이 **아예 없다**(결정 15). 빈 줄을 그리면 제목 아래 여백만 남는다.
+describe("본문이 빈 물음", () => {
+  it("본문 줄을 그리지 않는다 — 제목만 선다", () => {
+    void askDialog({ title: "Atelier 종료", body: "", confirm: "종료", danger: true });
+    expect(render().match(/<span/g)).toHaveLength(1);
+    void askDialog({ title: "Atelier 종료", body: "셸 1 · 명령이 도는 셸 0", confirm: "종료" });
+    expect(render().match(/<span/g)).toHaveLength(2);
+  });
+});
+
 describe("답이 오가는 길", () => {
   it("답하면 창이 닫히고 그 값이 온다", async () => {
     const asked = askDialog({ title: "가", body: "나", confirm: "닫기" });
