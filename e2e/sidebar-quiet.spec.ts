@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { WORKS } from "./fixtures";
+import { MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, markAttention, unknownIpcCalls, 띠 } from "./harness";
 
 // **사이드바를 조용하게**(UI개선 결정 23~25 · #227). 셋 다 진짜 CSS와 진짜 레이아웃이 있어야
@@ -10,9 +10,6 @@ import { awaitSpawned, installFixtureBackend, markAttention, unknownIpcCalls, �
 // 때문이다 — 여기서 재는 것은 목록의 **테두리**뿐이다.
 
 const [pinnedWork, plainWork] = WORKS;
-
-const PINNED_HEADER = "고정 1";
-const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
 
 const list = (page: Page) => page.locator("[data-worklist]");
 /** 목록 윗 가장자리의 구분선. 목록 **밖**(스크롤하지 않는 부모)에 산다. */

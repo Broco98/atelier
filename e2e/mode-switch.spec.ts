@@ -47,7 +47,7 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
 
   const aside = page.locator("aside");
   // 상주 목록의 머리가 `Rooms`다. 접근성 이름에 개수가 함께 들어간다 — 라벨과 옅은 숫자가
-  // 같은 버튼 안이다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 규격). 초안도 이 구획에
+  // 같은 버튼 안이다(`fixtures.ts`의 `MAIN_HEADER`와 같은 규격). 초안도 이 구획에
   // 서므로(UI개선 결정 5) 두 Room이 다 수에 든다.
   await expect(
     aside.getByRole("button", { name: `Rooms ${ROOMS.length}`, exact: true }),

@@ -176,6 +176,13 @@ export const MAISON_LANDING_ROOM: WorkView = ROOMS[0];
 export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
 export const ROOMS_MOVED: WorkView[] = [...ROOMS].reverse();
 
+// 사이드바 구획 머리의 접근성 이름. 라벨과 옅은 숫자가 같은 버튼 안이라 **이름에 개수가 함께
+// 든다.** 수는 `WORKS`에서 파생한다 — 줄이 더해질 때마다(티켓 08의 멀티 프로젝트 work) 숫자를
+// 손으로 고치지 않게, 그리고 이 이름을 드는 spec(`works-sidebar`·`sidebar-quiet`)이 따로 고치지
+// 않게 여기 한 벌만 둔다.
+export const PINNED_HEADER = `고정 ${WORKS.filter((work) => work.pinned).length}`;
+export const MAIN_HEADER = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
+
 // 아카이브 목록. **둘이다 — 문서가 있는 것과 없는 것.** 그 둘이 `[소스]` 잠김이 갈리는
 // 자리다: 문서가 하나도 없으면 파일 종류 표는 마크다운으로 떨어지는데 그 기본값은 본문
 // 분기를 위한 것이지 「누를 것이 있다」는 뜻이 아니라, 화면이 `current === null`을 따로
