@@ -43,6 +43,7 @@ import {
 } from "@/features/terminal/shell-registry";
 import {
   closeShellsOf,
+  dropShellOnSlot,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
@@ -53,9 +54,9 @@ import {
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
-import { armDrag, dragStore } from "@/lib/pointer-drag";
+import { armDrag, clearHalf, dragStore, hoverHalf, hoverSlot } from "@/lib/pointer-drag";
 import type { DragSource, SplitHalf } from "@/lib/pointer-drag";
-import { clearHalf, dropSplit, hoverHalf, otherTab, specHeadLabel } from "./split-view";
+import { dropSplit, otherTab, specHeadLabel } from "./split-view";
 import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
@@ -534,16 +535,16 @@ function WorksPage({
         openNewShell(origin);
         onSelectTab("terminal");
       }}
-      // 칸을 본문 위로 끌면 그 절반에 선다(결정 12) — 사이드바 행이 하던 몸짓 그대로이고
-      // **바뀐 것은 출발점뿐이다**(놓일 자리도 분할 계산도 그대로다).
+      // 칸을 끌면 **한 눌림을 두 소비자가 나눠 본다**(ui-improvement 스펙 S10) — 본문 절반에
+      // 놓으면 그 절반에 서고(결정 12, 아래 받침), 이 줄의 틈에 놓으면 순서가 바뀐다(결정 11).
+      // 놓은 곳이 이긴다.
       //
-      // **끄는 자리를 여기서 만든다.** 탭 줄이 스스로 만들면 `terminal → works` 방향이
-      // 값 차원에서 생겨 반대 방향과 맞물린다(그쪽 prop 주석 — 걷히기 전 Sidebar가 셸
-      // 가지에 같은 이유로 같은 일을 해 줬다). 이 화면은 이미 양쪽을 다 알고 있다.
+      // **끄는 자리를 여기서 만든다.** 탭 줄은 스토어도 제스처 모듈도 모르는 그림이라(그쪽
+      // prop 주석) 드래그 상태를 구독하는 이 화면이 건다. `/terminal`도 같은 모양으로 건다.
       //
-      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다 — 남의 work을
-      // 떨구는 길(결정 101)은 사이드바에만 있다. 원천이 slug가 아니라 owner인 것은 공용
-      // 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기 때문이다.
+      // 이 줄은 늘 **지금 보고 있는 work**의 것이라 소유자가 하나로 정해진다. 원천이 slug가
+      // 아니라 owner인 것은 공용 제스처가 `/terminal`(slug가 없다)에서도 같은 모양을 싣기
+      // 때문이다.
       onDragTab={(shellId, from) => {
         const owner = ownerOf(mode, panelWork.slug);
         armDrag(
@@ -551,6 +552,11 @@ function WorksPage({
           from,
         );
       }}
+      // 틈 소비자의 두 끝 — 적는 것(`hoverSlot`)은 문턱을 넘은 뒤에만 쓰고 받침의 절반과
+      // 동시에 안 켜지며, 놓는 것은 `/terminal`과 같은 함수다. 둘 다 모듈 함수라 회차를 넘어 같다.
+      slot={drag.slot}
+      onSlot={hoverSlot}
+      onDropSlot={dropShellOnSlot}
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //

@@ -146,6 +146,10 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
+      onDragTab={() => {}}
+      slot={null}
+      onSlot={() => {}}
+      onDropSlot={() => {}}
     />,
   );
 }

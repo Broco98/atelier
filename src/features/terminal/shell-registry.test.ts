@@ -17,7 +17,9 @@ import {
   markExited,
   markFailed,
   markSeen,
+  isInPlaceGap,
   MAX_SHELLS,
+  moveShell,
   needsCloseConfirm,
   NO_SHELLS,
   openShell,
@@ -2162,5 +2164,90 @@ describe("종료 확인의 본문", () => {
 
   it("셸이 0개면 그 줄이 없다", () => {
     expect(quitNotice({ live: 0, running: 0 })).toBeUndefined();
+  });
+});
+
+// 결정 11 · 스펙 §6 — 탭을 끌어 놓으면 **그 화면 셸들의 상대 순서만** 바뀐다. `gap`은 그 화면
+// 셸들 사이의 틈 번호(0..n)다 — 0이 첫 칸 앞, n이 마지막 칸 뒤다. ⌘1~9·⌃Tab·`×` 이웃
+// 규칙은 같은 배열을 세므로 여기서 순서가 맞으면 따라온다(새 규칙이 없다).
+describe("셸 탭을 틈으로 옮긴다", () => {
+  // 네 칸짜리 최상위 화면. id가 곧 자리 순서라 기대값을 id로 적는다.
+  const four = () => opened(4);
+
+  it.each([
+    ["오른쪽 끝으로", 0, 4, [1, 2, 3, 0]],
+    ["오른쪽 한 칸 건너", 0, 2, [1, 0, 2, 3]],
+    ["왼쪽 끝으로", 3, 0, [3, 0, 1, 2]],
+    ["왼쪽 한 칸 건너", 2, 1, [0, 2, 1, 3]],
+  ] as const)("%s — %i번째 칸을 틈 %i에 놓는다", (_, from, gap, order) => {
+    const { state, ids } = four();
+    const moved = moveShell(state, ids[from], gap);
+    expect(idsOf(moved)).toEqual(order.map((at) => ids[at]));
+  });
+
+  // 제자리 — 원래 자리 `i`의 양옆 틈(`i`·`i+1`)이다. **같은 객체**를 돌려줘야 구독이
+  // 안 흔들린다(`sameScreen`의 `a === b`).
+  it.each([0, 1, 2, 3])("%i번째 칸을 제 양옆 틈에 놓으면 같은 상태다", (from) => {
+    const { state, ids } = four();
+    expect(moveShell(state, ids[from], from)).toBe(state);
+    expect(moveShell(state, ids[from], from + 1)).toBe(state);
+  });
+
+  // 제자리 판정은 **한 곳**이다 — 탭 줄의 틈 선(`tabGap`)도 이것을 불러 선을 안 세운다. 둘이
+  // 각자 적으면 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이 안 선다.
+  it.each([
+    [2, 1, false],
+    [2, 2, true],
+    [2, 3, true],
+    [2, 4, false],
+    [0, 0, true],
+    [0, 1, true],
+  ] as const)("%i번째 칸의 틈 %i은 제자리인가 — %s", (from, gap, inPlace) => {
+    expect(isInPlaceGap(from, gap)).toBe(inPlace);
+  });
+
+  it("모르는 id는 같은 상태다", () => {
+    const { state } = four();
+    expect(moveShell(state, 999, 0)).toBe(state);
+  });
+
+  // 전역 배열에는 여러 화면의 셸이 섞여 산다. 틈 번호는 **이 화면 셸들 사이**의 것이라,
+  // 전역 자리로 세면 남의 셸을 건너뛰는 몫만큼 어긋나고 남의 셸이 밀린다.
+  it("남의 화면 셸은 전역 배열에서 제자리다", () => {
+    let state = NO_SHELLS;
+    const ids: Record<string, number> = {};
+    for (const [name, seed] of [
+      ["가1", originFor("가")],
+      ["나1", originFor("나")],
+      ["가2", originFor("가")],
+      ["top", TOP],
+      ["가3", originFor("가")],
+    ] as const) {
+      const next = openShell(state, seed)!;
+      state = next.state;
+      ids[name] = next.id;
+    }
+    const moved = moveShell(state, ids["가3"], 0);
+    expect(idsOf(moved)).toEqual([ids["가3"], ids["나1"], ids["가1"], ids["top"], ids["가2"]]);
+    expect(shellsOf(moved, ownerFor("가")).map((shell) => shell.id)).toEqual([
+      ids["가3"],
+      ids["가1"],
+      ids["가2"],
+    ]);
+  });
+
+  it("켜진 칸은 안 바뀐다", () => {
+    const { state, ids } = four();
+    const lit = activateShell(state, ids[1]);
+    const moved = moveShell(lit, ids[1], 4);
+    expect(activeTop(moved)).toBe(ids[1]);
+    expect(moved.activeByOwner).toEqual(lit.activeByOwner);
+  });
+
+  // 순서만 바뀐 상태를 화면이 **다시 그려야** 한다 — 개수도 켜진 칸도 같아 자리마다의
+  // 정체를 보지 않으면 옮긴 탭이 화면에 안 선다.
+  it("순서만 바뀌어도 화면이 다시 그려진다", () => {
+    const { state, ids } = four();
+    expect(sameScreen(state, moveShell(state, ids[0], 4), TOP.owner)).toBe(false);
   });
 });

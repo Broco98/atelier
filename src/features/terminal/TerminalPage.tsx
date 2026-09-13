@@ -14,12 +14,14 @@ import {
   topTerminal,
 } from "./shell-registry";
 import {
+  dropShellOnSlot,
   onNewShellRequested,
   openNewShell,
   requestCloseShell,
   selectShell,
   terminalStore,
 } from "./terminal-store";
+import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
 import type { Mode } from "@/mode";
 
 // 최상위 터미널(`/terminal`). Work에 매이지 않은 셸들이 사는 화면이고, cwd는 백엔드의
@@ -74,6 +76,11 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
     (whole) => whole,
     (a, b) => sameScreen(a, b, owner),
   );
+
+  // 끄는 동안 탭 줄에 세울 틈(결정 11). **틈 하나만 구독한다** — 이 화면에는 분할 받침이 없어
+  // 드래그 상태의 나머지(원천 · 절반)로 그릴 것이 없고, 통째로 읽으면 끌기를 걸고 걷을 때마다
+  // 이 화면이 다시 그려진다.
+  const slot = useStore(dragStore, (state) => state.slot);
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
@@ -174,6 +181,15 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
           onClose={requestCloseShell}
           onOpen={() => openNewShell(topTerminal(mode))}
+          // **이 화면도 탭을 끈다**(결정 11) — 떨굴 분할이 없어 소비자는 탭 줄의 틈 하나다.
+          // 문서 칸이 없으니(`spec={null}`) `null`이 올 일이 없지만, 줄의 계약이 그 갈래를
+          // 가지므로 여기서 거른다. 탭 줄 밖에서 놓으면 아무 일도 없다.
+          onDragTab={(shellId, from) => {
+            if (shellId !== null) armDrag({ kind: "shell", owner, shellId }, from);
+          }}
+          slot={slot}
+          onSlot={hoverSlot}
+          onDropSlot={dropShellOnSlot}
         />
         <TerminalPane mode={mode} work={null} />
       </main>

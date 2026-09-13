@@ -903,6 +903,16 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       }}`,
     )).toBe(1);
   });
+
+  // 같은 눌림의 **둘째 소비자**가 탭 줄이다(ui-improvement 스펙 S10) — 줄은 스토어를 모르므로
+  // 틈을 적는 자리와 놓았을 때 옮기는 자리를 이 화면이 준다. 둘 다 모듈 함수라 회차를 넘어
+  // 같다. 틈 표시는 드래그 상태에서 읽어 내린다.
+  it("탭 줄의 틈을 적고 놓으면 옮기는 자리를 이 화면이 준다", () => {
+    const page = source("WorksPage.tsx");
+    expect(countOf(page, "slot={drag.slot}")).toBe(1);
+    expect(countOf(page, "onSlot={hoverSlot}")).toBe(1);
+    expect(countOf(page, "onDropSlot={dropShellOnSlot}")).toBe(1);
+  });
 });
 
 // 결정 10 — **이 화면의 조회는 하나도 한 세계로 눕지 않는다.** 사이드바는 세계 이름이

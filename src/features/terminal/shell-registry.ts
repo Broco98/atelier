@@ -814,6 +814,51 @@ export function activateShell(state: ShellsState, id: number): ShellsState {
 }
 
 /**
+ * 자리 `from`의 칸을 틈 `gap`에 놓으면 **제자리**인가 — 제 양옆 틈(`from`·`from + 1`)이다.
+ *
+ * **이 판정은 여기 하나다.** 옮기는 쪽(`moveShell`)과 선을 그리는 쪽(탭 줄의 `tabGap`)이 함께
+ * 부른다 — 각자 적으면 한쪽이 바뀔 때 선이 선 틈에 놓아도 안 옮겨지거나, 옮겨지는 틈에 선이
+ * 안 선다.
+ */
+export function isInPlaceGap(from: number, gap: number): boolean {
+  return gap === from || gap === from + 1;
+}
+
+/**
+ * 칸을 **그 화면 셸들 사이의 틈**으로 옮긴다(결정 11 · ui-improvement 스펙 §6). `gap`은
+ * 0..n이다 — 0이 그 화면 첫 칸 앞, n이 마지막 칸 뒤이고, 끄는 칸도 세어진 채의 번호다.
+ *
+ * **틈이 전역 배열의 자리가 아닌 것**은 이 배열에 여러 화면의 셸이 섞여 살아서다. 전역
+ * 자리로 받으면 부르는 쪽(탭 줄)이 남의 셸 수를 알아야 하고, 옮기는 김에 남의 셸이 밀린다.
+ * 그래서 이 화면 셸들의 상대 순서만 바꾸고, 그 셸들이 앉아 있던 **전역 자리 묶음**에
+ * 새 순서로 다시 앉힌다 — 남의 셸은 한 칸도 안 움직인다.
+ *
+ * 원래 자리 `i`의 양옆 틈(`i`·`i+1`)은 제자리라 **받은 상태를 그대로** 돌려준다. 모르는
+ * id도 같다(그리는 것과 놓는 것 사이에 칸이 빠질 수 있다 — `activateShell`과 같은 이유).
+ * 켜진 칸은 id로 적혀 있어 순서와 무관하게 그대로다.
+ *
+ * ⌘1~9·⌃Tab·`×` 이웃 규칙·에이전트 목록은 이 배열을 세므로 **새 규칙 없이 따라온다.**
+ * 순서는 메모리에만 있다(결정 12).
+ */
+export function moveShell(state: ShellsState, id: number, gap: number): ShellsState {
+  const shell = state.shells.find((one) => one.id === id);
+  if (!shell) return state;
+
+  const mine = state.shells.filter((one) => one.owner === shell.owner);
+  const from = mine.indexOf(shell);
+  if (isInPlaceGap(from, gap) || gap < 0 || gap > mine.length) return state;
+
+  const rest = mine.filter((one) => one !== shell);
+  // 틈 번호는 끄는 칸이 **아직 있는** 줄에서 센 것이다 — 그 뒤쪽 틈은 빠진 한 칸만큼 당겨진다.
+  const at = gap > from ? gap - 1 : gap;
+  const order = [...rest.slice(0, at), shell, ...rest.slice(at)];
+
+  let next = 0;
+  const shells = state.shells.map((one) => (one.owner === shell.owner ? order[next++] : one));
+  return { ...state, shells };
+}
+
+/**
  * 터미널이 셸에 넘기지 않고 **앱이 가져가는** 조작.
  *
  * `"app"`은 「앱 몫이되 **이 셸이 하지 않는다**」다 — 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
