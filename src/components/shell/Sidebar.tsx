@@ -242,8 +242,11 @@ function Sidebar({
             **윗변에 늘 1px 선이 있다**(UI개선 결정 25) — 작업 목록과 설정 사이다. 스크롤과
             무관하다: 목록 **윗** 가장자리의 선은 굴렀을 때만 서지만(`SidebarWorkList`), 바닥은
             목록이 어디에 있든 「여기부터 목록이 아니다」라서. 이 칸은 스크롤 상자가 아니라
-            테두리가 막대를 밀 일이 없다 — 목록 윗선이 테두리를 못 쓰는 이유가 여기엔 없다. */}
-        <div className={cn("shrink-0 border-t pt-1.5", GUTTER)}>
+            테두리가 막대를 밀 일이 없다 — 목록 윗선이 테두리를 못 쓰는 이유가 여기엔 없다.
+
+            표식은 검사가 이 칸을 정체성으로 집기 위한 것이다 — 버튼에서 부모를 몇 겹 거슬러
+            오르는 길은 `SidebarItem`의 감싸개 수에 묶인다. */}
+        <div data-sidebar-foot="" className={cn("shrink-0 border-t pt-1.5", GUTTER)}>
           <SidebarItem
             icon={Settings}
             label="Settings"

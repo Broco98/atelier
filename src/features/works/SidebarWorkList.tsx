@@ -200,6 +200,23 @@ function SidebarWorkList({
     <>
       {/* 두 섹션은 이 한 스크롤 영역에 이어진다 — 헤더도 함께 스크롤한다. */}
       <div className="relative flex min-h-0 flex-1 flex-col px-2">
+        {/* **목록이 스크롤됐을 때만 윗 가장자리에 선이 선다**(UI개선 결정 24). 선은 굴러가는 상자
+            **밖**, 스크롤하지 않는 이 부모에 절대 위치로 선다 — 상자 안에서 그리는 길 셋이 다 막혔다:
+            - 상자에 `border-top`: 오버레이 막대가 `clientTop`만큼 밀리고(`lib/scroll-quiet.ts`의
+              `show`) 콘텐츠가 1px 내려앉는다. 선이 서고 사라질 때마다 목록이 들썩인다 — 이 판이
+              없애려는 그것이다.
+            - inset 그림자: 행의 배경(선택·hover)이 그 위를 덮는다.
+            - 상자 안 `::before`: 내용과 함께 굴러 올라가 버린다.
+            부모의 윗변이 곧 상자의 윗변이라 띠가 있으면 띠 아래, 없으면 nav 아래가 저절로 된다.
+            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 Settings 칸의 윗선과
+            같은 폭이다. 누를 것이 아니라 `pointer-events-none`이다: 첫 행 윗변 1px을 가리면 안 된다. */}
+        {scrolled && (
+          <div
+            data-worklist-edge=""
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-border"
+          />
+        )}
         {/* **자리를 예약하지 않는다**(결정 32). 한때 scroll이었다 — 폭을 갖는 클래식 막대라
             auto로 두면 넘치는 순간 콘텐츠 폭이 11px 줄어 헤더와 행이 통째로 밀렸다
             (실측 264→253). 이제 막대가 콘텐츠 **위에** 떠서(scroll-quiet) 폭을 안 먹으므로
@@ -228,23 +245,6 @@ function SidebarWorkList({
             `aside .scroll-quiet`로 집었는데, 그 클래스는 「굴러가는 상자」라는 겉모습이라
             같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 「확인할 것」 띠가 펼쳐지면
             그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
-        {/* **목록이 스크롤됐을 때만 윗 가장자리에 선이 선다**(UI개선 결정 24). 선은 굴러가는 상자
-            **밖**, 스크롤하지 않는 이 부모에 절대 위치로 선다 — 상자 안에서 그리는 길 셋이 다 막혔다:
-            - 상자에 `border-top`: 오버레이 막대가 `clientTop`만큼 밀리고(`lib/scroll-quiet.ts`의
-              `show`) 콘텐츠가 1px 내려앉는다. 선이 서고 사라질 때마다 목록이 들썩인다 — 이 판이
-              없애려는 그것이다.
-            - inset 그림자: 행의 배경(선택·hover)이 그 위를 덮는다.
-            - 상자 안 `::before`: 내용과 함께 굴러 올라가 버린다.
-            부모의 윗변이 곧 상자의 윗변이라 띠가 있으면 띠 아래, 없으면 nav 아래가 저절로 된다.
-            폭은 `inset-x-0`이 부모의 패딩까지 덮어 사이드바 폭 그대로다 — 바닥 Settings 칸의 윗선과
-            같은 폭이다. 누를 것이 아니라 `pointer-events-none`이다: 첫 행 윗변 1px을 가리면 안 된다. */}
-        {scrolled && (
-          <div
-            data-worklist-edge=""
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-border"
-          />
-        )}
         <div
           data-worklist=""
           onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
