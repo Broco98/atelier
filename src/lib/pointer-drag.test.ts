@@ -3,7 +3,15 @@ import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join, relative } from "path";
 import { fileURLToPath } from "url";
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearHalf, dragStore, hoverHalf, hoverSlot, shellMoveOf } from "./pointer-drag";
+import {
+  clearHalf,
+  DRAG_THRESHOLD,
+  dragStore,
+  farEnough,
+  hoverHalf,
+  hoverSlot,
+  shellMoveOf,
+} from "./pointer-drag";
 import type { DragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
@@ -133,5 +141,23 @@ describe("탭 줄에 놓인 셸", () => {
     { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "atelier:", shellId: null }, half: null, slot: 0 }, want: null },
   ] as const)("$name", ({ state, want }) => {
     expect(shellMoveOf(state)).toEqual(want);
+  });
+});
+
+describe("드래그 임계값", () => {
+  // 안 두면 그냥 클릭이 드래그로 읽혀 탭·행을 못 누른다(결정 86).
+  it("작은 흔들림은 클릭이다", () => {
+    expect(farEnough(0, 0)).toBe(false);
+    expect(farEnough(4, 0)).toBe(false);
+    expect(farEnough(0, -4)).toBe(false);
+    expect(farEnough(3, 3)).toBe(false);
+  });
+
+  // **축 하나가 아니라 거리다** — 대각선으로 4px씩 움직인 것은 5.66px이라 드래그다.
+  it("거리로 잰다", () => {
+    expect(farEnough(DRAG_THRESHOLD, 0)).toBe(true);
+    expect(farEnough(-DRAG_THRESHOLD, 0)).toBe(true);
+    expect(farEnough(0, DRAG_THRESHOLD)).toBe(true);
+    expect(farEnough(4, 4)).toBe(true);
   });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DRAG_THRESHOLD, farEnough } from "@/lib/pointer-drag";
 import { dropSplit, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
@@ -52,24 +51,6 @@ describe("반대쪽 열", () => {
 
   it("두 번 뒤집으면 제자리다", () => {
     expect(otherTab(otherTab("spec"))).toBe("spec");
-  });
-});
-
-describe("드래그 임계값", () => {
-  // 안 두면 그냥 클릭이 드래그로 읽혀 사이드바 행을 못 누른다(결정 86).
-  it("작은 흔들림은 클릭이다", () => {
-    expect(farEnough(0, 0)).toBe(false);
-    expect(farEnough(4, 0)).toBe(false);
-    expect(farEnough(0, -4)).toBe(false);
-    expect(farEnough(3, 3)).toBe(false);
-  });
-
-  // **축 하나가 아니라 거리다** — 대각선으로 4px씩 움직인 것은 5.66px이라 드래그다.
-  it("거리로 잰다", () => {
-    expect(farEnough(DRAG_THRESHOLD, 0)).toBe(true);
-    expect(farEnough(-DRAG_THRESHOLD, 0)).toBe(true);
-    expect(farEnough(0, DRAG_THRESHOLD)).toBe(true);
-    expect(farEnough(4, 4)).toBe(true);
   });
 });
 
