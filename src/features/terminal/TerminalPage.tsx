@@ -161,6 +161,8 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           // 물어볼 프로젝트가 없다 — `+`가 곧바로 연다. 묻게 하는 조건은 워크트리가 둘 이상인
           // work뿐이고(결정 24) 이 화면은 work가 아니다.
           projects={[]}
+          // 메뉴가 안 서므로 보일 곳이 없지만 값은 사실대로 준다 — 데이터 루트라 cwd가 없다.
+          defaultCwd={topTerminal(mode).cwd}
           // **맨 앞 한 칸이 없다**(결정 8). 문서가 없어 셸부터 서고, 그래서 ⌘1이 첫 셸이다 —
           // 위 `shellForNav(…, 1)`과 같은 비대칭 하나다.
           spec={null}

@@ -320,6 +320,28 @@ export function workDefaultOrigin(mode: Mode, work: WorkView): ShellOrigin {
 }
 
 /**
+ * `+` 메뉴에서 **고른 것**. 「모든 프로젝트」와 프로젝트 이름이 모양으로 갈린다(스펙 §7 · S13).
+ *
+ * **「모든 프로젝트」를 `null`로 접지 않는다.** 메뉴의 `onPick`에서 `null`은 이미 「안 고르고
+ * 닫았다」다 — 둘을 한 값에 실으면 Esc가 셸을 연다. 그래서 기본 자리는 `null`이 아닌 값으로 온다.
+ *
+ * `default`라는 이름은 ⌘T와 같은 **기본 자리**라서다(결정 19) — 멀티 프로젝트 work에서는 그것이
+ * 「모든 프로젝트」이고, 묻지 않는 `+`(프로젝트 0·1개)도 같은 값으로 연다.
+ */
+export type ShellPlace = { kind: "default" } | { kind: "project"; project: string };
+
+/**
+ * `+`로 고른 자리를 셸이 뜰 자리로(결정 18·19). **「모든 프로젝트」는 ⌘T와 같은 함수다** — 둘이
+ * 다른 자리를 고르면 「⌘T와 `+`가 다르게 군다」가 되살아나고, 그 규칙이 설 곳이 여기 하나다.
+ * 프로젝트 줄은 그 워크트리고, 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) `null`이다.
+ */
+export function placeOrigin(mode: Mode, work: WorkView, place: ShellPlace): ShellOrigin | null {
+  return place.kind === "default"
+    ? workDefaultOrigin(mode, work)
+    : workShellOrigin(mode, work, place.project);
+}
+
+/**
  * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work과
  * Room은 기본 자리와 「안 고른」 자리가 같아야 한다 — 스펙 §11).
  */
@@ -343,6 +365,18 @@ function workDir(work: WorkView): string {
 /** 경로 한 단계 위. 끝의 슬래시는 같은 자리로 읽는다. `~` 표기 그대로다 — 펴지 않는다. */
 function parentDir(path: string): string {
   return path.replace(/\/+[^/]+\/*$/, "");
+}
+
+/**
+ * 셸이 뜰 자리를 **옅게 보이는 글자**로 — 경로의 마지막 마디 + `/`(결정 20의 `+` 메뉴 맨 윗줄).
+ * `null`이면 보일 경로가 없다(최상위 터미널의 데이터 루트).
+ *
+ * **이름을 적지 않고 자리에서 읽는다.** 「모든 프로젝트」 폴더의 이름을 프런트가 아는 순간이
+ * 코어가 자리를 옮기는 날 틀린 글자를 보이는 순간이다 — 위 `parentDir`과 같은 약속의 나머지다.
+ */
+export function placeHint(cwd: string | null): string | null {
+  const tail = cwd?.replace(/\/+$/, "").split("/").pop();
+  return tail ? `${tail}/` : null;
 }
 
 /**

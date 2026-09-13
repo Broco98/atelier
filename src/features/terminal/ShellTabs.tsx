@@ -8,7 +8,9 @@ import { signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
+  placeHint,
   runningOn,
+  type ShellPlace,
   shellCapNotice,
   shellEndLabels,
   shellRowName,
@@ -68,7 +70,16 @@ interface ShellTabsProps {
   showing: boolean;
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
-  onOpen: (project: string | null) => void;
+  /**
+   * 이 화면의 **기본 자리**의 cwd(⌘T가 여는 곳 — 결정 19). 메뉴의 「모든 프로젝트」 옆에 그
+   * 마지막 마디가 옅게 보인다(결정 20). 자리를 정하는 것은 여전히 화면이고 이 줄은 글자만 읽는다.
+   */
+  defaultCwd: string | null;
+  /**
+   * 새 셸을 연다. 묻지 않는 `+`는 언제나 `default`로 부른다 — 프로젝트가 0·1개면 기본 자리와
+   * 「안 고른」 자리가 같다(스펙 §11).
+   */
+  onOpen: (place: ShellPlace) => void;
   /**
    * 이 줄의 칸을 본문 위로 끌 수 있다면(결정 12) — 떨구면 화면이 좌우로 갈린다.
    *
@@ -120,6 +131,7 @@ function ShellTabs({
   state,
   owner,
   projects,
+  defaultCwd,
   spec,
   showing,
   onSelect,
@@ -313,7 +325,7 @@ function ShellTabs({
         onClick={() => {
           if (full) return;
           if (asks) setPicking((open) => !open);
-          else onOpen(null);
+          else onOpen({ kind: "default" });
         }}
         className={cn(
           // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
@@ -348,9 +360,10 @@ function ShellTabs({
         <ShellPicker
           anchorRef={plusRef}
           projects={projects}
-          onPick={(project) => {
+          defaultHint={placeHint(defaultCwd)}
+          onPick={(place) => {
             setPicking(false);
-            if (project) onOpen(project);
+            if (place) onOpen(place);
           }}
         />
       )}

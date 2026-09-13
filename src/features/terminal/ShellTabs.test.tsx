@@ -83,6 +83,7 @@ function render(
       state={state}
       owner={owner}
       projects={projects}
+      defaultCwd={null}
       spec={spec}
       showing={showing}
       inset={inset}

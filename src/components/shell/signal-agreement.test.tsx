@@ -140,6 +140,7 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       state={state}
       owner={소유}
       projects={["atelier"]}
+      defaultCwd={null}
       spec={{ on: !켜짐, onSelect: () => {} }}
       showing={켜짐}
       onSelect={() => {}}

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, parentPath, readIpcRecord, spawnedCwds, unknownIpcCalls } from "./harness";
 
 // 티켓 08(#221) — **⌘T가 언제나 「모든 프로젝트」에 연다**(결정 17~19·30, 스펙 §7).
 //
@@ -14,22 +14,10 @@ import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } f
 
 const [singleWork, , multiWork] = WORKS;
 
-/** 「모든 프로젝트」 — 워크트리들의 부모. 기대값은 픽스처의 경로에서 **파생한다**(이름을 안 적는다). */
-const allProjectsOf = (work: (typeof WORKS)[number]) =>
-  work.worktrees[0].path.slice(0, work.worktrees[0].path.lastIndexOf("/"));
+/** 「모든 프로젝트」 — 워크트리들의 부모. */
+const allProjectsOf = (work: (typeof WORKS)[number]) => parentPath(work.worktrees[0].path);
 
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
-
-/**
- * 지금까지 나간 `pty_spawn`의 **cwd를 부른 순서대로**. 인자에 cwd가 없으면 그 호출을 통째로
- * 남긴다 — `undefined`로 접으면 「안 실렸다」와 「못 읽었다」가 같은 얼굴이 된다.
- */
-async function spawnedCwds(page: Page): Promise<string[]> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls
-    .filter((call) => call.startsWith("pty_spawn "))
-    .map((call) => /"cwd":"([^"]*)"/.exec(call)?.[1] ?? `(cwd가 없다: ${call})`);
-}
 
 /**
  * 셸에 **정말 포커스가 들었는지**까지 확인하고 돌아온다. 안 들었으면 아래 ⌘T가 창 리스너로
@@ -84,7 +72,7 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   const [first] = multiWork.worktrees;
 
   await page.locator('[data-tab="new"]').click();
-  await page.locator("[data-popover]").getByRole("button", { name: first.project, exact: true }).click();
+  await page.locator("[data-popover]").getByRole("menuitem", { name: first.project, exact: true }).click();
   await expect(shells(page)).toHaveCount(1);
   await expect(shells(page).locator("button[aria-label$=' 닫기']")).toHaveAttribute(
     "aria-label",
