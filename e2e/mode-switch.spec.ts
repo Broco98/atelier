@@ -48,7 +48,10 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
   // 상주 목록의 머리가 `Rooms`다. 접근성 이름에 개수가 함께 들어간다 — 라벨과 옅은 숫자가
   // 같은 버튼 안이다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 규격).
   await expect(aside.getByRole("button", { name: "Rooms 1", exact: true })).toBeVisible();
-  await expect(aside.getByRole("button", { name: "작업 1", exact: true })).toHaveCount(0);
+  // 개수는 픽스처에서 파생한다 — 숫자를 적어 두면 `WORKS`에 줄이 늘 때 이 부재 검사가 없는
+  // 이름을 찾아 늘 초록이 된다(`works-sidebar.spec.ts`의 `MAIN_HEADER`와 같은 식).
+  const atelierMainHeader = `작업 ${WORKS.filter((work) => !work.pinned).length}`;
+  await expect(aside.getByRole("button", { name: atelierMainHeader, exact: true })).toHaveCount(0);
 
   // 그리고 그 목록에 **정말 이 세계의 것**이 서 있다. 반대쪽 증거(Atelier work이 없다)가
   // 함께 있어야 한다: 프런트가 한 자리에서 **저쪽 세계의 값**을 실으면 그것은 어디서도

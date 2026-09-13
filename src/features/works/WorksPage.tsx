@@ -381,7 +381,7 @@ function WorksPage({
   //
   // **셸 안 ⌘T도 여기로 온다.** xterm 핸들러는 요청만 보내고(`requestNewShell`) 이 화면이
   // 같은 `open`으로 연다 — 셸 안과 밖이 언제나 같은 자리다. 요청은 **이 화면의 셸**이 보낸
-  // 것만 받는다. 창 keydown 리스너를 하나 더 거는 모양으로 짓지 않는다(결정 93의
+  // 것만 받는다 — 거르는 자리는 스토어다(`onNewShellRequested`). 창 keydown 리스너를 하나 더 거는 모양으로 짓지 않는다(결정 93의
   // `stopPropagation`이 막아 둔 두 번 열기를 되살린다).
   useEffect(() => {
     const open = () => {
@@ -395,14 +395,13 @@ function WorksPage({
       open();
     };
     window.addEventListener("keydown", onKeyDown);
-    const stop = onNewShellRequested((owner) => {
-      if (panelWork && owner === ownerOf(mode, panelWork.slug)) open();
-    });
+    // 고른 작업이 없으면 이 화면의 셸도 없다 — 들을 요청이 없다.
+    const stop = tabOwner === null ? () => {} : onNewShellRequested(tabOwner, open);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       stop();
     };
-  }, [mode, panelWork, onSelectTab]);
+  }, [mode, panelWork, tabOwner, onSelectTab]);
 
   /**
    * ⌘1은 spec, ⌘2~9는 **그 화면의 셸**, ⌃Tab은 그 셸들의 순회(결정 78·79·109).

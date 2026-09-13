@@ -1,5 +1,6 @@
 /// <reference types="node" />
-// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+// 소스 스캔(파일 읽기·디렉터리 훑기) 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts
+// 머리말과 같다.
 import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";

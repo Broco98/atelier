@@ -670,10 +670,10 @@ describe("WorksPage ⌘Enter", () => {
     expect(worksPage).toContain("onSelectTab(\"terminal\")");
     // **셸 안 ⌘T도 이 자리로 온다**(결정 19). xterm 핸들러는 요청만 보내고 화면이 연다 —
     // 구독이 빠지면 셸에 포커스가 있는 동안 ⌘T가 죽는다. 창 keydown 리스너로 짓지 않는다
-    // (아래 개수가 그대로다). 요청은 **이 화면의 셸**이 보낸 것만 받는다.
-    expect(worksPage).toContain("const stop = onNewShellRequested((owner) => {");
-    expect(worksPage).toContain("if (panelWork && owner === ownerOf(mode, panelWork.slug)) open();");
-    expect(countOf(worksPage, "open();"), "창 단축키와 요청이 같은 여는 함수를 안 딛는다").toBe(2);
+    // (아래 개수가 그대로다). 여기서는 **구독하는가**만 본다 — 이 화면의 셸만 듣는 규칙은
+    // 스토어가 쥐고 값으로 재며(「셸 안 ⌘T의 요청은 그 셸의 화면에만 간다」), 포커스를 둔
+    // 셸의 ⌘T가 기본 자리로 이어지는 사슬은 `e2e/shell-origin.spec.ts`가 잰다.
+    expect(worksPage).toContain("onNewShellRequested(tabOwner");
     // **등록을 따로 센다.** 위 리터럴은 전부 핸들러 **본문**이라, 핸들러가 window에 안
     // 걸려도 그대로 남는다 — 정리 함수가 계속 참조하므로 tsc도 안 막는다. 이 화면이
     // window에서 키를 듣는 자리는 둘이다(⌘Enter의 패널 토글 · ⌘T). 하나가 등록을 잃으면
@@ -1123,15 +1123,27 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
     expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
   });
+});
 
-  it("셸 안 ⌘T의 요청은 구독한 화면에만 가고, 끊으면 안 간다", () => {
-    const heard: string[] = [];
-    const stop = onNewShellRequested((owner) => heard.push(owner));
-    requestNewShell(ownerOf("atelier", "가"));
-    stop();
+describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
+  // 결정 19. 셸 안 ⌘T는 요청만 보내고 **그 셸의 소유자 화면**이 연다. 가려 받는 규칙이 화면마다
+  // 있으면 규칙을 잊은 화면 하나가 남의 셸의 ⌘T에 제 셸을 연다 — 한 번 눌러 두 화면에 셸이
+  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다. 같은 slug가
+  // 두 세계에 설 수 있어(결정 10) 세계만 다른 소유자도 남이다.
+  it("구독한 소유자의 요청만 듣고, 끊으면 안 듣는다", () => {
+    const mine = ownerOf("atelier", "가");
+    let heard = 0;
+    const stop = onNewShellRequested(mine, () => heard++);
     requestNewShell(ownerOf("atelier", "나"));
+    requestNewShell(ownerOf("maison", "가"));
+    requestNewShell(ownerOf("atelier"));
+    expect(heard, "남의 셸의 요청을 들었다").toBe(0);
+    requestNewShell(mine);
+    expect(heard).toBe(1);
+    stop();
+    requestNewShell(mine);
+    expect(heard, "끊은 뒤에도 들었다").toBe(1);
     // 요청이 셸을 **스스로 열지 않는다** — 자리를 정하는 것은 받은 화면이다.
-    expect(heard).toEqual([ownerOf("atelier", "가")]);
     expect(terminalStore.state).toBe(NO_SHELLS);
   });
 });

@@ -93,14 +93,12 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
       open();
     };
     window.addEventListener("keydown", onKeyDown);
-    const stop = onNewShellRequested((from) => {
-      if (from === owner) open();
-    });
+    const stop = onNewShellRequested(owner, open);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       stop();
     };
-  }, [mode, owner]);
+  }, [mode]);
 
   /**
    * ⌘1~9와 ⌃Tab이 **이 화면의 셸**을 고른다(결정 78·79·109).

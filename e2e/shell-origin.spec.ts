@@ -102,9 +102,10 @@ test("`+` 메뉴로 연 프로젝트 셸 안에서 ⌘T → 「모든 프로젝�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 0·1개 work은 **지금과 같다**(스펙 §11). 셸 안 ⌘T가 요청으로 바뀌어도 자리는 그대로여야 한다 —
-// 진입 셸이 서 있으니 포커스를 거기 둔 채 누른다(요청 길).
-test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다 — 셸 안에서도", async ({ page }) => {
+// 0·1개 work은 **지금과 같다**(스펙 §11). ⌘T가 닿는 길이 둘이라 둘 다 잰다 — 진입 셸에
+// 포커스를 둔 채 한 번(요청 길), 포커스를 걷고 한 번(창 리스너 — 옛 `workShellOrigin(…, null)`
+// 자리에 기본 자리 함수가 들어간 곳이다).
+test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다 — 셸 안에서도, 밖에서도", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${singleWork.slug}?tab=terminal`);
   const [only] = singleWork.worktrees;
@@ -116,6 +117,16 @@ test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다
 
   await awaitSpawned(page, 2);
   expect(await spawnedCwds(page)).toEqual([only.path, only.path]);
+
+  // 포커스를 걷는다 — **정말 걷혔는지** 확인해야 아래 ⌘T가 창 리스너 길을 잰다.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea")))
+    .toBe(false);
+  await page.keyboard.press("Meta+t");
+
+  await awaitSpawned(page, 3);
+  expect(await spawnedCwds(page)).toEqual([only.path, only.path, only.path]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -131,8 +142,12 @@ test("`/terminal`에서 셸에 포커스를 둔 ⌘T가 새 셸을 연다", asyn
   await page.keyboard.press("Meta+t");
 
   await awaitSpawned(page, 2);
-  // 최상위 터미널은 데이터 루트다 — cwd가 실리지 않는다(`null`).
+  // 최상위 터미널은 데이터 루트다 — 두 번 다 cwd가 `null`로 실린다. `spawnedCwds`를 안 쓰는
+  // 것은 그 함수가 문자열 cwd만 캐내서다: 여기서는 **`null`이 있다**를 긍정으로 재야, 셸 안
+  // ⌘T가 엉뚱한 자리로 열린 회귀가 개수만 맞춰 초록이 되지 않는다.
   const calls = (await readIpcRecord(page))?.calls ?? [];
-  expect(calls.filter((call) => call.startsWith("pty_spawn "))).toHaveLength(2);
+  const spawns = calls.filter((call) => call.startsWith("pty_spawn "));
+  expect(spawns).toHaveLength(2);
+  for (const call of spawns) expect(call).toContain('"cwd":null');
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

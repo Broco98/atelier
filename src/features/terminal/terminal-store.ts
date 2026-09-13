@@ -148,19 +148,24 @@ export function onShellOpenRejected(listen: (notice: string) => void): () => voi
  *
  * **듣는 화면이 둘이다** — work 화면과 최상위 터미널. 한쪽이 안 들으면 그 화면에서 셸에
  * 포커스가 있는 동안 ⌘T가 죽는다. 듣는 화면이 없으면 아무 일도 안 일어난다.
+ *
+ * **그 셸의 화면만 듣는다 — 가르는 자리가 여기 하나다.** 화면은 제 소유자를 들고 구독하고,
+ * 요청의 소유자와 같을 때만 불린다. 화면마다 제가 거르게 두면 거르기를 잊은 화면 하나가 남의
+ * 셸의 ⌘T에 제 셸을 열어, 한 번 눌러 두 화면에 셸이 선다.
  */
-const newShellRequestListeners = new Set<(owner: ShellOwner) => void>();
+const newShellRequestListeners = new Set<{ owner: ShellOwner; listen: () => void }>();
 
-export function onNewShellRequested(listen: (owner: ShellOwner) => void): () => void {
-  newShellRequestListeners.add(listen);
+export function onNewShellRequested(owner: ShellOwner, listen: () => void): () => void {
+  const entry = { owner, listen };
+  newShellRequestListeners.add(entry);
   return () => {
-    newShellRequestListeners.delete(listen);
+    newShellRequestListeners.delete(entry);
   };
 }
 
 /** 그 소유자의 화면에 새 셸을 요청한다. **여기서 열지 않는다** — 위 머리말. */
 export function requestNewShell(owner: ShellOwner): void {
-  for (const listen of newShellRequestListeners) listen(owner);
+  for (const entry of newShellRequestListeners) if (entry.owner === owner) entry.listen();
 }
 
 /**
