@@ -267,6 +267,7 @@ pub fn run() {
             commands::set_work_title,
             commands::set_work_status,
             commands::set_work_pinned,
+            commands::move_work,
             commands::archive_work,
             commands::remove_work,
             commands::read_spec_file,

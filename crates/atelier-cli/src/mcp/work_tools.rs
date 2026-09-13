@@ -103,9 +103,10 @@ pub struct EditWorkParams {
     /// directory, and any branch and worktree paths are untouched — only the display name
     /// changes. (Same words as this tool's own description: one fact, said once.)
     pub title: Option<String>,
-    /// Pin the work so it sorts to the top of every work listing, above the rest.
-    /// Pinning is a fact about the work, not a view setting: it is stored in the work
-    /// itself and survives restarts. Pass false to unpin.
+    /// Pin the work so it moves to the top of the pinned section, which lists above every
+    /// unpinned work. Pinning is a fact about the work, not a view setting: it is stored in
+    /// the work itself and survives restarts. Pass false to unpin — the work then moves to
+    /// the top of the unpinned works. Passing the value it already has changes nothing.
     pub pinned: Option<bool>,
 }
 
@@ -248,8 +249,8 @@ impl AtelierServer {
     #[tool(
         description = "Edit a work's title or pin it. Rename it when the title was written in \
                        a hurry, or when the work turned out to be about something else; pin it \
-                       when the user says this is what matters right now, so it sorts to the \
-                       top of every listing. Pass either field or both — whichever you omit is \
+                       when the user says this is what matters right now, so it moves to the \
+                       top of the pinned section. Pass either field or both — whichever you omit is \
                        left alone. Nothing else moves: the slug, the spec directory, and any \
                        branch and worktree paths all stay exactly as they are, so references \
                        already written down elsewhere keep working. A blank title is refused. \
