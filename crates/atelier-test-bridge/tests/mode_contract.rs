@@ -191,6 +191,50 @@ fn maison에서_옮기면_room_루트의_순서_파일에만_쓴다() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// D2 — 앱의 끌기(`move_work`)와 핀 버튼(`set_work_pinned`)이 **깨진 순서 파일을 조용히 덮지
+/// 않는다.** 둘 다 되고, 사람이 고치던 바이트가 **그 세계의 진행 중 루트 안에** 벌로 남는다 —
+/// 모드 홈(`maison/`)이나 저쪽 세계(`works/`)가 아니다. 두 번 깨져도 벌이 둘이다.
+#[test]
+fn maison에서_깨진_순서_파일_위로_옮기고_고정해도_손질이_room_루트에_남는다() {
+    let home = temp_home("broken-order");
+    plant(&home, "maison/rooms/finance", "금융");
+    plant(&home, "maison/rooms/study", "공부");
+    let rooms = home.join("maison/rooms");
+    let first = r#"{"order":["study", 고치다 멈춤"#;
+    std::fs::write(rooms.join(".order.json"), first).unwrap();
+
+    call(&home, "move_work", json!({ "mode": "maison", "slug": "finance", "pinned": false, "before": "study" }))
+        .expect("깨진 순서 파일 위에서 옮기기가 거절됐다");
+    let second = r#"{"order":["finance" 또 멈춤"#;
+    std::fs::write(rooms.join(".order.json"), second).unwrap();
+    call(&home, "set_work_pinned", json!({ "mode": "maison", "slug": "study", "pinned": true }))
+        .expect("깨진 순서 파일 위에서 고정이 거절됐다");
+
+    let held = |dir: &Path| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.path().is_file())
+                    .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let in_rooms = held(&rooms);
+    assert!(in_rooms.contains(&first.to_string()), "옮기기가 손질을 덮었다: {in_rooms:?}");
+    assert!(in_rooms.contains(&second.to_string()), "고정이 손질을 덮었다: {in_rooms:?}");
+    assert!(held(&home.join("maison")).is_empty(), "벌이 모드 홈에 섰다");
+    assert!(!home.join("works").exists(), "Maison 옮기기가 Atelier 루트를 건드렸다");
+    assert_eq!(
+        slugs(&call(&home, "list_works", json!({ "mode": "maison" })).unwrap()),
+        ["study", "finance"],
+        "벌이 목록에 끼었거나 고정이 안 먹었다"
+    );
+
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// **Maison의 ⇧⇧에는 프로젝트 층이 없다** (결정 17, US 49·50).
 ///
 /// 루트를 가르는 것만으로는 안 되는 자리다 — 프로젝트 등록부(`projects/`)는 모드를 안 받는
