@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { dialogStore } from "@/components/ui/confirm-store";
-import { invalidateWorks, moveWorkOptions, specFileQuery, worksQuery } from "./hooks";
+import { invalidateWorks, moveWorkOptions, specFileQuery, worksQuery, type MoveWorkArgs } from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
@@ -158,10 +158,25 @@ async function listed() {
   return { client, seen, shown: () => slugsOf(client.getQueryData(worksQuery("atelier").queryKey)) };
 }
 
-function move(client: QueryClient) {
+/** 기본은 `c`를 맨 앞으로(→ `NEW`). 겹친 옮기기 검사는 둘째 것을 따로 준다. */
+function move(client: QueryClient, args: MoveWorkArgs = { slug: "c", pinned: false, before: "a" }) {
   const observer = new MutationObserver(client, moveWorkOptions(client, "atelier"));
   // 실패는 옵션의 `onError`가 다룬다 — 여기서 삼키는 것은 러너의 미처리 거절뿐이다.
-  void observer.mutate({ slug: "c", pinned: false, before: "a" }).catch(() => {});
+  void observer.mutate(args).catch(() => {});
+}
+
+/** 그 명령의 **가장 먼저 나간** 대기 호출 하나만 거절한다. */
+function rejectFirst(command: string, error: unknown) {
+  const [call] = waiting(command);
+  call.answered = true;
+  call.reject(error);
+}
+
+/** 그 명령의 대기 호출 중 `index`번째 하나만 답한다 — 겹친 옮기기의 답 순서를 뒤집는 손잡이. */
+function answerNth(command: string, index: number, value: unknown) {
+  const call = waiting(command)[index];
+  call.answered = true;
+  call.resolve(value);
 }
 
 describe("옮기기와 works:changed의 경쟁", () => {
@@ -267,6 +282,64 @@ describe("옮기기와 works:changed의 경쟁", () => {
     expect(shown()).toBe("abc");
     expect(dialogStore.state?.title).toBe("오류");
     expect(dialogStore.state?.body).toContain("slug가 없습니다");
+    dialogStore.state?.answer(true);
+    // **되돌린 목록이 디스크와 같다고 믿지 않는다.** 코어는 `work.json` 쓰기가 실패해도 순서 파일을 안
+    // 되돌리고(스펙 §2), 그 점 파일은 감시자가 안 쏜다 — 다시 읽기를 한 번 띄워야 화면이 디스크를 따른다.
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+});
+
+// **옮기기가 겹치면**(첫 응답이 오기 전에 둘째를 놓았다) 어느 응답도 믿지 않는다. 응답은 그 호출이
+// 순서 파일을 읽은 순간의 목록이라 뒤에 놓은 옮기기가 빠져 있을 수 있고, 답이 어느 순서로 올지도
+// 모른다(명령이 비동기다). 낙관적 목록을 둔 채 마지막이 끝난 뒤 한 번 다시 읽는다.
+describe("겹친 옮기기", () => {
+  /** 둘째 옮기기: `b`를 `c` 앞으로 — 첫 옮기기의 낙관적 목록 `cab` 위에서 `bca`. */
+  const SECOND: MoveWorkArgs = { slug: "b", pinned: false, before: "c" };
+
+  async function twoMoves() {
+    const listing = await listed();
+    move(listing.client);
+    await settle();
+    move(listing.client, SECOND);
+    await settle();
+    expect(listing.shown()).toBe("bca");
+    expect(waiting("move_work")).toHaveLength(2);
+    return listing;
+  }
+
+  it("첫 응답이 둘째 옮기기의 낙관적 목록을 덮지 않는다", async () => {
+    const { shown, seen } = await twoMoves();
+    // 첫 호출은 둘째가 쓰기 전에 파일을 읽었다 — 그 응답에는 `b`의 옮김이 없다.
+    answerNth("move_work", 0, NEW);
+    await settle();
+    await settle();
+    expect(shown()).toBe("bca");
+    expect(seen.slice(seen.indexOf("bca"))).not.toContain("cab");
+
+    answerNth("move_work", 0, [row("b"), row("c"), row("a")]);
+    await settle();
+    await settle();
+    expect(shown()).toBe("bca");
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  it("답이 거꾸로 와도 낡은 첫 응답이 마지막에 서지 않는다", async () => {
+    const { shown } = await twoMoves();
+    answerNth("move_work", 1, [row("b"), row("c"), row("a")]);
+    await settle();
+    answerNth("move_work", 0, NEW);
+    await settle();
+    await settle();
+    expect(shown()).toBe("bca");
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  it("첫 옮기기가 실패해도 둘째의 낙관적 목록을 되돌리지 않는다", async () => {
+    const { shown } = await twoMoves();
+    rejectFirst("move_work", "쓰지 못했습니다");
+    await settle();
+    await settle();
+    expect(shown()).toBe("bca");
     dialogStore.state?.answer(true);
   });
 });

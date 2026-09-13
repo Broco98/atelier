@@ -57,13 +57,14 @@ export function invalidateWorks(queryClient: QueryClient) {
 }
 
 /**
- * 캐시마다 **옮기기가 몇 개 떠 있는가**와 그동안 미룬 무효화가 있는가. 모듈 변수가 아니라 캐시에
- * 매는 것은 L2가 캐시를 검사마다 새로 세우기 때문이다 — 전역이면 앞 검사의 미룸이 뒤로 샌다.
+ * 캐시마다 **옮기기가 몇 개 떠 있는가**와 그동안 미룬 무효화가 있는가, 그리고 떠 있는 동안 옮기기가
+ * **겹친 적이 있는가**(`moveWorkOptions`의 4). 모듈 변수가 아니라 캐시에 매는 것은 L2가 캐시를 검사마다
+ * 새로 세우기 때문이다 — 전역이면 앞 검사의 미룸이 뒤로 샌다.
  */
-const moves = new WeakMap<QueryClient, { inFlight: number; deferred: boolean }>();
+const moves = new WeakMap<QueryClient, { inFlight: number; deferred: boolean; overlapped: boolean }>();
 function movesOf(queryClient: QueryClient) {
   let state = moves.get(queryClient);
-  if (!state) moves.set(queryClient, (state = { inFlight: 0, deferred: false }));
+  if (!state) moves.set(queryClient, (state = { inFlight: 0, deferred: false, overlapped: false }));
   return state;
 }
 
@@ -170,11 +171,18 @@ export interface MoveWorkArgs extends RowGap {
  * 2. 틈의 결과를 **낙관적으로** 쓴다. 놓는 순간 행이 그 자리에 서야 끌기가 끝난 것으로 읽힌다.
  * 3. 응답(새 목록 전체)으로 **갈아 끼운다.** 순서 파일은 감시자가 안 쏘므로 다시 읽기를 기다리면
  *    화면이 안 바뀐다.
- * 4. 실패하면 원래 목록으로 되돌리고 앱의 오류 창으로 알린다.
+ * 4. **옮기기가 겹쳤으면 어느 응답도 안 쓴다.** 응답은 그 호출이 순서 파일을 읽은 순간의 목록이라, 첫
+ *    응답이 오기 전에 놓은 둘째 옮기기가 빠져 있을 수 있고 답이 오는 순서도 정해져 있지 않다(명령이
+ *    비동기다). 그대로 쓰면 둘째 행이 제자리로 튀었다 돌아오거나, 거꾸로 온 낡은 답이 마지막에 서서
+ *    `staleTime` 동안 남는다. 그래서 낙관적 목록을 둔 채 마지막 옮기기가 끝난 뒤 한 번 다시 읽는다.
+ *    실패의 되돌리기도 같다 — 제 `previous`로 되돌리면 뒤에 놓은 옮기기의 낙관적 목록까지 지운다.
+ * 5. 실패하면 원래 목록으로 되돌리고 앱의 오류 창으로 알린다. **그리고 끝난 뒤 다시 읽는다** — 코어는
+ *    `work.json` 쓰기가 실패해도 이미 쓴 순서 파일을 안 되돌리므로(스펙 §2) 되돌린 목록이 디스크와 다를
+ *    수 있고, 그 점 파일은 감시자가 안 쏜다.
  *
- * **`onSettled`에서 무효화하지 않는다.** 응답이 곧 새 목록이라 다시 물을 것이 없다 — 한 번 더 읽으면
- * IPC만 늘고, 그 사이 다른 쓰기가 끼면 응답보다 낡은 것이 설 자리가 하나 더 생긴다. 미룬 무효화가
- * 있을 때만 돈다.
+ * **성공한 옮기기 하나는 `onSettled`에서 무효화하지 않는다.** 응답이 곧 새 목록이라 다시 물을 것이
+ * 없다 — 한 번 더 읽으면 IPC만 늘고, 그 사이 다른 쓰기가 끼면 응답보다 낡은 것이 설 자리가 하나 더
+ * 생긴다. 미룬 무효화(겹침 · 실패 · 그 사이 온 이벤트)가 있을 때만 돈다.
  */
 export function moveWorkOptions(queryClient: QueryClient, mode: Mode) {
   // 목록 **하나만** 겨눈다(`exact`). 접두사로 취소하면 같은 세계의 spec 본문 질의까지 끊긴다.
@@ -183,23 +191,31 @@ export function moveWorkOptions(queryClient: QueryClient, mode: Mode) {
     mutationFn: ({ slug, pinned, before }: MoveWorkArgs) => worksApi.move(mode, slug, pinned, before),
     onMutate: async (args) => {
       // 세기는 **기다리기 전에** 한다 — 취소를 기다리는 사이 온 이벤트도 미뤄야 한다.
-      movesOf(queryClient).inFlight += 1;
+      const state = movesOf(queryClient);
+      state.inFlight += 1;
+      if (state.inFlight > 1) state.overlapped = true;
       await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<WorkView[]>(queryKey);
       if (previous) queryClient.setQueryData(queryKey, movedWorks(previous, args.slug, args));
       return { previous };
     },
     onSuccess: (works) => {
-      queryClient.setQueryData(queryKey, works);
+      const state = movesOf(queryClient);
+      if (state.overlapped) state.deferred = true;
+      else queryClient.setQueryData(queryKey, works);
     },
     onError: (error, _args, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+      const state = movesOf(queryClient);
+      if (!state.overlapped && context?.previous) queryClient.setQueryData(queryKey, context.previous);
+      state.deferred = true;
       void showProblem(`순서를 바꾸지 못했습니다: ${error}`);
     },
     onSettled: () => {
       const state = movesOf(queryClient);
       state.inFlight -= 1;
-      if (state.inFlight > 0 || !state.deferred) return;
+      if (state.inFlight > 0) return;
+      state.overlapped = false;
+      if (!state.deferred) return;
       state.deferred = false;
       // 기다리지 않는다 — 돌려주면 `isPending`이 그 재조회까지 서서 다음 끌기가 그만큼 미뤄 보인다.
       void invalidateWorks(queryClient);
