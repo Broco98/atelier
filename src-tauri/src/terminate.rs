@@ -10,8 +10,8 @@
 //! `quit.rs`에 cfg 밖으로 두어 리눅스 CI가 잰다. 이 파일이 cfg 아래로 들어간 것이 새면 리눅스 빌드가
 //! 깨지고, 그것은 PR의 `Verify` job이 잰다.
 //!
-//! tao 판이 바뀌면 `quit.rs`의 `tao_판이_조사한_판과_같다`가 붉어진다 — 새 판이 이 메서드를 스스로
-//! 구현하면 아래 `class_addMethod`가 실패해 훅이 조용히 빠지기 때문이다.
+//! tao 판이 바뀌면 아래 `tao_판이_조사한_판과_같다`가 붉어진다 — 새 판이 이 메서드를 스스로
+//! 구현하면 `class_addMethod`가 실패해 훅이 조용히 빠지기 때문이다. 그 테스트는 cfg 밖이라 리눅스 CI도 돈다.
 
 use tauri::AppHandle;
 
@@ -37,7 +37,8 @@ mod macos {
     use objc2::{class, msg_send, sel};
     use tauri::{AppHandle, Emitter};
 
-    use crate::quit::{self, QuitReason, Verdict};
+    use crate::quit::hook::{self, QuitReason, Verdict};
+    use crate::quit::REQUESTED_EVENT;
 
     /// 핸들러가 이벤트를 쏠 앱. 핸들러는 C 함수라 붙잡을 자리가 없어 여기 한 번 둔다.
     static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -47,7 +48,7 @@ mod macos {
     const NS_TERMINATE_NOW: usize = 1;
 
     /// `kAEQuitReason` — Apple Event의 **속성** 키워드(매개변수가 아니다).
-    const QUIT_REASON_KEYWORD: u32 = u32::from_be_bytes(*b"why?");
+    const QUIT_REASON_KEYWORD: u32 = hook::four_cc(b"why?");
 
     pub fn install(app: &AppHandle) {
         if APP.set(app.clone()).is_err() {
@@ -78,14 +79,14 @@ mod macos {
         }
     }
 
-    /// AppKit이 종료 직전에 부른다. 본문은 `quit::answer` 하나다 — 패닉하면 허락이 나가고 되감기가 C로 안 넘어간다.
+    /// AppKit이 종료 직전에 부른다. 본문은 `quit::hook::application_should_terminate` 하나다 — 패닉하면 허락이 나가고 되감기가 C로 안 넘어간다.
     unsafe extern "C-unwind" fn should_terminate(_this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) -> usize {
-        let verdict = quit::answer(
+        let verdict = hook::application_should_terminate(
             // SAFETY: AppKit이 메인 스레드에서 이 핸들러를 부르고, 그동안 현재 Apple Event가 유효하다.
             || unsafe { current_reason() },
             || {
                 if let Some(app) = APP.get() {
-                    let _ = app.emit(quit::REQUESTED_EVENT, ());
+                    let _ = app.emit(REQUESTED_EVENT, ());
                 }
             },
         );
@@ -114,5 +115,72 @@ mod macos {
         }
         let code: u32 = msg_send![descriptor, typeCodeValue];
         QuitReason::Code(code)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// 훅이 기대는 네이티브 사실을 확인한 tao 판(2026-09-13 조사: 이 판의 앱 델리게이트 클래스는
+    /// `applicationShouldTerminate:`를 구현하지 않는다). 잠금 파일의 판이 이것과 다르면 붉어진다.
+    const CHECKED_TAO: &str = "0.35.3";
+
+    /// 잠금 파일에서 `name` 패키지의 판을 **전부** 모은다. 못 찾으면 비고, 두 판이 들었으면 둘이다 — 부르는
+    /// 쪽이 「조사한 판 정확히 하나」와 견줘 어느 경우든 붉어지게 한다(fail-closed).
+    fn locked_versions<'a>(lock: &'a str, name: &str) -> Vec<&'a str> {
+        let name_line = format!("name = \"{name}\"");
+        let mut versions = Vec::new();
+        let mut lines = lock.lines();
+        while let Some(line) = lines.next() {
+            if line.trim() != name_line {
+                continue;
+            }
+            // 판 줄이 바로 뒤에 없으면 담지 않는다 — 판이 빠진 목록은 조사한 판과 안 맞아 붉어진다.
+            if let Some(version) = lines
+                .next()
+                .and_then(|next| next.trim().strip_prefix("version = \""))
+                .and_then(|rest| rest.strip_suffix('"'))
+            {
+                versions.push(version);
+            }
+        }
+        versions
+    }
+
+    /// **tao 판 문턱**(S15). tao가 `applicationShouldTerminate:`를 스스로 구현하기 시작하면
+    /// `class_addMethod`가 실패해 훅이 조용히 빠지거나(한 줄 로그뿐), 우리 메서드가 tao의 것을 가린다.
+    /// 그래서 판이 바뀌는 순간 여기가 붉어져 사람이 다시 확인하게 한다.
+    #[test]
+    fn tao_판이_조사한_판과_같다() {
+        let lock = include_str!("../../Cargo.lock");
+        assert_eq!(
+            locked_versions(lock, "tao"),
+            [CHECKED_TAO],
+            "잠금 파일의 tao가 조사한 판({CHECKED_TAO})이 아니거나 못 찾았다 — 새 판의 앱 델리게이트가 \
+             `applicationShouldTerminate:`를 구현하는지 보고(ui-improvement 구현-스펙 §8 「종료 확인」), \
+             `terminate.rs`의 CHECKED_TAO를 올려라"
+        );
+    }
+
+    #[test]
+    fn 잠금_파일_읽기는_못_찾으면_비고_이웃_이름에_안_속는다() {
+        let lock = "\
+[[package]]
+name = \"tao-macros\"
+version = \"0.1.3\"
+
+[[package]]
+name = \"tao\"
+version = \"0.35.3\"
+source = \"registry+https://github.com/rust-lang/crates.io-index\"
+
+[[package]]
+name = \"atao\"
+version = \"9.9.9\"
+";
+        assert_eq!(locked_versions(lock, "tao"), ["0.35.3"]);
+        assert!(locked_versions(lock, "wry").is_empty(), "없는 항목인데 판이 나온다");
+        assert!(locked_versions("", "tao").is_empty());
+        let two = format!("{lock}\n[[package]]\nname = \"tao\"\nversion = \"0.37.0\"\n");
+        assert_eq!(locked_versions(&two, "tao"), ["0.35.3", "0.37.0"], "두 판이 함께 든 것을 하나로 뭉갠다");
     }
 }

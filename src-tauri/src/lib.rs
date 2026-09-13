@@ -375,7 +375,7 @@ mod tests {
 
     /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
     /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.
-    fn setup_source() -> &'static str {
+    fn setup_source() -> String {
         let src = include_str!("lib.rs");
         let body = src
             .split_once(".setup(|app| {")
@@ -388,7 +388,24 @@ mod tests {
             !body.contains("mod tests"),
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
-        body
+        without_comment_lines(body)
+    }
+
+    /// 주석 줄(`//`로 시작하는 줄)을 비운다. 자리 검사가 **주석 처리된 호출에 속지 않게** —
+    /// `// terminate::install(app.handle());`로 꺼 두어도 글자는 남아 검사가 통과한다(fail-closed).
+    fn without_comment_lines(body: &str) -> String {
+        body.lines()
+            .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn 자리_검사는_주석_처리된_호출에_안_속는다() {
+        let body = "            // terminate::install(app.handle());\n            watcher::start(app.handle().clone());";
+        let code = without_comment_lines(body);
+        assert!(!code.contains("terminate::install(app.handle());"), "주석으로 꺼 둔 호출을 살아 있다고 읽는다");
+        assert!(code.contains("watcher::start(app.handle().clone());"), "주석이 아닌 줄까지 지운다");
     }
 
     /// **알림 채널이 앱에 걸려 있는가**(#206 · 결정 10). 이것도 헤드리스로는 못 돌린다 —
@@ -426,7 +443,7 @@ mod tests {
 
     /// 빌더에 무엇이 걸렸는지를 볼 소스. 자르는 이유는 `setup_source`와 같다 — 테스트
     /// 모듈까지 흘러가면 스캔이 **제 문자열을 읽고 스스로 통과한다.**
-    fn builder_source() -> &'static str {
+    fn builder_source() -> String {
         let src = include_str!("lib.rs");
         let body = src
             .split_once("tauri::Builder::default()")
@@ -439,7 +456,7 @@ mod tests {
             !body.contains("mod tests"),
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
-        body
+        without_comment_lines(body)
     }
 
     /// **빨간 버튼이 창을 닫지 않고 묻게 걸려 있는가**(결정 14 · #223). `run()`은 창이
