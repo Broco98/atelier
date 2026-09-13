@@ -20,11 +20,7 @@ export const worksApi = {
     invoke<WorkView>("set_work_status", { mode, slug, status }),
   setPinned: (mode: Mode, slug: string, pinned: boolean) =>
     invoke<WorkView>("set_work_pinned", { mode, slug, pinned }),
-  /**
-   * 작업 하나를 옮긴다(UI개선 S3) — `pinned`가 목표 구획, `before`가 그 안에서 앞에 설 slug이고
-   * `null`이면 구획의 끝이다. **새 목록 전체가 돌아온다**: 순서만 바뀐 쓰기는 감시자가 못 보므로
-   * 부르는 쪽이 이 값으로 목록 캐시를 갈아 끼운다. 아직 부르는 화면이 없다 — 사이드바 끌기가 선다.
-   */
+  /** `before: null`은 구획의 끝이다. 인자와 응답의 뜻은 코어 `move_work`에 있다. */
   move: (mode: Mode, slug: string, pinned: boolean, before: string | null) =>
     invoke<WorkView[]>("move_work", { mode, slug, pinned, before }),
   readSpec: (mode: Mode, slug: string, path: string) =>

@@ -1072,9 +1072,7 @@ fn edit_work_takes_only_the_slug_the_title_and_the_pin() {
     for field in ["status", "branch", "slug", "projects"] {
         assert!(!props.contains_key(field), "{field} must not be editable here: {tool}");
     }
-    // 고정이 무엇인지 한 줄로 말한다 — 에이전트가 읽는 것은 이 문장뿐이다
-    let described = format!("{} {}", tool["description"], props["pinned"]);
-    assert!(described.contains("top"), "what pinning does is undocumented: {described}");
+    // 고정이 무엇을 하는지는 `pin_and_list_descriptions_say_where_a_pin_lands_and_who_orders_the_list`가 잰다
 }
 
 /// 에이전트도 고정할 수 있다 (결정 81). **제목을 함께 주지 않아도 된다** — 둘 다 선택

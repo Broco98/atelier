@@ -93,9 +93,7 @@ pub async fn set_work_pinned(mode: Mode, slug: String, pinned: bool) -> CmdResul
     atelier_core::update_work_pinned(&works_dir(mode), &slug, pinned).map_err(err)
 }
 
-/// 작업 하나를 옮긴다 — `pinned`가 목표 구획, `before`가 그 안에서 앞에 설 slug(없으면 구획 끝).
-/// **새 목록 전체를 돌려준다**: 순서만 바뀐 쓰기는 감시자가 못 보므로(점 파일) 화면은 이 응답으로
-/// 목록 캐시를 갈아 끼운다(UI개선 S3).
+/// 작업 하나를 옮기고 새 목록 전체를 돌려준다 — 인자와 응답의 뜻은 코어 `move_work`에 있다.
 #[tauri::command]
 pub async fn move_work(
     mode: Mode,

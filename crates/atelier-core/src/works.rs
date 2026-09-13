@@ -525,66 +525,80 @@ pub fn update_work_status(works_root: &Path, slug: &str, status: WorkStatus) -> 
 /// **값이 이미 그렇다면 아무 파일도 안 쓴다**(스토리 35). 한때는 늘 `work.json`을 다시 써서
 /// 감시자를 깨웠다 — 에이전트가 같은 값을 거듭 주는 것만으로 앱이 목록을 다시 읽었다.
 pub fn update_work_pinned(works_root: &Path, slug: &str, pinned: bool) -> Result<WorkView> {
-    let work = read_work(works_root, slug)?;
-    if work.pinned == pinned {
-        return Ok(to_view(works_root, work));
-    }
-    // 목표 구획의 **보이는** 첫 slug 앞이다. 파일에 없는 새 작업이 규칙 2로 구획 맨 위에 서
-    // 있어도, 옮기기가 굳히기를 하므로 그들까지 이 아래로 적힌다.
-    let first = read_works(works_root)?
-        .into_iter()
-        .find(|other| other.pinned == pinned && other.slug != work.slug)
-        .map(|other| other.slug);
-    reorder(works_root, &work.slug, pinned, first.as_deref())?;
-    get_work(works_root, slug)
+    let work = reorder(works_root, slug, pinned, Placement::Top)?;
+    Ok(to_view(works_root, work))
 }
 
-/// 작업 하나를 옮긴다 — **순서를 쓰는 유일한 길이다**(UI개선 결정 2 · S3). `pinned`는 목표
-/// 구획이고 `before`는 그 구획 안에서 이 작업이 앞에 설 slug, 없으면 목표 구획의 끝이다.
-/// 새 목록 전체를 돌려준다 — 순서만 바뀐 쓰기는 감시자가 못 보므로(점 파일) 앱이 이 응답으로
-/// 캐시를 갈아 끼운다.
+/// 작업 하나를 옮긴다 — **자리를 정해 순서를 쓰는 유일한 길이다**(UI개선 결정 2 · S3; 삭제가 slug를
+/// 빼는 `forget_in_order`는 자리를 안 정한다). `pinned`는 목표 구획이고 `before`는 그 구획 안에서
+/// 이 작업이 앞에 설 slug, 없으면 목표 구획의 끝이다. 새 목록 전체를 돌려준다 — 순서만 바뀐
+/// 쓰기는 감시자가 못 보므로(점 파일) 앱이 이 응답으로 캐시를 갈아 끼운다.
 pub fn move_work(
     works_root: &Path,
     slug: &str,
     pinned: bool,
     before: Option<&str>,
 ) -> Result<Vec<WorkView>> {
-    reorder(works_root, slug, pinned, before)?;
+    let placement = match before {
+        Some(before) => Placement::Before(before),
+        None => Placement::End,
+    };
+    reorder(works_root, slug, pinned, placement)?;
     list_works(works_root)
 }
 
-/// `move_work`의 몸통. 목록 전체의 뷰(워크트리마다 `git status`)는 안 만든다 — 고정 토글은
-/// 한 건만 돌려주므로 그 값을 치를 까닭이 없다.
+/// 목표 구획(`to_pinned`) 안의 어느 자리인가.
+enum Placement<'a> {
+    /// 구획의 보이는 첫 작업 앞 — 고정 토글.
+    Top,
+    /// 그 slug 앞 — 끌어 놓기.
+    Before(&'a str),
+    /// 구획의 끝.
+    End,
+}
+
+/// `move_work`·고정 토글의 몸통. 목록 전체의 뷰(워크트리마다 `git status`)는 안 만들고 옮긴
+/// `Work`를 돌려준다 — 고정 토글은 한 건만 돌려주므로 그 값을 치를 까닭이 없다.
 ///
+/// 0. **`Top`인데 값이 이미 그렇다면 아무것도 안 쓴다**(스토리 35). 같은 구획 끌기(`Before`·
+///    `End`)는 자리가 바뀌므로 순서 파일을 쓴다.
 /// 1. **검증이 먼저다.** 실패하면 아무것도 안 쓴다.
 /// 2. 지금 **보이는 순서 전체**를 굳혀 적는다 — 파일에 없던 작업도 제자리로 적혀서, 옮김 한
 ///    번이 그들의 위치를 흔들지 않는다. 폴더 없는 slug는 보이는 순서에 없으니 여기서 떨어진다.
 /// 3. **순서 파일을 먼저** 쓰고, `pinned`가 다를 때만 `work.json`을 쓴다. `work.json` 쓰기가
 ///    감시자를 깨우므로, 그 재조회가 새 순서를 읽게 하려는 차례다. 그 쓰기가 실패해도 순서
 ///    파일은 안 되돌린다 — 정렬이 `pinned`로 먼저 가르므로 남은 순서가 다른 구획을 안 흔든다.
-fn reorder(works_root: &Path, slug: &str, pinned: bool, before: Option<&str>) -> Result<()> {
+fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement) -> Result<Work> {
     let mut work = read_work(works_root, slug)?;
+    if matches!(placement, Placement::Top) && work.pinned == to_pinned {
+        return Ok(work);
+    }
     let mut visible = read_works(works_root)?;
     visible.retain(|other| other.slug != work.slug);
-    let at = match before {
-        Some(before) if before == work.slug => {
+    // 보이는 순서가 고정 먼저로 서 있으므로 고정 구획은 `[0, 고정의 수)`, 비고정은 그 뒤다.
+    let pinned_count = visible.iter().filter(|other| other.pinned).count();
+    let at = match placement {
+        Placement::Top if to_pinned => 0,
+        Placement::Top => pinned_count,
+        Placement::End if to_pinned => pinned_count,
+        Placement::End => visible.len(),
+        Placement::Before(before) if before == work.slug => {
             return Err(Error::Validation(format!(
                 "'{slug}' cannot be placed before itself"
             )))
         }
-        Some(before) => match visible.iter().position(|other| other.slug == before) {
-            Some(at) if visible[at].pinned == pinned => at,
-            Some(_) => {
-                return Err(Error::Validation(format!(
-                    "'{before}' is not in the {} section",
-                    if pinned { "pinned" } else { "unpinned" }
-                )))
+        Placement::Before(before) => {
+            match visible.iter().position(|other| other.slug == before) {
+                Some(at) if visible[at].pinned == to_pinned => at,
+                Some(_) => {
+                    return Err(Error::Validation(format!(
+                        "'{before}' is not in the {} section",
+                        if to_pinned { "pinned" } else { "unpinned" }
+                    )))
+                }
+                None => return Err(Error::WorkNotFound(before.to_string())),
             }
-            None => return Err(Error::WorkNotFound(before.to_string())),
-        },
-        // 목표 구획의 끝. 보이는 순서가 고정 먼저로 서 있으므로 고정 구획의 끝은 「고정의 수」다.
-        None if pinned => visible.iter().filter(|other| other.pinned).count(),
-        None => visible.len(),
+        }
     };
     let mut slugs: Vec<String> = visible.into_iter().map(|other| other.slug).collect();
     slugs.insert(at, work.slug.clone());
@@ -592,11 +606,11 @@ fn reorder(works_root: &Path, slug: &str, pinned: bool, before: Option<&str>) ->
     let mut order = crate::order::read_order(works_root);
     order.order = slugs;
     crate::order::write_order(works_root, &order)?;
-    if work.pinned != pinned {
-        work.pinned = pinned;
+    if work.pinned != to_pinned {
+        work.pinned = to_pinned;
         write_work(works_root, &work)?;
     }
-    Ok(())
+    Ok(work)
 }
 
 /// 프로젝트를 붙인다. `branch`는 **브랜치가 아직 미정인 work를 위한 것**이다 —
@@ -1393,15 +1407,7 @@ mod tests {
     /// 날짜와 고정을 못 박은 work 하나를 **파일로** 심는다. `start_work`는 오늘 날짜를 박아
     /// 「파일 순서가 만든 순을 뒤집는다」를 못 벌린다.
     fn plant(works: &Path, slug: &str, created: &str, pinned: bool) {
-        let dir = works.join(slug);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("work.json"),
-            format!(
-                r#"{{"title":"{slug}","status":"active","createdAt":"{created}","projects":[],"pinned":{pinned}}}"#
-            ),
-        )
-        .unwrap();
+        plant_with_status(works, slug, created, pinned, "active");
     }
 
     fn write_raw_order(works: &Path, body: &str) {
@@ -1565,12 +1571,14 @@ mod tests {
         .unwrap();
     }
 
+    /// 순서 파일 날것 전체 — 모르는 키까지 본다.
+    fn order_json(works: &Path) -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap()).unwrap()
+    }
+
     /// 파일에 **적힌** 순서. 목록 읽기(`listed`)와 달리 규칙을 안 거친 날것이다.
     fn order_on_disk(works: &Path) -> Vec<String> {
-        let raw: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap())
-                .unwrap();
-        serde_json::from_value(raw["order"].clone()).unwrap()
+        serde_json::from_value(order_json(works)["order"].clone()).unwrap()
     }
 
     fn slugs_of(views: &[WorkView]) -> Vec<String> {
@@ -1611,9 +1619,7 @@ mod tests {
         move_work(&works, "나", false, Some("가")).unwrap();
 
         assert_eq!(order_on_disk(&works), slugs(&["나", "가"]));
-        let raw: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(works.join(".order.json")).unwrap())
-                .unwrap();
+        let raw = order_json(&works);
         assert_eq!(raw["version"], 2, "모르는 최상위 키가 옮기기에서 사라졌다: {raw}");
     }
 
@@ -1702,7 +1708,7 @@ mod tests {
     }
 
     /// 결정 4·28 — 고정을 켜면 **고정 구획 맨 위**, 끄면 **비고정 구획 맨 위**. 파일에 없는 새
-    /// 작업(`핀새`·`신규`)이 규칙 2로 구획 맨 위에 서 있어도 그 위다 — 토글이 굳히기를 안 하면
+    /// 작업(`핀새`·`신규`·`나중`)이 규칙 2로 구획 맨 위에 서 있어도 그 위다 — 토글이 굳히기를 안 하면
     /// 새 작업들이 옮긴 것 위에 남는다.
     #[test]
     fn toggling_the_pin_puts_the_work_at_the_top_of_the_section_it_moves_to() {
@@ -1721,9 +1727,13 @@ mod tests {
         assert!(on.work.pinned);
         assert_eq!(listed(&works), slugs(&["나", "핀새", "핀A", "핀B", "신규", "가"]));
 
+        // 끄기 쪽에도 파일에 없는 새 작업을 세운다 — 첫 토글이 `신규`를 이미 파일에 적었으므로.
+        plant(&works, "나중", "2026-08-07", false);
+        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀A", "핀B", "나중", "신규", "가"]));
+
         let off = update_work_pinned(&works, "핀A", false).unwrap();
         assert!(!off.work.pinned);
-        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀B", "핀A", "신규", "가"]));
+        assert_eq!(listed(&works), slugs(&["나", "핀새", "핀B", "핀A", "나중", "신규", "가"]));
     }
 
     /// 스토리 35 — 이미 그 값이면 **아무 파일도 안 바뀐다.** 순서 파일이 없으면 안 생기고, 있으면

@@ -21,8 +21,8 @@ const ORDER_FILE: &str = ".order.json";
 /// 순서 파일 전체. **`order`가 유일한 칸이고 앞이 위다.**
 ///
 /// 모르는 최상위 키는 `extra`에 담아 그대로 되쓴다 — `recent.json`·`work.json`과 같은 규약이다.
-/// 다만 **파싱에 성공했을 때만** 보존된다: 깨진 파일은 빈 순서로 눕고, 그때 지우기는 아예 안
-/// 쓰며(`forget_in_order`) 옮기기는 보이는 순서로 새로 쓴다(`read_order` 머리말).
+/// 다만 **파싱에 성공했을 때만** 보존된다 — 깨진 파일을 누가 덮고 누가 안 덮는지는 `read_order`
+/// 머리말에 있다.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct WorkOrder {
     #[serde(default)]

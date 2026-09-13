@@ -106,9 +106,10 @@ impl AtelierServer {
                        the spec directory and the spec files already written, and — for one that \
                        spans projects — the branch they share and the worktree path of each. \
                        Anything archived is not here — see atelier_list_archive. \
-                       The entries come in the order the user sees in the app: pinned works \
-                       first, then the order the user set by dragging. That order is the user's \
-                       to set — there is no tool that changes the order. \
+                       The entries come in the order the user sees in the app: pinned entries \
+                       above the rest, and within each section the order the user set by \
+                       dragging, with entries not placed yet at the top, newest first. That \
+                       order is the user's to set — there is no tool that changes the order. \
                        Read-only; reads local files only.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
