@@ -46,5 +46,8 @@ export function sectionSaver(
   };
 }
 
-/** 설정 화면의 두 구획이 **함께 쓰는** 저장 하나. 따로 만들면 줄이 둘이 된다. */
+/**
+ * 설정 화면의 두 구획이 **함께 쓰는** 저장 하나. 따로 만들면 줄이 둘이 된다 — 이 줄 밖에서
+ * 쓰는 길이 안 생겼는지는 `save-section.test.ts`의 허용 목록이 센다.
+ */
 export const saveSettingsSection = sectionSaver(settingsApi.read, settingsApi.write);

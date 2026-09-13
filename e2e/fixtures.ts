@@ -302,7 +302,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
   // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
   // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
-  // (`SettingsPage.tsx`의 조각별 `save`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
+  // (`SettingsPage.tsx`의 `useSectionSave`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
   // 답이 없으면 L3에서 쓰기가 거절당해 `save`가 오류 가지로 빠지고, 그러면 저장 뒤의
   // 배선을 재는 검사가 **아무것도 못 재면서 초록**이 된다.
   //

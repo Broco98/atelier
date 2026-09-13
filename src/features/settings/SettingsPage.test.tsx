@@ -136,7 +136,8 @@ describe("저장이 열리는 조건", () => {
   });
 
   // `settings.rs`가 tmp 이름을 고정해 두고 「쓰기는 한 번에 하나」를 전제로 적었다 —
-  // 겹치면 한쪽의 rename이 남이 아직 쓰는 중인 tmp를 옮긴다. 직렬화는 이 화면의 몫이다.
+  // 겹치면 한쪽의 rename이 남이 아직 쓰는 중인 tmp를 옮긴다. 구획 사이의 직렬화는
+  // `saveSettingsSection`이 지고, 이 칸은 한 구획 안의 연타를 막는다.
   it("이미 쓰는 중이면 잠긴다", () => {
     expect(state({ saving: true })).toBe(false);
   });

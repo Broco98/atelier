@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_COMMANDS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 
 // 설정의 **구획별 저장**(#225 · 결정 21). 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고,
 // 에이전트 훅은 누르면 바로 적용된다.
@@ -18,16 +18,7 @@ const 저장 = { name: "저장", exact: true } as const;
 
 /** 나간 `write_settings`들의 인자. 기록 형식이 낯설면 던진다 — 조용한 빈 목록은 fail-open이다. */
 async function writtenSettings(page: Page): Promise<unknown[]> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls
-    .filter((call) => call === "write_settings" || call.startsWith("write_settings "))
-    .map((call) => {
-      const args: unknown = JSON.parse(call.slice("write_settings".length).trim() || "null");
-      if (typeof args !== "object" || args === null || !("settings" in args)) {
-        throw new Error(`write_settings 호출의 모양이 낯설다 — ${call}`);
-      }
-      return (args as { settings: unknown }).settings;
-    });
+  return (await ipcCallArgs(page, "write_settings", "settings")).map(({ args }) => args.settings);
 }
 
 test("터미널 설정과 알림 설정에 저장 버튼이 각자 있고, 에이전트 훅에는 없다", async ({ page }) => {
