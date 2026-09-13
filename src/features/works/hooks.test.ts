@@ -2,9 +2,10 @@
 // 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
-import { invalidateWorks, specFileQuery, worksQuery } from "./hooks";
+import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+import { dialogStore } from "@/components/ui/confirm-store";
+import { invalidateWorks, moveWorkOptions, specFileQuery, worksQuery } from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
@@ -89,5 +90,197 @@ describe("무효화하는 문", () => {
   it("이 파일에서 캐시를 지우는 자리가 하나다", () => {
     const source = readFileSync(fileURLToPath(new URL("./hooks.ts", import.meta.url)), "utf8");
     expect(source.split("invalidateQueries(").length - 1).toBe(1);
+  });
+});
+
+// **옮기기와 `works:changed`의 경쟁**(UI개선 스펙 §5 · S9). 순서만 바뀐 쓰기는 감시자가 안 쏘므로
+// 화면은 옮기기의 **응답**으로 캐시를 갈아 끼운다. 그런데 옮기는 사이 다른 이유(spec 쓰기 ·
+// `work.json`의 `pinned` 쓰기)로 온 무효화가 재조회를 띄우면, 쓰기 **전** 파일을 읽은 느린 답
+// (워크트리마다 상태를 묻는다)이 응답 **뒤에** 도착해 옛 순서로 덮는다 — 그리고 감시자가 다시 안
+// 쏘므로 그 옛 순서가 `staleTime` 동안 남는다.
+//
+// 훅을 렌더하지 않는다 — 옵션과 이벤트 처리를 훅 밖 함수로 두고 **실물 `QueryClient`**에 그대로
+// 물린다(선례: `features/search/hooks.test.ts`). 답은 손으로 붙든다: 순서를 뒤집을 수 없으면
+// 경쟁을 재는 검사가 늘 초록이다.
+const { calls } = vi.hoisted(() => ({
+  calls: [] as Array<{
+    command: string;
+    /** 이 호출이 나갔을 때 옮기기가 아직 답을 못 받았는가 — 쓰기 전 파일을 읽은 재조회다. */
+    beforeMoveAnswered: boolean;
+    resolve: (value: unknown) => void;
+    reject: (error: unknown) => void;
+    answered: boolean;
+  }>,
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string) =>
+    new Promise((resolve, reject) => {
+      const moveAnswered = calls.some((call) => call.command === "move_work" && call.answered);
+      calls.push({ command, beforeMoveAnswered: !moveAnswered, resolve, reject, answered: false });
+    }),
+}));
+
+const settle = () => new Promise((done) => setTimeout(done, 0));
+
+const row = (slug: string) => ({ slug, title: slug, status: "active", pinned: false }) as WorkView;
+/** 옮기기 전 목록과, `c`를 맨 앞으로 옮긴 뒤 코어가 돌려줄 목록. */
+const OLD = [row("a"), row("b"), row("c")];
+const NEW = [row("c"), row("a"), row("b")];
+const slugsOf = (works: unknown) =>
+  (works as WorkView[] | undefined)?.map((work) => work.slug).join("") ?? "";
+
+type Call = (typeof calls)[number];
+
+/** 아직 답을 못 받은 그 명령 호출들. */
+const waiting = (command: string, pick: (call: Call) => boolean = () => true) =>
+  calls.filter((call) => call.command === command && !call.answered && pick(call));
+
+function answer(command: string, value: unknown, pick?: (call: Call) => boolean) {
+  const found = waiting(command, pick);
+  for (const call of found) {
+    call.answered = true;
+    call.resolve(value);
+  }
+  return found.length;
+}
+
+/** 목록 화면 하나를 세우고 첫 목록을 받는다. */
+async function listed() {
+  calls.length = 0;
+  const client = new QueryClient();
+  const observer = new QueryObserver(client, worksQuery("atelier"));
+  const seen: string[] = [];
+  observer.subscribe((result) => seen.push(slugsOf(result.data)));
+  await settle();
+  expect(answer("list_works", OLD)).toBe(1);
+  await settle();
+  return { client, seen, shown: () => slugsOf(client.getQueryData(worksQuery("atelier").queryKey)) };
+}
+
+function move(client: QueryClient) {
+  const observer = new MutationObserver(client, moveWorkOptions(client, "atelier"));
+  // 실패는 옵션의 `onError`가 다룬다 — 여기서 삼키는 것은 러너의 미처리 거절뿐이다.
+  void observer.mutate({ slug: "c", pinned: false, before: "a" }).catch(() => {});
+}
+
+describe("옮기기와 works:changed의 경쟁", () => {
+  it("놓는 순간 낙관적으로 선다", async () => {
+    const { client, shown } = await listed();
+    move(client);
+    await settle();
+    expect(shown()).toBe("cab");
+    expect(waiting("move_work")).toHaveLength(1);
+  });
+
+  it("진행 중 들어온 무효화가 응답 뒤에 옛 목록으로 덮지 않는다", async () => {
+    const { client, seen, shown } = await listed();
+    move(client);
+    await settle();
+    void invalidateWorks(client);
+    await settle();
+
+    // 응답이 먼저, 쓰기 전 파일을 읽은 재조회의 답이 나중에 온다.
+    answer("move_work", NEW);
+    await settle();
+    answer("list_works", OLD, (call) => call.beforeMoveAnswered);
+    await settle();
+    // 끝난 뒤에 나간 재조회는 새 파일을 읽는다.
+    answer("list_works", NEW);
+    await settle();
+
+    expect(shown()).toBe("cab");
+    // 마지막 값만 보면 덮었다가 되돌아온 것도 초록이다 — 낙관적 목록이 선 뒤로 옛 목록이 한 번도
+    // 다시 서면 안 된다.
+    expect(seen.slice(seen.indexOf("cab"))).not.toContain("abc");
+  });
+
+  // **이벤트만이 아니라 mutation도 같은 문을 탄다.** 옮기는 사이 고정 토글·제목 바꾸기의 응답이 오면
+  // 그 무효화도 쓰기 전 파일을 읽은 재조회를 띄운다 — 문 옆에 따로 선 대기는 그 길을 못 막는다.
+  it("진행 중 mutation이 연 무효화도 끝난 뒤로 미룬다", async () => {
+    const { client } = await listed();
+    move(client);
+    await settle();
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(0);
+
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  it("미룬 무효화는 끝난 뒤 한 번 돈다", async () => {
+    const { client } = await listed();
+    move(client);
+    await settle();
+    void invalidateWorks(client);
+    void invalidateWorks(client);
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(0);
+
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  // `onSettled` 무효화를 두지 않는다(티켓 05) — 응답이 곧 새 목록이라 다시 물을 것이 없다.
+  it("아무것도 안 왔으면 끝난 뒤에도 다시 묻지 않는다", async () => {
+    const { client, shown } = await listed();
+    move(client);
+    await settle();
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+    expect(waiting("list_works")).toHaveLength(0);
+    expect(shown()).toBe("cab");
+  });
+
+  it("옮기기 전에 떠 있던 재조회도 낙관적 목록을 덮지 않는다", async () => {
+    const { client, shown } = await listed();
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+
+    move(client);
+    await settle();
+    answer("list_works", OLD);
+    await settle();
+    expect(shown()).toBe("cab");
+  });
+
+  it("옮기기가 끝나면 무효화는 다시 곧바로 돈다", async () => {
+    const { client } = await listed();
+    move(client);
+    await settle();
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+  });
+
+  it("실패하면 원래 목록으로 돌아가고 오류를 알린다", async () => {
+    const { client, shown } = await listed();
+    move(client);
+    await settle();
+    expect(shown()).toBe("cab");
+
+    for (const call of waiting("move_work")) {
+      call.answered = true;
+      call.reject("slug가 없습니다");
+    }
+    await settle();
+    await settle();
+
+    expect(shown()).toBe("abc");
+    expect(dialogStore.state?.title).toBe("오류");
+    expect(dialogStore.state?.body).toContain("slug가 없습니다");
+    dialogStore.state?.answer(true);
   });
 });

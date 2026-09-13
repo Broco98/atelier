@@ -14,17 +14,20 @@ import { Store } from "@tanstack/react-store";
  * 도착점(본문)의 공통 조상이 앱 루트 가까이라, 거기에 드래그 상태를 얹으면 끄는 동안 앱 전체가
  * 다시 그려진다.
  *
- * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽의 일이다
- * (`split-view.ts` · 탭 줄). 여기 있는 것은 그들이 적는 **칸**과, 그 칸에 적는 함수뿐이다 —
- * 두 소비자의 값이 동시에 안 켜진다는 불변식을 한 곳에서 지키려고 적는 함수는 여기 모인다.
+ * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽 모듈의 일이다: 탭은
+ * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`).
+ * 여기 있는 것은 탭의 두 소비자가 적는 **칸**과 그 칸에 적는 함수 — 두 값이 동시에 안 켜진다는
+ * 불변식을 한 곳에서 지키려고 여기 모인다 — 그리고 좌표로 자리를 정하는 쪽에 주는 끄는 동안의
+ * 포인터와 「놓았다」·「끝났다」(`DragHandlers`)다.
  */
 
 /** 본문의 어느 절반인가. 열이 아니라 **화면의 절반**이다 — 아직 분할이 아닐 때도 성립한다. */
 export type SplitHalf = "left" | "right";
 
-/** 끌 수 있는 것 둘(결정 90) — 문서 탭과 셸 탭. */
+/** 본문 위로 끌어 분할을 세울 수 있는 것 둘(결정 90) — 문서 탭과 셸 탭. */
 export type DragKind = "spec" | "shell";
 
+/** 탭 줄에서 끈 것. 놓일 자리는 본문의 절반이다(`split-view.ts`). */
 export interface DragSource {
   kind: DragKind;
   /**
@@ -40,9 +43,24 @@ export interface DragSource {
   shellId: number | null;
 }
 
+/**
+ * 사이드바에서 끈 **작업 행**(UI개선 스펙 §4). 놓일 자리는 목록의 틈이고 본문은 받지 않는다 —
+ * 그래서 탭의 원천과 종류가 갈린다. 다만 상태(`DragState.source`)에는 둘이 함께 실린다: 한 번에
+ * 하나만 끌리고, 탭 줄·사이드바가 「무엇이든 끌리는 중인가」를 한 값으로 읽는다. 탭만 받는 쪽은
+ * 아래 `tabDragOf`로 읽는다 — 거르는 자리가 받는 쪽마다 흩어지면 하나가 빠진 날 분할 겹판이 작업 행
+ * 끌기에도 선다.
+ *
+ * owner가 아니라 **slug**를 싣는다. 이 원천을 만드는 사이드바 목록은 터미널을 모르고(그쪽 import
+ * 금지 검사), owner는 셸 레지스트리의 말이다 — 작업 행에는 셸이 없어도 slug는 늘 있다.
+ */
+export interface RowDragSource {
+  kind: "work";
+  slug: string;
+}
+
 export interface DragState {
   /** `null`이면 아무것도 안 끌고 있다 — 받는 쪽의 겹판도 그때는 서지 않는다. */
-  source: DragSource | null;
+  source: DragSource | RowDragSource | null;
   /** 지금 포인터가 어느 절반 위인가. 놓기 전에는 `null`일 수 있다(본문 밖). */
   half: SplitHalf | null;
   /**
@@ -61,6 +79,11 @@ const IDLE: DragState = { source: null, half: null, slot: null };
 
 export const dragStore = new Store<DragState>(IDLE);
 
+/** 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`). */
+export function tabDragOf(state: DragState): DragSource | null {
+  return state.source?.kind === "work" ? null : state.source;
+}
+
 /**
  * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 탭을 못
  * 누른다** — 끌리는 것(탭 · 행)은 누르는 것이 본업이고 끄는 것이 덤이다.
@@ -72,6 +95,40 @@ export function farEnough(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) >= DRAG_THRESHOLD;
 }
 
+export interface DragPoint {
+  clientX: number;
+  clientY: number;
+}
+
+/**
+ * **좌표로 놓일 자리를 정하는 쪽**이 거는 손잡이(작업 행 — UI개선 스펙 S6). 탭은 안 건다: 그쪽
+ * 받는 자리(본문 절반)는 겹판이 스스로 「내 위다」를 말하지만, 목록의 틈은 행 **사이**라 그 위를
+ * 지나가는 요소가 없다.
+ *
+ * 문턱을 넘은 끌기에만 온다 — 문턱 안쪽의 눌림은 클릭이지 끌기가 아니다.
+ */
+export interface DragHandlers {
+  /** 문턱을 넘었다. 기하를 한 번 재는 자리다. */
+  start?: () => void;
+  /** 문턱을 넘은 뒤 포인터가 움직였다(넘는 순간의 이동 포함). */
+  move?: (point: DragPoint) => void;
+  /** 놓았다. **Esc·`pointercancel`·도중 취소로 끝나면 안 온다.** */
+  drop?: (point: DragPoint) => void;
+  /** 어느 길로든 끝났다 — 놓았을 때는 `drop` 뒤에 온다. */
+  end?: () => void;
+}
+
+/** 지금 도는 끌기를 거둘 손잡이. 문턱을 넘은 동안만 있다. */
+let abortActive: (() => void) | null = null;
+
+/**
+ * 도는 끌기를 **취소한다** — Esc와 같은 정리를 하고 아무것도 안 부른다. 끄는 도중 받는 쪽의
+ * 기하가 무너졌을 때(목록이 바뀌었다) 받는 쪽이 부른다. 도는 것이 없으면 아무 일도 없다.
+ */
+export function cancelDrag(): void {
+  abortActive?.();
+}
+
 /**
  * 포인터가 눌렸다. **아직 드래그가 아니다** — 5px을 넘어야 시작한다.
  *
@@ -79,11 +136,21 @@ export function farEnough(dx: number, dy: number): boolean {
  * 포인터 캡처도 잡지 않는다 — 캡처를 잡으면 이동 이벤트가 출발한 버튼에만 가서 받는 쪽
  * 겹판이 「내 위를 지나간다」를 스스로 알 길이 없어진다.
  */
-export function armDrag(source: DragSource, from: { clientX: number; clientY: number }): void {
+export function armDrag(
+  source: DragSource | RowDragSource,
+  from: DragPoint,
+  handlers: DragHandlers = {},
+): void {
   let started = false;
+  // 문턱을 넘은 뒤 **놓기 전에** 끝났는가(Esc · 도중 취소). 손을 떼는 순간 `drop`을 안 부르는 근거다.
+  let aborted = false;
 
   const move = (event: PointerEvent) => {
-    if (started) return;
+    if (aborted) return;
+    if (started) {
+      handlers.move?.(event);
+      return;
+    }
     if (!farEnough(event.clientX - from.clientX, event.clientY - from.clientY)) return;
     started = true;
     // 끄는 동안 글이 선택되는 것을 막는다. `body.resizing`과 나누는 것은 커서 하나
@@ -91,6 +158,9 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     document.body.classList.add("dragging-row");
     dragStore.setState(() => ({ ...IDLE, source }));
     window.addEventListener("keydown", cancel, true);
+    abortActive = abort;
+    handlers.start?.();
+    handlers.move?.(event);
   };
 
   // **끄는 중 표시를 걷는 자리는 여기 하나다.** 끝나는 길이 넷(놓음 · 취소 · 임계값 전에 뗌 ·
@@ -102,6 +172,17 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     window.removeEventListener("keydown", cancel, true);
     document.body.classList.remove("dragging-row");
     dragStore.setState((state) => (state.source === null ? state : IDLE));
+    if (abortActive === abort) {
+      abortActive = null;
+      handlers.end?.();
+    }
+  };
+
+  // Esc와 도중 취소가 함께 딛는 길. **떼기 리스너는 남긴다**(아래 `cancel` 주석) — 그래서 여기서
+  // 표시만 걷고, 손을 뗄 때 `end`가 클릭을 삼킨다.
+  const abort = () => {
+    aborted = true;
+    settle();
   };
 
   // **Esc는 끌기를 취소하고 아무것도 안 부른다.** 캡처로 듣고 전파를 막는다(선례: AppDialog) —
@@ -116,12 +197,15 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    settle();
+    abort();
   };
 
-  const end = () => {
+  const end = (event: PointerEvent) => {
     window.removeEventListener("pointerup", end);
     window.removeEventListener("pointercancel", end);
+    // **정리보다 먼저 놓는다** — 받는 쪽이 끄는 동안 쥔 기하를 `end`에서 걷으므로.
+    // `pointercancel`은 놓음이 아니다: 시스템이 제스처를 가로챈 것이라 사람이 고른 자리가 없다.
+    if (started && !aborted && event.type === "pointerup") handlers.drop?.(event);
     settle();
     if (!started) return;
 

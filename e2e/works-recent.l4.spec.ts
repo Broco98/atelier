@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { installRealBackend, unknownIpcCalls } from "./harness";
-import { expect, test } from "./l4";
+import { expect, seedWork, test } from "./l4";
 import type { Page } from "./evidence";
 
 // 결정 12·13·14. **work 화면을 열면 진짜 파일이 써진다** — `~/.atelier/recent.json`.
@@ -15,17 +15,6 @@ import type { Page } from "./evidence";
 // effect가 아예 안 도는데, 실패는 「파일이 안 생겼다」로만 나와 원인이 엉뚱한 곳을 가리킨다.
 //
 // **터미널 탭을 안 연다** — 다리는 PTY를 거절한다(`in_app_only`).
-
-/** 만든 날까지 못 박아 심는다 — 기본 순서(만든 순)가 이 값에서 나온다. */
-function seedWork(home: string, slug: string, title: string, createdAt: string) {
-  const dir = join(home, "works", slug);
-  mkdirSync(join(dir, "spec"), { recursive: true });
-  writeFileSync(
-    join(dir, "work.json"),
-    JSON.stringify({ title, status: "active", createdAt, projects: [], pinned: false }),
-  );
-  writeFileSync(join(dir, "spec", "overview.md"), "# 개요\n\n한 줄.\n");
-}
 
 /** 이력 파일에 적힌 slug들. 아직 없으면 빈 목록이다 — poll이 다시 부른다. */
 function recentSlugs(home: string): string[] {

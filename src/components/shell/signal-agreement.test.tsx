@@ -15,7 +15,7 @@ import {
   shellsOf,
 } from "@/features/terminal/shell-registry";
 import type { ShellsState } from "@/features/terminal/shell-registry";
-import { WorkSectionList } from "@/features/works/SidebarWorkList";
+import { WorkSectionList } from "@/features/works/WorkSectionList";
 import { splitWorkSections } from "@/features/works/work-sections";
 import type { WorkView } from "@/features/works/types";
 import { AttentionBand } from "./attention-band";
@@ -105,6 +105,9 @@ function 행(state: ShellsState): string {
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
+      draggedSlug={null}
+      lineY={null}
+      onArmDrag={() => {}}
       renderSubrow={(work) => {
         // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`) — 값을 고르는 길이 행마다 따로다.
         const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
