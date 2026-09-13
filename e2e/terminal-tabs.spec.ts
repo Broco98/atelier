@@ -534,3 +534,50 @@ test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임�
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ─── 글꼴이 오는 사이에 둘째 칸을 열어도 **두 셸이 다 뜬다** ───
+//
+// 사람은 첫 셸이 spawn했는지 기다렸다가 `+`를 누르지 않는다. 터미널 글꼴은 저장소에 든
+// 0.94MB 파일이라(`src/assets/fonts/README.md`) 실물에서도 첫 화면에 늦게 온다 — 그 틈에
+// ⌘T나 `+`를 누르면 첫 칸이 떼어진 채 글꼴이 도착한다.
+//
+// **글꼴 응답을 붙잡아 그 틈을 결정적으로 만든다.** 안 붙잡으면 한가한 러너에서는 글꼴이
+// 먼저 와서 초록이고 붐비는 러너에서만 빨개진다 — 918fbc5가 검사들에 기다림을 넣어 덮은 것이
+// 바로 그 모양이다. 여기서는 기다리지 않는다: 두 칸을 곧바로 세우고 나서야 글꼴을 놓는다.
+//
+// **켜지 않은 첫 칸을 누르지 않는다.** 누르면 다시 붙는 길이 그 칸을 열어 초록이 되는데,
+// 사람이 기대하는 것은 「연 셸은 뒤에서도 돈다」다(결정 20·21) — 안 본 칸도 떠 있어야 한다.
+for (const [where, url] of [
+  ["work 화면", `/works/${plainWork.slug}?tab=terminal`],
+  ["/terminal", "/terminal"],
+] as const) {
+  test(`글꼴이 오기 전에 둘째 칸을 열어도 두 셸이 다 뜬다 — ${where}`, async ({ page }) => {
+    await installFixtureBackend(page);
+    let releaseFonts!: () => void;
+    const fontsHeld = new Promise<void>((resolve) => (releaseFonts = resolve));
+    await page.route("**/JetBrainsMonoNLNerdFont-*.woff2*", async (route) => {
+      await fontsHeld;
+      await route.continue();
+    });
+    // `load`를 기다리지 않는다 — 그 이벤트가 붙잡아 둔 글꼴을 기다려 여기서 멈춘다.
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+
+    const tabs = page.locator('[data-tab="shell"]');
+    await expect(tabs).toHaveCount(1);
+    await page.locator('[data-tab="new"]').click();
+    await expect(tabs).toHaveCount(2);
+
+    releaseFonts();
+
+    // 칸마다 본다 — 전체 수로 세면 어느 칸이 안 떴는지가 안 남는다. 이름이 픽스처의 셸 이름으로
+    // 바뀐 것이 그 칸이 spawn 응답을 받았다는 화면 신호다(`FIXTURE_SHELL_NAME`의 머리말).
+    for (const at of [0, 1]) {
+      await expect(
+        tabs.nth(at).locator(`button[aria-label="${SHELL_NAME} 닫기"]`),
+        `${at + 1}번째 칸의 셸이 안 떴다`,
+      ).toHaveCount(1, { timeout: 20_000 });
+    }
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
