@@ -44,6 +44,7 @@ import {
 import {
   closeShellsOf,
   dropShellOnSlot,
+  hasShell,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
@@ -704,7 +705,13 @@ function WorksPage({
   // 한다 — 남의 work을 떨구면 work이 통째로 바뀌는데(결정 101) 그 이동은 이 화면의 일이 아니다.
   const dropHere = useCallback(
     (source: DragSource, half: SplitHalf) => {
-      if (source.kind === "shell" && source.shellId !== null) selectShell(source.shellId);
+      // **끈 셸이 이미 없으면 아무것도 안 한다**(UI개선 결정 48). 셸이 빠지면 터미널 스토어가 끌기를
+      // 먼저 거둬 받침이 걷히지만, 여기서 한 번 더 본다 — 안 보면 `selectShell`은 없는 id를 조용히
+      // 흘리고 분할만 켜져 **닫힌 셸을 가리키는** 열이 선다.
+      if (source.kind === "shell") {
+        if (source.shellId === null || !hasShell(source.shellId)) return;
+        selectShell(source.shellId);
+      }
       const next = dropSplit(source.kind, half);
       collapseOnSplit(next);
       onDropInto(source, next);

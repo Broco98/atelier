@@ -82,6 +82,14 @@ async function gapPoint(page: Page, gap: number) {
   return { x, y: box.y + box.height / 2 };
 }
 
+/**
+ * 두 프레임을 넘긴다 — 「아무 일도 안 났다」를 재기 전에 부른다. 없음을 재는 단언은 곧바로 초록이라,
+ * 떼기가 부른 상태 변경이 React 커밋·라우터 이동으로 화면에 닿기 전에 통과해 버린다.
+ */
+async function settle(page: Page) {
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+}
+
 async function moveToGap(page: Page, gap: number) {
   const at = await gapPoint(page, gap);
   await page.mouse.move(at.x, at.y, { steps: 4 });
@@ -367,15 +375,215 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 끝난 순간 끄는 커서가 걷힌다 — 이 화면에는 받침이 없어 끄는 중 모습이 이것뿐이다.
     await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
 
-    // 새 줄의 끝 틈으로 가서 뗀다 — 선도 안 서고 순서도 그대로다.
+    // 새 줄의 끝 틈으로 가서 — 선도 안 선다 — **안 켜진 칸 위에서** 뗀다. 거둔 끌기의 떼기가
+    // 「그 칸을 눌렀다」로 읽히면 켜진 칸이 「둘」로 바뀐다(켜진 「셋」 위에서 떼면 그 사고가 안 보인다).
     const at = await gapPoint(page, 2);
     await page.mouse.move(at.x, at.y, { steps: 4 });
     await expect(gapLine(page)).toHaveCount(0);
+    const other = await boxOf(page, 0);
+    await page.mouse.move(other.x + other.width / 2, other.y + other.height / 2, { steps: 4 });
     await page.mouse.up();
+    await settle(page);
 
     await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
     expect(await litName(page)).toBe("셋");
     expect(await callCount(page, "pty_write")).toBe(written);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // **문턱 전에 끝난다.** 누른 채 아직 5px을 안 움직였을 때 셸이 끝나면, 남은 눌림이 다음 이동에서
+  // 죽은 id로 끌기를 시작한다 — 위 둘은 문턱을 넘긴 뒤에 끝내서 이 길을 못 본다.
+  test("work 화면 — 문턱 전에 끝나고 그 뒤 끌어 절반에 놓아도 아무 일도 안 난다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"]);
+    const spawned = await callCount(page, "pty_spawn");
+
+    const box = await boxOf(page, 0);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+
+    // 본문 오른쪽 절반으로 끈다 — 받침이 섰다면 거기 서 있을 자리다.
+    await page.mouse.move(1000, 500, { steps: 8 });
+    await settle(page);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    await page.mouse.up();
+    await settle(page);
+
+    await expect(page.locator("[data-column]")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/split=/);
+    expect(await litName(page)).toBe("둘");
+    expect(await callCount(page, "pty_spawn")).toBe(spawned);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  test("`/terminal` — 문턱 전에 끝나고 그 뒤 틈에 놓아도 순서가 그대로다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/terminal");
+    await nameShells(page, ["하나", "둘", "셋"]);
+
+    const box = await boxOf(page, 0);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
+
+    const at = await gapPoint(page, 2);
+    await page.mouse.move(at.x, at.y, { steps: 8 });
+    await settle(page);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+    await expect(gapLine(page)).toHaveCount(0);
+    await page.mouse.up();
+    await settle(page);
+
+    await expect.poll(() => namesOf(page)).toEqual(["둘", "셋"]);
+    expect(await litName(page)).toBe("셋");
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // **그 work의 마지막 셸이다.** 셸이 다 빠지면 화면이 분할째로 문서로 걷는데(`shellsEmptied`), 받침이
+  // 남아 있으면 떼는 순간 분할과 터미널 열이 다시 서고 빈 열이 셸을 새로 띄운다.
+  test("work 화면 — 마지막 셸이어도 분할도 새 셸도 안 선다", async ({ page }) => {
+    await openWork(page, ["하나"]);
+    const spawned = await callCount(page, "pty_spawn");
+
+    await pressAndCross(page, 0);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+
+    await exitShell(page, 1);
+    await expect(shellTabs(page)).toHaveCount(0);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await settle(page);
+
+    await expect(page.locator("[data-column]")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/split=/);
+    await expect(page).not.toHaveURL(/tab=terminal/);
+    await expect(shellTabs(page)).toHaveCount(0);
+    expect(await callCount(page, "pty_spawn")).toBe(spawned);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // **켜진 셸이다.** 빠지면 옆 칸이 켜지는데(`removeShell`), 떼는 순간 분할이 켜지면 끈 적 없는 그 칸이
+  // 터미널 열에 선다.
+  test("work 화면 — 켜진 셸이 끝나도 옆 칸으로 분할이 안 켜진다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"]);
+    expect(await litName(page)).toBe("둘");
+
+    await pressAndCross(page, 1);
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+
+    await exitShell(page, 2);
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await settle(page);
+
+    await expect(page.locator("[data-column]")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/split=/);
+    await expect.poll(() => litName(page)).toBe("하나");
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // **끝나는 길이 종료 프레임만이 아니다** — ⌘W(확인을 거친 닫기)도 같은 목록에서 뺀다. 거두는 자리가
+  // 종료 프레임 쪽에만 걸려 있으면 이 길이 샌다.
+  test("work 화면 — 끄는 도중 ⌘W로 닫아도 거둬진다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"]);
+
+    await pressAndCross(page, 1);
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+
+    await page.keyboard.press("Meta+w");
+    const ask = page.getByRole("alertdialog");
+    await expect(ask).toBeVisible();
+    // 손은 눌린 채라 마우스로 못 누른다 — 키로 확인한다.
+    await ask.getByRole("button", { name: "닫기" }).press("Enter");
+    await expect.poll(() => namesOf(page)).toEqual(["하나"]);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await settle(page);
+
+    await expect(page).not.toHaveURL(/split=/);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // **Maison의 최상위 터미널**에서도 — 소유자 키가 세계마다 달라, 거두는 판정이 키에 매이면 한 세계만 거둔다.
+  test("`/maison/terminal` — 끄는 셸이 끝나면 끄는 모습이 걷힌다", async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/maison/terminal");
+    await nameShells(page, ["하나", "둘"]);
+
+    await pressAndCross(page, 0);
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+    await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+    await page.mouse.up();
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+});
+
+// **거두는 것은 끄는 셸이 목록에서 사라졌을 때뿐이다.** 판정을 「종료 프레임이 왔다」로 잡거나 셸 끌기
+// 아닌 것까지 보면 멀쩡한 끌기가 끊긴다 — 아래 둘은 그 넘치는 쪽을 막는다.
+test.describe("끌기가 사는 경우", () => {
+  // 0 아닌 코드로 끝난 칸은 줄에 남는다(결정 48 · `markExited`) — 그 셸은 아직 있다.
+  test("끄는 셸이 0 아닌 코드로 끝나 줄에 남으면 끌기가 살고 분할이 켜진다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"]);
+
+    await pressAndCross(page, 0);
+    await exitShell(page, 1, 1);
+    await settle(page);
+    await expect.poll(() => namesOf(page)).toHaveLength(2);
+    await expect(page.locator("body")).toHaveClass(/dragging-row/);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+
+    await expect(page).toHaveURL(/split=lr/);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+
+  // 문서 칸의 원천에는 셸이 없다 — 셸이 하나 끝났다고 문서 끌기가 끊기면 안 된다.
+  test("문서 칸을 끄는 도중 셸이 끝나도 끌기가 살고 분할이 켜진다", async ({ page }) => {
+    await openWork(page, ["하나", "둘"], { onSpec: true });
+
+    const spec = await page.locator('[data-tab="spec"]').boundingBox();
+    if (!spec) throw new Error("spec 칸의 상자를 못 읽었다");
+    await page.mouse.move(spec.x + spec.width / 2, spec.y + spec.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(spec.x + spec.width / 2 + 12, spec.y + spec.height / 2);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+
+    await exitShell(page, 1);
+    await expect.poll(() => namesOf(page)).toEqual(["둘"]);
+    await settle(page);
+    await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+
+    const half = await page.locator('[data-drop-half="right"]').boundingBox();
+    if (!half) throw new Error("오른쪽 절반의 상자를 못 읽었다");
+    await page.mouse.move(half.x + half.width / 2, half.y + half.height / 2, { steps: 4 });
+    await page.mouse.up();
+
+    // 문서를 오른쪽에 떨구면 문서가 오른쪽 열이다(`dropSplit`).
+    await expect(page).toHaveURL(/split=rl/);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 });

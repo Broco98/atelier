@@ -2,8 +2,10 @@
 import { readdirSync, readFileSync, type Dirent } from "fs";
 import { join, relative } from "path";
 import { fileURLToPath } from "url";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  armDrag,
+  cancelGoneShellDrag,
   clearHalf,
   DRAG_THRESHOLD,
   dragStore,
@@ -12,7 +14,7 @@ import {
   hoverSlot,
   shellMoveOf,
 } from "./pointer-drag";
-import type { DragSource } from "./pointer-drag";
+import type { DragSource, RowDragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
 // 폴더는 `/terminal`이 못 부르고(TerminalPage.test.tsx), 터미널 기능 폴더는 사이드바 목록이
@@ -141,6 +143,99 @@ describe("탭 줄에 놓인 셸", () => {
     { name: "문서 칸이면 없다", state: { source: { kind: "spec", owner: "atelier:", shellId: null }, half: null, slot: 0 }, want: null },
   ] as const)("$name", ({ state, want }) => {
     expect(shellMoveOf(state)).toEqual(want);
+  });
+});
+
+// **끄는 셸이 사라지면 끌기를 거둔다**(UI개선 결정 48 · 스펙 S8). 셸이 사라지는 길(종료 · `×`·⌘W · 아카이빙)은
+// 모두 터미널 스토어의 구독이 이것 하나로 모은다 — 그 구독은 xterm을 들여 노드에서 못 부르므로(L3
+// `tab-order.spec.ts`가 두 화면에서 잰다), 여기서는 **판정과 거두는 길**을 잰다: 문턱 뒤 · 문턱 전 · 살아
+// 있는 셸 · 셸이 아닌 원천. 창과 body는 이 몸짓이 쓰는 만큼만 세운다(리스너 · 클래스 목록).
+describe("끄는 셸이 사라지면", () => {
+  const classes = new Set<string>();
+  let target: EventTarget;
+
+  const pointer = (type: string, clientX: number, clientY = 0) =>
+    target.dispatchEvent(Object.assign(new Event(type), { clientX, clientY }));
+
+  beforeEach(() => {
+    target = new EventTarget();
+    classes.clear();
+    // 클릭 삼키기를 걷는 타이머는 곧바로 돈다 — 진짜 타이머면 창을 걷은 뒤에 돌아 없는 `window`를 부른다.
+    vi.stubGlobal("window", Object.assign(target, { setTimeout: (run: () => void) => run() }));
+    vi.stubGlobal("document", {
+      body: { classList: { add: (name: string) => classes.add(name), remove: (name: string) => classes.delete(name) } },
+    });
+    dragStore.setState(() => ({ source: null, half: null, slot: null }));
+    return () => {
+      // 다음 검사로 눌림이 새지 않게 손을 뗀다 — 이미 거둬졌으면 아무도 안 듣는다.
+      pointer("pointerup", 0);
+      vi.unstubAllGlobals();
+    };
+  });
+
+  const shell: DragSource = { kind: "shell", owner: "maison:", shellId: 3 };
+  const gone = () => false;
+
+  function arm(source: DragSource | RowDragSource) {
+    const calls: string[] = [];
+    armDrag(source, { clientX: 0, clientY: 0 }, {
+      drop: () => calls.push("drop"),
+      end: () => calls.push("end"),
+    });
+    return calls;
+  }
+
+  it("문턱을 넘은 끌기를 거둔다 — 표시를 걷고, 떼도 놓지 않는다", () => {
+    const calls = arm(shell);
+    pointer("pointermove", 20);
+    expect(dragStore.state.source).toBe(shell);
+    expect(classes.has("dragging-row")).toBe(true);
+
+    cancelGoneShellDrag((id) => id !== 3);
+
+    expect(dragStore.state.source).toBeNull();
+    expect(classes.has("dragging-row")).toBe(false);
+    // 거둔 뒤 움직여도 다시 안 선다.
+    pointer("pointermove", 40);
+    expect(dragStore.state.source).toBeNull();
+    pointer("pointerup", 40);
+    expect(calls).toEqual(["end"]);
+  });
+
+  // 누른 뒤 5px 전에 셸이 끝났다 — 남은 눌림이 다음 이동에서 죽은 id로 끌기를 시작하면 안 된다.
+  it("문턱 전의 눌림도 거둔다 — 그 뒤 움직여도 끌기가 안 선다", () => {
+    const calls = arm(shell);
+    cancelGoneShellDrag(gone);
+
+    pointer("pointermove", 20);
+    expect(dragStore.state.source).toBeNull();
+    expect(classes.has("dragging-row")).toBe(false);
+    pointer("pointerup", 20);
+    expect(calls).toEqual([]);
+  });
+
+  it("셸이 살아 있으면 끌기가 산다", () => {
+    const calls = arm(shell);
+    cancelGoneShellDrag((id) => id === 3);
+    pointer("pointermove", 20);
+    cancelGoneShellDrag((id) => id === 3);
+    expect(dragStore.state.source).toBe(shell);
+    pointer("pointerup", 20);
+    expect(calls).toEqual(["drop", "end"]);
+  });
+
+  // 셸이 없는 원천(문서 칸 · 작업 행)은 셸 목록과 무관하다 — 「없다」고 답해도 거두지 않는다.
+  it.each([
+    { name: "문서 칸", source: { kind: "spec", owner: "atelier:", shellId: null } as DragSource },
+    { name: "작업 행", source: { kind: "work", slug: "a" } as RowDragSource },
+  ])("$name 끌기는 거두지 않는다", ({ source }) => {
+    const calls = arm(source);
+    cancelGoneShellDrag(gone);
+    pointer("pointermove", 20);
+    cancelGoneShellDrag(gone);
+    expect(dragStore.state.source).toBe(source);
+    pointer("pointerup", 20);
+    expect(calls).toEqual(["drop", "end"]);
   });
 });
 
