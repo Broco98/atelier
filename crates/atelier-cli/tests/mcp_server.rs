@@ -1232,11 +1232,23 @@ fn edit_work_pin_over_a_broken_order_file_keeps_the_persons_bytes() {
 
         let kept = walk_files(&works)
             .into_iter()
-            .any(|path| std::fs::read_to_string(&path).is_ok_and(|content| content == broken));
+            .find(|path| std::fs::read_to_string(path).is_ok_and(|content| content == broken));
         assert!(
-            kept,
+            kept.is_some(),
             "{mode}: 깨진 순서 파일의 바이트가 고정 한 번에 사라졌다 — 남은 순서 파일: {:?}",
             std::fs::read_to_string(works.join(".order.json")).ok()
+        );
+
+        // 흔적은 **stderr에** 벌의 경로로 남는다 — stdout은 프로토콜이라(위 `request`가 줄마다 잰다)
+        // 진단이 새면 호스트가 끊긴다.
+        let _ = server.child.kill();
+        let mut stderr = String::new();
+        std::io::Read::read_to_string(&mut server.child.stderr.take().unwrap(), &mut stderr).unwrap();
+        let kept = kept.unwrap();
+        assert!(
+            stderr.contains(&kept.display().to_string()),
+            "{mode}: 벌을 떴다는 줄이 stderr에 벌의 경로를 안 적었다 ({}): {stderr}",
+            kept.display()
         );
     }
 }

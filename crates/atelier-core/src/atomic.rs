@@ -6,7 +6,7 @@
 //! 좀처럼 안 드러난다. 읽기(없음·깨짐 = 기본값 + stderr 한 줄)도 같은 까닭으로 여기 한 벌이다 —
 //! 파일이 하나 더 늘 때 두 모듈의 사본과 그 사본을 세는 주석이 함께 늘지 않게.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -17,12 +17,17 @@ use crate::Result;
 /// stderr 한 줄.** 기본값으로 눕는 판단 자체는 부르는 쪽 모듈에 적혀 있다(`recent.rs`의
 /// `read_recent`, `order.rs`의 `read_order`). `label`은 그 줄에서 어느 파일인지 가리는 이름이다.
 ///
-/// **이 크레이트에서 stderr로 나가는 자리는 여기 하나다 — 알고 그렇게 뒀다.** 나머지 진단은 전부
+/// **이 크레이트에서 stderr로 나가는 자리는 여기와 순서 파일 다시 쓰기(`order.rs`의
+/// `rewrite_order`가 벌을 떴다고 알리는 줄) 둘뿐이다 — 알고 그렇게 뒀다.** 나머지 진단은 전부
 /// 호스트(`src-tauri`·CLI)의 몫이고, 층으로 보면 「어떻게 알리나」는 기전이라 바깥의 것이 맞다.
 /// 그런데 이 읽기는 **오류를 안 돌려준다**(그것이 부르는 쪽 결정의 전부다) — 알릴 것을 밖으로
 /// 내보내려면 반환 모양을 바꾸거나 검색 전체에 진단 채널을 하나 꿰야 하고, 그 값은 셋뿐인
 /// 호스트가 전부 stderr를 진단 채널로 쓰고 있어서 0이다(MCP는 stdout이 프로토콜이라 특히
-/// 그렇다). 진단 채널이 생기는 날 이 두 줄이 그리로 간다.
+/// 그렇다). 진단 채널이 생기는 날 이 줄들이 그리로 간다.
+///
+/// **이 읽기의 결과를 그대로 다시 쓰면 안 된다** — 깨진 파일이 기본값으로 누워 있어서 그 쓰기가
+/// 사람의 손질을 덮는다. 다시 쓰는 길은 깨짐을 가려 받는 읽기를 따로 둔다(`order.rs`의
+/// `read_order_to_rewrite`).
 ///
 /// **파일도 폴더도 만들지 않는다.** 글자마다 부르는 자리가 무엇을 만들면 「읽기만 한다」가
 /// 거짓이 된다.
@@ -88,7 +93,40 @@ pub(crate) fn write_atomically(dir: &Path, file_name: &str, contents: &str) -> R
     Ok(())
 }
 
-/// 이 쓰기만의 tmp 이름. 프로세스와 호출을 함께 세므로 **한 기계 안에서 안 겹친다** —
+/// 곧 덮일 파일의 **바이트 그대로**를 같은 폴더의 벌 한 장에 떠 두고 그 경로를 돌려준다 —
+/// 사람이 손으로 고치다 깨뜨린 파일을 다시 쓰기 전에 부른다.
+///
+/// 이름은 `<파일>.bak`이다(훅 설치기 `hooks.rs`의 `.bak`과 같은 머리 — 확장자를 갈지 않고
+/// 붙인다). **다만 이미 있는 벌은 절대 안 덮는다** — 설치기의 `.bak`은 「방금 우리가 떠 둔 것」
+/// 이라 덮어도 되지만, 여기서 덮일 것은 **지난번에 깨졌던 사람의 손질**이다. 그래서
+/// `create_new`로 `<파일>.bak` → `<파일>.1.bak` → `<파일>.2.bak` 순으로 빈 이름을 잡는다.
+/// 벌은 파일이 깨졌을 때만 뜨므로 쌓일 일이 드물다.
+///
+/// 이름이 `.tmp`로 끝나지 않는 것이 계약이다 — tmp 찌꺼기로 읽혀 치워지면 안 된다. 점 파일에서
+/// 부르면 벌도 점 파일이라 목록 열거와 감시자가 건너뛴다.
+pub(crate) fn keep_aside(dir: &Path, file_name: &str, bytes: &[u8]) -> Result<PathBuf> {
+    use std::io::Write;
+    for n in 0u64.. {
+        let name = if n == 0 { format!("{file_name}.bak") } else { format!("{file_name}.{n}.bak") };
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+                    // 잘린 벌을 남기면 사람이 그것을 원문으로 착각한다.
+                    drop(file);
+                    let _ = std::fs::remove_file(&path);
+                    return Err(e.into());
+                }
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    unreachable!("벌 이름이 다 찼다")
+}
+
+/// 이 쓰기만의 tmp 이름.프로세스와 호출을 함께 세므로 **한 기계 안에서 안 겹친다** —
 /// 시계를 안 쓰는 것은 같은 밀리초에 두 번 쓰는 것이 정확히 이 파일들의 흔한 경우라서다
 /// (StrictMode가 effect를 두 번 돌린다).
 ///
