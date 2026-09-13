@@ -7,6 +7,11 @@ export type PanelSide = "left" | "right";
 
 export interface ResizableWidth {
   width: number;
+  /**
+   * 끄는 최소 폭. 패널이 창이 좁아 저장한 폭보다 좁게 설 때의 바닥도 **이 값 하나다** — 끌어서는
+   * 못 만드는 폭으로 서지 않게 같은 수를 CSS 변수로 내린다(Sidebar · WorkPanel).
+   */
+  min: number;
   dragging: boolean;
   side: PanelSide;
   handleProps: {
@@ -81,12 +86,18 @@ function useResizableWidth(
 
   return {
     width,
+    min,
     dragging,
     side,
     handleProps: {
       onPointerDown: (e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
-        start.current = { x: e.clientX, width };
+        // **그려진 폭에서 출발한다 — 저장된 폭이 아니다.** 창이 좁으면 사이드바·작업 패널이
+        // 탭 줄에 자리를 내주느라 저장된 폭보다 좁게 서는데(`TAB_ROW_COLUMN` 주석), 저장값에서
+        // 출발하면 첫 움직임에 그 차이만큼 손잡이가 포인터에서 떨어져 튄다. 핸들의 부모가 곧
+        // 그 패널이다(아래 `ResizeHandle` 머리말).
+        const drawn = e.currentTarget.parentElement?.getBoundingClientRect().width;
+        start.current = { x: e.clientX, width: drawn ? Math.min(width, Math.round(drawn)) : width };
         setResizing(true);
         setDragging(true);
       },

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import { TAB_ROW_COLUMN } from "@/features/terminal/ShellTabs";
 import { worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
@@ -483,17 +484,17 @@ describe("WorksPage 여는 버튼과 닫는 ×의 오른쪽 여백", () => {
   });
 });
 
-// 본문 열과 작업 패널을 담는 행은 **자기도 flex 항목이라** min-w-0이 필요하다.
-// 없으면 min-width가 auto가 되어 자기 min-content만큼 부풀고, 그만큼 패널이 창 밖으로
-// 밀려 잘린다. 미는 양이 본문 내용에 따라 달라지기 때문에 **패널 폭이 저 혼자 바뀌는
-// 것처럼 보인다** — 실제로 소스 보기를 켜고 끌 때마다 그랬다.
+// 본문 열과 작업 패널을 담는 행은 **자기도 flex 항목이라** 제 최소 폭이 곧 사이드바가 내줄
+// 자리다. 한때 `min-w-0`이었다 — 본문 열의 min-content(넓은 문서·코드뷰)가 행을 부풀려 패널을
+// 창 밖으로 밀었기 때문이다(소스 보기를 켜고 끌 때마다 패널 폭이 저 혼자 바뀌어 보였다).
 //
-// **그 행이 이제 이 화면의 것이다**(결정 49) — 한때 SpecViewer가 들고 있었는데, 패널이
-// 올라오면서 본문과 패널을 나란히 세우는 일도 함께 올라왔다.
+// 이제 이 행의 최소 폭은 **탭 줄 + 패널의 최소 폭**이다(`TAB_ROW_COLUMN`): 본문 열이 줄(`header`)
+// 아닌 자식의 내용 폭을 바깥에 안 알리므로 넓은 문서가 섞이지 않고, 그래서 행이 `min-w-min`이어도
+// 부풀지 않는다. 그 바닥이 없으면 900px 창에서 칸 상자가 0px이 되어 칸이 안 보였다.
 //
-// 레이아웃은 정적 마크업으로 볼 수 없으므로 클래스가 붙어 있다는 것만 본다. 약한 검사지만
-// 이 한 줄이 사라지는 것을 아무도 못 잡는 상태보다는 낫다.
-describe("WorksPage 본문·패널 행의 min-w-0", () => {
+// 레이아웃은 정적 마크업으로 볼 수 없으므로 클래스가 붙어 있다는 것만 본다 — 실제로 칸이 남고
+// 넓은 문서에서 패널이 안 밀리는지는 `e2e/tab-row-floor.spec.ts`가 잰다.
+describe("WorksPage 본문·패널 행의 최소 폭", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
@@ -501,9 +502,29 @@ describe("WorksPage 본문·패널 행의 min-w-0", () => {
     vi.unstubAllGlobals();
   });
 
-  it("본문 열과 패널을 담는 행이 min-w-0을 갖는다", () => {
+  it("본문 열과 패널을 담는 행이 min-w-min을 갖는다", () => {
     // relative는 생애주기 오버레이·토스트가 이 영역을 기준으로 서기 위한 것이다
-    expect(render()).toContain('class="relative flex min-h-0 min-w-0 flex-1"');
+    expect(render()).toContain('class="relative flex min-h-0 min-w-min flex-1"');
+  });
+
+  it("탭 줄을 이는 본문 열이 세 갈래 모두 그 바닥을 든다", () => {
+    // 문서 · 터미널 · 분할 — 머리행이 서는 열이 갈래마다 다른 요소라, 한 갈래만 빠져도 그
+    // 본문에서만 칸이 사라진다. 바닥 클래스는 `ShellTabs`가 내보낸 한 벌을 그대로 쓴다.
+    const floor = TAB_ROW_COLUMN.split(" ");
+    const columnOf = (markup: string) => {
+      const at = markup.indexOf("<header");
+      if (at < 0) throw new Error("머리행이 없다");
+      const open = markup.lastIndexOf("<", markup.lastIndexOf(">", at - 1));
+      return markup.slice(open, markup.indexOf(">", open) + 1).replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    };
+    for (const [tab, split] of [["spec", null], ["terminal", null], ["spec", "lr"]] as const) {
+      const markup = render({ specFiles: ["overview.md"] }, tab, split);
+      // 갈래가 정말 갈렸는지부터 — 분할이 안 서면 셋째 줄이 첫째 줄을 한 번 더 잰다.
+      expect(markup.includes("data-column="), `${tab} ${split}`).toBe(split !== null);
+      const column = columnOf(markup);
+      for (const one of floor) expect(column, `${tab} ${split}`).toContain(one);
+      expect(column, `${tab} ${split}`).not.toContain("min-w-0");
+    }
   });
 });
 

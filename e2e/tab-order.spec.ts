@@ -190,8 +190,8 @@ test.describe("work 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창의 여유가 3.5px이라 폭을 먹는
-  // 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
+  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창에서는 칸 상자가 칸 하나 폭까지
+  // 줄어 있어 폭을 먹는 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
   //
   // 셸이 여덟이라 줄이 가로로 스크롤된다(결정 20) — 그래도 틈이 맞는지를 **놓아서** 본다.
@@ -228,16 +228,33 @@ test.describe("work 화면", () => {
       // 있어 줄이 스스로 거기 와 있지 않다. 이 폭들에서는 줄이 이미 넘쳐 스크롤이 0이 아니어야
       // 이 검사가 「스크롤된 줄에서도」를 잰다. 반 칸인 것은 넘침이 한 칸보다 작은 폭(1280)이
       // 있어서고, 4분의 1 칸을 넘으면 아래 포인터가 뷰포트 좌표로는 다른 틈으로 읽힌다.
+      //
+      // **다만 끄는 칸이 상자 안에 온전히 들어오는 데까지만 민다.** 900px에서는 상자가 칸
+      // 하나 폭이라(`ShellTabs`의 상자 바닥) 반 칸만 덜 밀면 끄는 칸의 가운데가 상자 왼쪽 밖에
+      // 있다 — 거기를 누르면 칸이 아니라 옆의 세로선을 누른다. 그 폭에서는 끄는 칸의 오른쪽
+      // 끝을 상자의 오른쪽 끝에 맞추고, 누른 뒤 끝까지 미는 거리가 한 칸이 된다(4분의 1보다 크다).
       const strip = page.locator("[data-tab-strip]");
       const step = await shellTabs(page)
         .nth(MAX_SHELLS - 1)
         .evaluate((cell) => cell.getBoundingClientRect().width);
-      const pressedAt = await strip.evaluate((el, half) => {
-        const max = el.scrollWidth - el.clientWidth;
-        el.scrollLeft = max - Math.min(half, max - 1);
-        return el.scrollLeft;
-      }, Math.ceil(step / 2));
+      const dragged = shellTabs(page).nth(MAX_SHELLS - 2);
+      const draggedRight = await dragged.evaluate((cell: HTMLElement) => cell.offsetLeft + cell.offsetWidth);
+      const pressedAt = await strip.evaluate(
+        (el, [half, right]) => {
+          const max = el.scrollWidth - el.clientWidth;
+          el.scrollLeft = Math.max(1, Math.min(max - Math.min(half, max - 1), right - el.clientWidth));
+          return el.scrollLeft;
+        },
+        [Math.ceil(step / 2), draggedRight] as const,
+      );
       expect(pressedAt, at).toBeGreaterThan(0);
+      // 끄는 칸이 상자 안에 **온전히** 보인다 — 사람이 누를 수 있는 칸이다.
+      const seen = await dragged.evaluate((cell) => {
+        const box = cell.closest("[data-tab-strip]")!.getBoundingClientRect();
+        const own = cell.getBoundingClientRect();
+        return own.left >= box.left - 0.5 && own.right <= box.right + 0.5;
+      });
+      expect(seen, at).toBe(true);
 
       await pressAndCross(page, MAX_SHELLS - 2);
       // 누른 채 끝까지 민다 — 누를 때 잰 기하가 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸

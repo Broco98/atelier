@@ -50,7 +50,7 @@ const LINE = 1;
  * 흐르므로 `scrollLeft`를 빼지 않는다.
  *
  * 칸 사이면 간격 한가운데다. 양 끝은 줄 안쪽 끝에 붙는다 — **줄 밖으로 내밀면 스크롤 상자가
- * 그만큼 넘쳐** 넘치지 않던 줄이 스크롤을 얻는다(900px 창의 여유는 3.5px뿐이다).
+ * 그만큼 넘쳐** 넘치지 않던 줄이 스크롤을 얻는다(좁은 창에서 상자는 칸 하나 폭까지 줄어 있다).
  */
 export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
   const { tabs, view } = geometry;
