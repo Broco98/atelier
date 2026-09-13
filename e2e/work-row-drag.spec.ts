@@ -283,7 +283,7 @@ test("move_work의 응답으로 화면이 그 순서로 선다", async ({ page }
 // 빈 받침 · 자동 스크롤 · 끄는 도중의 목록 갱신. 틈 규칙(받침 줄)과 순열 판정은 `row-drop.test.ts`가,
 // 「모두 고정」의 `작업` 받침은 fixture로 못 지어 `SidebarWorkList.test.tsx`의 마크업이 잰다.
 
-const slot = (page: Page, section: "pinned" | "works") => page.locator(`[data-drop-slot="${section}"]`);
+const emptySlot = (page: Page, section: "pinned" | "works") => page.locator(`[data-empty-slot="${section}"]`);
 
 test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", () => {
   const [firstRoom, secondRoom] = ROOMS;
@@ -299,13 +299,13 @@ test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", (
 
   test("끄는 동안만 서고, 거기 놓으면 `pinned: true, before: null`", async ({ page }) => {
     await openRooms(page);
-    await expect(slot(page, "pinned")).toHaveCount(0);
+    await expect(emptySlot(page, "pinned")).toHaveCount(0);
 
     await pickUpRow(page, secondRoom.slug);
-    await expect(slot(page, "pinned")).toBeVisible();
-    await hoverRowPoint(page, slot(page, "pinned"), "middle");
+    await expect(emptySlot(page, "pinned")).toBeVisible();
+    await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
     // 받침에 놓일 때는 선 대신 받침이 밝아진다.
-    await expect(slot(page, "pinned")).toHaveAttribute("data-lit", "");
+    await expect(emptySlot(page, "pinned")).toHaveAttribute("data-lit", "");
     await expect(line(page)).toHaveCount(0);
     await page.mouse.up();
 
@@ -318,12 +318,12 @@ test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", (
   test("놓지 않고 목록 밖에서 떼면 받침이 사라지고 명령이 안 나간다", async ({ page }) => {
     await openRooms(page);
     await pickUpRow(page, secondRoom.slug);
-    await hoverRowPoint(page, slot(page, "pinned"), "middle");
-    await expect(slot(page, "pinned")).toHaveAttribute("data-lit", "");
+    await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
+    await expect(emptySlot(page, "pinned")).toHaveAttribute("data-lit", "");
 
     await page.mouse.move(700, 400, { steps: 6 });
     await page.mouse.up();
-    await expect(slot(page, "pinned")).toHaveCount(0);
+    await expect(emptySlot(page, "pinned")).toHaveCount(0);
     await page.waitForTimeout(300);
     expect(await moves(page)).toEqual([]);
   });
@@ -375,5 +375,33 @@ test("끄는 도중 `works:changed`가 와도 목록이 같으면 끌기가 살�
   await expect.poll(() => moves(page)).toEqual([
     { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
   ]);
+  await stayedHome(page);
+});
+
+// 같은 규칙의 반대쪽 — **순열이 바뀐 목록이 오면 끌기를 거둔다**. fixture 목록은 늘 같아 순열을 바꿀
+// 길이 하나뿐이다: 먼저 한 번 놓아 캐시를 `move_work`의 답(뒤집은 목록)으로 갈아 두고, 끄는 도중
+// `works:changed`로 원래 목록을 다시 받는다. 위 검사는 효과를 지우거나 조건이 늘 거짓이어도 초록이라
+// (같은 목록이면 react-query가 같은 참조를 주어 효과가 안 돈다) 이것이 「거둔다」 쪽을 붙든다.
+// 남는 구멍: 「참조만 바뀌면 무조건 거둔다」는 둘 다 초록이다 — fixture가 순열은 같고 참조만 다른 목록을
+// 못 지어서다. 그 판정 자체는 `row-drop.test.ts`의 `orderChanged` 표가 잰다.
+test("끄는 도중 받은 목록의 순서가 바뀌면 끌기가 거둬지고 떼도 명령이 안 나간다", async ({ page }) => {
+  await openList(page);
+  await dragRowOnto(page, multiWork.slug, workRow(page, plainWork.slug), "upper");
+  await expect.poll(() => moves(page)).toHaveLength(1);
+  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(WORKS_MOVED));
+
+  await pickUpRow(page, plainWork.slug);
+  await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
+  await expect(line(page)).toBeVisible();
+
+  await fireEvent(page, "works:changed", null);
+  // 원래 순서가 화면에 섰다 — 재조회가 돌아 순열이 바뀐 목록을 받았다.
+  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(WORKS));
+  await expect(line(page)).toHaveCount(0);
+  await expect(workRow(page, plainWork.slug)).toHaveCSS("opacity", "1");
+  await page.mouse.up();
+
+  await page.waitForTimeout(300);
+  expect(await moves(page)).toHaveLength(1);
   await stayedHome(page);
 });

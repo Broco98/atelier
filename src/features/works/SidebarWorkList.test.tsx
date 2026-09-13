@@ -60,7 +60,7 @@ function render(
     renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
     draggedSlug = null,
     lineY = null,
-    litSlot = null,
+    litEmptySlot = null,
   }: {
     mode?: Mode;
     selectedSlug?: string | null;
@@ -69,7 +69,7 @@ function render(
     renderSubrow?: (work: WorkView) => ReactNode;
     draggedSlug?: string | null;
     lineY?: number | null;
-    litSlot?: keyof SectionsOpen | null;
+    litEmptySlot?: keyof SectionsOpen | null;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -88,7 +88,7 @@ function render(
       renderSubrow={renderSubrow}
       draggedSlug={draggedSlug}
       lineY={lineY}
-      litSlot={litSlot}
+      litEmptySlot={litEmptySlot}
       onArmDrag={() => {}}
     />,
   );
@@ -756,13 +756,13 @@ describe("끄는 동안의 그림", () => {
 // 마지막 고정 해제도(모두 고정이라 `작업` 0개) 같은 손짓이게. 「모두 고정」은 L3 fixture로 못 지어
 // (`list_works`를 테스트마다 못 덮는다) 여기가 그 갈래를 재는 유일한 자리다.
 describe("빈 받침", () => {
-  const slotsOf = (markup: string) => [...markup.matchAll(/data-drop-slot="([^"]*)"/g)].map((m) => m[1]);
+  const slotsOf = (markup: string) => [...markup.matchAll(/data-empty-slot="([^"]*)"/g)].map((m) => m[1]);
 
   it("끄는 중이고 `작업`이 비었으면(모두 고정) `작업`에 받침이 선다", () => {
     const markup = render(works("pin:가", "pin:나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["works"]);
     // `작업` 머리 **아래**다 — 머리보다 앞에 서면 `고정` 구획에 붙은 것으로 읽힌다.
-    expect(markup.indexOf('data-drop-slot="works"')).toBeGreaterThan(markup.indexOf('data-drop-head="works"'));
+    expect(markup.indexOf('data-empty-slot="works"')).toBeGreaterThan(markup.indexOf('data-drop-head="works"'));
   });
 
   it("끄는 중이 아니면 모두 고정이어도 받침이 없다", () => {
@@ -772,7 +772,7 @@ describe("빈 받침", () => {
   it("끄는 중이고 `고정`이 비었으면 `고정` 받침이 `작업` 머리 위에 선다", () => {
     const markup = render(works("가", "나"), ALL, { draggedSlug: "가" });
     expect(slotsOf(markup)).toEqual(["pinned"]);
-    expect(markup.indexOf('data-drop-slot="pinned"')).toBeLessThan(markup.indexOf('data-drop-head="works"'));
+    expect(markup.indexOf('data-empty-slot="pinned"')).toBeLessThan(markup.indexOf('data-drop-head="works"'));
     // 받침은 머리를 되살리지 않는다 — 결정 82의 「빈 `고정`엔 머리가 없다」는 끄는 동안에도 그대로다.
     expect(headersOf(markup).map((one) => one.label)).toEqual(["작업"]);
   });
@@ -785,11 +785,11 @@ describe("빈 받침", () => {
     expect(slotsOf(render(works("pin:가", "나"), ALL, { draggedSlug: "나" }))).toEqual([]);
   });
 
-  // 틈이 받침에 떨어지면 선 대신 받침이 밝아진다(`gapLineY`가 받침 구획에 `null`을 준다).
+  // 틈이 받침에 떨어지면 선 대신 받침이 밝아진다(`gapMark`가 받침 구획엔 선 대신 받침을 준다).
   it("받은 구획의 받침만 밝아진다", () => {
-    const slotTag = (markup: string) => markup.match(/<div data-drop-slot="pinned"[^>]*>/)?.[0] ?? "";
+    const slotTag = (markup: string) => markup.match(/<div data-empty-slot="pinned"[^>]*>/)?.[0] ?? "";
     const idle = slotTag(render(works("가"), ALL, { draggedSlug: "가" }));
-    const lit = slotTag(render(works("가"), ALL, { draggedSlug: "가", litSlot: "pinned" }));
+    const lit = slotTag(render(works("가"), ALL, { draggedSlug: "가", litEmptySlot: "pinned" }));
     expect(idle).not.toBe("");
     expect(idle).not.toContain("data-lit");
     expect(lit).toContain('data-lit=""');

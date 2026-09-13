@@ -19,19 +19,14 @@ export interface Span {
   bottom: number;
 }
 
-export interface SectionGeometry {
+/**
+ * 구획 하나의 기하. **머리와 받침 중 하나는 반드시 있다** — 둘 다 없는 구획은 가리킬 사각형이 없어
+ * 기하에 안 싣는다. 그 보장을 타입이 말한다: 머리가 없는 구획(빈 `고정` — 결정 82가 머리를 걷었다)은
+ * 받침이 있어야만 선다.
+ */
+export type SectionGeometry = SectionRects & {
   /** 이 구획이 `고정`인가. 틈의 `pinned`가 여기서 나온다. */
   pinned: boolean;
-  /**
-   * 구획 머리 — 접혀도 펼쳐도 선다. **없는 구획이 하나 있다**: 빈 `고정`(결정 82가 머리를 걷었다).
-   * 그 구획은 끄는 동안 받침(`slot`)만 선다.
-   */
-  head: Span | null;
-  /**
-   * **빈 받침**(티켓 06 · 스펙 S7) — 행이 하나도 없는 구획에 끄는 동안만 서는 사각형. 없으면 안 싣는다.
-   * 머리 아래(빈 `작업`)거나 머리 대신(빈 `고정`)이다.
-   */
-  slot?: Span;
   /** **보이는** 행들, 위에서부터. 접힌 구획은 비어 있다. */
   rows: Array<Span & { slug: string }>;
   /**
@@ -39,7 +34,15 @@ export interface SectionGeometry {
    * 나온다 — 보이는 행에서 찾으면 접힌 구획에는 첫 slug가 없다.
    */
   slugs: string[];
-}
+};
+
+/**
+ * - `head` — 구획 머리. 접혀도 펼쳐도 선다.
+ * - `emptySlot` — **빈 받침**(티켓 06 · 스펙 S7): 행이 하나도 없는 구획에 끄는 동안만 서는 사각형. 머리
+ *   아래(빈 `작업`)거나 머리 대신(빈 `고정`)이다. 가리킬 수 없으면(접힌 몸통 안) 안 싣는다.
+ *   탭 끌기의 `slot`(탭 사이 틈)과 다른 것이라 이름을 달리한다.
+ */
+type SectionRects = { head: Span; emptySlot?: Span } | { head: null; emptySlot: Span };
 
 export interface ListGeometry {
   /** 스크롤 상자의 **뷰포트** 사각형. 이 밖이면 놓을 곳이 없다. */
@@ -73,11 +76,14 @@ export interface DropPointer {
  */
 export function rowGap(geometry: ListGeometry, dragged: string, pointer: DropPointer): RowGap | null {
   const { box } = geometry;
-  if (pointer.x < box.left || pointer.x > box.right || pointer.y < box.top || pointer.y > box.bottom) {
-    return null;
-  }
+  if (!insideBox(box, pointer)) return null;
   const gap = gapAt(geometry.sections, pointer.y - box.top + pointer.scrollTop);
   return gap === null || staysPut(geometry.sections, dragged, gap) ? null : gap;
+}
+
+/** 틈 규칙 1의 상자 — 이 밖은 놓을 곳이 없고, 그래서 자동 스크롤도 안 돈다. */
+function insideBox(box: ListGeometry["box"], point: { x: number; y: number }): boolean {
+  return point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
 }
 
 function gapAt(sections: SectionGeometry[], y: number): RowGap | null {
@@ -85,19 +91,18 @@ function gapAt(sections: SectionGeometry[], y: number): RowGap | null {
   let above: RowGap | null = null;
   for (const section of sections) {
     const top: RowGap = { pinned: section.pinned, before: section.slugs[0] ?? null };
-    const { head, slot } = section;
+    const { head, emptySlot } = section;
     // 첫 머리 위의 여백(`mt-3`)은 위에 사각형이 없다 — 표가 비워 둔 자리라 그 구획 첫 사각형의 판정을
     // 준다. 머리가 없는 구획(빈 `고정`)은 받침이 그 첫 사각형이고, 빈 구획의 「맨 위」와 받침의 답은 같다.
-    const first = head ?? slot;
-    if (first && y < first.top) return above ?? top;
+    if (y < (head ?? emptySlot).top) return above ?? top;
     if (head) {
       if (y < head.bottom) return top;
       above = top;
     }
-    if (slot) {
+    if (emptySlot) {
       const into: RowGap = { pinned: section.pinned, before: null };
-      if (y < slot.top) return above;
-      if (y < slot.bottom) return into;
+      if (y < emptySlot.top) return above;
+      if (y < emptySlot.bottom) return into;
       above = into;
     }
     for (const row of section.rows) {
@@ -128,28 +133,31 @@ function staysPut(sections: SectionGeometry[], dragged: string, gap: RowGap): bo
 }
 
 /**
- * 틈 선이 설 내용 좌표 y. **사이의 가운데**에 선다 — 행 윗변에 붙이면 선이 그 행의 것으로 읽힌다.
- * 접힌 구획처럼 보이는 행이 없으면 머리 아랫변이다.
+ * 틈을 화면에 어떻게 보이나 — **선이거나, 밝아진 받침이거나** 둘 중 하나다. 둘을 한 자리에서 같은
+ * 기하로 정한다: 따로 정하면(선은 기하로, 받침은 목록 데이터로) 접힌 빈 구획처럼 둘의 입력이 갈리는
+ * 곳에서 선과 받침이 함께 켜진다.
  *
- * **받침이 선 구획이면 선이 없다**(`null`) — 받침 자신이 밝아져 자리를 말한다. 빈 구획엔 선이 설
- * 「사이」가 없고, 머리 아랫변에 세우면 받침 윗변에 붙어 「받침 위의 틈」으로 읽힌다.
+ * - **받침이 기하에 실린 구획이면 받침이 밝아진다**(`emptySlot`에 그 구획의 `pinned`) — 빈 구획엔 선이 설
+ *   「사이」가 없고, 머리 아랫변에 세우면 받침 윗변에 붙어 「받침 위의 틈」으로 읽힌다.
+ * - 아니면 선의 내용 좌표 y. **사이의 가운데**에 선다 — 행 윗변에 붙이면 선이 그 행의 것으로 읽힌다.
+ *   접힌 구획처럼 보이는 행이 없으면 머리 아랫변이다.
  */
-export function gapLineY(geometry: ListGeometry, gap: RowGap): number | null {
+export type GapMark = { lineY: number } | { emptySlot: boolean };
+
+export function gapMark(geometry: ListGeometry, gap: RowGap): GapMark | null {
   const section = geometry.sections.find((one) => one.pinned === gap.pinned);
-  if (!section || section.slot) return null;
-  const { rows } = section;
-  // 머리가 없는 구획은 빈 `고정`뿐이고 그 구획엔 행이 없다 — 그래도 타입이 열어 둔 자리라 첫 행
-  // 윗변으로 받는다(선이 그 행 윗변에 붙을 뿐 틀린 자리는 아니다).
-  const headBottom = section.head?.bottom ?? rows[0]?.top ?? null;
-  if (rows.length === 0 || headBottom === null) return headBottom;
-  const bottomBefore = (index: number) => (index === 0 ? headBottom : rows[index - 1].bottom);
+  if (!section) return null;
+  if (section.head === null || section.emptySlot) return { emptySlot: section.pinned };
+  const { rows, head } = section;
+  if (rows.length === 0) return { lineY: head.bottom };
+  const bottomBefore = (index: number) => (index === 0 ? head.bottom : rows[index - 1].bottom);
   if (gap.before === null) {
     const last = rows.length - 1;
-    return rows[last].bottom + (rows[last].top - bottomBefore(last)) / 2;
+    return { lineY: rows[last].bottom + (rows[last].top - bottomBefore(last)) / 2 };
   }
   const index = rows.findIndex((row) => row.slug === gap.before);
-  if (index < 0) return headBottom;
-  return (bottomBefore(index) + rows[index].top) / 2;
+  if (index < 0) return { lineY: head.bottom };
+  return { lineY: (bottomBefore(index) + rows[index].top) / 2 };
 }
 
 /**
@@ -168,9 +176,9 @@ export function orderChanged(before: readonly WorkView[], after: readonly WorkVi
 }
 
 /** 자동 스크롤이 도는 가장자리 띠의 두께(px) — 행(55px)의 절반쯤이라 행 위를 지나는 손엔 안 걸린다. */
-export const EDGE_BAND = 28;
+const EDGE_BAND = 28;
 /** 한 프레임에 가장 많이 굴리는 양(px). 60fps에 초당 600px — 목록 한 화면을 1초 안에 넘긴다. */
-export const EDGE_MAX_STEP = 10;
+const EDGE_MAX_STEP = 10;
 
 /**
  * **가장자리 자동 스크롤**의 한 프레임 걸음(티켓 06 · 스토리 13). 양수면 아래로. 좌표는 **뷰포트**다 —
@@ -181,7 +189,7 @@ export const EDGE_MAX_STEP = 10;
  *   끌고 나간 손이 사이드바를 흔든다.
  */
 export function edgeScrollStep(box: ListGeometry["box"], point: { x: number; y: number }): number {
-  if (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom) return 0;
+  if (!insideBox(box, point)) return 0;
   const speed = (depth: number) => Math.ceil((EDGE_MAX_STEP * Math.min(depth, EDGE_BAND)) / EDGE_BAND);
   const fromBottom = box.bottom - point.y;
   if (fromBottom < EDGE_BAND) return speed(EDGE_BAND - fromBottom);

@@ -11,7 +11,7 @@ import { WorkCard } from "./WorkCard";
 import { WorkSectionList } from "./WorkSectionList";
 import {
   edgeScrollStep,
-  gapLineY,
+  gapMark,
   orderChanged,
   rowGap,
   type ListGeometry,
@@ -257,27 +257,20 @@ function SidebarWorkList({
     const sectionOf = (key: keyof SectionsOpen, list: WorkView[]): SectionGeometry[] => {
       const head = box.querySelector(`[data-drop-head="${key}"]`);
       // 빈 받침(티켓 06). 빈 `고정`은 머리 없이 받침만 서므로 둘 다 없을 때만 구획이 없다.
-      const slotEl = box.querySelector(`[data-drop-slot="${key}"]`);
+      const slotEl = box.querySelector(`[data-empty-slot="${key}"]`);
       // 접힌 구획의 행·받침은 높이 0으로 DOM에 남는다(`SectionBody`) — 가리킬 수 없으니 안 싣는다.
       // 빈 `고정`의 받침은 몸통 밖이라 접힘과 무관하다.
       const reachable = sectionsOpen[key] || head === null;
-      const slot = slotEl && reachable ? span(slotEl) : undefined;
-      if (!head && !slot) return [];
+      const emptySlot = slotEl && reachable ? span(slotEl) : undefined;
       const rows = sectionsOpen[key]
         ? list.flatMap((work) => {
             const el = rowEls.get(work.slug);
             return el ? [{ slug: work.slug, ...span(el) }] : [];
           })
         : [];
-      return [
-        {
-          pinned: key === "pinned",
-          head: head ? span(head) : null,
-          ...(slot ? { slot } : {}),
-          rows,
-          slugs: list.map((work) => work.slug),
-        },
-      ];
+      const rest = { pinned: key === "pinned", rows, slugs: list.map((work) => work.slug) };
+      if (head) return [{ ...rest, head: span(head), emptySlot }];
+      return emptySlot ? [{ ...rest, head: null, emptySlot }] : [];
     };
     return {
       box: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
@@ -344,13 +337,11 @@ function SidebarWorkList({
     });
   };
 
-  const lineY = gap && geometry.current ? gapLineY(geometry.current, gap) : null;
-  // 틈이 **빈 구획**에 떨어졌으면 그 받침이 밝아진다 — 빈 구획엔 받침 말고 놓일 자리가 없다(머리에 놓아도 같은 답).
-  const gapSection: keyof SectionsOpen | null = gap === null ? null : gap.pinned ? "pinned" : "works";
-  const litSlot =
-    gapSection !== null && (gapSection === "pinned" ? sections.pinned : sections.main).length === 0
-      ? gapSection
-      : null;
+  // 선이냐 밝아진 받침이냐는 `gapMark` 한 자리가 재어 둔 기하로 정한다 — 둘이 함께 켜지는 일이 없다.
+  const mark = gap && geometry.current ? gapMark(geometry.current, gap) : null;
+  const lineY = mark && "lineY" in mark ? mark.lineY : null;
+  const litEmptySlot: keyof SectionsOpen | null =
+    mark && "emptySlot" in mark ? (mark.emptySlot ? "pinned" : "works") : null;
 
   return (
     <>
@@ -423,7 +414,7 @@ function SidebarWorkList({
             renderSubrow={renderSubrow}
             draggedSlug={draggedSlug}
             lineY={lineY}
-            litSlot={litSlot}
+            litEmptySlot={litEmptySlot}
             onArmDrag={startDrag}
           />
         </div>

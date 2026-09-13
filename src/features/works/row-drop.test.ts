@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { edgeScrollStep, gapLineY, movedWorks, orderChanged, rowGap } from "./row-drop";
+import { edgeScrollStep, gapMark, movedWorks, orderChanged, rowGap } from "./row-drop";
 import type { ListGeometry, RowGap } from "./row-drop";
 import type { WorkView } from "./types";
 
@@ -62,7 +62,7 @@ const PINNED_SHUT: ListGeometry = {
 const NO_PINNED: ListGeometry = {
   box: BOX,
   sections: [
-    { pinned: true, head: null, slot: { top: 12, bottom: 48 }, rows: [], slugs: [] },
+    { pinned: true, head: null, emptySlot: { top: 12, bottom: 48 }, rows: [], slugs: [] },
     {
       pinned: false,
       head: { top: 60, bottom: 88 },
@@ -88,7 +88,27 @@ const ALL_PINNED: ListGeometry = {
       ],
       slugs: ["p1", "p2"],
     },
-    { pinned: false, head: { top: 168, bottom: 196 }, slot: { top: 199, bottom: 235 }, rows: [], slugs: [] },
+    { pinned: false, head: { top: 168, bottom: 196 }, emptySlot: { top: 199, bottom: 235 }, rows: [], slugs: [] },
+  ],
+};
+
+/**
+ * **모두 고정인데 `작업`이 접힌** 목록을 끄는 중. 받침은 접힌 몸통 안에 높이 0으로 남아 가리킬 수 없으니
+ * 기하에 안 실린다 — 머리만 남은 접힌 구획과 같다. 받침이 밝아질 자리가 없으니 선이어야 한다.
+ */
+const ALL_PINNED_WORKS_SHUT: ListGeometry = {
+  box: BOX,
+  sections: [
+    {
+      pinned: true,
+      head: { top: 12, bottom: 40 },
+      rows: [
+        { slug: "p1", top: 43, bottom: 98 },
+        { slug: "p2", top: 101, bottom: 156 },
+      ],
+      slugs: ["p1", "p2"],
+    },
+    { pinned: false, head: { top: 168, bottom: 196 }, rows: [], slugs: [] },
   ],
 };
 
@@ -158,16 +178,20 @@ describe("틈 표", () => {
   });
 });
 
+// 틈의 표시는 **선이거나 밝아진 받침이거나** 둘 중 하나다 — 한 함수가 기하 하나로 정한다. 둘을 따로
+// (선은 기하로, 받침은 목록 데이터로) 정하면 접힌 빈 구획에서 갈려 선과 받침이 함께 켜진다.
 // 선은 틈 **사이**에 선다 — 행을 밀지 않는 절대 위치라 값 하나(내용 좌표 y)면 된다.
-describe("틈 선의 자리", () => {
+describe("틈의 표시", () => {
   it.each<[string, ListGeometry, RowGap, number]>([
     ["구획 첫 행 앞 → 머리와 그 행 사이", OPEN, { pinned: true, before: "p1" }, 41.5],
     ["행 앞 → 앞 행과 그 행 사이", OPEN, { pinned: true, before: "p2" }, 99.5],
     ["구획 끝 → 마지막 행 바로 아래", OPEN, { pinned: true, before: null }, 157.5],
     // 접힌 구획엔 행이 안 보여 간격을 잴 자리가 없다 — 머리 아랫변에 선다.
     ["접힌 구획 → 머리 아랫변", PINNED_SHUT, { pinned: true, before: "p1" }, 40],
+    // 받침이 접힌 몸통에 묻혀 기하에 없으면 머리 아랫변의 선이다 — 받침을 켜면 안 보이는 것을 켠다.
+    ["모두 고정 · 접힌 `작업` → 머리 아랫변", ALL_PINNED_WORKS_SHUT, { pinned: false, before: null }, 196],
   ])("%s", (_name, geometry, gap, y) => {
-    expect(gapLineY(geometry, gap)).toBe(y);
+    expect(gapMark(geometry, gap)).toEqual({ lineY: y });
   });
 
   // 받침에 놓일 때는 **받침 자신이 밝아지고** 선은 없다 — 빈 구획엔 선이 설 「사이」가 없고, 머리
@@ -175,8 +199,13 @@ describe("틈 선의 자리", () => {
   it.each<[string, ListGeometry, RowGap]>([
     ["빈 `고정` 받침", NO_PINNED, { pinned: true, before: null }],
     ["빈 비고정 받침", ALL_PINNED, { pinned: false, before: null }],
-  ])("받침 → 선 없음 — %s", (_name, geometry, gap) => {
-    expect(gapLineY(geometry, gap)).toBeNull();
+  ])("받침 → 선 없이 받침이 밝아진다 — %s", (_name, geometry, gap) => {
+    expect(gapMark(geometry, gap)).toEqual({ emptySlot: gap.pinned });
+  });
+
+  it("틈이 가리키는 구획이 기하에 없으면 표시가 없다", () => {
+    const pinnedOnly: ListGeometry = { box: BOX, sections: [OPEN.sections[0]] };
+    expect(gapMark(pinnedOnly, { pinned: false, before: null })).toBeNull();
   });
 });
 
