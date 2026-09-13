@@ -130,6 +130,31 @@ export function cancelDrag(): void {
 }
 
 /**
+ * 지금 걸린 눌림 하나 — **문턱 전이든 뒤든**. 위 `abortActive`와 따로 두는 것은 문턱 전의 눌림도
+ * 거둬야 하는 길이 있어서다(아래 `cancelGoneShellDrag`). 사이드바 목록의 취소(`cancelDrag`)는
+ * 문턱에서 기하를 재므로 문턱 전을 건드릴 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채
+ * 천천히 끄는 손이 논다.
+ */
+let armed: { source: DragSource | RowDragSource; disarm: () => void } | null = null;
+
+/**
+ * **끄는 셸이 사라졌으면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 원천의 `shellId`는 누른 순간
+ * 실려 떼기까지 안 바뀌어서, 그 셸이 끝나도(pty exit · `×` · ⌘W · 아카이빙의 회수) 안 거두면 받침이
+ * 선 채 **없는 셸로** 분할이 켜진다. `alive`는 그 셸이 아직 있는지를 아는 쪽(터미널 스토어)이 준다 —
+ * 이 모듈은 기능 폴더를 못 부른다(머리말).
+ *
+ * - **문턱 전의 눌림도 거둔다.** 누른 뒤 5px 전에 셸이 끝나면 남은 리스너가 다음 이동에서 죽은 id로
+ *   끌기를 시작한다. 그때는 끌기가 아니었으므로 클릭을 삼킬 것도 없이 리스너만 뗀다.
+ * - 문턱 뒤면 Esc와 같은 길(`abort`)이다 — 표시를 걷고, 뗄 때 클릭을 삼키고, `drop`을 안 부른다.
+ * - **셸 끌기만 본다.** 문서 칸(`shellId`가 없다)과 작업 행은 셸 목록과 무관하다.
+ */
+export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
+  const source = armed?.source;
+  if (source?.kind !== "shell" || source.shellId === null || alive(source.shellId)) return;
+  armed?.disarm();
+}
+
+/**
  * 포인터가 눌렸다. **아직 드래그가 아니다** — 5px을 넘어야 시작한다.
  *
  * `preventDefault`를 부르지 않는다: 임계값 안쪽이면 이 눌림은 그냥 클릭이어야 하고,
@@ -203,6 +228,7 @@ export function armDrag(
   const end = (event: PointerEvent) => {
     window.removeEventListener("pointerup", end);
     window.removeEventListener("pointercancel", end);
+    if (armed === gesture) armed = null;
     // **정리보다 먼저 놓는다** — 받는 쪽이 끄는 동안 쥔 기하를 `end`에서 걷으므로.
     // `pointercancel`은 놓음이 아니다: 시스템이 제스처를 가로챈 것이라 사람이 고른 자리가 없다.
     if (started && !aborted && event.type === "pointerup") handlers.drop?.(event);
@@ -222,6 +248,23 @@ export function armDrag(
     window.addEventListener("click", swallow, true);
     window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);
   };
+
+  // 원천이 사라져 거둘 때의 길(`cancelGoneShellDrag`). 문턱 뒤면 Esc와 같다. 문턱 전이면 이 눌림은
+  // 아직 클릭일 뿐이라 **리스너만 뗀다** — 표시도 상태도 선 적이 없고, 삼킬 클릭도 없다.
+  const gesture = {
+    source,
+    disarm: () => {
+      if (armed === gesture) armed = null;
+      if (started) {
+        abort();
+        return;
+      }
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    },
+  };
+  armed = gesture;
 
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", end);
