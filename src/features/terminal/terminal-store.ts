@@ -8,6 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
+import { dragStore } from "@/lib/pointer-drag";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
@@ -24,6 +25,7 @@ import {
   confirmClose,
   markExited,
   markFailed,
+  moveShell,
   NO_SHELLS,
   openShell,
   removeShell,
@@ -210,6 +212,23 @@ export function ensureShell(origin: ShellOrigin): void {
 /** 칸을 고른다. */
 export function selectShell(id: number): void {
   terminalStore.setState((state) => activateShell(state, id));
+}
+
+/**
+ * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 셸을 그 틈으로 옮긴다
+ * (결정 11 · ui-improvement 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
+ * 준다** — 탭 줄은 스토어를 모르고, 「놓은 곳이 이긴다」의 탭 줄 몫을 화면마다 적으면 한쪽만
+ * 늙는다.
+ *
+ * 틈이 없으면(탭 줄 밖에서 틈이 꺼졌다 · 제자리 · Esc로 취소해 상태가 비었다) 아무것도 안
+ * 한다. 켜진 탭은 안 바뀐다 — 끌어 놓은 탭은 켜지지 않는다(제스처가 클릭을 삼킨다).
+ * 순서는 메모리에만 있다(결정 12).
+ */
+export function dropShellOnSlot(): void {
+  const { source, slot } = dragStore.state;
+  if (source?.kind !== "shell" || source.shellId === null || slot === null) return;
+  const id = source.shellId;
+  terminalStore.setState((state) => moveShell(state, id, slot));
 }
 
 /**

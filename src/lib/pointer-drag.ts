@@ -14,7 +14,8 @@ import { Store } from "@tanstack/react-store";
  * 도착점(본문)의 공통 조상이 앱 루트 가까이라, 거기에 드래그 상태를 얹으면 끄는 동안 앱 전체가
  * 다시 그려진다.
  *
- * 놓일 자리의 판정(어느 절반 · 떨군 분할)은 여기 없다 — 받는 쪽 모듈(`split-view.ts`)의 일이다.
+ * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽의 일이다
+ * (`split-view.ts` · 탭 줄). 여기 있는 것은 그들이 적는 **칸**뿐이다.
  */
 
 /** 본문의 어느 절반인가. 열이 아니라 **화면의 절반**이다 — 아직 분할이 아닐 때도 성립한다. */
@@ -43,9 +44,21 @@ export interface DragState {
   source: DragSource | null;
   /** 지금 포인터가 어느 절반 위인가. 놓기 전에는 `null`일 수 있다(본문 밖). */
   half: SplitHalf | null;
+  /**
+   * 지금 포인터가 탭 줄의 몇 번째 틈 위인가 — **끄는 셸이 딸린 화면 셸들 사이**의 번호(0..n)다
+   * (ui-improvement 스펙 §6). 탭 줄 밖이거나 놓아도 제자리인 틈이면 `null`이다.
+   *
+   * **한 눌림을 두 소비자가 나눠 본다**(S10) — 받침은 `half`를, 탭 줄은 이것을 적고, 떼는
+   * 순간 포인터 아래의 소비자가 제 값을 읽는다. 그래서 **`half`와 동시에 켜지지 않는다**:
+   * 둘이 함께 켜져 있으면 「놓은 곳이 이긴다」가 아니라 둘 다 이긴다. 적는 자리 둘(`hoverSlot` ·
+   * 분할 모듈의 `hoverHalf`)이 서로의 값을 끈다.
+   */
+  slot: number | null;
 }
 
-export const dragStore = new Store<DragState>({ source: null, half: null });
+const IDLE: DragState = { source: null, half: null, slot: null };
+
+export const dragStore = new Store<DragState>(IDLE);
 
 /**
  * 드래그로 인정하는 최소 이동(결정 86). **안 두면 그냥 클릭이 드래그로 읽혀 탭을 못
@@ -75,7 +88,7 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     // 끄는 동안 글이 선택되는 것을 막는다. `body.resizing`과 나누는 것은 커서 하나
     // 때문이다 — 그쪽은 col-resize이고 이쪽은 잡은 것을 옮기는 중이다.
     document.body.classList.add("dragging-row");
-    dragStore.setState(() => ({ source, half: null }));
+    dragStore.setState(() => ({ ...IDLE, source }));
     window.addEventListener("keydown", cancel, true);
   };
 
@@ -87,7 +100,7 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
     window.removeEventListener("pointermove", move);
     window.removeEventListener("keydown", cancel, true);
     document.body.classList.remove("dragging-row");
-    dragStore.setState((state) => (state.source === null ? state : { source: null, half: null }));
+    dragStore.setState((state) => (state.source === null ? state : IDLE));
   };
 
   // **Esc는 끌기를 취소하고 아무것도 안 부른다.** 캡처로 듣고 전파를 막는다(선례: AppDialog) —
@@ -128,4 +141,21 @@ export function armDrag(source: DragSource, from: { clientX: number; clientY: nu
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", end);
   window.addEventListener("pointercancel", end);
+}
+
+/**
+ * 포인터가 탭 줄의 이 틈 위를 지난다(`null`이면 틈이 아닌 자리). **바뀔 때만 새 상태를
+ * 만든다** — 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다.
+ *
+ * **끄는 중일 때만 적는다.** 탭 줄은 누른 순간부터 이동을 보고하는데(문턱은 여기서만 안다),
+ * 문턱 전이나 Esc로 취소한 뒤에 틈이 서면 드래그가 아닌 눌림이 순서를 바꾼다.
+ *
+ * 틈이 켜지면 절반을 끈다 — 두 소비자의 값이 동시에 켜지지 않는다(`DragState.slot`).
+ */
+export function hoverSlot(slot: number | null): void {
+  dragStore.setState((state) => {
+    if (state.source === null) return state;
+    if (state.slot === slot && (slot === null || state.half === null)) return state;
+    return { ...state, slot, half: slot === null ? state.half : null };
+  });
 }

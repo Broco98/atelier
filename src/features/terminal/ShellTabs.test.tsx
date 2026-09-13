@@ -90,6 +90,10 @@ function render(
       onSelect={() => {}}
       onClose={() => {}}
       onOpen={() => {}}
+      onDragTab={() => {}}
+      slot={null}
+      onSlot={() => {}}
+      onDropSlot={() => {}}
     />,
   );
 }
@@ -109,6 +113,7 @@ const cellsOf = (markup: string) =>
     .map((chunk) => ({ kind: chunk.slice(0, chunk.indexOf('"')), markup: chunk }));
 
 const kindsOf = (markup: string) => cellsOf(markup).map((cell) => cell.kind);
+const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 const shellCellsOf = (markup: string) =>
   cellsOf(markup)
     .filter((cell) => cell.kind === "shell")
@@ -383,15 +388,25 @@ describe("칸이 `memo` 경계다", () => {
     expect(tag).not.toContain("=>");
     expect(tag).toContain("onSelect={tabHandlers.onSelect}");
     expect(tag).toContain("onClose={tabHandlers.onClose}");
-    expect(tag).toContain("onDragTab={onDragTab && tabHandlers.onDragTab}");
+    expect(tag).toContain("onDragTab={tabHandlers.onDragTab}");
   });
 
   it("그 콜백을 한 번만 만든다", () => {
     // `useMemo`의 의존성이 비어 있어야 회차를 넘어 같은 객체다. 최신 값은 ref로 읽으므로
     // (이벤트에서만 불린다) 의존성을 비워도 지난 회차의 클로저가 남지 않는다.
     const src = source();
+    expect(countOf(src, "useMemo(")).toBe(1);
     expect(src).toContain("const tabHandlers = useMemo(");
-    expect(src).toContain("latest.current = { onSelect, onClose, onDragTab };");
+    expect(src).toContain("latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };");
+  });
+
+  // 틈 알림(ui-improvement 스펙 §6)도 **그 묶음에서** 나온다 — 줄 자체는 `memo`가 아니지만,
+  // 알림을 따로 화살표로 만들면 묶음이 두 자리가 되고 다음 콜백이 어느 쪽에 붙을지가 갈린다.
+  it("틈 알림이 같은 묶음에서 나온다", () => {
+    const src = source();
+    expect(countOf(src, "onPointerMove={tabHandlers.onSlotMove}")).toBe(1);
+    expect(countOf(src, "onPointerLeave={tabHandlers.onSlotLeave}")).toBe(1);
+    expect(countOf(src, "onPointerUp={tabHandlers.onSlotDrop}")).toBe(1);
   });
 });
 
@@ -669,19 +684,18 @@ describe("칸을 본문 위로 끄는 자리", () => {
   it("문서 칸과 셸 칸이 끄는 자리를 갖는다", () => {
     // 맨 앞 문서 칸은 셸이 아니라는 뜻으로 `null`을 낸다 — `DragSource`가 `shellId`로
     // 이미 그 둘을 가르고 있어(「`kind`가 `shell`일 때만 있다」) 갈래를 새로 만들지 않는다.
-    expect(cellOf("spec")).toContain("onPointerDown={onDragTab && ((event) => onDragTab(null, event))}");
+    expect(cellOf("spec")).toContain("onPointerDown={(event) => onDragTab(null, event)}");
     // 셸 칸에서는 **이름 버튼**이 끄는 자리다 — 형제인 `×`가 끌리면 닫으려다 분할이 켜진다.
-    expect(cellOf("shell")).toContain(
-      "onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}",
-    );
+    expect(cellOf("shell")).toContain("onPointerDown={(event) => onDragTab(shell.id, event)}");
   });
 
-  it("콜백이 없으면 안 붙는다", () => {
-    // 떨굴 자리인 분할은 **work 화면의 것이다** — `/terminal`은 이 콜백을 안 주고, 그때
-    // 칸은 안 끌린다(걷힌 셸 목록의 `onDragRow`와 같은 계약). `onDragTab &&`가 그 계약이고,
-    // prop이 optional이라는 것은 그 화면이 컴파일되는 것으로 L0가 잰다.
-    expect(cellOf("spec")).toContain("onDragTab && ");
-    expect(cellOf("shell")).toContain("onDragTab && ");
+  it("두 화면 다 끈다 — 조건 없이 붙는다", () => {
+    // 한때 「콜백이 없으면 안 끌린다」였다 — 떨굴 자리인 분할이 work 화면의 것이라 `/terminal`은
+    // 콜백을 안 줬다. 이제 그 화면도 **순서를 바꾸려고** 끈다(결정 11) — 조건부가 남으면 한
+    // 화면이 콜백을 빼먹어도 컴파일되고 조용히 안 끌린다. prop이 필수인 것은 L0가 잰다.
+    expect(cellOf("spec")).not.toContain("onDragTab && ");
+    expect(cellOf("shell")).not.toContain("onDragTab && ");
+    expect(cellOf("shell")).not.toContain("onDragTab?.");
   });
 
   it("`+`는 안 끌린다", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DRAG_THRESHOLD, farEnough } from "@/lib/pointer-drag";
-import { dropSplit, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
+import { DRAG_THRESHOLD, dragStore, farEnough } from "@/lib/pointer-drag";
+import { dropSplit, hoverHalf, otherTab, specHeadLabel, tabOfDrag } from "./split-view";
 
 // 분할 뷰의 순수 판정. 화면 seam(정적 마크업)에서는 **이것들이 안 보인다** — 포인터도
 // 이펙트도 돌지 않아, 떨군 자리가 어느 쪽을 spec으로 만드는지가 마크업에 드러나지 않는다.
@@ -90,5 +90,20 @@ describe("열 머리의 문서 이름", () => {
 
   it("문서가 없으면 빈 글자다", () => {
     expect(specHeadLabel(null)).toBe("");
+  });
+});
+
+// 받침 위로 가면 탭 줄의 틈이 꺼진다(ui-improvement 스펙 S10) — 한 눌림의 두 소비자 값이
+// 동시에 켜지면 떼는 순간 순서도 바뀌고 분할도 켜진다. 짝(틈이 켜지면 절반이 꺼진다)은
+// pointer-drag.test.ts가 든다.
+describe("받침 위로 가면", () => {
+  it("탭 줄의 틈이 꺼진다", () => {
+    dragStore.setState(() => ({
+      source: { kind: "shell", owner: "atelier:a", shellId: 1 },
+      half: null,
+      slot: 2,
+    }));
+    hoverHalf("right");
+    expect(dragStore.state).toMatchObject({ half: "right", slot: null });
   });
 });

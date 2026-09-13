@@ -1,7 +1,9 @@
 /// <reference types="node" />
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { dragStore, hoverSlot } from "./pointer-drag";
+import type { DragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
 // 폴더는 `/terminal`이 못 부르고(TerminalPage.test.tsx), 터미널 기능 폴더는 사이드바 목록이
@@ -45,5 +47,46 @@ describe("공용 끌기 모듈은 기능 폴더를 모른다", () => {
     expect(countOf(gesture, "from '")).toBe(0);
     expect(countOf(gesture, "import(")).toBe(0);
     expect(countOf(gesture, "require(")).toBe(0);
+  });
+});
+
+// 한 눌림을 두 소비자가 나눠 본다(ui-improvement 스펙 S10) — 탭 줄은 「몇 번째 틈」을, 본문
+// 받침은 「어느 절반」을 적는다. **둘이 동시에 켜지면 놓은 곳이 이긴다가 깨진다**: 떼는 순간
+// 두 소비자가 각자 제 값을 보고 순서도 바꾸고 분할도 켠다. 그 불변식을 값을 적는 자리에 건다.
+describe("탭 줄의 틈", () => {
+  const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 1 };
+
+  beforeEach(() => {
+    dragStore.setState(() => ({ source: null, half: null, slot: null }));
+  });
+
+  it("끄는 중이면 틈을 적는다", () => {
+    dragStore.setState(() => ({ source: shell, half: null, slot: null }));
+    hoverSlot(2);
+    expect(dragStore.state.slot).toBe(2);
+    hoverSlot(null);
+    expect(dragStore.state.slot).toBeNull();
+  });
+
+  // 문턱 전에는 드래그가 아니다 — 누른 채 탭 위를 조금 움직여도 틈이 서면 안 된다. Esc로
+  // 취소한 뒤(상태가 비었다) 손을 떼기 전까지 움직여도 마찬가지다.
+  it("끄는 중이 아니면 아무것도 안 적는다", () => {
+    const before = dragStore.state;
+    hoverSlot(2);
+    expect(dragStore.state).toBe(before);
+  });
+
+  it("틈이 켜지면 절반이 꺼진다", () => {
+    dragStore.setState(() => ({ source: shell, half: "left", slot: null }));
+    hoverSlot(1);
+    expect(dragStore.state).toMatchObject({ half: null, slot: 1 });
+  });
+
+  // 포인터 이동마다 새 객체를 내면 구독한 화면이 그 빈도로 다시 그려진다(`hoverHalf`와 같은 이유).
+  it("같은 틈이면 같은 상태다", () => {
+    dragStore.setState(() => ({ source: shell, half: null, slot: 1 }));
+    const before = dragStore.state;
+    hoverSlot(1);
+    expect(dragStore.state).toBe(before);
   });
 });

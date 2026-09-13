@@ -15,6 +15,8 @@ import {
   shellsOf,
 } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+import { gapLineLeft, tabGap } from "./tab-gap";
+import type { TabStripGeometry } from "./tab-gap";
 
 /**
  * 탭 줄 맨 앞에 고정으로 서는 문서 칸(결정 7·8).
@@ -70,21 +72,34 @@ interface ShellTabsProps {
   onClose: (id: number) => void;
   onOpen: (project: string | null) => void;
   /**
-   * 이 줄의 칸을 본문 위로 끌 수 있다면(결정 12) — 떨구면 화면이 좌우로 갈린다.
+   * 칸을 눌렀다 — 끌기를 걸어 둔다(결정 11·12). 문턱을 넘으면 끄는 중이 되고, 떨군 곳이
+   * 정한다: work 화면의 본문 절반이면 분할, 이 줄의 틈이면 순서(ui-improvement 스펙 S10).
    *
    * 맨 앞 문서 칸은 `null`, 셸 칸은 그 셸의 id다. **갈래를 새로 만들지 않는다** —
    * `DragSource`가 `shellId`로 이미 그 둘을 가르고 있고(「`kind`가 `shell`일 때만 있다」)
    * 여기서 그 타입을 이름으로 부를 수 없을 뿐이다.
    *
-   * **없으면 안 끌린다.** 떨굴 자리인 분할은 work 화면의 것이라 `/terminal`은 이 콜백을
-   * 주지 않는다.
+   * **두 화면 다 준다 — 필수다.** 한때 `/terminal`은 이 콜백을 안 줘서 안 끌렸다(떨굴 분할이
+   * work 화면의 것이었다). 이제 그 화면도 순서를 바꾸려고 끌므로(결정 11) 선택으로 두면
+   * 한 화면이 빼먹어도 컴파일되고 조용히 안 끌린다.
    *
-   * **드래그 모듈을 여기서 import하지 않는다.** 이 파일이 `features/works`를 **값으로**
-   * import하는 순간 `terminal → works` 방향이 값 차원에서 처음 생겨(지금까지는
-   * `import type`뿐이었다) 반대 방향과 맞물린다. 만드는 것은 양쪽을 이미 아는
-   * 화면(WorksPage)이 한다 — 걷히기 전 사이드바 셸 목록도 같은 이유로 같은 우회를 썼다.
+   * **드래그 모듈도 스토어도 여기서 import하지 않는다.** 이 줄은 상태와 콜백만 받는 그림이다
+   * (머리말) — 끌기를 거는 것, 틈을 적는 것, 놓았을 때 옮기는 것은 스토어를 이미 구독하는
+   * 화면이 준다. 제스처는 기능 폴더 밖 `@/lib/pointer-drag`에 살아 두 화면 다 딛는다.
    */
-  onDragTab?: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
+  onDragTab: (shellId: number | null, from: { clientX: number; clientY: number }) => void;
+  /**
+   * 끄는 동안 틈 선을 세울 자리 — 드래그 상태의 틈 번호를 화면이 그대로 내린다. `null`이면
+   * 선이 없다. 번호는 **이 줄 셸 칸들 사이**의 것이다(0이 첫 셸 칸 앞, 곧 `spec` 뒤).
+   */
+  slot: number | null;
+  /**
+   * 포인터가 이 줄 위에서 가리키는 틈을 알린다(`null`이면 틈이 아닌 자리). **셸 칸을 누른
+   * 동안에만** 부른다 — 문턱을 넘었는지는 받는 쪽(드래그 상태)이 안다.
+   */
+  onSlot: (slot: number | null) => void;
+  /** 이 줄 위에서 손을 뗐다. 받는 쪽이 드래그 상태의 틈을 읽어 옮긴다(틈이 없으면 아무것도). */
+  onDropSlot: () => void;
   /**
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
@@ -126,6 +141,9 @@ function ShellTabs({
   onClose,
   onOpen,
   onDragTab,
+  slot,
+  onSlot,
+  onDropSlot,
   actions,
   inset = false,
 }: ShellTabsProps) {
@@ -141,16 +159,53 @@ function ShellTabs({
   // 진다: 콜백이 안정적이어야 한다는 것은 **이 컴포넌트의 성질**이지 부르는 쪽이 기억해야
   // 할 규칙이 아니고, 규칙으로 두면 다음에 인라인 화살표 하나가 조용히 되돌린다.
   //
-  // 최신 값을 ref로 읽는다. 이 셋은 **이벤트에서만** 불리므로(클릭·포인터다운) 그리는
+  // 최신 값을 ref로 읽는다. 이것들은 **이벤트에서만** 불리므로(클릭·포인터) 그리는
   // 중에 읽히지 않고, 따라서 지난 회차의 클로저가 남지 않는다.
-  const latest = useRef({ onSelect, onClose, onDragTab });
-  latest.current = { onSelect, onClose, onDragTab };
+  //
+  // **틈 알림도 여기서 한 번 만든다**(ui-improvement 스펙 §6). 줄 자체는 `memo`가 아니지만
+  // 콜백 묶음이 두 자리가 되면 다음 콜백이 어느 쪽에 붙을지가 갈리고, 칸에 내려가는 쪽이
+  // 화살표로 새면 경계가 조용히 죽는다.
+  const latest = useRef({ onSelect, onClose, onDragTab, onSlot, onDropSlot });
+  latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };
+  const shellIds = useRef<number[]>([]);
+  shellIds.current = shells.map((shell) => shell.id);
+
+  // 셸 칸을 누른 동안의 줄 기하(`tab-gap.ts`). **누를 때 한 번 재고** 손을 떼면 버린다 —
+  // 움직일 때마다 재면 포인터 이동마다 레이아웃을 읽고, 버리지 않으면 다음에 문서 칸을
+  // 끌 때 옛 기하로 틈이 선다.
+  const geometry = useRef<TabStripGeometry | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+
   const tabHandlers = useMemo(
     () => ({
       onSelect: (id: number) => latest.current.onSelect(id),
       onClose: (id: number) => latest.current.onClose(id),
-      onDragTab: (id: number, from: { clientX: number; clientY: number }) =>
-        latest.current.onDragTab?.(id, from),
+      onDragTab: (id: number, from: { clientX: number; clientY: number }) => {
+        geometry.current = measureStrip(stripRef.current, shellIds.current.indexOf(id));
+        if (geometry.current) {
+          const drop = () => {
+            geometry.current = null;
+            window.removeEventListener("pointerup", drop);
+            window.removeEventListener("pointercancel", drop);
+          };
+          // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
+          // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
+          window.addEventListener("pointerup", drop);
+          window.addEventListener("pointercancel", drop);
+        }
+        latest.current.onDragTab(id, from);
+      },
+      onSlotMove: (event: React.PointerEvent) => {
+        const strip = stripRef.current;
+        if (!geometry.current || !strip) return;
+        latest.current.onSlot(tabGap(geometry.current, event.clientX, strip.scrollLeft));
+      },
+      onSlotLeave: () => {
+        if (geometry.current) latest.current.onSlot(null);
+      },
+      onSlotDrop: () => {
+        if (geometry.current) latest.current.onDropSlot();
+      },
     }),
     [],
   );
@@ -167,7 +222,6 @@ function ShellTabs({
   // 켜진 칸을 **속성 하나를 새로 만들지 않고** 집는다 — 이름 버튼의 `aria-pressed`가 이미
   // 그것을 말하고, 이 상자 안에서 참인 것은 하나뿐이다(분할일 때 함께 켜지는 `spec`은
   // 이 상자 밖에 산다).
-  const stripRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     stripRef.current
       ?.querySelector<HTMLElement>('button[aria-pressed="true"]')
@@ -179,6 +233,12 @@ function ShellTabs({
       // 이 줄이 창 맨 위다 — 없으면 **창을 못 끈다**. 안쪽 버튼들은 이 속성이 없으므로
       // 그대로 눌린다(PageHeader가 브레드크럼에 쓰는 방식과 같다).
       data-tauri-drag-region
+      // 끄는 동안 이 줄이 틈 소비자다(스펙 S10). **줄 전체**에서 듣는 것은 높이 때문이다 —
+      // 스크롤 상자는 칸 높이(28px)라 44px 줄의 위아래를 조금만 벗어나도 틈이 꺼진다. 가로는
+      // 상자 밖이면 틈이 아니다(`tabGap`). 본문 받침은 이 줄을 안 덮으므로 두 소비자가 겹치지 않는다.
+      onPointerMove={tabHandlers.onSlotMove}
+      onPointerLeave={tabHandlers.onSlotLeave}
+      onPointerUp={tabHandlers.onSlotDrop}
       className={cn(
         // 아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다(PageHeader와 같다).
         "flex h-(--titlebar-height) shrink-0 items-center gap-1 pr-4 transition-[padding] duration-[220ms] ease-panel",
@@ -207,7 +267,10 @@ function ShellTabs({
           // 본문 위로 끌면 그 절반에 문서가 선다(결정 12) — 사이드바의 `spec` 잎이 하던
           // 몫이 이 칸으로 왔다. **누르는 것과 끄는 것이 한 버튼에 산다**: 5px 문턱이
           // 둘을 가르므로(`armDrag`) 문턱 안쪽의 눌림은 그냥 클릭이다.
-          onPointerDown={onDragTab && ((event) => onDragTab(null, event))}
+          //
+          // **순서엔 안 낀다** — 늘 맨 앞이다(스펙 §6). 이 칸을 누르면 줄 기하를 안 재므로
+          // 끄는 동안 틈이 서지 않고, 셸 칸의 틈은 이 칸 뒤부터 센다(`tab-gap.ts`).
+          onPointerDown={(event) => onDragTab(null, event)}
           className={cn(
             // **이 칸은 안 줄어든다**(결정 20). 고정 탭이라 이름이 `spec` 넉 자로 고정이고,
             // 줄일 것이 애초에 없다 — 그런데 `shrink`가 살아 있으면 넘칠 때 flex가 **폭에
@@ -273,7 +336,8 @@ function ShellTabs({
         // 표식이 `data-tab`이 아니라 `data-tab-strip`인 것은 검사가 `data-tab="`로 칸을
         // 잘라내기 때문이다 — 같은 이름을 쓰면 상자가 칸 하나로 세어진다.
         data-tab-strip
-        className="flex w-max min-w-0 items-center gap-1 overflow-x-auto scroll-quiet"
+        // `relative`는 아래 틈 선의 기준이다 — 스크롤 상자 안의 절대 위치라 선이 칸과 함께 흐른다.
+        className="relative flex w-max min-w-0 items-center gap-1 overflow-x-auto scroll-quiet"
       >
         {shells.map((shell) => (
           <ShellTab
@@ -282,11 +346,23 @@ function ShellTabs({
             active={showing && shell.id === activeId}
             onSelect={tabHandlers.onSelect}
             onClose={tabHandlers.onClose}
-            // 없으면 안 끌린다(위 prop 주석) — 그 갈래를 여기서 유지한다. 값은 둘 다
-            // 회차를 넘어 같으므로 `memo`의 얕은 비교가 이 자리에서 안 어긋난다.
-            onDragTab={onDragTab && tabHandlers.onDragTab}
+            // 회차를 넘어 같은 값이라 `memo`의 얕은 비교가 이 자리에서 안 어긋난다.
+            onDragTab={tabHandlers.onDragTab}
           />
         ))}
+        {/* 끄는 동안 놓일 틈(스펙 §6). **절대 위치 세로 선**이다 — 폭을 먹으면 칸이 밀리고
+            900px 창에서 줄이 넘친다(여유 3.5px). 높이는 이 상자(28px) 안이다: 스크롤 상자라
+            세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자 밖으로 안 나간다(`gapLineLeft`).
+
+            기하는 누른 순간 잰 ref다 — 틈 번호(`slot`)가 바뀌어 다시 그려질 때 읽는다. */}
+        {slot !== null && geometry.current && (
+          <span
+            aria-hidden
+            data-tab-gap={slot}
+            className="pointer-events-none absolute inset-y-1 w-px rounded-full bg-primary"
+            style={{ left: gapLineLeft(geometry.current, slot) }}
+          />
+        )}
       </div>
 
       {/* 잠긴 이유가 `title`(hover) 뒤에 있다. 결정 47이 세로 목록에서 그 문장을 꺼내 보이는
@@ -364,7 +440,7 @@ interface ShellTabProps {
   active: boolean;
   onSelect: (id: number) => void;
   onClose: (id: number) => void;
-  onDragTab?: (id: number, from: { clientX: number; clientY: number }) => void;
+  onDragTab: (id: number, from: { clientX: number; clientY: number }) => void;
 }
 
 // 칸 하나. **`memo`인 것이 이 파일의 계약 하나다**(#140).
@@ -501,7 +577,7 @@ const ShellTab = memo(function ShellTab({
         onClick={() => onSelect(shell.id)}
         // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
         // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.
-        onPointerDown={onDragTab && ((event) => onDragTab(shell.id, event))}
+        onPointerDown={(event) => onDragTab(shell.id, event)}
         // 이름이 숨은 폭에서는 글리프를 **가운데로** 보낸다 — 왼쪽에 붙여 두면 오른쪽
         // 절반이 빈 칸으로 보여 「비었다」와 「아이콘만 남았다」가 같아진다.
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1.5 text-left @max-[88px]:justify-center"
@@ -575,5 +651,19 @@ const ShellTab = memo(function ShellTab({
     </div>
   );
 });
+
+/**
+ * 누른 순간의 줄 기하 — 셸 칸들의 사각형을 **내용 좌표**(뷰포트 x + `scrollLeft`)로 잰다
+ * (`tab-gap.ts` 머리말). 끄는 칸이 이 줄에 없으면(누르는 사이 빠졌다) 잴 것이 없다.
+ */
+function measureStrip(strip: HTMLDivElement | null, from: number): TabStripGeometry | null {
+  if (!strip || from < 0) return null;
+  const box = strip.getBoundingClientRect();
+  const tabs = [...strip.querySelectorAll<HTMLElement>('[data-tab="shell"]')].map((cell) => {
+    const rect = cell.getBoundingClientRect();
+    return { left: rect.left + strip.scrollLeft, right: rect.right + strip.scrollLeft };
+  });
+  return { tabs, view: { left: box.left, right: box.right }, from };
+}
 
 export default ShellTabs;

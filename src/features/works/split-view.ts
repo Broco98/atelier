@@ -45,17 +45,22 @@ export function otherTab(tab: ViewTab): ViewTab {
 /**
  * 포인터가 이 절반 위를 지난다. **바뀔 때만 새 상태를 만든다** — 포인터 이동마다 새
  * 객체를 내면 본문이 그 빈도로 다시 그려지고, 거기엔 마크다운 트리가 통째로 들어 있다.
+ *
+ * 받침 위로 오면 **탭 줄의 틈을 끈다**(ui-improvement 스펙 S10) — 한 눌림의 두 소비자 값이
+ * 동시에 켜지면 떼는 순간 순서도 바뀌고 분할도 켜진다(`DragState.slot`).
  */
 export function hoverHalf(half: SplitHalf): void {
-  dragStore.setState((state) => (state.half === half ? state : { ...state, half }));
+  dragStore.setState((state) =>
+    state.half === half && state.slot === null ? state : { ...state, half, slot: null },
+  );
 }
 
 /**
  * 포인터가 겹판 **밖으로** 나갔다. 밝아짐을 끈다.
  *
  * **놓을 수 없는 자리인데 밝아 있으면 안 된다.** 놓기를 받는 것은 겹판 자신의 `pointerup`
- * 이라, 사이드바로 되돌아가 손을 떼면 아무 일도 안 난다 — 그때까지 반쪽이 밝은 채면
- * 화면이 「여기 놓인다」고 말해 놓고 아무것도 안 하는 셈이다.
+ * 이라, 탭 줄로 되돌아가 손을 떼면 분할은 안 켜진다(거기서는 틈이 받는다 — `DragState.slot`).
+ * 그때까지 반쪽이 밝은 채면 화면이 「여기 놓인다」고 말해 놓고 다른 일을 하는 셈이다.
  */
 export function clearHalf(): void {
   dragStore.setState((state) => (state.half === null ? state : { ...state, half: null }));
