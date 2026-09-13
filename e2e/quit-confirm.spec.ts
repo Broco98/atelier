@@ -288,13 +288,14 @@ test("「종료」가 실패하면 오류 창이 뜨고, 다음 요청에 다시
 
   const problem = page.getByRole("alertdialog", { name: "오류" });
   await expect(problem).toBeVisible();
-  await expect(problem).toContainText("종료 명령이 거절되었습니다");
+  await expect(problem).toContainText("종료하지 못했습니다: 종료 명령이 거절되었습니다");
   await problem.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
   await fireQuitRequest(page);
   await quitDialog(page).getByRole("button", { name: "종료", exact: true }).click();
   await expect.poll(() => callCount(page, "quit_app")).toBe(2);
+  await expect(page.getByRole("alertdialog", { name: "오류" })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

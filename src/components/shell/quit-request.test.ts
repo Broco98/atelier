@@ -148,19 +148,20 @@ describe("묻는 중 표시", () => {
     expect(attempts).toBe(1);
     expect(dialogStore.state?.title).toBe("오류");
     expect(dialogStore.state?.notice).toBe(true);
-    expect(dialogStore.state?.body).toContain("종료 명령이 거절되었습니다");
+    expect(dialogStore.state?.body).toBe("종료하지 못했습니다: 종료 명령이 거절되었습니다");
     dialogStore.state!.answer(true);
     await asked;
     expect(outcome).toBe("resolved");
 
-    const again = requestQuit(count.fn, failingQuit).catch(() => undefined);
+    const again = requestQuit(count.fn, failingQuit);
     await settle();
     expect(count.calls()).toBe(2);
     expect(dialogStore.state?.title).toBe(QUIT_TITLE);
     dialogStore.state!.answer(true);
     await settle();
     expect(attempts).toBe(2);
-    dialogStore.state?.answer(true);
+    expect(dialogStore.state?.title).toBe("오류");
+    dialogStore.state!.answer(true);
     await again;
   });
 
