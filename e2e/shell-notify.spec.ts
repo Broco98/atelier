@@ -169,8 +169,8 @@ test("소리만 껐으면 알림은 오되 소리가 안 실린다", async ({ pa
 
 // **설정 화면에서 고른 값이 그 자리에서 먹는가**(스토리 66·64). 위 둘이 재는 것은 「파일에
 // 이렇게 적혀 있으면」이라, 앱이 뜰 때 한 번 도는 `loadNotifySettings`만 지나간다 — 사람이
-// 화면에서 끄는 길은 그 뒤에 오는 **다른 줄**이다(`SettingsPage.tsx`의 `save`가 쓰기에
-// 성공한 뒤 부르는 `applyNotifySettings`). 그 한 줄이 사라져도 저장은 성공하고 화면은 껐다고
+// 화면에서 끄는 길은 그 뒤에 오는 **다른 줄**이다(`SettingsPage.tsx`의 `NotificationSettingsPage`가
+// 쓰기에 성공한 뒤 부르는 `applyNotifySettings`). 그 한 줄이 사라져도 저장은 성공하고 화면은 껐다고
 // 그린 채로 남아, 사람은 **앱을 껐다 켤 때까지** 계속 울리는 것을 앱 고장으로 읽는다.
 //
 // 그 줄은 어느 층에서도 안 걸렸다: 마크업 seam은 양 끝의 순수 함수만 돌리고(고른 값을
@@ -189,11 +189,13 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
 
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
   await page.goto("/settings");
-  const 소리끔 = page.getByRole("button", { name: "알림에 소리 끔" });
+  // 저장 버튼이 구획마다 있다(#225) — **알림 설정 안에서** 집어야 누른 것이 이 구획의 저장이다.
+  const 알림 = page.getByRole("group", { name: "알림 설정", exact: true });
+  const 소리끔 = 알림.getByRole("button", { name: "알림에 소리 끔" });
   await expect(소리끔, "알림 구획이 안 섰다").toBeVisible();
   await 소리끔.click();
 
-  const 저장 = page.getByRole("button", { name: "저장", exact: true });
+  const 저장 = 알림.getByRole("button", { name: "저장", exact: true });
   await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();
   await 저장.click();
   // **쓰기가 실제로 돌아온 순간을 기다린다.** 저장이 끝나면 고칠 것이 없어져 버튼이 잠긴다 —

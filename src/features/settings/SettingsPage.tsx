@@ -8,6 +8,7 @@ import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
+import { saveSettingsSection, type SettingsSectionKey } from "./save-section";
 import type {
   HookStatus,
   NotificationSettings,
@@ -16,11 +17,14 @@ import type {
   TerminalTheme,
 } from "./types";
 
-// 앱 전역 설정 화면 (결정 51·52·54). 지금 구획은 `터미널` 하나이고, 다음 구획이 생기면
-// 아래 `<section>` 하나가 는다.
+// 앱 전역 설정 화면 (결정 51·52·54). 구획은 `터미널` · `알림` · `에이전트 훅` 셋이고, 각자
+// **떼어 낼 수 있는 조각**이다(`…SettingsPage` · `AgentHooksPage`, #225) — 한 화면에 셋이 서 있어도 초안과 저장은 조각마다
+// 따로 산다. 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고, 에이전트 훅은 누르면 바로 적용된다.
 //
 // **값은 `~/.atelier/settings.json` 한 장에 산다**(결정 53 · adr-02) — `localStorage`가
-// 아니다. 창구는 `api.ts`의 둘뿐이고, 쓸 때는 **읽은 것을 펼쳐 고친다**(`patchTerminal`).
+// 아니다. 창구는 `api.ts`의 둘뿐이고, 초안은 **읽은 것을 펼쳐 고친다**(`patchTerminal`).
+// 저장은 화면을 열 때의 사본이 아니라 **쓰는 순간의 최신에 자기 칸만 덮는다**(`save-section.ts`) —
+// 옛 사본에서 나머지 칸을 가져오면 그사이 다른 구획이 저장한 값을 덮는다.
 //
 // **저장에 성공하면 그 값을 셸에도 먹인다**(`applyTerminalSettings`) — 이미 떠 있는 칸까지
 // 따라온다(결정 52). 먹이는 일 자체는 이 화면이 하지 않는다: 무엇이 바뀌어야 하는지를 아는 곳은
@@ -105,13 +109,13 @@ export function previewFontFamily(fontFamily: string | null): string {
 }
 
 /**
- * 저장을 열어 둘 조건. 셋 다 이유가 다르다.
+ * **터미널 설정의** 저장을 열어 둘 조건. 셋 다 이유가 다르다.
  *
  * - 고친 것이 없으면 파일을 건드릴 이유가 없다.
  * - **이미 쓰는 중이면 막는다.** `settings.rs`가 tmp 이름을 고정해 두고(`.settings.json.tmp`)
  *   「쓰기는 한 번에 하나」를 전제로 적었다 — 겹치면 한쪽의 rename이 다른 쪽이 아직 쓰는 중인
- *   tmp를 옮긴다. 그 주석이 「설정 화면이 연타를 허용하게 되면 그 화면이 직렬화를 진다」고
- *   적은 자리가 여기다.
+ *   tmp를 옮긴다. 저장 버튼이 구획마다 생긴 뒤로 **구획 사이의** 줄 세우기는
+ *   `saveSettingsSection`이 지고(`save-section.ts`), 이 칸은 한 구획 안의 연타를 막는다.
  * - 크기가 잘못 적힌 채 저장하면 그 칸만 조용히 예전 값으로 남는다(`parseFontSize`).
  *
  * 셋째에는 단서가 하나 붙는다. **파일이 준 원문 그대로면 잠그지 않는다.** 손으로 적은
@@ -144,38 +148,56 @@ const THEME_LABELS: Record<TerminalTheme, string> = {
 };
 
 function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
-  // 파일과 같다고 아는 값과 화면이 고치는 값을 따로 든다 — 「고친 것이 있나」가 둘의 차이다.
-  const [saved, setSaved] = useState<Settings | null>(null);
-  const [draft, setDraft] = useState<Settings | null>(null);
-  // 크기만 원문을 따로 든다. 숫자로만 들면 「15」를 지우는 중인 한 글자(`1`)가 곧 크기가 되고,
-  // 잘못 적힌 글자를 화면에 그대로 둘 수가 없다.
-  const [sizeText, setSizeText] = useState("");
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1">
+      <main className="flex min-w-0 flex-1 flex-col">
+        <PageHeader root="Settings" inset={!sidebarOpen} />
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
+          <div className="flex max-w-[620px] flex-col gap-6">
+            <SettingsFileGate>
+              {(settings) => (
+                <>
+                  <TerminalSettingsPage initial={settings} />
+                  <NotificationSettingsPage initial={settings} />
+                </>
+              )}
+            </SettingsFileGate>
+            {/* **읽기 실패의 바깥에 선다.** 이 구획이 고치는 것은 `~/.atelier/settings.json`이
+                아니라 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔
+                이유가 없다. */}
+            <AgentHooksPage />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/**
+ * 앱 설정 파일을 **한 번 읽고**, 읽은 것을 조각들에게 내린다. 읽기가 실패하면 조각을 안 세우고
+ * 까닭과 「다시 읽기」를 그린다.
+ *
+ * 조각이 각자 읽지 않는 것은 한 화면에 조각이 둘이라서다 — 깨진 파일의 까닭이 두 번 서면
+ * 사람은 두 가지 일이 났다고 읽는다. 조각이 받는 것은 **화면을 열 때의 사본**일 뿐이고, 저장은
+ * 그 사본이 아니라 쓰는 순간의 최신을 딛는다(`save-section.ts`).
+ */
+export function SettingsFileGate({
+  children,
+}: {
+  children: (settings: Settings) => React.ReactNode;
+}) {
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   // 다시 읽기 — 깨진 파일은 손으로 고치는 것이 정상 경로라(결정 53) 앱을 껐다 켜지 않고
   // 그 자리에서 다시 읽을 길이 있어야 한다.
   const [attempt, setAttempt] = useState(0);
-  // OS가 알림 권한을 줬나(스토리 69). **아직 못 물어봤으면 `null`이고 그때는 아무 말도 안
-  // 한다** — 모르는 것을 「거부됐다」로 적으면 앱이 없는 사실을 만든다. 물어보는 것이 이
-  // 화면인 이유는 사람이 「왜 안 울리지」를 들고 오는 자리가 여기라서다.
-  const [granted, setGranted] = useState<boolean | null>(null);
-  // 에이전트 훅 (#207). **저장 버튼을 안 지난다** — 이 둘은 우리 파일이 아니라 사용자의
-  // claude·codex 설정을 고치는 일이라 「고치고 나중에 저장」이라는 초안이 있을 수 없다.
-  // 그래서 상태도 위 `draft`와 따로 든다.
-  const [hooks, setHooks] = useState<HookStatus[]>([]);
-  const [hooksBusy, setHooksBusy] = useState(false);
-  const [hooksError, setHooksError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     setReadError(null);
     settingsApi.read().then(
-      (settings) => {
-        if (!alive) return;
-        setSaved(settings);
-        setDraft(settings);
-        setSizeText(settings.terminal.fontSize?.toString() ?? "");
+      (read) => {
+        if (alive) setSettings(read);
       },
       (error) => {
         // **기본값으로 넘어가지 않는다.** 깨진 파일을 기본값으로 대신 그리면 다음 저장이
@@ -187,6 +209,150 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       alive = false;
     };
   }, [attempt]);
+
+  if (readError !== null) {
+    return (
+      <div className="flex flex-col items-start gap-3 pt-2">
+        <p className="text-[13.5px] leading-[1.7] text-red-600">{readError}</p>
+        <p className="text-[13px] leading-[1.7] text-tertiary">
+          파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
+        </p>
+        <button
+          type="button"
+          onClick={() => setAttempt((n) => n + 1)}
+          className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
+        >
+          다시 읽기
+        </button>
+      </div>
+    );
+  }
+  return settings === null ? null : <>{children(settings)}</>;
+}
+
+/**
+ * 저장 버튼을 가진 페이지 하나의 **초안 → 저장**(#225). 터미널 설정과 알림 설정이 같은 규칙을
+ * 지나야 해서 한 자리에 둔다 — 두 벌로 적으면 한쪽만 「먹이기 전에 파일부터」를 잃는다.
+ *
+ * **초안이 제 구획의 칸 하나다**(`Settings[K]`). 설정 통째를 초안으로 들면 화면을 열 때의 다른
+ * 구획 사본이 함께 실려 다니고, 그것을 저장에 넘기는 실수 한 번이면 옛 값이 나간다 — 모양이
+ * 그 실수를 못 하게 한다.
+ *
+ * 「파일과 같다고 아는 값」(`saved`)은 **쓴 결과에서** 가져온다 — `saveSettingsSection`이 돌려준
+ * 그 설정이 셸에도 먹는 값이라, 두 자리가 한 출처를 딛는다.
+ */
+function useSectionSave<K extends SettingsSectionKey>(
+  key: K,
+  initial: Settings[K],
+  apply: (written: Settings) => void,
+) {
+  const [saved, setSaved] = useState<Settings[K]>(initial);
+  const [draft, setDraft] = useState<Settings[K]>(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // 키 순서는 읽은 것을 펼쳐 만들었으므로 그대로다 — 문자열 비교로 충분하다.
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  const edit = (update: (current: Settings[K]) => Settings[K]) => {
+    setDraft(update);
+    setError(null);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const written = await saveSettingsSection(key, draft);
+      setSaved(written[key]);
+      // **파일에 들어간 뒤에 먹인다.** 먼저 먹이면 쓰기가 실패했을 때 셸만 새 값으로 남아
+      // 다음 실행에 되돌아간다 — 「저장이 안 됐는데 바뀌었다」가 가장 읽기 어려운 상태다.
+      apply(written);
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 저장 버튼에 내릴 것. 열어 둘 조건(`enabled`)은 페이지마다 달라 부르는 쪽이 정한다. */
+  const button = (enabled: boolean) => ({
+    enabled,
+    saving,
+    error,
+    onSave: () => {
+      if (enabled) void save();
+    },
+  });
+
+  return { saved, draft, dirty, saving, edit, button };
+}
+
+/**
+ * 「터미널 설정」 페이지 조각 — 구획 + 제 저장 버튼. **초안을 제가 든다**(#225): 알림 설정과
+ * 초안을 함께 들면 알림을 저장할 때 고치다 만 터미널 값이 따라 나간다. 13이 이것을 제 주소의
+ * 페이지로 옮긴다.
+ */
+export function TerminalSettingsPage({ initial }: { initial: Settings }) {
+  const section = useSectionSave("terminal", initial.terminal, (written) =>
+    applyTerminalSettings(written.terminal),
+  );
+  // 크기만 원문을 따로 든다. 숫자로만 들면 「15」를 지우는 중인 한 글자(`1`)가 곧 크기가 되고,
+  // 잘못 적힌 글자를 화면에 그대로 둘 수가 없다.
+  const [sizeText, setSizeText] = useState(initial.terminal.fontSize?.toString() ?? "");
+
+  // 파일이 준 크기의 원문. 칸의 글자가 이것과 같은 동안에는 그 값이 범위 밖이어도 저장을
+  // 잠그지 않는다(`canSave`) — 읽을 때 그대로 넣은 값이라 `sizeText`와 같은 규칙으로 만든다.
+  const savedSizeText = section.saved.fontSize?.toString() ?? "";
+  const enabled = canSave({
+    dirty: section.dirty,
+    sizeText,
+    savedSizeText,
+    saving: section.saving,
+  });
+
+  // 구획 그림(`TerminalSection`)과 고치는 규칙(`patchTerminal`)은 `Settings`를 받는다. 그 모양에
+  // 맞춰 **그리고 고칠 때만** 감싼다 — 다른 칸은 저장에 안 닿는다(초안이 `terminal` 하나다).
+  const view: Settings = { ...initial, terminal: section.draft };
+
+  const change = (patch: Partial<TerminalSettings>) =>
+    section.edit((current) => patchTerminal({ ...initial, terminal: current }, patch).terminal);
+
+  const changeSize = (raw: string) => {
+    setSizeText(raw);
+    const size = parseFontSize(raw);
+    // 잘못 적힌 동안에는 저장할 값을 건드리지 않는다 — 저장은 `canSave`가 잠가 둔다.
+    if (size !== "invalid") change({ fontSize: size });
+  };
+
+  return (
+    <div role="group" aria-label="터미널 설정" className="flex flex-col gap-6">
+      <TerminalSection
+        settings={view}
+        sizeText={sizeText}
+        onChange={change}
+        onChangeSize={changeSize}
+      />
+      <SaveButton {...section.button(enabled)} />
+    </div>
+  );
+}
+
+/**
+ * 「알림 설정」 페이지 조각 — 구획 + 제 저장 버튼. 초안을 제가 드는 이유는
+ * `TerminalSettingsPage`와 같다.
+ *
+ * 저장 조건이 터미널보다 짧다 — 잘못 적힐 수 있는 자유 입력 칸이 없어 「고친 것이 있고 쓰는
+ * 중이 아니다」가 전부다.
+ */
+export function NotificationSettingsPage({ initial }: { initial: Settings }) {
+  const section = useSectionSave("notifications", initial.notifications, (written) =>
+    applyNotifySettings(notificationChoice(written)),
+  );
+  // OS가 알림 권한을 줬나(스토리 69). **아직 못 물어봤으면 `null`이고 그때는 아무 말도 안
+  // 한다** — 모르는 것을 「거부됐다」로 적으면 앱이 없는 사실을 만든다. 물어보는 것이 이
+  // 조각인 이유는 사람이 「왜 안 울리지」를 들고 오는 자리가 여기라서다.
+  const [granted, setGranted] = useState<boolean | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -205,6 +371,34 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
     };
   }, []);
 
+  const enabled = section.dirty && !section.saving;
+
+  // 터미널 설정과 같은 까닭으로 그리고 고칠 때만 감싼다. 알림 칩도 같은 규칙을 지난다 — 읽은
+  // 것을 펼쳐 고친다(`patchNotifications`).
+  const view: Settings = { ...initial, notifications: section.draft };
+
+  const change = (patch: Partial<NotificationSettings>) =>
+    section.edit(
+      (current) => patchNotifications({ ...initial, notifications: current }, patch).notifications,
+    );
+
+  return (
+    <div role="group" aria-label="알림 설정" className="flex flex-col gap-6">
+      <NotificationSection settings={view} granted={granted} onChange={change} />
+      <SaveButton {...section.button(enabled)} />
+    </div>
+  );
+}
+
+/**
+ * 「에이전트 훅」 조각. **저장 버튼을 안 지난다** — 이 둘은 우리 파일이 아니라 사용자의
+ * claude·codex 설정을 고치는 일이라 「고치고 나중에 저장」이라는 초안이 있을 수 없다.
+ */
+export function AgentHooksPage() {
+  const [hooks, setHooks] = useState<HookStatus[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
     hooksApi.status().then(
@@ -213,8 +407,8 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
       },
       // **판정이 통째로 실패하는 길**(홈을 못 읽는 등)과 파일 한 장이 깨진 것은 다르다 —
       // 뒤엣것은 `HookStatus.error`로 그 줄에 붙어 오고, 여기 오는 것은 앞엣것뿐이다.
-      (error) => {
-        if (alive) setHooksError(String(error));
+      (failure) => {
+        if (alive) setError(String(failure));
       },
     );
     return () => {
@@ -224,124 +418,57 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
 
   // 넣는 것도 걷는 것도 **끝난 뒤의 상태를 그 자리에서 돌려받는다** — 다시 물어보지 않는다.
   // 연타를 막는 것은 같은 파일에 두 쓰기가 겹치면 안 되기 때문이다.
-  const runHooks = async (run: () => Promise<HookStatus[]>) => {
-    if (hooksBusy) return;
-    setHooksBusy(true);
-    setHooksError(null);
+  const run = async (action: () => Promise<HookStatus[]>) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      setHooks(await run());
-    } catch (error) {
-      setHooksError(String(error));
+      setHooks(await action());
+    } catch (failure) {
+      setError(String(failure));
     } finally {
-      setHooksBusy(false);
-    }
-  };
-
-  // 키 순서는 읽은 것을 펼쳐 만들었으므로 그대로다 — 문자열 비교로 충분하다.
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved);
-  // 파일이 준 크기의 원문. 칸의 글자가 이것과 같은 동안에는 그 값이 범위 밖이어도 저장을
-  // 잠그지 않는다(`canSave`) — 읽을 때 그대로 넣은 값이라 `sizeText`와 같은 규칙으로 만든다.
-  const savedSizeText = saved?.terminal.fontSize?.toString() ?? "";
-
-  const change = (patch: Partial<TerminalSettings>) => {
-    setDraft((current) => (current === null ? current : patchTerminal(current, patch)));
-    setSaveError(null);
-  };
-
-  // 알림 칩도 같은 규칙을 지난다 — 읽은 것을 펼쳐 고친다(`patchNotifications`).
-  const changeNotify = (patch: Partial<NotificationSettings>) => {
-    setDraft((current) => (current === null ? current : patchNotifications(current, patch)));
-    setSaveError(null);
-  };
-
-  const changeSize = (raw: string) => {
-    setSizeText(raw);
-    const size = parseFontSize(raw);
-    // 잘못 적힌 동안에는 저장할 값을 건드리지 않는다 — 저장은 `canSave`가 잠가 둔다.
-    if (size !== "invalid") change({ fontSize: size });
-  };
-
-  const save = async () => {
-    if (draft === null || !canSave({ dirty, sizeText, savedSizeText, saving })) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await settingsApi.write(draft);
-      setSaved(draft);
-      // **파일에 들어간 뒤에 먹인다.** 먼저 먹이면 쓰기가 실패했을 때 셸만 새 값으로 남아
-      // 다음 실행에 되돌아간다 — 「저장이 안 됐는데 바뀌었다」가 가장 읽기 어려운 상태다.
-      applyTerminalSettings(draft.terminal);
-      // 알림 배선도 같은 규칙이다 — **파일에 들어간 뒤에** 먹인다.
-      applyNotifySettings(notificationChoice(draft));
-    } catch (error) {
-      setSaveError(String(error));
-    } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader root="Settings" inset={!sidebarOpen} />
-        <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
-          <div className="flex max-w-[620px] flex-col gap-6">
-            {readError !== null ? (
-              <div className="flex flex-col items-start gap-3 pt-2">
-                <p className="text-[13.5px] leading-[1.7] text-red-600">{readError}</p>
-                <p className="text-[13px] leading-[1.7] text-tertiary">
-                  파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지
-                  않아요.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setAttempt((n) => n + 1)}
-                  className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-                >
-                  다시 읽기
-                </button>
-              </div>
-            ) : draft === null ? null : (
-              <>
-                <TerminalSection
-                  settings={draft}
-                  sizeText={sizeText}
-                  onChange={change}
-                  onChangeSize={changeSize}
-                />
-                <NotificationSection settings={draft} granted={granted} onChange={changeNotify} />
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => void save()}
-                    disabled={!canSave({ dirty, sizeText, savedSizeText, saving })}
-                    // 규격은 이 저장소의 유일한 주 버튼 선례를 그대로 쓴다
-                    // (ProjectsPage의 "프로젝트 추가"). disabled:pointer-events-none은
-                    // 테두리를 걷어낸 뒤로 배경 농도가 "누를 수 있다"를 말하는 유일한
-                    // 어휘라서다 — 잠긴 채 hover가 걸리면 눌리는 버튼으로 읽힌다.
-                    className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    {saving ? "저장 중…" : "저장"}
-                  </button>
-                  {saveError !== null && (
-                    <span className="text-[13px] text-red-600">{saveError}</span>
-                  )}
-                </div>
-              </>
-            )}
-            {/* **읽기 실패의 바깥에 선다.** 이 구획이 고치는 것은 `~/.atelier/settings.json`이
-                아니라 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔
-                이유가 없다. */}
-            <HooksSection
-              statuses={hooks}
-              busy={hooksBusy}
-              error={hooksError}
-              onInstall={() => void runHooks(hooksApi.install)}
-              onUninstall={() => void runHooks(hooksApi.uninstall)}
-            />
-          </div>
-        </div>
-      </main>
+    <HooksSection
+      statuses={hooks}
+      busy={busy}
+      error={error}
+      onInstall={() => void run(hooksApi.install)}
+      onUninstall={() => void run(hooksApi.uninstall)}
+    />
+  );
+}
+
+/** 구획 하나의 저장 버튼과 그 저장이 실패한 까닭. */
+function SaveButton({
+  enabled,
+  saving,
+  error,
+  onSave,
+}: {
+  enabled: boolean;
+  saving: boolean;
+  error: string | null;
+  onSave: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={!enabled}
+        // 규격은 이 저장소의 유일한 주 버튼 선례를 그대로 쓴다
+        // (ProjectsPage의 "프로젝트 추가"). disabled:pointer-events-none은
+        // 테두리를 걷어낸 뒤로 배경 농도가 "누를 수 있다"를 말하는 유일한
+        // 어휘라서다 — 잠긴 채 hover가 걸리면 눌리는 버튼으로 읽힌다.
+        className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
+      >
+        {saving ? "저장 중…" : "저장"}
+      </button>
+      {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
     </div>
   );
 }
@@ -352,7 +479,7 @@ function SettingsPage({ sidebarOpen }: { sidebarOpen: boolean }) {
  * **스크롤백도 ANSI 16색 편집도 없다.** 결정 52가 둘 다 명시적으로 뺐다 — 스크롤백은 모양이
  * 아니라 메모리 값이고(셸 8개 × 10,000줄), 색 편집기는 별건이다.
  *
- * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다. 마크업 테스트가 클릭을 못 걸어
+ * 값을 들지 않는다 — 조각(`TerminalSettingsPage`)이 들고 이쪽은 그리기만 한다. 마크업 테스트가 클릭을 못 걸어
  * (jsdom이 없다) 상태를 쥔 컴포넌트는 첫 화면 하나밖에 못 보여주기 때문이다.
  */
 export function TerminalSection({
@@ -490,7 +617,7 @@ export function TerminalSection({
  * 그래도 이 줄을 두는 것은 판정이 **진짜 API를 딛고 있어서다**: 그 길이 생기는 날 화면이
  * 저절로 따라온다. 여기서 「거부됐을 것 같다」를 우리가 지어내지는 않는다(결정 3의 그 규칙).
  *
- * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ * 값을 들지 않는다 — 조각(`…Page`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
  */
 export function NotificationSection({
   settings,
@@ -556,7 +683,7 @@ export function hookStateLabel(status: HookStatus): string {
  * 들어가는지 보여야 하고, 그 글자는 화면이 따로 적는 것이 아니라 **실제로 넣는 함수가 낸
  * 값**이다(`hooks.rs`의 `preview`) — 두 벌로 적으면 약속이 실물과 조용히 갈린다.
  *
- * 값을 들지 않는다 — 위 화면이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ * 값을 들지 않는다 — 조각(`…Page`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
  */
 export function HooksSection({
   statuses,
@@ -576,7 +703,7 @@ export function HooksSection({
   return (
     <section className="flex flex-col gap-5 pt-2">
       <h2 className="text-[14px] font-semibold text-muted-foreground">에이전트 훅</h2>
-      {/* **아래 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
+      {/* **다른 구획의 저장 버튼과 별개다** — 고치는 것이 우리 파일이 아니라 사용자의 claude·codex
           설정이라 초안이라는 것이 없다. 되돌릴 벌을 뜬다는 것도 여기서 말한다: 누르기
           전에 알아야 마음이 놓인다. */}
       <p className="text-[13px] leading-[1.7] text-tertiary">
@@ -617,8 +744,8 @@ export function HooksSection({
 
       <Row label="">
         <div className="flex items-center gap-3">
-          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 아래
-              한 자리뿐이고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
+          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 터미널
+              설정·알림 설정에만 있고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
           <button
             type="button"
             onClick={onInstall}

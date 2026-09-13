@@ -620,25 +620,40 @@ export async function sentNotifications(
  * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
  */
 export async function badgeCalls(page: Page): Promise<Array<number | null>> {
+  // **먼저 호출의 모양을 세운다.** 이 커맨드의 인자에는 어느 창인지가 늘 실리므로
+  // (`label`) 그것이 안 보이면 읽고 있는 것이 이 호출이 아니거나 기록 형식이 바뀐
+  // 것이다 — 거기서 조용히 `null`을 내면 **모든 호출이 「배지를 없앴다」로 읽혀**
+  // 「배지가 사라졌다」를 재는 단언이 통째로 fail-open이 된다(`ipcCallArgs`가 던진다).
+  return (await ipcCallArgs(page, BADGE_COMMAND, "label")).map(({ call, args }) => {
+    // **여기서만 `null`이 나온다.** `undefined`가 「배지를 없앤다」인데(`setBadgeCount`의
+    // 계약) 와이어에서는 키가 통째로 빠진다(`JSON.stringify`) — 그 없음이 곧 뜻이다.
+    if (!("value" in args)) return null;
+    const value = args.value;
+    if (typeof value !== "number") throw new Error(`배지 값이 수가 아니다 — ${call}`);
+    return value;
+  });
+}
+
+/**
+ * 그 커맨드로 나간 호출들의 인자, 나간 순서대로. **늘 실리는 키 하나**(`requiredKey`)가 안 보이면
+ * 던진다 — 읽고 있는 것이 그 호출이 아니거나 기록 형식이 바뀐 것이고, 거기서 조용히 넘기면 그
+ * 인자를 재는 단언이 통째로 fail-open이 된다. 위 구독 손잡이 둘이 정규식이 안 맞을 때 IPC
+ * 기록을 실어 던지는 것과 같은 이유다.
+ */
+export async function ipcCallArgs(
+  page: Page,
+  command: string,
+  requiredKey: string,
+): Promise<Array<{ call: string; args: Record<string, unknown> }>> {
   const calls = (await readIpcRecord(page))?.calls ?? [];
   return calls
-    .filter((call) => call.startsWith(BADGE_COMMAND))
+    .filter((call) => call === command || call.startsWith(`${command} `))
     .map((call) => {
-      // **먼저 호출의 모양을 세운다.** 이 커맨드의 인자에는 어느 창인지가 늘 실리므로
-      // (`label`) 그것이 안 보이면 읽고 있는 것이 이 호출이 아니거나 기록 형식이 바뀐
-      // 것이다 — 거기서 조용히 `null`을 내면 **모든 호출이 「배지를 없앴다」로 읽혀**
-      // 「배지가 사라졌다」를 재는 단언이 통째로 fail-open이 된다. 위 구독 손잡이 둘이
-      // 정규식이 안 맞을 때 IPC 기록을 실어 던지는 것과 같은 이유다.
-      const args: unknown = JSON.parse(call.slice(BADGE_COMMAND.length).trim() || "null");
-      if (typeof args !== "object" || args === null || !("label" in args)) {
-        throw new Error(`배지 호출의 모양이 낯설다 — ${call}`);
+      const args: unknown = JSON.parse(call.slice(command.length).trim() || "null");
+      if (typeof args !== "object" || args === null || !(requiredKey in args)) {
+        throw new Error(`${command} 호출의 모양이 낯설다 — ${call}`);
       }
-      // **여기서만 `null`이 나온다.** `undefined`가 「배지를 없앤다」인데(`setBadgeCount`의
-      // 계약) 와이어에서는 키가 통째로 빠진다(`JSON.stringify`) — 그 없음이 곧 뜻이다.
-      if (!("value" in args)) return null;
-      const value = (args as { value: unknown }).value;
-      if (typeof value !== "number") throw new Error(`배지 값이 수가 아니다 — ${call}`);
-      return value;
+      return { call, args: args as Record<string, unknown> };
     });
 }
 
