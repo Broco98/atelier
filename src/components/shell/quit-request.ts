@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { askDialog } from "@/components/ui/confirm-store";
+import { askDialog, showProblem } from "@/components/ui/confirm-store";
 import { quitNotice } from "@/features/terminal/shell-registry";
 import type { QuitCounts } from "@/features/terminal/shell-registry";
 
@@ -38,6 +38,12 @@ let asking = false;
  * **끄기 전에 내린다.** `quit_app`의 답은 앱이 꺼지면 영영 안 오므로, 그 뒤에 내리면 끄기가 어떤
  * 이유로 안 된 날 표시만 남는다.
  *
+ * **끄기가 거절되면 앱의 오류 창으로 알리고 약속은 풀린다.** 창은 이미 닫혀 사람은 꺼지는 중이라
+ * 믿고 기다리는데, 부르는 쪽(AppShell)은 약속을 `void`로 버리니 여기서 안 받으면 아무도 못 받는다.
+ * 표시는 이미 내려가 있어 다음 요청에 다시 묻는다 — 오류 창이 떠 있을 때의 요청도 그것을 종료
+ * 확인으로 갈아 끼운다(결정 14). 세기가 던진 것은 「못 껐다」가 아니므로 이 문구로 싸지 않는다.
+ * Rust의 「확인됨」은 `quit_app` 몸통 안에서만 서고, 선 뒤로는 앱이 반드시 꺼지므로 되돌릴 것이 없다.
+ *
  * 세기와 끄기를 인자로 받는 것은 이 흐름을 값으로 재기 위해서다(`quit-request.test.ts`) — 셸
  * 목록을 쥔 스토어는 xterm을 끌고 와 그 seam에서 못 읽는다.
  */
@@ -60,5 +66,10 @@ export async function requestQuit(
   } finally {
     asking = false;
   }
-  if (confirmed) await quit();
+  if (!confirmed) return;
+  try {
+    await quit();
+  } catch (e) {
+    await showProblem(`종료하지 못했습니다: ${e}`);
+  }
 }

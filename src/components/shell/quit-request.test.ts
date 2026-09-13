@@ -126,6 +126,100 @@ describe("묻는 중 표시", () => {
     await again;
   });
 
+  // **끄기가 거절되면 앱은 안 꺼진 채 창만 닫힌다.** 사람은 꺼지는 중이라 믿고 기다리므로 못 껐다는
+  // 것을 앱의 오류 창으로 알려야 하고, 약속은 던지지 않고 풀려야 한다 — 부르는 쪽(AppShell)이
+  // `void`로 버려서, 던지면 아무도 못 받는 거절이 된다. 그리고 다음 요청에 다시 물어 다시 꺼야 한다.
+  it("끄기가 거절되면 오류 창을 띄우고, 다음 요청에 다시 물어 다시 끈다", async () => {
+    const count = counter();
+    let attempts = 0;
+    const failingQuit = async () => {
+      attempts += 1;
+      throw "종료 명령이 거절되었습니다";
+    };
+    let outcome: "pending" | "resolved" | "rejected" = "pending";
+    const asked = requestQuit(count.fn, failingQuit).then(
+      () => (outcome = "resolved"),
+      () => (outcome = "rejected"),
+    );
+    await settle();
+    dialogStore.state!.answer(true);
+    await settle();
+
+    expect(attempts).toBe(1);
+    expect(dialogStore.state?.title).toBe("오류");
+    expect(dialogStore.state?.notice).toBe(true);
+    expect(dialogStore.state?.body).toBe("종료하지 못했습니다: 종료 명령이 거절되었습니다");
+    dialogStore.state!.answer(true);
+    await asked;
+    expect(outcome).toBe("resolved");
+
+    const again = requestQuit(count.fn, failingQuit);
+    await settle();
+    expect(count.calls()).toBe(2);
+    expect(dialogStore.state?.title).toBe(QUIT_TITLE);
+    dialogStore.state!.answer(true);
+    await settle();
+    expect(attempts).toBe(2);
+    expect(dialogStore.state?.title).toBe("오류");
+    dialogStore.state!.answer(true);
+    await again;
+  });
+
+  // 결정 14 「언제나 묻는다」 — 오류 창이 떠 있어도 종료 요청은 **무시되지 않고 갈아 끼운다.** 밀려난
+  // 오류 창은 「아니오」로 풀리므로 앞 요청의 약속도 던지지 않고 풀린다.
+  it("오류 창이 떠 있을 때의 요청은 종료 확인으로 갈아 끼우고, 앞 요청은 풀린다", async () => {
+    const count = counter();
+    const failingQuit = async () => {
+      throw "종료 명령이 거절되었습니다";
+    };
+    let outcome: "pending" | "resolved" | "rejected" = "pending";
+    const first = requestQuit(count.fn, failingQuit).then(
+      () => (outcome = "resolved"),
+      () => (outcome = "rejected"),
+    );
+    await settle();
+    dialogStore.state!.answer(true);
+    await settle();
+    expect(dialogStore.state?.title).toBe("오류");
+
+    const again = requestQuit(count.fn, quitter().fn);
+    await settle();
+    expect(count.calls()).toBe(2);
+    expect(dialogStore.state?.title).toBe(QUIT_TITLE);
+    await first;
+    expect(outcome).toBe("resolved");
+    dialogStore.state!.answer(false);
+    await again;
+  });
+
+  it("연달아 거절되어도 매번 오류 창이 뜨고, 셋째 요청에 다시 묻는다", async () => {
+    const count = counter();
+    let attempts = 0;
+    const failingQuit = async () => {
+      attempts += 1;
+      throw `거절 ${attempts}`;
+    };
+    for (const attempt of [1, 2]) {
+      const asked = requestQuit(count.fn, failingQuit);
+      await settle();
+      expect(dialogStore.state?.title).toBe(QUIT_TITLE);
+      dialogStore.state!.answer(true);
+      await settle();
+      expect(attempts).toBe(attempt);
+      expect(dialogStore.state?.title).toBe("오류");
+      expect(dialogStore.state?.body).toContain(`거절 ${attempt}`);
+      dialogStore.state!.answer(true);
+      await asked;
+    }
+
+    const third = requestQuit(count.fn, failingQuit);
+    await settle();
+    expect(count.calls()).toBe(3);
+    expect(dialogStore.state?.title).toBe(QUIT_TITLE);
+    dialogStore.state!.answer(false);
+    await third;
+  });
+
   it("세기가 던져도 표시가 내려간다", async () => {
     const thrown = requestQuit(() => Promise.reject(new Error("세기 실패")), quitter().fn);
     await expect(thrown).rejects.toThrow("세기 실패");
