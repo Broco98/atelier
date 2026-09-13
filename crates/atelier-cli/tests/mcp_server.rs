@@ -1209,6 +1209,55 @@ fn edit_work_pins_to_the_top_of_the_section_and_repeating_it_changes_no_file() {
     assert_eq!(std::fs::read_to_string(works.join("b-work/work.json")).unwrap(), planted);
 }
 
+/// D2 · 스토리 21. 에이전트의 고정 한 번이 **깨진 순서 파일을 조용히 덮지 않는다** — 사람이 손으로
+/// 고치던 바이트가 진행 중 루트 아래 어딘가에 남고, 고정은 여전히 먹으며, 남은 벌이 목록에 안 낀다.
+/// Atelier(`works/`)와 Maison(`maison/rooms/`) 두 세계를 다 잰다.
+#[test]
+fn edit_work_pin_over_a_broken_order_file_keeps_the_persons_bytes() {
+    for (mode, root) in [("atelier", "works"), ("maison", "maison/rooms")] {
+        let home = tempfile::tempdir().unwrap();
+        let works = home.path().join(root);
+        for slug in ["a-work", "b-work"] {
+            plant(&works, slug, slug);
+        }
+        let broken = r#"{"order":["b-work", "a-work" 손으로 고치다 멈춤"#;
+        std::fs::write(works.join(".order.json"), broken).unwrap();
+
+        let mut server = Server::start_with_mode(home.path(), Some(mode));
+        let res = server.request(3, "tools/call", json!({
+            "name": "atelier_edit_work", "arguments": { "work_slug": "b-work", "pinned": true }
+        }));
+        assert_eq!(res["result"]["isError"], false, "{mode}: {res}");
+        assert_eq!(work_titles(&mut server, 4), vec!["b-work", "a-work"], "{mode}: 벌이 목록에 끼었다");
+
+        let kept = walk_files(&works)
+            .into_iter()
+            .any(|path| std::fs::read_to_string(&path).is_ok_and(|content| content == broken));
+        assert!(
+            kept,
+            "{mode}: 깨진 순서 파일의 바이트가 고정 한 번에 사라졌다 — 남은 순서 파일: {:?}",
+            std::fs::read_to_string(works.join(".order.json")).ok()
+        );
+    }
+}
+
+/// 루트 아래 파일 전부(하위 폴더 포함). 벌의 이름은 이 검사가 정하지 않는다.
+fn walk_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
 /// 설명 두 자리(도구 설명 · `pinned` 인자)가 **고정 구획 맨 위**라고 말한다 — 「모든 목록 맨 위」는
 /// 순서 파일이 생긴 뒤로 거짓이다. `atelier_list_works`는 순서를 사람이 정하고 **바꾸는 도구가
 /// 없다**고 말한다(결정 2 · 스토리 33) — 안 말하면 에이전트가 없는 도구를 찾거나 파일을 손댄다.

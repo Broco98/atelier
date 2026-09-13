@@ -1551,6 +1551,72 @@ mod tests {
         );
     }
 
+    /// 작업 루트 아래(하위 폴더 포함)에서 내용이 `bytes`와 똑같은 파일을 찾는다 — 백업의 이름은
+    /// 이 검사가 정하지 않는다. 사람에게 중요한 것은 「손으로 고치던 바이트가 어딘가 남았다」이다.
+    fn file_holding(root: &Path, bytes: &str) -> Option<PathBuf> {
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if std::fs::read_to_string(&path).is_ok_and(|content| content == bytes) {
+                    return Some(path);
+                }
+            }
+        }
+        None
+    }
+
+    /// D2 · 스토리 21. **깨진 순서 파일을 옮기기 한 번이 조용히 덮지 않는다.** 깨진 파일은 빈 순서로
+    /// 눕고(목록은 뜬다), 끌어 놓기는 여전히 되지만, 사람이 손으로 고치던 바이트는 **어딘가에 남는다.**
+    /// Atelier(`works/`)와 Maison(`maison/rooms/`) 두 루트 모양을 다 잰다 — 앱의 `move_work` 명령은
+    /// 이 함수에 `works_dir(mode)`를 먹일 뿐이다(`src-tauri/src/commands.rs`).
+    #[test]
+    fn moving_over_a_broken_order_file_keeps_the_persons_bytes() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-05", false);
+            let broken = r#"{"order":["가","나", 여기 손으로 고치다 멈춤"#;
+            write_raw_order(&works, broken);
+
+            let moved = move_work(&works, "가", false, Some("나")).unwrap();
+            assert_eq!(slugs_of(&moved), slugs(&["가", "나"]), "{root}: 옮기기가 안 먹었다");
+
+            assert!(
+                file_holding(tmp.path(), broken).is_some(),
+                "{root}: 깨진 순서 파일의 바이트가 옮기기 한 번에 사라졌다 — 남은 순서 파일: {:?}",
+                std::fs::read_to_string(works.join(".order.json")).ok()
+            );
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 백업이 목록에 끼었다");
+        }
+    }
+
+    /// D2 — 고정 토글(앱 핀 버튼 · 다리 · MCP `atelier_edit_work`)도 같은 `reorder`를 탄다.
+    #[test]
+    fn pinning_over_a_broken_order_file_keeps_the_persons_bytes() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-05", false);
+            let broken = "{\"order\":[\"가\"\n  \"나\"]}";
+            write_raw_order(&works, broken);
+
+            let view = update_work_pinned(&works, "가", true).unwrap();
+            assert!(view.work.pinned, "{root}: 고정이 안 먹었다");
+
+            assert!(
+                file_holding(tmp.path(), broken).is_some(),
+                "{root}: 깨진 순서 파일의 바이트가 고정 토글 한 번에 사라졌다 — 남은 순서 파일: {:?}",
+                std::fs::read_to_string(works.join(".order.json")).ok()
+            );
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 백업이 목록에 끼었다");
+        }
+    }
+
     // ── 옮기기 (`move_work`) · 고정 토글 ────────────────────────────────────
 
     /// 상태를 못 박은 work 하나를 심는다 — 「구획을 옮겨도 상태는 그대로」를 `active` 아닌 값으로 잰다.
