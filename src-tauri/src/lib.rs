@@ -394,7 +394,8 @@ mod tests {
 
     /// 주석 줄(`//`로 시작하는 줄)을 비운다. 자리 검사가 **주석 처리된 호출에 속지 않게** —
     /// `// terminate::install(app.handle());`로 꺼 두어도 글자는 남아 검사가 통과한다(fail-closed).
-    fn without_comment_lines(body: &str) -> String {
+    /// `terminate.rs`의 자리 검사도 이것을 쓴다. 다리(`atelier-test-bridge`)는 크레이트가 달라 사본을 든다.
+    pub(crate) fn without_comment_lines(body: &str) -> String {
         body.lines()
             .map(|line| if line.trim_start().starts_with("//") { "" } else { line })
             .collect::<Vec<_>>()

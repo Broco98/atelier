@@ -35,7 +35,7 @@ mod macos {
     use objc2::ffi;
     use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
     use objc2::{class, msg_send, sel};
-    use tauri::{AppHandle, Emitter};
+    use tauri::{AppHandle, Emitter, Manager};
 
     use crate::quit::hook::{self, QuitReason, Verdict};
     use crate::quit::REQUESTED_EVENT;
@@ -89,6 +89,8 @@ mod macos {
             || unsafe { current_reason() },
             || {
                 if let Some(app) = APP.get() {
+                    // 쏘기 **전에** 세운다 — 확인 창이 숨긴 앱·내린 창 안에 뜨면 아무도 못 본다.
+                    bring_to_front(app);
                     let _ = app.emit(REQUESTED_EVENT, ());
                 }
             },
@@ -98,6 +100,27 @@ mod macos {
             Verdict::Ask => NS_TERMINATE_CANCEL,
         }
     }
+
+    /// 확인 창이 뜰 앱과 창을 **사람 앞에** 세운다(스토리 56·59). ⌘H로 숨긴 앱에 Dock 종료를 하거나 하나뿐인
+    /// 창을 내린 채 ⌘Q를 누르면, `terminate:`는 앱을 되살리지 않아 확인 창이 안 보이는 웹뷰 안에 뜬다.
+    /// 앞선 앱 둘(dbx · screenpipe)도 묻기 전에 같은 일을 한다.
+    ///
+    /// 차례가 뜻이 있다: 앱 숨김 풀기(`show` = `unhide:`) → 창 내림 풀기 → 창 보이기 → 초점. tao의
+    /// `set_focus`는 내려갔거나 안 보이는 창에는 아무것도 안 하므로 마지막이어야 한다. 실패는 버린다 —
+    /// 못 세워도 묻는 것 자체는 가야 하고, 패닉은 바깥의 `catch_unwind`가 허락으로 바꾼다.
+    ///
+    /// **`ask` 안에서만 부른다.** 시스템 종료·「확인됨」 쪽에서 부르면 로그아웃이 창을 띄운다.
+    fn bring_to_front(app: &AppHandle) {
+        let _ = app.show();
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+
+    /// 창 하나의 라벨. `tauri.conf.json`이 라벨을 안 적어 Tauri의 기본값(`main`)이다.
+    const MAIN_WINDOW: &str = "main";
 
     /// 지금 처리 중인 Apple Event의 `why?` 속성. ⌘Q·메뉴는 `terminate:`를 직접 불러 이벤트가 없고,
     /// Dock은 `quit` 이벤트에 속성이 없다.
@@ -162,6 +185,53 @@ mod tests {
              `applicationShouldTerminate:`를 구현하는지 보고(ui-improvement 구현-스펙 §8 「종료 확인」), \
              `terminate.rs`의 CHECKED_TAO를 올려라"
         );
+    }
+
+    /// `name`으로 시작하는 함수의 본문을 주석 줄 없이 자른다. 닫는 표식은 macos 모듈 안 함수의 들여쓰기
+    /// (`\n    }\n`)다. 표식을 못 찾거나 테스트 모듈까지 삼키면 터진다(fail-closed) — 소스 스캔이 제
+    /// 문자열을 읽고 스스로 통과하지 않게.
+    fn fn_source(name: &str) -> String {
+        let src = include_str!("terminate.rs");
+        let (head, _) = src.split_once("#[cfg(test)]").expect("테스트 모듈 표식이 있다");
+        let body = head
+            .split_once(&format!("fn {name}("))
+            .unwrap_or_else(|| panic!("`{name}`이 macos 모듈에 없다"))
+            .1
+            .split_once("\n    }\n")
+            .expect("닫는 표식이 있다")
+            .0;
+        crate::tests::without_comment_lines(body)
+    }
+
+    /// **묻기 전에 앱과 창을 사람 앞에 세운다**(스토리 56·59). 훅은 취소를 돌려주고 이벤트만 쏘는데,
+    /// ⌘H로 숨긴 앱에 Dock 종료를 하거나 창을 내린 채 ⌘Q를 누르면 확인 창이 **안 보이는 웹뷰 안에**
+    /// 뜬다 — 앱은 종료를 무시한 것처럼 보이고, 「묻는 중」이 서 있어 두 번째 ⌘Q도 삼켜진다
+    /// (`quit-request.ts`). 안전판이 없으니(결정 31) 사람이 창을 찾아내야만 끌 수 있다.
+    ///
+    /// AppKit이 있어야 돌아 헤드리스로 못 태운다 — 그래서 자리로 잰다: 묻는 쪽(`ask`)이 쏘기 **전에**
+    /// 앞으로 세우고, 세우는 함수가 숨김 풀기 · 내림 풀기 · 보이기 · 초점을 다 한다. 허락 쪽(시스템 종료
+    /// · 확인됨)에서 세우면 로그아웃이 창을 띄우므로, 세우기는 판정이 부르는 `ask` 안에만 산다.
+    #[test]
+    fn 묻기_전에_앱과_창을_앞으로_세운다() {
+        let imp = fn_source("application_should_terminate_imp");
+        let front = imp.find("bring_to_front(app);").expect(
+            "종료 훅이 묻기 전에 창을 앞으로 안 세운다 — 숨긴 앱·내린 창에서는 확인 창이 안 보인다",
+        );
+        let emit = imp.find(".emit(REQUESTED_EVENT, ())").expect("종료 훅이 종료 요청 이벤트를 안 쏜다");
+        assert!(front < emit, "창을 세우기 전에 이벤트를 쏜다 — 확인 창이 안 보이는 채 뜰 수 있다");
+        assert_eq!(imp.matches("bring_to_front(").count(), 1, "앞으로 세우기가 `ask` 밖에서도 불린다");
+        let (_, after_ask) = imp.split_once("|| {").expect("`ask` 클로저가 있다");
+        assert!(after_ask.contains("bring_to_front(app);"), "앞으로 세우기가 `ask` 클로저 밖이다");
+
+        let bring = fn_source("bring_to_front");
+        let steps = ["app.show()", ".unminimize()", ".show()", ".set_focus()"];
+        let mut last = 0;
+        for step in steps {
+            let at = bring[last..]
+                .find(step)
+                .unwrap_or_else(|| panic!("`bring_to_front`가 {step}을 {steps:?}의 차례로 안 부른다"));
+            last += at + step.len();
+        }
     }
 
     #[test]
