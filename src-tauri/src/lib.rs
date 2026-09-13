@@ -8,6 +8,7 @@ pub mod pty;
 mod quit;
 mod settings;
 mod shells;
+mod terminate;
 mod watcher;
 
 use std::sync::Arc;
@@ -193,7 +194,7 @@ pub fn run() {
         // 규칙 한 벌이다. `quit_app`의 `app.exit`는 지금 이 자리를 안 지난다(`quit.rs`의 `confirm`).
         //
         // ⌘Q·메뉴 Quit·Dock 종료는 여기로 안 온다 — tao가 `ExitRequested` 없이 바로 끝낸다(tauri#9198).
-        // 그 길은 #224가 델리게이트 훅으로 같은 이벤트를 쏘게 붙인다.
+        // 그 길은 아래 셋업의 델리게이트 훅(`terminate.rs`)이 같은 이벤트를 쏜다.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if !quit::confirmed() {
@@ -209,6 +210,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
         .setup(|app| {
+            // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
+            // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
+            terminate::install(app.handle());
             watcher::start(app.handle().clone());
             // 도는 명령을 1초마다 재서 **바뀐 셸만** 쏜다(adr-04). 배선은 바로 위 watcher와
             // 같은 길이다 — 스레드 하나가 emit하고 프런트가 `listen`으로 받는다.
@@ -459,6 +463,17 @@ mod tests {
         assert!(
             builder.contains(".emit(quit::REQUESTED_EVENT, ())"),
             "종료 요청 이벤트를 안 쏜다 — 창은 막혔는데 아무도 안 묻는다(앱을 끌 길이 없다)"
+        );
+    }
+
+    /// **⌘Q·메뉴 Quit·Dock 종료의 훅이 셋업 안에서 붙는가**(결정 14 · #224). 훅 자체는 AppKit이 있어야
+    /// 돌아 헤드리스로 못 태운다 — 빠지면 나는 일은 조용한 옛 동작이다: ⌘Q 한 번에 묻지 않고 꺼진다.
+    /// 셋업 밖(예: `run` 앞)으로 옮기면 델리게이트가 아직 없어 붙이기가 한 줄 로그로 끝나므로 자리까지 본다.
+    #[test]
+    fn 셋업이_종료_훅을_붙인다() {
+        assert!(
+            setup_source().contains("terminate::install(app.handle());"),
+            "셋업이 `terminate:` 훅을 안 붙인다 — ⌘Q·메뉴 Quit·Dock이 묻지 않고 끈다"
         );
     }
 
