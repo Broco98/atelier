@@ -9,7 +9,15 @@ import { routesOf, slugOf, type Mode } from "@/mode";
 import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
 import { WorkCard } from "./WorkCard";
 import { WorkSectionList } from "./WorkSectionList";
-import { gapLineY, rowGap, type ListGeometry, type RowGap, type SectionGeometry } from "./row-drop";
+import {
+  edgeScrollStep,
+  gapLineY,
+  orderChanged,
+  rowGap,
+  type ListGeometry,
+  type RowGap,
+  type SectionGeometry,
+} from "./row-drop";
 import { splitWorkSections } from "./work-sections";
 import type { SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
@@ -201,26 +209,41 @@ function SidebarWorkList({
   const draggedSlug = useStore(dragStore, (state) =>
     state.source?.kind === "work" ? state.source.slug : null,
   );
-  // 끄는 동안 쥐는 기하 — 시작할 때 **한 번** 잰다(`row-drop` 머리말). 렌더에 안 쓰여 상태가 아니다.
+  // 끄는 동안 쥐는 기하 — 시작해 받침이 선 **다음 프레임에 한 번** 잰다(`row-drop` 머리말). 렌더에 안 쓰여
+  // 상태가 아니다.
   const geometry = useRef<ListGeometry | null>(null);
   const [gap, setGap] = useState<RowGap | null>(null);
+  // 재는 자리가 읽는 **최신** 구획. 끄는 손잡이는 누른 순간의 렌더에서 만들어져, 그 클로저의 `sections`는
+  // 문턱을 넘기 전에 목록이 바뀌었으면 옛 것이다 — 기하의 slug와 화면의 행이 갈린다.
+  const latest = useRef({ sections, sectionsOpen });
+  useEffect(() => {
+    latest.current = { sections, sectionsOpen };
+  });
 
   // 문턱을 넘는 순간 이미 떠 있던 카드를 닫는다 — 끄는 것이 탭이어도(위 `openCardAfterDelay`).
   useEffect(() => {
     if (dragging) closeCard();
   }, [dragging]);
 
-  // **끄는 도중 목록이 바뀌면 끌기를 거둔다**(티켓 05 — 06이 「순열이 바뀔 때만」으로 좁힌다). 재어 둔
-  // 기하가 옛 목록의 것이라, 그대로 두면 보이는 선과 실제로 놓이는 자리가 갈린다. 거두는 것은
-  // Esc와 같은 길이라 아무것도 안 부른다. 목록이 같으면 react-query가 같은 참조를 주어 여기 안 온다.
+  // **끄는 도중 목록의 `(slug, pinned)` 순열이 바뀌면 끌기를 거둔다**(스펙 S8 · `orderChanged`). 재어 둔
+  // 기하가 옛 순서의 것이라, 그대로 두면 보이는 선과 실제로 놓이는 자리가 갈린다. 거두는 것은 Esc와
+  // 같은 길이라 아무것도 안 부른다. **제목·상태만 바뀐 갱신은 끌기를 살린다** — 에이전트가 spec을
+  // 고칠 때마다 `works:changed`가 오고, 그때마다 끊기면 손이 논다.
+  //
+  // 비교 상대는 **바로 앞에 받은 목록**이다. 순열이 같음은 전이적이라, 앞 목록과만 대도 끌기를 시작할
+  // 때의 목록과 댄 것과 답이 같다. (목록이 깊이 같으면 react-query가 같은 참조를 주어 여기 오지도 않는다.)
+  const seenWorks = useRef(works);
   useEffect(() => {
-    if (dragStore.state.source?.kind === "work") cancelDrag();
+    const before = seenWorks.current;
+    seenWorks.current = works;
+    if (dragStore.state.source?.kind === "work" && orderChanged(before, works)) cancelDrag();
   }, [works]);
 
-  /** 스크롤 상자 안의 머리·행을 재어 **내용 좌표** 기하로 옮긴다. */
+  /** 스크롤 상자 안의 머리·행·받침을 재어 **내용 좌표** 기하로 옮긴다. */
   const measure = (): ListGeometry | null => {
     const box = listBox.current;
     if (!box) return null;
+    const { sections, sectionsOpen } = latest.current;
     const rect = box.getBoundingClientRect();
     // 뷰포트 y → 내용 y. 잰 순간의 스크롤을 더해 두면 뒤에 굴러도 포인터 쪽에만 더하면 된다.
     const shift = box.scrollTop - rect.top;
@@ -233,15 +256,28 @@ function SidebarWorkList({
     );
     const sectionOf = (key: keyof SectionsOpen, list: WorkView[]): SectionGeometry[] => {
       const head = box.querySelector(`[data-drop-head="${key}"]`);
-      if (!head) return [];
-      // 접힌 구획의 행은 높이 0으로 DOM에 남는다(`SectionBody`) — 가리킬 수 없으니 안 싣는다.
+      // 빈 받침(티켓 06). 빈 `고정`은 머리 없이 받침만 서므로 둘 다 없을 때만 구획이 없다.
+      const slotEl = box.querySelector(`[data-drop-slot="${key}"]`);
+      // 접힌 구획의 행·받침은 높이 0으로 DOM에 남는다(`SectionBody`) — 가리킬 수 없으니 안 싣는다.
+      // 빈 `고정`의 받침은 몸통 밖이라 접힘과 무관하다.
+      const reachable = sectionsOpen[key] || head === null;
+      const slot = slotEl && reachable ? span(slotEl) : undefined;
+      if (!head && !slot) return [];
       const rows = sectionsOpen[key]
         ? list.flatMap((work) => {
             const el = rowEls.get(work.slug);
             return el ? [{ slug: work.slug, ...span(el) }] : [];
           })
         : [];
-      return [{ pinned: key === "pinned", head: span(head), rows, slugs: list.map((work) => work.slug) }];
+      return [
+        {
+          pinned: key === "pinned",
+          head: head ? span(head) : null,
+          ...(slot ? { slot } : {}),
+          rows,
+          slugs: list.map((work) => work.slug),
+        },
+      ];
     };
     return {
       box: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
@@ -259,14 +295,41 @@ function SidebarWorkList({
       : null;
 
   const startDrag = (slug: string, from: DragPoint) => {
+    // 끄는 동안의 프레임 루프 하나가 두 일을 한다 — 첫 프레임에 기하를 재고, 그 뒤로 가장자리에서 굴린다.
+    let frame: number | null = null;
+    let last: DragPoint | null = null;
+    // 같은 틈이면 같은 객체를 둔다 — 포인터 이동마다 새 객체를 내면 그 빈도로 목록이 다시 그려진다.
+    const aimAt = (point: DragPoint) => {
+      const next = gapUnder(slug, point);
+      setGap((now) => (now?.pinned === next?.pinned && now?.before === next?.before ? now : next));
+    };
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
+      const box = listBox.current;
+      // **받침이 선 다음 프레임에 잰다**(스펙 S6). 문턱을 넘는 순간 드래그 상태가 켜지고 받침은 그 렌더에서
+      // 서므로, 같은 콜백 안에서 재면 받침이 없는(또는 목록이 아직 안 밀린) 기하를 쥔다.
+      if (geometry.current === null) {
+        geometry.current = measure();
+        if (last) aimAt(last);
+        return;
+      }
+      if (!box || !last) return;
+      // **가장자리 자동 스크롤**(스토리 13). 기하는 다시 안 잰다 — 내용 좌표라 포인터 쪽에 그 순간의
+      // `scrollTop`만 더하면 된다(`row-drop` 머리말). 대신 포인터가 가만히 있어도 그 아래 내용이 바뀌므로
+      // 틈을 다시 겨눈다.
+      const step = edgeScrollStep(geometry.current.box, { x: last.clientX, y: last.clientY });
+      if (step === 0) return;
+      const before = box.scrollTop;
+      box.scrollTop = before + step;
+      if (box.scrollTop !== before) aimAt(last);
+    };
     armDrag({ kind: "work", slug }, from, {
       start: () => {
-        geometry.current = measure();
+        frame = requestAnimationFrame(tick);
       },
-      // 같은 틈이면 같은 객체를 둔다 — 포인터 이동마다 새 객체를 내면 그 빈도로 목록이 다시 그려진다.
       move: (point) => {
-        const next = gapUnder(slug, point);
-        setGap((now) => (now?.pinned === next?.pinned && now?.before === next?.before ? now : next));
+        last = { clientX: point.clientX, clientY: point.clientY };
+        aimAt(point);
       },
       // 놓인 자리를 **놓는 순간의 포인터로 다시** 판정한다 — 마지막 이동과 떼기 사이에 굴렀을 수 있다.
       drop: (point) => {
@@ -274,6 +337,7 @@ function SidebarWorkList({
         if (at) moveWork.mutate({ slug, ...at });
       },
       end: () => {
+        if (frame !== null) cancelAnimationFrame(frame);
         geometry.current = null;
         setGap(null);
       },
@@ -281,6 +345,12 @@ function SidebarWorkList({
   };
 
   const lineY = gap && geometry.current ? gapLineY(geometry.current, gap) : null;
+  // 틈이 **빈 구획**에 떨어졌으면 그 받침이 밝아진다 — 빈 구획엔 받침 말고 놓일 자리가 없다(머리에 놓아도 같은 답).
+  const gapSection: keyof SectionsOpen | null = gap === null ? null : gap.pinned ? "pinned" : "works";
+  const litSlot =
+    gapSection !== null && (gapSection === "pinned" ? sections.pinned : sections.main).length === 0
+      ? gapSection
+      : null;
 
   return (
     <>
@@ -353,6 +423,7 @@ function SidebarWorkList({
             renderSubrow={renderSubrow}
             draggedSlug={draggedSlug}
             lineY={lineY}
+            litSlot={litSlot}
             onArmDrag={startDrag}
           />
         </div>

@@ -107,6 +107,7 @@ function 행(state: ShellsState): string {
       onTogglePin={() => {}}
       draggedSlug={null}
       lineY={null}
+      litSlot={null}
       onArmDrag={() => {}}
       renderSubrow={(work) => {
         // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`) — 값을 고르는 길이 행마다 따로다.
