@@ -1177,6 +1177,66 @@ fn list_works_follows_the_order_file() {
     assert_eq!(work_titles(&mut server, 2), vec!["c-work", "b-work", "a-work"]);
 }
 
+/// UI개선 결정 28 · 스토리 34·35. 에이전트가 `pinned`를 바꾸면 앱의 핀 버튼과 **같은 자리**에 선다 —
+/// 켜면 고정 구획 맨 위, 끄면 비고정 구획 맨 위. 이미 그 값이면 **아무 파일도 안 바뀐다**: 순서
+/// 파일이 안 생기고, 심은 한 줄 `work.json`이 렌더러의 들여쓴 모양으로 다시 써지지 않는다.
+#[test]
+fn edit_work_pins_to_the_top_of_the_section_and_repeating_it_changes_no_file() {
+    let home = tempfile::tempdir().unwrap();
+    let works = home.path().join("works");
+    for slug in ["a-work", "b-work", "c-work"] {
+        plant(&works, slug, slug);
+    }
+    let mut server = Server::start(home.path());
+    let pin = |server: &mut Server, id: u32, slug: &str, pinned: bool| {
+        let res = server.request(id, "tools/call", json!({
+            "name": "atelier_edit_work", "arguments": { "work_slug": slug, "pinned": pinned }
+        }));
+        assert_eq!(res["result"]["isError"], false, "{res}");
+    };
+
+    // 같은 날이라 옛 규칙(slug 오름차순)이면 고정 구획이 b·c다 — 나중에 고정한 c가 위여야 한다.
+    pin(&mut server, 3, "b-work", true);
+    pin(&mut server, 4, "c-work", true);
+    assert_eq!(work_titles(&mut server, 5), vec!["c-work", "b-work", "a-work"], "고정 구획 맨 위가 아니다");
+    pin(&mut server, 6, "c-work", false);
+    assert_eq!(work_titles(&mut server, 7), vec!["b-work", "c-work", "a-work"], "비고정 구획 맨 위가 아니다");
+
+    let order = works.join(".order.json");
+    std::fs::remove_file(&order).unwrap();
+    let planted = r#"{"title":"b-work","status":"active","createdAt":"2026-09-07","projects":[],"pinned":true}"#;
+    std::fs::write(works.join("b-work/work.json"), planted).unwrap();
+    pin(&mut server, 8, "b-work", true);
+    assert!(!order.exists(), "같은 값 고정이 순서 파일을 썼다");
+    assert_eq!(std::fs::read_to_string(works.join("b-work/work.json")).unwrap(), planted);
+}
+
+/// 설명 두 자리(도구 설명 · `pinned` 인자)가 **고정 구획 맨 위**라고 말한다 — 「모든 목록 맨 위」는
+/// 순서 파일이 생긴 뒤로 거짓이다. `atelier_list_works`는 순서를 사람이 정하고 **바꾸는 도구가
+/// 없다**고 말한다(결정 2 · 스토리 33) — 안 말하면 에이전트가 없는 도구를 찾거나 파일을 손댄다.
+#[test]
+fn pin_and_list_descriptions_say_where_a_pin_lands_and_who_orders_the_list() {
+    let home = tempfile::tempdir().unwrap();
+    let mut server = Server::start(home.path());
+    let res = server.request(2, "tools/list", json!({}));
+    let tools = res["result"]["tools"].as_array().unwrap();
+    let find = |name: &str| {
+        tools.iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("{name} not listed: {res}"))
+    };
+    let normalize = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    let edit = find("atelier_edit_work");
+    let described = normalize(edit["description"].as_str().unwrap());
+    let pinned = normalize(edit["inputSchema"]["properties"]["pinned"]["description"].as_str().unwrap());
+    for (place, text) in [("tool description", &described), ("pinned argument", &pinned)] {
+        assert!(text.contains("top of the pinned section"), "{place}: {text}");
+        assert!(!text.contains("every listing") && !text.contains("every work listing"), "{place}: {text}");
+    }
+
+    let list = normalize(find("atelier_list_works")["description"].as_str().unwrap());
+    assert!(list.contains("no tool that changes the order"), "{list}");
+}
+
 /// V12 — 커밋 안 된 변경이 있으면 거부되고, 제거한 뒤에도 브랜치는 남는다.
 #[test]
 fn remove_work_refuses_dirty_worktrees_and_leaves_the_branch_behind() {

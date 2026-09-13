@@ -98,11 +98,17 @@ impl AtelierServer {
     // 정의 문장(「work는 하나의 기능」)은 지침으로 옮겼다 — Maison에서 이 목록이 돌려주는
     // 것은 Room이라 「기능」도 「공유 브랜치」도 참이 아니다. 프로젝트·브랜치·워크트리는
     // **조건절 안에서만** 말한다.
+    //
+    // 순서 문장(UI개선 결정 2 · 스토리 33): 순서는 사람이 앱에서 끌어 정한다. 도구가 없다고
+    // 말하지 않으면 에이전트가 없는 도구를 찾거나 `.order.json`을 손으로 고친다.
     #[tool(
         description = "List the works in progress: for each entry its slug, title and status, \
                        the spec directory and the spec files already written, and — for one that \
                        spans projects — the branch they share and the worktree path of each. \
                        Anything archived is not here — see atelier_list_archive. \
+                       The entries come in the order the user sees in the app: pinned works \
+                       first, then the order the user set by dragging. That order is the user's \
+                       to set — there is no tool that changes the order. \
                        Read-only; reads local files only.",
         annotations(read_only_hint = true, open_world_hint = false)
     )]
