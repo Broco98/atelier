@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 import {
   awaitSpawned,
+  callCount,
   fireEvent,
   installFixtureBackend,
   openShell,
@@ -22,12 +23,6 @@ const QUIT_EVENT = "app:quit-requested";
 
 const quitDialog = (page: Page) => page.getByRole("alertdialog", { name: "Atelier 종료" });
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
-
-/** 지금까지 나간 호출 중 이름이 `name`으로 시작하는 것의 수. */
-async function callsOf(page: Page, name: string): Promise<number> {
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  return calls.filter((call) => call === name || call.startsWith(`${name} `)).length;
-}
 
 /**
  * 백엔드가 쏘는 종료 요청을 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아**(`fireEvent`).
@@ -141,7 +136,7 @@ test("셸이 0개면 창은 뜨고 셸 줄이 없다", async ({ page }) => {
   const dialog = quitDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog).not.toContainText("셸");
-  expect(await callsOf(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_command_running")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -158,11 +153,11 @@ test("기본 포커스가 「취소」라 반사적 Enter로는 안 꺼지고, �
 
   await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
-  expect(await callsOf(page, "quit_app")).toBe(0);
+  expect(await callCount(page, "quit_app")).toBe(0);
 
   await fireQuitRequest(page);
   await dialog.getByRole("button", { name: "종료", exact: true }).click();
-  await expect.poll(() => callsOf(page, "quit_app")).toBe(1);
+  await expect.poll(() => callCount(page, "quit_app")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -201,7 +196,7 @@ for (const [label, dismiss] of dismissals) {
 
     await dismiss(page);
     await expect(quitDialog(page)).toHaveCount(0);
-    expect(await callsOf(page, "quit_app")).toBe(0);
+    expect(await callCount(page, "quit_app")).toBe(0);
 
     await fireQuitRequest(page);
     await expect(quitDialog(page)).toBeVisible();
@@ -223,14 +218,14 @@ test("세는 동안과 창이 떠 있을 때의 요청은 창을 안 바꾼다",
   await expect(quitDialog(page)).toBeVisible();
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   // **셸 수만큼 한 벌이다.** 둘째 요청이 무시되지 않았다면 네 번이 나간다.
-  expect(await callsOf(page, "pty_command_running")).toBe(2);
+  expect(await callCount(page, "pty_command_running")).toBe(2);
 
   // 창이 떠 있을 때의 요청. 통과됐다면 세기가 한 벌 더 나가고, 창이 「아니오」로 접혔다 다시 선다.
   await fireQuitRequest(page);
-  expect(await callsOf(page, "pty_command_running")).toBe(2);
+  expect(await callCount(page, "pty_command_running")).toBe(2);
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
-  expect(await callsOf(page, "quit_app")).toBe(0);
+  expect(await callCount(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -250,7 +245,7 @@ test("셸 닫기 확인이 떠 있을 때의 요청은 종료 확인으로 갈�
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   await expect(page.getByRole("alertdialog", { name: "셸 닫기" })).toHaveCount(0);
   await expect(shells(page)).toHaveCount(1);
-  expect(await callsOf(page, "pty_kill")).toBe(0);
+  expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -272,6 +267,6 @@ test("팔레트가 떠 있을 때의 요청은 팔레트를 닫지 않고 그 �
   await quitDialog(page).getByRole("button", { name: "취소", exact: true }).click();
   await expect(quitDialog(page)).toHaveCount(0);
   await expect(palette).toBeVisible();
-  expect(await callsOf(page, "quit_app")).toBe(0);
+  expect(await callCount(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

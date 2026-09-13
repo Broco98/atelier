@@ -297,6 +297,15 @@ export async function spawnedCwds(page: Page): Promise<string[]> {
 }
 
 /**
+ * 지금까지 그 커맨드로 나간 호출의 수. 이름이 **정확히** 같은 것만 센다(`ipcCallArgs`와 같은 거름) —
+ * 앞머리로 세면 뒷날 `pty_write_*` 같은 이웃 커맨드가 함께 세어진다.
+ */
+export async function callCount(page: Page, command: string): Promise<number> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls.filter((call) => call === command || call.startsWith(`${command} `)).length;
+}
+
+/**
  * 경로 한 단계 위 — 「모든 프로젝트」(워크트리들의 부모)와 Work 폴더(`specDir`의 부모)의
  * 기대값을 픽스처 경로에서 **파생한다**(폴더 이름을 검사에 안 적는다).
  */
@@ -425,6 +434,41 @@ export async function dragRowOnto(page: Page, slug: string, target: Locator, whe
   await hoverRowPoint(page, target, where);
   await expect(page.locator("[data-drop-line]")).toBeVisible();
   await page.mouse.up();
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/** 상자의 한가운데. */
+export const middle = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+
+/**
+ * 탭을 눌러 **분할 끌기를 시작시킨다**(`works-split`·`drag-gesture`가 함께 딛는다). 겹판이 설
+ * 때까지가 여기까지이고, 어디에 놓을지는 부르는 쪽이 정한다. 돌려주는 것은 누른 자리다.
+ *
+ * 임계값을 넘기는 이동과 목적지로 가는 이동을 **나눈다.** 겹판이 서는 것은 임계값을 넘은
+ * 그 이동에서인데, 그때 포인터 아래에는 아직 겹판이 없어 절반이 「내 위다」를 말하는 것은
+ * 다음 이동부터다. 실물에서는 구멍이 아니다 — 임계값은 출발점에서 5px이라 사이드바 위에서
+ * 넘고, 본문까지 오는 동안 이동이 수십 번 더 온다.
+ *
+ * 12px는 문턱(5px)을 넉넉히 넘기면서 누른 탭 밖으로는 안 나가는 거리다. `tab-order`의 누름과
+ * `pickUpRow`도 12를 쓰지만 각자 자리의 기하가 정한 수라 여기로 묶지 않는다.
+ */
+export async function startSplitDrag(page: Page, box: Box) {
+  const from = middle(box);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y);
+  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+  return from;
+}
+
+/** 끄는 중인 포인터를 그 절반 한가운데로 민다. **좌표를 손으로 적지 않는다** — 겹판이 자기 상자를 말한다. */
+export async function moveOntoHalf(page: Page, half: "left" | "right") {
+  const box = await page.locator(`[data-drop-half="${half}"]`).boundingBox();
+  if (!box) throw new Error(`${half} 절반의 상자를 못 읽었다`);
+  const at = middle(box);
+  await page.mouse.move(at.x, at.y);
+  await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
 }
 
 /** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */

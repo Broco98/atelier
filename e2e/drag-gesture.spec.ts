@@ -1,7 +1,15 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import {
+  awaitSpawned,
+  callCount,
+  installFixtureBackend,
+  middle,
+  moveOntoHalf,
+  startSplitDrag,
+  unknownIpcCalls,
+} from "./harness";
 
 // 끌기 제스처의 **끝나는 길**(UI개선 티켓 03 · UI개선 스펙 S5). 제스처는 기능 폴더 밖 공용 모듈이
 // 쥐고(`src/lib/pointer-drag.ts`), 이 파일은 그 모듈이 어느 화면에서 부르든 지켜야 하는 것을
@@ -12,23 +20,13 @@ import { awaitSpawned, installFixtureBackend, readIpcRecord, unknownIpcCalls } f
 
 const [, plainWork] = WORKS;
 
-type Box = { x: number; y: number; width: number; height: number };
-
-const middle = (box: Box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
-
 /** 셸 탭의 이름 버튼 — 끄는 자리이자 켜짐을 말하는 자리다. */
 const shellName = (page: Page) => page.locator('[data-tab="shell"] button[aria-pressed]');
 
-async function boxOf(page: Page, selector: string): Promise<Box> {
-  const box = await page.locator(selector).boundingBox();
-  if (!box) throw new Error(`${selector}의 상자를 못 읽었다`);
-  return box;
-}
-
-async function shellNameCenter(page: Page) {
+async function shellNameBox(page: Page) {
   const box = await shellName(page).boundingBox();
   if (!box) throw new Error("셸 탭의 상자를 못 읽었다");
-  return middle(box);
+  return box;
 }
 
 /**
@@ -62,29 +60,16 @@ async function openTerminalOnSpec(page: Page) {
 
 /** 셸 탭을 눌러 문턱을 넘긴다. **표시가 섰는지 먼저 본다** — 안 서면 아래 「걷혔다」가 빈 초록이다. */
 async function startDrag(page: Page) {
-  const from = await shellNameCenter(page);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(from.x + 12, from.y);
-  await expect(page.locator("[data-drop-half]")).toHaveCount(2);
+  const from = await startSplitDrag(page, await shellNameBox(page));
   expect(await dragging(page)).toBe(true);
   return from;
 }
-
-async function moveOnto(page: Page, half: "left" | "right") {
-  const at = middle(await boxOf(page, `[data-drop-half="${half}"]`));
-  await page.mouse.move(at.x, at.y);
-  await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
-}
-
-const ptyWrites = async (page: Page) =>
-  ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_write")).length;
 
 test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
   test("놓음", async ({ page }) => {
     await openTerminal(page);
     await startDrag(page);
-    await moveOnto(page, "right");
+    await moveOntoHalf(page, "right");
     await page.mouse.up();
 
     await expect(page.locator("[data-drop-half]")).toHaveCount(0);
@@ -110,7 +95,7 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
   test("문턱 전에 뗌", async ({ page }) => {
     await openTerminalOnSpec(page);
 
-    const from = await shellNameCenter(page);
+    const from = middle(await shellNameBox(page));
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(from.x + 3, from.y);
@@ -143,9 +128,9 @@ test.describe("끝나는 길 넷이 body 표시를 걷는다", () => {
 test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력도 없다", async ({ page }) => {
   await openTerminal(page);
   await startDrag(page);
-  await moveOnto(page, "right");
+  await moveOntoHalf(page, "right");
   await page.locator("textarea.xterm-helper-textarea").focus();
-  const before = await ptyWrites(page);
+  const before = await callCount(page, "pty_write");
 
   await page.keyboard.press("Escape");
   // 겹판이 걷힌 뒤라 같은 자리에서 떼도 받을 것이 없다.
@@ -154,7 +139,7 @@ test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력�
 
   await expect(page).not.toHaveURL(/split=/);
   await expect(page.locator("[data-column]")).toHaveCount(0);
-  expect(await ptyWrites(page)).toBe(before);
+  expect(await callCount(page, "pty_write")).toBe(before);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -165,7 +150,7 @@ test("끌었다 셸 탭 위에서 떼면 그 탭이 켜지지 않는다", async 
   await openTerminalOnSpec(page);
 
   const from = await startDrag(page);
-  await moveOnto(page, "right");
+  await moveOntoHalf(page, "right");
   await page.mouse.move(from.x, from.y);
   await page.mouse.up();
 
