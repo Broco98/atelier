@@ -533,14 +533,32 @@ export async function openShell(page: Page): Promise<void> {
  * 「n번째로 spawn 응답을 받은 셸」이라 기다릴 수도 그 수 그대로다.
  *
  * `state`에 `null`을 주면 「그 셸의 상태가 사라졌다」(파일이 지워졌다)를 흉내 낸다.
+ *
+ * **탭 줄이 없는 화면에서는 이 함수를 못 쓴다** — 착석을 칸의 닫기 버튼으로 재므로(`awaitSpawned`)
+ * 설정처럼 탭 줄이 없는 화면에서는 기다림이 던진다. 그때는 착석을 탭 줄이 있는 화면에서 먼저
+ * 기다려 두고 옮긴 뒤 `fireAttention`으로 쏜다.
  */
 export async function markAttention(
   page: Page,
-  state: { agent: string; event: string; at?: number; payload?: unknown } | null,
+  state: AttentionState | null,
   ptyId = 1,
 ): Promise<void> {
   await awaitSpawned(page, ptyId);
+  await fireAttention(page, state, ptyId);
+}
 
+type AttentionState = { agent: string; event: string; at?: number; payload?: unknown };
+
+/**
+ * `markAttention`에서 **착석 기다림을 뺀 쏘기**(#226). 착석은 부르는 쪽이 이미 확인했어야 한다 —
+ * 안 앉은 pty에 쏘면 값이 조용히 버려진다(`markAttention` 머리말). 구독이 걸렸는지는 여전히
+ * 기다리고, 끝내 없으면 던진다(`fireEvent`).
+ */
+export async function fireAttention(
+  page: Page,
+  state: AttentionState | null,
+  ptyId = 1,
+): Promise<void> {
   await fireEvent(page, "shell:attention", [
     {
       shellId: `l3-${ptyId}`,

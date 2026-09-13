@@ -90,13 +90,13 @@ export function lastMode(): Mode {
 
 /**
  * 셸이 드는 세계. **모드를 안 싣는 주소에서는 떠나온 세계를 이어 든다** — `modeOf`로 물으면
- * `/settings`가 언제나 Atelier라, Maison에서 설정을 열고 nav의 `Archive`를 누르면 Atelier의
- * `/archive`로 간다. 마지막 모드는 여전히 Maison인데 화면만 조용히 세계를 건너는 것이고,
- * AppShell이 「nav 한 번에 세계를 안 떠난다」고 적어 둔 그 계약이 거기서 깨진다.
+ * `/settings`가 언제나 Atelier라, Maison에서 설정을 열고 「앱으로 돌아가기」를 누르면 Atelier로
+ * 가고, 설정을 연 채 누른 ⌘K는 저쪽 세계를 뒤진다. 마지막 모드는 여전히 Maison인데 화면만
+ * 조용히 세계를 건너는 것이다.
  *
  * 저장소를 읽는 것은 `placeModeOf`가 `null`을 주는 자리(`/`·`/settings`)뿐이다. 그 화면에
  * 머무는 동안 값이 낡을 수 없다 — 세계 밖 주소는 `rememberVisit`이 어느 칸에도 안 적으므로
- * 마지막 모드가 안 바뀐다. `/settings`에서 세그먼트가 무엇을 켤지도 이 값이다(#183).
+ * 마지막 모드가 안 바뀐다. 설정의 「앱으로 돌아가기」가 어느 세계로 갈지도 이 값이다(UI개선 결정 27).
  */
 export function shellMode(pathname: string): Mode {
   return placeModeOf(pathname) ?? lastMode();
@@ -133,31 +133,47 @@ export function rememberVisit(pathname: string): void {
  * 셸이 이 값을 `navigate`에 **그대로 넘긴다**. 목적지만 돌려주고 나머지를 셸이 짓게 두면 이
  * 함수를 재는 검사들이 초록인 채로 화면의 규칙만 갈린다.
  *
- * 떠나온 세계를 **인자로 받는다.** 여기서 주소를 다시 읽으면 `/settings`가 걸린다 — 그 주소는
- * 세계를 안 실어서 `modeOf`가 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 연 사람이 `Maison`
- * 칸을 눌렀을 때 「같은 세계」가 아니라 「건너간다」로 읽혀 저쪽으로 떠난다. 셸은 이미
- * `shellMode`로 떠나온 세계를 들고 있으므로 그것을 그대로 넘긴다(`selectWork`가 모드를 받는
- * 이유와 같은 계통이다).
+ * 떠나온 세계를 **인자로 받는다** — 셸은 이미 `shellMode`로 떠나온 세계를 들고 있으므로 그것을
+ * 그대로 넘긴다(`selectWork`가 모드를 받는 이유와 같은 계통이다). 설정에는 세그먼트가 없어(UI개선
+ * 결정 21) 이 함수가 세계 밖 주소에서 불리는 일은 없다.
  *
- * 마지막 주소가 없으면 그 세계의 **첫 화면**이다. 무선택 주소라 도착하자마자 정규화 리다이렉트를
- * 한 번 더 타지만 그 리다이렉트가 replace라 히스토리는 그래도 한 칸이다(`router.test.ts`).
- *
- * **항목 주소면 그 항목의 마지막 화면을 씨앗으로 얹는다**(결정 77·97). `lastPlace`가 드는 것은
- * pathname뿐이라(`rememberVisit`) 그냥 두면 빈 `search`로 도착하고, 도착한 주소를 적어 두는
- * effect(`-works-view`의 `rememberView`)가 그 기본값으로 **기억을 덮어쓴다** — 한 번 왕복한
- * work은 그 뒤로 어느 문으로 열어도 spec 기본 화면으로 뜬다. `recallSearch` 머리말이 이름까지
- * 붙여 경고한 「빠뜨린 문 하나」가 정확히 이 모양이고, Projects 문이 실제로 그랬다.
+ * 목적지 몸통은 `modeEntryTarget`이다 — 이 함수가 더하는 것은 「같은 세계면 `null`」 하나다.
  */
 export function modeSwitchTarget(
   from: Mode,
   pick: Mode,
 ): { to: string; search?: WorkSearch } | null {
   if (pick === from) return null;
-  const to = shellStore.state.lastPlace[pick] ?? routesOf(pick).list;
+  return modeEntryTarget(pick);
+}
+
+/**
+ * 그 세계로 **들어갈 때 하는 이동 전체** — 세그먼트(`modeSwitchTarget`)와 설정의 「앱으로
+ * 돌아가기」(UI개선 결정 27)가 함께 딛는 몸통이다.
+ *
+ * **같은 세계여도 값을 준다.** 돌아가기는 늘 떠나온 세계로 가므로, 「같은 세계면 `null`」이 여기
+ * 들어 있으면 그 버튼이 어느 화면에서 들어왔든 아무 데도 안 간다 — 그 가름은 세그먼트 몫이라
+ * 그쪽에만 있다. 앱 셸은 이 함수를 부르기만 한다: 셸이 `lastPlace`를 읽고 목적지를 스스로 지으면
+ * 이 함수를 재는 검사들이 초록인 채로 화면의 규칙만 갈린다(`AppShell.test.ts`).
+ *
+ * 마지막 주소가 없으면 그 세계의 **목록 주소**다(앱을 켜자마자 ⌘, 등). 무선택 주소라 도착하자마자
+ * 정규화 리다이렉트를 한 번 더 타지만 그 리다이렉트가 replace라 히스토리는 그래도 한 칸이다
+ * (`router.test.ts`). 마지막 자리 기억은 세계를 싣는 **모든 주소**를 적으므로(`rememberVisit`)
+ * `/projects`·`/terminal`·`/archive`에서 들어온 설정도 그 주소로 돌아간다.
+ *
+ * **항목 주소면 그 항목의 마지막 화면을 씨앗으로 얹는다**(결정 77·97). `lastPlace`가 드는 것은
+ * pathname뿐이라(`rememberVisit`) 그냥 두면 빈 `search`로 도착하고, 도착한 주소를 적어 두는
+ * effect(`-works-view`의 `rememberView`)가 그 기본값으로 **기억을 덮어쓴다** — 한 번 왕복한
+ * work은 그 뒤로 어느 문으로 열어도 spec 기본 화면으로 뜬다. `recallSearch` 머리말이 이름까지
+ * 붙여 경고한 「빠뜨린 문 하나」가 정확히 이 모양이고, Projects 문이 실제로 그랬다. 설정에서
+ * 돌아간 work이 보던 탭으로 서는 것도 이 씨앗이다.
+ */
+export function modeEntryTarget(mode: Mode): { to: string; search?: WorkSearch } {
+  const to = shellStore.state.lastPlace[mode] ?? routesOf(mode).list;
   // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `slugOf`가 `null`을 주는 것이 그 사실이고,
   // 그 화면들은 `search`를 안 쓴다. 첫 화면(무선택 주소)도 여기로 떨어져 정규화가 씨앗을 얹는다.
   const slug = slugOf(to);
-  return slug === null ? { to } : { to, search: recallSearch(pick, slug) };
+  return slug === null ? { to } : { to, search: recallSearch(mode, slug) };
 }
 
 // 화면에 실제로 띄운 항목을 기억한다. 목록이 갱신될 때마다 불리므로 값이 같으면 그대로 둔다.

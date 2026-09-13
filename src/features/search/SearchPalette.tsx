@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
+import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { cn } from "@/lib/utils";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "@/features/works/work-sections";
@@ -336,7 +337,7 @@ export function SearchList({
  * (`AppShell.tsx`의 `shellMode`) 여기서 다시 구독할 이유도 없다.
  */
 function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [query, setQuery] = useState("");
   // **셋을 여기서 가른다.** `data`만 꺼내면 「못 물었다」가 「아직 모른다」로 접힌다 —
   // `keepPreviousData`는 앞 성공이 있을 때만 값을 주므로, 열자마자 나간 첫 질의가 실패하면
@@ -351,11 +352,14 @@ function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
   // **고르는 자리가 하나다.** 방향키와 마우스가 같은 것을 부른다 — 갈리면 한쪽만 퇴화해도
   // 화면에 티가 안 난다. 갈 곳이 없으면(모르는 목적지 `key`) 닫지도 않는다: 계약이 깨진
   // 것이므로 조용히 사라지는 것보다 그 자리에 서 있는 편이 낫다.
+  //
+  // 옮기는 것은 **셸의 문과 같은 함수**다(`navigateGuardingSettings`) — 설정 안에서 `Settings`
+  // 줄을 골라도 보던 항목에 머물고 칸이 안 는다(UI개선 S18). 팔레트가 곧장 옮기면 이 문만 샌다.
   const go = (hit: SearchHit) => {
     const target = hitTarget(mode, hit);
     if (target === null) return;
     onClose();
-    void navigate(target);
+    void navigateGuardingSettings(router, target);
   };
 
   useEffect(() => {
@@ -383,7 +387,7 @@ function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
     // 캡처에서 듣는다). 글자 키는 안 잡는다 — 포커스가 입력칸에 있으므로 그리로 간다.
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [at, hits, navigate, onClose]);
+  }, [at, hits, router, onClose]);
 
   return (
     <SearchList
