@@ -176,6 +176,13 @@ mod tests {
             !relevant(&rooms.join("finance/.DS_Store")),
             "dotfile이 새어 들어온다 — 자기 쓰기의 .tmp 단계가 스스로를 다시 읽게 한다"
         );
+        // 루트의 순서 파일과 그 원자 쓰기 tmp도 점 파일이다(UI개선 S1). 순서만 바뀐 쓰기는
+        // 종을 안 친다 — 앱은 자기 쓰기의 응답으로 캐시를 갈아 끼운다.
+        assert!(!relevant(&rooms.join(".order.json")), "순서 파일이 새어 들어온다");
+        assert!(
+            !relevant(&rooms.join(".order.json.4242.0.tmp")),
+            "순서 파일 쓰기의 tmp 단계가 새어 들어온다"
+        );
     }
 
     /// 프로젝트 쪽 규칙은 그대로다 — `.md` 하나가 프로젝트 하나이므로 그 밖은 소식이 아니다.

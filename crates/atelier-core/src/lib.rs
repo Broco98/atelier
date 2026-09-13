@@ -33,6 +33,8 @@ mod git;
 mod store;
 mod work;
 mod works;
+mod atomic;
+mod order;
 mod recent;
 mod search;
 

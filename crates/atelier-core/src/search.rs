@@ -266,11 +266,11 @@ fn destination_hits(destinations: &[Destination], tokens: &[String]) -> Vec<Sear
 /// 순이다**(팔레트 결정 11).
 ///
 /// ```text
-/// pinned desc  →  recent_rank asc (이력에 없으면 MAX)  →  created_at desc  →  slug asc
+/// pinned desc  →  recent_rank asc (이력에 없으면 MAX)  →  read_works의 순서
 /// ```
 ///
-/// 뒤의 둘은 **다시 안 적는다** — `read_works`가 이미 그 순서로 주고 아래 정렬이 안정 정렬이라
-/// 동점의 상대 순서가 그대로 남는다. 이력이 비면 결과가 만든 순 그대로인 것도 그래서다:
+/// 마지막 단(순서 파일 · 만든 순 · slug — `works.rs`의 `order_works`)은 **다시 안 적는다** —
+/// `read_works`가 이미 그 순서로 주고 아래 정렬이 안정 정렬이라 동점의 상대 순서가 그대로 남는다. 이력이 비면 결과가 만든 순 그대로인 것도 그래서다:
 /// 첫 화면이 판 02와 똑같고, 쓰면서 갈라진다.
 ///
 /// **고정이 이력을 이긴다**(팔레트 결정 11). 선언이 관찰에 지면 「이미 자주 여는 것을 고정했더니
@@ -330,7 +330,7 @@ fn work_hits(
     let rank: HashMap<&str, usize> =
         recent.works.iter().enumerate().map(|(at, work)| (work.slug.as_str(), at)).collect();
     // **안정 정렬이다.** 동점(둘 다 이력에 없음)의 상대 순서가 `read_works`의 것 그대로
-    // 남으므로 비교자의 뒤 두 단(만든 순 → slug)을 여기서 다시 적지 않는다.
+    // 남으므로 목록의 순서 규칙(순서 파일 → 만든 순 → slug)을 여기서 다시 적지 않는다.
     works.sort_by_key(|work| {
         (Reverse(work.pinned), rank.get(work.slug.as_str()).copied().unwrap_or(usize::MAX))
     });
@@ -1481,6 +1481,25 @@ mod tests {
         assert_eq!(
             lines(&search(&at.root, at.mode, "묶음", &[]).unwrap().hits),
             vec!["작업 pinned", "작업 new-a", "작업 new-b", "작업 old"]
+        );
+    }
+
+    /// UI개선 결정 1·4. **이력이 비면 빈 질의의 작업 층이 순서 파일을 따른다** — 사이드바와 같은
+    /// 순서다. 파일에 만든 순과 **반대로** 적어, 이 층이 `read_works`의 순서를 물려받는지 스스로
+    /// 다시 세우는지를 가른다: 정렬 규칙이 `list_works`(바깥)에 들어가면 사이드바·MCP만 새 순서가
+    /// 되고 여기는 만든 순으로 남아 빨개진다. 정렬이 `read_works` 한 자리에 있다는 것을 이것이 잰다.
+    #[test]
+    fn 이력이_비면_빈_질의의_작업_층이_순서_파일을_따른다() {
+        let (_tmp, at) = roots();
+        work_at(&at.works, "첫째", "첫째 작업", "2026-08-01", false);
+        work_at(&at.works, "둘째", "둘째 작업", "2026-08-02", false);
+        work_at(&at.works, "셋째", "셋째 작업", "2026-08-03", false);
+        std::fs::write(at.works.join(".order.json"), r#"{"order":["첫째","둘째","셋째"]}"#)
+            .unwrap();
+
+        assert_eq!(
+            lines(&search(&at.root, at.mode, "", &[]).unwrap().hits),
+            vec!["작업 첫째", "작업 둘째", "작업 셋째"]
         );
     }
 
