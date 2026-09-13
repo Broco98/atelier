@@ -1,4 +1,5 @@
 import type { WorkView } from "./types";
+import type { SectionsOpen } from "./work-sections";
 
 /**
  * 작업 행을 끌어 놓을 **틈**(UI개선 스펙 §4 · S6). 입력은 구획 단위 기하와 포인터이고, 출력은
@@ -140,17 +141,17 @@ function staysPut(sections: SectionGeometry[], dragged: string, gap: RowGap): bo
  * 기하로 정한다: 따로 정하면(선은 기하로, 받침은 목록 데이터로) 접힌 빈 구획처럼 둘의 입력이 갈리는
  * 곳에서 선과 받침이 함께 켜진다.
  *
- * - **받침이 기하에 실린 구획이면 받침이 밝아진다**(`emptySlot`에 그 구획의 `pinned`) — 빈 구획엔 선이 설
+ * - **받침이 기하에 실린 구획이면 받침이 밝아진다**(`emptySlot`에 그 구획 — 받침의 `data-empty-slot`과 같은 이름) — 빈 구획엔 선이 설
  *   「사이」가 없고, 머리 아랫변에 세우면 받침 윗변에 붙어 「받침 위의 틈」으로 읽힌다.
  * - 아니면 선의 내용 좌표 y. **사이의 가운데**에 선다 — 행 윗변에 붙이면 선이 그 행의 것으로 읽힌다.
  *   접힌 구획처럼 보이는 행이 없으면 머리 아랫변이다.
  */
-export type GapMark = { lineY: number } | { emptySlot: boolean };
+export type GapMark = { lineY: number } | { emptySlot: keyof SectionsOpen };
 
 export function gapMark(geometry: ListGeometry, gap: RowGap): GapMark | null {
   const section = geometry.sections.find((one) => one.pinned === gap.pinned);
   if (!section) return null;
-  if (section.head === null || section.emptySlot) return { emptySlot: section.pinned };
+  if (section.head === null || section.emptySlot) return { emptySlot: section.pinned ? "pinned" : "works" };
   const { rows, head } = section;
   if (rows.length === 0) return { lineY: head.bottom };
   const bottomBefore = (index: number) => (index === 0 ? head.bottom : rows[index - 1].bottom);

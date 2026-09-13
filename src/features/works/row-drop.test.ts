@@ -196,11 +196,11 @@ describe("틈의 표시", () => {
 
   // 받침에 놓일 때는 **받침 자신이 밝아지고** 선은 없다 — 빈 구획엔 선이 설 「사이」가 없고, 머리
   // 아랫변에 세우면 받침 윗변에 붙어 「받침 위의 틈」으로 읽힌다.
-  it.each<[string, ListGeometry, RowGap]>([
-    ["빈 `고정` 받침", NO_PINNED, { pinned: true, before: null }],
-    ["빈 비고정 받침", ALL_PINNED, { pinned: false, before: null }],
-  ])("받침 → 선 없이 받침이 밝아진다 — %s", (_name, geometry, gap) => {
-    expect(gapMark(geometry, gap)).toEqual({ emptySlot: gap.pinned });
+  it.each<[string, ListGeometry, RowGap, "pinned" | "works"]>([
+    ["빈 `고정` 받침", NO_PINNED, { pinned: true, before: null }, "pinned"],
+    ["빈 비고정 받침", ALL_PINNED, { pinned: false, before: null }, "works"],
+  ])("받침 → 선 없이 받침이 밝아진다 — %s", (_name, geometry, gap, slot) => {
+    expect(gapMark(geometry, gap)).toEqual({ emptySlot: slot });
   });
 
   it("틈이 가리키는 구획이 기하에 없으면 표시가 없다", () => {

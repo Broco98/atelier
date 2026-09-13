@@ -351,8 +351,7 @@ function SidebarWorkList({
   // 선이냐 밝아진 받침이냐는 `gapMark` 한 자리가 재어 둔 기하로 정한다 — 둘이 함께 켜지는 일이 없다.
   const mark = gap && geometry.current ? gapMark(geometry.current, gap) : null;
   const lineY = mark && "lineY" in mark ? mark.lineY : null;
-  const litEmptySlot: keyof SectionsOpen | null =
-    mark && "emptySlot" in mark ? (mark.emptySlot ? "pinned" : "works") : null;
+  const litEmptySlot = mark && "emptySlot" in mark ? mark.emptySlot : null;
 
   return (
     <>
