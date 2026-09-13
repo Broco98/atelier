@@ -69,7 +69,7 @@ mod macos {
             let imp: Imp = std::mem::transmute::<
                 unsafe extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
                 Imp,
-            >(should_terminate);
+            >(application_should_terminate_imp);
             // `Q@:@` = NSUInteger(64비트 unsigned long) 반환 · self · _cmd · sender.
             let added = ffi::class_addMethod(class, sel!(applicationShouldTerminate:), imp, c"Q@:@".as_ptr());
             if !added.as_bool() {
@@ -80,7 +80,10 @@ mod macos {
     }
 
     /// AppKit이 종료 직전에 부른다. 본문은 `quit::hook::application_should_terminate` 하나다 — 패닉하면 허락이 나가고 되감기가 C로 안 넘어간다.
-    unsafe extern "C-unwind" fn should_terminate(_this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) -> usize {
+    ///
+    /// 이름에 `_imp`를 붙인 것은 이것이 클래스에 붙는 ObjC **IMP**라서다 — `quit::hook::should_terminate`(순수
+    /// 판정)와 같은 이름이면 grep·백트레이스에서 두 층이 안 갈린다.
+    unsafe extern "C-unwind" fn application_should_terminate_imp(_this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) -> usize {
         let verdict = hook::application_should_terminate(
             // SAFETY: AppKit이 메인 스레드에서 이 핸들러를 부르고, 그동안 현재 Apple Event가 유효하다.
             || unsafe { current_reason() },
