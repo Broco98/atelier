@@ -14,6 +14,7 @@ import {
   shownWorkOrder,
   unknownIpcCalls,
   workRow,
+  띠,
   레인,
 } from "./harness";
 
@@ -247,6 +248,43 @@ test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", 
     { mode: "atelier", slug: plainWork.slug, pinned: true, before: pinnedWork.slug },
   ]);
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+});
+
+// **끄는 도중 목록 상자가 화면에서 밀린다.** 「확인할 것」 띠는 목록 바로 위에 서고 부르는 셸이 없으면
+// 높이가 0이다 — 끄는 사이 셸이 부르기 시작하면 목록이 띠 높이만큼 내려앉는다. 순열은 그대로라(S8)
+// 끌기가 살아 있으므로, 틈은 **그 순간의** 상자 위치로 재야 한다. 끌기 시작에 잰 상자 위치를 계속
+// 쓰면 포인터가 띠 높이만큼 아래 내용을 가리켜 선이 포인터에서 떨어지고, 놓은 자리도 그리 간다.
+test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인터 아래 행과 맞는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await expect(띠(page)).toHaveCount(0);
+
+  await pickUpRow(page, multiWork.slug);
+  await hoverRowPoint(page, workRow(page, pinnedWork.slug), "upper");
+  await expect(line(page)).toBeVisible();
+  const rowTopBefore = (await workRow(page, plainWork.slug).boundingBox())!.y;
+
+  await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
+  await expect(띠(page)).toHaveCount(1);
+  // 목록이 **실제로 밀렸다** — 안 밀렸는데 초록이면 아무것도 안 잰 것이다.
+  await expect
+    .poll(async () => (await workRow(page, plainWork.slug).boundingBox())!.y)
+    .toBeGreaterThan(rowTopBefore + 20);
+  // 끌기는 **살아 있다** — 거둬졌으면 아래 선이 없는 것이 다른 까닭이 된다.
+  await expect(workRow(page, multiWork.slug)).toHaveCSS("opacity", "0.4");
+
+  await hoverRowPoint(page, workRow(page, plainWork.slug), "upper");
+  await expect(line(page)).toBeVisible();
+  const lineBox = (await line(page).boundingBox())!;
+  const rowBox = (await workRow(page, plainWork.slug).boundingBox())!;
+  expect(lineBox.y + lineBox.height / 2).toBeLessThanOrEqual(rowBox.y + 1);
+  expect(lineBox.y + lineBox.height / 2).toBeGreaterThanOrEqual(rowBox.y - 30);
+  await page.mouse.up();
+
+  await expect.poll(() => moves(page)).toEqual([
+    { mode: "atelier", slug: multiWork.slug, pinned: false, before: plainWork.slug },
+  ]);
 });
 
 test("Maison Room도 같은 손짓이고 `mode: \"maison\"`이 실린다", async ({ page }) => {

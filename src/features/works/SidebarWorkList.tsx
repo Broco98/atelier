@@ -278,9 +278,20 @@ function SidebarWorkList({
     };
   };
 
+  /**
+   * 상자의 **지금** 뷰포트 사각형. 재어 둔 기하에서 이것만은 끄는 동안 낡는다 — 목록 바로 위의 「확인할 것」
+   * 띠는 부르는 셸이 없으면 높이가 0이라, 끄는 사이 셸이 부르기 시작하면 목록이 띠 높이만큼 내려앉는다.
+   * 순열은 그대로라 끌기는 살고(S8), 잰 순간의 상자를 쓰면 포인터가 그만큼 아래 내용을 가리킨다. 행과
+   * 머리는 내용 좌표라 안 낡으므로 다시 재는 것은 이 사각형 하나 — 포인터를 읽을 때마다 레이아웃 읽기 한 번이다.
+   */
+  const liveBox = (box: HTMLElement): ListGeometry["box"] => {
+    const { left, right, top, bottom } = box.getBoundingClientRect();
+    return { left, right, top, bottom };
+  };
+
   const gapUnder = (slug: string, point: DragPoint): RowGap | null =>
     geometry.current && listBox.current
-      ? rowGap(geometry.current, slug, {
+      ? rowGap({ ...geometry.current, box: liveBox(listBox.current) }, slug, {
           x: point.clientX,
           y: point.clientY,
           scrollTop: listBox.current.scrollTop,
@@ -310,7 +321,7 @@ function SidebarWorkList({
       // **가장자리 자동 스크롤**(스토리 13). 기하는 다시 안 잰다 — 내용 좌표라 포인터 쪽에 그 순간의
       // `scrollTop`만 더하면 된다(`row-drop` 머리말). 대신 포인터가 가만히 있어도 그 아래 내용이 바뀌므로
       // 틈을 다시 겨눈다.
-      const step = edgeScrollStep(geometry.current.box, { x: last.clientX, y: last.clientY });
+      const step = edgeScrollStep(liveBox(box), { x: last.clientX, y: last.clientY });
       if (step === 0) return;
       const before = box.scrollTop;
       box.scrollTop = before + step;

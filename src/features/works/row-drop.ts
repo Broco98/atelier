@@ -45,7 +45,10 @@ export type SectionGeometry = SectionRects & {
 type SectionRects = { head: Span; emptySlot?: Span } | { head: null; emptySlot: Span };
 
 export interface ListGeometry {
-  /** 스크롤 상자의 **뷰포트** 사각형. 이 밖이면 놓을 곳이 없다. */
+  /**
+   * 스크롤 상자의 **뷰포트** 사각형. 이 밖이면 놓을 곳이 없다. 내용 좌표인 구획과 달리 목록이 화면에서
+   * 밀리면 낡으므로, 부르는 쪽이 포인터를 읽는 **그 순간의** 사각형을 넣는다(`SidebarWorkList`의 `liveBox`).
+   */
   box: { left: number; right: number; top: number; bottom: number };
   /** 화면에 선 순서대로. 좌표는 내용 좌표다. */
   sections: SectionGeometry[];
