@@ -94,9 +94,9 @@ function 행(state: ShellsState): string {
   const signals = signalsOf(state, "atelier");
   return renderToStaticMarkup(
     <WorkSectionList
-      sections={splitWorkSections([WORK], { pinned: true, works: true, drafts: true })}
+      sections={splitWorkSections([WORK], { pinned: true, works: true })}
       mode="atelier"
-      open={{ pinned: true, works: true, drafts: true }}
+      open={{ pinned: true, works: true }}
       selectedSlug={null}
       shellCounts={{ [WORK.slug]: 1 }}
       signals={signals}

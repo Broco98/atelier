@@ -24,8 +24,8 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 // IPC 기록을 직접 읽는다. 그 값이 셸 env까지 정말 내려가는지는
 // `src-tauri/tests/top_terminal.rs`가 살아 있는 셸로 잰다.
 
-/** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room. 첫 줄은 초안이라 건너뛴다. */
-const [, room] = ROOMS;
+/** 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — 첫 줄이다. 초안이어도 건너뛰지 않는다. */
+const [room] = ROOMS;
 
 /** 세그먼트의 한 칸(`ModeSwitch`). `mode-switch.spec.ts`가 같은 규격으로 집는다. */
 const modeButton = (page: Page, label: string) =>

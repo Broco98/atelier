@@ -39,7 +39,7 @@ const works = (...raws: string[]) =>
     };
   }) as WorkView[];
 
-const ALL: SectionsOpen = { pinned: true, works: true, drafts: true };
+const ALL: SectionsOpen = { pinned: true, works: true };
 
 // 기본값은 **아무 work도 안 고른 상태**다 — 아래 구획 검사들이 그 위에서 돈다.
 // 세계도 기본값이 있다(Atelier): 구획이 서는 조건과 핀의 생김새는 세계를 안 타므로 그 검사들이
@@ -181,31 +181,44 @@ const lanesOf = (markup: string) =>
   );
 
 describe("`고정` 구획은 고정된 것이 있을 때만 선다", () => {
-  // 결정 82. `초안`과 같은 규칙이다 — 아무것도 없는 구획의 헤더는 자리만 먹는다.
+  // 결정 82. 아무것도 없는 구획의 헤더는 자리만 먹는다.
   it("고정된 것이 없으면 헤더가 아예 없다", () => {
-    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual([
-      "작업",
-      "초안",
-    ]);
+    expect(headersOf(render(works("가", "draft:나"))).map((one) => one.label)).toEqual(["작업"]);
   });
 
   it("고정된 것이 있으면 `작업` 위에 선다", () => {
     expect(headersOf(render(works("pin:가", "나", "draft:다"))).map((one) => one.label)).toEqual([
       "고정",
       "작업",
-      "초안",
     ]);
   });
 
-  it("개수는 그 구획의 것을 적는다", () => {
+  it("개수는 그 구획의 것을 적는다 — 초안도 `작업`의 수에 든다", () => {
     const headers = headersOf(render(works("pin:가", "pin:draft:나", "다", "draft:라")));
-    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 1", "초안 1"]);
+    expect(headers.map((one) => `${one.label} ${one.count}`)).toEqual(["고정 2", "작업 2"]);
+  });
+});
+
+// UI개선 결정 5. 초안은 따로 접힌 구역이 아니라 **다른 항목들 사이에** 서고, 상태 아이콘으로만 갈린다.
+describe("초안은 `작업` 구획 안에 선다", () => {
+  it("`초안` 머리가 없고 초안 행이 받은 자리 그대로 `작업`에 선다", () => {
+    const markup = render(works("draft:가", "나", "draft:다"));
+    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나", "다"] }]);
+    // 머리 목록만 보면 초안 머리가 **표식 없이** 되살아나도 초록이다 — 글자로도 센다.
+    expect(markup).not.toMatch(/>초안</);
+  });
+
+  it("모든 항목이 초안이어도 빈 문구가 아니라 그 초안들이 보인다", () => {
+    const markup = render(works("draft:가", "draft:나"));
+    expect(rowsBySection(markup)).toEqual([{ label: "작업", rows: ["가", "나"] }]);
+    expect(markup).not.toContain("없어요");
+    expect(markup).not.toContain("시작돼요");
   });
 });
 
 describe("고정된 work은 한 구획에만 있다", () => {
-  // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 숫자 단축키가 같은 작업을
-  // 두 번 세고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
+  // 결정 82. 고정하면 원래 구획에서 **빠진다**. 양쪽에 다 보이면 같은 작업이
+  // 두 줄로 서고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
   it("고정된 작업은 `작업`에서 빠진다", () => {
     expect(rowsBySection(render(works("pin:가", "나")))).toEqual([
       { label: "고정", rows: ["가"] },
@@ -213,12 +226,11 @@ describe("고정된 work은 한 구획에만 있다", () => {
     ]);
   });
 
-  it("고정된 초안은 `초안`에서 빠진다", () => {
-    // 결정 83 — 초안도 고정할 수 있고, 고정되면 `초안`이 아니라 `고정`에 선다.
+  it("고정된 초안은 `작업`에서 빠진다", () => {
+    // 결정 83 — 초안도 고정할 수 있고, 고정되면 `고정`에 선다.
     expect(rowsBySection(render(works("pin:draft:가", "draft:나")))).toEqual([
       { label: "고정", rows: ["가"] },
-      { label: "작업", rows: [] },
-      { label: "초안", rows: ["나"] },
+      { label: "작업", rows: ["나"] },
     ]);
   });
 });
@@ -235,8 +247,8 @@ describe("빈 `작업` 구획이 하는 말", () => {
     expect(render([])).toContain("작업은 Claude Code에서 시작돼요.");
   });
 
-  it("초안만 있으면 「진행 중인 작업이 없어요」다", () => {
-    expect(render(works("draft:가"))).toContain("진행 중인 작업이 없어요.");
+  it("고정된 것이 초안뿐이어도 「전부 고정돼 있어요」다", () => {
+    expect(render(works("pin:draft:가"))).toContain("전부 고정돼 있어요.");
   });
 
   it("작업이 있으면 아무 말도 하지 않는다", () => {
@@ -262,13 +274,13 @@ describe("상주 목록이 세계를 따라 이름을 바꾼다", () => {
 
   // 형제 머리는 **상태의 이름**이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이고,
   // 여기가 함께 갈리면 L3가 접근성 이름(`고정 1`)으로 집는 자리가 세계마다 달라진다.
-  it("`고정`·`초안`은 두 세계에서 같다", () => {
+  it("`고정`은 두 세계에서 같다", () => {
     const siblings = (mode: Mode) =>
       headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode }))
         .map((one) => one.label)
         .filter((label) => label !== "작업" && label !== "Rooms");
-    expect(siblings("atelier")).toEqual(["고정", "초안"]);
-    expect(siblings("maison")).toEqual(["고정", "초안"]);
+    expect(siblings("atelier")).toEqual(["고정"]);
+    expect(siblings("maison")).toEqual(["고정"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
@@ -355,13 +367,12 @@ describe("핀 버튼", () => {
 });
 
 describe("구획 접기", () => {
-  // 결정 108의 마지막 줄 — `고정` 구획도 `초안`과 같은 규칙으로 접힌다.
+  // 결정 108의 마지막 줄 — `고정` 구획도 `작업`과 같은 규칙으로 접힌다.
   it("접힌 구획은 헤더가 그렇다고 말하고 높이만 0이 된다", () => {
     const markup = render(works("pin:가", "나", "draft:다"), { ...ALL, pinned: false });
     expect(headersOf(markup).map((one) => `${one.label} ${one.open}`)).toEqual([
       "고정 false",
       "작업 true",
-      "초안 true",
     ]);
     const [pinnedBody, mainBody] = bodiesOf(markup);
     // 접혀도 항목은 DOM에 남는다 — 그래야 펴는 쪽도 애니메이션된다. 대신 inert다.

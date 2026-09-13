@@ -12,7 +12,7 @@ import {
 import { invalidateArchive } from "@/features/archive/hooks";
 import { worksApi } from "./api";
 import type { Mode } from "@/mode";
-import type { WorkStatus, WorkView } from "./types";
+import type { WorkStatus } from "./types";
 
 // ["works"]로 시작하는 모든 쿼리(두 세계의 목록·spec 파일)가 works:changed 한 번에 무효화된다.
 // **모드는 이 접두사 바로 뒤에 실린다** — 그래야 여기서 한 번 지우는 것이 두 세계를 다 덮는다.
@@ -54,15 +54,6 @@ export const worksQuery = (mode: Mode) =>
     queryFn: () => worksApi.list(mode),
     staleTime: 30_000,
   });
-
-// 아무도 고르지 않았을 때 기본 선택이 될 수 있는 작업. 초안은 사이드바 목록에서 접힌 별도
-// 구역에 살기 때문에, 여기로 떨어지면 본문에는 열려 있는데 목록에는 강조가 안 보인다.
-// pickSlug의 두 호출처가 같은 조건을 쓰도록 여기 한 곳에 둔다.
-//
-// **핀이 그 규칙을 이긴다**(결정 83). 「초안은 건너뛴다」는 아무도 안 고른 상태의
-// 기본값이고, 핀은 사람이 명시적으로 꽂은 것이다 — 고정된 초안이 목록 맨 위에 서는데
-// 정규화가 그것을 건너뛰면 보이는 첫 항목과 열리는 작업이 갈린다.
-export const isDefaultSelectable = (work: WorkView) => work.pinned || work.status !== "draft";
 
 // 듣는 것은 **모드와 무관하다** — 이벤트가 하나뿐이라 어느 세계의 화면이 듣든 지우는 것은
 // 같다. 화면이 둘 다 떠 있을 일이 없으므로 리스너도 하나다.

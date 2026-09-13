@@ -1,51 +1,44 @@
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
 
-// 세 섹션의 펼침 여부. 접기는 사용자가 명시적으로 하는 것이라 영속 설정이다.
+// 두 구획의 펼침 여부. 접기는 사용자가 명시적으로 하는 것이라 영속 설정이다.
 export interface SectionsOpen {
   pinned: boolean;
   works: boolean;
-  drafts: boolean;
 }
 
 export interface WorkSections {
-  // 고정 구역·진행 구역·초안 구역. 셋 다 받은 순서 그대로다 — 이 함수는 순서를 다시 만들지 않는다.
+  // 고정 구획·작업 구획. 둘 다 받은 순서 그대로다 — 이 함수는 순서를 다시 만들지 않는다.
   // 접혀 있어도 비우지 않는다: 헤더는 접혀도 그려야 하고 개수도 거기 나온다.
   pinned: WorkView[];
   main: WorkView[];
-  drafts: WorkView[];
-  // 화면에 실제로 그려지는 순서. 숫자 단축키가 세는 것도, 기본 선택이 가리켜야 하는 것도 이것이다.
+  // 화면에 실제로 그려지는 순서. 기본 선택이 가리켜야 하는 것이 이것이다.
   visible: WorkView[];
 }
 
-// 목록이 화면에 어떤 순서로 어느 구역에 놓이는지를 정하는 **유일한 지점**.
+// 목록이 화면에 어떤 순서로 어느 구획에 놓이는지를 정하는 **유일한 지점**.
 //
-// 문턱을 낮추면 백로그가 쌓인다. 초안 구역이 그 대가를 격리한다 — 쌓인 아이디어가
-// 진행 중인 일을 가리지 않게. 그 보장은 순서 하나로 선다: 진행 구역이 항상 위다.
+// **구획은 `고정`·`작업` 둘이다**(UI개선 결정 5). 초안은 따로 접힌 구역에 격리하지 않고 다른
+// 항목들 사이에 서며, 상태 아이콘(점선 원)으로만 갈린다 — 쌓인 초안을 아래로 내리는 것은
+// 사람이 순서로 하는 일이지 이 함수가 대신 정하는 일이 아니다.
 //
-// 고정된 것은 원래 구역에서 **빠진다**(결정 82) — 두 곳에 동시에 보이면 숫자 단축키가
-// 같은 작업을 두 번 세고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
+// 고정된 것은 원래 구획에서 **빠진다**(결정 82) — 두 곳에 동시에 보이면 같은 작업이 두 줄로
+// 서고, 어느 쪽을 눌렀는지가 뜻을 갖게 된다.
 //
 // 값을 정하는 곳을 하나로 두는 이유는 불변조건 하나 때문이다:
-//   (셋 다 펼친 상태에서)
+//   (둘 다 펼친 상태에서)
 //   목록이 실제로 보여주는 첫 항목 = 무선택 주소가 정규화되어 고르는 항목 (pickSlug)
 // 기본 선택 어긋남(#58)이 정확히 이게 깨진 것이었다. work-sections.test.ts가 두 함수를
-// 나란히 불러 검사한다. 고정이 그 등식을 두 번 건드리는데, 고치는 자리는 여기가 아니다 —
-// 「초안은 건너뛴다」는 isDefaultSelectable이(결정 83), 「고정이 먼저」는 코어의
-// list_works가 맡는다(결정 100). 여기서 다시 정렬하면 순서를 정하는 지점이 또 둘이 된다.
+// 나란히 불러 검사한다. 「고정이 먼저」는 여기가 아니라 코어의 list_works가 맡는다(결정 100) —
+// 여기서 다시 정렬하면 순서를 정하는 지점이 또 둘이 된다. 그래서 이 함수는 **거르기만** 한다.
 export function splitWorkSections(
   works: ReadonlyArray<WorkView>,
   open: SectionsOpen,
 ): WorkSections {
   const pinned = works.filter((work) => work.pinned);
-  const main = works.filter((work) => !work.pinned && work.status !== "draft");
-  const drafts = works.filter((work) => !work.pinned && work.status === "draft");
-  const visible = [
-    ...(open.pinned ? pinned : []),
-    ...(open.works ? main : []),
-    ...(open.drafts ? drafts : []),
-  ];
-  return { pinned, main, drafts, visible };
+  const main = works.filter((work) => !work.pinned);
+  const visible = [...(open.pinned ? pinned : []), ...(open.works ? main : [])];
+  return { pinned, main, visible };
 }
 
 /** 고른 것이 없을 때 본문 한가운데가 하는 말 — 제목·설명·붙여 넣을 한 줄. */
@@ -55,7 +48,7 @@ interface EmptyScreen {
   code: string;
 }
 
-// 이 세계의 상주 목록이 **자기를 뭐라고 부르는가**. 머리 라벨, 빈 몸통의 세 갈래, 그리고
+// 이 세계의 상주 목록이 **자기를 뭐라고 부르는가**. 머리 라벨, 빈 몸통의 두 갈래, 그리고
 // 본문 한가운데의 빈 화면이 한 표에 함께 든다 — 갈라 두면 사이드바는 「Terminal에서 claude
 // 에게 …」라고 하는데 본문은 「작업은 Claude Code에서 시작돼요」라고 적는 판이 나고, 그것은
 // Room이 하나도 없는 순간에만 보인다. 두 자리가 **한 화면에 함께 서므로** 표도 하나다.
@@ -65,14 +58,13 @@ interface EmptyScreen {
 // (`WorkSectionList`와 `WorksPage`)이라 목록의 판정이 사는 곳에 함께 둔다.
 //
 // `satisfies Record<Mode, …>`가 그물이다: 모드를 빠뜨리면 그 자리에서 L0가 빨개진다.
-// Atelier 문구는 **한 글자도 안 바뀐 채** 옮겨 왔다(구획 셋은 결정 108, 화면 셋은 그 이전부터).
+// Atelier 문구는 **한 글자도 안 바뀐 채** 옮겨 왔다(구획 문구는 결정 108, 화면 셋은 그 이전부터. 초안 갈래는 UI개선 결정 5가 걷었다).
 const COPY = {
   atelier: {
     label: "작업",
     page: "Works",
     item: "작업",
     allPinned: "전부 고정돼 있어요.",
-    noneActive: "진행 중인 작업이 없어요.",
     // 앱에 만드는 화면이 없어서 **어디서 시작하는지**를 말한다(아래 `screen`과 같은 몫).
     empty: "작업은 Claude Code에서 시작돼요.",
     screen: {
@@ -89,7 +81,6 @@ const COPY = {
     item: "Room",
     // 고정은 세계를 안 타는 말이라 같은 문장이다 — 「작업」도 「Room」도 안 부른다.
     allPinned: "전부 고정돼 있어요.",
-    noneActive: "진행 중인 Room이 없어요.",
     // Room도 앱에서 못 만든다. 다만 시작하는 자리가 Atelier와 다르다 — Maison에는
     // `Projects`가 없어서(결정 17) 저장소를 여는 대신 nav의 `Terminal`에서 claude에게
     // 말한다. 그 한 줄이 이 세계에서 실제로 통하는 유일한 길이다.
@@ -110,7 +101,6 @@ const COPY = {
     page: string;
     item: string;
     allPinned: string;
-    noneActive: string;
     empty: string;
     screen: EmptyScreen;
   }
@@ -150,21 +140,21 @@ export function pageNameOf(mode: Mode): string {
   return COPY[mode].page;
 }
 
-// 빈 상주 목록이 하는 말. 판정이 셋으로 갈리는 자리라 그림에서 꺼내 둔다 — 컴포넌트
+// 빈 상주 목록이 하는 말. 판정이 갈리는 자리라 그림에서 꺼내 둔다 — 컴포넌트
 // 안에 두면 이 저장소의 정적 마크업 seam에 아예 안 걸린다.
 //
 // 「작업은 Claude Code에서 시작돼요」는 **화면에 무언가 보일 때 거짓말**이다(결정 108):
 // 고정 때문에 비었으면 바로 위에 작업이 버젓이 서 있다.
 //
+// **갈래는 둘이다** — 「고정만 있다」·「아무것도 없다」. 초안이 `작업` 안에 서므로(UI개선 결정 5)
+// 초안이 하나라도 있으면 이 구획은 비지 않고, 옛 「초안만 남았다」 갈래는 설 자리가 없다.
+// 고정된 것이 초안뿐이어도 빈 이유는 고정이다: 그 초안이 바로 위 `고정`에 서 있다.
+//
 // **세계마다 어휘가 다르다**(#183). 갈래를 판정하는 규칙은 하나이고 갈리는 것은 낱말뿐이라,
 // 조건은 여기 한 벌로 남고 문장만 위 표에서 꺼내 온다.
 export function emptyMainNotice(sections: WorkSections, mode: Mode): string {
   const copy = COPY[mode];
-  // 목록이 고정 **때문에** 빈 것은 고정된 것 중에 초안 아닌 것이 있을 때다.
-  // 고정된 것이 초안뿐이면 빈 이유는 고정이 아니라 진행 중인 것이 없는 것이다.
-  if (sections.pinned.some((work) => work.status !== "draft")) return copy.allPinned;
-  if (sections.drafts.length > 0 || sections.pinned.length > 0) return copy.noneActive;
-  return copy.empty;
+  return sections.pinned.length > 0 ? copy.allPinned : copy.empty;
 }
 
 // 고른 항목이 없을 때 **본문 한가운데**가 하는 말(US 22). 사이드바의 빈 구획과 한 표에서
