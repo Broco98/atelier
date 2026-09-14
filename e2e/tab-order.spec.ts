@@ -345,6 +345,41 @@ test("900px 창에 작업 패널을 연 채로 두 칸을 끌어 바꾼다 — �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 같은 배치에서 **본문 절반으로 가려고 곧장 아래로 끄는 손**은 줄을 안 굴린다. 칸 하나 폭 상자는 한가운데
+// 한 픽셀 말고는 전부 가장자리 띠라, 문턱을 넘은 뒤 머리행을 벗어나기 전 몇 프레임 동안 줄이 구르면 누른
+// 칸이 옆으로 밀리고, 이미 켜진 칸을 놓으면 되돌리는 스크롤도 안 선다.
+test("900px 창에 작업 패널을 연 채로 칸을 곧장 아래로 끌면 줄이 안 구른다", async ({ page }) => {
+  await openWork(page, ["하나", "둘", "셋"]);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await settleLayout(page, () => rowOf(page));
+
+  const strip = page.locator("[data-tab-strip]");
+  const view = (await strip.boundingBox())!;
+  const scrollBefore = await strip.evaluate((el) => el.scrollLeft);
+  const max = await strip.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(max, JSON.stringify(view)).toBeGreaterThan(0);
+  // 굴러갈 쪽이 남은 가장자리를 누른다 — 맨 왼쪽까지 굴러 있으면 오른쪽 띠, 아니면 왼쪽 띠. 가운데에서
+  // 8px 비켜서 누르므로 가장자리 규칙만으로는 프레임마다 수 px씩 구른다.
+  const way = scrollBefore < max ? 1 : -1;
+  const press = { x: view.x + view.width / 2 + 8 * way, y: view.y + view.height / 2 };
+  const onName = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.closest("button[aria-pressed]") !== null,
+    press,
+  );
+  expect(onName, JSON.stringify(press)).toBe(true);
+
+  await page.mouse.move(press.x, press.y);
+  await page.mouse.down();
+  await page.mouse.move(press.x, press.y + 6);
+  await page.mouse.move(press.x, press.y + 12);
+  await expect(page.locator("body")).toHaveClass(/dragging-row/);
+  // 아직 44px 머리행 안이다(칸 가운데에서 22px까지). 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.
+  await page.waitForTimeout(300);
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrollBefore);
+  await page.mouse.up();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("`/terminal`에서도 끌어 순서를 바꾸고 ⌘1이 새 순서를 따른다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 800 });

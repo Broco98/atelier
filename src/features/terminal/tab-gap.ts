@@ -95,3 +95,19 @@ export function stripEdgeStep(view: TabStripGeometry["view"], clientX: number): 
   if (fromLeft < band) return -speed(band - fromLeft);
   return 0;
 }
+
+/** 옆으로 끌 뜻으로 치는 가로 이동(px). 끌기 문턱(5px)보다 커야 곧장 아래로 문턱을 넘는 손이 안 걸린다. */
+const SIDEWAYS_DEAD_ZONE = 8;
+
+/**
+ * **누른 자리에서 지금 자리까지가 옆으로 끄는 손인가** — 좌표는 뷰포트다. 가장자리 자동 스크롤은 이것이 한 번
+ * 참이 된 뒤에만 돈다(`ShellTabs`가 끌기 끝까지 붙잡아 둔다 — 끝에 붙여 가만히 있어도 굴러야 해서다).
+ *
+ * 왜 필요한가: 칸 하나 폭 상자는 한가운데 한 픽셀 말고는 전부 띠다(`stripEdgeStep`). 끌기 문턱은 방향을
+ * 안 보므로, 본문 절반으로 가려고 곧장 아래로 끄는 손도 머리행을 벗어나기 전 몇 프레임 동안 줄을 굴려
+ * 누른 칸을 옆으로 민다. 그래서 가로가 데드존을 넘고 **세로보다 클 때만** 옆으로 끄는 손으로 친다.
+ */
+export function sidewaysIntent(from: { x: number; y: number }, now: { x: number; y: number }): boolean {
+  const dx = Math.abs(now.x - from.x);
+  return dx >= SIDEWAYS_DEAD_ZONE && dx > Math.abs(now.y - from.y);
+}

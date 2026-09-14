@@ -18,7 +18,7 @@ import {
   shellsOf,
 } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
-import { gapLineLeft, stripEdgeStep, tabGap } from "./tab-gap";
+import { gapLineLeft, sidewaysIntent, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 /**
@@ -211,6 +211,11 @@ function ShellTabs({
   // 누른 동안 머리행 위 포인터의 뷰포트 x(머리행을 벗어나면 `null`)와, 가장자리 자동 스크롤의 프레임.
   // 포인터가 **가만히 있어도** 구르므로 이동 이벤트가 아니라 프레임에서 굴린다(아래 `onDragTab`).
   const pointerX = useRef<number | null>(null);
+  // 누른 자리와, 그 뒤 **옆으로 끌 뜻**이 한 번이라도 보였는가(`tab-gap`의 `sidewaysIntent`). 뜻이 보이기
+  // 전에는 가장자리여도 안 구른다 — 본문 절반으로 곧장 내려가는 손이 머리행을 지나며 줄을 밀지 않게.
+  // 한 번 보이면 끌기 끝까지 붙든다 — 끝에 붙여 가만히 있는 손도 굴러야 한다.
+  const pressedAt = useRef<{ x: number; y: number } | null>(null);
+  const sideways = useRef(false);
   const stopScroll = useRef<(() => void) | null>(null);
   useEffect(() => () => stopScroll.current?.(), []);
   const press = (id: number | null, next: TabStripGeometry | null) => {
@@ -252,16 +257,18 @@ function ShellTabs({
           //
           // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
           // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
-          // **가장자리 자동 스크롤** — 끄는 중이고(`dragging`) 포인터가 줄 가장자리 띠나 그 너머(같은
-          // 머리행)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
+          // **가장자리 자동 스크롤** — 끄는 중이고(`dragging`) 옆으로 끌 뜻이 보였고(`sideways`) 포인터가 줄
+          // 가장자리 띠나 그 너머(같은 머리행)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
           // 안 잰다 — 내용 좌표라 그 순간의 `scrollLeft`만 더하면 된다(`tab-gap.ts` 머리말).
           stopScroll.current?.();
           pointerX.current = null;
+          pressedAt.current = { x: from.clientX, y: from.clientY };
+          sideways.current = false;
           stopScroll.current = everyFrame(() => {
             const strip = stripRef.current;
             const at = pressed.current;
             const x = pointerX.current;
-            if (!strip || !at || x === null || !draggingNow.current) return;
+            if (!strip || !at || x === null || !draggingNow.current || !sideways.current) return;
             const step = stripEdgeStep(at.view, x);
             if (step === 0) return;
             const before = strip.scrollLeft;
@@ -272,6 +279,8 @@ function ShellTabs({
             stopScroll.current?.();
             stopScroll.current = null;
             pointerX.current = null;
+            pressedAt.current = null;
+            sideways.current = false;
             press(null, null);
             window.removeEventListener("pointerup", drop);
             window.removeEventListener("pointercancel", drop);
@@ -285,6 +294,8 @@ function ShellTabs({
         const strip = stripRef.current;
         if (!pressed.current || !strip) return;
         pointerX.current = event.clientX;
+        const origin = pressedAt.current;
+        if (origin && sidewaysIntent(origin, { x: event.clientX, y: event.clientY })) sideways.current = true;
         latest.current.onSlot(tabGap(pressed.current, event.clientX, strip.scrollLeft));
       },
       onSlotLeave: () => {

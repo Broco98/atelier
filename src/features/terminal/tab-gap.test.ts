@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gapLineLeft, stripEdgeStep, tabGap } from "./tab-gap";
+import { gapLineLeft, sidewaysIntent, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 // UI개선 결정 11 · UI개선 스펙 §6 — 탭 줄 위의 포인터가 **몇 번째 틈**인가. DOM 없이 도는 순수 함수라 기하를
@@ -109,5 +109,23 @@ describe("줄 가장자리의 자동 스크롤", () => {
   it("상자가 없으면(칸이 없는 줄) 안 구른다", () => {
     expect(stripEdgeStep({ left: 100, right: 100 }, 100)).toBe(0);
     expect(stripEdgeStep({ left: 100, right: 100 }, 400)).toBe(0);
+  });
+});
+
+// **줄이 구르는 것은 옆으로 끌 뜻이 보인 뒤다.** 칸 하나 폭 상자는 한가운데 한 픽셀 말고는 전부 띠라,
+// 본문 절반으로 가려고 칸을 누른 채 곧장 아래로 내리면 머리행을 벗어나기 전 몇 프레임 동안 줄이 굴러
+// 누른 칸이 옆으로 밀린다. 문턱(5px)은 방향을 안 보므로 여기서 방향을 따로 본다.
+describe("옆으로 끌 뜻", () => {
+  const from = { x: 120, y: 200 };
+  it.each([
+    ["곧장 아래로 문턱을 넘음", { x: 120, y: 212 }, false],
+    ["아래로 가며 조금 흔들림", { x: 125, y: 214 }, false],
+    ["옆으로 조금만(데드존 안)", { x: 127, y: 200 }, false],
+    ["옆으로 데드존만큼", { x: 128, y: 200 }, true],
+    ["왼쪽으로 데드존 너머", { x: 100, y: 203 }, true],
+    ["대각선 — 세로가 가로만큼", { x: 132, y: 212 }, false],
+    ["가로가 세로보다 크다", { x: 133, y: 212 }, true],
+  ] as const)("%s → %s", (_, now, intent) => {
+    expect(sidewaysIntent(from, now)).toBe(intent);
   });
 });
