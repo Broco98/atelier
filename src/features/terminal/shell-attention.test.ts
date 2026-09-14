@@ -851,6 +851,9 @@ const 시계 = [
   "setTimeout",
   "setInterval",
   "requestAnimationFrame",
+  // 프레임 루프를 `@/lib`에 감싸 두어도 부르는 이름으로 잡는다 — 감싼 모듈 안의
+  // `requestAnimationFrame`은 이 트리 밖이라 문자열로는 안 보인다.
+  "everyFrame",
   "Date.now",
   "performance.now",
   "new Date",
@@ -860,7 +863,7 @@ const 시계 = [
 ];
 
 // **여기 이름을 더하는 것은 「이 파일은 시간을 안다」는 선언이다.** 상태 축이 그 목록에
-// 들어오면 결정 2·3이 깨진 것이다 — 둘 다 상태 축 밖의 이유로 시간을 안다.
+// 들어오면 결정 2·3이 깨진 것이다 — 셋 다 상태 축 밖의 이유로 시간을 안다.
 //
 // 한때 `shell-registry.ts`가 셋째였다 — ⇧⇧ 사이의 간격(`SEARCH_GAP_MS`)을 재느라. 팔레트
 // 판이 그 키를 ⌘K로 갈면서 상수가 통째로 걷혔고, 그 파일은 다시 시간을 모른다.
@@ -871,9 +874,12 @@ const 시간을아는파일 = [
   // 같은 work의 알림을 접는 5초 창(`COALESCE_MS` · 결정 10). **알림의 시간이지 상태의
   // 시간이 아니다** — 화면값은 그 5초에 한 글자도 안 매인다.
   "shell-notify.ts",
+  // 끄는 동안 줄 가장자리의 자동 스크롤(`everyFrame`). **제스처의 박자지 상태의 시간이
+  // 아니다** — 굴리는 것은 `scrollLeft`와 틈 알림뿐이고 셸 상태는 한 글자도 안 만진다.
+  "ShellTabs.tsx",
 ];
 
-it("터미널에서 시간을 아는 파일은 둘뿐이다 — 상태 축엔 시계도 타이머도 없다", () => {
+it("터미널에서 시간을 아는 파일은 셋뿐이다 — 상태 축엔 시계도 타이머도 없다", () => {
   const root = fileURLToPath(new URL("./", import.meta.url));
   const 아는것 = readdirSync(root, { recursive: true, encoding: "utf8" })
     .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))

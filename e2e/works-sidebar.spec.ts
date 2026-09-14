@@ -878,8 +878,8 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   // **하나뿐이면 셸 이름이 안 붙는다**(결정 5) — 제목만으로 어느 셸인지 정해진다.
   await expect(띠(page)).not.toContainText(FIXTURE_SHELL_NAME);
 
-  // 셸 셋을 더 세워 넷이 함께 부르게 한다. `openShell`이 칸마다 spawn 응답을 기다리므로
-  // 여기서 세는 pty 번호가 곧 「n번째 칸」이다(그 함수의 머리말).
+  // 셸 셋을 더 세워 넷이 함께 부르게 한다. 앱이 칸을 연 순서대로 띄우므로(`terminal-store`의
+  // `loadFont`) 여기서 세는 pty 번호가 곧 「n번째 칸」이고, `openShell`은 그 pty가 앉을 때까지 기다린다.
   for (const ptyId of [2, 3, 4]) {
     await openShell(page);
     await markAttention(
@@ -934,7 +934,9 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
 test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도, 분할 중이어도", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   const tabs = page.locator('[data-tab="shell"]');

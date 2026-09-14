@@ -81,6 +81,9 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
   // 드래그 상태의 나머지(원천 · 절반)로 그릴 것이 없고, 통째로 읽으면 끌기를 걸고 걷을 때마다
   // 이 화면이 다시 그려진다.
   const slot = useStore(dragStore, (state) => state.slot);
+  // 끄는 중인가 — 탭 줄이 가장자리에서 구를지를 이것으로 가른다(`ShellTabs`의 `dragging`). 참거짓 하나라
+  // 끌기를 걸고 걷을 때만 다시 그려진다.
+  const dragging = useStore(dragStore, (state) => state.source !== null);
 
   // ⌘T — **셸이 0개여도 통한다**(결정 93). 그 키는 지금까지 xterm의 키 핸들러에만 붙어
   // 있어, 마지막 칸을 `×`로 닫은 화면에는 들을 사람이 없었다.
@@ -190,6 +193,7 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           slot={slot}
           onSlot={hoverSlot}
           onDropSlot={dropShellOnSlot}
+          dragging={dragging}
         />
         <TerminalPane mode={mode} work={null} />
       </main>

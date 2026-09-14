@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { dragStore, shellMoveOf } from "@/lib/pointer-drag";
+import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
@@ -101,6 +101,9 @@ interface ShellInstance {
   origin: ShellOrigin;
   fontsReady: boolean;
   opened: boolean;
+  // **여는 데 실패했다.** 이미 뜬 PTY를 거두고 이 칸에 다시는 쓰지 않는다 — 떠 있는데 볼 수
+  // 없는 셸은 상한만 갉아먹는다(`failOpen`).
+  broken: boolean;
   // `×`로 거둔 뒤. 이 뒤에는 이 인스턴스에 아무것도 하지 않는다 — dispose된 Terminal에
   // 쓰면 던지는데, PTY를 죽인 **뒤에도 종료 프레임이 한 번 더 온다.**
   closed: boolean;
@@ -263,6 +266,21 @@ export function dropShellOnSlot(): void {
   if (move === null) return;
   terminalStore.setState((state) => moveShell(state, move.shellId, move.slot));
 }
+
+/** 이 id의 셸이 아직 목록에 있나. 끌기의 원천이 살아 있는지를 묻는 자리가 이것 하나다. */
+function hasShell(id: number): boolean {
+  return terminalStore.state.shells.some((shell) => shell.id === id);
+}
+
+// **끄는 셸이 목록에서 빠지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길은 여럿인데
+// (정상 종료 · `×`·⌘W · 아카이빙의 회수) 모두 이 스토어의 상태를 바꾸므로, 길마다 부르는 대신 **상태를
+// 보고** 거둔다 — 한 길만 빠뜨리면 받침이 선 채 없는 셸로 분할이 켜진다. 두 화면(work · `/terminal`)이
+// 같은 이것을 딛는다. 비교는 id로만 한다: 소유자 키는 세계(Atelier·Maison)마다 다르지만 id는 하나다.
+// 끝났어도 목록에 남은 칸(0 아닌 코드 · 시그널 — `markExited`)은 살아 있는 원천이라 끌기가 산다.
+// **판정하는 자리는 이 구독 하나다.** 받는 자리(`dropShellOnSlot` · 본문 받침의 `dropHere`)는 다시 보지
+// 않는다 — 구독이 상태 변경과 같은 틱에 끌기를 걷어 받침도 틈도 사라지므로 거기까지 닿을 길이 없고,
+// 닿지 않는 검사는 어떤 시험도 붙들지 못한다.
+terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
 
 /**
  * 지금 본문이 보여 주고 있는 셸. **본문이 그 칸을 실제로 그리고 있을 때만** 찬다 —
@@ -646,7 +664,7 @@ function show(payload: NotifyPayload): void {
   }
 }
 
-// **구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
+// **알림의 구독은 이 하나다.** 설정은 스토어가 아니라 평범한 모듈 값이라(`notify-settings.ts`의
 // 머리말 — 그 이유가 여기서 났다) 이 콜백이 읽어도 딸려 오는 의존이 없다.
 terminalStore.subscribe(notifyTick);
 // 설정이 바뀌면 배지가 그 자리에서 따라와야 한다 — 끈 순간 독에 수가 남아 있으면 「껐는데
@@ -762,6 +780,7 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     origin,
     fontsReady: false,
     opened: false,
+    broken: false,
     closed: false,
   };
 
@@ -897,12 +916,40 @@ async function claimFont(look: TerminalLook): Promise<void> {
   }
 }
 
+/**
+ * 글꼴이 오면 **셸을 띄운다 — 화면에 붙어 있든 아니든.** 사람이 연 셸은 뒤에서도 돈다
+ * (결정 20·21).
+ *
+ * _한때 여는 것과 띄우는 것이 한 게이트였다_: 글꼴이 온 순간 칸이 DOM에 붙어 있을 때만 열고,
+ * 처음 열 때만 spawn했다. 글꼴(0.94MB)이 오는 사이에 `+`·⌘T로 둘째 칸을 켜거나 다른 work·
+ * `/terminal`로 옮기면 첫 칸이 떼어진 채 글꼴이 도착해 그냥 돌아갔고, 그 뒤로 spawn을 부를
+ * 자리는 그 칸이 다시 붙는 길 하나뿐이었다 — 안 본 칸은 `셸`인 채 시작도 안 했다. 픽스처에서는
+ * spawn 순서가 칸 순서와 갈려 pty 번호까지 뒤섞였다.
+ *
+ * **순서가 계약이다: 열고 나서 띄운다.** 붙어 있는 칸은 먼저 열고 맞춰야 제 격자로 뜬다 —
+ * 거꾸로 하면 보이는 셸까지 xterm 기본 격자(80×24)로 떴다가 곧바로 SIGWINCH를 받는다.
+ * 떼어진 채 뜬 칸만 기본 격자로 뜨고, 처음 붙을 때 `fit()`이 격자를 바꾸면 `onResize`가 PTY로
+ * 알린다(응답이 그보다 늦으면 `spawn`의 응답 뒤 맞춤이 받는다). 형제 칸의 격자를 빌려 뜨는 안은
+ * 안 한다 — 이 틈이 서는 것은 사실상 글꼴이 처음 오는 콜드 스타트뿐이고, 그때는 빌릴 격자를
+ * 가진 칸이 아직 없다(같은 글꼴을 기다린 형제도 이 칸 **뒤에** 열린다).
+ *
+ * 떼어진 채 뜬 셸의 출력은 아직 안 연 xterm에 그대로 쓴다 — xterm은 `open()` 전에도 받아
+ * 파싱하고 버퍼에 들고 있다가, 붙는 순간 그린다(타이틀·OSC·벨 핸들러도 그때 이미 돈다).
+ */
 async function loadFont(instance: ShellInstance) {
   // 위에서 삼킨 실패가 여기까지 와야 한다. 던져 올리면 `fontsReady`가 false로 굳어 이
-  // 인스턴스는 영영 안 열린다 — 다시 마운트해도 아래 게이트를 통과하지 못한다.
+  // 인스턴스는 영영 안 열리고 셸도 안 뜬다.
   await claimFont(terminalLook(terminalSettingsStore.state));
   instance.fontsReady = true;
   openOrReattach(instance);
+  // **스스로 거른다** — 글꼴을 기다리는 사이 `×`·아카이빙으로 거둔 칸(`closed`)과, 바로 위에서
+  // 열다 터진 칸(`broken`)은 띄우지 않는다.
+  //
+  // **셸마다 한 번 뜨는 것은 부르는 자리가 지킨다 — 플래그가 아니다.** `spawn`을 부르는 곳은 이
+  // 줄 하나이고, 이 함수는 `openShellQuietly`가 인스턴스를 세울 때 한 번 부른다. 다시 붙는 길
+  // (`openOrReattach`)은 열기만 한다. 부르는 자리를 하나 더 만들면 그때 셸이 둘 뜬다.
+  if (instance.closed || instance.broken) return;
+  void spawn(instance);
 }
 
 /**
@@ -943,12 +990,17 @@ async function restyleShells(): Promise<void> {
  *
  * 순서가 아니라 게이트인 이유: 폰트를 기다리는 동안 사용자가 다른 nav로 떠나면 집이
  * 떨어진다. 그 상태로 `open()`하면 xterm이 크기를 0으로 재고 그 값이 굳는다.
+ *
+ * **이 게이트는 화면만 막는다 — 셸은 안 막는다.** PTY를 띄우는 것은 글꼴이 온 순간의
+ * `loadFont`이고 여기서는 부르지 않는다. 한때 여기가 「처음 열 때 spawn」이라 떼어진 칸의
+ * 셸이 사람이 그 칸을 다시 볼 때까지 시작도 안 했다(`loadFont` 머리말).
  */
 function openOrReattach(instance: ShellInstance) {
-  if (instance.closed || !instance.fontsReady || !instance.wrapper.isConnected) return;
+  if (instance.closed || instance.broken || !instance.fontsReady || !instance.wrapper.isConnected) {
+    return;
+  }
 
-  const first = !instance.opened;
-  if (first) {
+  if (!instance.opened) {
     try {
       instance.term.open(instance.wrapper);
       // **막대도 앱의 것 하나로 통일한다**(결정 32). xterm의 막대는 꺼 둔 채다(결정 26 —
@@ -956,11 +1008,11 @@ function openOrReattach(instance: ShellInstance) {
       // (`overflow-y: scroll`) 문서 하나가 받는 그 리스너에 이 클래스만으로 걸린다.
       instance.wrapper.querySelector(".xterm-viewport")?.classList.add("scroll-quiet");
       // **`open()`이 돌아온 뒤에 세운다.** 앞에 세우면 여기서 터졌을 때 열리지도 않은 채
-      // "열렸다"로 굳어, 다음 마운트부터는 spawn도 관측도 없는 죽은 화면이 된다.
+      // "열렸다"로 굳어, 다음 마운트부터는 관측도 없는 죽은 화면이 된다.
       instance.opened = true;
       instance.observer.observe(instance.wrapper);
     } catch (error) {
-      fail(instance, error);
+      failOpen(instance, error);
       return;
     }
   }
@@ -977,8 +1029,34 @@ function openOrReattach(instance: ShellInstance) {
   } catch (error) {
     console.warn("atelier: 터미널을 다시 붙이는 중 문제가 났다", error);
   }
+}
 
-  if (first) void spawn(instance);
+/**
+ * 처음 여는 `open()`이 터졌다 — **이 칸은 셸을 보여 줄 수 없다.** 이유를 칸에 적고(결정 23),
+ * 이미 떠 있는 PTY가 있으면 거둔다.
+ *
+ * 떼어진 채 먼저 뜬 셸(`loadFont`)이 여기 온다: 한때는 열기가 spawn 앞이라 이 자리에 PTY가
+ * 있을 수 없었다. 거두지 않으면 볼 길도 입력할 길도 없는 셸이 ⌘Q까지 돌고, 「띄우지 못했다」는
+ * 적혔는데 프로세스는 살아 있는 거짓 그림이 된다. 응답이 아직이면 `spawn`이 `broken`을 보고
+ * 응답 자리에서 거둔다. 다시 열어 보지 않는 것(`openOrReattach`의 게이트)도 같은 이유다 —
+ * 반쯤 연 xterm에 두 번째 `open()`이 무엇을 할지 모른다.
+ *
+ * 다시 붙는 길에서 터지는 것은 여기 오지 않는다(`openOrReattach`의 아래 `try`) — 그쪽은
+ * 이미 적힌 종료 코드를 덮어쓰면 안 되는 화면 문제다.
+ *
+ * **처음 여는 길에도 먼저 적힌 이유가 있을 수 있다.** 떼어진 채 뜬 셸은 사람이 그 칸을 보기 전에
+ * 끝나거나(종료 코드 — 결정 22) 못 뜰(거절 이유 — 결정 23) 수 있다. 그때는 적지 않는다 — 사람이
+ * 읽어야 하는 것은 셸의 이유고, 열기 실패로 덮으면 「claude가 조용히 죽은 이유」가 사라진다.
+ * 칸은 그래도 `broken`이다: 반쯤 연 xterm에 다시 `open()`하지 않는다.
+ */
+function failOpen(instance: ShellInstance, error: unknown) {
+  instance.broken = true;
+  const shell = terminalStore.state.shells.find((candidate) => candidate.id === instance.id);
+  if (shell?.status.kind === "running") fail(instance, error);
+  if (instance.ptyId !== null) {
+    ignoreGone(terminalApi.kill(instance.ptyId));
+    instance.ptyId = null;
+  }
 }
 
 function loadWebgl(instance: ShellInstance) {
@@ -1021,10 +1099,12 @@ async function spawn(instance: ShellInstance) {
     const channel = new Channel<PtyFrame>();
     channel.onmessage = (frame) => {
       // **죽인 뒤에도 한 번 더 온다** — SIGHUP을 받은 셸의 종료 프레임이다. dispose된
-      // Terminal에 쓰면 던지고, 그 던짐은 채널 콜백 안이라 아무 데도 안 걸린다.
-      if (instance.closed) return;
+      // Terminal에 쓰면 던지고, 그 던짐은 채널 콜백 안이라 아무 데도 안 걸린다. 열다 터져
+      // 거둔 칸(`failOpen`)도 같다 — 그 종료 프레임이 적어 둔 실패 이유를 덮으면 안 된다.
+      if (instance.closed || instance.broken) return;
       // **떼어 둔 사이에도 그대로 받아 적는다.** 그것이 결정 20이다 — 다른 화면에 가 있는
-      // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다.
+      // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다. 한 번도 안 연
+      // 칸(떼어진 채 뜬 셸 — `loadFont`)도 같다: xterm은 `open()` 전에도 받아 버퍼에 든다.
       if (frame instanceof ArrayBuffer) {
         // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
         // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
@@ -1056,7 +1136,7 @@ async function spawn(instance: ShellInstance) {
       // **조건을 여기 다시 적지 않는다.** `exitCode === 0 && signal === null`은
       // `markExited`가 아는 것이고, 우리는 그 결과에 "뺐느냐"만 묻는다. 두 곳에 적으면
       // 한쪽만 고쳐지는 날이 온다.
-      if (!terminalStore.state.shells.some((shell) => shell.id === instance.id)) {
+      if (!hasShell(instance.id)) {
         disposeInstance(instance);
       }
     };
@@ -1081,8 +1161,10 @@ async function spawn(instance: ShellInstance) {
     // kill을 못 보냈고, 이 인스턴스는 `instances`에서도 목록에서도 이미 빠졌다. 그대로
     // 두면 그 셸은 상한에도 안 세이고 다시 닫을 길도 없이 ⌘Q의 회수까지 산다 —
     // "그 셸과 자식만 사라진다"가 이 창에서만 깨진다. 아래 채널 콜백은 같은 위험을
-    // 이미 막고 있었는데 이 자리만 비어 있었다.
-    if (instance.closed) {
+    // 이미 막고 있었는데 이 자리만 비어 있었다. 떼어진 채 먼저 뜬 칸이 이 왕복 사이에 처음
+    // 붙다가 열기에 터진 경우(`broken`)도 같은 자리에서 거둔다 — `failOpen`이 그때는 죽일
+    // pty 번호를 아직 몰랐다.
+    if (instance.closed || instance.broken) {
       ignoreGone(terminalApi.kill(spawned.id));
       return;
     }
@@ -1091,7 +1173,8 @@ async function spawn(instance: ShellInstance) {
     terminalStore.setState((state) => setShellName(state, instance.id, spawned.shellName));
     // 이 왕복 사이에 폭이 바뀌었으면 그 `resize`는 `ptyId`가 없어서 버려졌고, xterm은 값이
     // **바뀔 때만** `onResize`를 때리므로 스스로 다시 알려주지 않는다. 그대로 두면 셸이
-    // 옛 격자에 영영 갇힌다 — 여기서 한 번 맞춘다.
+    // 옛 격자에 영영 갇힌다 — 여기서 한 번 맞춘다. 떼어진 채 기본 격자로 나간 칸이 응답 전에
+    // 처음 붙은 경우가 정확히 이 모양이다(`loadFont`).
     if (instance.term.cols !== cols || instance.term.rows !== rows) {
       ignoreGone(terminalApi.resize(spawned.id, instance.term.cols, instance.term.rows));
     }

@@ -1,3 +1,5 @@
+// 가장자리 띠와 걸음의 수는 사이드바 행 목록과 **같은 수**다 — 한곳(`@/lib/edge-scroll`)에서 읽는다.
+import { EDGE_BAND, EDGE_MAX_STEP } from "@/lib/edge-scroll";
 import { isInPlaceGap } from "./shell-registry";
 
 // 탭 줄 위의 포인터가 **몇 번째 틈**인가(UI개선 결정 11 · UI개선 스펙 §6). DOM을 안 읽는
@@ -50,7 +52,7 @@ const LINE = 1;
  * 흐르므로 `scrollLeft`를 빼지 않는다.
  *
  * 칸 사이면 간격 한가운데다. 양 끝은 줄 안쪽 끝에 붙는다 — **줄 밖으로 내밀면 스크롤 상자가
- * 그만큼 넘쳐** 넘치지 않던 줄이 스크롤을 얻는다(900px 창의 여유는 3.5px뿐이다).
+ * 그만큼 넘쳐** 넘치지 않던 줄이 스크롤을 얻는다(좁은 창에서 상자는 칸 하나 폭까지 줄어 있다).
  */
 export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
   const { tabs, view } = geometry;
@@ -63,4 +65,43 @@ export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
         ? tabs[tabs.length - 1].right
         : (tabs[gap - 1].right + tabs[gap].left) / 2;
   return Math.min(Math.max(at - view.left - LINE / 2, 0), end);
+}
+
+/**
+ * **끄는 동안 줄 가장자리에서 한 프레임에 굴릴 양** — 양수면 오른쪽(스크롤이 는다). 좌표는 뷰포트다.
+ *
+ * 왜 필요한가: 900px 창에 작업 패널이 열리면 셸 칸 상자가 **칸 하나 폭**이다(`ShellTabs`의 상자 바닥).
+ * 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라(`tabGap`), 줄이 안 구르면 두 칸짜리 줄도 못 바꾼다.
+ *
+ * - 띠 안에서 가장자리에 깊이 붙을수록 빠르다. 띠는 **상자 절반까지만** 온다 — 칸 하나 폭 상자에서 띠 둘이
+ *   겹치면 누르기만 해도 구른다. 그래서 한가운데는 늘 가만히 있다.
+ * - **상자 밖(`spec`·`+`·조작 위)에서도 그쪽으로 끝까지 빠르게 구른다.** 행 목록과 다른 자리다: 44px 상자는
+ *   포인터가 조금만 넘어가도 벗어나고, 이 줄 밖은 곧 같은 머리행이라(부르는 쪽이 머리행 위의 이동만 넘긴다)
+ *   구른다고 흔들릴 남의 영역이 없다. 그 자리가 틈이 아닌 것은 그대로다(`tabGap`).
+ */
+export function stripEdgeStep(view: TabStripGeometry["view"], clientX: number): number {
+  const band = Math.min(EDGE_BAND, (view.right - view.left) / 2);
+  if (band <= 0) return 0;
+  const speed = (depth: number) => Math.ceil((EDGE_MAX_STEP * Math.min(depth, band)) / band);
+  const fromRight = view.right - clientX;
+  if (fromRight < band) return speed(band - fromRight);
+  const fromLeft = clientX - view.left;
+  if (fromLeft < band) return -speed(band - fromLeft);
+  return 0;
+}
+
+/** 옆으로 끌 뜻으로 치는 가로 이동(px). 끌기 문턱(5px)보다 커야 곧장 아래로 문턱을 넘는 손이 안 걸린다. */
+const SIDEWAYS_DEAD_ZONE = 8;
+
+/**
+ * **누른 자리에서 지금 자리까지가 옆으로 끄는 손인가** — 좌표는 뷰포트다. 가장자리 자동 스크롤은 이것이 한 번
+ * 참이 된 뒤에만 돈다(`ShellTabs`가 끌기 끝까지 붙잡아 둔다 — 끝에 붙여 가만히 있어도 굴러야 해서다).
+ *
+ * 왜 필요한가: 칸 하나 폭 상자는 한가운데 한 픽셀 말고는 전부 띠다(`stripEdgeStep`). 끌기 문턱은 방향을
+ * 안 보므로, 본문 절반으로 가려고 곧장 아래로 끄는 손도 머리행을 벗어나기 전 몇 프레임 동안 줄을 굴려
+ * 누른 칸을 옆으로 민다. 그래서 가로가 데드존을 넘고 **세로보다 클 때만** 옆으로 끄는 손으로 친다.
+ */
+export function sidewaysIntent(from: { x: number; y: number }, now: { x: number; y: number }): boolean {
+  const dx = Math.abs(now.x - from.x);
+  return dx >= SIDEWAYS_DEAD_ZONE && dx > Math.abs(now.y - from.y);
 }

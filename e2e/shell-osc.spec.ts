@@ -134,7 +134,9 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
 test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
+  // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
+  // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
+  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
   await openShell(page);
 
   // 첫 칸에서만 claude가 돈다. 둘째 칸은 아무것도 안 돈다 — 「모르는 명령」 쪽이다.
