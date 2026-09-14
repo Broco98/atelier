@@ -265,6 +265,24 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
   });
 });
 
+// 사이드바가 **탭 줄에 자리를 내준다** — 줄어들 수 있고 끄는 최소 폭까지만 준다(`panel-layout`의
+// `TAB_ROW_COLUMN`). 이 파일은 렌더로 못 들이므로(머리말) 바깥 상자의 규격(`asideClass`)을 소스에서 읽는다.
+// 실제로 줄어드는지·최소 폭 아래로 안 가는지는 `e2e/tab-row-floor.spec.ts`가 잰다.
+describe("사이드바 바깥 상자의 폭 바닥", () => {
+  it("펼친 상자는 끄는 최소 폭을 바닥으로 들고, 줄어들 수 있다", () => {
+    const sidebar = read("Sidebar.tsx");
+    const at = sidebar.indexOf("function asideClass(");
+    // 못 찾으면 실패한다 — 빈 조각에 대한 「shrink-0이 없다」는 늘 참이다.
+    if (at < 0) throw new Error("asideClass를 못 찾았다");
+    const body = sidebar.slice(at, sidebar.indexOf("\n}\n", at));
+    expect(body).toContain('open ? "w-(--sidebar-width) min-w-(--sidebar-min)"');
+    // 문자열 리터럴 안의 클래스만 센다 — 주석이 「`shrink-0`이 없다」고 적어 둔다.
+    expect(body).not.toMatch(/"[^"\n]*\bshrink-0\b[^"\n]*"/);
+    // 그 변수는 폭 훅이 받은 최소 폭 하나에서 온다 — 수를 여기 적지 않는다.
+    expect(sidebar).toContain('"--sidebar-min": `${size.min}px`');
+  });
+});
+
 // 세그먼트가 **어디에 서고 무엇을 바꾸는가**. 그림 자체는 `ModeSwitch.test.tsx`가 정적
 // 마크업으로 보고(그래서 세그먼트가 순수 컴포넌트로 갈려 있다), 여기서 보는 것은 이 파일이
 // 그것을 **어느 자리에 꽂았는가**다 — 자리는 렌더가 아니라 소스에서만 보인다.

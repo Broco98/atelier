@@ -64,3 +64,34 @@ export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
         : (tabs[gap - 1].right + tabs[gap].left) / 2;
   return Math.min(Math.max(at - view.left - LINE / 2, 0), end);
 }
+
+/**
+ * 자동 스크롤이 도는 가장자리 띠의 두께(px)와 한 프레임에 가장 많이 굴리는 양(px). 사이드바 행 목록
+ * (`row-drop`의 `edgeScrollStep`)과 **같은 수**다 — 끄는 손맛이 탭과 행에서 갈리지 않게. 수를 import하지
+ * 않고 다시 적는 것은 이 파일이 `features/works`를 안 딛어서다(머리말의 순수성).
+ */
+const EDGE_BAND = 28;
+const EDGE_MAX_STEP = 10;
+
+/**
+ * **끄는 동안 줄 가장자리에서 한 프레임에 굴릴 양** — 양수면 오른쪽(스크롤이 는다). 좌표는 뷰포트다.
+ *
+ * 왜 필요한가: 900px 창에 작업 패널이 열리면 셸 칸 상자가 **칸 하나 폭**이다(`ShellTabs`의 상자 바닥).
+ * 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라(`tabGap`), 줄이 안 구르면 두 칸짜리 줄도 못 바꾼다.
+ *
+ * - 띠 안에서 가장자리에 깊이 붙을수록 빠르다. 띠는 **상자 절반까지만** 온다 — 칸 하나 폭 상자에서 띠 둘이
+ *   겹치면 누르기만 해도 구른다. 그래서 한가운데는 늘 가만히 있다.
+ * - **상자 밖(`spec`·`+`·조작 위)에서도 그쪽으로 끝까지 빠르게 구른다.** 행 목록과 다른 자리다: 44px 상자는
+ *   포인터가 조금만 넘어가도 벗어나고, 이 줄 밖은 곧 같은 머리행이라(부르는 쪽이 머리행 위의 이동만 넘긴다)
+ *   구른다고 흔들릴 남의 영역이 없다. 그 자리가 틈이 아닌 것은 그대로다(`tabGap`).
+ */
+export function stripEdgeStep(view: TabStripGeometry["view"], clientX: number): number {
+  const band = Math.min(EDGE_BAND, (view.right - view.left) / 2);
+  if (band <= 0) return 0;
+  const speed = (depth: number) => Math.ceil((EDGE_MAX_STEP * Math.min(depth, band)) / band);
+  const fromRight = view.right - clientX;
+  if (fromRight < band) return speed(band - fromRight);
+  const fromLeft = clientX - view.left;
+  if (fromLeft < band) return -speed(band - fromLeft);
+  return 0;
+}

@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
-import { TAB_ROW_COLUMN } from "@/features/terminal/ShellTabs";
+import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";

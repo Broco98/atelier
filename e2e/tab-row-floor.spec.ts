@@ -2,9 +2,9 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { ROOMS, WORKS } from "./fixtures";
 import { installFixtureBackend, openShell, unknownIpcCalls } from "./harness";
-import { rowOf } from "./tab-row";
+import { rowOf, settle } from "./tab-row";
 
-// 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`ShellTabs`의
+// 탭 줄의 **바닥** — 어느 창 폭·어느 패널 폭에서도 셸 칸 하나는 온전히 보인다(`panel-layout`의
 // `TAB_ROW_COLUMN`). 한때 900px 창에 작업 패널이 열린 기본 배치에서 칸 상자가 0px이 되어 칸이
 // 화면에 없었다. 그 바닥은 **작업 패널과 사이드바가 자리를 내줘서** 선다 — 그래서 이 파일이 보는
 // 것은 줄보다 그 둘이다: 각자의 최소 폭 아래로는 안 줄고, 창 밖으로 밀리지 않고, 사람이 끌어
@@ -27,22 +27,8 @@ async function openWith(page: Page, url: string, width: number, saved: { sidebar
   await page.goto(url);
 }
 
-/** **폭이 멈출 때까지 기다린다** — 두 번 잰 배치가 같아야 넘어간다(트랜지션 220ms 동안 잰 값은 곧 낡는다). */
-async function settled(page: Page) {
-  let last = "";
-  await expect
-    .poll(
-      async () => {
-        const now = JSON.stringify(await layoutOf(page));
-        const same = now === last;
-        last = now;
-        return same;
-      },
-      { intervals: [150] },
-    )
-    .toBe(true);
-  return layoutOf(page);
-}
+/** **배치가 멈출 때까지 기다린다** — 규칙은 세 스펙이 함께 쓰는 `settle` 하나다(지연된 `max-width`까지 기다린다). */
+const settled = (page: Page) => settle(page, () => layoutOf(page));
 
 /** 사이드바 · 작업 패널 · 칸 상자를 한 번에 잰다. 패널이 없는 화면이면 `panel`이 `null`이다. */
 async function layoutOf(page: Page) {
@@ -51,6 +37,7 @@ async function layoutOf(page: Page) {
     const strip = document.querySelector("[data-tab-strip]");
     const cells = [...document.querySelectorAll('[data-tab="shell"]')].map((cell) => cell.getBoundingClientRect().width);
     const close = document.querySelector('aside button[aria-label$="패널 접기"]')?.getBoundingClientRect();
+    const panelAside = document.querySelectorAll("aside")[1] as HTMLElement | undefined;
     return {
       viewport: window.innerWidth,
       pageSpill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -58,6 +45,14 @@ async function layoutOf(page: Page) {
       panel: panel ? { left: panel.left, width: Math.round(panel.width), right: panel.right } : null,
       // 패널 머리행 오른쪽 끝의 `×` — 패널이 창 안에 있어도 안쪽 열이 잘리면 이것이 먼저 사라진다.
       closeRight: close ? close.right : null,
+      // 패널이 **제 안에서 가로로 밀려 있지 않다** — 넘침을 감춘 상자라도 `scrollLeft`가 서면(Playwright가 잘린
+      // 버튼을 누르려 스크롤해 들인다) `×`는 창 안인데 왼쪽이 가려진다. 안쪽 열의 왼쪽도 상자 왼쪽이어야 한다.
+      panelScroll: panelAside
+        ? {
+            scrollLeft: panelAside.scrollLeft,
+            innerShift: (panelAside.firstElementChild as HTMLElement).getBoundingClientRect().left - panelAside.getBoundingClientRect().left,
+          }
+        : null,
       strip: strip ? strip.clientWidth : 0,
       cell: cells.length ? Math.min(...cells) : 0,
     };
@@ -74,6 +69,8 @@ function expectFits(layout: Layout, at: string) {
   if (layout.panel) {
     expect(layout.panel.right, says).toBeLessThanOrEqual(layout.viewport + 0.5);
     expect(layout.closeRight!, says).toBeLessThanOrEqual(layout.panel.right + 0.5);
+    expect(layout.panelScroll!.scrollLeft, says).toBe(0);
+    expect(Math.abs(layout.panelScroll!.innerShift), says).toBeLessThanOrEqual(0.5);
   }
 }
 
@@ -139,8 +136,9 @@ test("넓은 창에서 900px로 줄이는 동안에도 칸이 남는다 — 패�
 });
 
 test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라온다 — 저장값에서 튀지 않는다", async ({ page }) => {
-  // 900px 창에 넓혀 둔 둘 — 사이드바는 400을 골랐지만 더 좁게, 패널은 560을 골랐지만 260으로 선다.
-  // 끄는 계산이 저장값에서 출발하면 첫 움직임에 그 차이만큼 가장자리가 포인터에서 떨어진다.
+  // 넓혀 둔 둘 — 패널은 **1280px 창에서** 560을 골랐지만 그보다 좁게 서고(약 535), 사이드바는 아래에서 창을
+  // 900px로 줄여 400보다 좁게 세운다. 끄는 계산이 저장값에서 출발하면 첫 움직임에 그 차이만큼 가장자리가
+  // 포인터에서 떨어진다. 패널 쪽 차이가 작은 것은 아래 `before.panel.width < 560`이 전제로 든다.
   await openWith(page, `/works/${plainWork.slug}?tab=terminal`, 1280, { sidebar: 400, panel: 560 });
   await page.locator('[data-tab="shell"]').first().waitFor();
   const before = await settled(page);
@@ -176,6 +174,27 @@ test("좁게 선 패널·사이드바를 끌면 손잡이가 포인터를 따라
   const dragged = await layoutOf(page);
   await page.mouse.up();
   expect(dragged.sidebar, JSON.stringify({ narrow, dragged })).toBeGreaterThanOrEqual(narrow.sidebar - 21);
+});
+
+test("좁게 선 패널의 손잡이를 스치듯 눌렀다 떼도 고른 폭이 안 지워진다", async ({ page }) => {
+  // 끌기는 그려진 폭에서 출발한다(위 검사). 그런데 1~2px 스친 눌림도 끌기로 치면 떼는 순간 **좁게 선
+  // 폭이 저장값을 덮어**, 창을 다시 넓혀도 고른 560이 안 돌아온다 — 사람은 아무것도 안 끌었다.
+  await openWith(page, `/works/${plainWork.slug}?tab=terminal`, 900, { sidebar: 280, panel: 560 });
+  await page.locator('[data-tab="shell"]').first().waitFor();
+  const before = await settled(page);
+  expect(before.panel!.width, JSON.stringify(before)).toBeLessThan(400);
+
+  const handle = (await page.locator("aside").nth(1).locator(HANDLE).boundingBox())!;
+  const y = handle.y + handle.height / 2;
+  await page.mouse.move(before.panel!.left + 2, y);
+  await page.mouse.down();
+  await page.mouse.move(before.panel!.left + 3, y);
+  await page.mouse.move(before.panel!.left + 4, y);
+  await page.mouse.up();
+
+  expect(await page.evaluate(() => localStorage.getItem("work-panel-width"))).toBe("560");
+  await page.setViewportSize({ width: 1920, height: 800 });
+  expect((await settled(page)).panel!.width).toBe(560);
 });
 
 test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 않고, 900px에서는 편 뒤 창 안에 선다", async ({ page }) => {

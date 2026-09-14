@@ -161,8 +161,11 @@ describe("WorkPanel 폭 조절", () => {
     // 갈리면 끌어서는 못 만드는 폭으로 선다 — 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다.
     const markup = render(true);
     expect(markup).toMatch(/--work-panel-min:\s*260px/);
-    expect(markup).toContain("min-w-(--work-panel-min)");
-    expect(markup).not.toMatch(/<aside[^>]*shrink-0/);
+    // 뿌리 태그를 먼저 집는다 — 못 집으면 실패한다. 없는 태그에 대한 「shrink-0이 없다」는 늘 참이다.
+    const root = /<aside[^>]*>/.exec(markup)?.[0];
+    if (!root) throw new Error("패널 aside가 없다");
+    expect(root).toContain("min-w-(--work-panel-min)");
+    expect(root).not.toContain("shrink-0");
   });
 
   it("지난번에 바꾼 폭으로 다시 선다", () => {

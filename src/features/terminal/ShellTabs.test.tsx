@@ -95,6 +95,7 @@ function render(
       slot={null}
       onSlot={() => {}}
       onDropSlot={() => {}}
+      dragging={false}
     />,
   );
 }

@@ -2,7 +2,7 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
-import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
+import { fillToCap, MAX_SHELLS, rowOf, settle } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
 // 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
@@ -209,18 +209,9 @@ test.describe("work 화면", () => {
       // **작업 패널은 열린 채다** — 창을 처음 연 기본 배치가 가장 좁은 줄이다. 900px에서도 끌
       // 칸과 틈이 화면에 있어야 한다(`terminal-tabs`의 「셸 칸이 보이고 눌린다」가 같은 배치를 든다).
       //
-      // **폭이 멈출 때까지 기다린다.** 창 폭이 바뀐 뒤 줄 폭이 자리를 잡기 전에 누르면 누른 순간
-      // 잰 기하가 다음 프레임에 낡는다 — 실물에서는 없는 경쟁이다. 두 번 잰 칸 상자 폭이 같아야
-      // 넘어간다.
-      let last = -1;
-      await expect
-        .poll(async () => {
-          const now = (await rowOf(page)).strip.clientWidth;
-          const settled = now === last;
-          last = now;
-          return settled;
-        }, { intervals: [100] })
-        .toBe(true);
+      // **배치가 멈출 때까지 기다린다**(`settle`). 창 폭이 바뀐 뒤 줄 폭이 자리를 잡기 전에 누르면
+      // 누른 순간 잰 기하가 다음 프레임에 낡는다 — 실물에서는 없는 경쟁이다.
+      await settle(page, () => rowOf(page));
       await expect.poll(async () => (await rowOf(page)).pageSpill, { timeout: 5000 }).toBeLessThanOrEqual(0);
       const before = await rowOf(page);
 
@@ -256,13 +247,16 @@ test.describe("work 화면", () => {
       });
       expect(seen, at).toBe(true);
 
-      await pressAndCross(page, MAX_SHELLS - 2);
-      // 누른 채 끝까지 민다 — 누를 때 잰 기하가 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸
-      // 앞(끄는 칸의 제자리 틈)으로 읽혀 선이 안 선다.
-      const movedTo = await strip.evaluate((el) => {
-        el.scrollLeft = el.scrollWidth;
-        return el.scrollLeft;
-      });
+      const start = await pressAndCross(page, MAX_SHELLS - 2);
+      // 누른 채 **줄 오른쪽 끝에 붙여** 끝까지 굴린다 — 스크립트로 `scrollLeft`를 안 민다. 사람은 끄는
+      // 동안 휠을 굴릴 손이 없다(가장자리 자동 스크롤, `tab-gap`의 `stripEdgeStep`). 누를 때 잰 기하가
+      // 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸 앞(끄는 칸의 제자리 틈)으로 읽혀 선이 안 선다.
+      const view = (await strip.boundingBox())!;
+      await page.mouse.move(view.x + view.width - 2, start.y, { steps: 4 });
+      await expect
+        .poll(() => strip.evaluate((el) => el.scrollWidth - el.clientWidth - el.scrollLeft), { message: at })
+        .toBeLessThanOrEqual(1);
+      const movedTo = await strip.evaluate((el) => el.scrollLeft);
       expect(movedTo, at).toBeGreaterThan(pressedAt);
       await moveToGap(page, MAX_SHELLS);
 
@@ -283,6 +277,62 @@ test.describe("work 화면", () => {
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
+});
+
+// **900px 창에 작업 패널이 열린 기본 배치**에서는 셸 칸 상자가 칸 하나 폭이다(`ShellTabs`의 상자 바닥).
+// 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라, 줄이 따라 구르지 않으면 두 칸짜리 줄조차 못
+// 바꾼다 — 한때 L3는 누른 채 `scrollLeft`를 스크립트로 밀어 이것을 가렸다. 여기서는 **포인터만** 쓴다.
+test("900px 창에 작업 패널을 연 채로 두 칸을 끌어 바꾼다 — 줄 가장자리에 붙이면 줄이 따라 구른다", async ({
+  page,
+}) => {
+  await openWork(page, ["하나", "둘"]);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await settle(page, () => rowOf(page));
+
+  const strip = page.locator("[data-tab-strip]");
+  const view = (await strip.boundingBox())!;
+  const cell = await shellTabs(page).first().evaluate((one) => one.getBoundingClientRect().width);
+  // 이 검사의 전제 — 상자에 칸이 하나만 들어간다. 넓게 서면 스크롤 없이도 옆 칸 위에 놓인다.
+  expect(view.width, JSON.stringify({ view, cell })).toBeLessThan(cell * 2);
+
+  // 상자 가운데는 보이는 칸의 이름 버튼이다 — 어느 칸이 보이는지는 창을 줄이기 전의 스크롤에 달려서, 보이는
+  // 칸에 따라 반대쪽 끝으로 끈다. 어느 쪽이든 두 칸이 자리를 바꾼다.
+  const press = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+  const under = await page.evaluate(
+    ({ x, y }) => {
+      const button = document.elementFromPoint(x, y)?.closest("button[aria-pressed]");
+      return button ? (button.getAttribute("aria-label") ?? button.textContent ?? "") : null;
+    },
+    press,
+  );
+  expect(["하나", "둘"]).toContain(under);
+  const toRight = under === "하나";
+  const way = toRight ? 1 : -1;
+
+  // **문턱 전의 눌림은 안 구른다** — 가장자리 띠 안에서 2px만 스친 채 머물다 떼면 줄이 제자리다. 누른
+  // 순간부터 구르면 칸 하나 폭 상자의 칸을 누르기만 해도 줄이 옆 칸으로 넘어간다. (가만한 누름을 재는
+  // 검사라 시간을 두고 본다 — 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.)
+  const edge = { x: toRight ? view.x + view.width - 6 : view.x + 6, y: press.y };
+  const scrollBefore = await strip.evaluate((el) => el.scrollLeft);
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + 2 * way, edge.y);
+  await page.waitForTimeout(300);
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrollBefore);
+  await page.mouse.up();
+  await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+  await page.mouse.move(press.x, press.y);
+  await page.mouse.down();
+  await page.mouse.move(press.x + 3 * way, press.y);
+  await page.mouse.move(press.x + 8 * way, press.y);
+  await expect(page.locator("body")).toHaveClass(/dragging-row/);
+  // 끝에 붙이고 **가만히 있는다** — 더 움직이지 않아도 줄이 굴러 옆 칸 너머의 틈이 선다.
+  await page.mouse.move(toRight ? view.x + view.width - 2 : view.x + 2, press.y, { steps: 2 });
+  await expect(gapLine(page)).toHaveAttribute("data-tab-gap", toRight ? "2" : "0");
+  await page.mouse.up();
+
+  await expect.poll(() => namesOf(page)).toEqual(["둘", "하나"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 test("`/terminal`에서도 끌어 순서를 바꾸고 ⌘1이 새 순서를 따른다", async ({ page }) => {

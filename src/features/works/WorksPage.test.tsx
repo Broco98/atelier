@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
-import { TAB_ROW_COLUMN } from "@/features/terminal/ShellTabs";
+import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
@@ -509,7 +509,7 @@ describe("WorksPage 본문·패널 행의 최소 폭", () => {
 
   it("탭 줄을 이는 본문 열이 세 갈래 모두 그 바닥을 든다", () => {
     // 문서 · 터미널 · 분할 — 머리행이 서는 열이 갈래마다 다른 요소라, 한 갈래만 빠져도 그
-    // 본문에서만 칸이 사라진다. 바닥 클래스는 `ShellTabs`가 내보낸 한 벌을 그대로 쓴다.
+    // 본문에서만 칸이 사라진다. 바닥 클래스는 `panel-layout`이 내보낸 한 벌을 그대로 쓴다.
     const floor = TAB_ROW_COLUMN.split(" ");
     const columnOf = (markup: string) => {
       const at = markup.indexOf("<header");

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import type { Mode } from "@/mode";
@@ -172,7 +173,7 @@ function WorkPanel({
         //
         // **이 패널은 탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다), 끄는 최소
         // 폭(`--work-panel-min`, 폭 훅이 받은 값)까지만 준다. 900px 창에서 이 패널이 고정 폭을
-        // 들던 때 탭 줄이 290px을 받아 셸 칸 상자가 0px이 됐다(`ShellTabs`의 `TAB_ROW_COLUMN`).
+        // 들던 때 탭 줄이 290px을 받아 셸 칸 상자가 0px이 됐다(`panel-layout`의 `TAB_ROW_COLUMN`).
         // 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
         //
         // 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 **행의
@@ -185,7 +186,7 @@ function WorkPanel({
         // 아직 남은 최소 폭 때문에 모자란 자리를 사이드바가 한 프레임 내줬다 되돌린다(900px 실측).
         "relative overflow-hidden contain-inline-size",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다 (목록 패널 둘과 같다)
-        !size.dragging && "duration-[220ms] ease-panel",
+        !size.dragging && PANEL_MOTION,
         !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
         open ? "basis-(--work-panel-width) min-w-(--work-panel-min)" : "basis-0 min-w-0",
       )}
@@ -194,16 +195,13 @@ function WorkPanel({
 
           **다만 선 뒤에는 바깥 폭을 넘지 않는다**(`max-w-full`). 패널이 탭 줄에 자리를 내줘
           저장한 폭보다 좁게 서면 고정 폭 그대로는 오른쪽(`</>`·`×`)이 잘린다. 그 상한이 접히는
-          동안에도 걸려 있으면 안쪽이 바깥 폭을 따라가며 되흐르므로, **펴진 뒤에만** 건다 — 펼 때는
-          폭 트랜지션(220ms)이 끝난 뒤 `max-width`가 그 자리로 한 번에 넘어가고(지연 220ms · 길이
-          0), 접을 때는 곧장 걷힌다. 걷힌 값이 `none`이 아니라 `100vw`인 것은 `none`과 백분율은
-          보간할 수 없는 쌍이라 지연 자체가 안 걸려서다. 좁게 선 채 펼 때만 끝에서 한 번 맞춰진다. */}
+          동안에도 걸려 있으면 안쪽이 바깥 폭을 따라가며 되흐르므로, **펴진 뒤에만** 건다 — 박자와
+          까닭은 사이드바와 함께 쓰는 `panel-layout`의 `foldingInnerClass`에 있다. 좁게 선 채 펼 때만
+          끝에서 한 번 맞춰진다. */}
       <div
         className={cn(
           "flex h-full w-(--work-panel-width) flex-col",
-          open
-            ? "max-w-full transition-[opacity,max-width] opacity-100 delay-[0s,220ms] duration-[220ms,0s]"
-            : "max-w-[100vw] opacity-0 transition-opacity duration-150",
+          foldingInnerClass(open, "max-w-full"),
         )}
       >
         {/* **떠 있는 카드가 아니라 창 끝에서 끝까지 가는 컬럼이다.** 화면 머리행과 같은 층에

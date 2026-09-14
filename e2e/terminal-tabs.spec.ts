@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, ROOMS, WORKS } from "./fixtures";
-import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
+import { fillToCap, MAX_SHELLS, rowOf, settle } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
   fireWindowEvent,
@@ -70,21 +70,10 @@ const SHELL_NAME = FIXTURE_SHELL_NAME;
 
 /**
  * **칸 상자 폭이 멈출 때까지 기다린다** — 패널·사이드바가 220ms 트랜지션으로 접히는 동안이나
- * 창 폭이 바뀐 직후에 잰 상자 폭은 곧 낡는다. 두 번 잰 폭이 같아야 넘어간다.
+ * 창 폭이 바뀐 직후에 잰 상자 폭은 곧 낡는다. 규칙은 세 스펙이 함께 쓰는 `settle` 하나다.
  */
 async function settleStrip(page: Page): Promise<void> {
-  let last = -1;
-  await expect
-    .poll(
-      async () => {
-        const now = (await rowOf(page)).strip.clientWidth;
-        const settled = now === last;
-        last = now;
-        return settled;
-      },
-      { intervals: [150] },
-    )
-    .toBe(true);
+  await settle(page, async () => (await rowOf(page)).strip.clientWidth);
 }
 
 /** `+`의 가로 자리와, 그 양옆(칸 상자의 오른쪽 끝 · 조작 묶음의 왼쪽 끝). */
@@ -124,7 +113,7 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   // **줄이 받는 폭은 창 폭이 아니다.** 창에서 사이드바와 작업 패널을 뺀 나머지라 900px 창에서는
   // 여덟 칸이 어떤 최소 폭으로도 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다.
   // 그 폭에서는 패널이 제 최소 폭 쪽으로 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다
-  // (`ShellTabs`의 `TAB_ROW_COLUMN`).
+  // (`panel-layout`의 `TAB_ROW_COLUMN`).
   for (const width of [1280, 1120, 900]) {
     await page.setViewportSize({ width, height: 800 });
     // **xterm이 새 폭에 다시 맞을 때까지 기다린다.** 줄과 무관한 값이다 — FitAddon이

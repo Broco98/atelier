@@ -21,10 +21,11 @@ import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
 import { ResizeHandle } from "@/components/shell/useResizableWidth";
 import useSplitRatio from "@/components/shell/useSplitRatio";
+import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
-import ShellTabs, { TAB_ROW_COLUMN } from "@/features/terminal/ShellTabs";
+import ShellTabs from "@/features/terminal/ShellTabs";
 import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
@@ -557,6 +558,7 @@ function WorksPage({
       slot={drag.slot}
       onSlot={hoverSlot}
       onDropSlot={dropShellOnSlot}
+      dragging={drag.source !== null}
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //

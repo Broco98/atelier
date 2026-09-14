@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
+import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
 import { signalOf } from "./shell-attention";
@@ -17,7 +18,7 @@ import {
   shellsOf,
 } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
-import { gapLineLeft, tabGap } from "./tab-gap";
+import { gapLineLeft, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 /**
@@ -30,24 +31,6 @@ export interface SpecTab {
   on: boolean;
   onSelect: () => void;
 }
-
-/**
- * 이 줄을 **머리에 이는 본문 열**의 바닥 — 열이 이 줄의 min-content보다 좁아지지 않는다.
- *
- * 줄 안에서 줄어드는 것은 셸 칸 상자뿐이고 그 바닥이 칸 하나다(상자 주석). 그런데 열이
- * `min-w-0`이면 줄이 그 바닥을 들고 있어도 열이 먼저 0까지 줄어, 넘치는 몫이 줄 밖으로
- * 나간다. 그래서 바닥을 **열에** 건다: 열의 min-width가 min-content이면, 옆의 작업 패널과
- * 사이드바가 각자의 최소 폭까지 자리를 내준다 — 그 둘은 줄어들 수 있고 이 열은 못 준다.
- *
- * **숫자가 아니라 min-content인 것**은 조작 묶음의 폭이 화면마다 갈려서다(Maison·Atelier,
- * 패널 펼치기 버튼, 칸이 없는 줄) — 손으로 더한 합은 이 자리에서 세 번 틀렸다.
- *
- * **열의 min-content에 줄만 들어가야 한다.** 열에는 xterm 캔버스와 문서 본문(넓은 표·코드
- * 블록)도 사는데 그것들의 min-content까지 세면 소스 보기를 켤 때마다 바닥이 부풀어 패널이
- * 창 밖으로 밀린다. 그래서 줄(`header`) 아닌 자식은 `contain: inline-size`로 제 내용의
- * 폭을 바깥에 안 알린다 — 그려지는 폭은 그대로다(열이 늘여 준다).
- */
-export const TAB_ROW_COLUMN = "min-w-min [&>:not(header)]:contain-inline-size";
 
 interface ShellTabsProps {
   /**
@@ -130,6 +113,14 @@ interface ShellTabsProps {
   /** 이 줄 위에서 손을 뗐다. 받는 쪽이 드래그 상태의 틈을 읽어 옮긴다(틈이 없으면 아무것도). */
   onDropSlot: () => void;
   /**
+   * **끄는 중인가** — 문턱을 넘었고 Esc로 거두지 않았다. 드래그 상태의 `source`를 화면이 그대로 내린다.
+   *
+   * 줄 가장자리 자동 스크롤(`stripEdgeStep`)이 이것을 본다. 누른 순간부터 구르면 칸 하나 폭 상자의 칸을
+   * **클릭만 해도** 줄이 굴러 버린다 — 문턱은 드래그 모듈만 알고 이 줄은 그 모듈을 안 딛어서(`onDragTab`
+   * 계약) 값으로 받는다. 틈 알림은 받는 쪽(`hoverSlot`)이 거르지만 스크롤은 이 줄이 스스로 하는 일이다.
+   */
+  dragging: boolean;
+  /**
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
@@ -174,6 +165,7 @@ function ShellTabs({
   slot,
   onSlot,
   onDropSlot,
+  dragging,
   actions,
   inset = false,
 }: ShellTabsProps) {
@@ -197,6 +189,8 @@ function ShellTabs({
   // 화살표로 새면 경계가 조용히 죽는다.
   const latest = useRef({ onSelect, onClose, onDragTab, onSlot, onDropSlot });
   latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };
+  const draggingNow = useRef(dragging);
+  draggingNow.current = dragging;
   const shellIds = useRef<number[]>([]);
   shellIds.current = shells.map((shell) => shell.id);
 
@@ -214,6 +208,11 @@ function ShellTabs({
   // 새 줄에서 그 셸이 몇 번째인지 되찾을 길이 없다.
   const pressedId = useRef<number | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  // 누른 동안 머리행 위 포인터의 뷰포트 x(머리행을 벗어나면 `null`)와, 가장자리 자동 스크롤의 프레임.
+  // 포인터가 **가만히 있어도** 구르므로 이동 이벤트가 아니라 프레임에서 굴린다(아래 `onDragTab`).
+  const pointerX = useRef<number | null>(null);
+  const stopScroll = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopScroll.current?.(), []);
   const press = (id: number | null, next: TabStripGeometry | null) => {
     pressedId.current = next ? id : null;
     pressed.current = next;
@@ -251,7 +250,26 @@ function ShellTabs({
           //
           // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
           // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
+          // **가장자리 자동 스크롤** — 끄는 중이고(`dragging`) 포인터가 줄 가장자리 띠나 그 너머(같은
+          // 머리행)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
+          // 안 잰다 — 내용 좌표라 그 순간의 `scrollLeft`만 더하면 된다(`tab-gap.ts` 머리말).
+          stopScroll.current?.();
+          pointerX.current = null;
+          stopScroll.current = everyFrame(() => {
+            const strip = stripRef.current;
+            const at = pressed.current;
+            const x = pointerX.current;
+            if (!strip || !at || x === null || !draggingNow.current) return;
+            const step = stripEdgeStep(at.view, x);
+            if (step === 0) return;
+            const before = strip.scrollLeft;
+            strip.scrollLeft = before + step;
+            if (strip.scrollLeft !== before) latest.current.onSlot(tabGap(at, x, strip.scrollLeft));
+          });
           const drop = () => {
+            stopScroll.current?.();
+            stopScroll.current = null;
+            pointerX.current = null;
             press(null, null);
             window.removeEventListener("pointerup", drop);
             window.removeEventListener("pointercancel", drop);
@@ -264,9 +282,11 @@ function ShellTabs({
       onSlotMove: (event: React.PointerEvent) => {
         const strip = stripRef.current;
         if (!pressed.current || !strip) return;
+        pointerX.current = event.clientX;
         latest.current.onSlot(tabGap(pressed.current, event.clientX, strip.scrollLeft));
       },
       onSlotLeave: () => {
+        pointerX.current = null;
         if (pressed.current) latest.current.onSlot(null);
       },
       onSlotDrop: () => {
@@ -392,7 +412,7 @@ function ShellTabs({
           `min-w-0`이라 바닥이 없었고, 900px 창에 작업 패널이 열린 기본 배치에서 줄이 290px을
           받자 넘치는 몫을 이 상자가 전부 받아 **0px이 됐다** — 칸이 화면에 없어 누를 수도 끌
           수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 열이 그
-          바닥까지 안 줄기 때문이다(`TAB_ROW_COLUMN`) — 자리를 내주는 것은 작업 패널과
+          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 작업 패널과
           사이드바다.
 
           **바닥은 폭(`w-[44px]`)으로도 적는다** — 칸의 `min-w-[44px]`과 같은 수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
