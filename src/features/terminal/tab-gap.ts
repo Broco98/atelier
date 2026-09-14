@@ -1,3 +1,5 @@
+// 가장자리 띠와 걸음의 수는 사이드바 행 목록과 **같은 수**다 — 한곳(`@/lib/edge-scroll`)에서 읽는다.
+import { EDGE_BAND, EDGE_MAX_STEP } from "@/lib/edge-scroll";
 import { isInPlaceGap } from "./shell-registry";
 
 // 탭 줄 위의 포인터가 **몇 번째 틈**인가(UI개선 결정 11 · UI개선 스펙 §6). DOM을 안 읽는
@@ -64,14 +66,6 @@ export function gapLineLeft(geometry: TabStripGeometry, gap: number): number {
         : (tabs[gap - 1].right + tabs[gap].left) / 2;
   return Math.min(Math.max(at - view.left - LINE / 2, 0), end);
 }
-
-/**
- * 자동 스크롤이 도는 가장자리 띠의 두께(px)와 한 프레임에 가장 많이 굴리는 양(px). 사이드바 행 목록
- * (`row-drop`의 `edgeScrollStep`)과 **같은 수**다 — 끄는 손맛이 탭과 행에서 갈리지 않게. 수를 import하지
- * 않고 다시 적는 것은 이 파일이 `features/works`를 안 딛어서다(머리말의 순수성).
- */
-const EDGE_BAND = 28;
-const EDGE_MAX_STEP = 10;
 
 /**
  * **끄는 동안 줄 가장자리에서 한 프레임에 굴릴 양** — 양수면 오른쪽(스크롤이 는다). 좌표는 뷰포트다.
