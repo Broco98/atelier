@@ -968,7 +968,9 @@ async function interceptPtySpawn(page: Page, behaviour: { hold?: boolean; refuse
       if (cmd !== "pty_spawn") return invoke(cmd, args, options);
       if (refuseFirst !== undefined && !refused) {
         refused = true;
-        throw new Error(refuseFirst);
+        // 문자열 그대로 거절한다 — 진짜 백엔드가 그렇다(위 `ipcFailure` 머리말). `Error`로 감싸면 앱이
+        // 적는 이유에 「Error: 」가 붙어 실제와 다른 글을 잰다.
+        throw refuseFirst;
       }
       if (hold) {
         gate.count += 1;

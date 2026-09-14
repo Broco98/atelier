@@ -483,6 +483,7 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 안 보인다 — 누른 이름 버튼은 셸이 끝나며 내려가, 뗀 곳이 다른 칸이어도 클릭이 서지 않는다.
     const at = await gapPoint(page, 2);
     await page.mouse.move(at.x, at.y, { steps: 4 });
+    await settle(page);
     await expect(gapLine(page)).toHaveCount(0);
     const other = await boxOf(page, 0);
     await page.mouse.move(other.x + other.width / 2, other.y + other.height / 2, { steps: 4 });
@@ -643,6 +644,7 @@ test.describe("끄는 셸이 끝나면 끌기가 거둬진다", () => {
     // 새 줄의 끝 틈에서 뗀다 — 선도 안 서고, 떼도 순서 · 켜진 칸 · 셸이 그대로다.
     const at = await gapPoint(page, 2);
     await page.mouse.move(at.x, at.y, { steps: 4 });
+    await settle(page);
     await expect(gapLine(page)).toHaveCount(0);
     await page.mouse.up();
     await settle(page);

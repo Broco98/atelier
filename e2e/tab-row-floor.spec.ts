@@ -256,10 +256,14 @@ test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 �
   expect(await innerWidths()).toEqual([330]);
   // 사이드바 안쪽 열도 같다(⌘B) — 경계선 밑 1px까지 저장한 폭 그대로다.
   await settled(page);
+  // 재고 나서 **정말 접히고 펴졌는지**를 본다 — ⌘B가 안 먹어도 사이드바가 제자리라 안쪽 폭은 280이다.
+  // 재기 전에 보면 400ms 표본이 접히는 동안을 놓친다.
   await page.keyboard.press("Meta+b");
   expect(await innerWidths(0)).toEqual([280]);
+  await expect.poll(async () => (await layoutOf(page)).sidebar).toBe(0);
   await page.keyboard.press("Meta+b");
   expect(await innerWidths(0)).toEqual([280]);
+  await expect.poll(async () => (await layoutOf(page)).sidebar).toBe(280);
 
   await page.setViewportSize({ width: 900, height: 800 });
   await page.getByRole("button", { name: /패널 접기$/ }).click();

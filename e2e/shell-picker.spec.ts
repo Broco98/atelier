@@ -147,7 +147,8 @@ test("마우스로 연 메뉴에서도 맨 윗줄이 선택돼 보인다", async
 });
 
 // 묻는 조건은 그대로다 — 프로젝트가 둘 이상일 때만(UI개선 결정 18). 0·1개 work은 들어갈 때 셸이
-// 하나 서므로(UI개선 결정 30은 멀티 프로젝트만이다) 그것이 앉은 뒤에 누른다.
+// 하나 서므로(UI개선 결정 30은 멀티 프로젝트만이다) **그 칸이 선 뒤에** 누른다 — 그래야 `+`가 둘째다.
+// pty가 앉기까지는 안 기다린다: 셸은 칸이 열린 순서로 시작하는 것이 앱의 몫이다(`openShell` 머리말).
 for (const [label, work, cwd] of [
   ["1개", singleWork, singleWork.worktrees[0].path],
   ["0개", plainWork, parentPath(plainWork.specDir)],
@@ -155,7 +156,7 @@ for (const [label, work, cwd] of [
   test(`프로젝트 ${label} work에서 \`+\`는 메뉴 없이 바로 연다`, async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto(`/works/${work.slug}?tab=terminal`);
-    await awaitSpawned(page, 1);
+    await expect(shells(page)).toHaveCount(1);
 
     await page.locator('[data-tab="new"]').click();
 

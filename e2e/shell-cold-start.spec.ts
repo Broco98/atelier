@@ -353,6 +353,7 @@ test("안 본 칸의 셸이 못 뜨면 그 칸을 볼 때 이유가 보이고, �
 
   await tabs(page).nth(0).locator("button[aria-pressed]").click();
   await expect(page.locator("[data-shell-notice]")).toContainText(reason);
+  await expect(page.locator("[data-shell-notice]")).not.toContainText("Error:");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
