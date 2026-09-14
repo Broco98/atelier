@@ -2,7 +2,7 @@ import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { callCount, exitShell, installFixtureBackend, openShell, unknownIpcCalls, writeShell } from "./harness";
-import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
+import { fillToCap, MAX_SHELLS, rowOf, settle as settleLayout } from "./tab-row";
 
 // 셸 탭을 끌어 순서를 바꾼다(UI개선 티켓 07 · UI개선 결정 11~13 · UI개선 스펙 §6·S10). **한 눌림을 두
 // 소비자가 나눠 본다** — 탭 줄은 「몇 번째 틈」, 본문 받침은 「어느 절반」 — 그리고 놓은 곳이
@@ -200,8 +200,8 @@ test.describe("work 화면", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창의 여유가 3.5px이라 폭을 먹는
-  // 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
+  // UI개선 스펙 §6 — 틈 선은 **절대 위치**라 폭을 안 먹는다. 900px 창에서는 칸 상자가 칸 하나 폭까지
+  // 줄어 있어 폭을 먹는 표시는 줄을 넘친다. 폭마다 **끌기를 새로 시작해** 선이 선 뒤에 잰다 — 누른 채 창 크기를
   // 바꾸면 누른 순간 잰 기하가 낡아 재는 것이 달라진다.
   //
   // 셸이 여덟이라 줄이 가로로 스크롤된다(결정 20) — 그래도 틈이 맞는지를 **놓아서** 본다.
@@ -216,23 +216,12 @@ test.describe("work 화면", () => {
     for (const width of [1280, 1120, 900]) {
       const at = `${width}px`;
       await page.setViewportSize({ width, height: 800 });
-      // **900px에서는 작업 패널을 접는다.** 패널이 열려 있으면 이 줄이 받는 폭이 290px이고 칸
-      // 상자가 0px이 되어(`terminal-tabs`의 실측) 끌 칸도 틈도 화면에 없다 — 선을 세울 수 없는
-      // 폭에서는 「선이 선 뒤에 잰다」가 뜻이 없다. 접으면 조작 줄에 펼치기 버튼이 하나 더 서므로
-      // 줄은 오히려 더 붐빈다.
-      if (width === 900) await page.getByRole("button", { name: "작업 패널 접기" }).click();
-      // **폭이 멈출 때까지 기다린다.** 패널이 접히는 동안 줄 폭이 트랜지션으로 늘어나서, 그 사이에
-      // 누르면 누른 순간 잰 기하가 다음 프레임에 낡는다 — 실물에서는 없는 경쟁이다. 두 번 잰
-      // 칸 상자 폭이 같아야 넘어간다.
-      let last = -1;
-      await expect
-        .poll(async () => {
-          const now = (await rowOf(page)).strip.clientWidth;
-          const settled = now === last;
-          last = now;
-          return settled;
-        }, { intervals: [100] })
-        .toBe(true);
+      // **작업 패널은 열린 채다** — 창을 처음 연 기본 배치가 가장 좁은 줄이다. 900px에서도 끌
+      // 칸과 틈이 화면에 있어야 한다(`terminal-tabs`의 「셸 칸이 보이고 눌린다」가 같은 배치를 든다).
+      //
+      // **배치가 멈출 때까지 기다린다**(`settleLayout`). 창 폭이 바뀐 뒤 줄 폭이 자리를 잡기 전에 누르면
+      // 누른 순간 잰 기하가 다음 프레임에 낡는다 — 실물에서는 없는 경쟁이다.
+      await settleLayout(page, () => rowOf(page));
       await expect.poll(async () => (await rowOf(page)).pageSpill, { timeout: 5000 }).toBeLessThanOrEqual(0);
       const before = await rowOf(page);
 
@@ -240,24 +229,44 @@ test.describe("work 화면", () => {
       // 있어 줄이 스스로 거기 와 있지 않다. 이 폭들에서는 줄이 이미 넘쳐 스크롤이 0이 아니어야
       // 이 검사가 「스크롤된 줄에서도」를 잰다. 반 칸인 것은 넘침이 한 칸보다 작은 폭(1280)이
       // 있어서고, 4분의 1 칸을 넘으면 아래 포인터가 뷰포트 좌표로는 다른 틈으로 읽힌다.
+      //
+      // **다만 끄는 칸이 상자 안에 온전히 들어오는 데까지만 민다.** 900px에서는 상자가 칸
+      // 하나 폭이라(`ShellTabs`의 상자 바닥) 반 칸만 덜 밀면 끄는 칸의 가운데가 상자 왼쪽 밖에
+      // 있다 — 거기를 누르면 칸이 아니라 옆의 세로선을 누른다. 그 폭에서는 끄는 칸의 오른쪽
+      // 끝을 상자의 오른쪽 끝에 맞추고, 누른 뒤 끝까지 미는 거리가 한 칸이 된다(4분의 1보다 크다).
       const strip = page.locator("[data-tab-strip]");
       const step = await shellTabs(page)
         .nth(MAX_SHELLS - 1)
         .evaluate((cell) => cell.getBoundingClientRect().width);
-      const pressedAt = await strip.evaluate((el, half) => {
-        const max = el.scrollWidth - el.clientWidth;
-        el.scrollLeft = max - Math.min(half, max - 1);
-        return el.scrollLeft;
-      }, Math.ceil(step / 2));
+      const dragged = shellTabs(page).nth(MAX_SHELLS - 2);
+      const draggedRight = await dragged.evaluate((cell: HTMLElement) => cell.offsetLeft + cell.offsetWidth);
+      const pressedAt = await strip.evaluate(
+        (el, [half, right]) => {
+          const max = el.scrollWidth - el.clientWidth;
+          el.scrollLeft = Math.max(1, Math.min(max - Math.min(half, max - 1), right - el.clientWidth));
+          return el.scrollLeft;
+        },
+        [Math.ceil(step / 2), draggedRight] as const,
+      );
       expect(pressedAt, at).toBeGreaterThan(0);
-
-      await pressAndCross(page, MAX_SHELLS - 2);
-      // 누른 채 끝까지 민다 — 누를 때 잰 기하가 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸
-      // 앞(끄는 칸의 제자리 틈)으로 읽혀 선이 안 선다.
-      const movedTo = await strip.evaluate((el) => {
-        el.scrollLeft = el.scrollWidth;
-        return el.scrollLeft;
+      // 끄는 칸이 상자 안에 **온전히** 보인다 — 사람이 누를 수 있는 칸이다.
+      const seen = await dragged.evaluate((cell) => {
+        const box = cell.closest("[data-tab-strip]")!.getBoundingClientRect();
+        const own = cell.getBoundingClientRect();
+        return own.left >= box.left - 0.5 && own.right <= box.right + 0.5;
       });
+      expect(seen, at).toBe(true);
+
+      const start = await pressAndCross(page, MAX_SHELLS - 2);
+      // 누른 채 **줄 오른쪽 끝에 붙여** 끝까지 굴린다 — 스크립트로 `scrollLeft`를 안 민다. 사람은 끄는
+      // 동안 휠을 굴릴 손이 없다(가장자리 자동 스크롤, `tab-gap`의 `stripEdgeStep`). 누를 때 잰 기하가
+      // 뷰포트 좌표였다면 마지막 칸 위의 포인터가 한 칸 앞(끄는 칸의 제자리 틈)으로 읽혀 선이 안 선다.
+      const view = (await strip.boundingBox())!;
+      await page.mouse.move(view.x + view.width - 2, start.y, { steps: 4 });
+      await expect
+        .poll(() => strip.evaluate((el) => el.scrollWidth - el.clientWidth - el.scrollLeft), { message: at })
+        .toBeLessThanOrEqual(1);
+      const movedTo = await strip.evaluate((el) => el.scrollLeft);
       expect(movedTo, at).toBeGreaterThan(pressedAt);
       await moveToGap(page, MAX_SHELLS);
 
@@ -278,6 +287,62 @@ test.describe("work 화면", () => {
 
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
+});
+
+// **900px 창에 작업 패널이 열린 기본 배치**에서는 셸 칸 상자가 칸 하나 폭이다(`ShellTabs`의 상자 바닥).
+// 보이는 칸이 끄는 그 칸뿐이고 그 양옆 틈은 제자리라, 줄이 따라 구르지 않으면 두 칸짜리 줄조차 못
+// 바꾼다 — 한때 L3는 누른 채 `scrollLeft`를 스크립트로 밀어 이것을 가렸다. 여기서는 **포인터만** 쓴다.
+test("900px 창에 작업 패널을 연 채로 두 칸을 끌어 바꾼다 — 줄 가장자리에 붙이면 줄이 따라 구른다", async ({
+  page,
+}) => {
+  await openWork(page, ["하나", "둘"]);
+  await page.setViewportSize({ width: 900, height: 800 });
+  await settleLayout(page, () => rowOf(page));
+
+  const strip = page.locator("[data-tab-strip]");
+  const view = (await strip.boundingBox())!;
+  const cell = await shellTabs(page).first().evaluate((one) => one.getBoundingClientRect().width);
+  // 이 검사의 전제 — 상자에 칸이 하나만 들어간다. 넓게 서면 스크롤 없이도 옆 칸 위에 놓인다.
+  expect(view.width, JSON.stringify({ view, cell })).toBeLessThan(cell * 2);
+
+  // 상자 가운데는 보이는 칸의 이름 버튼이다 — 어느 칸이 보이는지는 창을 줄이기 전의 스크롤에 달려서, 보이는
+  // 칸에 따라 반대쪽 끝으로 끈다. 어느 쪽이든 두 칸이 자리를 바꾼다.
+  const press = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+  const under = await page.evaluate(
+    ({ x, y }) => {
+      const button = document.elementFromPoint(x, y)?.closest("button[aria-pressed]");
+      return button ? (button.getAttribute("aria-label") ?? button.textContent ?? "") : null;
+    },
+    press,
+  );
+  expect(["하나", "둘"]).toContain(under);
+  const toRight = under === "하나";
+  const way = toRight ? 1 : -1;
+
+  // **문턱 전의 눌림은 안 구른다** — 가장자리 띠 안에서 2px만 스친 채 머물다 떼면 줄이 제자리다. 누른
+  // 순간부터 구르면 칸 하나 폭 상자의 칸을 누르기만 해도 줄이 옆 칸으로 넘어간다. (가만한 누름을 재는
+  // 검사라 시간을 두고 본다 — 구른다면 프레임당 수 px이라 0.3초면 칸 하나를 넘는다.)
+  const edge = { x: toRight ? view.x + view.width - 6 : view.x + 6, y: press.y };
+  const scrollBefore = await strip.evaluate((el) => el.scrollLeft);
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + 2 * way, edge.y);
+  await page.waitForTimeout(300);
+  expect(await strip.evaluate((el) => el.scrollLeft)).toBe(scrollBefore);
+  await page.mouse.up();
+  await expect(page.locator("body")).not.toHaveClass(/dragging-row/);
+  await page.mouse.move(press.x, press.y);
+  await page.mouse.down();
+  await page.mouse.move(press.x + 3 * way, press.y);
+  await page.mouse.move(press.x + 8 * way, press.y);
+  await expect(page.locator("body")).toHaveClass(/dragging-row/);
+  // 끝에 붙이고 **가만히 있는다** — 더 움직이지 않아도 줄이 굴러 옆 칸 너머의 틈이 선다.
+  await page.mouse.move(toRight ? view.x + view.width - 2 : view.x + 2, press.y, { steps: 2 });
+  await expect(gapLine(page)).toHaveAttribute("data-tab-gap", toRight ? "2" : "0");
+  await page.mouse.up();
+
+  await expect.poll(() => namesOf(page)).toEqual(["둘", "하나"]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 test("`/terminal`에서도 끌어 순서를 바꾸고 ⌘1이 새 순서를 따른다", async ({ page }) => {

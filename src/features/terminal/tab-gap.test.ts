@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gapLineLeft, tabGap } from "./tab-gap";
+import { gapLineLeft, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 // UI개선 결정 11 · UI개선 스펙 §6 — 탭 줄 위의 포인터가 **몇 번째 틈**인가. DOM 없이 도는 순수 함수라 기하를
@@ -78,5 +78,36 @@ describe("틈 선의 자리", () => {
     // 양 끝은 **줄 밖으로 안 나간다** — 나가면 스크롤 상자가 그만큼 넘쳐 스크롤을 얻는다.
     expect(gapLineLeft(g, 0)).toBe(0);
     expect(gapLineLeft(g, 4)).toBe(331);
+  });
+});
+
+// **끄는 동안 줄 가장자리에 붙으면 줄이 따라 구른다.** 900px 창에 작업 패널이 열리면 셸 칸 상자가 칸
+// 하나(44px) 폭이라, 보이는 칸은 끄는 그 칸뿐이고 그 양옆 틈은 제자리다 — 구르지 않으면 어느 틈에도
+// 못 놓는다. 행 목록의 가장자리 스크롤(`row-drop`의 `edgeScrollStep`)과 같은 수를 가로로 쓴다.
+describe("줄 가장자리의 자동 스크롤", () => {
+  const wide = { left: 100, right: 432 };
+  it.each([
+    ["가운데", 266, 0],
+    ["오른쪽 띠 바로 밖", 404, 0],
+    ["오른쪽 띠 안", 420, 6],
+    ["오른쪽 끝 픽셀", 431, 10],
+    ["오른쪽 밖(`+`·조작 위)", 500, 10],
+    ["왼쪽 끝 픽셀", 101, -10],
+    ["왼쪽 밖(`spec` 위)", 60, -10],
+  ] as const)("넓은 줄의 %s(x %i) → %i", (_, x, step) => {
+    expect(stripEdgeStep(wide, x)).toBe(step);
+  });
+
+  // 칸 하나 폭의 상자에서는 띠 둘이 겹치면 늘 구른다 — 띠가 상자의 절반까지만 온다.
+  it("칸 하나 폭의 상자에서도 한가운데는 가만히 있다", () => {
+    const narrow = { left: 100, right: 144 };
+    expect(stripEdgeStep(narrow, 122)).toBe(0);
+    expect(stripEdgeStep(narrow, 140)).toBe(9);
+    expect(stripEdgeStep(narrow, 104)).toBe(-9);
+  });
+
+  it("상자가 없으면(칸이 없는 줄) 안 구른다", () => {
+    expect(stripEdgeStep({ left: 100, right: 100 }, 100)).toBe(0);
+    expect(stripEdgeStep({ left: 100, right: 100 }, 400)).toBe(0);
   });
 });

@@ -108,7 +108,9 @@ export const WORKS: WorkView[] = [
       },
     ],
     specDir: "~/.atelier/works/multi-work/spec",
-    specFiles: [],
+    // 문서 하나 — 본문 열보다 넓은 문서다(`SPEC_FILE_BODIES`의 「넓은.md」). 첫 work에 두지 않는
+    // 것은 그 목록이 검색 답(`SEARCH_HITS`)의 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
+    specFiles: ["넓은.md"],
   },
 ];
 
@@ -463,6 +465,21 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
     "",
   ].join("\n"),
   "메타.json": '{\n  "종류": "그 외",\n  "본문": "소스 고정"\n}\n',
+  // **본문 열의 내용 폭이 창보다 넓은 문서**(`tab-row-floor.spec.ts`). 끊을 자리가 없는 한 줄과
+  // 넓은 표 — 이 둘이 본문 열의 min-content를 창보다 크게 만든다. 그 폭이 탭 줄의 바닥에
+  // 섞이면 작업 패널이 창 밖으로 밀린다.
+  "넓은.md": [
+    "# 넓은 문서",
+    "",
+    "```",
+    "넓은줄".repeat(400),
+    "```",
+    "",
+    `| ${Array.from({ length: 40 }, (_, at) => `열${at}`).join(" | ")} |`,
+    `| ${Array.from({ length: 40 }, () => "---").join(" | ")} |`,
+    `| ${Array.from({ length: 40 }, () => "끊기지않는칸값").join(" | ")} |`,
+    "",
+  ].join("\n"),
 };
 
 /**

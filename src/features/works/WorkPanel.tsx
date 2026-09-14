@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
 import type { Mode } from "@/mode";
@@ -150,7 +151,12 @@ function WorkPanel({
       // 폭이 바뀌니 "저쪽만 드래그해 바꾼 폭을 담는다"는 근거는 더 이상 없다. 남는 이유는
       // 상속뿐이다 — 같은 이름을 쓰면 어느 쪽이 이겼는지가 위치에 달리게 된다.
       // 사이드바가 자기 키(--sidebar-width)를 따로 갖는 것과 같은 이유다.
-      style={{ "--work-panel-width": `${size.width}px` } as React.CSSProperties}
+      style={
+        {
+          "--work-panel-width": `${size.width}px`,
+          "--work-panel-min": `${size.min}px`,
+        } as React.CSSProperties
+      }
       className={cn(
         // 좌측 사이드바·목록 패널과 **같은 폭 접기**다: 넘침을 감춘 상자의 폭을 0으로 보내고
         // 안쪽은 고정 폭을 유지한다. 220ms·--ease-panel도 그쪽과 같은 값을 읽는다.
@@ -164,17 +170,38 @@ function WorkPanel({
         // 가로 스크롤이 깜빡인다. 다시 시도하지 말 것.
         //
         // relative는 폭 조절 핸들이 이 상자의 왼쪽 가장자리를 기준으로 서기 위한 것이다.
-        "relative shrink-0 overflow-hidden",
+        //
+        // **이 패널은 탭 줄에 자리를 내준다** — 줄어들 수 있고(`shrink-0`이 없다), 끄는 최소
+        // 폭(`--work-panel-min`, 폭 훅이 받은 값)까지만 준다. 900px 창에서 이 패널이 고정 폭을
+        // 들던 때 탭 줄이 290px을 받아 셸 칸 상자가 0px이 됐다(`panel-layout`의 `TAB_ROW_COLUMN`).
+        // 줄어드는 것은 **그려진 폭**뿐이고 저장한 폭은 그대로라 창을 넓히면 돌아온다.
+        //
+        // 폭을 `width`가 아니라 `flex-basis`로 주고 `contain-inline-size`를 다는 것은 **행의
+        // min-content에 이 패널이 최소 폭으로만 들어가게** 하려서다. `width`를 적으면 그 값(저장한
+        // 폭)이 min-content로 세어져, 행이 사이드바에 필요 이상의 자리를 요구하고 줄어들 차례를
+        // 이 패널이 아니라 사이드바가 먼저 받는다.
+        //
+        // 최소 폭은 **펼 때만** 트랜지션한다. 펴는 순간 최소 폭이 곧장 서면 패널이 0에서 260으로
+        // 튄 뒤 자란다. 접을 때 트랜지션하면 그 사이 조작 줄에 펼치기 버튼이 먼저 서서 줄이 늘고,
+        // 아직 남은 최소 폭 때문에 모자란 자리를 사이드바가 한 프레임 내줬다 되돌린다(900px 실측).
+        "relative overflow-hidden contain-inline-size",
         // 드래그 중엔 폭 트랜지션을 꺼서 커서를 즉각 따라오게 한다 (목록 패널 둘과 같다)
-        !size.dragging && "transition-[width] duration-[220ms] ease-panel",
-        open ? "w-(--work-panel-width)" : "w-0",
+        !size.dragging && PANEL_MOTION,
+        !size.dragging && (open ? "transition-[flex-basis,min-width]" : "transition-[flex-basis]"),
+        open ? "basis-(--work-panel-width) min-w-(--work-panel-min)" : "basis-0 min-w-0",
       )}
     >
-      {/* 폭이 도는 동안 글이 되흐르지 않도록 안쪽은 고정 폭이다 */}
+      {/* 폭이 도는 동안 글이 되흐르지 않도록 안쪽은 고정 폭이다.
+
+          **다만 선 뒤에는 바깥 폭을 넘지 않는다**(`max-w-full`). 패널이 탭 줄에 자리를 내줘
+          저장한 폭보다 좁게 서면 고정 폭 그대로는 오른쪽(`</>`·`×`)이 잘린다. 그 상한이 접히는
+          동안에도 걸려 있으면 안쪽이 바깥 폭을 따라가며 되흐르므로, **펴진 뒤에만** 건다 — 박자와
+          까닭은 사이드바와 함께 쓰는 `panel-layout`의 `foldingInnerClass`에 있다. 좁게 선 채 펼 때만
+          끝에서 한 번 맞춰진다. */}
       <div
         className={cn(
-          "flex h-full w-(--work-panel-width) flex-col transition-opacity",
-          open ? "opacity-100 duration-[220ms]" : "opacity-0 duration-150",
+          "flex h-full w-(--work-panel-width) flex-col",
+          foldingInnerClass(open, "max-w-full"),
         )}
       >
         {/* **떠 있는 카드가 아니라 창 끝에서 끝까지 가는 컬럼이다.** 화면 머리행과 같은 층에

@@ -7,6 +7,11 @@ export type PanelSide = "left" | "right";
 
 export interface ResizableWidth {
   width: number;
+  /**
+   * 끄는 최소 폭. 패널이 창이 좁아 저장한 폭보다 좁게 설 때의 바닥도 **이 값 하나다** — 끌어서는
+   * 못 만드는 폭으로 서지 않게 같은 수를 CSS 변수로 내린다(Sidebar · WorkPanel).
+   */
+  min: number;
   dragging: boolean;
   side: PanelSide;
   handleProps: {
@@ -51,6 +56,9 @@ export function nextWidth({
   return Math.round(Math.min(max, Math.max(min, raw)));
 }
 
+/** 끌기로 치는 최소 이동(px). 이보다 덜 움직인 눌림은 폭을 안 바꾸고 저장도 안 바꾼다. */
+const RESIZE_THRESHOLD = 3;
+
 // 패널 폭 드래그 조절 + 더블클릭으로 기본 폭 복원. localStorage에 유지된다.
 // side를 생략하면 왼쪽 패널이다 — 이 기본값이 오늘 나가 있는 목록 패널들의 부호를 정한다.
 function useResizableWidth(
@@ -67,7 +75,7 @@ function useResizableWidth(
     return saved >= min && saved <= max ? Math.round(saved) : defaultWidth;
   });
   const [dragging, setDragging] = useState(false);
-  const start = useRef({ x: 0, width: 0 });
+  const start = useRef({ x: 0, width: 0, moved: false });
 
   // 드래그 종료 — pointerup·pointercancel 어느 쪽으로 끝나도 같은 정리를 한다
   const endDrag = () => {
@@ -81,17 +89,28 @@ function useResizableWidth(
 
   return {
     width,
+    min,
     dragging,
     side,
     handleProps: {
       onPointerDown: (e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
-        start.current = { x: e.clientX, width };
+        // **그려진 폭에서 출발한다 — 저장된 폭이 아니다.** 창이 좁으면 사이드바·작업 패널이
+        // 탭 줄에 자리를 내주느라 저장된 폭보다 좁게 서는데(`TAB_ROW_COLUMN` 주석), 저장값에서
+        // 출발하면 첫 움직임에 그 차이만큼 손잡이가 포인터에서 떨어져 튄다. 핸들의 부모가 곧
+        // 그 패널이다(아래 `ResizeHandle` 머리말).
+        const drawn = e.currentTarget.parentElement?.getBoundingClientRect().width;
+        start.current = { x: e.clientX, width: drawn ? Math.min(width, Math.round(drawn)) : width, moved: false };
         setResizing(true);
         setDragging(true);
       },
       onPointerMove: (e) => {
         if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+        // **스친 눌림은 끌기가 아니다.** 좁게 선 패널은 그려진 폭에서 출발하므로(위), 1~2px 스친 움직임도
+        // 폭으로 치면 떼는 순간 좁게 선 폭이 사람이 고른 폭(저장값)을 덮는다 — 창을 넓혀도 안 돌아온다.
+        // 문턱 뒤의 계산은 여전히 누른 자리에서 재므로 문턱을 넘는 순간 폭이 튀지 않는다.
+        if (!start.current.moved && Math.abs(e.clientX - start.current.x) < RESIZE_THRESHOLD) return;
+        start.current.moved = true;
         setWidth(
           nextWidth({
             side,
@@ -118,7 +137,8 @@ function useResizableWidth(
 }
 
 // 패널의 바깥쪽 가장자리에 얹는 리사이즈 핸들 — 어느 쪽인지는 control.side가 정한다.
-// 부모는 relative여야 한다.
+// 부모는 relative여야 한다. **px로 드는 쪽(`useResizableWidth`)에서는 그 부모가 곧 폭을 드는 패널 상자여야 한다** — 끌기를
+// 시작할 때 그 부모의 그려진 폭을 출발 폭으로 잰다(좁게 선 패널에서 안 튀게). 한 겹 감싸면 감싼 상자의 폭을 잰다.
 // 호버 시 세로 중앙이 가장 밝고 위아래로 갈수록 옅어지는 은은한 글로우 라인.
 export function ResizeHandle({
   control,

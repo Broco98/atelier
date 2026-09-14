@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { fillToCap, MAX_SHELLS, rowOf } from "./tab-row";
+import { FIXTURE_SHELL_NAME, ROOMS, WORKS } from "./fixtures";
+import { fillToCap, MAX_SHELLS, rowOf, settle } from "./tab-row";
 import type { Row } from "./tab-row";
 import {
   callCount,
@@ -70,6 +70,30 @@ const [, plainWork] = WORKS;
 /** 이 work은 워크트리가 없어 픽스처의 셸 이름 앞에 프로젝트가 안 붙는다(결정 18). */
 const SHELL_NAME = FIXTURE_SHELL_NAME;
 
+/**
+ * **칸 상자 폭이 멈출 때까지 기다린다** — 패널·사이드바가 220ms 트랜지션으로 접히는 동안이나
+ * 창 폭이 바뀐 직후에 잰 상자 폭은 곧 낡는다. 규칙은 세 스펙이 함께 쓰는 `settle` 하나다.
+ */
+async function settleStrip(page: Page): Promise<void> {
+  await settle(page, async () => (await rowOf(page)).strip.clientWidth);
+}
+
+/** `+`의 가로 자리와, 그 양옆(칸 상자의 오른쪽 끝 · 조작 묶음의 왼쪽 끝). */
+async function plusOf(page: Page) {
+  return page.evaluate(() => {
+    const plus = document.querySelector('[data-tab="new"]')!.getBoundingClientRect();
+    const strip = document.querySelector("[data-tab-strip]")!.getBoundingClientRect();
+    const actions = document.querySelector("[data-tab-actions]")?.getBoundingClientRect();
+    return {
+      left: plus.left,
+      right: plus.right,
+      stripRight: strip.right,
+      // 조작이 없는 화면(`/terminal`)에서는 줄의 오른쪽 끝이 그 자리다.
+      actionsLeft: actions?.left ?? document.querySelector("header")!.getBoundingClientRect().right,
+    };
+  });
+}
+
 test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -88,9 +112,10 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   // 1280은 실물 기본 창, 900은 **창이 작아질 수 있는 끝**(tauri.conf의 `minWidth`),
   // 1120은 그 사이 — 칸이 최소 폭에 닿아 스크롤은 섰지만 상자에 한 칸은 온전히 들어가는 폭이다.
   //
-  // **줄이 받는 폭은 창 폭이 아니다.** 창에서 사이드바(280)와 작업 패널(330)을 뺀 나머지라
-  // 900px 창에서 290px뿐이고, 그래서 여덟 칸이 어떤 최소 폭으로도 안 들어간다 — 결정 20이
-  // 「그 아래는 스크롤」로 답한 자리다.
+  // **줄이 받는 폭은 창 폭이 아니다.** 창에서 사이드바와 작업 패널을 뺀 나머지라 900px 창에서는
+  // 여덟 칸이 어떤 최소 폭으로도 안 들어간다 — 결정 20이 「그 아래는 스크롤」로 답한 자리다.
+  // 그 폭에서는 패널이 제 최소 폭 쪽으로 자리를 내주고 줄은 칸 하나가 보이는 데서 멈춘다
+  // (`panel-layout`의 `TAB_ROW_COLUMN`).
   for (const width of [1280, 1120, 900]) {
     await page.setViewportSize({ width, height: 800 });
     // **xterm이 새 폭에 다시 맞을 때까지 기다린다.** 줄과 무관한 값이다 — FitAddon이
@@ -128,6 +153,13 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
     // 오른쪽 끝 조작은 고정된 채다(결정 10) — 밀려나지도 좁아지지도 않는다.
     expect(row.actions.over, at).toBeLessThanOrEqual(0);
     actionsWidth[width] = row.actions.width;
+
+    // 스크롤이 선 줄에서도 **칸 하나는 온전히 보이고**, 잠긴 `+`가 상자 뒤·조작 앞에 남는다 —
+    // 상한에서 `+`가 사라지면 「왜 안 열리나」를 말하는 자리(`title`)도 함께 사라진다.
+    expect(row.strip.clientWidth, at).toBeGreaterThanOrEqual(Math.min(...row.tabs));
+    const plus = await plusOf(page);
+    expect(plus.left, at).toBeGreaterThanOrEqual(plus.stripRight - 0.5);
+    expect(plus.right, at).toBeLessThanOrEqual(plus.actionsLeft + 0.5);
   }
 
   // 조작 묶음의 폭이 세 폭에서 모두 같다 — 좁아진다고 눌리지 않는다.
@@ -145,35 +177,115 @@ test("창을 좁혀도 줄이 안 넘치고 칸이 고르게 줄어든다", asyn
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("스크롤이 선 줄에서도 ⌘로 고른 칸이 보이는 자리로 온다", async ({ page }) => {
-  // 결정 20이 만든 빚이다 — 안 보이는 칸이 생기면 ⌘1~9가 그 칸을 고를 수 있고, 그러면
-  // 「눌렀는데 아무 일도 없다」로 읽힌다. 키는 폭을 모르므로 줄이 끌어와야 한다.
-  await installFixtureBackend(page);
-  await page.setViewportSize({ width: 1120, height: 800 });
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await fillToCap(page);
+for (const width of [1120, 900]) {
+  test(`스크롤이 선 줄에서도 ⌘로 고른 칸이 보이는 자리로 온다 — ${width}px`, async ({ page }) => {
+    // 결정 20이 만든 빚이다 — 안 보이는 칸이 생기면 ⌘1~9가 그 칸을 고를 수 있고, 그러면
+    // 「눌렀는데 아무 일도 없다」로 읽힌다. 키는 폭을 모르므로 줄이 끌어와야 한다.
+    //
+    // **900px은 작업 패널이 열린 기본 배치다** — 상자가 가장 좁은(칸 하나) 자리다.
+    await installFixtureBackend(page);
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+    await fillToCap(page);
+    await settleStrip(page);
 
-  const strip = page.locator("[data-tab-strip]");
-  const tabs = page.locator('[data-tab="shell"]');
-  const last = tabs.nth(MAX_SHELLS - 1);
+    const strip = page.locator("[data-tab-strip]");
+    const tabs = page.locator('[data-tab="shell"]');
+    const last = tabs.nth(MAX_SHELLS - 1);
 
-  const inside = async () => {
-    const cell = (await last.boundingBox())!;
-    const box = (await strip.boundingBox())!;
-    return cell.x >= box.x - 1 && cell.x + cell.width <= box.x + box.width + 1;
-  };
+    // **상자가 칸 하나를 담을 폭이어야 아래 「안」이 뜻을 갖는다.** 0px 상자에서는 어떤 칸도
+    // 안에 온전히 못 들어가 ⌘9 뒤의 단언이 뜻 없이 깨지거나, 느슨한 판정이면 뜻 없이 선다.
+    const cellWidth = (await last.boundingBox())!.width;
+    expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(cellWidth - 0.5);
 
-  // ⌘2가 첫 셸이다(⌘1은 spec — 결정 78·79). 줄이 맨 앞으로 돌아가면 마지막 칸은 밖이다.
-  // **이 단언이 없으면 아래가 「원래 보이고 있어서」 초록이 된다.**
-  await page.keyboard.press("Meta+2");
-  await expect.poll(inside).toBe(false);
+    const inside = async () => {
+      const cell = (await last.boundingBox())!;
+      const box = (await strip.boundingBox())!;
+      return cell.x >= box.x - 1 && cell.x + cell.width <= box.x + box.width + 1;
+    };
 
-  // ⌘9가 여덟째 셸이다. 고른 칸이 상자 안으로 들어온다.
-  await page.keyboard.press("Meta+9");
-  await expect.poll(inside).toBe(true);
+    // ⌘2가 첫 셸이다(⌘1은 spec — 결정 78·79). 줄이 맨 앞으로 돌아가면 마지막 칸은 밖이다.
+    // **이 단언이 없으면 아래가 「원래 보이고 있어서」 초록이 된다.**
+    await page.keyboard.press("Meta+2");
+    await expect.poll(inside).toBe(false);
 
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
+    // ⌘9가 여덟째 셸이다. 고른 칸이 상자 안으로 들어오고, 그 칸이 켜진 칸이다.
+    await page.keyboard.press("Meta+9");
+    await expect.poll(inside).toBe(true);
+    await expect(last.locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+// 위 두 검사는 「줄이 안 넘친다」와 「고른 칸이 상자 안으로 온다」를 들지만 **상자에 칸 하나가
+// 들어갈 폭이 남는가**는 안 든다 — 상자가 0px이면 넘침도 없다. 900px 창에서 작업 패널이 열린
+// 기본 배치가 그랬다(줄 290px · 상자 0px): 칸이 화면에 없어 누를 수도, 끌어 옮길 수도 없었다.
+// 그래서 여기서는 **사람이 보는 것**을 잰다 — 상자에 칸 하나가 온전히 보이고, 그 칸을 눌러 켤
+// 수 있고, `+`가 줄 안에 있다.
+//
+// 창이 작아질 수 있는 끝(`tauri.conf`의 `minWidth` 900)과 그 위 한 폭에서, 탭 줄을 이는 세
+// 화면 모두를 본다. 배치는 셋이다 — 패널을 연 채(가장 좁은 줄), 접은 채(조작 줄에 펼치기
+// 버튼이 하나 더 선다), 그리고 ⌘B로 사이드바를 접은 채(줄의 왼쪽 여백이 신호등 자리만큼
+// 넓어지는 `inset` 갈래다). `/terminal`에는 작업 패널이 없어 패널 갈래가 하나다.
+const SCREENS = [
+  { name: "work 화면", url: `/works/${plainWork.slug}?tab=terminal`, panel: true },
+  { name: "Maison Room 화면", url: `/maison/rooms/${ROOMS[1].slug}?tab=terminal`, panel: true },
+  { name: "`/terminal`", url: "/terminal", panel: false },
+] as const;
+
+type Layout = "패널 열림" | "패널 접힘" | "사이드바 접힘" | "패널 없음";
+
+for (const screen of SCREENS) {
+  for (const width of [900, 1120]) {
+    const layouts: Layout[] = screen.panel
+      ? ["패널 열림", "패널 접힘", "사이드바 접힘"]
+      : ["패널 없음", "사이드바 접힘"];
+    for (const layout of layouts) {
+      test(`${screen.name} ${width}px(${layout})에서도 셸 칸이 보이고 눌린다`, async ({ page }) => {
+        await installFixtureBackend(page);
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(screen.url);
+
+        const tabs = page.locator('[data-tab="shell"]');
+        await tabs.first().waitFor();
+        // 둘이어야 「다른 칸을 눌러 켠다」가 선다 — 새로 연 칸이 켜져 있으므로 첫 칸을 누른다.
+        await openShell(page);
+        await expect(tabs).toHaveCount(2);
+
+        if (layout === "패널 접힘") await page.getByRole("button", { name: /패널 접기$/ }).click();
+        if (layout === "사이드바 접힘") {
+          await page.keyboard.press("Meta+b");
+          await expect(page.locator("header")).toHaveClass(/pl-\(--titlebar-inset-tabs\)/);
+        }
+        await settleStrip(page);
+
+        const row = await rowOf(page);
+        const at = `${screen.name} ${width}px ${layout} ${JSON.stringify(row)}`;
+        // 줄은 여전히 안 넘친다(결정 20) — 칸을 보이게 하려고 조작을 창 밖으로 밀면 안 된다.
+        expect(row.spill, at).toBeLessThanOrEqual(0);
+        expect(row.actions.over, at).toBeLessThanOrEqual(0);
+        // **상자에 칸 하나가 온전히 들어간다.** 칸은 최소 폭 아래로 안 줄므로 이 폭이 칸 하나를
+        // 못 담으면 어느 칸도 온전히 안 보인다(0px이면 하나도 안 보인다).
+        expect(row.strip.clientWidth, at).toBeGreaterThanOrEqual(Math.min(...row.tabs));
+
+        // `+`도 줄 안이다 — 칸 상자 뒤에 서서, 조작과 겹치지 않고 창 안에 있다.
+        const plus = await plusOf(page);
+        expect(plus.left, at).toBeGreaterThanOrEqual(plus.stripRight - 0.5);
+        expect(plus.right, at).toBeLessThanOrEqual(plus.actionsLeft + 0.5);
+        expect(row.pageSpill, at).toBeLessThanOrEqual(0);
+
+        // 그리고 **눌린다** — 켜지지 않은 첫 칸을 눌러 켠다.
+        const first = tabs.first().locator("button[aria-pressed]");
+        await expect(first).toHaveAttribute("aria-pressed", "false");
+        await first.click({ timeout: 5000 });
+        await expect(first).toHaveAttribute("aria-pressed", "true");
+
+        expect(await unknownIpcCalls(page)).toEqual([]);
+      });
+    }
+  }
+}
 
 test("칸이 늘수록 이름이 먼저 줄고 아이콘만 남는다", async ({ page }) => {
   // 결정 11의 **순서**다 — 이름이 말줄임으로 줄다가, 몇 글자도 못 세우는 폭에서 자리를

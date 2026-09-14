@@ -71,6 +71,35 @@ export async function rowOf(page: Page): Promise<Row> {
 }
 
 /**
+ * **배치가 멈출 때까지 기다리고** 그 뒤의 값을 돌려준다 — 패널·사이드바가 접히고 펴지는 220ms, 창 폭이
+ * 바뀐 직후에 잰 값은 곧 낡는다. 이 파일을 쓰는 스펙 셋이 **이 규칙 하나**로 기다린다.
+ *
+ * 멈춤의 기준이 둘이다: 도는 **CSS 트랜지션이 없고**, 그 상태에서 `interval` 간격으로 두 번 잰 값이
+ * 같다. 「두 번 같다」만으로는 모자랐다 — 작업 패널 안쪽 열의 `max-width`는 **지연 220ms · 길이 0**
+ * 이라 그 지연 동안 배치가 멈춰 보이고, 두 샘플이 그 창 안에 떨어지면 잘린 `×`를 잰 채 넘어갔다
+ * (분할+패널 검사가 6번 중 2번 빨강). 지연 중인 트랜지션도 `getAnimations()`에 든다. 트랜지션만
+ * 세는 것은 도는 칸의 스피너 같은 **끝없는 키프레임 애니메이션**이 있어서다.
+ *
+ * 트랜지션이 없어도 두 번은 잰다 — 누른 직후 React가 아직 안 그려 트랜지션이 서기 **전**일 수 있다.
+ */
+export async function settle<T>(page: Page, sample: () => Promise<T>, interval = 150): Promise<T> {
+  let last: string | null = null;
+  await expect
+    .poll(
+      async () => {
+        const moving = await page.evaluate(() => document.getAnimations().some((one) => one instanceof CSSTransition));
+        const now = moving ? null : JSON.stringify(await sample());
+        const same = now !== null && now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [interval] },
+    )
+    .toBe(true);
+  return sample();
+}
+
+/**
  * 상한까지 셸을 채운다. `+`가 잠기는 것이 「정말 8칸이다」의 관찰 가능한 형태다(결정 30).
  *
  * 칸은 `openShell`로 **하나씩** 연다 — 칸이 서는 것과 그 칸이 pty를 갖는 것은 다른 순간이고

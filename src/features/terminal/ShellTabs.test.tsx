@@ -95,6 +95,7 @@ function render(
       slot={null}
       onSlot={() => {}}
       onDropSlot={() => {}}
+      dragging={false}
     />,
   );
 }
@@ -630,7 +631,7 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   // 결정 20. 칸이 최소 폭까지 고르게 줄고(위 describe), **그 아래로는 스크롤한다**.
   // 티켓 #143이 처음 요구한 「좁은 창에서도 한 줄에 다 들어간다」는 산술로 불가능했다 —
   // 이 줄이 받는 폭은 창 폭이 아니라 창에서 사이드바와 작업 패널을 뺀 나머지라, 900px
-  // 창에서 290px인데 여덟 칸만 380px이다(그 합은 e2e가 잰다 — 손으로 더한 수가 세 번 틀렸다).
+  // 창에서는 여덟 칸(380px)이 안 들어간다(그 합은 e2e가 잰다 — 손으로 더한 수가 세 번 틀렸다).
   //
   // **여기서 보는 것은 구조뿐이다.** 실제로 안 넘치는지는 폭을 재야 알고 그것은
   // e2e(terminal-tabs.spec.ts)의 `spill`이 든다 — 이 seam에는 DOM이 없어 겹침을 못 본다.
@@ -667,13 +668,31 @@ describe("바닥에 닿은 뒤 — 셸 칸만 스크롤한다", () => {
   });
 
   it("줄어드는 몫을 이 상자 하나가 받는다 — 형제는 안 줄어든다", () => {
-    // **머리행이 안 넘치는 근거다.** 상자에만 `min-w-0`이 있고 형제가 모두 `shrink-0`이라
-    // flex가 깎을 곳이 여기뿐이다. 형제 중 하나라도 줄면 그만큼 조작이 오른쪽으로 밀린다 —
-    // 그것이 이 티켓이 고치려던 바로 그 그림이었다(조작이 창 밖으로 379px 밀려나 있었다).
+    // **머리행이 안 넘치는 근거다.** 형제가 모두 `shrink-0`이라 flex가 깎을 곳이 이 상자뿐이다.
+    // 형제 중 하나라도 줄면 그만큼 조작이 오른쪽으로 밀린다 — 그것이 이 티켓이 고치려던 바로
+    // 그 그림이었다(조작이 창 밖으로 379px 밀려나 있었다).
     const markup = render(opened(2).state, { actions: "조작" });
-    expect(stripTagOf(markup)).toContain("min-w-0");
+    expect(stripTagOf(markup)).toContain("basis-[max-content]");
     expect(specTagOf(markup)).toContain("shrink-0");
     expect(plusOf(markup)).toContain("shrink-0");
+  });
+
+  it("상자의 바닥은 칸 하나다 — 칸의 최소 폭과 같은 수이고, 칸이 없으면 바닥도 없다", () => {
+    // 바닥이 `min-w-0`이던 때 900px 창에 작업 패널이 열리면 상자가 0px이 되어 칸이 화면에
+    // 없었다. 바닥이 칸 최소 폭보다 작으면 어느 칸도 온전히 안 보이고, 크면 한 칸만 선 줄에
+    // 빈자리가 선다 — 그래서 **칸의 클래스에서 읽은 수**와 견준다(손으로 적은 44와 견주면
+    // 칸의 최소 폭을 바꾸는 날 둘 다 초록이다). 실제로 칸이 보이는지는 L3가 잰다.
+    const markup = render(opened(2).state, { actions: "조작" });
+    const floor = /min-w-\[(\d+)px\]/.exec(stripTagOf(markup));
+    const cellMin = /min-w-\[(\d+)px\]/.exec(shellCellsOf(markup)[0]);
+    if (!floor || !cellMin) throw new Error("상자나 칸의 최소 폭 클래스를 못 찾았다");
+    expect(floor[1]).toBe(cellMin[1]);
+    // 바닥은 폭으로도 적는다 — 열이 버틸 폭(min-content)이 이 수를 세야 한다(`TAB_ROW_COLUMN`).
+    expect(stripTagOf(markup)).toContain(`w-[${floor[1]}px]`);
+    expect(stripTagOf(markup)).not.toContain("w-max");
+
+    // 칸이 없는 줄(문서만 본 work)에는 `+` 앞에 빈 44px이 서면 안 된다.
+    expect(stripTagOf(render(NO_SHELLS, { actions: "조작" }))).toContain("min-w-0");
   });
 });
 
