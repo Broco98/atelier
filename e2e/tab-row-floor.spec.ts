@@ -197,6 +197,39 @@ test("좁게 선 패널의 손잡이를 스치듯 눌렀다 떼도 고른 폭이
   expect((await settled(page)).panel!.width).toBe(560);
 });
 
+test("좁게 선 패널·사이드바를 바깥으로 끌어도 고른 폭이 안 지워진다", async ({ page }) => {
+  // 좁게 선 패널은 탭 줄의 바닥에 막혀 **더 넓게 못 선다** — 바깥으로 끌면 화면은 그대로다. 그런데 그
+  // 끌기를 폭으로 치면 떼는 순간 「그려진 폭 + 끈 거리」가 사람이 고른 폭(저장값)을 덮어, 창을 넓혀도
+  // 고른 폭이 안 돌아온다. 사람은 넓히려 했는데 결과는 좁힌 셈이다.
+  await openWith(page, `/works/${plainWork.slug}?tab=terminal`, 900, { sidebar: 400, panel: 560 });
+  await page.locator('[data-tab="shell"]').first().waitFor();
+  const before = await settled(page);
+  expect(before.panel!.width, JSON.stringify(before)).toBeLessThan(560 - 40);
+  expect(before.sidebar, JSON.stringify(before)).toBeLessThan(400 - 40);
+
+  // 작업 패널 — 핸들이 왼쪽 가장자리라 바깥은 왼쪽이다.
+  const panelHandle = (await page.locator("aside").nth(1).locator(HANDLE).boundingBox())!;
+  const y = panelHandle.y + panelHandle.height / 2;
+  await page.mouse.move(before.panel!.left + 2, y);
+  await page.mouse.down();
+  await page.mouse.move(before.panel!.left - 38, y, { steps: 8 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => localStorage.getItem("work-panel-width"))).toBe("560");
+
+  // 사이드바 — 핸들이 오른쪽 가장자리라 바깥은 오른쪽이다.
+  const sideHandle = (await page.locator("aside").first().locator(HANDLE).boundingBox())!;
+  const sy = sideHandle.y + sideHandle.height / 2;
+  await page.mouse.move(before.sidebar - 2, sy);
+  await page.mouse.down();
+  await page.mouse.move(before.sidebar + 38, sy, { steps: 8 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => localStorage.getItem("sidebar-width"))).toBe("400");
+
+  await page.setViewportSize({ width: 1920, height: 800 });
+  const wide = await settled(page);
+  expect({ sidebar: wide.sidebar, panel: wide.panel!.width }).toEqual({ sidebar: 400, panel: 560 });
+});
+
 test("작업 패널·사이드바를 접고 펴도 안쪽 열이 되흐르지 않고, 900px에서는 편 뒤 창 안에 선다", async ({ page }) => {
   // 패널이 자리를 내주게 되면서 안쪽 열이 고정 폭만 들 수 없게 됐다 — 좁게 서면 오른쪽이 잘린다.
   // 그래도 **접히는 동안에는** 고정 폭을 든다(WorkPanel 안쪽 열 주석) — 그 동안 안쪽 폭이

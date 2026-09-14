@@ -75,7 +75,8 @@ function useResizableWidth(
     return saved >= min && saved <= max ? Math.round(saved) : defaultWidth;
   });
   const [dragging, setDragging] = useState(false);
-  const start = useRef({ x: 0, width: 0, moved: false });
+  // `saved`는 누른 순간의 저장값 — 좁게 선 패널을 바깥으로 끄는 동안 그대로 둘 값이다(아래 `onPointerMove`).
+  const start = useRef({ x: 0, width: 0, saved: 0, moved: false });
 
   // 드래그 종료 — pointerup·pointercancel 어느 쪽으로 끝나도 같은 정리를 한다
   const endDrag = () => {
@@ -100,7 +101,12 @@ function useResizableWidth(
         // 출발하면 첫 움직임에 그 차이만큼 손잡이가 포인터에서 떨어져 튄다. 핸들의 부모가 곧
         // 그 패널이다(아래 `ResizeHandle` 머리말).
         const drawn = e.currentTarget.parentElement?.getBoundingClientRect().width;
-        start.current = { x: e.clientX, width: drawn ? Math.min(width, Math.round(drawn)) : width, moved: false };
+        start.current = {
+          x: e.clientX,
+          width: drawn ? Math.min(width, Math.round(drawn)) : width,
+          saved: width,
+          moved: false,
+        };
         setResizing(true);
         setDragging(true);
       },
@@ -111,16 +117,20 @@ function useResizableWidth(
         // 문턱 뒤의 계산은 여전히 누른 자리에서 재므로 문턱을 넘는 순간 폭이 튀지 않는다.
         if (!start.current.moved && Math.abs(e.clientX - start.current.x) < RESIZE_THRESHOLD) return;
         start.current.moved = true;
-        setWidth(
-          nextWidth({
-            side,
-            startX: start.current.x,
-            startWidth: start.current.width,
-            clientX: e.clientX,
-            min,
-            max,
-          }),
-        );
+        const next = nextWidth({
+          side,
+          startX: start.current.x,
+          startWidth: start.current.width,
+          clientX: e.clientX,
+          min,
+          max,
+        });
+        // **좁게 선 패널은 그려진 폭보다 넓게 못 선다** — 탭 줄의 바닥이 막는다. 그 너머로 끈 폭을 그대로
+        // 받으면 화면은 안 움직이는데 떼는 순간 「그려진 폭 + 끈 거리」가 고른 폭(저장값)을 덮는다. 그래서
+        // 출발한 그려진 폭 이상이면 저장값을 그대로 둔다 — 안쪽으로 끌 때만 폭이 바뀐다. 좁게 서지 않은
+        // 패널은 출발 폭이 곧 저장값이라 이 갈래가 아무 일도 안 한다.
+        const squeezed = start.current.width < start.current.saved;
+        setWidth(squeezed && next >= start.current.width ? start.current.saved : next);
       },
       onPointerUp: (e) => {
         e.currentTarget.releasePointerCapture(e.pointerId);
