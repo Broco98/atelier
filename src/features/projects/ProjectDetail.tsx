@@ -140,9 +140,10 @@ function WorksSection({
 
 // 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
 //
-// works/WorksPage.tsx의 TitleEditor가 같은 상호작용 계약을 쓴다 — Enter/blur 확정,
-// Escape 취소, 공백·동일 값 미저장, 그리고 Enter와 blur가 함께 들어와 두 번 커밋되는 것을
-// 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다 (스타일은 서로 다르다).
+// 작업 이름 바꾸기 창(works/WorkRenameDialog.tsx)이 같은 입력 규칙을 쓴다 — Enter 확정, Escape 취소,
+// 공백·동일 값 미저장, 두 번 커밋되는 것을 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다.
+// **갈리는 것 하나**: 여기서는 blur가 확정이지만 그 창에서는 바깥 누르기가 취소다(판 3 P7) — 창 밖을 누른
+// 것은 「그만두겠다」로 읽힌다. 이 인라인 편집기는 그대로 둔다(결정 8은 작업 이름 바꾸기에 한한다).
 function TitleEditor({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [editing, setEditing] = useState(false);

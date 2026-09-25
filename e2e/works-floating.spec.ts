@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 
@@ -14,13 +14,19 @@ import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "
 // 동작일 때만(애니메이션이 도는가, 동작 줄이기면 멎는가) 잰다. 메뉴(`modal`)가 열린 동안 바깥을 누르는
 // 검사는 자리를 먼저 재고 `page.mouse.click`으로 누른다 — `locator.click()`은 메뉴의 가림막에 막힌다.
 
-const [pinnedWork, , multiWork] = WORKS;
+const [pinnedWork, plainWork, multiWork] = WORKS;
 
 /**
  * 그 요소에 걸린 애니메이션의 이름. **동작을 재는 값이다** — 열림 애니메이션(결정 7)은 `data-open`에서
  * 붙어 열려 있는 동안 그대로 남으므로, 뜬 뒤 언제 재도 같다. 동작 줄이기면 전역 규칙이 `none`으로 덮는다.
  */
 const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).animationName);
+
+/**
+ * 머리행의 ⋯ — 작업 메뉴를 여는 버튼. 이름이 세계를 탄다(`itemNameOf`): 여기는 Atelier라 「작업 메뉴」다.
+ * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
+ */
+const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
 // 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
@@ -108,3 +114,160 @@ test("상태 메뉴에서 지금 상태를 다시 고르면 닫히기만 하고 
   expect(await callCount(page, "set_work_status")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── 작업 ⋯ (스토리 46~48 · 56 · 57) ──
+// 머리행의 ⋯가 메뉴를 연다: 이름 바꾸기 · 구분선 · 아카이빙 · 구분선 · 삭제. 줄 옮기기와 Esc 닫기, ⋯로 포커스
+// 돌려주기는 메뉴 부품이 한다. 아카이빙·삭제는 확인 창을 부르는데, 그 창이 닫히면 포커스는 **⋯로** 간다 — 창을
+// 부른 메뉴 항목은 그때 이미 사라졌다. 처리 중인 ⋯는 재지 않는다 — 가림막이 머리행까지 덮어 손이 안 닿는다.
+
+test("작업 ⋯를 열면 메뉴가 서고 ↓가 첫 항목에 간다 — Esc로 닫으면 포커스가 ⋯로 돌아온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const more = 작업메뉴(page);
+  const menu = page.getByRole("menu");
+
+  await expect(more).toHaveAttribute("aria-haspopup", "menu");
+  await more.click();
+  await expect(menu).toBeVisible();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  // 항목은 셋이고 순서가 이렇다 — 되돌릴 수 있는 이름 바꾸기가 맨 위, 되돌릴 수 없는 둘이 구분선 아래다.
+  await expect(menu.getByRole("menuitem")).toHaveText(["이름 바꾸기", "아카이빙", "삭제"]);
+  await expect(menu.getByRole("separator")).toHaveCount(2);
+
+  // 눌러서 열면 카드 자신이 포커스를 쥔다. 그 뒤의 ↓가 첫 항목이다.
+  await expect(menu).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "이름 바꾸기" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(more).toBeFocused();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("「아카이빙」이 띄운 확인 창을 「취소」로 닫으면 포커스가 ⋯로 돌아온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const more = 작업메뉴(page);
+
+  await more.click();
+  await page.getByRole("menuitem", { name: "아카이빙" }).click();
+  const dialog = page.getByRole("alertdialog", { name: `'${pinnedWork.title}' 아카이빙` });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+
+  // 앵커: 창이 닫혔다. 그다음에 포커스의 자리와 「안 나갔다」를 잰다.
+  await expect(dialog).toHaveCount(0);
+  await expect(more).toBeFocused();
+  expect(await callCount(page, "archive_work")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 이름 바꾸기 창 (결정 8, 스토리 58~63, S38 · P7 · P12) ──
+// ⋯의 「이름 바꾸기」가 작은 창을 연다. 입력칸이 지금 이름을 **전부 고른 채** 포커스를 받는다. Enter는 앞뒤
+// 공백을 떼고 저장하되, 비었거나 그대로면 저장 없이 닫는다. Esc와 바깥 누르기는 취소다 — 바깥 누르기가 저장이던
+// 옛 인라인 편집기와 여기서 갈린다(P7). 어느 길로 닫혀도 포커스는 ⋯로 간다.
+//
+// 「안 나갔다」(IPC 0)는 늘 **창이 닫힌 것을 본 뒤에** 잰다 — 닫는 일이 아예 안 일어나도 0이다.
+
+const 이름바꾸기를연다 = async (page: Page) => {
+  await 작업메뉴(page).click();
+  await page.getByRole("menuitem", { name: "이름 바꾸기" }).click();
+  const dialog = page.getByRole("dialog", { name: "작업 이름 바꾸기" });
+  await expect(dialog).toBeVisible();
+  const input = dialog.getByRole("textbox", { name: "작업 이름" });
+  await expect(input).toBeFocused();
+  return { dialog, input, save: dialog.getByRole("button", { name: "저장", exact: true }) };
+};
+
+/** 입력칸에서 골라 둔 자리 `[시작, 끝]`. 전부 골랐으면 `[0, 글자 수]`다. */
+const 고른자리 = (input: Locator) =>
+  input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
+
+test("「이름 바꾸기」는 「작업 이름 바꾸기」 창을 열고, 입력칸이 지금 이름을 전부 고른 채 포커스를 받는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+  const { input } = await 이름바꾸기를연다(page);
+
+  await expect(input).toHaveValue(plainWork.title);
+  await expect.poll(() => 고른자리(input)).toEqual([0, plainWork.title.length]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("Enter면 앞뒤 공백을 뗀 이름으로 제목 IPC가 나가고, 창이 닫혀 포커스가 ⋯에 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+  const { dialog, input } = await 이름바꾸기를연다(page);
+
+  await input.fill("  새 이름  ");
+  await input.press("Enter");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(작업메뉴(page)).toBeFocused();
+  await expect
+    .poll(async () => (await ipcCallArgs(page, "set_work_title", "title")).map(({ args }) => args))
+    .toEqual([{ mode: "atelier", slug: plainWork.slug, title: "새 이름" }]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+for (const [what, value] of [
+  ["그대로인 이름", plainWork.title],
+  ["빈 이름", "   "],
+] as const) {
+  test(`${what}으로 Enter를 누르면 창만 닫히고 제목 IPC는 안 나간다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(`/works/${plainWork.slug}`);
+    const { dialog, input } = await 이름바꾸기를연다(page);
+
+    await input.fill(value);
+    await input.press("Enter");
+
+    await expect(dialog).toHaveCount(0);
+    await expect(작업메뉴(page)).toBeFocused();
+    expect(await callCount(page, "set_work_title")).toBe(0);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+test("「저장」은 이름이 비었거나 그대로면 누를 수 없고, 글자를 바꾸면 풀린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}`);
+  const { input, save } = await 이름바꾸기를연다(page);
+
+  // 연 그대로는 지금 이름이다 — 저장해도 바뀌는 것이 없다.
+  await expect(save).toBeDisabled();
+  await input.fill("");
+  await expect(save).toBeDisabled();
+  // 공백만 있으면 뗀 뒤 빈 이름이다. 앞뒤 공백만 붙인 지금 이름도 뗀 뒤 그대로다.
+  await input.fill("   ");
+  await expect(save).toBeDisabled();
+  await input.fill(` ${plainWork.title} `);
+  await expect(save).toBeDisabled();
+
+  await input.fill(`${plainWork.title}!`);
+  await expect(save).toBeEnabled();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+for (const [what, cancel] of [
+  ["Esc", (page: Page) => page.keyboard.press("Escape")],
+  // 가림막 위 창 밖의 한 점. 창은 가운데에 서므로 왼쪽 위 모서리는 늘 바깥이다.
+  ["바깥 누르기", (page: Page) => page.mouse.click(8, 8)],
+] as const) {
+  test(`${what}는 취소다 — 고친 이름이 있어도 제목 IPC가 안 나가고, 포커스가 ⋯에 선다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await page.goto(`/works/${plainWork.slug}`);
+    const { dialog, input } = await 이름바꾸기를연다(page);
+
+    await input.fill("고치다 만 이름");
+    await cancel(page);
+
+    await expect(dialog).toHaveCount(0);
+    await expect(작업메뉴(page)).toBeFocused();
+    expect(await callCount(page, "set_work_title")).toBe(0);
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}

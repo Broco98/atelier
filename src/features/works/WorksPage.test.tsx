@@ -1050,31 +1050,6 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
   });
 });
 
-// #141. 제목이 머리행에서 빠지면서 제자리 편집도 사라졌다 — **이름을 고칠 길이 없어지면
-// 안 된다.** 메뉴가 열린 화면은 정적 렌더로 만들 수 없으므로(여닫음이 클릭이다) 배선을
-// 리터럴로 못박는다.
-describe("WorksPage 이름 바꾸기가 ⋯ 메뉴로 갔다", () => {
-  it("편집을 여는 자리가 ⋯ 메뉴 안에 하나 있다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const menu = worksPage.indexOf("function WorkMenu(");
-    expect(menu, "⋯ 메뉴를 찾지 못했다").toBeGreaterThan(-1);
-    // 편집이 그 함수 **뒤**에 있다 = 그 메뉴 안이다. 머리행에 남아 있으면 앞에 나온다.
-    expect(worksPage.indexOf("<TitleEditor")).toBeGreaterThan(menu);
-    expect(countOf(worksPage, "<TitleEditor")).toBe(1);
-    // **JSX에만 있는 리터럴로 집는다.** 「이름 바꾸기」라는 글자는 이 파일의 주석에도 나와서
-    // 그것만 세면 항목을 지워도 초록이다 — 실제로 뮤테이션에서 살아남았다.
-    expect(worksPage).toContain(
-      '<span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">이름 바꾸기</span>',
-    );
-    expect(worksPage).toContain("onClick={() => setRenaming(true)}");
-  });
-
-  it("고친 이름이 실제로 코어로 간다", () => {
-    // 항목만 있고 커밋이 없으면 「눌러도 아무 일이 없는 버튼」이 된다(결정 11·21).
-    expect(source("WorksPage.tsx")).toContain("setTitle.mutate({ slug: work.slug, title: value })");
-  });
-});
-
 // 결정 47. 상한 8에서 ⌘T는 **아무 일도 안 일어난 것처럼** 보였다(스토리 33의 알려진 구멍) —
 // 그 키는 xterm의 키 핸들러에서 오고 그것은 React 트리 밖이라 화면의 토스트를 부를 길이
 // 없었다. 스토어가 거절을 알리고 이 화면이 그것을 받는다.

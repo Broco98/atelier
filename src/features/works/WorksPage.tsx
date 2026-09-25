@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Columns2,
   Folder,
-  LoaderCircle,
   MoreHorizontal,
   PanelRight,
   Pencil,
@@ -25,11 +24,13 @@ import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Spinner } from "@/components/ui/spinner";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -69,11 +70,11 @@ import { ignoresSourceToggle } from "./doc-refs";
 import SpecViewer from "./SpecViewer";
 import WorkPanel from "./WorkPanel";
 import WorkMetaMenu from "./WorkMetaMenu";
+import WorkRenameDialog from "./WorkRenameDialog";
 import {
   useArchiveWork,
   useRemoveWork,
   useSetWorkStatus,
-  useSetWorkTitle,
   useWorks,
 } from "./hooks";
 import { STATUS_META } from "./status";
@@ -1086,67 +1087,14 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
       className="absolute inset-0 z-30 flex items-center justify-center bg-background/80 backdrop-blur-[2px]"
     >
       <div className="flex flex-col items-center gap-2">
-        <LoaderCircle className="size-6 animate-spin text-primary" strokeWidth={2} />
+        {/* 판 1의 Spinner다 — 앱에 스피너가 한 가지만 있다(스토리 92). 크기와 색은 그대로다(S15). 이 막이
+            이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 영어 「Loading」이 읽힌다.
+            움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
+        <Spinner aria-hidden className="size-6 text-primary" />
         <span className="mt-1 text-[15px] font-semibold tracking-[-0.01em]">{verb} 중…</span>
         <span className="text-[13px] text-tertiary">{detail}</span>
       </div>
     </div>
-  );
-}
-
-// 이름 바꾸기 — **⋯ 메뉴 안에 산다**(결정 10). slug는 바뀌지 않는다 (ProjectDetail의
-// TitleEditor와 같은 계약).
-//
-// **한때 브레드크럼 말단의 제자리 편집이었다.** 탭 줄이 머리행을 차지하면서 제목이 화면에서
-// 빠졌고(사이드바 행이 말한다) 그 자리와 함께 편집도 사라졌는데, **이름을 고칠 길이 없어지면
-// 안 된다** — 그래서 여는 자리만 ⋯ 메뉴 항목으로 옮기고 편집 자체는 그대로 왔다.
-//
-// **늘 입력이다.** 예전의 「누르면 입력이 되는 버튼」은 여는 일을 겸하고 있었는데, 그 일을
-// 메뉴 항목이 가져갔으므로 남겨 두면 같은 일을 하는 자리가 둘이 된다.
-//
-// 끝나는 길이 셋이다 — Enter(적용) · Escape(버림) · 포커스 이탈(적용). 메뉴가 바깥 클릭으로
-// 닫히면 입력이 언마운트되며 그냥 사라진다: blur가 안 오는 경로라 그때는 안 고쳐지고,
-// 그것이 「메뉴를 닫았다」의 자연스러운 뜻이다.
-function TitleEditor({
-  mode,
-  work,
-  onDone,
-}: {
-  mode: Mode;
-  work: WorkView;
-  onDone: () => void;
-}) {
-  const setTitle = useSetWorkTitle(mode);
-  const [draft, setDraft] = useState(work.title);
-  // blur와 Enter가 함께 들어와 두 번 커밋되는 것을 막는다
-  const finished = useRef(false);
-
-  const finish = (commit: boolean) => {
-    if (finished.current) return;
-    finished.current = true;
-    const value = draft.trim();
-    if (commit && value && value !== work.title) {
-      setTitle.mutate({ slug: work.slug, title: value });
-    }
-    // 재조회가 돌아오기 전에 이 자리를 먼저 걷는다 — draft가 새 값과 싸우지 않게
-    onDone();
-  };
-
-  return (
-    <input
-      autoFocus
-      aria-label={`${itemNameOf(mode)} 이름`}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") finish(true);
-        // Escape는 삼키지 않는다 — 메뉴의 Escape 핸들러가 함께 들어도 하는 일이 같다
-        // (아래 `onDone`이 메뉴를 닫는다). 삼키면 「같은 일을 두 번 막았다」만 남는다.
-        if (e.key === "Escape") finish(false);
-      }}
-      className="w-full min-w-0 rounded-[7px] border border-primary bg-background px-1.5 py-0.5 text-[12.5px] font-medium outline-none"
-    />
   );
 }
 
@@ -1201,12 +1149,17 @@ function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
 }
 
 // 생애주기 조작 — 뷰 토글이 모인 우측 actions가 아니라 StatusMenu 옆에 산다.
-// 둘 다 되돌릴 수 없어서 네이티브 확인을 거치고, 거절 사유(커밋 안 된 변경 등)는
+// 둘 다 되돌릴 수 없어서 확인 창을 거치고, 거절 사유(커밋 안 된 변경 등)는
 // 코어가 파일 단위로 말해주므로 그대로 보여준다.
 //
 // 성공 뒤에 선택을 옮기지 않는다 — 목록 무효화로 이 작업이 사라지면 -works-view.tsx의
 // 정규화(`exists`가 false가 되는 경로)가 주소까지 함께 옮긴다. 여기서 또 옮기면 같은 일을
 // 두 곳이 하게 되고, 그쪽이 "사라진 작업" 일반을 이미 담당한다.
+//
+// **메뉴 부품(`DropdownMenu`)이 다 한다**(판 3, 스토리 46~48) — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 ·
+// Home/End · 글자 치기), Esc 닫기와 ⋯로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). 항목은
+// `menuitem`이다. ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다(`aria-haspopup` · `aria-expanded`).
+// 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
 function WorkMenu({
   mode,
   work,
@@ -1219,12 +1172,15 @@ function WorkMenu({
   archive: ReturnType<typeof useArchiveWork>;
   remove: ReturnType<typeof useRemoveWork>;
 }) {
+  // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  // **이름 바꾸기가 이 메뉴로 왔다**(결정 10 · #141). 제목이 머리행에서 빠지면서 제자리
-  // 편집도 함께 사라졌는데, 이름을 고칠 길이 없어지면 안 된다. 항목을 누르면 메뉴가 닫히지
-  // 않고 **그 자리가 입력으로 바뀐다** — 팝오버 밖에 입력을 세우면 앵커가 사라진 뒤에도
-  // 떠 있는 자리가 하나 더 생기고, 그것을 닫는 규칙을 또 정해야 한다.
+  // **이름 바꾸기는 ⋯에서 여는 작은 창이다**(결정 8 · #141). 제목이 머리행에서 빠지면서 제자리 편집도
+  // 함께 사라졌는데, 이름을 고칠 길이 없어지면 안 된다. 메뉴 항목은 입력칸을 품을 수 없어 창에서 받는다.
   const [renaming, setRenaming] = useState(false);
+  // ⋯ 자신. 메뉴 항목에서 연 창이 닫히면 포커스가 여기로 온다 — 창을 연 항목은 그때 이미 사라졌다.
+  // 이름 바꾸기 창은 이것을 받아 돌려준다(`finalFocus`). 확인 창은 앱 루트의 한 자리가 그려 이것을 모르지만,
+  // 부품의 기본값이 여기로 온다 — 열기 전 자리(메뉴 항목)가 사라졌으면 그 앞에 포커스가 있던 자리로 간다
+  // (Base UI의 포커스 기록). 그래서 물음(`askDanger`)에 돌아갈 자리를 싣지 않는다. 둘 다 L3가 잰다.
   const anchor = useRef<HTMLButtonElement>(null);
   const busy = archive.isPending || remove.isPending;
   // 이 Work의 **살아 있는** 셸. 확인 대화가 그 수를 말한다(결정 26). 고르는 규칙은
@@ -1236,15 +1192,6 @@ function WorkMenu({
   const liveShells = useStore(terminalStore, (state) =>
     runningShellsOf(state, ownerOf(mode, work.slug)),
   );
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   // 다른 작업으로 옮겨가면 닫는다 — 열어 둔 채 전환하면 메뉴가 살아남아 **화면에 보이는
   // 것과 다른 작업**을 겨눈다.
@@ -1258,8 +1205,7 @@ function WorkMenu({
   // 작업 패널이 WorksPage로 올라온 뒤(결정 49)에도 **머리행은 SpecViewer 안에 그대로 있다** —
   // 올라간 것은 패널이지 머리행이 아니다. 터미널 탭에서는 이 이펙트가 실제로 일한다.
   //
-  // 편집도 함께 걷는다 — 남겨 두면 다음에 이 메뉴를 열었을 때 **다른 작업의 이름**을
-  // 고치는 입력이 먼저 서 있다.
+  // 이름 바꾸기 창도 함께 닫는다 — 남겨 두면 **다른 작업의 이름**을 고치는 창이 서 있다.
   useEffect(() => {
     setOpen(false);
     setRenaming(false);
@@ -1267,12 +1213,13 @@ function WorkMenu({
 
   // 진행 중에는 다시 부르지 않는다. 두 번째 호출은 이미 옮겨진 작업을 찾지 못해 실패하는데,
   // 성공한 아카이빙 위에 "아카이빙하지 못했습니다" 창이 뜨는 것이 그 결과다.
+  //
+  // 메뉴는 항목을 누르면 스스로 닫힌다 — 여기서 닫을 것이 없다.
   const run = async (
     verb: string,
     detail: string,
     call: () => Promise<unknown>,
   ) => {
-    setOpen(false);
     if (busy) return;
     // 셸은 이 Work의 워크트리에서 도는 프로세스라 폴더가 정리되면 함께 끝난다. 누르기 전에
     // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
@@ -1304,87 +1251,58 @@ function WorkMenu({
     run("삭제", removeConfirmBody(mode), () => remove.mutateAsync(work.slug));
 
   return (
-    <span className="relative flex">
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={busy}
-        aria-label={`${itemNameOf(mode)} 메뉴`}
-        aria-expanded={open}
-        aria-busy={busy}
-        title={busy ? "처리 중이에요" : `${itemNameOf(mode)} 메뉴`}
-        // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
-        // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
-        // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
-        // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
-        // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
-        // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-        className={cn(
-          "icon-button transition-colors",
-          "disabled:pointer-events-none disabled:opacity-50",
-          open ? "toggle-on" : "text-tertiary quiet-hover",
-        )}
-      >
-        {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
-            깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
-            disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-        <MoreHorizontal className="size-4" strokeWidth={2.2} />
-      </button>
-      {open && (
-        <PopoverPortal
-          anchorRef={anchor}
-          width={190}
-          onClose={() => {
-            setOpen(false);
-            setRenaming(false);
-          }}
-          className="flex flex-col gap-px p-[5px]"
-        >
-          {renaming ? (
-            <TitleEditor
-              mode={mode}
-              work={work}
-              onDone={() => {
-                setRenaming(false);
-                setOpen(false);
-              }}
-            />
-          ) : (
-            <>
-              {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
-                  거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}
-              <button
-                type="button"
-                onClick={() => setRenaming(true)}
-                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-              >
-                <Pencil className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">이름 바꾸기</span>
-              </button>
-              <span className="my-[3px] h-px bg-border" />
-              <button
-                type="button"
-                onClick={handleArchive}
-                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-              >
-                <Archive className="size-3.5 shrink-0 text-tertiary" strokeWidth={1.9} />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">아카이빙</span>
-              </button>
-              <span className="my-[3px] h-px bg-border" />
-              <button
-                type="button"
-                onClick={handleRemove}
-                className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left text-destructive transition-colors hover:bg-destructive/10"
-              >
-                <Trash2 className="size-3.5 shrink-0" strokeWidth={1.9} />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">삭제</span>
-              </button>
-            </>
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          ref={anchor}
+          disabled={busy}
+          aria-label={`${itemNameOf(mode)} 메뉴`}
+          aria-busy={busy}
+          title={busy ? "처리 중이에요" : `${itemNameOf(mode)} 메뉴`}
+          // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
+          // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
+          // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+          // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
+          // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
+          // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
+          className={cn(
+            "icon-button transition-colors",
+            "disabled:pointer-events-none disabled:opacity-50",
+            open ? "toggle-on" : "text-tertiary quiet-hover",
           )}
-        </PopoverPortal>
-      )}
-    </span>
+        >
+          {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+              깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+              disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+          <MoreHorizontal className="size-4" strokeWidth={2.2} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
+              거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}
+          <DropdownMenuItem onClick={() => setRenaming(true)}>
+            <Pencil className="size-3.5 text-tertiary" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate font-medium">이름 바꾸기</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleArchive}>
+            <Archive className="size-3.5 text-tertiary" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate font-medium">아카이빙</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={handleRemove}>
+            <Trash2 className="size-3.5" strokeWidth={1.9} />
+            <span className="min-w-0 flex-1 truncate font-medium">삭제</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <WorkRenameDialog
+        mode={mode}
+        work={work}
+        open={renaming}
+        onClose={() => setRenaming(false)}
+        returnFocus={anchor}
+      />
+    </>
   );
 }
 
