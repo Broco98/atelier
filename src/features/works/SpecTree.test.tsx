@@ -58,7 +58,8 @@ describe("SpecTree는 받은 spec 트리를 그리기만 한다", () => {
     const positions = shown.map((name) => at(markup, name));
     expect(positions.every((one) => one >= 0), `${shown} → ${positions}`).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    // 판 구획과 판 밖 구획의 머리(결정 24) — 폴더가 곧 개념이라 그 위에 이름을 한 번 더 붙이지 않는다
+    // 판 구획과 판 밖 구획의 머리(spec 레이아웃 결정 24) — 폴더가 곧 개념이라 그 위에 이름을 한 번 더
+    // 붙이지 않는다
     expect(markup).not.toContain("Iterations");
     expect(markup).not.toContain("Documents");
   });
@@ -76,8 +77,8 @@ describe("SpecTree는 받은 spec 트리를 그리기만 한다", () => {
   });
 
   it("중첩된 번호 묶음에도 묶음 행이 없다 — 구성원이 그 폴더 안에 최신이 위로 선다", () => {
-    // 폴더 항목 안의 `{n}` 항목(결정 4: 「어디에 있든 같은 동작」). 묶음 하나가 폴더 둘이고,
-    // 그 위에 묶음을 말하는 행이 따로 서지 않는다.
+    // 폴더 항목 안의 `{n}` 항목(spec 레이아웃 결정 4: 「어디에 있든 같은 동작」). 묶음 하나가
+    // 폴더 둘이고, 그 위에 묶음을 말하는 행이 따로 서지 않는다.
     const group = (n: number, latest: boolean): SpecTreeGroup => ({
       key: "결정/adr-{n}-{name}",
       n,
