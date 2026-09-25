@@ -66,30 +66,38 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
         None => mode,
     };
     let folder = layout_folder(data_root, id);
-    // 폴더가 없으면 그 id는 코드 내장본의 것이다 — 가린 폴더가 없을 뿐, 물러선 것이 아니다
-    if !folder.exists() {
-        return Ok(Resolved {
-            layout: builtin_layout(id),
-            source: LayoutSource::Builtin,
-            templates: None,
-            fallback: None,
-        });
-    }
     let shown = crate::collapse_home(&folder);
-    match read_folder(&folder) {
-        Ok(layout) => Ok(Resolved {
-            templates: Some(template_verdict(&layout, &folder, shown)),
-            layout,
-            source: LayoutSource::Folder(folder),
-            fallback: None,
-        }),
-        Err(reason) => Ok(Resolved {
-            layout: builtin_layout(mode),
-            source: LayoutSource::Builtin,
-            templates: None,
-            fallback: Some(Fallback { folder: shown, reason }),
-        }),
-    }
+    // `Path::exists`는 쓰지 않는다 — 권한 오류도, 대상이 사라진 링크도 「없음」으로 삼켜서 사용자가
+    // 둔 폴더가 알림 없이 무시된다. 링크는 따라가지 않고 그 자리에 무엇이 있는지만 본다.
+    let reason = match std::fs::symlink_metadata(&folder) {
+        // 폴더가 없으면 그 id는 코드 내장본의 것이다 — 가린 폴더가 없을 뿐, 물러선 것이 아니다
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Resolved {
+                layout: builtin_layout(id),
+                source: LayoutSource::Builtin,
+                templates: None,
+                fallback: None,
+            });
+        }
+        Err(e) => format!("cannot read the layout folder: {e}"),
+        Ok(_) => match read_folder(&folder) {
+            Ok(layout) => {
+                return Ok(Resolved {
+                    templates: Some(template_verdict(&layout, &folder, shown)),
+                    layout,
+                    source: LayoutSource::Folder(folder),
+                    fallback: None,
+                });
+            }
+            Err(reason) => reason,
+        },
+    };
+    Ok(Resolved {
+        layout: builtin_layout(mode),
+        source: LayoutSource::Builtin,
+        templates: None,
+        fallback: Some(Fallback { folder: shown, reason }),
+    })
 }
 
 /// 폴더의 `layout.json`을 읽는다. 못 쓰면 까닭을 한 줄로 준다 — 안내문 앞에 그대로 실린다.
@@ -265,6 +273,23 @@ mod tests {
         let unreadable = resolve_layout(root.path(), Mode::Atelier, None).unwrap();
         let reason = assert_fell_back(&unreadable, Mode::Atelier, &folder);
         assert!(reason.contains("layout.json") && !reason.contains("missing"), "{reason}");
+    }
+
+    /// 사용자가 둔 것이 있는데 **있는지조차 확인하지 못하면** 없는 것으로 치지 않는다 — 조용히
+    /// 내장본을 쓰면 사용자가 고친 레이아웃이 알림 없이 무시된다(결정 15). 대상이 사라진
+    /// 심볼릭 링크(dotfiles로 걸어 둔 폴더 따위)로 잰다. 권한으로 재면 root로 도는 CI에서 헛되이
+    /// 통과한다.
+    #[cfg(unix)]
+    #[test]
+    fn a_layout_folder_link_to_nowhere_falls_back_instead_of_counting_as_absent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("layouts")).unwrap();
+        let folder = root.path().join("layouts/atelier");
+        std::os::unix::fs::symlink(root.path().join("gone"), &folder).unwrap();
+
+        let resolved = resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        let reason = assert_fell_back(&resolved, Mode::Atelier, &folder);
+        assert!(reason.contains("layout.json"), "{reason}");
     }
 
     /// 물러서기 둘째 — 검증 오류. 까닭은 **첫** 오류와 그 위치다. 사용자가 열어 고칠 자리를 찾게
