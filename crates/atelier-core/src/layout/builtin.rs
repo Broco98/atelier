@@ -197,15 +197,34 @@ mod tests {
     /// 하나로 `overview.md`의 나침반이 **조용히** 사라진다 — 화면은 멀쩡해 보인다.
     ///
     /// 두 언어 사이라 부탁이 아니라 테스트로 묶는다. 지침이 `refs.ts`를 읽는 교차 검사
-    /// (`atelier-cli`의 `instructions.rs`)와 같은 방식이다. 표의 키는 늘 따옴표로 적는다 —
-    /// 그 모양(`"compass":`)이 이 검사가 찾는 것이다.
+    /// (`atelier-cli`의 `instructions.rs`)와 같은 방식이다. 표의 키는 늘 따옴표로 적는다.
+    ///
+    /// **표의 몸통에서, 따옴표 친 키로 시작하는 줄만 잰다.** 파일 전체를 맨 글자로 찾으면 머리
+    /// 주석에 예시로 적힌 키 하나가 표의 항목을 대신 통과시킨다 — 그 예시가 하필 나침반이면
+    /// 이 검사가 지키려는 바로 그 항목이 빠져도 초록이다. 그래서 `SPEC_ICONS = { … } satisfies`
+    /// 리터럴 안만 읽고, 그 안에서도 줄머리가 `"<이름>":`인 줄만 항목으로 친다. `//` 주석 줄은
+    /// 그 모양으로 시작할 수 없다.
     #[test]
     fn every_builtin_icon_is_in_the_apps_icon_table() {
-        let table = std::fs::read_to_string(concat!(
+        let file = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../src/features/works/spec-icons.ts"
         ))
         .expect("spec-icons.ts moved; update this test and the app's icon table together");
+        let start = file
+            .find("export const SPEC_ICONS = {")
+            .expect("SPEC_ICONS table not found; update this test with spec-icons.ts");
+        let end = start
+            + file[start..]
+                .find("} satisfies")
+                .expect("SPEC_ICONS has no `} satisfies` end; update this test with spec-icons.ts");
+        let entries: Vec<&str> = file[start..end]
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with('"'))
+            .collect();
+        // 표를 못 읽은 것이 「다 있다」로 읽히지 않게 — 몸통에 항목 줄이 하나도 없으면 빨갛다
+        assert!(!entries.is_empty(), "SPEC_ICONS 표에서 항목 줄을 하나도 못 읽었다");
 
         for mode in [Mode::Atelier, Mode::Maison] {
             let mut icons = Vec::new();
@@ -213,8 +232,9 @@ mod tests {
             // 못 읽은 것이 「다 있다」로 읽히지 않게 — 내장본에는 아이콘이 다섯 있다
             assert_eq!(icons.len(), 5, "{mode} 내장본의 아이콘 수가 바뀌었다: {icons:?}");
             for icon in icons {
+                let key = format!("\"{icon}\":");
                 assert!(
-                    table.contains(&format!("\"{icon}\":")),
+                    entries.iter().any(|line| line.starts_with(&key)),
                     "{mode} 내장본의 아이콘 '{icon}'이 앱의 아이콘 표에 없다"
                 );
             }

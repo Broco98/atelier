@@ -21,8 +21,8 @@ import {
 //
 // 이름은 lucide의 이름(kebab-case) 그대로다 — 새 말을 짓지 않는다. 정해 둔 열두 개 안팎이고,
 // 앞의 다섯이 내장본의 것이다. 내장본의 이름이 모두 여기 있는지는 Rust 테스트가 이 파일을 읽어
-// 본다(`atelier-core`의 `every_builtin_icon_is_in_the_apps_icon_table`). 그 검사가 찾는 모양이
-// `"compass":`라, **키는 따옴표를 떼지 않는다.**
+// 본다(`atelier-core`의 `every_builtin_icon_is_in_the_apps_icon_table`). 그 검사는 이 표 안에서
+// 따옴표 친 키로 시작하는 줄을 항목으로 치니, **키는 따옴표를 떼지 않는다.**
 export const SPEC_ICONS = {
   "compass": Compass,
   "layers": Layers,
