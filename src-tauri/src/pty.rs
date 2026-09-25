@@ -1447,6 +1447,11 @@ mod tests {
     /// - 판정은 **시작 정리의 판정**(`verdict::at_startup` — 확정 고아만, 이 실행 것은 안 봄)이다.
     /// - 죽은 실행의 기록은 끝내기를 **마감한 뒤에** 지운다. 먼저 지우면 끝내기가 도는 사이 앱이 닫혔을 때 남은 고아가 다음부터
     ///   출처 불명이 되어 영영 안 치워진다.
+    /// - 판정에 **앱의 pid와 앱이 물려받은 셸 키**를 넘긴다(프로세스 스펙 S6). 설치본 셸에서 띄운 dev 앱이 제 vite와 제
+    ///   조상을 지난 실행의 확정 고아로 읽지 않게 하는 배선이다. 물려받은 키는 실물 장면 `Startup`도 재지만 macOS에서만
+    ///   돈다. 앱 pid는 실물 장면이 못 잰다 — 안쪽 검사 프로세스(앱)는 물려받은 키로도 막히고, 그 조상은 검사를 띄운
+    ///   사용자의 셸 쪽이라 죽은 실행의 키를 물릴 수 없다. `inherited_key: None`으로 바꾼 변형이 이 크레이트의 L1 전부를
+    ///   통과했다(실측) — 이 핀과 실물 장면의 「물려받은 키」 줄이 그 뒤에 섰다.
     #[test]
     fn the_startup_cleanup_counts_itself_judges_ends_then_forgets() {
         assert!(
@@ -1459,6 +1464,14 @@ mod tests {
         assert!(counted < taken, "셈({counted})이 판정({taken})보다 뒤에 있다 — 그 사이에 앱이 닫히면 이 끝내기가 마감되지 않는다");
         assert!(plan.contains("verdict::at_startup(&input)"), "시작 정리가 확정 고아만 고르는 판정을 안 지난다");
         assert!(plan.contains("verdict::dead_instances(&input)"), "시작 정리가 지울 기록을 판정과 같은 입력으로 안 고른다");
+        assert!(
+            plan.contains("app_pid: std::process::id(),"),
+            "시작 정리가 판정에 이 앱의 pid를 안 넘긴다 — 앱과 그 조상이 막히지 않는다"
+        );
+        assert!(
+            plan.contains("inherited_key: crate::processes::inherited_key(),"),
+            "시작 정리가 판정에 앱이 물려받은 셸 키를 안 넘긴다 — 설치본 셸에서 띄운 dev 앱이 제 vite를 확정 고아로 끝낸다"
+        );
 
         let carry = body_of("fn carry_out(", "\n}\n");
         let ended = carry.find(".finish()").expect("시작 정리가 끝내기를 마감하지 않는다");
@@ -2056,7 +2069,13 @@ mod tests {
     /// 지우기 직전에 앱이 **지금도** 없는지 다시 보는 것도 잰다: 판정이 죽은 것으로 읽었지만 지금 사는 실행(스냅샷 뒤에 막
     /// 뜬 실행의 모양)의 기록은 남는다.
     ///
-    /// 앵커: 고른 것이 끝난다 — 아무것도 안 고르면 「기록이 없는 세대의 자식은 안 골랐다」가 저절로 참이 된다.
+    /// **앱이 물려받은 셸 키를 문 것은 안 고른다**(프로세스 스펙 S6). 설치본 셸에서 `pnpm tauri dev`로 띄운 dev 앱과 그
+    /// vite는 설치본 셸의 키를 함께 문다. 설치본이 죽어 그 기록이 남으면 vite는 죽은 실행의 키를 문 확정 고아 (가)의 모양이다
+    /// — 다시 뜬 dev 앱이 제 프런트 서버를 끝낸다. 셸 닫기와 종료는 이 세대의 자손만 끝내 이 키를 만날 일이 없어, 이 배선이
+    /// 실제로 지키는 자리는 시작 정리뿐이다. 그래서 안쪽 검사 프로세스가 죽은 실행의 키를 물려받고 뜬다(`on_the_pool_side`).
+    ///
+    /// 앵커: 고른 것이 끝난다 — 아무것도 안 고르면 「기록이 없는 세대의 자식은 안 골랐다」와 「물려받은 키를 문 자식은 안
+    /// 골랐다」가 저절로 참이 된다.
     #[cfg(target_os = "macos")]
     #[test]
     fn the_startup_cleanup_ends_what_a_dead_run_left_and_forgets_its_record() {
@@ -2072,7 +2091,8 @@ mod tests {
     ///
     /// **안쪽에는 표식을 물려주지 않는다.** 이 검사를 아틀리에 셸에서 돌리면 검사 프로세스가 그 셸의 표식을
     /// 물고 있다. 판정은 그것을 「앱이 물려받은 키」로 읽는다(`processes::inherited_key`) — 어디서 돌리든 같은
-    /// 입력(물려받은 키 없음)이 되게 지운다.
+    /// 입력(물려받은 키 없음)이 되게 지운다. 시작 정리 장면만 **이 검사가 지은 키**를 대신 물려준다 — 설치본 셸에서 띄운
+    /// dev 앱의 모양이다. 값은 이 검사 프로세스의 pid로 지어 이 기계의 어떤 실제 세대와도 안 겹치고, 어디서 돌리든 같다.
     #[cfg(target_os = "macos")]
     fn on_the_pool_side(test: &str, scene: Scene) {
         use std::process::{Command, Stdio};
@@ -2091,19 +2111,24 @@ mod tests {
         std::fs::create_dir_all(&home).expect("임시 HOME을 만든다");
         let (_crate, path) = module_path!().split_once("::").expect("모듈 경로에 크레이트가 있다");
         let name = format!("{path}::{test}");
-        let mut inner = Command::new(crate::processes::testkit::exe())
+        let mut command = Command::new(crate::processes::testkit::exe());
+        command
             .args(["--exact", &name, "--nocapture", "--test-threads", "1"])
             .env(POOL_SIDE, scene.name())
             .env("HOME", &home)
             .env("ATELIER_HOME", home.join(".atelier"))
             .env("SHELL", "/bin/zsh")
             .env_remove("ZDOTDIR")
-            .env_remove(crate::processes::SHELL_KEY_ENV)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("검사 프로세스를 하나 더 띄운다");
+            .stderr(Stdio::piped());
+        match scene {
+            Scene::Startup => {
+                command.env(crate::processes::SHELL_KEY_ENV, format!("test-{}-inherited-1", std::process::id()))
+            }
+            _ => command.env_remove(crate::processes::SHELL_KEY_ENV),
+        };
+        let mut inner = command.spawn().expect("검사 프로세스를 하나 더 띄운다");
 
         // 안쪽은 스스로 끝난다(자식이 서기를 5초, 끝나기를 5초까지 기다린다). 그래도 멎으면 거둔다.
         let mut status = None;
@@ -2446,7 +2471,8 @@ mod tests {
     }
 
     /// 풀 배선 장면 `Startup`의 안쪽 — 셸은 안 띄운다. 기록은 안쪽의 임시 데이터 루트에만 있다: 이 실행의 것(풀이 열었다)과
-    /// 이 장면이 쓰는 죽은 실행의 것. 자식 둘의 표식은 이 검사 프로세스의 pid로 지어 이 기계의 어떤 실제 세대와도 안 겹친다.
+    /// 이 장면이 쓰는 죽은 실행의 것. 자식들의 표식은 이 검사 프로세스의 pid로(물려받은 키는 바깥 검사 프로세스의 pid로)
+    /// 지어 이 기계의 어떤 실제 세대와도 안 겹친다.
     #[cfg(target_os = "macos")]
     fn startup_side(pool: &std::sync::Arc<super::PtyPool>) {
         use crate::processes::instances::{self, Build, Place, Record};
@@ -2483,14 +2509,30 @@ mod tests {
             version: "0.0.0".to_string(),
         });
         let late_file = dir.join(format!("{late_generation}.json"));
+        // 이 프로세스가 물려받은 셸 키 — 바깥이 지어 물려줬다(`on_the_pool_side`). 그 셸을 띄운 실행(설치본의 모양)은 죽었고
+        // 기록이 남았다. 그 키를 문 자식은 이 앱과 함께 뜬 vite의 모양이다.
+        let inherited_key = crate::processes::inherited_key().expect("바깥이 시작 정리 장면에 물려받은 키를 준다").to_string();
+        let (installed_generation, _) = inherited_key.rsplit_once('-').expect("셸 키는 <세대>-<번호>다");
+        let installed = Record::default();
+        installed.open(Place {
+            dir: dir.clone(),
+            generation: installed_generation.to_string(),
+            app: Identity { pid: me, started_us: 1 },
+            build: Build::Release,
+            version: "0.0.0".to_string(),
+        });
+        installed.raise(&inherited_key);
 
         let left = Kid::spawn("sleep", &dead_key);
         let unrecorded = Kid::spawn("sleep", &unrecorded_key);
-        let (left_id, unrecorded_id) = (left.settle(), unrecorded.settle());
+        let vite = Kid::spawn("sleep", &inherited_key);
+        let (left_id, unrecorded_id, vite_id) = (left.settle(), unrecorded.settle(), vite.settle());
 
         let mut plan = super::plan_startup(pool, &super::exceptions());
         let picked: Vec<Identity> = plan.targets.iter().map(|(id, _)| *id).collect();
         let forgets = plan.dead.iter().any(|record| record.generation == dead_generation);
+        // 물려받은 키의 실행을 판정이 죽은 것으로 읽었다 — 그 키를 문 자식은 막히지 않으면 확정 고아 (가)다.
+        let installed_dead = plan.dead.iter().any(|record| record.generation == installed_generation);
         // **끝내기에는 이 검사가 띄운 자식만 넘긴다.** 판정은 이 기계의 표 전체를 읽는다. 기록이 임시 데이터 루트의 것뿐이라
         // 고르는 것도 이 자식뿐이어야 하지만, 그 믿음으로 남에게 신호를 보내지 않는다.
         plan.targets.retain(|(id, _)| Some(*id) == left_id);
@@ -2514,14 +2556,24 @@ mod tests {
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이다(`Kid`의 Drop).
         drop(left);
         drop(unrecorded);
+        drop(vite);
 
         let left_id = left_id.expect("죽은 실행의 키를 문 자식이 5초 안에 제 세션을 열지 못했다");
         let unrecorded_id = unrecorded_id.expect("기록이 없는 세대의 키를 문 자식이 5초 안에 제 세션을 열지 못했다");
+        let vite_id = vite_id.expect("물려받은 키를 문 자식이 5초 안에 제 세션을 열지 못했다");
         assert!(recorded, "죽은 실행의 기록을 못 썼다 — 이 장면이 아무것도 못 잰다");
         assert!(picked.contains(&left_id), "죽은 실행의 키를 문 자식을 시작 정리가 안 골랐다 — 고른 것: {picked:?}");
         assert!(
             !picked.contains(&unrecorded_id),
             "기록이 없는 세대의 키를 문 자식(출처 불명)을 시작 정리가 골랐다 — 누구의 것인지 모르는데 끝낸다"
+        );
+        assert!(
+            installed_dead,
+            "물려받은 키의 실행을 죽은 것으로 안 읽었다 — 아래 「안 골랐다」가 아무것도 못 잰다"
+        );
+        assert!(
+            !picked.contains(&vite_id),
+            "앱이 물려받은 키를 문 자식(앱과 함께 뜬 vite)을 시작 정리가 골랐다 — 설치본 셸에서 띄운 dev 앱이 제 프런트 서버를 끝낸다"
         );
         assert!(forgets, "죽은 실행의 기록을 지울 것으로 안 골랐다");
         assert_eq!(
