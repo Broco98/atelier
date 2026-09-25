@@ -5,7 +5,7 @@ import type { CallingKind, ShellSignal } from "@/features/terminal/shell-attenti
 export type { ShellSignal };
 
 // 상태 축이 **눈에 보이는 모양**(#203). 값을 정하는 자리는 `features/terminal/shell-attention`
-// 이고 여기는 그것을 그리기만 한다 — 사이드바 행 · 「확인할 것」 띠(#204) · 셸 탭(#205)이
+// 이고 여기는 그것을 그리기만 한다 — 사이드바 행 · 알림 띠(#204) · 셸 탭(#205)이
 // 같은 조각을 쓰므로 **한 자리에서 갈리지 않는다**: 색이 자리마다 달라지면 「행·띠·탭이 같은
 // 셸에 다른 상태를 낸다」(스토리 79)가 색에서 먼저 깨진다.
 //
@@ -24,8 +24,9 @@ export type { ShellSignal };
  * 상태의 **말**. 접근성 이름이 이 표를 읽는다 — 행 버튼(`<제목> — 나를 기다림`) · 탭 버튼 ·
  * 띠 줄이 같은 말을 쓴다(결정 8).
  *
- * 「확인할 것」이 안 본 완료의 이름인 것은 그 말이 띠의 이름이기도 하기 때문이다 — 띠에
- * 서는 두 종류(답을 기다리는 셸 · 끝났는데 안 본 셸) 중 이쪽이 「봤다」로 지워지는 쪽이다.
+ * **띠의 이름(「알림」)은 이 표에서 오지 않는다**(`BAND_LABEL`, `sidebar-active-band` 결정 13). 띠는 두 종류(답을
+ * 기다리는 셸 · 끝났는데 안 본 셸)를 함께 모으므로, 그중 한쪽의 이름을 들면 다른 쪽 줄만
+ * 서 있어도 머리가 틀린 말을 한다.
  */
 export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
   waiting: "나를 기다림",

@@ -651,7 +651,7 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
 
   // **이름에 상태가 붙는다**(스토리 33) — 점은 `aria-hidden`이라 이 이름이 유일한 말이다.
   //
-  // **목록 안으로 좁혀 집는다.** 「확인할 것」 띠의 줄이 **같은 이름**을 쓰기 때문이다
+  // **목록 안으로 좁혀 집는다.** 알림 띠의 줄이 **같은 이름**을 쓰기 때문이다
   // (#204, 결정 8) — 부르는 셸이 있으면 그 줄도 함께 서므로 화면 전체에서 세면 둘이다.
   // 좁히지 않으면 이 줄이 「행에 이름이 붙었다」가 아니라 「어딘가에 하나 있다」를 재게 된다.
   await expect(
@@ -852,19 +852,63 @@ test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다",
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// **「확인할 것」 띠**(#204). 값을 내는 자리(`bandRows`)와 그리는 자리(`AttentionBand`)는
-// 각자 자기 seam이 보고, 여기서만 보이는 것 넷을 잰다: 띠가 **서고 사라지는 것**, 펼침이
-// 어디에도 안 적히는 것, 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때
-// 무엇이 먼저 줄어드는가. 앞의 셋은 진짜 스토어와 라우터가 있어야 나고 마지막은 진짜
-// 레이아웃이 있어야 난다.
+// **알림 띠**(#204 · 이름과 ⌄는 `sidebar-active-band` 결정 13·15). 값을 내는 자리(`bandRows`)와 그리는 자리(`AttentionBand`)는
+// 각자 자기 seam이 보고, 여기서만 보이는 것을 잰다: 띠가 **서고 사라지는 것**, 띠 이름이
+// 상태 이름과 갈리는 것, ⌄/⌃가 펼치고 접는 것과 그 툴팁, 펼침이 어디에도 안 적히는 것,
+// 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때 무엇이 먼저 줄어드는가.
+// 진짜 스토어·라우터·포커스·CSS가 있어야 나는 것들이다.
 
-/** 띠의 줄들 — 이름을 단 버튼만 센다(토글은 이름이 글자에 있어 안 걸린다). */
-const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]");
+/**
+ * 띠의 줄들 — 이름을 단 버튼 가운데 **펼침을 말하지 않는 것**만 센다.
+ *
+ * ⌄/⌃ 토글도 아이콘 버튼이라 이름을 `aria-label`로 단다(`sidebar-active-band` 결정 15). 이름 붙은 버튼을 다
+ * 세면 토글이 줄로 세어져 「셋만 보인다」가 넷으로 읽힌다. 둘을 가르는 것은 `aria-expanded`다 —
+ * 토글만 그것을 단다.
+ */
+const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]:not([aria-expanded])");
 
 /** 그 이름의 띠 줄. **띠 안으로 좁힌다** — 같은 이름이 사이드바 행에도 서기 때문이다. */
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 
-test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼친다", async ({ page }) => {
+/**
+ * 띠의 ⌄/⌃ 토글이 **하나라도 있는가**를 셀 때만 쓴다. 이름은 펼침에 따라 바뀌므로
+ * (「N개 더 보기」·「접기」) 「없다」를 이름으로 세면 다른 이름의 토글이 빠져나간다.
+ * 서 있는 토글을 재는 검사는 역할과 이름으로 집는다.
+ */
+const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
+
+/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
+const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
+
+/** 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다. */
+const 부르게한다 = (page: Page, ptyId: number) =>
+  markAttention(
+    page,
+    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
+    ptyId,
+  );
+
+/**
+ * 셸 넷이 함께 부르는 work 화면을 세운다 — 띠가 ⌄로 접히는 가장 작은 수(`BAND_LIMIT` + 1)다.
+ *
+ * **포인터를 안 쓴다.** 칸은 ⌘T로 연다. 포커스로 뜨는 툴팁을 재는 검사가 이것을 딛는데,
+ * Base UI는 macOS WebKit에서 「키보드로 옮긴 포커스인가」를 마지막 포인터·키 입력으로
+ * 가른다 — 앞서 `pointerdown`이 한 번이라도 나면 `focus()`에 툴팁이 안 뜬다.
+ */
+const 넷이부르게한다 = async (page: Page) => {
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 부르게한다(page, 1);
+  // 칸을 연 순서가 곧 pty 번호다(`openShell`의 머리말) — `markAttention`이 그 pty가 앉기를 기다린다.
+  for (const ptyId of [2, 3, 4]) {
+    await page.keyboard.press("Meta+t");
+    await 부르게한다(page, ptyId);
+  }
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("4");
+  await expect(띠줄들(page)).toHaveCount(3);
+};
+
+test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 ⌄로 펼치고 ⌃로 접는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -878,18 +922,24 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   // **하나뿐이면 셸 이름이 안 붙는다**(결정 5) — 제목만으로 어느 셸인지 정해진다.
   await expect(띠(page)).not.toContainText(FIXTURE_SHELL_NAME);
 
-  // 셸 셋을 더 세워 넷이 함께 부르게 한다. 앱이 칸을 연 순서대로 띄우므로(`terminal-store`의
+  // 셸을 더 세워 여럿이 함께 부르게 한다. 앱이 칸을 연 순서대로 띄우므로(`terminal-store`의
   // `loadFont`) 여기서 세는 pty 번호가 곧 「n번째 칸」이고, `openShell`은 그 pty가 앉을 때까지 기다린다.
-  for (const ptyId of [2, 3, 4]) {
+  for (const ptyId of [2, 3]) {
     await openShell(page);
-    await markAttention(
-      page,
-      { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
-      ptyId,
-    );
+    await 부르게한다(page, ptyId);
   }
 
-  // **헤더는 접힌 것까지 센다** — 보이는 줄은 셋인데 수는 넷이다.
+  // **셋이면 ⌄가 없다**(`sidebar-active-band` 스토리 23) — 눌러도 아무 일이 없는 버튼은 서지 않는다. 앵커는
+  // 「띠가 셋을 다 세운 채 섰다」다: 띠가 안 떠도 토글은 0이라, 그것부터 세지 않으면 이
+  // 「없다」가 아무것도 안 잰 채 초록이 된다.
+  await expect(띠줄들(page)).toHaveCount(3);
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("3");
+  await expect(띠토글(page)).toHaveCount(0);
+
+  await openShell(page);
+  await 부르게한다(page, 4);
+
+  // **넷이면 셋만 보인다** — 헤더는 접힌 것까지 세어 넷이다.
   await expect(띠줄들(page)).toHaveCount(3);
   // **표식으로 집는다** — 자리(`.first()`)나 겉모습(`tabular-nums`)으로 고르면 헤더와 줄의
   // 순서가 바뀌거나 그 클래스가 떨어지는 날 재는 대상이 조용히 다른 것이 된다.
@@ -900,6 +950,12 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
     await expect(띠줄들(page).nth(at)).toContainText(FIXTURE_SHELL_NAME);
   }
 
+  // **⌄ 하나가 선다**(`sidebar-active-band` 결정 15). 이름은 숨은 줄의 수를 말하고, 펼침 상태는 `aria-expanded`가
+  // 말한다(같은 work 스토리 21). 글자가 없는 아이콘 버튼이라 이름은 `aria-label`에만 있다.
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  await expect(더보기).toHaveAttribute("aria-expanded", "false");
+  await expect(더보기).toHaveText("");
+
   // **펼침이 어디에도 안 적힌다**(결정 5 — 「앱이 떠 있는 동안만」). 새로고침해 다시 재는
   // 대신 저장소를 통째로 견준다: 새로고침을 넘겨 살아남는 길이 그 둘뿐이라 여기서 아무것도
   // 안 늘었다는 것이 곧 「껐다 켜면 잊힌다」이고, 이쪽은 셸 넷을 다시 세울 필요가 없다.
@@ -907,8 +963,12 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
     page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
   const 펼치기전 = await 저장된것();
 
-  await 띠(page).getByRole("button", { name: "+1 더" }).click();
+  await 더보기.click();
   await expect(띠줄들(page)).toHaveCount(4);
+  // **같은 자리에 ⌃가 선다**(같은 work 스토리 19) — 이름이 「접기」가 되고 펼침이 참이 된다.
+  const 접기 = 띠(page).getByRole("button", { name: "접기", exact: true });
+  await expect(접기).toHaveAttribute("aria-expanded", "true");
+  await expect(더보기).toHaveCount(0);
   expect(await 저장된것()).toBe(펼치기전);
 
   // **펼쳐도 바닥의 Settings가 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거).
@@ -921,9 +981,108 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   const 바닥 = (await settings.boundingBox())!;
   expect(바닥.y + 바닥.height).toBeLessThanOrEqual(300);
 
-  // 같은 자리가 `접기`가 된다.
-  await 띠(page).getByRole("button", { name: "접기" }).click();
+  // ⌃를 누르면 셋으로 돌아가고 ⌄가 다시 선다. ⌃는 굴러가는 띠 상자 안이라 낮은 창에서는
+  // 굴러 내려가 있다 — `click`이 그 자리까지 굴려 누른다.
+  await 접기.click();
   await expect(띠줄들(page)).toHaveCount(3);
+  await expect(더보기).toHaveAttribute("aria-expanded", "false");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **띠 이름은 「알림」이고, 줄의 상태 말은 그대로다**(`sidebar-active-band` 결정 13 · 스토리 15·16). 둘이 갈린다는
+// 것을 재는 자리가 이 검사 하나다 — 예전에는 띠 이름이 「안 본 완료」의 이름 **그 값**이라
+// (`BAND_LABEL = SIGNAL_LABEL.done`) 「나를 기다림」 줄만 서 있어도 머리가 「확인할 것」이라
+// 말했다. 안 본 완료 줄을 세우는 것은 그 두 말이 한 띠 안에 함께 서는 그림이라서다: 이름이
+// 다시 같은 값을 들면 이 띠에서 「확인할 것」이 두 번 선다.
+test("띠 이름은 「알림」이고, 안 본 완료 줄은 「확인할 것」을 말한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // **보고 있는 셸에 도착한 완료는 그 순간 「봤다」가 된다**(결정 7) — spec으로 비켜서야
+  // 안 본 완료가 띠에 선다.
+  await 셸에서눈을뗀다(page);
+
+  // 세션이 끝난 것이 초록이다(스펙 전이 표의 `end`).
+  await markAttention(page, { agent: "claude", event: "SessionEnd", at: Date.now(), payload: {} });
+
+  // 앵커: 띠가 서고 그 줄이 「확인할 것」을 말한다(줄의 상태 말은 그대로다).
+  await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
+  // 머리는 「알림」이다. 글자로 집는 것은 머리가 누를 것이 없는 글자 상자라서다 — 역할이 없다.
+  await expect(띠(page).getByText("알림", { exact: true })).toBeVisible();
+  // **띠 안에 「확인할 것」이라는 글자는 없다.** 줄의 상태 말은 이름(`aria-label`)에만 있고
+  // 눈에 보이는 글자는 제목·마크·경과다 — 여기 걸리는 것이 있다면 그것은 머리다.
+  await expect(띠(page).getByText("확인할 것", { exact: true })).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **⌄의 도움말은 앱 툴팁이다**(`sidebar-active-band` 결정 15 · 스토리 20). 툴팁은 이름을 주지 않으므로(S28) 버튼의
+// 이름과 툴팁의 글자가 같은지는 둘을 따로 읽어 견줘야 난다.
+//
+// **떠 있는 것의 애니메이션**도 여기서 처음 잰다(`sidebar-active-band` 결정 7). 규칙이 전역 한 곳이라(`index.css`의
+// 동작 줄이기 블록) 부품 하나에서 재면 된다 — 판 3이 메뉴로 한 번 더 잰다.
+test("⌄에 올리면 버튼 이름이 툴팁으로 뜨고, 동작 줄이기면 애니메이션 없이 뜬다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 넷이부르게한다(page);
+
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  // 앵커: 올리기 전에는 툴팁이 없다.
+  await expect(더보기).toBeVisible();
+  await expect(툴팁(page)).toHaveCount(0);
+
+  await 더보기.hover();
+  await expect(툴팁(page)).toHaveText(
+    (await 더보기.getAttribute("aria-label"))!,
+  );
+
+  // **뜰 때 움직인다** — 100ms 페이드·확대. 계산된 스타일로 잰다: 이것이 곧 사람이
+  // 보는 것이다.
+  const 애니메이션 = () => 툴팁(page).evaluate((el) => getComputedStyle(el).animationName);
+  expect(await 애니메이션()).not.toBe("none");
+
+  // ⌃에 올리면 「접기」다. 누르면 툴팁이 닫히므로(Base UI 기본) 포인터를 한 번 비켰다 다시 올린다.
+  await 더보기.click();
+  const 접기 = 띠(page).getByRole("button", { name: "접기", exact: true });
+  await expect(접기).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(0, 0);
+  await expect(툴팁(page)).toHaveCount(0);
+  await 접기.hover();
+  await expect(툴팁(page)).toHaveText("접기");
+
+  // **동작 줄이기면 애니메이션 없이 뜬다**(같은 work 스토리 10). 새로 띄운 툴팁에서 잰다 — 이미 떠
+  // 있는 것만 재면 「뜰 때」가 아니라 「떠 있는 동안」을 잰 것이 된다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.mouse.move(0, 0);
+  await expect(툴팁(page)).toHaveCount(0);
+  await 접기.hover();
+  await expect(툴팁(page)).toHaveText("접기");
+  expect(await 애니메이션()).toBe("none");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **키보드로 닿은 ⌄에도 툴팁이 뜨고, Enter로 펼친다**(`sidebar-active-band` 스토리 22). WebKit은 Tab이 버튼을
+// 건너뛰므로(판 05 결정 7의 정정) 포커스는 `focus()`로 옮긴다.
+//
+// **이 검사는 포인터를 한 번도 안 쓴다**(`넷이부르게한다` 머리말) — Base UI가 macOS WebKit에서
+// 「키보드 포커스인가」를 마지막 입력으로 가르므로, 앞서 누른 것이 있으면 이 툴팁은 안 뜬다.
+test("포인터 없이 ⌄에 포커스하면 툴팁이 뜨고, Enter로 펼친다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 넷이부르게한다(page);
+
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  await expect(툴팁(page)).toHaveCount(0);
+
+  await 더보기.focus();
+  await expect(툴팁(page)).toHaveText("1개 더 보기");
+
+  await page.keyboard.press("Enter");
+  await expect(띠줄들(page)).toHaveCount(4);
+  await expect(띠(page).getByRole("button", { name: "접기", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -1458,7 +1617,7 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
 
   // **nav `Terminal`은 이 판에서 안 바뀐다**(스펙의 Out of Scope — 「셸 메타 규격의 nav
   // `Terminal` 변경」). 최상위 셸이 스스로 말해도 이 자리는 **종류·수 그대로**다: 그 셸이
-  // 부르는 것을 받는 자리는 「확인할 것」 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
+  // 부르는 것을 받는 자리는 알림 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
   // 세우면 이 행이 work 행의 어휘를 반쯤 흉내 내는 자리가 된다.
   //
   // work 행과 **같은 구독 컴포넌트**를 쓰므로(`SubrowFor`) 그 가름이 빠지기 쉽다 —
