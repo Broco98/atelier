@@ -46,9 +46,11 @@ pub(crate) fn pieces(pattern: &str) -> Result<Vec<Piece<'_>>, String> {
         let piece = match &rest[open..close] {
             "{n}" => Piece::Number,
             "{name}" => Piece::Name,
+            // 사용자가 적은 글이라 이스케이프해 적는다 — 줄바꿈이 들면 한 줄 까닭이 여러 줄로 깨진다
             unknown => {
                 return Err(format!(
-                    "unknown placeholder `{unknown}` in {pattern:?} (only `{{n}}` and `{{name}}`)"
+                    "unknown placeholder `{}` in {pattern:?} (only `{{n}}` and `{{name}}`)",
+                    unknown.escape_debug()
                 ))
             }
         };
@@ -91,5 +93,14 @@ mod tests {
         assert_eq!(pieces("{name}"), Ok(vec![Piece::Name]));
         assert_eq!(pieces("a{b"), Ok(vec![Piece::Text("a{b")]));
         assert_eq!(pieces("x}{n}"), Ok(vec![Piece::Text("x}"), Piece::Number]));
+    }
+
+    /// 거절 문장은 한 줄이다 — 물러선 안내문 앞에 한 줄로 실린다. 틀 안의 줄바꿈은 이스케이프해
+    /// 적는다.
+    #[test]
+    fn a_refusal_stays_on_one_line_even_when_the_pattern_holds_a_newline() {
+        let message = pieces("{a\nb}").unwrap_err();
+        assert!(message.contains("unknown placeholder `{a\\nb}`"), "{message}");
+        assert!(!message.contains('\n'), "{message}");
     }
 }
