@@ -4,20 +4,16 @@ import WorkInfo, { relativeToWorkDir, type ProjectBase } from "./WorkInfo";
 import type { Mode } from "@/mode";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 
 // **쿼리 프로바이더를 세우지 않는다.** 이 컴포넌트가 스스로 조회하면 여기서 바로 터진다 —
 // 그것이 "정보 탭 본문은 순수 표현이다"를 지키는 유일한 검사다. 프로젝트별 base는
 // 조회한 쪽(WorkPanel)이 값으로 내려준다.
 
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/some-work",
+const work: WorkView = workFixture({
   // 코어가 내려주는 값 그대로다 — chrono의 %Y-%m-%d
   createdAt: "2026-08-16",
   projects: ["atelier"],
-  pinned: false,
   worktrees: [
     {
       project: "atelier",
@@ -26,9 +22,8 @@ const work: WorkView = {
       dirty: false,
     },
   ],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: ["overview.md", "01-계획/plan.md", "01-계획/notes.md", "02-구현/impl.md"],
-};
+  ...specDocs(["overview.md", "01-계획/plan.md", "01-계획/notes.md", "02-구현/impl.md"]),
+});
 
 const registered: Record<string, ProjectBase> = {
   atelier: { base: "develop", unregistered: false },

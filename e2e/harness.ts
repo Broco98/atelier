@@ -294,6 +294,29 @@ async function install(
   });
 }
 
+/**
+ * 화면을 거치지 않고 앱의 IPC 입구로 **한 번 묻고 답을 그대로 들고 나온다.** 거절은 던진다.
+ *
+ * L4에서는 하네스를 지나 다리로 가므로, 화면이 아직 안 그리는 답의 모양(예: 트리의 아이콘)까지
+ * 「진짜 코어가 이렇게 답한다」로 잰다. 앱이 부르지 않는 명령(`get_work`)이 입구를 타는지도 여기서
+ * 잰다 — 화면으로는 그 호출을 만들 수 없다.
+ */
+export async function askBackend(
+  page: Page,
+  cmd: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(
+    ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__.invoke(cmd, args),
+    { cmd, args },
+  );
+}
+
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
 export async function unknownIpcCalls(page: Page): Promise<string[]> {
   return (await readIpcRecord(page))?.unknown ?? [];

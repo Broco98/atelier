@@ -103,16 +103,6 @@ interface WorksPageProps {
   onDropInto: (source: DragSource, split: SplitSide) => void;
 }
 
-// 주소가 가리키는 문서가 없을 때 대신 열 것. **이 판단이 여기로 올라왔다** — 한때
-// SpecViewer의 지역 함수였는데, 작업 패널이 이 화면으로 올라오면서 트리의 "지금 이 문서"
-// 표시와 본문이 **같은 값**을 봐야 하게 됐다(결정 49). 값을 정하는 지점이 둘이면 뷰 탭을
-// 오갈 때마다 트리 표시가 켜졌다 꺼진다 — 1판에서 실제로 그랬다(터미널 탭에서는 폴백을
-// 거치지 않은 raw 값이 내려갔다).
-function defaultFile(files: string[]): string | null {
-  if (files.includes("overview.md")) return "overview.md";
-  return files[0] ?? null;
-}
-
 /**
  * ⌘Enter가 **작업 패널 몫인가** (결정 43).
  *
@@ -473,11 +463,17 @@ function WorksPage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [tabOwner, tab]);
 
-  // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다**(위
-  // defaultFile 주석). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 파일로 폴백.
+  // 보고 있는 문서와 그것을 가지고 정해지는 것들. **패널과 본문이 한 값을 본다** — 트리의 "지금
+  // 이 문서" 표시와 본문이 따로 정하면 뷰 탭을 오갈 때마다 트리 표시가 켜졌다 꺼진다(결정 49 —
+  // 1판에서 실제로 그랬다). 파일이 삭제되면(또는 주소가 없는 파일을 가리키면) 기본 문서로 폴백.
+  //
+  // **기본 문서는 spec 트리의 것이다**(spec 레이아웃 결정 14). 화면은 이름을 모른다 — 레이아웃
+  // 순서상 첫 파일을 엔진이 골라 work과 한 응답으로 보낸다.
   const specFiles = panelWork?.specFiles ?? [];
   const currentSpec =
-    currentFile && specFiles.includes(currentFile) ? currentFile : defaultFile(specFiles);
+    currentFile && specFiles.includes(currentFile)
+      ? currentFile
+      : (panelWork?.specTree.defaultDoc ?? null);
   // 잠김은 **본문이 이 토글을 따르지 않는 모든 경우**다. 셋이다: 본문이 셸일 때(터미널 탭 —
   // `</>`가 적용될 곳이 아예 없다), 파일 종류가 토글을 무시할 때(그림 · md도 html도 아닌
   // 것), spec 문서가 하나도 없는 작업.

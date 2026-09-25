@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, mode_home, projects_dir, shared_projects_root, works_dir, ArchiveEntry,
-    Destination, Mode, ProjectPatch, ProjectView, SearchResults, WorkView,
+    Destination, Mode, ProjectPatch, ProjectView, SearchResults, WorkView, WorkWithSpecTree,
 };
 
 use std::sync::Arc;
@@ -65,14 +65,27 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 // (`어느_명령도_모드를_기본값으로_안_정한다`)가 빨개진다. 그 검사가 여기가 아니라 저기
 // 사는 것은 **제 자신을 안 읽기 때문이다**(같은 파일의 `APP_SOURCES` 머리말).
 
+// **목록·단건·옮기기 셋은 spec 트리를 싣는다**(spec 레이아웃 구현 스펙 3절). 트리를 덧붙이는
+// 규칙은 코어의 `with_spec_trees` 한 자리에 있고 여기는 그것을 부르기만 한다 — L4 다리도 같은
+// 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`).
+//
+// 나머지 쓰기(`set_work_*`)의 답은 뷰 그대로다. 화면이 그 답을 캐시에 안 쓰고 목록을 다시
+// 읽기 때문이다(`hooks.ts`). 옮기기만 다르다 — 그 답으로 목록 캐시를 갈아 끼우므로, 트리가
+// 없으면 끌어 놓은 뒤 그 세계의 work가 전부 기본 문서를 잃는다.
+
 #[tauri::command]
-pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkView>> {
-    atelier_core::list_works(&works_dir(mode)).map_err(err)
+pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkWithSpecTree>> {
+    let works = atelier_core::list_works(&works_dir(mode)).map_err(err)?;
+    atelier_core::with_spec_trees(&atelier_core::data_root(), mode, works).map_err(err)
 }
 
 #[tauri::command]
-pub async fn get_work(mode: Mode, slug: String) -> CmdResult<WorkView> {
-    atelier_core::get_work(&works_dir(mode), &slug).map_err(err)
+pub async fn get_work(mode: Mode, slug: String) -> CmdResult<WorkWithSpecTree> {
+    let work = atelier_core::get_work(&works_dir(mode), &slug).map_err(err)?;
+    // 하나를 넣으면 하나가 나온다. 입구가 목록을 받는 것은 목록의 resolve를 한 번으로 묶는 모양이라서다
+    let mut works =
+        atelier_core::with_spec_trees(&atelier_core::data_root(), mode, vec![work]).map_err(err)?;
+    Ok(works.remove(0))
 }
 
 /// 표시 이름만 바꾼다. slug와 워크트리 경로는 그대로다 (update_project와 같은 규칙).
@@ -100,8 +113,10 @@ pub async fn move_work(
     slug: String,
     pinned: bool,
     before: Option<String>,
-) -> CmdResult<Vec<WorkView>> {
-    atelier_core::move_work(&works_dir(mode), &slug, pinned, before.as_deref()).map_err(err)
+) -> CmdResult<Vec<WorkWithSpecTree>> {
+    let works =
+        atelier_core::move_work(&works_dir(mode), &slug, pinned, before.as_deref()).map_err(err)?;
+    atelier_core::with_spec_trees(&atelier_core::data_root(), mode, works).map_err(err)
 }
 
 /// 아카이브 보존소로 **옮긴다.** 워크트리는 정리되고 브랜치·spec·기록은 남는다.

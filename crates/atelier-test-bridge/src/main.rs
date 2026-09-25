@@ -8,7 +8,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, mode_home, projects_dir, shared_projects_root, works_dir, Mode, ProjectPatch,
+    archive_dir, data_root, mode_home, projects_dir, shared_projects_root, with_spec_trees,
+    works_dir, Mode, ProjectPatch,
 };
 use serde_json::{Map, Value};
 
@@ -42,8 +43,20 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
-    ("list_works", |a| ok(atelier_core::list_works(&works_dir(mode(a)?)))),
-    ("get_work", |a| ok(atelier_core::get_work(&works_dir(mode(a)?), &text(a, "slug")?))),
+    // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
+    // **진짜로** 탄다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`).
+    ("list_works", |a| {
+        let mode = mode(a)?;
+        ok(atelier_core::list_works(&works_dir(mode))
+            .and_then(|works| with_spec_trees(&data_root(), mode, works)))
+    }),
+    ("get_work", |a| {
+        let mode = mode(a)?;
+        // 하나를 넣으면 하나가 나온다
+        ok(atelier_core::get_work(&works_dir(mode), &text(a, "slug")?)
+            .and_then(|work| with_spec_trees(&data_root(), mode, vec![work]))
+            .map(|mut works| works.remove(0)))
+    }),
     ("set_work_title", |a| {
         ok(atelier_core::update_work_title(
             &works_dir(mode(a)?),
@@ -61,13 +74,15 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     // `before`는 없어도 된다(= 목표 구획의 끝) — 프런트는 `null`로 싣고, 그것이 여기서 「없음」이다.
     ("move_work", |a| {
+        let mode = mode(a)?;
         let pinned = flag(a, "pinned")?;
         ok(atelier_core::move_work(
-            &works_dir(mode(a)?),
+            &works_dir(mode),
             &text(a, "slug")?,
             pinned,
             maybe_text(a, "before").as_deref(),
-        ))
+        )
+        .and_then(|works| with_spec_trees(&data_root(), mode, works)))
     }),
     ("archive_work", |a| {
         let mode = mode(a)?;

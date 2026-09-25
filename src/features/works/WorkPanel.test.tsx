@@ -6,6 +6,7 @@ import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 
 // 이 패널은 화면 **오른쪽**에 있어 핸들이 왼쪽 가장자리에 붙고 끄는 방향의 부호가 반대다.
 // 호출부가 side를 빠뜨리거나 "left"로 적으면 핸들이 패널 건너편으로 가 잡을 곳이 사라지는데,
@@ -21,18 +22,7 @@ import type { WorkView } from "./types";
 //
 // 폭은 localStorage에서 읽어 온다.
 
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/some-work",
-  createdAt: "2026-08-16",
-  projects: [],
-  pinned: false,
-  worktrees: [],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: ["overview.md"],
-};
+const work: WorkView = workFixture(specDocs(["overview.md"]));
 
 // projects를 넘기지 않으면 조회가 **pending 그대로다** — 정적 렌더는 이펙트를 돌리지 않아
 // 요청이 나가지 않는다. 값을 넘기면 캐시에서 그대로 읽힌다.

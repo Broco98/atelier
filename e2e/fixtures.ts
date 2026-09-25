@@ -1,7 +1,7 @@
 import type { ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
-import type { WorkView } from "@/features/works/types";
+import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { Mode } from "@/mode";
 
@@ -29,6 +29,36 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * spec 트리를 **손으로 적는** 조각들(spec 레이아웃 구현 스펙 Testing 「앱」). 이 층의 백엔드는 이 표라
+ * 엔진이 없다 — 트리는 엔진이 내장본으로 가른 모양을 옮겨 적은 것이고, 앱은 그것을 그대로 그린다.
+ *
+ * **아이콘은 레이아웃의 자리를 받은 것에만 있다.** 내장본에서 파일로 아이콘을 받는 것은 최상위
+ * `overview.md`(`compass`) 하나다. 아이콘을 받은 파일 행은 확장자 라벨 대신 아이콘을 그리므로
+ * (spec 레이아웃 티켓 05), 이름으로 행을 찾는 검사가 `overview.md`는 라벨 없이, `개요.md`는
+ * `MD 개요.md`로 집는다. 그 둘이 지금 화면과 같게 하려고 `개요.md`에는 아이콘을 주지 않는다.
+ */
+const specFile = (path: string, icon: string | null = null): SpecTreeItem => ({
+  name: path.slice(path.lastIndexOf("/") + 1),
+  path,
+  kind: "file",
+  icon,
+  group: null,
+  children: [],
+});
+const specFolder = (path: string, children: SpecTreeItem[]): SpecTreeItem => ({
+  ...specFile(path),
+  kind: "folder",
+  children,
+});
+/** 문서가 하나도 없는 work의 트리 — 기본 문서도 없다. */
+const emptySpecTree = (layoutId: SpecTree["layoutId"]): SpecTree => ({
+  layoutId,
+  fallback: null,
+  defaultDoc: null,
+  items: [],
+});
 
 // 사이드바 작업 목록. **고정된 것과 아닌 것을 둘 다** 둔다 — 이 목록이 갈리는 자리가
 // 그 둘이기 때문이다(결정 82의 구획, 결정 85의 채운 핀). 순서는 코어가 정하므로
@@ -67,6 +97,19 @@ export const WORKS: WorkView[] = [
     // `.html`은 프레임으로 서고, `.json`은 그 옆에서 **지금 그대로**임을 받쳐 준다.
     // **뒤에 더한다** — 앞 검사 하나가 이 목록을 자리로 집는다(`specFiles[1]`이 그림이다).
     specFiles: ["overview.md", "증거/샷.png", "목업/조각.html", "메타.json"],
+    // 내장본의 자리를 받는 것은 `overview.md`뿐이고 기본 문서도 그것이다. 나머지는 맞지 않은 것이라
+    // 맨 뒤에 코드포인트순으로 선다(폴더는 이름 뒤에 `/`를 붙여 견준다).
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "overview.md",
+      items: [
+        specFile("overview.md", "compass"),
+        specFile("메타.json"),
+        specFolder("목업", [specFile("목업/조각.html")]),
+        specFolder("증거", [specFile("증거/샷.png")]),
+      ],
+    },
   },
   {
     slug: "plain-work",
@@ -78,7 +121,9 @@ export const WORKS: WorkView[] = [
     pinned: false,
     worktrees: [],
     specDir: "~/.atelier/works/plain-work/spec",
+    // **빈 spec 폴더의 work.** 트리도 비고 기본 문서가 없다 — 화면은 「아직 spec이 없어요」로 선다.
     specFiles: [],
+    specTree: emptySpecTree("atelier"),
   },
   // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
   // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
@@ -111,6 +156,13 @@ export const WORKS: WorkView[] = [
     // 문서 하나 — 본문 열보다 넓은 문서다(`SPEC_FILE_BODIES`의 「넓은.md」). 첫 work에 두지 않는
     // 것은 그 목록이 검색 답(`SEARCH_HITS`)의 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
     specFiles: ["넓은.md"],
+    // 내장본의 어느 자리에도 안 맞는다 — 기본 문서 후보가 없어 첫 파일이 기본 문서다.
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "넓은.md",
+      items: [specFile("넓은.md")],
+    },
   },
 ];
 
@@ -141,6 +193,7 @@ export const ROOMS: WorkView[] = [
     worktrees: [],
     specDir: "~/.atelier/maison/rooms/draft-room/spec",
     specFiles: [],
+    specTree: emptySpecTree("maison"),
   },
   {
     slug: "reading-room",
@@ -152,10 +205,16 @@ export const ROOMS: WorkView[] = [
     pinned: false,
     worktrees: [],
     specDir: "~/.atelier/maison/rooms/reading-room/spec",
-    // **`overview.md`가 아니다.** 그 이름은 화면이 기본 문서로 특별 대접하는 값이라
-    // (`WorksPage`의 `defaultFile`), Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 목록에서
-    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다.
+    // **`overview.md`가 아니다.** Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 트리에서
+    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다. 이 이름은 내장본의 어느 자리에도 안 맞아
+    // 아이콘이 없고, 기본 문서는 후보가 없어 첫 파일이다(위 `specFile` 머리말).
     specFiles: ["개요.md"],
+    specTree: {
+      layoutId: "maison",
+      fallback: null,
+      defaultDoc: "개요.md",
+      items: [specFile("개요.md")],
+    },
   },
 ];
 
