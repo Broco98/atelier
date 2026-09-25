@@ -7,12 +7,14 @@ import type { Locator, Page } from "./evidence";
 import type { Sandbox } from "./l4";
 import { IPC_RECORD_KEY, type IpcRecord } from "./ipc-record";
 import {
+  ArgAnswers,
   FIXTURE_BY_MODE,
   FIXTURE_COMMANDS,
   FIXTURE_INCREMENTING_KEYS,
   FIXTURE_SHELL_NAME,
   type ModeAnswer,
 } from "./fixtures";
+import type { Mode } from "@/mode";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
 // 초기화 스크립트로 넣으면 번들 단계도 테스트 전용 엔트리도 없이 앱 부팅 **전에**
@@ -28,9 +30,11 @@ const MOCKS_SOURCE = readFileSync(
  * 와이어 층의 `plugin:*` 커맨드. 대응하는 코어 함수가 없어 L3·L4 모두 하네스가 직접 답한다.
  * 이 문자열은 `src/` 트리에 없다 — 전부 의존성 래퍼 안에 있어 소스에서 긁어낼 수 없고,
  * 그래서 손으로 관리한다. 새 플러그인을 쓰기 시작하면 여기에 더해야 한다.
+ *
+ * **구독(`plugin:event|listen`)은 이 표에 없다** — 값 하나로는 답할 수 없어서다. 부를 때마다 오르는
+ * 번호로 답하고 그 일은 `install`이 한다(`LISTEN` 머리말).
  */
 const PLUGINS: Record<string, unknown> = {
-  "plugin:event|listen": 1,
   "plugin:event|unlisten": null,
   "plugin:window|is_fullscreen": false,
   // `homeDir()`가 와이어에서 이 이름으로 나간다. Works 화면을 여는 시나리오가 생기면서
@@ -77,20 +81,38 @@ export const ipcFailure = (message: string): Record<string, string> => ({
   [IPC_FAILURE_KEY]: message,
 });
 
-/** addInitScript는 인자를 하나만 넘긴다 — 응답표와 전역 이름들을 같이 싣는다. */
-interface InitArgs {
-  responses: Record<string, unknown>;
-  recordKey: string;
-  /** 답 대신 거절을 싣는 표시의 키(`ipcFailure`). 브라우저 쪽이 모듈 상수를 못 읽어 함께 싣는다. */
-  failureKey: string;
-  /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
-  bridgeName: string | null;
+/**
+ * 구독 · 해제의 와이어 이름. 둘 다 이름 표로 안 답하고 `install`이 푼다.
+ *
+ * **구독은 부를 때마다 오르는 번호로 답한다** — 기록의 n번째 구독이 번호 n이다. 공식 `listen`은 그 답을
+ * 구독의 `eventId`로 쥐었다가 해제할 때 `plugin:event|unlisten {event, eventId}`로 돌려보내므로, 번호가
+ * 구독마다 다르면 기록 한 장으로 「어느 해제가 어느 구독의 것인가」가 갈린다 — 「지금 살아 있는 구독」이
+ * 거기서 나온다(`liveSubscriptions`). 한때 모든 구독에 상수 `1`을 답해서 그것을 못 갈랐고, 그래서 「구독이
+ * 정확히 하나다」를 잴 길이 없었다(프로세스 관리 스펙 리뷰 코드 8).
+ *
+ * **핸들러 id를 답하지 않는다.** 공식 mock의 해제(`unregisterListener`)는 받은 번호로 **콜백을 지운다**
+ * (`mocks.js`의 `unregisterCallback`). 핸들러 id를 답하면 뗀 구독의 콜백이 정말 사라져, 마지막 구독을
+ * 고르는 `fireEvent` · `markRunning`의 동작이 바뀐다. 작은 번호가 지우는 콜백은 없다 — 콜백 id는 32비트
+ * 난수다(`registerCallback`).
+ */
+const LISTEN = "plugin:event|listen";
+const UNLISTEN = "plugin:event|unlisten";
+
+/**
+ * 브라우저가 답을 찾는 표 둘이 붙는 전역. 페이지가 뜬 뒤 답을 가는 `replaceAnswer`가 여기를 고친다 —
+ * 초기화 스크립트의 인자는 뜰 때 한 번 굳으므로 그 뒤에 고칠 자리가 따로 있어야 한다.
+ */
+const TABLES_KEY = "__ATELIER_FIXTURE_TABLES__";
+
+/** 브라우저 안의 두 표. 두 표의 줄이 **같은 모양**이다(`ModeAnswer`) — 같은 규칙으로 푼다(`pick`). */
+interface FixtureTables {
+  /** 이름으로 답하는 커맨드: 커맨드 이름 → 한 줄. */
+  byName: Record<string, ModeAnswer>;
   /**
-   * **모드로 갈리는** 커맨드의 답: 커맨드 이름 → 모드 → 그 몫. `responses`보다 먼저 보고,
+   * **모드로 갈리는** 커맨드의 답: 커맨드 이름 → 모드 → 그 몫. `byName`보다 먼저 보고,
    * 여기 있는 커맨드는 **그 표로 안 떨어진다** — 못 찾으면 문다(`fixtures.ts`의 머리말).
-   * 인자를 한 겹 더 봐야 하는 커맨드(문서 읽기·아카이브 문서 목록)도 여기서 함께 든다:
-   * 그것들이 전부 모드를 받으므로(#187) 인자만 보는 표는 따로 설 자리가 없다 — 한때 있던
-   * `byArg`가 그 자리였고, 마지막 두 줄이 `byMode`로 옮겨 가면서 통째로 사라졌다.
+   * 인자를 한 겹 더 봐야 하는 커맨드(문서 읽기 · 아카이브 문서 목록)도 여기서 함께 든다 — 그것들이
+   * 전부 모드를 받는다(#187). 이름 표의 인자별 답은 `answerByArg`가 같은 모양으로 연다.
    *
    * 값이 `Record<string, …>`인 것은 와이어에서 온 `mode`가 아무 문자열일 수 있어서다:
    * `Mode`로 좁히면 그 인덱싱에 캐스트가 필요해지고, 캐스트는 모르는 값을 아는 값처럼 만든다.
@@ -98,6 +120,19 @@ interface InitArgs {
    * **다리가** 거절한다(`crates/atelier-test-bridge`).
    */
   byMode: Record<string, Record<string, ModeAnswer>>;
+}
+
+/** addInitScript는 인자를 하나만 넘긴다 — 두 표와 전역 이름들을 같이 싣는다. */
+interface InitArgs extends FixtureTables {
+  recordKey: string;
+  /** 두 표가 붙는 전역(`TABLES_KEY`). */
+  tablesKey: string;
+  /** 구독의 와이어 이름(`LISTEN`). 브라우저 쪽이 모듈 상수를 못 읽어 함께 싣는다. */
+  listen: string;
+  /** 답 대신 거절을 싣는 표시의 키(`ipcFailure`). 브라우저 쪽이 모듈 상수를 못 읽어 함께 싣는다. */
+  failureKey: string;
+  /** 표에 없는 우리 커맨드를 넘길 전역 함수. null이면 넘기지 않고 실패시킨다(L3). */
+  bridgeName: string | null;
   /**
    * **부를 때마다 답이 달라져야 하는** 커맨드들: 커맨드 이름 → 그 답에서 하나씩 올릴 키.
    * 무엇을 왜 여기 넣는지는 `fixtures`의 `FIXTURE_INCREMENTING_KEYS`가 든다. L4는 진짜
@@ -105,6 +140,27 @@ interface InitArgs {
    */
   incrementing: Record<string, string>;
 }
+
+/**
+ * 표에 적힌 답 하나를 **브라우저가 푸는 줄**로 바꾼다. 값 하나면 `value`, 인자별 답(`answerByArg`)이면
+ * `arg` · `answers`이고, 그때 `fallback`에 값이 있으면 그것이 인자에 맞는 답이 없을 때의 기본 답이 된다.
+ * 한 벌로 두는 것은 덮어쓰기와 답 바꾸기가 **같은 기본 답**으로 떨어져야 해서다 — 한쪽만 바뀌면 같은
+ * `answerByArg`가 두 자리에서 다른 답을 준다.
+ */
+function entryOf(answer: unknown, fallback?: ModeAnswer): ModeAnswer {
+  if (!(answer instanceof ArgAnswers)) return { value: answer };
+  return {
+    arg: answer.arg,
+    answers: { ...answer.answers },
+    ...(fallback && Object.prototype.hasOwnProperty.call(fallback, "value")
+      ? { value: fallback.value }
+      : {}),
+  };
+}
+
+/** 이름 표 한 벌을 브라우저가 푸는 줄들로. */
+const entriesOf = (table: Record<string, unknown>): Record<string, ModeAnswer> =>
+  Object.fromEntries(Object.entries(table).map(([cmd, answer]) => [cmd, entryOf(answer)]));
 
 /**
  * L3: 우리 커맨드에 고정 데이터가 답한다. 빠르고 결정론적이라 자가수리 루프가 수십 번
@@ -117,19 +173,27 @@ export async function installFixtureBackend(
    * 설정처럼 「파일이 이렇게 적혀 있을 때」를 재는 검사가 `read_settings` 하나만 바꾸면
    * 되게 하려는 것이고, 표에 없는 이름은 아래에서 거절하므로 새 커맨드를 세우는 자리로는
    * 못 쓴다(그것은 `FIXTURE_COMMANDS`의 몫이다).
+   *
+   * 값 자리에 `answerByArg`를 넣으면 **인자마다** 다른 답을 준다 — 맞는 답이 없는 인자는 이름 표의
+   * 값을 받는다(`fixtures.ts`의 `ArgAnswers` 머리말). 거절은 `ipcFailure`다.
    */
   overrides: Record<string, unknown> = {},
 ): Promise<void> {
-  for (const cmd of Object.keys(overrides)) {
+  const byName = entriesOf({ ...FIXTURE_COMMANDS, ...PLUGINS });
+  for (const [cmd, answer] of Object.entries(overrides)) {
     // **모르는 이름은 여기서 터진다.** 커맨드가 개명되면 덮어쓰기가 아무 데도 안 걸린 채
     // 지나가고, 검사는 고정 표의 답을 받은 채로 「설정이 이랬는데도 조용했다」를 초록으로
-    // 낸다 — 그 침묵이 이 층에서 가장 읽기 어려운 실패다.
+    // 낸다 — 그 침묵이 이 층에서 가장 읽기 어려운 실패다. 인자별 답도 같은 문을 지난다.
     if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, cmd)) {
-      throw new Error(`덮어쓸 커맨드가 고정 답 표에 없습니다: ${cmd}`);
+      const hint = Object.prototype.hasOwnProperty.call(FIXTURE_BY_MODE, cmd)
+        ? " — 모드 표의 커맨드는 페이지가 뜬 뒤 replaceAnswer로 바꿉니다"
+        : "";
+      throw new Error(`덮어쓸 커맨드가 고정 답 표에 없습니다: ${cmd}${hint}`);
     }
+    byName[cmd] = entryOf(answer, byName[cmd]);
   }
   await install(page, {
-    responses: { ...FIXTURE_COMMANDS, ...PLUGINS, ...overrides },
+    byName,
     bridgeName: null,
     byMode: FIXTURE_BY_MODE,
     incrementing: FIXTURE_INCREMENTING_KEYS,
@@ -152,7 +216,7 @@ export async function installRealBackend(
     callBridge(home, cmd, args),
   );
   await install(page, {
-    responses: { ...PLUGINS, "plugin:dialog|open": pickedFolder },
+    byName: entriesOf({ ...PLUGINS, "plugin:dialog|open": pickedFolder }),
     bridgeName: BRIDGE_FN,
     byMode: {},
     incrementing: {},
@@ -162,7 +226,7 @@ export async function installRealBackend(
 /** 앱 번들이 실행되기 전에 시임을 세운다. 프로덕션 코드는 한 줄도 고치지 않는다. */
 async function install(
   page: Page,
-  { responses, bridgeName, byMode, incrementing }: Omit<InitArgs, "recordKey" | "failureKey">,
+  { byName, bridgeName, byMode, incrementing }: Omit<InitArgs, "recordKey" | "tablesKey" | "listen" | "failureKey">,
 ): Promise<void> {
   // mocks.cjs 텍스트에는 백틱과 `${`가 들어 있다. 템플릿 리터럴에 끼워 넣으면 깨지므로
   // 이 조각만 순수 문자열로 주입하고, 손으로 쓰는 로직은 아래 타입 검사되는 함수에 둔다.
@@ -173,7 +237,7 @@ async function install(
       "\nwindow.__TAURI_MOCKS__ = exports; })();",
   });
 
-  await page.addInitScript(({ responses, recordKey, failureKey, bridgeName, byMode, incrementing }: InitArgs) => {
+  await page.addInitScript(({ byName, byMode, recordKey, tablesKey, listen, failureKey, bridgeName, incrementing }: InitArgs) => {
     const mocks = (window as unknown as { __TAURI_MOCKS__: {
       mockWindows: (label: string) => void;
       mockIPC: (handler: (cmd: string, args?: unknown) => unknown) => void;
@@ -189,6 +253,13 @@ async function install(
       .__TAURI_INTERNALS__;
     internals.convertFileSrc ??= (filePath: string, protocol = "asset") =>
       `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+
+    const has = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
+
+    // 두 표를 전역에 건다 — 뜬 뒤에 답을 가는 자리(`replaceAnswer`)가 이것을 고친다. 인자로 온
+    // 표는 페이지마다 새로 풀린 사본이라 고쳐도 다음 페이지로 안 샌다.
+    const tables: FixtureTables = { byName, byMode };
+    (window as unknown as Record<string, FixtureTables>)[tablesKey] = tables;
 
     // 수를 올리는 커맨드가 지금까지 몇 번 불렸는가. 브라우저 안에서만 산다 — 답을 만드는
     // 일이 여기서 일어나야 하는 이유는 `FIXTURE_INCREMENTING_KEYS`의 머리말에 있다.
@@ -213,6 +284,40 @@ async function install(
       return { ...(answer as Record<string, unknown>), [key]: base + n };
     };
 
+    // 고른 답을 내보낸다 — 거절 표시면 던지고, 아니면 회차를 얹는다. 두 표가 **같은 문**을 지난다:
+    // 거절도 회차도 한쪽 표에만 있으면 그 표로 옮겨 간 커맨드가 조용히 다른 답을 받는다.
+    const deliver = (cmd: string, answer: unknown) => {
+      if (typeof answer === "object" && answer !== null && has(answer, failureKey)) {
+        throw (answer as Record<string, string>)[failureKey];
+      }
+      return bump(cmd, answer);
+    };
+
+    // 표의 한 줄에서 이 부름의 답을 고른다. 못 고르면 이 표시를 돌려준다 — `null`도 `undefined`도
+    // 멀쩡한 답일 수 있어 값으로는 「없다」를 못 적는다.
+    const NO_ANSWER = Symbol("답 없음");
+    const pick = (entry: ModeAnswer, args: unknown): unknown => {
+      if (entry.arg !== undefined && entry.answers !== undefined) {
+        const raw = (args as Record<string, unknown> | undefined)?.[entry.arg];
+        // **인자가 아예 없으면 문다** — 인자 이름이 바뀐 것이다. 기본 답으로 떨어지게 두면 그 개명이
+        // 조용히 초록으로 지나간다.
+        if (raw === undefined) return NO_ANSWER;
+        // **인자를 문자열로 바꿔 견준다.** 표의 키는 늘 문자열인데(JS 객체) 셸 id처럼 수로 오는
+        // 인자가 있다 — 문자열일 때만 견주던 시절에는 수 인자가 표를 통째로 지나쳤다.
+        const key =
+          typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean"
+            ? String(raw)
+            : null;
+        if (key !== null && has(entry.answers, key)) return entry.answers[key];
+      }
+      // 인자에 맞는 답이 없으면 그 줄의 기본 답이다. `value`를 **키의 유무로** 가른다 —
+      // `null`도 답이 될 수 있어서 값으로는 못 가른다.
+      return has(entry, "value") ? entry.value : NO_ANSWER;
+    };
+
+    // 구독 번호(`LISTEN` 머리말). 부른 순서대로 1부터 — 기록의 n번째 구독이 번호 n이다.
+    let listens = 0;
+
     const record: IpcRecord = { calls: [], unknown: [] };
     (window as unknown as Record<string, IpcRecord>)[recordKey] = record;
 
@@ -227,49 +332,34 @@ async function install(
         detail = " (인자를 적지 못했습니다)";
       }
       record.calls.push(`${cmd}${detail}`);
+      // 적는 자리와 번호를 매기는 자리가 **같은 줄**이어야 「기록의 n번째 = 번호 n」이 선다.
+      if (cmd === listen) {
+        listens += 1;
+        return listens;
+      }
       // **모드로 갈리는 커맨드가 맨 먼저다.** 그리고 여기 있는 커맨드는 아래 이름 표로 **안
       // 떨어진다** — 답을 못 찾으면 그 표가 아니라 화이트리스트 탐지기로 간다. 실물 백엔드는
       // `mode`를 필수로 받지만(#187) 그 거절은 L3에 안 온다: 여기서 백엔드 노릇을 하는 것이
       // 이 표라, 아래로 떨어지게 두면 `mode`가 없거나 모르는 값인 호출이 조용히 Atelier
       // 데이터를 받아 「Maison 화면에 Atelier 것이 떴다」가 아무 데도 안 걸린다.
       // 그 물림을 음성 케이스로 세우는 자리는 `mode-fail-closed.spec.ts`다.
-      const forCmd = Object.prototype.hasOwnProperty.call(byMode, cmd) ? byMode[cmd] : null;
-      if (forCmd) {
+      if (has(tables.byMode, cmd)) {
+        const forCmd = tables.byMode[cmd];
         const mode = (args as Record<string, unknown> | undefined)?.mode;
         const answer =
-          typeof mode === "string" && Object.prototype.hasOwnProperty.call(forCmd, mode)
-            ? forCmd[mode]
-            : null;
-        if (answer) {
-          // 인자를 한 겹 더 보는 모드는 표를 먼저 보고, 못 찾으면 그 모드의 기본 답으로 간다.
-          // `value`를 **키의 유무로** 가른다 — `null`도 답이 될 수 있어서 값으로는 못 가른다.
-          if (answer.arg !== undefined && answer.answers !== undefined) {
-            const key = (args as Record<string, unknown> | undefined)?.[answer.arg];
-            if (
-              typeof key === "string" &&
-              Object.prototype.hasOwnProperty.call(answer.answers, key)
-            ) {
-              return bump(cmd, answer.answers[key]);
-            }
-          }
-          if (Object.prototype.hasOwnProperty.call(answer, "value")) return bump(cmd, answer.value);
-        }
+          typeof mode === "string" && has(forCmd, mode) ? pick(forCmd[mode], args) : NO_ANSWER;
+        if (answer !== NO_ANSWER) return deliver(cmd, answer);
         // 인자를 함께 적는다 — 「`mode`가 없었나」와 「그 모드에 그 경로가 없었나」가
         // 실패 문구에서 갈려야 다음 수정이 정해진다.
         record.unknown.push(`${cmd}${detail}`);
         throw new Error(`하네스가 모드로 답하지 못하는 IPC 호출입니다: ${cmd}${detail}`);
       }
-      // 표에 적힌 값을 **첫 값**으로 삼아, 올릴 커맨드면 부를 때마다 하나씩 올린다.
-      if (Object.prototype.hasOwnProperty.call(responses, cmd)) {
-        const answer = responses[cmd];
-        if (
-          typeof answer === "object" &&
-          answer !== null &&
-          Object.prototype.hasOwnProperty.call(answer, failureKey)
-        ) {
-          throw (answer as Record<string, string>)[failureKey];
-        }
-        return bump(cmd, answer);
+      if (has(tables.byName, cmd)) {
+        const answer = pick(tables.byName[cmd], args);
+        if (answer !== NO_ANSWER) return deliver(cmd, answer);
+        // 인자별 답만 있고 기본 답이 없는 줄에서, 또는 그 인자가 호출에 아예 없을 때 온다.
+        record.unknown.push(`${cmd}${detail}`);
+        throw new Error(`하네스가 인자로 답하지 못하는 IPC 호출입니다: ${cmd}${detail}`);
       }
       // `plugin:*`은 코어 함수가 없어 다리로 넘길 수 없다. 여기서 답하지 못하면 그게 곧
       // 하네스가 낡았다는 뜻이다.
@@ -285,13 +375,81 @@ async function install(
       throw new Error(`하네스가 모르는 IPC 호출입니다: ${cmd}`);
     });
   }, {
-    responses,
+    byName,
+    byMode,
     recordKey: IPC_RECORD_KEY,
+    tablesKey: TABLES_KEY,
+    listen: LISTEN,
     failureKey: IPC_FAILURE_KEY,
     bridgeName,
-    byMode,
     incrementing,
   });
+}
+
+/**
+ * **페이지가 뜬 뒤에 커맨드 하나의 답을 갈아 끼운다**(프로세스 관리 티켓 01). 모드 표의 커맨드는 `mode`의
+ * 한 칸을, 이름 표의 커맨드는 그 이름을 간다. 값 자리에 `answerByArg`를 넣으면 인자마다 갈리고, 맞는 답이
+ * 없는 인자는 **고정 표의 기본 답**을 받는다(덮어쓰기와 같은 `entryOf`) — 앞서 간 답이 아니다.
+ *
+ * **무엇을 재려고 있는가**: 시나리오 도중에 백엔드의 답이 바뀌는 것. 덮어쓰기(`installFixtureBackend`)는
+ * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳고, 모드 표(`list_works`)는 그마저 막혀 있다. 그래서
+ * 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는 있고 `works:changed` 뒤의 조회에는 없다)나
+ * 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채** 초록이다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - **바꾸기만 하고 다시 읽게 하지 않으면** 화면은 앞 답을 쥔 채다 — 캐시가 무효화돼야 새 답을
+ *   부른다. 바꾼 뒤 그 목록의 이벤트(`works:changed` 등)를 쏘고, 「바뀐 것이 섰다」를 본다. 「안 바뀌었다」를
+ *   재려면 조회가 **다시 나갔다**는 앵커(`callCount`)를 먼저 본다.
+ * - 새로고침하면 처음 표로 돌아간다 — 표는 페이지마다 새로 풀린다.
+ * - 모드 표는 **그 모드의 칸만** 간다. 칸에 있던 인자별 답도 함께 가므로, `read_spec_file`처럼 경로로
+ *   갈리는 칸에 값 하나를 넣으면 모든 경로가 그 값을 받는다.
+ *
+ * 안전장치는 덮어쓰기와 같다: 표에 없는 이름 · 표에 없는 모드는 던진다. 모드 표의 커맨드에 모드를
+ * 빠뜨려도, 이름 표의 커맨드에 모드를 줘도 던진다 — 어느 표의 어느 줄을 갈았는지가 흐려지면 그 검사는
+ * 무엇을 잰 것인지 아무도 모른다.
+ */
+export async function replaceAnswer(
+  page: Page,
+  command: string,
+  answer: unknown,
+  mode?: Mode,
+): Promise<void> {
+  let entry: ModeAnswer;
+  if (Object.prototype.hasOwnProperty.call(FIXTURE_BY_MODE, command)) {
+    if (mode === undefined) {
+      throw new Error(`모드 표의 커맨드는 어느 모드의 답을 바꿀지 함께 줘야 합니다: ${command}`);
+    }
+    const forCmd: Record<string, ModeAnswer> = FIXTURE_BY_MODE[command];
+    if (!Object.prototype.hasOwnProperty.call(forCmd, mode)) {
+      throw new Error(`모드 표에 없는 모드입니다: ${command}.${mode}`);
+    }
+    entry = entryOf(answer, forCmd[mode]);
+  } else if (Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
+    if (mode !== undefined) {
+      throw new Error(`이 커맨드는 모드로 갈리지 않습니다 — 이름으로 바꿉니다: ${command} (${mode})`);
+    }
+    entry = entryOf(answer, entryOf(FIXTURE_COMMANDS[command]));
+  } else {
+    throw new Error(`바꿀 커맨드가 고정 답 표에 없습니다: ${command}`);
+  }
+  await page.evaluate(
+    ({ tablesKey, command, mode, entry }) => {
+      const tables = (window as unknown as Record<string, FixtureTables | undefined>)[tablesKey];
+      if (!tables) throw new Error("installFixtureBackend를 먼저 깔아야 한다");
+      const has = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
+      // 위에서 고정 표로 걸렀어도 **이 페이지의 표로 한 번 더 본다** — L4의 표(`installRealBackend`)에는
+      // 우리 커맨드가 없어, 거기서 부르면 여기서 문다.
+      if (mode === null) {
+        if (!has(tables.byName, command)) throw new Error(`이 페이지의 이름 표에 없다: ${command}`);
+        tables.byName[command] = entry;
+        return;
+      }
+      const forCmd = has(tables.byMode, command) ? tables.byMode[command] : null;
+      if (!forCmd || !has(forCmd, mode)) throw new Error(`이 페이지의 모드 표에 없다: ${command}.${mode}`);
+      forCmd[mode] = entry;
+    },
+    { tablesKey: TABLES_KEY, command, mode: mode ?? null, entry },
+  );
 }
 
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
@@ -383,6 +541,10 @@ async function awaitIpcMatch(
  *
  * **한 번 쏘는 것이 기본이다.** 전이를 싣는 이벤트(`shell:attention`)는 여러 번 쏘면 그 수만큼
  * 발화한다 — 멱등한 값을 앉을 때까지 다시 쏘는 것은 `markRunning`의 일이다.
+ *
+ * **구독이 여럿이어도 하나에만 간다** — 그래서 이것으로는 「구독이 몇이냐」가 안 보인다. 한 번 쏘면
+ * 조회가 한 번인 것은 구독이 다섯이어도 같다(스펙 리뷰 코드 8). 살아 있는 구독 전부에 쏘는 것은
+ * `fireEventToAll`이고, 이 함수의 모양은 지금 spec들이 기대는 그대로 둔다.
  */
 export async function fireEvent(
   page: Page,
@@ -411,6 +573,123 @@ export async function fireEvent(
     },
     { handler: Number(handler), event, payload, times },
   );
+}
+
+/**
+ * 기록 한 장에서 그 이벤트의 **살아 있는** 구독들: 구독 번호 → 핸들러 id, 붙은 순서대로.
+ *
+ * 번호는 **모든 이벤트의 구독이 한 줄로** 받는다(`LISTEN` 머리말) — 그래서 다른 이벤트의 구독도 세며
+ * 지나가야 n번째가 번호 n이 된다. 모양이 낯선 줄은 던진다(`ipcCallArgs`와 같은 이유): 조용히 건너뛰면
+ * 해제 하나를 못 읽어 뗀 구독이 산 것으로 세어진다.
+ */
+function liveListens(calls: ReadonlyArray<string>, event: string): Map<number, number> {
+  const live = new Map<number, number>();
+  let eventId = 0;
+  for (const call of calls) {
+    const isListen = call.startsWith(`${LISTEN} `);
+    if (!isListen && !call.startsWith(`${UNLISTEN} `)) continue;
+    let args: Record<string, unknown>;
+    try {
+      args = JSON.parse(call.slice(call.indexOf(" ") + 1)) as Record<string, unknown>;
+    } catch {
+      throw new Error(`구독 기록을 못 읽었다 — ${call}`);
+    }
+    if (isListen) {
+      eventId += 1;
+      if (args.event !== event) continue;
+      if (typeof args.handler !== "number") throw new Error(`구독의 모양이 낯설다 — ${call}`);
+      live.set(eventId, args.handler);
+    } else if (args.event === event) {
+      if (typeof args.eventId !== "number") throw new Error(`해제의 모양이 낯설다 — ${call}`);
+      live.delete(args.eventId);
+    }
+  }
+  return live;
+}
+
+/**
+ * 살아 있는 구독이 **멎을 때까지** 기다려 읽는다 — 0.5초 동안 그대로면 멎은 것이다. 5초가 지나도
+ * 흔들리면 던진다.
+ *
+ * 기다리는 것은 StrictMode 때문이다: 붙였다 뗀 첫 구독의 **해제가 둘째 구독 뒤에 비동기로 온다**
+ * (`useEffect`의 정리가 `listen`의 promise를 기다린다). 그 사이에 읽으면 둘로 세어진다 — 「구독이
+ * 정확히 하나다」가 앱이 아니라 읽은 순간에 매인다.
+ */
+async function settledLiveListens(page: Page, event: string): Promise<Map<number, number>> {
+  const read = async () => liveListens((await readIpcRecord(page))?.calls ?? [], event);
+  const keyOf = (live: Map<number, number>) => [...live.keys()].join(",");
+  const startedAt = Date.now();
+  let live = await read();
+  let quietSince = Date.now();
+  while (Date.now() - quietSince < 500) {
+    if (Date.now() - startedAt > 5_000) {
+      const calls = (await readIpcRecord(page))?.calls ?? [];
+      throw new Error(`${event}의 구독이 5초 안에 안 멎었다 — IPC 기록: ${JSON.stringify(calls)}`);
+    }
+    await page.waitForTimeout(100);
+    const next = await read();
+    if (keyOf(next) !== keyOf(live)) {
+      live = next;
+      quietSince = Date.now();
+    }
+  }
+  return live;
+}
+
+/**
+ * 그 이벤트의 **지금 살아 있는 구독 수**(프로세스 관리 티켓 01). 구독과 해제를 구독 번호로 짝지어
+ * 센다(`LISTEN` 머리말). 수가 멎을 때까지 기다려 읽는다(`settledLiveListens`).
+ *
+ * **무엇을 재려고 있는가**: 「그 이벤트의 구독이 정확히 하나다」. 목록 조회를 루트 구독 하나로 모으는
+ * 판 02(14)의 핵심 단언이다. 쏘는 쪽(`fireEvent`)으로는 안 보인다 — 구독이 다섯이어도 하나에만 쏘니
+ * 결과가 같다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - **화면이 서기 전에 읽으면 0이 멎은 값이다.** 앱이 아직 안 붙은 순간도 0.5초 조용하면 멎은 것으로
+ *   친다. 그 화면이 섰다는 앵커를 먼저 본다.
+ * - 멎는 창은 0.5초다. 그보다 늦게 붙거나 떼는 구독(타이머 · 느린 조회 뒤의 구독)은 못 본다.
+ * - 셈은 하네스의 기록이 전부다. 기록을 안 거친 구독(공식 mock의 `shouldMockEvents`)은 안 센다.
+ */
+export async function liveSubscriptions(page: Page, event: string): Promise<number> {
+  return (await settledLiveListens(page, event)).size;
+}
+
+/**
+ * 그 이벤트를 **살아 있는 모든 구독에 한 번씩** 쏜다(프로세스 관리 티켓 01). 쏜 구독 수를 돌려준다.
+ * 구독이 보이기를 기다리고(`fireEvent`와 같은 5초), 멎을 때까지 기다린 뒤(`settledLiveListens`) 쏜다 —
+ * 떼어질 구독에 쏘면 한 사건이 두 번 도착한다.
+ *
+ * **무엇을 재려고 있는가**: 구독이 여럿일 때 실물이 겪는 것 — 백엔드의 `emit`은 모든 구독에 간다.
+ * 구독마다 조회를 다시 부르는 앱에서 「이벤트 한 번에 조회 몇 번」이 실물대로 보이려면 이것으로 쏜다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - **뗀 구독에는 안 쏜다** — 그리고 그 판단은 기록이 한다. 공식 mock의 해제는 콜백을 안 지우므로
+ *   (구독 번호는 핸들러 id가 아니다) 핸들러 id를 손으로 모아 쏘면 뗀 구독도 받는다.
+ * - 살아 있는 구독이 하나도 없으면 **던진다** — 아무 데도 안 쏜 채 지나가면 「아무 일도 안 일어났다」를
+ *   재는 단언이 초록이 된다.
+ * - 전이를 싣는 이벤트는 구독마다 한 번씩 발화한다. 한 번만 울려야 하는 것을 재는 자리에서는 구독 수부터 본다.
+ */
+export async function fireEventToAll(page: Page, event: string, payload: unknown): Promise<number> {
+  await awaitIpcMatch(
+    page,
+    (calls) => (liveListens(calls, event).size > 0 ? event : undefined),
+    `${event} 구독`,
+  );
+  const live = await settledLiveListens(page, event);
+  if (live.size === 0) {
+    const calls = (await readIpcRecord(page))?.calls ?? [];
+    throw new Error(`${event}의 살아 있는 구독이 없다 — IPC 기록: ${JSON.stringify(calls)}`);
+  }
+  await page.evaluate(
+    ({ handlers, event, payload }: { handlers: number[]; event: string; payload: unknown }) => {
+      const internals = (window as unknown as {
+        __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void };
+      }).__TAURI_INTERNALS__;
+      for (const handler of handlers) internals.runCallback(handler, { event, id: 0, payload });
+    },
+    { handlers: [...live.values()], event, payload },
+  );
+  return live.size;
 }
 
 /**
@@ -926,77 +1205,167 @@ export async function holdTerminalFonts(page: Page): Promise<() => Promise<void>
   };
 }
 
+/** 붙잡기 문이 붙는 전역: 커맨드 이름 → 그 커맨드의 문(`holdCommand`). */
+const HOLDS_KEY = "__ATELIER_HOLDS__";
+
+/** 커맨드 하나의 붙잡기 문. 페이지 안에서만 산다. */
+interface HoldGate {
+  holding: boolean;
+  /** 붙잡힌 부름의 수 — 붙잡은 뒤로 모두다. 놓아도 줄지 않는다. */
+  held: number;
+  /** 놓은 뒤에 새로 나간 부름의 수. */
+  sinceRelease: number;
+  opened: Promise<void>;
+  release: () => void;
+}
+
 /**
- * `pty_spawn`의 **응답을 붙잡는다** — 「셸을 띄우러 나갔는데 아직 안 돌아왔다」의 틈을 결정적으로
- * 세운다. 붙잡힌 부름의 수는 `heldSpawns`로 읽고, `releaseSpawns`로 한꺼번에 놓는다.
+ * 그 커맨드의 문을 세운다 — 초기화 스크립트로도(`addInitScript`) 지금 페이지에도(`evaluate`) 같은 함수를
+ * 넘긴다. **직렬화되어 페이지로 가므로** 모듈의 이름을 못 읽는다 — 전역 이름도 인자로 받는다.
  *
- * **기록은 놓은 뒤에 남는다** — 하네스의 기록(`readIpcRecord`)은 답하는 자리에서 적으므로, 붙잡힌
- * 동안의 부름은 거기 없다. 그래서 수를 따로 센다: 기록으로 기다리면 「아직 안 나갔다」와
- * 「나갔는데 붙잡혔다」가 같은 얼굴이다. 놓는 순서는 부른 순서 그대로라 픽스처의 번호도 그대로다.
+ * `invoke`는 **한 번만** 감싼다. 커맨드마다 감싸면 감싼 순서가 곧 붙잡는 순서가 되어, 두 커맨드를 함께
+ * 붙잡는 시나리오에서 한쪽을 놓아도 다른 쪽 문에 막힌다.
+ */
+const armHold = ({ command, holdsKey }: { command: string; holdsKey: string }) => {
+  const win = window as unknown as Record<string, unknown> & {
+    __TAURI_INTERNALS__?: {
+      invoke?: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    };
+  };
+  const internals = win.__TAURI_INTERNALS__;
+  const invoke = internals?.invoke;
+  if (!internals || !invoke) throw new Error("holdCommand는 installFixtureBackend 뒤에 깔아야 한다");
+  let gates = win[holdsKey] as Record<string, HoldGate> | undefined;
+  if (!gates) {
+    const holds: Record<string, HoldGate> = {};
+    gates = holds;
+    win[holdsKey] = holds;
+    internals.invoke = async (cmd, args, options) => {
+      const gate = Object.prototype.hasOwnProperty.call(holds, cmd) ? holds[cmd] : null;
+      if (gate?.holding) {
+        gate.held += 1;
+        await gate.opened;
+      } else if (gate) {
+        gate.sinceRelease += 1;
+      }
+      return invoke(cmd, args, options);
+    };
+  }
+  let open!: () => void;
+  const gate: HoldGate = {
+    holding: true,
+    held: 0,
+    sinceRelease: 0,
+    opened: new Promise<void>((resolve) => (open = resolve)),
+    release: () => {
+      gate.holding = false;
+      open();
+    },
+  };
+  gates[command] = gate;
+};
+
+/**
+ * 커맨드 하나의 **응답을 붙잡는다**(프로세스 관리 티켓 01) — 「부르러 나갔는데 아직 안 돌아왔다」의 틈을
+ * 결정적으로 세운다. 붙잡힌 수는 `heldCalls`로, 놓은 뒤에 새로 나간 수는 `callsSinceRelease`로 읽고,
+ * `releaseCommand`로 한꺼번에 놓는다. 놓는 순서는 부른 순서 그대로다.
  *
- * `installFixtureBackend` **뒤에** 깔아야 한다 — 그쪽이 세운 `invoke`를 감싼다.
+ * **언제부터 붙잡는가는 부르는 때가 정한다.** 페이지를 열기 **전에** 부르면 초기화 스크립트로 깔려 부팅 때
+ * 나가는 첫 부름부터 붙잡고 — `installFixtureBackend` **뒤에** 깔아야 한다(그쪽이 세운 `invoke`를
+ * 감싼다) — 연 **뒤에** 부르면 그 순간부터 붙잡는다. 앞의 것은 새로고침해도 다시 깔린다.
+ *
+ * **무엇을 재려고 있는가**: 「조회가 도는 동안 이벤트가 몇 번 와도 조회는 한 번 더」(14). 조회를 붙잡아
+ * 두어야 「도는 동안」이 러너 속도에 안 매인다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - **붙잡힌 부름은 놓기 전까지 IPC 기록에 없다** — 기록은 답하는 자리에서 적는다(`install`). 그래서
+ *   `callCount`로 기다리면 「아직 안 나갔다」와 「나갔는데 붙잡혔다」가 같은 얼굴이고, 놓은 뒤의
+ *   `callCount`는 붙잡혔던 부름과 새 부름을 **섞어** 센다. 둘을 가르는 것이 `heldCalls` · `callsSinceRelease`다.
+ * - 연 뒤에 붙잡으면 **그 전에 나가 아직 안 돌아온 부름**은 어느 수에도 안 든다. 붙잡기 전에 화면이 멎었는지
+ *   (앵커) 먼저 본다.
+ * - 놓은 뒤로는 다시 안 붙잡는다. 다시 붙잡으려면 이 함수를 또 부른다 — 수가 0부터 다시 선다.
+ */
+export async function holdCommand(page: Page, command: string): Promise<void> {
+  const arg = { command, holdsKey: HOLDS_KEY };
+  if (page.url() === "about:blank") await page.addInitScript(armHold, arg);
+  else await page.evaluate(armHold, arg);
+}
+
+/** 그 커맨드의 문에서 한 값을 읽거나 문을 연다. 안 깔았으면 던진다 — 없는 문을 0으로 읽지 않는다. */
+async function onGate(
+  page: Page,
+  command: string,
+  act: "held" | "sinceRelease" | "release",
+): Promise<number> {
+  return page.evaluate(
+    ({ command, holdsKey, act }) => {
+      const gates = (window as unknown as Record<string, Record<string, HoldGate> | undefined>)[holdsKey];
+      const gate = gates && Object.prototype.hasOwnProperty.call(gates, command) ? gates[command] : null;
+      if (!gate) throw new Error(`holdCommand(${command})를 먼저 깔아야 한다`);
+      if (act !== "release") return gate[act];
+      gate.release();
+      return gate.held;
+    },
+    { command, holdsKey: HOLDS_KEY, act },
+  );
+}
+
+/** 붙잡힌 그 커맨드의 부름 수 — 붙잡은 뒤로 모두다. 놓아도 줄지 않는다(`holdCommand`). */
+export async function heldCalls(page: Page, command: string): Promise<number> {
+  return onGate(page, command, "held");
+}
+
+/** 붙잡은 그 커맨드의 응답을 한꺼번에 놓는다. 뒤로는 안 붙잡는다(`holdCommand`). */
+export async function releaseCommand(page: Page, command: string): Promise<void> {
+  await onGate(page, command, "release");
+}
+
+/** 놓은 **뒤에** 새로 나간 그 커맨드의 부름 수. 놓기 전에는 0이다(`holdCommand`). */
+export async function callsSinceRelease(page: Page, command: string): Promise<number> {
+  return onGate(page, command, "sinceRelease");
+}
+
+/**
+ * `pty_spawn`의 **응답을 붙잡는다** — `holdCommand`의 셸 띄우기 몫이다. 붙잡힌 부름의 수는 `heldSpawns`로
+ * 읽고, `releaseSpawns`로 한꺼번에 놓는다. 규칙은 전부 `holdCommand` 머리말이다(기록은 놓은 뒤에 남는다,
+ * 페이지를 열기 전에 깔면 첫 부름부터 붙잡는다). 놓는 순서는 부른 순서 그대로라 픽스처의 번호도 그대로다.
  */
 export async function holdPtySpawn(page: Page): Promise<void> {
-  await interceptPtySpawn(page, { hold: true });
+  await holdCommand(page, "pty_spawn");
+}
+
+/** 붙잡힌 `pty_spawn` 부름의 수(`holdPtySpawn`). 안 깔았으면 던진다. */
+export async function heldSpawns(page: Page): Promise<number> {
+  return heldCalls(page, "pty_spawn");
+}
+
+/** 붙잡은 `pty_spawn` 응답을 한꺼번에 놓는다(`holdPtySpawn`). */
+export async function releaseSpawns(page: Page): Promise<void> {
+  await releaseCommand(page, "pty_spawn");
 }
 
 /**
  * **첫 `pty_spawn` 하나를 그 이유로 거절한다** — 나머지는 그대로 답한다(결정 23의 「못 띄운 이유」).
- * `installFixtureBackend` **뒤에** 깔아야 한다(`holdPtySpawn`과 같다).
+ * `installFixtureBackend` **뒤에** 깔아야 한다 — 그쪽이 세운 `invoke`를 감싼다. 초기화 스크립트는
+ * 직렬화되어 페이지로 가므로 이유를 값으로 넘긴다.
  */
 export async function refuseFirstSpawn(page: Page, reason: string): Promise<void> {
-  await interceptPtySpawn(page, { refuseFirst: reason });
-}
-
-/**
- * `pty_spawn`을 가로채는 초기화 스크립트 **한 벌.** 붙잡기·거절이 `invoke`를 감싸는 모양을 나눠
- * 쓴다 — 픽스처의 `invoke` 모양이 바뀌면 여기 하나만 고친다. 초기화 스크립트는 직렬화되어
- * 페이지로 가므로 동작을 함수가 아니라 값으로 받는다.
- */
-async function interceptPtySpawn(page: Page, behaviour: { hold?: boolean; refuseFirst?: string }): Promise<void> {
-  await page.addInitScript(({ hold, refuseFirst }: { hold?: boolean; refuseFirst?: string }) => {
+  await page.addInitScript((refuseFirst: string) => {
     const internals = (window as unknown as {
       __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
     }).__TAURI_INTERNALS__;
     const invoke = internals.invoke;
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    const gate = { count: 0, release };
-    if (hold) (window as unknown as { __ATELIER_SPAWN_GATE__: typeof gate }).__ATELIER_SPAWN_GATE__ = gate;
     let refused = false;
     internals.invoke = async (cmd, args, options) => {
-      if (cmd !== "pty_spawn") return invoke(cmd, args, options);
-      if (refuseFirst !== undefined && !refused) {
+      if (cmd === "pty_spawn" && !refused) {
         refused = true;
         // 문자열 그대로 거절한다 — 진짜 백엔드가 그렇다(위 `ipcFailure` 머리말). `Error`로 감싸면 앱이
         // 적는 이유에 「Error: 」가 붙어 실제와 다른 글을 잰다.
         throw refuseFirst;
       }
-      if (hold) {
-        gate.count += 1;
-        await held;
-      }
       return invoke(cmd, args, options);
     };
-  }, behaviour);
-}
-
-/** 붙잡힌 `pty_spawn` 부름의 수(`holdPtySpawn`). 안 깔았으면 던진다. */
-export async function heldSpawns(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const gate = (window as unknown as { __ATELIER_SPAWN_GATE__?: { count: number } }).__ATELIER_SPAWN_GATE__;
-    if (!gate) throw new Error("holdPtySpawn을 먼저 깔아야 한다");
-    return gate.count;
-  });
-}
-
-/** 붙잡은 `pty_spawn` 응답을 한꺼번에 놓는다(`holdPtySpawn`). */
-export async function releaseSpawns(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const gate = (window as unknown as { __ATELIER_SPAWN_GATE__?: { release: () => void } }).__ATELIER_SPAWN_GATE__;
-    if (!gate) throw new Error("holdPtySpawn을 먼저 깔아야 한다");
-    gate.release();
-  });
+  }, reason);
 }
 
 /**

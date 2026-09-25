@@ -82,7 +82,8 @@ export const WORKS: WorkView[] = [
   },
   // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
   // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
-  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 테스트마다 못 덮으므로 여기 한 벌을 둔다.
+  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 페이지를 열 때 못 덮으므로(뜬 뒤에 한 칸을 가는
+  // `replaceAnswer`뿐이다 — `FIXTURE_BY_MODE` 머리말) 여기 한 벌을 둔다.
   //
   // **끝에 더한다** — 앞 두 줄을 자리로 집는 검사가 여럿이다(`const [pinnedWork, plainWork] = WORKS`).
   {
@@ -535,12 +536,46 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  * 칸을 통째로 비우면(`{}`) 그 세계의 그 명령은 **아무 답도 없다** — 아직 아무도 안 태우는
  * 세계를 그렇게 적는다. 지어낸 답을 앉히는 것보다 낫다: 지어낸 답은 그 화면이 생기는 날
  * 아무도 안 고치는 채로 초록을 준다.
+ *
+ * 인자 값은 **문자열로 바꿔** 견주고, `arg`가 호출에 **아예 없으면** `value`가 있어도 문다 — 이름 표의
+ * 인자별 답(`ArgAnswers`)과 한 규칙이다(`harness.ts`의 `pick`).
  */
 export interface ModeAnswer {
   readonly value?: unknown;
   readonly arg?: string;
   readonly answers?: Record<string, unknown>;
 }
+
+/**
+ * **인자별 답을 이름 표에도 연다**(프로세스 관리 티켓 01) — 위 `ModeAnswer`의 `arg` · `answers`와
+ * 같은 모양이고, 하네스가 두 표를 같은 규칙으로 푼다(`harness.ts`의 `pick`). 받는 자리는
+ * `installFixtureBackend`의 덮어쓰기와 `replaceAnswer`다. 인자에 맞는 답이 없으면 **그 커맨드의 기본
+ * 답**으로 간다 — 이름 표면 `FIXTURE_COMMANDS`의 값, 모드 표면 그 모드의 `value`다.
+ *
+ * **무엇을 재려고 있는가**: 셸마다 다른 답. 이름 표의 덮어쓰기는 커맨드 이름에 값 하나라, 셸 id를
+ * 인자로 받는 커맨드(`pty_command_running`)가 셸 둘에 다른 말을 못 했다(`quit-confirm.spec.ts`의 「세기」
+ * 머리말). 「조용한 셸은 닫히고 조용하지 않은 셸은 남는다」를 한 시나리오로 세우려면 이것이 있어야 한다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - 표의 키는 문자열이고(JS 객체의 키) 하네스가 **인자를 문자열로 바꿔** 견준다 — `{ 1: … }`는 수 `1`과
+ *   문자열 `"1"`에 함께 맞는다. 수와 문자열을 갈라야 하는 인자에는 못 쓴다.
+ * - 맞는 답이 없으면 기본 답이 조용히 온다. **기본 답과 같은 값을 인자별로 적으면** 표가 안 먹어도
+ *   초록이다 — 가르려는 셸에는 기본 답과 다른 값을 준다.
+ * - 인자 이름(`arg`)이 호출에 **아예 없으면** 하네스가 문다(기본 답으로 안 떨어진다). 인자 이름이 바뀌면
+ *   조용히 기본 답을 받는 대신 그 자리에서 빨개지라는 것이다.
+ */
+export class ArgAnswers {
+  readonly arg: string;
+  readonly answers: Readonly<Record<string, unknown>>;
+  constructor(arg: string, answers: Readonly<Record<string, unknown>>) {
+    this.arg = arg;
+    this.answers = answers;
+  }
+}
+
+/** `arg` 인자의 값마다 다른 답. 키는 인자 값을 문자열로 적은 것이다(`ArgAnswers` 머리말). */
+export const answerByArg = (arg: string, answers: Readonly<Record<string, unknown>>): ArgAnswers =>
+  new ArgAnswers(arg, answers);
 
 /**
  * **모드로 갈리는 커맨드의 답.** 위 이름 표보다 먼저 보고, **여기 있는 커맨드는 그 표로
@@ -554,6 +589,12 @@ export interface ModeAnswer {
  *
  * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
  * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
+ *
+ * **페이지를 열 때는 이 표를 못 덮는다** — `installFixtureBackend`의 덮어쓰기는 이름 표의 이름만 받고
+ * 여기 있는 이름이면 던진다. 뜬 뒤에 **한 모드의 한 칸을** 가는 길이 하나 있다: `replaceAnswer`(프로세스
+ * 관리 티켓 01). 시나리오 도중에 목록이 바뀌어야 서는 검사(MCP로 아카이브된 work이 목록에서 빠진다)를
+ * 위한 것이고, 그 길로만 연다 — 초기화 때 덮게 두면 「모드마다 답이 갈려 있다」는 이 표의 약속이 테스트마다
+ * 흩어진다.
  *
  * **모드를 받는 커맨드는 전부 여기 있어야 한다**(#187) — 그 경계는 `src/tauri-commands.test.ts`가
  * `commands.rs`에서 뽑아 **양쪽으로** 지킨다: 이름 표에 있으면 물고, 여기 없어도 문다.
