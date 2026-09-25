@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ArchivePage from "./ArchivePage";
-import { archiveQuery } from "./hooks";
-import type { ArchiveEntry } from "./types";
+import { archivedDocsQuery, archiveQuery } from "./hooks";
+import type { ArchivedDocs, ArchiveEntry } from "./types";
+import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
 import type { Mode } from "@/mode";
 
 // **프로젝트라는 것이 Maison 화면 어디에도 없다**(결정 17)를 재는 자리. 목록 패널의 필터와
@@ -27,18 +28,26 @@ const withProject: ArchiveEntry = {
   projects: ["atelier"],
 };
 
-function render(mode: Mode, entries: ArchiveEntry[], selectedSlug: string | null = null): string {
+function render(
+  mode: Mode,
+  entries: ArchiveEntry[],
+  selectedSlug: string | null = null,
+  // 고른 아카이브의 문서 답 — 심으면 그 행이 도착한 트리를 그린다(고른 아카이브는 펼친 채 선다)
+  docs?: ArchivedDocs,
+  currentFile: string | null = null,
+): string {
   const client = new QueryClient();
   // `[]`도 심는다 — 안 심으면 pending이라 빈 화면이 아예 안 그려진다(도착 전에는 아무 말도
   // 하지 않는 것이 이 화면의 계약이다).
   client.setQueryData(archiveQuery(mode).queryKey, entries);
+  if (docs) client.setQueryData(archivedDocsQuery(mode, selectedSlug).queryKey, docs);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ArchivePage
         mode={mode}
         sidebarOpen
         selectedSlug={selectedSlug}
-        currentFile={null}
+        currentFile={currentFile}
         onSelectDoc={() => {}}
         onFollowLink={() => {}}
       />
@@ -114,5 +123,98 @@ describe("좁혀서 0개일 때 하는 말", () => {
     // 리터럴로 남으면 그 세계에서 영영 안 뜨는 문장이 코드에 앉고, 다음 사람이 그것을
     // 고치며 뜬다고 믿는다.
     expect(src).not.toContain("해당 프로젝트의 아카이브가 없어요");
+  });
+});
+
+// **입력은 손으로 적은 spec 트리다**(구현 스펙 Testing 「앱」) — 앱에는 규칙이 없어 여기서 재는 것은
+// 「받은 것을 받은 대로 그리는가」뿐이다. 그래서 아래 트리는 일부러 이름으로 세울 때의 순서가
+// 아니다: 판이 최신부터 서고, 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다(구현 스펙 7절
+// 허용 차이 4). 이름으로 알아보던 앱이라면 판을 오름차순으로 다시 세우고 `tickets/`에 아이콘을 줬다.
+describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다", () => {
+  const file = (path: string, icon: string | null = null): SpecTreeItem => ({
+    name: path.slice(path.lastIndexOf("/") + 1),
+    path,
+    kind: "file",
+    icon,
+    group: null,
+    children: [],
+  });
+  const folder = (
+    path: string,
+    children: SpecTreeItem[],
+    icon: string | null = null,
+    group: SpecTreeGroup | null = null,
+  ): SpecTreeItem => ({ ...file(path, icon), kind: "folder", group, children });
+  const iteration = (n: number, latest: boolean): SpecTreeGroup => ({ key: "{n}-{name}", n, latest });
+
+  const DOCS: ArchivedDocs = {
+    docs: [
+      "record.md",
+      "spec/01-첫째-판/지난-계획.md",
+      "spec/02-둘째-판/plan.md",
+      "spec/overview.md",
+      "spec/tickets/할일.md",
+    ],
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "overview.md",
+      items: [
+        file("overview.md", "compass"),
+        folder("02-둘째-판", [file("02-둘째-판/plan.md")], "layers", iteration(2, true)),
+        folder("01-첫째-판", [file("01-첫째-판/지난-계획.md")], "layers", iteration(1, false)),
+        folder("tickets", [file("tickets/할일.md")]),
+      ],
+    },
+  };
+
+  const shipped = { ...withProject, slug: "shipped" };
+  const tree = (currentFile: string | null = null) =>
+    render("atelier", [shipped], "shipped", DOCS, currentFile);
+  /** 행 이름이 마크업에 선 자리. 없으면 -1이다. 행의 글자는 태그 사이에 홀로 선다(`>이름<`). */
+  const at = (markup: string, name: string) => markup.indexOf(`>${name}<`);
+  /** 이름으로 트리의 접히는 행 하나(여는 button부터 닫는 button까지). */
+  const folderRow = (markup: string, name: string) =>
+    (markup.match(/<button[^>]*aria-expanded="[^"]*"[^>]*>[\s\S]*?<\/button>/g) ?? []).find((row) =>
+      row.endsWith(`>${name}</span></button>`),
+    ) ?? "";
+  /** 이름으로 파일 행 하나 — 배경(선택 표시)을 가진 바깥 div의 여는 태그부터 이름까지. */
+  const fileRow = (markup: string, name: string) => {
+    const end = markup.indexOf(`>${name}</span></button>`);
+    if (end < 0) return "";
+    return markup.slice(markup.lastIndexOf('<div class="group', end), end);
+  };
+
+  it("뿌리에 기록 행과 spec/ 행이 서고, 그 아래가 받은 순서대로 선다", () => {
+    const markup = tree();
+    const shown = ["record.md", "spec", "overview.md", "02-둘째-판", "plan.md", "01-첫째-판", "tickets", "할일.md"];
+    const positions = shown.map((name) => at(markup, name));
+    expect(positions.every((one) => one >= 0), `${shown} → ${positions}`).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    // `spec/`는 접히는 폴더 행이고 펼친 채 선다. 판은 최신만 펼친다(05와 같은 규칙).
+    expect(folderRow(markup, "spec")).toContain('aria-expanded="true"');
+    expect(folderRow(markup, "01-첫째-판")).toContain('aria-expanded="false"');
+    expect(at(markup, "지난-계획.md")).toBe(-1);
+  });
+
+  it("받은 아이콘으로 선다 — 아이콘을 받은 파일 행에는 라벨이 없고, 자리 밖 tickets/에는 아이콘이 없다", () => {
+    const markup = tree();
+    expect(fileRow(markup, "overview.md")).toContain("lucide-compass");
+    expect(fileRow(markup, "overview.md")).not.toContain(">MD</span>");
+    // 기록은 레이아웃이 모르는 파일이라 지금처럼 확장자 라벨이다
+    expect(fileRow(markup, "record.md")).toContain(">MD</span>");
+    expect(folderRow(markup, "02-둘째-판")).toContain("lucide-layers");
+    const glyphs = (row: string) => row.match(/class="lucide lucide-[^ "]+/g);
+    expect(glyphs(folderRow(markup, "tickets"))).toEqual(['class="lucide lucide-chevron-right']);
+    expect(glyphs(folderRow(markup, "spec"))).toEqual(['class="lucide lucide-chevron-right']);
+  });
+
+  it("선택 표시는 spec/가 다시 붙은 경로로 켜진다", () => {
+    const markup = tree("spec/02-둘째-판/plan.md");
+    expect(fileRow(markup, "plan.md")).toContain("selected-row");
+    expect(fileRow(markup, "record.md")).not.toContain("selected-row");
+    // 기본 문서는 지금 규칙 그대로 목록의 첫 문서다 — 트리의 기본 문서(`overview.md`)가 아니다
+    expect(fileRow(tree(), "record.md")).toContain("selected-row");
+    expect(fileRow(tree(), "overview.md")).not.toContain("selected-row");
   });
 });

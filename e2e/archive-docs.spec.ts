@@ -1,9 +1,10 @@
+import type { Page } from "@playwright/test";
 import { expect, test } from "./evidence";
 import { ARCHIVE, ARCHIVED_DOCS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
 const [shipped, bare] = ARCHIVE;
-const [RECORD, IMAGE, HTML] = ARCHIVED_DOCS[shipped.slug];
+const [RECORD, IMAGE, HTML, TICKET] = ARCHIVED_DOCS[shipped.slug].docs;
 
 // 아카이브 화면이 문서를 그리는 규칙은 **Works와 같은 표**다(결정 11) — `doc-refs`의 그것.
 // 여기까지 그물이 없어서 그 표의 세 갈래가 아카이브에서만 갈렸다: 판 02가 표를 옮겨 올 때
@@ -85,6 +86,48 @@ test("`[소스]` 잠김 — 파일 종류가 잠그고, 남은 문서가 없어�
   await expect(page.locator("main").getByText("남은 문서가 없어요")).toBeVisible();
   await expect(doc).toBeDisabled();
   await expect(source).toBeDisabled();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+/** 지금까지 나간 아카이브 문서 읽기의 경로들, 나간 순서대로. */
+async function archivedReads(page: Page): Promise<string[]> {
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  return calls
+    .filter((call) => call.startsWith("read_archived_file "))
+    .map((call) => (JSON.parse(call.slice("read_archived_file ".length)) as { path: string }).path);
+}
+
+// spec 레이아웃 티켓 06 — **아카이브의 `spec/` 아래는 받은 spec 트리를 그린다.** 트리의 경로는 spec
+// 기준이고 아카이브의 경로는 work 폴더 기준이라, 화면이 `spec/`를 다시 붙이지 않으면 고른 문서를
+// 못 읽고 복사한 참조가 없는 파일을 가리킨다. 그 둘이 이 층에서만 보인다: 정적 렌더에는 누를 손이 없다.
+test("아카이브의 spec/ 아래는 받은 트리대로 서고, 읽기와 복사에는 spec/가 다시 붙는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/archive/${shipped.slug}`);
+  await expect(page.getByRole("heading", { name: "기록 — 치운 일" })).toBeVisible();
+
+  // 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다(허용 차이 4) — 폴더 행에 그려진 그림이
+  // 여닫이 화살표 하나뿐이다. 이름으로 알아보던 앱은 여기 `list-checks`를 그렸다.
+  const tickets = page.getByRole("button", { name: "tickets", exact: true });
+  await expect(tickets).toHaveAttribute("aria-expanded", "true");
+  await expect(tickets.locator("svg")).toHaveCount(1);
+  await expect(tickets.locator("svg.lucide-chevron-right")).toHaveCount(1);
+
+  // 문서 읽기 IPC의 경로에 `spec/`가 붙는다 — 트리의 경로(`tickets/할일.md`) 그대로 나가면 기록과 같은
+  // 자리(work 폴더)에서 찾아 없는 파일이 된다.
+  const ticket = page.getByRole("button", { name: "MD 할일.md", exact: true });
+  await ticket.click();
+  await expect(page.getByRole("heading", { name: "치운 일의 할 일" })).toBeVisible();
+  expect(await archivedReads(page)).toContain(TICKET);
+  expect(TICKET).toBe("spec/tickets/할일.md");
+
+  // 경로를 복사하면 `spec/`가 붙은 아카이브 참조가 나온다. L3는 클립보드를 못 읽으므로 복사 알림
+  // 문구에 적힌 참조로 잰다.
+  await ticket.hover();
+  await page.getByRole("button", { name: "할일.md 경로 복사", exact: true }).click();
+  await expect(
+    page.getByText("~/.atelier/archive/shipped-work/spec/tickets/할일.md 복사됨", { exact: true }),
+  ).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use atelier_core::{
     archive_dir, mode_home, projects_dir, shared_projects_root, works_dir, ArchiveEntry,
-    Destination, Mode, ProjectPatch, ProjectView, SearchResults, WorkView, WorkWithSpecTree,
+    ArchivedDocs, Destination, Mode, ProjectPatch, ProjectView, SearchResults, WorkView,
+    WorkWithSpecTree,
 };
 
 use std::sync::Arc;
@@ -151,11 +152,15 @@ pub async fn list_archive(mode: Mode) -> CmdResult<Vec<ArchiveEntry>> {
     atelier_core::list_archive(&archive_dir(mode)).map_err(err)
 }
 
-/// 아카이브된 work가 가진 문서 경로들. 상세 화면의 머리말(제목·상태·언제 치웠는지)은
-/// 목록이 이미 들고 있으므로 단건 조회를 따로 두지 않는다.
+/// 아카이브된 work가 가진 문서 경로들과, 그중 `spec/` 아래를 가른 spec 트리. 상세 화면의
+/// 머리말(제목·상태·언제 치웠는지)은 목록이 이미 들고 있으므로 단건 조회를 따로 두지 않는다.
+///
+/// 트리는 work 쪽 셋과 같이 코어의 입구(`with_archived_spec_tree`)가 싣는다 — L4 다리도 같은
+/// 입구를 부른다. 목록과 트리가 한 응답이라 화면이 기다릴 쿼리가 늘지 않는다.
 #[tauri::command]
-pub async fn list_archived_docs(mode: Mode, slug: String) -> CmdResult<Vec<String>> {
-    atelier_core::list_archived_docs(&archive_dir(mode), &slug).map_err(err)
+pub async fn list_archived_docs(mode: Mode, slug: String) -> CmdResult<ArchivedDocs> {
+    let docs = atelier_core::list_archived_docs(&archive_dir(mode), &slug).map_err(err)?;
+    atelier_core::with_archived_spec_tree(&atelier_core::data_root(), mode, docs).map_err(err)
 }
 
 /// 아카이브된 work의 문서 하나. 경로는 **work 루트 기준**이다 (`record.md`, `spec/overview.md`) —

@@ -1,4 +1,4 @@
-import type { ArchiveEntry } from "@/features/archive/types";
+import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
@@ -555,18 +555,37 @@ export const ROOM_SPEC_FILE_BODIES: Record<string, string> = {
 // harness.ts의 플러그인 표가 든다.)
 
 /**
- * 아카이브의 문서 목록 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
- * spec(`spec/…`)이 한 목록에 함께 오고, 기록이 맨 앞이다(코어 `list_archived_docs`).
+ * 아카이브의 문서 답 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
+ * spec(`spec/…`)이 한 목록에 함께 오고, 기록이 맨 앞이다(코어 `list_archived_docs`). 그중 `spec/`
+ * 아래를 엔진이 가른 spec 트리가 같은 답에 실린다 — 경로는 spec 기준이다.
  *
  * 파일 종류 표의 세 줄을 담는다: `.md` · 그림 · `.html`. **뒤에 더한다** — 위 `specFiles`와
  * 같은 규칙이다(검사가 목록을 자리로 집을 수 있다).
  *
- * `bare-archive`가 `[]`인 것은 지어낸 상태가 아니다 — 손으로 옮겨 둔 폴더에는 기록이 없고,
+ * **최상위 `tickets/`가 든다**(spec 레이아웃 구현 스펙 7절 허용 차이 4). 내장본에서 `tickets/`는 판
+ * 폴더 안의 자리라, 최상위의 것은 맞지 않은 폴더로 아이콘 없이 선다 — 이름으로 알아보던 앱은 여기
+ * `list-checks`를 줬다. 트리는 엔진이 내장본으로 가른 모양을 옮겨 적은 것이다(다리로 확인했다): 맞은
+ * 것이 없어 셋 다 맨 뒤에 코드포인트순으로 서고, 기본 문서도 코드포인트순 첫 파일이다. 아카이브
+ * 화면은 그 기본 문서를 쓰지 않고 목록의 첫 문서를 연다.
+ *
+ * `bare-archive`가 빈 목록인 것은 지어낸 상태가 아니다 — 손으로 옮겨 둔 폴더에는 기록이 없고,
  * 코어도 없으면 안 넣는다.
  */
-export const ARCHIVED_DOCS: Record<string, string[]> = {
-  "shipped-work": ["record.md", "spec/증거/샷.png", "spec/목업/조각.html"],
-  "bare-archive": [],
+export const ARCHIVED_DOCS: Record<string, ArchivedDocs> = {
+  "shipped-work": {
+    docs: ["record.md", "spec/증거/샷.png", "spec/목업/조각.html", "spec/tickets/할일.md"],
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "tickets/할일.md",
+      items: [
+        specFolder("tickets", [specFile("tickets/할일.md")]),
+        specFolder("목업", [specFile("목업/조각.html")]),
+        specFolder("증거", [specFile("증거/샷.png")]),
+      ],
+    },
+  },
+  "bare-archive": { docs: [], specTree: emptySpecTree("atelier") },
 };
 
 /**
@@ -583,6 +602,7 @@ export const ARCHIVED_DOCS: Record<string, string[]> = {
 export const ARCHIVED_FILE_BODIES: Record<string, string> = {
   "record.md": "# 기록 — 치운 일\n\n한 줄.\n",
   "spec/목업/조각.html": SPEC_FILE_BODIES["목업/조각.html"],
+  "spec/tickets/할일.md": "# 치운 일의 할 일\n\n남은 것 하나.\n",
 };
 
 /**

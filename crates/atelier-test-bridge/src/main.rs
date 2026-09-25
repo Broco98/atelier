@@ -102,8 +102,12 @@ const HANDLERS: &[(&str, Handler)] = &[
         ok(atelier_core::read_spec_file(&works_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))
     }),
     ("list_archive", |a| ok(atelier_core::list_archive(&archive_dir(mode(a)?)))),
+    // 아카이브 문서 목록도 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구
+    // (`with_archived_spec_tree`)를 진짜로 탄다.
     ("list_archived_docs", |a| {
-        ok(atelier_core::list_archived_docs(&archive_dir(mode(a)?), &text(a, "slug")?))
+        let mode = mode(a)?;
+        ok(atelier_core::list_archived_docs(&archive_dir(mode), &text(a, "slug")?)
+            .and_then(|docs| atelier_core::with_archived_spec_tree(&data_root(), mode, docs)))
     }),
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))

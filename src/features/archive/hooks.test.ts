@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { archivedDocsQuery, archivedFileQuery, archiveQuery, invalidateArchive } from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
-import type { ArchiveEntry } from "./types";
+import type { ArchivedDocs, ArchiveEntry } from "./types";
 
 // works 쪽과 같은 계약이고 근거도 같다(`works/hooks.test.ts`). **아카이빙은 works에서
 // 하나가 사라지는 일**이라 이쪽도 `works:changed`를 듣는데, 그때 지우는 것이 한 세계뿐이면
@@ -15,11 +15,17 @@ import type { ArchiveEntry } from "./types";
 // 빠져도 이 파일이 초록이다(works 쪽 `specKey`와 같은 이유).
 const docsKey = (mode: Mode) => archivedDocsQuery(mode, "치운-가").queryKey;
 
+// 문서 목록의 답 하나 — 목록과 spec 트리가 한 답으로 온다. 여기서 재는 것은 캐시 키라 트리는 비어 있다.
+const RECORD_ONLY: ArchivedDocs = {
+  docs: ["record.md"],
+  specTree: { layoutId: "atelier", fallback: null, defaultDoc: null, items: [] },
+};
+
 function seeded() {
   const client = new QueryClient();
   for (const mode of ALL_MODES) {
     client.setQueryData(archiveQuery(mode).queryKey, [] as ArchiveEntry[]);
-    client.setQueryData(docsKey(mode), ["record.md"]);
+    client.setQueryData(docsKey(mode), RECORD_ONLY);
   }
   return client;
 }
@@ -47,7 +53,7 @@ describe("archive 캐시는 세계별로 갈린다", () => {
 
   it("한 세계에 심은 문서 목록이 저쪽 세계로 새지 않는다", () => {
     const client = new QueryClient();
-    client.setQueryData(archivedDocsQuery("atelier", "겹친이름").queryKey, ["record.md"]);
+    client.setQueryData(archivedDocsQuery("atelier", "겹친이름").queryKey, RECORD_ONLY);
     expect(client.getQueryData(archivedDocsQuery("maison", "겹친이름").queryKey)).toBeUndefined();
   });
 });
