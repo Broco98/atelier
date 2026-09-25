@@ -76,9 +76,11 @@ pub struct SpecTreeGroup {
 /// 내림차순(최신이 앞), 번호가 같거나 없으면 이름의 코드포인트순, (3) 맞지 않은 것은 맨 뒤에 이름의
 /// 코드포인트순 — 이때 폴더는 이름 뒤에 `/`를 붙여 견준다. 그래야 커널이 준 경로 순서와 같다.
 ///
-/// 기본 문서는 레이아웃을 깊이 우선으로 훑어 처음 만나는, 실제로 있는 파일 항목이다. 후보는 맨
-/// 위 항목에서 그 항목까지 모두 고정 이름인 파일 항목뿐이다. 후보가 없으면 입력을 코드포인트순으로
-/// 정렬한 첫 파일이다. 내장본에서는 「있으면 `overview.md`, 없으면 첫 파일」이 된다(결정 14).
+/// 기본 문서는 레이아웃을 깊이 우선으로 훑어 처음 만나는, 실제로 파일이 맞은 파일 항목이다. 후보는
+/// 맨 위 항목에서 그 항목까지 모두 고정 이름인 파일 항목뿐이다. 앞 항목에 가린 항목(`{name}.md` 뒤의
+/// `decisions.md`)에는 파일이 맞지 않으니 후보가 되지 못한다 — 나열 순서가 이긴다. 후보가 없으면
+/// 입력을 코드포인트순으로 정렬한 첫 파일이다. 내장본에서는 「있으면 `overview.md`, 없으면 첫
+/// 파일」이 된다(결정 14).
 pub fn classify<S: AsRef<str>>(resolved: &Resolved, files: &[S]) -> SpecTree {
     let paths: Vec<String> = files.iter().filter_map(|file| clean(file.as_ref())).collect();
     let mut first = None;
@@ -510,6 +512,17 @@ mod tests {
 
         let no_guide_index = ["adr-1-x.md", "01-a/plan.md", "overview.md", "guide/other.md"];
         assert_eq!(tree(layout(), &no_guide_index).default_doc.as_deref(), Some("overview.md"));
+    }
+
+    /// 앞 항목에 가려 결코 맞지 않는 고정 이름 항목은 기본 문서 후보가 아니다 — `decisions.md`는
+    /// 앞선 `{name}.md`의 것이라(나열 순서가 이긴다, 스펙 1절) 고정 이름 길로 닿지 않는다. 후보가
+    /// 없으니 코드포인트순 첫 파일이다. 레이아웃을 훑으며 파일이 있는지만 보면 `decisions.md`가 된다.
+    #[test]
+    fn a_fixed_name_entry_shadowed_by_an_earlier_pattern_is_not_a_default_doc_candidate() {
+        let layout = vec![file("{name}.md", "file-text"), file("decisions.md", "scale")];
+        let tree = tree(layout, &["decisions.md", "a.md"]);
+        assert_eq!(tree.default_doc.as_deref(), Some("a.md"));
+        assert_eq!(outline(&tree), ["a.md (file-text)", "decisions.md (file-text)"]);
     }
 
     /// 후보가 없으면 입력을 코드포인트순으로 정렬했을 때의 첫 파일이다 — 이름 틀에만 맞는 파일은
