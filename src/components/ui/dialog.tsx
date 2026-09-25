@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)의 자리와 폭은 registry 그대로다 — 쓰는 창마다 판 3이 고친다.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](이름 바꾸기 창이 첫 쓰는 자리다).
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -45,8 +45,9 @@ const dialogPopupVariants = cva(
   {
     variants: {
       variant: {
+        // 가운데의 작은 창(이름 바꾸기). 확인 창(`alert-dialog`)과 한 계열이라 자리·폭·안쪽이 그 창과 같다.
         default:
-          "top-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-y-1/2 gap-4 p-4 sm:max-w-sm",
+          "top-1/2 grid w-[330px] max-w-[calc(100%-4rem)] -translate-y-1/2 gap-4 p-4",
         // 검색 팔레트. 위쪽 12vh에 선다(확인 창은 가운데다). 첫 줄이 입력칸이고 나머지를 목록이
         // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다.
         palette:
