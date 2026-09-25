@@ -10,7 +10,7 @@ import {
   unknownIpcCalls,
   workRow,
 } from "./harness";
-import { expect, seedWork, test } from "./l4";
+import { expect, seedLayout, seedWork, test } from "./l4";
 
 // spec 레이아웃 티켓 04 — **앱의 work 응답에 spec 트리가 실리고, 기본 문서가 그것을 따른다.**
 //
@@ -96,14 +96,9 @@ test("데이터 루트에 레이아웃 폴더를 심고 다시 읽으면 spec �
   expect(await treeOf("list_works", {})).toEqual(builtin);
 
   // 사람이 손으로 두는 것과 같다 — 다리에는 감시자가 없으니 다시 읽어야 따라온다.
-  const folder = join(home, "layouts", "atelier");
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(
-    join(folder, "layout.json"),
-    JSON.stringify({
-      root: { children: [{ pattern: "plan.md", kind: "file", icon: "scale", description: "계획" }] },
-    }),
-  );
+  seedLayout(home, "atelier", {
+    root: { children: [{ pattern: "plan.md", kind: "file", icon: "scale", description: "계획" }] },
+  });
   await page.reload();
 
   await expect(page.getByText("계획의 본문이다.")).toBeVisible();
