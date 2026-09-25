@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](이름 바꾸기 창이 첫 쓰는 자리다).
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](이름 바꾸기 창이 첫 쓰는 자리다). 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다.
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -52,6 +52,11 @@ const dialogPopupVariants = cva(
         // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다.
         palette:
           "top-[12vh] flex max-h-[60vh] w-[560px] max-w-[calc(100%-4rem)] flex-col overflow-hidden",
+        // 전체화면 뷰어(다이어그램·표). 창 가장자리에서 사방 36px씩 물러선 큰 창이고, 넓은 창에서는 1280px에서
+        // 멈춰 가운데에 선다. 머리 한 줄 아래를 본문이 채워 스스로 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는
+        // 것은 본문이 든다. 모서리는 옛 뷰어의 14px이다.
+        fullscreen:
+          "inset-y-9 flex w-[calc(100%-4.5rem)] max-w-[1280px] flex-col overflow-hidden rounded-[14px]",
       },
     },
     defaultVariants: {
