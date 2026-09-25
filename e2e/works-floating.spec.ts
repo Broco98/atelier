@@ -1,6 +1,13 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  clipboardWrites,
+  installFixtureBackend,
+  ipcCallArgs,
+  recordClipboard,
+  unknownIpcCalls,
+} from "./harness";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
 // 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · ⓘ 메타 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
@@ -271,3 +278,65 @@ for (const [what, cancel] of [
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
+
+// ── ⓘ 메타 (스토리 64~66, S35 · S39) ──
+// 머리행의 ⓘ가 작은 카드(Popover)를 연다. 행은 복사 버튼이다 — 누르면 그 값이 클립보드로 가고 카드가 닫힌다(복사가
+// 끝났다는 신호가 카드가 사라지는 것이다). 열리면 첫 행이 포커스를 받고(부품 기본), Esc로 닫으면 ⓘ로 돌아온다.
+// 트리거의 도움말 「메타」는 툴팁이다(S39 — 판 4의 규칙을 앞당겼다).
+//
+// 클립보드는 **쓰기를 적는** 하네스 손잡이로 잰다(S35) — WebKit에서 클립보드를 읽는 길은 확인되지 않았다.
+// 첫 행은 브랜치다: 고정된 일에는 브랜치가 있고, 꼬리의 base(`main`)는 행의 이름에 붙어 따라온다.
+//
+// Tab으로 행 사이를 옮기는 것(스토리 64의 가운데)은 여기서 못 잰다 — WebKit의 Tab은 버튼을 건너뛴다. 판 3 실물
+// 확인(「전체 키보드 접근」)이 본다. 복사 아이콘이 포커스에 보이는 것(스토리 66)도 모양이라 실물 확인의 몫이다.
+
+const 메타 = (page: Page) => page.getByRole("button", { name: "작업 메타", exact: true });
+// 카드는 트리거와 같은 이름을 단 `dialog`다(모달이 아니라 그 밖이 가려지지 않는다).
+const 메타카드 = (page: Page) => page.getByRole("dialog", { name: "작업 메타" });
+
+test("ⓘ를 누르면 첫 복사 행이 포커스를 받고, Enter면 그 값이 클립보드로 가고 카드가 닫힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const card = 메타카드(page);
+
+  await 메타(page).click();
+  await expect(card).toBeVisible();
+  // 첫 행이 브랜치 행이다 — 「첫 버튼이 포커스」만 보면 행 순서가 뒤집혀도 초록이다.
+  const branchRow = card.getByRole("button", { name: new RegExp(`^${pinnedWork.branch}\\b`) });
+  await expect(card.getByRole("button").first()).toBeFocused();
+  await expect(branchRow).toBeFocused();
+
+  await page.keyboard.press("Enter");
+
+  await expect(card).toHaveCount(0);
+  await expect.poll(() => clipboardWrites(page)).toEqual([pinnedWork.branch]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」).
+test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로 닫으면 복사 없이 포커스가 ⓘ로 돌아온다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const info = 메타(page);
+  const card = 메타카드(page);
+  const tooltip = page.locator("[data-slot=tooltip-content]");
+
+  await info.focus();
+  await expect(tooltip).toHaveText("메타");
+
+  await page.keyboard.press("Enter");
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button").first()).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  // 앵커: 카드가 닫혔다. 그다음에 포커스의 자리와 「안 복사했다」를 잰다.
+  await expect(card).toHaveCount(0);
+  await expect(info).toBeFocused();
+  expect(await clipboardWrites(page)).toEqual([]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

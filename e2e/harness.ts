@@ -794,6 +794,45 @@ export async function sentNotifications(
 }
 
 /**
+ * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
+ * (ⓘ 메타의 행 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * 받아 적는다. 셸 생성을 가로채는 손잡이(`holdPtySpawn`)와 알림 손잡이(`stubNotifications`)와 같은 모양이다 —
+ * 새 층이 아니다.
+ *
+ * 쓰기를 적는 이유: WebKit에서 `clipboard-read` 권한으로 클립보드를 **읽는** 길은 확인되지 않았다. 읽을 수
+ * 없으면 「복사됐다」는 화면에 안 보이는 사실이라, 앱이 넘긴 값을 그 자리에서 잡는 것이 이 층에서 잴 수 있는
+ * 전부다. 진짜 클립보드로는 안 보낸다 — 검사가 도는 기계의 클립보드를 건드리지 않는다.
+ *
+ * **페이지가 뜨기 전에 깔아야 한다** — `installFixtureBackend`와 같은 자리다.
+ */
+export async function recordClipboard(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const written: string[] = [];
+    (window as unknown as { __atelierClipboard: string[] }).__atelierClipboard = written;
+    const writeText = (text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    };
+    // `navigator.clipboard`가 없는 문맥(보안 문맥이 아닐 때)에서도 선다 — 없으면 앱의 복사가 던져, 「안 적혔다」가
+    // 손잡이 탓인지 앱 탓인지 갈리지 않는다.
+    if (navigator.clipboard) {
+      Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: writeText });
+    } else {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    }
+  });
+}
+
+/** 위 손잡이가 받아 적은 클립보드 쓰기, 쓴 순서대로. 안 깔았으면 던진다 — 없는 것을 「안 복사했다」로 읽지 않는다. */
+export async function clipboardWrites(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const written = (window as unknown as { __atelierClipboard?: string[] }).__atelierClipboard;
+    if (!written) throw new Error("recordClipboard를 먼저 깔아야 한다");
+    return written;
+  });
+}
+
+/**
  * 독 배지로 나간 값들, 나간 순서대로. `undefined`는 「배지를 없앤다」이고 와이어에서는 키가
  * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
  */
