@@ -183,6 +183,44 @@ mod tests {
         }
     }
 
+    /// 항목과 그 아래 모든 층의 아이콘 이름.
+    fn icons_in(entry: &LayoutEntry, into: &mut Vec<String>) {
+        into.extend(entry.icon.clone());
+        for child in &entry.children {
+            icons_in(child, into);
+        }
+    }
+
+    /// **내장본의 아이콘 이름이 앱의 아이콘 표에 모두 있다**(구현 스펙 4절 「아이콘」). 엔진은 아이콘
+    /// 이름을 해석하지 않고 넘기기만 하고, 이름을 그림으로 바꾸는 것은 앱의 표
+    /// (`src/features/works/spec-icons.ts`)다. 표에 없는 이름은 아이콘 없이 그려지므로, 한쪽의 오타
+    /// 하나로 `overview.md`의 나침반이 **조용히** 사라진다 — 화면은 멀쩡해 보인다.
+    ///
+    /// 두 언어 사이라 부탁이 아니라 테스트로 묶는다. 지침이 `refs.ts`를 읽는 교차 검사
+    /// (`atelier-cli`의 `instructions.rs`)와 같은 방식이다. 표의 키는 늘 따옴표로 적는다 —
+    /// 그 모양(`"compass":`)이 이 검사가 찾는 것이다.
+    #[test]
+    fn every_builtin_icon_is_in_the_apps_icon_table() {
+        let table = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src/features/works/spec-icons.ts"
+        ))
+        .expect("spec-icons.ts moved; update this test and the app's icon table together");
+
+        for mode in [Mode::Atelier, Mode::Maison] {
+            let mut icons = Vec::new();
+            icons_in(&builtin_layout(mode).root, &mut icons);
+            // 못 읽은 것이 「다 있다」로 읽히지 않게 — 내장본에는 아이콘이 다섯 있다
+            assert_eq!(icons.len(), 5, "{mode} 내장본의 아이콘 수가 바뀌었다: {icons:?}");
+            for icon in icons {
+                assert!(
+                    table.contains(&format!("\"{icon}\":")),
+                    "{mode} 내장본의 아이콘 '{icon}'이 앱의 아이콘 표에 없다"
+                );
+            }
+        }
+    }
+
     /// **한 안내문에 두 표기가 섞이지 않는다.** 판을 `NN-`으로도 `{n}`으로도 말하면 에이전트는
     /// 둘이 다른 것인 줄 안다.
     #[test]
