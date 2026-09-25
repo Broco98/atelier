@@ -36,7 +36,10 @@ pub struct LayoutEntry {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 파일인가 폴더인가. spec 트리가 JSON으로 내보낼 때는 `layout.json`의 `kind`와 같은 글자
+/// (`"file"`·`"folder"`)다 — 읽기(parse)는 이 파생을 쓰지 않고 글자를 손으로 가른다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EntryKind {
     File,
     Folder,

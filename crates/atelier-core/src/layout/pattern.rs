@@ -70,6 +70,56 @@ pub(crate) fn pieces(pattern: &str) -> Result<Vec<Piece<'_>>, String> {
     Ok(out)
 }
 
+/// 자리 표시자가 없는 고정 이름인가 — 그런 틀은 이름 하나에만 맞는다.
+pub(crate) fn is_fixed(pattern: &str) -> bool {
+    pieces(pattern).is_ok_and(|pieces| pieces.iter().all(|piece| matches!(piece, Piece::Text(_))))
+}
+
+/// 이름 하나가 틀에 맞았을 때 — `{n}`이 있는 틀이면 그 값을 담는다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Matched {
+    pub n: Option<u64>,
+}
+
+/// 파일·폴더 이름 하나(경로 조각 하나)가 틀에 맞는가. 대소문자를 가린다.
+///
+/// 견주기 전에 틀과 이름을 **둘 다 NFC로** 맞춘다 — macOS에서는 한글 이름이 NFD로 적히기도
+/// 한다. 사용자가 등록한 `학습-계획.md`가 디스크의 같은 이름을 못 알아보면 안 된다.
+///
+/// 문법에 어긋난 틀은 아무것에도 맞지 않는다 — 읽기(parse)가 그런 틀을 거절하므로 파일에서 온
+/// 레이아웃에는 없고, 코드가 지은 레이아웃만 그럴 수 있다.
+pub(crate) fn match_name(pattern: &str, name: &str) -> Option<Matched> {
+    let nfc = icu_normalizer::ComposingNormalizerBorrowed::new_nfc();
+    let pattern = nfc.normalize(pattern);
+    let pieces = pieces(&pattern).ok()?;
+    match_pieces(&pieces, &nfc.normalize(name))
+}
+
+/// 조각을 앞에서부터 맞춘다. 자리 표시자는 **긴 것부터** 잡아 보고, 뒤가 맞지 않으면 한 글자씩
+/// 줄인다 — 자리 표시자는 틀마다 둘까지라 되짚기가 짧다.
+fn match_pieces(pieces: &[Piece<'_>], name: &str) -> Option<Matched> {
+    let Some((first, rest)) = pieces.split_first() else {
+        return name.is_empty().then_some(Matched { n: None });
+    };
+    match first {
+        Piece::Text(text) => match_pieces(rest, name.strip_prefix(text)?),
+        // ASCII 숫자 하나 이상. 64비트 정수를 넘는 자리는 맞지 않는다
+        Piece::Number => {
+            let digits = name.bytes().take_while(u8::is_ascii_digit).count();
+            (1..=digits).rev().find_map(|end| {
+                let n = name[..end].parse::<u64>().ok()?;
+                match_pieces(rest, &name[end..])?;
+                Some(Matched { n: Some(n) })
+            })
+        }
+        // 비어 있지 않은 글자 — 글자마다 그 끝에서 잘라 본다
+        Piece::Name => name
+            .char_indices()
+            .rev()
+            .find_map(|(i, c)| match_pieces(rest, &name[i + c.len_utf8()..])),
+    }
+}
+
 fn spelling(piece: Piece<'_>) -> &'static str {
     match piece {
         Piece::Number => "{n}",

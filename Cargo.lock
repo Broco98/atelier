@@ -285,6 +285,7 @@ version = "0.14.1"
 dependencies = [
  "chrono",
  "dirs",
+ "icu_normalizer",
  "serde",
  "serde_json",
  "serde_yaml_ng",

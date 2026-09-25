@@ -28,9 +28,12 @@ pub enum LayoutSource {
     Folder(PathBuf),
 }
 
-/// resolve의 결과 — render에 그대로 건넬 것들.
+/// resolve의 결과 — render와 classify에 그대로 건넬 것들.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Resolved {
+    /// `layout`이 누구의 것인가 — 그 레이아웃의 id(모드 이름). work 지정의 폴더가 있으면 그 id이고,
+    /// 물러섰으면 도착한 내장본의 모드다. spec 트리가 이 값을 그대로 싣는다.
+    pub id: Mode,
     pub layout: SpecLayout,
     pub source: LayoutSource,
     /// 파일에서 온 레이아웃일 때만 있다.
@@ -73,6 +76,7 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
         // 폴더가 없으면 그 id는 코드 내장본의 것이다 — 가린 폴더가 없을 뿐, 물러선 것이 아니다
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Resolved {
+                id,
                 layout: builtin_layout(id),
                 source: LayoutSource::Builtin,
                 templates: None,
@@ -83,6 +87,7 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
         Ok(_) => match read_folder(&folder) {
             Ok(layout) => {
                 return Ok(Resolved {
+                    id,
                     templates: Some(template_verdict(&layout, &folder, shown)),
                     layout,
                     source: LayoutSource::Folder(folder),
@@ -93,6 +98,7 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
         },
     };
     Ok(Resolved {
+        id: mode,
         layout: builtin_layout(mode),
         source: LayoutSource::Builtin,
         templates: None,
