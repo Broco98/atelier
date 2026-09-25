@@ -204,16 +204,22 @@
     --background: oklch(1 0 0);
     --foreground: #1a1a1e;
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    /* **글자색은 앱 글자색이다**(결정 2). shadcn 원본의 `oklch(0.145 0 0)`(≈#0a0a0a)은 앱
+       본문(#1a1a1e)보다 한 단 검어, 판 3부터 들어오는 메뉴·Popover·Select·창·토스트
+       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옛 화면 옆에서
+       튄다. 바탕(흰색)은 이미 앱의 떠 있는 카드와 같은 값이다. */
+    --card-foreground: var(--foreground);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
+    --popover-foreground: var(--foreground);
     --primary: #5e6ad2;
     --primary-foreground: #ffffff;
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
+    /* shadcn 부품이 읽는 회색 둘은 아래 상태 스케일을 가리킨다(결정 2) — 부품이 hover·선택에
+       칠하는 회색이 옛 화면의 네 단과 같아야 둘이 한 화면에서 안 갈린다. */
+    --muted: var(--state-1);
     --muted-foreground: #55555e;
-    --accent: rgba(20, 20, 28, 0.05);
+    --accent: var(--state-2);
     --accent-foreground: #1a1a1e;
     --destructive: oklch(0.577 0.245 27.325);
     --border: #e5e5e8;
@@ -261,7 +267,10 @@
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
          행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
-       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경·상태 배지가 그 자리다.
+       shadcn의 --accent·--muted는 이 스케일의 2단·1단을 **가리키는 이름**이다(결정 2 — 부품이
+       읽는 회색을 앱 값에 맞췄다). 칩 배경·상태 배지의 bg-accent가 그래서 2단이다. 그래도 상태
+       배경은 **--state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를
+       말하지 않는다.
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
 
        --accent를 상태 hover로 쓰던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을 고정한다).
