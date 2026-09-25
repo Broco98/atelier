@@ -159,7 +159,7 @@ test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다"
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("확인할 것 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => {
+test("알림 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 360 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);

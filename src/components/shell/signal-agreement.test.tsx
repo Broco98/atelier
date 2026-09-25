@@ -21,7 +21,7 @@ import type { WorkView } from "@/features/works/types";
 import { AttentionBand } from "./attention-band";
 import { SIGNAL_LABEL, SignalLine } from "./shell-signal";
 
-// **세 자리가 한 사실을 말한다**(스토리 79). 사이드바 행(#203) · 「확인할 것」 띠(#204) ·
+// **세 자리가 한 사실을 말한다**(스토리 79). 사이드바 행(#203) · 알림 띠(#204) ·
 // 셸 탭(#205)은 어휘가 셋이다 — 점 · 줄 · 채움. 결정 6이 그것을 허락했다(「표면이 다르면
 // 문법이 달라도 된다」). 그런데 **색과 말은 하나여야 한다**: 같은 셸이 사이드바에서 앰버인데
 // 탭에서 초록이면 사람은 둘 중 무엇을 믿을지 알 수 없고, 그 어긋남은 세 파일 어디를 봐도

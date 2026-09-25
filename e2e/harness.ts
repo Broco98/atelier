@@ -503,7 +503,7 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
   await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
 }
 
-/** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
+/** 알림 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
