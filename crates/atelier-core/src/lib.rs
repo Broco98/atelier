@@ -51,9 +51,10 @@ pub use recent::touch_recent_work;
 pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
 pub use layout::{
-    builtin_layout, classify, parse_layout, render_layout, resolve_layout, serialize_layout,
-    EntryKind, Fallback, LayoutEntry, LayoutError, LayoutSource, Rendered, Resolved, SpecLayout,
-    SpecTree, SpecTreeGroup, SpecTreeItem, TemplateVerdict,
+    builtin_layout, classify, classify_works, parse_layout, render_layout, resolve_layout,
+    serialize_layout, with_spec_trees, EntryKind, Fallback, LayoutEntry, LayoutError, LayoutSource,
+    Rendered, Resolved, SpecLayout, SpecTree, SpecTreeGroup, SpecTreeItem, TemplateVerdict,
+    WorkWithSpecTree,
 };
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};

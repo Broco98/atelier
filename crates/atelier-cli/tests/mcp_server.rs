@@ -490,6 +490,56 @@ fn a_broken_settings_file_leaves_the_guidance_alone() {
     assert_eq!(guidance_of(&mut server, 2, "cart"), builtin_guidance(atelier_core::Mode::Atelier));
 }
 
+/// 판 02 — spec 트리는 **앱 쪽 work 응답에만** 붙는다(구현 스펙 3절). 에이전트가 받는 work JSON은
+/// 그대로라 불어나지 않는다. MCP와 앱이 같은 work 뷰를 쓰므로, 그 뷰에 필드를 더하는 변경이
+/// 여기서 걸린다.
+///
+/// spec 문서와 레이아웃 폴더를 함께 심는다 — 트리가 샌다면 비지 않은 채로 샌다.
+#[test]
+fn the_work_json_agents_get_carries_no_spec_tree() {
+    let home = tempfile::tempdir().unwrap();
+    for (root, slug) in [("works", "cart"), ("maison/rooms", "finance")] {
+        plant(&home.path().join(root), slug, "심은 것");
+        std::fs::write(home.path().join(root).join(slug).join("spec/overview.md"), "# 개요\n").unwrap();
+    }
+    for id in ["atelier", "maison"] {
+        plant_layout(home.path(), id, "layout.json",
+            r#"{ "root": { "children": [ { "pattern": "overview.md", "kind": "file", "icon": "compass" } ] } }"#);
+    }
+
+    for (mode, slug) in [(atelier_core::Mode::Atelier, "cart"), (atelier_core::Mode::Maison, "finance")] {
+        let mut server = Server::start_with_mode(home.path(), Some(mode.as_str()));
+        let first_json = |res: &Value| -> Value {
+            assert_eq!(res["result"]["isError"], false, "{mode}: {res}");
+            serde_json::from_str(res["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let listed = first_json(&server.request(2, "tools/call",
+            json!({ "name": "atelier_list_works", "arguments": {} })));
+        let listed = listed.as_array().unwrap_or_else(|| panic!("{mode}: {listed}"));
+        assert_eq!(listed.len(), 1, "{mode}: {listed:?}");
+
+        let got = first_json(&server.request(3, "tools/call",
+            json!({ "name": "atelier_get_work", "arguments": { "work_slug": slug } })));
+
+        let resumed = first_json(&server.request(4, "tools/call",
+            json!({ "name": "atelier_start_work", "arguments": { "title": "심은 것", "slug": slug } })));
+        let started = first_json(&server.request(5, "tools/call",
+            json!({ "name": "atelier_start_work", "arguments": { "title": "새 것", "slug": "fresh" } })));
+
+        for (tool, work) in [
+            ("atelier_list_works", &listed[0]),
+            ("atelier_get_work", &got),
+            ("atelier_start_work (재개)", &resumed),
+            ("atelier_start_work (새로)", &started),
+        ] {
+            // 대조군 — 엉뚱한 블록을 읽고 있으면 아래 단언이 늘 초록이다
+            assert!(work["specFiles"].is_array(), "{mode} {tool}: work JSON이 아니다: {work}");
+            assert!(work.get("specTree").is_none(), "{mode} {tool}: spec 트리가 샜다: {work}");
+        }
+    }
+}
+
 #[test]
 fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
     let home = tempfile::tempdir().unwrap();
