@@ -242,9 +242,10 @@ pub async fn pty_resize(
     pty::resize(&pool, id, cols, rows)
 }
 
-// **blocking 풀에서 닫는다.** 셸을 닫으면 그 셸에서 나온 것에 SIGTERM을 보내고 최대 2초를 기다린다
-// (프로세스 결정 3). async 명령 안에서 그대로 기다리면 tokio 워커 하나가 그동안 막힌다. 프런트는 이 명령의
-// 끝을 기다리지 않으므로(`terminal-store.ts`의 `ignoreGone`) ×는 바로 닫힌다.
+// 셸을 닫으면 그 셸에서 나온 것을 모두 끝낸다(프로세스 결정 3). **풀에서 빼고 판정까지 한 뒤 돌아온다** —
+// SIGTERM 뒤 최대 2초의 유예와 SIGKILL은 `pty::kill`이 뒤 스레드로 보내고, 그 끝내기는 진행 중인 끝내기 목록에
+// 올라 앱 종료가 마감한다(프로세스 스펙 S5). 스냅샷 한 장도 기다리는 일이라 blocking 풀에서 돌려 tokio 워커를
+// 막지 않는다. 프런트는 이 명령의 끝을 기다리지 않는다(`terminal-store.ts`의 `ignoreGone`).
 #[tauri::command]
 pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
     let pool = Arc::clone(&pool);
@@ -325,7 +326,7 @@ pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>>
 
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
 /// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
-/// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).
+/// `app.exit`가 부르는 `RunEvent::Exit`의 `pty::end_for_exit`가 그대로 돈다(`lib.rs`).
 ///
 /// 모드를 안 받는다 — 앱 하나를 끄는 일이라 세계가 없다.
 #[tauri::command]

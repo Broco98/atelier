@@ -12,10 +12,16 @@
 //! pid가 재사용되면 남에게 신호가 간다.
 //!
 //! **두 단계(`start` · `finish`)로 가른 것은 부르는 쪽이 그 사이에 할 일이 있어서다.** 셸 닫기는 신호를 보낸
-//! 뒤 pty를 떨군다(`pty.rs`). 유예를 뒤로 보낼 때(티켓 05) 「진행 중인 끝내기」가 쥐는 것도 이 값이다.
+//! 뒤 pty를 떨구고, 유예와 SIGKILL(`finish`)은 뒤 스레드에 맡긴다.
+//!
+//! **뒤로 보낸 끝내기는 모두 「진행 중인 끝내기」(`InFlight`)에 오른다**(프로세스 스펙 S5). 뒤 스레드는 앱과
+//! 함께 사라진다 — 유예 중에 앱이 닫히면 SIGKILL을 아무도 안 보낸다. 그래서 앱 종료가 이 목록을 동기로
+//! 마감한다(`InFlight::close`).
 //!
 //! 모듈 이름에 `terminate`를 쓰지 않는다 — `terminate.rs`는 ⌘Q · Dock 종료를 묻는 macOS 델리게이트다.
 
+use std::collections::{BTreeMap, HashSet};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::{snapshot, Identity};
@@ -54,6 +60,10 @@ pub struct Group {
 }
 
 /// 신호를 보낸 끝내기 — 기다림과 SIGKILL이 남았다.
+///
+/// **복사해 둘이 함께 마감해도 된다.** 진행 중인 끝내기 목록이 쥔 것이 복사본이다 — 뒤 스레드와 앱 종료가 같은
+/// 끝내기를 나란히 마감할 수 있고, 신호마다 직전에 신원을 다시 보니 한쪽이 끝낸 것을 다른 쪽이 또 쏘지 않는다.
+#[derive(Clone)]
 pub struct Ending<K: Kernel = Os> {
     kernel: K,
     deadline: Instant,
@@ -170,8 +180,169 @@ impl<K: Kernel> Ending<K> {
     }
 }
 
+/// 판정 중인 닫기를 앱 종료가 기다려 주는 최대 시간. 판정은 스냅샷 한 장과 순수 함수라 ms 단위다 — 이 값은
+/// 목록에 끝내 안 오르는 몫(판정 중 패닉)이 종료를 붙잡지 않게 둔 상한이다.
+const JUDGING_LIMIT: Duration = Duration::from_millis(500);
+
+/// **진행 중인 끝내기** — 뒤 스레드로 보낸 끝내기의 목록(프로세스 스펙 S5).
+///
+/// 셸 닫기 · 새로고침은 신호를 보낸 뒤 유예와 SIGKILL을 뒤 스레드에 맡기고 곧바로 돌아온다. 그 스레드는 앱과
+/// 함께 사라진다 — ×를 누르고 2초 안에 ⌘Q를 누르면 SIGTERM을 무시한 자손에 SIGKILL이 영영 안 간다. 그래서
+/// 뒤로 보내는 끝내기는 모두 여기 오르고, 앱 종료가 목록을 동기로 마감한다(`close`).
+///
+/// 한 닫기는 두 걸음으로 오른다.
+/// 1. `claim` — **풀에서 셸을 빼기 전에** 「판정 중」으로 센다. 판정이 끝나기 전에 종료가 오면 종료는 그것이
+///    목록에 오르기를 기다린다. 뺀 셸이 풀에도 목록에도 없는 틈이 없다.
+/// 2. `Claim::start` — 신호를 보내고 끝내기(신원들, 마감 시각, 셸 그룹)를 목록에 올린다. `Running::finish`가
+///    마감하고 내린다.
+pub struct InFlight<K: Kernel = Os> {
+    kernel: K,
+    state: Mutex<Listed<K>>,
+    /// 판정 중이던 것이 목록에 오르거나 물러날 때 울린다 — 종료가 그것을 기다린다.
+    changed: Condvar,
+}
+
+struct Listed<K: Kernel> {
+    next: u64,
+    /// `claim` 했는데 아직 `start` 하지 않은 닫기 수.
+    judging: usize,
+    /// 오른 차례대로.
+    endings: BTreeMap<u64, Ending<K>>,
+}
+
+impl Default for InFlight {
+    fn default() -> Self {
+        InFlight::with_kernel(Os)
+    }
+}
+
+impl<K: Kernel> InFlight<K> {
+    fn with_kernel(kernel: K) -> Self {
+        InFlight {
+            kernel,
+            state: Mutex::new(Listed { next: 0, judging: 0, endings: BTreeMap::new() }),
+            changed: Condvar::new(),
+        }
+    }
+
+    /// 잠금이 오염됐다는 것은 다른 스레드가 패닉했다는 뜻이다. 목록은 그래도 맞다 — 안을 꺼내 이어 간다.
+    fn lock(&self) -> MutexGuard<'_, Listed<K>> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 닫기 하나를 「판정 중」으로 센다. **풀에서 셸을 빼기 전에** 부른다.
+    pub fn claim(self: &Arc<Self>) -> Claim<K> {
+        self.lock().judging += 1;
+        Claim { list: Arc::clone(self), open: true }
+    }
+
+    /// 목록에 오른 끝내기의 대상 신원 전부 — 오른 차례대로. 앱은 목록을 `close`로만 읽는다.
+    #[cfg(test)]
+    fn listed(&self) -> Vec<Identity> {
+        self.lock().endings.values().flat_map(|ending| ending.targets.iter().map(|(id, _)| *id)).collect()
+    }
+
+    /// **앱 종료** — 새로 고른 대상의 끝내기를 시작하고, 목록의 끝내기와 함께 마감할 차례로 돌려준다.
+    ///
+    /// - 판정 중인 닫기가 있으면 그것이 목록에 오르기를 기다린다(최대 `JUDGING_LIMIT`).
+    /// - 목록의 끝내기는 **남은 유예만** 기다린다 — 마감 시각을 그대로 들고 온다. 이미 지났으면 곧바로
+    ///   SIGKILL이다.
+    /// - 목록이 이미 SIGTERM을 보낸 신원에는 다시 안 보낸다. 두 번째 SIGTERM을 「그래도 끝내라」로 읽는 도구가
+    ///   있다 — 정리하던 것이 정리를 버린다.
+    ///
+    /// 목록에서 내리지 않는다. 뒤 스레드가 같은 끝내기를 나란히 마감하다 내린다 — 앱이 먼저 끝나면 함께
+    /// 사라진다.
+    pub fn close(&self, targets: &[Identity], groups: &[Group]) -> Closing<K> {
+        let (listed, _) = self
+            .changed
+            .wait_timeout_while(self.lock(), JUDGING_LIMIT, |listed| listed.judging > 0)
+            .unwrap_or_else(|e| e.into_inner());
+        let mut endings: Vec<Ending<K>> = listed.endings.values().cloned().collect();
+        drop(listed);
+
+        let signalled: HashSet<Identity> = endings
+            .iter()
+            .flat_map(|ending| ending.targets.iter().filter(|(_, signalled)| *signalled).map(|(id, _)| *id))
+            .collect();
+        let fresh: Vec<Identity> = targets.iter().copied().filter(|id| !signalled.contains(id)).collect();
+        endings.push(Ending::start_with(self.kernel.clone(), &fresh, groups));
+        // 오른 차례는 거의 신호를 보낸 차례지만, 두 스레드에서는 뒤바뀔 수 있다 — 이른 마감이 늦은 것 뒤에서
+        // 기다리지 않게 마감 시각으로 줄 세운다.
+        endings.sort_by_key(|ending| ending.deadline);
+        Closing(endings)
+    }
+}
+
+/// 풀에서 뺀 셸의 닫기 — 판정 중이다. `start` 하지 않고 떨어지면(뺄 셸이 없었다, 판정이 패닉했다) 셈에서
+/// 물러나 종료가 기다리지 않는다.
+pub struct Claim<K: Kernel = Os> {
+    list: Arc<InFlight<K>>,
+    open: bool,
+}
+
+impl<K: Kernel> Claim<K> {
+    /// 끝내기를 시작하고(대상 SIGTERM, 셸 그룹 SIGHUP) 목록에 올린다. 곧바로 돌아온다.
+    pub fn start(mut self, targets: &[Identity], groups: &[Group]) -> Running<K> {
+        let ending = Ending::start_with(self.list.kernel.clone(), targets, groups);
+        let id = {
+            let mut listed = self.list.lock();
+            let id = listed.next;
+            listed.next += 1;
+            listed.endings.insert(id, ending.clone());
+            listed.judging -= 1;
+            id
+        };
+        self.open = false;
+        self.list.changed.notify_all();
+        Running { list: Arc::clone(&self.list), id, ending }
+    }
+}
+
+impl<K: Kernel> Drop for Claim<K> {
+    fn drop(&mut self) {
+        if self.open {
+            self.list.lock().judging -= 1;
+            self.list.changed.notify_all();
+        }
+    }
+}
+
+/// 목록에 오른 끝내기 — 뒤 스레드가 쥐고 마감한다.
+pub struct Running<K: Kernel = Os> {
+    list: Arc<InFlight<K>>,
+    id: u64,
+    ending: Ending<K>,
+}
+
+impl<K: Kernel> Running<K> {
+    /// 유예를 기다리고 남은 것을 SIGKILL로 끝낸 뒤 목록에서 내린다.
+    ///
+    /// 마감하지 않고 떨어지면 목록에 남는다 — 앱 종료가 대신 마감한다.
+    pub fn finish(self) -> Vec<(Identity, Outcome)> {
+        let Running { list, id, ending } = self;
+        let outcomes = ending.finish();
+        list.lock().endings.remove(&id);
+        outcomes
+    }
+}
+
+/// 앱 종료가 마감할 끝내기들 — 마감 시각이 이른 것부터.
+pub struct Closing<K: Kernel = Os>(Vec<Ending<K>>);
+
+impl<K: Kernel> Closing<K> {
+    /// 마감 시각이 이른 것부터 차례로 마감한다. **모두 끝나야 돌아온다** — 그 사이 다른 끝내기의 유예도 함께
+    /// 흐르므로, 걸리는 시간은 가장 늦은 마감 시각까지다(최악 2초). 다 끝나면 바로 나온다.
+    ///
+    /// 결과는 목록의 것부터 마감한 차례대로, 대상마다 받은 순서 그대로다.
+    pub fn finish(self) -> Vec<(Identity, Outcome)> {
+        self.0.into_iter().flat_map(Ending::finish).collect()
+    }
+}
+
 /// 끝내기가 딛는 커널 — 신원 읽기, 신호, 시계. 검사는 가짜 커널로 모든 갈래를 잰다.
-pub trait Kernel {
+///
+/// `Clone`인 것은 진행 중인 끝내기 목록이 끝내기를 복사해 쥐기 때문이다.
+pub trait Kernel: Clone {
     /// 그 pid의 지금 신원. 없거나 이미 끝났으면(좀비 포함) `None`.
     fn identity_of(&self, pid: u32) -> Option<Identity>;
     fn kill(&self, pid: u32, sig: i32);
@@ -183,6 +354,7 @@ pub trait Kernel {
 }
 
 /// 이 기계의 커널.
+#[derive(Debug, Clone, Copy)]
 pub struct Os;
 
 impl Kernel for Os {
@@ -570,6 +742,262 @@ mod tests {
             vec![(id(30), Outcome::Ended), (id(20), Outcome::Gone), (id(10), Outcome::Ended)]
         );
     }
+
+    /// 가짜 시계를 이 시각(ms)까지 보낸다.
+    fn until(fake: &Fake, ms: u64) {
+        let now = fake.clock.get();
+        let at = Duration::from_millis(ms);
+        assert!(at >= now, "시계를 되돌릴 수 없다 — {now:?}에서 {at:?}로");
+        fake.sleep(at - now);
+    }
+
+    /// **진행 중인 끝내기 목록은 시작할 때 오르고 끝나면 내린다.** 겹쳐 돈 둘이 서로의 항목을 잃지 않는다 —
+    /// 나중에 시작한 것이 먼저 끝나도.
+    #[test]
+    fn an_ending_is_listed_from_start_to_finish() {
+        let fake = Fake::new(vec![proc(10), proc(20), proc(30)], vec![]);
+        let list = Arc::new(InFlight::with_kernel(&fake));
+        let before = list.listed();
+        let first = list.claim().start(&[id(10)], &[]);
+        let second = list.claim().start(&[id(20), id(30)], &[]);
+        let both = list.listed();
+        let _ = second.finish();
+        let after_second = list.listed();
+        let _ = first.finish();
+        let after_first = list.listed();
+
+        assert_eq!(
+            (before, both, after_second, after_first),
+            (vec![], vec![id(10), id(20), id(30)], vec![id(10)], vec![]),
+            "(처음, 둘 다 오른 뒤, 나중 것이 끝난 뒤, 둘 다 끝난 뒤)"
+        );
+    }
+
+    /// 아무도 없는 세상 — 어떤 신원도 맞지 않아 신호가 안 간다. **스레드를 넘나드는 검사가 쓴다**(가짜 커널은
+    /// 한 스레드용이다).
+    #[derive(Clone, Copy)]
+    struct Void;
+
+    impl Kernel for Void {
+        fn identity_of(&self, _pid: u32) -> Option<Identity> {
+            None
+        }
+        fn kill(&self, pid: u32, sig: i32) {
+            panic!("아무도 없는 세상에서 pid {pid}에 신호 {sig}가 갔다");
+        }
+        fn killpg(&self, pgid: u32, sig: i32) {
+            panic!("아무도 없는 세상에서 그룹 {pgid}에 신호 {sig}가 갔다");
+        }
+        fn group_alive(&self, _pgid: u32) -> bool {
+            false
+        }
+        fn now(&self) -> Instant {
+            Instant::now()
+        }
+        fn sleep(&self, duration: Duration) {
+            std::thread::sleep(duration);
+        }
+    }
+
+    /// 여덟이 **다른 스레드에서** 겹쳐 돌아도 서로의 항목을 잃지 않는다 — 셸 닫기는 blocking 풀에서, 새로고침은
+    /// 메인 스레드에서, 마감은 뒤 스레드에서 목록을 고친다.
+    #[test]
+    fn endings_on_many_threads_keep_each_others_entries() {
+        const N: u32 = 8;
+        let list = Arc::new(InFlight::with_kernel(Void));
+        let started = Arc::new(std::sync::Barrier::new(N as usize + 1));
+        let release = Arc::new(std::sync::Barrier::new(N as usize + 1));
+        let threads: Vec<_> = (0..N)
+            .map(|n| {
+                let (list, started, release) =
+                    (Arc::clone(&list), Arc::clone(&started), Arc::clone(&release));
+                std::thread::spawn(move || {
+                    let running = list.claim().start(&[id(100 + n)], &[]);
+                    started.wait();
+                    release.wait();
+                    running.finish()
+                })
+            })
+            .collect();
+        started.wait();
+        let mut all = list.listed();
+        all.sort_by_key(|id| id.pid);
+        release.wait();
+        for thread in threads {
+            thread.join().expect("끝내기 스레드가 패닉했다");
+        }
+
+        assert_eq!(all, (0..N).map(|n| id(100 + n)).collect::<Vec<_>>(), "모두 오른 순간의 목록");
+        assert_eq!(list.listed(), vec![], "모두 끝난 뒤의 목록");
+    }
+
+    /// 앱 종료 한 줄 — 뒤로 보낸 끝내기들이 선 세상에서 종료 길을 부른다.
+    struct Exit {
+        what: &'static str,
+        world: Vec<FakeProc>,
+        /// 뒤로 보낸 끝내기: (시작 ms, 대상, 셸 그룹, 뒤 스레드가 종료 전에 마감했나).
+        in_flight: Vec<(u64, Vec<Identity>, Vec<Group>, bool)>,
+        /// 종료 길을 부르는 시각(ms).
+        at: u64,
+        /// 종료의 판정이 고른 것 — 이 세대의 표식을 문 전부와 풀의 PID 트리.
+        targets: Vec<Identity>,
+        groups: Vec<Group>,
+        sent: Vec<(u128, To, i32)>,
+        outcomes: Vec<(u32, Outcome)>,
+        done_at: u128,
+    }
+
+    /// **앱 종료 표**(프로세스 스펙 S5). 종료는 진행 중인 끝내기를 **남은 유예만** 기다려 마감하고, 스스로 고른
+    /// 것은 제 2초를 기다린다. 뒤 스레드는 돌리지 않는다 — 앱이 끝나면 함께 사라지는 그것을, 종료 혼자
+    /// 마감해야 한다.
+    #[test]
+    fn the_exit_closes_what_is_in_flight_within_the_grace_left() {
+        let cases = [
+            Exit {
+                what: "유예 중인 끝내기의 신원도 종료가 끝낸다 — 남은 유예만 기다리고, SIGTERM을 다시 안 보낸다",
+                world: vec![proc(10).on_term(Fate::Ignores), proc(20).on_term(Fate::Ignores)],
+                in_flight: vec![(0, vec![id(10)], vec![], false)],
+                at: 500,
+                targets: vec![id(10), id(20)],
+                groups: vec![],
+                sent: vec![
+                    (0, P(10), SIGTERM),
+                    (500, P(20), SIGTERM),
+                    (2000, P(10), SIGKILL),
+                    (2500, P(20), SIGKILL),
+                ],
+                outcomes: vec![(10, Outcome::Forced), (20, Outcome::Forced)],
+                done_at: 2500,
+            },
+            Exit {
+                what: "마감 시각이 지났는데 뒤 스레드가 아직 못 보낸 SIGKILL은 종료가 곧바로 보낸다",
+                world: vec![proc(10).on_term(Fate::Ignores)],
+                in_flight: vec![(0, vec![id(10)], vec![], false)],
+                at: 2300,
+                targets: vec![],
+                groups: vec![],
+                sent: vec![(0, P(10), SIGTERM), (2300, P(10), SIGKILL)],
+                outcomes: vec![(10, Outcome::Forced)],
+                done_at: 2300,
+            },
+            Exit {
+                what: "모두 SIGTERM에 곧 끝나면 2초를 채우지 않는다",
+                world: vec![
+                    proc(10).on_term(Fate::DiesAfter(Duration::from_millis(100))),
+                    proc(20).on_term(Fate::DiesAfter(Duration::from_millis(100))),
+                ],
+                in_flight: vec![(0, vec![id(10)], vec![], false)],
+                at: 50,
+                targets: vec![id(20)],
+                groups: vec![],
+                sent: vec![(0, P(10), SIGTERM), (50, P(20), SIGTERM)],
+                outcomes: vec![(10, Outcome::Ended), (20, Outcome::Ended)],
+                done_at: 150,
+            },
+            Exit {
+                what: "겹쳐 돈 둘을 모두 마감한다 — 각자의 마감 시각에",
+                world: vec![proc(10).on_term(Fate::Ignores), proc(20).on_term(Fate::Ignores)],
+                in_flight: vec![(0, vec![id(10)], vec![], false), (1000, vec![id(20)], vec![], false)],
+                at: 1500,
+                targets: vec![],
+                groups: vec![],
+                sent: vec![
+                    (0, P(10), SIGTERM),
+                    (1000, P(20), SIGTERM),
+                    (2000, P(10), SIGKILL),
+                    (3000, P(20), SIGKILL),
+                ],
+                outcomes: vec![(10, Outcome::Forced), (20, Outcome::Forced)],
+                done_at: 3000,
+            },
+            Exit {
+                what: "뒤 스레드가 마감한 끝내기는 목록에서 내려 종료가 다시 안 본다",
+                world: vec![proc(10).on_term(Fate::DiesAfter(Duration::from_millis(100)))],
+                in_flight: vec![(0, vec![id(10)], vec![], true)],
+                at: 500,
+                targets: vec![],
+                groups: vec![],
+                sent: vec![(0, P(10), SIGTERM)],
+                outcomes: vec![],
+                done_at: 500,
+            },
+            Exit {
+                what: "뒤로 보낸 셸 그룹도 남은 유예만 — SIGHUP을 무시하는 셸은 그 마감 시각에 그룹째 SIGKILL",
+                world: vec![proc(100).on_hup(Fate::Ignores)],
+                in_flight: vec![(0, vec![], vec![shell(100)], false)],
+                at: 500,
+                targets: vec![],
+                groups: vec![],
+                sent: vec![(0, G(100), SIGHUP), (2000, G(100), SIGKILL)],
+                outcomes: vec![],
+                done_at: 2000,
+            },
+            Exit {
+                what: "종료가 고른 셸 그룹은 종료 때 SIGHUP을 받는다",
+                world: vec![proc(100).on_hup(Fate::DiesAfter(Duration::from_millis(60)))],
+                in_flight: vec![],
+                at: 0,
+                targets: vec![],
+                groups: vec![shell(100)],
+                sent: vec![(0, G(100), SIGHUP)],
+                outcomes: vec![],
+                done_at: 100,
+            },
+        ];
+
+        let mut wrong = Vec::new();
+        for case in cases {
+            let fake = Fake::new(case.world, vec![]);
+            let list = Arc::new(InFlight::with_kernel(&fake));
+            // 마감하지 않은 것은 쥐고만 있다 — 뒤 스레드가 아직 자는 중이다.
+            let mut sleeping = Vec::new();
+            for (at, targets, groups, finished) in &case.in_flight {
+                until(&fake, *at);
+                let running = list.claim().start(targets, groups);
+                if *finished {
+                    let _ = running.finish();
+                } else {
+                    sleeping.push(running);
+                }
+            }
+            until(&fake, case.at);
+            let outcomes: Vec<(u32, Outcome)> = list
+                .close(&case.targets, &case.groups)
+                .finish()
+                .into_iter()
+                .map(|(id, outcome)| (id.pid, outcome))
+                .collect();
+            let got = (fake.sent.borrow().clone(), outcomes, fake.ms());
+            let want = (case.sent, case.outcomes, case.done_at);
+            if got != want {
+                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
+            }
+            drop(sleeping);
+        }
+        assert!(wrong.is_empty(), "종료가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **판정 중인 닫기를 종료가 기다린다.** 셸을 풀에서 뺀 뒤 목록에 오르기 전에 종료가 오면, 그 셸은 풀에도
+    /// 목록에도 없다 — 종료가 그것을 모른 채 끝나면 그 셸의 자손에 SIGKILL이 안 간다. 판정 없이 떨어진 셈은
+    /// 종료를 붙잡지 않는다.
+    #[test]
+    fn the_exit_waits_for_a_close_still_being_judged() {
+        let list = Arc::new(InFlight::with_kernel(Void));
+        drop(list.claim());
+        let claim = list.claim();
+        let judging = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            claim.start(&[id(77)], &[])
+        });
+
+        let began = Instant::now();
+        let outcomes = list.close(&[], &[]).finish();
+        let took = began.elapsed();
+        drop(judging.join().expect("판정 스레드가 패닉했다"));
+
+        assert_eq!(outcomes, vec![(id(77), Outcome::Gone)], "판정 중이던 닫기를 종료가 안 기다렸다");
+        assert!(took < JUDGING_LIMIT, "판정 없이 떨어진 셈을 종료가 끝까지 기다렸다 ({took:?})");
+    }
 }
 
 /// **실물 검사(macOS).** 자식은 이 테스트 바이너리 자신이고(`testkit`), 신호는 검사가 띄운 자식에게만 간다 —
@@ -580,9 +1008,10 @@ mod tests {
 /// 표식을 물려받았지만 그 사실에 흔들리지 않게.
 #[cfg(all(test, target_os = "macos"))]
 mod real {
+    use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use super::{start, Outcome, GRACE};
+    use super::{start, InFlight, Outcome, GRACE};
     use crate::processes::snapshot::{identity_of, take, EnvScope};
     use crate::processes::testkit::{holds_for, key, Kid};
     use crate::processes::verdict::{judge, Inputs, Occasion, ShellEntry};
@@ -680,5 +1109,71 @@ mod real {
         let forged = forged.expect("자식이 5초 안에 제 세션을 열지 못했다");
         assert_eq!(outcomes, Some(vec![(forged, Outcome::Gone)]), "다른 신원을 「이미 없음」으로 안 봤다");
         assert!(alive, "시작 시각이 다른 신원인데 그 pid의 프로세스에 신호가 갔다");
+    }
+
+    /// **유예 중인 뒤 끝내기를 종료 길이 SIGKILL까지 보내고 나서 돌아온다**(프로세스 스펙 S5). ×를 누르고 2초
+    /// 안에 ⌘Q를 누른 모양이다 — SIGTERM을 무시하는 자식의 끝내기를 뒤로 보내고, 유예 중에 종료 길을 부른다.
+    ///
+    /// **뒤 스레드는 띄우지 않는다.** 앱이 끝나면 그 스레드는 함께 사라진다 — 종료 혼자서 SIGKILL을 보내야 한다.
+    /// 띄우면 그 스레드가 같은 순간 SIGKILL을 보내 종료가 한 일을 못 가른다.
+    #[test]
+    fn the_exit_ends_a_background_ending_in_grace_before_it_returns() {
+        let key = key(6);
+        let kid = Kid::spawn("ignore-term", &key);
+        let settled = kid.settle();
+        let targets = judged(&key, &kid);
+        let list = Arc::new(InFlight::default());
+        let behind = list.claim().start(&targets, &[]);
+        std::thread::sleep(Duration::from_millis(300));
+
+        let began = Instant::now();
+        let outcomes = list.close(&[], &[]).finish();
+        let took = began.elapsed();
+        let alive = settled.is_some_and(|id| identity_of(id.pid) == Some(id));
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(behind);
+        drop(kid);
+
+        let id = settled.expect("자식이 5초 안에 제 세션을 열지 못했다");
+        assert_eq!(targets, vec![id], "판정이 표식 자식을 끝낼 셸의 자손으로 안 골랐다");
+        assert_eq!(outcomes, vec![(id, Outcome::Forced)], "종료가 유예 중인 끝내기를 SIGKILL로 마감하지 않았다");
+        assert!(!alive, "종료 길이 돌아왔는데 자식이 살아 있다");
+        assert!(took < GRACE, "남은 유예가 아니라 2초를 새로 기다렸다 ({took:?})");
+        assert!(took > Duration::from_secs(1), "유예가 남았는데 SIGKILL을 서둘렀다 ({took:?})");
+    }
+
+    /// **모두 SIGTERM에 곧 끝나면 종료 길이 2초를 채워 기다리지 않는다** — 뒤로 보낸 끝내기의 자식도, 종료가
+    /// 새로 고른 자식도.
+    #[test]
+    fn the_exit_does_not_wait_out_the_grace_when_everything_ends_on_sigterm() {
+        let (key_behind, key_fresh) = (key(7), key(8));
+        let (kid_behind, kid_fresh) = (Kid::spawn("sleep", &key_behind), Kid::spawn("sleep", &key_fresh));
+        let (settled_behind, settled_fresh) = (kid_behind.settle(), kid_fresh.settle());
+        let behind_targets = judged(&key_behind, &kid_behind);
+        let fresh_targets = judged(&key_fresh, &kid_fresh);
+        let list = Arc::new(InFlight::default());
+        let behind = list.claim().start(&behind_targets, &[]);
+
+        let began = Instant::now();
+        let outcomes = list.close(&fresh_targets, &[]).finish();
+        let took = began.elapsed();
+        let alive =
+            [settled_behind, settled_fresh].into_iter().flatten().any(|id| identity_of(id.pid) == Some(id));
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(behind);
+        drop(kid_behind);
+        drop(kid_fresh);
+
+        let behind_id = settled_behind.expect("뒤로 보낸 자식이 5초 안에 제 세션을 열지 못했다");
+        let fresh_id = settled_fresh.expect("종료가 고를 자식이 5초 안에 제 세션을 열지 못했다");
+        assert_eq!(
+            outcomes,
+            vec![(behind_id, Outcome::Ended), (fresh_id, Outcome::Ended)],
+            "둘 다 SIGTERM으로 끝나야 한다"
+        );
+        assert!(!alive, "종료 길이 돌아왔는데 자식이 살아 있다");
+        assert!(took < GRACE / 2, "다 끝났는데 유예를 채워 기다렸다 ({took:?})");
     }
 }

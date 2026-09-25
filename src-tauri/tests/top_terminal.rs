@@ -36,8 +36,8 @@ fn real(path: &Path) -> PathBuf {
 }
 
 /// 모드 하나로 최상위 터미널을 띄우고, 그 안에서 찍은 줄이 나올 때까지 기다렸다가
-/// 지금까지 받은 바이트를 통째로 돌려준다.
-fn probe(pool: &Arc<PtyPool>, mode: Mode) -> String {
+/// 그 셸의 id와 지금까지 받은 바이트를 통째로 돌려준다.
+fn probe(pool: &Arc<PtyPool>, mode: Mode) -> (u32, String) {
     let seen = Arc::new(Mutex::new(Vec::<u8>::new()));
     let sink = Arc::clone(&seen);
     // 프레임을 바이트 그대로 쌓는다. 조각 경계가 멀티바이트 문자를 가르므로 조각마다
@@ -61,7 +61,7 @@ fn probe(pool: &Arc<PtyPool>, mode: Mode) -> String {
         };
         // 되비친 줄에는 `cwd=[%s]`가 있다. `cwd=[/`는 셸이 실제로 찍은 줄에만 있다.
         if text.contains("cwd=[/") {
-            return text;
+            return (spawned.id, text);
         }
         assert!(
             Instant::now() < deadline,
@@ -90,9 +90,11 @@ fn a_top_terminal_carries_its_world_into_the_shell() {
     std::env::set_var("HOME", home.join("nobody"));
 
     let pool = Arc::new(PtyPool::default());
+    let mut shells = Vec::new();
 
     for (mode, planted) in [(Mode::Atelier, "atelier"), (Mode::Maison, "maison")] {
-        let out = probe(&pool, mode);
+        let (shell, out) = probe(&pool, mode);
+        shells.push(shell);
         assert!(
             out.contains(&format!("mode=[{planted}]")),
             "{mode} 셸 안에서 $ATELIER_MODE가 '{planted}'가 아니다 — 이 셸에서 뜬 claude가 \
@@ -123,6 +125,11 @@ fn a_top_terminal_carries_its_world_into_the_shell() {
         "두 세계의 홈이 같은 자리다 — 최상위 터미널 둘이 같은 폴더에서 뜬다"
     );
 
-    pty::reap_all(&pool);
+    // 셸은 사람이 끝내듯 스스로 끝나게 둔다 — 앱 종료 길(`end_for_exit`)은 이 기계의 표 전체를 판정해 끝내는데,
+    // 검사가 그것을 진짜 표에 돌리지 않는다. 이 셸들은 `/bin/sh`에 프로필도 없어 `exit`에 곧 끝나고, 그래도 남으면
+    // 이 프로세스가 끝나며 pty가 닫혀 SIGHUP을 받는다.
+    for id in shells {
+        let _ = pty::write(&pool, id, "exit\n");
+    }
     let _ = std::fs::remove_dir_all(&home);
 }

@@ -7,7 +7,7 @@
 //! **순서는 부르는 쪽이 지킨다: 스냅샷을 먼저 찍고, 셸 목록은 그 뒤에 읽는다**(프로세스 스펙 S52).
 //! 그 사이에 뜬 셸은 목록에 이미 있어, 그 셸의 자손이 「셸이 없는 표식」으로 읽히는 창이 없다.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use super::{Identity, Proc, Snapshot};
 
@@ -149,6 +149,43 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         members.sort_by_key(|p| p.id.pid);
     }
     Verdict { descendants }
+}
+
+/// **앱 종료의 판정** — 끝낼 신원(프로세스 결정 3 · 프로세스 스펙 S5).
+///
+/// 끝낼 것 = 풀에서 뺀 셸들(`ending`)의 자손 ∪ **이 세대의 표식을 문 전부**(와 그 트리). 뒤의 것은 셸이 이미
+/// 풀에 없는 키다 — 스스로 끝난 셸이 남긴 것, 닫는 중인 셸의 것, 풀에 오르기 전에 종료가 온 셸의 것. 앱이
+/// 끝나면 그 셸을 이어 쓸 길이 없으니 모두 끝낸다. 빼는 것(앱과 조상 사슬, 물려받은 키, pid ≤ 1, 다른 uid)은
+/// `judge` 그대로다.
+///
+/// 진행 중인 끝내기의 신원도 여기 들 수 있다 — 그 셸의 표식을 물고 있어서다. 이미 SIGTERM을 받은 그것을 다시
+/// 쏘지 않는 것은 끝내기 층이 가른다(`ending::InFlight::close`).
+pub fn at_exit(input: &Inputs) -> Vec<Identity> {
+    // 셸 프로세스를 모르는 끝낼 셸로 더한다 — 판정은 그 키를 문 행과 그 밑을 그 셸의 자손으로 고른다. 풀에서
+    // 뺀 셸의 키가 한 번 더 서도 판정은 키를 집합으로 읽어 같은 답이다.
+    let marked: BTreeSet<&str> = input
+        .snapshot
+        .procs
+        .iter()
+        .filter_map(|proc| proc.shell_key.as_deref())
+        .filter(|key| of_generation(key, input.generation))
+        .collect();
+    let mut ending = input.ending.to_vec();
+    ending.extend(marked.into_iter().map(|key| ShellEntry {
+        key: key.to_string(),
+        process: None,
+        first_input_us: None,
+    }));
+    let verdict = judge(&Inputs { ending: &ending, ..*input });
+    verdict.descendants.into_values().flatten().map(|proc| proc.id).collect()
+}
+
+/// 이 세대가 지은 셸 키인가 — `<세대>-<PTY 번호>`(`pty::shell_id`). 앞글자로만 겹치는 다른 세대(`G` 대
+/// `GX`)를 가르려고 구분자와 번호까지 본다.
+fn of_generation(key: &str, generation: &str) -> bool {
+    key.strip_prefix(generation)
+        .and_then(|rest| rest.strip_prefix('-'))
+        .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// 스냅샷을 pid로 찾는 표 — 부모를 따라 올라가는 데 쓴다.
@@ -418,5 +455,84 @@ mod tests {
             }
         }
         assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **종료 판정 표**(프로세스 스펙 S5). 종료 때 풀은 비었다 — 뺀 셸 G-1(100)과 G-2(110)이 끝낼 셸이고, 셸
+    /// 목록은 없다. 이 세대(G)의 다른 키는 셸이 이미 풀에 없다.
+    ///
+    /// 「안 든다」를 재는 줄은 같은 줄에 이 세대의 표식을 문 행 하나를 앵커로 세운다.
+    #[test]
+    fn the_exit_takes_this_generations_marks_and_the_pool_trees() {
+        let cases = [
+            case(
+                "풀 셸의 PID 트리 — 표식이 안 읽히는 시스템 바이너리까지. 셸 자신은 안 든다",
+                vec![row(101, 100), row(102, 101), row(111, 110).key("G-2")],
+                &[("", &[101, 102, 111])],
+            ),
+            case(
+                "이 세대의 표식을 문 것 — 셸이 풀에 없는 키(스스로 끝남, 닫는 중)와 그 밑",
+                vec![row(201, 1).key("G-5"), row(202, 201), row(203, 1).key("G-9")],
+                &[("", &[201, 202, 203])],
+            ),
+            case(
+                "다른 세대의 표식은 안 든다",
+                vec![row(221, 1).key("OLD-1"), row(222, 1).key("G-5")],
+                &[("", &[222])],
+            ),
+            case(
+                "세대가 앞글자로만 겹치는 키, 번호가 아닌 꼬리는 안 든다",
+                vec![
+                    row(223, 1).key("GX-1"),
+                    row(224, 1).key("G-"),
+                    row(225, 1).key("G-1x"),
+                    row(226, 1).key("G-6"),
+                ],
+                &[("", &[226])],
+            ),
+            case(
+                "앱과 조상 사슬, 앱이 물려받은 키, 앱이 띄운 셸 아닌 자식",
+                vec![row(60, 30).key("I-3"), row(61, 60), row(51, APP), row(227, 1).key("G-7")],
+                &[("", &[227])],
+            ),
+            case(
+                "pid ≤ 1과 다른 uid — 이 세대의 표식을 물어도",
+                vec![row(1, 0).key("G-5"), row(228, 1).uid(0).key("G-5"), row(229, 1).key("G-5")],
+                &[("", &[229])],
+            ),
+        ];
+
+        let ending = [
+            shell("G-1", Some(Identity { pid: 100, started_us: 1_100 })),
+            shell("G-2", Some(Identity { pid: 110, started_us: 1_110 })),
+        ];
+        let mut wrong = Vec::new();
+        for case in &cases {
+            let mut procs = world();
+            for added in &case.rows {
+                procs.retain(|p| p.id.pid != added.id.pid);
+                procs.push(added.clone());
+            }
+            let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+            let mut got: Vec<u32> = at_exit(&Inputs {
+                snapshot: &snapshot,
+                generation: "G",
+                shells: &[],
+                ending: &ending,
+                instances: &[],
+                exceptions: &[],
+                app_pid: APP,
+                inherited_key: case.inherited,
+                occasion: Occasion::Normal,
+            })
+            .into_iter()
+            .map(|id| id.pid)
+            .collect();
+            got.sort_unstable();
+            let want: Vec<u32> = case.expect.iter().flat_map(|(_, pids)| pids.clone()).collect();
+            if got != want {
+                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
+            }
+        }
+        assert!(wrong.is_empty(), "종료 판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 }

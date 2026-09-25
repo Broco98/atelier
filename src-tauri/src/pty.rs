@@ -23,15 +23,10 @@ use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::processes::ending::{self, Group};
+use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::verdict::{self, Inputs, Occasion, ShellEntry};
-use crate::processes::{procargs, Identity, SHELL_KEY_ENV};
-
-/// 앱 종료 · 새로고침(`reap_all`)이 SIGHUP을 보낸 뒤 SIGKILL까지 주는 유예. 진짜 터미널이 닫힐 때 셸과
-/// 그 잡들이 정리할 시간이고, 협조하지 않는 상대를 기다려 주는 시간이기도 하다. 셸 하나를 닫는 길은
-/// 끝내기의 2초(`processes::ending::GRACE`)를 쓴다 — 두 길을 하나로 모으는 것은 티켓 05다.
-const GRACE: Duration = Duration::from_millis(300);
+use crate::processes::{procargs, Identity, Snapshot, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,7 +78,7 @@ struct Shell {
 ///
 /// **`Drop`인 것이 요점이다.** 셸이 풀에서 빠지는 자리가 셋이다 — 사용자가 `exit`를 쳐서
 /// 리더 스레드가 자기 자리를 치울 때, `×`로 죽일 때(`kill`), 앱이 닫히거나 웹뷰가 다시 뜰
-/// 때(`reap_all`). 셋 다 결국 이 값을 떨구므로 여기 한 자리에 두면 빠지는 길이 하나 더
+/// 때(`end_for_exit` · `end_for_reload`). 셋 다 결국 이 값을 떨구므로 여기 한 자리에 두면 빠지는 길이 하나 더
 /// 생겨도 따라온다. 세 곳에 손으로 적으면 언젠가 한 곳이 빠지고, 그때 나는 것은 조용히
 /// 남는 앰버 점 하나다.
 impl Drop for Shell {
@@ -96,6 +91,9 @@ impl Drop for Shell {
 pub struct PtyPool {
     shells: Mutex<HashMap<u32, Shell>>,
     next_id: AtomicU32,
+    /// 진행 중인 끝내기 — 이 풀에서 뺀 셸의 끝내기가 뒤 스레드에서 도는 동안 여기 오른다(프로세스 스펙 S5).
+    /// 앱 종료가 마감한다. 풀에 두는 것은 셸을 빼는 모든 길이 풀을 쥐고 있어서다.
+    endings: Arc<InFlight>,
 }
 
 impl PtyPool {
@@ -160,7 +158,7 @@ pub fn spawn(
     // **스레드보다 먼저 풀에 앉힌다.** 아래 스레드는 끝나며 자기 자리를 치우는데
     // (`owner.lock().remove`), 그 치움이 등록보다 **먼저** 돌 수 있다 — `$SHELL`이 즉시
     // 끝나면 그렇다. 그러면 등록이 죽은 셸을 되살리고, 그 pid는 이미 회수돼 재사용
-    // 가능한 상태다. 다음 `reap_all`이 그 자리에 앉은 남의 프로세스 그룹을 쏜다 —
+    // 가능한 상태다. 다음 회수가 그 자리에 앉은 남의 프로세스 그룹을 쏜다 —
     // 아래 스레드의 주석이 막으려는 바로 그것이다. 순서를 이렇게 두면 그 창이 닫힌다:
     // 치움은 언제 돌아도 `remove`일 뿐이다.
     // 상태 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가 루트를
@@ -396,9 +394,9 @@ fn running_command(shell_pid: u32, foreground: i32, name: Option<String>) -> Opt
 
 /// 풀에 있는 셸마다 지금 도는 명령을 **한 번 잰다.**
 ///
-/// **잠금 안에서 풀에 남아 있는 셸만 읽는다 — 그것이 `reap`의 순서를 안 건드리는 방법이다.**
-/// 포그라운드 그룹은 master fd가 살아 있어야 읽는데, `kill`과 `reap_all`은 풀에서 **먼저
-/// 빼고**(잠금 안에서) 그 다음에 거둔다. 그러니 우리가 잠금을 쥐고 있는 동안 그 셸은 아직
+/// **잠금 안에서 풀에 남아 있는 셸만 읽는다 — 그것이 `end`의 순서를 안 건드리는 방법이다.**
+/// 포그라운드 그룹은 master fd가 살아 있어야 읽는데, 셸을 거두는 길(`kill` · `end_for_reload` ·
+/// `end_for_exit`)은 풀에서 **먼저 빼고**(잠금 안에서) 그 다음에 거둔다. 그러니 우리가 잠금을 쥐고 있는 동안 그 셸은 아직
 /// 풀에 있고 master도 살아 있거나, 이미 빠져 우리 눈에 안 보이거나 둘 중 하나다 — 거두는
 /// 중인 셸을 읽는 창이 없다.
 ///
@@ -470,26 +468,79 @@ pub fn watch_running(app: AppHandle, pool: Arc<PtyPool>) {
 /// 셸 하나를 닫는다 — 풀에서 빼고, 그 셸에서 나온 것을 모두 끝낸다(프로세스 결정 3). 셸 탭의 ×, ⌘W, 셸
 /// 메뉴의 닫기, UI 아카이브 · 삭제가 모두 이 길을 탄다.
 ///
-/// **끝내기가 끝날 때까지 돌아오지 않는다**(최대 2초 남짓). 그래서 `commands.rs`가 blocking 풀에서 부른다.
-/// 셸은 이미 풀에서 빠졌으므로 그동안 다른 셸의 IPC는 막히지 않는다.
+/// **판정까지 하고 돌아온다**(프로세스 스펙 S5). 유예와 SIGKILL은 뒤 스레드에서 돌고, 그동안 그 끝내기는
+/// 진행 중인 끝내기 목록에 있다 — 유예 중에 앱이 닫히면 종료가 마감한다(`end_for_exit`). 스냅샷 한 장은 ms
+/// 단위지만 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
 pub fn kill(pool: &PtyPool, id: u32) -> Result<(), String> {
+    // **빼기 전에 센다.** 뺀 뒤 목록에 오르기 전에 종료가 오면, 종료는 그 셸을 풀에서도 목록에서도 못 본다.
+    // 셈이 먼저 서 있으면 종료가 판정이 끝나기를 기다린다. 뺄 셸이 없으면 셈은 떨어지며 물러난다.
+    let claim = pool.endings.claim();
     let shell = pool.lock().remove(&id).ok_or_else(|| gone(id))?;
-    end(pool, vec![shell]);
+    end(pool, vec![shell], claim);
     Ok(())
 }
 
-/// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다. **순서가 고정이다.**
+/// 웹뷰가 다시 뜰 때 옛 페이지의 셸을 모두 닫는다.
+///
+/// 정리 시점은 in-app-terminal 결정 18이 앱 종료 · 새로고침 둘로 정했고, 프로세스 결정 3이 셸 닫기를
+/// 더했다(앱 시작은 티켓 10). 옛 페이지가 쥐던 채널은 죽었으니 그 셸을 이어 쓸 길이 없다.
+///
+/// **풀은 그 자리에서 비우고, 끝내기는 셸 닫기와 같은 길로 뒤로 보낸다** — 새로고침은 유예를 기다리지 않는다.
+/// 판정은 뺀 셸들을 끝낼 셸로 받으므로, 새 웹뷰가 곧바로 띄운 셸은 거기 들지 않는다.
+pub fn end_for_reload(pool: &PtyPool) {
+    let claim = pool.endings.claim();
+    let shells: Vec<Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
+    // 첫 로드에도 온다 — 그때 풀은 비어 있고, 셈은 떨어지며 물러난다.
+    if !shells.is_empty() {
+        end(pool, shells, claim);
+    }
+}
+
+/// 앱이 닫힐 때 — 이 실행이 띄운 것을 모두 끝내고 **나서** 돌아온다(프로세스 결정 3 · 프로세스 스펙 S5).
+///
+/// 끝낼 것 = 이 세대의 표식을 문 전부 ∪ 풀 셸들의 PID 트리 ∪ 진행 중인 끝내기. 한 번에 판정하고 **동기로**
+/// 끝낸다 — 스레드에 넘기면 프로세스가 끝나며 그 스레드도 함께 사라져 아무도 SIGKILL을 못 보낸다. 진행 중인
+/// 끝내기는 남은 유예만 기다린다. 다 끝나면 곧바로 나오고, 가장 늦어도 2초 남짓이다.
+///
+/// 결과(못 끝냄 포함)를 돌려준다 — 「못 끝냄」이 있으면 인스턴스 기록을 남기는 것은 티켓 09다.
+pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
+    let shells: Vec<Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
+    let pgids: Vec<i32> = shells.iter().flat_map(groups_of).collect();
+    let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
+    // 이 세대의 표식은 언제 태어난 누가 물었는지 모르니 env를 다 읽는다.
+    let snapshot = snapshot::take(EnvScope::All);
+    let targets = verdict::at_exit(&Inputs {
+        snapshot: &snapshot,
+        generation: instance_prefix(),
+        shells: &[],
+        ending: &ending,
+        instances: &[],
+        exceptions: &[],
+        app_pid: std::process::id(),
+        inherited_key: crate::processes::inherited_key(),
+        occasion: Occasion::Normal,
+    });
+    let groups = groups_led(&shells, &pgids, &snapshot);
+
+    let closing = pool.endings.close(&targets, &groups);
+    // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
+    drop(shells);
+    closing.finish()
+}
+
+/// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. **순서가 고정이다.**
 ///
 /// 1. 셸마다 그룹을 읽는다. foreground 그룹은 `tcgetpgrp(master)`로만 알 수 있어 master를 떨구기 전이다.
 /// 2. 스냅샷을 찍고, **그 뒤에** 풀에 남은 셸 목록을 읽는다(프로세스 스펙 S52). 그 사이에 뜬 셸은 목록에
 ///    이미 있어, 그 셸의 자손이 누구의 것도 아닌 표식으로 읽히는 창이 없다.
 /// 3. 판정 — 뺀 셸들을 「끝낼 셸」로 넘긴다. 끝낼 대상은 그 셸의 PID 트리 ∪ 그 키를 문 것 ∪ 그 트리들이다.
 ///    부모가 먼저 끝나 launchd 밑으로 넘어간 dev 서버는 트리가 끊겨 표식으로만 잡힌다.
-/// 4. 끝내기를 시작하고(대상 SIGTERM, 셸 그룹 SIGHUP) → 셸을 떨군 뒤 → 유예와 SIGKILL.
+/// 4. 끝내기를 시작해(대상 SIGTERM, 셸 그룹 SIGHUP) 진행 중인 끝내기 목록에 올리고 돌아온다. 셸을 떨구고
+///    유예와 SIGKILL을 도는 것은 뒤 스레드다.
 ///
 /// **셸 그룹과 그 순간의 foreground 그룹에 가는 신호는 지금 방어선 그대로 남는다.** 셸 그룹 밖으로 떨어진
 /// 자손이 대상 목록으로 더해질 뿐이다. 다른 OS는 스냅샷이 비고 셸의 신원도 몰라, 지금처럼 그룹 신호만 간다.
-fn end(pool: &PtyPool, shells: Vec<Shell>) {
+fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     let pgids: Vec<i32> = shells.iter().flat_map(groups_of).collect();
     let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
     // 셸마다 그 셸보다 늦게 태어난 것만 env를 읽는다(프로세스 스펙 S3). 셸 하나라도 신원을 모르면 다 읽는다.
@@ -517,8 +568,27 @@ fn end(pool: &PtyPool, shells: Vec<Shell>) {
         .flat_map(|shell| verdict.descendants.get(shell.key.as_str()).into_iter().flatten())
         .map(|proc| proc.id)
         .collect();
-    // 그룹 리더의 신원: 셸 그룹은 띄울 때 쥔 셸의 신원이고, foreground 그룹은 스냅샷의 그 행이다.
-    let groups: Vec<Group> = pgids
+    let groups = groups_led(&shells, &pgids, &snapshot);
+
+    let running = claim.start(&targets, &groups);
+    // **셸을 떨구는 것도 뒤 스레드에서 한다.** writer의 Drop은 pty에 개행 + ^D를 쓰는데, 셸이 입력을 안 읽는
+    // 채 pty 버퍼가 차 있으면 거기서 막힌다 — 새로고침은 메인 스레드에서 돈다.
+    let behind = std::thread::Builder::new().name("atelier-ending".into()).spawn(move || {
+        // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
+        drop(shells);
+        // 결과는 아직 읽는 곳이 없다 — SIGKILL에도 남은 것은 끝내기가 한 줄 남긴다. 정리 기록은 티켓 11이다.
+        let _ = running.finish();
+    });
+    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다.
+    if let Err(e) = behind {
+        eprintln!("atelier: could not start the ending thread: {e}");
+    }
+}
+
+/// 셸들이 거느린 그룹과 그 리더의 신원. 셸 그룹의 리더는 띄울 때 쥔 셸의 신원이고, foreground 그룹의 리더는
+/// 스냅샷의 그 행이다. 행이 없으면 신원을 모르는 그룹으로 옛 방어선(그룹이 있는 동안)을 따른다.
+fn groups_led(shells: &[Shell], pgids: &[i32], snapshot: &Snapshot) -> Vec<Group> {
+    pgids
         .iter()
         .filter_map(|pgid| u32::try_from(*pgid).ok())
         .map(|pgid| {
@@ -528,65 +598,7 @@ fn end(pool: &PtyPool, shells: Vec<Shell>) {
             };
             Group { pgid, leader }
         })
-        .collect();
-
-    let started = ending::start(&targets, &groups);
-    // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
-    drop(shells);
-    // 결과는 아직 읽는 곳이 없다 — SIGKILL에도 남은 것은 끝내기가 한 줄 남긴다. 정리 기록은 티켓 11이다.
-    let _ = started.finish();
-}
-
-/// 앱이 닫힐 때와 웹뷰가 다시 뜰 때(in-app-terminal 결정 18) 전부 거둔다.
-///
-/// **아직 그룹째 거두는 옛 길이다.** in-app-terminal 결정 19(그룹째 거둔다)는 프로세스 결정 3이 트리 +
-/// 표식으로 넓혔고, 셸 하나를 닫는 길(`kill`)은 이미 넓은 쪽을 탄다. 이 길을 옮기는 것은 티켓 05다 — 종료는
-/// 동기로 마감해야 하고(프로세스가 끝나면 스레드도 사라진다) 새로고침은 뒤로 보내야 해서, 옮기는 모양이 셸
-/// 닫기와 다르다.
-pub fn reap_all(pool: &PtyPool) {
-    let shells: Vec<Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
-    reap(shells);
-}
-
-/// pty 세션들을 거둔다. **순서가 고정이다.**
-///
-/// 포그라운드 그룹은 `tcgetpgrp(master)`로만 알 수 있는데 master를 떨구면 그 fd가 사라진다.
-/// 그러니 (1) 먼저 그룹을 다 읽고 → (2) SIGHUP → (3) 떨구고 → (4) 유예 → (5) 남은 것에
-/// SIGKILL 순이어야 한다.
-///
-/// **(3)에 기대지 않는다.** 리더 스레드가 `try_clone_reader()`로 dup한 master fd를 쥐고
-/// 있어서, 여기서 떨구는 것만으로는 커널 hangup이 걸리지 않는다. 걸리더라도 소용없다 —
-/// `trap '' HUP TERM`을 건 셸에 대고 재 보니 (2)·(3)이 **전부 통과**했고 (5)만이 끝냈다.
-///
-/// 유예를 셸마다 따로 주면 여덟 개에 2.4초가 되므로 한 번만 기다린다. 앱 종료 경로는
-/// **동기**여야 해서(프로세스가 끝나면 스레드도 함께 사라진다) 이 시간이 그대로 종료 지연이다.
-fn reap(shells: Vec<Shell>) {
-    if shells.is_empty() {
-        return;
-    }
-    let groups: Vec<u32> =
-        shells.iter().flat_map(groups_of).filter_map(|pgid| u32::try_from(pgid).ok()).collect();
-    for pgid in &groups {
-        ending::signal_group(*pgid, libc::SIGHUP);
-    }
-    // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다.
-    drop(shells);
-    std::thread::sleep(GRACE);
-    // HUP을 무시하는 상대에게는 위 셋이 **전부 통과한다** — `trap '' HUP TERM`을 건 셸에
-    // 대고 재 보니 killpg(셸)·killpg(포그라운드)·master 떨구기 셋 다 아무도 못 죽였고
-    // SIGKILL만이 끝냈다. 이 단계는 예비가 아니라 실제 방어선이다.
-    for pgid in &groups {
-        if ending::group_alive(*pgid) {
-            ending::signal_group(*pgid, libc::SIGKILL);
-        }
-    }
-    // SIGKILL은 잡히지 않으므로 여기까지 살아 있으면 우리가 못 건드리는 것이다(권한·좀비).
-    // 조용히 넘기면 고아를 남긴 채 「거뒀다」고 믿게 된다.
-    for pgid in &groups {
-        if ending::group_alive(*pgid) {
-            eprintln!("atelier: pty process group {pgid} survived SIGKILL");
-        }
-    }
+        .collect()
 }
 
 /// 이 셸이 거느린 프로세스 그룹들. 대화형 셸은 잡 제어를 켜고 **잡마다 새 그룹**을 만들기
@@ -934,6 +946,26 @@ mod tests {
             "등록({insert})이 스레드({thread})보다 뒤에 있다 — 셸이 즉시 끝나면 \
              스레드의 remove가 먼저 돌아 죽은 셸이 되살아나고, 재사용된 pgid를 쏘게 된다"
         );
+    }
+
+    /// 셸을 풀에서 빼는 길은 **빼기 전에** 진행 중인 끝내기 목록에 센다(프로세스 스펙 S5).
+    ///
+    /// 실행으로는 못 잡는다 — 뒤집혀도 터지는 것은 빼기와 목록에 오르기 사이의 ms 창에 앱 종료가 올 때뿐이다.
+    /// 그때 종료는 그 셸을 풀에서도 목록에서도 못 보고, 그 셸의 자손에 SIGKILL이 안 간다. 종료가 셈을 기다리는
+    /// 것은 `processes::ending`의 `the_exit_waits_for_a_close_still_being_judged`가 잰다.
+    #[test]
+    fn a_close_is_counted_before_its_shell_leaves_the_pool() {
+        for (path, body, leave) in [
+            ("kill", body_of("pub fn kill(", "\npub fn "), ".remove(&id)"),
+            ("end_for_reload", body_of("pub fn end_for_reload(", "\npub fn "), ".drain()"),
+        ] {
+            let count = body.find("pool.endings.claim()").unwrap_or_else(|| panic!("{path}가 셈을 안 한다"));
+            let left = body.find(leave).unwrap_or_else(|| panic!("{path}가 셸을 안 뺀다"));
+            assert!(
+                count < left,
+                "{path}: 셈({count})이 빼기({left})보다 뒤에 있다 — 그 사이에 앱 종료가 오면 뺀 셸의 자손이 남는다"
+            );
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1320,42 +1352,124 @@ mod tests {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 프로세스 결정 3. 셸을 닫으면 그 셸에서 나온 것이 모두 끝난다 — 셸 그룹 밖으로 떨어진 것까지.
+    // 프로세스 결정 3. 셸을 닫으면 그 셸에서 나온 것이 모두 끝난다 — 셸 그룹 밖으로 떨어진 것까지. 닫기는 유예를
+    // 기다리지 않고 돌아오고, 새로고침 · 앱 종료도 같은 규칙을 탄다(프로세스 스펙 S5).
 
-    /// 안쪽 검사 프로세스를 가르는 변수. 이것이 있으면 이 검사는 풀 쪽 몸통을 돈다.
+    /// 안쪽 검사 프로세스를 가르는 변수. 값이 안쪽이 돌 장면(`Scene`)이다.
     #[cfg(target_os = "macos")]
     const POOL_SIDE: &str = "ATELIER_PTY_TEST_POOL_SIDE";
 
-    /// **풀 배선 한 개** — 헤드리스 IPC 채널로 셸을 띄우고 `kill`로 닫아 판정까지 간다(프로세스 스펙 Testing ›
-    /// 판 01). 셸에서 띄운 표식 자식이 제 세션에 있고 부모가 먼저 끝나 launchd 밑으로 넘어갔으면, 셸 그룹과
-    /// foreground 그룹에 보내는 신호는 거기 안 닿는다 — 표식으로 찾아야 끝난다.
-    ///
-    /// **검사 프로세스를 하나 더 띄워 그 안에서 돈다.** `spawn`은 사용자의 로그인 셸을 rc째 띄운다. 이 프로세스의
-    /// env 그대로면 사용자의 rc가 돌고, 쳐 넣은 줄이 사용자의 히스토리에 남고, 상태 파일 자리가 진짜 데이터
-    /// 루트다. 안쪽 프로세스는 임시 HOME · `ATELIER_HOME`과 `/bin/zsh`로 뜬다 — env를 바꾸는 일이 이 검사
-    /// 하나에 갇혀, 나란히 도는 다른 검사의 env를 흔들지 않는다.
-    ///
-    /// **안쪽에는 표식을 물려주지 않는다.** 이 검사를 아틀리에 셸에서 돌리면 검사 프로세스가 그 셸의 표식을
-    /// 물고 있다. 판정은 그것을 「앱이 물려받은 키」로 읽는다(`processes::inherited_key`) — 어디서 돌리든 같은
-    /// 입력(물려받은 키 없음)이 되게 지운다.
+    /// 풀 배선 검사가 안쪽에서 돌리는 장면. 모두 셸 하나를 띄우고, 셸에 한 줄을 쳐 트리가 끊긴 표식 자식을
+    /// 띄운 뒤 그 셸을 거두는 길 하나를 부른다.
+    #[cfg(target_os = "macos")]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Scene {
+        /// ×로 닫는다. 자식은 SIGTERM에 끝난다.
+        Close,
+        /// ×로 닫는다. 자식은 SIGTERM을 무시한다 — 닫기는 유예를 안 기다리고, 자식은 뒤에서 SIGKILL로 끝난다.
+        CloseIgnoring,
+        /// ×로 닫고 곧바로 앱 종료 길을 부른다(2초 안의 ⌘Q). 자식은 셸 트리에만 있는 시스템 바이너리이고
+        /// SIGTERM · SIGHUP을 무시한다.
+        CloseThenExit,
+        /// 웹뷰를 새로고침한다. 자식은 SIGTERM을 무시한다.
+        Reload,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Scene {
+        const ALL: [Scene; 4] = [Scene::Close, Scene::CloseIgnoring, Scene::CloseThenExit, Scene::Reload];
+
+        fn name(self) -> &'static str {
+            match self {
+                Scene::Close => "close",
+                Scene::CloseIgnoring => "close-ignoring",
+                Scene::CloseThenExit => "close-then-exit",
+                Scene::Reload => "reload",
+            }
+        }
+
+        /// 셸에서 띄울 자식의 역할(`processes::testkit`).
+        fn role(self) -> &'static str {
+            match self {
+                Scene::Close => "sleep",
+                _ => "ignore-term",
+            }
+        }
+    }
+
+    /// **풀 배선 — ×로 닫기**(티켓 04). 헤드리스 IPC 채널로 셸을 띄우고 `kill`로 닫아 판정까지 간다(프로세스
+    /// 스펙 Testing › 판 01). 셸에서 띄운 표식 자식이 제 세션에 있고 부모가 먼저 끝나 launchd 밑으로 넘어갔으면,
+    /// 셸 그룹과 foreground 그룹에 보내는 신호는 거기 안 닿는다 — 표식으로 찾아야 끝난다.
     ///
     /// 로그인 셸 rc가 값을 흔들므로 단언은 「표식 자식이 끝났다」 하나다.
     #[cfg(target_os = "macos")]
     #[test]
     fn closing_a_shell_ends_the_child_it_marked_after_its_tree_broke() {
+        on_the_pool_side("closing_a_shell_ends_the_child_it_marked_after_its_tree_broke", Scene::Close);
+    }
+
+    /// **셸 닫기는 유예를 기다리지 않고 돌아오고, SIGTERM을 무시하는 자식은 뒤에서 2초 뒤 SIGKILL로 끝난다**
+    /// (프로세스 스펙 S5). 앵커: 닫기가 돌아온 순간 자식은 아직 살아 있다 — 유예가 뒤에서 흐르는 중이다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_returns_before_the_grace_and_sigkill_follows_behind() {
+        on_the_pool_side(
+            "closing_returns_before_the_grace_and_sigkill_follows_behind",
+            Scene::CloseIgnoring,
+        );
+    }
+
+    /// **셸을 닫은 직후 앱 종료 길을 불러도 그 셸의 자식이 남지 않는다.** 닫기가 뒤로 보낸 유예를 종료가 SIGKILL까지
+    /// 마감하고 돌아온다 — 뒤 스레드는 앱과 함께 사라지므로. 자식은 종료의 판정이 다시 못 찾는 것(표식이 안
+    /// 읽히고 트리도 끊긴 것)이라, 진행 중인 끝내기 목록만이 그것을 끝낼 수 있다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_exit_right_after_a_close_leaves_none_of_its_children() {
+        on_the_pool_side("the_exit_right_after_a_close_leaves_none_of_its_children", Scene::CloseThenExit);
+    }
+
+    /// **새로고침은 풀을 그 자리에서 비우고 멈추지 않으며, 옛 셸의 표식 자식은 뒤에서 끝난다.** 옛 길은 셸 그룹에만
+    /// 신호를 보내 제 세션으로 떨어진 자식에 안 닿았다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_reload_empties_the_pool_at_once_and_ends_the_old_shells_children_behind() {
+        on_the_pool_side(
+            "a_reload_empties_the_pool_at_once_and_ends_the_old_shells_children_behind",
+            Scene::Reload,
+        );
+    }
+
+    /// 풀 배선 검사의 바깥 — 검사 프로세스를 하나 더 띄워 그 안에서 장면을 돌린다. 안쪽이면 곧바로 장면을 돈다.
+    ///
+    /// **안쪽 프로세스를 따로 띄우는 이유.** `spawn`은 사용자의 로그인 셸을 rc째 띄운다. 이 프로세스의 env 그대로면
+    /// 사용자의 rc가 돌고, 쳐 넣은 줄이 사용자의 히스토리에 남고, 상태 파일 자리가 진짜 데이터 루트다. 안쪽
+    /// 프로세스는 임시 HOME · `ATELIER_HOME`과 `/bin/zsh`로 뜬다 — env를 바꾸는 일이 이 검사 하나에 갇혀, 나란히
+    /// 도는 다른 검사의 env를 흔들지 않는다. 장면마다 임시 HOME이 따로다(나란히 돈다).
+    ///
+    /// **안쪽에는 표식을 물려주지 않는다.** 이 검사를 아틀리에 셸에서 돌리면 검사 프로세스가 그 셸의 표식을
+    /// 물고 있다. 판정은 그것을 「앱이 물려받은 키」로 읽는다(`processes::inherited_key`) — 어디서 돌리든 같은
+    /// 입력(물려받은 키 없음)이 되게 지운다.
+    #[cfg(target_os = "macos")]
+    fn on_the_pool_side(test: &str, scene: Scene) {
         use std::process::{Command, Stdio};
 
-        if std::env::var_os(POOL_SIDE).is_some() {
-            return pool_side();
+        if let Some(inner) = std::env::var_os(POOL_SIDE) {
+            let inner = Scene::ALL.into_iter().find(|s| inner.to_str() == Some(s.name()));
+            return pool_side(inner.expect("모르는 장면이다"));
         }
-        let home = std::env::temp_dir().join(format!("atelier-pty-pool-{}", std::process::id()));
+        // **한 번에 한 장면씩.** 안쪽의 세대는 셸을 처음 띄운 ms라, 나란히 뜬 안쪽 둘이 같은 세대를 받는다(실측 —
+        // 넷을 나란히 돌리니 셋이 서로를 남의 것으로 봤다). 그러면 종료 장면이 형제 장면의 자식까지 끝낸다.
+        static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir()
+            .join(format!("atelier-pty-pool-{}-{}", std::process::id(), scene.name()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).expect("임시 HOME을 만든다");
         let (_crate, path) = module_path!().split_once("::").expect("모듈 경로에 크레이트가 있다");
-        let name = format!("{path}::closing_a_shell_ends_the_child_it_marked_after_its_tree_broke");
+        let name = format!("{path}::{test}");
         let mut inner = Command::new(crate::processes::testkit::exe())
             .args(["--exact", &name, "--nocapture", "--test-threads", "1"])
-            .env(POOL_SIDE, "1")
+            .env(POOL_SIDE, scene.name())
             .env("HOME", &home)
             .env("ATELIER_HOME", home.join(".atelier"))
             .env("SHELL", "/bin/zsh")
@@ -1367,7 +1481,7 @@ mod tests {
             .spawn()
             .expect("검사 프로세스를 하나 더 띄운다");
 
-        // 안쪽은 스스로 끝난다(자식이 서기를 5초, 끝내기를 2초 남짓 기다린다). 그래도 멎으면 거둔다.
+        // 안쪽은 스스로 끝난다(자식이 서기를 5초, 끝나기를 5초까지 기다린다). 그래도 멎으면 거둔다.
         let mut status = None;
         for _ in 0..3000 {
             status = inner.try_wait().expect("안쪽 검사를 기다린다");
@@ -1384,23 +1498,27 @@ mod tests {
 
         assert!(
             status.is_some_and(|s| s.success()),
-            "안쪽 검사가 실패했다 ({status:?})\n--- stdout\n{}\n--- stderr\n{}",
+            "안쪽 검사({})가 실패했다 ({status:?})\n--- stdout\n{}\n--- stderr\n{}",
+            scene.name(),
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
     }
 
-    /// 위 검사의 안쪽 — 임시 HOME에서 셸을 띄우고, 셸에 한 줄을 쳐 표식 자식을 띄우고, 셸을 닫는다.
+    /// 풀 배선 검사의 안쪽 — 임시 HOME에서 셸을 띄우고, 셸에 한 줄을 쳐 표식 자식을 띄우고, 장면의 길로 셸을
+    /// 거둔다.
     ///
     /// `( … & )`는 서브셸이 자식을 뒤로 띄우고 곧바로 끝나는 모양이다 — 자식의 부모가 launchd(1)로 바뀌어
     /// 트리가 끊긴다. 자식은 스스로 `setsid`한다. 자식이 쥐는 것은 이 셸의 표식뿐이다.
     #[cfg(target_os = "macos")]
-    fn pool_side() {
+    fn pool_side(scene: Scene) {
         use std::collections::HashMap;
         use std::sync::atomic::AtomicBool;
+        use std::time::Instant;
 
         use tauri::ipc::Channel;
 
+        use crate::processes::ending::{self, Group, GRACE};
         use crate::processes::snapshot::{identity_of, take, EnvScope};
         use crate::processes::testkit::{child_args, exe, wait_until, CHILD_ROLE};
 
@@ -1418,27 +1536,44 @@ mod tests {
 
         // 셸이 무언가(프롬프트)를 내보낸 뒤에 친다 — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
         wait_until(|| spoke.load(std::sync::atomic::Ordering::Relaxed));
+        let shell_pid = pool.lock().get(&spawned.id).and_then(|shell| shell.pid);
         let args = child_args().join(" ");
-        let line = format!(
-            "( {CHILD_ROLE}=sleep '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
-            exe().display()
-        );
+        let line = match scene {
+            // 표식이 안 읽히는 시스템 바이너리가 셸 밑에서 SIGTERM · SIGHUP을 무시한다. 셸이 끝나면 launchd 밑으로
+            // 넘어가 트리도 끊긴다 — 종료의 판정은 그것을 다시 못 찾는다. 그 신원을 쥔 것은 닫기가 뒤로 보낸
+            // 끝내기(진행 중인 끝내기)뿐이다. 표식 자식이었다면 종료가 이 세대의 표식으로 다시 찾아 이 장면이
+            // 목록 없이도 초록이다(변형으로 확인).
+            //
+            // 무시는 `/bin/sh -c`로 건다. 대화형 zsh의 서브셸 `( trap '' TERM; exec … )`은 exec한 것에 무시를
+            // 물려주지 않았다(실측 — SIGTERM에 곧바로 끝났다).
+            Scene::CloseThenExit => "/bin/sh -c \"trap '' TERM HUP; exec /bin/sleep 30\" &\n".to_string(),
+            _ => format!(
+                "( {CHILD_ROLE}={} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
+                scene.role(),
+                exe().display()
+            ),
+        };
         super::write(&pool, spawned.id, &line).expect("셸에 한 줄을 친다");
 
-        // 트리가 끊겼고(부모 1) 제 세션을 연(pgid = pid) 표식 자식.
+        // 표식 자식: 트리가 끊겼고(부모 1) 제 세션을 열었다(pgid = pid). 시스템 바이너리: 셸의 자식인 `sleep`.
         let mut child = None;
         wait_until(|| {
             child = take(EnvScope::All)
                 .procs
                 .into_iter()
-                .find(|p| p.shell_key.as_deref() == Some(key.as_str()) && p.ppid == 1 && p.pgid == p.id.pid)
+                .find(|p| match scene {
+                    Scene::CloseThenExit => shell_pid == Some(p.ppid) && p.name == "sleep",
+                    _ => p.shell_key.as_deref() == Some(key.as_str()) && p.ppid == 1 && p.pgid == p.id.pid,
+                })
                 .map(|p| p.id);
             child.is_some()
         });
 
-        // **닫기 전에 이 키가 이 검사의 것뿐인지 본다.** `kill`은 이 기계의 표 전체를 판정해 그 키를 문 것을
-        // 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에 있다. 키의 세대는 이 프로세스가 뜬 시각(ms)이라 실제
-        // 세대와 겹칠 일이 없지만, 겹치면 남을 끝낸다. 그때는 닫지 않고 셸 그룹만 거둔 뒤 멈춘다.
+        // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
+        // 셸 키를 문 것을, 앱 종료는 이 세대의 키를 문 것 전부를 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에
+        // 있다. 세대는 이 프로세스가 셸을 처음 띄운 시각(ms)이라 실제 세대와 겹칠 일이 없지만, 겹치면 남을
+        // 끝낸다. 그때는 판정 없이 이 셸 그룹만 거둔 뒤 멈춘다.
+        let generation = format!("{}-", super::instance_prefix());
         let table = take(EnvScope::All);
         let parents: HashMap<u32, u32> = table.procs.iter().map(|p| (p.id.pid, p.ppid)).collect();
         let from_here = |mut pid: u32| {
@@ -1456,24 +1591,57 @@ mod tests {
         let foreign: Vec<u32> = table
             .procs
             .iter()
-            .filter(|p| p.shell_key.as_deref() == Some(key.as_str()))
+            .filter(|p| p.shell_key.as_deref().is_some_and(|k| k.starts_with(&generation)))
             .filter(|p| Some(p.id) != child && !from_here(p.id.pid))
             .map(|p| p.id.pid)
             .collect();
         if !foreign.is_empty() {
-            super::reap_all(&pool);
-            panic!("이 검사의 셸 키({key})를 이 검사의 트리 밖에서 문 프로세스가 있다 — 닫지 않았다: {foreign:?}");
+            let shells: Vec<super::Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
+            let groups: Vec<Group> = shells
+                .iter()
+                .filter_map(|shell| Some(Group { pgid: shell.pid?, leader: shell.process }))
+                .collect();
+            let started = ending::start(&[], &groups);
+            drop(shells);
+            let _ = started.finish();
+            panic!("이 검사의 세대({generation}…)를 이 검사의 트리 밖에서 문 프로세스가 있다 — 거두지 않았다: {foreign:?}");
         }
 
-        super::kill(&pool, spawned.id).expect("셸을 닫는다");
-        let alive = child.is_some_and(|id| identity_of(id.pid) == Some(id));
+        let alive = || child.is_some_and(|id| identity_of(id.pid) == Some(id));
+        let began = Instant::now();
+        match scene {
+            Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit => {
+                super::kill(&pool, spawned.id).expect("셸을 닫는다");
+            }
+            Scene::Reload => super::end_for_reload(&pool),
+        }
+        let closed = began.elapsed();
+        let emptied = pool.lock().is_empty();
+        if scene == Scene::CloseThenExit {
+            let _ = super::end_for_exit(&pool);
+        }
+        let returned = began.elapsed();
+        let alive_on_return = alive();
+        let ended = wait_until(|| !alive());
+        let ended_after = began.elapsed();
 
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 신원을 방금 다시 봤다.
-        if let Some(id) = child.filter(|_| alive) {
+        if let Some(id) = child.filter(|_| alive()) {
             unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
         }
 
-        assert!(child.is_some(), "셸에서 띄운 표식 자식이 5초 안에 트리 밖에 서지 않았다");
-        assert!(!alive, "셸을 닫았는데 그 셸의 표식을 문 자식이 살아 있다");
+        assert!(child.is_some(), "셸에서 띄운 자식이 5초 안에 서지 않았다");
+        assert!(emptied, "셸을 거두는 길이 돌아왔는데 풀에 셸이 남았다");
+        assert!(ended, "셸을 거뒀는데 그 셸의 표식을 문 자식이 5초가 지나도 살아 있다");
+        if scene == Scene::Close {
+            return;
+        }
+        assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
+        if scene == Scene::CloseThenExit {
+            assert!(!alive_on_return, "종료 길이 돌아왔는데 방금 닫은 셸의 자식이 살아 있다 ({returned:?})");
+        } else {
+            assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
+            assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+        }
     }
 }
