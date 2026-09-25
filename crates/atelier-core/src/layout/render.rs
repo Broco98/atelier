@@ -33,22 +33,38 @@ pub struct Rendered {
 /// 적은 이름과 설명만 사용자의 언어다.
 const HEADER: &str = "Spec layout — how to arrange documents inside `specDir`.";
 
+/// 물러섰을 때 안내문 앞에 붙는 한 줄. 뜻은 셋이다 — 어느 폴더를 왜 못 읽었는가, 사용자에게
+/// 알려라, 부탁받기 전에는 고치지 마라(결정 15). 고치는 것은 사용자가 부탁한 뒤 레이아웃 도구로
+/// 한다(결정 20) — 에이전트가 먼저 손대면 사용자가 모르는 새 안내문이 바뀐다.
+fn fallback_line(fallback: &Fallback) -> String {
+    format!(
+        "Could not read the edited spec layout `{}/` ({}), so this is the built-in layout. \
+         Tell the user. Do not fix the layout unless the user asks.",
+        fallback.folder, fallback.reason
+    )
+}
+
 /// 레이아웃을 안내문으로 옮긴다. **디스크를 보지 않는다** — 템플릿이 디스크에 있는지는
 /// `templates`가, 물러섰는지는 `fallback`이 말한다.
 ///
-/// 이 판은 둘을 아직 안 쓴다. `Template:` 줄과 물러섰을 때의 앞 줄은 레이아웃 폴더를 읽는 판이
-/// 더한다 — 인자 모양을 먼저 열어 두어 그 판에서 부르는 쪽이 안 바뀌게 했다.
+/// 가리킨 템플릿이 판정에 없으면 그 `Template:` 줄을 빼고 경고로 돌려준다(결정 15). 판정이 아예
+/// 없으면(내장본) 가리킨 템플릿은 모두 없는 것이다.
 pub fn render_layout(
     layout: &SpecLayout,
-    _templates: Option<&TemplateVerdict>,
-    _fallback: Option<&Fallback>,
+    templates: Option<&TemplateVerdict>,
+    fallback: Option<&Fallback>,
 ) -> Rendered {
     let mut rows = Vec::new();
     collect_rows(&layout.root.children, 1, &mut rows);
+    let mut warnings = Vec::new();
+    for row in &mut rows {
+        row.template = template_path(row.entry, templates, &mut warnings);
+    }
     let column = rows.iter().map(|row| row.head.chars().count()).max().unwrap_or(0) + 2;
     let list: Vec<String> = rows.iter().map(|row| row.line(column)).collect();
 
     let sections = [
+        fallback.map(fallback_line).unwrap_or_default(),
         HEADER.to_string(),
         layout.root.description.clone(),
         list.join("\n"),
@@ -56,14 +72,37 @@ pub fn render_layout(
     ];
     // 빈 덩어리는 앞뒤 빈 줄과 함께 빠진다 — 덩어리 사이의 빈 줄은 늘 하나다.
     let text = sections.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
-    Rendered { text, warnings: Vec::new() }
+    Rendered { text, warnings }
+}
+
+/// 항목의 템플릿을 `Template:` 줄에 실을 경로로 옮긴다. 판정에 없으면 경고를 남기고 없음이다.
+fn template_path(
+    entry: &LayoutEntry,
+    templates: Option<&TemplateVerdict>,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
+    let template = entry.template.as_deref()?;
+    let name = entry.pattern.as_deref().unwrap_or_default();
+    match templates {
+        Some(verdict) if verdict.present.contains(template) => {
+            Some(format!("{}/{template}", verdict.folder))
+        }
+        Some(verdict) => {
+            warnings.push(format!("missing template for `{name}`: {}/{template}", verdict.folder));
+            None
+        }
+        None => {
+            warnings.push(format!("missing template for `{name}`: {template}"));
+            None
+        }
+    }
 }
 
 /// 문법 문단. **코드 틀은 문법만 말한다** — 방침은 맨 위 항목의 설명에 산다(결정 10).
 ///
 /// 문장 셋이 따로따로 빠진다. 레이아웃이 쓰지 않은 문법을 설명하면 에이전트는 그런 자리가
-/// 어딘가 있는 줄 안다. `Template:` 줄의 문장은 그 줄과 함께 붙는다 — 이 판의 레이아웃은 늘
-/// 내장본이라 그 줄이 아직 없다.
+/// 어딘가 있는 줄 안다. 템플릿 문장은 **실린** `Template:` 줄과 함께 선다 — 가리키기만 하고
+/// 빠진 줄은 에이전트에게 없는 줄이다.
 fn grammar(rows: &[Row]) -> String {
     let uses = |placeholder: &str| {
         rows.iter().any(|row| row.entry.pattern.as_deref().is_some_and(|p| p.contains(placeholder)))
@@ -78,18 +117,24 @@ fn grammar(rows: &[Row]) -> String {
         .iter()
         .any(|row| row.entry.is_folder())
         .then_some("A trailing `/` marks a folder, and indentation shows what goes inside it.");
-    [placeholders, folders].into_iter().flatten().collect::<Vec<_>>().join(" ")
+    let templates = rows.iter().any(|row| row.template.is_some()).then_some(
+        "Where a file has a `Template:` line, read that template before you create the file and \
+         follow its shape.",
+    );
+    [placeholders, folders, templates].into_iter().flatten().collect::<Vec<_>>().join(" ")
 }
 
-/// 안내문의 한 줄이 될 항목 — 「들여쓰기 + 이름」과 그 항목.
+/// 안내문의 한 줄이 될 항목 — 「들여쓰기 + 이름」과 그 항목, 그리고 실을 템플릿 경로.
 struct Row<'a> {
     head: String,
     entry: &'a LayoutEntry,
+    /// `Template:` 줄에 실을 경로. 판정에 있는 템플릿일 때만 있다.
+    template: Option<String>,
 }
 
 impl Row<'_> {
     /// 「들여쓰기 + 이름」 뒤에 설명을 `column`에 맞춰 붙인다. 설명 안의 줄바꿈은 같은 열에서
-    /// 잇는다.
+    /// 잇고, `Template:` 줄은 설명을 다 적은 뒤 같은 열에 선다.
     fn line(&self, column: usize) -> String {
         let mut description = self.entry.description.lines();
         let mut out = self.head.clone();
@@ -97,7 +142,8 @@ impl Row<'_> {
             out.push_str(&" ".repeat(column - self.head.chars().count()));
             out.push_str(first);
         }
-        for more in description {
+        let template = self.template.as_ref().map(|path| format!("Template: {path}"));
+        for more in description.chain(template.as_deref()) {
             out.push('\n');
             out.push_str(&" ".repeat(column));
             out.push_str(more);
@@ -111,7 +157,7 @@ fn collect_rows<'a>(entries: &'a [LayoutEntry], depth: usize, rows: &mut Vec<Row
     for entry in entries {
         let name = entry.pattern.as_deref().unwrap_or_default();
         let slash = if entry.is_folder() { "/" } else { "" };
-        rows.push(Row { head: format!("{}{name}{slash}", "  ".repeat(depth)), entry });
+        rows.push(Row { head: format!("{}{name}{slash}", "  ".repeat(depth)), entry, template: None });
         collect_rows(&entry.children, depth + 1, rows);
     }
 }
@@ -151,7 +197,7 @@ mod tests {
         }
     }
 
-    /// 템플릿 판정도 물러서기도 없는 render — 이 판의 레이아웃은 늘 내장본이다.
+    /// 템플릿 판정도 물러서기도 없는 render — 줄 규칙과 문법 문단만 볼 때 쓴다.
     fn text(layout: &SpecLayout) -> String {
         render_layout(layout, None, None).text
     }
@@ -241,6 +287,135 @@ mod tests {
     fn with_no_grammar_to_explain_the_paragraph_is_gone() {
         let plain = text(&layout("", vec![file("a.md", "A")]));
         assert_eq!(plain, "Spec layout — how to arrange documents inside `specDir`.\n\n  a.md  A");
+    }
+
+    fn with_template(mut entry: LayoutEntry, template: &str) -> LayoutEntry {
+        entry.template = Some(template.to_string());
+        entry
+    }
+
+    /// 템플릿 판정 — 디스크 없이 손으로 적는다. render는 판정만 본다.
+    fn verdict(present: &[&str]) -> TemplateVerdict {
+        TemplateVerdict {
+            present: present.iter().map(|path| path.to_string()).collect(),
+            folder: "~/.atelier/layouts/atelier".to_string(),
+        }
+    }
+
+    /// 템플릿을 가진 파일 둘(설명 있음·없음)과 폴더 하나.
+    fn templated() -> SpecLayout {
+        layout(
+            "",
+            vec![
+                with_template(file("decisions.md", "why"), "decisions.md"),
+                with_template(file("plan.md", ""), "templates/plan.md"),
+                folder("notes", "N", vec![]),
+            ],
+        )
+    }
+
+    /// 판정에 있는 템플릿은 `Template:` 줄로 실린다 — **그 파일 항목 바로 아래, 설명 열에** 선다.
+    /// 경로는 판정의 레이아웃 폴더에 템플릿 경로를 이은 것이다. 설명이 빈 항목도 그렇다.
+    #[test]
+    fn a_present_template_gets_a_template_line_under_its_file() {
+        let present = verdict(&["decisions.md", "templates/plan.md"]);
+        let out = render_layout(&templated(), Some(&present), None);
+        assert_eq!(
+            rows(&out.text),
+            [
+                "  decisions.md  why",
+                "                Template: ~/.atelier/layouts/atelier/decisions.md",
+                "  plan.md",
+                "                Template: ~/.atelier/layouts/atelier/templates/plan.md",
+                "  notes/        N",
+            ]
+        );
+        assert_eq!(out.warnings, Vec::<String>::new());
+    }
+
+    /// 여러 줄 설명이면 `Template:` 줄은 설명을 다 적은 뒤에 선다 — 설명 사이에 끼면 둘째 줄이
+    /// 템플릿의 설명처럼 읽힌다.
+    #[test]
+    fn the_template_line_follows_a_multi_line_description() {
+        let multi = layout("", vec![with_template(file("a.md", "first\nsecond"), "a.md")]);
+        let out = render_layout(&multi, Some(&verdict(&["a.md"])), None);
+        assert_eq!(
+            rows(&out.text),
+            ["  a.md  first", "        second", "        Template: ~/.atelier/layouts/atelier/a.md"]
+        );
+    }
+
+    /// 판정에 없는 템플릿은 줄이 빠지고 **경고로 돌아온다**(결정 15). 없는 파일을 읽으라고 하면
+    /// 에이전트는 읽기에 실패하고 모양을 지어낸다. 경고는 빠진 경로를 말한다.
+    #[test]
+    fn a_missing_template_drops_its_line_and_comes_back_as_a_warning() {
+        let out = render_layout(&templated(), Some(&verdict(&["decisions.md"])), None);
+        assert_eq!(
+            rows(&out.text),
+            [
+                "  decisions.md  why",
+                "                Template: ~/.atelier/layouts/atelier/decisions.md",
+                "  plan.md",
+                "  notes/        N",
+            ]
+        );
+        assert_eq!(out.warnings.len(), 1, "{:?}", out.warnings);
+        assert!(
+            out.warnings[0].contains("~/.atelier/layouts/atelier/templates/plan.md"),
+            "{:?}",
+            out.warnings
+        );
+
+        // 판정이 아예 없으면(내장본의 자리) 가리킨 템플릿은 모두 없는 것이다
+        let none = render_layout(&templated(), None, None);
+        assert!(!none.text.contains("Template:"), "{}", none.text);
+        assert_eq!(none.warnings.len(), 2, "{:?}", none.warnings);
+    }
+
+    /// 템플릿 문장은 **실린** `Template:` 줄이 있을 때만 문법 문단에 선다 — 가리키기만 하고 빠진
+    /// 줄은 세지 않는다.
+    #[test]
+    fn the_template_sentence_stands_only_beside_a_template_line() {
+        let with_line = render_layout(&templated(), Some(&verdict(&["decisions.md"])), None);
+        assert_eq!(
+            grammar_paragraph(&with_line.text),
+            "A trailing `/` marks a folder, and indentation shows what goes inside it. Where a \
+             file has a `Template:` line, read that template before you create the file and \
+             follow its shape."
+        );
+
+        let without = render_layout(&templated(), Some(&verdict(&[])), None);
+        assert_eq!(
+            grammar_paragraph(&without.text),
+            "A trailing `/` marks a folder, and indentation shows what goes inside it."
+        );
+    }
+
+    /// 물러섰을 때 **맨 앞에** 붙는 한 줄이 담아야 할 뜻 셋(구현 스펙 1절 「render」) — 01의 뜻
+    /// 보존과 같은 방식으로 뜻마다 대표 구절 하나다.
+    const FALLBACK_MEANING: [(&str, &str); 4] = [
+        ("읽지 못한 레이아웃 폴더", "`~/.atelier/layouts/atelier/`"),
+        ("그 이유", "(layout.json is missing)"),
+        ("사용자에게 알려라", "Tell the user"),
+        ("부탁하기 전에는 고치지 마라", "Do not fix the layout unless the user asks"),
+    ];
+
+    /// 물러서면 안내문 **앞에** 한 줄이 붙는다 — 먼저 읽혀야 알릴 수 있다. 그 뒤는 물러서지 않은
+    /// render와 글자까지 같다.
+    #[test]
+    fn a_fallback_puts_one_line_in_front_of_the_guidance() {
+        let builtin = crate::layout::builtin::builtin_layout(crate::Mode::Atelier);
+        let fallback = Fallback {
+            folder: "~/.atelier/layouts/atelier".to_string(),
+            reason: "layout.json is missing".to_string(),
+        };
+        let out = render_layout(&builtin, None, Some(&fallback)).text;
+        let (first, rest) = out.split_once("\n\n").unwrap();
+        assert!(!first.contains('\n'), "앞에 붙는 것은 한 줄이다: {first}");
+        for (what, phrase) in FALLBACK_MEANING {
+            assert!(first.contains(phrase), "물러선 줄이 뜻을 잃었다 ({what}): {first}");
+        }
+        assert_eq!(rest, text(&builtin));
     }
 
     /// `icon`은 앱만 쓰는 값이다 — 에이전트에게 가는 글에는 없다.
