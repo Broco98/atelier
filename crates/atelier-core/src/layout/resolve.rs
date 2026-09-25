@@ -343,20 +343,40 @@ mod tests {
 
     /// **읽기는 아무것도 쓰지 않는다**(결정 7) — 폴더를 만들어 두면 그 폴더가 내장본을 가리고,
     /// 앱을 켜기만 해도 파일이 생긴다. 깨진 파일도 고치거나 옮기지 않는다.
+    ///
+    /// 폴더가 없는 길과 있는 길을 둘 다 잰다. 없는 길에서 폴더를 만드는 것(결정 7이 기각한 씨
+    /// 뿌리기)이 가장 그럴 법한 어긋남이라, `layouts/`조차 없는 데이터 루트와 한 모드의 폴더만
+    /// 있는 데이터 루트를 따로 둔다.
     #[test]
     fn resolving_leaves_the_data_root_as_it_was() {
+        // 모드마다, work 지정마다(없음 · 모드 이름 둘 · 거절될 id) 한 번씩 읽고 목록을 견준다
+        let unchanged_by_resolving = |root: &Path| {
+            let before = everything_under(root);
+            for mode in [Mode::Atelier, Mode::Maison] {
+                for work in [None, Some("atelier"), Some("maison"), Some("../..")] {
+                    let _ = resolve_layout(root, mode, work);
+                }
+            }
+            assert_eq!(everything_under(root), before);
+        };
+
+        // 폴더가 없는 길 — `layouts/`도 `layouts/<id>/`도 생기면 안 된다
+        let bare = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(bare.path().join("works/cart/spec")).unwrap();
+        unchanged_by_resolving(bare.path());
+
+        // `layouts/`는 있고 maison의 폴더만 없다 — 없는 쪽을 만들면 드러난다
+        let half = tempfile::tempdir().unwrap();
+        plant(half.path(), "atelier", "layout.json", &small_layout("mine"));
+        unchanged_by_resolving(half.path());
+
+        // 폴더가 있는 길 — 점 파일도 깨진 파일도 그대로 둔다
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(root.path().join("works/cart/spec")).unwrap();
         plant(root.path(), "atelier", "layout.json", &small_layout("mine"));
         plant(root.path(), "atelier", ".layout.json.tmp", "x");
         plant(root.path(), "maison", "layout.json", "{ not json");
-        let before = everything_under(root.path());
-        for mode in [Mode::Atelier, Mode::Maison] {
-            for work in [None, Some("atelier"), Some("maison"), Some("../..")] {
-                let _ = resolve_layout(root.path(), mode, work);
-            }
-        }
-        assert_eq!(everything_under(root.path()), before);
+        unchanged_by_resolving(root.path());
         assert_eq!(
             std::fs::read_to_string(root.path().join("layouts/maison/layout.json")).unwrap(),
             "{ not json"
