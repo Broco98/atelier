@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setResizing } from "@/components/shell/useResizableWidth";
@@ -121,8 +121,7 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
 
 function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
   const [fullOpen, setFullOpen] = useState(false);
-  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
-  const close = useCallback(() => setFullOpen(false), []);
+  const openFull = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="group/table relative">
@@ -140,6 +139,7 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
           opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다 */}
       <button
+        ref={openFull}
         type="button"
         onClick={() => setFullOpen(true)}
         title="전체화면으로 크게 보기"
@@ -149,17 +149,22 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
         <Maximize2 className="size-3" strokeWidth={2} />
       </button>
 
-      {fullOpen && (
-        <FullscreenModal label="표" onClose={close}>
-          {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
-              가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
-              폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
-              모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 닫으면 본문은 그대로다 */}
-          <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
-            <ResizableTable {...props}>{children}</ResizableTable>
-          </div>
-        </FullscreenModal>
-      )}
+      <FullscreenModal
+        name="표"
+        label="표"
+        open={fullOpen}
+        onClose={() => setFullOpen(false)}
+        returnFocus={openFull}
+      >
+        {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
+            가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
+            폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
+            모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 창 안은 떠 있는 동안에만
+            서므로 열 때마다 내용 폭에서 새로 시작하고, 닫으면 본문은 그대로다 */}
+        <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
+          <ResizableTable {...props}>{children}</ResizableTable>
+        </div>
+      </FullscreenModal>
     </div>
   );
 }

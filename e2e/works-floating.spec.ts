@@ -448,3 +448,130 @@ test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 �
   await expect(messages).toHaveText("");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── 전체화면 (스토리 78~82 · 116, S28 · S31 · S36 · S37) ──
+// 다이어그램과 표의 「전체화면으로 크게 보기」가 모달 창(`dialog`)을 연다. 창의 이름은 「다이어그램」·「표」다 —
+// 다이어그램 창의 보이는 머리는 `mermaid`라 이름이 되지 못해 따로 단다. 창은 스스로 모달임을 말한다(S31).
+// Esc로 닫으면 포커스가 여는 버튼으로 돌아온다. WebKit은 버튼을 눌러도 포커스를 주지 않으므로 **눌러서 연** 창에서
+// 잰다 — 열기 전 포커스가 버튼에 없던 길이다. 닫기 버튼의 도움말은 툴팁 「닫기」 + Kbd `Esc`이고, 툴팁은 스크린리더에
+// 아무것도 주지 않으므로 단축키는 버튼의 설명으로 남는다(S28).
+//
+// 가림막은 **누르고 뗀 클릭**에 닫힌다. 창 안에서 끌다 가림막 위에서 손을 떼는 것은 클릭이 아니다(스토리 80) —
+// 그것을 「안 닫혔다」로 잰 뒤, 대조로 같은 자리를 눌러 닫히는 것을 본다(닫는 길이 아예 죽어서 초록인 것을 가른다).
+//
+// Tab이 창 밖으로 새지 않는 것(스토리 79의 앞)은 재지 않는다 — WebKit의 Tab은 버튼을 건너뛴다(S36). 판 3 실물
+// 확인(「전체 키보드 접근」)이 본다. 문서는 `multiWork`의 둘이다: mermaid 블록 하나(「다이어그램.md」)와 넓은 표 하나
+// (「넓은.md」).
+
+const 다이어그램문서 = "다이어그램.md";
+const 표문서 = "넓은.md";
+const 문서를연다 = (page: Page, file: string) =>
+  page.goto(`/works/${multiWork.slug}?file=${encodeURIComponent(file)}`);
+// 다이어그램 블록의 여는 버튼. 표의 여는 버튼은 「표를 전체화면으로 보기」라는 제 이름이 있다.
+const 크게보기 = (page: Page) => page.getByRole("button", { name: "전체화면으로 크게 보기", exact: true });
+const 다이어그램창 = (page: Page) => page.getByRole("dialog", { name: "다이어그램" });
+
+test("다이어그램을 전체화면으로 열면 「다이어그램」 창이 창에 맞춘 배율로 서고, 축소·확대·100%로가 이름으로 선다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+
+  await 크게보기(page).click();
+  const dialog = 다이어그램창(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+
+  // 맞춤 배율(스토리 81): 작은 다이어그램이라 창에 맞추면 100%가 아니다. 버튼의 글자가 지금 배율이다.
+  const reset = dialog.getByRole("button", { name: "100%로", exact: true });
+  await expect(reset).toHaveText(/^\d+%$/);
+  await expect(reset).not.toHaveText("100%");
+  await reset.click();
+  await expect(reset).toHaveText("100%");
+  await dialog.getByRole("button", { name: "확대", exact: true }).click();
+  await expect(reset).toHaveText("120%");
+  await dialog.getByRole("button", { name: "축소", exact: true }).click();
+  await expect(reset).toHaveText("100%");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 표의 여는 버튼은 포인터가 표 위에 올 때만 드러나고 눌린다 — 먼저 표 위로 포인터를 옮긴다(사람의 손도 그렇다).
+for (const { what, file, open, reveal } of [
+  { what: "다이어그램", file: 다이어그램문서, open: "전체화면으로 크게 보기", reveal: null },
+  { what: "표", file: 표문서, open: "표를 전체화면으로 보기", reveal: "table" },
+] as const) {
+  test(`${what}의 전체화면을 눌러 열고 Esc로 닫으면 포커스가 여는 버튼으로 돌아온다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await 문서를연다(page, file);
+    const trigger = page.getByRole("button", { name: open, exact: true });
+
+    if (reveal) await page.getByRole(reveal).hover();
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: what, exact: true });
+    await expect(dialog).toBeVisible();
+    // 포커스가 창 안에 들었다(부품이 옮긴다) — 그 전의 Esc는 창이 아니라 그 자리의 것이 받는다.
+    await expect.poll(() => dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+
+    await page.keyboard.press("Escape");
+
+    // 앵커: 창이 닫혔다. 그다음에 포커스의 자리를 잰다.
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+// 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」). 툴팁이 떠 있는 채 누른 Esc도 창을 닫는다 —
+// 부품 기본은 Esc를 툴팁에서 멈춰 첫 Esc가 툴팁만 닫는데, 툴팁은 사람이 연 층이 아니다(`tooltip.tsx`).
+test("닫기 버튼은 포커스에 툴팁 「닫기」와 Kbd `Esc`를 띄우고 단축키를 설명으로 말한다 — 툴팁이 떠 있어도 Esc 한 번에 닫힌다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+  const tooltip = page.locator("[data-slot=tooltip-content]");
+
+  await 크게보기(page).focus();
+  await page.keyboard.press("Enter");
+  const dialog = 다이어그램창(page);
+  await expect(dialog).toBeVisible();
+  const close = dialog.getByRole("button", { name: "닫기", exact: true });
+  await expect(close).toHaveAccessibleDescription("Esc");
+
+  await close.focus();
+  await expect(tooltip).toContainText("닫기");
+  await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("Esc");
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(tooltip).toHaveCount(0);
+  await expect(크게보기(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("다이어그램을 끌다 가림막 위에서 손을 떼도 창은 남는다 — 가림막을 누르고 떼면 닫힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+
+  await 크게보기(page).click();
+  const dialog = 다이어그램창(page);
+  await expect(dialog).toBeVisible();
+  // 다 떴다 — 열림 애니메이션(95%→100% 확대)이 끝나야 잰 상자가 실제 자리다.
+  await dialog.evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
+  const box = await dialog.boundingBox();
+  if (!box) throw new Error("창의 상자를 못 읽었다");
+  // 끌기는 창의 한가운데(다이어그램 본문)에서 시작하고, 창 위쪽 가림막 띠의 가운데에서 손을 뗀다.
+  const inside = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const scrim = { x: inside.x, y: box.y / 2 };
+
+  await page.mouse.move(inside.x, inside.y);
+  await page.mouse.down();
+  await page.mouse.move(scrim.x, scrim.y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  await expect(dialog).toBeVisible();
+
+  // 대조: 같은 자리를 누르고 떼면 닫힌다.
+  await page.mouse.click(scrim.x, scrim.y);
+  await expect(dialog).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

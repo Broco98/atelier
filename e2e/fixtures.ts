@@ -112,9 +112,13 @@ export const WORKS: WorkView[] = [
       },
     ],
     specDir: "~/.atelier/works/multi-work/spec",
-    // 문서 하나 — 본문 열보다 넓은 문서다(`SPEC_FILE_BODIES`의 「넓은.md」). 첫 work에 두지 않는
-    // 것은 그 목록이 검색 답(`SEARCH_HITS`)의 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
-    specFiles: ["넓은.md"],
+    // 문서 둘 — 본문 열보다 넓은 문서(「넓은.md」)와 mermaid 블록 하나를 가진 문서(「다이어그램.md」)다.
+    // 본문은 `SPEC_FILE_BODIES`에 있다. 첫 work에 두지 않는 것은 그 목록이 검색 답(`SEARCH_HITS`)의
+    // 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
+    //
+    // **새 문서는 뒤에 붙인다** — 파일을 안 고르고 들어오면 첫 문서가 열린다(`defaultFile`). 뒤에 붙이면
+    // 그 화면이 그대로다.
+    specFiles: ["넓은.md", "다이어그램.md"],
   },
 ];
 
@@ -487,6 +491,18 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
     `| ${Array.from({ length: 40 }, (_, at) => `열${at}`).join(" | ")} |`,
     `| ${Array.from({ length: 40 }, () => "---").join(" | ")} |`,
     `| ${Array.from({ length: 40 }, () => "끊기지않는칸값").join(" | ")} |`,
+    "",
+  ].join("\n"),
+  // **mermaid 블록 하나를 가진 문서**(`works-floating.spec.ts`의 전체화면 · Mermaid 「코드」). 다이어그램은
+  // 일부러 작다 — 전체화면이 창에 맞춘 배율이 100%가 아니게 되어(상한 300%에 닿는다) 「맞춤 배율로
+  // 열렸다」가 화면에서 갈린다.
+  "다이어그램.md": [
+    "# 다이어그램 문서",
+    "",
+    "```mermaid",
+    "graph LR",
+    "  A[시작] --> B[끝]",
+    "```",
     "",
   ].join("\n"),
 };
