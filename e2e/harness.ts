@@ -427,6 +427,14 @@ export const workRow = (page: Page, slug: string) => page.locator(`[data-work-ro
 export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
 
 /**
+ * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
+ * 행의 화면값에 따라 갈린다: 부르면 마크와 경과, 돌면 마크, 조용하면 종류·수. **셸이 없는 행에는
+ * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
+ */
+export const 오른쪽메타 = (page: Page, slug: string) =>
+  workRow(page, slug).locator("[data-row-meta]");
+
+/**
  * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 부르는 행의 이름은 `<제목> — <상태>`다.
  *
  * **목록 안으로 좁힌다.** 알림 띠의 줄이 같은 이름을 쓰므로(부르는 셸이 있으면 그 줄도 함께

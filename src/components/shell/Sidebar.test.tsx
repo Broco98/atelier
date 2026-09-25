@@ -155,11 +155,11 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(countOf(sidebar, "(state) => signalsOf(state, mode)")).toBe(1);
   });
 
-  it("둘째 줄의 **말·시각·마크**는 행마다 자기 것만 구독한다", () => {
-    // 이 셋은 문자열 하나로 안 접히므로 위 Record에 못 태운다 — 객체를 담으면 회차마다
+  it("오른쪽 메타의 **시각·마크**는 행마다 자기 것만 구독한다", () => {
+    // 이 둘은 문자열 하나로 안 접히므로 위 Record에 못 태운다 — 객체를 담으면 회차마다
     // 새것이라 얕은 비교가 늘 어긋나고 목록 전체가 다시 그려진다(`runningAgentsOf` 머리말).
     // 그래서 종류·수와 **같은 구독 컴포넌트 안**에서 자기 것만 고른다: 자리가 하나여야
-    // 레인과 둘째 줄이 같은 셸을 고른다(스토리 79).
+    // 레인과 오른쪽 메타가 같은 셸을 고른다(스토리 79).
     expect(sidebar).toContain("useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow)");
     expect(countOf(sidebar, "topSignalView(")).toBe(1);
     // **최상위 셸은 그 셀렉터가 아무것도 안 준다.** 스펙의 Out of Scope가 nav `Terminal`을
@@ -181,7 +181,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     expect(sidebar).not.toContain("BAND_LIMIT");
   });
 
-  it("그 값이 work 행 둘째 줄의 메타로 내려간다", () => {
+  it("그 값이 work 행 오른쪽 메타로 내려간다", () => {
     // 슬롯이 없으면 위 구독은 화면 어디에도 안 닿는다. 개수(`shellCounts`)가 이미 쓰는
     // 그 우회와 같은 길이다 — `SidebarWorkList`는 터미널을 한 번도 참조하지 않는다.
     //
@@ -195,10 +195,10 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 그 사정 때문이다.
     expect(sidebar).toContain("owner={ownerOf(mode, work.slug)}");
     expect(sidebar).toContain("shellCount={shellCounts[work.slug] ?? 0}");
-    // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `SubrowFor`가
+    // **조각이 같은 컴포넌트에 붙어 있는지는 자리 수로 든다** — 이 파일에 `RowMetaFor`가
     // 서는 곳은 둘뿐이다(nav `Terminal` 하나, work 행 하나). 늘어나면 위 두 조각이 어느
     // 것의 것인지가 갈리지 않는다.
-    expect(countOf(sidebar, "<SubrowFor")).toBe(2);
+    expect(countOf(sidebar, "<RowMetaFor")).toBe(2);
   });
 });
 
@@ -254,14 +254,14 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
 
   it("`Terminal`이 안고 있는 셸 수는 남되, work 행과 **같은 어휘**로 선다", () => {
     // 걷은 것은 펼침이지 이 숫자가 아니다 — 여기서 빠지면 최상위 셸이 몇 개 도는지가
-    // 사이드바 어디에도 안 남는다(work 행은 둘째 줄의 메타가 그 몫을 한다 — 결정 2·3).
+    // 사이드바 어디에도 안 남는다(work 행은 오른쪽 메타가 그 몫을 한다 — 결정 2·3).
     //
     // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
     // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
     // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
     // **최상위도 세계마다다**(결정 10) — 화면이 `/terminal`과 `/maison/terminal` 둘이라
     // 한 값으로 두면 두 세계의 셸 수가 한 숫자로 합쳐진다.
-    expect(sidebar).toContain("<SubrowFor owner={ownerOf(mode)} shellCount={topShells} />");
+    expect(sidebar).toContain("<RowMetaFor owner={ownerOf(mode)} shellCount={topShells} />");
   });
 });
 

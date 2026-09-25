@@ -42,7 +42,7 @@ function SidebarWorkList({
   shellCounts,
   signals,
   notes,
-  renderSubrow,
+  renderRowMeta,
 }: {
   open: boolean;
   /**
@@ -54,10 +54,9 @@ function SidebarWorkList({
    */
   mode: Mode;
   /**
-   * work별 셸 개수 — **둘째 줄이 종류·수를 싣는가, 프로젝트 이름을 싣는가**를 가르는
-   * 값이다(결정 2·3, 이 판 결정 5). 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와
-   * 도는 것을 **둘 다 아는 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이
-   * `ShellMeta` 하나로 합쳐졌다(결정 3·13).
+   * work별 셸 개수 — **행의 오른쪽 메타가 서는 조건**이다(결정 2·3). 셸이 없는 행에는 그 칸이
+   * 없다. 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는
+   * 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
    *
    * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
    * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
@@ -86,16 +85,16 @@ function SidebarWorkList({
    */
   notes: Record<string, CallingNote>;
   /**
-   * 둘째 줄의 **셸 갈래**. 같은 이유로 슬롯이고, 값을 고르는 자리는 터미널 스토어를 아는
-   * Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
+   * 행의 **오른쪽 메타**(`sidebar-active-band` S4·S5). 같은 이유로 슬롯이고, 값을 고르는 자리는
+   * 터미널 스토어를 아는 Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
    *
-   * **오는 것이 하나가 아니다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크 · message ·
-   * 경과, `components/shell/shell-signal`의 `SignalLine`)이고, 조용하면 지금까지처럼 종류·수
-   * (`shell-meta`의 `ShellMeta`)다. 셋째 갈래인 프로젝트 이름은 이 슬롯 밖이다 — 셸이 없는
-   * 행의 것이라 터미널을 몰라도 그릴 수 있다(아래 `WorkRow`). 타입이 `ReactNode`뿐이라
-   * 이 문단이 「이 슬롯에 무엇이 오나」를 묻는 유일한 자리다.
+   * **오는 것이 하나가 아니다**: 그 셸이 부르거나 돌면 **신호의 마크와 경과**(부름은 마크 + 경과,
+   * 도는 중은 마크 — `components/shell/shell-signal`의 `SignalMeta`)이고, 조용하면 종류·수
+   * (`shell-meta`의 `ShellMeta`)다. 셸이 없는 행에는 칸이 아예 없다 — 슬롯을 불러도 그 행에는
+   * 서지 않는다(`WorkRow`). 타입이 `ReactNode`뿐이라 이 문단이 「이 슬롯에 무엇이 오나」를
+   * 묻는 유일한 자리다.
    */
-  renderSubrow: (work: WorkView) => ReactNode;
+  renderRowMeta: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks(mode);
   const navigate = useNavigate();
@@ -433,7 +432,7 @@ function SidebarWorkList({
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            renderSubrow={renderSubrow}
+            renderRowMeta={renderRowMeta}
             draggedSlug={draggedSlug}
             lineY={lineY}
             litEmptySlot={litEmptySlot}

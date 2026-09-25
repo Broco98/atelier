@@ -20,7 +20,7 @@ import { WorkSectionList } from "@/features/works/WorkSectionList";
 import { splitWorkSections } from "@/features/works/work-sections";
 import type { WorkView } from "@/features/works/types";
 import { AttentionBand } from "./attention-band";
-import { SIGNAL_LABEL, SignalLine } from "./shell-signal";
+import { SIGNAL_LABEL, SignalMeta } from "./shell-signal";
 
 // **세 자리가 한 사실을 말한다**(스토리 79). 사이드바 행(#203) · 알림 띠(#204) ·
 // 셸 탭(#205)은 어휘가 셋이다 — 점 · 줄 · 채움. 결정 6이 그것을 허락했다(「표면이 다르면
@@ -111,10 +111,13 @@ function 행(state: ShellsState): string {
       lineY={null}
       litEmptySlot={null}
       onArmDrag={() => {}}
-      renderSubrow={(work) => {
-        // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`) — 값을 고르는 길이 행마다 따로다.
+      renderRowMeta={(work) => {
+        // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`의 `RowMetaFor`) — 값을 고르는 길이
+        // 행마다 따로다.
         const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
-        return view === null ? null : <SignalLine {...view} now={view.since} />;
+        return view === null ? null : (
+          <SignalMeta kind={view.kind} running={view.running} since={view.since} now={view.since} />
+        );
       }}
     />,
   );

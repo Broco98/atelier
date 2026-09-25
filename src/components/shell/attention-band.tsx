@@ -80,7 +80,7 @@ export function AttentionBand({
 }: {
   /** 부르는 셸 전부, **이미 줄 세워진 채로**(기다림 먼저 · 오래된 순). 자르는 것은 여기다. */
   items: ReadonlyArray<BandItem>;
-  /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`SignalLine`과 같은 규칙). */
+  /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`SignalMeta`와 같은 규칙). */
   now: number;
   expanded: boolean;
   onToggle: () => void;
@@ -251,13 +251,13 @@ function BandLine({
         {item.shellName !== null && <span className="text-tertiary"> {item.shellName}</span>}
       </span>
       {mark && (
-        // 이름은 눈이 아니라 접근성으로만 읽는다 — `SignalLine`의 마크와 같은 규칙이고,
-        // 색도 `currentColor`라 상태색으로 안 물든다(판 04 결정 15).
+        // 이름은 눈이 아니라 접근성으로만 읽는다 — 행 오른쪽 메타의 마크(`SignalMeta`)와 같은
+        // 규칙이고, 색도 `currentColor`라 상태색으로 안 물든다(판 04 결정 15).
         <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
           <mark.Glyph className="size-3" />
         </span>
       )}
-      {/* 부차 정보라 한 단 내려간다 — 둘째 줄의 경과와 같은 규격이다(구현 결정 4). */}
+      {/* 부차 정보라 한 단 내려간다 — 행 오른쪽 메타의 경과와 같은 규격이다(구현 결정 4). */}
       <span data-elapsed="" className="shrink-0 text-[11.5px] tabular-nums text-tertiary">
         {formatElapsed(now - item.since)}
       </span>

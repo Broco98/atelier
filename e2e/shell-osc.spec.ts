@@ -137,10 +137,12 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
   // 부르는 셸이 아니게 됐으니 띠가 통째로 사라진다(도는 중은 띠에 못 온다 — 결정 8).
+  //
+  // _한때 여기서 「말은 남는다」(도는 행의 둘째 줄이 직전 말을 흐리게 든다 — 결정 13의 셋째)를
+  // 쟀다._ 행이 한 줄이 되면서 그 말이 설 자리가 없어졌다: 카드의 말 칸과 행 설명은 부르는
+  // 셸에만 선다(`sidebar-active-band` 결정 14 · S6). 결정 14가 고른 대가이고, 도는 행에 말 칸이
+  // 없다는 것은 사이드바 spec의 「조용한 행과 도는 행의 카드에는 말 칸이 없고 …」가 든다.
   await expect(띠(page)).toHaveCount(0);
-  // **말은 남는다** — 「직전 유지」다. 링이 「지금 돈다」를 말하니 둘째 줄은 맥락을 지킨다
-  // (결정 13의 셋째).
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
