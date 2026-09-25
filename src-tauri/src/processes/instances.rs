@@ -1,0 +1,549 @@
+//! 인스턴스 기록 — 지금 떠 있는 아틀리에 실행 하나가 디스크에 적어 두는 한 장(프로세스 결정 6 · 프로세스 스펙 S8).
+//!
+//! **dev 빌드와 설치본이 함께 떠도 서로의 셸을 고아로 오판하지 않게 하는 장치다.** 셸이 자손에게 물려주는 표식(셸 키
+//! `<세대>-<번호>`)만으로는 그 셸이 아직 있는지 모른다 — 키를 낸 실행이 살아 있는지, 그 실행이 그 셸을 아직 쥐고
+//! 있는지는 그 실행만 안다. 그래서 실행마다 자기 셸 키 목록을 `<데이터 루트>/instances/<세대>.json`에 적어 두고, 판정은
+//! 그 기록들로 확정 고아 · 출처 불명 · 다른 인스턴스를 가른다(`verdict`). 두 빌드는 기본으로 같은 데이터 루트를 써 서로의
+//! 기록을 본다. `ATELIER_HOME`을 준 경우에만 갈리고, 그때 상대 셸의 자손은 출처 불명이 된다 — 자동으로는 안 건드리니
+//! 안전한 쪽이다.
+//!
+//! **올리기는 앞, 내리기는 뒤다**(프로세스 스펙 S52). 셸 키는 발급될 때(자식을 띄우기 **전**) 올리고, 띄우기에 실패하면
+//! 내린다. 셸이 풀에서 빠지면 그 셸의 끝내기가 끝난 **뒤에** 내린다. 기록에 없는 키의 프로세스가 한순간이라도 살아 있으면
+//! 다른 실행의 정리가 그것을 확정 고아로 본다 — 막 뜬 셸의 자손을, 닫히는 중인 셸의 유예 중인 자손을.
+//!
+//! **쓰기는 한 뮤텍스 안에서 「목록 고치기 → 파일 쓰기」다.** 쓰는 자리가 셋이다 — 셸 띄우기(명령 스레드), 리더
+//! 스레드(셸이 스스로 끝남), 뒤로 보낸 끝내기. 목록을 읽은 뒤 잠금 밖에서 쓰면 먼저 읽은 쪽의 늦은 쓰기가 이겨 막 올린
+//! 키가 디스크에서 사라진다. 앱에 기록은 하나(풀이 쥔다, `pty::PtyPool`)라 이 뮤텍스가 곧 프로세스 전역이다. 파일은
+//! 코어의 원자 쓰기로 통째 바꿔 넣는다 — 다른 실행이 아무 때나 읽기 때문이다. 코어는 잠그지 않는다: 이 파일을 쓰는
+//! 프로세스는 이 실행 하나뿐이다.
+
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+
+use super::ending::Outcome;
+use super::verdict::InstanceRecord;
+use super::{snapshot, Identity};
+
+/// 기록들이 사는 폴더. 루트는 부르는 쪽이 `atelier_core::data_root()`로 준다 — 여기서 `~/.atelier`를 박으면
+/// `ATELIER_HOME` 오버라이드가 여기서만 죽는다.
+pub fn dir(root: &Path) -> PathBuf {
+    root.join("instances")
+}
+
+/// 빌드 종류. 판 04의 `Processes`가 「다른 인스턴스」마다 보인다(프로세스 스펙 S8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Build {
+    /// `pnpm tauri dev` — 디버그 빌드.
+    Dev,
+    /// 설치본.
+    Release,
+}
+
+impl Build {
+    pub fn of_this_binary() -> Build {
+        if cfg!(debug_assertions) {
+            Build::Dev
+        } else {
+            Build::Release
+        }
+    }
+}
+
+/// 디스크의 기록 한 장. **세대는 파일 이름이다** — 안에 또 적으면 둘이 어긋날 자리가 생긴다.
+///
+/// 다른 빌드가 같은 모양으로 읽는다. 모르는 칸은 버리고 읽고, 칸이 빠졌으면 깨진 것이다(「기록 없음」).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceFile {
+    /// 앱 프로세스의 신원. pid와 시작 시각이 함께 맞아야 그 실행이 살아 있다(프로세스 스펙 S9) — 앱 pid가 재사용되면
+    /// pid만으로는 죽은 실행을 살았다고 본다.
+    pub app: Identity,
+    pub build: Build,
+    pub version: String,
+    /// 살아 있는 셸 키 — 띄우는 중인 셸과 끝내기가 아직 도는 셸도 든다.
+    pub shell_keys: Vec<String>,
+    /// 갱신 시각(에포크 µs). 확정 고아 (나)의 조건이다 — 목록에 없는 키를 문 프로세스는 이 시각보다 먼저 태어났을 때만
+    /// 확정 고아다(`verdict`).
+    pub updated_us: u64,
+}
+
+/// 기록을 어디에 누구로 쓰나.
+#[derive(Debug, Clone)]
+pub struct Place {
+    /// `dir(root)`.
+    pub dir: PathBuf,
+    pub generation: String,
+    pub app: Identity,
+    pub build: Build,
+    pub version: String,
+}
+
+impl Place {
+    /// 이 앱의 자리. **앱의 신원을 못 읽으면 기록을 쓰지 않는다**(`None`) — 시작 시각이 틀린 기록은 다른 실행에게 「죽은
+    /// 인스턴스」로 읽혀 이 실행의 셸 자손이 모두 확정 고아가 된다. 기록이 없으면 출처 불명이라 아무도 안 건드린다.
+    /// 리눅스는 신원을 안 읽으니(`snapshot::identity_of`) 늘 이 갈래다 — 판정할 스냅샷도 비어 있다.
+    pub fn this_app(root: &Path, generation: &str, version: &str) -> Option<Place> {
+        let app = snapshot::identity_of(std::process::id())?;
+        Some(Place {
+            dir: dir(root),
+            generation: generation.to_string(),
+            app,
+            build: Build::of_this_binary(),
+            version: version.to_string(),
+        })
+    }
+
+    fn file_name(&self) -> String {
+        format!("{}.json", self.generation)
+    }
+}
+
+/// 이 실행의 인스턴스 기록 — 셸 키 목록과 그것을 쓰는 뮤텍스. 앱에 하나이고 풀이 쥔다(`pty::PtyPool`).
+///
+/// **열기 전에는 목록만 든다**(`Default`). 앱은 setup에서 연다(`pty::open_record`). 검사가 세우는 풀은 안 열어 아무
+/// 파일도 안 쓴다 — 진짜 데이터 루트를 안 건드린다.
+#[derive(Default)]
+pub struct Record {
+    book: Mutex<Book>,
+}
+
+#[derive(Default)]
+struct Book {
+    /// `None`이면 아직 안 열었거나 이미 닫았다 — 목록은 고치되 파일은 안 쓴다.
+    place: Option<Place>,
+    keys: BTreeSet<String>,
+    /// 마지막으로 목록을 쓴 시각(에포크 µs). 판정이 이 실행의 확정 고아 (나)를 가를 때 쓴다.
+    updated_us: u64,
+}
+
+impl Record {
+    /// 잠금이 오염됐다는 것은 다른 스레드가 쓰다 패닉했다는 뜻이다. 목록은 그래도 맞다 — 안을 꺼내 이어 간다.
+    fn lock(&self) -> MutexGuard<'_, Book> {
+        self.book.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 기록을 열고 곧바로 쓴다 — **앱이 뜰 때**, 시작 정리(티켓 10)보다 먼저. 열기 전에 올린 키도 함께 적힌다.
+    pub fn open(&self, place: Place) {
+        let mut book = self.lock();
+        book.place = Some(place);
+        book.write();
+    }
+
+    /// 셸 키를 올린다 — **자식을 띄우기 전에**(프로세스 스펙 S52).
+    pub fn raise(&self, key: &str) {
+        let mut book = self.lock();
+        if book.keys.insert(key.to_string()) {
+            book.write();
+        }
+    }
+
+    /// 셸 키들을 내린다 — 그 셸의 끝내기가 끝난 **뒤에**, 또는 띄우기에 실패했을 때. 여럿을 한 번에 쓴다(새로고침은 셸을
+    /// 통째로 닫는다). 목록에 없는 키면 쓰지 않는다.
+    pub fn lower<'k>(&self, keys: impl IntoIterator<Item = &'k str>) {
+        let mut book = self.lock();
+        let mut changed = false;
+        for key in keys {
+            changed |= book.keys.remove(key);
+        }
+        if changed {
+            book.write();
+        }
+    }
+
+    /// **정상 종료** — 끝내기가 끝난 뒤에 부른다. 「못 끝냄」이 없으면 기록을 지우고, 있으면 남긴다: 다음 실행의 시작
+    /// 정리가 이 기록을 「죽은 인스턴스」로 읽어 한 번 더 해 본다. 어느 쪽이든 **닫는다** — 뒤 스레드의 끝내기가 늦게
+    /// 끝나 키를 내려도 지운 파일을 되살리거나 남긴 파일을 고치지 않는다.
+    pub fn close(&self, outcomes: &[(Identity, Outcome)]) {
+        let mut book = self.lock();
+        let Some(place) = book.place.take() else {
+            return;
+        };
+        if outcomes.iter().any(|(_, outcome)| *outcome == Outcome::Survived) {
+            return;
+        }
+        let path = place.dir.join(place.file_name());
+        if let Err(e) = std::fs::remove_file(&path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                eprintln!("atelier: instance record remove failed ({}): {e}", path.display());
+            }
+        }
+    }
+
+    /// 판정에 줄 기록들 — 이 실행의 것은 **메모리에서**, 남의 것은 디스크에서. 제 파일은 쓰기가 실패했으면 낡았을 수 있고,
+    /// 판정이 이 실행의 셸 목록을 여기서 읽는다. **스냅샷을 찍은 뒤에** 부른다(프로세스 스펙 S52) — 그 사이 뜬 셸의
+    /// 키가 여기 이미 있다.
+    ///
+    /// 열지 않은 기록은 아무것도 안 준다 — 어디를 읽을지 모르고, 이 실행 자신을 적을 신원도 없다. 그러면 판정은 이 세대의
+    /// 목록 밖 키를 어느 묶음에도 안 넣고 남의 키는 모두 출처 불명으로 본다(자동으로 끝내는 것이 없다).
+    pub fn records(&self) -> Vec<InstanceRecord> {
+        let (own, dir) = {
+            let book = self.lock();
+            let Some(place) = &book.place else {
+                return Vec::new();
+            };
+            let own = InstanceRecord {
+                generation: place.generation.clone(),
+                app: place.app,
+                shell_keys: book.keys.iter().cloned().collect(),
+                updated_us: book.updated_us,
+            };
+            (own, place.dir.clone())
+        };
+        let mut records: Vec<InstanceRecord> = read_all(&dir)
+            .into_iter()
+            .filter(|(generation, _)| *generation != own.generation)
+            .map(|(generation, file)| InstanceRecord {
+                generation,
+                app: file.app,
+                shell_keys: file.shell_keys,
+                updated_us: file.updated_us,
+            })
+            .collect();
+        records.push(own);
+        records
+    }
+}
+
+impl Book {
+    /// 목록을 파일 한 장으로 통째 바꿔 넣는다. **잠금 안에서만 부른다.** 열지 않았으면 갱신 시각만 옮긴다.
+    ///
+    /// 쓰기가 실패해도 셸 띄우기를 막지 않는다 — 디스크의 기록이 낡을 뿐이고, 낡은 기록에서 새 셸의 자손은 갱신 시각보다
+    /// 늦게 태어나 다른 실행에게 「다른 인스턴스」로 읽힌다(확정 고아가 아니다).
+    fn write(&mut self) {
+        self.updated_us = now_us().max(self.updated_us + 1);
+        let Some(place) = &self.place else {
+            return;
+        };
+        let file = InstanceFile {
+            app: place.app,
+            build: place.build,
+            version: place.version.clone(),
+            shell_keys: self.keys.iter().cloned().collect(),
+            updated_us: self.updated_us,
+        };
+        if let Err(e) = atelier_core::write_json_atomically(&place.dir, &place.file_name(), &file, "인스턴스 기록을")
+        {
+            eprintln!("atelier: instance record write failed ({}): {e}", place.dir.join(place.file_name()).display());
+        }
+    }
+}
+
+/// 지금(에포크 µs). 프로세스의 커널 시작 시각과 같은 벽시계다 — 확정 고아 (나)가 둘을 견준다.
+fn now_us() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as u64)
+}
+
+/// 한 세대의 기록. **깨졌으면 「기록 없음」이다** — 없는 것과 같게 친다. 그 세대의 셸 자손은 판정에서 출처 불명이 되고,
+/// 자동으로는 아무도 안 건드린다.
+pub fn read(dir: &Path, generation: &str) -> Option<InstanceFile> {
+    let content = std::fs::read_to_string(dir.join(format!("{generation}.json"))).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// 폴더의 기록 전부 — (세대, 기록). `.json`만 기록이다: 쓰는 중인 tmp는 코어의 원자 쓰기가 `.tmp`로 끝나게 짓는다.
+/// 깨진 기록은 **조용히 건너뛴다** — 판정마다 읽으니, 깨진 한 장이 셸을 닫을 때마다 stderr에 줄을 남긴다.
+pub fn read_all(dir: &Path) -> Vec<(String, InstanceFile)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut records: Vec<(String, InstanceFile)> = entries
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let generation = path.file_stem()?.to_str()?;
+            if path.extension()? != "json" {
+                return None;
+            }
+            Some((generation.to_string(), read(dir, generation)?))
+        })
+        .collect();
+    records.sort_by(|a, b| a.0.cmp(&b.0));
+    records
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::*;
+
+    /// src-tauri에는 `tempfile`이 없다(`settings.rs`의 같은 도구와 같은 까닭). 검사 이름마다 따로 선 폴더다 — 나란히
+    /// 돈다.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("atelier-instances-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    /// 검사가 쓰는 자리. 앱 신원은 이 기계의 어떤 실제 프로세스와도 상관없는 값이다 — 이 파일의 검사는 파일만 본다.
+    fn place(dir: &Path, generation: &str) -> Place {
+        Place {
+            dir: dir.to_path_buf(),
+            generation: generation.to_string(),
+            app: Identity { pid: 4242, started_us: 1_000 },
+            build: Build::Dev,
+            version: "0.14.1".to_string(),
+        }
+    }
+
+    fn keys_on_disk(dir: &Path, generation: &str) -> Option<Vec<String>> {
+        read(dir, generation).map(|file| file.shell_keys)
+    }
+
+    /// **쓰기와 읽기**(프로세스 스펙 S8). 기록을 열면 파일이 서고, 올린 키 · 내린 키가 그대로 디스크에 간다. 파일은
+    /// 사람이 열어 볼 수 있는 모양이고, 다른 빌드(dev · 설치본)가 같은 모양으로 읽는다 — 그래서 와이어를 글자로 못박는다.
+    #[test]
+    fn an_opened_record_is_on_disk_with_the_keys_it_raised() {
+        let dir = temp_dir("roundtrip");
+        let record = Record::default();
+        record.open(place(&dir, "1790000000000"));
+
+        let opened = read(&dir, "1790000000000").expect("기록을 열었는데 파일이 없다");
+        assert_eq!(opened.shell_keys, Vec::<String>::new(), "셸이 없는데 키가 있다");
+        assert_eq!(opened.app, Identity { pid: 4242, started_us: 1_000 });
+
+        record.raise("1790000000000-1");
+        record.raise("1790000000000-0");
+        let raised = read(&dir, "1790000000000").expect("파일이 있다");
+        assert_eq!(raised.shell_keys, ["1790000000000-0", "1790000000000-1"], "올린 키가 디스크에 없다");
+        assert!(raised.updated_us > opened.updated_us, "키를 올렸는데 갱신 시각이 그대로다");
+
+        record.lower(["1790000000000-0"]);
+        assert_eq!(keys_on_disk(&dir, "1790000000000"), Some(vec!["1790000000000-1".to_string()]), "내린 키가 남았다");
+
+        let written = std::fs::read_to_string(dir.join("1790000000000.json")).expect("이름이 세대다");
+        let value: serde_json::Value = serde_json::from_str(&written).expect("JSON이다");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "app": { "pid": 4242, "startedUs": 1_000 },
+                "build": "dev",
+                "version": "0.14.1",
+                "shellKeys": ["1790000000000-1"],
+                "updatedUs": value["updatedUs"],
+            }),
+            "기록의 모양이 다르다 — 다른 빌드가 못 읽으면 이 실행의 셸 자손이 그쪽에서 출처 불명이 된다"
+        );
+        assert!(value["updatedUs"].as_u64().is_some_and(|us| us > 0), "갱신 시각이 없다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 앱이 기록을 열기 전에 올린 키도 잃지 않는다 — 열 때 함께 쓴다. 셸 띄우기는 setup 뒤에만 오지만, 순서가 뒤집혀도
+    /// 기록에 없는 키의 프로세스가 생기지 않게.
+    #[test]
+    fn keys_raised_before_the_record_opens_are_written_when_it_opens() {
+        let dir = temp_dir("early");
+        let record = Record::default();
+        record.raise("G-0");
+        assert_eq!(keys_on_disk(&dir, "G"), None, "열기 전에 파일을 썼다 — 어디에 쓸지 아직 모른다");
+        record.open(place(&dir, "G"));
+        assert_eq!(keys_on_disk(&dir, "G"), Some(vec!["G-0".to_string()]), "열기 전에 올린 키를 잃었다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **깨진 기록은 「기록 없음」이다.** 그 세대의 셸 자손은 판정에서 출처 불명이 되고, 자동으로는 아무도 안 건드린다 —
+    /// 안전한 쪽이다. 한 장 때문에 다른 기록까지 못 읽으면 살아 있는 다른 실행의 셸이 모두 출처 불명이 된다.
+    ///
+    /// 앵커: 옆의 멀쩡한 기록은 읽힌다. 쓰는 중인 tmp(점 파일)는 기록이 아니다.
+    #[test]
+    fn a_broken_record_is_no_record() {
+        let dir = temp_dir("broken");
+        let good = Record::default();
+        good.open(place(&dir, "D"));
+        good.raise("D-1");
+        std::fs::write(dir.join("OLD.json"), "{\"app\":").unwrap();
+        std::fs::write(dir.join("HALF.json"), r#"{"app":{"pid":1,"startedUs":2},"build":"dev"}"#).unwrap();
+        std::fs::write(dir.join(".D.json.77.0.tmp"), std::fs::read(dir.join("D.json")).unwrap()).unwrap();
+        std::fs::write(dir.join("notes.txt"), "not a record").unwrap();
+
+        assert_eq!(read(&dir, "OLD"), None, "깨진 JSON을 기록으로 읽었다");
+        assert_eq!(read(&dir, "HALF"), None, "칸이 빠진 기록을 기록으로 읽었다");
+        let all: Vec<String> = read_all(&dir).into_iter().map(|(generation, _)| generation).collect();
+        assert_eq!(all, ["D"], "멀쩡한 기록 하나만 읽혀야 한다 — 깨진 것 · tmp · 다른 파일이 섞였거나 멀쩡한 것을 놓쳤다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **원자 쓰기.** 다른 실행의 판정이 이 기록을 아무 때나 읽는다 — 반쯤 쓰인 파일을 읽으면 「기록 없음」이 되어, 살아 있는
+    /// 이 실행의 셸 자손이 그쪽에서 출처 불명으로 보인다. 쓰는 동안 옆에서 계속 읽어 한 번도 못 읽는 순간이 없어야 한다.
+    /// 쓰기가 끝나면 tmp가 안 남는다.
+    #[test]
+    fn a_reader_never_sees_a_half_written_record() {
+        let dir = temp_dir("atomic");
+        let record = Arc::new(Record::default());
+        record.open(place(&dir, "G"));
+        let done = Arc::new(AtomicBool::new(false));
+        let reads = Arc::new(AtomicUsize::new(0));
+        let reader = {
+            let (dir, done, reads) = (dir.clone(), Arc::clone(&done), Arc::clone(&reads));
+            std::thread::spawn(move || {
+                let mut broken = 0;
+                while !done.load(Ordering::Relaxed) {
+                    if read(&dir, "G").is_none() {
+                        broken += 1;
+                    }
+                    reads.fetch_add(1, Ordering::Relaxed);
+                }
+                broken
+            })
+        };
+        for n in 0..400 {
+            // 파일이 자라고 줄어든다 — 길이가 바뀌는 쓰기라야 반쯤 쓰인 순간이 드러난다.
+            record.raise(&format!("G-{n}"));
+            if n % 3 == 0 {
+                record.lower([format!("G-{}", n / 2).as_str()]);
+            }
+        }
+        done.store(true, Ordering::Relaxed);
+        let broken = reader.join().expect("읽는 스레드");
+
+        assert!(reads.load(Ordering::Relaxed) > 100, "쓰는 동안 거의 안 읽었다 — 이 검사가 아무것도 안 쟀다");
+        assert_eq!(broken, 0, "쓰는 동안 기록을 못 읽은 순간이 있다 — 파일이 반쯤 쓰인 채 보였다");
+        let names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["G.json"], "쓰기가 끝났는데 tmp가 남았다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **두 스레드가 동시에 올리고 내려도 잃지 않는다**(프로세스 스펙 S52). 쓰는 자리가 셋이다 — 셸 띄우기(명령 스레드),
+    /// 리더 스레드, 뒤로 보낸 끝내기. 목록을 읽고 쓰는 사이에 다른 쓰기가 끼면 먼저 읽은 쪽의 늦은 쓰기가 이겨, 막 올린
+    /// 키가 디스크에서 사라진다 — 다음 쓰기까지(몇 분일 수 있다) 그 셸의 자손을 다른 실행이 확정 고아로 본다.
+    ///
+    /// **끝 상태 하나만 보면 못 잡는다**(실측 — 잠금 밖에서 파일을 쓰는 변형이 끝 상태 검사를 세 번 다 통과했다). 잃은
+    /// 키는 다음 쓰기가 메모리의 목록으로 되살린다. 쓰는 동안 옆에서 읽는 것도 창을 자주 놓친다(다섯 번 중 둘만 잡았다).
+    /// 그래서 **한 차례씩 맞춰 돈다**: 두 스레드가 같은 순간에 하나씩 쓰고, 둘 다 돌아와 아무도 안 쓰는 동안 디스크를 본다.
+    /// 그 순간 디스크는 메모리와 같아야 한다.
+    #[test]
+    fn two_threads_raising_and_lowering_lose_nothing() {
+        use std::sync::Barrier;
+
+        const ROUNDS: usize = 150;
+        let dir = temp_dir("mutex");
+        let record = Arc::new(Record::default());
+        record.open(place(&dir, "G"));
+        let key = |side: usize, n: usize| format!("G-{side}{n:03}");
+        // 차례마다 시작과 끝에서 셋(쓰는 스레드 둘과 이 스레드)이 만난다.
+        let turn = Arc::new(Barrier::new(3));
+        let writers: Vec<_> = [1, 2]
+            .into_iter()
+            .map(|side| {
+                let (record, turn) = (Arc::clone(&record), Arc::clone(&turn));
+                std::thread::spawn(move || {
+                    for n in 0..ROUNDS {
+                        turn.wait();
+                        record.raise(&key(side, n));
+                        turn.wait();
+                    }
+                    for n in 0..ROUNDS {
+                        turn.wait();
+                        record.lower([key(side, n).as_str()]);
+                        turn.wait();
+                    }
+                })
+            })
+            .collect();
+
+        let mut wrong = Vec::new();
+        let mut look = |what: &str, n: usize, want: Vec<String>| {
+            let on_disk = keys_on_disk(&dir, "G").unwrap_or_default();
+            if on_disk != want && wrong.len() < 3 {
+                wrong.push(format!("{what} {n}차례 뒤 — 기대 {}개, 디스크 {}개", want.len(), on_disk.len()));
+            }
+        };
+        let upto = |from: usize, to: usize| -> Vec<String> {
+            let mut keys: Vec<String> = [1, 2].iter().flat_map(|side| (from..to).map(move |n| key(*side, n))).collect();
+            keys.sort();
+            keys
+        };
+        for n in 0..ROUNDS {
+            turn.wait();
+            turn.wait();
+            look("올리기", n, upto(0, n + 1));
+        }
+        for n in 0..ROUNDS {
+            turn.wait();
+            turn.wait();
+            look("내리기", n, upto(n + 1, ROUNDS));
+        }
+        for writer in writers {
+            writer.join().expect("쓰는 스레드");
+        }
+
+        assert!(
+            wrong.is_empty(),
+            "두 스레드가 함께 쓴 뒤 디스크가 메모리와 다르다 — 늦은 쓰기가 다른 쪽의 키를 지웠거나 되살렸다:\n  {}",
+            wrong.join("\n  ")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **정상 종료 — 「못 끝냄」이 없으면 기록을 지우고, 있으면 남긴다**(프로세스 스펙 「인스턴스 기록 › 지우는 때」). 남긴
+    /// 기록은 다음 실행의 시작 정리가 「죽은 인스턴스」로 읽어 한 번 더 해 본다. 닫은 뒤에는 늦게 온 내리기(뒤 스레드의
+    /// 끝내기)가 파일을 되살리지 않는다.
+    #[test]
+    fn a_normal_exit_removes_the_record_unless_something_survived() {
+        let ended = Identity { pid: 11, started_us: 1 };
+        let survived = Identity { pid: 12, started_us: 2 };
+
+        let dir = temp_dir("exit-clean");
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        record.raise("G-0");
+        record.close(&[(ended, Outcome::Ended), (survived, Outcome::Forced), (ended, Outcome::Gone)]);
+        assert_eq!(keys_on_disk(&dir, "G"), None, "다 끝났는데 기록이 남았다 — 다음 실행이 헛일을 한다");
+        record.lower(["G-0"]);
+        record.raise("G-9");
+        assert!(!dir.join("G.json").exists(), "닫은 기록을 뒤늦은 쓰기가 되살렸다");
+
+        let dir = temp_dir("exit-survived");
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        record.raise("G-0");
+        record.close(&[(ended, Outcome::Ended), (survived, Outcome::Survived)]);
+        assert_eq!(
+            keys_on_disk(&dir, "G"),
+            Some(vec!["G-0".to_string()]),
+            "못 끝낸 것이 있는데 기록을 지웠다 — 다음 실행의 시작 정리가 그것을 못 찾는다"
+        );
+        record.lower(["G-0"]);
+        assert_eq!(keys_on_disk(&dir, "G"), Some(vec!["G-0".to_string()]), "닫은 기록을 뒤늦은 쓰기가 고쳤다");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(temp_dir("exit-clean"));
+    }
+
+    /// 판정에 줄 기록들 — **이 실행의 것은 메모리에서, 남의 것은 디스크에서** 읽는다. 디스크의 제 파일은 쓰기가 실패했으면
+    /// 낡았을 수 있다. 판정이 이 실행의 셸 목록을 기록에서 읽으므로 메모리가 정본이다.
+    #[test]
+    fn the_verdict_gets_its_own_record_from_memory_and_the_others_from_disk() {
+        let dir = temp_dir("records");
+        let other = Record::default();
+        other.open(Place { app: Identity { pid: 70, started_us: 7 }, ..place(&dir, "D") });
+        other.raise("D-1");
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        record.raise("G-0");
+        // 디스크의 제 파일이 낡았다 — 쓰기가 실패한 흉내.
+        std::fs::write(dir.join("G.json"), "{").unwrap();
+
+        let mut got: Vec<(String, Vec<String>, u32)> = record
+            .records()
+            .into_iter()
+            .map(|one| (one.generation, one.shell_keys, one.app.pid))
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            [("D".to_string(), vec!["D-1".to_string()], 70), ("G".to_string(), vec!["G-0".to_string()], 4242)],
+            "판정에 줄 기록이 어긋났다"
+        );
+        assert!(Record::default().records().is_empty(), "열지 않은 기록이 무언가를 읽었다 — 어디를 읽을지 모른다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

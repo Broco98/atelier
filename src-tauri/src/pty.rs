@@ -24,6 +24,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
+use crate::processes::instances::{Place, Record};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::verdict::{self, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Snapshot, SHELL_KEY_ENV};
@@ -96,6 +97,10 @@ pub struct PtyPool {
     /// 진행 중인 끝내기 — 이 풀에서 뺀 셸의 끝내기가 뒤 스레드에서 도는 동안 여기 오른다(프로세스 스펙 S5).
     /// 앱 종료가 마감한다. 풀에 두는 것은 셸을 빼는 모든 길이 풀을 쥐고 있어서다.
     endings: Arc<InFlight>,
+    /// 이 실행의 인스턴스 기록 — 셸 키 목록(프로세스 결정 6 · 프로세스 스펙 S52). 셸 키를 올리고 내리는 자리가 셋 다 풀을
+    /// 쥔다: 셸 띄우기, 리더 스레드, 뒤로 보낸 끝내기(스레드에 넘기려고 `Arc`다). 앱은 setup에서 연다(`open_record`).
+    /// 기본값은 안 연 기록이라, 검사가 세우는 풀은 아무 파일도 안 쓴다.
+    record: Arc<Record>,
 }
 
 impl PtyPool {
@@ -103,6 +108,16 @@ impl PtyPool {
     /// 하나가 앱 전체로 번진다 — 안을 꺼내 이어 간다.
     fn lock(&self) -> MutexGuard<'_, HashMap<u32, Shell>> {
         self.shells.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// 이 실행의 인스턴스 기록을 연다 — **앱이 뜰 때 한 번**, 시작 정리(티켓 10)보다 먼저(프로세스 스펙 S52). 루트는
+/// `atelier_core::data_root()`를 부르는 쪽이 준다(`ATELIER_HOME`). 앱의 신원을 못 읽으면 열지 않는다
+/// (`Place::this_app` — 리눅스가 늘 그렇다).
+pub fn open_record(pool: &PtyPool, root: &Path, version: &str) {
+    match Place::this_app(root, instance_prefix(), version) {
+        Some(place) => pool.record.open(place),
+        None => eprintln!("atelier: could not read this app's identity — the instance record stays unwritten"),
     }
 }
 
@@ -127,33 +142,18 @@ pub fn spawn(
     // 없어서, 여기 인라인으로 두면 「셸마다 다른 값이 난다」를 소스 자리로만 재게 된다 —
     // 그러면 `let id = 0;`으로 굳히는 변형이 조용히 통과한다.
     let (id, shell_id) = mint_shell_id(pool);
-    let builder = shell_builder(mode, &dir, &shell_id)?;
-    let shell_name = Path::new(&builder.get_shell())
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "shell".to_string());
-
-    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
-    let pair = native_pty_system()
-        .openpty(size)
-        .map_err(|e| format!("pty를 열지 못했습니다: {e}"))?;
-    let mut child = pair
-        .slave
-        .spawn_command(builder)
-        .map_err(|e| format!("셸을 띄우지 못했습니다: {e}"))?;
-    // slave fd를 우리가 쥐고 있으면 셸이 죽어도 master 읽기가 EIO를 못 받아 리더가 영원히
-    // 막힌다 → 종료 프레임이 영원히 안 온다. 떨구면 EIO가 `Ok(0)`(EOF)으로 돌아온다.
-    drop(pair.slave);
-
-    // 여기서 실패하면 셸은 **이미 떠 있다.** 그대로 `?`로 빠져나가면 아무도 모르는 고아가 된다.
-    let mut reader = match pair.master.try_clone_reader() {
-        Ok(reader) => reader,
-        Err(e) => return Err(abandon(&mut child, e)),
-    };
-    let writer = match pair.master.take_writer() {
-        Ok(writer) => Arc::new(Mutex::new(writer)),
-        Err(e) => return Err(abandon(&mut child, e)),
-    };
+    // **셸 키를 기록에 먼저 올린다 — 자식을 띄우기 전이다**(프로세스 스펙 S52). 셸의 rc는 뜨자마자 자손을 띄운다(p10k의
+    // `gitstatusd`). 그 순간 키가 기록에 없으면 다른 실행의 정리가 그것을 「살아 있는 실행의, 목록에 없는 셸」의 것으로
+    // 읽어 확정 고아로 끝낸다. 띄우기에 실패하면 내린다 — 그 키의 셸은 끝내 없다.
+    pool.record.raise(&shell_id);
+    let Launched { shell_name, master, mut child, mut reader, writer } =
+        match launch(mode, &dir, &shell_id, cols, rows) {
+            Ok(launched) => launched,
+            Err(e) => {
+                pool.record.lower([shell_id.as_str()]);
+                return Err(e);
+            }
+        };
     let pid = child.process_id();
     let process = pid.and_then(snapshot::identity_of);
 
@@ -166,10 +166,7 @@ pub fn spawn(
     // 상태 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가 루트를
     // 다시 계산하지 않게.
     let state_file = crate::shells::state_path(&atelier_core::data_root(), &shell_id);
-    pool.lock().insert(
-        id,
-        Shell { pid, key: shell_id, process, first_input_us: None, master: pair.master, writer, state_file },
-    );
+    pool.lock().insert(id, Shell { pid, key: shell_id, process, first_input_us: None, master, writer, state_file });
 
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
@@ -211,11 +208,58 @@ pub fn spawn(
         // 죽은 셸이 풀에 남아 fd 둘을 붙잡고 있고 — 더 나쁘게 — 그 pid가 이미 회수돼
         // **재사용 가능한 상태**로 남는다. 다음 회수가 그 자리에 앉은 남의 프로세스 그룹을
         // 쏘게 된다. 이미 회수 경로가 가져갔으면 `remove`는 아무 일도 하지 않는다.
-        owner.lock().remove(&id);
+        let left = owner.lock().remove(&id);
+        // 빼기가 셸을 돌려줄 때만 키를 내린다 — 다른 길(×, 새로고침)이 먼저 뺐으면 그 길이 끝내기 뒤에 내린다. 지금은
+        // 곧바로 내린다: 이 길에는 끝내기가 아직 없다. 티켓 13이 스스로 끝난 셸의 자손을 끝내며 그 뒤로 옮긴다.
+        if let Some(shell) = &left {
+            owner.record.lower([shell.key.as_str()]);
+        }
         // 채널이 여기서 떨어지며 JS 쪽 콜백이 정리된다.
     });
 
     Ok(PtySpawned { id, shell_name })
+}
+
+/// 셸 프로세스와 그 입출력 — `spawn`이 실패할 수 있는 몫에서 나온 것.
+struct Launched {
+    shell_name: String,
+    master: Box<dyn MasterPty + Send>,
+    child: Box<dyn Child + Send + Sync>,
+    reader: Box<dyn Read + Send>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+}
+
+/// 셸을 띄우고 입출력을 연다 — `spawn`에서 **실패할 수 있는 몫 전부**다. 한 함수로 모은 것은 `spawn`이 실패 하나로
+/// 올린 셸 키를 내리게 하려는 것이다(프로세스 스펙 S52). 몫마다 내리는 줄을 적으면 실패하는 길이 하나 늘 때 빠진다.
+fn launch(mode: Mode, dir: &Path, shell_id: &str, cols: u16, rows: u16) -> Result<Launched, String> {
+    let builder = shell_builder(mode, dir, shell_id)?;
+    let shell_name = Path::new(&builder.get_shell())
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "shell".to_string());
+
+    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+    let pair = native_pty_system()
+        .openpty(size)
+        .map_err(|e| format!("pty를 열지 못했습니다: {e}"))?;
+    let mut child = pair
+        .slave
+        .spawn_command(builder)
+        .map_err(|e| format!("셸을 띄우지 못했습니다: {e}"))?;
+    // slave fd를 우리가 쥐고 있으면 셸이 죽어도 master 읽기가 EIO를 못 받아 리더가 영원히
+    // 막힌다 → 종료 프레임이 영원히 안 온다. 떨구면 EIO가 `Ok(0)`(EOF)으로 돌아온다.
+    drop(pair.slave);
+
+    // 여기서 실패하면 셸은 **이미 떠 있다.** 그대로 `?`로 빠져나가면 아무도 모르는 고아가 된다.
+    let reader = match pair.master.try_clone_reader() {
+        Ok(reader) => reader,
+        Err(e) => return Err(abandon(&mut child, e)),
+    };
+    let writer = match pair.master.take_writer() {
+        Ok(writer) => Arc::new(Mutex::new(writer)),
+        Err(e) => return Err(abandon(&mut child, e)),
+    };
+    Ok(Launched { shell_name, master: pair.master, child, reader, writer })
 }
 
 pub fn write(pool: &PtyPool, id: u32, data: &str) -> Result<(), String> {
@@ -320,6 +364,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
         let shells = pool.lock();
         (shells.values().map(Shell::entry).collect(), ids.iter().map(|id| asked_of(&shells, *id)).collect())
     };
+    let records = pool.record.records();
     let exceptions = exceptions();
     checks_on(
         &Inputs {
@@ -327,7 +372,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
             generation: instance_prefix(),
             shells: &live,
             ending: &[],
-            instances: &[],
+            instances: &records,
             exceptions: &exceptions,
             app_pid: std::process::id(),
             inherited_key: crate::processes::inherited_key(),
@@ -606,19 +651,21 @@ pub fn end_for_reload(pool: &PtyPool) {
 /// 함께 사라져 아무도 SIGKILL을 못 보낸다. 진행 중인 끝내기는 남은 유예만 기다린다. 다 끝나면 곧바로 나오고,
 /// 가장 늦어도 2초 남짓이다.
 ///
-/// 결과(못 끝냄 포함)를 돌려준다 — 「못 끝냄」이 있으면 인스턴스 기록을 남기는 것은 티켓 09다.
+/// 끝내고 나면 인스턴스 기록을 닫는다 — 「못 끝냄」이 없으면 지우고, 있으면 남긴다(티켓 09). 결과(못 끝냄 포함)를
+/// 돌려준다. 정리 기록(티켓 11)이 여기서 받는다.
 pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     let shells: Vec<Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
     let pgids: Vec<i32> = shells.iter().flat_map(groups_of).collect();
     let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
     // 이 세대의 표식은 언제 태어난 누가 물었는지 모르니 env를 다 읽는다.
     let snapshot = snapshot::take(EnvScope::All);
+    let records = pool.record.records();
     let targets = verdict::at_exit(&Inputs {
         snapshot: &snapshot,
         generation: instance_prefix(),
         shells: &[],
         ending: &ending,
-        instances: &[],
+        instances: &records,
         exceptions: &exceptions(),
         app_pid: std::process::id(),
         inherited_key: crate::processes::inherited_key(),
@@ -629,7 +676,11 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     let closing = pool.endings.close(&targets, &groups);
     // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
     drop(shells);
-    closing.finish()
+    let outcomes = closing.finish();
+    // 못 끝낸 것이 없으면 인스턴스 기록을 지우고, 있으면 남긴다 — 다음 실행의 시작 정리가 이 실행을 「죽은 인스턴스」로
+    // 읽어 한 번 더 해 본다. 어느 쪽이든 기록을 닫아, 아직 도는 뒤 스레드의 늦은 쓰기가 파일을 되살리지 않는다.
+    pool.record.close(&outcomes);
+    outcomes
 }
 
 /// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. **순서가 고정이다.**
@@ -649,13 +700,14 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
     let snapshot = snapshot::take(env_scope(ending.iter().map(|shell| shell.process)));
     let live: Vec<ShellEntry> = pool.lock().values().map(Shell::entry).collect();
+    let records = pool.record.records();
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
         generation: instance_prefix(),
         shells: &live,
         ending: &ending,
-        instances: &[],
+        instances: &records,
         exceptions: &exceptions,
         app_pid: std::process::id(),
         inherited_key: crate::processes::inherited_key(),
@@ -669,6 +721,8 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     let groups = groups_led(&shells, &pgids, &snapshot);
 
     let running = claim.start(&targets, &groups);
+    let record = Arc::clone(&pool.record);
+    let keys: Vec<String> = ending.into_iter().map(|shell| shell.key).collect();
     // **셸을 떨구는 것도 뒤 스레드에서 한다.** writer의 Drop은 pty에 개행 + ^D를 쓰는데, 셸이 입력을 안 읽는
     // 채 pty 버퍼가 차 있으면 거기서 막힌다 — 새로고침은 메인 스레드에서 돈다.
     let behind = std::thread::Builder::new().name("atelier-ending".into()).spawn(move || {
@@ -676,8 +730,12 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
         drop(shells);
         // 결과는 아직 읽는 곳이 없다 — SIGKILL에도 남은 것은 끝내기가 한 줄 남긴다. 정리 기록은 티켓 11이다.
         let _ = running.finish();
+        // **셸 키는 끝내기가 끝난 뒤에 내린다**(프로세스 스펙 S52). 유예 2초 동안 SIGTERM을 무시하며 사는 자손은 아직 이
+        // 셸의 표식을 문다 — 그동안 키가 기록에 없으면 다른 실행의 정리가 그것을 확정 고아로 본다.
+        record.lower(keys.iter().map(String::as_str));
     });
-    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다.
+    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다. 키도 기록에 남는다: 그 셸의
+    // 자손은 판정에서 「키만 있는 셸」의 자손이 되어 고아로 안 읽히고, 앱 종료가 이 세대의 표식째 끝낸다.
     if let Err(e) = behind {
         eprintln!("atelier: could not start the ending thread: {e}");
     }
@@ -814,6 +872,9 @@ pub(crate) fn shell_id(pty_id: u32) -> String {
 /// **정리(`shells::sweep`)는 접두사를 반드시 이 함수에서 받아야 한다** — 앱 시작 시각을
 /// 따로 재면 두 값이 갈라져 살아 있는 셸의 상태 파일을 지운다. 그 둘이 갈리는 순간은
 /// `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 값으로 잡는다.
+///
+/// **인스턴스 기록의 세대(파일 이름)도 이 값이다**(`open_record`). 판정은 셸 키의 머리로 그 키를 낸 기록을 찾으니,
+/// 기록 이름을 따로 지으면 이 실행의 셸 자손이 제 기록을 못 찾아 「출처 불명」이 된다.
 pub(crate) fn instance_prefix() -> &'static str {
     static PREFIX: OnceLock<String> = OnceLock::new();
     PREFIX.get_or_init(|| prefix_at(SystemTime::now()))
@@ -1212,6 +1273,45 @@ mod tests {
         );
     }
 
+    /// **셸 키는 자식을 띄우기 전에 기록에 오른다**(프로세스 스펙 S52 · 티켓 09). 기록에 없는 키의 프로세스가 한순간이라도
+    /// 살아 있으면 다른 실행의 정리가 그것을 확정 고아로 본다 — 막 뜬 셸의 rc가 띄운 `gitstatusd`가 그 창에 선다.
+    /// 띄우기에 실패하면 내린다.
+    ///
+    /// 실행으로는 순서를 못 잰다 — 자식이 뜨는 순간은 밖에서 안 보인다. 그래서 자리로 잰다. 실패하면 내리는 것은 풀 배선
+    /// 장면 `RecordFailed`가 진짜 셸로도 잰다(macOS).
+    #[test]
+    fn the_shell_key_is_raised_before_the_shell_is_launched() {
+        let spawn_fn = spawn_source();
+        let mint = spawn_fn.find("mint_shell_id(pool)").expect("id를 발급하는 줄이 있다");
+        let raise = spawn_fn.find("pool.record.raise(&shell_id)").expect("셸 키를 기록에 올리는 줄이 있다");
+        let launch = spawn_fn.find("launch(mode, &dir, &shell_id").expect("셸을 띄우는 줄이 있다");
+        assert!(
+            mint < raise && raise < launch,
+            "셸 키를 올리는 줄({raise})이 발급({mint})과 띄우기({launch}) 사이에 없다 — 키가 기록에 오르기 전에 셸이 뜬다"
+        );
+        let failed = &spawn_fn[launch..];
+        let lower = failed.find("pool.record.lower(").expect("띄우기에 실패하면 키를 내리는 줄이 있다");
+        let give_up = failed.find("return Err(").expect("띄우기에 실패하면 돌아간다");
+        assert!(lower < give_up, "띄우기에 실패하고 키를 안 내린 채 돌아간다 — 없는 셸의 키가 기록에 남는다");
+    }
+
+    /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
+    /// 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 기록에 이미 있다. 뒤집히면 그 사이 뜬 셸의 자손이 「목록에 없는
+    /// 이 세대 키」로 읽힌다. 판정을 부르는 세 자리를 모두 본다.
+    #[test]
+    fn the_records_are_read_after_the_snapshot() {
+        for (path, body) in [
+            ("close_checks", body_of("pub fn close_checks(", "\n}\n")),
+            ("end", body_of("fn end(", "\n}\n")),
+            ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
+        ] {
+            let taken = body.find("snapshot::take(").unwrap_or_else(|| panic!("{path}가 스냅샷을 안 찍는다"));
+            let read = body.find("pool.record.records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
+            assert!(taken < read, "{path}: 기록({read})을 스냅샷({taken})보다 먼저 읽는다");
+            assert!(body.contains("instances: &records"), "{path}: 읽은 기록을 판정에 안 넘긴다");
+        }
+    }
+
     /// 셸을 풀에서 빼는 길은 **빼기 전에** 진행 중인 끝내기 목록에 센다(프로세스 스펙 S5).
     ///
     /// 실행으로는 못 잡는다 — 뒤집혀도 터지는 것은 빼기와 목록에 오르기 사이의 ms 창에 앱 종료가 올 때뿐이다.
@@ -1285,15 +1385,16 @@ mod tests {
     fn the_pty_id_is_minted_before_the_builder_is_built() {
         let spawn_fn = spawn_source();
 
+        // 빌더는 띄우는 몫(`launch`) 안에 있다 — 발급이 그것을 부르기 전이고, 발급된 ID가 빌더까지 간다.
         let mint = spawn_fn.find("mint_shell_id(pool)").expect("id를 발급하는 줄이 있다");
-        let build = spawn_fn.find("shell_builder(").expect("빌더를 세우는 줄이 있다");
+        let build = spawn_fn.find("launch(mode, &dir, &shell_id").expect("발급된 ID로 셸을 띄우는 줄이 있다");
 
         assert!(
             mint < build,
             "발급({mint})이 빌더({build})보다 뒤에 있다 — 빌더에 넘길 셸 ID가 아직 없다"
         );
         assert!(
-            spawn_fn.contains("shell_builder(mode, &dir, &shell_id)"),
+            body_of("fn launch(", "\n}\n").contains("shell_builder(mode, dir, shell_id)"),
             "발급된 셸 ID를 빌더에 안 넘긴다 — 발급을 앞으로 당긴 뜻이 사라진다"
         );
     }
@@ -1393,9 +1494,9 @@ mod tests {
         cmd.iter_extra_env_as_str().map(|(k, v)| (k.to_string(), v.to_string())).collect()
     }
 
-    /// `spawn`의 본문. 셋 중 둘이 이것을 보므로 표식을 한 자리에만 적는다.
+    /// `spawn`의 본문. 셋 중 둘이 이것을 보므로 표식을 한 자리에만 적는다. 띄우는 몫(`launch`)은 따로 잘라 본다.
     fn spawn_source() -> &'static str {
-        body_of("pub fn spawn(", "\npub fn ")
+        body_of("pub fn spawn(", "\n}\n")
     }
 
     /// 소스를 잘라 함수 하나의 본문만 돌려준다. **가드가 여기 사는 것이 요점이다.**
@@ -1646,11 +1747,17 @@ mod tests {
         /// 닫지 않고 **묻기만 한다**(티켓 08). 셸 도우미 · 사람이 띄운 것 · 예외 이름 · 명령을 차례로 세우며 닫기 전
         /// 물음의 답을 본다. 판정을 끝내기에 넘기지 않는다 — 거둘 때는 이 장면이 띄운 자식과 이 셸 그룹에만 보낸다.
         Ask,
+        /// 인스턴스 기록을 연 풀로(티켓 09) 셸을 띄우고 ×로 닫는다. 자식은 SIGTERM을 무시한다 — 끝내기가 2초 도는 동안
+        /// 셸 키가 기록에 남는지 본다. 이어서 둘째 셸이 `exit`로 스스로 끝나고, 앱 종료 길이 기록을 지운다.
+        Record,
+        /// 인스턴스 기록을 연 풀로 셸 띄우기가 실패한다 — 빌더에서(없는 `$SHELL`), 자식을 띄우다가(실행할 수 없는
+        /// `$SHELL`). 올린 키가 내려가는지 본다. 셸이 안 떠 신호를 보낼 것이 없다.
+        RecordFailed,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 7] = [
+        const ALL: [Scene; 9] = [
             Scene::Close,
             Scene::CloseIgnoring,
             Scene::CloseThenExit,
@@ -1658,6 +1765,8 @@ mod tests {
             Scene::CloseKeeping,
             Scene::ExitKeeping,
             Scene::Ask,
+            Scene::Record,
+            Scene::RecordFailed,
         ];
 
         fn name(self) -> &'static str {
@@ -1669,6 +1778,8 @@ mod tests {
                 Scene::CloseKeeping => "close-keeping",
                 Scene::ExitKeeping => "exit-keeping",
                 Scene::Ask => "ask",
+                Scene::Record => "record",
+                Scene::RecordFailed => "record-failed",
             }
         }
 
@@ -1683,6 +1794,11 @@ mod tests {
         /// 예외 이름으로 부른 자식을 하나 더 띄우고, 그 이름을 설정의 예외 목록에 적는 장면인가.
         fn keeps(self) -> bool {
             matches!(self, Scene::CloseKeeping | Scene::ExitKeeping)
+        }
+
+        /// 인스턴스 기록을 연 풀로 도는 장면인가. 나머지 장면의 풀은 기록을 안 연다 — 아무 파일도 안 쓴다.
+        fn records(self) -> bool {
+            matches!(self, Scene::Record | Scene::RecordFailed)
         }
     }
 
@@ -1766,6 +1882,28 @@ mod tests {
     #[test]
     fn asking_before_a_close_counts_what_a_person_spawned() {
         on_the_pool_side("asking_before_a_close_counts_what_a_person_spawned", Scene::Ask);
+    }
+
+    /// **풀 배선 — 인스턴스 기록의 셸 키**(티켓 09 · 프로세스 스펙 S52). 헤드리스로 셸을 띄우면 그 키가 기록에 오르고, ×로
+    /// 닫으면 **끝내기가 끝난 뒤에** 내려간다 — SIGTERM을 무시하는 자식이 유예 2초를 사는 동안 키는 기록에 남는다. 그
+    /// 사이에 다른 실행이 정리를 돌리면 그 자식은 「목록에 있는 셸의 자손」이라 확정 고아가 아니다. 셸이 `exit`로 스스로
+    /// 끝나면 리더 스레드가 곧바로 내린다. 앱 종료 길은 못 끝낸 것이 없으면 기록을 지운다.
+    ///
+    /// 앵커: 닫기가 돌아온 순간 키는 아직 기록에 있고 자식은 살아 있다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_shell_key_stays_on_the_record_until_its_ending_is_done() {
+        on_the_pool_side("a_shell_key_stays_on_the_record_until_its_ending_is_done", Scene::Record);
+    }
+
+    /// **셸 띄우기가 실패하면 올린 키를 내린다**(티켓 09). 키는 자식을 띄우기 전에 오른다 — 빌더가 `$SHELL`을 거절하거나
+    /// 자식을 띄우다 실패하면 그 키의 셸은 끝내 없다. 남겨 두면 기록이 없는 셸을 쥐고 있다고 말한다.
+    ///
+    /// 앵커: 실패마다 기록의 갱신 시각이 움직인다 — 키를 올렸다 내리는 쓰기가 실제로 있었다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_shell_that_fails_to_spawn_takes_its_key_off_the_record() {
+        on_the_pool_side("a_shell_that_fails_to_spawn_takes_its_key_off_the_record", Scene::RecordFailed);
     }
 
     /// 풀 배선 검사의 바깥 — 검사 프로세스를 하나 더 띄워 그 안에서 장면을 돌린다. 안쪽이면 곧바로 장면을 돈다.
@@ -1853,6 +1991,13 @@ mod tests {
 
         let home = PathBuf::from(std::env::var_os("HOME").expect("임시 HOME"));
         let pool = std::sync::Arc::new(super::PtyPool::default());
+        // 기록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)에만 쓴다.
+        if scene.records() {
+            super::open_record(&pool, &atelier_core::data_root(), env!("CARGO_PKG_VERSION"));
+        }
+        if scene == Scene::RecordFailed {
+            return record_failed_side(&pool, &home);
+        }
         let spoke = std::sync::Arc::new(AtomicBool::new(false));
         let heard = std::sync::Arc::clone(&spoke);
         let frames = Channel::new(move |_| {
@@ -1862,6 +2007,7 @@ mod tests {
         let spawned = super::spawn(&pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
             .expect("셸을 띄운다");
         let key = super::shell_id(spawned.id);
+        let raised_on_spawn = listed(&key);
 
         // 셸이 무언가(프롬프트)를 내보낸 뒤에 친다 — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
         wait_until(|| spoke.load(std::sync::atomic::Ordering::Relaxed));
@@ -1972,7 +2118,7 @@ mod tests {
         let kept_alive = || kept.is_some_and(|id| identity_of(id.pid) == Some(id));
         let began = Instant::now();
         match scene {
-            Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::CloseKeeping => {
+            Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::CloseKeeping | Scene::Record => {
                 super::kill(&pool, spawned.id).expect("셸을 닫는다");
             }
             Scene::Reload => super::end_for_reload(&pool),
@@ -1980,8 +2126,8 @@ mod tests {
             Scene::ExitKeeping => {
                 let _ = super::end_for_exit(&pool);
             }
-            // 위에서 제 안쪽(`ask_side`)으로 갈라져 여기 안 온다.
-            Scene::Ask => unreachable!("묻는 장면은 거두는 길을 안 탄다"),
+            // 위에서 제 안쪽(`ask_side` · `record_failed_side`)으로 갈라져 여기 안 온다.
+            Scene::Ask | Scene::RecordFailed => unreachable!("묻는 장면 · 띄우기가 실패하는 장면은 거두는 길을 안 탄다"),
         }
         let closed = began.elapsed();
         let emptied = pool.lock().is_empty();
@@ -1990,6 +2136,16 @@ mod tests {
         }
         let returned = began.elapsed();
         let alive_on_return = alive();
+        // 끝내기가 도는 동안 키가 기록에 남는지 본다 — 기록을 먼저 읽고 자식을 그 뒤에 본다. 키가 내려간 것을 본 순간 자식이
+        // 아직 살아 있으면 끝내기가 끝나기 전에 내린 것이다.
+        let listed_on_return = listed(&key);
+        let mut lowered_while_alive = false;
+        let lowered = scene == Scene::Record
+            && wait_until(|| {
+                let still = listed(&key);
+                lowered_while_alive |= !still && alive();
+                !still
+            });
         let ended = wait_until(|| !alive());
         let ended_after = began.elapsed();
         // 예외 자식에 신호가 갔다면 앵커와 같은 순간(SIGTERM)이다 — 앵커가 끝난 뒤로도 한동안 살아 있는지 본다.
@@ -2008,6 +2164,9 @@ mod tests {
         assert!(ended, "셸을 거뒀는데 그 셸의 표식을 문 자식이 5초가 지나도 살아 있다");
         if scene == Scene::Close {
             return;
+        }
+        if scene == Scene::Record {
+            return record_side(&pool, &home, raised_on_spawn, (listed_on_return, alive_on_return), lowered, lowered_while_alive);
         }
         if scene.keeps() {
             assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
@@ -2028,6 +2187,102 @@ mod tests {
             assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
         }
     }
+    /// 이 실행(안쪽 검사 프로세스)의 인스턴스 기록에 그 셸 키가 있나. 안쪽의 데이터 루트는 임시다.
+    #[cfg(target_os = "macos")]
+    fn listed(key: &str) -> bool {
+        on_the_record().is_some_and(|file| file.shell_keys.iter().any(|listed| listed == key))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn on_the_record() -> Option<crate::processes::instances::InstanceFile> {
+        use crate::processes::instances;
+        instances::read(&instances::dir(&atelier_core::data_root()), super::instance_prefix())
+    }
+
+    /// 풀 배선 장면 `Record`의 끝 절반 — 첫 셸은 이미 닫혔고 그 자식도 끝났다. 둘째 셸을 띄워 `exit`로 스스로 끝나게 하고,
+    /// 앱 종료 길을 부른다. 단언은 모두 끝에 둔다 — 둘째 셸이 남지 않게 거두는 것이 먼저다.
+    #[cfg(target_os = "macos")]
+    fn record_side(
+        pool: &std::sync::Arc<super::PtyPool>,
+        home: &Path,
+        raised_on_spawn: bool,
+        (listed_on_return, alive_on_return): (bool, bool),
+        lowered: bool,
+        lowered_while_alive: bool,
+    ) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use tauri::ipc::Channel;
+
+        use crate::processes::testkit::wait_until;
+
+        let spoke = std::sync::Arc::new(AtomicBool::new(false));
+        let heard = std::sync::Arc::clone(&spoke);
+        let frames = Channel::new(move |_| {
+            heard.store(true, Ordering::Relaxed);
+            Ok(())
+        });
+        let second = super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
+            .expect("둘째 셸을 띄운다");
+        let second_key = super::shell_id(second.id);
+        let second_raised = listed(&second_key);
+        wait_until(|| spoke.load(Ordering::Relaxed));
+        super::write(pool, second.id, "exit\n").expect("둘째 셸에 exit를 친다");
+        let second_left = wait_until(|| !pool.lock().contains_key(&second.id));
+        let second_lowered = wait_until(|| !listed(&second_key));
+        // 남았으면 거둔다 — 단언보다 먼저.
+        let _ = super::kill(pool, second.id);
+
+        let before_exit = on_the_record().is_some();
+        let outcomes = super::end_for_exit(pool);
+        let after_exit = on_the_record();
+
+        assert!(raised_on_spawn, "셸을 띄웠는데 그 키가 인스턴스 기록에 없다");
+        assert!(
+            listed_on_return && alive_on_return,
+            "닫기가 돌아온 순간 키가 기록에 없거나({listed_on_return}) 자식이 이미 없다({alive_on_return}) — 끝내기가 도는 창을 못 봤다"
+        );
+        assert!(!lowered_while_alive, "그 셸의 자식이 아직 사는데 키를 기록에서 내렸다 — 다른 실행이 그 자식을 확정 고아로 본다");
+        assert!(lowered, "끝내기가 끝났는데 키가 5초가 지나도 기록에 남았다");
+        assert!(second_raised, "둘째 셸의 키가 기록에 없다");
+        assert!(second_left, "`exit`를 쳤는데 둘째 셸이 풀에서 안 빠졌다");
+        assert!(second_lowered, "셸이 스스로 끝났는데 그 키가 기록에 남았다");
+        assert!(before_exit, "앱 종료 전에 기록이 없다 — 지웠는지 잴 수 없다");
+        assert!(
+            after_exit.is_none(),
+            "못 끝낸 것이 없는데({outcomes:?}) 앱 종료 뒤에도 기록이 남았다 — 다음 실행이 죽은 실행의 기록으로 헛일을 한다"
+        );
+    }
+
+    /// 풀 배선 장면 `RecordFailed`의 안쪽. 셸이 안 뜨니 거둘 것이 없다. `$SHELL`을 바꾸는 것은 이 안쪽 프로세스 하나다 —
+    /// 이 검사 하나만 돈다(`--exact`, 한 스레드).
+    ///
+    /// **실패는 빌더(없는 `$SHELL`) 하나로 낸다.** `launch` 안의 실패는 전부 한 갈래(`Err` → 내린다)로 모이니 하나면
+    /// 그 갈래를 잰다. exec 실패로는 못 낸다: portable-pty가 `pre_exec`에서 fd를 모두 닫아 std가 exec 오류를 받는
+    /// 파이프까지 닫히므로, 실행할 수 없는 `$SHELL`(폴더)도 띄우기는 `Ok`로 온다(재 봤다). 그 셸은 곧 끝나 읽기 스레드가
+    /// 풀에서 빼며 키를 내린다 — 둘째 셸의 `exit` 갈래와 같은 길이다.
+    #[cfg(target_os = "macos")]
+    fn record_failed_side(pool: &std::sync::Arc<super::PtyPool>, home: &Path) {
+        use tauri::ipc::Channel;
+
+        std::env::set_var("SHELL", home.join("no-such-shell"));
+        let before = on_the_record().map(|file| file.updated_us);
+        let refused = super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, Channel::new(|_| Ok(())));
+        let after = on_the_record();
+
+        assert!(refused.is_err(), "없는 `$SHELL`인데 셸 띄우기가 성공했다 ({:?})", refused.map(|spawned| spawned.id));
+        let after_us = after.as_ref().map(|file| file.updated_us);
+        assert!(
+            before.is_some() && after_us > before,
+            "셸 띄우기가 실패했는데 기록의 갱신 시각이 그대로다({before:?} → {after_us:?}) — 키를 올린 적이 없다"
+        );
+        assert_eq!(
+            after.map(|file| file.shell_keys),
+            Some(Vec::new()),
+            "셸 띄우기가 실패했는데 올린 키가 기록에 남았다 — 다른 실행이 이 키를 「살아 있는 셸」로 읽는다"
+        );
+    }
+
     /// 풀 배선 장면 `Ask`의 안쪽. 신호를 보내는 것은 끝의 거두기뿐이고, 그것은 이 장면이 띄운 자식의 신원(방금 다시
     /// 봤다)과 이 셸 그룹(리더가 그대로일 때만)에만 간다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다.
     #[cfg(target_os = "macos")]

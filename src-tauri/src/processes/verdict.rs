@@ -4,8 +4,9 @@
 //! **값만 받는 것이 요점이다.** 살아 있는 프로세스로는 「pid가 재사용된 셸」, 「앱을 띄운 사슬」 같은
 //! 갈래를 재현할 수 없다. 스냅샷 행 몇 개와 기대 묶음을 한 줄에 두면 모든 갈래를 표로 잰다.
 //!
-//! **순서는 부르는 쪽이 지킨다: 스냅샷을 먼저 찍고, 셸 목록은 그 뒤에 읽는다**(프로세스 스펙 S52).
-//! 그 사이에 뜬 셸은 목록에 이미 있어, 그 셸의 자손이 「셸이 없는 표식」으로 읽히는 창이 없다.
+//! **순서는 부르는 쪽이 지킨다: 스냅샷을 먼저 찍고, 셸 목록과 인스턴스 기록은 그 뒤에 읽는다**(프로세스 스펙
+//! S52). 셸 키는 자식을 띄우기 전에 기록에 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 목록에 이미 있다 —
+//! 막 뜬 셸의 자손이 「셸이 없는 표식」(확정 고아)으로 읽히는 창이 없다.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -25,13 +26,15 @@ pub struct ShellEntry {
 }
 
 /// 인스턴스 기록 — 지금 떠 있거나 떠 있던 아틀리에 실행 하나(프로세스 결정 6 · 프로세스 스펙 S8).
-/// 판정이 읽는 칸만 둔다. 빌드 종류와 버전은 화면만 읽어 기록 파일 쪽에 산다(티켓 09).
+/// 판정이 읽는 칸만 둔다. 빌드 종류와 버전은 화면만 읽어 디스크의 기록 쪽에 산다(`instances::InstanceFile`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceRecord {
     pub generation: String,
     /// 그 실행의 앱 프로세스. pid와 시작 시각이 함께 맞아야 살아 있다(프로세스 스펙 S9).
     pub app: Identity,
+    /// 그 실행이 쥔 셸 키 — 띄우는 중인 셸과 끝내기가 아직 도는 셸도 든다.
     pub shell_keys: Vec<String>,
+    /// 기록을 마지막으로 고친 시각(에포크 µs). 목록에 없는 키를 문 프로세스가 이보다 먼저 태어났으면 확정 고아다.
     pub updated_us: u64,
 }
 
@@ -46,18 +49,20 @@ pub enum Occasion {
 
 /// 판정의 입력 — 스펙 「판 01 › 새 Rust 모듈 › 판정」의 입력 그대로다.
 ///
-/// 지금 읽는 칸은 스냅샷 · 세대 · 셸 목록 · 끝낼 셸 · 예외 목록 · 앱 pid · 물려받은 셸 키다. 인스턴스 기록과
-/// 모드(09 · 10)는 모양만 서 있고 판정이 아직 안 읽는다.
+/// 모드(`occasion`)만 모양이 서 있고 판정이 아직 안 읽는다 — 시작 정리 모드는 티켓 10이 더한다.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub snapshot: &'a Snapshot,
     /// 이 실행의 세대(`pty::instance_prefix`).
     pub generation: &'a str,
-    /// 이 실행의 셸 목록.
+    /// 이 실행의 셸 목록 — 풀에 앉은 셸들. 키만 올리고 아직 풀에 안 앉은 셸은 이 실행의 기록(`instances`)에서 온다.
     pub shells: &'a [ShellEntry],
     /// 끝낼 셸 — 풀에서 이미 뺀 셸들. 목록에서 빠졌어도 그 자손은 이 셸의 것으로 가른다. 여럿인 것은
     /// 새로고침이 풀을 통째로 비우기 때문이다.
     pub ending: &'a [ShellEntry],
+    /// 인스턴스 기록들 — 이 실행의 것(세대가 `generation`인 것)과 다른 실행들의 것. 이 실행의 기록에 있는 키는
+    /// 풀에 없어도 셸 목록에 든다: 띄우는 중인 셸, 풀에서 빠졌지만 끝내기가 아직 도는 셸이다. 이 실행의 기록이 없으면
+    /// (앱 신원을 못 읽어 기록을 안 씀) 이 세대의 목록 밖 키는 어느 묶음에도 넣지 않는다 — 확정 고아를 가를 근거가 없다.
     pub instances: &'a [InstanceRecord],
     /// 예외 목록(프로세스 결정 5) — 설정의 `terminal.processExceptions`, `null`이면 기본 목록. 부르는 쪽이 끝낼
     /// 때마다 설정에서 읽어 준다(`settings::process_exceptions`).
@@ -70,8 +75,8 @@ pub struct Inputs<'a> {
     pub occasion: Occasion,
 }
 
-/// 판정의 결과. 지금 서는 묶음은 셸별 자손과 예외 둘이고, 셸별 자손 중 셸 도우미를 따로 표시한다(고아 · 다른
-/// 인스턴스는 티켓 09). 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다.
+/// 판정의 결과 — 셸별 자손, 고아(확정 고아 · 출처 불명), 다른 인스턴스, 예외. 셸별 자손 중 셸 도우미를 따로
+/// 표시한다. 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다. 묶음끼리 겹치지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict<'a> {
     /// 셸 키마다 그 셸의 자손 — 셸 목록과 끝낼 셸 모두 선다. 자손이 없으면 빈 목록이다. pid 순.
@@ -91,6 +96,25 @@ pub struct Verdict<'a> {
     /// 빈 곳(P1 그대로): 입력 뒤에 다시 뜬 도우미(`exec zsh`, 죽고 다시 뜬 `gitstatusd`)는 도우미가 아니다 —
     /// 태어난 때로만 가르고 이름으로는 가르지 않는다.
     pub helpers: BTreeSet<Identity>,
+    /// 고아 — 셸 키를 물었는데 그 셸이 없는 것(프로세스 결정 6).
+    pub orphans: Orphans<'a>,
+    /// 다른 인스턴스 — 살아 있는 다른 실행의 셸 목록에 있는 키를 문 것과 그 트리. 그 실행의 기록이 갱신된 **뒤에**
+    /// 태어난 것(확정 고아 (나)의 시각 조건에 안 걸린 것)도 여기 둔다. 셸 키마다, pid 순. 판정이 부작용을 모르므로
+    /// 아무도 끝내지 않는다 — 그 실행이 제 셸을 닫을 때 끝낸다.
+    pub other_instances: BTreeMap<&'a str, Vec<&'a Proc>>,
+}
+
+/// 고아 — 셸 키를 물었는데 그 셸이 없는 프로세스(프로세스 결정 6). 두 갈래다. 셸 키마다 그 키를 문 것과 그 트리(표식이
+/// 안 읽히는 시스템 바이너리 자손)가 선다. pid 순.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Orphans<'a> {
+    /// 확정 고아 — 그 셸이 없는 것이 **기록으로 확실한** 것. (가) 그 키를 낸 실행이 죽었다(기록의 앱 pid가 없거나 시작
+    /// 시각이 다르다). (나) 실행은 살아 있는데 그 셸이 목록에 없고, 그 프로세스가 그 기록의 갱신 시각보다 먼저 태어났다.
+    /// 이 실행의 세대도 (나)로 가른다 — 스스로 끝난 셸이 남긴 것이다. 앱이 뜰 때 자동으로 치운다(티켓 10).
+    pub confirmed: BTreeMap<&'a str, Vec<&'a Proc>>,
+    /// 출처 불명 — 인스턴스 기록이 없는 세대의 키를 문 것. 이 기능 전의 판이 띄운 것, 데이터 루트가 다른 빌드
+    /// (`ATELIER_HOME`)가 띄운 것, 기록이 깨진 실행의 것. 누구의 것인지 모르니 **자동으로는 절대 안 건드린다**.
+    pub unknown: BTreeMap<&'a str, Vec<&'a Proc>>,
 }
 
 /// 셸마다 그 셸이 띄운 자손을 가른다.
@@ -101,7 +125,14 @@ pub struct Verdict<'a> {
 ///
 /// 셸별 자손 = 그 셸의 PID 트리 ∪ 그 셸 키를 문 것 ∪ 그것들의 트리. 한 프로세스는 **가장 가까운
 /// 자리**가 정한다: 자기 자신의 표식, 그다음 부모, 그 부모… 순으로 올라가다 처음 만나는 셸 프로세스나
-/// 셸 키가 그 프로세스의 셸이다. 그래서 한 프로세스가 두 셸에 들지 않는다.
+/// 셸 키가 그 프로세스의 셸이다. 그래서 한 프로세스가 두 셸에 들지 않는다. 셸 목록은 풀의 셸 ∪ 끝낼 셸 ∪ 이 실행의
+/// 기록에 있는 키다(프로세스 스펙 S52).
+///
+/// **셸별 자손이 아닌 표식 행은 고아나 다른 인스턴스로 간다**(프로세스 결정 6). 셸별 자손을 먼저 가르는 것이 요점이다 —
+/// 우리 셸의 트리 안에 있으면 다른 세대의 표식을 물어도(셸에서 띄운 dev 앱의 셸) 우리 셸의 자손이고 고아가 아니다. 남은
+/// 행은 자기부터 올라가다 **처음 만나는 표식**이 묶음을 정하고, 그 밑의 시스템 바이너리(표식이 안 읽힌다)는 그 표식을
+/// 따라간다. 표식마다 가르는 규칙은 `Orphans`와 `Verdict::other_instances`에 있다. 이 실행의 세대인데 목록에 없고 기록
+/// 갱신 뒤에 태어난 것은 어느 묶음에도 없다 — 다음 판정이 다시 본다.
 ///
 /// **어느 묶음에도 넣지 않는 것**(프로세스 스펙 S6): pid ≤ 1, 앱 자신과 그 조상 사슬, 앱이 물려받은
 /// 셸 키를 문 것, 앱과 uid가 다른 것. 앞의 둘(사슬과 물려받은 키)은 **길도 막는다** — 그 밑에 달린
@@ -112,6 +143,10 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let procs = &input.snapshot.procs;
     let table = Table { by_pid: procs.iter().map(|p| (p.id.pid, p)).collect(), rows: procs.len() };
     let shells: Vec<&'a ShellEntry> = input.shells.iter().chain(input.ending).collect();
+    // 이 실행의 기록. 여기 있는 키는 풀에 없어도 셸이다 — 키를 올리고 아직 풀에 안 앉은 셸, 풀에서 빠졌지만 끝내기가
+    // 아직 도는 셸. 셸 프로세스를 모르니 표식으로만 자손을 갖는다.
+    let own = input.instances.iter().find(|record| record.generation == input.generation);
+    let recorded: Vec<&'a str> = own.map_or_else(Vec::new, |record| record.shell_keys.iter().map(String::as_str).collect());
 
     // 셸 프로세스는 **신원이 맞는 행만** 셸로 본다. 셸이 끝나고 그 pid를 남이 받았으면, 그 pid 밑은
     // 셸의 트리가 아니다(프로세스 결정 3).
@@ -123,7 +158,8 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
             (row.id == id).then_some((id.pid, shell.key.as_str()))
         })
         .collect();
-    let keys: HashSet<&'a str> = shells.iter().map(|shell| shell.key.as_str()).collect();
+    let keys: HashSet<&'a str> =
+        shells.iter().map(|shell| shell.key.as_str()).chain(recorded.iter().copied()).collect();
     // 셸마다 사람이 처음 입력한 시각. 같은 키가 두 번 서면(종료 판정이 풀에서 뺀 셸의 키를 한 번 더 더한다) 앞의
     // 것이 이긴다 — 셸 목록, 그다음 끝낼 셸 순이고 더한 키는 맨 뒤다.
     let mut first_input: HashMap<&'a str, Option<u64>> = HashMap::new();
@@ -175,10 +211,26 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         None
     };
 
+    // 셸별 자손이 아닌 표식 행이 어느 묶음에 드나 — 그 행부터 올라가다 처음 만나는 표식이 정한다. 막힌 행을 만나거나
+    // 끝까지 표식이 없으면 판정 밖이다.
+    let stray_of = |proc: &'a Proc| -> Option<(Stray, &'a str)> {
+        for node in table.up_from(proc) {
+            if blocked.contains(&node.id.pid) {
+                return None;
+            }
+            if let Some(key) = node.shell_key.as_deref() {
+                return stray(key, node, own, input, &table).map(|bundle| (bundle, key));
+            }
+        }
+        None
+    };
+
     let mut descendants: BTreeMap<&'a str, Vec<&'a Proc>> =
-        shells.iter().map(|shell| (shell.key.as_str(), Vec::new())).collect();
+        keys.iter().map(|key| (*key, Vec::new())).collect();
     let mut excepted_rows = Vec::new();
     let mut helpers = BTreeSet::new();
+    let mut orphans = Orphans::default();
+    let mut other_instances: BTreeMap<&'a str, Vec<&'a Proc>> = BTreeMap::new();
     for proc in procs {
         let pid = proc.id.pid;
         if pid <= 1
@@ -197,13 +249,62 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
                 helpers.insert(proc.id);
             }
             descendants.entry(key).or_default().push(proc);
+        } else if let Some((bundle, key)) = stray_of(proc) {
+            let bundle = match bundle {
+                Stray::Confirmed => &mut orphans.confirmed,
+                Stray::Unknown => &mut orphans.unknown,
+                Stray::OtherInstance => &mut other_instances,
+            };
+            bundle.entry(key).or_default().push(proc);
         }
     }
-    for members in descendants.values_mut() {
+    for members in descendants
+        .values_mut()
+        .chain(orphans.confirmed.values_mut())
+        .chain(orphans.unknown.values_mut())
+        .chain(other_instances.values_mut())
+    {
         members.sort_by_key(|p| p.id.pid);
     }
     excepted_rows.sort_by_key(|p| p.id.pid);
-    Verdict { descendants, exceptions: excepted_rows, helpers }
+    Verdict { descendants, exceptions: excepted_rows, helpers, orphans, other_instances }
+}
+
+/// 셸별 자손이 아닌 표식 행의 묶음.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stray {
+    Confirmed,
+    Unknown,
+    OtherInstance,
+}
+
+/// 셸 키 하나와 그 키를 문 행(`carrier`)으로 묶음을 가른다 — 셸 목록에 없는 키다(`judge`가 먼저 걸렀다).
+///
+/// - 이 실행의 세대: 이 실행은 살아 있다. 그 행이 이 실행의 기록 갱신 전에 태어났으면 확정 고아 (나), 아니면 어느 묶음에도
+///   없다(그 사이 뜬 셸일 수 있다 — 다음 판정이 다시 본다). 이 실행의 기록이 없으면 가를 근거가 없어 어느 묶음에도 없다.
+/// - 다른 세대: 기록이 없으면 출처 불명. 그 실행이 죽었으면(앱 신원이 스냅샷에 없다) 확정 고아 (가). 살아 있고 그 셸이
+///   목록에 있으면 다른 인스턴스. 목록에 없으면 기록 갱신 전 태생은 확정 고아 (나), 뒤 태생은 다른 인스턴스.
+fn stray(
+    key: &str,
+    carrier: &Proc,
+    own: Option<&InstanceRecord>,
+    input: &Inputs,
+    table: &Table,
+) -> Option<Stray> {
+    let before = |record: &InstanceRecord| carrier.id.started_us < record.updated_us;
+    if of_generation(key, input.generation) {
+        return own.filter(|record| before(record)).map(|_| Stray::Confirmed);
+    }
+    let Some(record) = input.instances.iter().find(|record| of_generation(key, &record.generation)) else {
+        return Some(Stray::Unknown);
+    };
+    // 살아 있다 = 그 pid의 행이 있고 시작 시각도 같다(프로세스 스펙 S9). pid만 보면 그 pid를 받은 남을 그 실행으로 본다.
+    let alive = table.by_pid.get(&record.app.pid).is_some_and(|row| row.id == record.app);
+    Some(if !alive || (!record.shell_keys.iter().any(|listed| listed == key) && before(record)) {
+        Stray::Confirmed
+    } else {
+        Stray::OtherInstance
+    })
 }
 
 /// **닫기 확인 창이 말할 「이 셸에서 띄운 프로세스」 수**(프로세스 결정 3 · 프로세스 스펙 S55).
@@ -393,6 +494,10 @@ mod tests {
         expect: Vec<(&'static str, Vec<u32>)>,
         /// 기대 예외 묶음(pid). 적지 않으면 비어 있다.
         excepted: Vec<u32>,
+        /// 기대 확정 고아 · 출처 불명 · 다른 인스턴스 — 셸 키마다 pid. 적지 않으면 비어 있다.
+        confirmed: Vec<(&'static str, Vec<u32>)>,
+        unknown: Vec<(&'static str, Vec<u32>)>,
+        others: Vec<(&'static str, Vec<u32>)>,
     }
 
     fn case(what: &'static str, rows: Vec<Proc>, expect: &[(&'static str, &[u32])]) -> Case {
@@ -400,9 +505,16 @@ mod tests {
             what,
             rows,
             inherited: Some("I-3"),
-            expect: expect.iter().map(|(key, pids)| (*key, pids.to_vec())).collect(),
+            expect: listed(expect),
             excepted: Vec::new(),
+            confirmed: Vec::new(),
+            unknown: Vec::new(),
+            others: Vec::new(),
         }
+    }
+
+    fn listed(bundle: &[(&'static str, &[u32])]) -> Vec<(&'static str, Vec<u32>)> {
+        bundle.iter().map(|(key, pids)| (*key, pids.to_vec())).collect()
     }
 
     impl Case {
@@ -414,13 +526,94 @@ mod tests {
             self.excepted = pids.to_vec();
             self
         }
+        /// 확정 고아.
+        fn orphaned(mut self, bundle: &[(&'static str, &[u32])]) -> Case {
+            self.confirmed = listed(bundle);
+            self
+        }
+        /// 출처 불명.
+        fn of_unknown_origin(mut self, bundle: &[(&'static str, &[u32])]) -> Case {
+            self.unknown = listed(bundle);
+            self
+        }
+        /// 다른 인스턴스.
+        fn of_other_instance(mut self, bundle: &[(&'static str, &[u32])]) -> Case {
+            self.others = listed(bundle);
+            self
+        }
+    }
+
+    /// 판정이 낸 묶음 전부를 pid로 — 표의 한 줄과 견주는 모양이다. **모든 줄이 모든 묶음을 잰다**: 「셸의 자손이 아니다」를
+    /// 재는 줄이 그 행이 어디로 갔는지(고아 · 다른 인스턴스 · 판정 밖)까지 함께 못박는다.
+    #[derive(Debug, PartialEq)]
+    struct Bundles {
+        descendants: BTreeMap<String, Vec<u32>>,
+        excepted: Vec<u32>,
+        confirmed: BTreeMap<String, Vec<u32>>,
+        unknown: BTreeMap<String, Vec<u32>>,
+        others: BTreeMap<String, Vec<u32>>,
+    }
+
+    fn pids_of(bundle: &BTreeMap<&str, Vec<&Proc>>) -> BTreeMap<String, Vec<u32>> {
+        bundle.iter().map(|(key, procs)| (key.to_string(), procs.iter().map(|p| p.id.pid).collect())).collect()
+    }
+
+    fn wanted(bundle: &[(&'static str, Vec<u32>)]) -> BTreeMap<String, Vec<u32>> {
+        bundle.iter().map(|(key, pids)| (key.to_string(), pids.clone())).collect()
+    }
+
+    /// 표의 한 줄을 판정해 어긋났으면 그 까닭을 준다. `shell_keys`는 셸별 자손에 서야 할 키 전부다(자손이 없으면 빈 목록).
+    fn misjudged(
+        case: &Case,
+        world: Vec<Proc>,
+        shells: &[ShellEntry],
+        ending: &[ShellEntry],
+        instances: &[InstanceRecord],
+        shell_keys: &[&str],
+    ) -> Option<String> {
+        let mut procs = world;
+        for added in &case.rows {
+            procs.retain(|p| p.id.pid != added.id.pid);
+            procs.push(added.clone());
+        }
+        let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+        let exceptions = exceptions();
+        let verdict = judge(&Inputs {
+            snapshot: &snapshot,
+            generation: "G",
+            shells,
+            ending,
+            instances,
+            exceptions: &exceptions,
+            app_pid: APP,
+            inherited_key: case.inherited,
+            occasion: Occasion::Normal,
+        });
+        let got = Bundles {
+            descendants: pids_of(&verdict.descendants),
+            excepted: verdict.exceptions.iter().map(|p| p.id.pid).collect(),
+            confirmed: pids_of(&verdict.orphans.confirmed),
+            unknown: pids_of(&verdict.orphans.unknown),
+            others: pids_of(&verdict.other_instances),
+        };
+        let mut descendants: BTreeMap<String, Vec<u32>> =
+            shell_keys.iter().map(|key| (key.to_string(), Vec::new())).collect();
+        descendants.extend(wanted(&case.expect));
+        let want = Bundles {
+            descendants,
+            excepted: case.excepted.clone(),
+            confirmed: wanted(&case.confirmed),
+            unknown: wanted(&case.unknown),
+            others: wanted(&case.others),
+        };
+        (got != want).then(|| format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what))
     }
 
     /// **판정 표.** 한 줄에 스냅샷 행과 기대 묶음을 둔다.
     ///
     /// 「어느 묶음에도 없다」를 재는 줄은 **빠지는 행이 살아 있는 셸의 표식을 물게** 두고, 같은 줄에 그
-    /// 셸의 자손 하나를 앵커로 세운다. 이 판의 묶음은 셸별 자손뿐이라, 표식이 없는 행은 규칙이 없어도
-    /// 어차피 어디에도 안 든다 — 그러면 그 줄은 아무것도 재지 않는다.
+    /// 셸의 자손 하나를 앵커로 세운다. 표식이 없는 행은 규칙이 없어도 어차피 어디에도 안 든다 — 그러면 그 줄은
+    /// 아무것도 재지 않는다.
     #[test]
     fn each_shell_gets_what_it_spawned() {
         let cases = [
@@ -514,11 +707,15 @@ mod tests {
                 vec![row(113, 100).born(1_050), row(114, 100)],
                 &[("G-1", &[114])],
             ),
+            // 이 표에는 인스턴스 기록이 없다 — 이 실행의 기록을 못 쓴 채(신원을 못 읽음) 판정하는 셈이다. 그러면 이 세대의
+            // 목록 밖 키는 확정 고아가 될 근거(기록의 갱신 시각)가 없어 어느 묶음에도 안 든다. 자동으로 끝내는 것이 없는
+            // 쪽이다. 기록이 있을 때의 갈래는 `strays_split_into_orphans_and_other_instances`가 잰다.
             case(
-                "셸 목록에 없는 키는 판정 밖",
+                "셸 목록에 없는 키는 셸의 자손이 아니다 — 기록이 없으면 이 세대의 키는 어느 묶음에도 없고, 남의 키는 출처 불명",
                 vec![row(220, 1).key("G-7"), row(221, 1).key("OLD-1"), row(222, 1).key("G-1")],
                 &[("G-1", &[222])],
-            ),
+            )
+            .of_unknown_origin(&[("OLD-1", &[221])]),
             // ── 예외(프로세스 결정 5). 예외는 **다른 묶음보다 먼저** 가른다 — 자기나 조상 중 하나가 예외
             // 이름이면 표식을 물었어도 셸의 자손이 아니다. 줄마다 그 셸의 자손 하나를 앵커로 세운다.
             case(
@@ -581,46 +778,177 @@ mod tests {
             shell("G-3", None),
         ];
         let ending = [shell("G-2", Some(Identity { pid: 110, started_us: 1_110 }))];
-        let exceptions = exceptions();
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter_map(|case| misjudged(case, world(), &shells, &ending, &[], &["G-1", "G-2", "G-3"]))
+            .collect();
+        assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
 
-        let mut wrong = Vec::new();
-        for case in &cases {
-            let mut procs = world();
-            for added in &case.rows {
-                procs.retain(|p| p.id.pid != added.id.pid);
-                procs.push(added.clone());
-            }
-            let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
-            let verdict = judge(&Inputs {
-                snapshot: &snapshot,
-                generation: "G",
-                shells: &shells,
-                ending: &ending,
-                instances: &[],
-                exceptions: &exceptions,
-                app_pid: APP,
-                inherited_key: case.inherited,
-                occasion: Occasion::Normal,
-            });
+    /// 인스턴스 기록 표가 쓰는 기록들(프로세스 결정 6 · 프로세스 스펙 S8 · S9). 모두 갱신 시각이 5_000이다.
+    ///
+    /// - G — **이 실행**(앱 50). 풀의 셸 G-1(100), 끝내는 중인 G-2(110), 키만 올리고 아직 풀에 안 앉은 G-4.
+    /// - D — 살아 있는 다른 실행(앱 70). 셸 D-1.
+    /// - R — 앱 pid 80이 살아 있지만 시작 시각이 다르다 — 그 pid를 남이 받았다. 죽은 실행이다.
+    /// - X — 앱 pid 90이 없다. 죽은 실행이다.
+    /// - I — 이 앱을 띄운 설치본(앱 10). 셸 I-3이 이 앱의 조상 사슬이다.
+    /// - 기록이 없는 세대 OLD — 이 기능 전의 판이 띄운 것.
+    fn records() -> Vec<InstanceRecord> {
+        let record = |generation: &str, pid: u32, started_us: u64, keys: &[&str]| InstanceRecord {
+            generation: generation.to_string(),
+            app: Identity { pid, started_us },
+            shell_keys: keys.iter().map(|key| key.to_string()).collect(),
+            updated_us: 5_000,
+        };
+        vec![
+            record("G", APP, 1_050, &["G-1", "G-2", "G-4"]),
+            record("D", 70, 1_070, &["D-1"]),
+            record("R", 80, 900, &["R-1"]),
+            record("X", 90, 1_090, &["X-1"]),
+            record("I", 10, 1_010, &["I-3"]),
+        ]
+    }
 
-            let got: BTreeMap<&str, Vec<u32>> = verdict
-                .descendants
-                .iter()
-                .map(|(key, procs)| (*key, procs.iter().map(|p| p.id.pid).collect()))
-                .collect();
-            let mut want: BTreeMap<&str, Vec<u32>> =
-                ["G-1", "G-2", "G-3"].into_iter().map(|key| (key, Vec::new())).collect();
-            for (key, pids) in &case.expect {
-                want.insert(key, pids.clone());
-            }
-            let got_excepted: Vec<u32> = verdict.exceptions.iter().map(|p| p.id.pid).collect();
-            if got != want || got_excepted != case.excepted {
-                wrong.push(format!(
-                    "{}\n    기대 {want:?} · 예외 {:?}\n    받음 {got:?} · 예외 {got_excepted:?}",
-                    case.what, case.excepted
-                ));
-            }
-        }
+    /// **셸별 자손이 아닌 표식 행을 가른다**(프로세스 결정 6 · 프로세스 스펙 S52 · 티켓 09) — 확정 고아, 출처 불명, 다른 인스턴스.
+    ///
+    /// 예외가 가장 먼저이고, 그다음 셸별 자손이다. 남은 행은 자기부터 부모를 따라 올라가다 **처음 만나는 표식**이 묶음을
+    /// 정한다 — 표식이 안 읽히는 시스템 바이너리는 그 위의 표식을 따라간다. 판정 밖(앱과 조상 사슬, 물려받은 키)을 만나면
+    /// 거기서 멈춘다.
+    ///
+    /// 「어느 묶음에도 없다」를 재는 줄은 같은 줄에 묶음에 드는 행 하나를 앵커로 세운다.
+    #[test]
+    fn strays_split_into_orphans_and_other_instances() {
+        let cases = [
+            // ── 이 실행의 세대(G, 기록 갱신 5_000)
+            case(
+                "이 실행의 세대 · 기록에 있고 풀에는 아직 없는 키(띄우는 중인 셸) → 셸별 자손이다. 확정 고아가 아니다",
+                vec![row(301, 1).key("G-4").born(3_000), row(302, 301).born(3_100)],
+                &[("G-4", &[301, 302])],
+            ),
+            case(
+                "이 실행의 세대 · 목록에 없는 키 · 기록 갱신 전에 태어남 → 확정 고아 — 스스로 끝난 셸이 남긴 것",
+                vec![row(303, 1).key("G-7").born(3_000)],
+                &[],
+            )
+            .orphaned(&[("G-7", &[303])]),
+            case(
+                "이 실행의 세대 · 목록에 없는 키 · 기록 갱신 뒤에 태어남 → 어느 묶음에도 없다(다음 판정이 다시 본다)",
+                vec![row(304, 1).key("G-8").born(6_000), row(303, 1).key("G-7").born(3_000)],
+                &[],
+            )
+            .orphaned(&[("G-7", &[303])]),
+            // ── 다른 세대
+            case("다른 세대 · 기록 없음 → 출처 불명", vec![row(310, 1).key("OLD-1")], &[])
+                .of_unknown_origin(&[("OLD-1", &[310])]),
+            case("다른 세대 · 인스턴스 죽음(앱 pid가 없다) → 확정 고아", vec![row(311, 1).key("X-1")], &[])
+                .orphaned(&[("X-1", &[311])]),
+            case(
+                "다른 세대 · 앱 pid는 살았는데 시작 시각이 다름(재사용) → 확정 고아",
+                vec![row(312, 1).key("R-1")],
+                &[],
+            )
+            .orphaned(&[("R-1", &[312])]),
+            case(
+                "다른 세대 · 살아 있고 그 셸이 목록에 있음 → 다른 인스턴스 — 기록 갱신 전에 태어났어도",
+                vec![row(313, 1).key("D-1").born(3_000)],
+                &[],
+            )
+            .of_other_instance(&[("D-1", &[313])]),
+            case(
+                "다른 세대 · 살아 있는데 그 셸이 목록에 없음 · 기록 갱신 전에 태어남 → 확정 고아",
+                vec![row(314, 1).key("D-2").born(3_000)],
+                &[],
+            )
+            .orphaned(&[("D-2", &[314])]),
+            case(
+                "다른 세대 · 살아 있는데 그 셸이 목록에 없음 · 기록 갱신 뒤에 태어남 → 다른 인스턴스",
+                vec![row(315, 1).key("D-3").born(6_000)],
+                &[],
+            )
+            .of_other_instance(&[("D-3", &[315])]),
+            // ── 예외가 가장 먼저다(프로세스 결정 5)
+            case(
+                "죽은 세대의 키를 문 예외 이름 프로세스와 그 밑의 표식 프로세스 → 예외. 확정 고아가 아니다",
+                vec![
+                    row(320, 1).named("tmux").key("X-1"),
+                    row(321, 320).key("X-1"),
+                    row(322, 321),
+                    row(311, 1).key("X-1"),
+                ],
+                &[],
+            )
+            .excepting(&[320, 321, 322])
+            .orphaned(&[("X-1", &[311])]),
+            // ── 트리
+            case(
+                "확정 고아의 트리 안 시스템 바이너리 자손은 그 고아 묶음에 든다",
+                vec![row(311, 1).key("X-1"), row(323, 311), row(324, 323)],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311, 323, 324])]),
+            case(
+                "출처 불명 · 다른 인스턴스의 트리 안 시스템 바이너리도 그 묶음에 든다",
+                vec![row(310, 1).key("OLD-1"), row(325, 310), row(313, 1).key("D-1"), row(326, 313)],
+                &[],
+            )
+            .of_unknown_origin(&[("OLD-1", &[310, 325])])
+            .of_other_instance(&[("D-1", &[313, 326])]),
+            case(
+                "가장 가까운 표식이 정한다 — 확정 고아 밑에서 떠도 살아 있는 실행의 셸 키를 문 것과 그 밑은 다른 인스턴스",
+                vec![row(311, 1).key("X-1"), row(327, 311).key("D-1"), row(328, 327)],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])])
+            .of_other_instance(&[("D-1", &[327, 328])]),
+            case(
+                "셸의 트리 안에서는 죽은 세대의 표식을 물어도 그 셸의 자손이다 — 고아가 아니다",
+                vec![row(115, 100).key("X-1"), row(116, 115)],
+                &[("G-1", &[115, 116])],
+            ),
+            // ── 판정 밖(프로세스 스펙 S6). 03은 물려받은 키를 이 실행의 셸 키로 두고 쟀다 — 여기서는 다른 세대로 다시 잰다.
+            case(
+                "앱이 물려받은 키를 문 형제 가지(vite와 그 밑) — 그 키를 낸 설치본이 죽어도 확정 고아가 아니다",
+                vec![
+                    row(10, 1).born(9_000),
+                    row(60, 30).key("I-3"),
+                    row(61, 60),
+                    row(62, 60).key("I-3"),
+                    row(317, 1).key("I-5"),
+                ],
+                &[],
+            )
+            .orphaned(&[("I-5", &[317])]),
+            // 물려받은 키(I-3)와 다른, 죽은 세대의 키를 사슬이 문다 — 사슬이라서 빠지는지만 잰다.
+            case(
+                "앱과 조상 사슬은 죽은 세대의 키를 물어도 확정 고아가 아니다. 그 밑에서 앱이 띄운 셸 아닌 자식(표식 없음)도",
+                vec![
+                    row(30, 20).key("X-1"),
+                    row(40, 30).key("X-1"),
+                    row(APP, 40).key("X-1"),
+                    row(52, APP),
+                    row(311, 1).key("X-1"),
+                ],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])]),
+            case(
+                "pid ≤ 1과 다른 uid — 죽은 세대의 키를 물어도",
+                vec![row(1, 0).key("X-1"), row(318, 1).uid(0).key("X-1"), row(311, 1).key("X-1")],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])]),
+        ];
+
+        // 이 실행: 풀의 셸 G-1과 끝내는 중인 G-2. G-4는 기록에만 있다 — 판정이 기록에서 읽어 셸 목록에 더한다.
+        let shells = [shell("G-1", Some(Identity { pid: 100, started_us: 1_100 }))];
+        let ending = [shell("G-2", Some(Identity { pid: 110, started_us: 1_110 }))];
+        let mut world = world();
+        world.extend([row(70, 1), row(80, 1)]);
+        let records = records();
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter_map(|case| misjudged(case, world.clone(), &shells, &ending, &records, &["G-1", "G-2", "G-4"]))
+            .collect();
         assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 

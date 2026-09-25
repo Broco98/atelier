@@ -247,6 +247,11 @@ pub fn run() {
             // 안 보면 이번 실행의 것만 싣는다는 보장이 (1)의 파괴적 청소에만 걸려 있게 되고,
             // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
             shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix());
+
+            // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
+            // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리(10)는 이 줄 **뒤에** 선다 — 기록이 먼저다.
+            // 셸은 프런트가 뜬 뒤에야 불리지만, 그보다 먼저 올린 키가 있어도 여는 쓰기가 함께 적는다(`Record::open`).
+            pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string());
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -312,7 +317,8 @@ pub fn run() {
             // 끝낸다: 스레드에 넘기면 프로세스가 끝나며 그 스레드도 함께 사라져 아무도 신호를 못 보낸다.
             // 셸 닫기 · 새로고침이 뒤로 보낸 끝내기(진행 중인 끝내기)도 여기서 남은 유예만 기다려 마감한다.
             //
-            // 결과(못 끝냄 포함)는 아직 읽는 곳이 없다 — 인스턴스 기록을 남길지 가르는 것은 티켓 09다.
+            // 인스턴스 기록도 여기서 닫는다(`end_for_exit` 안) — 「못 끝냄」이 없으면 지우고, 있으면 다음 실행의 시작
+            // 정리가 한 번 더 해 보게 남긴다. 돌려받는 결과는 정리 기록(11)이 읽는다.
             if matches!(event, tauri::RunEvent::Exit) {
                 let _ = pty::end_for_exit(&app.state::<Arc<pty::PtyPool>>());
             }
@@ -379,6 +385,19 @@ mod tests {
                 "shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix())"
             ),
             "상태 폴더를 안 보거나 접두사 없이 본다 — 셸이 말해도 화면까지 안 오거나, 남의 인스턴스 것까지 온다"
+        );
+    }
+
+    /// **인스턴스 기록이 앱이 뜰 때 열린다**(프로세스 스펙 S52). 안 열면 조용하다 — 셸은 잘 뜨고 닫히는데 이 실행의
+    /// 키가 디스크에 없어, 함께 뜬 다른 빌드의 판정이 이 실행의 셸 자손을 「출처 불명」으로 본다. 여는 자리도
+    /// 헤드리스로는 못 돌리니(`run()`) 자리로 잰다. 여는 쪽의 동작(연 뒤 키가 오르고 내린다)은 `pty.rs`의 실물 장면이 잰다.
+    #[test]
+    fn the_instance_record_opens_when_the_app_comes_up() {
+        assert!(
+            setup_source().contains(
+                "pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string())"
+            ),
+            "인스턴스 기록을 안 연다 — 다른 빌드가 이 실행의 셸 자손을 출처 불명으로 본다"
         );
     }
 

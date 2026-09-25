@@ -17,19 +17,25 @@
 //!   신호마다 직전에 신원을 다시 본다. 커널을 트레이트 뒤에 둬 가짜 커널로 모든 갈래를 잰다. 모듈 이름에
 //!   `terminate`를 쓰지 않는 것은 `terminate.rs`가 이미 ⌘Q · Dock 종료를 묻는 macOS 델리게이트이기
 //!   때문이다.
+//! - 인스턴스 기록(`instances`)은 부작용 층이다(프로세스 결정 6). 이 실행이 띄운 셸의 키를 디스크 한 장에 적어,
+//!   함께 뜬 다른 빌드의 판정이 그 셸의 자손을 고아로 안 보게 한다. 판정은 그 기록을 값으로 받을 뿐 읽지 않는다.
 //!
-//! 셋을 잇는 자리(셸 닫기)는 풀을 쥔 `pty.rs`에 있다.
+//! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료)는 풀을 쥔 `pty.rs`에 있다.
 
-// **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 입력의 몇 칸(인스턴스 기록, 모드), 판정 결과의 예외 묶음,
-// 끝내기의 결과는 09 · 10 · 11 · 31이 읽는다(첫 사람 입력 시각과 행의 pgid는 08의 셸 도우미 · 확인 창의 수가
-// 읽는다). 그때까지는 검사만 부르고, 리눅스에서는 실물 검사마저 빠진다. 칸마다 적으면 열 줄이 넘고 하나씩
-// 낡는다 — 판 01이 끝나면 이 줄을 걷는다(예외 묶음은 판 04의 31이 처음 읽으니, 그때까지 그 칸 하나에만 따로 단다).
+// **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 입력의 모드, 판정 결과의 고아 · 다른 인스턴스 · 예외 묶음,
+// 끝내기의 결과, 인스턴스 기록의 한 장 읽기(`instances::read`)는 10 · 11 · 13 · 31이 읽는다(첫 사람 입력 시각과 행의 pgid는
+// 08의 셸 도우미 · 확인 창의 수가 읽는다). 그때까지는 검사만 부르고, 리눅스에서는 실물 검사마저 빠진다. 칸마다
+// 적으면 열 줄이 넘고 하나씩 낡는다 — 판 01이 끝나면 이 줄을 걷는다(다른 인스턴스 · 예외 묶음은 판 04의 31이 처음
+// 읽으니, 그때까지 그 칸들에만 따로 단다).
 #![allow(dead_code)]
 
 use std::sync::OnceLock;
 
+use serde::{Deserialize, Serialize};
+
 pub(crate) mod ending;
 pub(crate) mod exceptions;
+pub(crate) mod instances;
 pub(crate) mod procargs;
 pub(crate) mod snapshot;
 #[cfg(all(test, target_os = "macos"))]
@@ -55,7 +61,10 @@ pub(crate) fn inherited_key() -> Option<&'static str> {
 ///
 /// pid만으로는 재사용을 못 가른다. 스냅샷과 신호 사이에 그 pid가 다른 프로세스에게 넘어가면 남에게
 /// 신호가 간다. 시작 시각까지 같아야 같은 프로세스다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+///
+/// 인스턴스 기록에 앱의 신원으로 적힌다(`instances`) — 그 모양이 `{"pid": …, "startedUs": …}`다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Identity {
     pub pid: u32,
     /// 에포크 기준 µs(`pbi_start_tvsec` · `pbi_start_tvusec`).
