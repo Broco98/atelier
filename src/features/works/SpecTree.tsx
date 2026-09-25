@@ -1,118 +1,18 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { specIconOf } from "./spec-icons";
 import type { SpecTreeItem } from "./types";
-
-// ─── 아카이브 트리가 아직 쓰는 이름 규칙 ───────────────────────────────────────────
-//
-// work 화면은 이것을 더는 부르지 않는다 — 엔진이 가른 spec 트리를 받아 그리기만 한다(아래
-// `SpecTree`, spec 레이아웃 결정 13). 아카이브의 문서 트리만 아직 파일 목록을 받아 여기서 트리를
-// 짓는다. 그 트리도 spec 트리를 그리게 되면(티켓 06) 이 절이 통째로 사라진다. **그때까지 이
-// 파일에 둔다** — TS 소스를 읽는 Rust 결합 테스트(`atelier-cli`의
-// `the_app_recognises_the_same_folder_names_it_teaches`)가 이 파일에서 이름을 찾는다.
-
-interface TreeNode {
-  name: string;
-  path: string;
-  children: TreeNode[] | null; // null = 파일
-}
-
-// spec 폴더에서 의미를 갖는 다섯 이름. 고정하는 것은 **폴더 이름뿐**이고 그 안의
-// 파일 이름은 자유다. 규칙에 없는 폴더·파일도 트리에서 사라지지 않는다 —
-// 아틀리에가 특정 스킬의 산출물 이름에 묶이면 안 되기 때문이다.
-const OVERVIEW = "overview.md";
-const ITERATION = /^(\d+)-/; // NN-<이름>/ = 판 하나
-const TICKETS = "tickets";
-// 판을 넘어 사는 구역. 이 배열이 트리에서의 순서이자 이름 규칙이 주는 아이콘의 유일한 출처다.
-const STANDING = [
-  { name: "research", icon: "search" },
-  { name: "explanation", icon: "book-open" },
-] as const;
-
-/** 구역 번호와 구역 안 순서. 같은 키는 커널이 준 순서를 그대로 지킨다(안정 정렬). */
-function sectionKey(node: TreeNode): [number, number] {
-  const isDir = node.children !== null;
-  if (!isDir && node.name === OVERVIEW) return [0, 0];
-  const iteration = isDir ? ITERATION.exec(node.name) : null;
-  if (iteration) return [1, Number(iteration[1])];
-  const standing = isDir ? STANDING.findIndex((s) => s.name === node.name) : -1;
-  if (standing >= 0) return [2, standing];
-  return [3, 0];
-}
-
-/** overview → 판(번호 오름차순) → 상시 구역 → 나머지. 최상위에서만 적용한다. */
-function orderSections(nodes: TreeNode[]): TreeNode[] {
-  return [...nodes].sort((a, b) => {
-    const [aSection, aOrder] = sectionKey(a);
-    const [bSection, bOrder] = sectionKey(b);
-    return aSection - bSection || aOrder - bOrder;
-  });
-}
-
-function buildTree(files: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  for (const file of files) {
-    const parts = file.split("/");
-    let siblings = root;
-    let prefix = "";
-    for (let i = 0; i < parts.length; i++) {
-      const name = parts[i];
-      prefix = prefix ? `${prefix}/${name}` : name;
-      const isFile = i === parts.length - 1;
-      let node = siblings.find((n) => n.name === name && (n.children === null) === isFile);
-      if (!node) {
-        node = { name, path: prefix, children: isFile ? null : [] };
-        siblings.push(node);
-      }
-      if (node.children) siblings = node.children;
-    }
-  }
-  return root;
-}
-
-// 이름 → 아이콘. tickets/는 판 안에 있든 밖에 있든 같은 아이콘이다 — 이름으로만 판단하고 위치는
-// 보지 않는다. 규칙에 없는 폴더는 아이콘 없이 그대로 보인다. 다섯 이름 중 파일은 overview.md
-// 하나뿐이라, 그것만 확장자 대신 진입점 글리프(나침반)를 받는다.
-function iconByName(node: TreeNode): string | null {
-  if (node.children === null) return node.name === OVERVIEW ? "compass" : null;
-  if (ITERATION.test(node.name)) return "layers";
-  if (node.name === TICKETS) return "list-checks";
-  return STANDING.find((s) => s.name === node.name)?.icon ?? null;
-}
-
-/** 이름 규칙으로 지은 트리를 spec 트리의 모양으로 — 그리는 것은 work 화면과 같은 `SpecTree`다. */
-function itemsByName(nodes: TreeNode[]): SpecTreeItem[] {
-  return nodes.map((node) => ({
-    name: node.name,
-    path: node.path,
-    kind: node.children === null ? "file" : "folder",
-    icon: iconByName(node),
-    // 이름 규칙에는 번호 묶음이 없다 — 그래서 폴더가 모두 펼친 채 선다(이 규칙의 원래 모양)
-    group: null,
-    children: itemsByName(node.children ?? []),
-  }));
-}
-
-/**
- * 파일 목록에서 이름 규칙으로 트리를 지어 그린다. **아카이브 트리만 쓴다**(티켓 06이 걷는다).
- * 입력만 다르고 그리는 것은 `SpecTree` 그대로다 — 두 화면의 트리가 다르게 생기면 안 된다.
- */
-export function FileSpecTree({ files, ...rest }: Omit<TreeProps, "items"> & { files: string[] }) {
-  const items = useMemo(() => itemsByName(orderSections(buildTree(files))), [files]);
-  return <SpecTree items={items} {...rest} />;
-}
-
-// ─── spec 트리 ───────────────────────────────────────────────────────────────────
 
 // 접기 행 하나의 규격. 폴더 행이 쓴다.
 const COLLAPSE_ROW =
   "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
 
 interface TreeProps {
-  // 엔진이 가른 spec 트리의 맨 위 항목들. **받은 순서 그대로 그린다** — 앱에는 순서의 규칙이 없다
-  // (spec 레이아웃 결정 13). 구획 머리도 없다(spec 레이아웃 결정 24): 번호 묶음 폴더도 레이아웃의
-  // 자리에 선다.
+  // 엔진이 가른 spec 트리의 맨 위 항목들. **받은 순서 그대로 그린다** — 앱에는 순서의 규칙도 폴더
+  // 이름의 규칙도 없다(spec 레이아웃 결정 13, `src/spec-folder-names.test.ts`가 소스로 본다). 구획
+  // 머리도 없다(spec 레이아웃 결정 24): 번호 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를
+  // 기록 행 곁의 `spec/` 행 아래에 얹어 넘긴다(`archive/archive-tree.ts`).
   items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
