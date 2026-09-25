@@ -1,5 +1,4 @@
-import type { Page } from "@playwright/test";
-import { expect, test } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { ARCHIVE, ARCHIVED_DOCS } from "./fixtures";
 import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
 
