@@ -651,7 +651,8 @@ pub fn end_for_reload(pool: &PtyPool) {
 /// 함께 사라져 아무도 SIGKILL을 못 보낸다. 진행 중인 끝내기는 남은 유예만 기다린다. 다 끝나면 곧바로 나오고,
 /// 가장 늦어도 2초 남짓이다.
 ///
-/// 끝내고 나면 인스턴스 기록을 닫는다 — 「못 끝냄」이 없으면 지우고, 있으면 남긴다(티켓 09). 결과(못 끝냄 포함)를
+/// 끝내고 나면 인스턴스 기록을 닫는다 — 「못 끝냄」이 없으면 지우고, 있으면 남긴다(티켓 09). 마감한 결과를 그대로 넘기는
+/// 이 배선은 실행으로 못 재 자리로 잰다(`the_exit_closes_the_record_with_what_its_ending_returned`). 결과(못 끝냄 포함)를
 /// 돌려준다. 정리 기록(티켓 11)이 여기서 받는다.
 pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     let shells: Vec<Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
@@ -1310,6 +1311,34 @@ mod tests {
             assert!(taken < read, "{path}: 기록({read})을 스냅샷({taken})보다 먼저 읽는다");
             assert!(body.contains("instances: &records"), "{path}: 읽은 기록을 판정에 안 넘긴다");
         }
+    }
+
+    /// 앱 종료는 **끝내기를 마감한 뒤, 그 결과로** 인스턴스 기록을 닫는다(프로세스 스펙 「인스턴스 기록 › 지우는 때」 · 티켓
+    /// 09). 「못 끝냄」이 있으면 남기는 것은 `Record::close`가 하고 `instances`의 검사가 잰다. 여기서 재는 것은 그 앞의
+    /// 배선이다 — 종료가 마감해 받은 결과를 그대로 넘기는가. 빈 목록으로 닫거나 마감 전에 닫으면 SIGKILL에도 산 것이 있어도
+    /// ⌘Q가 기록을 지운다. 다음 실행의 시작 정리는 그 세대를 「기록 없음 → 출처 불명」으로 보고 한 번 더 해 보지 않는다.
+    ///
+    /// 실행으로는 못 잰다 — SIGKILL에도 사는 프로세스를 검사가 세울 수 없고(좀비는 신원이 없다), 실물 장면 `Record`의 종료는
+    /// 끝낼 것이 없어 결과가 `[]`다. `close(&[])`로 바꾼 변형이 이 크레이트의 L1 전부를 통과했다(실측). 그래서 자리로 잰다.
+    #[test]
+    fn the_exit_closes_the_record_with_what_its_ending_returned() {
+        const FINISH: &str = "let outcomes = closing.finish();";
+        let body = body_of("pub fn end_for_exit(", "\n}\n");
+        // 마감 줄이 **끝난** 자리 — 아래 「사이」가 마감 줄 자신의 `let`을 세지 않게.
+        let finish = body.find(FINISH).expect("종료가 끝내기를 마감해 결과를 받는다") + FINISH.len();
+        let close = body
+            .find("pool.record.close(&outcomes);")
+            .expect("종료가 마감한 결과로 기록을 닫지 않는다 — 「못 끝냄」이 있어도 기록이 지워진다");
+        assert!(
+            finish < close,
+            "기록을 닫는 줄({close})이 마감({finish})보다 앞에 있다 — 결과가 서기 전에 닫는다"
+        );
+        assert!(
+            !body[finish..close].contains("let "),
+            "마감과 닫기 사이에서 결과를 다시 묶는다 — 닫기가 마감한 결과를 못 받는다"
+        );
+        assert_eq!(body.matches("record.close(").count(), 1, "종료가 기록을 두 번 닫는다 — 먼저 닫은 쪽이 이긴다");
+        assert_eq!(body.matches(".finish()").count(), 1, "종료가 끝내기를 두 번 마감한다");
     }
 
     /// 셸을 풀에서 빼는 길은 **빼기 전에** 진행 중인 끝내기 목록에 센다(프로세스 스펙 S5).
