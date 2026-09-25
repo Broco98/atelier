@@ -2306,6 +2306,14 @@ mod tests {
                 };
                 format!("{}; {}\n", child(""), child(&format!("ARGV0={keep_name} ")))
             }
+            // 기록 장면의 자식도 `ARGV0`로 부른다 — 짧은 이름으로. 정리 기록의 명령줄은 앞 200자라, 테스트 바이너리의 전체
+            // 경로를 argv[0]으로 두면 뒤의 인자가 잘리는 자리가 코드가 아니라 체크아웃 · target 경로의 길이에 달린다(경로가
+            // 143자를 넘으면 자식 테스트 이름이 잘렸다 — 재 봤다). 커널 이름은 여전히 exec 경로에서 온다.
+            Scene::Record => format!(
+                "( {CHILD_ROLE}={} ARGV0={RECORD_ARGV0} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
+                scene.role(),
+                exe().display()
+            ),
             _ => format!(
                 "( {CHILD_ROLE}={} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
                 scene.role(),
@@ -2497,6 +2505,11 @@ mod tests {
     #[cfg(target_os = "macos")]
     const SCENE_OWNER: &str = "atelier:pty-scene";
 
+    /// 풀 배선 장면 `Record`의 자식이 불리는 이름(argv[0]) — 정리 기록의 명령줄 머리에 그대로 적힌다. 짧게 둬 argv 전체가
+    /// 늘 200자 안에 든다. 예외 목록은 이 장면에서 안 쓰니 이름이 무엇과 겹쳐도 판정은 안 흔들린다.
+    #[cfg(target_os = "macos")]
+    const RECORD_ARGV0: &str = "atelier-record-child";
+
     /// 풀 배선 장면 `Record`의 끝 절반 — 첫 셸은 이미 닫혔고 그 자식도 끝났다. 둘째 셸을 띄워 `exit`로 스스로 끝나게 하고,
     /// 앱 종료 길을 부른다. 단언은 모두 끝에 둔다 — 둘째 셸이 남지 않게 거두는 것이 먼저다.
     ///
@@ -2559,7 +2572,8 @@ mod tests {
         assert_closed_shell_logged(&log, closed_key, closed_child);
     }
 
-    /// 정리 기록에 셸 닫기 한 줄 — 그 셸 키와 주인, 자식 하나(강제, 명령줄은 자식을 부른 argv의 앞 200자)뿐이다.
+    /// 정리 기록에 셸 닫기 한 줄 — 그 셸 키와 주인, 자식 하나(강제, 명령줄은 자식을 부른 argv 전체)뿐이다. 자식은 짧은 이름으로
+    /// 불려 argv가 200자 안에 다 든다.
     #[cfg(target_os = "macos")]
     fn assert_closed_shell_logged(
         log: &[crate::processes::cleanup_log::Event],
@@ -2588,14 +2602,15 @@ mod tests {
             "대상의 이름이 커널 이름(테스트 바이너리)이 아니다: {}",
             target.name
         );
-        let mut argv = vec![exe().display().to_string()];
+        // 자식은 짧은 이름(`RECORD_ARGV0`)으로 불렸다 — argv 전체가 200자 안에 들어 잘리지 않는다. 그래서 이 단언은 체크아웃
+        // 경로와 상관없이 선다. 200자에서 자르는 것은 `cleanup_log`의 검사가 잰다. 부른 이름이 exec 경로(테스트 바이너리)와
+        // 달라, 명령줄을 exec 경로가 아니라 argv에서 읽는 것도 여기서 갈린다.
+        let mut argv = vec![RECORD_ARGV0.to_string()];
         argv.extend(child_args());
+        let whole = argv.join(" ");
+        assert!(whole.chars().count() <= COMMAND_CHARS, "장면 자식의 argv가 200자를 넘어 뒤의 인자가 잘린다: {whole}");
         let command = target.command.as_deref().expect("기록에 명령줄이 없다");
-        assert_eq!(
-            command,
-            argv.join(" ").chars().take(COMMAND_CHARS).collect::<String>(),
-            "기록의 명령줄이 자식을 부른 argv의 앞 200자가 아니다"
-        );
+        assert_eq!(command, whole, "기록의 명령줄이 자식을 부른 argv(부른 이름과 인자) 전체가 아니다");
         assert!(command.contains(&child_args()[1]), "기록의 명령줄에 자식을 부른 인자가 없다: {command}");
     }
 
