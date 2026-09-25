@@ -11,10 +11,17 @@ import type { ShellSignal } from "./shell-signal";
 // `ShellMeta`와 같은 조건으로 산다: props만 받는 순수 컴포넌트라 터미널 스토어도 DOM도
 // 안 물고, 값을 고르는 자리는 `Sidebar.tsx`에 따로 있다.
 //
-// 여기서 재는 것은 **마크업이 무엇을 말하는가**다. 점이 실제로 앰버로 칠해지는지, 링이
+// 여기서 재는 것은 **마크업이 무엇을 말하는가**다. 점이 실제로 앰버로 칠해지는지, 스피너가
 // 정말 도는지, 대비가 얼마인지는 진짜 CSS가 있어야 나므로 L3가 그쪽의 유일한 그물이다.
 
 const lane = (kind: ShellSignal) => renderToStaticMarkup(<SignalLane kind={kind} />);
+
+/**
+ * 레인 조각의 **겉 상자** — 맨 앞 여는 태그 하나. 점은 상자 하나라 그것이 전부이고, 스피너는
+ * 안에 svg 둘을 품는다. 속성을 겉에서 재는 것은 lucide가 안쪽 svg에 `aria-hidden`을 **스스로**
+ * 달기 때문이다 — 마크업 전체에서 찾으면 겉 상자가 `role="status"`를 드러낸 채여도 초록이 된다.
+ */
+const 겉태그 = (markup: string) => /^<[^>]*>/.exec(markup)?.[0] ?? "";
 
 const line = (over: Partial<Parameters<typeof SignalLine>[0]> = {}) =>
   renderToStaticMarkup(
@@ -52,7 +59,7 @@ const 말클래스 = (markup: string) => {
 };
 
 describe("레인 — 화면값 셋이 갈린다", () => {
-  // 결정 3·5. 기다림은 앰버 점, 안 본 완료는 초록 점, 도는 중은 링이다. **셋이 갈리는
+  // 결정 3·5. 기다림은 앰버 점, 안 본 완료는 초록 점, 도는 중은 스피너다. **셋이 갈리는
   // 것부터** 세지 않으면 아래 규격 검사들이 「어차피 다 같은 것」을 재게 된다.
   it("셋이 서로 다른 것을 그린다", () => {
     const 그림 = (["waiting", "done", "working"] as const).map(lane);
@@ -74,20 +81,22 @@ describe("레인 — 화면값 셋이 갈린다", () => {
     expect(markup).toContain("ring-[3px]");
   });
 
-  it("도는 중은 링이고, 회전을 CSS가 든다", () => {
-    // **자바스크립트 타이머가 아니다**(스토리 30). 링 열셋이 같이 돌아도 입력이 안 버벅이는
-    // 것은 회전이 합성기의 일이기 때문이고, 「움직임을 끈 사람에게는 정지한 완전한 링」도
-    // 같은 규칙 안에서 미디어 쿼리 한 줄로 갈린다 — 자바스크립트로 돌리면 그 갈래를
-    // 손으로 다시 물어야 한다. 실제로 도는지와 멈추는지는 L3가 잰다.
-    expect(lane("working")).toContain("signal-ring");
-    expect(lane("working")).toContain("size-3");
+  it("도는 중은 앱의 Spinner이고, 표식을 겉 상자가 든다", () => {
+    // **레인이 스피너를 따로 그리지 않는다**(`sidebar-active-band` 결정 4·5). 회전(linear
+    // 1초)과 동작 줄이기의 원은 부품 파일(`components/ui/spinner.tsx`)의 CSS가 전부 든다 —
+    // 스피너는 앱에 한 가지만 있다(스토리 92). 검사와 레인 갈림이 집는 표식(`data-signal`)은
+    // 점과 같이 **겉 상자**에 선다. 실제로 도는지·무슨 색인지·멈추면 무엇이 서는지는 L3가 잰다.
+    const 겉 = 겉태그(lane("working"));
+    expect(겉).toContain('data-slot="spinner"');
+    expect(겉).toContain('data-signal="working"');
   });
 
-  it("점도 링도 스크린리더에는 없다", () => {
+  it("점도 스피너도 스크린리더에는 없다 — 겉 상자가 가린다", () => {
     // 색만이 신호여선 안 된다(스토리 33) — 상태를 말하는 자리는 행 버튼의 **이름**이고,
-    // 이 글리프가 거기 한 번 더 끼면 같은 사실을 두 번 읽는다.
+    // 이 글리프가 거기 한 번 더 끼면 같은 사실을 두 번 읽는다. Spinner는 겉 상자에
+    // `role="status"`와 「Loading」을 들고 오므로(스토리 43) 가리는 것도 **겉 상자**여야 한다.
     for (const kind of ["waiting", "done", "working"] as const) {
-      expect(lane(kind)).toContain('aria-hidden="true"');
+      expect(겉태그(lane(kind))).toContain('aria-hidden="true"');
     }
   });
 });
@@ -210,12 +219,12 @@ describe("마크는 상태색을 안 받는다", () => {
   });
 });
 
-describe("링은 자바스크립트로 안 돈다", () => {
-  // 스토리 30. **링을 그리는 파일은 이 하나뿐이라** 여기만 본다 — 사이드바 쪽은 호버 카드
-  // 타이머를 이미 들고 있어(`HOVER_DELAY_MS`) 같은 스캔을 걸면 링과 무관한 이유로 빨개진다.
+describe("도는 레인은 자바스크립트로 안 돈다", () => {
+  // 스토리 30. **레인의 글리프를 고르는 파일은 이 하나뿐이라** 여기만 본다 — 사이드바 쪽은 호버
+  // 카드 타이머를 이미 들고 있어(`HOVER_DELAY_MS`) 같은 스캔을 걸면 스피너와 무관한 이유로 빨개진다.
   //
   // 이 스캔이 잡는 것은 「이 조각이 스스로 각도를 돌리기 시작했다」 하나이고, **회전이 실제로
-  // CSS의 일인가**는 L3가 계산된 스타일로 잰다(`steps(12`와 `prefers-reduced-motion`).
+  // CSS의 일인가**는 L3가 계산된 스타일로 잰다(호의 `linear` 1초와 `prefers-reduced-motion`의 원).
   // 소스를 **문자열로만** 본다(shell-attention.test.ts와 같은 방식): 자르거나 파싱하는
   // 정규식은 파서가 새는 순간 조용히 통과한다.
   it("shell-signal.tsx에 시계도 타이머도 없다", () => {
@@ -224,7 +233,7 @@ describe("링은 자바스크립트로 안 돈다", () => {
       "utf8",
     );
     for (const forbidden of ["setInterval", "requestAnimationFrame", "setTimeout", "Date.now"]) {
-      expect(source, `${forbidden} — 링을 도는 것은 CSS다`).not.toContain(forbidden);
+      expect(source, `${forbidden} — 스피너를 돌리는 것은 CSS다`).not.toContain(forbidden);
     }
   });
 });

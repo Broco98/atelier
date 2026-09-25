@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { Spinner } from "@/components/ui/spinner";
 import type { CallingKind, CallingNote, ShellSignal } from "@/features/terminal/shell-attention";
 
 export type { CallingNote, ShellSignal };
@@ -132,16 +133,20 @@ export function showsElapsed(kind: ShellSignal): boolean {
  * 목업의 `box-shadow: 0 0 0 3px`와 같은 모양이고, 테두리로 그리면 점이 14px 칸을 꽉 채워
  * 옆 제목과 붙는다.
  *
- * **링의 회전은 CSS다**(스토리 30) — `signal-ring`이 그 규격 전부를 든다(`index.css`).
- * 자바스크립트로 돌리면 링 열셋이 같이 도는 화면에서 그만큼의 리렌더가 나고, 「움직임을 끈
- * 사람에게는 정지한 완전한 링」도 손으로 다시 물어야 한다.
+ * **도는 중은 앱의 `Spinner`다**(`sidebar-active-band` 결정 4·5). 레인 칸(14px)을 꽉 채우고
+ * 색은 `currentColor`라 행 글자색을 물려받는다 — 여러 행이 함께 돌아도 부르는 행의 점보다
+ * 조용하다. 회전(linear 1초)과 동작 줄이기의 원은 부품 파일의 CSS가 전부 든다: 자바스크립트로
+ * 돌리면 열셋이 같이 도는 화면에서 그만큼의 리렌더가 나고(스토리 30), 「움직임을 끈 사람에게는
+ * 빈틈 없는 원」도 손으로 다시 물어야 한다.
  *
  * **스크린리더에는 없다**(`aria-hidden`). 색만이 신호여선 안 되므로 상태를 말하는 자리는
- * 행 버튼의 이름이고, 여기서 한 번 더 말하면 같은 사실을 두 번 읽는다.
+ * 행 버튼의 이름이고, 여기서 한 번 더 말하면 같은 사실을 두 번 읽는다. Spinner는 겉 상자에
+ * `role="status"`와 「Loading」을 들고 오므로 `aria-hidden`도 **겉 상자에** 준다 — 안쪽 svg에
+ * 주면 그 역할이 행 안에 남는다. 표식(`data-signal`)도 겉 상자에 선다(검사와 레인 갈림이 집는다).
  */
 export function SignalLane({ kind }: { kind: ShellSignal }) {
   if (kind === "working") {
-    return <span aria-hidden data-signal="working" className="signal-ring size-3 shrink-0" />;
+    return <Spinner aria-hidden data-signal="working" className="size-3.5" />;
   }
   return (
     <span

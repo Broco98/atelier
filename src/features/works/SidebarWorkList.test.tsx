@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
-import type { ShellSignal } from "@/components/shell/shell-signal";
+import { SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./WorkSectionList";
 import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
@@ -571,12 +571,14 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
   });
 });
 
-// **레인이 화면값으로 갈리는 자리**(#203). 두 줄 행 묶음 안에 있던 검사를 따로 뺐다 — 안의
-// 단언 둘(`signal-ring`, 도는 레인에 `<svg`가 없다)은 **다음 티켓(07, 스피너)이 고쳐 쓴다**:
-// 도는 레인이 Spinner(svg)가 되면 둘 다 뒤집힌다. 한 줄 행으로 묶음을 고쳐 쓰는 일과 섞이면
-// 07이 제 몫을 찾을 자리가 흐려져서, 여기 한 칸에 모아 둔다.
-describe("레인은 화면값으로 갈린다 — 도는 레인의 모양은 07이 고쳐 쓴다", () => {
-  it("**화면값이 있으면 레인이 점·링으로 갈리고, 없으면 work 상태 아이콘이 되돌아온다**", () => {
+// **레인이 화면값으로 갈리는 자리**(#203). 두 줄 행 묶음 안에 있던 검사를 따로 뺐다.
+//
+// **도는 레인은 앱의 Spinner다**(`sidebar-active-band` 결정 4). Spinner가 svg라 「도는 레인에
+// `<svg`가 없다」로는 상태 아이콘이 함께 섰는지를 더는 못 가른다 — 그래서 도는 레인은 **레인
+// 조각(`SignalLane`) 하나만 그대로 섰는가**로 잰다. 실제로 도는지·무슨 색인지·동작 줄이기면
+// 무엇이 서는지는 진짜 CSS가 있어야 나므로 L3(`works-sidebar.spec.ts`)가 잰다.
+describe("레인은 화면값으로 갈린다", () => {
+  it("**화면값이 있으면 레인이 점·스피너로 갈리고, 없으면 work 상태 아이콘이 되돌아온다**", () => {
     // **이 판이 처음 눈에 보이는 자리다**(#203). 티켓 02가 이름만 붙여 둔 레인에 화면값이
     // 들어선다 — 그리고 **없을 때 되돌아오는 것**을 함께 세는 것이 요점이다: 점만 재면
     // draft·review·done을 가르던 아이콘이 통째로 사라져도 초록이 된다(스토리 19).
@@ -586,10 +588,12 @@ describe("레인은 화면값으로 갈린다 — 도는 레인의 모양은 07�
     });
     const [가, 나, 다] = lanesOf(markup);
     expect(가).toContain('data-signal="waiting"');
-    expect(나).toContain("signal-ring");
+    expect(나).toContain('data-signal="working"');
     // 화면값이 없는 행에만 아이콘이 선다. 부르는 행에 둘이 함께 서면 레인이 두 말을 한다.
+    // 도는 레인은 스피너 자신이 svg라 `<svg`의 유무 대신 **레인 조각 그대로인가**를 본다 —
+    // 아이콘이 곁에 서면 이 등호가 깨진다.
     expect(가).not.toContain("<svg");
-    expect(나).not.toContain("<svg");
+    expect(나).toBe(renderToStaticMarkup(<SignalLane kind="working" />));
     expect(다).toContain("<svg");
     expect(다).not.toContain("data-signal");
   });

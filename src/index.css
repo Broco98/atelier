@@ -612,36 +612,6 @@ body.dragging-row * {
     }
 }
 
-/* **「도는 중」 링**(#203, 결정 3·5). 회전을 CSS가 드는 것이 이 규칙의 전부다 — 링 열셋이
-   같이 도는 화면에서 자바스크립트가 각도를 옮기면 그만큼의 리렌더가 나고(스토리 30), 무엇보다
-   「움직임을 끈 사람에게는 정지한 **완전한** 링」을 손으로 다시 물어야 한다.
-
-   `steps(12, end)` 1초는 목업이 고른 값이다 — 매끄럽게 도는 대신 열두 칸으로 끊어 돌아
-   시선을 덜 끈다. 원주는 옅고 머리만 앱 `primary`라, 그 하나가 어디 있는지로 회전이 읽힌다.
-
-   **`animation`을 유틸리티로 적지 않는 이유**는 아래 미디어 쿼리다. 정지는 회전을 끄는 것에
-   더해 **머리 색을 원주와 같게** 되돌리는 일이라(머리가 남으면 「멈춘 스피너」로 읽혀 사람이
-   「굳었나」를 묻는다) 두 속성이 한 규칙 안에 함께 있어야 한다. */
-.signal-ring {
-    border: 1.6px solid color-mix(in srgb, var(--text-tertiary) 40%, transparent);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: signal-spin 1s steps(12, end) infinite;
-}
-
-@keyframes signal-spin {
-    to {
-        rotate: 360deg;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .signal-ring {
-        animation: none;
-        border-top-color: color-mix(in srgb, var(--text-tertiary) 40%, transparent);
-    }
-}
-
 /* 작업 패널의 등장·퇴장 키프레임(panel-fade / panel-fade-out)은 걷어냈다 —
    패널이 좌우 다른 규칙으로 움직이지 않도록, 좌측 사이드바·목록 패널과 같은 폭 접기로
    바꾸면서 쓸 곳이 없어졌다. 그때 확인된 사실은 남겨 둔다: **translateX는 안 된다.**

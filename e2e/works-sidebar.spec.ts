@@ -860,46 +860,68 @@ test("초록 행도 마크와 경과를 낸다 — 도는 것이 없어도", asy
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **링은 CSS로 돌고, 움직임을 끈 사람에게는 정지한 완전한 링이 선다**(스토리 30).
+// **도는 레인은 Spinner다 — 행 글자색으로 1초에 한 바퀴 매끄럽게 돌고, 움직임을 끈 사람에게는
+// 빈틈 없는 원이 선다**(`sidebar-active-band` 결정 4·5 · 스토리 40~43).
 //
-// **이 층이 유일한 그물이다.** 마크업 seam은 클래스 이름까지만 보고, 「자바스크립트 타이머가
-// 없다」는 소스 스캔은 **안 도는 링**도 초록으로 넘긴다 — 실제로 도는지와, 움직임을 껐을 때
-// 머리 색이 원주와 같아지는지는 계산된 스타일로만 난다.
-test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다", async ({ page }) => {
+// **이 층이 유일한 그물이다.** 마크업 seam은 표식까지만 보고, 「자바스크립트 타이머가 없다」는
+// 소스 스캔은 **안 도는 스피너**도 초록으로 넘긴다 — 실제로 도는지, 무슨 색인지, 움직임을 껐을
+// 때 무엇이 서는지는 계산된 스타일로만 난다.
+//
+// **재는 자리는 겉 상자가 아니라 안쪽 호다.** 표식(`data-signal`)은 겉 상자에 있지만 도는 것은
+// 그 안의 호이고(`components/ui/spinner.tsx`), 겉 상자의 `animationName`은 늘 `none`이다 — 겉을
+// 재면 「안 돈다」와 「움직임을 껐다」가 같은 값이 된다.
+test("도는 레인은 행 글자색 스피너로 1초에 한 바퀴 매끄럽게 돌고, 움직임을 끄면 빈틈 없는 원으로 선다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
 
   // 프롬프트를 보낸 순간이 「도는 중」이다(스펙 전이 표의 `start`).
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
-  const ring = 레인(page, plainWork.slug).locator('[data-signal="working"]');
-  await expect(ring).toHaveCount(1);
+  const 스피너 = 레인(page, plainWork.slug).locator('[data-signal="working"]');
+  await expect(스피너).toHaveCount(1);
 
-  const 재본다 = () =>
-    ring.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return {
-        name: style.animationName,
-        timing: style.animationTimingFunction,
-        duration: style.animationDuration,
-        머리: style.borderTopColor,
-        원주: style.borderRightColor,
-      };
-    });
+  // **스크린리더에는 따로 안 읽힌다**(스토리 43) — 상태는 행 버튼의 이름(「… — 도는 중」)이 한
+  // 번 말한다. Spinner는 겉 상자에 `role="status"`와 영어 이름 「Loading」을 들고 오므로, 레인이
+  // `aria-hidden`을 **안쪽 svg에** 주면 이 역할이 행 안에 그대로 남는다. 앵커는 바로 위
+  // 「도는 레인이 섰다」다 — 레인이 안 서도 0이다.
+  await expect(workRow(page, plainWork.slug).getByRole("status")).toHaveCount(0);
+  await expect(행버튼(page, `${plainWork.title} — 도는 중`)).toHaveCount(1);
 
-  const 돌때 = await 재본다();
+  const 호 = 스피너.locator("[data-slot=spinner-arc]");
+  const 원 = 스피너.locator("[data-slot=spinner-circle]");
+  await expect(호).toBeVisible();
+  await expect(원).toBeHidden();
+
+  const 돌때 = await 호.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      name: style.animationName,
+      timing: style.animationTimingFunction,
+      duration: style.animationDuration,
+      색: style.color,
+      // 호는 `stroke="currentColor"`로 칠한다 — 칠해지는 색이 곧 물려받은 글자색인지까지 본다.
+      선: style.stroke,
+      // **행 글자색**은 행 버튼의 것이다. 레인이 그 안에 서서 물려받는다.
+      행: getComputedStyle(el.closest("button")!).color,
+    };
+  });
   expect(돌때.name).not.toBe("none");
-  // **`steps(12)` 1초다**(구현 결정 4) — 매끄러운 회전이 아니라 열두 칸으로 끊어 돈다.
-  expect(돌때.timing).toContain("steps(12");
+  // **매끄럽게 1초에 한 바퀴다**(결정 4). 옛 링의 `steps(12)`는 여러 줄이 함께 돌 때 시선을
+  // 덜 끌려고 고른 값이었고, 그 조용함은 이제 색이 되찾는다(아래).
+  expect(돌때.timing).toBe("linear");
   expect(돌때.duration).toBe("1s");
-  // 머리만 앱 `primary`이고 원주는 옅은 색이다 — 둘이 같으면 도는 것이 안 보인다.
-  expect(돌때.머리).not.toBe(돌때.원주);
+  // **행 글자색이다**(결정 4 · 스토리 41) — `primary` 호는 여러 행이 함께 돌면 부르는 행보다
+  // 시끄럽다. 「도는 중」은 내가 할 일이 없는 상태라 세 신호 가운데 가장 조용해야 한다.
+  expect(돌때.색).toBe(돌때.행);
+  expect(돌때.선).toBe(돌때.행);
 
+  // **움직임을 끄면 호가 숨고 빈틈 없는 원이 선다**(결정 5 · 스토리 42). 멈춘 호는 「굳었나」로
+  // 읽힌다 — 그래서 멈추는 것이 아니라 **다른 글리프로 바뀐다**.
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const 멈출때 = await 재본다();
-  expect(멈출때.name).toBe("none");
-  // **완전한 링이다** — 머리가 남으면 「멈춘 스피너」로 읽혀 사람이 「굳었나」를 묻는다.
-  expect(멈출때.머리).toBe(멈출때.원주);
+  await expect(호).toBeHidden();
+  await expect(원).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
