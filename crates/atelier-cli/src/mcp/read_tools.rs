@@ -6,26 +6,7 @@ use rmcp::{
 
 use super::{kernel_error, AtelierServer, DO_NOT_CALL_PROJECT_TOOLS};
 
-/// spec 폴더에서 의미를 갖는 다섯 이름. 조회는 문서를 쓰기 **직전**에 일어나므로
-/// 여기가 이 안내의 정확한 자리다 — 항상 상주하는 초기화 지침을 늘리지 않는다.
-///
-/// 커널의 뷰가 아니라 **도구 계층**이 덧붙인다. 판(Iteration)은 데이터 모델에
-/// 들어가지 않고, 아틀리에는 폴더를 만들어 주지도 않는다 (사람과 세션이 만든다).
-const SPEC_LAYOUT: &str = "\
-Five folder names carry meaning inside `specDir`. Nothing else is fixed — file names are \
-free, and a folder that fits none of these is kept and shown just the same.
-
-  overview.md    the work's standing summary; write this first
-  NN-<name>/     one iteration, with its plan, tickets, verification and handoff inside. \
-Create `01-...` when you first plan, `02-...` for the next round.
-  tickets/       that iteration's tickets, normally inside its NN- folder
-  research/      findings that outlive any single iteration
-  explanation/   understanding worth keeping: why it ended up like this
-
-Atelier never creates these folders and nothing breaks if you skip them. You create them \
-with your own file tools; the desktop app just recognises the names.";
-
-/// 아카이브에서 온 응답에 붙는 안내. `SPEC_LAYOUT` 자리를 대신한다 — 아카이브된 work에
+/// 아카이브에서 온 응답에 붙는 안내. spec 레이아웃 안내 자리를 대신한다 — 아카이브된 work에
 /// "여기에 spec을 쓰라"고 안내하면 정확히 막으려던 실수를 시키게 된다.
 ///
 /// **두 벌인 이유.** 「워크트리는 사라졌고 브랜치는 저장소에 남아 있다」는 브랜치가 있던
@@ -144,8 +125,8 @@ impl AtelierServer {
                        documents into — `specFiles`, the documents already there, and, when it \
                        spans projects, the branch they share and the worktree path of each to do \
                        code work in. Write spec documents yourself with your own file tools into \
-                       `specDir`; there is no spec-writing tool. The answer also explains what \
-                       the folder names inside `specDir` mean. A work that has been archived \
+                       `specDir`; there is no spec-writing tool. The answer also carries the \
+                       spec layout. A work that has been archived \
                        is found by the same slug — `origin` then says \"archive\", and it is a \
                        record to read, not a place to write. Paths are written with `~` for your \
                        home directory. Read-only; reads local files only.",
@@ -185,10 +166,17 @@ impl AtelierServer {
         };
         // 아카이브 안내는 브랜치의 유무로 갈린다 — `atelier_archive_work`가 쓰는 것과 **같은
         // 값**이다. 다른 값으로 가르면 방금 치운 work를 두 도구가 다르게 설명한다.
+        //
+        // 진행 중인 work에는 **이 서버 모드의 spec 레이아웃**을 render한 글이 선다. 조회는 문서를
+        // 쓰기 직전에 일어나므로 여기가 이 안내의 정확한 자리다 — 상주 지침을 늘리지 않는다.
+        // 커널의 뷰가 아니라 도구 계층이 덧붙인다: 레이아웃은 work의 데이터가 아니다.
         let note = match (origin, view.work.branch.is_some()) {
-            ("archive", true) => ARCHIVED_NOTE_WITH_CODE,
-            ("archive", false) => ARCHIVED_NOTE_WITHOUT_CODE,
-            _ => SPEC_LAYOUT,
+            ("archive", true) => ARCHIVED_NOTE_WITH_CODE.to_string(),
+            ("archive", false) => ARCHIVED_NOTE_WITHOUT_CODE.to_string(),
+            _ => match self.spec_layout_guidance() {
+                Ok(guidance) => guidance,
+                Err(e) => return Ok(kernel_error(e)),
+            },
         };
         // JSON이 먼저다 — 기계가 읽는 값이고, 안내는 그 뒤에 붙는다
         Ok(CallToolResult::success(vec![
@@ -203,7 +191,7 @@ impl AtelierServer {
 
 #[cfg(test)]
 mod tests {
-    use super::{ARCHIVED_NOTE_WITHOUT_CODE, ARCHIVED_NOTE_WITH_CODE, SPEC_LAYOUT};
+    use super::{ARCHIVED_NOTE_WITHOUT_CODE, ARCHIVED_NOTE_WITH_CODE};
 
     /// 두 벌이 갈리는 것은 **가운데 한 대목뿐이어야 한다.** 통째로 적어 둔 대가로 문장이
     /// 따로 낡을 수 있으니, 갈리면 안 되는 대목을 표로 붙든다.
@@ -238,10 +226,12 @@ mod tests {
         }
     }
 
-    /// 다섯 이름은 두 곳에 적혀 있다 — 에이전트에게 알려주는 여기, 그리고 앱이
-    /// 알아보는 트리(src/features/works/SpecTree.tsx). 한쪽만 바뀌면 에이전트가
-    /// 만드는 폴더를 앱이 못 알아본다. refs.ts ↔ instructions.rs와 같은 결합이라
-    /// 같은 방식으로 — 부탁이 아니라 테스트로 — 묶는다.
+    /// 다섯 이름은 두 곳에 적혀 있다 — 에이전트에게 알려주는 내장 레이아웃(atelier-core), 그리고
+    /// 앱이 알아보는 트리(src/features/works/SpecTree.tsx). 한쪽만 바뀌면 에이전트가 만드는
+    /// 폴더를 앱이 못 알아본다. refs.ts ↔ instructions.rs와 같은 결합이라 같은 방식으로 — 부탁이
+    /// 아니라 테스트로 — 묶는다.
+    ///
+    /// 앱이 엔진의 spec 트리를 받아 그리게 되면 이름 규칙이 앱에서 사라지고, 이 결합도 함께 지운다.
     #[test]
     fn the_app_recognises_the_same_folder_names_it_teaches() {
         let spec_tree = std::fs::read_to_string(concat!(
@@ -250,15 +240,22 @@ mod tests {
         ))
         .expect("SpecTree.tsx moved; update this test and the guidance together");
 
-        for name in ["overview.md", "tickets", "research", "explanation"] {
-            assert!(SPEC_LAYOUT.contains(name), "the guidance stopped naming '{name}'");
+        for mode in [atelier_core::Mode::Atelier, atelier_core::Mode::Maison] {
+            let guidance =
+                atelier_core::render_layout(&atelier_core::builtin_layout(mode), None, None).text;
+            for name in ["overview.md", "tickets", "research", "explanation"] {
+                assert!(guidance.contains(name), "the {mode} guidance stopped naming '{name}'");
+                assert!(
+                    spec_tree.contains(&format!("\"{name}\"")),
+                    "the app no longer recognises '{name}'"
+                );
+            }
+            // 판 폴더만 이름이 아니라 접두로 알아본다 — 양쪽이 같은 규칙이어야 한다
             assert!(
-                spec_tree.contains(&format!("\"{name}\"")),
-                "the app no longer recognises '{name}'"
+                guidance.contains("{n}-"),
+                "the {mode} guidance stopped describing the iteration folder"
             );
         }
-        // 판 폴더만 이름이 아니라 접두로 알아본다 — 양쪽이 같은 규칙이어야 한다
-        assert!(SPEC_LAYOUT.contains("NN-"), "the guidance stopped describing the iteration folder");
         assert!(spec_tree.contains(r"/^(\d+)-/"), "the app's iteration pattern changed: {spec_tree}");
     }
 }

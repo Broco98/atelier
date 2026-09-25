@@ -151,7 +151,8 @@ impl AtelierServer {
                        worktrees that are missing, if it has any, so it is safe to retry — on a resume the \
                        `title` you pass is ignored and the stored one is kept, because the user \
                        may have edited it. Returns `specDir` to write the spec documents into, \
-                       and the path of any worktree it made.",
+                       and the path of any worktree it made. The answer also carries the spec \
+                       layout: how to arrange the documents inside `specDir`.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -196,10 +197,26 @@ impl AtelierServer {
             &projects,
             branch.as_deref(),
         ) {
-            Ok(report) if report.errors.is_empty() => {
-                Ok(CallToolResult::success(vec![ContentBlock::json(&report)?]))
+            Ok(report) => {
+                let mut answer = if report.errors.is_empty() {
+                    CallToolResult::success(vec![ContentBlock::json(&report)?])
+                } else {
+                    partial_failure(&report)?
+                };
+                // 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(결정 9) — 그래서
+                // 여기도 spec 레이아웃을 싣는다. **맨 뒤에** 붙인다: 성공이면 JSON 뒤, 부분
+                // 실패면 복구 안내 → JSON 뒤의 셋째 블록이다. spec 폴더는 부분 실패에서도 이미
+                // 서 있고, 에이전트가 이어서 쓰는 곳이 거기다.
+                //
+                // 붙이는 자리가 `partial_failure` 안이 아니라 여기인 것은 그 함수를
+                // `atelier_attach_project`와 함께 쓰기 때문이다 — attach는 spec을 쓰기 직전의
+                // 호출이 아니다.
+                match self.spec_layout_guidance() {
+                    Ok(guidance) => answer.content.push(ContentBlock::text(guidance)),
+                    Err(e) => return Ok(kernel_error(e)),
+                }
+                Ok(answer)
             }
-            Ok(report) => partial_failure(&report),
             Err(e) => Ok(kernel_error(e)),
         }
     }

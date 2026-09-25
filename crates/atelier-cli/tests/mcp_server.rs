@@ -305,22 +305,73 @@ fn get_work_explains_what_the_spec_folder_names_mean() {
         .get(1)
         .and_then(|c| c["text"].as_str())
         .unwrap_or_else(|| panic!("no spec layout guidance in the answer: {res}"));
-    for name in ["overview.md", "NN-", "tickets/", "research/", "explanation/"] {
+    // 판 폴더는 이제 이름 틀로 말한다 — `NN-<name>/`이 `{n}-{name}/`이 됐다 (허용 차이 1)
+    for name in ["overview.md", "{n}-{name}/", "tickets/", "research/", "explanation/"] {
         assert!(guidance.contains(name), "'{name}' missing from the guidance: {guidance}");
     }
-    // 고정하는 것은 폴더 이름뿐이라는 것과, 첫 판을 어디서 시작하는지
+    // 고정하는 것은 나열된 이름뿐이라는 것과, 첫 판을 어디서 시작하는지
     assert!(guidance.contains("file names are free"), "{guidance}");
     assert!(guidance.contains("01-"), "the first iteration folder is not named: {guidance}");
 
-    // 관습은 데이터 모델이 아니다 — 커널이 준 뷰에는 한 글자도 실리지 않는다
+    // 관습은 데이터 모델이 아니다 — 커널이 준 뷰에는 한 글자도 실리지 않는다.
+    // 머리 줄을 본다: 안내문에만 있는 글자라, 새면 곧 안내문이 샌 것이다.
     let kernel = atelier_core::get_work(&home.path().join("works"), "카트").unwrap();
     let kernel_json = serde_json::to_string(&kernel).unwrap();
-    for leaked in ["Five folder names", "explanation"] {
+    for leaked in ["Spec layout —", "explanation"] {
         assert!(
             !kernel_json.contains(leaked),
             "the folder convention leaked into the kernel view: {kernel_json}"
         );
     }
+}
+
+/// 그 모드의 내장 레이아웃을 render한 글. 레이아웃 폴더가 없는 홈에서 에이전트가 받는 안내문이다.
+///
+/// 글자 자체는 엔진의 기대값 파일이 고정한다 — 여기서 재는 것은 **배선**, 곧 그 글이 응답의 어느
+/// 자리에 실리는가다.
+fn builtin_guidance(mode: atelier_core::Mode) -> String {
+    atelier_core::render_layout(&atelier_core::builtin_layout(mode), None, None).text
+}
+
+/// 판 01 — 고정 안내문 자리에 **내장 레이아웃을 render한 글**이 선다. Atelier의 work도 Maison의
+/// Room도 그렇다.
+#[test]
+fn get_work_carries_the_builtin_layout_of_its_world() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "cart", "카트");
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+
+    for (mode, slug) in [(atelier_core::Mode::Atelier, "cart"), (atelier_core::Mode::Maison, "finance")] {
+        let mut server = Server::start_with_mode(home.path(), Some(mode.as_str()));
+        let res = server.request(2, "tools/call",
+            json!({ "name": "atelier_get_work", "arguments": { "work_slug": slug } }));
+        assert_eq!(res["result"]["isError"], false, "{mode}: {res}");
+        let content = res["result"]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2, "{mode}: JSON 하나와 안내문 하나여야 한다: {res}");
+        assert_eq!(content[1]["text"], builtin_guidance(mode), "{mode}: {res}");
+    }
+}
+
+/// 두 도구의 응답에 spec 레이아웃이 실린다는 것을 **도구 설명이 말한다** — 에이전트는 설명을 보고
+/// 어느 응답을 읽을지 고른다. 「폴더 이름의 뜻」이라고 적어 두면 틀린 약속이 된다: 이름은 이제
+/// 레이아웃마다 다르다.
+#[test]
+fn the_tools_that_answer_with_the_spec_layout_say_so() {
+    let home = tempfile::tempdir().unwrap();
+    let res = Server::start(home.path()).request(2, "tools/list", json!({}));
+    let description = |name: &str| {
+        res["result"]["tools"].as_array().unwrap().iter()
+            .find(|t| t["name"] == name)
+            .and_then(|t| t["description"].as_str())
+            .unwrap_or_else(|| panic!("{name} is not listed: {res}"))
+            .to_string()
+    };
+    for name in ["atelier_get_work", "atelier_start_work"] {
+        let text = description(name);
+        assert!(text.contains("carries the spec layout"), "{name}: {text}");
+    }
+    let get_work = description("atelier_get_work");
+    assert!(!get_work.contains("folder names"), "{get_work}");
 }
 
 #[test]
@@ -716,6 +767,85 @@ fn partial_worktree_failure_is_an_execution_error_pointing_at_attach() {
     assert_eq!(report["worktrees"][0]["exists"], true, "{report}");   // billing
     assert_eq!(report["worktrees"][1]["exists"], false, "{report}");  // shipping
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
+}
+
+/// 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(결정 9) — 그래서
+/// `atelier_start_work`의 응답에도 안내문이 **JSON 뒤에** 실린다. 새로 만들 때도, 같은 slug로
+/// 재개할 때도, Maison에서 Room을 열 때도 그렇다.
+#[test]
+fn start_work_answers_with_the_spec_layout_after_the_json() {
+    let home = tempfile::tempdir().unwrap();
+    for mode in [atelier_core::Mode::Atelier, atelier_core::Mode::Maison] {
+        let mut server = Server::start_with_mode(home.path(), Some(mode.as_str()));
+        for (id, when) in [(2, "새로 만들 때"), (3, "재개할 때")] {
+            let res = server.request(id, "tools/call", json!({
+                "name": "atelier_start_work",
+                "arguments": { "title": "카트", "slug": "cart" }
+            }));
+            assert_eq!(res["result"]["isError"], false, "{mode} {when}: {res}");
+            let content = res["result"]["content"].as_array().unwrap();
+            assert_eq!(content.len(), 2, "{mode} {when}: JSON 하나와 안내문 하나여야 한다: {res}");
+            // 기계가 읽는 JSON이 먼저다
+            let report: Value = serde_json::from_str(content[0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(report["slug"], "cart", "{mode} {when}: {report}");
+            assert_eq!(content[1]["text"], builtin_guidance(mode), "{mode} {when}: {res}");
+        }
+    }
+}
+
+/// 부분 실패도 spec 폴더는 이미 서 있다 — 에이전트가 이어서 쓰는 곳이 거기다. 그래서 안내문이
+/// **셋째 블록**으로 붙는다. 앞 둘(복구 안내 → 보고서 JSON)의 순서는 그대로다.
+#[test]
+fn a_partial_start_carries_the_spec_layout_as_the_third_block() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    block_worktree(home.path(), "카트", "shipping");
+
+    let res = server.request(4, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing", "shipping"], "branch": "feat/cart" }
+    }));
+    assert_eq!(res["result"]["isError"], true, "{res}");
+    let content = res["result"]["content"].as_array().unwrap();
+    assert_eq!(content.len(), 3, "복구 안내, 보고서, 안내문 셋이어야 한다: {res}");
+    assert!(content[0]["text"].as_str().unwrap().contains("atelier_attach_project"), "{res}");
+    let report: Value = serde_json::from_str(content[1]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(report["errors"][0]["project"], "shipping", "{report}");
+    assert_eq!(content[2]["text"], builtin_guidance(atelier_core::Mode::Atelier), "{res}");
+}
+
+/// `atelier_attach_project`는 부분 실패 응답을 `atelier_start_work`와 함께 쓴다. 안내문을 붙이는
+/// 자리는 start_work 쪽이라 attach 응답에는 없다 — 성공이든 부분 실패든.
+#[test]
+fn attach_project_answers_without_the_spec_layout() {
+    let (home, _code) = fixture_with(&["billing", "shipping"]);
+    let mut server = Server::start(home.path());
+    server.request(3, "tools/call", json!({
+        "name": "atelier_start_work",
+        "arguments": { "title": "카트", "projects": ["billing"], "branch": "feat/cart" }
+    }));
+    let blocker = block_worktree(home.path(), "카트", "shipping");
+    let attach = json!({
+        "name": "atelier_attach_project",
+        "arguments": { "work_slug": "카트", "project_slug": "shipping" }
+    });
+
+    let failed = server.request(4, "tools/call", attach.clone());
+    assert_eq!(failed["result"]["isError"], true, "{failed}");
+    assert_eq!(failed["result"]["content"].as_array().unwrap().len(), 2, "{failed}");
+
+    std::fs::remove_file(&blocker).unwrap();
+    let attached = server.request(5, "tools/call", attach);
+    assert_eq!(attached["result"]["isError"], false, "{attached}");
+    assert_eq!(attached["result"]["content"].as_array().unwrap().len(), 1, "{attached}");
+
+    for res in [&failed, &attached] {
+        assert!(!res.to_string().contains("Spec layout"), "attach 응답에 안내문이 붙었다: {res}");
+    }
 }
 
 /// V10 — 부분 실패에서 안내받은 대로 실패한 프로젝트만 붙여 복구한다.
@@ -1490,6 +1620,7 @@ fn get_work_falls_back_to_the_archive_and_says_where_it_came_from() {
     let note = res["result"]["content"][1]["text"].as_str().unwrap();
     assert!(note.contains("archived"), "{note}");
     assert!(!note.contains("write this first"), "아카이브에 spec 작성을 안내했다: {note}");
+    assert!(!note.contains("Spec layout"), "아카이브에 spec 레이아웃을 안내했다: {note}");
 }
 
 /// 출처를 `flatten`으로 덧붙이면 work.json의 미지 필드와 같은 평면에 놓인다 —
@@ -2428,7 +2559,7 @@ fn the_maison_instructions_teach_the_room_procedure_instead_of_the_project_one()
 
     assert!(text.contains("no project, no branch and no worktree"), "「없다」가 없다: {text}");
     assert!(
-        text.contains("~/.atelier/maison/rooms/<slug>/spec/overview.md:L19-27"),
+        text.contains("~/.atelier/maison/rooms/<slug>/spec/<file>.md:L19-27"),
         "Room 참조 뿌리가 없다: {text}"
     );
     assert!(text.contains("~/.atelier/maison/archive/<slug>/"), "아카이브 뿌리가 없다: {text}");
