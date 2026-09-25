@@ -11,7 +11,7 @@
 //! 지금처럼 그룹 신호만 보낸다. 리눅스 `/proc`으로 같은 것을 읽는 길은 두지 않았다: 아무도 안 켜는
 //! 코드는 조용히 썩고, 그것이 맞는지 보는 눈이 없다(`pty.rs`의 `process_name`과 같은 거래).
 
-use super::Snapshot;
+use super::{Identity, Snapshot};
 
 /// 어느 프로세스의 env(부른 이름과 표식)를 읽나. BSD 정보는 늘 전부 읽는다 — 트리가 끊기지 않게.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ impl EnvScope {
 #[cfg(target_os = "macos")]
 pub fn take(scope: EnvScope) -> Snapshot {
     use super::procargs::{self, ProcArgs};
-    use super::{Identity, Proc};
+    use super::Proc;
 
     let uid = unsafe { libc::geteuid() };
     let pids = mac::all_pids();
@@ -58,10 +58,7 @@ pub fn take(scope: EnvScope) -> Snapshot {
             skipped += 1;
             continue;
         }
-        let id = Identity {
-            pid: info.pbi_pid,
-            started_us: info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec,
-        };
+        let id = mac::identity(&info);
         let (argv0, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
             // 못 읽으면(그사이 끝남 등) 행은 그대로 세우고 env만 비운다. 행을 빼면 그 밑의 자손이
             // 트리에서 떨어진다.
@@ -91,6 +88,24 @@ pub fn take(scope: EnvScope) -> Snapshot {
 #[cfg(not(target_os = "macos"))]
 pub fn take(_scope: EnvScope) -> Snapshot {
     Snapshot { uid: unsafe { libc::geteuid() }, procs: Vec::new(), skipped: 0 }
+}
+
+/// 한 pid의 **지금** 신원. 없거나 이미 끝났으면(좀비 포함) `None`이다.
+///
+/// 표 한 장을 찍지 않고 한 프로세스만 묻는 길이다. 두 자리가 쓴다: 셸을 띄운 직후 셸의 신원을 쥘 때, 그리고
+/// 끝내기가 신호마다 직전에 「그 pid가 아직 그 프로세스인가」를 볼 때(프로세스 스펙 S4).
+#[cfg(target_os = "macos")]
+pub fn identity_of(pid: u32) -> Option<Identity> {
+    let info = mac::bsd_info(i32::try_from(pid).ok()?)?;
+    // 좀비는 이미 끝났다 — 신호를 받아도 안 사라지고, 거두는 것은 그 부모의 몫이다. 이 맥에서는 좀비의
+    // 정보가 위에서 안 읽혀 이 갈래가 돌지 않는다(수집의 같은 갈래 주석).
+    (info.pbi_status != libc::SZOMB).then(|| mac::identity(&info))
+}
+
+/// 다른 OS는 신원을 모른다. 셸 닫기는 그때 지금처럼 그룹 신호만 보낸다.
+#[cfg(not(target_os = "macos"))]
+pub fn identity_of(_pid: u32) -> Option<Identity> {
+    None
 }
 
 #[cfg(target_os = "macos")]
@@ -131,6 +146,14 @@ mod mac {
         (filled == size).then_some(info)
     }
 
+    /// 신원 — pid와 커널이 준 시작 시각(에포크 µs).
+    pub(super) fn identity(info: &libc::proc_bsdinfo) -> super::Identity {
+        super::Identity {
+            pid: info.pbi_pid,
+            started_us: info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec,
+        }
+    }
+
     /// 커널 이름 — `proc_name`이 하는 그대로다: 긴 이름(`pbi_name`)이 있으면 그것, 없으면 16자로
     /// 잘린 `pbi_comm`.
     pub(super) fn kernel_name(info: &libc::proc_bsdinfo) -> String {
@@ -142,107 +165,23 @@ mod mac {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use std::process::{Child, Command, Stdio};
-    use std::time::Duration;
-
-    use super::{take, EnvScope};
-    use crate::processes::SHELL_KEY_ENV;
-
-    /// 실물 검사가 띄우는 자식의 역할을 싣는 변수. 앱은 이 이름을 모른다.
-    const CHILD_ROLE: &str = "ATELIER_PROCESSES_TEST_CHILD";
-
-    /// **실물 검사의 자식은 이 테스트 바이너리 자신이다**(프로세스 스펙 S46).
-    ///
-    /// 시스템 바이너리는 env가 0개로 읽혀 표식을 잴 수 없고, 검사가 제 env에 표식을 심는 것도 안 된다 —
-    /// `KERN_PROCARGS2`가 주는 것은 exec 때의 env다. 그래서 바이너리를 **테스트 이름 필터**
-    /// (`--exact <이 함수>`)와 env(표식, 역할)로 다시 띄운다. libtest는 모르는 플래그를 거절해서 역할을
-    /// 인자로는 못 넘긴다.
-    ///
-    /// 혼자 돌 때(역할이 없을 때)는 아무것도 안 하고 통과한다.
-    #[test]
-    fn a_child_the_real_tests_spawn() {
-        let Some(role) = std::env::var_os(CHILD_ROLE) else {
-            return;
-        };
-        match role.to_str() {
-            // 별도 세션으로 떨어져 잠든다 — claude Bash 도구가 띄운 dev 서버의 모양이다. 부모가 죽어도
-            // 영영 남지 않게 잠에 끝을 둔다.
-            Some("sleep") => {
-                unsafe { libc::setsid() };
-                std::thread::sleep(Duration::from_secs(60));
-            }
-            // 곧바로 끝난다. 부모가 거두기 전까지 좀비로 남는다.
-            Some("exit") => {}
-            other => panic!("모르는 역할이다: {other:?}"),
-        }
-    }
-
-    /// 위 자식의 libtest 이름 — 크레이트 이름을 뗀 모듈 경로. 모듈을 옮겨도 따라온다.
-    fn child_test_name() -> String {
-        let (_crate, path) = module_path!().split_once("::").expect("모듈 경로에 크레이트가 있다");
-        format!("{path}::a_child_the_real_tests_spawn")
-    }
-
-    /// 검사가 띄운 자식. **떨어질 때 반드시 거둔다** — 단언이나 기다림이 패닉해도 풀리는 길에서 돈다.
-    /// 신호는 이 핸들의 pid에만 간다. 거두기 전의 자식이라 그 pid는 아직 남에게 넘어갈 수 없다.
-    struct Kid(Child);
-
-    impl Kid {
-        /// 표식 값은 이 기계의 실제 세대와 안 겹치게 짓는다 — `test-<검사 pid>-<번호>`.
-        fn spawn(role: &str, key: &str) -> Kid {
-            let exe = std::env::current_exe().expect("테스트 바이너리의 경로");
-            let child = Command::new(exe)
-                .args(["--exact", &child_test_name(), "--nocapture", "--test-threads", "1"])
-                .env(CHILD_ROLE, role)
-                .env(SHELL_KEY_ENV, key)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .expect("테스트 바이너리를 자식으로 띄운다");
-            Kid(child)
-        }
-
-        fn pid(&self) -> u32 {
-            self.0.id()
-        }
-    }
-
-    impl Drop for Kid {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
-
-    /// 조건이 설 때까지 10ms마다 본다. 5초면 포기한다.
-    fn wait_until(mut ready: impl FnMut() -> bool) -> bool {
-        for _ in 0..500 {
-            if ready() {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        false
-    }
+    use super::{identity_of, take, EnvScope};
+    use crate::processes::testkit::{key, wait_until, Kid};
 
     /// **스냅샷이 표식을 읽는다.** 준 값 그대로여야 한다.
     ///
-    /// 기다리는 조건은 「자식이 제 세션을 열었다」(pgid = pid)다. **「표식이 읽힐 때까지」로 기다리지
-    /// 않는다** — 그러면 아래 단언이 스스로 통과한다. 게다가 exec 전의 자식은 부모의 exec 때 env를
-    /// 들고 있어, 이 검사를 돌린 셸의 표식이 읽힐 수 있다.
+    /// 기다리는 조건은 「자식이 제 세션을 열었다」(`Kid::settle`)다 — 「표식이 읽힐 때까지」로 기다리면
+    /// 아래 단언이 스스로 통과한다.
     ///
     /// 셸 하나를 닫을 때의 가지치기(프로세스 스펙 S3)도 같은 자식으로 잰다: 자식보다 늦은 시각부터 읽으면
     /// 행은 서되 표식은 안 읽는다.
     #[test]
     fn the_snapshot_reads_the_marker_a_child_was_given() {
-        let key = format!("test-{}-1", std::process::id());
+        let key = key(1);
         let kid = Kid::spawn("sleep", &key);
         let pid = kid.pid();
 
-        let settled = wait_until(|| {
-            take(EnvScope::All).procs.iter().any(|p| p.id.pid == pid && p.pgid == pid)
-        });
+        let settled = kid.settle();
         let whole = take(EnvScope::All).procs.into_iter().find(|p| p.id.pid == pid);
         let born = whole.as_ref().map_or(0, |p| p.id.started_us);
         let from_birth = take(EnvScope::BornSince(born)).procs.into_iter().find(|p| p.id.pid == pid);
@@ -252,7 +191,7 @@ mod tests {
         // **거두는 것이 단언보다 먼저다.**
         drop(kid);
 
-        assert!(settled, "자식이 5초 안에 제 세션을 열지 못했다");
+        assert!(settled.is_some(), "자식이 5초 안에 제 세션을 열지 못했다");
         let whole = whole.expect("스냅샷에 자식이 없다");
         assert_eq!(whole.shell_key.as_deref(), Some(key.as_str()), "준 표식을 못 읽었다");
         assert_eq!(whole.ppid, std::process::id(), "자식의 부모는 이 검사다");
@@ -268,9 +207,12 @@ mod tests {
     /// **좀비를 하나 둔 채로도 스냅샷이 성공한다.** 좀비는 행으로 서지 않고 건너뛴 수에 든다.
     ///
     /// 좀비는 `WNOWAIT`로 만든다 — 끝났는지는 보되 거두지는 않는다. 스냅샷을 찍은 뒤에 거둔다.
+    ///
+    /// 한 pid의 신원만 묻는 길(`identity_of`)도 같은 좀비로 잰다. 끝내기는 그 길로 「아직 살아 있나」를
+    /// 보는데, 좀비를 살아 있다고 읽으면 이미 끝난 것을 2초 기다리고 「못 끝냄」으로 적는다.
     #[test]
     fn the_snapshot_survives_a_zombie() {
-        let key = format!("test-{}-2", std::process::id());
+        let key = key(2);
         let kid = Kid::spawn("exit", &key);
         let pid = kid.pid();
 
@@ -281,6 +223,8 @@ mod tests {
             ok == 0 && info.si_pid == pid as libc::pid_t
         });
         let snapshot = take(EnvScope::All);
+        let zombie = identity_of(pid);
+        let me = identity_of(std::process::id());
 
         // **거두는 것이 단언보다 먼저다.**
         drop(kid);
@@ -295,5 +239,11 @@ mod tests {
             "좀비가 행으로 섰다"
         );
         assert!(snapshot.skipped >= 1, "좀비를 건너뛰고도 세지 않았다");
+        assert_eq!(zombie, None, "좀비를 살아 있는 신원으로 읽었다");
+        assert_eq!(
+            me,
+            snapshot.procs.iter().find(|p| p.id.pid == std::process::id()).map(|p| p.id),
+            "한 pid만 묻는 길이 스냅샷과 다른 신원을 준다"
+        );
     }
 }

@@ -242,9 +242,15 @@ pub async fn pty_resize(
     pty::resize(&pool, id, cols, rows)
 }
 
+// **blocking 풀에서 닫는다.** 셸을 닫으면 그 셸에서 나온 것에 SIGTERM을 보내고 최대 2초를 기다린다
+// (프로세스 결정 3). async 명령 안에서 그대로 기다리면 tokio 워커 하나가 그동안 막힌다. 프런트는 이 명령의
+// 끝을 기다리지 않으므로(`terminal-store.ts`의 `ignoreGone`) ×는 바로 닫힌다.
 #[tauri::command]
 pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
-    pty::kill(&pool, id)
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id))
+        .await
+        .map_err(|e| format!("셸을 닫지 못했습니다: {e}"))?
 }
 
 // 닫기 직전에 **한 번** 묻는 값이다(결정 92). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라
