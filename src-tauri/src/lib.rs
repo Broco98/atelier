@@ -8,6 +8,7 @@ pub mod pty;
 mod quit;
 mod settings;
 mod shells;
+mod startup;
 mod terminate;
 mod watcher;
 
@@ -209,6 +210,9 @@ pub fn run() {
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
+        // 시작 보고를 붙잡아 두는 자리(프로세스 스펙 S11). 지금은 비어 있고, 시작 때의 일(정리 · 훅 맞춤)이
+        // 여기에 결과를 채운다 — 스레드에 넘길 수 있게 풀과 같이 `Arc`다.
+        .manage(Arc::new(startup::ReportHolder::default()))
         .setup(|app| {
             // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
             // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
@@ -291,6 +295,7 @@ pub fn run() {
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
             commands::quit_app,
+            commands::startup_report,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -535,6 +540,20 @@ mod tests {
         assert!(
             HOTKEYS[first_digit..].iter().all(|(code, _)| code.starts_with("Digit")),
             "번호 항목 사이에 다른 항목이 끼었다 — 구분선이 엉뚱한 자리에 선다"
+        );
+    }
+
+    /// **시작 보고의 자리가 앱에 서는가**(프로세스 스펙 S11). 명령은 그 자리를 `State`로 찾는데, `manage`가
+    /// 빠지면 Tauri는 부를 때마다 거절하고(`state not managed`) 프런트는 그 거절을 「알릴 것 없음」으로
+    /// 삼킨다 — 시작 때 무엇을 치워도 토스트가 영영 안 선다. L3는 고정 표가 답하고 L4는 다리가 거절하므로
+    /// 이 빠짐을 어느 층도 못 본다. 그래서 셸 신호의 세 자리처럼 **자리로** 잰다.
+    #[test]
+    fn the_startup_report_has_a_holder_when_the_app_comes_up() {
+        let src = include_str!("lib.rs");
+        let builder = &src[..src.find("#[cfg(test)]").expect("테스트 모듈의 머리를 못 찾았다")];
+        assert!(
+            without_comment_lines(builder).contains(".manage(Arc::new(startup::ReportHolder::default()))"),
+            "시작 보고의 자리를 안 세운다 — 프런트가 물을 때마다 거절된다"
         );
     }
 }

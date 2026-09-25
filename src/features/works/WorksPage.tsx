@@ -290,7 +290,8 @@ function WorksPage({
   //
   // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
   // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 알림 표면을
-  // 새로 짓는 안은 기각됐다.
+  // 새로 짓는 안은 기각됐다. 그 뒤 프로세스 스펙 P2가 앱 셸에 토스트 자리를 세웠지만
+  // (`AppToasts`) 이 거절은 그리로 옮기지 않았다 — 이 화면의 토스트는 이웃 work이 옮기고 있다.
   useEffect(() => onShellOpenRejected((notice) => showToast(notice, false)), [showToast]);
 
   // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다

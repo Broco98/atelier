@@ -12,6 +12,9 @@ import { quitShellCounts } from "@/features/terminal/terminal-store";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
+import AppToasts from "./AppToasts";
+import { showAppToast } from "./app-toast";
+import { startupNotices, startupReportStore } from "./startup-report";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
@@ -105,6 +108,18 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, []);
+
+  // **시작 보고를 알리는 자리가 여기 하나다**(프로세스 결정 6 · 프로세스 스펙 S11). 묻는 것은 React보다 먼저
+  // (`main.tsx`)이고 답은 스토어에 앉아 있다 — 셸이 선 뒤에 읽어야 토스트가 설 자리가 있다. 셸은 어느 화면에서든
+  // 서 있으므로 부팅 첫 화면이 무엇이든 뜬다.
+  //
+  // **이펙트가 두 번 돌아도 토스트는 하나다** — StrictMode(dev)가 이 이펙트를 두 번 돌리는데, 알릴 말마다
+  // 늘 같은 id가 붙어 있어(`startupNotices`) 두 번째는 새로 서지 않고 그 자리를 고친다. 순서도 맞다: 토스트
+  // 자리(`AppToasts`)가 이 셸의 자식이라 그 Provider가 매니저에 붙는 이펙트가 이것보다 먼저 돈다.
+  const startupReport = useStore(startupReportStore, (report) => report);
+  useEffect(() => {
+    if (startupReport) startupNotices(startupReport).forEach(showAppToast);
+  }, [startupReport]);
 
   // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은
@@ -225,6 +240,9 @@ function AppShell() {
           **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
           늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
       {searchOpen && <SearchPalette mode={mode} onClose={() => setSearchOpen(false)} />}
+      {/* 이 work의 토스트(프로세스 스펙 P2). 셸에 서서 어느 화면에서든 보인다 — 자리와 Provider의
+          범위는 그 파일이 든다. */}
+      <AppToasts />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />

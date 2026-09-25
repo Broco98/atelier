@@ -329,6 +329,17 @@ pub async fn quit_app(app: tauri::AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
+/// 앱이 뜰 때 한 일(프로세스 결정 6 · 프로세스 스펙 S11). 프런트가 **부팅 때 한 번** 묻는다(`main.tsx`) —
+/// 이벤트로 쏘면 웹뷰가 듣기 전에 지나갈 수 있어서다. 본체는 `startup.rs`에 있고 여기는 위임만 한다.
+///
+/// 모드를 안 받는다 — 앱 하나가 뜬 일이라 세계가 없다.
+#[tauri::command]
+pub async fn startup_report(
+    holder: tauri::State<'_, Arc<crate::startup::ReportHolder>>,
+) -> CmdResult<crate::startup::StartupReport> {
+    Ok(holder.answer())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

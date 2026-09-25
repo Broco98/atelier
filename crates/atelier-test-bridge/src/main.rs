@@ -139,6 +139,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("uninstall_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
+    // 시작 보고(프로세스 스펙 S11)는 **이 실행이 뜰 때 한 일**이다 — 앱 프로세스가 붙잡아 둔 값이라, 호출마다
+    // 새로 뜨는 다리에는 붙잡을 실행이 없다. 거절되면 프런트는 토스트 없이 넘어간다(부팅 때의 설정 읽기와 같다).
+    ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
@@ -328,7 +331,7 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 10] = [
+    const APP_SOURCES: [(&str, &str); 11] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -337,6 +340,7 @@ mod tests {
         ("quit.rs", include_str!("../../../src-tauri/src/quit.rs")),
         ("settings.rs", include_str!("../../../src-tauri/src/settings.rs")),
         ("shells.rs", include_str!("../../../src-tauri/src/shells.rs")),
+        ("startup.rs", include_str!("../../../src-tauri/src/startup.rs")),
         ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
     ];

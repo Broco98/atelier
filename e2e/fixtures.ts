@@ -3,6 +3,7 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
+import type { StartupReport } from "@/components/shell/startup-report";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -360,6 +361,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
   // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
   read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →
+  // `loadStartupReport`) — 그래서 이 줄이 없으면 모든 spec이 화이트리스트 탐지기에 물린다.
+  //
+  // **아무것도 안 한 시작을 답한다**(정리 0, 훅 갱신 없음) — 지난 실행이 깨끗하게 끝났으면 그것이
+  // 정상 경로이고, 토스트가 안 서는 쪽이다. 정리 토스트를 재는 검사만 덮어쓴다(`startup-report.spec.ts`).
+  startup_report: { cleaned: [], hooksUpdated: [] } satisfies StartupReport,
   // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
   // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
   // (`SettingsPage.tsx`의 `useSectionSave`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
