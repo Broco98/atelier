@@ -450,11 +450,15 @@ test("확인 창이 떠 있는 동안에는 안 열린다", async ({ page }) => 
   await awaitSpawned(page, 1);
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
   const ask = page.getByRole("alertdialog");
-  await expect(ask).toBeVisible();
+  // **포커스가 창에 들어온 뒤에 누른다.** 그 전의 키는 첫 프레임 가드가 삼켜서(S24) ⌘K가 안 열린
+  // 것이 창의 게이트 덕인지 가드 덕인지 갈리지 않는다.
+  await expect(ask.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
 
   await pressSearchKey(page);
 
-  await expect(palette(page)).toHaveCount(0);
+  // **역할로 세지 않는다.** 창은 모달이라 그 밖이 전부 `aria-hidden`이고, 팔레트가 열려도
+  // listbox 역할은 0으로 센다 — 그러면 이 줄이 늘 초록이다. 팔레트가 열렸다는 표식으로 잰다.
+  await expect(page.locator("body[data-palette-open]")).toHaveCount(0);
   // 창은 그대로 서 있다 — 팔레트가 그 위를 덮지도, 창을 대신 닫지도 않는다.
   await expect(ask).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -591,7 +595,9 @@ test("확인 창이 떠 있어도 ⌘B는 먹는다", async ({ page }) => {
   await awaitSpawned(page, 1);
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').click();
   const ask = page.getByRole("alertdialog");
-  await expect(ask).toBeVisible();
+  // **포커스가 창에 들어온 뒤에 누른다.** 창이 뜨고 첫 포커스가 들어오기 전 한 프레임의 키는 첫 프레임
+  // 가드가 어디로도 안 보낸다(S24) — ⌘B도 그 틈에 누르면 삼켜진다. 재는 것은 떠 있는 창 뒤의 ⌘B다.
+  await expect(ask.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
 
   await page.keyboard.press("Meta+b");
 

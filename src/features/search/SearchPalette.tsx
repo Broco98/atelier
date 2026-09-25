@@ -14,7 +14,7 @@ import type { SearchHit } from "./types";
  * **여는 자리는 그래도 하나다** — 버튼도 메뉴도 키 리스너와 같은 state를 켠다
  * (`AppShell.tsx`의 `ShellControls` 호출부).
  *
- * **떠 있는 표면의 규격은 확인 창(`AppDialog`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
+ * **떠 있는 표면의 규격은 확인 창(`alert-dialog.tsx`)의 것을 그대로 쓴다** — `rounded-[13px]` ·
  * `border-border-strong` · `bg-background` · `shadow-lg`. 이 저장소의 떠 있는 것들이 같은
  * 반지름·테두리·그림자를 쓰고 있어 새 어휘를 들일 이유가 없다.
  *
@@ -383,8 +383,10 @@ function SearchPalette({ mode, onClose }: { mode: Mode; onClose: () => void }) {
       }
     };
     // **캡처로 듣는다.** 셸에 포커스가 있는 채로 열렸으면 xterm의 키 핸들러가 먼저 보는
-    // 자리라, 버블에서 기다리면 방향키가 셸로 들어간 뒤다(`AppDialog`가 Esc를 같은 이유로
-    // 캡처에서 듣는다). 글자 키는 안 잡는다 — 포커스가 입력칸에 있으므로 그리로 간다.
+    // 자리라, 버블에서 기다리면 방향키가 셸로 들어간 뒤다. 글자 키는 안 잡는다 — 포커스가
+    // 입력칸에 있으므로 그리로 간다. (확인 창은 이 캡처를 걷고 첫 프레임 가드로 옮겼다 —
+    // `components/ui/first-frame-guard.ts`. 그래서 팔레트 위에 확인 창이 뜬 동안의 Esc는 이
+    // 리스너가 먼저 받아 팔레트만 닫는다.)
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [at, hits, router, onClose]);
