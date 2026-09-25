@@ -52,12 +52,14 @@ function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal
 // 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
 const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
-// **세계는 맨 뒤 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
+// **세계는 기본값을 단 뒤쪽 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
 // …)`) 그 값이 한쪽으로 누워도 화면은 「셸이 안 서네」로만 보인다 — 두 세계에 같은 slug를
-// 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 기존 호출은 그대로다.
+// 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 세계를 안 넘기는 기존 호출은 그대로
+// Atelier를 잰다.
 //
 // `bodies`는 문서 본문이다(경로 → 글). 캐시에 심어 두면 본문이 그대로 그려진다 — **어느 문서가
-// 열렸는지를 본문으로** 재는 자리가 쓴다.
+// 열렸는지를 본문으로** 재는 자리가 쓴다. 세계 **뒤에** 두는 것도 같은 까닭이다 — 기본값이 있어
+// 기존 호출이 바뀌지 않는다(앞에 두면 세계를 넘기는 호출마다 빈 `{}`를 적어야 한다).
 function render(
   overrides: Partial<WorkView> = {},
   tab: ViewTab = "spec",
