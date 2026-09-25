@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(super::invoked_name(&[]), None);
     }
 
-    /// **pty 층이 고친 버그를 실물로 못박는다.**
+    /// **스냅샷 행이 커널 이름과 부른 이름을 따로 든다** — 심링크로 부른 명령은 링크 이름이 argv[0]에 남는다.
     ///
     /// 커널이 `p_comm`에 적는 것은 **실제로 실행된 파일**의 이름이라 심링크 뒤의 것이 온다.
     /// Claude Code의 네이티브 설치본이 정확히 그 모양이다 — `~/.local/bin/claude`가
@@ -286,9 +286,11 @@ mod tests {
     /// 탭에도 사이드바에도 로고가 안 떴다.
     ///
     /// 여기서는 `/bin/sleep`을 `claude`라는 이름의 심링크로 부른다: 스냅샷 행의 커널 이름은 `sleep`을,
-    /// 부른 이름은 `claude`를 줘야 한다. **둘을 함께 단언하는 것이 핵심이다** — 뒤엣것만 보면
-    /// 「어차피 원래 됐던 것 아닌가」와 갈리지 않는다. 셸 탭이 쓰는 길(`argv` → `invoked_name`)도 같은
-    /// 이름을 줘야 한다.
+    /// argv[0]은 `claude`를 줘야 한다. **둘을 함께 단언하는 것이 핵심이다** — 뒤엣것만 보면
+    /// 「어차피 원래 됐던 것 아닌가」와 갈리지 않는다.
+    ///
+    /// 셸 탭이 이 둘 중 무엇을 먼저 고르는지는 여기서 안 잰다 — 그 순서는 `pty.rs`의
+    /// `the_shell_tab_names_a_symlinked_command_by_the_link`가 셸 탭이 부르는 함수 그대로 잰다.
     ///
     /// 자식이 시스템 바이너리여도 되는 것은 env가 아니라 argv를 재기 때문이다 — argv는 읽힌다.
     #[cfg(target_os = "macos")]
@@ -318,7 +320,6 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let invoked = super::argv(pid as i32).as_deref().and_then(super::invoked_name);
 
         // **거두는 것이 단언보다 먼저다.** 단언이 빨개지면 그 자리에서 패닉이라, 뒤에 둔 정리는 안 돈다.
         let _ = child.kill();
@@ -333,6 +334,5 @@ mod tests {
             Some("claude"),
             "사람이 부른 이름은 argv[0]에 있다"
         );
-        assert_eq!(invoked.as_deref(), Some("claude"), "셸 탭이 쓰는 길도 부른 이름을 준다");
     }
 }

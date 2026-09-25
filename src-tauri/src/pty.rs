@@ -352,8 +352,8 @@ fn process_name(_pgid: i32) -> Option<String> {
 /// 실행된 파일**의 이름이라 심링크를 따라간 뒤의 것이 온다 — Claude Code의 네이티브 설치본이
 /// 그 자리에 정확히 걸린다: `~/.local/bin/claude`가 `~/.local/share/claude/versions/2.1.251`을
 /// 가리키므로 이름이 **`2.1.251`**로 읽힌다(실측: 심링크로 `/bin/sleep`을 부르면 `p_comm`이
-/// `sleep`이다). 사람이 친 이름은 argv[0]에 남는다. 그 길을 재는 실물 검사는
-/// `processes::procargs`에 있다.
+/// `sleep`이다). 사람이 친 이름은 argv[0]에 남는다. 이 순서를 재는 실물 검사는 이 파일의
+/// `the_shell_tab_names_a_symlinked_command_by_the_link`다.
 ///
 /// 되돌아갈 자리를 남기는 것은 `sysctl`이 실패하는 경우가 실재하기 때문이다 — 재는 사이에
 /// 끝난 프로세스, 권한이 없는 프로세스. 그때는 지금까지 하던 그대로가 답이다.
@@ -1198,6 +1198,58 @@ mod tests {
             name.as_deref(),
             Some("claude"),
             "명령줄의 낱말을 이름으로 집었다 — 타이틀 추론을 기각한 근거가 여기서 무너진다"
+        );
+    }
+
+    /// **셸 탭이 이름을 고르는 순서를 실물로 못박는다** — argv가 먼저고 `p_comm`은 되돌아갈 자리다.
+    ///
+    /// 이 순서가 뒤집히면 Claude Code의 네이티브 설치본이 다시 `2.1.251`로 읽혀 탭에도 사이드바에도
+    /// 로고가 안 뜬다(`foreground_name`의 주석). 부품(`procargs::argv` · `invoked_name`)을 재는 검사는
+    /// `processes::procargs`에 있지만 **부품이 옳아도 조립 순서가 틀리면 그 검사는 초록이다** — 그래서
+    /// 셸 탭이 실제로 부르는 이 함수를 여기서 잰다.
+    ///
+    /// `/bin/sleep`을 `claude`라는 이름의 심링크로 부른다. **둘을 함께 단언하는 것이 핵심이다** —
+    /// 같은 pid의 `process_name`이 `sleep`이어야 「argv를 안 보고도 원래 claude였던 것 아닌가」와 갈린다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_shell_tab_names_a_symlinked_command_by_the_link() {
+        // 폴더 이름을 `procargs`의 심링크 검사와 가른다 — 같은 바이너리 안에서 나란히 돌아, 같은 자리면
+        // 한쪽의 정리가 다른 쪽이 띄우기 전에 링크를 지운다.
+        let dir = std::env::temp_dir().join(format!("atelier-pty-argv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("임시 폴더를 만든다");
+        let link = dir.join("claude");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink("/bin/sleep", &link).expect("심링크를 건다");
+
+        let mut child = std::process::Command::new(&link)
+            .arg("30")
+            .spawn()
+            .expect("심링크로 띄운다");
+        let pid = child.id() as i32;
+
+        // 커널이 이름을 읽어 줄 때까지 기다린다. **「claude가 될 때까지」로 기다리지 않는다** — 그러면
+        // 아래 단언이 스스로 통과한다.
+        let mut comm = None;
+        for _ in 0..300 {
+            comm = super::process_name(pid);
+            if comm.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let named = super::foreground_name(pid);
+
+        // **거두는 것이 단언보다 먼저다.** 단언이 빨개지면 그 자리에서 패닉이라, 뒤에 둔 정리는 안 돈다.
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&link);
+        let _ = std::fs::remove_dir(&dir);
+
+        assert_eq!(comm.as_deref(), Some("sleep"), "커널은 심링크 뒤의 파일 이름을 준다");
+        assert_eq!(
+            named.as_deref(),
+            Some("claude"),
+            "셸 탭이 사람이 부른 이름 대신 실제로 돈 파일의 이름을 골랐다 — argv가 `p_comm`보다 먼저다"
         );
     }
 }
