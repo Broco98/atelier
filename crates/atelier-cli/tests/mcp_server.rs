@@ -374,6 +374,122 @@ fn the_tools_that_answer_with_the_spec_layout_say_so() {
     assert!(!get_work.contains("folder names"), "{get_work}");
 }
 
+/// 임시 홈의 `layouts/<id>/`에 파일 하나를 둔다 — 사용자가 손으로 두는 것과 같다.
+fn plant_layout(home: &std::path::Path, id: &str, file: &str, content: &str) {
+    let folder = home.join("layouts").join(id);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join(file), content).unwrap();
+}
+
+/// `atelier_get_work`가 싣는 안내문 — 응답의 둘째 블록.
+fn guidance_of(server: &mut Server, id: u32, slug: &str) -> String {
+    let res = server.request(id, "tools/call",
+        json!({ "name": "atelier_get_work", "arguments": { "work_slug": slug } }));
+    assert_eq!(res["result"]["isError"], false, "{res}");
+    res["result"]["content"][1]["text"].as_str().unwrap_or_else(|| panic!("{res}")).to_string()
+}
+
+/// 판 01 — 손으로 둔 레이아웃 폴더가 안내문을 바꾼다. **서버를 다시 띄우지 않고** 파일을 바꾸면
+/// 다음 호출에 바뀐 것이 실린다(결정 9 — 호출마다 새로 읽는다).
+///
+/// 임시 홈은 홈 밖이라 `Template:` 경로가 줄지 않은 절대 경로로 실린다. 그 경로만 커널의 홈 축약
+/// 함수로 만들고, 나머지 글자는 손으로 적었다 — 설명 열은 가장 긴 `  decisions.md`(14칸)에 두 칸을
+/// 더한 16이다.
+#[test]
+fn a_hand_placed_layout_folder_changes_the_guidance_without_a_restart() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "cart", "카트");
+    plant_layout(home.path(), "atelier", "layout.json", r#"{ "root": {
+        "description": "Keep it small.",
+        "children": [
+          { "pattern": "decisions.md", "kind": "file", "icon": "scale",
+            "description": "why we chose what we chose", "template": "decisions.md" },
+          { "pattern": "notes", "kind": "folder", "description": "anything else" } ] } }"#);
+    plant_layout(home.path(), "atelier", "decisions.md", "# Decisions\n");
+
+    let mut server = Server::start(home.path());
+    let folder = atelier_core::collapse_home(&home.path().join("layouts/atelier"));
+    assert!(folder.starts_with('/'), "임시 홈이 홈 안에 있다: {folder}");
+    assert_eq!(
+        guidance_of(&mut server, 2, "cart"),
+        format!(
+            "Spec layout — how to arrange documents inside `specDir`.\n\
+             \n\
+             Keep it small.\n\
+             \n  decisions.md  why we chose what we chose\n\
+             \x20               Template: {folder}/decisions.md\n\
+             \x20 notes/        anything else\n\
+             \n\
+             A trailing `/` marks a folder, and indentation shows what goes inside it. Where a \
+             file has a `Template:` line, read that template before you create the file and \
+             follow its shape."
+        )
+    );
+
+    // 같은 서버에 다시 묻는다 — 기동 때 읽어 둔 것이면 옛 안내가 그대로 나온다
+    plant_layout(home.path(), "atelier", "layout.json", r#"{ "root": {
+        "description": "Now in rounds.",
+        "children": [ { "pattern": "{n}-{name}", "kind": "folder", "description": "one round" } ] } }"#);
+    assert_eq!(
+        guidance_of(&mut server, 3, "cart"),
+        "Spec layout — how to arrange documents inside `specDir`.\n\
+         \n\
+         Now in rounds.\n\
+         \n  {n}-{name}/  one round\n\
+         \n\
+         `{n}` is a number and `{name}` is any name without `/`. A trailing `/` marks a folder, \
+         and indentation shows what goes inside it."
+    );
+}
+
+/// Maison 서버의 Room은 `layouts/maison/`을 따른다 — 옆의 `layouts/atelier/`가 아니다. 레이아웃
+/// 폴더는 데이터 루트 아래 하나이고, 모드마다 제 id의 폴더를 본다.
+#[test]
+fn a_maison_room_follows_the_maison_layout_folder() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("maison/rooms"), "finance", "금융");
+    plant_layout(home.path(), "atelier", "layout.json",
+        r#"{ "root": { "children": [ { "pattern": "plan.md", "kind": "file" } ] } }"#);
+    plant_layout(home.path(), "maison", "layout.json",
+        r#"{ "root": { "children": [ { "pattern": "학습-계획.md", "kind": "file", "description": "무엇을 배울지" } ] } }"#);
+
+    let mut server = Server::start_with_mode(home.path(), Some("maison"));
+    assert_eq!(
+        guidance_of(&mut server, 2, "finance"),
+        "Spec layout — how to arrange documents inside `specDir`.\n\n  학습-계획.md  무엇을 배울지"
+    );
+}
+
+/// 깨진 레이아웃이면 **내장본** 안내문 앞에 물러섰다는 한 줄이 붙는다(결정 15). 그 줄은 읽지 못한
+/// 폴더와 까닭을 말하고, 사용자에게 알리되 부탁받기 전에는 고치지 말라고 한다.
+#[test]
+fn a_broken_layout_puts_a_fallback_line_before_the_builtin_guidance() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "cart", "카트");
+    plant_layout(home.path(), "atelier", "layout.json",
+        r#"{ "root": { "children": [ { "pattern": "a.md", "kind": "fil" } ] } }"#);
+
+    let mut server = Server::start(home.path());
+    let guidance = guidance_of(&mut server, 2, "cart");
+    let (first, rest) = guidance.split_once("\n\n").unwrap();
+    assert_eq!(rest, builtin_guidance(atelier_core::Mode::Atelier), "{guidance}");
+    let folder = atelier_core::collapse_home(&home.path().join("layouts/atelier"));
+    for phrase in [format!("`{folder}/`"), "root.children[0]".to_string(), "Tell the user".to_string()] {
+        assert!(first.contains(&phrase), "{phrase:?}가 없다: {first}");
+    }
+}
+
+/// MCP는 `settings.json`을 읽지 않는다(결정 25) — 그 파일이 깨져 있어도 안내문은 그대로다.
+#[test]
+fn a_broken_settings_file_leaves_the_guidance_alone() {
+    let home = tempfile::tempdir().unwrap();
+    plant(&home.path().join("works"), "cart", "카트");
+    std::fs::write(home.path().join("settings.json"), "{ not json").unwrap();
+
+    let mut server = Server::start(home.path());
+    assert_eq!(guidance_of(&mut server, 2, "cart"), builtin_guidance(atelier_core::Mode::Atelier));
+}
+
 #[test]
 fn unknown_work_is_an_execution_error_pointing_at_the_listing_tool() {
     let home = tempfile::tempdir().unwrap();
