@@ -210,7 +210,7 @@ mod tests {
     }
 
     /// 마지막 문단 — 문법 문단. 레이아웃이 쓰지 않은 문법은 설명하지 않는다.
-    fn grammar(guidance: &str) -> &str {
+    fn grammar_paragraph(guidance: &str) -> &str {
         guidance.rsplit("\n\n").next().unwrap()
     }
 
@@ -219,17 +219,20 @@ mod tests {
     #[test]
     fn the_placeholder_sentence_explains_only_the_placeholders_in_use() {
         let numbered = text(&layout("", vec![file("adr-{n}.md", "")]));
-        assert_eq!(grammar(&numbered), "`{n}` is a number.");
+        assert_eq!(grammar_paragraph(&numbered), "`{n}` is a number.");
 
         let named = text(&layout("", vec![folder("docs", "", vec![file("{name}.md", "")])]));
         assert_eq!(
-            grammar(&named),
+            grammar_paragraph(&named),
             "`{name}` is any name without `/`. A trailing `/` marks a folder, and indentation \
              shows what goes inside it."
         );
 
         let both = text(&layout("", vec![file("{n}-{name}.md", "")]));
-        assert_eq!(grammar(&both), "`{n}` is a number and `{name}` is any name without `/`.");
+        assert_eq!(
+            grammar_paragraph(&both),
+            "`{n}` is a number and `{name}` is any name without `/`."
+        );
     }
 
     /// 폴더 항목이 없으면 폴더 문장이 빠지고, `Template:` 줄이 없으면 템플릿 문장이 빠진다.
