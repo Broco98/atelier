@@ -85,7 +85,7 @@ xterm.js가 들고 있는 지나간 줄들.
 탭 줄과 패널 탭 — `spec` · `info`. 한 화면에서 「무엇을 볼까」를 고르는 것들이라 한
 가족으로 읽혀야 한다.
 _대문자는 다른 컨트롤의 것이다_: 세계의 이름(`Atelier`·`Maison`), main nav, 그리고 구획
-머리(`Rooms`·`Iterations`·`Documents`). 한 화면에 대문자 `Terminal`(사이드바에서 가는 곳)과
+머리(`Rooms`). 한 화면에 대문자 `Terminal`(사이드바에서 가는 곳)과
 소문자 `spec`(탭 줄에서 고르는 것)이 함께 서는데, **대소문자가 그 층을 가른다.**
 main nav를 한 벌로 적지 않는다 — Atelier는 `Projects`·`Terminal`·`Archive` 셋이고 Maison은
 `Terminal`·`Archive` 둘이다(저쪽 세계에는 프로젝트가 없다). 세계의 이름이 그 위에 서지만

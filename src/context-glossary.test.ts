@@ -157,6 +157,14 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Rooms`");
   });
 
+  it("대문자 층이 사라진 구획 머리 `Iterations`·`Documents`를 들지 않는다", () => {
+    // spec 패널 탭에 구획이 없어졌다(spec 레이아웃 결정 24) — 레이아웃 순서의 트리 하나다. 사라진
+    // 머리를 예로 들면 「대소문자가 층을 가른다」를 지금 화면에서 확인할 수 없다. 위 검사의 `Rooms`가
+    // 이 슬라이스를 실제로 읽는다는 양성 그물이다(비어 있으면 둘 다 저절로 초록이다).
+    expect(uppercase).not.toContain("Iterations");
+    expect(uppercase).not.toContain("Documents");
+  });
+
   it("사이드바 가지를 예로 들지 않는다", () => {
     expect(notation).not.toContain("가지");
   });

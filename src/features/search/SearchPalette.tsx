@@ -39,8 +39,9 @@ import type { SearchHit } from "./types";
 
 /**
  * 구획 머리. **사이드바 목록과 같은 계통의 한국어다**(결정 17) — 이 팔레트가 나열하는 것이
- * 사이드바가 나열하는 것과 같은 것들이라, spec 트리의 대문자 영어(`Iterations`·`Documents`)를
- * 따르지 않는다. 부수 효과가 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
+ * 사이드바가 나열하는 것과 같은 것들이라, spec 트리에 있던 대문자 영어 구획 머리
+ * (`Iterations`·`Documents` — spec 레이아웃 결정 24로 사라졌다)를 따르지 않았다. 부수 효과가
+ * 하나 더 있다: 목적지 라벨 `Projects`가 **목적지이면서 그룹
  * 머리이기도 한** 자리가 생기지 않는다.
  */
 function groupNameOf(mode: Mode, kind: SearchHit["kind"]): string {

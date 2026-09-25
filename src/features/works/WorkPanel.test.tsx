@@ -225,7 +225,7 @@ describe("WorkPanel 두 탭", () => {
   });
 
   it("탭 껍데기가 패널 카드의 flex 컨텍스트를 통과시킨다", () => {
-    // 지켜야 할 불변조건은 "SpecSection이 조각을 돌려준다"가 아니라 **"스크롤 영역이
+    // 지켜야 할 불변조건은 "spec 탭이 조각을 돌려준다"가 아니라 **"스크롤 영역이
     // 패널 카드의 직계 flex 자식이어야 한다"**이다. 탭 내용을 평범한 div로 감싸면
     // flex-1의 기준이 카드에서 껍데기로 옮겨가 카드의 넘침 감춤에 트리가 잘리는데,
     // 마크업만 보면 멀쩡하다. display:contents가 그 통과를 맡는다.
@@ -320,6 +320,72 @@ describe("WorkPanel 두 탭", () => {
   it("트리 위 Spec 소제목이 없다", () => {
     // 바로 위 탭 버튼이 이미 spec이라 같은 말이 두 줄 연달아 나온다 (결정 23)
     expect(render(true)).not.toMatch(/>Spec</);
+  });
+});
+
+// spec 탭은 **work 응답에 실려 온 spec 트리를 그린다**(spec 레이아웃 결정 13·24). 파일 목록을
+// 다시 갈라 판 구획(`Iterations N`)과 판 밖 구획(`Documents`)을 세우던 것이 사라졌다 — 트리가
+// 곧 레이아웃의 순서이고, 판 폴더는 그 자리(내장본에서는 `overview.md` 다음)에 선다.
+describe("WorkPanel spec 탭", () => {
+  beforeEach(stubEmptyStorage);
+  afterEach(() => vi.unstubAllGlobals());
+
+  // 커널이 주는 파일 목록은 경로 순서이고, 트리는 엔진이 레이아웃의 자리로 가른 순서다. 둘이
+  // 달라야 「어느 것을 그리는가」가 갈린다.
+  const layered: Partial<WorkView> = {
+    specFiles: ["01-첫째/plan.md", "02-둘째/plan.md", "overview.md"],
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "overview.md",
+      items: [
+        { name: "overview.md", path: "overview.md", kind: "file", icon: "compass", group: null, children: [] },
+        {
+          name: "02-둘째",
+          path: "02-둘째",
+          kind: "folder",
+          icon: "layers",
+          group: { key: "{n}-{name}", n: 2, latest: true },
+          children: [
+            { name: "plan.md", path: "02-둘째/plan.md", kind: "file", icon: null, group: null, children: [] },
+          ],
+        },
+        {
+          name: "01-첫째",
+          path: "01-첫째",
+          kind: "folder",
+          icon: "layers",
+          group: { key: "{n}-{name}", n: 1, latest: false },
+          children: [
+            { name: "plan.md", path: "01-첫째/plan.md", kind: "file", icon: null, group: null, children: [] },
+          ],
+        },
+      ],
+    },
+  };
+
+  it("구획 머리 없이 spec 트리를 받은 순서대로 그린다", () => {
+    const markup = render(true, layered);
+    expect(markup).not.toContain("Iterations");
+    expect(markup).not.toContain("Documents");
+    const overview = markup.indexOf(">overview.md<");
+    const latest = markup.indexOf(">02-둘째<");
+    const older = markup.indexOf(">01-첫째<");
+    expect(overview).toBeGreaterThan(0);
+    expect(latest).toBeGreaterThan(overview);
+    expect(older).toBeGreaterThan(latest);
+  });
+
+  it("레이아웃이 물러섰어도 말하지 않고 받은 트리를 그린다", () => {
+    // 알리는 것은 설정 페이지의 일이다(구현 스펙 4절) — 이 탭은 조용히 내장본으로 그린다.
+    const reason = "layout.json is missing";
+    const markup = render(true, { ...layered, specTree: { ...layered.specTree!, fallback: reason } });
+    expect(markup).not.toContain(reason);
+    expect(markup).toContain(">overview.md<");
+  });
+
+  it("spec 트리가 비면 아직 파일이 없다고 말한다", () => {
+    expect(render(true, specDocs([]))).toContain("아직 spec 파일이 없어요");
   });
 });
 

@@ -8,9 +8,9 @@ import { useProjects } from "@/features/projects/hooks";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "./work-sections";
 import { specRef } from "./refs";
-import SpecSection from "./SpecSection";
+import SpecTree from "./SpecTree";
 import WorkInfo, { type ProjectBase } from "./WorkInfo";
-import type { WorkView } from "./types";
+import type { SpecTreeItem, WorkView } from "./types";
 
 interface WorkPanelProps {
   // 어느 세계의 패널인가. 정보 탭에 그대로 내려가고, **프로젝트 조회를 켤지도 이 값이
@@ -89,9 +89,9 @@ function WorkPanel({
   //
   // **작업을 옮기는 것은 더 이상 접힘을 초기화하지 않는다**(결정 49). 한때 이 패널이
   // key={slug}인 SpecViewer 아래에 있어 함께 다시 세워졌는데, 화면으로 올라오면서 그
-  // 리마운트가 사라졌다. 감수한다 — 접힘 기억의 키가 **판 폴더의 전체 이름**이라 이름이
-  // 완전히 같을 때만 물려받고, 대부분은 기억에 없는 이름이라 기본값(최신 판만 펼침)으로
-  // 뜬다. 구획 두 개의 접힘이 유지되는 것은 오히려 자연스럽다.
+  // 리마운트가 사라졌다. 감수한다 — 접힘 기억의 키가 **폴더의 spec 기준 경로**라 경로가
+  // 완전히 같을 때만 물려받고, 판 폴더는 대부분 기억에 없는 이름이라 기본값(최신 판만 펼침)으로
+  // 뜬다.
   const [treeGeneration, setTreeGeneration] = useState(0);
   // 탭 선택은 여기 산다. **그리고 이제 작업을 옮겨도 유지된다**(결정 49).
   //
@@ -262,9 +262,9 @@ function WorkPanel({
               정해 뒀다 (PageHeader). 나란히 선 두 행 중 하나만 밑줄을 그으면 그 층이
               반쪽만 잘린 것처럼 읽힌다. 본문과 패널의 구분은 왼쪽 경계선이 맡는다. */}
           <TabPanel active={tab === "spec"}>
-            <SpecSection
+            <SpecTab
               key={treeGeneration}
-              files={work.specFiles}
+              items={work.specTree.items}
               current={currentFile}
               onSelect={onSelectFile}
               onCopy={(path) => onCopy(specRef(mode, work.slug, path))}
@@ -325,6 +325,41 @@ function TabButton({
     >
       {label}
     </button>
+  );
+}
+
+// spec 탭 — 이 work의 spec 트리 하나다. 머리글은 바로 위 탭 버튼이 이미 `spec`이라 없앴다(결정 23).
+//
+// **work 응답에 실려 온 spec 트리를 그리기만 한다**(spec 레이아웃 결정 13). 판 구획(`Iterations N`)과
+// 판 밖 구획(`Documents`)이 사라지고(spec 레이아웃 결정 24) 레이아웃 순서의 트리 하나가 선다 — 판 폴더는 내장본
+// 기준 `overview.md` 다음 자리에 최신이 위로 선다. 레이아웃이 물러섰어도 여기서는 말하지 않는다.
+// 트리는 이미 내장본으로 갈려 왔고, 알리는 곳은 설정 페이지다(구현 스펙 4절).
+//
+// **돌려주는 스크롤 영역이 패널 카드의 직계 flex 자식이어야 한다** — 그것이 계약이다.
+// 탭 바는 카드에 고정되고 트리만 세로로 스크롤한다. 한 겹 감싸면 flex-1이 카드가 아니라
+// 그 껍데기를 기준으로 잡혀 경계가 옮겨가고, 카드의 넘침 감춤에 트리가 잘린다.
+// 아래 TabPanel이 display:contents인 이유가 그것이다.
+function SpecTab({
+  items,
+  current,
+  onSelect,
+  onCopy,
+}: {
+  items: SpecTreeItem[];
+  current: string | null;
+  onSelect: (path: string) => void;
+  // spec 폴더 기준 상대 경로를 받는다 — 참조 문자열 조립은 호출부가 한다.
+  onCopy: (path: string) => void;
+}) {
+  return (
+    // 세로 스크롤은 여기까지 — 탭 바는 패널 카드에 고정되어 항상 보인다
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-0.5 pt-1 scroll-quiet">
+      {items.length === 0 ? (
+        <span className="px-2 py-1.5 text-[12.5px] text-tertiary">아직 spec 파일이 없어요</span>
+      ) : (
+        <SpecTree items={items} current={current} onSelect={onSelect} onCopy={onCopy} />
+      )}
+    </div>
   );
 }
 

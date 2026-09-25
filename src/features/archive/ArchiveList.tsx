@@ -3,7 +3,7 @@ import { Archive, ArrowDown, Check, ChevronDown, Filter, Folder, FolderOpen, Sea
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import SpecTree from "@/features/works/SpecTree";
+import { FileSpecTree } from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy";
 import { useArchivedDocs } from "./hooks";
@@ -314,7 +314,7 @@ function ArchiveRow({
         {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
             펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
         {isPending ? null : docs && docs.length > 0 ? (
-          <SpecTree
+          <FileSpecTree
             files={docs}
             current={currentDoc}
             onSelect={(path) => onSelectDoc(entry.slug, path)}
