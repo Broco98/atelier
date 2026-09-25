@@ -340,3 +340,111 @@ test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로
   expect(await clipboardWrites(page)).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── 토스트 (스토리 88~91, 결정 11, S14 · S26 · S37) ──
+// 복사했다·셸을 못 열었다 같은 짧은 토스트는 이름 「메시지」를 단 `region`(라이브 영역)에 선다. 자리는 본문과 작업
+// 패널을 합친 상자의 아래 가운데다 — 뷰 분기 밖이라 본문이 셸이든 문서든 같은 자리다. 이어서 오면 **같은 id 하나로**
+// 나서(S26) 앞의 것을 제자리에서 갈아 끼우고 시간을 다시 센다. `limit`으로 한 장을 세우면 밀려난 것이
+// `data-limited`·`inert`로 DOM에 남는다 — 그래서 역할만이 아니라 토스트의 표식(`data-slot=toast`)으로도 센다.
+//
+// **시계는 페이지를 열기 전에 걸고(`page.clock`), 복사 직전에 세운다.** 토스트는 1.6초면 사라져서, 저절로 흐르는
+// 시계로는 느린 기계에서 단언이 그 창을 놓칠 수 있다. 1.6초를 재는 것은 아카이브 문서 spec이다 — 두 화면이 같은
+// 부품·같은 호출이다. 세운 시계에서는 사라지는 전이의 프레임(rAF)이 안 와서, 사라짐을 볼 때는 시계를 다시 흐르게 둔다.
+
+const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
+const 시계를세운다 = async (page: Page) =>
+  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+
+// 터미널 탭에서 잰다 — 토스트가 SpecViewer 안에 살던 앞 판에는 **이 탭에서 트리를 복사하면 아무 말이 없었다**(결정 47).
+test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영역에 「… 복사됨」이 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
+  const messages = 메시지(page);
+  const copy = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
+  await expect(copy).toBeAttached();
+  // 라이브 영역은 글자가 들기 전부터 서 있어야 읽힌다.
+  await expect(messages).toHaveText("");
+
+  await 시계를세운다(page);
+  await copy.click();
+
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
+  const [copied] = await clipboardWrites(page);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 포인터를 안 쓴다 — 포인터가 토스트 위에 있으면 Base UI가 시계를 세운다(S27). 키로 복사해야 포커스가 복사한 자리에
+// 남는지도 잴 수 있다(WebKit은 버튼을 눌러도 포커스를 주지 않는다).
+test("연달아 두 번 복사하면 토스트는 한 장이다 — 뒤의 글자로 갈아 끼우고, 포커스는 복사한 자리에 남는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const messages = 메시지(page);
+  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
+  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
+  await expect(first).toBeAttached();
+
+  await 시계를세운다(page);
+  await first.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
+  await second.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
+
+  const [, copied] = await clipboardWrites(page);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+  // 한도에 걸려 남은 것(`data-limited`)까지 세어 한 장이다.
+  await expect(messages.locator("[data-slot=toast]")).toHaveCount(1);
+  await expect(messages.getByRole("dialog")).toHaveCount(1);
+  // 토스트는 읽히기만 하고 포커스를 가져가지 않는다(스토리 91).
+  await expect(second).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 시간을 다시 세는지는 **앞 것의 마감을 넘긴 뒤에도 남는가**로 잰다. 그 잣대가 서려면 사라짐이 시계를 돌린 그 자리에서
+// 끝나야 한다 — 전이가 켜져 있으면 사라지는 토스트가 실제 시간으로 몇 프레임 더 글자를 들고 남아, 마감이 지났는데도
+// 「남았다」로 읽힐 수 있다. 그래서 움직임을 끈다. 끄면 전역 규칙(`index.css`)이 토스트의 전이를 끄는 것도 여기서 본다.
+const 전이 = (target: Locator) => target.evaluate((el) => getComputedStyle(el).transitionProperty);
+
+test("이어 온 토스트는 시간을 다시 센다 — 움직임을 끄면 토스트는 전이 없이 들고 난다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const messages = 메시지(page);
+  const toast = messages.getByRole("dialog");
+  const first = page.getByRole("button", { name: "overview.md 경로 복사", exact: true });
+  const second = page.getByRole("button", { name: "메타.json 경로 복사", exact: true });
+  await expect(first).toBeAttached();
+
+  await 시계를세운다(page);
+  await first.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
+  await expect(toast).toHaveCount(1);
+  expect(await 전이(toast)).not.toBe("none");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => 전이(toast)).toBe("none");
+
+  await page.clock.runFor(1000);
+  await second.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(2);
+  const [, copied] = await clipboardWrites(page);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+
+  // 앞 것의 마감(1.6초)을 넘겼다 — 뒤의 것에서는 1초다.
+  await page.clock.runFor(1000);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+  // 뒤의 것에서 1.6초를 넘겼다.
+  await page.clock.runFor(700);
+  await expect(messages).toHaveText("");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

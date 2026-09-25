@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import {
   Archive,
-  Ban,
-  Check,
   ChevronDown,
   Columns2,
   Folder,
@@ -31,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
+import { Toaster, showToast } from "@/components/ui/toast";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -276,39 +275,29 @@ function WorksPage({
   // **같은 종류의 것**이라 여기서도 되살리지 않는다. 사람이 켠 값은 작업을 옮겨도 그대로다.
   const [showSource, setShowSource] = useState(false);
 
-  // 복사 확인 토스트도 여기로 올라왔다(결정 47). 앞 판에서는 SpecViewer의 지역 상태라
+  // 복사 확인 토스트는 **이 화면이 낸다**(결정 47). 앞 판에서는 SpecViewer의 지역 상태라
   // **터미널 탭에서 트리를 복사하면 아무 말이 없었다** — 그 탭에는 SpecViewer가 없다.
-  // 패널이 올라오면 토스트도 함께 올라와야 하는 것이 그래서다.
+  // 토스트의 상태는 이제 부품(Base UI Toast)이 들고(결정 11), 여기서는 `showToast`를 부르기만 한다.
   //
-  // **`done`은 한 표면이 두 가지 말을 하게 됐기 때문에 있다**(결정 47). 복사는 한 일을
-  // 알리고(✓) 상한 거절은 **못 한 일**을 알린다 — 「셸은 8개까지예요」 옆에 초록 체크가
-  // 서면 그 문장이 「됐어요」로 읽힌다.
-  const [toast, setToast] = useState<{ text: string; done: boolean } | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
-  const showToast = useCallback((text: string, done = true) => {
-    setToast({ text, done });
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1600);
-  }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-
+  // **두 가지 말이 한 표면을 쓴다**(결정 47). 복사는 한 일을 알리고(✓) 상한 거절은 **못 한
+  // 일**을 알린다(`rejected`) — 「셸은 8개까지예요」 옆에 초록 체크가 서면 그 문장이 「됐어요」로
+  // 읽힌다.
+  //
   // **상한 8에서 ⌘T가 조용하던 구멍을 메운다**(결정 47). 그 키는 xterm의 키 핸들러에서
   // 오는데 그것은 React 트리 밖이라, 스토어가 낸 거절을 여기서 받아 같은 표면에 붙인다.
-  // 문장은 스토어가 짓는다 — 잠긴 `+` 행과 **같은 문장**이어야 해서다.
+  // 문장은 스토어가 짓는다 — 잠긴 `+` 행과 **같은 문장**이어야 해서다. 구독은 마운트 뒤에
+  // 걸리므로 앱 루트의 토스트 Provider가 이미 듣고 있다.
   //
   // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
-  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 알림 표면을
+  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 토스트 표면을
   // 새로 짓는 안은 기각됐다.
-  useEffect(() => onShellOpenRejected((notice) => showToast(notice, false)), [showToast]);
+  useEffect(() => onShellOpenRejected((notice) => showToast(notice, "rejected")), []);
 
-  // 참조가 안정적이어야 토스트 표시/해제 리렌더 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
-  const copyText = useCallback(
-    (text: string) => {
-      navigator.clipboard.writeText(text);
-      showToast(`${text} 복사됨`);
-    },
-    [showToast],
-  );
+  // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
+  const copyText = useCallback((text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast(`${text} 복사됨`);
+  }, []);
 
   // 트리 훑기는 히스토리를 만들지 않고, 문서 링크는 만든다 — 따라 들어갔으면 돌아올 수
   // 있어야 한다. 두 갈래가 이 화면에서 갈리는 것은 트리(패널)와 링크(본문)가 이제 형제라서다.
@@ -949,20 +938,11 @@ function WorksPage({
           ))}
         </div>
       )}
-      {/* 토스트 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
+      {/* 토스트의 자리 — **뷰 분기 밖**이라 본문이 셸이든 문서든 같은 자리에 뜬다(결정 47).
           가운데는 본문 열이 아니라 **본문+패널** 전체의 가운데인데, 이 표면이 이제 패널에서
-          일어나는 일(트리 복사·⌘T 거절)까지 말하기 때문이다. */}
-      {toast && (
-        <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-          {/* 한 일과 못 한 일이 같은 표면을 쓴다(결정 47) — 글리프가 그 둘을 가른다. */}
-          {toast.done ? (
-            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-          ) : (
-            <Ban className="size-3.5 text-tertiary" strokeWidth={2.2} />
-          )}
-          {toast.text}
-        </div>
-      )}
+          일어나는 일(트리 복사·⌘T 거절)까지 말하기 때문이다. Provider는 앱 루트에 하나고
+          자리(Viewport)는 화면마다 둔다(S14) — 아카이브 화면은 제 본문 아래 가운데에 둔다. */}
+      <Toaster />
       {running && <LifecycleOverlay verb={running.verb} detail={running.detail} />}
     </div>
   );

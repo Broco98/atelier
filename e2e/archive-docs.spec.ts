@@ -1,6 +1,12 @@
 import { expect, test } from "./evidence";
 import { ARCHIVE, ARCHIVED_DOCS } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import {
+  clipboardWrites,
+  installFixtureBackend,
+  readIpcRecord,
+  recordClipboard,
+  unknownIpcCalls,
+} from "./harness";
 
 const [shipped, bare] = ARCHIVE;
 const [RECORD, IMAGE, HTML] = ARCHIVED_DOCS[shipped.slug];
@@ -130,5 +136,40 @@ test("프로젝트 거르개는 이름과 열림을 말하고 지금 값이 선�
   await filter.click();
   await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText([project]);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 판 3 — **복사하면 짧은 토스트가 선다**(스토리 88 · 91, 결정 11, S14 · S26 · S37). 토스트는 이름 「메시지」를 단
+// `region`(라이브 영역)에 서고, 1.6초 뒤 사라진다. 그 영역은 복사 전부터 서 있다 — 라이브 영역은 글자가 들기 전에
+// 있어야 읽힌다. 「그 글자」는 앱이 클립보드로 넘긴 값 그대로다(하네스의 쓰기 기록, S35).
+//
+// **시계는 페이지를 열기 전에 건다**(`page.clock`). 복사 직전에 세워 두고 손으로 돌린다 — 저절로 흐르게 두면
+// 1.6초가 아니라 5초(Base UI 기본)여도 기다리다 보면 사라져 초록이다. 그래서 1.5초에는 남아 있고, 1.6초를 넘기면
+// 곧바로 사라지는 것까지 본다. Base UI는 포인터가 토스트 위에 있거나 창이 포커스를 잃으면 시계를 세우므로(S27),
+// 누른 뒤 포인터를 치운다. 사라지는 전이는 프레임(rAF)을 타서 마지막에는 시계를 다시 흐르게 둔다.
+test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서고, 1.6초가 지나면 사라진다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await recordClipboard(page);
+  await page.clock.install();
+  await page.goto(`/archive/${shipped.slug}`);
+  const messages = page.getByRole("region", { name: "메시지", exact: true });
+  const copy = page.getByRole("button", { name: "샷.png 경로 복사", exact: true });
+  await expect(copy).toBeAttached();
+  await expect(messages).toHaveText("");
+
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await copy.click();
+  await page.mouse.move(0, 0);
+
+  await expect.poll(() => clipboardWrites(page)).toHaveLength(1);
+  const [copied] = await clipboardWrites(page);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+
+  await page.clock.runFor(1500);
+  await expect(messages).toHaveText(`${copied} 복사됨`);
+
+  await page.clock.runFor(100);
+  await page.clock.resume();
+  await expect(messages).toHaveText("", { timeout: 1000 });
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

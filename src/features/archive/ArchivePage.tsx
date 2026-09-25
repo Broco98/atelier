@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Archive, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { Toaster, showToast } from "@/components/ui/toast";
 import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
@@ -99,17 +100,13 @@ function ArchivePage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
+  // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
-    setToast(`${text} 복사됨`);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1600);
+    showToast(`${text} 복사됨`);
   }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  // 참조가 안정적이어야 토스트 표시/해제 리렌더가 마크다운 트리를 리마운트하지 않는다
+  // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트되지 않는다
   const slug = selected?.slug;
   const copyBlockRef = useCallback(
     (start: number, end: number) => {
@@ -307,12 +304,10 @@ function ArchivePage({
           )}
         </div>
 
-        {toast && (
-          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-            {toast}
-          </div>
-        )}
+        {/* 토스트의 자리 — 목록 패널을 뺀 본문의 아래 가운데다. 작업 화면과 같은 부품이지만 자리는
+            화면마다 지금 그대로 둔다(S14): 한 자리로 모으려면 라우트 자리를 새 상자로 감싸야 하고,
+            그러면 이 토스트가 목록 패널 폭의 반만큼 옮겨 간다. */}
+        <Toaster />
       </main>
     </div>
   );
