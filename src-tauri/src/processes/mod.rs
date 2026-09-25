@@ -1,0 +1,75 @@
+//! 셸이 띄운 프로세스를 가려낸다 — 이 맥의 프로세스 표를 읽는 **수집**과, 그 값으로 「무엇이 어느
+//! 셸에서 나왔는가」를 가르는 **판정**(프로세스 결정 2 · 3).
+//!
+//! 지금 셸을 닫을 때 신호가 가는 곳은 셸 그룹과 그 순간의 foreground 그룹뿐이다(`pty.rs`의
+//! `groups_of`). claude Bash 도구가 띄운 dev 서버는 별도 세션이고 제어 tty가 없어 어느 쪽에도 안
+//! 닿는다. 그것을 찾는 길이 둘이다: 셸의 PID 트리, 그리고 셸이 자손에게 물려준 **표식**(셸 env의
+//! 셸 키). 부모가 먼저 죽어 launchd 밑으로 넘어간 것은 트리가 끊겨 표식으로만 잡힌다.
+//!
+//! **두 층을 가른 것이 요점이다.**
+//! - 수집(`snapshot`)은 부작용 층이다. 프로세스 표를 한 번 읽어 값(스냅샷)으로 만든다. macOS 커널
+//!   인터페이스(`libproc`, `KERN_PROCARGS2`)라 macOS에서만 읽고, 다른 OS는 빈 스냅샷을 돌려준다.
+//! - 판정(`verdict`)은 순수 함수다. 스냅샷 값만 받으므로 살아 있는 프로세스 없이 모든 갈래를 표로
+//!   잰다. 모든 OS에서 컴파일되고 검사가 돈다 — PR 게이트(우분투)가 재는 것은 이 층이다.
+//!
+//! 끝내기 층은 티켓 04가 이 옆에 세운다. 끝내기는 판정이 고른 신원만 받고, 누가 우리 것인지 다시
+//! 판단하지 않는다. 모듈 이름에 `terminate`를 쓰지 않는 것은 `terminate.rs`가 이미 ⌘Q · Dock 종료를
+//! 묻는 macOS 델리게이트이기 때문이다.
+
+// **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정과 수집을 앱 안에서 부르는 자리는 셸 닫기(티켓
+// 04)가 처음 세우고, 판정 입력의 몇 칸(예외 목록, 첫 사람 입력 시각, 인스턴스 기록, 모드)과 행의 몇
+// 칸(pgid, 부른 이름)은 06 · 08 · 09 · 10이 읽는다. 그때까지는 검사만 부르고, 리눅스에서는 실물
+// 검사마저 빠진다. 칸마다 적으면 열 줄이 넘고 하나씩 낡는다 — 판 01이 끝나면 이 줄을 걷는다.
+#![allow(dead_code)]
+
+pub(crate) mod procargs;
+pub(crate) mod snapshot;
+pub(crate) mod verdict;
+
+/// 셸이 자손에게 물려주는 표식의 변수 이름. 값이 셸 키(`<세대>-<PTY 번호>`)다.
+///
+/// 심는 자리(`pty.rs`의 셸 빌더)와 읽는 자리(수집)가 이 상수 하나로 이어진다. 양쪽에 글자를 박으면
+/// 한쪽 오타가 「표식 없음」으로 조용히 눕는다 — 셸을 닫아도 dev 서버가 남는데 아무 검사도 안 운다.
+pub(crate) const SHELL_KEY_ENV: &str = "ATELIER_SHELL";
+
+/// 프로세스 하나의 신원 — pid와 커널이 준 시작 시각의 쌍(프로세스 결정 3 · 프로세스 스펙 S1).
+///
+/// pid만으로는 재사용을 못 가른다. 스냅샷과 신호 사이에 그 pid가 다른 프로세스에게 넘어가면 남에게
+/// 신호가 간다. 시작 시각까지 같아야 같은 프로세스다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Identity {
+    pub pid: u32,
+    /// 에포크 기준 µs(`pbi_start_tvsec` · `pbi_start_tvusec`).
+    pub started_us: u64,
+}
+
+/// 스냅샷의 한 행.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Proc {
+    pub id: Identity,
+    pub ppid: u32,
+    pub pgid: u32,
+    /// 유효 uid.
+    pub uid: u32,
+    /// 커널이 아는 이름 — **실제로 실행된 파일**의 이름이다. 심링크로 부르면 링크 뒤의 이름이 온다.
+    pub name: String,
+    /// 사람이 부른 이름(exec 때의 argv[0]). env를 읽은 행에만 있다 — 다른 uid, 읽기를 건너뛴 것,
+    /// 읽다 실패한 것은 `None`이다.
+    pub argv0: Option<String>,
+    /// 표식(exec 때의 셸 키). 없거나 못 읽었으면 `None`.
+    ///
+    /// **exec 때의 env다.** 뜬 뒤에 바꾼 env는 안 보인다. 시스템 바이너리(`/bin/zsh`, `/bin/sleep`)는
+    /// env가 0개로 읽혀 늘 `None`이다 — 그것들은 트리로만 잡힌다(결정의 사실 4).
+    pub shell_key: Option<String>,
+}
+
+/// 이 맥의 프로세스 표 한 장.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Snapshot {
+    /// 찍은 쪽(앱)의 유효 uid. env는 이 uid인 프로세스만 읽었고, 판정도 이 uid의 것만 가른다 — 남의
+    /// uid는 어차피 못 읽고 못 끝낸다.
+    pub uid: u32,
+    pub procs: Vec<Proc>,
+    /// 목록에 있었는데 행으로 못 세운 수 — 목록과 정보 읽기 사이에 끝난 것, 좀비, 정보를 못 읽은 것.
+    pub skipped: u32,
+}
