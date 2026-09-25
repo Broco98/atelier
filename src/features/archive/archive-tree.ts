@@ -14,10 +14,10 @@ const SPEC_PREFIX = "spec/";
  * spec 문서가 하나도 없으면 `spec/` 행을 세우지 않는다 — 비어 있는 폴더를 펼치게 하지 않는다.
  */
 export function archiveTreeItems({ docs, specTree }: ArchivedDocs): SpecTreeItem[] {
-  const outside = docs.filter((doc) => !doc.startsWith(SPEC_PREFIX)).map(rootFile);
+  const outside = docs.filter((doc) => !doc.startsWith(SPEC_PREFIX)).map(topRow);
   if (specTree.items.length === 0) return outside;
   const spec: SpecTreeItem = {
-    ...rootFile(SPEC_PREFIX.slice(0, -1)),
+    ...topRow(SPEC_PREFIX.slice(0, -1)),
     kind: "folder",
     children: specTree.items.map(underSpec),
   };
@@ -25,7 +25,7 @@ export function archiveTreeItems({ docs, specTree }: ArchivedDocs): SpecTreeItem
 }
 
 /** 뿌리의 행 하나 — 레이아웃이 모르는 자리라 아이콘도 번호 묶음도 없다. */
-function rootFile(path: string): SpecTreeItem {
+function topRow(path: string): SpecTreeItem {
   return { name: path, path, kind: "file", icon: null, group: null, children: [] };
 }
 

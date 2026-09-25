@@ -57,8 +57,8 @@ describe("앱에는 spec 폴더의 이름 규칙이 없다", () => {
   const sources = treeSources();
 
   it("탐지기가 걷어 낸 규칙을 옛 모양 그대로 알아본다", () => {
-    // spec 트리 컴포넌트에 있던 모양 그대로다(티켓 06이 걷었다). 탐지기가 이것을 못 보면 아래
-    // 「0개」는 아무것도 안 잰다.
+    // spec 트리 컴포넌트에 있던 모양 그대로다(spec 레이아웃 티켓 06이 걷었다). 탐지기가 이것을
+    // 못 보면 아래 「0개」는 아무것도 안 잰다.
     const removed = [
       'const OVERVIEW = "overview.md";',
       "const ITERATION = /^(\\d+)-/; // NN-<이름>/ = 판 하나",
