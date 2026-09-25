@@ -1,6 +1,7 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기. 자리(가운데)와 폭은 registry 그대로다 — 쓰는 창마다 판 3이 고친다.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)의 자리와 폭은 registry 그대로다 — 쓰는 창마다 판 3이 고친다.
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
@@ -39,45 +40,72 @@ function DialogOverlay({
   )
 }
 
-function DialogContent({
+const dialogPopupVariants = cva(
+  "fixed left-1/2 z-50 -translate-x-1/2 rounded-[13px] border border-border-strong bg-background text-[13.5px] text-foreground shadow-lg duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+  {
+    variants: {
+      variant: {
+        default:
+          "top-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-y-1/2 gap-4 p-4 sm:max-w-sm",
+        // 검색 팔레트. 위쪽 12vh에 선다(확인 창은 가운데다). 첫 줄이 입력칸이고 나머지를 목록이
+        // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다.
+        palette:
+          "top-[12vh] flex max-h-[60vh] w-[560px] max-w-[calc(100%-4rem)] flex-col overflow-hidden",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
+// **창만 그린다 — Portal과 가림막은 부르는 쪽이 둔다.** 보통은 셋을 함께 세우는 `DialogContent`를
+// 쓴다. 창의 내용이 창과 함께 붙었다 떨어져야 하는 자리(검색 팔레트 — 떠 있는 동안에만 묻는다)는
+// `DialogPortal` 안에서 이것을 그린다: Portal은 창이 떠 있는 동안(닫히는 애니메이션까지)만 자식을 세운다.
+function DialogPopup({
   className,
   children,
+  variant,
   showCloseButton = true,
   ...props
-}: DialogPrimitive.Popup.Props & {
-  showCloseButton?: boolean
-}) {
+}: DialogPrimitive.Popup.Props &
+  VariantProps<typeof dialogPopupVariants> & {
+    showCloseButton?: boolean
+  }) {
+  return (
+    <DialogPrimitive.Popup
+      data-slot="dialog-content"
+      // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
+      aria-modal="true"
+      className={cn(dialogPopupVariants({ variant, className }))}
+      {...props}
+    >
+      {children}
+      {showCloseButton && (
+        <DialogPrimitive.Close
+          data-slot="dialog-close"
+          render={
+            <Button
+              variant="ghost"
+              className="absolute top-2 right-2"
+              size="icon-sm"
+            />
+          }
+        >
+          <XIcon
+          />
+          <span className="sr-only">닫기</span>
+        </DialogPrimitive.Close>
+      )}
+    </DialogPrimitive.Popup>
+  )
+}
+
+function DialogContent(props: React.ComponentProps<typeof DialogPopup>) {
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
-        aria-modal="true"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[13px] border border-border-strong bg-background p-4 text-[13.5px] text-foreground shadow-lg duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2"
-                size="icon-sm"
-              />
-            }
-          >
-            <XIcon
-            />
-            <span className="sr-only">닫기</span>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Popup>
+      <DialogPopup {...props} />
     </DialogPortal>
   )
 }
@@ -153,6 +181,7 @@ export {
   DialogFooter,
   DialogHeader,
   DialogOverlay,
+  DialogPopup,
   DialogPortal,
   DialogTitle,
   DialogTrigger,
