@@ -309,16 +309,23 @@ mod tests {
     /// 최상위 층은 맨 위 항목의 자식과 맞춘다. 맞은 것은 항목의 아이콘을 받고 항목의 나열 순서로
     /// 서며, 맞지 않은 것은 아이콘 없이 맨 뒤에 선다. 맞은 폴더 안이라도 항목이 없는 자리는 맞지
     /// 않은 것이다.
+    ///
+    /// 이름은 대소문자를 가려 견준다 — `Overview.md`·`Research/`는 `overview.md`·`research` 항목의
+    /// 자리를 받지 못하고 맞지 않은 것으로 남는다.
     #[test]
     fn fixed_names_take_their_icon_in_layout_order_and_the_rest_trails() {
         let layout = vec![file("overview.md", "compass"), folder("research", "search", vec![])];
-        let files = ["zeta.md", "research/a.md", "overview.md", "alpha/b.md"];
+        let files =
+            ["zeta.md", "research/a.md", "overview.md", "alpha/b.md", "Overview.md", "Research/c.md"];
         assert_eq!(
             outline(&tree(layout, &files)),
             [
                 "overview.md (compass)",
                 "research/ (search)",
                 "  a.md",
+                "Overview.md",
+                "Research/",
+                "  c.md",
                 "alpha/",
                 "  b.md",
                 "zeta.md",
