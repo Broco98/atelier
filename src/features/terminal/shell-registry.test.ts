@@ -12,6 +12,7 @@ import {
   activeIdOf,
   atCap,
   CLOSE_NOTICE,
+  CLOSE_REASONS,
   closeNotice,
   closingShellsNotice,
   confirmClose,
@@ -1357,6 +1358,18 @@ describe("닫기 전에 묻는가", () => {
   });
 });
 
+// 티켓 11 — 닫기 IPC가 싣는 까닭. 판 04의 `●`는 까닭으로 켜진다(시작 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못
+// 끝냄」만). 사람이 누른 닫기나 사람이 누르지 않은 회수가 다른 까닭으로 새면 점이 켜지거나 기록이 거짓을 적는다.
+describe("닫기의 까닭", () => {
+  it("아카이빙의 회수만 「아카이브」이고 나머지 자리는 모두 「셸 닫기」다", () => {
+    expect(Object.entries(CLOSE_REASONS).filter(([, reason]) => reason !== "shellClose")).toEqual([
+      ["archive", "archive"],
+    ]);
+    // 사람이 누르지 않은 닫기 셋도 여기 든다 — 자손이 없거나 모두 셸 도우미라 기록은 백엔드가 안 세운다(P1).
+    expect(Object.keys(CLOSE_REASONS).sort()).toEqual(["archive", "openFailed", "person", "reclaim", "spawnRace"]);
+  });
+});
+
 // ⌘T가 xterm의 키 핸들러에만 붙어 있어 **셸이 0개면 들을 사람이 없었다**(결정 93).
 // window에서도 듣되 범위는 work 화면 전체다(결정 98) — ⌘1이 spec, ⌘2~9가 셸로 본문을
 // 옮기는 한 벌에 ⌘T도 든다.
@@ -1760,19 +1773,19 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 넷뿐이다.
   it("확인을 건너뛰는 길이 넷뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수", () => {
     // 정의. 밖으로 안 나가는 것은 `×`(모듈 밖)에 대해서는 여전히 유효한 절반이다.
-    expect(store).toContain("function closeShell(id: number): void {");
+    expect(store).toContain("function closeShell(id: number, path: ClosePath): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
     expect(store).toContain(
       "if (!(await confirmClose(shell, await closeCheck(id), ask))) return;",
     );
     // 아카이빙 회수. 그 길에는 사람이 이미 한 번 확인했다(결정 26의 순서).
     expect(store).toContain(
-      "for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);",
+      'for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");',
     );
     // 안 쓴 자동 셸 회수(프로세스 결정 7). 물을 것이 없다 — 입력이 없으면 자손은 모두 셸 도우미다(프로세스 스펙 P1).
     // 무엇을 닫는지는 `reclaimOnLeave` 하나가 정한다: 그 판정을 안 딛고 목록을 손으로 고르면 여기가 빨개진다.
     expect(store).toContain(
-      "for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id);",
+      'for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id, "reclaim");',
     );
     // 다섯째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
     // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
@@ -1780,6 +1793,17 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
       countOf(store, "closeShell("),
       "`closeShell`을 직접 부르는 자리가 늘었다 — ⌘W·`×`는 `requestCloseShell`만 부른다",
     ).toBe(4);
+  });
+
+  // 티켓 11. **닫기의 까닭은 표 한 곳에서 고른다**(`CLOSE_REASONS`). 닫기 IPC를 부르는 자리가 까닭 글자를 손으로
+  // 적으면 표가 거짓이 되고, 사람이 누른 닫기가 판 04의 `●`를 켤 수 있다. 그래서 IPC를 부르는 줄은 하나이고 그 줄이
+  // 표를 읽는다. 닫는 자리는 부르는 쪽마다 제 이름을 넘긴다 — 위 검사의 네 줄(사람 · 아카이브 · 회수)과 여기의 둘.
+  it("닫기 IPC는 한 줄에서 나가고 까닭을 표에서 고른다", () => {
+    expect(countOf(store, "terminalApi.kill("), "닫기 IPC를 부르는 줄이 늘었다 — `killPty`를 거친다").toBe(1);
+    expect(store).toContain("terminalApi.kill(ptyId, CLOSE_REASONS[path], instance.origin.owner)");
+    expect(store).toContain('closeShell(id, "person");');
+    expect(store).toContain('killPty(instance, instance.ptyId, "openFailed");');
+    expect(store).toContain('killPty(instance, spawned.id, "spawnRace");');
   });
 
   // 결정 10. **셸이 뜨는 순간 세계가 백엔드로 나간다** — `pty_spawn`의 `mode`가 cwd의

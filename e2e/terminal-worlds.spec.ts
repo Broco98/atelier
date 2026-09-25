@@ -118,13 +118,14 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // 화면을 옮기는 것만으로는 안 죽인다(결정 20)가 그 문장의 관찰 가능한 형태다. 프로세스 결정 7이 입력 없는
   // 자동 셸만 예외로 두었다: 저쪽 터미널에 들어가며 저절로 뜬 셸(pty 3)은 아무도 안 친 채 떠나 닫힌다.
   // **그 하나가 닫힌 것을 먼저 기다린다**(닫기는 도착한 뒤 이펙트에서 나간다) — 그 뒤에 본 목록이라야
-  // 「이쪽 셸은 안 닫혔다」가 아직 안 나간 호출과 안 섞인다.
+  // 「이쪽 셸은 안 닫혔다」가 아직 안 나간 호출과 안 섞인다. 그 닫기는 까닭 「셸 닫기」와 저쪽 세계의 주인을 싣는다
+  // (티켓 11) — 회수는 사람이 누른 닫기가 아니어도 셸 닫기이고, 주인이 세계를 싣는다.
   expect(await spawnedModes(page)).toHaveLength(afterCrossing);
   await expect
     .poll(async () =>
       ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_kill")),
     )
-    .toEqual(['pty_kill {"id":3}']);
+    .toEqual(['pty_kill {"id":3,"reason":"shellClose","owner":"maison:"}']);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

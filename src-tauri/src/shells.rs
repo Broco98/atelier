@@ -159,29 +159,36 @@ fn changes(sent: &Attention, now: &Attention) -> Vec<ShellAttention> {
     out
 }
 
-/// 앱이 뜰 때 **지난 실행이 남긴 것을 전부 걷는다.**
+/// 앱이 뜰 때 **죽은 실행이 남긴 것을 걷는다** — 살아 있는 실행의 세대는 남긴다(프로세스 스펙 S10 · 티켓 11).
 ///
 /// 셸 ID의 꼬리는 PTY 번호이고 그 번호는 실행마다 0부터 다시 난다 — 접두사가 갈라 주지
 /// 않으면 지난 실행의 `…-0.json`이 이번 실행의 첫 셸에 그대로 붙어 **뜨자마자 사람을 부르는
 /// 셸**이 생긴다. 앱이 정상 종료하면 셸마다 자기 파일을 걷고 나가지만(`Shell`의 `Drop`),
 /// 강제 종료·패닉·전원이 나간 경우가 남는다.
 ///
-/// **접두사는 반드시 `pty::instance_prefix()`가 준 것이어야 한다.** 여기서 시각을 따로 재면
-/// 두 값이 갈려 살아 있는 셸의 상태 파일을 지운다.
+/// **남길 세대는 `pty::live_generations`가 준다** — 이 실행의 세대(`pty::instance_prefix`)와, 인스턴스 기록으로 가린
+/// 살아 있는 다른 실행들의 세대다. 예전에는 이 실행의 것 말고 전부 걷어, dev 빌드와 설치본을 함께 띄우면 한쪽이 뜰 때
+/// 다른 쪽 셸의 상태 파일을 지웠다 — 그 셸의 띠 상태가 사라졌다. 이 실행의 세대를 여기서 시각으로 따로 재면 두 값이
+/// 갈려 살아 있는 셸의 상태 파일을 지운다.
 ///
-/// 우리 모양이 아닌 것(훅이 남긴 임시 파일 등)도 함께 걷는다 — 이 폴더는 앱이 만들고 앱만
-/// 쓰는 자리다.
-pub fn sweep(root: &Path, prefix: &str) {
+/// **이름 앞의 점을 뗀 뒤 세대를 읽는다.** 쓰는 중인 임시 파일(`.<셸 키>.json.<pid>.tmp`)과 판 03의 잠금 파일
+/// (`.<셸 키>.lock`)은 점으로 시작한다 — 점 파일을 세대 밖으로 보면 살아 있는 실행의 잠금을 지워 배타가 깨지고, 쓰는
+/// 중인 파일을 지워 그 사건을 잃는다.
+///
+/// 우리 모양이 아닌 것도 함께 걷는다 — 이 폴더는 앱이 만들고 앱만 쓰는 자리다.
+pub fn sweep(root: &Path, keep: &[String]) {
     let dir = shells_dir(root);
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
-    // 구분자까지 붙여 견준다. `1700`만 보면 `17000-1.json`이 이번 실행의 것으로 읽혀
-    // 살아남고, 다음에 그 번호의 셸이 열리면 남의 상태를 뒤집어쓴다.
-    let mine = format!("{prefix}-");
     for entry in entries.flatten() {
         let name = entry.file_name();
-        if !name.to_string_lossy().starts_with(&mine) {
+        let name = name.to_string_lossy();
+        // 셸 키는 첫 `.` 앞까지다(`<세대>-<번호>` — 세대도 번호도 점이 없다).
+        let key = name.trim_start_matches('.').split('.').next().unwrap_or_default();
+        // 구분자와 번호까지 견준다(`processes::of_generation`). `1700`만 보면 `17000-1.json`이 이번 실행의 것으로 읽혀
+        // 살아남고, 다음에 그 번호의 셸이 열리면 남의 상태를 뒤집어쓴다.
+        if !keep.iter().any(|generation| crate::processes::of_generation(key, generation)) {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -519,12 +526,45 @@ mod tests {
             std::fs::write(dir.join(name), "{}").unwrap();
         }
 
-        sweep(&root, "1700");
+        sweep(&root, &["1700".to_string()]);
 
         assert_eq!(
             files_in(&dir),
             vec!["1700-0.json", "1700-12.json"],
             "지난 실행의 파일이 남았거나 이번 실행의 것이 지워졌다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **살아 있는 실행의 세대는 남는다 — 상태 · 잠금 · 쓰는 중 임시 파일 모두**(프로세스 스펙 S10 · 티켓 11). dev 빌드와
+    /// 설치본을 함께 띄우면 한쪽이 뜰 때 다른 쪽 셸의 띠 상태를 지우던 자리다. 죽은 세대의 것은 모두 간다.
+    ///
+    /// **점으로 시작하는 파일도 세대로 읽는다.** 잠금(`.<키>.lock`)과 쓰는 중인 파일(`.<키>.json.<pid>.tmp`)의 세대를 점째
+    /// 견주면 어느 세대와도 안 맞아, 살아 있는 실행의 잠금을 지워 배타가 깨진다.
+    ///
+    /// 앵커: 죽은 세대와 경계만 겹치는 세대, 우리 모양이 아닌 것은 실제로 지워진다 — 아무것도 안 지우게 무너지면 「남았다」가
+    /// 저절로 참이 된다.
+    #[test]
+    fn a_sweep_keeps_every_file_of_a_live_run_and_reads_dot_files_by_their_generation() {
+        let root = temp_root("sweep-live-runs");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        let this_run = ["1700-0.json", ".1700-0.lock", ".1700-0.json.77.tmp"];
+        let other_live_run = ["1800-3.json", ".1800-3.lock", ".1800-3.json.9.tmp"];
+        let dead_run = ["1699-1.json", ".1699-1.lock", ".1699-1.json.5.tmp"];
+        let look_alikes = ["17000-1.json", ".17000-1.lock", ".1800-.lock", "notes.txt", ".DS_Store"];
+        for name in this_run.iter().chain(&other_live_run).chain(&dead_run).chain(&look_alikes) {
+            std::fs::write(dir.join(name), "{}").unwrap();
+        }
+
+        sweep(&root, &["1700".to_string(), "1800".to_string()]);
+
+        let mut kept: Vec<&str> = this_run.iter().chain(&other_live_run).copied().collect();
+        kept.sort_unstable();
+        assert_eq!(
+            files_in(&dir),
+            kept,
+            "살아 있는 실행의 파일(점 파일 포함)이 지워졌거나, 죽은 실행 · 경계만 겹치는 것 · 모양이 아닌 것이 남았다"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -544,7 +584,7 @@ mod tests {
         let name = format!("{}.json", crate::pty::shell_id(0));
         std::fs::write(dir.join(&name), "{}").unwrap();
 
-        sweep(&root, crate::pty::instance_prefix());
+        sweep(&root, &crate::pty::live_generations(&root));
 
         assert_eq!(
             files_in(&dir),
@@ -566,7 +606,7 @@ mod tests {
             std::fs::write(dir.join(name), "{}").unwrap();
         }
 
-        sweep(&root, "1700");
+        sweep(&root, &["1700".to_string()]);
 
         assert_eq!(files_in(&dir), vec!["1700-1.json"], "다른 실행의 파일을 이번 것으로 읽었다");
         let _ = std::fs::remove_dir_all(&root);

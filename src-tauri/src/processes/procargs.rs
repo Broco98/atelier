@@ -5,7 +5,7 @@
 //! 일(`read`)만 macOS에 있다.
 //!
 //! 읽는 자리가 둘이다. 셸 탭이 「지금 도는 명령」의 이름을 고를 때(`pty.rs`의 `foreground_name`)는
-//! argv 전체를, 수집이 프로세스마다 부른 이름과 표식을 읽을 때는 argv[0]과 env 하나를 본다. 원래 pty
+//! argv 전체를, 수집이 프로세스마다 부른 이름 · 명령줄 · 표식을 읽을 때는 argv와 env 하나를 본다. 원래 pty
 //! 층에 argv만 읽는 파서로 있던 것을 env까지 넓혀 여기로 옮겼다.
 
 use super::SHELL_KEY_ENV;
@@ -36,6 +36,12 @@ impl<'b> ProcArgs<'b> {
     /// exec 때의 argv. 조각이 argc보다 적으면(잘린 버퍼) 있는 만큼만 준다.
     pub(crate) fn argv(&self) -> impl Iterator<Item = &'b [u8]> {
         self.strings.split(|b| *b == 0).take(self.argc)
+    }
+
+    /// 명령줄 — argv를 빈칸 하나로 잇는다(`ps -o command`의 모양, 티켓 11). UTF-8이 아닌 인자는 버리지 않고 대체 글자로
+    /// 자리를 지킨다. 인자 안의 빈칸은 따옴표로 감싸지 않는다 — 사람이 읽는 값이지 다시 실행할 값이 아니다.
+    pub(crate) fn command(&self) -> String {
+        self.argv().map(String::from_utf8_lossy).collect::<Vec<_>>().join(" ")
     }
 
     /// exec 때의 env — argv 바로 다음부터 빈 문자열까지. 그 뒤에 커널이 덧붙이는 것
@@ -180,6 +186,7 @@ mod tests {
         let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
 
         assert_eq!(texts(args.argv()), ["node", "server.js"]);
+        assert_eq!(args.command(), "node server.js", "명령줄은 argv를 빈칸으로 잇는다 — env가 섞이면 안 된다");
         assert_eq!(
             texts(args.env()),
             ["PATH=/usr/bin", "ATELIER_SHELL=1790081243175-18", "HOME=/Users/x"],
@@ -195,6 +202,7 @@ mod tests {
         let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
 
         assert_eq!(texts(args.argv()), ["sleep", "30"]);
+        assert_eq!(args.command(), "sleep 30", "env가 0개여도 명령줄은 읽힌다");
         assert_eq!(args.env().count(), 0);
         assert_eq!(args.shell_key(), None);
     }
@@ -212,6 +220,7 @@ mod tests {
         let args = ProcArgs::parse(&buf).expect("모양이 맞는 버퍼다");
 
         assert_eq!(texts(args.argv()), ["echo", "", "ATELIER_SHELL=forged", "x"]);
+        assert_eq!(args.command(), "echo  ATELIER_SHELL=forged x", "빈 인자도 명령줄에서 자리를 지킨다");
         assert_eq!(args.shell_key(), Some("real-1"));
     }
 

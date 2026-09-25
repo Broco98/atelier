@@ -58,6 +58,7 @@ mod tests {
             uid: 501,
             name: name.to_string(),
             argv0: argv0.map(str::to_string),
+            command: None,
             shell_key: None,
         }
     }

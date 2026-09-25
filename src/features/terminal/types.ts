@@ -31,6 +31,15 @@ export interface CloseCheck {
 }
 
 /**
+ * 닫기 IPC(`pty_kill`)가 싣는 **까닭** — 그 닫기가 끝낸 것이 정리 기록에 이 까닭으로 적힌다(티켓 11). 글자는 Rust
+ * `cleanup_log::CloseReason`과 같고, 모르는 글자는 백엔드가 인자째 거절한다. 앱 종료 · 새로고침 · 시작 정리처럼 Rust 안에서
+ * 생기는 까닭은 여기 없다.
+ *
+ * 어느 닫기가 어느 까닭인지는 `shell-registry.ts`의 `CLOSE_REASONS` 한 자리가 고른다.
+ */
+export type CloseReason = "shellClose" | "archive" | "mcpArchive";
+
+/**
  * 셸 하나에서 **지금 도는 명령**의 이름. `running`이 `null`이면 프롬프트에 서 있다.
  *
  * **채널이 아니라 이벤트로 온다** — 위 둘은 셸 하나에 매인 채널로 오지만 이것은 백엔드의

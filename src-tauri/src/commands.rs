@@ -8,6 +8,7 @@ use atelier_core::{
 
 use std::sync::Arc;
 
+use crate::processes::cleanup_log::CloseReason;
 use crate::pty;
 
 type CmdResult<T> = Result<T, String>;
@@ -247,10 +248,19 @@ pub async fn pty_resize(
 // SIGTERM 뒤 최대 2초의 유예와 SIGKILL은 `pty::kill`이 뒤 스레드로 보내고, 그 끝내기는 진행 중인 끝내기 목록에
 // 올라 앱 종료가 마감한다(프로세스 스펙 S5). 스냅샷 한 장도 기다리는 일이라 blocking 풀에서 돌려 tokio 워커를
 // 막지 않는다. 프런트는 이 명령의 끝을 기다리지 않는다(`terminal-store.ts`의 `ignoreGone`).
+//
+// **까닭과 셸의 주인을 받는다**(티켓 11) — 끝낸 것이 정리 기록에 그 까닭으로 적힌다. 까닭은 프런트가 고르는 셋뿐이고
+// (`CloseReason`), 어느 닫기가 어느 까닭인지는 프런트의 표 한 자리가 정한다. 주인은 기록에 적힐 뿐 셸을 찾는 데 안
+// 쓴다 — 셸은 `id` 하나로 가리킨다(결정 10).
 #[tauri::command]
-pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> CmdResult<()> {
+pub async fn pty_kill(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    reason: CloseReason,
+    owner: String,
+) -> CmdResult<()> {
     let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id))
+    tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id, reason, &owner))
         .await
         .map_err(|e| format!("셸을 닫지 못했습니다: {e}"))?
 }

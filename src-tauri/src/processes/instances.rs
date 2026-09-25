@@ -24,6 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
+use super::cleanup_log::{self, Event};
 use super::ending::Outcome;
 use super::verdict::InstanceRecord;
 use super::{snapshot, Identity};
@@ -81,6 +82,9 @@ pub struct Place {
     pub app: Identity,
     pub build: Build,
     pub version: String,
+    /// 정리 기록의 자리(`cleanup_log::path(root)`, 티켓 11). 이 실행이 디스크에 쓰는 둘째 장이다 — 쓰기가 인스턴스 기록과 같은
+    /// 뮤텍스를 지나야 해서(프로세스 스펙 S12) 같은 자리에서 연다.
+    pub log: PathBuf,
 }
 
 impl Place {
@@ -95,6 +99,7 @@ impl Place {
             app,
             build: Build::of_this_binary(),
             version: version.to_string(),
+            log: cleanup_log::path(root),
         })
     }
 
@@ -116,6 +121,9 @@ pub struct Record {
 struct Book {
     /// `None`이면 아직 안 열었거나 이미 닫았다 — 목록은 고치되 파일은 안 쓴다.
     place: Option<Place>,
+    /// 정리 기록의 자리. 열 때 서고 **닫아도 남는다** — 앱 종료가 기록을 닫은 뒤에도 그 종료의 사건과 늦게 끝난 뒤 스레드의
+    /// 사건을 적는다. 안 열었으면 `None`이라 아무 사건도 안 쓴다(검사가 세우는 풀, 앱 신원을 못 읽은 실행).
+    log: Option<PathBuf>,
     keys: BTreeSet<String>,
     /// 마지막으로 목록을 쓴 시각(에포크 µs). 판정이 이 실행의 확정 고아 (나)를 가를 때 쓴다.
     updated_us: u64,
@@ -130,8 +138,21 @@ impl Record {
     /// 기록을 열고 곧바로 쓴다 — **앱이 뜰 때**, 시작 정리(티켓 10)보다 먼저. 열기 전에 올린 키도 함께 적힌다.
     pub fn open(&self, place: Place) {
         let mut book = self.lock();
+        book.log = Some(place.log.clone());
         book.place = Some(place);
         book.write();
+    }
+
+    /// **정리 기록에 사건 하나를 더한다**(티켓 11 · 프로세스 스펙 S12) — 이 기록의 뮤텍스 안에서 읽고 더하고 쓴다. 쓰는 자리가
+    /// 여럿이라(셸 닫기 · 새로고침의 뒤 스레드, 앱 종료, 시작 정리) 잠금 밖에서 읽고 쓰면 늦은 쓰기가 다른 쪽 사건을 지운다.
+    /// 인스턴스 기록과 같은 뮤텍스인 것은 스펙이 정한 것이다 — 앱에 기록은 하나(풀이 쥔다)라 이 잠금이 곧 프로세스 전역이다.
+    ///
+    /// 열지 않았으면 쓰지 않는다. 닫은 뒤에는 쓴다(`Book::log`).
+    pub fn log(&self, event: Event) {
+        let book = self.lock();
+        if let Some(path) = &book.log {
+            cleanup_log::add(path, event);
+        }
     }
 
     /// 셸 키를 올린다 — **자식을 띄우기 전에**(프로세스 스펙 S52).
@@ -258,6 +279,21 @@ fn now_us() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as u64)
 }
 
+/// 그 실행이 **지금** 살아 있나 — 앱 pid가 그 시작 시각 그대로 떠 있다(프로세스 스펙 S9). 표 한 장 없이 그 pid 하나만 본다.
+/// pid만 보면 그 pid를 받은 남을 그 실행으로 본다. 리눅스는 신원을 못 읽어 늘 거짓이다(기록도 안 쓴다).
+///
+/// 판정은 같은 규칙을 스냅샷 값으로 본다(`verdict`의 `Table::alive`) — 판정은 값만 받아서다.
+pub fn alive(app: Identity) -> bool {
+    snapshot::identity_of(app.pid) == Some(app)
+}
+
+/// **살아 있는 실행들의 세대** — 폴더의 기록 중 앱이 지금 떠 있는 것(티켓 11 · 프로세스 스펙 S10). 훅 상태 파일 정리가 이
+/// 세대들의 파일을 남긴다: dev 빌드와 설치본이 함께 떠 있으면 한쪽이 뜰 때 다른 쪽 셸의 띠 상태를 지우지 않는다. 깨진 기록은
+/// 기록이 없는 것과 같다(`read_all`).
+pub fn live_generations(dir: &Path) -> Vec<String> {
+    read_all(dir).into_iter().filter(|(_, file)| alive(file.app)).map(|(generation, _)| generation).collect()
+}
+
 /// 한 세대의 기록. **깨졌으면 「기록 없음」이다** — 없는 것과 같게 친다. 그 세대의 셸 자손은 판정에서 출처 불명이 되고,
 /// 자동으로는 아무도 안 건드린다.
 pub fn read(dir: &Path, generation: &str) -> Option<InstanceFile> {
@@ -308,6 +344,8 @@ mod tests {
             app: Identity { pid: 4242, started_us: 1_000 },
             build: Build::Dev,
             version: "0.14.1".to_string(),
+            // 기록 폴더 안에 둔다 — 검사마다 따로 선 폴더를 한 번에 지운다. `read_all`은 이것을 깨진 기록으로 건너뛴다.
+            log: dir.join("cleanup-log.json"),
         }
     }
 
@@ -565,6 +603,155 @@ mod tests {
         assert!(read(&dir, "D").is_some(), "넘겨받지 않은 기록을 지웠다");
         assert!(read(&dir, "G").is_some(), "이 실행의 기록을 지웠다 — 이 실행의 셸 자손이 남에게 출처 불명이 된다");
         drop(others);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── 정리 기록(티켓 11) ── 쓰기는 이 기록의 뮤텍스를 지난다(`Record::log`).
+
+    /// 사건 하나 — 번호(`at`)로 가른다.
+    fn event(n: u64) -> Event {
+        Event {
+            at: n,
+            reason: cleanup_log::Reason::ShellClose,
+            shell_key: Some(format!("G-{n}")),
+            owner: None,
+            targets: vec![cleanup_log::Target {
+                pid: 7,
+                name: "node".into(),
+                command: None,
+                outcome: Outcome::Ended,
+            }],
+        }
+    }
+
+    fn logged(dir: &Path) -> Vec<u64> {
+        cleanup_log::read(&dir.join("cleanup-log.json")).into_iter().map(|event| event.at).collect()
+    }
+
+    /// **최근 100건을 새것부터 담는다**(프로세스 스펙 S12). 101번째를 더하면 가장 오래된 것(첫째)이 빠지고 새것이 맨 앞이다.
+    #[test]
+    fn the_hundred_and_first_event_pushes_the_oldest_out() {
+        let dir = temp_dir("log-cap");
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        for n in 1..=100 {
+            record.log(event(n));
+        }
+        let full = logged(&dir);
+        assert_eq!(full.len(), 100, "100건을 다 못 담았다");
+        assert_eq!((full[0], full[99]), (100, 1), "새것부터가 아니다");
+
+        record.log(event(101));
+        let after = logged(&dir);
+        assert_eq!(after.len(), 100, "100건을 넘겼다");
+        assert_eq!(after[0], 101, "새 사건이 맨 앞이 아니다");
+        assert_eq!(after[99], 2, "가장 오래된 사건이 안 빠졌거나 다른 것이 빠졌다");
+        assert!(!after.contains(&1), "가장 오래된 사건이 남았다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **깨진 기록 파일은 빈 기록으로 읽고 새로 쓴다.** 한 장이 깨졌다고 적기를 멈추면 그 뒤로 앱이 끝낸 것이 모두 사라진다.
+    #[test]
+    fn a_broken_log_reads_as_empty_and_is_written_anew() {
+        let dir = temp_dir("log-broken");
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        std::fs::write(dir.join("cleanup-log.json"), "[{\"at\":").unwrap();
+        assert!(cleanup_log::read(&dir.join("cleanup-log.json")).is_empty(), "깨진 파일을 기록으로 읽었다");
+
+        record.log(event(5));
+        assert_eq!(logged(&dir), [5], "깨진 파일 위에 새로 안 썼다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **열지 않은 기록은 아무 사건도 안 쓴다** — 검사가 세우는 풀이 진짜 데이터 루트에 쓰지 않게. **닫은 뒤에는 쓴다** — 앱
+    /// 종료가 기록을 닫은 뒤에 그 종료의 사건을 적는다. 인스턴스 기록 파일은 닫은 뒤 그대로다.
+    #[test]
+    fn only_an_opened_record_logs_and_closing_it_does_not_stop_the_log() {
+        let dir = temp_dir("log-open");
+        Record::default().log(event(1));
+        assert!(std::fs::read_dir(&dir).is_err(), "열지 않은 기록이 파일을 썼다");
+
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        record.close(&[]);
+        record.log(event(2));
+        assert_eq!(logged(&dir), [2], "닫은 뒤에 온 종료의 사건을 안 적었다");
+        assert_eq!(read(&dir, "G"), None, "사건을 적으며 닫은 인스턴스 기록을 되살렸다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **두 스레드가 동시에 사건을 더해도 한 프로세스 안에서는 잃지 않는다**(프로세스 스펙 S12). 인스턴스 기록과 같은 뮤텍스 안에서
+    /// 「읽기 → 더하기 → 쓰기」를 한다 — 잠금 밖에서 읽으면 둘이 같은 옛 목록을 읽고, 늦게 쓴 쪽이 먼저 쓴 쪽의 사건을 지운다.
+    ///
+    /// 끝 상태 하나만 보면 창을 놓친다(`two_threads_raising_and_lowering_lose_nothing`과 같은 까닭). 한 차례씩 맞춰 돈다 — 두
+    /// 스레드가 같은 순간에 하나씩 더하고, 둘 다 돌아온 뒤 파일을 본다. 그 순간 사건은 차례의 두 배여야 한다. 한 스레드는
+    /// 사건을 더하는 사이에 셸 키도 올린다 — 같은 잠금을 두 쓰기가 나눠 쓴다.
+    #[test]
+    fn two_threads_logging_at_once_lose_no_event() {
+        use std::sync::Barrier;
+
+        const ROUNDS: u64 = 40;
+        let dir = temp_dir("log-mutex");
+        let record = Arc::new(Record::default());
+        record.open(place(&dir, "G"));
+        let turn = Arc::new(Barrier::new(3));
+        let writers: Vec<_> = [1_000, 2_000]
+            .into_iter()
+            .map(|side| {
+                let (record, turn) = (Arc::clone(&record), Arc::clone(&turn));
+                std::thread::spawn(move || {
+                    for n in 0..ROUNDS {
+                        turn.wait();
+                        record.log(event(side + n));
+                        if side == 1_000 {
+                            record.raise(&format!("G-{n}"));
+                        }
+                        turn.wait();
+                    }
+                })
+            })
+            .collect();
+
+        let mut wrong = Vec::new();
+        for n in 0..ROUNDS {
+            turn.wait();
+            turn.wait();
+            let count = logged(&dir).len() as u64;
+            if count != 2 * (n + 1) && wrong.len() < 3 {
+                wrong.push(format!("{n}차례 뒤 — 기대 {}건, 파일 {count}건", 2 * (n + 1)));
+            }
+        }
+        for writer in writers {
+            writer.join().expect("쓰는 스레드");
+        }
+
+        assert!(wrong.is_empty(), "두 스레드가 함께 적은 뒤 사건이 빠졌다 — 늦은 쓰기가 다른 쪽 사건을 지웠다:\n  {}", wrong.join("\n  "));
+        let mut all = logged(&dir);
+        all.sort_unstable();
+        let mut want: Vec<u64> = (0..ROUNDS).flat_map(|n| [1_000 + n, 2_000 + n]).collect();
+        want.sort_unstable();
+        assert_eq!(all, want, "적힌 사건이 두 스레드가 더한 것과 다르다");
+        assert_eq!(keys_on_disk(&dir, "G").map(|keys| keys.len()), Some(ROUNDS as usize), "사건을 적는 사이 올린 키를 잃었다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **살아 있는 실행들의 세대**(프로세스 스펙 S9 · S10) — 앱 pid가 그 시작 시각 그대로 떠 있는 기록만. pid만 같은 기록(그
+    /// pid를 남이 받았다)은 죽은 실행이다. 깨진 기록은 기록이 없는 것이다. 신원을 읽는 것은 macOS뿐이다.
+    ///
+    /// 앵커: 이 검사 프로세스를 앱으로 적은 기록은 산다 — 모두 죽었다고 무너지면 「죽었다」들이 저절로 참이 된다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_live_generations_are_the_records_whose_app_still_runs() {
+        let dir = temp_dir("live");
+        let me = snapshot::identity_of(std::process::id()).expect("이 검사 프로세스의 신원을 읽는다");
+        for (generation, app) in [("L", me), ("D", Identity { pid: me.pid, started_us: me.started_us + 1 })] {
+            Record::default().open(Place { app, ..place(&dir, generation) });
+        }
+        std::fs::write(dir.join("X.json"), "{").unwrap();
+
+        assert_eq!(live_generations(&dir), ["L"], "살아 있는 실행을 못 가렸다");
+        assert!(alive(me) && !alive(Identity { pid: me.pid, started_us: 1 }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

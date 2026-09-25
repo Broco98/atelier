@@ -336,11 +336,12 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 19] = [
+    const APP_SOURCES: [(&str, &str); 20] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
         ("main.rs", include_str!("../../../src-tauri/src/main.rs")),
+        ("processes/cleanup_log.rs", include_str!("../../../src-tauri/src/processes/cleanup_log.rs")),
         ("processes/ending.rs", include_str!("../../../src-tauri/src/processes/ending.rs")),
         ("processes/exceptions.rs", include_str!("../../../src-tauri/src/processes/exceptions.rs")),
         ("processes/instances.rs", include_str!("../../../src-tauri/src/processes/instances.rs")),

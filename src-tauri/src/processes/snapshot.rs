@@ -1,7 +1,7 @@
 //! 수집 — 이 맥의 프로세스 표 한 장(프로세스 스펙 S1 · S2 · S3).
 //!
 //! 부작용 층이다. `libproc`으로 pid 목록과 BSD 정보(ppid, pgid, uid, 시작 시각, 커널 이름)를 읽고,
-//! 앱과 같은 uid인 것만 `KERN_PROCARGS2`로 부른 이름과 표식을 읽는다. 남의 uid는 어차피 못 읽고 못
+//! 앱과 같은 uid인 것만 `KERN_PROCARGS2`로 부른 이름 · 명령줄 · 표식을 읽는다. 남의 uid는 어차피 못 읽고 못
 //! 끝낸다. env를 읽는 버퍼는 한 장을 모든 프로세스가 돌려 쓴다 — 1MB를 프로세스마다 잡지 않는다.
 //!
 //! **개별 실패는 건너뛰고 센다.** 목록과 정보 읽기 사이에 끝나는 것은 늘 있고, 좀비와 권한 없는 것도
@@ -59,17 +59,17 @@ pub fn take(scope: EnvScope) -> Snapshot {
             continue;
         }
         let id = mac::identity(&info);
-        let (argv0, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
+        let (argv0, command, shell_key) = if info.pbi_uid == uid && scope.reads(id.started_us) {
             // 못 읽으면(그사이 끝남 등) 행은 그대로 세우고 env만 비운다. 행을 빼면 그 밑의 자손이
-            // 트리에서 떨어진다.
+            // 트리에서 떨어진다. 명령줄(티켓 11)은 같은 버퍼의 argv라 따로 읽는 것이 없다.
             procargs::read(pid, &mut buf)
                 .and_then(|len| ProcArgs::parse(&buf[..len]))
-                .map_or((None, None), |args| {
+                .map_or((None, None, None), |args| {
                     let argv0 = args.argv().next().map(|a| String::from_utf8_lossy(a).into_owned());
-                    (argv0, args.shell_key().map(str::to_string))
+                    (argv0, Some(args.command()), args.shell_key().map(str::to_string))
                 })
         } else {
-            (None, None)
+            (None, None, None)
         };
         procs.push(Proc {
             id,
@@ -78,6 +78,7 @@ pub fn take(scope: EnvScope) -> Snapshot {
             uid: info.pbi_uid,
             name: mac::kernel_name(&info),
             argv0,
+            command,
             shell_key,
         });
     }
@@ -194,6 +195,10 @@ mod tests {
         assert!(settled.is_some(), "자식이 5초 안에 제 세션을 열지 못했다");
         let whole = whole.expect("스냅샷에 자식이 없다");
         assert_eq!(whole.shell_key.as_deref(), Some(key.as_str()), "준 표식을 못 읽었다");
+        // 명령줄은 같은 버퍼의 argv 전체다(티켓 11) — 자식을 부른 인자가 그대로 선다.
+        let mut argv = vec![crate::processes::testkit::exe().display().to_string()];
+        argv.extend(crate::processes::testkit::child_args());
+        assert_eq!(whole.command, Some(argv.join(" ")), "명령줄이 자식을 부른 argv 전체가 아니다");
         assert_eq!(whole.ppid, std::process::id(), "자식의 부모는 이 검사다");
         assert_eq!(
             from_birth.and_then(|p| p.shell_key).as_deref(),

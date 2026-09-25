@@ -21,6 +21,7 @@ import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
   attentionOfId,
+  CLOSE_REASONS,
   confirmClose,
   countQuitShells,
   countSpawned,
@@ -41,7 +42,15 @@ import {
   shellsOf,
   slugOfOwner,
 } from "./shell-registry";
-import type { CloseChecks, OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import type {
+  CloseChecks,
+  ClosePath,
+  OpenedShell,
+  QuitCounts,
+  ShellOrigin,
+  ShellOwner,
+  ShellsState,
+} from "./shell-registry";
 import { humanInput, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
@@ -371,17 +380,27 @@ if (typeof window !== "undefined") {
 }
 
 /**
+ * 그 칸의 PTY를 닫는다 — 닫기 IPC를 부르는 **세 자리**(`disposeInstance` · `failOpen` · spawn 왕복 중 닫힘)가 함께
+ * 쓴다. 까닭은 닫는 자리로 표(`CLOSE_REASONS`)에서 고르고, 주인은 그 칸의 것을 싣는다(티켓 11). 백엔드는 그 닫기가
+ * 끝낸 것을 정리 기록에 이 둘로 적는다. `ptyId`는 부르는 쪽이 준다 — spawn 왕복 중 닫힘은 칸에 아직 안 앉은 번호를 닫는다.
+ */
+function killPty(instance: ShellInstance, ptyId: number, path: ClosePath): void {
+  ignoreGone(terminalApi.kill(ptyId, CLOSE_REASONS[path], instance.origin.owner));
+}
+
+/**
  * 인스턴스를 거둔다 — **이것이 유일한 정리 경로다.** 부르는 곳이 둘이다: `×`(`closeShell`)와
  * 정상 종료(결정 48로 목록에서 스스로 빠지는 칸). 흩어 놓으면 PTY만 죽고 인스턴스가
  * 남거나(WebGL 컨텍스트를 계속 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
  *
  * **`kill`은 스스로 갈린다.** 정상 종료로 오면 PTY가 이미 죽었고 `ptyId`도 그 자리에서
- * null로 눕혀지므로 아래 가드가 그대로 건너뛴다 — 부르는 쪽이 플래그로 말할 것이 없다.
+ * null로 눕혀지므로 아래 가드가 그대로 건너뛴다. 닫는 자리(`path`)는 닫기 IPC의 까닭을 고르는
+ * 열쇠라(티켓 11) 정상 종료에는 없다 — 셸 스스로 끝남은 Rust가 안다.
  */
-function disposeInstance(instance: ShellInstance): void {
+function disposeInstance(instance: ShellInstance, path: ClosePath | null): void {
   instances.delete(instance.id);
   instance.closed = true;
-  if (instance.ptyId !== null) ignoreGone(terminalApi.kill(instance.ptyId));
+  if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
   instance.observer.disconnect();
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
   // 묶여 있어 **WebGL 컨텍스트도 여기서 풀린다.** 상한 8이 컨텍스트 수를 말하는 이상
@@ -403,10 +422,12 @@ function disposeInstance(instance: ShellInstance): void {
  * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 둘이다 — 아카이빙의
  * 회수(`closeShellsOf`)에는 사람이 이미 한 번 확인했고, 안 쓴 자동 셸의 회수(`closeUnusedShells`)에는
  * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1).
+ *
+ * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
-function closeShell(id: number): void {
+function closeShell(id: number, path: ClosePath): void {
   const instance = instances.get(id);
-  if (instance) disposeInstance(instance);
+  if (instance) disposeInstance(instance, path);
   terminalStore.setState((state) => removeShell(state, id));
 }
 
@@ -427,7 +448,7 @@ export async function requestCloseShell(id: number): Promise<void> {
   // 앱 밖의 일처럼 읽힌다. 문구는 `closeNotice`가 든다(결정 105 · 프로세스 스펙 P6).
   const ask = (body: string) => askDialog({ title: "셸 닫기", body, confirm: "닫기", danger: true });
   if (!(await confirmClose(shell, await closeCheck(id), ask))) return;
-  closeShell(id);
+  closeShell(id, "person");
 }
 
 /**
@@ -716,7 +737,7 @@ onNotifySettingsChanged(notifyTick);
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
  */
 export function closeShellsOf(owner: ShellOwner): void {
-  for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);
+  for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");
 }
 
 /**
@@ -728,7 +749,7 @@ export function closeShellsOf(owner: ShellOwner): void {
  * 자손은 모두 셸 도우미라 확인 창이 물을 것이 없다 — 프로세스 스펙 P1의 기본값에 기대는 문장이다.
  */
 export function closeUnusedShells(from: ShellOwner | null, to: ShellOwner | null): void {
-  for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id);
+  for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id, "reclaim");
 }
 
 /**
@@ -1157,7 +1178,7 @@ function failOpen(instance: ShellInstance, error: unknown) {
   const shell = terminalStore.state.shells.find((candidate) => candidate.id === instance.id);
   if (shell?.status.kind === "running") fail(instance, error);
   if (instance.ptyId !== null) {
-    ignoreGone(terminalApi.kill(instance.ptyId));
+    killPty(instance, instance.ptyId, "openFailed");
     instance.ptyId = null;
   }
 }
@@ -1241,7 +1262,7 @@ async function spawn(instance: ShellInstance) {
       // `markExited`가 아는 것이고, 우리는 그 결과에 "뺐느냐"만 묻는다. 두 곳에 적으면
       // 한쪽만 고쳐지는 날이 온다.
       if (!hasShell(instance.id)) {
-        disposeInstance(instance);
+        disposeInstance(instance, null);
       }
     };
 
@@ -1269,7 +1290,7 @@ async function spawn(instance: ShellInstance) {
     // 붙다가 열기에 터진 경우(`broken`)도 같은 자리에서 거둔다 — `failOpen`이 그때는 죽일
     // pty 번호를 아직 몰랐다.
     if (instance.closed || instance.broken) {
-      ignoreGone(terminalApi.kill(spawned.id));
+      killPty(instance, spawned.id, "spawnRace");
       return;
     }
     instance.ptyId = spawned.id;

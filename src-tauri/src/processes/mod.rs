@@ -19,20 +19,23 @@
 //!   때문이다.
 //! - 인스턴스 기록(`instances`)은 부작용 층이다(프로세스 결정 6). 이 실행이 띄운 셸의 키를 디스크 한 장에 적어,
 //!   함께 뜬 다른 빌드의 판정이 그 셸의 자손을 고아로 안 보게 한다. 판정은 그 기록을 값으로 받을 뿐 읽지 않는다.
+//! - 정리 기록(`cleanup_log`)은 앱이 무엇을 언제 왜 끝냈는지를 남긴다(티켓 11). 끝내기의 결과와 판정의 행으로 사건을 짓는
+//!   것은 순수하고, 쓰기는 인스턴스 기록과 같은 뮤텍스 안에서 한다(`instances::Record::log`).
 //!
 //! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리)는 풀을 쥔 `pty.rs`에 있다.
 
-// **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 결과의 출처 불명 · 다른 인스턴스 · 예외 묶음, 끝내기의 결과(닫기 ·
-// 새로고침 · 종료 쪽)는 11 · 13 · 31이 읽는다(판정의 모드와 확정 고아, 시작 정리가 끝낸 결과는 10이 읽는다). 그때까지는
+// **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 결과의 출처 불명 · 다른 인스턴스 · 예외 묶음은 13 · 31이 읽는다(판정의
+// 모드와 확정 고아, 시작 정리가 끝낸 결과는 10이, 끝내기의 결과와 판정의 도우미 표시는 11의 정리 기록이 읽는다). 그때까지는
 // 검사만 부르고, 리눅스에서는 실물 검사마저 빠진다. 칸마다 적으면 열 줄이 넘고 하나씩 낡는다 — 판 01이 끝나면 이 줄을
-// 걷는다(다른 인스턴스 · 예외 묶음은 판 04의 31이 처음 읽으니, 그때까지 그 칸들에만 따로 단다). 10을 마친 때 macOS lib
-// 빌드에서 이 줄이 가리는 것은 검사만 부르는 `ending::start` 하나였다.
+// 걷는다(다른 인스턴스 · 예외 묶음은 판 04의 31이 처음 읽으니, 그때까지 그 칸들에만 따로 단다). 11을 마친 때도 macOS lib
+// 빌드에서 이 줄이 가리는 것은 검사만 부르는 `ending::start` 하나다.
 #![allow(dead_code)]
 
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod cleanup_log;
 pub(crate) mod ending;
 pub(crate) mod exceptions;
 pub(crate) mod instances;
@@ -84,11 +87,22 @@ pub struct Proc {
     /// 사람이 부른 이름(exec 때의 argv[0]). env를 읽은 행에만 있다 — 다른 uid, 읽기를 건너뛴 것,
     /// 읽다 실패한 것은 `None`이다.
     pub argv0: Option<String>,
+    /// 명령줄 — exec 때의 argv 전체를 빈칸 하나로 이었다(티켓 11). 부른 이름과 같은 버퍼에서 읽어 따로 드는 비용이 없고,
+    /// `argv0`처럼 env를 읽은 행에만 있다. 정리 기록이 앞 200자를 담고(`cleanup_log`), 판 04의 자손 행 툴팁이 쓴다.
+    pub command: Option<String>,
     /// 표식(exec 때의 셸 키). 없거나 못 읽었으면 `None`.
     ///
     /// **exec 때의 env다.** 뜬 뒤에 바꾼 env는 안 보인다. 시스템 바이너리(`/bin/zsh`, `/bin/sleep`)는
     /// env가 0개로 읽혀 늘 `None`이다 — 그것들은 트리로만 잡힌다(결정의 사실 4).
     pub shell_key: Option<String>,
+}
+
+/// 이 세대가 지은 셸 키인가 — `<세대>-<PTY 번호>`(`pty::shell_id`). 앞글자로만 겹치는 다른 세대(`G` 대 `GX`)를 가르려고
+/// 구분자와 번호까지 본다. 판정(이 세대의 표식)과 훅 상태 파일 정리(살아 있는 실행의 세대, `shells::sweep`)가 같은 규칙을 쓴다.
+pub(crate) fn of_generation(key: &str, generation: &str) -> bool {
+    key.strip_prefix(generation)
+        .and_then(|rest| rest.strip_prefix('-'))
+        .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// 이 맥의 프로세스 표 한 장.

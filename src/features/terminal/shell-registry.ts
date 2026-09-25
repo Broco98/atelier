@@ -1,7 +1,7 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { Attention } from "./shell-attention";
-import type { CloseCheck, PtyExit } from "./types";
+import type { CloseCheck, CloseReason, PtyExit } from "./types";
 
 // 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
 // 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
@@ -1308,6 +1308,33 @@ export async function confirmClose(
   if (!check || !needsCloseConfirm(shell, check)) return true;
   return ask(closeNotice(check));
 }
+
+/**
+ * 프런트가 셸을 닫는 자리 — 까닭을 고르는 열쇠다(`CLOSE_REASONS`).
+ *
+ * - `person` — `×`, ⌘W, 셸 메뉴의 닫기(`requestCloseShell`).
+ * - `reclaim` — 화면을 떠난 안 쓴 자동 셸의 회수(`closeUnusedShells` · 프로세스 결정 7).
+ * - `archive` — UI 아카이브 · 삭제가 성공한 뒤의 회수(`closeShellsOf` · 결정 26).
+ * - `openFailed` — xterm 열기 실패(`failOpen`).
+ * - `spawnRace` — spawn 왕복 중에 닫힌 칸의, 늦게 온 셸.
+ */
+export type ClosePath = "person" | "reclaim" | "archive" | "openFailed" | "spawnRace";
+
+/**
+ * 닫는 자리 → 닫기 IPC의 까닭(티켓 11). **까닭은 이 표 한 곳에서 고른다.** 판 04의 `●`가 까닭으로 켜지는데(시작
+ * 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못 끝냄」만), 자리마다 따로 고르면 사람이 누른 닫기가 점을 켤 수 있다.
+ *
+ * 사람이 누르지 않은 닫기 셋(`reclaim` · `openFailed` · `spawnRace`)도 「셸 닫기」다. 자손이 없거나 모두 셸 도우미라
+ * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다. MCP 아카이브(`mcpArchive`)는 그 길을 여는 장(12)이
+ * 여기에 줄을 더한다.
+ */
+export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
+  person: "shellClose",
+  reclaim: "shellClose",
+  archive: "archive",
+  openFailed: "shellClose",
+  spawnRace: "shellClose",
+};
 
 /**
  * 종료하면 닫힐 셸 수, 그중 명령이 도는 셸 수(UI개선 결정 15 — 명령의 개수가 아니다), 그 셸들에서 띄워 함께 끝날

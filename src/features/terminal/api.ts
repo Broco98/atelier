@@ -1,7 +1,15 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Mode } from "@/mode";
-import type { CloseCheck, PtyFrame, PtyRunning, PtySpawned, ShellAttention } from "./types";
+import type { ShellOwner } from "./shell-registry";
+import type {
+  CloseCheck,
+  CloseReason,
+  PtyFrame,
+  PtyRunning,
+  PtySpawned,
+  ShellAttention,
+} from "./types";
 
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
@@ -26,7 +34,12 @@ export const terminalApi = {
   // 화면을 옮기는 것만으로는 죽이지 않는다(결정 20) — 언마운트 정리에는 없다. 프로세스 결정 7이 입력 없는
   // 자동 셸만 예외로 두었다: 그 셸은 화면을 떠나면 닫힌다(`closeUnusedShells`).
   // 부르는 곳은 셋이다: `×`(판 02), 아카이빙·삭제가 성공한 뒤의 회수(결정 26), 그리고 그 떠남.
-  kill: (id: number) => invoke<void>("pty_kill", { id }),
+  //
+  // **까닭과 셸의 주인을 싣는다**(티켓 11) — 백엔드가 그 닫기가 끝낸 것을 정리 기록에 이 까닭으로 적는다. 까닭은 부르는
+  // 자리가 고르지 않고 표 한 곳(`CLOSE_REASONS`)이 고른다. 주인은 Rust 풀이 모르는 값이라(셸을 띄울 때 안 넘긴다) 여기서
+  // 싣는다 — 모드와 달리 셸을 가리키는 값이 아니라 기록에 적을 값이라, 위 「id와 모드가 어긋나면」 갈래가 없다.
+  kill: (id: number, reason: CloseReason, owner: ShellOwner) =>
+    invoke<void>("pty_kill", { id, reason, owner }),
   // 셸의 **첫 사람 입력**을 한 번 알린다(프로세스 결정 7 · 프로세스 스펙 P1). `at`은 사람 입력을 본 순간의 에포크
   // ms다 — 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을 셸 도우미로 가른다(티켓 08). 무엇이 사람 입력인지는
   // `shell-input.ts`가, 시각을 찍는 것은 터미널 스토어가 한다.

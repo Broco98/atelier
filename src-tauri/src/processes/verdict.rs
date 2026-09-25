@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::{exceptions, Identity, Proc, Snapshot};
+use super::{exceptions, of_generation, Identity, Proc, Snapshot};
 
 /// 셸 하나 — 셸 목록과 끝낼 셸이 같은 모양이다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,9 +348,13 @@ pub fn close_count(verdict: &Verdict, key: &str, command_group: Option<u32>) -> 
 ///
 /// 진행 중인 끝내기의 신원도 여기 들 수 있다 — 그 셸의 표식을 물고 있어서다. 이미 SIGTERM을 받은 그것을 다시
 /// 쏘지 않는 것은 끝내기 층이 가른다(`ending::InFlight::close`).
-pub fn at_exit(input: &Inputs) -> Vec<Identity> {
+///
+/// 셸 도우미도 함께 준다 — 끝내기에는 그대로 넘기고, 정리 기록이 「셸과 도우미만 끝난 종료」를 안 적는 데 쓴다(티켓 11).
+/// 풀 셸의 도우미는 그 셸의 입력 시각으로 가른다. **셸이 풀에 없는 키의 자손은 도우미로 안 친다** — 그 셸의 입력 시각을
+/// 모른다. 입력이 없다고 읽으면(보통 판정의 `None`) 스스로 끝난 셸이 남긴 사람의 것까지 도우미가 되어 기록에서 사라진다.
+pub fn at_exit(input: &Inputs) -> Exit {
     // 셸 프로세스를 모르는 끝낼 셸로 더한다 — 판정은 그 키를 문 행과 그 밑을 그 셸의 자손으로 고른다. 풀에서
-    // 뺀 셸의 키가 한 번 더 서도 판정은 키를 집합으로 읽어 같은 답이다.
+    // 뺀 셸의 키가 한 번 더 서도 판정은 키를 집합으로 읽어 같은 답이다(입력 시각도 앞에 선 풀의 셸 것이 이긴다).
     let marked: BTreeSet<&str> = input
         .snapshot
         .procs
@@ -362,10 +366,20 @@ pub fn at_exit(input: &Inputs) -> Vec<Identity> {
     ending.extend(marked.into_iter().map(|key| ShellEntry {
         key: key.to_string(),
         process: None,
-        first_input_us: None,
+        first_input_us: Some(0),
     }));
     let verdict = judge(&Inputs { ending: &ending, ..*input });
-    verdict.descendants.into_values().flatten().map(|proc| proc.id).collect()
+    Exit {
+        targets: verdict.descendants.into_values().flatten().map(|proc| proc.id).collect(),
+        helpers: verdict.helpers,
+    }
+}
+
+/// 앱 종료가 끝낼 것(`at_exit`) — 신원과, 그중 셸 도우미.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exit {
+    pub targets: Vec<Identity>,
+    pub helpers: BTreeSet<Identity>,
 }
 
 /// **시작 정리의 판정** — 끝낼 것(프로세스 결정 6 · 티켓 10). 지난 실행이 남긴 **확정 고아와 그 트리뿐**이다.
@@ -391,14 +405,6 @@ pub fn dead_instances<'a>(input: &Inputs<'a>) -> Vec<&'a InstanceRecord> {
         .iter()
         .filter(|record| record.generation != input.generation && !table.alive(record))
         .collect()
-}
-
-/// 이 세대가 지은 셸 키인가 — `<세대>-<PTY 번호>`(`pty::shell_id`). 앞글자로만 겹치는 다른 세대(`G` 대
-/// `GX`)를 가르려고 구분자와 번호까지 본다.
-fn of_generation(key: &str, generation: &str) -> bool {
-    key.strip_prefix(generation)
-        .and_then(|rest| rest.strip_prefix('-'))
-        .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// 스냅샷을 pid로 찾는 표 — 부모를 따라 올라가는 데 쓴다.
@@ -459,6 +465,7 @@ mod tests {
             uid: UID,
             name: format!("p{pid}"),
             argv0: None,
+            command: None,
             shell_key: None,
         }
     }
@@ -1480,6 +1487,7 @@ mod tests {
                 inherited_key: case.inherited,
                 occasion: Occasion::Normal,
             })
+            .targets
             .into_iter()
             .map(|id| id.pid)
             .collect();
@@ -1490,5 +1498,43 @@ mod tests {
             }
         }
         assert!(wrong.is_empty(), "종료 판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **종료의 셸 도우미**(티켓 11 · 프로세스 스펙 P1). 정리 기록은 셸과 도우미만 끝난 종료를 안 적는다 — p10k 셸을 띄워 둔 채
+    /// 끌 때마다 한 줄이 차지 않게. 풀 셸(G-1, 입력 5_000)의 자손은 그 입력 시각으로 가른다. 셸이 풀에 없는 키(G-5 — 스스로
+    /// 끝난 셸이 남긴 것)의 자손은 입력 시각을 몰라 도우미로 안 친다 — 사람이 띄운 것이 기록에서 사라지지 않게.
+    ///
+    /// 앵커: 끝낼 것에는 도우미까지 모두 든다 — 도우미는 표시이지 묶음이 아니다.
+    #[test]
+    fn the_exit_tells_the_helpers_it_ends_by_the_pool_shells_input() {
+        let procs = vec![
+            row(100, 50).born(1_100),
+            row(101, 100).born(2_000),
+            row(102, 100).born(6_000),
+            row(201, 1).key("G-5").born(1_500),
+            row(202, 201).born(1_600),
+        ];
+        let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+        let ending = [ShellEntry {
+            key: "G-1".into(),
+            process: Some(Identity { pid: 100, started_us: 1_100 }),
+            first_input_us: Some(5_000),
+        }];
+        let exit = at_exit(&Inputs {
+            snapshot: &snapshot,
+            generation: "G",
+            shells: &[],
+            ending: &ending,
+            instances: &[],
+            exceptions: &[],
+            app_pid: APP,
+            inherited_key: None,
+            occasion: Occasion::Normal,
+        });
+        let mut targets: Vec<u32> = exit.targets.iter().map(|id| id.pid).collect();
+        targets.sort_unstable();
+        assert_eq!(targets, [101, 102, 201, 202], "종료가 끝낼 것이 어긋났다 — 도우미도 끝낸다");
+        let helpers: Vec<u32> = exit.helpers.iter().map(|id| id.pid).collect();
+        assert_eq!(helpers, [101], "종료의 도우미가 어긋났다 — 풀 셸의 입력 전 태생만 도우미다");
     }
 }

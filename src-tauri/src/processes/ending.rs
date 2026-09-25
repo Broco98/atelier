@@ -24,6 +24,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
+
 use super::{snapshot, Identity};
 
 /// SIGTERM 뒤 SIGKILL까지 기다리는 최대 시간(프로세스 결정 3의 2초).
@@ -37,8 +39,10 @@ const POLL: Duration = Duration::from_millis(50);
 const KILL_SETTLE: Duration = Duration::from_millis(200);
 const KILL_POLL: Duration = Duration::from_millis(10);
 
-/// 신원 하나가 어떻게 끝났나.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 신원 하나가 어떻게 끝났나. 정리 기록(`cleanup_log`)에 그대로 적힌다 — 와이어는 `"ended"` · `"forced"` · `"survived"` ·
+/// `"gone"`이다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Outcome {
     /// 끝남(TERM) — 유예 안에 스스로 끝났다.
     Ended,
@@ -269,7 +273,7 @@ impl<K: Kernel> InFlight<K> {
         // 오른 차례는 거의 신호를 보낸 차례지만, 두 스레드에서는 뒤바뀔 수 있다 — 이른 마감이 늦은 것 뒤에서
         // 기다리지 않게 마감 시각으로 줄 세운다.
         endings.sort_by_key(|ending| ending.deadline);
-        Closing(endings)
+        Closing { endings, fresh }
     }
 }
 
@@ -327,15 +331,25 @@ impl<K: Kernel> Running<K> {
 }
 
 /// 앱 종료가 마감할 끝내기들 — 마감 시각이 이른 것부터.
-pub struct Closing<K: Kernel = Os>(Vec<Ending<K>>);
+pub struct Closing<K: Kernel = Os> {
+    endings: Vec<Ending<K>>,
+    /// 종료가 **새로** 맡은 대상 — 목록의 끝내기가 이미 SIGTERM을 보낸 신원은 빠졌다.
+    fresh: Vec<Identity>,
+}
 
 impl<K: Kernel> Closing<K> {
+    /// 종료가 새로 맡은 대상(티켓 11). 목록의 끝내기는 그것을 시작한 길(셸 닫기 · 새로고침 · 시작 정리)의 사건으로 정리 기록에
+    /// 적힌다 — 종료의 사건이 이것만 적어야 같은 프로세스가 두 사건에 서지 않는다.
+    pub fn fresh(&self) -> &[Identity] {
+        &self.fresh
+    }
+
     /// 마감 시각이 이른 것부터 차례로 마감한다. **모두 끝나야 돌아온다** — 그 사이 다른 끝내기의 유예도 함께
     /// 흐르므로, 걸리는 시간은 가장 늦은 마감 시각까지다(최악 2초). 다 끝나면 바로 나온다.
     ///
     /// 결과는 목록의 것부터 마감한 차례대로, 대상마다 받은 순서 그대로다.
     pub fn finish(self) -> Vec<(Identity, Outcome)> {
-        self.0.into_iter().flat_map(Ending::finish).collect()
+        self.endings.into_iter().flat_map(Ending::finish).collect()
     }
 }
 
@@ -997,6 +1011,19 @@ mod tests {
 
         assert_eq!(outcomes, vec![(id(77), Outcome::Gone)], "판정 중이던 닫기를 종료가 안 기다렸다");
         assert!(took < JUDGING_LIMIT, "판정 없이 떨어진 셈을 종료가 끝까지 기다렸다 ({took:?})");
+    }
+
+    /// **종료가 새로 맡은 대상**(티켓 11) — 목록의 끝내기가 이미 SIGTERM을 보낸 신원은 빠진다. 정리 기록에서 종료의 사건은
+    /// 이것만 적는다: 목록의 것은 그 끝내기를 시작한 셸 닫기의 사건으로 적힌다. 보내려 할 때 이미 없던 신원(SIGTERM을 안
+    /// 받았다)은 종료가 다시 맡는다 — 종료의 끝내기가 그것을 「이미 없음」으로 준다.
+    #[test]
+    fn the_exit_takes_on_only_what_no_listed_ending_has_signalled() {
+        let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20)], vec![]);
+        let list = Arc::new(InFlight::with_kernel(&fake));
+        let running = list.claim().start(&[id(10), id(30)], &[]);
+        let closing = list.close(&[id(10), id(20), id(30)], &[]);
+        assert_eq!(closing.fresh(), [id(20), id(30)], "종료가 새로 맡은 대상이 어긋났다");
+        drop(running);
     }
 }
 
