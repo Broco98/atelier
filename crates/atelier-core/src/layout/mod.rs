@@ -1,0 +1,17 @@
+//! spec 레이아웃 엔진 — spec 폴더의 모양을 데이터로 들고, 에이전트가 받는 안내문을 만든다.
+//!
+//! **규칙은 여기 한 벌이다**(결정 13). MCP 서버, 앱의 Tauri 명령, L4 다리가 모두 이 함수들을
+//! 부르고 어댑터로만 남는다. 데이터 루트는 늘 인자로 받는다 — 엔진은 환경 변수를 읽지 않는다.
+//!
+//! **파일마다 무리 하나다.** 모델, 내장본, render, resolve가 각자 파일을 갖고, 분류(classify)와
+//! 저장소도 그렇게 붙는다. 여러 판이 같은 모듈을 만지므로 한 파일이면 판마다 부딪친다.
+
+mod builtin;
+mod model;
+mod render;
+mod resolve;
+
+pub use builtin::builtin_layout;
+pub use model::{EntryKind, LayoutEntry, SpecLayout};
+pub use render::{render_layout, Fallback, Rendered, TemplateVerdict};
+pub use resolve::{resolve_layout, LayoutSource, Resolved};
