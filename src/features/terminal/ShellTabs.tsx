@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
+import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
 import { signalOf } from "./shell-attention";
@@ -17,7 +18,7 @@ import {
   shellsOf,
 } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
-import { gapLineLeft, tabGap } from "./tab-gap";
+import { gapLineLeft, sidewaysIntent, stripEdgeStep, tabGap } from "./tab-gap";
 import type { TabStripGeometry } from "./tab-gap";
 
 /**
@@ -112,6 +113,14 @@ interface ShellTabsProps {
   /** 이 줄 위에서 손을 뗐다. 받는 쪽이 드래그 상태의 틈을 읽어 옮긴다(틈이 없으면 아무것도). */
   onDropSlot: () => void;
   /**
+   * **끄는 중인가** — 문턱을 넘었고 Esc로 거두지 않았다. 드래그 상태의 `source`를 화면이 그대로 내린다.
+   *
+   * 줄 가장자리 자동 스크롤(`stripEdgeStep`)이 이것을 본다. 누른 순간부터 구르면 칸 하나 폭 상자의 칸을
+   * **클릭만 해도** 줄이 굴러 버린다 — 문턱은 드래그 모듈만 알고 이 줄은 그 모듈을 안 딛어서(`onDragTab`
+   * 계약) 값으로 받는다. 틈 알림은 받는 쪽(`hoverSlot`)이 거르지만 스크롤은 이 줄이 스스로 하는 일이다.
+   */
+  dragging: boolean;
+  /**
    * 오른쪽 끝에 **고정되는** 조작(결정 10). 탭은 왼쪽부터 차므로 탭 개수가 변해도 이것들의
    * 자리가 안 움직인다.
    *
@@ -156,6 +165,7 @@ function ShellTabs({
   slot,
   onSlot,
   onDropSlot,
+  dragging,
   actions,
   inset = false,
 }: ShellTabsProps) {
@@ -179,6 +189,8 @@ function ShellTabs({
   // 화살표로 새면 경계가 조용히 죽는다.
   const latest = useRef({ onSelect, onClose, onDragTab, onSlot, onDropSlot });
   latest.current = { onSelect, onClose, onDragTab, onSlot, onDropSlot };
+  const draggingNow = useRef(dragging);
+  draggingNow.current = dragging;
   const shellIds = useRef<number[]>([]);
   shellIds.current = shells.map((shell) => shell.id);
 
@@ -196,6 +208,16 @@ function ShellTabs({
   // 새 줄에서 그 셸이 몇 번째인지 되찾을 길이 없다.
   const pressedId = useRef<number | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  // 누른 동안 머리행 위 포인터의 뷰포트 x(머리행을 벗어나면 `null`)와, 가장자리 자동 스크롤의 프레임.
+  // 포인터가 **가만히 있어도** 구르므로 이동 이벤트가 아니라 프레임에서 굴린다(아래 `onDragTab`).
+  const pointerX = useRef<number | null>(null);
+  // 누른 자리와, 그 뒤 **옆으로 끌 뜻**이 한 번이라도 보였는가(`tab-gap`의 `sidewaysIntent`). 뜻이 보이기
+  // 전에는 가장자리여도 안 구른다 — 본문 절반으로 곧장 내려가는 손이 머리행을 지나며 줄을 밀지 않게.
+  // 한 번 보이면 끌기 끝까지 붙든다 — 끝에 붙여 가만히 있는 손도 굴러야 한다.
+  const pressedAt = useRef<{ x: number; y: number } | null>(null);
+  const sideways = useRef(false);
+  const stopScroll = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopScroll.current?.(), []);
   const press = (id: number | null, next: TabStripGeometry | null) => {
     pressedId.current = next ? id : null;
     pressed.current = next;
@@ -205,9 +227,11 @@ function ShellTabs({
   // **끄는 도중 줄의 셸 목록이 바뀌면 기하를 다시 잰다.** 누를 때 잰 칸 사각형과 `from`은 그 순간의
   // 목록에 매여 있다 — 칸 하나가 스스로 빠지거나(결정 48) ⌘T로 하나가 서면 줄이 흘러, 옛 기하로 셈한
   // 틈은 선이 선 자리와 놓았을 때 `moveShell`이 옮기는 자리가 어긋난다(`isInPlaceGap`이 지키려던 약속).
-  // 사이드바 행 끌기는 같은 자리에서 끌기를 거둔다(UI개선 스펙 S8) — 탭은 **거두지 않고 다시 잰다**:
-  // 이 줄은 스토어도 드래그 모듈도 안 부르고(아래 `onDragTab` 계약), 순서가 메모리에만 있어
-  // (UI개선 결정 12) 끌기를 살려도 잃을 것이 없다. 끄는 셸이 빠졌으면 기하가 `null`이 되어 틈이 안 선다.
+  // 사이드바 행 끌기는 같은 자리에서 끌기를 거둔다(UI개선 스펙 S8) — 탭은 **남의 칸이 빠졌으면 거두지
+  // 않고 다시 잰다**: 이 줄은 스토어도 드래그 모듈도 안 부르고(아래 `onDragTab` 계약), 순서가 메모리에만
+  // 있어(UI개선 결정 12) 끌기를 살려도 잃을 것이 없다. **끄는 셸 자신이 빠졌으면 끌기는 거둬진다** — 그
+  // 판정은 이 줄이 아니라 터미널 스토어의 구독(`hasShell` 옆)이 한다. 셸이 사라지는 길이 이 줄이 안 서
+  // 있을 때도 있어서다. 여기서는 기하가 `null`이 되어 틈이 안 설 뿐이다.
   //
   // 이미 적힌 틈은 옛 줄의 번호라 **지운다** — 포인터가 안 움직인 채 떼면 그 번호로 옮긴다.
   const idSequence = shellIds.current.join(",");
@@ -233,7 +257,30 @@ function ShellTabs({
           //
           // 창에서 듣는다 — 줄 밖(본문 · 사이드바)에서 떼도 버려야 한다. 줄 위에서 떼면
           // 아래 `onSlotDrop`이 먼저 받는다(요소가 창보다 먼저 버블을 받는다).
+          // **가장자리 자동 스크롤** — 끄는 중이고(`dragging`) 옆으로 끌 뜻이 보였고(`sideways`) 포인터가 줄
+          // 가장자리 띠나 그 너머(같은 머리행)에 있으면 프레임마다 굴리고, 굴렀으면 가만한 포인터 아래의 틈을 다시 알린다. 기하는 다시
+          // 안 잰다 — 내용 좌표라 그 순간의 `scrollLeft`만 더하면 된다(`tab-gap.ts` 머리말).
+          stopScroll.current?.();
+          pointerX.current = null;
+          pressedAt.current = { x: from.clientX, y: from.clientY };
+          sideways.current = false;
+          stopScroll.current = everyFrame(() => {
+            const strip = stripRef.current;
+            const at = pressed.current;
+            const x = pointerX.current;
+            if (!strip || !at || x === null || !draggingNow.current || !sideways.current) return;
+            const step = stripEdgeStep(at.view, x);
+            if (step === 0) return;
+            const before = strip.scrollLeft;
+            strip.scrollLeft = before + step;
+            if (strip.scrollLeft !== before) latest.current.onSlot(tabGap(at, x, strip.scrollLeft));
+          });
           const drop = () => {
+            stopScroll.current?.();
+            stopScroll.current = null;
+            pointerX.current = null;
+            pressedAt.current = null;
+            sideways.current = false;
             press(null, null);
             window.removeEventListener("pointerup", drop);
             window.removeEventListener("pointercancel", drop);
@@ -246,9 +293,13 @@ function ShellTabs({
       onSlotMove: (event: React.PointerEvent) => {
         const strip = stripRef.current;
         if (!pressed.current || !strip) return;
+        pointerX.current = event.clientX;
+        const origin = pressedAt.current;
+        if (origin && sidewaysIntent(origin, { x: event.clientX, y: event.clientY })) sideways.current = true;
         latest.current.onSlot(tabGap(pressed.current, event.clientX, strip.scrollLeft));
       },
       onSlotLeave: () => {
+        pointerX.current = null;
         if (pressed.current) latest.current.onSlot(null);
       },
       onSlotDrop: () => {
@@ -360,21 +411,33 @@ function ShellTabs({
 
       {/* 셸 칸만 **가로로 스크롤한다**(결정 20). `spec`·`+`·조작은 이 상자 밖이라 자리가
           고정이고, 줄이 넘치는 몫은 이 상자 하나가 받는다 — 형제가 모두 `shrink-0`이고
-          여기에만 `min-w-0`이 있어서다. 그래서 **머리행 자체는 넘치지 않는다**: 조작이
+          여기만 줄어들 수 있어서다. 그래서 **머리행 자체는 넘치지 않는다**: 조작이
           창 밖으로 밀려나던 것이 그것 때문이었다.
 
           칸은 그 전에 먼저 균등하게 줄어든다(결정 11). 스크롤은 여덟 칸이 다 최소 폭에
           닿은 **뒤**의 마지막 수단이고, 거기서 더 줄일 것이 없는 이유는 산술이다 —
           여덟 칸이 최소 폭이어도 `44×8 + gap 28 = 380`이고, 그 옆에 자리가 고정된 것들
           (`spec` · 세로선 · `+` · 끄는 여백 · 조작 · 줄 사이 gap · 좌우 패딩)이 이어 선다.
-          그런데 창이 더 작아질 수 없는 900px에서 이 줄이 받는 폭은 **290px뿐이다**
-          (사이드바 280과 작업 패널 330을 뺀 나머지 — **줄의 폭은 창 폭이 아니다**). 둘을 각자의
-          최소로 좁혀도 400px이라, 어떤 최소 폭을 골라도 여덟 칸은 안 들어간다.
+          **줄의 폭은 창 폭이 아니다** — 창에서 사이드바와 작업 패널을 뺀 나머지라, 창이 더
+          작아질 수 없는 900px에서는 여덟 칸이 어떤 최소 폭으로도 안 들어간다.
+
+          **그래도 칸 하나는 늘 온전히 보인다 — 이 상자의 바닥이 칸 하나(44px)다.** 한때
+          `min-w-0`이라 바닥이 없었고, 900px 창에 작업 패널이 열린 기본 배치에서 줄이 290px을
+          받자 넘치는 몫을 이 상자가 전부 받아 **0px이 됐다** — 칸이 화면에 없어 누를 수도 끌
+          수도 없었다(v0.13.0부터). 바닥이 서도 줄이 넘치지 않는 것은 이 줄을 이는 열이 그
+          바닥까지 안 줄기 때문이다(`panel-layout`의 `TAB_ROW_COLUMN`) — 자리를 내주는 것은 작업 패널과
+          사이드바다.
+
+          **바닥은 폭(`w-[44px]`)으로도 적는다** — 칸의 `min-w-[44px]`과 같은 수다. 그 열이 버틸 폭은 이 줄의 min-content인데, 그
+          계산은 flex가 줄인 폭이 아니라 각 항목이 **적어 둔 폭**을 센다 — 늘 넓게 서는 기준은
+          그래서 `w-max`가 아니라 `basis-[max-content]`에 둔다. `w-max`로 두면 열의 바닥이
+          칸 여덟의 폭(380)이 되어 좁은 창에서 패널을 필요 이상으로 민다. 칸이 없으면 바닥도
+          없다 — 빈 44px이 `+` 앞에 서면 안 된다.
 
           **합을 여기 숫자로 안 적는다.** 이 자리에 손으로 더한 수가 세 번 적혔고 세 번 다
-          틀렸다(569 → 657 → 685 — 항을 빠뜨리거나 더했다 다시 뺐다). 그 합은
-          `e2e/terminal-tabs.spec.ts`가 세 폭에서 실제로 재고 `spill ≤ 0`으로 든다 —
-          지금 900px에서 여유가 3.5px이라, 이 줄에 고정된 것을 늘리면 그만큼만 남는다.
+          틀렸다(569 → 657 → 685 — 항을 빠뜨리거나 더했다 다시 뺐다). 줄이 받는 폭은
+          `e2e/terminal-tabs.spec.ts`가 화면·창 폭·패널 배치마다 실제로 재고 `spill ≤ 0`과
+          「칸 하나가 들어간다」로 든다.
 
           **막대는 저장소 공통 `scroll-quiet`이다**(결정 32). 한때 여기만 손으로 숨겼다 —
           그때의 `scroll-quiet`은 11px을 세워 44px 타이틀바에서 칸을 눌렀기 때문이다.
@@ -385,7 +448,10 @@ function ShellTabs({
         // 잘라내기 때문이다 — 같은 이름을 쓰면 상자가 칸 하나로 세어진다.
         data-tab-strip
         // `relative`는 아래 틈 선의 기준이다 — 스크롤 상자 안의 절대 위치라 선이 칸과 함께 흐른다.
-        className="relative flex w-max min-w-0 items-center gap-1 overflow-x-auto scroll-quiet"
+        className={cn(
+          "relative flex basis-[max-content] items-center gap-1 overflow-x-auto scroll-quiet",
+          shells.length > 0 ? "w-[44px] min-w-[44px]" : "w-0 min-w-0",
+        )}
       >
         {shells.map((shell) => (
           <ShellTab
@@ -399,7 +465,7 @@ function ShellTabs({
           />
         ))}
         {/* 끄는 동안 놓일 틈(UI개선 스펙 §6). **절대 위치 세로 선**이다 — 폭을 먹으면 칸이 밀리고
-            900px 창에서 줄이 넘친다(여유 3.5px). 높이는 이 상자(28px) 안이다: 스크롤 상자라
+            좁은 창에서는 상자가 칸 하나 폭까지 줄어 있다(위 상자 주석). 높이는 이 상자(28px) 안이다: 스크롤 상자라
             세로로 넘치면 줄이 세로 스크롤을 얻는다. 좌우 끝도 상자 밖으로 안 나간다(`gapLineLeft`).
 
             기하는 누른 순간 잰 **상태**다 — 그리는 중에 ref를 읽지 않는다(위 `geometry` 주석). */}

@@ -150,8 +150,22 @@ describe("WorkPanel 폭 조절", () => {
     expect(markup).toMatch(/--work-panel-width:\s*330px/);
     // 변수를 **선언**만 하고 쓰지 않으면 폭이 못 박힌 채로도 전부 초록이다 — 핸들도 서고
     // 커서도 뜨는데 끌어도 1px도 안 움직인다. 바깥은 접히는 폭이고 안쪽은 그 폭으로
-    // 버티는 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다.
-    expect(markup.match(/w-\(--work-panel-width\)/g)).toHaveLength(2);
+    // 버티는 자리라, 둘이 갈리면 접히는 동안 글이 되흐른다. 그래서 정확히 둘이다 — 바깥은
+    // flex 기준(`basis`)으로, 안쪽은 폭으로 읽는다(바깥이 탭 줄에 자리를 내줄 수 있어야 해서다).
+    expect(markup.match(/basis-\(--work-panel-width\)/g)).toHaveLength(1);
+    expect(markup.match(/ w-\(--work-panel-width\)/g)).toHaveLength(1);
+  });
+
+  it("줄어들어도 끄는 최소 폭 아래로는 안 준다 — 그 수는 폭 훅이 정한 것 하나다", () => {
+    // 창이 좁으면 이 패널이 탭 줄에 자리를 내준다(`TAB_ROW_COLUMN`). 그 바닥이 끄는 최소 폭과
+    // 갈리면 끌어서는 못 만드는 폭으로 선다 — 그래서 수를 여기 적지 않고 훅이 받은 값을 내린다.
+    const markup = render(true);
+    expect(markup).toMatch(/--work-panel-min:\s*260px/);
+    // 뿌리 태그를 먼저 집는다 — 못 집으면 실패한다. 없는 태그에 대한 「shrink-0이 없다」는 늘 참이다.
+    const root = /<aside[^>]*>/.exec(markup)?.[0];
+    if (!root) throw new Error("패널 aside가 없다");
+    expect(root).toContain("min-w-(--work-panel-min)");
+    expect(root).not.toContain("shrink-0");
   });
 
   it("지난번에 바꾼 폭으로 다시 선다", () => {

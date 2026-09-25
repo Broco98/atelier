@@ -1,3 +1,4 @@
+import { EDGE_BAND, EDGE_MAX_STEP } from "@/lib/edge-scroll";
 import type { WorkView } from "./types";
 import type { SectionsOpen } from "./work-sections";
 
@@ -178,11 +179,6 @@ export function orderChanged(before: readonly WorkView[], after: readonly WorkVi
     before.some((work, index) => work.slug !== after[index].slug || work.pinned !== after[index].pinned)
   );
 }
-
-/** 자동 스크롤이 도는 가장자리 띠의 두께(px) — 행(55px)의 절반쯤이라 행 위를 지나는 손엔 안 걸린다. */
-const EDGE_BAND = 28;
-/** 한 프레임에 가장 많이 굴리는 양(px). 60fps에 초당 600px — 목록 한 화면을 1초 안에 넘긴다. */
-const EDGE_MAX_STEP = 10;
 
 /**
  * **가장자리 자동 스크롤**의 한 프레임 걸음(티켓 06 · 스토리 13). 양수면 아래로. 좌표는 **뷰포트**다 —

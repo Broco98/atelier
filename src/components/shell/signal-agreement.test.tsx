@@ -154,6 +154,7 @@ function 탭(state: ShellsState, { 켜짐 }: { 켜짐: boolean }): string {
       slot={null}
       onSlot={() => {}}
       onDropSlot={() => {}}
+      dragging={false}
     />,
   );
 }

@@ -21,6 +21,7 @@ import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import PageHeader from "@/components/shell/PageHeader";
 import { ResizeHandle } from "@/components/shell/useResizableWidth";
 import useSplitRatio from "@/components/shell/useSplitRatio";
+import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
@@ -557,6 +558,7 @@ function WorksPage({
       slot={drag.slot}
       onSlot={hoverSlot}
       onDropSlot={dropShellOnSlot}
+      dragging={drag.source !== null}
       // 오른쪽 끝 고정(결정 10) — 상태 배지 · ⓘ · ⋯ · 분할 · 패널 열기. 탭은 왼쪽부터
       // 차므로 탭 개수가 변해도 이것들의 자리가 안 움직인다.
       //
@@ -791,7 +793,7 @@ function WorksPage({
   const body = split !== null && specBody && terminalBody ? (
     // 분할 — 머리행 하나 아래에 열 둘이 선다. 이 상자가 `<main>`이 아닌 것은 **문서 열이
     // 이미 `<main>`이기 때문이다**(SpecViewer) — 겹치면 화면에 `<main>`이 둘이 된다.
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className={cn("relative flex min-h-0 flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       <div ref={splitHost} className="flex min-h-0 flex-1">
         {/* **몫을 드는 것은 왼쪽 열 하나다** — 오른쪽이 남는 자리를 먹는다(패널·사이드바와
@@ -811,7 +813,7 @@ function WorksPage({
       </div>
     </div>
   ) : terminalWork ? (
-    <main className="relative flex min-w-0 flex-1 flex-col">
+    <main className={cn("relative flex flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
           자리만 새로 잡힌다(결정 20·21). */}
@@ -854,16 +856,22 @@ function WorksPage({
   );
 
   return (
-    // 본문 열과 작업 패널을 담는 행이다. **min-w-0이 빠지면 패널이 창 밖으로 밀린다** —
-    // 이 행은 스스로도 flex 항목이라 min-width가 auto면 자기 min-content(=본문 열의
-    // min-content + 패널 폭)만큼 부푼다. 본문 열에 min-w-0을 달아 둔 것만으로는 막히지
-    // 않는다. 부푼 만큼 패널이 오른쪽으로 밀려 잘리는데 **미는 양이 본문 내용에 따라
-    // 달라져서**, 소스 보기를 켜고 끌 때마다 패널 폭이 바뀌는 것처럼 보였다 (실측: 예쁜
-    // 보기에서 패널 오른쪽 끝이 1521, 창은 1512 — 9px이 창 밖에 있었다).
+    // 본문 열과 작업 패널을 담는 행이다. 이 행은 스스로도 flex 항목이라 **제 min-content가 곧
+    // 사이드바에 요구하는 자리다** — 그 값이 `탭 줄의 min-content + 패널의 최소 폭`이어야 한다.
+    //
+    // 한때 `min-w-0`이었다. min-width가 auto면 행이 본문 열의 min-content(넓은 문서·코드뷰)만큼
+    // 부풀어 패널이 창 밖으로 밀렸고, **미는 양이 본문 내용에 따라 달라져서** 소스 보기를 켜고
+    // 끌 때마다 패널 폭이 바뀌는 것처럼 보였다(실측: 패널 오른쪽 끝이 1521, 창은 1512). 그런데
+    // `min-w-0`은 바닥을 통째로 없애서, 900px 창에 패널이 열리면 탭 줄이 290px을 받고 셸 칸 상자가
+    // 0px이 됐다 — 칸이 화면에 없었다.
+    //
+    // 지금은 둘 다 막는다: 본문 열이 줄 아닌 자식의 내용 폭을 바깥에 안 알리고(`TAB_ROW_COLUMN`),
+    // 패널은 제 내용이 아니라 최소 폭만 알린다(WorkPanel의 `contain-inline-size`). 그래서 이 행이
+    // `min-w-min`이어도 문서 폭으로는 안 부풀고, 줄이 모자라면 사이드바가 제 최소 폭까지 준다.
     //
     // relative는 생애주기 오버레이가 이 영역 전체를 덮기 위한 것이다 — 패널까지 포함한다.
     // 보관·제거가 도는 동안 패널만 살아 있으면 그 위에서 조작이 계속된다.
-    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div className="relative flex min-h-0 min-w-min flex-1">
       {body}
       {/* **작업 패널을 그리는 유일한 자리다**(결정 49). 1판은 여기와 SpecViewer 둘에서
           그려서 뷰 탭을 오갈 때마다 인스턴스가 갈렸다.

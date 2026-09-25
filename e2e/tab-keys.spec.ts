@@ -62,9 +62,6 @@ test("셸이 0개인 화면에서도 ⌘T가 연다", async ({ page }) => {
 test("⌘W가 켜진 셸 칸을 닫는다 — 확인을 거쳐서", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
-  // 첫 칸도 앉은 뒤에 연다 — 글꼴을 기다리는 동안 새 칸이 켜지면 첫 칸이 떼어져 spawn이 영영
-  // 안 나가고(`terminal-store`의 `openOrReattach`), 아래 `awaitSpawned(page, 2)`가 20초를 넘긴다.
-  await awaitSpawned(page, 1);
   await page.locator('[data-tab="new"]').click();
   await expect(shells(page)).toHaveCount(2);
   // **칸이 선 것과 pty가 앉은 것은 다른 순간이다**(`awaitSpawned`의 머리말) — 안 기다리면
