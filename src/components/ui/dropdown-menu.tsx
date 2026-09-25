@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→13px·border-strong·shadow-lg·bg-background(옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px, 안쪽 p-1→5px·항목 사이 1px(세로 flex gap-px), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→32px·9px·9px·gap-2·12.5px, 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오·체크·하위 메뉴 항목과 라벨은 아직 registry 그대로다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→13px·border-strong·shadow-lg·bg-background(옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px, 안쪽 p-1→5px·항목 사이 1px(세로 flex gap-px), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→32px·9px·9px·gap-2·12.5px, 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오·체크·하위 메뉴 항목과 라벨은 아직 registry 그대로다.
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
@@ -91,7 +91,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex h-8 shrink-0 cursor-default items-center gap-2 rounded-[9px] px-[9px] text-[12.5px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex h-8 shrink-0 cursor-default items-center gap-2 rounded-[9px] px-[9px] text-[12.5px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       {...props}
