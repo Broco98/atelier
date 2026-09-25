@@ -15,7 +15,10 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "main",
     createdAt: "2026-01-02T03:04:05Z",
     description: "결제 도메인",
-    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main"] },
+    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(프로젝트 화면의 Select)에서 「지금 값이 아닌 가지를 고르면」을
+    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 지금 값(`main`)이 목록에 들어 있어, 앞에
+    // 붙이는 규칙(지금 값이 목록에 없을 때)은 이 프로젝트에서 안 탄다.
+    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main", "release"] },
     missing: false,
   },
   {
@@ -25,6 +28,7 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "develop",
     createdAt: "2026-01-03T03:04:05Z",
     description: "",
+    // git 정보가 없다 — 로컬 브랜치가 없는 프로젝트다. 기준 브랜치가 목록 대신 직접 적는 입력칸으로 선다.
     git: null,
     missing: false,
   },
@@ -419,6 +423,11 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
+  // 프로젝트 화면의 기준 브랜치를 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절). **모드를 안
+  // 받는다** — 위 `list_projects`와 같은 등록부의 명령이다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
+  // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
+  // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
+  update_project: null,
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.

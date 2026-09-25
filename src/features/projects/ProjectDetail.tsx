@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from "react";
-import { Folder, GitFork, GitMerge, Check, ChevronDown, ChevronRight, Zap } from "lucide-react";
+import { useRef, useState } from "react";
+import { Folder, GitFork, GitMerge, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
@@ -213,18 +213,7 @@ function PropertyRow({
 
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
-  const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLButtonElement>(null);
   const branches = project.git?.localBranches ?? [];
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   if (branches.length === 0) {
     return <InlineBranchEditor key={project.slug} project={project} />;
@@ -234,51 +223,46 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
     ? branches
     : [project.baseBranch, ...branches];
 
+  // **목록에서 고른다**(스토리 67·68). 방향키 · 글자 치기 · Esc 닫기와 트리거로 포커스 돌려주기는 부품(Select)이
+  // 한다. 지금 값은 `listbox`의 선택됨으로 읽히고, 체크는 보이는 쪽의 말일 뿐이다. 카드는 트리거 아래로 뜬다
+  // (부품의 기본 — 트리거 맞춤을 껐다, S32).
   return (
-    <div className="relative -ml-[7px] flex">
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        title="브랜치 목록에서 변경"
-        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
+    // 칩의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
+    <div className="-ml-[7px] flex">
+      <Select
+        value={project.baseBranch}
+        onValueChange={(branch) => {
+          // **값이 바뀔 때만 저장한다**(지금 규칙). 지금 값을 다시 고른 것은 닫기만 한다.
+          if (branch !== null && branch !== project.baseBranch) {
+            updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
+          }
+        }}
       >
-        {project.baseBranch}
-        <ChevronDown className="size-2.5" strokeWidth={2.2} />
-      </button>
-      {open && (
-        <PopoverPortal anchorRef={anchor} width={248} onClose={() => setOpen(false)}>
+        {/* 이름은 「기준 브랜치」다 — 여는 버튼이 `combobox`가 되어 글자(지금 값)가 이름이 되지 못한다. 없는
+            프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다. */}
+        <SelectTrigger aria-label="기준 브랜치" title="브랜치 목록에서 변경">
+          <SelectValue className="font-mono" />
+        </SelectTrigger>
+        <SelectContent
+          header={
             <div className="flex h-8 items-center justify-between border-b px-3">
               <span className="text-[12.5px] font-semibold text-muted-foreground">브랜치</span>
               <span className="text-[12px] text-tertiary">{options.length}개</span>
             </div>
-            <div className="flex flex-col gap-px p-[5px]">
-              {options.map((branch) => (
-                <button
-                  key={branch}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    if (branch !== project.baseBranch) {
-                      updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
-                    }
-                  }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
-                    {branch}
-                  </span>
-                  {branch === project.baseBranch && (
-                    <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                  )}
-                </button>
-              ))}
-            </div>
+          }
+          footer={
             <div className="border-t px-3 py-2 text-[12px] leading-normal text-tertiary">
               baseBranch 설정만 바꿔요 — checkout은 하지 않아요
             </div>
-        </PopoverPortal>
-      )}
+          }
+        >
+          {options.map((branch) => (
+            <SelectItem key={branch} value={branch}>
+              <span className="font-mono text-muted-foreground">{branch}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -319,6 +303,9 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
   return (
     <input
       autoFocus
+      // 이름표가 없던 칸이다(S37) — 옆 줄의 「baseBranch」 글자는 이 칸과 묶여 있지 않다. 목록이 서는 프로젝트의
+      // 여는 버튼과 같은 이름이다.
+      aria-label="기준 브랜치"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => finish(true)}
