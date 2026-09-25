@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
+import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
 import { calloutKind, docBody, expandHome, resolveHref, resolveImageSrc } from "./doc-refs";
 import type { CalloutKind, DocBody } from "./doc-refs";
@@ -140,7 +141,10 @@ function SpecViewer({
     //
     // 이 열을 감싸던 행(min-w-0을 들고 있던 자리)은 화면으로 올라갔다 — 그 행이 있던 이유가
     // "본문과 패널을 나란히 세우는 것" 하나였고, 그 일이 여기서 사라졌다.
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+    //
+    // **바닥은 머리행(탭 줄)의 폭이다**(`TAB_ROW_COLUMN`). 문서가 아무리 넓어도 그 폭은 바닥에
+    // 안 섞인다 — 넓은 표·코드는 아래 스크롤 영역 안에서 가로로 스크롤한다.
+    <main className={cn("relative flex min-h-0 flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       {/* 넓은 콘텐츠는 자기 안에서 가로 스크롤한다 — 이 영역은 가로로 확장되지 않는다 */}
       <div className="min-h-0 flex-1 overflow-y-auto scroll-quiet">

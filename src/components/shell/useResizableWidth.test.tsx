@@ -51,6 +51,7 @@ describe("nextWidth", () => {
 function control(side: PanelSide): ResizableWidth {
   return {
     width: 300,
+    min: 260,
     dragging: false,
     side,
     handleProps: {

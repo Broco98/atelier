@@ -193,6 +193,10 @@ mod tests {
                 "{}: 순서 파일 쓰기의 tmp 단계가 새어 들어온다",
                 root.display()
             );
+            // 깨진 순서 파일을 옮기기가 덮기 전에 떠 두는 벌(D2 · `atomic.rs`의 `keep_aside`).
+            for backup in [".order.json.bak", ".order.json.1.bak"] {
+                assert!(!relevant(&root.join(backup)), "{}: 순서 파일의 벌 {backup}이 새어 들어온다", root.display());
+            }
         }
     }
 

@@ -569,7 +569,7 @@ enum Placement<'a> {
 ///
 /// 0. **`Top`인데 값이 이미 그렇다면 아무것도 안 쓴다**(스토리 35). 같은 구획 끌기(`Before`·
 ///    `End`)는 자리가 바뀌므로 순서 파일을 쓴다.
-/// 1. **검증이 먼저다.** 실패하면 아무것도 안 쓴다.
+/// 1. **검증이 먼저다.** 실패하면 아무것도 안 쓴다 — 깨진 순서 파일의 벌도 안 뜬다.
 /// 2. 지금 **보이는 순서 전체**를 굳혀 적는다 — 파일에 없던 작업도 제자리로 적혀서, 옮김 한
 ///    번이 그들의 위치를 흔들지 않는다. 폴더 없는 slug는 보이는 순서에 없으니 여기서 떨어진다.
 /// 3. **순서 파일을 먼저** 쓰고, `pinned`가 다를 때만 `work.json`을 쓴다. `work.json` 쓰기가
@@ -580,8 +580,10 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     if matches!(placement, Placement::Top) && work.pinned == to_pinned {
         return Ok(work);
     }
-    let mut order = crate::order::read_order(works_root);
-    let mut visible = read_works_in(works_root, &order.order)?;
+    // 목록 읽기(`read_order`)가 아니라 **다시 쓰기용 읽기**다 — 깨진 파일을 빈 순서로 눕힌 채
+    // 굳혀 쓰면 사람이 손으로 고치던 바이트가 흔적 없이 덮인다(D2). 원문은 쓰기 직전에 벌로 남는다.
+    let mut rewrite = crate::order::read_order_to_rewrite(works_root)?;
+    let mut visible = read_works_in(works_root, &rewrite.order.order)?;
     visible.retain(|other| other.slug != work.slug);
     // 보이는 순서가 고정 먼저로 서 있으므로 고정 구획은 `[0, 고정의 수)`, 비고정은 그 뒤다.
     let pinned_count = visible.iter().filter(|other| other.pinned).count();
@@ -611,8 +613,8 @@ fn reorder(works_root: &Path, slug: &str, to_pinned: bool, placement: Placement)
     let mut slugs: Vec<String> = visible.into_iter().map(|other| other.slug).collect();
     slugs.insert(at, work.slug.clone());
 
-    order.order = slugs;
-    crate::order::write_order(works_root, &order)?;
+    rewrite.order.order = slugs;
+    crate::order::rewrite_order(works_root, rewrite)?;
     if work.pinned != to_pinned {
         work.pinned = to_pinned;
         write_work(works_root, &work)?;
@@ -1578,6 +1580,231 @@ mod tests {
 
     fn slugs_of(views: &[WorkView]) -> Vec<String> {
         views.iter().map(|v| v.work.slug.clone()).collect()
+    }
+
+    /// 작업 루트 아래(하위 폴더 포함)에서 내용이 `bytes`와 똑같은 파일을 찾는다 — 백업의 이름은
+    /// 이 검사가 정하지 않는다. 사람에게 중요한 것은 「손으로 고치던 바이트가 어딘가 남았다」이다.
+    fn file_holding(root: &Path, bytes: &str) -> Option<PathBuf> {
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if std::fs::read_to_string(&path).is_ok_and(|content| content == bytes) {
+                    return Some(path);
+                }
+            }
+        }
+        None
+    }
+
+    /// D2 · 스토리 21. **깨진 순서 파일을 옮기기 한 번이 조용히 덮지 않는다.** 깨진 파일은 빈 순서로
+    /// 눕고(목록은 뜬다), 끌어 놓기는 여전히 되지만, 사람이 손으로 고치던 바이트는 **어딘가에 남는다.**
+    /// Atelier(`works/`)와 Maison(`maison/rooms/`) 두 루트 모양을 다 잰다 — 앱의 `move_work` 명령은
+    /// 이 함수에 `works_dir(mode)`를 먹일 뿐이다(`src-tauri/src/commands.rs`).
+    #[test]
+    fn moving_over_a_broken_order_file_keeps_the_persons_bytes() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-05", false);
+            let broken = r#"{"order":["가","나", 여기 손으로 고치다 멈춤"#;
+            write_raw_order(&works, broken);
+
+            let moved = move_work(&works, "가", false, Some("나")).unwrap();
+            assert_eq!(slugs_of(&moved), slugs(&["가", "나"]), "{root}: 옮기기가 안 먹었다");
+
+            assert!(
+                file_holding(tmp.path(), broken).is_some(),
+                "{root}: 깨진 순서 파일의 바이트가 옮기기 한 번에 사라졌다 — 남은 순서 파일: {:?}",
+                std::fs::read_to_string(works.join(".order.json")).ok()
+            );
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 목록이 옮긴 뒤 순서가 아니다");
+        }
+    }
+
+    /// D2 — 고정 토글(앱 핀 버튼 · 다리 · MCP `atelier_edit_work`)도 같은 `reorder`를 탄다.
+    #[test]
+    fn pinning_over_a_broken_order_file_keeps_the_persons_bytes() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-05", false);
+            let broken = "{\"order\":[\"가\"\n  \"나\"]}";
+            write_raw_order(&works, broken);
+
+            let view = update_work_pinned(&works, "가", true).unwrap();
+            assert!(view.work.pinned, "{root}: 고정이 안 먹었다");
+
+            assert!(
+                file_holding(tmp.path(), broken).is_some(),
+                "{root}: 깨진 순서 파일의 바이트가 고정 토글 한 번에 사라졌다 — 남은 순서 파일: {:?}",
+                std::fs::read_to_string(works.join(".order.json")).ok()
+            );
+            assert_eq!(listed(&works), slugs(&["가", "나"]), "{root}: 목록이 옮긴 뒤 순서가 아니다");
+        }
+    }
+
+    /// 루트 바로 아래의 **순서 파일 아닌 파일** 이름 전부(정렬). 벌이 어디에 무슨 이름으로 섰는지,
+    /// 안 섰는지를 본다.
+    fn loose_files(works: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(works)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.path().is_file())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != ".order.json")
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// D2 — 벌은 **그 진행 중 루트 안의 점 파일**이고(모드 홈이나 루트 밖이 아니다, 감시자·목록이
+    /// 건너뛴다), `.tmp`로 안 끝난다. 손으로 다시 고치다 **또 깨뜨려도 첫 벌을 안 덮는다** — 덮이는
+    /// 것은 지난번 사람의 손질이다. 옮기기 뒤 순서 파일은 새 순서로 온전하다.
+    #[test]
+    fn a_second_break_keeps_the_first_backup_beside_the_order_file() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-05", false);
+
+            let first = r#"{"order":["가", 첫 손질"#;
+            write_raw_order(&works, first);
+            move_work(&works, "가", false, Some("나")).unwrap();
+            assert_eq!(order_on_disk(&works), slugs(&["가", "나"]), "{root}: 옮긴 뒤 순서 파일이 온전하지 않다");
+            assert_eq!(loose_files(&works).len(), 1, "{root}: 첫 깨짐 한 번에 벌이 하나가 아니다");
+
+            let second = r#"{"order":["나", 둘째 손질"#;
+            write_raw_order(&works, second);
+            update_work_pinned(&works, "나", true).unwrap();
+
+            let backups = loose_files(&works);
+            assert_eq!(backups.len(), 2, "{root}: 벌이 둘이어야 한다 — {backups:?}");
+            for name in &backups {
+                assert!(name.starts_with(".order.json"), "{root}: 벌이 순서 파일 옆 점 파일이 아니다: {name}");
+                assert!(!name.ends_with(".tmp"), "{root}: 벌이 tmp 찌꺼기 이름이다: {name}");
+            }
+            let kept: Vec<String> =
+                backups.iter().map(|name| std::fs::read_to_string(works.join(name)).unwrap()).collect();
+            assert!(kept.contains(&first.to_string()), "{root}: 둘째 깨짐이 첫 벌을 덮었다 — {kept:?}");
+            assert!(kept.contains(&second.to_string()), "{root}: 둘째 손질이 안 남았다 — {kept:?}");
+            if root == "maison/rooms" {
+                assert!(loose_files(&tmp.path().join("maison")).is_empty(), "벌이 모드 홈에 섰다");
+            }
+            assert_eq!(listed(&works), slugs(&["나", "가"]), "{root}: 목록이 고정한 뒤 순서가 아니다");
+        }
+    }
+
+    /// D2 — **UTF-8이 아닌** 순서 파일도 바이트 그대로 남는다. 파싱 실패만 가르는 고침은 이 파일을
+    /// 문자열 읽기에서 먼저 넘어져 조용히 덮는다.
+    #[test]
+    fn a_non_utf8_order_file_is_kept_byte_for_byte_when_moving() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-05", false);
+        let broken: &[u8] = b"{\"order\":[\"\xff\xfe\xc0\"]}";
+        std::fs::write(works.join(".order.json"), broken).unwrap();
+
+        move_work(&works, "나", false, None).unwrap();
+
+        let kept = loose_files(&works)
+            .into_iter()
+            .any(|name| std::fs::read(works.join(&name)).unwrap() == broken);
+        assert!(kept, "UTF-8이 아닌 순서 파일의 바이트가 옮기기 한 번에 사라졌다");
+    }
+
+    /// D2 — **아예 못 읽는** 순서 파일은 덮지 않고 거절한다. 떠 둘 바이트가 없는데 쓰면 흔적이
+    /// 안 남는다. 루트로 돌면 권한이 안 먹으므로 그때는 잴 것이 없어 기준선에서 건너뛴다.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_order_file_refuses_the_move_and_stays() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-05", false);
+        write_raw_order(&works, r#"{"order":["나","가"]}"#);
+        let path = works.join(".order.json");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&path).is_ok() {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            eprintln!("권한이 안 먹는 사용자(root)라 건너뛴다");
+            return;
+        }
+
+        let moved = move_work(&works, "가", false, None);
+        let pinned = update_work_pinned(&works, "가", true);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        // 인자 탓이 아니라 로컬 파일 탓이다 — MCP가 「인자를 고쳐 다시 불러라」가 아니라 「사람에게
+        // 알려라」로 옮기는 갈래(`tool_error.rs`)여야 한다.
+        assert!(matches!(moved, Err(Error::Io(_))), "못 읽는 순서 파일 위에서 옮기기가 인자 오류로 거절되거나 됐다: {moved:?}");
+        assert!(pinned.is_err(), "못 읽는 순서 파일 위에서 고정이 됐다");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), r#"{"order":["나","가"]}"#);
+        assert!(loose_files(&works).is_empty(), "거절한 옮기기가 벌을 떴다");
+        assert!(!get_work(&works, "가").unwrap().work.pinned, "거절한 고정이 work.json을 썼다");
+    }
+
+    /// D2 — 벌은 **실제로 덮을 때만** 뜬다. 거절한 옮기기(검증 실패), 이미 그 값인 고정, 지우기,
+    /// 목록 읽기는 깨진 파일을 글자 하나 안 바꾸고 벌도 안 뜬다 — 뜨면 검색이 글자마다 벌을 쌓는다.
+    #[test]
+    fn nothing_but_an_actual_rewrite_backs_up_a_broken_order_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let works = tmp.path().join("works");
+        plant(&works, "가", "2026-08-01", false);
+        plant(&works, "나", "2026-08-02", false);
+        plant(&works, "핀", "2026-08-03", true);
+        plant(&works, "지울것", "2026-08-04", false);
+        let broken = r#"{"order":["나","가" 고치는 중"#;
+        write_raw_order(&works, broken);
+
+        let refused = [
+            ("없는 before", move_work(&works, "가", false, Some("없음")).map(|_| ())),
+            ("다른 구획의 before", move_work(&works, "가", true, Some("나")).map(|_| ())),
+            ("자기 자신 before", move_work(&works, "가", false, Some("가")).map(|_| ())),
+        ];
+        for (case, outcome) in refused {
+            assert!(outcome.is_err(), "{case}: 거절해야 한다");
+        }
+        update_work_pinned(&works, "가", false).unwrap();
+        update_work_pinned(&works, "핀", true).unwrap();
+        remove_work(&works, "지울것", false).unwrap();
+        // 검색·사이드바·팔레트는 모두 이 목록 읽기를 딛는다(`list_works` → `read_order`).
+        listed(&works);
+
+        assert_eq!(std::fs::read_to_string(works.join(".order.json")).unwrap(), broken);
+        assert!(loose_files(&works).is_empty(), "덮지 않은 길이 벌을 떴다: {:?}", loose_files(&works));
+    }
+
+    /// D2 — **온전한** 순서 파일을 다시 쓸 때는 벌이 안 뜬다. 뜨면 끌기·핀 한 번마다
+    /// `.order.json.N.bak`이 끝없이 쌓인다(`keep_aside`의 「깨졌을 때만 뜬다」가 거짓이 된다).
+    #[test]
+    fn rewriting_a_valid_order_file_leaves_no_backup() {
+        for root in ["works", "maison/rooms"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let works = tmp.path().join(root);
+            plant(&works, "가", "2026-08-01", false);
+            plant(&works, "나", "2026-08-02", false);
+            plant(&works, "다", "2026-08-03", false);
+            write_raw_order(&works, r#"{"order":["가","나","다"]}"#);
+
+            move_work(&works, "다", false, Some("가")).unwrap();
+            move_work(&works, "나", true, None).unwrap();
+            update_work_pinned(&works, "가", true).unwrap();
+            update_work_pinned(&works, "나", false).unwrap();
+
+            assert_eq!(listed(&works), slugs(&["가", "나", "다"]), "{root}: 옮기기·고정이 안 먹었다");
+            assert!(loose_files(&works).is_empty(), "{root}: 온전한 순서 파일 위에서 벌이 떴다: {:?}", loose_files(&works));
+            if root == "maison/rooms" {
+                assert!(loose_files(&tmp.path().join("maison")).is_empty(), "벌이 모드 홈에 섰다");
+            }
+        }
     }
 
     /// UI개선 결정 2 · S3. **보이는 순서 전체를 굳힌 뒤** 옮긴다 — 파일에 없던 `라`·`나`도 제자리로
