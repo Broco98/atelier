@@ -413,18 +413,18 @@ export async function fireEvent(
   );
 }
 
+/** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
+export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+
 /**
  * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
  *
- * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
- * **형제**라(`WorkSectionList`의 `WorkRow`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
- * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
+ * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의
+ * `[data-lane]`으로 집는다 — 행이 한 줄이 되어 둘째 줄(`data-subrow`)이 걷혀도 이 길은 그대로다
+ * (`sidebar-active-band` 결정 14). 한때 둘째 줄에서 한 칸 올라가 집었는데, 그러면 둘째 줄을 걷는
+ * 날 이것을 딛는 spec 셋이 함께 무너진다.
  */
-export const 레인 = (page: Page, slug: string) =>
-  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
-
-/** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
-export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
 
 /** 사이드바에 선 작업 행의 slug, 위에서부터. */
 export const shownWorkOrder = (page: Page) =>
