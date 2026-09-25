@@ -126,10 +126,11 @@ describe("좁혀서 0개일 때 하는 말", () => {
   });
 });
 
-// **입력은 손으로 적은 spec 트리다**(구현 스펙 Testing 「앱」) — 앱에는 규칙이 없어 여기서 재는 것은
-// 「받은 것을 받은 대로 그리는가」뿐이다. 그래서 아래 트리는 일부러 이름으로 세울 때의 순서가
-// 아니다: 판이 최신부터 서고, 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다(구현 스펙 7절
-// 허용 차이 4). 이름으로 알아보던 앱이라면 판을 오름차순으로 다시 세우고 `tickets/`에 아이콘을 줬다.
+// **입력은 손으로 적은 spec 트리다**(spec 레이아웃 구현 스펙 Testing 「앱」) — 앱에는 규칙이 없어
+// 여기서 재는 것은 「받은 것을 받은 대로 그리는가」뿐이다. 그래서 아래 트리는 일부러 이름으로 세울
+// 때의 순서가 아니다: 판이 최신부터 서고, 최상위 `tickets/`는 레이아웃의 자리 밖이라 아이콘이 없다
+// (spec 레이아웃 구현 스펙 7절 허용 차이 4). 이름으로 알아보던 앱이라면 판을 오름차순으로 다시
+// 세우고 `tickets/`에 아이콘을 줬다.
 describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다", () => {
   const file = (path: string, icon: string | null = null): SpecTreeItem => ({
     name: path.slice(path.lastIndexOf("/") + 1),
@@ -191,7 +192,7 @@ describe("아카이브 트리는 받은 spec 트리를 spec/ 아래에 그린다
     const positions = shown.map((name) => at(markup, name));
     expect(positions.every((one) => one >= 0), `${shown} → ${positions}`).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    // `spec/`는 접히는 폴더 행이고 펼친 채 선다. 판은 최신만 펼친다(05와 같은 규칙).
+    // `spec/`는 접히는 폴더 행이고 펼친 채 선다. 판은 최신만 펼친다(spec 레이아웃 티켓 05와 같은 규칙).
     expect(folderRow(markup, "spec")).toContain('aria-expanded="true"');
     expect(folderRow(markup, "01-첫째-판")).toContain('aria-expanded="false"');
     expect(at(markup, "지난-계획.md")).toBe(-1);
