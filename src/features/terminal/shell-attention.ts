@@ -241,7 +241,7 @@ export function topSignal(shells: ReadonlyArray<Shell>): ShellSignal | null {
 }
 
 /**
- * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·링은 `kind`가 정하고 오른쪽 메타는
+ * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·스피너는 `kind`가 정하고 오른쪽 메타는
  * 시각(경과)과 그 셸에서 도는 것(마크)이 정한다. 셸의 마지막 말도 함께 들지만 행은 그것을
  * 안 그린다 — 행이 한 줄로 돌아오면서(`sidebar-active-band` 결정 14) 말은 호버 카드의 말
  * 칸과 행 설명으로 갔고, 그 둘은 `callingNotesOf`로 읽는다(같은 셸을 고르는 것은 둘 다 이

@@ -227,7 +227,7 @@ test("끄는 동안 호버 카드가 안 뜨고, 떠 있던 카드는 문턱을 
   await page.mouse.up();
 });
 
-// 셸 신호가 뜬 행은 레인이 점·링을 그린다(#203). 그 행도 같은 손짓이다 — 레인 위를 눌러도 끌린다.
+// 셸 신호가 뜬 행은 레인이 점·스피너를 그린다(#203). 그 행도 같은 손짓이다 — 레인 위를 눌러도 끌린다.
 test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);

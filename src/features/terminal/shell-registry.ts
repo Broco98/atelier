@@ -478,7 +478,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     // 첫 값은 백엔드의 다음 회차가 준다(adr-04) — 최대 1초다. 여기서 미리 채울 것이 없다.
     running: null,
     // **막 뜬 셸은 아무 주장도 안 한다**(결정 3). 여기에 「도는 중」을 미리 앉히면 훅도
-    // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 링은 영영 안 꺼진다.
+    // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 스피너는 영영 안 꺼진다.
     attention: null,
   };
   return {

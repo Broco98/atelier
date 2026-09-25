@@ -417,7 +417,7 @@ export async function fireEvent(
 export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
 
 /**
- * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
+ * 그 work 행의 **레인** — 화면값이 있으면 점·스피너가, 없으면 work 상태 아이콘이 든다.
  *
  * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의
  * `[data-lane]`으로 집는다 — 행이 한 줄이 되어 둘째 줄(`data-subrow`)이 걷혀도 이 길은 그대로다
