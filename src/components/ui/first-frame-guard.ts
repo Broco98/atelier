@@ -62,7 +62,9 @@ export function createFirstFrameGuard(): FirstFrameGuard {
     }
     event.stopImmediatePropagation();
     if (typeInto !== null && isTyping(event)) {
-      // 기본 동작(글자 넣기)은 살린다 — 포커스가 옮겨 간 칸에 들어간다.
+      // 기본 동작(글자 넣기)은 살린다 — 포커스가 옮겨 간 칸에 들어간다. WebKit도 keydown 중에 옮긴
+      // 포커스로 그 글자를 넣는다(L3 `search-palette.spec.ts`의 ⌘K 바로 뒤 글자가 잰다). 그래서 칸의
+      // 값을 손으로 쓰지 않는다.
       typeInto.focus();
       return;
     }

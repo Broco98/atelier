@@ -371,12 +371,43 @@ test("팔레트가 떠 있을 때의 요청은 팔레트를 닫지 않고 그 �
 
   await expect(quitDialog(page)).toBeVisible();
   await expect(paletteUnder(page)).toBeVisible();
+  // **포커스가 팔레트의 가둠을 넘어 창으로 간다.** 팔레트도 모달이라 두 가둠이 겹치는데, 포커스가
+  // 팔레트 입력칸에 남으면 반사적 Enter가 창이 아니라 팔레트의 켜진 줄로 간다(#223의 「취소」 포커스도 헛돈다).
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
   // 창이 떠 있는 동안 읽기 도구는 창만 읽는다(스토리 77) — 팔레트는 화면에 서 있지만 접근성 트리에서
   // 빠진다. 위 줄이 앵커다.
   await expect(palette).toHaveCount(0);
   await quitDialog(page).getByRole("button", { name: "취소", exact: true }).click();
   await expect(quitDialog(page)).toHaveCount(0);
   await expect(palette).toBeVisible();
+  expect(await callCount(page, "quit_app")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **Esc 한 번은 위의 창 하나만 닫는다.** 둘 다 창(`window`) 캡처로 Esc를 받던 때는 한 번에 둘 다
+// 닫혔다. 이제 Esc는 포커스가 든 창의 키 처리가 받고 거기서 멈춘다 — 그래서 위 검사의 「취소」 포커스가
+// 이 검사의 전제다.
+test("팔레트 위에 뜬 창은 Esc 한 번에 창만 닫히고, 팔레트는 남아 입력칸이 포커스를 되받는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await page.keyboard.press("Meta+k");
+  const palette = page.getByRole("listbox", { name: "검색 결과" });
+  await expect(palette).toBeVisible();
+
+  await fireQuitRequest(page);
+  // **포커스가 창에 들어온 뒤에 누른다.** 그 전의 키는 첫 프레임 가드가 삼킨다(S24).
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  await expect(quitDialog(page)).toHaveCount(0);
+  await expect(palette).toBeVisible();
+  // 창은 열기 전 자리로 포커스를 돌려준다 — 팔레트의 입력칸이다. 안 돌아오면 다음 글자가 어디에도 안 선다.
+  await expect(page.getByRole("textbox", { name: "검색어" })).toBeFocused();
   expect(await callCount(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

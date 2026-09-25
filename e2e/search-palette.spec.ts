@@ -10,7 +10,14 @@ import {
   SEARCH_HITS,
   WORKS,
 } from "./fixtures";
-import { awaitSpawned, fireEvent, installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import {
+  awaitSpawned,
+  callCount,
+  fireEvent,
+  installFixtureBackend,
+  readIpcRecord,
+  unknownIpcCalls,
+} from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
 //
@@ -97,6 +104,17 @@ const modeButton = (page: Page, label: string) =>
 /** 팔레트를 여는 키. 화음 하나라 준비도 상태도 없다(팔레트 결정 1). */
 async function pressSearchKey(page: Page) {
   await page.keyboard.press("Meta+k");
+}
+
+/**
+ * 팔레트가 **다 떴다** — 열림 애니메이션(100ms 페이드와 95%→100% 확대, 결정 7)이 끝났다. 기하를
+ * 재는 검사는 이것을 먼저 기다린다: 그 전에 잰 자리는 줄어든 카드의 것이라, 같은 줄을 두 번 재면
+ * 둘이 몇 px 갈린다.
+ */
+async function settled(page: Page) {
+  await page
+    .getByRole("dialog", { name: "검색" })
+    .evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
 }
 
 /** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
@@ -265,6 +283,7 @@ test("모든 줄이 같은 거터를 예약한다", async ({ page }) => {
 
   await pressSearchKey(page);
   await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  await settled(page);
 
   // 고정 답은 문서 줄이다 — 글리프가 없는 갈래이고, **빈 슬롯이 서야 하는** 쪽이다.
   const docRow = await gutterOf(rows(page).first());
@@ -365,7 +384,7 @@ test("방향키로 고른 문서로 가고 분할이 안 무너진다", async ({
 });
 
 // 「키보드가 주인 도구」여도 손이 마우스에 있을 때가 있다. 클릭은 정적 마크업 seam에
-// 이벤트가 없어 안 보인다 — 줄이 `<button>`이라는 것까지가 그쪽이 드는 전부다.
+// 이벤트가 없어 안 보인다 — 줄에 무엇이 적히는지까지가 그쪽이 드는 전부다.
 test("마우스로도 고를 수 있다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${specWork.slug}`);
@@ -402,6 +421,92 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   expect(page.url()).toBe(before);
   // **빌린 포커스를 돌려준다.** 안 돌려주면 Esc 뒤에 친 글자가 아무 데도 안 들어간다.
   await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 창으로서의 팔레트 (결정 10) ──
+// 바깥은 Dialog이고 목록은 우리 listbox다. 포커스는 입력칸에 머물고, 켜진 결과는 입력칸이
+// `aria-activedescendant`로 가리킨다 — 읽기 도구가 입력칸을 떠나지 않고 켜진 줄을 읽는다(스토리 84).
+
+test("팔레트는 창으로 읽히고, ↓로 켠 결과를 입력칸이 가리킨다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+
+  await pressSearchKey(page);
+
+  const dialog = page.getByRole("dialog", { name: "검색" });
+  await expect(dialog).toBeVisible();
+  // 입력칸과 목록이 **그 창 안에** 선다 — 창만 따로 떠 있고 목록이 밖이면 읽기 도구는 창을 비어 있게 읽는다.
+  await expect(dialog.getByRole("listbox", { name: "검색 결과" })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "검색어" })).toBeFocused();
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+
+  await page.keyboard.press("ArrowDown");
+
+  const lit = rows(page).nth(1);
+  await expect(lit).toHaveAttribute("aria-selected", "true");
+  const id = await lit.getAttribute("id");
+  expect(id, "켜진 줄에 id가 없다 — 입력칸이 가리킬 곳이 없다").toBeTruthy();
+  // 그 id가 **그 줄 하나**를 가리킨다 — 줄마다 같은 id면 가리키는 것이 첫 줄로 눕는다.
+  await expect(page.locator(`[id="${id}"]`)).toHaveCount(1);
+  await expect(box(page)).toHaveAttribute("aria-activedescendant", id!);
+  // 옮긴 것은 켜짐뿐이다 — 포커스는 입력칸에 머문다.
+  await expect(box(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// S25. 키는 **창(Popup)의 키 처리**가 받는다. 입력칸에만 달면, 카드의 누를 것 없는 자리(그룹 머리)를
+// 누른 순간 포커스가 창으로 가고 그 뒤로 방향키가 죽는다.
+test("그룹 머리를 누른 뒤에도 ↓와 Enter가 먹는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  await expect(page.locator("main").getByRole("heading", { name: "개요" })).toBeVisible();
+
+  await pressSearchKey(page);
+  await expect(rows(page)).toHaveCount(SEARCH_HITS.length);
+  await expect(rows(page).nth(0)).toHaveAttribute("aria-selected", "true");
+
+  await page.locator("[data-head]").first().click();
+  // **앵커: 포커스가 입력칸을 떠나 창으로 갔다.** 입력칸에 남으면 입력칸의 키로도 초록이다.
+  await expect(page.getByRole("dialog", { name: "검색" })).toBeFocused();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(rows(page).nth(1)).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+
+  await expect(palette(page)).toHaveCount(0);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("file"))
+    .toBe(specWork.specFiles[1]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// S24 · P11. 창은 첫 포커스를 **다음 프레임에** 옮긴다 — 그 사이에 친 글자는 아직 셸에 포커스가 있어
+// 셸로 간다. 팔레트에서는 그 글자를 삼키지 않고 입력칸으로 옮긴다: 「첫 키부터 팔레트가 받는다」(스토리 86).
+//
+// **그 프레임은 시계를 세워 붙잡는다**(`quit-confirm.spec.ts`의 ⌘W 바로 뒤 Enter와 같은 수법) — 세운
+// 시계에서는 프레임이 안 오므로 글자는 늘 그 틈에 닿는다.
+test("셸에서 ⌘K로 연 바로 뒤에 친 글자는 셸이 아니라 입력칸에 선다", async ({ page }) => {
+  await page.clock.install();
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  // **앵커: 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다.** 안 나가는 셸이면 아래 「안 늘었다」가
+  // 아무것도 안 잰다.
+  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await page.keyboard.type("a");
+  await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
+  const written = await callCount(page, "pty_write");
+
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await pressSearchKey(page);
+  await page.keyboard.press("x");
+  await page.clock.resume();
+
+  await expect(page.getByRole("dialog", { name: "검색" })).toBeVisible();
+  await expect(box(page)).toHaveValue("x");
+  expect(await callCount(page, "pty_write")).toBe(written);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -672,6 +777,7 @@ test("목록 바닥이 녹아 「더 있다」를 말하고, 바닥에 닿으면
   // 버튼으로 연다 — 여기서 재는 것은 목록 바닥이라 여는 길이 무엇이든 같다.
   await searchButton(page).click();
   await expect(palette(page)).toBeVisible();
+  await settled(page);
 
   const list = palette(page);
   const 규격 = await list.evaluate((el) => {
