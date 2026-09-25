@@ -362,10 +362,11 @@ mod tests {
 
     /// CLI 크레이트 `src/` 아래의 소스 전부. 위 표와 짝이다 — 앱 쪽은 「env를 아예 안
     /// 읽는다」를, 이쪽은 「읽는 자리가 하나뿐이다」를 붙든다.
-    const CLI_SOURCES: [(&str, &str); 9] = [
+    const CLI_SOURCES: [(&str, &str); 10] = [
         ("main.rs", include_str!("../../atelier-cli/src/main.rs")),
         ("mcp/install.rs", include_str!("../../atelier-cli/src/mcp/install.rs")),
         ("mcp/instructions.rs", include_str!("../../atelier-cli/src/mcp/instructions.rs")),
+        ("mcp/layout_tools.rs", include_str!("../../atelier-cli/src/mcp/layout_tools.rs")),
         ("mcp/mod.rs", include_str!("../../atelier-cli/src/mcp/mod.rs")),
         ("mcp/project_tools.rs", include_str!("../../atelier-cli/src/mcp/project_tools.rs")),
         ("mcp/read_tools.rs", include_str!("../../atelier-cli/src/mcp/read_tools.rs")),

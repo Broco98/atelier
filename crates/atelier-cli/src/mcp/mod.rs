@@ -10,6 +10,7 @@ mod instructions;
 mod read_tools;
 mod work_tools;
 mod project_tools;
+mod layout_tools;
 mod skill_cleanup;
 pub mod install;
 
@@ -86,7 +87,10 @@ impl AtelierServer {
             archive_root: atelier_core::archive_dir(mode),
             data_root: atelier_core::data_root(),
             // 영역별 라우터를 합성한다. 도구를 추가하는 티켓은 파일과 라우터를 하나씩 늘린다.
-            tool_router: Self::read_router() + Self::work_router() + Self::project_router(),
+            tool_router: Self::read_router()
+                + Self::work_router()
+                + Self::project_router()
+                + Self::layout_router(),
         }
     }
 
