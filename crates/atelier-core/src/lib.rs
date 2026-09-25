@@ -51,8 +51,9 @@ pub use recent::touch_recent_work;
 pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
 pub use layout::{
-    builtin_layout, render_layout, resolve_layout, EntryKind, Fallback, LayoutEntry, LayoutSource,
-    Rendered, Resolved, SpecLayout, TemplateVerdict,
+    builtin_layout, parse_layout, render_layout, resolve_layout, serialize_layout, EntryKind,
+    Fallback, LayoutEntry, LayoutError, LayoutSource, Rendered, Resolved, SpecLayout,
+    TemplateVerdict,
 };
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
