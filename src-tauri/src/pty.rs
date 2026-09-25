@@ -346,7 +346,8 @@ fn checks_on(input: &Inputs, asked: Vec<Result<Asked, String>>) -> Vec<Result<Cl
 
 /// **셸 하나의 답 — 두 물음이 모두 이 하나를 지난다.** 명령이 도는가는 결정 92의 판정 그대로이고, 수에서 셋을
 /// 빼는 것은 `verdict::close_count`가 혼자 한다. foreground 그룹은 명령이 돌 때만 넘긴다 — 프롬프트면 그 그룹은
-/// 셸 자신이다.
+/// 셸 자신이고, 잡 제어 밖에서 뜬 자손이 거기 산다. 늘 넘기면 그것이 수에서 빠져 확인 창 없이 함께 끝난다
+/// (`one_snapshot_answers_every_shell_as_if_asked_alone`의 셸 A와 풀 배선 장면 `Ask`가 잰다).
 fn close_check(verdict: &Verdict, asked: &Asked) -> CloseCheck {
     let command = command_runs(asked.pid, asked.foreground);
     let command_group = if command { u32::try_from(asked.foreground).ok() } else { None };
@@ -1078,7 +1079,8 @@ mod tests {
     /// 값을 갈아 끼우는 변형은 그대로 통과한다 — `.process_group_leader().or(Some(1))`로
     /// 뒤집어도 초록인 것을 실측했다(그러면 죽은 셸이 늘 「명령이 돈다」가 된다). 그 자리는
     /// **살아 있는 pty 없이는 못 잰다** — 풀 배선 장면 `Ask`가 진짜 셸로 잰다. 수를 세는 규칙은
-    /// `processes::verdict`의 표가, 배치와 셸 하나가 같은 답을 내는지는 아래 표가 잰다.
+    /// `processes::verdict`의 표가, 배치와 셸 하나가 같은 답을 내는지와 foreground 그룹을 명령이 돌 때만 빼는지는
+    /// 아래 표가 잰다 — `close_check`가 그룹을 늘 넘기도록 바꿔도 이 핀과 판정 표는 초록이었다(실측).
     #[test]
     fn command_running_hands_both_values_to_the_verdict() {
         assert!(
@@ -1114,9 +1116,14 @@ mod tests {
     /// 같다**(티켓 08). 종료 · 아카이브 확인 창이 셸 여럿을 한 번에 묻고, 셸 하나를 닫을 때는 하나만 묻는다 — 두
     /// 답이 어긋나면 같은 셸이 닫기 창에서는 조용하고 종료 창에서는 무언가 도는 셸이 된다.
     ///
-    /// 셸 A(100)는 사람이 친 뒤 dev 서버 하나를 띄웠다. 셸 B(200)는 입력이 없다 — 자손은 모두 셸 도우미다. 셸
-    /// C(300)에서는 claude가 돌고(그 그룹 330과 MCP 서버), Bash 도구가 dev 서버(340, 제 세션)를 띄웠다. 못 읽은
-    /// 셸의 오류는 제 자리에 남는다.
+    /// 셸 A(100)는 사람이 친 뒤 dev 서버 하나를 띄웠고, 잡 제어를 끈 채 뒤로 띄운 것(103)이 **셸 자신의 그룹(100)에**
+    /// 산다. 셸 B(200)는 입력이 없다 — 자손은 모두 셸 도우미다. 셸 C(300)에서는 claude가 돌고(그 그룹 330과 MCP
+    /// 서버), Bash 도구가 dev 서버(340, 제 세션)를 띄웠다. 못 읽은 셸의 오류는 제 자리에 남는다.
+    ///
+    /// **foreground 그룹은 명령이 돌 때만 뺀다**(`close_check`) — 그 갈래를 재는 것도 이 표다. A는 프롬프트에 서
+    /// 있어 터미널을 쥔 그룹이 셸 자신(100)이다. 그 그룹을 늘 빼면 103이 수에서 빠져 A가 조용한 셸이 되고, 확인 창
+    /// 없이 닫히며 103이 함께 끝난다. C의 331(그룹 330)은 명령의 그룹이라 빠진다 — 두 갈래가 한 표에 선다.
+    /// 판정 표(`verdict`)는 `close_count`에 그룹을 곧바로 주므로 이 갈래를 못 잰다.
     #[test]
     fn one_snapshot_answers_every_shell_as_if_asked_alone() {
         use crate::processes::verdict::{Inputs, Occasion, ShellEntry};
@@ -1136,6 +1143,7 @@ mod tests {
             row(100, 50, 100, 1_100, None),
             row(101, 100, 101, 2_000, None),
             row(102, 1, 102, 6_000, Some("G-1")),
+            row(103, 100, 100, 6_500, None),
             row(200, 50, 200, 1_200, None),
             row(201, 200, 201, 2_000, None),
             row(202, 1, 202, 3_000, Some("G-2")),
@@ -1179,8 +1187,8 @@ mod tests {
         let quiet = |descendants| Ok(super::CloseCheck { command: false, descendants });
         assert_eq!(
             together,
-            vec![quiet(1), quiet(0), Ok(super::CloseCheck { command: true, descendants: 1 }), Err(super::gone(9))],
-            "셸마다 명령과 수가 어긋났다"
+            vec![quiet(2), quiet(0), Ok(super::CloseCheck { command: true, descendants: 1 }), Err(super::gone(9))],
+            "셸마다 명령과 수가 어긋났다 — A가 1이면 프롬프트인데 셸 자신의 그룹(100)을 명령의 그룹으로 뺐다"
         );
         assert_eq!(together, alone, "셸 셋을 한 번에 물은 답이 하나씩 물은 답과 다르다");
     }
@@ -1748,8 +1756,9 @@ mod tests {
     }
 
     /// **풀 배선 — 닫기 전 물음**(티켓 08 · 프로세스 스펙 P1 · S55). 진짜 zsh로 `command_running`이 확인 창에 줄 답을
-    /// 본다: 사람이 입력하기 전에 뜬 것(셸 도우미)은 수에 안 들고, 입력 뒤에 제 세션으로 떨어진 dev 서버는 들고,
-    /// 예외 목록의 이름과 명령 자신(foreground 그룹)은 안 든다. 배치 물음도 같은 답을 낸다.
+    /// 본다: 사람이 입력하기 전에 뜬 것(셸 도우미)은 수에 안 들고, 입력 뒤에 제 세션으로 떨어진 dev 서버와 잡 제어
+    /// 밖에서 셸 자신의 그룹에 뜬 것은 들고, 예외 목록의 이름과 명령 자신(foreground 그룹)은 안 든다. 배치 물음도
+    /// 같은 답을 낸다.
     ///
     /// p10k 셸을 입력 없이 닫으면 창이 안 뜨는 것과, claude Bash 도구가 dev 서버를 띄운 셸이 그 수를 말하는 것의
     /// 백엔드 절반이다. 창의 절반은 L3(`e2e/close-confirm-count.spec.ts`)가 잰다.
@@ -2064,22 +2073,42 @@ mod tests {
         });
         let before = super::command_running(pool, id);
 
-        // (2) 사람이 처음 입력했다. 그 뒤에 dev 서버 모양 하나와, 예외 목록의 이름으로 부른 것 하나를 띄운다.
+        // 셸의 자식인 `sleep` 중 셸 자신의 그룹에 사는 것(잡 제어 밖의 백그라운드 잡)과 제 그룹을 연 것(명령).
+        // 시스템 바이너리라 표식은 안 읽히고 셸의 트리로 잡힌다.
+        let sleep_of_shell = |in_shell_group: bool| {
+            take(EnvScope::BornSince(u64::MAX))
+                .procs
+                .into_iter()
+                .find(|p| {
+                    shell_pid == Some(p.ppid) && p.name == "sleep" && (Some(p.pgid) == shell_pid) == in_shell_group
+                })
+                .map(|p| p.id)
+        };
+
+        // (2) 사람이 처음 입력했다. 그 뒤에 dev 서버 모양 하나와, 예외 목록의 이름으로 부른 것 하나와, 잡 제어를
+        // 끈 채 뒤로 띄운 것 하나를 띄운다. 마지막 것은 셸 자신의 그룹에 산다 — 프롬프트에서 터미널을 쥔 그룹도
+        // 셸 자신이라, 명령이 없는데 그 그룹을 빼면 이것이 수에서 빠진다(`close_check`가 그룹을 명령이 돌 때만 넘기는
+        // 까닭). 잡 제어는 같은 줄에서 다시 켠다 — (3)의 명령이 제 그룹을 열어야 한다.
         let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).expect("시계가 에포크 뒤다").as_millis() as u64;
         super::note_first_input(pool, id, now_ms).expect("있는 셸이다");
         std::thread::sleep(Duration::from_millis(5));
-        let line = format!("{}; {}\n", child(""), child(&format!("ARGV0={keep_name} ")));
+        let line = format!(
+            "{}; {}; set +m; /bin/sleep 31 </dev/null >/dev/null 2>&1 & set -m\n",
+            child(""),
+            child(&format!("ARGV0={keep_name} "))
+        );
         super::write(pool, id, &line).expect("셸에 한 줄을 친다");
-        let (mut spawned, mut kept) = (None, None);
+        let (mut spawned, mut kept, mut background) = (None, None, None);
         wait_until(|| {
             let procs = marked();
             spawned = procs.iter().find(|p| Some(p.id) != helper && !invoked_keep(p)).map(|p| p.id);
             kept = procs.iter().find(|p| invoked_keep(p)).map(|p| p.id);
-            spawned.is_some() && kept.is_some()
+            background = sleep_of_shell(true);
+            spawned.is_some() && kept.is_some() && background.is_some()
         });
         let after = super::command_running(pool, id);
 
-        // (3) 명령이 돈다 — 셸이 터미널을 잡에 넘겼다. 시스템 바이너리라 표식은 안 읽히고 셸의 트리로 잡힌다.
+        // (3) 명령이 돈다 — 셸이 터미널을 잡에 넘겼다.
         super::write(pool, id, "/bin/sleep 30\n").expect("셸에 한 줄을 친다");
         let mut during = None;
         wait_until(|| {
@@ -2087,14 +2116,10 @@ mod tests {
             during.is_some()
         });
         let batch = super::close_checks(pool, &[id, u32::MAX]);
-        let command = take(EnvScope::BornSince(u64::MAX))
-            .procs
-            .into_iter()
-            .find(|p| shell_pid == Some(p.ppid) && p.name == "sleep")
-            .map(|p| p.id);
+        let command = sleep_of_shell(false);
 
         // **거두는 것이 단언보다 먼저다.** 이 장면이 띄운 자식이고, 신원을 방금 다시 본다.
-        for child in [helper, spawned, kept, command].into_iter().flatten() {
+        for child in [helper, spawned, kept, background, command].into_iter().flatten() {
             if identity_of(child.pid) == Some(child) {
                 unsafe { libc::kill(child.pid as i32, libc::SIGKILL) };
             }
@@ -2112,16 +2137,20 @@ mod tests {
             Ok(CloseCheck { command: false, descendants: 0 }),
             "사람이 입력하기 전에 뜬 것(셸 도우미)까지 셌다 — p10k 셸은 빈 프롬프트를 닫을 때마다 묻는다"
         );
-        assert!(spawned.is_some() && kept.is_some(), "입력 뒤에 띄운 자식 둘이 5초 안에 서지 않았다");
+        assert!(
+            spawned.is_some() && kept.is_some() && background.is_some(),
+            "입력 뒤에 띄운 자식 셋이 5초 안에 서지 않았다 (dev 서버 {spawned:?} · 예외 {kept:?} · 셸 그룹 {background:?})"
+        );
         assert_eq!(
             after,
-            Ok(CloseCheck { command: false, descendants: 1 }),
-            "사람이 띄운 dev 서버 하나만 세야 한다 — 도우미나 예외 목록의 이름({keep_name})까지 셌거나 dev 서버를 놓쳤다"
+            Ok(CloseCheck { command: false, descendants: 2 }),
+            "사람이 띄운 둘(dev 서버 · 셸 그룹의 백그라운드 잡)만 세야 한다 — 도우미나 예외 목록의 이름({keep_name})까지 \
+             셌거나, 프롬프트인데 셸 자신의 그룹을 명령의 그룹으로 뺐거나, dev 서버를 놓쳤다"
         );
         assert_eq!(
             during,
-            Some(CloseCheck { command: true, descendants: 1 }),
-            "명령이 도는 셸 — 명령 자신(foreground 그룹)은 빼고 dev 서버는 센다"
+            Some(CloseCheck { command: true, descendants: 2 }),
+            "명령이 도는 셸 — 명령 자신(foreground 그룹)은 빼고 dev 서버와 셸 그룹의 백그라운드 잡은 센다"
         );
         assert_eq!(
             batch,
