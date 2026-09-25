@@ -7,6 +7,7 @@ import {
   ipcFailure,
   openShell,
   readIpcRecord,
+  typeIntoShell,
   unknownIpcCalls,
 } from "./harness";
 
@@ -106,6 +107,8 @@ test("Atelier와 Maison의 셸이 합쳐 세진다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7). 쓴 셸을 두고 건넌다.
+  await typeIntoShell(page);
 
   // 주소를 직접 치면 페이지가 새로 떠 스토어가 비므로 앱 안의 클릭으로 건넌다(`terminal-worlds.spec.ts`).
   await page

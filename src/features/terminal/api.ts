@@ -6,7 +6,7 @@ import type { PtyFrame, PtyRunning, PtySpawned, ShellAttention } from "./types";
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
 //
-// **모드를 싣는 것은 `spawn` 하나다**(결정 10). 나머지 넷은 이미 뜬 셸을 id로 가리키고 그
+// **모드를 싣는 것은 `spawn` 하나다**(결정 10). 나머지 다섯은 이미 뜬 셸을 id로 가리키고 그
 // 셸의 세계는 뜰 때 pty에 굳는다 — `commands.rs`가 같은 이유를 같은 말로 적어 두었고,
 // 인자를 더하면 「id와 모드가 어긋나면 어느 쪽이 이기나」라는 답 없는 갈래가 생긴다.
 //
@@ -23,10 +23,14 @@ export const terminalApi = {
   write: (id: number, data: string) => invoke<void>("pty_write", { id, data }),
   resize: (id: number, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),
-  // 화면을 옮기는 것만으로는 죽이지 않는다(결정 20) — 언마운트 정리에는 없다.
-  // 부르는 곳은 둘, 둘 다 사람이 끝내겠다고 한 자리다: `×`(판 02)와, 아카이빙·삭제가
-  // 성공한 뒤의 회수(결정 26).
+  // 화면을 옮기는 것만으로는 죽이지 않는다(결정 20) — 언마운트 정리에는 없다. 프로세스 결정 7이 입력 없는
+  // 자동 셸만 예외로 두었다: 그 셸은 화면을 떠나면 닫힌다(`closeUnusedShells`).
+  // 부르는 곳은 셋이다: `×`(판 02), 아카이빙·삭제가 성공한 뒤의 회수(결정 26), 그리고 그 떠남.
   kill: (id: number) => invoke<void>("pty_kill", { id }),
+  // 셸의 **첫 사람 입력**을 한 번 알린다(프로세스 결정 7 · 프로세스 스펙 P1). `at`은 사람 입력을 본 순간의 에포크
+  // ms다 — 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을 셸 도우미로 가른다(티켓 08). 무엇이 사람 입력인지는
+  // `shell-input.ts`가, 시각을 찍는 것은 터미널 스토어가 한다.
+  firstInput: (id: number, at: number) => invoke<void>("pty_first_input", { id, at }),
   // 셸 안에서 **명령이 도는가** — 포그라운드 그룹이 셸 자신이 아닌가다(결정 92).
   //
   // **이 값을 구독하는 곳은 여전히 없다 — 그런데 이유가 바뀌었다.** 한때 여기 「매 순간

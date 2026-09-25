@@ -204,10 +204,10 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
         .map_err(|e| e.to_string())
 }
 
-// PTY 명령 다섯. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// PTY 명령 여섯. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 //
-// **모드를 받는 것은 spawn 하나다.** 나머지 넷은 이미 뜬 셸을 id로 가리키고, 그 셸이 어느
+// **모드를 받는 것은 spawn 하나다.** 나머지 다섯은 이미 뜬 셸을 id로 가리키고, 그 셸이 어느
 // 세계의 것인지는 뜰 때 정해져 pty에 굳는다 — 여기에 인자를 더하면 「id와 모드가 어긋나면
 // 어느 쪽이 이기나」라는, 아무도 답할 수 없는 갈래가 생긴다.
 
@@ -252,6 +252,17 @@ pub async fn pty_kill(pool: tauri::State<'_, Arc<pty::PtyPool>>, id: u32) -> Cmd
     tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id))
         .await
         .map_err(|e| format!("셸을 닫지 못했습니다: {e}"))?
+}
+
+// 셸의 **첫 사람 입력**을 한 번 알린다(프로세스 결정 7 · 프로세스 스펙 P1). `at`은 프런트가 잰 에포크 ms다 — 받은
+// 순간으로 적지 않는 까닭은 `pty::note_first_input`이 든다. 판정이 셸 도우미를 가르는 기준이다(티켓 08).
+#[tauri::command]
+pub async fn pty_first_input(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    id: u32,
+    at: u64,
+) -> CmdResult<()> {
+    pty::note_first_input(&pool, id, at)
 }
 
 // 닫기 직전에 **한 번** 묻는 값이다(결정 92). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라

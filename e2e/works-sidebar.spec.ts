@@ -7,6 +7,7 @@ import {
   markRunning,
   openShell,
   readIpcRecord,
+  typeIntoShell,
   unknownIpcCalls,
   띠,
   레인,
@@ -1032,6 +1033,8 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부르는 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   await 기다리게한다(page, "커밋할까요?");
 
   await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);

@@ -904,6 +904,30 @@ export async function openShell(page: Page): Promise<void> {
 }
 
 /**
+ * 켜진 셸에 **사람이 키 하나를 친다** — 그 셸을 「쓴 셸」로 만든다(프로세스 결정 7).
+ *
+ * 셸이 0개인 화면이 스스로 띄운 셸은 입력을 한 번도 안 받은 채 그 화면을 떠나면 닫힌다. 그래서 **셸을 두고
+ * 다른 화면으로 가는 시나리오는 먼저 이것을 부른다.** 실물에서 에이전트가 도는 셸은 사람이 무언가를 친
+ * 셸이다 — `markAttention` · `markRunning`은 그 명령이 떴다는 것을 흉내 낼 뿐 사람 입력을 흉내 내지 않는다.
+ *
+ * **첫 사람 입력이 백엔드로 나간 것까지 기다린다**(`pty_first_input`). 키만 치고 곧바로 떠나면 「입력이
+ * 적혔나」와 「떠났나」가 경주한다. 그 알림은 pty가 앉아야 나가므로, 응답 전에 불러도 여기서 기다려진다.
+ * 이미 입력을 받은 셸에 부르면 새 알림이 없어 던진다 — 셸마다 한 번 부른다.
+ */
+export async function typeIntoShell(page: Page): Promise<void> {
+  const before = await callCount(page, "pty_first_input");
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.className ?? ""), {
+      message: "셸에 포커스가 없다 — 친 키가 셸에 안 닿는다",
+    })
+    .toContain("xterm-helper-textarea");
+  await page.keyboard.type("l");
+  await expect
+    .poll(() => callCount(page, "pty_first_input"), { message: "친 키가 사람 입력으로 안 적혔다" })
+    .toBe(before + 1);
+}
+
+/**
  * 셸 하나가 **스스로 말하게 만든다.** 백엔드의 감시가 상태 파일을 읽어 쏘는
  * `shell:attention`을 손으로 한 번 쏘는 것이다(#201·#202) — 픽스처 백엔드는 커맨드에만
  * 답하지 이벤트를 쏘지 않는다.

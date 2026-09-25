@@ -768,7 +768,8 @@ function WorksPage({
   );
   const terminalBody = terminalWork && (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21). */}
+      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21. 프로세스 결정 7이
+          입력 없는 자동 셸만 예외로 두었다). */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </div>
   );
@@ -817,7 +818,8 @@ function WorksPage({
     <main className={cn("relative flex flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
-          자리만 새로 잡힌다(결정 20·21). */}
+          자리만 새로 잡힌다(결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
+          그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다. */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </main>
   ) : specBody ? (

@@ -10,6 +10,7 @@ import {
   setWindowFocused,
   stubNotifications,
   stubWindowFocus,
+  typeIntoShell,
   unknownIpcCalls,
 } from "./harness";
 
@@ -196,6 +197,8 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
 
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부를 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   const aside = page.locator("aside");
   await aside.getByRole("button", { name: "Settings", exact: true }).click();
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
@@ -247,6 +250,8 @@ test("설정에 있는 동안 셸이 부르면 울린다", async ({ page }) => {
   await page.goto(`/works/${work.slug}?tab=terminal`);
   // **착석은 탭 줄이 있는 여기서 기다린다** — 설정에는 탭 줄이 없어 `markAttention`의 기다림이 던진다.
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 설정에서 부를 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   await setWindowFocused(page, true);
 
   await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();

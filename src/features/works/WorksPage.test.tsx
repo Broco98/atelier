@@ -1153,7 +1153,7 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
     // 사슬의 두 고리를 함께 본다: 핸들러가 요청을 보내고, 화면이 받은 요청을 알리는 쪽
     // (`openNewShell`)으로 연다(위 「⌘T를 window에서 듣고…」가 그 리터럴을 못박는다).
     const store = source("../terminal/terminal-store.ts");
-    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(store).toContain('if (route.hotkey === "new") requestNewShell(instance.origin.owner);');
     expect(source("WorksPage.tsx")).toContain("openNewShell(workDefaultOrigin(mode, panelWork));");
   });
 });

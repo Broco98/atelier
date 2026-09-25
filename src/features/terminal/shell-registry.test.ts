@@ -16,7 +16,9 @@ import {
   countQuitShells,
   markExited,
   markFailed,
+  markFirstInput,
   markSeen,
+  firstInputOfId,
   isInPlaceGap,
   MAX_SHELLS,
   moveShell,
@@ -80,7 +82,8 @@ const countOf = (source: string, literal: string) => source.split(literal).lengt
 // (work-sections.test.ts가 선례다). 관찰하는 것은 "어떤 조작을 하면 목록과 활성이 어떻게
 // 되는가"뿐이다.
 //
-// 여기서 관찰하지 않는 것 — xterm 인스턴스가 언마운트를 넘겨 사는지(결정 20·21). 이 모듈에
+// 여기서 관찰하지 않는 것 — xterm 인스턴스가 언마운트를 넘겨 사는지(결정 20·21. 프로세스 결정 7이
+// 입력 없는 자동 셸만 예외로 두었다 — 그 판정은 `shell-leave.test.ts`가 센다). 이 모듈에
 // "화면 전환"이라는 조작이 없어 정의상 못 본다. 스펙이 그 항목을 seam에서 빼 실물 왕복
 // 관찰로 옮겼다(spec.md의 Seam 1 아래 인용문).
 
@@ -149,6 +152,51 @@ describe("셸을 띄운다", () => {
     const emptied = removeShell(first.state, first.ids[0]);
     const again = openShell(emptied, TOP);
     expect(again?.id).not.toBe(first.ids[0]);
+  });
+});
+
+// 안 쓴 자동 셸 회수(프로세스 결정 7)가 딛는 두 값. 무엇을 회수하는지는 `shell-leave.ts`가 정하고,
+// 여기서는 칸에 두 값이 앉는 규칙만 잰다.
+describe("셸이 자동으로 떴는가와 첫 사람 입력", () => {
+  const shellOf = (state: ShellsState, id: number) => state.shells.find((shell) => shell.id === id);
+
+  it("셸이 0개인 화면이 띄운 셸만 자동이다 — `+` · ⌘T는 아니다", () => {
+    const auto = openShell(NO_SHELLS, TOP, true)!;
+    const asked = openShell(auto.state, TOP, false)!;
+    expect(shellOf(asked.state, auto.id)?.auto).toBe(true);
+    expect(shellOf(asked.state, asked.id)?.auto).toBe(false);
+  });
+
+  // **빠뜨리면 회수되지 않는 쪽으로 틀린다.** 여는 자리가 자동인지 말하지 않았으면 사람이 연 셸이다 —
+  // 반대로 두면 인자를 빠뜨린 자리 하나가 사람이 연 셸을 떠날 때마다 닫는다.
+  it("말하지 않으면 사람이 연 셸이다", () => {
+    const opened = openShell(NO_SHELLS, TOP)!;
+    expect(shellOf(opened.state, opened.id)?.auto).toBe(false);
+  });
+
+  it("막 뜬 셸에는 사람 입력이 없다", () => {
+    const opened = openShell(NO_SHELLS, TOP, true)!;
+    expect(shellOf(opened.state, opened.id)?.firstInput).toBeNull();
+    expect(firstInputOfId(opened.state, opened.id)).toBeNull();
+  });
+
+  // **첫 것만 적는다.** 셸 도우미를 가르는 기준이 「사람이 처음 입력하기 전에 태어났나」라(프로세스 스펙 P1),
+  // 뒤의 입력이 덮으면 그사이 사람이 띄운 것이 도우미로 읽힌다.
+  it("첫 사람 입력 시각은 한 번만 앉는다", () => {
+    const opened = openShell(NO_SHELLS, TOP, true)!;
+    const first = markFirstInput(opened.state, opened.id, 1_000);
+    const again = markFirstInput(first, opened.id, 2_000);
+    expect(firstInputOfId(again, opened.id)).toBe(1_000);
+    // 안 바뀌면 같은 상태다 — 키를 칠 때마다 목록이 다시 그려지지 않는다.
+    expect(again).toBe(first);
+  });
+
+  it("다른 칸에는 안 앉는다", () => {
+    const one = openShell(NO_SHELLS, TOP, true)!;
+    const two = openShell(one.state, TOP, true)!;
+    const marked = markFirstInput(two.state, one.id, 1_000);
+    expect(firstInputOfId(marked, two.id)).toBeNull();
+    expect(firstInputOfId(marked, 999)).toBeNull();
   });
 });
 
@@ -1659,7 +1707,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // **셸 안 ⌘T는 자리를 정하지 않는다**(UI개선 결정 19). 그 셸의 화면에 「새 셸」을 요청하고, 화면이
     // 창 단축키와 같은 기본 자리 함수로 연다. `instance.origin`으로 스스로 열면 프로젝트 셸
     // 안의 ⌘T만 그 프로젝트에서 떠 셸 안과 밖이 다른 자리가 된다.
-    expect(store).toContain('if (hotkey === "new") requestNewShell(instance.origin.owner);');
+    expect(store).toContain('if (route.hotkey === "new") requestNewShell(instance.origin.owner);');
     expect(countOf(store, "openNewShell(instance.origin)"), "셸이 제 자리로 스스로 연다").toBe(0);
     expect(store).toContain("else void requestCloseShell(instance.id);");
   });
@@ -1667,8 +1715,8 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // **⌘W와 `×`가 같은 판정을 쓴다**(결정 92). 「`closeShell`을 밖으로 안 내보냈다」는 근거는
   // ⌘W에 대해 거짓이다 — 그 핸들러가 `closeShell`과 **같은 모듈**에 살아 비공개가 아무것도
   // 막지 못한다(실측: `requestCloseShell`을 `closeShell`로 되돌려도 tsc가 exit 0이었다).
-  // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 셋뿐이다.
-  it("확인을 건너뛰는 길이 셋뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수", () => {
+  // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 넷뿐이다.
+  it("확인을 건너뛰는 길이 넷뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수", () => {
     // 정의. 밖으로 안 나가는 것은 `×`(모듈 밖)에 대해서는 여전히 유효한 절반이다.
     expect(store).toContain("function closeShell(id: number): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
@@ -1679,12 +1727,17 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(store).toContain(
       "for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id);",
     );
-    // 넷째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
+    // 안 쓴 자동 셸 회수(프로세스 결정 7). 물을 것이 없다 — 입력이 없으면 자손은 모두 셸 도우미다(프로세스 스펙 P1).
+    // 무엇을 닫는지는 `reclaimOnLeave` 하나가 정한다: 그 판정을 안 딛고 목록을 손으로 고르면 여기가 빨개진다.
+    expect(store).toContain(
+      "for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id);",
+    );
+    // 다섯째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
     // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
     expect(
       countOf(store, "closeShell("),
       "`closeShell`을 직접 부르는 자리가 늘었다 — ⌘W·`×`는 `requestCloseShell`만 부른다",
-    ).toBe(3);
+    ).toBe(4);
   });
 
   // 결정 10. **셸이 뜨는 순간 세계가 백엔드로 나간다** — `pty_spawn`의 `mode`가 cwd의
@@ -1715,9 +1768,12 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
 
   // ⇧Enter(결정 91). `shellRewrite` 자체는 위에서 전수됐지만 **그것을 쓰는지**가 무테였다 —
   // 판정을 `null` 고정으로 바꿔 기능을 통째로 죽여도 485건이 초록이었다.
+  //
+  // 이제 사슬이 두 고리다(프로세스 스펙 S16): 키다운 가르기가 셸 키에 `shellRewrite`의 답을 싣고, 핸들러가 그 답을 읽는다.
   it("⇧Enter가 `shellRewrite`를 딛는다", () => {
-    expect(store).toContain("const rewrite = shellRewrite(event);");
-    expect(store).toContain("if (rewrite !== null) {");
+    expect(read("./shell-input.ts")).toContain('return { to: "shell", rewrite: shellRewrite(event) };');
+    expect(store).toContain("const route = keyRoute(event);");
+    expect(store).toContain('if (route.to === "shell" && route.rewrite !== null) {');
   });
 
   // 이 모듈이 80줄 위에서 스스로 적어 둔 계약이다 — `onData`가 **유일한 출구**로 남아야
@@ -1729,7 +1785,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // xterm이 만든 `\r`이 **둘 다** 나가고, `claude` 프롬프트에서 줄이 바뀌면서 동시에
     // 제출된다(결정 91이 없애려던 증상 그 자체다). 따로 못박으면 안 된다 — 이 파일에
     // `return false;`가 둘이라 위 hotkey 분기가 대신 통과시킨다.
-    expect(store).toContain("      term.input(rewrite, true);\n      return false;");
+    expect(store).toContain("      term.input(route.rewrite, true);\n      return false;");
     // **파일 전체에서 하나다.** 핸들러 안만 보면 두 번째 출구가 다른 함수로 옮겨 가는 것을
     // 못 본다 — 계약이 말하는 것은 「`onData`가 유일한 출구」이지 「이 핸들러가 안 쓴다」가
     // 아니다.

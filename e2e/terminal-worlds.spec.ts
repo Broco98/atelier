@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { MAISON_LANDING_ROOM } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, readIpcRecord, typeIntoShell, unknownIpcCalls } from "./harness";
 
 // 판 01 · 티켓 #184 — **두 세계의 최상위 터미널이 서로 다른 셸이다**(결정 10).
 //
@@ -11,7 +11,8 @@ import { installFixtureBackend, readIpcRecord, unknownIpcCalls } from "./harness
 //      그 층에 물음 자체가 없다.
 //   ② **살아남는 스토어** — `terminal-store`는 화면 밖에 사는 싱글턴이고(결정 20·21) 셸이
 //      화면 언마운트에 안 죽는다는 것이 이 판의 전제다. 그 성질은 라우트가 실제로 갈릴 때만
-//      드러난다.
+//      드러난다. 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그래서 이쪽 첫 셸에는
+//      키를 하나 치고 건넌다.
 //   ③ **owner를 실제로 쓰는 화면 둘** — `shell-registry.test.ts`가 키의 대수(서로 다른
 //      `(mode, slug)`는 다른 키)를 붙들지만, 그 키를 조회에도 쓰는지는 순수 함수가 못 본다.
 //      `/terminal`과 `/maison/terminal`이 같은 컴포넌트라 `mode` 하나만 안 갈려도 두 세계가
@@ -59,6 +60,9 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // 들어오면 하나가 뜬다(`ensureShell`). **한 칸 더 연다** — 저쪽과 수가 같으면 소유자가
   // 통째로 섞여도 두 화면이 똑같아 보여서, 아래 단언이 무엇을 봐도 초록이 된다.
   await expect(tabs).toHaveCount(1);
+  // 저절로 뜬 이 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7). **쓴 셸로 만들고 건넌다** — 새 칸을 열면
+  // 포커스가 그쪽으로 가므로 여는 것보다 먼저 친다.
+  await typeIntoShell(page);
   await page.locator('[data-tab="new"]').click();
   await expect(tabs).toHaveCount(2);
   // 사이드바도 같은 수를 말한다. 이 숫자는 `ownerOf(mode)`로 세므로(`Sidebar`의 `topShells`)
@@ -110,11 +114,17 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   await expect(page.locator(".xterm-screen")).toBeVisible();
 
   // **죽지도 새로 뜨지도 않았다.** 수만 맞으면 「돌아올 때마다 새로 띄운다」도 2가 되므로,
-  // 그 사이 spawn이 하나도 안 늘었다는 것을 함께 본다. kill은 이 시나리오 전체에서 0이다 —
-  // 화면을 옮기는 것만으로는 안 죽인다(결정 20)가 그 문장의 관찰 가능한 형태다.
+  // 그 사이 spawn이 하나도 안 늘었다는 것을 함께 본다. 이쪽 두 셸의 kill은 이 시나리오 전체에서 0이다 —
+  // 화면을 옮기는 것만으로는 안 죽인다(결정 20)가 그 문장의 관찰 가능한 형태다. 프로세스 결정 7이 입력 없는
+  // 자동 셸만 예외로 두었다: 저쪽 터미널에 들어가며 저절로 뜬 셸(pty 3)은 아무도 안 친 채 떠나 닫힌다.
+  // **그 하나가 닫힌 것을 먼저 기다린다**(닫기는 도착한 뒤 이펙트에서 나간다) — 그 뒤에 본 목록이라야
+  // 「이쪽 셸은 안 닫혔다」가 아직 안 나간 호출과 안 섞인다.
   expect(await spawnedModes(page)).toHaveLength(afterCrossing);
-  const calls = (await readIpcRecord(page))?.calls ?? [];
-  expect(calls.filter((call) => call.startsWith("pty_kill"))).toEqual([]);
+  await expect
+    .poll(async () =>
+      ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_kill")),
+    )
+    .toEqual(['pty_kill {"id":3}']);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

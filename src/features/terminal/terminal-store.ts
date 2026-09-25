@@ -24,8 +24,10 @@ import {
   CLOSE_NOTICE,
   confirmClose,
   countQuitShells,
+  firstInputOfId,
   markExited,
   markFailed,
+  markFirstInput,
   moveShell,
   NO_SHELLS,
   openShell,
@@ -35,13 +37,14 @@ import {
   setRunning,
   setShellName,
   setTitle,
-  shellHotkey,
   shellOpenNotice,
-  shellRewrite,
   shellsOf,
   slugOfOwner,
 } from "./shell-registry";
 import type { OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import { humanInput, keyRoute } from "./shell-input";
+import type { InputHappening } from "./shell-input";
+import { reclaimOnLeave } from "./shell-leave";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
@@ -187,11 +190,11 @@ export function requestNewShell(owner: ShellOwner): void {
  * 부르는 쪽이 다시 정하게 되어, 그 판정을 한 자리에 모아 둔 `shellOpenNotice`의 계약이 깨진다
  * (그 함수 주석).
  */
-function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
+function openShellQuietly(origin: ShellOrigin, auto: boolean): OpenedShell | null {
   // 여기만 상태를 **읽어서** 계산한다 — `openShell`이 새 상태와 함께 발급한 id를 돌려주고
   // 그 id로 인스턴스를 만들어야 해서다. 읽기와 쓰기 사이에 await가 없고 Store.setState가
   // 동기라 그 틈에 낄 갱신이 없다. 다른 setter들은 전부 updater 꼴이다.
-  const opened = openShell(terminalStore.state, origin);
+  const opened = openShell(terminalStore.state, origin, auto);
   if (!opened) return null;
 
   terminalStore.setState(() => opened.state);
@@ -210,7 +213,7 @@ function openShellQuietly(origin: ShellOrigin): OpenedShell | null {
  * 프로젝트 줄이 `workShellOrigin(mode, work, project)`. 뒤 함수가 `null`을 주면 여기까지 오지 않는다.
  */
 export function openNewShell(origin: ShellOrigin): void {
-  const opened = openShellQuietly(origin);
+  const opened = openShellQuietly(origin, false);
   // 상한에 닿으면 열지 않고 **거절을 알린다.** `+`로 온 것이라면 그 버튼이 이미 잠긴 채
   // 이유를 적고 있어 여기 닿는 것은 경주뿐이지만, ⌘T로 오면 다르다 — 그쪽에는 이유를
   // 말할 자리가 없어 아무 일도 안 일어난 것처럼 보였다(사용자 스토리 33의 알려진 구멍).
@@ -240,11 +243,15 @@ export function openNewShell(origin: ShellOrigin): void {
  *
  * **판정이 갈린 것은 아니다.** 「열렸나 거절인가」는 여전히 `shellOpenNotice` 한 곳이 정하고
  * (그 함수 주석), 이 길은 그것을 아예 지나지 않는다 — 갈린 것은 「누가 듣느냐」뿐이다.
+ *
+ * **이 길로 뜬 셸은 「자동」이다**(프로세스 결정 7). 사람 입력을 한 번도 안 받은 채 이 화면을 떠나면
+ * 닫힌다(`closeUnusedShells`) — 둘러보기만 해도 로그인 셸과 셸 도우미가 앱을 끌 때까지 쌓이던 자리다.
+ * 다시 들어오면 이 함수가 새로 띄운다.
  */
 export function ensureShell(origin: ShellOrigin): void {
   // **그 화면의 칸만 센다.** 전체를 세면 다른 Work에 셸이 있다는 이유로 이 화면이 빈 채로
   // 열린다 — 판 03에서 화면이 여럿이 되면서 갈린 자리다.
-  if (shellsOf(terminalStore.state, origin.owner).length === 0) openShellQuietly(origin);
+  if (shellsOf(terminalStore.state, origin.owner).length === 0) openShellQuietly(origin, true);
 }
 
 /** 칸을 고른다. */
@@ -385,15 +392,17 @@ function disposeInstance(instance: ShellInstance): void {
 
 /**
  * 셸을 거둔다. **셸을 죽이는 유일한 길이다**(결정 22). 화면을 옮기는 것으로는 여기 오지
- * 않는다(결정 20).
+ * 않는다(결정 20) — 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다: 그 셸은 화면을 떠나면
+ * 이 길로 닫힌다(`closeUnusedShells`).
  *
  * 목록에서 빼는 길은 이제 **둘이다** — 결정 48이 정상 종료한 칸을 스스로 빼기 때문이다.
  * 그쪽은 아래 채널 콜백이 같은 정리를 태운다.
  *
  * **밖으로 내보내지 않는다**(결정 92). ⌘W와 `×`는 확인을 거치는 `requestCloseShell`만
  * 볼 수 있어야 한다 — 「두 길이 같은 판정을 쓴다」를 주석으로 부탁하는 대신, 확인을
- * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 아카이빙의 회수(`closeShellsOf`)만 여기를
- * 직접 부르는데, 그 길에는 사람이 이미 한 번 확인했다.
+ * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 둘이다 — 아카이빙의
+ * 회수(`closeShellsOf`)에는 사람이 이미 한 번 확인했고, 안 쓴 자동 셸의 회수(`closeUnusedShells`)에는
+ * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1).
  */
 function closeShell(id: number): void {
   const instance = instances.get(id);
@@ -683,6 +692,47 @@ export function closeShellsOf(owner: ShellOwner): void {
 }
 
 /**
+ * 화면을 떠났다 — `from` owner의 **안 쓴 자동 셸**을 닫는다(프로세스 결정 7 · 프로세스 스펙 S17). 부르는 자리는
+ * 앱 루트 하나다(`ShellReclaim`): 라우터의 현재 owner가 바뀌는 순간이다. 무엇을 닫는지는 `reclaimOnLeave`가
+ * 혼자 정한다 — 같은 owner에 머무는 spec 탭 전환은 떠남이 아니고, 사람이 연 셸과 입력을 받은 셸은 안 나온다.
+ *
+ * **묻지 않는다.** 닫는 길은 `×`와 같은 `closeShell`이라 그 셸의 자손까지 끝난다(프로세스 결정 3). 입력이 없으면
+ * 자손은 모두 셸 도우미라 확인 창이 물을 것이 없다 — 프로세스 스펙 P1의 기본값에 기대는 문장이다.
+ */
+export function closeUnusedShells(from: ShellOwner | null, to: ShellOwner | null): void {
+  for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id);
+}
+
+/**
+ * 셸 쪽에서 일어난 일을 사람 입력인지 가려, **첫 것**이면 시각을 찍어 적고 백엔드에 알린다(프로세스 결정 7 ·
+ * 프로세스 스펙 S16 · P1). 무엇이 사람 입력인지는 `humanInput`이 혼자 정한다 — 이 자리는 그 답에 시각을 붙인다.
+ *
+ * **시각을 찍는 자리가 여기인 것은 시계 규칙 때문이다.** 터미널 폴더에서 시간을 아는 파일은 셋뿐이고
+ * (`shell-attention.test.ts`의 소스 스캔) 이 스토어가 그중 하나다. 판정 모듈은 시간을 모른다.
+ *
+ * 둘째 입력부터는 판정도 안 탄다 — 키를 칠 때마다 불리는 자리다.
+ */
+function noteInput(instance: ShellInstance, happening: InputHappening): void {
+  if (instance.closed || firstInputOfId(terminalStore.state, instance.id) !== null) return;
+  if (!humanInput(happening)) return;
+  const at = Date.now();
+  terminalStore.setState((state) => markFirstInput(state, instance.id, at));
+  tellFirstInput(instance, at);
+}
+
+/**
+ * 첫 사람 입력을 백엔드에 알린다 — **셸마다 한 번이다.** 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을
+ * 셸 도우미로 가른다(티켓 08). 시각은 사람 입력을 본 순간의 값이다 — 백엔드가 받은 순간이 아닌 까닭은
+ * `pty::note_first_input`이 든다.
+ *
+ * pty가 아직 없으면(spawn 응답 전) 여기서는 못 알린다. 응답이 앉는 자리가 다시 부른다(`spawn`).
+ * 실패는 흘린다 — 셸이 이미 끝났거나(다른 IPC와 같은 경주) 다리(L4)가 PTY를 모르는 것이다.
+ */
+function tellFirstInput(instance: ShellInstance, at: number): void {
+  if (instance.ptyId !== null) ignoreGone(terminalApi.firstInput(instance.ptyId, at));
+}
+
+/**
  * 활성 칸의 집을 `host`에 들인다. 이미 열려 있으면 다시 붙는 길이고, 그때 **`fit` → PTY
  * `resize`를 한 번 태운다** — 떼어 둔 사이에 ⌘B로 본문 폭이 바뀌었을 수 있다.
  */
@@ -697,7 +747,9 @@ export function attachShell(host: HTMLElement, id: number): void {
 
 /**
  * 집을 DOM에서 뺀다. **`dispose`도 `kill`도 없다** — 다른 nav를 한 번 본 대가로, 또는 옆
- * 칸으로 갈아탄 대가로 셸이 죽지 않는다(결정 20·21).
+ * 칸으로 갈아탄 대가로 셸이 죽지 않는다(결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로
+ * 두었는데, 그 회수도 여기가 아니다 — 패인이 내려가는 것은 spec 탭 전환에도 일어나 떠남이 아니다.
+ * 떠남은 앱 루트가 owner로 잰다(`closeUnusedShells`).
  */
 export function detachShell(id: number): void {
   instances.get(id)?.wrapper.remove();
@@ -760,7 +812,13 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 얼굴을 **그때그때 묻는다** — 스냅숏을 넘기면 설정으로 글꼴이나 테마를 바꿨을 때 조합
   // 표시만 옛 얼굴로 남는다. `term.options`가 이 칸의 정본이고 `restyleShells`가 그것을 고친다.
   // 색은 뒤집어 준다: 터미널 글자색이 표시의 바탕이 된다.
-  attachIme(wrapper, (data) => term.input(data, true), () => {
+  //
+  // **다리가 보내는 순간이 사람 입력이다**(프로세스 스펙 S16) — WKWebView는 한글에 조합 사건을 안 준다.
+  // 인스턴스는 아래에서 서므로 부를 때 읽는다(다리는 사람이 칠 때만 부른다).
+  attachIme(wrapper, (data) => {
+    noteInput(instance, { kind: "ime", data });
+    term.input(data, true);
+  }, () => {
     const theme = term.options.theme ?? {};
     return {
       family: term.options.fontFamily ?? look.fontFamily,
@@ -831,8 +889,16 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     if (instance.ptyId !== null) ignoreGone(terminalApi.resize(instance.ptyId, cols, rows));
   });
   term.onData((data) => {
+    // **xterm이 내보내는 데이터는 사람 입력이 아니다**(프로세스 스펙 S16) — 사람이 친 키의 바이트도 여기로
+    // 오지만 그것은 앞의 키다운이 이미 적었고, 데이터만 오는 것은 xterm의 응답(DA · CPR · 포커스 보고)이다.
+    // 판정에 그대로 건네는 것은 셸로 가는 모든 길이 한 판정을 지나게 하려는 것이다 — 모양을 보는 갈래가
+    // 판정에 생기면 p10k가 프롬프트마다 묻는 커서 위치가 모든 셸을 「입력을 받은」 셸로 만든다.
+    noteInput(instance, { kind: "data", data });
     if (instance.ptyId !== null) ignoreGone(terminalApi.write(instance.ptyId, data));
   });
+  // **붙여넣기는 사람 입력이다**(프로세스 스펙 S16). xterm은 입력칸과 화면 두 자리에서 `paste`를 받는데
+  // 둘 다 이 집 안이라, 집의 capture 단계에서 한 번에 본다(IME 다리와 같은 자리).
+  wrapper.addEventListener("paste", () => noteInput(instance, { kind: "paste" }), true);
 
   // ⌘T는 새 칸, ⌘W는 이 칸 닫기. 여기 붙이는 것은 `onTitleChange`와 같은 이유다:
   // 이펙트에 두면 배경 칸이 못 받는다.
@@ -850,20 +916,27 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   //
   // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
   // 그대로 따라온다(판 02).
+  //
+  // **키다운을 가르는 자리는 여기 하나다**(프로세스 스펙 S16). 한 번 가른 답(`keyRoute`)으로 셋을 고른다 —
+  // 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지. 뒤 판의 중단 추론(Esc · Ctrl-C)과 승인 추론(확정 키)도
+  // 이 답을 이 자리에서 더 읽는다.
   term.attachCustomKeyEventHandler((event) => {
-    const hotkey = shellHotkey(event);
+    const route = keyRoute(event);
+    // keypress · keyup — xterm이 평소대로 한다.
+    if (route === null) return true;
+    noteInput(instance, { kind: "keydown", event });
     // **앱 몫이되 이 셸이 하지 않는다**(결정 99). 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
     // `false`로 xterm의 타이핑만 막고 **그대로 위로 흘려보낸다** — 어느 본문으로 갈지는
     // 화면이 알고, 그 화면이 window에서 이 키를 듣는다. 여기서 `stopPropagation`을 부르면
     // 셸에 포커스가 있는 동안 그 키가 영영 안 먹는다.
-    if (hotkey === "app") return false;
-    if (hotkey) {
+    if (route.to === "app" && route.hotkey === "app") return false;
+    if (route.to === "app" && route.hotkey !== null) {
       event.preventDefault();
       // **`stopPropagation`이 함께 있어야 한다**(결정 93). ⌘T를 window에서도 듣게 되면서
       // (셸이 0개인 화면 때문이다) 이 키를 듣는 자리가 둘이 됐다 — `preventDefault`만으로는
       // window 리스너가 안 막혀 한 번 눌러 셸이 둘 열린다.
       event.stopPropagation();
-      if (hotkey === "new") requestNewShell(instance.origin.owner);
+      if (route.hotkey === "new") requestNewShell(instance.origin.owner);
       // 확인을 거치는 길로 간다(결정 92) — `×`와 **같은 함수**다.
       else void requestCloseShell(instance.id);
       return false;
@@ -877,12 +950,12 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     // 같은 이유로 같은 길을 쓴다(80줄 위 주석): `onData`가 유일한 출구로 남아야 `pty_write`가
     // 한 곳에서 나가고 xterm이 스스로 보내는 것과 순서도 안 뒤집힌다. 한글 조합 중의 ⇧Enter가
     // 정확히 그 순서가 걸리는 자리라 여기에 예외를 둘 이유가 없다.
-    const rewrite = shellRewrite(event);
-    if (rewrite !== null) {
+    if (route.to === "shell" && route.rewrite !== null) {
       event.preventDefault();
-      term.input(rewrite, true);
+      term.input(route.rewrite, true);
       return false;
     }
+    // 나머지는 xterm이 평소대로 한다 — 앱 몫이지만 가져가지 않는 ⌘ 화음(⌘B · ⌘C)도 막지 않는다.
     return true;
   });
 
@@ -919,7 +992,8 @@ async function claimFont(look: TerminalLook): Promise<void> {
 
 /**
  * 글꼴이 오면 **셸을 띄운다 — 화면에 붙어 있든 아니든.** 사람이 연 셸은 뒤에서도 돈다
- * (결정 20·21).
+ * (결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 글꼴이 오기 전에
+ * 화면을 떠나면 뜨지도 않고 닫힌다(`closeUnusedShells`).
  *
  * _한때 여는 것과 띄우는 것이 한 게이트였다_: 글꼴이 온 순간 칸이 DOM에 붙어 있을 때만 열고,
  * 처음 열 때만 spawn했다. 글꼴(0.94MB)이 오는 사이에 `+`·⌘T로 둘째 칸을 켜거나 다른 work·
@@ -1104,7 +1178,8 @@ async function spawn(instance: ShellInstance) {
       // 거둔 칸(`failOpen`)도 같다 — 그 종료 프레임이 적어 둔 실패 이유를 덮으면 안 된다.
       if (instance.closed || instance.broken) return;
       // **떼어 둔 사이에도 그대로 받아 적는다.** 그것이 결정 20이다 — 다른 화면에 가 있는
-      // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다. 한 번도 안 연
+      // 동안 흐른 줄이 돌아왔을 때 빠져 있으면 셸이 살아 있는 것이 아니다(프로세스 결정 7이 입력
+      // 없는 자동 셸만 예외로 두었다 — 그 셸은 떠날 때 닫혀 받아 적을 것이 없다). 한 번도 안 연
       // 칸(떼어진 채 뜬 셸 — `loadFont`)도 같다: xterm은 `open()` 전에도 받아 버퍼에 든다.
       if (frame instanceof ArrayBuffer) {
         // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
@@ -1170,6 +1245,9 @@ async function spawn(instance: ShellInstance) {
       return;
     }
     instance.ptyId = spawned.id;
+    // **응답 전에 사람이 쳤으면 여기서 알린다**(`tellFirstInput`) — 그때는 알릴 pty가 없었다.
+    const typed = firstInputOfId(terminalStore.state, instance.id);
+    if (typed !== null) tellFirstInput(instance, typed);
     // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다.
     terminalStore.setState((state) => setShellName(state, instance.id, spawned.shellName));
     // 이 왕복 사이에 폭이 바뀌었으면 그 `resize`는 `ptyId`가 없어서 버려졌고, xterm은 값이

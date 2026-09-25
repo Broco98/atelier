@@ -57,6 +57,8 @@ struct Shell {
     /// 트리를 찾고, 끝내기가 셸 그룹에 신호를 보내기 직전에 셸이 그대로인지 본다. 못 읽었으면(리눅스, 셸이
     /// 뜨자마자 끝남) `None`이고, 그때 셸 그룹에는 지금처럼 그룹 신호만 간다.
     process: Option<Identity>,
+    /// 첫 사람 입력의 시각(에포크 µs). 프런트가 사람 입력을 처음 본 순간 한 번 알린다(`note_first_input`).
+    first_input_us: Option<u64>,
     master: Box<dyn MasterPty + Send>,
     /// **수명 내내 여기 산다.** `UnixMasterWriter`의 Drop이 pty에 개행 + `^D`를 써 넣으므로,
     /// 잠깐 꺼내 쓰고 되돌리는 식으로 다루면 그 사이 사용자 셸에 EOF가 들어가 셸이 끝난다.
@@ -164,7 +166,10 @@ pub fn spawn(
     // 상태 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가 루트를
     // 다시 계산하지 않게.
     let state_file = crate::shells::state_path(&atelier_core::data_root(), &shell_id);
-    pool.lock().insert(id, Shell { pid, key: shell_id, process, master: pair.master, writer, state_file });
+    pool.lock().insert(
+        id,
+        Shell { pid, key: shell_id, process, first_input_us: None, master: pair.master, writer, state_file },
+    );
 
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
@@ -224,6 +229,23 @@ pub fn write(pool: &PtyPool, id: u32, data: &str) -> Result<(), String> {
         .write_all(data.as_bytes())
         .and_then(|()| writer.flush())
         .map_err(|e| format!("터미널에 쓰지 못했습니다: {e}"))
+}
+
+/// 이 셸의 **첫 사람 입력**을 적는다(프로세스 결정 7 · 프로세스 스펙 P1). 이미 있으면 그대로 둔다 — 첫 것만 남는다.
+///
+/// 셸 도우미(p10k의 `gitstatusd` 등)는 「사람이 처음 입력하기 전에 태어난 자손」이다. 그 기준을 여기 쥐어 두고,
+/// 판정은 셸 목록의 칸(`ShellEntry::first_input_us`)으로 읽는다. 무엇이 사람 입력인지는 프런트가 DOM 사건으로 가른다 —
+/// 셸로 가는 바이트는 사람이 친 것과 xterm의 응답(커서 위치 등)을 가르지 않아 여기서는 못 본다.
+///
+/// **시각은 프런트가 잰 값이다(에포크 ms) — 이 명령을 받은 순간이 아니다.** 사람이 붙여넣은 명령줄은 이 알림과
+/// 바이트(`pty_write`)가 따로 오는데, 받은 순간으로 적으면 그 명령이 이 알림보다 먼저 떠 도우미로 읽힐 수 있다.
+/// 프런트의 시각은 바이트가 나가기 전이라 사람이 띄운 것은 늘 그 뒤에 태어난다. 둘 다 같은 벽시계라 자손의 커널
+/// 시작 시각(µs)과 견줄 수 있다.
+pub fn note_first_input(pool: &PtyPool, id: u32, at_ms: u64) -> Result<(), String> {
+    let mut shells = pool.lock();
+    let shell = shells.get_mut(&id).ok_or_else(|| gone(id))?;
+    shell.first_input_us.get_or_insert(at_ms.saturating_mul(1000));
+    Ok(())
 }
 
 pub fn resize(pool: &PtyPool, id: u32, cols: u16, rows: u16) -> Result<(), String> {
@@ -630,9 +652,9 @@ fn groups_of(shell: &Shell) -> Vec<i32> {
 }
 
 impl Shell {
-    /// 판정이 읽는 셸의 모양. 첫 사람 입력 시각은 아직 모른다(티켓 07 · 08).
+    /// 판정이 읽는 셸의 모양. 첫 사람 입력 시각까지 싣는다 — 셸 도우미를 가르는 것은 판정의 몫이다(티켓 08).
     fn entry(&self) -> ShellEntry {
-        ShellEntry { key: self.key.clone(), process: self.process, first_input_us: None }
+        ShellEntry { key: self.key.clone(), process: self.process, first_input_us: self.first_input_us }
     }
 }
 
@@ -820,6 +842,7 @@ mod tests {
             pid: None,
             key: "1700-9".to_string(),
             process: None,
+            first_input_us: None,
             master: pair.master,
             writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
             state_file: state.clone(),
@@ -829,6 +852,45 @@ mod tests {
 
         assert!(!state.exists(), "셸이 닫혔는데 상태 파일이 남았다");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 셸을 띄우지 않고 `openpty` 하나로 선 풀의 칸. 상태 파일은 없는 자리를 가리킨다 — 떨굴 때 지울 것이 없다.
+    fn idle_shell(key: &str) -> super::Shell {
+        let size = PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+        let pair = native_pty_system().openpty(size).expect("pty가 열린다");
+        let writer = pair.master.take_writer().expect("writer가 나온다");
+        super::Shell {
+            pid: None,
+            key: key.to_string(),
+            process: None,
+            first_input_us: None,
+            master: pair.master,
+            writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
+            state_file: std::env::temp_dir()
+                .join(format!("atelier-pty-idle-{}-{key}.json", std::process::id())),
+        }
+    }
+
+    /// 첫 사람 입력은 **한 번만** 풀의 그 셸에 앉고, 판정이 읽는 셸의 모양까지 간다(프로세스 결정 7 · 프로세스 스펙 P1).
+    ///
+    /// 셸 도우미를 가르는 기준이 「사람이 처음 입력하기 전에 태어났나」라, 뒤의 알림이 덮으면 그사이 사람이 띄운 것이
+    /// 도우미로 읽힌다. 프런트가 잰 ms를 µs로 옮긴다 — 자손의 커널 시작 시각과 같은 단위다(`Identity::started_us`).
+    #[test]
+    fn the_first_human_input_lands_once_on_its_shell() {
+        let pool = super::PtyPool::default();
+        pool.lock().insert(7, idle_shell("1700-7"));
+        pool.lock().insert(8, idle_shell("1700-8"));
+        let first_input = |id: u32| pool.lock().get(&id).map(|shell| shell.entry().first_input_us);
+
+        assert_eq!(first_input(7), Some(None), "막 뜬 셸에 사람 입력이 있다");
+        super::note_first_input(&pool, 7, 1_790_000_000_123).expect("있는 셸이다");
+        assert_eq!(first_input(7), Some(Some(1_790_000_000_123_000)), "첫 입력 시각이 µs로 안 앉았다");
+
+        super::note_first_input(&pool, 7, 1_790_000_009_999).expect("있는 셸이다");
+        assert_eq!(first_input(7), Some(Some(1_790_000_000_123_000)), "뒤의 알림이 첫 입력을 덮었다");
+        assert_eq!(first_input(8), Some(None), "다른 셸에 앉았다");
+
+        assert!(super::note_first_input(&pool, 9, 1).is_err(), "없는 셸을 조용히 넘겼다");
     }
 
     /// 셸에 심기는 env. **두 모드 모두 값이 명시된다** — 「없으면 Atelier」는 앱 밖 셸의

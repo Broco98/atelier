@@ -100,6 +100,22 @@ export interface Shell {
    * 부르려면 값을 들여야 해서, 이 파일에는 「그 칸에 앉힌다」는 리듀서만 둔다.
    */
   attention: Attention | null;
+  /**
+   * **셸이 0개인 화면이 스스로 띄운 셸인가**(프로세스 결정 7). 화면에 들어오기만 해도 뜨는 셸
+   * (`ensureShell`)이 참이고, 사람이 `+` · ⌘T로 연 셸은 거짓이다. 뜰 때 정해지고 안 바뀐다.
+   *
+   * 이 값과 아래 `firstInput`이 함께 「안 쓴 자동 셸」을 가른다 — 그 화면을 떠나면 닫는 셸이다
+   * (`shell-leave.ts`). 사람이 연 셸은 입력이 없어도 닫지 않는다: 연 사람이 무엇을 할지 모른다.
+   */
+  auto: boolean;
+  /**
+   * 첫 사람 입력의 시각(에포크 ms). 아직 없으면 `null`이다. **한 번만 앉는다**(`markFirstInput`).
+   *
+   * 무엇이 사람 입력인지는 `shell-input.ts`가 정하고, 시각을 찍는 자리는 터미널 스토어다 — 이 모듈은
+   * 시간을 모른다. 백엔드도 같은 값을 한 번 받는다: 셸 도우미를 「사람이 처음 입력하기 전에 태어난
+   * 자손」으로 가르는 기준이 이 시각이다(프로세스 스펙 P1).
+   */
+  firstInput: number | null;
 }
 
 export interface ShellsState {
@@ -462,8 +478,16 @@ export interface OpenedShell {
  * **`origin`을 통째로 받는다 — 갈래 둘만 뽑아 받지 않는다.** 한때 `owner`·`project`만
  * 받았는데, cwd가 칸에 눌러앉게 되면서(위 `Shell.cwd`) 뽑을 이유가 없어졌다. 통째로
  * 받으면 여는 자리가 셸에 적히는 자리와 **같은 값 하나**를 본다.
+ *
+ * **`auto`만은 기본값이 있다 — 거짓(사람이 연 셸)이다.** 소유자와 반대인 것은 틀리는 방향 때문이다:
+ * 빠뜨린 자리의 셸은 떠날 때 닫히지 않을 뿐이고, 기본값이 참이면 인자를 잊은 자리 하나가 사람이 연
+ * 셸을 떠날 때마다 닫는다(프로세스 결정 7). 참을 넘기는 자리는 셸이 0개인 화면의 `ensureShell` 하나다.
  */
-export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell | null {
+export function openShell(
+  state: ShellsState,
+  origin: ShellOrigin,
+  auto = false,
+): OpenedShell | null {
   if (atCap(state, origin.owner)) return null;
 
   const id = state.nextId;
@@ -480,6 +504,9 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     // **막 뜬 셸은 아무 주장도 안 한다**(결정 3). 여기에 「도는 중」을 미리 앉히면 훅도
     // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 링은 영영 안 꺼진다.
     attention: null,
+    auto,
+    // 막 뜬 셸에는 사람 입력이 없다. p10k가 프롬프트마다 묻는 커서 위치의 응답은 입력이 아니다(`shell-input.ts`).
+    firstInput: null,
   };
   return {
     state: {
@@ -681,6 +708,23 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
  */
 export function setRunning(state: ShellsState, id: number, running: string | null): ShellsState {
   return patch(state, id, (shell) => (shell.running === running ? shell : { ...shell, running }));
+}
+
+/**
+ * 첫 사람 입력을 적는다(프로세스 결정 7). **이미 있으면 받은 상태를 그대로 돌려준다** — 첫 것만
+ * 남는다. 셸 도우미를 가르는 기준이 「사람이 처음 입력하기 전에 태어났나」라(프로세스 스펙 P1), 뒤의
+ * 입력이 덮으면 그사이 사람이 띄운 것이 도우미로 읽힌다. 키를 칠 때마다 불리는 자리라 안 바뀐 칸이
+ * 같은 객체로 남는 것도 계약이다 — `patch`의 관용구 그대로다.
+ *
+ * 무엇이 사람 입력인지는 여기서 안 정한다(`shell-input.ts`). 시각은 부르는 쪽(터미널 스토어)이 찍어 온다.
+ */
+export function markFirstInput(state: ShellsState, id: number, at: number): ShellsState {
+  return patch(state, id, (shell) => (shell.firstInput === null ? { ...shell, firstInput: at } : shell));
+}
+
+/** 그 칸의 첫 사람 입력 시각. 없는 칸이거나 아직 입력이 없으면 `null`이다. */
+export function firstInputOfId(state: ShellsState, id: number): number | null {
+  return state.shells.find((shell) => shell.id === id)?.firstInput ?? null;
 }
 
 /**

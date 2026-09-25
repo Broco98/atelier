@@ -13,6 +13,7 @@ import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
+import ShellReclaim from "./ShellReclaim";
 import { showAppToast } from "./app-toast";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useIsFullscreen from "./useIsFullscreen";
@@ -243,6 +244,9 @@ function AppShell() {
       {/* 이 work의 토스트(프로세스 스펙 P2). 셸에 서서 어느 화면에서든 보인다 — 자리와 Provider의
           범위는 그 파일이 든다. */}
       <AppToasts />
+      {/* 둘러보다 저절로 뜬 셸이 입력 없이 화면을 떠나면 닫는다(프로세스 결정 7). 떠남은 라우터의 owner로 재므로
+          셸 한 자리에 선다 — 라우터 구독은 제 파일에 있다(위 구독 셋을 늘리지 않는다). */}
+      <ShellReclaim />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />

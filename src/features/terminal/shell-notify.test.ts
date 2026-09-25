@@ -271,6 +271,8 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     cwd: null,
     running: null,
     attention: null,
+    auto: false,
+    firstInput: null,
     ...over,
   });
   const 상태 = (over: Partial<Attention> = {}): Attention => ({

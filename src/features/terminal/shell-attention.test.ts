@@ -454,6 +454,8 @@ const 칸 = (attention: Attention | null, status: Shell["status"] = { kind: "run
   cwd: null,
   running: null,
   attention,
+  auto: false,
+  firstInput: null,
 });
 
 const 상태 = (over: Partial<Attention> = {}): Attention => ({

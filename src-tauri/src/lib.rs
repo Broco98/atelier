@@ -253,7 +253,8 @@ pub fn run() {
         // Rust 쪽 자식만 살아남아 고아가 된다(in-app-terminal 결정 18 — 정리 시점은 앱 종료 · 새로고침
         // 둘이었고, 프로세스 결정 3이 셸 닫기를 더했다). `pnpm tauri dev`의 Vite full reload와
         // ⌘R이 매번 그 경로다. SPA 라우트 이동은 navigation commit이 아니라서 안 걸리고,
-        // 결정 20의 「화면을 옮기는 것만으로는 안 죽는다」가 바로 그 성질에 기대고 있다.
+        // 결정 20의 「화면을 옮기는 것만으로는 안 죽는다」가 바로 그 성질에 기대고 있다(프로세스
+        // 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 프런트가 떠남을 보고 셸 닫기 길로 닫는다).
         // 첫 로드에도 오지만 그때 레지스트리는 비어 있어 즉시 돌아온다.
         //
         // **유예는 뒤 스레드로 보낸다**(프로세스 스펙 S5) — 풀은 그 자리에서 비우고 판정까지 한 뒤
@@ -291,6 +292,7 @@ pub fn run() {
             commands::pty_write,
             commands::pty_resize,
             commands::pty_kill,
+            commands::pty_first_input,
             commands::pty_command_running,
             commands::read_settings,
             commands::write_settings,
