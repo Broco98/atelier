@@ -589,6 +589,9 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
 
 /// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
 /// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
+///
+/// 부르는 자리가 둘이다 — 닫기 · 새로고침의 `end`와 앱 종료의 `end_for_exit`. 판정 표는 목록을 직접 받으니 이
+/// 배선은 못 잰다. 풀 배선 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료)이 하나씩 잰다.
 fn exceptions() -> Vec<String> {
     crate::settings::process_exceptions(&atelier_core::data_root())
 }
@@ -1384,12 +1387,21 @@ mod tests {
         /// ×로 닫는다. 표식 자식을 둘 띄우고, 하나는 예외 목록에 적은 이름으로 부른다(프로세스 결정 5) — 닫기가
         /// 다른 하나는 끝내고 그것은 남긴다. 목록은 안쪽의 데이터 루트(임시)의 설정 파일에 적는다.
         CloseKeeping,
+        /// `CloseKeeping`과 같은 자식 둘과 목록으로, 셸을 닫지 않고 앱 종료 길을 부른다. 종료는 닫기(`end`)와 따로
+        /// 판정을 부르므로(`verdict::at_exit`) 목록을 넘기는 줄도 따로다 — 그 줄을 재는 장면이다.
+        ExitKeeping,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 5] =
-            [Scene::Close, Scene::CloseIgnoring, Scene::CloseThenExit, Scene::Reload, Scene::CloseKeeping];
+        const ALL: [Scene; 6] = [
+            Scene::Close,
+            Scene::CloseIgnoring,
+            Scene::CloseThenExit,
+            Scene::Reload,
+            Scene::CloseKeeping,
+            Scene::ExitKeeping,
+        ];
 
         fn name(self) -> &'static str {
             match self {
@@ -1398,15 +1410,21 @@ mod tests {
                 Scene::CloseThenExit => "close-then-exit",
                 Scene::Reload => "reload",
                 Scene::CloseKeeping => "close-keeping",
+                Scene::ExitKeeping => "exit-keeping",
             }
         }
 
         /// 셸에서 띄울 자식의 역할(`processes::testkit`).
         fn role(self) -> &'static str {
             match self {
-                Scene::Close | Scene::CloseKeeping => "sleep",
+                Scene::Close | Scene::CloseKeeping | Scene::ExitKeeping => "sleep",
                 _ => "ignore-term",
             }
+        }
+
+        /// 예외 이름으로 부른 자식을 하나 더 띄우고, 그 이름을 설정의 예외 목록에 적는 장면인가.
+        fn keeps(self) -> bool {
+            matches!(self, Scene::CloseKeeping | Scene::ExitKeeping)
         }
     }
 
@@ -1464,6 +1482,19 @@ mod tests {
             "closing_a_shell_leaves_the_child_named_on_the_exception_list",
             Scene::CloseKeeping,
         );
+    }
+
+    /// **앱을 꺼도 예외 목록에 걸린 이름의 자식은 산다**(프로세스 결정 5 · 티켓 06). 앱 종료는 셸 닫기 · 새로고침과
+    /// 달리 `end`를 안 지나고 `end_for_exit`에서 판정(`verdict::at_exit`)을 따로 부른다 — 설정을 읽어 판정에 넘기는
+    /// 줄이 거기 따로 있고, 위 닫기 장면은 그 줄을 안 지난다. 종료는 이 세대의 표식을 문 것을 모두 끝내니, 그 줄이
+    /// 빠지면 아틀리에 셸에서 띄운 tmux 서버와 그 창의 셸 · 명령이 ⌘Q마다 끝난다.
+    ///
+    /// 앵커: 다른 하나(예외가 아닌 표식 자식)는 종료 길이 돌아올 때 이미 끝나 있다 — 종료가 아무것도 안 끝내도
+    /// 「남았다」는 참이 된다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_exit_leaves_the_child_named_on_the_exception_list() {
+        on_the_pool_side("the_exit_leaves_the_child_named_on_the_exception_list", Scene::ExitKeeping);
     }
 
     /// 풀 배선 검사의 바깥 — 검사 프로세스를 하나 더 띄워 그 안에서 장면을 돌린다. 안쪽이면 곧바로 장면을 돈다.
@@ -1568,7 +1599,7 @@ mod tests {
         // 예외 장면의 자식이 부를 이름. 이 검사 프로세스의 pid를 붙여 이 기계의 어떤 실제 이름과도 안 겹치게 한다 —
         // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정 파일에만 적는다.
         let keep_name = format!("atelier-keep-{}", std::process::id());
-        if scene == Scene::CloseKeeping {
+        if scene.keeps() {
             let mut settings = crate::settings::Settings::default();
             settings.terminal.process_exceptions = Some(vec![keep_name.clone()]);
             crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
@@ -1584,7 +1615,7 @@ mod tests {
             Scene::CloseThenExit => "/bin/sh -c \"trap '' TERM HUP; exec /bin/sleep 30\" &\n".to_string(),
             // 같은 자식 둘. 뒤의 것은 zsh의 `ARGV0`로 argv[0]을 예외 이름으로 바꿔 부른다 — 커널 이름은 테스트
             // 바이너리 그대로라, 부른 이름으로 걸리는 길을 탄다(프로세스 스펙 S7).
-            Scene::CloseKeeping => {
+            Scene::CloseKeeping | Scene::ExitKeeping => {
                 let child = |argv0: &str| {
                     format!(
                         "( {CHILD_ROLE}={} {argv0}'{}' {args} </dev/null >/dev/null 2>&1 & )",
@@ -1622,7 +1653,7 @@ mod tests {
                 })
                 .map(|p| p.id);
             kept = procs.iter().filter(marked).find(|p| invoked_keep(p)).map(|p| p.id);
-            child.is_some() && (scene != Scene::CloseKeeping || kept.is_some())
+            child.is_some() && (!scene.keeps() || kept.is_some())
         });
 
         // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
@@ -1671,6 +1702,10 @@ mod tests {
                 super::kill(&pool, spawned.id).expect("셸을 닫는다");
             }
             Scene::Reload => super::end_for_reload(&pool),
+            // 셸을 풀에 둔 채 부른다 — 앱이 셸을 연 채 닫히는 보통의 ⌘Q다.
+            Scene::ExitKeeping => {
+                let _ = super::end_for_exit(&pool);
+            }
         }
         let closed = began.elapsed();
         let emptied = pool.lock().is_empty();
@@ -1682,7 +1717,7 @@ mod tests {
         let ended = wait_until(|| !alive());
         let ended_after = began.elapsed();
         // 예외 자식에 신호가 갔다면 앵커와 같은 순간(SIGTERM)이다 — 앵커가 끝난 뒤로도 한동안 살아 있는지 본다.
-        let survived = scene == Scene::CloseKeeping && holds_for(Duration::from_millis(500), kept_alive);
+        let survived = scene.keeps() && holds_for(Duration::from_millis(500), kept_alive);
 
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 신원을 방금 다시 봤다.
         if let Some(id) = child.filter(|_| alive()) {
@@ -1698,9 +1733,15 @@ mod tests {
         if scene == Scene::Close {
             return;
         }
-        if scene == Scene::CloseKeeping {
+        if scene.keeps() {
             assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
-            assert!(survived, "셸을 닫았더니 예외 목록에 적은 이름({keep_name})의 자식까지 끝났다");
+            if scene == Scene::ExitKeeping {
+                // 종료는 대상이 끝나기를 기다리고 돌아온다 — 앵커가 그때 살아 있으면 판정이 그것을 안 골랐다.
+                assert!(!alive_on_return, "종료 길이 돌아왔는데 예외가 아닌 표식 자식이 살아 있다 ({returned:?})");
+                assert!(survived, "앱 종료 길이 예외 목록에 적은 이름({keep_name})의 자식까지 끝냈다");
+            } else {
+                assert!(survived, "셸을 닫았더니 예외 목록에 적은 이름({keep_name})의 자식까지 끝났다");
+            }
             return;
         }
         assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
