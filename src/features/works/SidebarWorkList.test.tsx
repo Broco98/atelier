@@ -80,6 +80,9 @@ function render(
       selectedSlug={selectedSlug}
       shellCounts={shellCounts}
       signals={signals}
+      // 부르는 셸의 말(결정 14)은 이 파일의 관심 밖이다 — 이름 버튼의 설명만 바꾸고 행의
+      // 구획·레인·이름은 안 건드린다. 설명이 서는 것은 L3가 잰다(`works-sidebar.spec.ts`).
+      notes={{}}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}

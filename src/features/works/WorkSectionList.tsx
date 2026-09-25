@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { ChevronDown, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SIGNAL_LABEL, SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
+import {
+  SIGNAL_LABEL,
+  SignalLane,
+  type CallingNote,
+  type ShellSignal,
+} from "@/components/shell/shell-signal";
 import type { DragPoint } from "@/lib/pointer-drag";
 import type { Mode } from "@/mode";
 import { emptyMainNotice, listLabelOf } from "./work-sections";
@@ -35,6 +40,7 @@ export function WorkSectionList({
   selectedSlug,
   shellCounts,
   signals,
+  notes,
   onToggleSection,
   onOpen,
   onHover,
@@ -53,6 +59,8 @@ export function WorkSectionList({
   selectedSlug: string | null;
   shellCounts: Record<string, number>;
   signals: Record<string, ShellSignal>;
+  /** work마다 부르는 셸이 한 말(`sidebar-active-band` 결정 14). 행 버튼의 접근성 설명이 읽는다. */
+  notes: Record<string, CallingNote>;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
@@ -90,6 +98,7 @@ export function WorkSectionList({
       dragging={work.slug === draggedSlug}
       shellCount={shellCounts[work.slug] ?? 0}
       signal={signals[work.slug] ?? null}
+      note={notes[work.slug] ?? null}
       onOpen={onOpen}
       onHover={onHover}
       onLeave={onLeave}
@@ -335,6 +344,7 @@ function WorkRow({
   dragging,
   shellCount,
   signal,
+  note,
   subrow,
 }: {
   work: WorkView;
@@ -353,6 +363,11 @@ function WorkRow({
    * 그때 레인은 work 상태 아이콘으로 되돌아가고 이름에도 아무 말이 안 붙는다.
    */
   signal: ShellSignal | null;
+  /**
+   * 부르는 셸이 한 말(결정 14) — 이름 버튼의 **접근성 설명**이 된다. 부르는 셸이 말을 했을
+   * 때만 오고(S6), 없으면 `null`이라 설명도 없다. 호버 카드의 말 칸이 같은 값을 읽는다.
+   */
+  note: CallingNote | null;
   /**
    * 셸이 있는 행의 **둘째 줄 내용**. 슬롯으로 온다 — 그 셸이 스스로 말했으면 그 말
    * (`SignalLine`), 아니면 종류·수(`ShellMeta`)다(#203). 셸이 없는 행의 프로젝트 이름은
@@ -496,6 +511,16 @@ function WorkRow({
         // 겹침은 격자가 이미 막으므로(핀이 2열을 차지해 이 칸이 그만큼 물러난다) 이 6px은
         // 아무것도 안 지킨다 — 제목 상자가 핀 바로 앞에서 끝나는 것을 L3가 잰다.
         className="col-start-1 row-start-1 flex h-[26px] min-w-0 items-center gap-(--glyph-gap) pl-[9px] pt-2 text-left"
+        // **셸의 마지막 말은 설명으로 붙는다**(결정 14 · 스토리 38). 호버 카드는 키보드로 닿지
+        // 않으므로, 포커스한 사람이 「왜 부르나」를 듣는 자리가 여기다 — 이름(`제목 — 상태`)
+        // 다음에 읽힌다. 이름을 늘리지 않는 것은 그 이름이 행·띠·탭이 함께 쓰는 짧은 말이라서다.
+        //
+        // **`aria-describedby`를 달지 않는다.** 달면 이 속성이 무시된다. 라이브 영역도 아니라서
+        // 말이 바뀌어도 알리지 않는다 — 설명만 새 말로 바뀐다.
+        //
+        // **`className` 뒤에 적는다.** 행 이름을 모으는 마크업 검사가 여는 태그를 `aria-label`
+        // 바로 뒤에 `class`가 오는 모양으로 읽는다(`SidebarWorkList.test.tsx`의 `namesOf`).
+        aria-description={note?.message}
       >
         {/* **레인** — 첫 줄 왼쪽의 14px 한 칸(이 판 결정 5). **이 자리가 이 판에서 처음
             눈에 보이는 곳이다**(#203): 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이

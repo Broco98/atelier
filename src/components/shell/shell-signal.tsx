@@ -1,8 +1,8 @@
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import type { CallingKind, ShellSignal } from "@/features/terminal/shell-attention";
+import type { CallingKind, CallingNote, ShellSignal } from "@/features/terminal/shell-attention";
 
-export type { ShellSignal };
+export type { CallingNote, ShellSignal };
 
 // 상태 축이 **눈에 보이는 모양**(#203). 값을 정하는 자리는 `features/terminal/shell-attention`
 // 이고 여기는 그것을 그리기만 한다 — 사이드바 행 · 알림 띠(#204) · 셸 탭(#205)이
@@ -18,7 +18,7 @@ export type { ShellSignal };
 // **`ShellSignal`을 여기서 다시 내보내는 것**은 사이드바 목록 때문이다: 그 파일은
 // `@/features/terminal`이라는 글자를 **한 번도 쓸 수 없고**(SidebarWorkList.test.tsx가 리터럴로
 // 센다) 그러면서 화면값의 타입을 prop으로 받아야 한다. 어휘가 두 벌이 되는 것보다 이 한 줄이
-// 낫다.
+// 낫다. 부르는 셸의 말(`CallingNote`, `sidebar-active-band` 결정 14)도 같은 사정으로 여기서 다시 나간다.
 
 /**
  * 상태의 **말**. 접근성 이름이 이 표를 읽는다 — 행 버튼(`<제목> — 나를 기다림`) · 탭 버튼 ·
@@ -240,5 +240,30 @@ export function SignalLine({
         </span>
       )}
     </>
+  );
+}
+
+/**
+ * 호버 카드의 **말 칸**(`sidebar-active-band` 결정 14 · S6·S7). 행이 한 줄이 되면서 빠진 셸의 마지막
+ * 말이 여기 선다. 받는 값이 곧 서는 조건이다 — 부르는 셸이 말을 했을 때만 값이 오고
+ * (`CallingNote`), 그 가름은 값을 고르는 쪽 한 자리에 있다. 여기서 다시 묻지 않는다.
+ *
+ * **색이 드는 것은 라벨이다.** 라벨은 상태 말이고 상태색 잉크를 받는다 — 행 이름·띠 줄과 같은
+ * 표(`SIGNAL_LABEL`)이고 색은 `TONE` 하나라, 같은 셸이 레인에서는 앰버인데 카드에서는 초록인
+ * 날이 안 온다(스토리 79). 말 자체는 카드의 글자색 그대로다: 부르는 이유를 말하는 글이지
+ * 상태가 아니다.
+ *
+ * **최대 두 줄에서 줄임표로 자른다(S7).** 카드는 폭이 정해져 있어 한 줄이면 대부분 잘린다.
+ * 띄어쓰기 없는 긴 낱말(경로·명령)은 칸 안에서 끊는다 — 안 끊으면 줄임표 대신 카드 밖으로 샌다.
+ *
+ * **표식(`data-last-message`)은 검사가 이 칸을 집는 이름이다.** 역할이 없는 글 상자라 이름으로
+ * 못 집고, 「칸이 없다」를 재려면 집을 이름이 있어야 한다.
+ */
+export function SignalNote({ kind, message }: CallingNote) {
+  return (
+    <div data-last-message="" className="flex flex-col gap-1 text-[12px] leading-snug">
+      <span className={cn("font-medium", TONE[kind].text)}>{SIGNAL_LABEL[kind]}</span>
+      <p className="line-clamp-2 wrap-break-word">{message}</p>
+    </div>
   );
 }

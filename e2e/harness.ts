@@ -426,6 +426,16 @@ export const workRow = (page: Page, slug: string) => page.locator(`[data-work-ro
  */
 export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
 
+/**
+ * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 부르는 행의 이름은 `<제목> — <상태>`다.
+ *
+ * **목록 안으로 좁힌다.** 알림 띠의 줄이 같은 이름을 쓰므로(부르는 셸이 있으면 그 줄도 함께
+ * 선다) 화면 전체에서 집으면 둘이 잡힌다. 행 버튼의 접근성 설명(셸의 마지막 말, 결정 14)을 재는
+ * 자리가 이것을 딛는다.
+ */
+export const 행버튼 = (page: Page, name: string) =>
+  page.locator("[data-worklist]").getByRole("button", { name, exact: true });
+
 /** 사이드바에 선 작업 행의 slug, 위에서부터. */
 export const shownWorkOrder = (page: Page) =>
   page.locator("[data-work-row]").evaluateAll((els) => els.map((el) => el.getAttribute("data-work-row")));

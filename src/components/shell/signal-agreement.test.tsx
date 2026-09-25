@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import ShellTabs from "@/features/terminal/ShellTabs";
 import {
   bandRows,
+  callingNotesOf,
   signalsOf,
   topSignalView,
 } from "@/features/terminal/shell-attention";
@@ -100,6 +101,7 @@ function 행(state: ShellsState): string {
       selectedSlug={null}
       shellCounts={{ [WORK.slug]: 1 }}
       signals={signals}
+      notes={callingNotesOf(state, "atelier")}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}

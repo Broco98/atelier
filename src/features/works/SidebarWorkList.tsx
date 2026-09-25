@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import type { ShellSignal } from "@/components/shell/shell-signal";
+import type { CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
 import { routesOf, slugOf, type Mode } from "@/mode";
@@ -41,6 +41,7 @@ function SidebarWorkList({
   mode,
   shellCounts,
   signals,
+  notes,
   renderSubrow,
 }: {
   open: boolean;
@@ -74,6 +75,16 @@ function SidebarWorkList({
    * (`signalsByOwner` 머리말).
    */
   signals: Record<string, ShellSignal>;
+  /**
+   * work마다 **부르는 셸이 한 말**(`sidebar-active-band` 결정 14) — 종류와 말이다. 값이 없는 work은
+   * 키 자체가 없다(부르지 않거나, 말 없이 불렀다 — S6).
+   *
+   * **`signals`와 같은 길로 온다 — 슬롯이 아니라 값이다.** 이 값을 읽는 자리가 둘인데 둘 다
+   * 행 마크업 **안**이 아니다: 행 버튼의 접근성 설명은 버튼의 **속성**이고, 호버 카드는 목록
+   * 밖의 포털에 선다. 슬롯 하나로는 그 두 자리에 닿지 않는다. 고르는 자리는 위(`Sidebar`)
+   * 하나이고, 그 고름이 레인·메타와 같은 셸을 딛는다 — 여기서 둘로 나눠 줄 뿐이다.
+   */
+  notes: Record<string, CallingNote>;
   /**
    * 둘째 줄의 **셸 갈래**. 같은 이유로 슬롯이고, 값을 고르는 자리는 터미널 스토어를 아는
    * Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
@@ -416,6 +427,7 @@ function SidebarWorkList({
             selectedSlug={selectedSlug}
             shellCounts={shellCounts}
             signals={signals}
+            notes={notes}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
@@ -444,7 +456,9 @@ function SidebarWorkList({
           width={272}
           className="p-3.5"
         >
-          <WorkCard mode={mode} work={hovered} />
+          {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
+              말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
+          <WorkCard mode={mode} work={hovered} note={notes[hovered.slug] ?? null} />
         </PopoverPortal>
       )}
     </>

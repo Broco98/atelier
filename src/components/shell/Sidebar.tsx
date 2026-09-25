@@ -15,8 +15,13 @@ import {
   type ShellsState,
 } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
-import type { BandRow } from "@/features/terminal/shell-attention";
+import {
+  bandRows,
+  callingNotesOf,
+  signalsOf,
+  topSignalView,
+} from "@/features/terminal/shell-attention";
+import type { BandRow, CallingNote } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
@@ -97,6 +102,14 @@ function Sidebar({
   // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
   // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
   const signals = useStore(terminalStore, (state) => signalsOf(state, mode), shallow);
+  // **부르는 셸이 한 말도 한 번에 읽어 내린다**(`sidebar-active-band` 결정 14). 호버 카드의 말 칸과
+  // 행 버튼의 설명이 이 값 하나를 나눠 읽는다 — 설명은 버튼의 속성이라 슬롯으로 못 가고, 카드는
+  // 목록 밖의 포털이다. 고르는 것은 레인·메타와 같은 `topSignalView`라 같은 셸의 말이다.
+  //
+  // **여기만 비교가 한 겹 더 깊다**(`sameNotes`). 값이 문자열이 아니라 종류와 말을 든 객체라
+  // 회차마다 새것이고, 기본 얕은 비교면 셸이 프롬프트마다 쏘는 타이틀 하나에 목록 전체가 다시
+  // 그려진다(띠의 `sameBand`와 같은 함정).
+  const notes = useStore(terminalStore, (state) => callingNotesOf(state, mode), sameNotes);
   // **띠가 읽는 줄들**(#204). 이것만은 위 셋과 달리 얕은 비교로는 안 걸린다 — 값이 객체
   // 배열이라 회차마다 새것이다. 그래서 비교를 한 겹 더 벗기는 `sameBand`를 쓴다(그쪽 주석):
   // 띠는 셸이 프롬프트마다 쏘는 타이틀에도, 1초 폴링의 「도는 것」에도 안 흔들려야 한다.
@@ -227,6 +240,7 @@ function Sidebar({
         // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
         // 따로인 이유는 `SubrowFor`가 든다.
         signals={signals}
+        notes={notes}
         renderSubrow={(work) => (
           <SubrowFor
             owner={ownerOf(mode, work.slug)}
@@ -382,6 +396,19 @@ function SettingsNav({
  */
 function sameBand(a: ReadonlyArray<BandRow>, b: ReadonlyArray<BandRow>): boolean {
   return a.length === b.length && a.every((row, index) => shallow(row, b[index]));
+}
+
+/**
+ * work마다의 말이 **다 같은가** — `sameBand`와 같은 한 겹이고, 배열이 아니라 Record라 키로 견준다.
+ * 안쪽이 원시값 둘(`kind`·`message`)뿐이라 `shallow`로 끝난다. 한쪽에만 있는 키는 저쪽 값이
+ * `undefined`라 거기서 어긋난다.
+ */
+function sameNotes(
+  a: Readonly<Record<string, CallingNote>>,
+  b: Readonly<Record<string, CallingNote>>,
+): boolean {
+  const slugs = Object.keys(a);
+  return slugs.length === Object.keys(b).length && slugs.every((slug) => shallow(a[slug], b[slug]));
 }
 
 /**

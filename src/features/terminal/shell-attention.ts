@@ -299,6 +299,42 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
 }
 
 /**
+ * **부르는 셸이 한 말**(`sidebar-active-band` 결정 14). 행이 한 줄이 되면서 행에서 빠진 셸의 마지막
+ * 말이 서는 자리 둘 — 호버 카드의 말 칸과 행 버튼의 접근성 설명(`aria-description`) — 이 이 값
+ * 하나를 나눠 읽는다.
+ *
+ * **종류가 함께 오는 것은 카드의 라벨 때문이다.** 칸의 라벨이 상태 말(「나를 기다림」·「확인할 것」)
+ * 이라, 말만 실어 보내면 받는 쪽이 종류를 다른 값에서 다시 찾아 맞춰야 한다 — 그 둘이 같은
+ * 셸의 것이라는 보장을 받는 쪽이 지게 된다. 종류가 `CallingKind`인 것은 이 값이 **부르는
+ * 셸에만** 서기 때문이다(아래 `callingNote`).
+ */
+export interface CallingNote {
+  kind: CallingKind;
+  /** 셸이 마지막으로 한 말의 첫 줄. 어댑터가 접어 준 것 그대로이고 비어 있지 않다. */
+  message: string;
+}
+
+/**
+ * 그 셸들이 **부르며 한 말** — 없으면 `null`이다.
+ *
+ * **고르는 것은 `topSignalView`다.** 레인(`signalsOf`)과 행의 메타(`Sidebar`의 구독 컴포넌트)가
+ * 딛는 그 함수를 여기서도 딛으므로, 한 work에서 셸 여럿이 불러도 레인·메타·카드의 말·설명이
+ * **같은 셸의 것**이다(스토리 39). 말만 따로 고르는 함수를 두면 같은 순위의 두 셸 사이에서
+ * 둘이 갈릴 수 있고, 그 어긋남은 화면 어디에도 표시가 안 난다(`SignalView` 머리말).
+ *
+ * **서는 조건이 둘이다(S6)** — 이긴 셸이 부르고(`isCalling`), 그 셸이 말을 했을 때. 도는 중인
+ * 셸의 직전 말은 여기 안 온다: 칸은 「나를 부르는 이유」를 말하는 자리다. 말 없는 부름(벨,
+ * 페이로드를 못 읽은 훅)은 칸을 안 세운다 — 상태 이름만 선 칸은 레인과 행 이름이 이미 한 말을
+ * 되풀이할 뿐이다. 한 번 말한 셸이 벨로 부르면 옛 말이 서는 것은 `applySignal`의 「직전
+ * 유지」가 이미 정한 것이고, 여기서 다시 가르지 않는다.
+ */
+export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
+  const view = topSignalView(shells);
+  if (view === null || !isCalling(view.kind) || view.message === null) return null;
+  return { kind: view.kind, message: view.message };
+}
+
+/**
  * work마다 화면값 하나. **사이드바가 목록 전체를 한 번에 읽는 값**이다(#203).
  *
  * **값이 문자열이라 얕은 비교가 그대로 먹는다** — 그것이 이 Record가 존재하는 이유 전부다.
@@ -318,6 +354,34 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
  * 여기서 함께 한다 — 안 거르면 저쪽 세계의 셸이 이 행을 물들인다.
  */
 export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellSignal> {
+  return perWork(state, mode, topSignal);
+}
+
+/**
+ * work마다 **부르는 셸이 한 말**(결정 14). 사이드바가 목록 전체를 한 번에 읽어 내리고, 목록이
+ * 카드와 행 버튼에 나눠 준다 — 설명은 버튼의 속성이고 카드는 값을 받으므로 슬롯으로는 두 자리에
+ * 안 닿는다(목록 파일의 `signals` 주석과 같은 사정).
+ *
+ * **가르는 규칙은 `signalsOf`와 같다** — 그 세계의 것만, 키는 slug, 값이 없는 work은 키가 없다,
+ * 최상위 셸은 안 든다. 두 Record가 같은 자리(`perWork`)에서 나오므로 레인과 말이 서로 다른
+ * work 묶음을 볼 일이 없다.
+ *
+ * **값이 객체라 얕은 비교가 안 먹는다.** 읽는 쪽(`Sidebar`)이 한 겹 더 벗긴 비교를 쓴다.
+ * 부르는 셸이 없으면 빈 Record이고, 대개의 목록에서 이 값은 비어 있다.
+ */
+export function callingNotesOf(state: ShellsState, mode: Mode): Record<string, CallingNote> {
+  return perWork(state, mode, callingNote);
+}
+
+/**
+ * 그 세계의 work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
+ * `signalsOf`와 `callingNotesOf`의 가름(세계 · 최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
+ */
+function perWork<T>(
+  state: ShellsState,
+  mode: Mode,
+  pick: (shells: ReadonlyArray<Shell>) => T | null,
+): Record<string, T> {
   const groups = new Map<string, Shell[]>();
   for (const shell of state.shells) {
     if (modeOfOwner(shell.owner) !== mode) continue;
@@ -328,10 +392,10 @@ export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellS
     else groups.set(slug, [shell]);
   }
 
-  const out: Record<string, ShellSignal> = {};
+  const out: Record<string, T> = {};
   for (const [slug, group] of groups) {
-    const signal = topSignal(group);
-    if (signal !== null) out[slug] = signal;
+    const value = pick(group);
+    if (value !== null) out[slug] = value;
   }
   return out;
 }

@@ -8,8 +8,11 @@ import {
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  workRow,
+  writeShell,
   띠,
   레인,
+  행버튼,
 } from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
@@ -1676,6 +1679,111 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 �
   // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
   // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
   expect(cardBox.x).toBeLessThan(aside.x + aside.width);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **호버 카드의 마지막 말과 행 버튼의 설명**(`sidebar-active-band` 결정 14 · S6·S7). 행이 한 줄이
+// 되면 셸의 마지막 말이 행에서 빠진다 — 그 말이 서는 자리가 둘이다: 마우스로는 호버 카드의
+// **말 칸**, 스크린리더로는 행 버튼의 **접근성 설명**(`aria-description`). 둘은 같은 값 하나를
+// 읽는다(사이드바가 고른 「work → 부르는 셸의 종류와 말」).
+//
+// **칸이 서는 조건은 둘이다(S6)** — 부르는 셸이 있고, 그 셸이 말을 했을 때. 그래서 「없다」를
+// 재는 검사가 셋이다: 조용한 행 · 도는 행 · 말 없는 부름(벨). 셋 다 **카드가 섰다**를 앵커로
+// 먼저 본다 — 카드가 안 떠서 초록인 판을 막는다.
+
+/** 떠 있는 호버 카드. 떠 있는 카드만 `data-popover`를 단다 — 한 번에 하나만 선다. */
+const 카드 = (page: Page) => page.locator("[data-popover]");
+
+/** 카드 안의 **말 칸**. 역할이 없는 글 상자라 표식으로 집는다. */
+const 말칸 = (page: Page) => 카드(page).locator("[data-last-message]");
+
+/** 벨 한 번. 소스에 제어문자를 그대로 박지 않는다 — 편집기와 diff에서 안 보인다. */
+const BEL = "\x07";
+
+test("부르는 행에 올리면 카드에 셸의 마지막 말이 한 칸으로 서고, 행 버튼이 같은 말을 설명으로 든다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // 여러 줄 말이다 — 칸과 설명이 싣는 것은 **첫 줄**이다(어댑터가 접는다).
+  await 기다리게한다(page, "테스트 셋 통과\n커밋할까요?");
+
+  // **이름은 그대로다** — 설명이 붙어도 이름(`제목 — 상태`)은 한 글자도 안 바뀐다. 이 로케이터가
+  // 그 이름으로 집히는 것이 곧 그 단언이다.
+  const 행 = 행버튼(page, `${plainWork.title} — 나를 기다림`);
+  await expect(행).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("테스트 셋 통과");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toBeVisible();
+  const 칸 = 말칸(page);
+  await expect(칸).toHaveCount(1);
+  // 라벨은 **상태 말**이다 — 행 이름·띠 줄과 같은 표(`SIGNAL_LABEL`)에서 온다.
+  await expect(칸.getByText("나를 기다림", { exact: true })).toBeVisible();
+  await expect(칸.getByText("테스트 셋 통과", { exact: true })).toBeVisible();
+  await expect(칸).not.toContainText("커밋할까요?");
+
+  // **말이 바뀌면 칸도 설명도 따라 바뀐다** — 카드가 떠 있는 채로다. 값을 여는 순간 한 번 찍어
+  // 두는 판이면 여기서 옛 말이 남는다.
+  await 기다리게한다(page, "다시 물어요");
+  await expect(칸.getByText("다시 물어요", { exact: true })).toBeVisible();
+  await expect(행).toHaveAccessibleDescription("다시 물어요");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("조용한 행과 도는 행의 카드에는 말 칸이 없고, 행 버튼에 설명도 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  // **조용한 행** — 셸이 하나도 없는 work이다.
+  await workRow(page, pinnedWork.slug).hover();
+  await expect(카드(page)).toContainText(pinnedWork.title);
+  await expect(말칸(page)).toHaveCount(0);
+  await expect(행버튼(page, pinnedWork.title)).toHaveAccessibleDescription("");
+
+  // **도는 행** — 그런데 **말을 한 번 한** 셸이다. 말이 없는 셸에서 재면 「말이 없어서」로도
+  // 초록이 된다. 먼저 그 말이 설명에 선 것을 보고, 도는 중으로 넘긴다(말은 「직전 유지」라 남는다).
+  await 기다리게한다(page, "커밋할까요?");
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "커밋할까요?",
+  );
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
+  const 도는행 = 행버튼(page, `${plainWork.title} — 도는 중`);
+  await expect(도는행).toHaveCount(1);
+  await expect(도는행).toHaveAccessibleDescription("");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
+  await expect(말칸(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("말 없이 부른 셸(벨)의 카드에는 말 칸이 없고, 행 버튼에 설명도 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // 보고 있는 셸에 온 완료는 그 순간 「봤다」가 되어 안 선다 — 안 보는 자리로 간다.
+  await 셸에서눈을뗀다(page);
+
+  // **말을 한 번도 안 한 셸이다.** 한 번 말한 셸이 벨로 부르면 옛 말이 서는 것이 규칙이라
+  // (「직전 유지」), 거기서 재면 이 검사가 무엇을 재는지 갈리지 않는다. 아무것도 안 도는
+  // 칸의 벨은 삼켜지지 않고 초록을 세운다(`shell-osc.spec.ts`).
+  await writeShell(page, BEL);
+
+  const 행 = 행버튼(page, `${plainWork.title} — 확인할 것`);
+  await expect(행).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
+  // **상태 이름만 선 칸도 없다** — 레인과 이름이 이미 한 말을 되풀이하는 칸이다(S6).
+  await expect(말칸(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
