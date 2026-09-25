@@ -63,8 +63,11 @@ function AppDialog() {
         <span className="text-[14px] font-semibold tracking-[-0.01em]">{pending.title}</span>
         {/* 본문이 없는 물음이 있다 — 셸이 0개인 종료 확인은 그 줄이 **아예 없다**(결정 15). 빈 줄의
             여백만 남기지 않는다. */}
+        {/* **본문의 줄바꿈은 줄이다**(`whitespace-pre-line`). 셸 닫기 확인은 명령 문구 **아래에** 함께 끝날 수를
+            적는다(프로세스 스펙 P6). OS 시트에서 옮겨 온 문구들(아카이브 · 삭제)도 줄을 갈라 적혀 있다 — 이 창이
+            그것을 한 줄로 접고 있었다. */}
         {pending.body && (
-          <span id={bodyId} className="mt-1.5 text-[13px] leading-[1.6] text-tertiary">
+          <span id={bodyId} className="mt-1.5 whitespace-pre-line text-[13px] leading-[1.6] text-tertiary">
             {pending.body}
           </span>
         )}

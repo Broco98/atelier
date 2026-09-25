@@ -1,7 +1,7 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { Attention } from "./shell-attention";
-import type { PtyExit } from "./types";
+import type { CloseCheck, PtyExit } from "./types";
 
 // 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
 // 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
@@ -536,7 +536,7 @@ export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
 
 /**
  * 닫힐 프로세스가 **있는** 칸인가. 끝난 칸·못 뜬 칸은 목록에 남아도(결정 22) 아니다 — 세는 자리
- * (`runningShellsOf` · `countQuitShells`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
+ * (`runningShellsOf` · `countQuitShells` · `countSpawned`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
  */
 function isAlive(shell: Shell): boolean {
   return shell.status.kind === "running";
@@ -1242,32 +1242,35 @@ export function shellRowName(shell: Shell): string {
 }
 
 /**
- * 이 칸을 닫기 전에 사람에게 물어야 하는가(결정 92). **⌘W와 `×` 두 길이 이 하나를 부른다** —
- * 셸 하나를 없애는 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
+ * 이 칸을 닫기 전에 사람에게 물어야 하는가. **⌘W와 `×` 두 길이 이 하나를 부른다** — 셸 하나를 없애는 길이 둘인데
+ * 한쪽만 막으면 같은 사고가 마우스로만 남는다.
  *
- * `commandRunning`은 **닫기 직전에** 백엔드에 물어 온 답이다. 셸 상태에 얹어 두지 않는 것은
- * 그 값이 매 순간 바뀌기 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ * **명령이 돌거나 함께 끝날 프로세스가 있으면 묻는다.** ux-papercuts 결정 92는 「foreground가 셸이 아닐 때만
+ * 묻는다」였고, 프로세스 결정 3이 「foreground가 셸이어도 자손이 있으면 묻는다」로 넓혔다 — 셸을 닫으면 그 셸에서
+ * 띄운 것이 모두 끝나서(티켓 04), 빈 프롬프트에 dev 서버만 남은 셸을 묻지 않고 닫으면 그 서버가 조용히 끝난다. 결정
+ * 92가 피한 것(빈 프롬프트를 닫을 때마다 팝업)은 그대로 피한다: 셸 도우미(p10k의 `gitstatusd`)는 백엔드가 수에서
+ * 뺐다(프로세스 스펙 P1).
  *
- * **`null`은 「못 얻었다」이고 그때는 안 묻는다.** 모르는 것을 이유로 닫는 길을 막지 않는다.
- * 그 경우가 실제로 온다: 이미 끝난 pty, tcgetpgrp 실패, IPC 실패.
+ * `check`는 **닫기 직전에** 백엔드에 물어 온 답이다. 셸 상태에 얹어 두지 않는 것은 그 값이 매 순간 바뀌기
+ * 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ *
+ * **`null`은 「못 얻었다」이고 그때는 안 묻는다.** 모르는 것을 이유로 사람이 고른 닫기를 막지 않는다. 그 경우가
+ * 실제로 온다: 이미 끝난 pty, tcgetpgrp 실패, IPC 실패. 사람이 누르지 않은 닫기(티켓 12의 조용한 셸)는 거꾸로
+ * 읽는다 — 모르면 안 닫는다.
  *
  * **끝난 칸·못 뜬 칸도 안 묻는다.** 물어볼 프로세스가 없고, 그 pty id는 이미 회수돼 남이
  * 앉아 있을 수 있다 — 백엔드가 무엇을 답하든 여기서 끊는다. 그 칸들이 목록에 남아 있는
  * 것은 죽은 이유를 읽기 위해서다(결정 22).
  */
-export function needsCloseConfirm(
-  shell: Shell | undefined,
-  commandRunning: boolean | null,
-): boolean {
-  if (!shell || !isAlive(shell)) return false;
-  return commandRunning === true;
+export function needsCloseConfirm(shell: Shell | undefined, check: CloseCheck | null): boolean {
+  if (!shell || !isAlive(shell) || !check) return false;
+  return check.command || check.descendants > 0;
 }
 
 /**
- * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 결정 92가
- * 여는 커맨드가 주는 것은 「도는가」 하나이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹
- * 더 든다. 「명령」은 CONTEXT.md에 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이
- * 아니다.
+ * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 닫기 전 물음이 주는
+ * 것은 「도는가」와 수이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹 더 든다. 「명령」은 CONTEXT.md에
+ * 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
  *
  * **문구가 여기 있는 것은 재기 위해서다.** 스토어에 두면 xterm을 함께 끌고 와 이 seam에서
  * 못 읽고, 그러면 결정 105를 지키는 것이 주석 한 줄뿐이 된다.
@@ -1275,8 +1278,23 @@ export function needsCloseConfirm(
 export const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
 
 /**
+ * 셸 닫기 확인 창의 본문(프로세스 스펙 P6). 묻기로 한 답에만 부른다(`needsCloseConfirm`).
+ *
+ * - 명령이 돌면 지금 문구(`CLOSE_NOTICE`) **아래에** 함께 끝날 수를 한 줄 더한다. 수가 0이면 그 줄은 없다.
+ * - 명령 없이 자손만 있으면 그 수로 묻는다. 빈 프롬프트에는 명령이 없으니(CONTEXT 「명령」) 명령 문구도, 「도」로
+ *   시작하는 결정 3의 문장도 안 맞는다.
+ *
+ * 「이 셸에서 띄운 프로세스」는 화면의 말이다 — 「자손」은 코드와 문서의 말이라 화면에 안 뜬다.
+ */
+export function closeNotice(check: CloseCheck): string {
+  if (!check.command) return `이 셸에서 띄운 프로세스 ${check.descendants}개가 아직 돌아요. 닫을까요?`;
+  if (check.descendants === 0) return CLOSE_NOTICE;
+  return `${CLOSE_NOTICE}\n이 셸에서 띄운 프로세스 ${check.descendants}개도 함께 끝나요.`;
+}
+
+/**
  * 닫아도 되는가 — **묻는 것까지가 이 함수다**(결정 92). 물을 필요가 없으면 안 묻고 `true`,
- * 물어야 하면 `ask`가 답한 그대로 돌려준다.
+ * 물어야 하면 `ask`가 답한 그대로 돌려준다. 무엇을 말할지(`closeNotice`)도 여기서 정해 `ask`에 건넨다.
  *
  * **확인 창을 인자로 받는다.** 스토어에서 `confirm`을 직접 부르면 「물었고, 아니라고 하면
  * 안 닫는다」를 재는 길이 없어진다 — 그 한 줄을 지우고 답을 버려도 아무 검사가 안 빨개진다
@@ -1284,54 +1302,105 @@ export const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?
  */
 export async function confirmClose(
   shell: Shell | undefined,
-  commandRunning: boolean | null,
-  ask: () => Promise<boolean>,
+  check: CloseCheck | null,
+  ask: (body: string) => Promise<boolean>,
 ): Promise<boolean> {
-  if (!needsCloseConfirm(shell, commandRunning)) return true;
-  return ask();
-}
-
-/** 종료하면 닫힐 셸 수와, 그중 명령이 도는 셸 수(UI개선 결정 15). 명령의 개수가 아니다. */
-export interface QuitCounts {
-  live: number;
-  running: number;
+  if (!check || !needsCloseConfirm(shell, check)) return true;
+  return ask(closeNotice(check));
 }
 
 /**
- * 종료 확인이 적을 수(UI개선 결정 15 · #223). 받은 목록을 **세계를 가리지 않고** 전부 센다 — 종료는 두
- * 세계의 셸을 함께 죽인다. 명령이 도는지는 셸마다 **지금 물어서** 센다 — 1초 폴링 값
- * (`Shell.running`)은 늦을 수 있다. 물음은 병렬로 나간다.
+ * 종료하면 닫힐 셸 수, 그중 명령이 도는 셸 수(UI개선 결정 15 — 명령의 개수가 아니다), 그 셸들에서 띄워 함께 끝날
+ * 프로세스 수(프로세스 스펙 S18).
+ */
+export interface QuitCounts {
+  live: number;
+  running: number;
+  spawned: number;
+}
+
+/**
+ * 셸 여럿의 닫기 전 물음 — 레지스트리 id마다 그 셸의 답. **답한 셸만 든다.** 못 얻은 셸(pty가 아직 · 이미 없음,
+ * 백엔드가 못 읽음)은 빠지고, 물음 전체가 실패하면 `null`이다.
+ */
+export type CloseChecks = ReadonlyMap<number, CloseCheck>;
+
+/**
+ * 종료 확인이 적을 수(UI개선 결정 15 · #223 · 프로세스 스펙 S18). 받은 목록을 **세계를 가리지 않고** 전부 센다 —
+ * 종료는 두 세계의 셸을 함께 죽인다. 명령이 도는지와 띄운 프로세스 수는 **지금 물어서** 센다 — 1초 폴링 값
+ * (`Shell.running`)은 늦을 수 있다. 셸 여럿을 **한 번에** 묻는다: 백엔드가 스냅샷 한 장으로 셸마다 답한다(티켓 08).
+ * 셸마다 물으면 셸 20개에 스냅샷 20장이다.
  *
- * **「도는 셸」은 셸 닫기가 물을 셸이다** — 판정을 `needsCloseConfirm`에서 그대로 빌려, 닫기와
- * 종료가 「모르면 안 돈다」·「끝난 칸은 안 센다」에서 갈라질 수 없다. 물음이 **실패해도** 「모름」으로
- * 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는 길은 곧 끌 수 없는 길이다.
+ * **「명령이 도는 셸」은 명령 칸만 센다.** 셸 닫기가 물을 셸(`needsCloseConfirm`)을 빌리지 않는다 — 프로세스 결정
+ * 3이 그 판정을 「자손이 있으면 묻는다」로 넓혀서, 빌리면 자손만 있는 셸이 「명령이 도는 셸」에 섞여 창의 글자와
+ * 어긋난다. 그 셸의 자손은 띄운 프로세스 수에 든다. 「모르면 안 돈다」 · 「끝난 칸은 안 센다」는 닫기와 같다.
  *
- * 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.**
+ * 물음이 **실패해도** 「모름」으로 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는
+ * 길은 곧 끌 수 없는 길이다. 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.** 살아 있는 칸이 없으면
+ * 묻지 않는다.
  */
 export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
-  commandRunning: (id: number) => Promise<boolean | null>,
+  closeChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<QuitCounts> {
   const live = shells.filter(isAlive);
-  const answers = await Promise.all(
-    live.map((shell) => commandRunning(shell.id).catch(() => null)),
-  );
+  if (live.length === 0) return { live: 0, running: 0, spawned: 0 };
+  const answers = await closeChecks(live.map((shell) => shell.id)).catch(() => null);
+  const checks = live.flatMap((shell) => answers?.get(shell.id) ?? []);
   return {
     live: live.length,
-    running: live.filter((shell, n) => needsCloseConfirm(shell, answers[n])).length,
+    running: checks.filter((check) => check.command).length,
+    spawned: checks.reduce((sum, check) => sum + check.descendants, 0),
   };
+}
+
+/**
+ * 그 셸들에서 띄워 함께 끝날 프로세스 수(프로세스 스펙 S18) — 아카이브 확인 창의 M. 끝난 칸·못 뜬 칸은 묻지 않는다.
+ * 물음이 실패하면 `null`이다 — 모르는 수를 창에 적지 않는다. 살아 있는 칸이 없으면 묻지 않고 0이다.
+ */
+export async function countSpawned(
+  shells: ReadonlyArray<Shell>,
+  closeChecks: (ids: number[]) => Promise<CloseChecks | null>,
+): Promise<number | null> {
+  const live = shells.filter(isAlive);
+  if (live.length === 0) return 0;
+  const answers = await closeChecks(live.map((shell) => shell.id)).catch(() => null);
+  if (!answers) return null;
+  return live.reduce((sum, shell) => sum + (answers.get(shell.id)?.descendants ?? 0), 0);
+}
+
+/**
+ * 셸 수 뒤에 붙는 말 — 「(띄운 프로세스 M개 포함)」(프로세스 스펙 S18). **M > 0일 때만** 선다. 못 얻었으면(`null`)
+ * 안 선다. 아카이브 확인 창, 종료 확인 창, 주인 잃은 셸의 [모두 닫기] 창(티켓 12)이 같은 말을 쓴다.
+ *
+ * 괄호는 앞말에 붙여 쓴다 — 이 앱의 다른 괄호 풀이(「git이 무시하는 파일(.env, …)」)와 같다.
+ */
+export function spawnedNote(spawned: number | null): string {
+  return spawned !== null && spawned > 0 ? `(띄운 프로세스 ${spawned}개 포함)` : "";
+}
+
+/**
+ * 아카이브 · 삭제 확인 창의 셸 줄(결정 26 · 프로세스 스펙 S18). 셸이 0개면 그 줄이 없다(`null`).
+ * 두 세계가 같은 말이다 — 세는 것이 셸이지 work이나 Room이 아니다.
+ */
+export function closingShellsNotice(live: number, spawned: number | null): string | null {
+  if (live === 0) return null;
+  return `셸 ${live}개가 닫혀요${spawnedNote(spawned)}.`;
 }
 
 /**
  * 종료 확인의 본문. **셸이 0개면 없다**(`undefined`) — 그 줄이 아예 서지 않는다(UI개선 결정 15). 그래도
  * 창은 뜬다: 셸이 없을 때의 실수 종료도 조건 밖에 남기지 않는다(UI개선 결정 14).
  *
+ * 띄운 프로세스 수는 **셸 수 바로 뒤에** 붙는다 — 셸과 함께 끝나는 것이라서다. 끝에 붙이면 「명령이 도는 셸 K」의
+ * 풀이로 읽힌다.
+ *
  * 「셸」·「명령」은 `CONTEXT.md`의 말이다 — 명령은 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
  * 문구가 여기 있는 이유는 `CLOSE_NOTICE`와 같다.
  */
-export function quitNotice({ live, running }: QuitCounts): string | undefined {
+export function quitNotice({ live, running, spawned }: QuitCounts): string | undefined {
   if (live === 0) return undefined;
-  return `셸 ${live} · 명령이 도는 셸 ${running}`;
+  return `셸 ${live}${spawnedNote(spawned)} · 명령이 도는 셸 ${running}`;
 }
 
 /**

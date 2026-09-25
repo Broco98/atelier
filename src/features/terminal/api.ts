@@ -1,12 +1,12 @@
 import { invoke, type Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Mode } from "@/mode";
-import type { PtyFrame, PtyRunning, PtySpawned, ShellAttention } from "./types";
+import type { CloseCheck, PtyFrame, PtyRunning, PtySpawned, ShellAttention } from "./types";
 
 // `cwd`에 `null`을 주면 백엔드가 데이터 루트를 쓴다. 여기서 `"~/.atelier"`를 박으면
 // `ATELIER_HOME` 오버라이드가 죽는다 — 그 자리가 어디인지는 atelier-core만 안다.
 //
-// **모드를 싣는 것은 `spawn` 하나다**(결정 10). 나머지 다섯은 이미 뜬 셸을 id로 가리키고 그
+// **모드를 싣는 것은 `spawn` 하나다**(결정 10). 나머지는 이미 뜬 셸을 id로 가리키고 그
 // 셸의 세계는 뜰 때 pty에 굳는다 — `commands.rs`가 같은 이유를 같은 말로 적어 두었고,
 // 인자를 더하면 「id와 모드가 어긋나면 어느 쪽이 이기나」라는 답 없는 갈래가 생긴다.
 //
@@ -31,14 +31,23 @@ export const terminalApi = {
   // ms다 — 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을 셸 도우미로 가른다(티켓 08). 무엇이 사람 입력인지는
   // `shell-input.ts`가, 시각을 찍는 것은 터미널 스토어가 한다.
   firstInput: (id: number, at: number) => invoke<void>("pty_first_input", { id, at }),
-  // 셸 안에서 **명령이 도는가** — 포그라운드 그룹이 셸 자신이 아닌가다(결정 92).
+  // 셸을 닫기 직전에 묻는다 — **명령이 도는가**(포그라운드 그룹이 셸 자신이 아닌가, ux-papercuts 결정 92)와 **함께
+  // 끝날 프로세스 수**다. 프로세스 결정 3이 결정 92의 「foreground가 셸이 아닐 때만 묻는다」를 「자손이 있으면
+  // foreground가 셸이어도 묻는다」로 넓혀서 수가 더해졌다.
   //
   // **이 값을 구독하는 곳은 여전히 없다 — 그런데 이유가 바뀌었다.** 한때 여기 「매 순간
   // 바뀌는 값이라 구독하지 않는다」고 적혀 있었는데, adr-04가 그것을 뒤집어 아래
-  // `onPtyRunning`이 같은 판정을 1초마다 실어 온다. 그래도 **이 자리는 그대로다**: 닫기
+  // `onPtyRunning`이 명령 판정을 1초마다 실어 온다. 그래도 **이 자리는 그대로다**: 닫기
   // 판정은 그 순간의 진실이어야 하고 구독값은 최대 1초 낡았다. 묻는 자리는 여전히
   // 닫기 직전 한 번뿐이다(`requestCloseShell`).
-  commandRunning: (id: number) => invoke<boolean>("pty_command_running", { id }),
+  commandRunning: (id: number) => invoke<CloseCheck>("pty_command_running", { id }),
+  // 셸 여럿에 같은 것을 **한 번에** 묻는다 — 백엔드는 스냅샷 한 장으로 셸마다 답한다(티켓 08). 종료 확인 창과
+  // 아카이브 확인 창이 「(띄운 프로세스 M개 포함)」을 셀 때 부른다. 셸마다 위 물음을 부르면 스냅샷이 셸 수만큼이다.
+  //
+  // 답은 **pty id → 그 셸의 답**이고, 답한 셸만 실린다 — 못 읽은 셸(이미 끝남 등)은 빠진다. JSON이라 키는
+  // 문자열로 오지만 수로 찾아도 맞는다.
+  closeChecks: (ids: number[]) =>
+    invoke<Record<number, CloseCheck>>("pty_close_checks", { ids }),
 };
 
 /**

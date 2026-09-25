@@ -28,6 +28,8 @@ import type { Mode } from "@/mode";
 
 const [pinnedWork, plainWork] = WORKS;
 const [project] = PROJECTS;
+/** 셸 닫기 전 물음의 한 답 — 명령도 띄운 프로세스도 없다. 기본 답(명령이 돈다)과 다른 값이어야 인자별 답이 잰다. */
+const QUIET = { command: false, descendants: 0 };
 /** 목록의 그 프로젝트 행. 이름과 경로를 함께 든다(`projects-list.spec.ts`와 같은 이유). */
 const projectRow = (page: Page) =>
   page.getByRole("button", { name: `${project.name} ${project.path}` });
@@ -260,19 +262,19 @@ test("(3) 같은 커맨드를 인자 둘로 부르면 인자마다 다른 답이
 
   // 셸 id는 **수**다. 표의 키는 문자열이라, 인자를 문자열로 바꿔 견주지 않으면 하나도 안 맞는다.
   await installFixtureBackend(page, {
-    pty_command_running: answerByArg("id", { 1: false, 2: null }),
+    pty_command_running: answerByArg("id", { 1: QUIET, 2: null }),
   });
   await openProject(page);
 
-  expect(await ask(page, "pty_command_running", { id: 1 })).toEqual({ answer: false, error: null });
+  expect(await ask(page, "pty_command_running", { id: 1 })).toEqual({ answer: QUIET, error: null });
   expect(await ask(page, "pty_command_running", { id: 2 })).toEqual({ answer: null, error: null });
   // 맞는 답이 없으면 그 커맨드의 기본 답 — 이름 표의 값이다.
   expect(await ask(page, "pty_command_running", { id: 3 })).toEqual({
     answer: FIXTURE_COMMANDS.pty_command_running,
     error: null,
   });
-  expect(FIXTURE_COMMANDS.pty_command_running, "기본 답이 인자별 답과 겹치면 위 줄이 아무것도 안 잰다").not.toBe(
-    false,
+  expect(FIXTURE_COMMANDS.pty_command_running, "기본 답이 인자별 답과 겹치면 위 줄이 아무것도 안 잰다").not.toEqual(
+    QUIET,
   );
 
   // 인자가 아예 없으면 문다 — 인자 이름이 바뀐 것이다. 기본 답으로 떨어지면 그 개명이 조용히 초록이다.
@@ -292,7 +294,7 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   // 와이어에서 온 모드가 아무 문자열일 수 있다는 것을 흉내 낸다 — 캐스트가 이 줄의 요점이다.
   await expect(replaceAnswer(page, "list_works", [], "masion" as Mode)).rejects.toThrow("masion");
   await expect(replaceAnswer(page, "list_works", [])).rejects.toThrow("list_works");
-  await expect(replaceAnswer(page, "pty_command_running", false, "atelier")).rejects.toThrow(
+  await expect(replaceAnswer(page, "pty_command_running", QUIET, "atelier")).rejects.toThrow(
     "pty_command_running",
   );
 
@@ -310,8 +312,8 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   // 한 모드만 갈았다 — 저쪽 세계의 답은 그대로다.
   expect(await ask(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
   // 이름 표의 커맨드는 이름으로 간다.
-  await replaceAnswer(page, "pty_command_running", false);
-  expect(await ask(page, "pty_command_running", { id: 1 })).toEqual({ answer: false, error: null });
+  await replaceAnswer(page, "pty_command_running", QUIET);
+  expect(await ask(page, "pty_command_running", { id: 1 })).toEqual({ answer: QUIET, error: null });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

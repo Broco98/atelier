@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::snapshot::{self, EnvScope};
-use crate::processes::verdict::{self, Inputs, Occasion, ShellEntry};
+use crate::processes::verdict::{self, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Snapshot, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
@@ -258,24 +258,103 @@ pub fn resize(pool: &PtyPool, id: u32, cols: u16, rows: u16) -> Result<(), Strin
         .map_err(|e| format!("터미널 크기를 바꾸지 못했습니다: {e}"))
 }
 
-/// 이 셸 안에서 **명령이 도는가**(결정 92). 셸이 프롬프트에 서 있으면 터미널을 쥔 그룹이
-/// 셸 자신이고, `claude`·빌드·테스트가 돌면 대화형 셸이 그 잡에 새 그룹을 주고 터미널을
-/// 넘긴다 — 그 차이가 그대로 답이다.
+/// 셸을 닫기 전에 묻는 답 — **명령이 도는가**와 **함께 끝날 프로세스 수**(프로세스 결정 3 · 프로세스 스펙 S55).
 ///
-/// **`Err`이 실제로 온다**: 이미 끝난 셸, tcgetpgrp 실패, pid를 못 받은 셸. 프런트는 그때
-/// 묻지 않고 닫는다 — 모르는 것을 이유로 닫는 길을 막지 않는다.
+/// 확인 창이 이 둘로 묻는다: 명령이 돌면 지금 문구(ux-papercuts 결정 105) 아래에 수를 더하고, 명령 없이 자손만
+/// 있으면 그 수로 묻고, 둘 다 없으면 안 묻는다. ux-papercuts 결정 92는 「foreground가 셸이 아닐 때만 묻는다」였고,
+/// 프로세스 결정 3이 「foreground가 셸이어도 자손이 있으면 묻는다」로 넓혔다.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseCheck {
+    /// 명령이 도는가 — 터미널을 쥔 그룹이 셸 자신이 아닌가(`command_runs`).
+    pub command: bool,
+    /// 확인 창이 말할 「이 셸에서 띄운 프로세스」 수. 셸 도우미 · 예외 · 명령의 foreground 그룹은 빠진다
+    /// (`verdict::close_count`).
+    pub descendants: usize,
+}
+
+/// 물은 셸 하나가 **그 순간** 쥔 것 — 풀 잠금 안에서 읽는다(`asked_of`).
+#[derive(Debug, Clone)]
+struct Asked {
+    entry: ShellEntry,
+    /// 셸의 pid — 그대로 셸의 프로세스 그룹이다(`Shell::pid`).
+    pid: u32,
+    /// 지금 터미널을 쥔 그룹(`tcgetpgrp`).
+    foreground: i32,
+}
+
+/// 셸 하나의 닫기 전 물음(`pty_command_running`). 셸 탭의 ×, ⌘W, 셸 메뉴의 닫기가 닫기 직전에 한 번 부른다.
 ///
-/// **이 자리는 여전히 닫기 직전 한 번뿐이다 — 그런데 이유가 바뀌었다.** 한때 여기 「값이
-/// 매 순간 바뀌므로 구독하거나 상태에 얹지 않는다」고 적혀 있었는데, `adr-04`가 그것을
-/// 뒤집었다: 아래 `watch_running`이 같은 판정을 1초마다 재서 프런트 상태에 얹는다. 바뀐
-/// 것은 값의 성질이 아니라 목적이다 — 「어느 work에서 무엇이 도는가」는 구독 없이는
-/// 답할 수 없다.
+/// **배치 물음과 같은 길이다** — 셸 하나를 배치로 묻는다. 셸 하나를 닫을 때와 종료 · 아카이브 확인 창이 셀 때가
+/// 규칙을 따로 들면, 같은 셸이 닫기 창에서는 조용하고 종료 창에서는 무언가 도는 셸이 된다.
 ///
-/// **그렇다고 구독이 이 자리를 대신하지 않는다.** 닫기 판정은 **그 순간의 진실**이어야
-/// 하고 구독값은 최대 1초 낡았다. 그래서 이 함수도 그것을 부르는 길(`requestCloseShell`)도
-/// 그대로 남는다.
-pub fn command_running(pool: &PtyPool, id: u32) -> Result<bool, String> {
-    let shells = pool.lock();
+/// **`Err`이 실제로 온다**: 이미 끝난 셸, tcgetpgrp 실패, pid를 못 받은 셸. 프런트는 그때 묻지 않고 닫는다 —
+/// 모르는 것을 이유로 사람이 고른 닫기를 막지 않는다.
+///
+/// **이 자리는 여전히 닫기 직전 한 번뿐이다.** 한때 여기 「값이 매 순간 바뀌므로 구독하거나 상태에 얹지
+/// 않는다」고 적혀 있었는데, `adr-04`가 그것을 뒤집었다: 아래 `watch_running`이 명령 판정을 1초마다 재서 프런트
+/// 상태에 얹는다. 그래도 닫기 판정은 **그 순간의 진실**이어야 하고 구독값은 최대 1초 낡았다. 게다가 이제 스냅샷을
+/// 한 장 찍는다 — 1초마다 셸마다 찍을 값이 아니다.
+pub fn command_running(pool: &PtyPool, id: u32) -> Result<CloseCheck, String> {
+    close_checks(pool, &[id]).pop().unwrap_or_else(|| Err(gone(id)))
+}
+
+/// 여러 셸의 닫기 전 물음을 **스냅샷 한 장으로** 답한다(`pty_close_checks`, 티켓 08). 결과는 `ids`의 순서 그대로다.
+///
+/// 종료 확인 창과 아카이브 확인 창이 셸 여럿의 수를 센다. 셸마다 닫기 전 물음을 부르면 스냅샷을 셸 수만큼 찍는다 —
+/// 셸 20개면 20장이다(프로세스 스펙 S2의 목표는 한 장에 20ms 이하). 그래서 한 장을 찍어 한 번 판정하고 셸마다 센다.
+///
+/// 순서는 셸 닫기(`end`)와 같다: 물은 셸들의 시작 시각으로 env를 읽을 범위를 정하고(S3), 스냅샷을 찍은 **뒤에**
+/// 셸 목록을 읽는다(S52). 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
+pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, String>> {
+    let born: Vec<Option<Identity>> = {
+        let shells = pool.lock();
+        ids.iter().filter_map(|id| shells.get(id)).map(|shell| shell.process).collect()
+    };
+    // 물은 셸이 풀에 하나도 없으면 찍을 까닭이 없다.
+    if born.is_empty() {
+        return ids.iter().map(|id| Err(gone(*id))).collect();
+    }
+    let snapshot = snapshot::take(env_scope(born));
+    let (live, asked): (Vec<ShellEntry>, Vec<Result<Asked, String>>) = {
+        let shells = pool.lock();
+        (shells.values().map(Shell::entry).collect(), ids.iter().map(|id| asked_of(&shells, *id)).collect())
+    };
+    let exceptions = exceptions();
+    checks_on(
+        &Inputs {
+            snapshot: &snapshot,
+            generation: instance_prefix(),
+            shells: &live,
+            ending: &[],
+            instances: &[],
+            exceptions: &exceptions,
+            app_pid: std::process::id(),
+            inherited_key: crate::processes::inherited_key(),
+            occasion: Occasion::Normal,
+        },
+        asked,
+    )
+}
+
+/// 판정 한 번으로 물은 셸마다 답한다 — 위 함수에서 스냅샷을 찍고 셸을 읽는 일만 뺀 나머지다. 값만 받으므로 셸
+/// 셋을 한 번에 물은 것과 하나씩 물은 것을 표로 견준다. 못 읽은 셸의 오류는 그 자리에 그대로 둔다.
+fn checks_on(input: &Inputs, asked: Vec<Result<Asked, String>>) -> Vec<Result<CloseCheck, String>> {
+    let verdict = verdict::judge(input);
+    asked.into_iter().map(|one| one.map(|asked| close_check(&verdict, &asked))).collect()
+}
+
+/// **셸 하나의 답 — 두 물음이 모두 이 하나를 지난다.** 명령이 도는가는 결정 92의 판정 그대로이고, 수에서 셋을
+/// 빼는 것은 `verdict::close_count`가 혼자 한다. foreground 그룹은 명령이 돌 때만 넘긴다 — 프롬프트면 그 그룹은
+/// 셸 자신이다.
+fn close_check(verdict: &Verdict, asked: &Asked) -> CloseCheck {
+    let command = command_runs(asked.pid, asked.foreground);
+    let command_group = if command { u32::try_from(asked.foreground).ok() } else { None };
+    CloseCheck { command, descendants: verdict::close_count(verdict, &asked.entry.key, command_group) }
+}
+
+/// 풀에서 물은 셸이 그 순간 쥔 것을 읽는다. 못 읽으면 그 까닭이다.
+fn asked_of(shells: &HashMap<u32, Shell>, id: u32) -> Result<Asked, String> {
     let shell = shells.get(&id).ok_or_else(|| gone(id))?;
     // 이름은 `process_group_leader`지만 속은 `tcgetpgrp`라 **지금 터미널을 쥔 그룹**이다
     // (`groups_of`가 같은 값을 같은 뜻으로 쓴다).
@@ -286,10 +365,11 @@ pub fn command_running(pool: &PtyPool, id: u32) -> Result<bool, String> {
     // 셸의 pid가 그대로 그 pgid다 — `portable-pty`가 `pre_exec`에서 `setsid()`를 부른다
     // (`Shell::pid`의 주석).
     let pid = shell.pid.ok_or_else(|| format!("셸의 pid를 모릅니다 (id {id})"))?;
-    Ok(command_runs(pid, foreground))
+    Ok(Asked { entry: shell.entry(), pid, foreground })
 }
 
-/// 포그라운드 그룹이 셸 자신이 아니면 명령이 돈다.
+/// 포그라운드 그룹이 셸 자신이 아니면 명령이 돈다(ux-papercuts 결정 92의 판정 — 「명령」의 뜻은 그대로다. 프로세스
+/// 결정 3이 넓힌 것은 확인 창이 묻는 때이고, 그 몫은 `CloseCheck::descendants`가 든다).
 ///
 /// **한 줄인데 따로 있는 이유는 재기 위해서다.** 위 함수는 살아 있는 pty가 있어야 돌지만
 /// 이 판정은 값 둘이면 된다. 뒤집히면 확인 창이 정확히 반대로 산다 — 빈 프롬프트를 닫을
@@ -566,14 +646,7 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
 fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     let pgids: Vec<i32> = shells.iter().flat_map(groups_of).collect();
     let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
-    // 셸마다 그 셸보다 늦게 태어난 것만 env를 읽는다(프로세스 스펙 S3). 셸 하나라도 신원을 모르면 다 읽는다.
-    let scope = ending
-        .iter()
-        .map(|shell| shell.process.map(|id| id.started_us))
-        .collect::<Option<Vec<u64>>>()
-        .and_then(|born| born.into_iter().min())
-        .map_or(EnvScope::All, EnvScope::BornSince);
-    let snapshot = snapshot::take(scope);
+    let snapshot = snapshot::take(env_scope(ending.iter().map(|shell| shell.process)));
     let live: Vec<ShellEntry> = pool.lock().values().map(Shell::entry).collect();
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
@@ -609,11 +682,23 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     }
 }
 
+/// 스냅샷이 env를 읽을 범위 — 셸들 중 가장 이른 것보다 늦게 태어난 것만 읽는다(프로세스 스펙 S3). 그 셸의 표식을
+/// 문 것은 그 셸보다 먼저 태어날 수 없다. 셸 하나라도 신원을 모르면(리눅스, 못 읽음) 다 읽는다.
+fn env_scope(shells: impl IntoIterator<Item = Option<Identity>>) -> EnvScope {
+    shells
+        .into_iter()
+        .map(|process| process.map(|id| id.started_us))
+        .collect::<Option<Vec<u64>>>()
+        .and_then(|born| born.into_iter().min())
+        .map_or(EnvScope::All, EnvScope::BornSince)
+}
+
 /// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
 /// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
 ///
-/// 부르는 자리가 둘이다 — 닫기 · 새로고침의 `end`와 앱 종료의 `end_for_exit`. 판정 표는 목록을 직접 받으니 이
-/// 배선은 못 잰다. 풀 배선 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료)이 하나씩 잰다.
+/// 부르는 자리가 셋이다 — 닫기 · 새로고침의 `end`, 앱 종료의 `end_for_exit`, 닫기 전 물음의 `close_checks`(확인
+/// 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다). 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선
+/// 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료), `Ask`(닫기 전 물음)가 하나씩 잰다.
 fn exceptions() -> Vec<String> {
     crate::settings::process_exceptions(&atelier_core::data_root())
 }
@@ -652,7 +737,8 @@ fn groups_of(shell: &Shell) -> Vec<i32> {
 }
 
 impl Shell {
-    /// 판정이 읽는 셸의 모양. 첫 사람 입력 시각까지 싣는다 — 셸 도우미를 가르는 것은 판정의 몫이다(티켓 08).
+    /// 판정이 읽는 셸의 모양. 첫 사람 입력 시각까지 싣는다 — 그 전에 태어난 자손을 셸 도우미로 가르는 것은 판정의
+    /// 몫이다(`Verdict::helpers`).
     fn entry(&self) -> ShellEntry {
         ShellEntry { key: self.key.clone(), process: self.process, first_input_us: self.first_input_us }
     }
@@ -983,23 +1069,120 @@ mod tests {
     /// 초록이었다(실측). `spawn`과 같은 방식으로 자리에서 잰다 — 값 둘을 읽어 판정에
     /// 그대로 넘기는지.
     ///
+    /// **몸통이 넓어졌다**(티켓 08). 셸 하나의 물음이 배치 물음(`close_checks`)을 지나고, 값 둘을 읽는 자리
+    /// (`asked_of`)와 판정에 넘기는 자리(`close_check`)가 갈렸다. 그래서 핀이 넷이다: 셸 하나가 배치를 지나는가,
+    /// 값 둘을 읽는가, 그 둘을 판정에 그대로 넘기고 수는 `verdict::close_count` 하나로 세는가, 배치가 스냅샷을
+    /// **한 장** 찍고 셸 목록은 그 **뒤에** 읽는가(프로세스 스펙 S52).
+    ///
     /// **무엇을 못 보는지 적어 둔다.** 이것은 리터럴이 **있는가**만 보므로, 부르기는 하되
     /// 값을 갈아 끼우는 변형은 그대로 통과한다 — `.process_group_leader().or(Some(1))`로
     /// 뒤집어도 초록인 것을 실측했다(그러면 죽은 셸이 늘 「명령이 돈다」가 된다). 그 자리는
-    /// **살아 있는 pty 없이는 못 잰다.** 여기서 막는 것은 검증 1차가 지목한 회귀 하나
-    /// — 판정을 안 딛고 답을 새로 짓는 것 — 이고, 나머지는 실물 확인 몫이다.
+    /// **살아 있는 pty 없이는 못 잰다** — 풀 배선 장면 `Ask`가 진짜 셸로 잰다. 수를 세는 규칙은
+    /// `processes::verdict`의 표가, 배치와 셸 하나가 같은 답을 내는지는 아래 표가 잰다.
     #[test]
     fn command_running_hands_both_values_to_the_verdict() {
-        let body = body_of("pub fn command_running(", "\nfn ");
-
         assert!(
-            body.contains("process_group_leader()"),
+            body_of("pub fn command_running(", "\n}\n").contains("close_checks(pool, &[id])"),
+            "셸 하나의 물음이 배치 물음을 안 지난다 — 닫기 창과 종료 창이 규칙을 따로 든다"
+        );
+        assert!(
+            body_of("fn asked_of(", "\n}\n").contains("process_group_leader()"),
             "터미널을 쥔 그룹을 안 읽는다 — 판정의 한쪽 값이 없다"
         );
+        let check = body_of("fn close_check(", "\n}\n");
         assert!(
-            body.contains("Ok(command_runs(pid, foreground))"),
+            check.contains("command_runs(asked.pid, asked.foreground)"),
             "값 둘을 그대로 판정에 넘기지 않는다 — 여기서 답을 새로 지으면 위 전수가 헛돈다"
         );
+        assert!(
+            check.contains("verdict::close_count(verdict, &asked.entry.key, command_group)"),
+            "확인 창의 수를 판정의 한 함수로 안 센다 — 빼는 셋(도우미 · 예외 · foreground)이 두 벌이 된다"
+        );
+
+        let batch = body_of("pub fn close_checks(", "\n}\n");
+        assert_eq!(batch.matches("snapshot::take(").count(), 1, "배치가 스냅샷을 한 장이 아니게 찍는다");
+        let taken = batch.find("snapshot::take(").expect("스냅샷을 찍는다");
+        let listed = batch.find("shells.values().map(Shell::entry)").expect("셸 목록을 읽는다");
+        assert!(
+            taken < listed,
+            "셸 목록({listed})을 스냅샷({taken})보다 먼저 읽는다 — 그 사이에 뜬 셸의 자손이 누구의 것도 아니게 된다"
+        );
+        assert!(batch.contains("checks_on("), "배치가 셸마다 답하는 자리를 안 지난다");
+    }
+
+    /// **셸 셋을 한 번에 물으면 스냅샷 한 장으로 셸마다 {명령, 자손 수}가 나오고, 그 값은 셸마다 따로 물은 것과
+    /// 같다**(티켓 08). 종료 · 아카이브 확인 창이 셸 여럿을 한 번에 묻고, 셸 하나를 닫을 때는 하나만 묻는다 — 두
+    /// 답이 어긋나면 같은 셸이 닫기 창에서는 조용하고 종료 창에서는 무언가 도는 셸이 된다.
+    ///
+    /// 셸 A(100)는 사람이 친 뒤 dev 서버 하나를 띄웠다. 셸 B(200)는 입력이 없다 — 자손은 모두 셸 도우미다. 셸
+    /// C(300)에서는 claude가 돌고(그 그룹 330과 MCP 서버), Bash 도구가 dev 서버(340, 제 세션)를 띄웠다. 못 읽은
+    /// 셸의 오류는 제 자리에 남는다.
+    #[test]
+    fn one_snapshot_answers_every_shell_as_if_asked_alone() {
+        use crate::processes::verdict::{Inputs, Occasion, ShellEntry};
+        use crate::processes::{Identity, Proc, Snapshot};
+
+        let row = |pid: u32, ppid: u32, pgid: u32, born: u64, key: Option<&str>| Proc {
+            id: Identity { pid, started_us: born },
+            ppid,
+            pgid,
+            uid: 501,
+            name: format!("p{pid}"),
+            argv0: None,
+            shell_key: key.map(str::to_string),
+        };
+        let procs = vec![
+            row(50, 1, 50, 1_000, None),
+            row(100, 50, 100, 1_100, None),
+            row(101, 100, 101, 2_000, None),
+            row(102, 1, 102, 6_000, Some("G-1")),
+            row(200, 50, 200, 1_200, None),
+            row(201, 200, 201, 2_000, None),
+            row(202, 1, 202, 3_000, Some("G-2")),
+            row(300, 50, 300, 1_300, None),
+            row(330, 300, 330, 6_000, None),
+            row(331, 330, 330, 6_100, None),
+            row(340, 1, 340, 6_500, Some("G-3")),
+        ];
+        let snapshot = Snapshot { uid: 501, procs, skipped: 0 };
+        let entry = |key: &str, pid: u32, born: u64, first_input_us: Option<u64>| ShellEntry {
+            key: key.to_string(),
+            process: Some(Identity { pid, started_us: born }),
+            first_input_us,
+        };
+        let a = entry("G-1", 100, 1_100, Some(5_000));
+        let b = entry("G-2", 200, 1_200, None);
+        let c = entry("G-3", 300, 1_300, Some(5_000));
+        let live = [a.clone(), b.clone(), c.clone()];
+        let input = Inputs {
+            snapshot: &snapshot,
+            generation: "G",
+            shells: &live,
+            ending: &[],
+            instances: &[],
+            exceptions: &[],
+            app_pid: 50,
+            inherited_key: None,
+            occasion: Occasion::Normal,
+        };
+        let asked = |entry: &ShellEntry, foreground: i32| {
+            let pid = entry.process.expect("신원이 있다").pid;
+            Ok(super::Asked { entry: entry.clone(), pid, foreground })
+        };
+        let gone: Result<super::Asked, String> = Err(super::gone(9));
+        let questions = vec![asked(&a, 100), asked(&b, 200), asked(&c, 330), gone.clone()];
+
+        let together = super::checks_on(&input, questions.clone());
+        let alone: Vec<_> =
+            questions.into_iter().flat_map(|one| super::checks_on(&input, vec![one])).collect();
+
+        let quiet = |descendants| Ok(super::CloseCheck { command: false, descendants });
+        assert_eq!(
+            together,
+            vec![quiet(1), quiet(0), Ok(super::CloseCheck { command: true, descendants: 1 }), Err(super::gone(9))],
+            "셸마다 명령과 수가 어긋났다"
+        );
+        assert_eq!(together, alone, "셸 셋을 한 번에 물은 답이 하나씩 물은 답과 다르다");
     }
 
     /// `spawn`의 풀 등록이 읽기 스레드보다 **앞에** 있어야 한다.
@@ -1452,17 +1635,21 @@ mod tests {
         /// `CloseKeeping`과 같은 자식 둘과 목록으로, 셸을 닫지 않고 앱 종료 길을 부른다. 종료는 닫기(`end`)와 따로
         /// 판정을 부르므로(`verdict::at_exit`) 목록을 넘기는 줄도 따로다 — 그 줄을 재는 장면이다.
         ExitKeeping,
+        /// 닫지 않고 **묻기만 한다**(티켓 08). 셸 도우미 · 사람이 띄운 것 · 예외 이름 · 명령을 차례로 세우며 닫기 전
+        /// 물음의 답을 본다. 판정을 끝내기에 넘기지 않는다 — 거둘 때는 이 장면이 띄운 자식과 이 셸 그룹에만 보낸다.
+        Ask,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 6] = [
+        const ALL: [Scene; 7] = [
             Scene::Close,
             Scene::CloseIgnoring,
             Scene::CloseThenExit,
             Scene::Reload,
             Scene::CloseKeeping,
             Scene::ExitKeeping,
+            Scene::Ask,
         ];
 
         fn name(self) -> &'static str {
@@ -1473,13 +1660,14 @@ mod tests {
                 Scene::Reload => "reload",
                 Scene::CloseKeeping => "close-keeping",
                 Scene::ExitKeeping => "exit-keeping",
+                Scene::Ask => "ask",
             }
         }
 
         /// 셸에서 띄울 자식의 역할(`processes::testkit`).
         fn role(self) -> &'static str {
             match self {
-                Scene::Close | Scene::CloseKeeping | Scene::ExitKeeping => "sleep",
+                Scene::Close | Scene::CloseKeeping | Scene::ExitKeeping | Scene::Ask => "sleep",
                 _ => "ignore-term",
             }
         }
@@ -1557,6 +1745,18 @@ mod tests {
     #[test]
     fn the_exit_leaves_the_child_named_on_the_exception_list() {
         on_the_pool_side("the_exit_leaves_the_child_named_on_the_exception_list", Scene::ExitKeeping);
+    }
+
+    /// **풀 배선 — 닫기 전 물음**(티켓 08 · 프로세스 스펙 P1 · S55). 진짜 zsh로 `command_running`이 확인 창에 줄 답을
+    /// 본다: 사람이 입력하기 전에 뜬 것(셸 도우미)은 수에 안 들고, 입력 뒤에 제 세션으로 떨어진 dev 서버는 들고,
+    /// 예외 목록의 이름과 명령 자신(foreground 그룹)은 안 든다. 배치 물음도 같은 답을 낸다.
+    ///
+    /// p10k 셸을 입력 없이 닫으면 창이 안 뜨는 것과, claude Bash 도구가 dev 서버를 띄운 셸이 그 수를 말하는 것의
+    /// 백엔드 절반이다. 창의 절반은 L3(`e2e/close-confirm-count.spec.ts`)가 잰다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn asking_before_a_close_counts_what_a_person_spawned() {
+        on_the_pool_side("asking_before_a_close_counts_what_a_person_spawned", Scene::Ask);
     }
 
     /// 풀 배선 검사의 바깥 — 검사 프로세스를 하나 더 띄워 그 안에서 장면을 돌린다. 안쪽이면 곧바로 장면을 돈다.
@@ -1657,6 +1857,9 @@ mod tests {
         // 셸이 무언가(프롬프트)를 내보낸 뒤에 친다 — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
         wait_until(|| spoke.load(std::sync::atomic::Ordering::Relaxed));
         let shell_pid = pool.lock().get(&spawned.id).and_then(|shell| shell.pid);
+        if scene == Scene::Ask {
+            return ask_side(&pool, spawned.id, &key, shell_pid);
+        }
         let args = child_args().join(" ");
         // 예외 장면의 자식이 부를 이름. 이 검사 프로세스의 pid를 붙여 이 기계의 어떤 실제 이름과도 안 겹치게 한다 —
         // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정 파일에만 적는다.
@@ -1768,6 +1971,8 @@ mod tests {
             Scene::ExitKeeping => {
                 let _ = super::end_for_exit(&pool);
             }
+            // 위에서 제 안쪽(`ask_side`)으로 갈라져 여기 안 온다.
+            Scene::Ask => unreachable!("묻는 장면은 거두는 길을 안 탄다"),
         }
         let closed = began.elapsed();
         let emptied = pool.lock().is_empty();
@@ -1813,5 +2018,115 @@ mod tests {
             assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
             assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
         }
+    }
+    /// 풀 배선 장면 `Ask`의 안쪽. 신호를 보내는 것은 끝의 거두기뿐이고, 그것은 이 장면이 띄운 자식의 신원(방금 다시
+    /// 봤다)과 이 셸 그룹(리더가 그대로일 때만)에만 간다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다.
+    #[cfg(target_os = "macos")]
+    fn ask_side(pool: &std::sync::Arc<super::PtyPool>, id: u32, key: &str, shell_pid: Option<u32>) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        use crate::processes::ending::{self, Group};
+        use crate::processes::snapshot::{identity_of, take, EnvScope};
+        use crate::processes::testkit::{child_args, exe, wait_until, CHILD_ROLE};
+        use crate::processes::Proc;
+
+        use super::CloseCheck;
+
+        // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정에만 적는다. 이름에 이 검사 프로세스의 pid를 붙여
+        // 이 기계의 어떤 실제 이름과도 안 겹치게 한다.
+        let keep_name = format!("atelier-keep-{}", std::process::id());
+        let mut settings = crate::settings::Settings::default();
+        settings.terminal.process_exceptions = Some(vec![keep_name.clone()]);
+        crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
+
+        let args = child_args().join(" ");
+        let child = |argv0: &str| {
+            format!("( {CHILD_ROLE}=sleep {argv0}'{}' {args} </dev/null >/dev/null 2>&1 & )", exe().display())
+        };
+        // 이 셸의 표식을 물고 트리가 끊긴(부모 1) 제 세션의 자식들 — claude Bash 도구가 띄운 dev 서버의 모양이다.
+        let marked = || -> Vec<Proc> {
+            take(EnvScope::All)
+                .procs
+                .into_iter()
+                .filter(|p| p.shell_key.as_deref() == Some(key) && p.ppid == 1 && p.pgid == p.id.pid)
+                .collect()
+        };
+        let invoked_keep =
+            |p: &Proc| p.argv0.as_deref().is_some_and(|argv0| argv0.rsplit('/').next() == Some(keep_name.as_str()));
+
+        // (1) 사람이 아직 안 쳤다 — 셸이 뜰 때 함께 뜨는 도우미(p10k의 `gitstatusd`)의 모양. 백엔드는 쓰기를 입력으로
+        // 안 센다: 사람 입력은 프런트가 DOM 사건으로 가려 `note_first_input`으로만 알린다.
+        super::write(pool, id, &format!("{}\n", child(""))).expect("셸에 한 줄을 친다");
+        let mut helper = None;
+        wait_until(|| {
+            helper = marked().first().map(|p| p.id);
+            helper.is_some()
+        });
+        let before = super::command_running(pool, id);
+
+        // (2) 사람이 처음 입력했다. 그 뒤에 dev 서버 모양 하나와, 예외 목록의 이름으로 부른 것 하나를 띄운다.
+        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).expect("시계가 에포크 뒤다").as_millis() as u64;
+        super::note_first_input(pool, id, now_ms).expect("있는 셸이다");
+        std::thread::sleep(Duration::from_millis(5));
+        let line = format!("{}; {}\n", child(""), child(&format!("ARGV0={keep_name} ")));
+        super::write(pool, id, &line).expect("셸에 한 줄을 친다");
+        let (mut spawned, mut kept) = (None, None);
+        wait_until(|| {
+            let procs = marked();
+            spawned = procs.iter().find(|p| Some(p.id) != helper && !invoked_keep(p)).map(|p| p.id);
+            kept = procs.iter().find(|p| invoked_keep(p)).map(|p| p.id);
+            spawned.is_some() && kept.is_some()
+        });
+        let after = super::command_running(pool, id);
+
+        // (3) 명령이 돈다 — 셸이 터미널을 잡에 넘겼다. 시스템 바이너리라 표식은 안 읽히고 셸의 트리로 잡힌다.
+        super::write(pool, id, "/bin/sleep 30\n").expect("셸에 한 줄을 친다");
+        let mut during = None;
+        wait_until(|| {
+            during = super::command_running(pool, id).ok().filter(|check| check.command);
+            during.is_some()
+        });
+        let batch = super::close_checks(pool, &[id, u32::MAX]);
+        let command = take(EnvScope::BornSince(u64::MAX))
+            .procs
+            .into_iter()
+            .find(|p| shell_pid == Some(p.ppid) && p.name == "sleep")
+            .map(|p| p.id);
+
+        // **거두는 것이 단언보다 먼저다.** 이 장면이 띄운 자식이고, 신원을 방금 다시 본다.
+        for child in [helper, spawned, kept, command].into_iter().flatten() {
+            if identity_of(child.pid) == Some(child) {
+                unsafe { libc::kill(child.pid as i32, libc::SIGKILL) };
+            }
+        }
+        let shells: Vec<super::Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
+        let groups: Vec<Group> =
+            shells.iter().filter_map(|shell| Some(Group { pgid: shell.pid?, leader: shell.process })).collect();
+        let started = ending::start(&[], &groups);
+        drop(shells);
+        let _ = started.finish();
+
+        assert!(helper.is_some(), "입력 전에 띄운 자식이 5초 안에 서지 않았다");
+        assert_eq!(
+            before,
+            Ok(CloseCheck { command: false, descendants: 0 }),
+            "사람이 입력하기 전에 뜬 것(셸 도우미)까지 셌다 — p10k 셸은 빈 프롬프트를 닫을 때마다 묻는다"
+        );
+        assert!(spawned.is_some() && kept.is_some(), "입력 뒤에 띄운 자식 둘이 5초 안에 서지 않았다");
+        assert_eq!(
+            after,
+            Ok(CloseCheck { command: false, descendants: 1 }),
+            "사람이 띄운 dev 서버 하나만 세야 한다 — 도우미나 예외 목록의 이름({keep_name})까지 셌거나 dev 서버를 놓쳤다"
+        );
+        assert_eq!(
+            during,
+            Some(CloseCheck { command: true, descendants: 1 }),
+            "명령이 도는 셸 — 명령 자신(foreground 그룹)은 빼고 dev 서버는 센다"
+        );
+        assert_eq!(
+            batch,
+            vec![Ok(during.expect("위에서 봤다")), Err(super::gone(u32::MAX))],
+            "배치 물음이 셸 하나의 물음과 다른 답을 냈다"
+        );
     }
 }

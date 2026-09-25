@@ -114,13 +114,14 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("touch_recent_work", |a| {
         ok(atelier_core::touch_recent_work(&mode_home(mode(a)?), &text(a, "slug")?))
     }),
-    // 셸 여섯은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
+    // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_write", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_resize", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_kill", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_command_running", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_close_checks", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_first_input", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     // 설정 둘은 **위 넷과 이유가 다르다.** `~/.atelier/settings.json` 한 장이라 다리가 못 탈
     // 성질이 아닌데, 읽고 쓰는 코드가 앱 크레이트(`src-tauri/src/settings.rs`)에 살고 다리는

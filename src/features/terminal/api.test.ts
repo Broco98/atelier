@@ -74,7 +74,9 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
     await terminalApi.resize(1, 80, 24);
     await terminalApi.kill(1);
     await terminalApi.commandRunning(1);
-    expect(calls).toHaveLength(4);
+    // 셸 여럿의 닫기 전 물음(티켓 08)도 id들로 가리킨다 — 두 세계의 셸을 한 번에 묻는다(종료 확인).
+    await terminalApi.closeChecks([1, 2]);
+    expect(calls).toHaveLength(5);
     expect(calls.filter((call) => "mode" in call.args)).toEqual([]);
   });
 

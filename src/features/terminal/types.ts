@@ -18,6 +18,19 @@ export interface PtyExit {
 }
 
 /**
+ * 셸을 닫기 전에 묻는 답(`pty_command_running` · `pty_close_checks`) — 프로세스 결정 3이 ux-papercuts 결정 92의
+ * 「명령이 도는가」를 넓힌 모양이다.
+ *
+ * `descendants`는 **확인 창이 말할 수**다 — 이 셸에서 띄운 프로세스 중 셸 도우미(사람이 처음 입력하기 전에 뜬 것),
+ * 예외 목록에 걸린 것, 명령 자신(foreground 그룹)을 뺀 것. 빼는 규칙은 백엔드 한 자리(`verdict::close_count`)에만
+ * 있다 — 여기서 다시 거르지 않는다.
+ */
+export interface CloseCheck {
+  command: boolean;
+  descendants: number;
+}
+
+/**
  * 셸 하나에서 **지금 도는 명령**의 이름. `running`이 `null`이면 프롬프트에 서 있다.
  *
  * **채널이 아니라 이벤트로 온다** — 위 둘은 셸 하나에 매인 채널로 오지만 이것은 백엔드의

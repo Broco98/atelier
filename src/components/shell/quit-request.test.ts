@@ -25,7 +25,7 @@ afterEach(async () => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("묻는 중 표시", () => {
-  const counter = (counts: QuitCounts = { live: 1, running: 0 }) => {
+  const counter = (counts: QuitCounts = { live: 1, running: 0, spawned: 0 }) => {
     let calls = 0;
     return {
       calls: () => calls,

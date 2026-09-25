@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use atelier_core::{
@@ -204,10 +205,10 @@ pub async fn open_project_folder(app: tauri::AppHandle, slug: String) -> CmdResu
         .map_err(|e| e.to_string())
 }
 
-// PTY 명령 여섯. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
+// PTY 명령 일곱. 본체는 `pty.rs`에 있고 여기는 위임만 한다 — 이 파일에 `pub async fn`으로
 // 있는 것 자체가 배선 테스트의 조건이다.
 //
-// **모드를 받는 것은 spawn 하나다.** 나머지 다섯은 이미 뜬 셸을 id로 가리키고, 그 셸이 어느
+// **모드를 받는 것은 spawn 하나다.** 나머지 여섯은 이미 뜬 셸을 id로 가리키고, 그 셸이 어느
 // 세계의 것인지는 뜰 때 정해져 pty에 굳는다 — 여기에 인자를 더하면 「id와 모드가 어긋나면
 // 어느 쪽이 이기나」라는, 아무도 답할 수 없는 갈래가 생긴다.
 
@@ -265,14 +266,37 @@ pub async fn pty_first_input(
     pty::note_first_input(&pool, id, at)
 }
 
-// 닫기 직전에 **한 번** 묻는 값이다(결정 92). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라
-// 상태에 얹으면 폴링이 생기고, 필요한 순간은 닫을 때뿐이다.
+// 셸을 닫기 직전에 **한 번** 묻는 값 — 명령이 도는가와 함께 끝날 프로세스 수다(프로세스 결정 3이 ux-papercuts
+// 결정 92의 「명령이 도는가」를 넓혔다). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라 상태에 얹으면 폴링이 생기고,
+// 필요한 순간은 닫을 때뿐이다. 스냅샷 한 장을 찍는 기다리는 일이라 blocking 풀에서 돌린다(`pty_kill`과 같다).
 #[tauri::command]
 pub async fn pty_command_running(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     id: u32,
-) -> CmdResult<bool> {
-    pty::command_running(&pool, id)
+) -> CmdResult<pty::CloseCheck> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::command_running(&pool, id))
+        .await
+        .map_err(|e| format!("셸에 무엇이 도는지 읽지 못했습니다: {e}"))?
+}
+
+// 셸 여럿의 닫기 전 물음을 **스냅샷 한 장으로** 답한다 — 종료 확인 창과 아카이브 확인 창이 「(띄운 프로세스 M개
+// 포함)」을 셀 때 부른다(프로세스 스펙 S18 · 티켓 08). 셸마다 위 명령을 부르면 스냅샷을 셸 수만큼 찍는다.
+//
+// **답한 셸만 싣는다** — pty id → 답. 못 읽은 셸(이미 끝남, tcgetpgrp 실패)은 빠진다. 셸 하나의 물음은 그 까닭을
+// 오류로 돌려주지만, 여기서 하나 때문에 전부를 거절하면 창이 셀 수를 통째로 잃는다.
+#[tauri::command]
+pub async fn pty_close_checks(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    ids: Vec<u32>,
+) -> CmdResult<BTreeMap<u32, pty::CloseCheck>> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || {
+        let checks = pty::close_checks(&pool, &ids);
+        ids.into_iter().zip(checks).filter_map(|(id, check)| Some((id, check.ok()?))).collect()
+    })
+    .await
+    .map_err(|e| format!("셸들에 무엇이 도는지 읽지 못했습니다: {e}"))
 }
 
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,

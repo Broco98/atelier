@@ -76,6 +76,7 @@ describe("말의 사전", () => {
         "셸",
         "명령",
         "예외",
+        "셸 도우미",
         "열",
         "분할",
         "터미널",
@@ -139,6 +140,16 @@ describe("말의 사전", () => {
     expect(bodyOf("예외")).toContain("셸을 닫아도 남길 프로세스");
     expect(avoided).not.toContain("셸을 닫아도 남길 프로세스");
     expect(ariaLabels).toContain("셸을 닫아도 남길 프로세스");
+  });
+
+  // 티켓 08 · 프로세스 스펙 P1. 셸이 뜰 때 함께 뜨는 것(p10k의 `gitstatusd`)에 이름이 없으면 다음 사람이 「헬퍼」·
+  // 「데몬」으로 부르고, 그 말은 뜻을 잃는다 — 도우미를 가르는 것은 이름이나 모양이 아니라 **태어난 때**(사람이 처음
+  // 입력하기 전)다. 그 기준과 「셸을 닫으면 함께 끝난다」가 본문에 있어야, 「안 센다」를 「안 끝낸다」로 읽지 않는다.
+  it("「셸 도우미」가 등재돼 있고, 태어난 때로 가르며 함께 끝난다고 적는다", () => {
+    expect(names).toContain("셸 도우미");
+    expect(bodyOf("셸 도우미")).toContain("처음 입력하기 전에");
+    expect(bodyOf("셸 도우미")).toContain("셸을 닫으면 함께 끝나지만");
+    expect(refused).toEqual(expect.arrayContaining(["헬퍼", "데몬"]));
   });
 
   it("「가지」·「잎」이 없다", () => {

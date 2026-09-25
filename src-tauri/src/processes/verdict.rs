@@ -19,7 +19,8 @@ pub struct ShellEntry {
     /// 셸 프로세스의 신원. **띄우는 중인 셸은 아직 모른다** — 셸 목록은 인스턴스 기록의 목록이라 자식을
     /// 띄우기 전에 올린 키도 든다(프로세스 스펙 S52). 그 셸의 자손은 표식으로만 잡힌다.
     pub process: Option<Identity>,
-    /// 사람이 처음 입력한 시각(µs). 셸 도우미를 가르는 데 쓴다(티켓 08이 채운다).
+    /// 사람이 처음 입력한 시각(에포크 µs). 이 시각 전에 태어난 이 셸의 자손이 셸 도우미다(프로세스 스펙 P1).
+    /// `None`이면 입력이 아직 없어 자손이 모두 도우미다.
     pub first_input_us: Option<u64>,
 }
 
@@ -69,8 +70,8 @@ pub struct Inputs<'a> {
     pub occasion: Occasion,
 }
 
-/// 판정의 결과. 지금 서는 묶음은 셸별 자손과 예외 둘이다(고아 · 다른 인스턴스는 티켓 09). 어느 묶음에도 없는
-/// 것(판정 밖)은 싣지 않는다.
+/// 판정의 결과. 지금 서는 묶음은 셸별 자손과 예외 둘이고, 셸별 자손 중 셸 도우미를 따로 표시한다(고아 · 다른
+/// 인스턴스는 티켓 09). 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict<'a> {
     /// 셸 키마다 그 셸의 자손 — 셸 목록과 끝낼 셸 모두 선다. 자손이 없으면 빈 목록이다. pid 순.
@@ -80,6 +81,16 @@ pub struct Verdict<'a> {
     /// 예외 — 이름이 예외 목록에 걸린 것과 그 밑(프로세스 결정 5). 표식을 물었어도, 우리 셸의 트리 안이어도 여기
     /// 든다. 끝내기에 넘어가지 않는다. pid 순.
     pub exceptions: Vec<&'a Proc>,
+    /// 셸 도우미 — 셸별 자손 중 그 셸에 사람이 처음 입력하기 **전에** 태어난 것(프로세스 스펙 P1). p10k의
+    /// `gitstatusd`처럼 셸이 뜰 때 함께 뜨는 것이 여기 든다.
+    ///
+    /// **묶음이 아니라 표시다.** 도우미도 셸별 자손에 그대로 있어 셸을 닫으면 함께 끝난다. 빠지는 것은 사람에게
+    /// 말하는 수다 — 닫기 확인 창의 수(`close_count`), 조용한 셸 판정(티켓 12), 정리 기록(티켓 11), 스스로 끝난
+    /// 셸의 알림(티켓 13). 신원으로 쥐어 끝내기의 결과(신원마다 하나)와 곧바로 짝짓는다.
+    ///
+    /// 빈 곳(P1 그대로): 입력 뒤에 다시 뜬 도우미(`exec zsh`, 죽고 다시 뜬 `gitstatusd`)는 도우미가 아니다 —
+    /// 태어난 때로만 가르고 이름으로는 가르지 않는다.
+    pub helpers: BTreeSet<Identity>,
 }
 
 /// 셸마다 그 셸이 띄운 자손을 가른다.
@@ -113,6 +124,12 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         })
         .collect();
     let keys: HashSet<&'a str> = shells.iter().map(|shell| shell.key.as_str()).collect();
+    // 셸마다 사람이 처음 입력한 시각. 같은 키가 두 번 서면(종료 판정이 풀에서 뺀 셸의 키를 한 번 더 더한다) 앞의
+    // 것이 이긴다 — 셸 목록, 그다음 끝낼 셸 순이고 더한 키는 맨 뒤다.
+    let mut first_input: HashMap<&'a str, Option<u64>> = HashMap::new();
+    for shell in &shells {
+        first_input.entry(shell.key.as_str()).or_insert(shell.first_input_us);
+    }
 
     // 행이 없어도 앱 자신은 막는다.
     let mut blocked: HashSet<u32> = table.lineage(input.app_pid).collect();
@@ -161,6 +178,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let mut descendants: BTreeMap<&'a str, Vec<&'a Proc>> =
         shells.iter().map(|shell| (shell.key.as_str(), Vec::new())).collect();
     let mut excepted_rows = Vec::new();
+    let mut helpers = BTreeSet::new();
     for proc in procs {
         let pid = proc.id.pid;
         if pid <= 1
@@ -173,6 +191,11 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         if excepted(proc) {
             excepted_rows.push(proc);
         } else if let Some(key) = owner_of(proc) {
+            // 입력이 아직 없으면 그 셸의 자손은 모두 도우미다. 입력과 같은 순간에 태어난 것은 도우미가 아니다 —
+            // 입력 시각은 프런트가 사람 입력을 **본** 순간(ms를 µs로 옮겨 내림)이라, 사람이 띄운 것은 늘 그 뒤다.
+            if first_input.get(key).copied().flatten().is_none_or(|input| proc.id.started_us < input) {
+                helpers.insert(proc.id);
+            }
             descendants.entry(key).or_default().push(proc);
         }
     }
@@ -180,7 +203,28 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         members.sort_by_key(|p| p.id.pid);
     }
     excepted_rows.sort_by_key(|p| p.id.pid);
-    Verdict { descendants, exceptions: excepted_rows }
+    Verdict { descendants, exceptions: excepted_rows, helpers }
+}
+
+/// **닫기 확인 창이 말할 「이 셸에서 띄운 프로세스」 수**(프로세스 결정 3 · 프로세스 스펙 S55).
+///
+/// 그 셸의 자손 중 **셋을 뺀다.** 빼는 자리는 이 함수 하나다 — 셸 하나의 닫기 전 물음과 여러 셸의 배치 물음(종료 ·
+/// 아카이브 확인 창)이 모두 이것을 지나, 두 길이 규칙을 따로 들지 않는다(`pty::close_checks`).
+/// - **셸 도우미**(`Verdict::helpers`): 닫으면 함께 끝나지만 사람이 띄운 것이 아니다. 세면 p10k 셸은 빈 프롬프트를
+///   닫을 때마다 묻는다 — ux-papercuts 결정 92가 피한 바로 그것이다.
+/// - **예외**: 끝나지 않으므로 「함께 끝나요」에 들 수 없다. 판정이 이미 셸별 자손에서 뺐다.
+/// - **명령이 도는 foreground 그룹**(`command_group`): 명령 자신과 그 그룹(claude와 그 MCP 서버)이다 — 확인 창이
+///   이미 명령으로 말한다. claude가 Bash 도구로 띄운 dev 서버는 제 세션이라 여기 안 걸리고 세어진다.
+///
+/// `command_group`은 **명령이 돌 때만** 준다. 프롬프트에 서 있으면 터미널을 쥔 그룹이 셸 자신이라, 그 그룹을 빼면
+/// 명령이 없는데 무언가를 「명령으로」 말한 셈이 된다 — 잡 제어가 꺼진 셸의 백그라운드 잡이 그 그룹에 산다.
+pub fn close_count(verdict: &Verdict, key: &str, command_group: Option<u32>) -> usize {
+    verdict.descendants.get(key).map_or(0, |members| {
+        members
+            .iter()
+            .filter(|proc| !verdict.helpers.contains(&proc.id) && Some(proc.pgid) != command_group)
+            .count()
+    })
 }
 
 /// **앱 종료의 판정** — 끝낼 신원(프로세스 결정 3 · 프로세스 스펙 S5).
@@ -280,6 +324,8 @@ mod tests {
         fn named(self, name: &str) -> Proc;
         /// 부른 이름(argv[0]). 커널 이름은 그대로 둔다.
         fn invoked(self, argv0: &str) -> Proc;
+        /// 프로세스 그룹. 따로 안 주면 제 pid다(제 그룹의 리더).
+        fn group(self, pgid: u32) -> Proc;
     }
 
     impl Row for Proc {
@@ -301,6 +347,10 @@ mod tests {
         }
         fn invoked(mut self, argv0: &str) -> Proc {
             self.argv0 = Some(argv0.to_string());
+            self
+        }
+        fn group(mut self, pgid: u32) -> Proc {
+            self.pgid = pgid;
             self
         }
     }
@@ -572,6 +622,188 @@ mod tests {
             }
         }
         assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// 셸 도우미 · 확인 창의 수 표의 한 줄.
+    struct Told {
+        what: &'static str,
+        /// 셸 G-1(셸 목록)이나 G-2(끝낼 셸).
+        key: &'static str,
+        rows: Vec<Proc>,
+        /// 그 셸에 사람이 처음 입력한 시각(µs). `None`이면 입력이 아직 없다.
+        first_input: Option<u64>,
+        /// 명령이 돌 때 터미널을 쥔 그룹. 프롬프트면 `None`이다.
+        command_group: Option<u32>,
+        /// 끝낼 대상 — 그 셸의 자손 전부(pid).
+        ended: &'static [u32],
+        /// 그중 셸 도우미(pid).
+        helpers: &'static [u32],
+        /// 확인 창이 말할 수.
+        told: usize,
+    }
+
+    /// **셸 도우미와 확인 창의 수**(프로세스 스펙 P1 · S55 · 티켓 08).
+    ///
+    /// 셸 도우미는 그 셸에 사람이 처음 입력하기 **전에** 태어난 자손이다(p10k의 `gitstatusd`). 닫을 때 함께 끝나므로
+    /// 끝낼 대상(셸별 자손)에는 들고, 확인 창의 수에서는 빠진다 — 빈 프롬프트를 닫을 때마다 창이 뜨지 않게. 수에서
+    /// 빼는 것은 셋이다: 셸 도우미, 예외(끝나지 않는다), 명령이 도는 foreground 그룹(확인 창이 이미 명령으로 말한다).
+    ///
+    /// 셸 G-1(100)은 1_100에, 끝낼 셸 G-2(110)는 1_110에 떴다. 줄마다 입력 시각과 행의 태생을 준다. 수에서 「빠진다」를
+    /// 재는 줄은 같은 줄에 세어지는 자손 하나를 앵커로 세운다 — 규칙이 없어도 0이 되는 줄은 아무것도 안 잰다.
+    #[test]
+    fn helpers_end_with_the_shell_but_the_confirm_does_not_count_them() {
+        let told = |what, key, rows, first_input, command_group, ended, helpers, told| Told {
+            what,
+            key,
+            rows,
+            first_input,
+            command_group,
+            ended,
+            helpers,
+            told,
+        };
+        let cases = [
+            told(
+                "입력 전에 태어난 자손은 셸 도우미다 — 끝낼 대상에는 들고 수에서는 빠진다",
+                "G-1",
+                vec![row(101, 100).born(2_000).named("gitstatusd"), row(102, 100).born(6_000)],
+                Some(5_000),
+                None,
+                &[101, 102],
+                &[101],
+                1,
+            ),
+            told(
+                "트리가 끊긴 표식 자손도 태어난 때로 가른다",
+                "G-1",
+                vec![row(201, 1).key("G-1").born(3_000), row(202, 1).key("G-1").born(7_000)],
+                Some(5_000),
+                None,
+                &[201, 202],
+                &[201],
+                1,
+            ),
+            told(
+                "입력 뒤에 다시 뜬 도우미는 자손으로 센다 — 이름으로 가르지 않는다(P1의 빈 곳)",
+                "G-1",
+                vec![row(101, 100).born(2_000).named("gitstatusd"), row(103, 100).born(8_000).named("gitstatusd")],
+                Some(5_000),
+                None,
+                &[101, 103],
+                &[101],
+                1,
+            ),
+            told(
+                "입력과 같은 순간에 태어난 것은 도우미가 아니다 — 입력보다 먼저여야 한다",
+                "G-1",
+                vec![row(101, 100).born(4_999), row(104, 100).born(5_000)],
+                Some(5_000),
+                None,
+                &[101, 104],
+                &[101],
+                1,
+            ),
+            told(
+                "입력이 아직 없으면 자손이 모두 도우미다 — 끝낼 대상에는 모두 든다",
+                "G-1",
+                vec![
+                    row(101, 100).born(2_000),
+                    row(102, 100).born(6_000),
+                    row(201, 1).key("G-1").born(7_000),
+                ],
+                None,
+                None,
+                &[101, 102, 201],
+                &[101, 102, 201],
+                0,
+            ),
+            told(
+                "명령이 돌면 그 foreground 그룹은 수에서 빠진다 — claude와 그 MCP 서버. Bash 도구가 띄운 dev 서버는 \
+                 제 세션이라 센다",
+                "G-1",
+                vec![
+                    row(300, 100).born(6_000).named("claude"),
+                    row(301, 300).born(6_100).named("node").group(300),
+                    row(310, 1).key("G-1").born(6_200).named("node"),
+                ],
+                Some(5_000),
+                Some(300),
+                &[300, 301, 310],
+                &[],
+                1,
+            ),
+            told(
+                "프롬프트면(명령 없음) 빼는 그룹이 없다 — 백그라운드 잡도 센다",
+                "G-1",
+                vec![row(300, 100).born(6_000), row(310, 1).key("G-1").born(6_200)],
+                Some(5_000),
+                None,
+                &[300, 310],
+                &[],
+                2,
+            ),
+            told(
+                "예외는 끝내지도 세지도 않는다",
+                "G-1",
+                vec![row(120, 100).born(6_000).named("tmux"), row(121, 120).born(6_100), row(102, 100).born(6_000)],
+                Some(5_000),
+                None,
+                &[102],
+                &[],
+                1,
+            ),
+            told(
+                "끝낼 셸의 도우미도 그 셸의 첫 입력으로 가른다",
+                "G-2",
+                vec![row(111, 110).born(2_000), row(112, 110).born(6_000)],
+                Some(5_000),
+                None,
+                &[111, 112],
+                &[111],
+                1,
+            ),
+        ];
+
+        let exceptions = exceptions();
+        let mut wrong = Vec::new();
+        for case in &cases {
+            let with_input = |key: &str, pid: u32| ShellEntry {
+                key: key.to_string(),
+                process: Some(Identity { pid, started_us: 1_000 + u64::from(pid) }),
+                first_input_us: case.first_input,
+            };
+            let shells = [with_input("G-1", 100), shell("G-3", None)];
+            let ending = [with_input("G-2", 110)];
+            let mut procs = world();
+            for added in &case.rows {
+                procs.retain(|p| p.id.pid != added.id.pid);
+                procs.push(added.clone());
+            }
+            let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+            let verdict = judge(&Inputs {
+                snapshot: &snapshot,
+                generation: "G",
+                shells: &shells,
+                ending: &ending,
+                instances: &[],
+                exceptions: &exceptions,
+                app_pid: APP,
+                inherited_key: None,
+                occasion: Occasion::Normal,
+            });
+
+            let ended: Vec<u32> =
+                verdict.descendants.get(case.key).into_iter().flatten().map(|p| p.id.pid).collect();
+            let helpers: Vec<u32> = verdict.helpers.iter().map(|id| id.pid).collect();
+            let got = close_count(&verdict, case.key, case.command_group);
+            if ended != case.ended || helpers != case.helpers || got != case.told {
+                wrong.push(format!(
+                    "{}\n    기대 끝냄 {:?} · 도우미 {:?} · 수 {}\n    받음 끝냄 {ended:?} · 도우미 {helpers:?} · 수 {got}",
+                    case.what, case.ended, case.helpers, case.told
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "셸 도우미 · 확인 창의 수가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
     /// **종료 판정 표**(프로세스 스펙 S5). 종료 때 풀은 비었다 — 뺀 셸 G-1(100)과 G-2(110)이 끝낼 셸이고, 셸

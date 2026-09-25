@@ -4,6 +4,7 @@ import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { StartupReport } from "@/components/shell/startup-report";
+import type { CloseCheck } from "@/features/terminal/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -426,9 +427,18 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,
-  // 닫기 직전에만 묻는다(결정 92). **`true`인 것은 물어야 하는 쪽을 태우기 위해서다** —
-  // 셸 닫기 확인 창이 이 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다.
-  pty_command_running: true,
+  // 셸을 닫기 직전에만 묻는다 — 명령이 도는가와 함께 끝날 프로세스 수(프로세스 결정 3이 ux-papercuts 결정 92의
+  // 「명령이 도는가」를 넓혔다). **명령이 도는 답인 것은 물어야 하는 쪽을 태우기 위해서다** — 셸 닫기 확인 창이 이
+  // 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다. 수는 0이다: 창의 둘째 줄은 그것을 재는 검사
+  // (`close-confirm-count.spec.ts`)가 덮어 세운다.
+  pty_command_running: { command: true, descendants: 0 } satisfies CloseCheck,
+  // 셸 여럿의 닫기 전 물음(티켓 08) — 종료 확인 창과 아카이브 확인 창이 셀 때 **한 번** 부른다. 답은 pty id → 그
+  // 셸의 답이고, 답한 셸만 싣는다.
+  //
+  // **기본은 빈 답이다** — 아무 셸도 답하지 않았다(명령 없음, 띄운 프로세스 없음으로 센다). 고정 답은 어느 pty id가
+  // 설지 모르고, 셸마다 같은 답을 주는 길이 이 표에 없다. 세기를 재는 검사가 그 시나리오의 pty id로 덮는다
+  // (`quit-confirm.spec.ts`의 「세기」, `close-confirm-count.spec.ts`).
+  pty_close_checks: {} satisfies Record<number, CloseCheck>,
   pty_kill: null,
   // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).

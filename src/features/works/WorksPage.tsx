@@ -30,6 +30,7 @@ import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
   closesShellFromWindow,
+  closingShellsNotice,
   opensShellFromWindow,
   ownerOf,
   runningShellsOf,
@@ -50,6 +51,7 @@ import {
   openNewShell,
   requestCloseShell,
   selectShell,
+  spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
@@ -1292,7 +1294,12 @@ function WorkMenu({
     // 셸은 이 Work의 워크트리에서 도는 프로세스라 폴더가 정리되면 함께 끝난다. 누르기 전에
     // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
     // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
-    const notice = liveShells > 0 ? `${detail}\n셸 ${liveShells}개가 닫혀요.` : detail;
+    //
+    // 그 셸들에서 띄운 프로세스(dev 서버 등)도 함께 끝난다(프로세스 결정 3) — 그 수를 **창을 띄우기 전에** 물어
+    // 셸 줄 뒤에 붙인다(프로세스 스펙 S18). 못 얻으면 붙이지 않고 창은 그대로 뜬다.
+    const spawned = liveShells > 0 ? await spawnedCountOf(ownerOf(mode, work.slug)) : null;
+    const shellLine = closingShellsNotice(liveShells, spawned);
+    const notice = shellLine ? `${detail}\n${shellLine}` : detail;
     // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
     // 앱 밖의 일처럼 읽힌다.
     if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;

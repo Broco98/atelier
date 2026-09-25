@@ -12,8 +12,11 @@ import {
   activeIdOf,
   atCap,
   CLOSE_NOTICE,
+  closeNotice,
+  closingShellsNotice,
   confirmClose,
   countQuitShells,
+  countSpawned,
   markExited,
   markFailed,
   markFirstInput,
@@ -1233,24 +1236,32 @@ describe("⇧Enter가 개행한다", () => {
   });
 });
 
-// ⌘W와 `×`가 도는 명령을 조용히 죽이지 않는다(결정 92). 판정은 백엔드가 읽는 PTY의
-// 포그라운드 그룹인데, **그 값을 못 얻는 경우가 실제로 있다** — 이미 끝난 pty, IPC 실패.
-// 그때 묻지 않고 닫는 것이 이 함수가 지키는 절반이다.
+// ⌘W와 `×`가 도는 것을 조용히 죽이지 않는다. 판정은 백엔드의 닫기 전 물음 — 명령이 도는가(PTY의 포그라운드
+// 그룹, ux-papercuts 결정 92)와 함께 끝날 프로세스 수(프로세스 결정 3이 넓혔다) — 인데, **그 값을 못 얻는 경우가
+// 실제로 있다** — 이미 끝난 pty, IPC 실패. 그때 묻지 않고 닫는 것이 이 함수가 지키는 절반이다.
 describe("닫기 전에 묻는가", () => {
   const one = opened(1);
   const running = one.state.shells[0];
   const exited = markExited(one.state, running.id, EXIT_42).shells[0];
   const failed = markFailed(one.state, running.id, "폴더가 없습니다").shells[0];
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
 
   it("명령이 돌면 묻는다", () => {
-    expect(needsCloseConfirm(running, true)).toBe(true);
+    expect(needsCloseConfirm(running, check(true, 0))).toBe(true);
   });
 
-  it("빈 프롬프트면 안 묻는다 — 닫을 때마다 팝업이 뜨면 안 된다", () => {
-    expect(needsCloseConfirm(running, false)).toBe(false);
+  // **프로세스 결정 3이 넓힌 갈래다.** 결정 92는 foreground가 셸이면 안 물었다 — 빈 프롬프트에 dev 서버만 남은
+  // 셸은 묻지 않고 닫혀 그 서버가 조용히 끝났다.
+  it("명령이 없어도 함께 끝날 프로세스가 있으면 묻는다", () => {
+    expect(needsCloseConfirm(running, check(false, 1))).toBe(true);
   });
 
-  it("판정을 못 얻으면 안 묻는다 — 모르는 것으로 닫는 길을 막지 않는다", () => {
+  // 결정 92가 피한 것은 그대로 피한다 — 셸 도우미(p10k의 `gitstatusd`)는 백엔드가 수에서 뺐다(프로세스 스펙 P1).
+  it("명령도 함께 끝날 것도 없으면 안 묻는다 — 빈 프롬프트를 닫을 때마다 팝업이 뜨면 안 된다", () => {
+    expect(needsCloseConfirm(running, check(false, 0))).toBe(false);
+  });
+
+  it("판정을 못 얻으면 안 묻는다 — 모르는 것으로 사람이 고른 닫기를 막지 않는다", () => {
     expect(needsCloseConfirm(running, null)).toBe(false);
   });
 
@@ -1260,12 +1271,12 @@ describe("닫기 전에 묻는가", () => {
     ["끝난 칸", exited],
     ["못 뜬 칸", failed],
   ])("%s은 안 묻는다", (_name, shell) => {
-    expect(needsCloseConfirm(shell, true)).toBe(false);
+    expect(needsCloseConfirm(shell, check(true, 2))).toBe(false);
   });
 
   // 그리는 것과 누르는 것 사이에 그 칸이 빠질 수 있다 — `removeShell`이 같은 자리를 연다.
   it("없는 칸은 안 묻는다", () => {
-    expect(needsCloseConfirm(undefined, true)).toBe(false);
+    expect(needsCloseConfirm(undefined, check(true, 2))).toBe(false);
   });
 
   // **묻고 나서 그 답을 존중하는가**가 여기까지 와야 절반이 채워진다. 한때 그 한 줄이
@@ -1273,33 +1284,46 @@ describe("닫기 전에 묻는가", () => {
   // 검사가 전부 초록이었다(실측). 확인 창을 인자로 받게 하면서 값으로 드러났다.
   describe("물은 답을 존중한다", () => {
     const ask = (answer: boolean) => {
-      let asked = 0;
+      const asked: string[] = [];
       return {
-        count: () => asked,
-        fn: async () => {
-          asked += 1;
+        count: () => asked.length,
+        bodies: () => asked,
+        fn: async (body: string) => {
+          asked.push(body);
           return answer;
         },
       };
     };
 
     it("아니라고 하면 안 닫는다 — sleep 30이 도는 셸이 이 자리다", async () => {
-      expect(await confirmClose(running, true, ask(false).fn)).toBe(false);
+      expect(await confirmClose(running, check(true, 0), ask(false).fn)).toBe(false);
+    });
+
+    it("자손만 있는 셸도 아니라고 하면 안 닫는다 — dev 서버만 남은 셸이 이 자리다", async () => {
+      expect(await confirmClose(running, check(false, 1), ask(false).fn)).toBe(false);
     });
 
     // **정확히 한 번만 묻는다**(결정 92의 「닫기 직전에 한 번만」). 두 번 물으면 ⌘W 한 번에
     // 팝업이 둘 뜬다.
     it("예라고 하면 닫는다 — 묻는 것은 한 번뿐이다", async () => {
       const asking = ask(true);
-      expect(await confirmClose(running, true, asking.fn)).toBe(true);
+      expect(await confirmClose(running, check(true, 0), asking.fn)).toBe(true);
       expect(asking.count()).toBe(1);
     });
 
     // 물을 일이 없는데 물으면 빈 프롬프트를 닫을 때마다 팝업이 뜬다(결정 92가 피한 것).
     it("물을 일이 없으면 아예 안 묻고 닫는다", async () => {
       const asking = ask(false);
-      expect(await confirmClose(running, false, asking.fn)).toBe(true);
+      expect(await confirmClose(running, check(false, 0), asking.fn)).toBe(true);
+      expect(await confirmClose(running, null, asking.fn)).toBe(true);
       expect(asking.count()).toBe(0);
+    });
+
+    // 창이 말하는 것은 그 답의 문구다 — 스토어가 문구를 따로 고르면 답과 창이 어긋난다.
+    it("창에 그 답의 문구를 건넨다", async () => {
+      const asking = ask(true);
+      await confirmClose(running, check(false, 2), asking.fn);
+      expect(asking.bodies()).toEqual([closeNotice(check(false, 2))]);
     });
   });
 
@@ -1308,10 +1332,28 @@ describe("닫기 전에 묻는가", () => {
   it("확인 창은 도는 것을 「명령」이라 부르고 이름은 안 싣는다", () => {
     expect(CLOSE_NOTICE).toContain("명령");
     expect(CLOSE_NOTICE).toBe("실행 중인 명령이 있어요 — 닫을까요?");
-    // **이름을 실을 재료가 없다는 것까지 여기서 드러난다.** 결정 92가 여는 커맨드가 주는
-    // 것은 「도는가」 bool 하나뿐이라, 이 문구는 인자를 안 받는 **상수**다 — 이름을 끼워
-    // 넣을 자리 자체가 없다. 이름을 받는 함수로 바뀌는 순간 이 줄이 빨개진다.
+    // **이름을 실을 재료가 없다는 것까지 여기서 드러난다.** 닫기 전 물음이 주는 것은 「도는가」와 수뿐이라,
+    // 이 문구는 인자를 안 받는 **상수**다 — 이름을 끼워 넣을 자리 자체가 없다. 이름을 받는 함수로 바뀌는 순간
+    // 이 줄이 빨개진다.
     expect(read("./shell-registry.ts")).toContain('export const CLOSE_NOTICE = "');
+  });
+
+  // 프로세스 스펙 P6 — 해요체 두 갈래. 명령 문구 **아래에** 한 줄을 더하는 것이라 줄바꿈으로 가른다(창은 본문의
+  // 줄바꿈을 줄로 그린다 — `AppDialog`).
+  describe("확인 창의 문구", () => {
+    it("명령이 돌고 함께 끝날 것이 있으면 지금 문구 아래에 그 수를 더한다", () => {
+      expect(closeNotice(check(true, 2))).toBe(`${CLOSE_NOTICE}\n이 셸에서 띄운 프로세스 2개도 함께 끝나요.`);
+    });
+
+    it("명령만 돌면 지금 문구 그대로다 — 0개는 안 적는다", () => {
+      expect(closeNotice(check(true, 0))).toBe(CLOSE_NOTICE);
+    });
+
+    // 빈 프롬프트에는 명령이 없다(CONTEXT 「명령」) — 명령 문구도, 「도」로 시작하는 결정 3의 문장도 안 맞는다.
+    it("명령 없이 자손만 있으면 그 수로 묻고 명령을 말하지 않는다", () => {
+      expect(closeNotice(check(false, 3))).toBe("이 셸에서 띄운 프로세스 3개가 아직 돌아요. 닫을까요?");
+      expect(closeNotice(check(false, 3))).not.toContain("명령");
+    });
   });
 });
 
@@ -1721,7 +1763,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(store).toContain("function closeShell(id: number): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
     expect(store).toContain(
-      "if (!(await confirmClose(shell, await commandRunning(id), ask))) return;",
+      "if (!(await confirmClose(shell, await closeCheck(id), ask))) return;",
     );
     // 아카이빙 회수. 그 길에는 사람이 이미 한 번 확인했다(결정 26의 순서).
     expect(store).toContain(
@@ -2181,45 +2223,154 @@ describe("죽은 셸의 상태", () => {
   });
 });
 
-// 종료 확인이 적는 수(UI개선 결정 15 · #223). 창과 「묻는 중」 표시는 `quit-request.test.ts`가 본다.
+// 종료 확인이 적는 수(UI개선 결정 15 · #223 · 프로세스 스펙 S18). 창과 「묻는 중」 표시는 `quit-request.test.ts`가 본다.
 describe("종료 확인이 세는 셸", () => {
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
+  /** 셸마다 답을 주는 배치 물음. 받은 id 목록을 적어 둔다 — 셸마다 따로 묻지 않는지를 본다. */
+  const batch = (answers: Array<[number, { command: boolean; descendants: number }]>) => {
+    const asked: number[][] = [];
+    return {
+      asked: () => asked,
+      fn: async (ids: number[]) => {
+        asked.push(ids);
+        return new Map(answers.filter(([id]) => ids.includes(id)));
+      },
+    };
+  };
+
   // **물음이 실패해도 던지지 않는다.** 던지면 창이 안 뜨는데 부르는 쪽의 표시만 선 채 남을 수 있고,
   // 그러면 다음 종료 요청이 전부 무시된다 — 앱을 끌 길이 강제 종료뿐이 된다.
-  it("거부하는 물음은 그 셸을 안 도는 것으로 센다", async () => {
+  it("거부하는 물음은 모든 셸을 안 도는 것으로 센다", async () => {
     const { shells } = opened(2).state;
-    // 셸마다 **던지는** 물음이다 — 한 셸의 실패가 나머지 셸의 세기를 끌고 가면 안 된다.
     const counts = await countQuitShells(shells, () => Promise.reject(new Error("IPC 실패")));
-    expect(counts).toEqual({ live: 2, running: 0 });
+    expect(counts).toEqual({ live: 2, running: 0, spawned: 0 });
   });
 
-  it("모르면(`null`) 안 도는 것으로 센다 — 셸 닫기 확인과 같은 판정이다", async () => {
+  // **셸 여럿을 한 번에 묻는다**(티켓 08) — 백엔드가 스냅샷 한 장으로 셸마다 답한다. 셸마다 물으면 셸 20개에
+  // 스냅샷 20장이다.
+  it("셸들을 한 번에 묻고, 답이 없는 셸은 모름 — 안 도는 것으로 센다", async () => {
     const { shells } = opened(3).state;
-    const answers = [true, null, false];
-    const counts = await countQuitShells(shells, async (id) => answers[shells.findIndex((s) => s.id === id)]);
-    expect(counts).toEqual({ live: 3, running: 1 });
+    const [a, b, c] = shells.map((shell) => shell.id);
+    const asking = batch([
+      [a, check(true, 0)],
+      [c, check(false, 0)],
+    ]);
+    const counts = await countQuitShells(shells, asking.fn);
+    expect(counts).toEqual({ live: 3, running: 1, spawned: 0 });
+    expect(asking.asked()).toEqual([[a, b, c]]);
+  });
+
+  // **K는 명령이 도는 셸만 센다.** 셸 닫기가 물을 셸(`needsCloseConfirm`)을 빌리면 자손만 있는 셸이 「명령이 도는
+  // 셸」에 섞여 창의 글자와 어긋난다 — 프로세스 결정 3이 그 판정을 「자손이 있으면 묻는다」로 넓혔다. 그 셸의
+  // 자손은 M에 든다.
+  it("자손만 있는 셸은 명령이 도는 셸에 안 들고 띄운 프로세스 수에 든다", async () => {
+    const { shells } = opened(3).state;
+    const [a, b, c] = shells.map((shell) => shell.id);
+    const counts = await countQuitShells(
+      shells,
+      batch([
+        [a, check(true, 1)],
+        [b, check(false, 2)],
+        [c, check(false, 0)],
+      ]).fn,
+    );
+    expect(counts).toEqual({ live: 3, running: 1, spawned: 3 });
   });
 
   // 끝난 칸은 목록에 남아 있지만 닫힐 프로세스가 없다 — 물어볼 것도 없다(`needsCloseConfirm`과 같은 규칙).
   it("끝난 칸은 세지도 묻지도 않는다", async () => {
     const two = opened(2).state;
     const state = markExited(two, two.shells[0].id, { exitCode: 1, signal: null });
-    const asked: number[] = [];
-    const counts = await countQuitShells(state.shells, async (id) => {
-      asked.push(id);
-      return true;
+    const alive = state.shells[1].id;
+    const asking = batch([
+      [state.shells[0].id, check(true, 5)],
+      [alive, check(true, 1)],
+    ]);
+    const counts = await countQuitShells(state.shells, asking.fn);
+    expect(counts).toEqual({ live: 1, running: 1, spawned: 1 });
+    expect(asking.asked()).toEqual([[alive]]);
+  });
+
+  it("살아 있는 셸이 없으면 묻지 않는다", async () => {
+    const two = opened(2).state;
+    const state = markExited(two, two.shells[0].id, EXIT_42);
+    const gone = markFailed(state, state.shells[1].id, "폴더가 없습니다");
+    const asking = batch([]);
+    expect(await countQuitShells(gone.shells, asking.fn)).toEqual({ live: 0, running: 0, spawned: 0 });
+    expect(asking.asked()).toEqual([]);
+  });
+});
+
+// 아카이브 확인 창의 M(프로세스 스펙 S18). 종료 셈과 같은 배치 물음을 쓴다.
+describe("아카이브 확인이 세는 띄운 프로세스", () => {
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
+
+  it("살아 있는 셸들의 수를 더한다 — 끝난 칸은 안 묻는다", async () => {
+    const three = opened(3).state;
+    const state = markExited(three, three.shells[2].id, EXIT_42);
+    const [a, b, c] = state.shells.map((shell) => shell.id);
+    const asked: number[][] = [];
+    const spawned = await countSpawned(state.shells, async (ids) => {
+      asked.push(ids);
+      return new Map([
+        [a, check(true, 2)],
+        [b, check(false, 1)],
+        [c, check(false, 9)],
+      ]);
     });
-    expect(counts).toEqual({ live: 1, running: 1 });
-    expect(asked).toEqual([state.shells[1].id]);
+    expect(spawned).toBe(3);
+    expect(asked).toEqual([[a, b]]);
+  });
+
+  // 모르는 수를 창에 적지 않는다 — 0으로 적으면 「띄운 것이 없다」는 거짓말이 된다.
+  it("물음이 실패하면 모름(`null`)이다", async () => {
+    const { shells } = opened(2).state;
+    expect(await countSpawned(shells, () => Promise.reject(new Error("IPC 실패")))).toBeNull();
+    expect(await countSpawned(shells, async () => null)).toBeNull();
+  });
+
+  it("살아 있는 셸이 없으면 묻지 않고 0이다", async () => {
+    const one = opened(1).state;
+    const state = markExited(one, one.shells[0].id, EXIT_42);
+    let asked = 0;
+    expect(
+      await countSpawned(state.shells, async () => {
+        asked += 1;
+        return new Map();
+      }),
+    ).toBe(0);
+    expect(asked).toBe(0);
   });
 });
 
 describe("종료 확인의 본문", () => {
   it("셸이 있으면 셸 수와 명령이 도는 셸 수를 적는다", () => {
-    expect(quitNotice({ live: 2, running: 1 })).toBe("셸 2 · 명령이 도는 셸 1");
+    expect(quitNotice({ live: 2, running: 1, spawned: 0 })).toBe("셸 2 · 명령이 도는 셸 1");
+  });
+
+  // 셸과 함께 끝나는 것이라 **셸 수 뒤에** 붙는다. 끝에 붙이면 「명령이 도는 셸 K」의 풀이로 읽힌다.
+  it("띄운 프로세스가 있으면 셸 수 뒤에 그 수를 붙인다", () => {
+    expect(quitNotice({ live: 2, running: 1, spawned: 3 })).toBe("셸 2(띄운 프로세스 3개 포함) · 명령이 도는 셸 1");
   });
 
   it("셸이 0개면 그 줄이 없다", () => {
-    expect(quitNotice({ live: 0, running: 0 })).toBeUndefined();
+    expect(quitNotice({ live: 0, running: 0, spawned: 0 })).toBeUndefined();
+  });
+});
+
+// 아카이브 · 삭제 확인 창의 셸 줄(결정 26 · 프로세스 스펙 S18). 두 세계가 같은 말이다.
+describe("아카이브 확인의 셸 줄", () => {
+  it("셸 수를 적고, 띄운 프로세스가 있으면 그 뒤에 붙인다", () => {
+    expect(closingShellsNotice(2, 0)).toBe("셸 2개가 닫혀요.");
+    expect(closingShellsNotice(2, 3)).toBe("셸 2개가 닫혀요(띄운 프로세스 3개 포함).");
+  });
+
+  it("못 얻은 수는 안 붙인다", () => {
+    expect(closingShellsNotice(1, null)).toBe("셸 1개가 닫혀요.");
+  });
+
+  it("셸이 0개면 그 줄이 없다 — 띄운 프로세스 수가 와도", () => {
+    expect(closingShellsNotice(0, 4)).toBeNull();
   });
 });
 

@@ -21,9 +21,9 @@ import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
   attentionOfId,
-  CLOSE_NOTICE,
   confirmClose,
   countQuitShells,
+  countSpawned,
   firstInputOfId,
   markExited,
   markFailed,
@@ -41,7 +41,7 @@ import {
   shellsOf,
   slugOfOwner,
 } from "./shell-registry";
-import type { OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
+import type { CloseChecks, OpenedShell, QuitCounts, ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import { humanInput, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
@@ -50,7 +50,7 @@ import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
 import { terminalSettingsStore } from "./terminal-settings";
 import { terminalThemeFor } from "./terminal-theme";
-import type { PtyFrame } from "./types";
+import type { CloseCheck, PtyFrame } from "./types";
 // `@xterm/*` import는 이 파일과 이것을 부르는 화면에만 둔다. 청크가 `/terminal`과 Work 화면에만
 // 붙는 것은 사실이지만, **그것이 앱 시작 무게를 줄이지는 않는다** — 첫 화면이 `/works`이고
 // (`routes/index.tsx`가 그리로 redirect한다) `WorksPage`가 `TerminalPane`을 **정적으로** 들여서,
@@ -414,39 +414,48 @@ function closeShell(id: number): void {
  * 사람이 셸을 닫으려 한다 — **⌘W와 `×`가 함께 여기로 온다**(결정 92). 셸 하나를 없애는
  * 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
  *
- * **닫기 직전에** 백엔드에 묻는다. 셸 상태에 얹어 두지 않는 것은 그 값이 매 순간 바뀌기
- * 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ * **닫기 직전에** 백엔드에 묻는다 — 명령이 도는가와 함께 끝날 프로세스 수(프로세스 결정 3). 셸 상태에 얹어 두지
+ * 않는 것은 그 값이 매 순간 바뀌기 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
  *
- * 무엇을 보고 묻는지도, 물은 답을 어떻게 읽는지도 `confirmClose`가 혼자 안다(끝난 칸·못 얻은
+ * 무엇을 보고 묻는지도, 무엇이라 묻는지도, 물은 답을 어떻게 읽는지도 `confirmClose`가 혼자 안다(끝난 칸·못 얻은
  * 판정까지). 여기서 한 번 더 가르지 않는다 — 여기 남는 것은 **확인 창을 건네는 일**뿐이고,
  * 그것이 저쪽을 순수하게 잴 수 있는 모양으로 만든다.
  */
 export async function requestCloseShell(id: number): Promise<void> {
   const shell = terminalStore.state.shells.find((one) => one.id === id);
   // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
-  // 앱 밖의 일처럼 읽힌다. 문구는 `CLOSE_NOTICE`가 든다(결정 105).
-  const ask = () => askDialog({ title: "셸 닫기", body: CLOSE_NOTICE, confirm: "닫기", danger: true });
-  if (!(await confirmClose(shell, await commandRunning(id), ask))) return;
+  // 앱 밖의 일처럼 읽힌다. 문구는 `closeNotice`가 든다(결정 105 · 프로세스 스펙 P6).
+  const ask = (body: string) => askDialog({ title: "셸 닫기", body, confirm: "닫기", danger: true });
+  if (!(await confirmClose(shell, await closeCheck(id), ask))) return;
   closeShell(id);
 }
 
 /**
- * 종료 확인이 적을 수(UI개선 결정 15). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는 세계마다 갈리지
- * 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지는 셸 닫기 확인과 **같은 물음**으로 지금
- * 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 `countQuitShells`가 혼자 안다.
+ * 종료 확인이 적을 수(UI개선 결정 15 · 프로세스 스펙 S18). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는
+ * 세계마다 갈리지 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지와 띄운 프로세스 수는 셸 닫기 확인과 **같은
+ * 물음**을 셸 여럿에 한 번에 보내 지금 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 `countQuitShells`가
+ * 혼자 안다.
  */
 export function quitShellCounts(): Promise<QuitCounts> {
-  return countQuitShells(terminalStore.state.shells, commandRunning);
+  return countQuitShells(terminalStore.state.shells, closeChecks);
 }
 
 /**
- * 백엔드에 「이 칸에서 명령이 도는가」를 묻는다. **못 얻으면 `null`이다** — 모르는 것을
- * 이유로 닫는 길을 막지 않는다(결정 92).
+ * 이 owner의 셸들에서 띄워 함께 끝날 프로세스 수 — 아카이브 · 삭제 확인 창의 「(띄운 프로세스 M개 포함)」이다
+ * (프로세스 스펙 S18). 못 얻으면 `null`이다. 세는 규칙은 `countSpawned`가 혼자 안다.
+ */
+export function spawnedCountOf(owner: ShellOwner): Promise<number | null> {
+  return countSpawned(shellsOf(terminalStore.state, owner), closeChecks);
+}
+
+/**
+ * 백엔드에 이 칸의 닫기 전 물음 — 명령이 도는가와 함께 끝날 프로세스 수 — 을 묻는다. **못 얻으면 `null`이다** —
+ * 모르는 것을 이유로 사람이 고른 닫기를 막지 않는다.
  *
  * `null`로 오는 길이 둘이다: PTY가 아직·이미 없는 칸(`ptyId`가 null — 못 뜬 칸과 스스로
  * 끝난 칸이 그렇다)과, 백엔드가 판정을 못 낸 경우(tcgetpgrp 실패, 이미 지워진 id).
  */
-async function commandRunning(id: number): Promise<boolean | null> {
+async function closeCheck(id: number): Promise<CloseCheck | null> {
   const ptyId = instances.get(id)?.ptyId ?? null;
   if (ptyId === null) return null;
   try {
@@ -457,9 +466,28 @@ async function commandRunning(id: number): Promise<boolean | null> {
 }
 
 /**
+ * 여러 칸의 닫기 전 물음을 **한 번에** 보낸다(티켓 08) — 레지스트리 id를 pty id로 바꿔 묻고, 답을 레지스트리 id로
+ * 되돌린다. 답한 칸만 든다: pty가 아직·이미 없는 칸은 묻지도 않는다. 물을 칸이 하나도 없으면 IPC 없이 빈 답이다.
+ * 물음이 실패하면 `null`이다.
+ */
+async function closeChecks(ids: number[]): Promise<CloseChecks | null> {
+  const asked = ids.flatMap((id) => {
+    const ptyId = instances.get(id)?.ptyId ?? null;
+    return ptyId === null ? [] : [{ id, ptyId }];
+  });
+  if (asked.length === 0) return new Map();
+  try {
+    const answers = await terminalApi.closeChecks(asked.map(({ ptyId }) => ptyId));
+    return new Map(asked.flatMap(({ id, ptyId }) => (answers[ptyId] ? [[id, answers[ptyId]] as const] : [])));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * pty id로 그 칸의 **레지스트리 id**를 되찾는다. **둘은 다른 번호다** — 레지스트리는 자기
  * 번호를 스스로 발급하고(`openShell`의 주석: 못 뜬 칸에는 pty id라는 것이 아예 없다),
- * 백엔드는 그것을 모른다. 위 `commandRunning`이 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
+ * 백엔드는 그것을 모른다. 위 `closeCheck`가 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
  *
  * **모르는 pty id가 실제로 온다.** 이벤트가 오는 사이에 그 칸이 `×`로 닫혔거나 스스로
  * 끝났으면 `ptyId`가 이미 null로 눕혀져 있다. 그때는 `null`이고, 부르는 쪽이 건너뛴다.
