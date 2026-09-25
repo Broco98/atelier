@@ -93,6 +93,13 @@ pub(crate) fn archive_in(root: &Path) -> PathBuf {
     root.join("archive")
 }
 
+/// spec 레이아웃 폴더들의 자리. **모드를 안 받는다** — 모드별 홈이 아니라 데이터 루트 아래 하나이고,
+/// 두 모드의 레이아웃이 그 안에 `<id>/`로 나란히 산다(구현 스펙 1절 「resolve」). 어느 모드의
+/// 서버든 두 모드의 레이아웃을 읽고 고칠 수 있어야 하기 때문이다.
+pub(crate) fn layouts_in(root: &Path) -> PathBuf {
+    root.join("layouts")
+}
+
 pub fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

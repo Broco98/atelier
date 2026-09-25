@@ -18,6 +18,21 @@ pub struct LayoutError {
     pub message: String,
 }
 
+/// 위치를 JSON의 경로로 적는다(`root.children[1].children[0]: …`) — 사람이 `layout.json`을 열어
+/// 그 항목을 찾아갈 수 있는 모양이다. 물러선 안내문의 까닭이 이 글이다.
+impl std::fmt::Display for LayoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(path) = &self.path {
+            f.write_str("root")?;
+            for i in path {
+                write!(f, ".children[{i}]")?;
+            }
+            f.write_str(": ")?;
+        }
+        f.write_str(&self.message)
+    }
+}
+
 impl LayoutError {
     fn document(message: impl Into<String>) -> Self {
         Self { path: None, message: message.into() }
