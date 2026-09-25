@@ -8,8 +8,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, data_root, mode_home, projects_dir, shared_projects_root, with_spec_trees,
-    works_dir, Mode, ProjectPatch,
+    archive_dir, data_root, mode_home, projects_dir, shared_projects_root, works_dir, Mode,
+    ProjectPatch,
 };
 use serde_json::{Map, Value};
 
@@ -48,13 +48,13 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("list_works", |a| {
         let mode = mode(a)?;
         ok(atelier_core::list_works(&works_dir(mode))
-            .and_then(|works| with_spec_trees(&data_root(), mode, works)))
+            .and_then(|works| atelier_core::with_spec_trees(&data_root(), mode, works)))
     }),
     ("get_work", |a| {
         let mode = mode(a)?;
         // 하나를 넣으면 하나가 나온다
         ok(atelier_core::get_work(&works_dir(mode), &text(a, "slug")?)
-            .and_then(|work| with_spec_trees(&data_root(), mode, vec![work]))
+            .and_then(|work| atelier_core::with_spec_trees(&data_root(), mode, vec![work]))
             .map(|mut works| works.remove(0)))
     }),
     ("set_work_title", |a| {
@@ -82,7 +82,7 @@ const HANDLERS: &[(&str, Handler)] = &[
             pinned,
             maybe_text(a, "before").as_deref(),
         )
-        .and_then(|works| with_spec_trees(&data_root(), mode, works)))
+        .and_then(|works| atelier_core::with_spec_trees(&data_root(), mode, works)))
     }),
     ("archive_work", |a| {
         let mode = mode(a)?;
