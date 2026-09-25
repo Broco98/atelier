@@ -1003,6 +1003,9 @@ pub(crate) fn instance_prefix() -> &'static str {
 /// 실행(이 기능 전의 설치본, 리눅스)은 가릴 길이 없어 예전처럼 지운다.
 ///
 /// 이 실행의 기록은 아직 안 열렸을 수 있어(정리는 기록을 열기 전에 돈다) 세대를 따로 싣는다.
+///
+/// 기록 폴더의 살아 있는 세대를 더하는 줄은 `shells.rs`의 `a_sweep_keeps_the_files_of_a_run_whose_instance_record_is_alive`가
+/// 앱이 쓰는 길로 잰다(macOS) — 이 줄이 빠지면 정리가 다시 이 실행의 세대만 남긴다.
 pub fn live_generations(root: &Path) -> Vec<String> {
     let mut generations = vec![instance_prefix().to_string()];
     generations.extend(instances::live_generations(&instances::dir(root)));

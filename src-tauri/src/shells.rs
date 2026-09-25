@@ -594,6 +594,51 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// **살아 있는 다른 실행은 인스턴스 기록에서 온다**(티켓 11 · 프로세스 스펙 S10) — 앱이 setup에서 부르는 그대로
+    /// (`sweep(&root, &pty::live_generations(&root))`) 쓸어, 앱이 지금 떠 있는 기록의 세대 파일(상태 · 잠금 · 임시)은 남고
+    /// 앱이 죽은 기록의 세대 파일은 가는지 본다.
+    ///
+    /// 위의 살아 있는 실행 검사는 남길 세대를 **손으로** 넘기고, 바로 위 검사의 루트에는 기록 폴더가 없다 — 그래서
+    /// `pty::live_generations`가 기록 폴더의 살아 있는 세대를 더하는 한 줄을 지우거나 폴더를 잘못 줘도 아무 검사가 안
+    /// 울었다. 그러면 dev 빌드가 뜰 때 설치본 셸의 상태 파일을 지워 그 셸의 띠 상태가 사라진다(이 장이 고친 결함 그대로).
+    ///
+    /// 기록은 앱이 쓰는 길(`Place::this_app` · `Record::open`)로 임시 루트에 쓴다. 살아 있는 실행의 앱은 이 검사 프로세스다.
+    /// 죽은 실행은 같은 pid에 다른 시작 시각이다(pid가 재사용된 흉내, S9). 신원을 읽는 것은 macOS뿐이다 — 다른 OS에서는
+    /// `alive`가 늘 거짓이라 잴 갈래가 없다.
+    ///
+    /// 앵커: 죽은 실행의 세대 파일은 기록이 있어도 실제로 지워진다 — 아무것도 안 지우게 무너지면 「남았다」가 저절로 참이 된다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_sweep_keeps_the_files_of_a_run_whose_instance_record_is_alive() {
+        use crate::processes::instances::{Place, Record};
+        use crate::processes::Identity;
+
+        let root = temp_root("sweep-live-record");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        let live = Place::this_app(&root, "1800", "0.0.0").expect("이 검사 프로세스의 신원을 읽는다");
+        let dead_app = Identity { pid: live.app.pid, started_us: live.app.started_us + 1 };
+        Record::default().open(Place { generation: "1699".to_string(), app: dead_app, ..live.clone() });
+        Record::default().open(live);
+        let this_run = format!("{}.json", crate::pty::shell_id(0));
+        let live_run = ["1800-3.json", ".1800-3.lock", ".1800-3.json.9.tmp"];
+        let dead_run = ["1699-1.json", ".1699-1.lock", ".1699-1.json.5.tmp"];
+        for name in live_run.iter().chain(&dead_run).copied().chain([this_run.as_str()]) {
+            std::fs::write(dir.join(name), "{}").unwrap();
+        }
+
+        sweep(&root, &crate::pty::live_generations(&root));
+
+        let mut kept: Vec<String> = live_run.iter().map(|name| name.to_string()).chain([this_run]).collect();
+        kept.sort_unstable();
+        assert_eq!(
+            files_in(&dir),
+            kept,
+            "앱이 떠 있는 실행(인스턴스 기록)의 파일이 지워졌거나, 앱이 죽은 실행의 파일이 남았다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// 접두사가 **온전히** 맞아야 한다. `1700`으로 쓸어 낼 때 `17000-…`을 남기면 다음
     /// 실행이 그것을 자기 셸로 읽는다 — 이 검사가 없으면 `starts_with(prefix)` 한 줄이
     /// 조용히 통과한다.
