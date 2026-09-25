@@ -130,6 +130,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 코어로 옮기면 위 항목들처럼 진짜 핸들러가 된다.
     ("read_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
     ("write_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
+    // 예외 목록의 기본값(프로세스 스펙 S7)은 **판정이 쓰는 앱 크레이트의 상수**다. 코어가 모르는 값이라 여기서
+    // 다시 적으면 이 층이 앱이 아니라 다리를 검증한다(위 설정 둘과 같은 이유).
+    ("default_process_exceptions", |_| in_app_only("예외 목록의 기본값이 앱 크레이트의 상수입니다")),
     // 에이전트 훅 셋(#207)도 같은 이유다 — 병합 모듈이 앱 크레이트에 산다
     // (`src-tauri/src/hooks.rs`). 게다가 이쪽이 고치는 것은 `~/.atelier` 밖의 파일
     // (`~/.claude`·`~/.codex`)이라, 다리가 그것을 진짜로 태우면 검증 한 번이 이 기계를
@@ -331,12 +334,13 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 17] = [
+    const APP_SOURCES: [(&str, &str); 18] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
         ("main.rs", include_str!("../../../src-tauri/src/main.rs")),
         ("processes/ending.rs", include_str!("../../../src-tauri/src/processes/ending.rs")),
+        ("processes/exceptions.rs", include_str!("../../../src-tauri/src/processes/exceptions.rs")),
         ("processes/mod.rs", include_str!("../../../src-tauri/src/processes/mod.rs")),
         ("processes/procargs.rs", include_str!("../../../src-tauri/src/processes/procargs.rs")),
         ("processes/snapshot.rs", include_str!("../../../src-tauri/src/processes/snapshot.rs")),

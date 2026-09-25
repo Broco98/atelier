@@ -75,6 +75,7 @@ describe("말의 사전", () => {
       expect.arrayContaining([
         "셸",
         "명령",
+        "예외",
         "열",
         "분할",
         "터미널",
@@ -127,6 +128,17 @@ describe("말의 사전", () => {
     expect(names).toContain("모든 프로젝트");
     expect(refused).toEqual(expect.arrayContaining(["trees", "루트"]));
     expect(bodyOf("모든 프로젝트")).toContain("_피할 말_: trees, 루트");
+  });
+
+  // 티켓 06 · 프로세스 결정 5. 셸을 닫아도 안 끝나는 것에 이름이 없으면 다음 사람이 「제외」·「화이트리스트」로
+  // 부른다. **화면 이름이 둘이다** — 목록을 고치는 설정 항목은 「셸을 닫아도 남길 프로세스」, 걸린 것의 묶음은
+  // 「예외」. 설정 라벨을 _피할 말_로 올리면 그 칸의 접근성 이름이 위 검사에 물린다: 같은 것의 두 라벨이지 틀린
+  // 말이 아니다. 마지막 줄은 그 그물이 이 칸을 실제로 보는지다 — 못 보면 거부해도 아무것도 안 문다.
+  it("「예외」가 등재돼 있고, 설정 항목의 이름을 거부하지 않는다", () => {
+    expect(names).toContain("예외");
+    expect(bodyOf("예외")).toContain("셸을 닫아도 남길 프로세스");
+    expect(avoided).not.toContain("셸을 닫아도 남길 프로세스");
+    expect(ariaLabels).toContain("셸을 닫아도 남길 프로세스");
   });
 
   it("「가지」·「잎」이 없다", () => {

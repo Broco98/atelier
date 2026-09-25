@@ -15,6 +15,10 @@ export interface TerminalSettings {
   fontSize: number | null;
   // 이 하나만 파일이 비어도 값이 정해져 온다 — 기본은 어둡게다(결정 54).
   theme: TerminalTheme;
+  // 셸을 닫아도 남길 프로세스 — 예외 목록(프로세스 결정 5). 고치지 않았으면 `null`이고 그때는 **기본 목록**을
+  // 쓴다. 그 목록은 여기에도 파일에도 없다: 판정이 쓰는 Rust 상수이고, 화면은 IPC로 받는다
+  // (`settingsApi.defaultExceptions`). 빈 목록(`[]`)은 `null`과 다르다 — 「아무것도 남기지 않는다」다.
+  processExceptions: string[] | null;
 }
 
 // 알림 구획 (#206 · 결정 10). **둘뿐이다** — 켬/끔과 소리 켬/끔. 「배경일 때만」 같은 셋째

@@ -122,7 +122,10 @@ test("독 배지에 확인할 것의 수가 뜨고, 0이면 사라진다", async
 // 마크업 seam(`SettingsPage.test.tsx`)이 재는 것은 그 길의 양 끝(`notificationChoice`·
 // `patchNotifications`)뿐이고, 둘을 잇는 `save()`의 접착 한 줄은 그 층에서는 안 걸린다.
 const 설정 = (notifications: { enabled?: boolean; sound?: boolean }) => ({
-  read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" }, notifications },
+  read_settings: {
+    terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null },
+    notifications,
+  },
 });
 
 test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ page }) => {

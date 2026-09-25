@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::{Identity, Proc, Snapshot};
+use super::{exceptions, Identity, Proc, Snapshot};
 
 /// 셸 하나 — 셸 목록과 끝낼 셸이 같은 모양이다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,8 +45,8 @@ pub enum Occasion {
 
 /// 판정의 입력 — 스펙 「판 01 › 새 Rust 모듈 › 판정」의 입력 그대로다.
 ///
-/// 이 판에서 채우는 칸은 스냅샷 · 세대 · 셸 목록 · 끝낼 셸 · 앱 pid · 물려받은 셸 키다. 인스턴스 기록과
-/// 모드(09 · 10), 예외 목록(06)은 모양만 서 있고 판정이 아직 안 읽는다.
+/// 지금 읽는 칸은 스냅샷 · 세대 · 셸 목록 · 끝낼 셸 · 예외 목록 · 앱 pid · 물려받은 셸 키다. 인스턴스 기록과
+/// 모드(09 · 10)는 모양만 서 있고 판정이 아직 안 읽는다.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub snapshot: &'a Snapshot,
@@ -58,6 +58,8 @@ pub struct Inputs<'a> {
     /// 새로고침이 풀을 통째로 비우기 때문이다.
     pub ending: &'a [ShellEntry],
     pub instances: &'a [InstanceRecord],
+    /// 예외 목록(프로세스 결정 5) — 설정의 `terminal.processExceptions`, `null`이면 기본 목록. 부르는 쪽이 끝낼
+    /// 때마다 설정에서 읽어 준다(`settings::process_exceptions`).
     pub exceptions: &'a [String],
     /// 앱 자신의 pid.
     pub app_pid: u32,
@@ -67,16 +69,24 @@ pub struct Inputs<'a> {
     pub occasion: Occasion,
 }
 
-/// 판정의 결과. 이 판에서 서는 묶음은 셸별 자손 하나다. 어느 묶음에도 없는 것(판정 밖)은 싣지 않는다.
+/// 판정의 결과. 지금 서는 묶음은 셸별 자손과 예외 둘이다(고아 · 다른 인스턴스는 티켓 09). 어느 묶음에도 없는
+/// 것(판정 밖)은 싣지 않는다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict<'a> {
     /// 셸 키마다 그 셸의 자손 — 셸 목록과 끝낼 셸 모두 선다. 자손이 없으면 빈 목록이다. pid 순.
     ///
     /// **셸 자신은 안 든다.** 셸은 끝낼 셸로 따로 쥐고 그룹 신호로 끝낸다.
     pub descendants: BTreeMap<&'a str, Vec<&'a Proc>>,
+    /// 예외 — 이름이 예외 목록에 걸린 것과 그 밑(프로세스 결정 5). 표식을 물었어도, 우리 셸의 트리 안이어도 여기
+    /// 든다. 끝내기에 넘어가지 않는다. pid 순.
+    pub exceptions: Vec<&'a Proc>,
 }
 
 /// 셸마다 그 셸이 띄운 자손을 가른다.
+///
+/// **예외를 가장 먼저 가른다**(프로세스 결정 5). 자기나 조상 중 하나가 예외 목록에 걸리면 예외이고, 다른 묶음에
+/// 안 든다 — 표식을 물었어도, 다른 세대의 표식이어도. 판정을 부르는 모든 길(셸 닫기, 새로고침, 앱 종료)이 이
+/// 함수를 지나므로 예외는 어느 길로도 안 끝난다.
 ///
 /// 셸별 자손 = 그 셸의 PID 트리 ∪ 그 셸 키를 문 것 ∪ 그것들의 트리. 한 프로세스는 **가장 가까운
 /// 자리**가 정한다: 자기 자신의 표식, 그다음 부모, 그 부모… 순으로 올라가다 처음 만나는 셸 프로세스나
@@ -113,6 +123,24 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         );
     }
 
+    // **예외가 먼저다**(프로세스 결정 5). 자기부터 부모를 따라 올라가는 길 위 어디에든 예외 이름이 있으면 그 행은
+    // 예외다 — 셸 자리를 만나기 전이든 뒤든. 가장 가까운 자리로만 가르면 tmux 서버 밑의 창 셸과 그 명령은 tmux를
+    // 띄운 셸의 표식을 물고 있어(tmux가 그 env를 물려준다) 그 셸의 자손이 되고, 셸을 닫는 순간 끝난다.
+    //
+    // 이 길도 막힌 행에서 멈춘다. 그 위는 앱을 띄운 쪽이다 — tmux 안에서 띄운 dev 앱이면 앱이 띄운 셸의 자손이 모두
+    // tmux 밑이라, 멈추지 않으면 셸을 닫아도 아무것도 안 끝난다.
+    let excepted = |proc: &'a Proc| -> bool {
+        for node in table.up_from(proc) {
+            if blocked.contains(&node.id.pid) {
+                return false;
+            }
+            if exceptions::caught(input.exceptions, node) {
+                return true;
+            }
+        }
+        false
+    };
+
     // 자기부터 부모를 따라 올라가다 처음 만나는 자리가 그 행의 셸이다. 막힌 행을 만나거나 끝까지
     // 올라가면 판정 밖이다.
     let owner_of = |proc: &'a Proc| -> Option<&'a str> {
@@ -132,6 +160,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
 
     let mut descendants: BTreeMap<&'a str, Vec<&'a Proc>> =
         shells.iter().map(|shell| (shell.key.as_str(), Vec::new())).collect();
+    let mut excepted_rows = Vec::new();
     for proc in procs {
         let pid = proc.id.pid;
         if pid <= 1
@@ -141,22 +170,25 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         {
             continue;
         }
-        if let Some(key) = owner_of(proc) {
+        if excepted(proc) {
+            excepted_rows.push(proc);
+        } else if let Some(key) = owner_of(proc) {
             descendants.entry(key).or_default().push(proc);
         }
     }
     for members in descendants.values_mut() {
         members.sort_by_key(|p| p.id.pid);
     }
-    Verdict { descendants }
+    excepted_rows.sort_by_key(|p| p.id.pid);
+    Verdict { descendants, exceptions: excepted_rows }
 }
 
 /// **앱 종료의 판정** — 끝낼 신원(프로세스 결정 3 · 프로세스 스펙 S5).
 ///
 /// 끝낼 것 = 풀에서 뺀 셸들(`ending`)의 자손 ∪ **이 세대의 표식을 문 전부**(와 그 트리). 뒤의 것은 셸이 이미
 /// 풀에 없는 키다 — 스스로 끝난 셸이 남긴 것, 닫는 중인 셸의 것, 풀에 오르기 전에 종료가 온 셸의 것. 앱이
-/// 끝나면 그 셸을 이어 쓸 길이 없으니 모두 끝낸다. 빼는 것(앱과 조상 사슬, 물려받은 키, pid ≤ 1, 다른 uid)은
-/// `judge` 그대로다.
+/// 끝나면 그 셸을 이어 쓸 길이 없으니 모두 끝낸다. 빼는 것(예외와 그 밑, 앱과 조상 사슬, 물려받은 키, pid ≤ 1,
+/// 다른 uid)은 `judge` 그대로다 — 예외는 셸별 자손에 안 들어 여기로 오지 않는다.
 ///
 /// 진행 중인 끝내기의 신원도 여기 들 수 있다 — 그 셸의 표식을 물고 있어서다. 이미 SIGTERM을 받은 그것을 다시
 /// 쏘지 않는 것은 끝내기 층이 가른다(`ending::InFlight::close`).
@@ -244,6 +276,10 @@ mod tests {
         fn key(self, key: &str) -> Proc;
         fn uid(self, uid: u32) -> Proc;
         fn born(self, started_us: u64) -> Proc;
+        /// 커널 이름.
+        fn named(self, name: &str) -> Proc;
+        /// 부른 이름(argv[0]). 커널 이름은 그대로 둔다.
+        fn invoked(self, argv0: &str) -> Proc;
     }
 
     impl Row for Proc {
@@ -259,6 +295,20 @@ mod tests {
             self.id.started_us = started_us;
             self
         }
+        fn named(mut self, name: &str) -> Proc {
+            self.name = name.to_string();
+            self
+        }
+        fn invoked(mut self, argv0: &str) -> Proc {
+            self.argv0 = Some(argv0.to_string());
+            self
+        }
+    }
+
+    /// 판정 표가 쓰는 예외 목록. 세상의 행 이름(`p<pid>`)은 아무것도 안 걸린다 — 걸리는 것은 줄이 이름을 준
+    /// 행뿐이다.
+    fn exceptions() -> Vec<String> {
+        ["tmux", "ssh-agent", "colima", "docker*"].into_iter().map(String::from).collect()
     }
 
     /// 모든 줄이 함께 쓰는 세상. 이 앱(50)은 설치본 셸에서 띄운 dev 빌드다.
@@ -291,6 +341,8 @@ mod tests {
         inherited: Option<&'static str>,
         /// 셸 키마다 기대 자손(pid). 적지 않은 셸은 빈 목록이다.
         expect: Vec<(&'static str, Vec<u32>)>,
+        /// 기대 예외 묶음(pid). 적지 않으면 비어 있다.
+        excepted: Vec<u32>,
     }
 
     fn case(what: &'static str, rows: Vec<Proc>, expect: &[(&'static str, &[u32])]) -> Case {
@@ -299,12 +351,17 @@ mod tests {
             rows,
             inherited: Some("I-3"),
             expect: expect.iter().map(|(key, pids)| (*key, pids.to_vec())).collect(),
+            excepted: Vec::new(),
         }
     }
 
     impl Case {
         fn inheriting(mut self, key: &'static str) -> Case {
             self.inherited = Some(key);
+            self
+        }
+        fn excepting(mut self, pids: &[u32]) -> Case {
+            self.excepted = pids.to_vec();
             self
         }
     }
@@ -412,6 +469,61 @@ mod tests {
                 vec![row(220, 1).key("G-7"), row(221, 1).key("OLD-1"), row(222, 1).key("G-1")],
                 &[("G-1", &[222])],
             ),
+            // ── 예외(프로세스 결정 5). 예외는 **다른 묶음보다 먼저** 가른다 — 자기나 조상 중 하나가 예외
+            // 이름이면 표식을 물었어도 셸의 자손이 아니다. 줄마다 그 셸의 자손 하나를 앵커로 세운다.
+            case(
+                "예외 이름의 프로세스와 그 트리는 셸의 자손이 아니다 — 셸 밑의 tmux 클라이언트와 그 밑",
+                vec![row(120, 100).named("tmux"), row(121, 120), row(101, 100).key("G-1")],
+                &[("G-1", &[101])],
+            )
+            .excepting(&[120, 121]),
+            case(
+                "예외 밑의 표식 프로세스도 예외 — 트리가 끊긴 tmux 서버와 그 창의 셸, 그 셸의 명령",
+                vec![
+                    row(230, 1).named("tmux").key("G-1"),
+                    row(231, 230).key("G-1"),
+                    row(232, 231).key("G-1"),
+                    row(205, 1).key("G-1"),
+                ],
+                &[("G-1", &[205])],
+            )
+            .excepting(&[230, 231, 232]),
+            case(
+                "다른 세대의 표식을 물어도 예외 이름이면 예외 — 셸의 트리 안이든, 트리 밖이든",
+                vec![
+                    row(122, 100).named("ssh-agent").key("D-1"),
+                    row(233, 1).named("ssh-agent").key("OLD-1"),
+                    row(234, 1).named("colima").key("G-1"),
+                    row(101, 100).key("G-1"),
+                ],
+                &[("G-1", &[101])],
+            )
+            .excepting(&[122, 233, 234]),
+            case(
+                "끝낼 셸의 예외와 그 밑은 끝낼 셸의 자손이 아니다 — 셸을 닫아도 산다",
+                vec![row(118, 110).named("docker").key("G-2"), row(119, 118), row(111, 110).key("G-2")],
+                &[("G-2", &[111])],
+            )
+            .excepting(&[118, 119]),
+            case(
+                "부른 이름(argv[0])으로도 걸린다 — 커널 이름이 달라도",
+                vec![row(235, 1).invoked("/opt/homebrew/bin/tmux").key("G-1"), row(206, 1).key("G-1")],
+                &[("G-1", &[206])],
+            )
+            .excepting(&[235]),
+            case(
+                "이름의 일부만 같으면 예외가 아니다",
+                vec![row(123, 100).named("tmuxx"), row(236, 1).named("tmux").key("G-1")],
+                &[("G-1", &[123])],
+            )
+            .excepting(&[236]),
+            // 앱을 tmux 안에서 띄운 dev 빌드. 예외를 찾으며 올라가는 길도 앱과 조상 사슬에서 멈춘다 — 안 멈추면
+            // 앱이 띄운 셸의 자손이 모두 tmux 밑이라 예외가 되어, 셸을 닫아도 아무것도 안 끝난다.
+            case(
+                "앱을 띄운 사슬에 예외 이름이 있어도 앱의 셸 자손은 예외가 아니다",
+                vec![row(20, 10).named("tmux"), row(101, 100).key("G-1"), row(102, 101)],
+                &[("G-1", &[101, 102])],
+            ),
         ];
 
         let shells = [
@@ -419,6 +531,7 @@ mod tests {
             shell("G-3", None),
         ];
         let ending = [shell("G-2", Some(Identity { pid: 110, started_us: 1_110 }))];
+        let exceptions = exceptions();
 
         let mut wrong = Vec::new();
         for case in &cases {
@@ -434,7 +547,7 @@ mod tests {
                 shells: &shells,
                 ending: &ending,
                 instances: &[],
-                exceptions: &[],
+                exceptions: &exceptions,
                 app_pid: APP,
                 inherited_key: case.inherited,
                 occasion: Occasion::Normal,
@@ -450,8 +563,12 @@ mod tests {
             for (key, pids) in &case.expect {
                 want.insert(key, pids.clone());
             }
-            if got != want {
-                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
+            let got_excepted: Vec<u32> = verdict.exceptions.iter().map(|p| p.id.pid).collect();
+            if got != want || got_excepted != case.excepted {
+                wrong.push(format!(
+                    "{}\n    기대 {want:?} · 예외 {:?}\n    받음 {got:?} · 예외 {got_excepted:?}",
+                    case.what, case.excepted
+                ));
             }
         }
         assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
@@ -499,12 +616,23 @@ mod tests {
                 vec![row(1, 0).key("G-5"), row(228, 1).uid(0).key("G-5"), row(229, 1).key("G-5")],
                 &[("", &[229])],
             ),
+            case(
+                "예외와 그 밑은 앱이 닫혀도 산다 — 이 세대의 표식을 물어도, 풀 셸의 트리 안이어도",
+                vec![
+                    row(240, 1).named("tmux").key("G-5"),
+                    row(241, 240).key("G-5"),
+                    row(124, 100).named("colima"),
+                    row(242, 1).key("G-5"),
+                ],
+                &[("", &[242])],
+            ),
         ];
 
         let ending = [
             shell("G-1", Some(Identity { pid: 100, started_us: 1_100 })),
             shell("G-2", Some(Identity { pid: 110, started_us: 1_110 })),
         ];
+        let exceptions = exceptions();
         let mut wrong = Vec::new();
         for case in &cases {
             let mut procs = world();
@@ -519,7 +647,7 @@ mod tests {
                 shells: &[],
                 ending: &ending,
                 instances: &[],
-                exceptions: &[],
+                exceptions: &exceptions,
                 app_pid: APP,
                 inherited_key: case.inherited,
                 occasion: Occasion::Normal,

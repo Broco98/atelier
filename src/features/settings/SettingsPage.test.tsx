@@ -10,6 +10,7 @@ import {
   parseFontSize,
   NotificationSection,
   patchTerminal,
+  ProcessExceptionsSection,
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
@@ -37,7 +38,7 @@ import type { HookStatus, NotificationSettings, Settings } from "./types";
 // 전부 순수 함수로 꺼내 두고 여기서 그 함수들을 직접 돌린다.
 
 const settings = (terminal: Partial<Settings["terminal"]> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark", ...terminal },
+  terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null, ...terminal },
 });
 
 function render(value: Settings, sizeText = ""): string {
@@ -54,7 +55,12 @@ function render(value: Settings, sizeText = ""): string {
 describe("읽은 것을 펼쳐 고친다", () => {
   it("고친 필드만 바뀐다", () => {
     const next = patchTerminal(settings({ fontSize: 15 }), { theme: "light" });
-    expect(next.terminal).toEqual({ fontFamily: null, fontSize: 15, theme: "light" });
+    expect(next.terminal).toEqual({
+      fontFamily: null,
+      fontSize: 15,
+      theme: "light",
+      processExceptions: null,
+    });
   });
 
   // 백엔드가 `#[serde(flatten)] extra`로 실어 보내는 것들이다(`settings.rs`). 타입에는
@@ -238,6 +244,56 @@ describe("테마 줄", () => {
   });
 });
 
+// ── 셸을 닫아도 남길 프로세스 (프로세스 결정 5 · 티켓 06)
+//
+// 칸의 글자를 읽는 규칙은 `process-exceptions.test.ts`가, 저장에 무엇이 실리는지는 L3가 잰다
+// (`e2e/process-exceptions.spec.ts`). 여기는 칸과 버튼이 **언제 잠기는가**다 — 클릭을 못 거니 마크업으로 본다.
+
+function renderExceptions(
+  over: Partial<Parameters<typeof ProcessExceptionsSection>[0]> = {},
+): string {
+  return renderToStaticMarkup(
+    <ProcessExceptionsSection
+      text={"tmux\ndocker*"}
+      isDefault={true}
+      defaultsFailed={false}
+      onChange={() => {}}
+      onReset={() => {}}
+      {...over}
+    />,
+  );
+}
+
+const 잠긴_칸 = /<textarea[^>]*disabled=""/;
+const 잠긴_기본값으로 = /<button[^>]*disabled=""[^>]*>기본값으로</;
+
+describe("셸을 닫아도 남길 프로세스", () => {
+  it("칸에 목록이 한 줄에 하나씩 서고, 칸의 이름이 설정 항목의 이름이다", () => {
+    const markup = renderExceptions({ text: "tmux\ncolima", isDefault: false });
+    expect(markup).toMatch(/<textarea[^>]*aria-label="셸을 닫아도 남길 프로세스"/);
+    expect(markup).toContain(">tmux\ncolima</textarea>");
+    expect(markup, "보일 글자가 있는데 칸이 잠겼다").not.toMatch(잠긴_칸);
+  });
+
+  it("고치지 않았으면(기본값) 「기본값으로」가 잠기고, 고쳤으면 열린다", () => {
+    expect(renderExceptions({ isDefault: true })).toMatch(잠긴_기본값으로);
+    const edited = renderExceptions({ isDefault: false });
+    // 앵커: 버튼이 서 있다 — 없으면 「잠기지 않았다」가 저절로 참이다.
+    expect(edited).toContain(">기본값으로</button>");
+    expect(edited).not.toMatch(잠긴_기본값으로);
+  });
+
+  // 기본 목록을 모르는 채 빈 칸을 열어 두면, 거기 한 줄을 더해 저장하는 순간 기본 목록이 통째로 사라진다.
+  it("보일 글자가 없으면(기본 목록을 아직 모름) 칸을 잠근다", () => {
+    expect(renderExceptions({ text: null })).toMatch(잠긴_칸);
+  });
+
+  it("기본 목록을 못 받았으면 그렇게 적는다", () => {
+    expect(renderExceptions({ text: null, defaultsFailed: true })).toContain("기본 목록을 읽지 못했어요");
+    expect(renderExceptions()).not.toContain("기본 목록을 읽지 못했어요");
+  });
+});
+
 // 결정 52가 명시적으로 뺀 둘이다. 「설정 화면이 있으니 한 줄 더」로 조용히 들어오기 쉬운
 // 자리라 여기서 못박는다 — 스크롤백은 모양이 아니라 메모리 값이고(셸 8개 × 10,000줄),
 // 색 편집기는 별건이다.
@@ -263,7 +319,7 @@ describe("이 판이 열지 않은 것", () => {
 // **안 고른 값은 키가 없다** — 백엔드가 이 구획만 `skip_serializing_if`로 줄째 빼기
 // 때문이고(`settings.rs`), 그래서 아무것도 안 준 기본이 빈 구획 `{}`다.
 const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+  terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null },
   notifications: { ...patch },
 });
 

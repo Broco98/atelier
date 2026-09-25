@@ -9,6 +9,7 @@ import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
 import { settingsItem, type SettingsItemKey } from "./pages";
+import { exceptionsFromText, exceptionsText } from "./process-exceptions";
 import { saveSettingsSection, type SettingsSectionKey } from "./save-section";
 import type {
   HookStatus,
@@ -350,6 +351,26 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
     if (size !== "invalid") change({ fontSize: size });
   };
 
+  // 예외 목록(프로세스 결정 5). 기본 목록은 백엔드가 준다 — 판정이 쓰는 Rust 상수라 이 화면에 없다.
+  const defaults = useDefaultExceptions();
+  const knownDefaults = Array.isArray(defaults) ? defaults : null;
+  // 칸의 원문. 크기 칸처럼 따로 드는 것은 목록으로만 들면 줄을 새로 여는 순간(빈 줄)을 목록이 삼켜 다음 이름을
+  // 못 적기 때문이다. **손대기 전에는 `null`이고 그때 칸은 초안에서 짓는다** — 기본 목록이 늦게 와도 칸이
+  // 따라오고, 「기본값으로」가 원문을 버리면 칸이 기본 목록으로 돌아간다.
+  const [exceptionsTyped, setExceptionsTyped] = useState<string | null>(null);
+  const exceptionsShown =
+    exceptionsTyped ?? exceptionsText(section.draft.processExceptions, knownDefaults);
+
+  const changeExceptions = (raw: string) => {
+    setExceptionsTyped(raw);
+    change({ processExceptions: exceptionsFromText(raw, knownDefaults) });
+  };
+
+  const resetExceptions = () => {
+    setExceptionsTyped(null);
+    change({ processExceptions: null });
+  };
+
   return (
     <div role="group" aria-label="터미널 설정" className="flex flex-col gap-6">
       <TerminalSection
@@ -358,9 +379,44 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
         onChange={change}
         onChangeSize={changeSize}
       />
+      <ProcessExceptionsSection
+        text={exceptionsShown}
+        isDefault={section.draft.processExceptions === null}
+        defaultsFailed={defaults === "failed"}
+        onChange={changeExceptions}
+        onReset={resetExceptions}
+      />
       <SaveButton {...section.button(enabled)} />
     </div>
   );
+}
+
+/**
+ * 예외 목록의 기본값을 한 번 묻는다(`default_process_exceptions`). 아직 안 왔으면 `null`, 못 받았으면 `"failed"`.
+ *
+ * 설정 파일과 따로 묻는 것은 **값을 정하는 자리가 다르기 때문이다** — 파일에는 사람이 고친 것만 있고, 기본 목록은
+ * 판정이 쓰는 Rust 상수다. 못 받아도 터미널 설정의 다른 칸은 그대로 쓴다: 예외 칸만 잠긴다
+ * (`ProcessExceptionsSection`).
+ */
+function useDefaultExceptions(): string[] | null | "failed" {
+  const [defaults, setDefaults] = useState<string[] | null | "failed">(null);
+
+  useEffect(() => {
+    let alive = true;
+    settingsApi.defaultExceptions().then(
+      (list) => {
+        if (alive) setDefaults(list);
+      },
+      () => {
+        if (alive) setDefaults("failed");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return defaults;
 }
 
 /**
@@ -614,6 +670,72 @@ export function TerminalSection({
           {PREVIEW_LINE}
         </div>
       </Row>
+    </section>
+  );
+}
+
+/**
+ * 「셸을 닫아도 남길 프로세스」 — 예외 목록 한 항목(프로세스 결정 5 · 프로세스 스펙 S7). 한 줄에 하나씩 쓰는
+ * 목록이다. 이름이 걸린 프로세스와 그 밑은 셸을 닫아도, 앱이 무엇을 자동으로 끝내든 남는다.
+ *
+ * **이름이 둘이다**(`CONTEXT.md`의 「예외」). 목록을 고치는 이 자리는 「셸을 닫아도 남길 프로세스」라 부른다 —
+ * 무엇이 되는지를 말하는 이름이다. 걸린 것을 모아 보이는 자리는 「예외」다.
+ *
+ * 줄(`Row`)에 안 앉히는 것은 라벨이 길어서다 — 왼쪽 64px 칸에 넣으면 네 줄로 꺾인다. 저장은 터미널 설정의 저장
+ * 버튼 하나가 함께 진다(초안이 `terminal` 구획 하나다).
+ *
+ * 값을 들지 않는다 — 조각(`TerminalSettingsPage`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ */
+export function ProcessExceptionsSection({
+  text,
+  isDefault,
+  defaultsFailed,
+  onChange,
+  onReset,
+}: {
+  /**
+   * 칸에 보일 글자. **`null`이면 칸을 잠근다** — 고치지 않았는데(기본값) 기본 목록을 아직 모르는 때다. 빈 칸을
+   * 열어 두면 거기 한 줄을 더해 저장하는 순간 기본 목록이 통째로 사라진다(`exceptionsText`).
+   */
+  text: string | null;
+  /** 초안이 기본값(`null`)인가. 그러면 「기본값으로」가 할 일이 없다. */
+  isDefault: boolean;
+  /** 기본 목록을 못 받았나. */
+  defaultsFailed: boolean;
+  onChange: (raw: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-2 pt-2">
+      <span className="text-[13px] text-tertiary">셸을 닫아도 남길 프로세스</span>
+      <p className="text-[13px] leading-[1.7] text-tertiary">
+        셸을 닫거나 앱을 끄면 그 셸에서 띄운 프로세스도 함께 끝나요. 여기 적은 이름의 프로세스와 그
+        밑에서 뜬 것은 그대로 둬요. 한 줄에 하나씩 적고, 끝에 <code>*</code>를 붙이면 그 이름으로
+        시작하는 것을 모두 둬요.
+      </p>
+      <textarea
+        aria-label="셸을 닫아도 남길 프로세스"
+        value={text ?? ""}
+        disabled={text === null}
+        onChange={(e) => onChange(e.target.value)}
+        rows={7}
+        spellCheck={false}
+        className="w-[280px] resize-y rounded-[9px] border border-border-strong bg-background px-[9px] py-[6px] text-[13px] leading-[1.6] outline-none focus:border-primary disabled:opacity-40"
+      />
+      <div className="flex items-center gap-3">
+        {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 주 버튼은 저장 하나다. */}
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={isDefault}
+          className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
+        >
+          기본값으로
+        </button>
+        {defaultsFailed && (
+          <span className="text-[13px] text-red-600">기본 목록을 읽지 못했어요.</span>
+        )}
+      </div>
     </section>
   );
 }

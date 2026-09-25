@@ -13,6 +13,7 @@ const settings = (over: Partial<TerminalSettings> = {}): TerminalSettings => ({
   fontFamily: null,
   fontSize: null,
   theme: "dark",
+  processExceptions: null,
   ...over,
 });
 

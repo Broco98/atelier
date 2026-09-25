@@ -29,7 +29,12 @@ function fakeFile(initial: unknown) {
 }
 
 // 화면을 열 때 읽은 사본 — 두 구획이 **같은 옛 사본**을 들고 시작한다.
-const terminal: TerminalSettings = { fontFamily: null, fontSize: null, theme: "dark" };
+const terminal: TerminalSettings = {
+  fontFamily: null,
+  fontSize: null,
+  theme: "dark",
+  processExceptions: null,
+};
 const notifications: NotificationSettings = { enabled: true };
 const opened = {
   terminal,

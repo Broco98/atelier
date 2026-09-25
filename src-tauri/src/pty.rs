@@ -465,8 +465,8 @@ pub fn watch_running(app: AppHandle, pool: Arc<PtyPool>) {
     });
 }
 
-/// 셸 하나를 닫는다 — 풀에서 빼고, 그 셸에서 나온 것을 모두 끝낸다(프로세스 결정 3). 셸 탭의 ×, ⌘W, 셸
-/// 메뉴의 닫기, UI 아카이브 · 삭제가 모두 이 길을 탄다.
+/// 셸 하나를 닫는다 — 풀에서 빼고, 그 셸에서 나온 것을 모두 끝낸다(프로세스 결정 3). 예외 목록에 걸린 것과 그
+/// 밑은 남긴다(프로세스 결정 5). 셸 탭의 ×, ⌘W, 셸 메뉴의 닫기, UI 아카이브 · 삭제가 모두 이 길을 탄다.
 ///
 /// **판정까지 하고 돌아온다**(프로세스 스펙 S5). 유예와 SIGKILL은 뒤 스레드에서 돌고, 그동안 그 끝내기는
 /// 진행 중인 끝내기 목록에 있다 — 유예 중에 앱이 닫히면 종료가 마감한다(`end_for_exit`). 스냅샷 한 장은 ms
@@ -498,9 +498,10 @@ pub fn end_for_reload(pool: &PtyPool) {
 
 /// 앱이 닫힐 때 — 이 실행이 띄운 것을 모두 끝내고 **나서** 돌아온다(프로세스 결정 3 · 프로세스 스펙 S5).
 ///
-/// 끝낼 것 = 이 세대의 표식을 문 전부 ∪ 풀 셸들의 PID 트리 ∪ 진행 중인 끝내기. 한 번에 판정하고 **동기로**
-/// 끝낸다 — 스레드에 넘기면 프로세스가 끝나며 그 스레드도 함께 사라져 아무도 SIGKILL을 못 보낸다. 진행 중인
-/// 끝내기는 남은 유예만 기다린다. 다 끝나면 곧바로 나오고, 가장 늦어도 2초 남짓이다.
+/// 끝낼 것 = 이 세대의 표식을 문 전부 ∪ 풀 셸들의 PID 트리 ∪ 진행 중인 끝내기. 예외 목록에 걸린 것과 그 밑은
+/// 빠진다(프로세스 결정 5). 한 번에 판정하고 **동기로** 끝낸다 — 스레드에 넘기면 프로세스가 끝나며 그 스레드도
+/// 함께 사라져 아무도 SIGKILL을 못 보낸다. 진행 중인 끝내기는 남은 유예만 기다린다. 다 끝나면 곧바로 나오고,
+/// 가장 늦어도 2초 남짓이다.
 ///
 /// 결과(못 끝냄 포함)를 돌려준다 — 「못 끝냄」이 있으면 인스턴스 기록을 남기는 것은 티켓 09다.
 pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
@@ -515,7 +516,7 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
         shells: &[],
         ending: &ending,
         instances: &[],
-        exceptions: &[],
+        exceptions: &exceptions(),
         app_pid: std::process::id(),
         inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
@@ -552,13 +553,14 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
         .map_or(EnvScope::All, EnvScope::BornSince);
     let snapshot = snapshot::take(scope);
     let live: Vec<ShellEntry> = pool.lock().values().map(Shell::entry).collect();
+    let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
         generation: instance_prefix(),
         shells: &live,
         ending: &ending,
         instances: &[],
-        exceptions: &[],
+        exceptions: &exceptions,
         app_pid: std::process::id(),
         inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
@@ -583,6 +585,12 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim) {
     if let Err(e) = behind {
         eprintln!("atelier: could not start the ending thread: {e}");
     }
+}
+
+/// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
+/// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
+fn exceptions() -> Vec<String> {
+    crate::settings::process_exceptions(&atelier_core::data_root())
 }
 
 /// 셸들이 거느린 그룹과 그 리더의 신원. 셸 그룹의 리더는 띄울 때 쥔 셸의 신원이고, foreground 그룹의 리더는
@@ -1373,11 +1381,15 @@ mod tests {
         CloseThenExit,
         /// 웹뷰를 새로고침한다. 자식은 SIGTERM을 무시한다.
         Reload,
+        /// ×로 닫는다. 표식 자식을 둘 띄우고, 하나는 예외 목록에 적은 이름으로 부른다(프로세스 결정 5) — 닫기가
+        /// 다른 하나는 끝내고 그것은 남긴다. 목록은 안쪽의 데이터 루트(임시)의 설정 파일에 적는다.
+        CloseKeeping,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 4] = [Scene::Close, Scene::CloseIgnoring, Scene::CloseThenExit, Scene::Reload];
+        const ALL: [Scene; 5] =
+            [Scene::Close, Scene::CloseIgnoring, Scene::CloseThenExit, Scene::Reload, Scene::CloseKeeping];
 
         fn name(self) -> &'static str {
             match self {
@@ -1385,13 +1397,14 @@ mod tests {
                 Scene::CloseIgnoring => "close-ignoring",
                 Scene::CloseThenExit => "close-then-exit",
                 Scene::Reload => "reload",
+                Scene::CloseKeeping => "close-keeping",
             }
         }
 
         /// 셸에서 띄울 자식의 역할(`processes::testkit`).
         fn role(self) -> &'static str {
             match self {
-                Scene::Close => "sleep",
+                Scene::Close | Scene::CloseKeeping => "sleep",
                 _ => "ignore-term",
             }
         }
@@ -1436,6 +1449,20 @@ mod tests {
         on_the_pool_side(
             "a_reload_empties_the_pool_at_once_and_ends_the_old_shells_children_behind",
             Scene::Reload,
+        );
+    }
+
+    /// **예외 목록에 걸린 이름의 자식은 셸을 닫아도 산다**(프로세스 결정 5 · 티켓 06). 셸에서 표식 자식을 둘 띄우고
+    /// 하나를 예외 이름으로 부른다 — 둘 다 트리가 끊겨 표식으로만 잡히는 모양이라, 판정이 예외를 먼저 가르지
+    /// 않으면 둘 다 끝난다. 목록은 설정 파일에서 온다: 셸 닫기가 끝낼 때마다 설정을 읽는 길까지 함께 잰다.
+    ///
+    /// 앵커: 다른 하나(예외가 아닌 표식 자식)는 끝난다 — 닫기가 아무것도 안 끝내도 「남았다」는 참이 된다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn closing_a_shell_leaves_the_child_named_on_the_exception_list() {
+        on_the_pool_side(
+            "closing_a_shell_leaves_the_child_named_on_the_exception_list",
+            Scene::CloseKeeping,
         );
     }
 
@@ -1520,7 +1547,7 @@ mod tests {
 
         use crate::processes::ending::{self, Group, GRACE};
         use crate::processes::snapshot::{identity_of, take, EnvScope};
-        use crate::processes::testkit::{child_args, exe, wait_until, CHILD_ROLE};
+        use crate::processes::testkit::{child_args, exe, holds_for, wait_until, CHILD_ROLE};
 
         let home = PathBuf::from(std::env::var_os("HOME").expect("임시 HOME"));
         let pool = std::sync::Arc::new(super::PtyPool::default());
@@ -1538,6 +1565,14 @@ mod tests {
         wait_until(|| spoke.load(std::sync::atomic::Ordering::Relaxed));
         let shell_pid = pool.lock().get(&spawned.id).and_then(|shell| shell.pid);
         let args = child_args().join(" ");
+        // 예외 장면의 자식이 부를 이름. 이 검사 프로세스의 pid를 붙여 이 기계의 어떤 실제 이름과도 안 겹치게 한다 —
+        // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정 파일에만 적는다.
+        let keep_name = format!("atelier-keep-{}", std::process::id());
+        if scene == Scene::CloseKeeping {
+            let mut settings = crate::settings::Settings::default();
+            settings.terminal.process_exceptions = Some(vec![keep_name.clone()]);
+            crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
+        }
         let line = match scene {
             // 표식이 안 읽히는 시스템 바이너리가 셸 밑에서 SIGTERM · SIGHUP을 무시한다. 셸이 끝나면 launchd 밑으로
             // 넘어가 트리도 끊긴다 — 종료의 판정은 그것을 다시 못 찾는다. 그 신원을 쥔 것은 닫기가 뒤로 보낸
@@ -1547,6 +1582,18 @@ mod tests {
             // 무시는 `/bin/sh -c`로 건다. 대화형 zsh의 서브셸 `( trap '' TERM; exec … )`은 exec한 것에 무시를
             // 물려주지 않았다(실측 — SIGTERM에 곧바로 끝났다).
             Scene::CloseThenExit => "/bin/sh -c \"trap '' TERM HUP; exec /bin/sleep 30\" &\n".to_string(),
+            // 같은 자식 둘. 뒤의 것은 zsh의 `ARGV0`로 argv[0]을 예외 이름으로 바꿔 부른다 — 커널 이름은 테스트
+            // 바이너리 그대로라, 부른 이름으로 걸리는 길을 탄다(프로세스 스펙 S7).
+            Scene::CloseKeeping => {
+                let child = |argv0: &str| {
+                    format!(
+                        "( {CHILD_ROLE}={} {argv0}'{}' {args} </dev/null >/dev/null 2>&1 & )",
+                        scene.role(),
+                        exe().display()
+                    )
+                };
+                format!("{}; {}\n", child(""), child(&format!("ARGV0={keep_name} ")))
+            }
             _ => format!(
                 "( {CHILD_ROLE}={} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
                 scene.role(),
@@ -1556,17 +1603,26 @@ mod tests {
         super::write(&pool, spawned.id, &line).expect("셸에 한 줄을 친다");
 
         // 표식 자식: 트리가 끊겼고(부모 1) 제 세션을 열었다(pgid = pid). 시스템 바이너리: 셸의 자식인 `sleep`.
+        // 예외 장면은 표식 자식이 둘이라 부른 이름으로 가른다 — 예외 이름으로 부른 것이 `kept`다.
+        let invoked_keep = |p: &crate::processes::Proc| {
+            p.argv0.as_deref().is_some_and(|argv0| argv0.rsplit('/').next() == Some(keep_name.as_str()))
+        };
         let mut child = None;
+        let mut kept = None;
         wait_until(|| {
-            child = take(EnvScope::All)
-                .procs
-                .into_iter()
+            let procs = take(EnvScope::All).procs;
+            let marked = |p: &&crate::processes::Proc| {
+                p.shell_key.as_deref() == Some(key.as_str()) && p.ppid == 1 && p.pgid == p.id.pid
+            };
+            child = procs
+                .iter()
                 .find(|p| match scene {
                     Scene::CloseThenExit => shell_pid == Some(p.ppid) && p.name == "sleep",
-                    _ => p.shell_key.as_deref() == Some(key.as_str()) && p.ppid == 1 && p.pgid == p.id.pid,
+                    _ => marked(p) && !invoked_keep(p),
                 })
                 .map(|p| p.id);
-            child.is_some()
+            kept = procs.iter().filter(marked).find(|p| invoked_keep(p)).map(|p| p.id);
+            child.is_some() && (scene != Scene::CloseKeeping || kept.is_some())
         });
 
         // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
@@ -1592,7 +1648,7 @@ mod tests {
             .procs
             .iter()
             .filter(|p| p.shell_key.as_deref().is_some_and(|k| k.starts_with(&generation)))
-            .filter(|p| Some(p.id) != child && !from_here(p.id.pid))
+            .filter(|p| Some(p.id) != child && Some(p.id) != kept && !from_here(p.id.pid))
             .map(|p| p.id.pid)
             .collect();
         if !foreign.is_empty() {
@@ -1608,9 +1664,10 @@ mod tests {
         }
 
         let alive = || child.is_some_and(|id| identity_of(id.pid) == Some(id));
+        let kept_alive = || kept.is_some_and(|id| identity_of(id.pid) == Some(id));
         let began = Instant::now();
         match scene {
-            Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit => {
+            Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::CloseKeeping => {
                 super::kill(&pool, spawned.id).expect("셸을 닫는다");
             }
             Scene::Reload => super::end_for_reload(&pool),
@@ -1624,9 +1681,14 @@ mod tests {
         let alive_on_return = alive();
         let ended = wait_until(|| !alive());
         let ended_after = began.elapsed();
+        // 예외 자식에 신호가 갔다면 앵커와 같은 순간(SIGTERM)이다 — 앵커가 끝난 뒤로도 한동안 살아 있는지 본다.
+        let survived = scene == Scene::CloseKeeping && holds_for(Duration::from_millis(500), kept_alive);
 
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 신원을 방금 다시 봤다.
         if let Some(id) = child.filter(|_| alive()) {
+            unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
+        }
+        if let Some(id) = kept.filter(|_| kept_alive()) {
             unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
         }
 
@@ -1634,6 +1696,11 @@ mod tests {
         assert!(emptied, "셸을 거두는 길이 돌아왔는데 풀에 셸이 남았다");
         assert!(ended, "셸을 거뒀는데 그 셸의 표식을 문 자식이 5초가 지나도 살아 있다");
         if scene == Scene::Close {
+            return;
+        }
+        if scene == Scene::CloseKeeping {
+            assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
+            assert!(survived, "셸을 닫았더니 예외 목록에 적은 이름({keep_name})의 자식까지 끝났다");
             return;
         }
         assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());

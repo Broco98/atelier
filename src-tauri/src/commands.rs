@@ -284,6 +284,16 @@ pub async fn write_settings(settings: crate::settings::Settings) -> CmdResult<()
     crate::settings::write(&atelier_core::data_root(), &settings)
 }
 
+/// 예외 목록의 기본값(프로세스 결정 5 · 프로세스 스펙 S7). 설정의 `terminal.processExceptions`가 `null`일 때 판정이
+/// 쓰는 목록이고, 설정 › 터미널이 그 칸에 보여 준다. **값을 정하는 자리는 Rust 상수 하나다** — 판정이 화면 없이
+/// 쓰기 때문이다. 화면이 따로 적으면 한쪽이 조용히 낡는다.
+///
+/// 모드를 안 받는다 — 설정은 어느 세계에도 안 속한다.
+#[tauri::command]
+pub async fn default_process_exceptions() -> CmdResult<Vec<String>> {
+    Ok(crate::processes::exceptions::defaults())
+}
+
 // 에이전트 훅 설치 셋 (#207 · 구현 결정 8). 본체는 `hooks.rs`에 있고 여기는 위임만 한다 —
 // 설정 둘과 같은 규칙이다.
 //

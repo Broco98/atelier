@@ -294,6 +294,7 @@ pub fn run() {
             commands::pty_command_running,
             commands::read_settings,
             commands::write_settings,
+            commands::default_process_exceptions,
             commands::agent_hooks,
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
