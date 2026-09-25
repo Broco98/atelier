@@ -88,3 +88,47 @@ test("`[소스]` 잠김 — 파일 종류가 잠그고, 남은 문서가 없어�
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// 판 3 — **프로젝트 거르개는 라디오 메뉴다**(스토리 46~49 · 51 · 52, S33 · S37). 여는 버튼은 이름
+// 「프로젝트 거르기」를 단다 — 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남아, 이름이 없으면 읽을 말이
+// 없다. 지금 값은 `menuitemradio`의 `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 부품 기본은 안
+// 닫힘이다). Esc로도 닫히고 포커스가 거르개로 돌아온다 — 옛 거르개는 바깥 누르기와 고르기로만 닫혔다.
+test("프로젝트 거르개는 이름과 열림을 말하고 지금 값이 선택됨이다 — Esc면 거르개로 돌아오고, 고르면 닫힌다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/archive/${shipped.slug}`);
+  const filter = page.getByRole("button", { name: "프로젝트 거르기", exact: true });
+  const menu = page.getByRole("menu", { name: "프로젝트 거르기", exact: true });
+  const [project] = shipped.projects;
+
+  await expect(filter).toHaveAttribute("aria-haspopup", "menu");
+  await expect(filter).toHaveAttribute("aria-expanded", "false");
+
+  // 키보드로 열고 Esc로 닫는다.
+  await filter.focus();
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeVisible();
+  await expect(filter).toHaveAttribute("aria-expanded", "true");
+  // 「모든 프로젝트」 다음에 프로젝트들이다. 지금 값(거르지 않음)만 선택됨이다.
+  await expect(menu.getByRole("menuitemradio")).toHaveText(["모든 프로젝트", project]);
+  await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText(["모든 프로젝트"]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(filter).toBeFocused();
+  await expect(filter).toHaveAttribute("aria-expanded", "false");
+
+  // 고르면 닫히고 목록이 좁혀진다. 프로젝트가 없는 아카이브가 빠지는 것을 보려면 먼저 서 있어야 한다(앵커).
+  const bareRow = page.getByRole("button", { name: bare.title });
+  await expect(bareRow).toBeVisible();
+  await filter.click();
+  await menu.getByRole("menuitemradio", { name: project, exact: true }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(bareRow).toHaveCount(0);
+
+  // 다시 열면 고른 것이 선택됨이다.
+  await filter.click();
+  await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText([project]);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

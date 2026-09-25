@@ -22,6 +22,13 @@ import PageHeader from "@/components/shell/PageHeader";
 import { ResizeHandle } from "@/components/shell/useResizableWidth";
 import useSplitRatio from "@/components/shell/useSplitRatio";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
@@ -1143,28 +1150,22 @@ function TitleEditor({
   );
 }
 
-// 브레드크럼 상태 배지 + 변경 드롭다운
+// 머리행의 상태 배지 + 바꾸는 라디오 메뉴(판 3, 스토리 46~48 · 51 · 52).
+//
+// **메뉴 부품(`DropdownMenu`)이 다 한다** — 여닫이, 줄 옮기기(↓/↑가 끝에서 돈다 · Home/End · 글자 치기),
+// Esc 닫기와 배지로 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). 배지가 「메뉴를 연다」와
+// 「열렸다/닫혔다」를 말하고(`aria-haspopup` · `aria-expanded`), 지금 상태는 `menuitemradio`의
+// `aria-checked`로 읽힌다. 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
+//
+// 배지는 **배지 모양 그대로다**(P8 — Badge로 옮기지 않는다). 트리거가 제 버튼을 그리므로 모양은 여기
+// 클래스가 든다. 제목 줄의 창 끌기 영역에서 빠지는 것은 지금과 같다 — 끌기 표식은 줄에만 있고 버튼에는 없다.
 function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
-  const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLButtonElement>(null);
   const setStatus = useSetWorkStatus(mode);
   const meta = STATUS_META[work.status];
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
   return (
-    <span className="relative flex">
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
+    <DropdownMenu>
+      <DropdownMenuTrigger
         title="상태 변경"
         className={cn(
           "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
@@ -1173,42 +1174,29 @@ function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
       >
         {meta.label}
         <ChevronDown className="size-2.5" strokeWidth={2.2} />
-      </button>
-      {open && (
-        <PopoverPortal
-          anchorRef={anchor}
-          width={190}
-          onClose={() => setOpen(false)}
-          className="flex flex-col gap-px p-[5px]"
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuRadioGroup
+          value={work.status}
+          // **값이 바뀔 때만 저장한다**(지금 규칙). 부품은 지금 값을 다시 골라도 이것을 부른다.
+          onValueChange={(status: WorkStatus) => {
+            if (status !== work.status) setStatus.mutate({ slug: work.slug, status });
+          }}
         >
           {(Object.keys(STATUS_META) as WorkStatus[]).map((status) => {
-              const option = STATUS_META[status];
-              return (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    if (status !== work.status) {
-                      setStatus.mutate({ slug: work.slug, status });
-                    }
-                  }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-                >
-                  <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
-                    {option.label}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-tertiary">{option.desc}</span>
-                  {status === work.status && (
-                    <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                  )}
-                </button>
-              );
-            })}
-        </PopoverPortal>
-      )}
-    </span>
+            const option = STATUS_META[status];
+            return (
+              // 글자 치기가 맞춰 볼 이름은 라벨이다 — 옆의 설명까지 섞이지 않게 적어 둔다.
+              <DropdownMenuRadioItem key={status} value={status} label={option.label}>
+                <span className={cn("size-[7px] shrink-0 rounded-full", option.dotClass)} />
+                <span className="min-w-0 flex-1 truncate font-medium">{option.label}</span>
+                <span className="shrink-0 text-[11px] text-tertiary">{option.desc}</span>
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
