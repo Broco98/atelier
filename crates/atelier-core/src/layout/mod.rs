@@ -15,6 +15,7 @@ mod parse;
 mod pattern;
 mod render;
 mod resolve;
+mod store;
 mod work_trees;
 
 pub use builtin::builtin_layout;
@@ -23,6 +24,7 @@ pub use model::{EntryKind, LayoutEntry, SpecLayout};
 pub use parse::{parse_layout, serialize_layout, LayoutError};
 pub use render::{render_layout, Fallback, Rendered, TemplateVerdict};
 pub use resolve::{resolve_layout, LayoutSource, Resolved};
+pub use store::{read_layout, save_layout, LayoutContent, LayoutRead, SaveOutcome};
 pub use work_trees::{
     classify_archived_docs, classify_works, with_archived_spec_tree, with_spec_trees, ArchivedDocs,
     WorkWithSpecTree,

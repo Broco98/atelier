@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use super::builtin::builtin_layout;
 use super::model::SpecLayout;
-use super::parse::parse_layout;
+use super::parse::{parse_layout, LayoutError};
 use super::render::{Fallback, TemplateVerdict};
 use crate::{Error, Mode, Result};
 
@@ -70,11 +70,9 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
     };
     let folder = layout_folder(data_root, id);
     let shown = crate::collapse_home(&folder);
-    // `Path::exists`는 쓰지 않는다 — 권한 오류도, 대상이 사라진 링크도 「없음」으로 삼켜서 사용자가
-    // 둔 폴더가 알림 없이 무시된다. 링크는 따라가지 않고 그 자리에 무엇이 있는지만 본다.
-    let reason = match std::fs::symlink_metadata(&folder) {
+    let reason = match folder_present(&folder) {
         // 폴더가 없으면 그 id는 코드 내장본의 것이다 — 가린 폴더가 없을 뿐, 물러선 것이 아니다
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        Ok(false) => {
             return Ok(Resolved {
                 id,
                 layout: builtin_layout(id),
@@ -83,8 +81,8 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
                 fallback: None,
             });
         }
-        Err(e) => format!("cannot read the layout folder: {e}"),
-        Ok(_) => match read_folder(&folder) {
+        Err(e) => folder_error(&e).to_string(),
+        Ok(true) => match read_layout_file(&folder) {
             Ok(layout) => {
                 return Ok(Resolved {
                     id,
@@ -94,7 +92,8 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
                     fallback: None,
                 });
             }
-            Err(reason) => reason,
+            // 까닭에는 **첫** 오류와 그 위치만 적는다. 나머지는 설정 페이지가 목록으로 보인다.
+            Err(unreadable) => unreadable.errors.first().map(ToString::to_string).unwrap_or_default(),
         },
     };
     Ok(Resolved {
@@ -106,26 +105,53 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
     })
 }
 
-/// 폴더의 `layout.json`을 읽는다. 못 쓰면 까닭을 한 줄로 준다 — 안내문 앞에 그대로 실린다.
-/// 검증 오류는 **첫 것**과 그 위치만 적는다. 나머지는 설정 페이지가 목록으로 보인다.
-fn read_folder(folder: &Path) -> std::result::Result<SpecLayout, String> {
+/// 레이아웃 폴더가 있는가 — 가린 폴더가 있는가(결정 7).
+///
+/// **없음은 `NotFound`뿐이다.** `Path::exists`는 쓰지 않는다 — 권한 오류도, 대상이 사라진 링크도
+/// 「없음」으로 삼켜서 사용자가 둔 폴더가 알림 없이 무시된다. 링크는 따라가지 않고 그 자리에
+/// 무엇이 있는지만 본다. 폴더가 있는지 묻는 자리(resolve, 저장소)가 모두 이 한 규칙을 지나야
+/// 답이 서로 맞는다.
+pub(crate) fn folder_present(folder: &Path) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(folder) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// 폴더가 있는지조차 확인하지 못한 까닭 — 문서 전체의 오류다.
+pub(crate) fn folder_error(e: &std::io::Error) -> LayoutError {
+    LayoutError::document(format!("cannot read the layout folder: {e}"))
+}
+
+/// 읽지 못한 `layout.json` — 오류 전부와, 읽었다면 그 원문.
+#[derive(Debug)]
+pub(crate) struct Unreadable {
+    /// 비어 있지 않다.
+    pub errors: Vec<LayoutError>,
+    /// 파일을 읽었으나 검증이 거절했다면 그 글. 에이전트가 고쳐 다시 저장할 때 쓴다(결정 20).
+    pub raw: Option<String>,
+}
+
+/// 폴더의 `layout.json`을 읽는다. 못 쓰면 까닭을 오류 목록으로 준다 — 파일이 없거나 못 읽으면
+/// 문서 전체의 오류 하나, 검증이 거절하면 위치가 붙은 오류 전부다.
+pub(crate) fn read_layout_file(folder: &Path) -> std::result::Result<SpecLayout, Unreadable> {
+    let unreadable = |message: String| Unreadable { errors: vec![LayoutError::document(message)], raw: None };
     let text = match std::fs::read_to_string(folder.join(LAYOUT_FILE)) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(format!("{LAYOUT_FILE} is missing"))
+            return Err(unreadable(format!("{LAYOUT_FILE} is missing")))
         }
-        Err(e) => return Err(format!("cannot read {LAYOUT_FILE}: {e}")),
+        Err(e) => return Err(unreadable(format!("cannot read {LAYOUT_FILE}: {e}"))),
     };
-    parse_layout(&text).map_err(|errors| {
-        errors.first().map(ToString::to_string).unwrap_or_else(|| "invalid layout".to_string())
-    })
+    parse_layout(&text).map_err(|errors| Unreadable { errors, raw: Some(text) })
 }
 
 /// 레이아웃이 가리키는 템플릿 가운데 디스크에 실제로 있는 것. render는 이 판정만 본다.
 ///
 /// **점 파일은 없는 것으로 친다.** 저장은 파일마다 점으로 시작하는 임시 파일에 쓰고 이름을 바꾼다
 /// — 그 사이에 읽혀도 반쯤 쓴 파일을 템플릿으로 건네지 않는다.
-fn template_verdict(layout: &SpecLayout, folder: &Path, shown: String) -> TemplateVerdict {
+pub(crate) fn template_verdict(layout: &SpecLayout, folder: &Path, shown: String) -> TemplateVerdict {
     let mut present = BTreeSet::new();
     let mut stack = vec![&layout.root];
     while let Some(entry) = stack.pop() {

@@ -8,9 +8,11 @@ use serde_json::{Map, Value};
 
 use super::model::{EntryKind, LayoutEntry, SpecLayout};
 use super::pattern::pieces;
+use super::resolve::LAYOUT_FILE;
 
-/// 검증 오류 하나.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 검증 오류 하나. 밖으로는 `{ path, message }`로 나간다 — 편집기와 에이전트가 위치를 글에서
+/// 다시 풀지 않게 데이터로 건넨다.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LayoutError {
     /// 맨 위 항목에서부터의 인덱스 경로 — `[]`이 맨 위 항목, `[2, 0]`이 그 셋째 자식의 첫 자식이다.
     /// `None`이면 항목이 아니라 문서 전체의 오류다(JSON 문법, `root` 없음).
@@ -34,11 +36,11 @@ impl std::fmt::Display for LayoutError {
 }
 
 impl LayoutError {
-    fn document(message: impl Into<String>) -> Self {
+    pub(crate) fn document(message: impl Into<String>) -> Self {
         Self { path: None, message: message.into() }
     }
 
-    fn at(path: &[usize], message: impl Into<String>) -> Self {
+    pub(crate) fn at(path: &[usize], message: impl Into<String>) -> Self {
         Self { path: Some(path.to_vec()), message: message.into() }
     }
 }
@@ -51,6 +53,12 @@ impl LayoutError {
 pub fn parse_layout(text: &str) -> Result<SpecLayout, Vec<LayoutError>> {
     let value: Value = serde_json::from_str(text)
         .map_err(|e| vec![LayoutError::document(format!("layout.json is not valid JSON: {e}"))])?;
+    parse_layout_value(value)
+}
+
+/// 이미 JSON 값인 레이아웃을 읽는다 — 저장이 받는 모양이다. 에이전트와 편집기는 레이아웃을 글이
+/// 아니라 값으로 건넨다(모르는 키가 그 안에 산다). 검증은 글에서 읽을 때와 한 벌이다.
+pub(crate) fn parse_layout_value(value: Value) -> Result<SpecLayout, Vec<LayoutError>> {
     let Value::Object(mut top) = value else {
         return Err(vec![LayoutError::document("layout.json must be a JSON object")]);
     };
@@ -187,6 +195,10 @@ fn read_entry(
             refuse("a folder entry takes no `template`; only files have templates".to_string());
         } else if kind.is_some() && crate::works::safe_rel(template).is_err() {
             refuse(format!("`template` must be a path inside the layout folder, not {template:?}"));
+        } else if kind.is_some() && template == LAYOUT_FILE {
+            // 레이아웃 파일 자신을 템플릿으로 삼으면 저장이 그 본문으로 레이아웃을 덮고, 빠진
+            // 템플릿을 지울 때 레이아웃 파일을 지운다
+            refuse(format!("`template` must not be the layout file {LAYOUT_FILE:?} itself"));
         }
     }
 
@@ -393,6 +405,9 @@ mod tests {
             ("폴더 항목의 `template`", nested(r#"{ "pattern": "t", "kind": "folder", "template": "t.md" }"#), Some(vec![1, 0]), "`template`"),
             ("폴더 밖을 가리키는 템플릿", with_children(r#"{ "pattern": "a.md", "kind": "file", "template": "../a.md" }"#), Some(vec![0]), "../a.md"),
             ("절대 경로 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "/etc/b.md" }"#), Some(vec![1, 0]), "/etc/b.md"),
+            // 레이아웃 파일 자신은 템플릿이 아니다 — 저장이 그 본문으로 레이아웃을 덮고, 빠진 템플릿을
+            // 지울 때 레이아웃 파일을 지운다
+            ("레이아웃 파일을 가리키는 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.json" }"#), Some(vec![1, 0]), "layout.json"),
             // 맨 위 항목은 spec 폴더 자신이다 — 이름 틀도 종류도 없다
             ("맨 위 항목의 `pattern`", r#"{ "root": { "pattern": "spec" } }"#.to_string(), Some(vec![]), "`pattern`"),
             ("맨 위 항목의 `kind`", r#"{ "root": { "kind": "folder" } }"#.to_string(), Some(vec![]), "`kind`"),
