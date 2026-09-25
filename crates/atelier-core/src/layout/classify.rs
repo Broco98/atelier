@@ -41,6 +41,7 @@ pub struct SpecTree {
 
 /// 트리의 파일·폴더 하나.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecTreeItem {
     /// 입력에 적힌 이름 그대로 — NFC로 바꾸지 않는다. 앱은 `path`로 문서를 연다.
     pub name: String,
@@ -58,6 +59,7 @@ pub struct SpecTreeItem {
 /// 번호 묶음 소속 — `{n}` 항목 하나가 폴더 하나 안에서 맞은 것들의 모임이다. 판 폴더 안의 `{n}`
 /// 항목은 판 폴더마다 따로 묶음이 선다.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecTreeGroup {
     /// 같은 묶음이면 같고 다른 묶음이면 다르다. 글자 모양은 약속이 아니다.
     pub key: String,
