@@ -589,6 +589,23 @@ body.dragging-row * {
         transform: none;
         transition: none;
     }
+
+    /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
+       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
+       `data-closed`에서 `animate-in`·`animate-out` 키프레임으로 움직이고, 그 요소에는 늘
+       `data-slot`이 있다. 이 규칙은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
+       상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
+       Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
+    [data-slot][class*="animate-"] {
+        animation: none;
+    }
+
+    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(쌓임·들고남)와 Collapsible 패널
+       (접힘) — 은 전이도 끈다. */
+    [data-slot^="toast"],
+    [data-slot="collapsible-content"] {
+        transition: none;
+    }
 }
 
 /* **「도는 중」 링**(#203, 결정 3·5). 회전을 CSS가 드는 것이 이 규칙의 전부다 — 링 열셋이
