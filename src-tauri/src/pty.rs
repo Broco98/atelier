@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter};
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::instances::{Place, Record};
 use crate::processes::snapshot::{self, EnvScope};
-use crate::processes::verdict::{self, Inputs, Occasion, ShellEntry, Verdict};
+use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Snapshot, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
@@ -630,8 +630,8 @@ pub fn kill(pool: &PtyPool, id: u32) -> Result<(), String> {
 
 /// 웹뷰가 다시 뜰 때 옛 페이지의 셸을 모두 닫는다.
 ///
-/// 정리 시점은 in-app-terminal 결정 18이 앱 종료 · 새로고침 둘로 정했고, 프로세스 결정 3이 셸 닫기를
-/// 더했다(앱 시작은 티켓 10). 옛 페이지가 쥐던 채널은 죽었으니 그 셸을 이어 쓸 길이 없다.
+/// 정리 시점은 in-app-terminal 결정 18이 앱 종료 · 새로고침 둘로 정했고, 프로세스 결정 3이 셸 닫기를,
+/// 프로세스 결정 6이 앱 시작을 더했다(`clean_up_at_startup`). 옛 페이지가 쥐던 채널은 죽었으니 그 셸을 이어 쓸 길이 없다.
 ///
 /// **풀은 그 자리에서 비우고, 끝내기는 셸 닫기와 같은 길로 뒤로 보낸다** — 새로고침은 유예를 기다리지 않는다.
 /// 판정은 뺀 셸들을 끝낼 셸로 받으므로, 새 웹뷰가 곧바로 띄운 셸은 거기 들지 않는다.
@@ -682,6 +682,82 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     // 읽어 한 번 더 해 본다. 어느 쪽이든 기록을 닫아, 아직 도는 뒤 스레드의 늦은 쓰기가 파일을 되살리지 않는다.
     pool.record.close(&outcomes);
     outcomes
+}
+
+/// 시작 정리가 끝내려 한 것 하나 — 신원, 커널 이름, 결과. 시작 보고가 끝낸 것(끝남 · 강제)을 골라 알린다
+/// (`startup::cleaned`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cleared {
+    pub id: Identity,
+    pub name: String,
+    pub outcome: Outcome,
+}
+
+/// **시작 정리**(프로세스 결정 6 · 티켓 10) — 지난 실행이 남긴 확정 고아를 끝내고, 죽은 실행의 기록을 지운다. 앱이 뜰 때
+/// 인스턴스 기록을 연 **뒤에** 뒤 스레드에서 한 번 돈다(`startup::clean_up`). 끝내기가 끝나야 돌아온다(최악 2초 남짓).
+///
+/// 판정(`plan_startup`)과 끝내기(`carry_out`)를 가른 것은 실물 검사가 그 사이에서 끝낼 신원을 자기 자식으로 거르기
+/// 위해서다 — 이 함수는 둘을 그대로 잇는다.
+pub fn clean_up_at_startup(pool: &PtyPool) -> Vec<Cleared> {
+    carry_out(pool, plan_startup(pool, &exceptions()))
+}
+
+/// 시작 정리가 고른 것 — 끝낼 확정 고아(신원과 이름)와 지울 죽은 실행의 기록. 판정 중인 셈을 쥐고 있다.
+struct StartupPlan {
+    claim: Claim,
+    targets: Vec<(Identity, String)>,
+    dead: Vec<InstanceRecord>,
+}
+
+/// 시작 정리의 판정 — 신호도 파일 쓰기도 없다.
+///
+/// 1. **판정 중으로 먼저 센다**(프로세스 스펙 S5). 판정하는 사이 앱이 닫히면 종료가 이 끝내기가 목록에 오르기를 기다려
+///    마감한다 — 셸 닫기가 빼기 전에 세는 것과 같다.
+/// 2. 스냅샷을 찍고, **그 뒤에** 셸 목록과 기록을 읽는다(프로세스 스펙 S52). 첫 셸이 이 사이에 떠도 그 키는 이 실행의
+///    것이라 시작 정리가 안 본다.
+/// 3. 시작 정리 모드로 판정해 **확정 고아만** 고른다(`verdict::at_startup`) — 출처 불명, 다른 인스턴스, 예외는 안 고른다.
+///    지울 기록은 앱이 스냅샷에 없는 실행의 것이다(`verdict::dead_instances`).
+fn plan_startup(pool: &PtyPool, exceptions: &[String]) -> StartupPlan {
+    let claim = pool.endings.claim();
+    let snapshot = snapshot::take(EnvScope::All);
+    let live: Vec<ShellEntry> = pool.lock().values().map(Shell::entry).collect();
+    let records = pool.record.records();
+    let input = Inputs {
+        snapshot: &snapshot,
+        generation: instance_prefix(),
+        shells: &live,
+        ending: &[],
+        instances: &records,
+        exceptions,
+        app_pid: std::process::id(),
+        inherited_key: crate::processes::inherited_key(),
+        occasion: Occasion::StartupCleanup,
+    };
+    let targets = verdict::at_startup(&input).into_iter().map(|proc| (proc.id, proc.name.clone())).collect();
+    let dead = verdict::dead_instances(&input).into_iter().cloned().collect();
+    StartupPlan { claim, targets, dead }
+}
+
+/// 고른 것을 끝내고 죽은 실행의 기록을 지운다.
+///
+/// 끝내기는 진행 중인 끝내기 목록에 올라 돈다 — 유예 중에 앱이 닫히면 종료가 마감한다. 고아에게는 셸 그룹이 없다(그 셸은
+/// 지난 실행과 함께 사라졌다).
+///
+/// **죽은 실행의 기록은 그 고아를 끝낸 뒤에 지운다**(프로세스 스펙 「인스턴스 기록 › 지우는 때」). 그래도 남은 것(못 끝냄)은
+/// 다음부터 출처 불명이 되어 자동으로는 안 건드린다. 지우기 직전에 그 앱이 **지금도** 없는지 본다 — 판정의 스냅샷 뒤에
+/// 막 뜬 실행은 앱이 스냅샷에 없어 죽은 것으로 읽혔을 뿐이다. 그 실행의 고아로 끝낸 것은 없다(그 자손은 스냅샷 뒤에
+/// 태어났다). 끝내기 전에 앱이 끝나면 기록은 남아, 다음 실행의 시작 정리가 한 번 더 해 본다.
+fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<Cleared> {
+    let StartupPlan { claim, targets, dead } = plan;
+    let ids: Vec<Identity> = targets.iter().map(|(id, _)| *id).collect();
+    let outcomes = claim.start(&ids, &[]).finish();
+    pool.record.forget(
+        dead.iter()
+            .filter(|record| snapshot::identity_of(record.app.pid) != Some(record.app))
+            .map(|record| record.generation.as_str()),
+    );
+    // 끝내기는 받은 순서 그대로 결과를 준다.
+    outcomes.into_iter().zip(targets).map(|((id, outcome), (_, name))| Cleared { id, name, outcome }).collect()
 }
 
 /// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. **순서가 고정이다.**
@@ -1298,13 +1374,14 @@ mod tests {
 
     /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
     /// 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 기록에 이미 있다. 뒤집히면 그 사이 뜬 셸의 자손이 「목록에 없는
-    /// 이 세대 키」로 읽힌다. 판정을 부르는 세 자리를 모두 본다.
+    /// 이 세대 키」로 읽힌다. 판정을 부르는 네 자리를 모두 본다.
     #[test]
     fn the_records_are_read_after_the_snapshot() {
         for (path, body) in [
             ("close_checks", body_of("pub fn close_checks(", "\n}\n")),
             ("end", body_of("fn end(", "\n}\n")),
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
+            ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
         ] {
             let taken = body.find("snapshot::take(").unwrap_or_else(|| panic!("{path}가 스냅샷을 안 찍는다"));
             let read = body.find("pool.record.records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
@@ -1359,6 +1436,34 @@ mod tests {
                 "{path}: 셈({count})이 빼기({left})보다 뒤에 있다 — 그 사이에 앱 종료가 오면 뺀 셸의 자손이 남는다"
             );
         }
+    }
+
+    /// **시작 정리의 순서**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · S5 · 티켓 10). 실행으로는 못 잡는 자리들이다 —
+    /// 실물 장면 `Startup`은 판정과 끝내기 사이에서 끝낼 것을 제 자식으로 거르므로 이 함수들을 따로 부른다.
+    ///
+    /// - 앱의 정리가 판정과 끝내기를 **그대로 잇는다** — 사이에서 거르거나 바꾸면 실물 장면이 잰 것과 앱이 하는 것이 갈린다.
+    /// - 판정 전에 **판정 중으로 센다.** 판정하는 사이 앱이 닫히면 종료가 이 끝내기를 기다려 마감한다. 뒤집혀도 터지는 것은
+    ///   그 ms 창에 ⌘Q가 올 때뿐이다(셸 닫기의 같은 자리는 `a_close_is_counted_before_its_shell_leaves_the_pool`).
+    /// - 판정은 **시작 정리의 판정**(`verdict::at_startup` — 확정 고아만, 이 실행 것은 안 봄)이다.
+    /// - 죽은 실행의 기록은 끝내기를 **마감한 뒤에** 지운다. 먼저 지우면 끝내기가 도는 사이 앱이 닫혔을 때 남은 고아가 다음부터
+    ///   출처 불명이 되어 영영 안 치워진다.
+    #[test]
+    fn the_startup_cleanup_counts_itself_judges_ends_then_forgets() {
+        assert!(
+            body_of("pub fn clean_up_at_startup(", "\n}\n").contains("carry_out(pool, plan_startup(pool, &exceptions()))"),
+            "앱의 시작 정리가 판정과 끝내기를 그대로 잇지 않는다 — 실물 장면이 잰 것과 앱이 하는 것이 갈린다"
+        );
+        let plan = body_of("fn plan_startup(", "\n}\n");
+        let counted = plan.find("pool.endings.claim()").expect("시작 정리가 판정 중으로 안 센다");
+        let taken = plan.find("snapshot::take(").expect("시작 정리가 스냅샷을 안 찍는다");
+        assert!(counted < taken, "셈({counted})이 판정({taken})보다 뒤에 있다 — 그 사이에 앱이 닫히면 이 끝내기가 마감되지 않는다");
+        assert!(plan.contains("verdict::at_startup(&input)"), "시작 정리가 확정 고아만 고르는 판정을 안 지난다");
+        assert!(plan.contains("verdict::dead_instances(&input)"), "시작 정리가 지울 기록을 판정과 같은 입력으로 안 고른다");
+
+        let carry = body_of("fn carry_out(", "\n}\n");
+        let ended = carry.find(".finish()").expect("시작 정리가 끝내기를 마감하지 않는다");
+        let forgot = carry.find("pool.record.forget(").expect("시작 정리가 죽은 실행의 기록을 안 지운다");
+        assert!(ended < forgot, "기록을 지우는 줄({forgot})이 끝내기 마감({ended})보다 앞에 있다 — 고아가 남은 채 기록이 사라진다");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1782,11 +1887,14 @@ mod tests {
         /// 인스턴스 기록을 연 풀로 셸 띄우기가 실패한다 — 빌더에서(없는 `$SHELL`), 자식을 띄우다가(실행할 수 없는
         /// `$SHELL`). 올린 키가 내려가는지 본다. 셸이 안 떠 신호를 보낼 것이 없다.
         RecordFailed,
+        /// 인스턴스 기록을 연 풀로 시작 정리를 돈다(티켓 10). 셸은 안 띄운다 — 죽은 실행의 기록과 그 셸 키를 문 자식, 기록이
+        /// 없는 세대의 키를 문 자식을 세우고, 시작 정리가 무엇을 고르고 끝내고 지우는지 본다.
+        Startup,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 9] = [
+        const ALL: [Scene; 10] = [
             Scene::Close,
             Scene::CloseIgnoring,
             Scene::CloseThenExit,
@@ -1796,6 +1904,7 @@ mod tests {
             Scene::Ask,
             Scene::Record,
             Scene::RecordFailed,
+            Scene::Startup,
         ];
 
         fn name(self) -> &'static str {
@@ -1809,6 +1918,7 @@ mod tests {
                 Scene::Ask => "ask",
                 Scene::Record => "record",
                 Scene::RecordFailed => "record-failed",
+                Scene::Startup => "startup",
             }
         }
 
@@ -1827,7 +1937,7 @@ mod tests {
 
         /// 인스턴스 기록을 연 풀로 도는 장면인가. 나머지 장면의 풀은 기록을 안 연다 — 아무 파일도 안 쓴다.
         fn records(self) -> bool {
-            matches!(self, Scene::Record | Scene::RecordFailed)
+            matches!(self, Scene::Record | Scene::RecordFailed | Scene::Startup)
         }
     }
 
@@ -1935,6 +2045,24 @@ mod tests {
         on_the_pool_side("a_shell_that_fails_to_spawn_takes_its_key_off_the_record", Scene::RecordFailed);
     }
 
+    /// **시작 정리는 죽은 실행이 남긴 표식 자식을 끝내고 그 실행의 기록을 지운다**(프로세스 결정 6 · 티켓 10). 기록이 없는
+    /// 세대의 키를 문 자식은 출처 불명이라 고르지 않는다 — 누구의 것인지 모른다. 앱이 크래시한 뒤 다시 켜면 지난 실행의
+    /// dev 서버가 끝나는 것의 백엔드 절반이다(토스트의 절반은 L3 `e2e/startup-report.spec.ts`).
+    ///
+    /// 안쪽 검사 프로세스가 임시 데이터 루트에 제 기록을 열고, 죽은 실행의 기록(앱 신원 = 이 프로세스의 pid에 다른 시작
+    /// 시각 — 그 pid를 남이 받은 모양, 프로세스 스펙 S9)을 곁에 쓴다. 판정은 이 기계의 표 전체를 읽지만 **끝내기에는 이
+    /// 검사가 띄운 자식만 넘긴다.**
+    ///
+    /// 지우기 직전에 앱이 **지금도** 없는지 다시 보는 것도 잰다: 판정이 죽은 것으로 읽었지만 지금 사는 실행(스냅샷 뒤에 막
+    /// 뜬 실행의 모양)의 기록은 남는다.
+    ///
+    /// 앵커: 고른 것이 끝난다 — 아무것도 안 고르면 「기록이 없는 세대의 자식은 안 골랐다」가 저절로 참이 된다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_startup_cleanup_ends_what_a_dead_run_left_and_forgets_its_record() {
+        on_the_pool_side("the_startup_cleanup_ends_what_a_dead_run_left_and_forgets_its_record", Scene::Startup);
+    }
+
     /// 풀 배선 검사의 바깥 — 검사 프로세스를 하나 더 띄워 그 안에서 장면을 돌린다. 안쪽이면 곧바로 장면을 돈다.
     ///
     /// **안쪽 프로세스를 따로 띄우는 이유.** `spawn`은 사용자의 로그인 셸을 rc째 띄운다. 이 프로세스의 env 그대로면
@@ -2026,6 +2154,9 @@ mod tests {
         }
         if scene == Scene::RecordFailed {
             return record_failed_side(&pool, &home);
+        }
+        if scene == Scene::Startup {
+            return startup_side(&pool);
         }
         let spoke = std::sync::Arc::new(AtomicBool::new(false));
         let heard = std::sync::Arc::clone(&spoke);
@@ -2156,7 +2287,9 @@ mod tests {
                 let _ = super::end_for_exit(&pool);
             }
             // 위에서 제 안쪽(`ask_side` · `record_failed_side`)으로 갈라져 여기 안 온다.
-            Scene::Ask | Scene::RecordFailed => unreachable!("묻는 장면 · 띄우기가 실패하는 장면은 거두는 길을 안 탄다"),
+            Scene::Ask | Scene::RecordFailed | Scene::Startup => {
+                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
+            }
         }
         let closed = began.elapsed();
         let emptied = pool.lock().is_empty();
@@ -2310,6 +2443,106 @@ mod tests {
             Some(Vec::new()),
             "셸 띄우기가 실패했는데 올린 키가 기록에 남았다 — 다른 실행이 이 키를 「살아 있는 셸」로 읽는다"
         );
+    }
+
+    /// 풀 배선 장면 `Startup`의 안쪽 — 셸은 안 띄운다. 기록은 안쪽의 임시 데이터 루트에만 있다: 이 실행의 것(풀이 열었다)과
+    /// 이 장면이 쓰는 죽은 실행의 것. 자식 둘의 표식은 이 검사 프로세스의 pid로 지어 이 기계의 어떤 실제 세대와도 안 겹친다.
+    #[cfg(target_os = "macos")]
+    fn startup_side(pool: &std::sync::Arc<super::PtyPool>) {
+        use crate::processes::instances::{self, Build, Place, Record};
+        use crate::processes::snapshot::identity_of;
+        use crate::processes::testkit::{holds_for, wait_until, Kid};
+        use crate::processes::Identity;
+
+        let me = std::process::id();
+        let dir = instances::dir(&atelier_core::data_root());
+        let dead_generation = format!("test-{me}-dead");
+        let dead_key = format!("{dead_generation}-1");
+        let unrecorded_key = format!("test-{me}-unrecorded-1");
+        let dead = Record::default();
+        dead.open(Place {
+            dir: dir.clone(),
+            generation: dead_generation.clone(),
+            app: Identity { pid: me, started_us: 1 },
+            build: Build::Release,
+            version: "0.0.0".to_string(),
+        });
+        dead.raise(&dead_key);
+        let dead_file = dir.join(format!("{dead_generation}.json"));
+        let recorded = dead_file.exists();
+        // 판정의 스냅샷 뒤에 막 뜬 실행의 모양 — 앱은 **지금** 살아 있는데(이 프로세스의 진짜 신원) 판정이 죽은 것으로 읽었다.
+        // 판정으로는 이 모양을 못 세우니(앱이 스냅샷에 있다) 아래에서 지울 목록에 손으로 얹는다.
+        let late_generation = format!("test-{me}-late");
+        let late_app = identity_of(me).expect("이 검사 프로세스의 신원을 읽는다");
+        let late = Record::default();
+        late.open(Place {
+            dir: dir.clone(),
+            generation: late_generation.clone(),
+            app: late_app,
+            build: Build::Release,
+            version: "0.0.0".to_string(),
+        });
+        let late_file = dir.join(format!("{late_generation}.json"));
+
+        let left = Kid::spawn("sleep", &dead_key);
+        let unrecorded = Kid::spawn("sleep", &unrecorded_key);
+        let (left_id, unrecorded_id) = (left.settle(), unrecorded.settle());
+
+        let mut plan = super::plan_startup(pool, &super::exceptions());
+        let picked: Vec<Identity> = plan.targets.iter().map(|(id, _)| *id).collect();
+        let forgets = plan.dead.iter().any(|record| record.generation == dead_generation);
+        // **끝내기에는 이 검사가 띄운 자식만 넘긴다.** 판정은 이 기계의 표 전체를 읽는다. 기록이 임시 데이터 루트의 것뿐이라
+        // 고르는 것도 이 자식뿐이어야 하지만, 그 믿음으로 남에게 신호를 보내지 않는다.
+        plan.targets.retain(|(id, _)| Some(*id) == left_id);
+        plan.dead.push(crate::processes::verdict::InstanceRecord {
+            generation: late_generation.clone(),
+            app: late_app,
+            shell_keys: Vec::new(),
+            updated_us: 0,
+        });
+        let late_recorded = late_file.exists();
+        let cleared = super::carry_out(pool, plan);
+        let left_alive = || left_id.is_some_and(|id| identity_of(id.pid) == Some(id));
+        let ended = wait_until(|| !left_alive());
+        let unrecorded_lives =
+            holds_for(Duration::from_millis(300), || unrecorded_id.is_some_and(|id| identity_of(id.pid) == Some(id)));
+        let forgotten = !dead_file.exists();
+        let late_kept = late_file.exists();
+        let own_kept = on_the_record().is_some();
+        let reported = crate::startup::cleaned(&cleared);
+
+        // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이다(`Kid`의 Drop).
+        drop(left);
+        drop(unrecorded);
+
+        let left_id = left_id.expect("죽은 실행의 키를 문 자식이 5초 안에 제 세션을 열지 못했다");
+        let unrecorded_id = unrecorded_id.expect("기록이 없는 세대의 키를 문 자식이 5초 안에 제 세션을 열지 못했다");
+        assert!(recorded, "죽은 실행의 기록을 못 썼다 — 이 장면이 아무것도 못 잰다");
+        assert!(picked.contains(&left_id), "죽은 실행의 키를 문 자식을 시작 정리가 안 골랐다 — 고른 것: {picked:?}");
+        assert!(
+            !picked.contains(&unrecorded_id),
+            "기록이 없는 세대의 키를 문 자식(출처 불명)을 시작 정리가 골랐다 — 누구의 것인지 모르는데 끝낸다"
+        );
+        assert!(forgets, "죽은 실행의 기록을 지울 것으로 안 골랐다");
+        assert_eq!(
+            cleared.iter().map(|one| (one.id, one.outcome)).collect::<Vec<_>>(),
+            vec![(left_id, crate::processes::ending::Outcome::Ended)],
+            "고른 자식을 SIGTERM으로 끝낸 결과가 아니다"
+        );
+        assert!(ended, "시작 정리가 돌아왔는데 죽은 실행의 키를 문 자식이 5초가 지나도 살아 있다");
+        assert_eq!(
+            reported.iter().map(|one| one.pid).collect::<Vec<_>>(),
+            vec![left_id.pid],
+            "시작 보고에 끝낸 자식이 안 실렸다 — 토스트가 수를 못 말한다"
+        );
+        assert!(unrecorded_lives, "기록이 없는 세대의 키를 문 자식이 시작 정리 뒤에 끝났다");
+        assert!(forgotten, "죽은 실행의 고아를 처리했는데 그 실행의 기록이 남았다 — 다음 실행이 헛일을 한다");
+        assert!(late_recorded, "막 뜬 실행의 기록을 못 썼다 — 아래 「남았다」가 아무것도 못 잰다");
+        assert!(
+            late_kept,
+            "판정이 죽은 것으로 읽었을 뿐 지금 사는 실행의 기록을 지웠다 — 그 실행의 셸 자손이 남에게 출처 불명이 된다"
+        );
+        assert!(own_kept, "시작 정리가 이 실행의 기록까지 지웠다 — 이 실행의 셸 자손이 남에게 출처 불명이 된다");
     }
 
     /// 풀 배선 장면 `Ask`의 안쪽. 신호를 보내는 것은 끝의 거두기뿐이고, 그것은 이 장면이 띄운 자식의 신원(방금 다시

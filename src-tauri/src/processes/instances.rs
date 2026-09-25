@@ -174,6 +174,26 @@ impl Record {
         }
     }
 
+    /// **죽은 실행의 기록을 지운다** — 시작 정리가 그 실행이 남긴 확정 고아를 끝낸 뒤에(프로세스 스펙 「인스턴스 기록 › 지우는
+    /// 때」). 그래도 남은 것(못 끝냄)은 다음부터 출처 불명이 되어 자동으로는 아무도 안 건드린다 — 안전한 쪽이다.
+    ///
+    /// 죽었는지는 부르는 쪽이 가른다(`pty::carry_out`). **이 실행의 기록은 넘겨받아도 안 지운다** — 지우면 이 실행의 셸
+    /// 자손이 다른 실행에게 출처 불명이 된다. 열지 않았거나 이미 닫았으면 어디를 지울지 몰라 아무것도 안 한다.
+    pub fn forget<'g>(&self, generations: impl IntoIterator<Item = &'g str>) {
+        let book = self.lock();
+        let Some(place) = &book.place else {
+            return;
+        };
+        for generation in generations.into_iter().filter(|generation| *generation != place.generation) {
+            let path = place.dir.join(format!("{generation}.json"));
+            if let Err(e) = std::fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("atelier: dead instance record remove failed ({}): {e}", path.display());
+                }
+            }
+        }
+    }
+
     /// 판정에 줄 기록들 — 이 실행의 것은 **메모리에서**, 남의 것은 디스크에서. 제 파일은 쓰기가 실패했으면 낡았을 수 있고,
     /// 판정이 이 실행의 셸 목록을 여기서 읽는다. **스냅샷을 찍은 뒤에** 부른다(프로세스 스펙 S52) — 그 사이 뜬 셸의
     /// 키가 여기 이미 있다.
@@ -516,6 +536,36 @@ mod tests {
         assert_eq!(keys_on_disk(&dir, "G"), Some(vec!["G-0".to_string()]), "닫은 기록을 뒤늦은 쓰기가 고쳤다");
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(temp_dir("exit-clean"));
+    }
+
+    /// **시작 정리가 죽은 실행의 기록을 지운다**(티켓 10). 넘겨받은 세대의 기록만 지우고, 이 실행의 기록은 넘겨받아도 안
+    /// 지운다 — 지우면 이 실행의 셸 자손이 남에게 출처 불명이 된다. 열지 않은 기록은 어디를 지울지 몰라 아무것도 안 한다.
+    ///
+    /// 앵커: 넘겨받은 남의 기록(X)은 실제로 사라진다 — 아무것도 안 지우게 무너지면 「남았다」들이 저절로 참이 된다.
+    #[test]
+    fn forgetting_removes_the_named_records_but_never_this_runs() {
+        let dir = temp_dir("forget");
+        let others: Vec<Record> = ["X", "D"]
+            .into_iter()
+            .map(|generation| {
+                let other = Record::default();
+                other.open(place(&dir, generation));
+                other.raise(&format!("{generation}-0"));
+                other
+            })
+            .collect();
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+
+        Record::default().forget(["X"]);
+        assert!(read(&dir, "X").is_some(), "열지 않은 기록이 무언가를 지웠다 — 어디를 지울지 모른다");
+
+        record.forget(["X", "G"]);
+        assert!(read(&dir, "X").is_none(), "넘겨받은 죽은 실행의 기록이 남았다");
+        assert!(read(&dir, "D").is_some(), "넘겨받지 않은 기록을 지웠다");
+        assert!(read(&dir, "G").is_some(), "이 실행의 기록을 지웠다 — 이 실행의 셸 자손이 남에게 출처 불명이 된다");
+        drop(others);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 판정에 줄 기록들 — **이 실행의 것은 메모리에서, 남의 것은 디스크에서** 읽는다. 디스크의 제 파일은 쓰기가 실패했으면

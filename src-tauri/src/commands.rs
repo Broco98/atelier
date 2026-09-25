@@ -384,17 +384,44 @@ pub async fn quit_app(app: tauri::AppHandle) -> CmdResult<()> {
 /// 앱이 뜰 때 한 일(프로세스 결정 6 · 프로세스 스펙 S11). 프런트가 **부팅 때 한 번** 묻는다(`main.tsx`) —
 /// 이벤트로 쏘면 웹뷰가 듣기 전에 지나갈 수 있어서다. 본체는 `startup.rs`에 있고 여기는 위임만 한다.
 ///
+/// **시작 때 할 일이 모두 끝나야 답한다** — 시작 정리가 아직 돌면(최악 2초 남짓, SIGTERM을 무시하는 고아의 유예) 끝날
+/// 때까지 기다린다. 기다리는 일이라 blocking 풀에서 돌려 tokio 워커를 막지 않는다(`pty_kill`과 같다) — 부팅 때 나란히
+/// 오는 목록 조회 · 설정 읽기가 그 워커에서 돈다.
+///
 /// 모드를 안 받는다 — 앱 하나가 뜬 일이라 세계가 없다.
 #[tauri::command]
 pub async fn startup_report(
     holder: tauri::State<'_, Arc<crate::startup::ReportHolder>>,
 ) -> CmdResult<crate::startup::StartupReport> {
-    Ok(holder.answer())
+    let holder = Arc::clone(&holder);
+    tauri::async_runtime::spawn_blocking(move || holder.answer())
+        .await
+        .map_err(|e| format!("시작 보고를 읽지 못했습니다: {e}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **시작 보고는 blocking 풀에서 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 10). 보고는 시작 정리가 끝날
+    /// 때까지(최악 2초 남짓) 답하지 않는다 — async 명령 안에서 곧바로 기다리면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
+    /// `#[tauri::command]`는 런타임 없이 못 부르니 자리로 잰다. 기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
+    #[test]
+    fn the_startup_report_waits_off_the_async_workers() {
+        let src = include_str!("commands.rs");
+        let body = src
+            .split_once("pub async fn startup_report(")
+            .expect("명령이 있다")
+            .1
+            .split_once("\n}\n")
+            .expect("명령의 끝이 있다")
+            .0;
+        assert!(!body.contains("mod tests"), "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다");
+        let blocking = body.find("spawn_blocking(").expect("시작 보고를 blocking 풀로 안 보낸다 — 기다리는 동안 tokio 워커가 멎는다");
+        let answer = body.find("holder.answer()").expect("시작 보고를 붙잡은 자리에서 안 읽는다");
+        assert!(blocking < answer, "보고를 읽는 줄({answer})이 blocking 풀({blocking}) 밖에 있다");
+        assert_eq!(body.matches("answer()").count(), 1, "보고를 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
+    }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던
     // 「없으면 Atelier」 함수가 #187에서 사라졌고, 이제 명령은 받은 값을 루트 함수에 그대로

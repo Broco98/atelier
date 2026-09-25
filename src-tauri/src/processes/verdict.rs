@@ -43,13 +43,13 @@ pub struct InstanceRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Occasion {
     Normal,
-    /// 앱이 뜰 때 지난 실행이 남긴 것을 치운다. 이 실행의 세대를 보지 않는다(티켓 10).
+    /// 앱이 뜰 때 지난 실행이 남긴 것을 치운다(프로세스 결정 6 · 티켓 10). **이 실행의 것은 보지 않는다**(프로세스 스펙
+    /// S6) — 시작 정리가 뒤 스레드에서 도는 동안 웹뷰가 첫 셸을 띄우기 때문이다. 보통 판정이 이 실행에 주는 자리(이 실행의
+    /// 셸 프로세스, 이 세대의 셸 키)를 만나는 행은 그 자리의 셸이 목록에 있든 없든 어느 묶음에도 넣지 않는다.
     StartupCleanup,
 }
 
 /// 판정의 입력 — 스펙 「판 01 › 새 Rust 모듈 › 판정」의 입력 그대로다.
-///
-/// 모드(`occasion`)만 모양이 서 있고 판정이 아직 안 읽는다 — 시작 정리 모드는 티켓 10이 더한다.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub snapshot: &'a Snapshot,
@@ -110,7 +110,8 @@ pub struct Verdict<'a> {
 pub struct Orphans<'a> {
     /// 확정 고아 — 그 셸이 없는 것이 **기록으로 확실한** 것. (가) 그 키를 낸 실행이 죽었다(기록의 앱 pid가 없거나 시작
     /// 시각이 다르다). (나) 실행은 살아 있는데 그 셸이 목록에 없고, 그 프로세스가 그 기록의 갱신 시각보다 먼저 태어났다.
-    /// 이 실행의 세대도 (나)로 가른다 — 스스로 끝난 셸이 남긴 것이다. 앱이 뜰 때 자동으로 치운다(티켓 10).
+    /// 이 실행의 세대도 보통 판정에서는 (나)로 가른다 — 스스로 끝난 셸이 남긴 것이다. 앱이 뜰 때 치우는 것은 지난 실행이
+    /// 남긴 것뿐이다(`at_startup` — 시작 정리 모드는 이 실행의 세대를 안 본다).
     pub confirmed: BTreeMap<&'a str, Vec<&'a Proc>>,
     /// 출처 불명 — 인스턴스 기록이 없는 세대의 키를 문 것. 이 기능 전의 판이 띄운 것, 데이터 루트가 다른 빌드
     /// (`ATELIER_HOME`)가 띄운 것, 기록이 깨진 실행의 것. 누구의 것인지 모르니 **자동으로는 절대 안 건드린다**.
@@ -139,9 +140,14 @@ pub struct Orphans<'a> {
 /// 것은 위로 올라가다 거기서 멈춰 판정 밖이 된다. 앱을 셸에서 띄우면(설치본 셸에서 `pnpm tauri dev`)
 /// 앱과 그 조상, 그리고 그 도구가 함께 띄운 형제 가지(vite와 그 밑)가 모두 그 셸의 키를 물기 때문이다.
 /// uid가 다른 것은 길을 막지 않는다: `sudo`로 띄운 것 밑에 다시 사용자의 것이 달릴 수 있다.
+///
+/// **시작 정리 모드는 이 실행의 것을 어느 묶음에도 넣지 않는다**(`Occasion::StartupCleanup`). 이 실행의 것 = 셸별 자손을
+/// 가르는 그 걷기(가장 가까운 자리)가 이 실행의 자리를 만나는 행이다. 이 모드에서는 이 세대의 셸 키가 모두 이 실행의
+/// 자리다 — 목록에 없어도. 예외보다 먼저 거른다: 앱과 조상 사슬, 물려받은 키처럼 판정 밖이다.
 pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let procs = &input.snapshot.procs;
-    let table = Table { by_pid: procs.iter().map(|p| (p.id.pid, p)).collect(), rows: procs.len() };
+    let table = Table::of(procs);
+    let startup = input.occasion == Occasion::StartupCleanup;
     let shells: Vec<&'a ShellEntry> = input.shells.iter().chain(input.ending).collect();
     // 이 실행의 기록. 여기 있는 키는 풀에 없어도 셸이다 — 키를 올리고 아직 풀에 안 앉은 셸, 풀에서 빠졌지만 끝내기가
     // 아직 도는 셸. 셸 프로세스를 모르니 표식으로만 자손을 갖는다.
@@ -160,6 +166,9 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         .collect();
     let keys: HashSet<&'a str> =
         shells.iter().map(|shell| shell.key.as_str()).chain(recorded.iter().copied()).collect();
+    // 이 실행의 셸 키인가. 시작 정리는 이 세대의 키를 모두 이 실행의 것으로 친다 — 목록에 없는 키(보통 판정이면 확정
+    // 고아 (나)가 될 수 있다)도 이 실행이 가를 몫이지 시작 정리가 치울 몫이 아니다.
+    let ours = |key: &'a str| keys.contains(key) || (startup && of_generation(key, input.generation));
     // 셸마다 사람이 처음 입력한 시각. 같은 키가 두 번 서면(종료 판정이 풀에서 뺀 셸의 키를 한 번 더 더한다) 앞의
     // 것이 이긴다 — 셸 목록, 그다음 끝낼 셸 순이고 더한 키는 맨 뒤다.
     let mut first_input: HashMap<&'a str, Option<u64>> = HashMap::new();
@@ -204,8 +213,8 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
             if let Some(key) = shell_at.get(&node.id.pid) {
                 return Some(*key);
             }
-            if let Some(key) = node.shell_key.as_deref().and_then(|key| keys.get(key)) {
-                return Some(*key);
+            if let Some(key) = node.shell_key.as_deref().filter(|&key| ours(key)) {
+                return Some(key);
             }
         }
         None
@@ -238,6 +247,10 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
             || blocked.contains(&pid)
             || shell_at.contains_key(&pid)
         {
+            continue;
+        }
+        // 시작 정리는 이 실행의 것을 안 본다 — 셸별 자손도, 그 안의 예외도.
+        if startup && owner_of(proc).is_some() {
             continue;
         }
         if excepted(proc) {
@@ -298,9 +311,7 @@ fn stray(
     let Some(record) = input.instances.iter().find(|record| of_generation(key, &record.generation)) else {
         return Some(Stray::Unknown);
     };
-    // 살아 있다 = 그 pid의 행이 있고 시작 시각도 같다(프로세스 스펙 S9). pid만 보면 그 pid를 받은 남을 그 실행으로 본다.
-    let alive = table.by_pid.get(&record.app.pid).is_some_and(|row| row.id == record.app);
-    Some(if !alive || (!record.shell_keys.iter().any(|listed| listed == key) && before(record)) {
+    Some(if !table.alive(record) || (!record.shell_keys.iter().any(|listed| listed == key) && before(record)) {
         Stray::Confirmed
     } else {
         Stray::OtherInstance
@@ -357,6 +368,31 @@ pub fn at_exit(input: &Inputs) -> Vec<Identity> {
     verdict.descendants.into_values().flatten().map(|proc| proc.id).collect()
 }
 
+/// **시작 정리의 판정** — 끝낼 것(프로세스 결정 6 · 티켓 10). 지난 실행이 남긴 **확정 고아와 그 트리뿐**이다.
+///
+/// 출처 불명(누구의 것인지 모른다), 다른 인스턴스(살아 있는 실행이 제 셸을 닫을 때 끝낸다), 예외(늘 예외다 — 죽은 세대의
+/// 키를 물었어도)는 안 든다. 이 실행의 것도 안 든다 — 부르는 쪽이 모드를 무엇으로 주든 시작 정리 모드로 판정한다
+/// (`Occasion::StartupCleanup`). 이 세대의 확정 고아는 이 실행이 제 판정(스스로 끝난 셸 · 종료)으로 가른다.
+///
+/// 행을 돌려주는 것은 끝낸 뒤 알릴 이름(시작 보고)까지 들고 가기 위해서다. pid 순.
+pub fn at_startup<'a>(input: &Inputs<'a>) -> Vec<&'a Proc> {
+    let verdict = judge(&Inputs { occasion: Occasion::StartupCleanup, ..*input });
+    let mut targets: Vec<&'a Proc> = verdict.orphans.confirmed.into_values().flatten().collect();
+    targets.sort_by_key(|proc| proc.id.pid);
+    targets
+}
+
+/// **죽은 실행의 기록** — 이 실행 말고, 앱이 스냅샷에 없는 기록들(프로세스 스펙 S9). 확정 고아 (가)를 가르는 규칙과 한 자리다
+/// (`Table::alive`). 시작 정리가 그 고아를 끝낸 뒤 이 기록들을 지운다(프로세스 스펙 「인스턴스 기록 › 지우는 때」).
+pub fn dead_instances<'a>(input: &Inputs<'a>) -> Vec<&'a InstanceRecord> {
+    let table = Table::of(&input.snapshot.procs);
+    input
+        .instances
+        .iter()
+        .filter(|record| record.generation != input.generation && !table.alive(record))
+        .collect()
+}
+
 /// 이 세대가 지은 셸 키인가 — `<세대>-<PTY 번호>`(`pty::shell_id`). 앞글자로만 겹치는 다른 세대(`G` 대
 /// `GX`)를 가르려고 구분자와 번호까지 본다.
 fn of_generation(key: &str, generation: &str) -> bool {
@@ -372,6 +408,16 @@ struct Table<'a> {
 }
 
 impl<'a> Table<'a> {
+    fn of(procs: &'a [Proc]) -> Self {
+        Table { by_pid: procs.iter().map(|p| (p.id.pid, p)).collect(), rows: procs.len() }
+    }
+
+    /// 그 기록의 실행이 살아 있나 — 앱 pid의 행이 있고 시작 시각도 같다(프로세스 스펙 S9). pid만 보면 그 pid를 받은 남을
+    /// 그 실행으로 본다.
+    fn alive(&self, record: &InstanceRecord) -> bool {
+        self.by_pid.get(&record.app.pid).is_some_and(|row| row.id == record.app)
+    }
+
     /// 이 행의 부모 행. **부모는 자식보다 먼저 태어난다** — 그렇지 않은 부모 행은 그 pid를 나중에 받은
     /// 남이다(스냅샷을 찍는 사이 진짜 부모가 끝나고 pid가 재사용됐다). launchd(1) 밑은 트리가 끊긴
     /// 것이다.
@@ -498,6 +544,8 @@ mod tests {
         confirmed: Vec<(&'static str, Vec<u32>)>,
         unknown: Vec<(&'static str, Vec<u32>)>,
         others: Vec<(&'static str, Vec<u32>)>,
+        /// 판정을 부르는 때. 따로 안 주면 보통이다.
+        occasion: Occasion,
     }
 
     fn case(what: &'static str, rows: Vec<Proc>, expect: &[(&'static str, &[u32])]) -> Case {
@@ -510,6 +558,7 @@ mod tests {
             confirmed: Vec::new(),
             unknown: Vec::new(),
             others: Vec::new(),
+            occasion: Occasion::Normal,
         }
     }
 
@@ -539,6 +588,11 @@ mod tests {
         /// 다른 인스턴스.
         fn of_other_instance(mut self, bundle: &[(&'static str, &[u32])]) -> Case {
             self.others = listed(bundle);
+            self
+        }
+        /// 시작 정리 모드로 판정한다(티켓 10).
+        fn at_startup(mut self) -> Case {
+            self.occasion = Occasion::StartupCleanup;
             self
         }
     }
@@ -587,7 +641,7 @@ mod tests {
             exceptions: &exceptions,
             app_pid: APP,
             inherited_key: case.inherited,
-            occasion: Occasion::Normal,
+            occasion: case.occasion,
         });
         let got = Bundles {
             descendants: pids_of(&verdict.descendants),
@@ -939,17 +993,230 @@ mod tests {
             .orphaned(&[("X-1", &[311])]),
         ];
 
-        // 이 실행: 풀의 셸 G-1과 끝내는 중인 G-2. G-4는 기록에만 있다 — 판정이 기록에서 읽어 셸 목록에 더한다.
+        let wrong = misjudged_on_the_records(&cases);
+        assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// 인스턴스 기록 표(`records`)의 줄들을 판정해 어긋난 줄마다 그 까닭을 준다.
+    ///
+    /// 이 실행: 풀의 셸 G-1과 끝내는 중인 G-2. G-4는 기록에만 있다 — 판정이 기록에서 읽어 셸 목록에 더한다. 세상에는
+    /// 살아 있는 다른 실행의 앱(70)과, 죽은 실행 R의 앱 pid를 받은 남(80)이 더 있다.
+    fn misjudged_on_the_records(cases: &[Case]) -> Vec<String> {
         let shells = [shell("G-1", Some(Identity { pid: 100, started_us: 1_100 }))];
         let ending = [shell("G-2", Some(Identity { pid: 110, started_us: 1_110 }))];
         let mut world = world();
         world.extend([row(70, 1), row(80, 1)]);
         let records = records();
-        let wrong: Vec<String> = cases
+        cases
             .iter()
             .filter_map(|case| misjudged(case, world.clone(), &shells, &ending, &records, &["G-1", "G-2", "G-4"]))
+            .collect()
+    }
+
+    /// **시작 정리 모드는 이 실행의 것을 보지 않는다**(프로세스 스펙 S6 · 티켓 10). 시작 정리가 뒤 스레드에서 도는 동안 웹뷰가
+    /// 첫 셸을 띄운다 — 그 셸의 자손이 막 뜬 순간을 어떻게 읽든, 시작 정리가 손댈 것은 지난 실행이 남긴 것뿐이다.
+    ///
+    /// 「이 실행의 것」은 보통 판정이 이 실행에 주는 자리 그대로다 — 자기부터 올라가다 처음 만나는 자리(이 실행의 셸 프로세스나
+    /// 이 세대의 셸 키)가 이 실행의 것이면 어느 묶음에도 없다. 그래서 이 실행의 셸 트리 안에 있는 죽은 세대의 표식도 빠진다
+    /// (보통 판정이면 그 셸의 자손이다). 목록에 없는 이 세대의 키는 보통 판정이면 확정 고아 (나)가 될 수 있지만(위 표) 여기서는
+    /// 아니다.
+    ///
+    /// 「없다」를 재는 줄마다 죽은 세대의 확정 고아(311)나 다른 세대의 예외를 앵커로 세운다 — 시작 정리 모드가 아무것도 안
+    /// 가르게 무너지면 앵커가 빠진다.
+    #[test]
+    fn the_startup_cleanup_sees_nothing_of_this_run() {
+        let cases = [
+            case(
+                "이 실행의 세대 · 목록에 없는 키 · 기록 갱신 전에 태어남(보통이면 확정 고아)과 그 밑의 시스템 바이너리 → 어느 묶음에도 \
+                 없다",
+                vec![row(303, 1).key("G-7").born(3_000), row(305, 303).born(3_100), row(311, 1).key("X-1")],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])])
+            .at_startup(),
+            case(
+                "이 실행의 셸 — 풀의 셸 트리, 끝내는 중인 셸의 표식, 기록에만 있는 키(띄우는 중) → 셸별 자손에도 없다",
+                vec![
+                    row(101, 100).key("G-1"),
+                    row(102, 101),
+                    row(103, 100),
+                    row(111, 110).key("G-2"),
+                    row(301, 1).key("G-4").born(3_000),
+                    row(311, 1).key("X-1"),
+                ],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])])
+            .at_startup(),
+            case(
+                "이 실행의 셸 트리 안이면 죽은 세대의 표식을 물어도 없다 — 셸 프로세스 밑이든, 이 세대의 표식을 문 것 밑이든",
+                vec![
+                    row(115, 100).key("X-1"),
+                    row(116, 115),
+                    row(306, 1).key("G-7").born(3_000),
+                    row(307, 306).key("X-1").born(3_100),
+                    row(311, 1).key("X-1"),
+                ],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])])
+            .at_startup(),
+            case(
+                "이 세대의 표식을 문 예외 이름과 그 밑도 없다 — 다른 세대의 예외는 그대로 예외",
+                vec![
+                    row(330, 1).named("tmux").key("G-5"),
+                    row(331, 330),
+                    row(320, 1).named("tmux").key("X-1"),
+                    row(321, 320),
+                ],
+                &[],
+            )
+            .excepting(&[320, 321])
+            .at_startup(),
+            case(
+                "다른 세대는 보통과 같다 — 확정 고아 (가) · (나), 출처 불명, 다른 인스턴스",
+                vec![
+                    row(311, 1).key("X-1"),
+                    row(312, 1).key("R-1"),
+                    row(314, 1).key("D-2").born(3_000),
+                    row(310, 1).key("OLD-1"),
+                    row(313, 1).key("D-1"),
+                    row(315, 1).key("D-3").born(6_000),
+                ],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311]), ("R-1", &[312]), ("D-2", &[314])])
+            .of_unknown_origin(&[("OLD-1", &[310])])
+            .of_other_instance(&[("D-1", &[313]), ("D-3", &[315])])
+            .at_startup(),
+        ];
+        let wrong = misjudged_on_the_records(&cases);
+        assert!(wrong.is_empty(), "시작 정리의 판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **시작 정리가 끝내기에 넘기는 것은 확정 고아뿐이다**(프로세스 결정 6 · 티켓 10). 출처 불명은 누구의 것인지 몰라서, 다른
+    /// 인스턴스는 살아 있는 실행이 제 셸을 닫을 때 끝내서, 예외는 늘 예외라서 안 넘긴다 — 죽은 세대의 키를 물었어도.
+    ///
+    /// 세상과 기록은 위 표와 같다. 줄마다 넘기지 말아야 할 것 곁에 죽은 실행 X의 확정 고아(311)를 앵커로 세운다 — 아무것도 안
+    /// 넘기게 무너지면 앵커가 빠진다.
+    #[test]
+    fn the_startup_cleanup_hands_only_confirmed_orphans_to_the_ending() {
+        let cases: [(&str, Vec<Proc>, &[u32]); 9] = [
+            (
+                "확정 고아 (가) 죽은 실행 — 그 트리의 시스템 바이너리까지",
+                vec![row(311, 1).key("X-1"), row(323, 311), row(324, 323)],
+                &[311, 323, 324],
+            ),
+            ("확정 고아 (가) 앱 pid를 남이 받은 실행", vec![row(312, 1).key("R-1")], &[312]),
+            (
+                "확정 고아 (나) 살아 있는 실행 · 목록에 없는 키 · 기록 갱신 전에 태어남",
+                vec![row(314, 1).key("D-2").born(3_000)],
+                &[314],
+            ),
+            ("출처 불명은 안 넘긴다", vec![row(310, 1).key("OLD-1"), row(325, 310), row(311, 1).key("X-1")], &[311]),
+            (
+                "다른 인스턴스는 안 넘긴다 — 목록에 있는 키, 목록에 없어도 기록 갱신 뒤에 태어난 것",
+                vec![row(313, 1).key("D-1"), row(315, 1).key("D-3").born(6_000), row(311, 1).key("X-1")],
+                &[311],
+            ),
+            (
+                "예외는 안 넘긴다 — 죽은 세대의 키를 문 예외 이름과 그 밑의 표식 프로세스도",
+                vec![
+                    row(320, 1).named("tmux").key("X-1"),
+                    row(321, 320).key("X-1"),
+                    row(322, 321),
+                    row(311, 1).key("X-1"),
+                ],
+                &[311],
+            ),
+            (
+                "이 실행의 세대는 안 넘긴다 — 보통 판정이면 확정 고아인 목록 밖 키도, 풀의 셸 트리도",
+                vec![row(303, 1).key("G-7").born(3_000), row(101, 100).key("G-1"), row(311, 1).key("X-1")],
+                &[311],
+            ),
+            (
+                "앱이 물려받은 키를 문 형제 가지(vite)와 앱 사슬은 안 넘긴다 — 그 키를 낸 설치본이 죽었어도",
+                vec![row(10, 1).born(9_000), row(60, 30).key("I-3"), row(61, 60), row(311, 1).key("X-1")],
+                &[311],
+            ),
+            (
+                "pid ≤ 1과 다른 uid는 안 넘긴다 — 죽은 세대의 키를 물어도",
+                vec![row(1, 0).key("X-1"), row(318, 1).uid(0).key("X-1"), row(311, 1).key("X-1")],
+                &[311],
+            ),
+        ];
+
+        let shells = [shell("G-1", Some(Identity { pid: 100, started_us: 1_100 }))];
+        let records = records();
+        let exceptions = exceptions();
+        let mut wrong = Vec::new();
+        for (what, rows, want) in &cases {
+            let mut procs = world();
+            procs.extend([row(70, 1), row(80, 1)]);
+            for added in rows {
+                procs.retain(|p| p.id.pid != added.id.pid);
+                procs.push(added.clone());
+            }
+            let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+            // 부르는 쪽이 모드를 무엇으로 주든 시작 정리로 판정한다 — 이 표는 보통으로 준다.
+            let mut got: Vec<u32> = at_startup(&Inputs {
+                snapshot: &snapshot,
+                generation: "G",
+                shells: &shells,
+                ending: &[],
+                instances: &records,
+                exceptions: &exceptions,
+                app_pid: APP,
+                inherited_key: Some("I-3"),
+                occasion: Occasion::Normal,
+            })
+            .into_iter()
+            .map(|proc| proc.id.pid)
             .collect();
-        assert!(wrong.is_empty(), "판정이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+            got.sort_unstable();
+            if got != *want {
+                wrong.push(format!("{what}\n    기대 {want:?}\n    받음 {got:?}"));
+            }
+        }
+        assert!(wrong.is_empty(), "시작 정리가 끝내기에 넘기는 것이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **시작 정리가 지울 죽은 실행의 기록**(프로세스 스펙 「인스턴스 기록 › 지우는 때」). 살아 있다 = 앱 pid의 행이 있고
+    /// 시작 시각도 같다(S9) — 확정 고아 (가)를 가르는 규칙과 한 자리다. 이 실행의 기록은 죽은 것으로 안 친다.
+    #[test]
+    fn dead_instances_are_the_records_whose_app_is_gone() {
+        let dead = |rows: Vec<Proc>| -> Vec<String> {
+            let mut procs = world();
+            procs.extend([row(70, 1), row(80, 1)]);
+            for added in rows {
+                procs.retain(|p| p.id.pid != added.id.pid);
+                procs.push(added);
+            }
+            let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
+            let records = records();
+            let mut got: Vec<String> = dead_instances(&Inputs {
+                snapshot: &snapshot,
+                generation: "G",
+                shells: &[],
+                ending: &[],
+                instances: &records,
+                exceptions: &[],
+                app_pid: APP,
+                inherited_key: Some("I-3"),
+                occasion: Occasion::StartupCleanup,
+            })
+            .into_iter()
+            .map(|record| record.generation.clone())
+            .collect();
+            got.sort();
+            got
+        };
+        assert_eq!(dead(vec![]), ["R", "X"], "앱 pid가 없는 실행(X)과 그 pid를 남이 받은 실행(R)만 죽었다");
+        assert_eq!(
+            dead(vec![row(10, 1).born(9_000), row(APP, 40).born(9_000)]),
+            ["I", "R", "X"],
+            "설치본(I)의 pid를 남이 받았으면 죽었다 — 이 실행(G)의 행이 달라도 이 실행은 죽은 것으로 안 친다"
+        );
     }
 
     /// 셸 도우미 · 확인 창의 수 표의 한 줄.

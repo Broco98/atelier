@@ -175,6 +175,12 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 시작 보고를 붙잡아 두는 자리(프로세스 스펙 S11)와, 그 보고가 기다릴 시작 정리의 몫(티켓 10). **몫은 웹뷰가 서기 전에
+    // 센다** — 웹뷰는 셋업의 앱 몫(아래 `.setup`)보다 먼저 서고(`tauri::app::setup`이 창을 먼저 짓는다), 프런트는 뜨자마자
+    // 보고를 묻는다. 셋업 안에서 세면 그 사이에 온 물음이 정리를 안 기다리고 빈 보고를 받을 자리가 생긴다. 스레드에 넘길
+    // 수 있게 풀과 같이 `Arc`다.
+    let report = Arc::new(startup::ReportHolder::default());
+    let cleanup = report.expect();
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -211,10 +217,9 @@ pub fn run() {
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::new(pty::PtyPool::default()))
-        // 시작 보고를 붙잡아 두는 자리(프로세스 스펙 S11). 지금은 비어 있고, 시작 때의 일(정리 · 훅 맞춤)이
-        // 여기에 결과를 채운다 — 스레드에 넘길 수 있게 풀과 같이 `Arc`다.
-        .manage(Arc::new(startup::ReportHolder::default()))
-        .setup(|app| {
+        // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
+        .manage(Arc::clone(&report))
+        .setup(move |app| {
             // ⌘Q·메뉴 Quit·Dock 종료도 묻게 한다(결정 14 · #224). **셋업 안이어야 한다** — 셋업은
             // `applicationDidFinishLaunching:` 안에서 돌아 이때 앱 델리게이트가 이미 붙어 있다.
             terminate::install(app.handle());
@@ -249,15 +254,19 @@ pub fn run() {
             shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix());
 
             // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
-            // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리(10)는 이 줄 **뒤에** 선다 — 기록이 먼저다.
+            // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리는 이 줄 **뒤에** 선다 — 기록이 먼저다.
             // 셸은 프런트가 뜬 뒤에야 불리지만, 그보다 먼저 올린 키가 있어도 여는 쓰기가 함께 적는다(`Record::open`).
             pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string());
+            // 시작 정리(프로세스 결정 6 · 티켓 10). 지난 실행이 남긴 확정 고아를 뒤 스레드에서 끝내고, 죽은 실행의 기록을 지우고,
+            // 끝낸 것을 위에서 센 몫으로 시작 보고에 싣는다. **기록을 연 뒤다** — 연 뒤라야 남의 기록이 읽힌다. 이 실행의 셸은
+            // 안 본다: 웹뷰가 곧 첫 셸을 띄운다.
+            startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
         // Rust 쪽 자식만 살아남아 고아가 된다(in-app-terminal 결정 18 — 정리 시점은 앱 종료 · 새로고침
-        // 둘이었고, 프로세스 결정 3이 셸 닫기를 더했다). `pnpm tauri dev`의 Vite full reload와
-        // ⌘R이 매번 그 경로다. SPA 라우트 이동은 navigation commit이 아니라서 안 걸리고,
+        // 둘이었고, 프로세스 결정 3이 셸 닫기를, 프로세스 결정 6이 앱 시작을 더했다). `pnpm tauri dev`의
+        // Vite full reload와 ⌘R이 매번 그 경로다. SPA 라우트 이동은 navigation commit이 아니라서 안 걸리고,
         // 결정 20의 「화면을 옮기는 것만으로는 안 죽는다」가 바로 그 성질에 기대고 있다(프로세스
         // 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 프런트가 떠남을 보고 셸 닫기 길로 닫는다).
         // 첫 로드에도 오지만 그때 레지스트리는 비어 있어 즉시 돌아온다.
@@ -312,10 +321,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // 앱이 닫히면 셸도 함께 닫는다(in-app-terminal 결정 18, 프로세스 결정 3). 상태가 떨어지기를
-            // 기대하지 않는다 — 프로세스가 그냥 끝나면 소멸자는 돌지 않는다. **여기서는 반드시 동기로**
+            // 앱이 닫히면 셸도 함께 닫는다(in-app-terminal 결정 18 — 정리 시점은 앱 종료 · 새로고침 둘이었고, 프로세스
+            // 결정 3이 셸 닫기를, 프로세스 결정 6이 앱 시작을 더했다. 앱 시작의 정리는 위 셋업의 `startup::clean_up`).
+            // 상태가 떨어지기를 기대하지 않는다 — 프로세스가 그냥 끝나면 소멸자는 돌지 않는다. **여기서는 반드시 동기로**
             // 끝낸다: 스레드에 넘기면 프로세스가 끝나며 그 스레드도 함께 사라져 아무도 신호를 못 보낸다.
-            // 셸 닫기 · 새로고침이 뒤로 보낸 끝내기(진행 중인 끝내기)도 여기서 남은 유예만 기다려 마감한다.
+            // 셸 닫기 · 새로고침 · 시작 정리가 뒤로 보낸 끝내기(진행 중인 끝내기)도 여기서 남은 유예만 기다려 마감한다.
             //
             // 인스턴스 기록도 여기서 닫는다(`end_for_exit` 안) — 「못 끝냄」이 없으면 지우고, 있으면 다음 실행의 시작
             // 정리가 한 번 더 해 보게 남긴다. 돌려받는 결과는 정리 기록(11)이 읽는다.
@@ -413,7 +423,7 @@ mod tests {
     fn setup_source() -> String {
         let src = include_str!("lib.rs");
         let body = src
-            .split_once(".setup(|app| {")
+            .split_once(".setup(move |app| {")
             .expect("여는 표식이 있다")
             .1
             .split_once("\n        })")
@@ -576,13 +586,39 @@ mod tests {
     /// 빠지면 Tauri는 부를 때마다 거절하고(`state not managed`) 프런트는 그 거절을 「알릴 것 없음」으로
     /// 삼킨다 — 시작 때 무엇을 치워도 토스트가 영영 안 선다. L3는 고정 표가 답하고 L4는 다리가 거절하므로
     /// 이 빠짐을 어느 층도 못 본다. 그래서 셸 신호의 세 자리처럼 **자리로** 잰다.
+    ///
+    /// **시작 정리의 몫을 그 자리에서, 빌더보다 먼저 센다**(티켓 10). 웹뷰는 셋업의 앱 몫보다 먼저 선다 — 셋업 안에서 세면
+    /// 그 사이에 온 물음이 정리를 안 기다리고 빈 보고를 받는다. 다른 자리에서 세면 묻는 쪽이 그 몫을 영영 모른다.
     #[test]
     fn the_startup_report_has_a_holder_when_the_app_comes_up() {
         let src = include_str!("lib.rs");
-        let builder = &src[..src.find("#[cfg(test)]").expect("테스트 모듈의 머리를 못 찾았다")];
-        assert!(
-            without_comment_lines(builder).contains(".manage(Arc::new(startup::ReportHolder::default()))"),
-            "시작 보고의 자리를 안 세운다 — 프런트가 물을 때마다 거절된다"
+        let run = without_comment_lines(
+            src.split_once("pub fn run() {").expect("`run`이 있다").1.split_once("#[cfg(test)]").expect("테스트 모듈의 머리").0,
         );
+        let holder = run.find("let report = Arc::new(startup::ReportHolder::default());").expect("시작 보고의 자리를 안 세운다");
+        let counted = run.find("let cleanup = report.expect();").expect("시작 정리의 몫을 그 자리에서 안 센다");
+        let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
+        assert!(
+            holder < counted && counted < builder,
+            "시작 정리의 몫을 빌더보다 먼저 세지 않는다 — 웹뷰가 먼저 서서 묻는 사이 정리를 안 기다린다"
+        );
+        assert!(
+            run.contains(".manage(Arc::clone(&report))"),
+            "몫을 센 그 자리를 앱에 안 건다 — 프런트가 물을 때마다 거절되거나, 다른 자리가 몫을 모른다"
+        );
+    }
+
+    /// **시작 정리는 인스턴스 기록을 연 뒤에 돈다**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · 티켓 10). 먼저 돌면 남의
+    /// 기록을 못 읽어(`Record::records`가 빈 목록) 모든 떠돌이가 출처 불명이 되고, 크래시한 실행의 고아가 영영 안 치워진다
+    /// — 조용하다. 셋업은 헤드리스로 못 돌리니(`run()`) 자리로 잰다. 정리가 무엇을 고르고 끝내는지는 `pty.rs`의 실물 장면
+    /// `Startup`이 잰다.
+    #[test]
+    fn the_startup_cleanup_runs_after_the_record_opens() {
+        let setup = setup_source();
+        let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
+        let cleaned = setup
+            .find("startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));")
+            .expect("셋업이 시작 정리를 위에서 센 몫으로 안 부른다 — 지난 실행의 고아가 안 치워지거나 보고가 그것을 안 기다린다");
+        assert!(opened < cleaned, "시작 정리({cleaned})가 기록을 열기({opened}) 전에 돈다 — 남의 기록을 못 읽는다");
     }
 }
