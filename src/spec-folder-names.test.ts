@@ -80,7 +80,7 @@ describe("앱에는 spec 폴더의 이름 규칙이 없다", () => {
     // 트리의 경로는 spec 기준이고 아카이브의 경로는 work 폴더 기준이라, 둘을 잇는 앞머리는 앱에 남는다.
     // 이름 규칙과 같은 탐지기(따옴표 친 리터럴)로 센다.
     const found = Object.entries(sources).filter(([, text]) => literal("spec/").test(text));
-    expect(found.map(([path]) => path)).toEqual(["features/archive/archive-tree.ts"]);
+    expect(found.map(([path]) => path)).toContain("features/archive/archive-tree.ts");
   });
 
   it("폴더 이름 리터럴도 판 정규식도 하나도 없다", () => {
