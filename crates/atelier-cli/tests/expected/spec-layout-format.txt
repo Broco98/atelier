@@ -5,7 +5,7 @@ A layout has one top entry, `root`: the `specDir` itself. Its `children` are wha
   pattern      the file or folder name: fixed (`decisions.md`) or with placeholders (`{n}-{name}`). Required, except on `root`, which has none. Not empty, no `/`.
   kind         "file" or "folder". Required, except on `root`, which is always a folder.
   description  what agents read about this place: what it is for and when to create it. On `root` it is the paragraph at the top of the guidance. Optional.
-  icon         the name of the icon the desktop app draws next to it; an unknown name draws none. It is not part of the guidance. Optional.
+  icon         the name of the icon the desktop app draws next to it, one of: compass, layers, list-checks, search, book-open, file-text, notebook-pen, lightbulb, flask-conical, scale, image, flag. Any other name draws none. It is not part of the guidance. Optional.
   template     files only: the path of a template in the layout folder. Optional.
   children     folders only: the entries inside it. Optional, any depth.
 

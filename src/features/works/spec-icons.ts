@@ -20,9 +20,13 @@ import {
 // 표에서 나온다. 적힌 순서가 그 목록의 순서다.
 //
 // 이름은 lucide의 이름(kebab-case) 그대로다 — 새 말을 짓지 않는다. 정해 둔 열두 개 안팎이고,
-// 앞의 다섯이 내장본의 것이다. 내장본의 이름이 모두 여기 있는지는 Rust 테스트가 이 파일을 읽어
-// 본다(`atelier-core`의 `every_builtin_icon_is_in_the_apps_icon_table`). 그 검사는 이 표 안에서
-// 따옴표 친 키로 시작하는 줄을 항목으로 치니, **키는 따옴표를 떼지 않는다.**
+// 앞의 다섯이 내장본의 것이다. 이 파일은 Rust 테스트 둘이 읽는다. 내장본의 이름이 모두 여기
+// 있는지(`atelier-core`의 `every_builtin_icon_is_in_the_apps_icon_table`), 그리고 에이전트가 받는
+// 레이아웃 형식 설명(`atelier-cli`의 `LAYOUT_FORMAT`)이 이 키를 모두, 이 순서대로 적는지
+// (`the_format_lists_every_icon_the_app_draws`)다. 그래서 아이콘을 더하거나 이름을 바꾸면 형식
+// 설명의 `icon` 줄과 그 기대값 파일(`crates/atelier-cli/tests/expected/spec-layout-format.txt`)도
+// 함께 고친다. 두 검사 모두 이 표 안에서 따옴표 친 키로 시작하는 줄을 항목으로 치니, **키는
+// 따옴표를 떼지 않고 표는 `} satisfies`로 끝낸다.**
 export const SPEC_ICONS = {
   "compass": Compass,
   "layers": Layers,

@@ -25,6 +25,11 @@ use super::{kernel_error, AtelierServer};
 /// 고칠 때만 필요하다. 필드 표, 자리 표시자, 검증 규칙, 템플릿 경로 규칙을 담는다 — 검증 규칙은
 /// 엔진(`parse.rs`·`store.rs`)의 것을 옮겨 적은 것이라, 엔진이 규칙을 더하면 여기도 한 줄 는다.
 ///
+/// 필드 표의 `icon` 줄은 앱이 그릴 수 있는 아이콘 이름을 모두 적는다. 앱의 아이콘 표
+/// (`src/features/works/spec-icons.ts`)에서 그 순서대로 옮겨 적은 것이라, 표가 바뀌면 아래
+/// 테스트(`the_format_lists_every_icon_the_app_draws`)가 빨개진다. 엔진은 아이콘을 해석하지 않아
+/// 저장이 모르는 이름을 알려 주지 않으니, 에이전트가 이름을 아는 길은 이 줄뿐이다.
+///
 /// 글자는 기대값 파일(`tests/expected/spec-layout-format.txt`)이 고정한다. 저장소에 스냅샷 관례가
 /// 없어 안내문(01)과 같은 방식이다.
 const LAYOUT_FORMAT: &str = r#"Spec layout format — what `layout` holds and what a save checks.
@@ -34,7 +39,7 @@ A layout has one top entry, `root`: the `specDir` itself. Its `children` are wha
   pattern      the file or folder name: fixed (`decisions.md`) or with placeholders (`{n}-{name}`). Required, except on `root`, which has none. Not empty, no `/`.
   kind         "file" or "folder". Required, except on `root`, which is always a folder.
   description  what agents read about this place: what it is for and when to create it. On `root` it is the paragraph at the top of the guidance. Optional.
-  icon         the name of the icon the desktop app draws next to it; an unknown name draws none. It is not part of the guidance. Optional.
+  icon         the name of the icon the desktop app draws next to it, one of: compass, layers, list-checks, search, book-open, file-text, notebook-pen, lightbulb, flask-conical, scale, image, flag. Any other name draws none. It is not part of the guidance. Optional.
   template     files only: the path of a template in the layout folder. Optional.
   children     folders only: the entries inside it. Optional, any depth.
 
@@ -175,5 +180,62 @@ impl AtelierServer {
             ])),
             Err(e) => Ok(kernel_error(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LAYOUT_FORMAT;
+
+    /// 앱의 아이콘 표(`src/features/works/spec-icons.ts`)의 키, 적힌 순서대로. 적힌 순서가 편집기의
+    /// 아이콘 목록 순서다.
+    ///
+    /// `atelier-core`의 `every_builtin_icon_is_in_the_apps_icon_table`과 **같은 방식으로** 읽는다
+    /// — `SPEC_ICONS = { … } satisfies` 리터럴 안에서, 줄머리가 따옴표 친 키인 줄만 항목으로 친다.
+    /// 머리 주석에 예시로 적힌 이름이 표의 항목으로 섞여 들지 않게 하려는 것이다.
+    fn app_icon_names() -> Vec<String> {
+        let file = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../src/features/works/spec-icons.ts"
+        ))
+        .expect("spec-icons.ts moved; update this test and the app's icon table together");
+        let start = file
+            .find("export const SPEC_ICONS = {")
+            .expect("SPEC_ICONS table not found; update this test with spec-icons.ts");
+        let end = start
+            + file[start..]
+                .find("} satisfies")
+                .expect("SPEC_ICONS has no `} satisfies` end; update this test with spec-icons.ts");
+        file[start..end]
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with('"'))
+            .map(|line| line.split('"').nth(1).unwrap_or_default().to_string())
+            .collect()
+    }
+
+    /// **형식 설명이 앱이 그릴 수 있는 아이콘을 모두, 표의 순서대로 적는다.** 에이전트는 이 글
+    /// 말고는 아이콘 이름을 알 길이 없다 — 내장본에 쓰인 다섯만 보인다. 엔진은 아이콘을 해석하지
+    /// 않아 저장이 틀린 이름을 알려 주지 않으니(spec 레이아웃 구현 스펙 4절), 「ADR 폴더에 저울
+    /// 아이콘」 같은 부탁이 에이전트가 lucide 이름을 우연히 맞힐 때만 되지 않게 이름을 건넨다.
+    ///
+    /// 두 언어 사이라 테스트로 묶는다. 표에 아이콘을 더하거나 이름을 바꾸면 여기가 빨개진다 —
+    /// 형식 설명의 `icon` 줄과 기대값 파일(`tests/expected/spec-layout-format.txt`)을 함께 고친다.
+    #[test]
+    fn the_format_lists_every_icon_the_app_draws() {
+        let keys = app_icon_names();
+        // 표를 못 읽은 것이 「다 적혔다」로 읽히지 않게 — 몸통에 항목 줄이 하나도 없으면 빨갛다
+        assert!(!keys.is_empty(), "SPEC_ICONS 표에서 항목 줄을 하나도 못 읽었다");
+
+        let line = LAYOUT_FORMAT
+            .lines()
+            .find(|line| line.trim_start().starts_with("icon "))
+            .expect("형식 설명에 `icon` 줄이 없다");
+        let listed: Vec<&str> = line
+            .split_once("one of: ")
+            .and_then(|(_, rest)| rest.split_once(". "))
+            .map(|(names, _)| names.split(", ").collect())
+            .unwrap_or_default();
+        assert_eq!(listed, keys, "형식 설명의 아이콘 목록이 앱의 아이콘 표(spec-icons.ts)와 다르다: {line}");
     }
 }
