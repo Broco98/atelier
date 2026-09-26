@@ -247,15 +247,10 @@ function EditorScreen({
       actions={
         <>
           {/* 머리의 쪽 동작이다 — 프로젝트 머리행의 [폴더 열기]와 같은 `Button` ghost · sm이고, 아이콘은 글자 앞에
-              선다(`data-icon="inline-start"`). */}
-          <Button
-            ref={opener}
-            variant="ghost"
-            size="sm"
-            onClick={() => setPreviewOpen(true)}
-            aria-haspopup="dialog"
-            aria-expanded={previewOpen}
-          >
+              선다(`data-icon="inline-start"`). 창을 여는 버튼이지만 「창을 연다」·「열렸다」(`aria-haspopup` ·
+              `aria-expanded`)를 달지 않는다 — 앱의 창 여는 버튼(전체화면 뷰어 · 이름 바꾸기)과 같다: 창이 뜨면 창이
+              제 이름을 읽히고 뒤는 가려지므로, 버튼에 붙인 두 말은 읽는 말만 늘린다(develop 구현 스펙 「전체화면 뷰어」). */}
+          <Button ref={opener} variant="ghost" size="sm" onClick={() => setPreviewOpen(true)}>
             <Eye data-icon="inline-start" aria-hidden strokeWidth={1.9} />
             LLM이 받는 텍스트
           </Button>

@@ -769,7 +769,8 @@ test("「LLM이 받는 텍스트」를 누르면 팝업이 미리보기의 글�
 
   await page.getByRole("button", { name: "spec/", exact: true }).click();
   await 미리보기(page).click();
-  expect(await 팝업(page).locator("[data-selected]").allTextContents()).toEqual(["spec 폴더의 방침 문단."]);
+  // 창 안은 떠 있는 동안에만 선다(포털) — 선 것을 기다려 읽는다.
+  await expect(팝업(page).locator("[data-selected]")).toHaveText(["spec 폴더의 방침 문단."]);
   await 팝업(page).getByRole("button", { name: "닫기", exact: true }).click();
   await expect(팝업(page)).toHaveCount(0);
 
