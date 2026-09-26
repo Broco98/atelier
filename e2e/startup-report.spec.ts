@@ -47,7 +47,7 @@ for (const { screen, path } of [
   { screen: "Terminal", path: "/terminal" },
   { screen: "설정", path: "/settings/terminal" },
 ]) {
-  test(`첫 화면이 ${screen}이어도 시작 보고의 정리 토스트가 한 번 서고 곧 사라진다`, async ({ page }) => {
+  test(`첫 화면이 ${screen}이어도 시작 보고의 정리 토스트가 [보기]를 들고 한 번 선다`, async ({ page }) => {
     await installFixtureBackend(page, { [STARTUP]: cleaned(3) });
     await page.goto(path);
 
@@ -59,9 +59,9 @@ for (const { screen, path } of [
     expect(await toastsNow(page)).toBe(1);
     expect(await callCount(page, STARTUP)).toBe(1);
 
-    // 버튼 없는 토스트는 짧게 선다. StrictMode가 토스트 자리의 타이머를 한 번 걷었다 다시 세우므로,
-    // 그 뒤에 타이머가 안 걸리면 이 토스트는 영영 안 내려간다.
-    await expect(toast).toBeHidden({ timeout: 5_000 });
+    // [보기]를 든다(프로세스 스펙 S15 · 티켓 32) — 무엇을 끝냈는지는 `Processes`의 정리 기록이 보인다. 그래서 누를 때까지 남는
+    // 동작 토스트다: 1.6초가 지나도 남는지는 `processes-view.spec.ts`가 시계로 잰다.
+    await expect(toast.getByRole("button", { name: "보기", exact: true })).toBeVisible();
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }

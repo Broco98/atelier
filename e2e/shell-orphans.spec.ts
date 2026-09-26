@@ -239,11 +239,12 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
 // - `Date.now`도 가짜 시계를 따른다. 셸의 첫 입력 시각 · 경과 표시 · 알림 접기(5초)가 모두 그 시계로 잰다 —
 //   깐 뒤로 시간은 저절로 흐르다가 `runFor`만큼 한꺼번에 뛴다.
 //
-// 1.6초가 정말 흘렀는지는 짧은 토스트 하나로 본다: 시작 보고를 붙잡아 두었다가 놓아 정리 토스트(1.6초)를 세우고,
-// 같은 `runFor`에 그것이 내려가는 것을 앵커로 삼는다. 시계가 토스트의 타이머를 안 움직였으면 앵커가 빨갛다.
+// 1.6초가 정말 흘렀는지는 짧은 토스트 하나로 본다: 시작 보고를 붙잡아 두었다가 놓아 훅 맞춤 토스트(1.6초)를 세우고,
+// 같은 `runFor`에 그것이 내려가는 것을 앵커로 삼는다. 시계가 토스트의 타이머를 안 움직였으면 앵커가 빨갛다. (정리 토스트는 판
+// 04부터 [보기]를 들어 누를 때까지 남는다 — 티켓 32.)
 test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ page }) => {
   await page.clock.install();
-  const report: StartupReport = { cleaned: [{ pid: 40_000, name: "node" }], hooksUpdated: [] };
+  const report: StartupReport = { cleaned: [], hooksUpdated: ["claude"] };
   await installFixtureBackend(page, { startup_report: report, pty_close_checks: { 1: BUSY } });
   await holdCommand(page, "startup_report");
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -254,7 +255,7 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
   const orphans = toastOf(page, orphanText(1));
   await expect(orphans).toBeVisible();
   await releaseCommand(page, "startup_report");
-  const short = toastOf(page, "지난 실행에서 남은 프로세스 1개를 정리했어요");
+  const short = toastOf(page, "에이전트 훅을 새 목록으로 맞췄어요");
   await expect(short).toBeVisible();
 
   await page.clock.runFor(2_000);
@@ -262,9 +263,10 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
   await expect(orphans).toBeVisible();
 });
 
-// 띠의 줄은 누르면 그 work의 터미널로 간다. 주인 잃은 셸의 work은 없다 — **화면을 옮기기 전에** 갈려 같은 토스트를
-// 다시 띄운다(프로세스 스펙 S14). 판 04부터는 `Processes`로 간다.
-test("띠에서 주인 잃은 셸을 누르면 토스트가 다시 서고 화면은 그대로다", async ({ page }) => {
+// 띠의 줄은 누르면 그 work의 터미널로 간다. 주인 잃은 셸의 work은 없다 — **그 work 화면으로 가기 전에** 갈려 `Processes`로
+// 간다(프로세스 스펙 S14 · 티켓 32): 그 화면의 주인 잃은 셸 묶음이 그 셸을 든다. 판 01~03에서는 같은 토스트를 다시 띄우고
+// 화면은 그대로였다.
+test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트는 다시 서지 않는다", async ({ page }) => {
   await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -293,9 +295,11 @@ test("띠에서 주인 잃은 셸을 누르면 토스트가 다시 서고 화면
 
   // 목록에서 빠진 work의 줄은 제목 대신 slug를 적는다(`titleResolver`).
   await 띠(page).getByRole("button", { name: `${plainWork.slug} — 나를 기다림`, exact: true }).click();
-  await expect(toast).toBeVisible();
+  await expect(page).toHaveURL("/processes");
+  await expect(page.getByRole("heading", { name: "Processes", exact: true })).toBeVisible();
+  // 토스트를 다시 세우지 않는다 — 갈 화면이 생겼다. 앵커: 화면이 옮겨 갔다(위 두 줄).
   await settle(page);
-  await expect(page).toHaveURL("/terminal");
+  expect(await toastsNow(page)).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

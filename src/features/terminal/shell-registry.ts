@@ -559,6 +559,15 @@ export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
 }
 
 /**
+ * 그 칸이 목록에 있고 **살아 있는가**. 없는 칸 · 끝난 칸 · 못 뜬 칸은 아니다. [조용한 셸 모두 닫기]가 창에 답한 뒤 다시 본다
+ * (티켓 32) — 묻는 사이 스스로 끝난 셸의 칸은 죽은 이유를 읽으라고 남은 칸이라 거두지 않는다.
+ */
+export function isLiveShellOf(state: ShellsState, id: number): boolean {
+  const shell = state.shells.find((one) => one.id === id);
+  return shell !== undefined && isAlive(shell);
+}
+
+/**
  * 닫힐 프로세스가 **있는** 칸인가. 끝난 칸·못 뜬 칸은 목록에 남아도(결정 22) 아니다 — 세는 자리
  * (`runningShellsOf` · `countQuitShells` · `countSpawned`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
  */
@@ -1327,7 +1336,17 @@ export function shellRowName(shell: Shell): string {
  * 것은 죽은 이유를 읽기 위해서다(결정 22).
  */
 export function needsCloseConfirm(shell: Shell | undefined, check: CloseCheck | null): boolean {
-  if (!shell || !isAlive(shell) || !check) return false;
+  if (!shell || !isAlive(shell)) return false;
+  return asksBeforeClose(check);
+}
+
+/**
+ * 답 하나만 보고 묻는가 — 명령이 돌거나 함께 끝날 것이 있으면 묻고, 없거나 못 얻었으면(`null`) 안 묻는다. 위
+ * `needsCloseConfirm`의 절반이고, **칸이 없는 셸**이 이것을 딛는다: `Processes`의 화면 밖 셸(티켓 32 · 프로세스 스펙 S42)은
+ * 풀에만 있고 스토어의 칸이 없다. 두 닫기가 같은 규칙으로 묻게 하려고 판정을 하나로 둔다.
+ */
+export function asksBeforeClose(check: CloseCheck | null): boolean {
+  if (!check) return false;
   return check.command || check.descendants > 0;
 }
 
@@ -1392,6 +1411,31 @@ export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean 
 }
 
 /**
+ * [조용한 셸 모두 닫기]가 닫는 셸(티켓 32 · 프로세스 스펙 S44) — 받은 셸 중 **살아 있고**, 배치 물음이 「명령도 사람이 띄운
+ * 자손도 없다」고 답한 셸. 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 차례는 받은 그대로다.
+ *
+ * **모르면 조용하지 않다** — `isQuietShell`과 같다: 물음 전체가 실패했거나(`null`) 그 셸의 답이 없으면 안 고른다. 사람이
+ * 누른 닫기지만 셸 여럿을 수로 한 번 묻는 자리라, 모르는 셸을 넣으면 창의 N과 닫히는 것이 갈리고 도는 것을 모르고 닫는다.
+ *
+ * **끝난 칸 · 못 뜬 칸은 고르지 않는다** — `isQuietShell`과 갈리는 자리다. 그쪽은 주인이 사라진 셸을 거두는 판정이라 그 칸도
+ * 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(결정 22)을 치우는 것이 아니다.
+ */
+export function quietShellsOf(shells: ReadonlyArray<Shell>, checks: CloseChecks | null): Shell[] {
+  return shells.filter((shell) => isAlive(shell) && isQuietShell(shell, checks));
+}
+
+/** [조용한 셸 모두 닫기]가 **한 번** 묻는 말(티켓 32 · 프로세스 스펙 S44) — 셸 여럿을 한 번에 닫는 자리는 수를 말한다. */
+export function quietCloseNotice(count: number): string {
+  return `조용한 셸 ${count}개를 닫아요.`;
+}
+
+/**
+ * 닫을 조용한 셸이 없을 때 [조용한 셸 모두 닫기]가 세우는 짧은 토스트. 「0개를 닫아요」 창은 물을 것이 없는 물음이고, 아무 일도
+ * 안 하면 버튼이 눌렸는지가 안 보인다(티켓 32가 구현에 맡긴 N=0의 모양).
+ */
+export const NO_QUIET_NOTICE = "닫을 조용한 셸이 없어요";
+
+/**
  * 프런트가 셸을 닫는 자리 — 까닭을 고르는 열쇠다(`CLOSE_REASONS`).
  *
  * - `person` — `×`, ⌘W, 셸 메뉴의 닫기(`requestCloseShell`).
@@ -1400,7 +1444,9 @@ export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean 
  * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). 결정 26은 이 길의 셸을
  *   「알려진 대가」로 남겨 두었는데, 프로세스 결정 4가 이렇게 고쳤다: 목록 재조회로 알아채 조용한 셸은 닫고 나머지는
  *   주인 잃은 셸로 남긴다.
- * - `orphans` — 주인 잃은 셸의 [모두 닫기](`closeOrphans` · 티켓 12).
+ * - `orphans` — 주인 잃은 셸의 [모두 닫기](`closeOrphans` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
+ * - `quiet` — `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32).
+ * - `offscreen` — `Processes`의 화면 밖 셸 [닫기](`closeOffscreenShell` · 티켓 32). 스토어에 칸이 없는 셸이다.
  * - `openFailed` — xterm 열기 실패(`failOpen`).
  * - `spawnRace` — spawn 왕복 중에 닫힌 칸의, 늦게 온 셸.
  */
@@ -1410,6 +1456,8 @@ export type ClosePath =
   | "archive"
   | "mcpArchive"
   | "orphans"
+  | "quiet"
+  | "offscreen"
   | "openFailed"
   | "spawnRace";
 
@@ -1423,6 +1471,9 @@ export type ClosePath =
  * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이라 `●`가 설 수 있는 까닭이다.
  * 주인 잃은 셸의 [모두 닫기](`orphans`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
  * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
+ *
+ * `Processes`의 닫기 둘(`quiet` · `offscreen` · 티켓 32)도 사람이 누른 닫기라 「셸 닫기」다(프로세스 스펙 S44 · S42). 「화면 밖
+ * 셸」은 까닭이 아니다 — 기록은 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
  */
 export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   person: "shellClose",
@@ -1430,6 +1481,8 @@ export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   archive: "archive",
   mcpArchive: "mcpArchive",
   orphans: "shellClose",
+  quiet: "shellClose",
+  offscreen: "shellClose",
   openFailed: "shellClose",
   spawnRace: "shellClose",
 };

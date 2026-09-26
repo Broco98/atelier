@@ -2,9 +2,10 @@ import { useCallback } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { modeOfOwner, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { focusShell, remindOrphan, selectShell } from "@/features/terminal/terminal-store";
+import { focusShell, isOrphanedShell, selectShell } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { modeOf, routesOf, slugOf } from "@/mode";
+import { viewProcesses } from "./processes-view";
 
 /**
  * **셸로 가는 길 하나**(결정 13의 넷째 · 다섯째 · 프로세스 결정 16). 「확인할 것」 띠의 줄을 누를 때와 ⌘J(방금 부른 셸로 —
@@ -32,13 +33,14 @@ import { modeOf, routesOf, slugOf } from "@/mode";
  *
  * **키보드 포커스도 데려간다**(티켓 16 · 프로세스 스펙 S21). 지금 보고 있는 셸이면 그 자리에서, 다른 탭 · 다른 work의 셸이면
  * 화면이 옮겨져 그 셸이 붙는 순간 온다(`focusShell`). 셸을 켜기 **전에** 부른다 — 요청이 먼저 적혀 있으면 켜기가 언제 붙기를
- * 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`remindOrphan`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
+ * 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`isOrphanedShell`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
  * 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다. 이웃 work(`sidebar-active-band`)이
  * 띠 처리기를 옮기면 이 함수를 부르는 줄만 옮기면 된다 — 한때 이 몸통이 `Sidebar.tsx`의 띠 처리기(`useOpenBand`) 안에 있었다.
  *
- * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12). 그 work은 목록에 없어 가면 없는 work으로 간다 —
- * 대신 그 세계의 주인 잃은 셸 토스트를 다시 세운다(`remindOrphan`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다. 판 04부터는
- * `Processes`로 간다(티켓 32).
+ * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12 · 32). 그 work은 목록에 없어 가면 없는 work으로 간다 —
+ * 대신 `Processes`로 간다: 그 화면의 주인 잃은 셸 묶음이 그 셸을 들고 [모두 닫기]를 든다. 가는 길은 토스트의 [보기]와 같은
+ * 문이다(`viewProcesses`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다. 판 01~03에서는 그 세계의 주인 잃은 셸 토스트를 다시
+ * 세우고 화면은 그대로였다.
  */
 export default function useGoToShell(): (shell: { id: number; owner: ShellOwner }) => void {
   const navigate = useNavigate();
@@ -46,7 +48,10 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
 
   return useCallback(
     ({ id, owner }) => {
-      if (remindOrphan(id)) return;
+      if (isOrphanedShell(id)) {
+        viewProcesses();
+        return;
+      }
       focusShell(id);
       selectShell(id);
       const mode = modeOfOwner(owner);

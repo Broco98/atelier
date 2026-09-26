@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
+import { onViewProcesses } from "./processes-view";
 
 // 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈다는 알림(프로세스 관리 티켓 13 · 프로세스 스펙 S49 · P4). 어느 화면에서든
 // 서는 것과 곧 내려가는 것은 L3가(`e2e/processes-ended.spec.ts`), 여기는 **이벤트 → 알릴 말**과 **두 언어를 잇는 이름**을 본다.
@@ -14,11 +15,17 @@ describe("셸 스스로 끝남이 알리는 말", () => {
     expect(endedNotice(ended(1))?.text).toBe("셸이 끝나면서 그 셸에서 띄운 프로세스 1개를 끝냈어요");
   });
 
-  // 판 01~03에는 [보기]가 없다 — 버튼 없는 짧은 토스트다. [보기]는 판 04(티켓 32)가 붙인다.
-  it("버튼이 없는 짧은 토스트다", () => {
+  // 판 01~03에는 [보기]가 없는 짧은 토스트였다. 판 04(티켓 32 · 프로세스 스펙 S15)가 [보기]를 붙였다 — 무엇을 끝냈는지 정리
+  // 기록으로 가는 길이다. 버튼이 든 토스트라 누를 때까지 남는다(`toastOptionsOf`).
+  it("[보기]가 붙은 동작 토스트이고, 누르면 `Processes`로 간다", () => {
     const notice = endedNotice(ended(2));
-    expect(notice).not.toBeNull();
-    expect(notice && "action" in notice).toBe(false);
+    if (!notice || !("actions" in notice)) throw new Error("버튼이 없다");
+    expect(notice.actions.map((action) => action.label)).toEqual(["보기"]);
+    let viewed = 0;
+    const stop = onViewProcesses(() => (viewed += 1));
+    notice.actions[0].run();
+    stop();
+    expect(viewed).toBe(1);
   });
 
   // Rust는 끝낸 것이 없으면 쏘지 않는다(`cleanup_log::ended_count`). 그래도 0이 오면 말하지 않는다 — 「0개를 끝냈어요」는

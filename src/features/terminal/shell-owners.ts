@@ -77,7 +77,8 @@ export function worldsToReread(state: ShellsState, current: Mode): Mode[] {
 
 /**
  * 그 칸이 주인 잃은 셸이면 **그 세계**, 아니면 `null`. 띠가 이것으로 화면 이동 전에 갈린다(프로세스 스펙 S14) — 없는
- * work으로 가지 않고 그 세계의 토스트를 다시 띄운다. 끝난 칸도 표시가 남아 있으면 주인 잃은 셸이다.
+ * work으로 가지 않고 `Processes`로 간다(티켓 32 — 판 01~03에서는 그 세계의 토스트를 다시 띄웠다). 끝난 칸도 표시가 남아
+ * 있으면 주인 잃은 셸이다.
  */
 export function orphanedWorldOf(state: ShellsState, id: number): Mode | null {
   const shell = state.shells.find((one) => one.id === id);

@@ -41,20 +41,47 @@ export type AppNotice =
        */
       id: string;
       text: string;
-      /** 토스트의 버튼. 누른 뒤 토스트를 닫을지는 부르는 쪽이 정한다(`appToasts.close(id)`). */
-      action: { label: string; run: () => void };
+      /**
+       * 토스트의 버튼들 — 받은 차례로 선다(앞이 주된 동작이다). 누른 뒤 토스트를 닫을지는 부르는 쪽이 정한다
+       * (`appToasts.close(id)`).
+       */
+      actions: readonly [ToastAction, ...ToastAction[]];
     };
+
+/** 토스트의 버튼 하나. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
+/**
+ * 동작 토스트가 버튼들을 싣는 데이터. Base UI의 동작 칸(`actionProps`)은 하나뿐이라 — 주인 잃은 셸 토스트는 [모두 닫기]와
+ * [보기] 둘을 든다(티켓 32 · 프로세스 스펙 S15) — 버튼들은 토스트의 `data`에 싣고 목록이 그린다(`AppToasts`).
+ */
+interface ActionsData {
+  actions: ReadonlyArray<ToastAction>;
+}
 
 /**
  * 알릴 것을 매니저가 받는 모양으로. **수명은 버튼이 정한다**: 버튼 없는 토스트는 짧게 서고, 버튼이 든
  * 토스트는 저절로 내려가지 않는다(`timeout: 0`) — 1.6초 뒤에 사라지면 [모두 닫기]를 누를 틈이 없다.
  */
 export function toastOptionsOf(notice: AppNotice): Parameters<typeof appToasts.add>[0] {
-  if ("action" in notice) {
-    const { label, run } = notice.action;
-    return { id: notice.id, title: notice.text, timeout: 0, actionProps: { children: label, onClick: run } };
+  if ("actions" in notice) {
+    const data: ActionsData = { actions: notice.actions };
+    return { id: notice.id, title: notice.text, timeout: 0, data };
   }
   return { id: notice.id, title: notice.text, timeout: SHORT_TOAST_MS };
+}
+
+/**
+ * 토스트의 데이터에서 버튼들을 읽는다 — 이 모양(`toastOptionsOf`가 실은 것)이 아니면 없다. 같은 매니저에 다른 데이터가 실린
+ * 날에도 목록이 엉뚱한 것을 버튼으로 그리지 않는다.
+ */
+export function toastActionsOf(data: unknown): ReadonlyArray<ToastAction> {
+  if (typeof data !== "object" || data === null || !("actions" in data)) return [];
+  const { actions } = data as { actions: unknown };
+  return Array.isArray(actions) ? (actions as ToastAction[]) : [];
 }
 
 /** 토스트 하나를 세운다. 앱 셸이 서기 전에 부르면 버려진다(`appToasts`의 머리말). */

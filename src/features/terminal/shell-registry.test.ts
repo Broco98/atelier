@@ -10,6 +10,7 @@ import {
   activeShellOf,
   shellsEmptied,
   activeIdOf,
+  asksBeforeClose,
   atCap,
   CLOSE_NOTICE,
   CLOSE_REASONS,
@@ -24,12 +25,14 @@ import {
   markSeen,
   firstInputOfId,
   isInPlaceGap,
+  isLiveShellOf,
   isQuietShell,
   liveOrphansOf,
   markOrphaned,
   MAX_SHELLS,
   moveShell,
   needsCloseConfirm,
+  NO_QUIET_NOTICE,
   NO_SHELLS,
   openShell,
   orphansCloseNotice,
@@ -38,6 +41,8 @@ import {
   placeOrigin,
   closesShellFromWindow,
   opensShellFromWindow,
+  quietCloseNotice,
+  quietShellsOf,
   quitNotice,
   removeShell,
   runningAgentsOf,
@@ -1401,13 +1406,19 @@ describe("닫기의 까닭", () => {
     expect(Object.keys(CLOSE_REASONS).sort()).toEqual([
       "archive",
       "mcpArchive",
+      "offscreen",
       "openFailed",
       "orphans",
       "person",
+      "quiet",
       "reclaim",
       "spawnRace",
     ]);
     expect(CLOSE_REASONS.orphans).toBe("shellClose");
+    // `Processes`의 닫기 둘(티켓 32) — [조용한 셸 모두 닫기]와 화면 밖 셸의 [닫기]도 사람이 누른 닫기라 「셸 닫기」다(S44 · S42).
+    // 「화면 밖 셸」은 까닭이 아니다 — 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
+    expect(CLOSE_REASONS.quiet).toBe("shellClose");
+    expect(CLOSE_REASONS.offscreen).toBe("shellClose");
   });
 });
 
@@ -1812,7 +1823,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // ⌘W에 대해 거짓이다 — 그 핸들러가 `closeShell`과 **같은 모듈**에 살아 비공개가 아무것도
   // 막지 못한다(실측: `requestCloseShell`을 `closeShell`로 되돌려도 tsc가 exit 0이었다).
   // 타입으로 못 막으니 **자리를 센다**: 확인을 건너뛰는 이름을 부르는 곳은 넷뿐이다.
-  it("확인을 건너뛰는 길이 여섯뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수·조용한 셸·[모두 닫기]", () => {
+  it("확인을 건너뛰는 길이 일곱뿐이다 — 정의·확인을 마친 뒤·아카이빙 회수·안 쓴 자동 셸 회수·조용한 셸·[모두 닫기]·[조용한 셸 모두 닫기]", () => {
     // 정의. 밖으로 안 나가는 것은 `×`(모듈 밖)에 대해서는 여전히 유효한 절반이다.
     expect(store).toContain("function closeShell(id: number, path: ClosePath): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
@@ -1831,14 +1842,20 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // MCP로 아카이브된 work의 **조용한 셸**(티켓 12 · 프로세스 결정 4). 물을 것이 없다 — 명령도 사람이 띄운 자손도 없다.
     // 무엇이 조용한지는 `isQuietShell` 하나가 정한다: 그 판정을 안 딛고 닫으면 여기가 빨개진다.
     expect(store).toContain('if (isQuietShell(shell, checks)) closeShell(id, "mcpArchive");');
-    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`orphansCloseNotice`) — 그 뒤라 여기서는 안 묻는다.
-    expect(store).toContain('for (const shell of orphansOf(terminalStore.state, mode)) closeShell(shell.id, "orphans");');
-    // 일곱째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
+    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`orphansCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트는
+    // 그 세계 하나를, `Processes`의 묶음은 두 세계를 넘긴다(티켓 32) — 같은 함수다.
+    expect(store).toContain(
+      'for (const shell of modes.flatMap((mode) => orphansOf(terminalStore.state, mode))) closeShell(shell.id, "orphans");',
+    );
+    // [조용한 셸 모두 닫기](티켓 32 · S44). 셸마다 묻지 않고 **한 번** 물었다(`quietCloseNotice`). 무엇이 조용한지는 `quietShellsOf`
+    // 하나가 정한다 — 그 판정을 안 딛고 스토어의 셸을 손으로 고르면 여기가 빨개진다.
+    expect(store).toContain('for (const shell of quiet) if (isLiveShell(shell.id)) closeShell(shell.id, "quiet");');
+    // 여덟째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
     // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
     expect(
       countOf(store, "closeShell("),
       "`closeShell`을 직접 부르는 자리가 늘었다 — ⌘W·`×`는 `requestCloseShell`만 부른다",
-    ).toBe(6);
+    ).toBe(7);
   });
 
   // 티켓 11. **닫기의 까닭은 표 한 곳에서 고른다**(`CLOSE_REASONS`). 닫기 IPC를 부르는 자리가 까닭 글자를 손으로
@@ -1846,10 +1863,12 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
   // 표를 읽는다. 닫는 자리는 부르는 쪽마다 제 이름을 넘긴다 — 위 검사의 네 줄(사람 · 아카이브 · 회수)과 여기의 둘.
   it("닫기 IPC는 한 줄에서 나가고 까닭을 표에서 고른다", () => {
     expect(countOf(store, "terminalApi.kill("), "닫기 IPC를 부르는 줄이 늘었다 — `killPty`를 거친다").toBe(1);
-    expect(store).toContain("terminalApi.kill(ptyId, CLOSE_REASONS[path], instance.origin.owner)");
+    expect(store).toContain("terminalApi.kill(ptyId, CLOSE_REASONS[path], owner)");
     expect(store).toContain('closeShell(id, "person");');
-    expect(store).toContain('killPty(instance, instance.ptyId, "openFailed");');
-    expect(store).toContain('killPty(instance, spawned.id, "spawnRace");');
+    expect(store).toContain('killPty(instance.ptyId, "openFailed", instance.origin.owner);');
+    expect(store).toContain('killPty(spawned.id, "spawnRace", instance.origin.owner);');
+    // 화면 밖 셸(티켓 32 · S42) — 스토어에 칸이 없어 주인도 없다. 스냅샷의 pty id를 그대로 닫는다.
+    expect(store).toContain('killPty(ptyId, "offscreen", null);');
   });
 
   // 결정 10. **셸이 뜨는 순간 세계가 백엔드로 나간다** — `pty_spawn`의 `mode`가 cwd의
@@ -2507,6 +2526,100 @@ describe("[모두 닫기]의 확인 창", () => {
 
   it("못 얻은 수는 안 붙인다", () => {
     expect(orphansCloseNotice(1, null)).toBe("주인 잃은 셸 1개를 닫아요.");
+  });
+});
+
+// 티켓 32 · 프로세스 스펙 S44. `Processes` 머리의 [조용한 셸 모두 닫기]가 닫는 것 — **두 세계의 살아 있는 셸** 중 배치 물음
+// 한 번이 「명령도 사람이 띄운 자손도 없다」고 답한 셸이다. 조용함의 뜻은 MCP 아카이브(티켓 12)와 같다: **모르면 조용하지 않다**
+// (fail-closed). 사람이 누른 닫기지만 셸 여럿을 수로 한 번 묻고 닫는 자리라, 답을 못 얻은 셸을 닫으면 창의 N과 닫히는 것이 갈리고
+// 도는 것을 모르고 닫는다.
+describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
+  const 방: ShellOrigin = { mode: "maison", cwd: null, owner: ownerOf("maison", "ga"), project: null };
+
+  // 셸 다섯 — Atelier 최상위 1 · 2 · 3, work 「ga」의 4, Maison Room 「ga」의 5.
+  const five = () => {
+    let state = opened(3).state;
+    for (const origin of [originFor("ga"), 방]) {
+      const next = openShell(state, origin);
+      if (!next) throw new Error("상한에 닿았다");
+      state = next.state;
+    }
+    return { state, ids: state.shells.map((shell) => shell.id) };
+  };
+
+  it("두 세계에서 명령도 자손도 없다고 답한 셸만 고른다 — 명령 · 자손이 있거나 답이 없는 셸은 안 고른다", () => {
+    const { state, ids } = five();
+    const [a, b, c, d, e] = ids;
+    const checks = new Map([
+      [a, check(false, 0)],
+      [b, check(true, 0)],
+      [c, check(false, 2)],
+      // d는 답이 없다 — pty가 아직 없거나 백엔드가 못 읽었다.
+      [e, check(false, 0)],
+    ]);
+    expect(quietShellsOf(state.shells, checks).map((shell) => shell.id)).toEqual([a, e]);
+    expect(quietShellsOf(state.shells, checks).map((shell) => shell.id)).not.toContain(d);
+  });
+
+  it("배치 물음 전체가 실패하면 아무것도 안 고른다", () => {
+    const { state, ids } = five();
+    expect(ids.length).toBe(5);
+    expect(quietShellsOf(state.shells, null)).toEqual([]);
+  });
+
+  // 끝난 칸 · 못 뜬 칸은 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). MCP 아카이브의 판정(`isQuietShell`)은 그 칸을
+  // 「조용하다」로 읽어 주인과 함께 거두지만, 여기서 거두면 사람이 이유를 읽기 전에 사라진다 — 닫힐 프로세스도 없다.
+  it("끝난 칸과 못 뜬 칸은 고르지 않는다", () => {
+    const two = opened(3).state;
+    const [a, b, c] = two.shells.map((shell) => shell.id);
+    const state = markFailed(markExited(two, a, EXIT_42), b, "폴더가 없습니다");
+    const checks = new Map([
+      [a, check(false, 0)],
+      [b, check(false, 0)],
+      [c, check(false, 0)],
+    ]);
+    expect(quietShellsOf(state.shells, checks).map((shell) => shell.id)).toEqual([c]);
+  });
+
+  it("확인 창은 조용한 셸 수를 말한다", () => {
+    expect(quietCloseNotice(3)).toBe("조용한 셸 3개를 닫아요.");
+    expect(quietCloseNotice(1)).toBe("조용한 셸 1개를 닫아요.");
+  });
+
+  // 닫을 것이 없으면 창을 안 띄우고 짧은 토스트로 끝낸다 — 「0개를 닫아요」는 물을 것이 없는 물음이다.
+  it("닫을 조용한 셸이 없으면 그렇다고 말한다", () => {
+    expect(NO_QUIET_NOTICE).toBe("닫을 조용한 셸이 없어요");
+  });
+
+  // 창에 답하는 사이 셸이 스스로 끝나면 그 칸은 죽은 이유를 읽으라고 남은 칸이다(결정 22) — 창에 답한 뒤 다시 보고 거르지 않는다.
+  it("창에 답한 뒤 다시 볼 때 끝난 칸 · 사라진 칸은 살아 있지 않다", () => {
+    const three = opened(3).state;
+    const [a, b, c] = three.shells.map((shell) => shell.id);
+    const state = removeShell(markExited(three, a, EXIT_42), b);
+    expect(isLiveShellOf(state, a)).toBe(false);
+    expect(isLiveShellOf(state, b)).toBe(false);
+    expect(isLiveShellOf(state, c)).toBe(true);
+  });
+});
+
+// 티켓 32 · 프로세스 스펙 S42. **화면 밖 셸**(풀에는 있는데 스토어가 모르는 셸)의 [닫기]도 셸 탭의 ×와 같은 규칙으로 묻는다 —
+// 그 셸에는 스토어의 칸이 없어 칸을 받는 `needsCloseConfirm`을 못 딛는다. 답 하나만 보고 가르는 절반이 이것이다.
+describe("칸 없이 답만으로 묻는가", () => {
+  const check = (command: boolean, descendants: number) => ({ command, descendants });
+
+  it("명령이 돌거나 함께 끝날 것이 있으면 묻고, 없거나 못 얻었으면 안 묻는다", () => {
+    expect(asksBeforeClose(check(true, 0))).toBe(true);
+    expect(asksBeforeClose(check(false, 2))).toBe(true);
+    expect(asksBeforeClose(check(false, 0))).toBe(false);
+    expect(asksBeforeClose(null)).toBe(false);
+  });
+
+  it("살아 있는 칸이면 칸을 받는 판정과 같은 답이다", () => {
+    const running = opened(1).state.shells[0];
+    for (const one of [check(true, 0), check(false, 2), check(false, 0), null]) {
+      expect(needsCloseConfirm(running, one)).toBe(asksBeforeClose(one));
+    }
   });
 });
 

@@ -68,26 +68,17 @@ export interface DescendantNode {
  * **양쪽에 다 있는 셸만 선다.** 스토어가 모르는 풀의 셸은 「화면 밖 셸」이라 따로 묶인다(32). 풀에 없는 스토어의 칸은 프로세스가
  * 아니다 — spawn 답 전이라 키가 없거나, 이유가 있는 끝으로 칸만 남았거나, 스냅샷 뒤에 막 떴다(다음 스냅샷에 선다).
  *
- * 목록에 없는 work은 숨기지 않는다 — 목록을 아직 못 읽었거나 MCP로 아카이브돼 주인을 잃은 셸이라(주인 잃은 셸 묶음은 32의 몫이다)
- * 숨기면 도는 것이 화면에서 사라진다.
+ * 목록에 없는 work은 숨기지 않는다 — 목록을 아직 못 읽었을 수 있고, 숨기면 도는 것이 화면에서 사라진다. 다만 **주인 잃은 셸**
+ * (스토어의 표시 — 티켓 12)은 여기 안 서고 제 묶음에 선다(`orphanGroups` · 티켓 32): 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이고
+ * 수가 두 번 읽힌다.
  */
 export function shellTree({ current, shells, lists, snapshot }: TreeInput): WorldNode[] {
-  const pooled = new Map(snapshot.pool.map((shell) => [shell.shellKey, shell]));
-  const helpers = new Set(snapshot.verdict.helpers.map(identityKey));
-
   const worlds: WorldNode[] = [];
-  for (const mode of [current, ...ALL_MODES.filter((one) => one !== current)]) {
-    // owner마다 셸을 모은다 — `Map`이 넣은 차례를 지키므로 칸 순서(탭의 차례)가 그대로 남는다.
-    const byOwner = new Map<ShellOwner, ShellNode[]>();
-    for (const shell of shells) {
-      if (modeOfOwner(shell.owner) !== mode || shell.shellKey === null) continue;
-      const pool = pooled.get(shell.shellKey);
-      if (pool === undefined) continue;
-      const node = shellNode(shell, pool, snapshot.verdict.descendants[shell.shellKey] ?? [], helpers);
-      const group = byOwner.get(shell.owner);
-      if (group) group.push(node);
-      else byOwner.set(shell.owner, [node]);
-    }
+  for (const mode of worldOrder(current)) {
+    const byOwner = nodesByOwner(
+      shells.filter((shell) => !shell.orphaned && modeOfOwner(shell.owner) === mode),
+      snapshot,
+    );
     if (byOwner.size === 0) continue;
 
     const listed = lists[mode] ?? [];
@@ -104,6 +95,109 @@ export function shellTree({ current, shells, lists, snapshot }: TreeInput): Worl
     worlds.push({ mode, current: mode === current, groups });
   }
   return worlds;
+}
+
+/** 세계의 차례 — 지금 세계가 먼저다(프로세스 결정 9). */
+function worldOrder(current: Mode): Mode[] {
+  return [current, ...ALL_MODES.filter((one) => one !== current)];
+}
+
+/**
+ * 받은 셸을 owner마다 노드로 모은다 — 풀에 있는 셸만이다(셸 키로 잇는다). `Map`이 넣은 차례를 지키므로 칸 순서(탭의 차례)가 그대로
+ * 남는다.
+ */
+function nodesByOwner(shells: ReadonlyArray<Shell>, snapshot: ProcessSnapshot): Map<ShellOwner, ShellNode[]> {
+  const pooled = new Map(snapshot.pool.map((shell) => [shell.shellKey, shell]));
+  const helpers = new Set(snapshot.verdict.helpers.map(identityKey));
+  const byOwner = new Map<ShellOwner, ShellNode[]>();
+  for (const shell of shells) {
+    if (shell.shellKey === null) continue;
+    const pool = pooled.get(shell.shellKey);
+    if (pool === undefined) continue;
+    const node = { shell, pool, ...splitRows(snapshot.verdict.descendants[shell.shellKey] ?? [], helpers) };
+    const group = byOwner.get(shell.owner);
+    if (group) group.push(node);
+    else byOwner.set(shell.owner, [node]);
+  }
+  return byOwner;
+}
+
+/**
+ * **주인 잃은 셸 묶음**(프로세스 결정 4 · 티켓 32) — 12가 스토어에 「주인 잃음」으로 표시한 셸을 work마다 모은다. 두 세계가 함께 서고
+ * (화면이 앱 전체다 — 프로세스 결정 9) 지금 세계의 것이 먼저, 세계 안은 스토어의 차례다. 이름은 slug다 — 그 work은 목록에 없다.
+ *
+ * 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다. [모두 닫기]는 그 칸도 함께 거둔다(`closeOrphans`).
+ */
+export function orphanGroups({ current, shells, snapshot }: Pick<TreeInput, "current" | "shells" | "snapshot">): GroupNode[] {
+  return worldOrder(current).flatMap((mode) =>
+    [
+      ...nodesByOwner(
+        shells.filter((shell) => shell.orphaned && modeOfOwner(shell.owner) === mode),
+        snapshot,
+      ),
+    ].map(([owner, nodes]) => ({ owner, name: groupName(mode, owner, []), shells: nodes })),
+  );
+}
+
+// ── 화면 밖 셸(티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 화면 스토어가 모르는 셸.
+
+/** 화면 밖 셸 하나 — 스토어의 칸이 없어 풀의 셸과 그 셸 키의 자손만 든다. */
+export interface OffscreenNode {
+  pool: PoolShell;
+  helpers: ReadonlyArray<ProcessRow>;
+  descendants: ReadonlyArray<DescendantNode>;
+}
+
+export interface OffscreenInput {
+  /** 스토어의 셸 — 두 세계 전부. 이 셸들의 셸 키가 「화면이 아는 셸」이다. */
+  shells: ReadonlyArray<Shell>;
+  snapshot: ProcessSnapshot;
+  /** 바로 앞 스냅샷의 풀. 아직 없으면(화면을 막 열었다) 화면 밖 셸도 없다. */
+  previous: ReadonlyArray<PoolShell> | undefined;
+}
+
+/**
+ * 화면 밖 셸을 가른다 — 풀의 셸 중 **스토어의 어느 칸도 그 셸 키를 안 들고**, **바로 앞 스냅샷에도 같은 pty id · 셸 키로 있던** 셸.
+ * 차례는 풀의 차례다.
+ *
+ * **두 스냅샷에 연달아 선 셸만 센다.** Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의 `spawn`), 프런트는 답이 온 뒤에야 칸에
+ * 셸 키를 앉힌다 — 그 사이 찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다. 끝난 칸 · 주인 잃은 셸도 스토어가
+ * 아는 셸이다(키가 칸에 있다).
+ *
+ * **pty id와 셸 키가 함께 같아야 같은 셸이다** — 키만 보면 닫혔다 다시 뜬 셸을 두 박자에 선 것으로 읽는다.
+ */
+export function offscreenShells({ shells, snapshot, previous }: OffscreenInput): OffscreenNode[] {
+  if (previous === undefined) return [];
+  const known = new Set(shells.flatMap((shell) => (shell.shellKey === null ? [] : [shell.shellKey])));
+  const before = new Set(previous.map(poolKey));
+  const helpers = new Set(snapshot.verdict.helpers.map(identityKey));
+  return snapshot.pool
+    .filter((pool) => !known.has(pool.shellKey) && before.has(poolKey(pool)))
+    .map((pool) => ({ pool, ...splitRows(snapshot.verdict.descendants[pool.shellKey] ?? [], helpers) }));
+}
+
+function poolKey(pool: PoolShell): string {
+  return `${pool.ptyId}/${pool.shellKey}`;
+}
+
+/**
+ * 화면 밖 셸의 상태 칸 — 사람이 띄운 자손이 있으면 그 수, 없으면 「조용함」과 마지막 출력부터의 경과다. 셸 상태와 도는 명령은
+ * 스토어의 칸이 드는 값이라 여기 없다(`shellStateOf`의 앞 두 갈래).
+ */
+export function offscreenStateOf({ pool, descendants }: OffscreenNode): ShellState {
+  if (descendants.length > 0) return { kind: "spawned", count: descendants.length };
+  return { kind: "quiet", since: pool.lastOutputMs };
+}
+
+/**
+ * 화면 밖 셸의 이름 — 「셸」이다. 셸 이름(타이틀 · 셸 이름)은 스토어의 칸이 드는 것이라 모른다. 탭 줄이 이름 셋 다 없을 때 쓰는
+ * 마지막 자리와 같은 글자다.
+ */
+export const OFFSCREEN_NAME = "셸";
+
+/** 화면 밖 셸 행 — 「셸, 상태, 메모리」. 메모리는 그 셸의 트리 합이다(`shellTotals`). */
+export function offscreenRowLabel(node: OffscreenNode, now: number): string {
+  return withMemory([OFFSCREEN_NAME, stateText(offscreenStateOf(node), now)], shellTotals(node).memory);
 }
 
 function groupName(mode: Mode, owner: ShellOwner, listed: ReadonlyArray<ListedItem>): string {
@@ -131,14 +225,18 @@ function byStart(a: ProcessRow, b: ProcessRow): number {
 }
 
 /**
- * 셸 하나의 노드. 판정은 셸 도우미를 자손에도 그대로 싣는다(함께 끝낼 대상이다) — 곁 집합(`helpers`)의 신원으로 갈라 따로 둔다.
- * 사람이 띄운 자손은 트리로 편다(`processTree`). 셸 자신의 행은 스냅샷에 없으므로(판정이 셸 자신을 안 싣는다) 셸의 직속 자식과
- * 트리가 끊겨 표식으로만 잡힌 것(claude Bash 도구가 띄운 dev 서버 — 부모 1)이 함께 깊이 1에 선다.
+ * 셸 하나의 자손을 가른다. 판정은 셸 도우미를 자손에도 그대로 싣는다(함께 끝낼 대상이다) — 곁 집합(`helperIds`)의 신원으로 갈라
+ * 따로 둔다. 사람이 띄운 자손은 트리로 편다(`processTree`). 셸 자신의 행은 스냅샷에 없으므로(판정이 셸 자신을 안 싣는다) 셸의 직속
+ * 자식과 트리가 끊겨 표식으로만 잡힌 것(claude Bash 도구가 띄운 dev 서버 — 부모 1)이 함께 깊이 1에 선다. 스토어의 셸과 화면 밖
+ * 셸이 같은 규칙으로 선다.
  */
-function shellNode(shell: Shell, pool: PoolShell, rows: ReadonlyArray<ProcessRow>, helperIds: ReadonlySet<string>): ShellNode {
+function splitRows(
+  rows: ReadonlyArray<ProcessRow>,
+  helperIds: ReadonlySet<string>,
+): Pick<ShellNode, "helpers" | "descendants"> {
   const helpers = [...rows].sort(byStart).filter((row) => helperIds.has(identityKey(row.id)));
   const descendants = processTree(rows.filter((row) => !helperIds.has(identityKey(row.id))));
-  return { shell, pool, helpers, descendants };
+  return { helpers, descendants };
 }
 
 /**
@@ -225,7 +323,7 @@ export function stateText(state: ShellState, now: number): string {
  * 셸 행의 숫자 — **그 셸의 트리 전부**다: 셸 프로세스 자신(판정은 셸을 행으로 안 싣는다 — 풀의 셸이 싣는다), 셸 도우미, 사람이 띄운
  * 자손. 도우미도 셸을 닫으면 함께 끝나는 그 셸의 몫이라 숫자에 든다 — 빠지는 것은 「조용함」과 확인 창의 수뿐이다(P1).
  */
-export function shellTotals(node: ShellNode): ProcessMetrics {
+export function shellTotals(node: Pick<ShellNode, "pool" | "helpers" | "descendants">): ProcessMetrics {
   return sumMetrics([
     node.pool.metrics,
     ...node.helpers.map((row) => row.metrics),
@@ -256,6 +354,17 @@ export function shellRowLabel(node: ShellNode, now: number): string {
 /** work 행 — 이름, 셸 수, 메모리(트리 합). 세는 말은 「셸 N개」다(CONTEXT 「셸」). */
 export function groupRowLabel(group: GroupNode): string {
   return withMemory([group.name, shellCount(group.shells.length)], groupTotals(group).memory);
+}
+
+/**
+ * 주인 잃은 셸 묶음의 work 줄 — 이름, **세계**, 셸 수, 메모리(티켓 32). 두 세계의 것이 한 묶음에 서고 두 세계에 같은 slug가 설 수
+ * 있어(결정 10) 세계를 말한다. 세계 트리의 work 줄은 세계 줄 밑에 서서 말하지 않는다(`groupRowLabel`).
+ */
+export function orphanGroupRowLabel(group: GroupNode): string {
+  return withMemory(
+    [group.name, worldNameOf(modeOfOwner(group.owner)), shellCount(group.shells.length)],
+    groupTotals(group).memory,
+  );
 }
 
 export function shellCount(count: number): string {

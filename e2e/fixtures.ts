@@ -5,7 +5,7 @@ import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { ProcessMetrics, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
+import type { CleanupEvent, ProcessMetrics, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -416,6 +416,12 @@ export const PROCESS_SUMMARY: ProcessSummary = {
 export const PROCESS_TREND: TrendPoint[] = [];
 
 /**
+ * 정리 기록(티켓 32)이 기본으로 답하는 것 — **빈 기록**이다: 앱이 아직 아무것도 안 끝냈다. `Processes` 화면이 스냅샷이 올 때마다 한 번
+ * 부르므로 화면을 여는 검사가 모두 지난다. 기록을 재는 검사가 덮어쓴다(`processes-shells.spec.ts`).
+ */
+export const CLEANUP_LOG: CleanupEvent[] = [];
+
+/**
  * 못 읽은 지표(티켓 28) — 스냅샷의 행과 풀의 셸마다 싣는 칸이다. 숫자를 안 보는 검사의 행이 이것을 든다: 숫자 칸은 「—」로 서고, 행의
  * 접근성 이름에 메모리 조각이 안 붙는다(macOS 밖의 앱과 같다).
  */
@@ -523,6 +529,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 신원 목록 끝내기(티켓 31) — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리]가 부른다. 값은 안 쓰인다(신호까지 보내고
   // 돌아온다). 검사가 보는 것은 나갔는가와 그 인자(화면에 보인 신원)다(IPC 기록). **모드를 안 받는다** — 화면이 앱 전체다.
   processes_end: null,
+  // 정리 기록 읽기(티켓 32) — `Processes` 화면이 스냅샷이 올 때마다 한 번 부른다. 답은 위 `CLEANUP_LOG`(빈 기록)이다. **모드를 안
+  // 받는다** — 기록은 앱에 한 장이다.
+  processes_cleanup_log: CLEANUP_LOG,
   pty_kill: null,
   // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).

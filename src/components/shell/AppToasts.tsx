@@ -1,6 +1,6 @@
 import { Toast } from "@base-ui/react/toast";
 import { X } from "lucide-react";
-import { appToasts, SHORT_TOAST_MS } from "./app-toast";
+import { appToasts, SHORT_TOAST_MS, toastActionsOf } from "./app-toast";
 
 /**
  * 이 work의 토스트가 서는 자리(프로세스 스펙 P2 (나)). 앱 셸에 하나 서서 **어느 화면에서든** 보인다 —
@@ -35,21 +35,33 @@ export default function AppToasts() {
  */
 function ToastList() {
   const { toasts } = Toast.useToastManager();
-  return toasts.map((toast) => (
-    <Toast.Root
-      key={toast.id}
-      toast={toast}
-      swipeDirection={[]}
-      className="flex items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[limited]:hidden"
-    >
-      <Toast.Title className="min-w-0 flex-1 leading-[1.5]" />
-      {/* 버튼은 동작 토스트에만 선다 — `actionProps`가 없으면 둘 다 안 그린다(`toastOptionsOf`). */}
-      <Toast.Action className="h-6 shrink-0 rounded-[7px] bg-state-2 px-2.5 text-[12px] font-medium transition-colors outline-none hover:bg-state-3 focus-visible:ring-2 focus-visible:ring-ring/50" />
-      {toast.actionProps && (
-        <Toast.Close aria-label="닫기" className="icon-button-quiet shrink-0 text-tertiary">
-          <X className="size-3.5" strokeWidth={2.2} />
-        </Toast.Close>
-      )}
-    </Toast.Root>
-  ));
+  return toasts.map((toast) => {
+    const actions = toastActionsOf(toast.data);
+    return (
+      <Toast.Root
+        key={toast.id}
+        toast={toast}
+        swipeDirection={[]}
+        className="flex items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[limited]:hidden"
+      >
+        <Toast.Title className="min-w-0 flex-1 leading-[1.5]" />
+        {/* 버튼은 동작 토스트에만 선다 — 데이터에 버튼이 없으면 × 도 안 그린다(`toastOptionsOf`). */}
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.run}
+            className="h-6 shrink-0 rounded-[7px] bg-state-2 px-2.5 text-[12px] font-medium transition-colors outline-none hover:bg-state-3 focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {action.label}
+          </button>
+        ))}
+        {actions.length > 0 && (
+          <Toast.Close aria-label="닫기" className="icon-button-quiet shrink-0 text-tertiary">
+            <X className="size-3.5" strokeWidth={2.2} />
+          </Toast.Close>
+        )}
+      </Toast.Root>
+    );
+  });
 }

@@ -21,7 +21,12 @@ const modeButton = (page: Page, label: string) =>
   page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
 /** 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. */
 const title = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
-const shellCount = (page: Page, count: number) => page.getByText(`셸 ${count}개`, { exact: true });
+/**
+ * 요약 카드의 셸 수. **카드 안에서 찾는다** — 스토어가 모르는 풀의 셸은 두 박자 뒤 「화면 밖 셸」 묶음에 서고(티켓 32) 그 머리도
+ * 「셸 N개」라, 화면 전체에서 찾으면 같은 글자가 둘이다.
+ */
+const shellCount = (page: Page, count: number) =>
+  page.getByRole("region", { name: "요약", exact: true }).getByText(`셸 ${count}개`, { exact: true });
 
 /**
  * 풀에 셸이 `keys`만큼 선 스냅샷. **두 세계의 셸을 섞는다** — 화면은 앱 전체를 보이므로(프로세스 결정 9) 어느 세계의 주소로

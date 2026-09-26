@@ -610,6 +610,13 @@ pub fn trend(pool: &PtyPool) -> Vec<summary::Point> {
     pool.background.trend()
 }
 
+/// 정리 기록 IPC의 답(`processes_cleanup_log`) — **이 풀의 인스턴스 기록이 연** 정리 기록을 새것부터(프로세스 스펙 S12 · 티켓 32).
+/// 파일이 최근 100건만 담으므로(`cleanup_log::KEEP`) 그것이 곧 화면의 「최근 100건」이다. 데이터 루트를 다시 계산하지 않는다 —
+/// 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록이면 빈 기록이다. 표를 찍지 않는다.
+pub fn cleanup_events(pool: &PtyPool) -> Vec<cleanup_log::Event> {
+    pool.record.events()
+}
+
 /// 웹뷰에게 WebContent의 pid를 묻는 함수를 한 번 건다(S39 · 티켓 30). 앱은 setup에서 `webview::content_pid`를 건다 — 이 층은 Tauri를
 /// 모른다. 안 걸면(검사의 풀) 요약은 「웹뷰 제외」다.
 pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::Asked + Send + Sync + 'static) {
@@ -857,13 +864,14 @@ pub fn watch_running(app: AppHandle, pool: Arc<PtyPool>) {
 /// 단위지만 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
 ///
 /// 까닭과 셸의 주인은 부른 쪽(프런트)이 준다 — 끝낸 것이 정리 기록에 그 까닭으로 적힌다(티켓 11). 어느 닫기가 어느 까닭인지는
-/// 프런트의 표 한 자리가 고른다(`shell-registry.ts`의 `CLOSE_REASONS`).
-pub fn kill(pool: &PtyPool, id: u32, reason: CloseReason, owner: &str) -> Result<(), String> {
+/// 프런트의 표 한 자리가 고른다(`shell-registry.ts`의 `CLOSE_REASONS`). **주인은 없을 수 있다** — `Processes`의 화면 밖 셸(티켓 32 ·
+/// 프로세스 스펙 S42)은 프런트 스토어에 칸이 없어 주인을 모른다. 그 사건은 주인 없이 적힌다.
+pub fn kill(pool: &PtyPool, id: u32, reason: CloseReason, owner: Option<&str>) -> Result<(), String> {
     // **빼기 전에 센다.** 뺀 뒤 목록에 오르기 전에 종료가 오면, 종료는 그 셸을 풀에서도 목록에서도 못 본다.
     // 셈이 먼저 서 있으면 종료가 판정이 끝나기를 기다린다. 뺄 셸이 없으면 셈은 떨어지며 물러난다.
     let claim = pool.endings.claim();
     let shell = pool.lock().remove(&id).ok_or_else(|| gone(id))?;
-    end(pool, vec![shell], claim, Cause { reason: reason.into(), owner: Some(owner.to_string()) });
+    end(pool, vec![shell], claim, Cause { reason: reason.into(), owner: owner.map(str::to_string) });
     Ok(())
 }
 
@@ -2032,6 +2040,54 @@ mod tests {
         assert!(!body.contains("summarize(") && !body.contains("snapshot::take("), "추이 IPC가 표를 찍는다");
     }
 
+    /// **정리 기록 IPC는 이 풀의 인스턴스 기록이 연 정리 기록을 새것부터 돌려준다**(티켓 32 · 프로세스 스펙 S12). 데이터 루트를 다시
+    /// 계산하지 않는다 — 그러면 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록의 풀은 빈 기록이다(앵커 — 늘 빈 목록을 주게 무너지면
+    /// 둘째 단언이 빨개진다). 파일에 100건을 넘게 담지 않으므로(`cleanup_log::KEEP`) 최근 100건이 곧 전부다.
+    ///
+    /// 자리는 검사가 손으로 세운다(`Place`) — 앱의 신원을 읽는 `open_record`는 macOS에서만 서서, 그 길로 열면 이 검사가 리눅스에서 늘
+    /// 빈 기록을 본다. 신호는 없다 — 기록 파일을 쓰고 읽을 뿐이다.
+    #[test]
+    fn the_cleanup_log_answers_this_pools_log_newest_first() {
+        use crate::processes::cleanup_log::{Event, Reason, Target};
+        use crate::processes::ending::Outcome;
+        use crate::processes::instances::{Build, Place};
+        use crate::processes::Identity;
+
+        let unopened = super::PtyPool::default();
+        assert_eq!(super::cleanup_events(&unopened), vec![], "연 적 없는 기록의 풀이 기록을 읽었다 — 검사의 풀이 진짜 정리 기록을 읽는다");
+
+        let root = temp_home("cleanup-log");
+        let pool = super::PtyPool::default();
+        pool.record.open(Place {
+            dir: root.join("instances"),
+            generation: format!("test-{}-1", std::process::id()),
+            app: Identity { pid: std::process::id(), started_us: 1 },
+            build: Build::Dev,
+            version: "test".into(),
+            log: crate::processes::cleanup_log::path(&root),
+        });
+        let event = |at: u64, reason: Reason| Event {
+            id: 0,
+            at,
+            reason,
+            shell_key: None,
+            owner: None,
+            targets: vec![Target { pid: 7, name: "node".into(), command: None, outcome: Outcome::Ended }],
+        };
+        pool.record.log(event(1_000, Reason::ShellClose));
+        pool.record.log(event(2_000, Reason::StartupCleanup));
+        pool.record.log(event(3_000, Reason::Manual));
+        let answered = super::cleanup_events(&pool);
+        let _ = std::fs::remove_dir_all(&root);
+
+        let seen: Vec<(u64, u64, Reason)> = answered.iter().map(|one| (one.id, one.at, one.reason)).collect();
+        assert_eq!(
+            seen,
+            vec![(3, 3_000, Reason::Manual), (2, 2_000, Reason::StartupCleanup), (1, 1_000, Reason::ShellClose)],
+            "정리 기록이 새것부터 오지 않는다"
+        );
+    }
+
     /// **앱 본체에 웹뷰가 이름 댄 WebContent가 든다**(S39 · 티켓 30). 앱에서는 setup이 웹뷰에게 묻는 함수를 건다(`webview.rs`) — 여기서는
     /// 검사가 띄운 자식 하나를 WebContent 자리에 세운다. 살아 있으면 셌다(「웹뷰 제외」가 아니다). 답이 늦으면 마지막으로 안 신원을
     /// 다시 쓴다. 그 자식이 끝났으면(신원으로 못 바꾼다) 「웹뷰 제외」다. 묻는 함수가 없는 풀(앵커)은 늘 「웹뷰 제외」다.
@@ -3141,7 +3197,7 @@ mod tests {
         let began = Instant::now();
         match scene {
             Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::CloseKeeping | Scene::Record => {
-                super::kill(&pool, spawned.id, crate::processes::cleanup_log::CloseReason::ShellClose, SCENE_OWNER).expect("셸을 닫는다");
+                super::kill(&pool, spawned.id, crate::processes::cleanup_log::CloseReason::ShellClose, Some(SCENE_OWNER)).expect("셸을 닫는다");
             }
             Scene::Reload => super::end_for_reload(&pool),
             // 셸을 풀에 둔 채 부른다 — 앱이 셸을 연 채 닫히는 보통의 ⌘Q다.
@@ -3311,7 +3367,7 @@ mod tests {
         let second_left = wait_until(|| !pool.lock().contains_key(&second.id));
         let second_lowered = wait_until(|| !listed(&second_key));
         // 남았으면 거둔다 — 단언보다 먼저.
-        let _ = super::kill(pool, second.id, crate::processes::cleanup_log::CloseReason::ShellClose, SCENE_OWNER);
+        let _ = super::kill(pool, second.id, crate::processes::cleanup_log::CloseReason::ShellClose, Some(SCENE_OWNER));
 
         let before_exit = on_the_record().is_some();
         let outcomes = super::end_for_exit(pool);

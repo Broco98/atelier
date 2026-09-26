@@ -1,4 +1,3 @@
-import { useId } from "react";
 import { askThenEnd, endProcesses } from "./actions";
 import {
   exceptionName,
@@ -10,7 +9,7 @@ import {
   type InstanceGroup,
 } from "./process-groups";
 import { descendantLabel, descendantRowLabel, processTree, type DescendantNode } from "./shell-tree";
-import { Actions, Figures, RowButton, RowMenu, TreeRow } from "./tree-rows";
+import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import type { ProcessSnapshot } from "./types";
 
 /**
@@ -37,7 +36,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
       {confirmed.length > 0 && (
         <Section
           title="확정 고아"
-          count={confirmed.length}
+          note={processCount(confirmed.length)}
           // 묻지 않는다(결정 6) — 누른 순간 화면에 보인 신원 전부다.
           action={<RowButton onClick={() => void endProcesses(identitiesOf(confirmed))}>정리</RowButton>}
         >
@@ -51,7 +50,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
       {unknown.length > 0 && (
         <Section
           title="출처 불명"
-          count={unknown.length}
+          note={processCount(unknown.length)}
           action={
             <RowButton onClick={() => void askThenEnd(tidyUnknownAsk(unknown.length), identitiesOf(unknown))}>정리</RowButton>
           }
@@ -66,7 +65,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
       {instances.length > 0 && (
         <Section
           title="다른 인스턴스"
-          count={instances.reduce((sum, group) => sum + group.nodes.length, 0)}
+          note={processCount(instances.reduce((sum, group) => sum + group.nodes.length, 0))}
           action={<ViewOnly />}
         >
           <div role="tree" aria-label="다른 인스턴스" className="flex flex-col gap-0.5">
@@ -77,7 +76,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
         </Section>
       )}
       {exceptions.length > 0 && (
-        <Section title="예외" count={exceptions.length} action={<ViewOnly />}>
+        <Section title="예외" note={processCount(exceptions.length)} action={<ViewOnly />}>
           <div role="tree" aria-label="예외" className="flex flex-col gap-0.5">
             {exceptions.map((node) => (
               <StrayRow key={keyOf(node)} node={node} level={node.depth} />
@@ -91,36 +90,8 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
 
 const keyOf = ({ row }: DescendantNode) => `${row.id.pid}@${row.id.startedUs}`;
 
-/**
- * 묶음 하나 — 머리 줄(제목 · 수 · 동작)과 그 트리. **영역의 이름이 제목이다**(`aria-labelledby`) — 스크린리더가 묶음 사이를 건너뛰고,
- * 검사가 묶음을 이름으로 찾는다. 수는 제목 밖에 둔다: 이름에 들면 박자마다 영역의 이름이 바뀐다.
- */
-function Section({
-  title,
-  count,
-  action,
-  children,
-}: {
-  title: string;
-  count: number;
-  action: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  const id = useId();
-  return (
-    <section aria-labelledby={id} className="mt-8 flex flex-col gap-0.5">
-      <div className="flex h-8 min-w-0 items-center gap-2 pr-1">
-        <h3 id={id} className="text-[12.5px] font-semibold">
-          {title}
-        </h3>
-        <span className="text-[12px] text-tertiary">{`프로세스 ${count}개`}</span>
-        <span className="flex-1" />
-        <Actions>{action}</Actions>
-      </div>
-      {children}
-    </section>
-  );
-}
+/** 네 묶음의 수 — 프로세스를 센다(셸 묶음은 셸을 센다). */
+const processCount = (count: number) => `프로세스 ${count}개`;
 
 /** 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {

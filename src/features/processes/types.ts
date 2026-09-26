@@ -115,3 +115,47 @@ export interface TrendPoint {
   at: number;
   total: number;
 }
+
+/**
+ * 정리 기록의 까닭(프로세스 결정 6 · 프로세스 스펙 S5) — Rust `cleanup_log::Reason`의 와이어 글자(camelCase)다. 화면의 말은
+ * `cleanup-log.ts`의 `REASON_LABEL`이 든다 — 두 언어가 이 글자로만 이어지므로 그 검사가 Rust 선언을 읽어 견준다.
+ */
+export type CleanupReason =
+  | "shellClose"
+  | "shellExit"
+  | "appExit"
+  | "reload"
+  | "archive"
+  | "mcpArchive"
+  | "startupCleanup"
+  | "manual";
+
+/** 끝낸 것의 결과 — Rust `ending::Outcome`의 와이어 글자다. 끝남(TERM) · 강제(KILL) · 못 끝냄 · 이미 없음. */
+export type CleanupOutcome = "ended" | "forced" | "survived" | "gone";
+
+/** 정리 기록의 대상 하나(Rust `cleanup_log::Target`). 셸과 셸 도우미는 안 든다(프로세스 스펙 P1). */
+export interface CleanupTarget {
+  pid: number;
+  /** 커널 이름. */
+  name: string;
+  /** 명령줄의 앞 200자 — Rust가 적을 때 잘랐다. 수집이 argv를 못 읽은 행이면 없다. */
+  command: string | null;
+  outcome: CleanupOutcome;
+}
+
+/**
+ * 정리 기록의 사건 하나(Rust `cleanup_log::Event` · 티켓 11 · 32). 와이어 모양은 Rust 쪽 검사
+ * (`an_event_crosses_the_wire_in_the_shape_the_screen_will_read`)가 글자로 못박는다. 정리 기록 IPC가 새것부터 최근 100건을 준다.
+ */
+export interface CleanupEvent {
+  /** 기록 번호 — 파일 안에서 1부터 오른다(티켓 29). 번호가 없던 판의 줄은 0이다. */
+  id: number;
+  /** 끝내기가 **끝난** 시각(에포크 ms). */
+  at: number;
+  reason: CleanupReason;
+  /** 셸 하나를 닫은 사건의 셸 키. 앱 종료 · 시작 정리는 없다. */
+  shellKey: string | null;
+  /** 그 셸의 주인(`atelier:<slug>` 꼴). 닫기 IPC로 온 사건에만 있다. */
+  owner: string | null;
+  targets: CleanupTarget[];
+}

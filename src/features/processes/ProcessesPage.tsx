@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
@@ -6,16 +6,23 @@ import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { modeOfOwner, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
-import { requestCloseShell, terminalStore } from "@/features/terminal/terminal-store";
+import {
+  closeOffscreenShell,
+  closeOrphans,
+  closeQuietShells,
+  requestCloseShell,
+  terminalStore,
+} from "@/features/terminal/terminal-store";
 import { worksQuery } from "@/features/works/hooks";
 import { ALL_MODES, worldNameOf, type Mode } from "@/mode";
 import { askThenEnd } from "./actions";
+import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
 import { openProcessesScreen } from "./looked";
 import { endAsk, exceptionName, subtreeAt } from "./process-groups";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
-import { Actions, Figures, RowButton, RowMenu, TreeRow } from "./tree-rows";
+import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import {
   CURRENT_WORLD,
   HELPER_LABEL,
@@ -24,6 +31,12 @@ import {
   groupRowLabel,
   groupTotals,
   helperLabel,
+  OFFSCREEN_NAME,
+  offscreenRowLabel,
+  offscreenShells,
+  offscreenStateOf,
+  orphanGroupRowLabel,
+  orphanGroups,
   shellCount,
   shellRowLabel,
   shellStateOf,
@@ -33,7 +46,9 @@ import {
   worldRowLabel,
   type ListedItem,
   type ShellNode,
+  type ShellState,
 } from "./shell-tree";
+import type { PoolShell } from "./types";
 
 /**
  * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 두 세계의
@@ -43,9 +58,9 @@ import {
  * **세계를 받는 것은 차례 때문이다**(티켓 27) — 지금 세계가 맨 위에 선다. 무엇을 보이는지는 세계와 상관없다.
  *
  * 셸 묶음은 세계 → work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work 행은 그
- * 트리의 합이다. 맨 위에 요약 카드(티켓 30)가 서고, 셸 묶음 밑에 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외 묶음(티켓 31 —
- * `StraySections`)이 선다. 자손 행에는 [끝내기]와 행 메뉴(「예외로 두기」)가 선다. 나머지 묶음(주인 잃은 셸 · 화면 밖 셸 · 정리 기록)은
- * 32가 붙인다.
+ * 트리의 합이다. 맨 위에 요약 카드(티켓 30)가 서고, 셸 묶음 밑에 주인 잃은 셸 · 화면 밖 셸(티켓 32), 확정 고아 · 출처 불명 · 다른
+ * 인스턴스 · 예외(티켓 31 — `StraySections`), 정리 기록(티켓 32 — `CleanupLogSection`)이 차례로 선다. 자손 행에는 [끝내기]와 행
+ * 메뉴(「예외로 두기」)가 선다. 머리에는 [조용한 셸 모두 닫기](티켓 32)가 선다.
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  */
@@ -60,7 +75,11 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   );
   const goToShell = useGoToShell();
 
+  const previous = usePreviousPool(snapshot?.pool, dataUpdatedAt);
+
   const tree = snapshot ? shellTree({ current: mode, shells, lists, snapshot }) : [];
+  const orphans = snapshot ? orphanGroups({ current: mode, shells, snapshot }) : [];
+  const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous }) : [];
   // **경과의 지금은 스냅샷이 도착한 때다**(`dataUpdatedAt`). 박자(2초)마다 새 값이라 경과가 그만큼씩 늙는다 — 따로 시계를 켜지
   // 않는다. 박자가 멎으면(창이 가려짐) 경과도 멎는데, 그동안은 아무도 안 본다.
   const now = dataUpdatedAt;
@@ -68,7 +87,21 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col">
-        <PageHeader root="Processes" inset={!sidebarOpen} />
+        <PageHeader
+          root="Processes"
+          inset={!sidebarOpen}
+          actions={
+            // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 두 세계의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
+            // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
+            <button
+              type="button"
+              onClick={() => void closeQuietShells()}
+              className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
+            >
+              조용한 셸 모두 닫기
+            </button>
+          }
+        />
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
           {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — `PageHeader`는 제목 역할이 없는 글자라(설정 화면과 같은
               사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
@@ -97,15 +130,14 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
                         <Actions />
                       </TreeRow>
                       {group.shells.map((node) => (
-                        <ShellRows
+                        <StoreShellRows
                           key={node.shell.id}
                           node={node}
+                          level={3}
                           now={now}
                           // [이동] — 띠의 줄 · ⌘J와 같은 길이다(`useGoToShell`): 셸 주인의 세계로 화면을 옮기고, 켜고, 포커스를
-                          // 데려온다(티켓 16). 주인 잃은 셸은 그 길이 화면 이동 전에 가른다.
+                          // 데려온다(티켓 16).
                           onGo={() => goToShell({ id: node.shell.id, owner: node.shell.owner })}
-                          // [닫기] — 셸 탭의 ×와 같은 길이다(결정 92). 명령이나 자손이 있으면 확인 창이 묻는다. 까닭은 「셸 닫기」다.
-                          onClose={() => void requestCloseShell(node.shell.id)}
                         />
                       ))}
                     </Fragment>
@@ -114,8 +146,59 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
               ))}
             </div>
           )}
+          {orphans.length > 0 && (
+            // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 도는 것이 남은 셸. 두 세계의 것이 work마다
+            // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOrphans`) — 두 세계를 넘기고 한 번 묻는다. [이동]은 없다: 그 work은
+            // 목록에 없어 갈 화면이 없다.
+            <Section
+              title="주인 잃은 셸"
+              note={shellCount(orphans.reduce((sum, group) => sum + group.shells.length, 0))}
+              action={<RowButton onClick={() => void closeOrphans(ALL_MODES)}>모두 닫기</RowButton>}
+            >
+              <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col gap-0.5">
+                {orphans.map((group) => (
+                  <Fragment key={group.owner}>
+                    <TreeRow level={1} label={orphanGroupRowLabel(group)}>
+                      <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
+                      <span className="shrink-0 text-[12px] text-tertiary">{worldNameOf(modeOfOwner(group.owner))}</span>
+                      <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
+                      <span className="flex-1" />
+                      <Figures metrics={groupTotals(group)} ports={false} />
+                      <Actions />
+                    </TreeRow>
+                    {group.shells.map((node) => (
+                      <StoreShellRows key={node.shell.id} node={node} level={2} now={now} />
+                    ))}
+                  </Fragment>
+                ))}
+              </div>
+            </Section>
+          )}
+          {offscreen.length > 0 && (
+            // **화면 밖 셸**(프로세스 스펙 S42 · 티켓 32) — 풀에는 있는데 화면이 모르는 셸. 새로고침 중에 끝난 spawn이 남길 수 있다
+            // (추정). 스토어의 칸이 없어 이름도 주인도 모른다 — 「셸」로 서고 자손은 셸 키로 잇는다. [닫기]는 셸 탭의 ×와 같은 규칙으로 묻는다
+            // (`closeOffscreenShell`). `●`를 안 켠다.
+            <Section title="화면 밖 셸" note={shellCount(offscreen.length)}>
+              <div role="tree" aria-label="화면 밖 셸" className="flex flex-col gap-0.5">
+                {offscreen.map((node) => (
+                  <ShellRows
+                    key={`${node.pool.ptyId}/${node.pool.shellKey}`}
+                    node={node}
+                    level={1}
+                    name={OFFSCREEN_NAME}
+                    state={offscreenStateOf(node)}
+                    label={offscreenRowLabel(node, now)}
+                    now={now}
+                    onClose={() => void closeOffscreenShell(node.pool.ptyId)}
+                  />
+                ))}
+              </div>
+            </Section>
+          )}
           {/* 고아 · 다른 인스턴스 · 예외(티켓 31) — 셸이 없어도 선다(앱을 막 켰는데 지난 실행이 남긴 것). */}
           {snapshot && <StraySections snapshot={snapshot} />}
+          {/* 정리 기록(티켓 32) — 맨 끝이다. 스냅샷이 올 때마다 한 번 묻는다. */}
+          {snapshot && <CleanupLogSection snapshotAt={dataUpdatedAt} />}
         </div>
       </main>
     </div>
@@ -140,31 +223,74 @@ function useWorldLists(worlds: ReadonlyArray<Mode>): Partial<Record<Mode, Readon
 }
 
 /**
- * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 3이다(세계 → work → 셸). 셸 행의 숫자는 그
- * 셸의 트리 합이다(셸 프로세스 · 도우미 · 자손 — `shellTotals`).
+ * 바로 앞 스냅샷의 풀 — 화면 밖 셸은 **두 스냅샷에 연달아** 선 셸만 센다(`offscreenShells`). 스냅샷이 도착한 때(`dataUpdatedAt`)로
+ * 박자를 가른다: react-query는 같은 내용이면 같은 참조를 돌려주므로(구조 공유) 데이터로 가르면 박자를 놓친다. 새 박자를 본 렌더에서
+ * 앞 장을 밀어 둔다(렌더 중 상태 갱신 — React가 곧바로 다시 그린다).
+ */
+function usePreviousPool(
+  pool: ReadonlyArray<PoolShell> | undefined,
+  at: number,
+): ReadonlyArray<PoolShell> | undefined {
+  const [seen, setSeen] = useState<{
+    at: number;
+    current?: ReadonlyArray<PoolShell>;
+    previous?: ReadonlyArray<PoolShell>;
+  }>({ at: 0 });
+  if (pool !== undefined && seen.at !== at) {
+    setSeen({ at, current: pool, previous: seen.current });
+    return seen.current;
+  }
+  return seen.previous;
+}
+
+/**
+ * 스토어의 셸 하나의 줄들 — 이름은 탭 줄의 것(`shellRowName`), 상태는 셸 상태부터(`shellStateOf`)다. [닫기]는 셸 탭의 ×와 같은
+ * 길이다(결정 92): 명령이나 자손이 있으면 확인 창이 묻고, 까닭은 「셸 닫기」다. [이동]은 부르는 쪽이 주면 선다.
+ */
+function StoreShellRows({ node, level, now, onGo }: { node: ShellNode; level: number; now: number; onGo?: () => void }) {
+  return (
+    <ShellRows
+      node={node}
+      level={level}
+      name={shellRowName(node.shell)}
+      state={shellStateOf(node)}
+      label={shellRowLabel(node, now)}
+      now={now}
+      onGo={onGo}
+      onClose={() => void requestCloseShell(node.shell.id)}
+    />
+  );
+}
+
+/**
+ * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 부르는 쪽이 준다(세계 트리는 3 — 세계 → work
+ * → 셸, 주인 잃은 셸은 2, 화면 밖 셸은 1). 셸 행의 숫자는 그 셸의 트리 합이다(셸 프로세스 · 도우미 · 자손 — `shellTotals`). 스토어의
+ * 셸과 화면 밖 셸(스토어의 칸이 없다)이 같은 줄로 선다 — 이름 · 상태 · 접근성 이름만 부르는 쪽이 짓는다.
  */
 function ShellRows({
   node,
+  level,
+  name,
+  state,
+  label,
   now,
   onGo,
   onClose,
 }: {
-  node: ShellNode;
+  node: Pick<ShellNode, "pool" | "helpers" | "descendants">;
+  level: number;
+  name: string;
+  state: ShellState;
+  label: string;
   now: number;
-  onGo: () => void;
+  onGo?: () => void;
   onClose: () => void;
 }) {
-  const state = shellStateOf(node);
   const mark = state.kind === "command" ? agentMarkOf(state.command) : null;
   return (
     <>
-      <TreeRow
-        level={3}
-        label={shellRowLabel(node, now)}
-        data-shell-key={node.pool.shellKey}
-        className="hover:bg-state-1"
-      >
-        <span className="min-w-0 truncate text-[13px]">{shellRowName(node.shell)}</span>
+      <TreeRow level={level} label={label} data-shell-key={node.pool.shellKey} className="hover:bg-state-1">
+        <span className="min-w-0 truncate text-[13px]">{name}</span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-muted-foreground">
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
@@ -178,14 +304,14 @@ function ShellRows({
         </span>
         <Figures metrics={shellTotals(node)} />
         <Actions>
-          <RowButton onClick={onGo}>이동</RowButton>
+          {onGo && <RowButton onClick={onGo}>이동</RowButton>}
           <RowButton onClick={onClose}>닫기</RowButton>
         </Actions>
       </TreeRow>
       {node.helpers.length > 0 && (
         // **셸 도우미는 옅은 줄 하나로 따로 선다**(P1) — 사람이 띄운 것과 한 무게로 섞이면 「이 셸에서 띄운 프로세스」로 읽힌다.
         // 닫으면 함께 끝나지만 확인 창의 수에도 조용함 판정에도 안 든다(CONTEXT 「셸 도우미」).
-        <TreeRow level={4} label={helperLabel(node.helpers)} data-helper="" className="text-[12.5px] text-tertiary">
+        <TreeRow level={level + 1} label={helperLabel(node.helpers)} data-helper="" className="text-[12.5px] text-tertiary">
           <span className="shrink-0">{HELPER_LABEL}</span>
           <span className="min-w-0 truncate">{node.helpers.map(descendantLabel).join(" · ")}</span>
         </TreeRow>
@@ -199,7 +325,7 @@ function ShellRows({
         // 재사용됐으면 끝내기가 신호 직전 신원 확인으로 거른다(S4).
         <TreeRow
           key={`${row.id.pid}@${row.id.startedUs}`}
-          level={3 + depth}
+          level={level + depth}
           label={descendantRowLabel(row)}
           title={row.command ?? undefined}
           className="text-[12.5px] text-muted-foreground"

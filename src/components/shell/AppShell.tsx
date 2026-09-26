@@ -20,6 +20,7 @@ import ShellReclaim from "./ShellReclaim";
 import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
+import { onViewProcesses, processesAddress } from "./processes-view";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
@@ -157,6 +158,14 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, []);
+
+  // **`Processes`로 가는 문의 길을 건다**(프로세스 스펙 S15 · S14 · 티켓 32). 토스트의 [보기]와 띠의 주인 잃은 셸 줄은 React
+  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다. 주소는
+  // **부를 때** 읽는다(`router.state`) — 구독하면 셸의 주소 구독이 하나 는다. 무엇을 여는지는 `processesAddress`가 혼자 안다.
+  useEffect(
+    () => onViewProcesses(() => void navigate({ to: processesAddress(router.state.location.pathname) })),
+    [navigate, router],
+  );
 
   // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은

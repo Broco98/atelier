@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Store } from "@tanstack/react-store";
 import type { AppNotice } from "./app-toast";
+import { viewAction } from "./processes-view";
 
 // **시작 보고** — 앱이 뜰 때 한 일(프로세스 결정 6 · 프로세스 스펙 S11). Rust가 붙잡아 두고
 // (`src-tauri/src/startup.rs`) 프런트는 부팅 때 **한 번** 묻는다. 이벤트로 받지 않는 것은 앱이 뜨는 순간의
@@ -64,19 +65,20 @@ export async function loadStartupReport(
  *   에이전트인지는 안 적는다 — 둘을 맞춰도 말은 하나다. 목록이 다른 두 빌드를 번갈아 켜도 Rust가 새로운 판의 파일을 안
  *   되쓰므로(P5) 이 칸은 비고, 토스트는 켤 때마다 서지 않는다.
  *
- * 둘 다 동작 버튼 없는 짧은 토스트다.
+ * 정리의 말에는 [보기]가 붙는다(프로세스 스펙 S15 · 티켓 32) — 무엇을 끝냈는지는 `Processes`의 정리 기록이 보인다. 그래서
+ * 정리 토스트는 누르거나 닫을 때까지 남는 동작 토스트다(1.6초 뒤에 사라지면 누를 틈이 없다). 훅 맞춤은 볼 것이 없어 버튼
+ * 없는 짧은 토스트 그대로다.
  *
  * **말마다 늘 같은 id를 단다.** 알리는 자리가 이펙트라 StrictMode(dev)에서 두 번 돌고, 토스트 매니저는 같은
  * id를 받으면 새로 세우지 않고 그 자리를 고친다 — 두 번 알려도 토스트는 하나다. 두 말의 id는 서로 다르다 — 같으면 뒤의 말이
  * 앞의 토스트를 고쳐 하나만 선다.
- *
- * [보기]는 판 04가 정리 토스트에 붙인다(프로세스 스펙 S15) — 그때부터 정리 토스트는 누를 때까지 남는 동작 토스트가 된다.
  */
 export function startupNotices(report: StartupReport): AppNotice[] {
   const notices: AppNotice[] = [];
   const count = report.cleaned.length;
   if (count > 0) {
-    notices.push({ id: "startup:cleanup", text: `지난 실행에서 남은 프로세스 ${count}개를 정리했어요` });
+    const id = "startup:cleanup";
+    notices.push({ id, text: `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`, actions: [viewAction(id)] });
   }
   if (report.hooksUpdated.length > 0) {
     notices.push({ id: "startup:hooks", text: "에이전트 훅을 새 목록으로 맞췄어요" });

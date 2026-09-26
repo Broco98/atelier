@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { Ellipsis } from "lucide-react";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
@@ -6,8 +6,40 @@ import { keepAsException } from "./actions";
 import { formatCpu, formatMemory, formatPorts } from "./metrics";
 import type { ProcessMetrics } from "./types";
 
-// **`Processes`의 줄 조각** — 셸 묶음(티켓 27)과 고아 · 다른 인스턴스 · 예외 묶음(티켓 31)이 같은 줄 · 같은 숫자 칸 · 같은 동작 자리를
-// 쓴다. 묶음마다 따로 그리면 칸의 너비가 갈려 숫자가 세로로 안 맞는다.
+// **`Processes`의 줄 조각** — 셸 묶음(티켓 27), 고아 · 다른 인스턴스 · 예외 묶음(티켓 31), 주인 잃은 셸 · 화면 밖 셸 · 정리 기록
+// 묶음(티켓 32)이 같은 줄 · 같은 숫자 칸 · 같은 동작 자리를 쓴다. 묶음마다 따로 그리면 칸의 너비가 갈려 숫자가 세로로 안 맞는다.
+
+/**
+ * 묶음 하나 — 머리 줄(제목 · 수 · 동작)과 그 몸. **영역의 이름이 제목이다**(`aria-labelledby`) — 스크린리더가 묶음 사이를 건너뛰고,
+ * 검사가 묶음을 이름으로 찾는다. 수(`note`)는 제목 밖에 둔다: 이름에 들면 박자마다 영역의 이름이 바뀐다. 무엇을 세는지는 묶음마다
+ * 다르다(프로세스 · 셸 · 기록) — 그래서 글자로 받는다.
+ */
+export function Section({
+  title,
+  note,
+  action,
+  children,
+}: {
+  title: string;
+  note: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="mt-8 flex flex-col gap-0.5">
+      <div className="flex h-8 min-w-0 items-center gap-2 pr-1">
+        <h3 id={id} className="text-[12.5px] font-semibold">
+          {title}
+        </h3>
+        <span className="text-[12px] text-tertiary">{note}</span>
+        <span className="flex-1" />
+        <Actions>{action}</Actions>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 /**
  * 트리의 한 줄. 들여쓰기가 깊이를 눈으로 말하고 `aria-level`이 귀로 말한다. 접근성 이름은 줄마다 지은 한 문장이다 — 안의 글자

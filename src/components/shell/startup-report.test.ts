@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { onViewProcesses } from "./processes-view";
 import {
   loadStartupReport,
   startupNotices,
@@ -33,13 +34,26 @@ describe("시작 보고가 알리는 말", () => {
     expect(startupNotices(report(0))).toEqual([]);
   });
 
+  // 판 04(티켓 32 · 프로세스 스펙 S15)가 정리 토스트에 [보기]를 붙였다 — 무엇을 끝냈는지 정리 기록으로 가는 길이다. 버튼이 든
+  // 토스트라 누를 때까지 남는다(`toastOptionsOf`). 누르면 그 토스트를 내리고 `Processes`로 간다(`viewProcesses`).
+  it("정리의 말에는 [보기]가 붙고, 누르면 `Processes`로 간다", () => {
+    const [cleanup] = startupNotices(report(2));
+    if (!("actions" in cleanup)) throw new Error("정리의 말에 버튼이 없다");
+    expect(cleanup.actions.map((action) => action.label)).toEqual(["보기"]);
+    let viewed = 0;
+    const stop = onViewProcesses(() => (viewed += 1));
+    cleanup.actions[0].run();
+    stop();
+    expect(viewed).toBe(1);
+  });
+
   // 앱이 뜰 때 이미 깔린 훅을 지금 목록으로 맞췄으면 한 번 알린다(프로세스 결정 15 · 프로세스 스펙 S36 · 티켓 21).
-  // 어느 에이전트를 맞췄는지는 안 적는다 — 둘을 맞춰도 말은 하나다. 동작 버튼 없는 짧은 토스트다.
+  // 어느 에이전트를 맞췄는지는 안 적는다 — 둘을 맞춰도 말은 하나다. 동작 버튼 없는 짧은 토스트다 — `Processes`에 볼 것이 없다.
   it("훅을 맞춘 에이전트가 있으면 한 번 말한다", () => {
     for (const agents of [["claude"], ["codex"], ["claude", "codex"]]) {
       const notices = startupNotices(report(0, agents));
       expect(notices.map((notice) => notice.text)).toEqual(["에이전트 훅을 새 목록으로 맞췄어요"]);
-      expect(notices[0]).not.toHaveProperty("action");
+      expect(notices[0]).not.toHaveProperty("actions");
     }
   });
 

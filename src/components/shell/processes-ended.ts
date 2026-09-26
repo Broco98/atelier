@@ -1,4 +1,5 @@
 import type { AppNotice } from "./app-toast";
+import { viewAction } from "./processes-view";
 
 // **앱이 사람 손 없이 끝낸 것의 알림**(프로세스 결정 6 · 프로세스 스펙 S49 · P4 · 티켓 13). 셸 안에서 `exit`나 `^D`로 셸이
 // 스스로 끝나면 Rust가 그 셸 키를 문 생존자를 끝내고, 도우미가 아닌 것을 하나라도 끝냈으면 이 이벤트를 쏜다(`pty.rs`의
@@ -31,16 +32,18 @@ export interface ProcessesEnded {
 /**
  * 이벤트에서 **알릴 말**. 셸 스스로 끝남이 아니거나 끝낸 것이 없으면 아무 말도 없다.
  *
- * 판 01~03에서는 **버튼 없는 짧은 토스트**다(1.6초). [보기]는 판 04(티켓 32)가 붙이고, 그때부터 누를 때까지 남는 동작
- * 토스트가 된다.
+ * **[보기]가 든 동작 토스트다**(프로세스 스펙 S15 · 티켓 32) — 무엇을 끝냈는지는 `Processes`의 정리 기록이 보인다. 누르거나
+ * 닫을 때까지 남는다. 판 01~03에서는 버튼 없는 짧은 토스트(1.6초)였다.
  *
  * **셸마다 제 id를 단다.** 같은 셸의 알림이 두 번 와도(듣는 자리가 StrictMode로 잠깐 둘일 때) 매니저가 그 자리를 고쳐
  * 토스트는 하나다. 다른 셸의 알림은 따로 선다.
  */
 export function endedNotice(ended: ProcessesEnded): AppNotice | null {
   if (ended.reason !== "shellExit" || ended.count <= 0) return null;
+  const id = `processes-ended:${ended.shellId}`;
   return {
-    id: `processes-ended:${ended.shellId}`,
+    id,
     text: `셸이 끝나면서 그 셸에서 띄운 프로세스 ${ended.count}개를 끝냈어요`,
+    actions: [viewAction(id)],
   };
 }

@@ -94,3 +94,30 @@ export function useProcessTrend() {
   const { dataUpdatedAt } = useSummaryCache();
   return useQuery(trendQuery(dataUpdatedAt));
 }
+
+/**
+ * 정리 기록(티켓 32) — **화면 스냅샷이 올 때마다 한 번 묻는다**: 키에 그 스냅샷이 도착한 때를 싣는다. 기록은 끝내기가 끝날 때 서는데
+ * (셸 닫기 · [끝내기] · [정리]) 그 뒤 다음 스냅샷이 곧 온다 — 따로 박자를 걸지 않는다(추이와 같은 수법 — `trendQuery`). 스냅샷
+ * 박자가 화면이 열려 있을 때만 돌므로 이것도 그렇다.
+ *
+ * 같은 스냅샷에는 다시 묻지 않는다(`staleTime: Infinity`). 키가 바뀌는 동안 앞 기록이 서 있고(`keepPreviousData` — 펼친 사건이
+ * 박자마다 접히지 않게), 지나간 키는 곧바로 버린다(`gcTime: 0`).
+ */
+export function cleanupLogQuery(snapshotAt: number) {
+  return queryOptions({
+    queryKey: ["processes", "cleanup-log", snapshotAt],
+    queryFn: () => processesApi.cleanupLog(),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/**
+ * `Processes` 화면의 정리 기록. 스냅샷이 도착한 때는 **화면이 넘긴다** — 여기서 스냅샷 훅을 또 부르면 스냅샷 박자가 하나 더 걸린다
+ * (react-query는 보는 쪽마다 `refetchInterval`을 건다).
+ */
+export function useCleanupLog(snapshotAt: number) {
+  return useQuery(cleanupLogQuery(snapshotAt));
+}

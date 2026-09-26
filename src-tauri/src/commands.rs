@@ -256,16 +256,17 @@ pub async fn pty_resize(
 //
 // **까닭과 셸의 주인을 받는다**(티켓 11) — 끝낸 것이 정리 기록에 그 까닭으로 적힌다. 까닭은 프런트가 고르는 셋뿐이고
 // (`CloseReason`), 어느 닫기가 어느 까닭인지는 프런트의 표 한 자리가 정한다. 주인은 기록에 적힐 뿐 셸을 찾는 데 안
-// 쓴다 — 셸은 `id` 하나로 가리킨다(결정 10).
+// 쓴다 — 셸은 `id` 하나로 가리킨다(결정 10). 주인은 없을 수 있다(`null`) — `Processes`의 화면 밖 셸(티켓 32)은 프런트
+// 스토어에 칸이 없어 주인을 모른다.
 #[tauri::command]
 pub async fn pty_kill(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     id: u32,
     reason: CloseReason,
-    owner: String,
+    owner: Option<String>,
 ) -> CmdResult<()> {
     let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id, reason, &owner))
+    tauri::async_runtime::spawn_blocking(move || pty::kill(&pool, id, reason, owner.as_deref()))
         .await
         .map_err(|e| format!("셸을 닫지 못했습니다: {e}"))?
 }
@@ -352,6 +353,22 @@ pub async fn processes_summary(
 #[tauri::command]
 pub async fn processes_trend(pool: tauri::State<'_, Arc<pty::PtyPool>>) -> CmdResult<Vec<crate::processes::summary::Point>> {
     Ok(pty::trend(&pool))
+}
+
+// 정리 기록 — 앱이 무엇을 언제 왜 끝냈는가, 새것부터 최근 100건(프로세스 결정 6 · 프로세스 스펙 S12 · 티켓 32). `Processes` 화면이
+// 스냅샷이 올 때마다 한 번 부른다(`src/features/processes/hooks.ts`의 `cleanupLogQuery`). 기록은 이 풀의 인스턴스 기록이 연
+// 자리에서 읽는다 — 데이터 루트를 여기서 다시 계산하지 않는다. 파일 한 장(100건)을 읽을 뿐이라 표를 찍지 않는다. 적는 것은 끝내기
+// 길들이고 여기는 읽기만 한다.
+//
+// 모드를 안 받는다 — 화면이 앱 전체를 보인다(프로세스 결정 9). 기록도 앱에 한 장이다.
+#[tauri::command]
+pub async fn processes_cleanup_log(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+) -> CmdResult<Vec<crate::processes::cleanup_log::Event>> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::cleanup_events(&pool))
+        .await
+        .map_err(|e| format!("정리 기록을 읽지 못했습니다: {e}"))
 }
 
 // 사람이 고른 프로세스를 끝낸다 — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리](프로세스 결정 6 · 티켓 31). 받는 것은

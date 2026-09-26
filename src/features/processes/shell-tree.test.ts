@@ -10,6 +10,10 @@ import {
   groupRowLabel,
   groupTotals,
   helperLabel,
+  offscreenRowLabel,
+  offscreenShells,
+  orphanGroupRowLabel,
+  orphanGroups,
   shellRowLabel,
   shellStateOf,
   shellTotals,
@@ -176,8 +180,8 @@ describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
     expect(terminal.owner).toBe(topTerminal("atelier").owner);
   });
 
-  // 목록에 없는 work — 목록을 아직 못 읽었거나, MCP로 아카이브돼 주인을 잃었다(주인 잃은 셸 묶음은 32의 몫이다). 셸을 숨기면 도는
-  // 것이 화면에서 사라진다. 목록의 것 뒤, Terminal 앞에 slug를 이름 삼아 선다.
+  // 목록에 없는 work — 목록을 아직 못 읽었다(주인 잃은 셸은 표시가 서서 제 묶음으로 간다 — 아래 「주인 잃은 셸 묶음」). 셸을 숨기면
+  // 도는 것이 화면에서 사라진다. 목록의 것 뒤, Terminal 앞에 slug를 이름 삼아 선다.
   it("목록에 없는 work은 목록의 것 뒤 · Terminal 앞에 slug로 선다", () => {
     const input = 기본({
       shells: [
@@ -475,5 +479,126 @@ describe("행의 접근성 이름 — 한 문장", () => {
 
   it("셸 도우미 줄은 「셸 도우미」와 그 이름들이다", () => {
     expect(helperLabel([행(1, 0, 0, "gitstatusd"), 행(2, 0, 1, "zsh", { argv0: "/bin/zsh" })])).toBe("셸 도우미, gitstatusd · zsh");
+  });
+});
+
+// 프로세스 티켓 32 — **주인 잃은 셸 묶음**(프로세스 결정 4). 12가 스토어에 「주인 잃음」으로 표시한 셸이다. 그 셸의 work은 목록에 없어
+// 세계 트리에 서면 slug 이름의 work 행으로 선다(27) — 표시가 선 셸은 거기서 빠져 이 묶음으로 옮긴다. 한 셸이 두 묶음에 서면 [닫기]
+// 자리가 둘이고 수가 두 번 읽힌다.
+describe("주인 잃은 셸 묶음", () => {
+  it("표시가 선 셸은 세계 트리에 안 서고 이 묶음에 선다 — 목록에 없을 뿐인 셸은 트리에 그대로다", () => {
+    const input = 기본({
+      shells: [
+        칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
+        칸(2, "G-2", { owner: ownerOf("atelier", "unread-work") }),
+        칸(3, "G-3", { owner: ownerOf("atelier") }),
+      ],
+      snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
+    });
+    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 unread-work", "3 G-2", "2 Terminal", "3 G-3"]);
+    expect(orphanGroups(input).map((group) => [group.name, group.shells.map((node) => node.shell.shellKey)])).toEqual([
+      ["gone-work", ["G-1"]],
+    ]);
+  });
+
+  // 두 세계가 함께 선다 — 화면이 앱 전체다(프로세스 결정 9). 지금 세계의 것이 먼저이고, 세계 안은 스토어의 차례(탭의 차례)다.
+  // 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다 — [모두 닫기]는 그 칸도 함께 거둔다(12).
+  it("두 세계의 주인 잃은 셸이 지금 세계부터 work마다 서고, 풀에 없는 칸은 안 선다", () => {
+    const shells = [
+      칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), orphaned: true }),
+      칸(2, "G-2", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
+      칸(3, "G-3", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
+      칸(4, "G-4", { owner: ownerOf("atelier", "gone-work"), orphaned: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
+    ];
+    const snapshot = 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")], { "G-3": [행(300, 1, 30, "node")] });
+    const 모양 = (current: "atelier" | "maison") =>
+      orphanGroups(기본({ current, shells, snapshot })).map((group) => [
+        group.owner,
+        group.shells.map((node) => [node.shell.id, node.descendants.map(({ row }) => row.id.pid)]),
+      ]);
+    expect(모양("atelier")).toEqual([
+      [ownerOf("atelier", "gone-work"), [[2, []], [3, [300]]]],
+      [ownerOf("maison", "gone-room"), [[1, []]]],
+    ]);
+    expect(모양("maison").map(([owner]) => owner)).toEqual([ownerOf("maison", "gone-room"), ownerOf("atelier", "gone-work")]);
+  });
+
+  it("주인 잃은 셸이 없으면 묶음이 비었다", () => {
+    expect(orphanGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
+  });
+
+  // 두 세계가 한 묶음에 서므로 work 줄이 세계를 말한다 — 두 세계에 같은 slug가 설 수 있다(결정 10). 세계 트리의 work 줄은 세계
+  // 줄 밑에 서서 말할 까닭이 없다.
+  it("work 줄은 이름 · 세계 · 셸 수 · 메모리다", () => {
+    const [group] = orphanGroups(
+      기본({
+        shells: [칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), orphaned: true })],
+        snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB))]),
+      }),
+    );
+    expect(orphanGroupRowLabel(group)).toBe(`gone-room, ${worldNameOf("maison")}, 셸 1개, 8MB`);
+  });
+});
+
+// 프로세스 티켓 32 — **화면 밖 셸**(프로세스 스펙 S42). 풀에는 있는데 화면 스토어가 모르는 셸이다 — 새로고침 중에 끝난 spawn이 남길 수
+// 있다(조사의 경로 7, 추정). **연달아 두 스냅샷에 선 셸만** 센다: Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의 `spawn`), 프런트는
+// 답이 온 뒤에야 칸에 셸 키를 앉힌다 — 그 사이 찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다.
+describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지난 스냅샷", () => {
+  const 가르기 = (shells: Shell[], pool: PoolShell[], previous: PoolShell[] | undefined, descendants = {}, helpers: ProcessRow[] = []) =>
+    offscreenShells({ shells, snapshot: 스냅샷(pool, descendants, helpers), previous });
+
+  it("스토어가 모르는 셸이 지난 스냅샷에도 있었으면 화면 밖 셸이다", () => {
+    const found = 가르기([칸(1, "G-1")], [풀(1, "G-1"), 풀(4, "G-4")], [풀(1, "G-1"), 풀(4, "G-4")]);
+    expect(found.map((node) => node.pool)).toEqual([풀(4, "G-4")]);
+  });
+
+  // spawn 왕복 창 — 방금 뜬 셸이 한 스냅샷에만 스토어가 모르는 셸로 선다. 다음 스냅샷에는 스토어가 키를 안다.
+  it("한 스냅샷에만 선 셸은 화면 밖 셸이 아니다", () => {
+    expect(가르기([칸(1, "G-1")], [풀(1, "G-1"), 풀(4, "G-4")], undefined)).toEqual([]);
+    expect(가르기([칸(1, "G-1")], [풀(1, "G-1"), 풀(4, "G-4")], [풀(1, "G-1")])).toEqual([]);
+  });
+
+  // 끝난 칸도, 주인 잃은 셸도 스토어가 아는 셸이다 — 키가 칸에 있다. 주인 잃은 셸은 그 묶음에 서고 여기 안 선다.
+  it("스토어에 셸 키가 있는 셸은 화면 밖 셸이 아니다 — 주인 잃은 셸 · 끝난 칸도", () => {
+    const shells = [
+      칸(1, "G-1", { orphaned: true }),
+      칸(2, "G-2", { status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
+      칸(3, null),
+    ];
+    const pool = [풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")];
+    expect(가르기(shells, pool, pool).map((node) => node.pool.shellKey)).toEqual(["G-3"]);
+  });
+
+  // 셸은 pty id와 셸 키가 함께 같아야 같은 셸이다 — 키만 보면 같은 키의 셸이 닫혔다 다시 뜬 것을(다른 pty id) 두 박자에 선 것으로
+  // 읽는다. 셸 키가 pty id를 꼬리로 품으니 실물에서는 늘 함께 간다 — 한쪽만 맞는 것은 흉내로만 선다.
+  it("pty id와 셸 키가 함께 같아야 두 스냅샷에 선 셸이다", () => {
+    expect(가르기([], [풀(4, "G-4")], [풀(5, "G-4")])).toEqual([]);
+    expect(가르기([], [풀(4, "G-4")], [풀(4, "H-4")])).toEqual([]);
+  });
+
+  it("화면 밖 셸도 그 셸 키의 자손을 들고, 셸 도우미는 따로 든다", () => {
+    const helper = 행(150, 1, 5, "gitstatusd");
+    const vite = 행(200, 1, 10, "node");
+    const esbuild = 행(210, 200, 11, "esbuild");
+    const [node] = 가르기([], [풀(4, "G-4")], [풀(4, "G-4")], { "G-4": [helper, vite, esbuild] }, [helper]);
+    expect(node.helpers.map((row) => row.id.pid)).toEqual([150]);
+    expect(node.descendants.map(({ row, depth }) => [row.id.pid, depth])).toEqual([
+      [200, 1],
+      [210, 2],
+    ]);
+  });
+
+  // 이름은 모른다 — 셸 이름은 스토어의 칸이 든다(`shellRowName`). 「셸」 뒤에 상태와 트리 합 메모리를 잇는다. 명령은 스토어의 1초
+  // 폴링 값이라 여기 없다 — 사람이 띄운 자손이 있으면 그 수, 없으면 「조용함」과 마지막 출력부터의 경과다.
+  it("화면 밖 셸의 행 이름은 「셸, 상태, 메모리」다", () => {
+    const [quiet] = 가르기([], [풀(4, "G-4", 1_000)], [풀(4, "G-4", 1_000)]);
+    expect(offscreenRowLabel(quiet, 61_000)).toBe("셸, 조용함 1m");
+    const [busy] = 가르기(
+      [],
+      [풀(4, "G-4", 1_000, 지표(8 * MiB))],
+      [풀(4, "G-4")],
+      { "G-4": [행(200, 1, 10, "node", { metrics: 지표(300 * MiB) })] },
+    );
+    expect(offscreenRowLabel(busy, 61_000)).toBe("셸, 띄운 프로세스 1개, 308MB");
   });
 });

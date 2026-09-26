@@ -91,6 +91,14 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
     ]);
   });
 
+  // 화면 밖 셸(티켓 32 · 프로세스 스펙 S42)은 스토어에 칸이 없어 주인을 모른다 — 지어내지 않고 `null`로 싣는다. 백엔드는 그
+  // 사건을 주인 없이 적는다(티켓 11의 「owner는 없다」).
+  it("주인을 모르는 닫기는 주인 칸을 `null`로 싣는다", async () => {
+    calls.length = 0;
+    await terminalApi.kill(7, "shellClose", null);
+    expect(calls).toEqual([{ name: "pty_kill", args: { id: 7, reason: "shellClose", owner: null } }]);
+  });
+
   // 타입이 `mode`를 막는 것도 works 쪽과 같은 계약이고, 두 모양이 각각 어느 변형을 무는지도
   // 거기 적혀 있다(`works/api.test.ts`). **`spawn` 하나만 본다** — 나머지 넷은 모드를 안 받는
   // 것이 계약이라(결정 10) 위 검사가 반대쪽을 든다.

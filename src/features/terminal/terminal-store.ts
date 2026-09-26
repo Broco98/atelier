@@ -9,6 +9,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
 import { appToasts, showAppToast } from "@/components/shell/app-toast";
+import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { Mode } from "@/mode";
@@ -32,12 +33,15 @@ import type { NotifyPayload } from "./shell-notify";
 import { notifyChoice, onNotifySettingsChanged } from "./notify-settings";
 import {
   activateShell,
+  asksBeforeClose,
   attentionOfId,
   CLOSE_REASONS,
+  closeNotice,
   confirmClose,
   countQuitShells,
   countSpawned,
   firstInputOfId,
+  isLiveShellOf,
   isQuietShell,
   liveOrphansOf,
   markExited,
@@ -49,6 +53,9 @@ import {
   openShell,
   orphansCloseNotice,
   orphansOf,
+  NO_QUIET_NOTICE,
+  quietCloseNotice,
+  quietShellsOf,
   removeShell,
   runningOfId,
   setAttention,
@@ -445,12 +452,13 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * 그 칸의 PTY를 닫는다 — 닫기 IPC를 부르는 **세 자리**(`disposeInstance` · `failOpen` · spawn 왕복 중 닫힘)가 함께
- * 쓴다. 까닭은 닫는 자리로 표(`CLOSE_REASONS`)에서 고르고, 주인은 그 칸의 것을 싣는다(티켓 11). 백엔드는 그 닫기가
- * 끝낸 것을 정리 기록에 이 둘로 적는다. `ptyId`는 부르는 쪽이 준다 — spawn 왕복 중 닫힘은 칸에 아직 안 앉은 번호를 닫는다.
+ * PTY를 닫는다 — 닫기 IPC를 부르는 **네 자리**(`disposeInstance` · `failOpen` · spawn 왕복 중 닫힘 · 화면 밖 셸의 [닫기])가
+ * 함께 쓴다. 까닭은 닫는 자리로 표(`CLOSE_REASONS`)에서 고르고, 주인은 그 칸의 것을 싣는다(티켓 11). 백엔드는 그 닫기가
+ * 끝낸 것을 정리 기록에 이 둘로 적는다. `ptyId`는 부르는 쪽이 준다 — spawn 왕복 중 닫힘은 칸에 아직 안 앉은 번호를,
+ * 화면 밖 셸은 칸이 없는 번호를 닫는다. 칸이 없으면 주인도 없다(`null` — 티켓 32).
  */
-function killPty(instance: ShellInstance, ptyId: number, path: ClosePath): void {
-  ignoreGone(terminalApi.kill(ptyId, CLOSE_REASONS[path], instance.origin.owner));
+function killPty(ptyId: number, path: ClosePath, owner: ShellOwner | null): void {
+  ignoreGone(terminalApi.kill(ptyId, CLOSE_REASONS[path], owner));
 }
 
 /**
@@ -472,7 +480,7 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
   // 훅 사건 수도 지운다(중단 추론) — 번호는 다시 안 쓰이지만 셸이 닫힐 때마다 한 칸씩 남는다. 승인 추론의 자취도 같다.
   hookEvents.delete(instance.id);
   answerTraces.delete(instance.id);
-  if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
+  if (instance.ptyId !== null && path !== null) killPty(instance.ptyId, path, instance.origin.owner);
   instance.observer.disconnect();
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로 묶여 있어 WebGL
   // 애드온도 여기서 놓인다. _한때 여기 「상한 8이 컨텍스트 수를 말하는 이상 이 한 줄이 상한을 되돌려준다」고 적혀
@@ -493,11 +501,12 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
  *
  * **밖으로 내보내지 않는다**(결정 92). ⌘W와 `×`는 확인을 거치는 `requestCloseShell`만
  * 볼 수 있어야 한다 — 「두 길이 같은 판정을 쓴다」를 주석으로 부탁하는 대신, 확인을
- * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 넷이다 — 아카이빙의
+ * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 여섯이다 — 아카이빙의
  * 회수(`closeShellsOf`)에는 사람이 이미 한 번 확인했고, 안 쓴 자동 셸의 회수(`closeUnusedShells`)에는
  * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1). MCP로 아카이브된 work의
  * 조용한 셸(`settleOwners`)에도 물을 것이 없고(명령도 사람이 띄운 자손도 없다), 주인 잃은 셸의
- * [모두 닫기](`closeOrphans`)는 셸마다가 아니라 **한 번** 물었다(티켓 12).
+ * [모두 닫기](`closeOrphans`)와 `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32)는 셸마다가 아니라
+ * **한 번** 물었다(티켓 12 · 프로세스 스펙 S44).
  *
  * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
@@ -1020,42 +1029,89 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
 function showOrphans(mode: Mode): void {
   const count = liveOrphansOf(terminalStore.state, mode).length;
   if (count === 0) return;
+  const id = orphanToastId(mode);
   showAppToast({
-    id: orphanToastId(mode),
+    id,
     text: orphanNotice(mode, count),
-    action: { label: "모두 닫기", run: () => void closeOrphans(mode) },
+    // [보기]는 `Processes`의 주인 잃은 셸 묶음으로 간다(티켓 32 · 프로세스 스펙 S15). [모두 닫기]가 앞이다 — 이 토스트의
+    // 주된 동작이다.
+    actions: [{ label: "모두 닫기", run: () => void closeOrphans([mode]) }, viewAction(id)],
   });
 }
 
 /**
- * [모두 닫기] — 그 세계의 주인 잃은 셸을 **한 번 묻고** 모두 닫는다(티켓 12). 셸마다 닫기 확인 창(08)을 띄우면 창이 N번
+ * [모두 닫기] — 받은 세계들의 주인 잃은 셸을 **한 번 묻고** 모두 닫는다(티켓 12). 셸마다 닫기 확인 창(08)을 띄우면 창이 N번
  * 뜬다. 창은 N과, 그 셸들에서 띄워 함께 끝날 프로세스 수 M을 말한다(M은 배치 물음 한 번 — 못 얻으면 안 붙는다).
  *
  * 닫는 길은 셸 닫기이고 까닭은 **「셸 닫기」**다 — 사람이 누른 닫기라 판 04의 `●`를 켜지 않는다(프로세스 스펙 S41).
  * 끝난 칸도 함께 거둔다(`orphansOf`). 도는 것이 없으면 물을 것이 없어 묻지 않는다. 취소하면 토스트는 그대로 남는다.
  *
- * 판 04의 `Processes` 주인 잃은 셸 묶음의 [모두 닫기](티켓 32)도 이 규칙을 그대로 쓴다.
+ * **부르는 곳이 둘이다 — 같은 함수다**(티켓 32). 토스트는 그 세계 하나를 넘기고, `Processes`의 주인 잃은 셸 묶음은 두 세계를
+ * 넘긴다 — 그 화면은 앱 전체를 보인다(프로세스 결정 9). 두 세계의 셸도 창은 한 번이고, 닫은 세계들의 토스트를 함께 내린다.
  */
-async function closeOrphans(mode: Mode): Promise<void> {
-  const live = liveOrphansOf(terminalStore.state, mode);
+export async function closeOrphans(modes: ReadonlyArray<Mode>): Promise<void> {
+  const live = modes.flatMap((mode) => liveOrphansOf(terminalStore.state, mode));
   if (live.length > 0) {
     const spawned = await countSpawned(live, closeChecks);
     const body = orphansCloseNotice(live.length, spawned);
     if (!(await askDialog({ title: "주인 잃은 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
   }
-  appToasts.close(orphanToastId(mode));
-  for (const shell of orphansOf(terminalStore.state, mode)) closeShell(shell.id, "orphans");
+  for (const mode of modes) appToasts.close(orphanToastId(mode));
+  for (const shell of modes.flatMap((mode) => orphansOf(terminalStore.state, mode))) closeShell(shell.id, "orphans");
 }
 
 /**
- * 띠에서 누른 셸이 **주인 잃은 셸이면** 그 세계의 토스트를 다시 세우고 참을 돌려준다(프로세스 스펙 S14). 부르는 쪽은
- * 참이면 **화면을 옮기지 않는다** — 그 work은 목록에 없다. 판 04부터는 `Processes`로 간다(티켓 32).
+ * 이 칸이 **주인 잃은 셸인가**(티켓 12). 띠의 줄과 ⌘J가 셸로 가기 전에 묻는다(`useGoToShell`) — 참이면 그 work 화면이 아니라
+ * `Processes`로 간다(프로세스 스펙 S14 · 티켓 32): 그 work은 목록에 없어 가면 없는 work으로 간다.
  */
-export function remindOrphan(id: number): boolean {
-  const mode = orphanedWorldOf(terminalStore.state, id);
-  if (mode === null) return false;
-  showOrphans(mode);
-  return true;
+export function isOrphanedShell(id: number): boolean {
+  return orphanedWorldOf(terminalStore.state, id) !== null;
+}
+
+/**
+ * [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — **두 세계의** 살아 있는 셸을 배치 물음 **한 번**으로 보고, 명령도 사람이
+ * 띄운 자손도 없는 셸만 한 번 묻고 닫는다. 무엇이 조용한지는 `quietShellsOf`가 혼자 정한다(모르면 조용하지 않다).
+ *
+ * **닫을 것이 없으면 묻지 않고 짧은 토스트로 끝낸다** — 「조용한 셸 0개를 닫아요」 창은 물을 것이 없는 물음이고, 버튼이 아무
+ * 일도 안 하면 눌렸는지가 안 보인다. 닫는 길은 셸 닫기이고 까닭은 「셸 닫기」다 — 사람이 누른 닫기라 `●`를 켜지 않는다.
+ *
+ * **창에 답한 뒤 다시 본다**: 묻는 동안 셸이 스스로 끝났으면 그 칸은 죽은 이유를 읽으라고 남은 칸이라(결정 22) 거두지 않는다.
+ * 그 사이 새로 조용해진 셸은 안 넣는다 — 창의 N보다 많이 닫지 않는다.
+ */
+export async function closeQuietShells(): Promise<void> {
+  const shells = terminalStore.state.shells;
+  const quiet = quietShellsOf(shells, await closeChecks(shells.map((shell) => shell.id)));
+  if (quiet.length === 0) {
+    showAppToast({ id: NO_QUIET_TOAST_ID, text: NO_QUIET_NOTICE });
+    return;
+  }
+  const body = quietCloseNotice(quiet.length);
+  if (!(await askDialog({ title: "조용한 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
+  for (const shell of quiet) if (isLiveShell(shell.id)) closeShell(shell.id, "quiet");
+}
+
+/** 닫을 조용한 셸이 없을 때의 짧은 토스트(`closeQuietShells`). 자기 id라 거푸 눌러도 한 자리를 고친다. */
+const NO_QUIET_TOAST_ID = "processes:no-quiet";
+
+/** 그 칸이 아직 목록에 있고 살아 있는가 — 창에 답하는 사이 닫히거나 끝난 칸을 거르는 자리다(`closeQuietShells`). */
+function isLiveShell(id: number): boolean {
+  return isLiveShellOf(terminalStore.state, id);
+}
+
+/**
+ * 화면 밖 셸의 [닫기](티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 이 스토어가 모르는 셸이다. 칸이 없어 `closeShell`을
+ * 못 지난다: 스냅샷이 준 pty id를 그대로 닫는다. **묻는 규칙은 셸 탭의 ×와 같다** — 닫기 직전에 그 셸 하나를 물어
+ * (`pty_command_running`) 명령이 돌거나 함께 끝날 것이 있으면 같은 창으로 묻는다(`asksBeforeClose` · `closeNotice`).
+ * 못 얻으면 안 묻는다 — 사람이 고른 닫기를 모르는 것을 이유로 막지 않는다(`needsCloseConfirm`과 같다).
+ *
+ * 까닭은 「셸 닫기」이고 주인은 없다(`null`) — 사람이 누른 닫기라 `●`를 켜지 않는다.
+ */
+export async function closeOffscreenShell(ptyId: number): Promise<void> {
+  const check = await terminalApi.commandRunning(ptyId).catch(() => null);
+  if (check && asksBeforeClose(check)) {
+    if (!(await askDialog({ title: "셸 닫기", body: closeNotice(check), confirm: "닫기", danger: true }))) return;
+  }
+  killPty(ptyId, "offscreen", null);
 }
 
 /**
@@ -1523,7 +1579,7 @@ function failOpen(instance: ShellInstance, error: unknown) {
   const shell = terminalStore.state.shells.find((candidate) => candidate.id === instance.id);
   if (shell?.status.kind === "running") fail(instance, error);
   if (instance.ptyId !== null) {
-    killPty(instance, instance.ptyId, "openFailed");
+    killPty(instance.ptyId, "openFailed", instance.origin.owner);
     instance.ptyId = null;
   }
 }
@@ -1695,7 +1751,7 @@ async function spawn(instance: ShellInstance) {
     // 붙다가 열기에 터진 경우(`broken`)도 같은 자리에서 거둔다 — `failOpen`이 그때는 죽일
     // pty 번호를 아직 몰랐다.
     if (instance.closed || instance.broken) {
-      killPty(instance, spawned.id, "spawnRace");
+      killPty(spawned.id, "spawnRace", instance.origin.owner);
       return;
     }
     instance.ptyId = spawned.id;
