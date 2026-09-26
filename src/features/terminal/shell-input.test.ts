@@ -162,12 +162,17 @@ describe("중단 키 — Esc · Ctrl-C", () => {
 // **여기서 재는 것은 키 하나가 창에서 무엇인가**다 — 그 키가 승인인지는 앞에 누른 키에 달려(↓ 뒤의 Enter) 이 함수가 모른다.
 describe("권한 창의 키 — 확정 · 거절 · 고르기", () => {
   it.each([
-    // `1` · `2`는 Enter 없이 곧바로 승인한다(r4 #2 · r5). 숫자 칸의 키든 숫자 패드든 `key`가 같다.
+    // `1`은 Enter 없이 곧바로 첫째 자리를 확정한다(r4 #2) — 권한 창의 첫째는 늘 `Yes`다. 숫자 칸의 키든 숫자 패드든 `key`가 같다.
     ["1", key({ code: "Digit1", key: "1", keyCode: 49 }), "approve"],
-    ["2", key({ code: "Digit2", key: "2", keyCode: 50 }), "approve"],
     ["숫자 패드 1", key({ code: "Numpad1", key: "1", keyCode: 97 }), "approve"],
-    // `3`은 곧바로 거절한다(r5). Esc도 거절이지만(r4 #3) 고치기 칸에서 둘의 뜻이 갈려 따로 든다 — `3`은 글자가 된다.
-    ["3", key({ code: "Digit3", key: "3", keyCode: 51 }), "reject"],
+    // **그 밖의 숫자는 그 자리를 곧바로 확정하지만, 무엇인지는 창의 선택지에 달렸다**(리뷰 반영). 18의 셋짜리 Bash 창에서는
+    // `2`가 승인(r5) · `3`이 거절(r5)이었지만, 허용 규칙 제안이 없는 Bash 창과 WebFetch 창은 「1. Yes · 2. No」 둘이라 `2`가
+    // 거절이고, auto 모드 줄이 끼면 `3`이 승인 · `4`가 거절이다(2.1.283 소스).
+    ["2", key({ code: "Digit2", key: "2", keyCode: 50 }), "pick"],
+    ["3", key({ code: "Digit3", key: "3", keyCode: 51 }), "pick"],
+    ["4", key({ code: "Digit4", key: "4", keyCode: 52 }), "pick"],
+    ["9", key({ code: "Digit9", key: "9", keyCode: 57 }), "pick"],
+    // Esc는 거절이다(r4 #3). 고치기 칸에서는 칸을 닫는다 — 숫자와 뜻이 갈려 따로 든다(칸 안의 숫자는 글자다).
     ["Esc", key({ code: "Escape", key: "Escape", keyCode: 27 }), "cancel"],
     // Enter는 놓인 자리를 확정한다(r6 · r4 #1 · r5).
     ["Enter", key({ code: "Enter", key: "Enter", keyCode: 13 }), "confirm"],
@@ -175,6 +180,11 @@ describe("권한 창의 키 — 확정 · 거절 · 고르기", () => {
     // ↑ ↓는 자리만 옮긴다(r4 #1 · r5).
     ["↓", key({ code: "ArrowDown", key: "ArrowDown", keyCode: 40 }), "move"],
     ["↑", key({ code: "ArrowUp", key: "ArrowUp", keyCode: 38 }), "move"],
+    // ⌃N · ⌃P도 자리를 옮긴다 — 고치기 칸 안에서도 옮기는 키는 ↑ ↓와 이 둘이다(2.1.283 소스, 리뷰 반영). 한글 입력기가 켜져
+    // 있어도 xterm은 keyCode로 보내므로 `key`가 자모여도 같다.
+    ["⌃N", key({ code: "KeyN", key: "n", keyCode: 78, ctrlKey: true }), "move"],
+    ["⌃P", key({ code: "KeyP", key: "p", keyCode: 80, ctrlKey: true }), "move"],
+    ["한글 입력기의 ⌃N", key({ code: "KeyN", key: "ㅜ", keyCode: 78, ctrlKey: true }), "move"],
     // Tab은 놓인 자리를 고치기 칸으로 연다(r6).
     ["Tab", key({ code: "Tab", key: "Tab", keyCode: 9 }), "amend"],
   ] as const)("%s", (_, event, 뜻) => {
@@ -182,7 +192,7 @@ describe("권한 창의 키 — 확정 · 거절 · 고르기", () => {
   });
 
   // **그 밖에 셸로 가는 키는 「그 밖」이다.** 창에서 아무 일도 안 한다고 잰 키(글자 · Ctrl-C — r5)도 있지만, 안 잰 키가
-  // 자리를 옮길 수 있어(PageDown · ⌃N 같은) 하나로 묶는다 — 창이 그 키를 어떻게 읽는지는 추론이 「모른다」로 받는다.
+  // 자리를 옮길 수 있어(PageDown 같은) 하나로 묶는다 — 창이 그 키를 어떻게 읽는지는 추론이 「모른다」로 받는다.
   it.each([
     ["글자", key()],
     ["Ctrl-C", key({ code: "KeyC", key: "c", keyCode: 67, ctrlKey: true })],
@@ -190,9 +200,13 @@ describe("권한 창의 키 — 확정 · 거절 · 고르기", () => {
     ["⇧1", key({ code: "Digit1", key: "!", keyCode: 49, shiftKey: true })],
     ["⌃1", key({ code: "Digit1", key: "1", keyCode: 49, ctrlKey: true })],
     ["⌥1", key({ code: "Digit1", key: "¡", keyCode: 49, altKey: true })],
-    ["4", key({ code: "Digit4", key: "4", keyCode: 52 })],
+    // `0`은 지름길이 가리키는 자리가 없다.
+    ["0", key({ code: "Digit0", key: "0", keyCode: 48 })],
     ["←", key({ code: "ArrowLeft", key: "ArrowLeft", keyCode: 37 })],
     ["⇧Tab", key({ code: "Tab", key: "Tab", keyCode: 9, shiftKey: true })],
+    // ⌃⇧N · ⌥N은 ⌃N이 아니다.
+    ["⌃⇧N", key({ code: "KeyN", key: "N", keyCode: 78, ctrlKey: true, shiftKey: true })],
+    ["⌥N", key({ code: "KeyN", key: "˜", keyCode: 78, altKey: true })],
     // ⇧Enter는 셸에 줄바꿈으로 간다(결정 91) — 확정이 아니다.
     ["⇧Enter", key({ code: "Enter", key: "Enter", keyCode: 13, shiftKey: true })],
     ["⌥Enter", key({ code: "Enter", key: "Enter", keyCode: 13, altKey: true })],

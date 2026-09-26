@@ -93,37 +93,46 @@ export function isInterruptKey(event: KeyDown): boolean {
 }
 
 /**
- * 권한 창에서 그 키가 무엇인가 — 판 03 선행 시험의 「권한 창의 키」 표(Claude Code 2.1.283의 Bash 권한 창 실측)다. 승인
- * 추론이 이 답을 접어 「사람이 그 창에서 승인했나」를 가른다(`shell-attention.ts`의 `inferApproval`).
+ * 권한 창에서 그 키가 무엇인가 — 판 03 선행 시험의 「권한 창의 키」 표(Claude Code 2.1.283의 Bash 권한 창 실측)에, 리뷰 반영이
+ * 같은 판의 소스에서 읽은 선택지 모양을 더했다. 승인 추론이 이 답을 접어 「사람이 그 창에서 승인했나」를 가른다
+ * (`shell-attention.ts`의 `inferApproval`).
  *
- * - `approve` — `1` · `2`. Enter 없이 곧바로 승인한다(`2`는 허용 규칙도 적는다).
- * - `reject` — `3`. 곧바로 거절한다. Esc와 따로 두는 것은 고치기 칸에서 뜻이 갈려서다 — 칸 안의 `3`은 글자다.
- * - `cancel` — Esc. 거절한다(「Esc to cancel」).
+ * - `approve` — `1`. Enter 없이 곧바로 첫째 자리를 확정한다 — 권한 창의 첫째는 늘 `Yes`다.
+ * - `pick` — `2`~`9`. Enter 없이 곧바로 그 자리를 확정하는데, **무엇인지는 창의 선택지에 달렸다.** 18이 잰 셋짜리 Bash 창에서는
+ *   `2`가 승인(허용 규칙도 적는다) · `3`이 거절이었지만, 허용 규칙 제안이 없는 Bash 창과 WebFetch 창은 「1. Yes · 2. No」 둘이라
+ *   `2`가 거절이고, auto 모드 줄이 끼면 `3`이 승인 · `4`가 거절이다. 키로는 어느 창인지 모른다.
+ * - `cancel` — Esc. 거절한다(「Esc to cancel」). 숫자와 따로 두는 것은 고치기 칸에서 뜻이 갈려서다 — 칸 안의 숫자는 글자이고
+ *   Esc는 칸을 닫는다.
  * - `confirm` — Enter. **놓인 자리를 확정한다** — 승인인지는 앞에 누른 키에 달렸다(↓로 `3. No`에 놓였으면 거절).
- * - `move` — ↑ ↓. 자리만 옮긴다.
+ * - `move` — ↑ ↓ · ⌃N ⌃P. 자리만 옮긴다. 고치기 칸 안에서도 자리를 옮기는 키는 이 넷이다(2.1.283 소스). ⌃N · ⌃P는 `key`가
+ *   아니라 keyCode로 본다 — 중단 키의 Ctrl-C와 같은 까닭이다(한글 입력기가 켜져 있으면 `key`가 자모다).
  * - `amend` — Tab. 놓인 자리를 고치기 칸으로 연다. 그 뒤 글자는 칸으로 가고 Enter가 그 자리를 확정한다.
  * - `other` — 그 밖에 셸로 가는 키. 창에서 아무 일도 안 한다고 잰 키(글자 · Ctrl-C)도 있지만, 안 잰 키가 자리를 옮길 수
- *   있어(PageDown · ⌃N 같은) 하나로 묶는다. 입력기가 문 키도 여기다 — 무엇이 창에 닿을지 모른다.
+ *   있어(PageDown 같은) 하나로 묶는다. 입력기가 문 키도 여기다 — 무엇이 창에 닿을지 모른다.
  *
  * **셸로 안 가는 키는 `null`이다**(앱 단축키 · 수정키만 · 키업) — 창에 닿지 않는다. 가르는 기준은 `keyRoute` 하나이고, 지름길은
  * 수정키가 안 붙은 것만이다: ⇧1은 `!`이고, ⇧Enter는 셸에 줄바꿈으로 간다(결정 91).
  *
- * 이 표는 **Bash 권한 창**만 잰 것이다. 파일 고치기 · `AskUserQuestion` · Elicitation 창의 선택지는 안 쟀다.
+ * 이 표는 **Bash 권한 창**을 잰 것이다. 파일 고치기 · `AskUserQuestion` · Elicitation 창의 선택지는 안 쟀다.
  */
-export type AnswerKey = "approve" | "reject" | "cancel" | "confirm" | "move" | "amend" | "other";
+export type AnswerKey = "approve" | "pick" | "cancel" | "confirm" | "move" | "amend" | "other";
+
+/** ⌃N · ⌃P의 keyCode — xterm이 ⌃ + 글자를 `keyCode - 64`로 보내는 그 키다(`Keyboard.ts`). */
+const CTRL_MOVE_KEYCODES: ReadonlySet<number> = new Set([78, 80]);
 
 export function answerKey(event: KeyDown): AnswerKey | null {
   const route = keyRoute(event);
   if (route === null || route.to === "app" || route.to === "modifier") return null;
   if (route.to === "ime") return "other";
   if (event.key === "ArrowUp" || event.key === "ArrowDown") return "move";
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && CTRL_MOVE_KEYCODES.has(event.keyCode)) {
+    return "move";
+  }
   if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || route.rewrite !== null) return "other";
+  if (/^[2-9]$/.test(event.key)) return "pick";
   switch (event.key) {
     case "1":
-    case "2":
       return "approve";
-    case "3":
-      return "reject";
     case "Escape":
       return "cancel";
     case "Enter":

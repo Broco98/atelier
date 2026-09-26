@@ -102,9 +102,12 @@ test("승인 요청에서 Esc를 누르면 「나를 기다림」이 남고, 그
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **↓로 자리를 옮긴 뒤의 Enter는 모른다** — `3. No`를 확정했을 수 있다(18 r5: ↓ ↓ Enter는 거절이었다). 거절을 도는 중으로 읽으면
-// claude는 사람을 기다리는데 셸은 도는 중으로 굳는다. 숫자는 놓인 자리와 상관없는 지름길이라 읽는다.
-test("↓ 뒤의 Enter는 「나를 기다림」을 남기고, ↓ 뒤의 1은 도는 중으로 간다", async ({ page }) => {
+// **↓로 자리를 옮긴 뒤에는 Enter도 숫자도 모른다.** Enter는 `3. No`를 확정했을 수 있다(18 r5: ↓ ↓ Enter는 거절이었다). 숫자는
+// 놓인 자리가 고칠 수 있는 줄(`2. Yes, and don't ask again for: …`)이면 그 칸에 글자로 들어가고 창은 그대로다(리뷰 반영 — 2.1.283
+// 소스). 어느 쪽이든 승인으로 읽으면 claude는 사람을 기다리는데 셸은 도는 중으로 굳는다.
+//
+// 앵커: 누른 키가 셸에 닿았다(`pty_write`), 그리고 같은 셸에서 새 승인 요청의 `1`은 도는 중으로 간다.
+test("↓ 뒤의 Enter도, ↓ 뒤의 1도 「나를 기다림」을 남긴다", async ({ page }) => {
   await 승인창앞(page);
 
   await page.keyboard.press("ArrowDown");
@@ -117,6 +120,35 @@ test("↓ 뒤의 Enter는 「나를 기다림」을 남기고, ↓ 뒤의 1은 �
   await expect(둘째줄(page)).toContainText("sleep 60");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("1");
+  await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toMatch(/\r.*1$/s);
+  await expect(기다림줄(page)).toHaveCount(1);
+  await expect(링(page)).toHaveCount(0);
+
+  await fireAttention(page, 승인요청(Date.now() + 2, "sleep 90"));
+  await expect(둘째줄(page)).toContainText("sleep 90");
+  await page.keyboard.press("1");
+  await expect(링(page)).toHaveCount(1);
+  await expect(띠(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **`2`는 창에 달렸다**(리뷰 반영). 18이 잰 셋짜리 Bash 창에서는 승인이지만, 허용 규칙 제안이 없는 Bash 창과 WebFetch 창은
+// 「1. Yes · 2. No」 둘이라 `2`가 거절이다 — 거절 뒤에는 훅이 없어(18) 도는 중으로 읽으면 굳는다. 키로는 어느 창인지 모르므로
+// 기다림을 남긴다(옛 동작대로 승인이었으면 PostToolUse가 푼다).
+//
+// 앵커: `2`가 셸에 닿았다, 그리고 같은 셸에서 새 승인 요청의 Enter는 도는 중으로 간다.
+test("승인 요청에서 2를 누르면 「나를 기다림」이 남는다", async ({ page }) => {
+  await 승인창앞(page);
+
+  await page.keyboard.press("2");
+  await expect.poll(() => 나간바이트(page), { message: "2가 셸에 안 닿았다" }).toContain("2");
+  await expect(기다림줄(page)).toHaveCount(1);
+  await expect(링(page)).toHaveCount(0);
+
+  await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
+  await expect(둘째줄(page)).toContainText("sleep 60");
+  await page.keyboard.press("Enter");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);
 

@@ -144,7 +144,7 @@ export const FAILED_LABEL = "오류로 끝남";
  * | `interrupt` · `clear` | **없음** |
  * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다. **멈춘 턴 뒤의 끝**(`stopped`)이면 도는 중은 확인할 것 |
  * | (중단 추론 — `inferInterrupt`) | `interrupt`와 같다(출처 `key`) |
- * | (승인 추론 — `inferApproval`) | 훅이 말한 기다림에서 확정 키 → `tool`과 같다(출처 `hook`을 이어받는다) |
+ * | (승인 추론 — `inferApproval`) | 훅이 말한 기다림에서 창이 열린 뒤 첫 키인 `1` · Enter, 처음 자리의 고치기 칸(Tab)의 Enter → `tool`과 같다(출처 `hook`을 이어받는다) |
  * | (에이전트 사라짐 — `nextOnRunning`) | `end`와 같다(출처 `gone`) + 권위가 풀린다 |
  *
  * **`end`의 마지막 칸은 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 「안 본 완료를 남긴다」를 둔 까닭은 `claude -p`
@@ -343,11 +343,15 @@ export interface Answering {
  * 창이 어디까지 왔나. 판 03 선행 시험의 「권한 창의 키」 표를 접는 칸이다.
  *
  * - `fresh` — 창이 열린 뒤 아직 아무 키도 안 눌렀다. 놓인 자리는 첫째(`1. Yes`)다.
- * - `moved` — 자리가 옮겨졌을 수 있다. 숫자는 여전히 지름길이지만 Enter가 무엇을 확정할지 모른다.
  * - `amending` — 첫째 자리를 고치기 칸으로 열었다(Tab). 숫자는 글자이고, Enter가 승인을 확정한다.
- * - `closed` — 창이 닫혔다: 거절했거나, 무엇을 확정했는지 모른다. 그 뒤의 키는 사람의 다음 말이라 더 읽지 않는다.
+ * - `unknown` — 창이 어디 있는지 모른다: 거절로 닫혔거나, 무엇을 확정했는지 모르거나, 자리가 옮겨졌을 수 있다. 여기서는 어떤
+ *   키로도 승인이 안 선다 — 옛 동작대로 도구가 끝날 때 풀린다. 창이 닫혔으면 그 뒤의 키는 사람의 다음 말이다.
+ *
+ * **자리를 옮긴 창을 따로 두지 않는다**(티켓 25 리뷰 반영). 옮긴 뒤에는 Enter도 숫자도 모른다 — 놓인 자리가 고칠 수 있는
+ * 줄(`2. Yes, and don't ask again for: …`)이면 숫자는 그 칸에 글자로 들어가고 창은 그대로다(2.1.283 소스). 거기서 승인으로 가는
+ * 길이 없으니 `unknown`과 같다.
  */
-export type AnswerStep = "fresh" | "moved" | "amending" | "closed";
+export type AnswerStep = "fresh" | "amending" | "unknown";
 
 /** `inferApproval`의 답 — 다음 상태와, 다음 키에 넘길 자취. 훅이 말한 기다림이 아니거나 승인했으면 자취는 `null`이다. */
 export interface Approval {
@@ -364,15 +368,19 @@ export interface Approval {
  * PostToolUse까지 오는 훅이 없다(판 03 선행 시험 — 대화형 다섯 번 · `-p` 여섯 번). 전이 표만으로는 `sleep 30`을 승인하면
  * 도구가 끝날 때까지 「나를 기다림」이다. 문서의 이벤트 목록에도 「승인됨」은 없다.
  *
- * **무엇이 승인인가**(18의 표):
- * - `1` · `2`는 곧바로 승인이다. 놓인 자리와 상관없다.
- * - Enter는 놓인 자리를 확정한다. **창이 열린 뒤 아무 키도 안 누른 Enter만** 승인으로 읽는다 — 처음 자리가 `1. Yes`다. 자리를
- *   옮겼을 수 있으면(↑ ↓ · 안 잰 키) 모른다: `3. No`를 확정한 거절을 도는 중으로 읽으면 claude는 사람의 말을 기다리는데 셸은
- *   도는 중으로 굳는다. 모르면 옛 동작대로 도구가 끝날 때 풀린다(fail-closed).
+ * **무엇이 승인인가**(18의 표 — 승인은 **창이 열린 뒤 첫 키**이거나 처음 자리에서 연 고치기 칸의 Enter뿐이다):
+ * - `1`은 곧바로 승인이다 — 권한 창의 첫째는 늘 `Yes`다.
+ * - Enter는 놓인 자리를 확정한다. **창이 열린 뒤 아무 키도 안 누른 Enter만** 승인으로 읽는다 — 처음 자리가 `1. Yes`다.
  * - Tab은 놓인 자리를 고치기 칸으로 연다. 처음 자리에서 연 칸의 Enter는 승인이고, 칸에 친 숫자는 글자다.
- * - `3` · Esc는 거절이다(S30) — 거절 뒤에는 훅이 하나도 없고 claude는 사람의 다음 말을 기다리므로 기다림이 사실이다. 그 뒤에
- *   친 키는 그 말이라 더 읽지 않는다.
- * - Ctrl-C · 글자는 창에서 아무 일도 안 한다 — 기다림 그대로다.
+ *
+ * **그 밖은 모른다**(fail-closed). 거절을 도는 중으로 읽으면 claude는 사람의 말을 기다리는데 셸은 도는 중으로 굳는다(거절 뒤에는
+ * 훅이 하나도 없다 — 18). 모르면 옛 동작대로 도구가 끝날 때 풀린다.
+ * - Esc는 거절이다(S30) — 기다림이 사실이다. 그 뒤에 친 키는 사람의 다음 말이라 더 읽지 않는다.
+ * - `2` 이상의 숫자는 창에 달렸다(티켓 25 리뷰 반영): 18의 셋짜리 Bash 창에서 `2`는 승인이지만, 선택지가 둘인 창(「1. Yes ·
+ *   2. No」 — 허용 규칙 제안이 없는 Bash 창, WebFetch 창)에서는 거절이다.
+ * - 자리를 옮겼을 수 있으면(↑ ↓ · ⌃N ⌃P · 안 잰 키) Enter는 `3. No`를 확정했을 수 있고, 숫자는 고칠 수 있는 줄의 칸에 글자로
+ *   들어갔을 수 있다(티켓 25 리뷰 반영).
+ * - Ctrl-C · 글자는 창에서 아무 일도 안 한다고 쟀지만, 안 잰 키와 같이 묶는다(`answerKey`의 `other`).
  *
  * **훅이 말한 기다림에만 건다.** OSC가 세운 기다림은 다시 흐른 출력이 푼다(`nextOnOutput`) — 그 창의 키는 이 표가 안 잰
  * 것이다. 에이전트는 가리지 않고, **누가 낸 기다림이든** 푼다: 도구 사건은 그 기다림을 낸 에이전트의 것만 풀지만(`tool` 줄),
@@ -403,28 +411,23 @@ export function inferApproval(
 }
 
 /**
- * 키 하나가 창을 어디로 옮기나 — 18의 표를 접는다(`inferApproval` 머리말). 모르는 것은 늘 **덜 아는 쪽**으로 간다: 자리가
- * 옮겨졌을 수 있으면 `moved`, 무엇을 확정했는지 모르면 `closed`다. 거기서는 승인이 Enter로 안 선다.
+ * 키 하나가 창을 어디로 옮기나 — 18의 표를 접는다(`inferApproval` 머리말). 모르는 것은 늘 **덜 아는 쪽**으로 간다(`unknown`).
+ * 거기서는 어떤 키로도 승인이 안 선다.
  */
 function answerStep(step: AnswerStep, key: AnswerKey): AnswerStep | "approved" {
   switch (step) {
     case "fresh":
       if (key === "approve" || key === "confirm") return "approved";
       if (key === "amend") return "amending";
-      if (key === "reject" || key === "cancel") return "closed";
-      return "moved";
-    case "moved":
-      if (key === "approve") return "approved";
-      if (key === "move" || key === "other") return "moved";
-      // 옮긴 자리의 Enter · 고치기 칸은 무엇을 확정할지 모른다. `3` · Esc는 거절이다.
-      return "closed";
+      // `2` 이상의 숫자 · Esc는 창을 닫는다(승인인지 모르거나 거절). ↑ ↓ · 안 잰 키는 자리를 옮겼을 수 있다.
+      return "unknown";
     case "amending":
       if (key === "confirm") return "approved";
-      // 칸에 친 숫자 · 글자는 글자다. 칸을 닫거나(Esc) 칸 밖으로 나가는 키 뒤는 모른다.
-      if (key === "approve" || key === "reject" || key === "other") return "amending";
-      return "closed";
-    case "closed":
-      return "closed";
+      // 칸에 친 숫자 · 글자는 글자다. 칸을 닫거나(Esc · Tab) 자리를 옮기는(↑ ↓ · ⌃N ⌃P) 키 뒤는 모른다.
+      if (key === "approve" || key === "pick" || key === "other") return "amending";
+      return "unknown";
+    case "unknown":
+      return "unknown";
   }
 }
 

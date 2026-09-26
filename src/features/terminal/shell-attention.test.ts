@@ -866,10 +866,14 @@ describe("중단 추론 — 프로세스 결정 12", () => {
 // 더한 것이다: 승인이면 도는 중(`tool`과 같다), 아니면 **지금 값 그대로**(같은 객체).
 //
 // 어느 키가 확정인지는 18의 「권한 창의 키」 표다(Bash 권한 창):
-// - `1` · `2`는 곧바로 승인, `3` · Esc는 곧바로 거절, ↑ ↓는 고르기만, Ctrl-C · 글자는 아무 일도 없다.
-// - **Enter는 놓인 자리에 달렸다.** 처음 자리(`1. Yes`)면 승인이고, ↓로 `3. No`에 놓였으면 거절이다. 거절을 도는 중으로 읽으면
-//   claude는 사람의 말을 기다리는데 셸은 도는 중으로 굳는다(18). 그래서 창이 열린 뒤 **아무 키도 안 누른** Enter만 승인으로
-//   읽는다 — 자리를 옮겼을 수 있으면 모른다로 둔다(fail-closed: 옛 동작대로 도구가 끝날 때 풀린다).
+// - `1`은 곧바로 승인, Esc는 곧바로 거절, ↑ ↓는 고르기만, Ctrl-C · 글자는 아무 일도 없다.
+// - **그 밖의 숫자는 창의 선택지에 달렸다**(리뷰 반영). 18의 셋짜리 창에서 `2`는 승인이었지만, 선택지가 둘인 창(「1. Yes ·
+//   2. No」 — 허용 규칙 제안이 없는 Bash 창, WebFetch 창)에서는 거절이다. 거절을 도는 중으로 읽으면 claude는 사람의 말을
+//   기다리는데 셸은 도는 중으로 굳는다(18). 그래서 모른다로 둔다(fail-closed: 옛 동작대로 도구가 끝날 때 풀린다).
+// - **Enter는 놓인 자리에 달렸다.** 처음 자리(`1. Yes`)면 승인이고, ↓로 `3. No`에 놓였으면 거절이다. 그래서 창이 열린 뒤
+//   **아무 키도 안 누른** Enter만 승인으로 읽는다.
+// - **자리를 옮긴 뒤에는 숫자도 모른다**(리뷰 반영). 놓인 자리가 고칠 수 있는 줄(`2. Yes, and don't ask again for: …`)이면 숫자는
+//   그 칸에 글자로 들어가고 창은 그대로다.
 // - Tab은 놓인 자리를 고치기 칸으로 연다. 처음 자리에서 연 칸의 Enter는 승인이고, 칸에 친 숫자는 글자다.
 describe("승인 추론 — 프로세스 결정 13 · P7", () => {
   /** 키 여럿을 차례로 누른다 — 스토어가 키마다 하는 그 일이다(자취를 넘기고 받은 것을 다음에 넘긴다). */
@@ -892,14 +896,10 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
 
   it.each([
     ["1", ["approve"]],
-    ["2", ["approve"]],
     ["처음 자리의 Enter", ["confirm"]],
-    // 고치기 칸에 친 글자는 창의 지름길이 아니다 — `3`도 글자다(r6: Tab · x · Enter가 승인 + 그 글을 넘김).
+    // 고치기 칸에 친 글자는 창의 지름길이 아니다 — 숫자도 글자다(r6: Tab · x · Enter가 승인 + 그 글을 넘김).
     ["Tab · 글자 · Enter", ["amend", "other", "confirm"]],
-    ["Tab · 3 · Enter", ["amend", "reject", "confirm"]],
-    // 숫자는 놓인 자리와 상관없는 지름길이다.
-    ["↓ 뒤의 1", ["move", "approve"]],
-    ["↓ ↑ 뒤의 2", ["move", "move", "approve"]],
+    ["Tab · 1 · 3 · Enter", ["amend", "approve", "pick", "confirm"]],
   ] as const)("훅이 말한 기다림 + 확정 키는 도는 중이다 — %s", (_이름, keys) => {
     expect(누름(기다림, ...keys)).toEqual(승인뒤);
   });
@@ -907,7 +907,14 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
   it.each([
     // 거절이다(S30) — 거절 뒤에는 훅이 하나도 없고 claude는 사람의 다음 말을 기다린다(18). 기다림이 사실이다.
     ["Esc", ["cancel"]],
-    ["3", ["reject"]],
+    ["3", ["pick"]],
+    // **선택지가 둘인 창의 `2`는 「No」다**(리뷰 반영) — 셋짜리 창에서는 승인이지만, 어느 창인지 키로는 모른다.
+    ["2", ["pick"]],
+    // **자리를 옮긴 뒤의 숫자는 모른다**(리뷰 반영) — ↓가 고칠 수 있는 줄(`2. Yes, and don't ask again for: …`)에 놓였으면
+    // 숫자는 그 칸의 글자가 되고 창은 그대로 사람을 기다린다.
+    ["↓ 뒤의 1", ["move", "approve"]],
+    ["↓ ↑ 뒤의 1", ["move", "move", "approve"]],
+    ["글자 뒤의 1", ["other", "approve"]],
     // 창에서 아무 일도 안 한다(18 r5 — 창이 그대로 남는다).
     ["Ctrl-C", ["other"]],
     // 고르기만 한다.
@@ -921,12 +928,13 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
     ["Ctrl-C 뒤의 Enter", ["other", "confirm"]],
     // 옮긴 자리를 고치기 칸으로 열면 그 칸의 Enter가 무엇을 확정할지 모르고, 칸에 친 숫자는 글자다.
     ["↓ · Tab · 1 · Enter", ["move", "amend", "approve", "confirm"]],
-    // 고치기 칸을 Esc로 닫은 뒤는 모른다.
+    // 고치기 칸을 Esc로 닫은 뒤는 모른다. 칸 안에서도 ↑ ↓ · ⌃N ⌃P는 자리를 옮긴다(2.1.283 소스) — 그 뒤의 Enter도 모른다.
     ["Tab · Esc · Enter", ["amend", "cancel", "confirm"]],
+    ["Tab · ↓ · Enter", ["amend", "move", "confirm"]],
     // **거절 뒤에 친 키는 사람의 다음 말이다** — 「1번 파일부터 고쳐」의 첫 글자가 승인으로 읽히면 claude가 사람을 기다리는데
     // 셸은 도는 중으로 굳는다.
     ["Esc 뒤의 1", ["cancel", "approve"]],
-    ["3 뒤의 Enter", ["reject", "confirm"]],
+    ["3 뒤의 Enter", ["pick", "confirm"]],
     ["↓ Enter 뒤의 1", ["move", "confirm", "approve"]],
   ] as const)("훅이 말한 기다림 + 확정이 아닌 키는 기다림 그대로다 — %s", (_이름, keys) => {
     expect(누름(기다림, ...keys)).toBe(기다림);
@@ -1017,7 +1025,7 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
 
   // 자취를 **돌려주는 모양**도 잰다 — 스토어는 이 값을 그대로 다음 키에 넘긴다. 훅이 말한 기다림이 아니면 들 것이 없다.
   it("자취는 훅이 말한 기다림에만 선다", () => {
-    expect(inferApproval(기다림, null, "move", 700).answering).toEqual({ since: 10, step: "moved" });
+    expect(inferApproval(기다림, null, "move", 700).answering).toEqual({ since: 10, step: "unknown" });
     expect(inferApproval(기다림, null, "approve", 700).answering).toBeNull();
     expect(inferApproval(직전, null, "move", 700).answering).toBeNull();
     expect(inferApproval(null, null, "move", 700).answering).toBeNull();
