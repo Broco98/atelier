@@ -47,4 +47,16 @@ describe("템플릿 경로 이름 짓기", () => {
     expect(templatePathFor("..", [])).toBe("template.md");
     expect(templatePathFor("", ["Template.md"])).toBe("template-2.md");
   });
+
+  // 경로는 켤 때 한 번 정하고 이름 틀을 따라가지 않는다 — 이름 틀에 잠깐 든 `/`가 경로에 남으면 템플릿이
+  // 하위 폴더(`a/b.md`)에 서거나, 앞의 점을 뗀 `../x.md`가 절대 경로(`/x.md`)가 되어 저장이 늘 거절한다.
+  // 마지막 조각만 쓰면 템플릿은 늘 레이아웃 폴더 바로 아래다.
+  it("이름 틀에 `/`가 들어 있으면 마지막 조각만 쓴다", () => {
+    expect(templatePathFor("a/b.md", [])).toBe("b.md");
+    expect(templatePathFor("../x.md", [])).toBe("x.md");
+    expect(templatePathFor("sub/.x.md", [])).toBe("x.md");
+    expect(templatePathFor("a\\b.md", [])).toBe("b.md");
+    expect(templatePathFor("docs/", [])).toBe("template.md");
+    expect(templatePathFor("a/decisions.md", ["decisions.md"])).toBe("decisions-2.md");
+  });
 });

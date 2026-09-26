@@ -21,6 +21,9 @@ const UNNAMED = "template.md";
  *
  * - 고정 이름은 그 이름이다(`decisions.md` → `decisions.md`).
  * - 이름 틀은 자리 표시자의 중괄호를 걷는다(`adr-{n}-{name}.md` → `adr-n-name.md`).
+ * - 이름 틀에 잘못 든 `/`(또는 `\`)는 마지막 조각만 남긴다(`a/b.md` → `b.md`, `../x.md` → `x.md`) — 경로는
+ *   켤 때 한 번 정해져 이름 틀을 고쳐도 따라가지 않으니, 여기서 걸러야 템플릿이 하위 폴더에 서거나 저장이
+ *   늘 거절하는 절대 경로가 되지 않는다.
  * - 앞의 점은 뗀다 — 엔진은 점으로 시작하는 파일을 보지 않아(원자적 쓰기의 임시 파일 자리다) 그런
  *   템플릿은 늘 「없는 템플릿」이 된다. 남는 이름이 없으면 `template.md`다.
  * - 쓰인 경로나 `layout.json`과 겹치면 확장자 앞에 `-2`, `-3`…을 붙인다. **겹침은 대소문자를 가리지
@@ -28,7 +31,8 @@ const UNNAMED = "template.md";
  *   정규형(NFC·NFD)만 다른 이름도 같은 파일이라 맞춰 견준다.
  */
 export function templatePathFor(pattern: string, taken: readonly string[]): string {
-  const name = pattern.replace(/\{(n|name)\}/g, "$1").replace(/^\.+/, "") || UNNAMED;
+  const last = pattern.split(/[\\/]/).pop() ?? "";
+  const name = last.replace(/\{(n|name)\}/g, "$1").replace(/^\.+/, "") || UNNAMED;
   const used = new Set([LAYOUT_FILE, ...taken].map(folded));
   const dot = name.lastIndexOf(".");
   const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
