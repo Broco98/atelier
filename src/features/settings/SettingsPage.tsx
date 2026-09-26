@@ -204,7 +204,7 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      {/* `relative`는 항목 페이지가 띄우는 알림(`spec 레이아웃`의 복사 알림)의 기준이다 — 스크롤하는
+      {/* `relative`는 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
           본문이 아니라 이 칸의 바닥에 선다. */}
       <main className="relative flex min-w-0 flex-1 flex-col">
         <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />

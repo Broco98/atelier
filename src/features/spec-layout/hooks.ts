@@ -118,7 +118,7 @@ export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
  * 되돌린 뒤 **위 문 하나를 연다**(`invalidateSpecLayout`) — 행이 「내장본 그대로」로 돌아오고, spec
  * 트리를 싣고 오는 work 목록과 아카이브 문서가 내장본으로 다시 갈린다. 감시 이벤트(`layouts:changed`)도
  * 곧 오지만 기다리지 않는다: 감시가 놓쳐도, 감시가 없는 L4 다리에서도 되돌린 쪽이 스스로 다시 읽는다.
- * 문의 promise를 돌려주므로 `mutateAsync`는 다시 읽기가 끝난 뒤에 풀린다 — 되돌렸다는 알림이 옛 행
+ * 문의 promise를 돌려주므로 `mutateAsync`는 다시 읽기가 끝난 뒤에 풀린다 — 되돌렸다는 메시지가 옛 행
  * 위에 서지 않는다.
  */
 export function useRevertSpecLayout() {

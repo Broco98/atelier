@@ -32,10 +32,10 @@ import type { SpecLayoutState } from "./types";
 // 버튼이라 감시와 같은 문(`invalidateSpecLayout`)을 연다 — spec 트리를 싣고 오는 work 목록과 아카이브 문서도 함께
 // 다시 읽힌다. 행의 상태는 엔진이 판정해 준 그대로 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
 
-/** 화면 아래 알림이 떠 있는 시간. 참조 한 줄과 할 일 한 문장을 읽을 만큼 — 닫기 버튼도 있다. */
+/** 화면 아래 메시지가 떠 있는 시간. 참조 한 줄과 할 일 한 문장을 읽을 만큼 — 닫기 버튼도 있다. */
 const NOTICE_MS = 6000;
 
-/** 화면 아래 알림 — 무엇을 했는가와, 그 일의 레이아웃 참조. 한 번에 하나다: 뒤의 것이 앞의 것을 갈아 낀다. */
+/** 화면 아래 메시지 — 무엇을 했는가와, 그 일의 레이아웃 참조. 한 번에 하나다: 뒤의 것이 앞의 것을 갈아 낀다. */
 type Notice = { kind: "copied" | "reverted"; reference: string };
 
 function SpecLayoutPage() {
@@ -70,7 +70,7 @@ function SpecLayoutPage() {
   const edit = (state: SpecLayoutState) =>
     void navigate({ to: "/settings/spec-layout/$id", params: { id: state.id } });
   // **확인을 거친 뒤에만 지운다** — 폴더째 지우므로 템플릿과 레이아웃이 모르는 파일도 사라진다. 되돌리기는
-  // 늘 된다(깨진 폴더도). 알림은 다시 읽기가 끝난 뒤에 선다: 행이 이미 「내장본 그대로」다.
+  // 늘 된다(깨진 폴더도). 메시지는 다시 읽기가 끝난 뒤에 선다: 행이 이미 「내장본 그대로」다.
   const revert = async (state: SpecLayoutState) => {
     if (revertLayout.isPending || !(await askRevert(state))) return;
     try {
@@ -324,7 +324,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
 }
 
 /**
- * [부탁]을 누른 뒤 화면 아래에 서는 어두운 알림 하나(프로토타입). 복사한 참조와 다음에 할 일을 적는다
+ * [부탁]을 누른 뒤 화면 아래에 서는 어두운 메시지 하나(프로토타입). 복사한 참조와 다음에 할 일을 적는다
  * — 클립보드에 든 것은 참조 한 줄뿐이고, 부탁은 사람이 앱 터미널에서 이어 적는다(결정 23).
  */
 export function CopiedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
@@ -336,7 +336,7 @@ export function CopiedNotice({ reference, onClose }: { reference: string; onClos
 }
 
 /**
- * 되돌린 뒤의 짧은 알림(티켓 10 · 프로토타입). 지운 폴더와, 되돌린 것이 어디까지 따라가는가를 적는다 —
+ * 되돌린 뒤의 짧은 메시지(티켓 10 · 프로토타입). 지운 폴더와, 되돌린 것이 어디까지 따라가는가를 적는다 —
  * `spec` 패널 탭의 트리도, 에이전트가 다음 호출부터 받는 안내문도 내장본이다.
  */
 export function RevertedNotice({ reference, onClose }: { reference: string; onClose: () => void }) {
@@ -349,8 +349,16 @@ export function RevertedNotice({ reference, onClose }: { reference: string; onCl
 }
 
 /**
- * 화면 아래에 서는 어두운 알림 하나의 모양 — 머리 한 줄(무엇을 했는가와 그 참조), 설명 한 줄, 닫기.
+ * 화면 아래에 서는 어두운 메시지 하나의 모양 — 머리 한 줄(무엇을 했는가와 그 참조), 설명 한 줄, 닫기.
  * 설정 본문(`SettingsPage`의 `main`) 기준으로 설정 한 열의 왼쪽 끝에 맞춰 선다.
+ *
+ * **앱의 토스트(`showToast`)가 아니다.** 토스트는 한 장 · 한 줄 · 1600ms · 닫기 없음이고 부르는 길이
+ * `showToast(title, kind)` 하나뿐이다(S26 · S27 · S47). 이 메시지는 붙여 넣을 참조와 다음에 할 일을 두 줄로
+ * 적고, 그것을 읽을 만큼 서 있으며, 닫기가 있다(구현 스펙 5절 · 프로토타입). 그 셋을 토스트에 넣으면 한 장짜리
+ * 표면의 규칙을 넓혀야 해서, 이 페이지만의 표면으로 둔다.
+ *
+ * 스펙이 「복사 알림」이라 부른 것을 코드는 「메시지」라 부른다 — 앱의 「알림」은 셸이 나를 부르는 사건의 말이다
+ * (`CONTEXT.md` 「알림 띠」: 토스트를 「알림」이라 부르지 않는다).
  */
 function PageNotice({
   title,
@@ -375,11 +383,13 @@ function PageNotice({
         </span>
         <span className="text-[12.5px] leading-[1.6] opacity-75">{children}</span>
       </div>
+      {/* 무엇을 닫는지는 자리(이 메시지 `status` 안)가 말한다. 어두운 바탕 위라 hover는 바탕 대신 농도로 선다 —
+          모양은 아이콘 버튼 규격(`icon-button`)이다. */}
       <button
         type="button"
         onClick={onClose}
-        aria-label="알림 닫기"
-        className="flex size-6 shrink-0 items-center justify-center rounded-[7px] opacity-75 transition-opacity hover:opacity-100"
+        aria-label="닫기"
+        className="icon-button opacity-75 transition-opacity hover:opacity-100"
       >
         <X aria-hidden className="size-3.5" strokeWidth={2} />
       </button>

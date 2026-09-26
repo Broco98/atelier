@@ -143,7 +143,7 @@ describe("모드 두 행", () => {
   });
 });
 
-describe("부탁 알림", () => {
+describe("부탁 메시지", () => {
   it("복사한 참조와, 앱 터미널의 에이전트에게 붙이고 부탁을 이어 적으라는 말을 적는다", () => {
     const html = renderToStaticMarkup(
       <CopiedNotice reference="~/.atelier/layouts/maison/" onClose={() => {}} />,
@@ -155,7 +155,7 @@ describe("부탁 알림", () => {
   });
 });
 
-describe("되돌린 알림", () => {
+describe("되돌린 메시지", () => {
   // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 spec 패널 탭과 에이전트의 안내문(티켓 10).
   it("지운 폴더와, 내장본으로 돌아가 spec 패널 탭과 에이전트 안내문도 따라간다는 말을 적는다", () => {
     const html = renderToStaticMarkup(
@@ -164,6 +164,6 @@ describe("되돌린 알림", () => {
     expect(html).toContain('role="status"');
     expect(textOf(html)).toContain("되돌렸어요 ~/.atelier/layouts/atelier/");
     expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널 탭과 에이전트 안내문도 따라가요.");
-    expect(html).toContain('aria-label="알림 닫기"');
+    expect(html).toContain('aria-label="닫기"');
   });
 });

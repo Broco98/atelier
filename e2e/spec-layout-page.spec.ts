@@ -1,12 +1,20 @@
 import { expect, test, type Page } from "./evidence";
 import { BROKEN_MAISON_LAYOUT, SPEC_LAYOUT_STATES } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  clipboardWrites,
+  installFixtureBackend,
+  ipcCallArgs,
+  ipcFailure,
+  recordClipboard,
+  unknownIpcCalls,
+} from "./harness";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08 · 결정 20·23·25).
 //
 // 행의 모양(내장본 · 고침 · 읽지 못함)은 마크업 seam이 잰다(`SpecLayoutPage.test.tsx`). **이 층이 드는
 // 것은 그 페이지가 화면의 문에 붙어 있는가**다 — 설정 nav의 넷째 줄로 들어가면 상태 명령이 실제로
-// 나가고, [부탁]이 알림을 세우고, [다시 읽기]가 상태를 다시 부른다. 이 명령을 태우는 시나리오가 여기
+// 나가고, [부탁]이 참조를 복사하고 화면 아래 메시지를 세우고, [다시 읽기]가 상태를 다시 부른다. 이 명령을 태우는 시나리오가 여기
 // 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
@@ -15,7 +23,9 @@ const 행 = (page: Page, name: "Atelier" | "Maison") =>
   page.locator("main li").filter({ has: page.getByText(name, { exact: true }) });
 const 부탁 = (page: Page, name: "Atelier" | "Maison") =>
   page.getByRole("button", { name: `${name} 레이아웃을 에이전트에게 부탁`, exact: true });
-const 알림 = (page: Page) => page.getByRole("status").filter({ hasText: "참조를 복사했어요" });
+// 화면 아래 메시지 — 스펙이 「복사 알림」이라 부른 것이다. 앱의 「알림」은 셸이 나를 부르는 사건의 말이라 코드와
+// 검사는 「메시지」라 부른다(`CONTEXT.md` 「알림 띠」).
+const 메시지 = (page: Page) => page.getByRole("status").filter({ hasText: "참조를 복사했어요" });
 
 test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가고 모드 두 행이 선다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -57,28 +67,34 @@ test("설정 파일을 읽지 못해도 「spec 레이아웃」의 두 행이 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// L3는 클립보드를 읽지 못한다 — 알림에 적힌 참조로 잰다. 참조는 상태가 준 폴더 경로로 짓는다.
-test("[부탁]을 누르면 화면 아래 알림에 그 모드의 레이아웃 참조가 적힌다", async ({ page }) => {
+// 참조는 상태가 준 폴더 경로로 짓는다. 클립보드에 간 것은 하네스가 적어 둔 쓰기로 재고(`recordClipboard`), 메시지는
+// 그 참조와 다음에 할 일을 적는다.
+test("[부탁]을 누르면 그 모드의 레이아웃 참조가 클립보드로 가고, 화면 아래 메시지에 적힌다", async ({ page }) => {
   await installFixtureBackend(page);
+  await recordClipboard(page);
   await page.goto("/settings/spec-layout");
   await expect(page.locator("main li")).toHaveCount(2);
-  await expect(알림(page)).toHaveCount(0);
+  await expect(메시지(page)).toHaveCount(0);
 
   // 도움말(툴팁)은 복사할 참조다 — 이름보다 더 말하는 것이라 설명으로도 남는다(S28).
   await expect(부탁(page, "Maison")).toHaveAccessibleDescription("~/.atelier/layouts/maison/ 참조를 복사해요");
 
   // 폴더가 아직 없는 모드에도 같은 모양이다 — 붙여 받은 에이전트의 도구가 내장본을 돌려준다.
   await 부탁(page, "Maison").click();
-  await expect(알림(page)).toBeVisible();
-  await expect(알림(page)).toContainText("~/.atelier/layouts/maison/");
-  await expect(알림(page)).toContainText("앱 터미널의 에이전트에게 붙이고 부탁을 이어 적으세요.");
+  await expect(메시지(page)).toBeVisible();
+  // 클립보드에 든 것은 참조 한 줄뿐이다 — 부탁은 사람이 앱 터미널에서 이어 적는다(결정 23).
+  expect(await clipboardWrites(page)).toEqual(["~/.atelier/layouts/maison/"]);
+  await expect(메시지(page)).toContainText("~/.atelier/layouts/maison/");
+  await expect(메시지(page)).toContainText("앱 터미널의 에이전트에게 붙이고 부탁을 이어 적으세요.");
 
+  // 한 번에 하나다 — 뒤의 것이 앞의 것을 갈아 낀다.
   await 부탁(page, "Atelier").click();
-  await expect(알림(page)).toHaveCount(1);
-  await expect(알림(page)).toContainText("~/.atelier/layouts/atelier/");
+  await expect(메시지(page)).toHaveCount(1);
+  await expect(메시지(page)).toContainText("~/.atelier/layouts/atelier/");
+  expect(await clipboardWrites(page)).toEqual(["~/.atelier/layouts/maison/", "~/.atelier/layouts/atelier/"]);
 
-  await page.getByRole("button", { name: "알림 닫기", exact: true }).click();
-  await expect(알림(page)).toHaveCount(0);
+  await 메시지(page).getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(메시지(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -135,7 +151,7 @@ const 되돌리기항목 = (page: Page) =>
   page.getByRole("menuitem", { name: "기본값으로 되돌리기", exact: true });
 const 확인창 = (page: Page, name: "Atelier" | "Maison") =>
   page.getByRole("alertdialog", { name: `${name} 레이아웃을 기본값으로 되돌릴까요?`, exact: true });
-const 되돌린알림 = (page: Page) => page.getByRole("status").filter({ hasText: "되돌렸어요" });
+const 되돌린메시지 = (page: Page) => page.getByRole("status").filter({ hasText: "되돌렸어요" });
 
 test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되돌리기 명령이 나가지 않는다", async ({ page }) => {
   await installFixtureBackend(page);
@@ -159,12 +175,12 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   // 창을 연 항목은 메뉴와 함께 사라졌다 — 포커스는 그 앞 자리(⋯)로 돌아온다. `<body>`로 떨어지면 키보드 사용자가
   // 행을 처음부터 다시 찾아야 한다.
   await expect(메뉴(page, "Atelier")).toBeFocused();
-  await expect(되돌린알림(page)).toHaveCount(0);
+  await expect(되돌린메시지(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("[되돌리기]를 고르면 그 모드의 id로 되돌리기가 한 번 나가고, 상태를 다시 부르고, 알림이 선다", async ({
+test("[되돌리기]를 고르면 그 모드의 id로 되돌리기가 한 번 나가고, 상태를 다시 부르고, 메시지가 선다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
@@ -184,16 +200,16 @@ test("[되돌리기]를 고르면 그 모드의 id로 되돌리기가 한 번 �
 
   await dialog.getByRole("button", { name: "되돌리기", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(되돌린알림(page)).toBeVisible();
-  await expect(되돌린알림(page)).toContainText(`${BROKEN_MAISON_LAYOUT.folder}/`);
+  await expect(되돌린메시지(page)).toBeVisible();
+  await expect(되돌린메시지(page)).toContainText(`${BROKEN_MAISON_LAYOUT.folder}/`);
 
   const reverts = await ipcCallArgs(page, "revert_spec_layout", "id");
   expect(reverts.map(({ args }) => args)).toEqual([{ id: "maison" }]);
   // 감시 이벤트를 기다리지 않는다 — 되돌린 쪽이 스스로 상태를 다시 읽는다
   await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(before);
 
-  await page.getByRole("button", { name: "알림 닫기", exact: true }).click();
-  await expect(되돌린알림(page)).toHaveCount(0);
+  await 되돌린메시지(page).getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(되돌린메시지(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
