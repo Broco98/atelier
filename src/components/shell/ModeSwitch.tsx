@@ -32,10 +32,11 @@ const LABEL: Record<Mode, string> = { atelier: "Atelier", maison: "Maison" };
  * 낱말뿐임을 세어 붙든다.
  *
  * **선 칸을 누르면 아무 일도 없다**(S16). 부품은 선 칸을 누르면 값을 비우는데(`[]`), 여기서는
- * 그것을 버린다 — 두 칸은 **각자 목적지를 가진 두 세계**라 「지금 세계를 다시 고른다」가 뜻하는
- * 것이 없다. `SourceToggle`은 반대로 선 칸도 뒤집는다: 그쪽 두 칸은 한 토글의 두 얼굴이다.
- * 「같은 세계면 아무 데도 안 간다」는 여전히 목적지를 아는 쪽(`modeSwitchTarget`)의 답이기도
- * 하다 — 여기서 버리는 것은 부품이 비운 값이지 그 규칙이 아니다.
+ * 부품이 그 누름을 없던 일로 한다(`deselectable={false}`) — 두 칸은 **각자 목적지를 가진 두
+ * 세계**라 「지금 세계를 다시 고른다」가 뜻하는 것이 없다. `SourceToggle`은 반대로 선 칸도
+ * 뒤집는다: 그쪽 두 칸은 한 토글의 두 얼굴이다. 「같은 세계면 아무 데도 안 간다」는 여전히
+ * 목적지를 아는 쪽(`modeSwitchTarget`)의 답이기도 하다 — 부품이 없던 일로 하는 것은 비운 값이지
+ * 그 규칙이 아니다.
  */
 export function ModeSwitch({ mode, onPick }: { mode: Mode; onPick: (mode: Mode) => void }) {
   return (
@@ -49,9 +50,8 @@ export function ModeSwitch({ mode, onPick }: { mode: Mode; onPick: (mode: Mode) 
       // 칸 순서가 `ALL_MODES` 순서다 — 칩이 이것과 값으로 서는 자리를 안다.
       cells={ALL_MODES}
       value={[mode]}
-      onValueChange={([pick]) => {
-        if (pick) onPick(pick);
-      }}
+      deselectable={false}
+      onValueChange={([pick]) => onPick(pick)}
     >
       {ALL_MODES.map((one) => (
         // `aria-pressed`이지 `aria-expanded`가 아니다(부품이 단다) — 이 칸은 무언가를 펼치는 것이

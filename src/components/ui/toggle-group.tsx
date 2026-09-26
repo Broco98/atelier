@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 크기 chip(설정 칩 — 테마·글꼴 프리셋)의 줄은 칩 사이 6px(spacing 기본 1.5)이고 넘치면 다음 줄로 흐른다(flex-wrap). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다). 두 칸 토글(모드 전환·문서/원문)은 이 부품의 변형이 아니라 따로 된 부품이다(segment-group.tsx).
+// 앱 규격으로 고친 자리: 크기 chip(설정 칩 — 테마·글꼴 프리셋)의 줄은 칩 사이 6px(spacing 기본 1.5)이고 넘치면 다음 줄로 흐른다(flex-wrap). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹에 deselectable을 더했다(거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다 — S16, 기본은 Base UI대로 비운다). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다). 두 칸 토글(모드 전환·문서/원문)은 이 부품의 변형이 아니라 따로 된 부품이다(segment-group.tsx).
 "use client"
 
 import * as React from "react"
@@ -9,6 +9,26 @@ import { cn } from "cn"
 
 import { resolveClassName } from "@/components/ui/resolve-class-name"
 import { toggleVariants } from "@/components/ui/toggle"
+
+/**
+ * 서 있는 칸을 다시 누르면 Base UI는 값을 비운다(`[]`). `deselectable`이 거짓이면 그 바꿈을 없던 일로 한다 —
+ * 칸은 그대로 서 있고 `onValueChange`도 안 불린다(S16). 그 누름이 뜻할 것이 없는 자리(모드 전환 · 설정 칩)가
+ * 빈 값을 저마다 손으로 거르지 않게 부품이 든다. 선 칸 누름을 제 뜻으로 읽는 자리(문서/원문 — 뒤집기)는
+ * 기본(`true`)대로 빈 값을 받는다. 두 칸 토글(`segment-group.tsx`)도 같은 규칙을 이것으로 건다.
+ */
+function keepOnePressed<Value extends string>(
+  onValueChange: ToggleGroupPrimitive.Props<Value>["onValueChange"],
+  deselectable: boolean
+): ToggleGroupPrimitive.Props<Value>["onValueChange"] {
+  if (deselectable) return onValueChange
+  return (value, eventDetails) => {
+    if (value.length === 0) {
+      eventDetails.cancel()
+      return
+    }
+    onValueChange?.(value, eventDetails)
+  }
+}
 
 const ToggleGroupContext = React.createContext<
   VariantProps<typeof toggleVariants> & {
@@ -28,12 +48,16 @@ function ToggleGroup<Value extends string>({
   orientation = "horizontal",
   variant,
   size,
+  deselectable = true,
+  onValueChange,
   children,
   ...props
 }: ToggleGroupPrimitive.Props<Value> &
   VariantProps<typeof toggleVariants> & {
     spacing?: number
     orientation?: "horizontal" | "vertical"
+    /** 거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다(위 `keepOnePressed`). */
+    deselectable?: boolean
   }) {
   // 설정 칩 줄(크기 chip)은 칩 사이가 6px이고(옛 칩 줄의 gap-1.5), 좁은 창에서 넘치면 다음 줄로 흐른다
   // (아래 data-[size=chip]:flex-wrap — 칩이 shrink-0이라 안 흐르면 칸 밖으로 샌다). 나머지는 registry 기본(8px)이다.
@@ -46,6 +70,7 @@ function ToggleGroup<Value extends string>({
       data-spacing={spacing}
       data-orientation={orientation}
       style={{ "--gap": spacing } as React.CSSProperties}
+      onValueChange={keepOnePressed(onValueChange, deselectable)}
       className={(state) =>
         cn(
           "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
@@ -95,4 +120,4 @@ function ToggleGroupItem({
   )
 }
 
-export { ToggleGroup, ToggleGroupItem }
+export { ToggleGroup, ToggleGroupItem, keepOnePressed }

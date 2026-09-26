@@ -1,4 +1,4 @@
-// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 모드 전환·문서/원문, 결정 1): 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기 default(모드 전환: 테두리·안쪽 3px·두 칸 격자, 칸 30px·7px 모서리·12.5px)와 icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다.
+// 앱이 세운 부품(registry에 없다 — Base UI ToggleGroup 위의 두 칸 토글, 모드 전환·문서/원문, 결정 1): 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, Toggle 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기 default(모드 전환: 테두리·안쪽 3px·두 칸 격자, 칸 30px·7px 모서리·12.5px)와 icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button). 칩은 그룹이 그리고, 서는 자리를 그룹의 값과 칸 순서(cells)에서 읽는다. 서 있는 칸을 다시 눌러 값을 비우지 못하게 하는 deselectable은 ToggleGroup과 같은 규칙이다(S16). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다.
 "use client"
 
 import * as React from "react"
@@ -8,6 +8,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 import { resolveClassName } from "@/components/ui/resolve-class-name"
+import { keepOnePressed } from "@/components/ui/toggle-group"
 
 // 선택을 칸마다 바탕을 켜고 끄는 것으로 말하면 「옮겨갔다」가 아니라 「깜빡였다」로 읽힌다. 칩은 칸에
 // 붙어 있지 않은 형제(`aria-hidden`)라 Base UI가 칸으로 세지 않는다 — 방향키·탭 자리는 칸 둘만 돈다.
@@ -92,6 +93,8 @@ function SegmentGroup<Value extends string>({
   cells,
   value,
   size = "default",
+  deselectable = true,
+  onValueChange,
   disabled,
   className,
   children,
@@ -108,12 +111,15 @@ function SegmentGroup<Value extends string>({
   cells: readonly Value[]
   /** 서 있는 칸. 칩이 이것을 따라가므로 제어 값만 받는다(`defaultValue`가 없다). */
   value: readonly Value[]
+  /** 거짓이면 서 있는 칸을 다시 눌러 값을 비우지 못한다(`toggle-group.tsx`의 `keepOnePressed`). */
+  deselectable?: boolean
 }) {
   return (
     <ToggleGroupPrimitive
       data-slot="segment-group"
       data-size={size}
       value={value}
+      onValueChange={keepOnePressed(onValueChange, deselectable)}
       disabled={disabled}
       className={(state) =>
         cn(segmentGroupVariants({ size }), resolveClassName(className, state))
