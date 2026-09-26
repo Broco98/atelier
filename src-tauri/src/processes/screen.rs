@@ -7,7 +7,7 @@
 //! 풀의 셸 목록은 판정에 없는 것이다. 판정의 셸 목록에는 이 실행의 기록에만 있는 키(띄우는 중인 셸, 끝내기가 도는 셸)도 들고,
 //! 셸을 가리키는 pty id는 없다. 화면이 스냅샷의 셸을 스토어의 셸과 셸 키로 잇고(27), 스토어가 모르는 셸을 pty id로 닫는다(32).
 //!
-//! 지표(메모리 · CPU · 포트)는 아직 없다 — 28이 더한다.
+//! 지표(메모리 · CPU · 포트)는 아직 없다 — 28이 더한다. 셸마다 마지막 출력 시각은 싣는다(티켓 27 — 「조용함」의 경과).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,6 +34,9 @@ pub struct ScreenSnapshot {
 pub struct PoolShell {
     pub pty_id: u32,
     pub shell_key: String,
+    /// 셸이 마지막으로 무언가를 찍은 때(에포크 ms). 셸 행의 「조용함」 경과가 이 값에서 잰다(티켓 27) — 사람이 친 글자의 메아리도
+    /// 출력이라 이 값 뒤로 셸에 아무 일이 없었다. 아직 아무것도 안 찍었으면 띄운 때다.
+    pub last_output_ms: u64,
 }
 
 /// 판정의 묶음 — `verdict::Verdict`의 칸 그대로다. 각 칸의 뜻은 그쪽 머리말이 든다.
@@ -137,7 +140,7 @@ mod tests {
     ///
     /// 판정의 묶음 다섯이 모두 서게 한 장을 짓는다: 셸 G-1의 자손(부른 이름 · 명령줄이 읽힌 vite와 그 밑의 esbuild, 셸 도우미
     /// gitstatusd), 예외(tmux), 확정 고아와 출처 불명, 다른 인스턴스. 셸 자신의 pid나 uid · 그룹 · 표식 같은 판정 안쪽 칸은
-    /// 안 나간다. 풀의 셸 목록은 pty id와 셸 키다.
+    /// 안 나간다. 풀의 셸 목록은 pty id와 셸 키, 그리고 셸이 마지막으로 무언가를 찍은 때(에포크 ms — 티켓 27의 「조용함」 경과)다.
     #[test]
     fn the_snapshot_crosses_the_wire_in_the_shape_the_frontend_reads() {
         let mut vite = row(200, 100, "node");
@@ -162,8 +165,8 @@ mod tests {
             other_instances: BTreeMap::from([("H-2", vec![&other])]),
         };
         let pool = vec![
-            PoolShell { pty_id: 1, shell_key: "G-1".into() },
-            PoolShell { pty_id: 2, shell_key: "G-2".into() },
+            PoolShell { pty_id: 1, shell_key: "G-1".into(), last_output_ms: 1_758_000_000_000 },
+            PoolShell { pty_id: 2, shell_key: "G-2".into(), last_output_ms: 1_758_000_060_000 },
         ];
 
         let plain = |pid: u32, ppid: u32, name: &str| {
@@ -202,8 +205,8 @@ mod tests {
                     "otherInstances": { "H-2": [plain(600, 1, "zsh")] },
                 },
                 "pool": [
-                    { "ptyId": 1, "shellKey": "G-1" },
-                    { "ptyId": 2, "shellKey": "G-2" },
+                    { "ptyId": 1, "shellKey": "G-1", "lastOutputMs": 1_758_000_000_000u64 },
+                    { "ptyId": 2, "shellKey": "G-2", "lastOutputMs": 1_758_000_060_000u64 },
                 ],
             })
         );

@@ -13,7 +13,7 @@ use std::ffi::CString;
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -66,6 +66,11 @@ struct Shell {
     process: Option<Identity>,
     /// 첫 사람 입력의 시각(에포크 µs). 프런트가 사람 입력을 처음 본 순간 한 번 알린다(`note_first_input`).
     first_input_us: Option<u64>,
+    /// 셸이 **마지막으로 무언가를 찍은 때**(에포크 ms). 읽기 스레드가 조각을 받을 때마다 적고, 띄운 순간에 한 번 적는다.
+    /// `Processes`의 「조용함」 경과가 이 값에서 잰다(티켓 27) — 사람이 친 글자의 메아리도, 끝난 명령 뒤의 프롬프트도 출력이라
+    /// 이 값 뒤로는 셸에 아무 일이 없었다. 읽기 스레드와 나눠 쥐어 `Arc`다. 셸 상태(도는 중 · 확인할 것)와는 상관없다 — 프런트의
+    /// 상태 축은 출력이 멎은 시간으로 아무것도 안 만든다(terminal-activity-signal 결정 2). 이것은 화면이 적는 경과의 재료일 뿐이다.
+    last_output: Arc<AtomicU64>,
     master: Box<dyn MasterPty + Send>,
     /// **수명 내내 여기 산다.** `UnixMasterWriter`의 Drop이 pty에 개행 + `^D`를 써 넣으므로,
     /// 잠깐 꺼내 쓰고 되돌리는 식으로 다루면 그 사이 사용자 셸에 EOF가 들어가 셸이 끝난다.
@@ -228,9 +233,12 @@ pub fn spawn(
     let lock_file = crate::shells::lock_path(&root, &shell_id);
     // 답에 실을 셸 키는 풀에 앉히는 것과 **같은 값**이다 — 따로 다시 지으면 env에 심은 표식과 프런트가 쥔 키가 갈릴 자리가 생긴다.
     let shell_key = shell_id.clone();
+    // 마지막 출력 시각의 첫 값은 **띄운 순간**이다 — 앉힌 뒤 첫 조각 전에 화면 스냅샷이 읽어도 1970년부터 조용하다고 안 읽힌다.
+    let last_output = Arc::new(AtomicU64::new(now_ms()));
+    let stamps = Arc::clone(&last_output);
     pool.lock().insert(
         id,
-        Shell { pid, key: shell_id, process, first_input_us: None, master, writer, state_file, lock_file },
+        Shell { pid, key: shell_id, process, first_input_us: None, last_output, master, writer, state_file, lock_file },
     );
 
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
@@ -246,7 +254,9 @@ pub fn spawn(
                 // 문자열로 만들면 그 자리가 U+FFFD가 된다 — 개행 없는 62KB 한 줄에서
                 // 111조각 중 59조각이 깨지는 것을 실측했다. xterm.js는 바이트를 받으면
                 // 경계를 스스로 잇는다.
+                // **보내기 전에 시각을 적는다**(티켓 27) — 채널이 닫혀 끊는 마지막 조각도 셸이 찍은 것이다.
                 Ok(n) => {
+                    stamps.store(now_ms(), Ordering::Relaxed);
                     if on_frame.send(InvokeResponseBody::Raw(buf[..n].to_vec())).is_err() {
                         break;
                     }
@@ -498,7 +508,9 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
         let shells = pool.lock();
         (
             shells.values().map(Shell::entry).collect(),
-            pool_shells(shells.iter().map(|(id, shell)| (*id, shell.key.as_str()))),
+            pool_shells(
+                shells.iter().map(|(id, shell)| (*id, shell.key.as_str(), shell.last_output.load(Ordering::Relaxed))),
+            ),
         )
     };
     let records = pool.record.records();
@@ -517,12 +529,18 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     ScreenSnapshot::of(&verdict, listed)
 }
 
-/// 풀의 셸 목록 — pty id와 셸 키의 짝을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다.
-fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str)>) -> Vec<PoolShell> {
-    let mut listed: Vec<PoolShell> =
-        shells.map(|(pty_id, key)| PoolShell { pty_id, shell_key: key.to_string() }).collect();
+/// 풀의 셸 목록 — pty id · 셸 키 · 마지막 출력 시각을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다.
+fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64)>) -> Vec<PoolShell> {
+    let mut listed: Vec<PoolShell> = shells
+        .map(|(pty_id, key, last_output_ms)| PoolShell { pty_id, shell_key: key.to_string(), last_output_ms })
+        .collect();
     listed.sort_by_key(|shell| shell.pty_id);
     listed
+}
+
+/// 지금(에포크 ms). 셸의 마지막 출력 시각이 쓴다. 시계가 에포크 앞이면 0으로 눕는다(`prefix_at`과 같다).
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// 셸 하나에서 **지금 도는 명령**. `running`이 `None`이면 프롬프트에 서 있다.
@@ -1321,6 +1339,7 @@ mod tests {
             key: "1700-9".to_string(),
             process: None,
             first_input_us: None,
+            last_output: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             master: pair.master,
             writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
             state_file: state.clone(),
@@ -1345,6 +1364,7 @@ mod tests {
             key: key.to_string(),
             process: None,
             first_input_us: None,
+            last_output: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             master: pair.master,
             writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
             state_file: std::env::temp_dir()
@@ -1677,17 +1697,35 @@ mod tests {
     }
 
     /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로
-    /// 선다(티켓 26).
+    /// 서고(티켓 26), 그 셸이 마지막으로 무언가를 찍은 때가 함께 간다(티켓 27 — 「조용함」의 경과). 셋이 한 셸의 것으로 붙어 다닌다.
     #[test]
     fn the_pool_list_is_in_pty_order_with_each_shells_key() {
         assert_eq!(
-            super::pool_shells([(3, "G-3"), (1, "G-1"), (2, "G-2")].into_iter()),
+            super::pool_shells([(3, "G-3", 30), (1, "G-1", 10), (2, "G-2", 20)].into_iter()),
             vec![
-                super::PoolShell { pty_id: 1, shell_key: "G-1".into() },
-                super::PoolShell { pty_id: 2, shell_key: "G-2".into() },
-                super::PoolShell { pty_id: 3, shell_key: "G-3".into() },
+                super::PoolShell { pty_id: 1, shell_key: "G-1".into(), last_output_ms: 10 },
+                super::PoolShell { pty_id: 2, shell_key: "G-2".into(), last_output_ms: 20 },
+                super::PoolShell { pty_id: 3, shell_key: "G-3".into(), last_output_ms: 30 },
             ]
         );
+    }
+
+    /// **셸이 무언가를 찍을 때마다 그 시각을 적는다**(티켓 27). `Processes`의 「조용함」 경과가 이 값에서 잰다 — 사람이 친 글자의
+    /// 메아리도, 끝난 명령 뒤의 프롬프트도 출력이라, 이 값 뒤로는 셸에 아무 일이 없었다. 적는 자리는 읽기 스레드가 조각을 **보내기
+    /// 전**이다: 보낸 뒤에 적으면 채널이 닫혀 끊는 마지막 조각이 안 적힌다. 띄운 순간에도 한 번 적는다 — 아직 아무것도 안 찍은 셸이
+    /// 에포크(1970)부터 조용하다고 읽히지 않게.
+    ///
+    /// 실행으로는 장면 `Ask`가 잰다(macOS — 셸에 친 줄의 메아리가 값을 올린다). 여기서는 두 자리를 글자로 붙든다.
+    #[test]
+    fn the_reader_stamps_each_output_before_sending_it() {
+        let spawn_fn = spawn_source();
+        let born = spawn_fn.find("AtomicU64::new(now_ms())").expect("띄울 때 한 번 적는다");
+        let insert = spawn_fn.find("pool.lock().insert(").expect("풀에 앉히는 줄이 있다");
+        assert!(born < insert, "풀에 앉힌 뒤에 첫 시각을 적는다 — 그 사이의 화면 스냅샷이 빈 값을 읽는다");
+        let read = &spawn_fn[spawn_fn.find("Ok(n) => {").expect("읽은 조각을 다루는 갈래가 있다")..];
+        let stamp = read.find("stamps.store(now_ms()").expect("읽은 조각마다 시각을 적는다");
+        let send = read.find("on_frame.send(").expect("읽은 조각을 보낸다");
+        assert!(stamp < send, "조각을 보낸 뒤에 적는다 — 채널이 닫혀 끊는 마지막 조각이 안 적힌다");
     }
 
     /// 앱 종료는 **끝내기를 마감한 뒤, 그 결과로** 인스턴스 기록을 닫는다(프로세스 스펙 「인스턴스 기록 › 지우는 때」 · 티켓
@@ -3226,6 +3264,12 @@ mod tests {
         let invoked_keep =
             |p: &Proc| p.argv0.as_deref().is_some_and(|argv0| argv0.rsplit('/').next() == Some(keep_name.as_str()));
 
+        // 셸이 마지막으로 무언가를 찍은 때(티켓 27 — `Processes`의 「조용함」 경과). 아래 (1)의 줄을 치면 셸이 그 글자를 메아리로
+        // 찍으므로 값이 오른다. 시각은 ms라 치기 전에 한 박자 쉰다.
+        let stamped = || pool.lock().get(&id).map(|shell| shell.last_output.load(std::sync::atomic::Ordering::Relaxed));
+        let quiet_since = stamped();
+        std::thread::sleep(Duration::from_millis(5));
+
         // (1) 사람이 아직 안 쳤다 — 셸이 뜰 때 함께 뜨는 도우미(p10k의 `gitstatusd`)의 모양. 백엔드는 쓰기를 입력으로
         // 안 센다: 사람 입력은 프런트가 DOM 사건으로 가려 `note_first_input`으로만 알린다.
         super::write(pool, id, &format!("{}\n", child(""))).expect("셸에 한 줄을 친다");
@@ -3235,6 +3279,9 @@ mod tests {
             helper.is_some()
         });
         let before = super::command_running(pool, id);
+        let echoed = stamped();
+        // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다.
+        let on_screen = super::screen(pool).pool.into_iter().find(|shell| shell.pty_id == id).map(|shell| shell.last_output_ms);
 
         // 셸의 자식인 `sleep` 중 셸 자신의 그룹에 사는 것(잡 제어 밖의 백그라운드 잡)과 제 그룹을 연 것(명령).
         // 시스템 바이너리라 표식은 안 읽히고 셸의 트리로 잡힌다.
@@ -3295,6 +3342,14 @@ mod tests {
         let _ = started.finish();
 
         assert!(helper.is_some(), "입력 전에 띄운 자식이 5초 안에 서지 않았다");
+        assert!(
+            matches!((quiet_since, echoed), (Some(quiet), Some(echo)) if quiet > 0 && echo > quiet),
+            "셸에 친 줄의 메아리가 마지막 출력 시각을 안 올렸다 ({quiet_since:?} → {echoed:?})"
+        );
+        assert!(
+            on_screen >= echoed,
+            "화면 스냅샷이 풀의 셸에 마지막 출력 시각을 안 싣는다 ({on_screen:?} < {echoed:?})"
+        );
         assert_eq!(
             before,
             Ok(CloseCheck { command: false, descendants: 0 }),

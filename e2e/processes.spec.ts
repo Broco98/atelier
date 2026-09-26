@@ -29,7 +29,7 @@ const shellCount = (page: Page, count: number) => page.getByText(`셸 ${count}�
  */
 const withPool = (...keys: string[]): ProcessSnapshot => ({
   ...PROCESS_SNAPSHOT,
-  pool: keys.map((shellKey, at) => ({ ptyId: at + 1, shellKey })),
+  pool: keys.map((shellKey, at) => ({ ptyId: at + 1, shellKey, lastOutputMs: 1_758_000_000_000 })),
 });
 
 test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서고, 누르면 그 세계의 주소로 같은 화면이 열린다", async ({

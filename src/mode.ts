@@ -93,6 +93,12 @@ interface ModeRefs {
 }
 
 interface ModeShape {
+  /**
+   * 세계의 이름 — 화면에 적히는 글자다. **대문자 영어다**(US 59): 사이드바에서 nav 항목(`Terminal`·`Archive`)과 같은 층이다.
+   * 적는 자리가 둘이다 — 사이드바 최상단 세그먼트(`ModeSwitch`)와 `Processes`의 세계 줄(티켓 27). 둘째 자리가 생겨 세그먼트에서
+   * 이 표로 올라왔다(그 파일의 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」).
+   */
+  readonly name: string;
   readonly nav: readonly NavItem[];
   readonly palette: readonly PaletteDestination[];
   readonly routes: ModeRoutes;
@@ -178,6 +184,7 @@ const SETTINGS_PLACE = {
  */
 const TABLE = {
   atelier: {
+    name: "Atelier",
     nav: navItems,
     palette: [...navItems, SETTINGS_PLACE],
     routes: ATELIER_ROUTES,
@@ -185,6 +192,7 @@ const TABLE = {
     projects: true,
   },
   maison: {
+    name: "Maison",
     nav: MAISON_NAV,
     palette: [...MAISON_NAV, SETTINGS_PLACE],
     routes: MAISON_ROUTES,
@@ -248,6 +256,11 @@ export function slugOf(pathname: string): string | null {
  */
 export function hasProjects(mode: Mode): boolean {
   return TABLE[mode].projects;
+}
+
+/** 세계의 이름(`Atelier` · `Maison`) — 화면에 적는 글자다. 문장 안에서도 이 대문자 그대로다(CONTEXT 「표기」). */
+export function worldNameOf(mode: Mode): string {
+  return TABLE[mode].name;
 }
 
 /**

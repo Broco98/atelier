@@ -37,6 +37,11 @@ export interface ProcessGroups {
 export interface PoolShell {
   ptyId: number;
   shellKey: string;
+  /**
+   * 셸이 마지막으로 무언가를 찍은 때(에포크 ms). 셸 행의 「조용함」 경과가 이 값에서 잰다(티켓 27) — 사람이 친 글자의 메아리도
+   * 끝난 명령 뒤의 프롬프트도 출력이라, 이 값 뒤로는 셸에 아무 일이 없었다. 아직 아무것도 안 찍었으면 띄운 때다.
+   */
+  lastOutputMs: number;
 }
 
 export interface ProcessSnapshot {
