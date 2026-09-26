@@ -130,6 +130,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     // nav 메타의 요약(티켓 29)은 **앱 프로세스의 배경 표본이 앉힌 값**이다 — 10초마다 그 풀을 판정하는 스레드가 앱에 산다. 다리에는
     // 표본을 모을 실행이 없다. 거절되면 nav 메타가 안 선다(부팅 때의 시작 보고와 같다).
     ("processes_summary", |_| in_app_only("요약은 앱 프로세스의 배경 표본이 모은 값입니다")),
+    // 요약 카드의 추이(티켓 30)도 **그 배경 표본이 든 고리**다 — 앱 프로세스의 메모리에만 산다(앱을 다시 켜면 빈다). 거절되면
+    // 카드에 스파크라인이 안 선다.
+    ("processes_trend", |_| in_app_only("추이는 앱 프로세스의 배경 표본이 든 값입니다")),
     // 설정 둘은 **위 넷과 이유가 다르다.** `~/.atelier/settings.json` 한 장이라 다리가 못 탈
     // 성질이 아닌데, 읽고 쓰는 코드가 앱 크레이트(`src-tauri/src/settings.rs`)에 살고 다리는
     // 코어만 본다. 여기서 파일 규칙을 다시 적지 않는다 — 그 순간 이 층이 검증하는 것이 앱이
@@ -343,7 +346,7 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 23] = [
+    const APP_SOURCES: [(&str, &str); 24] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -367,6 +370,7 @@ mod tests {
         ("startup.rs", include_str!("../../../src-tauri/src/startup.rs")),
         ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
+        ("webview.rs", include_str!("../../../src-tauri/src/webview.rs")),
     ];
 
     /// CLI 크레이트 `src/` 아래의 소스 전부. 위 표와 짝이다 — 앱 쪽은 「env를 아예 안

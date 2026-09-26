@@ -68,8 +68,8 @@ export interface ProcessSnapshot {
 }
 
 /**
- * nav 메타의 요약(프로세스 결정 10 · 11 · 티켓 29). Rust의 `processes::summary::Summary`와 **칸 이름으로만** 이어진다 — 와이어 모양은
- * Rust 쪽 검사(`the_summary_crosses_the_wire_in_the_shape_the_nav_reads`)가 글자로 못박는다.
+ * nav 메타의 요약(프로세스 결정 10 · 11 · 티켓 29) — 요약 카드(티켓 30)도 같은 장을 읽는다. Rust의 `processes::summary::Summary`와 **칸
+ * 이름으로만** 이어진다 — 와이어 모양은 Rust 쪽 검사(`the_summary_crosses_the_wire_in_the_shape_the_nav_reads`)가 글자로 못박는다.
  *
  * 화면이 닫혀 있어도 Rust가 10초마다 모은다(배경 표본). 프런트는 nav 메타를 위해 10초마다 묻는다(`useProcessSummary`).
  */
@@ -79,10 +79,23 @@ export interface ProcessSummary {
    * 못 읽었으면(macOS 밖) `null`이고, nav 메타는 숫자를 안 세운다.
    */
   total: number | null;
-  /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드(30)가 이 표시를 보인다. */
+  /** 합계에 드는 것의 CPU%를 더한 것(한 코어 = 100). 배경 표본의 첫 장이거나 못 쟀으면 `null`(카드의 「—」). */
+  cpu: number | null;
+  /** 앱 본체의 메모리 — Rust 본체 + 웹뷰(WebContent) 중 읽은 것(프로세스 스펙 S39). 못 읽었으면 `null`. */
+  app: number | null;
+  /** 앱 본체에 웹뷰(WebContent)를 안 셌다(프로세스 스펙 S39) — 요약 카드가 「웹뷰 제외」를 붙인다. */
   webviewExcluded: boolean;
   /** 출처 불명의 신원 — 수가 아니라 신원이다(티켓 29): `●`는 본 것과 견줘 새로 생긴 것에만 선다. 수는 이 목록의 길이다. */
   unknown: ProcessIdentity[];
   /** `●`를 켜는 정리 기록(사람 손 없이 끝냄 · 못 끝냄) 중 가장 새것의 번호. 없으면 `null`. 무엇이 켜는 기록인지는 Rust가 가른다. */
   recordHead: number | null;
+}
+
+/**
+ * 추이의 한 점(티켓 30) — 배경 표본이 합계를 읽은 때(에포크 ms)와 그 합계(바이트). Rust의 `processes::summary::Point`와 칸 이름으로
+ * 이어진다. 추이 IPC는 이것을 오래된 것부터 1시간치(360점)까지 돌려준다.
+ */
+export interface TrendPoint {
+  at: number;
+  total: number;
 }

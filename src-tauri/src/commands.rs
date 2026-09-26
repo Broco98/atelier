@@ -344,6 +344,16 @@ pub async fn processes_summary(
         .map_err(|e| format!("프로세스 요약을 읽지 못했습니다: {e}"))
 }
 
+// 요약 카드의 추이 — 배경 표본이 10초마다 든 앱 전체 메모리 합계의 1시간치(360점), 오래된 것부터(프로세스 결정 10 · 티켓 30). 화면이
+// 열려 있는 동안 요약이 올 때마다 한 번 부른다(`src/features/processes/hooks.ts`의 `trendQuery`) — 새 박자는 없다. 고리를 복사할
+// 뿐이라 표를 찍지 않고 기다리지도 않는다(blocking 풀이 필요 없다). 앱을 다시 켜면 빈다.
+//
+// 모드를 안 받는다 — 요약과 같은 앱 전체의 값이다(프로세스 결정 9).
+#[tauri::command]
+pub async fn processes_trend(pool: tauri::State<'_, Arc<pty::PtyPool>>) -> CmdResult<Vec<crate::processes::summary::Point>> {
+    Ok(pty::trend(&pool))
+}
+
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
 // **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
 // (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
@@ -503,6 +513,15 @@ mod tests {
         assert!(blocking < summary, "요약({summary})이 blocking 풀({blocking}) 밖에 있다");
         assert_eq!(body.matches("pty::summary(").count(), 1, "요약을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
         assert!(!body.contains("pty::summarize("), "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다");
+    }
+
+    /// **추이 IPC는 배경 표본의 고리를 돌려줄 뿐이다**(티켓 30). 요약이 올 때마다 부르므로, 여기서 표를 찍거나 요약을 새로 모으면
+    /// 화면이 열려 있는 동안 박자마다 표 한 장이 는다.
+    #[test]
+    fn the_trend_answers_the_ring_without_sampling() {
+        let body = command_body("processes_trend");
+        assert_eq!(body.matches("pty::trend(").count(), 1, "명령이 배경 표본의 고리를 안 읽는다");
+        assert!(!body.contains("pty::summar") && !body.contains("pty::screen("), "추이 IPC가 부를 때마다 표를 찍는다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던

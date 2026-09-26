@@ -12,6 +12,8 @@ import type { ProcessIdentity, ProcessSummary } from "./types";
 
 const 요약 = (unknown: ProcessIdentity[] = [], recordHead: number | null = null, total: number | null = 900): ProcessSummary => ({
   total,
+  cpu: null,
+  app: null,
   webviewExcluded: true,
   unknown,
   recordHead,

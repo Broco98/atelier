@@ -29,7 +29,7 @@ use crate::processes::instances::{self, Place, Record};
 use crate::processes::metrics::{self, CpuMeter};
 use crate::processes::screen::{self, Measured, PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
-use crate::processes::summary::{self, Background, Summary};
+use crate::processes::summary::{self, Background, Body, Summary};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Proc, Snapshot, SHELL_KEY_ENV};
 
@@ -128,11 +128,12 @@ pub struct PtyPool {
     /// 풀 배선 장면은 제 함수를 걸어 받은 알림을 잰다.
     announcer: OnceLock<Box<dyn Fn(Ended) + Send + Sync>>,
     /// `Processes` 화면 스냅샷의 앞 표본 — CPU%를 두 표본의 차이로 짓는다(프로세스 스펙 S37 · 티켓 28). 화면이 2초마다 부르는
-    /// `screen`만 쓴다. 풀에 두는 것은 그 함수가 풀 하나만 받기 때문이고, 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU를 짓게 되면,
-    /// 30)는 제 것을 따로 쥔다 — 한 앞 표본을 나눠 쓰면 두 박자가 섞인다. 29의 배경 표본은 CPU를 안 짓는다.
+    /// `screen`만 쓴다. 풀에 두는 것은 그 함수가 풀 하나만 받기 때문이고, 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는
+    /// 제 것을 따로 쥔다(`Background`) — 한 앞 표본을 나눠 쓰면 두 박자가 섞인다.
     screen_cpu: Mutex<CpuMeter>,
-    /// 배경 표본의 마지막 요약(티켓 29) — nav 메타가 10초마다 묻는다. 앱은 setup에서 표본 스레드를 건다(`sample_in_background`).
-    /// 기본값은 빈 자리라, 검사가 세우는 풀에서는 요약을 물으면 그 자리에서 한 장을 모은다(`summary`).
+    /// 배경 표본의 자리(티켓 29 · 30) — 마지막 요약(nav 메타가 10초마다 묻는다), 합계의 1시간 고리(추이), 배경의 CPU 미터, 웹뷰에게
+    /// WebContent를 묻는 자리. 앱은 setup에서 묻는 함수와 표본 스레드를 건다(`ask_web_content_with` · `sample_in_background`). 기본값은
+    /// 빈 자리라, 검사가 세우는 풀에서는 요약을 물으면 그 자리에서 한 장을 모으고, 웹뷰는 모른다(「웹뷰 제외」).
     background: Background,
 }
 
@@ -550,13 +551,16 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     ScreenSnapshot::of(&verdict, listed, &measured)
 }
 
-/// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료(프로세스 결정 10 · 11 · 티켓 29). 배경 표본이 10초마다 부른다
-/// (`sample_in_background`) — 화면이 닫혀 있어도 돈다.
+/// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
+/// 표본이 10초마다 부른다(`sample_in_background`) — 화면이 닫혀 있어도 돈다.
 ///
 /// 순서는 화면 스냅샷(`screen`)과 같다: 스냅샷을 먼저 찍고, 판정에 넘길 셸 목록과 셸 프로세스의 신원을 **한 잠금 안에서** 읽고,
 /// 인스턴스 기록은 그 **뒤에** 읽는다(S52). env는 전부 읽는다 — 출처 불명은 지금 풀의 어느 셸보다 먼저 태어났을 수 있다. 지표는
-/// 판정 뒤, 풀 잠금 밖에서 합계에 드는 것만 읽는다(`summary::targets` — 앱 본체 + 이 실행의 셸과 자손). CPU%는 안 짓는다: 요약
-/// 카드의 CPU는 30이 제 앞 표본으로 짓는다(화면의 앞 표본을 나눠 쓰면 두 박자가 섞인다 — `PtyPool::screen_cpu`).
+/// 판정 뒤, 풀 잠금 밖에서 합계에 드는 것만 읽는다(`summary::targets` — 앱 본체 + 이 실행의 셸과 자손).
+///
+/// **앱 본체는 Rust 본체와 웹뷰의 WebContent다**(S39 · 티켓 30). WebContent의 pid는 웹뷰에게 묻는다 — 메인 스레드로 가는 물음이라
+/// 풀 잠금 밖이다(`summary::WebContent`, 묻는 함수는 setup이 건다). **CPU%는 배경 표본의 앞 표본과 견준다**(`Background`의 미터) —
+/// 화면의 앞 표본(`PtyPool::screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다.
 ///
 /// `●`를 켜는 기록의 머리는 정리 기록 파일에서 고른다(`cleanup_log::look_head`). 아무것도 안 끝낸다.
 pub fn summarize(pool: &PtyPool) -> Summary {
@@ -578,10 +582,14 @@ pub fn summarize(pool: &PtyPool) -> Summary {
         inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
-    let app = snapshot::identity_of(std::process::id());
-    let readings = metrics::read(summary::targets(&verdict, &shells, app));
+    let body = Body {
+        rust: snapshot::identity_of(std::process::id()),
+        web_content: pool.background.web_content.identity(snapshot::identity_of),
+    };
+    let readings = metrics::read(summary::targets(&verdict, &shells, &body));
+    let cpu = pool.background.cpu(Instant::now(), readings.cpu_ns());
     let head = cleanup_log::look_head(&pool.record.events());
-    Summary::of(&verdict, &shells, app, &readings.by_id, head)
+    Summary::of(&verdict, &shells, &body, &readings.by_id, &cpu, head)
 }
 
 /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
@@ -589,21 +597,33 @@ pub fn summarize(pool: &PtyPool) -> Summary {
 pub fn summary(pool: &PtyPool) -> Summary {
     pool.background.latest().unwrap_or_else(|| {
         let fresh = summarize(pool);
-        pool.background.keep(fresh.clone());
+        pool.background.keep(fresh.clone(), now_ms());
         fresh
     })
 }
 
+/// 추이 IPC의 답(`processes_trend`) — 배경 표본이 든 합계의 1시간치, 오래된 것부터(프로세스 결정 10 · 티켓 30). 표를 찍지 않는다 —
+/// 고리를 복사할 뿐이다.
+pub fn trend(pool: &PtyPool) -> Vec<summary::Point> {
+    pool.background.trend()
+}
+
+/// 웹뷰에게 WebContent의 pid를 묻는 함수를 한 번 건다(S39 · 티켓 30). 앱은 setup에서 `webview::content_pid`를 건다 — 이 층은 Tauri를
+/// 모른다. 안 걸면(검사의 풀) 요약은 「웹뷰 제외」다.
+pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::Asked + Send + Sync + 'static) {
+    pool.background.web_content.ask_with(ask);
+}
+
 /// **배경 표본을 건다** — setup에서 한 번, 인스턴스 기록을 연 **뒤에**(티켓 29 · 프로세스 스펙 「수집 › 배경 표본」). 곧바로 한 장을
-/// 모으고 10초마다 다시 모은다. 화면이 닫혀 있어도, 창이 가려져 있어도 돈다 — nav 메타는 늘 서 있고, 1시간 추이(30)는 그 사이를
-/// 비우면 안 된다.
+/// 모으고 10초마다 다시 모은다. 화면이 닫혀 있어도, 창이 가려져 있어도 돈다 — nav 메타는 늘 서 있고, 1시간 추이(티켓 30)는 그 사이를
+/// 비우면 안 된다. 앉힐 때 합계를 읽은 때(에포크 ms)를 함께 넘겨 추이의 점이 된다.
 ///
 /// 기록을 열기 전에 모으면 판정이 이 실행 밖의 모든 세대를 기록 없는 세대로 본다 — 함께 뜬 다른 빌드의 셸 자손이 모두 출처
 /// 불명으로 서서 뜨자마자 `●`가 선다. 그래서 setup의 자리가 `open_record` 뒤다(`lib.rs`의 핀).
 pub fn sample_in_background(pool: Arc<PtyPool>) {
     let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || loop {
         let fresh = summarize(&pool);
-        pool.background.keep(fresh);
+        pool.background.keep(fresh, now_ms());
         std::thread::sleep(summary::EVERY);
     });
     // 스레드를 못 띄우면 요약은 첫 물음이 그 자리에서 모은 한 장에서 멎는다(`summary`) — nav 메타의 합계가 안 바뀐다. 조용히
@@ -629,7 +649,7 @@ fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64, Option<Ident
     listed
 }
 
-/// 지금(에포크 ms). 셸의 마지막 출력 시각이 쓴다. 시계가 에포크 앞이면 0으로 눕는다(`prefix_at`과 같다).
+/// 지금(에포크 ms). 셸의 마지막 출력 시각과 추이의 점(티켓 30)이 쓴다. 시계가 에포크 앞이면 0으로 눕는다(`prefix_at`과 같다).
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -1820,6 +1840,10 @@ mod tests {
     /// 잠금 밖에서 **합계에 드는 것만** 읽는다(`summary::targets` — 앱 본체와 이 실행의 셸 · 자손). `●`의 머리는 이 풀의 인스턴스
     /// 기록이 연 정리 기록에서 고른다 — 데이터 루트를 다시 계산하면 검사의 풀이 진짜 기록을 읽는다.
     ///
+    /// **웹뷰에게 WebContent를 묻는 것도 잠금 밖이다**(티켓 30) — 메인 스레드로 가는 물음이라 답을 기다리는 동안 풀을 쥐면 셸 입력 ·
+    /// 닫기가 함께 기다린다. 앱 본체의 신원은 지표를 읽기 전에 서야 합계에 든다. **CPU%는 배경의 미터와 견준다** — 읽은 뒤에, 화면의
+    /// 앞 표본이 아니라.
+    ///
     /// 실행으로는 못 잰다 — 진짜 스냅샷은 이 맥의 표 전체라 기대값을 못 세운다. 값의 모양은 `processes::summary`의 검사가 잰다.
     #[test]
     fn the_background_sample_reads_like_the_screen_and_measures_only_the_total() {
@@ -1827,12 +1851,17 @@ mod tests {
         assert!(body.contains("snapshot::take(EnvScope::All)"), "배경 표본이 env를 가지치기한다 — 오래된 출처 불명의 표식이 안 읽힌다");
         assert_eq!(body.matches("pool.lock()").count(), 1, "풀을 두 번 잠근다 — 판정의 셸과 셸 프로세스가 다른 순간의 것이 된다");
         let judged = body.find("verdict::judge(").expect("판정한다");
-        let read = body.find("metrics::read(summary::targets(&verdict, &shells, app))").expect("합계에 드는 것만 지표를 읽는다");
+        let read = body.find("metrics::read(summary::targets(&verdict, &shells, &body))").expect("합계에 드는 것만 지표를 읽는다");
         let records = body.find("pool.record.records()").expect("기록을 읽는다");
         assert!(records < read && judged < read, "지표를 판정({judged})이나 풀 잠금이 풀리기({records}) 전에 읽는다 — {read}");
         assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
+        let asked = body.find("pool.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
+        assert!(records < asked && asked < read, "WebContent를 풀 잠금 안({records} 앞)이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
+        let sampled = body.find("pool.background.cpu(").expect("배경의 미터로 CPU%를 짓는다");
+        assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
         assert!(body.contains("cleanup_log::look_head(&pool.record.events())"), "`●`의 머리를 이 풀의 정리 기록에서 안 고른다");
         assert!(!body.contains("screen_cpu"), "배경 표본이 화면의 앞 표본을 나눠 쓴다 — 두 박자가 섞인다");
+        assert!(!body.contains("CpuMeter::"), "부를 때마다 앞 표본을 새로 세운다 — 요약의 CPU가 늘 첫 표본이다");
     }
 
     /// **요약 IPC는 배경 표본의 마지막 장을 돌려준다**(티켓 29) — 부를 때마다 표를 찍지 않는다. 아직 한 장도 없으면 그 자리에서
@@ -1842,14 +1871,83 @@ mod tests {
     #[test]
     fn the_summary_answers_the_last_background_sample() {
         let pool = super::PtyPool::default();
-        let kept = super::Summary { total: Some(1), webview_excluded: true, unknown: vec![], record_head: Some(9) };
-        pool.background.keep(kept.clone());
+        let kept = super::Summary {
+            total: Some(1),
+            cpu: None,
+            app: Some(1),
+            webview_excluded: true,
+            unknown: vec![],
+            record_head: Some(9),
+        };
+        pool.background.keep(kept.clone(), 5_000);
         assert_eq!(super::summary(&pool), kept, "배경 표본이 앉힌 장을 안 돌려준다");
 
         let fresh = super::PtyPool::default();
         let first = super::summary(&fresh);
         assert_eq!(fresh.background.latest(), Some(first.clone()), "그 자리에서 모은 장을 안 앉혔다");
         assert_eq!(first.record_head, None, "연 적 없는 기록에서 머리를 골랐다 — 검사의 풀이 진짜 정리 기록을 읽는다");
+    }
+
+    /// **추이 IPC는 배경 자리의 고리를 돌려준다**(티켓 30) — 표본이 앉힐 때 합계와 그 때를 한 점으로 더한 것이다. 부를 때마다 표를
+    /// 찍지 않는다(찍으면 화면이 열려 있는 동안 요약 박자마다 표 한 장이 는다). 아직 한 점도 없으면 빈 목록이다.
+    #[test]
+    fn the_trend_answers_the_background_ring() {
+        let pool = super::PtyPool::default();
+        assert_eq!(super::trend(&pool), vec![], "빈 풀의 추이가 빈 목록이 아니다");
+        let kept = |total: u64| super::Summary {
+            total: Some(total),
+            cpu: None,
+            app: None,
+            webview_excluded: true,
+            unknown: vec![],
+            record_head: None,
+        };
+        pool.background.keep(kept(3), 7_000);
+        pool.background.keep(kept(5), 17_000);
+        assert_eq!(
+            super::trend(&pool),
+            vec![super::summary::Point { at: 7_000, total: 3 }, super::summary::Point { at: 17_000, total: 5 }]
+        );
+        let body = body_of("pub fn trend(", "\n}\n");
+        assert!(!body.contains("summarize(") && !body.contains("snapshot::take("), "추이 IPC가 표를 찍는다");
+    }
+
+    /// **앱 본체에 웹뷰가 이름 댄 WebContent가 든다**(S39 · 티켓 30). 앱에서는 setup이 웹뷰에게 묻는 함수를 건다(`webview.rs`) — 여기서는
+    /// 검사가 띄운 자식 하나를 WebContent 자리에 세운다. 살아 있으면 셌다(「웹뷰 제외」가 아니다). 답이 늦으면 마지막으로 안 신원을
+    /// 다시 쓴다. 그 자식이 끝났으면(신원으로 못 바꾼다) 「웹뷰 제외」다. 묻는 함수가 없는 풀(앵커)은 늘 「웹뷰 제외」다.
+    ///
+    /// 표를 찍고 판정하지만 읽기만 한다 — 신호는 이 검사가 띄운 자식에게만 간다(`Kid`의 거두기).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_app_body_counts_the_web_content_the_webview_names() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        use crate::processes::summary::Asked;
+        use crate::processes::testkit::{key, Kid};
+
+        let unasked = super::PtyPool::default();
+        assert!(super::summarize(&unasked).webview_excluded, "묻는 함수가 없는데 웹뷰를 셌다");
+
+        let stand_in = Kid::spawn("sleep", &key(30));
+        let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
+        let answer = Arc::new(AtomicU32::new(pid));
+        let asked = Arc::clone(&answer);
+        let pool = super::PtyPool::default();
+        super::ask_web_content_with(&pool, move || match asked.load(Ordering::Relaxed) {
+            0 => Asked::Late,
+            pid => Asked::Answered(Some(pid)),
+        });
+        let counted = super::summarize(&pool);
+        assert!(!counted.webview_excluded, "웹뷰가 이름 댄 WebContent를 앱 본체에 안 셌다");
+        assert!(counted.app.is_some_and(|app| counted.total.is_some_and(|total| total >= app)), "앱 본체가 합계에 안 들었다");
+
+        answer.store(0, Ordering::Relaxed);
+        assert!(!super::summarize(&pool).webview_excluded, "답이 늦자 마지막으로 안 WebContent를 버렸다");
+
+        drop(stand_in);
+        answer.store(pid, Ordering::Relaxed);
+        assert!(super::summarize(&pool).webview_excluded, "끝난 WebContent를 셌다");
     }
 
     /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로

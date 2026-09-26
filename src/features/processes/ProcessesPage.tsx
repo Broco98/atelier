@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { ALL_MODES, worldNameOf, type Mode } from "@/mode";
 import { useProcessSnapshot } from "./hooks";
 import { openProcessesScreen } from "./looked";
+import SummaryCard from "./SummaryCard";
 import { formatCpu, formatMemory, formatPorts } from "./metrics";
 import {
   CURRENT_WORLD,
@@ -41,7 +42,8 @@ import type { ProcessMetrics } from "./types";
  * **세계를 받는 것은 차례 때문이다**(티켓 27) — 지금 세계가 맨 위에 선다. 무엇을 보이는지는 세계와 상관없다.
  *
  * 셸 묶음은 세계 → work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work 행은 그
- * 트리의 합이다. 요약 카드는 30, 나머지 묶음(고아 · 다른 인스턴스 · 예외 · 주인 잃은 셸 · 화면 밖 셸 · 정리 기록)은 31 · 32가 붙인다.
+ * 트리의 합이다. 맨 위에 요약 카드(티켓 30)가 서고, 나머지 묶음(고아 · 다른 인스턴스 · 예외 · 주인 잃은 셸 · 화면 밖 셸 · 정리 기록)은
+ * 31 · 32가 붙인다.
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  */
@@ -69,8 +71,8 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
           {/* **제목은 머리가 보여 주고, 제목 역할은 이 줄이 진다** — `PageHeader`는 제목 역할이 없는 글자라(설정 화면과 같은
               사정) 이것마저 없으면 화면에 제목이 하나도 없다. */}
           <h2 className="sr-only">Processes</h2>
-          {/* 풀에 앉은 셸 — 두 세계의 것이 함께다. 첫 답이 오기 전에는 세지 않는다: 「0개」라고 말하면 모르는 것을 없다고 한다. */}
-          {snapshot && <p className="text-[13px] text-muted-foreground">{shellCount(snapshot.pool.length)}</p>}
+          {/* 요약 카드(티켓 30) — 합계 · 추이 · CPU · 수들 · 앱 본체. 셸 수(풀의 셸, 두 세계의 것이 함께)도 여기 선다. */}
+          <SummaryCard snapshot={snapshot} />
           {tree.length > 0 && (
             // **트리 역할이다**(S58) — 스크린리더가 행마다 깊이를 읽는다. 줄은 평평하게 서고 깊이는 `aria-level`이 말한다(중첩
             // `group` 대신). 줄마다 접근성 이름이 한 문장이라 안의 글자 조각을 이어 읽지 않는다.

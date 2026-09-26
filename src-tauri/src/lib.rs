@@ -12,6 +12,7 @@ mod shells;
 mod startup;
 mod terminate;
 mod watcher;
+mod webview;
 
 use std::sync::Arc;
 
@@ -290,6 +291,11 @@ pub fn run() {
             // nav 메타의 배경 표본(프로세스 결정 10 · 11 · 티켓 29). 앱 전체 메모리 합계와 손볼 것(출처 불명 · `●`를 켜는 기록)을 10초마다
             // 모은다 — 화면이 닫혀 있어도 돈다. **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸
             // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
+            //
+            // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
+            // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다.
+            let asker = app.handle().clone();
+            pty::ask_web_content_with(&app.state::<Arc<pty::PtyPool>>(), move || webview::content_pid(&asker));
             pty::sample_in_background(Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
             Ok(())
         })
@@ -341,6 +347,7 @@ pub fn run() {
             commands::pty_close_checks,
             commands::processes_snapshot,
             commands::processes_summary,
+            commands::processes_trend,
             commands::read_settings,
             commands::write_settings,
             commands::default_process_exceptions,
@@ -713,5 +720,20 @@ mod tests {
             .expect("셋업이 배경 표본을 안 건다 — 화면이 닫혀 있으면 nav 메타의 합계가 안 바뀐다");
         assert!(opened < sampled, "배경 표본({sampled})이 기록을 열기({opened}) 전에 걸린다 — 첫 장이 남의 셸 자손을 출처 불명으로 본다");
         assert_eq!(setup.matches("pty::sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
+    }
+
+    /// **웹뷰에게 WebContent를 물을 길은 배경 표본보다 먼저 건다**(프로세스 스펙 S39 · 티켓 30). 안 걸면 조용하다 — 요약은 잘 서는데
+    /// 앱 본체가 늘 Rust 본체뿐이고 「웹뷰 제외」가 영영 붙는다. 늦게 걸면 첫 장이 웹뷰 없이 서 추이의 첫 점이 그만큼 낮다. 묻는
+    /// 함수는 창을 다시 찾는 앱 핸들을 쥔다 — 창을 쥐면 그 창이 다시 서도 옛 창에 묻는다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
+    /// 물음이 앱 본체에 드는 것은 `pty.rs`의 실물 검사가, SPI가 이 맥에 있는지는 `webview.rs`의 검사가 잰다.
+    #[test]
+    fn the_web_content_is_asked_for_before_the_background_sample_starts() {
+        let setup = setup_source();
+        let asked = setup
+            .find("pty::ask_web_content_with(&app.state::<Arc<pty::PtyPool>>(), move || webview::content_pid(&asker));")
+            .expect("셋업이 웹뷰에게 WebContent를 물을 길을 안 건다 — 앱 본체가 늘 「웹뷰 제외」다");
+        let sampled = setup.find("pty::sample_in_background(").expect("배경 표본을 건다");
+        assert!(asked < sampled, "물을 길({asked})이 배경 표본({sampled}) 뒤에 걸린다 — 첫 장이 웹뷰 없이 선다");
+        assert!(setup.contains("let asker = app.handle().clone();"), "묻는 함수가 앱 핸들이 아닌 것을 쥔다");
     }
 }

@@ -111,21 +111,36 @@ pub fn percent(before_ns: u64, now_ns: u64, wall: Duration) -> Option<f64> {
 pub const STALE: Duration = Duration::from_secs(10);
 
 /// 두 표본 사이의 CPU%(S37). 부르는 쪽이 이것을 쥐고 부를 때마다 새 표본을 넣는다 — 화면 스냅샷은 풀에 하나를 쥔다(`pty::screen`).
-/// 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU를 짓게 되면, 30)는 제 것을 따로 쥔다: 한 앞 표본을 나눠 쓰면 두 박자가 섞여 차이의
-/// 벽시계가 뒤엉킨다. 배경 표본의 박자는 `STALE`과 같은 10초라, 그 자리는 버리는 나이를 따로 정해야 한다.
+/// 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는 제 것을 따로 쥔다(`summary::Background`): 한 앞 표본을 나눠 쓰면 두 박자가
+/// 섞여 차이의 벽시계가 뒤엉킨다. 배경 표본의 박자는 `STALE`과 같은 10초라(잠 10초 + 모으는 시간이라 늘 조금 넘는다) 그 자리는 버리는
+/// 나이를 따로 정해 미터를 세운다(`aged`).
 ///
-/// 앞 표본이 없는 신원은 CPU%가 없다(화면의 「—」) — 첫 표본, 그사이 새로 뜬 프로세스, pid가 재사용된 남. 앞 표본이 `STALE`보다
+/// 앞 표본이 없는 신원은 CPU%가 없다(화면의 「—」) — 첫 표본, 그사이 새로 뜬 프로세스, pid가 재사용된 남. 앞 표본이 버리는 나이보다
 /// 오래됐으면 모두 없다. **쥐는 것은 바로 앞 표본 하나다** — 끝난 프로세스의 누적 시간이 쌓이지 않는다.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CpuMeter {
     last: Option<(Instant, HashMap<Identity, u64>)>,
+    /// 앞 표본을 버리는 나이. 화면의 미터는 `STALE`이다.
+    stale: Duration,
+}
+
+/// 화면의 미터 — 버리는 나이가 `STALE`(화면 박자의 다섯 배)이다.
+impl Default for CpuMeter {
+    fn default() -> Self {
+        CpuMeter::aged(STALE)
+    }
 }
 
 impl CpuMeter {
+    /// 앞 표본을 `stale`까지 쥐는 미터. 박자가 화면(2초)과 다른 읽기가 제 박자에 맞춰 세운다.
+    pub fn aged(stale: Duration) -> Self {
+        CpuMeter { last: None, stale }
+    }
+
     /// 새 표본(신원 → 누적 CPU 시간 ns, 읽은 때)을 받아 신원마다 CPU%를 돌려주고, 그 표본을 다음 번의 앞 표본으로 쥔다.
     pub fn sample(&mut self, at: Instant, cpu_ns: HashMap<Identity, u64>) -> HashMap<Identity, f64> {
         let percents = match &self.last {
-            Some((then, before)) if at.saturating_duration_since(*then) <= STALE => {
+            Some((then, before)) if at.saturating_duration_since(*then) <= self.stale => {
                 let wall = at.saturating_duration_since(*then);
                 cpu_ns
                     .iter()
@@ -341,6 +356,29 @@ mod tests {
         // 경계 — 딱 그 나이까지는 앞 표본이다.
         let edge = late + Duration::from_secs(2) + STALE;
         assert_eq!(meter.sample(edge, HashMap::from([(a, 2 * SEC)])), HashMap::from([(a, 0.0)]));
+    }
+
+    /// **박자가 느린 읽기는 버리는 나이를 제 것으로 정한다**(티켓 30). 배경 표본은 10초 잠 + 모으는 시간마다 부르므로 표본 사이가
+    /// 늘 화면의 `STALE`(10초)을 조금 넘는다 — 그 나이로 버리면 요약의 CPU가 영영 없다. 나이를 받은 미터는 그 나이까지 앞 표본과
+    /// 잇고, 넘으면 버린다. 앵커는 같은 간격을 화면의 미터에 넣은 것이다(버린다).
+    #[test]
+    fn a_meter_for_a_slower_beat_keeps_its_sample_as_long_as_it_says() {
+        let a = id(10, 1);
+        let t0 = Instant::now();
+        let beat = Duration::from_millis(10_050);
+
+        let mut screen = CpuMeter::default();
+        screen.sample(t0, HashMap::from([(a, 0)]));
+        assert_eq!(screen.sample(t0 + beat, HashMap::from([(a, SEC)])), HashMap::new(), "화면의 미터가 10초 넘은 앞 표본과 이었다");
+
+        let mut background = CpuMeter::aged(Duration::from_secs(30));
+        background.sample(t0, HashMap::from([(a, 0)]));
+        let next = background.sample(t0 + beat, HashMap::from([(a, SEC)]));
+        let percent = next.get(&a).copied().expect("배경의 미터가 10초 조금 넘은 앞 표본을 버렸다 — 요약의 CPU가 늘 없다");
+        assert!((percent - 100.0 / 10.05).abs() < 1e-9, "배경의 CPU%가 차이 / 벽시계가 아니다 — {percent}");
+
+        let late = t0 + beat + Duration::from_secs(30) + Duration::from_millis(1);
+        assert_eq!(background.sample(late, HashMap::from([(a, 2 * SEC)])), HashMap::new(), "제 나이를 넘은 앞 표본과 이었다");
     }
 }
 
