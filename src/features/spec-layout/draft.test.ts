@@ -305,6 +305,13 @@ describe("템플릿", () => {
     expect(next.templates).toEqual({ "decisions.md": "# 다시 쓴 결정\n" });
   });
 
+  it("누락 템플릿을 끄면 항목이 더는 가리키지 않는다", () => {
+    const missing: LayoutDraft = { ...opened(), templates: {} };
+    const next = setTemplate(missing, [1], false);
+    expect(next.layout.root.children?.[1].template).toBeUndefined();
+    expect(next.templates).toEqual({});
+  });
+
   it("템플릿이 없는 항목에는 본문을 적지 않는다", () => {
     expect(setTemplateBody(opened(), [0], "x")).toEqual(opened());
   });

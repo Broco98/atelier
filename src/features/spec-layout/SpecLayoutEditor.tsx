@@ -262,7 +262,7 @@ export function EditorColumns({
               depth={path.length}
               selected={samePath(path, at)}
               hasError={errorsAt(path).length > 0}
-              templateMissing={templateMissing(draft.templates, row)}
+              missingTemplate={templateMissing(draft.templates, row)}
               onSelect={() => onSelect(path)}
             />
           ))}
@@ -337,19 +337,19 @@ function TreeRow({
   depth,
   selected,
   hasError,
-  templateMissing,
+  missingTemplate,
   onSelect,
 }: {
   entry: LayoutEntryJson;
   depth: number;
   selected: boolean;
   hasError: boolean;
-  templateMissing: boolean;
+  missingTemplate: boolean;
   onSelect: () => void;
 }) {
   const folder = entry.kind !== "file";
   // 경고(모르는 아이콘, 템플릿 누락)는 삼각형 하나에 모은다 — 무엇인지는 고른 항목의 열이 적는다.
-  const warnings = [unknownIcon(entry) && "모르는 아이콘", templateMissing && "템플릿 누락"].filter(
+  const warnings = [unknownIcon(entry) && "모르는 아이콘", missingTemplate && "템플릿 누락"].filter(
     (warning): warning is string => warning !== false,
   );
   const Known = specIconOf(entry.icon ?? null);
