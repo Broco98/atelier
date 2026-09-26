@@ -9,8 +9,8 @@ import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "
 //
 // **이 층이 드는 것은 떠나는 길이 모두 물음에 걸리는가다** — 뒤로, 설정 nav의 다른 항목, 팔레트로 다른 곳 열기.
 // 길마다 따로 걸면 한 길이 잊는 날 그 길로만 초안이 사라진다. 그리고 [저장하고 나가기]가 정말 저장 명령을 부른 뒤에
-// 떠나는가, 저장이 거절되면 떠나지 않는가. 설정 초안(터미널, 알림)에는 걸지 않는다 — 그 L3(`settings-save.spec.ts`)는
-// 손대지 않은 채 초록이다.
+// 떠나는가, 저장이 거절되면 떠나지 않는가, 저장이 잠겨 있으면 그 버튼이 아예 서지 않는가. 설정 초안(터미널,
+// 알림)에는 걸지 않는다 — 그 L3(`settings-save.spec.ts`)는 손대지 않은 채 초록이다.
 
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
@@ -95,6 +95,37 @@ test("[저장하고 나가기]면 저장 명령이 초안을 싣고 나간 뒤�
   const [layout] = await writtenLayouts(page);
   expect(layout.root.children![1]).toEqual({ ...SPEC_LAYOUT_READ.layout.root.children![1], description: EDITED });
   expect(layout.owner).toBe("사람");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 저장이 잠겨 있으면(미리보기 답에 검증 오류) [저장하고 나가기]가 서지 않는다 — 눌러도 저장이 안 된다. 창의 버튼은
+// L2가 재지만, 편집기의 저장 가능 판정이 창에 닿는지는 이 층에서만 보인다.
+test("저장할 수 없는 초안이면 확인 창에 [저장하고 나가기]가 없다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    render_spec_layout: {
+      text: null,
+      lines: [],
+      errors: [{ path: [2, 0], message: "two siblings have the pattern `tickets`" }],
+      warnings: [],
+    },
+  });
+  await openEditor(page);
+  // 연 초안의 답이 먼저 와야 한다 — 그래야 아래 셈이 고친 초안의 답 하나만 센다
+  await expect(page.getByRole("treeitem", { name: "tickets/ 검증 오류", exact: true })).toBeVisible();
+  await 행(page, "decisions.md").click();
+  const before = await callCount(page, "render_spec_layout");
+  await 설명(page).fill(EDITED);
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(before + 1);
+  await expect(저장(page)).toBeDisabled();
+
+  await 뒤로(page).click();
+  await expect(떠날때(page)).toBeVisible();
+  await expect(떠날때(page).getByRole("button")).toHaveText(["계속 편집", "버리고 나가기"]);
+  await 창버튼(page, "계속 편집").click();
+  await expect(page).toHaveURL(EDITOR);
+  await expect(설명(page)).toHaveValue(EDITED);
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
