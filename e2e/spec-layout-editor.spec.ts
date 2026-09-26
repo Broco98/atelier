@@ -375,8 +375,8 @@ test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적
 
 // 트리를 고치는 것(티켓 13). 무엇이 어디로 가는지(앞·뒤·안, 자기 아래 거절, 잠금 판정)는 순수 함수의 seam이,
 // 트리 위 한 줄의 모양과 잠금은 마크업 seam이 잰다. **이 층이 드는 것은 진짜 포인터와 키에서만 서는 것이다** —
-// 끌어 놓은 모양과 단축키로 옮긴 모양이 저장 명령에 실리는가, 끄는 동안 탭 겹판이 서지 않는가, Esc와 칸 안의
-// ⌥←가 트리를 건드리지 않는가.
+// 끌어 놓은 모양과 단축키로 옮긴 모양이 저장 명령에 실리는가, Esc와 칸 안의 ⌥←가 트리를 건드리지 않는가.
+// (끄는 동안 탭 겹판이 서지 않는지도 여기서 보지만, 이 주소에서는 구조상 늘 초록이다 — `탭겹판`의 주석.)
 const { root: READ_ROOT } = SPEC_LAYOUT_READ.layout;
 const [OVERVIEW, DECISIONS, ITERATION] = READ_ROOT.children!;
 const TICKETS = ITERATION.children![0];
@@ -389,7 +389,14 @@ const 트리 = (page: Page) =>
 const 이름틀 = (page: Page) => page.getByRole("textbox", { name: "이름 틀", exact: true });
 const 도구 = (page: Page, name: string) =>
   page.getByRole("toolbar", { name: "항목 편집" }).getByRole("button", { name, exact: true });
-/** 탭을 끌 때 본문에 서는 분할 겹판(`WorksPage`) — 편집기 항목을 끌 때는 서면 안 된다. */
+/**
+ * 탭을 끌 때 본문에 서는 분할 겹판(`WorksPage`) — 편집기 항목을 끌 때는 서면 안 된다.
+ *
+ * **이 주소에서는 이 셈이 빨개질 수 없다.** 편집기 주소(`/settings/spec-layout/$id`)에는 `WorksPage`가 올라와 있지
+ * 않고, 설정에서는 사이드바도 작업 목록 대신 설정 nav를 그린다 — 겹판이 설 자리가 없으니 0은 구조에서 나온다.
+ * 편집기 끌기가 탭 끌기로 읽히는 퇴행을 잡는 것은 L2의 탭 끌기 판정(`src/lib/pointer-drag.test.ts`의 「탭 끌기
+ * 판정」)과 `tabDragOf`의 반환 타입(`DragSource | null`)이다. 이 셈을 믿고 그쪽을 느슨하게 하지 않는다.
+ */
 const 탭겹판 = (page: Page) => page.locator("[data-drop-half]");
 
 /** 저장을 눌러 나간 `write_spec_layout` 하나의 레이아웃. */
