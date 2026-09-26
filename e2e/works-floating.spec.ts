@@ -9,6 +9,7 @@ import {
   unknownIpcCalls,
   workRow,
 } from "./harness";
+import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
 // 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · ⓘ 메타 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
@@ -711,3 +712,22 @@ test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **꽉 찬 `+`는 잠긴 이유를 hover에 보인다** — 칸 하나에는 문장을 넣을 폭이 없어서다(결정 47). 잠김은 `aria-disabled` +
+// 클릭 무시라 툴팁이 막히지 않고(S23 — 네이티브 `disabled`에는 툴팁을 달지 않는다), 툴팁은 스크린리더에 아무것도 주지
+// 않으므로 같은 문장이 버튼의 설명으로 남는다(S28). 이름은 그대로 「셸 열기」다.
+test("꽉 찬 `+`에 올리면 잠긴 이유가 툴팁으로 서고, 같은 문장이 버튼의 설명이다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await fillToCap(page);
+  const plus = page.getByRole("button", { name: "셸 열기", exact: true });
+  const tooltip = 툴팁(page);
+  // 마지막 누름이 `+` 위에서 툴팁을 닫아 둔다(누르면 닫힌다) — 포인터를 비켰다가 다시 올린다.
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toHaveCount(0);
+
+  await plus.hover();
+
+  await expect(tooltip).toContainText(`${MAX_SHELLS}개까지`);
+  await expect(plus).toHaveAccessibleDescription((await tooltip.textContent())!.trim());
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
