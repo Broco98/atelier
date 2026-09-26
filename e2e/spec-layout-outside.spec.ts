@@ -82,6 +82,14 @@ test("[내 초안 유지]는 배너를 닫고 초안을 남기며, 저장하면 
   await 행(page, "decisions.md").click();
   await expect(설명(page)).toHaveValue(DECISIONS.description!);
 
+  // 유지는 기준본을 새것으로 바꾼다 — 밖이 처음 것으로 돌아와도 그것은 이제 바뀜이다(기준본이 그대로였다면 1번 무시에
+  // 걸려 배너가 안 선다). 배너가 닫힌 것만 보면 기준본이 옮겨졌는지가 갈리지 않으므로 한 번 더 밖에서 바꿔 본다.
+  await changeOutside(page, SPEC_LAYOUT_READ);
+  await expect(배너(page)).toContainText("밖에서 이 레이아웃이 바뀌었어요");
+  await expect(설명(page)).toHaveValue(DECISIONS.description!);
+  await 배너버튼(page, "내 초안 유지").click();
+  await expect(배너(page)).toHaveCount(0);
+
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
   const [{ layout, templates }] = await writes(page);
