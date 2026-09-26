@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Field, FieldDescription } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
@@ -539,6 +540,7 @@ export function TerminalSection({
 }) {
   const { fontFamily, fontSize, theme } = settings.terminal;
   const palette = terminalThemeFor(theme);
+  const sizeHintId = useId();
 
   return (
     <section className="flex flex-col gap-5 pt-2">
@@ -564,15 +566,18 @@ export function TerminalSection({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <input
-            aria-label="터미널 글꼴"
-            value={fontFamily ?? ""}
-            placeholder="기본"
-            onChange={(e) =>
-              onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
-            }
-            className="h-[30px] w-[280px] rounded-[9px] border border-border-strong bg-background px-[9px] text-[13px] outline-none focus:border-primary"
-          />
+          <Field orientation="horizontal">
+            <Input
+              variant="field"
+              className="w-[280px]"
+              aria-label="터미널 글꼴"
+              value={fontFamily ?? ""}
+              placeholder="기본"
+              onChange={(e) =>
+                onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
+              }
+            />
+          </Field>
         </div>
       </Row>
 
@@ -582,24 +587,28 @@ export function TerminalSection({
 
           파일이 준 범위 밖 값에도 테두리는 빨갛다 — 「이 화면이 만들 수 있는 범위 밖」은
           출처와 무관한 사실이다. 그것이 저장까지 잠그느냐는 다른 질문이고 `canSave`가
-          따로 답한다. */}
+          따로 답한다.
+
+          틀린 값은 **칸이 말한다** — 빨간 테두리와 스크린리더의 「잘못된 값」이 한 속성(`aria-invalid`)에서
+          나온다(스토리 107). 행 전체를 빨갛게 하는 Field의 `data-invalid`는 쓰지 않는다(지금 모양). 안내는
+          칸의 설명이다 — registry Field가 저절로 잇지 않아 여기서 id로 잇는다. */}
       <Row label="크기">
-        <div className="flex items-center gap-2">
-          <input
+        <Field orientation="horizontal">
+          <Input
+            variant="field"
+            className="w-[72px]"
             aria-label="터미널 글꼴 크기"
+            aria-describedby={sizeHintId}
+            aria-invalid={parseFontSize(sizeText) === "invalid"}
             inputMode="numeric"
             value={sizeText}
             placeholder="기본"
             onChange={(e) => onChangeSize(e.target.value)}
-            className={cn(
-              "h-[30px] w-[72px] rounded-[9px] border bg-background px-[9px] text-[13px] outline-none focus:border-primary",
-              parseFontSize(sizeText) === "invalid" ? "border-red-500" : "border-border-strong",
-            )}
           />
-          <span className="text-[13px] text-tertiary">
+          <FieldDescription id={sizeHintId}>
             px · {FONT_SIZE_MIN}–{FONT_SIZE_MAX}
-          </span>
-        </div>
+          </FieldDescription>
+        </Field>
       </Row>
 
       {/* 테마 — 두 벌뿐이다(결정 54). 기본은 어둡게이고 그 기본은 백엔드가 정해 온다

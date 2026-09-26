@@ -187,3 +187,35 @@ test("글꼴 칸에 프리셋 밖의 이름을 적으면 어느 칩도 안 켜�
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── 판 4 — 글자칸 (Input · Field)
+
+// 스토리 107·108 — 글꼴 크기 칸은 숫자 스피너가 없는 글자칸이다(`textbox`로 집힌다 — `type="number"`면
+// `spinbutton`이다). 틀린 값이면 빨간 테두리와 함께 스크린리더에 「잘못된 값」(`aria-invalid`)으로 읽히고,
+// 옆 안내 「px · 8–32」는 그 칸의 설명으로 읽힌다(Field 설명). 「틀렸다」는 맞는 값이 「틀리지 않았다」로 선
+// 뒤에 잰다 — 속성을 아예 안 다는 칸도 `true`는 아니므로, 앵커 없이는 무엇도 안 잰다.
+test("글꼴 크기 칸에 틀린 값을 넣으면 aria-invalid=true이고, 안내 「px · 8–32」가 그 칸의 설명이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/terminal");
+
+  const 크기 = 구획(page, "터미널 설정").getByRole("textbox", { name: "터미널 글꼴 크기", exact: true });
+  await expect(크기, "안내가 칸의 설명으로 안 읽힌다").toHaveAccessibleDescription("px · 8–32");
+
+  await 크기.fill("16");
+  await expect(크기).not.toHaveAttribute("aria-invalid", "true");
+
+  // 범위 밖 — 저장은 이 값에서 잠긴다(`canSave`). 잠긴 것만으로는 까닭을 못 읽으니 칸이 말한다.
+  await 크기.fill("40");
+  await expect(크기, "범위 밖 값이 잘못된 값으로 안 읽힌다").toHaveAttribute("aria-invalid", "true");
+  // 정수가 아닌 값도 같다.
+  await 크기.fill("15.5");
+  await expect(크기).toHaveAttribute("aria-invalid", "true");
+
+  // 고치면 풀린다. 비운 칸은 「고르지 않음」이라 틀린 값이 아니다.
+  await 크기.fill("");
+  await expect(크기, "비운 칸이 잘못된 값으로 읽힌다").not.toHaveAttribute("aria-invalid", "true");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
