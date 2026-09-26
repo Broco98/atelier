@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { setDescription, setIcon, setKind, setPattern, type LayoutDraft } from "./draft";
+import {
+  setDescription,
+  setIcon,
+  setKind,
+  setPattern,
+  setTemplate,
+  setTemplateBody,
+  type LayoutDraft,
+} from "./draft";
 
 // 편집기의 초안 조작(spec 레이아웃 티켓 11 · 구현 스펙 5절 「초안 조작은 순수 함수다」). 필드를 바꾸는
 // 함수는 초안을 받아 새 초안을 돌려준다 — 이 저장소의 L2에는 DOM이 없어, 상태를 쥔 편집기가 아니라
@@ -130,6 +138,9 @@ describe("필드를 바꾸는 함수", () => {
     setDescription(draft, [2, 0], "x");
     setIcon(draft, [0], null);
     setKind(draft, [1], "folder");
+    setTemplate(draft, [0], true);
+    setTemplate(draft, [1], false);
+    setTemplateBody(draft, [1], "x");
     expect(draft).toEqual(opened());
   });
 });
@@ -182,5 +193,119 @@ describe("종류", () => {
       children: [{ pattern: "tickets", kind: "folder", color: "red" }],
     });
     expect(next.templates).toEqual({ "decisions.md": "# 결정\n" });
+  });
+});
+
+// 파일 항목의 템플릿(티켓 12 · 구현 스펙 5절 「템플릿 파일은 `layout.json`과 같은 폴더에 둔다」). 켜면 항목이
+// 템플릿 경로를 가리키고 본문 맵에 그 본문이 선다 — 저장은 늘 본문 맵 전부를 넘기므로, 둘이 함께 움직여야
+// 저장이 「본문도 파일도 없는 템플릿」이나 「아무도 가리키지 않는 본문」으로 거절되지 않는다.
+describe("템플릿", () => {
+  it("켜면 항목에 이름 틀로 지은 template 경로가 서고 본문 맵에 빈 본문이 생기며, 모르는 키는 남는다", () => {
+    const next = setTemplate(opened(), [0], true);
+    expect(next.layout.root.children?.[0]).toEqual({
+      pattern: "overview.md",
+      kind: "file",
+      icon: "compass",
+      description: "개요",
+      template: "overview.md",
+    });
+    expect(next.templates).toEqual({ "decisions.md": "# 결정\n", "overview.md": "" });
+    expect(next.layout.owner).toBe("사람");
+    expect(next.layout.root.note).toBe("손으로 적은 메모");
+  });
+
+  // 이미 쓰인 경로는 다른 항목들이 가리키는 템플릿이다 — 대소문자만 달라도 같은 파일이라 번호를 붙인다.
+  it("다른 항목이 가리키는 경로와 겹치면 번호를 붙인다", () => {
+    const renamed = setPattern(opened(), [0], "Decisions.md");
+    const next = setTemplate(renamed, [0], true);
+    expect(next.layout.root.children?.[0].template).toBe("Decisions-2.md");
+    expect(next.templates).toEqual({ "decisions.md": "# 결정\n", "Decisions-2.md": "" });
+  });
+
+  // 「없음」으로 바꾸고 저장하면 그 템플릿 파일은 지워진다 — 저장이 빠진 템플릿을 지운다(티켓 07).
+  it("끄면 항목의 template과 본문 맵의 본문이 둘 다 빠지고, 모르는 키는 남는다", () => {
+    const next = setTemplate(opened(), [1], false);
+    expect(next.layout.root.children?.[1]).toEqual({
+      pattern: "decisions.md",
+      kind: "file",
+      description: "결정",
+      since: "0.14",
+    });
+    expect(next.templates).toEqual({});
+    expect(next.layout.owner).toBe("사람");
+  });
+
+  // 손으로 적은 레이아웃은 두 항목이 한 템플릿을 가리킬 수 있다 — 한쪽을 꺼도 다른 쪽이 그 본문의 주인이다.
+  it("다른 파일 항목이 같은 템플릿을 가리키면 끄더라도 본문은 남는다", () => {
+    const draft = opened();
+    const shared: LayoutDraft = {
+      ...draft,
+      layout: {
+        ...draft.layout,
+        root: {
+          ...draft.layout.root,
+          children: [
+            ...draft.layout.root.children!,
+            { pattern: "adr.md", kind: "file", template: "decisions.md" },
+          ],
+        },
+      },
+    };
+    const next = setTemplate(shared, [1], false);
+    expect(next.layout.root.children?.[1].template).toBeUndefined();
+    expect(next.templates["decisions.md"]).toBe("# 결정\n");
+  });
+
+  // 손으로 고친 `layout.json`이 폴더 안의 다른 경로를 가리키면 그 경로를 그대로 존중한다 — 이름을 짓는 것은
+  // 경로가 없을 때뿐이다. 본문도 그대로다.
+  it("이미 경로가 있는 항목을 켜면 그 경로와 본문을 그대로 쓴다", () => {
+    const read = opened();
+    const draft: LayoutDraft = {
+      layout: {
+        ...read.layout,
+        root: {
+          ...read.layout.root,
+          children: read.layout.root.children!.map((entry, i) =>
+            i === 1 ? { ...entry, template: "templates/adr.md" } : entry,
+          ),
+        },
+      },
+      templates: { "templates/adr.md": "# ADR\n" },
+    };
+    const next = setTemplate(draft, [1], true);
+    expect(next.layout.root.children?.[1].template).toBe("templates/adr.md");
+    expect(next.templates).toEqual({ "templates/adr.md": "# ADR\n" });
+    expect(setTemplate(opened(), [1], true)).toEqual(opened());
+  });
+
+  // 경로는 **켤 때 한 번** 정한다 — 이름 틀을 고칠 때마다 경로가 따라가면 디스크의 템플릿이 저장마다 이름을
+  // 바꾼다. 끄고 다시 켜면 그때의 이름 틀로 다시 정한다.
+  it("이름 틀을 바꿔도 켜진 경로는 그대로이고, 끄고 다시 켜면 지금 이름 틀로 다시 정한다", () => {
+    const on = setTemplate(opened(), [0], true);
+    const renamed = setPattern(on, [0], "summary.md");
+    expect(renamed.layout.root.children?.[0].template).toBe("overview.md");
+    expect(renamed.templates).toEqual({ "decisions.md": "# 결정\n", "overview.md": "" });
+
+    const again = setTemplate(setTemplate(renamed, [0], false), [0], true);
+    expect(again.layout.root.children?.[0].template).toBe("summary.md");
+    expect(again.templates).toEqual({ "decisions.md": "# 결정\n", "summary.md": "" });
+  });
+
+  it("본문을 적으면 그 항목이 가리키는 경로의 본문이 바뀌고, 레이아웃은 그대로다", () => {
+    const next = setTemplateBody(opened(), [1], "# 결정\n\n## 1.\n");
+    expect(next.templates).toEqual({ "decisions.md": "# 결정\n\n## 1.\n" });
+    expect(next.layout).toEqual(opened().layout);
+  });
+
+  // 템플릿 파일이 디스크에서 사라진 항목 — 레이아웃은 가리키는데 본문 맵에 그 경로가 없다. 본문 칸에 적으면
+  // 맵에 들어가 누락이 풀리고, 저장이 그 파일을 다시 만든다.
+  it("본문 맵에 없는 템플릿(누락)에 적으면 그 경로로 맵에 들어간다", () => {
+    const missing: LayoutDraft = { ...opened(), templates: {} };
+    const next = setTemplateBody(missing, [1], "# 다시 쓴 결정\n");
+    expect(next.templates).toEqual({ "decisions.md": "# 다시 쓴 결정\n" });
+  });
+
+  it("템플릿이 없는 항목에는 본문을 적지 않는다", () => {
+    expect(setTemplateBody(opened(), [0], "x")).toEqual(opened());
   });
 });

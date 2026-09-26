@@ -1,3 +1,4 @@
+import { templatePathFor } from "./template-path";
 import type { LayoutEntryJson, SpecLayoutJson, TemplateBodies } from "./types";
 
 // 편집기의 초안과 그것을 고치는 함수들(spec 레이아웃 티켓 11 · 구현 스펙 5절 「초안 조작은 순수 함수다」).
@@ -8,7 +9,8 @@ import type { LayoutEntryJson, SpecLayoutJson, TemplateBodies } from "./types";
 // `updateEntry` 하나를 지난다.
 //
 // 규칙은 여기 없다(결정 13). 이름 틀이 맞는지, 폴더에 자식이 있어도 되는지는 저장이 엔진의 검증으로
-// 판정한다. 여기가 아는 것은 「종류를 바꾸면 무엇이 따라가는가」 하나다.
+// 판정한다. 여기가 아는 것은 「무엇이 따라가는가」다 — 종류를 바꾸거나 템플릿을 켜고 끌 때 항목의
+// `template`과 본문 맵이 함께 움직인다. 템플릿 경로를 짓는 것만 따로 산다(`template-path.ts`).
 
 /** 편집기가 쥔 초안 — 레이아웃과, 저장에 **늘 전부** 돌려줄 템플릿 본문. */
 export interface LayoutDraft {
@@ -67,11 +69,60 @@ export function setIcon(draft: LayoutDraft, path: EntryPath, icon: string | null
  *   `children`」 오류를 세우고, 옮기기로 푼다.
  */
 export function setKind(draft: LayoutDraft, path: EntryPath, kind: "file" | "folder"): LayoutDraft {
+  if (kind === "folder") return detachTemplate(draft, path, (entry) => ({ ...entry, kind }));
+  return { ...draft, layout: updateEntry(draft.layout, path, (entry) => ({ ...entry, kind })) };
+}
+
+/**
+ * 파일 항목의 템플릿을 켜거나 끈다(티켓 12 · 구현 스펙 5절 「템플릿 파일은 `layout.json`과 같은 폴더에 둔다」).
+ *
+ * - **켜면** 항목에 `template` 경로가 서고 본문 맵에 빈 본문이 선다. 경로는 사람이 적지 않는다 — 지금 이름
+ *   틀과 이미 쓰인 경로들(다른 항목이 가리키는 템플릿)로 여기서 **한 번** 짓는다(`templatePathFor`). 이름
+ *   틀을 나중에 고쳐도 경로는 따라가지 않는다.
+ * - **이미 경로가 있으면 그대로다** — 손으로 고친 `layout.json`이 폴더 안의 다른 경로(`templates/adr.md`)를
+ *   가리켜도 존중하고, 본문도 건드리지 않는다. 템플릿 파일이 사라진 항목(본문 맵에 경로가 없다)도 켜진
+ *   채다: 본문 칸에 적어야(`setTemplateBody`) 맵에 들어간다.
+ * - **끄면** `template`과 본문이 함께 빠진다 — 저장이 가리키지 않게 된 템플릿 파일을 지운다(티켓 07). 끄고
+ *   다시 켜면 그때의 이름 틀로 다시 짓는다.
+ */
+export function setTemplate(draft: LayoutDraft, path: EntryPath, on: boolean): LayoutDraft {
+  const entry = entryAt(draft.layout, path);
+  if (entry === null) return draft;
+  if (!on) return detachTemplate(draft, path, (entry) => entry);
+  if (entry.template !== undefined) return draft;
+  const template = templatePathFor(entry.pattern ?? "", [
+    ...templatesOf(draft.layout.root),
+    ...Object.keys(draft.templates),
+  ]);
+  return {
+    layout: updateEntry(draft.layout, path, (entry) => ({ ...entry, template })),
+    templates: { ...draft.templates, [template]: "" },
+  };
+}
+
+/**
+ * 항목이 가리키는 템플릿의 본문을 바꾼다. 본문은 경로로 맵에 산다 — 템플릿 파일이 사라져 맵에 없던
+ * 경로도 여기서 들어간다(누락이 풀린다). 템플릿이 없는 항목이면 그대로다.
+ */
+export function setTemplateBody(draft: LayoutDraft, path: EntryPath, body: string): LayoutDraft {
   const template = entryAt(draft.layout, path)?.template;
-  const layout = updateEntry(draft.layout, path, (entry) =>
-    kind === "folder" ? { ...without(entry, "template"), kind } : { ...entry, kind },
-  );
-  if (kind === "file" || template === undefined || pointsTo(layout.root, template)) {
+  if (template === undefined) return draft;
+  return { ...draft, templates: { ...draft.templates, [template]: body } };
+}
+
+/**
+ * 그 자리의 항목에서 `template`을 떼고(`change`도 함께 입힌다), 본문 맵에서 그 본문을 뗀다. 본문은 **다른
+ * 파일 항목이 같은 경로를 가리키지 않을 때만** 뗀다 — 그쪽은 여전히 그 본문의 주인이다. 아무도 가리키지
+ * 않는 본문은 저장이 거절한다.
+ */
+function detachTemplate(
+  draft: LayoutDraft,
+  path: EntryPath,
+  change: (entry: LayoutEntryJson) => LayoutEntryJson,
+): LayoutDraft {
+  const template = entryAt(draft.layout, path)?.template;
+  const layout = updateEntry(draft.layout, path, (entry) => change(without(entry, "template")));
+  if (template === undefined || templatesOf(layout.root).includes(template)) {
     return { ...draft, layout };
   }
   return { layout, templates: without(draft.templates, template) };
@@ -98,9 +149,15 @@ function updateEntry(
   return { ...layout, root: down(layout.root, path) };
 }
 
-/** 이 항목이나 그 아래 어느 항목이 그 템플릿을 가리키는가. 저장의 검증처럼 경로 글자로 견준다. */
-function pointsTo(entry: LayoutEntryJson, template: string): boolean {
-  return entry.template === template || (entry.children ?? []).some((child) => pointsTo(child, template));
+/**
+ * 이 항목과 그 아래 항목들이 가리키는 템플릿 경로 전부. 저장의 검증처럼 경로 글자 그대로다 — 「아무도
+ * 가리키지 않는 본문」을 가리는 데 쓴다.
+ */
+function templatesOf(entry: LayoutEntryJson): string[] {
+  return [
+    ...(entry.template === undefined ? [] : [entry.template]),
+    ...(entry.children ?? []).flatMap(templatesOf),
+  ];
 }
 
 /** 키 하나를 뗀 사본 — 나머지(모르는 키까지)는 그대로다. */
