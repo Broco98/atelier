@@ -342,10 +342,12 @@ export function OutsideBanner({
       <span className="min-w-0 flex-1 text-[13px] font-medium text-amber-700 dark:text-amber-400">
         {OUTSIDE_MESSAGE[verdict]}
       </span>
+      {/* 두 버튼은 앰버 띠의 것이라 `Button`의 변형이 없다(develop도 앰버 띠를 손으로 짓는다). 흰 버튼의 hover는
+          앱의 버튼 농도(state-2 — `quiet-hover`)다. */}
       <button
         type="button"
         onClick={onReload}
-        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-state-1"
+        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-[13px] font-medium text-foreground transition-colors quiet-hover"
       >
         새로 불러오기
       </button>
@@ -535,7 +537,8 @@ function TreeTools({
       aria-label="항목 편집"
       className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-2.5"
     >
-      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. */}
+      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. 트리 위
+          한 줄의 테두리 버튼이라 `Button`의 크기가 없어 손으로 짓고, hover는 앱의 버튼 농도(state-2 — `quiet-hover`)다. */}
       {(["file", "folder"] as const).map((kind) => (
         <Hint
           key={kind}
@@ -543,7 +546,7 @@ function TreeTools({
           type="button"
           onClick={() => onAdd(kind)}
           aria-label={ADD_LABEL[kind]}
-          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-[12.5px] font-medium text-foreground shadow-xs transition-colors hover:bg-state-1"
+          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-[12.5px] font-medium text-foreground shadow-xs transition-colors quiet-hover"
         >
           <Plus aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={2.2} />
           {kind === "file" ? "파일" : "폴더"}
