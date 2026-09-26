@@ -31,6 +31,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { Hint } from "@/components/ui/tooltip";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
@@ -1023,27 +1024,19 @@ function EntryFields({
               errors.length > 0 ? "border-red-500" : "border-transparent hover:border-border-strong",
             )}
           />
-          <div
-            role="radiogroup"
+          {/* 두 칸 토글 부품이다(develop 판 4 · 결정 1) — 떠오른 칩이 선 칸으로 미끄러지고, 한 컨트롤이라 Tab 자리가
+              하나이며 그 안에서는 ←/→로 옮긴다. 선 칸을 다시 누르면 아무 일도 없다(`deselectable={false}`, S16). */}
+          <SegmentGroup
+            size="sm"
             aria-label="종류"
-            className="flex shrink-0 gap-0.5 rounded-[9px] bg-state-1 p-0.5"
+            cells={KINDS}
+            value={[kind]}
+            deselectable={false}
+            onValueChange={([pick]) => onChange((draft, path) => setKind(draft, path, pick))}
           >
-            {(["file", "folder"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                role="radio"
-                aria-checked={kind === option}
-                onClick={() => onChange((draft, path) => setKind(draft, path, option))}
-                className={cn(
-                  "h-[26px] rounded-[7px] px-2.5 text-[12.5px] font-medium transition-colors",
-                  kind === option ? "segment-on text-foreground" : "text-tertiary hover:text-foreground",
-                )}
-              >
-                {option === "file" ? "파일" : "폴더"}
-              </button>
-            ))}
-          </div>
+            <SegmentGroupItem value="file">파일</SegmentGroupItem>
+            <SegmentGroupItem value="folder">폴더</SegmentGroupItem>
+          </SegmentGroup>
         </div>
         <ErrorLines errors={errors} inset />
         {unknownIcon(entry) && (
@@ -1111,27 +1104,19 @@ function TemplateField({
         <span aria-hidden className="text-[12.5px] text-tertiary">
           템플릿
         </span>
-        <div
-          role="radiogroup"
+        {/* 종류와 같은 두 칸 토글이다 — 선 칸을 다시 누르면 아무 일도 없다: 「있음」을 다시 눌러 경로를 새로 짓지
+            않는다(경로는 켤 때 한 번 정한다). */}
+        <SegmentGroup
+          size="sm"
           aria-label="템플릿"
-          className="flex shrink-0 gap-0.5 rounded-[9px] bg-state-1 p-0.5"
+          cells={TEMPLATE_CELLS}
+          value={[on ? "on" : "off"]}
+          deselectable={false}
+          onValueChange={([pick]) => onToggle(pick === "on")}
         >
-          {[false, true].map((option) => (
-            <button
-              key={String(option)}
-              type="button"
-              role="radio"
-              aria-checked={on === option}
-              onClick={() => onToggle(option)}
-              className={cn(
-                "h-6 rounded-[7px] px-[9px] text-[12px] font-medium transition-colors",
-                on === option ? "segment-on text-foreground" : "text-tertiary hover:text-foreground",
-              )}
-            >
-              {option ? "있음" : "없음"}
-            </button>
-          ))}
-        </div>
+          <SegmentGroupItem value="off">없음</SegmentGroupItem>
+          <SegmentGroupItem value="on">있음</SegmentGroupItem>
+        </SegmentGroup>
         {/* 잘린 경로의 전체는 `title`이 보인다 — 툴팁(`Hint`)이 아닌 것은 develop S29의 「버튼이 아닌 자리」(깨진 링크 ·
             없는 그림)와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다. */}
         {on && (
@@ -1162,6 +1147,12 @@ function TemplateField({
     </div>
   );
 }
+
+/** 종류 칸의 값 — 칸이 놓인 순서다(칩이 이것으로 서는 자리를 안다). */
+const KINDS = ["file", "folder"] as const;
+
+/** 템플릿 칸의 값 — 없음, 있음 순서다. */
+const TEMPLATE_CELLS = ["off", "on"] as const;
 
 /** 항목이 가리키는 템플릿의 본문. 템플릿이 없거나 본문 맵에 그 경로가 없으면(누락) `null`이다. */
 function bodyOf(templates: TemplateBodies, entry: LayoutEntryJson): string | null {

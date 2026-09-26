@@ -70,6 +70,21 @@ function detailOf(html: string): string {
   return html.slice(start);
 }
 
+/**
+ * 이름이 `name`인 두 칸 토글(`SegmentGroup` — `role="group"` 안의 `aria-pressed` 버튼들)의 칸마다 [글자, 눌렸나].
+ * 토글이 없으면 `null`이다.
+ */
+function segmentOf(html: string, name: string): [string, boolean][] | null {
+  const group = new RegExp(
+    `<div\\b(?=[^>]*role="group")(?=[^>]*aria-label="${name}")[^>]*>([\\s\\S]*?)</div>`,
+  ).exec(html);
+  if (group === null) return null;
+  return [...group[1].matchAll(/<button\b([^>]*)>([^<]*)<\/button>/g)].map((m) => [
+    m[2],
+    /aria-pressed="true"/.test(m[1]),
+  ]);
+}
+
 /** 이 열에 선 입력 칸들 — 태그 이름과 접근성 이름. */
 function fieldsOf(html: string): string[] {
   return [...html.matchAll(/<(input|textarea)\b([^>]*)>/g)].map((m) => {
@@ -192,7 +207,7 @@ describe("고른 항목", () => {
     const detail = detailOf(render([]));
     expect(fieldsOf(detail)).toEqual(["textarea:spec 폴더 안내"]);
     expect(detail).toContain(">방침 문단.</textarea>");
-    expect(detail).not.toContain('aria-label="종류"');
+    expect(segmentOf(detail, "종류")).toBeNull();
     expect(detail).not.toContain('aria-label="아이콘 바꾸기"');
   });
 
@@ -203,16 +218,20 @@ describe("고른 항목", () => {
     expect(fieldsOf(detail)).toEqual(["input:이름 틀", "textarea:설명", "textarea:템플릿 본문"]);
     expect(detail).toMatch(/<input\b[^>]*aria-label="이름 틀"[^>]*value="decisions.md"/);
     expect(detail).toContain(">결정</textarea>");
-    expect(detail).toMatch(/role="radio" aria-checked="true"[^>]*>파일</);
-    expect(detail).toMatch(/role="radio" aria-checked="false"[^>]*>폴더</);
+    expect(segmentOf(detail, "종류")).toEqual([
+      ["파일", true],
+      ["폴더", false],
+    ]);
     expect(detail).toContain('aria-label="아이콘 바꾸기"');
   });
 
   it("폴더 항목은 종류가 폴더다", () => {
     const detail = detailOf(render([2]));
     expect(detail).toMatch(/<input\b[^>]*aria-label="이름 틀"[^>]*value="\{n\}-\{name\}"/);
-    expect(detail).toMatch(/role="radio" aria-checked="false"[^>]*>파일</);
-    expect(detail).toMatch(/role="radio" aria-checked="true"[^>]*>폴더</);
+    expect(segmentOf(detail, "종류")).toEqual([
+      ["파일", false],
+      ["폴더", true],
+    ]);
     expect(detail).toContain(">한 판</textarea>");
   });
 
@@ -233,14 +252,8 @@ describe("고른 항목", () => {
 // 파일 항목의 템플릿(티켓 12). 설명 칸 아래에 「템플릿」 없음|있음이 서고, 있음이면 12줄 높이의 본문 칸과 그
 // 오른쪽 위의 작은 경로 표시가 선다. 경로는 사람이 적지 않는다 — 편집기가 켤 때 짓는다(`draft.ts`).
 describe("템플릿", () => {
-  /** 「템플릿」 고르기의 칸들 — { 글자, 골랐나 }. 칸이 없으면 `null`이다. */
-  function templateChoice(detail: string) {
-    const group = /<div\b[^>]*role="radiogroup"[^>]*aria-label="템플릿"[^>]*>([\s\S]*?)<\/div>/.exec(detail);
-    if (group === null) return null;
-    return [...group[1].matchAll(/<button\b[^>]*aria-checked="(true|false)"[^>]*>([^<]*)<\/button>/g)].map(
-      (m) => [m[2], m[1] === "true"],
-    );
-  }
+  /** 「템플릿」 고르기의 칸들 — [글자, 눌렸나]. 칸이 없으면 `null`이다. */
+  const templateChoice = (detail: string) => segmentOf(detail, "템플릿");
 
   it("파일 항목에만 템플릿 칸이 선다 — 폴더 항목과 머리 `spec/`에는 없다", () => {
     expect(templateChoice(detailOf(render([0])))).toEqual([
