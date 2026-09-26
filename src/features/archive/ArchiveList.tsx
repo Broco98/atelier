@@ -23,6 +23,12 @@ import type { Mode } from "@/mode";
 /** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 이름이나 설명으로 간다(아래 버튼 주석). */
 const SORT_HELP = "아카이브한 날짜 기준 정렬";
 
+/**
+ * 거르개 값의 보이는 이름. 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 거르개의 글자 · 툴팁 · 설명과 메뉴의 줄이
+ * 모두 이것에서 읽어, 한 자리만 다른 말을 하는 일이 없다.
+ */
+const filterNameOf = (project: string | null) => project ?? "모든 프로젝트";
+
 interface ArchiveListProps {
   // 행을 펼칠 때 문서 목록을 어느 루트에서 읽는가 — 화면이 이미 아는 값을 그대로 받는다.
   mode: Mode;
@@ -64,6 +70,7 @@ function ArchiveList({
   const [query, setQuery] = useState("");
   const [sortAsc, setSortAsc] = useState(false);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const filterName = filterNameOf(projectFilter);
 
   // 이 세계에 프로젝트라는 것이 있는가(결정 17). 필터 버튼과, 좁혀서 0개일 때 하는 말이
   // 이 한 값에서 함께 나온다 — 표가 그 둘을 한 칸으로 든다(archive-copy.ts).
@@ -155,7 +162,7 @@ function ArchiveList({
                     말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
                     (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
                 <Hint
-                  text={projectFilter ?? "모든 프로젝트"}
+                  text={filterName}
                   announce="description"
                   render={
                     <DropdownMenuTrigger
@@ -172,7 +179,7 @@ function ArchiveList({
                   <Filter className="size-3 shrink-0" strokeWidth={2} />
                   {sidebarOpen && (
                     <>
-                      <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
+                      <span className="truncate">{filterName}</span>
                       <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
                     </>
                   )}
@@ -187,7 +194,7 @@ function ArchiveList({
                     {[null, ...projectOptions].map((option) => (
                       <DropdownMenuRadioItem key={option ?? "*"} value={option}>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                          {option ?? "모든 프로젝트"}
+                          {filterNameOf(option)}
                         </span>
                       </DropdownMenuRadioItem>
                     ))}
