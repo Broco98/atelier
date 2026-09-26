@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::{exceptions, of_generation, Identity, Proc, Snapshot};
+use super::{exceptions, shell_key, Identity, Proc, Snapshot};
 
 /// 셸 하나 — 셸 목록과 끝낼 셸이 같은 모양이다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +53,7 @@ pub enum Occasion {
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub snapshot: &'a Snapshot,
-    /// 이 실행의 세대(`pty::instance_prefix`).
+    /// 이 실행의 세대(`shell_key::generation`).
     pub generation: &'a str,
     /// 이 실행의 셸 목록 — 풀에 앉은 셸들. 키만 올리고 아직 풀에 안 앉은 셸은 이 실행의 기록(`instances`)에서 온다.
     pub shells: &'a [ShellEntry],
@@ -169,7 +169,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         shells.iter().map(|shell| shell.key.as_str()).chain(recorded.iter().copied()).collect();
     // 이 실행의 셸 키인가. 시작 정리는 이 세대의 키를 모두 이 실행의 것으로 친다 — 목록에 없는 키(보통 판정이면 확정
     // 고아 (나)가 될 수 있다)도 이 실행이 가를 몫이지 시작 정리가 치울 몫이 아니다.
-    let ours = |key: &'a str| keys.contains(key) || (startup && of_generation(key, input.generation));
+    let ours = |key: &'a str| keys.contains(key) || (startup && shell_key::of_generation(key, input.generation));
     // 셸마다 사람이 처음 입력한 시각. 같은 키가 두 번 서면(종료 판정이 풀에서 뺀 셸의 키를 한 번 더 더한다) 앞의
     // 것이 이긴다 — 셸 목록, 그다음 끝낼 셸 순이고 더한 키는 맨 뒤다.
     let mut first_input: HashMap<&'a str, Option<u64>> = HashMap::new();
@@ -306,10 +306,10 @@ fn stray(
     table: &Table,
 ) -> Option<Stray> {
     let before = |record: &InstanceRecord| carrier.id.started_us < record.updated_us;
-    if of_generation(key, input.generation) {
+    if shell_key::of_generation(key, input.generation) {
         return own.filter(|record| before(record)).map(|_| Stray::Confirmed);
     }
-    let Some(record) = input.instances.iter().find(|record| of_generation(key, &record.generation)) else {
+    let Some(record) = input.instances.iter().find(|record| shell_key::of_generation(key, &record.generation)) else {
         return Some(Stray::Unknown);
     };
     Some(if !table.alive(record) || (!record.shell_keys.iter().any(|listed| listed == key) && before(record)) {
@@ -361,7 +361,7 @@ pub fn at_exit(input: &Inputs) -> Exit {
         .procs
         .iter()
         .filter_map(|proc| proc.shell_key.as_deref())
-        .filter(|key| of_generation(key, input.generation))
+        .filter(|key| shell_key::of_generation(key, input.generation))
         .collect();
     let mut ending = input.ending.to_vec();
     ending.extend(marked.into_iter().map(|key| ShellEntry {

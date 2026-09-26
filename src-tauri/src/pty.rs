@@ -15,7 +15,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use atelier_core::Mode;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -32,7 +32,7 @@ use crate::processes::screen::{self, Measured, PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::summary::{self, Background, Body, Summary};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
-use crate::processes::{procargs, Identity, Proc, Snapshot, SHELL_KEY_ENV};
+use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,7 +194,7 @@ pub fn announce_ends(app: AppHandle, pool: &PtyPool) {
 /// `atelier_core::data_root()`를 부르는 쪽이 준다(`ATELIER_HOME`). 앱의 신원을 못 읽으면 열지 않는다
 /// (`Place::this_app` — 리눅스가 늘 그렇다).
 pub fn open_record(pool: &PtyPool, root: &Path, version: &str) {
-    match Place::this_app(root, instance_prefix(), version) {
+    match Place::this_app(root, shell_key::generation(), version) {
         Some(place) => pool.record.open(place),
         None => eprintln!("atelier: could not read this app's identity — the instance record stays unwritten"),
     }
@@ -453,7 +453,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
     checks_on(
         &Inputs {
             snapshot: &snapshot,
-            generation: instance_prefix(),
+            generation: shell_key::generation(),
             shells: &live,
             ending: &[],
             instances: &records,
@@ -537,7 +537,7 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: instance_prefix(),
+        generation: shell_key::generation(),
         shells: &live,
         ending: &[],
         instances: &records,
@@ -576,7 +576,7 @@ pub fn summarize(pool: &PtyPool) -> Summary {
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: instance_prefix(),
+        generation: shell_key::generation(),
         shells: &live,
         ending: &[],
         instances: &records,
@@ -998,7 +998,7 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     let records = pool.record.records();
     let exit = verdict::at_exit(&Inputs {
         snapshot: &snapshot,
-        generation: instance_prefix(),
+        generation: shell_key::generation(),
         shells: &[],
         ending: &ending,
         instances: &records,
@@ -1070,7 +1070,7 @@ fn plan_startup(pool: &PtyPool, exceptions: &[String]) -> StartupPlan {
     let records = pool.record.records();
     let input = Inputs {
         snapshot: &snapshot,
-        generation: instance_prefix(),
+        generation: shell_key::generation(),
         shells: &live,
         ending: &[],
         instances: &records,
@@ -1149,7 +1149,7 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: instance_prefix(),
+        generation: shell_key::generation(),
         shells: &live,
         ending: &ending,
         instances: &records,
@@ -1330,73 +1330,12 @@ fn cwd_or_mode_home(home: PathBuf, cwd: Option<String>) -> Result<PathBuf, Strin
     Ok(dir)
 }
 
-/// 이 셸의 ID — `<앱 인스턴스 접두사>-<PTY id>`.
-///
-/// **접두사가 실행마다 바뀌는 것이 이 모양의 값이다.** 상태 파일은 셸 ID로 이름 지어지는데,
-/// 앱을 껐다 켜면 PTY id는 다시 0부터 나므로 접두사가 없으면 지난 실행이 남긴 파일이 이번
-/// 실행의 새 셸에 그대로 붙는다 — 뜨자마자 「나를 기다림」인 셸이 생긴다. 접두사가 갈라
-/// 준다.
-///
-/// 구분자를 **하나만** 둔다. 파일 이름에서 PTY id를 되뽑는 쪽이 뒤에서 한 번만 자르면
-/// 되도록.
-pub(crate) fn shell_id(pty_id: u32) -> String {
-    format!("{}-{pty_id}", instance_prefix())
-}
-
-/// 이 실행을 가리키는 접두사. 한 번 잡히면 프로세스가 사는 동안 안 바뀐다.
-///
-/// **잡히는 순간은 이 함수가 처음 불린 때다** — `OnceLock`이 지연 초기화이기 때문이다.
-/// 지금 그 첫 호출자는 `lib.rs`의 `setup`에서 도는 `shells::sweep(&root, &pty::live_generations(&root))`
-/// (그 안의 `live_generations`)라, 값은 사실상 **앱이 뜬 시각**이다. 이 함수가 기대는 성질은 그것이 아니라 「실행끼리
-/// 안 겹친다」 하나이므로 첫 호출자가 누구든 다 서지만, 남은 파일을 눈으로 볼 때 시각이
-/// 앱을 켠 때와 맞는 것은 그 배선 덕이다.
-///
-/// **정리(`shells::sweep`)가 남길 이 실행의 세대는 반드시 이 함수에서 온다**(`live_generations`) — 앱 시작 시각을
-/// 따로 재면 두 값이 갈라져 살아 있는 셸의 상태 파일을 지운다. 그 둘이 갈리는 순간은
-/// `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 값으로 잡는다.
-///
-/// **인스턴스 기록의 세대(파일 이름)도 이 값이다**(`open_record`). 판정은 셸 키의 머리로 그 키를 낸 기록을 찾으니,
-/// 기록 이름을 따로 지으면 이 실행의 셸 자손이 제 기록을 못 찾아 「출처 불명」이 된다.
-pub(crate) fn instance_prefix() -> &'static str {
-    static PREFIX: OnceLock<String> = OnceLock::new();
-    PREFIX.get_or_init(|| prefix_at(SystemTime::now()))
-}
-
-/// **훅 상태 파일 정리가 남길 세대** — 이 실행의 세대와, 살아 있는 다른 실행들의 세대(티켓 11 · 프로세스 스펙 S10).
-///
-/// 예전 정리는 이 실행의 것 말고 전부 지웠다. dev 빌드와 설치본을 함께 띄우면 한쪽이 뜰 때 다른 쪽 셸의 상태 파일을 지워
-/// 그 셸의 띠 상태가 사라졌다. 이제 인스턴스 기록(티켓 09)으로 살아 있는 실행을 가려 그 세대의 파일은 남긴다. 기록이 없는
-/// 실행(이 기능 전의 설치본, 리눅스)은 가릴 길이 없어 예전처럼 지운다.
-///
-/// 이 실행의 기록은 아직 안 열렸을 수 있어(정리는 기록을 열기 전에 돈다) 세대를 따로 싣는다.
-///
-/// 기록 폴더의 살아 있는 세대를 더하는 줄은 `shells.rs`의 `a_sweep_keeps_the_files_of_a_run_whose_instance_record_is_alive`가
-/// 앱이 쓰는 길로 잰다(macOS) — 이 줄이 빠지면 정리가 다시 이 실행의 세대만 남긴다.
-pub fn live_generations(root: &Path) -> Vec<String> {
-    let mut generations = vec![instance_prefix().to_string()];
-    generations.extend(instances::live_generations(&instances::dir(root)));
-    generations
-}
-
-/// 시각 하나 → 접두사 하나. **시계를 인자로 뺀 것은 검사를 위해서다.** 접두사의 값은
-/// 「실행마다 바뀐다」인데, `SystemTime::now()`를 안에서 부르면 그 성질을 헤드리스로 잴
-/// 자리가 없어져 고정 문자열로 갈아도 아무 검사가 안 울린다 — 그러면 지난 실행이 남긴
-/// 파일이 새 셸에 그대로 붙는다는, 접두사를 둔 이유가 통째로 사라진다.
-///
-/// 시각을 쓰는 이유는 실행끼리 겹치지 않으면서 **순서가 읽히기** 때문이다 — 남은 파일을
-/// 눈으로 볼 때 어느 실행 것인지 안다. 시계가 뒤로 가는 경우(`UNIX_EPOCH` 이전)는 0으로
-/// 눕힌다. 그때 두 실행이 같은 접두사를 가질 수 있지만, 그 상황에서 할 수 있는 더 나은
-/// 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
-fn prefix_at(t: SystemTime) -> String {
-    clock::ms_at(t).to_string()
-}
-
-/// 이 셸의 번호와 ID를 **한 자리에서** 뽑는다. 셸마다 달라야 하는 값이 여기서만 나므로,
+/// 이 셸의 번호와 ID(셸 키 — `shell_key::mint`)를 **한 자리에서** 뽑는다. 셸마다 달라야 하는 값이 여기서만 나므로,
 /// 「두 번 부르면 둘 다 다르다」를 살아 있는 pty 없이 실행으로 잴 수 있다 — 값이 하나로
 /// 굳으면 상태 파일이 겹쳐 두 셸이 서로를 덮어쓴다.
 fn mint_shell_id(pool: &PtyPool) -> (u32, String) {
     let id = pool.next_id.fetch_add(1, Ordering::Relaxed);
-    (id, shell_id(id))
+    (id, shell_key::mint(id))
 }
 
 fn shell_builder(mode: Mode, dir: &Path, shell_id: &str) -> Result<CommandBuilder, String> {
@@ -1463,7 +1402,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
-    use std::time::{Duration, UNIX_EPOCH};
+    use std::time::Duration;
 
     use atelier_core::Mode;
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
@@ -2312,39 +2251,8 @@ mod tests {
     // 이 판. 셸마다 **자기만의 ID**가 env에 실린다 — 훅 페이로드엔 tty가 없고 훅 프로세스는
     // 부모 환경을 물려받으니, 「내가 어느 셸인지」를 아는 길이 이 값 하나뿐이다.
 
-    /// 셸 ID의 **모양**. `<앱 인스턴스 접두사>-<PTY id>`이고, 접두사는 한 실행 안에서
-    /// 안 바뀐다. 접두사가 실행마다 바뀌는 것이 이 모양의 값이다 — 앱을 껐다 켜면 지난
-    /// 실행이 남긴 상태 파일이 새 셸에 안 붙는다.
-    ///
-    /// 구분자가 **하나**인 것도 함께 잰다. 상태 파일 이름에서 PTY id를 되뽑는 쪽이
-    /// 갈라 읽을 자리가 둘이면 어느 쪽이 접두사인지 알 수 없다.
-    #[test]
-    fn a_shell_id_is_this_runs_prefix_and_the_pty_id() {
-        let three = super::shell_id(3);
-        // **자는 것이 이 검사의 핵심이다 — 「느린 테스트」로 읽고 걷어 내지 마라.** 아래
-        // 마지막 단언이 재려는 것은 접두사의 메모이제이션(`instance_prefix`의 `OnceLock`)인데,
-        // 접두사는 **밀리초** 시계라 두 호출을 붙여 부르면 메모이제이션을 걷어 낸 판에서도
-        // 두 값이 우연히 같게 나온다(실측: 메모이제이션 없는 판으로 1만 번 돌려 1만 번
-        // 통과). 눈금보다 벌려야 그 변형이 빨개진다.
-        std::thread::sleep(Duration::from_millis(2));
-        let seven = super::shell_id(7);
-
-        let (prefix, id) = three.rsplit_once('-').expect("구분자가 있다");
-        assert_eq!(id, "3", "꼬리가 PTY id가 아니다");
-        assert_eq!(seven.rsplit_once('-').expect("구분자가 있다").1, "7");
-        assert!(!prefix.is_empty(), "접두사가 비었다 — 실행을 못 가른다");
-        assert_eq!(
-            three.matches('-').count(),
-            1,
-            "구분자가 하나가 아니다 — 파일 이름에서 PTY id를 되뽑을 자리가 흐려진다"
-        );
-
-        assert_eq!(
-            seven.rsplit_once('-').expect("구분자가 있다").0,
-            prefix,
-            "한 실행 안에서 접두사가 바뀌었다 — 같은 실행의 셸들이 남남이 된다"
-        );
-    }
+    // 셸 키의 **모양**(`<세대>-<PTY 번호>`, 구분자 하나, 세대는 한 실행 안에서 안 바뀐다)과 세대가 실행마다 바뀌는 것은
+    // 셸 키를 짓는 자리(`processes::shell_key`)의 검사가 잰다. 여기서는 풀이 번호를 발급하는 배선을 잰다.
 
     /// **id 발급이 빌더 호출보다 앞에 서야 한다.** 빌더가 셸 ID를 인자로 받는데 그 ID의
     /// 꼬리가 PTY id이기 때문이다 — 지금까지처럼 프로세스가 뜬 뒤에 발급하면 넘길 것이
@@ -2377,7 +2285,7 @@ mod tests {
 
     /// **발급이 셸마다 다른 값을 낸다.** 위 검사는 자리와 리터럴만 보므로 `let id = 0;`을
     /// 앞에 두고 발급을 값 버리는 문장으로 남기는 변형이 그대로 통과한다 — 그러면 모든 셸이
-    /// `<접두사>-0`을 달고 상태 파일 하나를 서로 덮어쓴다. 그 「다름」은 자리가 아니라
+    /// `<세대>-0`을 달고 상태 파일 하나를 서로 덮어쓴다. 그 「다름」은 자리가 아니라
     /// **실행**이 지켜야 한다.
     ///
     /// 살아 있는 pty 없이 잰다. `PtyPool`은 `Default`이고 번호는 `AtomicU32`라 풀 하나만
@@ -2436,29 +2344,6 @@ mod tests {
             serde_json::to_value(&spawned).expect("직렬화된다"),
             serde_json::json!({ "id": 3, "shellKey": "G-3", "shellName": "zsh" })
         );
-    }
-
-    /// **접두사의 값은 「실행마다 바뀐다」이다.** 그것이 없으면 지난 실행이 남긴
-    /// `~/.atelier/shells/<접두사>-0.json`이 이번 실행의 첫 셸에 그대로 붙어 뜨자마자
-    /// 「나를 기다림」인 셸이 생긴다. `instance_prefix`를 고정 문자열로 갈아도 다른 검사는
-    /// 전부 초록이므로, 시계를 인자로 뺀 순수 함수 쪽에서 값으로 잰다.
-    #[test]
-    fn two_different_clocks_give_two_different_prefixes() {
-        let early = super::prefix_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_000));
-        let late = super::prefix_at(UNIX_EPOCH + Duration::from_millis(1_700_000_000_001));
-
-        assert_eq!(early, "1700000000000", "접두사가 epoch 밀리초가 아니다");
-        assert_ne!(early, late, "다른 시각이 같은 접두사를 냈다 — 실행을 못 가른다");
-    }
-
-    /// 시계가 `UNIX_EPOCH` 이전으로 가 있는 경우. 이 가지는 실물에서 거의 안 밟히지만
-    /// `unwrap_or(0)`이 조용히 사라지면 `duration_since`가 Err를 내는 자리라 이 함수가
-    /// 통째로 무너진다 — 값으로 눕는 것을 못박는다.
-    #[test]
-    fn a_clock_before_the_epoch_lies_down_at_zero() {
-        let before = super::prefix_at(UNIX_EPOCH - Duration::from_secs(1));
-
-        assert_eq!(before, "0", "epoch 이전 시각이 0으로 안 눕었다");
     }
 
     /// 셸 ID를 더하면서 **먼저 있던 것을 떨어뜨리지 않았는가.** 시그니처가 바뀌는 자리라
@@ -3066,7 +2951,7 @@ mod tests {
         });
         let spawned = super::spawn(&pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
             .expect("셸을 띄운다");
-        let key = super::shell_id(spawned.id);
+        let key = crate::processes::shell_key::mint(spawned.id);
         let raised_on_spawn = listed(&key);
 
         // 셸이 무언가(프롬프트)를 내보낸 뒤에 친다 — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
@@ -3153,7 +3038,7 @@ mod tests {
         // 셸 키를 문 것을, 앱 종료는 이 세대의 키를 문 것 전부를 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에
         // 있다. 세대는 이 프로세스가 셸을 처음 띄운 시각(ms)이라 실제 세대와 겹칠 일이 없지만, 겹치면 남을
         // 끝낸다. 그때는 판정 없이 이 셸 그룹만 거둔 뒤 멈춘다.
-        let generation = format!("{}-", super::instance_prefix());
+        let generation = format!("{}-", crate::processes::shell_key::generation());
         let table = take(EnvScope::All);
         let parents: HashMap<u32, u32> = table.procs.iter().map(|p| (p.id.pid, p.ppid)).collect();
         let from_here = |mut pid: u32| {
@@ -3312,7 +3197,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn on_the_record() -> Option<crate::processes::instances::InstanceFile> {
         use crate::processes::instances;
-        instances::read(&instances::dir(&atelier_core::data_root()), super::instance_prefix())
+        instances::read(&instances::dir(&atelier_core::data_root()), crate::processes::shell_key::generation())
     }
 
     /// 풀 배선 장면이 닫는 셸의 주인 — 정리 기록에 그대로 적힌다(티켓 11).
@@ -3355,7 +3240,7 @@ mod tests {
         });
         let second = super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
             .expect("둘째 셸을 띄운다");
-        let second_key = super::shell_id(second.id);
+        let second_key = crate::processes::shell_key::mint(second.id);
         let second_raised = listed(&second_key);
         wait_until(|| spoke.load(Ordering::Relaxed));
         super::write(pool, second.id, "exit\n").expect("둘째 셸에 exit를 친다");
@@ -3556,7 +3441,7 @@ mod tests {
         // 이 프로세스가 물려받은 셸 키 — 바깥이 지어 물려줬다(`on_the_pool_side`). 그 셸을 띄운 실행(설치본의 모양)은 죽었고
         // 기록이 남았다. 그 키를 문 자식은 이 앱과 함께 뜬 vite의 모양이다.
         let inherited_key = crate::processes::inherited_key().expect("바깥이 시작 정리 장면에 물려받은 키를 준다").to_string();
-        let (installed_generation, _) = inherited_key.rsplit_once('-').expect("셸 키는 <세대>-<번호>다");
+        let (installed_generation, _) = crate::processes::shell_key::split(&inherited_key).expect("셸 키는 <세대>-<번호>다");
         let installed = Record::default();
         installed.open(Place {
             dir: dir.clone(),

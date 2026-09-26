@@ -250,11 +250,12 @@ pub fn run() {
             let root = atelier_core::data_root();
             // (1) 죽은 실행이 남긴 상태 파일을 걷는다. PTY 번호는 실행마다 0부터 다시
             // 나므로 안 걷으면 지난 실행의 `…-0.json`이 이번 첫 셸에 붙어 **뜨자마자
-            // 사람을 부르는 셸**이 생긴다. 이 실행의 세대는 반드시 셸 ID를 짓는 그 함수에서 온다 —
-            // 여기서 시각을 다시 재면 두 값이 갈려 살아 있는 셸의 파일을 지운다. 인스턴스 기록으로 가린
+            // 사람을 부르는 셸**이 생긴다. 이 실행의 세대는 반드시 셸 키를 짓는 그 값(`shell_key::generation`)이다 —
+            // 여기서 시각을 다시 재면 두 값이 갈려 살아 있는 셸의 파일을 지운다. 이 줄이 그 값을 처음 잡아 세대가 곧 앱이
+            // 뜬 시각이 된다. 인스턴스 기록으로 가린
             // 살아 있는 다른 실행(함께 뜬 dev 빌드 · 설치본)의 세대도 남긴다 — 지우면 그 셸의 띠 상태가
             // 사라진다(프로세스 스펙 S10 · 티켓 11).
-            shells::sweep(&root, &pty::live_generations(&root));
+            shells::sweep(&root, &processes::instances::live_generations(&root));
             // (2) 훅 스크립트를 홈에 세운다. **설치 버튼(다음 티켓)이 아니라 여기서** 쓰는
             // 이유는 두 가지다 — 사람이 손으로 훅을 걸어 보려면 걸 것이 이미 있어야 하고,
             // 앱을 고쳐도 사용자 홈의 스크립트가 낡은 채 남아 있으면 안 된다. 스크립트는
@@ -278,7 +279,7 @@ pub fn run() {
             // 프런트가 `listen`으로 받는다. **접두사를 함께 넘긴다**: 읽는 쪽이 그것을
             // 안 보면 이번 실행의 것만 싣는다는 보장이 (1)의 파괴적 청소에만 걸려 있게 되고,
             // 앱이 둘 뜬 동안에는 남의 인스턴스가 놓고 간 파일이 그대로 실려 나간다.
-            shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix());
+            shells::watch(app.handle().clone(), shells::shells_dir(&root), processes::shell_key::generation());
 
             // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
             // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리는 이 줄 **뒤에** 선다 — 기록이 먼저다.
@@ -434,13 +435,13 @@ mod tests {
             "훅 스크립트를 안 쓴다 — 사용자가 걸 것이 홈에 없다"
         );
         assert!(
-            setup.contains("shells::sweep(&root, &pty::live_generations(&root))"),
+            setup.contains("shells::sweep(&root, &processes::instances::live_generations(&root))"),
             "지난 실행의 상태 파일을 안 걷거나, 살아 있는 다른 실행의 것까지 걷는다 — 뜨자마자 사람을 부르는 셸이 생기거나, \
              함께 뜬 다른 빌드의 셸 띠 상태가 사라진다"
         );
         assert!(
             setup.contains(
-                "shells::watch(app.handle().clone(), shells::shells_dir(&root), pty::instance_prefix())"
+                "shells::watch(app.handle().clone(), shells::shells_dir(&root), processes::shell_key::generation())"
             ),
             "상태 폴더를 안 보거나 접두사 없이 본다 — 셸이 말해도 화면까지 안 오거나, 남의 인스턴스 것까지 온다"
         );

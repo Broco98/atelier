@@ -28,7 +28,7 @@ use super::cleanup_log::{self, Event};
 use super::clock;
 use super::ending::Outcome;
 use super::verdict::InstanceRecord;
-use super::{snapshot, Identity};
+use super::{shell_key, snapshot, Identity};
 
 /// 기록들이 사는 폴더. 루트는 부르는 쪽이 `atelier_core::data_root()`로 준다 — 여기서 `~/.atelier`를 박으면
 /// `ATELIER_HOME` 오버라이드가 여기서만 죽는다.
@@ -303,10 +303,26 @@ pub fn alive(app: Identity) -> bool {
     snapshot::identity_of(app.pid) == Some(app)
 }
 
-/// **살아 있는 실행들의 세대** — 폴더의 기록 중 앱이 지금 떠 있는 것(티켓 11 · 프로세스 스펙 S10). 훅 상태 파일 정리가 이
-/// 세대들의 파일을 남긴다: dev 빌드와 설치본이 함께 떠 있으면 한쪽이 뜰 때 다른 쪽 셸의 띠 상태를 지우지 않는다. 깨진 기록은
-/// 기록이 없는 것과 같다(`read_all`).
-pub fn live_generations(dir: &Path) -> Vec<String> {
+/// **살아 있는 실행들의 세대 — 훅 상태 파일 정리가 남길 세대**다(티켓 11 · 프로세스 스펙 S10). 이 실행의 세대
+/// (`shell_key::generation`)와, 기록 폴더에서 앱이 지금 떠 있는 다른 실행들의 세대(`alive_generations`).
+///
+/// 예전 정리는 이 실행의 것 말고 전부 지웠다. dev 빌드와 설치본을 함께 띄우면 한쪽이 뜰 때 다른 쪽 셸의 상태 파일을 지워
+/// 그 셸의 띠 상태가 사라졌다. 이제 인스턴스 기록(티켓 09)으로 살아 있는 실행을 가려 그 세대의 파일은 남긴다. 기록이 없는
+/// 실행(이 기능 전의 설치본, 리눅스)은 가릴 길이 없어 예전처럼 지운다.
+///
+/// 이 실행의 기록은 아직 안 열렸을 수 있어(정리는 기록을 열기 전에 돈다) 세대를 따로 싣는다. 루트는 부르는 쪽이
+/// `atelier_core::data_root()`로 준다.
+///
+/// 기록 폴더의 살아 있는 세대를 더하는 줄은 `shells.rs`의 `a_sweep_keeps_the_files_of_a_run_whose_instance_record_is_alive`가
+/// 앱이 쓰는 길로 잰다(macOS) — 이 줄이 빠지면 정리가 다시 이 실행의 세대만 남긴다.
+pub fn live_generations(root: &Path) -> Vec<String> {
+    let mut generations = vec![shell_key::generation().to_string()];
+    generations.extend(alive_generations(&dir(root)));
+    generations
+}
+
+/// 폴더의 기록 중 **앱이 지금 떠 있는 것**(`alive`)의 세대. 깨진 기록은 기록이 없는 것과 같다(`read_all`).
+fn alive_generations(dir: &Path) -> Vec<String> {
     read_all(dir).into_iter().filter(|(_, file)| alive(file.app)).map(|(generation, _)| generation).collect()
 }
 
@@ -813,7 +829,7 @@ mod tests {
     /// 앵커: 이 검사 프로세스를 앱으로 적은 기록은 산다 — 모두 죽었다고 무너지면 「죽었다」들이 저절로 참이 된다.
     #[cfg(target_os = "macos")]
     #[test]
-    fn the_live_generations_are_the_records_whose_app_still_runs() {
+    fn the_alive_generations_are_the_records_whose_app_still_runs() {
         let dir = temp_dir("live");
         let me = snapshot::identity_of(std::process::id()).expect("이 검사 프로세스의 신원을 읽는다");
         for (generation, app) in [("L", me), ("D", Identity { pid: me.pid, started_us: me.started_us + 1 })] {
@@ -821,7 +837,7 @@ mod tests {
         }
         std::fs::write(dir.join("X.json"), "{").unwrap();
 
-        assert_eq!(live_generations(&dir), ["L"], "살아 있는 실행을 못 가렸다");
+        assert_eq!(alive_generations(&dir), ["L"], "살아 있는 실행을 못 가렸다");
         assert!(alive(me) && !alive(Identity { pid: me.pid, started_us: 1 }));
         let _ = std::fs::remove_dir_all(&dir);
     }

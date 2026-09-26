@@ -23,7 +23,7 @@ use serde::Serialize;
 use super::instances::{Build, InstanceFile};
 use super::metrics::Reading;
 use super::verdict::{InstanceRecord, Verdict};
-use super::{of_generation, Identity, Proc};
+use super::{shell_key, Identity, Proc};
 
 /// 화면 스냅샷 한 장. 프런트의 `ProcessSnapshot`(`src/features/processes/types.ts`)과 **칸 이름으로만** 이어진다 — 어긋나면
 /// 컴파일도 타입 검사도 통과하고 화면만 조용히 빈다. 그래서 와이어 모양을 아래 검사가 글자로 못박는다.
@@ -168,7 +168,7 @@ impl ScreenSnapshot {
 }
 
 /// **다른 인스턴스 묶음의 셸 키를 그 키를 낸 실행으로 묶는다**(티켓 31). 실행은 판정이 받은 인스턴스 기록(`records`)에서 판정과
-/// 같은 규칙(`of_generation` — 「세대-숫자」)으로 찾는다: 판정이 다른 인스턴스로 가른 키는 살아 있는 실행의 기록이 있는 키다.
+/// 같은 규칙(`shell_key::of_generation` — 「세대-숫자」)으로 찾는다: 판정이 다른 인스턴스로 가른 키는 살아 있는 실행의 기록이 있는 키다.
 /// 기록에 없는 키는 판정이 다른 인스턴스로 가르지 않으므로 여기 안 선다 — 화면은 실행에 안 묶인 키를 따로 세운다.
 ///
 /// 빌드 종류와 버전은 그 실행의 기록 파일에서 읽는다(`file` — 판정의 기록이 안 싣는 칸이다). 행이 선 실행의 파일만 읽는다.
@@ -179,7 +179,7 @@ pub fn instances(
 ) -> Vec<Instance> {
     let mut keys_by_run: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     for key in verdict.other_instances.keys() {
-        if let Some(record) = records.iter().find(|record| of_generation(key, &record.generation)) {
+        if let Some(record) = records.iter().find(|record| shell_key::of_generation(key, &record.generation)) {
             keys_by_run.entry(record.generation.as_str()).or_default().push(key.to_string());
         }
     }

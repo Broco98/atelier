@@ -8,6 +8,8 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+use crate::processes::shell_key;
+
 /// 옛 훅 스크립트의 이름 — **옛 python 처리기**다. 이 판 전의 설치 버튼이 사용자의 설정에 걸던 것이다. 이제 설치와 앱이 뜰
 /// 때의 맞춤(티켓 21)은 새 처리기(`HANDLER_NAME`)를 걸고, 이 이름의 줄은 우리 것으로 알아봐 새 줄로 갈아 끼운다(`hooks::is_ours`).
 /// 파일은 계속 세운다 — 옛 빌드가 깐 채 아직 안 맞춘 설정과, 옛 설치본이 그 줄을 다시 부른다.
@@ -189,7 +191,7 @@ type Attention = BTreeMap<String, ShellHookState>;
 /// 나가고 프런트는 마지막 `-` 뒤 번호만 읽으므로(`ptyIdOf`) **전혀 다른 셸에 남의 claude
 /// 상태와 남의 마지막 말**이 앉는다. 오류 한 줄 없이 조용한 종류라 읽는 쪽에서 닫는다.
 ///
-/// 이번 실행의 것인지는 `sweep`과 **같은 규칙**으로 가른다(`processes::of_generation` — 「세대-숫자」). 구분자까지 견주지
+/// 이번 실행의 것인지는 `sweep`과 **같은 규칙**으로 가른다(`shell_key::of_generation` — 「세대-숫자」). 구분자까지 견주지
 /// 않으면 `1700`에 `17000-1`이 이번 실행의 것으로 읽히고, 번호까지 견주지 않으면 앱이 짓지 않는 `1700-x`가 셸로 실린다 —
 /// 쓸기는 그것을 남의 것으로 걷는데 읽기만 이 실행의 셸로 읽는다.
 fn scan(dir: &Path, prefix: &str) -> Attention {
@@ -202,7 +204,7 @@ fn scan(dir: &Path, prefix: &str) -> Attention {
             // 이름이 곧 셸 ID다. dotfile(훅이 쓰는 중인 임시 파일)은 여기서 걸린다 —
             // `.abc.json.9.tmp`의 stem은 `.abc.json.9`라 점으로 시작한다.
             let id = path.file_stem()?.to_str()?.to_string();
-            if id.starts_with('.') || path.extension()? != "json" || !crate::processes::of_generation(&id, prefix) {
+            if id.starts_with('.') || path.extension()? != "json" || !shell_key::of_generation(&id, prefix) {
                 return None;
             }
             let content = std::fs::read_to_string(&path).ok()?;
@@ -252,7 +254,7 @@ fn changes(sent: &Attention, now: &Attention) -> Vec<ShellAttention> {
 /// 셸**이 생긴다. 앱이 정상 종료하면 셸마다 자기 파일을 걷고 나가지만(`Shell`의 `Drop`),
 /// 강제 종료·패닉·전원이 나간 경우가 남는다.
 ///
-/// **남길 세대는 `pty::live_generations`가 준다** — 이 실행의 세대(`pty::instance_prefix`)와, 인스턴스 기록으로 가린
+/// **남길 세대는 `instances::live_generations`가 준다** — 이 실행의 세대(`shell_key::generation`)와, 인스턴스 기록으로 가린
 /// 살아 있는 다른 실행들의 세대다. 예전에는 이 실행의 것 말고 전부 걷어, dev 빌드와 설치본을 함께 띄우면 한쪽이 뜰 때
 /// 다른 쪽 셸의 상태 파일을 지웠다 — 그 셸의 띠 상태가 사라졌다. 이 실행의 세대를 여기서 시각으로 따로 재면 두 값이
 /// 갈려 살아 있는 셸의 상태 파일을 지운다.
@@ -272,9 +274,9 @@ pub fn sweep(root: &Path, keep: &[String]) {
         let name = name.to_string_lossy();
         // 셸 키는 첫 `.` 앞까지다(`<세대>-<번호>` — 세대도 번호도 점이 없다).
         let key = name.trim_start_matches('.').split('.').next().unwrap_or_default();
-        // 구분자와 번호까지 견준다(`processes::of_generation`). `1700`만 보면 `17000-1.json`이 이번 실행의 것으로 읽혀
+        // 구분자와 번호까지 견준다(`shell_key::of_generation`). `1700`만 보면 `17000-1.json`이 이번 실행의 것으로 읽혀
         // 살아남고, 다음에 그 번호의 셸이 열리면 남의 상태를 뒤집어쓴다.
-        if !keep.iter().any(|generation| crate::processes::of_generation(key, generation)) {
+        if !keep.iter().any(|generation| shell_key::of_generation(key, generation)) {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -564,7 +566,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// **읽기와 쓸기가 같은 셸 키 규칙을 쓴다** — 「세대-숫자」(`processes::of_generation`). 읽기가 머리(`1700-`)만 보면 이 세대의
+    /// **읽기와 쓸기가 같은 셸 키 규칙을 쓴다** — 「세대-숫자」(`shell_key::of_generation`). 읽기가 머리(`1700-`)만 보면 이 세대의
     /// 머리를 달았지만 꼬리가 PTY 번호가 아닌 파일(`1700-x` · `1700-` · `1700-1a`)이 셸로 실려 나간다. 앱은 그런 이름을 짓지
     /// 않고 쓸기는 그것을 남의 것으로 걷으니, 두 자리가 같은 파일을 다르게 읽는다.
     ///
@@ -687,7 +689,7 @@ mod tests {
     /// **쓸기가 살아 있는 셸의 파일을 지우지 않는다.**
     ///
     /// 위 둘은 접두사를 **손으로 지어** 넣어 쓸기의 규칙만 잰다 — 그래서 앱이 실제로 쓰는 두
-    /// 값(`pty::shell_id`가 파일 이름에 넣는 접두사 · 쓸기가 견주는 접두사)이 갈리는 순간을
+    /// 값(`shell_key::mint`가 파일 이름에 넣는 세대 · 쓸기가 견주는 세대)이 갈리는 순간을
     /// 하나도 못 본다. 그 둘이 갈리면 앱이 뜨자마자 방금 연 셸의 상태 파일을 지워 셸이 말해도
     /// 그 값이 곧 사라진다. 여기서 **값으로** 잰다: 진짜 셸 ID로 이름 지은 파일을 놓고 진짜
     /// 접두사로 쓸어, 그 파일이 **남아 있는지** 본다.
@@ -696,10 +698,10 @@ mod tests {
         let root = temp_root("sweep-live");
         let dir = shells_dir(&root);
         std::fs::create_dir_all(&dir).unwrap();
-        let name = format!("{}.json", crate::pty::shell_id(0));
+        let name = format!("{}.json", shell_key::mint(0));
         std::fs::write(dir.join(&name), "{}").unwrap();
 
-        sweep(&root, &crate::pty::live_generations(&root));
+        sweep(&root, &crate::processes::instances::live_generations(&root));
 
         assert_eq!(
             files_in(&dir),
@@ -710,11 +712,11 @@ mod tests {
     }
 
     /// **살아 있는 다른 실행은 인스턴스 기록에서 온다**(티켓 11 · 프로세스 스펙 S10) — 앱이 setup에서 부르는 그대로
-    /// (`sweep(&root, &pty::live_generations(&root))`) 쓸어, 앱이 지금 떠 있는 기록의 세대 파일(상태 · 잠금 · 임시)은 남고
+    /// (`sweep(&root, &instances::live_generations(&root))`) 쓸어, 앱이 지금 떠 있는 기록의 세대 파일(상태 · 잠금 · 임시)은 남고
     /// 앱이 죽은 기록의 세대 파일은 가는지 본다.
     ///
     /// 위의 살아 있는 실행 검사는 남길 세대를 **손으로** 넘기고, 바로 위 검사의 루트에는 기록 폴더가 없다 — 그래서
-    /// `pty::live_generations`가 기록 폴더의 살아 있는 세대를 더하는 한 줄을 지우거나 폴더를 잘못 줘도 아무 검사가 안
+    /// `instances::live_generations`가 기록 폴더의 살아 있는 세대를 더하는 한 줄을 지우거나 폴더를 잘못 줘도 아무 검사가 안
     /// 울었다. 그러면 dev 빌드가 뜰 때 설치본 셸의 상태 파일을 지워 그 셸의 띠 상태가 사라진다(이 장이 고친 결함 그대로).
     ///
     /// 기록은 앱이 쓰는 길(`Place::this_app` · `Record::open`)로 임시 루트에 쓴다. 살아 있는 실행의 앱은 이 검사 프로세스다.
@@ -735,14 +737,14 @@ mod tests {
         let dead_app = Identity { pid: live.app.pid, started_us: live.app.started_us + 1 };
         Record::default().open(Place { generation: "1699".to_string(), app: dead_app, ..live.clone() });
         Record::default().open(live);
-        let this_run = format!("{}.json", crate::pty::shell_id(0));
+        let this_run = format!("{}.json", shell_key::mint(0));
         let live_run = ["1800-3.json", ".1800-3.lock", ".1800-3.json.9.tmp"];
         let dead_run = ["1699-1.json", ".1699-1.lock", ".1699-1.json.5.tmp"];
         for name in live_run.iter().chain(&dead_run).copied().chain([this_run.as_str()]) {
             std::fs::write(dir.join(name), "{}").unwrap();
         }
 
-        sweep(&root, &crate::pty::live_generations(&root));
+        sweep(&root, &crate::processes::instances::live_generations(&root));
 
         let mut kept: Vec<String> = live_run.iter().map(|name| name.to_string()).chain([this_run]).collect();
         kept.sort_unstable();
