@@ -1,7 +1,7 @@
-import { SIGNAL_LABEL } from "@/components/shell/shell-signal";
+import { SIGNAL_LABEL, type ShellSignal } from "@/components/shell/shell-signal";
 import type { NotifyChoice } from "@/features/settings/notifications";
 import { callingShells, isCalling, isShellSeen } from "./shell-attention";
-import type { ShellSignal, ShellView } from "./shell-attention";
+import type { ShellView } from "./shell-attention";
 import { shellRowName } from "./shell-registry";
 import type { ShellOwner, ShellsState } from "./shell-registry";
 

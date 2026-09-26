@@ -1,4 +1,5 @@
 import { ArrowRight, ChevronRight, Copy } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "./work-sections";
@@ -73,7 +74,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
             따로 읽을 수 있어야 하고, **읽는 것만으로는 절반이다** — 제목이 바뀌어도 같은
             작업을 가리키려면 그 이름이 클립보드로 나가야 한다 (스토리 10). 경로가 아니므로
             접을 것이 없어 보이는 값과 나가는 값이 같다. */}
-        <Row label="slug" value={work.slug} copy={{ text: work.slug, title: "slug 복사", onCopy }} />
+        <Row label="slug" value={work.slug} copy={{ text: work.slug, help: "slug 복사", onCopy }} />
         {/* 코어가 내려준 `%Y-%m-%d` 그대로다. 저장소의 formatCreated는 "8월 16일"을 내며
             **연도를 버려서**, 이 탭의 쓰임 하나인 "오래된 작업을 정리할지 판단한다"에
             답하지 못한다. 어휘 통일보다 사실 보존이 앞서는 자리다. */}
@@ -110,11 +111,11 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
               const dir = worktreeDirRef(worktree.path);
               return (
                 <div key={worktree.project} className="flex flex-col pb-1">
-                  <button
+                  <Hint
+                    text="프로젝트 상세로 이동"
                     type="button"
                     onClick={() => onOpenProject(worktree.project)}
                     aria-label={`${worktree.project} 프로젝트 상세로 이동`}
-                    title="프로젝트 상세로 이동"
                     className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
                   >
                     <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
@@ -122,7 +123,7 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
                       className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
                       strokeWidth={2}
                     />
-                  </button>
+                  </Hint>
                   {/* 덩어리 안은 한 칸 들어간다 — 어느 값이 어느 프로젝트 것인지가 위치로 이어진다 */}
                   <div className="flex flex-col pl-2.5">
                     {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
@@ -189,7 +190,10 @@ function Row({
   // **셋이 한 덩어리로 오간다.** 나가는 값과 그것을 말하는 툴팁과 실제 동작이 따로 다니면
   // "복사되는 값이 화면 표기와 갈린다"는 사고가 조용히 생긴다 — 접어서 보이는 경로가 있는
   // 화면이라 실재하는 위험이다. 그래서 `text`는 **보이는 값이 아니라 나가는 값**이다.
-  copy?: { text: string; title: string; onCopy: (text: string) => void };
+  //
+  // `help`는 도움말이다 — 툴팁의 글자이고, 행의 이름(라벨과 값)보다 더 말하는 「누르면 복사한다」라 설명
+  // (`aria-description`)으로도 남는다(S28 — 툴팁은 스크린리더에 아무것도 주지 않는다).
+  copy?: { text: string; help: string; onCopy: (text: string) => void };
 }) {
   const body = (
     <>
@@ -201,9 +205,10 @@ function Row({
     return <div className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">{body}</div>;
   }
   return (
-    <button
+    <Hint
+      text={copy.help}
+      announce="description"
       type="button"
-      title={copy.title}
       onClick={() => copy.onCopy(copy.text)}
       className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
     >
@@ -212,7 +217,7 @@ function Row({
         className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
         strokeWidth={1.8}
       />
-    </button>
+    </Hint>
   );
 }
 
@@ -236,7 +241,7 @@ function PathRow({
 }) {
   const value = relativeTo ? relativeToWorkDir(path, relativeTo) : path;
   // 보이는 것은 접힌 꼬리, 나가는 것은 전체 경로다 (Row의 copy 주석).
-  return <Row label={label} value={value} copy={{ text: path, title: "경로 복사", onCopy }} />;
+  return <Row label={label} value={value} copy={{ text: path, help: "경로 복사", onCopy }} />;
 }
 
 // 값이 아니라 사실 하나를 적는 줄 — 배지를 달지 않는다.

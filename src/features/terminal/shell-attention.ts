@@ -3,6 +3,7 @@ import type { AgentSignal, CanonicalEvent } from "./agents/types";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { Mode } from "@/mode";
+import type { CallingKind, CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
@@ -20,8 +21,15 @@ import type { ShellHookState } from "./types";
 // 것이 검사로 못박혀 있어(그 파일 머리말) 어댑터를 부를 수 없다. 그래서 규칙은 여기 있고
 // 레지스트리에는 「그 칸에 앉힌다」는 리듀서만 남는다.
 
-/** 에이전트가 말한 사실. 「아무 주장도 없음」은 `Attention` 자체가 `null`인 것으로 말한다. */
-export type AttentionKind = "waiting" | "done" | "working";
+/**
+ * 에이전트가 말한 사실. 「아무 주장도 없음」은 `Attention` 자체가 `null`인 것으로 말한다.
+ *
+ * **어휘는 화면값(`ShellSignal`)과 같은 셋이고, 그 한 벌을 딛는다.** 화면값의 모양은 그리는 쪽
+ * (`components/shell/shell-signal`)에 적혀 있고 이 feature가 그것을 가져온다 — 사이드바 목록이
+ * 이 feature를 모른 채 같은 타입을 받아야 해서다(그 파일 머리말). 사실과 그리는 것을 가르는 것은
+ * 어휘가 아니라 `seen`이다(`signalOf`).
+ */
+export type AttentionKind = ShellSignal;
 
 /** 그 값이 어디서 왔나. 권위 규칙이 이 값 하나로 갈린다. */
 export type AttentionSource = "hook" | "osc" | "bell";
@@ -35,7 +43,7 @@ export type AttentionSource = "hook" | "osc" | "bell";
  */
 export interface Attention {
   kind: AttentionKind;
-  /** 화면 둘째 줄·띠·알림 본문이 함께 읽는 한 줄. 어댑터가 접어 준 것 그대로다. */
+  /** 호버 카드의 말 칸·행 설명·띠·알림 본문이 함께 읽는 한 줄. 어댑터가 접어 준 것 그대로다. */
   message: string | null;
   /** 이 사실이 도착한 시각(훅이 적은 `at`). 경과 표시와 띠 정렬이 읽는다. */
   since: number;
@@ -46,7 +54,7 @@ export interface Attention {
    * **이 사실을 말한 에이전트**의 이름(`claude`·`codex`). 훅이 준 것 그대로이고, OSC·벨은
    * 누가 말했는지를 모르므로 `null`이다.
    *
-   * **둘째 줄의 마크가 이 값에 매달려 있다.** 마크의 재료를 「지금 그 PTY에서 도는 것」에서만
+   * **행 오른쪽 메타의 마크가 이 값에 매달려 있다.** 마크의 재료를 「지금 그 PTY에서 도는 것」에서만
    * 뽑으면 **초록 행에는 마크가 영영 안 선다** — 초록을 만드는 길 둘(세션 종료 · 벨)이 다
    * 그 순간 도는 에이전트가 없는 자리이기 때문이다: 세션이 끝났다는 것은 프로세스가 나갔다는
    * 뜻이라 1초 폴링이 다음 바퀴에 `running`을 눕히고, 벨은 정의상 「아는 마크가 없을 때」만
@@ -54,9 +62,6 @@ export interface Attention {
    */
   agent: string | null;
 }
-
-/** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
-export type ShellSignal = AttentionKind;
 
 /**
  * 정규 이벤트 → `kind`. 스펙 전이 표의 셋째 칸이 그대로 이 표다.
@@ -211,20 +216,8 @@ export function signalOf(shell: Shell): ShellSignal | null {
 const RANK: Readonly<Record<ShellSignal, number>> = { waiting: 0, done: 1, working: 2 };
 
 /**
- * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
- * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
- *
- * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
- * `AttentionKind`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
- * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
- * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
- * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다.
- */
-export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
-
-/**
  * 그 화면값이 「확인할 것」인가. **이 판정의 유일한 자리다** — 넓히는 날 고칠 곳이 이 한 줄
- * 이어야 띠·배지·알림이 함께 따라온다(위 `CallingKind` 머리말).
+ * 이어야 띠·배지·알림이 함께 따라온다(`CallingKind` 머리말 — `components/shell/shell-signal`).
  */
 export function isCalling(kind: ShellSignal | null): kind is CallingKind {
   return kind === "waiting" || kind === "done";
@@ -241,8 +234,11 @@ export function topSignal(shells: ReadonlyArray<Shell>): ShellSignal | null {
 }
 
 /**
- * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·링은 `kind`가 정하고 둘째 줄은
- * 나머지 셋이 정한다 — 셸의 마지막 말 · 그것이 도착한 시각 · 그 셸에서 도는 것(마크).
+ * 그 화면이 **한 행에 그리는 것 전부**(#203). 레인의 점·스피너는 `kind`가 정하고 오른쪽 메타는
+ * 시각(경과)과 그 셸에서 도는 것(마크)이 정한다. 셸의 마지막 말도 함께 들지만 행은 그것을
+ * 안 그린다 — 행이 한 줄로 돌아오면서(`sidebar-active-band` 결정 14) 말은 호버 카드의 말
+ * 칸과 행 설명으로 갔고, 그 둘은 `callingNotesOf`로 읽는다(같은 셸을 고르는 것은 둘 다 이
+ * 함수의 몫이다 — 스토리 39).
  *
  * **넷이 한 셸에서 나온다.** 값만 고르는 함수와 말만 고르는 함수를 따로 두면 행이 「A 셸의
  * 색으로 B 셸의 말」을 적을 수 있는데, 그 어긋남은 화면에서 아무 표시도 안 난다 — 스토리
@@ -257,14 +253,14 @@ export interface SignalView {
   kind: ShellSignal;
   /** 셸이 마지막으로 한 말의 첫 줄. 어댑터가 접어 준 것 그대로이고, 없으면 `null`이다. */
   message: string | null;
-  /** 그 사실이 도착한 시각. 둘째 줄의 경과가 이 값을 읽는다. */
+  /** 그 사실이 도착한 시각. 행 오른쪽 메타의 경과가 이 값을 읽는다. */
   since: number;
   /**
    * **마크의 재료** — 지금 그 셸에서 도는 것의 원문이고, 그것이 없으면 **이 상태를 말한
    * 에이전트**다(`Attention.agent`).
    *
    * 둘째 갈래가 필요한 이유는 초록이다: 세션 종료도 벨도 그 순간 도는 에이전트가 없어
-   * (`Attention.agent` 머리말) 앞쪽만 보면 초록 행의 둘째 줄이 늘 말과 경과 둘뿐이 된다.
+   * (`Attention.agent` 머리말) 앞쪽만 보면 초록 행의 오른쪽 메타가 늘 경과뿐이 된다.
    * 앞쪽이 이기는 것은 「지금 무엇을 물고 있나」가 더 새로운 사실이기 때문이다 — 훅이
    * claude라고 말한 뒤 사람이 codex를 띄웠으면 행은 codex를 보여야 한다.
    */
@@ -299,12 +295,32 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
 }
 
 /**
+ * 그 셸들이 **부르며 한 말** — 없으면 `null`이다.
+ *
+ * **고르는 것은 `topSignalView`다.** 레인(`signalsOf`)과 행의 메타(`Sidebar`의 구독 컴포넌트)가
+ * 딛는 그 함수를 여기서도 딛으므로, 한 work에서 셸 여럿이 불러도 레인·메타·카드의 말·설명이
+ * **같은 셸의 것**이다(스토리 39). 말만 따로 고르는 함수를 두면 같은 순위의 두 셸 사이에서
+ * 둘이 갈릴 수 있고, 그 어긋남은 화면 어디에도 표시가 안 난다(`SignalView` 머리말).
+ *
+ * **서는 조건이 둘이다(S6)** — 이긴 셸이 부르고(`isCalling`), 그 셸이 말을 했을 때. 도는 중인
+ * 셸의 직전 말은 여기 안 온다: 칸은 「나를 부르는 이유」를 말하는 자리다. 말 없는 부름(벨,
+ * 페이로드를 못 읽은 훅)은 칸을 안 세운다 — 상태 이름만 선 칸은 레인과 행 이름이 이미 한 말을
+ * 되풀이할 뿐이다. 한 번 말한 셸이 벨로 부르면 옛 말이 서는 것은 `applySignal`의 「직전
+ * 유지」가 이미 정한 것이고, 여기서 다시 가르지 않는다.
+ */
+export function callingNote(shells: ReadonlyArray<Shell>): CallingNote | null {
+  const view = topSignalView(shells);
+  if (view === null || !isCalling(view.kind) || view.message === null) return null;
+  return { kind: view.kind, message: view.message };
+}
+
+/**
  * work마다 화면값 하나. **사이드바가 목록 전체를 한 번에 읽는 값**이다(#203).
  *
  * **값이 문자열이라 얕은 비교가 그대로 먹는다** — 그것이 이 Record가 존재하는 이유 전부다.
  * 객체를 담으면 회차마다 새것이라 비교가 늘 어긋나고, 어느 셸에서 명령이 시작될 때마다
- * 목록 열여덟 행이 통째로 다시 그려진다(`runningAgentsOf` 머리말이 든 함정). 둘째 줄이
- * 쓰는 나머지 셋(말·시각·마크)은 그래서 행마다 따로 구독한다.
+ * 목록 열여덟 행이 통째로 다시 그려진다(`runningAgentsOf` 머리말이 든 함정). 오른쪽
+ * 메타가 쓰는 나머지(시각·마크)는 그래서 행마다 따로 구독한다.
  *
  * **값이 없는 work은 키 자체가 없다.** `null`을 적어 두면 조용한 work 열여덟이 전부 키를
  * 갖고, 그 Record는 셸이 하나도 없어도 목록만큼 커진다.
@@ -318,6 +334,34 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
  * 여기서 함께 한다 — 안 거르면 저쪽 세계의 셸이 이 행을 물들인다.
  */
 export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellSignal> {
+  return perWork(state, mode, topSignal);
+}
+
+/**
+ * work마다 **부르는 셸이 한 말**(결정 14). 사이드바가 목록 전체를 한 번에 읽어 내리고, 목록이
+ * 카드와 행 버튼에 나눠 준다 — 설명은 버튼의 속성이고 카드는 값을 받으므로 슬롯으로는 두 자리에
+ * 안 닿는다(목록 파일의 `signals` 주석과 같은 사정).
+ *
+ * **가르는 규칙은 `signalsOf`와 같다** — 그 세계의 것만, 키는 slug, 값이 없는 work은 키가 없다,
+ * 최상위 셸은 안 든다. 두 Record가 같은 자리(`perWork`)에서 나오므로 레인과 말이 서로 다른
+ * work 묶음을 볼 일이 없다.
+ *
+ * **값이 객체라 얕은 비교가 안 먹는다.** 읽는 쪽(`Sidebar`)이 한 겹 더 벗긴 비교를 쓴다.
+ * 부르는 셸이 없으면 빈 Record이고, 대개의 목록에서 이 값은 비어 있다.
+ */
+export function callingNotesOf(state: ShellsState, mode: Mode): Record<string, CallingNote> {
+  return perWork(state, mode, callingNote);
+}
+
+/**
+ * 그 세계의 work마다 셸을 모아 `pick`으로 값 하나를 고른다. `null`이면 키를 안 둔다.
+ * `signalsOf`와 `callingNotesOf`의 가름(세계 · 최상위 · slug 키, 그 머리말)이 이 한 자리에 있다.
+ */
+function perWork<T>(
+  state: ShellsState,
+  mode: Mode,
+  pick: (shells: ReadonlyArray<Shell>) => T | null,
+): Record<string, T> {
   const groups = new Map<string, Shell[]>();
   for (const shell of state.shells) {
     if (modeOfOwner(shell.owner) !== mode) continue;
@@ -328,10 +372,10 @@ export function signalsOf(state: ShellsState, mode: Mode): Record<string, ShellS
     else groups.set(slug, [shell]);
   }
 
-  const out: Record<string, ShellSignal> = {};
+  const out: Record<string, T> = {};
   for (const [slug, group] of groups) {
-    const signal = topSignal(group);
-    if (signal !== null) out[slug] = signal;
+    const value = pick(group);
+    if (value !== null) out[slug] = value;
   }
   return out;
 }
@@ -353,7 +397,7 @@ export interface CallingShell {
 }
 
 /**
- * 「확인할 것」 띠에 서는 셸들 — **부르는 셸만**이다(결정 8). 도는 중과 본 완료와 조용한
+ * 알림 띠에 서는 셸들 — **부르는 셸만**이다(결정 8). 도는 중과 본 완료와 조용한
  * 셸은 안 든다.
  *
  * 정렬은 기다림 먼저, 같은 종류 안에서는 **오래된 순**이다. 오래 기다린 것이 위에 서야
@@ -366,7 +410,7 @@ export interface CallingShell {
  * fail-open이라 1970년부터의 경과를 만들 수 있었고 저쪽은 줄을 아예 안 그렸다. 세는 자리가
  * 늘면(#206의 독 배지가 「확인할 것의 수」를 여기서 세면) 그 갈림이 화면에 나온다.
  *
- * **상한 3과 `+N 더`는 여기서 안 자른다**(#204). 자르는 것은 그리는 쪽의 일이고, 여기서
+ * **상한 3과 ⌄는 여기서 안 자른다**(#204). 자르는 것은 그리는 쪽의 일이고, 여기서
  * 자르면 헤더의 `N`이 셀 것이 사라진다.
  */
 export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<CallingShell> {
@@ -397,7 +441,7 @@ export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<Calli
 }
 
 /**
- * 「확인할 것」 띠의 **줄 하나**(#204). `callingShells`가 정한 차례 그대로이고, 줄이 지는
+ * 알림 띠의 **줄 하나**(#204). `callingShells`가 정한 차례 그대로이고, 줄이 지는
  * 것은 넷이다 — 어느 화면으로 가는가(`owner`) · 어느 칸을 켜는가(`id`) · 마크의 재료 ·
  * 그리고 셸 이름을 붙이는가.
  *
@@ -433,7 +477,7 @@ export interface BandRow {
 }
 
 /**
- * 띠에 서는 줄 전부. **자르지 않는다** — 상한 3과 `+N 더`는 그리는 쪽의 일이고, 여기서
+ * 띠에 서는 줄 전부. **자르지 않는다** — 상한 3과 ⌄는 그리는 쪽의 일이고, 여기서
  * 자르면 헤더의 `N`이 셀 것이 사라진다(`callingShells` 머리말과 같은 가름).
  *
  * **셸 이름의 조건이 이 안에 있는 것**은 그것이 줄 하나로는 못 내는 판정이어서다:

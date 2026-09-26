@@ -1,6 +1,10 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
 import PageHeader from "@/components/shell/PageHeader";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
@@ -50,6 +54,23 @@ import type {
 // **이 목록은 「기본값」이 아니라 「고를 수 있는 것」이다.** 고르지 않았을 때 무엇으로
 // 그려지는지는 `previewFontFamily`가 답하고, 그 답에 글꼴 이름은 나오지 않는다.
 export const FONT_PRESETS = [MONO_FACE, "SF Mono", "Menlo", "Monaco"] as const;
+
+/**
+ * 「기본」 칩의 칸 값. 글꼴 값으로는 `null`(고르지 않음)인데 칸 값은 글자여야 해서 따로 둔다 —
+ * 칸 값을 읽는 자리는 `fontChipsOf`와 그 반대 방향인 칩 줄의 `onValueChange` 둘뿐이다.
+ */
+const DEFAULT_FONT_CHIP = "default";
+type FontChip = typeof DEFAULT_FONT_CHIP | (typeof FONT_PRESETS)[number];
+
+/**
+ * 글꼴 값에서 켜질 칩. **프리셋 밖의 이름이면 아무것도 안 켜진다**(`[]`) — 칸에 적은 이름이 값이고
+ * 칩은 지름길이라, 그때 그룹 값이 빈 것이 정상 상태다(S16).
+ */
+function fontChipsOf(fontFamily: string | null): FontChip[] {
+  if (fontFamily === null) return [DEFAULT_FONT_CHIP];
+  const preset = FONT_PRESETS.find((one) => one === fontFamily);
+  return preset === undefined ? [] : [preset];
+}
 
 // 터미널이 못 쓰게 되는 값을 파일에 적지 않기 위한 울타리다. 위아래 둘 다 실제로 못 쓰는
 // 크기이고(8 미만은 글자가 뭉개지고 32 초과는 한 줄에 몇 자 안 들어간다), **이 화면이 새로
@@ -242,13 +263,9 @@ function SettingsFileGate({
         <p className="text-[13px] leading-[1.7] text-tertiary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
-        <button
-          type="button"
-          onClick={() => setAttempt((n) => n + 1)}
-          className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-        >
+        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
           다시 읽기
-        </button>
+        </Button>
       </div>
     );
   }
@@ -398,7 +415,7 @@ function NotificationSettingsPage({ initial }: { initial: Settings }) {
 
   const enabled = section.dirty && !section.saving;
 
-  // 터미널 설정과 같은 까닭으로 그리고 고칠 때만 감싼다. 알림 칩도 같은 규칙을 지난다 — 읽은
+  // 터미널 설정과 같은 까닭으로 그리고 고칠 때만 감싼다. 알림 스위치도 같은 규칙을 지난다 — 읽은
   // 것을 펼쳐 고친다(`patchNotifications`).
   const view: Settings = { ...initial, notifications: section.draft };
 
@@ -481,18 +498,10 @@ function SaveButton({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={!enabled}
-        // 규격은 이 저장소의 유일한 주 버튼 선례를 그대로 쓴다
-        // (ProjectsPage의 "프로젝트 추가"). disabled:pointer-events-none은
-        // 테두리를 걷어낸 뒤로 배경 농도가 "누를 수 있다"를 말하는 유일한
-        // 어휘라서다 — 잠긴 채 hover가 걸리면 눌리는 버튼으로 읽힌다.
-        className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
-      >
+      {/* 주 버튼(Button의 기본) — 프로젝트 빈 화면의 「프로젝트 등록」과 한 규격이다. */}
+      <Button onClick={onSave} disabled={!enabled}>
         {saving ? "저장 중…" : "저장"}
-      </button>
+      </Button>
       {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
     </div>
   );
@@ -520,6 +529,7 @@ export function TerminalSection({
 }) {
   const { fontFamily, fontSize, theme } = settings.terminal;
   const palette = terminalThemeFor(theme);
+  const sizeHintId = useId();
 
   return (
     <section className="flex flex-col gap-5 pt-2">
@@ -528,30 +538,36 @@ export function TerminalSection({
           화면에서 읽을 수 없다. 비우면 「고르지 않음」이다(크기 칸과 같은 규칙). */}
       <Row label="글꼴">
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-1.5">
-            <Chip
-              label="기본"
-              active={fontFamily === null}
-              onClick={() => onChange({ fontFamily: null })}
-            />
-            {FONT_PRESETS.map((preset) => (
-              <Chip
-                key={preset}
-                label={preset}
-                active={fontFamily === preset}
-                onClick={() => onChange({ fontFamily: preset })}
-              />
-            ))}
-          </div>
-          <input
-            aria-label="터미널 글꼴"
-            value={fontFamily ?? ""}
-            placeholder="기본"
-            onChange={(e) =>
-              onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
+          <ToggleGroup
+            size="chip"
+            aria-label="글꼴 프리셋"
+            value={fontChipsOf(fontFamily)}
+            // 켜진 칩을 다시 눌러 끄는 것은 뜻이 없다 — 부품이 그 누름을 없던 일로 한다(S16). 「고르지 않음」은
+            // 「기본」 칩이 말한다.
+            deselectable={false}
+            onValueChange={([pick]) =>
+              onChange({ fontFamily: pick === DEFAULT_FONT_CHIP ? null : pick })
             }
-            className="h-[30px] w-[280px] rounded-[9px] border border-border-strong bg-background px-[9px] text-[13px] outline-none focus:border-primary"
-          />
+          >
+            <ToggleGroupItem value={DEFAULT_FONT_CHIP}>기본</ToggleGroupItem>
+            {FONT_PRESETS.map((preset) => (
+              <ToggleGroupItem key={preset} value={preset}>
+                {preset}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Field orientation="horizontal">
+            <Input
+              variant="field"
+              className="w-[280px]"
+              aria-label="터미널 글꼴"
+              value={fontFamily ?? ""}
+              placeholder="기본"
+              onChange={(e) =>
+                onChange({ fontFamily: e.target.value.trim() === "" ? null : e.target.value })
+              }
+            />
+          </Field>
         </div>
       </Row>
 
@@ -561,39 +577,47 @@ export function TerminalSection({
 
           파일이 준 범위 밖 값에도 테두리는 빨갛다 — 「이 화면이 만들 수 있는 범위 밖」은
           출처와 무관한 사실이다. 그것이 저장까지 잠그느냐는 다른 질문이고 `canSave`가
-          따로 답한다. */}
+          따로 답한다.
+
+          틀린 값은 **칸이 말한다** — 빨간 테두리와 스크린리더의 「잘못된 값」이 한 속성(`aria-invalid`)에서
+          나온다(스토리 107). 행 전체를 빨갛게 하는 Field의 `data-invalid`는 쓰지 않는다(지금 모양). 안내는
+          칸의 설명이다 — registry Field가 저절로 잇지 않아 여기서 id로 잇는다. */}
       <Row label="크기">
-        <div className="flex items-center gap-2">
-          <input
+        <Field orientation="horizontal">
+          <Input
+            variant="field"
+            className="w-[72px]"
             aria-label="터미널 글꼴 크기"
+            aria-describedby={sizeHintId}
+            aria-invalid={parseFontSize(sizeText) === "invalid"}
             inputMode="numeric"
             value={sizeText}
             placeholder="기본"
             onChange={(e) => onChangeSize(e.target.value)}
-            className={cn(
-              "h-[30px] w-[72px] rounded-[9px] border bg-background px-[9px] text-[13px] outline-none focus:border-primary",
-              parseFontSize(sizeText) === "invalid" ? "border-red-500" : "border-border-strong",
-            )}
           />
-          <span className="text-[13px] text-tertiary">
+          <FieldDescription id={sizeHintId}>
             px · {FONT_SIZE_MIN}–{FONT_SIZE_MAX}
-          </span>
-        </div>
+          </FieldDescription>
+        </Field>
       </Row>
 
       {/* 테마 — 두 벌뿐이다(결정 54). 기본은 어둡게이고 그 기본은 백엔드가 정해 온다
-          (`settings.rs`의 `TerminalTheme::default`), 그래서 이 칸에는 「고르지 않음」이 없다. */}
+          (`settings.rs`의 `TerminalTheme::default`), 그래서 이 칸에는 「고르지 않음」이 없다 —
+          켜진 칩을 다시 눌러 값을 비우지 못한다(S16 — 부품의 `deselectable={false}`). 둘 중 하나가 늘 켜져 있다. */}
       <Row label="테마">
-        <div className="flex gap-1.5">
+        <ToggleGroup
+          size="chip"
+          aria-label="테마"
+          value={[theme]}
+          deselectable={false}
+          onValueChange={([pick]) => onChange({ theme: pick })}
+        >
           {(["light", "dark"] as const).map((option) => (
-            <Chip
-              key={option}
-              label={THEME_LABELS[option]}
-              active={theme === option}
-              onClick={() => onChange({ theme: option })}
-            />
+            <ToggleGroupItem key={option} value={option}>
+              {THEME_LABELS[option]}
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </Row>
 
       {/* 미리보기 — **필수다**(결정 52). 글꼴 이름을 잘못 적으면 오류 없이 폴백으로 그려지는
@@ -658,10 +682,10 @@ export function NotificationSection({
     <section className="flex flex-col gap-5 pt-2">
       <Row label="알림">
         <div className="flex flex-col gap-2">
-          <Switch
-            value={choice.enabled}
-            onPick={(enabled) => onChange({ enabled })}
+          <LabeledSwitch
             label="셸이 나를 부르면 알림"
+            checked={choice.enabled}
+            onCheckedChange={(enabled) => onChange({ enabled })}
           />
           {granted === false && (
             // 규격은 이 화면의 오류 문구와 같은 가족이되 빨강이 아니다 — 앱이 실패한 것이
@@ -675,10 +699,10 @@ export function NotificationSection({
 
       {/* 소리만 따로 끌 수 있다(스토리 64) — 소리는 시스템 기본 알림음이다. */}
       <Row label="소리">
-        <Switch
-          value={choice.sound}
-          onPick={(sound) => onChange({ sound })}
+        <LabeledSwitch
           label="알림에 소리"
+          checked={choice.sound}
+          onCheckedChange={(sound) => onChange({ sound })}
         />
       </Row>
     </section>
@@ -764,24 +788,14 @@ export function HooksSection({
 
       <Row label="">
         <div className="flex items-center gap-3">
-          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 터미널
+          {/* 규격은 이 화면의 「다시 읽기」와 같은 쪽 동작 버튼이다 — 저장 버튼(주 버튼)은 터미널
               설정·알림 설정에만 있고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
-          <button
-            type="button"
-            onClick={onInstall}
-            disabled={busy}
-            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
-          >
+          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy}>
             설치
-          </button>
-          <button
-            type="button"
-            onClick={onUninstall}
-            disabled={busy}
-            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
-          >
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onUninstall} disabled={busy}>
             제거
-          </button>
+          </Button>
           {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
         </div>
       </Row>
@@ -790,24 +804,28 @@ export function HooksSection({
 }
 
 /**
- * 켬/끔 한 쌍. 규격은 위 `Chip`을 그대로 쓴다 — 이 화면에 스위치라는 어휘가 따로 없고,
- * 테마 칸이 이미 「둘 중 하나」를 칩 쌍으로 그리고 있다.
+ * 켬/끔 하나 — 스위치와 그 이름(결정 12). 참·거짓 하나를 칩 둘로 나누면 어느 쪽이 켜졌는지를 색으로
+ * 읽어야 하는데, 스위치는 모양으로 말한다. 스크린리더는 이름과 켬/끔(`role="switch"`·`aria-checked`,
+ * Base UI가 단다)을 말한다.
+ *
+ * **이름은 옆 글자다.** 스위치를 `<label>`로 감싸면 Base UI가 숨은 체크박스의 부모 label을 찾아
+ * `aria-labelledby`로 잇는다 — 보이는 글자와 읽히는 이름이 한 벌이고, 글자를 눌러도 켜고 끈다.
  */
-function Switch({
-  value,
-  onPick,
+function LabeledSwitch({
   label,
+  checked,
+  onCheckedChange,
 }: {
-  value: boolean;
-  onPick: (next: boolean) => void;
-  /** 접근성 이름의 앞머리. 칩 글자가 「켬」·「끔」뿐이라 그것만으로는 무엇의 켬인지 모른다. */
   label: string;
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
 }) {
   return (
-    <div className="flex gap-1.5">
-      <Chip label="켬" active={value} onClick={() => onPick(true)} name={`${label} 켬`} />
-      <Chip label="끔" active={!value} onClick={() => onPick(false)} name={`${label} 끔`} />
-    </div>
+    // 26px 줄 가운데에 세운다 — 왼쪽 행 라벨(`Row`의 pt-[7px])이 그 높이의 줄에 맞춰져 있다(테마·글꼴 칩 줄).
+    <label className="flex h-[26px] w-fit items-center gap-2 text-[13px] select-none">
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      {label}
+    </label>
   );
 }
 
@@ -817,38 +835,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="w-[64px] shrink-0 pt-[7px] text-[13px] text-tertiary">{label}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
-  );
-}
-
-// 규격은 WorkPanel의 탭 버튼과 같다 — 켜짐은 toggle-on, 꺼짐의 hover는 quiet-hover를
-// **꺼진 가지 안에만** 둔다(둘이 한 요소에 겹치면 hover 규칙이 두 벌이 되어 정렬 순서가
-// 승자를 정한다 — index.css).
-function Chip({
-  label,
-  active,
-  onClick,
-  name,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  /** 글자만으로 무엇의 칩인지 모를 때 접근성 이름을 따로 준다(알림의 「켬」·「끔」). */
-  name?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={name}
-      // 색만으로는 어느 쪽이 켜졌는지 접근성 트리에 드러나지 않는다.
-      aria-pressed={active}
-      className={cn(
-        "h-[26px] rounded-[9px] px-[10px] text-[13px] font-medium transition-colors",
-        active ? "toggle-on" : "text-tertiary quiet-hover",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 

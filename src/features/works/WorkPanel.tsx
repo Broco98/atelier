@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Hint } from "@/components/ui/tooltip";
 import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
@@ -207,11 +209,17 @@ function WorkPanel({
         {/* **떠 있는 카드가 아니라 창 끝에서 끝까지 가는 컬럼이다.** 화면 머리행과 같은 층에
             서면서 바깥 여백과 둥근 모서리가 설 자리를 잃었다 — 창 위·아래 끝에서 카드가
             잘린 것처럼 보인다. 본문과의 구분은 왼쪽 경계선 하나가 맡는다 (사이드바와 같은 방식). */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-l bg-background pb-2">
+        {/* 패널 카드가 곧 Tabs의 뿌리다 — 탭 줄과 두 패널이 카드의 직계 자식으로 선다. 패널은 상자가 없어서
+            (`TabsContent`의 contents) 안의 스크롤 상자가 카드의 flex 자식으로 남는다(SpecSection 머리말의 계약). */}
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="min-h-0 flex-1 overflow-hidden border-l bg-background pb-2"
+        >
           {/* 탭 바는 카드에 고정된다 — 세로 스크롤은 각 탭 안에서만 돈다.
-              전환은 클릭뿐이고, 어느 탭을 보고 있는지는 주소에 넣지 않는다: 탭을 누를
-              때마다 히스토리가 쌓여 문서 사이 뒤로가기를 묻어버린다. 주소를 정본으로
-              삼은 대상은 **문서**이지 훑기 상태가 아니다 (이슈 #25). */}
+              어느 탭을 보고 있는지는 주소에 넣지 않는다: 탭을 바꿀 때마다 히스토리가 쌓여
+              문서 사이 뒤로가기를 묻어버린다. 주소를 정본으로 삼은 대상은 **문서**이지 훑기
+              상태가 아니다 (이슈 #25). */}
           {/* 높이는 **타이틀바 높이를 그대로 읽는다** — 이 행과 화면 브레드크럼이 같은 층에
               나란히 서므로, 값을 손으로 적으면 그 높이가 바뀔 때 여기만 남아 어긋난다.
               드래그 영역인 것도 같은 이유다: 이 행이 없으면 창 오른쪽 위 **패널 폭만큼은**
@@ -224,12 +232,22 @@ function WorkPanel({
             data-tauri-drag-region
             className="flex h-(--titlebar-height) shrink-0 items-center gap-1 pl-2 pr-4"
           >
-            <TabButton label="spec" active={tab === "spec"} onClick={() => setTab("spec")} />
-            {/* 라벨은 소문자 영어다(결정 41) — 사이드바 가지의 `spec`·`terminal`과 같은
+            {/* 스크린리더에 탭으로 읽히고 ←/→로 옮긴다(결정 9). 옮기면 곧바로 켜진다(S18) — 두 패널이 이미
+                마운트돼 있어 바로 바뀌어도 싸다.
+
+                **목록에도 끌기 속성을 단다.** Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 —
+                탭을 감싼 이 상자에 없으면 탭 사이 틈이 창 끌기에서 빠진다. 목록이 내용 폭만 차지해서 그 오른쪽의
+                빈 자리는 줄(위 div)의 것이다.
+
+                라벨은 소문자 영어다(결정 41) — 사이드바 가지의 `spec`·`terminal`과 같은
                 어휘여야 한 층으로 읽힌다. 문장 속 한국어는 그대로다(CONTEXT.md). */}
-            <TabButton label="info" active={tab === "info"} onClick={() => setTab("info")} />
+            <TabsList data-tauri-drag-region activateOnFocus>
+              <TabsTrigger value="spec">spec</TabsTrigger>
+              <TabsTrigger value="info">info</TabsTrigger>
+            </TabsList>
             {/* 문서/원문 — 이 컨트롤만 **왼쪽 본문**을 바꾼다. 나머지는 전부 이 패널의 일이다.
-                두 칸으로 갈린 근거는 SourceToggle 주석에 있다(결정 33).
+                두 칸으로 갈린 근거는 SourceToggle 주석에 있다(결정 33). 탭 목록 밖의 형제다 —
+                탭이 아니라 본문을 고르는 것이라 ←/→가 여기로 건너오지 않는다.
 
                 **선 칸은 본문이 지금 소스냐가 아니라 사람이 정한 값이다.** 토글을 무시하는
                 파일(그림, 그리고 md도 html도 아닌 것)에서 본문이 무엇으로 섰는지까지 켜짐으로
@@ -239,29 +257,32 @@ function WorkPanel({
 
                 잠김은 흐림과 포인터 차단이 **함께** 간다. 흐리게만 하면 눌리는데 아무 일도
                 일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
-                왜 잠겼는지를 title로 말할 수는 없다 — pointer-events가 꺼져 있으면 hover가
-                성립하지 않아 네이티브 툴팁이 뜨지 않는다. 흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
+                왜 잠겼는지를 툴팁으로 말하지 않는다 — 잠긴 칸은 네이티브 `disabled`라 툴팁을 달지 않는다(S23).
+                흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
             <SourceToggle
               on={sourceOn}
               locked={sourceLocked}
               onChange={onToggleSource}
               className="ml-auto"
             />
-            <button
+            <Hint
+              text={`${itemNameOf(mode)} 패널 접기`}
+              announce="name"
               type="button"
               onClick={onClose}
-              aria-label={`${itemNameOf(mode)} 패널 접기`}
-              title={`${itemNameOf(mode)} 패널 접기`}
               className="icon-button-quiet text-tertiary"
             >
               <X className="size-4" strokeWidth={2} />
-            </button>
+            </Hint>
           </div>
           {/* 머리행 아래에 선이 없다. 이 행은 화면 브레드크럼과 **같은 층**인데 그쪽이
               "아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다"를 이미
               정해 뒀다 (PageHeader). 나란히 선 두 행 중 하나만 밑줄을 그으면 그 층이
               반쪽만 잘린 것처럼 읽힌다. 본문과 패널의 구분은 왼쪽 경계선이 맡는다. */}
-          <TabPanel active={tab === "spec"}>
+          {/* **보이지 않는 탭도 마운트된 채로 둔다**(`keepMounted`, 결정 9) — 언마운트하면 info를
+              보고 spec으로 돌아왔을 때 접어 둔 판·폴더가 도로 펴져 있다. 숨은 패널은 Base UI가
+              `hidden`과 `inert`로 가린다. */}
+          <TabsContent value="spec" keepMounted>
             <SpecSection
               key={treeGeneration}
               files={work.specFiles}
@@ -269,8 +290,8 @@ function WorkPanel({
               onSelect={onSelectFile}
               onCopy={(path) => onCopy(specRef(mode, work.slug, path))}
             />
-          </TabPanel>
-          <TabPanel active={tab === "info"}>
+          </TabsContent>
+          <TabsContent value="info" keepMounted>
             <WorkInfo
               mode={mode}
               work={work}
@@ -278,65 +299,13 @@ function WorkPanel({
               onCopy={onCopy}
               onOpenProject={onOpenProject}
             />
-          </TabPanel>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       {open && <ResizeHandle control={size} />}
     </aside>
   );
-}
-
-// 탭 하나 — 켜짐은 저장소 공통 toggle-on, 꺼짐은 text-tertiary + quiet-hover다. 새 토큰은 없다.
-//
-// 규격은 **디자인 정본의 `.cp-tab`**(26px · radius 9 · 13px · 500)이다. 처음에는 이 화면
-// 헤더에 있던 [소스] 토글의 규격(h-6 · radius 8 · 12.5px)을 그대로 물려받았는데, 그것은
-// 토글 버튼의 규격이지 탭의 규격이 아니었다 — 그 버튼이 `</>`로 바뀌어 사라지면서 출처만
-// 남았던 셈이다. 헤더의 뷰 탭(`.vtab` 28 · radius 9 · 13 · 500)과 **한 가족으로 읽혀야**
-// 하는 것이 이 자리다: 둘은 같은 44px 층에 24px 간격으로 서고 둘 다 `spec`이라고 적혀 있다.
-// 정본이 반지름·글자·굵기를 맞추고 높이만 2px 낮춘 이유가 그것이다.
-//
-// 그래서 ArchivePage의 [소스] 토글과의 중복도 함께 풀렸다. 같은 문자열이었던 것은
-// 우연이고 — 저쪽은 토글이라 계속 토글 규격(h-6 · radius 8 · 12.5px)이 맞다.
-// 여기를 고칠 때 저쪽을 따라 고칠 이유는 이제 없다.
-//
-// quiet-hover는 꺼진 가지 안에만 둔다: toggle-on과 한 요소에 겹치면 hover 규칙이 두 벌이
-// 되어 유틸리티 정렬 순서가 승자를 정한다 (index.css의 quiet-hover 주석).
-function TabButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      // 색만으로는 어느 쪽이 켜졌는지 접근성 트리에 드러나지 않는다. role="tab"을 쓰지
-      // 않는 것은 그것이 화살표 키 이동까지 약속하기 때문이다 — 전환은 클릭뿐이다.
-      aria-pressed={active}
-      className={cn(
-        "h-[26px] rounded-[9px] px-[10px] text-[13px] font-medium transition-colors",
-        active ? "toggle-on" : "text-tertiary quiet-hover",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-// 탭 하나의 내용. **보이지 않는 탭도 마운트된 채로 둔다** — 언마운트하면 정보를 보고
-// spec으로 돌아왔을 때 접어둔 판이 도로 펴져 있다.
-//
-// display:contents인 것이 핵심이다. 평범한 div로 감싸면 자식의 flex-1이 패널 카드가
-// 아니라 이 껍데기를 기준으로 잡혀 스크롤 경계가 카드에서 옮겨가고, 카드의 넘침 감춤에
-// 트리가 잘린다 — 마크업만 보면 멀쩡하다. contents는 상자를 만들지 않아 자식이 카드의
-// 직계 flex 자식으로 남는다. 감춤은 cn이 twMerge라 display 충돌을 알아서 정리한다.
-function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
-  return <div className={cn("contents", !active && "hidden")}>{children}</div>;
 }
 
 export default WorkPanel;

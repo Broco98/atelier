@@ -4,7 +4,7 @@ import { AttentionBand, BAND_LABEL, BAND_LIMIT } from "./attention-band";
 import type { BandItem } from "./attention-band";
 import { ownerOf } from "@/features/terminal/shell-registry";
 
-// 정적 마크업 seam — 「확인할 것」 띠의 그림을 여기서 본다(#204). `shell-signal.tsx`와 같은
+// 정적 마크업 seam — 알림 띠의 그림을 여기서 본다(#204). `shell-signal.tsx`와 같은
 // 조건으로 산다: props만 받는 순수 컴포넌트라 터미널 스토어도 DOM도 안 물고, 값을 고르는
 // 자리는 `Sidebar.tsx`에 따로 있다.
 //
@@ -47,13 +47,22 @@ const textOf = (markup: string) => markup.replace(/<[^>]*>/g, "");
 /**
  * 줄 **버튼**들의 접근성 이름. 이 띠에서 「어느 줄이 섰나」를 정직하게 세는 자리다.
  *
- * `<button`으로 좁히는 것은 마크 때문이다 — 에이전트 글리프도 `aria-label`을 다는
- * `role="img"` 상자라(판 04 결정 15의 그 규칙), 속성만 훑으면 줄 하나가 둘로 세어져
- * 상한을 재는 검사가 통째로 거짓이 된다. 토글(`+N 더`·`접기`)은 이름이 글자에 있어
- * 여기 안 걸린다 — 그것도 이 좁힘이 지키는 것이다.
+ * 좁히는 것이 둘이다.
+ * - `<button`으로 좁힌다 — 에이전트 글리프도 `aria-label`을 다는 `role="img"` 상자라(판 04
+ *   결정 15의 그 규칙), 속성만 훑으면 줄 하나가 둘로 세어져 상한을 재는 검사가 통째로
+ *   거짓이 된다.
+ * - `aria-expanded`를 단 버튼은 뺀다 — ⌄/⌃ 토글도 아이콘 버튼이라 이름을 `aria-label`로
+ *   달고(`sidebar-active-band` 결정 15), 그것을 세면 넷·다섯 줄 검사의 수가 하나씩 는다. 펼침을 말하는 것은
+ *   토글뿐이라 그 속성이 둘을 가른다.
+ *
+ * 여는 태그를 통째로 떠서 거른다. React는 속성 값의 `>`를 `&gt;`로 적으므로 `[^>]*`가
+ * 태그 밖으로 새지 않는다.
  */
 const 이름들 = (markup: string) =>
-  [...markup.matchAll(/<button[^>]*?aria-label="([^"]*)"/g)].map((m) => m[1]);
+  [...markup.matchAll(/<button[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => !tag.includes("aria-expanded"))
+    .flatMap((tag) => /aria-label="([^"]*)"/.exec(tag)?.[1] ?? []);
 
 /**
  * 표식이 붙은 상자의 **여는 태그**. 겉모습 클래스가 아니라 이름으로 집는다.
@@ -102,29 +111,31 @@ describe("헤더는 접힌 것까지 센다", () => {
   });
 });
 
-describe("상한 셋과 `+N 더`", () => {
+describe("상한 셋과 ⌄", () => {
+  // ⌄/⌃는 글자가 없는 아이콘 버튼이다(`sidebar-active-band` 결정 15). 「더」·「접기」 글자가 없다는 단언은 버튼이
+  // 서 있어도 초록이라 헛돈다 — 그래서 토글은 **펼침을 말하는 속성**으로 센다. 이름과 툴팁이
+  // 무엇을 말하는지는 L3가 잰다(사이드바 spec).
   it("넷이면 셋만 보이고 나머지가 접힌다", () => {
     const markup = band(줄들(4));
     expect(이름들(markup)).toHaveLength(3);
-    expect(textOf(markup)).toContain("+1 더");
+    expect(markup).toContain('aria-expanded="false"');
     expect(textOf(markup)).not.toContain("일 4");
   });
 
-  it("펼치면 전부 서고 같은 자리가 `접기`가 된다", () => {
+  it("펼치면 전부 서고 같은 자리가 펼쳐진 토글이 된다", () => {
     const markup = band(줄들(5), { expanded: true });
     expect(이름들(markup)).toHaveLength(5);
     expect(textOf(markup)).toContain("일 5");
-    expect(textOf(markup)).toContain("접기");
-    expect(textOf(markup)).not.toContain("더");
+    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).not.toContain('aria-expanded="false"');
   });
 
-  // 셋 이하면 접을 것이 없다 — 그때도 토글이 서면 눌러도 아무 일이 없는 줄이 하나 는다.
+  // 셋 이하면 접을 것이 없다 — 그때도 토글이 서면 눌러도 아무 일이 없는 버튼이 하나 는다.
   it("셋 이하면 토글이 아예 없다", () => {
     for (const n of [1, 2, 3]) {
       const markup = band(줄들(n));
       expect(이름들(markup), `${n}줄`).toHaveLength(n);
-      expect(textOf(markup), `${n}줄`).not.toContain("더");
-      expect(textOf(markup), `${n}줄`).not.toContain("접기");
+      expect(markup, `${n}줄`).not.toContain("aria-expanded");
     }
   });
 });

@@ -167,6 +167,8 @@ export function ResizeHandle({
   return (
     <div
       {...control.handleProps}
+      // **앱 툴팁이 아니라 `title`로 남는다**(S29). 이름이 따로 없는 손잡이라 이것이 유일한 설명이고, 버튼이 아니라
+      // 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다. 사이드바 폭 조절은 결정 3의 「그대로」 쪽이기도 하다.
       title="드래그로 폭 조절 · 더블클릭으로 기본 폭"
       className={cn(
         "group absolute inset-y-0 z-30 w-[5px] cursor-col-resize touch-none",

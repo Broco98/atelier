@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, Check, Maximize2, Minimize2 } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Toaster, showToast } from "@/components/ui/toast";
+import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
 import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
@@ -27,8 +30,6 @@ interface ArchivePageProps {
   // 본문 링크는 지금 아카이브 안에서만 움직인다
   onFollowLink: (path: string) => void;
 }
-
-const PANEL_OPEN_KEY = "archive-panel-open";
 
 // 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
@@ -73,43 +74,16 @@ function ArchivePage({
     body === "image" ? null : current,
   );
 
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
+  // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Projects와 같은 하나를 쓴다.
+  const [panelOpen, togglePanel] = useListPanel("archive-panel-open");
 
-  // ⌘Enter — "본문을 넓히는 토글". 이 화면의 유일한 접이식이 목록 패널이라 그 자리를 받는다
-  // (Projects와 같은 규칙). 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      e.preventDefault();
-      setPanelOpen((open) => !open);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | undefined>(undefined);
+  // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
-    setToast(`${text} 복사됨`);
-    window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1600);
+    showToast(`${text} 복사됨`);
   }, []);
-  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  // 참조가 안정적이어야 토스트 표시/해제 리렌더가 마크다운 트리를 리마운트하지 않는다
+  // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트되지 않는다
   const slug = selected?.slug;
   const copyBlockRef = useCallback(
     (start: number, end: number) => {
@@ -247,20 +221,7 @@ function ArchivePage({
                   onChange={setShowSource}
                 />
               )}
-              <button
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button-quiet text-tertiary"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </button>
+              <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
             </>
           }
         />
@@ -272,26 +233,28 @@ function ArchivePage({
           {!selected ? (
             entriesPending ? null : (
             <div className="flex h-full items-center justify-center p-10">
-              <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Archive className="size-5" strokeWidth={1.6} />
-                </div>
-                {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
-                    왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
-                    stale한 slug가 남았을 때 실제로 그렇게 된다. */}
-                {/* 「하나도 없다」는 세계마다 낱말이 다르고(#183), 「그 slug를 못 찾겠다」는
-                    두 세계가 같은 말을 한다 — 아카이브도 slug도 이 세계 저 세계 이름이 아니다. */}
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  {entries.length === 0
-                    ? emptyScreenCopy(mode).title
-                    : "그 아카이브를 찾을 수 없어요"}
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  {entries.length === 0
-                    ? emptyScreenCopy(mode).body
-                    : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
-                </span>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Archive strokeWidth={1.6} />
+                  </EmptyMedia>
+                  {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
+                      왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
+                      stale한 slug가 남았을 때 실제로 그렇게 된다. */}
+                  {/* 「하나도 없다」는 세계마다 낱말이 다르고(#183), 「그 slug를 못 찾겠다」는
+                      두 세계가 같은 말을 한다 — 아카이브도 slug도 이 세계 저 세계 이름이 아니다. */}
+                  <EmptyTitle>
+                    {entries.length === 0
+                      ? emptyScreenCopy(mode).title
+                      : "그 아카이브를 찾을 수 없어요"}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {entries.length === 0
+                      ? emptyScreenCopy(mode).body
+                      : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </div>
             )
           ) : (
@@ -307,12 +270,10 @@ function ArchivePage({
           )}
         </div>
 
-        {toast && (
-          <div className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-[10px] border border-border-strong bg-background px-3.5 py-2 text-[12.5px] shadow-lg">
-            <Check className="size-3.5 text-green-700" strokeWidth={2.4} />
-            {toast}
-          </div>
-        )}
+        {/* 토스트의 자리 — 목록 패널을 뺀 본문의 아래 가운데다. 작업 화면과 같은 부품이지만 자리는
+            화면마다 지금 그대로 둔다(S14): 한 자리로 모으려면 라우트 자리를 새 상자로 감싸야 하고,
+            그러면 이 토스트가 목록 패널 폭의 반만큼 옮겨 간다. */}
+        <Toaster />
       </main>
     </div>
   );

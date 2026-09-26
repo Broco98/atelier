@@ -1,11 +1,21 @@
-import { useRef, useState, useEffect } from "react";
-import { Folder, GitFork, GitMerge, Check, ChevronDown, ChevronRight, Zap } from "lucide-react";
+import { useRef, useState } from "react";
+import { CircleAlert, Folder, GitFork, GitMerge, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Hint } from "@/components/ui/tooltip";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
+
+/**
+ * 제자리 편집 자리 둘(제목 · git 정보가 없을 때의 기준 브랜치)의 도움말. 둘은 이미 `<button>`이라 `title` 예외
+ * (S29 — 버튼이 아닌 자리)가 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다
+ * 더 말하는 하는 일이라 설명(`aria-description`)으로도 남는다(S28).
+ */
+const EDIT_HELP = "클릭해서 편집";
 
 interface ProjectDetailProps {
   project: ProjectView;
@@ -16,17 +26,16 @@ interface ProjectDetailProps {
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
+      {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
       {project.missing && (
-        <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500 bg-red-500/[0.07] px-3.5 py-2.5">
-          <span className="size-[7px] shrink-0 rounded-full bg-red-500" />
-          <span className="shrink-0 text-[14px] font-medium text-red-600">
-            경로를 찾을 수 없어요.
-          </span>
-          <span className="text-[13.5px] text-muted-foreground">
+        <Alert variant="destructive">
+          <CircleAlert strokeWidth={1.8} />
+          <AlertTitle>경로를 찾을 수 없어요.</AlertTitle>
+          <AlertDescription>
             폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
             직접 제거하세요.
-          </span>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="flex flex-col gap-2.5">
@@ -140,9 +149,10 @@ function WorksSection({
 
 // 표시 이름 인라인 편집 — slug는 바뀌지 않는다 (스펙 #3)
 //
-// works/WorksPage.tsx의 TitleEditor가 같은 상호작용 계약을 쓴다 — Enter/blur 확정,
-// Escape 취소, 공백·동일 값 미저장, 그리고 Enter와 blur가 함께 들어와 두 번 커밋되는 것을
-// 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다 (스타일은 서로 다르다).
+// 작업 이름 바꾸기 창(works/WorkRenameDialog.tsx)이 같은 입력 규칙을 쓴다 — Enter 확정, Escape 취소,
+// 공백·동일 값 미저장, 두 번 커밋되는 것을 막는 finished 가드. 여기 로직을 고치면 그쪽도 같이 봐야 한다.
+// **갈리는 것 하나**: 여기서는 blur가 확정이지만 그 창에서는 바깥 누르기가 취소다(판 3 P7) — 창 밖을 누른
+// 것은 「그만두겠다」로 읽힌다. 이 인라인 편집기는 그대로 둔다(결정 8은 작업 이름 바꾸기에 한한다).
 function TitleEditor({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
   const [editing, setEditing] = useState(false);
@@ -161,9 +171,10 @@ function TitleEditor({ project }: { project: ProjectView }) {
 
   if (!editing) {
     return (
-      <button
+      <Hint
+        text={EDIT_HELP}
+        announce="description"
         type="button"
-        title="클릭해서 편집"
         onClick={() => {
           finished.current = false;
           setDraft(project.name);
@@ -172,11 +183,12 @@ function TitleEditor({ project }: { project: ProjectView }) {
         className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-[25px] font-semibold tracking-[-0.015em] transition-colors hover:bg-state-2"
       >
         {project.name}
-      </button>
+      </Hint>
     );
   }
   return (
-    <input
+    <Input
+      variant="inline-title"
       autoFocus
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -185,7 +197,6 @@ function TitleEditor({ project }: { project: ProjectView }) {
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className="-mx-2 -my-1 w-full rounded-[10px] border border-primary bg-background px-2 py-1 text-[25px] font-semibold tracking-[-0.015em] outline-none"
     />
   );
 }
@@ -212,18 +223,7 @@ function PropertyRow({
 
 function BaseBranchControl({ project }: { project: ProjectView }) {
   const updateProject = useUpdateProject();
-  const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLButtonElement>(null);
   const branches = project.git?.localBranches ?? [];
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   if (branches.length === 0) {
     return <InlineBranchEditor key={project.slug} project={project} />;
@@ -233,51 +233,53 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
     ? branches
     : [project.baseBranch, ...branches];
 
+  // **목록에서 고른다**(스토리 67·68). 방향키 · 글자 치기 · Esc 닫기와 트리거로 포커스 돌려주기는 부품(Select)이
+  // 한다. 지금 값은 `listbox`의 선택됨으로 읽히고, 체크는 보이는 쪽의 말일 뿐이다. 카드는 트리거 아래로 뜬다
+  // (부품의 기본 — 트리거 맞춤을 껐다, S32).
   return (
-    <div className="relative -ml-[7px] flex">
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        title="브랜치 목록에서 변경"
-        className="flex h-[26px] items-center gap-1.5 rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
+    // 칩의 글자를 위 줄의 값들과 같은 세로선에 세운다 — 칩의 좌우 안쪽(7px)만큼 당긴다.
+    <div className="-ml-[7px] flex">
+      <Select
+        value={project.baseBranch}
+        onValueChange={(branch) => {
+          // **값이 바뀔 때만 저장한다**(지금 규칙). 지금 값을 다시 고른 것은 닫기만 한다.
+          if (branch !== null && branch !== project.baseBranch) {
+            updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
+          }
+        }}
       >
-        {project.baseBranch}
-        <ChevronDown className="size-2.5" strokeWidth={2.2} />
-      </button>
-      {open && (
-        <PopoverPortal anchorRef={anchor} width={248} onClose={() => setOpen(false)}>
+        {/* 이름은 「기준 브랜치」다 — 여는 버튼이 `combobox`가 되어 글자(지금 값)가 이름이 되지 못한다. 없는
+            프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다.
+            도움말 「브랜치 목록에서 변경」은 툴팁이다. 옛 `title`이 이름 다음에 읽어 주던 하는 일이라 설명
+            (`aria-description`)으로도 남는다(S28 — `combobox`는 목록이 열린다는 것까지만 말하고, 고르면 이 값이
+            바뀐다는 것은 말하지 않는다). */}
+        <Hint
+          text="브랜치 목록에서 변경"
+          announce="description"
+          render={<SelectTrigger aria-label="기준 브랜치" />}
+        >
+          <SelectValue className="font-mono" />
+        </Hint>
+        <SelectContent
+          header={
             <div className="flex h-8 items-center justify-between border-b px-3">
               <span className="text-[12.5px] font-semibold text-muted-foreground">브랜치</span>
               <span className="text-[12px] text-tertiary">{options.length}개</span>
             </div>
-            <div className="flex flex-col gap-px p-[5px]">
-              {options.map((branch) => (
-                <button
-                  key={branch}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    if (branch !== project.baseBranch) {
-                      updateProject.mutate({ slug: project.slug, patch: { baseBranch: branch } });
-                    }
-                  }}
-                  className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-muted-foreground">
-                    {branch}
-                  </span>
-                  {branch === project.baseBranch && (
-                    <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                  )}
-                </button>
-              ))}
-            </div>
+          }
+          footer={
             <div className="border-t px-3 py-2 text-[12px] leading-normal text-tertiary">
               baseBranch 설정만 바꿔요 — checkout은 하지 않아요
             </div>
-        </PopoverPortal>
-      )}
+          }
+        >
+          {options.map((branch) => (
+            <SelectItem key={branch} value={branch}>
+              <span className="font-mono text-muted-foreground">{branch}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -301,9 +303,10 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
 
   if (!editing) {
     return (
-      <button
+      <Hint
+        text={EDIT_HELP}
+        announce="description"
         type="button"
-        title="클릭해서 편집"
         onClick={() => {
           finished.current = false;
           setDraft(project.baseBranch);
@@ -312,12 +315,17 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
-      </button>
+      </Hint>
     );
   }
   return (
-    <input
+    <Input
+      variant="inline-chip"
+      className="w-[150px]"
       autoFocus
+      // 이름표가 없던 칸이다(S37) — 옆 줄의 「baseBranch」 글자는 이 칸과 묶여 있지 않다. 목록이 서는 프로젝트의
+      // 여는 버튼과 같은 이름이다.
+      aria-label="기준 브랜치"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => finish(true)}
@@ -325,7 +333,6 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className="h-[26px] w-[150px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-[12.5px] outline-none"
     />
   );
 }

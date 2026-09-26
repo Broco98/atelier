@@ -478,7 +478,7 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     // 첫 값은 백엔드의 다음 회차가 준다(adr-04) — 최대 1초다. 여기서 미리 채울 것이 없다.
     running: null,
     // **막 뜬 셸은 아무 주장도 안 한다**(결정 3). 여기에 「도는 중」을 미리 앉히면 훅도
-    // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 링은 영영 안 꺼진다.
+    // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 스피너는 영영 안 꺼진다.
     attention: null,
   };
   return {
@@ -517,9 +517,9 @@ function isAlive(shell: Shell): boolean {
 
 /** 이 화면에서 켜진 칸. */
 /**
- * **그 세계의** work별 셸 개수 — 사이드바 work 행 **둘째 줄이 종류·수를 싣는 조건**이다
- * (결정 2·3). 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를 다 더하면
- * 이 값이다.
+ * **그 세계의** work별 셸 개수 — 사이드바 work 행 **오른쪽 메타가 서는 조건**이다
+ * (결정 2·3). 조용할 때 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를
+ * 다 더하면 이 값이다.
  *
  * **키는 소유자가 아니라 slug다.** 사이드바 목록은 터미널을 한 번도 참조하지 않아
  * (SidebarWorkList의 import 계약) 그 안에서 `ownerOf`를 부를 수 없다 — 소유자로 키를 주면

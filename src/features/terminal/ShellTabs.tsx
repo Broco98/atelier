@@ -1,6 +1,7 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
@@ -309,10 +310,10 @@ function ShellTabs({
     [],
   );
 
-  // 프로젝트가 여럿인 Work에서만 `+`가 묻는다. 앵커가 그 버튼이라 여기 산다.
+  // 프로젝트가 여럿인 Work에서만 `+`가 묻는다.
   const asks = projects.length > 1;
-  const plusRef = useRef<HTMLButtonElement>(null);
-  const [picking, setPicking] = useState(false);
+  // 꽉 찼을 때만 선다 — 잠긴 이유다(아래 `PlusButton`).
+  const capNotice = full ? shellCapNotice(state, owner) : null;
 
   // 줄이 넘치면 **켜진 칸이 화면 밖에 있을 수 있다**(결정 20). ⌘1~9는 안 보이는 칸도
   // 고르므로(`shellForNav`는 폭을 모른다) 고른 칸이 안 보이면 「눌렀는데 아무 일도 없다」로
@@ -479,7 +480,7 @@ function ShellTabs({
         )}
       </div>
 
-      {/* 잠긴 이유가 `title`(hover) 뒤에 있다. 결정 47이 세로 목록에서 그 문장을 꺼내 보이는
+      {/* 잠긴 이유가 툴팁(hover·포커스) 뒤에 있다. 결정 47이 세로 목록에서 그 문장을 꺼내 보이는
           글자로 쓴 것과 **같은 근거가 반대 방향을 가리킨다** — 그때의 이유는 「`+`가 행이
           되면서 글자를 넣을 폭이 생겼다」였고, 칸 하나에는 그 폭이 없다.
 
@@ -487,35 +488,28 @@ function ShellTabs({
           문장을 화면이 토스트로 말한다(결정 47).
 
           이 저장소의 잠근 버튼 관용구(disabled + pointer-events-none)를 쓰지 않는다 —
-          pointer-events-none은 hover 자체를 막아 **그 title이 안 뜬다**(ShellControls.tsx의
-          주석이 이미 적어 둔 함정이다). aria-disabled + 클릭 무시다. */}
-      <button
-        ref={plusRef}
-        type="button"
-        data-tab="new"
-        aria-label="셸 열기"
-        aria-disabled={full || undefined}
-        // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이
-        // 안 뜨는 것이 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다.
-        aria-haspopup={asks ? "menu" : undefined}
-        aria-expanded={asks ? picking : undefined}
-        title={full ? shellCapNotice(state, owner) : "셸 열기"}
-        onClick={() => {
-          if (full) return;
-          if (asks) setPicking((open) => !open);
-          else onOpen({ kind: "default" });
-        }}
-        className={cn(
-          // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
-          // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
-          // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
-          // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
-          "-ml-0.5 shrink-0 text-tertiary",
-          full ? "icon-button opacity-40" : "icon-button-quiet",
-        )}
-      >
-        <Plus className="size-3.5" strokeWidth={1.8} />
-      </button>
+          네이티브 `disabled`에는 툴팁을 달지 않고(S23), pointer-events-none은 hover 자체를 막아
+          **그 툴팁이 안 뜬다**. aria-disabled + 클릭 무시다. 메뉴를 여는 `+`도 같다 — 잠겼으면
+          메뉴가 여는 것만 막는다(`ShellPicker`의 `locked`). */}
+      {asks ? (
+        // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이 안 뜨는 것이
+        // 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다. 그 속성(`aria-haspopup="menu"`·
+        // `aria-expanded`)은 메뉴 부품의 트리거가 단다.
+        <ShellPicker
+          trigger={<PlusButton notice={capNotice} />}
+          locked={full}
+          projects={projects}
+          defaultHint={placeHint(defaultCwd)}
+          onPick={onOpen}
+        />
+      ) : (
+        <PlusButton
+          notice={capNotice}
+          onClick={() => {
+            if (!full) onOpen({ kind: "default" });
+          }}
+        />
+      )}
 
       {/* 탭과 조작 사이의 남는 자리. **이 줄에서 가장 넓은 끄는 자리다** — 속성이 빠지면
           「창이 가끔만 끌린다」가 되는데 화면으로는 어느 자리가 죽었는지가 안 보인다.
@@ -533,19 +527,47 @@ function ShellTabs({
           {actions}
         </div>
       )}
-
-      {picking && (
-        <ShellPicker
-          anchorRef={plusRef}
-          projects={projects}
-          defaultHint={placeHint(defaultCwd)}
-          onPick={(place) => {
-            setPicking(false);
-            if (place) onOpen(place);
-          }}
-        />
-      )}
     </header>
+  );
+}
+
+/**
+ * 탭 줄의 `+` — 셸 열기. **묻는 `+`(메뉴 트리거)와 바로 여는 `+`가 같은 버튼이다** — 갈리는 것은 누를 때
+ * 하는 일뿐이다.
+ *
+ * 도움말은 앱 툴팁이다(스토리 112). **꽉 찼으면(`notice`) 툴팁이 잠긴 이유를 말하고**, 그 문장은
+ * 설명(`aria-description`)으로도 남는다 — 툴팁은 스크린리더에 아무것도 주지 않는다(S28). 이름은 늘 「셸 열기」다.
+ *
+ * 메뉴를 여는 `+`에서는 메뉴 트리거가 이것을 제 버튼으로 그린다(`ShellPicker`의 `render`) — 그래서 받은 속성
+ * (ref와 여닫는 손잡이까지)을 툴팁 트리거에 그대로 편다. 툴팁 트리거가 그 둘을 합쳐 버튼 하나에 단다.
+ */
+function PlusButton({
+  notice,
+  className,
+  ...props
+}: ComponentProps<"button"> & { notice: string | null }) {
+  const full = notice !== null;
+  return (
+    <Hint
+      text={notice ?? "셸 열기"}
+      announce={full ? "description" : undefined}
+      type="button"
+      data-tab="new"
+      aria-label="셸 열기"
+      aria-disabled={full || undefined}
+      className={cn(
+        // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
+        // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
+        // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
+        // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+        "-ml-0.5 shrink-0 text-tertiary",
+        full ? "icon-button opacity-40" : "icon-button-quiet",
+        className,
+      )}
+      {...props}
+    >
+      <Plus className="size-3.5" strokeWidth={1.8} />
+    </Hint>
   );
 }
 
@@ -746,10 +768,10 @@ const ShellTab = memo(function ShellTab({
           role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
           것을 지킨다). 셸을 죽이는 길은 여전히 확인을 거치는 하나다(결정 22·92) —
           부르는 쪽이 `requestCloseShell`을 준다. */}
-      <button
+      <Hint
+        text="셸 닫기"
         type="button"
         aria-label={`${name} 닫기`}
-        title="셸 닫기"
         onClick={() => onClose(shell.id)}
         className={cn(
           "icon-button-tint shrink-0 text-tertiary",
@@ -762,7 +784,7 @@ const ShellTab = memo(function ShellTab({
         )}
       >
         <X className="size-3" strokeWidth={1.8} />
-      </button>
+      </Hint>
     </div>
   );
 });

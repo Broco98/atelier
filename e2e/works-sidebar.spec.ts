@@ -2,14 +2,20 @@ import { expect, test, type Locator, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, MAIN_HEADER, PINNED_HEADER, WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  fireAttention,
   installFixtureBackend,
   markAttention,
   markRunning,
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  workRow,
+  writeShell,
   띠,
   레인,
+  오른쪽메타,
+  툴팁,
+  행버튼,
 } from "./harness";
 
 // 사이드바 작업 목록은 어느 화면에나 있으므로 목록 화면에서 본다 — Works 화면으로 들어가면
@@ -26,10 +32,10 @@ const [pinnedWork, plainWork] = WORKS;
 const TITLE_FADE = 12;
 
 /**
- * 행 둘째 줄에서 마크·말·경과가 서로 떨어지는 거리. 목업 정본(`행-신호-세-안.html`의
- * `.row2 .l2 { gap: 6px }`)의 수이고, 화면에서는 `gap-1.5`가 그 값이다.
+ * 행 오른쪽 메타에서 마크와 경과가 서로 떨어지는 거리. 캔버스 보드 B(`.wm { gap: 6px }`)의
+ * 수이고, 화면에서는 `gap-1.5`가 그 값이다 — 종류·수의 무리 사이와 같은 값이다.
  */
-const SUBROW_GAP = 6;
+const META_GAP = 6;
 
 // 흐르는 **속도**(px/s) — `WorkSectionList.tsx`의 `MARQUEE_SPEED`와 같은 수다. 상수인 것은
 // 지속시간이 아니라 **이 값**이고(결정 11), 그래서 넘침이 다른 두 자리에서 같은 값이 나와야
@@ -38,10 +44,10 @@ const SUBROW_GAP = 6;
 const MARQUEE_SPEED = 50;
 const 속도밴드 = [MARQUEE_SPEED * 0.88, MARQUEE_SPEED * 1.12];
 
-// 핀 상자의 폭(`icon-button`). **행은 hover에 제목 상자가 정확히 이만큼 줄어든다** — 핀이
-// 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(WorkSectionList의 핀 주석). 판 05에서는
-// 셸이 0개인 행에서만 그랬는데, 이 판이 셸 메타를 둘째 줄로 내리면서 **2열에 남은 것이 핀
-// 하나뿐이라** 모든 행이 같이 움직인다.
+// 핀 상자의 폭(`icon-button`). **오른쪽 메타가 없는 행은 hover에 제목 상자가 정확히 이만큼
+// 줄어든다** — 핀이 2열에 서면서 빈 칸이 처음으로 폭을 갖기 때문이다(WorkSectionList의 핀
+// 주석). 메타가 선 행은 칸이 이미 핀보다 넓어 안 움직인다(판 05 결정 6 — 메타는 투명해질 뿐
+// 자리를 안 내준다). 아래 마퀴 검사가 재는 긴 제목은 `/projects`의 행이라 셸이 없다.
 // 그래서 흐르는 거리를 **hover 중의 넘침**으로 재야 한다: 쉴 때 넘침으로 재면 이만큼 모자라
 // 마지막 글자가 페이드에 남는다.
 const PIN_WIDTH = 24;
@@ -193,27 +199,47 @@ test("남의 work 행을 누르면 그 work의 마지막 자리가 열린다", a
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **행의 아래쪽을 눌러도 그 work로 간다.** 행이 두 줄(55px)이 되면서 이 자리에 처음으로
-// 「배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리」가 날 수 있게 됐다: 이름 버튼이 첫 줄
-// 26px만 덮으면 아래 29px이 어느 버튼에도 안 속하는데, 배경(선택·hover)은 55px 전체에
-// 깔린다. `WorkSectionList.tsx`가 두 자리에서 금지 사유로 드는 모양이 바로 그것이고
-// (행 상자 주석 · 이름 버튼 주석), 게다가 그 29px은 프로젝트 이름·종류·수가 실리는
-// **내용이 있는 줄**이라 사람이 가장 누르기 쉬운 자리다 — 행의 절반 이상이 그렇게 되는 것은
-// 판 05에는 없던 회귀다(그때는 이름 버튼이 `h-8`로 행 전체를 덮었다).
+// **행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 자리도**(`sidebar-active-band` 스토리 34).
+// 한 줄 행은 이름 버튼이 행 높이 32px을 다 덮지만, 2열의 오른쪽 메타는 이름 버튼 **밖의 형제**다
+// — 그 칸이 클릭을 받으면 마크와 경과가 선 자리가 「배경은 덮이는데 눌러도 아무 일이 없는 죽은
+// 자리」가 된다(`WorkSectionList.tsx`가 금지 사유로 드는 그 모양이다). 메타는 **늘** 포인터를 안
+// 받으므로(판 05 결정 6의 정정) 그 자리의 클릭이 행 상자로 올라간다.
+//
+// **핀이 안 서는 쪽을 누른다.** hover 중에는 메타 자리의 오른쪽 24px이 핀이고, 거기를 누르면
+// 고정이 바뀐다(스토리 34의 예외 — 위 핀 검사가 잰다). 그래서 부르는 행을 쓴다: 마크 + 경과가
+// 핀보다 넓어 **마크 글리프가 통째로 핀 왼쪽에 선다** — 사람이 누를 법한 바로 그 글자를 누른다.
 //
 // **이 층에서만 보인다** — 좌표로 눌러야 나고, 정적 마크업에는 클릭도 픽셀도 없다.
-test("행의 둘째 줄을 눌러도 그 work로 간다", async ({ page }) => {
+test("행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 중 핀이 안 서는 쪽도", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.goto("/projects");
+  // 이 화면에 들어와야 그 work에 셸이 서고(`ensureShell`), 그 셸이 불러야 메타에 마크가 선다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 기다리게한다(page, "커밋할까요?", 125_000);
 
-  const 행 = page.getByRole("button", { name: pinnedWork.title, exact: true }).locator("xpath=..");
-  const box = (await 행.boundingBox())!;
-  // 행 55px 중 아래 29px이 둘째 줄이다 — 그 한가운데를 누른다. 위 14px은 여전히 이름
-  // 버튼이므로, 이 좌표가 아니면 이 검사는 아무것도 새로 재지 않는다.
-  expect(box.height).toBe(55);
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 14);
-
+  // 옆 work으로 옮긴다 — 셸은 앱 메모리에 살아 그 행의 메타가 그대로 남는다. **그 행을 눌러
+  // 돌아오는 것이** 재는 것이다.
+  await 행버튼(page, pinnedWork.title).click();
   await expect(page).toHaveURL(new RegExp(`/works/${pinnedWork.slug}`));
+
+  const 마크 = 오른쪽메타(page, plainWork.slug).getByRole("img", { name: "claude" });
+  await expect(마크).toHaveCount(1);
+  expect((await workRow(page, plainWork.slug).boundingBox())!.height).toBe(32);
+
+  // hover해서 핀을 세운 뒤에 잰다 — 누르는 순간의 자리가 곧 hover 중의 자리다.
+  await workRow(page, plainWork.slug).hover();
+  const pin = page.getByRole("button", { name: `${plainWork.title} 고정` });
+  await expect(pin).toHaveCSS("opacity", "1");
+  const 핀 = (await pin.boundingBox())!;
+  const 글리프 = (await 마크.boundingBox())!;
+  // 누를 자리가 정말 핀 밖인가 — 아니면 이 검사는 핀 검사를 한 번 더 도는 것이 된다.
+  expect(글리프.x + 글리프.width).toBeLessThanOrEqual(핀.x);
+  await page.mouse.click(글리프.x + 글리프.width / 2, 글리프.y + 글리프.height / 2);
+
+  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
+  // 핀을 누른 것이 아니다 — 고정은 안 나갔다.
+  const calls = (await readIpcRecord(page))?.calls ?? [];
+  expect(calls.filter((call) => call.startsWith("set_work_pinned"))).toEqual([]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -332,18 +358,19 @@ test("구획을 접으면 한 번에 사라지지 않고 접힌다", async ({ pa
 });
 
 // 결정 2·3 — work 행이 **어디서 무엇이 도는지**를 말한다: 무리마다 글리프와 **그 무리의
-// 셸 수**. 이 판이 옮긴 것은 **자리**뿐이다 — 오른쪽 끝 한 칸에서 둘째 줄로.
+// 셸 수**. 조용한 행의 오른쪽 메타가 그 자리다(`sidebar-active-band` S4 — 판 05의 어휘).
 //
 // **이 경로는 어느 층도 통째로 안 지나간다.** `Sidebar.test.tsx`는 값(`runningAgentsOf`)과
 // 배선(구독 리터럴)을 따로 못박고 `shell-meta.test.tsx`는 그림을 정적 마크업으로 보는데,
 // 셋을 잇는 **한 바퀴** —— 이벤트가 스토어에 앉고 그 행이 다시 그려져 로고가 실제로 서는가 ——
 // 는 아무도 안 돈다. 탭 줄 쪽은 `terminal-tabs.spec.ts`가 그 바퀴를 돈다.
 //
-// **제목 폭도 여기서 잰다 — 그리고 이 판이 그것을 고친다**(스토리 27). 판 05에서는 메타가
-// 제목과 같은 격자 행에 있어 셸이 붙고 떨어질 때마다 제목이 끊기는 자리가 좌우로 뛰었다
-// (첫 셸이 서면 27.91px, 무리가 둘이 되면 다시 28.90px). 메타가 둘째 줄로 내려가면서 **첫
-// 줄이 셸을 아예 모르게 됐다** — 그 뜀이 0이 되는 것을 아래가 잰다.
-test("도는 명령의 로고가 work 행 둘째 줄에 서고, 제목은 안 움직인다", async ({ page }) => {
+// **무리가 늘어도 행은 한 줄이다.** 메타는 2열 한 칸에 서고 폭만 는다 — 그만큼 제목이 끊기는
+// 자리가 왼쪽으로 물러나는 것은 사람이 고른 대가다(S34: 「아이콘 생기면 그때 가변되는게
+// 맞아」). 그 물러남이 **겹침**이 되지 않는 것을 잰다: 제목 상자는 메타 앞에서 끝난다.
+test("도는 명령의 로고가 work 행 오른쪽 메타에 서고, 무리가 늘어도 행은 한 줄이다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
@@ -353,9 +380,6 @@ test("도는 명령의 로고가 work 행 둘째 줄에 서고, 제목은 안 �
   // **먼저 로고가 없음을 센다.** 이것이 없으면 아래 단언이 「원래 있던 것」으로도 초록이 된다.
   await expect(shells.locator('[role="img"]')).toHaveCount(0);
 
-  const title = page.getByRole("button", { name: plainWork.title, exact: true });
-  const 한무리 = (await title.boundingBox())!.width;
-
   await markRunning(page, "claude");
 
   // 그 work에서 claude가 돈다는 사실이 사이드바에 선다 —— 화면이 터미널이 아니어도 보이는
@@ -363,84 +387,131 @@ test("도는 명령의 로고가 work 행 둘째 줄에 서고, 제목은 안 �
   await expect(shells.getByRole("img", { name: "claude" })).toHaveCount(1);
 
   // **그 셸은 한 번만 세어진다**(결정 3). 셸이 하나이고 거기서 claude가 도니 무리는 하나이고,
-  // 한때 그 옆에 함께 서던 `⌨1`이 없다 —— 그 두 `1`은 같은 셸이었다. 자리가 둘째 줄로
-  // 옮겨 와도 그 불변조건은 그대로다.
+  // 한때 그 옆에 함께 서던 `⌨1`이 없다 —— 그 두 `1`은 같은 셸이었다.
   await expect(shells).toHaveText("1");
 
-  // **무리가 둘이 되어도 제목이 안 움직인다 — 이 판이 산 것이 이 두 줄이다**(스토리 27).
-  // 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 되어 둘째 줄이 넓어지는데, 첫 줄은 그 값을
-  // 아예 모른다. 메타를 다시 2열로 올리면 여기가 빨개진다(그때 실측 194.09 → 165.19px).
+  // 셸을 하나 더 열면 무리가 둘(`✳1 ⌨1`)이 된다.
   await page.locator('[data-tab="new"]').click();
-  await expect(shells.locator("span.tabular-nums")).toHaveText(["1", "1"]);
-  expect((await title.boundingBox())!.width).toBe(한무리);
+  await expect(shells.getByText("1", { exact: true })).toHaveCount(2);
 
-  // **행 높이도 그대로다.** 둘째 줄이 길어지는 것이지 줄이 늘어나는 것이 아니다 —
-  // 트랙이 26px + 29px로 못박혀 있고, 넘치는 글자는 그 안에서 잘린다.
-  expect((await title.locator("xpath=..").boundingBox())!.height).toBe(55);
+  // **행 높이는 그대로 32px이다** — 메타는 옆으로 자라지 줄을 늘리지 않는다.
+  const row = workRow(page, plainWork.slug);
+  expect((await row.boundingBox())!.height).toBe(32);
+  // **제목 상자는 메타 앞에서 끝난다.** 메타가 격자 밖에 서거나 칸이 그 폭을 모르면 무리 둘이
+  // 제목 끝 글자 위에 얹힌다 — 핀을 격자 밖에 세웠던 날 실물에서 난 그 겹침이다(핀 주석).
+  const 제목 = (await 행버튼(page, plainWork.title).locator("[data-title]").boundingBox())!;
+  const 메타 = (await 오른쪽메타(page, plainWork.slug).boundingBox())!;
+  expect(제목.x + 제목.width).toBeLessThanOrEqual(메타.x + 0.5);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 이 판 결정 4 — **모든 행이 두 줄이고, 높이가 같다.** 판 05 결정 0이 뒤집혔다: 그 판은
-// 「셸이 있으면 둘째 줄이 서서 54px」이던 것을 걷어 전부 32px 한 줄로 만들었는데, 그 답이 산
-// 것은 「높이가 신호다」를 죽인 것이고 잃은 것은 **둘째 줄이 실을 수 있던 새 사실**이었다.
-// 이 판은 둘을 다 갖는다 — 줄은 둘이되 **모든 행이** 둘이라 높이는 여전히 아무 말도 안 한다.
+// **모든 행이 한 줄 32px이다**(`sidebar-active-band` 결정 14 · 스토리 26 — 판 05의 모양으로
+// 돌아간다). 두 줄(55px) 열여덟 행은 990px로 한 줄의 1.7배였다. 둘째 줄이 싣던 셸의 마지막
+// 말은 호버 카드와 행 버튼의 설명으로 옮겨 갔고(05), 종류·수와 신호는 오른쪽 메타로 올라왔다.
 //
-// **치수는 판 05가 눈으로 고른 것이다**(목업 `행-신호-세-안.html`의 flat): 안쪽 위 8 · 아래 7 ·
-// 좌 9 · 우 10, 줄 높이 18·18, 줄 간격 4 → 55px. 그 합을 **수로** 못박는 것은, 「둘이 같다」만
-// 재면 두 행이 나란히 한 줄로 되돌아가도 초록이 되기 때문이다.
-//
-// **둘째 줄이 무엇을 싣는지도 여기서 본다.** 셸이 있으면 종류·수, 없으면 프로젝트 이름 —
-// 그 갈림은 마크업 seam이 이미 보지만, **진짜 스토어에서 온 셸 수로** 그 갈래가 갈리는지는
-// 이 층에서만 난다(`ensureShell`이 이 화면에서만 셸을 세운다).
-test("모든 행이 두 줄이고 높이가 같다 — 둘째 줄이 셸이나 프로젝트를 싣는다", async ({
-  page,
-}) => {
+// **셸이 있는 행과 없는 행을 함께 잰다.** 둘이 여기서 갈리면 높이가 다시 신호가 된다 — 판 05
+// 결정 0이 걷은 병이다. 수로(32) 못박는 것은 「둘이 같다」만 재면 둘 다 두 줄이어도 초록이라서다.
+test("모든 행이 한 줄 32px이고, 둘째 줄이 없다", async ({ page }) => {
   await installFixtureBackend(page);
-  // 이 화면에 들어와야 셸이 하나 생긴다(`ensureShell`) — `/projects`에는 셸이 없어 종류·수가
+  // 이 화면에 들어와야 셸이 하나 생긴다(`ensureShell`) — `/projects`에는 셸이 없어 메타가
   // 아예 안 선다. 사이드바는 어느 화면에나 같은 것이므로 보는 자리는 그대로다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
-  const rowOf = (title: string) =>
-    page.getByRole("button", { name: title, exact: true }).locator("xpath=..");
-  const shells = page.locator(`[data-shells="${plainWork.slug}"]`);
-  await expect(shells).toHaveCount(1);
-  // 셸이 0개인 행에는 종류·수가 안 선다 — 「없음」은 숫자로 말하지 않는다. **둘째 줄 자체는
-  // 선다**(아래) — 그것이 이 판과 판 05의 갈림이다.
-  await expect(page.locator(`[data-shells="${pinnedWork.slug}"]`)).toHaveCount(0);
+  // 앵커: 행이 섰다 — 셸이 있는 행(메타가 선다)과 없는 행 둘 다.
+  await expect(오른쪽메타(page, plainWork.slug)).toHaveText("1");
+  await expect(workRow(page, pinnedWork.slug)).toBeVisible();
 
-  // **모든 work 행이 같은 높이다.** 셸이 있는 행과 없는 행이 여기서 갈리면 높이가 다시
-  // 신호가 된다 — 판 05가 32px 한 줄로 죽였던 그 병이다.
-  const 셸행 = (await rowOf(plainWork.title).boundingBox())!.height;
-  const 빈행 = (await rowOf(pinnedWork.title).boundingBox())!.height;
-  expect(셸행).toBe(빈행);
-  expect(셸행).toBe(55);
+  const 높이들 = await page
+    .locator("[data-work-row]")
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  expect(높이들).toHaveLength(WORKS.length);
+  for (const 높이 of 높이들) expect(높이).toBe(32);
 
-  // **둘째 줄은 두 행에 다 선다.** 셸이 있는 행은 종류·수(무리 하나이므로 `1`), 없는 행은
-  // 프로젝트 이름이다(fixture: `billing` 하나).
-  const 둘째줄 = (slug: string) => page.locator(`[data-subrow="${slug}"]`);
-  await expect(둘째줄(plainWork.slug)).toHaveCount(1);
-  await expect(둘째줄(pinnedWork.slug)).toHaveCount(1);
-  await expect(둘째줄(plainWork.slug)).toHaveText("1");
-  await expect(둘째줄(pinnedWork.slug)).toHaveText(pinnedWork.projects.join(" · "));
-
-  // **둘째 줄은 제목의 왼쪽 끝과 x가 맞는다** — 레인 폭 + 간격(14 + 9)만큼 들여썼기
-  // 때문이다. 들여쓰기를 잃으면 둘째 줄이 레인 아래로 파고들어 두 줄이 계단처럼 읽힌다.
-  const x = async (target: Locator) => Math.round((await target.boundingBox())!.x);
-  // 재는 것은 상자가 아니라 **그 안에 실제로 서는 것**이다 — 둘째 줄 상자는 두 칸을 다
-  // 쓰므로(핀 아래를 지나간다) 왼쪽 끝이 행의 왼쪽 끝이고, 들여쓰기는 그 안쪽 padding이다.
-  expect(await x(둘째줄(plainWork.slug).locator("> *").first())).toBe(
-    await x(page.getByRole("button", { name: plainWork.title, exact: true }).locator("[data-title]")),
-  );
+  // **둘째 줄이 없다.**
+  await expect(page.locator("[data-subrow]")).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **둘째 줄 글자가 사이드바 배경에서 대비 4.5를 넘는다**(이 판 결정 5). 이 판이 시작된
+// **오른쪽 메타의 다섯 갈래**(`sidebar-active-band` S4). 2열에 서는 것이 행의 화면값으로 갈린다:
+//
+// | 행의 화면값 | 오른쪽 메타 |
+// |---|---|
+// | 부름(기다림·안 본 완료) | 부른 셸의 마크 + 경과. 마크가 없는 셸이면 경과만 |
+// | 도는 중 | 도는 셸의 마크. 경과는 없다 — 스피너가 이미 「지금 돈다」를 말한다 |
+// | 조용함, 셸 있음 | 종류·수(`ShellMeta`) |
+// | 셸 없음 | 비어 있다 — 프로젝트는 호버 카드가 싣는다 |
+//
+// **셸 하나를 차례로 갈아 끼우며 잰다.** 벨이 먼저인 것은 권위 규칙 때문이다: 훅이 한 번
+// 말한 셸은 그 뒤 벨을 안 듣는다(`applySignal`). 벨이 세운 초록 위로 훅은 들어온다.
+//
+// **숫자의 오른쪽 끝이 구획 머리의 개수와 같은 x다.** 한 컬럼에 세로로 붙어 서는 숫자들이 다른
+// 자리에서 끝나면 다른 무게로 읽힌다 — nav `Terminal`이 지키는 그 계약(`SidebarItem` 주석)에
+// work 행이 한 줄로 돌아오면서 다시 든다.
+test("오른쪽 메타의 다섯 갈래가 각각 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  const 메타 = 오른쪽메타(page, plainWork.slug);
+  const 마크들 = 메타.getByRole("img");
+  const 경과 = 메타.locator("[data-elapsed]");
+  const 종류수 = page.locator(`[data-shells="${plainWork.slug}"]`);
+  const lane = 레인(page, plainWork.slug);
+
+  // **셸 없음 — 비어 있다.** 앵커는 그 행이 섰다는 것이다.
+  await expect(workRow(page, pinnedWork.slug)).toBeVisible();
+  await expect(오른쪽메타(page, pinnedWork.slug)).toHaveCount(0);
+
+  // **조용함, 셸 있음 — 종류·수.** 무리 하나(`⌨1`)이고 마크도 경과도 없다.
+  await expect(종류수).toHaveText("1");
+  await expect(마크들).toHaveCount(0);
+  await expect(경과).toHaveCount(0);
+  const 오른끝 = async (target: Locator) => {
+    const box = (await target.boundingBox())!;
+    return Math.round(box.x + box.width);
+  };
+  const 머리개수 = page
+    .getByRole("button", { name: MAIN_HEADER, exact: true })
+    .getByText(String(WORKS.filter((work) => !work.pinned).length), { exact: true });
+  expect(await 오른끝(종류수.getByText("1", { exact: true }))).toBe(await 오른끝(머리개수));
+
+  // **마크 없는 셸의 부름 — 경과만.** 보고 있는 셸에 온 완료는 그 순간 「봤다」라 문서로
+  // 비켜선다. 아무것도 안 도는 칸의 벨은 초록을 세우고, 누가 불렀는지는 모른다.
+  await 셸에서눈을뗀다(page);
+  await writeShell(page, BEL);
+  await expect(lane.locator('[data-signal="done"]')).toHaveCount(1);
+  await expect(경과).toHaveCount(1);
+  await expect(마크들).toHaveCount(0);
+  // 조용함의 종류·수는 물러난다 — 한 칸에 둘이 서지 않는다.
+  await expect(종류수).toHaveCount(0);
+
+  // **부름 — 부른 셸의 마크 + 경과.** 띠 줄과 같은 어휘다.
+  await 기다리게한다(page, "커밋할까요?", 125_000);
+  await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
+  await expect(마크들).toHaveCount(1);
+  await expect(메타.getByRole("img", { name: "claude" })).toHaveCount(1);
+  await expect(경과).toHaveText("2m");
+  // **말은 안 싣는다** — 셸의 마지막 말은 호버 카드와 행 버튼의 설명이 든다(결정 14).
+  await expect(workRow(page, plainWork.slug)).not.toContainText("커밋할까요?");
+
+  // **도는 중 — 마크만.**
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
+  await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
+  await expect(메타.getByRole("img", { name: "claude" })).toHaveCount(1);
+  await expect(경과).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **오른쪽 메타의 글리프가 사이드바 배경에서 대비 4.5를 넘는다.** 두 줄 행을 연 판이 시작된
 // 사람의 말이 「지금 활성화된 셸을 찾는 게 생각보다 어렵다. 이 한 줄이 가독성이 안 좋다」였고,
 // 그 한 줄이 판 05의 오른쪽 메타(`tertiary`)다 — 사이드바 배경에서 대비가 **3.0**이라 제목
-// 꼬리처럼 읽혔다. **자리를 옮기는 것은 그 말에 대한 답이 아니다.** 그래서 바닥을
-// `muted-foreground`로 올렸고, 이 검사가 그 수를 **계산해서** 잰다.
+// 꼬리처럼 읽혔다. 행이 한 줄로 돌아와 메타가 **그 자리로** 돌아왔으므로(`sidebar-active-band`
+// 결정 14), 그때 올린 바닥(`muted-foreground`)이 그대로인지를 이 검사가 **계산해서** 잰다.
+// 부차 정보인 숫자와 경과는 한 단 낮은 `tertiary`여도 된다(그 판의 구현 결정 4) — 재는 것은
+// 「누가」를 말하는 글리프다.
 //
 // **계산이 이 층에 있는 이유**: 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는
 // 대비를 못 잰다. 그리고 브라우저는 `oklch`를 **그대로 돌려준다**(WebKit 실측:
@@ -487,66 +558,62 @@ const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
     배경.evaluate((el) => getComputedStyle(el).backgroundColor),
   ]).then(([앞, 뒤]) => 색대비(page, 앞, 뒤));
 
-/** 다크·라이트 팔레트를 손으로 갈아 끼운다 — 앱에 아직 켜는 손잡이가 없다. */
+/**
+ * 다크·라이트 팔레트를 손으로 갈아 끼운다 — 앱에 아직 켜는 손잡이가 없다.
+ *
+ * **갈아 끼운 뒤 색의 전환이 끝날 때까지 기다린다.** 신호의 마크는 제 색을 안 고르고 행의
+ * 글자색을 물려받는데(`currentColor`), 행은 `transition-colors`라 팔레트가 바뀐 직후 그 색이
+ * 150ms 동안 **라이트와 다크 사이의 중간값**이다 — 그 순간을 재면 다크 배경 위의 라이트 글자색을
+ * 재게 된다(실측 1.17). 사람 눈에는 전환이 끝난 색이 닿으므로 그것을 잰다. 끝이 있는 것만
+ * 기다린다 — 도는 스피너는 끝나지 않는다.
+ */
 const 팔레트 = (page: Page, dark: boolean) =>
-  page.evaluate(
-    (dark) => document.documentElement.classList.toggle("dark", dark),
-    dark,
-  );
+  page.evaluate(async (dark) => {
+    document.documentElement.classList.toggle("dark", dark);
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((one) => one.effect?.getComputedTiming().iterations !== Infinity)
+        .map((one) => one.finished),
+    );
+  }, dark);
 
-test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 — 세 갈래, 라이트·다크", async ({
+test("오른쪽 메타의 글리프는 사이드바 배경에서 대비 4.5를 넘는다 — 종류·수와 신호의 마크, 라이트·다크", async ({
   page,
 }) => {
   await installFixtureBackend(page);
-  // **셸이 있는 행과 없는 행을 함께 본다.** 둘째 줄은 갈래가 셋이고(종류·수 / 프로젝트
-  // 이름 / 셸이 스스로 한 말) 색을 정하는 자리도 여럿이다 — `WorkSectionList.tsx`의 상자가
-  // 바닥을 깔고, `ShellMeta`와 `SignalLine` 안쪽이 그 위에서 자기 색을 다시 고른다.
-  // 프로젝트 갈래만 재면 **가장 자주 서는 갈래**가 통째로 안 재어진 채 남는다: 셸은 열려
-  // 있는데 우리가 아는 것은 안 도는 상태가 이 목록의 기본값이고(`shell-meta.tsx`), 그 행의
-  // 둘째 줄에 서는 것은 `⌨ N`뿐이다. 셸이 서는 것은 work 화면뿐이라(`ensureShell`) 여기로
-  // 들어온다.
-  //
-  // **셋째 갈래가 이 판에서 생겼다**(#203). 스토리 24가 이 자리의 수용 기준이고
-  // (「둘째 줄 글자가 지금의 오른쪽 메타보다 또렷하길 원한다 — 자리만 옮기고 읽기 어려움은
-  // 그대로인 일이 없다」), 그 갈래를 그물 밖에 두면 이 판이 고치려던 3.0짜리 한 줄을 이 판이
-  // 다시 만들어도 아무 층도 말하지 않는다. 부르는 말과 **도는 중의 말**을 따로 재는 것은
-  // 색을 고르는 가지가 그 둘로 갈리기 때문이다(`shell-signal.tsx`의 `TONE`).
+  // **갈래마다 색을 정하는 자리가 다르다.** 종류·수는 `ShellMeta`의 무리가 제 색을 다시 고르고,
+  // 신호의 마크는 `currentColor`라 행의 글자색을 그대로 받는다(판 04 결정 15 — 상태색으로 안
+  // 물든다). 종류·수만 재면 **부르는 행**의 마크가 그물 밖에 남고, 그 행이 이 목록에서 가장
+  // 먼저 읽혀야 하는 행이다. 셸이 서는 것은 work 화면뿐이라(`ensureShell`) 여기로 들어온다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
 
   // work 화면은 aside가 둘이다(사이드바 · 작업 패널) — 구획 헤더를 든 쪽이 사이드바다.
   const aside = page
     .locator("aside")
     .filter({ has: page.getByRole("button", { name: MAIN_HEADER, exact: true }) });
-  const 프로젝트 = page.locator(`[data-subrow="${pinnedWork.slug}"]`);
-  // 먼저 잴 것이 실제로 서 있는가 — 빈 줄의 색을 재도 수는 나온다.
-  await expect(프로젝트).toHaveText(pinnedWork.projects.join(" · "));
-  // 셸 갈래에서 **글리프를 실제로 칠하는 자리**는 무리 상자다(바깥 상자의 색을 무리가 다시
+  // 종류·수에서 **글리프를 실제로 칠하는 자리**는 무리 상자다(바깥 상자의 색을 무리가 다시
   // 덮는다). 무리가 하나임을 먼저 세어 두면 구조가 바뀌는 날 이 검사가 엉뚱한 상자를
   // 재면서 조용히 초록이 되지 않는다.
   const 무리 = page.locator(`[data-shells="${plainWork.slug}"] > span > span`);
   await expect(무리).toHaveCount(1);
-  const 말 = page.locator(`[data-subrow="${plainWork.slug}"] [data-fade]`);
+  const 마크 = 오른쪽메타(page, plainWork.slug).getByRole("img", { name: "claude" });
 
   const 배경색 = () => aside.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const 조용한둘 = async () => ({
-    프로젝트: await 대비를잰다(page, 프로젝트, aside),
-    무리: await 대비를잰다(page, 무리, aside),
-  });
-  /** 부르는 말과 도는 중의 말을 **차례로** 세워 각각 잰다. 색을 고르는 가지가 둘이다. */
-  const 말둘 = async (이름: string) => {
+  /** 부르는 행과 도는 행의 마크를 **차례로** 세워 각각 잰다 — 신호가 행의 글자 무게를 바꾸는 날 둘이 갈린다. */
+  const 마크둘 = async (이름: string) => {
     await 기다리게한다(page, "테스트 셋 통과");
-    await expect(말).toHaveText("테스트 셋 통과");
-    expect(await 대비를잰다(page, 말, aside), `${이름} · 부르는 말`).toBeGreaterThanOrEqual(4.5);
-    // 프롬프트를 보내면 도는 중이 되고 직전 말이 남는다(전이 표의 `start`).
+    await expect(마크).toHaveCount(1);
+    expect(await 대비를잰다(page, 마크, aside), `${이름} · 부르는 마크`).toBeGreaterThanOrEqual(4.5);
     await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
     await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(1);
-    expect(await 대비를잰다(page, 말, aside), `${이름} · 도는 중의 말`).toBeGreaterThanOrEqual(4.5);
+    await expect(마크).toHaveCount(1);
+    expect(await 대비를잰다(page, 마크, aside), `${이름} · 도는 마크`).toBeGreaterThanOrEqual(4.5);
   };
 
   const 라이트 = await 배경색();
-  for (const [자리, 수] of Object.entries(await 조용한둘())) {
-    expect(수, `라이트 · ${자리}`).toBeGreaterThanOrEqual(4.5);
-  }
+  expect(await 대비를잰다(page, 무리, aside), "라이트 · 무리").toBeGreaterThanOrEqual(4.5);
 
   // 다크 팔레트. 앱에 아직 켜는 손잡이가 없어 클래스를 손으로 붙인다 — `index.css`의
   // `.dark` 블록이 곧 그 팔레트의 정본이다.
@@ -556,14 +623,12 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
   // **조용히 초록**이 된다 — 이 저장소가 금지하는 fail-open이고, 손잡이가 생기는 날
   // 「이 줄이 그 팔레트를 이미 지키고 있었다」는 말이 그때 처음 거짓으로 드러난다.
   expect(await 배경색()).not.toBe(라이트);
-  for (const [자리, 수] of Object.entries(await 조용한둘())) {
-    expect(수, `다크 · ${자리}`).toBeGreaterThanOrEqual(4.5);
-  }
+  expect(await 대비를잰다(page, 무리, aside), "다크 · 무리").toBeGreaterThanOrEqual(4.5);
 
-  // **셋째 갈래는 맨 뒤다** — 셸이 말하기 시작하면 종류·수 갈래가 그 행에서 물러난다.
-  await 말둘("다크");
+  // **신호의 마크는 맨 뒤다** — 셸이 부르기 시작하면 종류·수가 그 행에서 물러난다.
+  await 마크둘("다크");
   await 팔레트(page, false);
-  await 말둘("라이트");
+  await 마크둘("라이트");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -573,7 +638,7 @@ test("둘째 줄 글자는 사이드바 배경에서 대비 4.5를 넘는다 —
 // (`shell-attention.spec.ts`) 여기서 보는 것은 **그 값이 행에 그려지는가**다.
 //
 // 이 층이 유일한 그물인 것 셋: 진짜 스토어를 한 바퀴 도는 것(이벤트 → 셀렉터 → 행), 색이
-// 실제로 칠해지는 것, 링이 실제로 도는 것. 마크업 seam은 「클래스가 붙었다」까지만 본다.
+// 실제로 칠해지는 것, 스피너가 실제로 도는 것. 마크업 seam은 「클래스가 붙었다」까지만 본다.
 
 /**
  * 본문을 문서로 옮겨 **그 셸을 안 보는 상태로** 만든다. 셸은 그대로 살아 있고 칸도 켜진 채다.
@@ -597,13 +662,13 @@ const 기다리게한다 = (page: Page, message: string, 지난ms = 0) =>
     payload: { last_assistant_message: message },
   });
 
-test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async ({ page }) => {
+test("부르는 행은 레인·오른쪽 메타·이름으로 함께 말한다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
 
   const lane = 레인(page, plainWork.slug);
-  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  const 메타 = 오른쪽메타(page, plainWork.slug);
   // **먼저 없음을 센다.** 이것이 없으면 아래 단언들이 「원래 그렇던 것」으로도 초록이 된다 —
   // 그리고 이 줄이 곧 「값이 없으면 work 상태 아이콘이 되돌아온다」의 실물 확인이다(스토리 19).
   await expect(lane.locator("svg")).toHaveCount(1);
@@ -617,69 +682,53 @@ test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
   await expect(lane.locator("svg")).toHaveCount(0);
 
-  // **둘째 줄이 셸의 마지막 말과 경과를 싣는다**(결정 4·5). 말은 `last_assistant_message`의
-  // **첫 줄**이고, 어댑터가 그것을 접었다는 사실까지 이 한 줄이 딛는다.
-  await expect(subrow).toHaveText("테스트 셋 통과2m");
-  // 마크는 그 자리에 남는다 — 「누구」를 말하는 자리다(판 04 결정 15).
-  await expect(subrow.getByRole("img", { name: "claude" })).toHaveCount(1);
+  // **오른쪽 메타가 부른 셸의 마크와 경과를 싣는다**(S4 — 띠 줄과 같은 어휘). 마크는
+  // 「누구」를 말하는 자리다(판 04 결정 15). **말은 안 싣는다** — 셸의 마지막 말은 호버
+  // 카드와 행 버튼의 설명이 든다(결정 14, 아래 호버 카드 검사).
+  await expect(메타).toHaveText("2m");
+  await expect(메타.getByRole("img", { name: "claude" })).toHaveCount(1);
+  await expect(workRow(page, plainWork.slug)).not.toContainText("테스트 셋 통과");
 
-  // **세 조각이 서로 붙지 않는다**(목업 `행-신호-세-안.html`의 `.row2 .l2 { gap: 6px }`).
-  // 마크 글리프는 `viewBox 0 0 16 16`을 거의 꽉 채우므로 간격이 0이면 로고가 첫 글자에
-  // 그대로 닿고, `통과2m`처럼 말과 경과가 한 낱말로 읽힌다 — 바로 위 띠는 **같은 어휘**를
-  // 9px 간격으로 그리므로, 여기만 0이면 같은 말이 두 자리에서 다른 리듬으로 선다.
+  // **두 조각이 서로 붙지 않는다**(캔버스 보드 B의 `.wm { gap: 6px }`). 마크 글리프는
+  // `viewBox 0 0 16 16`을 거의 꽉 채우므로 간격이 0이면 로고가 경과의 첫 글자에 그대로 닿는다.
   const 상자 = async (one: Locator) => (await one.boundingBox())!;
-  const 마크 = await 상자(subrow.getByRole("img", { name: "claude" }));
-  const 말 = await 상자(subrow.locator("[data-fade]"));
-  const 경과 = await 상자(subrow.locator("[data-elapsed]"));
-  expect(말.x - (마크.x + 마크.width)).toBeGreaterThanOrEqual(SUBROW_GAP);
-  expect(경과.x - (말.x + 말.width)).toBeGreaterThanOrEqual(SUBROW_GAP);
-
-  // **말 상자가 남는 폭까지 자란다 — 페이드가 빈 자리에 떨어지게.** 마스크는 상시라
-  // (`index.css`의 `[data-fade]`, 결정 12) 상자가 글자 폭에 딱 붙어 앉으면 오른쪽 끝 12px이
-  // **실제 글자** 위에 떨어져 끝 한 글자가 늘 유령이 된다 — 넘치지도 않는 짧은 말이 잘린
-  // 것처럼 읽히고, 이 판을 시작한 말이 하필 「이 한 줄이 가독성이 안 좋다」였다. 띠와 목업은
-  // 같은 상자를 남는 폭까지 늘려 그 램프가 여백에 떨어지게 한다.
-  //
-  // 재는 것은 `scrollWidth`가 아니라 **글자 자체의 폭**이다 — 안 넘치는 상자는 `scrollWidth`가
-  // `clientWidth`와 같아져 「얼마나 남았나」를 못 말한다.
-  const 여유 = await subrow.locator("[data-fade]").evaluate((el) => {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    return el.getBoundingClientRect().width - range.getBoundingClientRect().width;
-  });
-  expect(여유).toBeGreaterThanOrEqual(TITLE_FADE);
+  const 마크 = await 상자(메타.getByRole("img", { name: "claude" }));
+  const 경과 = await 상자(메타.locator("[data-elapsed]"));
+  expect(경과.x - (마크.x + 마크.width)).toBeGreaterThanOrEqual(META_GAP);
 
   // **이름에 상태가 붙는다**(스토리 33) — 점은 `aria-hidden`이라 이 이름이 유일한 말이다.
   //
-  // **목록 안으로 좁혀 집는다.** 「확인할 것」 띠의 줄이 **같은 이름**을 쓰기 때문이다
+  // **목록 안으로 좁혀 집는다.** 알림 띠의 줄이 **같은 이름**을 쓰기 때문이다
   // (#204, 결정 8) — 부르는 셸이 있으면 그 줄도 함께 서므로 화면 전체에서 세면 둘이다.
   // 좁히지 않으면 이 줄이 「행에 이름이 붙었다」가 아니라 「어딘가에 하나 있다」를 재게 된다.
-  await expect(
-    page
-      .locator("[data-worklist]")
-      .getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true }),
-  ).toHaveCount(1);
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveCount(1);
 
-  // **hover에 핀이 떠도 레인과 둘째 줄이 남는다**(판 05 결정 6 뒤집음). 아래 hover 검사가
-  // 같은 것을 조용한 행에서 재는데, **띄우려는 것이 실제로 서 있을 때** 한 번 더 봐야 뜻이
-  // 있다 — 이 판이 무의미해지는 자리가 바로 여기다.
-  await subrow.locator("xpath=..").hover();
+  // **hover하면 핀이 메타 자리의 끝에 서고 메타는 투명해진다**(판 05 결정 6). 레인은 그대로다 —
+  // 신호를 말하는 자리는 레인이고, 메타가 잃는 것은 커서가 이미 가 있는 행 하나의 마크·경과다.
+  // 아래 hover 검사가 같은 것을 조용한 행에서 재는데, **신호가 실제로 서 있을 때** 한 번 더 본다.
+  await workRow(page, plainWork.slug).hover();
   await expect(page.getByRole("button", { name: `${plainWork.title} 고정` })).toHaveCSS(
     "opacity",
     "1",
   );
+  await expect(메타).toHaveCSS("opacity", "0");
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
   await expect(lane).toHaveCSS("opacity", "1");
-  await expect(subrow).toHaveCSS("opacity", "1");
 
-  // **좁혀도 레인이 먼저 죽지 않는다**(스토리 34). 아래 드래그 검사가 조용한 행에서 같은
-  // 것을 재지만, 그때 레인에 선 것은 14px 아이콘이다 — 8px 점은 12px만 줄어도 사라지므로
-  // 부르는 행에서 한 번 더 본다.
-  const 앞 = { 레인: (await lane.boundingBox())!.width, 줄: (await subrow.boundingBox())!.width };
+  // **좁혀도 레인과 메타가 먼저 죽지 않는다**(스토리 34). 아래 드래그 검사가
+  // 조용한 행에서 같은 것을 재지만, 그때 레인에 선 것은 14px 아이콘이다 — 8px 점은 12px만
+  // 줄어도 사라지므로 부르는 행에서 한 번 더 본다. 줄어드는 것은 제목이다.
+  const 제목 = 행버튼(page, `${plainWork.title} — 나를 기다림`).locator("[data-title]");
+  const 앞 = {
+    레인: (await lane.boundingBox())!.width,
+    메타: (await 메타.boundingBox())!.width,
+    제목: (await 제목.boundingBox())!.width,
+  };
   await 좁힌다(page, 40);
-  expect((await subrow.boundingBox())!.width).toBeLessThan(앞.줄);
+  expect((await 제목.boundingBox())!.width).toBeLessThan(앞.제목);
   expect((await lane.boundingBox())!.width).toBe(앞.레인);
-  await expect(subrow).toHaveText("테스트 셋 통과2m");
+  expect((await 메타.boundingBox())!.width).toBe(앞.메타);
+  await expect(메타).toHaveText("2m");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -768,23 +817,25 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **초록 행의 둘째 줄도 마크·말·경과 셋을 낸다**(티켓 #203 · 구현-스펙의 둘째 줄 규칙).
+// **초록 행도 오른쪽 메타에 마크와 경과를 낸다**(티켓 #203 · `sidebar-active-band` S4).
 //
 // **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록을 만드는 길은 스펙 전이
 // 표에 둘뿐이고(세션 종료 · 벨) **둘 다 그 순간 그 PTY에 도는 에이전트가 없다** — 세션이
 // 끝났다는 것은 프로세스가 나갔다는 뜻이고, 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
-// 그래서 마크를 「지금 도는 것」에서만 뽑으면 초록 행은 **늘** 말과 경과 둘뿐이 되는데,
+// 그래서 마크를 「지금 도는 것」에서만 뽑으면 초록 행은 **늘** 경과뿐이 되는데,
 // 도는 것을 손으로 넣어 주는 검사는 그 사라짐을 한 번도 못 본다(마크업 seam이 그 모양이다).
 // 목업의 초록 예시가 바로 `codex` 셸의 「PR #174 열었다」라 정본과 화면이 갈리는 자리다.
-test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어도", async ({ page }) => {
+//
+// 말은 행이 아니라 **행 버튼의 설명**이 든다(결정 14) — 같은 셸의 것인지를 여기서 함께 본다.
+test("초록 행도 마크와 경과를 낸다 — 도는 것이 없어도", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await 셸에서눈을뗀다(page);
 
-  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  const 메타 = 오른쪽메타(page, plainWork.slug);
   // 턴이 끝나 말이 남고, 그 뒤 세션이 끝난다 — 초록을 만드는 것은 **세션 종료**다.
-  // 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다(둘째 줄의 셋째 조각).
+  // 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다.
   await markAttention(page, {
     agent: "codex",
     event: "Stop",
@@ -799,72 +850,138 @@ test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어�
   });
 
   await expect(레인(page, plainWork.slug).locator('[data-signal="done"]')).toHaveCount(1);
-  await expect(subrow).toHaveText("PR #174 열었다2m");
+  await expect(메타).toHaveText("2m");
   // **이 한 줄이 이 검사의 이유다.** 도는 것이 없으므로 마크의 재료는 「그 상태를 말한
   // 에이전트」뿐이고, 그것을 상태가 안 들고 다니면 여기서 0이 된다.
-  await expect(subrow.getByRole("img", { name: "codex" })).toHaveCount(1);
+  await expect(메타.getByRole("img", { name: "codex" })).toHaveCount(1);
+  await expect(행버튼(page, `${plainWork.title} — 확인할 것`)).toHaveAccessibleDescription(
+    "PR #174 열었다",
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **링은 CSS로 돌고, 움직임을 끈 사람에게는 정지한 완전한 링이 선다**(스토리 30).
+// **도는 레인은 Spinner다 — 행 글자색으로 1초에 한 바퀴 매끄럽게 돌고, 움직임을 끈 사람에게는
+// 빈틈 없는 원이 선다**(`sidebar-active-band` 결정 4·5 · 스토리 40~43).
 //
-// **이 층이 유일한 그물이다.** 마크업 seam은 클래스 이름까지만 보고, 「자바스크립트 타이머가
-// 없다」는 소스 스캔은 **안 도는 링**도 초록으로 넘긴다 — 실제로 도는지와, 움직임을 껐을 때
-// 머리 색이 원주와 같아지는지는 계산된 스타일로만 난다.
-test("링은 CSS로 돌고, 움직임을 끄면 멈춘 완전한 링이 된다", async ({ page }) => {
+// **이 층이 유일한 그물이다.** 마크업 seam은 표식까지만 보고, 「자바스크립트 타이머가 없다」는
+// 소스 스캔은 **안 도는 스피너**도 초록으로 넘긴다 — 실제로 도는지, 무슨 색인지, 움직임을 껐을
+// 때 무엇이 서는지는 계산된 스타일로만 난다.
+//
+// **재는 자리는 겉 상자가 아니라 안쪽 호다.** 표식(`data-signal`)은 겉 상자에 있지만 도는 것은
+// 그 안의 호이고(`components/ui/spinner.tsx`), 겉 상자의 `animationName`은 늘 `none`이다 — 겉을
+// 재면 「안 돈다」와 「움직임을 껐다」가 같은 값이 된다.
+test("도는 레인은 행 글자색 스피너로 1초에 한 바퀴 매끄럽게 돌고, 움직임을 끄면 빈틈 없는 원으로 선다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
 
   // 프롬프트를 보낸 순간이 「도는 중」이다(스펙 전이 표의 `start`).
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
-  const ring = 레인(page, plainWork.slug).locator('[data-signal="working"]');
-  await expect(ring).toHaveCount(1);
+  const 스피너 = 레인(page, plainWork.slug).locator('[data-signal="working"]');
+  await expect(스피너).toHaveCount(1);
 
-  const 재본다 = () =>
-    ring.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return {
-        name: style.animationName,
-        timing: style.animationTimingFunction,
-        duration: style.animationDuration,
-        머리: style.borderTopColor,
-        원주: style.borderRightColor,
-      };
-    });
+  // **스크린리더에는 따로 안 읽힌다**(스토리 43) — 상태는 행 버튼의 이름(「… — 도는 중」)이 한
+  // 번 말한다. Spinner는 겉 상자에 `role="status"`와 이름 「불러오는 중」을 들고 오므로, 레인이
+  // `aria-hidden`을 **안쪽 svg에** 주면 이 역할이 행 안에 그대로 남는다. 앵커는 바로 위
+  // 「도는 레인이 섰다」다 — 레인이 안 서도 0이다.
+  await expect(workRow(page, plainWork.slug).getByRole("status")).toHaveCount(0);
+  await expect(행버튼(page, `${plainWork.title} — 도는 중`)).toHaveCount(1);
 
-  const 돌때 = await 재본다();
+  const 호 = 스피너.locator("[data-slot=spinner-arc]");
+  const 원 = 스피너.locator("[data-slot=spinner-circle]");
+  await expect(호).toBeVisible();
+  await expect(원).toBeHidden();
+
+  const 돌때 = await 호.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      name: style.animationName,
+      timing: style.animationTimingFunction,
+      duration: style.animationDuration,
+      색: style.color,
+      // 호는 `stroke="currentColor"`로 칠한다 — 칠해지는 색이 곧 물려받은 글자색인지까지 본다.
+      선: style.stroke,
+      // **행 글자색**은 행 버튼의 것이다. 레인이 그 안에 서서 물려받는다.
+      행: getComputedStyle(el.closest("button")!).color,
+    };
+  });
   expect(돌때.name).not.toBe("none");
-  // **`steps(12)` 1초다**(구현 결정 4) — 매끄러운 회전이 아니라 열두 칸으로 끊어 돈다.
-  expect(돌때.timing).toContain("steps(12");
+  // **매끄럽게 1초에 한 바퀴다**(결정 4). 옛 링의 `steps(12)`는 여러 줄이 함께 돌 때 시선을
+  // 덜 끌려고 고른 값이었고, 그 조용함은 이제 색이 되찾는다(아래).
+  expect(돌때.timing).toBe("linear");
   expect(돌때.duration).toBe("1s");
-  // 머리만 앱 `primary`이고 원주는 옅은 색이다 — 둘이 같으면 도는 것이 안 보인다.
-  expect(돌때.머리).not.toBe(돌때.원주);
+  // **행 글자색이다**(결정 4 · 스토리 41) — `primary` 호는 여러 행이 함께 돌면 부르는 행보다
+  // 시끄럽다. 「도는 중」은 내가 할 일이 없는 상태라 세 신호 가운데 가장 조용해야 한다.
+  expect(돌때.색).toBe(돌때.행);
+  expect(돌때.선).toBe(돌때.행);
 
+  // **움직임을 끄면 호가 숨고 빈틈 없는 원이 선다**(결정 5 · 스토리 42). 멈춘 호는 「굳었나」로
+  // 읽힌다 — 그래서 멈추는 것이 아니라 **다른 글리프로 바뀐다**.
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const 멈출때 = await 재본다();
-  expect(멈출때.name).toBe("none");
-  // **완전한 링이다** — 머리가 남으면 「멈춘 스피너」로 읽혀 사람이 「굳었나」를 묻는다.
-  expect(멈출때.머리).toBe(멈출때.원주);
+  await expect(호).toBeHidden();
+  await expect(원).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// **「확인할 것」 띠**(#204). 값을 내는 자리(`bandRows`)와 그리는 자리(`AttentionBand`)는
-// 각자 자기 seam이 보고, 여기서만 보이는 것 넷을 잰다: 띠가 **서고 사라지는 것**, 펼침이
-// 어디에도 안 적히는 것, 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때
-// 무엇이 먼저 줄어드는가. 앞의 셋은 진짜 스토어와 라우터가 있어야 나고 마지막은 진짜
-// 레이아웃이 있어야 난다.
+// **알림 띠**(#204 · 이름과 ⌄는 `sidebar-active-band` 결정 13·15). 값을 내는 자리(`bandRows`)와 그리는 자리(`AttentionBand`)는
+// 각자 자기 seam이 보고, 여기서만 보이는 것을 잰다: 띠가 **서고 사라지는 것**, 띠 이름이
+// 상태 이름과 갈리는 것, ⌄/⌃가 펼치고 접는 것과 그 툴팁, 펼침이 어디에도 안 적히는 것,
+// 줄을 눌러 **다른 화면의 다른 탭**으로 가는 것, 그리고 좁혔을 때 무엇이 먼저 줄어드는가.
+// 진짜 스토어·라우터·포커스·CSS가 있어야 나는 것들이다.
 
-/** 띠의 줄들 — 이름을 단 버튼만 센다(토글은 이름이 글자에 있어 안 걸린다). */
-const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]");
+/**
+ * 띠의 줄들 — 이름을 단 버튼 가운데 **펼침을 말하지 않는 것**만 센다.
+ *
+ * ⌄/⌃ 토글도 아이콘 버튼이라 이름을 `aria-label`로 단다(`sidebar-active-band` 결정 15). 이름 붙은 버튼을 다
+ * 세면 토글이 줄로 세어져 「셋만 보인다」가 넷으로 읽힌다. 둘을 가르는 것은 `aria-expanded`다 —
+ * 토글만 그것을 단다.
+ */
+const 띠줄들 = (page: Page) => 띠(page).locator("button[aria-label]:not([aria-expanded])");
 
 /** 그 이름의 띠 줄. **띠 안으로 좁힌다** — 같은 이름이 사이드바 행에도 서기 때문이다. */
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 
-test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼친다", async ({ page }) => {
+/**
+ * 띠의 ⌄/⌃ 토글이 **하나라도 있는가**를 셀 때만 쓴다. 이름은 펼침에 따라 바뀌므로
+ * (「N개 더 보기」·「접기」) 「없다」를 이름으로 세면 다른 이름의 토글이 빠져나간다.
+ * 서 있는 토글을 재는 검사는 역할과 이름으로 집는다.
+ */
+const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
+
+/** 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다. */
+const 부르게한다 = (page: Page, ptyId: number) =>
+  markAttention(
+    page,
+    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
+    ptyId,
+  );
+
+/**
+ * 셸 넷이 함께 부르는 work 화면을 세운다 — 띠가 ⌄로 접히는 가장 작은 수(`BAND_LIMIT` + 1)다.
+ *
+ * **포인터를 안 쓴다.** 칸은 ⌘T로 연다. 포커스로 뜨는 툴팁을 재는 검사가 이것을 딛는데,
+ * Base UI는 macOS WebKit에서 「키보드로 옮긴 포커스인가」를 마지막 포인터·키 입력으로
+ * 가른다 — 앞서 `pointerdown`이 한 번이라도 나면 `focus()`에 툴팁이 안 뜬다.
+ */
+const 넷이부르게한다 = async (page: Page) => {
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await 부르게한다(page, 1);
+  // 칸을 연 순서가 곧 pty 번호다(`openShell`의 머리말) — `markAttention`이 그 pty가 앉기를 기다린다.
+  for (const ptyId of [2, 3, 4]) {
+    await page.keyboard.press("Meta+t");
+    await 부르게한다(page, ptyId);
+  }
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("4");
+  await expect(띠줄들(page)).toHaveCount(3);
+};
+
+test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 ⌄로 펼치고 ⌃로 접는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -878,18 +995,24 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   // **하나뿐이면 셸 이름이 안 붙는다**(결정 5) — 제목만으로 어느 셸인지 정해진다.
   await expect(띠(page)).not.toContainText(FIXTURE_SHELL_NAME);
 
-  // 셸 셋을 더 세워 넷이 함께 부르게 한다. 앱이 칸을 연 순서대로 띄우므로(`terminal-store`의
+  // 셸을 더 세워 여럿이 함께 부르게 한다. 앱이 칸을 연 순서대로 띄우므로(`terminal-store`의
   // `loadFont`) 여기서 세는 pty 번호가 곧 「n번째 칸」이고, `openShell`은 그 pty가 앉을 때까지 기다린다.
-  for (const ptyId of [2, 3, 4]) {
+  for (const ptyId of [2, 3]) {
     await openShell(page);
-    await markAttention(
-      page,
-      { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
-      ptyId,
-    );
+    await 부르게한다(page, ptyId);
   }
 
-  // **헤더는 접힌 것까지 센다** — 보이는 줄은 셋인데 수는 넷이다.
+  // **셋이면 ⌄가 없다**(`sidebar-active-band` 스토리 23) — 눌러도 아무 일이 없는 버튼은 서지 않는다. 앵커는
+  // 「띠가 셋을 다 세운 채 섰다」다: 띠가 안 떠도 토글은 0이라, 그것부터 세지 않으면 이
+  // 「없다」가 아무것도 안 잰 채 초록이 된다.
+  await expect(띠줄들(page)).toHaveCount(3);
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("3");
+  await expect(띠토글(page)).toHaveCount(0);
+
+  await openShell(page);
+  await 부르게한다(page, 4);
+
+  // **넷이면 셋만 보인다** — 헤더는 접힌 것까지 세어 넷이다.
   await expect(띠줄들(page)).toHaveCount(3);
   // **표식으로 집는다** — 자리(`.first()`)나 겉모습(`tabular-nums`)으로 고르면 헤더와 줄의
   // 순서가 바뀌거나 그 클래스가 떨어지는 날 재는 대상이 조용히 다른 것이 된다.
@@ -900,6 +1023,12 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
     await expect(띠줄들(page).nth(at)).toContainText(FIXTURE_SHELL_NAME);
   }
 
+  // **⌄ 하나가 선다**(`sidebar-active-band` 결정 15). 이름은 숨은 줄의 수를 말하고, 펼침 상태는 `aria-expanded`가
+  // 말한다(같은 work 스토리 21). 글자가 없는 아이콘 버튼이라 이름은 `aria-label`에만 있다.
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  await expect(더보기).toHaveAttribute("aria-expanded", "false");
+  await expect(더보기).toHaveText("");
+
   // **펼침이 어디에도 안 적힌다**(결정 5 — 「앱이 떠 있는 동안만」). 새로고침해 다시 재는
   // 대신 저장소를 통째로 견준다: 새로고침을 넘겨 살아남는 길이 그 둘뿐이라 여기서 아무것도
   // 안 늘었다는 것이 곧 「껐다 켜면 잊힌다」이고, 이쪽은 셸 넷을 다시 세울 필요가 없다.
@@ -907,8 +1036,12 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
     page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
   const 펼치기전 = await 저장된것();
 
-  await 띠(page).getByRole("button", { name: "+1 더" }).click();
+  await 더보기.click();
   await expect(띠줄들(page)).toHaveCount(4);
+  // **같은 자리에 ⌃가 선다**(같은 work 스토리 19) — 이름이 「접기」가 되고 펼침이 참이 된다.
+  const 접기 = 띠(page).getByRole("button", { name: "접기", exact: true });
+  await expect(접기).toHaveAttribute("aria-expanded", "true");
+  await expect(더보기).toHaveCount(0);
   expect(await 저장된것()).toBe(펼치기전);
 
   // **펼쳐도 바닥의 Settings가 살아남는다**(스토리 39 · 결정 8이 상한을 둔 그 근거).
@@ -921,9 +1054,108 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
   const 바닥 = (await settings.boundingBox())!;
   expect(바닥.y + 바닥.height).toBeLessThanOrEqual(300);
 
-  // 같은 자리가 `접기`가 된다.
-  await 띠(page).getByRole("button", { name: "접기" }).click();
+  // ⌃를 누르면 셋으로 돌아가고 ⌄가 다시 선다. ⌃는 굴러가는 띠 상자 안이라 낮은 창에서는
+  // 굴러 내려가 있다 — `click`이 그 자리까지 굴려 누른다.
+  await 접기.click();
   await expect(띠줄들(page)).toHaveCount(3);
+  await expect(더보기).toHaveAttribute("aria-expanded", "false");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **띠 이름은 「알림」이고, 줄의 상태 말은 그대로다**(`sidebar-active-band` 결정 13 · 스토리 15·16). 둘이 갈린다는
+// 것을 재는 자리가 이 검사 하나다 — 예전에는 띠 이름이 「안 본 완료」의 이름 **그 값**이라
+// (`BAND_LABEL = SIGNAL_LABEL.done`) 「나를 기다림」 줄만 서 있어도 머리가 「확인할 것」이라
+// 말했다. 안 본 완료 줄을 세우는 것은 그 두 말이 한 띠 안에 함께 서는 그림이라서다: 이름이
+// 다시 같은 값을 들면 이 띠에서 「확인할 것」이 두 번 선다.
+test("띠 이름은 「알림」이고, 안 본 완료 줄은 「확인할 것」을 말한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // **보고 있는 셸에 도착한 완료는 그 순간 「봤다」가 된다**(결정 7) — spec으로 비켜서야
+  // 안 본 완료가 띠에 선다.
+  await 셸에서눈을뗀다(page);
+
+  // 세션이 끝난 것이 초록이다(스펙 전이 표의 `end`).
+  await markAttention(page, { agent: "claude", event: "SessionEnd", at: Date.now(), payload: {} });
+
+  // 앵커: 띠가 서고 그 줄이 「확인할 것」을 말한다(줄의 상태 말은 그대로다).
+  await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
+  // 머리는 「알림」이다. 글자로 집는 것은 머리가 누를 것이 없는 글자 상자라서다 — 역할이 없다.
+  await expect(띠(page).getByText("알림", { exact: true })).toBeVisible();
+  // **띠 안에 「확인할 것」이라는 글자는 없다.** 줄의 상태 말은 이름(`aria-label`)에만 있고
+  // 눈에 보이는 글자는 제목·마크·경과다 — 여기 걸리는 것이 있다면 그것은 머리다.
+  await expect(띠(page).getByText("확인할 것", { exact: true })).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **⌄의 도움말은 앱 툴팁이다**(`sidebar-active-band` 결정 15 · 스토리 20). 툴팁은 이름을 주지 않으므로(S28) 버튼의
+// 이름과 툴팁의 글자가 같은지는 둘을 따로 읽어 견줘야 난다.
+//
+// **떠 있는 것의 애니메이션**도 여기서 처음 잰다(`sidebar-active-band` 결정 7). 규칙이 전역 한 곳이라(`index.css`의
+// 동작 줄이기 블록) 부품 하나에서 재면 된다 — 판 3이 메뉴로 한 번 더 잰다.
+test("⌄에 올리면 버튼 이름이 툴팁으로 뜨고, 동작 줄이기면 애니메이션 없이 뜬다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 넷이부르게한다(page);
+
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  // 앵커: 올리기 전에는 툴팁이 없다.
+  await expect(더보기).toBeVisible();
+  await expect(툴팁(page)).toHaveCount(0);
+
+  await 더보기.hover();
+  await expect(툴팁(page)).toHaveText(
+    (await 더보기.getAttribute("aria-label"))!,
+  );
+
+  // **뜰 때 움직인다** — 100ms 페이드·확대. 계산된 스타일로 잰다: 이것이 곧 사람이
+  // 보는 것이다.
+  const 애니메이션 = () => 툴팁(page).evaluate((el) => getComputedStyle(el).animationName);
+  expect(await 애니메이션()).not.toBe("none");
+
+  // ⌃에 올리면 「접기」다. 누르면 툴팁이 닫히므로(Base UI 기본) 포인터를 한 번 비켰다 다시 올린다.
+  await 더보기.click();
+  const 접기 = 띠(page).getByRole("button", { name: "접기", exact: true });
+  await expect(접기).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(0, 0);
+  await expect(툴팁(page)).toHaveCount(0);
+  await 접기.hover();
+  await expect(툴팁(page)).toHaveText("접기");
+
+  // **동작 줄이기면 애니메이션 없이 뜬다**(같은 work 스토리 10). 새로 띄운 툴팁에서 잰다 — 이미 떠
+  // 있는 것만 재면 「뜰 때」가 아니라 「떠 있는 동안」을 잰 것이 된다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.mouse.move(0, 0);
+  await expect(툴팁(page)).toHaveCount(0);
+  await 접기.hover();
+  await expect(툴팁(page)).toHaveText("접기");
+  expect(await 애니메이션()).toBe("none");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **키보드로 닿은 ⌄에도 툴팁이 뜨고, Enter로 펼친다**(`sidebar-active-band` 스토리 22). WebKit은 Tab이 버튼을
+// 건너뛰므로(판 05 결정 7의 정정) 포커스는 `focus()`로 옮긴다.
+//
+// **이 검사는 포인터를 한 번도 안 쓴다**(`넷이부르게한다` 머리말) — Base UI가 macOS WebKit에서
+// 「키보드 포커스인가」를 마지막 입력으로 가르므로, 앞서 누른 것이 있으면 이 툴팁은 안 뜬다.
+test("포인터 없이 ⌄에 포커스하면 툴팁이 뜨고, Enter로 펼친다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 넷이부르게한다(page);
+
+  const 더보기 = 띠(page).getByRole("button", { name: "1개 더 보기", exact: true });
+  await expect(툴팁(page)).toHaveCount(0);
+
+  await 더보기.focus();
+  await expect(툴팁(page)).toHaveText("1개 더 보기");
+
+  await page.keyboard.press("Enter");
+  await expect(띠줄들(page)).toHaveCount(4);
+  await expect(띠(page).getByRole("button", { name: "접기", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -960,7 +1192,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
 
   // 분할을 켜고 첫 칸으로 되돌린 뒤 다시 누른다.
-  const 분할 = page.locator('button[title="분할 켜기"]');
+  const 분할 = page.getByRole("button", { name: "분할", exact: true });
   await 분할.click();
   await expect(page).toHaveURL(/split=/);
   await lit(0).click();
@@ -1126,101 +1358,93 @@ test("사이드바를 좁혀도 띠의 점과 경과는 그대로고 제목이 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 이 판이 **판 05 결정 6을 뒤집는다**: hover에 핀이 떠도 **레인과 둘째 줄은 안 사라진다.**
-// 판 05에서는 메타와 핀이 2열 한 칸에 겹쳐 서서, 핀이 뜨면 메타가 투명해지는 것이 유일한
-// 답이었다 — 자리가 하나뿐이었으니까. 이 판은 메타를 둘째 줄로 내려 그 겹침을 없앴고,
-// 그래서 **띄우려는 것이 hover에 지워지는** 일이 구조적으로 안 난다. 상태 축이 들어오면
-// (#203) 레인의 점이 곧 이 판이 띄우려는 것이라, 그것이 마우스 위치에 따라 있다 없다 하면
-// 이 판 전체가 무의미해진다.
+// **hover하면 핀이 메타 자리의 끝에 서고, 메타는 투명해진다**(`sidebar-active-band` 결정 14 —
+// 판 05의 결정 1·6·7을 되살린다). 둘은 2열 **한 칸에 겹쳐** 선다. 두 줄 행을 연 판이 이것을
+// 뒤집었던 것은 메타를 둘째 줄로 내려 겹침을 없앴기 때문이고, 한 줄로 돌아오면서 겹침과 그
+// 답이 함께 돌아온다.
 //
-// **핀이 폭을 hover에만 갖는 것은 그대로다.** 사람이 실물 앱에서 고른 모양이다:
-// 「호버하면, 자동으로 아이콘 위치만큼 text의 최대 크기가 조정되지? 이런걸 원하는거임.
-// (안겹치게)」 달라진 것은 **이제 모든 행이 똑같이 24px 줄어든다**는 것이다 — 2열이 셸을
-// 모르므로 셸이 있는 행과 없는 행이 갈리지 않는다.
+// - **투명해질 뿐 자리를 안 내준다**(결정 6). `display:none`이면 칸이 핀의 24px로 줄어 메타가
+//   선 행도 hover마다 제목이 뛴다. 그래서 메타가 선 행은 hover에 제목 폭이 그대로다.
+// - **핀 포커스에도 투명해진다**(결정 7). 핀은 포커스에도 뜨므로 hover에만 물리면 키보드로
+//   닿았을 때 둘이 겹쳐 그려진다. 레인은 어느 쪽에서도 안 물러난다 — 신호를 말하는 자리다.
+// - **메타는 늘 포인터를 안 받는다**(결정 6의 정정). DOM에서 핀보다 뒤라 핀 위에 그려지므로,
+//   받으면 핀의 클릭을 가로챈다 — 마지막 단언이 그것을 잰다.
 //
-// 한때 핀이 `absolute right-1`로 격자 밖에 서서 뜀이 0이었는데, 칸이 핀을 몰라 **핀이 제목
-// 글자 위에 얹혔다.** 마지막 단언(제목 끝 ≤ 핀 시작)이 그 회귀를 막는다.
-//
-// **키보드로 닿을 때도 같다**(결정 7). 핀은 hover뿐 아니라 포커스에도 뜬다.
+// **셸이 없는 행은 칸이 핀 하나다** — 쉴 때 폭 0, hover에 24px(S34: 바닥을 두지 않는다). 그래서
+// 그 행만 hover에 제목이 핀만큼 줄고, 제목 상자는 핀 바로 앞에서 끝난다. 한때 핀이
+// `absolute right-1`로 격자 밖에 서서 뜀이 0이었는데, 칸이 핀을 몰라 **핀이 제목 글자 위에
+// 얹혔다.** 사람이 고른 것이 그 갈림이다: 「호버하면, 자동으로 아이콘 위치만큼 text의 최대
+// 크기가 조정되지? 이런걸 원하는거임. (안겹치게)」
 //
 // **이 층에서만 보인다**: 겹침도 칸 폭도 `focus-visible`도 진짜 CSS와 레이아웃이 있어야 난다.
-test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 안 덮는다", async ({ page }) => {
+test("hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — 핀 포커스에도, 제목은 핀 앞에서 끝난다", async ({
+  page,
+}) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
 
   const shells = page.locator(`[data-shells="${plainWork.slug}"]`);
-  const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  const 메타 = 오른쪽메타(page, plainWork.slug);
   const lane = 레인(page, plainWork.slug);
   const pin = page.getByRole("button", { name: `${plainWork.title} 고정` });
   const title = page.getByRole("button", { name: plainWork.title, exact: true });
   await expect(shells).toHaveCount(1);
   await expect(pin).toHaveCSS("opacity", "0");
+  await expect(메타).toHaveCSS("opacity", "1");
   const 평소 = (await title.boundingBox())!.width;
-  // **둘째 줄 폭은 쉴 때 찍는다.** 한때 이 줄이 `title.hover()` **뒤에** 있었는데, 그러면
-  // 같은 상태의 같은 값을 두 번 재는 것이라 아래 단언이 **무조건** 초록이었다 —
-  // `col-span-2`를 `col-start-1`로 바꾸는 뮤테이션이 그대로 통과한다(그때는 이 값 자체가
-  // 이미 좁아진 값으로 잡힌다).
-  const 줄폭 = (await subrow.boundingBox())!.width;
 
-  // **핀에 포커스가 가도 레인과 둘째 줄은 그대로다.** 판 05에서는 이 자리에서 메타가
-  // `opacity: 0`이 됐다(`peer-focus-visible:opacity-0`). 그 규칙이 남아 있으면 여기가 빨개진다.
+  // **핀에 포커스가 가면 메타가 투명해진다**(결정 7). 포인터를 쓰기 전에 잰다 — WebKit은
+  // 프로그램적 포커스에도 `:focus-visible`을 물려 준다(판 05 결정 7의 정정).
   await pin.focus();
   await expect(pin).toBeFocused();
   await expect(pin).toHaveCSS("opacity", "1");
-  await expect(subrow).toHaveCSS("opacity", "1");
+  await expect(메타).toHaveCSS("opacity", "0");
   await expect(lane).toHaveCSS("opacity", "1");
 
   await title.hover();
   await expect(pin).toHaveCSS("opacity", "1");
-  await expect(subrow).toHaveCSS("opacity", "1");
+  await expect(메타).toHaveCSS("opacity", "0");
   await expect(lane).toHaveCSS("opacity", "1");
 
-  // **제목만 핀만큼 줄어든다 — 셸이 있든 없든 같다.** 판 05에서는 메타(27.91px)가 이미 선
-  // 행이 안 움직이고 셸 0개인 행만 24px 줄었는데, 그 갈림이 곧 「셸이 붙고 떨어질 때 제목이
-  // 끊기는 자리가 뛴다」의 다른 쪽 얼굴이었다.
-  const 핀상자 = (await pin.boundingBox())!;
-  expect((await title.boundingBox())!.width).toBe(평소 - 핀상자.width);
-  // **둘째 줄만은 폭이 안 변한다** — 두 칸을 다 쓰므로 핀 아래를 지나간다(`col-span-2`).
-  // 1열에만 두면 여기가 24px 좁아져 프로젝트 이름이 hover마다 잘렸다 폈다 한다. 비교할
-  // 값은 hover **전에** 찍은 것이라야 한다(위 주석).
-  expect((await subrow.boundingBox())!.width).toBe(줄폭);
+  // **메타가 선 행은 hover에 제목이 안 움직인다** — 메타가 자리를 쥔 채 투명해질 뿐이고, 그
+  // 칸이 이미 핀보다 넓다.
+  expect((await title.boundingBox())!.width).toBe(평소);
 
-  // **핀은 첫 줄 글자와 눈높이가 맞는다.** 격자 1행이 위 8px 여백까지 안고 있어, 아무것도
-  // 안 하면 핀이 글자보다 5px 위에 뜬다(트랙 위쪽에 붙는다).
-  const 제목상자 = (await title.locator("[data-title]").boundingBox())!;
-  expect(Math.round(핀상자.y + 핀상자.height / 2)).toBe(
-    Math.round(제목상자.y + 제목상자.height / 2),
-  );
-
-  // **셸이 없는 행도 똑같이 움직인다.**
-  const 빈행제목 = page.getByRole("button", { name: pinnedWork.title, exact: true });
-  const 빈행핀 = page.getByRole("button", { name: `${pinnedWork.title} 고정` });
-  const 빈행줄 = page.locator(`[data-subrow="${pinnedWork.slug}"]`);
-  await expect(page.locator(`[data-shells="${pinnedWork.slug}"]`)).toHaveCount(0);
-  const 빈행평소 = (await 빈행제목.boundingBox())!.width;
-  await 빈행제목.hover();
-  await expect(빈행핀).toHaveCSS("opacity", "1");
-  await expect(빈행줄).toHaveCSS("opacity", "1");
-  const 빈행핀상자 = (await 빈행핀.boundingBox())!;
-  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소 - 빈행핀상자.width);
-
-  // **핀은 2열이 무엇을 하든 같은 자리에 선다** — `justify-self-end`가 칸 끝에 붙든다.
+  // **핀은 메타 자리의 끝에 선다**(결정 1) — 둘이 같은 칸의 오른쪽 끝에 붙는다.
   const 오른끝 = async (target: Locator) => {
     const box = (await target.boundingBox())!;
     return Math.round(box.x + box.width);
   };
-  expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
+  const 핀상자 = (await pin.boundingBox())!;
+  expect(await 오른끝(pin)).toBe(await 오른끝(메타));
+  // **제목 상자는 핀 앞에서 끝난다.**
+  const 제목상자 = (await title.locator("[data-title]").boundingBox())!;
+  expect(제목상자.x + 제목상자.width).toBeLessThanOrEqual(핀상자.x + 0.5);
+  // **핀은 제목 글자와 눈높이가 맞는다** — 행이 한 트랙이라 둘 다 그 가운데에 선다.
+  expect(Math.round(핀상자.y + 핀상자.height / 2)).toBe(
+    Math.round(제목상자.y + 제목상자.height / 2),
+  );
 
-  // **핀이 글자를 안 덮는다 — 그리고 그 앞까지는 제목의 것이다.** 격자 밖에 세우면 hover
-  // 밀림은 0이지만 칸이 핀을 몰라 제목 상자가 핀 아래까지 뻗고, 페이드 띠와 글리프가 같은
-  // 자리에 겹쳐 끝 글자가 뭉개진다. 반대로 이름 버튼이 자기 오른쪽 여백을 다시 물면
-  // (판 05의 `pr-1.5`) 우 여백이 행의 10에 더해져 **16**이 되고, 셸이 없는 행의 제목이
-  // 판 05보다 좁아진다 — 스토리 25가 넓히라고 한 그 자리다. 둘 다 이 한 줄이 잡는다.
+  // **셸이 없는 행** — 메타가 없어 칸이 핀 하나다. 앵커는 그 행이 섰다는 것이다.
+  const 빈행제목 = page.getByRole("button", { name: pinnedWork.title, exact: true });
+  const 빈행핀 = page.getByRole("button", { name: `${pinnedWork.title} 고정` });
+  await expect(빈행제목).toBeVisible();
+  await expect(오른쪽메타(page, pinnedWork.slug)).toHaveCount(0);
+  const 빈행평소 = (await 빈행제목.boundingBox())!.width;
+  await 빈행제목.hover();
+  await expect(빈행핀).toHaveCSS("opacity", "1");
+  const 빈행핀상자 = (await 빈행핀.boundingBox())!;
+  // 빈 칸에 핀이 서면서 제목이 **정확히 핀만큼** 준다(S34의 대가 — 지금과 같다).
+  expect((await 빈행제목.boundingBox())!.width).toBe(빈행평소 - 빈행핀상자.width);
+  // 그리고 그 앞까지는 제목의 것이다 — 이름 버튼이 오른쪽 여백을 물면 여기가 벌어진다.
   const 빈행제목상자 = (await 빈행제목.locator("[data-title]").boundingBox())!;
   expect(빈행제목상자.x + 빈행제목상자.width).toBeCloseTo(빈행핀상자.x, 1);
 
+  // **핀은 2열에 무엇이 서든 같은 자리에 선다** — 칸 끝에 붙는다.
+  expect(await 오른끝(빈행핀)).toBe(await 오른끝(pin));
+
+  // **겹쳐 선 메타가 핀의 클릭을 가로채지 않는다.**
   await title.hover();
-  // **둘째 줄이 핀의 클릭을 가로채면 안 된다** — 그 줄은 핀 아래를 지나간다.
   await pin.click();
   expect((await readIpcRecord(page))?.calls).toContain(
     `set_work_pinned {"mode":"atelier","slug":"${plainWork.slug}","pinned":true}`,
@@ -1229,48 +1453,50 @@ test("hover에 핀이 떠도 레인과 둘째 줄이 남고, 핀은 글자를 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// **사이드바를 좁히면 글자가 먼저 잘리고 레인은 안 줄어든다**(이 판 결정 5). 레인은 상태 축이
-// 들어온 지금(#203) 점·링이 서는 자리이므로, 폭이 모자랄 때 **가장 먼저 포기해도 되는 것**의
-// 정반대다. 제목과 둘째 줄은 잘려도 여전히 읽을 수 있지만, 8px 점은 12px만 줄어도 사라진다.
+// **사이드바를 좁히면 제목이 먼저 잘리고, 레인과 오른쪽 메타는 안 줄어든다**(두 줄 행을 연 판의
+// 결정 5 · #203). 레인은 점·스피너가 서는 자리이고 메타는 「누가·얼마나」를 말하는 자리라, 폭이
+// 모자랄 때 **가장 먼저 포기해도 되는 것**의 정반대다. 제목은 잘려도 페이드와 마퀴·카드로
+// 여전히 읽을 수 있지만, 8px 점은 12px만 줄어도 사라진다.
 //
 // **줄어드는 값을 수로 묶는다.** 「레인이 안 줄었다」만 재면 제목이 대신 안 줄고 행이 통째로
-// 넘쳐도 초록이 된다 — 줄인 만큼이 두 글자 상자에 그대로 가야 그 말이 참이다.
+// 넘쳐도 초록이 된다 — 행이 줄어든 만큼이 제목 상자에 그대로 가야 그 말이 참이다.
 //
 // 이 층에서만 보인다: 폭을 실제로 끌어야 나고, `shrink-0`도 `min-w-0`도 진짜 레이아웃에서만
 // 갈린다.
-test("사이드바를 좁히면 제목과 둘째 줄이 잘리고 레인은 그대로다", async ({ page }) => {
+test("사이드바를 좁히면 제목이 잘리고 레인과 오른쪽 메타는 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
-  // 셸이 있는 행과 없는 행을 함께 본다 — 둘째 줄이 무엇을 싣든 잘리는 쪽은 같아야 한다.
+  // 셸이 있는 행(메타가 선다)과 없는 행을 함께 본다 — 2열에 무엇이 서든 잘리는 쪽은 같아야 한다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await expect(오른쪽메타(page, plainWork.slug)).toHaveText("1");
 
   const 폭 = async (target: Locator) => (await target.boundingBox())!.width;
-  const 행 = (work: (typeof WORKS)[number]) =>
-    page.getByRole("button", { name: work.title, exact: true }).locator("xpath=..");
   const 잰다 = async (work: (typeof WORKS)[number]) => ({
-    레인: await 폭(행(work).locator("[data-lane]")),
-    제목: await 폭(행(work).locator("[data-title]")),
-    둘째줄: await 폭(page.locator(`[data-subrow="${work.slug}"]`)),
+    행: await 폭(workRow(page, work.slug)),
+    레인: await 폭(레인(page, work.slug)),
+    제목: await 폭(행버튼(page, work.title).locator("[data-title]")),
   });
 
   const 앞 = { 셸행: await 잰다(plainWork), 빈행: await 잰다(pinnedWork) };
-  // 레인은 이 판이 정한 14px 한 칸이다 — 이 줄이 없으면 아래 「안 줄었다」가 「원래 0이다」로도
-  // 초록이 된다.
+  const 메타앞 = await 폭(오른쪽메타(page, plainWork.slug));
+  // 레인은 14px 한 칸이다 — 이 줄이 없으면 아래 「안 줄었다」가 「원래 0이다」로도 초록이 된다.
   expect(앞.셸행.레인).toBe(14);
 
   await 좁힌다(page, 40);
 
   const 뒤 = { 셸행: await 잰다(plainWork), 빈행: await 잰다(pinnedWork) };
   // 실제로 좁아졌는가 — 이것이 없으면 아래 전부가 「끌지도 못했다」를 초록으로 읽는다.
-  expect(뒤.셸행.둘째줄).toBeLessThan(앞.셸행.둘째줄);
+  expect(뒤.셸행.행).toBeLessThan(앞.셸행.행);
 
   for (const 자리 of ["셸행", "빈행"] as const) {
-    const 줄어든만큼 = 앞[자리].둘째줄 - 뒤[자리].둘째줄;
+    const 줄어든만큼 = 앞[자리].행 - 뒤[자리].행;
     expect(줄어든만큼).toBeGreaterThan(0);
     // **레인은 그대로다.**
     expect(뒤[자리].레인).toBe(앞[자리].레인);
-    // **줄인 만큼이 제목과 둘째 줄에 그대로 간다.** 레인이 함께 줄면 여기가 어긋난다.
+    // **줄인 만큼이 제목에 그대로 간다.** 레인이나 메타가 함께 줄면 여기가 어긋난다.
     expect(뒤[자리].제목).toBeCloseTo(앞[자리].제목 - 줄어든만큼, 1);
   }
+  // **메타도 그대로다.**
+  expect(await 폭(오른쪽메타(page, plainWork.slug))).toBe(메타앞);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -1425,12 +1651,11 @@ test("사이드바 폭을 드래그하면 흐르는 거리가 저절로 맞는�
 // 결정 4 — **nav `Terminal`도 같은 어휘를 쓴다.** 최상위 셸에서 claude가 돌면 거기에도
 // 로고가 뜬다: 무리가 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
 //
-// **그리고 이제 그 규격이 사는 자리는 여기 하나뿐이다** — 판 05 결정 13의 「두 자리」가 한
-// 자리가 됐다(이 판 결정 5). work 행의 오른쪽 끝 칸이 사라졌으므로, 이 저장소가 `SidebarItem`
-// 주석에 **계약으로** 적어 둔 「구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로 붙어 서는
-// 둘이 다른 무게로 읽히지 않는다」를 실측으로 재는 자리도 여기로 옮겨 온다. 판 05는 그것을
-// work 행에서 쟀는데, 그 행에는 이제 잴 것이 없다 — **계약이 사라진 것이 아니라 자리가
-// 하나로 준 것이라, 검사도 남은 그 자리로 따라간다.**
+// **그 숫자가 구획 헤더의 개수와 같은 x에 선다** — 이 저장소가 `SidebarItem` 주석에 **계약으로**
+// 적어 둔 「구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로 붙어 서는 둘이 다른 무게로 읽히지
+// 않는다」다. 두 줄 행을 연 판에서는 이 자리가 그 계약의 유일한 자리였고, work 행이 한 줄로
+// 돌아와 오른쪽 메타가 되살아나면서(`sidebar-active-band` 결정 14) 판 05의 「두 자리」로 돌아왔다
+// — work 행 쪽은 「오른쪽 메타의 다섯 갈래」 검사가 조용한 행에서 잰다.
 //
 // **이 층에서만 보인다** — `Sidebar.tsx`는 `terminal-store`를 물어 정적 마크업 seam이 닿지
 // 않고(Sidebar.test.tsx 머리말), 최상위 셸은 이 화면의 진입 이펙트(`ensureShell`)를 태워야
@@ -1458,10 +1683,10 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
 
   // **nav `Terminal`은 이 판에서 안 바뀐다**(스펙의 Out of Scope — 「셸 메타 규격의 nav
   // `Terminal` 변경」). 최상위 셸이 스스로 말해도 이 자리는 **종류·수 그대로**다: 그 셸이
-  // 부르는 것을 받는 자리는 「확인할 것」 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
+  // 부르는 것을 받는 자리는 알림 띠이고(#204, 결정 13의 다섯째), 여기까지 상태를
   // 세우면 이 행이 work 행의 어휘를 반쯤 흉내 내는 자리가 된다.
   //
-  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`SubrowFor`) 그 가름이 빠지기 쉽다 —
+  // work 행과 **같은 구독 컴포넌트**를 쓰므로(`RowMetaFor`) 그 가름이 빠지기 쉽다 —
   // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
   await markAttention(page, {
     agent: "claude",
@@ -1517,6 +1742,160 @@ test("호버 카드는 행 바로 옆에 서서 사이드바 경계선 위로 �
   // 그래서 카드는 사이드바의 오른쪽 끝을 **덮고** 선다. 이 줄이 「떠 있다」를 말한다 —
   // 경계 밖으로 미는 판이 돌아오면 여기가 빨개진다.
   expect(cardBox.x).toBeLessThan(aside.x + aside.width);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **호버 카드의 마지막 말과 행 버튼의 설명**(`sidebar-active-band` 결정 14 · S6·S7). 행이 한 줄이
+// 되면 셸의 마지막 말이 행에서 빠진다 — 그 말이 서는 자리가 둘이다: 마우스로는 호버 카드의
+// **말 칸**, 스크린리더로는 행 버튼의 **접근성 설명**(`aria-description`). 둘은 같은 값 하나를
+// 읽는다(사이드바가 고른 「work → 부르는 셸의 종류와 말」).
+//
+// **칸이 서는 조건은 둘이다(S6)** — 부르는 셸이 있고, 그 셸이 말을 했을 때. 그래서 「없다」를
+// 재는 검사가 셋이다: 조용한 행 · 도는 행 · 말 없는 부름(벨). 셋 다 **카드가 섰다**를 앵커로
+// 먼저 본다 — 카드가 안 떠서 초록인 판을 막는다.
+
+/** 떠 있는 호버 카드. 떠 있는 카드만 `data-popover`를 단다 — 한 번에 하나만 선다. */
+const 카드 = (page: Page) => page.locator("[data-popover]");
+
+/** 카드 안의 **말 칸**. 역할이 없는 글 상자라 표식으로 집는다. */
+const 말칸 = (page: Page) => 카드(page).locator("[data-last-message]");
+
+/** 벨 한 번. 소스에 제어문자를 그대로 박지 않는다 — 편집기와 diff에서 안 보인다. */
+const BEL = "\x07";
+
+test("부르는 행에 올리면 카드에 셸의 마지막 말이 한 칸으로 서고, 행 버튼이 같은 말을 설명으로 든다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // 여러 줄 말이다 — 칸과 설명이 싣는 것은 **첫 줄**이다(어댑터가 접는다).
+  await 기다리게한다(page, "테스트 셋 통과\n커밋할까요?");
+
+  // **이름은 그대로다** — 설명이 붙어도 이름(`제목 — 상태`)은 한 글자도 안 바뀐다. 이 로케이터가
+  // 그 이름으로 집히는 것이 곧 그 단언이다.
+  const 행 = 행버튼(page, `${plainWork.title} — 나를 기다림`);
+  await expect(행).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("테스트 셋 통과");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toBeVisible();
+  const 칸 = 말칸(page);
+  await expect(칸).toHaveCount(1);
+  // 라벨은 **상태 말**이다 — 행 이름·띠 줄과 같은 표(`SIGNAL_LABEL`)에서 온다.
+  await expect(칸.getByText("나를 기다림", { exact: true })).toBeVisible();
+  await expect(칸.getByText("테스트 셋 통과", { exact: true })).toBeVisible();
+  await expect(칸).not.toContainText("커밋할까요?");
+
+  // **말이 바뀌면 칸도 설명도 따라 바뀐다** — 카드가 떠 있는 채로다. 값을 여는 순간 한 번 찍어
+  // 두는 판이면 여기서 옛 말이 남는다.
+  await 기다리게한다(page, "다시 물어요");
+  await expect(칸.getByText("다시 물어요", { exact: true })).toBeVisible();
+  await expect(행).toHaveAccessibleDescription("다시 물어요");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("조용한 행과 도는 행의 카드에는 말 칸이 없고, 행 버튼에 설명도 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+
+  // **조용한 행** — 셸이 하나도 없는 work이다.
+  await workRow(page, pinnedWork.slug).hover();
+  await expect(카드(page)).toContainText(pinnedWork.title);
+  await expect(말칸(page)).toHaveCount(0);
+  await expect(행버튼(page, pinnedWork.title)).toHaveAccessibleDescription("");
+
+  // **도는 행** — 그런데 **말을 한 번 한** 셸이다. 말이 없는 셸에서 재면 「말이 없어서」로도
+  // 초록이 된다. 먼저 그 말이 설명에 선 것을 보고, 도는 중으로 넘긴다(말은 「직전 유지」라 남는다).
+  await 기다리게한다(page, "커밋할까요?");
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "커밋할까요?",
+  );
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit" });
+  const 도는행 = 행버튼(page, `${plainWork.title} — 도는 중`);
+  await expect(도는행).toHaveCount(1);
+  await expect(도는행).toHaveAccessibleDescription("");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
+  await expect(말칸(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("말 없이 부른 셸(벨)의 카드에는 말 칸이 없고, 행 버튼에 설명도 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  // 보고 있는 셸에 온 완료는 그 순간 「봤다」가 되어 안 선다 — 안 보는 자리로 간다.
+  await 셸에서눈을뗀다(page);
+
+  // **말을 한 번도 안 한 셸이다.** 한 번 말한 셸이 벨로 부르면 옛 말이 서는 것이 규칙이라
+  // (「직전 유지」), 거기서 재면 이 검사가 무엇을 재는지 갈리지 않는다. 아무것도 안 도는
+  // 칸의 벨은 삼켜지지 않고 초록을 세운다(`shell-osc.spec.ts`).
+  await writeShell(page, BEL);
+
+  const 행 = 행버튼(page, `${plainWork.title} — 확인할 것`);
+  await expect(행).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("");
+
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toContainText(plainWork.title);
+  // **상태 이름만 선 칸도 없다** — 레인과 이름이 이미 한 말을 되풀이하는 칸이다(S6).
+  await expect(말칸(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **한 work에서 두 셸이 부르면 레인·오른쪽 메타·카드의 말·설명이 모두 같은 셸의 것이다**
+// (`sidebar-active-band` 스토리 39). 고르는 자리가 하나라서다 — `topSignalView`가 이기는 셸을
+// 한 번 고르고, 레인·메타(`RowMetaFor`)와 카드·설명(`callingNotesOf`)이 그 결과를 나눠 읽는다.
+// 자리마다 따로 고르면 같은 순위의 두 셸 사이에서 「A 셸의 마크 옆에 B 셸의 말」이 서는데,
+// 그 어긋남은 화면 어디에도 표시가 안 난다.
+//
+// **셸마다 에이전트와 말을 달리 둔다** — 마크가 곧 「어느 셸인가」의 글자가 된다. 그리고
+// **이기는 셸을 한 번 바꾼다**: 한 장면만 재면 「늘 첫 셸을 고른다」 같은 고정된 답도 초록이다.
+test("한 work에서 두 셸이 부르면 오른쪽 메타의 마크·카드의 말·행 설명이 같은 셸의 것이다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  const 부른다 = (agent: string, message: string) => ({
+    agent,
+    event: "Stop",
+    at: Date.now(),
+    payload: { last_assistant_message: message },
+  });
+  await markAttention(page, 부른다("claude", "첫 셸의 말"), 1);
+  await openShell(page);
+  await markAttention(page, 부른다("codex", "둘째 셸의 말"), 2);
+  // 앵커: 둘 다 부른다 — 띠에 두 줄이 선다.
+  await expect(띠(page).locator("[data-band-count]")).toHaveText("2");
+
+  const 메타 = 오른쪽메타(page, plainWork.slug);
+  const 행 = 행버튼(page, `${plainWork.title} — 나를 기다림`);
+  await workRow(page, plainWork.slug).hover();
+  await expect(카드(page)).toBeVisible();
+
+  // **같은 순위(둘 다 기다림)면 먼저 연 셸이 이긴다** — 지금 규칙 그대로다(`topSignalView`).
+  await expect(메타.getByRole("img")).toHaveCount(1);
+  await expect(메타.getByRole("img", { name: "claude" })).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("첫 셸의 말");
+  await expect(말칸(page).getByText("첫 셸의 말", { exact: true })).toBeVisible();
+
+  // **첫 셸이 다시 돌기 시작하면 둘째 셸이 이긴다** — 셋이 함께 그 셸로 옮겨 간다. 둘째 칸이
+  // 이미 앉아 있으므로 착석 기다림 없이 쏜다(`markAttention`은 「칸이 하나」를 기다린다).
+  await fireAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 1);
+  await expect(메타.getByRole("img")).toHaveCount(1);
+  await expect(메타.getByRole("img", { name: "codex" })).toHaveCount(1);
+  await expect(행).toHaveAccessibleDescription("둘째 셸의 말");
+  await expect(말칸(page).getByText("둘째 셸의 말", { exact: true })).toBeVisible();
+  await expect(말칸(page)).not.toContainText("첫 셸의 말");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

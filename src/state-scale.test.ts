@@ -5,12 +5,18 @@ import { join } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 
-// 상태(선택·hover·켜짐)를 말하는 배경은 무채색 농도 4단(--state-1~4) 하나만 읽는다.
-// --accent(5%)는 칩 배경·상태 배지 전용이다.
+// 상태(선택·hover·켜짐)를 말하는 배경은 무채색 농도 4단(--state-1~4)을 **그 이름으로** 읽는다.
+// --accent는 shadcn 부품을 앱 값에 맞추느라 2단(state-2)을 가리키는 이름이 됐다(결정 2). 앱이 적는
+// 자리에서는 칩 배경·상태 배지의 바탕이고, hover 배경으로는 쓰지 않는다.
 //
-// 이 불변조건은 눈으로는 지켜지지 않는다 — 5%와 버튼 hover 6%는 사실상 구분되지 않아서,
-// 새로 쓴 hover:bg-accent 하나가 화면에서 티가 나지 않는다. 다음에 농도를 조정할 때
-// 그 자리만 따로 남아서야 드러난다. 그래서 눈이 아니라 여기서 막는다.
+// **예외 하나는 이 검사 밖에 일부러 둔다.** 드롭다운·Select 항목의 `focus:bg-accent`(components/ui)는
+// registry의 켜짐을 토큰으로 살린 것이라(판 1 토큰 표 — accent가 2단을 가리킨다) 메뉴 줄의 켜짐이
+// 버튼 hover와 같은 2단으로 칠해지는 것이 맞다. 그래서 여기서는 `hover:bg-accent`만 센다(index.css의
+// 상태 스케일 주석).
+//
+// 이 불변조건은 눈으로는 지켜지지 않는다 — accent는 2단과 같은 값이라, 행에 새로 쓴
+// hover:bg-accent 하나가 행 hover(1)가 아니라 행 선택(2) 농도로 칠해져도 이름만으로는 티가 나지
+// 않는다. 스케일을 손볼 때 그 자리만 엉뚱한 단에 남아서야 드러난다. 그래서 눈이 아니라 여기서 막는다.
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
