@@ -15,7 +15,8 @@ import { Store } from "@tanstack/react-store";
  * 다시 그려진다.
  *
  * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽 모듈의 일이다: 탭은
- * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`).
+ * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`), 편집기
+ * 항목은 그 트리의 앞·뒤·안(`features/spec-layout/draft.ts`).
  * 여기 있는 것은 탭의 두 소비자가 적는 **칸**과 그 칸에 적는 함수 — 두 값이 동시에 안 켜진다는
  * 불변식을 한 곳에서 지키려고 여기 모인다 — 그리고 좌표로 자리를 정하는 쪽에 주는 끄는 동안의
  * 포인터와 「놓았다」·「끝났다」(`DragHandlers`)다.
@@ -58,9 +59,24 @@ export interface RowDragSource {
   slug: string;
 }
 
+/**
+ * 「spec 레이아웃」 편집기의 트리에서 끈 **항목**(spec 레이아웃 티켓 13). 놓일 자리는 그 트리 안이고 본문·탭 줄·
+ * 사이드바는 받지 않는다 — 탭만 받는 쪽은 `tabDragOf`로 거른다.
+ *
+ * 자리는 맨 위 항목에서부터의 인덱스 경로다(편집기의 `EntryPath`와 같은 모양). **그 타입을 부르지 않고 여기
+ * 적는다** — 편집기의 타입은 기능 폴더에 살아, 부르는 순간 이 모듈의 import 검사가 빨개진다(머리말).
+ */
+export interface EntryDragSource {
+  kind: "entry";
+  path: readonly number[];
+}
+
+/** 끌 수 있는 것 전부 — 한 번에 하나만 끌린다. */
+export type AnyDragSource = DragSource | RowDragSource | EntryDragSource;
+
 export interface DragState {
   /** `null`이면 아무것도 안 끌고 있다 — 받는 쪽의 겹판도 그때는 서지 않는다. */
-  source: DragSource | RowDragSource | null;
+  source: AnyDragSource | null;
   /** 지금 포인터가 어느 절반 위인가. 놓기 전에는 `null`일 수 있다(본문 밖). */
   half: SplitHalf | null;
   /**
@@ -79,9 +95,15 @@ const IDLE: DragState = { source: null, half: null, slot: null };
 
 export const dragStore = new Store<DragState>(IDLE);
 
-/** 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`). */
+/**
+ * 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`).
+ *
+ * **탭 종류로 좁힌다.** 「작업 행이 아니면 탭」으로 거르면 원천 종류가 늘어나는 날 새 종류가 조용히 탭으로
+ * 읽힌다 — 편집기 항목(`EntryDragSource`)을 끄는 순간 분할 겹판이 섰을 것이다.
+ */
 export function tabDragOf(state: DragState): DragSource | null {
-  return state.source?.kind === "work" ? null : state.source;
+  const source = state.source;
+  return source !== null && (source.kind === "spec" || source.kind === "shell") ? source : null;
 }
 
 /**
@@ -135,7 +157,7 @@ export function cancelDrag(): void {
  * 문턱에서 기하를 재므로 문턱 전을 건드릴 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채
  * 천천히 끄는 손이 논다.
  */
-let armed: { source: DragSource | RowDragSource; disarm: () => void } | null = null;
+let armed: { source: AnyDragSource; disarm: () => void } | null = null;
 
 /**
  * **끄는 셸이 사라졌으면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 원천의 `shellId`는 누른 순간
@@ -162,7 +184,7 @@ export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
  * 겹판이 「내 위를 지나간다」를 스스로 알 길이 없어진다.
  */
 export function armDrag(
-  source: DragSource | RowDragSource,
+  source: AnyDragSource,
   from: DragPoint,
   handlers: DragHandlers = {},
 ): void {

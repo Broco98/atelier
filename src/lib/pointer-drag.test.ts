@@ -13,8 +13,9 @@ import {
   hoverHalf,
   hoverSlot,
   shellMoveOf,
+  tabDragOf,
 } from "./pointer-drag";
-import type { DragSource, RowDragSource } from "./pointer-drag";
+import type { DragSource, DragState, EntryDragSource, RowDragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
 // 폴더는 `/terminal`이 못 부르고(TerminalPage.test.tsx), 터미널 기능 폴더는 사이드바 목록이
@@ -129,6 +130,28 @@ describe("한 눌림의 두 소비자", () => {
       .filter((path) => readFileSync(path, "utf8").includes("dragStore.setState"))
       .map((path) => relative(root, path).split("\\").join("/"));
     expect(writers).toEqual(["lib/pointer-drag.ts"]);
+  });
+});
+
+// 본문 절반(분할 겹판)처럼 **탭만 받는 쪽**이 읽는 판정(spec 레이아웃 티켓 13). 「작업 행이 아니면 탭」으로
+// 거르면 원천 종류가 늘어나는 날 새 종류가 탭으로 읽힌다 — 편집기 항목을 끄는 순간 분할 겹판이 선다. 그래서
+// 탭 종류로 좁힌다.
+describe("탭 끌기 판정", () => {
+  const state = (source: DragState["source"]): DragState => ({ source, half: null, slot: null });
+
+  it.each([
+    { name: "문서 칸", source: { kind: "spec", owner: "atelier:", shellId: null } as DragSource },
+    { name: "셸 칸", source: { kind: "shell", owner: "maison:", shellId: 2 } as DragSource },
+  ])("$name은 탭이다", ({ source }) => {
+    expect(tabDragOf(state(source))).toBe(source);
+  });
+
+  it.each([
+    { name: "작업 행", source: { kind: "work", slug: "a" } as RowDragSource },
+    { name: "편집기 항목", source: { kind: "entry", path: [2, 0] } as EntryDragSource },
+    { name: "끄는 것이 없음", source: null },
+  ])("$name은 탭이 아니다", ({ source }) => {
+    expect(tabDragOf(state(source))).toBeNull();
   });
 });
 
