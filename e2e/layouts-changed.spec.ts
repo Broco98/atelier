@@ -8,8 +8,8 @@ import { callCount, fireEvent, installFixtureBackend, unknownIpcCalls } from "./
 //
 // 무엇을 지우는지는 L2가 캐시로 잰다(`features/spec-layout/hooks.test.ts`). **이 층이 드는 것은 그 구독이
 // 화면마다 실제로 떠 있는가**다 — 설정 페이지에서도, work 화면에서도, 아카이브에서도 같은 종 하나에 그
-// 화면의 명령이 다시 나간다. fixture의 답은 설치 때 한 번 정해지므로 바뀐 트리가 아니라 다시 부른 수로
-// 잰다(바뀐 답을 도중에 주는 도우미는 티켓 15가 세운다).
+// 화면의 명령이 다시 나간다. 그래서 바뀐 트리가 아니라 다시 부른 수로 잰다. 답을 도중에 갈아 끼워(`swapAnswer`)
+// 다시 읽힌 답이 화면까지 오는지 보는 것은 편집기 쪽 `spec-layout-outside.spec.ts`다.
 //
 // 하네스의 이벤트 쏘기는 그 이벤트의 **마지막** 구독 하나만 부른다(`fireEvent`). 구독이 하나라서 이 세
 // 시나리오가 한 구독의 세 효과를 잰다.
