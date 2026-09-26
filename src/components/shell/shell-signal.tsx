@@ -175,9 +175,10 @@ export function formatElapsed(ms: number): string {
 
 /**
  * 행의 **오른쪽 메타 — 신호가 있는 갈래**(`sidebar-active-band` 결정 14 · S4). `[마크] [경과]`.
- * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(`SignalLine`)이 하던 일 가운데 「누가」와
+ * 행이 한 줄(32px)이 되면서 두 줄 행의 둘째 줄(마크 · 말 · 경과)이 하던 일 가운데 「누가」와
  * 「얼마나」만 이 칸이 든다 — 띠 줄과 같은 어휘다. 「무슨 말을 하나」는 올려 볼 때만 필요해서
- * 호버 카드의 말 칸과 행 버튼의 설명으로 갔다(`SignalNote`).
+ * 호버 카드의 말 칸과 행 버튼의 설명으로 갔다(`SignalNote`). 둘째 줄을 그리던 조각은
+ * `sidebar-active-band` 판 5에서 걷혔다.
  *
  * | 화면값 | 서는 것 |
  * |---|---|
@@ -227,87 +228,6 @@ export function SignalMeta({
         </span>
       )}
     </span>
-  );
-}
-
-/**
- * 두 줄 행의 둘째 줄 — **부르는 갈래**(결정 5·13). `[마크] [셸의 마지막 말] [경과]`.
- *
- * **행에서는 더 안 쓴다**(`sidebar-active-band` 06). 행이 한 줄이 되면서 오른쪽 메타는
- * `SignalMeta`가, 말은 호버 카드의 `SignalNote`와 행 버튼의 설명이 든다. 지금 이것을 부르는
- * 것은 검사(`shell-signal.test.tsx`)뿐이고, 판 5(27)가 그 검사와 함께 걷는다.
- *
- * **마크가 상태색을 안 받는다**(판 04 결정 15 · 스토리 32). 마크는 늘 「누구」이고 색은 늘
- * 「어떤 상태」다 — 그래서 색이 붙는 상자는 말 하나뿐이고 마크는 그 **밖**에 선다.
- * `currentColor`로 칠하는 글리프라(그 결정) 색 상자 안에 넣으면 그것만으로 물든다.
- *
- * **도는 중은 경과를 안 붙인다**(결정 13). 레인의 스피너가 「지금 돈다」를 이미 말하니 둘째 줄은
- * 맥락을 지킨다 — 경과를 붙이면 「3분째 기다린다」로 읽히는데 그 셸은 일하는 중이다. 기각:
- * 도는 명령 이름(마크와 중복) · 종류·수로 되돌리기.
- *
- * **말이 없으면 상태 말이 바닥이다.** 훅이 페이로드를 못 읽어도 「그 이벤트가 났다」는
- * 남기므로(`PermissionRequest`가 그렇다) 말 없는 상태가 실제로 온다 — 그때 줄이 통째로 비면
- * 행은 부르는데 둘째 줄만 조용하다. 이것은 **바닥**이지 이 줄의 내용이 아니다: 둘째 줄이
- * 상태 이름을 적는 안(목업 D)은 「A와 같은 정보를 더 높게」라는 이유로 기각됐다(결정 5).
- *
- * **그런데 그 바닥이 서는 화면은 기각된 D와 겉이 같다.** 그리고 그것은 사고가 아니라 정규
- * 경로다 — 전이 표에 message 없는 상태가 둘 있고(벨로 뜬 `done`, `/clear` 뒤의 `working`),
- * 벨로 뜬 초록 행은 **늘** 둘째 줄에 「확인할 것」이 앉는다. 스펙이 이 자리를 안 정했으므로
- * 구현이 고른 것이고, 사람에게 물어 둔 것이 `spec/물음-둘째-줄의-색.md`의 둘째 물음이다
- * (상태 이름인가 · 종류·수로 되돌아가는가 · 비워 두는가). 정해지기 전까지 이 모양을 둔다.
- */
-export function SignalLine({
-  kind,
-  message,
-  running,
-  since,
-  now,
-}: {
-  kind: ShellSignal;
-  /** 셸이 마지막으로 한 말의 첫 줄. 없으면 상태 말이 대신 선다. */
-  message: string | null;
-  /** 그 셸에서 도는 것의 원문 — 마크를 고르는 것은 여기다(표는 `agentMarkOf` 하나). */
-  running: string | null;
-  since: number;
-  /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`formatElapsed`). */
-  now: number;
-}) {
-  const mark = agentMarkOf(running);
-  return (
-    <>
-      {mark && (
-        // 이름은 눈이 아니라 접근성으로만 읽는다 — `ShellMeta`의 무리와 같은 규칙이다.
-        // 수가 안 붙는 것은 이 줄이 **셸 하나**의 말이기 때문이다(무리가 아니다).
-        <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
-          <mark.Glyph className="size-3" />
-        </span>
-      )}
-      <span
-        data-fade=""
-        className={cn(
-          "min-w-0 flex-1 whitespace-nowrap",
-          // **도는 중은 아무 색도 안 든다** — 둘째 줄 상자가 깔아 둔 바닥
-          // (`muted-foreground`, 대비 6.9) 그대로다. 「직전 말을 흐리게」(결정 13)는
-          // 그 바닥에 **머무는 것**으로 이미 성립한다: 부르는 행은 `font-medium` +
-          // 상태색으로 그 위로 올라오므로 옆에 두면 이쪽이 흐리다. `tertiary`(≈3.0)로 한 단
-          // 더 내리는 안은 구현 결정 4가 토큰 이름까지 적어 막았다 — 「지금의 `tertiary`를
-          // 그대로 내리지 않는다 … 경과 시간·종류 수 숫자는 `tertiary`여도 된다」이고,
-          // 도는 중의 말은 경과도 숫자도 아니라 이 판이 고치려던 3.0을 말에서 다시 만든다.
-          kind !== "working" && cn("font-medium", TONE[kind].text),
-        )}
-      >
-        {message ?? SIGNAL_LABEL[kind]}
-      </span>
-      {showsElapsed(kind) && (
-        // 부차 정보라 한 단 내려간다 — 둘째 줄의 바닥(`muted-foreground`)이 아니라
-        // `tertiary`인 것은 「얼마나 기다렸나」가 말보다 뒤에 읽혀야 해서다(구현 결정 4).
-        // 표식은 띠의 경과와 같은 것을 쓴다(`attention-band.tsx`) — 같은 조각이라 집는
-        // 이름도 하나여야 한다.
-        <span data-elapsed="" className="shrink-0 tabular-nums text-tertiary">
-          {formatElapsed(now - since)}
-        </span>
-      )}
-    </>
   );
 }
 
