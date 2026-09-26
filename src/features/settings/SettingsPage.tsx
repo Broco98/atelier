@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
 import { Field, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -262,13 +263,9 @@ function SettingsFileGate({
         <p className="text-[13px] leading-[1.7] text-tertiary">
           파일을 손으로 고친 뒤 다시 읽어 주세요. 고칠 때까지 이 화면은 아무것도 저장하지 않아요.
         </p>
-        <button
-          type="button"
-          onClick={() => setAttempt((n) => n + 1)}
-          className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-        >
+        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>
           다시 읽기
-        </button>
+        </Button>
       </div>
     );
   }
@@ -501,18 +498,10 @@ function SaveButton({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={!enabled}
-        // 규격은 이 저장소의 유일한 주 버튼 선례를 그대로 쓴다
-        // (ProjectsPage의 "프로젝트 추가"). disabled:pointer-events-none은
-        // 테두리를 걷어낸 뒤로 배경 농도가 "누를 수 있다"를 말하는 유일한
-        // 어휘라서다 — 잠긴 채 hover가 걸리면 눌리는 버튼으로 읽힌다.
-        className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
-      >
+      {/* 주 버튼(Button의 기본) — 프로젝트 빈 화면의 「프로젝트 등록」과 한 규격이다. */}
+      <Button onClick={onSave} disabled={!enabled}>
         {saving ? "저장 중…" : "저장"}
-      </button>
+      </Button>
       {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
     </div>
   );
@@ -799,24 +788,14 @@ export function HooksSection({
 
       <Row label="">
         <div className="flex items-center gap-3">
-          {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 버튼(주 버튼)은 터미널
+          {/* 규격은 이 화면의 「다시 읽기」와 같은 쪽 동작 버튼이다 — 저장 버튼(주 버튼)은 터미널
               설정·알림 설정에만 있고, 이 둘은 그 자리를 안 지나는 별개의 쓰기다. */}
-          <button
-            type="button"
-            onClick={onInstall}
-            disabled={busy}
-            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
-          >
+          <Button variant="ghost" size="sm" onClick={onInstall} disabled={busy}>
             설치
-          </button>
-          <button
-            type="button"
-            onClick={onUninstall}
-            disabled={busy}
-            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
-          >
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onUninstall} disabled={busy}>
             제거
-          </button>
+          </Button>
           {error !== null && <span className="text-[13px] text-red-600">{error}</span>}
         </div>
       </Row>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import type { ProjectView } from "./types";
@@ -101,13 +102,9 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
             <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <button
-              type="button"
-              onClick={onAdd}
-              className="h-7 rounded-[9px] bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary/15"
-            >
+            <Button variant="soft" size="sm" onClick={onAdd}>
               프로젝트 등록
-            </button>
+            </Button>
           </EmptyContent>
         </Empty>
       ) : filtered.length === 0 ? (

@@ -3,6 +3,7 @@ import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
@@ -101,23 +102,17 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <>
               {selected && (
                 <>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={selected.missing}
                     onClick={() => projectsApi.openFolder(selected.slug)}
-                    // disabled:pointer-events-none — 테두리를 걷어낸 뒤로는 배경 농도가 "누를 수 있다"를
-                    // 말하는 유일한 어휘라서, 비활성 상태에서 hover가 걸리면 눌리는 버튼으로 읽힌다
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
                   >
                     폴더 열기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemove}
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
-                  >
+                  </Button>
+                  <Button variant="destructive-ghost" size="sm" onClick={handleRemove}>
                     제거
-                  </button>
+                  </Button>
                 </>
               )}
               <button
@@ -153,13 +148,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
-                  <button
-                    type="button"
-                    onClick={handleAdd}
-                    className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
-                  >
-                    프로젝트 등록
-                  </button>
+                  <Button onClick={handleAdd}>프로젝트 등록</Button>
                 </EmptyContent>
               </Empty>
             </div>
