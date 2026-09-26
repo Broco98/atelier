@@ -695,11 +695,17 @@ mod tests {
                 let _ = tx.send(changed);
             });
         });
-        // 감시가 걸리기 전에 쓴 파일은 아무 이벤트도 안 낸다.
-        std::thread::sleep(std::time::Duration::from_millis(300));
-
-        write_state(&dir, "1700-1", 1);
-        let first = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("바뀐 셸이 나온다");
+        // **감시가 걸릴 때까지 같은 파일을 다시 쓴다.** 감시가 걸리기 전에 쓴 파일은 아무 이벤트도 안 낸다. 한때 300ms
+        // 쉬고 한 번만 썼는데, 붐비는 기계(다른 검사가 함께 도는 `cargo test --workspace`, 옆 세션의 L3)에서는 감시
+        // 스레드가 그 안에 FSEvents 흐름을 못 열어 첫 쓰기가 통째로 빠지고 10초 기다림이 터졌다(쉼을 3초로 늘리면 같은
+        // 부하에서 다섯 번 모두 초록이었다). 같은 내용을 다시 쓰는 것은 무해하다 — 감시는 바뀐 셸만 내보내므로, 먼저
+        // 나온 한 번 뒤에 늦게 온 이벤트는 아무것도 안 싣는다. 모두 합쳐 10초가 상한인 것은 그대로다.
+        let first = (0..40)
+            .find_map(|_| {
+                write_state(&dir, "1700-1", 1);
+                rx.recv_timeout(std::time::Duration::from_millis(250)).ok()
+            })
+            .expect("바뀐 셸이 나온다");
         assert_eq!(first.len(), 1, "한 셸만 바뀌었는데 여럿이 나갔다: {first:?}");
         assert_eq!(first[0].shell_id, "1700-1");
 
