@@ -414,16 +414,15 @@ describe("구획 접기", () => {
 // 마크·경과**가 같은 칸에 선다(S4). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
 // **마크업이 무엇을 말하는가**다.
 describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 겹친다", () => {
-  it("**둘째 줄이 없다** — 두 칸을 걸치는 상자도, 그 표식도 없다", () => {
-    // 결정 14. 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이고, 두 칸을 다 쓰는
-    // 상자(`col-span-2`)가 남아 있으면 그것이 곧 둘째 트랙이다. 셸이 있는 행 · 없는 행 ·
-    // 부르는 행을 함께 그린다 — 두 줄 행은 셋 모두에 줄을 세웠다.
+  it("**둘째 줄이 없다** — 그 표식이 어느 행에도 안 선다", () => {
+    // 결정 14. 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다. 셸이 있는 행 · 없는
+    // 행 · 부르는 행을 함께 그린다 — 두 줄 행은 셋 모두에 줄을 세웠다. 둘째 트랙이 정말 없는지
+    // (모든 행이 32px 한 줄)는 L3가 잰다(`works-sidebar.spec.ts` 「모든 행이 한 줄 32px이고 …」).
     const markup = render(works("가@billing", "나@billing", "다"), ALL, {
       shellCounts: { 가: 1, 다: 1 },
       signals: { 다: "waiting" },
     });
     expect(markup).not.toContain("data-subrow");
-    expect(markup).not.toContain("col-span-2");
   });
 
   it("셸이 하나라도 있는 행에만 **종류·수**가 선다", () => {
@@ -483,36 +482,12 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     expect(가.html).not.toContain("<a ");
   });
 
-  it("**메타와 핀이 2열 1행 같은 칸에 선다** — 둘 다 칸 끝에 붙는다", () => {
-    // 판 05 결정 1이 돌아온다(결정 14). 두 줄 행에서는 2열 1행에 핀 하나뿐이었고 메타는
-    // 둘째 줄에 있었다. 둘이 **같은 칸에 겹쳐** 서야 칸 폭이 `max(메타, 핀)`이 되고, hover에
-    // 핀이 메타 자리의 끝에 선다(e2e가 두 오른쪽 끝이 같은 x인지 잰다).
-    const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
-    const [가] = rowMetasOf(markup);
-    for (const one of ["col-start-2", "row-start-1", "justify-self-end"]) {
-      expect(가.html).toContain(one);
-      for (const pin of pinsOf(markup)) expect(pin).toContain(one);
-    }
-    // 2열에 서는 것은 핀(행마다)과 메타(셸이 있는 행마다)뿐이다.
-    expect([...markup.matchAll(/col-start-2/g)]).toHaveLength(pinsOf(markup).length + 1);
-  });
-
-  it("**메타는 hover·핀 포커스에 투명해지고, 레인은 그대로다** — 판 05 결정 6·7", () => {
-    // 두 줄 행이 뒤집었던 규칙을 **다시 뒤집는다**: 메타와 핀이 한 칸에 겹치므로, 핀이 뜨면
-    // 메타가 물러나는 것이 유일한 답이다. `peer-focus-visible`은 핀이 `peer`이고 DOM에서
-    // 메타보다 **앞**일 때만 먹는다(결정 7) — 순서가 뒤집히면 이 클래스는 아무것도 안 한다.
-    // 레인은 1열이라 핀과 안 겹치므로 물러날 이유가 없고, 물러나면 상태 축이 마우스 위치에
-    // 따라 지워진다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
-    const [가] = rowMetasOf(markup);
-    expect(가.html).toContain("group-hover:opacity-0");
-    expect(가.html).toContain("peer-focus-visible:opacity-0");
-    // 트랜지션은 안 건다 — 옆 행으로 옮겨 갈 때 두 페이드가 겹쳐 미끄러져 보인다.
-    expect(가.html).not.toContain("transition");
-    expect(pinsOf(markup)[0]).toMatch(/class="peer /);
-    expect(markup.indexOf('aria-pressed="false"')).toBeLessThan(markup.indexOf("data-row-meta"));
-    expect(laneOf(markup)).not.toContain("group-hover:opacity-0");
-  });
+  // _한때 여기 「메타와 핀이 2열 1행 같은 칸에 선다」와 「메타는 hover·핀 포커스에 투명해지고, 레인은
+  // 그대로다」가 있었다._ 두 줄 행의 핀을 한 줄 행으로 뒤집으며 클래스 문자열 단언(`col-start-2` ·
+  // `group-hover:opacity-0` · `peer-focus-visible:opacity-0` · 「`transition`이 없다」)으로 다시 쓴
+  // 것이라 걷었다 — 스펙은 클래스 문자열을 안 보고, hover·핀 포커스의 투명은 L3가 잰다
+  // (`works-sidebar.spec.ts` 「hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — …」: 핀과 메타의
+  // 오른쪽 끝이 같은 x, 핀 포커스·행 hover에 메타 opacity 0 · 레인 1).
 
   it("이름 버튼은 여전히 **행 상자의 직계 자식**이다", () => {
     // 행을 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어, 그것으로 배경 상자를
