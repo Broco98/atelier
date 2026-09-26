@@ -1405,18 +1405,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// **호출 시간 — 에이전트가 부르는 두 모양으로 잰다**(S28). 판정은 구현 기록의 계측이 하고, 여기서는 로그를 남기고 크게 무너진
+    /// **호출 시간 — 에이전트가 부르는 모양으로 잰다**(S28). 판정은 구현 기록의 계측이 하고, 여기서는 로그를 남기고 크게 무너진
     /// 것만 잡는다(`cargo test -p atelier-app --lib shells::tests::the_handler -- --nocapture`로 본다).
     ///
-    /// - `args` 꼴: 셸 없이 곧바로 — claude가 `args`가 있는 command 훅을 띄우는 길(exec form).
-    /// - 셸 꼴: `/bin/sh -c '<경로> claude Stop'` — `args`가 없을 때 claude가 띄우는 길(Bun의 `shell: true`)이자 codex의 길. 셸 한
-    ///   벌이 더해진다.
+    /// - `args` 꼴: 셸 없이 곧바로 — claude가 `args`가 있는 command 훅을 띄우는 길(exec form). 21이 claude에 거는 모양이다.
+    /// - 셸 꼴: `/bin/sh -c '<경로> claude Stop'` — `args`가 없을 때 claude가 띄우는 길(Bun의 `shell: true`). 견줌으로 남긴다.
+    /// - codex 꼴: `/bin/zsh -c '<경로> codex Stop'` — codex에는 `args`가 없고, 훅 명령줄을 `/bin/sh`가 아니라 **제 환경의 셸**로
+    ///   부른다(codex 소스 `hooks/src/engine/command_runner.rs` · `core/src/session/mod.rs`: 그 셸의 `-c`, 환경이 없을 때만
+    ///   `$SHELL -lc`). macOS의 기본 사용자 셸이 zsh라 그 모양을 잰다. `HOME`이 임시 루트라 사용자의 `~/.zshenv`는 안 든다 —
+    ///   그 값은 사용자 몫이다.
     #[test]
     fn the_handler_answers_in_a_few_milliseconds_in_the_shapes_an_agent_calls_it() {
         let root = temp_root("handler-time");
         ready_handler(&root);
         let handler = handler_path(&root);
         let shell_line = format!("'{}' claude Stop", handler.display());
+        let codex_line = format!("'{}' codex Stop", handler.display());
         let payload = claude_subagent_stop("ace905bb8e05c8931");
 
         let time = |command: std::process::Command| {
@@ -1427,21 +1431,25 @@ mod tests {
             assert!(out.status.success(), "0이 아닌 코드로 끝났다: {out:?}");
             took
         };
-        let (mut exec_form, mut shell_form) = (Vec::new(), Vec::new());
+        let (mut exec_form, mut shell_form, mut codex_form) = (Vec::new(), Vec::new(), Vec::new());
         for _ in 0..40 {
             exec_form.push(time(handler_command(&handler, &root, Some("1700-12"), &["claude", "Stop"])));
             let mut sh = handler_command(Path::new("/bin/sh"), &root, Some("1700-12"), &["-c"]);
             sh.arg(&shell_line);
             shell_form.push(time(sh));
+            let mut zsh = handler_command(Path::new("/bin/zsh"), &root, Some("1700-12"), &["-c"]);
+            zsh.arg(&codex_line);
+            codex_form.push(time(zsh));
         }
         let p50 = |mut runs: Vec<std::time::Duration>| {
             runs.sort();
             runs[runs.len() / 2]
         };
-        let (exec_p50, shell_p50) = (p50(exec_form), p50(shell_form));
-        eprintln!("계측(처리기 호출 p50, 40번): args 꼴 {exec_p50:?} · 셸 꼴 {shell_p50:?}");
+        let (exec_p50, shell_p50, codex_p50) = (p50(exec_form), p50(shell_form), p50(codex_form));
+        eprintln!("계측(처리기 호출 p50, 40번): args 꼴 {exec_p50:?} · 셸 꼴 {shell_p50:?} · codex 꼴 {codex_p50:?}");
         assert!(exec_p50 < std::time::Duration::from_millis(100), "args 꼴 p50이 {exec_p50:?}다");
         assert!(shell_p50 < std::time::Duration::from_millis(150), "셸 꼴 p50이 {shell_p50:?}다");
+        assert!(codex_p50 < std::time::Duration::from_millis(150), "codex 꼴 p50이 {codex_p50:?}다");
         let _ = std::fs::remove_dir_all(&root);
     }
 
