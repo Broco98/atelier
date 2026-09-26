@@ -19,7 +19,7 @@ export interface CleanedProcess {
 export interface StartupReport {
   /** 시작 정리가 실제로 끝낸 것(끝남 · 강제). 「이미 없음」은 안 실린다 — 수가 곧 이 목록의 길이다. */
   cleaned: CleanedProcess[];
-  /** 훅을 새 목록으로 맞춘 에이전트(`claude` · `codex`). */
+  /** 앱이 뜰 때 이미 깔린 훅을 지금 목록으로 맞춘 에이전트(`claude` · `codex`) — 실제로 설정을 고쳐 쓴 것만이다. */
   hooksUpdated: string[];
 }
 
@@ -57,16 +57,29 @@ export async function loadStartupReport(
 }
 
 /**
- * 보고에서 **알릴 말**. 끝낸 것이 없으면 아무 말도 없다(스토리 21) — 전부 「이미 없음」이었어도 그렇다.
+ * 보고에서 **알릴 말** — 둘이다.
+ *
+ * - 시작 정리: 끝낸 것이 없으면 아무 말도 없다(스토리 21) — 전부 「이미 없음」이었어도 그렇다.
+ * - 훅 맞춤(프로세스 결정 15 · 프로세스 스펙 S36): 이미 깔린 훅을 실제로 고쳐 쓴 에이전트가 있으면 한 번 말한다. 어느
+ *   에이전트인지는 안 적는다 — 둘을 맞춰도 말은 하나다. 목록이 다른 두 빌드를 번갈아 켜도 Rust가 새로운 판의 파일을 안
+ *   되쓰므로(P5) 이 칸은 비고, 토스트는 켤 때마다 서지 않는다.
+ *
+ * 둘 다 동작 버튼 없는 짧은 토스트다.
  *
  * **말마다 늘 같은 id를 단다.** 알리는 자리가 이펙트라 StrictMode(dev)에서 두 번 돌고, 토스트 매니저는 같은
- * id를 받으면 새로 세우지 않고 그 자리를 고친다 — 두 번 알려도 토스트는 하나다.
+ * id를 받으면 새로 세우지 않고 그 자리를 고친다 — 두 번 알려도 토스트는 하나다. 두 말의 id는 서로 다르다 — 같으면 뒤의 말이
+ * 앞의 토스트를 고쳐 하나만 선다.
  *
- * 훅 갱신 칸의 말(「에이전트 훅을 새 목록으로 맞췄어요」)은 티켓 21이 여기에 더한다. [보기]는 판 04가
- * 붙인다(프로세스 스펙 S15) — 그때부터 정리 토스트는 누를 때까지 남는 동작 토스트가 된다.
+ * [보기]는 판 04가 정리 토스트에 붙인다(프로세스 스펙 S15) — 그때부터 정리 토스트는 누를 때까지 남는 동작 토스트가 된다.
  */
 export function startupNotices(report: StartupReport): AppNotice[] {
+  const notices: AppNotice[] = [];
   const count = report.cleaned.length;
-  if (count === 0) return [];
-  return [{ id: "startup:cleanup", text: `지난 실행에서 남은 프로세스 ${count}개를 정리했어요` }];
+  if (count > 0) {
+    notices.push({ id: "startup:cleanup", text: `지난 실행에서 남은 프로세스 ${count}개를 정리했어요` });
+  }
+  if (report.hooksUpdated.length > 0) {
+    notices.push({ id: "startup:hooks", text: "에이전트 훅을 새 목록으로 맞췄어요" });
+  }
+  return notices;
 }

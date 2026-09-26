@@ -400,7 +400,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     {
       agent: "claude",
       path: "~/.claude/settings.json",
-      installed: false,
+      installed: "none",
       error: null,
       writeError: null,
       preview: '{ "hooks": { "Stop": [] } }',
@@ -408,7 +408,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     {
       agent: "codex",
       path: "~/.codex/config.toml",
-      installed: false,
+      installed: "none",
       error: null,
       writeError: null,
       preview: "[[hooks.Stop]]",

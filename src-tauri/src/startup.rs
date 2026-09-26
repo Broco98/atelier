@@ -5,19 +5,21 @@
 //! 이벤트는 아무도 못 듣고 지나간다. 붙잡아 둔 값은 늦게 물어도 그대로 있다. 묻는 자리는 프런트의
 //! `main.tsx` 한 곳이다(`src/components/shell/startup-report.ts`).
 //!
-//! 싣는 것은 둘이다: 지난 실행이 남긴 확정 고아를 치운 결과(시작 정리, 티켓 10)와, 이미 깔린 에이전트 훅을 새 목록으로
-//! 맞춘 결과(티켓 21이 채운다).
+//! 싣는 것은 둘이다: 지난 실행이 남긴 확정 고아를 치운 결과(시작 정리 `clean_up`, 티켓 10)와, 이미 깔린 에이전트 훅을 새
+//! 목록으로 맞춘 결과(훅 맞춤 `sync_hooks`, 티켓 21).
 //!
 //! **준비됨은 시작 때 할 일이 모두 끝났을 때다.** 할 일마다 몫(`Chore`)을 하나씩 세고, 몫이 모두 끝나야 답한다 — 물었을 때
 //! 정리가 아직 돌고 있으면 끝날 때까지 기다렸다 답한다. 기다리는 것은 부르는 스레드라, 명령은 blocking 풀에서 묻는다
 //! (`commands::startup_report` — tokio 워커를 막지 않는다).
 
+use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use serde::Serialize;
 
 use crate::processes::ending::Outcome;
 use crate::pty::{self, Cleared, PtyPool};
+use crate::{hooks, shells};
 
 /// 앱이 뜰 때 한 일. 프런트의 `StartupReport`(`src/components/shell/startup-report.ts`)와 **필드 이름으로만**
 /// 이어진다 — 어긋나면 컴파일도 타입 검사도 통과하고 토스트만 조용히 안 선다. 그래서 와이어 모양을
@@ -136,6 +138,24 @@ pub fn clean_up(chore: Chore, pool: Arc<PtyPool>) {
     in_background(chore, "atelier-startup-cleanup", move || pty::clean_up_at_startup(&pool), |report, cleared| {
         report.cleaned = cleaned(&cleared)
     });
+}
+
+/// **이미 깐 에이전트 훅을 지금 목록으로 맞춘다**(프로세스 결정 15 · 티켓 21) — 뒤 스레드에서 `hooks::sync`를 돌리고, 실제로 쓴
+/// 에이전트를 시작 보고의 훅 칸에 그 몫(`chore`)으로 싣는다. 프런트는 그 칸이 비지 않았으면 토스트를 한 번 띄운다(S36).
+///
+/// `home`은 고칠 설정이 사는 사용자의 홈(`hooks::agent_home`)이고 `root`는 처리기가 사는 데이터 루트다 — 설정이 가리키게 될
+/// 처리기는 `<root>/hooks/atelier-hook.zsh`다. **처리기를 디스크에 세운 뒤에 부른다**(`lib.rs`의 셋업) — 설정만 새 경로를 가리키면
+/// 에이전트가 매 턴 없는 파일을 부른다.
+///
+/// 파일을 넷까지 읽고 쓰는 기다리는 일이라 뒤 스레드로 보낸다 — 셋업이 그동안 서지 않고, 묻는 쪽(`commands::startup_report`)은
+/// blocking 풀에서 몫을 기다린다. 스레드를 못 띄우면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다.
+pub fn sync_hooks(chore: Chore, home: PathBuf, root: PathBuf) {
+    in_background(
+        chore,
+        "atelier-hook-sync",
+        move || hooks::sync(&home, &shells::handler_path(&root)),
+        |report, agents| report.hooks_updated = agents,
+    );
 }
 
 /// 시작 정리가 끝내려 한 것 중 **실제로 끝낸 것** — 끝남(TERM) · 강제(KILL). 「이미 없음」은 끝낸 것이 아니고, 「못 끝냄」은
@@ -272,6 +292,128 @@ mod tests {
         assert!(body.contains("in_background(chore,"), "시작 정리가 받은 몫으로 뒤 스레드에 가는 길을 안 탄다");
         assert!(body.contains("pty::clean_up_at_startup(&pool)"), "시작 정리가 풀의 정리를 안 부른다");
         assert!(body.contains("report.cleaned = cleaned(&cleared)"), "정리의 결과를 보고에 안 싣는다");
+    }
+
+    /// 임시 폴더 하나 — 이 검사만의 이름이다. 진짜 홈(`~/.claude` · `~/.codex`)과 진짜 데이터 루트는 건드리지 않는다.
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("atelier-startup-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// 옛 빌드가 훅을 깐 홈 — claude 설정에 옛 python 처리기의 `Stop` 한 줄, codex 설정에 옛 울타리 구획(`Stop` 한 줄).
+    /// 훅 설치기의 검사가 모양을 넓게 재고(`hooks.rs`), 여기서는 앱이 뜰 때의 길이 그것을 부르는지만 본다.
+    fn old_install(home: &std::path::Path) {
+        let old = "/Users/someone/.atelier/hooks/atelier-hook.py";
+        std::fs::create_dir_all(home.join(".claude")).unwrap();
+        let claude = serde_json::json!({ "model": "opus", "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": format!("'{old}' claude Stop") }] }] } });
+        std::fs::write(home.join(".claude/settings.json"), serde_json::to_string_pretty(&claude).unwrap()).unwrap();
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        std::fs::write(
+            home.join(".codex/config.toml"),
+            format!(
+                "model = \"gpt-5\"\n\n# >>> atelier 셸 신호 훅 — 아틀리에 설정 화면이 넣었습니다 >>>\n\n[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"'{old}' codex Stop\"\n# <<< atelier 셸 신호 훅 <<<\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// **앱이 뜰 때의 훅 맞춤이 인자로 받은 홈과 데이터 루트에서 돌고, 맞춘 에이전트를 시작 보고에 싣는다**(프로세스 결정 15 ·
+    /// 티켓 21). 옛 설치는 지금 목록으로 맞춰지고 `.bak`이 서며, 설정의 처리기 경로는 받은 데이터 루트의 새 처리기다. 한 번도 깐
+    /// 적이 없는 홈은 글자 그대로이고 보고의 훅 칸이 빈다.
+    #[test]
+    fn the_hook_sync_runs_on_the_homes_it_is_given_and_reports_what_it_wrote() {
+        let (home, root) = (temp_dir("sync-home"), temp_dir("sync-root"));
+        old_install(&home);
+        let holder = Arc::new(ReportHolder::default());
+        sync_hooks(holder.expect(), home.clone(), root.clone());
+
+        let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("맞춤이 끝났는데 5초가 지나도 답이 없다");
+        assert_eq!(report.hooks_updated, ["claude", "codex"], "맞춘 에이전트가 보고에 안 실렸다");
+        let handler = crate::shells::handler_path(&root);
+        for file in [".claude/settings.json", ".codex/config.toml"] {
+            let now = std::fs::read_to_string(home.join(file)).unwrap();
+            assert!(now.contains(&*handler.to_string_lossy()), "{file}이 받은 데이터 루트의 처리기를 안 가리킨다:\n{now}");
+            assert!(!now.contains("atelier-hook.py"), "{file}에 옛 줄이 남았다:\n{now}");
+            assert!(home.join(format!("{file}.bak")).exists(), "{file}의 .bak이 안 섰다");
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        // 한 번도 깐 적이 없는 홈 — 남의 설정만 있다.
+        let fresh = temp_dir("sync-fresh");
+        std::fs::create_dir_all(fresh.join(".claude")).unwrap();
+        let foreign = "{\n    \"model\": \"opus\"\n}";
+        std::fs::write(fresh.join(".claude/settings.json"), foreign).unwrap();
+        let holder = Arc::new(ReportHolder::default());
+        sync_hooks(holder.expect(), fresh.clone(), root.clone());
+        let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다");
+        assert!(report.hooks_updated.is_empty(), "깐 적이 없는데 맞췄다고 한다: {:?}", report.hooks_updated);
+        assert_eq!(std::fs::read_to_string(fresh.join(".claude/settings.json")).unwrap(), foreign, "남의 설정을 다시 썼다");
+        assert!(!fresh.join(".claude/settings.json.bak").exists(), "쓴 것이 없는데 벌을 떴다");
+        assert!(!fresh.join(".codex").exists(), "없던 codex 설정을 만들었다");
+        let _ = std::fs::remove_dir_all(&fresh);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **시작 보고는 훅 맞춤이 끝난 뒤 답한다**(티켓 21 — 티켓 10이 세운 「기여자 여럿」에 훅 맞춤을 하나 더한다). 시작 정리의 몫이
+    /// 끝나도 맞춤이 도는 동안은 답하지 않는다. 맞춤은 부르는 스레드를 막지 않는다 — 앱의 셋업이 그동안 서면 창이 늦게 뜬다.
+    ///
+    /// **문은 codex 설정 자리의 이름 붙은 파이프(FIFO)다.** 맞춤이 그 파일을 읽으려 열면 누가 쓰기로 열 때까지 막힌다 — 진짜 맞춤을
+    /// 그 자리에 붙잡아 둘 수 있다. 문을 열면 우리 것 없는 설정을 흘려보내므로 codex는 안 쓰이고(파이프가 그대로 남는다) claude만
+    /// 맞춘다.
+    #[cfg(unix)]
+    #[test]
+    fn the_report_waits_for_the_hook_sync() {
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::FileTypeExt;
+
+        let (home, root) = (temp_dir("wait-home"), temp_dir("wait-root"));
+        old_install(&home);
+        let fifo = home.join(".codex/config.toml");
+        std::fs::remove_file(&fifo).unwrap();
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: 널로 끝나는 경로 하나를 넘길 뿐이다.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "파이프를 못 만들었다");
+
+        let holder = Arc::new(ReportHolder::default());
+        let cleanup = holder.expect();
+        let (returned, came_back) = mpsc::channel();
+        {
+            let (chore, home, root) = (holder.expect(), home.clone(), root.clone());
+            std::thread::spawn(move || {
+                sync_hooks(chore, home, root);
+                let _ = returned.send(());
+            });
+        }
+        assert!(
+            came_back.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "훅 맞춤이 부르는 스레드를 막는다 — 앱의 셋업이 파일을 다 읽고 쓸 때까지 선다"
+        );
+        let answered = ask(&holder);
+        cleanup.deliver(|report| report.cleaned.push(Cleaned { pid: 4242, name: "node".into() }));
+        assert!(answered.recv_timeout(STILL).is_err(), "훅 맞춤이 도는데 답했다 — 맞춘 사실이 보고에 안 실린다");
+
+        // 문을 연다 — 파이프를 쓰기로 열면 막혀 있던 읽기가 이어진다. 맞춤이 그 파일을 영영 안 읽으면 여기서 5초 뒤 빨갛다.
+        let (opened, open) = mpsc::channel();
+        {
+            let fifo = fifo.clone();
+            std::thread::spawn(move || {
+                use std::io::Write;
+                if let Ok(mut pipe) = std::fs::OpenOptions::new().write(true).open(&fifo) {
+                    let _ = pipe.write_all(b"model = \"gpt-5\"\n");
+                    let _ = opened.send(());
+                }
+            });
+        }
+        open.recv_timeout(Duration::from_secs(5)).expect("맞춤이 codex 설정을 안 읽는다");
+
+        let report = answered.recv_timeout(Duration::from_secs(5)).expect("맞춤이 끝났는데 5초가 지나도 답이 없다");
+        assert_eq!(report.cleaned, vec![Cleaned { pid: 4242, name: "node".into() }], "시작 정리의 몫이 빠졌다");
+        assert_eq!(report.hooks_updated, ["claude"], "훅 맞춤의 몫이 빠졌거나 codex를 썼다");
+        assert!(std::fs::symlink_metadata(&fifo).unwrap().file_type().is_fifo(), "우리 것이 없는 codex 설정을 다시 썼다");
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 와이어 모양. 프런트는 `cleaned` · `hooksUpdated`를 읽는다 — `rename_all`이 빠지면 훅 칸이

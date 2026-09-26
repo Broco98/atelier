@@ -808,16 +808,26 @@ export function NotificationSection({
 }
 
 /**
- * 훅이 지금 어떤가를 **한 낱말로**. 셋이고, 셋째가 이 함수가 있는 이유다.
+ * 훅이 지금 어떤가를 **한 낱말로**. 넷이고, 넷째(「확인 못 함」)가 이 함수가 있는 첫 이유다.
  *
  * `installed`만 보면 「깨져서 판정을 못 했다」가 「안 깔렸다」와 같은 낱말이 된다. 백엔드는
- * 그때 판정을 안 하고 `installed: false`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
+ * 그때 판정을 안 하고 `installed: "none"`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
  * 화면이 그 둘을 한 낱말로 접으면 **없는 사실을 만들고** 사람을 실패하는 버튼으로 보낸다.
+ *
+ * **일부만 깔린 것은 「업데이트 필요」다**(프로세스 결정 15 · 프로세스 스펙 S35). 앱이 뜰 때 저절로 맞추지만, 그 전에 연
+ * 사람이나 맞추기가 실패한 사람에게는 「설치」 버튼이 고칠 길이다 — 병합이 이미 깔린 것을 지금 목록으로 맞춘다.
  */
 export function hookStateLabel(status: HookStatus): string {
   if (status.error !== null) return "확인 못 함";
-  return status.installed ? "설치됨" : "설치 안 됨";
+  return INSTALLED_LABEL[status.installed];
 }
+
+/** 설치 상태마다의 낱말. 표로 두면 상태가 하나 늘 때 타입 검사가 빠진 낱말을 잡는다. */
+const INSTALLED_LABEL: Record<HookStatus["installed"], string> = {
+  none: "설치 안 됨",
+  partial: "업데이트 필요",
+  full: "설치됨",
+};
 
 /**
  * `에이전트 훅` 구획 — 에이전트마다 상태·경로·미리보기, 그리고 버튼 둘 (스토리 70~74).

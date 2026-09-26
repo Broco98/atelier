@@ -8,8 +8,9 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-/// 앱이 설치하는 훅 스크립트의 이름 — **옛 python 처리기**다. 지금 설치 버튼이 사용자의 설정에 거는 것이 아직 이것이다.
-/// 새 처리기(`HANDLER_NAME`)로 명령줄을 갈아 끼우는 것은 판 03의 훅 갱신(티켓 21)이다.
+/// 옛 훅 스크립트의 이름 — **옛 python 처리기**다. 이 판 전의 설치 버튼이 사용자의 설정에 걸던 것이다. 이제 설치와 앱이 뜰
+/// 때의 맞춤(티켓 21)은 새 처리기(`HANDLER_NAME`)를 걸고, 이 이름의 줄은 우리 것으로 알아봐 새 줄로 갈아 끼운다(`hooks::is_ours`).
+/// 파일은 계속 세운다 — 옛 빌드가 깐 채 아직 안 맞춘 설정과, 옛 설치본이 그 줄을 다시 부른다.
 pub const SCRIPT_NAME: &str = "atelier-hook.py";
 
 /// 훅 스크립트의 본문. **소스 트리의 진짜 파일을 그대로 굽는다** — 문자열 리터럴로 Rust
@@ -63,20 +64,20 @@ pub fn hooks_dir(root: &Path) -> PathBuf {
     root.join("hooks")
 }
 
-/// 설치된 훅 스크립트의 자리. 훅 설치가 사용자의 설정에 적어 넣는 경로가 이것이다.
+/// 옛 python 처리기의 자리. 이 판 전의 설치 버튼이 사용자의 설정에 적어 넣던 경로다.
 pub fn script_path(root: &Path) -> PathBuf {
     hooks_dir(root).join(SCRIPT_NAME)
 }
 
-/// 새 처리기의 자리. 훅 갱신(티켓 21)이 사용자의 설정에 적어 넣을 경로가 이것이다.
+/// 새 처리기의 자리. 설치와 앱이 뜰 때의 맞춤(티켓 21)이 사용자의 설정에 적어 넣는 경로가 이것이다.
 pub fn handler_path(root: &Path) -> PathBuf {
     hooks_dir(root).join(HANDLER_NAME)
 }
 
-/// 훅 스크립트 둘을 디스크에 세운다 — 지금 설정이 부르는 옛 python 처리기와, 훅 갱신(티켓 21)이 갈아 끼울 새 처리기.
+/// 훅 스크립트 둘을 디스크에 세운다 — 설치와 맞춤(티켓 21)이 거는 새 처리기와, 아직 맞추지 않은 설정이 부르는 옛 python 처리기.
 ///
-/// **새 처리기도 지금 세운다.** 설정은 아직 옛 것을 부르지만, 갈아 끼우는 날 파일이 먼저 있어야 한다 — 설정만 새 경로를 가리키면
-/// 사용자의 claude가 매 턴 없는 파일을 부른다. 아무 설정에도 안 걸린 파일은 안 불리니 세워 두는 것은 무해하다.
+/// **맞춤보다 먼저 세운다**(`lib.rs`의 셋업). 설정만 새 경로를 가리키면 사용자의 claude가 매 턴 없는 파일을 부른다. 옛 파일도 계속
+/// 세운다 — 옛 빌드가 깐 채 아직 안 맞춘 설정이 그것을 부른다. 아무 설정에도 안 걸린 파일은 안 불리니 세워 두는 것은 무해하다.
 pub fn write_hook_script(root: &Path) -> Result<(), String> {
     let dir = hooks_dir(root);
     std::fs::create_dir_all(&dir).map_err(|e| format!("훅 폴더를 만들지 못했습니다: {e}"))?;

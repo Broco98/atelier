@@ -415,19 +415,22 @@ describe("알림 구획의 화면", () => {
 //
 // 1. **「모른다」와 「안 깔렸다」가 갈리는 것** — 설정 파일이 깨져 판정을 못 한 것을
 //    「설치 안 됨」이라 적으면, 사람은 설치 버튼을 누르고 실패하는 길로 보내진다.
-//    백엔드는 그때 `installed: false`에 `error`를 함께 실어 보낸다(`hooks.rs`).
+//    백엔드는 그때 `installed: "none"`에 `error`를 함께 실어 보낸다(`hooks.rs`).
 // 2. **미리보기가 화면에 서는 것**(스토리 73) — 내 설정을 앱에 맡기는 일이라, 누르기 전에
 //    무엇이 어디에 들어가는지 보여야 한다. 그 글자는 백엔드가 낸 것을 그대로 그린다.
 // 3. **되돌릴 길이 화면에 있는 것**(스토리 74) — 설치만 있고 제거가 없으면 훅이 남아
 //    있는지 몰라 헤맨다.
 // 4. **아는 사실이 「모른다」로 안 지워지는 것** — 쓰기가 실패한 것(`writeError`)과 판정을
 //    못 한 것(`error`)은 다른 사실이다. 읽기는 되는데 쓰기만 실패한 파일에서 「확인 못 함」이라
-//    적으면, 낱말 셋(설치됨·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+//    적으면, 낱말 넷(설치됨·업데이트 필요·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+// 5. **반쯤 깔린 것이 「설치됨」으로 안 읽히는 것**(프로세스 결정 15 · 프로세스 스펙 S35 · 티켓 21) — 목록이
+//    는 판에서 옛 훅만 깔린 사람, 도구 사건의 `async`가 빠진 사람, 옛 명령줄이 남은 사람이 그렇다. 「설치됨」이라
+//    적으면 사람은 고칠 까닭을 모르고, 「설치 안 됨」이라 적으면 깔린 훅을 안 깔렸다고 거짓말한다.
 
 const hook = (patch: Partial<HookStatus> = {}): HookStatus => ({
   agent: "claude",
   path: "~/.claude/settings.json",
-  installed: false,
+  installed: "none",
   error: null,
   writeError: null,
   preview: '{\n  "hooks": {}\n}\n',
@@ -453,13 +456,19 @@ function buttonLabels(html: string): string[] {
 }
 
 describe("훅이 지금 어떤지 한 낱말로", () => {
-  it("깔렸으면 설치됨, 아니면 설치 안 됨이다", () => {
-    expect(hookStateLabel(hook({ installed: true }))).toBe("설치됨");
+  it("다 깔렸으면 설치됨, 하나도 없으면 설치 안 됨이다", () => {
+    expect(hookStateLabel(hook({ installed: "full" }))).toBe("설치됨");
     expect(hookStateLabel(hook())).toBe("설치 안 됨");
   });
 
+  // 일부만 지금 모양으로 깔렸다 — 목록이 늘었거나, `async`가 빠졌거나, 옛 명령줄이 남았다. 앱이 뜰 때 저절로
+  // 맞추지만(`hooks.rs`의 `sync`), 그 전에 설정을 연 사람이나 맞추기가 실패한 사람에게는 설치 버튼이 고칠 길이다.
+  it("일부만 깔렸으면 업데이트 필요다", () => {
+    expect(hookStateLabel(hook({ installed: "partial" }))).toBe("업데이트 필요");
+  });
+
   // **`installed`만 보면 둘이 같은 낱말이 된다.** 깨진 파일에서 백엔드는 판정을 안 하고
-  // `false`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
+  // `"none"`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
   // 만들고 사람을 실패하는 버튼으로 보낸다.
   it("판정을 못 했으면 안 깔렸다고 하지 않는다", () => {
     expect(hookStateLabel(hook({ error: "설정 파일이 잘못됐습니다" }))).toBe("확인 못 함");
@@ -469,7 +478,7 @@ describe("훅이 지금 어떤지 한 낱말로", () => {
 describe("훅 구획의 화면", () => {
   it("에이전트마다 어디에 무엇이 들어가는지와 지금 상태가 선다", () => {
     const html = renderHooks([
-      hook({ installed: true, preview: "클로드 조각" }),
+      hook({ installed: "full", preview: "클로드 조각" }),
       hook({ agent: "codex", path: "~/.codex/config.toml", preview: "코덱스 조각" }),
     ]);
 
@@ -503,7 +512,7 @@ describe("훅 구획의 화면", () => {
   // 읽기는 됐는데 **쓰기만** 실패한 자리. 파일이 읽기 전용이면 그렇다 — 그때 우리는
   // 설치 여부를 안다. 아는 것을 「확인 못 함」으로 지우면 안 된다.
   it("쓰기가 실패해도 아는 상태는 그대로 적고 까닭을 덧붙인다", () => {
-    const status = hook({ installed: true, writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
+    const status = hook({ installed: "full", writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
     expect(hookStateLabel(status)).toBe("설치됨");
 
     const html = renderHooks([status]);

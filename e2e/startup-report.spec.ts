@@ -20,6 +20,9 @@ const cleaned = (count: number): StartupReport => ({
 
 const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;
 
+/** 이미 깔린 훅을 지금 목록으로 맞췄을 때의 말(프로세스 스펙 S36). */
+const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
+
 /** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). 화면이 무엇이든 늘 있다. */
 const toastRegion = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
 
@@ -63,12 +66,29 @@ for (const { screen, path } of [
   });
 }
 
-test("시작 보고에 끝낸 것이 없으면 토스트가 없다", async ({ page }) => {
+// **이미 깔린 훅을 앱이 뜰 때 지금 목록으로 맞췄으면 한 번 알린다**(프로세스 결정 15 · 프로세스 스펙 S36 · 티켓 21). 맞춘
+// 에이전트가 둘이어도 말은 하나이고, 동작 버튼 없는 짧은 토스트다. 첫 화면은 설정 — 사람이 훅을 떠올리는 자리가 아니어도
+// 선다는 것을 정리 토스트가 이미 두 화면에서 쟀고, 여기서는 그 자리를 이 말이 함께 쓰는지를 본다.
+test("시작 보고에 훅 맞춤이 있으면 그 토스트가 한 번 서고 곧 사라진다", async ({ page }) => {
+  await installFixtureBackend(page, { [STARTUP]: { cleaned: [], hooksUpdated: ["claude", "codex"] } });
+  await page.goto("/settings/terminal");
+
+  const toast = toastRegion(page).getByRole("dialog", { name: HOOKS_TEXT, exact: true });
+  await expect(toast).toBeVisible();
+  await settle(page);
+  expect(await toastsNow(page)).toBe(1);
+  expect(await callCount(page, STARTUP)).toBe(1);
+
+  await expect(toast).toBeHidden({ timeout: 5_000 });
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("시작 보고에 끝낸 것도 맞춘 훅도 없으면 토스트가 없다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
 
   // 앵커 둘: 보고를 **물었고**, 토스트가 설 자리가 **있다**. 둘 중 하나라도 없으면 아래 「없다」는
-  // 아무것도 안 잰 초록이다.
+  // 아무것도 안 잰 초록이다. 기본 고정 표는 정리 0에 훅 맞춤도 없다(`fixtures.ts`).
   await expect.poll(() => callCount(page, STARTUP)).toBe(1);
   await expect(toastRegion(page)).toBeAttached();
   await settle(page);

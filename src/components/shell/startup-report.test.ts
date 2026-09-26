@@ -33,19 +33,32 @@ describe("시작 보고가 알리는 말", () => {
     expect(startupNotices(report(0))).toEqual([]);
   });
 
-  // 훅 갱신 토스트는 티켓 21이 붙인다 — 그 전에 이 칸이 말을 만들면 21의 L3가 바꾸기 전에도 초록이다.
-  it("훅 갱신 칸은 아직 말하지 않는다", () => {
-    expect(startupNotices(report(0, ["claude"]))).toEqual([]);
+  // 앱이 뜰 때 이미 깔린 훅을 지금 목록으로 맞췄으면 한 번 알린다(프로세스 결정 15 · 프로세스 스펙 S36 · 티켓 21).
+  // 어느 에이전트를 맞췄는지는 안 적는다 — 둘을 맞춰도 말은 하나다. 동작 버튼 없는 짧은 토스트다.
+  it("훅을 맞춘 에이전트가 있으면 한 번 말한다", () => {
+    for (const agents of [["claude"], ["codex"], ["claude", "codex"]]) {
+      const notices = startupNotices(report(0, agents));
+      expect(notices.map((notice) => notice.text)).toEqual(["에이전트 훅을 새 목록으로 맞췄어요"]);
+      expect(notices[0]).not.toHaveProperty("action");
+    }
+  });
+
+  it("정리와 훅 맞춤이 함께면 둘 다 말한다", () => {
+    expect(startupNotices(report(2, ["claude"])).map((notice) => notice.text)).toEqual([
+      "지난 실행에서 남은 프로세스 2개를 정리했어요",
+      "에이전트 훅을 새 목록으로 맞췄어요",
+    ]);
   });
 
   // **같은 보고를 두 번 알려도 토스트는 하나다** — 알리는 자리가 이펙트라 StrictMode(dev)에서 두 번 돈다.
   // 토스트 매니저는 같은 id를 받으면 새로 세우지 않고 그 자리를 고친다(Base UI `addToast`). 그래서 말마다
-  // id가 붙어 있고, 두 번 불러도 같은 id다.
+  // id가 붙어 있고, 두 번 불러도 같은 id다. 두 말의 id는 서로 달라야 한다 — 같으면 뒤의 말이 앞의 토스트를 고쳐 하나만 선다.
   it("말마다 늘 같은 id를 단다", () => {
-    const [first] = startupNotices(report(2));
-    const [again] = startupNotices(report(2));
-    expect(first.id).toBeTruthy();
-    expect(again.id).toBe(first.id);
+    const first = startupNotices(report(2, ["claude"]));
+    const again = startupNotices(report(2, ["claude"]));
+    expect(first.map((notice) => notice.id)).toEqual(again.map((notice) => notice.id));
+    for (const notice of first) expect(notice.id).toBeTruthy();
+    expect(new Set(first.map((notice) => notice.id)).size).toBe(2);
   });
 });
 

@@ -51,14 +51,22 @@ export interface Settings {
 //
 // **앱이 따로 기억하는 값이 아니다.** 부를 때마다 설정 파일을 읽어 만든 것이라, 사람이
 // 파일을 손으로 고쳐도 다음 조회가 그것을 그대로 말한다.
+
+/**
+ * 얼마나 깔렸나(프로세스 결정 15 · 프로세스 스펙 S35 — `hooks.rs`의 `Installed`). 우리 훅이 하나도 없으면 `none`, 지금 목록
+ * 전부가 지금 모양으로 있으면 `full`, 그 사이 — 목록이 는 판의 옛 훅, 빠진 `async`, 남은 옛 명령줄 — 는 `partial`이다. 파일의
+ * 목록 판이 이 빌드보다 새로우면 `full`이다(그 파일을 옛 목록으로 되쓰지 않게).
+ */
+export type HookInstalled = "none" | "partial" | "full";
+
 export interface HookStatus {
   /** `claude` · `codex`. */
   agent: string;
   /** 사람이 읽는 경로 — `~/.claude/settings.json`. */
   path: string;
-  installed: boolean;
+  installed: HookInstalled;
   /**
-   * 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 `false`지만 뜻은
+   * 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 `"none"`이지만 뜻은
    * 「안 깔렸다」가 아니라 **「모른다」**다 — 화면이 그 둘을 갈라 적는다.
    */
   error: string | null;

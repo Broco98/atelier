@@ -175,12 +175,13 @@ fn build_menu<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> tauri::Result<
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 시작 보고를 붙잡아 두는 자리(프로세스 스펙 S11)와, 그 보고가 기다릴 시작 정리의 몫(티켓 10). **몫은 웹뷰가 서기 전에
-    // 센다** — 웹뷰는 셋업의 앱 몫(아래 `.setup`)보다 먼저 서고(`tauri::app::setup`이 창을 먼저 짓는다), 프런트는 뜨자마자
-    // 보고를 묻는다. 셋업 안에서 세면 그 사이에 온 물음이 정리를 안 기다리고 빈 보고를 받을 자리가 생긴다. 스레드에 넘길
-    // 수 있게 풀과 같이 `Arc`다.
+    // 시작 보고를 붙잡아 두는 자리(프로세스 스펙 S11)와, 그 보고가 기다릴 몫 둘 — 시작 정리(티켓 10)와 훅 맞춤(티켓 21).
+    // **몫은 웹뷰가 서기 전에 센다** — 웹뷰는 셋업의 앱 몫(아래 `.setup`)보다 먼저 서고(`tauri::app::setup`이 창을 먼저 짓는다),
+    // 프런트는 뜨자마자 보고를 묻는다. 셋업 안에서 세면 그 사이에 온 물음이 그 일을 안 기다리고 빈 보고를 받을 자리가 생긴다.
+    // 스레드에 넘길 수 있게 풀과 같이 `Arc`다.
     let report = Arc::new(startup::ReportHolder::default());
     let cleanup = report.expect();
+    let hook_sync = report.expect();
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -249,9 +250,18 @@ pub fn run() {
             // 이유는 두 가지다 — 사람이 손으로 훅을 걸어 보려면 걸 것이 이미 있어야 하고,
             // 앱을 고쳐도 사용자 홈의 스크립트가 낡은 채 남아 있으면 안 된다. 스크립트는
             // 아무 설정에도 안 걸려 있으면 그냥 안 불리는 파일이라 세워 두는 것이 무해하다.
-            // 지금 설정이 부르는 옛 python 처리기와, 훅 갱신이 갈아 끼울 새 처리기를 함께 세운다(티켓 19 · 21).
-            if let Err(e) = shells::write_hook_script(&root) {
-                eprintln!("atelier: {e}");
+            // 옛 python 처리기와 새 처리기를 함께 세운다(티켓 19 · 21) — 옛 줄을 부르는 설정(옛 빌드가 깐 것, 아직 안 맞춘 것)이
+            // 남아 있는 동안 옛 파일도 서 있어야 한다(옛 스크립트 파일은 지우지 않는다).
+            //
+            // 세웠으면 **이미 깐 훅을 지금 목록으로 맞춘다**(프로세스 결정 15 · 티켓 21) — 위에서 센 몫으로, 뒤 스레드에서. 우리
+            // 훅이 하나도 없는 설정은 안 건드린다. 처리기를 세운 뒤에만 맞추는 것은, 설정만 새 경로를 가리키면 에이전트가 매 턴
+            // 없는 파일을 부르기 때문이다. 못 세웠으면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다.
+            match shells::write_hook_script(&root) {
+                Ok(()) => startup::sync_hooks(hook_sync, hooks::agent_home(), root.clone()),
+                Err(e) => {
+                    eprintln!("atelier: {e}");
+                    drop(hook_sync);
+                }
             }
             // (3) 상태 폴더를 본다. 배선은 위 둘과 같은 길이다 — 스레드 하나가 emit하고
             // 프런트가 `listen`으로 받는다. **접두사를 함께 넘긴다**: 읽는 쪽이 그것을
@@ -605,8 +615,9 @@ mod tests {
     /// 삼킨다 — 시작 때 무엇을 치워도 토스트가 영영 안 선다. L3는 고정 표가 답하고 L4는 다리가 거절하므로
     /// 이 빠짐을 어느 층도 못 본다. 그래서 셸 신호의 세 자리처럼 **자리로** 잰다.
     ///
-    /// **시작 정리의 몫을 그 자리에서, 빌더보다 먼저 센다**(티켓 10). 웹뷰는 셋업의 앱 몫보다 먼저 선다 — 셋업 안에서 세면
-    /// 그 사이에 온 물음이 정리를 안 기다리고 빈 보고를 받는다. 다른 자리에서 세면 묻는 쪽이 그 몫을 영영 모른다.
+    /// **시작 때 할 일의 몫을 그 자리에서, 빌더보다 먼저 센다** — 시작 정리(티켓 10)와 훅 맞춤(티켓 21). 웹뷰는 셋업의 앱 몫보다
+    /// 먼저 선다 — 셋업 안에서 세면 그 사이에 온 물음이 그 일을 안 기다리고 빈 보고를 받는다. 다른 자리에서 세면 묻는 쪽이 그
+    /// 몫을 영영 모른다.
     #[test]
     fn the_startup_report_has_a_holder_when_the_app_comes_up() {
         let src = include_str!("lib.rs");
@@ -614,16 +625,34 @@ mod tests {
             src.split_once("pub fn run() {").expect("`run`이 있다").1.split_once("#[cfg(test)]").expect("테스트 모듈의 머리").0,
         );
         let holder = run.find("let report = Arc::new(startup::ReportHolder::default());").expect("시작 보고의 자리를 안 세운다");
-        let counted = run.find("let cleanup = report.expect();").expect("시작 정리의 몫을 그 자리에서 안 센다");
         let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
-        assert!(
-            holder < counted && counted < builder,
-            "시작 정리의 몫을 빌더보다 먼저 세지 않는다 — 웹뷰가 먼저 서서 묻는 사이 정리를 안 기다린다"
-        );
+        for (chore, what) in [("let cleanup = report.expect();", "시작 정리"), ("let hook_sync = report.expect();", "훅 맞춤")] {
+            let counted = run.find(chore).unwrap_or_else(|| panic!("{what}의 몫을 그 자리에서 안 센다"));
+            assert!(
+                holder < counted && counted < builder,
+                "{what}의 몫을 빌더보다 먼저 세지 않는다 — 웹뷰가 먼저 서서 묻는 사이 그 일을 안 기다린다"
+            );
+        }
         assert!(
             run.contains(".manage(Arc::clone(&report))"),
             "몫을 센 그 자리를 앱에 안 건다 — 프런트가 물을 때마다 거절되거나, 다른 자리가 몫을 모른다"
         );
+    }
+
+    /// **훅 맞춤은 처리기가 디스크에 선 뒤에만 돈다**(티켓 21). 맞춤은 사용자의 설정이 새 처리기(`<데이터 루트>/hooks/…zsh`)를
+    /// 가리키게 고친다 — 그 파일을 못 세웠는데 설정만 고치면 에이전트가 매 턴 없는 파일을 부르고, 처리기는 fail-open이라 그것이
+    /// 어디에도 안 보인다. 그래서 세우기가 된 갈래에서만 맞춘다. 고칠 설정은 진짜 홈의 것(`hooks::agent_home`)이고 처리기는 이
+    /// 실행의 데이터 루트의 것이다. 셋업은 헤드리스로 못 돌리니(`run()`) 자리로 잰다 — 맞춤이 무엇을 쓰는지는 `startup.rs`의
+    /// `the_hook_sync_runs_on_the_homes_it_is_given_and_reports_what_it_wrote`가 임시 홈에서 잰다.
+    #[test]
+    fn the_hook_sync_runs_once_the_handler_stands() {
+        let setup = setup_source();
+        let written = setup.find("match shells::write_hook_script(&root) {").expect("처리기를 세운 결과로 가르지 않는다");
+        let synced = setup
+            .find("Ok(()) => startup::sync_hooks(hook_sync, hooks::agent_home(), root.clone()),")
+            .expect("처리기를 세운 갈래에서 위에서 센 몫으로 훅 맞춤을 안 부른다 — 이미 깐 훅이 옛 처리기에 남거나 보고가 그것을 안 기다린다");
+        assert!(written < synced, "훅 맞춤({synced})이 처리기 세우기({written})보다 앞에 있다");
+        assert_eq!(setup.matches("startup::sync_hooks(").count(), 1, "훅 맞춤을 두 번 부른다");
     }
 
     /// **시작 정리는 인스턴스 기록을 연 뒤에 돈다**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · 티켓 10). 먼저 돌면 남의
