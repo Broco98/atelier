@@ -17,7 +17,7 @@ import {
 import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
-import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
+import { remindOrphan, selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { navItemsOf, routesOf, slugOf, type Mode } from "@/mode";
@@ -458,6 +458,10 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
  *
  * 같은 work 안에서는 `replace`다(결정 13) — 탭을 한 번 옮겼는데 되돌리는 데 뒤로가기를
  * 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.
+ *
+ * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12). 그 work은 목록에 없어 가면 없는 work으로 간다 —
+ * 대신 그 세계의 주인 잃은 셸 토스트를 다시 세운다(`remindOrphan`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다.
+ * 판 04부터는 `Processes`로 간다(티켓 32).
  */
 function useOpenBand(mode: Mode): (item: BandItem) => void {
   const navigate = useNavigate();
@@ -465,6 +469,7 @@ function useOpenBand(mode: Mode): (item: BandItem) => void {
   const openSlug = useRouterState({ select: (state) => slugOf(state.location.pathname) });
 
   return (item) => {
+    if (remindOrphan(item.id)) return;
     selectShell(item.id);
     const slug = slugOfOwner(item.owner);
     if (slug === null) {

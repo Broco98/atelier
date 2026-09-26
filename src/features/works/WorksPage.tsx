@@ -46,6 +46,7 @@ import {
 import {
   closeShellsOf,
   dropShellOnSlot,
+  holdOwner,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
@@ -1303,16 +1304,24 @@ function WorkMenu({
     // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
     // 앱 밖의 일처럼 읽힌다.
     if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;
+    // **제외 창을 연다**(티켓 12 · 프로세스 스펙 S13). 앱 루트는 목록이 새로 앉을 때마다 slug가 사라진 work의 셸을
+    // 「주인 잃은 셸」로 세운다(MCP로 아카이브된 work을 알아채는 길이 그것뿐이다). 이 길은 성공한 뒤 제 손으로
+    // 닫으므로 그동안 이 owner를 감지에서 뺀다 — 삭제는 재조회가 앉은 뒤에야 돌아오고 아카이브는 안 기다려서,
+    // 재조회가 회수 앞뒤 어디에나 올 수 있다. 닫는 자리는 회수 뒤와, 실패하면 그 자리다.
+    const release = holdOwner(ownerOf(mode, work.slug));
     try {
       await call();
     } catch (e) {
+      release();
       await showProblem(`${verb}하지 못했습니다: ${e}`);
       return;
     }
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
+    // (결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
     closeShellsOf(ownerOf(mode, work.slug));
+    release();
   };
 
   // **문구는 세계마다 다르다**(#186) — 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는

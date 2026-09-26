@@ -8,8 +8,10 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
+import { appToasts, showAppToast } from "@/components/shell/app-toast";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
+import type { Mode } from "@/mode";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import { applySignal, markShellsSeen, nextAttention, nextOnOutput, ptyIdOf } from "./shell-attention";
@@ -26,12 +28,17 @@ import {
   countQuitShells,
   countSpawned,
   firstInputOfId,
+  isQuietShell,
+  liveOrphansOf,
   markExited,
   markFailed,
   markFirstInput,
+  markOrphaned,
   moveShell,
   NO_SHELLS,
   openShell,
+  orphansCloseNotice,
+  orphansOf,
   removeShell,
   runningOfId,
   setAttention,
@@ -54,6 +61,8 @@ import type {
 import { humanInput, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
+import { orphanedWorldOf, orphanNotice, orphanToastId, vanishedOwners } from "./shell-owners";
+import type { ListResult } from "./shell-owners";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
@@ -419,9 +428,11 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
  *
  * **밖으로 내보내지 않는다**(결정 92). ⌘W와 `×`는 확인을 거치는 `requestCloseShell`만
  * 볼 수 있어야 한다 — 「두 길이 같은 판정을 쓴다」를 주석으로 부탁하는 대신, 확인을
- * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 둘이다 — 아카이빙의
+ * 건너뛰는 이름이 아예 손에 안 잡히게 둔다. 여기를 직접 부르는 길은 넷이다 — 아카이빙의
  * 회수(`closeShellsOf`)에는 사람이 이미 한 번 확인했고, 안 쓴 자동 셸의 회수(`closeUnusedShells`)에는
- * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1).
+ * 물을 것이 없다(입력이 없으면 자손은 모두 셸 도우미다 — 프로세스 스펙 P1). MCP로 아카이브된 work의
+ * 조용한 셸(`settleOwners`)에도 물을 것이 없고(명령도 사람이 띄운 자손도 없다), 주인 잃은 셸의
+ * [모두 닫기](`closeOrphans`)는 셸마다가 아니라 **한 번** 물었다(티켓 12).
  *
  * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
@@ -731,13 +742,129 @@ terminalStore.subscribe(notifyTick);
 onNotifySettingsChanged(notifyTick);
 
 /**
- * 이 Work의 셸을 전부 거둔다 — 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
+ * 이 Work의 셸을 전부 거둔다 — **UI에서** 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
  *
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
+ *
+ * 결정 26은 MCP로 아카이브 · 삭제된 work의 셸을 「알려진 대가」로 남겨 두었다 — 그 길은 이 함수를 안 지난다. 프로세스
+ * 결정 4가 이렇게 고쳤다: 앱 루트가 목록 재조회로 알아채(`settleOwners`) 조용한 셸은 닫고, 나머지는 「주인 잃은 셸」로
+ * 남겨 알린다. 그 감지가 이 길의 셸을 세지 않게 부르는 쪽이 제외 창을 연다(`holdOwner`).
  */
 export function closeShellsOf(owner: ShellOwner): void {
   for (const shell of shellsOf(terminalStore.state, owner)) closeShell(shell.id, "archive");
+}
+
+/**
+ * **제외 창**(티켓 12 · 프로세스 스펙 S13) — UI 아카이브 · 삭제가 도는 동안의 owner. owner마다 **센다**: 같은 work을 두
+ * 길이 겹쳐 잡으면(아카이브가 도는 사이 삭제) 먼저 끝난 쪽이 창을 닫아 남은 쪽의 셸이 감지에 걸리면 안 된다.
+ */
+const heldOwners = new Map<ShellOwner, number>();
+
+/** 지금 판정 중인 칸 — 배치 물음을 기다리는 사이 다음 목록이 앉아도 같은 칸을 두 번 판정하지 않는다. */
+const judging = new Set<number>();
+
+/**
+ * 그 owner를 감지에서 뺀다 — **돌려주는 함수로 닫는다**(두 번 불러도 한 번만 닫힌다). UI 아카이브 · 삭제 길은 성공한 뒤
+ * 제 손으로 닫으므로(`closeShellsOf`) 그동안 앉은 재조회가 사람이 이미 확인한 셸을 주인 잃은 셸로 세우면 안 된다.
+ *
+ * 여는 자리는 확인 창이 참을 돌려준 뒤 · 코어 호출 **전**이고, 닫는 자리는 그 owner의 셸 닫기가 끝난 **뒤**다. 호출이
+ * 실패하면 그 자리에서 닫는다(`WorksPage`). 삭제는 재조회가 앉은 뒤에야 돌아오고 아카이브는 안 기다려서, 워처의 재조회가
+ * 회수 앞뒤 어디에나 올 수 있다 — 창이 이만큼 넓어야 하는 까닭이다.
+ */
+export function holdOwner(owner: ShellOwner): () => void {
+  heldOwners.set(owner, (heldOwners.get(owner) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (heldOwners.get(owner) ?? 1) - 1;
+    if (left > 0) heldOwners.set(owner, left);
+    else heldOwners.delete(owner);
+  };
+}
+
+/**
+ * 그 세계의 목록이 새로 앉았다 — **slug가 사라진 work의 셸을 다룬다**(프로세스 결정 4 · 티켓 12). 부르는 자리는 앱 루트
+ * 하나다(`ShellOwners`): 목록 쿼리가 성공으로 앉을 때마다.
+ *
+ * 1. 사라진 owner를 찾는다(`vanishedOwners` — 실패 · 로딩이면 판단 안 함, 제외 창 · 이미 주인 잃은 셸은 뺀다).
+ * 2. 그 셸들이 조용한지 **배치 물음 한 번으로** 본다(티켓 08의 `pty_close_checks`).
+ * 3. 조용한 셸은 곧바로 닫는다 — 까닭은 「MCP 아카이브」다. 나머지는 「주인 잃은 셸」로 표시하고 남긴다: 부탁을 보낸
+ *    claude가 대개 그 셸 안에 있어, 닫으면 도구 호출 도중 죽는다. 기다렸다가 저절로 닫지 않는다(결정 4의 기각).
+ * 4. 남긴 것이 있으면 토스트를 세운다(`showOrphans`).
+ *
+ * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
+ * 고른 목록을 그대로 믿으면 사람이 확인한 셸이 주인 잃은 셸로 선다.
+ */
+export async function settleOwners(mode: Mode, result: ListResult | undefined): Promise<void> {
+  const gone = vanishedOwners(terminalStore.state, mode, result, heldOwners);
+  const ids = terminalStore.state.shells
+    .filter((shell) => gone.includes(shell.owner) && !judging.has(shell.id))
+    .map((shell) => shell.id);
+  if (ids.length === 0) return;
+  for (const id of ids) judging.add(id);
+  try {
+    const checks = await closeChecks(ids);
+    const left: number[] = [];
+    for (const id of ids) {
+      const shell = terminalStore.state.shells.find((one) => one.id === id);
+      if (!shell || shell.orphaned || heldOwners.has(shell.owner)) continue;
+      if (isQuietShell(shell, checks)) closeShell(id, "mcpArchive");
+      else left.push(id);
+    }
+    if (left.length === 0) return;
+    terminalStore.setState((state) => markOrphaned(state, left));
+    showOrphans(mode);
+  } finally {
+    for (const id of ids) judging.delete(id);
+  }
+}
+
+/**
+ * 그 세계의 주인 잃은 셸 토스트를 세운다(티켓 12). **동작 토스트다** — 자기 id를 써서(`orphanToastId`) 다시 오면 그
+ * 자리를 고치고, 누르거나 닫을 때까지 남는다. N은 **도는** 주인 잃은 셸이다. 도는 것이 없으면 세우지 않는다 — 「아직
+ * 도는 것이 있어요」가 거짓이 된다.
+ */
+function showOrphans(mode: Mode): void {
+  const count = liveOrphansOf(terminalStore.state, mode).length;
+  if (count === 0) return;
+  showAppToast({
+    id: orphanToastId(mode),
+    text: orphanNotice(mode, count),
+    action: { label: "모두 닫기", run: () => void closeOrphans(mode) },
+  });
+}
+
+/**
+ * [모두 닫기] — 그 세계의 주인 잃은 셸을 **한 번 묻고** 모두 닫는다(티켓 12). 셸마다 닫기 확인 창(08)을 띄우면 창이 N번
+ * 뜬다. 창은 N과, 그 셸들에서 띄워 함께 끝날 프로세스 수 M을 말한다(M은 배치 물음 한 번 — 못 얻으면 안 붙는다).
+ *
+ * 닫는 길은 셸 닫기이고 까닭은 **「셸 닫기」**다 — 사람이 누른 닫기라 판 04의 `●`를 켜지 않는다(프로세스 스펙 S41).
+ * 끝난 칸도 함께 거둔다(`orphansOf`). 도는 것이 없으면 물을 것이 없어 묻지 않는다. 취소하면 토스트는 그대로 남는다.
+ *
+ * 판 04의 `Processes` 주인 잃은 셸 묶음의 [모두 닫기](티켓 32)도 이 규칙을 그대로 쓴다.
+ */
+async function closeOrphans(mode: Mode): Promise<void> {
+  const live = liveOrphansOf(terminalStore.state, mode);
+  if (live.length > 0) {
+    const spawned = await countSpawned(live, closeChecks);
+    const body = orphansCloseNotice(live.length, spawned);
+    if (!(await askDialog({ title: "주인 잃은 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
+  }
+  appToasts.close(orphanToastId(mode));
+  for (const shell of orphansOf(terminalStore.state, mode)) closeShell(shell.id, "orphans");
+}
+
+/**
+ * 띠에서 누른 셸이 **주인 잃은 셸이면** 그 세계의 토스트를 다시 세우고 참을 돌려준다(프로세스 스펙 S14). 부르는 쪽은
+ * 참이면 **화면을 옮기지 않는다** — 그 work은 목록에 없다. 판 04부터는 `Processes`로 간다(티켓 32).
+ */
+export function remindOrphan(id: number): boolean {
+  const mode = orphanedWorldOf(terminalStore.state, id);
+  if (mode === null) return false;
+  showOrphans(mode);
+  return true;
 }
 
 /**

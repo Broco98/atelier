@@ -46,6 +46,14 @@ const WORKS_KEY = ["works"] as const;
  * 미룬 동안 돌려주는 promise는 곧바로 풀린다 — 그 mutation의 진행 표시는 옮기기가 끝나기를 안
  * 기다린다. 옮기기는 파일 한 장 쓰기라 그 창이 한 박자이고, 그것을 기다리게 하면 이 문이 옮기기의
  * 수명을 알아야 한다.
+ *
+ * **저쪽 세계도 이 문 안에서 함께 읽는다**(티켓 12 · 프로세스 스펙 S13). 무효화는 관찰자가 있는 쿼리만 다시 부르는데
+ * 앱 루트가 관찰하는 것은 지금 세계 하나라, 저쪽 목록은 지워진 채 새로 안 앉는다 — 그러면 MCP로 아카이브된 저쪽 Room의
+ * 셸을 못 알아챈다. 어느 세계를 읽을지는 셸을 아는 쪽이 건 함수가 **이때** 고른다(`readOtherWorldsWith`). 지운 **뒤에**
+ * 부르는 것이 순서다: 지운 쿼리는 신선도와 무관하게 낡은 것이라 `prefetchQuery`가 반드시 다시 읽는다.
+ *
+ * 돌려주는 promise는 **지금 세계의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽 세계는 이 화면의
+ * 목록이 아니다. `prefetchQuery`는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다.
  */
 export function invalidateWorks(queryClient: QueryClient) {
   const state = movesOf(queryClient);
@@ -53,7 +61,27 @@ export function invalidateWorks(queryClient: QueryClient) {
     state.deferred = true;
     return Promise.resolve();
   }
-  return queryClient.invalidateQueries({ queryKey: WORKS_KEY });
+  const refetched = queryClient.invalidateQueries({ queryKey: WORKS_KEY });
+  for (const mode of otherWorlds.get(queryClient)?.() ?? []) void queryClient.prefetchQuery(worksQuery(mode));
+  return refetched;
+}
+
+/**
+ * 캐시마다 **함께 다시 읽을 저쪽 세계를 고르는 함수** 하나(티켓 12). 앱 루트(`ShellOwners`)가 걸고 내려갈 때 푼다.
+ * 캐시에 매는 까닭은 아래 `moves`와 같다 — L2가 캐시를 검사마다 새로 세운다.
+ */
+const otherWorlds = new WeakMap<QueryClient, () => ReadonlyArray<Mode>>();
+
+/**
+ * 이 캐시의 무효화가 부를 **저쪽 세계를 고르는 함수**를 건다 — 부르는 것은 무효화할 때마다다(셸은 그사이 열리고 닫힌다).
+ * 돌려주는 함수로 푼다. **제가 건 것만 푼다** — StrictMode가 이펙트를 두 번 돌리거나 세계를 건너 새로 걸 때, 앞의 풀기가
+ * 뒤에 건 것을 지우면 저쪽 세계를 영영 안 읽는다.
+ */
+export function readOtherWorldsWith(queryClient: QueryClient, pick: () => ReadonlyArray<Mode>): () => void {
+  otherWorlds.set(queryClient, pick);
+  return () => {
+    if (otherWorlds.get(queryClient) === pick) otherWorlds.delete(queryClient);
+  };
 }
 
 /**

@@ -410,6 +410,33 @@ describe("WorksPage 터미널 탭", () => {
     expect(reap, "성공 뒤 회수를 찾지 못했다").toBeGreaterThan(bail);
   });
 
+  // 티켓 12 · 프로세스 스펙 S13. **UI 아카이브 · 삭제의 제외 창.** 앱 루트는 목록이 새로 앉을 때마다 slug가 사라진
+  // work의 셸을 「주인 잃은 셸」로 세운다 — MCP로 아카이브된 work을 알아채는 길이 그것뿐이다. UI 길은 성공한 뒤 제 손으로
+  // 닫으므로(위 순서) 그동안 그 slug를 감지에서 뺀다. 창은 **확인 창이 참을 돌려준 뒤 · 코어 호출 전에** 열고, **회수가
+  // 끝난 뒤에** 닫으며, 호출이 실패하면 **그 자리에서** 닫는다(알림 창을 기다리지 않는다). 삭제는 재조회가 앉은 뒤에야
+  // 돌아오고 아카이브는 안 기다리므로 워처의 재조회가 회수 앞뒤 어디에나 올 수 있다 — 창이 이만큼 넓어야 한다.
+  // 렌더로 못 보는 것은 위 검사와 같다(창과 코어 호출이 프로미스 뒤에 있다). 자리를 **순서**로 못박는다.
+  it("제외 창은 확인 뒤 · 코어 호출 전에 열고, 회수 뒤에 닫으며, 실패하면 곧바로 닫는다", () => {
+    const worksPage = source("WorksPage.tsx");
+    const asked = worksPage.indexOf("if (!(await askDanger(");
+    const hold = worksPage.indexOf("const release = holdOwner(ownerOf(mode, work.slug));");
+    const call = worksPage.indexOf("await call();");
+    const failed = worksPage.indexOf("} catch (e) {", call);
+    const earlyRelease = worksPage.indexOf("release();", failed);
+    const problem = worksPage.indexOf("await showProblem(", failed);
+    const reap = worksPage.indexOf("closeShellsOf(ownerOf(mode, work.slug));");
+    const lateRelease = worksPage.indexOf("release();", reap);
+
+    expect(asked, "확인 창을 찾지 못했다").toBeGreaterThan(-1);
+    expect(hold, "제외 창은 확인 창이 참을 돌려준 뒤에 연다").toBeGreaterThan(asked);
+    expect(call, "제외 창은 코어 호출 전에 연다").toBeGreaterThan(hold);
+    expect(earlyRelease, "실패하면 제외 창을 닫는다").toBeGreaterThan(failed);
+    expect(problem, "실패하면 알림 창보다 먼저 닫는다").toBeGreaterThan(earlyRelease);
+    expect(lateRelease, "회수 뒤에 제외 창을 닫는다").toBeGreaterThan(reap);
+    // 여는 자리는 하나다 — 둘이면 한쪽이 안 닫혀 그 slug가 영영 감지에서 빠진다.
+    expect(worksPage.split("holdOwner(").length - 1).toBe(1);
+  });
+
   // 결정 102·19. 정상 종료한 셸은 목록에서 스스로 빠지고(결정 48), 마지막 칸을 `×`로 닫은
   // 자리에서는 새 셸이 저절로 뜨지 않는다(판 02) — 셸이 0개인 화면이 실재한다.
   //

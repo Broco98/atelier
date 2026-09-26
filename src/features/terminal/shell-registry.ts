@@ -116,6 +116,16 @@ export interface Shell {
    * 자손」으로 가르는 기준이 이 시각이다(프로세스 스펙 P1).
    */
   firstInput: number | null;
+  /**
+   * **「주인 잃은 셸」인가**(프로세스 결정 4 · 티켓 12). MCP로 아카이브 · 삭제된 work의 셸 중 **조용하지 않은** 것이다
+   * (`isQuietShell`) — 부탁을 보낸 claude가 대개 그 셸 안에 있어서, 닫지 않고 이 표시를 세워 남긴다. 거짓으로 뜨고,
+   * 한 번 서면 안 내린다(`markOrphaned`).
+   *
+   * **표시가 선 셸은 다시 판정하지 않는다**(`vanishedOwners`). 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로
+   * 닫히는데, 그것이 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다. 닫는 길은 사람이 누르는 [모두 닫기]와
+   * 종료뿐이다.
+   */
+  orphaned: boolean;
 }
 
 export interface ShellsState {
@@ -507,6 +517,8 @@ export function openShell(
     auto,
     // 막 뜬 셸에는 사람 입력이 없다. p10k가 프롬프트마다 묻는 커서 위치의 응답은 입력이 아니다(`shell-input.ts`).
     firstInput: null,
+    // 막 뜬 셸의 주인은 그것을 연 화면이다. 주인을 잃는 것은 목록에서 그 work이 사라진 뒤다(`vanishedOwners`).
+    orphaned: false,
   };
   return {
     state: {
@@ -720,6 +732,40 @@ export function setRunning(state: ShellsState, id: number, running: string | nul
  */
 export function markFirstInput(state: ShellsState, id: number, at: number): ShellsState {
   return patch(state, id, (shell) => (shell.firstInput === null ? { ...shell, firstInput: at } : shell));
+}
+
+/**
+ * 그 칸들에 「주인 잃은 셸」 표시를 세운다(프로세스 결정 4 · 티켓 12). **이미 선 칸과 모르는 번호는 그대로다** — 목록
+ * 재조회는 이벤트마다 오므로 같은 표시를 또 세우는 일이 흔하고, 그때 새 상태를 만들면 화면이 이유 없이 다시 그려진다
+ * (`patch`의 관용구). 내리는 리듀서는 없다 — 표시는 셸이 닫힐 때 칸과 함께 사라진다.
+ *
+ * 무엇이 주인을 잃었는지는 여기서 안 정한다(`shell-owners.ts`의 `vanishedOwners`와 `isQuietShell`). 이 리듀서는 그 답을
+ * 받아 적기만 한다.
+ */
+export function markOrphaned(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
+  let next = state;
+  for (const id of ids) {
+    next = patch(next, id, (shell) => (shell.orphaned ? shell : { ...shell, orphaned: true }));
+  }
+  return next;
+}
+
+/**
+ * **그 세계의** 주인 잃은 셸 전부 — 끝난 칸 · 못 뜬 칸도 든다. [모두 닫기]가 닫는 것이 이것이다: 주인이 사라졌는데 이
+ * 칸만 남으면 닫을 길이 없다(아카이브의 회수가 끝난 칸까지 거두는 것과 같은 이유 — `runningShellsOf` 머리말).
+ *
+ * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(결정 10) slug로는 못 가른다.
+ */
+export function orphansOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return state.shells.filter((shell) => shell.orphaned && modeOfOwner(shell.owner) === mode);
+}
+
+/**
+ * 그 세계의 주인 잃은 셸 중 **도는 것**. 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기] 확인 창의 N이
+ * 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 도는지는 `isAlive` 하나가 가른다.
+ */
+export function liveOrphansOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return orphansOf(state, mode).filter(isAlive);
 }
 
 /** 그 칸의 첫 사람 입력 시각. 없는 칸이거나 아직 입력이 없으면 `null`이다. */
@@ -1310,28 +1356,62 @@ export async function confirmClose(
 }
 
 /**
+ * MCP로 아카이브 · 삭제된 work의 셸이 **조용한가**(프로세스 결정 4 · 티켓 12). 조용한 셸 = 명령 없음 + 자손 0이다 — 그
+ * 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 조용한 셸만 사람 손 없이 닫힌다.
+ *
+ * **모르면 조용하지 않다.** `checks`가 `null`이거나(배치 물음 전체가 실패) 그 셸의 답이 없으면(pty가 아직 없다 · 백엔드가
+ * 못 읽었다) 거짓이다. 사람이 누르지 않은 닫기라 모르는 것은 닫지 않는다 — 닫으면 대답하던 claude가 도구 호출 도중 죽는다.
+ * **`needsCloseConfirm`과 거꾸로다**: 그쪽은 사람이 누른 닫기라 못 얻은 답을 「안 묻고 닫는다」로 읽는다. 그 모양을
+ * 빌리면(`!needsCloseConfirm(...)`) 모르는 셸이 조용한 셸로 읽혀 묻지 않고 닫힌다.
+ *
+ * **끝난 칸 · 못 뜬 칸은 조용하다** — 닫힐 프로세스가 없어 배치 물음이 그 칸을 싣지도 않는다(답이 없는 것이 당연하다).
+ * 주인이 사라졌는데 그 칸만 남으면 닫을 길이 없어서 아카이브의 회수처럼 함께 거둔다.
+ */
+export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean {
+  if (!isAlive(shell)) return true;
+  const check = checks?.get(shell.id);
+  return check !== undefined && !check.command && check.descendants === 0;
+}
+
+/**
  * 프런트가 셸을 닫는 자리 — 까닭을 고르는 열쇠다(`CLOSE_REASONS`).
  *
  * - `person` — `×`, ⌘W, 셸 메뉴의 닫기(`requestCloseShell`).
  * - `reclaim` — 화면을 떠난 안 쓴 자동 셸의 회수(`closeUnusedShells` · 프로세스 결정 7).
  * - `archive` — UI 아카이브 · 삭제가 성공한 뒤의 회수(`closeShellsOf` · 결정 26).
+ * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). 결정 26은 이 길의 셸을
+ *   「알려진 대가」로 남겨 두었는데, 프로세스 결정 4가 이렇게 고쳤다: 목록 재조회로 알아채 조용한 셸은 닫고 나머지는
+ *   주인 잃은 셸로 남긴다.
+ * - `orphans` — 주인 잃은 셸의 [모두 닫기](`closeOrphans` · 티켓 12).
  * - `openFailed` — xterm 열기 실패(`failOpen`).
  * - `spawnRace` — spawn 왕복 중에 닫힌 칸의, 늦게 온 셸.
  */
-export type ClosePath = "person" | "reclaim" | "archive" | "openFailed" | "spawnRace";
+export type ClosePath =
+  | "person"
+  | "reclaim"
+  | "archive"
+  | "mcpArchive"
+  | "orphans"
+  | "openFailed"
+  | "spawnRace";
 
 /**
  * 닫는 자리 → 닫기 IPC의 까닭(티켓 11). **까닭은 이 표 한 곳에서 고른다.** 판 04의 `●`가 까닭으로 켜지는데(시작
  * 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못 끝냄」만), 자리마다 따로 고르면 사람이 누른 닫기가 점을 켤 수 있다.
  *
  * 사람이 누르지 않은 닫기 셋(`reclaim` · `openFailed` · `spawnRace`)도 「셸 닫기」다. 자손이 없거나 모두 셸 도우미라
- * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다. MCP 아카이브(`mcpArchive`)는 그 길을 여는 장(12)이
- * 여기에 줄을 더한다.
+ * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다.
+ *
+ * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이라 `●`가 설 수 있는 까닭이다.
+ * 주인 잃은 셸의 [모두 닫기](`orphans`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
+ * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
  */
 export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   person: "shellClose",
   reclaim: "shellClose",
   archive: "archive",
+  mcpArchive: "mcpArchive",
+  orphans: "shellClose",
   openFailed: "shellClose",
   spawnRace: "shellClose",
 };
@@ -1365,6 +1445,8 @@ export type CloseChecks = ReadonlyMap<number, CloseCheck>;
  * 물음이 **실패해도** 「모름」으로 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는
  * 길은 곧 끌 수 없는 길이다. 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.** 살아 있는 칸이 없으면
  * 묻지 않는다.
+ *
+ * **주인 잃은 셸도 센다**(티켓 12) — 종료하면 그 셸도 함께 끝난다. 표시(`Shell.orphaned`)는 이 셈에 안 든다.
  */
 export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
@@ -1413,6 +1495,15 @@ export function spawnedNote(spawned: number | null): string {
 export function closingShellsNotice(live: number, spawned: number | null): string | null {
   if (live === 0) return null;
   return `셸 ${live}개가 닫혀요${spawnedNote(spawned)}.`;
+}
+
+/**
+ * 주인 잃은 셸의 [모두 닫기]가 **한 번** 묻는 말(티켓 12). 셸마다 닫기 확인 창(`closeNotice`)을 띄우면 창이 N번 뜬다 —
+ * 여러 셸을 한 번에 닫는 자리는 수를 말하며 한 번 묻는다(프로세스 스펙 S18 · S44). N은 **도는** 주인 잃은 셸이고
+ * (`liveOrphansOf`), 띄운 프로세스 수는 아카이브 확인 창과 같은 말이다(`spawnedNote`) — 못 얻었으면 안 붙는다.
+ */
+export function orphansCloseNotice(live: number, spawned: number | null): string {
+  return `주인 잃은 셸 ${live}개를 닫아요${spawnedNote(spawned)}.`;
 }
 
 /**

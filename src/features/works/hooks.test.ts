@@ -5,7 +5,14 @@ import { fileURLToPath } from "url";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { dialogStore } from "@/components/ui/confirm-store";
-import { invalidateWorks, moveWorkOptions, specFileQuery, worksQuery, type MoveWorkArgs } from "./hooks";
+import {
+  invalidateWorks,
+  moveWorkOptions,
+  readOtherWorldsWith,
+  specFileQuery,
+  worksQuery,
+  type MoveWorkArgs,
+} from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
@@ -105,6 +112,8 @@ describe("무효화하는 문", () => {
 const { calls } = vi.hoisted(() => ({
   calls: [] as Array<{
     command: string;
+    /** 그 호출의 인자 — 목록 조회가 어느 세계를 물었는지를 본다. */
+    args: unknown;
     /** 이 호출이 나갔을 때 옮기기가 아직 답을 못 받았는가 — 쓰기 전 파일을 읽은 재조회다. */
     beforeMoveAnswered: boolean;
     resolve: (value: unknown) => void;
@@ -114,10 +123,10 @@ const { calls } = vi.hoisted(() => ({
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (command: string) =>
+  invoke: (command: string, args?: unknown) =>
     new Promise((resolve, reject) => {
       const moveAnswered = calls.some((call) => call.command === "move_work" && call.answered);
-      calls.push({ command, beforeMoveAnswered: !moveAnswered, resolve, reject, answered: false });
+      calls.push({ command, args, beforeMoveAnswered: !moveAnswered, resolve, reject, answered: false });
     }),
 }));
 
@@ -341,5 +350,99 @@ describe("겹친 옮기기", () => {
     await settle();
     expect(shown()).toBe("bca");
     dialogStore.state?.answer(true);
+  });
+});
+
+// 티켓 12 · 프로세스 스펙 S13. **MCP로 아카이브된 work은 목록 재조회로만 안다** — 그런데 목록 쿼리는 관찰자가 있는 것만
+// 다시 부르고, 앱 루트가 관찰하는 것은 지금 세계 하나다. 저쪽 세계에 셸이 있으면 그 목록도 **같은 무효화 문 안에서**
+// 함께 읽어야 그 세계의 주인 잃은 셸이 보인다. 따로 부르는 자리를 만들면 무효화 문이 둘이 된다(위 「무효화하는 문」).
+//
+// 누가 저쪽 세계를 읽을지는 문이 모른다 — 셸을 아는 쪽(앱 루트의 `ShellOwners`)이 **고르는 함수**를 걸어 두고, 문은
+// 무효화할 때마다 그 함수를 부른다. 걸 때가 아니라 부를 때 고르는 것이 요점이다: 셸은 그사이 열리고 닫힌다.
+describe("저쪽 세계를 함께 읽는 문", () => {
+  /** 지금 세계(Atelier) 목록을 관찰하는 화면 하나와, 한 번 읽어 둔 저쪽 세계(Maison) 목록. */
+  async function twoWorlds() {
+    const { client } = await listed();
+    client.setQueryData(worksQuery("maison").queryKey, [] as WorkView[]);
+    calls.length = 0;
+    return client;
+  }
+  /** 지금까지 나간 목록 조회가 물은 세계들. */
+  const listedWorlds = () =>
+    calls.filter((call) => call.command === "list_works").map((call) => (call.args as { mode: Mode }).mode);
+
+  it("고르는 함수가 없으면 관찰되는 지금 세계만 다시 읽는다", async () => {
+    const client = await twoWorlds();
+    void invalidateWorks(client);
+    await settle();
+    expect(listedWorlds()).toEqual(["atelier"]);
+  });
+
+  it("저쪽 세계를 고르면 같은 무효화에서 그 세계도 읽는다 — 이벤트 한 번에 조회 둘", async () => {
+    const client = await twoWorlds();
+    const release = readOtherWorldsWith(client, () => ["maison"]);
+    try {
+      void invalidateWorks(client);
+      await settle();
+      expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
+    } finally {
+      release();
+    }
+  });
+
+  it("고르는 것은 무효화할 때다 — 걸어 둔 뒤 바뀐 답을 따른다", async () => {
+    const client = await twoWorlds();
+    let worlds: Mode[] = [];
+    const release = readOtherWorldsWith(client, () => worlds);
+    try {
+      void invalidateWorks(client);
+      await settle();
+      expect(listedWorlds()).toEqual(["atelier"]);
+
+      answer("list_works", OLD);
+      calls.length = 0;
+      worlds = ["maison"];
+      void invalidateWorks(client);
+      await settle();
+      expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
+    } finally {
+      release();
+    }
+  });
+
+  // 루트가 내려가면(StrictMode의 두 번 돌기 · 세계를 건넘) 건 것을 푼다. 뒤에 건 것을 앞의 풀기가 지우면 저쪽 세계를
+  // 영영 안 읽는다 — 풀기는 제가 건 것만 푼다.
+  it("풀면 다시 지금 세계만 읽고, 앞의 풀기가 뒤에 건 것을 지우지 않는다", async () => {
+    const client = await twoWorlds();
+    const first = readOtherWorldsWith(client, () => ["maison"]);
+    const second = readOtherWorldsWith(client, () => ["maison"]);
+    first();
+    void invalidateWorks(client);
+    await settle();
+    expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
+
+    answer("list_works", OLD);
+    calls.length = 0;
+    second();
+    void invalidateWorks(client);
+    await settle();
+    expect(listedWorlds()).toEqual(["atelier"]);
+  });
+
+  // 문이 기다리게 하는 것은 **지금 세계의** 재조회다 — 삭제의 진행 표시가 그것을 기다린다. 저쪽 세계는 이 화면의 목록이
+  // 아니라 그 답까지 기다리게 하지 않는다.
+  it("돌려주는 promise는 저쪽 세계의 답을 안 기다린다", async () => {
+    const client = await twoWorlds();
+    const release = readOtherWorldsWith(client, () => ["maison"]);
+    try {
+      let done = false;
+      void invalidateWorks(client).then(() => (done = true));
+      await settle();
+      answer("list_works", OLD, (call) => (call.args as { mode: Mode }).mode === "atelier");
+      await settle();
+      expect(done).toBe(true);
+    } finally {
+      release();
+    }
   });
 });

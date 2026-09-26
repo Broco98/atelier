@@ -14,6 +14,7 @@ import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
 import AppToasts from "./AppToasts";
 import ShellReclaim from "./ShellReclaim";
+import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useIsFullscreen from "./useIsFullscreen";
@@ -247,6 +248,9 @@ function AppShell() {
       {/* 둘러보다 저절로 뜬 셸이 입력 없이 화면을 떠나면 닫는다(프로세스 결정 7). 떠남은 라우터의 owner로 재므로
           셸 한 자리에 선다 — 라우터 구독은 제 파일에 있다(위 구독 셋을 늘리지 않는다). */}
       <ShellReclaim />
+      {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
+          찾는다. 지금 세계의 목록을 관찰하므로 **세계를 받는다**. 쿼리 구독은 제 파일에 있다. */}
+      <ShellOwners mode={mode} />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
       <AppDialog />
