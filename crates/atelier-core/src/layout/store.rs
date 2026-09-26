@@ -177,6 +177,7 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
 ///   한다.
 /// - 쓰는 순서는 템플릿 → `layout.json` → 빠진 템플릿 지우기다. 파일마다 원자적으로 쓴다(점으로
 ///   시작하는 임시 파일 → rename) — resolve도 감시도 점 파일을 보지 않는다.
+/// - 처음 저장이 쓰다가 실패하면 만든 폴더를 지운다 — 실패한 저장이 내장본을 깨진 폴더로 가리지 않는다.
 /// - `layout.json`이 서면 저장은 된 것이다. 그 뒤 빠진 템플릿을 지우지 못하면 `Err`가 아니라 경고이고,
 ///   그 파일은 레이아웃이 모르는 파일로 남는다 — 잃은 것이 아니라 남은 것이다.
 /// - 레이아웃이 모르는 파일은 건드리지 않는다. 빠진 템플릿이라도 링크인 하위 폴더 너머에 있으면
@@ -197,21 +198,25 @@ pub fn save_layout(
     };
     // 앞 레이아웃이 가리키던 템플릿. **읽을 수 없으면(없거나 깨졌으면) 없는 것으로 친다** — 깨진
     // 레이아웃을 고쳐 저장하는 길에서 폴더의 `.md`를 하나도 지우지 않는다. 무엇이 템플릿이었는지
-    // 모르는 채로 지우면 사람이 둔 파일이 사라진다.
-    let previous = match folder_present(&folder) {
-        Ok(true) => read_layout_file(&folder).map(|old| pointed_templates(&old)).unwrap_or_default(),
-        _ => BTreeSet::new(),
+    // 모르는 채로 지우면 사람이 둔 파일이 사라진다. 폴더가 없었으면 이 저장이 처음이다 — 있는지
+    // 확인하지 못한 것(`Err`)은 처음으로 치지 않는다.
+    let (first, previous) = match folder_present(&folder) {
+        Ok(true) => {
+            (false, read_layout_file(&folder).map(|old| pointed_templates(&old)).unwrap_or_default())
+        }
+        Ok(false) => (true, BTreeSet::new()),
+        Err(_) => (false, BTreeSet::new()),
     };
-    for (path, body) in templates {
-        let path = Path::new(path);
-        let dir = match path.parent() {
-            Some(parent) => folder.join(parent),
-            None => folder.clone(),
-        };
-        let name = path.file_name().expect("a template path names a file").to_string_lossy();
-        write_atomically(&dir, &name, body)?;
+    if let Err(e) = write_templates_then_layout(&folder, &layout, templates) {
+        // **처음 저장이 쓰다가 실패하면 만든 폴더를 지운다** — 남으면 `layout.json` 없는 폴더가 내장본을
+        // 가려 그 모드가 깨진다. 그 폴더는 이 저장이 만든 것이라 안의 것도 이 저장이 쓴 것이다: 사람의
+        // 파일을 지우지 않는다. 있던 폴더에 저장하다 실패하면 아무것도 지우지 않는다 — `layout.json`은
+        // 전과 같고, 먼저 쓴 템플릿은 레이아웃이 모르는 파일로 남는다.
+        if first {
+            let _ = std::fs::remove_dir_all(&folder);
+        }
+        return Err(e);
     }
-    write_atomically(&folder, LAYOUT_FILE, &serialize_layout(&layout))?;
     // 빠진 템플릿은 새 `layout.json`이 선 **뒤에** 지운다 — 먼저 지우면 실패한 저장이 앞 레이아웃이
     // 가리키는 템플릿을 잃게 한다. 비게 된 하위 폴더는 남긴다: 폴더는 사람이 만들었을 수 있다.
     // 새 레이아웃이 쥐는 파일과 같은 파일이면 다르게 적혔어도 지우지 않는다(`Held`). 가는 길의 하위
@@ -239,6 +244,25 @@ pub fn save_layout(
     let mut rendered = render_layout(&layout, Some(&verdict), None);
     rendered.warnings.extend(undeleted);
     Ok(SaveOutcome::Saved(rendered))
+}
+
+/// 템플릿을 쓰고 그 뒤에 `layout.json`을 쓴다 — 거꾸로면 새 레이아웃이 없는 템플릿을 가리킨 채 선다.
+/// 파일마다 원자적이다. 처음 실패에서 멈춘다.
+fn write_templates_then_layout(
+    folder: &Path,
+    layout: &SpecLayout,
+    templates: &BTreeMap<String, String>,
+) -> Result<()> {
+    for (path, body) in templates {
+        let path = Path::new(path);
+        let dir = match path.parent() {
+            Some(parent) => folder.join(parent),
+            None => folder.to_path_buf(),
+        };
+        let name = path.file_name().expect("a template path names a file").to_string_lossy();
+        write_atomically(&dir, &name, body)?;
+    }
+    write_atomically(folder, LAYOUT_FILE, &serialize_layout(layout))
 }
 
 /// **저장하지 않은 초안의 미리보기**(티켓 14) — 편집기가 초안이 바뀔 때마다 부른다(`render_spec_layout`).
@@ -857,6 +881,29 @@ mod tests {
             std::fs::read_to_string(root.path().join("layouts/atelier/layout.json")).unwrap(),
             old
         );
+    }
+
+    /// **처음 저장이 쓰다가 실패하면 폴더를 남기지 않는다** — 남으면 `layout.json` 없는 폴더가 내장본을
+    /// 가려 그 모드가 깨진다(에이전트는 물러선 안내문을 받고, 설정의 행은 깨진 행이다). 쓰기가 실패하는
+    /// 모양 둘: `x`와 `x/y.md`는 어느 파일 시스템에서도 둘 다 쓸 수 없고(파일 `x`가 폴더 `x/`를 막는다),
+    /// NUL이 든 이름은 쓸 수 없다.
+    #[test]
+    fn a_first_save_that_fails_midway_leaves_no_folder_and_the_builtin_stands() {
+        for (a, b) in [("x", "x/y.md"), ("a\u{0}.md", "b.md")] {
+            let root = tempfile::tempdir().unwrap();
+            let layout = serde_json::json!({ "root": { "children": [
+                { "pattern": "one.md", "kind": "file", "template": a },
+                { "pattern": "two.md", "kind": "file", "template": b } ] } });
+
+            let saved = save_layout(root.path(), "atelier", layout, &bodies(&[(a, "1"), (b, "2")]));
+
+            assert!(saved.is_err(), "{a:?}: 쓸 수 없는 템플릿인데 저장됐다: {saved:?}");
+            assert!(!root.path().join("layouts/atelier").exists(), "{a:?}: 폴더가 남았다");
+            assert!(!read_layout(root.path(), "atelier").unwrap().edited, "{a:?}");
+            let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            assert_eq!(resolved.source, crate::LayoutSource::Builtin, "{a:?}");
+            assert_eq!(resolved.fallback, None, "{a:?}: 물러섰다");
+        }
     }
 
     /// 앞 레이아웃이 가리켰는데 새 레이아웃은 가리키지 않는 템플릿 — **빠진 템플릿은 지워진다.**
