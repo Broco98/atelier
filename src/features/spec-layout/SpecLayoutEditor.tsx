@@ -566,6 +566,8 @@ function TreeTools({
                 type="button"
                 onClick={() => onMove(move)}
                 disabled={!edits[move]}
+                // `icon-button` 모양이 아니라 눌린 바닥 위의 툴바 칸이다 — 모서리 7px은 바닥(9px)에서 안쪽 2px을 뺀
+                // 동심원 값이다(눌린 바닥 위의 칸인 `SegmentGroup` `sm`도 7px이다).
                 className="flex h-6 w-[26px] items-center justify-center rounded-[7px] text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
               />
             }
@@ -586,8 +588,9 @@ function TreeTools({
             onClick={onRemove}
             disabled={!edits.remove}
             aria-label="고른 항목 지우기"
+            // 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 ⋯(`RevertMenu`)와 같다.
             className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
+              "icon-button size-7 transition-colors",
               edits.remove ? "text-red-600 hover:bg-red-600/10 hover:text-red-700" : "text-red-600/35",
             )}
           />
@@ -1179,7 +1182,8 @@ const ICON_CHOICES: (SpecIconName | null)[] = [null, ...(Object.keys(SPEC_ICONS)
 
 /**
  * 제목 옆의 아이콘 칸. 누르면 팝오버에서 앱의 아이콘 표(`SPEC_ICONS`)로 고른다. 칸은 지금 아이콘을
- * 그린다 — 없으면 흐린 「없음」, 모르는 이름이면 경고다.
+ * 그린다 — 없으면 흐린 「없음」, 모르는 이름이면 경고다. 열린 칸은 앱의 열린 트리거처럼 `toggle-on`이다(develop
+ * S42, 옆 ⋯ `RevertMenu`와 같다) — 지금 아이콘은 칸의 글자색을 받아 열리면 함께 진해진다.
  *
  * **카드는 Popover다**(develop 판 3 — 작업 ⓘ 메타와 같다). 열리면 고른 칸에 포커스가 가고(`initialFocus`), Esc로
  * 닫으면 포커스가 칸으로 돌아온다 — 둘 다 부품이 한다. 고르면 닫고, 포커스는 역시 부품이 칸으로 돌려준다. 모달이
@@ -1200,15 +1204,17 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
         render={
           <PopoverTrigger
             aria-label="아이콘 바꾸기"
+            // 바탕 · 글자색 · hover는 가지 안에만 둔다 — 한 요소에 `bg-background`가 `toggle-on`과 겹치면 코어
+            // 유틸리티가 뒤에 서서 열린 바탕을 덮고, `quiet-hover`는 꺼진 가지에만 선다(`index.css`의 그 유틸리티).
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors",
-              open ? "border-primary bg-primary/10" : "border-border bg-background quiet-hover",
+              "flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-border transition-colors",
+              open ? "toggle-on" : "bg-background text-muted-foreground quiet-hover",
             )}
           />
         }
       >
         {Current ? (
-          <Current aria-hidden className="size-[18px] text-muted-foreground" strokeWidth={1.9} />
+          <Current aria-hidden className="size-[18px]" strokeWidth={1.9} />
         ) : icon !== null ? (
           <TriangleAlert
             aria-hidden
