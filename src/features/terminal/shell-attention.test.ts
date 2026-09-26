@@ -7,6 +7,7 @@ import { foldHookState } from "./agents";
 import {
   applySignal,
   attentionOn,
+  NO_HOOK_COUNTS,
   bandRows,
   callingShells,
   isShellSeen,
@@ -14,6 +15,7 @@ import {
   ptyIdOf,
   nextAttention,
   nextOnOutput,
+  runningSubagents,
   signalOf,
   signalsOf,
   topSignal,
@@ -30,13 +32,23 @@ const read = (file: string) => readFileSync(fileURLToPath(new URL(file, import.m
 // (shell-registry.test.ts가 선례다). 관찰하는 것은 "에이전트가 말한 것을 넣으면 화면이 읽는
 // 값이 무엇이 되는가"이지 안쪽 자료구조가 아니다.
 
-const hook = (agent: string, event: string, payload: unknown = null): ShellHookState => ({
+/**
+ * 상태 파일 한 장. 수와 멈춤(프로세스 결정 13 · S50 · S51)은 **처리기가 접어 싣는 칸**이라 어댑터가 안 읽고, 상태
+ * 기계만 읽는다 — 그래서 빠지면 옛 처리기의 파일과 같은 값(0 · 거짓)이고, 그 칸을 재는 줄만 `over`로 덮는다.
+ */
+const hook = (
+  agent: string,
+  event: string,
+  payload: unknown = null,
+  over: Partial<Pick<ShellHookState, "at" | "subagents" | "stopped">> = {},
+): ShellHookState => ({
   agent,
   event,
   at: 10,
   payload,
   subagents: 0,
   stopped: false,
+  ...over,
 });
 
 // **페이로드는 지어내지 않는다.** 아래 픽스처의 키는 지어낸 것이 아니라 밖에서 온 것이고,
@@ -92,6 +104,32 @@ const 실측_SessionEnd = {
   reason: "other",
 };
 
+// 진짜 claude(2.1.283)의 `-p` Agent 판에서 기록기가 받은 서브에이전트 사건 둘이다(2026-09-26 실측, 프로세스 티켓
+// 18 — `research/판03-선행-시험.md` 「서브에이전트」). 값만 줄였고 키는 그대로다. id 칸은 `agent_id`(16진 17자)이고,
+// 수는 처리기가 이 칸으로 접으므로(S51) 어댑터는 이 페이로드에서 아무것도 안 읽는다.
+const 실측_SubagentStart = {
+  session_id: "7a1c0355-dbe8-4b50-9bb5-729ffc94d8d0",
+  transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355.jsonl",
+  cwd: "/tmp/probe",
+  hook_event_name: "SubagentStart",
+  agent_id: "ace905bb8e05c8931",
+  agent_type: "general-purpose",
+};
+const 실측_SubagentStop = {
+  session_id: "7a1c0355-dbe8-4b50-9bb5-729ffc94d8d0",
+  transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355.jsonl",
+  cwd: "/tmp/probe",
+  permission_mode: "default",
+  hook_event_name: "SubagentStop",
+  agent_id: "ace905bb8e05c8931",
+  agent_type: "general-purpose",
+  agent_transcript_path: "/Users/me/.claude/projects/-tmp-probe/7a1c0355/subagents/agent-ace905bb8e05c8931.jsonl",
+  last_assistant_message: "파일 둘을 읽었어요",
+  stop_hook_active: false,
+  background_tasks: [],
+  session_crons: [],
+};
+
 describe("claude 어댑터가 실측 페이로드를 그대로 받는다", () => {
   // **이 세 줄이 「우리 가정」이 아니라 「실물」을 재는 자리다.** 나머지 표는 우리가 고른 키만
   // 남긴 축약본이라, 실물 한 장이 통째로 지나가는 것을 보는 자리가 따로 있어야 한다.
@@ -102,7 +140,7 @@ describe("claude 어댑터가 실측 페이로드를 그대로 받는다", () =>
     });
   });
 
-  it("실측 `Stop` 한 장 → 기다림, 말은 첫 줄", () => {
+  it("실측 `Stop` 한 장 → 멈춤, 말은 첫 줄", () => {
     expect(foldHookState(hook("claude", "Stop", 실측_Stop))).toEqual({
       event: "stop",
       message: "ok done",
@@ -149,13 +187,39 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
     // 이 한 글자가 틀리면 `/clear` 줄이 실물에서 한 번도 안 서고, 방금 지운 화면에 초록이 뜬다.
     ["SessionEnd", { reason: "clear" }, "clear", null],
     ["SessionEnd", { reason: "logout" }, "end", null],
+    // ── 프로세스 결정 14가 더한 여섯. 키의 출처: 도구 셋은 Claude Code 훅 문서(2026-09-26, 티켓 18이 읽음) —
+    // `tool_name`·`tool_input`·`tool_use_id`, Post에 `tool_response`, Failure에 `error`·`is_interrupt`(선택).
+    // **도구 사건은 말을 안 싣는다**(직전 유지). 도는 중의 둘째 줄은 직전 맥락이고, 도구마다 두 번 오는 사건이
+    // 그 줄을 도구 이름으로 갈아 끼우면 사람이 읽을 말이 도구가 돌 때마다 튄다.
+    ["PreToolUse", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_03" }, "tool", null],
+    ["PostToolUse", { tool_name: "Bash", tool_input: { command: "git status" }, tool_response: { stdout: "clean" }, tool_use_id: "toolu_03" }, "tool", null],
+    // **중단이 아닌 실패는 도구다**(S56) — 도구가 실패해도 턴은 돈다.
+    ["PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "false" }, tool_use_id: "toolu_04", error: "Exit code 1" }, "tool", null],
+    ["PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "false" }, tool_use_id: "toolu_04", error: "Exit code 1", is_interrupt: false }, "tool", null],
+    // **중단으로 닿은 실패는 중단이다**(프로세스 결정 12의 사실 쪽).
+    ["PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_use_id: "toolu_05", error: "Interrupted", is_interrupt: true }, "interrupt", null],
+    // **`AskUserQuestion`은 훅이 아니라 도구다** — PreToolUse 안에서 도구 이름으로 가른다. 입력 모양은 claude
+    // 2.1.283 바이너리의 도구 스키마(`questions[]` · `question` · `header` · `options` · `multiSelect`)다. 말은
+    // 첫 물음의 첫 줄이다 — 사람이 답할 것이 그것이다.
+    ["PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?\n둘 다 돼요", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false }] }, tool_use_id: "toolu_06" }, "waiting", "어느 쪽으로 할까요?"],
+    // 물음을 못 읽으면 도구 이름이 바닥이다(`permissionLine`) — 모르는 것을 지어내지 않는다.
+    ["PreToolUse", { tool_name: "AskUserQuestion", tool_input: {}, tool_use_id: "toolu_07" }, "waiting", "AskUserQuestion"],
+    // StopFailure(문서): `error`(종류 열둘 중 하나) · 선택 `error_details` · 선택 `last_assistant_message`. 말은 **오류
+    // 상세의 첫 줄**, 없으면 **오류 종류**다(S57) — 「오류로 끝남」은 상태 기계가 붙인다(아래 전이 표).
+    ["StopFailure", { error: "rate_limit", error_details: "429 Too Many Requests\nretry-after: 30", last_assistant_message: "API Error: 429" }, "stopFailure", "429 Too Many Requests"],
+    ["StopFailure", { error: "server_error" }, "stopFailure", "server_error"],
+    ["StopFailure", {}, "stopFailure", null],
+    // **실측**(위 픽스처). 수는 처리기가 접으므로 어댑터는 사건 이름만 본다.
+    ["SubagentStart", 실측_SubagentStart, "subagent", null],
+    ["SubagentStop", 실측_SubagentStop, "subagent", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("claude", event, payload))).toEqual({ event: canonical, message });
   });
 
   // **모르는 이벤트는 아무것도 안 만든다** — 「모르면 아무 주장도 안 한다」(결정 3)가 여기서
-  // 시작된다. 훅을 더 걸어 둔 사용자의 `PreToolUse`가 상태를 흔들면 앰버가 이유 없이 켜진다.
-  it.each(["PreToolUse", "PostToolUse", "Notification", ""])("모르는 이벤트 %s는 아무것도 아니다", (event) => {
+  // 시작된다. 사용자가 더 걸어 둔 훅이 상태를 흔들면 앰버가 이유 없이 켜진다. 앱이 안 거는 이름
+  // (프로세스 결정 14의 「더하지 않음」)이 여기 선다.
+  it.each(["Notification", "PermissionDenied", "SessionStart", "PostToolBatch", ""])("모르는 이벤트 %s는 아무것도 아니다", (event) => {
     expect(foldHookState(hook("claude", event, { tool_name: "Bash" }))).toBeNull();
   });
 
@@ -187,6 +251,19 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
     ["Stop", { turn_id: "t1", stop_hook_active: false, last_assistant_message: "PR #174 열었다" }, "stop", "PR #174 열었다"],
     // B-1:323 codex `SessionEnd`에는 **고유 필드가 없다**(`—`). 이유를 물을 것이 없으니 늘 끝이다.
     ["SessionEnd", {}, "end", null],
+    // ── 프로세스 결정 14가 더한 넷. 키의 출처는 codex-cli 0.155.1 네이티브 바이너리가 싣는 훅 입력 스키마다
+    // (`pre-tool-use.command.input` · `post-tool-use.command.input` — `turn_id`·`tool_name`·`tool_input`·
+    // `tool_use_id`, Post에 `tool_response`, 서브에이전트 안이면 `agent_id`·`agent_type`).
+    ["PreToolUse", { turn_id: "t1", tool_name: "shell", tool_input: { command: "cargo test" }, tool_use_id: "call_1" }, "tool", null],
+    ["PostToolUse", { turn_id: "t1", tool_name: "shell", tool_input: { command: "cargo test" }, tool_response: "ok", tool_use_id: "call_1" }, "tool", null],
+    // **codex에는 `AskUserQuestion` 줄이 없다**(스펙 전이 표의 `waiting` 칸) — 이름이 같아도 도구다.
+    ["PreToolUse", { turn_id: "t1", tool_name: "AskUserQuestion", tool_input: {}, tool_use_id: "call_2" }, "tool", null],
+    // `subagent-start.command.input` · `subagent-stop.command.input` — `agent_id`(필수)·`agent_type` 등(티켓 19가 읽음).
+    ["SubagentStart", { turn_id: "t1", agent_id: "019a-sub-1", agent_type: "worker", hook_event_name: "SubagentStart" }, "subagent", null],
+    ["SubagentStop", { turn_id: "t1", agent_id: "019a-sub-1", agent_type: "worker", last_assistant_message: "다 읽었다", stop_hook_active: false }, "subagent", null],
+    // **사람이 끊은 턴은 중단이다**(프로세스 결정 13) — 멈춘 것이 아니라 상태가 없어진다. B-1:321 고유 필드는
+    // `turn_id`·`permission_mode`다.
+    ["Interrupt", { turn_id: "t1", permission_mode: "default" }, "interrupt", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("codex", event, payload))).toEqual({ event: canonical, message });
   });
@@ -202,20 +279,20 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
     });
   });
 
-  // **`Interrupt`는 직전 말을 지우지 않는다**(전이 표). 사람이 esc로 끊은 것이라 방금까지
-  // 하던 말이 곧 맥락이고, 그 자리를 비우면 둘째 줄이 이유 없이 빈다.
-  // B-1:321 고유 필드는 `turn_id`·`permission_mode`다.
-  it("`Interrupt`는 멈추되 직전 말을 그대로 둔다", () => {
-    expect(foldHookState(hook("codex", "Interrupt", { turn_id: "t1", permission_mode: "default" }))).toEqual({
-      event: "stop",
-      message: null,
-    });
+  // **옛 표에서 `Interrupt`는 「멈추되 직전 말을 둔다」(`stop` → 나를 기다림)였다.** 프로세스 결정 13이 이렇게
+  // 고쳤다: 사람이 끊은 턴은 사람이 이미 그 자리에 있으므로 부를 것이 없다 — 상태가 **없어진다**(`interrupt`).
+  // 멈춘 것(`stop`)으로 접으면 끊은 순간 「확인할 것」이 서서, 방금 Esc를 누른 사람을 앱이 다시 부른다.
+  it("`Interrupt`는 멈춘 것이 아니라 중단이다", () => {
+    expect(foldHookState(hook("codex", "Interrupt", { turn_id: "t1", permission_mode: "default" }))?.event).toBe(
+      "interrupt",
+    );
   });
 
   // claude에만 있는 이벤트다. 어댑터가 갈려 있으니 여기서는 아무것도 아니어야 한다 —
-  // 한 파일에 몰아 두면 이 가름이 조용히 사라진다.
-  it("claude의 `Elicitation`은 codex에서 아무것도 아니다", () => {
-    expect(foldHookState(hook("codex", "Elicitation", { message: "어느 쪽?" }))).toBeNull();
+  // 한 파일에 몰아 두면 이 가름이 조용히 사라진다. 결정 14가 codex에 안 더한 셋(StopFailure ·
+  // PostToolUseFailure — codex 훅 목록에 없다)도 같은 자리다.
+  it.each(["Elicitation", "StopFailure", "PostToolUseFailure"])("claude의 `%s`는 codex에서 아무것도 아니다", (event) => {
+    expect(foldHookState(hook("codex", event, { message: "어느 쪽?", error: "rate_limit" }))).toBeNull();
   });
 });
 
@@ -224,8 +301,15 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
 // 정상으로 쓰이고 어댑터는 `null`을 돌려주며(`shell-attention.ts`의 「모르는 이벤트면 직전
 // 그대로」) **어느 층도 안 빨개진다.** 이름 하나를 어댑터에만 더하면 그 훅이 사용자 설정에
 // 아예 안 깔려 이벤트가 한 번도 안 오고, 설치 쪽에만 더하면 훅이 매 턴 파일을 쓰는데
-// 어댑터가 버려 사용자 홈의 설정만 더러워진다. 그 그물이 필요해지는 바로 그 변경(실패 축의
-// `StopFailure` — 결정 12)이 다음 판이라 지금 걸어 둔다.
+// 어댑터가 버려 사용자 홈의 설정만 더러워진다. 그 그물이 필요해진 변경이 프로세스 결정 14다 — claude 여섯
+// (도구 셋 · `StopFailure` · 서브에이전트 둘)과 codex 넷을 **한 커밋에서** 양쪽에 더했다. (terminal-activity-signal
+// 결정 12는 「오류로 멈추면 `Stop`이 기다림으로 잡는다」였고 `StopFailure`를 다음 판으로 미뤘는데, 프로세스 결정
+// 13이 이렇게 고쳤다: `StopFailure` → 확인할 것 + 「오류로 끝남」.)
+//
+// **두 상수는 문자열 리터럴 배열 그대로다** — 아래 정규식이 선언 하나를 통째로 읽는다. 도구 사건의 `async`
+// 대상은 다른 이름의 상수(`CLAUDE_ASYNC_EVENTS`)로 따로 두었다: 이어 붙여 만든 목록은 이 정규식이 못 뽑는다.
+// 그리고 `AskUserQuestion`은 **훅 이름이 아니라 도구 이름**이라 어댑터에서 `case`가 아니라 `if`로 가른다 —
+// 아래 스캔은 어댑터 파일 전체의 `case "…":`를 훅 이름으로 읽으므로 `case`로 쓰면 여기서 빨개진다.
 //
 // 같은 위험을 이 판은 **한 자리에서 이미 인정했다** — `shell-registry.test.ts`가 `shells.rs`와
 // `api.ts`를 함께 읽어 `"shell:attention"`이 같은지 못박는다(스토리 85). 이것은 같은 방식을
@@ -263,58 +347,178 @@ describe("훅이 나르는 어휘가 Rust와 TS에서 같다", () => {
   });
 });
 
-// 스펙의 **전이 표 그대로**다. 재는 것은 「어느 훅 이벤트가 오면 화면이 읽는 kind와 message가
-// 무엇이 되는가」 하나 — 어댑터가 무엇으로 접었는지는 이 표의 관심이 아니다.
-const 직전 = {
+// **프로세스 결정 13의 전이 표 그대로**다. 재는 것은 「어느 훅 사건이 오면 화면이 읽는 상태가 무엇이 되는가」 하나 —
+// 어댑터가 무엇으로 접었는지는 이 표의 관심이 아니다.
+//
+// terminal-activity-signal 구현 스펙의 전이 표(`Stop` → 기다림, `clear` → 도는 중, `SessionEnd` → 초록)를 프로세스
+// 결정 13이 이렇게 고쳤다: 턴을 마치면 **확인할 것**이고, `/clear`와 중단은 상태가 **없어지고**, 세션 끝은 도는 중 ·
+// 기다림만 지운다. 「나를 기다림」은 사람이 답해야 할 때(승인 · elicitation · `AskUserQuestion`)만 선다.
+const 직전: Attention = {
   kind: "working",
   message: "직전에 하던 말",
   since: 1,
   seen: false,
   source: "hook",
   agent: "claude",
-} as const;
+  subagents: 0,
+};
+const 기다리던것: Attention = { ...직전, kind: "waiting", message: "Bash · git push" };
+const 끝난것: Attention = { ...직전, kind: "done", message: "다 했어요" };
 
-describe("전이 표", () => {
-  // 여기 실린 페이로드도 **밖에서 온 키 그대로**다(위 어댑터 표와 같은 규율 — claude의
-  // `prompt`·`last_assistant_message`·`reason`은 실측, 나머지는 연구 표). 이 줄들이 실물과
-  // 다른 모양 위에 서면 전이 표 전체가 「구현이 읽기로 한 키」를 재게 된다.
+/** 사건 여럿을 차례로 앉힌다 — 파일이 바뀔 때마다 감시가 한 장씩 실어 오는 그 길이다. */
+const 차례로 = (prev: Attention | null, ...hooks: ReadonlyArray<ShellHookState>): Attention | null =>
+  hooks.reduce<Attention | null>((acc, one) => nextAttention(acc, one), prev);
+
+/** 훅이 세운 상태 한 장 — 이 표의 기대값이 늘 이 모양이라 빠진 칸이 조용히 틀리지 않게 한 자리에서 짓는다. */
+const 훅상태 = (over: Partial<Attention>): Attention => ({
+  kind: "working",
+  message: null,
+  since: 10,
+  seen: false,
+  source: "hook",
+  agent: "claude",
+  subagents: 0,
+  ...over,
+});
+
+describe("전이 표 — 프로세스 결정 13", () => {
+  // 여기 실린 페이로드도 **밖에서 온 키 그대로**다(위 어댑터 표와 같은 규율 — claude의 `prompt`·
+  // `last_assistant_message`·`reason`·서브에이전트 둘은 실측, 도구 · 실패는 훅 문서, codex는 연구 표와 바이너리
+  // 스키마). 이 줄들이 실물과 다른 모양 위에 서면 전이 표 전체가 「구현이 읽기로 한 키」를 재게 된다.
   it.each([
-    ["claude", "UserPromptSubmit", { prompt: "고쳐" }, "working", "직전에 하던 말"],
-    ["codex", "UserPromptSubmit", { permission_mode: "default" }, "working", "직전에 하던 말"],
-    ["claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" }, tool_use_id: "toolu_02" }, "waiting", "Bash · git push"],
-    ["codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }, "waiting", "shell · rm -rf ."],
-    ["claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", elicitation_id: "el_2" }, "waiting", "어느 쪽으로 할까요?"],
-    ["claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?", agent_id: "a2" }, "waiting", "테스트 셋 통과 — 커밋할까요?"],
-    ["codex", "Stop", { turn_id: "t2", last_assistant_message: "PR #174 열었다" }, "waiting", "PR #174 열었다"],
-    ["codex", "Interrupt", { turn_id: "t2", permission_mode: "default" }, "waiting", "직전에 하던 말"],
-    ["claude", "SessionEnd", { reason: "logout" }, "done", "직전에 하던 말"],
+    // `start` → 도는 중. 말은 직전 것을 둔다.
+    ["claude 새 턴", 직전, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }), 훅상태({ message: "직전에 하던 말" })],
+    ["codex 새 턴", 직전, hook("codex", "UserPromptSubmit", { permission_mode: "default" }), 훅상태({ message: "직전에 하던 말", agent: "codex" })],
+    // `tool` → 도는 중. **기다림이 풀린다** — 승인한 도구가 끝나면 PostToolUse가 오고(티켓 18 실측: 승인과
+    // PostToolUse 사이에는 오는 훅이 없다), 그때 앰버가 내려간다.
+    ["claude PreToolUse가 기다림을 푼다", 기다리던것, hook("claude", "PreToolUse", { tool_name: "Bash", tool_input: { command: "ls" }, tool_use_id: "toolu_10" }), 훅상태({ message: "Bash · git push" })],
+    ["claude PostToolUse가 기다림을 푼다", 기다리던것, hook("claude", "PostToolUse", { tool_name: "Bash", tool_input: { command: "git push" }, tool_response: {}, tool_use_id: "toolu_02" }), 훅상태({ message: "Bash · git push" })],
+    ["claude 중단 아닌 실패도 도는 중이다(S56)", 기다리던것, hook("claude", "PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "git push" }, tool_use_id: "toolu_02", error: "Exit code 1" }), 훅상태({ message: "Bash · git push" })],
+    ["codex PreToolUse", 기다리던것, hook("codex", "PreToolUse", { turn_id: "t2", tool_name: "shell", tool_input: { command: "ls" }, tool_use_id: "call_3" }), 훅상태({ message: "Bash · git push", agent: "codex" })],
+    ["codex PostToolUse", 기다리던것, hook("codex", "PostToolUse", { turn_id: "t2", tool_name: "shell", tool_input: { command: "ls" }, tool_response: "ok", tool_use_id: "call_3" }), 훅상태({ message: "Bash · git push", agent: "codex" })],
+    // `waiting` → 기다림. **사람이 답해야 할 때만** 선다.
+    ["claude 승인 요청", 직전, hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" } }), 훅상태({ kind: "waiting", message: "Bash · git push" })],
+    ["codex 승인 요청", 직전, hook("codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }), 훅상태({ kind: "waiting", message: "shell · rm -rf .", agent: "codex" })],
+    ["claude elicitation", 직전, hook("claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", elicitation_id: "el_2" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?" })],
+    ["claude AskUserQuestion", 직전, hook("claude", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?", header: "방향", options: [], multiSelect: false }] }, tool_use_id: "toolu_11" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?" })],
+    // `stop` → 서브에이전트가 없으면 **확인할 것**, 있으면 도는 중(서브에이전트 N).
+    ["claude 턴 끝", 직전, hook("claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?" }, { stopped: true }), 훅상태({ kind: "done", message: "테스트 셋 통과 — 커밋할까요?" })],
+    ["codex 턴 끝", 직전, hook("codex", "Stop", { turn_id: "t2", last_assistant_message: "PR #174 열었다" }, { stopped: true }), 훅상태({ kind: "done", message: "PR #174 열었다", agent: "codex" })],
+    ["서브에이전트가 도는 턴 끝", 직전, hook("claude", "Stop", { last_assistant_message: "서브에이전트 둘을 띄웠어요" }, { subagents: 2, stopped: true }), 훅상태({ message: "서브에이전트 둘을 띄웠어요", subagents: 2 })],
+    // `stopFailure` → 확인할 것 + 「오류로 끝남」(S57 — 오류 상세의 첫 줄, 없으면 오류 종류). 색은 없다.
+    ["API 오류로 끝난 턴", 직전, hook("claude", "StopFailure", { error: "rate_limit", error_details: "429 Too Many Requests\nretry-after: 30" }, { stopped: true }), 훅상태({ kind: "done", message: "오류로 끝남 · 429 Too Many Requests" })],
+    ["오류 상세가 없으면 종류", 직전, hook("claude", "StopFailure", { error: "server_error" }, { stopped: true }), 훅상태({ kind: "done", message: "오류로 끝남 · server_error" })],
+    ["아무것도 없으면 「오류로 끝남」만", 직전, hook("claude", "StopFailure", {}, { stopped: true }), 훅상태({ kind: "done", message: "오류로 끝남" })],
+  ] as const)("%s", (_이름, prev, one, expected) => {
+    expect(nextAttention(prev, one)).toEqual(expected);
+  });
+
+  // **「없음」은 상태 전이가 상태 없음을 돌려주는 것이다**(스펙 전이 표 아래 줄). 옛 전이 함수는 늘 값을 돌려줘서
+  // `/clear`가 「도는 중」을 세웠다 — 지워진 대화 위에 링이 돌고, 그 링을 풀 사건이 다음 턴까지 안 온다.
+  it.each([
+    ["claude 중단(`is_interrupt`)", hook("claude", "PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_use_id: "toolu_05", error: "Interrupted", is_interrupt: true })],
+    ["codex 중단", hook("codex", "Interrupt", { turn_id: "t1", permission_mode: "default" })],
+    ["claude `/clear`", hook("claude", "SessionEnd", { reason: "clear" })],
+  ] as const)("`interrupt` · `clear` → 상태 없음 — %s", (_이름, one) => {
+    for (const prev of [직전, 기다리던것, 끝난것]) expect(nextAttention(prev, one)).toBeNull();
+  });
+
+  // **`end` → 도는 중 · 기다림은 지우고, 안 본 확인할 것은 남긴다.** `claude -p`는 `Stop` 직후 몇 ms 만에
+  // `SessionEnd`가 온다 — 지우면 완료 알림이 뜨자마자 사라진다(프로세스 결정 13 아래 줄).
+  it.each([
+    ["claude", { reason: "logout" }],
+    ["claude", { reason: "prompt_input_exit" }],
     // codex `SessionEnd`는 고유 필드가 없다 — 빈 페이로드가 실물의 모양이다.
-    ["codex", "SessionEnd", {}, "done", "직전에 하던 말"],
-    // **`clear` 줄**. 스펙 전이 표에서 이 줄은 claude 전용이고, 실물 키는 `reason`이다(실측).
-    ["claude", "SessionEnd", { reason: "clear" }, "working", null],
-  ] as const)("%s %s → %s", (agent, event, payload, kind, message) => {
-    expect(nextAttention(직전, hook(agent, event, payload))).toEqual({
-      kind,
-      message,
-      since: 10,
-      seen: false,
-      source: "hook",
-      // **누가 말했는가도 이 표를 함께 탄다** — 이 값이 없으면 초록 행에 마크가 안 선다
-      // (`Attention.agent` 머리말). 훅 길에서는 늘 실린다.
-      agent,
-    });
+    ["codex", {}],
+  ] as const)("`end` → 도는 중 · 기다림은 지우고 안 본 확인할 것은 남김 — %s %j", (agent, payload) => {
+    const 끝 = hook(agent, "SessionEnd", payload);
+    expect(nextAttention(직전, 끝)).toBeNull();
+    expect(nextAttention(기다리던것, 끝)).toBeNull();
+    expect(nextAttention(null, 끝)).toBeNull();
+    // **같은 객체다** — 남기는 것이지 새로 세우는 것이 아니라, 「봤다」도 시각도 그대로다.
+    expect(nextAttention(끝난것, 끝)).toBe(끝난것);
+    const 본것 = { ...끝난것, seen: true };
+    expect(nextAttention(본것, 끝)).toBe(본것);
+  });
+
+  // ── `subagent` — **지금 상태를 두고 수만 고친다**(S51). 수는 처리기가 id 집합으로 접은 것이고(19), 프런트는 사건을
+  // 세지 않는다: 파일은 마지막 사건 하나만 담고 감시가 100ms로 디바운스하므로 세면 샌다.
+
+  // **이것이 S50이다.** 결정 13 여섯째 줄(서브에이전트가 돌면 도는 중)은 들어가는 길만 적었다 — 나오는 길이
+  // 없으면 결정 12가 없애려던 「도는 중」 고착이 새 길로 돌아온다.
+  it("Stop(수 2) → SubagentStop → SubagentStop → 확인할 것", () => {
+    const 멈춤 = hook("claude", "Stop", { last_assistant_message: "서브에이전트 둘을 띄웠어요" }, { at: 10, subagents: 2, stopped: true });
+    const 하나끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 20, subagents: 1, stopped: true });
+    const 둘끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 30, subagents: 0, stopped: true });
+
+    expect(차례로(직전, 멈춤)).toEqual(훅상태({ message: "서브에이전트 둘을 띄웠어요", subagents: 2 }));
+    expect(차례로(직전, 멈춤, 하나끝)).toEqual(훅상태({ message: "서브에이전트 둘을 띄웠어요", subagents: 1 }));
+    // **`since`는 멈춘 시각 그대로다** — 서브에이전트 사건은 시각을 안 바꾼다. 확인할 것에 **들어서는** 것이라
+    // 「봤다」는 풀린다(알림이 한 번 운다 — `shell-notify.test.ts`).
+    expect(차례로(직전, 멈춤, 하나끝, 둘끝)).toEqual(
+      훅상태({ kind: "done", message: "서브에이전트 둘을 띄웠어요", subagents: 0 }),
+    );
+  });
+
+  // **확인할 것에 늦게 온 서브에이전트 사건은 다시 울리지 않는다** — `since`가 그대로라 알림 판정이 「머무름」으로
+  // 읽는다. 「봤다」도 그대로라 본 완료가 되살아나지 않는다.
+  it("확인할 것 + `subagent` → 그대로, `since`도 그대로", () => {
+    const 늦은시작 = hook("claude", "SubagentStart", 실측_SubagentStart, { at: 40, subagents: 1, stopped: true });
+    expect(nextAttention(끝난것, 늦은시작)).toEqual({ ...끝난것, subagents: 1 });
+    const 본것 = { ...끝난것, seen: true };
+    expect(nextAttention(본것, 늦은시작)).toEqual({ ...본것, subagents: 1 });
+  });
+
+  // 그 밖의 상태도 수만 고친다 — 기다리는 동안 서브에이전트가 끝나도 사람이 답할 것은 그대로다.
+  it("기다림 + `subagent` → 기다림 그대로, 수만", () => {
+    const 끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 40, subagents: 0, stopped: false });
+    expect(nextAttention({ ...기다리던것, subagents: 1 }, 끝)).toEqual({ ...기다리던것, subagents: 0 });
+  });
+
+  // **멈추지 않은 턴**에서 수가 0이 되는 것은 끝이 아니다 — 본 에이전트가 아직 돈다(S50의 「멈춘 셸」).
+  it("멈추지 않은 도는 중 + `subagent` → 도는 중, 수만", () => {
+    const 시작 = hook("claude", "SubagentStart", 실측_SubagentStart, { at: 40, subagents: 1, stopped: false });
+    const 끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 50, subagents: 0, stopped: false });
+    expect(차례로(직전, 시작)).toEqual({ ...직전, subagents: 1 });
+    expect(차례로(직전, 시작, 끝)).toEqual(직전);
+  });
+
+  // 아무 주장도 없는 셸에 서브에이전트 사건만 오면 아무것도 안 세운다 — 수만 고칠 상태가 없다.
+  it("상태가 없는 셸에 `subagent`가 와도 없다", () => {
+    expect(nextAttention(null, hook("claude", "SubagentStart", 실측_SubagentStart, { subagents: 1 }))).toBeNull();
+  });
+
+  // **둘째 승인 요청은 새 사실이다** — 새 `since`를 찍어야 알림 판정이 「같은 값으로 새로 도착한 것」으로 읽는다
+  // (`decideNotification` 머리말). 그대로 두면 연달아 오는 승인 요청의 둘째부터 삼켜진다.
+  it("기다림 + `waiting` → 기다림, 새 `since`", () => {
+    const 둘째 = hook("claude", "PermissionRequest", { tool_name: "Edit", tool_input: { file_path: "src/pty.rs" } }, { at: 90 });
+    expect(nextAttention(기다리던것, 둘째)).toEqual(
+      훅상태({ kind: "waiting", message: "Edit · src/pty.rs", since: 90 }),
+    );
+  });
+
+  // **순서 가드에 막힌 사건은 파일의 사건 이름과 `at`을 안 바꾸고 수만 바꾼다**(19 · S27). 그래서 「사건 이름과 `at`이
+  // 같은 파일」도 버리지 않고 수를 새로 읽어 전이한다 — 버리면 `Stop`보다 먼저 시작해 늦게 끝난 SubagentStop이
+  // 영영 반영되지 않아 도는 중에 굳는다.
+  it("순서 가드에 막혀 수만 바뀐 파일(`Stop` 그대로, `at` 그대로, 수 0)이 와도 확인할 것", () => {
+    const 멈춤 = hook("claude", "Stop", { last_assistant_message: "서브에이전트 둘을 띄웠어요" }, { at: 10, subagents: 2, stopped: true });
+    const 막힌끝 = { ...멈춤, subagents: 0 };
+    expect(차례로(직전, 멈춤, 막힌끝)).toEqual(
+      훅상태({ kind: "done", message: "서브에이전트 둘을 띄웠어요", subagents: 0 }),
+    );
+  });
+
+  // **같은 사실을 다시 읽는 것은 새 사실이 아니다** — 막힌 사건이 멈춤만 바꾼 파일(예: 늦은 중단의 `stopped: false`)을
+  // 다시 읽어도 본 완료가 되살아나지 않는다. 되살아나면 사람이 방금 본 셸이 띠에 다시 서고 알림이 한 번 더 운다.
+  it("같은 사건을 다시 읽어도 「봤다」가 안 풀린다", () => {
+    const 멈춤 = hook("claude", "Stop", { last_assistant_message: "다 했어요" }, { at: 10, stopped: true });
+    const 본것 = { ...nextAttention(직전, 멈춤)!, seen: true };
+    expect(nextAttention(본것, { ...멈춤, stopped: false })).toEqual(본것);
   });
 
   // 훅이 처음 오는 셸에는 직전이 없다. 「직전 유지」가 그때 무엇이 되는지가 이 줄이다.
   it("직전이 없으면 「직전 유지」는 없음이다", () => {
-    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }))).toEqual({
-      kind: "working",
-      message: null,
-      since: 10,
-      seen: false,
-      source: "hook",
-      agent: "claude",
-    });
+    expect(nextAttention(null, hook("claude", "UserPromptSubmit", { prompt: "고쳐" }))).toEqual(훅상태({}));
   });
 
   // 「PTY 종료 · 셸 닫힘 → 없음」. 감시가 파일이 사라진 것을 `state: null`로 실어 온다.
@@ -326,21 +530,30 @@ describe("전이 표", () => {
   // 차분) 그 한 겹에만 기대지 않는다 — 근거가 다른 두 겹이다. 레지스트리의 `setAttention`은
   // 이 항등성만 보고 칸을 갈아 끼울지 정하므로, 여기가 새면 사이드바가 이유 없이 다시 그려진다.
   it("같은 것이 다시 와도 상태가 그대로다 — 같은 객체다", () => {
-    const 한장 = hook("claude", "Stop", { last_assistant_message: "커밋할까요?" });
+    const 한장 = hook("claude", "Stop", { last_assistant_message: "커밋할까요?" }, { stopped: true });
     const 앉은뒤 = nextAttention(직전, 한장);
     expect(nextAttention(앉은뒤, 한장)).toBe(앉은뒤);
   });
 
+  // **일곱째 칸도 견준다** — 수만 바뀐 파일이 「같은 것」으로 삼켜지면 셸 탭 툴팁의 수가 안 바뀐다.
+  it("수만 달라도 새 상태다 — 같은 객체가 아니다", () => {
+    const 둘 = hook("claude", "Stop", { last_assistant_message: "기다려요" }, { subagents: 2, stopped: true });
+    const 앉은뒤 = nextAttention(직전, 둘);
+    const 하나 = nextAttention(앉은뒤, { ...둘, subagents: 1 });
+    expect(하나).not.toBe(앉은뒤);
+    expect(하나?.subagents).toBe(1);
+  });
+
   // **모르는 이벤트는 직전을 흔들지 않는다.** 어댑터가 `null`을 준 자리다.
   it("모르는 이벤트는 직전 그대로다 — 같은 객체다", () => {
-    expect(nextAttention(직전, hook("claude", "PreToolUse", {}))).toBe(직전);
+    expect(nextAttention(직전, hook("claude", "Notification", {}))).toBe(직전);
   });
 
   // **「봤다」는 새 사실이 오면 풀린다.** 안 풀면 Agent Deck이 겪은 「두 번째 진짜 프롬프트가
   // 삼켜짐」이 그대로 난다 — 끝난 셸을 한 번 보고 나면 그 뒤 진짜 완료가 영영 안 뜬다.
   it("에이전트가 새로 말하면 「봤다」가 풀린다", () => {
-    const 본것 = { ...직전, kind: "done", seen: true } as const;
-    expect(nextAttention(본것, hook("claude", "SessionEnd", { reason: "logout" }))?.seen).toBe(
+    const 본것 = { ...끝난것, seen: true };
+    expect(nextAttention(본것, hook("claude", "Stop", { last_assistant_message: "또 했어요" }, { at: 20, stopped: true }))?.seen).toBe(
       false,
     );
   });
@@ -356,10 +569,11 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     seen: false,
     source: "hook",
     agent: "claude",
+    subagents: 0,
   };
 
   it.each(["osc", "bell"] as const)("%s가 와도 그대로다 — 같은 객체다", (source) => {
-    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source, null);
+    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source, null, NO_HOOK_COUNTS);
     expect(그대로).toBe(훅이말한것);
   });
 
@@ -367,7 +581,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   // 사용자에게 이 판이 통째로 없는 것이 된다.
   it("훅이 안 온 셸은 OSC가 바꾼다", () => {
     const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
-    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc", null)).toEqual({
+    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc", null, NO_HOOK_COUNTS)).toEqual({
       kind: "working",
       message: "커밋할까요?",
       since: 200,
@@ -376,19 +590,23 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
       // **OSC·벨은 누가 말했는지를 모른다.** 본문이 어느 프로세스에서 나왔는지 PTY는 안
       // 적는다 — 그 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다.
       agent: null,
+      // 서브에이전트도 모른다 — 수는 처리기가 접어 싣는 훅 길의 값이다.
+      subagents: 0,
     });
   });
 
   // 반대 방향은 안 막는다 — 훅이 늦게 오면 그때부터 훅이 권위다.
   it("OSC가 말하던 셸에 훅이 오면 훅이 이긴다", () => {
     const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
-    expect(applySignal(osc가말한것, { event: "end", message: null }, 200, "hook", "claude").source).toBe(
-      "hook",
-    );
+    expect(
+      applySignal(osc가말한것, { event: "stop", message: null }, 200, "hook", "claude", NO_HOOK_COUNTS)?.source,
+    ).toBe("hook");
   });
 
+  // 벨과 OSC의 완료는 **`stop`으로 들어온다**(`shell-osc.ts`) — 프로세스 결정 13이 확인할 것을 턴의 끝(`stop`)에 두고
+  // `end`를 「지우는 사건」으로 바꿨으므로, 옛 표대로 `end`를 쓰면 벨이 아무것도 못 세운다.
   it("아무것도 안 온 셸은 벨이 바꾼다", () => {
-    expect(applySignal(null, { event: "end", message: null }, 200, "bell", null)?.kind).toBe("done");
+    expect(applySignal(null, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_COUNTS)?.kind).toBe("done");
   });
 
   // **훅 없는 Codex 셸의 앰버를 푸는 것은 출력이다**(스펙 전이 표의 마지막 줄 · 구현 스펙
@@ -408,6 +626,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
         seen: false,
         source: "osc",
         agent: null,
+        subagents: 0,
       });
     });
 
@@ -433,7 +652,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   // **누가 말했는가는 상태와 함께 앉는다**(#203). 초록을 만드는 이벤트가 왔을 때 그 셸에서
   // 도는 것은 이미 없으므로, 이 값이 안 실리면 행의 둘째 줄이 마크를 낼 재료가 없다.
   it("훅이 말한 상태는 그 에이전트를 함께 싣는다", () => {
-    const 상태값 = nextAttention(null, hook("codex", "SessionEnd", { reason: "logout" }));
+    const 상태값 = nextAttention(null, hook("codex", "Stop", { last_assistant_message: "PR #174 열었다" }, { stopped: true }));
     expect(상태값?.agent).toBe("codex");
   });
 });
@@ -470,6 +689,7 @@ const 상태 = (over: Partial<Attention> = {}): Attention => ({
   // 훅이 말한 상태에는 **늘** 누가 말했는지가 실려 있다 — 그것이 기본값인 이유다.
   // 없는 쪽(OSC·벨)을 재는 자리에서만 `null`로 덮는다.
   agent: "claude",
+  subagents: 0,
   ...over,
 });
 
@@ -553,11 +773,10 @@ describe("행이 읽는 한 줄", () => {
     expect(topSignalView(list)?.running).toBeNull();
   });
 
-  // **초록 행에 마크가 서는 자리가 여기다.** 스펙 전이 표에서 초록을 만드는 길은 둘뿐이고
-  // (세션 종료 · 벨) **둘 다 그 순간 `running`이 비어 있다** — 세션이 끝났다는 것은
-  // 에이전트 프로세스가 나갔다는 뜻이라 1초 폴링이 다음 바퀴에 `running`을 눕히고, 벨은
-  // 정의상 「아는 에이전트 마크가 없을 때」만 초록이 된다. 그래서 마크의 재료를 「지금 도는
-  // 것」에서만 뽑으면 초록 행의 둘째 줄은 **늘** 말과 경과 둘뿐이고, 티켓과 스펙이 못박은
+  // **초록 행에 마크가 서는 자리가 여기다.** 초록은 **남는** 값이라(`end`가 안 본 확인할 것을 남긴다 —
+  // 프로세스 결정 13) 그 셸에서 에이전트가 나간 뒤에도 선다: 세션이 끝나면 1초 폴링이 다음 바퀴에
+  // `running`을 눕히고, 벨은 정의상 「아는 에이전트 마크가 없을 때」만 초록이 된다. 그래서 마크의 재료를 「지금
+  // 도는 것」에서만 뽑으면 그 초록 행의 둘째 줄은 말과 경과 둘뿐이고, 티켓과 스펙이 못박은
   // `[마크] [말] [경과]` 셋이 그 갈래에서만 조용히 깨진다(목업의 초록 예시가 바로 `codex`
   // 셸이다). 상태가 「누가 말했나」를 함께 들고 다니는 것이 그 자리를 메운다.
   it("세션이 끝나 도는 것이 없어도 말한 에이전트가 마크를 낸다", () => {
@@ -895,18 +1114,44 @@ it("터미널에서 시간을 아는 파일은 셋뿐이다 — 상태 축엔 �
 });
 
 // **칸이 늘면 여기서 터진다.** `nextAttention`의 「안 바뀌면 받은 것을 그대로 준다」와
-// `shell-registry`의 `setAttention`이 그 판정 하나에 매달려 있는데, 견주는 칸이 여섯으로
-// 적혀 있어 일곱째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
-it("상태에 든 칸은 정확히 여섯이다", () => {
-  const 상태값 = applySignal(null, { event: "waiting", message: "물음" }, 10, "hook", "claude");
-  expect(Object.keys(상태값).sort()).toEqual([
+// `shell-registry`의 `setAttention`이 그 판정 하나에 매달려 있는데, 견주는 칸이 손으로
+// 적혀 있어(`same`) 여덟째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
+//
+// **일곱째가 서브에이전트 수다**(프로세스 스펙 S51). 옆 맵에 두지 않은 것은 셸 탭 툴팁과 `Processes` 셸 행이 상태와
+// **같은 문**(`attentionOn`의 죽은 칸 가리개)을 딛고 읽게 하려는 것이다 — 맵이 따로면 죽은 칸의 수가 남는다.
+// `stopped`는 여기 없다: 셸 상태의 칸이 아니라 사건에 실려 오는 값이다(전이에만 쓴다).
+it("상태에 든 칸은 정확히 일곱이다", () => {
+  const 상태값 = applySignal(null, { event: "waiting", message: "물음" }, 10, "hook", "claude", NO_HOOK_COUNTS);
+  expect(Object.keys(상태값 ?? {}).sort()).toEqual([
     "agent",
     "kind",
     "message",
     "seen",
     "since",
     "source",
+    "subagents",
   ]);
+});
+
+// **「도는 중 · 서브에이전트 N」의 N을 읽는 문**(S32 · S51). 셸 탭 툴팁이 쓰고 `Processes` 셸 행(27)이 같은 함수를
+// 쓴다 — 화면이 `.attention`을 직접 읽으면 아래 소스 스캔이 터진다.
+describe("도는 중의 서브에이전트 수", () => {
+  it.each([
+    ["도는 중이면 그 수", 상태({ kind: "working", subagents: 2 }), 2],
+    ["도는 중이라도 없으면 0", 상태({ kind: "working", subagents: 0 }), 0],
+    // 도는 중이 아닌 셸의 수는 말하지 않는다 — 「도는 중 · 서브에이전트 N」은 도는 중의 말이다. 확인할 것에 늦은
+    // 서브에이전트 사건이 오면 수는 앉지만(전이 표) 그 셸은 부르는 중이다.
+    ["확인할 것이면 0", 상태({ kind: "done", subagents: 1 }), 0],
+    ["기다림이면 0", 상태({ kind: "waiting", subagents: 1 }), 0],
+    ["상태가 없으면 0", null, 0],
+  ] as const)("%s", (_이름, attention, 수) => {
+    expect(runningSubagents(칸(attention))).toBe(수);
+  });
+
+  // **죽은 칸은 아무것도 안 돌린다** — `attentionOn`과 같은 가리개다.
+  it("죽은 칸은 0이다", () => {
+    expect(runningSubagents(칸(상태({ kind: "working", subagents: 3 }), { kind: "failed", reason: "없어요" }))).toBe(0);
+  });
 });
 
 // 훅이 아는 이름과 레지스트리가 아는 번호를 잇는 자리. 셸 ID는 `<앱 인스턴스 접두사>-<pty

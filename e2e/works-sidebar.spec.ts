@@ -589,13 +589,16 @@ const 셸에서눈을뗀다 = async (page: Page) => {
   await expect(page).not.toHaveURL(/tab=terminal/);
 };
 
-/** 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Stop`이 그 길이다(스펙 전이 표). */
+/**
+ * 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Elicitation`(사람에게 묻는 것)이 그 길이다. 한때 `Stop`이었는데
+ * 프로세스 결정 13이 턴의 끝을 「확인할 것」으로 옮겼다 — 기다림은 사람이 답해야 할 때만 선다. 말은 물음의 첫 줄이다.
+ */
 const 기다리게한다 = (page: Page, message: string, 지난ms = 0) =>
   markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now() - 지난ms,
-    payload: { last_assistant_message: message },
+    payload: { message },
   });
 
 test("부르는 행은 레인·둘째 줄·이름으로 함께 말한다", async ({ page }) => {
@@ -723,15 +726,17 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
     return dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   };
 
-  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **세션 종료**다
-  // (스펙 전이 표) — 턴 종료가 아니다.
+  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **턴의 끝**이다(프로세스 결정 13 — 옛
+  // 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
   const 점색둘 = async () => {
     await 기다리게한다(page, "커밋할까요?");
     const 앰버 = await 점색("waiting");
     await markAttention(page, {
       agent: "claude",
-      event: "SessionEnd",
-      payload: { reason: "logout" },
+      event: "Stop",
+      at: Date.now(),
+      payload: { last_assistant_message: "다 했어요" },
+      stopped: true,
     });
     return { 앰버, 초록: await 점색("done") };
   };
@@ -771,10 +776,10 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
 
 // **초록 행의 둘째 줄도 마크·말·경과 셋을 낸다**(티켓 #203 · 구현-스펙의 둘째 줄 규칙).
 //
-// **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록을 만드는 길은 스펙 전이
-// 표에 둘뿐이고(세션 종료 · 벨) **둘 다 그 순간 그 PTY에 도는 에이전트가 없다** — 세션이
-// 끝났다는 것은 프로세스가 나갔다는 뜻이고, 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
-// 그래서 마크를 「지금 도는 것」에서만 뽑으면 초록 행은 **늘** 말과 경과 둘뿐이 되는데,
+// **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록은 **남는** 값이다 — 턴이 끝나 선
+// 확인할 것은 세션이 끝나도 안 본 채 남고(프로세스 결정 13), 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
+// 둘 다 **그 PTY에 도는 에이전트가 없는** 자리에 초록이 서 있게 된다 — 세션이 끝났다는 것은 프로세스가
+// 나갔다는 뜻이다. 그래서 마크를 「지금 도는 것」에서만 뽑으면 그 초록 행은 말과 경과 둘뿐이 되는데,
 // 도는 것을 손으로 넣어 주는 검사는 그 사라짐을 한 번도 못 본다(마크업 seam이 그 모양이다).
 // 목업의 초록 예시가 바로 `codex` 셸의 「PR #174 열었다」라 정본과 화면이 갈리는 자리다.
 test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어도", async ({ page }) => {
@@ -784,13 +789,14 @@ test("초록 행도 마크·말·경과 셋을 낸다 — 도는 것이 없어�
   await 셸에서눈을뗀다(page);
 
   const subrow = page.locator(`[data-subrow="${plainWork.slug}"]`);
-  // 턴이 끝나 말이 남고, 그 뒤 세션이 끝난다 — 초록을 만드는 것은 **세션 종료**다.
-  // 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다(둘째 줄의 셋째 조각).
+  // 턴이 끝나 확인할 것이 서고, 그 뒤 세션이 끝난다 — 세션 종료는 **안 본 확인할 것을 남긴다**(프로세스 결정
+  // 13). 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다(둘째 줄의 셋째 조각).
   await markAttention(page, {
     agent: "codex",
     event: "Stop",
     at: Date.now() - 125_000,
     payload: { last_assistant_message: "PR #174 열었다" },
+    stopped: true,
   });
   await markAttention(page, {
     agent: "codex",
@@ -885,7 +891,7 @@ test("띠는 부를 때만 서고, 넷이면 셋만 보인 채 `+N 더`로 펼�
     await openShell(page);
     await markAttention(
       page,
-      { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
+      { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: `말 ${ptyId}` } },
       ptyId,
     );
   }
@@ -945,7 +951,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   // 부르는 것은 **둘째 칸**이고 켜 두는 것은 첫째다 — 그래야 「탭이 바뀌었다」가 보인다.
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: "커밋할까요?" } },
+    { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "커밋할까요?" } },
     2,
   );
   await lit(0).click();
@@ -1466,12 +1472,14 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   //
   // work 행과 **같은 구독 컴포넌트**를 쓰므로(`SubrowFor`) 그 가름이 빠지기 쉽다 —
   // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
+  // 부르는 상태로 세운다 — 기다림은 보고 있어도 안 꺼지므로(결정 7) 이 셸이 그 사이 내내 말하는 중이다.
   await markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now(),
-    payload: { last_assistant_message: "커밋할까요?" },
+    payload: { message: "커밋할까요?" },
   });
+  await expect(띠(page)).toHaveCount(1);
   await expect(navRow.getByRole("img", { name: "claude" })).toHaveCount(1);
   await expect(navRow).not.toContainText("커밋할까요?");
 

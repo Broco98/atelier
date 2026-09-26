@@ -256,7 +256,13 @@ test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", 
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await markRunning(page, "claude");
-  await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
+  // 보고 있는 셸이라 레인에 남는 것은 기다림이다 — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Elicitation",
+    at: Date.now(),
+    payload: { message: "끌어도 될까요?" },
+  });
   await expect(레인(page, plainWork.slug).locator('[data-signal="waiting"]')).toHaveCount(1);
 
   await pickUpRow(page, plainWork.slug);
@@ -288,7 +294,13 @@ test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인
   await expect(line(page)).toBeVisible();
   const rowTopBefore = (await workRow(page, plainWork.slug).boundingBox())!.y;
 
-  await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
+  // 보고 있는 셸에서 띠가 서는 것은 기다림이다(결정 7) — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Elicitation",
+    at: Date.now(),
+    payload: { message: "끌어도 될까요?" },
+  });
   await expect(띠(page)).toHaveCount(1);
   // 목록이 **실제로 밀렸다** — 안 밀렸는데 초록이면 아무것도 안 잰 것이다.
   await expect

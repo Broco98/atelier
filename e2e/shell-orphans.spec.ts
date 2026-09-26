@@ -269,11 +269,13 @@ test("띠에서 주인 잃은 셸을 누르면 토스트가 다시 서고 화면
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
+  // 부르는 셸 — 보고 있는 채 받아도 띠에 남는 기다림이다(결정 7). 턴의 끝(`Stop`)은 프로세스 결정 13이 「확인할
+  // 것」으로 옮겨, 보고 있는 셸에서는 곧바로 「봤다」가 된다.
   await markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now(),
-    payload: { last_assistant_message: "아카이브했어요" },
+    payload: { message: "아카이브할까요?" },
   });
   await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
   await expect(page).toHaveURL("/terminal");

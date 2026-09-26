@@ -10,9 +10,11 @@ import {
 } from "./shell-notify";
 import type { NotifyContent, NotifyInput, NotifyShell } from "./shell-notify";
 import type { NotifyChoice } from "@/features/settings/notifications";
+import { nextAttention } from "./shell-attention";
 import type { Attention, ShellSignal } from "./shell-attention";
 import { ownerOf, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+import type { ShellHookState } from "./types";
 
 /**
  * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 알림 판정이라 세계는
@@ -283,6 +285,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     seen: false,
     source: "hook",
     agent: "claude",
+    subagents: 0,
     ...over,
   });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
@@ -364,6 +367,115 @@ describe("레지스트리에서 재료를 뽑는다", () => {
       제목,
     );
     expect(rows[0].title).toBe("Terminal");
+  });
+});
+
+// **훅 사건이 알림까지 — 프로세스 결정 13의 전이 표**(티켓 20). 위 표들은 화면값 넷 사이의 전이만 재고, 어느 훅
+// 사건이 어느 화면값이 되는지는 `shell-attention.test.ts`가 잰다. 그 둘이 **이어졌을 때** 무엇이 울리는지가
+// 이 자리다 — 사건을 상태 기계(`nextAttention`) → 레지스트리 재료(`notifyShells`) → 회차(`createNotifier`)로
+// 그대로 흘린다. 결정 13이 바꾼 것 셋이 여기서 갈린다: 턴의 끝은 이제 확인할 것으로 울고(알림 수는 같다),
+// 서브에이전트가 끝나 확인할 것에 **들어설 때** 한 번 울고, 확인할 것에 늦게 온 서브에이전트 사건은 안 운다.
+describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
+  const 셸 = (attention: Attention | null): Shell => ({
+    id: 1,
+    status: { kind: "running" },
+    title: null,
+    shellName: "zsh",
+    owner: 소유("signal"),
+    project: null,
+    cwd: null,
+    running: null,
+    attention,
+    auto: false,
+    firstInput: null,
+    orphaned: false,
+  });
+  const 사건 = (
+    event: string,
+    payload: unknown,
+    over: Partial<Pick<ShellHookState, "at" | "subagents" | "stopped">> = {},
+  ): ShellHookState => ({ agent: "claude", event, at: 1_000, payload, subagents: 0, stopped: false, ...over });
+
+  /**
+   * 사건을 **회차마다 하나씩** 흘려 울린 것의 본문을 회차별로 낸다. 창이 뒤에 있어 아무도 안 보고 있고(`focused: false`),
+   * 회차 사이는 5초 창보다 넓게 벌린다 — 접힘이 아니라 판정 자체를 재려는 것이다.
+   */
+  const 흘린다 = (...사건들: ReadonlyArray<ShellHookState>): ReadonlyArray<ReadonlyArray<string>> => {
+    const notifier = createNotifier();
+    let attention: Attention | null = null;
+    return 사건들.map((one, at) => {
+      attention = nextAttention(attention, one);
+      const rows = notifyShells(
+        { shells: [셸(attention)], activeByOwner: {}, nextId: 2 },
+        { activeIds: [], focused: false },
+        () => "터미널 신호",
+      );
+      return notifier.step(rows, (at + 1) * (COALESCE_MS + 1)).map((fired) => fired.body);
+    });
+  };
+
+  const 새턴 = 사건("UserPromptSubmit", { prompt: "고쳐" }, { at: 100 });
+
+  // 옛 표에서는 이 한 번이 「나를 기다림」으로 울었다. 이제 「확인할 것」으로 울고 **수는 같다**.
+  it("턴의 끝은 확인할 것으로 한 번 운다", () => {
+    expect(흘린다(새턴, 사건("Stop", { last_assistant_message: "다 했어요" }, { at: 200, stopped: true }))).toEqual([
+      [],
+      ["다 했어요"],
+    ]);
+  });
+
+  it("API 오류로 끝난 턴도 한 번 운다 — 본문이 「오류로 끝남」이다", () => {
+    expect(흘린다(새턴, 사건("StopFailure", { error: "overloaded" }, { at: 200, stopped: true }))).toEqual([
+      [],
+      ["오류로 끝남 · overloaded"],
+    ]);
+  });
+
+  // **S50의 알림 쪽.** 서브에이전트가 도는 채 멈추면 도는 중이라 안 울고, 모두 끝나 확인할 것에 **들어설 때** 한 번
+  // 운다. 그 뒤 늦은 서브에이전트 사건은 `since`를 안 바꾸므로 「머무름」이라 조용하다.
+  it("서브에이전트가 도는 멈춤은 안 울고, 모두 끝나 확인할 것에 들어설 때 한 번 운다", () => {
+    expect(
+      흘린다(
+        새턴,
+        사건("Stop", { last_assistant_message: "둘을 띄웠어요" }, { at: 200, subagents: 2, stopped: true }),
+        사건("SubagentStop", { agent_id: "a1" }, { at: 300, subagents: 1, stopped: true }),
+        사건("SubagentStop", { agent_id: "a2" }, { at: 400, subagents: 0, stopped: true }),
+        사건("SubagentStop", { agent_id: "a8341c66cb460a30a", agent_type: "" }, { at: 500, subagents: 0, stopped: true }),
+        사건("SubagentStart", { agent_id: "a3" }, { at: 600, subagents: 1, stopped: true }),
+      ),
+    ).toEqual([[], [], [], ["둘을 띄웠어요"], [], []]);
+  });
+
+  // **둘째 승인 요청은 운다**(결정 13 — 기다림에 다시 온 `waiting`은 새로 부른 것). 도구 사건이 그 사이에 기다림을
+  // 풀면 나갔다 들어오는 것이라 더 또렷하다.
+  it("기다림에 다시 온 승인 요청은 또 운다", () => {
+    const 승인 = (at: number, command: string) =>
+      사건("PermissionRequest", { tool_name: "Bash", tool_input: { command } }, { at });
+    expect(흘린다(새턴, 승인(200, "git push"), 승인(300, "rm -rf dist"))).toEqual([
+      [],
+      ["Bash · git push"],
+      ["Bash · rm -rf dist"],
+    ]);
+  });
+
+  // **`/clear`와 중단은 아무것도 안 세우니 안 운다** — 옛 표에서는 `/clear`가 도는 중을, codex 중단이 기다림을
+  // 세웠다(뒤쪽은 울었다).
+  it("`/clear` · 중단은 안 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "clear" }, { at: 200 }))).toEqual([[], []]);
+    expect(
+      흘린다(새턴, { ...사건("Interrupt", { turn_id: "t1" }, { at: 200 }), agent: "codex" }),
+    ).toEqual([[], []]);
+  });
+
+  // **세션 끝은 남긴 확인할 것을 다시 울리지 않는다** — `claude -p`가 `Stop` 직후 `SessionEnd`를 내는 길이다.
+  it("확인할 것 뒤의 세션 끝은 안 운다", () => {
+    expect(
+      흘린다(
+        새턴,
+        사건("Stop", { last_assistant_message: "다 했어요" }, { at: 200, stopped: true }),
+        사건("SessionEnd", { reason: "other" }, { at: 210 }),
+      ),
+    ).toEqual([[], ["다 했어요"], []]);
   });
 });
 

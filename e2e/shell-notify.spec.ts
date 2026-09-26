@@ -26,11 +26,25 @@ import {
 
 const work = WORKS.find((one) => one.worktrees.length === 1) ?? WORKS[0];
 
-/** 셸이 답을 마치고 사람을 기다리는 그 이벤트. 전이 표의 `Stop → waiting`이다. */
-const 기다림 = {
+/**
+ * 셸이 턴을 마친 그 사건 — 전이 표의 `Stop → 확인할 것`(프로세스 결정 13). 옛 표에서는 「나를 기다림」으로 울었고,
+ * 이제 확인할 것으로 운다 — **알림 수는 같다.** 「봤다」로 꺼지는 쪽이라 보고 있는 셸에서는 곧바로 사라진다.
+ */
+const 턴끝 = {
   agent: "claude",
   event: "Stop",
   payload: { last_assistant_message: "테스트 셋 통과\n커밋할까요?" },
+  stopped: true,
+};
+
+/**
+ * 셸이 사람에게 묻는 사건 — `Elicitation → 나를 기다림`. **보고 있어도 안 꺼진다**(결정 7) — 그래서 「보고 있으면 안
+ * 울린다」·배지처럼 그 셸을 보는 채로 재는 검사가 이것을 쓴다.
+ */
+const 기다림 = {
+  agent: "claude",
+  event: "Elicitation",
+  payload: { message: "테스트 셋 통과\n커밋할까요?" },
 };
 
 test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async ({ page }) => {
@@ -42,7 +56,7 @@ test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async
 
   // 창이 뒤에 있으면 켜진 탭도 「보는 중」이 아니다(결정 7) — 그래야 이 셸이 억제를 안 받는다.
   await setWindowFocused(page, false);
-  await markAttention(page, 기다림);
+  await markAttention(page, 턴끝);
 
   await expect
     .poll(async () => (await sentNotifications(page)).length, { message: "알림이 안 울렸다" })
@@ -59,7 +73,7 @@ test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async
 
   // **같은 값으로 남아 있는 동안은 안 울린다**(스토리 60). 같은 이벤트가 한 번 더 와서
   // 상태는 갱신되지만 화면값은 그대로다.
-  await markAttention(page, { ...기다림, at: 2000 });
+  await markAttention(page, { ...턴끝, at: 2000 });
   await expect
     .poll(async () => (await sentNotifications(page)).length, { message: "두 번 울렸다" })
     .toBe(1);

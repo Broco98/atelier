@@ -71,6 +71,38 @@ export function permissionLine(payload: unknown): string | null {
   return detail === null ? tool : `${tool} · ${detail}`;
 }
 
+/** 그 키의 값이 **참(`true`) 그 자체**인가. 글자 `"true"`나 1은 아니다 — 모르는 모양은 거짓이다. */
+export function flagAt(payload: unknown, key: string): boolean {
+  return objectOf(payload)?.[key] === true;
+}
+
+/**
+ * `AskUserQuestion` 도구의 **첫 물음** 한 줄. 입력 모양은 claude 2.1.283 바이너리의 도구 스키마다 —
+ * `tool_input.questions[]`의 원소마다 `question`(물음 글) · `header` · `options` · `multiSelect`.
+ *
+ * **첫 물음만 싣는다.** 한 번에 넷까지 묻지만 둘째 줄·띠·알림은 한 줄이고, 사람이 창을 열면 전부 보인다.
+ * 물음을 못 읽으면 승인 요청과 같은 요약(`permissionLine` — 모르면 도구 이름만)이 바닥이다: 모르는 것을
+ * 지어내지 않는다.
+ */
+export function questionLine(payload: unknown): string | null {
+  const questions = objectOf(objectOf(payload)?.["tool_input"])?.["questions"];
+  const first = Array.isArray(questions) ? questions[0] : undefined;
+  return firstLine(stringAt(first, "question")) ?? permissionLine(payload);
+}
+
+/**
+ * claude `StopFailure`의 한 줄(프로세스 스펙 S57) — **오류 상세의 첫 줄**, 없으면 **오류 종류**다. 모양은 Claude Code
+ * 훅 문서(티켓 18이 읽음): `error`(`rate_limit` · `overloaded` · `server_error` 등 열둘) · 선택 `error_details` ·
+ * 선택 `last_assistant_message`(API 오류 글 자체).
+ *
+ * `last_assistant_message`는 안 읽는다 — 상세가 없을 때 그 글은 대개 `API Error: 429 …` 꼴로 종류와 같은 말을
+ * 길게 하고, 두 칸 중 어느 것을 먼저 읽을지를 스펙이 상세 · 종류 둘로만 정했다. 「오류로 끝남」을 앞에 붙이는
+ * 것은 상태 기계다(`shell-attention.ts`) — 그 말은 결과의 이름이지 페이로드의 것이 아니다.
+ */
+export function stopFailureLine(payload: unknown): string | null {
+  return firstLine(stringAt(payload, "error_details")) ?? stringAt(payload, "error");
+}
+
 /**
  * claude의 `SessionEnd` 하나를 정규 이벤트로 접는다.
  *

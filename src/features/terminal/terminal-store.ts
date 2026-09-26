@@ -14,7 +14,14 @@ import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { Mode } from "@/mode";
 import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
-import { applySignal, markShellsSeen, nextAttention, nextOnOutput, ptyIdOf } from "./shell-attention";
+import {
+  applySignal,
+  markShellsSeen,
+  NO_HOOK_COUNTS,
+  nextAttention,
+  nextOnOutput,
+  ptyIdOf,
+} from "./shell-attention";
 import type { AttentionSource, ShellView } from "./shell-attention";
 import { bellSignal, oscSignal } from "./shell-osc";
 import { createNotifier, notifyShells, outgoing } from "./shell-notify";
@@ -653,7 +660,8 @@ void onShellAttention((changed) => {
  * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다.
  *
  * **누가 말했는지는 `null`이다.** PTY는 그 바이트가 어느 프로세스에서 나왔는지 안 적는다 —
- * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`).
+ * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`). 서브에이전트 수와 멈춤도 이 길은
+ * 모른다(`NO_HOOK_COUNTS`) — 그 둘은 훅 처리기가 접어 싣는 값이다.
  *
  * **번호를 안 옮긴다.** 여기 오는 것은 xterm 인스턴스의 **레지스트리 id**라 훅 길이 하는
  * 두 번의 변환(셸 ID → pty 번호 → 레지스트리 번호)이 필요 없다.
@@ -665,7 +673,7 @@ function applyBonusSignal(id: number, signal: AgentSignal | null, source: Attent
   if (signal === null) return;
   terminalStore.setState((state) => {
     const prev = attentionOfId(state, id);
-    const next = setAttention(state, id, applySignal(prev, signal, Date.now(), source, null));
+    const next = setAttention(state, id, applySignal(prev, signal, Date.now(), source, null, NO_HOOK_COUNTS));
     return markShellsSeen(next, currentView());
   });
 }

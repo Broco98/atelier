@@ -39,12 +39,16 @@ const WAITING_PREFIXES = [
  * 스펙이 둘을 한 줄로 묶었기 때문이다(「그 밖의 OSC 9·777은 전부 `done`」) — 갈라 두면
  * 같은 판정이 두 벌이 된다.
  *
- * **접두사가 없으면 `end`(→ 초록)다**(결정 13의 둘째). 「모르면 무시」는 기각됐다 — 훅을 안
+ * **접두사가 없으면 `stop`(→ 확인할 것)이다**(결정 13의 둘째). 「모르면 무시」는 기각됐다 — 훅을 안
  * 깐 Codex 사용자가 턴 완료를 영영 못 받는다. 대신 상태는 「확인할 것」이라는 **약한 주장만**
  * 하고, 무슨 일인지는 **본문을 그대로 실어** 사람이 눈으로 읽게 한다. 그래서 결정 3의
  * 「모르면서 아는 척하지 않는다」가 지켜진다.
  *
- * **빈 본문은 아무 주장도 아니다.** 여기서 `end`를 만들면 본문 없는 OSC 한 장에 초록이 서고,
+ * **옛 표는 이 줄을 `end`로 접었다**(그때 초록을 만드는 것은 세션 끝이었다). 프로세스 결정 13이 확인할 것을
+ * 턴의 끝(`stop`)으로 옮기고 `end`를 「도는 중 · 기다림을 지우는」 사건으로 바꿨으므로, 그대로 두면 이 길이
+ * 아무것도 못 세운다. 서브에이전트 수는 이 길에 없어(`NO_HOOK_COUNTS`) `stop`은 늘 확인할 것이다.
+ *
+ * **빈 본문은 아무 주장도 아니다.** 여기서 `stop`을 만들면 본문 없는 OSC 한 장에 초록이 서고,
  * 그 행은 눌러 봐야 보여 줄 말이 없다.
  *
  * **777의 본문도 손대지 않고 그대로 읽는다.** 그 규약의 통상적인 모양은 `notify;<제목>;<본문>`
@@ -66,7 +70,7 @@ export function oscSignal(body: string): AgentSignal | null {
   if (prefix !== undefined) return { event: "waiting", message: firstLine(body.slice(prefix.length)) };
 
   const line = firstLine(body);
-  return line === null ? null : { event: "end", message: line };
+  return line === null ? null : { event: "stop", message: line };
 }
 
 /**
@@ -86,8 +90,8 @@ export function oscSignal(body: string): AgentSignal | null {
  * 택했다. 반대로 틀리면 사람이 부른 것을 앱이 삼킨다.
  *
  * **말은 안 싣는다.** 벨은 소리 한 번이라 말할 것이 없고, `null`은 「지운다」가 아니라
- * 「직전 것을 그대로 둔다」다(`applySignal`).
+ * 「직전 것을 그대로 둔다」다(`applySignal`). 정규 이벤트가 `stop`인 까닭은 `oscSignal`의 머리말과 같다.
  */
 export function bellSignal(running: string | null): AgentSignal | null {
-  return agentMarkOf(running) === null ? { event: "end", message: null } : null;
+  return agentMarkOf(running) === null ? { event: "stop", message: null } : null;
 }

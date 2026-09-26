@@ -13,9 +13,34 @@ pub const CLAUDE: &str = "claude";
 /// 위와 같다.
 pub const CODEX: &str = "codex";
 
-/// Claude에 거는 이벤트 다섯 (구현 결정 8).
-pub const CLAUDE_EVENTS: &[&str] =
-    &["UserPromptSubmit", "PermissionRequest", "Elicitation", "Stop", "SessionEnd"];
+/// Claude에 거는 이벤트 — **전체 목록 하나**다. 구현 결정 8의 다섯에 프로세스 결정 14가 여섯을 더했다: 도구 셋
+/// (`PreToolUse` · `PostToolUse` · `PostToolUseFailure`), 오류로 끝난 턴(`StopFailure`), 서브에이전트 둘.
+///
+/// **문자열 리터럴 배열 그대로 둔다.** 프런트 검사(`shell-attention.test.ts`의 「훅이 나르는 어휘」)가 이 선언 하나를
+/// 정규식으로 읽어 어댑터의 갈래 이름과 양방향으로 견준다 — 두 목록을 이어 붙여 만들면 그 정규식이 못 뽑고, 배열
+/// 안에 따옴표 든 주석을 두면 그것까지 이름으로 읽힌다. `async` 대상은 그래서 아래 다른 이름의 상수로 따로 둔다.
+pub const CLAUDE_EVENTS: &[&str] = &[
+    "UserPromptSubmit",
+    "PermissionRequest",
+    "Elicitation",
+    "Stop",
+    "SessionEnd",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "StopFailure",
+    "SubagentStart",
+    "SubagentStop",
+];
+
+/// 그중 **`async: true`로 거는 것** — 도구 사건 셋(프로세스 결정 14 · S25). 도구마다 두 번 불리는 훅이 동기면
+/// claude가 그때마다 처리기가 끝나길 기다린다. 비동기라 순서가 뒤집힐 수 있는 것은 처리기의 순서 가드가 받는다
+/// (S27 — 늦게 끝난 `PostToolUse`가 `Stop`을 못 덮는다).
+///
+/// **알려진 경계**: 비동기 `PreToolUse`의 처리기가 곧이어 오는 `PermissionRequest`의 처리기보다 **늦게** 뜨면(티켓 18
+/// 실측으로 둘 사이가 1.8~14.8ms) 가드가 `PreToolUse`를 새 사건으로 보고 기다림을 덮는다 — 그 승인 요청은 띠에도
+/// 알림에도 안 선다. 결정 14 그대로 두고 구현 기록 「## 20」에 적었다.
+const CLAUDE_ASYNC_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUseFailure"];
 
 /// 훅 명령 한 줄. 스크립트 경로를 따옴표로 감싸는 것은 홈 경로에 공백이 있을 수 있어서다.
 pub fn command_line(script: &Path, agent: &str, event: &str) -> String {
@@ -29,11 +54,15 @@ fn is_ours(command: &str) -> bool {
     command.contains(crate::shells::SCRIPT_NAME)
 }
 
-/// 우리가 이벤트 배열에 넣는 항목 하나 — matcher 없는 그룹 안에 명령 훅 하나.
+/// 우리가 이벤트 배열에 넣는 항목 하나 — matcher 없는 그룹 안에 명령 훅 하나. **matcher가 없어야 모든 도구가
+/// 온다** — `AskUserQuestion`도 `PreToolUse`로 와서 기다림이 된다. 도구 사건이면 `async: true`가 붙는다
+/// (`CLAUDE_ASYNC_EVENTS`); 나머지에는 그 칸이 아예 없다.
 fn claude_group(script: &Path, event: &str) -> Value {
-    json!({
-        "hooks": [{ "type": "command", "command": command_line(script, CLAUDE, event) }]
-    })
+    let mut hook = json!({ "type": "command", "command": command_line(script, CLAUDE, event) });
+    if CLAUDE_ASYNC_EVENTS.contains(&event) {
+        hook["async"] = Value::Bool(true);
+    }
+    json!({ "hooks": [hook] })
 }
 
 /// 이 그룹이 우리 것인가 — 안쪽 훅 중 하나라도 우리 명령이면 그렇다.
@@ -77,10 +106,20 @@ pub fn merge_claude(source: &str, script: &Path) -> Result<String, String> {
     Ok(out)
 }
 
-/// Codex에 거는 이벤트 다섯 (구현 결정 8). Claude와 넷이 겹치고 `Elicitation` 대신
-/// `Interrupt`다 — Codex 훅 목록에 `Elicitation`이 없고, 끊은 턴을 잡는 것이 그쪽이다.
-pub const CODEX_EVENTS: &[&str] =
-    &["UserPromptSubmit", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"];
+/// Codex에 거는 이벤트. 구현 결정 8의 다섯(Claude와 넷이 겹치고 `Elicitation` 대신 `Interrupt`다 — Codex 훅 목록에
+/// `Elicitation`이 없고, 끊은 턴을 잡는 것이 그쪽이다)에 프로세스 결정 14가 넷(도구 둘 · 서브에이전트 둘)을 더했다.
+/// codex 쪽은 **모두 동기**다 — 스펙이 `async`를 claude 도구 사건에만 걸었다. 글자 제약은 `CLAUDE_EVENTS`와 같다.
+pub const CODEX_EVENTS: &[&str] = &[
+    "UserPromptSubmit",
+    "PermissionRequest",
+    "Stop",
+    "Interrupt",
+    "SessionEnd",
+    "PreToolUse",
+    "PostToolUse",
+    "SubagentStart",
+    "SubagentStop",
+];
 
 /// 우리가 `~/.codex/config.toml` 끝에 덧붙이는 구획의 울타리.
 ///
@@ -168,7 +207,7 @@ pub fn unmerge_codex(source: &str) -> Result<String, String> {
 }
 
 /// 설치됐나 — **파일을 읽어, 우리 명령 문자열로 판정한다**(구현 결정 8 · claude 쪽과 같은
-/// 잣대). 다섯이 다 있어야 설치된 것이다.
+/// 잣대). 목록(`CODEX_EVENTS`)이 다 있어야 설치된 것이다.
 ///
 /// **울타리를 세지 않는다.** 헤더 줄만 보면 사람이 `command` 줄을 지운 파일이 「설치됨」이
 /// 되어 설치 버튼이 잠기고(반쯤 깔린 것은 「아님」이라야 채울 길이 있다), 손으로 적어 둔
@@ -358,7 +397,7 @@ struct Agent {
     unmerge: fn(&str) -> Result<String, String>,
     installed: fn(&str) -> Result<bool, String>,
     preview: fn(&Path) -> String,
-    /// 이 내용에 **우리 명령이 하나라도** 앉아 있나. `installed`(다섯이 다 있나)와 다른
+    /// 이 내용에 **우리 명령이 하나라도** 앉아 있나. `installed`(목록이 다 있나)와 다른
     /// 물음이다 — 이쪽은 「걷고 났는데 뭐가 남았나」를 재는 자리라 하나만 남아도 참이다.
     remains: fn(&str) -> bool,
 }
@@ -565,8 +604,12 @@ pub fn unmerge_claude(source: &str) -> Result<String, String> {
 
 /// 설치됐나. **설정 파일을 읽어 판정한다** — 앱은 따로 기억하지 않는다(구현 결정 8).
 ///
-/// 다섯이 다 있어야 설치된 것이다. 하나라도 빠졌으면 「아님」이라야 설치 버튼이 그것을
+/// 목록(`CLAUDE_EVENTS`)이 다 있어야 설치된 것이다. 하나라도 빠졌으면 「아님」이라야 설치 버튼이 그것을
 /// 채운다 — 반쯤 깔린 상태를 「설치됨」이라 부르면 사람이 고칠 길이 화면에서 사라진다.
+///
+/// **그래서 목록이 늘면 이미 설치한 사람은 「설치 안 됨」으로 읽힌다**(프로세스 결정 14가 여섯을 더한 판). 없음 ·
+/// 일부 · 전부의 셋과 앱이 뜰 때 맞춤은 티켓 21이 세운다 — 그 사이는 설치 버튼이 빠진 이벤트를 채운다(병합은
+/// 「우리 것이 있으면 건너뛴다」라 이미 있는 이벤트의 모양은 안 바꾼다).
 pub fn claude_installed(source: &str) -> Result<bool, String> {
     let root = parse_claude(source)?;
     let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
@@ -667,6 +710,98 @@ mod tests {
             let value: Value = serde_json::from_str(&merged).expect("JSON이다");
             let hooks = value["hooks"].as_object().expect("`hooks`가 섰다");
             assert_eq!(hooks.len(), CLAUDE_EVENTS.len(), "이벤트 수가 다르다: {merged}");
+        }
+    }
+
+    /// **도구 사건 셋은 matcher 없이 `async: true`로 걸린다**(프로세스 결정 14 · S25). 도구마다 두 번 불리는 훅이
+    /// 동기면 claude가 그때마다 처리기가 끝나길 기다린다 — 에이전트를 막지 않는 것이 결정 14의 조건이다.
+    /// matcher가 없어야 모든 도구가 온다(`AskUserQuestion`도 PreToolUse로 와서 기다림이 된다).
+    ///
+    /// **나머지는 동기 그대로다** — `async` 칸이 아예 없다. 턴의 끝(`Stop`)이나 승인 요청을 비동기로 걸면 처리기가
+    /// 끝나기 전에 다음 사건이 올 수 있고, 그 사건들은 순서 가드가 가려 줄 까닭이 없는 자리다.
+    #[test]
+    fn the_tool_events_go_in_without_a_matcher_and_async() {
+        let merged = merge_claude("{}", &script()).expect("병합이 된다");
+        let value: Value = serde_json::from_str(&merged).expect("JSON이다");
+        let tools = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
+
+        for event in tools {
+            let groups = value["hooks"][event]
+                .as_array()
+                .unwrap_or_else(|| panic!("`{event}`가 안 들어갔다: {merged}"));
+            assert_eq!(groups.len(), 1, "`{event}`의 그룹이 하나가 아니다");
+            assert!(groups[0].get("matcher").is_none(), "`{event}`에 matcher가 섰다: {}", groups[0]);
+            let inner = groups[0]["hooks"].as_array().expect("명령 훅 배열");
+            assert_eq!(inner.len(), 1);
+            assert_eq!(inner[0]["async"], Value::Bool(true), "`{event}`가 async가 아니다: {}", inner[0]);
+            assert!(
+                inner[0]["command"].as_str().is_some_and(|c| c.contains("atelier-hook.py") && c.ends_with(event)),
+                "`{event}`의 명령이 우리 것이 아니다: {}",
+                inner[0]
+            );
+        }
+
+        // 앵커: 동기로 남는 것이 실제로 있고, 거기에는 `async` 칸이 아예 없다.
+        let rest: Vec<&&str> = CLAUDE_EVENTS.iter().filter(|event| !tools.contains(event)).collect();
+        assert!(!rest.is_empty());
+        for event in rest {
+            let inner = &value["hooks"][*event][0]["hooks"][0];
+            assert!(inner["command"].is_string(), "`{event}`가 안 들어갔다: {merged}");
+            assert!(inner.get("async").is_none(), "`{event}`가 async로 걸렸다: {inner}");
+        }
+    }
+
+    /// **설치기가 거는 목록이 결정 14 그대로다** — claude는 다섯에 여섯을, codex는 다섯에 넷을 더했다. 이 목록은
+    /// 프런트 어댑터의 갈래와 양방향으로 같아야 한다(`shell-attention.test.ts`의 「훅이 나르는 어휘」) — 그쪽이 이
+    /// 선언을 글자로 읽으므로 여기서는 **무엇이 들었는가**를 잰다.
+    #[test]
+    fn the_installer_lists_are_decision_fourteen() {
+        let mut claude: Vec<&str> = CLAUDE_EVENTS.to_vec();
+        claude.sort_unstable();
+        assert_eq!(
+            claude,
+            [
+                "Elicitation",
+                "PermissionRequest",
+                "PostToolUse",
+                "PostToolUseFailure",
+                "PreToolUse",
+                "SessionEnd",
+                "Stop",
+                "StopFailure",
+                "SubagentStart",
+                "SubagentStop",
+                "UserPromptSubmit",
+            ]
+        );
+        let mut codex: Vec<&str> = CODEX_EVENTS.to_vec();
+        codex.sort_unstable();
+        assert_eq!(
+            codex,
+            [
+                "Interrupt",
+                "PermissionRequest",
+                "PostToolUse",
+                "PreToolUse",
+                "SessionEnd",
+                "Stop",
+                "SubagentStart",
+                "SubagentStop",
+                "UserPromptSubmit",
+            ]
+        );
+    }
+
+    /// codex 울타리 블록에도 넷이 더해진다(결정 14 — 「지금 울타리 블록에 더함」). codex 쪽은 동기다: 스펙이
+    /// `async`를 claude 도구 사건에만 걸었다.
+    #[test]
+    fn the_codex_block_carries_the_new_events_synchronously() {
+        let block = codex_block(&script());
+        let value: toml::Table = toml::from_str(&block).expect("TOML이다");
+        for event in ["PreToolUse", "PostToolUse", "SubagentStart", "SubagentStop"] {
+            let inner = value["hooks"][event][0]["hooks"][0].as_table().unwrap_or_else(|| panic!("`{event}`가 없다: {block}"));
+            assert!(inner["command"].as_str().is_some_and(|c| c.ends_with(&format!("codex {event}"))));
+            assert!(inner.get("async").is_none(), "`{event}`가 async로 걸렸다");
         }
     }
 

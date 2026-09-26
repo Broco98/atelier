@@ -15,13 +15,14 @@ describe("OSC 본문을 정규 이벤트로 접는다", () => {
     ["Codex wants to edit src/main.rs", "waiting", "src/main.rs"],
     ["Approval requested by codex", "waiting", "codex"],
     ["Plan mode prompt: 어느 쪽으로 갈까요?", "waiting", "어느 쪽으로 갈까요?"],
-    // **그 밖은 전부 `end`(→ 초록)이고 본문 전체가 말이 된다**(결정 13의 둘째).
-    // 누군가 알리려 했으니 안 본 것이 있다 — 무슨 일인지는 사람이 이 글자를 읽는다.
-    ["PR #174 열었다", "end", "PR #174 열었다"],
-    ["Codex", "end", "Codex"],
+    // **그 밖은 전부 `stop`(→ 확인할 것)이고 본문 전체가 말이 된다**(결정 13의 둘째).
+    // 누군가 알리려 했으니 안 본 것이 있다 — 무슨 일인지는 사람이 이 글자를 읽는다. 옛 표는 이 줄을 `end`로
+    // 접었는데, 프로세스 결정 13이 확인할 것을 턴의 끝(`stop`)으로 옮기고 `end`를 지우는 사건으로 바꿨다.
+    ["PR #174 열었다", "stop", "PR #174 열었다"],
+    ["Codex", "stop", "Codex"],
     // 여러 줄이면 첫 줄만 — 자르는 자리는 `firstLine` 하나다(훅 길과 같은 함수).
-    ["테스트 셋 통과\n커밋할까요?", "end", "테스트 셋 통과"],
-    ["\n\n  늦게 시작하는 말  ", "end", "늦게 시작하는 말"],
+    ["테스트 셋 통과\n커밋할까요?", "stop", "테스트 셋 통과"],
+    ["\n\n  늦게 시작하는 말  ", "stop", "늦게 시작하는 말"],
   ] as const)("%s → %s", (body, event, message) => {
     expect(oscSignal(body)).toEqual({ event, message });
   });
@@ -56,12 +57,12 @@ describe("벨은 아는 에이전트가 없을 때만 말한다", () => {
   // 모르는 명령이 끝나며 울린 벨 — 이 판이 판 04 결정 21의 감수를 절반 닫는 자리다
   // (`; tput bel`을 붙인 사람은 밀려난 칸에서도 띠가 받는다).
   it.each(["make", "node", "cargo", "vim"])("%s가 도는 셸의 벨은 안 본 완료다", (running) => {
-    expect(bellSignal(running)).toEqual({ event: "end", message: null });
+    expect(bellSignal(running)).toEqual({ event: "stop", message: null });
   });
 
   // 빈 프롬프트에서 사람이 `printf '\\a'`를 친 자리다. 도는 명령이 없다는 것은 아는
   // 에이전트도 없다는 뜻이라 같은 길로 간다.
   it("도는 것이 없어도 안 본 완료다", () => {
-    expect(bellSignal(null)).toEqual({ event: "end", message: null });
+    expect(bellSignal(null)).toEqual({ event: "stop", message: null });
   });
 });

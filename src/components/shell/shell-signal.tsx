@@ -34,6 +34,18 @@ export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
 };
 
 /**
+ * 「도는 중 · 서브에이전트 N」(프로세스 스펙 S32). 셸 탭 이름표의 툴팁이 이 말을 쓰고, `Processes` 셸 행의 상태
+ * 칸(티켓 27)이 같은 함수를 쓴다 — 두 자리가 각자 적으면 한쪽이 「하위 에이전트」로 늙는다. 수는
+ * `runningSubagents`(`shell-attention.ts`)가 낸 것이고, **0이면 말이 없다** — 서브에이전트 없이 도는 칸에
+ * 툴팁을 세우면 이름 위에 늘 「도는 중」이 떠, 링이 이미 말하는 것을 한 번 더 말한다.
+ *
+ * **사이드바 행과 띠의 모양은 안 바꾼다** — 그 자리는 `sidebar-active-band`의 몫이다.
+ */
+export function subagentLabel(count: number): string | null {
+  return count > 0 ? `${SIGNAL_LABEL.working} · 서브에이전트 ${count}` : null;
+}
+
+/**
  * 상태색의 유틸리티. 토큰 넷은 `index.css`가 들고 라이트·다크가 거기서 갈린다.
  *
  * **이름을 조각내 짓지 않는다**(`bg-${tone}`). Tailwind는 소스에 **글자 그대로 있는** 클래스만
@@ -182,7 +194,8 @@ export function formatElapsed(ms: number): string {
  * 상태 이름을 적는 안(목업 D)은 「A와 같은 정보를 더 높게」라는 이유로 기각됐다(결정 5).
  *
  * **그런데 그 바닥이 서는 화면은 기각된 D와 겉이 같다.** 그리고 그것은 사고가 아니라 정규
- * 경로다 — 전이 표에 message 없는 상태가 둘 있고(벨로 뜬 `done`, `/clear` 뒤의 `working`),
+ * 경로다 — 전이 표에 message 없는 상태가 있고(벨로 뜬 `done`, 아무 말 없던 셸의 첫 도구 사건이 세운
+ * `working` — `/clear` 뒤의 `working`은 프로세스 결정 13이 「없음」으로 바꿨다),
  * 벨로 뜬 초록 행은 **늘** 둘째 줄에 「확인할 것」이 앉는다. 스펙이 이 자리를 안 정했으므로
  * 구현이 고른 것이고, 사람에게 물어 둔 것이 `spec/물음-둘째-줄의-색.md`의 둘째 물음이다
  * (상태 이름인가 · 종류·수로 되돌아가는가 · 비워 두는가). 정해지기 전까지 이 모양을 둔다.

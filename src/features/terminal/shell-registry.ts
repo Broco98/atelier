@@ -780,7 +780,7 @@ export function firstInputOfId(state: ShellsState, id: number): number | null {
  *
  * **판정을 안 한다.** 무엇이 되는지는 `shell-attention.ts`의 `nextAttention`이 이미 정했고,
  * 그것이 「안 바뀌면 받은 것을 그대로 준다」를 지키므로 여기서는 **항등성만** 본다 —
- * 다섯 칸을 견주는 자리가 두 벌이 되면 한쪽만 늙는다. 그래서 위 `setRunning`과 달리 값
+ * 칸들을 견주는 자리(`shell-attention.ts`의 `same`)가 두 벌이 되면 한쪽만 늙는다. 그래서 위 `setRunning`과 달리 값
  * 비교가 아니라 `===`다.
  *
  * 나머지 성질은 `patch`의 관용구 그대로다: 모르는 id는 무시하고, 안 바뀐 칸은 같은 객체로

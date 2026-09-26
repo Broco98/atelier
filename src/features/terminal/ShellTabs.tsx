@@ -1,11 +1,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
+import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
-import { signalOf } from "./shell-attention";
+import { runningSubagents, signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
@@ -606,6 +606,11 @@ const ShellTab = memo(function ShellTab({
     spoken === null
       ? undefined
       : [name, mark && `${mark.label} 실행 중`, spoken].filter(Boolean).join(" — ");
+  // **「도는 중 · 서브에이전트 N」은 이름표의 툴팁에 선다**(프로세스 스펙 S32). 턴이 멈췄는데 서브에이전트가 도는
+  // 셸은 부르지 않으므로(도는 중) 띠에도 행에도 그 사실이 안 선다 — 사람이 「왜 아직 도나」를 물을 자리가 여기다.
+  // 수는 레지스트리 쪽 함수가 낸다(`runningSubagents` — 죽은 칸 가리개를 딛는다). 도는 중은 채움도 이름 꼬리도
+  // 없으므로(스토리 52) 접근성 이름이 아니라 **툴팁**이고, 0이면 아무것도 없다.
+  const tooltip = subagentLabel(runningSubagents(shell)) ?? undefined;
 
   return (
     // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
@@ -689,6 +694,7 @@ const ShellTab = memo(function ShellTab({
         // 했다. 보이는 이름은 `truncate`로 줄고 좁은 폭에서는 `sr-only`로 남는데, 그 위에
         // 숨은 글자를 하나 더 얹으면 이름이 두 조각으로 읽힌다.
         aria-label={spokenName}
+        title={tooltip}
         onClick={() => onSelect(shell.id)}
         // 끄는 자리가 **이름 버튼**이다(결정 12) — 형제인 `×`가 끌리면 닫으려다
         // 분할이 켜진다. 걷히기 전 사이드바 셸 행도 같은 자리에 같은 모양으로 걸었다.

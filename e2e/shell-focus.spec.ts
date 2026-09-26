@@ -43,11 +43,14 @@ async function expectShellFocused(page: Page, message: string): Promise<void> {
   await expect.poll(() => shellHasFocus(page), { message }).toBe(true);
 }
 
-/** 이 셸이 부른다 — 턴을 마친 claude는 띠에 「나를 기다림」으로 선다. 보고 있어도 안 꺼진다. */
+/**
+ * 이 셸이 부른다 — 사람에게 묻는 claude(`Elicitation`)는 띠에 「나를 기다림」으로 선다. 보고 있어도 안 꺼진다(결정 7).
+ * 한때 턴의 끝(`Stop`)이었는데 프로세스 결정 13이 그것을 「확인할 것」으로 옮겨, 보고 있는 셸에서는 곧바로 꺼진다.
+ */
 async function callFromShell(page: Page, ptyId = 1): Promise<void> {
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: "다 했어요" } },
+    { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "어느 쪽으로 할까요?" } },
     ptyId,
   );
 }

@@ -1,5 +1,5 @@
 import { foldHookState } from "./agents";
-import type { AgentSignal, CanonicalEvent } from "./agents/types";
+import type { AgentSignal } from "./agents/types";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { Mode } from "@/mode";
@@ -47,42 +47,88 @@ export interface Attention {
    * 누가 말했는지를 모르므로 `null`이다.
    *
    * **둘째 줄의 마크가 이 값에 매달려 있다.** 마크의 재료를 「지금 그 PTY에서 도는 것」에서만
-   * 뽑으면 **초록 행에는 마크가 영영 안 선다** — 초록을 만드는 길 둘(세션 종료 · 벨)이 다
-   * 그 순간 도는 에이전트가 없는 자리이기 때문이다: 세션이 끝났다는 것은 프로세스가 나갔다는
-   * 뜻이라 1초 폴링이 다음 바퀴에 `running`을 눕히고, 벨은 정의상 「아는 마크가 없을 때」만
-   * 초록이 된다. 그래서 「누가 말했나」를 상태가 함께 들고 다닌다.
+   * 뽑으면 **에이전트가 나간 뒤의 초록 행에는 마크가 영영 안 선다** — 확인할 것은 남는 값이라(`end`가 안 본
+   * 확인할 것을 남긴다 — 프로세스 결정 13) 세션이 끝나 1초 폴링이 `running`을 눕힌 뒤에도 서고, 벨은 정의상
+   * 「아는 마크가 없을 때」만 초록이 된다. 그래서 「누가 말했나」를 상태가 함께 들고 다닌다.
    */
   agent: string | null;
+  /**
+   * **도는 서브에이전트 수** — 셸 상태의 일곱째 칸이다(프로세스 스펙 S51). 처리기가 `agent_id` 집합으로 접어
+   * 상태 파일에 싣는 값을 그대로 옮긴다(`ShellHookState.subagents`) — 프런트가 사건을 세면 디바운스에 합쳐진
+   * 사건만큼 샌다. 훅 밖의 길(OSC·벨·출력)은 0이다.
+   *
+   * **옆 맵이 아니라 여기 둔 이유**: 셸 탭 툴팁과 `Processes` 셸 행이 「도는 중 · 서브에이전트 N」을 읽는데(S32),
+   * 그 둘이 상태와 **같은 문**(`attentionOn`의 죽은 칸 가리개)을 딛게 하려는 것이다. 읽는 문은
+   * `runningSubagents`다. 「멈췄나」(`stopped`)는 여기 없다 — 셸 상태의 칸이 아니라 사건에 실려 오는 값이라
+   * 전이에만 쓴다.
+   */
+  subagents: number;
 }
 
 /** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
 export type ShellSignal = AttentionKind;
 
 /**
- * 정규 이벤트 → `kind`. 스펙 전이 표의 셋째 칸이 그대로 이 표다.
- *
- * `waiting`과 `stop`이 둘 다 「나를 기다림」인 것은 인터뷰가 정한 것이다(결정 3의 표 ·
- * 결정 12). 초록을 만드는 것은 턴이 끝난 것이 아니라 **세션이 끝난 것**이다.
+ * 사건이 싣고 오는 **두 값** — 처리기가 접어 상태 파일에 적는다(프로세스 스펙 S50 · S51). 어댑터는 이것을 안
+ * 읽는다: 어느 훅 이름이 무슨 일인가(정규 이벤트)와 「지금 서브에이전트가 몇이고 턴이 멈췄나」는 다른 사실이고,
+ * 뒤쪽은 에이전트를 가리지 않는다.
  */
-const KIND_OF: Readonly<Record<CanonicalEvent, AttentionKind>> = {
-  start: "working",
-  waiting: "waiting",
-  stop: "waiting",
-  end: "done",
-  clear: "working",
-};
+export interface HookCounts {
+  /** 도는 서브에이전트 수. */
+  subagents: number;
+  /** 턴이 멈췄나 — `Stop` · `StopFailure`에서 참, 새 턴 · 세션 끝 · 중단에서 거짓. 순서 가드에 막힌 사건도 접는다. */
+  stopped: boolean;
+}
+
+/**
+ * 훅 밖의 길(OSC · 벨 · 출력)이 넘기는 값. **그 길은 서브에이전트도 멈춤도 모른다** — 넘기는 자리를 비워 두면
+ * (기본값) 훅 길에서 이 값을 빠뜨려도 조용히 통과하고, 그 결과는 「서브에이전트가 도는데 확인할 것」이라
+ * 화면에서 티가 안 난다. 그래서 `agent`처럼 **늘 넘기는 자리**이고, 모르는 쪽은 이 이름을 적는다.
+ */
+export const NO_HOOK_COUNTS: HookCounts = { subagents: 0, stopped: false };
+
+/**
+ * 「오류로 끝남」 — API 오류로 끝난 턴의 말 머리(프로세스 스펙 S57). 메시지 자리에 서고, 오류 상세의 첫 줄(없으면
+ * 오류 종류)이 뒤에 붙는다. **색은 없다** — terminal-activity-signal 결정 12의 「빨강 보류」와 맞다.
+ */
+export const FAILED_LABEL = "오류로 끝남";
 
 /**
  * 정규 이벤트 하나를 앉힌다. **화면값을 만드는 유일한 문**이다 — 훅도 OSC도 벨도 여기로
  * 들어온다(OSC·벨이 신호를 만드는 길은 #208이 붙인다).
  *
+ * **전이 표는 프로세스 결정 13 그대로다.** terminal-activity-signal 결정 3의 표(뜻 칸 — 「나를 기다림 = 턴 종료 뒤
+ * 입력 대기」)와 결정 12(「오류로 멈추면 `Stop`이 기다림으로 잡는다」), 그리고 그 구현 스펙의 전이 표(`Stop` →
+ * 기다림, `clear` → 도는 중, `SessionEnd` → 초록)를 프로세스 결정 13이 이렇게 고쳤다:
+ *
+ * | 정규 이벤트 | 결과 |
+ * |---|---|
+ * | `start` | 도는 중 |
+ * | `tool` | 도는 중 — 기다림이 풀린다 |
+ * | `waiting` | 기다림 |
+ * | `stop` | 서브에이전트가 없으면 **확인할 것**, 있으면 도는 중(서브에이전트 N) |
+ * | `stopFailure` | 확인할 것 + 「오류로 끝남」 |
+ * | `subagent` | 지금 상태를 두고 수만 고친다. **도는 중이고 멈춘** 셸이면 수가 0이 될 때 확인할 것(S50) |
+ * | `interrupt` · `clear` | **없음** |
+ * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다 |
+ *
+ * 어휘 셋과 우선순위(기다림 › 안 본 완료 › 도는 중)는 그대로다 — 바뀐 것은 뜻 칸이다: 턴의 끝은 사람이 답할
+ * 것이 아니라 **아직 안 본 결과**이고, 도구와 서브에이전트도 도는 중이다. 「없음」은 **상태 없음**(`null`)을
+ * 돌려주는 것이다 — 옛 함수는 늘 값을 돌려줘서 `/clear`가 지워진 대화 위에 링을 세웠다.
+ *
  * **권위**(결정 11): 훅이 한 번이라도 말한 셸에서는 그 뒤 OSC·벨·출력을 무시한다. 이 가름이
  * 없으면 「출력이 `waiting`을 푼다」가 훅 셸에도 걸려, claude가 답을 기다리며 찍는 커서
  * 갱신에 앰버가 꺼진다.
  *
- * **`seen`은 늘 풀린다.** 에이전트가 새로 말했으면 그것은 사람이 아직 안 본 사실이다. 같은
- * `kind`가 다시 올 때만 남겨 두는 안은 기각했다 — 끝난 셸을 한 번 보고 나면 그 뒤 진짜 완료가
- * 영영 안 뜨는 모양이 되고, 그것이 Agent Deck 소스에 적힌 「두 번째 진짜 프롬프트가 삼켜짐」이다.
+ * **`since`**: `subagent`만 시각을 안 바꾼다 — 확인할 것에 늦은 서브에이전트 사건이 와도 알림 판정이 「머무름」으로
+ * 읽어 다시 안 울린다. 나머지는 늘 새 시각을 찍는다. 기다림에 다시 온 `waiting`은 둘째 승인 요청이라 새 시각으로
+ * 알린다(`decideNotification` 머리말).
+ *
+ * **`seen`은 새 사실이 오면 풀린다.** 에이전트가 새로 말했으면 그것은 사람이 아직 안 본 사실이다. 같은 `kind`가
+ * 다시 올 때 남겨 두는 안은 기각했다 — 끝난 셸을 한 번 보고 나면 그 뒤 진짜 완료가 영영 안 뜨는 모양이 되고,
+ * 그것이 Agent Deck 소스에 적힌 「두 번째 진짜 프롬프트가 삼켜짐」이다. **다만 같은 사실을 다시 읽는 것은 새
+ * 사실이 아니다** — 시각도 `kind`도 그대로면(순서 가드에 막힌 늦은 사건이 수 · 멈춤만 바꾼 파일, S27) 본 것을
+ * 되살리지 않는다. 되살리면 사람이 방금 본 셸이 띠에 다시 서고 알림이 한 번 더 운다.
  */
 export function applySignal(
   prev: Attention | null,
@@ -95,23 +141,60 @@ export function applySignal(
    * 그 결과는 초록 행에서 마크가 사라지는 것뿐이라 화면에서 티가 안 난다.
    */
   agent: string | null,
-): Attention {
+  /** 사건이 실어 온 수와 멈춤. 훅 밖의 길은 `NO_HOOK_COUNTS`를 적는다(그 머리말). */
+  counts: HookCounts,
+): Attention | null {
   if (prev !== null && prev.source === "hook" && source !== "hook") return prev;
 
-  return {
-    kind: KIND_OF[signal.event],
-    // **지우는 것은 `clear` 하나뿐이다.** `/clear`는 세션을 갈아 끼울 뿐 셸은 그대로라,
-    // 방금 지워진 대화의 마지막 말을 남겨 두면 화면이 없는 맥락을 말한다. 나머지 이벤트는
-    // 어댑터가 준 것이 있으면 그것을, 없으면 직전 것을 그대로 둔다(전이 표의 「직전 유지」).
-    message: signal.event === "clear" ? null : (signal.message ?? prev?.message ?? null),
-    since: at,
-    seen: false,
-    source,
-    // **직전 것을 이어받지 않는다.** 말을 한 것은 이번에 온 그 이벤트이고, 훅 길에서는 늘
-    // 값이 실려 온다. 이어받으면 OSC가 말한 상태에 옛 훅의 이름이 남아 「이 말은 claude가
-    // 했다」가 거짓이 된다.
-    agent,
-  };
+  // 새 사실 하나. 말은 어댑터가 준 것이 있으면 그것을, 없으면 직전 것을 그대로 둔다(전이 표의 「직전 유지」).
+  // **말한 에이전트는 직전 것을 이어받지 않는다.** 말을 한 것은 이번에 온 그 사건이고, 훅 길에서는 늘 값이
+  // 실려 온다. 이어받으면 OSC가 말한 상태에 옛 훅의 이름이 남아 「이 말은 claude가 했다」가 거짓이 된다.
+  const fact = (kind: AttentionKind, message: string | null = signal.message ?? prev?.message ?? null) =>
+    reread(prev, { kind, message, since: at, seen: false, source, agent, subagents: counts.subagents });
+
+  switch (signal.event) {
+    case "start":
+    case "tool":
+      return fact("working");
+    case "waiting":
+      return fact("waiting");
+    case "stop":
+      return fact(counts.subagents > 0 ? "working" : "done");
+    case "stopFailure":
+      return fact("done", signal.message === null ? FAILED_LABEL : `${FAILED_LABEL} · ${signal.message}`);
+    case "subagent":
+      // **지금 상태를 두고 수만 고친다.** 수만 고칠 상태가 없으면 아무것도 안 세운다.
+      if (prev === null) return null;
+      // S50 — 턴이 이미 멈췄고 마지막 서브에이전트가 졌다. 확인할 것에 **들어서는** 것이라 「봤다」가 풀리고
+      // 알림이 한 번 운다. 시각은 멈춘 그때 그대로다(서브에이전트 사건은 시각을 안 바꾼다).
+      if (prev.kind === "working" && counts.stopped && counts.subagents === 0) {
+        return { ...prev, kind: "done", seen: false, agent, subagents: 0 };
+      }
+      return withSubagents(prev, counts.subagents);
+    case "interrupt":
+    case "clear":
+      // 사람이 끊었거나 대화를 지웠다 — 사람이 이미 그 자리에 있으므로 부를 것도 돌 것도 없다.
+      return null;
+    case "end":
+      // `claude -p`는 `Stop` 직후 몇 ms 만에 `SessionEnd`가 온다 — 확인할 것까지 지우면 완료 알림이 뜨자마자
+      // 사라진다(프로세스 결정 13). 남기는 것이지 새로 세우는 것이 아니라 시각도 「봤다」도 그대로다.
+      return prev !== null && prev.kind === "done" ? withSubagents(prev, counts.subagents) : null;
+  }
+}
+
+/**
+ * **같은 사실을 다시 읽었으면 「봤다」를 그대로 둔다**(`applySignal` 머리말의 마지막 문단). 시각과 `kind`가 둘 다
+ * 그대로인 것이 그 표지다 — 새 사건은 늘 새 시각을 찍고, 같은 ms에 두 사건이 오는 것은 처리기의 순서 가드가
+ * 「뒤에 온 것」으로 한 장만 남긴다.
+ */
+function reread(prev: Attention | null, next: Attention): Attention {
+  if (prev === null || !prev.seen || prev.since !== next.since || prev.kind !== next.kind) return next;
+  return { ...next, seen: true };
+}
+
+/** 수만 고친다. 안 바뀌면 받은 것을 그대로 준다 — `nextAttention`의 항등성 계약이 여기서도 이어진다. */
+function withSubagents(prev: Attention, subagents: number): Attention {
+  return prev.subagents === subagents ? prev : { ...prev, subagents };
 }
 
 /**
@@ -135,10 +218,10 @@ export function nextOnOutput(prev: Attention | null, at: number): Attention | nu
   if (prev === null || prev.kind !== "waiting" || prev.source !== "osc") return prev;
   // **`applySignal`을 딛는다 — 여기서 칸을 직접 짜지 않는다.** 권위 규칙도 「봤다」를 푸는
   // 규칙도 저기 하나에 있고, 손으로 짜면 그 둘이 이 자리에서만 조용히 늙는다.
-  return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent);
+  return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent, NO_HOOK_COUNTS);
 }
 
-/** 여섯 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
+/** 일곱 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
 function same(a: Attention | null, b: Attention | null): boolean {
   if (a === null || b === null) return a === b;
   return (
@@ -147,7 +230,8 @@ function same(a: Attention | null, b: Attention | null): boolean {
     a.since === b.since &&
     a.seen === b.seen &&
     a.source === b.source &&
-    a.agent === b.agent
+    a.agent === b.agent &&
+    a.subagents === b.subagents
   );
 }
 
@@ -157,8 +241,12 @@ function same(a: Attention | null, b: Attention | null): boolean {
  * **안 바뀌면 받은 것을 그대로 돌려준다** — `setRunning`이 지키는 그 계약이고, 레지스트리의
  * 리듀서는 이 항등성만 보고 칸을 갈아 끼울지 정한다. 판정이 여기 하나라 두 벌이 안 된다.
  *
- * 돌아오는 길 셋: 파일이 사라졌으면 `null`(셸이 닫혔다), 모르는 이벤트면 직전 그대로,
- * 아는 이벤트면 새 상태.
+ * 돌아오는 길 넷: 파일이 사라졌으면 `null`(셸이 닫혔다), 모르는 이벤트면 직전 그대로, 아는 이벤트면 새 상태,
+ * 「없음」 줄(`interrupt` · `clear` · 지우는 `end`)이면 `null`.
+ *
+ * **사건 이름과 `at`이 직전과 같은 파일도 버리지 않는다.** 순서 가드에 막힌 늦은 사건은 파일의 이름 · 시각 ·
+ * 페이로드를 그대로 두고 수와 멈춤만 바꾼다(19 · S27) — 그 파일을 「이미 본 것」으로 버리면 `Stop`보다 먼저
+ * 떠서 늦게 끝난 `SubagentStop`이 영영 안 앉아 도는 중에 굳는다. 수를 새로 읽어 같은 규칙으로 다시 접는다.
  */
 export function nextAttention(
   prev: Attention | null,
@@ -169,7 +257,10 @@ export function nextAttention(
   const signal = foldHookState(hook);
   if (signal === null) return prev;
 
-  const next = applySignal(prev, signal, hook.at, "hook", hook.agent);
+  const next = applySignal(prev, signal, hook.at, "hook", hook.agent, {
+    subagents: hook.subagents,
+    stopped: hook.stopped,
+  });
   return same(prev, next) ? prev : next;
 }
 
@@ -203,6 +294,18 @@ export function signalOf(shell: Shell): ShellSignal | null {
 }
 
 /**
+ * 「도는 중 · 서브에이전트 N」의 **N**(프로세스 스펙 S32 · S51). 셸 탭 툴팁이 읽고, `Processes` 셸 행(티켓 27)이
+ * 같은 함수를 읽는다 — 화면이 `shell.attention`을 직접 읽으면 죽은 칸 가리개를 빠뜨린다(아래 소스 스캔이 막는다).
+ *
+ * **도는 중일 때만 센다.** 확인할 것에 늦은 서브에이전트 사건이 오면 수는 앉지만(전이 표 — 수만 고친다) 그
+ * 셸은 부르는 중이라 「도는 중 · …」이라 말할 자리가 아니다. 0이면 말할 것이 없다.
+ */
+export function runningSubagents(shell: Shell): number {
+  const attention = attentionOn(shell);
+  return attention !== null && attention.kind === "working" ? attention.subagents : 0;
+}
+
+/**
  * 우선순위(결정 3). 작을수록 위다 — 기다림 › 안 본 완료 › 도는 중.
  *
  * **숫자를 밖으로 내보내지 않는다.** 순서를 아는 자리가 이 표 하나여야 work 행과 띠가 같은
@@ -214,7 +317,9 @@ const RANK: Readonly<Record<ShellSignal, number>> = { waiting: 0, done: 1, worki
  * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
  * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
  *
- * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
+ * **이름을 세워 두는 이유는 축이 늘 때다.** 실패는 한때 다음 판의 빨강 축이었다(terminal-activity-signal 결정
+ * 12). 프로세스 결정 13이 이렇게 고쳤다: API 오류로 끝난 턴은 **확인할 것 + 「오류로 끝남」**(말로 선다, 색은
+ * 없다 — `FAILED_LABEL`)이라 이 판에서도 축은 셋이다. 언젠가 축이 늘어
  * `AttentionKind`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
  * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
  * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
