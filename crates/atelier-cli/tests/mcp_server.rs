@@ -390,7 +390,7 @@ fn guidance_of(server: &mut Server, id: u32, slug: &str) -> String {
 }
 
 /// 판 01 — 손으로 둔 레이아웃 폴더가 안내문을 바꾼다. **서버를 다시 띄우지 않고** 파일을 바꾸면
-/// 다음 호출에 바뀐 것이 실린다(결정 9 — 호출마다 새로 읽는다).
+/// 다음 호출에 바뀐 것이 실린다(spec 레이아웃 결정 9 — 호출마다 새로 읽는다).
 ///
 /// 임시 홈은 홈 밖이라 `Template:` 경로가 줄지 않은 절대 경로로 실린다. 그 경로만 커널의 홈 축약
 /// 함수로 만들고, 나머지 글자는 손으로 적었다 — 설명 열은 가장 긴 `  decisions.md`(14칸)에 두 칸을
@@ -460,7 +460,7 @@ fn a_maison_room_follows_the_maison_layout_folder() {
     );
 }
 
-/// 깨진 레이아웃이면 **내장본** 안내문 앞에 물러섰다는 한 줄이 붙는다(결정 15). 그 줄은 읽지 못한
+/// 깨진 레이아웃이면 **내장본** 안내문 앞에 물러섰다는 한 줄이 붙는다(spec 레이아웃 결정 15). 그 줄은 읽지 못한
 /// 폴더와 까닭을 말하고, 사용자에게 알리되 부탁받기 전에는 고치지 말라고 한다.
 #[test]
 fn a_broken_layout_puts_a_fallback_line_before_the_builtin_guidance() {
@@ -479,7 +479,7 @@ fn a_broken_layout_puts_a_fallback_line_before_the_builtin_guidance() {
     }
 }
 
-/// MCP는 `settings.json`을 읽지 않는다(결정 25) — 그 파일이 깨져 있어도 안내문은 그대로다.
+/// MCP는 `settings.json`을 읽지 않는다(spec 레이아웃 결정 25) — 그 파일이 깨져 있어도 안내문은 그대로다.
 #[test]
 fn a_broken_settings_file_leaves_the_guidance_alone() {
     let home = tempfile::tempdir().unwrap();
@@ -490,7 +490,7 @@ fn a_broken_settings_file_leaves_the_guidance_alone() {
     assert_eq!(guidance_of(&mut server, 2, "cart"), builtin_guidance(atelier_core::Mode::Atelier));
 }
 
-/// 판 02 — spec 트리는 **앱 쪽 work 응답에만** 붙는다(구현 스펙 3절). 에이전트가 받는 work JSON은
+/// 판 02 — spec 트리는 **앱 쪽 work 응답에만** 붙는다(spec 레이아웃 구현 스펙 3절). 에이전트가 받는 work JSON은
 /// 그대로라 불어나지 않는다. MCP와 앱이 같은 work 뷰를 쓰므로, 그 뷰에 필드를 더하는 변경이
 /// 여기서 걸린다.
 ///
@@ -541,7 +541,7 @@ fn the_work_json_agents_get_carries_no_spec_tree() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// spec 레이아웃 도구 — 에이전트가 레이아웃을 읽고 고쳐 저장한다 (#242, 결정 20·21·25)
+// spec 레이아웃 도구 — 에이전트가 레이아웃을 읽고 고쳐 저장한다 (#242, spec 레이아웃 결정 20·21·25)
 //
 // 규칙은 엔진 저장소가 L1로 잰다. 여기서 재는 것은 **배선**이다: 무엇이 응답의 어느 자리에
 // 실리는가, 저장이 다음 `get_work`에 서버를 다시 띄우지 않고 닿는가.
@@ -590,8 +590,8 @@ fn layout_files(home: &std::path::Path, id: &str) -> Vec<(std::path::PathBuf, Ve
     files
 }
 
-/// 레이아웃 도구는 **읽기와 저장 둘뿐이다.** 되돌리기는 사람이 설정 페이지에서 한다(결정 21).
-/// 만들기·지우기·모드 선택은 기능 자체가 없다(결정 25) — 레이아웃은 모드마다 하나다.
+/// 레이아웃 도구는 **읽기와 저장 둘뿐이다.** 되돌리기는 사람이 설정 페이지에서 한다(spec 레이아웃 결정 21).
+/// 만들기·지우기·모드 선택은 기능 자체가 없다(spec 레이아웃 결정 25) — 레이아웃은 모드마다 하나다.
 ///
 /// 이름에 `layout`이 든 도구를 통째로 잰다. 되돌리기 같은 도구가 이름에 `layout` 없이 더해지면
 /// `listed_tools_are_exactly_this_wave`가 빨개진다 — 그 테스트가 도구 목록 전체를 고정한다.
@@ -609,7 +609,7 @@ fn the_layout_tools_are_read_and_save_and_nothing_else() {
 }
 
 /// 두 도구의 설명이 **참조를 가르친다** — 설정 페이지가 복사해 준 `~/.atelier/layouts/<id>/`를
-/// 받은 에이전트가 파일을 직접 고치지 않고 이 도구로 읽고 저장한다(결정 23). 상주 지침은 350단어
+/// 받은 에이전트가 파일을 직접 고치지 않고 이 도구로 읽고 저장한다(spec 레이아웃 결정 23). 상주 지침은 350단어
 /// 상한에 걸려 있어 여기가 그 자리다.
 #[test]
 fn both_layout_tools_teach_the_layout_reference_and_to_go_through_them() {
@@ -798,7 +798,7 @@ fn save_refuses_an_invalid_layout_with_where_and_writes_nothing() {
 }
 
 /// 올바른 레이아웃이면 **가림 폴더와 파일이 생기고** 저장한 레이아웃의 render 결과가 온다. 그 뒤
-/// `get_work`의 안내문이 **서버를 다시 띄우지 않아도** 바뀐다(결정 9) — 에이전트가 부탁받은 일의 끝이다.
+/// `get_work`의 안내문이 **서버를 다시 띄우지 않아도** 바뀐다(spec 레이아웃 결정 9) — 에이전트가 부탁받은 일의 끝이다.
 #[test]
 fn save_creates_the_hiding_folder_and_the_next_get_work_follows_without_a_restart() {
     let home = tempfile::tempdir().unwrap();
@@ -1291,7 +1291,7 @@ fn partial_worktree_failure_is_an_execution_error_pointing_at_attach() {
     assert!(atelier_core::expand_home(report["specDir"].as_str().unwrap()).is_dir());
 }
 
-/// 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(결정 9) — 그래서
+/// 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(spec 레이아웃 결정 9) — 그래서
 /// `atelier_start_work`의 응답에도 안내문이 **JSON 뒤에** 실린다. 새로 만들 때도, 같은 slug로
 /// 재개할 때도, Maison에서 Room을 열 때도 그렇다.
 #[test]

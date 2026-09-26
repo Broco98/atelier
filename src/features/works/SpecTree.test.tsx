@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import SpecTree from "./SpecTree";
 import type { SpecTreeGroup, SpecTreeItem } from "./types";
 
-// **입력은 손으로 적은 spec 트리다**(구현 스펙 Testing 「앱」). 앱에는 규칙이 없어서 — 무엇을
+// **입력은 손으로 적은 spec 트리다**(spec 레이아웃 구현 스펙 Testing 「앱」). 앱에는 규칙이 없어서 — 무엇을
 // 먼저 세울지, 무엇이 번호 묶음인지, 무슨 아이콘을 줄지는 엔진이 정한다 — 여기서 재는 것은
 // 「받은 것을 받은 대로 그리는가」뿐이다. 그래서 아래 트리는 일부러 이름순도 번호순도 아니다.
 
@@ -23,7 +23,7 @@ const folder = (
 ): SpecTreeItem => ({ ...file(path, icon), kind: "folder", group, children });
 
 // 내장본이 커널 파일 목록을 가른 모양을 닮게 적었다 — `overview.md` 다음에 판 폴더가 최신이 위로
-// 서고, 그 뒤에 `research/`와 맞지 않은 것이 선다(구현 스펙 7절 허용 차이 8).
+// 서고, 그 뒤에 `research/`와 맞지 않은 것이 선다(spec 레이아웃 구현 스펙 7절 허용 차이 8).
 const TREE: SpecTreeItem[] = [
   file("overview.md", "compass"),
   folder("02-둘째-판", [file("02-둘째-판/plan.md")], {
@@ -104,7 +104,7 @@ describe("SpecTree는 받은 spec 트리를 그리기만 한다", () => {
 
 // 확장자 라벨은 글자라 이름 버튼의 **접근성 이름에 들어간다.** 아이콘과 라벨을 함께 그리면
 // `overview.md` 행의 이름이 `MD overview.md`가 되어, 이름으로 행을 찾는 L3·L4가 깨진다
-// (구현 스펙 4절). 그래서 아이콘을 받은 행은 라벨 **대신** 아이콘이다.
+// (spec 레이아웃 구현 스펙 4절). 그래서 아이콘을 받은 행은 라벨 **대신** 아이콘이다.
 describe("SpecTree 행의 글리프", () => {
   const label = (ext: string) => `>${ext}</span>`;
 

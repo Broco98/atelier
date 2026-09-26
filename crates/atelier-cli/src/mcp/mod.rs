@@ -64,7 +64,7 @@ pub struct AtelierServer {
     /// 끝난 work가 옮겨가 머무는 루트. 작업 목록을 읽는 경로는 여기를 보지 않는다.
     archive_root: PathBuf,
     /// 데이터 루트. spec 레이아웃을 찾는 자리다 — **경로만** 기동 때 정하고 내용은 호출마다
-    /// 읽는다(결정 9, `spec_layout_guidance`).
+    /// 읽는다(spec 레이아웃 결정 9, `spec_layout_guidance`).
     data_root: PathBuf,
     tool_router: ToolRouter<AtelierServer>,
 }
@@ -105,10 +105,10 @@ impl AtelierServer {
 
     /// 에이전트가 받는 spec 레이아웃 안내 — 이 서버 모드의 레이아웃을 render한 글이다.
     ///
-    /// **호출마다 resolve를 새로 부른다**(결정 9). 기동 때 한 번 읽어 두면 세션 도중에 레이아웃을
+    /// **호출마다 resolve를 새로 부른다**(spec 레이아웃 결정 9). 기동 때 한 번 읽어 두면 세션 도중에 레이아웃을
     /// 고쳐도 셸을 다시 띄울 때까지 옛 안내가 나간다 — 상주 지침에서 파일 이름을 뺀 까닭과 같다.
     ///
-    /// work 지정은 아직 아무도 안 넘긴다(결정 16). 그래서 resolve가 실패할 길이 지금은 없지만,
+    /// work 지정은 아직 아무도 안 넘긴다(spec 레이아웃 결정 16). 그래서 resolve가 실패할 길이 지금은 없지만,
     /// 실패하면 도구 오류로 올린다 — 안내 없는 응답을 성공으로 내면 에이전트는 모양을 지어낸다.
     fn spec_layout_guidance(&self) -> atelier_core::Result<String> {
         let resolved = atelier_core::resolve_layout(&self.data_root, self.mode, None)?;

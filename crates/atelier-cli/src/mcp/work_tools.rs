@@ -203,7 +203,7 @@ impl AtelierServer {
                 } else {
                     partial_failure(&report)?
                 };
-                // 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(결정 9) — 그래서
+                // 새 work를 만든 세션은 `atelier_get_work` 없이 곧장 문서를 쓴다(spec 레이아웃 결정 9) — 그래서
                 // 여기도 spec 레이아웃을 싣는다. **맨 뒤에** 붙인다: 성공이면 JSON 뒤, 부분
                 // 실패면 복구 안내 → JSON 뒤의 셋째 블록이다. spec 폴더는 부분 실패에서도 이미
                 // 서 있고, 에이전트가 이어서 쓰는 곳이 거기다.

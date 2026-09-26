@@ -83,7 +83,7 @@ mod tests {
         "atelier_edit_project",
     ];
 
-    /// 레이아웃을 가리키는 문장. 두 벌이 같은 말로 가리킨다 — 레이아웃은 두 응답에 실린다(결정 9).
+    /// 레이아웃을 가리키는 문장. 두 벌이 같은 말로 가리킨다 — 레이아웃은 두 응답에 실린다(spec 레이아웃 결정 9).
     const FOLLOW_THE_LAYOUT: &str =
         "Follow the spec layout that atelier_get_work and atelier_start_work return";
 
@@ -121,7 +121,7 @@ mod tests {
         // spec 규약 — 도구가 아니라 파일시스템, 위치는 조회 응답에서
         assert!(ATELIER.contains("no tool for spec"), "spec tool absence not stated");
         assert!(ATELIER.contains("specDir"), "no spec location field");
-        // 배치는 응답이 싣는 spec 레이아웃이 말한다(결정 9) — 지침은 파일 이름을 적지 않는다.
+        // 배치는 응답이 싣는 spec 레이아웃이 말한다(spec 레이아웃 결정 9) — 지침은 파일 이름을 적지 않는다.
         // 지침은 서버가 뜰 때 한 번 정해지므로, 이름을 적어 두면 세션 도중에 레이아웃을 바꿨을 때
         // 둘이 어긋난다.
         assert!(ATELIER.contains(FOLLOW_THE_LAYOUT), "no pointer to the spec layout");
@@ -201,7 +201,7 @@ mod tests {
         for kept in ["kebab-case", "specDir", FOLLOW_THE_LAYOUT, "pass its slug"] {
             assert!(MAISON.contains(kept), "Room의 절차가 빠졌다: {kept}");
         }
-        // 배치는 응답이 싣는 spec 레이아웃이 말한다 — Room의 레이아웃은 사용자가 바꿀 수 있다(결정 9).
+        // 배치는 응답이 싣는 spec 레이아웃이 말한다 — Room의 레이아웃은 사용자가 바꿀 수 있다(spec 레이아웃 결정 9).
         assert!(!MAISON.contains("overview.md"), "지침에 spec 파일 이름이 박혀 있다: {MAISON}");
     }
 
@@ -350,7 +350,7 @@ mod tests {
             // 지침 쪽 — 같은 뿌리를 예시 문장이 읽는다. 아카이브 화면도 클립보드로 참조를
             // 내보내므로(ArchivePage) 뿌리가 둘이면 가드도 둘이어야 한다.
             // 예시의 파일 이름도 자리 표시자다 — 이름이 남으면 `overview.md`가 없는 레이아웃에서
-            // 에이전트가 지침 안의 유일한 spec 파일 이름을 계속 본다(결정 9).
+            // 에이전트가 지침 안의 유일한 spec 파일 이름을 계속 본다(spec 레이아웃 결정 9).
             assert!(
                 text.contains(&format!("{work}<slug>/spec/<file>.md:L19-27")),
                 "{mode} 벌이 work 뿌리를 잃었다: {work}"

@@ -377,7 +377,7 @@ describe("WorkPanel spec 탭", () => {
   });
 
   it("레이아웃이 물러섰어도 말하지 않고 받은 트리를 그린다", () => {
-    // 알리는 것은 설정 페이지의 일이다(구현 스펙 4절) — 이 탭은 조용히 내장본으로 그린다.
+    // 알리는 것은 설정 페이지의 일이다(spec 레이아웃 구현 스펙 4절) — 이 탭은 조용히 내장본으로 그린다.
     const reason = "layout.json is missing";
     const markup = render(true, { ...layered, specTree: { ...layered.specTree!, fallback: reason } });
     expect(markup).not.toContain(reason);
