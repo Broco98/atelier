@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bot, Check, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { layoutDirRef } from "@/features/works/refs";
-import type { Mode } from "@/mode";
+import { modeNameOf } from "@/mode";
 import { specLayoutStatesQuery } from "./hooks";
 import type { SpecLayoutState } from "./types";
 
@@ -16,9 +16,6 @@ import type { SpecLayoutState } from "./types";
 //
 // 행은 페이지를 열 때와 [다시 읽기]를 누를 때 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이
 // 없다). 행의 상태는 엔진이 판정해 준 그대로 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
-
-/** 행의 머리. 모드 이름이 곧 레이아웃의 이름이다(결정 25) — 세그먼트의 두 낱말과 같다. */
-const MODE_NAME: Record<Mode, string> = { atelier: "Atelier", maison: "Maison" };
 
 /** 복사 알림이 떠 있는 시간. 참조 한 줄과 할 일 한 문장을 읽을 만큼 — 닫기 버튼도 있다. */
 const NOTICE_MS = 6000;
@@ -127,7 +124,8 @@ function ModeRow({
   onAsk: () => void;
   onReread: () => void;
 }) {
-  const name = MODE_NAME[state.id];
+  // 행의 머리. 모드 이름이 곧 레이아웃의 이름이다(결정 25) — 세그먼트와 같은 표에서 읽는다.
+  const name = modeNameOf(state.id);
   const reference = layoutDirRef(state.folder);
   const fellBack = state.fallback !== null;
   return (

@@ -86,6 +86,13 @@ interface ModeRefs {
 }
 
 interface ModeShape {
+  /**
+   * 세계의 이름. **대문자 영어다**(US 59) — 사이드바에서 이 두 낱말이 nav 항목
+   * (`Terminal`·`Archive`)과 같은 층이고, 그 아래 구획 머리부터 갈린다.
+   *
+   * 화면에 적는 이름이지 값이 아니다 — 명령으로 나가는 것은 위 `Mode`의 소문자 그대로다.
+   */
+  readonly name: string;
   readonly nav: readonly NavItem[];
   readonly palette: readonly PaletteDestination[];
   readonly routes: ModeRoutes;
@@ -167,6 +174,7 @@ const SETTINGS_PLACE = {
  */
 const TABLE = {
   atelier: {
+    name: "Atelier",
     nav: navItems,
     palette: [...navItems, SETTINGS_PLACE],
     routes: ATELIER_ROUTES,
@@ -174,6 +182,7 @@ const TABLE = {
     projects: true,
   },
   maison: {
+    name: "Maison",
     nav: MAISON_NAV,
     palette: [...MAISON_NAV, SETTINGS_PLACE],
     routes: MAISON_ROUTES,
@@ -237,6 +246,18 @@ export function slugOf(pathname: string): string | null {
  */
 export function hasProjects(mode: Mode): boolean {
   return TABLE[mode].projects;
+}
+
+/**
+ * 화면에 적는 세계의 이름. 사이드바의 세그먼트(`ModeSwitch`)와 설정 「spec 레이아웃」의 행 머리가
+ * 이것을 읽는다 — 모드 이름이 곧 레이아웃의 이름이다(spec 레이아웃 결정 25).
+ *
+ * 세그먼트 한 자리에서만 쓰던 동안은 그 파일에 살았다. 「쓰는 자리가 하나면 그 파일로, 둘이면
+ * 공용으로」(`shell-meta.tsx` 머리말) — 둘째 자리가 생긴 날 이 표로 올라왔다. 두 자리가 각자
+ * 이름을 들면 이름을 고치는 날 한쪽만 바뀐다.
+ */
+export function modeNameOf(mode: Mode): string {
+  return TABLE[mode].name;
 }
 
 /**
