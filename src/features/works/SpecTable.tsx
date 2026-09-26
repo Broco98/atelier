@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { setResizing } from "@/components/shell/useResizableWidth";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
 // 예쁜 보기의 표 블록. 가로 스크롤 위에 전체화면 확대와 열 폭 조절을 얹는다.
@@ -137,17 +138,20 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           포커스도 함께 막아 Tab으로 도달할 수 없다 — 둘 다 필요하므로 나눠서 쓴다.
           배경만 규격 밖이다: 표 셀 위에 겹치므로 불투명해야 하고, hover의 --state-2(6%)는
           반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
-          opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다 */}
-      <button
-        ref={openFull}
-        type="button"
-        onClick={() => setFullOpen(true)}
-        title="전체화면으로 크게 보기"
-        aria-label="표를 전체화면으로 보기"
-        className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
-      >
-        <Maximize2 className="size-3" strokeWidth={2} />
-      </button>
+          opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다.
+          도움말은 다이어그램의 여는 버튼과 같은 글자의 툴팁이다. 이름(「표를 …」)이 이미 그 말을 한다 */}
+      <Tooltip>
+        <TooltipTrigger
+          ref={openFull}
+          type="button"
+          onClick={() => setFullOpen(true)}
+          aria-label="표를 전체화면으로 보기"
+          className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+        >
+          <Maximize2 className="size-3" strokeWidth={2} />
+        </TooltipTrigger>
+        <TooltipContent>전체화면으로 크게 보기</TooltipContent>
+      </Tooltip>
 
       <FullscreenModal
         name="표"

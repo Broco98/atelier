@@ -155,6 +155,9 @@ test("패널의 spec·info는 탭이다 — ←/→로 옮기면 그 탭이 곧�
   // **본문이 정말 갈렸는가**를 양쪽으로 잰다 — 탭의 선택만 보면 「탭은 켜졌는데 패널은 그대로」가 통과한다.
   await expect(slug행(page)).toBeVisible();
   await expect(패널(page, "spec")).toHaveCount(0);
+  // 복사 행의 이름은 라벨과 값이고, 도움말(툴팁)은 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(slug행(page)).toHaveAccessibleDescription("slug 복사");
+  await expect(패널(page, "info").getByRole("button", { name: /^작업 폴더 / })).toHaveAccessibleDescription("경로 복사");
 
   await page.keyboard.press("ArrowLeft");
   await expect(spec).toBeFocused();

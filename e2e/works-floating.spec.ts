@@ -92,6 +92,8 @@ test("상태 배지는 메뉴를 연다고 말하고, 지금 상태가 선택됨
 
   await expect(badge).toHaveAttribute("aria-haspopup", "menu");
   await expect(badge).toHaveAttribute("aria-expanded", "false");
+  // 이름은 지금 상태이고, 도움말 「상태 변경」(툴팁)은 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(badge).toHaveAccessibleDescription("상태 변경");
   await badge.click();
   await expect(menu).toBeVisible();
   await expect(badge).toHaveAttribute("aria-expanded", "true");
@@ -316,6 +318,8 @@ test("ⓘ를 누르면 첫 복사 행이 포커스를 받고, Enter면 그 값�
   const branchRow = card.getByRole("button", { name: new RegExp(`^${pinnedWork.branch}\\b`) });
   await expect(card.getByRole("button").first()).toBeFocused();
   await expect(branchRow).toBeFocused();
+  // 행의 이름은 값이고, 도움말 「복사」(툴팁)는 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(branchRow).toHaveAccessibleDescription("복사");
 
   await page.keyboard.press("Enter");
 
@@ -531,12 +535,15 @@ for (const { what, file, open, reveal } of [
 
 // 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」). 툴팁이 떠 있는 채 누른 Esc도 창을 닫는다 —
 // 부품 기본은 Esc를 툴팁에서 멈춰 첫 Esc가 툴팁만 닫는데, 툴팁은 사람이 연 층이 아니다(`tooltip.tsx`).
+//
+// **「닫기」 툴팁을 글자로 좁혀 집는다.** 여는 버튼도 툴팁(「전체화면으로 크게 보기」)을 들어서, 포커스로 연 창이 뜨는 동안
+// 그 툴팁이 닫히는 애니메이션으로 잠깐 겹치고, 창이 닫혀 포커스가 돌아오면 다시 선다.
 test("닫기 버튼은 포커스에 툴팁 「닫기」와 Kbd `Esc`를 띄우고 단축키를 설명으로 말한다 — 툴팁이 떠 있어도 Esc 한 번에 닫힌다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await 문서를연다(page, 다이어그램문서);
-  const tooltip = page.locator("[data-slot=tooltip-content]");
+  const tooltip = page.locator("[data-slot=tooltip-content]", { hasText: "닫기" });
 
   await 크게보기(page).focus();
   await page.keyboard.press("Enter");

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { CodeXml, Eye } from "lucide-react";
 import { ToggleGroup, ToggleGroupChip, ToggleGroupItem } from "./toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 // 지금 보고 있는 것이 **문서인가 원문인가**를 두 칸으로 말한다(결정 33).
 //
@@ -46,10 +47,10 @@ export function SourceToggle({
       className={className}
     >
       <ToggleGroupChip at={on ? 1 : 0} />
-      <Segment value="doc" label="문서로 보기">
+      <Segment value="doc" label="문서로 보기" locked={locked}>
         <Eye className="size-3.5" strokeWidth={1.9} />
       </Segment>
-      <Segment value="source" label="원문 보기">
+      <Segment value="source" label="원문 보기" locked={locked}>
         <CodeXml className="size-3.5" strokeWidth={2} />
       </Segment>
     </ToggleGroup>
@@ -59,16 +60,22 @@ export function SourceToggle({
 function Segment({
   value,
   label,
+  locked,
   children,
 }: {
   value: "doc" | "source";
   label: string;
+  locked: boolean;
   children: ReactNode;
 }) {
   return (
-    // 이름은 글리프가 못 말하니 `aria-label`이 든다. `title`은 도움말이다(Tooltip은 판 4의 25).
-    <ToggleGroupItem value={value} aria-label={label} title={label}>
-      {children}
-    </ToggleGroupItem>
+    // 이름은 글리프가 못 말하니 `aria-label`이 든다. 도움말은 같은 글자의 툴팁이다 — 이름보다 더 말하는 것이
+    // 없어 설명(`aria-description`)은 안 단다(S28). **잠기면 툴팁도 없다**(S23) — 칸이 네이티브 `disabled`다.
+    <Tooltip>
+      <TooltipTrigger disabled={locked} render={<ToggleGroupItem value={value} aria-label={label} />}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

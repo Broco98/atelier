@@ -321,7 +321,8 @@ describe("WorksPage 머리행 배치", () => {
     const a = actions(render());
     expect(a).not.toBe("");
     for (const one of [
-      'title="상태 변경"',
+      // 도움말 「상태 변경」은 툴팁이라 정적 마크업에 없다 — 이름(지금 상태)보다 더 말하던 그 말은 설명으로 남는다(S28).
+      'aria-description="상태 변경"',
       'aria-label="작업 메타"',
       'aria-label="작업 메뉴"',
       'aria-label="분할"',
@@ -375,7 +376,7 @@ describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
   it("상태 배지는 남는다", () => {
     // 배지는 「어느 단계인가」라 뷰 탭과 성질이 다르다 — 자주 누르는 조작이라 헤더에 남는다.
     // 뷰 탭을 걷으면서 함께 쓸려 나가면 상태를 바꾸는 데 클릭이 두 번 든다.
-    expect(actions(render())).toContain('title="상태 변경"');
+    expect(actions(render())).toContain('aria-description="상태 변경"');
   });
 });
 

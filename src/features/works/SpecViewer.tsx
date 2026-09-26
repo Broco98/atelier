@@ -27,6 +27,7 @@ import {
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
@@ -515,15 +516,17 @@ function BlockWrapper({
           x에서 40px 아래로 크로스페이드하면 눈에는 버튼이 미끄러진 것으로 보인다
           (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 배경·글자색은 계속 전환한다 —
           그건 한 버튼 안에서 일어나는 일이라 겹칠 상대가 없다 */}
-      <button
-        type="button"
-        onClick={() => onCopy(start, end)}
-        aria-label={`${range}줄 참조 복사`}
-        title={`${range}줄 참조 복사`}
-        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        <Copy className="size-3" strokeWidth={1.8} aria-hidden />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          type="button"
+          onClick={() => onCopy(start, end)}
+          aria-label={`${range}줄 참조 복사`}
+          className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          <Copy className="size-3" strokeWidth={1.8} aria-hidden />
+        </TooltipTrigger>
+        <TooltipContent>{`${range}줄 참조 복사`}</TooltipContent>
+      </Tooltip>
       {children}
     </div>
   );
@@ -671,6 +674,7 @@ export const PrettyView = memo(function PrettyView({
         const target = resolveHref(fileRef.current, href, linkRef.current.files);
         if (target.kind === "missing") {
           return (
+            // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={`문서를 찾을 수 없어요 — ${target.path}`}
               className="text-tertiary underline decoration-dotted underline-offset-2"
@@ -708,6 +712,7 @@ export const PrettyView = memo(function PrettyView({
         // 문자열이 화면에 없어, 이 자리표시가 존재하는 이유가 사라진다.
         if (source.kind === "missing") {
           return (
+            // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
               className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"

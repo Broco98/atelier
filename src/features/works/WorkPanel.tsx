@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
@@ -256,23 +257,25 @@ function WorkPanel({
 
                 잠김은 흐림과 포인터 차단이 **함께** 간다. 흐리게만 하면 눌리는데 아무 일도
                 일어나지 않는 오늘 그대로이고, 결정 21이 없애려는 것이 바로 그 어긋남이다.
-                왜 잠겼는지를 title로 말할 수는 없다 — pointer-events가 꺼져 있으면 hover가
-                성립하지 않아 네이티브 툴팁이 뜨지 않는다. 흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
+                왜 잠겼는지를 툴팁으로 말하지 않는다 — 잠긴 칸은 네이티브 `disabled`라 툴팁을 달지 않는다(S23).
+                흐림과 코드뷰로 바뀐 본문이 그 말을 한다. */}
             <SourceToggle
               on={sourceOn}
               locked={sourceLocked}
               onChange={onToggleSource}
               className="ml-auto"
             />
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={`${itemNameOf(mode)} 패널 접기`}
-              title={`${itemNameOf(mode)} 패널 접기`}
-              className="icon-button-quiet text-tertiary"
-            >
-              <X className="size-4" strokeWidth={2} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                onClick={onClose}
+                aria-label={`${itemNameOf(mode)} 패널 접기`}
+                className="icon-button-quiet text-tertiary"
+              >
+                <X className="size-4" strokeWidth={2} />
+              </TooltipTrigger>
+              <TooltipContent>{`${itemNameOf(mode)} 패널 접기`}</TooltipContent>
+            </Tooltip>
           </div>
           {/* 머리행 아래에 선이 없다. 이 행은 화면 브레드크럼과 **같은 층**인데 그쪽이
               "아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다"를 이미

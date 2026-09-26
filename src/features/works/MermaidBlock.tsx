@@ -32,7 +32,8 @@ function ZoomControls({
   );
 }
 
-// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다
+// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다.
+// 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28).
 function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
@@ -44,13 +45,21 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={toolbarButtonQuiet}>
-      {copied ? (
-        <Check className="size-3 text-green-700" strokeWidth={2.4} />
-      ) : (
-        <Copy className="size-3" strokeWidth={2} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        type="button"
+        onClick={onCopy}
+        aria-label="원본 mermaid 코드 복사"
+        className={toolbarButtonQuiet}
+      >
+        {copied ? (
+          <Check className="size-3 text-green-700" strokeWidth={2.4} />
+        ) : (
+          <Copy className="size-3" strokeWidth={2} />
+        )}
+      </TooltipTrigger>
+      <TooltipContent>원본 mermaid 코드 복사</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -177,9 +186,19 @@ function MermaidBlock({ code }: { code: string }) {
             <TooltipContent>원본 mermaid 코드 보기</TooltipContent>
           </Tooltip>
           <CopyCodeButton code={code} />
-          <button ref={openFull} type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
-            <Maximize2 className="size-3" strokeWidth={2} />
-          </button>
+          {/* 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28). */}
+          <Tooltip>
+            <TooltipTrigger
+              ref={openFull}
+              type="button"
+              onClick={() => setFullOpen(true)}
+              aria-label="전체화면으로 크게 보기"
+              className={toolbarButtonQuiet}
+            >
+              <Maximize2 className="size-3" strokeWidth={2} />
+            </TooltipTrigger>
+            <TooltipContent>전체화면으로 크게 보기</TooltipContent>
+          </Tooltip>
         </span>
       </div>
       {error && !svg ? (
