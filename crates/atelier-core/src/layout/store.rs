@@ -8,7 +8,9 @@ use std::path::Path;
 
 use super::builtin::builtin_layout;
 use super::model::{LayoutEntry, SpecLayout};
-use super::parse::{parse_layout_value, serialize_layout, LayoutError, LAYOUT_FILE};
+use super::parse::{
+    parse_layout_value, serialize_layout, serialize_layout_value, LayoutError, LAYOUT_FILE,
+};
 use super::render::{render_layout, Rendered};
 use super::resolve::{
     folder_error, folder_present, layout_folder, layout_id, read_layout_file, template_verdict,
@@ -52,6 +54,50 @@ pub enum SaveOutcome {
     Saved(Rendered),
     /// 검증이 거절했다. 아무것도 쓰지 않았다.
     Refused(Vec<LayoutError>),
+}
+
+/// **앱이 받는 읽기의 모양**(`read_spec_layout`) — Tauri 명령과 L4 다리가 이것을 그대로 싣는다.
+///
+/// 읽을 수 있으면 `{ id, folder, edited, layout, templates, warnings }`이고, `layout`은 디스크 형식
+/// 그대로다(`serialize_layout_value` — 모르는 키까지). 편집기는 그것을 초안으로 펼쳐 고치고 그대로
+/// 저장에 돌려준다. 깨졌으면 `{ id, folder, edited, errors, raw }`다. 에이전트의 `atelier_get_spec_layout`이
+/// 주는 JSON과 같은 이름이다.
+impl serde::Serialize for LayoutRead {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("id", &self.id)?;
+        map.serialize_entry("folder", &self.folder)?;
+        map.serialize_entry("edited", &self.edited)?;
+        match &self.content {
+            LayoutContent::Readable { layout, templates, rendered } => {
+                map.serialize_entry("layout", &serialize_layout_value(layout))?;
+                map.serialize_entry("templates", templates)?;
+                map.serialize_entry("warnings", &rendered.warnings)?;
+            }
+            LayoutContent::Broken { errors, raw } => {
+                map.serialize_entry("errors", errors)?;
+                map.serialize_entry("raw", raw)?;
+            }
+        }
+        map.end()
+    }
+}
+
+/// **앱이 받는 저장의 답**(`write_spec_layout`) — `{ errors: [{ path, message }] }` 하나다. 검증이
+/// 거절하면 위치가 붙은 오류가 **데이터로** 가고(명령의 거절은 문자열뿐이라, 위치를 글에 싸면 앱이
+/// 다시 풀어야 한다), 쓰면 빈 목록이다. 쓰다가 실패한 것(IO)은 여기 오지 않는다: 명령의 거절이다.
+impl serde::Serialize for SaveOutcome {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let errors: &[LayoutError] = match self {
+            SaveOutcome::Saved(_) => &[],
+            SaveOutcome::Refused(errors) => errors,
+        };
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry("errors", errors)?;
+        map.end()
+    }
 }
 
 /// 모드의 레이아웃을 읽는다. **아무것도 쓰지 않는다** — resolve와 같은 규칙이다(결정 7).
@@ -1019,6 +1065,87 @@ mod tests {
         assert_eq!(kept, ["decisions.md", "layout.json"], "링크가 가리키던 폴더를 지웠다");
         let after = crate::resolve_layout(&root, Mode::Atelier, None).unwrap();
         assert_eq!(after.source, crate::LayoutSource::Builtin);
+    }
+
+    /// **앱의 편집기가 받는 읽기의 모양**(`read_spec_layout`, 티켓 11). 읽을 수 있는 레이아웃은 디스크
+    /// 형식 그대로(모르는 키까지), 템플릿 본문, 경고다 — 편집기는 그것을 초안으로 펼쳐 고치고 저장에
+    /// 돌려준다. 에이전트의 `atelier_get_spec_layout`이 주는 JSON과 같은 이름이다.
+    #[test]
+    fn the_app_reads_a_readable_layout_as_its_disk_form_with_bodies_and_warnings() {
+        let root = tempfile::tempdir().unwrap();
+        plant(
+            root.path(),
+            "atelier",
+            "layout.json",
+            r#"{ "owner": "사람", "root": { "description": "방침", "children": [
+                { "pattern": "decisions.md", "kind": "file", "since": "0.14", "template": "decisions.md" },
+                { "pattern": "gone.md", "kind": "file", "template": "gone.md" } ] } }"#,
+        );
+        plant(root.path(), "atelier", "decisions.md", "# 결정\n");
+        let folder = crate::collapse_home(&root.path().join("layouts").join("atelier"));
+
+        let answer = serde_json::to_value(read_layout(root.path(), "atelier").unwrap()).unwrap();
+
+        assert_eq!(
+            answer,
+            serde_json::json!({
+                "id": "atelier",
+                "folder": folder,
+                "edited": true,
+                "layout": { "owner": "사람", "root": { "description": "방침", "children": [
+                    { "pattern": "decisions.md", "kind": "file", "template": "decisions.md", "since": "0.14" },
+                    { "pattern": "gone.md", "kind": "file", "template": "gone.md" } ] } },
+                "templates": { "decisions.md": "# 결정\n" },
+                "warnings": [format!("missing template for `gone.md`: {folder}/gone.md")],
+            })
+        );
+    }
+
+    /// 깨진 레이아웃은 **까닭과 원문**이다 — 편집기는 그때 편집 UI를 세우지 않고 까닭만 보인다.
+    #[test]
+    fn the_app_reads_a_broken_layout_as_its_errors_and_raw_text() {
+        let root = tempfile::tempdir().unwrap();
+        let raw = r#"{ "root": { "children": [ { "pattern": "a.md" } ] } }"#;
+        plant(root.path(), "maison", "layout.json", raw);
+        let folder = crate::collapse_home(&root.path().join("layouts").join("maison"));
+
+        let answer = serde_json::to_value(read_layout(root.path(), "maison").unwrap()).unwrap();
+
+        assert_eq!(
+            answer,
+            serde_json::json!({
+                "id": "maison",
+                "folder": folder,
+                "edited": true,
+                "errors": [{ "path": [0], "message": "`kind` is missing (\"file\" or \"folder\")" }],
+                "raw": raw,
+            })
+        );
+    }
+
+    /// **저장의 답은 오류 목록 하나다**(`write_spec_layout`, 티켓 11). 검증이 거절하면 위치가 붙은 오류가
+    /// 데이터로 오고, 쓰면 빈 목록이다 — 위치를 문자열에 싸서 앱이 다시 풀게 하지 않는다.
+    #[test]
+    fn the_app_gets_a_save_as_its_list_of_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let refused = save_layout(
+            root.path(),
+            "atelier",
+            serde_json::json!({ "root": { "children": [ { "pattern": "a.md" } ] } }),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(refused).unwrap(),
+            serde_json::json!({
+                "errors": [{ "path": [0], "message": "`kind` is missing (\"file\" or \"folder\")" }]
+            })
+        );
+
+        let saved =
+            save_layout(root.path(), "atelier", with_decisions("방침"), &bodies(&[("decisions.md", "# D\n")]))
+                .unwrap();
+        assert_eq!(serde_json::to_value(saved).unwrap(), serde_json::json!({ "errors": [] }));
     }
 
     /// 폴더가 없어도 된다 — 이미 기본값이다. 두 번 눌러도, 그사이 손으로 지웠어도 같은 끝이다.
