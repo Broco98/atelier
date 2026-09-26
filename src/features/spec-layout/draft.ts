@@ -268,8 +268,12 @@ export function dropEntry(draft: LayoutDraft, from: EntryPath, target: DropTarge
   });
 }
 
-/** `path`가 `ancestor` 자신이거나 그 아래인가. */
-function within(path: EntryPath, ancestor: EntryPath): boolean {
+/**
+ * `path`가 `ancestor` 자신이거나 그 아래인가 — 끌린 항목의 「자기 자신과 자기 아래」다. 놓기 계산이 이것으로 제
+ * 안에 놓는 것을 거절하고(`dropEntry`), 트리는 이것으로 끄는 동안 흐려질 행을 가린다. 둘이 같은 답이라 흐려진
+ * 행은 곧 놓을 수 없는 자리다.
+ */
+export function within(path: EntryPath, ancestor: EntryPath): boolean {
   return path.length >= ancestor.length && ancestor.every((index, i) => path[i] === index);
 }
 
@@ -341,10 +345,11 @@ function freePattern(siblings: LayoutEntryJson[], ext: string): string {
 }
 
 /**
- * 폴더인가 — 종류가 없는 항목(맨 위 항목)도 폴더로 친다. 트리의 행과 엔진(`LayoutEntry::is_folder`)이 같은
- * 규칙이다.
+ * 폴더인가 — 종류가 없는 항목(맨 위 항목)도 폴더로 친다. 엔진(`LayoutEntry::is_folder`)과 같은 규칙이고, 이 파일의
+ * 조작(안에 더하기·들여쓰기·안에 놓기)과 편집기의 트리 행·종류 칸이 모두 이 함수를 부른다 — 행이 폴더로 그린
+ * 것이 곧 안에 놓을 수 있는 것이다.
  */
-function isFolder(entry: LayoutEntryJson): boolean {
+export function isFolder(entry: LayoutEntryJson): boolean {
   return entry.kind !== "file";
 }
 

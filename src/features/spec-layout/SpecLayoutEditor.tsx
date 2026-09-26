@@ -39,6 +39,7 @@ import {
   dropPlaceAt,
   editsAt,
   entryAt,
+  isFolder,
   moveEntry,
   removeEntry,
   setDescription,
@@ -47,6 +48,7 @@ import {
   setPattern,
   setTemplate,
   setTemplateBody,
+  within,
   type DropPlace,
   type DropTarget,
   type EntryMove,
@@ -560,7 +562,7 @@ function EntryTree({
           selected={samePath(path, at)}
           hasError={errors.some((error) => samePath(error.path, path))}
           missingTemplate={templateMissing(draft.templates, row)}
-          dragged={dragged !== null && isUnder(path, dragged)}
+          dragged={dragged !== null && within(path, dragged)}
           drop={over !== null && "path" in over && samePath(over.path, path) ? over.place : null}
           onSelect={() => onSelect(path)}
           onPointerDown={(event) => pickUp(path, event)}
@@ -584,11 +586,6 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.place === "end" || b.place === "end") return a.place === b.place;
   return a.place === b.place && samePath(a.path, b.path);
-}
-
-/** `path`가 `ancestor` 자신이거나 그 아래인가 — 끌리는 항목과 함께 흐려질 행을 가린다. */
-function isUnder(path: EntryPath, ancestor: EntryPath): boolean {
-  return path.length >= ancestor.length && ancestor.every((index, i) => path[i] === index);
 }
 
 /** 행의 왼쪽 여백 — 들여쓰기는 `spec` 패널 탭의 트리와 같은 걸음(14px)이다. 깊이는 최상위가 1이다. */
@@ -671,7 +668,7 @@ function TreeRow({
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const depth = path.length;
-  const folder = entry.kind !== "file";
+  const folder = isFolder(entry);
   // 경고(모르는 아이콘, 템플릿 누락)는 삼각형 하나에 모은다 — 무엇인지는 고른 항목의 열이 적는다.
   const warnings = [unknownIcon(entry) && "모르는 아이콘", missingTemplate && "템플릿 누락"].filter(
     (warning): warning is string => warning !== false,
@@ -807,7 +804,7 @@ function EntryFields({
   onChange: (change: (draft: LayoutDraft, path: EntryPath) => LayoutDraft) => void;
 }) {
   const descriptionId = useId();
-  const kind = entry.kind === "file" ? "file" : "folder";
+  const kind = isFolder(entry) ? "folder" : "file";
   return (
     <>
       <div className="flex flex-col gap-1.5">

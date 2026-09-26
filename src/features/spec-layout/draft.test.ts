@@ -12,6 +12,7 @@ import {
   setPattern,
   setTemplate,
   setTemplateBody,
+  within,
   type EntryMove,
   type EntryPath,
   type LayoutDraft,
@@ -725,6 +726,16 @@ describe("놓기 계산", () => {
     expect(dropEntry(opened(), [], { place: "end" })).toBeNull();
     expect(dropEntry(opened(), [0], { path: [], place: "inside" })).toBeNull();
     expect(dropEntry(opened(), [0], { path: [1], place: "inside" })).toBeNull();
+  });
+
+  // 끌린 항목의 「자기 자신과 자기 아래」 — 놓기가 거절하는 자리이고, 트리가 끄는 동안 흐리는 행이다.
+  it("자기 자신과 자기 아래만 끌린 항목 안이다", () => {
+    expect(within([2], [2])).toBe(true);
+    expect(within([2, 0], [2])).toBe(true);
+    expect(within([2, 0, 1], [2])).toBe(true);
+    expect(within([1], [2])).toBe(false);
+    expect(within([3, 0], [2])).toBe(false);
+    expect(within([2], [2, 0])).toBe(false);
   });
 
   it("받은 초안을 고치지 않는다", () => {
