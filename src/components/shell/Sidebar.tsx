@@ -21,7 +21,7 @@ import {
   signalsOf,
   topSignalView,
 } from "@/features/terminal/shell-attention";
-import type { BandRow, CallingNote } from "@/features/terminal/shell-attention";
+import type { BandRow } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
@@ -31,7 +31,7 @@ import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
 import { ModeSwitch } from "./ModeSwitch";
 import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
-import { SignalMeta, showsElapsed } from "./shell-signal";
+import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {

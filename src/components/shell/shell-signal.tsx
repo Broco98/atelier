@@ -1,25 +1,51 @@
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Spinner } from "@/components/ui/spinner";
-import type { CallingKind, CallingNote, ShellSignal } from "@/features/terminal/shell-attention";
-
-export type { CallingNote, ShellSignal };
 
 // 상태 축이 **눈에 보이는 모양**(#203). 값을 정하는 자리는 `features/terminal/shell-attention`
 // 이고 여기는 그것을 그리기만 한다 — 사이드바 행 · 알림 띠(#204) · 셸 탭(#205)이
 // 같은 조각을 쓰므로 **한 자리에서 갈리지 않는다**: 색이 자리마다 달라지면 「행·띠·탭이 같은
 // 셸에 다른 상태를 낸다」(스토리 79)가 색에서 먼저 깨진다.
 //
-// **터미널 feature에서 가져오는 것은 타입 하나뿐이다.** `import type`은 컴파일에서 지워지므로
-// 이 조각은 여전히 정적 마크업 seam에 산다(`shell-meta.tsx`가 같은 조건으로 그 자리에 있다) —
-// 값을 들이면 `@xterm/*`와 그 CSS가 딸려 와 그 층이 통째로 서지 못한다. 어휘를 여기서 다시
-// 적지 않는 이유는 그 반대쪽이다: 같은 union을 두 벌 적으면 한쪽이 늘 때 다른 쪽이 조용히
-// 늙는다.
-//
-// **`ShellSignal`을 여기서 다시 내보내는 것**은 사이드바 목록 때문이다: 그 파일은
+// **화면값의 모양(아래 타입 셋)은 여기 적고, 터미널 feature가 그것을 가져간다**(`sidebar-active-band`
+// 티켓 05 — 「값의 모양은 목록 쪽이나 `components/shell`에 따로 적는다」). 이 파일은 터미널
+// feature를 **아무것도** 들이지 않는다 — 그래서 정적 마크업 seam에 산다(`shell-meta.tsx`가 같은
+// 조건으로 그 자리에 있다). 사이드바 목록도 이 타입을 여기서 읽는다: 그 파일은
 // `@/features/terminal`이라는 글자를 **한 번도 쓸 수 없고**(SidebarWorkList.test.tsx가 리터럴로
-// 센다) 그러면서 화면값의 타입을 prop으로 받아야 한다. 어휘가 두 벌이 되는 것보다 이 한 줄이
-// 낫다. 부르는 셸의 말(`CallingNote`, `sidebar-active-band` 결정 14)도 같은 사정으로 여기서 다시 나간다.
+// 센다) 그러면서 화면값을 prop으로 받아야 한다. 방향이 한쪽인 것이 요점이다 — 값을 고르는
+// 쪽(터미널)이 그리는 쪽의 어휘를 딛고, 그리는 쪽은 고르는 쪽을 모른다. 어휘는 한 벌이다:
+// 같은 union을 두 벌 적으면 한쪽이 늘 때 다른 쪽이 조용히 늙는다(`AttentionKind`도 이 값을 딛는다).
+
+/** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
+export type ShellSignal = "waiting" | "done" | "working";
+
+/**
+ * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
+ * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
+ *
+ * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
+ * `ShellSignal`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
+ * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
+ * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
+ * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다. 판정은 `isCalling` 한 자리다.
+ */
+export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
+
+/**
+ * **부르는 셸이 한 말**(`sidebar-active-band` 결정 14). 행이 한 줄이 되면서 행에서 빠진 셸의 마지막
+ * 말이 서는 자리 둘 — 호버 카드의 말 칸(`SignalNote`)과 행 버튼의 접근성 설명(`aria-description`)
+ * — 이 이 값 하나를 나눠 읽는다. 고르는 것은 `callingNote`다.
+ *
+ * **종류가 함께 오는 것은 카드의 라벨 때문이다.** 칸의 라벨이 상태 말(「나를 기다림」·「확인할 것」)
+ * 이라, 말만 실어 보내면 받는 쪽이 종류를 다른 값에서 다시 찾아 맞춰야 한다 — 그 둘이 같은
+ * 셸의 것이라는 보장을 받는 쪽이 지게 된다. 종류가 `CallingKind`인 것은 이 값이 **부르는
+ * 셸에만** 서기 때문이다.
+ */
+export interface CallingNote {
+  kind: CallingKind;
+  /** 셸이 마지막으로 한 말의 첫 줄. 어댑터가 접어 준 것 그대로이고 비어 있지 않다. */
+  message: string;
+}
 
 /**
  * 상태의 **말**. 접근성 이름이 이 표를 읽는다 — 행 버튼(`<제목> — 나를 기다림`) · 탭 버튼 ·

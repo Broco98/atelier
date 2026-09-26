@@ -2,8 +2,8 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Hint } from "@/components/ui/tooltip";
-import type { BandRow, CallingKind } from "@/features/terminal/shell-attention";
-import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
+import type { BandRow } from "@/features/terminal/shell-attention";
+import { SIGNAL_LABEL, SignalLane, formatElapsed, type CallingKind } from "./shell-signal";
 
 // 알림 띠(#204, 결정 5·8 · 이름은 `sidebar-active-band` 결정 13). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
 // 한 줄씩 모은다 — 열여덟 행을 훑는 대신 여기만 본다. 부르는 것이 하나도 없으면 **띠 자체가
@@ -63,8 +63,8 @@ const WEIGHT: Readonly<Record<CallingKind, string>> = {
  * 넷만 골라 받으면 부르는 쪽이 「누른 줄이 어느 것인가」를 id로 되찾아야 하고, 그 되찾기가
  * 정렬과 갈리는 날 엉뚱한 화면이 열린다.
  *
- * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다
- * (`shell-signal.tsx`가 `ShellSignal`을 같은 조건으로 들인다).
+ * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다(`import type`은
+ * 컴파일에서 지워진다 — 이 파일 머리말).
  */
 export interface BandItem extends BandRow {
   /** 화면의 이름 — work 제목이거나, 최상위 셸이면 `Terminal`이다(결정 13의 다섯째). */
