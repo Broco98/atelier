@@ -347,6 +347,13 @@ pub async fn spec_layout_states() -> CmdResult<Vec<atelier_core::LayoutState>> {
     Ok(atelier_core::layout_states(&atelier_core::data_root()))
 }
 
+/// 모드의 레이아웃을 기본값으로 되돌린다 — 그 모드의 레이아웃 폴더를 지운다(결정 7). 깨진 폴더도 지운다.
+/// 확인은 화면이 먼저 묻는다. 에이전트에게는 이 길이 없다(결정 21). id는 모드 이름 둘만 받는다.
+#[tauri::command]
+pub async fn revert_spec_layout(id: String) -> CmdResult<()> {
+    atelier_core::revert_layout(&atelier_core::data_root(), &id).map_err(err)
+}
+
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
 /// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
 /// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).

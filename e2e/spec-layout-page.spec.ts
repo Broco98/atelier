@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { BROKEN_MAISON_LAYOUT, SPEC_LAYOUT_STATES } from "./fixtures";
-import { callCount, installFixtureBackend, ipcFailure, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCalls } from "./harness";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08 · 결정 20·23·25).
 //
@@ -98,6 +98,77 @@ test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령
   await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(before);
   // 읽을 수 있는 행에는 [다시 읽기]가 없다
   await expect(page.getByRole("button", { name: "Atelier 레이아웃 다시 읽기" })).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **기본값으로 되돌리기**(spec 레이아웃 티켓 10 · 결정 7·21). 되돌리기는 모드의 레이아웃 폴더를 지운다 —
+// 그래서 **확인을 거친 뒤에만** `revert_spec_layout`이 나간다. 창의 글(지울 폴더, 사라지는 것의 수)은
+// 마크업 seam이 잰다(`revert.test.tsx`). 이 층이 드는 것은 ⋯ → 메뉴 → 창 → 명령의 길이 화면에 붙어
+// 있는가다. 이 명령을 태우는 시나리오가 여기 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
+
+const 메뉴 = (page: Page, name: "Atelier" | "Maison") =>
+  page.getByRole("button", { name: `${name} 레이아웃 메뉴`, exact: true });
+const 되돌리기항목 = (page: Page) =>
+  page.getByRole("menuitem", { name: "기본값으로 되돌리기", exact: true });
+const 확인창 = (page: Page, name: "Atelier" | "Maison") =>
+  page.getByRole("alertdialog", { name: `${name} 레이아웃을 기본값으로 되돌릴까요?`, exact: true });
+const 되돌린알림 = (page: Page) => page.getByRole("status").filter({ hasText: "되돌렸어요" });
+
+test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되돌리기 명령이 나가지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(2);
+  // 내장본 행에는 되돌릴 것이 없다
+  await expect(메뉴(page, "Maison")).toHaveCount(0);
+
+  await 메뉴(page, "Atelier").click();
+  await 되돌리기항목(page).click();
+  const dialog = 확인창(page, "Atelier");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(`${SPEC_LAYOUT_STATES[0].folder}/ 폴더를 지워요.`);
+  await expect(dialog).toContainText(`템플릿 ${SPEC_LAYOUT_STATES[0].templateCount}개`);
+  // 창이 떠 있는 동안에도 아직 아무것도 지우지 않았다
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  await expect(되돌린알림(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("[되돌리기]를 고르면 그 모드의 id로 되돌리기가 한 번 나가고, 상태를 다시 부르고, 알림이 선다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    spec_layout_states: [SPEC_LAYOUT_STATES[0], BROKEN_MAISON_LAYOUT],
+  });
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(2);
+  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(0);
+  const before = await callCount(page, "spec_layout_states");
+
+  // 읽지 못한 행도 가린 폴더가 있으므로 되돌릴 수 있다 — 깨진 폴더도 되돌리기는 늘 된다
+  await 메뉴(page, "Maison").click();
+  await 되돌리기항목(page).click();
+  const dialog = 확인창(page, "Maison");
+  await expect(dialog).toContainText(`파일 ${BROKEN_MAISON_LAYOUT.otherFileCount}개가 함께 사라져요.`);
+  expect(await callCount(page, "revert_spec_layout")).toBe(0);
+
+  await dialog.getByRole("button", { name: "되돌리기", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(되돌린알림(page)).toBeVisible();
+  await expect(되돌린알림(page)).toContainText(`${BROKEN_MAISON_LAYOUT.folder}/`);
+
+  const reverts = await ipcCallArgs(page, "revert_spec_layout", "id");
+  expect(reverts.map(({ args }) => args)).toEqual([{ id: "maison" }]);
+  // 감시 이벤트를 기다리지 않는다 — 되돌린 쪽이 스스로 상태를 다시 읽는다
+  await expect.poll(() => callCount(page, "spec_layout_states")).toBeGreaterThan(before);
+
+  await page.getByRole("button", { name: "알림 닫기", exact: true }).click();
+  await expect(되돌린알림(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

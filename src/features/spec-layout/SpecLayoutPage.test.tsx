@@ -35,7 +35,7 @@ const broken: SpecLayoutState = {
 
 function render(states: SpecLayoutState[]): string {
   return renderToStaticMarkup(
-    <SpecLayoutSection states={states} onAsk={() => {}} onReread={() => {}} />,
+    <SpecLayoutSection states={states} onAsk={() => {}} onReread={() => {}} onRevert={() => {}} />,
   );
 }
 
@@ -52,9 +52,10 @@ function textOf(html: string): string {
   return html.replace(/<[^>]+>/g, "");
 }
 
+/** 버튼마다 그 이름 — 보이는 글자가 있으면 그것, 아이콘뿐인 버튼(⋯)이면 접근성 이름이다. */
 function buttonsOf(html: string): string[] {
-  return [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
-    m[1].replace(/<[^>]+>/g, "").trim(),
+  return [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(
+    (m) => m[2].replace(/<[^>]+>/g, "").trim() || (/aria-label="([^"]*)"/.exec(m[1])?.[1] ?? ""),
   );
 }
 
@@ -80,7 +81,7 @@ describe("모드 두 행", () => {
     expect(textOf(row)).toContain("~/.atelier/layouts/atelier/");
     expect(textOf(row)).toContain("템플릿 2개");
     expect(textOf(row)).not.toContain("내장본 그대로");
-    expect(buttonsOf(row)).toEqual(["부탁"]);
+    expect(buttonsOf(row)).toEqual(["부탁", "Atelier 레이아웃 메뉴"]);
   });
 
   // 읽지 못한 행도 가린 폴더가 있으므로 고친 행이다(구현 스펙 5절). 앰버 한 줄이 「내장본으로 물러섰다」를
@@ -95,7 +96,22 @@ describe("모드 두 행", () => {
     );
     // 템플릿 개수가 없다 — 무엇이 템플릿인지 모른다
     expect(textOf(row)).not.toContain("템플릿");
-    expect(buttonsOf(row)).toEqual(["부탁", "다시 읽기"]);
+    expect(buttonsOf(row)).toEqual(["부탁", "다시 읽기", "Maison 레이아웃 메뉴"]);
+  });
+
+  // ⋯의 메뉴에는 「기본값으로 되돌리기」 하나가 있다(티켓 10). 되돌릴 것은 가린 폴더라, 가린 폴더가 없는
+  // 내장본 행에는 설 자리가 없다. 읽지 못한 행도 가린 폴더가 있으므로 선다 — 깨진 폴더도 되돌려진다.
+  it("⋯는 고친 행과 읽지 못한 행에만 서고, 내장본 행에는 없다", () => {
+    const html = render([edited, broken]);
+    for (const name of ["Atelier", "Maison"]) {
+      const menu = rowOf(html, name).match(/<button\b[^>]*aria-label="[^"]* 레이아웃 메뉴"[^>]*>/g);
+      expect(menu, `${name} 행의 ⋯`).toHaveLength(1);
+      expect(menu![0]).toContain('aria-haspopup="menu"');
+      expect(menu![0]).toContain('aria-expanded="false"');
+    }
+    const builtins = render([builtin("atelier"), builtin("maison")]);
+    expect(builtins).not.toContain("레이아웃 메뉴");
+    expect(builtins).not.toContain('aria-haspopup="menu"');
   });
 
   it("[부탁]은 폴더가 없는 행에도, 읽지 못하는 행에도 있다", () => {

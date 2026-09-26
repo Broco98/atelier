@@ -160,6 +160,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`). 읽기가 실패하는 길이 없다: 못 읽는
     // 폴더는 그 모드의 행에 오류로 선다.
     ("spec_layout_states", |_| ok(Ok(atelier_core::layout_states(&data_root())))),
+    // 기본값으로 되돌리기 — 같은 코어 입구(`revert_layout`)가 다리의 데이터 루트에서 **진짜로** 폴더를
+    // 지운다. 모드 이름이 아닌 id는 코어가 거절한다.
+    ("revert_spec_layout", |a| ok(atelier_core::revert_layout(&data_root(), &text(a, "id")?))),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];

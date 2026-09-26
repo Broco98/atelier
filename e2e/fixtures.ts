@@ -499,6 +499,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **모드를
   // 안 받는다** — 인자 없이 두 모드를 함께 답한다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
   spec_layout_states: SPEC_LAYOUT_STATES,
+  // 설정의 ⋯ → 「기본값으로 되돌리기」가 확인을 거친 뒤에 나간다(티켓 10). 답은 쓰이지 않는다 — 화면은
+  // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 두 id가 같은
+  // 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  revert_spec_layout: null,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //

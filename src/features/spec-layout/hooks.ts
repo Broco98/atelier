@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { queryOptions, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { invalidateArchive } from "@/features/archive/hooks";
 import { invalidateWorks } from "@/features/works/hooks";
+import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
 
 // ["spec-layout"]으로 시작하는 쿼리(상태, 뒤에 붙을 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
@@ -67,3 +68,21 @@ export const specLayoutStatesQuery = () =>
     queryKey: [...SPEC_LAYOUT_KEY, "states"],
     queryFn: specLayoutApi.states,
   });
+
+/**
+ * 모드의 레이아웃을 기본값으로 되돌린다(티켓 10) — 그 모드의 레이아웃 폴더를 지운다. 확인은 부르는 쪽이
+ * 먼저 묻는다(`askRevert`).
+ *
+ * 되돌린 뒤 **위 문 하나를 연다**(`invalidateSpecLayout`) — 행이 「내장본 그대로」로 돌아오고, spec
+ * 트리를 싣고 오는 work 목록과 아카이브 문서가 내장본으로 다시 갈린다. 감시 이벤트(`layouts:changed`)도
+ * 곧 오지만 기다리지 않는다: 감시가 놓쳐도, 감시가 없는 L4 다리에서도 되돌린 쪽이 스스로 다시 읽는다.
+ * 문의 promise를 돌려주므로 `mutateAsync`는 다시 읽기가 끝난 뒤에 풀린다 — 되돌렸다는 알림이 옛 행
+ * 위에 서지 않는다.
+ */
+export function useRevertSpecLayout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: Mode) => specLayoutApi.revert(id),
+    onSuccess: () => invalidateSpecLayout(queryClient),
+  });
+}
