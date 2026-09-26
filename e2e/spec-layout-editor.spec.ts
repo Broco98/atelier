@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 import {
   BROKEN_MAISON_LAYOUT,
+  MISSING_TEMPLATE_READ,
   SPEC_LAYOUT_READ,
   SPEC_LAYOUT_STATES,
   UNREADABLE_MAISON_READ,
@@ -261,6 +262,108 @@ test("읽지 못하는 레이아웃은 행에 [편집]이 없고, 편집기 주�
     .click();
   await expect(page).toHaveURL("/settings/spec-layout");
   expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 파일 항목의 템플릿(티켓 12). 모양(파일에만 선다, 있음이면 본문 칸과 경로, 누락이면 경고)은 마크업 seam이,
+// 경로를 짓고 켜고 끄는 규칙은 순수 함수의 seam이 잰다. **이 층이 드는 것은 저장에 실리는 것이다** — 켠
+// 템플릿의 경로와 본문이 `write_spec_layout`에 실리고, 끈 템플릿은 레이아웃에서도 본문 맵에서도 빠진다.
+// 템플릿 파일을 지우는 것은 저장(엔진)이 빠진 템플릿을 지우는 일이다(티켓 07).
+const 템플릿 = (page: Page, choice: "없음" | "있음") =>
+  page
+    .getByRole("radiogroup", { name: "템플릿", exact: true })
+    .getByRole("radio", { name: choice, exact: true });
+const 템플릿본문 = (page: Page) => page.getByRole("textbox", { name: "템플릿 본문", exact: true });
+
+test("파일 항목의 템플릿을 켜고 본문을 적어 저장하면 저장 명령에 편집기가 지은 경로와 그 본문이 실린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  // 처음에 고른 것은 템플릿이 없는 overview.md다
+  await expect(템플릿(page, "없음")).toHaveAttribute("aria-checked", "true");
+  await expect(템플릿본문(page)).toHaveCount(0);
+  await 템플릿(page, "있음").click();
+  await expect(템플릿(page, "있음")).toHaveAttribute("aria-checked", "true");
+  // 경로는 사람이 적지 않는다 — 고정 이름이라 같은 이름이고, 레이아웃 폴더 바로 아래다
+  await expect(page.getByText("~/.atelier/layouts/atelier/overview.md", { exact: true })).toBeVisible();
+  await expect(템플릿본문(page)).toHaveValue("");
+  await 템플릿본문(page).fill("# 개요\n\n## 무엇을\n");
+
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
+  const [{ layout, templates }] = (await writes(page)) as [
+    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
+  ];
+  expect(layout.root.children![0]).toEqual({
+    pattern: "overview.md",
+    kind: "file",
+    icon: "compass",
+    description: "work의 요약",
+    template: "overview.md",
+  });
+  // 템플릿은 늘 전부 넘긴다 — 고치지 않은 decisions.md의 본문도 실린다
+  expect(templates).toEqual({ "decisions.md": "# 결정\n", "overview.md": "# 개요\n\n## 무엇을\n" });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("템플릿을 없음으로 바꿔 저장하면 그 항목의 template이 빠지고 본문 맵에도 없다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await 행(page, "decisions.md").click();
+  await expect(템플릿(page, "있음")).toHaveAttribute("aria-checked", "true");
+  await expect(템플릿본문(page)).toHaveValue("# 결정\n");
+  await 템플릿(page, "없음").click();
+  await expect(템플릿본문(page)).toHaveCount(0);
+
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
+  const [{ layout, templates }] = (await writes(page)) as [
+    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
+  ];
+  // 모르는 키(`since`)는 남는다
+  expect(layout.root.children![1]).toEqual({
+    pattern: "decisions.md",
+    kind: "file",
+    description: "정한 것과 그 이유",
+    since: "0.14",
+  });
+  expect(templates).toEqual({});
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 템플릿 파일이 디스크에서 사라진 항목 — 읽기가 누락 경고와 함께 본문 없이 준다. 「있음」 그대로 빈 칸과
+// 경고가 서고, 적으면 경고가 풀리며 그 본문이 저장에 실린다(저장이 파일을 다시 만든다).
+test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적고 저장하면 저장 명령에 그 경로와 본문이 실린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, { read_spec_layout: MISSING_TEMPLATE_READ });
+  await openEditor(page);
+
+  const 누락 = page.getByText("레이아웃 폴더에 이 템플릿 파일이 없어요", { exact: true });
+  await expect(누락).toHaveCount(0);
+  await 행(page, "decisions.md 템플릿 누락").click();
+  await expect(템플릿(page, "있음")).toHaveAttribute("aria-checked", "true");
+  await expect(템플릿본문(page)).toHaveValue("");
+  await expect(page.getByText("~/.atelier/layouts/atelier/decisions.md", { exact: true })).toBeVisible();
+  await expect(누락).toBeVisible();
+
+  await 템플릿본문(page).fill("# 결정\n\n## 다시 쓴 뼈대\n");
+  await expect(누락).toHaveCount(0);
+  await expect(행(page, "decisions.md")).toBeVisible();
+
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
+  const [{ layout, templates }] = (await writes(page)) as [
+    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
+  ];
+  expect(layout.root.children![1].template).toBe("decisions.md");
+  expect(templates).toEqual({ "decisions.md": "# 결정\n\n## 다시 쓴 뼈대\n" });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

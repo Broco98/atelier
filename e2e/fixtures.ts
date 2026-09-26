@@ -458,6 +458,17 @@ export const SPEC_LAYOUT_READ: ReadableSpecLayout = {
 };
 
 /**
+ * 템플릿 파일이 디스크에서 사라진 Atelier 레이아웃(spec 레이아웃 티켓 12) — 위 읽기와 같은 레이아웃인데
+ * `decisions.md` 항목이 가리키는 템플릿 파일이 폴더에 없다. 읽기는 그 본문 없이 누락 경고를 준다(경고의
+ * 글은 엔진이 내는 그대로다). 편집기는 그 항목을 「있음」, 빈 본문 칸, 경고로 세운다.
+ */
+export const MISSING_TEMPLATE_READ: ReadableSpecLayout = {
+  ...SPEC_LAYOUT_READ,
+  templates: {},
+  warnings: ["missing template for `decisions.md`: ~/.atelier/layouts/atelier/decisions.md"],
+};
+
+/**
  * 읽지 못하는 Maison 레이아웃 — 위 `BROKEN_MAISON_LAYOUT`과 같은 폴더를 편집기가 읽은 답이다. 오류와 원문은
  * 엔진이 그 파일에 내는 그대로다. 편집기는 이때 편집 UI를 세우지 않는다.
  */
