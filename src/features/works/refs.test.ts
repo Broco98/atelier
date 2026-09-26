@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { archiveRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
+import { archiveRef, layoutDirRef, specDirRef, specRef, workDirRef, worktreeDirRef } from "./refs";
 import { ALL_MODES, refPrefixesOf } from "@/mode";
 
 // 참조는 **앱 밖으로 나가는 값**이다 — 클립보드를 거쳐 에이전트가 그 경로를 실제로 연다.
@@ -101,6 +101,23 @@ describe("참조 생성기 — 세계 사이", () => {
   });
 });
 
+// 레이아웃 참조(spec 레이아웃 결정 23)는 설정의 [부탁]이 복사하는 한 줄이다. 워크트리처럼 **코어가 준
+// 경로**(상태의 `folder`)로 짓는다 — 여기서 뿌리를 다시 지으면 `ATELIER_HOME`을 옮긴 설치에서 붙인
+// 참조가 실물과 갈린다. 그 참조가 에이전트가 배우는 모양과 같은지는 Rust 쪽
+// (`the_layout_reference_the_settings_page_copies_is_the_one_the_tools_teach`)이 엔진 안에서 잰다.
+describe("레이아웃 참조", () => {
+  it("받은 폴더 경로에 `/`만 보장한다", () => {
+    expect(layoutDirRef("~/.atelier/layouts/atelier")).toBe("~/.atelier/layouts/atelier/");
+    expect(layoutDirRef("~/.atelier/layouts/maison/")).toBe("~/.atelier/layouts/maison/");
+  });
+
+  it("홈 밖의 데이터 루트도 받은 그대로다", () => {
+    expect(layoutDirRef("/tmp/atelier-home/layouts/maison")).toBe(
+      "/tmp/atelier-home/layouts/maison/",
+    );
+  });
+});
+
 // **뿌리가 표에서 온다는 것 자체를 잰다.** #186 전까지 MCP 지침의 뿌리 검사
 // (`instructions.rs`)는 참조를 **실제로 내보내는 이 파일**을 읽었는데, 뿌리가 `mode.ts`로
 // 모이면서 그쪽이 표만 읽게 됐다 — 이 파일이 그 표를 읽는다는 사실은 이제 파일 머리
@@ -119,6 +136,12 @@ describe("뿌리는 이 파일에 없다", () => {
     // 조용히 낡는다.
     expect(src).toMatch(/refPrefixesOf\(mode\)\.work/);
     expect(src).toMatch(/refPrefixesOf\(mode\)\.archive/);
+  });
+
+  // 레이아웃 뿌리는 표에도 없다 — 코어가 준 경로를 받는다(위 「레이아웃 참조」). 여기 글자로 서면
+  // 그 경로를 안 읽고 지은 것이다.
+  it("레이아웃 뿌리가 글자로 없다", () => {
+    expect(src).not.toContain("layouts/");
   });
 
   it("표가 드는 뿌리가 글자로 하나도 없다", () => {

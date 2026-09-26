@@ -631,6 +631,35 @@ fn both_layout_tools_teach_the_layout_reference_and_to_go_through_them() {
     }
 }
 
+/// **참조의 결합은 Rust 안에서 잰다**(spec 레이아웃 결정 23, 티켓 08). 설정 페이지의 [부탁]은
+/// 엔진의 상태가 준 폴더 경로에 `/`를 붙여 복사하고(`refs.ts`의 `layoutDirRef` — 그 파일에는 레이아웃
+/// 뿌리 글자가 없다), 그 참조를 붙여 받은 에이전트는 위 두 도구의 설명으로 뜻을 배운다. 기본 데이터
+/// 루트에서 둘이 같은 모양이어야 붙인 한 줄이 에이전트에게 뜻을 가진다 — 레이아웃 폴더의 자리나 도구
+/// 설명 한쪽만 바뀌면 여기서 빨개진다.
+///
+/// 기본 데이터 루트는 `ATELIER_HOME`이 없을 때 `data_root()`가 서는 자리다. 상태는 읽기만 한다.
+#[test]
+fn the_layout_reference_the_settings_page_copies_is_the_one_the_tools_teach() {
+    const TAUGHT: &str = "~/.atelier/layouts/<id>/";
+
+    let states = atelier_core::layout_states(&atelier_core::expand_home("~/.atelier"));
+    let ids: Vec<&str> = states.iter().map(|state| state.id.as_str()).collect();
+    assert_eq!(ids, ["atelier", "maison"]);
+    for state in &states {
+        assert_eq!(format!("{}/", state.folder), TAUGHT.replace("<id>", state.id.as_str()));
+    }
+
+    let home = tempfile::tempdir().unwrap();
+    let descriptions = tool_descriptions(&mut Server::start(home.path()), 2);
+    for name in ["atelier_get_spec_layout", "atelier_save_spec_layout"] {
+        let description = &descriptions[name];
+        assert!(
+            description.contains(&format!("`{TAUGHT}`")),
+            "{name}이 참조를 안 가르친다:\n{description}"
+        );
+    }
+}
+
 /// `get`은 id를 빼면 **그 서버의 모드**, 주면 그 모드의 레이아웃이다. 어느 모드의 서버든 두 모드를
 /// 다 읽는다 — 레이아웃 폴더는 데이터 루트 아래 하나라서다. Maison 서버가 `atelier`를 읽는 것도 본다.
 #[test]

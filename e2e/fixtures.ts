@@ -3,6 +3,7 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
+import type { SpecLayoutState } from "@/features/spec-layout/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -373,6 +374,46 @@ export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
 };
 
 /**
+ * 모드 둘의 레이아웃 상태(spec 레이아웃 티켓 08) — Atelier는 고친 폴더(템플릿 1개), Maison은 내장본
+ * 그대로다. 모양은 엔진의 `layout_states`가 내는 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본
+ * 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는 이것에 `/`만 붙여 참조로 복사한다.
+ */
+export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
+  {
+    id: "atelier",
+    folder: "~/.atelier/layouts/atelier",
+    edited: true,
+    errors: [],
+    fallback: null,
+    templateCount: 1,
+    otherFileCount: 0,
+  },
+  {
+    id: "maison",
+    folder: "~/.atelier/layouts/maison",
+    edited: false,
+    errors: [],
+    fallback: null,
+    templateCount: 0,
+    otherFileCount: 0,
+  },
+];
+
+/**
+ * 읽지 못해 내장본으로 물러선 Maison — `layout.json`의 셋째 항목에 `kind`가 없다. 오류와 까닭의 글은
+ * 엔진이 그 파일에 내는 것 그대로다. 무엇이 템플릿인지 모르므로 템플릿 개수가 없다.
+ */
+export const BROKEN_MAISON_LAYOUT: SpecLayoutState = {
+  id: "maison",
+  folder: "~/.atelier/layouts/maison",
+  edited: true,
+  errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
+  fallback: 'root.children[2]: `kind` is missing ("file" or "folder")',
+  templateCount: null,
+  otherFileCount: 1,
+};
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -455,6 +496,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
       preview: "[[hooks.Stop]]",
     },
   ] satisfies HookStatus[],
+  // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **모드를
+  // 안 받는다** — 인자 없이 두 모드를 함께 답한다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  spec_layout_states: SPEC_LAYOUT_STATES,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //

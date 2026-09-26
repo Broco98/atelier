@@ -871,7 +871,7 @@ describe("화면 탭의 주소", () => {
 });
 
 // 설정은 목록도 선택도 없는 화면이라(결정 51·52) 위 규칙 둘이 **걸리지 않아야 한다** —
-// 마지막으로 보던 항목도 목록 정규화도 여기엔 없다. 대신 항목이 셋이라 주소가 갈렸고(UI개선
+// 마지막으로 보던 항목도 목록 정규화도 여기엔 없다. 대신 항목이 넷이라 주소가 갈렸고(UI개선
 // 결정 22) `/settings`는 **첫 항목으로 치환**된다.
 //
 // 설정으로 가는 문은 셋이다(사이드바 바닥 · ⌘, · 팔레트). 셋 다 `/settings`로 가고, **설정 안에서는
@@ -890,7 +890,7 @@ describe("설정 화면의 주소", () => {
     expect(history.length).toBe(1);
   });
 
-  it.each(["terminal", "notifications", "hooks"] as const)(
+  it.each(["terminal", "notifications", "hooks", "spec-layout"] as const)(
     "`/settings/%s`는 제 화면에 선다",
     async (page) => {
       const { router } = setup([`/settings/${page}`]);
