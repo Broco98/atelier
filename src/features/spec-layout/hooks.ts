@@ -3,7 +3,7 @@ import { specLayoutApi } from "./api";
 
 // ["spec-layout"]으로 시작하는 쿼리(상태, 뒤에 붙을 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
 // 폴더가 바뀌면 둘 다 낡는다(구현 스펙 3절).
-export const SPEC_LAYOUT_KEY = ["spec-layout"] as const;
+const SPEC_LAYOUT_KEY = ["spec-layout"] as const;
 
 /**
  * 모드 둘의 레이아웃 상태. **신선도를 시간에 맡기지 않는다**(`staleTime` 없음) — 설정의 「spec
