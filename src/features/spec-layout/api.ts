@@ -12,5 +12,5 @@ export const specLayoutApi = {
    * **확인을 거친 뒤에만 부른다**(`askRevert`). 인자 이름이 `mode`가 아니라 `id`인 것은 레이아웃 id를
    * 받는 명령이라서다(구현 스펙 3절) — 모드 명령의 계약에 들지 않는다.
    */
-  revert: (id: Mode) => invoke<null>("revert_spec_layout", { id }),
+  revert: (id: Mode) => invoke<void>("revert_spec_layout", { id }),
 };
