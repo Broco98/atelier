@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bot, Check, MoreHorizontal, Pencil, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { showProblem } from "@/components/ui/confirm-store";
@@ -7,7 +7,7 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
 import { layoutDirRef } from "@/features/works/refs";
 import { modeNameOf } from "@/mode";
-import { specLayoutStatesQuery, useRevertSpecLayout } from "./hooks";
+import { invalidateSpecLayout, specLayoutStatesQuery, useRevertSpecLayout } from "./hooks";
 import { askRevert } from "./revert";
 import type { SpecLayoutState } from "./types";
 
@@ -21,8 +21,9 @@ import type { SpecLayoutState } from "./types";
 // 않고, 설정 초안의 저장 버튼도 지나지 않는다.
 //
 // 행은 페이지를 열 때, 레이아웃 폴더가 바뀔 때(셸의 `useFollowLayoutChanges`), [다시 읽기]를 누를 때,
-// 되돌린 뒤에 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이 없다). 행의 상태는 엔진이 판정해 준 그대로
-// 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
+// 되돌린 뒤에 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이 없다). [다시 읽기]는 감시가 놓친 경우를 메우는
+// 버튼이라 감시와 같은 문(`invalidateSpecLayout`)을 연다 — spec 트리를 싣고 오는 work 목록과 아카이브 문서도 함께
+// 다시 읽힌다. 행의 상태는 엔진이 판정해 준 그대로 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
 
 /** 화면 아래 알림이 떠 있는 시간. 참조 한 줄과 할 일 한 문장을 읽을 만큼 — 닫기 버튼도 있다. */
 const NOTICE_MS = 6000;
@@ -32,6 +33,7 @@ type Notice = { kind: "copied" | "reverted"; reference: string };
 
 function SpecLayoutPage() {
   const states = useQuery(specLayoutStatesQuery());
+  const queryClient = useQueryClient();
   const revertLayout = useRevertSpecLayout();
   const navigate = useNavigate();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -54,7 +56,9 @@ function SpecLayoutPage() {
     window.clearTimeout(timer.current);
     setNotice(null);
   };
-  const reread = () => void states.refetch();
+  // 감시가 놓친 경우를 메우므로 감시와 같은 문을 연다(구현 스펙 3절·5절) — 행만이 아니라 spec 트리를 싣고 오는 work
+  // 목록과 아카이브 문서도 새 레이아웃으로 다시 읽힌다.
+  const reread = () => void invalidateSpecLayout(queryClient);
   // 편집기는 이 설정 nav 항목 아래의 하위 주소다(티켓 11) — 설정 한 열 밖의 별도 화면이다.
   const edit = (state: SpecLayoutState) =>
     void navigate({ to: "/settings/spec-layout/$id", params: { id: state.id } });

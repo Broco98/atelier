@@ -102,6 +102,25 @@ test("읽지 못한 행은 이유를 보이고, [다시 읽기]가 상태 명령
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// [다시 읽기]는 감시가 놓친 경우를 메우는 버튼이다(구현 스펙 5절) — 감시와 같은 문을 타야 한다. 레이아웃이 바뀌면
+// spec 트리도 바뀌므로 그 문은 spec 트리를 싣고 오는 work 목록까지 지운다(3절). 상태 행만 다시 부르면 손으로 고친
+// 레이아웃이 행에서는 「고침」인데 spec 패널 탭의 트리는 옛 모양인 채 남는다.
+test("[다시 읽기]는 감시가 놓친 변경을 대신 알린다 — spec 트리를 싣고 오는 work 목록도 다시 부른다", async ({ page }) => {
+  await installFixtureBackend(page, {
+    spec_layout_states: [SPEC_LAYOUT_STATES[0], BROKEN_MAISON_LAYOUT],
+  });
+  await page.goto("/settings/spec-layout");
+  await expect(행(page, "Maison")).toContainText("읽지 못해 내장본으로 보여 주고 있어요");
+
+  // 사이드바가 설정 안에서도 work 목록을 쥐고 있다 — 지우면 곧바로 다시 부른다
+  await expect.poll(() => callCount(page, "list_works")).toBeGreaterThan(0);
+  const before = await callCount(page, "list_works");
+  await page.getByRole("button", { name: "Maison 레이아웃 다시 읽기", exact: true }).click();
+  await expect.poll(() => callCount(page, "list_works")).toBeGreaterThan(before);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **기본값으로 되돌리기**(spec 레이아웃 티켓 10 · 결정 7·21). 되돌리기는 모드의 레이아웃 폴더를 지운다 —
 // 그래서 **확인을 거친 뒤에만** `revert_spec_layout`이 나간다. 창의 글(지울 폴더, 사라지는 것의 수)은
 // 마크업 seam이 잰다(`revert.test.tsx`). 이 층이 드는 것은 ⋯ → 메뉴 → 창 → 명령의 길이 화면에 붙어
