@@ -220,11 +220,15 @@ test("저장의 답이 오류 데이터면 그 위치의 항목 아래에 오류
 
   const 오류 = page.getByText(message, { exact: true });
   await expect(오류).toBeVisible();
-  await expect(오류).toHaveClass(/text-red-600/);
+  // 오류는 칸이 말한다 — 이름 틀이 잘못된 값이고, 그 붉은 줄이 칸의 설명이다(develop 스토리 107)
+  await expect(이름틀(page)).toHaveAttribute("aria-invalid", "true");
+  await expect(이름틀(page)).toHaveAccessibleDescription(message);
   await expect(설명(page)).toHaveValue("그 판의 티켓, 고쳤다");
   // 다른 항목에는 서지 않는다
   await 행(page, "overview.md").click();
+  await expect(이름틀(page)).toHaveValue("overview.md");
   await expect(page.getByText(message, { exact: true })).toHaveCount(0);
+  await expect(이름틀(page)).not.toHaveAttribute("aria-invalid", "true");
   await page.getByRole("treeitem", { name: /^tickets\// }).click();
   await expect(page.getByText(message, { exact: true })).toBeVisible();
   await expect(설명(page)).toHaveValue("그 판의 티켓, 고쳤다");
@@ -709,10 +713,13 @@ test("미리보기의 답에 오류가 있으면 저장 전에 그 항목 아래
   await expect(오류).toHaveCount(0);
   await page.getByRole("treeitem", { name: "tickets/ 검증 오류", exact: true }).click();
   await expect(오류).toBeVisible();
-  await expect(오류).toHaveClass(/text-red-600/);
+  await expect(이름틀(page)).toHaveAttribute("aria-invalid", "true");
+  await expect(이름틀(page)).toHaveAccessibleDescription(message);
   // 다른 항목에는 서지 않는다
   await 행(page, "overview.md").click();
+  await expect(이름틀(page)).toHaveValue("overview.md");
   await expect(오류).toHaveCount(0);
+  await expect(이름틀(page)).not.toHaveAttribute("aria-invalid", "true");
 
   // 고쳐도 — 그 초안의 답이 와도 — 오류가 있는 동안 저장이 잠긴다
   const before = await callCount(page, "render_spec_layout");

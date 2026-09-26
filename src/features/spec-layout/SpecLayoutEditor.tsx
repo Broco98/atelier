@@ -30,6 +30,7 @@ import {
 import PageHeader from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { Hint } from "@/components/ui/tooltip";
@@ -931,13 +932,17 @@ function TreeRow({
   );
 }
 
-/** 검증 오류의 붉은 줄들 — 엔진이 준 글 그대로다. */
-function ErrorLines({ errors, inset = false }: { errors: LayoutError[]; inset?: boolean }) {
+/**
+ * 검증 오류의 붉은 줄들 — 엔진이 준 글 그대로다. `id`를 주면 줄마다 그 뒤에 번호를 붙인 id가 선다 — 칸이 그 줄들을
+ * 제 설명으로 가리킨다(`lineIdsOf`).
+ */
+function ErrorLines({ errors, inset = false, id }: { errors: LayoutError[]; inset?: boolean; id?: string }) {
   return (
     <>
       {errors.map((error, index) => (
         <p
           key={index}
+          id={id === undefined ? undefined : `${id}-${index}`}
           className={cn("text-[12.5px] leading-[1.6] text-red-600", inset && "pl-[46px]")}
         >
           {error.message}
@@ -947,7 +952,13 @@ function ErrorLines({ errors, inset = false }: { errors: LayoutError[]; inset?: 
   );
 }
 
-// 칸의 규격 — 설정 화면의 입력 칸과 같은 가족이다.
+/** `ErrorLines`에 `id`를 준 줄들을 가리키는 `aria-describedby` 값. 줄이 없으면 없다. */
+function lineIdsOf(id: string, errors: LayoutError[]): string | undefined {
+  return errors.length === 0 ? undefined : errors.map((_, index) => `${id}-${index}`).join(" ");
+}
+
+// 칸의 규격 — 설정 화면의 입력 칸(`Input`의 `field`)과 같은 가족이다. 여러 줄 칸은 부품이 없어(develop P8 — Textarea를
+// 들이지 않는다) 손으로 짓는다.
 const TEXTAREA =
   "w-full resize-y rounded-[9px] border border-border-strong bg-background px-2.5 py-2 text-[13px] leading-[1.6] outline-none focus:border-primary";
 
@@ -1001,6 +1012,7 @@ function EntryFields({
   onChange: (change: (draft: LayoutDraft, path: EntryPath) => LayoutDraft) => void;
 }) {
   const descriptionId = useId();
+  const errorsId = useId();
   const kind = isFolder(entry) ? "folder" : "file";
   return (
     <>
@@ -1010,19 +1022,21 @@ function EntryFields({
             icon={entry.icon ?? null}
             onPick={(icon) => onChange((draft, path) => setIcon(draft, path, icon))}
           />
-          <input
+          {/* 제목처럼 보이다가 가리키면 칸의 테두리가 선다 — 눌러서 고치는 제목이다(`Input`의 `entry-title`). 이 자리의
+              검증 오류가 있으면 **칸이 말한다**(develop 스토리 107) — 빨간 테두리와 스크린리더의 「잘못된 값」이 한 속성
+              (`aria-invalid`)에서 나오고, 그 붉은 줄들이 칸의 설명이다. */}
+          <Input
+            variant="entry-title"
+            className="flex-1"
             aria-label="이름 틀"
+            aria-invalid={errors.length > 0}
+            aria-describedby={lineIdsOf(errorsId, errors)}
             value={entry.pattern ?? ""}
             onChange={(event) => {
               const pattern = event.target.value;
               onChange((draft, path) => setPattern(draft, path, pattern));
             }}
             spellCheck={false}
-            // 제목처럼 보이다가 가리키면 칸의 테두리가 선다 — 눌러서 고치는 제목이다.
-            className={cn(
-              "h-9 min-w-0 flex-1 rounded-[9px] border bg-transparent px-2 text-[18px] font-semibold outline-none transition-colors focus:border-primary",
-              errors.length > 0 ? "border-red-500" : "border-transparent hover:border-border-strong",
-            )}
           />
           {/* 두 칸 토글 부품이다(develop 판 4 · 결정 1) — 떠오른 칩이 선 칸으로 미끄러지고, 한 컨트롤이라 Tab 자리가
               하나이며 그 안에서는 ←/→로 옮긴다. 선 칸을 다시 누르면 아무 일도 없다(`deselectable={false}`, S16). */}
@@ -1038,7 +1052,7 @@ function EntryFields({
             <SegmentGroupItem value="folder">폴더</SegmentGroupItem>
           </SegmentGroup>
         </div>
-        <ErrorLines errors={errors} inset />
+        <ErrorLines errors={errors} inset id={errorsId} />
         {unknownIcon(entry) && (
           <p className="flex items-center gap-1.5 pl-[46px] text-[12.5px] leading-[1.6] text-amber-700 dark:text-amber-400">
             <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />

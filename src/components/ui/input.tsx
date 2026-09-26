@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 글자 text-base·md:text-sm→13.5px, 변형 flush를 더했다(떠 있는 카드의 첫 줄로 서는 칸 — 검색 팔레트: 테두리·모서리·포커스 링 없이 아래 선 하나, 13px, 안쪽 14×10px). 변형 field(설정의 글자칸 — 30px · 9px 모서리 · 좌우 9px · 13px · border-strong · 흰 바탕, 포커스는 링 없이 테두리 primary, 틀린 값은 aria-invalid로 빨간 테두리 red-500 · 링 없음, 자리 글자 tertiary)와 인라인 편집기 둘(inline-title — 프로젝트 제목: 25px · semibold · 자간 -0.015em · 10px 모서리 · 안쪽 8×4px를 음수 여백으로 되물려 글자가 제자리에 선다, inline-chip — 기준 브랜치: 26px · 9px 모서리 · 좌우 7px · mono 12.5px. 둘 다 편집하는 동안에만 서서 테두리가 늘 primary다)을 더했다. 폭은 쓰는 자리가 className w-*로 정한다(자리의 배치다 — 기본은 w-full).
+// 앱 규격으로 고친 자리: 글자 text-base·md:text-sm→13.5px, 변형 flush를 더했다(떠 있는 카드의 첫 줄로 서는 칸 — 검색 팔레트: 테두리·모서리·포커스 링 없이 아래 선 하나, 13px, 안쪽 14×10px). 변형 field(설정의 글자칸 — 30px · 9px 모서리 · 좌우 9px · 13px · border-strong · 흰 바탕, 포커스는 링 없이 테두리 primary, 틀린 값은 aria-invalid로 빨간 테두리 red-500 · 링 없음, 자리 글자 tertiary)와 인라인 편집기 둘(inline-title — 프로젝트 제목: 25px · semibold · 자간 -0.015em · 10px 모서리 · 안쪽 8×4px를 음수 여백으로 되물려 글자가 제자리에 선다, inline-chip — 기준 브랜치: 26px · 9px 모서리 · 좌우 7px · mono 12.5px. 둘 다 편집하는 동안에만 서서 테두리가 늘 primary다)을 더했다. 늘 서 있는 제목 칸 entry-title(spec 레이아웃 편집기의 이름 틀 — 36px · 9px 모서리 · 좌우 8px · 18px semibold, 평소 테두리 투명 · hover border-strong · 포커스 primary, 틀린 값은 field처럼 aria-invalid로 빨간 테두리 red-500)을 더했다. 폭은 쓰는 자리가 className w-*로 정한다(자리의 배치다 — 기본은 w-full).
 import * as React from "react"
 import { Input as InputPrimitive } from "@base-ui/react/input"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -23,6 +23,10 @@ const inputVariants = cva(
           "-mx-2 -my-1 rounded-[10px] border border-primary bg-background px-2 py-1 text-[25px] font-semibold tracking-[-0.015em]",
         "inline-chip":
           "h-[26px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-[12.5px]",
+        // 늘 서 있는 제목 칸 — 고른 항목의 제목이 곧 칸이다(spec 레이아웃 편집기의 이름 틀). 제목처럼 보이다가 가리키면
+        // 테두리가 서서 눌러 고치는 제목인 것을 말한다. 틀린 값이면 빨간 테두리가 hover · 포커스보다 이긴다(field와 같다).
+        "entry-title":
+          "h-9 rounded-[9px] border border-transparent px-2 text-[18px] font-semibold hover:border-border-strong focus-visible:border-primary aria-invalid:border-red-500",
       },
     },
     defaultVariants: {
