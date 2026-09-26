@@ -144,7 +144,7 @@ export function AttentionBand({
       {/* **자리는 굴러가는 띠 상자 안이다**(`sidebar-active-band` 결정 15) — 펼쳐서 넘치면 ⌃도 줄과 함께 굴러
           내려간다. 상자 밖에 세우면 낮은 창에서 ⌃가 늘 보이는 대신 그만큼 줄이 먼저 가려진다. */}
       {overflow && (
-        <MoreToggle expanded={expanded} hidden={items.length - BAND_LIMIT} onToggle={onToggle} />
+        <MoreToggle expanded={expanded} hiddenCount={items.length - BAND_LIMIT} onToggle={onToggle} />
       )}
     </div>
   );
@@ -166,15 +166,15 @@ export function AttentionBand({
  */
 function MoreToggle({
   expanded,
-  hidden,
+  hiddenCount,
   onToggle,
 }: {
   expanded: boolean;
   /** 접혔을 때 숨은 줄 수. 펼쳐져 있어도 같은 값이다 — 그때는 이름이 「접기」라 안 읽는다. */
-  hidden: number;
+  hiddenCount: number;
   onToggle: () => void;
 }) {
-  const label = expanded ? "접기" : `${hidden}개 더 보기`;
+  const label = expanded ? "접기" : `${hiddenCount}개 더 보기`;
   const Chevron = expanded ? ChevronUp : ChevronDown;
   return (
     <Hint
