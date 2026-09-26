@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
 import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
-import { worksQuery } from "./hooks";
+import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import type { Mode } from "@/mode";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
 // 셸 목록이 패널로 오면서(결정 42) 이 화면이 터미널 스토어를 조립한다. 그 배선은 상태를
 // 손으로 넣어야 보이므로 여기서 스토어를 직접 만진다 — **모듈 싱글턴이라 비우고 나간다.**
@@ -39,18 +40,7 @@ import {
 // 이 화면은 작업 하나가 골라져 있어야 헤더 우측이 그려진다. 조회를 가로채는 대신
 // 쿼리 캐시에 목록을 미리 넣어 둔다 — 정적 렌더는 이펙트를 돌리지 않으므로 IPC는 나가지
 // 않고, 캐시에 있는 값은 그대로 읽힌다.
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/some-work",
-  createdAt: "2026-08-16",
-  projects: [],
-  pinned: false,
-  worktrees: [],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: [],
-};
+const work: WorkView = workFixture();
 
 // 이 화면의 소스를 문자열로 읽는다. 렌더로 볼 수 없는 불변조건(이펙트·리마운트 자리)이
 // 여기 걸리고, 그 방식은 이 저장소가 파일 간 계약에 쓰는 것과 같다
@@ -66,17 +56,26 @@ const countOf = (text: string, literal: string) => text.split(literal).length - 
 // 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
 // Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
 //
-// **세계는 맨 뒤 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
+// **세계는 기본값을 단 뒤쪽 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
 // …)`) 그 값이 한쪽으로 누워도 화면은 「셸이 안 서네」로만 보인다 — 두 세계에 같은 slug를
-// 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 기존 호출은 그대로다.
+// 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 세계를 안 넘기는 기존 호출은 그대로
+// Atelier를 잰다.
+//
+// `bodies`는 문서 본문이다(경로 → 글). 캐시에 심어 두면 본문이 그대로 그려진다 — **어느 문서가
+// 열렸는지를 본문으로** 재는 자리가 쓴다. 세계 **뒤에** 두는 것도 같은 까닭이다 — 기본값이 있어
+// 기존 호출이 바뀌지 않는다(앞에 두면 세계를 넘기는 호출마다 빈 `{}`를 적어야 한다).
 function render(
   overrides: Partial<WorkView> = {},
   tab: ViewTab = "spec",
   split: SplitSide | null = null,
   mode: Mode = "atelier",
+  bodies: Record<string, string> = {},
 ): string {
   const client = new QueryClient();
   client.setQueryData(worksQuery(mode).queryKey, [{ ...work, ...overrides }]);
+  for (const [path, body] of Object.entries(bodies)) {
+    client.setQueryData(specFileQuery(mode, work.slug, path).queryKey, body);
+  }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <ToastProvider>
@@ -169,13 +168,13 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   }
 
   it("헤더에 [소스] 버튼이 없다", () => {
-    const header = render({ specFiles: ["overview.md"] }).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
+    const header = render(specDocs(["overview.md"])).match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
     expect(header).not.toBe("");
     expect(header).not.toContain("소스");
   });
 
   it("토글은 작업 패널 안에 있다", () => {
-    const markup = render({ specFiles: ["overview.md"] });
+    const markup = render(specDocs(["overview.md"]));
     const header = markup.match(/<header[\s\S]*?<\/header>/)?.[0] ?? "";
     expect(markup).toContain(LABEL);
     // 헤더에 남아 있으면 이 판이 옮긴 것이 아무것도 없는 것이다
@@ -183,7 +182,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   });
 
   it("마크다운 문서에서는 예쁜 보기이고 토글이 살아 있다", () => {
-    const markup = render({ specFiles: ["overview.md"] });
+    const markup = render(specDocs(["overview.md"]));
     expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
     expect(toggle(markup)).not.toMatch(/\sdisabled=""/);
   });
@@ -191,7 +190,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   it("md도 html도 아닌 문서를 열면 본문이 코드뷰로 고정되고 토글이 잠긴다", () => {
     // 본문과 버튼을 **함께** 본다. 하나만 보면 "코드뷰인데 버튼은 멀쩡히 살아 있다"는
     // 바로 그 어긋남(결정 21)이 통과한다.
-    const markup = render({ specFiles: ["diagram.puml"] });
+    const markup = render(specDocs(["diagram.puml"]));
     expect(markup).toContain("[tab-size:4]");
     const button = toggle(markup);
     expect(button).toMatch(/\sdisabled=""/);
@@ -204,7 +203,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   // 그림도 「토글을 무시하는 파일」이다. 비-md와 **본문이 다르다** — 코드뷰가 아니라
   // 그림 자리다. 표를 한 자리로 모으면서 이 두 칸이 붙었으므로 함께 고정한다.
   it("그림 문서를 열면 본문이 그림 자리이고 토글이 잠긴다", () => {
-    const markup = render({ specFiles: ["샷.png"] });
+    const markup = render(specDocs(["샷.png"]));
     expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
     // 홈을 아직 못 읽어 asset URL이 없다 — 그림 본문의 자리표시가 그 자리를 채운다
     expect(markup).toContain("border-dashed");
@@ -215,7 +214,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
   // 본다: 렌더만 켜고 토글을 잠그면 **소스를 볼 길이 사라진다**(이 work에서 지금보다
   // 나빠지는 유일한 경로다).
   it("html 문서를 열면 본문이 코드뷰가 아니고 토글이 살아 있다", () => {
-    const markup = render({ specFiles: ["목업/조각.html"] });
+    const markup = render(specDocs(["목업/조각.html"]));
     expect(markup).not.toContain("[tab-size:4]"); // 소스 보기의 코드 상자
     // 내용이 아직 안 왔으므로 **프레임을 아직 안 그린다** — 빈 문서로 한 번 항해했다
     // 다시 항해하는 깜빡임을 만들지 않는다(결정 9). 프레임이 정말 서는 것은 L3가 본다.
@@ -239,7 +238,7 @@ describe("WorksPage 소스 토글이 패널 머리행으로 갔다", () => {
     // 통째로 하드코딩했는데, 결정 49로 호출부가 하나가 되면서 그 하드코딩이 사라졌다.
     // 잠그지 않으면 spec 문서가 있는 작업의 터미널 탭에서 토글이 살아나고, 본문은 셸이라
     // 눌러도 아무 일이 없다 — 결정 11·21이 없애려는 바로 그 버튼이다.
-    const markup = render({ specFiles: ["overview.md"] }, "terminal");
+    const markup = render(specDocs(["overview.md"]), "terminal");
     const button = toggle(markup);
     expect(button).not.toBe("");
     expect(button).toMatch(/\sdisabled=""/);
@@ -525,7 +524,7 @@ describe("WorksPage 본문·패널 행의 최소 폭", () => {
       return markup.slice(open, markup.indexOf(">", open) + 1).replace(/&gt;/g, ">").replace(/&amp;/g, "&");
     };
     for (const [tab, split] of [["spec", null], ["terminal", null], ["spec", "lr"]] as const) {
-      const markup = render({ specFiles: ["overview.md"] }, tab, split);
+      const markup = render(specDocs(["overview.md"]), tab, split);
       // 갈래가 정말 갈렸는지부터 — 분할이 안 서면 셋째 줄이 첫째 줄을 한 번 더 잰다.
       expect(markup.includes("data-column="), `${tab} ${split}`).toBe(split !== null);
       const column = columnOf(markup);
@@ -552,7 +551,7 @@ describe("WorksPage 작업 패널은 한 곳에서만 선다", () => {
     // 같은 자리(본문 `</main>` 다음)에 있다는 것이 React가 인스턴스를 그대로 잇는 조건이다.
     // 탭에 따라 자리가 달라지면 그 순간 패널이 새로 서고 탭 선택이 spec으로 튄다.
     for (const tab of ["spec", "terminal"] as const) {
-      expect(render({ specFiles: ["overview.md"] }, tab), tab).toContain("</main><aside");
+      expect(render(specDocs(["overview.md"]), tab), tab).toContain("</main><aside");
     }
   });
 
@@ -575,8 +574,46 @@ describe("WorksPage 작업 패널은 한 곳에서만 선다", () => {
     // 트리 표시가 켜졌다 꺼졌다. 값을 정하는 지점이 하나여야 그 깜빡임이 사라진다.
     // 표시는 트리 행의 selected-row다 (SpecTree)
     for (const tab of ["spec", "terminal"] as const) {
-      expect(render({ specFiles: ["overview.md"] }, tab), tab).toContain("selected-row");
+      expect(render(specDocs(["overview.md"]), tab), tab).toContain("selected-row");
     }
+  });
+});
+
+// spec 레이아웃 결정 14. **주소에 문서가 없으면 spec 트리의 기본 문서를 연다** — 화면은 파일 목록에서
+// 이름(`overview.md`)으로 고르지 않는다. 무엇을 먼저 열지는 엔진이 레이아웃 순서로 정해 트리에 싣는다.
+//
+// 열렸다는 것을 **두 자리에서** 본다: 트리 행의 선택 표시와 본문. 둘은 한 값을 본다(위 「한 곳에서만
+// 선다」) — 하나만 보면 표시만 옮기고 본문은 옛 규칙을 따르는 판이 지나간다.
+describe("WorksPage 기본 문서", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const files = ["overview.md", "plan.md"];
+  const bodies = { "overview.md": "개요의 본문이다.", "plan.md": "계획의 본문이다." };
+
+  /** 선택 표시가 붙은 트리 행 — 그 행의 이름 버튼까지. */
+  const selectedRow = (markup: string) =>
+    markup.match(/<div class="[^"]*\bselected-row\b[^"]*">[\s\S]*?<\/button>/)?.[0] ?? "";
+
+  it("fixture 트리의 기본 문서로 연다", () => {
+    const markup = render(specDocs(files, "overview.md"), "spec", null, "atelier", bodies);
+    expect(selectedRow(markup)).toContain(">overview.md<");
+    expect(markup).toContain(bodies["overview.md"]);
+    expect(markup).not.toContain(bodies["plan.md"]);
+  });
+
+  it("기본 문서가 overview.md가 아닌 트리를 넣으면 그 문서가 열린다", () => {
+    // `overview.md`가 목록에 **있는데도** 트리가 고른 것이 열려야 한다 — 없으면 이름으로 고르던
+    // 옛 규칙도 둘째 파일로 떨어져 같은 답을 낸다.
+    const markup = render(specDocs(files, "plan.md"), "spec", null, "atelier", bodies);
+    expect(selectedRow(markup)).toContain(">plan.md<");
+    expect(selectedRow(markup)).not.toContain(">overview.md<");
+    expect(markup).toContain(bodies["plan.md"]);
+    expect(markup).not.toContain(bodies["overview.md"]);
   });
 });
 
@@ -812,7 +849,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
       cwd: "~/x",
     });
     seedOrigin({ mode: "maison", owner: ownerOf("maison", work.slug), project: "메종", cwd: "~/x" });
-    const head = render({ specFiles: ["overview.md"] }, "terminal", "lr", "maison");
+    const head = render(specDocs(["overview.md"]), "terminal", "lr", "maison");
     expect(head).toContain("메종");
     expect(head).not.toContain("아뜰리에");
   });
@@ -1145,7 +1182,7 @@ describe("분할 뷰", () => {
     vi.unstubAllGlobals();
   });
 
-  const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+  const withSpec = specDocs(["05-분할-뷰/spec.md"]);
 
   // 결정 89. 단일 뷰에 두면 분할을 켤 때마다 층이 하나 늘었다 줄어 본문이 위아래로 밀린다.
   it("단일 뷰에는 열 머리가 없다", () => {
@@ -1227,7 +1264,7 @@ describe("분할을 켜면 패널을 한 번 접는다", () => {
   //
   // 접혔다는 것은 **헤더에 여는 버튼이 서는 것**으로 보인다(닫혀 있을 때만 그린다).
   it("분할인 채 들어와도 3열로 서지 않는다", () => {
-    const withSpec = { specFiles: ["05-분할-뷰/spec.md"] };
+    const withSpec = specDocs(["05-분할-뷰/spec.md"]);
     expect(countOf(render(withSpec, "spec", "lr"), 'aria-label="작업 패널 펼치기"')).toBe(1);
     expect(countOf(render(withSpec, "spec", null), 'aria-label="작업 패널 펼치기"')).toBe(0);
   });

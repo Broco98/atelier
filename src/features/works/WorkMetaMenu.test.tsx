@@ -4,24 +4,17 @@ import { WorkMetaRows, sharedBase } from "./WorkMetaMenu";
 import type { Mode } from "@/mode";
 import type { ProjectView } from "@/features/projects/types";
 import type { WorkView } from "./types";
+import { workFixture } from "./work-fixture";
 
 // **쿼리 프로바이더를 세우지 않는다.** 줄들은 순수 표현이고 조회는 감싸는 메뉴가 한다 —
 // WorkInfo와 같은 계약이고, 그것이 이 자리를 정적 마크업으로 볼 수 있게 하는 유일한 이유다.
 
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/some-work",
-  createdAt: "2026-08-16",
+const work: WorkView = workFixture({
   projects: ["atelier"],
-  pinned: false,
   worktrees: [
     { project: "atelier", path: "~/.atelier/works/some-work/trees/atelier", exists: true, dirty: false },
   ],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: [],
-};
+});
 
 // **세계는 맨 뒤 인자다** — 기본값이 Atelier라 아래 기존 검사들이 그대로 「Atelier 팝오버는
 // 안 바뀐다」의 증거가 된다.

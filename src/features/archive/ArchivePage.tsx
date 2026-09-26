@@ -31,6 +31,10 @@ interface ArchivePageProps {
   onFollowLink: (path: string) => void;
 }
 
+// 문서 목록이 아직 없을 때의 빈 목록 — 렌더마다 새 배열을 지으면 그것을 받는 본문이 매번 바뀐
+// 값을 받는다.
+const NO_DOCS: string[] = [];
+
 // 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
 // 목록 컬럼이고, 그 근거는 같은 목록이 사이드바에 이미 있다는 것이었다.
@@ -51,7 +55,9 @@ function ArchivePage({
 
   // 문서 목록도 같다 — `[]`가 "문서가 없다"와 "아직 모른다"를 겸한다. 겸하게 두면
   // `current`가 null이 되어 본문이 "남은 문서가 없어요"를 띄운다 (결정 30과 같은 결함).
-  const { data: docs = [], isPending: docsPending } = useArchivedDocs(mode, selected?.slug ?? null);
+  // 답에는 spec 트리도 실려 오지만 이 화면이 쓰는 것은 목록뿐이다 — 트리는 목록 패널이 그린다.
+  const { data: archived, isPending: docsPending } = useArchivedDocs(mode, selected?.slug ?? null);
+  const docs = archived?.docs ?? NO_DOCS;
   // 고른 문서가 **어느 아카이브의 것인지**는 이제 주소가 함께 들고 있다 — 아카이브를 옮길 때
   // 이동이 search를 비우므로, 이름이 같은 문서(record.md·overview.md)가 딸려가 엉뚱하게
   // 열리던 경로가 아예 없다. 목록에 없는 경로면 아래에서 기본값으로 떨어진다.

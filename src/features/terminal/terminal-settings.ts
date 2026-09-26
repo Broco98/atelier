@@ -8,7 +8,7 @@ import type { TerminalSettings } from "@/features/settings/types";
  *
  * **왜 TanStack Query가 아닌가:** 이 값을 읽는 쪽이 React가 아니다 — xterm 인스턴스는
  * `terminal-store.ts`의 모듈 싱글턴이 들고 있어 라우트 언마운트를 넘긴다(결정 21). 되읽을 신호도
- * 없다: `watcher.rs`가 보는 것은 works·projects 폴더뿐이라 `settings.json`에는 `works:changed`
+ * 없다: `watcher.rs`가 보는 것은 works·projects·레이아웃 폴더뿐이라 `settings.json`에는 `works:changed`
  * 같은 길이 없다. 그래서 `terminalStore`·`shellStore`와 같은 모듈 스토어다.
  *
  * **왜 `terminal-store.ts`가 아닌가:** 이 값을 쓰는 쪽(설정 화면)과 앱이 뜰 때 읽는 쪽

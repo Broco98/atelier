@@ -1,7 +1,13 @@
+import { Fragment } from "react";
 import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
+  // 브레드크럼 앞에 서는 것 — 하위 화면의 「뒤로」(spec 레이아웃 편집기)
+  lead?: React.ReactNode;
   root: string;
+  // 뿌리와 잎 사이의 칸들. 하위 화면의 위치가 세 칸일 때다(`Settings / spec 레이아웃 / Atelier`) —
+  // 가운데 칸은 뿌리처럼 흐린 글자다: 지금 선 곳은 잎 하나다.
+  trail?: readonly string[];
   // 문자열이면 그대로 렌더된다. 노드를 주면 그 자리에서 편집시킬 수 있다 —
   // 감싸는 span이 truncate(overflow:hidden)라 노드도 max-w-full truncate를 스스로 가져야
   // 오늘과 같은 말줄임이 나온다.
@@ -14,7 +20,7 @@ interface PageHeaderProps {
 }
 
 // 페이지 소유 브레드크럼 바 — 메인 영역의 44px 타이틀바를 겸한다 (drag region).
-function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProps) {
+function PageHeader({ lead, root, trail = [], leaf, meta, actions, inset = false }: PageHeaderProps) {
   return (
     <header
       data-tauri-drag-region
@@ -30,7 +36,16 @@ function PageHeader({ root, leaf, meta, actions, inset = false }: PageHeaderProp
       )}
     >
       <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-tertiary">
+        {lead}
         <span data-tauri-drag-region className="shrink-0">{root}</span>
+        {trail.map((crumb) => (
+          <Fragment key={crumb}>
+            <span className="text-border-strong">/</span>
+            <span data-tauri-drag-region className="shrink-0">
+              {crumb}
+            </span>
+          </Fragment>
+        ))}
         {leaf && (
           <>
             <span className="text-border-strong">/</span>

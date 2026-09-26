@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
 import { WorkCard } from "./WorkCard";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 
 // 사이드바 행의 hover 카드. **화면에서는 hover로만 마운트돼서** 목록을 그려서는 닿을 수
 // 없고, L3의 `getByText`도 마우스를 올린 뒤에야 보이는 것을 안 본다 — 조각을 직접 그리는
@@ -11,22 +12,15 @@ import type { WorkView } from "./types";
 // 프로바이더를 안 세운다: 이 조각이 스스로 조회하면 여기서 바로 터진다(WorkInfo.test.tsx와
 // 같은 계약).
 
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
+const work: WorkView = workFixture({
   // **값이 실려 있는 채로 잰다.** 「Maison에는 어차피 비어 있다」는 근거가 안 된다 —
   // 코어의 nothing_to_decide는 프로젝트 0개인 Room에도 이름을 주면 브랜치를 확정해
   // 저장하고(works.rs), 목록을 읽는 자리에는 그 검증이 없어 손으로 고친 work.json이
   // 프로젝트까지 실어 온다. 값이 비면 조건을 통째로 지워도 초록이다.
   branch: "feat/some-work",
-  createdAt: "2026-08-16",
   projects: ["atelier", "notes"],
-  pinned: false,
-  worktrees: [],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: ["overview.md", "01-계획/plan.md"],
-};
+  ...specDocs(["overview.md", "01-계획/plan.md"]),
+});
 
 // 셸의 말 칸(결정 14)은 이 파일이 재는 세계 가름과 무관하다 — 칸이 서는지는 L3가 잰다.
 const card = (mode: Mode) => renderToStaticMarkup(<WorkCard mode={mode} work={work} note={null} />);

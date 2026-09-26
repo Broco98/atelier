@@ -6,14 +6,15 @@ import type { Settings } from "./types";
 // 버튼을 갖게 되면서 화면에서 꺼냈다 — 렌더 없이 L2가 잴 수 있어야 하고, 두 구획이 한 줄을
 // 함께 서야 해서다(아래 `tail`).
 //
-// 에이전트 훅은 여기 없다 — 앱 설정 파일이 아니라 사용자의 claude·codex 설정에 산다.
+// 에이전트 훅은 여기 없다 — 앱 설정 파일이 아니라 사용자의 claude·codex 설정에 산다. spec 레이아웃도
+// 없다 — 레이아웃은 `settings.json`이 아니라 레이아웃 폴더에 산다(spec 레이아웃 결정 25).
 
 /**
- * 앱 설정 파일에서 **저장 버튼을 가진** 구획들 — 설정 항목 표(`SETTINGS_ITEMS`)에서 훅만 뺀다.
- * 손으로 적으면 저장할 항목을 표에 더한 날 이 목록만 조용히 낡는다. 빼는 쪽으로 적어서, 더한
- * 항목이 `Settings`에 칸이 없으면 `Settings[K]`가 타입에서 빨개진다.
+ * 앱 설정 파일에서 **저장 버튼을 가진** 구획들 — 설정 항목 표(`SETTINGS_ITEMS`)에서 파일에 칸이 없는
+ * 항목(훅, spec 레이아웃)만 뺀다. 손으로 적으면 저장할 항목을 표에 더한 날 이 목록만 조용히 낡는다.
+ * 빼는 쪽으로 적어서, 더한 항목이 `Settings`에 칸이 없으면 `Settings[K]`가 타입에서 빨개진다.
  */
-export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks">;
+export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks" | "spec-layout">;
 
 /**
  * `(읽기, 쓰기) → 저장`. 돌려받은 `save(key, value)`는 **쓰는 순간 최신 설정을 읽어 그 구획

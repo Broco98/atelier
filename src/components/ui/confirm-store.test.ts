@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { askDialog, dialogStore } from "./confirm-store";
+import { askChoice, askDialog, dialogStore } from "./confirm-store";
 
 // 앱이 묻고 알리는 창의 **스토어**. 답이 어떻게 오가는가를 본다 — 약속이 풀리고, 창이 비고, 앞의
 // 물음이 접힌다.
@@ -29,5 +29,24 @@ describe("답이 오가는 길", () => {
     expect(dialogStore.state?.title).toBe("나중");
     dialogStore.state!.answer(true);
     expect(await second).toBe(true);
+  });
+});
+
+// **셋째 갈래**(spec 레이아웃 결정 27) — 떠날 때 확인은 [계속 편집] · [버리고 나가기] · [저장하고 나가기] 셋이다.
+// 기존 물음들은 그대로 둘이고 답도 참·거짓이다. 셋째 버튼과 취소 버튼의 글자와 순서는 창이 그리는 것이라 여기서
+// 안 본다 — 떠날 때 L3(`e2e/spec-layout-leave.spec.ts`)가 든다. 여기는 답이 셋으로 갈려 오는가만 본다.
+describe("셋째 버튼을 받는 물음", () => {
+  it("셋째 버튼을 누르면 그 답이 오고, 진행과 취소는 참·거짓 그대로다", async () => {
+    const ask = { title: "가", cancel: "머물기", confirm: "버리기", extra: "저장하기" };
+    const extra = askChoice(ask);
+    dialogStore.state!.answer("extra");
+    expect(await extra).toBe("extra");
+    expect(dialogStore.state).toBeNull();
+    const yes = askChoice(ask);
+    dialogStore.state!.answer(true);
+    expect(await yes).toBe(true);
+    const no = askChoice(ask);
+    dialogStore.state!.answer(false);
+    expect(await no).toBe(false);
   });
 });

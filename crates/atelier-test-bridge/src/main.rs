@@ -8,7 +8,8 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use atelier_core::{
-    archive_dir, mode_home, projects_dir, shared_projects_root, works_dir, Mode, ProjectPatch,
+    archive_dir, data_root, mode_home, projects_dir, shared_projects_root, works_dir, Mode,
+    ProjectPatch,
 };
 use serde_json::{Map, Value};
 
@@ -42,8 +43,20 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     ("delete_project", |a| ok(atelier_core::delete_project(&projects_dir(), &text(a, "slug")?))),
     ("open_project_folder", |_| in_app_only("탐색기를 여는 일이라 대응하는 코어 함수가 없습니다")),
-    ("list_works", |a| ok(atelier_core::list_works(&works_dir(mode(a)?)))),
-    ("get_work", |a| ok(atelier_core::get_work(&works_dir(mode(a)?), &text(a, "slug")?))),
+    // 목록·단건·옮기기는 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구(`with_spec_trees`)를
+    // **진짜로** 탄다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`).
+    ("list_works", |a| {
+        let mode = mode(a)?;
+        ok(atelier_core::list_works(&works_dir(mode))
+            .and_then(|works| atelier_core::with_spec_trees(&data_root(), mode, works)))
+    }),
+    ("get_work", |a| {
+        let mode = mode(a)?;
+        // 하나를 넣으면 하나가 나온다
+        ok(atelier_core::get_work(&works_dir(mode), &text(a, "slug")?)
+            .and_then(|work| atelier_core::with_spec_trees(&data_root(), mode, vec![work]))
+            .map(|mut works| works.remove(0)))
+    }),
     ("set_work_title", |a| {
         ok(atelier_core::update_work_title(
             &works_dir(mode(a)?),
@@ -61,13 +74,15 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     // `before`는 없어도 된다(= 목표 구획의 끝) — 프런트는 `null`로 싣고, 그것이 여기서 「없음」이다.
     ("move_work", |a| {
+        let mode = mode(a)?;
         let pinned = flag(a, "pinned")?;
         ok(atelier_core::move_work(
-            &works_dir(mode(a)?),
+            &works_dir(mode),
             &text(a, "slug")?,
             pinned,
             maybe_text(a, "before").as_deref(),
-        ))
+        )
+        .and_then(|works| atelier_core::with_spec_trees(&data_root(), mode, works)))
     }),
     ("archive_work", |a| {
         let mode = mode(a)?;
@@ -87,8 +102,12 @@ const HANDLERS: &[(&str, Handler)] = &[
         ok(atelier_core::read_spec_file(&works_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))
     }),
     ("list_archive", |a| ok(atelier_core::list_archive(&archive_dir(mode(a)?)))),
+    // 아카이브 문서 목록도 spec 트리를 싣는다 — `commands.rs`와 같은 코어 입구
+    // (`with_archived_spec_tree`)를 진짜로 탄다.
     ("list_archived_docs", |a| {
-        ok(atelier_core::list_archived_docs(&archive_dir(mode(a)?), &text(a, "slug")?))
+        let mode = mode(a)?;
+        ok(atelier_core::list_archived_docs(&archive_dir(mode), &text(a, "slug")?)
+            .and_then(|docs| atelier_core::with_archived_spec_tree(&data_root(), mode, docs)))
     }),
     ("read_archived_file", |a| {
         ok(atelier_core::read_work_file(&archive_dir(mode(a)?), &text(a, "slug")?, &text(a, "path")?))
@@ -137,6 +156,34 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("install_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("uninstall_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
+    // spec 레이아웃 상태 — `commands.rs`와 같은 코어 입구(`layout_states`)를 **진짜로** 탄다. 레이아웃은
+    // 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`). 읽기가 실패하는 길이 없다: 못 읽는
+    // 폴더는 그 모드의 행에 오류로 선다.
+    ("spec_layout_states", |_| ok(Ok(atelier_core::layout_states(&data_root())))),
+    // 기본값으로 되돌리기 — 같은 코어 입구(`revert_layout`)가 다리의 데이터 루트에서 **진짜로** 폴더를
+    // 지운다. 모드 이름이 아닌 id는 코어가 거절한다.
+    ("revert_spec_layout", |a| ok(atelier_core::revert_layout(&data_root(), &text(a, "id")?))),
+    // 편집기의 읽기와 저장(티켓 11) — 같은 코어 입구(`read_layout`·`save_layout`)가 다리의 데이터 루트에서
+    // **진짜로** 읽고 쓴다. 저장의 검증 거절은 답의 데이터(`{ errors }`)라 여기서도 성공으로 나간다.
+    ("read_spec_layout", |a| ok(atelier_core::read_layout(&data_root(), &text(a, "id")?))),
+    ("write_spec_layout", |a| {
+        ok(atelier_core::save_layout(
+            &data_root(),
+            &text(a, "id")?,
+            value(a, "layout")?,
+            &serde_json::from_value(value(a, "templates")?).map_err(err)?,
+        ))
+    }),
+    // 편집기의 미리보기(티켓 14) — 같은 코어 입구(`preview_layout`)를 **진짜로** 탄다. 규칙이 코어에 있어
+    // 여기가 한 벌 더 갖지 않는다. 다리의 데이터 루트의 템플릿을 보되 아무것도 쓰지 않는다.
+    ("render_spec_layout", |a| {
+        ok(atelier_core::preview_layout(
+            &data_root(),
+            &text(a, "id")?,
+            value(a, "layout")?,
+            &serde_json::from_value(value(a, "templates")?).map_err(err)?,
+        ))
+    }),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];
@@ -161,6 +208,11 @@ fn err(error: impl std::fmt::Display) -> String {
 
 fn text(args: &Args, key: &str) -> Result<String, String> {
     maybe_text(args, key).ok_or_else(|| format!("인자 '{key}'(문자열)가 필요합니다"))
+}
+
+/// JSON 값 그대로의 인자 — 모양을 여기서 보지 않는다. 받는 코어가 본다(레이아웃은 모르는 키까지 값으로 건넨다).
+fn value(args: &Args, key: &str) -> Result<Value, String> {
+    args.get(key).cloned().ok_or_else(|| format!("인자 '{key}'가 필요합니다"))
 }
 
 fn maybe_text(args: &Args, key: &str) -> Option<String> {
@@ -343,10 +395,11 @@ mod tests {
 
     /// CLI 크레이트 `src/` 아래의 소스 전부. 위 표와 짝이다 — 앱 쪽은 「env를 아예 안
     /// 읽는다」를, 이쪽은 「읽는 자리가 하나뿐이다」를 붙든다.
-    const CLI_SOURCES: [(&str, &str); 9] = [
+    const CLI_SOURCES: [(&str, &str); 10] = [
         ("main.rs", include_str!("../../atelier-cli/src/main.rs")),
         ("mcp/install.rs", include_str!("../../atelier-cli/src/mcp/install.rs")),
         ("mcp/instructions.rs", include_str!("../../atelier-cli/src/mcp/instructions.rs")),
+        ("mcp/layout_tools.rs", include_str!("../../atelier-cli/src/mcp/layout_tools.rs")),
         ("mcp/mod.rs", include_str!("../../atelier-cli/src/mcp/mod.rs")),
         ("mcp/project_tools.rs", include_str!("../../atelier-cli/src/mcp/project_tools.rs")),
         ("mcp/read_tools.rs", include_str!("../../atelier-cli/src/mcp/read_tools.rs")),

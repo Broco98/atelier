@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Mode } from "@/mode";
-import type { WorkStatus, WorkView } from "./types";
+import type { KernelWorkView, WorkStatus, WorkView } from "./types";
 
 // **모든 명령이 `mode`를 받는다** — 어느 루트를 읽는가가 slug보다 앞선 물음이라 자리도 맨
 // 앞이다. 코어의 표기가 그대로 나가므로(`@/mode`의 `Mode` 주석) 여기서 변환하지 않는다.
@@ -15,11 +15,11 @@ export const worksApi = {
   list: (mode: Mode) => invoke<WorkView[]>("list_works", { mode }),
   get: (mode: Mode, slug: string) => invoke<WorkView>("get_work", { mode, slug }),
   setTitle: (mode: Mode, slug: string, title: string) =>
-    invoke<WorkView>("set_work_title", { mode, slug, title }),
+    invoke<KernelWorkView>("set_work_title", { mode, slug, title }),
   setStatus: (mode: Mode, slug: string, status: WorkStatus) =>
-    invoke<WorkView>("set_work_status", { mode, slug, status }),
+    invoke<KernelWorkView>("set_work_status", { mode, slug, status }),
   setPinned: (mode: Mode, slug: string, pinned: boolean) =>
-    invoke<WorkView>("set_work_pinned", { mode, slug, pinned }),
+    invoke<KernelWorkView>("set_work_pinned", { mode, slug, pinned }),
   /** `before: null`은 구획의 끝이다. 인자와 응답의 뜻은 코어 `move_work`에 있다. */
   move: (mode: Mode, slug: string, pinned: boolean, before: string | null) =>
     invoke<WorkView[]>("move_work", { mode, slug, pinned, before }),

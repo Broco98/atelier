@@ -10,6 +10,7 @@ import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
+import SpecLayoutPage from "@/features/spec-layout/SpecLayoutPage";
 import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
 import { settingsItem, type SettingsItemKey } from "./pages";
@@ -22,10 +23,11 @@ import type {
   TerminalTheme,
 } from "./types";
 
-// 앱 전역 설정 화면 (결정 51·52·54). 항목은 `터미널` · `알림` · `에이전트 훅` 셋이고, 항목 하나가
-// 주소 하나인 페이지다(UI개선 결정 22 · `pages.ts`) — 조각(`…SettingsPage` · `AgentHooksPage`, #225)이
-// 한 페이지에 하나씩 서고 초안과 저장은 조각마다 따로 산다. 터미널 설정과 알림 설정이 각자 저장
-// 버튼을 갖고, 에이전트 훅은 누르면 바로 적용된다.
+// 앱 전역 설정 화면 (결정 51·52·54). 설정 nav 항목은 `pages.ts`의 표(`SETTINGS_ITEMS`)가 들고,
+// 항목 하나가 주소 하나인 페이지다(UI개선 결정 22) — 조각(`…SettingsPage` ·
+// `AgentHooksPage` · `SpecLayoutPage`, #225)이 한 페이지에 하나씩 서고 초안과 저장은 조각마다 따로
+// 산다. 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고, 에이전트 훅은 누르면 바로 적용되며, spec
+// 레이아웃은 레이아웃 폴더에 산다(`features/spec-layout`).
 //
 // **값은 `~/.atelier/settings.json` 한 장에 산다**(결정 53 · adr-02) — `localStorage`가
 // 아니다. 창구는 `api.ts`의 둘뿐이고, 초안은 **읽은 것을 펼쳐 고친다**(`patchTerminal`).
@@ -187,6 +189,9 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
   // **읽기 실패의 게이트가 없다.** 이 항목이 고치는 것은 `~/.atelier/settings.json`이 아니라
   // 사용자의 claude·codex 설정이라, 우리 파일이 깨져 있다고 훅을 못 깔 이유가 없다.
   hooks: () => <AgentHooksPage />,
+  // **이 항목도 게이트가 없다** — 레이아웃은 `settings.json`에 살지 않고(spec 레이아웃 결정 25) 설정
+  // 초안의 저장 버튼도 지나지 않는다. 우리 파일이 깨져 있다고 레이아웃을 못 볼 이유가 없다.
+  "spec-layout": () => <SpecLayoutPage />,
 };
 
 /**
@@ -199,7 +204,9 @@ const ITEM_BODIES: Record<SettingsItemKey, () => ReactNode> = {
 function SettingsPage({ sidebarOpen, item }: { sidebarOpen: boolean; item: SettingsItemKey }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
-      <main className="flex min-w-0 flex-1 flex-col">
+      {/* `relative`는 항목 페이지가 띄우는 화면 아래 메시지(`spec 레이아웃`의 복사 메시지)의 기준이다 — 스크롤하는
+          본문이 아니라 이 칸의 바닥에 선다. */}
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <PageHeader root="Settings" leaf={settingsItem(item).label} inset={!sidebarOpen} />
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
           <div className="flex max-w-[620px] flex-col gap-6">

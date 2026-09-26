@@ -6,6 +6,7 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
+import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
 import { quitShellCounts } from "@/features/terminal/terminal-store";
@@ -91,6 +92,11 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, []);
+
+  // **레이아웃 폴더가 바뀌면 그것에서 나온 화면이 따라온다**(spec 레이아웃 결정 22) — 설정의 「spec
+  // 레이아웃」, spec 패널 탭, 아카이브 문서 트리. 구독은 앱 전역에 하나라 뿌리인 여기서 한 번 부른다
+  // (spec 레이아웃 구현 스펙 3절). 무엇을 지우는지는 그 훅이 든다 — 이 자리는 배선뿐이다.
+  useFollowLayoutChanges();
 
   // **앱을 끄려는 요청이 여기로 온다**(결정 14 · #223) — 빨간 버튼도, ⌘Q·메뉴 Quit·Dock도(#224의
   // 델리게이트 훅) 같은 이벤트다. 셸이 하나도 없어도 묻는다. 무엇을 세고 언제 무시하고 어디서 「묻는 중」을
