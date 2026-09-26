@@ -98,6 +98,64 @@ test("설정에는 세그먼트가 없고, 돌아가면 떠나온 세계가 켜�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 판 4 — 두 칸은 ToggleGroup이다(결정 1, S16 · S30). 부품은 서 있는 칸을 누르면 값을 비우는데(`[]`),
+// 모드 전환은 그것을 **무시한다** — 문서/원문(선 칸도 뒤집는다)과 갈리는 자리다. 비운 값을 그대로
+// 흘리면 두 칸 다 안 눌린 판이 서거나, 없는 세계로 가려다 히스토리에 칸이 하나 쌓인다.
+//
+// 「아무 일도 없다」는 앵커 뒤에 잰다: 이어 누른 `Maison`이 곧바로 먹고, 그때 쌓인 칸이 **하나**다.
+// 선 칸 누름이 어디로든 갔으면 여기서 둘이다.
+test("서 있는 칸을 눌러도 모드가 그대로다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await expect(page).toHaveURL(`/projects/${project.slug}`);
+  const atelier = modeButton(page, "Atelier");
+  const maison = modeButton(page, "Maison");
+  await expect(atelier).toHaveAttribute("aria-pressed", "true");
+  const before = await page.evaluate(() => history.length);
+
+  await atelier.click();
+  await expect(atelier).toHaveAttribute("aria-pressed", "true");
+  await expect(maison).toHaveAttribute("aria-pressed", "false");
+  await expect(page).toHaveURL(`/projects/${project.slug}`);
+
+  // 앵커 — 다음 누름은 먹는다.
+  await maison.click();
+  await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
+  await expect(maison).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => history.length)).toBe(before + 1);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 두 칸은 **한 컨트롤**이라 Tab 자리가 하나이고, 그 안에서는 ←/→로 옮긴다(스토리 94). 끝에서 돈다.
+// 옮기기만 하고 누르지 않는다 — 포커스가 칸을 누르면 방향키 한 번에 세계가 건너간다. 누르는 것은
+// Space다. Tab으로는 재지 않는다(WebKit은 Tab이 버튼을 건너뛴다 — 스펙 「좋은 검사」).
+test("칸에 포커스를 두면 ←/→로 옆 칸에 가고, 옮기기만 해서는 모드가 그대로다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/projects");
+  await expect(page).toHaveURL(`/projects/${project.slug}`);
+  const atelier = modeButton(page, "Atelier");
+  const maison = modeButton(page, "Maison");
+  await expect(atelier).toHaveAttribute("aria-pressed", "true");
+
+  await atelier.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(maison).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(atelier).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(maison).toBeFocused();
+
+  await expect(atelier).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(`/projects/${project.slug}`);
+
+  await page.keyboard.press("Space");
+  await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
+  await expect(maison).toHaveAttribute("aria-pressed", "true");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 목록이 저쪽 세계의 것을 들고 있어도 **행이 가는 곳**은 따로 되돌아갈 수 있다. `routesOf(mode)`
 // 대신 `/works/$slug`를 다시 적어 보면 — L0는 그 필드의 타입이 두 주소의 유니온이라 통과하고,
 // 마크업 seam은 행의 `onOpen`이 목업이라 목적지를 아예 안 보고, `SidebarWorkList.test.tsx`의
