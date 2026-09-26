@@ -1,4 +1,4 @@
-import { samePath, unsaved, type LayoutDraft } from "./draft";
+import { sameDraft, samePath, unsaved, type LayoutDraft } from "./draft";
 import type { LayoutError, ReadableSpecLayout, SpecLayoutRead } from "./types";
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22 · 구현 스펙 5절). 편집기는 열 때 읽은 레이아웃과 템플릿 본문을
@@ -79,7 +79,7 @@ export function savedBaseline(before: SpecLayoutRead, saved: LayoutDraft): Reada
  */
 function sameRead(a: SpecLayoutRead, b: SpecLayoutRead): boolean {
   const [left, right] = [contentOf(a), contentOf(b)];
-  if (left !== null && right !== null) return !unsaved(left, right);
+  if (left !== null && right !== null) return sameDraft(left, right);
   if ("errors" in a && "errors" in b) return a.raw === b.raw && sameErrors(a.errors, b.errors);
   return false;
 }
