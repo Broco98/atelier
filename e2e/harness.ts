@@ -652,6 +652,22 @@ export async function openShell(page: Page): Promise<void> {
 }
 
 /**
+ * 셸의 **입력칸** — 사람이 친 글자를 받는 xterm의 숨은 `<textarea>`다. 셸을 붙이면 포커스를 스스로
+ * 가져가고, 창이 닫히면 돌아와야 하는 자리가 여기다. 「셸에 포커스가 있다」는
+ * `expect(셸입력(page)).toBeFocused()`로 잰다.
+ *
+ * **역할과 이름으로 집는다**(검사 규칙). 이름 「Terminal input」은 xterm이 스스로 다는 것이고
+ * (`Terminal.strings.promptLabel`의 기본값) 앱은 바꾸지 않는다. 화면에 선 입력칸은 늘 하나다 — 켜진
+ * 칸의 집만 DOM에 붙고 나머지 칸은 떼어 둔다(`terminal-store`의 `detachShell`). 모달이 떠 있는 동안에는
+ * 그 아래라 `aria-hidden`이어서 안 잡히므로, 「포커스가 돌아왔다」는 창이 닫힌 뒤에 선다.
+ *
+ * **여기 사는 이유는 셸 입력칸을 집는 길을 하나로 두려는 것이다.** 한때 spec마다 `activeElement`의
+ * 클래스 문자열을 옮겨 적었다 — xterm이 그 이름을 바꾸는 날 한 파일만 고쳐지고, 고쳐지지 않은 쪽의
+ * 「셸에 포커스가 없다」는 헛돌아 초록이 된다.
+ */
+export const 셸입력 = (page: Page) => page.getByRole("textbox", { name: "Terminal input", exact: true });
+
+/**
  * 셸 하나가 **스스로 말하게 만든다.** 백엔드의 감시가 상태 파일을 읽어 쏘는
  * `shell:attention`을 손으로 한 번 쏘는 것이다(#201·#202) — 픽스처 백엔드는 커맨드에만
  * 답하지 이벤트를 쏘지 않는다.

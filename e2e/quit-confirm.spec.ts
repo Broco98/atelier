@@ -8,6 +8,7 @@ import {
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  셸입력,
 } from "./harness";
 
 // 티켓 #223 — **빨간 버튼이 앱을 바로 끄지 않고 앱의 확인 창을 띄운다**(UI개선 결정 14·15).
@@ -24,8 +25,6 @@ const QUIT_EVENT = "app:quit-requested";
 
 const quitDialog = (page: Page) => page.getByRole("alertdialog", { name: "Atelier 종료" });
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
-/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다(`search-palette.spec.ts`). */
-const focusedClass = (page: Page) => page.evaluate(() => document.activeElement?.className ?? "");
 /**
  * 창 **아래의** 팔레트. 역할로 집지 않는다 — 확인 창은 모달이라 그 밖이 전부 `aria-hidden`이고,
  * `getByRole`은 그 아래를 세지 않는다(창이 떠 있는 동안 팔레트 listbox는 늘 0이다). 그래서 팔레트
@@ -203,7 +202,7 @@ test("셸 닫기 확인의 기본 포커스는 그대로 「닫기」다", async
 
 /** 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다. 그때까지 나간 셸 쓰기 수를 돌려준다. */
 async function typeIntoShell(page: Page): Promise<number> {
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   await page.keyboard.type("a");
   await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
   return callCount(page, "pty_write");
@@ -213,7 +212,7 @@ test("셸에서 ⌘W로 띄운 창이 닫히면 포커스가 셸로 돌아온다
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
 
   await page.keyboard.press("Meta+w");
   const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
@@ -223,7 +222,7 @@ test("셸에서 ⌘W로 띄운 창이 닫히면 포커스가 셸로 돌아온다
 
   await expect(dialog).toHaveCount(0);
   await expect(shells(page)).toHaveCount(1);
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -16,6 +16,7 @@ import {
   writeShell,
   띠,
   레인,
+  셸입력,
   행버튼,
 } from "./harness";
 
@@ -222,9 +223,6 @@ test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
-const focusedClass = (page: Page) => page.evaluate(() => document.activeElement?.className ?? "");
-
 // **사람이 키를 친 직후의 첫 프레임만 다른 길로 간다**(#208 리뷰). xterm의 `write()`는 평소
 // 파싱을 다음 tick으로 미루는데(`WriteBuffer._scheduleInnerWrite`), 바로 앞에 사람 입력이
 // 있었으면 그 한 번은 **`write()` 안에서 동기로** 파싱한다(`_didUserInput` 갈래). 그래서
@@ -242,7 +240,7 @@ test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰�
   // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 xterm이 그 키를 「사람 입력」으로 안
   // 세고(`coreService.onUserInput`), 그러면 다음 프레임이 동기 갈래를 안 타 이 검사가
   // 아무것도 안 잰다 — 늘 초록인 검사가 된다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   // 사람이 승인한다. 이 한 글자가 PTY로 나가면서 xterm에 「방금 사람이 쳤다」가 선다.
   await page.keyboard.type("y");
 

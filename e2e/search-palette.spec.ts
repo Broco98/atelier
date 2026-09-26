@@ -17,6 +17,7 @@ import {
   installFixtureBackend,
   readIpcRecord,
   unknownIpcCalls,
+  셸입력,
 } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
@@ -117,16 +118,12 @@ async function settled(page: Page) {
     .evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
 }
 
-/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
-const focusedClass = (page: Page) =>
-  page.evaluate(() => document.activeElement?.className ?? "");
-
 test("⌘K가 셸에 포커스가 있는 동안에도 팔레트를 연다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
   // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 「셸을 지나온다」를 아무것도 안 잰다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
 
   await pressSearchKey(page);
 
@@ -407,7 +404,7 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   await expect(page.locator(".xterm")).toHaveCount(1);
   // **이 줄이 아래 포커스 검사의 전제다.** 포커스가 애초에 셸에 없으면 돌려주는 것을
   // 아무것도 안 잰다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   const before = page.url();
 
   await pressSearchKey(page);
@@ -420,7 +417,7 @@ test("Esc로 닫히고 주소도 포커스도 제자리다", async ({ page }) =>
   await expect(palette(page)).toHaveCount(0);
   expect(page.url()).toBe(before);
   // **빌린 포커스를 돌려준다.** 안 돌려주면 Esc 뒤에 친 글자가 아무 데도 안 들어간다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -494,7 +491,7 @@ test("셸에서 ⌘K로 연 바로 뒤에 친 글자는 셸이 아니라 입력�
   await awaitSpawned(page, 1);
   // **앵커: 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다.** 안 나가는 셸이면 아래 「안 늘었다」가
   // 아무것도 안 잰다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   await page.keyboard.type("a");
   await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
   const written = await callCount(page, "pty_write");
