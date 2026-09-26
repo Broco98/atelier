@@ -75,7 +75,8 @@ export const specLayoutStatesQuery = () =>
 /**
  * 편집기가 여는 모드의 레이아웃(티켓 11). 상태와 같은 머리 키 아래에 산다 — 레이아웃 폴더가 바뀌거나
  * (감시) 앱이 되돌리거나 저장하면 위 문 하나가 함께 지운다. 편집기는 처음 읽은 것으로 초안을 짓고,
- * 그 뒤에 다시 읽힌 답은 초안을 덮지 않는다.
+ * 그 뒤에 다시 읽힌 답은 초안을 덮지 않고 기준본과 견준다(티켓 15, `judgeOutside`) — 초안이 없을 때만 조용히
+ * 따라간다.
  */
 export const specLayoutReadQuery = (id: Mode) =>
   queryOptions({
@@ -83,25 +84,30 @@ export const specLayoutReadQuery = (id: Mode) =>
     queryFn: () => specLayoutApi.read(id),
   });
 
+/** 편집기가 저장에 싣는 것 — 모드와, 초안의 레이아웃과 템플릿 본문 전부. */
+export interface LayoutWrite {
+  id: Mode;
+  layout: SpecLayoutJson;
+  templates: TemplateBodies;
+}
+
 /**
  * 편집기의 저장(티켓 11). 템플릿은 늘 전부 넘긴다. 답의 `errors`가 비어 있으면 썼다 — 그때만 **위 문을
  * 연다**(`invalidateSpecLayout`): 상태 행, 레이아웃 읽기, spec 트리를 싣고 오는 work 목록과 아카이브 문서가
  * 새 레이아웃으로 다시 읽힌다. 검증이 거절한 답에는 아무것도 쓰이지 않았으니 지울 것이 없다.
+ *
+ * `onWritten`은 썼을 때 **문을 열기 전에** 부른다(티켓 15). 편집기는 거기서 기준본을 저장한 것으로 바꾼다 — 제
+ * 저장이 부른 다시 읽기가 도착할 때 기준본이 이미 저장본이어야, 그 답이 밖 변경이 아니라 무시(판정 1번)로 걸린다.
  */
-export function useWriteSpecLayout() {
+export function useWriteSpecLayout(onWritten?: (written: LayoutWrite) => void) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-      layout,
-      templates,
-    }: {
-      id: Mode;
-      layout: SpecLayoutJson;
-      templates: TemplateBodies;
-    }) => specLayoutApi.write(id, layout, templates),
-    onSuccess: (answer) =>
-      answer.errors.length === 0 ? invalidateSpecLayout(queryClient) : undefined,
+    mutationFn: ({ id, layout, templates }: LayoutWrite) => specLayoutApi.write(id, layout, templates),
+    onSuccess: (answer, written) => {
+      if (answer.errors.length > 0) return undefined;
+      onWritten?.(written);
+      return invalidateSpecLayout(queryClient);
+    },
   });
 }
 
@@ -138,8 +144,10 @@ export function useRevertSpecLayout() {
  * 거절이 그것이다. 미리보기와 저장 사이에 디스크가 바뀌면(템플릿 파일이 사라졌다) 저장이 거절하고, 그 오류가 그
  * 초안의 답이 된다. 순번을 **저장을 누른 때** 잡으므로, 저장하는 동안 초안을 또 고쳐 나간 물음의 답은 거절보다
  * 새것으로 남는다.
+ *
+ * 초안이 없으면(`null` — 밖에서 깨져 편집기가 「읽지 못함」 화면이다, 티켓 15) 묻지 않는다.
  */
-export function useDraftPreview(id: Mode, draft: LayoutDraft) {
+export function useDraftPreview(id: Mode, draft: LayoutDraft | null) {
   const [preview, setPreview] = useState<DraftPreview | null>(null);
   const seq = useRef(0);
 
@@ -149,6 +157,7 @@ export function useDraftPreview(id: Mode, draft: LayoutDraft) {
   }, []);
 
   useEffect(() => {
+    if (draft === null) return;
     const timer = window.setTimeout(() => {
       const arrive = reserve(draft);
       specLayoutApi.render(id, draft.layout, draft.templates).then(arrive, (e: unknown) =>

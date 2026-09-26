@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
@@ -51,6 +52,7 @@ import {
   setPattern,
   setTemplate,
   setTemplateBody,
+  unsaved,
   within,
   type DropPlace,
   type DropTarget,
@@ -60,12 +62,14 @@ import {
   type TreeEdit,
 } from "./draft";
 import { specLayoutReadQuery, useDraftPreview, useWriteSpecLayout } from "./hooks";
+import { useConfirmLeave } from "./leave";
+import { contentOf, judgeOutside, savedBaseline, type BannerVerdict } from "./outside";
 import { canSave } from "./preview";
 import PreviewDialog from "./PreviewDialog";
 import type {
   LayoutEntryJson,
   LayoutError,
-  ReadableSpecLayout,
+  SpecLayoutRead,
   TemplateBodies,
   UnreadableSpecLayout,
 } from "./types";
@@ -87,24 +91,27 @@ import type {
 // (공용 끌기 모듈을 딛는다), 옮기기 버튼 넷과 ⌥↑ ⌥↓ ⌥← ⌥→는 키보드 길이다.
 //
 // **저장은 이 화면의 저장 버튼 하나다** — 설정 초안의 저장 버튼과 따로다. 누르기 전에는 아무것도 쓰지 않는다.
+// 저장하지 않은 초안을 두고 떠나면 묻는다(티켓 15, `leave.ts`). 레이아웃이 밖에서 바뀌면 초안이 없을 때는 조용히
+// 따라가고, 있으면 머리 아래의 배너로 한쪽을 고르게 한다(`outside.ts`).
 
 /** 편집기 주소를 연다 — 레이아웃을 읽어, 읽을 수 있으면 편집 UI를, 없으면 까닭과 돌아가는 길을 세운다. */
 function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean }) {
   const read = useQuery(specLayoutReadQuery(id));
   const navigate = useNavigate();
   // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(모드 행의 [편집])이라, 히스토리를 되감지
-  // 않고 늘 그 자리로 간다. 주소로 바로 왔어도 같은 곳에 선다.
+  // 않고 늘 그 자리로 간다. 주소로 바로 와도 같은 곳에 선다. 저장하지 않은 초안이 있으면 떠나기 전에 묻는다(티켓 15).
   const back = () => void navigate({ to: "/settings/spec-layout" });
   const data = read.data;
 
-  if (data !== undefined && !("errors" in data)) {
+  // 한 번 읽었으면 그 뒤로 다시 읽히는 것은 편집 화면이 받는다 — 밖에서 깨지거나 고쳐져도 화면이 내려가지 않아야
+  // 초안이 산다(티켓 15).
+  if (data !== undefined) {
     return <EditorScreen id={id} read={data} sidebarOpen={sidebarOpen} onBack={back} />;
   }
   return (
     <EditorFrame id={id} sidebarOpen={sidebarOpen} onBack={back}>
-      {data !== undefined && <UnreadableLayout read={data} onBack={back} />}
-      {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 위 화면이다. */}
-      {data === undefined && read.error !== null && (
+      {/* 읽기 자체가 실패한 길(IPC). 레이아웃 폴더가 깨진 것은 여기가 아니라 편집 화면의 「읽지 못함」이다. */}
+      {read.error !== null && (
         <div className="flex max-w-[620px] flex-col items-start gap-3 px-8 pt-2">
           <p className="text-[13.5px] leading-[1.7] text-red-600">{String(read.error)}</p>
           <button
@@ -120,9 +127,18 @@ function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean 
   );
 }
 
+/** 밖 변경 배너가 든 것 — 판정과, [새로 불러오기]가 받을 새로 읽은 것. */
+interface Outside {
+  verdict: BannerVerdict;
+  fresh: SpecLayoutRead;
+}
+
 /**
- * 편집 UI — 초안과 고른 자리, 기준본, 초안의 미리보기를 든다. 초안은 **처음 읽은 것으로 한 번 짓는다**: 저장
- * 뒤의 무효화나 감시가 다시 읽어 와도 쓰던 초안을 덮지 않는다(밖 변경을 어떻게 받을지는 티켓 15가 정한다).
+ * 편집 화면 — 초안과 고른 자리, 기준본, 밖 변경 배너, 초안의 미리보기를 든다.
+ *
+ * **초안은 처음 읽은 것으로 짓고, 그 뒤로 다시 읽힌 것은 기준본과 견준다**(티켓 15 · 결정 22). 전역 구독이 레이아웃
+ * 읽기를 다시 부르면 `read`가 바뀌어 온다 — 초안이 없으면 조용히 새것을 받고, 있으면 배너로 한쪽을 고르게 한다
+ * (`judgeOutside`). 합치지는 않는다. 읽은 것이 깨졌으면 초안이 없는 동안 「읽지 못함」 화면이다.
  */
 function EditorScreen({
   id,
@@ -131,38 +147,70 @@ function EditorScreen({
   onBack,
 }: {
   id: Mode;
-  read: ReadableSpecLayout;
+  read: SpecLayoutRead;
   sidebarOpen: boolean;
   onBack: () => void;
 }) {
+  // 기준본 — 열 때 읽은 것, 밖 변경을 받거나 유지하며 새로 읽은 것, 또는 제가 저장한 것. 초안이 이것과 내용으로
+  // 다르면 「저장하지 않은 것이 있다」(`unsaved`) — 저장이 열리고(`canSave`), 떠날 때 묻고, 밖 변경에 배너가 선다.
+  const [baseline, setBaseline] = useState<SpecLayoutRead>(read);
   // 초안과 고른 자리는 **한 값**이다 — 트리를 고치면(티켓 13) 둘이 함께 바뀐다: 자리가 인덱스 경로라 항목이
   // 옮겨 가면 고른 자리가 따라가야 하고, 둘을 따로 두면 한 렌더 동안 고른 자리가 엉뚱한 항목을 가리킨다.
-  // 그래서 모양이 트리 조작의 답(`TreeEdit`)과 같다. 처음에는 첫 최상위 항목을 고른다. 항목이 없으면 머리 `spec/`(방침 문단)이다.
-  const [{ draft, selected }, setView] = useState<TreeEdit>(() => ({
-    draft: { layout: read.layout, templates: read.templates },
-    selected: (read.layout.root.children ?? []).length > 0 ? [0] : [],
-  }));
-  // 기준본 — 마지막으로 읽거나 저장한 것. 초안이 이것과 내용으로 다르면 「고친 것이 있다」(`canSave`). 저장이 되면
-  // 저장한 초안이 기준본이 된다.
-  const [baseline, setBaseline] = useState(draft);
+  // 그래서 모양이 트리 조작의 답(`TreeEdit`)과 같다. 읽은 것이 깨졌으면 초안이 없다(`null`) — 「읽지 못함」 화면이다.
+  const [view, setView] = useState<TreeEdit | null>(() => viewOf(read, null));
+  const [outside, setOutside] = useState<Outside | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // 새로 읽은 것을 받는다 — 초안을 버리고 그것을 보인다. 고르던 항목이 새것에도 있으면 그대로 고른다. 깨졌으면
+  // 「읽지 못함」 화면이라 미리보기 팝업도 닫는다 — 열린 채로 두면 고쳐져 편집 UI가 돌아올 때 저절로 다시 뜬다.
+  const take = (fresh: SpecLayoutRead) => {
+    const next = viewOf(fresh, view?.selected ?? null);
+    setBaseline(fresh);
+    setView(next);
+    setOutside(null);
+    if (next === null) setPreviewOpen(false);
+  };
+
+  // **다시 읽힌 것을 한 번씩 판정한다.** 읽기 쿼리는 내용이 같으면 같은 객체를 주므로(구조 공유), 앞에 판정한 것과
+  // 다른 객체면 밖에서 무엇이 바뀌었다. 판정은 렌더 중에 한다 — 새 읽기를 그린 첫 화면부터 그 결과가 선다.
+  const [judged, setJudged] = useState(read);
+  if (read !== judged) {
+    setJudged(read);
+    const verdict = judgeOutside(baseline, view?.draft ?? null, read);
+    if (verdict === "replace" || verdict === "unreadable") take(read);
+    // 밖이 기준본으로 돌아왔다 — 앞서 선 배너는 이제 낡았다.
+    else if (verdict === "ignore") setOutside(null);
+    else setOutside({ verdict, fresh: read });
+  }
+
+  const draft = view?.draft ?? null;
   // 초안마다 엔진에 묻는 미리보기 — 그 답의 오류가 항목 아래에 서고, 글이 팝업에 선다. 팝업을 닫은 동안에도 묻는다.
   const { preview, reserve } = useDraftPreview(id, draft);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   // 팝업을 닫으면 포커스를 머리의 버튼에 돌려준다 — 팝업은 body 끝에 떠 있어, 안 돌려주면 `<body>`로 떨어진다.
   const closePreview = useCallback(() => {
     setPreviewOpen(false);
     opener.current?.focus();
   }, []);
-  const write = useWriteSpecLayout();
-  const enabled = canSave({ draft, baseline, preview, saving: write.isPending });
+  // **제 저장** — 쓰였으면 기준본이 저장한 것이 되고, 선 배너는 걷힌다(저장이 밖의 변경을 덮었다). 그래서 제 저장이
+  // 부른 다시 읽기는 판정 1번(무시)에 걸린다. 이 바꿈은 **다시 읽기가 도착하기 전에 그려져 있어야** 하므로 저장의
+  // 무효화보다 먼저, 곧바로 그린다(`flushSync`) — 미루면 다시 읽힌 답이 옛 기준본과 견줘져 제 저장을 밖 변경으로 읽는다.
+  const write = useWriteSpecLayout((written) =>
+    flushSync(() => {
+      setBaseline((before) => savedBaseline(before, written));
+      setOutside(null);
+    }),
+  );
+  const reference = contentOf(baseline);
+  const enabled = draft !== null && canSave({ draft, baseline: reference, preview, saving: write.isPending });
 
   // **템플릿은 늘 전부 넘긴다**(구현 스펙 3절) — 읽은 본문을 그대로 싣는다. 저장은 지금 초안의 미리보기가 오류 없이
   // 도착해야 열린다. 그래도 검증이 거절할 수 있다 — 미리보기와 저장 사이에 디스크가 바뀌었을 때(템플릿 파일이
   // 사라졌다). 그 거절은 답의 `errors`로 오고 아무것도 쓰이지 않았다: 초안은 그대로 남고, 그 오류가 이 초안의 가장
-  // 새 판정이 되어 그 자리에 선다(`reserve`). 거절(throw)은 쓰다가 실패한 것뿐이다.
-  const save = async () => {
-    if (!enabled) return;
+  // 새 판정이 되어 그 자리에 선다(`reserve`). 거절(throw)은 쓰다가 실패한 것뿐이다. 답은 썼는가다 — [저장하고
+  // 나가기]는 쓰였을 때만 떠난다.
+  const save = async (): Promise<boolean> => {
+    if (draft === null || !enabled) return false;
     const saved = draft;
     const refused = reserve(saved);
     try {
@@ -171,12 +219,24 @@ function EditorScreen({
         layout: saved.layout,
         templates: saved.templates,
       });
-      if (answer.errors.length === 0) setBaseline(saved);
-      else refused({ text: null, lines: [], errors: answer.errors, warnings: [] });
+      if (answer.errors.length === 0) return true;
+      refused({ text: null, lines: [], errors: answer.errors, warnings: [] });
     } catch (e) {
       await showProblem(`저장하지 못했습니다: ${e}`);
     }
+    return false;
   };
+
+  // 저장하지 않은 초안을 두고 떠나면 묻는다 — 뒤로, 사이드바 nav, 팔레트, 설정 nav의 다른 항목(티켓 15).
+  useConfirmLeave({ unsaved: draft !== null && unsaved(draft, reference), savable: enabled, save });
+
+  if (view === null) {
+    return (
+      <EditorFrame id={id} sidebarOpen={sidebarOpen} onBack={onBack}>
+        {"errors" in baseline && <UnreadableLayout read={baseline} onBack={onBack} />}
+      </EditorFrame>
+    );
+  }
 
   return (
     <EditorFrame
@@ -209,20 +269,91 @@ function EditorScreen({
       }
     >
       {previewOpen && (
-        <PreviewDialog answer={preview?.answer ?? null} selected={selected} onClose={closePreview} />
+        <PreviewDialog answer={preview?.answer ?? null} selected={view.selected} onClose={closePreview} />
+      )}
+      {outside !== null && (
+        <OutsideBanner
+          verdict={outside.verdict}
+          onReload={() => take(outside.fresh)}
+          // 유지는 배너를 닫고 기준본만 새것으로 바꾼다 — 그 뒤 저장하면 밖의 변경을 덮는다. 깨졌을 때 유지한 초안을
+          // 저장하면 고쳐지고, 지워졌을 때 저장하면 다시 만든다.
+          onKeep={() => {
+            setBaseline(outside.fresh);
+            setOutside(null);
+          }}
+        />
       )}
       <EditorColumns
-        draft={draft}
+        draft={view.draft}
         folder={read.folder}
-        selected={selected}
+        selected={view.selected}
         // 마지막으로 받은 답의 오류 — 초안을 고친 직후에는 아직 앞 초안의 것이다. 지연 뒤의 답이 그것을 바꾼다.
         errors={preview?.answer.errors ?? []}
-        onSelect={(path) => setView((now) => ({ ...now, selected: path }))}
-        onChange={(change) => setView((now) => ({ ...now, draft: change(now.draft) }))}
+        onSelect={(path) => setView((now) => now && { ...now, selected: path })}
+        onChange={(change) => setView((now) => now && { ...now, draft: change(now.draft) })}
         // 할 수 없는 조작(`null`)은 같은 상태를 돌려준다 — 다시 그리지 않는다.
-        onEdit={(edit) => setView((now) => edit(now.draft) ?? now)}
+        onEdit={(edit) => setView((now) => now && (edit(now.draft) ?? now))}
       />
     </EditorFrame>
+  );
+}
+
+/**
+ * 읽은 것을 펼친 편집 상태 — 초안과 고른 자리. 깨졌으면 펼칠 것이 없어 `null`이다(「읽지 못함」 화면). 고르던 자리가
+ * 새것에도 있으면 그대로 고르고, 없으면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`(방침 문단)을 고른다.
+ */
+function viewOf(read: SpecLayoutRead, selected: EntryPath | null): TreeEdit | null {
+  const draft = contentOf(read);
+  if (draft === null) return null;
+  if (selected !== null && entryAt(draft.layout, selected) !== null) return { draft, selected };
+  return { draft, selected: (draft.layout.root.children ?? []).length > 0 ? [0] : [] };
+}
+
+/** 배너의 뜻 셋(구현 스펙 5절). */
+const OUTSIDE_MESSAGE: Record<BannerVerdict, string> = {
+  changed: "밖에서 이 레이아웃이 바뀌었어요",
+  broken: "밖에서 이 레이아웃이 깨졌어요",
+  removed: "밖에서 지워졌어요",
+};
+
+/**
+ * 밖 변경 배너(티켓 15 · 결정 22) — 초안이 있는데 레이아웃이 밖에서 바뀌면 편집기 머리 아래에 한 줄로 선다. 한쪽을
+ * 고르게 할 뿐 합치지 않는다. [새로 불러오기]는 초안을 버리고 새로 읽은 것을 보인다(깨졌으면 「읽지 못함」 화면이다).
+ * [내 초안 유지]는 배너를 닫고 기준본만 새것으로 바꾼다.
+ */
+export function OutsideBanner({
+  verdict,
+  onReload,
+  onKeep,
+}: {
+  verdict: BannerVerdict;
+  onReload: () => void;
+  onKeep: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-center gap-3 border-t border-amber-600/20 bg-amber-600/10 py-2 pr-4 pl-5"
+    >
+      <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400" strokeWidth={2} />
+      <span className="min-w-0 flex-1 text-[13px] font-medium text-amber-700 dark:text-amber-400">
+        {OUTSIDE_MESSAGE[verdict]}
+      </span>
+      <button
+        type="button"
+        onClick={onReload}
+        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] border border-amber-600/30 bg-background px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-state-1"
+      >
+        새로 불러오기
+      </button>
+      <button
+        type="button"
+        onClick={onKeep}
+        className="h-7 shrink-0 whitespace-nowrap rounded-[9px] px-3 text-[13px] font-medium text-amber-700 transition-colors hover:bg-amber-600/10 dark:text-amber-400"
+      >
+        내 초안 유지
+      </button>
+    </div>
   );
 }
 

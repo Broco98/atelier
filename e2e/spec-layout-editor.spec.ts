@@ -134,7 +134,12 @@ test("항목을 고치기만 하고 저장을 누르지 않으면 저장 명령�
   await page.getByRole("radio", { name: "파일", exact: true }).click();
   await expect(행(page, "iter-{n}-{name}")).toBeVisible();
 
+  // 저장하지 않은 초안을 두고 떠나면 묻는다(티켓 15) — 버리고 나간다.
   await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
+  await page
+    .getByRole("alertdialog", { name: "저장하지 않은 변경이 있어요", exact: true })
+    .getByRole("button", { name: "버리고 나가기", exact: true })
+    .click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect(page.locator("main li")).toHaveCount(2);
   expect(await callCount(page, "write_spec_layout")).toBe(0);

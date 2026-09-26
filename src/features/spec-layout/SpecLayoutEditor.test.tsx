@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { EditorColumns, UnreadableLayout } from "./SpecLayoutEditor";
+import { EditorColumns, OutsideBanner, UnreadableLayout } from "./SpecLayoutEditor";
 import type { EntryPath, LayoutDraft } from "./draft";
 import type { LayoutError, UnreadableSpecLayout } from "./types";
 
@@ -366,5 +366,24 @@ describe("읽지 못하는 레이아웃", () => {
     expect(html).not.toContain("<input");
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain('role="tree"');
+  });
+});
+
+// 밖 변경 배너(티켓 15 · 결정 22). 초안이 있는데 레이아웃이 밖에서 바뀌면 편집기 머리 아래에 한 줄로 서서 한쪽을
+// 고르게 한다 — 합치지는 않는다. 언제 서는지는 판정 함수가 잰다(`outside.test.ts`). 여기서는 뜻 셋의 글과 버튼 둘을 잰다.
+describe("밖 변경 배너", () => {
+  it.each([
+    ["changed", "밖에서 이 레이아웃이 바뀌었어요"],
+    ["broken", "밖에서 이 레이아웃이 깨졌어요"],
+    ["removed", "밖에서 지워졌어요"],
+  ] as const)("%s — 「%s」 한 줄과 [새로 불러오기] · [내 초안 유지]가 선다", (verdict, message) => {
+    const html = renderToStaticMarkup(<OutsideBanner verdict={verdict} onReload={() => {}} onKeep={() => {}} />);
+    expect(html).toContain('role="alert"');
+    const [line] = [...html.matchAll(/<span\b[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
+    expect(line).toBe(message);
+    expect([...html.matchAll(/<button\b[^>]*>([^<]*)<\/button>/g)].map((m) => m[1])).toEqual([
+      "새로 불러오기",
+      "내 초안 유지",
+    ]);
   });
 });
