@@ -243,9 +243,14 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
       >
         {/* 이름은 「기준 브랜치」다 — 여는 버튼이 `combobox`가 되어 글자(지금 값)가 이름이 되지 못한다. 없는
             프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다.
-            도움말 「브랜치 목록에서 변경」은 툴팁이다. 목록에서 고른다는 것은 `combobox`가 이미 말해 설명은 안
-            단다(S28). */}
-        <Hint text="브랜치 목록에서 변경" render={<SelectTrigger aria-label="기준 브랜치" />}>
+            도움말 「브랜치 목록에서 변경」은 툴팁이다. 옛 `title`이 이름 다음에 읽어 주던 하는 일이라 설명
+            (`aria-description`)으로도 남는다(S28 — `combobox`는 목록이 열린다는 것까지만 말하고, 고르면 이 값이
+            바뀐다는 것은 말하지 않는다). */}
+        <Hint
+          text="브랜치 목록에서 변경"
+          announce="description"
+          render={<SelectTrigger aria-label="기준 브랜치" />}
+        >
           <SelectValue className="font-mono" />
         </Hint>
         <SelectContent

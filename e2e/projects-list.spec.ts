@@ -58,7 +58,7 @@ test("이 프로젝트의 work을 열면 그 work의 마지막 자리가 열린�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 기준 브랜치 (스토리 67~69, S32 · S37) ──
+// ── 기준 브랜치 (스토리 67~69, S28 · S32 · S37) ──
 // 프로젝트 화면의 기준 브랜치는 로컬 브랜치 목록(Select)에서 고른다. 여는 버튼이 `combobox`이고 목록이
 // `listbox`라, 지금 값이 「선택됨」으로 읽힌다. 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔
 // 때만**이다(지금 규칙). 목록은 지금처럼 버튼 **아래로** 뜬다 — registry의 트리거 맞춤(고른 값을 트리거 자리에
@@ -76,6 +76,8 @@ test("기준 브랜치를 키로 열면 목록이 버튼 아래에 서고 지금
   await page.goto(`/projects/${project.slug}`);
   const trigger = 기준브랜치(page);
   const list = page.getByRole("listbox");
+  // 도움말(툴팁) 「브랜치 목록에서 변경」은 이름보다 더 말하는 하는 일이라 설명으로도 남는다(S28).
+  await expect(trigger).toHaveAccessibleDescription("브랜치 목록에서 변경");
 
   await trigger.focus();
   await page.keyboard.press("ArrowDown");

@@ -168,9 +168,11 @@ function MermaidBlock({ code }: { code: string }) {
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
           {/* 켬/끔 토글이다 — 켜졌는지를 `aria-pressed`로 말한다(스토리 103). 이름은 보이는 글자 「코드」이고,
-              도움말은 툴팁이다. 설명(`aria-description`)으로 남기지 않는다 — 단축키도 잠긴 이유도 아니다(S28). */}
+              도움말은 툴팁이다. 도움말은 이름보다 더 말한다 — 무엇의 코드인지(원본 mermaid)와 켜면 무엇이 서는지를.
+              그래서 설명(`aria-description`)으로도 남는다(S28 — 옛 `title`이 이름 다음에 읽어 주던 말이다). */}
           <Hint
             text="원본 mermaid 코드 보기"
+            announce="description"
             render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
           >
             코드
