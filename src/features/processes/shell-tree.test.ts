@@ -541,11 +541,17 @@ describe("주인 잃은 셸 묶음", () => {
 });
 
 // 프로세스 티켓 32 — **화면 밖 셸**(프로세스 스펙 S42). 풀에는 있는데 화면 스토어가 모르는 셸이다 — 새로고침 중에 끝난 spawn이 남길 수
-// 있다(조사의 경로 7, 추정). **연달아 두 스냅샷에 선 셸만** 센다: Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의 `spawn`), 프런트는
-// 답이 온 뒤에야 칸에 셸 키를 앉힌다 — 그 사이 찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다.
-describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지난 스냅샷", () => {
+// 있다(조사의 경로 7, 추정). **연달아 두 박자 모두 스토어가 모른 셸만** 센다: Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의
+// `spawn`), 프런트는 답이 온 뒤에야 칸에 셸 키를 앉힌다 — 그 사이 찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다.
+// 닫는 쪽에도 같은 창이 있다 — 닫기는 칸을 곧바로 빼는데 풀은 다음 박자까지 앞 장이다(리뷰 반영).
+describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지난 박자", () => {
+  /** `previous`는 앞 박자의 풀이다. 그 박자의 스토어는 지금과 같다 — 스토어가 박자 사이에 안 바뀐 모양이다. */
   const 가르기 = (shells: Shell[], pool: PoolShell[], previous: PoolShell[] | undefined, descendants = {}, helpers: ProcessRow[] = []) =>
-    offscreenShells({ shells, snapshot: 스냅샷(pool, descendants, helpers), previous });
+    offscreenShells({
+      shells,
+      snapshot: 스냅샷(pool, descendants, helpers),
+      previous: previous === undefined ? undefined : { pool: previous, shells },
+    });
 
   it("스토어가 모르는 셸이 지난 스냅샷에도 있었으면 화면 밖 셸이다", () => {
     const found = 가르기([칸(1, "G-1")], [풀(1, "G-1"), 풀(4, "G-4")], [풀(1, "G-1"), 풀(4, "G-4")]);
@@ -567,6 +573,25 @@ describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지�
     ];
     const pool = [풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")];
     expect(가르기(shells, pool, pool).map((node) => node.pool.shellKey)).toEqual(["G-3"]);
+  });
+
+  // 닫는 쪽의 창 — 닫기는 스토어에서 칸을 곧바로 빼는데(`closeShell`) 스냅샷은 다음 박자까지 앞 장이라 그 셸이 두 풀에 다 있다. 지금
+  // 스토어만 보면 방금 닫은 셸이 「화면 밖 셸」로 선다. 앞 박자에 스토어가 알던 셸이면 두 박자 연달아 모른 셸이 아니다.
+  it("앞 박자에 스토어가 알던 셸은 지금 스토어에서 빠져도(닫힘) 화면 밖 셸이 아니다", () => {
+    const pool = [풀(1, "G-1"), 풀(4, "G-4")];
+    const found = offscreenShells({
+      shells: [],
+      snapshot: 스냅샷(pool),
+      previous: { pool, shells: [칸(1, "G-1")] },
+    });
+    // 앵커: 앞 박자에도 스토어가 몰랐던 4는 선다.
+    expect(found.map((node) => node.pool.shellKey)).toEqual(["G-4"]);
+  });
+
+  // 뜨는 쪽의 창은 거꾸로다 — 앞 박자에 스토어가 몰랐어도 지금 알면 화면 밖 셸이 아니다(spawn 답이 그 사이 왔다).
+  it("앞 박자에 스토어가 몰랐어도 지금 알면 화면 밖 셸이 아니다", () => {
+    const pool = [풀(4, "G-4")];
+    expect(offscreenShells({ shells: [칸(4, "G-4")], snapshot: 스냅샷(pool), previous: { pool, shells: [] } })).toEqual([]);
   });
 
   // 셸은 pty id와 셸 키가 함께 같아야 같은 셸이다 — 키만 보면 같은 키의 셸이 닫혔다 다시 뜬 것을(다른 pty id) 두 박자에 선 것으로

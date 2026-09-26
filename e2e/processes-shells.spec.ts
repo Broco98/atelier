@@ -242,6 +242,100 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **이 화면에서 닫은 셸은 화면 밖 셸이 아니다**(리뷰 반영). 닫기는 스토어에서 칸을 곧바로 빼는데 스냅샷은 다음 박자까지 앞 장이라
+// 그 셸이 풀에 남는다 — 「지금 스토어가 모름 + 두 스냅샷에 섬」만 보면 방금 닫은 셸이 0~2초 「화면 밖 셸」로 선다. 앞 박자에 스토어가
+// 알던 셸은 두 박자 연달아 스토어가 모른 셸이 아니다. 닫는 길 셋(셸 행의 [닫기] · [조용한 셸 모두 닫기] · 주인 잃은 셸 [모두
+// 닫기])을 박자를 멈춘 채 차례로 잰다 — 스냅샷이 안 바뀌어야 그 창이 드러난다.
+test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 밖 셸로 서지 않는다 — [닫기] · [조용한 셸 모두 닫기] · [모두 닫기]", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await installFixtureBackend(page, {
+    // 99는 스토어가 모르는 셸이다 — 화면 밖 셸 묶음이 서 있다는 앵커. 1 · 2 · 3은 스토어가 아는 셸이다.
+    processes_snapshot: 스냅샷([1, 2, 3, 99]),
+    // 1은 도는 것이 있어 MCP 아카이브가 주인 잃은 셸로 남긴다. 3은 조용하다 — [조용한 셸 모두 닫기]가 닫는다.
+    pty_close_checks: { 1: BUSY, 3: QUIET },
+    // 2는 조용하다 — 셸 행의 [닫기]가 묻지 않고 닫는다.
+    pty_command_running: answerByArg("id", { 2: QUIET }),
+  });
+  // `그냥 일`에 셸 하나(pty 1)를 두고 MCP가 그 work을 아카이브한다 — 주인 잃은 셸이다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
+  // Atelier `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
+  await nav(page, "Terminal").click();
+  await expect(page).toHaveURL("/terminal");
+  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await openShell(page);
+
+  await nav(page, "Processes").click();
+  await expect(page).toHaveURL("/processes");
+  await expect(셸줄(셸트리(page), 3)).toBeVisible();
+  await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  // 두 박자 — 스토어가 모르는 99가 화면 밖 셸로 선다.
+  const offscreen = 묶음(page, "화면 밖 셸");
+  await 다음박자(page);
+  await expect(셸줄(offscreen, 99)).toBeVisible();
+  const orphans = 묶음(page, "주인 잃은 셸");
+  await expect(셸줄(orphans, 1)).toBeVisible();
+
+  // ── 셸 행의 [닫기] ── 2는 조용해 묻지 않고 닫힌다. 스냅샷은 그대로라 풀에 2가 남아 있다.
+  await 버튼(셸줄(셸트리(page), 2), "닫기").click();
+  await expect.poll(() => kills(page)).toEqual([{ id: 2, reason: "shellClose", owner: "atelier:" }]);
+  // 앵커: 스토어에서 빠진 뒤의 화면이다 — 같은 렌더가 화면 밖 셸도 가른다.
+  await expect(셸줄(셸트리(page), 2)).toHaveCount(0);
+  await expect(셸줄(offscreen, 2)).toHaveCount(0);
+  await expect(셸줄(offscreen, 99)).toBeVisible();
+
+  // ── [조용한 셸 모두 닫기] ── 살아 있는 셸 1 · 3 중 조용한 3만 닫는다.
+  await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
+  const quiet = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
+  await expect(quiet).toBeVisible();
+  await 버튼(quiet, "모두 닫기").click();
+  await expect
+    .poll(() => kills(page))
+    .toEqual([
+      { id: 2, reason: "shellClose", owner: "atelier:" },
+      { id: 3, reason: "shellClose", owner: "atelier:" },
+    ]);
+  await expect(셸줄(셸트리(page), 3)).toHaveCount(0);
+  await expect(셸줄(offscreen, 3)).toHaveCount(0);
+  await expect(셸줄(offscreen, 99)).toBeVisible();
+
+  // ── 주인 잃은 셸 [모두 닫기] ──
+  await 버튼(orphans, "모두 닫기").click();
+  const orphanDialog = page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
+  await expect(orphanDialog).toBeVisible();
+  await 버튼(orphanDialog, "모두 닫기").click();
+  await expect
+    .poll(() => kills(page))
+    .toEqual([
+      { id: 2, reason: "shellClose", owner: "atelier:" },
+      { id: 3, reason: "shellClose", owner: "atelier:" },
+      { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
+    ]);
+  await expect(orphans).toHaveCount(0);
+  await expect(셸줄(offscreen, 1)).toHaveCount(0);
+  await expect(셸줄(offscreen, 99)).toBeVisible();
+
+  // ── 다음 박자 ── 닫힌 셸은 풀에서 빠졌다(Rust의 `kill`이 풀에서 먼저 뺀다). 화면 밖 셸은 99 하나다.
+  await replaceAnswer(page, "processes_snapshot", 스냅샷([99]));
+  await 다음박자(page);
+  await expect
+    .poll(() =>
+      offscreen
+        .locator('[role="treeitem"][data-shell-key]')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-shell-key"))),
+    )
+    .toEqual([키(99)]);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 기록 셋 — Rust가 새것부터 준다(`processes_cleanup_log`). 때는 끝내기가 끝난 시각이다.
 const 기록: CleanupEvent[] = [
   {

@@ -5,7 +5,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import { modeOfOwner, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
+import { modeOfOwner, shellRowName, slugOfOwner, type Shell } from "@/features/terminal/shell-registry";
 import {
   closeOffscreenShell,
   closeOrphans,
@@ -45,6 +45,7 @@ import {
   stateText,
   worldRowLabel,
   type ListedItem,
+  type PoolBeat,
   type ShellNode,
   type ShellState,
 } from "./shell-tree";
@@ -75,7 +76,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   );
   const goToShell = useGoToShell();
 
-  const previous = usePreviousPool(snapshot?.pool, dataUpdatedAt);
+  const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
 
   const tree = snapshot ? shellTree({ current: mode, shells, lists, snapshot }) : [];
   const orphans = snapshot ? orphanGroups({ current: mode, shells, snapshot }) : [];
@@ -223,21 +224,21 @@ function useWorldLists(worlds: ReadonlyArray<Mode>): Partial<Record<Mode, Readon
 }
 
 /**
- * 바로 앞 스냅샷의 풀 — 화면 밖 셸은 **두 스냅샷에 연달아** 선 셸만 센다(`offscreenShells`). 스냅샷이 도착한 때(`dataUpdatedAt`)로
+ * 바로 앞 박자 — 화면 밖 셸은 **두 박자 연달아 스토어가 모른** 셸만 센다(`offscreenShells`). 스냅샷이 도착한 때(`dataUpdatedAt`)로
  * 박자를 가른다: react-query는 같은 내용이면 같은 참조를 돌려주므로(구조 공유) 데이터로 가르면 박자를 놓친다. 새 박자를 본 렌더에서
  * 앞 장을 밀어 둔다(렌더 중 상태 갱신 — React가 곧바로 다시 그린다).
+ *
+ * **박자마다 그 박자를 처음 그린 렌더의 스토어를 함께 적는다.** 그 뒤로 스토어가 바뀌어도(이 화면의 [닫기]) 고쳐 적지 않는다 — 고쳐
+ * 적으면 방금 닫은 셸이 「앞 박자에도 스토어가 몰랐다」가 되어, 풀에서 빠지는 다음 박자 전에 화면 밖 셸로 선다.
  */
-function usePreviousPool(
+function usePreviousBeat(
   pool: ReadonlyArray<PoolShell> | undefined,
+  shells: ReadonlyArray<Shell>,
   at: number,
-): ReadonlyArray<PoolShell> | undefined {
-  const [seen, setSeen] = useState<{
-    at: number;
-    current?: ReadonlyArray<PoolShell>;
-    previous?: ReadonlyArray<PoolShell>;
-  }>({ at: 0 });
+): PoolBeat | undefined {
+  const [seen, setSeen] = useState<{ at: number; current?: PoolBeat; previous?: PoolBeat }>({ at: 0 });
   if (pool !== undefined && seen.at !== at) {
-    setSeen({ at, current: pool, previous: seen.current });
+    setSeen({ at, current: { pool, shells }, previous: seen.current });
     return seen.current;
   }
   return seen.previous;

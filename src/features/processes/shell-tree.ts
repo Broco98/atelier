@@ -148,32 +148,52 @@ export interface OffscreenNode {
   descendants: ReadonlyArray<DescendantNode>;
 }
 
+/**
+ * 스냅샷 한 박자 — 그 스냅샷의 풀과, **그 박자를 처음 그릴 때 스토어가 든 셸**. 화면 밖 셸은 두 박자 모두 스토어가 모른 셸이라
+ * (`offscreenShells`) 앞 박자의 풀만으로는 못 가른다 — 그때 스토어가 그 셸을 알았는지가 함께 있어야 한다.
+ */
+export interface PoolBeat {
+  pool: ReadonlyArray<PoolShell>;
+  shells: ReadonlyArray<Shell>;
+}
+
 export interface OffscreenInput {
   /** 스토어의 셸 — 두 세계 전부. 이 셸들의 셸 키가 「화면이 아는 셸」이다. */
   shells: ReadonlyArray<Shell>;
   snapshot: ProcessSnapshot;
-  /** 바로 앞 스냅샷의 풀. 아직 없으면(화면을 막 열었다) 화면 밖 셸도 없다. */
-  previous: ReadonlyArray<PoolShell> | undefined;
+  /** 바로 앞 박자. 아직 없으면(화면을 막 열었다) 화면 밖 셸도 없다. */
+  previous: PoolBeat | undefined;
 }
 
 /**
- * 화면 밖 셸을 가른다 — 풀의 셸 중 **스토어의 어느 칸도 그 셸 키를 안 들고**, **바로 앞 스냅샷에도 같은 pty id · 셸 키로 있던** 셸.
- * 차례는 풀의 차례다.
+ * 화면 밖 셸을 가른다 — 풀의 셸 중 **지금 스토어의 어느 칸도 그 셸 키를 안 들고**, **바로 앞 박자에도 같은 pty id · 셸 키로 풀에
+ * 있었는데 그때 스토어도 몰랐던** 셸. 차례는 풀의 차례다.
  *
- * **두 스냅샷에 연달아 선 셸만 센다.** Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의 `spawn`), 프런트는 답이 온 뒤에야 칸에
- * 셸 키를 앉힌다 — 그 사이 찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다. 끝난 칸 · 주인 잃은 셸도 스토어가
- * 아는 셸이다(키가 칸에 있다).
+ * **두 박자 연달아 스토어가 모른 셸만 센다.** 한 박자에만 모르는 창이 양쪽에 있다.
+ * - 뜨는 쪽: Rust는 셸을 풀에 앉힌 뒤에 spawn에 답하고(`pty.rs`의 `spawn`), 프런트는 답이 온 뒤에야 칸에 셸 키를 앉힌다 — 그 사이
+ *   찍힌 스냅샷에는 방금 뜬 멀쩡한 셸이 한 번 스토어가 모르는 셸로 선다. 다음 박자에는 스토어가 안다.
+ * - 닫는 쪽: 닫기는 스토어에서 칸을 곧바로 빼는데(`closeShell`) 화면의 스냅샷은 다음 박자까지 앞 장이다 — 방금 닫은 셸이 두 풀에 다
+ *   있고 지금 스토어는 모른다. 지금 스토어만 보면 그 셸이 다음 박자까지 「화면 밖 셸」로 서서 새어 남은 것처럼 읽힌다(리뷰 반영).
+ *   앞 박자에 스토어가 알던 셸이라 안 선다. 풀에서 두 박자 넘게 안 빠지면 그때는 선다 — 정말 남은 것이다.
+ *
+ * 앞 박자의 스토어는 **그 박자를 처음 그린 때의 것**이다(`PoolBeat` — 화면이 적어 둔다). 끝난 칸 · 주인 잃은 셸도 스토어가 아는
+ * 셸이다(키가 칸에 있다).
  *
  * **pty id와 셸 키가 함께 같아야 같은 셸이다** — 키만 보면 닫혔다 다시 뜬 셸을 두 박자에 선 것으로 읽는다.
  */
 export function offscreenShells({ shells, snapshot, previous }: OffscreenInput): OffscreenNode[] {
   if (previous === undefined) return [];
-  const known = new Set(shells.flatMap((shell) => (shell.shellKey === null ? [] : [shell.shellKey])));
-  const before = new Set(previous.map(poolKey));
+  const before = new Set(unknownPool(previous).map(poolKey));
   const helpers = new Set(snapshot.verdict.helpers.map(identityKey));
-  return snapshot.pool
-    .filter((pool) => !known.has(pool.shellKey) && before.has(poolKey(pool)))
+  return unknownPool({ pool: snapshot.pool, shells })
+    .filter((pool) => before.has(poolKey(pool)))
     .map((pool) => ({ pool, ...splitRows(snapshot.verdict.descendants[pool.shellKey] ?? [], helpers) }));
+}
+
+/** 한 박자의 풀에서 그 박자의 스토어가 모르는 셸 — 어느 칸도 그 셸 키를 안 든 것. 풀의 차례다. */
+function unknownPool({ pool, shells }: PoolBeat): PoolShell[] {
+  const known = new Set(shells.flatMap((shell) => (shell.shellKey === null ? [] : [shell.shellKey])));
+  return pool.filter((one) => !known.has(one.shellKey));
 }
 
 function poolKey(pool: PoolShell): string {
