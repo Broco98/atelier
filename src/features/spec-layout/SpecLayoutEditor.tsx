@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { settingsItem } from "@/features/settings/pages";
@@ -118,13 +119,10 @@ function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean 
       {read.error !== null && (
         <div className="flex max-w-[620px] flex-col items-start gap-3 px-8 pt-2">
           <p className="text-[13.5px] leading-[1.7] text-red-600">{String(read.error)}</p>
-          <button
-            type="button"
-            onClick={() => void read.refetch()}
-            className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-          >
+          {/* 쪽 동작 버튼이다 — 설정 파일 읽기 게이트의 [다시 읽기]와 같다(`Button`의 ghost · sm). */}
+          <Button variant="ghost" size="sm" onClick={() => void read.refetch()}>
             다시 읽기
-          </button>
+          </Button>
         </div>
       )}
     </EditorFrame>
@@ -250,26 +248,23 @@ function EditorScreen({
       onBack={onBack}
       actions={
         <>
-          <button
+          {/* 머리의 쪽 동작이다 — 프로젝트 머리행의 [폴더 열기]와 같은 `Button` ghost · sm이고, 아이콘은 글자 앞에
+              선다(`data-icon="inline-start"`). */}
+          <Button
             ref={opener}
-            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setPreviewOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={previewOpen}
-            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
           >
-            <Eye aria-hidden className="size-[15px]" strokeWidth={1.9} />
+            <Eye data-icon="inline-start" aria-hidden strokeWidth={1.9} />
             LLM이 받는 텍스트
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={!enabled}
-            // 규격은 설정의 저장 버튼(`SettingsPage`의 `SaveButton`)과 같다 — 이 저장소의 주 버튼 하나다.
-            className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
-          >
+          </Button>
+          {/* 주 버튼(`Button` 기본)이다 — 설정의 [저장]과 같은 부품이다. */}
+          <Button onClick={() => void save()} disabled={!enabled}>
             {write.isPending ? "저장 중…" : "저장"}
-          </button>
+          </Button>
         </>
       }
     >
@@ -1268,13 +1263,9 @@ export function UnreadableLayout({
           ))}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-      >
+      <Button variant="ghost" size="sm" onClick={onBack}>
         설정으로 돌아가기
-      </button>
+      </Button>
     </div>
   );
 }
