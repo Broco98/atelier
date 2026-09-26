@@ -475,7 +475,7 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   expect(앰버, "앰버와 초록이 같은 색이다").not.toBe(초록);
   await expect.poll(() => 칸배경(page, 1), { message: "둘째 칸이 초록으로 안 물들었다" }).toBe(초록);
 
-  // **도는 중은 안 물든다**(스토리 52). 탭 칸에는 링을 안 세우므로 여기서 물들이면 claude가
+  // **도는 중은 안 물든다**(스토리 52). 탭 칸에는 스피너를 안 세우므로 여기서 물들이면 claude가
   // 도는 내내 줄이 색을 띤 채라 「부른다」가 뜻을 잃는다.
   await markAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 2);
   await expect

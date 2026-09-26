@@ -185,7 +185,7 @@ test.describe("앱으로 돌아가기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("돌아가면 확인할 것 띠가 그대로 있다", async ({ page }) => {
+  test("돌아가면 알림 띠가 그대로 있다", async ({ page }) => {
     await stubWindowFocus(page);
     await installFixtureBackend(page);
     await page.goto(`/works/${plain.slug}?tab=terminal`);

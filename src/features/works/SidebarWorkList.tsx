@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import type { ShellSignal } from "@/components/shell/shell-signal";
+import type { CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
 import { routesOf, slugOf, type Mode } from "@/mode";
@@ -41,7 +41,8 @@ function SidebarWorkList({
   mode,
   shellCounts,
   signals,
-  renderSubrow,
+  notes,
+  renderRowMeta,
 }: {
   open: boolean;
   /**
@@ -53,10 +54,9 @@ function SidebarWorkList({
    */
   mode: Mode;
   /**
-   * work별 셸 개수 — **둘째 줄이 종류·수를 싣는가, 프로젝트 이름을 싣는가**를 가르는
-   * 값이다(결정 2·3, 이 판 결정 5). 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와
-   * 도는 것을 **둘 다 아는 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이
-   * `ShellMeta` 하나로 합쳐졌다(결정 3·13).
+   * work별 셸 개수 — **행의 오른쪽 메타가 서는 조건**이다(결정 2·3). 셸이 없는 행에는 그 칸이
+   * 없다. 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는
+   * 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
    *
    * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
    * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
@@ -64,7 +64,7 @@ function SidebarWorkList({
    */
   shellCounts: Record<string, number>;
   /**
-   * work마다의 **화면값**(#203) — 레인이 점·링을 세울지 work 상태 아이콘을 세울지, 그리고
+   * work마다의 **화면값**(#203) — 레인이 점·스피너를 세울지 work 상태 아이콘을 세울지, 그리고
    * 행 버튼의 이름에 상태 말이 붙을지를 가른다. 값이 없는 work은 **키 자체가 없다.**
    *
    * **개수와 같은 길로 온다**(위 주석) — 이 목록은 터미널을 모른다. 슬롯이 아니라 값인 것은
@@ -75,16 +75,26 @@ function SidebarWorkList({
    */
   signals: Record<string, ShellSignal>;
   /**
-   * 둘째 줄의 **셸 갈래**. 같은 이유로 슬롯이고, 값을 고르는 자리는 터미널 스토어를 아는
-   * Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
+   * work마다 **부르는 셸이 한 말**(`sidebar-active-band` 결정 14) — 종류와 말이다. 값이 없는 work은
+   * 키 자체가 없다(부르지 않거나, 말 없이 불렀다 — S6).
    *
-   * **오는 것이 하나가 아니다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크 · message ·
-   * 경과, `components/shell/shell-signal`의 `SignalLine`)이고, 조용하면 지금까지처럼 종류·수
-   * (`shell-meta`의 `ShellMeta`)다. 셋째 갈래인 프로젝트 이름은 이 슬롯 밖이다 — 셸이 없는
-   * 행의 것이라 터미널을 몰라도 그릴 수 있다(아래 `WorkRow`). 타입이 `ReactNode`뿐이라
-   * 이 문단이 「이 슬롯에 무엇이 오나」를 묻는 유일한 자리다.
+   * **`signals`와 같은 길로 온다 — 슬롯이 아니라 값이다.** 이 값을 읽는 자리가 둘인데 둘 다
+   * 행 마크업 **안**이 아니다: 행 버튼의 접근성 설명은 버튼의 **속성**이고, 호버 카드는 목록
+   * 밖의 포털에 선다. 슬롯 하나로는 그 두 자리에 닿지 않는다. 고르는 자리는 위(`Sidebar`)
+   * 하나이고, 그 고름이 레인·메타와 같은 셸을 딛는다 — 여기서 둘로 나눠 줄 뿐이다.
    */
-  renderSubrow: (work: WorkView) => ReactNode;
+  notes: Record<string, CallingNote>;
+  /**
+   * 행의 **오른쪽 메타**(`sidebar-active-band` S4·S5). 같은 이유로 슬롯이고, 값을 고르는 자리는
+   * 터미널 스토어를 아는 Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
+   *
+   * **오는 것이 하나가 아니다**: 그 셸이 부르거나 돌면 **신호의 마크와 경과**(부름은 마크 + 경과,
+   * 도는 중은 마크 — `components/shell/shell-signal`의 `SignalMeta`)이고, 조용하면 종류·수
+   * (`shell-meta`의 `ShellMeta`)다. 셸이 없는 행에는 칸이 아예 없다 — 슬롯을 불러도 그 행에는
+   * 서지 않는다(`WorkRow`). 타입이 `ReactNode`뿐이라 이 문단이 「이 슬롯에 무엇이 오나」를
+   * 묻는 유일한 자리다.
+   */
+  renderRowMeta: (work: WorkView) => ReactNode;
 }) {
   const { data: works = [] } = useWorks(mode);
   const navigate = useNavigate();
@@ -400,7 +410,7 @@ function SidebarWorkList({
             바깥 거터가 없는 상자들(본문·설정)은 처음부터 막대가 경계에서 3~9px이라 성했다. */}
         {/* **표식은 검사가 이 목록을 정체성으로 집기 위한 것이다.** 한때 L3가
             `aside .scroll-quiet`로 집었는데, 그 클래스는 「굴러가는 상자」라는 겉모습이라
-            같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 「확인할 것」 띠가 펼쳐지면
+            같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 알림 띠가 펼쳐지면
             그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
         <div
           data-worklist=""
@@ -416,12 +426,13 @@ function SidebarWorkList({
             selectedSlug={selectedSlug}
             shellCounts={shellCounts}
             signals={signals}
+            notes={notes}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            renderSubrow={renderSubrow}
+            renderRowMeta={renderRowMeta}
             draggedSlug={draggedSlug}
             lineY={lineY}
             litEmptySlot={litEmptySlot}
@@ -444,7 +455,9 @@ function SidebarWorkList({
           width={272}
           className="p-3.5"
         >
-          <WorkCard mode={mode} work={hovered} />
+          {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
+              말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
+          <WorkCard mode={mode} work={hovered} note={notes[hovered.slug] ?? null} />
         </PopoverPortal>
       )}
     </>

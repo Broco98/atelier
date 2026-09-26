@@ -44,7 +44,7 @@ export type PtyFrame = ArrayBuffer | PtyExit;
  * 셸이 **스스로 말한 것** 한 장 — 훅이 `~/.atelier/shells/<셸 ID>.json`에 적고 백엔드의
  * 감시가 그대로 실어 온다.
  *
- * **`message`가 없다.** 화면 둘째 줄에 설 한 줄은 이벤트마다 다른 자리에서 나오므로
+ * **`message`가 없다.** 화면에 설 한 줄(호버 카드의 말 칸·띠)은 이벤트마다 다른 자리에서 나오므로
  * (`tool_input` 요약 · `last_assistant_message`의 첫 줄) 에이전트별 어댑터가 `payload`에서
  * 접는다. 그 규칙을 사용자 홈에 설치된 스크립트가 들면 앱을 고쳐도 낡은 셸에서는 안 바뀐다.
  */

@@ -28,7 +28,8 @@ const work: WorkView = {
   specFiles: ["overview.md", "01-계획/plan.md"],
 };
 
-const card = (mode: Mode) => renderToStaticMarkup(<WorkCard mode={mode} work={work} />);
+// 셸의 말 칸(결정 14)은 이 파일이 재는 세계 가름과 무관하다 — 칸이 서는지는 L3가 잰다.
+const card = (mode: Mode) => renderToStaticMarkup(<WorkCard mode={mode} work={work} note={null} />);
 
 describe("hover 카드가 세계를 탄다", () => {
   // **두 세계를 나란히 잰다.** 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다 — Maison만

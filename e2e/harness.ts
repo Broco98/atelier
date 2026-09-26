@@ -413,18 +413,36 @@ export async function fireEvent(
   );
 }
 
-/**
- * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
- *
- * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
- * **형제**라(`WorkSectionList`의 `WorkRow`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
- * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
- */
-export const 레인 = (page: Page, slug: string) =>
-  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
-
 /** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
 export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+
+/**
+ * 그 work 행의 **레인** — 화면값이 있으면 점·스피너가, 없으면 work 상태 아이콘이 든다.
+ *
+ * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의
+ * `[data-lane]`으로 집는다 — 행이 한 줄이 되어 둘째 줄(`data-subrow`)이 걷혀도 이 길은 그대로다
+ * (`sidebar-active-band` 결정 14). 한때 둘째 줄에서 한 칸 올라가 집었는데, 그러면 둘째 줄을 걷는
+ * 날 이것을 딛는 spec 셋이 함께 무너진다.
+ */
+export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
+
+/**
+ * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
+ * 행의 화면값에 따라 갈린다: 부르면 마크와 경과, 돌면 마크, 조용하면 종류·수. **셸이 없는 행에는
+ * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
+ */
+export const 오른쪽메타 = (page: Page, slug: string) =>
+  workRow(page, slug).locator("[data-row-meta]");
+
+/**
+ * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 부르는 행의 이름은 `<제목> — <상태>`다.
+ *
+ * **목록 안으로 좁힌다.** 알림 띠의 줄이 같은 이름을 쓰므로(부르는 셸이 있으면 그 줄도 함께
+ * 선다) 화면 전체에서 집으면 둘이 잡힌다. 행 버튼의 접근성 설명(셸의 마지막 말, 결정 14)을 재는
+ * 자리가 이것을 딛는다.
+ */
+export const 행버튼 = (page: Page, name: string) =>
+  page.locator("[data-worklist]").getByRole("button", { name, exact: true });
 
 /** 사이드바에 선 작업 행의 slug, 위에서부터. */
 export const shownWorkOrder = (page: Page) =>
@@ -503,7 +521,7 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
   await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
 }
 
-/** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
+/** 알림 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**

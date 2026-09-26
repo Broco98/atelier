@@ -12,9 +12,11 @@ import {
   stubNotifications,
   stubWindowFocus,
   unknownIpcCalls,
+  workRow,
   writeShell,
   띠,
   레인,
+  행버튼,
 } from "./harness";
 
 const [, plainWork] = WORKS;
@@ -68,7 +70,14 @@ test("접두사 없는 OSC 9는 초록을 세우고 그 본문을 그대로 보�
   // **본문이 그대로 실려 사람이 읽는다**(결정 13의 둘째). 상태는 「확인할 것」이라는 약한
   // 주장만 하고 무슨 일인지는 이 글자가 말한다 — 그 글자가 서는 자리 둘을 다 본다.
   // (띠 줄은 한 줄이라 message를 안 싣는다 — 구현 결정 5.)
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("PR #174 열었다");
+  //
+  // **사람이 읽는 자리는 호버 카드의 말 칸이다**(`sidebar-active-band` 결정 14). 행이 한 줄이
+  // 되면서 말이 행에서 빠져 그리로 갔다 — 여기서는 OSC가 연 길이 그 칸까지 닿는가를 본다.
+  // 설명(`aria-description`)으로 재는 것은 아래 검사들이고, 이 하나만 카드로 잰다.
+  await workRow(page, plainWork.slug).hover();
+  await expect(
+    page.locator("[data-popover] [data-last-message]").getByText("PR #174 열었다", { exact: true }),
+  ).toBeVisible();
   await expect
     .poll(async () => (await sentNotifications(page))[0]?.body, { message: "알림이 안 울렸다" })
     .toBe("PR #174 열었다");
@@ -97,7 +106,9 @@ test("OSC 777도 같은 문으로 들어온다", async ({ page }) => {
   await expect(
     띠(page).getByRole("button", { name: `${plainWork.title} — 확인할 것`, exact: true }),
   ).toHaveCount(1);
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("PR #174 열었다");
+  await expect(행버튼(page, `${plainWork.title} — 확인할 것`)).toHaveAccessibleDescription(
+    "PR #174 열었다",
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -113,8 +124,11 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
   const lane = 레인(page, plainWork.slug);
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
   // **접두사 뒤가 말이 된다** — 접두사 자체는 앱이 이미 상태로 옮겼으니 두 번 말하지 않는다.
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).not.toContainText("Approval requested");
+  // 설명은 **글자 그대로 같은가**로 잰다 — 접두사가 남았으면 여기서 어긋나므로, 한때 따로 적던
+  // 「`Approval requested`가 없다」가 이 한 줄에 든다.
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "Bash(git push)",
+  );
 
   // **Codex는 승인 요청이 떠 있는 동안 턴 완료 OSC를 안 보낸다** — 앰버를 푸는 것은 사람이
   // 승인한 뒤 **다시 흐르기 시작한 출력**이다(스펙 전이 표의 마지막 줄). 이 줄이 없으면
@@ -123,10 +137,12 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
   // 부르는 셸이 아니게 됐으니 띠가 통째로 사라진다(도는 중은 띠에 못 온다 — 결정 8).
+  //
+  // _한때 여기서 「말은 남는다」(도는 행의 둘째 줄이 직전 말을 흐리게 든다 — 결정 13의 셋째)를
+  // 쟀다._ 행이 한 줄이 되면서 그 말이 설 자리가 없어졌다: 카드의 말 칸과 행 설명은 부르는
+  // 셸에만 선다(`sidebar-active-band` 결정 14 · S6). 결정 14가 고른 대가이고, 도는 행에 말 칸이
+  // 없다는 것은 사이드바 spec의 「조용한 행과 도는 행의 카드에는 말 칸이 없고 …」가 든다.
   await expect(띠(page)).toHaveCount(0);
-  // **말은 남는다** — 「직전 유지」다. 링이 「지금 돈다」를 말하니 둘째 줄은 맥락을 지킨다
-  // (결정 13의 셋째).
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -190,8 +206,11 @@ test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 
   // 기다리며 찍는 커서 갱신 한 번에 앰버가 꺼진다.
   await writeShell(page, "still thinking...\r\n", 1);
   await expect(tabs.nth(0)).toHaveAttribute("aria-label", /나를 기다림/);
-  // 말도 훅이 준 것 그대로다 — OSC 본문이 덮지 않았다.
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("커밋할까요?");
+  // 말도 훅이 준 것 그대로다 — OSC 본문이 덮지 않았다. 기다림이 완료보다 앞서 골리므로
+  // (결정 3) 행이 말하는 것은 첫 칸의 말이다.
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "커밋할까요?",
+  );
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -225,7 +244,9 @@ test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰�
 
   const lane = 레인(page, plainWork.slug);
   await expect(lane.locator('[data-signal="waiting"]')).toHaveCount(1);
-  await expect(page.locator(`[data-subrow="${plainWork.slug}"]`)).toContainText("Bash(git push)");
+  await expect(행버튼(page, `${plainWork.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "Bash(git push)",
+  );
   // **앰버가 도는 중으로 뒤집히지 않았다**를 못박는다. 위 한 줄만 보면 「아직 안 앉았다」와
   // 「앉았다 꺼졌다」가 갈리지 않는데, 이 갈래의 실패는 늘 후자다.
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(0);
