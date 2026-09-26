@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { Folder, GitFork, GitMerge, ChevronRight, Zap } from "lucide-react";
+import { CircleAlert, Folder, GitFork, GitMerge, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUpdateProject } from "./hooks";
@@ -17,17 +18,16 @@ interface ProjectDetailProps {
 function ProjectDetail({ project, onOpenWork }: ProjectDetailProps) {
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-7 px-10 pb-12 pt-7">
+      {/* 경로를 못 찾은 프로젝트의 빨간 띠 — 경고 부품(Alert)의 모양이다. 글자는 그대로다. */}
       {project.missing && (
-        <div className="flex items-center gap-2.5 rounded-[12px] border border-red-500 bg-red-500/[0.07] px-3.5 py-2.5">
-          <span className="size-[7px] shrink-0 rounded-full bg-red-500" />
-          <span className="shrink-0 text-[14px] font-medium text-red-600">
-            경로를 찾을 수 없어요.
-          </span>
-          <span className="text-[13.5px] text-muted-foreground">
+        <Alert variant="destructive">
+          <CircleAlert strokeWidth={1.8} />
+          <AlertTitle>경로를 찾을 수 없어요.</AlertTitle>
+          <AlertDescription>
             폴더가 이동되었거나 삭제되었어요. 등록은 자동으로 삭제되지 않아요 — 경로를 복구하거나
             직접 제거하세요.
-          </span>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="flex flex-col gap-2.5">
