@@ -1,4 +1,4 @@
-import { expect, test } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { ARCHIVE, ARCHIVED_DOCS } from "./fixtures";
 import {
   clipboardWrites,
@@ -171,5 +171,116 @@ test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서�
   await page.clock.runFor(100);
   await page.clock.resume();
   await expect(messages).toHaveText("", { timeout: 1000 });
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 아카이브 항목의 여닫음 (판 4, 스토리 114·115) ──
+// 항목은 Collapsible이다. 행이 트리거라 여닫음을 `aria-expanded`로 말하고, 문서 트리는 패널이다. 패널은 닫혀도 마운트된
+// 채라(접히는 쪽도 움직여야 하고, 한 번 편 트리의 폴더 접힘이 남아야 한다) 접힌 동안 안의 것은 `inert`로 막힌다 — 높이
+// 0에 가린 문서 줄에 Tab이 들어가면 안 된다. 닫히는 전이가 끝나면 Base UI가 패널에 `hidden`을 단다.
+//
+// 문서 줄은 접힌 뒤 `hidden` 아래에 있어서 역할 조회가 숨은 것까지 보게 한다(`includeHidden`) — 「inert 아래에 있다」를
+// 재려면 잡혀야 한다.
+const 문서줄 = (page: Page) =>
+  page.getByRole("button", { name: "PNG 샷.png", exact: true, includeHidden: true });
+
+// Tab으로는 재지 않는다(WebKit은 Tab이 버튼을 건너뛴다). 그 줄에 `focus()`를 걸어 포커스가 안 앉는 것을 보고, 펼친 뒤
+// 같은 `focus()`가 앉는 것으로 그 「안 앉는다」가 헛돌지 않았음을 받친다.
+test("아카이브 항목을 접고 펼치면 aria-expanded가 뒤집히고, 접힌 항목 안은 inert라 포커스가 안 닿는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/archive/${shipped.slug}`);
+  const item = page.getByRole("button", { name: shipped.title });
+  const docRow = 문서줄(page);
+  const inertDocRow = page
+    .locator("[inert]")
+    .getByRole("button", { name: "PNG 샷.png", exact: true, includeHidden: true });
+
+  // 보고 있는 아카이브는 펴져 있다.
+  await expect(item).toHaveAttribute("aria-expanded", "true");
+  await expect(docRow).toBeVisible();
+  await expect(inertDocRow).toHaveCount(0);
+
+  await item.click();
+  await expect(item).toHaveAttribute("aria-expanded", "false");
+  // 앵커: 항목이 섰다 — 목록이 통째로 사라졌으면 아래 「inert 아래에 있다」·「포커스가 안 닿는다」가 헛돈다.
+  await expect(item).toBeVisible();
+  await expect(inertDocRow).toHaveCount(1);
+  await expect(docRow).toBeHidden();
+  await docRow.focus();
+  await expect(docRow).not.toBeFocused();
+
+  await item.click();
+  await expect(item).toHaveAttribute("aria-expanded", "true");
+  await expect(inertDocRow).toHaveCount(0);
+  await docRow.focus();
+  await expect(docRow).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **접힘은 패널 자신의 전이다**(스토리 114, 결정 7). Base UI는 패널 자기 위의 전이만 기다렸다가 `hidden`을 단다 — 전이가
+// 바깥 상자에 있으면 닫을 때 곧바로 사라진다. 그리고 닫힘이 끝나 `hidden`이던 패널은 `display: none`에서 나오므로, 시작
+// 상태(`data-starting-style`)에 접힌 트랙이 없으면 열 때 전이가 돌지 않는다. 그래서 두 방향 모두 패널의 행 전이가 끝까지
+// 도는지 `transitionend`로 잰다. 움직임을 끄면 전역 규칙(`index.css`)이 그 전이를 끈다 — 여닫혀도 전이가 하나도 안 돈다.
+//
+// 기록은 페이지가 뜨기 전에 건다. 처음 뜰 때 문서가 도착하며 트랙이 한 번 자라므로, 패널이 가라앉은 뒤에 비우고 잰다.
+test("아카이브 항목은 열 때도 닫을 때도 180ms로 접히고 펼쳐진다 — 움직임을 끄면 전이 없이 여닫힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.addInitScript(() => {
+    const folds: string[] = [];
+    Object.assign(window, { __folds: folds });
+    for (const type of ["transitionrun", "transitionend"] as const) {
+      document.addEventListener(
+        type,
+        (event) => {
+          const target = event.target as Element;
+          if (event.propertyName !== "grid-template-rows") return;
+          if (target.getAttribute("data-slot") !== "collapsible-content") return;
+          folds.push(type === "transitionend" ? `end ${event.elapsedTime}` : "run");
+        },
+        true,
+      );
+    }
+  });
+  const 접힘기록 = () => page.evaluate(() => (window as unknown as { __folds: string[] }).__folds);
+  const 기록을비운다 = () =>
+    page.evaluate(() => {
+      (window as unknown as { __folds: string[] }).__folds.length = 0;
+    });
+  await page.goto(`/archive/${shipped.slug}`);
+  const item = page.getByRole("button", { name: shipped.title });
+  const docRow = 문서줄(page);
+  await expect(docRow).toBeVisible();
+  // 펼친 행은 제 패널을 가리킨다(`aria-controls`, 열려 있을 때만 선다). 그 패널의 움직임이 멎기를 기다린다.
+  const panelId = await item.getAttribute("aria-controls");
+  if (!panelId) throw new Error("펼친 항목이 패널을 가리키지 않는다");
+  const panel = page.locator(`[id="${panelId}"]`);
+  await expect.poll(() => panel.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await 기록을비운다();
+
+  // 닫기 — 전이가 끝까지 돈 뒤에 숨는다.
+  await item.click();
+  await expect(docRow).toBeHidden();
+  await expect.poll(접힘기록).toEqual(["run", "end 0.18"]);
+
+  // 열기 — `hidden`에서 나와도 전이가 돈다.
+  await 기록을비운다();
+  await item.click();
+  await expect(docRow).toBeVisible();
+  await expect.poll(접힘기록).toEqual(["run", "end 0.18"]);
+
+  // 움직임을 끈다. 닫힘의 앵커는 「숨었다」다 — 전이가 돌았다면 그 끝에야 숨으므로, 숨은 뒤의 빈 기록이 헛돌지 않는다.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await 기록을비운다();
+  await item.click();
+  await expect(item).toHaveAttribute("aria-expanded", "false");
+  await expect(docRow).toBeHidden();
+  expect(await 접힘기록()).toEqual([]);
+  // 열림은 전이가 있어도 곧바로 보이므로, 두 프레임을 흘려 전이가 시작될 자리를 준 뒤에 센다.
+  await item.click();
+  await expect(docRow).toBeVisible();
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  expect(await 접힘기록()).toEqual([]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
