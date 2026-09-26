@@ -8,7 +8,7 @@ const ARCHIVE_KEY = ["archive"] as const;
 
 /**
  * 아카이브가 바뀌었다고 알리는 문의 **아카이브 몫.** 부르는 자리는 work 목록 무효화 문(`invalidateWorks`) 하나다
- * (티켓 14). 아카이브 폴더는 감시하지 않는다(watcher.rs는 projects/works만 본다) — 아카이빙은 **언제나** works/에서
+ * (티켓 14). 아카이브 폴더는 감시하지 않는다(watcher.rs는 projects/works/layouts만 본다) — 아카이빙은 **언제나** works/에서
  * 하나가 사라지는 일이라, 앱에서 했든 에이전트가 MCP로 했든 `works:changed`가 반드시 함께 온다. 감시 대상을 늘리지 않고
  * 같은 신선도를 얻는다. 그 문을 타야 이벤트 한 번에 아카이브 목록 조회도 한 번이고 조회 중의 합치기를 함께 받는다 —
  * 여기를 따로 부르면 그 합치기를 건너뛴다.

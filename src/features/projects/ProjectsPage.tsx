@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import { Folder, Maximize2, Minimize2 } from "lucide-react";
+import { Folder } from "lucide-react";
+import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
 import PageHeader from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
@@ -15,39 +17,14 @@ interface ProjectsPageProps {
   onOpenWork: (slug: string | null) => void;
 }
 
-const PANEL_OPEN_KEY = "projects-panel-open";
-
 function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
   // 이 화면은 `/projects` 주소에만 산다 — Maison 접두사가 붙을 수 없어 모드가 상수다
   // (결정 17: Maison에 프로젝트는 없다).
   const { data: projects = [] } = useProjects("atelier");
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
+  // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Archive와 같은 하나를 쓴다.
+  const [panelOpen, togglePanel] = useListPanel("projects-panel-open");
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
-
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
-
-  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      e.preventDefault();
-      setPanelOpen((open) => !open);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
   const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
@@ -100,39 +77,20 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <>
               {selected && (
                 <>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={selected.missing}
                     onClick={() => projectsApi.openFolder(selected.slug)}
-                    // disabled:pointer-events-none — 테두리를 걷어낸 뒤로는 배경 농도가 "누를 수 있다"를
-                    // 말하는 유일한 어휘라서, 비활성 상태에서 hover가 걸리면 눌리는 버튼으로 읽힌다
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
                   >
                     폴더 열기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemove}
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
-                  >
+                  </Button>
+                  <Button variant="destructive-ghost" size="sm" onClick={handleRemove}>
                     제거
-                  </button>
+                  </Button>
                 </>
               )}
-              <button
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button-quiet text-tertiary"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </button>
+              <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
             </>
           }
         />
@@ -141,24 +99,20 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (
             <div className="flex h-full items-center justify-center p-10">
-              <div className="flex max-w-[400px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Folder className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  등록된 프로젝트가 없어요
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  className="mt-3 h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
-                >
-                  프로젝트 등록
-                </button>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Folder strokeWidth={1.6} />
+                  </EmptyMedia>
+                  <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
+                  <EmptyDescription>
+                    로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button onClick={handleAdd}>프로젝트 등록</Button>
+                </EmptyContent>
+              </Empty>
             </div>
           )}
         </div>

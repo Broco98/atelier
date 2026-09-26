@@ -5,6 +5,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { SignalLane } from "@/components/shell/shell-signal";
 import useGoToShell from "@/components/shell/useGoToShell";
 import { agentMarkOf } from "@/components/ui/agent-mark";
+import { Button } from "@/components/ui/button";
 import { modeOfOwner, shellRowName, slugOfOwner, type Shell } from "@/features/terminal/shell-registry";
 import {
   closeOffscreenShell,
@@ -14,7 +15,7 @@ import {
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import { worksQuery } from "@/features/works/hooks";
-import { ALL_MODES, worldNameOf, type Mode } from "@/mode";
+import { ALL_MODES, modeNameOf, type Mode } from "@/mode";
 import { askThenEnd } from "./actions";
 import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
@@ -94,13 +95,10 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
           actions={
             // [조용한 셸 모두 닫기](티켓 32 · 프로세스 스펙 S44) — 두 세계의 셸 중 명령도 사람이 띄운 자손도 없는 셸을 한 번 묻고 닫는다.
             // 무엇을 닫는지는 누른 순간 배치 물음 한 번이 정한다(`closeQuietShells`) — 화면의 「조용함」 칸(2초 전 표본)이 아니다.
-            <button
-              type="button"
-              onClick={() => void closeQuietShells()}
-              className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-            >
+            // 모양은 쪽 동작의 버튼(`Button` ghost · sm — 설정의 「다시 읽기」와 같은 가족)이다.
+            <Button variant="ghost" size="sm" onClick={() => void closeQuietShells()}>
               조용한 셸 모두 닫기
-            </button>
+            </Button>
           }
         />
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 scroll-quiet">
@@ -116,7 +114,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
               {tree.map((world) => (
                 <Fragment key={world.mode}>
                   <TreeRow level={1} label={worldRowLabel(world)} className="mt-3 first:mt-0">
-                    <span className="text-[12.5px] font-semibold">{worldNameOf(world.mode)}</span>
+                    <span className="text-[12.5px] font-semibold">{modeNameOf(world.mode)}</span>
                     {world.current && <span className="text-[12px] text-tertiary">{CURRENT_WORLD}</span>}
                   </TreeRow>
                   {world.groups.map((group) => (
@@ -161,7 +159,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
                   <Fragment key={group.owner}>
                     <TreeRow level={1} label={orphanGroupRowLabel(group)}>
                       <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
-                      <span className="shrink-0 text-[12px] text-tertiary">{worldNameOf(modeOfOwner(group.owner))}</span>
+                      <span className="shrink-0 text-[12px] text-tertiary">{modeNameOf(modeOfOwner(group.owner))}</span>
                       <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
                       <span className="flex-1" />
                       <Figures metrics={groupTotals(group)} ports={false} />
@@ -296,7 +294,7 @@ function ShellRows({
           {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (
-            // 마크는 「누구」다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalLine`과 같은 규칙).
+            // 마크는 「누구」다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).
             <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
               <mark.Glyph className="size-3" />
             </span>

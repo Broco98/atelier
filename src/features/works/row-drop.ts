@@ -168,7 +168,7 @@ export function gapMark(geometry: ListGeometry, gap: RowGap): GapMark | null {
 /**
  * **끄는 도중 받은 목록이 끌기를 거둘 만큼 바뀌었나**(티켓 06 · 스펙 S8). 보는 것은 `(slug, pinned)`의
  * 순열 하나다 — 재어 둔 기하(`ListGeometry`)가 틀어지는 것이 그것이 바뀔 때뿐이라서다. 제목·상태·셸은
- * 행 높이를 안 바꾼다(행이 두 줄 55px로 못박혀 있다 — `WorkRow`).
+ * 행 높이를 안 바꾼다(모든 행이 한 줄 32px로 못박혀 있다 — `WorkRow`).
  *
  * 좁히는 까닭은 흔한 쪽을 살리려는 것이다: 에이전트가 spec을 고치면 `works:changed`가 오고 목록이 다시
  * 온다. 그때마다 끌기가 끊기면 사람은 까닭 없이 손을 놓친다.

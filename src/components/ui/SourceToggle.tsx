@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { CodeXml, Eye } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { SegmentGroup, SegmentGroupItem } from "./segment-group";
+import { Hint } from "./tooltip";
+
+/** 칸이 놓인 순서 — 아래 `SourceToggle`이 칸을 그리는 순서와 같다. 칩이 이것으로 서는 자리를 안다. */
+const CELLS = ["doc", "source"] as const;
 
 // 지금 보고 있는 것이 **문서인가 원문인가**를 두 칸으로 말한다(결정 33).
 //
@@ -18,6 +22,12 @@ import { cn } from "@/lib/utils";
 // 터미널 탭 — 어느 파일이 토글을 무시하는지는 `doc-refs`의 표가 든다).
 // **두 칸을 함께 잠근다**: 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
 // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
+//
+// **두 칸 토글 부품(`SegmentGroup` — Base UI ToggleGroup 위)이다**(결정 1, 판 4). 한 컨트롤이라 Tab
+// 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로 옮긴다. 부품은 선 칸을 누르면 값을 비우는데(`[]`),
+// 여기서는 그것을 **뒤집기**로 읽는다(S16 — 모드 전환은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
+// 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
+// (`segment-group.tsx`)이 든다.
 export function SourceToggle({
   on,
   locked = false,
@@ -31,74 +41,41 @@ export function SourceToggle({
   className?: string;
 }) {
   return (
-    // 바닥이 한 단계 눌려 있어야 그 위의 칩이 **떠오른 것**으로 읽힌다.
-    <span
-      className={cn(
-        "relative flex shrink-0 items-center gap-0.5 rounded-[10px] bg-state-1 p-0.5",
-        className,
-      )}
+    <SegmentGroup
+      size="icon"
+      cells={CELLS}
+      value={[on ? "source" : "doc"]}
+      // 선 칸을 눌러 비운 값(`[]`)도 뒤집기다 — 두 칸이 한 토글의 두 얼굴이다(위 주석).
+      onValueChange={([pick]) => onChange(pick === undefined ? !on : pick === "source")}
+      disabled={locked}
+      className={className}
     >
-      {/* 서 있는 칸을 말하는 흰 칩. 칸에 붙어 있지 않고 **두 칸 사이를 미끄러진다.**
-          자리가 모드를 적는다면(위 주석) 그 자리가 바뀌는 것도 보여야 한다 — 칸마다 배경을
-          켜고 끄면 한쪽이 사라지고 다른 쪽이 나타날 뿐이라 「옮겨갔다」가 아니라 「깜빡였다」로
-          읽힌다. 칩이 하나뿐이라 두 칸이 동시에 서는 판이 마크업에서 아예 불가능해지는 것은
-          덤이다.
-          26px은 칸 24px(icon-button) + 칸 사이 2px(gap-0.5)이다 — 둘 다 고정값이라
-          calc 없이 적는다. 곡선은 패널의 --ease-panel이 아니라 ease-out이다: 그 곡선은
-          폭처럼 긴 거리를 위한 것이고(index.css 주석) 여기 거리는 26px이라, 같은 곡선을
-          쓰면 짧은 이동이 끝에서 질질 끌린다.
-          transform만 트랜지션한다 — 잠김의 흐림까지 함께 페이드하면 파일을 옮길 때마다
-          칩이 저 혼자 밝아졌다 어두워진다. */}
-      <span
-        aria-hidden
-        className={cn(
-          "segment-on absolute top-0.5 left-0.5 size-6 rounded-lg transition-transform duration-[180ms] ease-out",
-          on && "translate-x-[26px]",
-          locked && "opacity-40",
-        )}
-      />
-      <Segment on={!on} locked={locked} label="문서로 보기" onFlip={() => onChange(!on)}>
+      <Segment value="doc" label="문서로 보기" locked={locked}>
         <Eye className="size-3.5" strokeWidth={1.9} />
       </Segment>
-      <Segment on={on} locked={locked} label="원문 보기" onFlip={() => onChange(!on)}>
+      <Segment value="source" label="원문 보기" locked={locked}>
         <CodeXml className="size-3.5" strokeWidth={2} />
       </Segment>
-    </span>
+    </SegmentGroup>
   );
 }
 
 function Segment({
-  on,
-  locked,
+  value,
   label,
-  onFlip,
+  locked,
   children,
 }: {
-  on: boolean;
-  locked: boolean;
+  value: "doc" | "source";
   label: string;
-  onFlip: () => void;
+  locked: boolean;
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      // 선 칸도 그대로 뒤집는다(위 주석) — 두 칸이 한 토글의 두 얼굴이다.
-      onClick={onFlip}
-      disabled={locked}
-      aria-label={label}
-      aria-pressed={on}
-      title={label}
-      className={cn(
-        // relative가 칩 위로 아이콘을 올린다 — 칩이 absolute라 그냥 두면 글리프를 덮는다.
-        "icon-button relative transition-colors",
-        "disabled:pointer-events-none disabled:opacity-40",
-        // 안 선 칸은 **배경을 안 켠다**(결정 31) — 바닥이 이미 회색이라 그 위에 hover 칩을
-        // 얹으면 서 있는 칸과 구분이 안 된다.
-        on ? "text-foreground" : "text-tertiary tint-hover",
-      )}
-    >
+    // 이름은 글리프가 못 말하니 `aria-label`이 든다. 도움말은 같은 글자의 툴팁이다 — 이름보다 더 말하는 것이
+    // 없어 설명(`aria-description`)은 안 단다(S28). **잠기면 툴팁도 없다**(S23) — 칸이 네이티브 `disabled`다.
+    <Hint text={label} announce="name" disabled={locked} render={<SegmentGroupItem value={value} />}>
       {children}
-    </button>
+    </Hint>
   );
 }

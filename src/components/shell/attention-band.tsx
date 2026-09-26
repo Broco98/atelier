@@ -1,9 +1,11 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import type { BandRow, CallingKind } from "@/features/terminal/shell-attention";
-import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
+import { Hint } from "@/components/ui/tooltip";
+import type { BandRow } from "@/features/terminal/shell-attention";
+import { SIGNAL_LABEL, SignalLane, formatElapsed, type CallingKind } from "./shell-signal";
 
-// 「확인할 것」 띠(#204, 결정 5·8). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
+// 알림 띠(#204, 결정 5·8 · 이름은 `sidebar-active-band` 결정 13). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
 // 한 줄씩 모은다 — 열여덟 행을 훑는 대신 여기만 본다. 부르는 것이 하나도 없으면 **띠 자체가
 // 없다**(스토리 38): 헤더만 남기거나 빈 상자를 그리면 평소 화면이 지금과 달라진다.
 //
@@ -18,16 +20,18 @@ import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
 // 들면 펼쳐진 띠를 마크업 seam에서 볼 길이 없어진다.
 
 /**
- * 띠의 이름(결정 8). **행·탭의 접근성 이름과 같은 말이다** — 띠에 서는 두 종류(답을
- * 기다리는 셸 · 끝났는데 안 본 셸) 중 「봤다」로 지워지는 쪽의 이름이 곧 띠 전체의
- * 이름이라, 이 상수는 `SIGNAL_LABEL.done` **그 값 자체**다.
+ * 띠의 이름(`sidebar-active-band` 결정 13). **띠 이름과 상태 이름은 달라야 한다.**
  *
- * 글자를 여기 다시 적지 않는 것이 요점이다. 「같은 말」이라고 주석에 적어 두고 값을 두 벌로
- * 두면 이름을 고치는 날 한쪽만 바뀌어, **띠 헤더와 줄의 접근성 이름이 서로 다른 말을 한다** —
- * `nav-items`가 `TERMINAL_LABEL`을 꺼낸 이유와 같고(「두 자리에 글자를 각각 적으면 … 「같은
- * 곳」이 화면에서 두 이름을 갖는다」), 검사도 이 상수를 통해 견주므로 그 어긋남을 못 잡는다.
+ * 띠가 모으는 것은 두 가지다 — 답을 기다리는 셸(「나를 기다림」)과 끝났는데 안 본 셸(「확인할
+ * 것」). 이름이 그중 한쪽 상태의 이름과 같으면 「나를 기다림」 줄만 서 있어도 머리가 「확인할
+ * 것」이라 말한다. 그래서 이 이름은 상태 표(`SIGNAL_LABEL`)를 읽지 않고 제 글자를 든다:
+ * 설정의 「알림: 셸이 나를 부르면 알림」과 **같은 사건을 같은 말로** 부른다.
+ *
+ * 한때 이 상수는 `SIGNAL_LABEL.done` 그 값이었다(「같은 말을 두 벌 적지 않는다」). 다시
+ * 그 값을 대입하면 결정 13의 근거가 조용히 무너진다 — 두 말이 갈리는지는 L3(사이드바 spec의
+ * 「띠 이름은 「알림」이고 …」)가 한 띠 안에서 잰다.
  */
-export const BAND_LABEL = SIGNAL_LABEL.done;
+export const BAND_LABEL = "알림";
 
 /**
  * 몇 줄까지 보이나(결정 8). 「사람이 한 번에 관리할 수 있는 에이전트는 3~5개」의 아래끝이고,
@@ -59,8 +63,8 @@ const WEIGHT: Readonly<Record<CallingKind, string>> = {
  * 넷만 골라 받으면 부르는 쪽이 「누른 줄이 어느 것인가」를 id로 되찾아야 하고, 그 되찾기가
  * 정렬과 갈리는 날 엉뚱한 화면이 열린다.
  *
- * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다
- * (`shell-signal.tsx`가 `ShellSignal`을 같은 조건으로 들인다).
+ * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다(`import type`은
+ * 컴파일에서 지워진다 — 이 파일 머리말).
  */
 export interface BandItem extends BandRow {
   /** 화면의 이름 — work 제목이거나, 최상위 셸이면 `Terminal`이다(결정 13의 다섯째). */
@@ -76,7 +80,7 @@ export function AttentionBand({
 }: {
   /** 부르는 셸 전부, **이미 줄 세워진 채로**(기다림 먼저 · 오래된 순). 자르는 것은 여기다. */
   items: ReadonlyArray<BandItem>;
-  /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`SignalLine`과 같은 규칙). */
+  /** 지금. 밖에서 받는다 — 이 조각은 시계를 안 든다(`SignalMeta`와 같은 규칙). */
   now: number;
   expanded: boolean;
   onToggle: () => void;
@@ -87,7 +91,8 @@ export function AttentionBand({
   // 생기고, 그중 하나만 이 seam이 본다.
   if (items.length === 0) return null;
 
-  // 상한을 넘길 때만 접힌다. 셋 이하인데도 토글이 서면 눌러도 아무 일이 없는 줄이 하나 는다.
+  // 상한을 넘길 때만 접힌다. 셋 이하인데도 토글이 서면 눌러도 아무 일이 없는 버튼이 하나 는다
+  // (`sidebar-active-band` 스토리 23).
   const overflow = items.length > BAND_LIMIT;
   const shown = overflow && expanded ? items : items.slice(0, BAND_LIMIT);
 
@@ -116,7 +121,7 @@ export function AttentionBand({
       )}
     >
       {/* **누를 것이 없는 머리다** — 구획 헤더(`SectionHeader`)와 규격은 같되 접히지 않는다.
-          띠가 접히는 것은 헤더가 아니라 아래 `+N 더`가 하는 일이고, 한 띠에 접는 것이 둘이면
+          띠가 접히는 것은 헤더가 아니라 아래 ⌄/⌃가 하는 일이고, 한 띠에 접는 것이 둘이면
           같은 일을 하는 컨트롤이 한 화면에 둘 서는 셈이다. 수가 오른쪽 끝에 서는 것은 바로
           아래 구획 헤더들과 같은 계약이다 — 한 컬럼에 세로로 붙어 서는 것들이 다른 무게로
           읽히지 않는다(`SidebarItem`의 GUTTER 주석과 같은 이야기). */}
@@ -136,21 +141,53 @@ export function AttentionBand({
         <BandLine key={item.id} item={item} now={now} onOpen={onOpen} />
       ))}
 
+      {/* **자리는 굴러가는 띠 상자 안이다**(`sidebar-active-band` 결정 15) — 펼쳐서 넘치면 ⌃도 줄과 함께 굴러
+          내려간다. 상자 밖에 세우면 낮은 창에서 ⌃가 늘 보이는 대신 그만큼 줄이 먼저 가려진다. */}
       {overflow && (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          // 들여쓰기가 줄의 제목과 맞는다(9 + 레인 14 + 간격 9 = 32) — 같은 열에 서야
-          // 이 줄이 「목록에 딸린 것」으로 읽힌다.
-          // hover가 **한 단 위**인 것은 상자 바닥이 이미 `state-1`이라서다 — 같은 값을 얹으면
-          // 눌러도 되는 줄이라는 것을 화면이 안 말한다(줄과 같은 이유, `BandLine` 참조).
-          className="flex h-6 w-full shrink-0 items-center rounded-[8px] pl-8 pr-[10px] text-left text-[11.5px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
-        >
-          {expanded ? "접기" : `+${items.length - shown.length} 더`}
-        </button>
+        <MoreToggle expanded={expanded} hiddenCount={items.length - BAND_LIMIT} onToggle={onToggle} />
       )}
     </div>
+  );
+}
+
+/**
+ * 띠 아래 가운데의 ⌄ 하나(`sidebar-active-band` 결정 15, 캔버스 보드 B). 펼치면 같은 자리에 ⌃가 선다.
+ *
+ * **글자 줄이 아니라 아이콘 버튼이다.** 예전의 `+N 더`는 제목 열에 맞춰 들어가 목록의 한
+ * 줄처럼 읽혔다. ⋯가 아니라 ⌄인 것은 ⋯가 작업 화면 머리의 메뉴(`aria-haspopup`)와 같은
+ * 기호라서다 — ⌄는 「펼친다」를 기호 자체로 말한다.
+ *
+ * **이름은 `aria-label`이 든다.** 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 같은 글자를
+ * 이름으로 따로 단다. 이름과 툴팁 글자가 한 값(`label`)에서 나오는 것이 요점이다 — 둘을
+ * 각자 적으면 눈과 귀가 다른 말을 듣는다(`nameOf`와 같은 이유).
+ *
+ * 폭은 띠 전체, 높이 24px, 아이콘 14px이다. hover가 **한 단 위**(`state-2`)인 것은 상자
+ * 바닥이 이미 `state-1`이라서다 — 줄과 같은 이유(`BandLine` 참조).
+ */
+function MoreToggle({
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  /** 접혔을 때 숨은 줄 수. 펼쳐져 있어도 같은 값이다 — 그때는 이름이 「접기」라 안 읽는다. */
+  hiddenCount: number;
+  onToggle: () => void;
+}) {
+  const label = expanded ? "접기" : `${hiddenCount}개 더 보기`;
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  return (
+    <Hint
+      text={label}
+      announce="name"
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
+    >
+      {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
+      <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
+    </Hint>
   );
 }
 
@@ -212,13 +249,13 @@ function BandLine({
         {item.shellName !== null && <span className="text-tertiary"> {item.shellName}</span>}
       </span>
       {mark && (
-        // 이름은 눈이 아니라 접근성으로만 읽는다 — `SignalLine`의 마크와 같은 규칙이고,
-        // 색도 `currentColor`라 상태색으로 안 물든다(판 04 결정 15).
+        // 이름은 눈이 아니라 접근성으로만 읽는다 — 행 오른쪽 메타의 마크(`SignalMeta`)와 같은
+        // 규칙이고, 색도 `currentColor`라 상태색으로 안 물든다(판 04 결정 15).
         <span role="img" aria-label={mark.label} className="flex shrink-0 items-center">
           <mark.Glyph className="size-3" />
         </span>
       )}
-      {/* 부차 정보라 한 단 내려간다 — 둘째 줄의 경과와 같은 규격이다(구현 결정 4). */}
+      {/* 부차 정보라 한 단 내려간다 — 행 오른쪽 메타의 경과와 같은 규격이다(구현 결정 4). */}
       <span data-elapsed="" className="shrink-0 text-[11.5px] tabular-nums text-tertiary">
         {formatElapsed(now - item.since)}
       </span>

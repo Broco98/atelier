@@ -141,9 +141,11 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 // 선은 scroll 이벤트만 듣는다 — 그 끌어내림이 이벤트를 안 쏘면 맨 위에서 선이 남는다.
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
-  // 높이는 「접기 전에는 넘치고 접은 뒤에는 들어간다」 사이에 선다. nav가 한 줄(32px + 줄 간격 2px) 늘며(`Processes`, 프로세스
-  // 티켓 26) 목록의 칸이 그만큼 줄어 400에서는 접어도 22px 넘쳤다 — 그 줄만큼 높였다.
-  await page.setViewportSize({ width: 1280, height: 434 });
+  // **창 높이가 좁은 창문 안에 있어야 한다** — 처음엔 `SCROLL`만큼 넘치고, `작업`을 접으면 안
+  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 188px → 접으면 122px).
+  // nav에 `Processes` 한 줄(32px + 줄 간격 2px, 프로세스 티켓 26)이 더 서서 목록 상자 = 창 높이 − 277px
+  // → 399~425px다. 두 줄 행(55px) 시절의 400은 그 밖이라 처음부터 안 넘쳤다. 가운데 값을 고른다.
+  await page.setViewportSize({ width: 1280, height: 412 });
   await page.goto("/projects");
   await 넘칠때까지(page);
 
@@ -161,7 +163,7 @@ test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다"
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("확인할 것 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => {
+test("알림 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.setViewportSize({ width: 1280, height: 360 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);

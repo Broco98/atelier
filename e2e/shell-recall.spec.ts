@@ -15,6 +15,7 @@ import {
   unknownIpcCalls,
   띠,
   레인,
+  셸입력,
 } from "./harness";
 
 // 프로세스 티켓 23 — **단축키 하나로 방금 부른 셸로 간다**(프로세스 결정 16 · 프로세스 스펙 S34 · S59 · P3 ⌘J).
@@ -36,8 +37,8 @@ const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
 /** 칸의 이름 버튼 — 켜짐(`aria-pressed`)이 서는 자리다. */
 const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
-const 알림자리 = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
-const 닫힌셸토스트 = (page: Page) => 알림자리(page).getByRole("dialog", { name: "그 셸은 닫혔어요", exact: true });
+const 토스트자리 = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
+const 닫힌셸토스트 = (page: Page) => 토스트자리(page).getByRole("dialog", { name: "그 셸은 닫혔어요", exact: true });
 
 /** 네이티브 메뉴의 `View ▸ Last Calling Shell`(⌘J)이 쏘는 것을 손으로 쏜다. */
 const 메뉴로누름 = (page: Page) => fireEvent(page, "hotkey:menu", "KeyJ");
@@ -59,19 +60,9 @@ const 턴끝 = (at: number) => ({
   stopped: true,
 });
 
-/** 지금 포커스가 셸 자리 안의 xterm 입력칸인가. 떼어 둔 셸은 DOM에서 빠지므로 셸 자리 안의 입력칸은 보이는 셸 하나뿐이다. */
-const shellHasFocus = (page: Page) =>
-  page.evaluate(() => {
-    const active = document.activeElement;
-    return (
-      active instanceof HTMLTextAreaElement &&
-      active.classList.contains("xterm-helper-textarea") &&
-      active.closest("[data-shell-host]") !== null
-    );
-  });
-
+/** 포커스가 셸의 입력칸에 있다(하네스의 `셸입력`). 떼어 둔 셸은 DOM에서 빠지므로 화면에 선 입력칸은 보이는 셸 하나뿐이다. */
 async function expectShellFocused(page: Page, message: string): Promise<void> {
-  await expect.poll(() => shellHasFocus(page), { message }).toBe(true);
+  await expect(셸입력(page), message).toBeFocused();
 }
 
 /**
@@ -263,7 +254,7 @@ test("부른 셸이 없으면 ⌘J가 아무것도 안 한다 — 도는 중인 
     .poll(() => page.evaluate(() => (window as unknown as { __recallKeys: { count: number } }).__recallKeys.count))
     .toBe(1);
   await settle(page);
-  expect(await 알림자리(page).getByRole("dialog").count()).toBe(0);
+  expect(await 토스트자리(page).getByRole("dialog").count()).toBe(0);
   await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=terminal`);
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
   await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "false");

@@ -29,7 +29,7 @@ const shellExit = (shellId: number, count: number): ProcessesEnded => ({ reason:
 const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
 
 /** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). 화면이 무엇이든 늘 있다. */
-const toastRegion = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
+const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 
 const toastOf = (page: Page, count: number) =>
   toastRegion(page).getByRole("dialog", { name: endedText(count), exact: true });

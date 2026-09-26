@@ -460,6 +460,30 @@ export async function replaceAnswer(
   );
 }
 
+/**
+ * 화면을 거치지 않고 앱의 IPC 입구로 **한 번 묻고 답을 그대로 들고 나온다.** 거절은 던진다.
+ *
+ * L3의 답은 손으로 적은 fixture라 「엔진이 정말 그렇게 답하는가」는 L4에서 답째 잰다 — 하네스를 지나 다리로
+ * 가므로 「진짜 코어가 이렇게 답한다」가 된다. 화면이 값으로 보이지 않는 답의 모양(예: 트리의 행이 받은 아이콘의
+ * 이름 — 글리프에는 이름이 없다)도 여기서 잰다. 앱이 부르지 않는 명령(`get_work`)이 입구를 타는지도 여기서
+ * 잰다 — 화면으로는 그 호출을 만들 수 없다.
+ */
+export async function askBackend(
+  page: Page,
+  cmd: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(
+    ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__.invoke(cmd, args),
+    { cmd, args },
+  );
+}
+
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
 export async function unknownIpcCalls(page: Page): Promise<string[]> {
   return (await readIpcRecord(page))?.unknown ?? [];
@@ -701,17 +725,75 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
 }
 
 /**
- * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
+ * **시나리오 도중에** 커맨드 하나의 답을 갈아 끼운다(spec 레이아웃 티켓 15) — 이 뒤로 그 커맨드는 `answer`를 답한다.
  *
- * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
- * **형제**라(`WorkSectionList`의 `WorkRow`) `[data-subrow]`에서 한 칸 올라가 집는데, 그 사정을 spec마다
- * 적어 두면 행의 구조가 바뀌는 날 고칠 자리가 셋이 된다.
+ * 고정 답은 설치할 때 한 번 정해진다(`installFixtureBackend`). 그대로는 「밖에서 바뀌었다」를 못 세운다 — 처음부터
+ * 다른 답이면 편집기가 그것을 기준본으로 읽는다. 그래서 편집기가 연 뒤에 읽기의 답을 바꾸고 이벤트를 쏜다
+ * (`fireEvent`) — 전역 구독이 읽기를 다시 부르면 바뀐 답이 온다.
+ *
+ * 모양은 셸 생성 가로채기(`interceptPtySpawn`)와 같다: 앱의 `invoke`를 감싸고, 창 전역 값에서 답을 꺼낸다. 처음
+ * 부를 때 한 번 감싸고, 그 뒤로는 전역 값만 고친다. **부름은 먼저 원래 자리를 지난다** — 하네스의 기록(`callCount`,
+ * `ipcCallArgs`)이 그 부름을 세야 「다시 불렸다」를 기다릴 수 있다. 답만 바꿔 돌려준다.
+ *
+ * 페이지를 다시 읽으면 감싼 것이 사라진다 — 도중에만 쓴다. **표에 없는 이름은 여기서 터진다**(덮어쓰기와 같은
+ * 규칙): 커맨드가 개명되면 갈아 끼우기가 아무 데도 안 걸린 채 지나가, 「바뀌었는데도 조용했다」가 초록이 된다.
  */
-export const 레인 = (page: Page, slug: string) =>
-  page.locator(`[data-subrow="${slug}"]`).locator("xpath=..").locator("[data-lane]");
+export async function swapAnswer(page: Page, command: string, answer: unknown): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
+    throw new Error(`갈아 끼울 커맨드가 고정 답 표에 없습니다: ${command}`);
+  }
+  await page.evaluate(
+    ({ command, answer }: { command: string; answer: unknown }) => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
+        __ATELIER_SWAPPED_ANSWERS__?: Record<string, unknown>;
+      };
+      if (win.__ATELIER_SWAPPED_ANSWERS__ === undefined) {
+        const swapped: Record<string, unknown> = {};
+        win.__ATELIER_SWAPPED_ANSWERS__ = swapped;
+        const internals = win.__TAURI_INTERNALS__;
+        const invoke = internals.invoke;
+        internals.invoke = async (cmd, args, options) => {
+          const original = await invoke(cmd, args, options);
+          return Object.prototype.hasOwnProperty.call(swapped, cmd) ? swapped[cmd] : original;
+        };
+      }
+      win.__ATELIER_SWAPPED_ANSWERS__[command] = answer;
+    },
+    { command, answer },
+  );
+}
 
 /** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
 export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
+
+/**
+ * 그 work 행의 **레인** — 화면값이 있으면 점·스피너가, 없으면 work 상태 아이콘이 든다.
+ *
+ * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 행(`workRow`) 안의
+ * `[data-lane]`으로 집는다 — 행이 한 줄이 되어 둘째 줄(`data-subrow`)이 걷혀도 이 길은 그대로다
+ * (`sidebar-active-band` 결정 14). 한때 둘째 줄에서 한 칸 올라가 집었는데, 그러면 둘째 줄을 걷는
+ * 날 이것을 딛는 spec 셋이 함께 무너진다.
+ */
+export const 레인 = (page: Page, slug: string) => workRow(page, slug).locator("[data-lane]");
+
+/**
+ * 그 work 행의 **오른쪽 메타** — 2열에 핀과 겹쳐 서는 칸(`sidebar-active-band` S4). 싣는 것이
+ * 행의 화면값에 따라 갈린다: 부르면 마크와 경과, 돌면 마크, 조용하면 종류·수. **셸이 없는 행에는
+ * 이 칸이 없다** — 그래서 「비어 있다」는 행(`workRow`)이 선 것을 앵커로 두고 이것이 0인가로 잰다.
+ */
+export const 오른쪽메타 = (page: Page, slug: string) =>
+  workRow(page, slug).locator("[data-row-meta]");
+
+/**
+ * 사이드바 **작업 목록 안의** 그 이름의 행 버튼. 부르는 행의 이름은 `<제목> — <상태>`다.
+ *
+ * **목록 안으로 좁힌다.** 알림 띠의 줄이 같은 이름을 쓰므로(부르는 셸이 있으면 그 줄도 함께
+ * 선다) 화면 전체에서 집으면 둘이 잡힌다. 행 버튼의 접근성 설명(셸의 마지막 말, 결정 14)을 재는
+ * 자리가 이것을 딛는다.
+ */
+export const 행버튼 = (page: Page, name: string) =>
+  page.locator("[data-worklist]").getByRole("button", { name, exact: true });
 
 /** 사이드바에 선 작업 행의 slug, 위에서부터. */
 export const shownWorkOrder = (page: Page) =>
@@ -732,8 +814,14 @@ export async function pointIn(target: Locator, where: RowPoint) {
  * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
  *
  * L3·L4가 함께 딛는다 — 손짓을 spec마다 적으면 문턱이나 흐려짐이 바뀌는 날 고칠 자리가 여럿이 된다.
+ *
+ * **행이 멈춘 뒤에 잰다.** 맨 마우스는 로케이터 동작과 달리 요소가 움직이는 중인지 안 기다린다 — 구획을
+ * 접은 직전이면 아래 행들이 180ms 동안 올라가는 중이라, 움직이는 도중에 잰 자리를 부하 걸린 러너가
+ * 늦게 누르면 행 한 칸 아래를 누른다(끌기가 시작도 안 된다). `scrollIntoViewIfNeeded`가 상자가 두 프레임
+ * 내리 같을 때까지 기다린다.
  */
 export async function pickUpRow(page: Page, slug: string) {
+  await workRow(page, slug).scrollIntoViewIfNeeded();
   const from = await pointIn(workRow(page, slug), "middle");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -752,6 +840,38 @@ export async function dragRowOnto(page: Page, slug: string, target: Locator, whe
   await pickUpRow(page, slug);
   await hoverRowPoint(page, target, where);
   await expect(page.locator("[data-drop-line]")).toBeVisible();
+  await page.mouse.up();
+}
+
+/**
+ * 「spec 레이아웃」 편집기 트리의 항목을 눌러 **문턱을 넘긴 채** 멈춘다(spec 레이아웃 티켓 13). 문턱을 넘은
+ * 증거로 끌리는 행이 흐려진 것을 먼저 본다 — `pickUpRow`와 같은 까닭이다: 안 보고 지나가면 뒤의 「아무것도
+ * 안 바뀌었다」가 「끌기가 시작도 안 됐다」로도 초록이 된다.
+ *
+ * 작업 행 도우미와 따로 두는 것은 행을 찾는 자리가 달라서다 — 편집기의 행에는 slug가 없어 부르는 쪽이 행을
+ * 로케이터로 준다. 문턱은 **옆으로** 넘긴다: 12px 옆은 아직 그 행 위라, 아래로 넘기면 들르는 이웃 행이 겨눠진다.
+ *
+ * **행이 멈춘 뒤에 잰다** — `pickUpRow`와 같은 까닭이다(`scrollIntoViewIfNeeded`가 상자가 두 프레임 내리 같을
+ * 때까지 기다린다).
+ */
+export async function pickUpEntry(page: Page, row: Locator) {
+  await row.scrollIntoViewIfNeeded();
+  const from = await pointIn(row, "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y, { steps: 3 });
+  await expect(row).toHaveCSS("opacity", "0.4");
+}
+
+/**
+ * 편집기 항목을 끌어 대상의 그 자리(윗 사분의 일 · 가운데 · 아랫 사분의 일)에 놓는다. 대상은 트리의 행이거나 트리
+ * 아래 빈 자리(`[data-entry-end]`)다. 놓기 전에 거기 놓일 표시(`data-entry-drop` — 앞·뒤·빈 자리의 선, 안의
+ * 밝아짐)가 섰는지 본다 — 놓을 곳이 있는 끌기만 부른다.
+ */
+export async function dragEntryOnto(page: Page, row: Locator, target: Locator, where: RowPoint) {
+  await pickUpEntry(page, row);
+  await hoverRowPoint(page, target, where);
+  await expect(target).toHaveAttribute("data-entry-drop", /^(before|after|inside|end)$/);
   await page.mouse.up();
 }
 
@@ -790,8 +910,17 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
   await expect(page.locator(`[data-drop-half="${half}"]`)).toHaveAttribute("data-over", "");
 }
 
-/** 「확인할 것」 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
+/** 알림 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
+
+/**
+ * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
+ * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
+ *
+ * **여기 사는 이유는 툴팁을 집는 길을 하나로 두려는 것이다.** spec마다 선택자를 옮겨 적으면 표식이 바뀌는 날
+ * 한 파일만 고쳐지고, 고쳐지지 않은 쪽의 「툴팁이 없다」(`toHaveCount(0)`)는 헛돌아 초록이 된다.
+ */
+export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
@@ -912,6 +1041,22 @@ export async function openShell(page: Page): Promise<void> {
 }
 
 /**
+ * 셸의 **입력칸** — 사람이 친 글자를 받는 xterm의 숨은 `<textarea>`다. 셸을 붙이면 포커스를 스스로
+ * 가져가고, 창이 닫히면 돌아와야 하는 자리가 여기다. 「셸에 포커스가 있다」는
+ * `expect(셸입력(page)).toBeFocused()`로 잰다.
+ *
+ * **역할과 이름으로 집는다**(검사 규칙). 이름 「Terminal input」은 xterm이 스스로 다는 것이고
+ * (`Terminal.strings.promptLabel`의 기본값) 앱은 바꾸지 않는다. 화면에 선 입력칸은 늘 하나다 — 켜진
+ * 칸의 집만 DOM에 붙고 나머지 칸은 떼어 둔다(`terminal-store`의 `detachShell`). 모달이 떠 있는 동안에는
+ * 그 아래라 `aria-hidden`이어서 안 잡히므로, 「포커스가 돌아왔다」는 창이 닫힌 뒤에 선다.
+ *
+ * **여기 사는 이유는 셸 입력칸을 집는 길을 하나로 두려는 것이다.** 한때 spec마다 `activeElement`의
+ * 클래스 문자열을 옮겨 적었다 — xterm이 그 이름을 바꾸는 날 한 파일만 고쳐지고, 고쳐지지 않은 쪽의
+ * 「셸에 포커스가 없다」는 헛돌아 초록이 된다.
+ */
+export const 셸입력 = (page: Page) => page.getByRole("textbox", { name: "Terminal input", exact: true });
+
+/**
  * 켜진 셸에 **사람이 키 하나를 친다** — 그 셸을 「쓴 셸」로 만든다(프로세스 결정 7).
  *
  * 셸이 0개인 화면이 스스로 띄운 셸은 입력을 한 번도 안 받은 채 그 화면을 떠나면 닫힌다. 그래서 **셸을 두고
@@ -924,11 +1069,7 @@ export async function openShell(page: Page): Promise<void> {
  */
 export async function typeIntoShell(page: Page): Promise<void> {
   const before = await callCount(page, "pty_first_input");
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.className ?? ""), {
-      message: "셸에 포커스가 없다 — 친 키가 셸에 안 닿는다",
-    })
-    .toContain("xterm-helper-textarea");
+  await expect(셸입력(page), "셸에 포커스가 없다 — 친 키가 셸에 안 닿는다").toBeFocused();
   await page.keyboard.type("l");
   await expect
     .poll(() => callCount(page, "pty_first_input"), { message: "친 키가 사람 입력으로 안 적혔다" })
@@ -1105,6 +1246,67 @@ export async function sentNotifications(
     if (!sent) throw new Error("stubNotifications를 먼저 깔아야 한다");
     return sent;
   });
+}
+
+/**
+ * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
+ * (ⓘ 메타의 행 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
+ * 받아 적는다. 셸 생성을 가로채는 손잡이(`holdPtySpawn`)와 알림 손잡이(`stubNotifications`)와 같은 모양이다 —
+ * 새 층이 아니다.
+ *
+ * 쓰기를 적는 이유: WebKit에서 `clipboard-read` 권한으로 클립보드를 **읽는** 길은 확인되지 않았다. 읽을 수
+ * 없으면 「복사됐다」는 화면에 안 보이는 사실이라, 앱이 넘긴 값을 그 자리에서 잡는 것이 이 층에서 잴 수 있는
+ * 전부다. 진짜 클립보드로는 안 보낸다 — 검사가 도는 기계의 클립보드를 건드리지 않는다.
+ *
+ * **페이지가 뜨기 전에 깔아야 한다** — `installFixtureBackend`와 같은 자리다.
+ */
+export async function recordClipboard(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const written: string[] = [];
+    (window as unknown as { __atelierClipboard: string[] }).__atelierClipboard = written;
+    const writeText = (text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    };
+    // `navigator.clipboard`가 없는 문맥(보안 문맥이 아닐 때)에서도 선다 — 없으면 앱의 복사가 던져, 「안 적혔다」가
+    // 손잡이 탓인지 앱 탓인지 갈리지 않는다.
+    if (navigator.clipboard) {
+      Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: writeText });
+    } else {
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    }
+  });
+}
+
+/** 위 손잡이가 받아 적은 클립보드 쓰기, 쓴 순서대로. 안 깔았으면 던진다 — 없는 것을 「안 복사했다」로 읽지 않는다. */
+export async function clipboardWrites(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const written = (window as unknown as { __atelierClipboard?: string[] }).__atelierClipboard;
+    if (!written) throw new Error("recordClipboard를 먼저 깔아야 한다");
+    return written;
+  });
+}
+
+/**
+ * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`나 `resume`으로만 흐른다.
+ * **페이지를 열기 전에 `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는
+ * 된다. 열림 애니메이션의 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
+ *
+ * **여기 사는 이유는 읽고 세우는 사이의 경주를 한 곳에서 막으려는 것이다.** 페이지의 지금을 읽은 뒤 `pauseAt`이
+ * 닿기까지 느린 러너에서 100ms가 넘게 흐르면, 세울 시각이 이미 지나 `pauseAt`이 「Cannot fast-forward to the
+ * past」로 던진다(판 3 PR의 리눅스 `Verify`가 그렇게 빨갰다). 던질 때 시계는 이미 멈춰 있으므로, 지금을 다시 읽어
+ * 세우면 된다. 여유를 크게 잡아 피하지 않는 것은, 세우며 건너뛴 시간 안에 걸린 타이머가 한꺼번에 불리기 때문이다.
+ */
+export async function 시계를세운다(page: Page): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const now = await page.evaluate(() => Date.now());
+    try {
+      await page.clock.pauseAt(now + 100);
+      return;
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes("Cannot fast-forward to the past")) throw error;
+    }
+  }
 }
 
 /**

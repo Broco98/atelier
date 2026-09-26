@@ -31,11 +31,11 @@ Give every work an explicit `slug` in English kebab-case: it becomes the folder 
 
 When the work has projects, pick the branch name from those existing branches and always pass it explicitly. Match the pattern already in use — `feat/...` or `feature/...` or a bare name — and note that one name is shared by every project in the work. If you omit the branch, the work's slug becomes the branch name, which is rarely the repository's convention, and worktrees are created on it.
 
-There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill puts a spec document in the worktree instead, move it into `specDir`; that is the only place the app and the next session look.
+There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Follow the spec layout that atelier_get_work and atelier_start_work return; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill puts a spec document in the worktree instead, move it into `specDir`; that is the only place the app and the next session look.
 
 Do code work only inside the work's worktree paths (`worktrees[].path`), never in the project's own folder.
 
-A reference like `~/.atelier/works/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived work is referenced the same way under `~/.atelier/archive/<slug>/`.
+A reference like `~/.atelier/works/<slug>/spec/<file>.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived work is referenced the same way under `~/.atelier/archive/<slug>/`.
 
 Paths are written with `~` for the home directory; expand it before opening them."#;
 
@@ -51,9 +51,9 @@ A Room has no project, no branch and no worktree, and there is no repository to 
 
 Give every Room an explicit `slug` in English kebab-case: it becomes the folder name and it never changes. Write the `title` in the user's own language. To continue a Room that already exists, pass its slug — that is what resumes it, not the title, which the user may have edited since.
 
-There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Start with `overview.md`, then add files freely; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill leaves a document somewhere else, move it into `specDir`; that is the only place the app and the next session look.
+There is no tool for spec documents. Write them yourself, with your own file tools, into the `specDir` path that atelier_get_work returns. Follow the spec layout that atelier_get_work and atelier_start_work return; markdown and mermaid diagrams are welcome. The desktop app watches these folders, so whatever you write shows up immediately — there is nothing to sync. If a skill leaves a document somewhere else, move it into `specDir`; that is the only place the app and the next session look.
 
-A reference like `~/.atelier/maison/rooms/<slug>/spec/overview.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived Room is referenced the same way under `~/.atelier/maison/archive/<slug>/`.
+A reference like `~/.atelier/maison/rooms/<slug>/spec/<file>.md:L19-27` is a real path plus a line range: `:L19` means one line, and no suffix means the whole file. Read that file at those lines and follow it. An archived Room is referenced the same way under `~/.atelier/maison/archive/<slug>/`.
 
 Paths are written with `~` for the home directory; expand it before opening them."#;
 
@@ -82,6 +82,10 @@ mod tests {
         "atelier_add_project",
         "atelier_edit_project",
     ];
+
+    /// 레이아웃을 가리키는 문장. 두 벌이 같은 말로 가리킨다 — 레이아웃은 두 응답에 실린다(spec 레이아웃 결정 9).
+    const FOLLOW_THE_LAYOUT: &str =
+        "Follow the spec layout that atelier_get_work and atelier_start_work return";
 
     /// 지침 안에 등장하는 `atelier_…` 토큰을 전부 뽑는다.
     fn mentioned_tools(text: &str) -> Vec<String> {
@@ -117,7 +121,11 @@ mod tests {
         // spec 규약 — 도구가 아니라 파일시스템, 위치는 조회 응답에서
         assert!(ATELIER.contains("no tool for spec"), "spec tool absence not stated");
         assert!(ATELIER.contains("specDir"), "no spec location field");
-        assert!(ATELIER.contains("overview.md"), "no starting document");
+        // 배치는 응답이 싣는 spec 레이아웃이 말한다(spec 레이아웃 결정 9) — 지침은 파일 이름을 적지 않는다.
+        // 지침은 서버가 뜰 때 한 번 정해지므로, 이름을 적어 두면 세션 도중에 레이아웃을 바꿨을 때
+        // 둘이 어긋난다.
+        assert!(ATELIER.contains(FOLLOW_THE_LAYOUT), "no pointer to the spec layout");
+        assert!(!ATELIER.contains("overview.md"), "a spec file name is pinned in the instructions");
         // 워크트리에서만 코드 작업 — 응답 필드 이름과 같은 말이어야 한다
         assert!(ATELIER.contains("worktrees[].path"), "no worktree rule");
         // 정의 문장 — 에이전트가 가장 먼저 읽는 줄이다. "one or more"로 되돌아가면
@@ -190,9 +198,11 @@ mod tests {
         }
         // Room을 만들고 이어 가는 절차는 남아 있어야 한다 — 뺀 자리에 아무것도 안 두면
         // 에이전트가 slug를 지어내고 spec을 아무 데나 쓴다.
-        for kept in ["kebab-case", "specDir", "overview.md", "pass its slug"] {
+        for kept in ["kebab-case", "specDir", FOLLOW_THE_LAYOUT, "pass its slug"] {
             assert!(MAISON.contains(kept), "Room의 절차가 빠졌다: {kept}");
         }
+        // 배치는 응답이 싣는 spec 레이아웃이 말한다 — Room의 레이아웃은 사용자가 바꿀 수 있다(spec 레이아웃 결정 9).
+        assert!(!MAISON.contains("overview.md"), "지침에 spec 파일 이름이 박혀 있다: {MAISON}");
     }
 
     /// **공통** — 항상 시스템 프롬프트에 상주하는 문자열이다. 교재가 안티패턴으로
@@ -201,7 +211,7 @@ mod tests {
     /// 320 → 350 (#46): 스펙 문서가 워크트리에 생겼을 때 `specDir`로 옮기라는 규율
     /// 한 문장을 더했다. 아틀리에 도구를 부르지 않는 순간에 필요한 지식이라 여기
     /// 말고는 둘 자리가 없다. 반면 프로젝트 없이 시작하는 경로는 atelier_start_work의
-    /// 설명이, spec 폴더 다섯 이름의 뜻은 atelier_get_work의 응답이 들고 간다 —
+    /// 설명이, spec 레이아웃은 atelier_get_work·atelier_start_work의 응답이 들고 간다 —
     /// 도구를 고르거나 문서를 쓰기 직전에만 필요한 지식을 상주시키지 않기 위해서다.
     ///
     /// **벌마다 잰다.** 두 벌을 합쳐 재면 상한이 사실상 두 배가 되는데, 한 셸에 상주하는
@@ -339,8 +349,10 @@ mod tests {
             }
             // 지침 쪽 — 같은 뿌리를 예시 문장이 읽는다. 아카이브 화면도 클립보드로 참조를
             // 내보내므로(ArchivePage) 뿌리가 둘이면 가드도 둘이어야 한다.
+            // 예시의 파일 이름도 자리 표시자다 — 이름이 남으면 `overview.md`가 없는 레이아웃에서
+            // 에이전트가 지침 안의 유일한 spec 파일 이름을 계속 본다(spec 레이아웃 결정 9).
             assert!(
-                text.contains(&format!("{work}<slug>/spec/overview.md:L19-27")),
+                text.contains(&format!("{work}<slug>/spec/<file>.md:L19-27")),
                 "{mode} 벌이 work 뿌리를 잃었다: {work}"
             );
             assert!(

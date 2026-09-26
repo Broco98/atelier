@@ -1,5 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Maximize2 } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { setResizing } from "@/components/shell/useResizableWidth";
 import FullscreenModal from "./FullscreenModal";
@@ -120,10 +119,6 @@ function ResizableTable({ className, children, ...props }: React.ComponentProps<
 }
 
 function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
-  const [fullOpen, setFullOpen] = useState(false);
-  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
-  const close = useCallback(() => setFullOpen(false), []);
-
   return (
     <div className="group/table relative">
       {/* 넓은 표는 자기 안에서만 가로로 스크롤한다 — 본문 스크롤 영역은 가로로 확장되지 않는다 */}
@@ -138,28 +133,28 @@ function SpecTable({ children, ...props }: React.ComponentProps<"table">) {
           포커스도 함께 막아 Tab으로 도달할 수 없다 — 둘 다 필요하므로 나눠서 쓴다.
           배경만 규격 밖이다: 표 셀 위에 겹치므로 불투명해야 하고, hover의 --state-2(6%)는
           반투명이라 배경을 대체하면 아이콘 뒤로 셀 글자가 비친다. hover는 색으로만 답한다.
-          opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다 */}
-      <button
-        type="button"
-        onClick={() => setFullOpen(true)}
-        title="전체화면으로 크게 보기"
-        aria-label="표를 전체화면으로 보기"
-        className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+          opacity를 전환하지 않는 것도 거터 버튼과 같다 — 근거는 그쪽 주석에 있다.
+          도움말은 다이어그램의 여는 버튼과 같은 글자의 툴팁이다(틀이 단다). 이름(「표를 …」)이 이미 그 말을 해서
+          제 이름을 들고 간다 */}
+      <FullscreenModal
+        name="표"
+        label="표"
+        trigger={
+          <button
+            aria-label="표를 전체화면으로 보기"
+            className="icon-button pointer-events-none absolute right-1.5 top-1.5 border bg-background text-tertiary opacity-0 outline-none transition-[color] hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover/table:pointer-events-auto group-hover/table:opacity-100"
+          />
+        }
       >
-        <Maximize2 className="size-3" strokeWidth={2} />
-      </button>
-
-      {fullOpen && (
-        <FullscreenModal label="표" onClose={close}>
-          {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
-              가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
-              폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
-              모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 닫으면 본문은 그대로다 */}
-          <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
-            <ResizableTable {...props}>{children}</ResizableTable>
-          </div>
-        </FullscreenModal>
-      )}
+        {/* 모달에서는 이 상자 하나가 세로·가로를 다 받는다 — 안쪽에 가로 상자를 또 두면
+            가로 스크롤바가 표 밑에 붙어 화면 밖으로 내려가 손이 닿지 않는다.
+            폭 상태는 본문 표와 따로 간다 — 본문 폭(좁은 열)에 맞춰 고정한 값을 1280px
+            모달에 그대로 들고 오면 표가 왼쪽에 쪼그라든 채 열린다. 창 안은 떠 있는 동안에만
+            서므로 열 때마다 내용 폭에서 새로 시작하고, 닫으면 본문은 그대로다 */}
+        <div className="min-h-0 flex-1 overflow-auto p-7 scroll-quiet">
+          <ResizableTable {...props}>{children}</ResizableTable>
+        </div>
+      </FullscreenModal>
     </div>
   );
 }

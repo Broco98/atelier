@@ -135,7 +135,8 @@ test("Room의 정보 탭에는 프로젝트 자리가 없다", async ({ page }) 
   await installFixtureBackend(page);
   await page.goto(`/maison/rooms/${room.slug}`);
 
-  await page.getByRole("button", { name: "info", exact: true }).click();
+  // 패널의 `spec | info`는 탭이다(결정 9) — 스크린리더에 탭으로 읽히는 그 역할로 집는다.
+  await page.getByRole("tab", { name: "info", exact: true }).click();
 
   // **탭이 정말 섰다**는 앵커. 없으면 아래 「없다」 넷은 탭이 안 열려서도 전부 초록이다.
   await expect(

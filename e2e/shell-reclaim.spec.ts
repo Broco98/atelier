@@ -9,6 +9,7 @@ import {
   openShell,
   unknownIpcCalls,
   writeShell,
+  셸입력,
 } from "./harness";
 
 // 티켓 07 — **둘러보다 저절로 뜬 셸이 입력 없이 화면을 떠나면 닫힌다**(프로세스 결정 7 · 프로세스 스펙 S16 · S17).
@@ -41,12 +42,12 @@ async function toTerminal(page: Page): Promise<void> {
   await expect(page).toHaveURL("/terminal");
 }
 
-/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다(`shell-osc.spec.ts`와 같다). */
-const focusedClass = (page: Page) => page.evaluate(() => document.activeElement?.className ?? "");
-
-/** 그 셸에 사람이 키 하나를 친다. 포커스가 셸에 없으면 키가 xterm에 안 닿으므로 먼저 본다. */
+/**
+ * 그 셸에 사람이 키 하나를 친다. 포커스가 셸에 없으면 키가 xterm에 안 닿으므로 먼저 본다 — 셸을 붙이면 입력칸이 스스로
+ * 포커스를 가져간다(하네스의 `셸입력`).
+ */
 async function typeKey(page: Page): Promise<void> {
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   await page.keyboard.type("l");
 }
 
@@ -177,10 +178,10 @@ test("한글만 친 셸은 떠나도 남는다 — IME 다리가 보낸 조합�
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
 
-  await page.evaluate(() => {
-    const textarea = document.querySelector("textarea.xterm-helper-textarea")!;
+  // 사건은 셸의 입력칸에 쏜다 — 집는 길은 하네스의 `셸입력` 하나다(클래스 문자열로 집지 않는다).
+  await 셸입력(page).evaluate((textarea) => {
     for (const [inputType, data] of [
       ["insertText", "ㅇ"],
       ["insertReplacementText", "아"],
@@ -210,12 +211,11 @@ test("붙여넣기만 한 셸도 떠나도 남는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
 
-  await page.evaluate(() => {
+  await 셸입력(page).evaluate((textarea) => {
     const clipboardData = new DataTransfer();
     clipboardData.setData("text/plain", "pnpm dev");
-    const textarea = document.querySelector("textarea.xterm-helper-textarea")!;
     textarea.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
   });
   // xterm이 붙여넣은 글자를 셸로 보냈다.

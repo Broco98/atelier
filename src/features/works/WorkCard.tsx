@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SignalNote, type CallingNote } from "@/components/shell/shell-signal";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { formatCreated, STATUS_META } from "./status";
@@ -19,8 +20,22 @@ import type { WorkView } from "./types";
 // 건너가는 경로(safe triangle)를 살려둬야 하고, 열림 상태의 소유가 행에서 카드로 넘어간다.
 //
 // 알려진 한계: 키보드로는 이 카드에 닿을 수 없다. 키보드로 작업을 고르는 경로(팔레트)에서는
-// 이 정보가 보이지 않는다. 감수한다.
-export function WorkCard({ mode, work }: { mode: Mode; work: WorkView }) {
+// 이 정보가 보이지 않는다. 감수한다. 그 가운데 **셸의 마지막 말**만은 키보드에도 닿는다 — 같은
+// 값이 행 버튼의 접근성 설명으로도 붙는다(`sidebar-active-band` 결정 14, `WorkSectionList`의 행).
+export function WorkCard({
+  mode,
+  work,
+  note,
+}: {
+  mode: Mode;
+  work: WorkView;
+  /**
+   * 부르는 셸이 한 말(결정 14). **값으로 받는다** — 이 카드는 훅을 안 부르는 조각이라 스스로
+   * 고르지 못하고, 고르는 자리는 사이드바 하나다(레인·메타·설명과 같은 셸). 없으면 `null`이고
+   * 그때 말 칸이 통째로 없다(S6).
+   */
+  note: CallingNote | null;
+}) {
   const meta = STATUS_META[work.status];
   return (
     <div className="flex flex-col gap-2.5">
@@ -36,6 +51,10 @@ export function WorkCard({ mode, work }: { mode: Mode; work: WorkView }) {
         </span>
         <span className="text-[11.5px] text-tertiary">{formatCreated(work.createdAt)}</span>
       </span>
+      {/* **상태 배지 줄 아래, 필드 표 위**다(결정 14). 배지는 work의 상태이고 이 칸은 그 work에서
+          지금 나를 부르는 셸의 말이라, 둘이 붙어 서야 「무엇이 · 왜」가 한 번에 읽힌다. 필드 표는
+          선 아래의 안 변하는 사실이다. */}
+      {note && <SignalNote {...note} />}
       <div className="flex flex-col gap-1 border-t pt-2.5 text-[12px]">
         {/* 브랜치는 첫 프로젝트가 붙을 때 정해진다 — 그전에는 보여줄 이름이 없다.
 

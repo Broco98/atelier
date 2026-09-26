@@ -42,7 +42,8 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
         <li data-figure="orphaned-shells">주인 잃은 셸 {counts.orphanedShells}</li>
         <li data-figure="confirmed">확정 고아 {known(counts.confirmed)}</li>
         <li data-figure="unknown">출처 불명 {known(counts.unknown)}</li>
-        {/* 앱 본체 — Rust 본체 + 웹뷰(WebContent). GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). */}
+        {/* 앱 본체 — Rust 본체 + 웹뷰(WebContent). GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 —
+            누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로 세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
         <li data-figure="app" title={summary ? appBodyNote(summary.webviewExcluded) : undefined}>
           앱 본체 <span className="tabular-nums">{formatMemory(summary?.app ?? null)}</span>
           {summary?.webviewExcluded && <span className="ml-1.5 text-tertiary">({WEBVIEW_EXCLUDED})</span>}

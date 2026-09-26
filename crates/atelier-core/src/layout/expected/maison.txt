@@ -1,0 +1,13 @@
+Spec layout — how to arrange documents inside `specDir`.
+
+Nothing else is fixed — file names are free, and a folder that fits none of these is kept and shown just the same.
+
+Atelier never creates these folders and nothing breaks if you skip them. You create them with your own file tools; the desktop app just recognises the names.
+
+  overview.md   the work's standing summary; write this first
+  {n}-{name}/   one iteration, with its plan, tickets, verification and handoff inside. Create `01-...` when you first plan, `02-...` for the next round.
+    tickets/    that iteration's tickets
+  research/     findings that outlive any single iteration
+  explanation/  understanding worth keeping: why it ended up like this
+
+`{n}` is a number and `{name}` is any name without `/`. A trailing `/` marks a folder, and indentation shows what goes inside it.

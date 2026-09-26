@@ -10,6 +10,7 @@ import {
   openShell,
   typeIntoShell,
   unknownIpcCalls,
+  셸입력,
 } from "./harness";
 import type { ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 
@@ -40,16 +41,6 @@ async function 줄들(page: Page): Promise<Array<{ level: string | null; name: s
     .evaluateAll((rows) => rows.map((row) => ({ level: row.getAttribute("aria-level"), name: row.getAttribute("aria-label") })));
 }
 
-/** 지금 포커스가 셸 자리 안의 xterm 입력칸인가(`shell-recall.spec.ts`와 같은 판정). 떼어 둔 셸은 DOM에서 빠진다. */
-const 셸에포커스 = (page: Page) =>
-  page.evaluate(() => {
-    const active = document.activeElement;
-    return (
-      active instanceof HTMLTextAreaElement &&
-      active.classList.contains("xterm-helper-textarea") &&
-      active.closest("[data-shell-host]") !== null
-    );
-  });
 
 /** 켜진 셸 탭의 셸 키 — 탭 칸의 `data-shell-key`(티켓 23). */
 const 켜진셸 = (page: Page) =>
@@ -224,7 +215,7 @@ test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 
   await expect(셸행(page, 3)).toHaveAttribute("aria-label", "zsh, 조용함 2h");
   await expect(셸행(page, 3)).toContainText("조용함");
   await expect(셸행(page, 4)).toHaveAttribute("aria-label", "zsh, claude");
-  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalLine`과 같은 규칙).
+  // 마크는 에이전트의 것이다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).
   await expect(셸행(page, 4).getByRole("img", { name: "claude", exact: true })).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -246,14 +237,15 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
   await 셸행(page, 1).getByRole("button", { name: "이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}\\?.*tab=terminal`));
   await expect.poll(() => 켜진셸(page), { message: "[이동]한 셸이 켜지지 않았다" }).toBe(키(1));
-  await expect.poll(() => 셸에포커스(page), { message: "[이동]한 셸에 포커스가 없다" }).toBe(true);
+  // 포커스는 셸의 입력칸이다(하네스의 `셸입력` — 떼어 둔 셸은 DOM에서 빠져 화면에 선 입력칸은 켜진 셸 하나뿐이다).
+  await expect(셸입력(page), "[이동]한 셸에 포커스가 없다").toBeFocused();
 
   // 최상위 터미널의 셸로 — 화면이 `/terminal`로 옮긴다.
   await nav(page, "Processes").click();
   await 셸행(page, 3).getByRole("button", { name: "이동", exact: true }).click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => 켜진셸(page)).toBe(키(3));
-  await expect.poll(() => 셸에포커스(page), { message: "[이동]한 셸에 포커스가 없다" }).toBe(true);
+  await expect(셸입력(page), "[이동]한 셸에 포커스가 없다").toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

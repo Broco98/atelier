@@ -94,9 +94,10 @@ interface ModeRefs {
 
 interface ModeShape {
   /**
-   * 세계의 이름 — 화면에 적히는 글자다. **대문자 영어다**(US 59): 사이드바에서 nav 항목(`Terminal`·`Archive`)과 같은 층이다.
-   * 적는 자리가 둘이다 — 사이드바 최상단 세그먼트(`ModeSwitch`)와 `Processes`의 세계 줄(티켓 27). 둘째 자리가 생겨 세그먼트에서
-   * 이 표로 올라왔다(그 파일의 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」).
+   * 세계의 이름. **대문자 영어다**(US 59) — 사이드바에서 이 두 낱말이 nav 항목
+   * (`Terminal`·`Archive`)과 같은 층이고, 그 아래 구획 머리부터 갈린다.
+   *
+   * 화면에 적는 이름이지 값이 아니다 — 명령으로 나가는 것은 위 `Mode`의 소문자 그대로다.
    */
   readonly name: string;
   readonly nav: readonly NavItem[];
@@ -208,6 +209,21 @@ const TABLE = {
 export const ALL_MODES = Object.keys(TABLE) as Mode[];
 
 /**
+ * 밖에서 온 글자가 가리키는 모드 — 모르는 글자면 `null`이다. 저장소에 남은 마지막 모드
+ * (`lastMode`)와 편집기 주소의 id(`/settings/spec-layout/$id`, spec 레이아웃 결정 25)가 이것을 읽는다.
+ *
+ * `ALL_MODES`로 **검증한다**: 캐스트로 두면 저장소에 남은 옛 값이나 손으로 고친 문자열이 그대로
+ * 모드가 되어, 표에 없는 키로 파생을 찾다 `undefined`가 화면까지 간다. 모르는 글자를 어디로 눕힐지는
+ * 부르는 자리가 정한다 — 마지막 모드는 Atelier로, 편집기 주소는 「spec 레이아웃」 페이지로 간다.
+ *
+ * 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」(`shell-meta.tsx` 머리말) — 편집기 주소가 둘째
+ * 자리가 된 날 셸 스토어에서 이 표로 올라왔다.
+ */
+export function modeFrom(text: string | null): Mode | null {
+  return ALL_MODES.find((mode) => mode === text) ?? null;
+}
+
+/**
  * 이 주소는 어느 세계인가. **정확히 `/maison`이거나 `/maison/`으로 시작할 때만** Maison이다 —
  * `startsWith("/maison")` 하나로 두면 `/maisonette` 같은 미래의 주소가 조용히 Maison이 되고,
  * 그때 화면은 「가끔 Maison으로 뜬다」로만 보인다.
@@ -258,8 +274,17 @@ export function hasProjects(mode: Mode): boolean {
   return TABLE[mode].projects;
 }
 
-/** 세계의 이름(`Atelier` · `Maison`) — 화면에 적는 글자다. 문장 안에서도 이 대문자 그대로다(CONTEXT 「표기」). */
-export function worldNameOf(mode: Mode): string {
+/**
+ * 화면에 적는 세계의 이름. 사이드바의 세그먼트(`ModeSwitch`)와 설정 「spec 레이아웃」의 행 머리가
+ * 이것을 읽는다 — 모드 이름이 곧 레이아웃의 이름이다(spec 레이아웃 결정 25). `Processes`의 세계 줄과
+ * 주인 잃은 셸 묶음의 세계 표시(프로세스 티켓 27 · 32)도 이것을 읽는다. 문장 안에서도 이 대문자
+ * 그대로다(CONTEXT 「표기」).
+ *
+ * 세그먼트 한 자리에서만 쓰던 동안은 그 파일에 살았다. 「쓰는 자리가 하나면 그 파일로, 둘이면
+ * 공용으로」(`shell-meta.tsx` 머리말) — 둘째 자리가 생긴 날 이 표로 올라왔다. 두 자리가 각자
+ * 이름을 들면 이름을 고치는 날 한쪽만 바뀐다.
+ */
+export function modeNameOf(mode: Mode): string {
   return TABLE[mode].name;
 }
 

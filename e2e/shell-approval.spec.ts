@@ -9,6 +9,8 @@ import {
   unknownIpcCalls,
   띠,
   레인,
+  셸입력,
+  행버튼,
 } from "./harness";
 
 // 프로세스 티켓 25 — **승인한 도구가 도는 동안 「도는 중」이다**(프로세스 결정 13 · P7 (가)). claude의 PreToolUse는 권한 창
@@ -28,8 +30,11 @@ const [, plainWork] = WORKS;
 const 링 = (page: Page) => 레인(page, plainWork.slug).locator('[data-signal="working"]');
 const 기다림줄 = (page: Page) =>
   띠(page).getByRole("button", { name: `${plainWork.title} — 나를 기다림`, exact: true });
-/** 그 work 행의 둘째 줄 — 셸이 마지막으로 한 말이 선다. 새 승인 요청이 닿았는지를 이 글로 본다. */
-const 둘째줄 = (page: Page) => page.locator(`[data-subrow="${plainWork.slug}"]`);
+/**
+ * 셸이 마지막으로 한 말 — 부르는 행 버튼의 설명(`aria-description`)이 든다(`sidebar-active-band` 결정 14 — 행이 한 줄이 되며
+ * 둘째 줄이 걷혔다). 새 승인 요청이 닿았는지를 이 글로 본다.
+ */
+const 행의말 = (page: Page) => 행버튼(page, `${plainWork.title} — 나를 기다림`);
 
 /** 승인 요청 한 장 — `tool_input`은 훅 문서 · 18 실측의 모양이다. 시각이 다르면 새 요청이다. */
 const 승인요청 = (at: number, command = "sleep 30") => ({
@@ -67,11 +72,7 @@ async function 승인창앞(page: Page, 한장: Parameters<typeof markAttention>
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.className ?? ""), {
-      message: "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다",
-    })
-    .toContain("xterm-helper-textarea");
+  await expect(셸입력(page), "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다").toBeFocused();
   await markAttention(page, 한장);
   await expect(기다림줄(page)).toHaveCount(1);
   await expect(링(page)).toHaveCount(0);
@@ -111,9 +112,9 @@ test("승인 요청에서 Esc를 누르면 「나를 기다림」이 남고, 그
   await expect(기다림줄(page)).toHaveCount(1);
   await expect(링(page)).toHaveCount(0);
 
-  // 새 승인 요청 — 둘째 줄이 새 명령으로 바뀐 것이 그 요청이 닿았다는 앵커다.
+  // 새 승인 요청 — 행의 말이 새 명령으로 바뀐 것이 그 요청이 닿았다는 앵커다.
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
-  await expect(둘째줄(page)).toContainText("sleep 60");
+  await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("Enter");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);
@@ -136,7 +137,7 @@ test("↓ 뒤의 Enter도, ↓ 뒤의 1도 「나를 기다림」을 남긴다",
   await expect(링(page)).toHaveCount(0);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
-  await expect(둘째줄(page)).toContainText("sleep 60");
+  await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("1");
   await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toMatch(/\r.*1$/s);
@@ -144,7 +145,7 @@ test("↓ 뒤의 Enter도, ↓ 뒤의 1도 「나를 기다림」을 남긴다",
   await expect(링(page)).toHaveCount(0);
 
   await fireAttention(page, 승인요청(Date.now() + 2, "sleep 90"));
-  await expect(둘째줄(page)).toContainText("sleep 90");
+  await expect(행의말(page)).toHaveAccessibleDescription(/sleep 90/);
   await page.keyboard.press("1");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);
@@ -166,7 +167,7 @@ test("승인 요청에서 2를 누르면 「나를 기다림」이 남는다", a
   await expect(링(page)).toHaveCount(0);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
-  await expect(둘째줄(page)).toContainText("sleep 60");
+  await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("Enter");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);
@@ -181,7 +182,7 @@ test("승인 요청에서 2를 누르면 「나를 기다림」이 남는다", a
 // 앵커: 누른 키가 셸에 닿았다(`pty_write`), 그리고 같은 셸에서 새 승인 요청의 `1`은 도는 중으로 간다.
 test("물음(AskUserQuestion)에서 1 · Enter를 눌러도 「나를 기다림」이 남는다", async ({ page }) => {
   await 승인창앞(page, 물음(Date.now()));
-  await expect(둘째줄(page)).toContainText("어느 쪽으로 할까요?");
+  await expect(행의말(page)).toHaveAccessibleDescription(/어느 쪽으로 할까요\?/);
 
   await page.keyboard.press("1");
   await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toContain("1");
@@ -194,7 +195,7 @@ test("물음(AskUserQuestion)에서 1 · Enter를 눌러도 「나를 기다림�
   await expect(링(page)).toHaveCount(0);
 
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
-  await expect(둘째줄(page)).toContainText("sleep 60");
+  await expect(행의말(page)).toHaveAccessibleDescription(/sleep 60/);
   await page.keyboard.press("1");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);

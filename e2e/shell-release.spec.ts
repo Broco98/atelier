@@ -12,6 +12,7 @@ import {
   writeShell,
   띠,
   레인,
+  셸입력,
 } from "./harness";
 
 // 프로세스 티켓 22 — **끊거나 에이전트가 사라지면 「도는 중」이 풀린다**(프로세스 결정 12). 판단은 L2가 표로 잰다
@@ -43,11 +44,7 @@ async function 도는셸에포커스(page: Page): Promise<void> {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.className ?? ""), {
-      message: "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다",
-    })
-    .toContain("xterm-helper-textarea");
+  await expect(셸입력(page), "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다").toBeFocused();
   await markAttention(page, 새턴());
   await expect(링(page)).toHaveCount(1);
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
@@ -87,7 +84,7 @@ test("Esc 뒤 500ms 안에 훅이 오면 도는 중이 남는다 — 시각을 �
     subagents: 1,
   });
   // 앵커: 사건이 닿았다.
-  await expect(이름표(page, 0)).toHaveAttribute("title", "도는 중 · 서브에이전트 1");
+  await expect(이름표(page, 0)).toHaveAccessibleDescription("도는 중 · 서브에이전트 1");
   await page.clock.runFor(400);
   await expect(링(page)).toHaveCount(1);
 

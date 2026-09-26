@@ -1,4 +1,4 @@
-import { expect, test } from "./evidence";
+import { expect, test, type Locator, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness";
 
@@ -18,9 +18,9 @@ import { awaitSpawned, installFixtureBackend, unknownIpcCalls } from "./harness"
 // 문서가 있는 work과 없는 work을 갈라 쓴다 — 본문이 갈리는 것을 재려면 고를 문서가 있어야 한다.
 const [specWork, plainWork] = WORKS;
 
-const shells = (page: import("./evidence").Page) => page.locator('[data-tab="shell"]');
+const shells = (page: Page) => page.locator('[data-tab="shell"]');
 /** 켜짐을 말하는 쪽은 이름 버튼이다 — 칸 자체가 아니라 그 속성으로 집는다. */
-const lit = (page: import("./evidence").Page, at: number) =>
+const lit = (page: Page, at: number) =>
   shells(page).nth(at).locator("button[aria-pressed]");
 
 test("⌘T가 새 셸을 열고 그 칸이 켜진다", async ({ page }) => {
@@ -119,5 +119,97 @@ test("탭을 누르면 본문이 그 칸의 것으로 바뀐다", async ({ page 
   // 문서가 남아 있는 상태가 그것이고, 그때 화면은 두 본문이 겹친 것이 된다(뮤테이션으로 확인).
   await expect(page.locator("main").getByRole("heading", { name: "개요" })).toHaveCount(0);
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 작업 패널의 탭 (결정 9, 스토리 100~102, S18) ──
+// 패널의 `spec | info`는 탭이다 — 스크린리더가 탭으로 읽고, ←/→로 옮긴다. 옮기면 그 탭이 곧바로 켜진다(S18 — 두
+// 패널이 이미 마운트돼 있어 바로 바뀌어도 싸다). 안 보이는 패널도 마운트된 채라(`keepMounted`) `spec`에서 접어 둔
+// 폴더가 `info`에 다녀와도 접혀 있다.
+//
+// 탭 줄은 창을 끄는 자리다. Tauri는 누른 요소 **자신**의 `data-tauri-drag-region`만 본다 — 탭을 감싼 목록(tablist)에
+// 속성이 없으면 탭 사이 틈이 끌기 영역에서 빠진다. 그래서 `elementFromPoint`가 돌려준 요소 자신을 잰다(조상에
+// 있는 것은 Tauri에게 없는 것이다). 문서는 `specWork`의 트리다 — 폴더 「증거」가 있다.
+
+const 패널탭 = (page: Page, name: "spec" | "info") => page.getByRole("tab", { name, exact: true });
+/** 켜진 패널만 잡힌다 — 숨은 패널은 `hidden`이라 접근성 트리에 없다. */
+const 패널 = (page: Page, name: "spec" | "info") => page.getByRole("tabpanel", { name, exact: true });
+/** info 패널이 섰다는 표식 — 그 패널 첫 줄의 slug 복사 행. */
+const slug행 = (page: Page) =>
+  패널(page, "info").getByRole("button", { name: `slug ${specWork.slug}`, exact: true });
+const 폴더 = (page: Page) => 패널(page, "spec").getByRole("button", { name: "증거", exact: true });
+
+test("패널의 spec·info는 탭이다 — ←/→로 옮기면 그 탭이 곧바로 켜지고 그 패널이 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  const spec = 패널탭(page, "spec");
+  const info = 패널탭(page, "info");
+  await expect(spec).toHaveAttribute("aria-selected", "true");
+  await expect(info).toHaveAttribute("aria-selected", "false");
+  await expect(폴더(page)).toBeVisible();
+
+  await spec.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(info).toBeFocused();
+  await expect(info).toHaveAttribute("aria-selected", "true");
+  // **본문이 정말 갈렸는가**를 양쪽으로 잰다 — 탭의 선택만 보면 「탭은 켜졌는데 패널은 그대로」가 통과한다.
+  await expect(slug행(page)).toBeVisible();
+  await expect(패널(page, "spec")).toHaveCount(0);
+  // 복사 행의 이름은 라벨과 값이고, 도움말(툴팁)은 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(slug행(page)).toHaveAccessibleDescription("slug 복사");
+  await expect(패널(page, "info").getByRole("button", { name: /^작업 폴더 / })).toHaveAccessibleDescription("경로 복사");
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(spec).toBeFocused();
+  await expect(spec).toHaveAttribute("aria-selected", "true");
+  await expect(폴더(page)).toBeVisible();
+  await expect(패널(page, "info")).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("`spec`에서 접은 폴더는 `info`에 다녀와도 접혀 있다 — 안 보이는 패널도 마운트된 채다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  const folder = 폴더(page);
+  await expect(folder).toHaveAttribute("aria-expanded", "true");
+  await folder.click();
+  await expect(folder).toHaveAttribute("aria-expanded", "false");
+
+  await 패널탭(page, "info").click();
+  // 앵커: info가 섰고 spec은 숨었다. 안 옮겨졌으면 아래 「그대로 접혀 있다」는 다녀온 적이 없어서 초록이다.
+  await expect(slug행(page)).toBeVisible();
+  await expect(folder).toHaveCount(0);
+
+  await 패널탭(page, "spec").click();
+  await expect(folder).toHaveAttribute("aria-expanded", "false");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("패널 탭 줄의 빈 자리와 탭 사이 틈은 창을 끄는 자리다 — 그 자리의 요소 자신에 끌기 속성이 있다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${specWork.slug}`);
+  const boxOf = async (target: Locator) => {
+    const box = await target.boundingBox();
+    if (!box) throw new Error("상자를 못 읽었다");
+    return box;
+  };
+  const spec = await boxOf(패널탭(page, "spec"));
+  const info = await boxOf(패널탭(page, "info"));
+  // 탭 줄 오른쪽의 문서/원문 토글 — 탭과 그 사이가 줄의 빈 자리다.
+  const source = await boxOf(page.getByRole("button", { name: "문서로 보기", exact: true }));
+  const draggable = (x: number, y: number) =>
+    page.evaluate(
+      ([px, py]) => document.elementFromPoint(px, py)?.hasAttribute("data-tauri-drag-region") ?? null,
+      [x, y],
+    );
+  const y = spec.y + spec.height / 2;
+
+  // 앵커: 두 탭 사이에 틈이 있고, info 뒤에 빈 자리가 있다 — 없으면 아래 두 점이 탭 위에 떨어진다.
+  expect(info.x - (spec.x + spec.width)).toBeGreaterThan(1);
+  expect(source.x - (info.x + info.width)).toBeGreaterThan(1);
+  expect(await draggable((spec.x + spec.width + info.x) / 2, y), "탭 사이 틈").toBe(true);
+  expect(await draggable((info.x + info.width + source.x) / 2, y), "줄의 빈 자리").toBe(true);
+  // 대조: 탭 위는 누르는 자리다 — 줄 전체가 끌기 영역이 된 것과 가른다.
+  expect(await draggable(spec.x + spec.width / 2, y), "탭 위").toBe(false);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

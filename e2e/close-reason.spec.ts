@@ -22,7 +22,7 @@ async function archive(page: Page, path: string, menu: string): Promise<void> {
   await page.goto(`${path}?tab=terminal`);
   await awaitSpawned(page, 1);
   await page.getByRole("button", { name: menu, exact: true }).click();
-  await page.getByRole("button", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
 }
 

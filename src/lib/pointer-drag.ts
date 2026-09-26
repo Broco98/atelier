@@ -15,7 +15,8 @@ import { Store } from "@tanstack/react-store";
  * 다시 그려진다.
  *
  * 놓일 자리의 판정(어느 절반 · 떨군 분할 · 몇 번째 틈)은 여기 없다 — 받는 쪽 모듈의 일이다: 탭은
- * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`).
+ * 본문의 절반(`split-view.ts`)과 탭 줄의 틈, 작업 행은 목록의 틈(`features/works/row-drop.ts`), 편집기
+ * 항목은 그 트리의 앞·뒤·안(`features/spec-layout/draft.ts`).
  * 여기 있는 것은 탭의 두 소비자가 적는 **칸**과 그 칸에 적는 함수 — 두 값이 동시에 안 켜진다는
  * 불변식을 한 곳에서 지키려고 여기 모인다 — 그리고 좌표로 자리를 정하는 쪽에 주는 끄는 동안의
  * 포인터와 「놓았다」·「끝났다」(`DragHandlers`)다.
@@ -58,9 +59,24 @@ export interface RowDragSource {
   slug: string;
 }
 
+/**
+ * 「spec 레이아웃」 편집기의 트리에서 끈 **항목**(spec 레이아웃 티켓 13). 놓일 자리는 그 트리 안이고 본문·탭 줄·
+ * 사이드바는 받지 않는다 — 탭만 받는 쪽은 `tabDragOf`로 거른다.
+ *
+ * 자리는 맨 위 항목에서부터의 인덱스 경로다(편집기의 `EntryPath`와 같은 모양). **그 타입을 부르지 않고 여기
+ * 적는다** — 편집기의 타입은 기능 폴더에 살아, 부르는 순간 이 모듈의 import 검사가 빨개진다(머리말).
+ */
+export interface EntryDragSource {
+  kind: "entry";
+  path: readonly number[];
+}
+
+/** 끌 수 있는 것 전부 — 한 번에 하나만 끌린다. */
+export type AnyDragSource = DragSource | RowDragSource | EntryDragSource;
+
 export interface DragState {
   /** `null`이면 아무것도 안 끌고 있다 — 받는 쪽의 겹판도 그때는 서지 않는다. */
-  source: DragSource | RowDragSource | null;
+  source: AnyDragSource | null;
   /** 지금 포인터가 어느 절반 위인가. 놓기 전에는 `null`일 수 있다(본문 밖). */
   half: SplitHalf | null;
   /**
@@ -79,9 +95,15 @@ const IDLE: DragState = { source: null, half: null, slot: null };
 
 export const dragStore = new Store<DragState>(IDLE);
 
-/** 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`). */
+/**
+ * 끌리는 것이 **탭**일 때만 그 원천 — 본문 절반처럼 탭만 받는 쪽이 읽는 자리다(위 `RowDragSource`).
+ *
+ * **탭 종류로 좁힌다.** 「작업 행이 아니면 탭」으로 거르면 원천 종류가 늘어나는 날 새 종류가 조용히 탭으로
+ * 읽힌다 — 편집기 항목(`EntryDragSource`)을 끄는 순간 분할 겹판이 섰을 것이다.
+ */
 export function tabDragOf(state: DragState): DragSource | null {
-  return state.source?.kind === "work" ? null : state.source;
+  const source = state.source;
+  return source !== null && (source.kind === "spec" || source.kind === "shell") ? source : null;
 }
 
 /**
@@ -100,8 +122,11 @@ export function farEnough(dx: number, dy: number): boolean {
  * 가설을 **문턱을 고치기 전에** 재려고 둔다. 두 순간에 한 줄씩이다: 문턱을 넘은 순간과, 뗀 뒤 클릭을 삼킨 순간.
  */
 export interface DragTrace {
-  /** 무엇을 끌었나 — 작업 행(`work`)인지 탭(`shell` · `spec`)인지가 가설을 가른다. */
-  source: DragKind | RowDragSource["kind"];
+  /**
+   * 무엇을 끌었나 — 작업 행(`work`)인지 탭(`shell` · `spec`)인지가 가설을 가른다. 편집기 항목(`entry`)도 같은 문턱을
+   * 지나므로 함께 적힌다.
+   */
+  source: AnyDragSource["kind"];
   moment: "threshold" | "swallow";
   /** 누른 자리에서 그 순간까지 옮긴 거리(px). */
   dx: number;
@@ -166,11 +191,13 @@ export function cancelDrag(): void {
 
 /**
  * 지금 걸린 눌림 하나 — **문턱 전이든 뒤든**. 위 `abortActive`와 따로 두는 것은 문턱 전의 눌림도
- * 거둬야 하는 길이 있어서다(아래 `cancelGoneShellDrag`). 사이드바 목록의 취소(`cancelDrag`)는
- * 문턱에서 기하를 재므로 문턱 전을 건드릴 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채
- * 천천히 끄는 손이 논다.
+ * 거둬야 하는 길이 둘 있어서다: 끄는 셸이 사라졌을 때(`cancelGoneShellDrag`)와 편집기 트리가 바뀌었을
+ * 때(`cancelPress`). 편집기 항목의 원천은 누른 순간 잡은 인덱스 경로라, 문턱 전에 트리가 바뀌어도
+ * 남은 눌림이 문턱에서 그 경로의 새 항목으로 끌기를 시작한다. 사이드바 목록의 취소(`cancelDrag`)는
+ * 문턱 전을 건드리지 않는다 — 원천이 slug라 목록이 바뀌어도 같은 작업을 가리키고 기하는 문턱에서
+ * 재므로 거둘 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채 천천히 끄는 손이 논다.
  */
-let armed: { source: DragSource | RowDragSource; disarm: () => void } | null = null;
+let armed: { source: AnyDragSource; disarm: () => void } | null = null;
 
 /**
  * **끄는 셸이 사라졌으면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 원천의 `shellId`는 누른 순간
@@ -190,6 +217,16 @@ export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
 }
 
 /**
+ * **그 종류의 눌림을 거둔다 — 문턱 전이든 뒤든.** 원천이 누른 순간의 자리를 쥐는 쪽(편집기 트리의 인덱스
+ * 경로 — `EntryDragSource`)이 그 자리가 가리키던 것이 바뀌었을 때 부른다. 거두는 길은 `cancelGoneShellDrag`와
+ * 같다: 문턱 전이면 리스너만 떼고, 뒤면 Esc와 같이 표시를 걷고 뗄 때 클릭을 삼키며 `drop`을 안 부른다.
+ * 다른 종류의 눌림은 건드리지 않는다.
+ */
+export function cancelPress(kind: AnyDragSource["kind"]): void {
+  if (armed?.source.kind === kind) armed.disarm();
+}
+
+/**
  * 포인터가 눌렸다. **아직 드래그가 아니다** — 5px을 넘어야 시작한다.
  *
  * `preventDefault`를 부르지 않는다: 임계값 안쪽이면 이 눌림은 그냥 클릭이어야 하고,
@@ -197,7 +234,7 @@ export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
  * 겹판이 「내 위를 지나간다」를 스스로 알 길이 없어진다.
  */
 export function armDrag(
-  source: DragSource | RowDragSource,
+  source: AnyDragSource,
   from: DragPoint,
   handlers: DragHandlers = {},
 ): void {
@@ -248,9 +285,9 @@ export function armDrag(
     settle();
   };
 
-  // **Esc는 끌기를 취소하고 아무것도 안 부른다.** 캡처로 듣고 전파를 막는다(선례: AppDialog) —
-  // 끄는 동안의 Esc는 이 몸짓의 것이라, 창에서 Esc를 듣는 다른 자리(열린 메뉴 · 전체 화면 보기)가
-  // 같은 키로 제 일을 하면 한 번 눌러 두 일이 된다.
+  // **Esc는 끌기를 취소하고 아무것도 안 부른다.** 캡처로 듣고 전파를 막는다(선례: 첫 프레임
+  // 가드, `components/ui/first-frame-guard.ts`) — 끄는 동안의 Esc는 이 몸짓의 것이라, 창에서 Esc를 듣는
+  // 다른 자리(열린 메뉴 · 전체 화면 보기)가 같은 키로 제 일을 하면 한 번 눌러 두 일이 된다.
   //
   // _한때 여기 「포커스가 xterm의 숨은 입력칸에 남을 수 있어(WKWebView는 누른 버튼으로 포커스를
   // 안 옮긴다) 버블에서 기다리면 xterm이 셸에 `ESC`를 쓴다」고 적혀 있었는데 사실이 아니다._
@@ -302,8 +339,9 @@ export function armDrag(
     window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);
   };
 
-  // 원천이 사라져 거둘 때의 길(`cancelGoneShellDrag`). 문턱 뒤면 Esc와 같다. 문턱 전이면 이 눌림은
-  // 아직 클릭일 뿐이라 **리스너만 뗀다** — 표시도 상태도 선 적이 없고, 삼킬 클릭도 없다.
+  // 원천이 사라지거나 가리키던 것이 바뀌어 거둘 때의 길(`cancelGoneShellDrag` · `cancelPress`). 문턱 뒤면
+  // Esc와 같다. 문턱 전이면 이 눌림은 아직 클릭일 뿐이라 **리스너만 뗀다** — 표시도 상태도 선 적이 없고,
+  // 삼킬 클릭도 없다.
   const gesture = {
     source,
     disarm: () => {

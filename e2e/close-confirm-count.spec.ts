@@ -125,7 +125,7 @@ async function askToArchive(page: Page, path: string, menu: string, title: strin
   await page.goto(`${path}?tab=terminal`);
   await awaitSpawned(page, 1);
   await page.getByRole("button", { name: menu, exact: true }).click();
-  await page.getByRole("button", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   const dialog = page.getByRole("alertdialog", { name: `'${title}' 아카이빙` });
   await expect(dialog).toBeVisible();
   return dialog;

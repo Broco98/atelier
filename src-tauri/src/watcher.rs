@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter};
 
 /// `~/.atelier/projects/` 감시 → 관련 변경 시 `projects:changed` emit.
 /// 두 모드의 진행 중 루트 감시 → 관련 변경 시 `works:changed` emit.
+/// `~/.atelier/layouts/` 감시 → 관련 변경 시 `layouts:changed` emit.
 /// dotfile(자기 쓰기의 `.tmp` 단계 포함)은 무시한다.
 pub fn start(app: AppHandle) {
     for watch in watches() {
@@ -55,6 +56,21 @@ fn watches() -> Vec<Watch> {
         event: "works:changed",
         relevant: works_change_is_relevant,
     }));
+    // spec 레이아웃 폴더(spec 레이아웃 결정 22) — 에이전트가 저장하거나 손으로 고친 레이아웃을 설정의
+    // 「spec 레이아웃」과 spec 패널 탭이 따라온다. 모드가 둘이어도 폴더는 하나이고(`<id>/`가 그 안에
+    // 나란히 산다) 이벤트도 하나다 — 근거는 위 works의 그것과 같다. 반응성도 spec 라이브 리로드와
+    // 같은 값이다(spec 레이아웃 구현 스펙 3절: 기존 감시와 같은 규격).
+    //
+    // 기동 때 폴더를 만드는 것은 다른 감시와 같다(`spawn_watch`). 빈 `layouts/`는 resolve에 아무
+    // 영향이 없다 — resolve는 `<id>/`만 본다. 「읽기는 아무것도 쓰지 않는다」는 엔진의 약속이고
+    // 감시자는 앱의 것이다.
+    all.push(Watch {
+        dir: atelier_core::layouts_dir(),
+        recursive: RecursiveMode::Recursive,
+        debounce: Duration::from_millis(300),
+        event: "layouts:changed",
+        relevant: layout_change_is_relevant,
+    });
     all
 }
 
@@ -72,8 +88,20 @@ fn works_change_is_relevant(path: &Path) -> bool {
     let in_trees = path
         .components()
         .any(|c| matches!(c, std::path::Component::Normal(n) if n == "trees"));
-    let dotfile = path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
-    !in_trees && !dotfile
+    !in_trees && !is_dotfile(path)
+}
+
+/// 레이아웃 폴더 아래는 점 파일만 거른다 — 저장의 원자적 쓰기가 남기는 tmp 단계다. 나머지는 모두
+/// 소식이다: `layout.json`도, 어느 깊이의 템플릿도, 되돌리기로 사라지는 `<id>/` 폴더 자체도.
+/// works의 체크아웃 거르기(`trees/`)는 빌리지 않는다 — 레이아웃에는 체크아웃이 없고, 템플릿 파일은
+/// 레이아웃 폴더 안의 `trees/`라는 하위 폴더에도 설 수 있다(손으로 적은 템플릿 경로는 폴더 안 어느
+/// 상대 경로든 된다).
+fn layout_change_is_relevant(path: &Path) -> bool {
+    !is_dotfile(path)
+}
+
+fn is_dotfile(path: &Path) -> bool {
+    path.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))
 }
 
 /// 폴더 하나를 디바운스로 보며 **종만 친다** — 무엇이 바뀌었는지는 안 싣고, 프런트가 그
@@ -157,7 +185,53 @@ mod tests {
         let watch = watch_on(&atelier_core::projects_dir());
         assert_eq!(watch.recursive, RecursiveMode::NonRecursive);
         assert_eq!(watch.event, "projects:changed");
-        assert_eq!(watches().len(), 3, "감시가 늘거나 줄었다 — 프로젝트 하나 + 모드별 목록 둘이다");
+        assert_eq!(
+            watches().len(),
+            4,
+            "감시가 늘거나 줄었다 — 프로젝트 하나 + 모드별 목록 둘 + 레이아웃 폴더 하나다"
+        );
+    }
+
+    /// **레이아웃 폴더도 기존 감시와 같은 규격으로 본다**(spec 레이아웃 결정 22). 에이전트가 레이아웃을
+    /// 저장하거나 사람이 손으로 고치면 설정의 「spec 레이아웃」과 `spec` 패널 탭이 따라와야 한다.
+    /// 템플릿은 `<id>/` 아래 하위 폴더에도 서므로 재귀다 — 한 겹만 보면 `tickets/` 아래 템플릿을
+    /// 고쳐도 화면이 안 바뀐다. 이벤트 이름이 틀리면 아무도 안 듣는 종이 울린다.
+    #[test]
+    fn the_layouts_folder_is_watched_recursively_and_rings_layouts_changed() {
+        let watch = watch_on(&atelier_core::layouts_dir());
+        assert_eq!(
+            watch.recursive,
+            RecursiveMode::Recursive,
+            "레이아웃 폴더가 한 겹만 감시된다 — <id>/ 아래를 고쳐도 화면이 안 바뀐다"
+        );
+        assert_eq!(watch.event, "layouts:changed", "레이아웃 감시가 다른 이름을 쏜다 — 아무도 안 듣는다");
+        assert_eq!(watch.debounce, Duration::from_millis(300));
+    }
+
+    /// 레이아웃 폴더 아래는 **점 파일만** 거른다. 저장은 파일마다 점으로 시작하는 tmp를 쓰고 옮기므로
+    /// (`atomic.rs`의 `tmp_name`), 그 중간 단계가 새면 저장 한 번이 종을 여러 번 친다.
+    ///
+    /// **works의 규칙을 빌리지 않는다** — 그쪽은 코드 체크아웃(`trees/`)도 거르는데, 레이아웃에는 체크아웃이
+    /// 없고 레이아웃 폴더 안의 `trees/`라는 하위 폴더에 템플릿 파일이 설 수 있다. 계획에 실린 함수로
+    /// 잰다(위 Room 검사와 같은 이유).
+    #[test]
+    fn a_layout_or_template_is_news_but_dotfiles_are_not() {
+        let layouts = atelier_core::layouts_dir();
+        let relevant = watch_on(&layouts).relevant;
+        assert!(relevant(&layouts.join("atelier/layout.json")));
+        assert!(relevant(&layouts.join("maison/decisions.md")));
+        assert!(relevant(&layouts.join("atelier/tickets/ticket.md")), "하위 폴더의 템플릿이 안 들린다");
+        assert!(relevant(&layouts.join("atelier/trees/a.md")), "works의 체크아웃 거르기가 레이아웃에 샌다");
+        // 되돌리기는 모드의 폴더를 통째로 지운다
+        assert!(relevant(&layouts.join("atelier")));
+        for dotfile in [
+            "atelier/.layout.json.4242.0.tmp",
+            "atelier/tickets/.ticket.md.4242.1.tmp",
+            "atelier/.DS_Store",
+            ".DS_Store",
+        ] {
+            assert!(!relevant(&layouts.join(dotfile)), "점 파일 {dotfile}이 새어 들어온다");
+        }
     }
 
     /// Room 아래에서도 거르는 규칙이 같다. **계획에 실린 함수로 잰다** — 자유 함수를 직접

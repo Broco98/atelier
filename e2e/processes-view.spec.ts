@@ -24,7 +24,7 @@ const [, plainWork] = WORKS;
 
 const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
 const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
-const toastRegion = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
+const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
 
 const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;

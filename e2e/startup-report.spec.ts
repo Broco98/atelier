@@ -24,7 +24,7 @@ const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 
 const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 
 /** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). 화면이 무엇이든 늘 있다. */
-const toastRegion = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
+const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 
 /**
  * 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「없다」를 재기 전에 부른다**

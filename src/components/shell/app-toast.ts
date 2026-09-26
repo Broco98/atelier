@@ -4,8 +4,9 @@ import { Toast } from "@base-ui/react/toast";
 // 스스로 끝남, 훅 갱신, 「그 셸은 닫혔어요」 — 은 사람이 어느 화면에 있든 닿아야 한다. 그래서 자리가 앱
 // 셸에 하나다(`AppToasts.tsx`).
 //
-// **작업 · 아카이브 화면의 복사 토스트는 여기로 안 온다.** 그쪽은 제 화면 안의 일을 말하고, 이웃 work
-// (`sidebar-active-band`)이 그 자리를 옮기고 있다 — 이 파일은 그쪽을 모른다.
+// **작업 · 아카이브 화면의 복사 토스트는 여기로 안 온다.** 그쪽은 제 화면 안의 일을 말하고, 앱 토스트 부품의
+// `showToast`로 제 화면의 자리에 한 장만 선다(`components/ui/toast.tsx` — `sidebar-active-band` S14 · S26). 이 파일은 그쪽
+// 매니저를 모르고, 그쪽도 이 매니저를 모른다. 모양만 한 정의를 나눠 쓴다(`AppToasts`).
 
 /**
  * 이 work의 토스트가 나가는 **유일한 문**. 모듈에 하나 둔다 — React 밖(스토어 · 이벤트 처리기)에서도 알릴 수
@@ -18,8 +19,8 @@ import { Toast } from "@base-ui/react/toast";
 export const appToasts = Toast.createToastManager();
 
 /**
- * 버튼 없는 토스트가 서 있는 시간 — 작업 · 아카이브 화면의 복사 토스트와 같은 값이다(`WorksPage.tsx`). 한
- * 앱에서 두 토스트가 다른 빠르기로 사라지면 어느 쪽이 느린지가 눈에 걸린다.
+ * 버튼 없는 토스트가 서 있는 시간 — 작업 · 아카이브 화면의 복사 토스트와 같은 값이다(`components/ui/toast.tsx`의
+ * `ToastProvider` 기본값). 한 앱에서 두 토스트가 다른 빠르기로 사라지면 어느 쪽이 느린지가 눈에 걸린다.
  */
 export const SHORT_TOAST_MS = 1600;
 

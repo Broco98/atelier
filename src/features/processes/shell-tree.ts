@@ -1,9 +1,9 @@
 import { SIGNAL_LABEL, formatElapsed, showsElapsed, subagentLabel } from "@/components/shell/shell-signal";
+import type { ShellSignal } from "@/components/shell/shell-signal";
 import { attentionOn, runningSubagents, signalOf } from "@/features/terminal/shell-attention";
-import type { ShellSignal } from "@/features/terminal/shell-attention";
 import { modeOfOwner, runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
-import { ALL_MODES, navItemsOf, worldNameOf, type Mode } from "@/mode";
+import { ALL_MODES, modeNameOf, navItemsOf, type Mode } from "@/mode";
 import { formatMemory, sumMetrics } from "./metrics";
 import type { PoolShell, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
@@ -318,7 +318,7 @@ export function shellStateOf({ shell, pool, descendants }: ShellNode): ShellStat
 }
 
 /**
- * 상태 칸의 글자. 눈에 보이는 것과 접근성 이름이 같은 이것을 읽는다. 경과는 사이드바의 둘째 줄과 같은 규칙으로 붙는다 — 도는 중은
+ * 상태 칸의 글자. 눈에 보이는 것과 접근성 이름이 같은 이것을 읽는다. 경과는 사이드바 행의 오른쪽 메타와 같은 규칙으로 붙는다 — 도는 중은
  * 안 단다(`showsElapsed`), 표기는 `formatElapsed`다.
  */
 export function stateText(state: ShellState, now: number): string {
@@ -382,7 +382,7 @@ export function groupRowLabel(group: GroupNode): string {
  */
 export function orphanGroupRowLabel(group: GroupNode): string {
   return withMemory(
-    [group.name, worldNameOf(modeOfOwner(group.owner)), shellCount(group.shells.length)],
+    [group.name, modeNameOf(modeOfOwner(group.owner)), shellCount(group.shells.length)],
     groupTotals(group).memory,
   );
 }
@@ -393,7 +393,7 @@ export function shellCount(count: number): string {
 
 /** 세계 줄 — 세계의 이름이고, 지금 세계면 그렇다고 말한다. 화면이 앱 전체라 어느 쪽이 지금 세계인지가 이 줄에서 읽힌다. */
 export function worldRowLabel(world: WorldNode): string {
-  return world.current ? `${worldNameOf(world.mode)}, ${CURRENT_WORLD}` : worldNameOf(world.mode);
+  return world.current ? `${modeNameOf(world.mode)}, ${CURRENT_WORLD}` : modeNameOf(world.mode);
 }
 
 export const CURRENT_WORLD = "지금 세계";

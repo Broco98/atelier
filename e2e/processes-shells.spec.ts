@@ -173,7 +173,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
     ]);
   await expect(orphans).toHaveCount(0);
   // 같은 셸의 토스트도 내려간다 — 같은 함수다. 셸마다 닫기 확인 창(08)을 안 띄웠다.
-  await expect(page.getByRole("region", { name: "알림", exact: true }).getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog")).toHaveCount(0);
   expect(await callCount(page, "pty_command_running")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -220,14 +220,17 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   await expect(dialog).toBeVisible();
   expect(await bodyLines(dialog)).toEqual(["이 셸에서 띄운 프로세스 1개가 아직 돌아요. 닫을까요?"]);
   await 버튼(dialog, "취소").click();
-  await expect(dialog).toHaveCount(0);
-  // 시계가 멈춰 있어 프레임을 기다리는 `settle`은 못 쓴다 — 시계를 조금 흘려 미룬 일을 풀고 센다.
+  // 시계가 멈춰 있어 프레임을 기다리는 `settle`은 못 쓴다 — 시계를 조금 흘려 미룬 일을 풀고 센다. 창이 걷히는 것도 이 뒤다:
+  // 확인 창(Base UI AlertDialog)의 나가는 애니메이션은 프레임을 타고(`시계를세운다` 머리말), 다 걷히기 전의 막은 누르기를 가로챈다.
   await page.clock.runFor(100);
+  await expect(dialog).toHaveCount(0);
   expect(await callCount(page, "pty_kill")).toBe(0);
   await 버튼(셸줄(offscreen, 7), "닫기").click();
   await 버튼(dialog, "닫기").click();
   // 스냅샷의 pty id로 닫는다. 까닭은 「셸 닫기」, 주인은 없다 — 스토어의 칸이 없어 모른다.
   await expect.poll(() => kills(page)).toEqual([{ id: 7, reason: "shellClose", owner: null }]);
+  await page.clock.runFor(100);
+  await expect(dialog).toHaveCount(0);
 
   // ── [닫기]: 조용한 셸 ── 묻지 않고 닫는다.
   await 버튼(셸줄(offscreen, 9), "닫기").click();
@@ -303,6 +306,10 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
       { id: 2, reason: "shellClose", owner: "atelier:" },
       { id: 3, reason: "shellClose", owner: "atelier:" },
     ]);
+  // 확인 창의 나가는 애니메이션은 프레임을 탄다 — 멈춘 시계를 조금 흘려 창을 걷는다(다 걷히기 전의 막은 다음 누르기를 가로챈다).
+  // 100ms는 박자(2초)에 한참 못 미친다 — 스냅샷은 그대로다.
+  await page.clock.runFor(100);
+  await expect(quiet).toHaveCount(0);
   await expect(셸줄(셸트리(page), 3)).toHaveCount(0);
   await expect(셸줄(offscreen, 3)).toHaveCount(0);
   await expect(셸줄(offscreen, 99)).toBeVisible();
@@ -319,6 +326,8 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
       { id: 3, reason: "shellClose", owner: "atelier:" },
       { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
     ]);
+  await page.clock.runFor(100);
+  await expect(orphanDialog).toHaveCount(0);
   await expect(orphans).toHaveCount(0);
   await expect(셸줄(offscreen, 1)).toHaveCount(0);
   await expect(셸줄(offscreen, 99)).toBeVisible();
@@ -480,7 +489,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await expect(page).toHaveURL("/processes");
 
   await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
-  const toast = page.getByRole("region", { name: "알림", exact: true }).getByRole("dialog", {
+  const toast = page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog", {
     name: "닫을 조용한 셸이 없어요",
     exact: true,
   });

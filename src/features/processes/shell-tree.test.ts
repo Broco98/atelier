@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ownerOf, topTerminal } from "@/features/terminal/shell-registry";
 import type { Shell } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { worldNameOf } from "@/mode";
+import { modeNameOf } from "@/mode";
 import { formatMemory } from "./metrics";
 import {
   descendantLabel,
@@ -352,7 +352,7 @@ describe("셸 행의 상태 칸", () => {
     const now = 1_000 + 3 * 60_000;
     expect(stateText(shellStateOf(노드(칸(1, "G-1", { attention: 상태({ kind: "waiting" }) }))), now)).toBe("나를 기다림 3m");
     expect(stateText(shellStateOf(노드(칸(1, "G-1", { attention: 상태({ kind: "done" }) }))), now)).toBe("확인할 것 3m");
-    // 도는 중은 경과를 안 단다 — 사이드바의 둘째 줄과 같은 규칙이다(`showsElapsed`).
+    // 도는 중은 경과를 안 단다 — 사이드바 행의 오른쪽 메타와 같은 규칙이다(`showsElapsed`).
     expect(stateText(shellStateOf(노드(칸(1, "G-1", { attention: 상태({ kind: "working" }) }))), now)).toBe("도는 중");
     expect(stateText(shellStateOf(노드(칸(1, "G-1", { attention: 상태({ kind: "working", subagents: 2 }) }))), now)).toBe(
       "도는 중 · 서브에이전트 2",
@@ -459,8 +459,8 @@ describe("행의 접근성 이름 — 한 문장", () => {
       }),
     );
     expect(groupRowLabel(measured[0].groups[0])).toBe("plain-work, 셸 2개, 1.2GB");
-    expect(worldRowLabel(world)).toBe(`${worldNameOf("atelier")}, 지금 세계`);
-    expect(worldRowLabel({ ...world, current: false })).toBe(worldNameOf("atelier"));
+    expect(worldRowLabel(world)).toBe(`${modeNameOf("atelier")}, 지금 세계`);
+    expect(worldRowLabel({ ...world, current: false })).toBe(modeNameOf("atelier"));
   });
 
   // 자손 행은 부른 이름이다 — 커널 이름은 실제로 실행된 파일이라 심링크로 부른 것(`claude` → 버전 경로)이 다른 이름이 된다. 부른
@@ -536,7 +536,7 @@ describe("주인 잃은 셸 묶음", () => {
         snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB))]),
       }),
     );
-    expect(orphanGroupRowLabel(group)).toBe(`gone-room, ${worldNameOf("maison")}, 셸 1개, 8MB`);
+    expect(orphanGroupRowLabel(group)).toBe(`gone-room, ${modeNameOf("maison")}, 셸 1개, 8MB`);
   });
 });
 

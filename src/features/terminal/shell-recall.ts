@@ -1,5 +1,5 @@
+import type { ShellSignal } from "@/components/shell/shell-signal";
 import { isCalling } from "./shell-attention";
-import type { ShellSignal } from "./shell-attention";
 import type { Shell } from "./shell-registry";
 
 /**

@@ -1,6 +1,7 @@
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useState } from "react";
 import { Ellipsis } from "lucide-react";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { keepAsException } from "./actions";
 import { formatCpu, formatMemory, formatPorts } from "./metrics";
@@ -44,6 +45,9 @@ export function Section({
 /**
  * 트리의 한 줄. 들여쓰기가 깊이를 눈으로 말하고 `aria-level`이 귀로 말한다. 접근성 이름은 줄마다 지은 한 문장이다 — 안의 글자
  * 조각(이름 · 상태 · 버튼)을 이어 읽으면 「zsh 조용함 2h 이동 닫기」가 된다.
+ *
+ * 자손 줄이 받는 `title`(명령줄 전체)은 앱 툴팁(`Hint`)이 아니다 — `sidebar-active-band` S29의 「버튼이 아닌 자리」와 같은 까닭으로,
+ * 툴팁 트리거로 세우면 누를 것 없는 줄에 포커스와 역할이 새로 생긴다(spec 레이아웃 편집기의 잘린 경로가 같은 선택을 했다).
  */
 export function TreeRow({
   level,
@@ -84,6 +88,8 @@ export function Figures({ metrics, ports = true }: { metrics: ProcessMetrics; po
       {ports ? (
         <span
           data-cell="ports"
+          // 잘린 포트 목록의 전체는 `title`이 보인다 — 툴팁(`Hint`)이 아닌 것은 `sidebar-active-band` S29의 「버튼이 아닌 자리」와
+          // 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다(spec 레이아웃 편집기의 잘린 경로와 같다).
           title={listed || undefined}
           className="w-28 shrink-0 truncate pl-2 text-[12.5px] tabular-nums text-muted-foreground"
         >
@@ -118,60 +124,32 @@ export function RowButton({ onClick, children }: { onClick: () => void; children
  * **행 메뉴** — 「예외로 두기」 하나(프로세스 스펙 S7 · 티켓 31). 누르면 그 이름이 설정의 예외 목록에 더해진다(`keepAsException`).
  * 셸 자손과 고아 행에 선다 — 다른 인스턴스와 예외 행은 보기 전용이라 안 선다.
  *
- * 키보드는 `+`의 메뉴(`ShellPicker`)와 같은 규칙이다: 열리면 첫 항목이 포커스를 받고, Esc · Tab은 닫기만 하고 포커스를 여는 버튼으로
- * 돌려준다(메뉴가 body 끝에 떠 있어 안 돌려주면 `<body>`로 떨어진다).
+ * **메뉴 부품(`DropdownMenu`)이 다 한다** — 작업 ⋯ · 셸 열기 `+`와 같은 부품이다. 열리면 첫 항목이 켜지고, Esc · 바깥 누르기는
+ * 닫기만 하고 포커스를 여는 버튼으로 돌려준다. 버튼은 이름이 없는 아이콘 버튼이라 툴팁 글자가 곧 이름이다(`Hint`, S28 — 작업
+ * ⋯와 같다). 모양과 크기(24px)는 `icon-button` 한 곳이 든다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만
+ * 둔다. 항목의 모양 · 폭은 부품의 기본값이고, 이름은 작업 ⋯의 항목처럼 굵다.
  */
 export function RowMenu({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const close = () => {
-    setOpen(false);
-    anchorRef.current?.focus();
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape" && event.key !== "Tab") return;
-    event.preventDefault();
-    event.stopPropagation();
-    close();
-  };
   return (
-    <>
-      <button
-        ref={anchorRef}
-        type="button"
-        aria-label="프로세스 메뉴"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((was) => !was)}
-        className="flex size-6 shrink-0 items-center justify-center rounded-[8px] text-muted-foreground transition-colors quiet-hover"
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <Hint
+        text="프로세스 메뉴"
+        announce="name"
+        render={
+          <DropdownMenuTrigger
+            className={cn("icon-button transition-colors", open ? "toggle-on" : "text-muted-foreground quiet-hover")}
+          />
+        }
       >
-        <Ellipsis className="size-3.5" />
-      </button>
-      {open && (
-        <PopoverPortal
-          anchorRef={anchorRef}
-          // 줄의 오른쪽 끝에 선 버튼이라 오른쪽 맞춤이다 — 왼쪽 맞춤이면 메뉴가 창 밖으로 뻗는다.
-          align="right"
-          width={150}
-          onClose={() => setOpen(false)}
-          onPlaced={(card) => card.querySelector<HTMLElement>('[role="menuitem"]')?.focus()}
-        >
-          <div role="menu" onKeyDown={onKeyDown} className="flex flex-col gap-px p-[5px]">
-            <button
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => {
-                close();
-                void keepAsException(name);
-              }}
-              className="flex h-8 w-full items-center rounded-[9px] px-[9px] text-left text-[12.5px] font-medium outline-none transition-colors hover:bg-state-2 focus:bg-state-2"
-            >
-              예외로 두기
-            </button>
-          </div>
-        </PopoverPortal>
-      )}
-    </>
+        <Ellipsis aria-hidden className="size-3.5" />
+      </Hint>
+      {/* 줄의 오른쪽 끝에 선 버튼이라 오른쪽 맞춤이다 — 왼쪽 맞춤이면 메뉴가 창 밖으로 뻗는다. */}
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void keepAsException(name)}>
+          <span className="min-w-0 flex-1 truncate font-medium">예외로 두기</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -1,17 +1,32 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
-// 드롭다운·카드를 문서 최상위에 그린다 — 전체화면 다이어그램과 같은 이유다.
+// **떠 있는 것 가운데 부품(Base UI)으로 옮기지 않은 둘이 쓰는 카드다.** 쓰는 자리는 둘뿐이다.
 //
-// absolute로 조상 안에 두면 그 조상 어딘가의 overflow-hidden에 잘린다. 실제로 목록
-// 패널은 폭 드래그 때문에 overflow-hidden을 갖고 있어서, 그 안의 드롭다운이
-// 패널 경계에서 글자가 잘려 나왔다. 포털로 body 직계에 두면 조상이 무엇을 하든 잘리지 않고,
-// fixed라 조상에 변형이 걸려도 기준 상자가 viewport로 고정된다.
+// 1. **사이드바 작업 행의 호버 카드**(`SidebarWorkList`). 사이드바 구조는 이 전환의 범위 밖이고
+//    (`sidebar-active-band` 결정 3), 호버 카드는 HoverCard로 바꾸지 않는다. 여닫음은 행의 hover가
+//    온전히 소유한다 — 350ms 지연, 끄는 동안 억제, 행이 화면에서 빠지거나 사이드바가 접히면 함께
+//    닫힘. 키보드로는 닿지 않고(스토리 38) 포커스도 안 받는다. 스크린리더가 들을 말은 행 버튼의
+//    이름과 설명이 든다.
+// 2. **틀 이동 힌트**(`SpecViewer`의 `FrameFocusHint`). HTML 문서의 프레임이 포커스를 쥔 동안에만
+//    서서 「⌃Tab·⌘W가 이 문서 안으로 들어간다」를 말한다. 여는 트리거도 닫는 몸짓도 없고, 포커스를
+//    뺏으면 안 되며(프레임 안 조작이 계속 먹어야 한다), 포인터도 안 받는다(`pointer-events-none`).
+//
+// 둘 다 **여닫음과 포커스를 부품에 맡길 것이 없다** — Popover·HoverCard·Tooltip이 들고 오는 것
+// (트리거, 바깥 누르기와 Esc 닫기, 첫 포커스, 열림 애니메이션)이 이 둘에게는 없어야 할 것이다.
+// 그래서 여기는 **자리 잡기 하나만** 한다. 여닫는 떠 있는 것(메뉴·Popover·Select·창)은
+// `components/ui`의 부품이 든다. 카드의 모양(13px 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕)은
+// 이 카드와 그 부품들이 함께 부르는 index.css의 `floating-card` 한 곳에 있다(각 부품 파일 머리의
+// 「옛 PopoverPortal 카드」가 이 값이다).
+//
+// 문서 최상위(body 직계)에 그리는 이유는 잘림이다. absolute로 조상 안에 두면 그 조상 어딘가의
+// overflow-hidden에 잘린다 — 사이드바는 폭 드래그 때문에 overflow-hidden을 갖는다. fixed라
+// 조상에 변형이 걸려도 기준 상자가 viewport로 고정된다.
 //
 // 위치는 앵커의 화면 좌표에서 계산한다. 창 가장자리를 넘으면 8px 안쪽으로 물려
 // 화면 밖으로 나가지 않게 한다 — 잘림을 옮겨 심지 않기 위한 것이다. 세로도 같이 물리므로
-// 목록 아래쪽 항목에 붙어도 아래가 잘리지 않는다.
+// 목록 아래쪽 행에 붙어도 아래가 잘리지 않는다.
 
 const VIEWPORT_MARGIN = 8;
 
@@ -21,8 +36,6 @@ export function PopoverPortal({
   align = "left",
   gap = 4,
   width,
-  onClose,
-  onPlaced,
   className,
   children,
 }: {
@@ -33,13 +46,6 @@ export function PopoverPortal({
   align?: "left" | "right";
   gap?: number;
   width: number;
-  // 넘기면 바깥 클릭을 받아 닫는 투명 막이 함께 깔린다. 호버로 여닫는 쪽은 넘기지 않는다 —
-  // 막이 포인터를 가로채면 앵커에서 곧바로 mouseleave가 나 열자마자 닫힌다.
-  onClose?: () => void;
-  // 자리가 처음 정해져 **보이게 된 뒤** 한 번 부른다. 포커스를 줄 자리가 여기다 — 그 전
-  // 한 프레임은 카드가 `invisible`이라, 그때 준 포커스는 조용히 안 먹는다(숨은 요소는 포커스를
-  // 못 받는다). 부르는 쪽이 제 이펙트에서 주면 그 프레임에 걸린다.
-  onPlaced?: (card: HTMLDivElement) => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -56,7 +62,7 @@ export function PopoverPortal({
       const height = cardRef.current?.offsetHeight ?? 0;
       // **앵커에서만 잰다** — 앵커를 품은 패널의 경계에서 재던 판은 걷었다(결정 30).
       // 패널 밖으로 밀어내면 카드가 그 경계선에 딱 맞춰 서서 옆 화면에 끼워 넣은 칸처럼
-      // 보인다. 여기 팝오버는 문서 최상위에 뜨는 **떠 있는 것**이라, 앵커 옆에 붙어
+      // 보인다. 여기 카드는 문서 최상위에 뜨는 **떠 있는 것**이라, 앵커 옆에 붙어
       // 패널 여백을 덮고 올라서는 편이 그 사실을 말한다.
       const rawLeft =
         side === "right" ? rect.right + gap : align === "right" ? rect.right - width : rect.left;
@@ -78,33 +84,21 @@ export function PopoverPortal({
     };
   }, [anchorRef, side, align, gap, width]);
 
-  // 최신 콜백을 ref로 읽는다 — 부르는 쪽이 인라인 화살표를 줘도 「처음 한 번」이 안 흔들린다.
-  const onPlacedRef = useRef(onPlaced);
-  onPlacedRef.current = onPlaced;
-  const placed = pos !== null;
-  useEffect(() => {
-    // 이 이펙트는 `visible`이 커밋된 **뒤에** 돈다 — 레이아웃 이펙트의 `setPos`가 부른 회차다.
-    if (placed && cardRef.current) onPlacedRef.current?.(cardRef.current);
-  }, [placed]);
-
   return createPortal(
-    <>
-      {onClose && <div className="fixed inset-0 z-40" onClick={onClose} />}
-      <div
-        ref={cardRef}
-        // 이 상자는 body 직계라 조상으로 못 찾는다 — 자리를 재는 검사가 붙잡을 손잡이다
-        data-popover
-        style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width }}
-        className={cn(
-          "fixed z-50 overflow-hidden rounded-[13px] border border-border-strong bg-background shadow-lg",
-          // 위치를 재기 전 한 프레임을 엉뚱한 자리에 그리지 않는다
-          pos ? "visible" : "invisible",
-          className,
-        )}
-      >
-        {children}
-      </div>
-    </>,
+    <div
+      ref={cardRef}
+      // 이 상자는 body 직계라 조상으로 못 찾는다 — 자리를 재는 검사가 붙잡을 손잡이다
+      data-popover
+      style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width }}
+      className={cn(
+        "fixed z-50 overflow-hidden floating-card",
+        // 위치를 재기 전 한 프레임을 엉뚱한 자리에 그리지 않는다
+        pos ? "visible" : "invisible",
+        className,
+      )}
+    >
+      {children}
+    </div>,
     document.body,
   );
 }

@@ -6,6 +6,7 @@ import SpecViewer, { HtmlDoc, PrettyView, SourceView, htmlSrcdoc } from "./SpecV
 import { useSpecFile } from "./hooks";
 import { ALL_MODES, refPrefixesOf, type Mode } from "@/mode";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 
 // 이 화면이 파일을 **읽는지**를 세려면 조회 계층을 걷어내야 한다. 정적 렌더는 이펙트를
 // 돌리지 않아 IPC가 나가지는 않지만, 훅이 어떤 인자로 불렸는가는 그 자리에서만 보인다.
@@ -233,18 +234,7 @@ describe("PrettyView 콜아웃", () => {
 // 화면이 줄번호 `1` 하나가 된다(실물에서 그랬다). 읽기만 따로 그림 판정을 부르면, 표가
 // 바뀔 때 그 자리만 옛 규칙을 따른다 — 그래서 부르는 자리를 아예 없앴고, 여기서 그것을 센다.
 describe("SpecViewer 본문 갈래", () => {
-  const work: WorkView = {
-    slug: "some-work",
-    title: "어떤 작업",
-    status: "active",
-    branch: "feat/some-work",
-    createdAt: "2026-08-16",
-    projects: [],
-    pinned: false,
-    worktrees: [],
-    specDir: "~/.atelier/works/some-work/spec",
-    specFiles: ["overview.md", "샷.png", "notes.txt"],
-  };
+  const work: WorkView = workFixture(specDocs(["overview.md", "샷.png", "notes.txt"]));
 
   function viewer(file: string, showSource = false): string {
     return renderToStaticMarkup(
@@ -385,19 +375,11 @@ describe("HtmlDoc 프레임", () => {
 });
 
 describe("spec이 없을 때 안내하는 폴더", () => {
-  const empty: WorkView = {
-    slug: "some-work",
-    title: "어떤 작업",
-    status: "active",
+  const empty: WorkView = workFixture({
     branch: null,
-    createdAt: "2026-08-16",
-    projects: [],
-    pinned: false,
-    worktrees: [],
-    specDir: "~/.atelier/works/some-work/spec",
     // **여기가 비어야 빈 화면이 뜬다** — 파일이 하나라도 있으면 본문 갈래로 빠진다.
     specFiles: [],
-  };
+  });
 
   const notice = (mode: Mode, slug = "some-work") =>
     renderToStaticMarkup(

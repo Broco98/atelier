@@ -8,6 +8,8 @@ import {
   unknownIpcCalls,
   띠,
   레인,
+  툴팁,
+  행버튼,
 } from "./harness";
 
 // 프로세스 티켓 20 — **턴을 마친 셸은 「확인할 것」이 되고, 훅이 도구 · 오류 · 서브에이전트를 말한다**(프로세스 결정
@@ -22,7 +24,10 @@ import {
 const [, plainWork] = WORKS;
 
 const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
-/** 칸의 이름 버튼 — 켜짐(`aria-pressed`)과 툴팁(`title`)이 서는 자리다. */
+/**
+ * 칸의 이름 버튼 — 켜짐(`aria-pressed`)과 툴팁이 서는 자리다. 툴팁은 앱의 것(`Hint`)이라 그 글자는 이름 버튼의 설명
+ * (`aria-description`)으로도 남는다(`sidebar-active-band` S28) — 「툴팁에 무엇이 섰나」를 설명으로 잰다.
+ */
 const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 
@@ -65,7 +70,8 @@ test("턴을 마친 셸은 띠에 확인할 것으로 서고, 그 셸 탭을 보
 // 말은 메시지 자리에 서고 색은 없다(terminal-activity-signal 결정 12의 「빨강 보류」).
 test("API 오류로 끝난 턴은 확인할 것과 「오류로 끝남」을 보인다", async ({ page }) => {
   await 둘째가말할자리(page);
-  const 둘째줄 = page.locator(`[data-subrow="${plainWork.slug}"]`);
+  // 셸의 말은 부르는 행 버튼의 설명이 든다(`sidebar-active-band` 결정 14 — 행이 한 줄이 되며 둘째 줄이 걷혔다).
+  const 행의말 = 행버튼(page, `${plainWork.title} — 확인할 것`);
 
   await markAttention(
     page,
@@ -86,8 +92,8 @@ test("API 오류로 끝난 턴은 확인할 것과 「오류로 끝남」을 보
 
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
   // 오류 상세의 **첫 줄**이 붙는다 — 둘째 줄은 안 든다.
-  await expect(둘째줄).toContainText("오류로 끝남 · 429 Too Many Requests");
-  await expect(둘째줄).not.toContainText("retry-after");
+  await expect(행의말).toHaveAccessibleDescription("오류로 끝남 · 429 Too Many Requests");
+  await expect(행의말).not.toHaveAccessibleDescription(/retry-after/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -195,7 +201,7 @@ test("승인을 기다리는 셸에 서브에이전트의 도구 사건이 와�
     2,
   );
   await expect(기다림줄).toHaveCount(1);
-  await expect(이름표(page, 1)).toHaveAttribute("title", "도는 중 · 서브에이전트 1");
+  await expect(이름표(page, 1)).toHaveAccessibleDescription("도는 중 · 서브에이전트 1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -207,7 +213,7 @@ test("서브에이전트가 도는 채 멈추면 탭 툴팁에 그 수가 서고
   const 시각 = Date.now();
 
   // 먼저 없음을 센다 — 조용한 칸에는 툴팁이 없다.
-  await expect(이름표(page, 1)).not.toHaveAttribute("title", /서브에이전트/);
+  await expect(이름표(page, 1)).not.toHaveAccessibleDescription(/서브에이전트/);
 
   await markAttention(
     page,
@@ -221,7 +227,10 @@ test("서브에이전트가 도는 채 멈추면 탭 툴팁에 그 수가 서고
     },
     2,
   );
-  await expect(이름표(page, 1)).toHaveAttribute("title", "도는 중 · 서브에이전트 2");
+  await expect(이름표(page, 1)).toHaveAccessibleDescription("도는 중 · 서브에이전트 2");
+  // **눈에는 앱 툴팁으로 선다** — 올려 두면 그 글자가 뜬다(설명만 있고 툴팁이 안 뜨는 변형을 여기서 문다).
+  await 이름표(page, 1).hover();
+  await expect(툴팁(page)).toHaveText("도는 중 · 서브에이전트 2");
   // 도는 중이라 부르지 않는다.
   await expect(띠(page)).toHaveCount(0);
 
@@ -231,7 +240,7 @@ test("서브에이전트가 도는 채 멈추면 탭 툴팁에 그 수가 서고
     { agent: "claude", event: "SubagentStop", at: 시각 + 10, payload: { agent_id: "a1" }, subagents: 1, stopped: true },
     2,
   );
-  await expect(이름표(page, 1)).toHaveAttribute("title", "도는 중 · 서브에이전트 1");
+  await expect(이름표(page, 1)).toHaveAccessibleDescription("도는 중 · 서브에이전트 1");
 
   await fireAttention(
     page,
@@ -240,7 +249,7 @@ test("서브에이전트가 도는 채 멈추면 탭 툴팁에 그 수가 서고
   );
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
   // 확인할 것이 된 칸에는 도는 중의 툴팁이 없다.
-  await expect(이름표(page, 1)).not.toHaveAttribute("title", /서브에이전트/);
+  await expect(이름표(page, 1)).not.toHaveAccessibleDescription(/서브에이전트/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

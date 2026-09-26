@@ -62,7 +62,7 @@ const orphanText = (count: number, item: "작업" | "Room" = "작업") =>
   `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 /** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). */
-const toastRegion = (page: Page) => page.getByRole("region", { name: "알림", exact: true });
+const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
 
 /** [모두 닫기]가 한 번 묻는 창. */
@@ -211,7 +211,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
   // 아카이브 코어 호출을 붙잡아 「호출이 아직 안 돌아왔다」를 세운다.
   await holdCommand(page, "archive_work");
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
-  await page.getByRole("button", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
   await expect.poll(() => heldCalls(page, "archive_work")).toBe(1);
 

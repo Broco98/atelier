@@ -4,20 +4,16 @@ import WorkInfo, { relativeToWorkDir, type ProjectBase } from "./WorkInfo";
 import type { Mode } from "@/mode";
 import { workDirRef, worktreeDirRef } from "./refs";
 import type { WorkView } from "./types";
+import { specDocs, workFixture } from "./work-fixture";
 
 // **쿼리 프로바이더를 세우지 않는다.** 이 컴포넌트가 스스로 조회하면 여기서 바로 터진다 —
 // 그것이 "정보 탭 본문은 순수 표현이다"를 지키는 유일한 검사다. 프로젝트별 base는
 // 조회한 쪽(WorkPanel)이 값으로 내려준다.
 
-const work: WorkView = {
-  slug: "some-work",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/some-work",
+const work: WorkView = workFixture({
   // 코어가 내려주는 값 그대로다 — chrono의 %Y-%m-%d
   createdAt: "2026-08-16",
   projects: ["atelier"],
-  pinned: false,
   worktrees: [
     {
       project: "atelier",
@@ -26,9 +22,8 @@ const work: WorkView = {
       dirty: false,
     },
   ],
-  specDir: "~/.atelier/works/some-work/spec",
-  specFiles: ["overview.md", "01-계획/plan.md", "01-계획/notes.md", "02-구현/impl.md"],
-};
+  ...specDocs(["overview.md", "01-계획/plan.md", "01-계획/notes.md", "02-구현/impl.md"]),
+});
 
 const registered: Record<string, ProjectBase> = {
   atelier: { base: "develop", unregistered: false },
@@ -102,7 +97,8 @@ describe("WorkInfo 프로젝트 구획", () => {
     const markup = render();
     expect(markup).toMatch(/<button[^>]*aria-label="atelier 프로젝트 상세로 이동"/);
     // 작업 폴더 · worktree · spec 셋 다 눌러서 복사한다
-    expect(markup.match(/<button[^>]*title="경로 복사"/g)).toHaveLength(3);
+    // 도움말 「경로 복사」는 툴팁이라 정적 마크업에 없다 — 이름(라벨과 값)보다 더 말하는 그 말은 설명으로 남는다(S28).
+    expect(markup.match(/<button[^>]*aria-description="경로 복사"/g)).toHaveLength(3);
   });
 });
 
@@ -134,7 +130,7 @@ describe("WorkInfo 프로젝트가 0개인 작업", () => {
     expect(markup).toContain("아직 프로젝트가 없어요.");
     expect(rowValue(markup, "slug")).toBe("some-work");
     expect(rowValue(markup, "생성일")).toBe("2026-08-16");
-    expect(markup).toContain("판 2 · 문서 4(전체)");
+    expect(markup).toContain(">문서 4<");
   });
 
   it("브랜치가 있으면 안내 문구와 브랜치 줄이 함께 나오고 뒷문장이 빠진다", () => {
@@ -168,7 +164,7 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     // 값은 그대로 읽힌다 (사람 말로 다듬지 않는다)
     expect(rowValue(markup, "slug")).toBe("some-work");
     // 경로 셋과 같은 어포던스다 — 행 전체가 버튼이고 hover에 복사 아이콘이 뜬다
-    expect(markup).toMatch(/<button[^>]*title="slug 복사"/);
+    expect(markup).toMatch(/<button[^>]*aria-description="slug 복사"/);
   });
 
   it("브랜치가 미정이면 브랜치 줄만 빠진다", () => {
@@ -181,11 +177,15 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     expect(rowValue(markup, "작업 폴더")).toBe("~/.atelier/works/some-work/");
   });
 
-  it("판 개수와 문서 개수가 spec 파일 목록에서 나온다", () => {
-    // 두 수는 단위가 달라 더할 수 없고, 문서 개수는 판 안 문서를 **포함한다**.
-    // spec 탭의 Documents 구획(판 밖 문서만)과 다른 집합이라 (전체)를 붙인다.
-    expect(render()).toContain("판 2 · 문서 4(전체)");
-    expect(render({ specFiles: ["overview.md"] })).toContain("판 0 · 문서 1(전체)");
+  it("개수는 「문서 M」 하나다", () => {
+    // 판을 세던 것이 사라졌다(spec 레이아웃 결정 24) — 폴더가 곧 개념이라 판이라는 세는 말을 화면이
+    // 따로 갖지 않는다. `(전체)`는 spec 탭의 `Documents` 구획(판 밖 문서만)과 가르려고 붙였던 꼬리라,
+    // 구획이 없어지면서 가를 상대가 없다. 문서 개수는 판 안 문서를 **포함한** spec 파일 전부다.
+    const markup = render();
+    expect(markup).toContain(">문서 4<");
+    expect(markup).not.toMatch(/판 \d/);
+    expect(markup).not.toContain("(전체)");
+    expect(render({ specFiles: ["overview.md"] })).toContain(">문서 1<");
   });
 
   it("경로는 공통 접두어를 한 번만 쓴다", () => {

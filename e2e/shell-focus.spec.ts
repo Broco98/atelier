@@ -10,6 +10,7 @@ import {
   typeIntoShell,
   unknownIpcCalls,
   띠,
+  셸입력,
 } from "./harness";
 
 // 티켓 16 — **셸로 가는 모든 길이 키보드 포커스를 데려온다**(프로세스 결정 18 ② · 프로세스 스펙 S21 · 스토리 44~46).
@@ -19,28 +20,25 @@ import {
 // 옮기지 않는 대신 **비운다** — 셸에 있던 포커스도 그 순간 떠나 `body`로 간다. 두 사실이 겹쳐 「보고 있는 셸을 눌렀는데
 // 키가 아무 데도 안 들어간다」가 됐다. 이제 누르는 자리가 스토어에 포커스를 **요청한다**(`focusShell`).
 //
-// 재는 것은 `document.activeElement`다 — 그 셸의 xterm이 키를 받는 숨은 입력칸이어야 한다. 떼어 둔 셸의 집은 DOM에서
-// 빠지므로(`detachShell`) 셸 자리(`[data-shell-host]`) 안의 입력칸은 지금 보이는 그 셸 하나뿐이다.
+// 재는 것은 포커스다 — 그 셸의 xterm이 키를 받는 숨은 입력칸(하네스의 `셸입력`)이어야 한다. 떼어 둔 셸의 집은 DOM에서
+// 빠지므로(`detachShell`) 화면에 선 입력칸은 지금 보이는 그 셸 하나뿐이다.
 //
 // **바꾸기 전에 빨간 것을 macOS의 WebKit에서 봤다**(구현 기록 16절). 리눅스 WebKit(CI)의 버튼 포커스 동작은 다를 수
 // 있지만, 고친 뒤의 단언은 두 플랫폼에서 같다.
 
 const [, plainWork] = WORKS;
 
-/** 지금 포커스가 셸 자리 안의 xterm 입력칸인가. */
-const shellHasFocus = (page: Page) =>
-  page.evaluate(() => {
-    const active = document.activeElement;
-    return (
-      active instanceof HTMLTextAreaElement &&
-      active.classList.contains("xterm-helper-textarea") &&
-      active.closest("[data-shell-host]") !== null
-    );
-  });
+/**
+ * 지금 포커스가 셸 자리(`[data-shell-host]`) **밖**인가. 「셸이 포커스를 안 가져갔다」는 팔레트가 떠 있는 동안 재는데, 그때
+ * 셸 입력칸은 모달 아래라 `aria-hidden`이어서 역할로 못 집는다(`셸입력` 머리말) — 그래서 이쪽은 자리로 본다. 클래스 문자열은
+ * 안 본다(검사 규칙).
+ */
+const focusOutsideShell = (page: Page) =>
+  page.evaluate(() => document.activeElement?.closest("[data-shell-host]") === null);
 
 /** 포커스가 셸에 든다 — **전제로 먼저 본다.** 처음부터 셸에 없으면 「누른 뒤에도 셸이다」가 아무것도 안 잰다. */
 async function expectShellFocused(page: Page, message: string): Promise<void> {
-  await expect.poll(() => shellHasFocus(page), { message }).toBe(true);
+  await expect(셸입력(page), message).toBeFocused();
 }
 
 /**
@@ -134,7 +132,7 @@ test("글꼴이 늦게 와 셸이 열려도 팔레트 입력칸의 포커스를 
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
   await awaitSpawned(page, 1);
   await expect(searchBox(page)).toBeFocused();
-  expect(await shellHasFocus(page)).toBe(false);
+  expect(await focusOutsideShell(page)).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -159,7 +157,7 @@ test("요청한 셸도 늦게 열리면서 그 뒤에 간 팔레트 입력칸의
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
   await awaitSpawned(page, 1);
   await expect(searchBox(page)).toBeFocused();
-  expect(await shellHasFocus(page)).toBe(false);
+  expect(await focusOutsideShell(page)).toBe(true);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

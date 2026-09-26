@@ -9,6 +9,7 @@ import {
   moveOntoHalf,
   startSplitDrag,
   unknownIpcCalls,
+  셸입력,
 } from "./harness";
 
 // 끌기 제스처의 **끝나는 길**(UI개선 티켓 03 · UI개선 스펙 S5). 제스처는 기능 폴더 밖 공용 모듈이
@@ -129,7 +130,7 @@ test("셸 탭을 본문 절반 위에서 Esc로 놓으면 분할도 셸 입력�
   await openTerminal(page);
   await startDrag(page);
   await moveOntoHalf(page, "right");
-  await page.locator("textarea.xterm-helper-textarea").focus();
+  await 셸입력(page).focus();
   const before = await callCount(page, "pty_write");
 
   await page.keyboard.press("Escape");

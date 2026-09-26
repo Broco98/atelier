@@ -10,8 +10,9 @@ import {
 } from "./shell-notify";
 import type { NotifyContent, NotifyInput, NotifyShell } from "./shell-notify";
 import type { NotifyChoice } from "@/features/settings/notifications";
+import type { ShellSignal } from "@/components/shell/shell-signal";
 import { nextAttention } from "./shell-attention";
-import type { Attention, ShellSignal } from "./shell-attention";
+import type { Attention } from "./shell-attention";
 import { ownerOf, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
