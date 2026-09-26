@@ -95,7 +95,7 @@ export interface ShellHookState {
 
 /**
  * 상태가 바뀐 셸 하나. **`shellId`는 pty id도 레지스트리 id도 아니다** — 앱이 PTY에 심고
- * 훅이 되읽는 `<앱 인스턴스 접두사>-<pty id>` 문자열이다(`pty.rs`의 `shell_id`).
+ * 훅이 되읽는 셸 키 `<세대>-<pty id>` 문자열이다(Rust `processes/shell_key.rs`의 `mint`, 프런트는 `shell-key.ts`).
  *
  * `state`가 `null`이면 그 셸의 상태가 사라졌다 — 셸이 닫혔다는 뜻이다. **바뀐 셸만** 실려
  * 오므로 여기 없는 셸은 「값이 그대로」이지 「조용하다」가 아니다.

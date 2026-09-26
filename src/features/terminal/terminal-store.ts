@@ -24,9 +24,9 @@ import {
   nextAttention,
   nextOnOutput,
   nextOnRunning,
-  ptyIdOf,
 } from "./shell-attention";
 import type { Answering, AttentionSource, ShellView } from "./shell-attention";
+import { ptyIdOf } from "./shell-key";
 import { bellSignal, oscSignal } from "./shell-osc";
 import { createNotifier, notifyShells, outgoing } from "./shell-notify";
 import type { NotifyPayload } from "./shell-notify";

@@ -131,6 +131,7 @@ mod tests {
     fn a_key_splits_at_its_last_separator_into_a_generation_and_a_number() {
         assert_eq!(split("1757000000-3"), Some(("1757000000", 3)));
         assert_eq!(split("1757000000-12"), Some(("1757000000", 12)));
+        assert_eq!(split("l3-fixture-7"), Some(("l3-fixture", 7)));
         assert_eq!(split("test-42-inherited-1"), Some(("test-42-inherited", 1)));
         for not_a_key in ["", "1757000000", "1757000000-", "1757000000-abc", "1757000000-3x", "-3", "G-+1", "G-99999999999"] {
             assert_eq!(split(not_a_key), None, "{not_a_key:?}를 셸 키로 읽었다");

@@ -1092,7 +1092,7 @@ export async function typeIntoShell(page: Page): Promise<void> {
  * 않는다 — 그 자리를 fail-open으로 두면 이 값을 읽는 검사 전부가 무엇을 재는지 모르게 된다.
  * 구독이 안 보이면 기다렸다 다시 보고, 끝내 없으면 **던진다.**
  *
- * 셸 ID는 `<앱 인스턴스 접두사>-<pty id>`다(`pty.rs`의 `shell_id`). 프런트가 되뽑는 것은
+ * 셸 ID는 셸 키 `<세대>-<pty id>`다(Rust `processes/shell_key.rs`의 `mint`). 프런트가 되뽑는 것은
  * 마지막 `-` 뒤의 번호뿐이라(`ptyIdOf`) 상태가 앉는 데는 접두사가 무엇이어도 되지만, **픽스처의 세대로 짓는다**
  * (`FIXTURE_GENERATION`) — 그 셸이 spawn 답으로 받은 셸 키와 같은 문자열이어야 키로 셸을 찾는 길(방금 부른 셸로)이
  * 실물과 같은 셸을 가리킨다(티켓 23). **어느 셸에 앉힐지

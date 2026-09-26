@@ -601,7 +601,7 @@ export interface Incrementing {
 }
 
 /**
- * 픽스처 백엔드의 **세대** — 셸 키의 앞머리(`<세대>-<PTY 번호>`, `pty.rs`의 `shell_id`). 훅 사건을 흉내 내는
+ * 픽스처 백엔드의 **세대** — 셸 키의 앞머리(`<세대>-<PTY 번호>`, Rust `processes/shell_key.rs`의 `mint`). 훅 사건을 흉내 내는
  * 손잡이(`harness`의 `fireAttention`)가 셸 id를 이것으로 짓는다 — 두 자리가 같은 값을 봐야 셸 키와 훅의 셸 id가
  * 같은 셸을 가리킨다(실물에서 둘은 같은 문자열 하나다).
  */

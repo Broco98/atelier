@@ -924,22 +924,3 @@ export function markShellsSeen(state: ShellsState, view: ShellView): ShellsState
     state.shells.filter((shell) => isShellSeen(shell.id, view)).map((shell) => shell.id),
   );
 }
-
-/**
- * 셸 ID에서 **pty 번호**를 되뽑는다. 훅이 아는 이름(`<앱 인스턴스 접두사>-<pty id>`,
- * `pty.rs`의 `shell_id`)과 레지스트리가 아는 번호를 잇는 첫 칸이고, 그다음은
- * `terminal-store`의 `shellOfPty`가 잇는다 — 그 두 번호가 다르다는 것은 `PtyRunning`의
- * 머리말이 든다.
- *
- * **모르는 모양은 `null`이다.** 접두사에도 `-`가 있을 수 있어 마지막 것 뒤만 본다. 숫자가
- * 아니면 `NaN`을 흘리지 않고 여기서 끊는다 — 흘려보내면 `shellOfPty`가 아무 칸도 못 찾은
- * 것과 구분이 안 되어, 왜 상태가 안 앉는지 어디서도 안 보인다.
- */
-export function ptyIdOf(shellId: string): number | null {
-  const cut = shellId.lastIndexOf("-");
-  // 접두사가 있어야 한다. `-`가 없으면 `cut`이 -1이라 통째로 번호로 읽히고, 맨 앞이면
-  // 접두사가 빈 것이라 앱이 만든 이름이 아니다 — 둘 다 `cut < 1`로 함께 막힌다.
-  if (cut < 1) return null;
-  const tail = shellId.slice(cut + 1);
-  return /^\d+$/.test(tail) ? Number(tail) : null;
-}

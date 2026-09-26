@@ -14,7 +14,6 @@ import {
   inferInterrupt,
   isShellSeen,
   markShellsSeen,
-  ptyIdOf,
   nextAttention,
   nextOnOutput,
   nextOnRunning,
@@ -1675,28 +1674,6 @@ describe("도는 중의 서브에이전트 수", () => {
   it("죽은 칸은 0이다", () => {
     expect(runningSubagents(칸(상태({ kind: "working", subagents: 3 }), { kind: "failed", reason: "없어요" }))).toBe(0);
   });
-});
-
-// 훅이 아는 이름과 레지스트리가 아는 번호를 잇는 자리. 셸 ID는 `<앱 인스턴스 접두사>-<pty
-// id>`라(`pty.rs`의 `shell_id`) 뒤쪽 번호만 되뽑으면 `shellOfPty`가 그다음을 잇는다.
-describe("셸 ID에서 pty 번호를 되뽑는다", () => {
-  it.each([
-    ["1757000000-3", 3],
-    ["1757000000-12", 12],
-    // 접두사에 `-`가 없다는 보장은 없다. 마지막 `-` 뒤가 번호다.
-    ["l3-fixture-7", 7],
-  ] as const)("%s → %i", (shellId, ptyId) => {
-    expect(ptyIdOf(shellId)).toBe(ptyId);
-  });
-
-  // **모르는 모양은 `null`이다.** 여기서 `NaN`이 새면 `shellOfPty`가 아무 칸도 못 찾는
-  // 것으로 조용히 지나가고, 왜 상태가 안 앉는지 아무 데서도 안 보인다.
-  it.each(["", "1757000000", "1757000000-", "1757000000-abc", "1757000000-3x", "-3"])(
-    "%s는 아무 번호도 아니다",
-    (shellId) => {
-      expect(ptyIdOf(shellId)).toBeNull();
-    },
-  );
 });
 
 // **`shell.attention`을 직접 만지는 파일은 둘뿐이다.**
