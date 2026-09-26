@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -183,18 +184,18 @@ function ArchiveList({
 
         {/* mb-[10px] = 헤더 행(44px)에서 24px 컨트롤을 뺀 상하 여백 (ProjectList와 같은 값) */}
         {entries.length > 0 && (
-          <div className="relative mb-[10px] shrink-0">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tertiary"
-              strokeWidth={1.8}
-            />
-            <input
+          <InputGroup className="mb-[10px] shrink-0">
+            <InputGroupAddon>
+              <Search strokeWidth={1.8} />
+            </InputGroupAddon>
+            {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
+            <InputGroupInput
+              aria-label="아카이브 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="아카이브 검색"
-              className="h-9 w-full rounded-full border bg-background pl-9 pr-3.5 text-[13.5px] outline-none placeholder:text-tertiary focus:border-primary"
             />
-          </div>
+          </InputGroup>
         )}
 
         {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
