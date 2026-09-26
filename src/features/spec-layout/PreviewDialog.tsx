@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { EntryPath } from "./draft";
+import { samePath, type EntryPath } from "./draft";
 import type { LayoutPreview } from "./types";
 
 // 「LLM이 받는 텍스트」 팝업(spec 레이아웃 티켓 14 · 결정 11·28 · 구현 스펙 5절 「배치」). 편집기 머리의 버튼으로 연다 —
@@ -92,9 +92,7 @@ export function PreviewText({ answer, selected }: { answer: LayoutPreview | null
   if (answer.errors.length > 0 || answer.text === null) {
     return <p className="px-5 text-[13px] leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
   }
-  const held = answer.lines.find(
-    ({ path }) => path.length === selected.length && path.every((index, i) => index === selected[i]),
-  );
+  const held = answer.lines.find(({ path }) => samePath(path, selected));
   return (
     <div className="font-mono text-[12px] leading-[1.65] text-foreground">
       {answer.text.split("\n").map((line, index) => {

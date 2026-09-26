@@ -304,6 +304,14 @@ export function within(path: EntryPath, ancestor: EntryPath): boolean {
 }
 
 /**
+ * 둘이 같은 항목 자리인가 — 편집기가 오류·고른 항목·놓을 자리를 항목에 잇고, 미리보기 팝업이 칠할 줄을 고른
+ * 항목에 잇는 한 벌이다. 문서 전체의 오류는 자리가 없다(`path`가 `null`) — 어느 항목과도 같지 않다.
+ */
+export function samePath(a: EntryPath | null, b: EntryPath): boolean {
+  return a !== null && a.length === b.length && a.every((index, i) => index === b[i]);
+}
+
+/**
  * `removed` 자리의 항목을 뗀 뒤 `path`가 가리키게 되는 경로 — 같은 부모 안에서 뗀 항목보다 뒤에 있던 갈래는
  * 한 칸 당겨진다. `path`가 뗀 항목 아래이면 안 된다(`within`으로 먼저 거른다).
  */

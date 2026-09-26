@@ -44,6 +44,7 @@ import {
   isFolder,
   moveEntry,
   removeEntry,
+  samePath,
   setDescription,
   setIcon,
   setKind,
@@ -651,10 +652,6 @@ function rowsOf(
     const path = [...parent, index];
     return [{ entry, path }, ...rowsOf(entry.children ?? [], path)];
   });
-}
-
-function samePath(a: readonly number[] | null, b: readonly number[]): boolean {
-  return a !== null && a.length === b.length && a.every((index, i) => index === b[i]);
 }
 
 /** 아이콘 이름이 앱의 표에 없는가 — 손으로 적은 모르는 이름이다. 없는 아이콘은 모르는 것이 아니다. */

@@ -7,6 +7,7 @@ import {
   moveEntry,
   removeEntry,
   sameDraft,
+  samePath,
   setDescription,
   setIcon,
   setKind,
@@ -738,6 +739,15 @@ describe("놓기 계산", () => {
     expect(within([1], [2])).toBe(false);
     expect(within([3, 0], [2])).toBe(false);
     expect(within([2], [2, 0])).toBe(false);
+  });
+
+  // 오류·고른 항목·놓을 자리·칠할 줄을 항목에 잇는 한 벌 — 자리가 없는 문서 전체의 오류는 머리 `spec/`과도 같지 않다.
+  it("같은 항목 자리만 같고, 자리가 없는 것은 어느 항목과도 같지 않다", () => {
+    expect(samePath([], [])).toBe(true);
+    expect(samePath([2, 0], [2, 0])).toBe(true);
+    expect(samePath([2], [2, 0])).toBe(false);
+    expect(samePath([2, 1], [2, 0])).toBe(false);
+    expect(samePath(null, [])).toBe(false);
   });
 
   it("받은 초안을 고치지 않는다", () => {
