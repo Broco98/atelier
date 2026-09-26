@@ -21,11 +21,11 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use super::cleanup_log::{self, Event};
+use super::clock;
 use super::ending::Outcome;
 use super::verdict::InstanceRecord;
 use super::{snapshot, Identity};
@@ -276,7 +276,8 @@ impl Book {
     /// 쓰기가 실패해도 셸 띄우기를 막지 않는다 — 디스크의 기록이 낡을 뿐이고, 낡은 기록에서 새 셸의 자손은 갱신 시각보다
     /// 늦게 태어나 다른 실행에게 「다른 인스턴스」로 읽힌다(확정 고아가 아니다).
     fn write(&mut self) {
-        self.updated_us = now_us().max(self.updated_us + 1);
+        // 프로세스의 커널 시작 시각과 같은 벽시계다 — 확정 고아 (나)가 둘을 견준다(`clock`).
+        self.updated_us = clock::now_us().max(self.updated_us + 1);
         let Some(place) = &self.place else {
             return;
         };
@@ -292,11 +293,6 @@ impl Book {
             eprintln!("atelier: instance record write failed ({}): {e}", place.dir.join(place.file_name()).display());
         }
     }
-}
-
-/// 지금(에포크 µs). 프로세스의 커널 시작 시각과 같은 벽시계다 — 확정 고아 (나)가 둘을 견준다.
-fn now_us() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_micros() as u64)
 }
 
 /// 그 실행이 **지금** 살아 있나 — 앱 pid가 그 시작 시각 그대로 떠 있다(프로세스 스펙 S9). 표 한 장 없이 그 pid 하나만 본다.

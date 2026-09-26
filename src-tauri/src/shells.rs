@@ -342,6 +342,7 @@ fn watch_into(dir: &Path, prefix: &str, mut emit: impl FnMut(Vec<ShellAttention>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::processes::clock::now_ms;
 
     fn temp_root(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("atelier-shells-{}-{name}", std::process::id()));
@@ -1032,10 +1033,6 @@ mod tests {
             .collect();
         ids.sort();
         ids
-    }
-
-    fn now_ms() -> u64 {
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
     }
 
     /// 새 처리기도 **아틀리에 밖 터미널에서 무해하다** — 셸 ID가 없으면 파이프 버퍼(64KB)를 훌쩍 넘는 페이로드를 끝까지 먹고,

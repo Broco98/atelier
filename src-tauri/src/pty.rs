@@ -15,7 +15,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime};
 
 use atelier_core::Mode;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -24,6 +24,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
+use crate::processes::clock;
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::instances::{self, Place, Record};
 use crate::processes::metrics::{self, CpuMeter};
@@ -249,7 +250,7 @@ pub fn spawn(
     // 답에 실을 셸 키는 풀에 앉히는 것과 **같은 값**이다 — 따로 다시 지으면 env에 심은 표식과 프런트가 쥔 키가 갈릴 자리가 생긴다.
     let shell_key = shell_id.clone();
     // 마지막 출력 시각의 첫 값은 **띄운 순간**이다 — 앉힌 뒤 첫 조각 전에 화면 스냅샷이 읽어도 1970년부터 조용하다고 안 읽힌다.
-    let last_output = Arc::new(AtomicU64::new(now_ms()));
+    let last_output = Arc::new(AtomicU64::new(clock::now_ms()));
     let stamps = Arc::clone(&last_output);
     pool.lock().insert(
         id,
@@ -271,7 +272,7 @@ pub fn spawn(
                 // 경계를 스스로 잇는다.
                 // **보내기 전에 시각을 적는다**(티켓 27) — 채널이 닫혀 끊는 마지막 조각도 셸이 찍은 것이다.
                 Ok(n) => {
-                    stamps.store(now_ms(), Ordering::Relaxed);
+                    stamps.store(clock::now_ms(), Ordering::Relaxed);
                     if on_frame.send(InvokeResponseBody::Raw(buf[..n].to_vec())).is_err() {
                         break;
                     }
@@ -599,7 +600,7 @@ pub fn summarize(pool: &PtyPool) -> Summary {
 pub fn summary(pool: &PtyPool) -> Summary {
     pool.background.latest().unwrap_or_else(|| {
         let fresh = summarize(pool);
-        pool.background.keep(fresh.clone(), now_ms());
+        pool.background.keep(fresh.clone(), clock::now_ms());
         fresh
     })
 }
@@ -632,7 +633,7 @@ pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::Asked + S
 pub fn sample_in_background(pool: Arc<PtyPool>) {
     let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || loop {
         let fresh = summarize(&pool);
-        pool.background.keep(fresh, now_ms());
+        pool.background.keep(fresh, clock::now_ms());
         std::thread::sleep(summary::EVERY);
     });
     // 스레드를 못 띄우면 요약은 첫 물음이 그 자리에서 모은 한 장에서 멎는다(`summary`) — nav 메타의 합계가 안 바뀐다. 조용히
@@ -656,11 +657,6 @@ fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64, Option<Ident
         .collect();
     listed.sort_by_key(|shell| shell.pty_id);
     listed
-}
-
-/// 지금(에포크 ms). 셸의 마지막 출력 시각과 추이의 점(티켓 30)이 쓴다. 시계가 에포크 앞이면 0으로 눕는다(`prefix_at`과 같다).
-fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// 셸 하나에서 **지금 도는 명령**. `running`이 `None`이면 프롬프트에 서 있다.
@@ -947,7 +943,7 @@ pub fn end_by_hand(pool: &PtyPool, targets: &[Identity]) {
     let record = Arc::clone(&pool.record);
     let behind = std::thread::Builder::new().name("atelier-by-hand".into()).spawn(move || {
         let outcomes = running.finish();
-        if let Some(event) = cleanup_log::event(cleanup_log::now_ms(), Reason::Manual, None, None, &aimed, &outcomes) {
+        if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::Manual, None, None, &aimed, &outcomes) {
             record.log(event);
         }
     });
@@ -1028,7 +1024,7 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     // 읽어 한 번 더 해 본다. 어느 쪽이든 기록을 닫아, 아직 도는 뒤 스레드의 늦은 쓰기가 파일을 되살리지 않는다.
     pool.record.close(&outcomes);
     // 기록을 닫아도 정리 기록은 적힌다(`Record::log`). 셸과 도우미만 끝났으면 안 적는다.
-    if let Some(event) = cleanup_log::event(cleanup_log::now_ms(), Reason::AppExit, None, None, &aimed, &outcomes) {
+    if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::AppExit, None, None, &aimed, &outcomes) {
         pool.record.log(event);
     }
     outcomes
@@ -1104,7 +1100,7 @@ fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<Cleared> {
     let ids: Vec<Identity> = targets.iter().map(|proc| proc.id).collect();
     let outcomes = claim.start(&ids, &[]).finish();
     let aimed: Vec<Aimed> = targets.iter().map(|proc| Aimed::of(proc, false)).collect();
-    if let Some(event) = cleanup_log::event(cleanup_log::now_ms(), Reason::StartupCleanup, None, None, &aimed, &outcomes) {
+    if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::StartupCleanup, None, None, &aimed, &outcomes) {
         pool.record.log(event);
     }
     pool.record.forget(
@@ -1199,7 +1195,7 @@ impl Behind {
         drop(shells);
         let outcomes = running.finish();
         // 끝낸 것을 셸마다 한 줄씩 정리 기록에 적는다(티켓 11) — 셸과 도우미만 끝난 셸은 안 적는다(프로세스 스펙 P1).
-        let at = cleanup_log::now_ms();
+        let at = clock::now_ms();
         for (key, members) in &aimed {
             if let Some(event) = cleanup_log::event(at, cause.reason, Some(key), cause.owner.as_deref(), members, &outcomes) {
                 record.log(event);
@@ -1392,8 +1388,7 @@ pub fn live_generations(root: &Path) -> Vec<String> {
 /// 눕힌다. 그때 두 실행이 같은 접두사를 가질 수 있지만, 그 상황에서 할 수 있는 더 나은
 /// 일이 없고 대가는 「지난 파일 몇 개가 안 지워진다」뿐이다.
 fn prefix_at(t: SystemTime) -> String {
-    let millis = t.duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    format!("{millis}")
+    clock::ms_at(t).to_string()
 }
 
 /// 이 셸의 번호와 ID를 **한 자리에서** 뽑는다. 셸마다 달라야 하는 값이 여기서만 나므로,
@@ -2154,11 +2149,11 @@ mod tests {
     #[test]
     fn the_reader_stamps_each_output_before_sending_it() {
         let spawn_fn = spawn_source();
-        let born = spawn_fn.find("AtomicU64::new(now_ms())").expect("띄울 때 한 번 적는다");
+        let born = spawn_fn.find("AtomicU64::new(clock::now_ms())").expect("띄울 때 한 번 적는다");
         let insert = spawn_fn.find("pool.lock().insert(").expect("풀에 앉히는 줄이 있다");
         assert!(born < insert, "풀에 앉힌 뒤에 첫 시각을 적는다 — 그 사이의 화면 스냅샷이 빈 값을 읽는다");
         let read = &spawn_fn[spawn_fn.find("Ok(n) => {").expect("읽은 조각을 다루는 갈래가 있다")..];
-        let stamp = read.find("stamps.store(now_ms()").expect("읽은 조각마다 시각을 적는다");
+        let stamp = read.find("stamps.store(clock::now_ms()").expect("읽은 조각마다 시각을 적는다");
         let send = read.find("on_frame.send(").expect("읽은 조각을 보낸다");
         assert!(stamp < send, "조각을 보낸 뒤에 적는다 — 채널이 닫혀 끊는 마지막 조각이 안 적힌다");
     }
@@ -3127,7 +3122,7 @@ mod tests {
         // 기록 장면은 사람이 친 것으로 알린다 — 입력이 없는 셸의 자손은 모두 셸 도우미라(프로세스 스펙 P1) 정리 기록이 그
         // 닫기를 안 적는다(티켓 11). 알린 시각 뒤에 뜬 자식은 사람이 띄운 것이다.
         if matches!(scene, Scene::Record | Scene::ExitKeeping | Scene::Exit) {
-            super::note_first_input(&pool, spawned.id, crate::processes::cleanup_log::now_ms()).expect("첫 입력을 알린다");
+            super::note_first_input(&pool, spawned.id, crate::processes::clock::now_ms()).expect("첫 입력을 알린다");
         }
         super::write(&pool, spawned.id, &line).expect("셸에 한 줄을 친다");
 
@@ -3668,8 +3663,7 @@ mod tests {
     /// 봤다)과 이 셸 그룹(리더가 그대로일 때만)에만 간다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다.
     #[cfg(target_os = "macos")]
     fn ask_side(pool: &std::sync::Arc<super::PtyPool>, id: u32, key: &str, shell_pid: Option<u32>) {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
+        use crate::processes::clock;
         use crate::processes::ending::{self, Group};
         use crate::processes::snapshot::{identity_of, take, EnvScope};
         use crate::processes::testkit::{child_args, exe, wait_until, CHILD_ROLE};
@@ -3745,8 +3739,7 @@ mod tests {
         // 끈 채 뒤로 띄운 것 하나를 띄운다. 마지막 것은 셸 자신의 그룹에 산다 — 프롬프트에서 터미널을 쥔 그룹도
         // 셸 자신이라, 명령이 없는데 그 그룹을 빼면 이것이 수에서 빠진다(`close_check`가 그룹을 명령이 돌 때만 넘기는
         // 까닭). 잡 제어는 같은 줄에서 다시 켠다 — (3)의 명령이 제 그룹을 열어야 한다.
-        let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).expect("시계가 에포크 뒤다").as_millis() as u64;
-        super::note_first_input(pool, id, now_ms).expect("있는 셸이다");
+        super::note_first_input(pool, id, clock::now_ms()).expect("있는 셸이다");
         std::thread::sleep(Duration::from_millis(5));
         let line = format!(
             "{}; {}; set +m; /bin/sleep 31 </dev/null >/dev/null 2>&1 & set -m\n",

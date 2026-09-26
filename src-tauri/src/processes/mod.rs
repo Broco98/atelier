@@ -43,6 +43,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod cleanup_log;
+pub(crate) mod clock;
 pub(crate) mod ending;
 pub(crate) mod exceptions;
 pub(crate) mod instances;

@@ -19,7 +19,6 @@
 //! 있다** — 실행끼리는 잠그지 않는다. 드물고 기록일 뿐이라 받아들인다.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -234,11 +233,6 @@ pub(super) fn add(path: &Path, mut event: Event) {
     if let Err(e) = atelier_core::write_json_atomically(dir, name, &events, "정리 기록을") {
         eprintln!("atelier: cleanup log write failed ({}): {e}", path.display());
     }
-}
-
-/// 지금(에포크 ms). 사건의 시각이다.
-pub fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 #[cfg(test)]
