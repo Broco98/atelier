@@ -6,6 +6,7 @@ import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
 import SearchPalette from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
+import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
 import { quitShellCounts } from "@/features/terminal/terminal-store";
@@ -79,6 +80,11 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, [router]);
+
+  // **레이아웃 폴더가 바뀌면 그것에서 나온 화면이 따라온다**(spec 레이아웃 결정 22) — 설정의 「spec
+  // 레이아웃」, spec 패널 탭, 아카이브 문서 트리. 구독은 앱 전역에 하나라 뿌리인 여기서 한 번 부른다
+  // (구현 스펙 3절). 무엇을 지우는지는 그 훅이 든다 — 이 자리는 배선뿐이다.
+  useFollowLayoutChanges();
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open` 바로 옆인 것은 그쪽도

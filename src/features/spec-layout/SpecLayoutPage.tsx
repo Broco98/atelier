@@ -14,8 +14,9 @@ import type { SpecLayoutState } from "./types";
 // **설정 파일 읽기 게이트 밖에 선다**(에이전트 훅 페이지와 같다) — 레이아웃은 `settings.json`에 살지
 // 않고, 설정 초안의 저장 버튼도 지나지 않는다.
 //
-// 행은 페이지를 열 때와 [다시 읽기]를 누를 때 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이
-// 없다). 행의 상태는 엔진이 판정해 준 그대로 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
+// 행은 페이지를 열 때, 레이아웃 폴더가 바뀔 때(셸의 `useFollowLayoutChanges`), [다시 읽기]를 누를 때
+// 새로 읽는다(`specLayoutStatesQuery`에 `staleTime`이 없다). 행의 상태는 엔진이 판정해 준 그대로
+// 그린다 — resolve 규칙을 여기서 다시 계산하지 않는다.
 
 /** 복사 알림이 떠 있는 시간. 참조 한 줄과 할 일 한 문장을 읽을 만큼 — 닫기 버튼도 있다. */
 const NOTICE_MS = 6000;
