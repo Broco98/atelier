@@ -351,9 +351,9 @@ describe("WorkPanel 소스 토글", () => {
 
   const DOC_LABEL = 'aria-label="문서로 보기"';
 
-  /** 두 칸을 감싸는 상자의 여는 태그 — 바닥(bg-state-1)이 그 표식이다. */
+  /** 두 칸을 감싸는 그룹의 여는 태그 — `role="group"`이 그 표식이다(판 4부터 ToggleGroup이 그린다). */
   function well(markup: string): string {
-    return markup.match(/<span[^>]*bg-state-1[^>]*>/)?.[0] ?? "";
+    return markup.match(/<div[^>]*role="group"[^>]*>/)?.[0] ?? "";
   }
 
   function docTab(markup: string): string {
