@@ -6,6 +6,7 @@ import { formatCreated, StatusIcon } from "@/features/works/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
@@ -165,6 +166,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
     return (
       <button
         type="button"
+        // 편집 자리의 도움말은 `title`로 남는다(S29 — 판 4의 예외 목록).
         title="클릭해서 편집"
         onClick={() => {
           finished.current = false;
@@ -240,10 +242,15 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
         }}
       >
         {/* 이름은 「기준 브랜치」다 — 여는 버튼이 `combobox`가 되어 글자(지금 값)가 이름이 되지 못한다. 없는
-            프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다. */}
-        <SelectTrigger aria-label="기준 브랜치" title="브랜치 목록에서 변경">
-          <SelectValue className="font-mono" />
-        </SelectTrigger>
+            프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다.
+            도움말 「브랜치 목록에서 변경」은 툴팁이다. 목록에서 고른다는 것은 `combobox`가 이미 말해 설명은 안
+            단다(S28). */}
+        <Tooltip>
+          <TooltipTrigger render={<SelectTrigger aria-label="기준 브랜치" />}>
+            <SelectValue className="font-mono" />
+          </TooltipTrigger>
+          <TooltipContent>브랜치 목록에서 변경</TooltipContent>
+        </Tooltip>
         <SelectContent
           header={
             <div className="flex h-8 items-center justify-between border-b px-3">
@@ -289,6 +296,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
     return (
       <button
         type="button"
+        // 편집 자리의 도움말은 `title`로 남는다(S29 — 판 4의 예외 목록).
         title="클릭해서 편집"
         onClick={() => {
           finished.current = false;

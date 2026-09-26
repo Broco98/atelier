@@ -5,6 +5,7 @@ import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizable
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,9 @@ import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy"
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
 import type { Mode } from "@/mode";
+
+/** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 이름이나 설명으로 간다(아래 버튼 주석). */
+const SORT_HELP = "아카이브한 날짜 기준 정렬";
 
 interface ArchiveListProps {
   // 행을 펼칠 때 문서 목록을 어느 루트에서 읽는가 — 화면이 이미 아는 값을 그대로 받는다.
@@ -121,19 +125,26 @@ function ArchiveList({
           )}
         >
           <span className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setSortAsc((v) => !v)}
-              title="아카이브한 날짜 기준 정렬"
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
-            >
-              <ArrowDown
-                className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
-                strokeWidth={2}
-              />
-              {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
-              {sidebarOpen && "치운 날"}
-            </button>
+            {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그
+                말은 둘로 남는다: 글자 「치운 날」이 선 동안에는 이름보다 더 말하는 설명이고, 사이드바가 닫혀 글리프만
+                남으면 이름이 없던 아이콘 버튼이라 툴팁과 같은 이름이다. */}
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                onClick={() => setSortAsc((v) => !v)}
+                aria-label={sidebarOpen ? undefined : SORT_HELP}
+                aria-description={sidebarOpen ? SORT_HELP : undefined}
+                className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
+              >
+                <ArrowDown
+                  className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
+                  strokeWidth={2}
+                />
+                {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
+                {sidebarOpen && "치운 날"}
+              </TooltipTrigger>
+              <TooltipContent>{SORT_HELP}</TooltipContent>
+            </Tooltip>
             {/* **프로젝트 필터는 Atelier에만 선다**(결정 17). 값으로 가르지 않는 이유는
                 정보 탭 쪽과 같다 — 손으로 고친 work.json이 Room에도 프로젝트를 실어 올 수
                 있어서, 「옵션이 비면 안 그린다」로 두면 그날 저 세계에 없는 개념이 화면에
@@ -143,26 +154,34 @@ function ArchiveList({
               // 포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
               // `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
               <DropdownMenu>
-                <DropdownMenuTrigger
-                  // **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이
-                  // 없으면 읽을 말이 없다. 지금 값은 `title`이 그대로 든다(Tooltip은 판 4).
-                  aria-label="프로젝트 거르기"
-                  title={projectFilter ?? "모든 프로젝트"}
-                  className={cn(
-                    "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
-                    projectFilter
-                      ? "toggle-on"
-                      : "text-muted-foreground quiet-hover",
-                  )}
-                >
-                  <Filter className="size-3 shrink-0" strokeWidth={2} />
-                  {sidebarOpen && (
-                    <>
-                      <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
-                      <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
-                    </>
-                  )}
-                </DropdownMenuTrigger>
+                {/* **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이 없으면 읽을
+                    말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
+                    (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <DropdownMenuTrigger
+                        aria-label="프로젝트 거르기"
+                        aria-description={projectFilter ?? "모든 프로젝트"}
+                        className={cn(
+                          "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                          projectFilter
+                            ? "toggle-on"
+                            : "text-muted-foreground quiet-hover",
+                        )}
+                      />
+                    }
+                  >
+                    <Filter className="size-3 shrink-0" strokeWidth={2} />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
+                        <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                      </>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>{projectFilter ?? "모든 프로젝트"}</TooltipContent>
+                </Tooltip>
                 {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
                 <DropdownMenuContent align="end" width="wide">
                   <DropdownMenuRadioGroup
