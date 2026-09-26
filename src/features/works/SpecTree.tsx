@@ -9,10 +9,11 @@ const COLLAPSE_ROW =
   "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
 
 interface TreeProps {
-  // 엔진이 가른 spec 트리의 맨 위 항목들. **받은 순서 그대로 그린다** — 앱에는 순서의 규칙도 폴더
-  // 이름의 규칙도 없다(spec 레이아웃 결정 13, `src/spec-folder-names.test.ts`가 소스로 본다). 구획
-  // 머리도 없다(spec 레이아웃 결정 24): 번호 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를
-  // 기록 행 곁의 `spec/` 행 아래에 얹어 넘긴다(`archive/archive-tree.ts`).
+  // 엔진이 가른 spec 트리의 첫 층 — `spec/` 바로 아래의 파일·폴더들. **받은 순서 그대로
+  // 그린다** — 앱에는 순서의 규칙도 폴더 이름의 규칙도 없다(spec 레이아웃 결정 13,
+  // `src/spec-folder-names.test.ts`가 소스로 본다). 구획 머리도 없다(spec 레이아웃 결정 24): 번호
+  // 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를 기록 행 곁의 `spec/` 행 아래에 얹어
+  // 넘긴다(`archive/archive-tree.ts`).
   items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
@@ -25,8 +26,8 @@ function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
   // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
   //
-  // 손으로 바꾼 것만 기억하고 기본값은 매번 항목에서 낸다. 판이 새로 생겼을 때 그것이 저절로
-  // 「펼쳐진 최신 판」이 되려면, 처음 그린 때의 펼침을 굳혀 두면 안 된다.
+  // 손으로 바꾼 것만 기억하고 기본값은 매번 받은 트리의 파일·폴더에서 낸다. 판이 새로 생겼을 때
+  // 그것이 저절로 「펼쳐진 최신 판」이 되려면, 처음 그린 때의 펼침을 굳혀 두면 안 된다.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const toggle = (path: string, open: boolean) =>
     setToggled((prev) => ({ ...prev, [path]: !open }));
