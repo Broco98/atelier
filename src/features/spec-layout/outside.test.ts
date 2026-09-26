@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { setDescription, setTemplateBody, type LayoutDraft } from "./draft";
-import { contentOf, judgeOutside, savedBaseline } from "./outside";
+import { contentOf, setDescription, setTemplateBody, type LayoutDraft } from "./draft";
+import { judgeOutside, savedBaseline } from "./outside";
 import type { ReadableSpecLayout, SpecLayoutRead, UnreadableSpecLayout } from "./types";
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22 · 구현 스펙 5절). 편집기는 열 때 읽은 레이아웃과 템플릿

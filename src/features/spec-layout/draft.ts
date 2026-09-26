@@ -1,5 +1,5 @@
 import { templatePathFor } from "./template-path";
-import type { LayoutEntryJson, SpecLayoutJson, TemplateBodies } from "./types";
+import type { LayoutEntryJson, SpecLayoutJson, SpecLayoutRead, TemplateBodies } from "./types";
 
 // 편집기의 초안과 그것을 고치는 함수들(spec 레이아웃 티켓 11 · 구현 스펙 5절 「초안 조작은 순수 함수다」).
 //
@@ -20,6 +20,14 @@ import type { LayoutEntryJson, SpecLayoutJson, TemplateBodies } from "./types";
 export interface LayoutDraft {
   layout: SpecLayoutJson;
   templates: TemplateBodies;
+}
+
+/**
+ * 읽은 레이아웃의 내용 — 편집기가 초안으로 펼치는 레이아웃과 템플릿 본문이다. 깨졌으면 펼칠 것이 없어 `null`이다 —
+ * 기준본이 이것이면 어떤 초안이든 저장하지 않은 것이다(`unsaved`).
+ */
+export function contentOf(read: SpecLayoutRead): LayoutDraft | null {
+  return "errors" in read ? null : { layout: read.layout, templates: read.templates };
 }
 
 /**
@@ -317,7 +325,7 @@ export function sameDraft(a: LayoutDraft, b: LayoutDraft): boolean {
 
 /**
  * 초안에 저장하지 않은 것이 있는가 — 기준본(마지막으로 읽거나 저장한 것)과 내용으로 다르다(`sameDraft`). 기준본이
- * 깨져 내용이 없으면(`null` — 깨짐 배너에서 초안을 유지했다) 어떤 초안이든 저장하지 않은 것이다.
+ * 깨져 내용이 없으면(`contentOf`가 `null` — 깨짐 배너에서 초안을 유지했다) 어떤 초안이든 저장하지 않은 것이다.
  *
  * 저장 가능 판정의 「고친 것이 있다」(`canSave`), 떠날 때 물을지, 밖 변경 판정의 「초안이 있다」가 모두 이것이다.
  */

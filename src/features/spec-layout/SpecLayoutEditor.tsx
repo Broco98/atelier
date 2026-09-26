@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { modeNameOf, type Mode } from "@/mode";
 import {
   addEntry,
+  contentOf,
   dropEntry,
   dropPlaceAt,
   editsAt,
@@ -65,7 +66,7 @@ import {
 } from "./draft";
 import { specLayoutReadQuery, useDraftPreview, useWriteSpecLayout } from "./hooks";
 import { useConfirmLeave } from "./leave";
-import { contentOf, judgeOutside, savedBaseline, type BannerVerdict } from "./outside";
+import { judgeOutside, savedBaseline, type BannerVerdict } from "./outside";
 import { canSave } from "./preview";
 import PreviewDialog from "./PreviewDialog";
 import type {

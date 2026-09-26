@@ -1,4 +1,4 @@
-import { sameDraft, samePath, unsaved, type LayoutDraft } from "./draft";
+import { contentOf, sameDraft, samePath, unsaved, type LayoutDraft } from "./draft";
 import type { LayoutError, ReadableSpecLayout, SpecLayoutRead } from "./types";
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22 · 구현 스펙 5절). 편집기는 열 때 읽은 레이아웃과 템플릿 본문을
@@ -49,13 +49,6 @@ export function judgeOutside(
   if (broken) return "broken";
   if (baseline.edited && !fresh.edited) return "removed";
   return "changed";
-}
-
-/**
- * 읽은 레이아웃의 내용 — 편집기가 초안으로 펼치는 레이아웃과 템플릿 본문이다. 깨졌으면 펼칠 것이 없어 `null`이다.
- */
-export function contentOf(read: SpecLayoutRead): LayoutDraft | null {
-  return "errors" in read ? null : { layout: read.layout, templates: read.templates };
 }
 
 /**
