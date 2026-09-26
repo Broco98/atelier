@@ -551,6 +551,29 @@ test("설명 칸 안에서 ⌥←를 누르면 트리가 바뀌지 않는다", a
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 할 수 없는 단축키는 트리를 그대로 둔다 — 그리고 **아무 흔적도 남기지 않는다**. 옮긴 뒤 초점을 행에 돌려주는
+// 표시가 거절된 단축키에 남으면, 다음에 트리가 다시 그려질 때(설명 칸에 한 글자 적을 때) 초점이 칸에서 빠져
+// 나간다.
+test("할 수 없는 단축키를 누른 뒤 설명 칸에 적으면 적은 것이 모두 들어가고 초점이 칸에 남는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  // 첫 최상위 항목이다 — 위로 옮길 수 없다
+  await 행(page, "overview.md").click();
+  await expect(도구(page, "위로")).toBeDisabled();
+  const before = await 트리(page);
+  await page.keyboard.press("Alt+ArrowUp");
+  expect(await 트리(page)).toEqual(before);
+  await expect(행(page, "overview.md")).toBeFocused();
+
+  await 설명(page).click();
+  await page.keyboard.type("abc");
+  await expect(설명(page)).toHaveValue("work의 요약abc");
+  await expect(설명(page)).toBeFocused();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 더하기와 지우기의 배선 — 어디에 무슨 이름으로 서는지는 순수 함수의 seam이 잰다.
 test("파일 추가는 고른 파일 뒤에 untitled.md를 세워 고르고, 휴지통은 고른 폴더를 자기 아래와 함께 지워 저장 명령에 그 모양이 실린다", async ({
   page,

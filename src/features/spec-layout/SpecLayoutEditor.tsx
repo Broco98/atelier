@@ -488,7 +488,12 @@ function EntryTree({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const move = moveOfKey(event);
     if (move === null) return;
+    // 할 수 없는 단축키도 삼킨다 — 트리 안의 ⌥화살표는 구르기나 단어 이동이 아니다.
     event.preventDefault();
+    // **되는 옮기기에만** 초점을 돌려줄 표시를 세운다. 할 수 없는 옮기기는 같은 상태를 돌려줘 다시 그려지지
+    // 않으므로 표시가 걷히지 않고 남는다 — 그러면 다음에 트리가 그려질 때(설명 칸에 한 글자 적을 때) 초점이 칸에서
+    // 행으로 빠져나간다. 이 렌더의 초안과 자리로 묻는다: 키를 받은 것이 이 렌더다.
+    if (!editsAt(draft, at)[move]) return;
     refocus.current = true;
     onEdit((current) => moveEntry(current, at, move));
   };
