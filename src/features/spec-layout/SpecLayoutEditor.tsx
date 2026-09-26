@@ -207,8 +207,9 @@ function EditorScreen({
       setOutside(null);
     }),
   );
-  const reference = contentOf(baseline);
-  const enabled = draft !== null && canSave({ draft, baseline: reference, preview, saving: write.isPending });
+  // 기준본의 내용 — 깨졌으면 `null`이다(어떤 초안이든 저장하지 않은 것이다).
+  const baselineContent = contentOf(baseline);
+  const enabled = draft !== null && canSave({ draft, baseline: baselineContent, preview, saving: write.isPending });
 
   // **템플릿은 늘 전부 넘긴다**(구현 스펙 3절) — 읽은 본문을 그대로 싣는다. 저장은 지금 초안의 미리보기가 오류 없이
   // 도착해야 열린다. 그래도 검증이 거절할 수 있다 — 미리보기와 저장 사이에 디스크가 바뀌었을 때(템플릿 파일이
@@ -230,7 +231,7 @@ function EditorScreen({
   };
 
   // 저장하지 않은 초안을 두고 떠나면 묻는다 — 뒤로, 사이드바 nav, 팔레트, 설정 nav의 다른 항목, 히스토리의 뒤로·앞으로(티켓 15).
-  useConfirmLeave({ unsaved: draft !== null && unsaved(draft, reference), savable: enabled, save });
+  useConfirmLeave({ unsaved: draft !== null && unsaved(draft, baselineContent), savable: enabled, save });
 
   if (view === null) {
     return (
