@@ -41,14 +41,16 @@ export function settingsItem(key: SettingsItemKey): (typeof SETTINGS_ITEMS)[numb
 }
 
 /**
- * 이 주소가 선 설정 항목. 설정 밖이거나 치환 전의 `/settings`면 `null`이다.
+ * 이 주소가 선 설정 항목. 설정 밖이거나 치환 전의 `/settings`면 `null`이다. **항목 아래의 하위 주소도
+ * 그 항목이다** — 「spec 레이아웃」의 편집기(`/settings/spec-layout/<id>`, spec 레이아웃 티켓 11)는 설정
+ * 한 열 밖의 별도 화면이지만, 거기서도 설정 nav는 그 항목을 켠 채로 둔다.
  *
  * **원시값을 돌려준다** — 앱 셸이 이것을 주소 select로 구독하므로(`AppShell.tsx`) 객체를 주면
  * 주소가 바뀔 때마다 셸 전체가 리렌더한다. 그리고 이 값 하나가 「사이드바가 설정 nav인가」와
  * 「어느 항목이 켜졌나」를 함께 답한다 — 둘을 따로 구독하면 구독이 하나 는다.
  */
 export function settingsItemOf(pathname: string): SettingsItemKey | null {
-  return SETTINGS_ITEMS.find((item) => item.to === pathname)?.key ?? null;
+  return SETTINGS_ITEMS.find((item) => isAtOrUnder(pathname, item.to))?.key ?? null;
 }
 
 /**
