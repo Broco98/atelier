@@ -130,7 +130,8 @@ export interface TreeEdit {
  * - 고른 것이 **폴더**면 그 안의 마지막 자식으로, **파일**이면 그 뒤의 형제로 더한다. 머리 `spec/`(빈 경로)을
  *   골랐으면 최상위의 맨 뒤다.
  * - 이름 틀은 `untitled`(파일이면 `untitled.md`)다. 형제와 겹치면 `untitled-2`처럼 번호를 붙인다 — 형제 사이에
- *   같은 이름 틀이 둘이면 저장이 거절한다(엔진의 검증). 엔진처럼 글자 그대로 견준다.
+ *   같은 이름 틀이 둘이면 저장이 거절한다(엔진의 검증). 엔진은 NFC로 맞춰 견주지만, 새 이름은 ASCII라 글자
+ *   그대로 견줘도 답이 같다.
  * - 더한 항목을 고른다.
  */
 export function addEntry(draft: LayoutDraft, selected: EntryPath, kind: "file" | "folder"): TreeEdit {

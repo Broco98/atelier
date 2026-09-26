@@ -7,7 +7,7 @@
 use serde_json::{Map, Value};
 
 use super::model::{EntryKind, LayoutEntry, SpecLayout};
-use super::pattern::pieces;
+use super::pattern::{canonical, pieces};
 
 /// 레이아웃 폴더 안의 레이아웃 파일. 템플릿 `.md`가 그 옆에 산다(결정 6).
 pub(crate) const LAYOUT_FILE: &str = "layout.json";
@@ -223,13 +223,14 @@ fn read_entry(
         Some(Value::Array(items)) => {
             // 형제 사이에 같은 틀이 둘이면 뒤의 것이 오류다. 종류는 가리지 않는다 — 파일
             // `notes`와 폴더 `notes`를 둘 다 두면 에이전트가 받는 목록에 같은 이름이 두 번 선다.
+            // 매처처럼 NFC로 맞춰 견준다(`canonical`) — NFC와 NFD로만 다른 틀도 같은 틀이다.
             let mut seen = std::collections::BTreeSet::new();
             for (i, item) in items.into_iter().enumerate() {
                 path.push(i);
                 match item {
                     Value::Object(child) => {
                         if let Some(Value::String(pattern)) = child.get("pattern") {
-                            if !pattern.is_empty() && !seen.insert(pattern.clone()) {
+                            if !pattern.is_empty() && !seen.insert(canonical(pattern).into_owned()) {
                                 errors.push(LayoutError::at(
                                     path,
                                     format!("{pattern:?} repeats the pattern of an earlier sibling"),
@@ -441,6 +442,14 @@ mod tests {
                 nested(r#"{ "pattern": "notes", "kind": "file" }, { "pattern": "notes", "kind": "folder" }"#),
                 Some(vec![1, 1]),
                 "notes",
+            ),
+            // 견주기는 매칭처럼 NFC로 한다 — IME로 친 `학습.md`(NFC)와 Finder에서 붙인 `학습.md`(NFD, JSON의
+            // `\u` 이스케이프로 적었다)는 같은 틀이다. 메시지는 적은 그대로라 글자 대신 구절을 본다
+            (
+                "정규형만 다른 형제의 같은 틀",
+                nested(r#"{ "pattern": "학습.md", "kind": "file" }, { "pattern": "\u1112\u1161\u11a8\u1109\u1173\u11b8.md", "kind": "file" }"#),
+                Some(vec![1, 1]),
+                "earlier sibling",
             ),
             (
                 "파일 항목의 `children`",

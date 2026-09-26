@@ -89,10 +89,17 @@ pub(crate) struct Matched {
 /// 문법에 어긋난 틀은 아무것에도 맞지 않는다 — 읽기(parse)가 그런 틀을 거절하므로 파일에서 온
 /// 레이아웃에는 없고, 코드가 지은 레이아웃만 그럴 수 있다.
 pub(crate) fn match_name(pattern: &str, name: &str) -> Option<Matched> {
-    let nfc = icu_normalizer::ComposingNormalizerBorrowed::new_nfc();
-    let pattern = nfc.normalize(pattern);
+    let pattern = canonical(pattern);
     let pieces = pieces(&pattern).ok()?;
-    match_pieces(&pieces, &nfc.normalize(name))
+    match_pieces(&pieces, &canonical(name))
+}
+
+/// 이름 틀과 이름을 견주는 꼴 — NFC. **검증과 매칭이 이 한 벌로 맞춘다**: 매칭(`match_name`)이 틀과
+/// 파일 이름을, 읽기(parse)가 형제 사이의 같은 틀을 이것으로 견준다. 둘이 따로 맞추면 NFC와 NFD로만
+/// 다른 형제 틀을 검증이 받고, 매처는 늘 앞의 것에만 맞춘다. 대소문자는 접지 않는다 — 이름은
+/// 대소문자를 가린다.
+pub(crate) fn canonical(text: &str) -> std::borrow::Cow<'_, str> {
+    icu_normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(text)
 }
 
 /// 조각을 앞에서부터 맞춘다. 자리 표시자는 **긴 것부터** 잡아 보고, 뒤가 맞지 않으면 한 글자씩
