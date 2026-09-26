@@ -167,7 +167,7 @@ export function showsElapsed(kind: ShellSignal): boolean {
  *
  * **스크린리더에는 없다**(`aria-hidden`). 색만이 신호여선 안 되므로 상태를 말하는 자리는
  * 행 버튼의 이름이고, 여기서 한 번 더 말하면 같은 사실을 두 번 읽는다. Spinner는 겉 상자에
- * `role="status"`와 「Loading」을 들고 오므로 `aria-hidden`도 **겉 상자에** 준다 — 안쪽 svg에
+ * `role="status"`와 「불러오는 중」을 들고 오므로 `aria-hidden`도 **겉 상자에** 준다 — 안쪽 svg에
  * 주면 그 역할이 행 안에 남는다. 표식(`data-signal`)도 겉 상자에 선다(검사와 레인 갈림이 집는다).
  */
 export function SignalLane({ kind }: { kind: ShellSignal }) {

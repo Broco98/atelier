@@ -1072,7 +1072,7 @@ function LifecycleOverlay({ verb, detail }: { verb: string; detail: string }) {
     >
       <div className="flex flex-col items-center gap-2">
         {/* 판 1의 Spinner다 — 앱에 스피너가 한 가지만 있다(스토리 92). 크기와 색은 그대로다(S15). 이 막이
-            이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 영어 「Loading」이 읽힌다.
+            이미 `status`이고 상태를 글로 말하므로 **겉 상자**를 가린다 — 안 가리면 「불러오는 중」이 한 번 더 읽힌다.
             움직임을 끄면 멈춘 원이 선다(부품이 가른다). */}
         <Spinner aria-hidden className="size-6 text-primary" />
         <span className="mt-1 text-[15px] font-semibold tracking-[-0.01em]">{verb} 중…</span>

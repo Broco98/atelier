@@ -59,7 +59,7 @@ describe("레인 — 화면값 셋이 갈린다", () => {
   it("점도 스피너도 스크린리더에는 없다 — 겉 상자가 가린다", () => {
     // 색만이 신호여선 안 된다(스토리 33) — 상태를 말하는 자리는 행 버튼의 **이름**이고,
     // 이 글리프가 거기 한 번 더 끼면 같은 사실을 두 번 읽는다. Spinner는 겉 상자에
-    // `role="status"`와 「Loading」을 들고 오므로(스토리 43) 가리는 것도 **겉 상자**여야 한다.
+    // `role="status"`와 「불러오는 중」을 들고 오므로(스토리 43) 가리는 것도 **겉 상자**여야 한다.
     for (const kind of ["waiting", "done", "working"] as const) {
       expect(겉태그(lane(kind))).toContain('aria-hidden="true"');
     }
