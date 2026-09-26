@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 변형 segment를 더한다(두 칸 토글 — 모드 전환·문서/원문, 결정 1). 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(ToggleGroupChip, segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, 부품 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기 default(모드 전환: 테두리·안쪽 3px·두 칸 격자, 칸 30px·7px 모서리·12.5px)와 icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다).
+// 앱 규격으로 고친 자리: 변형 segment를 더한다(두 칸 토글 — 모드 전환·문서/원문, 결정 1). 눌린 바닥(state-1·10px 모서리) 위를 흰 칩 하나(ToggleGroupChip, segment-on)가 180ms ease-out으로 미끄러지고, 칸은 바탕을 안 켠다 — 서 있는 칸은 foreground, 안 선 칸은 tertiary + tint-hover(결정 31, 부품 기본의 quiet-hover·toggle-on을 안 쓴다), 잠기면 칸 disabled:opacity-40 · 칩 opacity-40. 크기 default(모드 전환: 테두리·안쪽 3px·두 칸 격자, 칸 30px·7px 모서리·12.5px)와 icon(문서/원문: 안쪽·칸 사이 2px, 칸 24px icon-button). 크기 chip(설정 칩 — 테마·글꼴 프리셋)의 줄은 칩 사이 6px(spacing 기본 1.5)이고 넘치면 다음 줄로 흐른다(flex-wrap). 그룹이 칸 값의 타입을 받는다(제네릭 Value). 그룹·칸의 className이 state 함수여도 받는다(registry는 문자열로만 합친다).
 "use client"
 
 import * as React from "react"
@@ -105,7 +105,7 @@ const segmentItemTone = (pressed: boolean) =>
 
 function ToggleGroup<Value extends string>({
   className,
-  spacing = 2,
+  spacing: spacingProp,
   orientation = "horizontal",
   disabled,
   variant,
@@ -119,6 +119,9 @@ function ToggleGroup<Value extends string>({
   }) {
   const look: ToggleGroupLook =
     variant === "segment" ? { variant, size } : { variant, size }
+  // 설정 칩 줄(크기 chip)은 칩 사이가 6px이고(옛 칩 줄의 gap-1.5), 좁은 창에서 넘치면 다음 줄로 흐른다
+  // (아래 data-[size=chip]:flex-wrap — 칩이 shrink-0이라 안 흐르면 칸 밖으로 샌다). 나머지는 registry 기본(8px)이다.
+  const spacing = spacingProp ?? (size === "chip" ? 1.5 : 2)
   return (
     <ToggleGroupPrimitive
       data-slot="toggle-group"
@@ -136,7 +139,7 @@ function ToggleGroup<Value extends string>({
         cn(
           look.variant === "segment"
             ? segmentGroupVariants({ size: look.size })
-            : "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
+            : "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
           typeof className === "function" ? className(state) : className
         )
       }
