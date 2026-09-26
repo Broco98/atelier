@@ -131,8 +131,8 @@ function EditorScreen({
 }) {
   // 초안과 고른 자리는 **한 값**이다 — 트리를 고치면(티켓 13) 둘이 함께 바뀐다: 자리가 인덱스 경로라 항목이
   // 옮겨 가면 고른 자리가 따라가야 하고, 둘을 따로 두면 한 렌더 동안 고른 자리가 엉뚱한 항목을 가리킨다.
-  // 처음에는 첫 최상위 항목을 고른다. 항목이 없으면 머리 `spec/`(방침 문단)이다.
-  const [{ draft, selected }, setView] = useState<{ draft: LayoutDraft; selected: EntryPath }>(() => ({
+  // 그래서 모양이 트리 조작의 답(`TreeEdit`)과 같다. 처음에는 첫 최상위 항목을 고른다. 항목이 없으면 머리 `spec/`(방침 문단)이다.
+  const [{ draft, selected }, setView] = useState<TreeEdit>(() => ({
     draft: { layout: read.layout, templates: read.templates },
     selected: (read.layout.root.children ?? []).length > 0 ? [0] : [],
   }));
@@ -182,12 +182,8 @@ function EditorScreen({
         errors={errors}
         onSelect={(path) => setView((now) => ({ ...now, selected: path }))}
         onChange={(change) => setView((now) => ({ ...now, draft: change(now.draft) }))}
-        onEdit={(edit) =>
-          setView((now) => {
-            const done = edit(now.draft);
-            return done === null ? now : { draft: done.draft, selected: done.select };
-          })
-        }
+        // 할 수 없는 조작(`null`)은 같은 상태를 돌려준다 — 다시 그리지 않는다.
+        onEdit={(edit) => setView((now) => edit(now.draft) ?? now)}
       />
     </EditorFrame>
   );

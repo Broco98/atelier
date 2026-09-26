@@ -341,7 +341,7 @@ describe("템플릿", () => {
 describe("더하기", () => {
   it("폴더를 골랐으면 그 안의 마지막 자식으로 더하고 그것을 고르며, 지나는 층의 모르는 키가 남는다", () => {
     const next = addEntry(opened(), [2], "file");
-    expect(next.select).toEqual([2, 1]);
+    expect(next.selected).toEqual([2, 1]);
     expect(next.draft.layout.root.children?.[2]).toEqual({
       pattern: "{n}-{name}",
       kind: "folder",
@@ -358,7 +358,7 @@ describe("더하기", () => {
 
   it("파일을 골랐으면 그 뒤의 형제로 더한다", () => {
     const next = addEntry(opened(), [0], "folder");
-    expect(next.select).toEqual([1]);
+    expect(next.selected).toEqual([1]);
     expect(next.draft.layout.root.children?.map((entry) => entry.pattern)).toEqual([
       "overview.md",
       "untitled",
@@ -371,14 +371,14 @@ describe("더하기", () => {
   // 머리 `spec/`은 항목이 아니다(결정 26) — 골랐으면 최상위의 맨 뒤에 더한다.
   it("머리 `spec/`을 골랐으면 최상위의 맨 뒤에 더한다", () => {
     const next = addEntry(opened(), [], "file");
-    expect(next.select).toEqual([3]);
+    expect(next.selected).toEqual([3]);
     expect(next.draft.layout.root.children?.[3]).toEqual({ pattern: "untitled.md", kind: "file" });
     expect(next.draft.layout.root.children?.slice(0, 3)).toEqual(opened().layout.root.children);
   });
 
   it("자식이 없던 폴더에 더하면 그 폴더에 자식이 선다", () => {
     const next = addEntry(opened(), [2, 0], "folder");
-    expect(next.select).toEqual([2, 0, 0]);
+    expect(next.selected).toEqual([2, 0, 0]);
     expect(next.draft.layout.root.children?.[2].children?.[0]).toEqual({
       pattern: "tickets",
       kind: "folder",
@@ -398,7 +398,7 @@ describe("더하기", () => {
       "untitled-3.md",
       "untitled-2.md",
     ]);
-    expect(thrice.select).toEqual([4]);
+    expect(thrice.selected).toEqual([4]);
 
     const folders = addEntry(addEntry(opened(), [], "folder").draft, [], "folder").draft;
     expect(folders.layout.root.children?.slice(3).map((entry) => entry.pattern)).toEqual([
@@ -455,11 +455,11 @@ describe("지우기", () => {
   // 트리에서 바로 위에 보이던 행을 고른다 — 앞 형제가 폴더면 그 안의 맨 아래 행, 첫 자식이면 부모, 첫 최상위
   // 항목이면 머리 `spec/`이다.
   it("지우면 트리에서 그 바로 위의 행을 고른다", () => {
-    expect(removeEntry(opened(), [1])?.select).toEqual([0]);
+    expect(removeEntry(opened(), [1])?.selected).toEqual([0]);
     const withLast = addEntry(opened(), [], "file").draft;
-    expect(removeEntry(withLast, [3])?.select).toEqual([2, 0]);
-    expect(removeEntry(opened(), [2, 0])?.select).toEqual([2]);
-    expect(removeEntry(opened(), [0])?.select).toEqual([]);
+    expect(removeEntry(withLast, [3])?.selected).toEqual([2, 0]);
+    expect(removeEntry(opened(), [2, 0])?.selected).toEqual([2]);
+    expect(removeEntry(opened(), [0])?.selected).toEqual([]);
   });
 
   // 맨 위 항목은 spec 폴더 자신이다 — 트리의 행이 아니고(결정 26) 지울 것이 아니다.
@@ -511,11 +511,11 @@ describe("키로 옮기기", () => {
     const up = moveEntry(opened(), [2], "up");
     expect(top(up!.draft)).toEqual(["overview.md", "{n}-{name}", "decisions.md"]);
     expect(up!.draft.layout.root.children?.[1]).toEqual(opened().layout.root.children?.[2]);
-    expect(up!.select).toEqual([1]);
+    expect(up!.selected).toEqual([1]);
 
     const down = moveEntry(opened(), [0], "down");
     expect(top(down!.draft)).toEqual(["decisions.md", "overview.md", "{n}-{name}"]);
-    expect(down!.select).toEqual([1]);
+    expect(down!.selected).toEqual([1]);
     expect(down!.draft.layout.owner).toBe("사람");
     expect(down!.draft.layout.root.note).toBe("손으로 적은 메모");
   });
@@ -535,7 +535,7 @@ describe("키로 옮기기", () => {
       { pattern: "tickets", kind: "folder", color: "red" },
       { pattern: "untitled.md", kind: "file" },
     ]);
-    expect(indented!.select).toEqual([2, 1]);
+    expect(indented!.selected).toEqual([2, 1]);
 
     // 앞 형제가 파일이거나, 앞 형제가 없다
     expect(moveEntry(opened(), [1], "indent")).toBeNull();
@@ -552,7 +552,7 @@ describe("키로 옮기기", () => {
       kind: "folder",
       children: [{ pattern: "untitled.md", kind: "file" }],
     });
-    expect(next!.select).toEqual([2, 1]);
+    expect(next!.selected).toEqual([2, 1]);
   });
 
   it("내어쓰기는 부모의 바로 뒤 형제가 되고, 뒤의 형제들은 부모 안에 남는다", () => {
@@ -565,7 +565,7 @@ describe("키로 옮기기", () => {
       icon: "layers",
     });
     expect(next!.draft.layout.root.children?.[3]).toEqual({ pattern: "tickets", kind: "folder", color: "red" });
-    expect(next!.select).toEqual([3]);
+    expect(next!.selected).toEqual([3]);
 
     const three = addEntry(addEntry(opened(), [2], "file").draft, [2], "file").draft;
     expect(three.layout.root.children?.[2].children?.map((entry) => entry.pattern)).toEqual([
@@ -579,7 +579,7 @@ describe("키로 옮기기", () => {
       "untitled-2.md",
     ]);
     expect(top(middle!.draft)).toEqual(["overview.md", "decisions.md", "{n}-{name}", "untitled.md"]);
-    expect(middle!.select).toEqual([3]);
+    expect(middle!.selected).toEqual([3]);
   });
 
   it("최상위 항목은 내어쓸 수 없다", () => {
@@ -665,48 +665,48 @@ describe("놓기 계산", () => {
       },
     });
     expect(next?.draft.templates).toEqual({ "decisions.md": "# 결정\n" });
-    expect(next?.select).toEqual([0]);
+    expect(next?.selected).toEqual([0]);
   });
 
   it("행의 아래쪽에 놓으면 그 뒤에 선다 — 다른 폴더 안의 행이어도", () => {
     const after = dropEntry(opened(), [0], { path: [1], place: "after" });
     expect(top(after!.draft)).toEqual(["decisions.md", "overview.md", "{n}-{name}"]);
-    expect(after!.select).toEqual([1]);
+    expect(after!.selected).toEqual([1]);
 
     const deep = dropEntry(opened(), [0], { path: [2, 0], place: "after" });
     expect(top(deep!.draft)).toEqual(["decisions.md", "{n}-{name}"]);
     expect(deep!.draft.layout.root.children?.[1].children).toEqual([tickets, overview]);
-    expect(deep!.select).toEqual([1, 1]);
+    expect(deep!.selected).toEqual([1, 1]);
   });
 
   it("폴더 가운데에 놓으면 그 안의 마지막 자식이 된다 — 자식이 없던 폴더에도", () => {
     const inside = dropEntry(opened(), [0], { path: [2], place: "inside" });
     expect(top(inside!.draft)).toEqual(["decisions.md", "{n}-{name}"]);
     expect(inside!.draft.layout.root.children?.[1]).toEqual({ ...iteration, children: [tickets, overview] });
-    expect(inside!.select).toEqual([1, 1]);
+    expect(inside!.selected).toEqual([1, 1]);
 
     const empty = dropEntry(opened(), [1], { path: [2, 0], place: "inside" });
     expect(empty!.draft.layout.root.children?.[1].children?.[0]).toEqual({ ...tickets, children: [decisions] });
     expect(empty!.draft.templates).toEqual({ "decisions.md": "# 결정\n" });
-    expect(empty!.select).toEqual([1, 0, 0]);
+    expect(empty!.selected).toEqual([1, 0, 0]);
   });
 
   // 자식 있는 폴더의 아래쪽(안)에 놓은 것이 그 폴더의 마지막 자식이 된다 — 두 함수를 잇는다.
   it("자식 있는 폴더의 아래쪽에 놓으면 그 안의 마지막 자식이 된다", () => {
     const next = dropEntry(opened(), [1], { path: [2], place: dropPlaceAt(iteration, 0.75) });
     expect(next!.draft.layout.root.children?.[1]).toEqual({ ...iteration, children: [tickets, decisions] });
-    expect(next!.select).toEqual([1, 1]);
+    expect(next!.selected).toEqual([1, 1]);
   });
 
   it("트리 아래 빈 자리에 놓으면 최상위의 맨 뒤에 선다", () => {
     const next = dropEntry(opened(), [2, 0], { place: "end" });
     expect(top(next!.draft)).toEqual(["overview.md", "decisions.md", "{n}-{name}", "tickets"]);
     expect(next!.draft.layout.root.children?.[2]).toEqual({ pattern: "{n}-{name}", kind: "folder", icon: "layers" });
-    expect(next!.select).toEqual([3]);
+    expect(next!.selected).toEqual([3]);
 
     const first = dropEntry(opened(), [0], { place: "end" });
     expect(top(first!.draft)).toEqual(["decisions.md", "{n}-{name}", "overview.md"]);
-    expect(first!.select).toEqual([2]);
+    expect(first!.selected).toEqual([2]);
   });
 
   // 제 안으로 들어가면 항목이 트리에서 떨어져 나간다 — 받지 않는다.

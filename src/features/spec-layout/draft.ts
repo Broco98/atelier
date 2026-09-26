@@ -116,11 +116,12 @@ export function setTemplateBody(draft: LayoutDraft, path: EntryPath, body: strin
 
 /**
  * 트리를 고친 결과 — 새 초안과, 그 뒤에 **고를 자리**(티켓 13). 자리가 인덱스 경로라 항목을 더하거나 옮기면
- * 고른 자리도 따라가야 한다: 옮긴 항목을 계속 고르고, 더한 항목을 고르고, 지우면 그 앞 행을 고른다.
+ * 고른 자리도 따라가야 한다: 옮긴 항목을 계속 고르고, 더한 항목을 고르고, 지우면 그 앞 행을 고른다. 편집기가
+ * 쥐는 값(초안과 고른 자리)도 이 모양이라, 조작의 답을 그대로 다음 상태로 둔다.
  */
 export interface TreeEdit {
   draft: LayoutDraft;
-  select: EntryPath;
+  selected: EntryPath;
 }
 
 /**
@@ -140,7 +141,7 @@ export function addEntry(draft: LayoutDraft, selected: EntryPath, kind: "file" |
   const index = inside ? siblings.length : selected[selected.length - 1] + 1;
   const pattern = freePattern(siblings, kind === "file" ? ".md" : "");
   const added = [...parent, index];
-  return { draft: { ...draft, layout: insertAt(draft.layout, added, { pattern, kind }) }, select: added };
+  return { draft: { ...draft, layout: insertAt(draft.layout, added, { pattern, kind }) }, selected: added };
 }
 
 /**
@@ -159,7 +160,7 @@ export function removeEntry(draft: LayoutDraft, path: EntryPath): TreeEdit | nul
   const layout = detachAt(draft.layout, path);
   return {
     draft: { layout, templates: pruneTemplates(draft.templates, draft.layout, layout) },
-    select: index === 0 ? parent : lastRowUnder(layout, [...parent, index - 1]),
+    selected: index === 0 ? parent : lastRowUnder(layout, [...parent, index - 1]),
   };
 }
 
@@ -303,7 +304,7 @@ function relocate(
 ): TreeEdit {
   const rest = detachAt(draft.layout, from);
   const at = to(rest);
-  return { draft: { ...draft, layout: insertAt(rest, at, entry) }, select: at };
+  return { draft: { ...draft, layout: insertAt(rest, at, entry) }, selected: at };
 }
 
 /**
