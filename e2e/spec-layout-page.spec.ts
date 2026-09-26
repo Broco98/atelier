@@ -144,7 +144,8 @@ test("[다시 읽기]는 감시가 놓친 변경을 대신 알린다 — spec �
 // 그래서 **확인을 거친 뒤에만** `revert_spec_layout`이 나간다. 창의 글(지울 폴더, 사라지는 것의 수)은
 // 스토어에 선 물음으로 L2가 잰다(`revert.test.tsx` — 창은 포털로 서서 정적 렌더에 안 그려진다). 이 층이 드는
 // 것은 ⋯ → 메뉴 → 창 → 명령의 길이 화면에 붙어 있는가와, 창이 닫힌 뒤 포커스가 돌아오는 자리다. 이 명령을
-// 태우는 시나리오가 여기 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
+// 태우는 시나리오가 여기 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절). ⋯가 여닫힘을 말하는가
+// (`aria-expanded` 닫힘 → 열림 → 닫힘)도 여기서 잰다 — 메뉴 부품이 마운트 뒤에 달아 L2의 정적 렌더에는 없다.
 
 const 메뉴 = (page: Page, name: "Atelier" | "Maison") =>
   page.getByRole("button", { name: `${name} 레이아웃 메뉴`, exact: true });
@@ -161,7 +162,11 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   // 내장본 행에는 되돌릴 것이 없다
   await expect(메뉴(page, "Maison")).toHaveCount(0);
 
+  await expect(메뉴(page, "Atelier")).toHaveAttribute("aria-haspopup", "menu");
+  await expect(메뉴(page, "Atelier")).toHaveAttribute("aria-expanded", "false");
   await 메뉴(page, "Atelier").click();
+  await expect(되돌리기항목(page)).toBeVisible();
+  await expect(메뉴(page, "Atelier")).toHaveAttribute("aria-expanded", "true");
   await 되돌리기항목(page).click();
   const dialog = 확인창(page, "Atelier");
   await expect(dialog).toBeVisible();
@@ -176,6 +181,8 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   // 창을 연 항목은 메뉴와 함께 사라졌다 — 포커스는 그 앞 자리(⋯)로 돌아온다. `<body>`로 떨어지면 키보드 사용자가
   // 행을 처음부터 다시 찾아야 한다.
   await expect(메뉴(page, "Atelier")).toBeFocused();
+  // 창이 떠 있는 동안에는 재지 않는다 — 창 밖이 모두 `aria-hidden`이라 역할로 ⋯를 못 찾는다(alert-dialog.tsx).
+  await expect(메뉴(page, "Atelier")).toHaveAttribute("aria-expanded", "false");
   await expect(되돌린메시지(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
