@@ -211,6 +211,36 @@ mod tests {
         }
     }
 
+    /// 앱의 감시자는 기동할 때 `layouts/`를 만든다(spec 레이아웃 결정 22 — 다른 감시와 같다). **그 빈
+    /// 폴더는 아무것도 가리지 않는다**: resolve는 `<id>/`만 보므로 두 모드 모두 내장본 그대로이고, 물러선
+    /// 것도 아니다. 설정의 상태도 「고침」이 안 된다. 빈 `layouts/`가 무엇이든 가리면, 앱을 한 번 띄운
+    /// 것만으로 에이전트가 받는 안내문과 설정의 행이 바뀐다.
+    #[test]
+    fn the_empty_layouts_folder_the_watcher_makes_hides_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("layouts")).unwrap();
+        for mode in [Mode::Atelier, Mode::Maison] {
+            let resolved = resolve_layout(root.path(), mode, None).unwrap();
+            assert_eq!(resolved.layout, builtin_layout(mode), "{mode}");
+            assert_eq!(resolved.source, LayoutSource::Builtin, "{mode}");
+            assert_eq!(resolved.fallback, None, "{mode}");
+        }
+        for state in crate::layout_states(root.path()) {
+            assert!(!state.edited, "{}: 빈 layouts/가 고친 것으로 읽힌다", state.id);
+        }
+    }
+
+    /// **감시자가 보는 자리가 resolve가 읽는 레이아웃 폴더들을 품는다.** 둘이 갈리면 에이전트가
+    /// 저장해도 종이 안 울려, 설정과 spec 패널 탭이 다시 띄울 때까지 옛것을 든다.
+    #[test]
+    fn every_layout_folder_sits_in_the_folder_the_app_watches() {
+        let watched = crate::layouts_dir();
+        for mode in [Mode::Atelier, Mode::Maison] {
+            let folder = layout_folder(&crate::data_root(), mode);
+            assert_eq!(folder.parent(), Some(watched.as_path()), "{mode}의 레이아웃 폴더가 감시 밖이다");
+        }
+    }
+
     /// `<데이터 루트>/layouts/<id>/`에 파일 하나를 심는다. 폴더가 없으면 만든다.
     fn plant(root: &Path, id: &str, file: &str, content: &str) {
         let folder = root.join("layouts").join(id);

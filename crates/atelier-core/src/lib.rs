@@ -41,7 +41,7 @@ mod layout;
 
 pub use mode::{mode_from_env, Mode, MODE_ENV};
 pub use paths::{
-    archive_dir, collapse_home, data_root, expand_home, mode_home, projects_dir,
+    archive_dir, collapse_home, data_root, expand_home, layouts_dir, mode_home, projects_dir,
     shared_projects_root, works_dir,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
