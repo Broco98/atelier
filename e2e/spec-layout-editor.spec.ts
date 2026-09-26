@@ -7,7 +7,15 @@ import {
   SPEC_LAYOUT_STATES,
   UNREADABLE_MAISON_READ,
 } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  dragEntryOnto,
+  hoverRowPoint,
+  installFixtureBackend,
+  ipcCallArgs,
+  pickUpEntry,
+  unknownIpcCalls,
+} from "./harness";
 
 // 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 모드 행에서
 // [편집]을 누르면 그 설정 nav 항목 아래의 하위 주소에 편집기가 선다. 두 열의 모양(맨 위 항목의 행이 없다,
@@ -361,6 +369,219 @@ test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적
   const [{ layout, templates }] = await writes(page);
   expect(layout.root.children![1].template).toBe("decisions.md");
   expect(templates).toEqual({ "decisions.md": "# 결정\n\n## 다시 쓴 뼈대\n" });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 트리를 고치는 것(티켓 13). 무엇이 어디로 가는지(앞·뒤·안, 자기 아래 거절, 잠금 판정)는 순수 함수의 seam이,
+// 트리 위 한 줄의 모양과 잠금은 마크업 seam이 잰다. **이 층이 드는 것은 진짜 포인터와 키에서만 서는 것이다** —
+// 끌어 놓은 모양과 단축키로 옮긴 모양이 저장 명령에 실리는가, 끄는 동안 탭 겹판이 서지 않는가, Esc와 칸 안의
+// ⌥←가 트리를 건드리지 않는가.
+const { root: READ_ROOT } = SPEC_LAYOUT_READ.layout;
+const [OVERVIEW, DECISIONS, ITERATION] = READ_ROOT.children!;
+const TICKETS = ITERATION.children![0];
+
+/** 트리의 행마다 [보이는 이름, 깊이], 위에서부터. */
+const 트리 = (page: Page) =>
+  page
+    .getByRole("treeitem")
+    .evaluateAll((rows) => rows.map((row) => [row.textContent, Number(row.getAttribute("aria-level"))]));
+const 이름틀 = (page: Page) => page.getByRole("textbox", { name: "이름 틀", exact: true });
+const 도구 = (page: Page, name: string) =>
+  page.getByRole("toolbar", { name: "항목 편집" }).getByRole("button", { name, exact: true });
+/** 탭을 끌 때 본문에 서는 분할 겹판(`WorksPage`) — 편집기 항목을 끌 때는 서면 안 된다. */
+const 탭겹판 = (page: Page) => page.locator("[data-drop-half]");
+
+/** 저장을 눌러 나간 `write_spec_layout` 하나의 레이아웃. */
+async function saved(page: Page): Promise<SpecLayoutJson> {
+  const before = await callCount(page, "write_spec_layout");
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(before + 1);
+  return (await writes(page))[before].layout;
+}
+
+test("항목을 끌어 다른 폴더 가운데에 놓으면 트리에서 그 안으로 옮겨 서고 저장 명령에 그 모양이 실리며, 끄는 동안 탭 겹판이 서지 않는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  const 폴더 = 행(page, "{n}-{name}/");
+  await pickUpEntry(page, 행(page, "overview.md"));
+  await expect(탭겹판(page)).toHaveCount(0);
+  await hoverRowPoint(page, 폴더, "middle");
+  await expect(폴더).toHaveAttribute("data-entry-drop", "inside");
+  await expect(탭겹판(page)).toHaveCount(0);
+  await page.mouse.up();
+
+  // 폴더의 마지막 자식이 된다 — 앞에 있던 자식(tickets) 뒤다. 옮긴 항목을 계속 고른다.
+  expect(await 트리(page)).toEqual([
+    ["decisions.md", 1],
+    ["{n}-{name}/", 1],
+    ["tickets/", 2],
+    ["overview.md", 2],
+  ]);
+  await expect(page.locator("[data-entry-drop]")).toHaveCount(0);
+  await expect(이름틀(page)).toHaveValue("overview.md");
+
+  const layout = await saved(page);
+  expect(layout).toEqual({
+    owner: "사람",
+    root: { ...READ_ROOT, children: [DECISIONS, { ...ITERATION, children: [TICKETS, OVERVIEW] }] },
+  });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 행의 위쪽은 앞, 트리 아래 빈 자리는 최상위 맨 뒤다 — 포인터가 선 자리를 편집기가 행의 사각형으로 재어 가른다.
+test("항목을 끌어 행의 위쪽에 놓으면 그 앞에, 트리 아래 빈 자리에 놓으면 최상위 맨 뒤에 서고 저장 명령에 그 모양이 실린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await dragEntryOnto(page, 행(page, "tickets/"), 행(page, "overview.md"), "upper");
+  expect(await 트리(page)).toEqual([
+    ["tickets/", 1],
+    ["overview.md", 1],
+    ["decisions.md", 1],
+    ["{n}-{name}/", 1],
+  ]);
+  await expect(이름틀(page)).toHaveValue("tickets");
+
+  await dragEntryOnto(page, 행(page, "overview.md"), page.locator("[data-entry-end]"), "middle");
+  expect(await 트리(page)).toEqual([
+    ["tickets/", 1],
+    ["decisions.md", 1],
+    ["{n}-{name}/", 1],
+    ["overview.md", 1],
+  ]);
+
+  // 자식을 모두 잃은 폴더에는 자식 목록이 남지 않는다 — 디스크 형식처럼
+  const { children: _gone, ...emptied } = ITERATION;
+  expect(await saved(page)).toEqual({
+    owner: "사람",
+    root: { ...READ_ROOT, children: [TICKETS, DECISIONS, emptied, OVERVIEW] },
+  });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// Esc는 끌기를 취소하고 아무것도 부르지 않는다(공용 끌기 모듈). 손을 뗀 자리의 행이 눌린 것으로도 읽히지 않는다.
+test("항목을 끌다 Esc를 누르면 표시가 걷히고, 그 자리에서 떼도 트리와 고른 항목이 그대로이며 저장된 것도 그대로다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  const before = await 트리(page);
+
+  const 폴더 = 행(page, "{n}-{name}/");
+  await pickUpEntry(page, 행(page, "overview.md"));
+  await hoverRowPoint(page, 폴더, "middle");
+  await expect(폴더).toHaveAttribute("data-entry-drop", "inside");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-entry-drop]")).toHaveCount(0);
+  await expect(행(page, "overview.md")).toHaveCSS("opacity", "1");
+  await page.mouse.up();
+
+  expect(await 트리(page)).toEqual(before);
+  await expect(이름틀(page)).toHaveValue("overview.md");
+  expect(await saved(page)).toEqual(SPEC_LAYOUT_READ.layout);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 키보드 길 — 버튼 넷과 단축키 넷은 같은 조작이다. 같은 차례로 누르면 같은 모양이 저장에 실린다.
+for (const way of ["단축키로", "버튼으로"] as const) {
+  test(`고른 항목을 ${way} 아래로 옮기고 들여쓰면 앞 폴더의 마지막 자식이 되어 저장 명령에 그 모양이 실린다`, async ({
+    page,
+  }) => {
+    await installFixtureBackend(page);
+    await openEditor(page);
+
+    await 행(page, "decisions.md").click();
+    if (way === "단축키로") {
+      await page.keyboard.press("Alt+ArrowDown");
+      await expect(page.getByRole("treeitem")).toHaveText(["overview.md", "{n}-{name}/", "tickets/", "decisions.md"]);
+      await page.keyboard.press("Alt+ArrowRight");
+    } else {
+      await 도구(page, "아래로").click();
+      await expect(page.getByRole("treeitem")).toHaveText(["overview.md", "{n}-{name}/", "tickets/", "decisions.md"]);
+      await 도구(page, "들여쓰기").click();
+    }
+
+    expect(await 트리(page)).toEqual([
+      ["overview.md", 1],
+      ["{n}-{name}/", 1],
+      ["tickets/", 2],
+      ["decisions.md", 2],
+    ]);
+    // 옮긴 항목을 계속 고른다
+    await expect(이름틀(page)).toHaveValue("decisions.md");
+    const selected = page.getByRole("treeitem", { selected: true });
+    await expect(selected).toHaveText("decisions.md");
+    // 단축키로 옮기면 초점이 옮긴 행을 따라간다 — 들여쓰면 그 행의 자리가 바뀌어도 다음 단축키를 받는다
+    if (way === "단축키로") await expect(selected).toBeFocused();
+
+    expect(await saved(page)).toEqual({
+      owner: "사람",
+      root: { ...READ_ROOT, children: [OVERVIEW, { ...ITERATION, children: [TICKETS, DECISIONS] }] },
+    });
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
+// 단축키는 트리에 초점이 있을 때만 받는다 — 설명 칸과 템플릿 칸 안에서 ⌥←·⌥→는 macOS의 단어 이동이다.
+test("설명 칸 안에서 ⌥←를 누르면 트리가 바뀌지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await 행(page, "tickets/").click();
+  // 내어쓸 수 있는 항목이다 — 트리에 초점이 있었으면 옮겨졌을 것이다
+  await expect(도구(page, "내어쓰기")).toBeEnabled();
+  const before = await 트리(page);
+  await 설명(page).click();
+  await page.keyboard.press("Alt+ArrowLeft");
+
+  expect(await 트리(page)).toEqual(before);
+  await expect(설명(page)).toBeFocused();
+  await expect(설명(page)).toHaveValue("그 판의 티켓");
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 더하기와 지우기의 배선 — 어디에 무슨 이름으로 서는지는 순수 함수의 seam이 잰다.
+test("파일 추가는 고른 파일 뒤에 untitled.md를 세워 고르고, 휴지통은 고른 폴더를 자기 아래와 함께 지워 저장 명령에 그 모양이 실린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await 도구(page, "파일 항목 추가").click();
+  await expect(page.getByRole("treeitem")).toHaveText([
+    "overview.md",
+    "untitled.md",
+    "decisions.md",
+    "{n}-{name}/",
+    "tickets/",
+  ]);
+  await expect(이름틀(page)).toHaveValue("untitled.md");
+
+  await 행(page, "{n}-{name}/").click();
+  await 도구(page, "고른 항목 지우기").click();
+  await expect(page.getByRole("treeitem")).toHaveText(["overview.md", "untitled.md", "decisions.md"]);
+  // 지우면 트리에서 바로 위의 행을 고른다
+  await expect(이름틀(page)).toHaveValue("decisions.md");
+
+  // 머리 `spec/`을 고르면 지울 것이 없다 — 휴지통이 잠긴다
+  await page.getByRole("button", { name: "spec/", exact: true }).click();
+  await expect(도구(page, "고른 항목 지우기")).toBeDisabled();
+
+  expect(await saved(page)).toEqual({
+    owner: "사람",
+    root: { ...READ_ROOT, children: [OVERVIEW, { pattern: "untitled.md", kind: "file" }, DECISIONS] },
+  });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

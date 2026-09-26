@@ -491,6 +491,34 @@ export async function dragRowOnto(page: Page, slug: string, target: Locator, whe
   await page.mouse.up();
 }
 
+/**
+ * 「spec 레이아웃」 편집기 트리의 항목을 눌러 **문턱을 넘긴 채** 멈춘다(spec 레이아웃 티켓 13). 문턱을 넘은
+ * 증거로 끌리는 행이 흐려진 것을 먼저 본다 — `pickUpRow`와 같은 까닭이다: 안 보고 지나가면 뒤의 「아무것도
+ * 안 바뀌었다」가 「끌기가 시작도 안 됐다」로도 초록이 된다.
+ *
+ * 작업 행 도우미와 따로 두는 것은 행을 찾는 자리가 달라서다 — 편집기의 행에는 slug가 없어 부르는 쪽이 행을
+ * 로케이터로 준다. 문턱은 **옆으로** 넘긴다: 12px 옆은 아직 그 행 위라, 아래로 넘기면 들르는 이웃 행이 겨눠진다.
+ */
+export async function pickUpEntry(page: Page, row: Locator) {
+  const from = await pointIn(row, "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y, { steps: 3 });
+  await expect(row).toHaveCSS("opacity", "0.4");
+}
+
+/**
+ * 편집기 항목을 끌어 대상의 그 자리(윗 사분의 일 · 가운데 · 아랫 사분의 일)에 놓는다. 대상은 트리의 행이거나 트리
+ * 아래 빈 자리(`[data-entry-end]`)다. 놓기 전에 거기 놓일 표시(`data-entry-drop` — 앞·뒤·빈 자리의 선, 안의
+ * 밝아짐)가 섰는지 본다 — 놓을 곳이 있는 끌기만 부른다.
+ */
+export async function dragEntryOnto(page: Page, row: Locator, target: Locator, where: RowPoint) {
+  await pickUpEntry(page, row);
+  await hoverRowPoint(page, target, where);
+  await expect(target).toHaveAttribute("data-entry-drop", /^(before|after|inside|end)$/);
+  await page.mouse.up();
+}
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /** 상자의 한가운데. */
