@@ -50,10 +50,11 @@ const WORKS_KEY = ["works"] as const;
  * **저쪽 세계도 이 문 안에서 함께 읽는다**(티켓 12 · 프로세스 스펙 S13). 무효화는 관찰자가 있는 쿼리만 다시 부르는데
  * 앱 루트가 관찰하는 것은 지금 세계 하나라, 저쪽 목록은 지워진 채 새로 안 앉는다 — 그러면 MCP로 아카이브된 저쪽 Room의
  * 셸을 못 알아챈다. 어느 세계를 읽을지는 셸을 아는 쪽이 건 함수가 **이때** 고른다(`readOtherWorldsWith`). 지운 **뒤에**
- * 부르는 것이 순서다: 지운 쿼리는 신선도와 무관하게 낡은 것이라 `prefetchQuery`가 반드시 다시 읽는다.
+ * 부르는 것이 순서다: 지운 쿼리는 신선도와 무관하게 낡은 것이라 도는 조회가 없으면 `prefetchQuery`가 반드시 다시 읽는다.
+ * 도는 조회가 있을 때는 `rereadWorld`가 따로 다룬다.
  *
  * 돌려주는 promise는 **지금 세계의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽 세계는 이 화면의
- * 목록이 아니다. `prefetchQuery`는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다.
+ * 목록이 아니다. 저쪽 세계의 읽기는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다.
  */
 export function invalidateWorks(queryClient: QueryClient) {
   const state = movesOf(queryClient);
@@ -62,8 +63,33 @@ export function invalidateWorks(queryClient: QueryClient) {
     return Promise.resolve();
   }
   const refetched = queryClient.invalidateQueries({ queryKey: WORKS_KEY });
-  for (const mode of otherWorlds.get(queryClient)?.() ?? []) void queryClient.prefetchQuery(worksQuery(mode));
+  for (const mode of otherWorlds.get(queryClient)?.() ?? []) rereadWorld(queryClient, mode);
   return refetched;
+}
+
+/**
+ * 저쪽 세계의 목록을 **이 무효화 뒤에 시작한 조회의 답으로** 앉힌다(티켓 12 리뷰).
+ *
+ * `prefetchQuery`는 그 쿼리에 도는 조회가 있으면 새로 안 부르고 거기 **합류한다.** 지금 세계는 관찰자가 있어
+ * `invalidateQueries`가 도는 조회를 끊고 새로 부르지만(`cancelRefetch`), 저쪽 세계는 관찰자가 없어 무효화가 표시만 한다.
+ * 그러면 앞 이벤트(claude의 spec 쓰기)로 시작한 느린 조회 — 워크트리마다 상태를 묻는다 — 가 MCP 아카이브 **전에** 읽은
+ * 목록을 성공으로 앉히고, 그 목록에는 아카이브된 work이 그대로 있다. 성공은 무효 표시도 걷으므로 다음 이벤트가 올 때까지
+ * 그 세계의 주인 잃은 셸을 못 본다.
+ *
+ * 그래서 도는 조회가 있으면 그것이 **끝난 뒤에 한 번 더** 읽는다. 끊고 다시 부르는 길은 반쪽이다: 관찰자 없는 목록은
+ * 5분 조용하면 캐시에서 빠지는데(긴 코드 작업 뒤 spec을 쓰고 곧 아카이브하는 흔한 순서), 그 뒤의 첫 조회는 값이 없고
+ * react-query는 값 없는 조회를 `cancelRefetch`로도 안 끊고 합류시킨다. 억지로 끊으면 세계를 건너는 라우트가 그 조회에
+ * 합류해 기다리다(`pickWorkSlug`의 `ensureQueryData`) 취소를 받아 빈 목록으로 정규화한다. 한 번 더 읽는 것은 합류해도
+ * 된다(`cancelRefetch: false`): 그때 도는 조회는 앞 조회가 끝난 뒤, 곧 이 무효화 뒤에 시작한 것이다.
+ */
+function rereadWorld(queryClient: QueryClient, mode: Mode): void {
+  const options = worksQuery(mode);
+  const reading = queryClient.isFetching({ queryKey: options.queryKey, exact: true }) > 0;
+  const read = queryClient.prefetchQuery(options);
+  if (!reading) return;
+  void read.then(() =>
+    queryClient.refetchQueries({ queryKey: options.queryKey, exact: true, type: "all" }, { cancelRefetch: false }),
+  );
 }
 
 /**

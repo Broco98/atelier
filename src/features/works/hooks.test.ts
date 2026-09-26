@@ -445,4 +445,50 @@ describe("저쪽 세계를 함께 읽는 문", () => {
       release();
     }
   });
+
+  // **도는 조회에 합류하면 아카이브 전 목록이 앉는다**(티켓 12 리뷰). 저쪽 세계 쿼리는 관찰자가 없어, 무효화가 도는 조회를
+  // 끊지 않고 `prefetchQuery`는 새로 안 부르고 거기 합류한다. 그러면 첫 이벤트(spec 쓰기)의 느린 조회가 MCP 아카이브 **전에**
+  // 읽은 목록 — 그 work이 든 — 을 성공으로 앉히고, 그 세계를 다시 읽을 까닭이 사라진다(다음 이벤트까지 주인 잃은 셸을 못 본다).
+  // 재는 것은 결과다: 둘째 무효화 **뒤에** 나간 조회가 있고, 마지막에 앉은 목록이 그 조회의 답이다. 끊고 다시 부르든 끝난 뒤
+  // 한 번 더 부르든 초록이다 — 둘째 무효화 뒤에 나간 조회가 없으면 빨갛다.
+  const isMaison = (call: Call) => (call.args as { mode: Mode }).mode === "maison";
+  /** 아카이브 전(`x`가 있다)과 뒤(`x`가 없다)의 Maison 목록. */
+  const BEFORE_ARCHIVE = [row("a"), row("x")];
+  const AFTER_ARCHIVE = [row("a")];
+
+  async function archivedWhileReading(client: QueryClient) {
+    const release = readOtherWorldsWith(client, () => ["maison"]);
+    try {
+      void invalidateWorks(client);
+      await settle();
+      expect(waiting("list_works", isMaison), "첫 무효화가 저쪽 세계를 읽는다").toHaveLength(1);
+
+      const mark = calls.length;
+      const afterMark = (call: Call) => isMaison(call) && calls.indexOf(call) >= mark;
+      void invalidateWorks(client);
+      await settle();
+      answer("list_works", BEFORE_ARCHIVE, (call) => isMaison(call) && calls.indexOf(call) < mark);
+      await settle();
+
+      expect(waiting("list_works", afterMark), "둘째 무효화 뒤에 저쪽 세계를 다시 읽지 않았다").toHaveLength(1);
+      answer("list_works", AFTER_ARCHIVE, afterMark);
+      await settle();
+      expect(slugsOf(client.getQueryData(worksQuery("maison").queryKey))).toBe("a");
+    } finally {
+      release();
+    }
+  }
+
+  it("저쪽 세계 조회가 도는 중에 다시 무효화하면, 그 뒤에 나간 조회의 답이 앉는다", async () => {
+    await archivedWhileReading(await twoWorlds());
+  });
+
+  // 저쪽 세계 목록은 관찰자가 없어 5분 조용하면 캐시에서 빠진다 — 긴 코드 작업 끝에 claude가 spec을 쓰고 곧 아카이브하는 흔한
+  // 순서에서 첫 조회는 **값 없는** 조회다. react-query는 값 없는 조회를 안 끊으므로(`cancelRefetch`도 합류한다) 이 경우를 따로 잰다.
+  it("캐시에서 빠진 뒤의 첫 조회가 도는 중이어도 같다", async () => {
+    const { client } = await listed();
+    expect(client.getQueryState(worksQuery("maison").queryKey)).toBeUndefined();
+    calls.length = 0;
+    await archivedWhileReading(client);
+  });
 });
