@@ -16,6 +16,7 @@ import AppToasts from "./AppToasts";
 import ShellReclaim from "./ShellReclaim";
 import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
+import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
 import { startupNotices, startupReportStore } from "./startup-report";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
@@ -122,6 +123,20 @@ function AppShell() {
   useEffect(() => {
     if (startupReport) startupNotices(startupReport).forEach(showAppToast);
   }, [startupReport]);
+
+  // **셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때**(프로세스 스펙 S49 · P4 · 티켓 13). 사람이 끝내기를 고르지 않은
+  // 길이라 알린다 — 셸은 어느 화면에서든 끝날 수 있어(최상위 터미널, 작업 화면의 탭) 토스트 자리와 같은 이 셸에서 듣는다.
+  // 시작 보고와 달리 스토어를 거치지 않는다: 셸은 웹뷰가 뜬 뒤에 띄우므로 이 자리가 늘 먼저 서 있다. 무엇을 말할지는
+  // `processes-ended.ts`가 든다 — 이 자리는 배선뿐이다.
+  useEffect(() => {
+    const unlisten = listen<ProcessesEnded>(PROCESSES_ENDED_EVENT, ({ payload }) => {
+      const notice = endedNotice(payload);
+      if (notice) showAppToast(notice);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은

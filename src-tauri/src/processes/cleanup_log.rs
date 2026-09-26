@@ -8,6 +8,9 @@
 //! 그것까지 적으면 × 한 번마다 한 줄이 차 100건이 금세 쓸모없는 줄로 찬다. 셸과 도우미는 셸의 몫이라 대상 목록에도 안 든다
 //! (셸 자신이 목록에 없듯이). 사람이 띄운 것(도우미가 아닌 자손)이나 고아가 하나라도 끝났을 때만 적는다.
 //!
+//! 셸이 스스로 끝나며 끝낸 것을 토스트로 알릴 때의 수(`ended_count`, 티켓 13)도 같은 규칙으로 센다 — 도우미와 이미 없음은
+//! 앱이 끝낸 것으로 안 친다.
+//!
 //! **명령줄은 앞 200자만 담는다.** 명령줄 전체에는 토큰 같은 비밀이 들 수 있다(`--token=…`, `curl -H 'Authorization: …'`).
 //!
 //! **쓰기는 인스턴스 기록과 같은 뮤텍스 안에서 「읽기 → 더하기 → 쓰기」다**(`instances::Record::log`). 이 파일을 쓰는 자리가
@@ -44,7 +47,7 @@ pub fn path(root: &Path) -> PathBuf {
 pub enum Reason {
     /// 셸 닫기 — ×, ⌘W, 셸 메뉴, 안 쓴 자동 셸의 회수, xterm 열기 실패, spawn 왕복 중 닫힘.
     ShellClose,
-    /// 셸 스스로 끝남 — `exit` · `^D`(티켓 13이 남긴다).
+    /// 셸 스스로 끝남 — `exit` · `^D`(티켓 13). 셸 키를 문 생존자를 앱이 끝냈다.
     ShellExit,
     /// 앱 종료.
     AppExit,
@@ -156,6 +159,22 @@ pub fn event(
     })
 }
 
+/// 사람에게 알릴 「앱이 끝낸 수」 — **알릴 것이 없으면 `None`이다**(티켓 13 · 프로세스 스펙 P4). 셸이 스스로 끝나며 그 셸에서
+/// 띄운 것을 끝냈을 때, 토스트 「셸이 끝나면서 그 셸에서 띄운 프로세스 N개를 끝냈어요」의 N이다.
+///
+/// 세는 것은 도우미가 아닌 대상 중 **끝남 · 강제**뿐이다. 도우미는 셸의 몫이라 뺀다(P1) — 안 빼면 p10k 셸에서 `exit`를 칠
+/// 때마다 `gitstatusd` 하나로 토스트가 선다. 이미 없음은 앱이 끝낸 것이 아니다. 못 끝냄도 세지 않는다 — 문구가 「끝냈어요」다.
+/// 못 끝냄은 정리 기록에 남아(`event`) 판 04의 `●`가 알린다. 그래서 이 수가 0이어도 사건은 적힐 수 있다(못 끝냄뿐일 때).
+pub fn ended_count(aimed: &[Aimed], outcomes: &[(Identity, Outcome)]) -> Option<usize> {
+    let count = aimed
+        .iter()
+        .filter(|one| !one.helper)
+        .filter_map(|one| outcomes.iter().find(|(id, _)| *id == one.id))
+        .filter(|(_, outcome)| matches!(outcome, Outcome::Ended | Outcome::Forced))
+        .count();
+    (count > 0).then_some(count)
+}
+
 /// 명령줄의 앞 200자. 바이트가 아니라 글자로 자른다 — 한글 인자 한가운데서 끊으면 UTF-8이 깨진다.
 fn cut(command: &str) -> String {
     command.chars().take(COMMAND_CHARS).collect()
@@ -252,6 +271,52 @@ mod tests {
             survived.is_some_and(|event| event.targets[0].outcome == Outcome::Survived),
             "못 끝낸 것을 안 적었다 — 앱이 끝내려다 못 한 것이 기록에서 사라진다"
         );
+    }
+
+    /// **셸이 스스로 끝나며 끝낸 것을 알릴지**(티켓 13 · 프로세스 스펙 P4 · P1). 알릴 수는 도우미가 아닌 대상 중 끝남 · 강제다.
+    /// 셸 도우미만, 또는 이미 없음만 끝났으면 알리지 않는다 — p10k 셸에서 `exit`를 칠 때마다 토스트가 서면 안 된다.
+    ///
+    /// 앵커: 알리는 줄이 있다 — 늘 `None`을 주게 무너지면 「알리지 않는다」들이 저절로 참이 된다.
+    #[test]
+    fn a_shell_exit_announces_only_what_the_app_ended_beyond_the_helpers() {
+        let helper = aimed(11, "gitstatusd", true);
+        let server = aimed(12, "node", false);
+        let bundler = aimed(13, "esbuild", false);
+        let stale = aimed(14, "python3", false);
+        let cases: [(&str, Vec<Aimed>, Vec<(Identity, Outcome)>, Option<usize>); 9] = [
+            ("끝낼 것이 없었다 — 셸만 끝났다", vec![], vec![], None),
+            ("셸 도우미만 끝났다", vec![helper.clone()], vec![(id(11), Outcome::Ended)], None),
+            ("셸 도우미만, 강제로 끝났다", vec![helper.clone()], vec![(id(11), Outcome::Forced)], None),
+            ("이미 없음뿐이다 — 앱이 끝낸 것이 아니다", vec![server.clone()], vec![(id(12), Outcome::Gone)], None),
+            (
+                "셸 도우미와 이미 없음뿐이다",
+                vec![helper.clone(), server.clone()],
+                vec![(id(11), Outcome::Ended), (id(12), Outcome::Gone)],
+                None,
+            ),
+            ("결과를 못 찾은 대상은 끝낸 것이 아니다", vec![server.clone()], vec![], None),
+            (
+                "도우미가 아닌 것이 끝나면 그 수 — 끝남과 강제를 세고 도우미 · 이미 없음은 뺀다",
+                vec![helper.clone(), server.clone(), bundler.clone(), stale.clone()],
+                vec![(id(11), Outcome::Ended), (id(12), Outcome::Ended), (id(13), Outcome::Forced), (id(14), Outcome::Gone)],
+                Some(2),
+            ),
+            (
+                "못 끝냄은 세지 않는다 — 문구가 「끝냈어요」다(정리 기록에는 남는다)",
+                vec![server.clone(), bundler.clone()],
+                vec![(id(12), Outcome::Survived), (id(13), Outcome::Ended)],
+                Some(1),
+            ),
+            ("못 끝냄뿐이면 알리지 않는다", vec![server.clone()], vec![(id(12), Outcome::Survived)], None),
+        ];
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter_map(|(what, aimed, outcomes, want)| {
+                let got = ended_count(aimed, outcomes);
+                (got != *want).then(|| format!("{what}: 기대 {want:?}, 받음 {got:?}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "알릴 수가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
     /// **명령줄은 앞 200자만 담는다** — 전체에는 토큰 같은 비밀이 들 수 있다. 글자로 자른다: 한글 인자 한가운데를 바이트로

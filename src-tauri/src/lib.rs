@@ -231,6 +231,9 @@ pub fn run() {
             // 전에 뜰 수 있는 코드가 되고, 그때 나는 것은 조용한 패닉 하나다 — 폴링이
             // 통째로 죽는데 앱은 멀쩡히 돈다.
             pty::watch_running(app.handle().clone(), Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+            // 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때 알릴 길을 건다(프로세스 스펙 S49 · P4 · 티켓 13). 같은 길이다 —
+            // 끝내기의 뒤 스레드가 emit하고 프런트가 `listen`으로 받는다. 셸은 웹뷰가 뜬 뒤에 띄우므로 여기가 먼저다.
+            pty::announce_ends(app.handle().clone(), &app.state::<Arc<pty::PtyPool>>());
 
             // 셸이 **스스로 말하는** 길(#201). 위 둘이 앱이 물어서 아는 값이라면 이쪽은
             // 에이전트의 훅이 파일 한 장을 놓고 가는 길이고, 여기가 그 길의 세 자리다.
@@ -411,6 +414,17 @@ mod tests {
                 "pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string())"
             ),
             "인스턴스 기록을 안 연다 — 다른 빌드가 이 실행의 셸 자손을 출처 불명으로 본다"
+        );
+    }
+
+    /// **셸 스스로 끝남의 알림이 앱이 뜰 때 걸린다**(프로세스 스펙 S49 · P4 · 티켓 13). 안 걸면 조용하다 — 셸이 `exit`로 끝나며
+    /// dev 서버를 끝내고 정리 기록에도 적는데, 풀의 알림 자리가 비어 프런트에 아무것도 안 간다. L3는 이벤트를 손으로 쏘고
+    /// 실물 장면은 제 함수를 걸어 받으니 둘 다 이 줄을 안 지난다. 헤드리스로는 못 돌리니(`run()`) 자리로 잰다.
+    #[test]
+    fn the_ended_processes_are_announced_once_the_app_comes_up() {
+        assert!(
+            setup_source().contains("pty::announce_ends(app.handle().clone(), &app.state::<Arc<pty::PtyPool>>());"),
+            "셸 스스로 끝남의 알림을 안 건다 — 셸이 스스로 끝나며 띄운 것을 끝내도 토스트가 안 선다"
         );
     }
 

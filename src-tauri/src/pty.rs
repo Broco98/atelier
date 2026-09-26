@@ -81,7 +81,7 @@ struct Shell {
 /// 사람을 부르고, 다음 실행이 같은 PTY 번호를 쓸 때 그 값을 새 셸이 뒤집어쓴다.
 ///
 /// **`Drop`인 것이 요점이다.** 셸이 풀에서 빠지는 자리가 셋이다 — 사용자가 `exit`를 쳐서
-/// 리더 스레드가 자기 자리를 치울 때, `×`로 죽일 때(`kill`), 앱이 닫히거나 웹뷰가 다시 뜰
+/// 셸이 스스로 끝날 때(`exited`), `×`로 죽일 때(`kill`), 앱이 닫히거나 웹뷰가 다시 뜰
 /// 때(`end_for_exit` · `end_for_reload`). 셋 다 결국 이 값을 떨구므로 여기 한 자리에 두면 빠지는 길이 하나 더
 /// 생겨도 따라온다. 세 곳에 손으로 적으면 언젠가 한 곳이 빠지고, 그때 나는 것은 조용히
 /// 남는 앰버 점 하나다.
@@ -98,10 +98,14 @@ pub struct PtyPool {
     /// 진행 중인 끝내기 — 이 풀에서 뺀 셸의 끝내기가 뒤 스레드에서 도는 동안 여기 오른다(프로세스 스펙 S5).
     /// 앱 종료가 마감한다. 풀에 두는 것은 셸을 빼는 모든 길이 풀을 쥐고 있어서다.
     endings: Arc<InFlight>,
-    /// 이 실행의 인스턴스 기록 — 셸 키 목록(프로세스 결정 6 · 프로세스 스펙 S52). 셸 키를 올리고 내리는 자리가 셋 다 풀을
-    /// 쥔다: 셸 띄우기, 리더 스레드, 뒤로 보낸 끝내기(스레드에 넘기려고 `Arc`다). 앱은 setup에서 연다(`open_record`).
+    /// 이 실행의 인스턴스 기록 — 셸 키 목록(프로세스 결정 6 · 프로세스 스펙 S52). 셸 키를 올리고 내리는 자리가 둘 다 풀을
+    /// 쥔다: 셸 띄우기와 뒤로 보낸 끝내기(셸 닫기 · 새로고침 · 셸 스스로 끝남 — 스레드에 넘기려고 `Arc`다). 앱은 setup에서 연다(`open_record`).
     /// 기본값은 안 연 기록이라, 검사가 세우는 풀은 아무 파일도 안 쓴다.
     record: Arc<Record>,
+    /// 앱이 사람 손 없이 끝낸 것을 프런트에 알리는 자리 — 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때(티켓 13). 앱은
+    /// setup에서 이벤트를 쏘는 함수를 건다(`announce_ends`). 기본값은 빈 자리라, 검사가 세우는 풀은 아무 데도 안 쏜다 —
+    /// 풀 배선 장면은 제 함수를 걸어 받은 알림을 잰다.
+    announcer: OnceLock<Box<dyn Fn(Ended) + Send + Sync>>,
 }
 
 impl PtyPool {
@@ -110,6 +114,45 @@ impl PtyPool {
     fn lock(&self) -> MutexGuard<'_, HashMap<u32, Shell>> {
         self.shells.lock().unwrap_or_else(|e| e.into_inner())
     }
+
+    /// 알리는 함수를 한 번 건다. 두 번째는 버린다 — 앱에서는 setup 한 자리만 부른다.
+    fn announce_with(&self, send: impl Fn(Ended) + Send + Sync + 'static) {
+        if self.announcer.set(Box::new(send)).is_err() {
+            eprintln!("atelier: the ending announcer was already set");
+        }
+    }
+
+    /// 건 함수가 있으면 알린다. 없으면(검사의 풀, setup 전) 조용히 넘어간다 — 끝내기와 기록은 이미 끝났다.
+    fn announce(&self, ended: Ended) {
+        if let Some(send) = self.announcer.get() {
+            send(ended);
+        }
+    }
+}
+
+/// **앱이 사람 손 없이 끝낸 것의 알림**(프로세스 스펙 S49 · P4 · 티켓 13). 프런트의 `PROCESSES_ENDED_EVENT`와 **문자열로만**
+/// 이어진다 — 어긋나면 셸이 스스로 끝나며 dev 서버를 끝내도 화면은 조용하다. 그래서 `src/components/shell/processes-ended.test.ts`가
+/// 이 선언을 읽어 견준다(선언 모양을 바꾸면 거기가 던진다).
+pub const ENDED_EVENT: &str = "processes:ended";
+
+/// 그 알림이 싣는 것 — 까닭, 셸(pty id), 끝낸 수. **owner는 없다.** Rust 풀은 셸의 주인을 모르고, 프런트도 이 셸 id로
+/// 레지스트리를 찾지 않는다(티켓 13 「스펙과 다른 점」) — 종료 프레임을 받은 칸은 그 pty id를 곧바로 지워, 이 알림이 올 때는
+/// 늘 못 찾는다. 문구에 owner가 없으니 찾을 까닭도 없다.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct Ended {
+    reason: Reason,
+    shell_id: u32,
+    /// 끝낸 수 — 도우미와 이미 없음 · 못 끝냄은 빠진다(`cleanup_log::ended_count`). 0이면 알리지 않는다.
+    count: usize,
+}
+
+/// 앱이 사람 손 없이 끝낸 것을 프런트에 알리게 한다 — **setup에서 한 번**(티켓 13). 셸은 프런트가 뜬 뒤에 띄우므로 셸이 스스로
+/// 끝나는 것도 그 뒤다 — setup이 먼저 선다. 배선은 `watch_running`과 같은 길이다: 스레드가 emit하고 프런트가 `listen`으로 받는다.
+pub fn announce_ends(app: AppHandle, pool: &PtyPool) {
+    pool.announce_with(move |ended| {
+        let _ = app.emit(ENDED_EVENT, ended);
+    });
 }
 
 /// 이 실행의 인스턴스 기록을 연다 — **앱이 뜰 때 한 번**, 시작 정리(티켓 10)보다 먼저(프로세스 스펙 S52). 루트는
@@ -205,16 +248,9 @@ pub fn spawn(
             }
             Err(e) => eprintln!("atelier: pty {id} wait failed: {e}"),
         }
-        // **자기 자리를 치운다.** 사용자가 `exit`를 치면 셸은 여기서 끝나는데, 치우지 않으면
-        // 죽은 셸이 풀에 남아 fd 둘을 붙잡고 있고 — 더 나쁘게 — 그 pid가 이미 회수돼
-        // **재사용 가능한 상태**로 남는다. 다음 회수가 그 자리에 앉은 남의 프로세스 그룹을
-        // 쏘게 된다. 이미 회수 경로가 가져갔으면 `remove`는 아무 일도 하지 않는다.
-        let left = owner.lock().remove(&id);
-        // 빼기가 셸을 돌려줄 때만 키를 내린다 — 다른 길(×, 새로고침)이 먼저 뺐으면 그 길이 끝내기 뒤에 내린다. 지금은
-        // 곧바로 내린다: 이 길에는 끝내기가 아직 없다. 티켓 13이 스스로 끝난 셸의 자손을 끝내며 그 뒤로 옮긴다.
-        if let Some(shell) = &left {
-            owner.record.lower([shell.key.as_str()]);
-        }
+        // 셸이 끝났다 — 자리를 치우고, 그 셸에서 띄운 것이 남았으면 끝낸다. 다른 길(×, 새로고침, 앱 종료)이 먼저 거뒀으면
+        // 아무것도 안 한다. 끝내기는 새 스레드에서 돌아 이 스레드는 곧바로 끝난다.
+        exited(&owner, id);
         // 채널이 여기서 떨어지며 JS 쪽 콜백이 정리된다.
     });
 
@@ -545,7 +581,7 @@ fn running_command(shell_pid: u32, foreground: i32, name: Option<String>) -> Opt
 ///
 /// **잠금 안에서 풀에 남아 있는 셸만 읽는다 — 그것이 `end`의 순서를 안 건드리는 방법이다.**
 /// 포그라운드 그룹은 master fd가 살아 있어야 읽는데, 셸을 거두는 길(`kill` · `end_for_reload` ·
-/// `end_for_exit`)은 풀에서 **먼저 빼고**(잠금 안에서) 그 다음에 거둔다. 그러니 우리가 잠금을 쥐고 있는 동안 그 셸은 아직
+/// `end_for_exit` · 셸 스스로 끝남의 `exited`)은 풀에서 **먼저 빼고**(잠금 안에서) 그 다음에 거둔다. 그러니 우리가 잠금을 쥐고 있는 동안 그 셸은 아직
 /// 풀에 있고 master도 살아 있거나, 이미 빠져 우리 눈에 안 보이거나 둘 중 하나다 — 거두는
 /// 중인 셸을 읽는 창이 없다.
 ///
@@ -632,8 +668,53 @@ pub fn kill(pool: &PtyPool, id: u32, reason: CloseReason, owner: &str) -> Result
     Ok(())
 }
 
+/// **셸이 스스로 끝났다** — 리더 스레드가 셸 프로세스를 거둔 뒤 부른다(프로세스 결정 3 · 6 · 프로세스 스펙 S49 · 티켓 13).
+///
+/// **자기 자리를 치운다.** 사용자가 `exit`를 치면 셸은 여기서 끝나는데, 치우지 않으면 죽은 셸이 풀에 남아 fd 둘을 붙잡고
+/// 있고 — 더 나쁘게 — 그 pid가 이미 회수돼 **재사용 가능한 상태**로 남는다. 다음 회수가 그 자리에 앉은 남의 프로세스 그룹을
+/// 쏘게 된다.
+///
+/// **빼기가 셸을 돌려줄 때만** 그 셸에서 띄운 것을 끝낸다. 다른 길(×, 새로고침, 앱 종료)이 먼저 뺐으면 그 길이 이미 끝내고
+/// 있다 — 여기서 또 하면 같은 셸을 두 번 끝내고 정리 기록도 두 줄이 된다. 빼기 전에 세는 것(판정 중 셈)은 셸 닫기와 같다:
+/// 판정하는 사이 앱이 닫혀도 종료가 이 끝내기가 목록에 오르기를 기다려 마감한다.
+///
+/// **남겨 두어도 그것들은 확정 고아다**(프로세스 결정 6) — 이 실행은 살아 있고 그 셸은 목록에 없다. 다음 시작 정리가 어차피
+/// 끝낸다. 결정 6의 이유(「고아는 이어 쓸 길이 없다」)가 「지금」을 고른다. 결정 3은 「남기기」를 두지 않는다.
+///
+/// 판정 · 끝내기 · 기록 · 알림은 **새 스레드**에서 한다(`atelier-shell-exit`) — 유예가 2초까지 돈다. 판정은 셸 닫기와 같은
+/// 길(`begin`)이지만 셸 pid는 이미 거둬져 PID 트리가 끊겼다: 판정은 셸 프로세스를 못 찾고 **그 셸 키를 문 생존자와 그 트리**만
+/// 고른다. 표식이 안 읽히는 자손(시스템 바이너리)은 못 찾는다 — 스펙 Further Notes 「표식이 안 읽히는 고아」와 같은 한계다.
+/// 셸 그룹에는 신호가 안 간다 — 리더(셸)가 이미 없어 신원을 아는 그룹은 빠지고, 신원을 모르는 그룹은 번호가 남의 것일 수 있어
+/// 쏘지 않는다(`groups_signalled`).
+///
+/// 끝낸 것은 정리 기록에 「셸 스스로 끝남」으로 적고(owner 없음 — 티켓 11), 셸 키는 **끝내기가 끝난 뒤에** 내린다(S52). 사람이
+/// 끝내기를 고르지 않은 길이라 도우미가 아닌 것을 끝냈으면 알린다(P4 — `cleanup_log::ended_count`). p10k 셸의 `exit`는
+/// `gitstatusd`(도우미)만 끝나 조용하다.
+fn exited(pool: &Arc<PtyPool>, id: u32) {
+    let claim = pool.endings.claim();
+    let left = pool.lock().remove(&id);
+    // 이미 다른 길이 가져갔다 — 셈은 떨어지며 물러난다.
+    let Some(shell) = left else {
+        return;
+    };
+    let owner = Arc::clone(pool);
+    let behind = std::thread::Builder::new().name("atelier-shell-exit".into()).spawn(move || {
+        let cause = Cause { reason: Reason::ShellExit, owner: None };
+        let (aimed, outcomes) = begin(&owner, vec![shell], claim, cause).finish();
+        let members: Vec<Aimed> = aimed.into_iter().flat_map(|(_, members)| members).collect();
+        if let Some(count) = cleanup_log::ended_count(&members, &outcomes) {
+            owner.announce(Ended { reason: Reason::ShellExit, shell_id: id, count });
+        }
+    });
+    // 스레드를 못 띄우면 셸과 셈이 함께 떨어진다 — 셈은 물러나고 셸의 자손은 안 끝난다. 키는 기록에 남아 그 자손이 고아로 안
+    // 읽히고, 앱 종료가 이 세대의 표식째 끝낸다(`end`의 같은 자리와 같다).
+    if let Err(e) = behind {
+        eprintln!("atelier: could not start the shell-exit thread for pty {id}: {e}");
+    }
+}
+
 /// 셸을 거두는 까닭과 그 셸의 주인 — 정리 기록의 사건이 든다(티켓 11). 주인은 닫기 IPC로 온 것에만 있다: Rust 풀은 셸의
-/// 주인을 모른다(새로고침은 비운다).
+/// 주인을 모른다(새로고침 · 셸 스스로 끝남은 비운다).
 struct Cause {
     reason: Reason,
     owner: Option<String>,
@@ -789,19 +870,37 @@ fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<Cleared> {
     outcomes.into_iter().zip(targets).map(|((id, outcome), proc)| Cleared { id, name: proc.name, outcome }).collect()
 }
 
-/// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. **순서가 고정이다.**
+/// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. 판정까지 하고(`begin`) 돌아온다. 셸을 떨구고
+/// 유예와 SIGKILL을 도는 것은 뒤 스레드(`Behind::finish`)다.
+fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) {
+    let behind = begin(pool, shells, claim, cause);
+    // **셸을 떨구는 것도 뒤 스레드에서 한다.** writer의 Drop은 pty에 개행 + ^D를 쓰는데, 셸이 입력을 안 읽는
+    // 채 pty 버퍼가 차 있으면 거기서 막힌다 — 새로고침은 메인 스레드에서 돈다.
+    let spawned = std::thread::Builder::new().name("atelier-ending".into()).spawn(move || {
+        behind.finish();
+    });
+    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다. 키도 기록에 남는다: 그 셸의
+    // 자손은 판정에서 「키만 있는 셸」의 자손이 되어 고아로 안 읽히고, 앱 종료가 이 세대의 표식째 끝낸다.
+    if let Err(e) = spawned {
+        eprintln!("atelier: could not start the ending thread: {e}");
+    }
+}
+
+/// 판정하고 끝내기를 시작한다 — 셸 닫기 · 새로고침 · 셸 스스로 끝남의 앞 절반. **순서가 고정이다.**
 ///
 /// 1. 셸마다 그룹을 읽는다. foreground 그룹은 `tcgetpgrp(master)`로만 알 수 있어 master를 떨구기 전이다.
 /// 2. 스냅샷을 찍고, **그 뒤에** 풀에 남은 셸 목록을 읽는다(프로세스 스펙 S52). 그 사이에 뜬 셸은 목록에
 ///    이미 있어, 그 셸의 자손이 누구의 것도 아닌 표식으로 읽히는 창이 없다.
 /// 3. 판정 — 뺀 셸들을 「끝낼 셸」로 넘긴다. 끝낼 대상은 그 셸의 PID 트리 ∪ 그 키를 문 것 ∪ 그 트리들이다.
-///    부모가 먼저 끝나 launchd 밑으로 넘어간 dev 서버는 트리가 끊겨 표식으로만 잡힌다.
-/// 4. 끝내기를 시작해(대상 SIGTERM, 셸 그룹 SIGHUP) 진행 중인 끝내기 목록에 올리고 돌아온다. 셸을 떨구고
-///    유예와 SIGKILL을 도는 것은 뒤 스레드다.
+///    부모가 먼저 끝나 launchd 밑으로 넘어간 dev 서버는 트리가 끊겨 표식으로만 잡힌다. 스스로 끝난 셸은 PID 트리가
+///    없다 — 표식으로만 잡힌다(`exited`).
+/// 4. 끝내기를 시작해(대상 SIGTERM, 셸 그룹 SIGHUP) 진행 중인 끝내기 목록에 올리고 돌아온다. 뒤 절반(`Behind`)을 돌려준다.
 ///
 /// **셸 그룹과 그 순간의 foreground 그룹에 가는 신호는 지금 방어선 그대로 남는다.** 셸 그룹 밖으로 떨어진
 /// 자손이 대상 목록으로 더해질 뿐이다. 다른 OS는 스냅샷이 비고 셸의 신원도 몰라, 지금처럼 그룹 신호만 간다.
-fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) {
+/// 셸 스스로 끝남만 다르다 — 셸이 이미 거둬져 리더의 신원을 아는 그룹만 쏜다(`groups_signalled`). 다른 OS에서 그 길은
+/// 쏠 것이 없다.
+fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behind {
     let pgids: Vec<i32> = shells.iter().flat_map(groups_of).collect();
     let ending: Vec<ShellEntry> = shells.iter().map(Shell::entry).collect();
     let snapshot = snapshot::take(env_scope(ending.iter().map(|shell| shell.process)));
@@ -829,13 +928,29 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) {
         })
         .collect();
     let targets: Vec<Identity> = aimed.iter().flat_map(|(_, members)| members.iter().map(|one| one.id)).collect();
-    let groups = groups_led(&shells, &pgids, &snapshot);
+    let groups = groups_signalled(groups_led(&shells, &pgids, &snapshot), cause.reason);
 
     let running = claim.start(&targets, &groups);
-    let record = Arc::clone(&pool.record);
-    // **셸을 떨구는 것도 뒤 스레드에서 한다.** writer의 Drop은 pty에 개행 + ^D를 쓰는데, 셸이 입력을 안 읽는
-    // 채 pty 버퍼가 차 있으면 거기서 막힌다 — 새로고침은 메인 스레드에서 돈다.
-    let behind = std::thread::Builder::new().name("atelier-ending".into()).spawn(move || {
+    Behind { shells, running, aimed, cause, record: Arc::clone(&pool.record) }
+}
+
+/// 시작한 끝내기의 뒤 절반 — 기다리는 일이라 뒤 스레드가 쥔다. 마감하지 않고 떨어지면 끝내기는 진행 중인 끝내기 목록에
+/// 남아 앱 종료가 마감하고, 셸 키도 기록에 남는다.
+struct Behind {
+    shells: Vec<Shell>,
+    /// 진행 중인 끝내기 목록에 오른 끝내기(`processes::ending::Running`) — 이 파일의 `Running`(도는 명령의 표)과 다른 것이다.
+    running: crate::processes::ending::Running,
+    /// 셸 키마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 판정 때 떠 둔 것.
+    aimed: Vec<(String, Vec<Aimed>)>,
+    cause: Cause,
+    record: Arc<Record>,
+}
+
+impl Behind {
+    /// 셸을 떨구고, 유예와 SIGKILL을 마감하고, 정리 기록에 적고, 셸 키를 내린다. 셸마다 떠 둔 자손과 끝내기의 결과를
+    /// 돌려준다 — 셸 스스로 끝남이 그것으로 알릴 수를 센다.
+    fn finish(self) -> (Vec<(String, Vec<Aimed>)>, Vec<(Identity, Outcome)>) {
+        let Behind { shells, running, aimed, cause, record } = self;
         // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
         drop(shells);
         let outcomes = running.finish();
@@ -849,11 +964,7 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) {
         // **셸 키는 끝내기가 끝난 뒤에 내린다**(프로세스 스펙 S52). 유예 2초 동안 SIGTERM을 무시하며 사는 자손은 아직 이
         // 셸의 표식을 문다 — 그동안 키가 기록에 없으면 다른 실행의 정리가 그것을 확정 고아로 본다.
         record.lower(aimed.iter().map(|(key, _)| key.as_str()));
-    });
-    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다. 키도 기록에 남는다: 그 셸의
-    // 자손은 판정에서 「키만 있는 셸」의 자손이 되어 고아로 안 읽히고, 앱 종료가 이 세대의 표식째 끝낸다.
-    if let Err(e) = behind {
-        eprintln!("atelier: could not start the ending thread: {e}");
+        (aimed, outcomes)
     }
 }
 
@@ -892,6 +1003,21 @@ fn groups_led(shells: &[Shell], pgids: &[i32], snapshot: &Snapshot) -> Vec<Group
             Group { pgid, leader }
         })
         .collect()
+}
+
+/// 끝내기가 쏠 그룹 — **셸 스스로 끝남은 리더의 신원을 아는 그룹만 쏜다**(티켓 13).
+///
+/// 그 길의 셸은 리더 스레드가 이미 거뒀다. 신원을 모르는 그룹(다른 OS의 셸 그룹, 스냅샷에 리더 행이 없는 foreground 그룹)은
+/// 끝내기가 「그 번호의 그룹이 아직 있는가」만 보고 쏘는데, 거둬진 셸의 번호는 비었다가 남의 그룹 리더에게 다시 갈 수 있다.
+/// 신원을 아는 그룹은 신호마다 그 신원이 그대로인지 보므로(`processes::ending`) 거둬진 셸의 그룹은 저절로 빠지고, 아직 도는
+/// foreground 잡만 남는다. 스스로 끝남이 끝낼 것은 그 셸 키를 문 생존자다 — 그것은 대상 목록으로 신원째 간다.
+///
+/// 다른 까닭은 셸이 살아 있을 때라 그 번호가 그 셸의 것이다. 옛 방어선(그룹이 있는 동안) 그대로 둔다.
+fn groups_signalled(groups: Vec<Group>, reason: Reason) -> Vec<Group> {
+    match reason {
+        Reason::ShellExit => groups.into_iter().filter(|group| group.leader.is_some()).collect(),
+        _ => groups,
+    }
 }
 
 /// 이 셸이 거느린 프로세스 그룹들. 대화형 셸은 잡 제어를 켜고 **잡마다 새 그룹**을 만들기
@@ -1435,7 +1561,7 @@ mod tests {
     fn the_records_are_read_after_the_snapshot() {
         for (path, body) in [
             ("close_checks", body_of("pub fn close_checks(", "\n}\n")),
-            ("end", body_of("fn end(", "\n}\n")),
+            ("begin", body_of("fn begin(", "\n}\n")),
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
             ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
         ] {
@@ -1482,8 +1608,8 @@ mod tests {
     /// 이름이 셸마다 「앱이 끝낸 것」으로 적힌다. 그래서 자리로 잰다 — 도우미를 빼는 규칙은 `cleanup_log`의 검사가 잰다.
     #[test]
     fn the_log_rows_carry_the_helper_mark_and_the_exit_takes_only_the_fresh() {
-        let end = body_of("fn end(", "\n}\n");
-        assert!(end.contains("verdict.helpers.contains(&proc.id)"), "셸 닫기가 정리 기록의 행에 도우미 표시를 안 넘긴다");
+        let begin = body_of("fn begin(", "\n}\n");
+        assert!(begin.contains("verdict.helpers.contains(&proc.id)"), "셸 닫기가 정리 기록의 행에 도우미 표시를 안 넘긴다");
         let exit = body_of("pub fn end_for_exit(", "\n}\n");
         assert!(exit.contains("exit.helpers.contains(&row.id)"), "앱 종료가 정리 기록의 행에 도우미 표시를 안 넘긴다");
         assert!(
@@ -1502,6 +1628,8 @@ mod tests {
         for (path, body, leave) in [
             ("kill", body_of("pub fn kill(", "\npub fn "), ".remove(&id)"),
             ("end_for_reload", body_of("pub fn end_for_reload(", "\npub fn "), ".drain()"),
+            // 셸이 스스로 끝날 때(티켓 13) — 리더 스레드가 풀에서 빼는 자리도 같다.
+            ("exited", body_of("fn exited(", "\n}\n"), ".remove(&id)"),
         ] {
             let count = body.find("pool.endings.claim()").unwrap_or_else(|| panic!("{path}가 셈을 안 한다"));
             let left = body.find(leave).unwrap_or_else(|| panic!("{path}가 셸을 안 뺀다"));
@@ -1510,6 +1638,47 @@ mod tests {
                 "{path}: 셈({count})이 빼기({left})보다 뒤에 있다 — 그 사이에 앱 종료가 오면 뺀 셸의 자손이 남는다"
             );
         }
+    }
+
+    /// **셸 스스로 끝남의 알림이 싣는 모양**(티켓 13). 프런트(`processes-ended.ts`의 `ProcessesEnded`)가 칸 이름으로 읽는다 —
+    /// 글자로 못박는다. 까닭은 정리 기록의 낱말 그대로다.
+    #[test]
+    fn the_ended_event_crosses_the_wire_in_the_shape_the_frontend_reads() {
+        let ended = super::Ended { reason: super::Reason::ShellExit, shell_id: 3, count: 2 };
+        assert_eq!(
+            serde_json::to_value(ended).unwrap(),
+            serde_json::json!({ "reason": "shellExit", "shellId": 3, "count": 2 })
+        );
+    }
+
+    /// 셸 스스로 끝남은 **리더의 신원을 아는 그룹만** 쏜다(티켓 13). 그 셸은 이미 거둬졌다 — 신원을 모르는 그룹은 「그 번호의
+    /// 그룹이 아직 있는가」만 보고 쏘는데, 거둬진 셸의 번호는 비었다가 남의 그룹 리더에게 다시 갈 수 있다. 다른 까닭은 셸이
+    /// 살아 있을 때라 그 번호가 그 셸의 것이고, 옛 방어선(그룹이 있는 동안) 그대로 쏜다.
+    ///
+    /// 실물 장면으로는 못 밟는다 — macOS는 셸 그룹의 신원을 늘 쥐어(`identity_of`) 신원을 모르는 셸 그룹이 없다. 다른 OS의
+    /// 모양이라 표로 재고, `begin`이 이것을 거치는지는 자리로 잰다.
+    #[test]
+    fn a_shell_that_exited_signals_only_the_groups_it_can_name() {
+        use crate::processes::ending::Group;
+        let named = Group { pgid: 110, leader: Some(crate::processes::Identity { pid: 110, started_us: 1_000 }) };
+        let nameless = Group { pgid: 120, leader: None };
+        let both = vec![named, nameless];
+        assert_eq!(
+            super::groups_signalled(both.clone(), super::Reason::ShellExit),
+            vec![named],
+            "셸 스스로 끝남이 신원 모르는 그룹을 쏜다 — 거둬진 셸의 번호에 앉은 남의 그룹이 SIGHUP을 받을 수 있다"
+        );
+        for reason in [super::Reason::ShellClose, super::Reason::Reload, super::Reason::Archive, super::Reason::McpArchive] {
+            assert_eq!(
+                super::groups_signalled(both.clone(), reason),
+                both,
+                "{reason:?}: 살아 있는 셸의 그룹은 신원을 몰라도 옛 방어선대로 쏜다"
+            );
+        }
+        assert!(
+            body_of("fn begin(", "\n}\n").contains("groups_signalled(groups_led(&shells, &pgids, &snapshot), cause.reason)"),
+            "끝내기의 앞 절반이 쏠 그룹을 까닭으로 거르지 않는다"
+        );
     }
 
     /// **시작 정리의 순서**(프로세스 스펙 「시작 시 확정 고아 자동 정리」 · S5 · 티켓 10). 실행으로는 못 잡는 자리들이다 —
@@ -1970,7 +2139,8 @@ mod tests {
         /// 물음의 답을 본다. 판정을 끝내기에 넘기지 않는다 — 거둘 때는 이 장면이 띄운 자식과 이 셸 그룹에만 보낸다.
         Ask,
         /// 인스턴스 기록을 연 풀로(티켓 09) 셸을 띄우고 ×로 닫는다. 자식은 SIGTERM을 무시한다 — 끝내기가 2초 도는 동안
-        /// 셸 키가 기록에 남는지 본다. 이어서 둘째 셸이 `exit`로 스스로 끝나고, 앱 종료 길이 기록을 지운다.
+        /// 셸 키가 기록에 남는지 본다. 그 셸의 리더 스레드는 닫기 뒤에 끝나지만 다시 끝내지 않는다(티켓 13). 이어서 둘째 셸이
+        /// `exit`로 스스로 끝나고, 앱 종료 길이 기록을 지운다.
         Record,
         /// 인스턴스 기록을 연 풀로 셸 띄우기가 실패한다 — 빌더에서(없는 `$SHELL`), 자식을 띄우다가(실행할 수 없는
         /// `$SHELL`). 올린 키가 내려가는지 본다. 셸이 안 떠 신호를 보낼 것이 없다.
@@ -1978,11 +2148,15 @@ mod tests {
         /// 인스턴스 기록을 연 풀로 시작 정리를 돈다(티켓 10). 셸은 안 띄운다 — 죽은 실행의 기록과 그 셸 키를 문 자식, 기록이
         /// 없는 세대의 키를 문 자식을 세우고, 시작 정리가 무엇을 고르고 끝내고 지우는지 본다.
         Startup,
+        /// 인스턴스 기록을 연 풀로 셸을 띄우고, 사람이 친 셸에서 표식 자식을 띄운 뒤 셸에 `exit`를 친다(티켓 13). 셸이 스스로
+        /// 끝나면 리더 스레드가 그 셸 키를 문 생존자를 끝낸다. 자식은 SIGTERM을 무시한다 — 끝내기가 2초 도는 동안 키가 기록에
+        /// 남는지 본다. 끝낸 것이 정리 기록과 알림에 서는지도 본다.
+        Exit,
     }
 
     #[cfg(target_os = "macos")]
     impl Scene {
-        const ALL: [Scene; 10] = [
+        const ALL: [Scene; 11] = [
             Scene::Close,
             Scene::CloseIgnoring,
             Scene::CloseThenExit,
@@ -1993,6 +2167,7 @@ mod tests {
             Scene::Record,
             Scene::RecordFailed,
             Scene::Startup,
+            Scene::Exit,
         ];
 
         fn name(self) -> &'static str {
@@ -2007,6 +2182,7 @@ mod tests {
                 Scene::Record => "record",
                 Scene::RecordFailed => "record-failed",
                 Scene::Startup => "startup",
+                Scene::Exit => "exit",
             }
         }
 
@@ -2026,7 +2202,7 @@ mod tests {
         /// 인스턴스 기록을 연 풀로 도는 장면인가. 나머지 장면의 풀은 기록을 안 연다 — 아무 파일도 안 쓴다. 정리 기록(티켓 11)도
         /// 연 기록만 쓴다.
         fn records(self) -> bool {
-            matches!(self, Scene::Record | Scene::RecordFailed | Scene::Startup | Scene::ExitKeeping)
+            matches!(self, Scene::Record | Scene::RecordFailed | Scene::Startup | Scene::ExitKeeping | Scene::Exit)
         }
     }
 
@@ -2115,13 +2291,33 @@ mod tests {
     /// **풀 배선 — 인스턴스 기록의 셸 키**(티켓 09 · 프로세스 스펙 S52). 헤드리스로 셸을 띄우면 그 키가 기록에 오르고, ×로
     /// 닫으면 **끝내기가 끝난 뒤에** 내려간다 — SIGTERM을 무시하는 자식이 유예 2초를 사는 동안 키는 기록에 남는다. 그
     /// 사이에 다른 실행이 정리를 돌리면 그 자식은 「목록에 있는 셸의 자손」이라 확정 고아가 아니다. 셸이 `exit`로 스스로
-    /// 끝나면 리더 스레드가 곧바로 내린다. 앱 종료 길은 못 끝낸 것이 없으면 기록을 지운다.
+    /// 끝나면 그 셸의 끝내기(끝낼 것이 없다) 뒤에 내려간다. 앱 종료 길은 못 끝낸 것이 없으면 기록을 지운다.
+    ///
+    /// **×로 먼저 닫은 셸은 두 번 끝나지 않는다**(프로세스 스펙 S49 · 티켓 13). 닫기가 셸을 끝내면 그 셸의 리더 스레드도 곧
+    /// 끝나는데, 풀에서 빼기가 셸을 돌려주지 않으니 아무것도 안 한다 — 두 번째 끝내기 · 「셸 스스로 끝남」 기록 · 알림이 없고,
+    /// 유예 중에 키를 먼저 내리지도 않는다. 두 번째 끝내기가 돌면 그 자식은 닫기의 유예 안에 SIGTERM을 받고 사라지므로
+    /// 「끝남」으로 적히고 알려진다 — 여기서 보인다.
     ///
     /// 앵커: 닫기가 돌아온 순간 키는 아직 기록에 있고 자식은 살아 있다.
     #[cfg(target_os = "macos")]
     #[test]
     fn a_shell_key_stays_on_the_record_until_its_ending_is_done() {
         on_the_pool_side("a_shell_key_stays_on_the_record_until_its_ending_is_done", Scene::Record);
+    }
+
+    /// **셸이 스스로 끝나도 그 셸에서 띄운 것이 남지 않는다**(프로세스 결정 3 · 6 · 프로세스 스펙 S49 · P4 · 티켓 13). 사람이
+    /// 친 셸에서 표식 자식을 띄우고(트리가 끊겨 부모가 launchd다 — claude Bash 도구가 띄운 dev 서버의 모양) 셸에 `exit`를 친다.
+    /// 셸 pid는 이미 거둬져 PID 트리가 없다 — 판정은 그 셸 키를 문 생존자로 자식을 찾아 끝낸다.
+    ///
+    /// - 인스턴스 기록의 키는 **끝내기가 끝난 뒤에** 내려간다(프로세스 스펙 S52). 자식이 SIGTERM을 무시해 유예 2초를 사는 동안
+    ///   키는 남는다 — 그사이 다른 실행의 정리가 그 자식을 확정 고아로 보지 않게.
+    /// - 끝낸 것은 정리 기록에 「셸 스스로 끝남」 한 줄로 남고(owner 없음), 끝낸 수가 알림으로 나간다.
+    ///
+    /// 앵커: 셸이 풀에서 빠진 순간 키는 아직 기록에 있고 자식은 살아 있다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_shell_that_exits_on_its_own_ends_the_child_it_marked_and_says_so() {
+        on_the_pool_side("a_shell_that_exits_on_its_own_ends_the_child_it_marked_and_says_so", Scene::Exit);
     }
 
     /// **셸 띄우기가 실패하면 올린 키를 내린다**(티켓 09). 키는 자식을 띄우기 전에 오른다 — 빌더가 `$SHELL`을 거절하거나
@@ -2253,6 +2449,10 @@ mod tests {
         if scene.records() {
             super::open_record(&pool, &atelier_core::data_root(), env!("CARGO_PKG_VERSION"));
         }
+        // 앱이 setup에서 거는 알림 자리(`announce_ends`) 대신 받은 것을 모은다 — 앱은 여기서 이벤트를 쏜다(티켓 13).
+        let announced = std::sync::Arc::new(std::sync::Mutex::new(Vec::<super::Ended>::new()));
+        let heard_end = std::sync::Arc::clone(&announced);
+        pool.announce_with(move |ended| heard_end.lock().unwrap_or_else(|e| e.into_inner()).push(ended));
         if scene == Scene::RecordFailed {
             return record_failed_side(&pool, &home);
         }
@@ -2322,7 +2522,7 @@ mod tests {
         };
         // 기록 장면은 사람이 친 것으로 알린다 — 입력이 없는 셸의 자손은 모두 셸 도우미라(프로세스 스펙 P1) 정리 기록이 그
         // 닫기를 안 적는다(티켓 11). 알린 시각 뒤에 뜬 자식은 사람이 띄운 것이다.
-        if matches!(scene, Scene::Record | Scene::ExitKeeping) {
+        if matches!(scene, Scene::Record | Scene::ExitKeeping | Scene::Exit) {
             super::note_first_input(&pool, spawned.id, crate::processes::cleanup_log::now_ms()).expect("첫 입력을 알린다");
         }
         super::write(&pool, spawned.id, &line).expect("셸에 한 줄을 친다");
@@ -2400,6 +2600,11 @@ mod tests {
             Scene::ExitKeeping => {
                 let _ = super::end_for_exit(&pool);
             }
+            // 사람이 `exit`를 친다 — 거두는 것은 리더 스레드다. 셸이 풀에서 빠지기를 기다린다.
+            Scene::Exit => {
+                super::write(&pool, spawned.id, "exit\n").expect("셸에 exit를 친다");
+                wait_until(|| !pool.lock().contains_key(&spawned.id));
+            }
             // 위에서 제 안쪽(`ask_side` · `record_failed_side`)으로 갈라져 여기 안 온다.
             Scene::Ask | Scene::RecordFailed | Scene::Startup => {
                 unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
@@ -2416,7 +2621,7 @@ mod tests {
         // 아직 살아 있으면 끝내기가 끝나기 전에 내린 것이다.
         let listed_on_return = listed(&key);
         let mut lowered_while_alive = false;
-        let lowered = scene == Scene::Record
+        let lowered = matches!(scene, Scene::Record | Scene::Exit)
             && wait_until(|| {
                 let still = listed(&key);
                 lowered_while_alive |= !still && alive();
@@ -2450,6 +2655,16 @@ mod tests {
                 lowered,
                 lowered_while_alive,
                 (&key, child),
+                &announced,
+            );
+        }
+        if scene == Scene::Exit {
+            return exit_side(
+                &announced,
+                (listed_on_return, alive_on_return),
+                (lowered, lowered_while_alive),
+                ended_after,
+                (&key, spawned.id, child),
             );
         }
         if scene.keeps() {
@@ -2525,6 +2740,7 @@ mod tests {
         lowered: bool,
         lowered_while_alive: bool,
         (closed_key, closed_child): (&str, Option<crate::processes::Identity>),
+        announced: &std::sync::Mutex<Vec<super::Ended>>,
     ) {
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -2564,6 +2780,12 @@ mod tests {
         assert!(second_raised, "둘째 셸의 키가 기록에 없다");
         assert!(second_left, "`exit`를 쳤는데 둘째 셸이 풀에서 안 빠졌다");
         assert!(second_lowered, "셸이 스스로 끝났는데 그 키가 기록에 남았다");
+        // ×로 닫은 첫 셸의 리더 스레드도, 끝낼 것 없이 스스로 끝난 둘째 셸도 알리지 않는다(티켓 13).
+        let announced = announced.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert!(
+            announced.is_empty(),
+            "알릴 것이 없는데 알렸다 — ×로 먼저 닫은 셸을 리더 스레드가 한 번 더 끝냈거나, 끝낸 것 없는 `exit`를 알렸다: {announced:?}"
+        );
         assert!(before_exit, "앱 종료 전에 기록이 없다 — 지웠는지 잴 수 없다");
         assert!(
             after_exit.is_none(),
@@ -2612,6 +2834,54 @@ mod tests {
         let command = target.command.as_deref().expect("기록에 명령줄이 없다");
         assert_eq!(command, whole, "기록의 명령줄이 자식을 부른 argv(부른 이름과 인자) 전체가 아니다");
         assert!(command.contains(&child_args()[1]), "기록의 명령줄에 자식을 부른 인자가 없다: {command}");
+    }
+
+    /// 풀 배선 장면 `Exit`의 끝 절반 — 셸은 `exit`로 스스로 끝나 풀에서 빠졌고, 자식은 이미 거뒀다(끝났거나 검사가 SIGKILL).
+    /// 단언만 남았다.
+    #[cfg(target_os = "macos")]
+    fn exit_side(
+        announced: &std::sync::Mutex<Vec<super::Ended>>,
+        (listed_on_leave, alive_on_leave): (bool, bool),
+        (lowered, lowered_while_alive): (bool, bool),
+        ended_after: Duration,
+        (key, shell_id, child): (&str, u32, Option<crate::processes::Identity>),
+    ) {
+        use crate::processes::cleanup_log::{self, Reason};
+        use crate::processes::ending::{Outcome, GRACE};
+        use crate::processes::testkit::wait_until;
+
+        let child = child.expect("셸에서 띄운 자식을 봤다");
+        assert!(
+            listed_on_leave && alive_on_leave,
+            "셸이 풀에서 빠진 순간 키가 기록에 없거나({listed_on_leave}) 자식이 이미 없다({alive_on_leave}) — 끝내기가 도는 창을 못 봤다"
+        );
+        assert!(
+            !lowered_while_alive,
+            "스스로 끝난 셸의 자식이 아직 사는데 키를 기록에서 내렸다 — 다른 실행이 그 자식을 확정 고아로 본다"
+        );
+        assert!(lowered, "끝내기가 끝났는데 스스로 끝난 셸의 키가 5초가 지나도 기록에 남았다");
+        assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+
+        let log = cleanup_log::read(&cleanup_log::path(&atelier_core::data_root()));
+        assert_eq!(
+            log.iter()
+                .map(|event| {
+                    let targets: Vec<_> = event.targets.iter().map(|target| (target.pid, target.outcome)).collect();
+                    (event.reason, event.shell_key.clone(), event.owner.clone(), targets)
+                })
+                .collect::<Vec<_>>(),
+            [(Reason::ShellExit, Some(key.to_string()), None, vec![(child.pid, Outcome::Forced)])],
+            "셸이 스스로 끝나며 끝낸 것을 정리 기록에 「셸 스스로 끝남」 한 줄(owner 없음)로 안 적었다"
+        );
+
+        // 알림은 기록과 키 내리기 뒤에 나간다 — 잠깐 기다린다.
+        wait_until(|| !announced.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
+        let announced = announced.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert_eq!(
+            announced,
+            [super::Ended { reason: Reason::ShellExit, shell_id, count: 1 }],
+            "셸이 스스로 끝나며 끝낸 것을 한 번 알리지 않았다"
+        );
     }
 
     /// 풀 배선 장면 `RecordFailed`의 안쪽. 셸이 안 뜨니 거둘 것이 없다. `$SHELL`을 바꾸는 것은 이 안쪽 프로세스 하나다 —
