@@ -1,5 +1,5 @@
 import { ArrowRight, ChevronRight, Copy } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "./work-sections";
@@ -111,21 +111,19 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
               const dir = worktreeDirRef(worktree.path);
               return (
                 <div key={worktree.project} className="flex flex-col pb-1">
-                  <Tooltip>
-                    <TooltipTrigger
-                      type="button"
-                      onClick={() => onOpenProject(worktree.project)}
-                      aria-label={`${worktree.project} 프로젝트 상세로 이동`}
-                      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
-                      <ChevronRight
-                        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-                        strokeWidth={2}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent>프로젝트 상세로 이동</TooltipContent>
-                  </Tooltip>
+                  <Hint
+                    text="프로젝트 상세로 이동"
+                    type="button"
+                    onClick={() => onOpenProject(worktree.project)}
+                    aria-label={`${worktree.project} 프로젝트 상세로 이동`}
+                    className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] font-medium transition-colors hover:bg-state-1"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{worktree.project}</span>
+                    <ChevronRight
+                      className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+                      strokeWidth={2}
+                    />
+                  </Hint>
                   {/* 덩어리 안은 한 칸 들어간다 — 어느 값이 어느 프로젝트 것인지가 위치로 이어진다 */}
                   <div className="flex flex-col pl-2.5">
                     {/* base는 **프로젝트마다 다를 수 있다.** 한 줄로 합치면(feat/… → develop, main)
@@ -207,21 +205,19 @@ function Row({
     return <div className="flex h-7 items-center gap-1.5 px-2 text-[12.5px]">{body}</div>;
   }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        aria-description={copy.help}
-        onClick={() => copy.onCopy(copy.text)}
-        className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
-      >
-        {body}
-        <Copy
-          className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
-          strokeWidth={1.8}
-        />
-      </TooltipTrigger>
-      <TooltipContent>{copy.help}</TooltipContent>
-    </Tooltip>
+    <Hint
+      text={copy.help}
+      announce="description"
+      type="button"
+      onClick={() => copy.onCopy(copy.text)}
+      className="group flex h-7 items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors hover:bg-state-1"
+    >
+      {body}
+      <Copy
+        className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
+        strokeWidth={1.8}
+      />
+    </Hint>
   );
 }
 

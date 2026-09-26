@@ -2,8 +2,7 @@ import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
-import { Kbd } from "@/components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 
 interface HistoryButtonProps {
   label: string;
@@ -102,22 +101,18 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 「⇧ 또는 ⇧」로 읽혔는데, 화음인
           ⌘K는 `Meta+K` 하나로 정확히 적힌다. aria-label은 여전히 이름만 든다 — 읽어 주는
           이름에 키가 섞이면 소음이 된다. 툴팁은 스크린리더에 아무것도 주지 않으므로, 옛 `title`이
-          이름 다음에 읽어 주던 키는 설명(`aria-description`)으로 남긴다(S28). */}
-      <Tooltip>
-        <TooltipTrigger
-          type="button"
-          onClick={onOpenSearch}
-          aria-label="검색"
-          aria-description="⌘K"
-          aria-keyshortcuts="Meta+K"
-          className="icon-button-quiet text-muted-foreground"
-        >
-          <Search className="size-4" strokeWidth={1.7} />
-        </TooltipTrigger>
-        <TooltipContent>
-          검색 <Kbd>⌘K</Kbd>
-        </TooltipContent>
-      </Tooltip>
+          이름 다음에 읽어 주던 키는 설명(`aria-description`)으로 남긴다(S28 — `Hint`의 `shortcut`). */}
+      <Hint
+        text="검색"
+        shortcut="⌘K"
+        announce="name"
+        type="button"
+        onClick={onOpenSearch}
+        aria-keyshortcuts="Meta+K"
+        className="icon-button-quiet text-muted-foreground"
+      >
+        <Search className="size-4" strokeWidth={1.7} />
+      </Hint>
     </div>
   );
 }

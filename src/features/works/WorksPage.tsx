@@ -32,7 +32,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -592,21 +592,19 @@ function WorksPage({
                 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
                 날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
                 안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28). */}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    size="icon"
-                    aria-label="분할"
-                    pressed={split !== null}
-                    onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
-                  />
-                }
-              >
-                <Columns2 className="size-4" strokeWidth={2} />
-              </TooltipTrigger>
-              <TooltipContent>{split !== null ? "분할 끄기" : "분할 켜기"}</TooltipContent>
-            </Tooltip>
+            <Hint
+              text={split !== null ? "분할 끄기" : "분할 켜기"}
+              render={
+                <Toggle
+                  size="icon"
+                  aria-label="분할"
+                  pressed={split !== null}
+                  onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+                />
+              }
+            >
+              <Columns2 className="size-4" strokeWidth={2} />
+            </Hint>
             {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
                 그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
                 사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다.
@@ -617,18 +615,16 @@ function WorksPage({
                 닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
                 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다. */}
             {!workPanelOpen && (
-              <Tooltip>
-                <TooltipTrigger
-                  type="button"
-                  onClick={() => setWorkPanelOpen(true)}
-                  aria-label={`${itemNameOf(mode)} 패널 펼치기`}
-                  aria-expanded={false}
-                  className="icon-button-quiet text-tertiary"
-                >
-                  <PanelRight className="size-4" strokeWidth={2} />
-                </TooltipTrigger>
-                <TooltipContent>{`${itemNameOf(mode)} 패널 펼치기`}</TooltipContent>
-              </Tooltip>
+              <Hint
+                text={`${itemNameOf(mode)} 패널 펼치기`}
+                announce="name"
+                type="button"
+                onClick={() => setWorkPanelOpen(true)}
+                aria-expanded={false}
+                className="icon-button-quiet text-tertiary"
+              >
+                <PanelRight className="size-4" strokeWidth={2} />
+              </Hint>
             )}
           </>
         )
@@ -1046,17 +1042,15 @@ function ColumnHead({
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {source}
-      <Tooltip>
-        <TooltipTrigger
-          type="button"
-          onClick={onClose}
-          aria-label={closeLabel}
-          className="icon-button-quiet shrink-0 text-tertiary"
-        >
-          <X className="size-3.5" strokeWidth={2} />
-        </TooltipTrigger>
-        <TooltipContent>{closeLabel}</TooltipContent>
-      </Tooltip>
+      <Hint
+        text={closeLabel}
+        announce="name"
+        type="button"
+        onClick={onClose}
+        className="icon-button-quiet shrink-0 text-tertiary"
+      >
+        <X className="size-3.5" strokeWidth={2} />
+      </Hint>
     </div>
   );
 }
@@ -1105,23 +1099,21 @@ function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
     <DropdownMenu>
       {/* 도움말 「상태 변경」은 툴팁이다. 배지의 이름은 지금 상태(라벨)라, 도움말이 이름보다 더 말하던 것 — 이것이 상태를
           바꾸는 자리라는 것 — 은 설명(`aria-description`)으로 남긴다(S28). */}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <DropdownMenuTrigger
-              aria-description="상태 변경"
-              className={cn(
-                "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
-                meta.badgeClass,
-              )}
-            />
-          }
-        >
-          {meta.label}
-          <ChevronDown className="size-2.5" strokeWidth={2.2} />
-        </TooltipTrigger>
-        <TooltipContent>상태 변경</TooltipContent>
-      </Tooltip>
+      <Hint
+        text="상태 변경"
+        announce="description"
+        render={
+          <DropdownMenuTrigger
+            className={cn(
+              "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
+              meta.badgeClass,
+            )}
+          />
+        }
+      >
+        {meta.label}
+        <ChevronDown className="size-2.5" strokeWidth={2.2} />
+      </Hint>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup
           value={work.status}
@@ -1254,36 +1246,34 @@ function WorkMenu({
       <DropdownMenu open={open} onOpenChange={setOpen}>
         {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
             중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 그 말은 가림막이 한다. */}
-        <Tooltip>
-          <TooltipTrigger
-            disabled={busy}
-            render={
-              <DropdownMenuTrigger
-                ref={anchor}
-                disabled={busy}
-                aria-label={`${itemNameOf(mode)} 메뉴`}
-                aria-busy={busy}
-                // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
-                // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
-                // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
-                // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
-                // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
-                // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-                className={cn(
-                  "icon-button transition-colors",
-                  "disabled:pointer-events-none disabled:opacity-50",
-                  open ? "toggle-on" : "text-tertiary quiet-hover",
-                )}
-              />
-            }
-          >
-            {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
-                깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
-                disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-            <MoreHorizontal className="size-4" strokeWidth={2.2} />
-          </TooltipTrigger>
-          <TooltipContent>{`${itemNameOf(mode)} 메뉴`}</TooltipContent>
-        </Tooltip>
+        <Hint
+          text={`${itemNameOf(mode)} 메뉴`}
+          announce="name"
+          disabled={busy}
+          render={
+            <DropdownMenuTrigger
+              ref={anchor}
+              disabled={busy}
+              aria-busy={busy}
+              // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
+              // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
+              // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+              // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
+              // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
+              // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
+              className={cn(
+                "icon-button transition-colors",
+                "disabled:pointer-events-none disabled:opacity-50",
+                open ? "toggle-on" : "text-tertiary quiet-hover",
+              )}
+            />
+          }
+        >
+          {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+              깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+              disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+          <MoreHorizontal className="size-4" strokeWidth={2.2} />
+        </Hint>
         <DropdownMenuContent>
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
               거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}

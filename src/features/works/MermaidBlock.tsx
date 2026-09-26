@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2 } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
 // 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
@@ -45,21 +45,13 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        onClick={onCopy}
-        aria-label="원본 mermaid 코드 복사"
-        className={toolbarButtonQuiet}
-      >
-        {copied ? (
-          <Check className="size-3 text-green-700" strokeWidth={2.4} />
-        ) : (
-          <Copy className="size-3" strokeWidth={2} />
-        )}
-      </TooltipTrigger>
-      <TooltipContent>원본 mermaid 코드 복사</TooltipContent>
-    </Tooltip>
+    <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
+      {copied ? (
+        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+      ) : (
+        <Copy className="size-3" strokeWidth={2} />
+      )}
+    </Hint>
   );
 }
 
@@ -177,28 +169,24 @@ function MermaidBlock({ code }: { code: string }) {
           <span className="mx-1 h-3.5 w-px bg-border" />
           {/* 켬/끔 토글이다 — 켜졌는지를 `aria-pressed`로 말한다(스토리 103). 이름은 보이는 글자 「코드」이고,
               도움말은 툴팁이다. 설명(`aria-description`)으로 남기지 않는다 — 단축키도 잠긴 이유도 아니다(S28). */}
-          <Tooltip>
-            <TooltipTrigger
-              render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
-            >
-              코드
-            </TooltipTrigger>
-            <TooltipContent>원본 mermaid 코드 보기</TooltipContent>
-          </Tooltip>
+          <Hint
+            text="원본 mermaid 코드 보기"
+            render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
+          >
+            코드
+          </Hint>
           <CopyCodeButton code={code} />
           {/* 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28). */}
-          <Tooltip>
-            <TooltipTrigger
-              ref={openFull}
-              type="button"
-              onClick={() => setFullOpen(true)}
-              aria-label="전체화면으로 크게 보기"
-              className={toolbarButtonQuiet}
-            >
-              <Maximize2 className="size-3" strokeWidth={2} />
-            </TooltipTrigger>
-            <TooltipContent>전체화면으로 크게 보기</TooltipContent>
-          </Tooltip>
+          <Hint
+            text="전체화면으로 크게 보기"
+            announce="name"
+            ref={openFull}
+            type="button"
+            onClick={() => setFullOpen(true)}
+            className={toolbarButtonQuiet}
+          >
+            <Maximize2 className="size-3" strokeWidth={2} />
+          </Hint>
         </span>
       </div>
       {error && !svg ? (

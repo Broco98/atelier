@@ -5,7 +5,7 @@ import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
@@ -118,22 +118,20 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
               )}
               {/* 도움말은 툴팁이고 상태를 탄다 — 누르면 무슨 일이 날지를 말한다. 열림은 `aria-expanded`가 이미
                   말하므로 설명(`aria-description`)은 안 단다(S28). */}
-              <Tooltip>
-                <TooltipTrigger
-                  type="button"
-                  onClick={() => setPanelOpen((open) => !open)}
-                  aria-label="목록 패널 토글"
-                  aria-expanded={panelOpen}
-                  className="icon-button-quiet text-tertiary"
-                >
-                  {panelOpen ? (
-                    <Maximize2 className="size-4" strokeWidth={1.7} />
-                  ) : (
-                    <Minimize2 className="size-4" strokeWidth={1.7} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>{panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}</TooltipContent>
-              </Tooltip>
+              <Hint
+                text={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
+                type="button"
+                onClick={() => setPanelOpen((open) => !open)}
+                aria-label="목록 패널 토글"
+                aria-expanded={panelOpen}
+                className="icon-button-quiet text-tertiary"
+              >
+                {panelOpen ? (
+                  <Maximize2 className="size-4" strokeWidth={1.7} />
+                ) : (
+                  <Minimize2 className="size-4" strokeWidth={1.7} />
+                )}
+              </Hint>
             </>
           }
         />

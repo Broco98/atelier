@@ -6,7 +6,7 @@ import { formatCreated, StatusIcon } from "@/features/works/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
@@ -245,12 +245,9 @@ function BaseBranchControl({ project }: { project: ProjectView }) {
             프로젝트의 입력칸과 같은 이름이다(S37). 두 칸은 한 프로젝트에 하나만 선다.
             도움말 「브랜치 목록에서 변경」은 툴팁이다. 목록에서 고른다는 것은 `combobox`가 이미 말해 설명은 안
             단다(S28). */}
-        <Tooltip>
-          <TooltipTrigger render={<SelectTrigger aria-label="기준 브랜치" />}>
-            <SelectValue className="font-mono" />
-          </TooltipTrigger>
-          <TooltipContent>브랜치 목록에서 변경</TooltipContent>
-        </Tooltip>
+        <Hint text="브랜치 목록에서 변경" render={<SelectTrigger aria-label="기준 브랜치" />}>
+          <SelectValue className="font-mono" />
+        </Hint>
         <SelectContent
           header={
             <div className="flex h-8 items-center justify-between border-b px-3">

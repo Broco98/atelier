@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { foldingInnerClass, PANEL_MOTION } from "@/components/shell/panel-layout";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
 import { useProjects } from "@/features/projects/hooks";
@@ -265,17 +265,15 @@ function WorkPanel({
               onChange={onToggleSource}
               className="ml-auto"
             />
-            <Tooltip>
-              <TooltipTrigger
-                type="button"
-                onClick={onClose}
-                aria-label={`${itemNameOf(mode)} 패널 접기`}
-                className="icon-button-quiet text-tertiary"
-              >
-                <X className="size-4" strokeWidth={2} />
-              </TooltipTrigger>
-              <TooltipContent>{`${itemNameOf(mode)} 패널 접기`}</TooltipContent>
-            </Tooltip>
+            <Hint
+              text={`${itemNameOf(mode)} 패널 접기`}
+              announce="name"
+              type="button"
+              onClick={onClose}
+              className="icon-button-quiet text-tertiary"
+            >
+              <X className="size-4" strokeWidth={2} />
+            </Hint>
           </div>
           {/* 머리행 아래에 선이 없다. 이 행은 화면 브레드크럼과 **같은 층**인데 그쪽이
               "아래 경계선이 없다 — 화면이 선으로 잘리지 않고 본문으로 이어진다"를 이미

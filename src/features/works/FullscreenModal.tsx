@@ -1,8 +1,7 @@
 import { useRef, type ReactNode, type RefObject } from "react";
 import { X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
-import { Kbd } from "@/components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 
 // 본문 블록을 전면 창으로 키워 보는 틀 — 다이어그램과 표가 같은 손버릇으로 열고 닫히도록
 // 한 곳에서 모양과 닫는 방법을 정한다. 본문(children)만 블록마다 다르다.
@@ -67,23 +66,15 @@ function FullscreenModal({
           <span className="font-mono text-[12px] text-tertiary">{label}</span>
           <span className="flex items-center gap-1">
             {controls}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <DialogClose
-                    aria-label="닫기"
-                    // 툴팁은 스크린리더에 아무것도 주지 않는다 — 이름보다 더 말하던 단축키는 설명으로 남긴다(S28).
-                    aria-description="Esc"
-                    className="icon-button-quiet ml-1 text-tertiary"
-                  />
-                }
-              >
-                <X className="size-3.5" strokeWidth={2} />
-              </TooltipTrigger>
-              <TooltipContent>
-                닫기 <Kbd>Esc</Kbd>
-              </TooltipContent>
-            </Tooltip>
+            {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 이름보다 더 말하던 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
+            <Hint
+              text="닫기"
+              shortcut="Esc"
+              announce="name"
+              render={<DialogClose className="icon-button-quiet ml-1 text-tertiary" />}
+            >
+              <X className="size-3.5" strokeWidth={2} />
+            </Hint>
           </span>
         </div>
         {children}

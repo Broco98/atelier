@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { CodeXml, Eye } from "lucide-react";
 import { SegmentGroup, SegmentGroupItem } from "./segment-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import { Hint } from "./tooltip";
 
 /** 칸이 놓인 순서 — 아래 `SourceToggle`이 칸을 그리는 순서와 같다. 칩이 이것으로 서는 자리를 안다. */
 const CELLS = ["doc", "source"] as const;
@@ -74,11 +74,8 @@ function Segment({
   return (
     // 이름은 글리프가 못 말하니 `aria-label`이 든다. 도움말은 같은 글자의 툴팁이다 — 이름보다 더 말하는 것이
     // 없어 설명(`aria-description`)은 안 단다(S28). **잠기면 툴팁도 없다**(S23) — 칸이 네이티브 `disabled`다.
-    <Tooltip>
-      <TooltipTrigger disabled={locked} render={<SegmentGroupItem value={value} aria-label={label} />}>
-        {children}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Hint text={label} announce="name" disabled={locked} render={<SegmentGroupItem value={value} />}>
+      {children}
+    </Hint>
   );
 }

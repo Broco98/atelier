@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import type { BandRow, CallingKind } from "@/features/terminal/shell-attention";
 import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
 
@@ -177,19 +177,17 @@ function MoreToggle({
   const label = expanded ? "접기" : `${hidden}개 더 보기`;
   const Chevron = expanded ? ChevronUp : ChevronDown;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-label={label}
-        className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
-      >
-        {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
-        <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Hint
+      text={label}
+      announce="name"
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
+    >
+      {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
+      <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
+    </Hint>
   );
 }
 

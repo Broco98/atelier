@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Compass, Copy, Layers, ListChecks, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 
 interface TreeNode {
   name: string;
@@ -206,17 +206,15 @@ function TreeRows({
                 // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
                 // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
                 // 거터 복사 버튼이 이미 같은 답을 하고 있다
-                <Tooltip>
-                  <TooltipTrigger
-                    type="button"
-                    aria-label={`${node.name} 경로 복사`}
-                    onClick={() => onCopy(node.path)}
-                    className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
-                  >
-                    <Copy className="size-3" strokeWidth={1.8} />
-                  </TooltipTrigger>
-                  <TooltipContent>경로 복사</TooltipContent>
-                </Tooltip>
+                <Hint
+                  text="경로 복사"
+                  type="button"
+                  aria-label={`${node.name} 경로 복사`}
+                  onClick={() => onCopy(node.path)}
+                  className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+                >
+                  <Copy className="size-3" strokeWidth={1.8} />
+                </Hint>
               )}
             </div>
           </div>
