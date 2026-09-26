@@ -140,16 +140,42 @@ export interface TreeEdit {
  * 검증).
  *
  * - 찾으면 그 자리다. 설명만 바뀌었으면 같은 자리, 앞에 항목이 섰으면 한 칸 뒤다. 머리 `spec/`(`[]`)은 그대로다.
- * - 못 찾았는데 같은 자리에 항목이 있으면 그 자리다 — 이름 틀을 고친 항목이다.
- * - 그것도 없으면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`을 고른다. 처음 열 때(`before`가 `null`)도 그렇다.
+ * - 못 찾았는데 (따라간 부모 안의) 같은 자리에 선 항목이 앞 레이아웃에서 **다른 형제였던 것이 아니면** 그 자리다 — 이름
+ *   틀을 고친 항목이다. 다른 형제의 이름 틀이면 고르던 항목이 지워져 뒤의 형제가 당겨 온 것이다.
+ * - 지워졌으면 편집기의 휴지통처럼(`removeEntry`) 새 트리에서 **그 자리 바로 위에 보이던 행**을 고른다 — 남은 앞 형제가
+ *   있으면 그 아래의 맨 끝 행, 없으면 부모다. 첫 최상위 항목이었으면 머리 `spec/`이다. 늘 지워진 자리와 다른 자리라,
+ *   고른 항목의 칸이 새로 서고 열린 팝오버가 다른 항목의 것으로 남지 않는다.
+ * - 부모도 못 따라가면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`을 고른다. 처음 열 때(`before`가 `null`)도 그렇다.
  */
 export function followSelection(before: TreeEdit | null, after: SpecLayoutJson): EntryPath {
   if (before !== null) {
-    const followed = followEntry(before.draft.layout, before.selected, after);
+    const { selected } = before;
+    const from = before.draft.layout;
+    const followed = followEntry(from, selected, after);
     if (followed !== null) return followed;
-    if (entryAt(after, before.selected) !== null) return before.selected;
+    // 여기부터 `selected`는 머리가 아니다 — 빈 경로는 늘 따라간다.
+    const index = selected[selected.length - 1];
+    const parent = followEntry(from, selected.slice(0, -1), after);
+    const here = [...(parent ?? selected.slice(0, -1)), index];
+    if (renamedAt(from, selected, entryAt(after, here))) return here;
+    if (parent !== null) {
+      const above = Math.min(index, entryAt(after, parent)?.children?.length ?? 0) - 1;
+      return above < 0 ? parent : lastRowUnder(after, [...parent, above]);
+    }
   }
   return (after.root.children ?? []).length > 0 ? [0] : [];
+}
+
+/**
+ * `from`의 `path` 항목을 따라가지 못했을 때, 그 자리에 선 항목(`now`)이 그 항목의 이름 틀만 고친 것인가. 앞 레이아웃에서
+ * **다른 형제**의 이름 틀이면 아니다 — 고르던 항목이 지워져 뒤의 형제가 당겨 왔다. 형제 사이의 이름 틀은 겹치지 않아(엔진의
+ * 검증) 고친 이름 틀은 남은 형제의 것일 수 없다. `followEntry`처럼 글자 그대로 견준다.
+ */
+function renamedAt(from: SpecLayoutJson, path: EntryPath, now: LayoutEntryJson | null): boolean {
+  if (now === null) return false;
+  const index = path[path.length - 1];
+  const siblings = entryAt(from, path.slice(0, -1))?.children ?? [];
+  return !siblings.some((sibling, i) => i !== index && sibling.pattern === now.pattern);
 }
 
 /** `from`의 그 자리 항목을 이름 틀로 층마다 `to`에서 찾은 자리. 어느 층에서든 못 찾으면 `null`이다. */

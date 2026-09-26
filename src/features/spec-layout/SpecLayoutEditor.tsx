@@ -166,8 +166,9 @@ function EditorScreen({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // 새로 읽은 것을 받는다 — 초안을 버리고 그것을 보인다. 고르던 항목이 새것에도 있으면 자리가 밀렸어도 그 항목을
-  // 고른다(`followSelection`). 깨졌으면 「읽지 못함」 화면이라 미리보기 팝업도 닫는다 — 열린 채로 두면 고쳐져 편집 UI가
-  // 돌아올 때 저절로 다시 뜬다. 누르거나 끄던 항목이 있으면 트리(`EntryTree`)가 그 눌림을 거둔다.
+  // 고르고, 지워졌으면 그 바로 위에 보이던 행을 고른다(`followSelection`). 깨졌으면 「읽지 못함」 화면이라 미리보기
+  // 팝업도 닫는다 — 열린 채로 두면 고쳐져 편집 UI가 돌아올 때 저절로 다시 뜬다. 누르거나 끄던 항목이 있으면
+  // 트리(`EntryTree`)가 그 눌림을 거둔다.
   const take = (fresh: SpecLayoutRead) => {
     const next = viewOf(fresh, view);
     setBaseline(fresh);
@@ -304,8 +305,9 @@ function EditorScreen({
 
 /**
  * 읽은 것을 펼친 편집 상태 — 초안과 고른 자리. 깨졌으면 펼칠 것이 없어 `null`이다(「읽지 못함」 화면). 앞 상태
- * (`before`)에서 고르던 항목이 새것에도 있으면 그 항목을 고른다 — 자리가 아니라 이름 틀로 따라간다. 없으면 첫 최상위
- * 항목을, 항목이 없으면 머리 `spec/`(방침 문단)을 고른다(`followSelection`).
+ * (`before`)에서 고르던 항목이 새것에도 있으면 그 항목을 고른다 — 자리가 아니라 이름 틀로 따라간다. 이름 틀을 고친
+ * 항목이면 같은 자리를, 지워졌으면 휴지통처럼 그 바로 위에 보이던 행을 고른다 — 그 자리로 당겨 온 형제를 고르지 않는다.
+ * 처음 열 때나 부모까지 사라졌으면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`(방침 문단)을 고른다(`followSelection`).
  */
 function viewOf(read: SpecLayoutRead, before: TreeEdit | null): TreeEdit | null {
   const draft = contentOf(read);

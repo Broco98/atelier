@@ -852,6 +852,27 @@ describe("밖 변경 뒤에 고를 자리", () => {
     ]);
   });
 
+  // 지워진 자리로 당겨 온 형제를 고르면 오른쪽 열과 열린 아이콘 팝오버가 사람이 고르지 않은 항목으로 옮겨 간다. 편집기의
+  // 휴지통처럼 그 앞 행을 고른다 — 늘 다른 자리라 칸이 새로 선다.
+  it("고르던 항목이 지워지면 그 자리로 당겨 온 형제가 아니라 바로 위에 보이던 행을 고르고, 첫 항목이었으면 부모를 고른다", () => {
+    expect(followSelection({ draft: opened(), selected: [1] }, removeEntry(opened(), [1])!.draft.layout)).toEqual([0]);
+    expect(followSelection({ draft: opened(), selected: [0] }, removeEntry(opened(), [0])!.draft.layout)).toEqual([]);
+    expect(followSelection({ draft: opened(), selected: [2, 0] }, removeEntry(opened(), [2, 0])!.draft.layout)).toEqual([
+      2,
+    ]);
+  });
+
+  it("지워진 항목의 바로 앞 형제도 함께 사라졌으면 남은 형제 가운데 마지막 것의 맨 끝 행을 고른다", () => {
+    const twoLeft = removeEntry(removeEntry(withLast(), [3])!.draft, [2])!.draft.layout;
+    expect(followSelection({ draft: withLast(), selected: [3] }, twoLeft)).toEqual([1]);
+  });
+
+  // 부모가 앞에 선 항목에 밀려도 그 안에서 이름 틀만 바뀐 자식은 새 부모의 같은 자리다 — 옛 경로로 찾으면 다른 폴더다.
+  it("부모가 밀린 채 이름 틀을 고친 자식은 밀린 부모 안의 같은 자리를 고른다", () => {
+    const renamed = setPattern(opened(), [2, 0], "phases");
+    expect(followSelection({ draft: opened(), selected: [2, 0] }, prepended(renamed))).toEqual([3, 0]);
+  });
+
   it("머리 `spec/`을 골랐으면 그대로다", () => {
     expect(followSelection({ draft: opened(), selected: [] }, prepended(opened()))).toEqual([]);
   });
