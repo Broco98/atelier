@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5, Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background)에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5, Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 import { cn } from "cn"
@@ -59,7 +59,7 @@ function AlertDialogContent({
         // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
         aria-modal="true"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-[330px] max-w-[calc(100%-4rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[13px] border border-border-strong bg-background p-4 text-foreground shadow-lg duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-[330px] max-w-[calc(100%-4rem)] -translate-x-1/2 -translate-y-1/2 gap-4 floating-card p-4 text-foreground duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
