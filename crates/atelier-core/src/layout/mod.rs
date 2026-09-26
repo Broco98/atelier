@@ -26,7 +26,7 @@ pub use parse::{parse_layout, serialize_layout, serialize_layout_value, LayoutEr
 pub use render::{render_layout, Fallback, Rendered, TemplateVerdict};
 pub use resolve::{resolve_layout, LayoutSource, Resolved};
 pub use states::{layout_states, LayoutState};
-pub use store::{read_layout, save_layout, LayoutContent, LayoutRead, SaveOutcome};
+pub use store::{read_layout, revert_layout, save_layout, LayoutContent, LayoutRead, SaveOutcome};
 pub use work_trees::{
     classify_archived_docs, classify_works, with_archived_spec_tree, with_spec_trees, ArchivedDocs,
     WorkWithSpecTree,

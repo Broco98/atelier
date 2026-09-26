@@ -1,7 +1,7 @@
-//! 레이아웃 저장소 — 모드의 레이아웃을 읽고 저장한다.
+//! 레이아웃 저장소 — 모드의 레이아웃을 읽고, 저장하고, 기본값으로 되돌린다.
 //!
 //! 에이전트의 MCP 도구와 앱의 편집기가 같은 입구를 부른다(결정 20). 규칙이 여기 한 벌이라 두
-//! 표면은 어댑터로만 남는다.
+//! 표면은 어댑터로만 남는다. 되돌리기는 앱의 설정 페이지만 부른다 — 에이전트는 고치기만 한다(결정 21).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -168,6 +168,30 @@ pub fn save_layout(
     }
     let verdict = template_verdict(&layout, &folder, crate::collapse_home(&folder));
     Ok(SaveOutcome::Saved(render_layout(&layout, Some(&verdict), None)))
+}
+
+/// 모드의 레이아웃을 **기본값으로 되돌린다** — 그 모드의 레이아웃 폴더를 지운다(결정 7). 그 뒤로는
+/// 코드 내장본이 그 id를 받는다. 템플릿도 레이아웃이 모르는 파일도 폴더째 사라진다 — 그래서 설정의
+/// 확인 창이 그 수를 미리 적는다(`LayoutState`).
+///
+/// **늘 된다.** 깨진 폴더도 지운다 — 앱이 **스스로** 깨진 파일을 고치거나 지우지 않을 뿐이고, 이것은
+/// 사람이 확인 창에서 고른 일이다. 에이전트에게는 이 길이 없다(결정 21). 폴더가 없으면 할 일이 없다.
+///
+/// 그 자리에 무엇이 있든 **그것 자신만** 지운다 — 폴더면 폴더째, 파일이나 링크면 그 하나다. 링크를
+/// 따라가 가리키는 곳을 지우지 않는다. id는 모드 이름 둘만 받는다: `"../.."`이 데이터 루트를 지우면 안 된다.
+pub fn revert_layout(data_root: &Path, id: &str) -> Result<()> {
+    let id = layout_id(id)?;
+    let folder = layout_folder(data_root, id);
+    let removed = match std::fs::symlink_metadata(&folder) {
+        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&folder),
+        Ok(_) => std::fs::remove_file(&folder),
+        Err(e) => Err(e),
+    };
+    match removed {
+        // 없으면 이미 기본값이다 — 두 번 눌러도, 그사이 손으로 지웠어도 같은 끝이다
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
 }
 
 /// 새 레이아웃이 쥐는 파일 — 가리키는 템플릿과 레이아웃 파일 자신. 빠진 템플릿은 이것과 **같은
@@ -872,5 +896,139 @@ mod tests {
         let second = save_layout(root.path(), "atelier", layout, &templates).unwrap();
         assert_eq!(first, second);
         assert_eq!(files_in(root.path(), "atelier"), after_first);
+    }
+
+    /// **되돌리면 모드의 폴더가 지워지고 resolve가 내장본으로 돌아간다**(결정 7). 템플릿도 레이아웃이
+    /// 모르는 파일도 폴더째 사라진다 — 확인 창이 그 수를 미리 적는 까닭이다. 다른 모드의 폴더는 그대로다.
+    #[test]
+    fn reverting_removes_the_modes_folder_and_resolve_gives_the_builtin_again() {
+        let root = tempfile::tempdir().unwrap();
+        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
+        plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
+        plant(root.path(), "atelier", "메모.md", "사람의 메모\n");
+        plant(root.path(), "maison", "layout.json", r#"{ "root": { "description": "Room" } }"#);
+        let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        assert!(matches!(resolved.source, crate::LayoutSource::Folder(_)), "심은 폴더가 안 가렸다");
+
+        revert_layout(root.path(), "atelier").unwrap();
+
+        assert!(!root.path().join("layouts/atelier").exists(), "폴더가 남았다");
+        let resolved = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+        assert_eq!(resolved.source, crate::LayoutSource::Builtin);
+        assert_eq!(resolved.layout, builtin_layout(Mode::Atelier));
+        assert_eq!(resolved.fallback, None, "물러선 것이 아니라 가린 폴더가 없을 뿐이다");
+        assert!(!read_layout(root.path(), "atelier").unwrap().edited);
+        // 가린 것을 걷은 것은 그 모드의 폴더뿐이다
+        assert_eq!(
+            files_in(root.path(), "maison"),
+            [("layout.json".to_string(), r#"{ "root": { "description": "Room" } }"#.to_string())]
+        );
+    }
+
+    /// **깨진 폴더도 되돌려진다** — 되돌리기는 늘 된다. 앱이 스스로 깨진 파일을 지우지 않을 뿐, 사람이
+    /// 고른 되돌리기는 그 폴더도 지운다. 깨진 모양은 resolve가 물러서는 것 전부다: 검증이 거절하는
+    /// `layout.json`, `layout.json`이 없는 폴더, 폴더 자리에 선 파일, 대상이 사라진 링크.
+    #[test]
+    fn a_broken_folder_of_any_shape_is_reverted_too() {
+        let layouts = |root: &Path| root.join("layouts");
+        let shapes: [(&str, fn(&Path)); 4] = [
+            ("검증이 거절하는 layout.json", |root| {
+                plant(root, "atelier", "layout.json", r#"{ "root": { "children": [ { "pattern": "a.md", "kind": "fil" } ] } }"#);
+                plant(root, "atelier", "a.md", "# A\n");
+            }),
+            ("layout.json이 없는 폴더", |root| plant(root, "atelier", "decisions.md", "# D\n")),
+            ("폴더 자리에 선 파일", |root| {
+                std::fs::create_dir_all(root.join("layouts")).unwrap();
+                std::fs::write(root.join("layouts/atelier"), "폴더가 아니다\n").unwrap();
+            }),
+            ("대상이 사라진 링크", |root| {
+                std::fs::create_dir_all(root.join("layouts")).unwrap();
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(root.join("gone"), root.join("layouts/atelier")).unwrap();
+                #[cfg(not(unix))]
+                std::fs::write(root.join("layouts/atelier"), "링크 대신\n").unwrap();
+            }),
+        ];
+        for (shape, seed) in shapes {
+            let root = tempfile::tempdir().unwrap();
+            seed(root.path());
+            let before = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            assert!(before.fallback.is_some(), "{shape}: 깨진 폴더가 아니다");
+
+            revert_layout(root.path(), "atelier").unwrap_or_else(|e| panic!("{shape}: {e}"));
+
+            assert!(
+                std::fs::symlink_metadata(layouts(root.path()).join("atelier")).is_err(),
+                "{shape}: 그 자리에 무엇이 남았다"
+            );
+            let after = crate::resolve_layout(root.path(), Mode::Atelier, None).unwrap();
+            assert_eq!(after.source, crate::LayoutSource::Builtin, "{shape}");
+            assert_eq!(after.fallback, None, "{shape}: 여전히 물러선다");
+        }
+    }
+
+    /// **되돌리기의 입구도 모드 이름 둘만 받는다**(결정 25). IPC로 온 `"../.."`이 지우는 일이라 읽기·
+    /// 저장보다 더 무겁다 — 거절되고, 데이터 루트의 다른 것(work, 두 모드의 레이아웃)도 데이터 루트
+    /// 밖의 것도 하나도 사라지지 않는다.
+    #[test]
+    fn reverting_takes_only_the_two_mode_names_and_removes_nothing_else() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("home");
+        plant(&root, "atelier", "layout.json", THREE_TEMPLATES);
+        plant(&root, "maison", "layout.json", r#"{ "root": {} }"#);
+        std::fs::create_dir_all(root.join("works/some-work/spec")).unwrap();
+        std::fs::write(root.join("works/some-work/spec/overview.md"), "# 개요\n").unwrap();
+        std::fs::write(outer.path().join("밖.md"), "데이터 루트 밖\n").unwrap();
+        let before = everything_under(outer.path());
+
+        for id in ["../..", "..", ".", "", "Atelier", "works", "atelier/", "maison/../atelier", "../layouts"] {
+            let reverted = revert_layout(&root, id);
+            let Err(crate::Error::Validation(message)) = &reverted else {
+                panic!("되돌리기가 {id:?}를 받았다: {reverted:?}")
+            };
+            assert!(message.contains("atelier | maison"), "{id:?}: {message}");
+        }
+        assert_eq!(everything_under(outer.path()), before);
+    }
+
+    /// 레이아웃 폴더가 **다른 곳의 폴더를 가리키는 링크**면 링크만 지운다 — 사람이 레이아웃을 다른 곳에
+    /// 두고 이어 둔 것이다. 링크를 따라가 가리키는 폴더를 지우면 되돌리기가 데이터 루트 밖을 지운다.
+    #[cfg(unix)]
+    #[test]
+    fn reverting_a_linked_folder_removes_the_link_and_not_what_it_points_to() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("home");
+        let elsewhere = outer.path().join("dotfiles/atelier-layout");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("layout.json"), r#"{ "root": { "description": "linked" } }"#).unwrap();
+        std::fs::write(elsewhere.join("decisions.md"), "# D\n").unwrap();
+        std::fs::create_dir_all(root.join("layouts")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, root.join("layouts/atelier")).unwrap();
+        let linked = crate::resolve_layout(&root, Mode::Atelier, None).unwrap();
+        assert_eq!(linked.layout.root.description, "linked", "링크가 가리지 않았다");
+
+        revert_layout(&root, "atelier").unwrap();
+
+        assert!(std::fs::symlink_metadata(root.join("layouts/atelier")).is_err(), "링크가 남았다");
+        let mut kept: Vec<_> = std::fs::read_dir(&elsewhere)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        kept.sort();
+        assert_eq!(kept, ["decisions.md", "layout.json"], "링크가 가리키던 폴더를 지웠다");
+        let after = crate::resolve_layout(&root, Mode::Atelier, None).unwrap();
+        assert_eq!(after.source, crate::LayoutSource::Builtin);
+    }
+
+    /// 폴더가 없어도 된다 — 이미 기본값이다. 두 번 눌러도, 그사이 손으로 지웠어도 같은 끝이다.
+    #[test]
+    fn reverting_a_mode_without_a_folder_changes_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        for id in ["atelier", "maison"] {
+            revert_layout(root.path(), id).unwrap();
+            revert_layout(root.path(), id).unwrap();
+        }
+        assert_eq!(everything_under(root.path()), Vec::<std::path::PathBuf>::new());
     }
 }

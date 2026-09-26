@@ -52,7 +52,7 @@ pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
 pub use layout::{
     builtin_layout, classify, classify_archived_docs, classify_works, layout_states, parse_layout,
-    read_layout, render_layout, resolve_layout, save_layout, serialize_layout,
+    read_layout, render_layout, resolve_layout, revert_layout, save_layout, serialize_layout,
     serialize_layout_value, with_archived_spec_tree, with_spec_trees,
     ArchivedDocs, EntryKind, Fallback, LayoutContent, LayoutEntry, LayoutError, LayoutRead,
     LayoutSource, LayoutState, Rendered, Resolved, SaveOutcome, SpecLayout, SpecTree, SpecTreeGroup,
