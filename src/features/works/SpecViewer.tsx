@@ -24,6 +24,7 @@ import {
   OctagonAlert,
   TriangleAlert,
 } from "lucide-react";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
@@ -151,24 +152,26 @@ function SpecViewer({
         <div className="flex min-h-full min-w-0 flex-col">
           {files.length === 0 ? (
             <div className="flex flex-1 items-center justify-center p-10">
-              <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <FileText className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-                </span>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText strokeWidth={1.6} />
+                  </EmptyMedia>
+                  <EmptyTitle>아직 spec이 없어요</EmptyTitle>
+                  <EmptyDescription>AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.</EmptyDescription>
+                </EmptyHeader>
                 {/* **경로를 여기서 짓지 않는다.** 한때 Atelier 루트를 JSX에 손으로 적고
                     있었는데, 그 리터럴은 Maison에서 있지도 않은 폴더를 안내한다 — 게다가
                     사람이 그대로 붙여 넣으라고 내놓는 줄이라 참조 생성기가 내는 것과
                     **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와 에이전트가 읽는
                     자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                     `SpecViewer.test.tsx`의 소스 검사가 리터럴이 되돌아오는 것을 막는다. */}
-                <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                  {specDirRef(mode, work.slug)}
-                </code>
-              </div>
+                <EmptyContent>
+                  <code className="select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                    {specDirRef(mode, work.slug)}
+                  </code>
+                </EmptyContent>
+              </Empty>
             </div>
           ) : (
             bodyView(body)

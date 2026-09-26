@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import type { ProjectView } from "./types";
 
@@ -91,20 +92,24 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
       )}
 
       {projects.length === 0 ? (
-        <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
-          <Folder className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
-          <span className="text-[13.5px] font-medium text-muted-foreground">프로젝트가 없어요</span>
-          <span className="text-[12.5px] leading-normal text-tertiary">
-            로컬 저장소 폴더를 등록해 시작하세요.
-          </span>
-          <button
-            type="button"
-            onClick={onAdd}
-            className="mt-1.5 h-7 rounded-[9px] bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary/15"
-          >
-            프로젝트 등록
-          </button>
-        </div>
+        <Empty variant="list" className="my-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Folder strokeWidth={1.6} />
+            </EmptyMedia>
+            <EmptyTitle>프로젝트가 없어요</EmptyTitle>
+            <EmptyDescription>로컬 저장소 폴더를 등록해 시작하세요.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <button
+              type="button"
+              onClick={onAdd}
+              className="h-7 rounded-[9px] bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary/15"
+            >
+              프로젝트 등록
+            </button>
+          </EmptyContent>
+        </Empty>
       ) : filtered.length === 0 ? (
         <div className="flex flex-1 items-center justify-center pb-10">
           <span className="text-[13px] text-tertiary">검색 결과가 없어요</span>

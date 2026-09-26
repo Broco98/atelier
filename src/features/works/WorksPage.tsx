@@ -28,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
@@ -830,31 +831,29 @@ function WorksPage({
     <main className="relative flex min-w-0 flex-1 flex-col">
       {header}
       <div className="flex flex-1 items-center justify-center p-10">
-        <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-          <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-            {needsProject ? (
-              <Folder className="size-5" strokeWidth={1.6} />
-            ) : (
-              <Zap className="size-5" strokeWidth={1.6} />
-            )}
-          </div>
-          {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
-              여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
-          <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-            {needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}
-          </span>
-          <span className="text-[14px] leading-[1.65] text-tertiary">
-            {needsProject
-              ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-              : emptyScreen.body}
-          </span>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              {needsProject ? <Folder strokeWidth={1.6} /> : <Zap strokeWidth={1.6} />}
+            </EmptyMedia>
+            {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
+                여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
+            <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
+            <EmptyDescription>
+              {needsProject
+                ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+                : emptyScreen.body}
+            </EmptyDescription>
+          </EmptyHeader>
           {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
               atelier_add_project / atelier_start_work를 부른다.
-              아래 문구는 그대로 붙여 넣는 것이다. */}
-          <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-            {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
-          </code>
-        </div>
+              아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
+          <EmptyContent>
+            <code className="select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+              {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
+            </code>
+          </EmptyContent>
+        </Empty>
       </div>
     </main>
   );

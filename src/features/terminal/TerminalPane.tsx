@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "@tanstack/react-store";
 import { SquareTerminal } from "lucide-react";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Kbd } from "@/components/ui/kbd";
 import {
   activeIdOf,
   activeShellOf,
@@ -159,26 +161,27 @@ function TerminalPane({ mode, work }: { mode: Mode; work: WorkView | null }) {
           자리는 이제 잠긴 `+`와 ⌘T 거절 토스트 둘이고, 둘 다 `shellCapNotice`를 쓴다.
 
           **덮개인 것은 그대로다**(`absolute inset-0`) — 흐름에 끼면 셸의 집 상자가 이 판의
-          유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유). */}
+          유무에 따라 달라지고, 셸이 뜨는 순간 xterm이 다시 흐른다(위 안내 줄과 같은 이유).
+          빈 화면 부품(Empty)은 그 덮개 **안에** 선다 — 덮개를 부품으로 갈아 끼우지 않는다. */}
       {shells.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center p-10">
-          <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-            {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
-                한 번에 잡게 한다. 상자 규격은 Works의 빈 화면 그대로다. */}
-            <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-              <SquareTerminal className="size-5" strokeWidth={1.6} />
-            </div>
-            <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 셸이 없어요</span>
-            <span className="text-[14px] leading-[1.65] text-tertiary">
-              위 탭 줄의 + 로 새 셸을 열어요.
-            </span>
-            {/* `<code>` 규격은 Works의 빈 화면이 안내 문구를 싣는 자리와 같다. 한때 이
-                키를 「상한에 닿았으면 안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는
-                것이 되어서인데, 위 주석대로 그 조건이 여기서는 늘 거짓이다. */}
-            <code className="mt-3 rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-              ⌘T
-            </code>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              {/* 글리프는 nav `Terminal`과 **같은 것**이다 — 이 빈 화면이 무엇의 빈 화면인지를
+                  한 번에 잡게 한다. 칸 모양은 다른 빈 화면과 같은 부품의 것이다. */}
+              <EmptyMedia variant="icon">
+                <SquareTerminal strokeWidth={1.6} />
+              </EmptyMedia>
+              <EmptyTitle>아직 셸이 없어요</EmptyTitle>
+              <EmptyDescription>위 탭 줄의 + 로 새 셸을 열어요.</EmptyDescription>
+            </EmptyHeader>
+            {/* 여는 키는 문장이 아니라 **키 모양**으로 선다(Kbd). 한때 이 키를 「상한에 닿았으면
+                안 적는다」로 감쌌다 — 눌러도 안 되는 길을 알려 주는 것이 되어서인데, 위 주석대로
+                그 조건이 여기서는 늘 거짓이다. */}
+            <EmptyContent>
+              <Kbd>⌘T</Kbd>
+            </EmptyContent>
+          </Empty>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   DropdownMenu,
@@ -200,16 +201,16 @@ function ArchiveList({
 
         {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
         {loading ? null : entries.length === 0 ? (
-          <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
-            <Archive className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
-            {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
-            <span className="text-[13.5px] font-medium text-muted-foreground">
-              {emptyListCopy(mode).title}
-            </span>
-            <span className="text-[12.5px] leading-normal text-tertiary">
-              {emptyListCopy(mode).body}
-            </span>
-          </div>
+          <Empty variant="list" className="my-1">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Archive strokeWidth={1.6} />
+              </EmptyMedia>
+              {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
+              <EmptyTitle>{emptyListCopy(mode).title}</EmptyTitle>
+              <EmptyDescription>{emptyListCopy(mode).body}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다. **필터가 없는 세계에서는 검색어

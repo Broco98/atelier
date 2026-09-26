@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Archive, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
 import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
@@ -269,26 +270,28 @@ function ArchivePage({
           {!selected ? (
             entriesPending ? null : (
             <div className="flex h-full items-center justify-center p-10">
-              <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Archive className="size-5" strokeWidth={1.6} />
-                </div>
-                {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
-                    왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
-                    stale한 slug가 남았을 때 실제로 그렇게 된다. */}
-                {/* 「하나도 없다」는 세계마다 낱말이 다르고(#183), 「그 slug를 못 찾겠다」는
-                    두 세계가 같은 말을 한다 — 아카이브도 slug도 이 세계 저 세계 이름이 아니다. */}
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  {entries.length === 0
-                    ? emptyScreenCopy(mode).title
-                    : "그 아카이브를 찾을 수 없어요"}
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  {entries.length === 0
-                    ? emptyScreenCopy(mode).body
-                    : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
-                </span>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Archive strokeWidth={1.6} />
+                  </EmptyMedia>
+                  {/* 목록이 비었을 때와 "그 slug가 목록에 없을 때"는 다른 사정이다. 하나로 묶으면
+                      왼쪽 패널이 아카이브를 가득 그린 채 본문만 "없어요"라고 말한다 — 주소에
+                      stale한 slug가 남았을 때 실제로 그렇게 된다. */}
+                  {/* 「하나도 없다」는 세계마다 낱말이 다르고(#183), 「그 slug를 못 찾겠다」는
+                      두 세계가 같은 말을 한다 — 아카이브도 slug도 이 세계 저 세계 이름이 아니다. */}
+                  <EmptyTitle>
+                    {entries.length === 0
+                      ? emptyScreenCopy(mode).title
+                      : "그 아카이브를 찾을 수 없어요"}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {entries.length === 0
+                      ? emptyScreenCopy(mode).body
+                      : "옮겨졌거나 이름이 바뀐 것 같아요. 왼쪽 목록에서 골라 주세요."}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             </div>
             )
           ) : (

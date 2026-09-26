@@ -3,6 +3,7 @@ import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
@@ -141,24 +142,26 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (
             <div className="flex h-full items-center justify-center p-10">
-              <div className="flex max-w-[400px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Folder className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  등록된 프로젝트가 없어요
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  className="mt-3 h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
-                >
-                  프로젝트 등록
-                </button>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Folder strokeWidth={1.6} />
+                  </EmptyMedia>
+                  <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
+                  <EmptyDescription>
+                    로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <button
+                    type="button"
+                    onClick={handleAdd}
+                    className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
+                  >
+                    프로젝트 등록
+                  </button>
+                </EmptyContent>
+              </Empty>
             </div>
           )}
         </div>
