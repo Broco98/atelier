@@ -2094,7 +2094,21 @@ describe("도는 명령이 프런트 상태까지 오는 배선", () => {
     expect(store).toContain("const id = shellOfPty(one.id);");
     // 모르는 pty id는 건너뛴다 — 이 왕복 사이에 `×`로 닫힌 칸이 실제로 온다. 그리고 값은
     // **그대로** 앉는다: 여기서 접으면 로고 매핑이 두 벌이 된다(adr-04).
-    expect(store).toContain("if (id !== null) next = setRunning(next, id, one.running);");
+    expect(store).toContain("return id === null ? [] : [{ id, before: runningOfId(terminalStore.state, id), after: one.running }];");
+    expect(store).toContain("for (const { id, after } of moves) next = setRunning(next, id, after);");
+  });
+
+  // **에이전트 사라짐은 바꾸기 전의 값과 견준다**(프로세스 결정 12 · S31). 새 값을 앉힌 뒤에 읽으면 늘 「그대로」로 읽혀
+  // 도는 중이 영영 안 풀린다 — 그래서 `before`를 앉히기 전에 뽑아 둔다(위 줄). 사라짐을 한 박자 늦게 앉히는 동작은 L3
+  // (`shell-release.spec.ts`)가 잰다.
+  it("사라짐은 회차의 앞뒤 값을 들고 한 박자 뒤에 앉는다", () => {
+    const store = read("./terminal-store.ts");
+    const 뽑음 = store.indexOf("before: runningOfId(terminalStore.state, id)");
+    const 앉힘 = store.indexOf("next = setRunning(next, id, after);");
+    expect(뽑음, "바꾸기 전의 값을 뽑는 줄을 못 찾았다").toBeGreaterThan(-1);
+    expect(뽑음).toBeLessThan(앉힘);
+    expect(store).toContain("setTimeout(() => settleGone(moves), AGENT_GONE_GRACE_MS);");
+    expect(store).toContain("const next = nextOnRunning(prev, before, after, at);");
   });
 });
 

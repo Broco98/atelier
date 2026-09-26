@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { humanInput, keyRoute } from "./shell-input";
+import { humanInput, isInterruptKey, keyRoute } from "./shell-input";
 import type { InputHappening, KeyDown } from "./shell-input";
 
 // 사람 입력과 키다운 가르기(프로세스 스펙 S16). 순수 모듈 하나라 기본 환경(node)에서 돈다.
@@ -123,5 +123,36 @@ describe("사람 입력 — DOM 사건 → 입력인가", () => {
     ["글자와 같은 모양", "a"],
   ])("xterm이 내보낸 %s는 입력이 아니다", (_, data) => {
     expect(humanInput({ kind: "data", data })).toBe(false);
+  });
+});
+
+// 중단 키(프로세스 결정 12 · S30) — Esc · Ctrl-C. 셸의 키 핸들러가 이 키를 보면 중단 추론을 건다(`terminal-store.ts`).
+// **가르는 기준은 xterm이 셸로 보내는 바이트다** — Esc는 `ESC`, Ctrl-C는 `ETX`(xterm의 `Keyboard.ts`: ⌃ 하나 + keyCode
+// 65~90이면 `keyCode - 64`). 그래서 Ctrl-C는 `key`가 아니라 keyCode로 본다: 한글 입력기가 켜져 있으면 `key`가 자모로 오지만
+// xterm은 그때도 `ETX`를 보낸다.
+describe("중단 키 — Esc · Ctrl-C", () => {
+  it.each([
+    ["Esc", key({ code: "Escape", key: "Escape", keyCode: 27 })],
+    ["Ctrl-C", key({ code: "KeyC", key: "c", keyCode: 67, ctrlKey: true })],
+    ["한글 입력기의 Ctrl-C", key({ code: "KeyC", key: "ㅊ", keyCode: 67, ctrlKey: true })],
+  ])("%s는 중단 키다", (_, event) => {
+    expect(isInterruptKey(event)).toBe(true);
+  });
+
+  it.each([
+    ["글자 c", key({ code: "KeyC", key: "c", keyCode: 67 })],
+    // ⌘C는 복사다 — 셸로 안 간다(위 「앱 몫」).
+    ["⌘C", key({ code: "KeyC", key: "c", keyCode: 67, metaKey: true })],
+    // ⌃⇧C는 xterm이 `ETX`로 안 보낸다.
+    ["⌃⇧C", key({ code: "KeyC", key: "C", keyCode: 67, ctrlKey: true, shiftKey: true })],
+    ["Ctrl-D", key({ code: "KeyD", key: "d", keyCode: 68, ctrlKey: true })],
+    ["Enter", key({ code: "Enter", key: "Enter", keyCode: 13 })],
+    // 한글 조합 중의 Esc는 입력기가 먼저 받는다 — 조합을 거두는 키이지 셸을 끊는 키가 아니다(07이 `ime`로 갈라 둔 까닭).
+    ["입력기가 문 Esc", key({ code: "Escape", key: "Escape", keyCode: 229 })],
+    ["⌘Esc", key({ code: "Escape", key: "Escape", keyCode: 27, metaKey: true })],
+    // 키 핸들러는 keyup에도 불린다 — 한 번 누른 키로 추론을 두 번 걸지 않는다.
+    ["키를 뗀 Esc", key({ type: "keyup", code: "Escape", key: "Escape", keyCode: 27 })],
+  ])("%s는 중단 키가 아니다", (_, event) => {
+    expect(isInterruptKey(event)).toBe(false);
   });
 });

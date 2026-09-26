@@ -160,7 +160,9 @@ test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", async ({ page }) => {
+// 권위 규칙은 한때 「훅이 **한 번이라도** 말한 칸」이었다. 프로세스 결정 12가 이렇게 고쳤다: 에이전트가 foreground에서
+// 사라지면 권위가 풀린다(`shell-release.spec.ts`). 이 칸은 도는 명령이 안 바뀌므로 권위가 그대로다.
+test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);

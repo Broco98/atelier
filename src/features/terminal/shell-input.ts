@@ -3,13 +3,13 @@ import type { ShellHotkey } from "./shell-registry";
 import { IME_KEYCODE, isModifierKey } from "./terminal-ime";
 
 /**
- * 사람 입력(프로세스 스펙 S16)과 키다운 가르기 — **DOM 사건 하나를 받아 답하는 순수 함수 둘**이다.
+ * 사람 입력(프로세스 스펙 S16)과 키다운 가르기 — **DOM 사건 하나를 받아 답하는 순수 함수들**이다.
  *
- * 둘을 따로 세운 것은 읽는 쪽이 여럿이어서다. 셸의 키 핸들러(`terminal-store.ts`의
+ * 따로 세운 것은 읽는 쪽이 여럿이어서다. 셸의 키 핸들러(`terminal-store.ts`의
  * `attachCustomKeyEventHandler`)가 키다운 하나를 여기서 한 번 가르고, 그 답으로 무엇을 할지 고른다 —
- * 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지. 뒤 판의 중단 추론(Esc · Ctrl-C)과 승인 추론(확정 키)도
- * 같은 자리에서 같은 답을 더 읽는다. 가르는 자리가 둘이면 한쪽만 키가 늘어, 셸로 간 키가 입력으로 안
- * 세이거나 앱이 가져간 키가 입력으로 세인다.
+ * 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지, 중단 추론을 걸지(Esc · Ctrl-C — `isInterruptKey`, 프로세스 결정
+ * 12). 뒤 판의 승인 추론(확정 키)도 같은 자리에서 같은 답을 더 읽는다. 가르는 자리가 둘이면 한쪽만 키가 늘어, 셸로 간
+ * 키가 입력으로 안 세이거나 앱이 가져간 키가 입력으로 세인다.
  *
  * **데이터 모양이 아니라 DOM 사건으로 가른다.** xterm이 셸로 내보내는 데이터(`onData`)는 사람이 친 것과
  * xterm의 응답(장치 속성 DA, 커서 위치 CPR, 포커스 보고)을 가르지 않고, ⇧F3처럼 CPR과 바이트가 같은 키도
@@ -71,6 +71,25 @@ export function keyRoute(event: KeyDown): KeyRoute | null {
   if (event.keyCode === IME_KEYCODE) return { to: "ime" };
   if (event.metaKey && event.key.length === 1) return { to: "app", hotkey: null };
   return { to: "shell", rewrite: shellRewrite(event) };
+}
+
+/**
+ * **중단 키인가** — Esc · Ctrl-C(프로세스 결정 12 · S30). 셸의 키 핸들러가 이 키를 보면 중단 추론을 건다: 그 순간의 상태를
+ * 기준값으로 잡고, 잠시 뒤에도 그대로면 턴이 끊긴 것으로 본다(`shell-attention.ts`의 `inferInterrupt`). 키는 막지 않는다 —
+ * 그대로 셸로 가서 에이전트를 끊는다.
+ *
+ * **셸로 가는 키만 본다**(`keyRoute`가 `shell`). 입력기가 문 Esc(keyCode 229)는 조합을 거두는 키라 끊은 것이 아니고, ⌘C는
+ * 복사다. 판정이 `keyRoute` 앞에서 따로 서면 이 가름이 두 벌이 된다.
+ *
+ * **xterm이 셸로 보내는 바이트로 가른다.** Esc는 `ESC`이고, Ctrl-C는 xterm이 `ETX`로 보내는 그 키다 — ⌃ 하나만 누르고
+ * keyCode가 C(67)다(`Keyboard.ts`: ⌃ + keyCode 65~90 → `keyCode - 64`). `key`로 보지 않는 것은 한글 입력기가 켜져 있으면
+ * `key`가 자모로 오는데 xterm은 그때도 `ETX`를 보내기 때문이다. Esc도 ⌃ · ⌥ · ⌘가 붙은 것은 뺀다.
+ */
+export function isInterruptKey(event: KeyDown): boolean {
+  if (keyRoute(event)?.to !== "shell") return false;
+  if (event.metaKey || event.altKey) return false;
+  if (event.key === "Escape") return !event.ctrlKey;
+  return event.ctrlKey && !event.shiftKey && event.keyCode === 67;
 }
 
 /**

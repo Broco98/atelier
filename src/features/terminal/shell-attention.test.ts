@@ -10,11 +10,13 @@ import {
   NO_HOOK_COUNTS,
   bandRows,
   callingShells,
+  inferInterrupt,
   isShellSeen,
   markShellsSeen,
   ptyIdOf,
   nextAttention,
   nextOnOutput,
+  nextOnRunning,
   runningSubagents,
   signalOf,
   signalsOf,
@@ -625,6 +627,10 @@ describe("전이 표 — 프로세스 결정 13", () => {
 
 // **권위**(결정 11). 이 판은 OSC·벨이 신호를 만드는 길을 아직 안 붙이지만(#208), 그것들이
 // 들어올 문과 규칙은 여기서 연다 — 나중에 붙이면서 규칙을 같이 쓰면 그 규칙에 검사가 없다.
+//
+// 그 구현 스펙의 권위 규칙은 「훅이 한 번 말한 셸은 그 뒤 OSC · 벨 · 출력을 무시한다」였다. 프로세스 결정 12가 이렇게
+// 고쳤다: **에이전트 프로세스가 foreground에서 사라지면 권위가 풀린다** — 그 뒤의 OSC와 벨은 다시 말한다. 에이전트가 떠
+// 있는 동안에는 지금처럼 훅만 말한다(아래 마지막 줄들).
 describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼다", () => {
   const 훅이말한것: Attention = {
     kind: "waiting",
@@ -721,6 +727,185 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   it("훅이 말한 상태는 그 에이전트를 함께 싣는다", () => {
     const 상태값 = nextAttention(null, hook("codex", "Stop", { last_assistant_message: "PR #174 열었다" }, { stopped: true }));
     expect(상태값?.agent).toBe("codex");
+  });
+
+  // ── 권위가 풀리는 자리(프로세스 결정 12 · S31). 에이전트가 사라지면 도는 중 · 기다림은 지워지고(그 뒤는 「없음」이라 누구든
+  // 말한다) 안 본 확인할 것은 남는데, **남은 그것이 권위를 쥐고 있으면** claude를 끝낸 셸에서 띄운 다른 도구의 OSC · 벨이
+  // 영영 안 선다. 그래서 남은 확인할 것의 출처가 「사라짐」이 되고, 권위는 그 출처를 안 지킨다.
+  const 훅이세운확인할것: Attention = { ...훅이말한것, kind: "done", message: "다 했어요" };
+
+  it.each([
+    ["OSC 승인 요청", { event: "waiting", message: "Bash(git push)" }, "osc", "waiting"],
+    ["OSC 완료", { event: "stop", message: "PR #174 열었다" }, "osc", "done"],
+    ["벨", { event: "stop", message: null }, "bell", "done"],
+  ] as const)("에이전트가 사라진 뒤에는 다시 말한다 — %s", (_이름, signal, source, kind) => {
+    const 남은것 = nextOnRunning(훅이세운확인할것, "claude", "zsh", 150);
+    const 말한뒤 = applySignal(남은것, signal, 200, source, null, NO_HOOK_COUNTS);
+    expect(말한뒤?.kind).toBe(kind);
+    expect(말한뒤?.since).toBe(200);
+    expect(말한뒤?.source).toBe(source);
+  });
+
+  it("에이전트가 사라져 지워진 셸에는 OSC가 새로 세운다", () => {
+    const 도는중: Attention = { ...훅이말한것, kind: "working" };
+    const 지워진것 = nextOnRunning(도는중, "claude", null, 150);
+    expect(지워진것).toBeNull();
+    expect(applySignal(지워진것, { event: "stop", message: "PR #174 열었다" }, 200, "osc", null, NO_HOOK_COUNTS)?.kind).toBe(
+      "done",
+    );
+  });
+
+  // **떠 있는 동안에는 무시한다** — 에이전트가 새로 뜬 것, 그대로인 것, 에이전트가 아닌 명령이 바뀐 것은 권위를 안 푼다.
+  it.each([
+    [null, "claude"],
+    ["claude", "claude"],
+    ["node", "zsh"],
+  ] as const)("%s → %s 뒤에도 OSC · 벨은 훅이 세운 상태를 못 바꾼다", (before, after) => {
+    for (const 그것 of [훅이말한것, 훅이세운확인할것]) {
+      const 그대로 = nextOnRunning(그것, before, after, 150);
+      expect(그대로).toBe(그것);
+      expect(applySignal(그대로, { event: "waiting", message: "Bash(git push)" }, 200, "osc", null, NO_HOOK_COUNTS)).toBe(그것);
+      expect(applySignal(그대로, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_COUNTS)).toBe(그것);
+    }
+  });
+
+  // 권위는 **훅이 다시 말하면** 돌아온다 — 같은 셸에서 claude를 다시 띄워 새 턴을 보냈다.
+  it("에이전트가 다시 떠 훅이 말하면 권위가 돌아온다", () => {
+    const 남은것 = nextOnRunning(훅이세운확인할것, "claude", null, 150);
+    const 새턴 = nextAttention(남은것, hook("claude", "UserPromptSubmit", { prompt: "다시" }, { at: 300 }));
+    expect(새턴?.source).toBe("hook");
+    expect(applySignal(새턴, { event: "stop", message: "PR #174 열었다" }, 400, "osc", null, NO_HOOK_COUNTS)).toBe(새턴);
+  });
+});
+
+// ── 중단 추론(프로세스 결정 12 · S29 · S30). claude는 생각하는 중에 Esc · Ctrl-C로 끊으면 그 순간 오는 훅이 없다 — 도는
+// 중이 영영 남던 자리다. 스토어가 누른 순간의 상태를 기준값으로 잡고, 잠시 뒤 지금 값과 그사이 온 훅 사건 수를 건넨다.
+// 여기서 재는 것은 그 셋으로 **중단인가**를 가르는 순수 함수다 — 기다리는 시간은 이 파일도 저 파일도 모른다(아래 소스 스캔).
+//
+// 답의 모양은 `nextOnOutput`과 같다: 중단이면 `interrupt`를 앉힌 값(표대로 **없음**), 아니면 **지금 값 그대로**(같은 객체).
+describe("중단 추론 — 프로세스 결정 12", () => {
+  it("누른 순간과 지금이 같으면 중단이다 — 상태가 없어진다", () => {
+    expect(inferInterrupt(직전, 직전, 0, 700)).toBeNull();
+  });
+
+  // 견주는 것은 시각과 종류다(티켓 22). 「봤다」나 말이 바뀐 것은 새 사실이 아니다.
+  it("「봤다」만 달라져도 같은 사실이다", () => {
+    expect(inferInterrupt(직전, { ...직전, seen: true }, 0, 700)).toBeNull();
+  });
+
+  // **「그사이 훅이 왔나」는 상태로 못 본다** — 서브에이전트 사건은 시각을 안 바꾼다(티켓 20). 그래서 스토어가 센 훅
+  // 사건 수가 따로 온다. 그 수가 0이 아니면 에이전트가 아직 말하고 있는 것이라 추론을 버린다.
+  it("그사이 훅이 하나라도 왔으면 버린다 — 시각을 안 바꾸는 서브에이전트 사건도", () => {
+    const 수만바뀜 = nextAttention(직전, hook("claude", "SubagentStart", 실측_SubagentStart, { at: 40, subagents: 1 }));
+    // 앵커: 이 사건은 정말로 시각도 종류도 안 바꿨다 — 상태만 보면 「같다」로 읽힌다.
+    expect(수만바뀜?.since).toBe(직전.since);
+    expect(수만바뀜?.kind).toBe("working");
+    expect(inferInterrupt(직전, 수만바뀜, 1, 700)).toBe(수만바뀜);
+    expect(inferInterrupt(직전, 직전, 1, 700)).toBe(직전);
+  });
+
+  it.each([
+    ["새 사실이 왔다(시각)", { ...직전, since: 30 }],
+    ["승인 요청으로 바뀌었다", { ...직전, kind: "waiting" as const }],
+    ["턴이 끝났다", { ...직전, kind: "done" as const, since: 30 }],
+  ])("상태가 바뀌었으면 버린다 — %s", (_이름, 지금) => {
+    expect(inferInterrupt(직전, 지금, 0, 700)).toBe(지금);
+  });
+
+  it("그사이 상태가 없어졌으면 없음 그대로다", () => {
+    expect(inferInterrupt(직전, null, 0, 700)).toBeNull();
+  });
+
+  // **기다림에서의 Esc는 승인 거절이다**(S30) — 사람이 답한 것이고 그 답은 훅이 말한다. 확인할 것 · 조용한 셸에는 풀
+  // 도는 중이 없다. 셋 다 지금 값을 그대로 준다.
+  it.each([
+    ["기다림", 기다리던것],
+    ["확인할 것", 끝난것],
+  ] as const)("도는 중이 아니면 안 한다 — %s", (_이름, 그것) => {
+    expect(inferInterrupt(그것, 그것, 0, 700)).toBe(그것);
+  });
+
+  it("아무 상태도 없던 셸은 없음 그대로다", () => {
+    expect(inferInterrupt(null, null, 0, 700)).toBeNull();
+  });
+
+  // **출처를 가리지 않는다**(S30) — 훅이 세운 도는 중에는 권위가 걸려 있지만, 사람이 누른 키는 훅 밖의 **말**이 아니다.
+  // OSC가 세운 도는 중(승인 뒤 다시 흐른 출력)도 같은 키로 풀린다. 에이전트도 가리지 않는다.
+  it.each([
+    ["훅 · claude", 직전],
+    ["훅 · codex", { ...직전, agent: "codex" }],
+    ["OSC", { ...직전, source: "osc" as const, agent: null }],
+  ])("출처를 가리지 않는다 — %s", (_이름, 도는중) => {
+    expect(inferInterrupt(도는중, 도는중, 0, 700)).toBeNull();
+  });
+
+  // 스펙 Testing › 판 03의 줄. 끊은 뒤 늦게 닿은 서브에이전트 사건은 **수만 고칠 상태가 없어** 아무것도 안 세운다 —
+  // 도는 중이 되살아나면 끊은 턴이 다시 굳는다.
+  it("Stop(수 2) → 중단 추론 → 늦은 SubagentStop → 상태 없음 그대로", () => {
+    const 멈춤 = hook("claude", "Stop", { last_assistant_message: "서브에이전트 둘을 띄웠어요" }, { at: 10, subagents: 2, stopped: true });
+    const 도는중 = 차례로(직전, 멈춤);
+    expect(도는중).toEqual(훅상태({ message: "서브에이전트 둘을 띄웠어요", subagents: 2 }));
+
+    const 끊긴뒤 = inferInterrupt(도는중, 도는중, 0, 700);
+    expect(끊긴뒤).toBeNull();
+
+    const 늦은끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 30, subagents: 1, stopped: true });
+    expect(nextAttention(끊긴뒤, 늦은끝)).toBeNull();
+  });
+});
+
+// ── 에이전트 사라짐(프로세스 결정 12 · S31). 1초마다 오는 `pty:running`에서 그 셸의 도는 명령이 에이전트 이름(claude ·
+// codex)에서 **다른 것이나 없음으로** 바뀌면 에이전트가 사라진 것이다 — kill이든 크래시든 `/exit`이든. 결과는 `end`와
+// 같다: 도는 중 · 기다림은 지우고, 안 본 확인할 것은 남긴다. 그리고 **권위가 풀린다**(아래 권위 표).
+describe("에이전트 사라짐 — 프로세스 결정 12", () => {
+  it.each([
+    ["claude", "zsh"],
+    ["claude", null],
+    ["codex", null],
+    // 다른 에이전트로 바뀐 것도 앞의 에이전트는 사라진 것이다.
+    ["claude", "codex"],
+  ] as const)("%s → %s: 도는 중 · 기다림은 지운다", (before, after) => {
+    expect(nextOnRunning(직전, before, after, 50)).toBeNull();
+    expect(nextOnRunning(기다리던것, before, after, 50)).toBeNull();
+    expect(nextOnRunning(null, before, after, 50)).toBeNull();
+  });
+
+  // **`end`와 같다**를 줄마다 옮겨 적지 않고 견준다 — 멈추지 않은 세션 끝(`stopped: false`)이 그 짝이다. 사라짐은 멈춤을
+  // 모른다(`NO_HOOK_COUNTS`): 서브에이전트가 돌던 멈춘 턴도 프로세스가 사라졌으면 도는 것이 없다.
+  it.each([
+    ["도는 중", 직전],
+    ["서브에이전트가 도는 멈춘 턴", { ...직전, subagents: 2 }],
+    ["기다림", 기다리던것],
+    ["확인할 것", 끝난것],
+    ["없음", null],
+  ] as const)("결과의 종류가 멈추지 않은 세션 끝과 같다 — %s", (_이름, prev) => {
+    const 끝 = nextAttention(prev, hook("claude", "SessionEnd", 실측_SessionEnd, { at: 50 }));
+    expect(nextOnRunning(prev, "claude", "zsh", 50)?.kind).toBe(끝?.kind);
+  });
+
+  // 남기는 것이지 새로 세우는 것이 아니다 — 시각도 「봤다」도 말도 그대로라 알림이 다시 안 운다. 바뀌는 것은 출처 하나다:
+  // 그 값을 지키던 권위가 사라졌다(`gone`).
+  it("안 본 확인할 것은 남는다 — 출처만 「사라짐」이 된다", () => {
+    expect(nextOnRunning(끝난것, "claude", "zsh", 50)).toEqual({ ...끝난것, source: "gone" });
+    const 본것 = { ...끝난것, seen: true };
+    expect(nextOnRunning(본것, "claude", null, 50)).toEqual({ ...본것, source: "gone" });
+  });
+
+  it("한 번 풀린 것은 다시 사라져도 같은 객체다", () => {
+    const 풀린것 = nextOnRunning(끝난것, "claude", "zsh", 50);
+    expect(nextOnRunning(풀린것, "codex", null, 60)).toBe(풀린것);
+  });
+
+  // **사라진 것이 아니면 아무것도 안 바꾼다** — 같은 객체다. 에이전트가 새로 뜬 것, 그대로인 것, 에이전트가 아닌 명령이
+  // 바뀐 것(`node` → `zsh`) 모두다. 옛 claude가 `node`로 뜨는 기계에서도 권위가 저절로 안 풀린다.
+  it.each([
+    [null, "claude"],
+    ["claude", "claude"],
+    ["node", "zsh"],
+    ["zsh", null],
+    [null, null],
+  ] as const)("%s → %s: 사라진 것이 아니다 — 같은 객체다", (before, after) => {
+    for (const prev of [직전, 기다리던것, 끝난것]) expect(nextOnRunning(prev, before, after, 50)).toBe(prev);
   });
 });
 
@@ -1130,6 +1315,10 @@ describe("보고 있는 셸에 「봤다」를 앉힌다", () => {
 // 말한 순간 하나뿐이고 지우는 것은 사람이 본 순간 하나뿐이다 — 「몇 초 조용하면 끝난 것」이
 // 한 줄이라도 들어오면 앱이 모르는 것을 아는 척하기 시작한다.
 //
+// terminal-activity-signal 결정 2를 프로세스 결정 12가 이렇게 고쳤다: **사람이 누른 중단 키(Esc · Ctrl-C) 뒤의 한 순간만**
+// 잰다(중단 추론). 그 시계와 상수는 터미널 스토어에 있고(아래 첫 줄 — 목록은 그대로 셋이다), 상태 기계는 「누른 순간의
+// 값 · 지금 값 · 그사이 온 훅 수」만 견준다(`inferInterrupt` — 위 「중단 추론」 표). TTL은 여전히 없다.
+//
 // **대상을 손으로 적지 않는다**(#208 리뷰). 한때 축의 파일 여섯을 목록으로 들고 있었는데,
 // 그 모양은 축에 파일이 하나 늘 때 **조용히 빠진다** — 이 판이 더한 `shell-osc.ts`가 실제로
 // 그렇게 빠졌다. 그래서 터미널 트리를 통째로 읽어 **시간을 아는 파일의 목록이 아래 셋과
@@ -1161,7 +1350,8 @@ const 시계 = [
 // 판이 그 키를 ⌘K로 갈면서 상수가 통째로 걷혔고, 그 파일은 다시 시간을 모른다.
 const 시간을아는파일 = [
   // 신호가 **도착한 순간**을 재료로 넣는 자리(`Date.now()` → `applySignal`의 `since`).
-  // 재는 것이지 판정하는 것이 아니다 — 그 값으로 무엇이 되는지를 정하는 코드는 없다.
+  // 재는 것이지 판정하는 것이 아니다 — 그 값으로 무엇이 되는지를 정하는 코드는 없다. 중단 추론이 누른 뒤
+  // 기다리는 시계(프로세스 결정 12 · S29)도 여기 있다 — 기다릴 뿐이고, 중단인지는 상태 기계가 가른다.
   "terminal-store.ts",
   // 같은 work의 알림을 접는 5초 창(`COALESCE_MS` · 결정 10). **알림의 시간이지 상태의
   // 시간이 아니다** — 화면값은 그 5초에 한 글자도 안 매인다.

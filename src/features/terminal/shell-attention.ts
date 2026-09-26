@@ -1,3 +1,4 @@
+import { agentMarkOf } from "@/components/ui/agent-mark";
 import { foldHookState, subagentOf } from "./agents";
 import type { AgentSignal } from "./agents/types";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
@@ -7,14 +8,19 @@ import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
 // 왔는가」 셋을 합쳐 화면이 읽는 값 하나를 낸다. 값으로 들이는 것은 어댑터와 레지스트리의
-// **가리개 둘**(`runningOn`)뿐이라 DOM 없는 기본 환경에서 그대로 돈다(shell-registry.ts가
-// 선례다). 저쪽을 부르는 것이 여기서 갚아지는 순환처럼 보이지만 아니다 — 레지스트리가 이
-// 파일에서 가져가는 것은 타입 하나뿐이라 실행 시점에는 한 방향이다.
+// **가리개 둘**(`runningOn`), 그리고 「아는 에이전트」의 표(`agentMarkOf` — 에이전트 사라짐이 딛는다)뿐이라 DOM 없는
+// 기본 환경에서 그대로 돈다(shell-registry.ts가 선례다). 저쪽을 부르는 것이 여기서 갚아지는 순환처럼 보이지만
+// 아니다 — 레지스트리가 이 파일에서 가져가는 것은 타입 하나뿐이라 실행 시점에는 한 방향이다.
 //
 // **시간 상수도 만료도 타이머도 없다**(결정 2·3). 「몇 초 조용하면 끝난 것」을 여기서 만들면
 // 앱이 모르는 것을 아는 척하게 된다 — 상태를 만드는 것은 에이전트가 말한 순간 하나뿐이고,
 // 지우는 것은 사람이 본 순간 하나뿐이다. 그 성질은 주석이 아니라 shell-attention.test.ts의
 // 소스 스캔이 지킨다.
+//
+// terminal-activity-signal 결정 2(훅 · OSC로만 — 휴리스틱 · 타이머 금지)를 프로세스 결정 12가 이렇게 고쳤다: **사람이
+// 누른 키(Esc · Ctrl-C)에 묶인 중단 추론만** 허용한다. 근거가 시간이 아니라 사람이 실제로 누른 키다. 기다리는 시계는
+// 터미널 스토어에 있고, 이 파일은 「누른 순간의 값 · 지금 값 · 그사이 온 훅 수」를 견줄 뿐이다(`inferInterrupt`). TTL은
+// 여전히 없다 — 아무도 안 누르면 30분 도는 턴도 끝까지 도는 중이다.
 //
 // **레지스트리와 갈라 둔 이유**는 값 import다. `shell-registry.ts`는 값을 하나도 안 들이는
 // 것이 검사로 못박혀 있어(그 파일 머리말) 어댑터를 부를 수 없다. 그래서 규칙은 여기 있고
@@ -23,8 +29,17 @@ import type { ShellHookState } from "./types";
 /** 에이전트가 말한 사실. 「아무 주장도 없음」은 `Attention` 자체가 `null`인 것으로 말한다. */
 export type AttentionKind = "waiting" | "done" | "working";
 
-/** 그 값이 어디서 왔나. 권위 규칙이 이 값 하나로 갈린다. */
-export type AttentionSource = "hook" | "osc" | "bell";
+/**
+ * 그 값이 어디서 왔나. 권위 규칙이 이 값 하나로 갈린다(`applySignal` 머리말).
+ *
+ * 앞의 셋은 **말하는 쪽**이다 — 훅과 훅 밖의 보너스 길 둘(OSC · 벨). 뒤의 둘은 **앱이 스스로 본 사실**이다(프로세스 결정
+ * 12): 사람이 누른 중단 키(`key` — 중단 추론)와 foreground에서 사라진 에이전트 프로세스(`gone`). 권위가 막는 것은 훅 밖의
+ * **말**뿐이라 이 둘은 훅이 세운 상태도 바꾼다.
+ *
+ * `key`는 상태에 앉지 않는다 — 중단의 결과는 「없음」이다. `gone`은 **에이전트가 사라져 남긴 확인할 것**에 앉는다: 그 값을
+ * 지키던 권위가 사라졌다는 표지이고, 그 뒤의 OSC · 벨은 이 값을 바꾼다.
+ */
+export type AttentionSource = "hook" | "osc" | "bell" | "key" | "gone";
 
 /**
  * 셸 하나에 붙는 상태.
@@ -126,6 +141,8 @@ export const FAILED_LABEL = "오류로 끝남";
  * | `subagent` | 지금 상태를 두고 수만 고친다. **도는 중이고 멈춘** 셸이면 수가 0이 될 때 확인할 것(S50) |
  * | `interrupt` · `clear` | **없음** |
  * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다. **멈춘 턴 뒤의 끝**(`stopped`)이면 도는 중은 확인할 것 |
+ * | (중단 추론 — `inferInterrupt`) | `interrupt`와 같다(출처 `key`) |
+ * | (에이전트 사라짐 — `nextOnRunning`) | `end`와 같다(출처 `gone`) + 권위가 풀린다 |
  *
  * **`end`의 마지막 칸은 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 「안 본 완료를 남긴다」를 둔 까닭은 `claude -p`
  * — `Stop` 뒤 몇 ms 만에 `SessionEnd`가 온다 — 인데, 그 두 장은 감시의 디바운스(100ms, `shells.rs`) 한 회차에 들어가
@@ -143,9 +160,13 @@ export const FAILED_LABEL = "오류로 끝남";
  * 것이 아니라 **아직 안 본 결과**이고, 도구와 서브에이전트도 도는 중이다. 「없음」은 **상태 없음**(`null`)을
  * 돌려주는 것이다 — 옛 함수는 늘 값을 돌려줘서 `/clear`가 지워진 대화 위에 링을 세웠다.
  *
- * **권위**(결정 11): 훅이 한 번이라도 말한 셸에서는 그 뒤 OSC·벨·출력을 무시한다. 이 가름이
+ * **권위**(결정 11): 훅이 말한 상태는 OSC·벨·출력이 못 바꾼다. 이 가름이
  * 없으면 「출력이 `waiting`을 푼다」가 훅 셸에도 걸려, claude가 답을 기다리며 찍는 커서
- * 갱신에 앰버가 꺼진다.
+ * 갱신에 앰버가 꺼진다. 그 구현 스펙의 권위 규칙은 「훅이 한 번 말한 셸은 그 뒤 OSC · 벨 · 출력을 무시한다」였는데,
+ * 프로세스 결정 12가 이렇게 고쳤다: **에이전트 프로세스가 foreground에서 사라지면 권위도 풀린다** — 사라짐이 남긴
+ * 확인할 것의 출처가 `gone`이 되고(`end` 줄), 그 뒤의 OSC · 벨은 다시 말한다. 에이전트가 떠 있는 동안에는 지금처럼
+ * 훅만 말한다. 막는 것은 훅 밖의 **말**(OSC · 벨 — 출력도 `nextOnOutput`이 OSC 이름으로 들어온다)뿐이고, 앱이 스스로
+ * 본 두 사실(`key` · `gone` — `AttentionSource` 머리말)은 막지 않는다.
  *
  * **`since`**: `subagent`만 시각을 안 바꾼다 — 확인할 것에 늦은 서브에이전트 사건이 와도 알림 판정이 「머무름」으로
  * 읽어 다시 안 울린다. 나머지는 늘 새 시각을 찍는다. 기다림에 다시 온 `waiting`은 둘째 승인 요청이라 새 시각으로
@@ -171,7 +192,7 @@ export function applySignal(
   /** 사건이 실어 온 수 · 낸 서브에이전트 · 멈춤. 훅 밖의 길은 `NO_HOOK_COUNTS`를 적는다(그 머리말). */
   counts: HookCounts,
 ): Attention | null {
-  if (prev !== null && prev.source === "hook" && source !== "hook") return prev;
+  if (prev !== null && prev.source === "hook" && (source === "osc" || source === "bell")) return prev;
 
   // 새 사실 하나. 말은 어댑터가 준 것이 있으면 그것을, 없으면 직전 것을 그대로 둔다(전이 표의 「직전 유지」).
   // **말한 에이전트는 직전 것을 이어받지 않는다.** 말을 한 것은 이번에 온 그 사건이고, 훅 길에서는 늘 값이
@@ -221,7 +242,12 @@ export function applySignal(
       if (prev === null) return null;
       // `claude -p`는 `Stop` 직후 몇 ms 만에 `SessionEnd`가 온다 — 확인할 것까지 지우면 완료 알림이 뜨자마자
       // 사라진다(프로세스 결정 13). 남기는 것이지 새로 세우는 것이 아니라 시각도 「봤다」도 그대로다.
-      if (prev.kind === "done") return withSubagents(prev, counts.subagents);
+      if (prev.kind === "done") {
+        const kept = withSubagents(prev, counts.subagents);
+        // **에이전트가 사라져 남긴 것이면 권위가 풀린다**(프로세스 결정 12) — 출처 하나만 바꾼다. 그대로 두면 claude를
+        // 끝낸 셸에서 띄운 다른 도구의 OSC · 벨이 이 확인할 것에 막혀 영영 안 선다.
+        return source === "gone" && kept.source !== "gone" ? { ...kept, source } : kept;
+      }
       // 그 `Stop`이 디바운스에 삼켜져 이 한 장만 닿았다(머리말의 마지막 표 칸). **말은 없다** — 멈춘 턴의 말은 삼켜진
       // 파일에 있었고, 직전 말은 지난 턴의 것일 수 있어 결과로 세우면 틀린 글이 된다. 기다림은 표대로 지운다.
       if (prev.kind === "working" && counts.stopped) return fact("done", null);
@@ -266,6 +292,63 @@ export function nextOnOutput(prev: Attention | null, at: number): Attention | nu
   // **`applySignal`을 딛는다 — 여기서 칸을 직접 짜지 않는다.** 권위 규칙도 「봤다」를 푸는
   // 규칙도 저기 하나에 있고, 손으로 짜면 그 둘이 이 자리에서만 조용히 늙는다.
   return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent, NO_HOOK_COUNTS);
+}
+
+/**
+ * **중단 추론**(프로세스 결정 12 · S29 · S30). 사람이 그 셸에 Esc · Ctrl-C를 누른 순간의 상태(`base`)와 지금 상태(`now`),
+ * 그사이 그 셸에 온 훅 사건 수를 받아 **중단인가**를 가른다. 중단이면 `interrupt`를 앉힌 값(표대로 「없음」)을, 아니면
+ * **지금 값을 그대로**(같은 객체) 돌려준다 — `nextOnOutput`과 같은 계약이라 부르는 쪽은 항등성만 보고 스토어를 건드린다.
+ *
+ * **왜 필요한가**: claude는 사람이 끊으면 그 순간 오는 훅이 없다 — 사용자 중단이면 `Stop`이 안 돌고, 도는 도구를 취소해도
+ * `PostToolUseFailure`가 안 온다(훅 문서 · 판 03 선행 시험 「페이로드」). `is_interrupt`는 드물게만 온다. 그 턴의 도는 중이
+ * 다음 턴까지 영영 남던 자리다.
+ *
+ * 중단인 것은 셋이 다 맞을 때다:
+ * - 누른 순간 **도는 중**이었다. 기다림에서의 Esc는 승인 거절이라(S30) 사람이 답한 것이고, 그 답은 훅이 말한다.
+ * - 지금도 **같은 사실**이다 — 시각과 종류가 그대로다. 「봤다」나 수만 바뀐 것은 같은 사실이다.
+ * - 그사이 **훅이 하나도 안 왔다.** 상태로는 못 본다: 서브에이전트 사건은 시각을 안 바꾸고(티켓 20), 같은 파일을 다시
+ *   읽은 것도 상태를 안 바꾼다. 그래서 수를 따로 받는다 — 세는 것은 터미널 스토어다.
+ *
+ * **출처도 에이전트도 가리지 않는다**(S30). OSC가 세운 도는 중(승인 뒤 다시 흐른 출력)도 같은 키로 풀린다. 앉히는 출처가
+ * `key`라 훅이 세운 도는 중에도 권위에 안 막힌다(`AttentionSource` 머리말).
+ *
+ * **기다리는 시간은 여기 없다** — 누른 뒤 얼마나 기다리는지는 터미널 스토어의 일이다(이 폴더의 시계 스캔이 지킨다).
+ */
+export function inferInterrupt(
+  base: Attention | null,
+  now: Attention | null,
+  hooksBetween: number,
+  at: number,
+): Attention | null {
+  if (base === null || base.kind !== "working") return now;
+  if (now === null || now.kind !== base.kind || now.since !== base.since) return now;
+  if (hooksBetween !== 0) return now;
+  return applySignal(now, { event: "interrupt", message: null }, at, "key", null, NO_HOOK_COUNTS);
+}
+
+/**
+ * **도는 명령이 바뀌었다**는 사실 하나를 앉힌다 — 에이전트 사라짐(프로세스 결정 12 · S31). 1초마다 오는 `pty:running`이
+ * 그 셸에서 도는 것을 새로 말할 때 부른다. `before`는 바꾸기 전의 값, `after`는 새 값이다(둘 다 원문).
+ *
+ * **에이전트 이름에서 다른 것이나 없음으로 바뀌면 사라진 것이다** — kill · 크래시 · `/exit` 어느 것이든 같다. 결과는
+ * `end`와 같다: 도는 중 · 기다림은 지우고, 안 본 확인할 것은 남긴다. 그리고 **권위가 풀린다**(출처 `gone` — `applySignal`
+ * 머리말). 사라짐은 서브에이전트도 멈춤도 모른다(`NO_HOOK_COUNTS`) — 프로세스가 사라졌으면 도는 것이 없다.
+ *
+ * **「아는 에이전트」의 표를 다시 적지 않는다**(`agentMarkOf` — 판 04 결정 15). 벨이 삼켜지는 셸(`bellSignal`)과 권위가
+ * 풀리는 셸이 같은 표를 딛어야 한다. 에이전트가 아닌 명령이 바뀐 것(`node` → `zsh`)은 사라짐이 아니다 — 옛 claude가
+ * `node`로 뜨는 기계에서도 권위가 저절로 풀리지 않는다.
+ *
+ * **안 바뀌면 받은 것을 그대로 준다**(`nextOnOutput`과 같은 계약). 셸이 스스로 끝나면 `pty:running`은 그 셸을 더 말하지
+ * 않는데, 그때는 셸 칸도 닫히므로 해가 없다.
+ */
+export function nextOnRunning(
+  prev: Attention | null,
+  before: string | null,
+  after: string | null,
+  at: number,
+): Attention | null {
+  if (before === after || agentMarkOf(before) === null) return prev;
+  return applySignal(prev, { event: "end", message: null }, at, "gone", before, NO_HOOK_COUNTS);
 }
 
 /** 여덟 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */

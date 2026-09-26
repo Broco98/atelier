@@ -16,10 +16,12 @@ import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
   applySignal,
+  inferInterrupt,
   markShellsSeen,
   NO_HOOK_COUNTS,
   nextAttention,
   nextOnOutput,
+  nextOnRunning,
   ptyIdOf,
 } from "./shell-attention";
 import type { AttentionSource, ShellView } from "./shell-attention";
@@ -67,7 +69,7 @@ import type {
 } from "./shell-registry";
 import { deferAttach, focusOnAttach, focusPlaceOf, nextPendingFocus } from "./shell-focus";
 import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
-import { humanInput, keyRoute } from "./shell-input";
+import { humanInput, isInterruptKey, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
 import { orphanedWorldOf, orphanNotice, orphanToastId, vanishedOwners } from "./shell-owners";
@@ -463,6 +465,8 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
   pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });
   // WebGL 자리에서도 뺀다(티켓 17) — 그 자리만큼 다음에 붙는 셸이 남의 addon을 놓지 않고 싣는다.
   webglSeats = closeWebgl(webglSeats, instance.id);
+  // 훅 사건 수도 지운다(중단 추론) — 번호는 다시 안 쓰이지만 셸이 닫힐 때마다 한 칸씩 남는다.
+  hookEvents.delete(instance.id);
   if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
   instance.observer.disconnect();
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로 묶여 있어 WebGL
@@ -601,22 +605,97 @@ function shellOfPty(ptyId: number): number | null {
  * **한 번의 `setState`로 끝낸다.** 회차마다 여러 셸이 실려 오는데 칸마다 setState를 부르면
  * 그 수만큼 구독자가 깨어난다.
  *
+ * **에이전트 사라짐도 여기서 본다**(프로세스 결정 12 · S31) — 도는 명령이 claude · codex에서 다른 것이나 없음으로 바뀌면
+ * 그 셸의 도는 중 · 기다림이 풀리고 훅의 권위도 풀린다. 무엇이 사라짐이고 무엇이 되는지는 `nextOnRunning`이 혼자 안다.
+ * 견주는 것이 **바꾸기 전의 값**이라 새 값을 앉히기 전에 읽어 둔다. 앉히는 것은 한 박자 뒤다(`settleGone`).
+ *
  * **못 걸어도 셸은 뜬다.** 웹뷰 밖(노드 seam)에서는 이 통로가 없어 여기가 실제로 거절당한다.
  * 멈추면 터미널을 통째로 못 쓰는데 로고 하나를 못 얻은 값으로는 과하다 — `loadTerminalSettings`
  * 와 같은 판단이고, 이유만 남긴다.
  */
 void onPtyRunning((changed) => {
+  const moves = changed.flatMap((one) => {
+    const id = shellOfPty(one.id);
+    return id === null ? [] : [{ id, before: runningOfId(terminalStore.state, id), after: one.running }];
+  });
   terminalStore.setState((state) => {
     let next = state;
-    for (const one of changed) {
-      const id = shellOfPty(one.id);
-      if (id !== null) next = setRunning(next, id, one.running);
-    }
+    for (const { id, after } of moves) next = setRunning(next, id, after);
     return next;
   });
+  if (moves.length > 0) setTimeout(() => settleGone(moves), AGENT_GONE_GRACE_MS);
 }).catch((error) => {
   console.warn("atelier: 도는 명령을 구독하지 못했다 — 로고가 안 뜬다", error);
 });
+
+/**
+ * 에이전트 사라짐을 **앉히기 전에 기다리는 한 박자**(프로세스 결정 12 · S31). 이 시계도 여기에만 있다 — 사라짐인지, 무엇이
+ * 되는지는 상태 기계가 가른다(`nextOnRunning`).
+ *
+ * **왜 기다리나 — `claude -p`의 끝이 사라짐보다 늦게 닿는다.** `-p`는 `Stop` · `SessionEnd`를 내고 몇 ms 만에 끝나는데
+ * (판 03 선행 시험 r1: 17ms), 그 훅 파일은 감시의 디바운스(100ms, `shells.rs`)를 지나야 닿는다. 1초 폴링이 그 틈에 떨어지면
+ * 사라짐이 먼저 닿는다. 곧바로 앉히면 도는 중이 「없음」이 되고, 뒤에 닿은 멈춘 세션 끝은 「아무 주장도 없던 셸」로 읽혀
+ * (`applySignal`의 `end` 줄 — `/clear` 뒤 `/exit`와 같은 모양) 확인할 것이 한 번도 안 선다. 기다리면 그 파일이 먼저 앉아
+ * 확인할 것이 서고, 사라짐은 그것을 남긴다. 디바운스보다 넉넉하면 된다.
+ */
+const AGENT_GONE_GRACE_MS = 300;
+
+/**
+ * 도는 명령이 바뀐 셸들에 **에이전트 사라짐**을 앉힌다 — `onPtyRunning`이 한 박자 뒤에 부른다. `before` · `after`는 그 회차의
+ * 값이고, 상태는 **지금** 것이다(그사이 닿은 훅이 앉은 뒤). 바뀌는 셸이 없으면 스토어를 안 건드린다 — 도는 명령은 `ls` 한
+ * 번에도 바뀌어 여기 자주 온다.
+ */
+function settleGone(moves: ReadonlyArray<{ id: number; before: string | null; after: string | null }>): void {
+  const at = Date.now();
+  const gone = moves.flatMap(({ id, before, after }) => {
+    const prev = attentionOfId(terminalStore.state, id);
+    const next = nextOnRunning(prev, before, after, at);
+    return next === prev ? [] : [{ id, next }];
+  });
+  if (gone.length === 0) return;
+  terminalStore.setState((state) => gone.reduce((acc, { id, next }) => setAttention(acc, id, next), state));
+}
+
+/**
+ * 셸마다 **닿은 훅 사건 수**(프로세스 결정 12). 중단 추론이 「누른 뒤 그사이 훅이 왔나」를 이 수로 본다 — 상태로는 못 본다:
+ * 서브에이전트 사건은 시각을 안 바꾸고(티켓 20), 같은 파일을 다시 읽은 것도 상태를 안 바꾼다. 값이 화면이 그리는 것이
+ * 아니라 스토어에 두지 않는다(`pendingFocus`와 같은 까닭). 셸이 거둬질 때 함께 지운다(`disposeInstance`).
+ */
+const hookEvents = new Map<number, number>();
+
+function hookEventsOf(id: number): number {
+  return hookEvents.get(id) ?? 0;
+}
+
+/**
+ * 중단 추론이 **누른 뒤 기다리는 시간**(프로세스 결정 12 · S29). 이 시계와 이 상수는 여기에만 있다 — 상태 기계는 「누른 순간의
+ * 값 · 지금 값 · 그사이 온 훅 수」만 받는다(`inferInterrupt`). 값은 결정 12의 것이다(orca `inferInterrupt`와 같은 모양). 키 뒤에
+ * 온 훅은 감시의 디바운스(100ms)를 지나 닿으므로 그보다 넉넉해야 추론을 버릴 수 있다.
+ */
+const INTERRUPT_WAIT_MS = 500;
+
+/**
+ * 그 셸에 중단 키(Esc · Ctrl-C)가 들어왔다 — **그 순간의 상태를 기준값으로 잡고** 잠시 뒤 중단인지 묻는다(프로세스 결정 12).
+ * 키는 그대로 셸로 가서 에이전트를 끊는다. 부르는 자리는 셸의 키 핸들러 하나다(`isInterruptKey`).
+ *
+ * **기준값을 거르지 않고 잡는다.** 도는 중이 아니면 안 한다 · 출처를 안 가린다 같은 판단은 `inferInterrupt`가 혼자 한다 —
+ * 여기서 「도는 중일 때만 건다」를 적으면 그 규칙이 두 벌이 된다. 키마다 타이머 하나이고, 연달아 누르면 각자 제 기준값으로
+ * 묻는다: 먼저 끝난 것이 풀면 뒤의 것은 「지금이 바뀌었다」로 아무것도 안 한다.
+ *
+ * TTL이 아니다 — 재는 것은 사람이 실제로 누른 키 뒤의 한 순간이다. 아무도 안 누르면 오래 도는 턴도 그대로 도는 중이다.
+ */
+function watchInterrupt(id: number): void {
+  const base = attentionOfId(terminalStore.state, id);
+  const hooks = hookEventsOf(id);
+  setTimeout(() => {
+    const now = attentionOfId(terminalStore.state, id);
+    const next = inferInterrupt(base, now, hookEventsOf(id) - hooks, Date.now());
+    // **안 바뀌면 스토어를 안 건드린다** — 부르면 값이 같아도 구독자가 깨어난다(`noteOutput`과 같은 까닭). vim에서 Esc를
+    // 칠 때마다 여기 온다.
+    if (next === now) return;
+    terminalStore.setState((state) => setAttention(state, id, next));
+  }, INTERRUPT_WAIT_MS);
+}
 
 /**
  * 셸이 훅으로 **스스로 말한 것**을 상시 구독한다. 자리와 이유는 바로 위와 같다 — 모듈
@@ -630,15 +709,21 @@ void onPtyRunning((changed) => {
  *
  * **무엇이 되는지는 여기서 안 정한다.** 접는 것은 `nextAttention` 하나이고 이 자리는 그
  * 답을 칸에 앉히기만 한다 — 규칙이 스토어로 새면 검사가 DOM 있는 seam으로 올라간다.
+ *
+ * **닿은 훅 사건을 셸마다 센다**(`hookEvents` — 중단 추론이 「그사이 훅이 왔나」를 본다). 세는 것은 상태를 앉히는 갱신
+ * 함수 **밖**에서 한다 — 갱신 함수는 다음 상태를 짓는 자리라 바깥의 값을 고치지 않는다.
  */
 void onShellAttention((changed) => {
+  const arrived = changed.flatMap((one) => {
+    const ptyId = ptyIdOf(one.shellId);
+    const id = ptyId === null ? null : shellOfPty(ptyId);
+    return id === null ? [] : [{ id, hook: one.state }];
+  });
+  for (const { id } of arrived) hookEvents.set(id, hookEventsOf(id) + 1);
   terminalStore.setState((state) => {
     let next = state;
-    for (const one of changed) {
-      const ptyId = ptyIdOf(one.shellId);
-      const id = ptyId === null ? null : shellOfPty(ptyId);
-      if (id === null) continue;
-      next = setAttention(next, id, nextAttention(attentionOfId(next, id), one.state));
+    for (const { id, hook } of arrived) {
+      next = setAttention(next, id, nextAttention(attentionOfId(next, id), hook));
     }
     // **막 도착한 사실도 「봤다」를 거친다.** `applySignal`이 `seen`을 늘 푸는데(그 머리말),
     // 그 셸을 지금 보고 있는 중이라면 사람은 이미 본 것이다 — 안 거치면 켜진 칸이 초록으로
@@ -655,9 +740,11 @@ void onShellAttention((changed) => {
  * 하나로 모인다 — 아래 `createInstance`가 인스턴스마다 셋을 걸고, 무엇이 되는지는
  * `shell-osc.ts`(정규 이벤트)와 `shell-attention.ts`(화면값)가 나눠 안다.
  *
- * **훅 길과 같은 문으로 들어간다.** `applySignal` 하나만 딛으므로 권위 규칙(훅이 한 번이라도
- * 말한 셸에서는 무시)이 이 길에도 저절로 걸린다 — 여기서 칸을 직접 짜면 그 규칙을 두 번
- * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다.
+ * **훅 길과 같은 문으로 들어간다.** `applySignal` 하나만 딛으므로 권위 규칙(훅이 말한 상태는
+ * 무시)이 이 길에도 저절로 걸린다 — 여기서 칸을 직접 짜면 그 규칙을 두 번
+ * 적게 되고, 한쪽만 늙는 날 훅 셸의 앰버가 Codex TUI의 OSC 한 장에 꺼진다. 옛 규칙은 「훅이 한 번이라도 말한 셸에서는
+ * 무시」였고, 프로세스 결정 12가 이렇게 고쳤다: 에이전트가 foreground에서 사라지면 권위가 풀려 이 길이 다시 말한다
+ * (`nextOnRunning` — 위 `onPtyRunning`).
  *
  * **누가 말했는지는 `null`이다.** PTY는 그 바이트가 어느 프로세스에서 나왔는지 안 적는다 —
  * 이 갈래에서 마크를 내는 것은 「지금 도는 것」뿐이다(`SignalView.running`). 서브에이전트 수와 멈춤도 이 길은
@@ -1153,14 +1240,16 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
   // 그대로 따라온다(판 02).
   //
-  // **키다운을 가르는 자리는 여기 하나다**(프로세스 스펙 S16). 한 번 가른 답(`keyRoute`)으로 셋을 고른다 —
-  // 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지. 뒤 판의 중단 추론(Esc · Ctrl-C)과 승인 추론(확정 키)도
-  // 이 답을 이 자리에서 더 읽는다.
+  // **키다운을 가르는 자리는 여기 하나다**(프로세스 스펙 S16). 한 번 가른 답(`keyRoute`)으로 넷을 고른다 —
+  // 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지, 중단 추론을 걸지(Esc · Ctrl-C — 프로세스 결정 12). 뒤 판의
+  // 승인 추론(확정 키)도 이 답을 이 자리에서 더 읽는다.
   term.attachCustomKeyEventHandler((event) => {
     const route = keyRoute(event);
     // keypress · keyup — xterm이 평소대로 한다.
     if (route === null) return true;
     noteInput(instance, { kind: "keydown", event });
+    // **중단 키는 막지 않는다** — 셸로 가서 에이전트를 끊고, 여기서는 기준값을 잡아 시계만 건다(`watchInterrupt`).
+    if (isInterruptKey(event)) watchInterrupt(instance.id);
     // **앱 몫이되 이 셸이 하지 않는다**(결정 99). 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
     // `false`로 xterm의 타이핑만 막고 **그대로 위로 흘려보낸다** — 어느 본문으로 갈지는
     // 화면이 알고, 그 화면이 window에서 이 키를 듣는다. 여기서 `stopPropagation`을 부르면
@@ -1497,7 +1586,8 @@ async function spawn(instance: ShellInstance) {
       if (frame instanceof ArrayBuffer) {
         // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
         // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
-        // 이 판에 없다(결정 2·3).
+        // 이 판에 없다(결정 2·3). 프로세스 결정 12가 결정 2를 이만큼 고쳤다: 사람이 누른 중단 키 뒤의 한 순간만
+        // 잰다(`watchInterrupt`) — 출력이 멎은 시간은 여전히 아무것도 안 만든다.
         //
         // **쓰기 전에 알린다.** 이 프레임에 실려 온 OSC는 **이 프레임보다 새 사실**이라
         // 나중에 앉아야 한다: 순서가 바뀌면 승인 요청과 그 뒤 몇 글자가 한 프레임에 실려 온
