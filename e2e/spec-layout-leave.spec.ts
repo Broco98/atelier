@@ -7,7 +7,8 @@ import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "
 // 편집기를 떠나면 앱의 확인 창이 [계속 편집], [버리고 나가기], 그리고 저장할 수 있을 때만 서는 [저장하고 나가기]로
 // 묻는다. 창의 글과 버튼, 답의 뜻은 L2가 잰다(`leave.test.tsx`), 언제 초안이 「있는지」는 순수 함수가 잰다.
 //
-// **이 층이 드는 것은 떠나는 길이 모두 물음에 걸리는가다** — 뒤로, 설정 nav의 다른 항목, 팔레트로 다른 곳 열기.
+// **이 층이 드는 것은 떠나는 길이 모두 물음에 걸리는가다** — 뒤로, 설정 nav의 다른 항목, 팔레트로 다른 곳 열기,
+// 히스토리의 앞으로·뒤로.
 // 길마다 따로 걸면 한 길이 잊는 날 그 길로만 초안이 사라진다. 그리고 [저장하고 나가기]가 정말 저장 명령을 부른 뒤에
 // 떠나는가, 저장이 거절되면 떠나지 않는가, 저장이 잠겨 있으면 그 버튼이 아예 서지 않는가. 설정 초안(터미널,
 // 알림)에는 걸지 않는다 — 그 L3(`settings-save.spec.ts`)는 손대지 않은 채 초록이다.
@@ -167,6 +168,36 @@ test("초안이 있는 채로 설정 nav의 다른 항목을 누르거나 팔레
   await expect(떠날때(page)).toBeVisible();
   await 창버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL(new RegExp(`^[^?]*/works/${work.slug}\\?`));
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 셸의 앞으로·뒤로와 마우스의 옆 버튼도 떠나는 길이다 — 히스토리를 되감는 이동(pop)이라 주소가 먼저 바뀌고, 막으면
+// 라우터가 히스토리를 편집기로 되돌린다. 앞으로 간 것은 뒤로 되돌려야 한다: `@tanstack/history` 1.162.0은 막은 pop을
+// 늘 앞으로 한 칸 되돌려, 앞으로 가려다 머물면 화면은 편집기인데 히스토리는 떠난 자리에 섰고 다음 뒤로가 삼켜졌다.
+test("앞으로로 떠나려다 [계속 편집]이면 히스토리도 편집기에 남고, 다음 뒤로가 제대로 묻는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  // 초안이 없으니 묻지 않고 떠난다 — 돌아오면 앞으로 갈 자리가 생긴다
+  await 뒤로(page).click();
+  await expect(page).toHaveURL("/settings/spec-layout");
+  await page.goBack();
+  await expect(page).toHaveURL(EDITOR);
+  await draftOne(page);
+
+  await page.goForward();
+  await expect(떠날때(page)).toBeVisible();
+  await 창버튼(page, "계속 편집").click();
+  await expect(떠날때(page)).toHaveCount(0);
+  await expect(page).toHaveURL(EDITOR);
+  await expect(설명(page)).toHaveValue(EDITED);
+
+  // 히스토리가 편집기에 섰으면 다음 뒤로도 떠나는 길이다 — 묻는다
+  await page.goBack();
+  await expect(떠날때(page)).toBeVisible();
+  await 창버튼(page, "버리고 나가기").click();
+  await expect(page).toHaveURL("/settings/spec-layout");
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

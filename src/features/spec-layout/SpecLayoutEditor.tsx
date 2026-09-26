@@ -227,7 +227,7 @@ function EditorScreen({
     return false;
   };
 
-  // 저장하지 않은 초안을 두고 떠나면 묻는다 — 뒤로, 사이드바 nav, 팔레트, 설정 nav의 다른 항목(티켓 15).
+  // 저장하지 않은 초안을 두고 떠나면 묻는다 — 뒤로, 사이드바 nav, 팔레트, 설정 nav의 다른 항목, 히스토리의 뒤로·앞으로(티켓 15).
   useConfirmLeave({ unsaved: draft !== null && unsaved(draft, reference), savable: enabled, save });
 
   if (view === null) {
