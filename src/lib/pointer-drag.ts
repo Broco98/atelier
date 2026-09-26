@@ -95,6 +95,41 @@ export function farEnough(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) >= DRAG_THRESHOLD;
 }
 
+/**
+ * 끌기 계측 한 줄의 재료(티켓 16 · 프로세스 스펙 S22). 사이드바 행을 눌렀는데 안 열린다 — 행 클릭이 위 문턱에 삼켜진다는
+ * 가설을 **문턱을 고치기 전에** 재려고 둔다. 두 순간에 한 줄씩이다: 문턱을 넘은 순간과, 뗀 뒤 클릭을 삼킨 순간.
+ */
+export interface DragTrace {
+  /** 무엇을 끌었나 — 작업 행(`work`)인지 탭(`shell` · `spec`)인지가 가설을 가른다. */
+  source: DragKind | RowDragSource["kind"];
+  moment: "threshold" | "swallow";
+  /** 누른 자리에서 그 순간까지 옮긴 거리(px). */
+  dx: number;
+  dy: number;
+  /** `mouse` · `pen` · `touch`. 트랙패드의 누름도 `mouse`로 온다. */
+  pointerType: string;
+  /** 그 순간 클릭을 삼켰나. 문턱은 아직 아무것도 안 삼켰다. */
+  swallowed: boolean;
+}
+
+/** 소수 한 자리 — 문턱 근처(4.9 · 5.1)가 가려지면 가설을 못 잰다. */
+const tenth = (value: number) => Math.round(value * 10) / 10;
+
+/** 로그 한 줄. 사람이 여러 번 눌러 본 뒤 줄을 그대로 모아 붙이게 필드 이름을 그대로 적는다. */
+export function dragTraceLine(trace: DragTrace): string {
+  const moment = trace.moment === "threshold" ? "문턱" : "삼킨 클릭";
+  return `atelier: 끌기(${trace.source}) ${moment} dx=${tenth(trace.dx)} dy=${tenth(trace.dy)} pointerType=${trace.pointerType || "?"} swallowed=${trace.swallowed}`;
+}
+
+/**
+ * 계측이 지나는 **dev 가드 한 곳**이다. 릴리스 빌드에서는 Vite가 그 표시(`DEV`)를 거짓 상수로 바꿔 아래가 통째로
+ * 빠진다. 부르는 자리마다 가드를 적으면 한 자리를 잊은 날 릴리스에 로그가 선다(pointer-drag.test.ts가 센다).
+ */
+function traceDrag(trace: DragTrace): void {
+  if (!import.meta.env.DEV) return;
+  console.debug(dragTraceLine(trace));
+}
+
 export interface DragPoint {
   clientX: number;
   clientY: number;
@@ -176,8 +211,11 @@ export function armDrag(
       handlers.move?.(event);
       return;
     }
-    if (!farEnough(event.clientX - from.clientX, event.clientY - from.clientY)) return;
+    const dx = event.clientX - from.clientX;
+    const dy = event.clientY - from.clientY;
+    if (!farEnough(dx, dy)) return;
     started = true;
+    traceDrag({ source: source.kind, moment: "threshold", dx, dy, pointerType: event.pointerType, swallowed: false });
     // 끄는 동안 글이 선택되는 것을 막는다. `body.resizing`과 나누는 것은 커서 하나
     // 때문이다 — 그쪽은 col-resize이고 이쪽은 잡은 것을 옮기는 중이다.
     document.body.classList.add("dragging-row");
@@ -248,9 +286,17 @@ export function armDrag(
     //
     // 한 번만 삼키고 **곧바로 거둔다.** `once: true`로 두면 클릭이 안 오는 경우(본문에서
     // 놓았을 때)에 이 리스너가 남아 다음에 아무 데나 누른 클릭을 먹는다.
-    const swallow = (event: MouseEvent) => {
-      event.stopPropagation();
-      event.preventDefault();
+    //
+    // 삼킨 클릭은 계측에 한 줄 남긴다(프로세스 스펙 S22) — 거리와 포인터 종류는 뗀 순간의 것이다.
+    const released = {
+      dx: event.clientX - from.clientX,
+      dy: event.clientY - from.clientY,
+      pointerType: event.pointerType,
+    };
+    const swallow = (click: MouseEvent) => {
+      click.stopPropagation();
+      click.preventDefault();
+      traceDrag({ source: source.kind, moment: "swallow", ...released, swallowed: true });
     };
     window.addEventListener("click", swallow, true);
     window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);

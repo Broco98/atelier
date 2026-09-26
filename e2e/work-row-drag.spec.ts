@@ -101,6 +101,29 @@ test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다
   expect(await moves(page)).toEqual([]);
 });
 
+// 티켓 16 · 프로세스 스펙 S22 — 사이드바 행을 눌렀는데 안 열린다는 말이 있다. 행 클릭이 문턱에 삼켜진다는 가설을 문턱을
+// 고치기 전에 재려고, dev 빌드는 **문턱을 넘은 순간과 삼킨 클릭**을 한 줄씩 남긴다. 이 층은 dev 서버라 가드가 열려 있다.
+// 누르다 손이 조금 밀렸다가 제자리에서 뗀 모양이다 — 행은 안 열리고 두 줄이 선다.
+test("dev 빌드는 문턱을 넘은 순간과 삼킨 클릭을 한 줄씩 남긴다", async ({ page }) => {
+  const traces: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().startsWith("atelier: 끌기")) traces.push(message.text());
+  });
+  await openList(page);
+  const from = await pointIn(workRow(page, plainWork.slug), "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 6, from.y);
+  await page.mouse.move(from.x + 1, from.y);
+  await page.mouse.up();
+
+  await stayedHome(page);
+  await expect.poll(() => traces.length).toBe(2);
+  expect(traces[0]).toMatch(/^atelier: 끌기\(work\) 문턱 dx=[\d.]+ dy=-?[\d.]+ pointerType=mouse swallowed=false$/);
+  expect(traces[1]).toMatch(/^atelier: 끌기\(work\) 삼킨 클릭 dx=[\d.]+ dy=-?[\d.]+ pointerType=mouse swallowed=true$/);
+  expect(await moves(page)).toEqual([]);
+});
+
 test.describe("놓은 구획이 고정 여부를 정한다", () => {
   test("같은 구획 안에서 끌면 고정 여부가 그대로다", async ({ page }) => {
     await openList(page);
