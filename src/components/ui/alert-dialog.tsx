@@ -1,9 +1,10 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background)에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5, Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background)에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5 — 가림막·창 상자·가운데 자리·머리·제목·설명·바닥은 창(dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다(설명의 whitespace-pre-line만 여기 것이다), Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
+import { dialogLook } from "@/components/ui/dialog-look"
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
@@ -21,8 +22,9 @@ function AlertDialogPortal({ ...props }: AlertDialogPrimitive.Portal.Props) {
   )
 }
 
-// 가림막은 앱의 모든 모달이 쓰는 막(`modal-scrim`)이다 — 뒤를 흐리지 않고 어둡게만 한다.
-// 고정 위치에 z 50이라 Base UI의 내부 가림막(z 없음)보다 위에 그려져, 누르면 이 요소가 받는다.
+// 가림막은 앱의 모든 모달이 쓰는 막(`modal-scrim`)이다 — 뒤를 흐리지 않고 어둡게만 한다. 창(dialog)과
+// 같은 것이라 `dialogLook`에서 읽는다. 고정 위치에 z 50이라 Base UI의 내부 가림막(z 없음)보다 위에
+// 그려져, 누르면 이 요소가 받는다.
 function AlertDialogOverlay({
   className,
   ...props
@@ -30,10 +32,7 @@ function AlertDialogOverlay({
   return (
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
-      className={cn(
-        "modal-scrim isolate duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        className
-      )}
+      className={cn(dialogLook.overlay, className)}
       {...props}
     />
   )
@@ -58,10 +57,8 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         // Base UI Dialog는 모달임을 바깥의 `aria-hidden`으로만 말한다 — 창 자신이 말하게 둔다(S31).
         aria-modal="true"
-        className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-[330px] max-w-[calc(100%-4rem)] -translate-x-1/2 -translate-y-1/2 gap-4 floating-card p-4 text-foreground duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-          className
-        )}
+        // 창 상자와 가운데 자리 · 폭 · 안쪽은 이름 바꾸기 창(dialog의 default)과 같은 것이다.
+        className={cn(dialogLook.popup, dialogLook.center, className)}
         {...props}
       />
     </AlertDialogPortal>
@@ -75,7 +72,7 @@ function AlertDialogHeader({
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn("grid gap-1.5", className)}
+      className={cn(dialogLook.header, className)}
       {...props}
     />
   )
@@ -88,7 +85,7 @@ function AlertDialogFooter({
   return (
     <div
       data-slot="alert-dialog-footer"
-      className={cn("flex justify-end gap-1.5", className)}
+      className={cn(dialogLook.footer, className)}
       {...props}
     />
   )
@@ -117,10 +114,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn(
-        "text-[14px] font-semibold tracking-[-0.01em]",
-        className
-      )}
+      className={cn(dialogLook.title, className)}
       {...props}
     />
   )
@@ -134,10 +128,7 @@ function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
-      className={cn(
-        "text-[13px] leading-[1.6] whitespace-pre-line text-tertiary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
-      )}
+      className={cn(dialogLook.description, "whitespace-pre-line", className)}
       {...props}
     />
   )
