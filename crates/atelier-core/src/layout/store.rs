@@ -8,11 +8,11 @@ use std::path::Path;
 
 use super::builtin::builtin_layout;
 use super::model::{LayoutEntry, SpecLayout};
-use super::parse::{parse_layout_value, serialize_layout, LayoutError};
+use super::parse::{parse_layout_value, serialize_layout, LayoutError, LAYOUT_FILE};
 use super::render::{render_layout, Rendered};
 use super::resolve::{
     folder_error, folder_present, layout_folder, layout_id, read_layout_file, template_verdict,
-    Unreadable, LAYOUT_FILE,
+    Unreadable,
 };
 use crate::atomic::write_atomically;
 use crate::{Mode, Result};

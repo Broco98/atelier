@@ -8,7 +8,9 @@ use serde_json::{Map, Value};
 
 use super::model::{EntryKind, LayoutEntry, SpecLayout};
 use super::pattern::pieces;
-use super::resolve::LAYOUT_FILE;
+
+/// 레이아웃 폴더 안의 레이아웃 파일. 템플릿 `.md`가 그 옆에 산다(결정 6).
+pub(crate) const LAYOUT_FILE: &str = "layout.json";
 
 /// 검증 오류 하나. 밖으로는 `{ path, message }`로 나간다 — 편집기와 에이전트가 위치를 글에서
 /// 다시 풀지 않게 데이터로 건넨다.

@@ -12,12 +12,9 @@ use std::path::{Path, PathBuf};
 
 use super::builtin::builtin_layout;
 use super::model::SpecLayout;
-use super::parse::{parse_layout, LayoutError};
+use super::parse::{parse_layout, LayoutError, LAYOUT_FILE};
 use super::render::{Fallback, TemplateVerdict};
 use crate::{Error, Mode, Result};
-
-/// 레이아웃 폴더 안의 레이아웃 파일. 템플릿 `.md`가 그 옆에 산다(결정 6).
-pub(crate) const LAYOUT_FILE: &str = "layout.json";
 
 /// 쓸 레이아웃이 어디서 왔는가.
 #[derive(Debug, Clone, PartialEq, Eq)]
