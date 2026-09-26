@@ -85,9 +85,20 @@ pub(crate) fn worktree_add(
     }
 }
 
+/// 더러운지 읽는 `git status`의 인자. work 목록 조회가 워크트리마다 이것을 부른다(`is_dirty`).
+///
+/// **`--no-optional-locks`**(프로세스 결정 18 ①): 없으면 status가 낡은 stat 정보를 고쳐 index를 다시 쓰느라
+/// 그동안 `index.lock`을 쥔다. 목록은 spec 파일이 바뀔 때마다 모든 워크트리에서 돌므로, 사용자가 셸에서 친
+/// `git commit`이 그 순간과 겹쳐 「index.lock: File exists」로 실패한다. 읽기만 하는 조회가 쓰기를 할 까닭이
+/// 없다 — 고친 stat은 다음 status가 다시 계산할 뿐이다. git 전역 옵션이라 하위 명령 **앞에** 둔다.
+///
+/// 결정 18이 기각한 셋(`-uno` · `gix` · `core.fsmonitor` 강제)은 여기 넣지 않는다. `-uno`는 추적 안 된 파일만
+/// 있는 워크트리를 깨끗하게 보여, 아카이브 게이트(`dirty_files`)와 표시가 어긋난다.
+pub(crate) const DIRTY_STATUS_ARGS: [&str; 3] = ["--no-optional-locks", "status", "--porcelain"];
+
 /// 커밋 안 된 변경이 있는지. git 저장소가 아니거나 판단 불가면 보수적으로 dirty 취급.
 pub(crate) fn is_dirty(dir: &Path) -> bool {
-    match git(dir, &["status", "--porcelain"]) {
+    match git(dir, &DIRTY_STATUS_ARGS) {
         Some(s) => !s.is_empty(),
         None => true,
     }
@@ -398,6 +409,46 @@ mod tests {
     fn non_repo_returns_none() {
         let dir = tempfile::tempdir().unwrap();
         assert!(detect(dir.path()).is_none());
+    }
+
+    /// 목록 조회의 status는 **선택 잠금을 안 잡는다**(프로세스 결정 18 ①). 잡으면 사용자가 셸에서 치는
+    /// `git commit`이 그 순간 `index.lock`을 못 만들어 실패한다. 이 옵션은 git 전역 옵션이라 하위 명령
+    /// **앞에** 와야 한다 — 뒤에 두면 git이 모르는 옵션으로 거절하고, `is_dirty`는 그것을 「판단 불가
+    /// → 더럽다」로 읽어 모든 워크트리가 더럽게 선다.
+    #[test]
+    fn the_list_status_asks_git_not_to_take_optional_locks() {
+        let flag = DIRTY_STATUS_ARGS.iter().position(|a| *a == "--no-optional-locks");
+        let status = DIRTY_STATUS_ARGS.iter().position(|a| *a == "status");
+        assert!(flag.is_some(), "status 인자에 --no-optional-locks가 없다: {DIRTY_STATUS_ARGS:?}");
+        assert!(status.is_some(), "status 인자가 status를 안 부른다: {DIRTY_STATUS_ARGS:?}");
+        assert!(flag < status, "--no-optional-locks가 하위 명령 뒤에 있다: {DIRTY_STATUS_ARGS:?}");
+    }
+
+    /// 더러운지 읽는 것이 **index를 다시 쓰지 않는다** — 위 인자가 실제로 먹는지를 git에게 잰다.
+    /// 추적 파일의 mtime만 바꾸면 index의 stat 정보가 낡는다. 잠금을 잡는 status는 그것을 새로 고쳐 index를
+    /// 다시 쓰고(그동안 `index.lock`을 쥔다), 잠금을 안 잡는 status는 쓰지 않는다.
+    ///
+    /// **앵커:** 같은 자리에서 옵션 없는 status가 index를 바꾸는 것을 끝에 본다. 그것이 안 바뀌면 이 검사는
+    /// 「안 썼다」를 잴 힘이 없다(git이 새로 고칠 것이 없었다).
+    #[test]
+    fn reading_dirtiness_leaves_the_index_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let index = dir.path().join(".git/index");
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(dir.path().join("a.txt"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let before = std::fs::read(&index).unwrap();
+
+        assert!(!is_dirty(dir.path()), "내용은 그대로라 깨끗해야 한다");
+        assert!(std::fs::read(&index).unwrap() == before, "더러운지 읽다가 index를 다시 썼다 — index.lock을 잡았다");
+
+        run(dir.path(), &["status", "--porcelain"]);
+        assert!(std::fs::read(&index).unwrap() != before, "앵커: 잠금을 잡는 status도 index를 안 바꿨다 — 이 검사가 쓰기를 못 본다");
     }
 
     /// 머지 제목 판독. 이 판정 하나가 `record.md`의 "base 반영"과 커밋 범위를 정하고,

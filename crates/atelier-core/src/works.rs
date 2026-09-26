@@ -284,19 +284,62 @@ fn write_work(works_root: &Path, work: &Work) -> Result<()> {
 }
 
 fn to_view(works_root: &Path, work: Work) -> WorkView {
+    let trees = worktree_paths(works_root, &work);
+    let states = tree_states(&trees);
+    view_of(works_root, work, trees.into_iter().zip(states))
+}
+
+/// work 여럿의 뷰 — **목록 조회의 몸통이다.** 워크트리마다의 `git status`가 목록 조회의 거의 전부라서
+/// (워크트리 하나에 수~수십 ms), 차례로 부르면 워크트리 수만큼 걸린다. 상한 있는 병렬로 부르면 워크트리가 상한
+/// 이하일 때 가장 느린 워크트리 하나만큼, 넘으면 그 몇 배로 준다(프로세스 결정 18 ① · 프로세스 스펙 S19).
+///
+/// **병렬 단위는 모든 work의 워크트리를 한 줄로 편 것이다.** work 단위로 가르면 워크트리가 하나뿐인 work이
+/// 많을 때 일꾼마다 한 work씩 차례로 읽어 병렬이 거의 아무것도 안 준다.
+///
+/// **순서는 여기서 안 정한다.** 편 줄은 `works` 순서 · `projects` 순서 그대로이고, 병렬로 모은 상태는 그 줄의
+/// 자리로 돌아온다(`map_bounded`). 그래서 앞에서부터 work마다 제 워크트리 수만큼 떼면 제 자리다.
+fn to_views(works_root: &Path, works: Vec<Work>) -> Vec<WorkView> {
+    let trees: Vec<PathBuf> = works.iter().flat_map(|work| worktree_paths(works_root, work)).collect();
+    let states = tree_states(&trees);
+    let mut trees = trees.into_iter().zip(states);
+    works
+        .into_iter()
+        .map(|work| {
+            let mine: Vec<_> = trees.by_ref().take(work.projects.len()).collect();
+            view_of(works_root, work, mine)
+        })
+        .collect()
+}
+
+/// work 하나의 워크트리 자리 — `projects`에 적힌 순서다.
+fn worktree_paths(works_root: &Path, work: &Work) -> Vec<PathBuf> {
+    let trees = worktrees_dir(&works_root.join(&work.slug));
+    work.projects.iter().map(|p| trees.join(p)).collect()
+}
+
+/// 워크트리마다 (있는가, 더러운가). **`git status`를 부르는 자리가 여기 하나다** — 폴더가 없으면 git을 안 부른다.
+fn tree_states(trees: &[PathBuf]) -> Vec<(bool, bool)> {
+    map_bounded(trees, status_workers(available_cores()), |tree| {
+        let exists = tree.is_dir();
+        (exists, exists && git::is_dirty(tree))
+    })
+}
+
+fn view_of(
+    works_root: &Path,
+    work: Work,
+    trees: impl IntoIterator<Item = (PathBuf, (bool, bool))>,
+) -> WorkView {
     let dir = works_root.join(&work.slug);
     let worktrees = work
         .projects
         .iter()
-        .map(|p| {
-            let worktree = worktrees_dir(&dir).join(p);
-            let exists = worktree.is_dir();
-            WorktreeView {
-                project: p.clone(),
-                path: collapse_home(&worktree),
-                exists,
-                dirty: exists && git::is_dirty(&worktree),
-            }
+        .zip(trees)
+        .map(|(project, (path, (exists, dirty)))| WorktreeView {
+            project: project.clone(),
+            path: collapse_home(&path),
+            exists,
+            dirty,
         })
         .collect();
     WorkView {
@@ -305,6 +348,53 @@ fn to_view(works_root: &Path, work: Work) -> WorkView {
         work,
         worktrees,
     }
+}
+
+fn available_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
+
+/// 목록 조회가 한 번에 띄우는 `git status`의 수 — 가용 코어를 **4~8로 자른다**(프로세스 스펙 S19).
+///
+/// 아래를 4로 받치는 것은 `git status`가 CPU보다 파일시스템(stat)을 기다리는 일이라 코어가 적어도 겹쳐 돌
+/// 몫이 있어서다. 위를 8로 누르는 것은 이 조회가 사용자의 셸 · 빌드 · 에이전트와 같은 기계를 나눠 쓰고,
+/// spec이 바뀔 때마다 돌기 때문이다.
+fn status_workers(cores: usize) -> usize {
+    cores.clamp(4, 8)
+}
+
+/// `items`마다 `f`를 부르되 **한 번에 `limit`개까지만** 겹쳐 돈다. 결과는 `items`의 순서다.
+///
+/// 표준 scoped thread로 한다 — 새 의존을 들이지 않는다(S19). 일꾼은 부른 스레드를 합쳐 `limit`개이고, 나눠 둔
+/// 몫이 아니라 **공유 번호표**에서 다음 자리를 집어 간다. 그래서 느린 워크트리 하나가 뒤에 줄 선 것들을 붙잡지
+/// 않는다. 일꾼 스레드를 못 띄우면(자원 한도) 띄운 만큼으로, 하나도 못 띄우면 부른 스레드 혼자 끝까지 돈다 —
+/// 스레드 때문에 목록 조회가 실패하지는 않는다.
+fn map_bounded<T: Sync, R: Send>(items: &[T], limit: usize, f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let next = AtomicUsize::new(0);
+    let drain = || {
+        let mut done = Vec::new();
+        loop {
+            let at = next.fetch_add(1, Ordering::Relaxed);
+            let Some(item) = items.get(at) else { break done };
+            done.push((at, f(item)));
+        }
+    };
+    let helpers = limit.min(items.len()).saturating_sub(1);
+    let mut done = std::thread::scope(|scope| {
+        let spawned: Vec<_> = (0..helpers)
+            .filter_map(|_| std::thread::Builder::new().spawn_scoped(scope, &drain).ok())
+            .collect();
+        let mut done = drain();
+        for helper in spawned {
+            done.extend(helper.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)));
+        }
+        done
+    });
+    // 번호표가 자리마다 한 번씩만 나가므로 자리로 줄 세우면 `items`의 순서 그대로 빠짐없이 선다.
+    done.sort_unstable_by_key(|(at, _)| *at);
+    done.into_iter().map(|(_, r)| r).collect()
 }
 
 /// 워크트리가 놓이는 디렉터리 — 같은 규칙이다.
@@ -444,9 +534,11 @@ fn order_works(works: &mut [Work], order: &[String]) {
     });
 }
 
+/// work 목록. 순서는 `read_works`가 정하고, 워크트리마다의 상태는 `to_views`가 병렬로 읽어 그 순서에 놓는다.
+/// 앱 명령 · MCP 서버 · 테스트 다리가 모두 이 함수를 부른다 — 병렬을 여기(코어) 두는 까닭이다(프로세스 스펙 S19).
 pub fn list_works(works_root: &Path) -> Result<Vec<WorkView>> {
     std::fs::create_dir_all(works_root)?;
-    Ok(read_works(works_root)?.into_iter().map(|work| to_view(works_root, work)).collect())
+    Ok(to_views(works_root, read_works(works_root)?))
 }
 
 /// **작업 루트만 본다.** 보존소로 넘어가는 폴백은 여기 넣지 않는다 — 데스크톱 앱의
@@ -1343,6 +1435,130 @@ mod tests {
 
         assert!(matches!(get_work(&works, "없음"), Err(Error::WorkNotFound(_))));
         assert!(matches!(get_work(&works, "../탈출"), Err(Error::WorkNotFound(_))));
+    }
+
+    /// 워크트리마다의 `git status`를 병렬로 읽어도(프로세스 결정 18 ① · 프로세스 스펙 S19) **목록은 병렬 전과
+    /// 같은 순서다** — work은 코어의 순서(고정 → 만든 날 → slug), 워크트리는 `projects`에 적힌 순서다. 병렬로
+    /// 모은 상태가 제 자리로 돌아오는지를 워크트리마다 다른 더러움으로 잰다: 자리가 한 칸만 밀려도 누군가의
+    /// `dirty`가 뒤집힌다.
+    ///
+    /// 픽스처는 워크트리 여럿인 work, 하나뿐인 work, 없는 work(Maison의 Room 모양), 폴더가 사라진 워크트리
+    /// (git을 안 부르는 자리)를 섞고, 워크트리 수가 상한보다 많다 — 일꾼 하나가 둘 이상을 읽는다.
+    #[test]
+    fn list_keeps_the_kernel_order_when_worktree_statuses_are_read_in_parallel() {
+        let (tmp, works, projects) = setup();
+        let api = tmp.path().join("api");
+        init_repo(&api);
+        crate::create_project(&projects, &api).unwrap();
+        let start = |slug: &str, on: &[&str]| {
+            let report = start_work(&works, &archive_root(&works), Some(&projects), slug, Some(slug), &slugs(on), Some(&format!("feat/{slug}")))
+                .unwrap();
+            assert!(report.errors.is_empty(), "{slug}: {:?}", report.errors);
+        };
+        start("w-a", &["fe", "be", "api"]);
+        start("w-b", &["fe"]);
+        start("w-c", &["be", "api"]);
+        start("w-d", &[]);
+        start("w-e", &["api"]);
+        start("w-f", &["api", "fe", "be"]);
+        start("w-g", &["be"]);
+        start("w-h", &["fe", "api"]);
+        crate::update_work_pinned(&works, "w-e", true).unwrap();
+        // 폴더가 사라진 워크트리 — 없다고 서고, 그 자리를 건너뛰어도 뒤의 자리가 밀리면 안 된다.
+        std::fs::remove_dir_all(works.join("w-c/trees/be")).unwrap();
+        for tree in ["w-a/trees/be", "w-b/trees/fe", "w-c/trees/api", "w-f/trees/api", "w-f/trees/be", "w-h/trees/fe"] {
+            std::fs::write(works.join(tree).join("untracked.txt"), "x").unwrap();
+        }
+
+        let listed: Vec<(String, Vec<(String, bool, bool)>)> = list_works(&works)
+            .unwrap()
+            .into_iter()
+            .map(|v| {
+                let slug = v.work.slug;
+                let trees = v
+                    .worktrees
+                    .into_iter()
+                    .map(|t| {
+                        let at = format!("{slug}/trees/{}", t.project);
+                        assert!(t.path.ends_with(&at), "{at}의 경로가 다른 자리를 가리킨다: {}", t.path);
+                        (t.project, t.exists, t.dirty)
+                    })
+                    .collect();
+                (slug, trees)
+            })
+            .collect();
+
+        let tree = |project: &str, exists: bool, dirty: bool| (project.to_string(), exists, dirty);
+        let expected = vec![
+            ("w-e".to_string(), vec![tree("api", true, false)]),
+            ("w-a".to_string(), vec![tree("fe", true, false), tree("be", true, true), tree("api", true, false)]),
+            ("w-b".to_string(), vec![tree("fe", true, true)]),
+            ("w-c".to_string(), vec![tree("be", false, false), tree("api", true, true)]),
+            ("w-d".to_string(), vec![]),
+            ("w-f".to_string(), vec![tree("api", true, true), tree("fe", true, false), tree("be", true, true)]),
+            ("w-g".to_string(), vec![tree("be", true, false)]),
+            ("w-h".to_string(), vec![tree("fe", true, true), tree("api", true, false)]),
+        ];
+        assert_eq!(listed, expected);
+
+        // 앵커: 이 픽스처가 상한보다 많은 워크트리를 읽는다(상한은 많아야 8이다).
+        let read = expected.iter().flat_map(|(_, t)| t).filter(|(_, exists, _)| *exists).count();
+        assert!(read > status_workers(usize::MAX), "워크트리 {read}개가 상한 이하다 — 일꾼 하나가 여럿을 읽는 길을 안 탄다");
+    }
+
+    /// 병렬의 상한은 가용 코어를 4~8로 자른 값이다(프로세스 스펙 S19). 아래가 4인 것은 `git status`가 CPU보다
+    /// 파일시스템을 기다리는 일이라 코어가 적어도 겹쳐 돌 몫이 있어서이고, 위가 8인 것은 사용자의 셸 · 빌드와
+    /// 같은 기계를 나눠 쓰기 때문이다.
+    #[test]
+    fn status_workers_clamp_the_available_cores_between_four_and_eight() {
+        let table = [(0, 4), (1, 4), (2, 4), (4, 4), (5, 5), (6, 6), (8, 8), (12, 8), (64, 8)];
+        for (cores, workers) in table {
+            assert_eq!(status_workers(cores), workers, "코어 {cores}개");
+        }
+    }
+
+    /// 상한 있는 병렬: 한 번에 **상한만큼** 돌고, 그보다 많이는 안 돈다. 결과는 넣은 순서다.
+    ///
+    /// 각 호출은 「동시에 돈 수가 상한에 닿았다」는 문이 열리기를 기다린다(시한 5초). 병렬이 상한보다 좁으면
+    /// 문이 안 열려 호출마다 시한을 다 채우고 최대 동시 수가 상한에 못 미쳐 빨개진다 — 멈춰 서지는 않는다.
+    #[test]
+    fn map_bounded_runs_up_to_the_limit_at_once_and_never_more() {
+        use std::sync::{Condvar, Mutex};
+        use std::time::Duration;
+
+        struct Gate {
+            in_flight: usize,
+            most: usize,
+        }
+        let limit = 4;
+        let items: Vec<usize> = (0..11).collect();
+        let gate = (Mutex::new(Gate { in_flight: 0, most: 0 }), Condvar::new());
+
+        let out = map_bounded(&items, limit, |&i| {
+            let (lock, opened) = &gate;
+            let mut g = lock.lock().unwrap();
+            g.in_flight += 1;
+            g.most = g.most.max(g.in_flight);
+            opened.notify_all();
+            let (mut g, _) = opened.wait_timeout_while(g, Duration::from_secs(5), |g| g.most < limit).unwrap();
+            g.in_flight -= 1;
+            i * 10
+        });
+
+        assert_eq!(out, items.iter().map(|i| i * 10).collect::<Vec<_>>(), "결과가 넣은 순서가 아니다");
+        let most = gate.0.lock().unwrap().most;
+        assert_eq!(most, limit, "한 번에 {most}개가 돌았다 — 상한은 {limit}");
+    }
+
+    /// 넣은 것이 상한보다 적거나 상한이 0 · 1이어도 결과는 넣은 순서 그대로 빠짐없이 온다.
+    #[test]
+    fn map_bounded_returns_every_item_in_order_whatever_the_limit() {
+        for limit in [0, 1, 2, 8] {
+            for len in [0, 1, 3, 9] {
+                let items: Vec<usize> = (0..len).collect();
+                assert_eq!(map_bounded(&items, limit, |&i| i + 1), (1..=len).collect::<Vec<_>>(), "상한 {limit}, {len}개");
+            }
+        }
     }
 
     /// spec 폴더의 다섯 이름은 **표시 계층**의 약속이다. 커널은 정렬된 상대 경로

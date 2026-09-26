@@ -67,9 +67,14 @@ pub async fn delete_project(slug: String) -> CmdResult<()> {
 // (`어느_명령도_모드를_기본값으로_안_정한다`)가 빨개진다. 그 검사가 여기가 아니라 저기
 // 사는 것은 **제 자신을 안 읽기 때문이다**(같은 파일의 `APP_SOURCES` 머리말).
 
+// work 목록은 워크트리마다 `git status` 프로세스를 기다린다(코어가 상한 있는 병렬로 부른다 — 프로세스 스펙 S19).
+// 기다리는 일이라 blocking 풀에서 돌려 tokio 워커를 막지 않는다(`pty_kill`과 같다 — 프로세스 스펙 「IPC 규칙」).
+// spec이 바뀔 때마다 도는 조회라, 워커에서 돌면 그동안 그 워커가 다른 async 명령을 못 받는다.
 #[tauri::command]
 pub async fn list_works(mode: Mode) -> CmdResult<Vec<WorkView>> {
-    atelier_core::list_works(&works_dir(mode)).map_err(err)
+    tauri::async_runtime::spawn_blocking(move || atelier_core::list_works(&works_dir(mode)).map_err(err))
+        .await
+        .map_err(|e| format!("목록을 읽지 못했습니다: {e}"))?
 }
 
 #[tauri::command]
@@ -411,26 +416,43 @@ pub async fn startup_report(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    /// **시작 보고는 blocking 풀에서 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 10). 보고는 시작 정리가 끝날
-    /// 때까지(최악 2초 남짓) 답하지 않는다 — async 명령 안에서 곧바로 기다리면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
-    /// `#[tauri::command]`는 런타임 없이 못 부르니 자리로 잰다. 기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
-    #[test]
-    fn the_startup_report_waits_off_the_async_workers() {
+    /// 명령 하나의 몸통 — 서명 뒤에서 열 0의 `}`까지. 잘라 낸 자리가 테스트 모듈을 삼키면 소스 스캔이 제 문자열을
+    /// 읽고 통과하므로 그것을 먼저 막는다.
+    fn command_body(name: &str) -> &'static str {
         let src = include_str!("commands.rs");
         let body = src
-            .split_once("pub async fn startup_report(")
+            .split_once(&format!("pub async fn {name}("))
             .expect("명령이 있다")
             .1
             .split_once("\n}\n")
             .expect("명령의 끝이 있다")
             .0;
         assert!(!body.contains("mod tests"), "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다");
+        body
+    }
+
+    /// **시작 보고는 blocking 풀에서 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 10). 보고는 시작 정리가 끝날
+    /// 때까지(최악 2초 남짓) 답하지 않는다 — async 명령 안에서 곧바로 기다리면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
+    /// `#[tauri::command]`는 런타임 없이 못 부르니 자리로 잰다. 기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
+    #[test]
+    fn the_startup_report_waits_off_the_async_workers() {
+        let body = command_body("startup_report");
         let blocking = body.find("spawn_blocking(").expect("시작 보고를 blocking 풀로 안 보낸다 — 기다리는 동안 tokio 워커가 멎는다");
         let answer = body.find("holder.answer()").expect("시작 보고를 붙잡은 자리에서 안 읽는다");
         assert!(blocking < answer, "보고를 읽는 줄({answer})이 blocking 풀({blocking}) 밖에 있다");
         assert_eq!(body.matches("answer()").count(), 1, "보고를 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
+    }
+
+    /// **work 목록은 blocking 풀에서 git을 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 15). 코어의
+    /// 목록 조회는 워크트리마다 `git status` 프로세스를 기다린다 — async 명령 안에서 곧바로 부르면 그동안 tokio
+    /// 워커 하나가 멎는다. 명령의 모양(공개 async 함수)은 그대로다: 등록 이름 검사와 다리가 그 자리를 본다.
+    #[test]
+    fn the_work_list_waits_for_git_off_the_async_workers() {
+        let body = command_body("list_works");
+        let blocking = body.find("spawn_blocking(").expect("work 목록을 blocking 풀로 안 보낸다 — git을 기다리는 동안 tokio 워커가 멎는다");
+        let list = body.find("atelier_core::list_works(").expect("명령이 코어의 목록 조회를 안 부른다");
+        assert!(blocking < list, "목록 조회({list})가 blocking 풀({blocking}) 밖에 있다");
+        assert_eq!(body.matches("list_works(").count(), 1, "목록을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던
