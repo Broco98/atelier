@@ -25,6 +25,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
@@ -398,8 +399,10 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
             **⇧⇧가 여기서 빠진 것은 걷혔기 때문이다**(팔레트 결정 2). 그 몸짓은 accelerator 문법에
             실을 자리가 없어 메뉴로 되살릴 수도 없었는데, 그것을 ⌘K로 바꾼 값의 절반이
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
+        {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
+            붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
         <span className="text-[12.5px] leading-[1.6] text-tertiary">
-          ⌃Tab·⌘W가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
+          <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
     </PopoverPortal>
