@@ -198,6 +198,21 @@ const TABLE = {
 export const ALL_MODES = Object.keys(TABLE) as Mode[];
 
 /**
+ * 밖에서 온 글자가 가리키는 모드 — 모르는 글자면 `null`이다. 저장소에 남은 마지막 모드
+ * (`lastMode`)와 편집기 주소의 id(`/settings/spec-layout/$id`, spec 레이아웃 결정 25)가 이것을 읽는다.
+ *
+ * `ALL_MODES`로 **검증한다**: 캐스트로 두면 저장소에 남은 옛 값이나 손으로 고친 문자열이 그대로
+ * 모드가 되어, 표에 없는 키로 파생을 찾다 `undefined`가 화면까지 간다. 모르는 글자를 어디로 눕힐지는
+ * 부르는 자리가 정한다 — 마지막 모드는 Atelier로, 편집기 주소는 「spec 레이아웃」 페이지로 간다.
+ *
+ * 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」(`shell-meta.tsx` 머리말) — 편집기 주소가 둘째
+ * 자리가 된 날 셸 스토어에서 이 표로 올라왔다.
+ */
+export function modeFrom(text: string | null): Mode | null {
+  return ALL_MODES.find((mode) => mode === text) ?? null;
+}
+
+/**
  * 이 주소는 어느 세계인가. **정확히 `/maison`이거나 `/maison/`으로 시작할 때만** Maison이다 —
  * `startsWith("/maison")` 하나로 두면 `/maisonette` 같은 미래의 주소가 조용히 Maison이 되고,
  * 그때 화면은 「가끔 Maison으로 뜬다」로만 보인다.
