@@ -214,9 +214,10 @@ export function formatElapsed(ms: number): string {
  * **마크가 상태색을 안 받는다**(판 04 결정 15). `currentColor`로 칠하는 글리프라 행의 글자색을
  * 그대로 받는다 — 색은 레인이 말한다. 경과는 부차 정보라 한 단 내려간 `tertiary`다.
  *
- * **규격(글자 크기·간격·오른쪽 여백)이 조용한 갈래(`ShellMeta`)와 같다.** 두 갈래가 같은 칸에
- * 번갈아 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다 숫자의 오른쪽 끝이 튄다 —
- * 그 끝이 구획 머리의 개수와 같은 x에 서는 것(`SidebarItem` 주석의 계약)도 둘 다 지켜야 한다.
+ * **규격(글자 크기·간격·오른쪽 여백)이 조용한 갈래(`ShellMeta`)와 같은 정의다**(index.css의
+ * `row-meta`). 두 갈래가 같은 칸에 번갈아 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
+ * 숫자의 오른쪽 끝이 튄다 — 그 끝이 구획 머리의 개수와 같은 x에 서는 것(`SidebarItem` 주석의
+ * 계약)도 둘 다 지켜야 한다. 그래서 문자열을 옮겨 적지 않고 한 정의를 부른다.
  *
  * **아무것도 안 설 때는 `null`이다.** 도는 셸의 마크를 모르는 드문 갈래(훅 없는 셸이 OSC로
  * 앰버를 세웠다가 출력으로 풀린 칸에서 아는 명령이 안 도는 경우)다 — 빈 상자를 세우면 칸이
@@ -239,7 +240,7 @@ export function SignalMeta({
   const elapsed = showsElapsed(kind);
   if (mark === null && !elapsed) return null;
   return (
-    <span className="flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px]">
+    <span className="row-meta">
       {mark && (
         // 이름은 눈이 아니라 접근성으로만 읽는다 — `ShellMeta`의 무리와 같은 규칙이다.
         // 수가 안 붙는 것은 이 자리가 **셸 하나**의 신호이기 때문이다(무리가 아니다).

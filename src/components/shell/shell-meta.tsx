@@ -23,10 +23,10 @@ import { agentMarkOf, type AgentMark } from "@/components/ui/agent-mark";
  * **`components/shell`에 사는 이유는 쓰는 자리가 둘이어서다**(결정 13) — nav `Terminal`과
  * work 행의 오른쪽 끝(`sidebar-active-band` 결정 14로 한 줄 행이 돌아오면서 다시 그 자리다).
  * 이 저장소의 규칙은 「쓰는 자리가 하나면 그 파일로, 둘이면 공용으로」이고, 세는 규칙과
- * 규격(글꼴·간격·색·오른쪽 여백)이 여기 하나에 있어야 그 둘이 앞으로도 안 갈린다. 오른쪽
- * 여백(`pr-[5px]`)은 두 자리 다 구획 헤더의 개수와 같은 x에 오른쪽 끝을 세우는 값이고, work
- * 행에서 같은 칸에 번갈아 서는 신호의 마크·경과(`shell-signal.tsx`의 `SignalMeta`)가 이 규격을
- * 따른다.
+ * 색이 여기 하나에 있어야 그 둘이 앞으로도 안 갈린다. 규격(글꼴·간격·오른쪽 여백)은 index.css의
+ * `row-meta` 하나다 — work 행에서 같은 칸에 번갈아 서는 신호의 마크·경과(`shell-signal.tsx`의
+ * `SignalMeta`)가 같은 정의를 부른다. 오른쪽 여백(`pr-[5px]`)은 두 자리 다 구획 헤더의 개수와
+ * 같은 x에 오른쪽 끝을 세우는 값이다.
  *
  * **터미널 feature를 import하지 않는다.** props만 받는 순수 컴포넌트라 이 저장소의 유일한
  * 컴포넌트 seam인 정적 마크업에 산다(shell-meta.test.tsx) — 스토어를 물면 `@xterm/*`와 그
@@ -72,7 +72,10 @@ export function ShellMeta({
     // 자리의 그물이다: 어느 무리가 자기 색을 잃으면 글자가 곧장 tertiary로 떨어져 work 행
     // 오른쪽 메타의 대비 검사(L3)가 빨개진다. 지우면 그때 색이 부모의 것(둘 다
     // `muted-foreground`)으로 조용히 대체돼 **그 검사가 아무것도 못 잡는다.**
-    <span className="flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px] text-tertiary">
+    //
+    // 규격(가로 한 줄 · 글자 · 간격 · 오른쪽 여백)은 `row-meta` 하나다 — 신호 갈래(`SignalMeta`)가
+    // 같은 칸에 번갈아 서며 같은 정의를 부른다(index.css).
+    <span className="row-meta text-tertiary">
       {[...marks].map(([kind, { mark, count }]) => (
         // 이름은 **눈이 아니라 접근성으로만** 읽는다 — 좁은 사이드바에서 이름까지 적으면
         // 무리가 둘일 때 이 자리가 제목보다 길어진다. `title`은 안 단다: work 행에 머물면
