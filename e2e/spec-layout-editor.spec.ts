@@ -161,7 +161,8 @@ test("아이콘 칸의 팝오버에서 아이콘을 고르면 트리 행이 따�
   await expect(표.getByRole("radio", { name: "아이콘 없음", exact: true })).toHaveAttribute("aria-checked", "true");
   await 표.getByRole("radio", { name: "scale", exact: true }).click();
   await expect(표).toHaveCount(0);
-  await expect(칸).toHaveAttribute("title", "scale");
+  // 칸의 도움말은 지금 아이콘의 이름이다 — 이름보다 더 말하는 지금 값이라 설명으로 읽힌다(S28)
+  await expect(칸).toHaveAccessibleDescription("scale");
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
@@ -185,6 +186,8 @@ test("머리 `spec/`을 눌러 안내를 고치고 저장하면 저장된 레이
   await installFixtureBackend(page);
   await openEditor(page);
 
+  // 머리의 도움말은 누르면 서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로 읽힌다(S28)
+  await expect(page.getByRole("button", { name: "spec/", exact: true })).toHaveAccessibleDescription("spec 폴더 안내");
   await page.getByRole("button", { name: "spec/", exact: true }).click();
   const 안내 = page.getByLabel("spec 폴더 안내", { exact: true });
   await expect(안내).toHaveValue("spec 폴더의 방침 문단.");
@@ -520,6 +523,9 @@ for (const way of ["단축키로", "버튼으로"] as const) {
     await openEditor(page);
 
     await 행(page, "decisions.md").click();
+    // 버튼의 도움말이 그 단축키를 말한다 — 툴팁의 Kbd이자 버튼의 설명이다(S28)
+    await expect(도구(page, "아래로")).toHaveAccessibleDescription("⌥↓");
+    await expect(도구(page, "들여쓰기")).toHaveAccessibleDescription("⌥→");
     if (way === "단축키로") {
       await page.keyboard.press("Alt+ArrowDown");
       await expect(page.getByRole("treeitem")).toHaveText(["overview.md", "{n}-{name}/", "tickets/", "decisions.md"]);

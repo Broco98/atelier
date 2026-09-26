@@ -31,6 +31,7 @@ import PageHeader from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Hint } from "@/components/ui/tooltip";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
 import { layoutDirRef } from "@/features/works/refs";
@@ -453,12 +454,14 @@ export function EditorColumns({
         />
         <div className="px-2 pt-2 pb-0.5">
           {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더
-              안내(맨 위 항목의 설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. */}
-          <button
+              안내(맨 위 항목의 설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. 도움말은 누르면
+              서는 칸의 이름이다 — 이름(`spec/`)보다 더 말하는 것이라 설명으로도 남는다(S28). */}
+          <Hint
+            text="spec 폴더 안내"
+            announce="description"
             type="button"
             onClick={() => onSelect([])}
             aria-pressed={at.length === 0}
-            title="spec 폴더 안내"
             className={cn(
               "flex h-7 w-full items-center gap-1.5 rounded-[8px] px-2 text-left text-[12.5px] transition-colors",
               at.length === 0 ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
@@ -466,7 +469,7 @@ export function EditorColumns({
           >
             <Folder aria-hidden className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />
             <span className="font-mono text-[12px]">spec/</span>
-          </button>
+          </Hint>
         </div>
         <EntryTree
           draft={draft}
@@ -530,56 +533,74 @@ function TreeTools({
       aria-label="항목 편집"
       className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-2.5"
     >
+      {/* 도움말은 이름과 같은 글자라 눈에만 뜬다(S28) — 보이는 글자(「파일」)보다 긴 이름을 보여 줄 뿐이다. */}
       {(["file", "folder"] as const).map((kind) => (
-        <button
+        <Hint
           key={kind}
+          text={ADD_LABEL[kind]}
           type="button"
           onClick={() => onAdd(kind)}
-          aria-label={kind === "file" ? "파일 항목 추가" : "폴더 항목 추가"}
-          title={kind === "file" ? "파일 항목 추가" : "폴더 항목 추가"}
+          aria-label={ADD_LABEL[kind]}
           className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-[12.5px] font-medium text-foreground shadow-xs transition-colors hover:bg-state-1"
         >
           <Plus aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={2.2} />
           {kind === "file" ? "파일" : "폴더"}
-        </button>
+        </Hint>
       ))}
       <div
         role="group"
         aria-label="고른 항목 옮기기"
         className="ml-auto flex shrink-0 items-center gap-px rounded-[9px] bg-state-1 p-0.5"
       >
+        {/* 이름이 없는 아이콘 버튼이라 툴팁 글자가 이름이고, 단축키는 Kbd로 붙어 설명으로도 남는다(S28). 잠기면
+            툴팁이 없다(S23) — 버튼이 네이티브 `disabled`다. */}
         {MOVE_TOOLS.map(({ move, label, keys, Icon }) => (
-          <button
+          <Hint
             key={move}
-            type="button"
-            onClick={() => onMove(move)}
+            text={label}
+            shortcut={keys}
+            announce="name"
             disabled={!edits[move]}
-            aria-label={label}
-            title={`${label} (${keys})`}
-            className="flex h-6 w-[26px] items-center justify-center rounded-[7px] text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+            render={
+              <button
+                type="button"
+                onClick={() => onMove(move)}
+                disabled={!edits[move]}
+                className="flex h-6 w-[26px] items-center justify-center rounded-[7px] text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+              />
+            }
           >
             <Icon aria-hidden className="size-3.5" strokeWidth={2} />
-          </button>
+          </Hint>
         ))}
       </div>
       {/* 휴지통은 붉고, 가리키면 더 짙은 붉은색이다(프로토타입 뒤 사용자 선택). 머리 `spec/`을 골랐으면 지울 것이
-          없어 흐린 붉은색으로 잠긴다 — 잠긴 동안에는 가리켜도 바뀌지 않는다. */}
-      <button
-        type="button"
-        onClick={onRemove}
+          없어 흐린 붉은색으로 잠긴다 — 잠긴 동안에는 가리켜도 바뀌지 않고 툴팁도 없다(S23). 도움말 「지우기」는 눈에만
+          뜬다 — 이름(「고른 항목 지우기」)이 이미 더 말한다(S28). */}
+      <Hint
+        text="지우기"
         disabled={!edits.remove}
-        aria-label="고른 항목 지우기"
-        title="지우기"
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
-          edits.remove ? "text-red-600 hover:bg-red-600/10 hover:text-red-700" : "text-red-600/35",
-        )}
+        render={
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={!edits.remove}
+            aria-label="고른 항목 지우기"
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
+              edits.remove ? "text-red-600 hover:bg-red-600/10 hover:text-red-700" : "text-red-600/35",
+            )}
+          />
+        }
       >
         <Trash2 aria-hidden className="size-[15px]" strokeWidth={1.9} />
-      </button>
+      </Hint>
     </div>
   );
 }
+
+/** 더하기 둘의 이름 — 보이는 글자는 종류(「파일」·「폴더」)뿐이다. */
+const ADD_LABEL: Record<"file" | "folder", string> = { file: "파일 항목 추가", folder: "폴더 항목 추가" };
 
 /** 옮기기 넷 — 줄에 선 순서이고, 단축키는 이 키들에 ⌥를 누른 것이다(`moveOfKey`). */
 const MOVE_TOOLS: { move: EntryMove; label: string; keys: string; Icon: LucideIcon }[] = [
@@ -1111,6 +1132,8 @@ function TemplateField({
             </button>
           ))}
         </div>
+        {/* 잘린 경로의 전체는 `title`이 보인다 — 툴팁(`Hint`)이 아닌 것은 develop S29의 「버튼이 아닌 자리」(깨진 링크 ·
+            없는 그림)와 같은 까닭이다: 툴팁 트리거로 세우면 누를 것 없는 글자에 포커스와 역할이 새로 생긴다. */}
         {on && (
           <span
             title={`${folder}/${template}`}
@@ -1158,6 +1181,9 @@ const ICON_CHOICES: (SpecIconName | null)[] = [null, ...(Object.keys(SPEC_ICONS)
  * **카드는 Popover다**(develop 판 3 — 작업 ⓘ 메타와 같다). 열리면 고른 칸에 포커스가 가고(`initialFocus`), Esc로
  * 닫으면 포커스가 칸으로 돌아온다 — 둘 다 부품이 한다. 고르면 닫고, 포커스는 역시 부품이 칸으로 돌려준다. 모달이
  * 아니라(부품 기본, S46) 바깥을 누르면 카드가 닫히고 그 누른 것도 눌린다.
+ *
+ * 도움말은 둘이다(S28). 칸의 툴팁은 **지금 아이콘의 이름**이다 — 이름(「아이콘 바꾸기」)보다 더 말하는 지금 값이라
+ * 설명으로도 남는다. 표의 칸마다의 툴팁은 그 칸의 이름이라 눈에만 뜬다.
  */
 function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: string | null) => void }) {
   const [open, setOpen] = useState(false);
@@ -1165,13 +1191,18 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
   const Current = specIconOf(icon);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        aria-label="아이콘 바꾸기"
-        title={icon ?? "아이콘 없음"}
-        className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors",
-          open ? "border-primary bg-primary/10" : "border-border bg-background quiet-hover",
-        )}
+      <Hint
+        text={icon ?? "아이콘 없음"}
+        announce="description"
+        render={
+          <PopoverTrigger
+            aria-label="아이콘 바꾸기"
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors",
+              open ? "border-primary bg-primary/10" : "border-border bg-background quiet-hover",
+            )}
+          />
+        }
       >
         {Current ? (
           <Current aria-hidden className="size-[18px] text-muted-foreground" strokeWidth={1.9} />
@@ -1184,7 +1215,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
         ) : (
           <Ban aria-hidden className="size-[18px] text-tertiary opacity-60" strokeWidth={1.9} />
         )}
-      </PopoverTrigger>
+      </Hint>
       <PopoverContent
         align="start"
         aria-label="아이콘 바꾸기"
@@ -1204,13 +1235,13 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
             const checked = choice === icon;
             const name = choice ?? "아이콘 없음";
             return (
-              <button
+              <Hint
                 key={name}
+                text={name}
                 type="button"
                 role="radio"
                 aria-checked={checked}
                 aria-label={name}
-                title={name}
                 onClick={() => {
                   onPick(choice);
                   setOpen(false);
@@ -1221,7 +1252,7 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
                 )}
               >
                 <Glyph aria-hidden className="size-4" strokeWidth={1.9} />
-              </button>
+              </Hint>
             );
           })}
         </div>
