@@ -7,7 +7,9 @@ import {
   ipcCallArgs,
   recordClipboard,
   unknownIpcCalls,
+  workRow,
 } from "./harness";
+import { fillToCap, MAX_SHELLS } from "./tab-row";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
 // 작업 ⋯ · 상태 메뉴 · 이름 바꾸기 창 · ⓘ 메타 · 작업 화면 토스트 · 전체화면 · Mermaid 「코드」 · 툴팁.
@@ -34,6 +36,14 @@ const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputed
  * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
+
+/**
+ * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`로만 흐른다. **페이지를 열기 전에
+ * `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는 된다. 열림 애니메이션의
+ * 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
+ */
+const 시계를세운다 = async (page: Page) =>
+  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
 // 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
@@ -82,6 +92,8 @@ test("상태 배지는 메뉴를 연다고 말하고, 지금 상태가 선택됨
 
   await expect(badge).toHaveAttribute("aria-haspopup", "menu");
   await expect(badge).toHaveAttribute("aria-expanded", "false");
+  // 이름은 지금 상태이고, 도움말 「상태 변경」(툴팁)은 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(badge).toHaveAccessibleDescription("상태 변경");
   await badge.click();
   await expect(menu).toBeVisible();
   await expect(badge).toHaveAttribute("aria-expanded", "true");
@@ -306,6 +318,8 @@ test("ⓘ를 누르면 첫 복사 행이 포커스를 받고, Enter면 그 값�
   const branchRow = card.getByRole("button", { name: new RegExp(`^${pinnedWork.branch}\\b`) });
   await expect(card.getByRole("button").first()).toBeFocused();
   await expect(branchRow).toBeFocused();
+  // 행의 이름은 값이고, 도움말 「복사」(툴팁)는 이름보다 더 말하는 것이라 설명으로 남는다(S28).
+  await expect(branchRow).toHaveAccessibleDescription("복사");
 
   await page.keyboard.press("Enter");
 
@@ -352,8 +366,6 @@ test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로
 // 부품·같은 호출이다. 세운 시계에서는 사라지는 전이의 프레임(rAF)이 안 와서, 사라짐을 볼 때는 시계를 다시 흐르게 둔다.
 
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
-const 시계를세운다 = async (page: Page) =>
-  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
 
 // 터미널 탭에서 잰다 — 토스트가 SpecViewer 안에 살던 앞 판에는 **이 탭에서 트리를 복사하면 아무 말이 없었다**(결정 47).
 test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영역에 「… 복사됨」이 선다", async ({ page }) => {
@@ -523,12 +535,15 @@ for (const { what, file, open, reveal } of [
 
 // 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」). 툴팁이 떠 있는 채 누른 Esc도 창을 닫는다 —
 // 부품 기본은 Esc를 툴팁에서 멈춰 첫 Esc가 툴팁만 닫는데, 툴팁은 사람이 연 층이 아니다(`tooltip.tsx`).
+//
+// **「닫기」 툴팁을 글자로 좁혀 집는다.** 여는 버튼도 툴팁(「전체화면으로 크게 보기」)을 들어서, 포커스로 연 창이 뜨는 동안
+// 그 툴팁이 닫히는 애니메이션으로 잠깐 겹치고, 창이 닫혀 포커스가 돌아오면 다시 선다.
 test("닫기 버튼은 포커스에 툴팁 「닫기」와 Kbd `Esc`를 띄우고 단축키를 설명으로 말한다 — 툴팁이 떠 있어도 Esc 한 번에 닫힌다", async ({
   page,
 }) => {
   await installFixtureBackend(page);
   await 문서를연다(page, 다이어그램문서);
-  const tooltip = page.locator("[data-slot=tooltip-content]");
+  const tooltip = page.locator("[data-slot=tooltip-content]", { hasText: "닫기" });
 
   await 크게보기(page).focus();
   await page.keyboard.press("Enter");
@@ -573,5 +588,153 @@ test("다이어그램을 끌다 가림막 위에서 손을 떼도 창은 남는�
   // 대조: 같은 자리를 누르고 떼면 닫힌다.
   await page.mouse.click(scrim.x, scrim.y);
   await expect(dialog).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── Mermaid 「코드」 (스토리 103) ──
+// 다이어그램 머리 줄의 「코드」는 켬/끔 토글이다 — 켜면 그림 자리에 원본 mermaid 코드가 서고, 켜졌는지를 `aria-pressed`로
+// 말한다(전에는 말하지 않았다). 도움말 「원본 mermaid 코드 보기」는 툴팁이다 — 포커스로 뜨는 툴팁은 포인터를 한 번도
+// 안 쓴 검사에서 잰다(「좋은 검사」). 문서는 전체화면 절의 「다이어그램.md」다.
+
+const 코드 = (page: Page) => page.getByRole("button", { name: "코드", exact: true });
+/** 원본 코드의 한 줄 — 그림(svg)에는 이 글자가 없다. 그림의 글자는 노드 이름뿐이다. */
+const 원본코드 = (page: Page) => page.getByText("A[시작] --> B[끝]");
+
+test("다이어그램의 「코드」는 켬/끔을 말하고, 누르면 그림과 원본 코드가 뒤집힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+  const code = 코드(page);
+
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+
+  await code.click();
+  await expect(code).toHaveAttribute("aria-pressed", "true");
+  await expect(원본코드(page)).toBeVisible();
+
+  await code.click();
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고, Space로 켜고 끈다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+  const code = 코드(page);
+  const tooltip = page.locator("[data-slot=tooltip-content]");
+
+  await code.focus();
+  await expect(tooltip).toHaveText("원본 mermaid 코드 보기");
+
+  await page.keyboard.press("Space");
+  await expect(code).toHaveAttribute("aria-pressed", "true");
+  await expect(원본코드(page)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 600ms 뒤에, 포커스면 곧바로 선다. 단축키가 있으면 옆에 Kbd로
+// 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
+// (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
+// 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
+//
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 350ms 호버 카드가 600ms 툴팁보다 먼저 서므로, 카드가
+// 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
+// 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
+
+/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
+const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
+/** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
+const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+
+test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const search = 검색(page);
+  const tooltip = 툴팁(page);
+  await expect(search).toBeVisible();
+  // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
+  await expect(search).toHaveAccessibleDescription("⌘K");
+  await expect(tooltip).toHaveCount(0);
+
+  await 시계를세운다(page);
+  await search.hover();
+  await page.clock.runFor(500);
+  // 아래에서 곧 선다 — 이 「없다」는 그 앵커에 기대어 지연이 0이 아님을 잰다.
+  await expect(tooltip).toHaveCount(0);
+  await page.clock.runFor(200);
+  await expect(tooltip).toContainText("검색");
+  await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」).
+test("포인터 없이 검색 버튼에 포커스하면 툴팁 「검색」과 Kbd `⌘K`가 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const tooltip = 툴팁(page);
+  await expect(검색(page)).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+
+  await 검색(page).focus();
+
+  await expect(tooltip).toContainText("검색");
+  await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁은 안 서고 호버 카드만 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const row = workRow(page, plainWork.slug);
+  const card = page.locator("[data-popover]");
+  const tooltip = 툴팁(page);
+  await expect(row).toBeVisible();
+  await expect(card).toHaveCount(0);
+
+  await row.hover();
+  // 앵커: 호버 카드가 섰다(350ms). 툴팁(600ms)은 그 뒤라, 여기서 재면 헛돈다.
+  await expect(card).toBeVisible();
+  await page.clock.runFor(1000);
+  await expect(tooltip).toHaveCount(0);
+
+  // 핀은 행 안에 있다 — 올려도 카드는 그대로 서 있다.
+  await row.getByRole("button", { name: `${plainWork.title} 고정`, exact: true }).hover();
+  await page.clock.runFor(1000);
+  await expect(card).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+
+  // 대조: 같은 시계에서 검색 버튼은 툴팁을 세운다.
+  await 검색(page).hover();
+  await page.clock.runFor(1000);
+  await expect(tooltip).toContainText("검색");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **꽉 찬 `+`는 잠긴 이유를 hover에 보인다** — 칸 하나에는 문장을 넣을 폭이 없어서다(결정 47). 잠김은 `aria-disabled` +
+// 클릭 무시라 툴팁이 막히지 않고(S23 — 네이티브 `disabled`에는 툴팁을 달지 않는다), 툴팁은 스크린리더에 아무것도 주지
+// 않으므로 같은 문장이 버튼의 설명으로 남는다(S28). 이름은 그대로 「셸 열기」다.
+test("꽉 찬 `+`에 올리면 잠긴 이유가 툴팁으로 서고, 같은 문장이 버튼의 설명이다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await fillToCap(page);
+  const plus = page.getByRole("button", { name: "셸 열기", exact: true });
+  const tooltip = 툴팁(page);
+  // 마지막 누름이 `+` 위에서 툴팁을 닫아 둔다(누르면 닫힌다) — 포인터를 비켰다가 다시 올린다.
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toHaveCount(0);
+
+  await plus.hover();
+
+  await expect(tooltip).toContainText(`${MAX_SHELLS}개까지`);
+  await expect(plus).toHaveAccessibleDescription((await tooltip.textContent())!.trim());
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -35,7 +35,7 @@ function ShellPicker({
   trigger: ReactElement;
   /**
    * 참이면 **여는 것만 막는다**(셸 상한). 버튼은 `aria-disabled`로 부르는 쪽이 이미 잠갔다 —
-   * 트리거에 `disabled`를 주면 네이티브 `disabled`가 되어 잠긴 이유(`title`)가 안 뜬다.
+   * 트리거에 `disabled`를 주면 네이티브 `disabled`가 되어 잠긴 이유(툴팁)가 안 뜬다(S23).
    */
   locked: boolean;
   /** 이 Work의 프로젝트들. 부르는 쪽이 둘 이상일 때만 이 메뉴를 세운다. */

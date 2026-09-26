@@ -321,7 +321,8 @@ describe("WorksPage 머리행 배치", () => {
     const a = actions(render());
     expect(a).not.toBe("");
     for (const one of [
-      'title="상태 변경"',
+      // 도움말 「상태 변경」은 툴팁이라 정적 마크업에 없다 — 이름(지금 상태)보다 더 말하던 그 말은 설명으로 남는다(S28).
+      'aria-description="상태 변경"',
       'aria-label="작업 메타"',
       'aria-label="작업 메뉴"',
       'aria-label="분할"',
@@ -375,7 +376,7 @@ describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
   it("상태 배지는 남는다", () => {
     // 배지는 「어느 단계인가」라 뷰 탭과 성질이 다르다 — 자주 누르는 조작이라 헤더에 남는다.
     // 뷰 탭을 걷으면서 함께 쓸려 나가면 상태를 바꾸는 데 클릭이 두 번 든다.
-    expect(actions(render())).toContain('title="상태 변경"');
+    expect(actions(render())).toContain('aria-description="상태 변경"');
   });
 });
 
@@ -1195,8 +1196,10 @@ describe("분할 뷰", () => {
 
   // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
   it("분할 토글이 두 상태 모두에 서고 켜짐을 말한다", () => {
-    expect(render(withSpec, "spec", null)).toContain('aria-label="분할" aria-pressed="false"');
-    expect(render(withSpec, "spec", "lr")).toContain('aria-label="분할" aria-pressed="true"');
+    // 여는 태그 하나에서 잰다 — 토글(`aria-pressed`)과 툴팁 트리거가 속성을 함께 펴서 둘의 순서가 붙어 있지 않다.
+    const split = (markup: string) => markup.match(/<button[^>]*aria-label="분할"[^>]*>/)?.[0] ?? "";
+    expect(split(render(withSpec, "spec", null))).toContain('aria-pressed="false"');
+    expect(split(render(withSpec, "spec", "lr"))).toContain('aria-pressed="true"');
   });
 });
 

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Compass, Copy, Layers, ListChecks, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TreeNode {
   name: string;
@@ -81,11 +83,14 @@ function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   // 접힌 폴더 경로 — 트리가 소유하며 리마운트(패널 토글)를 넘어 살지 않는다.
   // **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
   // `key`를 떼서, 작업을 옮겨도 이 접힘이 유지된다(그 결정이 감수한 것이다).
+  //
+  // 접힘을 폴더마다의 Collapsible에 맡기지 않고 여기 둔다 — 부모 폴더가 접히면 자식 폴더가 언마운트되는데,
+  // 그때 자식의 접힘이 제 안에 살았다면 부모를 다시 펼 때 사라진다.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const toggle = (path: string) => {
+  const setOpen = (path: string, open: boolean) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
+      if (open) next.delete(path);
       else next.add(path);
       return next;
     });
@@ -96,19 +101,22 @@ function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
       depth={depth}
       current={current}
       collapsed={collapsed}
-      onToggle={toggle}
+      onOpenChange={setOpen}
       onSelect={onSelect}
       onCopy={onCopy}
     />
   );
 }
 
+// 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
+// 기본 변형이라 움직임 없이 **바로** 접히고 닫히면 언마운트된다 — 지금까지의 조건부 렌더와 같다.
+// 뿌리가 곧 노드 상자(`flex flex-col`)라 상자가 느는 것은 자식 줄을 싸는 패널 하나다.
 function TreeRows({
   nodes,
   depth,
   current,
   collapsed,
-  onToggle,
+  onOpenChange,
   onSelect,
   onCopy,
 }: {
@@ -116,99 +124,101 @@ function TreeRows({
   depth: number;
   current: string | null;
   collapsed: Set<string>;
-  onToggle: (path: string) => void;
+  onOpenChange: (path: string, open: boolean) => void;
   onSelect: (path: string) => void;
   onCopy?: (path: string) => void;
 }) {
   return (
     <>
       {nodes.map((node) => {
-        const expanded = !collapsed.has(node.path);
+        if (node.children) {
+          const expanded = !collapsed.has(node.path);
+          return (
+            <Collapsible
+              key={node.path}
+              open={expanded}
+              onOpenChange={(open) => onOpenChange(node.path, open)}
+              className="flex flex-col"
+            >
+              <CollapsibleTrigger className={COLLAPSE_ROW} style={{ paddingLeft: 8 + depth * 14 }}>
+                <ChevronRight
+                  className={cn("size-3 transition-transform", expanded && "rotate-90")}
+                  strokeWidth={2.2}
+                />
+                <FolderGlyph name={node.name} />
+                {node.name}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="flex flex-col">
+                <TreeRows
+                  nodes={node.children}
+                  depth={depth + 1}
+                  current={current}
+                  collapsed={collapsed}
+                  onOpenChange={onOpenChange}
+                  onSelect={onSelect}
+                  onCopy={onCopy}
+                />
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        }
+        // 파일 행은 버튼 하나가 아니라 div + 형제 버튼 둘이다. 복사가 이름 선택 안에
+        // 중첩돼 있으면 두 가지가 동시에 깨진다 — 중첩 버튼은 HTML에서 허용되지 않아
+        // 안쪽을 span role="button"으로 흉내 내야 했고, 그러면 Tab으로 도달할 수 없다.
+        // 게다가 ARIA의 presentational-children 규칙상 button의 자식은 접근성 트리에서
+        // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
+        //
+        // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
+        // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
+        // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
+        // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
+        // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
+        // 자기 오른쪽 여백까지 품는다(복사 버튼이 있을 때만 필요하다).
+        // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
+        // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
         return (
           <div key={node.path} className="flex flex-col">
-            {node.children ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onToggle(node.path)}
-                  aria-expanded={expanded}
-                  className={COLLAPSE_ROW}
-                  style={{ paddingLeft: 8 + depth * 14 }}
-                >
-                  <ChevronRight
-                    className={cn("size-3 transition-transform", expanded && "rotate-90")}
-                    strokeWidth={2.2}
-                  />
-                  <FolderGlyph name={node.name} />
-                  {node.name}
-                </button>
-                {expanded && (
-                  <TreeRows
-                    nodes={node.children}
-                    depth={depth + 1}
-                    current={current}
-                    collapsed={collapsed}
-                    onToggle={onToggle}
-                    onSelect={onSelect}
-                    onCopy={onCopy}
-                  />
-                )}
-              </>
-            ) : (
-              // 파일 행은 버튼 하나가 아니라 div + 형제 버튼 둘이다. 복사가 이름 선택 안에
-              // 중첩돼 있으면 두 가지가 동시에 깨진다 — 중첩 버튼은 HTML에서 허용되지 않아
-              // 안쪽을 span role="button"으로 흉내 내야 했고, 그러면 Tab으로 도달할 수 없다.
-              // 게다가 ARIA의 presentational-children 규칙상 button의 자식은 접근성 트리에서
-              // 무시되므로 스크린리더에는 존재조차 읽히지 않았다. 형제로 푸는 것이 유일한 길이다.
-              //
-              // 배경(선택·hover)은 바깥 div가 갖는다. 두 hover가 한 요소에 겹치지 않도록
-              // selected-row는 자기 hover를 품고, 비선택 행만 여기서 hover:bg-state-1을 붙인다.
-              // 가로 여백은 div가 갖지 않는다. div가 가진 padding·gap은 두 버튼 어디에도
-              // 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다 —
-              // 행 전체가 하나의 button이던 시절엔 그 자리가 전부 눌렸다. 그래서 이름 버튼이
-              // 자기 오른쪽 여백까지 품는다(복사 버튼이 있을 때만 필요하다).
-              // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
-              // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
-              <div
+            <div
+              className={cn(
+                "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
+                node.path === current
+                  ? "selected-row font-medium"
+                  : "text-muted-foreground hover:bg-state-1",
+              )}
+            >
+              {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
+                  이름을 누를 수 있는 자리가 그만큼 좁아진다. h-full은 28px 행 전체가
+                  클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
+              <button
+                type="button"
+                onClick={() => onSelect(node.path)}
                 className={cn(
-                  "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
-                  node.path === current
-                    ? "selected-row font-medium"
-                    : "text-muted-foreground hover:bg-state-1",
+                  "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
+                  onCopy && "pr-1.5",
                 )}
+                style={{ paddingLeft: 8 + depth * 14 }}
               >
-                {/* 들여쓰기는 바깥이 아니라 여기 남는다 — 바깥 div로 올리면 깊은 노드일수록
-                    이름을 누를 수 있는 자리가 그만큼 좁아진다. h-full은 28px 행 전체가
-                    클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
-                <button
-                  type="button"
-                  onClick={() => onSelect(node.path)}
-                  className={cn(
-                    "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
-                    onCopy && "pr-1.5",
-                  )}
-                  style={{ paddingLeft: 8 + depth * 14 }}
-                >
-                  <FileGlyph name={node.name} />
-                  <span className="min-w-0 flex-1 truncate">{node.name}</span>
-                </button>
-                {onCopy && (
-                  // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
-                  // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
-                  // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
-                  // 거터 복사 버튼이 이미 같은 답을 하고 있다
-                  <button
+                <FileGlyph name={node.name} />
+                <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              </button>
+              {onCopy && (
+                // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
+                // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
+                // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
+                // 거터 복사 버튼이 이미 같은 답을 하고 있다
+                <Tooltip>
+                  <TooltipTrigger
                     type="button"
                     aria-label={`${node.name} 경로 복사`}
-                    title="경로 복사"
                     onClick={() => onCopy(node.path)}
                     className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
                   >
                     <Copy className="size-3" strokeWidth={1.8} />
-                  </button>
-                )}
-              </div>
-            )}
+                  </TooltipTrigger>
+                  <TooltipContent>경로 복사</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           </div>
         );
       })}

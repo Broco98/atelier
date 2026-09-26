@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +19,9 @@ import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy"
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
 import type { Mode } from "@/mode";
+
+/** 정렬 버튼의 도움말 — 툴팁의 글자이고, 스크린리더에는 이름이나 설명으로 간다(아래 버튼 주석). */
+const SORT_HELP = "아카이브한 날짜 기준 정렬";
 
 interface ArchiveListProps {
   // 행을 펼칠 때 문서 목록을 어느 루트에서 읽는가 — 화면이 이미 아는 값을 그대로 받는다.
@@ -118,19 +125,26 @@ function ArchiveList({
           )}
         >
           <span className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setSortAsc((v) => !v)}
-              title="아카이브한 날짜 기준 정렬"
-              className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
-            >
-              <ArrowDown
-                className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
-                strokeWidth={2}
-              />
-              {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
-              {sidebarOpen && "치운 날"}
-            </button>
+            {/* 도움말 「아카이브한 날짜 기준 정렬」은 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로(S28) 그
+                말은 둘로 남는다: 글자 「치운 날」이 선 동안에는 이름보다 더 말하는 설명이고, 사이드바가 닫혀 글리프만
+                남으면 이름이 없던 아이콘 버튼이라 툴팁과 같은 이름이다. */}
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                onClick={() => setSortAsc((v) => !v)}
+                aria-label={sidebarOpen ? undefined : SORT_HELP}
+                aria-description={sidebarOpen ? SORT_HELP : undefined}
+                className="flex h-6 items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium text-muted-foreground transition-colors quiet-hover"
+              >
+                <ArrowDown
+                  className={cn("size-3 transition-transform", sortAsc && "rotate-180")}
+                  strokeWidth={2}
+                />
+                {/* 사이드바 닫힘 시 신호등 인셋 때문에 라벨을 접고 아이콘만 남긴다 */}
+                {sidebarOpen && "치운 날"}
+              </TooltipTrigger>
+              <TooltipContent>{SORT_HELP}</TooltipContent>
+            </Tooltip>
             {/* **프로젝트 필터는 Atelier에만 선다**(결정 17). 값으로 가르지 않는 이유는
                 정보 탭 쪽과 같다 — 손으로 고친 work.json이 Room에도 프로젝트를 실어 올 수
                 있어서, 「옵션이 비면 안 그린다」로 두면 그날 저 세계에 없는 개념이 화면에
@@ -140,26 +154,34 @@ function ArchiveList({
               // 포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
               // `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
               <DropdownMenu>
-                <DropdownMenuTrigger
-                  // **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이
-                  // 없으면 읽을 말이 없다. 지금 값은 `title`이 그대로 든다(Tooltip은 판 4).
-                  aria-label="프로젝트 거르기"
-                  title={projectFilter ?? "모든 프로젝트"}
-                  className={cn(
-                    "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
-                    projectFilter
-                      ? "toggle-on"
-                      : "text-muted-foreground quiet-hover",
-                  )}
-                >
-                  <Filter className="size-3 shrink-0" strokeWidth={2} />
-                  {sidebarOpen && (
-                    <>
-                      <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
-                      <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
-                    </>
-                  )}
-                </DropdownMenuTrigger>
+                {/* **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이 없으면 읽을
+                    말이 없다. 지금 값은 툴팁이 보이고, 이름보다 더 말하는 것이라 설명(`aria-description`)으로도 남긴다
+                    (S28 — 툴팁은 스크린리더에 아무것도 주지 않는다). */}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <DropdownMenuTrigger
+                        aria-label="프로젝트 거르기"
+                        aria-description={projectFilter ?? "모든 프로젝트"}
+                        className={cn(
+                          "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
+                          projectFilter
+                            ? "toggle-on"
+                            : "text-muted-foreground quiet-hover",
+                        )}
+                      />
+                    }
+                  >
+                    <Filter className="size-3 shrink-0" strokeWidth={2} />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate">{projectFilter ?? "모든 프로젝트"}</span>
+                        <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
+                      </>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>{projectFilter ?? "모든 프로젝트"}</TooltipContent>
+                </Tooltip>
                 {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
                 <DropdownMenuContent align="end" width="wide">
                   <DropdownMenuRadioGroup
@@ -183,32 +205,32 @@ function ArchiveList({
 
         {/* mb-[10px] = 헤더 행(44px)에서 24px 컨트롤을 뺀 상하 여백 (ProjectList와 같은 값) */}
         {entries.length > 0 && (
-          <div className="relative mb-[10px] shrink-0">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tertiary"
-              strokeWidth={1.8}
-            />
-            <input
+          <InputGroup className="mb-[10px] shrink-0">
+            <InputGroupAddon>
+              <Search strokeWidth={1.8} />
+            </InputGroupAddon>
+            {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
+            <InputGroupInput
+              aria-label="아카이브 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="아카이브 검색"
-              className="h-9 w-full rounded-full border bg-background pl-9 pr-3.5 text-[13.5px] outline-none placeholder:text-tertiary focus:border-primary"
             />
-          </div>
+          </InputGroup>
         )}
 
         {/* 도착 전에는 비어 있다고 말하지 않는다 — 본문 빈 상태와 같은 이유다 */}
         {loading ? null : entries.length === 0 ? (
-          <div className="my-1 flex flex-col items-center gap-1.5 rounded-[14px] border border-dashed border-border-strong px-3.5 py-[22px] text-center">
-            <Archive className="mb-0.5 size-4 text-tertiary" strokeWidth={1.6} />
-            {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
-            <span className="text-[13.5px] font-medium text-muted-foreground">
-              {emptyListCopy(mode).title}
-            </span>
-            <span className="text-[12.5px] leading-normal text-tertiary">
-              {emptyListCopy(mode).body}
-            </span>
-          </div>
+          <Empty variant="list" className="my-1">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Archive strokeWidth={1.6} />
+              </EmptyMedia>
+              {/* 낱말은 세계를 탄다(#183) — 「작업」도 「Room」도 표가 정한다 */}
+              <EmptyTitle>{emptyListCopy(mode).title}</EmptyTitle>
+              <EmptyDescription>{emptyListCopy(mode).body}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : sorted.length === 0 ? (
           <div className="flex flex-1 items-center justify-center pb-10">
             {/* 좁힌 것이 검색어인지 필터인지를 말한다. **필터가 없는 세계에서는 검색어
@@ -228,10 +250,11 @@ function ArchiveList({
                 mode={mode}
                 entry={entry}
                 expanded={expanded.has(entry.slug)}
-                onToggle={() =>
+                onExpandedChange={(open) =>
                   setExpanded((prev) => {
                     const next = new Set(prev);
-                    if (!next.delete(entry.slug)) next.add(entry.slug);
+                    if (open) next.add(entry.slug);
+                    else next.delete(entry.slug);
                     return next;
                   })
                 }
@@ -255,11 +278,16 @@ function ArchiveList({
 // 아카이브 한 줄 + 그 아래 문서 트리. 행 자체는 **펼침 토글일 뿐** 선택 표시를 받지 않는다 —
 // 선택은 "지금 보고 있는 문서"에만 있고, 그 문서가 어느 아카이브 것인지는 트리의 들여쓰기와
 // 머리말의 제목이 말한다. 행까지 켜지면 화면에 켜진 것이 둘이 되어 어느 쪽이 본문인지 흐려진다.
+//
+// **여닫음은 Collapsible이 든다**(판 4, 스토리 114·115). 행이 트리거라 `aria-expanded`를 스스로 달고,
+// 문서 트리는 패널이다. 패널은 180ms로 접히는 변형(`fold`)이고 닫혀도 마운트된 채다(`keepMounted`) —
+// 그래야 펼치는 쪽도 움직이고, 한 번 편 트리의 폴더 접힘이 항목을 접었다 펴도 남는다. 닫힌 패널은
+// 부품이 `inert`로 막는다: 접히는 동안 아직 보이는 문서 줄에 포커스와 포인터가 닿으면 안 된다.
 function ArchiveRow({
   mode,
   entry,
   expanded,
-  onToggle,
+  onExpandedChange,
   currentDoc,
   onSelectDoc,
   onCopyDoc,
@@ -267,7 +295,7 @@ function ArchiveRow({
   mode: Mode;
   entry: ArchiveEntry;
   expanded: boolean;
-  onToggle: () => void;
+  onExpandedChange: (open: boolean) => void;
   currentDoc: string | null;
   onSelectDoc: (slug: string, path: string) => void;
   onCopyDoc: (slug: string, path: string) => void;
@@ -283,13 +311,8 @@ function ArchiveRow({
   const { data: docs, isPending } = useArchivedDocs(mode, everOpened ? entry.slug : null);
 
   return (
-    <div className="flex shrink-0 flex-col">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1"
-      >
+    <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
+      <CollapsibleTrigger className="flex h-8 w-full shrink-0 items-center gap-[9px] rounded-[10px] px-[9px] text-left text-muted-foreground transition-colors hover:bg-state-1">
         {/* 펼쳤는지는 폴더 아이콘 하나가 말한다 — 늘 보이므로 hover해 보지 않아도 어느 것이
             펴져 있는지 훑힌다. 여닫이 화살표는 문서 트리 안쪽(SpecTree)이 이미 쓰고 있어서,
             같은 글리프를 두 층에 겹쳐 쓰면 어느 층이 접히는지 읽히지 않는다. */}
@@ -303,47 +326,25 @@ function ArchiveRow({
         <span className="shrink-0 text-[11.5px] text-tertiary">
           {entry.archivedAt ? formatCreated(entry.archivedAt) : ""}
         </span>
-      </button>
+      </CollapsibleTrigger>
 
-      <SectionBody open={expanded}>
-        {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
-            펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
-        {isPending ? null : docs && docs.length > 0 ? (
-          <SpecTree
-            files={docs}
-            current={currentDoc}
-            onSelect={(path) => onSelectDoc(entry.slug, path)}
-            onCopy={(path) => onCopyDoc(entry.slug, path)}
-          />
-        ) : (
-          <span className="px-[9px] py-1.5 text-[12.5px] text-tertiary">남은 문서가 없어요</span>
-        )}
-      </SectionBody>
-    </div>
-  );
-}
-
-// 접기 애니메이션 — grid-template-rows를 0fr↔1fr로 보간한다. height:auto는 트랜지션되지 않고,
-// max-height는 트리 길이를 추정해야 해서 문서가 많을수록 타이밍이 어긋난다.
-// (사이드바 목록의 SectionBody와 같은 방식·같은 시간·같은 곡선이다 — 두 접힘이 다르게 보이면
-// 안 된다. 안쪽 gap만 없다: 저쪽은 작업 행을 직접 늘어놓지만 이쪽 자식은 SpecTree 하나이고,
-// 트리 행의 간격은 트리가 정한다.)
-//
-// 접힌 동안에도 항목은 DOM에 남는다 — 그래야 펼치는 쪽도 애니메이션된다. 그래서 inert로
-// 포커스와 포인터를 막는다: 높이 0에 가려 보이지 않는 버튼에 탭이 들어가면 안 된다.
-function SectionBody({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return (
-    <div
-      inert={!open}
-      className={cn(
-        "grid shrink-0 transition-[grid-template-rows] duration-[180ms] ease-panel",
-        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-      )}
-    >
-      <div className="overflow-hidden">
-        <div className="flex flex-col pt-[3px]">{children}</div>
-      </div>
-    </div>
+      <CollapsibleContent variant="fold" keepMounted>
+        <div className="flex flex-col pt-[3px]">
+          {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
+              펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
+          {isPending ? null : docs && docs.length > 0 ? (
+            <SpecTree
+              files={docs}
+              current={currentDoc}
+              onSelect={(path) => onSelectDoc(entry.slug, path)}
+              onCopy={(path) => onCopyDoc(entry.slug, path)}
+            />
+          ) : (
+            <span className="px-[9px] py-1.5 text-[12.5px] text-tertiary">남은 문서가 없어요</span>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

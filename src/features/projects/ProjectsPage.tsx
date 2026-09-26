@@ -3,6 +3,9 @@ import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
 import { Folder, Maximize2, Minimize2 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
@@ -100,39 +103,37 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <>
               {selected && (
                 <>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={selected.missing}
                     onClick={() => projectsApi.openFolder(selected.slug)}
-                    // disabled:pointer-events-none — 테두리를 걷어낸 뒤로는 배경 농도가 "누를 수 있다"를
-                    // 말하는 유일한 어휘라서, 비활성 상태에서 hover가 걸리면 눌리는 버튼으로 읽힌다
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-40"
                   >
                     폴더 열기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRemove}
-                    className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-red-600 transition-colors hover:bg-red-500/10"
-                  >
+                  </Button>
+                  <Button variant="destructive-ghost" size="sm" onClick={handleRemove}>
                     제거
-                  </button>
+                  </Button>
                 </>
               )}
-              <button
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                title={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                className="icon-button-quiet text-tertiary"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </button>
+              {/* 도움말은 툴팁이고 상태를 탄다 — 누르면 무슨 일이 날지를 말한다. 열림은 `aria-expanded`가 이미
+                  말하므로 설명(`aria-description`)은 안 단다(S28). */}
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  onClick={() => setPanelOpen((open) => !open)}
+                  aria-label="목록 패널 토글"
+                  aria-expanded={panelOpen}
+                  className="icon-button-quiet text-tertiary"
+                >
+                  {panelOpen ? (
+                    <Maximize2 className="size-4" strokeWidth={1.7} />
+                  ) : (
+                    <Minimize2 className="size-4" strokeWidth={1.7} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>{panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}</TooltipContent>
+              </Tooltip>
             </>
           }
         />
@@ -141,24 +142,20 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
             <ProjectDetail project={selected} onOpenWork={onOpenWork} />
           ) : (
             <div className="flex h-full items-center justify-center p-10">
-              <div className="flex max-w-[400px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <Folder className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-                  등록된 프로젝트가 없어요
-                </span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  className="mt-3 h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08]"
-                >
-                  프로젝트 등록
-                </button>
-              </div>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Folder strokeWidth={1.6} />
+                  </EmptyMedia>
+                  <EmptyTitle>등록된 프로젝트가 없어요</EmptyTitle>
+                  <EmptyDescription>
+                    로컬 저장소 폴더를 등록하면 원격과 브랜치를 자동 감지해요.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button onClick={handleAdd}>프로젝트 등록</Button>
+                </EmptyContent>
+              </Empty>
             </div>
           )}
         </div>

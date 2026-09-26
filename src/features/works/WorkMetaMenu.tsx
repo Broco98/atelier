@@ -120,22 +120,27 @@ function MetaRow({
   onCopy: (text: string) => void;
 }) {
   const shown = relativeTo ? relativeToWorkDir(value, relativeTo) : value;
+  // 도움말 「복사」는 툴팁이다. 행의 이름은 값이라, 「누르면 복사한다」는 이름보다 더 말하는 것 — 설명으로도
+  // 남긴다(S28 — 툴팁은 스크린리더에 아무것도 주지 않는다).
   return (
-    <button
-      type="button"
-      title="복사"
-      onClick={() => onCopy(value)}
-      className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
-    >
-      {glyph}
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
-      {tail ?? (
-        <Copy
-          className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-          strokeWidth={1.8}
-        />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        type="button"
+        aria-description="복사"
+        onClick={() => onCopy(value)}
+        className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
+      >
+        {glyph}
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
+        {tail ?? (
+          <Copy
+            className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            strokeWidth={1.8}
+          />
+        )}
+      </TooltipTrigger>
+      <TooltipContent>복사</TooltipContent>
+    </Tooltip>
   );
 }
 

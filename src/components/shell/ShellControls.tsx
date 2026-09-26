@@ -2,6 +2,8 @@ import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import { useCanGoBack, useRouter } from "@tanstack/react-router";
 import SidebarToggle from "./SidebarToggle";
 import { useCanGoForward } from "@/can-go-forward";
+import { Kbd } from "@/components/ui/kbd";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface HistoryButtonProps {
   label: string;
@@ -89,25 +91,33 @@ function ShellControls({ sidebarOpen, onToggleSidebar, onOpenSearch }: ShellCont
           규칙). 그래서 토글로 만들 것이 없다 — 여는 갈래 하나면 된다. 여는 함수 자체도
           같은 setter라 두 번 열려도 한 번 연 것과 같다.
 
-          **이 행에서 유일하게 title을 든다 — 알릴 것이 글리프 밖에 있기 때문이다.** 이웃
+          **이 행에서 유일하게 도움말을 든다 — 알릴 것이 글리프 밖에 있기 때문이다.** 이웃
           셋은 그림이 곧 이름이지만(패널·화살표), 이 버튼의 값은 「누를 수 있다」보다 **⌘K라는
-          키가 있다는 것을 알리는 것**에 가깝다. 사이드바 목록의 핀이 title을 피한 이유(행에
-          머물면 호버 카드가 떠서 OS 툴팁이 그 위로 겹친다)는 여기 없다 — 타이틀바에는 뜨는
-          카드가 없다.
+          키가 있다는 것을 알리는 것**에 가깝다. 사이드바 목록의 핀이 도움말을 피한 이유(행에
+          머물면 호버 카드가 떠서 툴팁이 그 위로 겹친다 — S29)는 여기 없다 — 타이틀바에는 뜨는
+          카드가 없다. 도움말은 앱 툴팁이고 키는 옆에 Kbd로 뗀다(스토리 112). 사이드바에서
+          `title`을 들던 버튼이 이것 하나라 툴팁도 이것 하나다 — 도움말이 없던 이웃 셋에는 새로
+          달지 않는다(P9 · P13).
           **키를 aria-keyshortcuts로도 적는다 — ⇧⇧ 때는 못 적었다**(결정 21). 그 값은
           **대안들의** 공백 구분 목록이라 「⇧ 다음 ⇧」가 「⇧ 또는 ⇧」로 읽혔는데, 화음인
           ⌘K는 `Meta+K` 하나로 정확히 적힌다. aria-label은 여전히 이름만 든다 — 읽어 주는
-          이름에 키가 섞이면 소음이 되고, 그 값을 읽는 자리는 이제 따로 있다. */}
-      <button
-        type="button"
-        onClick={onOpenSearch}
-        aria-label="검색"
-        title="검색 (⌘K)"
-        aria-keyshortcuts="Meta+K"
-        className="icon-button-quiet text-muted-foreground"
-      >
-        <Search className="size-4" strokeWidth={1.7} />
-      </button>
+          이름에 키가 섞이면 소음이 된다. 툴팁은 스크린리더에 아무것도 주지 않으므로, 옛 `title`이
+          이름 다음에 읽어 주던 키는 설명(`aria-description`)으로 남긴다(S28). */}
+      <Tooltip>
+        <TooltipTrigger
+          type="button"
+          onClick={onOpenSearch}
+          aria-label="검색"
+          aria-description="⌘K"
+          aria-keyshortcuts="Meta+K"
+          className="icon-button-quiet text-muted-foreground"
+        >
+          <Search className="size-4" strokeWidth={1.7} />
+        </TooltipTrigger>
+        <TooltipContent>
+          검색 <Kbd>⌘K</Kbd>
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

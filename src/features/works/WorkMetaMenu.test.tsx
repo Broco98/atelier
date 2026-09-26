@@ -128,7 +128,8 @@ describe("WorkMetaRows", () => {
 
   it("모든 줄이 복사되는 진짜 버튼이다", () => {
     const markup = render();
-    expect(markup.match(/<button[^>]*title="복사"/g)).toHaveLength(3);
+    // 도움말 「복사」는 툴팁이라 정적 마크업에 없다 — 이름(값)보다 더 말하는 그 말은 설명으로 남는다(S28).
+    expect(markup.match(/<button[^>]*aria-description="복사"/g)).toHaveLength(3);
   });
 });
 

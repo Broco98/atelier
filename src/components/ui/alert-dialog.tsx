@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음)과 가림막 클릭 onBackdropClick, Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background에 폭 330px(size 변형을 걷었다), 머리 가운데 정렬→왼쪽 gap-1.5, 제목 text-base font-medium→14px semibold, 설명 text-sm·muted→13px·leading-1.6·tertiary·whitespace-pre-line(P4), 바닥 회색 띠→오른쪽 정렬 gap-1.5, Action·Cancel은 창 바닥 크기(Button의 dialog)이고 Cancel의 변형 outline→ghost(조용한 글자 버튼).
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog"
 import { cn } from "cn"
@@ -145,21 +145,24 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
+  size = "dialog",
   ...props
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
       data-slot="alert-dialog-action"
       className={cn(className)}
+      size={size}
       {...props}
     />
   )
 }
 
+// 「취소」는 창을 닫는 버튼이다(Base UI Close). 누르면 창이 `onOpenChange(false)`로 알린다 — Esc와 같은 길이다.
 function AlertDialogCancel({
   className,
-  variant = "outline",
-  size = "default",
+  variant = "ghost",
+  size = "dialog",
   ...props
 }: AlertDialogPrimitive.Close.Props &
   Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
-import { cn } from "@/lib/utils";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -26,7 +27,8 @@ const guard = createFirstFrameGuard();
  * 물음을 창에 잇는 일만 한다: 여닫기, 답, 첫 포커스.
  *
  * **답하는 길이 넷이고 모두 스토어의 `answer`로 간다** — 두 버튼, Esc(창이 `onOpenChange`로
- * 알린다), 가림막 클릭. Esc와 가림막은 `false`다. 알림(`notice`)에도 Esc는 듣는다 — 버튼이 하나뿐이라
+ * 알린다), 가림막 클릭. 「취소」는 창을 닫는 버튼(`AlertDialogCancel`)이라 Esc와 같은 길로 온다.
+ * 「취소」·Esc·가림막은 `false`다. 알림(`notice`)에도 Esc는 듣는다 — 버튼이 하나뿐이라
  * 닫는 것이 곧 확인이고, 그때 답이 `false`로 가도 부르는 쪽이 답을 안 본다(showProblem).
  */
 function AppDialog() {
@@ -105,32 +107,16 @@ function AppDialog() {
               여백만 남기지 않고, 창의 설명(`aria-describedby`)도 가리킬 곳이 없어 안 선다. */}
           {ask?.body && <AlertDialogDescription>{ask.body}</AlertDialogDescription>}
         </AlertDialogHeader>
-        {/* 버튼은 판 3 동안 지금 모양 그대로다 — Button으로 바꾸는 것은 판 4다. */}
         <AlertDialogFooter>
           {/* 알림에는 취소가 없다 — 되돌릴 것이 없는데 두 갈래를 주면 무엇이 다른지를 묻게 된다. */}
-          {!ask?.notice && (
-            <button
-              ref={cancelRef}
-              type="button"
-              onClick={() => answer(false)}
-              className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-state-1 focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              취소
-            </button>
-          )}
-          <button
+          {!ask?.notice && <AlertDialogCancel ref={cancelRef}>취소</AlertDialogCancel>}
+          <AlertDialogAction
             ref={confirmRef}
-            type="button"
+            variant={ask?.danger ? "destructive" : "default"}
             onClick={() => answer(true)}
-            className={cn(
-              "h-7 rounded-[8px] px-3 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              ask?.danger
-                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                : "bg-primary text-primary-foreground hover:bg-primary/85",
-            )}
           >
             {ask?.confirm}
-          </button>
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

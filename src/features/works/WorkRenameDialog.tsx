@@ -1,4 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { Mode } from "@/mode";
@@ -103,24 +104,15 @@ function RenameBody({
           if (e.key === "Enter") finish(true);
         }}
       />
-      {/* 버튼은 판 3 동안 확인 창(`AppDialog`)의 버튼 모양 그대로다 — Button으로 바꾸는 것은 판 4다. */}
+      {/* 버튼은 확인 창(`AppDialog`)과 같은 창 바닥 버튼이다(Button의 `dialog` 크기). */}
       <DialogFooter>
-        <button
-          type="button"
-          onClick={() => finish(false)}
-          className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-state-1 focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
+        <Button variant="ghost" size="dialog" onClick={() => finish(false)}>
           취소
-        </button>
-        <button
-          type="button"
-          // 저장될 것이 없으면 누를 수 없고 흐리게 선다(P12) — 눌러도 아무 일이 없는 버튼을 두지 않는다.
-          disabled={!changed}
-          onClick={() => finish(true)}
-          className="h-7 rounded-[8px] bg-primary px-3 text-[12.5px] font-medium text-primary-foreground transition-colors outline-none hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-        >
+        </Button>
+        {/* 저장될 것이 없으면 누를 수 없고 흐리게 선다(P12) — 눌러도 아무 일이 없는 버튼을 두지 않는다. */}
+        <Button size="dialog" disabled={!changed} onClick={() => finish(true)}>
           저장
-        </button>
+        </Button>
       </DialogFooter>
     </>
   );

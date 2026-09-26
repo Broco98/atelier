@@ -1,18 +1,16 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
 // 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
 // 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
 // 배경 농도만 스케일을 따른다.
 //
-// 여기는 모양만 정하고 hover·켜짐은 호출부가 분기 안에 붙인다 — 「코드」가 토글이라
-// toggle-on과 겹치면 hover 규칙이 두 벌이 되어 어느 쪽이 이길지 유틸리티 정렬 순서가
-// 정하게 된다. icon-button이 hover를 갖지 않는 것과 같은 이유다.
-const toolbarButton =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] transition-colors";
-const toolbarButtonQuiet = cn(toolbarButton, "text-tertiary quiet-hover");
+// 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
+const toolbarButtonQuiet =
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors quiet-hover";
 
 // 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
 // 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
@@ -34,7 +32,8 @@ function ZoomControls({
   );
 }
 
-// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다
+// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다.
+// 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28).
 function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
@@ -46,13 +45,21 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={toolbarButtonQuiet}>
-      {copied ? (
-        <Check className="size-3 text-green-700" strokeWidth={2.4} />
-      ) : (
-        <Copy className="size-3" strokeWidth={2} />
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        type="button"
+        onClick={onCopy}
+        aria-label="원본 mermaid 코드 복사"
+        className={toolbarButtonQuiet}
+      >
+        {copied ? (
+          <Check className="size-3 text-green-700" strokeWidth={2.4} />
+        ) : (
+          <Copy className="size-3" strokeWidth={2} />
+        )}
+      </TooltipTrigger>
+      <TooltipContent>원본 mermaid 코드 복사</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -168,18 +175,30 @@ function MermaidBlock({ code }: { code: string }) {
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <button
-            type="button"
-            onClick={() => setShowCode((v) => !v)}
-            title="원본 mermaid 코드 보기"
-            className={showCode ? cn(toolbarButton, "toggle-on") : toolbarButtonQuiet}
-          >
-            코드
-          </button>
+          {/* 켬/끔 토글이다 — 켜졌는지를 `aria-pressed`로 말한다(스토리 103). 이름은 보이는 글자 「코드」이고,
+              도움말은 툴팁이다. 설명(`aria-description`)으로 남기지 않는다 — 단축키도 잠긴 이유도 아니다(S28). */}
+          <Tooltip>
+            <TooltipTrigger
+              render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
+            >
+              코드
+            </TooltipTrigger>
+            <TooltipContent>원본 mermaid 코드 보기</TooltipContent>
+          </Tooltip>
           <CopyCodeButton code={code} />
-          <button ref={openFull} type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
-            <Maximize2 className="size-3" strokeWidth={2} />
-          </button>
+          {/* 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28). */}
+          <Tooltip>
+            <TooltipTrigger
+              ref={openFull}
+              type="button"
+              onClick={() => setFullOpen(true)}
+              aria-label="전체화면으로 크게 보기"
+              className={toolbarButtonQuiet}
+            >
+              <Maximize2 className="size-3" strokeWidth={2} />
+            </TooltipTrigger>
+            <TooltipContent>전체화면으로 크게 보기</TooltipContent>
+          </Tooltip>
         </span>
       </div>
       {error && !svg ? (

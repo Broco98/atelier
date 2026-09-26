@@ -102,7 +102,8 @@ describe("WorkInfo 프로젝트 구획", () => {
     const markup = render();
     expect(markup).toMatch(/<button[^>]*aria-label="atelier 프로젝트 상세로 이동"/);
     // 작업 폴더 · worktree · spec 셋 다 눌러서 복사한다
-    expect(markup.match(/<button[^>]*title="경로 복사"/g)).toHaveLength(3);
+    // 도움말 「경로 복사」는 툴팁이라 정적 마크업에 없다 — 이름(라벨과 값)보다 더 말하는 그 말은 설명으로 남는다(S28).
+    expect(markup.match(/<button[^>]*aria-description="경로 복사"/g)).toHaveLength(3);
   });
 });
 
@@ -168,7 +169,7 @@ describe("WorkInfo 작업 · 문서 구획", () => {
     // 값은 그대로 읽힌다 (사람 말로 다듬지 않는다)
     expect(rowValue(markup, "slug")).toBe("some-work");
     // 경로 셋과 같은 어포던스다 — 행 전체가 버튼이고 hover에 복사 아이콘이 뜬다
-    expect(markup).toMatch(/<button[^>]*title="slug 복사"/);
+    expect(markup).toMatch(/<button[^>]*aria-description="slug 복사"/);
   });
 
   it("브랜치가 미정이면 브랜치 줄만 빠진다", () => {

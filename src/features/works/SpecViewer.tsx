@@ -24,7 +24,10 @@ import {
   OctagonAlert,
   TriangleAlert,
 } from "lucide-react";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
@@ -151,24 +154,26 @@ function SpecViewer({
         <div className="flex min-h-full min-w-0 flex-col">
           {files.length === 0 ? (
             <div className="flex flex-1 items-center justify-center p-10">
-              <div className="flex max-w-[440px] flex-col items-center gap-[7px] text-center">
-                <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-                  <FileText className="size-5" strokeWidth={1.6} />
-                </div>
-                <span className="text-[16.5px] font-semibold tracking-[-0.01em]">아직 spec이 없어요</span>
-                <span className="text-[14px] leading-[1.65] text-tertiary">
-                  AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.
-                </span>
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileText strokeWidth={1.6} />
+                  </EmptyMedia>
+                  <EmptyTitle>아직 spec이 없어요</EmptyTitle>
+                  <EmptyDescription>AI가 아래 폴더에 문서를 작성하면 여기 표시돼요.</EmptyDescription>
+                </EmptyHeader>
                 {/* **경로를 여기서 짓지 않는다.** 한때 Atelier 루트를 JSX에 손으로 적고
                     있었는데, 그 리터럴은 Maison에서 있지도 않은 폴더를 안내한다 — 게다가
                     사람이 그대로 붙여 넣으라고 내놓는 줄이라 참조 생성기가 내는 것과
                     **글자까지 같아야** 한다. 갈리면 화면이 시킨 자리와 에이전트가 읽는
                     자리가 다르고, 그 어긋남은 둘 다 그럴듯해서 아무도 못 알아본다.
                     `SpecViewer.test.tsx`의 소스 검사가 리터럴이 되돌아오는 것을 막는다. */}
-                <code className="mt-2 select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
-                  {specDirRef(mode, work.slug)}
-                </code>
-              </div>
+                <EmptyContent>
+                  <code className="select-all rounded-[9px] border bg-inset px-2.5 py-1.5 font-mono text-[12px] text-muted-foreground">
+                    {specDirRef(mode, work.slug)}
+                  </code>
+                </EmptyContent>
+              </Empty>
             </div>
           ) : (
             bodyView(body)
@@ -395,8 +400,10 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
             **⇧⇧가 여기서 빠진 것은 걷혔기 때문이다**(팔레트 결정 2). 그 몸짓은 accelerator 문법에
             실을 자리가 없어 메뉴로 되살릴 수도 없었는데, 그것을 ⌘K로 바꾼 값의 절반이
             정확히 이 자리다 — 프레임 안에서도 열린다. */}
+        {/* 키는 문장 속 글자가 아니라 **키 모양**이다(Kbd). 글자는 그대로다 — 둘 사이의 「·」까지
+            붙여 둔다. 사이를 띄우면 「어느 둘인지」를 세는 L3(`spec-html.spec.ts`)의 글자가 갈린다. */}
         <span className="text-[12.5px] leading-[1.6] text-tertiary">
-          ⌃Tab·⌘W가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
+          <Kbd>⌃Tab</Kbd>·<Kbd>⌘W</Kbd>가 이 문서 안으로 들어가요. 문서 바깥을 한 번 클릭하면 돌아와요.
         </span>
       </div>
     </PopoverPortal>
@@ -509,15 +516,17 @@ function BlockWrapper({
           x에서 40px 아래로 크로스페이드하면 눈에는 버튼이 미끄러진 것으로 보인다
           (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 배경·글자색은 계속 전환한다 —
           그건 한 버튼 안에서 일어나는 일이라 겹칠 상대가 없다 */}
-      <button
-        type="button"
-        onClick={() => onCopy(start, end)}
-        aria-label={`${range}줄 참조 복사`}
-        title={`${range}줄 참조 복사`}
-        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        <Copy className="size-3" strokeWidth={1.8} aria-hidden />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          type="button"
+          onClick={() => onCopy(start, end)}
+          aria-label={`${range}줄 참조 복사`}
+          className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          <Copy className="size-3" strokeWidth={1.8} aria-hidden />
+        </TooltipTrigger>
+        <TooltipContent>{`${range}줄 참조 복사`}</TooltipContent>
+      </Tooltip>
       {children}
     </div>
   );
@@ -665,6 +674,7 @@ export const PrettyView = memo(function PrettyView({
         const target = resolveHref(fileRef.current, href, linkRef.current.files);
         if (target.kind === "missing") {
           return (
+            // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={`문서를 찾을 수 없어요 — ${target.path}`}
               className="text-tertiary underline decoration-dotted underline-offset-2"
@@ -702,6 +712,7 @@ export const PrettyView = memo(function PrettyView({
         // 문자열이 화면에 없어, 이 자리표시가 존재하는 이유가 사라진다.
         if (source.kind === "missing") {
           return (
+            // 버튼이 아닌 자리라 `title`로 남는다(S29) — 툴팁 트리거로 만들면 포커스와 역할이 새로 생긴다.
             <span
               title={alt || undefined}
               className="inline-flex items-center gap-1.5 rounded-[8px] border border-dashed bg-inset px-2 py-1 align-middle font-mono text-[12px] text-tertiary"

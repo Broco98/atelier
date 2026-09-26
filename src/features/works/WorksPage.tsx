@@ -28,8 +28,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
+import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -289,7 +292,7 @@ function WorksPage({
   // 걸리므로 앱 루트의 토스트 Provider가 이미 듣고 있다.
   //
   // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
-  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 title이 이유를 말한다. 앱 전역 토스트 표면을
+  // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 툴팁과 설명(`aria-description`)이 이유를 말한다. 앱 전역 토스트 표면을
   // 새로 짓는 안은 기각됐다.
   useEffect(() => onShellOpenRejected((notice) => showToast(notice, "rejected")), []);
 
@@ -581,24 +584,29 @@ function WorksPage({
             {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
                 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
                 여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
-            <button
-              type="button"
-              onClick={() => changeSplit(split === null ? "lr" : null, tab)}
-              // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
-              // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
-              // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
-              aria-label="분할"
-              aria-pressed={split !== null}
-              // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
-              // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
-              title={split !== null ? "분할 끄기" : "분할 켜기"}
-              className={cn(
-                "icon-button transition-colors",
-                split !== null ? "toggle-on" : "text-tertiary quiet-hover",
-              )}
-            >
-              <Columns2 className="size-4" strokeWidth={2} />
-            </button>
+            {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+                아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+                이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
+                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 tertiary · 켜짐 toggle-on)은 부품의 icon 크기다.
+
+                툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+                날지를 틀리게 말한다(목록 패널 토글의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
+                안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28). */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    size="icon"
+                    aria-label="분할"
+                    pressed={split !== null}
+                    onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+                  />
+                }
+              >
+                <Columns2 className="size-4" strokeWidth={2} />
+              </TooltipTrigger>
+              <TooltipContent>{split !== null ? "분할 끄기" : "분할 켜기"}</TooltipContent>
+            </Tooltip>
             {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
                 그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
                 사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다.
@@ -609,16 +617,18 @@ function WorksPage({
                 닫혀 있을 때만 그리는 것으로 "닫기 애니메이션이 시작할 때 함께 뜬다"가
                 따라온다 — workPanelOpen이 먼저 뒤집히고 패널 폭이 220ms 동안 줄어든다. */}
             {!workPanelOpen && (
-              <button
-                type="button"
-                onClick={() => setWorkPanelOpen(true)}
-                aria-label={`${itemNameOf(mode)} 패널 펼치기`}
-                aria-expanded={false}
-                title={`${itemNameOf(mode)} 패널 펼치기`}
-                className="icon-button-quiet text-tertiary"
-              >
-                <PanelRight className="size-4" strokeWidth={2} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  onClick={() => setWorkPanelOpen(true)}
+                  aria-label={`${itemNameOf(mode)} 패널 펼치기`}
+                  aria-expanded={false}
+                  className="icon-button-quiet text-tertiary"
+                >
+                  <PanelRight className="size-4" strokeWidth={2} />
+                </TooltipTrigger>
+                <TooltipContent>{`${itemNameOf(mode)} 패널 펼치기`}</TooltipContent>
+              </Tooltip>
             )}
           </>
         )
@@ -823,31 +833,29 @@ function WorksPage({
     <main className="relative flex min-w-0 flex-1 flex-col">
       {header}
       <div className="flex flex-1 items-center justify-center p-10">
-        <div className="flex max-w-[420px] flex-col items-center gap-[7px] text-center">
-          <div className="mb-2.5 flex size-[46px] items-center justify-center rounded-[16px] border bg-inset text-tertiary">
-            {needsProject ? (
-              <Folder className="size-5" strokeWidth={1.6} />
-            ) : (
-              <Zap className="size-5" strokeWidth={1.6} />
-            )}
-          </div>
-          {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
-              여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
-          <span className="text-[16.5px] font-semibold tracking-[-0.01em]">
-            {needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}
-          </span>
-          <span className="text-[14px] leading-[1.65] text-tertiary">
-            {needsProject
-              ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
-              : emptyScreen.body}
-          </span>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              {needsProject ? <Folder strokeWidth={1.6} /> : <Zap strokeWidth={1.6} />}
+            </EmptyMedia>
+            {/* 프로젝트 갈래는 **Atelier에서만 선다**(위 `needsProject`) — 그래서 그쪽 문구만
+                여기 리터럴이고, 세계를 타는 셋은 표에서 온다. */}
+            <EmptyTitle>{needsProject ? "먼저 프로젝트를 등록해요" : emptyScreen.title}</EmptyTitle>
+            <EmptyDescription>
+              {needsProject
+                ? "작업은 등록된 프로젝트 위에서 시작돼요. Projects에서 폴더를 고르거나, 에이전트에게 맡겨도 돼요."
+                : emptyScreen.body}
+            </EmptyDescription>
+          </EmptyHeader>
           {/* 실제로 통하는 경로만 안내한다 — CLI에는 등록·시작 명령이 없고, 에이전트가
               atelier_add_project / atelier_start_work를 부른다.
-              아래 문구는 그대로 붙여 넣는 것이다. */}
-          <code className="mt-3 select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
-            {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
-          </code>
-        </div>
+              아래 문구는 그대로 붙여 넣는 것이다. 단축키가 아니라 붙여 넣을 글이라 Kbd가 아니다. */}
+          <EmptyContent>
+            <code className="select-all rounded-[10px] border bg-inset px-3 py-2 font-mono text-[12.5px] text-muted-foreground">
+              {needsProject ? "atelier에 이 폴더 등록해줘" : emptyScreen.code}
+            </code>
+          </EmptyContent>
+        </Empty>
       </div>
     </main>
   );
@@ -1038,15 +1046,17 @@ function ColumnHead({
     >
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {source}
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label={closeLabel}
-        title={closeLabel}
-        className="icon-button-quiet shrink-0 text-tertiary"
-      >
-        <X className="size-3.5" strokeWidth={2} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          type="button"
+          onClick={onClose}
+          aria-label={closeLabel}
+          className="icon-button-quiet shrink-0 text-tertiary"
+        >
+          <X className="size-3.5" strokeWidth={2} />
+        </TooltipTrigger>
+        <TooltipContent>{closeLabel}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -1093,16 +1103,25 @@ function StatusMenu({ mode, work }: { mode: Mode; work: WorkView }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        title="상태 변경"
-        className={cn(
-          "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
-          meta.badgeClass,
-        )}
-      >
-        {meta.label}
-        <ChevronDown className="size-2.5" strokeWidth={2.2} />
-      </DropdownMenuTrigger>
+      {/* 도움말 「상태 변경」은 툴팁이다. 배지의 이름은 지금 상태(라벨)라, 도움말이 이름보다 더 말하던 것 — 이것이 상태를
+          바꾸는 자리라는 것 — 은 설명(`aria-description`)으로 남긴다(S28). */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              aria-description="상태 변경"
+              className={cn(
+                "flex h-[22px] items-center gap-1 rounded-[7px] px-2 text-[12px] font-medium transition-[filter] hover:brightness-95",
+                meta.badgeClass,
+              )}
+            />
+          }
+        >
+          {meta.label}
+          <ChevronDown className="size-2.5" strokeWidth={2.2} />
+        </TooltipTrigger>
+        <TooltipContent>상태 변경</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent>
         <DropdownMenuRadioGroup
           value={work.status}
@@ -1233,29 +1252,38 @@ function WorkMenu({
   return (
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger
-          ref={anchor}
-          disabled={busy}
-          aria-label={`${itemNameOf(mode)} 메뉴`}
-          aria-busy={busy}
-          title={busy ? "처리 중이에요" : `${itemNameOf(mode)} 메뉴`}
-          // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
-          // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
-          // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
-          // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
-          // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
-          // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
-          className={cn(
-            "icon-button transition-colors",
-            "disabled:pointer-events-none disabled:opacity-50",
-            open ? "toggle-on" : "text-tertiary quiet-hover",
-          )}
-        >
-          {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
-              깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
-              disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
-          <MoreHorizontal className="size-4" strokeWidth={2.2} />
-        </DropdownMenuTrigger>
+        {/* 도움말은 툴팁이고 이름과 같은 글자다. **처리 중에는 툴팁이 없다**(S23) — 버튼이 `disabled`이고, 옛 「처리
+            중이에요」는 버튼이 포인터를 안 받고 가림막이 머리를 덮어 뜬 적이 없다. 그 말은 가림막이 한다. */}
+        <Tooltip>
+          <TooltipTrigger
+            disabled={busy}
+            render={
+              <DropdownMenuTrigger
+                ref={anchor}
+                disabled={busy}
+                aria-label={`${itemNameOf(mode)} 메뉴`}
+                aria-busy={busy}
+                // **icon-button 규격이다** — 바로 왼쪽 ⓘ와 맞붙어 서기 때문이다.
+                // 둘 사이에 여백이 없어(탭 줄 actions의 gap 없는 묶음) hover 배경이 한 버튼에서
+                // 다음 버튼으로 끊김 없이 옮겨가고, 그 순간 상자가 다르면 배경이 커졌다 작아진다.
+                // 22px·radius 7은 옛 이웃이던 상태 배지에 맞춰 둔 값인데, 그 배지가 오른쪽
+                // actions로 가면서 맞춰야 할 상대가 24px 아이콘 버튼으로 바뀌었다.
+                // icon-button-quiet을 쓰지 않는 것은 켜짐이 있어서다 — quiet-hover는 꺼진 가지 안에만 둔다.
+                className={cn(
+                  "icon-button transition-colors",
+                  "disabled:pointer-events-none disabled:opacity-50",
+                  open ? "toggle-on" : "text-tertiary quiet-hover",
+                )}
+              />
+            }
+          >
+            {/* 진행 표시는 여기가 아니라 본문을 덮는 LifecycleOverlay가 한다 — 14px 글리프의
+                깜빡임은 워크트리 제거가 도는 수 초 동안 "눌리긴 했나"에 답하지 못했다.
+                disabled는 그대로 둔다: 오버레이가 뜨기 전 한 프레임을 막는 것도 이 속성이다. */}
+            <MoreHorizontal className="size-4" strokeWidth={2.2} />
+          </TooltipTrigger>
+          <TooltipContent>{`${itemNameOf(mode)} 메뉴`}</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent>
           {/* **이름 바꾸기가 맨 위다.** 아래 둘은 되돌릴 수 없는 조작이라 확인 창을
               거치는데, 이것은 되돌릴 수 있다 — 성질이 다른 것을 구분선으로 가른다. */}
