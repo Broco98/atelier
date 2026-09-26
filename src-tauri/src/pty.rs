@@ -32,7 +32,7 @@ use crate::processes::screen::{self, Measured, PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::summary::{self, Background, Body, Summary};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
-use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, SHELL_KEY_ENV};
+use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, ThisRun, SHELL_KEY_ENV};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -453,13 +453,11 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
     checks_on(
         &Inputs {
             snapshot: &snapshot,
-            generation: shell_key::generation(),
+            run: ThisRun::current(),
             shells: &live,
             ending: &[],
             instances: &records,
             exceptions: &exceptions,
-            app_pid: std::process::id(),
-            inherited_key: crate::processes::inherited_key(),
             occasion: Occasion::Normal,
         },
         asked,
@@ -537,13 +535,11 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: shell_key::generation(),
+        run: ThisRun::current(),
         shells: &live,
         ending: &[],
         instances: &records,
         exceptions: &exceptions,
-        app_pid: std::process::id(),
-        inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
     let readings = metrics::read(screen::targets(&verdict, &listed));
@@ -576,13 +572,11 @@ pub fn summarize(pool: &PtyPool) -> Summary {
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: shell_key::generation(),
+        run: ThisRun::current(),
         shells: &live,
         ending: &[],
         instances: &records,
         exceptions: &exceptions,
-        app_pid: std::process::id(),
-        inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
     let body = Body {
@@ -998,13 +992,11 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     let records = pool.record.records();
     let exit = verdict::at_exit(&Inputs {
         snapshot: &snapshot,
-        generation: shell_key::generation(),
+        run: ThisRun::current(),
         shells: &[],
         ending: &ending,
         instances: &records,
         exceptions: &exceptions(),
-        app_pid: std::process::id(),
-        inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
     let groups = groups_led(&shells, &pgids, &snapshot);
@@ -1070,13 +1062,11 @@ fn plan_startup(pool: &PtyPool, exceptions: &[String]) -> StartupPlan {
     let records = pool.record.records();
     let input = Inputs {
         snapshot: &snapshot,
-        generation: shell_key::generation(),
+        run: ThisRun::current(),
         shells: &live,
         ending: &[],
         instances: &records,
         exceptions,
-        app_pid: std::process::id(),
-        inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::StartupCleanup,
     };
     let targets = verdict::at_startup(&input).into_iter().cloned().collect();
@@ -1149,13 +1139,11 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
     let exceptions = exceptions();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
-        generation: shell_key::generation(),
+        run: ThisRun::current(),
         shells: &live,
         ending: &ending,
         instances: &records,
         exceptions: &exceptions,
-        app_pid: std::process::id(),
-        inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
     // 셸마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 지금 떠 둔다. 뒤 스레드는 스냅샷을 못 빌린다.
@@ -1222,9 +1210,11 @@ fn env_scope(shells: impl IntoIterator<Item = Option<Identity>>) -> EnvScope {
 /// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
 /// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
 ///
-/// 부르는 자리가 셋이다 — 닫기 · 새로고침의 `end`, 앱 종료의 `end_for_exit`, 닫기 전 물음의 `close_checks`(확인
-/// 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다). 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선
-/// 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료), `Ask`(닫기 전 물음)가 하나씩 잰다.
+/// 판정을 부르는 자리마다 부른다 — 여섯이다: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료의 `end_for_exit`, 닫기
+/// 전 물음의 `close_checks`(확인 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다), 시작 정리의 `clean_up_at_startup`,
+/// `Processes` 화면의 `screen`, 배경 표본의 `summarize`. 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선 장면
+/// `CloseKeeping`(닫기)과 `ExitKeeping`(종료), `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀
+/// (`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 화면 스냅샷과 배경 표본의 배선은 재는 검사가 없다.
 fn exceptions() -> Vec<String> {
     crate::settings::process_exceptions(&atelier_core::data_root())
 }
@@ -1639,7 +1629,7 @@ mod tests {
     #[test]
     fn one_snapshot_answers_every_shell_as_if_asked_alone() {
         use crate::processes::verdict::{Inputs, Occasion, ShellEntry};
-        use crate::processes::{Identity, Proc, Snapshot};
+        use crate::processes::{Identity, Proc, Snapshot, ThisRun};
 
         let row = |pid: u32, ppid: u32, pgid: u32, born: u64, key: Option<&str>| Proc {
             id: Identity { pid, started_us: born },
@@ -1677,13 +1667,11 @@ mod tests {
         let live = [a.clone(), b.clone(), c.clone()];
         let input = Inputs {
             snapshot: &snapshot,
-            generation: "G",
+            run: ThisRun { generation: "G", app_pid: 50, inherited_key: None },
             shells: &live,
             ending: &[],
             instances: &[],
             exceptions: &[],
-            app_pid: 50,
-            inherited_key: None,
             occasion: Occasion::Normal,
         };
         let asked = |entry: &ShellEntry, foreground: i32| {
@@ -1747,24 +1735,50 @@ mod tests {
         assert!(lower < give_up, "띄우기에 실패하고 키를 안 내린 채 돌아간다 — 없는 셸의 키가 기록에 남는다");
     }
 
-    /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
-    /// 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 기록에 이미 있다. 뒤집히면 그 사이 뜬 셸의 자손이 「목록에 없는
-    /// 이 세대 키」로 읽힌다. 판정을 부르는 여섯 자리를 모두 본다 — 다섯째가 `Processes` 화면의 스냅샷(티켓 26), 여섯째가 nav
-    /// 메타의 배경 표본이다(티켓 29).
-    #[test]
-    fn the_records_are_read_after_the_snapshot() {
-        for (path, body) in [
+    /// 판정을 부르는 여섯 자리 — 이름과 본문(순서에 뜻은 없다): 셸 닫기 전 물음, 끝내기의 앞 절반(셸 닫기 · 새로고침 · 셸 스스로
+    /// 끝남), 앱 종료, 시작 정리, `Processes` 화면의 스냅샷(티켓 26), nav 메타의 배경 표본(티켓 29). 판정을 부르는 자리가 늘면
+    /// 여기 더한다 — 아래 두 검사가 함께 본다.
+    fn verdict_sites() -> [(&'static str, &'static str); 6] {
+        [
             ("close_checks", body_of("pub fn close_checks(", "\n}\n")),
             ("begin", body_of("fn begin(", "\n}\n")),
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
             ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
             ("screen", body_of("pub fn screen(", "\n}\n")),
             ("summarize", body_of("pub fn summarize(", "\n}\n")),
-        ] {
+        ]
+    }
+
+    /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
+    /// 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 기록에 이미 있다. 뒤집히면 그 사이 뜬 셸의 자손이 「목록에 없는
+    /// 이 세대 키」로 읽힌다. 판정을 부르는 여섯 자리를 모두 본다(`verdict_sites`).
+    #[test]
+    fn the_records_are_read_after_the_snapshot() {
+        for (path, body) in verdict_sites() {
             let taken = body.find("snapshot::take(").unwrap_or_else(|| panic!("{path}가 스냅샷을 안 찍는다"));
             let read = body.find("pool.record.records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
             assert!(taken < read, "{path}: 기록({read})을 스냅샷({taken})보다 먼저 읽는다");
             assert!(body.contains("instances: &records"), "{path}: 읽은 기록을 판정에 안 넘긴다");
+        }
+    }
+
+    /// **판정을 부르는 여섯 자리가 모두 이 실행을 한 자리에서 받는다**(`ThisRun::current()` — 세대 · 앱 pid · 앱이 물려받은 셸 키,
+    /// 프로세스 스펙 S6). 자리마다 세 칸을 손으로 채우던 때는 핀이 시작 정리에만 있었고, 물려받은 키를 `None`으로 바꾼 변형이
+    /// 이 크레이트의 L1 전부를 통과했다(실측). 그 키는 앱을 아틀리에 셸에서 띄웠을 때만 있어 실물 장면이 한 길(`Startup`)만
+    /// 재고, 앱 pid는 실물 장면이 못 잰다 — 안쪽 검사 프로세스(앱)는 물려받은 키로도 막히고, 그 조상은 검사를 띄운 사용자의
+    /// 셸 쪽이라 죽은 실행의 키를 물릴 수 없다. 그래서 자리로 잰다: 여섯 자리가 모두 `run: ThisRun::current()`를 넘기고, 세 칸을
+    /// 따로 적지 않는다. `current`가 세 값을 싣는지는 `processes`의 `this_run_carries_this_apps_generation_pid_and_inherited_key`가
+    /// 본다.
+    #[test]
+    fn every_verdict_gets_this_run_from_one_place() {
+        for (path, body) in verdict_sites() {
+            assert!(
+                body.contains("run: ThisRun::current(),"),
+                "{path}: 판정에 이 실행(`ThisRun::current()`)을 안 넘긴다 — 앱과 그 조상, 앱과 함께 뜬 vite가 막히지 않는다"
+            );
+            for loose in ["app_pid:", "inherited_key:", "generation:"] {
+                assert!(!body.contains(loose), "{path}: 이 실행의 칸(`{loose}`)을 손으로 채운다 — 한 자리만 어긋날 수 있다");
+            }
         }
     }
 
@@ -2216,10 +2230,8 @@ mod tests {
     /// - 죽은 실행의 기록은 끝내기를 **마감한 뒤에** 지운다. 먼저 지우면 끝내기가 도는 사이 앱이 닫혔을 때 남은 고아가 다음부터
     ///   출처 불명이 되어 영영 안 치워진다.
     /// - 판정에 **앱의 pid와 앱이 물려받은 셸 키**를 넘긴다(프로세스 스펙 S6). 설치본 셸에서 띄운 dev 앱이 제 vite와 제
-    ///   조상을 지난 실행의 확정 고아로 읽지 않게 하는 배선이다. 물려받은 키는 실물 장면 `Startup`도 재지만 macOS에서만
-    ///   돈다. 앱 pid는 실물 장면이 못 잰다 — 안쪽 검사 프로세스(앱)는 물려받은 키로도 막히고, 그 조상은 검사를 띄운
-    ///   사용자의 셸 쪽이라 죽은 실행의 키를 물릴 수 없다. `inherited_key: None`으로 바꾼 변형이 이 크레이트의 L1 전부를
-    ///   통과했다(실측) — 이 핀과 실물 장면의 「물려받은 키」 줄이 그 뒤에 섰다.
+    ///   조상을 지난 실행의 확정 고아로 읽지 않게 하는 배선이다. 판정을 부르는 여섯 자리와 함께 `every_verdict_gets_this_run_from_one_place`가
+    ///   재고(`run: ThisRun::current()`), 물려받은 키는 실물 장면 `Startup`도 잰다(macOS).
     #[test]
     fn the_startup_cleanup_counts_itself_judges_ends_then_forgets() {
         assert!(
@@ -2232,14 +2244,6 @@ mod tests {
         assert!(counted < taken, "셈({counted})이 판정({taken})보다 뒤에 있다 — 그 사이에 앱이 닫히면 이 끝내기가 마감되지 않는다");
         assert!(plan.contains("verdict::at_startup(&input)"), "시작 정리가 확정 고아만 고르는 판정을 안 지난다");
         assert!(plan.contains("verdict::dead_instances(&input)"), "시작 정리가 지울 기록을 판정과 같은 입력으로 안 고른다");
-        assert!(
-            plan.contains("app_pid: std::process::id(),"),
-            "시작 정리가 판정에 이 앱의 pid를 안 넘긴다 — 앱과 그 조상이 막히지 않는다"
-        );
-        assert!(
-            plan.contains("inherited_key: crate::processes::inherited_key(),"),
-            "시작 정리가 판정에 앱이 물려받은 셸 키를 안 넘긴다 — 설치본 셸에서 띄운 dev 앱이 제 vite를 확정 고아로 끝낸다"
-        );
 
         let carry = body_of("fn carry_out(", "\n}\n");
         let ended = carry.find(".finish()").expect("시작 정리가 끝내기를 마감하지 않는다");

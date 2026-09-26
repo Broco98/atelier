@@ -75,6 +75,31 @@ pub(crate) fn inherited_key() -> Option<&'static str> {
     KEY.get_or_init(|| std::env::var(SHELL_KEY_ENV).ok().filter(|key| !key.is_empty())).as_deref()
 }
 
+/// **이 실행** — 판정이 「이 실행의 것」과 「앱 자신」을 가를 때 쓰는 세 값: 이 실행의 세대, 앱의 pid, 앱이 물려받은 셸
+/// 키(프로세스 스펙 S6 · S52). 판정의 입력(`verdict::Inputs::run`)이다.
+///
+/// **한 값으로 묶어 한 자리에서 짓는다**(`ThisRun::current`). 판정을 부르는 자리가 여섯이다(`pty.rs`의 닫기 전 물음 ·
+/// 화면 스냅샷 · 요약 · 앱 종료 · 시작 정리 · 셸 닫기와 새로고침과 셸 스스로 끝남의 앞 절반). 세 칸을 자리마다 손으로 채우면
+/// 한 자리만 어긋나도(물려받은 키를 `None`으로) 그 길에서만 앱과 함께 뜬 vite가 판정에 선다 — 그 변형이 L1을 모두 통과한
+/// 실측이 있다. 판정 표는 값을 손으로 짓는다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThisRun<'a> {
+    /// 이 실행의 세대(`shell_key::generation`).
+    pub generation: &'a str,
+    /// 앱 자신의 pid.
+    pub app_pid: u32,
+    /// 앱이 물려받은 셸 키(`inherited_key`). 앱을 아틀리에 셸에서 띄웠을 때만 있다.
+    pub inherited_key: Option<&'a str>,
+}
+
+impl ThisRun<'static> {
+    /// 지금 도는 이 앱의 것. 세 값 모두 뜬 뒤에 안 바뀐다. 세대를 처음 잡는 자리가 아니다 — 판정은 앱이 뜬 뒤에 돌고, 그
+    /// 전에 setup의 쓸기가 세대를 잡는다(`shell_key::generation`).
+    pub fn current() -> Self {
+        ThisRun { generation: shell_key::generation(), app_pid: std::process::id(), inherited_key: inherited_key() }
+    }
+}
+
 /// 프로세스 하나의 신원 — pid와 커널이 준 시작 시각의 쌍(프로세스 결정 3 · 프로세스 스펙 S1).
 ///
 /// pid만으로는 재사용을 못 가른다. 스냅샷과 신호 사이에 그 pid가 다른 프로세스에게 넘어가면 남에게
@@ -121,4 +146,36 @@ pub struct Snapshot {
     pub procs: Vec<Proc>,
     /// 목록에 있었는데 행으로 못 세운 수 — 목록과 정보 읽기 사이에 끝난 것, 좀비, 정보를 못 읽은 것.
     pub skipped: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **이 실행은 이 앱의 세대 · pid · 물려받은 셸 키를 싣는다**(프로세스 스펙 S6). 판정을 부르는 여섯 자리가 모두 이 한 값을
+    /// 받으니(`pty.rs`의 `every_verdict_gets_this_run_from_one_place`) 이 자리가 곧 그 배선이다.
+    ///
+    /// 값으로 보고 **자리로도 본다.** 물려받은 키는 이 검사 프로세스의 env에 달렸다 — 아틀리에 셸 밖(CI)에서 돌리면 `None`이라
+    /// `inherited_key: None`으로 바꾼 변형이 값 단언을 통과한다. 그러면 설치본 셸에서 띄운 dev 앱이 시작 정리에서 제 vite를
+    /// 지난 실행의 확정 고아로 끝낸다. 그래서 짓는 글자를 함께 못박는다.
+    #[test]
+    fn this_run_carries_this_apps_generation_pid_and_inherited_key() {
+        let run = ThisRun::current();
+        assert_eq!(run.generation, shell_key::generation(), "이 실행의 세대가 셸 키를 짓는 세대가 아니다");
+        assert_eq!(run.app_pid, std::process::id(), "앱의 pid가 이 프로세스의 것이 아니다");
+        assert_eq!(run.inherited_key, inherited_key(), "앱이 물려받은 셸 키가 env의 표식이 아니다");
+
+        let src = include_str!("mod.rs");
+        let body = src
+            .split_once("pub fn current() -> Self {")
+            .expect("여는 표식이 있다")
+            .1
+            .split_once("\n    }\n")
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(!body.contains("mod tests"), "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다");
+        for wired in ["generation: shell_key::generation()", "app_pid: std::process::id()", "inherited_key: inherited_key()"] {
+            assert!(body.contains(wired), "이 실행을 지을 때 `{wired}`가 없다 — 판정이 이 앱을 다른 값으로 본다");
+        }
+    }
 }

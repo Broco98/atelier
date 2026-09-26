@@ -1122,7 +1122,7 @@ mod real {
     use crate::processes::snapshot::{identity_of, take, EnvScope};
     use crate::processes::testkit::{holds_for, key, Kid};
     use crate::processes::verdict::{judge, Inputs, Occasion, ShellEntry};
-    use crate::processes::Identity;
+    use crate::processes::{Identity, ThisRun};
 
     /// 끝낼 셸 하나(`key`)의 자손을 판정으로 고르고, 그중 이 자식만 남긴다.
     fn judged(key: &str, kid: &Kid) -> Vec<Identity> {
@@ -1130,13 +1130,11 @@ mod real {
         let ending = [ShellEntry { key: key.to_string(), process: None, first_input_us: None }];
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            generation: "test",
+            run: ThisRun { generation: "test", app_pid: std::process::id(), inherited_key: None },
             shells: &[],
             ending: &ending,
             instances: &[],
             exceptions: &[],
-            app_pid: std::process::id(),
-            inherited_key: None,
             occasion: Occasion::Normal,
         });
         verdict.descendants[key]

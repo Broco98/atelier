@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::{exceptions, shell_key, Identity, Proc, Snapshot};
+use super::{exceptions, shell_key, Identity, Proc, Snapshot, ThisRun};
 
 /// 셸 하나 — 셸 목록과 끝낼 셸이 같은 모양이다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,25 +53,21 @@ pub enum Occasion {
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub snapshot: &'a Snapshot,
-    /// 이 실행의 세대(`shell_key::generation`).
-    pub generation: &'a str,
+    /// 이 실행 — 세대 · 앱 자신의 pid · 앱이 물려받은 셸 키(`ThisRun`). 부르는 쪽은 `ThisRun::current()`를 준다. 앱이 물려받은
+    /// 키는 앱을 아틀리에 셸에서 띄웠을 때만 있다.
+    pub run: ThisRun<'a>,
     /// 이 실행의 셸 목록 — 풀에 앉은 셸들. 키만 올리고 아직 풀에 안 앉은 셸은 이 실행의 기록(`instances`)에서 온다.
     pub shells: &'a [ShellEntry],
     /// 끝낼 셸 — 풀에서 이미 뺀 셸들. 목록에서 빠졌어도 그 자손은 이 셸의 것으로 가른다. 여럿인 것은
     /// 새로고침이 풀을 통째로 비우기 때문이다.
     pub ending: &'a [ShellEntry],
-    /// 인스턴스 기록들 — 이 실행의 것(세대가 `generation`인 것)과 다른 실행들의 것. 이 실행의 기록에 있는 키는
+    /// 인스턴스 기록들 — 이 실행의 것(세대가 `run.generation`인 것)과 다른 실행들의 것. 이 실행의 기록에 있는 키는
     /// 풀에 없어도 셸 목록에 든다: 띄우는 중인 셸, 풀에서 빠졌지만 끝내기가 아직 도는 셸이다. 이 실행의 기록이 없으면
     /// (앱 신원을 못 읽어 기록을 안 씀) 이 세대의 목록 밖 키는 어느 묶음에도 넣지 않는다 — 확정 고아를 가를 근거가 없다.
     pub instances: &'a [InstanceRecord],
     /// 예외 목록(프로세스 결정 5) — 설정의 `terminal.processExceptions`, `null`이면 기본 목록. 부르는 쪽이 끝낼
     /// 때마다 설정에서 읽어 준다(`settings::process_exceptions`).
     pub exceptions: &'a [String],
-    /// 앱 자신의 pid.
-    pub app_pid: u32,
-    /// 앱이 물려받은 셸 키 — 앱 env의 표식. 앱을 아틀리에 셸에서 띄웠을 때만 있다. 뜬 뒤에 안 바뀌므로
-    /// 부르는 쪽이 한 번 읽어 둔다.
-    pub inherited_key: Option<&'a str>,
     pub occasion: Occasion,
 }
 
@@ -152,7 +148,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let shells: Vec<&'a ShellEntry> = input.shells.iter().chain(input.ending).collect();
     // 이 실행의 기록. 여기 있는 키는 풀에 없어도 셸이다 — 키를 올리고 아직 풀에 안 앉은 셸, 풀에서 빠졌지만 끝내기가
     // 아직 도는 셸. 셸 프로세스를 모르니 표식으로만 자손을 갖는다.
-    let own = input.instances.iter().find(|record| record.generation == input.generation);
+    let own = input.instances.iter().find(|record| record.generation == input.run.generation);
     let recorded: Vec<&'a str> = own.map_or_else(Vec::new, |record| record.shell_keys.iter().map(String::as_str).collect());
 
     // 셸 프로세스는 **신원이 맞는 행만** 셸로 본다. 셸이 끝나고 그 pid를 남이 받았으면, 그 pid 밑은
@@ -169,7 +165,7 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
         shells.iter().map(|shell| shell.key.as_str()).chain(recorded.iter().copied()).collect();
     // 이 실행의 셸 키인가. 시작 정리는 이 세대의 키를 모두 이 실행의 것으로 친다 — 목록에 없는 키(보통 판정이면 확정
     // 고아 (나)가 될 수 있다)도 이 실행이 가를 몫이지 시작 정리가 치울 몫이 아니다.
-    let ours = |key: &'a str| keys.contains(key) || (startup && shell_key::of_generation(key, input.generation));
+    let ours = |key: &'a str| keys.contains(key) || (startup && shell_key::of_generation(key, input.run.generation));
     // 셸마다 사람이 처음 입력한 시각. 같은 키가 두 번 서면(종료 판정이 풀에서 뺀 셸의 키를 한 번 더 더한다) 앞의
     // 것이 이긴다 — 셸 목록, 그다음 끝낼 셸 순이고 더한 키는 맨 뒤다.
     let mut first_input: HashMap<&'a str, Option<u64>> = HashMap::new();
@@ -178,9 +174,9 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     }
 
     // 행이 없어도 앱 자신은 막는다.
-    let mut blocked: HashSet<u32> = table.lineage(input.app_pid).collect();
-    blocked.insert(input.app_pid);
-    if let Some(inherited) = input.inherited_key {
+    let mut blocked: HashSet<u32> = table.lineage(input.run.app_pid).collect();
+    blocked.insert(input.run.app_pid);
+    if let Some(inherited) = input.run.inherited_key {
         blocked.extend(
             procs.iter().filter(|p| p.shell_key.as_deref() == Some(inherited)).map(|p| p.id.pid),
         );
@@ -306,7 +302,7 @@ fn stray(
     table: &Table,
 ) -> Option<Stray> {
     let before = |record: &InstanceRecord| carrier.id.started_us < record.updated_us;
-    if shell_key::of_generation(key, input.generation) {
+    if shell_key::of_generation(key, input.run.generation) {
         return own.filter(|record| before(record)).map(|_| Stray::Confirmed);
     }
     let Some(record) = input.instances.iter().find(|record| shell_key::of_generation(key, &record.generation)) else {
@@ -361,7 +357,7 @@ pub fn at_exit(input: &Inputs) -> Exit {
         .procs
         .iter()
         .filter_map(|proc| proc.shell_key.as_deref())
-        .filter(|key| shell_key::of_generation(key, input.generation))
+        .filter(|key| shell_key::of_generation(key, input.run.generation))
         .collect();
     let mut ending = input.ending.to_vec();
     ending.extend(marked.into_iter().map(|key| ShellEntry {
@@ -404,7 +400,7 @@ pub fn dead_instances<'a>(input: &Inputs<'a>) -> Vec<&'a InstanceRecord> {
     input
         .instances
         .iter()
-        .filter(|record| record.generation != input.generation && !table.alive(record))
+        .filter(|record| record.generation != input.run.generation && !table.alive(record))
         .collect()
 }
 
@@ -456,6 +452,12 @@ mod tests {
 
     const UID: u32 = 501;
     const APP: u32 = 50;
+
+    /// 이 실행 — 세대 `generation`, 앱 `APP`, 물려받은 키 없음. 물려받은 키를 재는 줄은 그 칸만 바꿔 짓는다
+    /// (`ThisRun { inherited_key: …, ..run("G") }`).
+    fn run(generation: &str) -> ThisRun<'_> {
+        ThisRun { generation, app_pid: APP, inherited_key: None }
+    }
 
     /// 스냅샷 한 행. 시작 시각은 따로 안 주면 pid를 따른다 — 부모가 자식보다 먼저 태어나게.
     fn row(pid: u32, ppid: u32) -> Proc {
@@ -642,13 +644,11 @@ mod tests {
         let exceptions = exceptions();
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            generation: "G",
+            run: ThisRun { inherited_key: case.inherited, ..run("G") },
             shells,
             ending,
             instances,
             exceptions: &exceptions,
-            app_pid: APP,
-            inherited_key: case.inherited,
             occasion: case.occasion,
         });
         let got = Bundles {
@@ -1169,13 +1169,11 @@ mod tests {
             // 부르는 쪽이 모드를 무엇으로 주든 시작 정리로 판정한다 — 이 표는 보통으로 준다.
             let mut got: Vec<u32> = at_startup(&Inputs {
                 snapshot: &snapshot,
-                generation: "G",
+                run: ThisRun { inherited_key: Some("I-3"), ..run("G") },
                 shells: &shells,
                 ending: &[],
                 instances: &records,
                 exceptions: &exceptions,
-                app_pid: APP,
-                inherited_key: Some("I-3"),
                 occasion: Occasion::Normal,
             })
             .into_iter()
@@ -1204,13 +1202,11 @@ mod tests {
             let records = records();
             let mut got: Vec<String> = dead_instances(&Inputs {
                 snapshot: &snapshot,
-                generation: "G",
+                run: ThisRun { inherited_key: Some("I-3"), ..run("G") },
                 shells: &[],
                 ending: &[],
                 instances: &records,
                 exceptions: &[],
-                app_pid: APP,
-                inherited_key: Some("I-3"),
                 occasion: Occasion::StartupCleanup,
             })
             .into_iter()
@@ -1410,13 +1406,11 @@ mod tests {
             let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
             let verdict = judge(&Inputs {
                 snapshot: &snapshot,
-                generation: "G",
+                run: run("G"),
                 shells: &shells,
                 ending: &ending,
                 instances: &[],
                 exceptions: &exceptions,
-                app_pid: APP,
-                inherited_key: None,
                 occasion: Occasion::Normal,
             });
 
@@ -1503,13 +1497,11 @@ mod tests {
             let snapshot = Snapshot { uid: UID, procs, skipped: 0 };
             let mut got: Vec<u32> = at_exit(&Inputs {
                 snapshot: &snapshot,
-                generation: "G",
+                run: ThisRun { inherited_key: case.inherited, ..run("G") },
                 shells: &[],
                 ending: &ending,
                 instances: &[],
                 exceptions: &exceptions,
-                app_pid: APP,
-                inherited_key: case.inherited,
                 occasion: Occasion::Normal,
             })
             .targets
@@ -1547,13 +1539,11 @@ mod tests {
         }];
         let exit = at_exit(&Inputs {
             snapshot: &snapshot,
-            generation: "G",
+            run: run("G"),
             shells: &[],
             ending: &ending,
             instances: &[],
             exceptions: &[],
-            app_pid: APP,
-            inherited_key: None,
             occasion: Occasion::Normal,
         });
         let mut targets: Vec<u32> = exit.targets.iter().map(|id| id.pid).collect();
