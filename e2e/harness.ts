@@ -463,8 +463,14 @@ export async function pointIn(target: Locator, where: RowPoint) {
  * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
  *
  * L3·L4가 함께 딛는다 — 손짓을 spec마다 적으면 문턱이나 흐려짐이 바뀌는 날 고칠 자리가 여럿이 된다.
+ *
+ * **행이 멈춘 뒤에 잰다.** 맨 마우스는 로케이터 동작과 달리 요소가 움직이는 중인지 안 기다린다 — 구획을
+ * 접은 직전이면 아래 행들이 180ms 동안 올라가는 중이라, 움직이는 도중에 잰 자리를 부하 걸린 러너가
+ * 늦게 누르면 행 한 칸 아래를 누른다(끌기가 시작도 안 된다). `scrollIntoViewIfNeeded`가 상자가 두 프레임
+ * 내리 같을 때까지 기다린다.
  */
 export async function pickUpRow(page: Page, slug: string) {
+  await workRow(page, slug).scrollIntoViewIfNeeded();
   const from = await pointIn(workRow(page, slug), "middle");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
