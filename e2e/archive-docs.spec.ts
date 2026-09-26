@@ -6,6 +6,7 @@ import {
   readIpcRecord,
   recordClipboard,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 
 const [shipped, bare] = ARCHIVE;
@@ -157,7 +158,7 @@ test("문서 경로를 복사하면 「메시지」 영역에 그 글자가 서�
   await expect(copy).toBeAttached();
   await expect(messages).toHaveText("");
 
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await 시계를세운다(page);
   await copy.click();
   await page.mouse.move(0, 0);
 

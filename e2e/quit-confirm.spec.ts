@@ -9,6 +9,7 @@ import {
   readIpcRecord,
   unknownIpcCalls,
   셸입력,
+  시계를세운다,
 } from "./harness";
 
 // 티켓 #223 — **빨간 버튼이 앱을 바로 끄지 않고 앱의 확인 창을 띄운다**(UI개선 결정 14·15).
@@ -242,7 +243,7 @@ test("셸에서 ⌘W로 띄운 바로 뒤의 Enter는 셸로 안 간다", async 
   await awaitSpawned(page, 1);
   const written = await typeIntoShell(page);
 
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await 시계를세운다(page);
   await page.keyboard.press("Meta+w");
   await page.keyboard.press("Enter");
   await page.clock.resume();

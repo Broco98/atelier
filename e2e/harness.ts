@@ -864,6 +864,28 @@ export async function clipboardWrites(page: Page): Promise<string[]> {
 }
 
 /**
+ * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`나 `resume`으로만 흐른다.
+ * **페이지를 열기 전에 `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는
+ * 된다. 열림 애니메이션의 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
+ *
+ * **여기 사는 이유는 읽고 세우는 사이의 경주를 한 곳에서 막으려는 것이다.** 페이지의 지금을 읽은 뒤 `pauseAt`이
+ * 닿기까지 느린 러너에서 100ms가 넘게 흐르면, 세울 시각이 이미 지나 `pauseAt`이 「Cannot fast-forward to the
+ * past」로 던진다(판 3 PR의 리눅스 `Verify`가 그렇게 빨갰다). 던질 때 시계는 이미 멈춰 있으므로, 지금을 다시 읽어
+ * 세우면 된다. 여유를 크게 잡아 피하지 않는 것은, 세우며 건너뛴 시간 안에 걸린 타이머가 한꺼번에 불리기 때문이다.
+ */
+export async function 시계를세운다(page: Page): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const now = await page.evaluate(() => Date.now());
+    try {
+      await page.clock.pauseAt(now + 100);
+      return;
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes("Cannot fast-forward to the past")) throw error;
+    }
+  }
+}
+
+/**
  * 독 배지로 나간 값들, 나간 순서대로. `undefined`는 「배지를 없앤다」이고 와이어에서는 키가
  * 통째로 빠지므로(`JSON.stringify`) 여기서는 `null`로 온다.
  */

@@ -8,6 +8,7 @@ import {
   recordClipboard,
   unknownIpcCalls,
   workRow,
+  시계를세운다,
   툴팁,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
@@ -37,14 +38,6 @@ const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputed
  * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
-
-/**
- * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`로만 흐른다. **페이지를 열기 전에
- * `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는 된다. 열림 애니메이션의
- * 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
- */
-const 시계를세운다 = async (page: Page) =>
-  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
 // 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라

@@ -18,6 +18,7 @@ import {
   readIpcRecord,
   unknownIpcCalls,
   셸입력,
+  시계를세운다,
 } from "./harness";
 
 // 판 01 — ⌘K로 열고, 치면 좁혀지고, 방향키로 고르고, Enter로 간다.
@@ -496,7 +497,7 @@ test("셸에서 ⌘K로 연 바로 뒤에 친 글자는 셸이 아니라 입력�
   await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
   const written = await callCount(page, "pty_write");
 
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
+  await 시계를세운다(page);
   await pressSearchKey(page);
   await page.keyboard.press("x");
   await page.clock.resume();
