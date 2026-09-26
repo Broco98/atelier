@@ -80,7 +80,7 @@ function AppDialog() {
               ref={cancelRef}
               type="button"
               onClick={() => pending.answer(false)}
-              className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-state-1 focus-visible:ring-2 focus-visible:ring-ring/50"
+              className={cn(DIALOG_BUTTON, "text-muted-foreground hover:bg-state-1")}
             >
               {pending.cancel ?? "취소"}
             </button>
@@ -90,10 +90,8 @@ function AppDialog() {
             type="button"
             onClick={() => pending.answer(true)}
             className={cn(
-              "h-7 rounded-[8px] px-3 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              pending.danger
-                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                : "bg-primary text-primary-foreground hover:bg-primary/85",
+              DIALOG_BUTTON,
+              pending.danger ? "bg-destructive/10 text-destructive hover:bg-destructive/20" : PRIMARY,
             )}
           >
             {pending.confirm}
@@ -103,7 +101,7 @@ function AppDialog() {
             <button
               type="button"
               onClick={() => pending.answer("extra")}
-              className="h-7 rounded-[8px] bg-primary px-3 text-[12.5px] font-medium text-primary-foreground transition-colors outline-none hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50"
+              className={cn(DIALOG_BUTTON, PRIMARY)}
             >
               {pending.extra}
             </button>
@@ -113,5 +111,11 @@ function AppDialog() {
     </div>
   );
 }
+
+// 창 버튼의 규격 — 세 버튼이 같은 틀이고 색만 갈린다.
+const DIALOG_BUTTON =
+  "h-7 rounded-[8px] px-3 text-[12.5px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
+// 주 버튼의 색 — 경고가 아닌 진행 버튼과 셋째 버튼([저장하고 나가기])이 같이 쓴다.
+const PRIMARY = "bg-primary text-primary-foreground hover:bg-primary/85";
 
 export default AppDialog;
