@@ -30,6 +30,23 @@ describe("템플릿 경로 이름 짓기", () => {
     expect(templatePathFor("adr.md", ["ADR.md", "Adr-2.md"])).toBe("adr-3.md");
   });
 
+  // macOS의 파일 시스템은 정규형(NFC·NFD)만 다른 이름을 한 파일로 본다 — 한글 이름은 NFD로 적히기도 한다. 견줄 때만
+  // 접고, 지은 이름은 이름 틀의 표기 그대로다.
+  it("정규형(NFC·NFD)만 다른 이름도 겹침으로 친다", () => {
+    const nfc = "학습-계획.md";
+    const nfd = nfc.normalize("NFD");
+    expect(nfd).not.toBe(nfc); // 두 표기가 글자로는 달라야 재는 것이 있다
+    expect(templatePathFor(nfc, [nfd])).toBe("학습-계획-2.md");
+    expect(templatePathFor(nfd, [nfc])).toBe(`${"학습-계획".normalize("NFD")}-2.md`);
+  });
+
+  // 겹침은 엔진이 `layout.json`을 가리는 것과 같은 접기다 — 대문자로 올렸다 내린다. `ſ`는 소문자로만 내리면 `s`가 되지
+  // 않아 놓친다.
+  it("대문자로 올렸다 내려야 같아지는 글자도 겹침으로 친다", () => {
+    expect(templatePathFor("ſpec.md", ["spec.md"])).toBe("ſpec-2.md");
+    expect(templatePathFor("layout.jſon", [])).toBe("layout-2.jſon");
+  });
+
   // 레이아웃 파일 자신을 템플릿으로 삼으면 저장이 그 본문으로 레이아웃을 덮는다 — 엔진은 그런 레이아웃을
   // 거절한다. 같은 폴더라 이름 틀이 `layout.json`이면 부딪치고, 대소문자만 달라도 같은 파일이다.
   it("`layout.json`은 피하고, `Layout.json`도 피한다", () => {
