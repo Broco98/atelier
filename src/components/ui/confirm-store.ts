@@ -56,17 +56,10 @@ type Pending = ChoiceAsk & { answer: (answer: DialogAnswer) => void };
 export const dialogStore = new Store<Pending | null>(null);
 
 /**
- * 창을 띄우고 답을 기다린다.
+ * 창을 띄우고 답(참 · 거짓 · 셋째)을 기다린다.
  *
  * **앞의 물음이 아직 떠 있으면 그것을 취소로 접는다.** 겹쳐 띄우면 어느 것에 답했는지가
  * 화면에서 사라지고, 답을 기다리던 약속이 영영 안 풀린다.
- */
-export function askDialog(ask: DialogAsk): Promise<boolean> {
-  return askChoice(ask).then((answer) => answer === true);
-}
-
-/**
- * 셋째 갈래를 받는 물음을 띄우고 답을 기다린다 — 띄우는 규칙(앞의 물음은 취소로 접는다)은 `askDialog`와 같다.
  */
 export function askChoice(ask: ChoiceAsk): Promise<DialogAnswer> {
   return new Promise((resolve) => {
@@ -79,6 +72,14 @@ export function askChoice(ask: ChoiceAsk): Promise<DialogAnswer> {
       },
     }));
   });
+}
+
+/**
+ * 두 갈래 물음 — `askChoice`의 참·거짓 판. 셋째 답이 없어 셋째 버튼(`extra`)도 받지 않는다. 앞의 물음을 접는
+ * 규칙은 `askChoice`에 있다.
+ */
+export function askDialog(ask: DialogAsk): Promise<boolean> {
+  return askChoice(ask).then((answer) => answer === true);
 }
 
 /** 되돌릴 수 없는 일을 묻는다. 진행 버튼이 경고색이다. */
