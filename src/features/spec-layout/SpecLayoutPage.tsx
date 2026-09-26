@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bot, Check, MoreHorizontal, Pencil, RotateCcw, TriangleAlert, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { showProblem } from "@/components/ui/confirm-store";
 import {
   DropdownMenu,
@@ -9,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { layoutDirRef } from "@/features/works/refs";
 import { modeNameOf } from "@/mode";
@@ -95,14 +97,11 @@ function SpecLayoutPage() {
       {states.error !== null && (
         <div className="flex flex-col items-start gap-3 pt-2">
           <p className="text-[13.5px] leading-[1.7] text-red-600">{String(states.error)}</p>
+          {/* 설정 파일 읽기 게이트의 [다시 읽기]와 같은 쪽 동작 버튼이다(`SettingsPage`의 `SettingsFileGate`). */}
           {states.data === undefined && (
-            <button
-              type="button"
-              onClick={reread}
-              className="h-7 rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-            >
+            <Button variant="ghost" size="sm" onClick={reread}>
               다시 읽기
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -158,10 +157,6 @@ export function SpecLayoutSection({
     </section>
   );
 }
-
-// 행 버튼의 규격은 이 화면의 「다시 읽기」와 같은 가족이다 — 저장 같은 주 버튼이 아니다.
-const ROW_BUTTON =
-  "inline-flex h-7 shrink-0 items-center gap-[5px] whitespace-nowrap rounded-[9px] px-[9px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover";
 
 /**
  * 모드 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
@@ -224,37 +219,40 @@ function ModeRow({
           </span>
         )}
       </div>
+      {/* 행의 버튼은 쪽 동작이다 — 저장 같은 주 버튼이 아니라 이 화면의 「다시 읽기」와 같은 조용한 글자 버튼(`Button`의
+          ghost · sm)이고, 아이콘은 글자 앞에 선다(`data-icon="inline-start"` — 왼쪽 여백이 한 단 준다). */}
       <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          onClick={onAsk}
-          aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
-          title={`${reference} 참조를 복사해요`}
-          className={ROW_BUTTON}
+        {/* 도움말은 복사할 참조다 — 이름(「… 부탁」)보다 더 말하는 것이라 설명으로도 남는다(S28). */}
+        <Hint
+          text={`${reference} 참조를 복사해요`}
+          announce="description"
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onAsk}
+              aria-label={`${name} 레이아웃을 에이전트에게 부탁`}
+            />
+          }
         >
-          <Bot aria-hidden className="size-3.5" strokeWidth={1.9} />
+          <Bot data-icon="inline-start" aria-hidden strokeWidth={1.9} />
           부탁
-        </button>
+        </Hint>
         {!fellBack && (
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`${name} 레이아웃 편집`}
-            className={ROW_BUTTON}
-          >
-            <Pencil aria-hidden className="size-3.5" strokeWidth={1.9} />
+          <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`${name} 레이아웃 편집`}>
+            <Pencil data-icon="inline-start" aria-hidden strokeWidth={1.9} />
             편집
-          </button>
+          </Button>
         )}
         {fellBack && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onReread}
             aria-label={`${name} 레이아웃 다시 읽기`}
-            className={cn(ROW_BUTTON, "px-[11px]")}
           >
             다시 읽기
-          </button>
+          </Button>
         )}
         {/* 되돌릴 것은 가린 폴더다 — 내장본 행에는 되돌릴 것이 없다. 깨진 폴더도 가린 폴더라 선다. */}
         {state.edited && <RevertMenu name={name} onRevert={onRevert} />}
@@ -281,16 +279,23 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        aria-label={label}
-        // 켜짐이 있는 아이콘 버튼 — quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
-          open ? "toggle-on" : "text-muted-foreground quiet-hover",
-        )}
+      {/* 도움말은 작업 ⋯와 같다 — 이름이 없는 아이콘 버튼이라 툴팁 글자가 곧 이름이다(S28). */}
+      <Hint
+        text={label}
+        announce="name"
+        render={
+          <DropdownMenuTrigger
+            // 아이콘 버튼의 모양은 `icon-button` 한 곳이 들고, 크기만 이 자리가 준다(S41) — 옆 글자 버튼(28px)과
+            // 한 줄 높이다. 켜짐이 있는 아이콘 버튼이라 quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
+            className={cn(
+              "icon-button size-7 transition-colors",
+              open ? "toggle-on" : "text-muted-foreground quiet-hover",
+            )}
+          />
+        }
       >
         <MoreHorizontal aria-hidden className="size-4" strokeWidth={2} />
-      </DropdownMenuTrigger>
+      </Hint>
       {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
       <DropdownMenuContent align="end" width="layout" aria-label={label}>
         <DropdownMenuItem

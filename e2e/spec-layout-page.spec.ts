@@ -64,6 +64,9 @@ test("[부탁]을 누르면 화면 아래 알림에 그 모드의 레이아웃 �
   await expect(page.locator("main li")).toHaveCount(2);
   await expect(알림(page)).toHaveCount(0);
 
+  // 도움말(툴팁)은 복사할 참조다 — 이름보다 더 말하는 것이라 설명으로도 남는다(S28).
+  await expect(부탁(page, "Maison")).toHaveAccessibleDescription("~/.atelier/layouts/maison/ 참조를 복사해요");
+
   // 폴더가 아직 없는 모드에도 같은 모양이다 — 붙여 받은 에이전트의 도구가 내장본을 돌려준다.
   await 부탁(page, "Maison").click();
   await expect(알림(page)).toBeVisible();
@@ -153,6 +156,9 @@ test("⋯ → 「기본값으로 되돌리기」에서 [취소]를 고르면 되
   await dialog.getByRole("button", { name: "취소", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(await callCount(page, "revert_spec_layout")).toBe(0);
+  // 창을 연 항목은 메뉴와 함께 사라졌다 — 포커스는 그 앞 자리(⋯)로 돌아온다. `<body>`로 떨어지면 키보드 사용자가
+  // 행을 처음부터 다시 찾아야 한다.
+  await expect(메뉴(page, "Atelier")).toBeFocused();
   await expect(되돌린알림(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

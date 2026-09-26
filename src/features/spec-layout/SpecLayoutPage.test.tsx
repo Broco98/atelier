@@ -53,7 +53,7 @@ function rowOf(html: string, name: string): string {
   return row;
 }
 
-/** 보이는 글자만 — 태그와 속성(버튼의 `title` 따위)을 걷는다. */
+/** 보이는 글자만 — 태그와 속성(버튼의 `aria-description` 따위)을 걷는다. */
 function textOf(html: string): string {
   return html.replace(/<[^>]+>/g, "");
 }
