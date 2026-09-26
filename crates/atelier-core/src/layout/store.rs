@@ -47,10 +47,11 @@ pub enum LayoutContent {
 }
 
 /// 저장의 결과 — 썼는가, 검증이 거절했는가. 거절은 오류가 아니라 **데이터**다: 편집기는 그 위치의
-/// 항목 아래에 오류를 세우고, 에이전트는 고쳐 다시 부른다. 쓰다가 실패한 것(IO)만 `Err`다.
+/// 항목 아래에 오류를 세우고, 에이전트는 고쳐 다시 부른다. `layout.json`이 서기 전에 쓰다가 실패한
+/// 것(IO)만 `Err`다.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveOutcome {
-    /// 썼다 — 저장한 레이아웃의 안내문과 경고.
+    /// 썼다 — 저장한 레이아웃의 안내문과 경고(지우지 못한 빠진 템플릿도 경고다).
     Saved(Rendered),
     /// 검증이 거절했다. 아무것도 쓰지 않았다.
     Refused(Vec<LayoutError>),
@@ -176,6 +177,8 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
 ///   한다.
 /// - 쓰는 순서는 템플릿 → `layout.json` → 빠진 템플릿 지우기다. 파일마다 원자적으로 쓴다(점으로
 ///   시작하는 임시 파일 → rename) — resolve도 감시도 점 파일을 보지 않는다.
+/// - `layout.json`이 서면 저장은 된 것이다. 그 뒤 빠진 템플릿을 지우지 못하면 `Err`가 아니라 경고이고,
+///   그 파일은 레이아웃이 모르는 파일로 남는다 — 잃은 것이 아니라 남은 것이다.
 /// - 레이아웃이 모르는 파일은 건드리지 않는다. 빠진 템플릿이라도 링크인 하위 폴더 너머에 있으면
 ///   남긴다 — 그곳은 레이아웃 폴더 밖이다.
 ///
@@ -213,19 +216,29 @@ pub fn save_layout(
     // 가리키는 템플릿을 잃게 한다. 비게 된 하위 폴더는 남긴다: 폴더는 사람이 만들었을 수 있다.
     // 새 레이아웃이 쥐는 파일과 같은 파일이면 다르게 적혔어도 지우지 않는다(`Held`). 가는 길의 하위
     // 폴더가 링크면 그 너머도 남긴다(`through_a_link`) — 둘 다 남기는 쪽으로 틀린다.
+    //
+    // **여기부터는 저장이 이미 된 것이다** — 새 `layout.json`이 섰다. 지우지 못한 템플릿은 실패가 아니라
+    // 경고다: 실패로 알리면 에이전트는 아무것도 안 쓰였다고 믿고, 편집기는 제 저장을 밖의 변경으로 본다.
+    // 남은 파일은 레이아웃이 모르는 파일이 될 뿐이다. 나머지는 그대로 지운다.
+    let shown = crate::collapse_home(&folder);
     let pointed = pointed_templates(&layout);
     let held = Held::of(&folder, pointed.iter().map(String::as_str).chain([LAYOUT_FILE]));
+    let mut undeleted = Vec::new();
     for dropped in previous.difference(&pointed) {
         if held.holds(&folder, dropped) || through_a_link(&folder, dropped) {
             continue;
         }
         match std::fs::remove_file(folder.join(dropped)) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                undeleted.push(format!("cannot delete dropped template {shown}/{dropped}: {e}"))
+            }
             _ => {}
         }
     }
-    let verdict = template_verdict(&layout, &folder, crate::collapse_home(&folder));
-    Ok(SaveOutcome::Saved(render_layout(&layout, Some(&verdict), None)))
+    let verdict = template_verdict(&layout, &folder, shown);
+    let mut rendered = render_layout(&layout, Some(&verdict), None);
+    rendered.warnings.extend(undeleted);
+    Ok(SaveOutcome::Saved(rendered))
 }
 
 /// **저장하지 않은 초안의 미리보기**(티켓 14) — 편집기가 초안이 바뀔 때마다 부른다(`render_spec_layout`).
@@ -874,6 +887,46 @@ mod tests {
         assert_eq!(files[0].1, "# 사람이 고친 본문\n");
         assert_eq!(files[2].1, "사람의 메모\n");
         assert!(root.path().join("layouts/atelier/sub").is_dir(), "빈 하위 폴더를 지웠다");
+    }
+
+    /// **`layout.json`이 선 뒤로는 저장이 된 것이다** — 빠진 템플릿 하나를 지우지 못해도(그 자리가
+    /// 폴더다) 저장은 `Saved`이고, 지우지 못한 까닭은 경고다. 실패로 알리면 에이전트는 아무것도 안 쓰였다고
+    /// 믿고, 편집기는 기준본을 옮기지 않아 제 저장을 밖의 변경으로 본다. 남은 파일은 해가 없다 — 지우지
+    /// 못한 것이지 잃은 것이 아니다. 나머지 빠진 템플릿은 그대로 지운다.
+    #[test]
+    fn a_dropped_template_that_cannot_be_deleted_is_a_warning_and_the_save_stands() {
+        let root = tempfile::tempdir().unwrap();
+        plant(
+            root.path(),
+            "atelier",
+            "layout.json",
+            r#"{ "root": { "children": [
+                { "pattern": "decisions.md", "kind": "file", "template": "decisions.md" },
+                { "pattern": "notes.md", "kind": "file", "template": "notes" },
+                { "pattern": "other.md", "kind": "file", "template": "other.md" } ] } }"#,
+        );
+        plant(root.path(), "atelier", "decisions.md", "# D\n");
+        plant(root.path(), "atelier", "notes/keep.txt", "폴더다\n");
+        plant(root.path(), "atelier", "other.md", "# O\n");
+
+        let outcome =
+            save_layout(root.path(), "atelier", with_decisions("x"), &BTreeMap::new()).unwrap();
+
+        let SaveOutcome::Saved(rendered) = outcome else { panic!("거절됐다: {outcome:?}") };
+        let folder = crate::collapse_home(&root.path().join("layouts/atelier"));
+        assert_eq!(rendered.warnings.len(), 1, "{:?}", rendered.warnings);
+        assert!(
+            rendered.warnings[0].contains(&format!("{folder}/notes")),
+            "어느 템플릿인지 말하지 않는다: {:?}",
+            rendered.warnings
+        );
+        let LayoutContent::Readable { layout, .. } = read_layout(root.path(), "atelier").unwrap().content
+        else {
+            panic!("저장한 레이아웃이 안 읽힌다")
+        };
+        assert_eq!(Ok(layout), parse_layout_value(with_decisions("x")), "새 layout.json이 아니다");
+        assert!(root.path().join("layouts/atelier/notes/keep.txt").is_file());
+        assert!(!root.path().join("layouts/atelier/other.md").exists(), "나머지 빠진 템플릿이 남았다");
     }
 
     /// 템플릿 하나를 `template` 경로로 가리키는 레이아웃.
