@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ArchivePage from "./ArchivePage";
+import { ToastProvider } from "@/components/ui/toast";
 import { archivedDocsQuery, archiveQuery } from "./hooks";
 import type { ArchivedDocs, ArchiveEntry } from "./types";
 import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
@@ -28,6 +29,7 @@ const withProject: ArchiveEntry = {
   projects: ["atelier"],
 };
 
+// 토스트 자리(Viewport)는 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트 Provider를 여기서도 싼다(S14).
 function render(
   mode: Mode,
   entries: ArchiveEntry[],
@@ -43,14 +45,16 @@ function render(
   if (docs) client.setQueryData(archivedDocsQuery(mode, selectedSlug).queryKey, docs);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <ArchivePage
-        mode={mode}
-        sidebarOpen
-        selectedSlug={selectedSlug}
-        currentFile={currentFile}
-        onSelectDoc={() => {}}
-        onFollowLink={() => {}}
-      />
+      <ToastProvider>
+        <ArchivePage
+          mode={mode}
+          sidebarOpen
+          selectedSlug={selectedSlug}
+          currentFile={currentFile}
+          onSelectDoc={() => {}}
+          onFollowLink={() => {}}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

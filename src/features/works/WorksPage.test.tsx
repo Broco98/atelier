@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WorksPage, { shellClosedByTab, togglesWorkPanel } from "./WorksPage";
+import { ToastProvider } from "@/components/ui/toast";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { specFileQuery, worksQuery } from "./hooks";
 import { projectsQuery } from "@/features/projects/hooks";
@@ -52,6 +53,9 @@ function source(file: "WorksPage.tsx" | "SpecViewer.tsx" | "../terminal/terminal
 // 개수가 달라지면 반드시 빨개진다(shell-registry.test.ts가 같은 것을 쓴다).
 const countOf = (text: string, literal: string) => text.split(literal).length - 1;
 
+// 화면이 토스트 자리(Viewport)를 그리는데 그것은 Provider 밖에서 던진다 — 앱 루트(`main.tsx`)가 싸는 토스트
+// Provider를 렌더 도우미도 싼다(S14). 정적 렌더라 구독은 안 걸리고 자리만 선다.
+//
 // **세계는 기본값을 단 뒤쪽 인자다**(결정 10). 이 화면의 조회는 전부 `mode`에서 나오는데(`ownerOf(mode,
 // …)`) 그 값이 한쪽으로 누워도 화면은 「셸이 안 서네」로만 보인다 — 두 세계에 같은 slug를
 // 세워 재려면 렌더가 세계를 받아야 한다. 기본값이 Atelier라 세계를 안 넘기는 기존 호출은 그대로
@@ -74,19 +78,21 @@ function render(
   }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <WorksPage
-        mode={mode}
-        sidebarOpen
-        selectedSlug={work.slug}
-        currentFile={null}
-        onSelectFile={() => {}}
-        onOpenProject={() => {}}
-        tab={tab}
-        onSelectTab={() => {}}
-        split={split}
-        onSelectSplit={() => {}}
-        onDropInto={() => {}}
-      />
+      <ToastProvider>
+        <WorksPage
+          mode={mode}
+          sidebarOpen
+          selectedSlug={work.slug}
+          currentFile={null}
+          onSelectFile={() => {}}
+          onOpenProject={() => {}}
+          tab={tab}
+          onSelectTab={() => {}}
+          split={split}
+          onSelectSplit={() => {}}
+          onDropInto={() => {}}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -314,7 +320,8 @@ describe("WorksPage 머리행 배치", () => {
     const a = actions(render());
     expect(a).not.toBe("");
     for (const one of [
-      'title="상태 변경"',
+      // 도움말 「상태 변경」은 툴팁이라 정적 마크업에 없다 — 이름(지금 상태)보다 더 말하던 그 말은 설명으로 남는다(S28).
+      'aria-description="상태 변경"',
       'aria-label="작업 메타"',
       'aria-label="작업 메뉴"',
       'aria-label="분할"',
@@ -368,7 +375,7 @@ describe("WorksPage 헤더에서 뷰 탭이 걷혔다", () => {
   it("상태 배지는 남는다", () => {
     // 배지는 「어느 단계인가」라 뷰 탭과 성질이 다르다 — 자주 누르는 조작이라 헤더에 남는다.
     // 뷰 탭을 걷으면서 함께 쓸려 나가면 상태를 바꾸는 데 클릭이 두 번 든다.
-    expect(actions(render())).toContain('title="상태 변경"');
+    expect(actions(render())).toContain('aria-description="상태 변경"');
   });
 });
 
@@ -607,39 +614,6 @@ describe("WorksPage 기본 문서", () => {
     expect(selectedRow(markup)).not.toContain(">overview.md<");
     expect(markup).toContain(bodies["plan.md"]);
     expect(markup).not.toContain(bodies["overview.md"]);
-  });
-});
-
-// 결정 47. 앞 판에서 토스트는 SpecViewer의 지역 상태였고, 터미널 탭에는 SpecViewer가
-// 없으므로 **트리를 복사해도 아무 말이 없었다**(1판이 남긴 구멍 1). 화면으로 올리면 닫힌다.
-describe("WorksPage 복사 토스트", () => {
-  // 토스트가 뜬 화면은 정적 렌더로 만들 수 없다 — 상태가 이 화면의 useState이고 그것을
-  // 올리는 것은 클릭이다. 그래서 **소유자와 배선**을 소스에서 본다.
-  it("화면이 소유하고, 뷰 분기 밖에서 그려진다", () => {
-    const worksPage = source("WorksPage.tsx");
-    expect(source("SpecViewer.tsx")).not.toContain("setToast");
-    expect(worksPage).toContain("const [toast, setToast]");
-
-    // 그리는 자리가 본문 분기 **밖**이다. 분기 안이면 한 탭에서만 뜬다.
-    //
-    // 닻이 `const body =`까지인 것은 판 05가 여기에 분할 가지를 하나 더 얹었기 때문이다 —
-    // 분기의 **첫 조건**을 닻으로 삼으면 가지가 늘 때마다 이 검사가 무관하게 깨진다.
-    const body = worksPage.indexOf("const body =");
-    const ret = worksPage.indexOf("return (", body);
-    const toast = worksPage.indexOf("{toast && (", ret);
-    expect(body, "본문 분기를 찾지 못했다").toBeGreaterThan(-1);
-    expect(ret, "화면의 return을 찾지 못했다").toBeGreaterThan(body);
-    expect(toast, "본문 분기 밖에서 토스트를 찾지 못했다").toBeGreaterThan(ret);
-  });
-
-  it("패널의 복사가 토스트를 띄우는 그 함수를 부른다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const call = worksPage.match(/<WorkPanel\b[\s\S]*?\/>/);
-    expect(call, "WorkPanel 호출부를 찾지 못했다").not.toBeNull();
-    // 1판의 터미널 가지는 여기에 토스트 없는 맨 복사를 넘겼다 — 그 배선이 구멍이었다.
-    expect(call![0]).toContain("onCopy={copyText}");
-    expect(call![0]).not.toContain("navigator.clipboard");
-    expect(worksPage).toMatch(/const copyText = useCallback\([\s\S]{0,200}?showToast\(/);
   });
 });
 
@@ -908,19 +882,21 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     client.setQueryData(worksQuery("atelier").queryKey, []);
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <WorksPage
-          mode="atelier"
-          sidebarOpen
-          selectedSlug={null}
-          currentFile={null}
-          onSelectFile={() => {}}
-          onOpenProject={() => {}}
-          tab="spec"
-          onSelectTab={() => {}}
-          split={null}
-          onSelectSplit={() => {}}
-          onDropInto={() => {}}
-        />
+        <ToastProvider>
+          <WorksPage
+            mode="atelier"
+            sidebarOpen
+            selectedSlug={null}
+            currentFile={null}
+            onSelectFile={() => {}}
+            onOpenProject={() => {}}
+            tab="spec"
+            onSelectTab={() => {}}
+            split={null}
+            onSelectSplit={() => {}}
+            onDropInto={() => {}}
+          />
+        </ToastProvider>
       </QueryClientProvider>,
     );
     expect(kindsOf(headerOf(markup))).toEqual([]);
@@ -1084,31 +1060,6 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     // 탭의 `×`도 **같은 함수**로 온다. 두 길이 갈리면 한쪽만 확인 창을 거치는데, 화면으로는
     // 「가끔 안 묻는다」로만 보인다 — 결정 92가 `closeShell`을 밖으로 안 내보낸 그 이유다.
     expect(worksPage).toContain("onClose={requestCloseShell}");
-  });
-});
-
-// #141. 제목이 머리행에서 빠지면서 제자리 편집도 사라졌다 — **이름을 고칠 길이 없어지면
-// 안 된다.** 메뉴가 열린 화면은 정적 렌더로 만들 수 없으므로(여닫음이 클릭이다) 배선을
-// 리터럴로 못박는다.
-describe("WorksPage 이름 바꾸기가 ⋯ 메뉴로 갔다", () => {
-  it("편집을 여는 자리가 ⋯ 메뉴 안에 하나 있다", () => {
-    const worksPage = source("WorksPage.tsx");
-    const menu = worksPage.indexOf("function WorkMenu(");
-    expect(menu, "⋯ 메뉴를 찾지 못했다").toBeGreaterThan(-1);
-    // 편집이 그 함수 **뒤**에 있다 = 그 메뉴 안이다. 머리행에 남아 있으면 앞에 나온다.
-    expect(worksPage.indexOf("<TitleEditor")).toBeGreaterThan(menu);
-    expect(countOf(worksPage, "<TitleEditor")).toBe(1);
-    // **JSX에만 있는 리터럴로 집는다.** 「이름 바꾸기」라는 글자는 이 파일의 주석에도 나와서
-    // 그것만 세면 항목을 지워도 초록이다 — 실제로 뮤테이션에서 살아남았다.
-    expect(worksPage).toContain(
-      '<span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">이름 바꾸기</span>',
-    );
-    expect(worksPage).toContain("onClick={() => setRenaming(true)}");
-  });
-
-  it("고친 이름이 실제로 코어로 간다", () => {
-    // 항목만 있고 커밋이 없으면 「눌러도 아무 일이 없는 버튼」이 된다(결정 11·21).
-    expect(source("WorksPage.tsx")).toContain("setTitle.mutate({ slug: work.slug, title: value })");
   });
 });
 
@@ -1282,8 +1233,10 @@ describe("분할 뷰", () => {
 
   // 결정 86. 뷰 탭이 있던 자리다 — 단일 뷰에도 있어야 켤 수 있다.
   it("분할 토글이 두 상태 모두에 서고 켜짐을 말한다", () => {
-    expect(render(withSpec, "spec", null)).toContain('aria-label="분할" aria-pressed="false"');
-    expect(render(withSpec, "spec", "lr")).toContain('aria-label="분할" aria-pressed="true"');
+    // 여는 태그 하나에서 잰다 — 토글(`aria-pressed`)과 툴팁 트리거가 속성을 함께 펴서 둘의 순서가 붙어 있지 않다.
+    const split = (markup: string) => markup.match(/<button[^>]*aria-label="분할"[^>]*>/)?.[0] ?? "";
+    expect(split(render(withSpec, "spec", null))).toContain('aria-pressed="false"');
+    expect(split(render(withSpec, "spec", "lr"))).toContain('aria-pressed="true"');
   });
 });
 
@@ -1338,19 +1291,21 @@ function renderEmpty(mode: Mode, projects: ProjectView[] = []): string {
   client.setQueryData(projectsQuery("atelier").queryKey, projects);
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <WorksPage
-        mode={mode}
-        sidebarOpen
-        selectedSlug={null}
-        currentFile={null}
-        onSelectFile={() => {}}
-        onOpenProject={() => {}}
-        tab="spec"
-        onSelectTab={() => {}}
-        split={null}
-        onSelectSplit={() => {}}
-        onDropInto={() => {}}
-      />
+      <ToastProvider>
+        <WorksPage
+          mode={mode}
+          sidebarOpen
+          selectedSlug={null}
+          currentFile={null}
+          onSelectFile={() => {}}
+          onOpenProject={() => {}}
+          tab="spec"
+          onSelectTab={() => {}}
+          split={null}
+          onSelectSplit={() => {}}
+          onDropInto={() => {}}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

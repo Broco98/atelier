@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
 import { dialogStore } from "@/components/ui/confirm-store";
-import SearchPalette from "@/features/search/SearchPalette";
+import SearchPalette, { armSearchPalette } from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
@@ -145,19 +145,27 @@ function AppShell() {
   // ⇧⇧가 딛던 둘이 함께 사라졌다: 직전 ⇧의 시각을 드는 `useRef`와, ⇧+클릭 두 번을 막던
   // mousedown 무장 해제(옛 결정 30). 몸짓이 아니라 화음이라 무장이라는 상태 자체가 없다.
   const [searchOpen, setSearchOpen] = useState(false);
+  // **여는 길은 이 함수 하나다** — ⌘K(메뉴의 합성 keydown도 이리 온다)와 검색 버튼이 함께 부른다.
+  // 여는 **그 순간** 팔레트의 첫 프레임 가드를 켠다(S24): 팔레트가 그려지고 포커스가 들어오기를
+  // 기다리면, 그 사이에 친 글자가 셸로 간다. 켜는 것은 state보다 먼저다.
+  //
+  // **여는 갈래뿐이다**(팔레트 결정 4). 이미 떠 있으면 이 setter가 아무것도 안 바꾼다 — 토글이면
+  // 키가 두 번 도는 날 팔레트가 도로 닫히는데, 그것보다 이미 열린 것이 다시 열리는 편이 낫다.
+  // 떠 있는 채로 켠 가드는 다음 키에서 포커스가 이미 팔레트 안인 것을 보고 스스로 꺼진다.
+  const openSearch = useCallback(() => {
+    armSearchPalette();
+    setSearchOpen(true);
+  }, []);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!searchHotkey(e)) return;
       if (dialogStore.state !== null) return;
       e.preventDefault();
-      // **여는 갈래뿐이다**(팔레트 결정 4). 이미 떠 있으면 이 setter가 아무것도 안 바꾼다 —
-      // 토글이면 키가 두 번 도는 날 팔레트가 도로 닫히는데, 그것보다 이미 열린 것이 다시
-      // 열리는 편이 낫다.
-      setSearchOpen(true);
+      openSearch();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [openSearch]);
 
   return (
     <div
@@ -215,24 +223,25 @@ function AppShell() {
         />
         <Outlet />
       </div>
-      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 setter다.** 여는 길을
+      {/* 검색 버튼이 부르는 것이 **바로 위 ⌘K 리스너가 부르는 그 함수다.** 여는 길을
           둘로 두면 「지금 떠 있는가」가 두 곳에 살고, 한쪽으로 연 팔레트를 다른 쪽이 모른다.
           이 버튼은 여는 갈래만 든다 — 떠 있는 동안에는 팔레트의 배경(z-50)이 이 행(z-20)을
           덮어 애초에 눌리지 않는다(ShellControls의 그 버튼 주석). */}
       <ShellControls
         sidebarOpen={sidebarOpen}
         onToggleSidebar={toggleSidebar}
-        onOpenSearch={() => setSearchOpen(true)}
+        onOpenSearch={openSearch}
       />
-      {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 확인 창 **앞에** 서는 것은
-          층 순서다: 창이 떠 있는 동안에는 ⌘K가 안 먹으므로 둘이 겹칠 일이 없지만, 겹친다면
-          답해야 하는 물음이 위여야 한다.
+      {/* 검색도 여기 하나다 — 어느 화면에서 열든 같은 것이 뜬다. 창이 떠 있는 동안에는 ⌘K가
+          안 먹지만, 팔레트가 먼저 떠 있을 때 물음이 오면(종료 요청) 둘이 겹친다 — 그때는 답해야
+          하는 물음이 위다. 둘 다 `body` 끝의 포털로 서고 뜰 때 붙으므로, 나중에 뜬 확인 창이 늘
+          위다. 포커스도 확인 창으로 가서, Esc 한 번은 확인 창만 닫는다.
 
           **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
           늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
-      {searchOpen && <SearchPalette mode={mode} onClose={() => setSearchOpen(false)} />}
+      <SearchPalette mode={mode} open={searchOpen} onClose={() => setSearchOpen(false)} />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
-          그때 어느 것에 답했는지가 화면에서 사라진다. 사이드바 위에 서야 하므로 이 층이다. */}
+          그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />
     </div>
   );

@@ -177,12 +177,13 @@ describe("WorkPanel 두 탭", () => {
 
   it("맨 위가 spec | info 탭 바이고, 처음 켜져 있는 것은 spec이다", () => {
     const markup = render(true);
-    // 켜짐·꺼짐 둘 다 기존 토글 어휘를 그대로 쓴다 — 새 토큰을 만들지 않았다
-    expect(markup).toMatch(/<button[^>]*\btoggle-on\b[^>]*>spec</);
+    // 탭이다(결정 9) — 켜진 탭은 `aria-selected`가 말한다. 켜짐의 모양(toggle-on · 꺼짐 quiet-hover)은
+    // 부품 파일(`tabs.tsx`)이 든다. ←/→로 옮기는 것은 L3(`tab-keys.spec.ts`)가 잰다.
+    expect(markup).toMatch(/<button[^>]*role="tab"[^>]*aria-selected="true"[^>]*>spec</);
     // 라벨은 **소문자 영어다**(결정 41). `정보`·`세션`으로 되돌아오면 사이드바 가지의
     // `spec`·`terminal`과 언어가 갈린다 — 그 셋은 한 가족으로 읽혀야 한다. `세션`은 특히
     // 앱의 말이 아니다(CONTEXT.md) — `claude`가 자기 쪽에 저장하는 대화 몫이다.
-    expect(markup).toMatch(/<button[^>]*\bquiet-hover\b[^>]*>info</);
+    expect(markup).toMatch(/<button[^>]*role="tab"[^>]*aria-selected="false"[^>]*>info</);
     expect(markup).not.toMatch(/<button[^>]*>정보</);
     expect(markup).not.toMatch(/<button[^>]*>세션</);
   });
@@ -218,19 +219,18 @@ describe("WorkPanel 두 탭", () => {
   it("보이지 않는 탭도 함께 마운트돼 있다", () => {
     const markup = render(true);
     // info 탭은 지금 안 보이지만 마크업에 있다. 언마운트하면 메타를 보고 spec으로
-    // 돌아왔을 때 접어둔 판이 펴져 있다 (결정 13).
+    // 돌아왔을 때 접어둔 판이 펴져 있다 (결정 9·13). 다녀와도 접힘이 남는지는 L3가 잰다
+    // (`tab-keys.spec.ts` — 숨은 패널의 수를 세던 핀이 거기로 갔다).
     expect(markup).toContain("feat/some-work");
-    // 안 보이는 탭이 하나다 — `cn`이 display 충돌을 정리해 `contents`가 `hidden`으로 접힌다.
-    expect(markup.match(/class="hidden"/g)).toHaveLength(1);
   });
 
-  it("탭 껍데기가 패널 카드의 flex 컨텍스트를 통과시킨다", () => {
+  it("탭 패널 안의 스크롤 영역이 패널 카드의 남는 높이를 차지한다", () => {
     // 지켜야 할 불변조건은 "spec 탭이 조각을 돌려준다"가 아니라 **"스크롤 영역이
-    // 패널 카드의 직계 flex 자식이어야 한다"**이다. 탭 내용을 평범한 div로 감싸면
+    // 패널 카드의 직계 flex 자식이어야 한다"**이다. 탭 패널이 평범한 상자면
     // flex-1의 기준이 카드에서 껍데기로 옮겨가 카드의 넘침 감춤에 트리가 잘리는데,
-    // 마크업만 보면 멀쩡하다. display:contents가 그 통과를 맡는다.
+    // 마크업만 보면 멀쩡하다. 패널의 display:contents가 그 통과를 맡는다 — 그것은 부품
+    // 파일(`tabs.tsx`의 TabsContent)이 든다.
     const markup = render(true);
-    expect(markup.match(/class="contents"/g)).toHaveLength(1);
     // 통과시키는 것만으로는 모자라다 — 받는 쪽이 그 자리를 차지해야 트리가 스크롤한다.
     // 둘 중 하나만 빠져도 트리가 내용 높이만큼 늘어나 카드에 잘린다.
     const scrollBox = markup.match(/<div class="([^"]*\boverflow-y-auto\b[^"]*)"/)?.[1] ?? "";
@@ -407,9 +407,9 @@ describe("WorkPanel 소스 토글", () => {
 
   const DOC_LABEL = 'aria-label="문서로 보기"';
 
-  /** 두 칸을 감싸는 상자의 여는 태그 — 바닥(bg-state-1)이 그 표식이다. */
+  /** 두 칸을 감싸는 그룹의 여는 태그 — `role="group"`이 그 표식이다(판 4부터 ToggleGroup이 그린다). */
   function well(markup: string): string {
-    return markup.match(/<span[^>]*bg-state-1[^>]*>/)?.[0] ?? "";
+    return markup.match(/<div[^>]*role="group"[^>]*>/)?.[0] ?? "";
   }
 
   function docTab(markup: string): string {

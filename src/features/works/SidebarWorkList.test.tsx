@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Mode } from "@/mode";
-import type { ShellSignal } from "@/components/shell/shell-signal";
+import { SignalLane, type ShellSignal } from "@/components/shell/shell-signal";
 import { WorkSectionList } from "./WorkSectionList";
 import { emptyMainNotice, splitWorkSections, type SectionsOpen } from "./work-sections";
 import type { WorkView } from "./types";
@@ -21,8 +21,9 @@ import type { WorkView } from "./types";
 // 이 화면이 행에서 읽는 것은 slug·title·status·pinned·projects다. work-sections.test.ts와 같은
 // 접두사 규칙을 쓴다: "pin:"이면 고정, "draft:"면 초안. 제목은 slug를 그대로 쓴다.
 //
-// **프로젝트는 `@`로 뒤에 붙인다**(`"가@billing,ledger"`) — 셸이 없는 행의 둘째 줄이 그것을
-// 싣기 때문이다(이 판 결정 5). 안 붙이면 빈 목록이고, 그 행의 둘째 줄은 빈 채로 선다.
+// **프로젝트는 `@`로 뒤에 붙인다**(`"가@billing,ledger"`). 행이 두 줄이던 동안 셸 없는 행의
+// 둘째 줄이 그것을 실었고, 한 줄 행은 **안 싣는다**(결정 14 — 호버 카드가 싣는다). 그 「안
+// 싣는다」를 재려면 프로젝트가 있는 work가 있어야 해서 표기가 남는다. 안 붙이면 빈 목록이다.
 const works = (...raws: string[]) =>
   raws.map((raw) => {
     const pinned = raw.startsWith("pin:");
@@ -54,10 +55,10 @@ function render(
     // 화면값은 **문자열 Record**로 내려온다(#203) — 값을 고르는 자리는 Sidebar이고 이
     // 목록은 터미널을 모른다(아래 계약). 여기서 보는 것은 그 값이 레인과 이름에 닿는가다.
     signals = {},
-    // 셸이 있는 행의 둘째 줄은 슬롯으로 온다 — 그리는 것은 `components/shell`의 `ShellMeta`
-    // 나 `SignalLine`이고(#203) 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는 것은
-    // **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
-    renderSubrow = (work: WorkView) => <i data-meta={work.slug} />,
+    // 셸이 있는 행의 오른쪽 메타는 슬롯으로 온다 — 그리는 것은 `components/shell`의
+    // `ShellMeta`나 `SignalMeta`이고(S4) 값을 고르는 자리는 Sidebar다(결정 13). 여기서 보는
+    // 것은 **슬롯이 서는가**뿐이라 안에 무엇이 오는지는 이 파일의 관심이 아니다.
+    renderRowMeta = (work: WorkView) => <i data-meta={work.slug} />,
     draggedSlug = null,
     lineY = null,
     litEmptySlot = null,
@@ -66,7 +67,7 @@ function render(
     selectedSlug?: string | null;
     shellCounts?: Record<string, number>;
     signals?: Record<string, ShellSignal>;
-    renderSubrow?: (work: WorkView) => ReactNode;
+    renderRowMeta?: (work: WorkView) => ReactNode;
     draggedSlug?: string | null;
     lineY?: number | null;
     litEmptySlot?: keyof SectionsOpen | null;
@@ -78,14 +79,19 @@ function render(
       mode={mode}
       open={open}
       selectedSlug={selectedSlug}
-      shellCounts={shellCounts}
-      signals={signals}
+      shells={{
+        shellCounts,
+        signals,
+        // 부르는 셸의 말(결정 14)은 이 파일의 관심 밖이다 — 이름 버튼의 설명만 바꾸고 행의
+        // 구획·레인·이름은 안 건드린다. 설명이 서는 것은 L3가 잰다(`works-sidebar.spec.ts`).
+        notes: {},
+        renderRowMeta,
+      }}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
       onLeave={() => {}}
       onTogglePin={() => {}}
-      renderSubrow={renderSubrow}
       draggedSlug={draggedSlug}
       lineY={lineY}
       litEmptySlot={litEmptySlot}
@@ -136,43 +142,35 @@ const rowsBySection = (markup: string) =>
       rows: [...chunk.matchAll(/aria-label="(.*?) 고정"/g)].map((m) => m[1]),
     }));
 
-// **둘째 줄** 상자들 — 행마다 하나씩이다(이 판 결정 4). 표식이 슬러그를 들고 있어야
-// 「어느 행의 줄인가」가 나온다: 마크업 전체에서 글자를 세면 다른 행의 줄과 섞여, 줄이
+// **오른쪽 메타** 칸들 — 셸이 있는 행마다 하나씩이다(S4). 표식이 슬러그를 들고 있어야
+// 「어느 행의 메타인가」가 나온다: 마크업 전체에서 글자를 세면 다른 행의 메타와 섞여, 메타가
 // 엉뚱한 work에 서도 초록이 된다.
 //
 // **이 하나만 자리로 이름 붙는다.** 아래 `data-shells`가 적는 규칙은 「표식은 그 자리에
-// 있는 것의 이름이다」인데(`data-branch`·`data-section`), 이 줄은 **싣는 것이 갈린다** —
-// 셸이 있으면 종류·수, 없으면 프로젝트 이름, 셸이 스스로 말했으면 그 마지막 말과 경과. 있는
-// 것으로 이름을 붙이면 그 이름이 세 갈래 중 둘에게 거짓이 되므로, 여기서만 **자리**가
-// 이름이다. 판 05가 걷은 옛 `data-subrow`와 글자가 같지만 가리키는 것이 다르다: 그때는
-// 행 아래에 딸리던 별개의 줄이었고, 지금은 행 안의 둘째 트랙이다.
+// 있는 것의 이름이다」인데(`data-branch`·`data-section`), 이 칸은 **싣는 것이 갈린다** —
+// 조용하면 종류·수, 셸이 부르거나 돌면 그 셸의 마크·경과. 있는 것으로 이름을 붙이면 그
+// 이름이 갈래 대부분에게 거짓이 되므로, 여기서만 **자리**가 이름이다.
 //
-// **끝을 세어서 자른다.** 이 상자 안에는 `<div>`가 하나 더 들 수 있어(셸 메타 상자) 첫
-// `</div>`로 끊으면 셸이 있는 행에서 절반만 잘린다 — 그런 검사는 조용히 샌다.
-const subrowsOf = (markup: string) =>
-  [...markup.matchAll(/<div[^>]*data-subrow="(.*?)"/g)].map((m) => {
-    const from = m.index!;
-    let depth = 0;
-    for (const tag of markup.slice(from).matchAll(/<(\/?)div\b/g)) {
-      depth += tag[1] === "/" ? -1 : 1;
-      if (depth === 0) {
-        const html = markup.slice(from, from + tag.index! + "</div>".length);
-        return { slug: m[1], html, text: html.replace(/<[^>]*>/g, "") };
-      }
-    }
-    throw new Error(`둘째 줄 상자가 안 닫혔다: ${m[1]}`);
-  });
+// 이 칸 안에는 `<div>`가 없어(슬롯이 그리는 것은 span과 글리프뿐) 첫 `</div>`까지가 그 칸
+// 전부다.
+const rowMetasOf = (markup: string) =>
+  [...markup.matchAll(/<div[^>]*data-row-meta="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
+    slug: m[1],
+    html: m[0],
+  }));
 
-// 그 안의 **셸 메타 상자**만 잘라낸다(결정 14). 표식이 자리 설명이 아니라 **그 자리에 있는
-// 것**의 이름인 것은 이 저장소의 다른 표식들과 같은 규칙이다(`data-branch`·`data-section`).
-// 이 상자 안에는 `<div>`가 없어(글리프와 span뿐) 첫 `</div>`까지가 그 상자 전부다.
+// 그 칸이 종류·수일 때의 **셸 메타 상자**만 잘라낸다(결정 14). 오른쪽 메타 칸과 같은 상자이고
+// 표식은 조용한 행에만 붙는다(`WorkSectionList.tsx`의 메타 주석). 표식이 자리 설명이 아니라
+// **그 자리에 있는 것**의 이름인 것은 이 저장소의 다른 표식들과 같은 규칙이다
+// (`data-branch`·`data-section`). 이 상자 안에는 `<div>`가 없어(글리프와 span뿐) 첫
+// `</div>`까지가 그 상자 전부다.
 const shellBoxesOf = (markup: string) =>
   [...markup.matchAll(/<div[^>]*data-shells="(.*?)"[\s\S]*?<\/div>/g)].map((m) => ({
     slug: m[1],
     html: m[0],
   }));
 
-// 첫 줄 왼쪽의 **레인** — 여는 태그만 본다(안에 드는 것을 함께 보는 것은 아래 `lanesOf`다).
+// 행 왼쪽의 **레인** — 여는 태그만 본다(안에 드는 것을 함께 보는 것은 아래 `lanesOf`다).
 const laneOf = (markup: string) => /<span data-lane=""[^>]*>/.exec(markup)?.[0] ?? "";
 
 // 이름 버튼의 **접근성 이름**. 화면값이 있는 행만 `aria-label`을 든다(#203) — 없으면
@@ -409,53 +407,55 @@ describe("구획 접기", () => {
 // 무엇이 돌고 있는지 안다.** 그래서 이 자리의 주인공은 지금 보고 있지 **않은** work다 —
 // 보고 있는 work에서 뭐가 도는지는 본문의 탭 줄이 이미 말한다.
 //
-// **자리가 세 번째로 옮겼다.** 판 04까지 둘째 줄 → 판 05가 행 오른쪽 끝(결정 0) → 이 판이
-// 다시 둘째 줄. 되돌린 것이 아니라 **조건이 바뀌었다**: 판 05가 걷은 것은 「줄이 셸이 있는
-// 행에만 서서 행 높이가 곧 신호였다」이고, 이 판은 **모든 행에** 줄을 세워 그 병 없이 둘째
-// 줄을 되찾는다(이 판 결정 4). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
+// **자리가 네 번째로 옮겼다.** 판 04까지 둘째 줄 → 판 05가 행 오른쪽 끝(결정 0) → 두 줄 행이
+// 다시 둘째 줄 → `sidebar-active-band` 결정 14가 **다시 한 줄**. 둘째 줄이 얻은 것(셸의 말 ·
+// 모든 행이 같은 높이)보다 행 두 개 높이로 목록이 반만 보이는 값이 컸다. 판 05의 모양이
+// 돌아오되 조건 하나가 다르다: 그때는 여기가 늘 종류·수였고, 지금은 **신호가 있으면 그 셸의
+// 마크·경과**가 같은 칸에 선다(S4). 높이와 자리는 e2e가 실측으로 재고, 여기서 보는 것은
 // **마크업이 무엇을 말하는가**다.
-describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는다", () => {
-  it("둘째 줄은 **모든 행에** 선다 — 셸이 있든 없든", () => {
-    // **이 한 줄이 판 05와의 갈림 전부다.** 셸 유무로 줄이 서고 안 서면 행 높이가 다시
-    // 신호가 된다 — 판 05 결정 0이 걷은 그 병이고, 이 판은 줄을 되살리되 조건을 없앤다.
-    const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2 } });
-    expect(subrowsOf(markup).map((one) => one.slug)).toEqual(["가", "나", "다"]);
+describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 겹친다", () => {
+  it("**둘째 줄이 없다** — 그 표식이 어느 행에도 안 선다", () => {
+    // 결정 14. 옛 표식(`data-subrow`)이 남아 있으면 그 이름이 곧 거짓이다. 셸이 있는 행 · 없는
+    // 행 · 부르는 행을 함께 그린다 — 두 줄 행은 셋 모두에 줄을 세웠다. 둘째 트랙이 정말 없는지
+    // (모든 행이 32px 한 줄)는 L3가 잰다(`works-sidebar.spec.ts` 「모든 행이 한 줄 32px이고 …」).
+    const markup = render(works("가@billing", "나@billing", "다"), ALL, {
+      shellCounts: { 가: 1, 다: 1 },
+      signals: { 다: "waiting" },
+    });
+    expect(markup).not.toContain("data-subrow");
   });
 
   it("셸이 하나라도 있는 행에만 **종류·수**가 선다", () => {
-    // 셸이 0개인 행에는 숫자가 안 선다 — 「없음」은 숫자로 말하지 않는다. 줄 자체는 선다.
+    // 셸이 0개인 행에는 숫자가 안 선다 — 「없음」은 숫자로 말하지 않는다.
     const markup = render(works("가", "나", "draft:다"), ALL, { shellCounts: { 가: 2, 다: 1 } });
     expect(shellBoxesOf(markup).map((one) => one.slug)).toEqual(["가", "다"]);
   });
 
-  it("셸이 없으면 **프로젝트 이름**이 서고, 여럿이면 ` · `로 잇는다", () => {
-    // 이 판 결정 5. 둘째 줄이 빈 채로 서지 않게 하는 것이 이 갈래의 전부다 — 모든 행이
-    // 두 줄이라 빈 줄은 「여기엔 아무 일도 없다」가 아니라 그냥 구멍으로 읽힌다.
-    // 구분자가 호버 카드(`, `)와 갈리는 것은 거기가 문장 안이고 여기가 한 줄 메타라서다.
-    const markup = render(works("가@billing", "나@billing,ledger", "다"), ALL, {
-      shellCounts: { 가: 1 },
-    });
-    const 줄 = new Map(subrowsOf(markup).map((one) => [one.slug, one.text]));
-    // 셸이 있는 행은 프로젝트가 있어도 종류·수가 이긴다 — 슬롯이 그 자리를 가져간다.
-    expect(줄.get("가")).toBe("");
-    expect(줄.get("나")).toBe("billing · ledger");
-    // 프로젝트가 하나도 없는 work(초안이 흔하다)은 여기가 비고, 그래도 줄은 선다.
-    expect(줄.get("다")).toBe("");
+  it("셸이 없는 행에는 **오른쪽 메타 칸이 없고**, 프로젝트 이름도 안 선다", () => {
+    // S4의 넷째 갈래. 두 줄 행은 셸 없는 행의 둘째 줄에 프로젝트 이름을 실었다 — 줄이 빈
+    // 채로 서지 않게 하려고. 한 줄 행에는 채울 줄이 없고, 프로젝트는 호버 카드가 이미
+    // 싣는다. 칸이 **아예** 없어야 하는 이유는 칸이 제목과 떼는 여백(`pl-(--glyph-gap)`)을
+    // 들기 때문이다: 빈 칸이 서면 셸 없는 행의 제목이 까닭 없이 9px 짧아진다(S34).
+    const markup = render(works("가@billing", "나@billing,ledger"), ALL, { shellCounts: { 가: 1 } });
+    expect(rowMetasOf(markup).map((one) => one.slug)).toEqual(["가"]);
+    expect(markup).not.toContain("billing · ledger");
   });
 
   it("도는 것이 없어도 자리는 그대로 선다", () => {
     // **결정 3의 전부가 이 한 줄이다.** 「명령이 도는 동안만 선다」는 기각됐다 — 그 값은 매
     // 순간 바뀌어서(pty.rs가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이
-    // 생겼다 사라진다. 자리가 서는 조건은 **안 변하는 값**(셸을 포함하는가)이고 변하는
-    // 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안 그려도 자리는 선다.
-    // 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderSubrow: () => null });
+    // 생겼다 사라지고 제목이 끊기는 자리가 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
+    // (셸을 포함하는가)이고 변하는 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안
+    // 그려도 자리의 상자는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    // (비어 있는 상자가 폭을 안 먹는 것은 CSS의 일이고 L3가 잰다 — 셸 OSC spec의 「풀린 칸」.
+    // 조용한 행의 슬롯은 셸이 있으면 늘 무언가를 그리므로 결정 3의 화면은 그대로다.)
+    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderRowMeta: () => null });
     expect(shellBoxesOf(markup)).toHaveLength(1);
   });
 
   it("메타는 그 상자 **안에** 있고, 셸이 없는 행에는 슬롯이 안 선다", () => {
     // 슬롯을 **부르는** 것은 `SidebarWorkList.tsx`가 모든 work에서 한다 — 여기서 재는 것은
-    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `SubrowFor`의 몸통이 안 돌아
+    // 그것이 **서는가**다. 엘리먼트 객체만 만들고 버리면 `RowMetaFor`의 몸통이 안 돌아
     // 구독도 안 붙는다: 「행마다 자기 것만 구독한다」가 「모든 행이 구독한다」로 뒤집히는
     // 자리는 마운트다(Sidebar.test.tsx).
     const markup = render(works("가", "나"), ALL, { shellCounts: { 가: 1 } });
@@ -467,9 +467,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
   it("셸 수도 무리도 **이 파일이 적지 않는다** — 든 것은 슬롯 하나뿐이다", () => {
     // 결정 3·13. 「그 밖의 셸」의 수는 셸 수와 도는 것을 둘 다 아는 자리에서만 나오므로
     // 두 값이 `ShellMeta` 하나로 합쳐졌다. 여기가 셸 수를 다시 적으면 그 수가 무리들의
-    // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다. 자리가 둘째 줄로 옮겨
-    // 와도 「합 = 셸 수」 불변조건은 `ShellMeta` 하나가 들고, 그것을 재는 검사도 그 파일에
-    // 그대로 산다(shell-meta.test.tsx).
+    // 합과 겹쳐 **같은 셸을 두 번 세던 그 화면**으로 되돌아간다. 「합 = 셸 수」 불변조건은
+    // `ShellMeta` 하나가 들고, 그것을 재는 검사도 그 파일에 산다(shell-meta.test.tsx).
     const [가] = shellBoxesOf(render(works("가"), ALL, { shellCounts: { 가: 3 } }));
     expect(가.html).not.toContain(">3<");
     expect(spansOf(가.html)).toEqual([]);
@@ -477,85 +476,35 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
 
   it("아무것도 눌리지 않는다", () => {
     // 결정 5. 무리 하나가 셸 **여럿**을 접으므로(결정 3) 무리와 셸이 1:1이 아니다 — 누르면
-    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 첫 줄의 이름 버튼이 받는다.
-    const markup = render(works("가@billing"), ALL, { shellCounts: { 가: 2 } });
-    const [가] = subrowsOf(markup);
+    // 어느 셸로 갈지 정해지지 않는다. 행을 누르는 것은 이름 버튼이 받아 그 work로 간다.
+    const [가] = rowMetasOf(render(works("가"), ALL, { shellCounts: { 가: 2 } }));
     expect(가.html).not.toContain("<button");
     expect(가.html).not.toContain("<a ");
   });
 
-  it("**행 오른쪽 끝에는 핀뿐이다** — 2열에 메타가 없다", () => {
-    // 판 05 결정 13의 「두 자리」가 **한 자리가 된다**: 셸 메타 규격은 nav `Terminal`에만
-    // 남는다. 메타가 2열에 남아 있으면 핀과 다시 겹쳐 서고, 그러면 「hover에 메타가
-    // 물러난다」(판 05 결정 6)가 함께 따라 돌아온다 — 이 판이 뒤집은 바로 그 규칙이다.
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
-    expect(shellBoxesOf(markup)[0].html).not.toContain("col-start-2");
-    // 2열 1행에 서는 것은 핀 하나뿐이다.
-    expect([...markup.matchAll(/col-start-2/g)]).toHaveLength(pinsOf(markup).length);
-  });
-
-  it("**둘째 줄과 레인은 hover에 안 물러난다** — 판 05 결정 6을 뒤집는다", () => {
-    // 판 05에서는 메타와 핀이 2열 한 칸에 겹쳐 서서, 핀이 뜨면 메타가 투명해지는 것이
-    // 유일한 답이었다(`group-hover:opacity-0` · `peer-focus-visible:opacity-0`). 이 판은
-    // 겹침 자체를 없앴으므로 그 두 규칙이 남아 있을 이유가 없다 — 남아 있으면 상태 축이
-    // 들어온 지금(#203) **띄우려는 것이 마우스 위치에 따라 지워진다.**
-    const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
-    for (const 줄 of subrowsOf(markup)) {
-      expect(줄.html).not.toContain("group-hover:opacity-0");
-      expect(줄.html).not.toContain("peer-focus-visible:opacity-0");
-    }
-    expect(laneOf(markup)).not.toContain("group-hover:opacity-0");
-  });
-
-  it("둘째 줄 기본색은 `muted-foreground`다 — 판 05의 `tertiary`가 아니다", () => {
-    // 이 판이 시작된 사람의 말이 「이 한 줄이 가독성이 안 좋다」였다. 판 05의 오른쪽 메타는
-    // `tertiary`(사이드바 배경에서 대비 ≈ 3.0)였고, 그것을 그대로 내리는 것은 **자리만
-    // 옮기고 읽기 어려움은 그대로 두는 것**이다. 실제 대비는 e2e가 계산해 잰다 — 여기서
-    // 보는 것은 「무엇을 바닥으로 골랐는가」다.
-    const [가] = subrowsOf(render(works("가@billing")));
-    expect(가.html).toContain("text-muted-foreground");
-    expect(가.html).not.toContain("text-tertiary");
-  });
-
-  it("둘째 줄은 **두 칸을 다 쓴다**(`col-span-2`) — 핀이 떠도 폭이 안 변한다", () => {
-    // 2열에는 핀이 서지만 그것은 1행뿐이라, 두 칸을 다 쓰는 이 줄은 **핀 아래를 지나간다.**
-    // 1열에만 두면(`col-start-1`) 핀이 뜰 때마다 이 줄이 24px 좁아져 프로젝트 이름이
-    // hover마다 잘렸다 폈다 한다. 실측은 L3가 하지만(hover 전후의 폭) 그 층이 없는
-    // 자리에서도 이 불변조건이 값싸게 고정돼 있어야 한다 — 클래스 하나로 뒤집히는 값이다.
-    for (const 줄 of subrowsOf(render(works("가@billing", "나"), ALL, { shellCounts: { 가: 1 } }))) {
-      expect(줄.html).toContain("col-span-2");
-      expect(줄.html).not.toContain("col-start-1");
-    }
-  });
+  // _한때 여기 「메타와 핀이 2열 1행 같은 칸에 선다」와 「메타는 hover·핀 포커스에 투명해지고, 레인은
+  // 그대로다」가 있었다._ 두 줄 행의 핀을 한 줄 행으로 뒤집으며 클래스 문자열 단언(`col-start-2` ·
+  // `group-hover:opacity-0` · `peer-focus-visible:opacity-0` · 「`transition`이 없다」)으로 다시 쓴
+  // 것이라 걷었다 — 스펙은 클래스 문자열을 안 보고, hover·핀 포커스의 투명은 L3가 잰다
+  // (`works-sidebar.spec.ts` 「hover하면 핀이 메타 자리의 끝에 서고 메타는 투명하다 — …」: 핀과 메타의
+  // 오른쪽 끝이 같은 x, 핀 포커스·행 hover에 메타 opacity 0 · 레인 1).
 
   it("이름 버튼은 여전히 **행 상자의 직계 자식**이다", () => {
-    // 첫 줄을 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어, 그것으로 배경 상자를
+    // 행을 상자로 한 겹 싸면 이름 버튼의 부모가 그 상자가 되어, 그것으로 배경 상자를
     // 집는 자리가 조용히 어긋난다 — e2e가 이름 버튼의 `parentElement`로 호버 카드 자리를
-    // 잰다. 둘째 줄이 돌아와도 그 계약은 안 깨진다: 줄이 **형제로** 서기 때문이다.
+    // 잰다. 핀과 메타는 이름 버튼의 **형제로** 서므로 그 계약이 안 깨진다.
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 } });
     // 행 상자는 끌기 표식(`data-work-row`)을 클래스 앞에 든다 — 여는 태그를 통째로 넘긴다.
     const row = /<div data-work-row="[^"]*" class="group grid[^"]*">(<button|<div)/.exec(markup);
     expect(row?.[1]).toBe("<button");
   });
 
-  it("**잘리는 쪽은 둘째 줄 글자다** — 상자가 넘침을 물고, 글자가 말줄임된다", () => {
-    // 사이드바를 좁히면 레인은 그대로고 글자가 먼저 잘린다(이 판 결정 5). 폭이 실제로
-    // 어떻게 나뉘는지는 L3의 드래그 검사가 재고, 여기서 보는 것은 **넘친 글자가 상자 밖으로
-    // 새지 않는가**다 — 그것이 없으면 긴 프로젝트 이름이 행 밖으로 흘러 사이드바 경계를
-    // 넘는다. fixture의 프로젝트 이름이 짧아 L3에서는 그 순간이 안 나므로 이 자리가 유일한
-    // 그물이다.
-    const [가] = subrowsOf(render(works("가@billing,ledger,payments")));
-    expect(가.html).toContain("overflow-hidden");
-    expect(가.html).toContain("min-w-0");
-    expect(가.html).toContain("truncate");
-  });
-
-  it("**레인은 첫 줄에 서고 폭을 안 내준다**", () => {
-    // 이 판 결정 5 — 첫 줄 왼쪽 14px 한 칸. 화면값이 없는 행에는 work 상태 아이콘이 서고,
-    // 있으면 점·링이 그 자리를 가져간다(#203, 바로 위 검사).
+  it("**레인은 행 왼쪽에 서고 폭을 안 내준다**", () => {
+    // 결정 5 — 행 왼쪽 14px 한 칸. 화면값이 없는 행에는 work 상태 아이콘이 서고, 있으면
+    // 점·스피너가 그 자리를 가져간다(#203, 아래 묶음).
     //
     // **폭을 실제로 지키는 것은 제목 상자다** — 그쪽이 `min-width: 0`이라 좁아지는 값을
-    // 전부 흡수하므로 첫 줄이 넘칠 일이 없고, 그래서 `shrink-0`을 지워도 화면은 안 바뀐다
+    // 전부 흡수하므로 행이 넘칠 일이 없고, 그래서 `shrink-0`을 지워도 화면은 안 바뀐다
     // (L3 실측). 그래도 적어 두는 것은 제목 쪽 규칙이 바뀌는 날 이 자리가 **먼저** 찌그러지는
     // 것이 이 판에서 가장 나쁜 회귀라서다: 8px 점은 12px만 줄어도 사라진다. 그 화면이
     // 실제로 났을 때 빨개지는 그물은 L3의 폭 드래그 검사가 든다.
@@ -564,26 +513,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
     expect(lane).toContain("shrink-0");
   });
 
-  it("**화면값이 있으면 레인이 점·링으로 갈리고, 없으면 work 상태 아이콘이 되돌아온다**", () => {
-    // **이 판이 처음 눈에 보이는 자리다**(#203). 티켓 02가 이름만 붙여 둔 레인에 화면값이
-    // 들어선다 — 그리고 **없을 때 되돌아오는 것**을 함께 세는 것이 요점이다: 점만 재면
-    // draft·review·done을 가르던 아이콘이 통째로 사라져도 초록이 된다(스토리 19).
-    const markup = render(works("가", "나", "다"), ALL, {
-      shellCounts: { 가: 1, 나: 1, 다: 1 },
-      signals: { 가: "waiting", 나: "working" },
-    });
-    const [가, 나, 다] = lanesOf(markup);
-    expect(가).toContain('data-signal="waiting"');
-    expect(나).toContain("signal-ring");
-    // 화면값이 없는 행에만 아이콘이 선다. 부르는 행에 둘이 함께 서면 레인이 두 말을 한다.
-    expect(가).not.toContain("<svg");
-    expect(나).not.toContain("<svg");
-    expect(다).toContain("<svg");
-    expect(다).not.toContain("data-signal");
-  });
-
   it("**화면값이 있는 행은 이름에 그 말이 붙는다**", () => {
-    // 스토리 33 — 색만이 신호여선 안 된다. 점·링은 `aria-hidden`이므로(shell-signal.tsx)
+    // 스토리 33 — 색만이 신호여선 안 된다. 점·스피너는 `aria-hidden`이므로(shell-signal.tsx)
     // 상태를 말하는 자리는 이 이름 하나다. 말은 결정 8의 것이고 탭·띠가 같은 표를 읽는다.
     const markup = render(works("가", "나", "다"), ALL, {
       signals: { 가: "waiting", 나: "done", 다: "working" },
@@ -602,8 +533,8 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
   });
 
   it("**행은 평평하다** — 채움은 고른 행 하나뿐이다", () => {
-    // 이 판 결정 5(스토리 29). 카드 채움(목업의 F·G)은 열여덟 행에 전부 무게를 줘 목록이
-    // 게시판이 된다. 행이 두 줄이 되면서 그 유혹이 커진 자리라 검사로 못박는다 —
+    // 결정 5(스토리 29). 카드 채움(목업의 F·G)은 열여덟 행에 전부 무게를 줘 목록이
+    // 게시판이 된다. 행이 두 줄이던 동안 그 유혹이 커졌던 자리라 검사로 못박아 두었다 —
     // 테두리도 배경도 고른 행의 `selected-row` 말고는 없다.
     const markup = render(works("가", "나"), ALL, { selectedSlug: "나" });
     const rows = [...markup.matchAll(/<div data-work-row="[^"]*" class="(group grid[^"]*)">/g)].map(
@@ -616,6 +547,34 @@ describe("행은 두 줄이고, 둘째 줄이 셸이나 프로젝트를 싣는�
       expect(row).not.toContain("bg-background");
       expect(row).not.toContain("shadow");
     }
+  });
+});
+
+// **레인이 화면값으로 갈리는 자리**(#203). 두 줄 행 묶음 안에 있던 검사를 따로 뺐다.
+//
+// **도는 레인은 앱의 Spinner다**(`sidebar-active-band` 결정 4). Spinner가 svg라 「도는 레인에
+// `<svg`가 없다」로는 상태 아이콘이 함께 섰는지를 더는 못 가른다 — 그래서 도는 레인은 **레인
+// 조각(`SignalLane`) 하나만 그대로 섰는가**로 잰다. 실제로 도는지·무슨 색인지·동작 줄이기면
+// 무엇이 서는지는 진짜 CSS가 있어야 나므로 L3(`works-sidebar.spec.ts`)가 잰다.
+describe("레인은 화면값으로 갈린다", () => {
+  it("**화면값이 있으면 레인이 점·스피너로 갈리고, 없으면 work 상태 아이콘이 되돌아온다**", () => {
+    // **이 판이 처음 눈에 보이는 자리다**(#203). 티켓 02가 이름만 붙여 둔 레인에 화면값이
+    // 들어선다 — 그리고 **없을 때 되돌아오는 것**을 함께 세는 것이 요점이다: 점만 재면
+    // draft·review·done을 가르던 아이콘이 통째로 사라져도 초록이 된다(스토리 19).
+    const markup = render(works("가", "나", "다"), ALL, {
+      shellCounts: { 가: 1, 나: 1, 다: 1 },
+      signals: { 가: "waiting", 나: "working" },
+    });
+    const [가, 나, 다] = lanesOf(markup);
+    expect(가).toContain('data-signal="waiting"');
+    expect(나).toContain('data-signal="working"');
+    // 화면값이 없는 행에만 아이콘이 선다. 부르는 행에 둘이 함께 서면 레인이 두 말을 한다.
+    // 도는 레인은 스피너 자신이 svg라 `<svg`의 유무 대신 **레인 조각 그대로인가**를 본다 —
+    // 아이콘이 곁에 서면 이 등호가 깨진다.
+    expect(가).not.toContain("<svg");
+    expect(나).toBe(renderToStaticMarkup(<SignalLane kind="working" />));
+    expect(다).toContain("<svg");
+    expect(다).not.toContain("data-signal");
   });
 });
 
@@ -840,7 +799,7 @@ describe("사이드바 목록은 터미널을 모른다", () => {
   it("terminal feature를 import하지 않는다", () => {
     // 이 계약이 깨지면 `@xterm/*`와 그 CSS가 여기로 따라 들어와 **위 검사 전부가**
     // 서지 못한다 — 이 파일의 seam은 DOM 없는 환경의 정적 마크업이다. 셸 수와 도는 것의
-    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderSubrow`) 이유가 그것이고,
+    // 메타가 값이 아니라 슬롯으로 내려오는(`shellCounts`·`renderRowMeta`) 이유가 그것이고,
     // `components/ui/agent-mark`가 `features/terminal`이 아니라 거기 사는 이유도 같다.
     //
     // **주석에 적어도 빨개진다.** 세는 것이 import가 아니라 리터럴이라 그렇고, 그 성질은

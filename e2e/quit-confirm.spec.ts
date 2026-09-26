@@ -8,6 +8,8 @@ import {
   openShell,
   readIpcRecord,
   unknownIpcCalls,
+  셸입력,
+  시계를세운다,
 } from "./harness";
 
 // 티켓 #223 — **빨간 버튼이 앱을 바로 끄지 않고 앱의 확인 창을 띄운다**(UI개선 결정 14·15).
@@ -24,6 +26,12 @@ const QUIT_EVENT = "app:quit-requested";
 
 const quitDialog = (page: Page) => page.getByRole("alertdialog", { name: "Atelier 종료" });
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
+/**
+ * 창 **아래의** 팔레트. 역할로 집지 않는다 — 확인 창은 모달이라 그 밖이 전부 `aria-hidden`이고,
+ * `getByRole`은 그 아래를 세지 않는다(창이 떠 있는 동안 팔레트 listbox는 늘 0이다). 그래서 팔레트
+ * 목록이 드는 표식으로 잰다. 창이 닫힌 뒤에는 다시 역할로 잡힌다.
+ */
+const paletteUnder = (page: Page) => page.locator("[data-more-fade]");
 
 /**
  * 백엔드가 쏘는 종료 요청을 **손으로 쏜다** — `times`번을 **한 `evaluate` 안에서 연달아**(`fireEvent`).
@@ -69,6 +77,8 @@ test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) =>
   await fireQuitRequest(page);
 
   await expect(quitDialog(page)).toContainText("셸 2 · 명령이 도는 셸 2");
+  // 그 줄이 창의 **설명**이다 — 읽기 도구가 제목 다음에 읽는다.
+  await expect(quitDialog(page)).toHaveAccessibleDescription("셸 2 · 명령이 도는 셸 2");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -143,6 +153,8 @@ test("셸이 0개면 창은 뜨고 셸 줄이 없다", async ({ page }) => {
   const dialog = quitDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog).not.toContainText("셸");
+  // 줄이 없으면 창의 설명도 없다 — 빈 줄을 그려 두고 가리키는 변형은 여기서 걸린다.
+  await expect(dialog).toHaveAccessibleDescription("");
   expect(await callCount(page, "pty_command_running")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -178,6 +190,88 @@ test("셸 닫기 확인의 기본 포커스는 그대로 「닫기」다", async
 
   const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
   await expect(dialog.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 셸에서 띄운 창 ──
+// 셸에 포커스가 있는 채로 창이 뜨는 길이다(⌘W). 키가 셸이 아니라 창으로 가야 하고, 창이 닫히면
+// 포커스가 셸로 돌아와야 한다 — 안 돌아오면 닫은 뒤에 친 글자가 아무 데도 안 들어간다.
+//
+// 셋 다 **셸에 포커스가 있다는 것을 먼저 본다.** 없으면 「셸로 안 갔다」도 「셸로 돌아왔다」도 아무것도
+// 안 잰다. 셸 쓰기를 세는 뒤의 둘은 한 걸음 더 간다: 글자를 쳐서 셸 쓰기가 실제로 나가는 것을 본 뒤에
+// 창을 띄운다 — 안 나가는 셸이면 「0이다」가 아무것도 안 잰다.
+
+/** 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다. 그때까지 나간 셸 쓰기 수를 돌려준다. */
+async function typeIntoShell(page: Page): Promise<number> {
+  await expect(셸입력(page)).toBeFocused();
+  await page.keyboard.type("a");
+  await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
+  return callCount(page, "pty_write");
+}
+
+test("셸에서 ⌘W로 띄운 창이 닫히면 포커스가 셸로 돌아온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await expect(셸입력(page)).toBeFocused();
+
+  await page.keyboard.press("Meta+w");
+  const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
+  await expect(dialog.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(shells(page)).toHaveCount(1);
+  await expect(셸입력(page)).toBeFocused();
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **첫 프레임 가드**(S24). 창은 첫 포커스를 **다음 프레임에** 옮긴다 — 그 사이의 키는 아직 셸에 포커스가
+// 있어 셸로 간다. 그래서 창이 선 순간부터 포커스가 처음 창에 들어올 때까지 앱이 키를 삼킨다.
+//
+// 포커스를 기다리지 않고 누르는 것이 이 검사의 전부다. **그 프레임은 시계를 세워 붙잡는다** — 안
+// 붙잡으면 Enter가 그 프레임 앞에 닿을지 뒤에 닿을지가 러너 사정이다(실측: 열에 여섯은 뒤였고, 그러면
+// 포커스가 이미 「닫기」에 있어 창이 닫힌다). 세운 시계에서는 프레임이 안 오므로 Enter는 늘 그 틈에 닿는다.
+//
+// 앵커는 둘이다: 시계를 풀면 포커스가 「닫기」로 들어온다(창이 살아 있다), 그리고 셸이 그대로다(「닫기」가
+// 안 눌렸다 — 창도 그 Enter를 못 받았다). 그 둘 위에서 셸 쓰기가 안 늘었다(셸도 못 받았다) — 삼켰다.
+test("셸에서 ⌘W로 띄운 바로 뒤의 Enter는 셸로 안 간다", async ({ page }) => {
+  await page.clock.install();
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  const written = await typeIntoShell(page);
+
+  await 시계를세운다(page);
+  await page.keyboard.press("Meta+w");
+  await page.keyboard.press("Enter");
+  await page.clock.resume();
+
+  const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
+  await expect(dialog.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
+  await expect(shells(page)).toHaveCount(1);
+  expect(await callCount(page, "pty_write")).toBe(written);
+  expect(await callCount(page, "pty_kill")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 가드가 꺼진 뒤다 — 포커스가 창 안에 있으니 Enter는 창의 것이다. 창이 그 Enter로 닫힌 것이 앵커다.
+test("창에 포커스가 들어온 뒤의 Enter는 창만 답한다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  const written = await typeIntoShell(page);
+
+  await page.keyboard.press("Meta+w");
+  const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
+  await expect(dialog.getByRole("button", { name: "닫기", exact: true })).toBeFocused();
+
+  await page.keyboard.press("Enter");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(shells(page)).toHaveCount(0);
+  expect(await callCount(page, "pty_write")).toBe(written);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -253,6 +347,10 @@ test("셸 닫기 확인이 떠 있을 때의 요청은 종료 확인으로 갈�
   await expect(quitDialog(page)).toBeVisible();
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   await expect(page.getByRole("alertdialog", { name: "셸 닫기" })).toHaveCount(0);
+  // **갈아 끼운 물음도 새로 연 창처럼 첫 포커스를 정한다**(#223). 창은 열린 채 내용만 바뀌므로
+  // 여는 순간에 도는 첫 포커스가 다시 안 돈다 — 포커스가 셸 닫기의 진행 버튼 자리, 곧 「종료」에
+  // 남으면 반사적 Enter 한 번에 앱이 꺼진다.
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
   await expect(shells(page)).toHaveCount(1);
   expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -272,10 +370,44 @@ test("팔레트가 떠 있을 때의 요청은 팔레트를 닫지 않고 그 �
   await fireQuitRequest(page);
 
   await expect(quitDialog(page)).toBeVisible();
-  await expect(palette).toBeVisible();
+  await expect(paletteUnder(page)).toBeVisible();
+  // **포커스가 팔레트의 가둠을 넘어 창으로 간다.** 팔레트도 모달이라 두 가둠이 겹치는데, 포커스가
+  // 팔레트 입력칸에 남으면 반사적 Enter가 창이 아니라 팔레트의 켜진 줄로 간다(#223의 「취소」 포커스도 헛돈다).
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
+  // 창이 떠 있는 동안 읽기 도구는 창만 읽는다(스토리 77) — 팔레트는 화면에 서 있지만 접근성 트리에서
+  // 빠진다. 위 줄이 앵커다.
+  await expect(palette).toHaveCount(0);
   await quitDialog(page).getByRole("button", { name: "취소", exact: true }).click();
   await expect(quitDialog(page)).toHaveCount(0);
   await expect(palette).toBeVisible();
+  expect(await callCount(page, "quit_app")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **Esc 한 번은 위의 창 하나만 닫는다.** 둘 다 창(`window`) 캡처로 Esc를 받던 때는 한 번에 둘 다
+// 닫혔다. 이제 Esc는 포커스가 든 창의 키 처리가 받고 거기서 멈춘다 — 그래서 위 검사의 「취소」 포커스가
+// 이 검사의 전제다.
+test("팔레트 위에 뜬 창은 Esc 한 번에 창만 닫히고, 팔레트는 남아 입력칸이 포커스를 되받는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+
+  await page.keyboard.press("Meta+k");
+  const palette = page.getByRole("listbox", { name: "검색 결과" });
+  await expect(palette).toBeVisible();
+
+  await fireQuitRequest(page);
+  // **포커스가 창에 들어온 뒤에 누른다.** 그 전의 키는 첫 프레임 가드가 삼킨다(S24).
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  await expect(quitDialog(page)).toHaveCount(0);
+  await expect(palette).toBeVisible();
+  // 창은 열기 전 자리로 포커스를 돌려준다 — 팔레트의 입력칸이다. 안 돌아오면 다음 글자가 어디에도 안 선다.
+  await expect(page.getByRole("textbox", { name: "검색어" })).toBeFocused();
   expect(await callCount(page, "quit_app")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -297,6 +429,9 @@ test("「종료」가 실패하면 오류 창이 뜨고, 다음 요청에 다시
   const problem = page.getByRole("alertdialog", { name: "오류" });
   await expect(problem).toBeVisible();
   await expect(problem).toContainText("종료하지 못했습니다: 종료 명령이 거절되었습니다");
+  // **알림에는 취소가 없다** — 되돌릴 것이 없는데 두 갈래를 주면 무엇이 다른지를 묻게 된다.
+  await expect(problem.getByRole("button", { name: "확인", exact: true })).toBeVisible();
+  await expect(problem.getByRole("button", { name: "취소", exact: true })).toHaveCount(0);
   await problem.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
@@ -325,7 +460,7 @@ test("팔레트가 떠 있을 때 「종료」가 실패하면 오류 창이 팔
 
   const problem = page.getByRole("alertdialog", { name: "오류" });
   await expect(problem).toContainText("종료 명령이 거절되었습니다");
-  await expect(palette).toBeVisible();
+  await expect(paletteUnder(page)).toBeVisible();
   await problem.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(palette).toBeVisible();
@@ -345,5 +480,7 @@ test("오류 창이 떠 있을 때의 종료 요청은 종료 확인으로 갈�
   await fireQuitRequest(page);
   await expect(quitDialog(page)).toBeVisible();
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
+  // 오류 창의 포커스는 「확인」(진행 버튼)이었다 — 그 자리에 「종료」가 서므로 위 검사와 같은 사고다.
+  await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -11,6 +11,7 @@ import {
   stubNotifications,
   stubWindowFocus,
   unknownIpcCalls,
+  행버튼,
 } from "./harness";
 
 // 판 06 — **셸이 부르는 것을 앱 밖으로 내보내는 길**(#206 · 결정 10).
@@ -80,9 +81,13 @@ test("그 셸을 보고 있으면 안 울린다", async ({ page }) => {
   await setWindowFocused(page, true);
   await markAttention(page, 기다림);
 
-  // 화면은 이미 그 사실을 그렸는데(둘째 줄에 그 말이 선다) 알림만 안 울렸다 —
-  // **그 두 줄이 함께 있어야** 「배선이 끊겨서 조용한 것」과 갈린다.
-  await expect(page.getByText("테스트 셋 통과")).toBeVisible();
+  // 화면은 이미 그 사실을 그렸는데(부르는 행 버튼이 그 말을 설명으로 든다) 알림만 안 울렸다 —
+  // **그 두 줄이 함께 있어야** 「배선이 끊겨서 조용한 것」과 갈린다. 한때 이 앵커는 행의
+  // 둘째 줄에 선 그 말이었다 — 행이 한 줄로 돌아오면서(`sidebar-active-band` 결정 14) 말은
+  // 호버 카드의 말 칸과 행 설명으로 갔고, 올리지 않고 닿는 쪽이 설명이다.
+  await expect(행버튼(page, `${work.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "테스트 셋 통과",
+  );
   expect(await sentNotifications(page)).toEqual([]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -135,10 +140,12 @@ test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ pa
   await setWindowFocused(page, false);
   await markAttention(page, 기다림);
 
-  // **이 두 줄이 함께 있어야 한다.** 화면은 그 사실을 그렸는데(둘째 줄에 셸이 한 말이 선다)
-  // 밖으로는 아무것도 안 나갔다 — 위 첫 검사가 같은 길로 **울리는 것**을 이미 세워 뒀으므로,
-  // 여기의 조용함은 「배선이 끊겼다」가 아니라 「껐다」다.
-  await expect(page.getByText("테스트 셋 통과")).toBeVisible();
+  // **이 두 줄이 함께 있어야 한다.** 화면은 그 사실을 그렸는데(부르는 행 버튼이 셸이 한 말을
+  // 설명으로 든다) 밖으로는 아무것도 안 나갔다 — 위 첫 검사가 같은 길로 **울리는 것**을 이미
+  // 세워 뒀으므로, 여기의 조용함은 「배선이 끊겼다」가 아니라 「껐다」다.
+  await expect(행버튼(page, `${work.title} — 나를 기다림`)).toHaveAccessibleDescription(
+    "테스트 셋 통과",
+  );
   expect(await sentNotifications(page), "껐는데 알림이 울렸다").toEqual([]);
   // 배지도 함께 내린다 — 독에 수가 남으면 「껐는데 아직 부른다」로 읽힌다.
   expect(await badgeCalls(page), "껐는데 배지가 붙었다").toEqual([]);
@@ -200,9 +207,11 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
   await expect(page).toHaveURL("/settings/notifications");
   // 저장 버튼이 구획마다 있다(#225) — **알림 설정 안에서** 집어야 누른 것이 이 구획의 저장이다.
   const 알림 = page.getByRole("group", { name: "알림 설정", exact: true });
-  const 소리끔 = 알림.getByRole("button", { name: "알림에 소리 끔" });
-  await expect(소리끔, "알림 구획이 안 섰다").toBeVisible();
-  await 소리끔.click();
+  // 소리는 스위치 하나다(결정 12). 안 고른 값이 켬이라 한 번 누르면 꺼진다.
+  const 소리 = 알림.getByRole("switch", { name: "알림에 소리", exact: true });
+  await expect(소리, "알림 구획이 안 섰다").toHaveAttribute("aria-checked", "true");
+  await 소리.click();
+  await expect(소리, "스위치가 안 꺼졌다").toHaveAttribute("aria-checked", "false");
 
   const 저장 = 알림.getByRole("button", { name: "저장", exact: true });
   await expect(저장, "고친 것이 없다고 읽혔다").toBeEnabled();

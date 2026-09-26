@@ -1,19 +1,19 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Maximize2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
+import { Toggle } from "@/components/ui/toggle";
+import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
 // 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
 // 정사각이 될 수 없고, 이 버튼들은 서로하고만 나란히 서지 24px 아이콘 버튼과 같은 행에 오지 않는다.
 // 배경 농도만 스케일을 따른다.
 //
-// 여기는 모양만 정하고 hover·켜짐은 호출부가 분기 안에 붙인다 — 「코드」가 토글이라
-// toggle-on과 겹치면 hover 규칙이 두 벌이 되어 어느 쪽이 이길지 유틸리티 정렬 순서가
-// 정하게 된다. icon-button이 hover를 갖지 않는 것과 같은 이유다.
-const toolbarButton =
-  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] transition-colors";
-const toolbarButtonQuiet = cn(toolbarButton, "text-tertiary quiet-hover");
+// 켜짐이 있는 「코드」는 여기 없다 — 토글이라 Toggle 부품의 toolbar 크기가 같은 값을 든다(`toggle.tsx`).
+const toolbarButtonQuiet =
+  "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] text-tertiary transition-colors quiet-hover";
 
+// 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
+// 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
 function ZoomControls({
   scale,
   onChange,
@@ -25,14 +25,15 @@ function ZoomControls({
 }) {
   return (
     <>
-      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
-      <button type="button" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
-      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
+      <button type="button" aria-label="축소" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
+      <button type="button" aria-label="100%로" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
+      <button type="button" aria-label="확대" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
     </>
   );
 }
 
-// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다
+// 원본 mermaid 코드 복사 — MermaidBlock엔 토스트가 없으므로 버튼 자체가 1.6초간 체크로 피드백한다.
+// 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28).
 function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
@@ -44,13 +45,13 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" onClick={onCopy} title="원본 mermaid 코드 복사" className={toolbarButtonQuiet}>
+    <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
       {copied ? (
         <Check className="size-3 text-green-700" strokeWidth={2.4} />
       ) : (
         <Copy className="size-3" strokeWidth={2} />
       )}
-    </button>
+    </Hint>
   );
 }
 
@@ -89,30 +90,28 @@ function SizedSvg({ svg, size, scale }: { svg: string; size: SvgSize | null; sca
   );
 }
 
-// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다
+// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다.
+// 컨테이너는 손잡이가 달린 요소 자신(currentTarget)이다. ref를 쥐지 않아서 ref 자리가 비어 있다 —
+// 전체화면의 본문은 그 자리로 「상자가 붙었다」를 받아 맞춤 배율을 잰다.
 function usePanScroll() {
-  const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || !ref.current) return;
-    drag.current = {
-      x: e.clientX,
-      y: e.clientY,
-      left: ref.current.scrollLeft,
-      top: ref.current.scrollTop,
-    };
-    ref.current.setPointerCapture(e.pointerId);
+    if (e.button !== 0) return;
+    const box = e.currentTarget;
+    drag.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    box.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag.current || !ref.current) return;
-    ref.current.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
-    ref.current.scrollTop = drag.current.top - (e.clientY - drag.current.y);
+    if (!drag.current) return;
+    const box = e.currentTarget;
+    box.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
+    box.scrollTop = drag.current.top - (e.clientY - drag.current.y);
   };
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     drag.current = null;
-    if (ref.current?.hasPointerCapture(e.pointerId)) ref.current.releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
-  return { ref, onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
+  return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
 function MermaidBlock({ code }: { code: string }) {
@@ -121,12 +120,13 @@ function MermaidBlock({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [showCode, setShowCode] = useState(false);
-  const [fullOpen, setFullOpen] = useState(false);
   const [fullScale, setFullScale] = useState(1);
 
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
   const pan = usePanScroll();
   const modalPan = usePanScroll();
+  // 전체화면의 본문 상자. 창이 떠 있는 동안에만 선다(Portal의 자식) — 붙으면 여기 들고, 떨어지면 null이다.
+  const [fullBody, setFullBody] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let on = true;
@@ -148,17 +148,15 @@ function MermaidBlock({ code }: { code: string }) {
     };
   }, [code, id]);
 
-  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
-  const close = useCallback(() => setFullOpen(false), []);
-
-  // 모달이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산)
+  // 창이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산).
+  // 여는 순간이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
+  // 여는 순간에는 아직 잴 상자가 없다. 붙는 것도 칠하기 전이라 100%로 한 번 그려졌다 튀는 일이 없다.
   useLayoutEffect(() => {
-    const el = modalPan.ref.current;
-    if (!fullOpen || !el || !size) return;
+    if (!fullBody || !size) return;
     const pad = 56; // 모달 콘텐츠 p-7 좌우·상하 패딩 합
-    const fit = Math.min((el.clientWidth - pad) / size.w, (el.clientHeight - pad) / size.h);
+    const fit = Math.min((fullBody.clientWidth - pad) / size.w, (fullBody.clientHeight - pad) / size.h);
     setFullScale(Math.min(3, Math.max(0.4, fit)));
-  }, [fullOpen, size, modalPan.ref]);
+  }, [fullBody, size]);
 
   return (
     <div className="overflow-hidden rounded-[12px] border bg-panel">
@@ -167,18 +165,38 @@ function MermaidBlock({ code }: { code: string }) {
         <span className="flex items-center gap-1">
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
-          <button
-            type="button"
-            onClick={() => setShowCode((v) => !v)}
-            title="원본 mermaid 코드 보기"
-            className={showCode ? cn(toolbarButton, "toggle-on") : toolbarButtonQuiet}
+          {/* 켬/끔 토글이다 — 켜졌는지를 `aria-pressed`로 말한다(스토리 103). 이름은 보이는 글자 「코드」이고,
+              도움말은 툴팁이다. 도움말은 이름보다 더 말한다 — 무엇의 코드인지(원본 mermaid)와 켜면 무엇이 서는지를.
+              그래서 설명(`aria-description`)으로도 남는다(S28 — 옛 `title`이 이름 다음에 읽어 주던 말이다). */}
+          <Hint
+            text="원본 mermaid 코드 보기"
+            announce="description"
+            render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
           >
             코드
-          </button>
+          </Hint>
           <CopyCodeButton code={code} />
-          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
-            <Maximize2 className="size-3" strokeWidth={2} />
-          </button>
+          {/* 여는 버튼은 이 자리에 서고 창은 body 끝에 뜬다. 버튼은 글리프뿐이라 이름이 없던 버튼이다 —
+              툴팁 글자가 곧 이름이다(S28, 틀이 단다). */}
+          <FullscreenModal
+            name="다이어그램"
+            label="mermaid"
+            trigger={<button className={toolbarButtonQuiet} />}
+            controls={
+              <>
+                <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+                <CopyCodeButton code={code} />
+              </>
+            }
+          >
+            <div
+              {...modalPan}
+              ref={setFullBody}
+              className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
+            >
+              {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+            </div>
+          </FullscreenModal>
         </span>
       </div>
       {error && !svg ? (
@@ -196,23 +214,6 @@ function MermaidBlock({ code }: { code: string }) {
             <span className="text-[12.5px] text-tertiary">렌더링 중…</span>
           )}
         </div>
-      )}
-
-      {fullOpen && (
-        <FullscreenModal
-          label="mermaid"
-          onClose={close}
-          controls={
-            <>
-              <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-              <CopyCodeButton code={code} />
-            </>
-          }
-        >
-          <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
-            {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-          </div>
-        </FullscreenModal>
       )}
     </div>
   );

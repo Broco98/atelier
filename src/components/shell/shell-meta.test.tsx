@@ -102,7 +102,7 @@ describe("무리 하나 = 글리프 + 그 무리의 셸 수", () => {
     // **세는 것이지 있는지 보는 것이 아니다.** 한때 이 줄이 마크업 어딘가에 그 클래스가
     // 있는지만 봐서, 마크 무리가 색을 들고 있으면 「그 밖의 셸」 무리는 tertiary로 남아도
     // 초록이었다 — 그리고 실제로 그랬다. 그 무리가 이 목록의 **기본값**(셸은 열려 있는데
-    // 우리가 아는 것은 안 돈다)이라 work 행 둘째 줄이 통째로 3.0으로 서던 자리다.
+    // 우리가 아는 것은 안 돈다)이라 work 행 메타가 통째로 3.0으로 서던 자리다.
     const 무리마다색 = (markup: string, 무리수: number) => {
       expect(countsOf(markup)).toHaveLength(무리수);
       expect([...markup.matchAll(/text-muted-foreground/g)]).toHaveLength(무리수);

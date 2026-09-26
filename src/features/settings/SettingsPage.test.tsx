@@ -327,20 +327,21 @@ describe("알림 구획의 화면", () => {
     const html = renderNotifications(withNotifications());
     expect(html).toContain("알림");
     expect(html).toContain("소리");
-    // 칩은 둘씩 두 줄 — 넷이다. 셋째 선택이 생기면 여기서 먼저 걸린다.
-    expect(html.match(/aria-pressed=/g) ?? []).toHaveLength(4);
+    // 스위치 하나씩 두 줄 — 둘이다(결정 12). 셋째 선택이 생기면 여기서 먼저 걸린다.
+    expect(html.match(/role="switch"/g) ?? []).toHaveLength(2);
     expect(html, "기각된 셋째 선택이 화면에 있다").not.toContain("배경");
   });
 
+  // 순서는 알림 · 소리다. 켬/끔은 스위치의 `aria-checked` 하나가 말한다(켬/끔 칩 한 쌍의 `aria-pressed` 넷이던 자리).
   it.each([
-    [{}, ["true", "false", "true", "false"]],
-    [{ enabled: false }, ["false", "true", "true", "false"]],
-    [{ sound: false }, ["true", "false", "false", "true"]],
+    [{}, ["true", "true"]],
+    [{ enabled: false }, ["false", "true"]],
+    [{ sound: false }, ["true", "false"]],
   ] as ReadonlyArray<readonly [Partial<NotificationSettings>, string[]]>)(
-    "고른 쪽만 켜진다 %s",
-    (patch, pressed) => {
+    "스위치가 고른 값을 말한다 %s",
+    (patch, checked) => {
       const html = renderNotifications(withNotifications(patch));
-      expect([...html.matchAll(/aria-pressed="(\w+)"/g)].map((one) => one[1])).toEqual(pressed);
+      expect([...html.matchAll(/aria-checked="(\w+)"/g)].map((one) => one[1])).toEqual(checked);
     },
   );
 

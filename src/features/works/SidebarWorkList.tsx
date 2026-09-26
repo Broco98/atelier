@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import type { ShellSignal } from "@/components/shell/shell-signal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
 import { routesOf, slugOf, type Mode } from "@/mode";
 import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
 import { WorkCard } from "./WorkCard";
-import { WorkSectionList } from "./WorkSectionList";
+import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
 import {
   edgeScrollStep,
   gapMark,
@@ -39,9 +38,7 @@ const WORKS_OPEN_KEY = "sidebar-works-open";
 function SidebarWorkList({
   open,
   mode,
-  shellCounts,
-  signals,
-  renderSubrow,
+  shells,
 }: {
   open: boolean;
   /**
@@ -53,38 +50,11 @@ function SidebarWorkList({
    */
   mode: Mode;
   /**
-   * work별 셸 개수 — **둘째 줄이 종류·수를 싣는가, 프로젝트 이름을 싣는가**를 가르는
-   * 값이다(결정 2·3, 이 판 결정 5). 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와
-   * 도는 것을 **둘 다 아는 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이
-   * `ShellMeta` 하나로 합쳐졌다(결정 3·13).
-   *
-   * **이 파일은 터미널 스토어를 모른다.** 개수도 메타도 위(Sidebar)에서 내려온다:
-   * 여기서 `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의
-   * 정적 마크업 검사가 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다).
+   * 행이 셸에서 받는 값 넷 — 개수 · 화면값 · 부르는 셸의 말 · 오른쪽 메타 슬롯(`WorkRowShells`).
+   * **이 파일은 터미널 스토어를 모른다** — 넷 다 위(Sidebar)에서 읽어 내려오고, 여기서는 행까지
+   * 나를 뿐이다. 이 목록이 스스로 쓰는 것은 호버 카드에 건넬 말(`notes`) 하나다.
    */
-  shellCounts: Record<string, number>;
-  /**
-   * work마다의 **화면값**(#203) — 레인이 점·링을 세울지 work 상태 아이콘을 세울지, 그리고
-   * 행 버튼의 이름에 상태 말이 붙을지를 가른다. 값이 없는 work은 **키 자체가 없다.**
-   *
-   * **개수와 같은 길로 온다**(위 주석) — 이 목록은 터미널을 모른다. 슬롯이 아니라 값인 것은
-   * 두 자리가 함께 읽기 때문이다: 레인은 마크업 안쪽이고 이름은 버튼의 속성이라, 슬롯 하나로는
-   * 둘째 자리에 닿지 않는다. **문자열 Record라 얕은 비교가 그대로 먹는다** — 객체를 담으면
-   * 회차마다 새것이라 어느 셸에서 명령이 시작될 때마다 목록 전체가 다시 그려진다
-   * (`signalsByOwner` 머리말).
-   */
-  signals: Record<string, ShellSignal>;
-  /**
-   * 둘째 줄의 **셸 갈래**. 같은 이유로 슬롯이고, 값을 고르는 자리는 터미널 스토어를 아는
-   * Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
-   *
-   * **오는 것이 하나가 아니다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크 · message ·
-   * 경과, `components/shell/shell-signal`의 `SignalLine`)이고, 조용하면 지금까지처럼 종류·수
-   * (`shell-meta`의 `ShellMeta`)다. 셋째 갈래인 프로젝트 이름은 이 슬롯 밖이다 — 셸이 없는
-   * 행의 것이라 터미널을 몰라도 그릴 수 있다(아래 `WorkRow`). 타입이 `ReactNode`뿐이라
-   * 이 문단이 「이 슬롯에 무엇이 오나」를 묻는 유일한 자리다.
-   */
-  renderSubrow: (work: WorkView) => ReactNode;
+  shells: WorkRowShells;
 }) {
   const { data: works = [] } = useWorks(mode);
   const navigate = useNavigate();
@@ -400,7 +370,7 @@ function SidebarWorkList({
             바깥 거터가 없는 상자들(본문·설정)은 처음부터 막대가 경계에서 3~9px이라 성했다. */}
         {/* **표식은 검사가 이 목록을 정체성으로 집기 위한 것이다.** 한때 L3가
             `aside .scroll-quiet`로 집었는데, 그 클래스는 「굴러가는 상자」라는 겉모습이라
-            같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 「확인할 것」 띠가 펼쳐지면
+            같은 컬럼에 굴러가는 상자가 하나 더 서는 날(#204의 알림 띠가 펼쳐지면
             그렇다) 자리(`.first()`)로 고르는 쪽이 **엉뚱한 상자를 집는다.** */}
         <div
           data-worklist=""
@@ -414,14 +384,12 @@ function SidebarWorkList({
             mode={mode}
             open={sectionsOpen}
             selectedSlug={selectedSlug}
-            shellCounts={shellCounts}
-            signals={signals}
+            shells={shells}
             onToggleSection={toggleSection}
             onOpen={goTo}
             onHover={openCardAfterDelay}
             onLeave={closeCard}
             onTogglePin={togglePin}
-            renderSubrow={renderSubrow}
             draggedSlug={draggedSlug}
             lineY={lineY}
             litEmptySlot={litEmptySlot}
@@ -430,8 +398,8 @@ function SidebarWorkList({
         </div>
       </div>
 
-      {/* onClose를 넘기지 않는다 — 바깥 클릭 막이 깔리면 포인터를 가로채 열자마자 닫힌다.
-          이 카드의 여닫음은 행의 hover가 온전히 소유한다. */}
+      {/* 바깥 클릭 막이 없다 — 막이 깔리면 포인터를 가로채 앵커에서 곧바로 mouseleave가 나 열자마자
+          닫힌다. 이 카드의 여닫음은 행의 hover가 온전히 소유한다(`PopoverPortal` 머리말). */}
       {hovered && (
         <PopoverPortal
           anchorRef={hoverAnchor}
@@ -444,7 +412,9 @@ function SidebarWorkList({
           width={272}
           className="p-3.5"
         >
-          <WorkCard mode={mode} work={hovered} />
+          {/* 말은 **여는 순간 찍지 않고 그릴 때마다 읽는다** — 카드가 떠 있는 동안 셸이 새로
+              말하면 칸도 따라 바뀐다(행 버튼의 설명과 같은 값이다). */}
+          <WorkCard mode={mode} work={hovered} note={shells.notes[hovered.slug] ?? null} />
         </PopoverPortal>
       )}
     </>

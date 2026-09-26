@@ -15,7 +15,12 @@ import {
   type ShellsState,
 } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
+import {
+  bandRows,
+  callingNotesOf,
+  signalsOf,
+  topSignalView,
+} from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
@@ -26,7 +31,7 @@ import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
 import { ModeSwitch } from "./ModeSwitch";
 import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
-import { SignalLine, showsElapsed } from "./shell-signal";
+import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -38,8 +43,9 @@ interface SidebarProps {
    */
   mode: Mode;
   /**
-   * 저쪽 세계를 골랐다. **선 칸을 눌러도 그대로 온다** — 「같은 세계면 아무 일도 없다」는
-   * 목적지를 아는 쪽이 정한다(아래 `onSelect`가 `key === activeKey`를 그쪽에 둔 것과 같다).
+   * 저쪽 세계를 골랐다. 선 칸을 누르면 오지 않는다 — 부품이 값을 비우고(`[]`) 세그먼트가 그것을
+   * 버린다(S16). 그래도 「같은 세계면 아무 일도 없다」의 판정은 목적지를 아는 쪽이 든다(아래
+   * `onSelect`가 `key === activeKey`를 그쪽에 둔 것과 같다) — 세그먼트는 세계를 견주지 않는다.
    */
   onPickMode: (mode: Mode) => void;
   // Works 화면에서는 활성 항목이 없다 — nav에 Works가 없기 때문이다
@@ -83,7 +89,7 @@ function Sidebar({
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
-  // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
+  // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
   // **이 세계의 것만 센다**(결정 10). 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한
   // 루트 쌍 안에서만 본다) 안 거르면 저쪽 세계의 셸이 이 행의 숫자에 얹힌다. 키가 slug인
   // 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
@@ -97,6 +103,14 @@ function Sidebar({
   // 이 Record는 문자열만 담아 얕은 비교가 그대로 먹는다(`signalsByOwner` 머리말). 행마다
   // 구독하면 열여덟이 같은 셀렉터를 각자 돌면서 얻는 것이 없다.
   const signals = useStore(terminalStore, (state) => signalsOf(state, mode), shallow);
+  // **부르는 셸이 한 말도 한 번에 읽어 내린다**(`sidebar-active-band` 결정 14). 호버 카드의 말 칸과
+  // 행 버튼의 설명이 이 값 하나를 나눠 읽는다 — 설명은 버튼의 속성이라 슬롯으로 못 가고, 카드는
+  // 목록 밖의 포털이다. 고르는 것은 레인·오른쪽 메타와 같은 `topSignalView`라 같은 셸의 말이다.
+  //
+  // **여기만 비교가 한 겹 더 깊다**(`sameNotes`). 값이 문자열이 아니라 종류와 말을 든 객체라
+  // 회차마다 새것이고, 기본 얕은 비교면 셸이 프롬프트마다 쏘는 타이틀 하나에 목록 전체가 다시
+  // 그려진다(띠의 `sameBand`와 같은 함정).
+  const notes = useStore(terminalStore, (state) => callingNotesOf(state, mode), sameNotes);
   // **띠가 읽는 줄들**(#204). 이것만은 위 셋과 달리 얕은 비교로는 안 걸린다 — 값이 객체
   // 배열이라 회차마다 새것이다. 그래서 비교를 한 겹 더 벗기는 `sameBand`를 쓴다(그쪽 주석):
   // 띠는 셸이 프롬프트마다 쏘는 타이틀에도, 1초 폴링의 「도는 것」에도 안 흔들려야 한다.
@@ -140,6 +154,14 @@ function Sidebar({
     );
   }
 
+  // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미 쓰는 그
+  // 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지 않는다. **셸 수는
+  // 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8) — 행마다 구독하는 것은
+  // 「도는 것」과 신호 하나씩이다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
+  const renderRowMeta = (work: WorkView) => (
+    <RowMetaFor owner={ownerOf(mode, work.slug)} shellCount={shellCounts[work.slug] ?? 0} />
+  );
+
   return (
     <SidebarFrame open={open} size={size}>
       {/* **신호등 띠 바로 아래, nav 위**다(US 6) — 이 자리가 「어느 세계인가」가 nav보다
@@ -169,7 +191,7 @@ function Sidebar({
             active={item.key === activeKey}
             onClick={() => onSelect(item.key)}
             // **최상위 셸이 몇 개인가는 남는다**(결정 6이 걷은 것은 펼침이지 이 숫자가
-            // 아니다). work 행이 둘째 줄로 「여기서 일이 돌고 있다」를 말하는 것과 같은
+            // 아니다). work 행이 오른쪽 메타로 「여기서 일이 돌고 있다」를 말하는 것과 같은
             // 몫이고, 여기가 아니면 그 셸들의 수가 사이드바 어디에도 안 남는다 —
             // 그 화면에 들어가야만 보인다.
             //
@@ -179,7 +201,7 @@ function Sidebar({
             // 선다」도 슬롯 안으로 내려갔다.
             meta={
               item.key === "terminal" ? (
-                <SubrowFor owner={ownerOf(mode)} shellCount={topShells} />
+                <RowMetaFor owner={ownerOf(mode)} shellCount={topShells} />
               ) : null
             }
           />
@@ -220,19 +242,9 @@ function Sidebar({
         // nav와 **같은 값**을 받는다 — 세계를 판정하는 자리가 셸 하나여야 목록·nav·세그먼트가
         // 함께 움직인다(`SidebarWorkList`의 `mode` 주석).
         mode={mode}
-        shellCounts={shellCounts}
-        // 둘째 줄의 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
-        // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
-        // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
-        // (결정 8) — 행마다 구독하는 것은 오늘과 같이 「도는 것」 하나다. 구독이 행마다
-        // 따로인 이유는 `SubrowFor`가 든다.
-        signals={signals}
-        renderSubrow={(work) => (
-          <SubrowFor
-            owner={ownerOf(mode, work.slug)}
-            shellCount={shellCounts[work.slug] ?? 0}
-          />
-        )}
+        // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
+        // 나를 뿐 터미널을 한 번도 참조하지 않는다.
+        shells={{ shellCounts, signals, notes, renderRowMeta }}
       />
 
       {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).
@@ -386,6 +398,19 @@ function sameBand(a: ReadonlyArray<BandRow>, b: ReadonlyArray<BandRow>): boolean
 }
 
 /**
+ * work마다의 말이 **다 같은가** — `sameBand`와 같은 한 겹이고, 배열이 아니라 Record라 키로 견준다.
+ * 안쪽이 원시값 둘(`kind`·`message`)뿐이라 `shallow`로 끝난다. 한쪽에만 있는 키는 저쪽 값이
+ * `undefined`라 거기서 어긋난다.
+ */
+function sameNotes(
+  a: Readonly<Record<string, CallingNote>>,
+  b: Readonly<Record<string, CallingNote>>,
+): boolean {
+  const slugs = Object.keys(a);
+  return slugs.length === Object.keys(b).length && slugs.every((slug) => shallow(a[slug], b[slug]));
+}
+
+/**
  * 셸이 앉은 자리(`owner`)를 **화면의 이름**으로 바꾸는 규칙 — 그리고 **이 규칙이 적히는
  * 유일한 자리**다. 터미널은 슬러그까지만 알고(`bandRows` 머리말) 제목은 목록 API가 주므로,
  * 둘을 다 쥔 이 컴포넌트가 그 자리다.
@@ -485,14 +510,15 @@ function useOpenBand(mode: Mode): (item: BandItem) => void {
 }
 
 /**
- * **둘째 줄의 셸 갈래** 하나가 자기 것만 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서
- * 그림(`ShellMeta`·`SignalLine`)과 갈렸다 — 그쪽은 터미널을 모르는 순수 컴포넌트라 정적
- * 마크업 seam에 산다.
+ * 행의 **오른쪽 메타** 하나가 자기 것만 구독한다(결정 2·4 · `sidebar-active-band` S4·S5). 스토어를
+ * 아는 자리가 여기라서 그림(`ShellMeta`·`SignalMeta`)과 갈렸다 — 그쪽은 터미널을 모르는 순수
+ * 컴포넌트라 정적 마크업 seam에 산다.
  *
- * **그 갈래가 이 판에서 둘이 됐다**(#203): 그 셸이 스스로 말했으면 **그 말**(마크·message·경과)
- * 이고, 아니면 지금까지처럼 종류·수다. 가름이 **한 컴포넌트 안**인 것이 요점이다 — 조건을
- * 둘로 나누면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다. 이름이 `ShellMetaFor`
- * 가 아닌 것은 그 때문이다: 이제 이 자리가 고르는 것은 셸 메타가 아니라 **둘째 줄 전체**다.
+ * **갈래가 둘이다**: 그 행의 셸이 부르거나 돌면 **그 셸의 신호**(마크 + 경과, 도는 중은 마크 —
+ * `SignalMeta`)이고, 조용하면 종류·수(`ShellMeta`)다. 가름이 **한 컴포넌트 안**인 것이 요점이다 —
+ * 조건을 둘로 나누면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다. 이름이
+ * `ShellMetaFor`가 아닌 것은 그 때문이다: 이 자리가 고르는 것은 셸 메타가 아니라 **오른쪽 메타
+ * 전체**다. (두 줄 행에서는 이 자리가 둘째 줄 전체를 골라 `SubrowFor`였다 — S5.)
  *
  * 이 값은 자주 흔들린다 — 셸은 프롬프트마다 OSC 타이틀을 쏘고 claude는 도는 동안 계속
  * 갈아 끼운다. 그것을 목록이 읽어야 하는데, **위에서 한 번에 읽어 내리면 안 된다**:
@@ -508,15 +534,17 @@ function useOpenBand(mode: Mode): (item: BandItem) => void {
  * 이 컴포넌트 **하나**를 함께 쓴다 — nav를 위해 구독을 하나 더 파면 「셀렉터를 부르는 자리가
  * 하나」가 깨지고(Sidebar.test.tsx가 센다) 같은 값을 고르는 자리가 둘이 된다.
  */
-function SubrowFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
+function RowMetaFor({ owner, shellCount }: { owner: ShellOwner; shellCount: number }) {
   const running = useStore(terminalStore, (state) => runningAgentsOf(state, owner), shallow);
-  // **둘째 줄의 나머지 셋**(말·시각·마크, #203). 위 Record에 못 태우는 것은 문자열 하나로
+  // **신호의 셋**(종류·시각·마크의 재료, #203). 위 Record에 못 태우는 것은 문자열 하나로
   // 안 접히기 때문이고 — 객체를 담으면 얕은 비교가 늘 어긋난다 — 그래서 종류·수와 **같은
   // 자리에서** 자기 것만 고른다. 한 컴포넌트인 것이 중요하다: 갈래를 가르는 조건이 둘로
-  // 나뉘면 레인은 부르는데 둘째 줄은 종류·수인 화면이 한 프레임 난다.
+  // 나뉘면 레인은 부르는데 메타는 종류·수인 화면이 한 프레임 난다.
   //
   // 얕은 비교가 여기서 먹는 것은 안쪽이 **원시값 넷**이라서다(`SignalView`). 값이 없을
-  // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`).
+  // 때 `null`인 것도 그대로 견줘진다(`Object.is(null, null)`). 그중 말(`message`)은 이
+  // 자리가 안 그리지만(말은 카드와 설명이 `callingNotesOf`로 읽는다) 셀렉터를 가르지 않는다 —
+  // 고르는 함수가 레인·카드와 같은 `topSignalView` 하나인 것이 스토리 39의 전부라서다.
   const signal = useStore(terminalStore, (state) => rowSignalOf(state, owner), shallow);
   // 경과는 시각이 아니라 **지금과의 차**라 아무도 안 건드려도 늙는다. 도는 중과 조용한
   // 셸에는 경과가 안 붙으므로(결정 13) 그때는 시계도 안 돈다 — 그 판정을 여기서 다시 적지
@@ -525,15 +553,7 @@ function SubrowFor({ owner, shellCount }: { owner: ShellOwner; shellCount: numbe
   const now = useNow(signal !== null && showsElapsed(signal.kind));
 
   if (signal !== null) {
-    return (
-      <SignalLine
-        kind={signal.kind}
-        message={signal.message}
-        running={signal.running}
-        since={signal.since}
-        now={now}
-      />
-    );
+    return <SignalMeta kind={signal.kind} running={signal.running} since={signal.since} now={now} />;
   }
   return <ShellMeta shellCount={shellCount} running={running} />;
 }
@@ -542,7 +562,7 @@ function SubrowFor({ owner, shellCount }: { owner: ShellOwner; shellCount: numbe
  * 그 자리가 그릴 화면값. **최상위 셸(nav `Terminal`)은 여기서 아무것도 안 그린다.**
  *
  * 스펙의 Out of Scope가 「셸 메타 규격의 nav `Terminal` 변경」을 이 판에서 빼 뒀다 — 그 행은
- * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 「확인할 것」 띠다(#204, 결정 13의
+ * 종류·수 그대로이고, 최상위 셸이 부르는 것을 받는 자리는 알림 띠다(#204, 결정 13의
  * 다섯째). work 행과 **같은 구독 컴포넌트**를 쓰기 때문에 이 가름이 빠지기 쉬운데, 빠지면
  * nav 행이 work 행의 어휘를 반쯤 흉내 낸다 — 실제로 한 번 그렇게 났고 L3가 잡았다.
  */
@@ -563,8 +583,8 @@ const ELAPSED_TICK = 30_000;
 /**
  * 경과를 늙게 하는 시계.
  *
- * **링과 아무 상관이 없다.** 링을 도는 것은 CSS이고(`signal-ring`), 이 시계는 「몇 분
- * 기다렸나」라는 **글자**의 것이다 — 그 가름이 흐려지면 스토리 30이 막으려던
+ * **스피너와 아무 상관이 없다.** 레인의 스피너를 돌리는 것은 CSS이고(`Spinner`의 호), 이
+ * 시계는 「몇 분 기다렸나」라는 **글자**의 것이다 — 그 가름이 흐려지면 스토리 30이 막으려던
  * 「신호가 대가를 낸다」가 되돌아온다.
  *
  * 부르는 행에만 돌고, 그 행이 조용해지면 멎는다.
@@ -591,7 +611,7 @@ function useNow(ticking: boolean): number {
 // (adr-03) 그것이 통째로 걷혔다 — 이 항목은 다시 **더 갈라지지 않는 줄**이다.
 //
 // 남은 메타는 **접힌 가지의 잔재가 아니다**: 그 work에서 무엇이 몇 개 도는지를 말하는 work
-// 행 둘째 줄의 메타와 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
+// 행 오른쪽 메타와 같은 몫이고(결정 2), 여기 없으면 최상위 셸의 수가 사이드바에서 사라진다.
 // 배경(선택·hover)은 바깥 상자가 갖고 가로 여백은 이름 버튼이 품는다 — 바깥이 가진 padding은
 // 두 버튼 어디에도 속하지 않아 배경은 덮이는데 눌러도 아무 일이 없는 죽은 자리가 된다.
 // 메타가 행 전체를 누르는 데 걸리적거리지 않게 이름 버튼 **안**에 두지 않는다: 그러면 셸
@@ -633,13 +653,11 @@ function SidebarItem({
       {/* 배지가 아니라 옅은 숫자다 — 구획 헤더의 개수와 같은 규격이라, 한 컬럼에 세로로
           붙어 서는 둘이 다른 무게로 읽히지 않는다(GUTTER 주석과 같은 계약). 오른쪽 끝도
           그 헤더와 같은 9px에 선다: 바깥 상자가 이미 pr-1(4px)을 물고 있어 5px만 더한다.
-          **이제 그 계약이 사는 자리는 여기 하나뿐이다** — work 행이 메타를 둘째 줄로 내리면서
-          판 05 결정 13의 「두 자리」가 한 자리가 됐다. 그래서 「같은 x에 오른쪽 끝이 선다」를
-          실측으로 재는 검사도 work 행에서 이 행으로 따라왔다(works-sidebar.spec.ts).
-          규격 자체는 여전히 `ShellMeta`가 든다 — **그 계약**이 한 자리로 줄었어도 그 조각을
-          도로 이 파일에 펴 놓지 않는 것은, work 행의 둘째 줄이 같은 「무리 나열」 규칙을 계속
-          쓰기 때문이다. 줄어든 것은 사용처가 아니라 **이 x 계약**이다: 그 조각을 쓰는 자리는
-          여전히 둘이고(`shell-meta.tsx` 머리말), 오른쪽 여백만 여기서만 뜻을 갖는다. */}
+          **그 계약이 사는 자리는 둘이다** — 여기와 work 행의 오른쪽 메타(판 05 결정 13의 「두
+          자리」). 두 줄 행에서는 work 행이 메타를 둘째 줄로 내려 여기 하나였다가, 행이 한 줄로
+          돌아오면서(`sidebar-active-band` 결정 14) 다시 둘이 됐다. 그래서 규격은 `ShellMeta`
+          하나가 들고(오른쪽 여백까지), work 행의 신호 갈래(`SignalMeta`)가 같은 규격을 따른다.
+          「같은 x에 오른쪽 끝이 선다」는 두 자리 다 L3가 실측으로 잰다(works-sidebar.spec.ts). */}
       {meta}
     </div>
   );

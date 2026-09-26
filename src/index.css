@@ -169,17 +169,19 @@
     --color-inset: var(--bg-inset);
     --color-border-strong: var(--border-strong);
     --color-tertiary: var(--text-tertiary);
-    /* **상태 축의 색**(#203, 결정 3). 행의 점·링 · 「확인할 것」 띠(#204) · 셸 탭 채움
+    /* **상태 축의 색**(#203, 결정 3). 행의 점·스피너 · 알림 띠(#204) · 셸 탭 채움
        (#205)이 같은 이름을 읽는다 — 자리마다 색을 다시 고르면 「세 자리가 한 사실을 말한다」
        (스토리 79)가 색에서 먼저 깨진다. `-soft`는 같은 색의 알파 판이고 후광과 탭 채움이
        쓴다.
 
        **`-ink`는 글자용이다.** 결정 3의 표가 못박은 것은 **점의** 색인데(그 표의 이름이
-       `amber-600`이다) 라이트에서 그 색의 대비는 2.98이라, 그것을 **말**에 그대로 쓰면 이
-       판이 고치려던 3.0짜리 오른쪽 메타를 둘째 줄에서 다시 만든다(스토리 24 · 구현-스펙의
-       「둘째 줄의 기본색은 `muted-foreground`(대비 ≥ 4.5)」). 점은 3px 후광이 면적을 벌지만
-       글자에는 그런 것이 없다 — 그래서 **글자만** 한 단 어둡게 갈랐고, 결정 3의 점 색은 그대로
-       둔다. 다크와 라이트의 초록은 점 색과 같은 값이다(이미 4.5를 넘는다). */
+       `amber-600`이다) 라이트에서 그 색의 대비는 2.98이라, 그것을 **말**에 그대로 쓰면 두
+       줄 행을 연 판이 고치려던 3.0짜리 글자를 다시 만든다(그 판의 스토리 24 · 「둘째 줄의
+       기본색은 `muted-foreground`(대비 ≥ 4.5)」). 점은 3px 후광이 면적을 벌지만 글자에는
+       그런 것이 없다 — 그래서 **글자만** 한 단 어둡게 갈랐고, 결정 3의 점 색은 그대로 둔다.
+       다크와 라이트의 초록은 점 색과 같은 값이다(이미 4.5를 넘는다). 그 둘째 줄은 행이 한
+       줄로 돌아오면서 걷혔고(`sidebar-active-band` 결정 14), 지금 이 잉크를 읽는 글자는 탭
+       이름과 호버 카드 말 칸의 라벨이다(`shell-signal.tsx`의 `TONE`). */
     --color-wait: var(--signal-wait);
     --color-wait-soft: var(--signal-wait-soft);
     --color-wait-ink: var(--signal-wait-ink);
@@ -204,16 +206,22 @@
     --background: oklch(1 0 0);
     --foreground: #1a1a1e;
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    /* **글자색은 앱 글자색이다**(결정 2). shadcn 원본의 `oklch(0.145 0 0)`(≈#0a0a0a)은 앱
+       본문(#1a1a1e)보다 한 단 검어, 판 3부터 들어오는 메뉴·Popover·Select·창·토스트
+       (`text-popover-foreground`)와 Alert(`text-card-foreground`)의 글자만 옛 화면 옆에서
+       튄다. 바탕(흰색)은 이미 앱의 떠 있는 카드와 같은 값이다. */
+    --card-foreground: var(--foreground);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
+    --popover-foreground: var(--foreground);
     --primary: #5e6ad2;
     --primary-foreground: #ffffff;
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
+    /* shadcn 부품이 읽는 회색 둘은 아래 상태 스케일을 가리킨다(결정 2) — 부품이 hover·선택에
+       칠하는 회색이 옛 화면의 네 단과 같아야 둘이 한 화면에서 안 갈린다. */
+    --muted: var(--state-1);
     --muted-foreground: #55555e;
-    --accent: rgba(20, 20, 28, 0.05);
+    --accent: var(--state-2);
     --accent-foreground: #1a1a1e;
     --destructive: oklch(0.577 0.245 27.325);
     --border: #e5e5e8;
@@ -248,9 +256,9 @@
        면적을 벌어 그 자리를 메운다. 초록은 4.69로 글자 바닥까지 넘는다.
 
        **그래서 글자는 `amber-700`이다**(`-ink`, 4.69). 자리를 옮기는 것이 대비를 고치는
-       것은 아니라는 것이 이 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안 좋다」),
-       둘째 줄의 **말**만은 4.5를 넘겨야 한다. 점을 같이 어둡게 할 것인지는 사람에게
-       열어 둔 물음이다 — `spec/물음-둘째-줄의-색.md`. */
+       것은 아니라는 것이 두 줄 행을 연 판의 시작이라(사람의 말: 「이 한 줄이 가독성이 안
+       좋다」), 상태를 **글자로** 말하는 자리는 4.5를 넘겨야 한다. 점을 같이 어둡게 할 것인지는
+       사람에게 열어 둔 물음이다 — 그 판의 `spec/물음-둘째-줄의-색.md`. */
     --signal-wait: #d97706;
     --signal-wait-soft: rgba(217, 119, 6, 0.14);
     --signal-wait-ink: #b45309;
@@ -261,10 +269,17 @@
        퍼센트는 조정해도 되지만 이 부등식은 깨지면 안 된다:
          행 hover(1)   < 행 선택(2)   < 선택된 행 hover(3)
          버튼 hover(2) < 버튼 켜짐(3) < 켜진 버튼 hover(4)
-       --accent(5%)는 이 스케일에 넣지 않는다. 칩 배경·상태 배지가 그 자리다.
+       shadcn의 --accent·--muted는 이 스케일의 2단·1단을 **가리키는 이름**이다(결정 2 — 부품이
+       읽는 회색을 앱 값에 맞췄다). 칩 배경·상태 배지의 bg-accent가 그래서 2단이다. 그래도 **앱이
+       적는 상태 배경은 --state-N으로 적는다** — accent라는 이름은 행 hover(1)인지 버튼 hover(2)인지를
+       말하지 않는다.
        이 목록은 **열거**다: 여기 없는 새 상태 배경은 유예된 것이 아니라 이 스케일을 써야 한다.
 
-       --accent를 상태 hover로 쓰던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을 고정한다).
+       hover:bg-accent로 상태 hover를 칠하던 자리는 전부 걷어냈다(state-scale.test.ts가 0건을
+       고정한다). **예외는 registry에서 온 메뉴 줄의 켜짐 하나다** — 드롭다운·Select 항목의
+       focus:bg-accent는 부품 파일에 registry 그대로 있고, 토큰이 2단을 가리키게 해서 앱 값으로
+       살렸다(판 1 토큰 표 — 토큰을 먼저 맞추고, 그것으로 앱 값이 나오는 부품 클래스는 그대로 둔다).
+       메뉴 줄의 켜짐이 그래서 버튼 hover와 같은 2단이다. 그 검사는 hover만 세므로 이 자리를 안 잡는다.
        다만 스케일 밖 상태 배경이 아직 하나 남아 있다 — 설명 편집 버튼의 hover:bg-panel
        (ProjectDetail). 반투명 오버레이가 아니라 불투명 표면색이라 6%로 그냥 바꿀 수 없다
        (바꾸면 아래 것이 비친다). 옮길지는 따로 판단할 일이고, 그때까지 "전부 옮겼다"고
@@ -461,9 +476,10 @@
    toggle-on(state-3)을 안 쓰는 것이 핵심이다: 바닥이 이미 회색이라 그 위에 더 진한 회색을
    얹으면 「떠올랐다」가 아니라 「눌렸다」로 읽혀, 두 칸 중 어느 쪽이 서 있는지가 뒤집힌다.
    여기서 켜짐은 농도가 아니라 **떠오름**이다 — 흰 칩 + 실선 한 겹 + 옅은 그림자.
-   hover에 더 진해지지 않는다: 이미 선 칸은 눌러도 아무 일이 없다(SourceToggle 주석).
+   hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
+   그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
-   (SourceToggle 주석) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
+   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
 @utility segment-on {
   background: var(--background);
   box-shadow:
@@ -513,8 +529,10 @@ body.dragging-row * {
    **마스크는 상시다**(결정 12). 넘침 여부를 모르므로 **거의 꽉 찬 제목**(끝이 마지막 12px
    안에 드는 경우)은 끝 글자가 살짝 옅어진다 — 없애려면 쉴 때도 계측해야 해서 감수한다.
 
-   **이 블록은 둘째 줄의 message와 나눠 쓴다**(#203) — 페이드 폭과 마스크가 그 몫이고,
-   컨테이너 선언만 제목의 것으로 아래에 따로 남는다(그쪽 주석). */
+   **이 블록은 셸의 말 한 줄(`[data-fade]`)과 나눠 쓴다**(#203) — 페이드 폭과 마스크가 그
+   몫이고, 컨테이너 선언만 제목의 것으로 아래에 따로 남는다(그쪽 주석). 그 말을 싣는 자리는
+   알림 띠의 줄 하나다 — 두 줄 행의 둘째 줄도 이것을 썼는데, 행이 한 줄로 돌아오면서
+   (`sidebar-active-band` 결정 14) 그 줄은 걷혔다. */
 [data-title],
 [data-fade] {
     /* 페이드 폭 — **한글 1.03글자**다. 한 글자가 11.6675px이다(Pretendard Variable
@@ -532,7 +550,7 @@ body.dragging-row * {
     mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent);
 }
 
-/* **둘째 줄의 message도 같은 페이드로 끝난다 — 마퀴는 없다**(#203, 구현 결정 4). 제목과
+/* **셸의 말 한 줄도 같은 페이드로 끝난다 — 마퀴는 없다**(#203, 구현 결정 4). 제목과
    나눠 갖는 것은 페이드 **폭 하나**이고, 컨테이너 선언은 안 나눈다: `100cqw`를 되읽는 것은
    흐르는 글자뿐이라 이 줄에는 쓸 데가 없고, 선언해 두면 「내 폭이 내용에 안 달렸다」가 되어
    호출부가 폭을 밖에서 정해 주지 않으면 0으로 무너진다. */
@@ -580,35 +598,22 @@ body.dragging-row * {
         transform: none;
         transition: none;
     }
-}
 
-/* **「도는 중」 링**(#203, 결정 3·5). 회전을 CSS가 드는 것이 이 규칙의 전부다 — 링 열셋이
-   같이 도는 화면에서 자바스크립트가 각도를 옮기면 그만큼의 리렌더가 나고(스토리 30), 무엇보다
-   「움직임을 끈 사람에게는 정지한 **완전한** 링」을 손으로 다시 물어야 한다.
-
-   `steps(12, end)` 1초는 목업이 고른 값이다 — 매끄럽게 도는 대신 열두 칸으로 끊어 돌아
-   시선을 덜 끈다. 원주는 옅고 머리만 앱 `primary`라, 그 하나가 어디 있는지로 회전이 읽힌다.
-
-   **`animation`을 유틸리티로 적지 않는 이유**는 아래 미디어 쿼리다. 정지는 회전을 끄는 것에
-   더해 **머리 색을 원주와 같게** 되돌리는 일이라(머리가 남으면 「멈춘 스피너」로 읽혀 사람이
-   「굳었나」를 묻는다) 두 속성이 한 규칙 안에 함께 있어야 한다. */
-.signal-ring {
-    border: 1.6px solid color-mix(in srgb, var(--text-tertiary) 40%, transparent);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: signal-spin 1s steps(12, end) infinite;
-}
-
-@keyframes signal-spin {
-    to {
-        rotate: 360deg;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .signal-ring {
+    /* **shadcn 부품의 움직임도 여기 한 곳에서 끈다**(결정 7) — 부품 파일마다 적으면 부품이 늘
+       때 빠지는 자리가 생긴다. 떠 있는 부품(메뉴·Popover·Select·창·툴팁)은 모두 `data-open`·
+       `data-closed`에서 `animate-in`·`animate-out` 키프레임으로 움직이고, 그 요소에는 늘
+       `data-slot`이 있다. 이 규칙은 레이어 밖이라 `@layer utilities`의 `animate-*`를 특이도와
+       상관없이 이긴다. 애니메이션이 없으면 Base UI는 곧바로 언마운트한다 — 닫힘이 멈추지 않는다.
+       Spinner의 호(`animate-spin`)도 걸리지만 동작 줄이기면 호가 숨으므로 해가 없다. */
+    [data-slot][class*="animate-"] {
         animation: none;
-        border-top-color: color-mix(in srgb, var(--text-tertiary) 40%, transparent);
+    }
+
+    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(들고남)와 Collapsible 패널
+       (접힘) — 은 전이도 끈다. */
+    [data-slot^="toast"],
+    [data-slot="collapsible-content"] {
+        transition: none;
     }
 }
 
@@ -684,6 +689,50 @@ body.dragging-row * {
   inset: 0;
   z-index: 50;
   background-color: rgb(0 0 0 / 25%);
+}
+
+/* **떠 있는 카드** — 13px 모서리 · 강한 테두리 · 큰 그림자 · 흰 바탕(결정 2의 앱 규격 표).
+   메뉴 · Popover · Select · 창 · 확인 창의 부품 파일과 `PopoverPortal`(호버 카드 · 틀 이동 힌트)이
+   이 한 정의를 부른다. 여섯 파일이 같은 문자열을 옮겨 적던 자리다 — 옛 `PopoverPortal` 카드의 값이다.
+
+   **모양만 정한다.** 폭 · 안쪽 · 자리 · 넘침은 표면마다 지금 값이 달라 부품 파일이 든다. 전체화면
+   뷰어의 모서리(14px)처럼 이것을 덮는 코어 유틸리티는 이 뒤에 선다(커스텀 @utility가 앞에 선다 —
+   toggle.tsx 머리말). 값을 따로 적지 않고 그 클래스들을 그대로 부르는 것은, 그림자가 ring과 한
+   `box-shadow`로 합쳐지는 Tailwind의 짜임을 그대로 받기 위해서다. */
+@utility floating-card {
+  @apply rounded-[13px] border border-border-strong bg-background shadow-lg;
+}
+
+/* **메뉴의 목록과 줄** — 드롭다운 메뉴와 Select 목록이 함께 쓴다(결정 2의 앱 규격 표 「메뉴 팝업」 ·
+   「메뉴 항목」). 두 부품 파일이 같은 값을 옮겨 적던 자리다.
+
+   `menu-list`는 목록 상자다 — 세로로 쌓고 항목 사이 1px, 안쪽 5px. 드롭다운은 카드 자신이 목록이고
+   (메뉴 역할), Select는 카드 안의 `listbox`가 목록이다(머리 · 바닥 칸이 목록 밖에 선다).
+
+   `menu-row`는 한 줄이다 — 32px · 모서리 9px · 좌우 9px · 글리프 사이 8px. 목록이 세로 flex라 줄이
+   눌리지 않게 `shrink-0`을 함께 든다. **글자 크기는 안 정한다** — 표면마다 지금 값이 달라(메뉴
+   12.5px · Select 13px) 부품 파일이 든다. 줄의 나머지(flex · 켜짐 `focus:bg-accent` · 끔)는 registry
+   클래스 그대로 부품 파일에 있다. 줄 끝의 체크는 `components/ui/menu-check.tsx`가 든다. */
+@utility menu-list {
+  @apply flex flex-col gap-px p-[5px];
+}
+
+@utility menu-row {
+  @apply h-8 shrink-0 gap-2 rounded-[9px] px-[9px];
+}
+
+/* **행 오른쪽 메타의 규격** — 가로 한 줄 · 글자 11.5px · 글리프 사이 6px · 오른쪽 여백 5px.
+   조용한 갈래(`ShellMeta` — 종류·수)와 신호 갈래(`SignalMeta` — 마크·경과)가 이 한 정의를 부른다.
+   두 파일이 같은 문자열을 옮겨 적던 자리다.
+
+   두 갈래가 work 행의 **같은 칸에 번갈아** 서므로 규격이 갈리면 행이 조용함↔부름을 오갈 때마다
+   숫자의 오른쪽 끝이 튄다. 오른쪽 여백 5px은 행의 `pr-1`(4px)과 합쳐 9px이 되어, 그 끝이 구획
+   헤더의 개수와 같은 x에 선다(`SidebarItem` 주석의 계약 — nav `Terminal`도 같은 값이다).
+
+   **색은 안 정한다.** 조용한 갈래는 바깥에 `text-tertiary`를 그물로 들고(`shell-meta.tsx`), 신호
+   갈래의 마크는 행 글자색을 물려받는다 — 갈래마다 달라 부르는 자리가 든다. */
+@utility row-meta {
+  @apply flex shrink-0 items-center gap-1.5 pr-[5px] text-[11.5px];
 }
 
 /* lib/scroll-quiet.ts가 body에 그리는 막대. 자리는 그쪽이 정하고 여기는 **생김새만** 정한다.
