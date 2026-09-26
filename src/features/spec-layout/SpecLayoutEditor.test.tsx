@@ -34,10 +34,11 @@ function opened(): LayoutDraft {
   };
 }
 
-function render(selected: EntryPath, errors: LayoutError[] = []): string {
+function render(selected: EntryPath, errors: LayoutError[] = [], draft = opened()): string {
   return renderToStaticMarkup(
     <EditorColumns
-      draft={opened()}
+      draft={draft}
+      folder="~/.atelier/layouts/atelier"
       selected={selected}
       errors={errors}
       onSelect={() => {}}
@@ -120,7 +121,8 @@ describe("고른 항목", () => {
   // 제목이 곧 이름 틀 칸이다. 그 옆에 아이콘 칸과 종류(파일|폴더), 아래에 설명 칸이다.
   it("파일 항목은 제목이 이름 틀 칸이고, 종류는 파일이며, 설명 칸이 선다", () => {
     const detail = detailOf(render([1]));
-    expect(fieldsOf(detail)).toEqual(["input:이름 틀", "textarea:설명"]);
+    // 템플릿이 있는 항목이라 본문 칸이 설명 칸 아래에 더해진다(티켓 12)
+    expect(fieldsOf(detail)).toEqual(["input:이름 틀", "textarea:설명", "textarea:템플릿 본문"]);
     expect(detail).toMatch(/<input\b[^>]*aria-label="이름 틀"[^>]*value="decisions.md"/);
     expect(detail).toContain(">결정</textarea>");
     expect(detail).toMatch(/role="radio" aria-checked="true"[^>]*>파일</);
@@ -147,6 +149,71 @@ describe("고른 항목", () => {
     const known = render([0]);
     expect(textOf(detailOf(known))).not.toContain("모르는 아이콘");
     expect(treeRows(known).find((row) => row.name === "overview.md")?.markup).not.toContain("모르는 아이콘");
+  });
+});
+
+// 파일 항목의 템플릿(티켓 12). 설명 칸 아래에 「템플릿」 없음|있음이 서고, 있음이면 12줄 높이의 본문 칸과 그
+// 오른쪽 위의 작은 경로 표시가 선다. 경로는 사람이 적지 않는다 — 편집기가 켤 때 짓는다(`draft.ts`).
+describe("템플릿", () => {
+  /** 「템플릿」 고르기의 칸들 — { 글자, 골랐나 }. 칸이 없으면 `null`이다. */
+  function templateChoice(detail: string) {
+    const group = /<div\b[^>]*role="radiogroup"[^>]*aria-label="템플릿"[^>]*>([\s\S]*?)<\/div>/.exec(detail);
+    if (group === null) return null;
+    return [...group[1].matchAll(/<button\b[^>]*aria-checked="(true|false)"[^>]*>([^<]*)<\/button>/g)].map(
+      (m) => [m[2], m[1] === "true"],
+    );
+  }
+
+  it("파일 항목에만 템플릿 칸이 선다 — 폴더 항목과 머리 `spec/`에는 없다", () => {
+    expect(templateChoice(detailOf(render([0])))).toEqual([
+      ["없음", true],
+      ["있음", false],
+    ]);
+    expect(templateChoice(detailOf(render([2])))).toBeNull();
+    expect(templateChoice(detailOf(render([2, 0])))).toBeNull();
+    expect(templateChoice(detailOf(render([])))).toBeNull();
+  });
+
+  it("있음이면 12줄 높이의 본문 칸과 레이아웃 폴더 아래의 경로 표시가 서고, 없음이면 둘 다 없다", () => {
+    const on = detailOf(render([1]));
+    expect(templateChoice(on)).toEqual([
+      ["없음", false],
+      ["있음", true],
+    ]);
+    expect(fieldsOf(on)).toEqual(["input:이름 틀", "textarea:설명", "textarea:템플릿 본문"]);
+    const body = /<textarea\b([^>]*aria-label="템플릿 본문"[^>]*)>([^<]*)<\/textarea>/.exec(on);
+    expect(body?.[2]).toBe("# 결정\n");
+    expect(body?.[1]).toContain('rows="12"');
+    expect(body?.[1]).toMatch(/\bresize-y\b/);
+    expect(textOf(on)).toContain("~/.atelier/layouts/atelier/decisions.md");
+    // 경로는 본문 칸 위에 선다 — 칸의 오른쪽 위다
+    expect(on.indexOf("~/.atelier/layouts/atelier/decisions.md")).toBeLessThan(on.indexOf('aria-label="템플릿 본문"'));
+
+    const off = detailOf(render([0]));
+    expect(fieldsOf(off)).toEqual(["input:이름 틀", "textarea:설명"]);
+    expect(textOf(off)).not.toContain("~/.atelier/layouts/atelier/");
+  });
+
+  // 템플릿 파일이 디스크에서 사라진 항목 — 레이아웃은 가리키는데 읽기가 본문을 주지 못했다(누락 경고).
+  // 「없음」으로 서면 사람은 템플릿이 없다고 읽고, 저장하면 가리키던 것이 조용히 사라진다. 그래서 「있음」
+  // 그대로 빈 본문 칸이 서고, 그 항목 옆에 경고가 선다. 칸에 적거나 「없음」으로 바꾸면 풀린다.
+  it("누락 템플릿 항목은 「있음」으로 빈 본문 칸과 함께 서고, 그 항목 옆에 경고가 선다", () => {
+    const missing: LayoutDraft = { ...opened(), templates: {} };
+    const html = render([1], [], missing);
+    const detail = detailOf(html);
+    expect(templateChoice(detail)).toEqual([
+      ["없음", false],
+      ["있음", true],
+    ]);
+    expect(detail).toMatch(/<textarea\b[^>]*aria-label="템플릿 본문"[^>]*><\/textarea>/);
+    expect(textOf(detail)).toContain("레이아웃 폴더에 이 템플릿 파일이 없어요");
+    const row = treeRows(html).find((r) => r.name === "decisions.md");
+    expect(row?.markup).toContain("템플릿 누락");
+
+    // 본문이 있으면 경고가 없다
+    const present = render([1]);
+    expect(textOf(detailOf(present))).not.toContain("템플릿 파일이 없어요");
+    expect(treeRows(present).some((r) => r.markup.includes("템플릿 누락"))).toBe(false);
   });
 });
 

@@ -16,6 +16,8 @@ import {
   setIcon,
   setKind,
   setPattern,
+  setTemplate,
+  setTemplateBody,
   type EntryPath,
   type LayoutDraft,
 } from "./draft";
@@ -24,6 +26,7 @@ import type {
   LayoutEntryJson,
   LayoutError,
   ReadableSpecLayout,
+  TemplateBodies,
   UnreadableSpecLayout,
 } from "./types";
 
@@ -137,6 +140,7 @@ function EditorScreen({
     >
       <EditorColumns
         draft={draft}
+        folder={read.folder}
         selected={selected}
         errors={errors}
         onSelect={setSelected}
@@ -202,12 +206,15 @@ function EditorFrame({
  */
 export function EditorColumns({
   draft,
+  folder,
   selected,
   errors,
   onSelect,
   onChange,
 }: {
   draft: LayoutDraft;
+  /** 레이아웃 폴더 — 홈은 `~`로 줄였고 끝에 `/`가 없다. 템플릿 경로 표시가 이 아래에 선다. */
+  folder: string;
   selected: EntryPath;
   errors: LayoutError[];
   onSelect: (path: EntryPath) => void;
@@ -255,6 +262,7 @@ export function EditorColumns({
               depth={path.length}
               selected={samePath(path, at)}
               hasError={errorsAt(path).length > 0}
+              templateMissing={templateMissing(draft.templates, row)}
               onSelect={() => onSelect(path)}
             />
           ))}
@@ -278,6 +286,8 @@ export function EditorColumns({
               // 항목을 옮기면 칸이 새로 선다 — 팝오버가 앞 항목의 것으로 남지 않는다.
               key={at.join(".")}
               entry={entry}
+              templates={draft.templates}
+              folder={folder}
               errors={errorsAt(at)}
               onChange={(change) => onChange((current) => change(current, at))}
             />
@@ -309,24 +319,39 @@ function unknownIcon(entry: LayoutEntryJson): boolean {
 }
 
 /**
+ * 파일 항목이 가리키는 템플릿의 본문이 본문 맵에 없는가 — 템플릿 파일이 디스크에서 사라졌다(읽기의 누락
+ * 경고). 칸에 적으면 맵에 들어가 풀리고, 「없음」으로 바꿔도 풀린다. 그대로 저장하면 엔진이 그 자리의
+ * 오류로 거절한다.
+ */
+function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boolean {
+  return entry.kind === "file" && entry.template !== undefined && bodyOf(templates, entry) === null;
+}
+
+/**
  * 트리의 행 하나. 이름은 이름 틀이고, 폴더는 끝에 `/`가 붙는다. 아이콘은 표의 것이고, 없거나 모르는
- * 이름이면 종류의 흐린 글리프다. 모르는 아이콘과 검증 오류는 행 끝에 표시가 붙는다 — 어디를 골라야 하는지
- * 트리에서 보인다.
+ * 이름이면 종류의 흐린 글리프다. 모르는 아이콘·템플릿 누락과 검증 오류는 행 끝에 표시가 붙는다 — 어디를
+ * 골라야 하는지 트리에서 보인다.
  */
 function TreeRow({
   entry,
   depth,
   selected,
   hasError,
+  templateMissing,
   onSelect,
 }: {
   entry: LayoutEntryJson;
   depth: number;
   selected: boolean;
   hasError: boolean;
+  templateMissing: boolean;
   onSelect: () => void;
 }) {
   const folder = entry.kind !== "file";
+  // 경고(모르는 아이콘, 템플릿 누락)는 삼각형 하나에 모은다 — 무엇인지는 고른 항목의 열이 적는다.
+  const warnings = [unknownIcon(entry) && "모르는 아이콘", templateMissing && "템플릿 누락"].filter(
+    (warning): warning is string => warning !== false,
+  );
   const Known = specIconOf(entry.icon ?? null);
   const Glyph: LucideIcon = Known ?? (folder ? Folder : File);
   return (
@@ -353,14 +378,14 @@ function TreeRow({
         {entry.pattern ?? ""}
         {folder ? "/" : ""}
       </span>
-      {unknownIcon(entry) && (
+      {warnings.length > 0 && (
         <>
           <TriangleAlert
             aria-hidden
             className="size-3 shrink-0 text-amber-700 dark:text-amber-400"
             strokeWidth={2}
           />
-          <span className="sr-only">모르는 아이콘</span>
+          <span className="sr-only">{warnings.join(", ")}</span>
         </>
       )}
       {hasError && (
@@ -426,15 +451,19 @@ function GuideField({
 
 /**
  * 고른 항목의 칸들. **제목이 곧 이름 틀 칸이다** — 눌러서 고친다. 제목 옆에 아이콘 칸(팝오버)과 종류
- * (파일|폴더), 제목 아래에 그 자리의 검증 오류와 모르는 아이콘 경고, 그 아래에 설명 칸이다. 템플릿 칸은
- * 파일 항목에 더해진다(티켓 12).
+ * (파일|폴더), 제목 아래에 그 자리의 검증 오류와 모르는 아이콘 경고, 그 아래에 설명 칸이다. 파일 항목에는
+ * 그 아래에 템플릿 칸이 더해진다(티켓 12).
  */
 function EntryFields({
   entry,
+  templates,
+  folder,
   errors,
   onChange,
 }: {
   entry: LayoutEntryJson;
+  templates: TemplateBodies;
+  folder: string;
   errors: LayoutError[];
   onChange: (change: (draft: LayoutDraft, path: EntryPath) => LayoutDraft) => void;
 }) {
@@ -509,8 +538,103 @@ function EntryFields({
           className={TEXTAREA}
         />
       </div>
+      {kind === "file" && (
+        <TemplateField
+          template={entry.template ?? null}
+          body={bodyOf(templates, entry)}
+          folder={folder}
+          onToggle={(on) => onChange((draft, path) => setTemplate(draft, path, on))}
+          onBody={(text) => onChange((draft, path) => setTemplateBody(draft, path, text))}
+        />
+      )}
     </>
   );
+}
+
+/**
+ * 파일 항목의 템플릿 칸(티켓 12 · 구현 스펙 5절 「배치」) — 「템플릿」 없음|있음. 있음이면 12줄 높이의 본문
+ * 칸(세로로 늘인다)이 서고, 템플릿 경로는 그 칸의 오른쪽 위에 작게 적는다. **경로는 사람이 적지 않는다** —
+ * 켤 때 편집기가 짓고(`setTemplate`), 여기는 보이기만 한다. 폴더 항목과 머리 `spec/`에는 이 칸이 없다.
+ *
+ * 템플릿 파일이 디스크에서 사라진 항목은 「있음」 그대로 빈 본문 칸과 경고가 선다(`templateMissing`). 칸에
+ * 적거나 「없음」으로 바꾸면 풀린다.
+ */
+function TemplateField({
+  template,
+  body,
+  folder,
+  onToggle,
+  onBody,
+}: {
+  template: string | null;
+  body: string | null;
+  folder: string;
+  onToggle: (on: boolean) => void;
+  onBody: (text: string) => void;
+}) {
+  const on = template !== null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span aria-hidden className="text-[12.5px] text-tertiary">
+          템플릿
+        </span>
+        <div
+          role="radiogroup"
+          aria-label="템플릿"
+          className="flex shrink-0 gap-0.5 rounded-[9px] bg-state-1 p-0.5"
+        >
+          {[false, true].map((option) => (
+            <button
+              key={String(option)}
+              type="button"
+              role="radio"
+              aria-checked={on === option}
+              onClick={() => onToggle(option)}
+              className={cn(
+                "h-6 rounded-[7px] px-[9px] text-[12px] font-medium transition-colors",
+                on === option ? "segment-on text-foreground" : "text-tertiary hover:text-foreground",
+              )}
+            >
+              {option ? "있음" : "없음"}
+            </button>
+          ))}
+        </div>
+        {on && (
+          <span
+            title={`${folder}/${template}`}
+            className="ml-auto min-w-0 truncate font-mono text-[11px] text-tertiary"
+          >
+            {folder}/{template}
+          </span>
+        )}
+      </div>
+      {on && body === null && (
+        <p className="flex items-center gap-1.5 text-[12.5px] leading-[1.6] text-amber-700 dark:text-amber-400">
+          <TriangleAlert aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />
+          <span>레이아웃 폴더에 이 템플릿 파일이 없어요</span>
+        </p>
+      )}
+      {on && (
+        <textarea
+          aria-label="템플릿 본문"
+          rows={12}
+          value={body ?? ""}
+          onChange={(event) => onBody(event.target.value)}
+          spellCheck={false}
+          className={cn(TEXTAREA, "font-mono text-[12.5px]")}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 항목이 가리키는 템플릿의 본문. 템플릿이 없거나 본문 맵에 그 경로가 없으면(누락) `null`이다. */
+function bodyOf(templates: TemplateBodies, entry: LayoutEntryJson): string | null {
+  const template = entry.template;
+  return template !== undefined && Object.prototype.hasOwnProperty.call(templates, template)
+    ? templates[template]
+    : null;
 }
 
 // 팝오버의 칸 — 「아이콘 없음」과 표의 이름들, 표에 적힌 순서다(`SPEC_ICONS`의 머리말).
