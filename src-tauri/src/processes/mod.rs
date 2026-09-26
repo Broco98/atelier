@@ -108,7 +108,8 @@ pub struct Proc {
 }
 
 /// 이 세대가 지은 셸 키인가 — `<세대>-<PTY 번호>`(`pty::shell_id`). 앞글자로만 겹치는 다른 세대(`G` 대 `GX`)를 가르려고
-/// 구분자와 번호까지 본다. 판정(이 세대의 표식)과 훅 상태 파일 정리(살아 있는 실행의 세대, `shells::sweep`)가 같은 규칙을 쓴다.
+/// 구분자와 번호까지 본다. 판정(이 세대의 표식)과 훅 상태 파일의 정리(살아 있는 실행의 세대, `shells::sweep`) · 읽기(이 실행의
+/// 세대, `shells::scan`)가 같은 규칙을 쓴다.
 pub(crate) fn of_generation(key: &str, generation: &str) -> bool {
     key.strip_prefix(generation)
         .and_then(|rest| rest.strip_prefix('-'))

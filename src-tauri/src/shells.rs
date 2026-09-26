@@ -189,20 +189,20 @@ type Attention = BTreeMap<String, ShellHookState>;
 /// 나가고 프런트는 마지막 `-` 뒤 번호만 읽으므로(`ptyIdOf`) **전혀 다른 셸에 남의 claude
 /// 상태와 남의 마지막 말**이 앉는다. 오류 한 줄 없이 조용한 종류라 읽는 쪽에서 닫는다.
 ///
-/// 구분자까지 견주는 것은 `sweep`과 같은 이유다 — `1700`만 보면 `17000-1`이 이번 실행의
-/// 것으로 읽힌다.
+/// 이번 실행의 것인지는 `sweep`과 **같은 규칙**으로 가른다(`processes::of_generation` — 「세대-숫자」). 구분자까지 견주지
+/// 않으면 `1700`에 `17000-1`이 이번 실행의 것으로 읽히고, 번호까지 견주지 않으면 앱이 짓지 않는 `1700-x`가 셸로 실린다 —
+/// 쓸기는 그것을 남의 것으로 걷는데 읽기만 이 실행의 셸로 읽는다.
 fn scan(dir: &Path, prefix: &str) -> Attention {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Attention::new();
     };
-    let mine = format!("{prefix}-");
     entries
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             // 이름이 곧 셸 ID다. dotfile(훅이 쓰는 중인 임시 파일)은 여기서 걸린다 —
             // `.abc.json.9.tmp`의 stem은 `.abc.json.9`라 점으로 시작한다.
             let id = path.file_stem()?.to_str()?.to_string();
-            if id.starts_with('.') || path.extension()? != "json" || !id.starts_with(&mine) {
+            if id.starts_with('.') || path.extension()? != "json" || !crate::processes::of_generation(&id, prefix) {
                 return None;
             }
             let content = std::fs::read_to_string(&path).ok()?;
@@ -559,6 +559,34 @@ mod tests {
             seen.keys().collect::<Vec<_>>(),
             vec!["1700-1"],
             "남의 인스턴스가 놓고 간 파일이 실렸다 — 그 값이 이번 실행의 엉뚱한 셸에 앉는다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **읽기와 쓸기가 같은 셸 키 규칙을 쓴다** — 「세대-숫자」(`processes::of_generation`). 읽기가 머리(`1700-`)만 보면 이 세대의
+    /// 머리를 달았지만 꼬리가 PTY 번호가 아닌 파일(`1700-x` · `1700-` · `1700-1a`)이 셸로 실려 나간다. 앱은 그런 이름을 짓지
+    /// 않고 쓸기는 그것을 남의 것으로 걷으니, 두 자리가 같은 파일을 다르게 읽는다.
+    ///
+    /// 앵커: 이 세대의 온전한 셸 키(`1700-1` · `1700-12`)는 실린다 — 아무것도 안 싣게 무너지면 「안 실렸다」가 저절로 참이 된다.
+    #[test]
+    fn a_file_whose_tail_is_not_a_pty_number_is_not_read() {
+        let root = temp_root("scan-tail");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["1700-1.json", "1700-12.json", "1700-x.json", "1700-.json", "1700-1a.json", "1700-1-2.json"] {
+            std::fs::write(
+                dir.join(name),
+                r#"{"agent":"claude","event":"Stop","at":7,"payload":null}"#,
+            )
+            .unwrap();
+        }
+
+        let seen = scan(&dir, "1700");
+
+        assert_eq!(
+            seen.keys().collect::<Vec<_>>(),
+            vec!["1700-1", "1700-12"],
+            "꼬리가 PTY 번호가 아닌 파일이 셸로 실렸다 — 쓸기가 남의 것으로 걷는 이름을 읽기는 이 실행의 셸로 읽는다"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
