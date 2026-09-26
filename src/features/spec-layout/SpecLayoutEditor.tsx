@@ -1,25 +1,58 @@
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Ban, File, Folder, TriangleAlert, type LucideIcon } from "lucide-react";
+import { useStore } from "@tanstack/react-store";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Ban,
+  File,
+  Folder,
+  IndentDecrease,
+  IndentIncrease,
+  Plus,
+  Trash2,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import { showProblem } from "@/components/ui/confirm-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
 import { layoutDirRef } from "@/features/works/refs";
+import { armDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import { modeNameOf, type Mode } from "@/mode";
 import {
+  addEntry,
+  dropEntry,
+  dropPlaceAt,
+  editsAt,
   entryAt,
+  moveEntry,
+  removeEntry,
   setDescription,
   setIcon,
   setKind,
   setPattern,
   setTemplate,
   setTemplateBody,
+  type DropPlace,
+  type DropTarget,
+  type EntryMove,
   type EntryPath,
   type LayoutDraft,
+  type TreeEdit,
 } from "./draft";
 import { specLayoutReadQuery, useWriteSpecLayout } from "./hooks";
 import type {
@@ -41,6 +74,9 @@ import type {
 // **규칙이 없다**(결정 13). 초안을 고치는 것은 `draft.ts`의 순수 함수이고, 이름 틀이 맞는지·폴더에 자식이
 // 있어도 되는지는 저장이 엔진의 검증으로 판정한다. 그 오류는 데이터로 와서(`{ path, message }`) 그 자리의
 // 항목 제목 아래에 붉은 줄로 선다.
+//
+// 항목을 더하고 지우고 옮기는 것은 트리 위 한 줄과 트리 자신이다(티켓 13). 옮기는 주된 길은 **끌어다 놓기**이고
+// (공용 끌기 모듈을 딛는다), 옮기기 버튼 넷과 ⌥↑ ⌥↓ ⌥← ⌥→는 키보드 길이다.
 //
 // **저장은 이 화면의 저장 버튼 하나다** — 설정 초안의 저장 버튼과 따로다. 누르기 전에는 아무것도 쓰지 않는다.
 
@@ -91,14 +127,13 @@ function EditorScreen({
   sidebarOpen: boolean;
   onBack: () => void;
 }) {
-  const [draft, setDraft] = useState<LayoutDraft>(() => ({
-    layout: read.layout,
-    templates: read.templates,
-  }));
+  // 초안과 고른 자리는 **한 값**이다 — 트리를 고치면(티켓 13) 둘이 함께 바뀐다: 자리가 인덱스 경로라 항목이
+  // 옮겨 가면 고른 자리가 따라가야 하고, 둘을 따로 두면 한 렌더 동안 고른 자리가 엉뚱한 항목을 가리킨다.
   // 처음에는 첫 최상위 항목을 고른다. 항목이 없으면 머리 `spec/`(방침 문단)이다.
-  const [selected, setSelected] = useState<EntryPath>(() =>
-    (read.layout.root.children ?? []).length > 0 ? [0] : [],
-  );
+  const [{ draft, selected }, setView] = useState<{ draft: LayoutDraft; selected: EntryPath }>(() => ({
+    draft: { layout: read.layout, templates: read.templates },
+    selected: (read.layout.root.children ?? []).length > 0 ? [0] : [],
+  }));
   // 마지막 저장이 돌려준 검증 오류. 다음 저장까지 그 자리에 선다 — 저장 전에 미리 알려 주고 저장을
   // 잠그는 것은 초안마다 엔진에 묻는 미리보기의 일이다(티켓 14).
   const [errors, setErrors] = useState<LayoutError[]>([]);
@@ -143,8 +178,14 @@ function EditorScreen({
         folder={read.folder}
         selected={selected}
         errors={errors}
-        onSelect={setSelected}
-        onChange={setDraft}
+        onSelect={(path) => setView((now) => ({ ...now, selected: path }))}
+        onChange={(change) => setView((now) => ({ ...now, draft: change(now.draft) }))}
+        onEdit={(edit) =>
+          setView((now) => {
+            const done = edit(now.draft);
+            return done === null ? now : { draft: done.draft, selected: done.select };
+          })
+        }
       />
     </EditorFrame>
   );
@@ -199,10 +240,14 @@ function EditorFrame({
 /**
  * 두 열 — 왼쪽은 항목 트리(300px), 오른쪽은 고른 항목. 값을 들지 않는다: 초안과 고른 자리를 받아 그리고,
  * 고친 것은 초안을 고치는 함수로 돌려준다(마크업 테스트가 클릭을 못 건다 — `SpecLayoutSection`과 같은
- * 이유). 아이콘 팝오버가 열렸는지만 그 칸이 든다.
+ * 이유). 아이콘 팝오버가 열렸는지, 끄는 동안 어디를 겨눴는지만 그 자리가 든다.
  *
  * 고른 자리는 맨 위 항목에서부터의 인덱스 경로다. **`[]`이 트리 열의 머리 `spec/`이다** — 맨 위 항목(spec
  * 폴더 자신)은 트리의 행이 아니고(결정 26), 머리를 누르면 그 설명(방침 문단) 칸 하나만 선다.
+ *
+ * 필드를 고치는 것(`onChange`)과 트리를 고치는 것(`onEdit`, 티켓 13)이 갈린다 — 트리를 고치면 고른 자리도
+ * 함께 바뀐다(`TreeEdit`). 둘 다 **지금 초안을 받는 함수**로 돌려준다: 끌기의 손잡이는 누른 순간의 렌더에서
+ * 만들어져, 그 클로저의 초안은 놓을 때 낡았을 수 있다.
  */
 export function EditorColumns({
   draft,
@@ -211,6 +256,7 @@ export function EditorColumns({
   errors,
   onSelect,
   onChange,
+  onEdit,
 }: {
   draft: LayoutDraft;
   /** 레이아웃 폴더 — 홈은 `~`로 줄였고 끝에 `/`가 없다. 템플릿 경로 표시가 이 아래에 선다. */
@@ -219,11 +265,11 @@ export function EditorColumns({
   errors: LayoutError[];
   onSelect: (path: EntryPath) => void;
   onChange: (change: (draft: LayoutDraft) => LayoutDraft) => void;
+  onEdit: (edit: (draft: LayoutDraft) => TreeEdit | null) => void;
 }) {
   const entry = selected.length === 0 ? null : entryAt(draft.layout, selected);
   // 고른 자리가 초안에 없으면(항목이 사라졌다) 머리를 고른 것으로 친다.
   const at: EntryPath = entry === null ? [] : selected;
-  const rows = rowsOf(draft.layout.root.children ?? [], []);
   const errorsAt = (path: EntryPath) => errors.filter((error) => samePath(error.path, path));
   const documentErrors = errors.filter((error) => error.path === null);
 
@@ -233,6 +279,12 @@ export function EditorColumns({
         aria-label="항목 트리"
         className="flex w-[300px] shrink-0 flex-col border-r border-border bg-sidebar"
       >
+        <TreeTools
+          edits={editsAt(draft, at)}
+          onAdd={(kind) => onEdit((current) => addEntry(current, at, kind))}
+          onMove={(move) => onEdit((current) => moveEntry(current, at, move))}
+          onRemove={() => onEdit((current) => removeEntry(current, at))}
+        />
         <div className="px-2 pt-2 pb-0.5">
           {/* 머리 `spec/`은 항목이 아니다(결정 26) — 끌기·지우기·옮기기의 대상이 아니고, 누르면 spec 폴더
               안내(맨 위 항목의 설명) 칸 하나만 연다. 그래서 행(treeitem)이 아니라 머리의 버튼이다. */}
@@ -250,23 +302,13 @@ export function EditorColumns({
             <span className="font-mono text-[12px]">spec/</span>
           </button>
         </div>
-        <div
-          role="tree"
-          aria-label="레이아웃 항목"
-          className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-3 scroll-quiet"
-        >
-          {rows.map(({ entry: row, path }) => (
-            <TreeRow
-              key={path.join(".")}
-              entry={row}
-              depth={path.length}
-              selected={samePath(path, at)}
-              hasError={errorsAt(path).length > 0}
-              missingTemplate={templateMissing(draft.templates, row)}
-              onSelect={() => onSelect(path)}
-            />
-          ))}
-        </div>
+        <EntryTree
+          draft={draft}
+          at={at}
+          errors={errors}
+          onSelect={onSelect}
+          onEdit={onEdit}
+        />
       </section>
       <section
         aria-label="고른 항목"
@@ -295,6 +337,274 @@ export function EditorColumns({
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * 트리 위 한 줄(티켓 13 · 구현 스펙 5절 「배치」) — 파일 추가, 폴더 추가, 옮기기 넷, 지우기(휴지통). 옮기는 주된
+ * 길은 끌어다 놓기이고, 옮기기 넷과 그 단축키(⌥↑ ⌥↓ ⌥← ⌥→)는 키보드 길로 남긴 것이다.
+ *
+ * **무엇이 잠기는지는 여기서 정하지 않는다** — 조작 함수의 답(`editsAt`)을 받는다. 머리 `spec/`을 골랐으면
+ * 옮기기와 지우기가 모두 잠긴다. 더하기는 늘 된다.
+ */
+function TreeTools({
+  edits,
+  onAdd,
+  onMove,
+  onRemove,
+}: {
+  edits: Record<EntryMove | "remove", boolean>;
+  onAdd: (kind: "file" | "folder") => void;
+  onMove: (move: EntryMove) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label="항목 편집"
+      className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border px-2.5"
+    >
+      {(["file", "folder"] as const).map((kind) => (
+        <button
+          key={kind}
+          type="button"
+          onClick={() => onAdd(kind)}
+          aria-label={kind === "file" ? "파일 항목 추가" : "폴더 항목 추가"}
+          title={kind === "file" ? "파일 항목 추가" : "폴더 항목 추가"}
+          className="inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-[8px] border border-border bg-background pr-[9px] pl-[7px] text-[12.5px] font-medium text-foreground shadow-xs transition-colors hover:bg-state-1"
+        >
+          <Plus aria-hidden className="size-[13px] text-muted-foreground" strokeWidth={2.2} />
+          {kind === "file" ? "파일" : "폴더"}
+        </button>
+      ))}
+      <div
+        role="group"
+        aria-label="고른 항목 옮기기"
+        className="ml-auto flex shrink-0 items-center gap-px rounded-[9px] bg-state-1 p-0.5"
+      >
+        {MOVE_TOOLS.map(({ move, label, keys, Icon }) => (
+          <button
+            key={move}
+            type="button"
+            onClick={() => onMove(move)}
+            disabled={!edits[move]}
+            aria-label={label}
+            title={`${label} (${keys})`}
+            className="flex h-6 w-[26px] items-center justify-center rounded-[7px] text-muted-foreground transition-colors quiet-hover disabled:pointer-events-none disabled:opacity-35"
+          >
+            <Icon aria-hidden className="size-3.5" strokeWidth={2} />
+          </button>
+        ))}
+      </div>
+      {/* 휴지통은 붉고, 가리키면 더 짙은 붉은색이다(프로토타입 뒤 사용자 선택). 머리 `spec/`을 골랐으면 지울 것이
+          없어 흐린 붉은색으로 잠긴다 — 잠긴 동안에는 가리켜도 바뀌지 않는다. */}
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={!edits.remove}
+        aria-label="고른 항목 지우기"
+        title="지우기"
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
+          edits.remove ? "text-red-600 hover:bg-red-600/10 hover:text-red-700" : "text-red-600/35",
+        )}
+      >
+        <Trash2 aria-hidden className="size-[15px]" strokeWidth={1.9} />
+      </button>
+    </div>
+  );
+}
+
+/** 옮기기 넷 — 줄에 선 순서이고, 단축키는 이 키들에 ⌥를 누른 것이다(`moveOfKey`). */
+const MOVE_TOOLS: { move: EntryMove; label: string; keys: string; Icon: LucideIcon }[] = [
+  { move: "up", label: "위로", keys: "⌥↑", Icon: ArrowUp },
+  { move: "down", label: "아래로", keys: "⌥↓", Icon: ArrowDown },
+  { move: "outdent", label: "내어쓰기", keys: "⌥←", Icon: IndentDecrease },
+  { move: "indent", label: "들여쓰기", keys: "⌥→", Icon: IndentIncrease },
+];
+
+/**
+ * 단축키의 옮기기 — ⌥만 누른 화살표다. **트리에 초점이 있을 때만 받는다**(트리의 `onKeyDown`): 설명 칸과 템플릿
+ * 칸 안에서 ⌥←·⌥→는 macOS의 단어 이동이다.
+ */
+function moveOfKey(event: KeyboardEvent): EntryMove | null {
+  if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return null;
+  switch (event.key) {
+    case "ArrowUp":
+      return "up";
+    case "ArrowDown":
+      return "down";
+    case "ArrowLeft":
+      return "outdent";
+    case "ArrowRight":
+      return "indent";
+    default:
+      return null;
+  }
+}
+
+/**
+ * 항목 트리 — 행들과 그 아래 빈 자리. **끌어다 놓기**가 옮기는 주된 길이다(티켓 13 · 구현 스펙 5절).
+ *
+ * 몸짓 자체(문턱 · Esc 취소 · 끝난 뒤 클릭 한 번 삼키기 · 끄는 중 body 표시)는 공용 끌기 모듈의 것이다. 이 트리가
+ * 쥐는 것은 **겨눈 자리**뿐이다: 포인터 아래의 행과 그 행의 어디(위쪽·가운데·아래쪽)인지를 재어 앞·뒤·안으로
+ * 가르고(`dropPlaceAt`), 놓을 수 있는지는 놓기 계산(`dropEntry`)의 답으로 본다 — 자기 자신과 자기 아래는
+ * 선이 서지 않는다. 트리 아래 빈 자리는 최상위 맨 뒤다. 머리 `spec/`은 트리 밖이라 대상이 아니다.
+ */
+function EntryTree({
+  draft,
+  at,
+  errors,
+  onSelect,
+  onEdit,
+}: {
+  draft: LayoutDraft;
+  at: EntryPath;
+  errors: LayoutError[];
+  onSelect: (path: EntryPath) => void;
+  onEdit: (edit: (draft: LayoutDraft) => TreeEdit | null) => void;
+}) {
+  const rows = rowsOf(draft.layout.root.children ?? [], []);
+  const tree = useRef<HTMLDivElement>(null);
+  // 끄는 동안 겨눈 자리 — 선이나 밝아진 폴더가 여기서 선다. 놓을 수 없는 자리면 `null`이다.
+  const [over, setOver] = useState<DropTarget | null>(null);
+  // 끌리는 항목 — 그 행과 그 아래 행들이 흐려진다. 드래그 상태는 공용 모듈이 쥐고, 여기는 읽기만 한다.
+  const dragged = useStore(dragStore, (state) => (state.source?.kind === "entry" ? state.source.path : null));
+  // 겨누는 자리가 읽는 **최신** 초안. 끄는 손잡이는 누른 순간의 렌더에서 만들어진다.
+  const latest = useRef(draft);
+  useLayoutEffect(() => {
+    latest.current = draft;
+  });
+
+  // 키로 옮긴 뒤 초점을 옮긴 행에 돌려준다. 행은 자리로 키를 받아, 들여쓰거나 내어쓰면 초점을 쥔 행이 사라져
+  // 초점이 `<body>`로 떨어진다 — 그러면 다음 단축키를 들을 사람이 없다.
+  const refocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    tree.current?.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')?.focus();
+  });
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const move = moveOfKey(event);
+    if (move === null) return;
+    event.preventDefault();
+    refocus.current = true;
+    onEdit((current) => moveEntry(current, at, move));
+  };
+
+  /**
+   * 포인터 아래의 놓을 자리. 트리 밖이거나 놓을 수 없으면 `null`, 행 사이의 틈(1px)이나 들여쓰기 여백처럼 가리킬
+   * 것이 없는 트리 안이면 `undefined`다 — 겨눈 것을 그대로 둔다(행 사이를 지날 때마다 선이 깜박이지 않게).
+   *
+   * 포인터 아래는 **그 순간의 문서에 묻는다**(`elementFromPoint`) — 트리가 굴러도 사각형을 다시 잴 일이 없다.
+   */
+  const aim = (from: EntryPath, point: DragPoint): DropTarget | null | undefined => {
+    const box = tree.current;
+    const hit = document.elementFromPoint(point.clientX, point.clientY);
+    if (box === null || hit === null || !box.contains(hit)) return null;
+    const row = hit.closest<HTMLElement>("[data-entry-path]");
+    const end = hit.closest("[data-entry-end]");
+    if (row === null && end === null) return undefined;
+    let target: DropTarget = { place: "end" };
+    if (row !== null) {
+      const path = (row.dataset.entryPath ?? "").split(".").map(Number);
+      const entry = entryAt(latest.current.layout, path);
+      if (entry === null) return null;
+      const rect = row.getBoundingClientRect();
+      target = { path, place: dropPlaceAt(entry, (point.clientY - rect.top) / rect.height) };
+    }
+    return dropEntry(latest.current, from, target) === null ? null : target;
+  };
+
+  const pickUp = (from: EntryPath, event: ReactPointerEvent<HTMLButtonElement>) => {
+    // 주 버튼만 받는다 — 보조 클릭으로 끌리면 메뉴를 열려던 손이 항목을 옮긴다.
+    if (event.button !== 0) return;
+    let aimed: DropTarget | null = null;
+    armDrag({ kind: "entry", path: from }, { clientX: event.clientX, clientY: event.clientY }, {
+      move: (point) => {
+        const next = aim(from, point);
+        if (next === undefined) return;
+        aimed = next;
+        // 같은 자리면 같은 값을 둔다 — 포인터 이동마다 새 객체를 내면 그 빈도로 트리가 다시 그려진다.
+        setOver((now) => (sameTarget(now, next) ? now : next));
+      },
+      // 놓인 자리를 놓는 순간의 포인터로 다시 판정한다 — 틈 위에서 놓았으면 마지막으로 겨눈 자리다.
+      drop: (point) => {
+        const next = aim(from, point);
+        const target = next === undefined ? aimed : next;
+        if (target !== null) onEdit((current) => dropEntry(current, from, target));
+      },
+      end: () => setOver(null),
+    });
+  };
+
+  return (
+    <div
+      ref={tree}
+      role="tree"
+      aria-label="레이아웃 항목"
+      onKeyDown={onKeyDown}
+      className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pt-1 scroll-quiet"
+    >
+      {rows.map(({ entry: row, path }) => (
+        <TreeRow
+          key={path.join(".")}
+          entry={row}
+          path={path}
+          selected={samePath(path, at)}
+          hasError={errors.some((error) => samePath(error.path, path))}
+          missingTemplate={templateMissing(draft.templates, row)}
+          dragged={dragged !== null && isUnder(path, dragged)}
+          drop={over !== null && "path" in over && samePath(over.path, path) ? over.place : null}
+          onSelect={() => onSelect(path)}
+          onPointerDown={(event) => pickUp(path, event)}
+        />
+      ))}
+      {/* 트리 아래 빈 자리 — 최상위 맨 뒤에 놓는 곳이다. 행이 적어도 늘 조금은 선다. */}
+      <div
+        aria-hidden
+        data-entry-end=""
+        data-entry-drop={over?.place === "end" ? "end" : undefined}
+        className="relative min-h-12 flex-1 shrink-0"
+      >
+        {over?.place === "end" && <DropLine side="top" left={rowIndent(1) - 4} />}
+      </div>
+    </div>
+  );
+}
+
+/** 두 겨눈 자리가 같은가 — 자리와 앞·뒤·안이 같다. */
+function sameTarget(a: DropTarget | null, b: DropTarget | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.place === "end" || b.place === "end") return a.place === b.place;
+  return a.place === b.place && samePath(a.path, b.path);
+}
+
+/** `path`가 `ancestor` 자신이거나 그 아래인가 — 끌리는 항목과 함께 흐려질 행을 가린다. */
+function isUnder(path: EntryPath, ancestor: EntryPath): boolean {
+  return path.length >= ancestor.length && ancestor.every((index, i) => path[i] === index);
+}
+
+/** 행의 왼쪽 여백 — 들여쓰기는 `spec` 패널 탭의 트리와 같은 걸음(14px)이다. 깊이는 최상위가 1이다. */
+function rowIndent(depth: number): number {
+  return 8 + (depth - 1) * 14;
+}
+
+/** 앞·뒤에 놓일 자리의 선 — 그 행의 들여쓰기에서 시작하는 굵은 선과 왼쪽 끝의 작은 고리. */
+function DropLine({ side, left }: { side: "top" | "bottom"; left: number }) {
+  return (
+    <span
+      aria-hidden
+      style={{ left }}
+      className={cn(
+        "pointer-events-none absolute right-1.5 flex h-1.5 items-center",
+        side === "top" ? "-top-[3px]" : "-bottom-[3px]",
+      )}
+    >
+      <span className="size-1.5 shrink-0 rounded-full border-2 border-primary bg-background" />
+      <span className="h-0.5 flex-1 rounded-full bg-primary" />
+    </span>
   );
 }
 
@@ -334,19 +644,28 @@ function templateMissing(templates: TemplateBodies, entry: LayoutEntryJson): boo
  */
 function TreeRow({
   entry,
-  depth,
+  path,
   selected,
   hasError,
   missingTemplate,
+  dragged,
+  drop,
   onSelect,
+  onPointerDown,
 }: {
   entry: LayoutEntryJson;
-  depth: number;
+  path: EntryPath;
   selected: boolean;
   hasError: boolean;
   missingTemplate: boolean;
+  /** 끌리는 항목이나 그 아래다 — 흐려진다. */
+  dragged: boolean;
+  /** 끄는 동안 이 행을 겨눴으면 그 자리 — 앞·뒤는 선, 안은 밝아진 행이다. */
+  drop: DropPlace | null;
   onSelect: () => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
+  const depth = path.length;
   const folder = entry.kind !== "file";
   // 경고(모르는 아이콘, 템플릿 누락)는 삼각형 하나에 모은다 — 무엇인지는 고른 항목의 열이 적는다.
   const warnings = [unknownIcon(entry) && "모르는 아이콘", missingTemplate && "템플릿 누락"].filter(
@@ -360,13 +679,25 @@ function TreeRow({
       role="treeitem"
       aria-level={depth}
       aria-selected={selected}
-      onClick={onSelect}
-      // 들여쓰기는 `spec` 패널 탭의 트리와 같은 걸음(14px)이다.
-      style={{ paddingLeft: 8 + (depth - 1) * 14 }}
+      data-entry-path={path.join(".")}
+      data-entry-drop={drop ?? undefined}
+      onPointerDown={onPointerDown}
+      onClick={(event) => {
+        // 고른 행에 초점을 둔다 — 단축키는 트리에 초점이 있을 때만 받는데, WKWebView는 누른 버튼으로 초점을
+        // 옮기지 않는다.
+        event.currentTarget.focus();
+        onSelect();
+      }}
+      style={{ paddingLeft: rowIndent(depth) }}
       className={cn(
-        "flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[8px] pr-2 text-left text-[12.5px] transition-colors",
-        selected ? "selected-row font-medium" : "text-muted-foreground hover:bg-state-1",
+        "relative flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[8px] pr-2 text-left text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        drop === "inside"
+          ? "bg-primary/10 text-foreground ring-1 ring-inset ring-primary"
+          : selected
+            ? "selected-row font-medium"
+            : "text-muted-foreground hover:bg-state-1",
         hasError && "text-red-600",
+        dragged && "opacity-40",
       )}
     >
       <Glyph
@@ -393,6 +724,9 @@ function TreeRow({
           <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-red-600" />
           <span className="sr-only">검증 오류</span>
         </>
+      )}
+      {(drop === "before" || drop === "after") && (
+        <DropLine side={drop === "before" ? "top" : "bottom"} left={rowIndent(depth) - 4} />
       )}
     </button>
   );

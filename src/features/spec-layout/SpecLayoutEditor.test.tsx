@@ -43,6 +43,7 @@ function render(selected: EntryPath, errors: LayoutError[] = [], draft = opened(
       errors={errors}
       onSelect={() => {}}
       onChange={() => {}}
+      onEdit={() => {}}
     />,
   );
 }
@@ -104,6 +105,83 @@ describe("항목 트리", () => {
     const html = render([]);
     expect(html).toMatch(/<button\b[^>]*aria-pressed="true"[^>]*>[\s\S]*?spec\/<\/span><\/button>/);
     expect(treeRows(html).some((row) => row.selected)).toBe(false);
+  });
+});
+
+// 트리 위 한 줄(티켓 13 · 구현 스펙 5절 「배치」) — 파일 추가, 폴더 추가, 옮기기 넷, 지우기(휴지통). 무엇이 잠기는지는
+// 순수 함수의 판정(`editsAt`)이 정하고, 여기서는 그 답이 버튼에 닿는지를 본다. 누르는 것은 L3가 잰다.
+describe("트리 위 한 줄", () => {
+  /** 그 줄의 버튼마다 { 접근성 이름, 잠겼나, class }, 줄에 선 순서대로. */
+  function toolsOf(html: string) {
+    const bar = /<div\b[^>]*role="toolbar"[^>]*aria-label="항목 편집"[^>]*>([\s\S]*?)<\/div><div\b/.exec(html);
+    if (bar === null) throw new Error(`트리 위 한 줄이 없다: ${html}`);
+    return [...bar[1].matchAll(/<button\b([^>]*)>/g)].map((m) => ({
+      name: /aria-label="([^"]*)"/.exec(m[1])?.[1],
+      disabled: /\bdisabled=""/.test(m[1]),
+      className: /class="([^"]*)"/.exec(m[1])?.[1] ?? "",
+    }));
+  }
+  const locks = (html: string) => toolsOf(html).map(({ name, disabled }) => [name, disabled]);
+
+  it("트리 열의 머리 `spec/` 위에 더하기 둘, 옮기기 넷, 지우기가 한 줄로 선다", () => {
+    const html = render([1]);
+    expect(toolsOf(html).map((tool) => tool.name)).toEqual([
+      "파일 항목 추가",
+      "폴더 항목 추가",
+      "위로",
+      "아래로",
+      "내어쓰기",
+      "들여쓰기",
+      "고른 항목 지우기",
+    ]);
+    expect(html.indexOf('role="toolbar"')).toBeLessThan(html.indexOf("spec/</span>"));
+  });
+
+  // 머리 `spec/`은 항목이 아니다(결정 26) — 지울 것도 옮길 것도 없다. 더하기는 최상위 맨 뒤에 더하므로 된다.
+  it("머리 `spec/`을 골랐으면 옮기기 넷과 휴지통이 잠기고, 더하기 둘은 된다", () => {
+    expect(locks(render([]))).toEqual([
+      ["파일 항목 추가", false],
+      ["폴더 항목 추가", false],
+      ["위로", true],
+      ["아래로", true],
+      ["내어쓰기", true],
+      ["들여쓰기", true],
+      ["고른 항목 지우기", true],
+    ]);
+  });
+
+  it("고른 항목에서 할 수 없는 옮기기만 잠긴다", () => {
+    // tickets/ — 형제가 없고, 부모 안에 있다
+    expect(locks(render([2, 0]))).toEqual([
+      ["파일 항목 추가", false],
+      ["폴더 항목 추가", false],
+      ["위로", true],
+      ["아래로", true],
+      ["내어쓰기", false],
+      ["들여쓰기", true],
+      ["고른 항목 지우기", false],
+    ]);
+    // notes.md — 앞 형제가 폴더다
+    expect(locks(render([3]))).toEqual([
+      ["파일 항목 추가", false],
+      ["폴더 항목 추가", false],
+      ["위로", false],
+      ["아래로", true],
+      ["내어쓰기", true],
+      ["들여쓰기", false],
+      ["고른 항목 지우기", false],
+    ]);
+  });
+
+  // 휴지통은 붉고, 가리키면 더 짙은 붉은색이다. 잠기면 흐린 붉은색이다(구현 스펙 5절 · 프로토타입 뒤 사용자 선택).
+  it("휴지통은 붉고 가리키면 더 짙은 붉은색이며, 잠기면 흐린 붉은색이다", () => {
+    const trash = (html: string) => toolsOf(html).find((tool) => tool.name === "고른 항목 지우기")!.className;
+    const live = trash(render([1]));
+    expect(live).toMatch(/(^| )text-red-600( |$)/);
+    expect(live).toMatch(/(^| )hover:text-red-700( |$)/);
+    const locked = trash(render([]));
+    expect(locked).toMatch(/(^| )text-red-600\/35( |$)/);
+    expect(locked).not.toContain("hover:");
   });
 });
 
