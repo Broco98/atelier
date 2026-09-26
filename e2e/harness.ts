@@ -437,6 +437,46 @@ export async function fireEvent(
 }
 
 /**
+ * **시나리오 도중에** 커맨드 하나의 답을 갈아 끼운다(spec 레이아웃 티켓 15) — 이 뒤로 그 커맨드는 `answer`를 답한다.
+ *
+ * 고정 답은 설치할 때 한 번 정해진다(`installFixtureBackend`). 그대로는 「밖에서 바뀌었다」를 못 세운다 — 처음부터
+ * 다른 답이면 편집기가 그것을 기준본으로 읽는다. 그래서 편집기가 연 뒤에 읽기의 답을 바꾸고 이벤트를 쏜다
+ * (`fireEvent`) — 전역 구독이 읽기를 다시 부르면 바뀐 답이 온다.
+ *
+ * 모양은 셸 생성 가로채기(`interceptPtySpawn`)와 같다: 앱의 `invoke`를 감싸고, 창 전역 값에서 답을 꺼낸다. 처음
+ * 부를 때 한 번 감싸고, 그 뒤로는 전역 값만 고친다. **부름은 먼저 원래 자리를 지난다** — 하네스의 기록(`callCount`,
+ * `ipcCallArgs`)이 그 부름을 세야 「다시 불렸다」를 기다릴 수 있다. 답만 바꿔 돌려준다.
+ *
+ * 페이지를 다시 읽으면 감싼 것이 사라진다 — 도중에만 쓴다. **표에 없는 이름은 여기서 터진다**(덮어쓰기와 같은
+ * 규칙): 커맨드가 개명되면 갈아 끼우기가 아무 데도 안 걸린 채 지나가, 「바뀌었는데도 조용했다」가 초록이 된다.
+ */
+export async function swapAnswer(page: Page, command: string, answer: unknown): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
+    throw new Error(`갈아 끼울 커맨드가 고정 답 표에 없습니다: ${command}`);
+  }
+  await page.evaluate(
+    ({ command, answer }: { command: string; answer: unknown }) => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
+        __ATELIER_SWAPPED_ANSWERS__?: Record<string, unknown>;
+      };
+      if (win.__ATELIER_SWAPPED_ANSWERS__ === undefined) {
+        const swapped: Record<string, unknown> = {};
+        win.__ATELIER_SWAPPED_ANSWERS__ = swapped;
+        const internals = win.__TAURI_INTERNALS__;
+        const invoke = internals.invoke;
+        internals.invoke = async (cmd, args, options) => {
+          const original = await invoke(cmd, args, options);
+          return Object.prototype.hasOwnProperty.call(swapped, cmd) ? swapped[cmd] : original;
+        };
+      }
+      win.__ATELIER_SWAPPED_ANSWERS__[command] = answer;
+    },
+    { command, answer },
+  );
+}
+
+/**
  * 그 work 행의 **레인** — 화면값이 있으면 점·링이, 없으면 work 상태 아이콘이 든다.
  *
  * **여기 사는 이유는 마크업의 모양을 아는 자리를 하나로 두려는 것이다.** 레인은 둘째 줄의
