@@ -5,13 +5,15 @@ import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "
 
 // 떠날 때 확인(spec 레이아웃 티켓 15 · 결정 27) — **이 저장소의 첫 「떠날 때 확인」이다.** 저장하지 않은 초안을 두고
 // 편집기를 떠나면 앱의 확인 창이 [계속 편집], [버리고 나가기], 그리고 저장할 수 있을 때만 서는 [저장하고 나가기]로
-// 묻는다. 창의 글과 버튼, 답의 뜻은 L2가 잰다(`leave.test.tsx`), 언제 초안이 「있는지」는 순수 함수가 잰다.
+// 묻는다. 물음의 글과 버튼 글자, 포커스를 둘 버튼, 답의 뜻은 L2가 스토어에 선 물음으로 잰다(`leave.test.tsx` — 창은
+// 포털로 서서 정적 렌더에 안 그려진다), 언제 초안이 「있는지」는 순수 함수가 잰다.
 //
 // **이 층이 드는 것은 떠나는 길이 모두 물음에 걸리는가다** — 뒤로, 설정 nav의 다른 항목, 팔레트로 다른 곳 열기,
 // 히스토리의 앞으로·뒤로.
 // 길마다 따로 걸면 한 길이 잊는 날 그 길로만 초안이 사라진다. 그리고 [저장하고 나가기]가 정말 저장 명령을 부른 뒤에
-// 떠나는가, 저장이 거절되면 떠나지 않는가, 저장이 잠겨 있으면 그 버튼이 아예 서지 않는가. 설정 초안(터미널,
-// 알림)에는 걸지 않는다 — 그 L3(`settings-save.spec.ts`)는 손대지 않은 채 초록이다.
+// 떠나는가, 저장이 거절되면 떠나지 않는가, 저장이 잠겨 있으면 그 버튼이 아예 서지 않는가. 창이 버튼을 그 순서로
+// 그리고 포커스가 정말 [계속 편집]에 서는가도 여기서만 보인다. 설정 초안(터미널, 알림)에는 걸지 않는다 — 그
+// L3(`settings-save.spec.ts`)는 손대지 않은 채 초록이다.
 
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
@@ -65,6 +67,43 @@ test("초안이 있는 채로 뒤로를 누르면 확인 창이 뜨고, [계속 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 창이 뜨면 포커스는 [계속 편집]에 있다(결정 27) — 떠나려던 손이 반사적으로 친 Enter가 초안을 버리지 않는다(종료
+// 확인과 같은 까닭). Esc와 창 바깥 누르기도 [계속 편집]이다. 창이 막 뜬 한 프레임의 키는 창이 삼키므로(S24) 키를
+// 치기 전에 포커스가 창 안에 선 것을 먼저 본다.
+const dismissals: Array<[string, (page: Page) => Promise<void>]> = [
+  ["Enter", (page) => page.keyboard.press("Enter")],
+  ["Esc", (page) => page.keyboard.press("Escape")],
+  // 창 바깥의 막(`modal-scrim`)을 누른다 — 창은 가운데 400px라 왼쪽 위 모서리는 늘 바깥이다. 창이 떠 있는 동안
+  // 뒤는 가려져 역할로 집지 못하므로 자리로 누른다.
+  ["바깥 누르기", (page) => page.mouse.click(8, 8)],
+];
+
+for (const [label, dismiss] of dismissals) {
+  test(`확인 창이 뜨면 포커스가 [계속 편집]이라, ${label}에도 초안과 함께 편집기에 머문다`, async ({ page }) => {
+    await installFixtureBackend(page);
+    await openEditor(page);
+    await draftOne(page);
+
+    await 뒤로(page).click();
+    await expect(창버튼(page, "계속 편집")).toBeFocused();
+
+    await dismiss(page);
+    await expect(떠날때(page)).toHaveCount(0);
+    await expect(page).toHaveURL(EDITOR);
+    await expect(설명(page)).toHaveValue(EDITED);
+    expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+    // 머문 뒤에도 떠나는 길은 그대로 물음에 걸린다 — 답한 물음이 막기를 풀어 두지 않았다.
+    await 뒤로(page).click();
+    await expect(떠날때(page)).toBeVisible();
+    await 창버튼(page, "버리고 나가기").click();
+    await expect(page).toHaveURL("/settings/spec-layout");
+    expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+    expect(await unknownIpcCalls(page)).toEqual([]);
+  });
+}
+
 test("[버리고 나가기]면 저장하지 않고 떠나고, 다시 열면 읽은 그대로다", async ({ page }) => {
   await installFixtureBackend(page);
   await openEditor(page);
@@ -100,8 +139,8 @@ test("[저장하고 나가기]면 저장 명령이 초안을 싣고 나간 뒤�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 저장이 잠겨 있으면(미리보기 답에 검증 오류) [저장하고 나가기]가 서지 않는다 — 눌러도 저장이 안 된다. 창의 버튼은
-// L2가 재지만, 편집기의 저장 가능 판정이 창에 닿는지는 이 층에서만 보인다.
+// 저장이 잠겨 있으면(미리보기 답에 검증 오류) [저장하고 나가기]가 서지 않는다 — 눌러도 저장이 안 된다. 물음에 그
+// 버튼이 실리는지는 L2가 재지만, 편집기의 저장 가능 판정이 창에 닿는지는 이 층에서만 보인다.
 test("저장할 수 없는 초안이면 확인 창에 [저장하고 나가기]가 없다", async ({ page }) => {
   await installFixtureBackend(page, {
     render_spec_layout: {
