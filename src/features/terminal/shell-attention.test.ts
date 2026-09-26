@@ -35,6 +35,8 @@ const hook = (agent: string, event: string, payload: unknown = null): ShellHookS
   event,
   at: 10,
   payload,
+  subagents: 0,
+  stopped: false,
 });
 
 // **페이로드는 지어내지 않는다.** 아래 픽스처의 키는 지어낸 것이 아니라 밖에서 온 것이고,

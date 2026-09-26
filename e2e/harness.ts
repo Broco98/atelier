@@ -972,7 +972,18 @@ export async function markAttention(
   await fireAttention(page, state, ptyId);
 }
 
-type AttentionState = { agent: string; event: string; at?: number; payload?: unknown };
+/**
+ * 쏠 상태 한 장. 빠진 칸은 백엔드가 옛 처리기의 파일을 읽을 때와 같은 값으로 채운다 — 시각 1000, 페이로드 `null`,
+ * 서브에이전트 0, 안 멈춤(`shells.rs`의 `StateFile`). 선 위의 모양은 `types.ts`의 `ShellHookState`다.
+ */
+type AttentionState = {
+  agent: string;
+  event: string;
+  at?: number;
+  payload?: unknown;
+  subagents?: number;
+  stopped?: boolean;
+};
 
 /**
  * `markAttention`에서 **착석 기다림을 뺀 쏘기**(#226). 착석은 부르는 쪽이 이미 확인했어야 한다 —
@@ -990,7 +1001,14 @@ export async function fireAttention(
       state:
         state === null
           ? null
-          : { agent: state.agent, event: state.event, at: state.at ?? 1000, payload: state.payload ?? null },
+          : {
+              agent: state.agent,
+              event: state.event,
+              at: state.at ?? 1000,
+              payload: state.payload ?? null,
+              subagents: state.subagents ?? 0,
+              stopped: state.stopped ?? false,
+            },
     },
   ]);
 }

@@ -75,6 +75,16 @@ export interface ShellHookState {
   event: string;
   at: number;
   payload: unknown;
+  /**
+   * 도는 서브에이전트 수(프로세스 스펙 S51). 훅 처리기가 사건마다 id 집합으로 접은 것의 크기다 — 파일은 마지막 사건
+   * 하나만 담으므로 화면이 사건을 세면 수가 샌다. 옛 처리기의 파일이면 0이다.
+   */
+  subagents: number;
+  /**
+   * 턴이 멈췄나(S50) — Stop · StopFailure에서 참, 새 턴 · 세션 끝 · 중단에서 거짓. 순서 가드에 막힌 늦은 사건은
+   * `event` · `at`을 그대로 두고 이 칸과 `subagents`만 바꾼다(S27). 옛 처리기의 파일이면 거짓이다.
+   */
+  stopped: boolean;
 }
 
 /**

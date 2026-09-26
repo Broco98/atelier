@@ -75,6 +75,9 @@ struct Shell {
     /// 거두는 자리에서 데이터 루트를 다시 계산하면 `ATELIER_HOME` 오버라이드가 그 사이에
     /// 바뀌었을 때 남의 파일을 지운다.
     state_file: PathBuf,
+    /// 훅 처리기가 순서 가드로 쥐는 이 셸의 잠금 파일(`shells::lock_path`, 프로세스 스펙 S27). 상태 파일과 같은 까닭으로 경로를
+    /// 들고 다닌다.
+    lock_file: PathBuf,
 }
 
 /// **셸이 사라지면 그 셸이 남긴 말도 사라진다.** 안 지우면 닫힌 셸이 사이드바에서 영영
@@ -85,9 +88,15 @@ struct Shell {
 /// 때(`end_for_exit` · `end_for_reload`). 셋 다 결국 이 값을 떨구므로 여기 한 자리에 두면 빠지는 길이 하나 더
 /// 생겨도 따라온다. 세 곳에 손으로 적으면 언젠가 한 곳이 빠지고, 그때 나는 것은 조용히
 /// 남는 앰버 점 하나다.
+///
+/// **잠금 파일도 함께 걷는다**(티켓 19). 셸마다 하나씩 쌓이는 빈 파일이라, 안 걷으면 이 실행 동안 연 셸 수만큼 남는다(다음
+/// 실행의 정리가 걷기는 한다). 그 셸의 처리기가 아직 잠금을 쥐고 도는 중이어도 지워진 파일의 잠금을 끝까지 쥘 뿐이다. 늦게 끝난
+/// 처리기가 두 파일을 다시 만들 수는 있다 — 옛 처리기의 상태 파일에도 있던 빈틈이고, 셸 번호는 한 실행 안에서 다시 안 쓰이며
+/// 다음 실행의 정리가 걷는다.
 impl Drop for Shell {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.state_file);
+        let _ = std::fs::remove_file(&self.lock_file);
     }
 }
 
@@ -207,10 +216,15 @@ pub fn spawn(
     // 가능한 상태다. 다음 회수가 그 자리에 앉은 남의 프로세스 그룹을 쏜다 —
     // 아래 스레드의 주석이 막으려는 바로 그것이다. 순서를 이렇게 두면 그 창이 닫힌다:
     // 치움은 언제 돌아도 `remove`일 뿐이다.
-    // 상태 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가 루트를
-    // 다시 계산하지 않게.
-    let state_file = crate::shells::state_path(&atelier_core::data_root(), &shell_id);
-    pool.lock().insert(id, Shell { pid, key: shell_id, process, first_input_us: None, master, writer, state_file });
+    // 상태 파일과 잠금 파일의 자리를 여기서 정해 셸과 함께 들려 보낸다 — 거두는 자리(`Drop`)가
+    // 루트를 다시 계산하지 않게.
+    let root = atelier_core::data_root();
+    let state_file = crate::shells::state_path(&root, &shell_id);
+    let lock_file = crate::shells::lock_path(&root, &shell_id);
+    pool.lock().insert(
+        id,
+        Shell { pid, key: shell_id, process, first_input_us: None, master, writer, state_file, lock_file },
+    );
 
     // 읽기와 기다리기를 **한 스레드**에 둔다. 「종료 프레임은 마지막 출력 프레임보다 늦게
     // 온다」는 계약이 두 일의 순서에서 공짜로 나온다. 채널도 여기로 옮긴다 — 명령 인자로
@@ -1229,17 +1243,25 @@ mod tests {
     use atelier_core::Mode;
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
-    /// **닫힌 셸은 자기 상태 파일을 데리고 나간다.** 안 그러면 사이드바에서 죽은 셸이
-    /// 영영 사람을 부르고, 다음 실행이 같은 PTY 번호를 쓸 때 그 값을 새 셸이 뒤집어쓴다.
+    /// **닫힌 셸은 자기 상태 파일과 잠금 파일을 데리고 나간다.** 상태 파일이 남으면 사이드바에서 죽은 셸이
+    /// 영영 사람을 부르고, 다음 실행이 같은 PTY 번호를 쓸 때 그 값을 새 셸이 뒤집어쓴다. 잠금 파일(티켓 19)이 남으면
+    /// 셸마다 빈 파일이 쌓인다.
+    ///
+    /// 두 경로는 앱이 셸을 띄울 때 짓는 그 함수(`shells::state_path` · `shells::lock_path`)로 짓는다 — 처리기가 실제로 쓰는
+    /// 이름과 같은지는 `shells.rs`의 처리기 검사가 파일로 본다. 앵커: 같은 폴더의 남의 셸 파일은 남는다.
     ///
     /// 살아 있는 pty가 필요하지만 셸을 띄우지는 않는다 — `openpty` 하나면 `Shell`이 선다.
     #[test]
-    fn a_closed_shell_takes_its_state_file_with_it() {
-        let dir = std::env::temp_dir().join(format!("atelier-pty-drop-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let state = dir.join("1700-9.json");
-        std::fs::write(&state, r#"{"agent":"claude"}"#).unwrap();
+    fn a_closed_shell_takes_its_state_and_lock_files_with_it() {
+        let root = std::env::temp_dir().join(format!("atelier-pty-drop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(crate::shells::shells_dir(&root)).unwrap();
+        let state = crate::shells::state_path(&root, "1700-9");
+        let lock = crate::shells::lock_path(&root, "1700-9");
+        let neighbour = crate::shells::lock_path(&root, "1700-10");
+        for file in [&state, &lock, &neighbour] {
+            std::fs::write(file, r#"{"agent":"claude"}"#).unwrap();
+        }
 
         let size = PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
         let pair = native_pty_system().openpty(size).expect("pty가 열린다");
@@ -1252,12 +1274,15 @@ mod tests {
             master: pair.master,
             writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
             state_file: state.clone(),
+            lock_file: lock.clone(),
         };
 
         drop(shell);
 
         assert!(!state.exists(), "셸이 닫혔는데 상태 파일이 남았다");
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!lock.exists(), "셸이 닫혔는데 잠금 파일이 남았다");
+        assert!(neighbour.exists(), "남의 셸 잠금 파일까지 지웠다");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 셸을 띄우지 않고 `openpty` 하나로 선 풀의 칸. 상태 파일은 없는 자리를 가리킨다 — 떨굴 때 지울 것이 없다.
@@ -1274,6 +1299,8 @@ mod tests {
             writer: std::sync::Arc::new(std::sync::Mutex::new(writer)),
             state_file: std::env::temp_dir()
                 .join(format!("atelier-pty-idle-{}-{key}.json", std::process::id())),
+            lock_file: std::env::temp_dir()
+                .join(format!(".atelier-pty-idle-{}-{key}.lock", std::process::id())),
         }
     }
 

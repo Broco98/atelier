@@ -1,6 +1,6 @@
-//! 셸이 스스로 말한 것 — 훅 스크립트가 쓰는 상태 파일 한 장과 그것을 보는 감시.
+//! 셸이 스스로 말한 것 — 훅 처리기가 쓰는 상태 파일 한 장과 그것을 보는 감시.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -8,12 +8,21 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-/// 앱이 설치하는 훅 스크립트의 이름.
+/// 앱이 설치하는 훅 스크립트의 이름 — **옛 python 처리기**다. 지금 설치 버튼이 사용자의 설정에 거는 것이 아직 이것이다.
+/// 새 처리기(`HANDLER_NAME`)로 명령줄을 갈아 끼우는 것은 판 03의 훅 갱신(티켓 21)이다.
 pub const SCRIPT_NAME: &str = "atelier-hook.py";
 
 /// 훅 스크립트의 본문. **소스 트리의 진짜 파일을 그대로 굽는다** — 문자열 리터럴로 Rust
 /// 안에 적으면 그 언어의 문법 검사도, 편집기의 손도 닿지 않는 코드가 된다.
 pub const HOOK_SCRIPT: &str = include_str!("../hooks/atelier-hook.py");
+
+/// 새 훅 처리기의 이름(프로세스 스펙 S28 · 티켓 19). **옛 이름과 다른 파일이다** — 두 빌드는 같은 데이터 루트를 쓰는데,
+/// 옛 이름에 두면 이 기능 전의 설치본이 뜰 때마다 옛 계약의 python 스크립트로 덮는다. 옛 파일은 지우지 않는다: 아직 그것을
+/// 부르는 설정과 셸이 있다.
+pub const HANDLER_NAME: &str = "atelier-hook.zsh";
+
+/// 새 처리기의 본문 — `/bin/zsh -f`와 내장 모듈만으로 도는 스크립트다. 왜 zsh인지(재서 고른 값)는 그 파일의 머리말에 있다.
+pub const HANDLER: &str = include_str!("../hooks/atelier-hook.zsh");
 
 /// 셸이 말한 것이 실려 나가는 이벤트. **양쪽이 이 문자열로만 이어져 있다** — 한쪽을 고치면
 /// 컴파일도 타입 검사도 통과하고 화면만 영영 조용하다. 이름을 아는 자리가 여기와 `api.ts`
@@ -38,6 +47,17 @@ pub fn state_path(root: &Path, shell_id: &str) -> PathBuf {
     shells_dir(root).join(format!("{shell_id}.json"))
 }
 
+/// 셸 하나의 잠금 파일 — 처리기의 순서 가드가 쥐는 자리(프로세스 스펙 S27).
+///
+/// **상태 파일 자체는 잠금 자리가 못 된다.** 처리기는 상태 파일을 임시 파일에서 rename으로 갈아 끼우므로 쓸 때마다 inode가
+/// 바뀐다 — 기다리던 처리기는 옛 inode의 잠금을 얻고 새 파일과 겨룬다. 그래서 따로 선 파일이다. 점으로 시작하는 것은 감시가
+/// 이 파일을 셸로 읽지 않게 하려는 것이다(`scan`의 점 파일 규칙). 앱 시작 때의 정리는 점을 떼고 세대로 읽어 살아 있는 실행의
+/// 것을 남긴다(`sweep`). 이름을 짓는 자리가 여기와 처리기 둘이다 — 처리기 쪽은 `.$shell.lock`이고, 검사
+/// `the_handler_leaves_one_state_file_in_the_new_contract_and_no_tmp`가 둘이 같은 이름인지 파일로 본다.
+pub fn lock_path(root: &Path, shell_id: &str) -> PathBuf {
+    shells_dir(root).join(format!(".{shell_id}.lock"))
+}
+
 /// 훅 스크립트가 사는 곳.
 pub fn hooks_dir(root: &Path) -> PathBuf {
     root.join("hooks")
@@ -48,22 +68,67 @@ pub fn script_path(root: &Path) -> PathBuf {
     hooks_dir(root).join(SCRIPT_NAME)
 }
 
-/// 훅 스크립트를 디스크에 세운다.
-pub fn write_hook_script(root: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let dir = hooks_dir(root);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("훅 폴더를 만들지 못했습니다: {e}"))?;
-
-    let tmp = dir.join(format!(".{SCRIPT_NAME}.tmp"));
-    std::fs::write(&tmp, HOOK_SCRIPT).map_err(|e| format!("훅 스크립트를 쓰지 못했습니다: {e}"))?;
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("훅 스크립트에 실행 권한을 주지 못했습니다: {e}"))?;
-    std::fs::rename(&tmp, script_path(root))
-        .map_err(|e| format!("훅 스크립트를 바꿔 넣지 못했습니다: {e}"))
+/// 새 처리기의 자리. 훅 갱신(티켓 21)이 사용자의 설정에 적어 넣을 경로가 이것이다.
+pub fn handler_path(root: &Path) -> PathBuf {
+    hooks_dir(root).join(HANDLER_NAME)
 }
 
-/// 상태 파일 한 장의 내용 — 훅이 적고 감시가 읽는다.
+/// 훅 스크립트 둘을 디스크에 세운다 — 지금 설정이 부르는 옛 python 처리기와, 훅 갱신(티켓 21)이 갈아 끼울 새 처리기.
+///
+/// **새 처리기도 지금 세운다.** 설정은 아직 옛 것을 부르지만, 갈아 끼우는 날 파일이 먼저 있어야 한다 — 설정만 새 경로를 가리키면
+/// 사용자의 claude가 매 턴 없는 파일을 부른다. 아무 설정에도 안 걸린 파일은 안 불리니 세워 두는 것은 무해하다.
+pub fn write_hook_script(root: &Path) -> Result<(), String> {
+    let dir = hooks_dir(root);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("훅 폴더를 만들지 못했습니다: {e}"))?;
+    write_executable(&script_path(root), HOOK_SCRIPT)?;
+    write_executable(&handler_path(root), HANDLER)
+}
+
+/// 실행 파일 한 장을 **바꿔 넣는다** — 같은 폴더의 임시 파일에 다 쓰고 rename한다. 그 자리의 파일은 지금 도는 에이전트가
+/// 언제든 부를 수 있어서, 제자리에 덮어쓰면 반쯤 쓰인 스크립트가 불리는 순간이 생긴다.
+///
+/// **같은 내용이 이미 실행 권한으로 서 있으면 다시 쓰지 않는다.** macOS는 새로 쓰인 실행 파일의 첫 실행을 한 번 검사한다 —
+/// 이 기계에서 새 파일의 첫 호출은 125~150ms, 둘째부터 3~5ms였다(구현 기록 19절). 앱이 뜰 때마다 같은 처리기를 새 파일로
+/// 갈아 끼우면, 켤 때마다 첫 훅이 그 값을 문다.
+fn write_executable(path: &Path, body: &str) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let standing = std::fs::metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o777 == 0o755);
+    if standing && std::fs::read(path).is_ok_and(|bytes| bytes == body.as_bytes()) {
+        return Ok(());
+    }
+
+    let name = path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.tmp"));
+    std::fs::write(&tmp, body).map_err(|e| format!("훅 스크립트를 쓰지 못했습니다: {e}"))?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("훅 스크립트에 실행 권한을 주지 못했습니다: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("훅 스크립트를 바꿔 넣지 못했습니다: {e}"))
+}
+
+/// 상태 파일 한 장의 **디스크 모양** — 처리기가 적는 그대로다(프로세스 스펙 S26).
+///
+/// `subagents`는 도는 서브에이전트의 id 집합이고 `stopped`는 「턴이 멈췄다」다. 둘 다 처리기가 사건마다 접는다(S50 · S51) —
+/// 파일은 마지막 사건 하나만 담고 감시는 100ms로 디바운스하므로, 화면이 사건을 하나씩 세면 수가 샌다.
+///
+/// **두 칸이 없으면 빈 목록과 거짓으로 읽는다.** 옛 python 처리기(`SCRIPT_NAME`)는 이 칸을 모른다. 두 빌드가 같은 루트를 쓰고
+/// 훅 갱신 전까지 옛 처리기가 불리므로, 그 파일과 섞여도 셸이 조용해지면 안 된다. 거꾸로 옛 빌드는 모르는 칸을 무시한다
+/// (`deny_unknown_fields`가 없다).
+#[derive(Debug, Deserialize)]
+struct StateFile {
+    agent: String,
+    event: String,
+    at: u64,
+    /// 훅이 못 읽었으면 `null`이다 — 그때도 「이 셸에서 그 이벤트가 났다」는 참이다.
+    #[serde(default)]
+    payload: serde_json::Value,
+    #[serde(default)]
+    subagents: Vec<String>,
+    #[serde(default)]
+    stopped: bool,
+}
+
+/// 상태 파일 한 장의 **선 위 모양** — 감시가 프런트로 싣는다.
 ///
 /// **이름이 `types.ts`의 것과 같다.** 이 저장소의 전송 타입은 양쪽 이름이 늘 같고
 /// (`PtySpawned`·`PtyExit`·`PtyRunning`), 그래야 한쪽만 고친 것이 눈에 띈다. 여기서 굳이
@@ -75,15 +140,34 @@ pub fn write_hook_script(root: &Path) -> Result<(), String> {
 /// 어댑터의 일이라 프런트에 산다. 여기서 한 줄로 접으면 그 규칙이 사용자 홈에 설치된
 /// 스크립트와 Rust에 반씩 갈려, 화면이 바뀔 때 두 곳을 고쳐야 한다. 대신 페이로드를
 /// **통째로** 싣는다 — 접는 데 필요한 것이 다 그 안에 있다.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// **디스크 모양(`StateFile`)과 한 칸이 다르다** — `subagents`가 여기서는 **수**다. 화면은 도는 서브에이전트가 몇인지만 보고
+/// (셸 상태의 일곱째 칸, S51) id는 처리기가 집합을 접는 데만 쓴다. 수로 실으면 id만 바뀌고 수가 같은 파일은 감시가 안 내보낸다.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellHookState {
     agent: String,
     event: String,
     at: u64,
-    /// 훅이 못 읽었으면 `null`이다 — 그때도 「이 셸에서 그 이벤트가 났다」는 참이다.
-    #[serde(default)]
     payload: serde_json::Value,
+    /// 도는 서브에이전트 수.
+    subagents: usize,
+    /// 턴이 멈췄나 — Stop · StopFailure에서 참, 새 턴 · 세션 끝 · 중단에서 거짓(S50).
+    stopped: bool,
+}
+
+impl From<StateFile> for ShellHookState {
+    fn from(file: StateFile) -> Self {
+        ShellHookState {
+            agent: file.agent,
+            event: file.event,
+            at: file.at,
+            payload: file.payload,
+            // 집합으로 센다. 처리기가 이미 집합으로 적지만, 손으로 고친 파일 한 장이 수를 부풀리지 않게.
+            subagents: file.subagents.iter().collect::<BTreeSet<_>>().len(),
+            stopped: file.stopped,
+        }
+    }
 }
 
 /// 한 번에 읽은 상태 전부 — 셸 ID마다 한 장이다. `BTreeMap`인 것은 나가는 순서가
@@ -121,7 +205,8 @@ fn scan(dir: &Path, prefix: &str) -> Attention {
                 return None;
             }
             let content = std::fs::read_to_string(&path).ok()?;
-            Some((id, serde_json::from_str(&content).ok()?))
+            let file: StateFile = serde_json::from_str(&content).ok()?;
+            Some((id, file.into()))
         })
         .collect()
 }
@@ -708,6 +793,9 @@ mod tests {
             .expect("바뀐 셸이 나온다");
         assert_eq!(first.len(), 1, "한 셸만 바뀌었는데 여럿이 나갔다: {first:?}");
         assert_eq!(first[0].shell_id, "1700-1");
+        // 감시가 쏘는 사건에 서브에이전트 수와 멈춤이 실린다(티켓 19) — 파일의 id 둘이 수 2로.
+        let sent = first[0].state.as_ref().expect("값이 실렸다");
+        assert_eq!((sent.subagents, sent.stopped), (2, true), "감시의 사건에 서브에이전트 수나 멈춤이 안 실렸다");
 
         write_state(&dir, "1700-2", 2);
         let second = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("둘째 셸이 나온다");
@@ -719,8 +807,696 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    // ── 상태 파일의 새 칸 읽기(티켓 19 · 프로세스 스펙 S26) ──
+
+    /// **옛 처리기의 파일은 서브에이전트 없음 · 안 멈춤으로 읽힌다.** 훅 갱신(티켓 21) 전까지 설정이 부르는 것은 옛 python
+    /// 처리기이고, 두 빌드가 같은 루트를 쓴다 — 새 칸이 없는 파일을 깨진 것으로 보면 그 셸이 통째로 조용해진다.
+    ///
+    /// 파일은 옛 처리기가 쓰는 글자 그대로다(`json.dumps`의 기본 구분자 — 쉼표와 쌍점 뒤에 빈칸).
+    #[test]
+    fn an_old_handlers_file_reads_as_no_subagents_and_not_stopped() {
+        let root = temp_root("old-file");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("1700-1.json"),
+            r#"{"agent": "claude", "event": "Stop", "at": 1790000000123, "payload": {"last_assistant_message": "끝"}}"#,
+        )
+        .unwrap();
+
+        let seen = scan(&dir, "1700");
+
+        let old = seen.get("1700-1").expect("옛 처리기의 파일이 안 읽혔다 — 그 셸이 조용해진다");
+        assert_eq!((old.subagents, old.stopped), (0, false), "새 칸이 없는 파일을 빈 목록과 거짓으로 안 읽었다");
+        assert_eq!((old.event.as_str(), old.at), ("Stop", 1_790_000_000_123), "옛 칸이 그대로 안 읽혔다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **감시의 사건이 서브에이전트 수와 멈춤을 싣는다 — 선 위의 글자로.** 화면(티켓 20)은 이 두 이름으로 읽는다. 파일의 id는
+    /// 집합으로 세므로, 손으로 고친 파일의 겹친 id가 수를 부풀리지 않는다.
+    #[test]
+    fn the_attention_event_carries_the_subagent_count_and_stopped_on_the_wire() {
+        let root = temp_root("wire");
+        let dir = shells_dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("1700-4.json"),
+            r#"{"agent":"claude","event":"SubagentStop","at":7,"subagents":["a1","b2","a1"],"stopped":true,"payload":null}"#,
+        )
+        .unwrap();
+
+        let out = changes(&Attention::new(), &scan(&dir, "1700"));
+
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"[{"shellId":"1700-4","state":{"agent":"claude","event":"SubagentStop","at":7,"payload":null,"subagents":2,"stopped":true}}]"#,
+            "선 위의 모양이 다르다 — 화면이 서브에이전트 수나 멈춤을 못 읽는다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **사건 이름과 시각이 같아도 수나 멈춤이 바뀐 셸은 나간다.** 순서 가드에 막힌 늦은 사건은 파일의 사건 이름과 `at`을 두고
+    /// 수와 멈춤만 고친다(S27) — 그 변화를 감시가 버리면 서브에이전트가 다 끝나도 셸이 「도는 중」에 남는다(S50).
+    #[test]
+    fn a_file_whose_only_change_is_the_count_or_the_stop_goes_out() {
+        let before = state("claude", "Stop", 5);
+        let sent = Attention::from([("가-1".into(), ShellHookState { subagents: 2, stopped: true, ..before.clone() })]);
+
+        let fewer = Attention::from([("가-1".into(), ShellHookState { subagents: 1, stopped: true, ..before.clone() })]);
+        assert_eq!(changes(&sent, &fewer).len(), 1, "수만 바뀐 셸이 안 나갔다");
+
+        let resumed = Attention::from([("가-1".into(), ShellHookState { subagents: 2, stopped: false, ..before.clone() })]);
+        assert_eq!(changes(&sent, &resumed).len(), 1, "멈춤만 바뀐 셸이 안 나갔다");
+
+        // 앵커: 정말 같은 파일은 안 나간다 — 늘 나가게 무너지면 위 둘이 저절로 참이 된다.
+        assert!(changes(&sent, &sent.clone()).is_empty(), "안 바뀐 셸이 나갔다");
+    }
+
+    // ── 새 처리기(티켓 19 · 프로세스 스펙 S26 · S27 · S28) — 실물로 띄운다 ──
+    //
+    // 처리기를 임시 루트에 세우고(`write_hook_script`, 앱과 같은 길) 에이전트가 부르는 모양 — 셸 없이 곧바로(`args` 꼴), argv
+    // 둘(에이전트 · 사건), stdin의 페이로드 — 으로 띄운다. 페이로드는 지어내지 않고 출처를 단다.
+
+    /// claude 2.1.283의 SubagentStart 페이로드. **실측**: 판 03 선행 시험 r2(`research/판03-선행-시험.md`) — 진짜 claude를 `-p`로
+    /// 돌려 command 훅의 stdin에서 받은 것이다. 경로와 세션 칸은 줄였고, 키와 그 순서는 그대로다. id만 갈아 끼운다.
+    fn claude_subagent_start(id: &str) -> String {
+        format!(
+            r#"{{"session_id":"d76da175-9131-40aa-a893-69a3cfb0abc6","transcript_path":"/tmp/p18/d76da175.jsonl","cwd":"/tmp/p18/cwd","prompt_id":"36e4193c-881e-4d4b-88b8-4bb80c643446","agent_id":"{id}","agent_type":"general-purpose","hook_event_name":"SubagentStart"}}"#
+        )
+    }
+
+    /// claude 2.1.283의 SubagentStop 페이로드. **실측**: 같은 시험 r2. `background_tasks`에 그 서브에이전트 자신이 `id` 칸으로 또
+    /// 선다 — 처리기가 id를 그 자리에서 읽으면 안 된다.
+    fn claude_subagent_stop(id: &str) -> String {
+        format!(
+            r#"{{"session_id":"d76da175-9131-40aa-a893-69a3cfb0abc6","transcript_path":"/tmp/p18/d76da175.jsonl","cwd":"/tmp/p18/cwd","prompt_id":"36e4193c-881e-4d4b-88b8-4bb80c643446","permission_mode":"default","agent_id":"{id}","agent_type":"general-purpose","hook_event_name":"SubagentStop","stop_hook_active":false,"agent_transcript_path":"/tmp/p18/d76da175/subagents/agent-{id}.jsonl","last_assistant_message":"PONG","background_tasks":[{{"id":"{id}","type":"subagent","status":"running","description":"Test agent ping","agent_type":"general-purpose"}}],"session_crons":[]}}"#
+        )
+    }
+
+    /// codex 0.155.1의 SubagentStart 페이로드. **스키마**(실측이 아니다): codex 바이너리가 싣는 `subagent-start.command.input`
+    /// JSON 스키마의 필수 칸 그대로다 — id 칸 이름이 claude와 같은 `agent_id`다. 값과 키 순서는 지은 것이다. 진짜 codex로 뜬
+    /// 페이로드는 구현 기록 19절의 「사람이 볼 것」이다.
+    fn codex_subagent_start(id: &str) -> String {
+        format!(
+            r#"{{"session_id":"019a2c3e-0000-7000-8000-000000000001","turn_id":"019a2c3e-0000-7000-8000-000000000002","transcript_path":null,"cwd":"/tmp/codex","hook_event_name":"SubagentStart","model":"gpt-5.5","permission_mode":"default","agent_id":"{id}","agent_type":"default"}}"#
+        )
+    }
+
+    /// claude의 PostToolUseFailure 페이로드. **스키마**(실측이 아니다): claude 2.1.283 바이너리의 입력 스키마 칸(`tool_name` ·
+    /// `tool_input` · `tool_use_id` · `error` · `is_interrupt?`). 판 03 선행 시험은 이 사건을 못 띄웠다(중단은 대개 이 사건 없이
+    /// 끝난다 — 문서).
+    fn claude_tool_failure(interrupted: bool) -> String {
+        format!(
+            r#"{{"session_id":"d76da175-9131-40aa-a893-69a3cfb0abc6","transcript_path":"/tmp/p18/d76da175.jsonl","cwd":"/tmp/p18/cwd","permission_mode":"default","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{{"command":"sleep 30","description":"wait"}},"tool_use_id":"toolu_01","error":"Interrupted by user","is_interrupt":{interrupted}}}"#
+        )
+    }
+
+    /// 그 밖의 사건 — 이 장의 접기가 안 읽는 칸뿐이다. **실측**: 같은 시험 r1의 Stop 꼬리.
+    const CLAUDE_STOP: &str = r#"{"session_id":"d76da175-9131-40aa-a893-69a3cfb0abc6","hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"OK","background_tasks":[],"session_crons":[]}"#;
+
+    /// 처리기를 세우고 **한 번 헛불러 둔다**(셸 ID 없이 — 아무것도 안 쓴다). macOS는 새로 쓰인 실행 파일의 첫 실행을 한 번
+    /// 검사해 그 호출이 100ms를 넘고, 여러 검사가 함께 돌면 몇백 ms가 된다(`write_executable` 머리말). 시각과 순서를 재는
+    /// 검사는 그 값을 처리기가 늦게 뜬 것으로 읽는다 — 앱에서는 처리기 파일이 켤 때마다 새로 안 쓰이므로 이 값은 앱을 올린 뒤
+    /// 첫 호출 한 번뿐이다.
+    fn ready_handler(root: &Path) {
+        write_hook_script(root).expect("스크립트를 세운다");
+        let (wrote, out) = feed(handler_command(&handler_path(root), root, None, &["claude", "Stop"]).into_spawned(), "{}");
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success(), "헛부름이 0이 아닌 코드로 끝났다: {out:?}");
+    }
+
+    /// 처리기 한 벌을 띄운다 — stdin은 아직 안 준다(`feed`가 준다). 처리기의 시각이 stdin을 받기 **전에** 서는지 재려면 둘을
+    /// 갈라야 한다.
+    fn spawn_handler(root: &Path, shell: &str, agent: &str, event: &str) -> std::process::Child {
+        handler_command(&handler_path(root), root, Some(shell), &[agent, event]).into_spawned()
+    }
+
+    /// 처리기를 한 번 불러 끝까지 — 순서대로 부르는 장면의 한 걸음. 부른 뒤의 상태 파일을 돌려준다.
+    ///
+    /// 걸음마다 계약의 바뀌지 않는 셋을 본다: 페이로드를 끝까지 받고, 0으로 끝나고, 아무 말도 없다(claude는 UserPromptSubmit의
+    /// stdout을 대화에 싣는다).
+    fn call(root: &Path, shell: &str, agent: &str, event: &str, payload: &str) -> serde_json::Value {
+        let (wrote, out) = feed(spawn_handler(root, shell, agent, event), payload);
+        wrote.expect("페이로드를 끝까지 쓸 수 있다 — 처리기가 stdin을 다 안 읽었다");
+        assert!(out.status.success(), "{agent} {event}: 0이 아닌 코드로 끝났다: {out:?}");
+        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{agent} {event}: 처리기가 말을 했다: {out:?}");
+        state_in(root, shell)
+    }
+
+    fn state_in(root: &Path, shell: &str) -> serde_json::Value {
+        let written = std::fs::read_to_string(state_path(root, shell)).expect("그 셸의 상태 파일이 있다");
+        serde_json::from_str(&written).unwrap_or_else(|e| panic!("상태 파일이 JSON이 아니다({e}): {written}"))
+    }
+
+    /// 상태 파일의 서브에이전트 id — 집합이라 정렬해 견준다.
+    fn subagent_ids(state: &serde_json::Value) -> Vec<String> {
+        let mut ids: Vec<String> = state["subagents"]
+            .as_array()
+            .unwrap_or_else(|| panic!("`subagents`가 목록이 아니다: {state}"))
+            .iter()
+            .map(|id| id.as_str().expect("id는 글자다").to_string())
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    fn now_ms() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+    }
+
+    /// 새 처리기도 **아틀리에 밖 터미널에서 무해하다** — 셸 ID가 없으면 파이프 버퍼(64KB)를 훌쩍 넘는 페이로드를 끝까지 먹고,
+    /// 아무것도 안 남기고, 아무 말 없이 0으로 끝난다. 옛 처리기 검사(`without_a_shell_id_the_hook_eats_the_payload_and_exits_zero`)와
+    /// 같은 까닭이다.
+    #[test]
+    fn without_a_shell_id_the_handler_eats_the_payload_and_exits_zero() {
+        let root = temp_root("handler-no-env");
+        write_hook_script(&root).expect("스크립트를 세운다");
+
+        let big = format!(r#"{{"prompt":"{}"}}"#, "x".repeat(1_000_000));
+        let command = handler_command(&handler_path(&root), &root, None, &["claude", "UserPromptSubmit"]);
+        let (wrote, out) = feed(command.into_spawned(), &big);
+
+        wrote.expect("에이전트가 페이로드를 끝까지 쓸 수 있다 — 처리기가 stdin을 안 읽고 나갔다");
+        assert!(out.status.success(), "종료 코드가 0이 아니다: {:?}", out.status);
+        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "처리기가 말을 했다: {out:?}");
+        assert!(!shells_dir(&root).exists(), "셸 ID가 없는데 상태 폴더를 만들었다 — 아틀리에 밖에서 자국을 남긴다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **셸 ID와 argv는 파일 이름과 JSON 글자가 된다.** `/`나 `..`가 섞인 셸 ID는 상태 폴더 밖에 쓰고, 따옴표가 섞인 에이전트
+    /// · 사건 이름은 상태 파일을 깨뜨린다(깨진 파일은 감시가 버린다 — 그 셸이 조용해진다). 처리기는 앱이 짓는 모양만 받는다.
+    #[test]
+    fn a_shell_id_or_an_argument_that_could_escape_makes_the_handler_write_nothing() {
+        let root = temp_root("handler-evil");
+        write_hook_script(&root).expect("스크립트를 세운다");
+
+        let cases: [(&str, [&str; 2]); 6] = [
+            ("../evil", ["claude", "Stop"]),
+            ("a/b", ["claude", "Stop"]),
+            ("..", ["claude", "Stop"]),
+            (".", ["claude", "Stop"]),
+            ("1700-1", [r#"claude","event":"x"#, "Stop"]),
+            ("1700-1", ["claude", "Stop\"}"]),
+        ];
+        for (shell, args) in cases {
+            let (wrote, out) = feed(handler_command(&handler_path(&root), &root, Some(shell), &args).into_spawned(), "{}");
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(out.status.success(), "`{shell}` {args:?}에 0이 아닌 코드로 끝났다: {:?}", out.status);
+            let outside: Vec<String> =
+                files_in(&root).into_iter().filter(|n| n != "hooks" && n != "shells").collect();
+            assert!(outside.is_empty(), "`{shell}`이 상태 폴더 **밖**에 썼다: {outside:?}");
+            if shells_dir(&root).exists() {
+                assert_eq!(files_in(&shells_dir(&root)), Vec::<String>::new(), "`{shell}` {args:?}이 파일을 남겼다");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 셸 ID가 있으면 **그 셸의 상태 파일 한 장이 새 계약으로** 선다 — `{agent, event, at, payload, subagents, stopped}`(S26).
+    /// 페이로드는 그대로 실리고, 쓰는 중 파일은 안 남는다. 잠금 파일(`lock_path`)은 남는다 — 셸이 끝날 때 셸이 걷는다.
+    #[test]
+    fn the_handler_leaves_one_state_file_in_the_new_contract_and_no_tmp() {
+        let root = temp_root("handler-one");
+        write_hook_script(&root).expect("스크립트를 세운다");
+
+        let before = now_ms();
+        let state = call(&root, "1700-3", "claude", "Stop", r#"{"last_assistant_message":"테스트 셋 통과"}"#);
+        let after = now_ms();
+
+        assert_eq!((state["agent"].as_str(), state["event"].as_str()), (Some("claude"), Some("Stop")));
+        assert_eq!(
+            state["payload"]["last_assistant_message"], "테스트 셋 통과",
+            "페이로드가 그대로 안 실렸다 — 둘째 줄에 적을 말이 여기서만 온다"
+        );
+        let at = state["at"].as_u64().expect("`at`은 ms 수다");
+        assert!((before..=after).contains(&at), "`at`({at})이 부른 때({before}..={after}) 밖이다");
+        assert_eq!(subagent_ids(&state), Vec::<String>::new(), "서브에이전트가 없는데 목록이 비지 않았다");
+        assert_eq!(state["stopped"], true, "Stop인데 멈추지 않았다");
+
+        let lock = lock_path(&root, "1700-3").file_name().unwrap().to_string_lossy().to_string();
+        assert_eq!(
+            files_in(&shells_dir(&root)),
+            vec![lock, "1700-3.json".to_string()],
+            "쓰는 중 파일이 남았거나, 잠금 파일이 앱이 걷는 이름(`lock_path`)과 다르거나, 딴것이 생겼다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `ATELIER_HOME`이 없으면 데이터 루트는 `~/.atelier`다 — 앱(`atelier_core::data_root`)과 같은 자리. 검사의 `HOME`은 임시
+    /// 루트다(`hook_command`).
+    #[test]
+    fn without_atelier_home_the_handler_writes_under_the_home() {
+        let root = temp_root("handler-home");
+        write_hook_script(&root).expect("스크립트를 세운다");
+
+        let mut command = handler_command(&handler_path(&root), &root, Some("1700-2"), &["codex", "Stop"]);
+        command.env_remove("ATELIER_HOME");
+        let (wrote, out) = feed(command.into_spawned(), "{}");
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success(), "종료 코드가 0이 아니다: {out:?}");
+
+        assert!(
+            state_path(&root.join(".atelier"), "1700-2").exists(),
+            "`ATELIER_HOME` 없이 `HOME/.atelier/shells`에 안 썼다 — 앱이 보는 자리와 갈린다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **`at`은 처리기가 시작한 시각이다 — stdin을 다 읽은 때가 아니다**(S26). 옛 처리기는 다 읽고 푼 뒤에 쟀다. 순서 가드는
+    /// 「누가 먼저 불렸나」를 이 값으로 가르므로, 긴 페이로드를 늦게 받은 처리기가 늦게 불린 것으로 읽히면 안 된다.
+    #[test]
+    fn the_handler_takes_its_time_when_it_starts_not_when_the_payload_is_in() {
+        let root = temp_root("handler-at");
+        ready_handler(&root);
+
+        let child = spawn_handler(&root, "1700-5", "claude", "UserPromptSubmit");
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let fed = now_ms();
+        let (wrote, out) = feed(child, r#"{"prompt":"hi"}"#);
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success(), "종료 코드가 0이 아니다: {out:?}");
+
+        let at = state_in(&root, "1700-5")["at"].as_u64().expect("`at`은 ms 수다");
+        assert!(at + 200 < fed, "`at`({at})이 페이로드를 준 때({fed})에 붙어 있다 — 시작이 아니라 다 읽은 뒤에 쟀다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **늦게 시작한 처리기가 먼저 끝나면 그 사건이 남는다 — 이른 것은 수와 멈춤만 접는다**(S27).
+    ///
+    /// 이른 처리기를 띄우고 stdin을 쥐고 있으면, 그 처리기는 제 `at`을 잰 채 페이로드를 기다린다. 그사이 늦은 처리기를 끝까지
+    /// 돌린 뒤 이른 것을 놓는다 — 부하에서 async 도구 사건의 처리기가 늦게 끝나는 모양 그대로다. 두 판이다:
+    /// - 이른 Stop · 늦은 SubagentStart: 파일은 SubagentStart 그대로이고(사건 이름 · `at` · 페이로드), 이른 Stop이 멈춤만 켠다.
+    /// - 이른 SubagentStop · 늦은 PostToolUse: 파일은 PostToolUse 그대로이고, 이른 SubagentStop이 집합에서 id를 뺀다.
+    ///
+    /// 둘째 판이 앵커다 — 막힌 사건이 아예 안 돌았으면(시작하자마자 끝남) id가 그대로 남는다.
+    #[test]
+    fn a_later_handler_that_ends_first_keeps_its_event_and_the_earlier_one_only_folds() {
+        let root = temp_root("handler-order");
+        ready_handler(&root);
+        let shell = "1700-6";
+        // 이른 것이 제 시각을 재고도 남을 틈. zsh가 뜨는 데 몇 ms면 된다.
+        let head_start = std::time::Duration::from_millis(300);
+
+        let early_stop = spawn_handler(&root, shell, "claude", "Stop");
+        std::thread::sleep(head_start);
+        let late = call(&root, shell, "claude", "SubagentStart", &claude_subagent_start("ace905bb8e05c8931"));
+        let (wrote, out) = feed(early_stop, CLAUDE_STOP);
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "이른 Stop: {out:?}");
+        let after = state_in(&root, shell);
+        for field in ["agent", "event", "at", "payload"] {
+            assert_eq!(after[field], late[field], "이른 Stop이 늦은 사건의 `{field}`를 덮었다 — 늦게 끝난 옛 사건이 이겼다");
+        }
+        assert_eq!(subagent_ids(&after), vec!["ace905bb8e05c8931"]);
+        assert_eq!(after["stopped"], true, "순서 가드에 막힌 Stop이 멈춤을 안 접었다");
+
+        let early_stop_of_subagent = spawn_handler(&root, shell, "claude", "SubagentStop");
+        std::thread::sleep(head_start);
+        let late = call(&root, shell, "claude", "PostToolUse", r#"{"tool_name":"Bash","tool_response":{"stdout":"ok"}}"#);
+        let (wrote, out) = feed(early_stop_of_subagent, &claude_subagent_stop("ace905bb8e05c8931"));
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "이른 SubagentStop: {out:?}");
+        let after = state_in(&root, shell);
+        for field in ["agent", "event", "at", "payload"] {
+            assert_eq!(after[field], late[field], "이른 SubagentStop이 늦은 사건의 `{field}`를 덮었다");
+        }
+        assert_eq!(subagent_ids(&after), Vec::<String>::new(), "순서 가드에 막힌 SubagentStop이 집합을 안 접었다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **`at`이 같으면 뒤에 온 것이 이긴다**(S27). 같은 ms의 두 사건(빠른 PostToolUse → Stop)에서 「더 새로울 때만」이면 뒤의 것을
+    /// 버린다.
+    ///
+    /// 처리기의 `at`은 진짜 시계라 손으로 못 맞춘다. 그래서 **처리기가 뜰 ms를 짐작해** 그 `at`으로 앞 사건을 미리 적어 두고
+    /// 처리기를 띄운다. 세 갈래가 난다:
+    /// - 처리기 `at` > 적은 `at` — 짐작이 일렀다. 처리기가 이긴다(순서대로). 다시 한다.
+    /// - 처리기 `at` < 적은 `at` — 짐작이 늦었다. 처리기가 막힌다. 다시 한다.
+    /// - 같다 — 뒤에 온 처리기가 이겨 사건 이름이 처리기의 것이고 `at`은 적은 값 그대로다. **이것을 한 번 보면 끝이다.**
+    ///
+    /// 「같으면 막힘」으로 무너지면 셋째 갈래가 영영 안 나서 빨갛다(적은 사건이 남은 판은 둘째 갈래와 못 가르므로 실패로 치지
+    /// 않는다). 짐작은 직전 판에서 잰 뜨는 데 걸린 ms로 고친다 — 같은 ms에 떨어지는 판이 흔해 대개 몇 판 안에 끝난다.
+    #[test]
+    fn when_two_events_share_a_millisecond_the_one_that_comes_later_wins() {
+        let root = temp_root("handler-tie");
+        ready_handler(&root);
+        let shell = "1700-7";
+        std::fs::create_dir_all(shells_dir(&root)).unwrap();
+
+        let mut guess = 3u64;
+        for _ in 0..400 {
+            let spawned = now_ms();
+            let planted = spawned + guess;
+            std::fs::write(
+                state_path(&root, shell),
+                format!(r#"{{"agent":"claude","event":"PermissionRequest","at":{planted},"subagents":["k1"],"stopped":false,"payload":{{"tool_name":"Bash"}}}}"#),
+            )
+            .unwrap();
+            let state = call(&root, shell, "claude", "Stop", CLAUDE_STOP);
+            let at = state["at"].as_u64().expect("`at`은 ms 수다");
+            // 막힌 판이든 이긴 판이든 접기는 늘 선다 — Stop은 집합을 안 건드리고 멈춤을 켠다.
+            assert_eq!(subagent_ids(&state), vec!["k1"], "Stop이 집합을 건드렸다");
+            assert_eq!(state["stopped"], true, "Stop이 멈춤을 안 켰다");
+            match (state["event"].as_str(), at.cmp(&planted)) {
+                (Some("Stop"), std::cmp::Ordering::Equal) => {
+                    let _ = std::fs::remove_dir_all(&root);
+                    return;
+                }
+                (Some("Stop"), std::cmp::Ordering::Greater) => guess = at - spawned,
+                (Some("PermissionRequest"), std::cmp::Ordering::Equal) => guess = guess.saturating_sub(1),
+                other => panic!("처리기가 이기지도 막히지도 않았다: {other:?} {state}"),
+            }
+        }
+        panic!("같은 ms의 두 사건에서 뒤에 온 것이 이긴 판이 400판에 한 번도 없다 — 같으면 막는다");
+    }
+
+    /// **서브에이전트는 id 집합으로 접힌다 — 늦게 온 SubagentStop, 빠진 SubagentStart에도 수가 맞다**(S51).
+    ///
+    /// +1/−1로 세면 짝이 안 맞는 사건 하나가 수를 영영 비틀어 셸이 「도는 중」에 박힌다. 실측으로 본 모양: claude 자신의 에이전트
+    /// (프롬프트 제안 등)는 SubagentStart 없이 SubagentStop만 낸다(판 03 선행 시험 r5 · r6). 새 턴(UserPromptSubmit)과 세션
+    /// 끝(SessionEnd)은 비운다. codex도 같은 칸(`agent_id`)이다.
+    ///
+    /// 따옴표가 풀린 id 흉내(문자열 칸 안의 `\"agent_id\":\"…\"`)는 id가 아니다 — 에이전트의 마지막 말은 무엇이든 담을 수 있다.
+    #[test]
+    fn the_subagent_set_stays_right_through_a_late_stop_and_a_missing_start() {
+        let root = temp_root("handler-subagents");
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let shell = "1700-8";
+        let ids = |state: serde_json::Value| subagent_ids(&state);
+
+        assert_eq!(ids(call(&root, shell, "claude", "SubagentStart", &claude_subagent_start("aaa1"))), ["aaa1"]);
+        assert_eq!(ids(call(&root, shell, "claude", "SubagentStart", &claude_subagent_start("bbb2"))), ["aaa1", "bbb2"]);
+        assert_eq!(
+            ids(call(&root, shell, "claude", "SubagentStart", &claude_subagent_start("aaa1"))),
+            ["aaa1", "bbb2"],
+            "같은 서브에이전트의 두 번째 Start가 수를 늘렸다"
+        );
+        assert_eq!(
+            ids(call(&root, shell, "claude", "SubagentStop", &claude_subagent_stop("a8341c66cb460a30a"))),
+            ["aaa1", "bbb2"],
+            "Start 없이 온 Stop(claude 자신의 에이전트)이 도는 것을 뺐다"
+        );
+        assert_eq!(ids(call(&root, shell, "claude", "SubagentStop", &claude_subagent_stop("aaa1"))), ["bbb2"]);
+        assert_eq!(
+            ids(call(&root, shell, "claude", "SubagentStop", &claude_subagent_stop("aaa1"))),
+            ["bbb2"],
+            "늦게 한 번 더 온 Stop이 다른 것을 뺐다"
+        );
+        let decoy = r#"{"cwd":"/tmp/a,\"agent_id\":\"decoy\"","agent_id":"ccc3","agent_type":"general-purpose"}"#;
+        assert_eq!(
+            ids(call(&root, shell, "claude", "SubagentStart", decoy)),
+            ["bbb2", "ccc3"],
+            "문자열 칸 안의 흉내를 id로 읽었다"
+        );
+        assert_eq!(
+            ids(call(&root, shell, "claude", "UserPromptSubmit", r#"{"prompt":"다음"}"#)),
+            Vec::<String>::new(),
+            "새 턴이 집합을 안 비웠다"
+        );
+
+        assert_eq!(
+            ids(call(&root, shell, "codex", "SubagentStart", &codex_subagent_start("019a2c3e-0000-7000-8000-00000000000a"))),
+            ["019a2c3e-0000-7000-8000-00000000000a"],
+            "codex의 서브에이전트 id를 못 읽었다"
+        );
+        assert_eq!(
+            ids(call(&root, shell, "codex", "SessionEnd", r#"{"reason":"other"}"#)),
+            Vec::<String>::new(),
+            "세션 끝이 집합을 안 비웠다"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **한 셸의 처리기가 한꺼번에 돌아도 사건을 잃지 않는다 — 잠금**(S27). 처리기는 파일을 읽고 접어 다시 쓴다. 잠금 없이
+    /// 그러면 둘이 같은 옛 파일을 읽고 각자 쓴 뒤 나중 것이 앞의 것을 지운다 — 서브에이전트 여럿이 한꺼번에 뜨는 턴(병렬
+    /// Agent 호출)에서 수가 모자라게 선다.
+    ///
+    /// 열여섯 벌을 띄워 stdin을 쥐고 있다가 한꺼번에 놓는다. 모두 SubagentStart라 순서와 무관하게 집합은 열여섯이어야 한다.
+    #[test]
+    fn handlers_racing_on_one_shell_lose_no_subagent() {
+        let root = temp_root("handler-race");
+        ready_handler(&root);
+        let shell = "1700-13";
+
+        let ids: Vec<String> = (0..16).map(|n| format!("race{n:02}")).collect();
+        let waiting: Vec<std::process::Child> =
+            ids.iter().map(|_| spawn_handler(&root, shell, "claude", "SubagentStart")).collect();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let running: Vec<std::thread::JoinHandle<_>> = waiting
+            .into_iter()
+            .zip(ids.clone())
+            .map(|(child, id)| std::thread::spawn(move || feed(child, &claude_subagent_start(&id))))
+            .collect();
+        for run in running {
+            let (wrote, out) = run.join().unwrap();
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
+        }
+
+        assert_eq!(subagent_ids(&state_in(&root, shell)), ids, "한꺼번에 돈 처리기가 서로의 접기를 지웠다 — 잠금이 안 선다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **멈춤은 Stop · StopFailure가 켜고, 새 턴 · 세션 끝 · 중단이 끈다**(S50). 그 밖의 사건은 그대로 둔다 — 그래서 Stop 뒤에
+    /// 온 SubagentStop에도 참이고, 화면(티켓 20)은 서브에이전트가 다 끝나는 순간을 「확인할 것」으로 읽을 수 있다.
+    ///
+    /// 중단은 둘이다: claude PostToolUseFailure의 `is_interrupt: true`, codex의 Interrupt. 중단 아닌 도구 실패는 멈춤을 안 건드린다.
+    #[test]
+    fn stopped_is_set_by_a_stop_and_cleared_by_a_new_turn_an_end_or_an_interrupt() {
+        let root = temp_root("handler-stopped");
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let shell = "1700-9";
+        let stopped = |state: serde_json::Value| (state["event"].as_str().unwrap_or_default().to_string(), state["stopped"].clone());
+
+        let steps: [(&str, &str, String, bool); 12] = [
+            ("claude", "SubagentStart", claude_subagent_start("aaa1"), false),
+            ("claude", "Stop", CLAUDE_STOP.to_string(), true),
+            ("claude", "SubagentStop", claude_subagent_stop("aaa1"), true),
+            ("claude", "UserPromptSubmit", r#"{"prompt":"다음"}"#.to_string(), false),
+            ("claude", "PreToolUse", r#"{"tool_name":"Bash"}"#.to_string(), false),
+            ("claude", "StopFailure", r#"{"error":"rate_limit"}"#.to_string(), true),
+            ("claude", "PostToolUseFailure", claude_tool_failure(false), true),
+            ("claude", "PostToolUseFailure", claude_tool_failure(true), false),
+            ("claude", "Stop", CLAUDE_STOP.to_string(), true),
+            ("claude", "SessionEnd", r#"{"reason":"prompt_input_exit"}"#.to_string(), false),
+            ("codex", "Stop", r#"{"turn_id":"t1"}"#.to_string(), true),
+            ("codex", "Interrupt", r#"{"turn_id":"t1"}"#.to_string(), false),
+        ];
+        for (agent, event, payload, expected) in steps {
+            assert_eq!(
+                stopped(call(&root, shell, agent, event, &payload)),
+                (event.to_string(), serde_json::Value::Bool(expected)),
+                "{agent} {event} 뒤의 멈춤이 틀렸다"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **파이프 버퍼를 넘는 페이로드도 통째로 받아 통째로 싣는다 — 빨리.** 긴 프롬프트의 UserPromptSubmit이 그 모양이다.
+    /// 한 글자씩 읽거나 페이로드 위에서 되짚는 패턴을 쓰면 여기서 초 단위가 된다(단언은 느슨하다 — 부하를 탄다).
+    #[test]
+    fn a_payload_past_the_pipe_buffer_is_taken_and_written_whole() {
+        let root = temp_root("handler-big");
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let big = format!(r#"{{"prompt":"{}"}}"#, "가".repeat(400_000));
+
+        let started = std::time::Instant::now();
+        call(&root, "1700-10", "claude", "Stop", CLAUDE_STOP);
+        let state = call(&root, "1700-10", "claude", "UserPromptSubmit", &big);
+        let took = started.elapsed();
+
+        assert_eq!(state["payload"]["prompt"].as_str().map(|p| p.chars().count()), Some(400_000), "페이로드가 잘렸다");
+        assert_eq!(state["stopped"], false);
+        assert!(took < std::time::Duration::from_secs(3), "1.2MB 페이로드 두 번에 {took:?}가 걸렸다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **처리기는 다른 프로세스를 띄우지 않는다** — 옛 처리기의 같은 검사(`the_hook_never_reaches_for_another_process`, python의
+    /// 허용 목록)를 새 처리기의 언어로 다시 썼다. 훅은 에이전트의 턴 안에서 돌아, 프로세스 하나는 그대로 사람이 기다리는 ms다.
+    ///
+    /// **목록이 아니라 커널로 잰다.** zsh에서 프로세스가 생기는 길(바깥 명령, `$(…)`, 파이프, 서브셸, `&`)은 글자로 다 못 막는다.
+    /// 그래서 처리기를 **프로세스를 못 만드는 몸**으로 띄운다: 자식에서 `RLIMIT_NPROC`를 1로 낮춘 뒤 exec한다 — 그 사용자에게는
+    /// 이미 프로세스가 여럿이라 그 뒤의 fork는 모두 실패한다. 그 몸으로 모든 갈래(새 파일, 옛 파일 읽기, id 읽기, 중단 읽기, 막힘)를
+    /// 밟아도 파일이 맞게 서야 한다.
+    ///
+    /// **침묵 줄을 뺀 사본을 띄운다.** 처리기는 fail-open이라 맨 앞에서 stderr를 닫는다(`exec 2>/dev/null`). 그대로면 쓸모없는
+    /// fork의 실패(「fork failed」)가 안 보인다 — 그 한 줄만 뺀 사본으로 stderr가 비었는지 본다. 그 줄이 정확히 하나이고 다른 줄이
+    /// stderr를 돌리지 않는지를 먼저 글자로 본다(그래야 뺀 사본이 전부를 말한다).
+    ///
+    /// 앵커: 같은 한도로 띄운 zsh의 `$(…)`는 실제로 실패한다 — 한도가 안 먹는 몸(root)이면 이 검사는 아무것도 못 잰다.
+    #[test]
+    fn the_handler_never_reaches_for_another_process() {
+        use std::os::unix::process::CommandExt;
+
+        const SILENCE: &str = "exec 2>/dev/null";
+        let code: Vec<&str> = HANDLER.lines().map(str::trim).filter(|line| !line.starts_with('#')).collect();
+        assert_eq!(code.iter().filter(|line| **line == SILENCE).count(), 1, "침묵 줄 `{SILENCE}`이 정확히 하나가 아니다");
+        for door in ["2>", "&>", ">&", "|&"] {
+            let others: Vec<&&str> = code.iter().filter(|line| **line != SILENCE && line.contains(door)).collect();
+            assert!(others.is_empty(), "침묵 줄 말고도 stderr를 돌리는 줄이 있다(`{door}`): {others:?}");
+        }
+
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("root로는 RLIMIT_NPROC가 안 먹어 이 검사를 건너뛴다");
+            return;
+        }
+        fn without_fork(mut command: std::process::Command) -> std::process::Command {
+            // SAFETY: fork 뒤 exec 전의 자식에서 async-signal-safe한 setrlimit 하나만 부른다.
+            unsafe {
+                command.pre_exec(|| {
+                    let limit = libc::rlimit { rlim_cur: 1, rlim_max: 1 };
+                    if libc::setrlimit(libc::RLIMIT_NPROC, &limit) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            command
+        }
+
+        let anchor = without_fork({
+            let mut zsh = std::process::Command::new("/bin/zsh");
+            zsh.args(["-f", "-c", "print -r -- $(print forked)"]);
+            zsh
+        })
+        .output()
+        .expect("zsh가 뜬다");
+        assert!(
+            !String::from_utf8_lossy(&anchor.stdout).contains("forked") && !anchor.stderr.is_empty(),
+            "RLIMIT_NPROC 1로도 zsh가 fork했다 — 이 몸으로는 아무것도 못 잰다: {anchor:?}"
+        );
+
+        let root = temp_root("handler-no-fork");
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let loud = hooks_dir(&root).join("loud.zsh");
+        let body: String = HANDLER.lines().filter(|line| line.trim() != SILENCE).map(|line| format!("{line}\n")).collect();
+        write_executable(&loud, &body).unwrap();
+
+        let shell = "1700-11";
+        let step = |agent: &str, event: &str, payload: &str| {
+            let command = without_fork(handler_command(&loud, &root, Some(shell), &[agent, event]));
+            let (wrote, out) = feed(command.into_spawned(), payload);
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(out.status.success(), "{event}: 0이 아닌 코드로 끝났다: {out:?}");
+            assert!(
+                out.stdout.is_empty() && out.stderr.is_empty(),
+                "{event}: 프로세스를 못 만드는 몸에서 처리기가 말을 했다 — 어딘가 fork한다: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            state_in(&root, shell)
+        };
+
+        let first = step("claude", "SubagentStart", &claude_subagent_start("aaa1"));
+        assert_eq!((first["event"].as_str(), subagent_ids(&first)), (Some("SubagentStart"), vec!["aaa1".to_string()]));
+        let second = step("claude", "Stop", CLAUDE_STOP);
+        assert_eq!((second["event"].as_str(), second["stopped"].as_bool()), (Some("Stop"), Some(true)));
+        let third = step("claude", "PostToolUseFailure", &claude_tool_failure(true));
+        assert_eq!((third["stopped"].as_bool(), subagent_ids(&third)), (Some(false), vec!["aaa1".to_string()]));
+        // 막힌 사건 — 앞에 먼 미래의 `at`을 적어 두면 어느 사건이든 옛 것이다.
+        std::fs::write(
+            state_path(&root, shell),
+            r#"{"agent":"claude","event":"PermissionRequest","at":99999999999999,"subagents":["aaa1"],"stopped":false,"payload":{}}"#,
+        )
+        .unwrap();
+        let blocked = step("claude", "SubagentStop", &claude_subagent_stop("aaa1"));
+        assert_eq!(
+            (blocked["event"].as_str(), blocked["at"].as_u64(), subagent_ids(&blocked)),
+            (Some("PermissionRequest"), Some(99_999_999_999_999), Vec::<String>::new())
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **호출 시간 — 에이전트가 부르는 두 모양으로 잰다**(S28). 판정은 구현 기록의 계측이 하고, 여기서는 로그를 남기고 크게 무너진
+    /// 것만 잡는다(`cargo test -p atelier-app --lib shells::tests::the_handler -- --nocapture`로 본다).
+    ///
+    /// - `args` 꼴: 셸 없이 곧바로 — claude가 `args`가 있는 command 훅을 띄우는 길(exec form).
+    /// - 셸 꼴: `/bin/sh -c '<경로> claude Stop'` — `args`가 없을 때 claude가 띄우는 길(Bun의 `shell: true`)이자 codex의 길. 셸 한
+    ///   벌이 더해진다.
+    #[test]
+    fn the_handler_answers_in_a_few_milliseconds_in_the_shapes_an_agent_calls_it() {
+        let root = temp_root("handler-time");
+        ready_handler(&root);
+        let handler = handler_path(&root);
+        let shell_line = format!("'{}' claude Stop", handler.display());
+        let payload = claude_subagent_stop("ace905bb8e05c8931");
+
+        let time = |command: std::process::Command| {
+            let started = std::time::Instant::now();
+            let (wrote, out) = feed(command.into_spawned(), &payload);
+            let took = started.elapsed();
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(out.status.success(), "0이 아닌 코드로 끝났다: {out:?}");
+            took
+        };
+        let (mut exec_form, mut shell_form) = (Vec::new(), Vec::new());
+        for _ in 0..40 {
+            exec_form.push(time(handler_command(&handler, &root, Some("1700-12"), &["claude", "Stop"])));
+            let mut sh = handler_command(Path::new("/bin/sh"), &root, Some("1700-12"), &["-c"]);
+            sh.arg(&shell_line);
+            shell_form.push(time(sh));
+        }
+        let p50 = |mut runs: Vec<std::time::Duration>| {
+            runs.sort();
+            runs[runs.len() / 2]
+        };
+        let (exec_p50, shell_p50) = (p50(exec_form), p50(shell_form));
+        eprintln!("계측(처리기 호출 p50, 40번): args 꼴 {exec_p50:?} · 셸 꼴 {shell_p50:?}");
+        assert!(exec_p50 < std::time::Duration::from_millis(100), "args 꼴 p50이 {exec_p50:?}다");
+        assert!(shell_p50 < std::time::Duration::from_millis(150), "셸 꼴 p50이 {shell_p50:?}다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 앱이 뜰 때(`lib.rs` setup) · 설치 버튼이 부르는 **한 함수가 두 처리기를 함께 세운다** — 설정이 부르는 옛 처리기는 그대로,
+    /// 새 처리기는 옆에 새 이름으로. 새 것은 exec 꼴(`args`)로 곧바로 불리므로 실행 권한이 있어야 한다.
+    #[test]
+    fn writing_the_hook_scripts_puts_the_new_handler_beside_the_old_one() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_root("write-both");
+        write_hook_script(&root).expect("스크립트를 세운다");
+
+        assert_eq!(std::fs::read_to_string(script_path(&root)).unwrap(), HOOK_SCRIPT, "옛 처리기가 안 섰다");
+        assert_eq!(std::fs::read_to_string(handler_path(&root)).unwrap(), HANDLER, "새 처리기가 안 섰다");
+        let mode = std::fs::metadata(handler_path(&root)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "새 처리기에 실행 권한이 없다: {mode:o}");
+        assert_ne!(SCRIPT_NAME, HANDLER_NAME, "새 처리기가 옛 이름을 쓴다 — 옛 설치본이 뜰 때마다 덮는다");
+        assert_eq!(files_in(&hooks_dir(&root)), vec![SCRIPT_NAME, HANDLER_NAME], "쓰는 중 파일이 남았다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **같은 처리기는 다시 안 쓴다 — 다르면 쓴다.** macOS는 새로 쓰인 실행 파일의 첫 실행을 한 번 검사해 첫 호출이 100ms를
+    /// 넘는다(`write_executable` 머리말). 앱이 뜰 때마다 새 파일로 갈아 끼우면 켤 때마다 첫 훅이 그 값을 문다. 그래서 두 번째
+    /// 세우기는 같은 파일(inode)을 그대로 둔다.
+    ///
+    /// 앵커: 내용이 다르거나(옛 빌드가 같은 이름에 다른 본문을 둔 흉내) 실행 권한이 빠졌으면 새로 쓴다 — 아무것도 안 쓰게
+    /// 무너지면 「그대로 둔다」가 저절로 참이 된다.
+    #[test]
+    fn the_same_handler_is_not_written_twice_but_a_different_one_is() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let root = temp_root("write-once");
+        let inode = || std::fs::metadata(handler_path(&root)).unwrap().ino();
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let first = inode();
+
+        write_hook_script(&root).expect("스크립트를 세운다");
+        assert_eq!(inode(), first, "같은 처리기를 새 파일로 다시 썼다 — 켤 때마다 첫 훅이 느려진다");
+
+        std::fs::write(handler_path(&root), "#!/bin/zsh -f\nexit 0\n").unwrap();
+        write_hook_script(&root).expect("스크립트를 세운다");
+        assert_eq!(std::fs::read_to_string(handler_path(&root)).unwrap(), HANDLER, "다른 본문을 그대로 뒀다");
+
+        std::fs::set_permissions(handler_path(&root), std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_hook_script(&root).expect("스크립트를 세운다");
+        let mode = std::fs::metadata(handler_path(&root)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755, "실행 권한이 빠진 처리기를 그대로 뒀다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 새 처리기가 적는 모양 그대로 한 장을 쓴다 — 서브에이전트 둘이 돌고 턴이 멈춘 셸.
     fn write_state(dir: &Path, shell: &str, at: u64) {
-        let json = serde_json::to_string(&state("claude", "Stop", at)).unwrap();
+        let json = format!(
+            r#"{{"agent":"claude","event":"Stop","at":{at},"subagents":["a1","b2"],"stopped":true,"payload":null}}"#
+        );
         // 훅과 같은 길로 쓴다 — 감시가 중간 단계를 보지 않게.
         let tmp = dir.join(format!(".{shell}.json.tmp"));
         std::fs::write(&tmp, json).unwrap();
@@ -733,6 +1509,8 @@ mod tests {
             event: event.to_string(),
             at,
             payload: serde_json::Value::Null,
+            subagents: 0,
+            stopped: false,
         }
     }
 
@@ -747,9 +1525,14 @@ mod tests {
         args: &[&str],
         stdin: &str,
     ) -> (std::io::Result<()>, std::process::Output) {
-        use std::io::Write;
+        feed(hook_command(&script_path(root), root, shell, args).spawn().expect("스크립트가 돈다"), stdin)
+    }
 
-        let mut command = std::process::Command::new(script_path(root));
+    /// 훅 한 장을 띄울 명령 — stdin · stdout · stderr는 파이프다. 부르는 쪽이 띄우고 `feed`로 페이로드를 준다.
+    ///
+    /// `ATELIER_SHELL`은 늘 명시한다: 검사 프로세스는 이 앱의 셸에서 떠 진짜 셸 키를 물려받았다.
+    fn hook_command(program: &Path, root: &Path, shell: Option<&str>, args: &[&str]) -> std::process::Command {
+        let mut command = std::process::Command::new(program);
         command
             .args(args)
             .env("ATELIER_HOME", root)
@@ -760,8 +1543,33 @@ mod tests {
             Some(id) => command.env("ATELIER_SHELL", id),
             None => command.env_remove("ATELIER_SHELL"),
         };
+        command
+    }
 
-        let mut child = command.spawn().expect("스크립트가 돈다");
+    /// 새 처리기를 띄울 명령 — `hook_command`에 **`HOME`까지 임시 루트로 옮긴다.** 새 처리기는 `ATELIER_HOME`이 없으면
+    /// `HOME` 아래로 간다 — 검사가 그 갈래를 밟을 때 진짜 홈에 쓰면 안 된다. (옛 python 검사는 `HOME`을 안 옮긴다 — macOS의
+    /// python은 `HOME/Library`에 캐시를 적어 「상태 폴더 밖에 안 쓴다」 검사가 그것을 제 자국으로 본다.)
+    fn handler_command(program: &Path, root: &Path, shell: Option<&str>, args: &[&str]) -> std::process::Command {
+        let mut command = hook_command(program, root, shell, args);
+        command.env("HOME", root);
+        command
+    }
+
+    /// 명령을 띄운다 — 못 뜨면 거기서 검사를 멈춘다(처리기 파일이 없거나 실행 권한이 없다).
+    trait Launch {
+        fn into_spawned(self) -> std::process::Child;
+    }
+
+    impl Launch for std::process::Command {
+        fn into_spawned(mut self) -> std::process::Child {
+            self.spawn().unwrap_or_else(|e| panic!("훅이 안 뜬다({e}): {self:?}"))
+        }
+    }
+
+    /// 뜬 훅에 페이로드를 다 쓰고 파이프를 닫은 뒤 끝을 기다린다.
+    fn feed(mut child: std::process::Child, stdin: &str) -> (std::io::Result<()>, std::process::Output) {
+        use std::io::Write;
+
         let mut pipe = child.stdin.take().expect("stdin이 열려 있다");
         let wrote = pipe.write_all(stdin.as_bytes()).and_then(|()| pipe.flush());
         // 파이프를 닫아야 스크립트의 `read()`가 EOF를 본다 — 안 닫으면 둘이 서로를 기다린다.
