@@ -270,6 +270,31 @@ export function dropEntry(draft: LayoutDraft, from: EntryPath, target: DropTarge
 }
 
 /**
+ * 두 초안이 **내용으로** 같은가 — 레이아웃(모르는 키까지)과 템플릿 본문. 키의 순서는 보지 않는다: 아이콘을
+ * 뗐다 다시 달면 그 키가 항목의 맨 뒤로 가지만 저장되는 것은 같다. 항목의 순서는 본다 — 그것이 레이아웃이다.
+ *
+ * 편집기의 「고친 것이 있다」가 이것이다(저장 가능 판정, `canSave`) — 고쳤다가 되돌린 초안은 고친 것이 없다.
+ */
+export function sameDraft(a: LayoutDraft, b: LayoutDraft): boolean {
+  return sameJson(a.layout, b.layout) && sameJson(a.templates, b.templates);
+}
+
+/** JSON 값 둘이 같은가 — 객체는 키의 순서 없이, 배열은 순서대로 견준다. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  return (
+    aKeys.length === bKeys.length &&
+    aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && sameJson(aRecord[key], bRecord[key]))
+  );
+}
+
+/**
  * `path`가 `ancestor` 자신이거나 그 아래인가 — 끌린 항목의 「자기 자신과 자기 아래」다. 놓기 계산이 이것으로 제
  * 안에 놓는 것을 거절하고(`dropEntry`), 트리는 이것으로 끄는 동안 흐려질 행을 가린다. 둘이 같은 답이라 흐려진
  * 행은 곧 놓을 수 없는 자리다.

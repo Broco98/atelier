@@ -6,6 +6,7 @@ import {
   editsAt,
   moveEntry,
   removeEntry,
+  sameDraft,
   setDescription,
   setIcon,
   setKind,
@@ -779,5 +780,30 @@ describe("트리를 고쳐도 모르는 키가 산다", () => {
       since: find(layout.root.children, "decisions.md")?.since,
       color: find(layout.root.children, "tickets")?.color,
     }).toEqual({ owner: "사람", note: "손으로 적은 메모", since: "0.14", color: "red" });
+  });
+});
+
+// **「고친 것이 있다」는 내용으로 잰다**(구현 스펙 5절 — 저장 가능 판정). 고쳤다가 되돌린 초안은 고친 것이 없다 —
+// 아이콘을 뗐다 다시 달면 키의 자리가 바뀌지만 뜻은 같다. 템플릿 본문과 모르는 키도 내용이다.
+describe("같은 초안", () => {
+  it("고쳤다가 되돌리면 같다 — 키의 순서는 보지 않는다", () => {
+    const back = setIcon(setIcon(opened(), [0], null), [0], "compass");
+    expect(Object.keys(back.layout.root.children![0])).not.toEqual(
+      Object.keys(opened().layout.root.children![0]),
+    );
+    expect(sameDraft(back, opened())).toBe(true);
+    expect(sameDraft(setDescription(setDescription(opened(), [], "새 방침"), [], "방침 문단."), opened())).toBe(true);
+  });
+
+  it("필드 하나, 템플릿 본문 하나, 모르는 키 하나만 달라도 다르다", () => {
+    expect(sameDraft(setPattern(opened(), [2, 0], "ticket"), opened())).toBe(false);
+    expect(sameDraft(setTemplateBody(opened(), [1], "# 결정\n\n"), opened())).toBe(false);
+    const other = opened();
+    other.layout.root.children![2].children![0].color = "blue";
+    expect(sameDraft(other, opened())).toBe(false);
+  });
+
+  it("항목의 순서가 다르면 다르다", () => {
+    expect(sameDraft(moveEntry(opened(), [1], "up")!.draft, opened())).toBe(false);
   });
 });
