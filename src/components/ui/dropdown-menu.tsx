@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px(변형 wide는 200px — 아카이브 거르개의 지금 값), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 5px·항목 사이 1px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·9px·9px·gap-2·shrink-0, Select 항목과 같은 것)·12.5px, 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크 항목과 라벨은 아직 registry 그대로다. 하위 메뉴(Sub·SubTrigger·SubContent)는 걷었다 — 쓰는 자리가 없고, SubContent는 앱 카드 위에 registry 카드 모양(rounded-lg·bg-popover·ring-1·p-1)을 className으로 다시 덮었다. 폭 변형 layout(260px — 설정 「spec 레이아웃」 행의 ⋯)과 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — 높이가 내용을 따르고 위로 맞추며 위아래 7px, 가로 규격은 menu-row와 같다)를 더했다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px(변형 wide는 200px — 아카이브 거르개의 지금 값), 안쪽 p-1→menu-list(index.css 한 곳 — 세로 flex·안쪽 5px·항목 사이 1px, Select 목록과 같은 것), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·9px·9px·gap-2·shrink-0, Select 항목과 같은 것)·12.5px, 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, Select 항목과 같은 것. 켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다), 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크 항목과 라벨은 아직 registry 그대로다. 하위 메뉴(Sub·SubTrigger·SubContent)는 걷었다 — 쓰는 자리가 없고, SubContent는 앱 카드 위에 registry 카드 모양(rounded-lg·bg-popover·ring-1·p-1)을 className으로 다시 덮었다. 폭 변형 layout(260px — 설정 「spec 레이아웃」 행의 ⋯)과 항목 크기 note(이름 아래 설명 한 줄을 이는 두 줄 항목 — menu-row를 부르고 h-auto로 고정 높이를 풀며 items-start로 위로 맞추고 위아래 7px)를 더했다.
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
@@ -28,12 +28,13 @@ const CONTENT_WIDTH = {
 } as const
 
 // 항목 한 줄의 크기. 보통은 menu-row(32px 한 줄)다. `note`는 이름 아래 설명 한 줄을 이는 두 줄 항목이라
-// 높이가 내용을 따르고 아이콘이 이름 줄에 맞게 위로 선다 — 가로 규격(안쪽 9px · 모서리 9px · 틈 8px)은 menu-row와
-// 같다. menu-row의 고정 높이를 className으로 덮지 않고 여기서 따로 적는다 — 유틸리티끼리의 겨룸은 정렬 순서가
-// 정해서 쓰는 자리에서 덮으면 이기는 쪽이 보장되지 않는다.
+// 높이가 내용을 따르고 아이콘이 이름 줄에 맞게 위로 선다. 가로 규격(안쪽 9px · 모서리 9px · 틈 8px)을 옮겨 적지
+// 않고 menu-row를 부른다(S40 — 규격은 index.css 한 곳) — 고정 높이만 `h-auto`로 풀고, 위로 맞춤과 위아래 7px을
+// 더한다. 덮는 코어 유틸리티는 menu-row 뒤에 선다 — 커스텀 @utility가 앞에 선다(index.css `floating-card` 주석 ·
+// toggle.tsx 머리말).
 const ITEM_SIZE = {
   default: "menu-row items-center",
-  note: "shrink-0 items-start gap-2 rounded-[9px] px-[9px] py-[7px]",
+  note: "menu-row h-auto items-start py-[7px]",
 } as const
 
 function DropdownMenuContent({

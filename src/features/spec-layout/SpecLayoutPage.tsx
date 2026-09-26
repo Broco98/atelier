@@ -310,7 +310,7 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
         >
           <RotateCcw aria-hidden className="mt-[3px] size-3.5" strokeWidth={1.9} />
           <span className="flex min-w-0 flex-col gap-0.5">
-            <span id={titleId} className="text-[13px] font-medium">
+            <span id={titleId} className="font-medium">
               기본값으로 되돌리기
             </span>
             <span id={noteId} className="text-[12px] leading-[1.5] text-tertiary">
