@@ -175,16 +175,21 @@ pub(crate) fn template_verdict_with(
     let mut stack = vec![&layout.root];
     while let Some(entry) = stack.pop() {
         if let Some(template) = &entry.template {
-            let hidden = Path::new(template)
-                .components()
-                .any(|part| part.as_os_str().to_string_lossy().starts_with('.'));
-            if !hidden && exists(template) {
+            if !hidden_template(template) && exists(template) {
                 present.insert(template.clone());
             }
         }
         stack.extend(&entry.children);
     }
     TemplateVerdict { present, folder: shown }
+}
+
+/// 템플릿 경로에 점으로 시작하는 조각이 있는가(`.plan.md`, `.templates/adr.md`) — 판정은 그런 템플릿을
+/// 없는 것으로 친다(`template_verdict`의 까닭). **규칙은 이 한 자리다**: 저장의 검증(`store::validate`)도
+/// 이것으로 그런 경로를 거절한다 — 받아 쓰면 저장은 됐다는데 그 `Template:` 줄이 영영 실리지 않는다.
+/// 손으로 적은 `layout.json`에 든 것은 거절하지 않고 판정이 없는 것으로 친다.
+pub(crate) fn hidden_template(template: &str) -> bool {
+    Path::new(template).components().any(|part| part.as_os_str().to_string_lossy().starts_with('.'))
 }
 
 #[cfg(test)]

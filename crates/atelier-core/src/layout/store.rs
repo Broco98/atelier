@@ -13,8 +13,8 @@ use super::parse::{
 };
 use super::render::{render_layout, render_with_lines, EntryLines, Rendered};
 use super::resolve::{
-    folder_error, folder_present, layout_folder, layout_id, read_layout_file, template_verdict,
-    template_verdict_with, Unreadable,
+    folder_error, folder_present, hidden_template, layout_folder, layout_id, read_layout_file,
+    template_verdict, template_verdict_with, Unreadable,
 };
 use crate::atomic::write_atomically;
 use crate::{Mode, Result};
@@ -67,7 +67,8 @@ pub struct LayoutPreview {
     /// 그 안내문에서 항목마다 차지한 줄 — 팝업이 고른 항목의 줄을 칠한다. 글이 없으면 비었다.
     pub lines: Vec<EntryLines>,
     pub errors: Vec<LayoutError>,
-    /// render의 경고 — 저장해도 실리지 않을 템플릿(점 파일).
+    /// render의 경고. 검증이 통과한 초안에는 늘 비었다 — 가리키는 템플릿은 모두 초안이나 디스크에 본문이
+    /// 있고 점 경로가 아니다(`validate`). 저장의 답(`Rendered`)과 모양을 맞추려 둔다.
     pub warnings: Vec<String>,
 }
 
@@ -173,8 +174,8 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
 /// 지금 본문을 그대로 둔다** — 에이전트는 바꾸는 것만 넘기고, 편집기는 늘 전부 넘긴다.
 ///
 /// - **먼저 검증한다. 실패하면 아무것도 쓰지 않는다.** 읽기(parse)의 검증에 더해, 가리키는
-///   템플릿은 인자나 디스크에 본문이 있어야 하고, 넘긴 본문은 어느 파일 항목이 가리키는 것이어야
-///   한다.
+///   템플릿은 점으로 시작하는 조각이 없고 인자나 디스크에 본문이 있어야 하고, 넘긴 본문은 어느 파일
+///   항목이 가리키는 것이어야 한다.
 /// - 쓰는 순서는 템플릿 → `layout.json` → 빠진 템플릿 지우기다. 파일마다 원자적으로 쓴다(점으로
 ///   시작하는 임시 파일 → rename) — resolve도 감시도 점 파일을 보지 않는다.
 /// - 처음 저장이 쓰다가 실패하면 만든 폴더를 지운다 — 실패한 저장이 내장본을 깨진 폴더로 가리지 않는다.
@@ -413,8 +414,8 @@ fn folded_parts(path: &str) -> Vec<String> {
         .collect()
 }
 
-/// 저장의 검증 — 읽기(parse)의 검증에 더해, 가리키는 템플릿은 인자나 디스크에 본문이 있어야 하고, 넘긴
-/// 본문은 어느 파일 항목이 가리키는 것이어야 한다. **저장과 미리보기가 이 한 벌을 지난다** — 둘이 갈리면
+/// 저장의 검증 — 읽기(parse)의 검증에 더해, 가리키는 템플릿은 점으로 시작하는 조각이 없고 인자나 디스크에
+/// 본문이 있어야 하고, 넘긴 본문은 어느 파일 항목이 가리키는 것이어야 한다. **저장과 미리보기가 이 한 벌을 지난다** — 둘이 갈리면
 /// 미리보기가 풀어 준 저장을 저장이 거절하거나, 잠근 저장이 사실은 되는 것이 된다.
 fn validate(
     layout: serde_json::Value,
@@ -431,8 +432,11 @@ fn validate(
     }
 }
 
-/// 가리키는데 인자에도 디스크에도 본문이 없는 템플릿 — 항목마다 위치가 붙은 오류다. 문서 순서
-/// (깊이 우선)로 쌓는다. 그대로 저장하면 그 `Template:` 줄이 빠진 채 에이전트에게 간다.
+/// 저장해도 에이전트에게 가지 않을 템플릿 — 항목마다 위치가 붙은 오류다. 문서 순서(깊이 우선)로
+/// 쌓는다. 그대로 저장하면 그 `Template:` 줄이 빠진 채 에이전트에게 간다.
+///
+/// - 점으로 시작하는 조각이 든 경로 — resolve가 없는 것으로 친다(`hidden_template`).
+/// - 인자에도 디스크에도 본문이 없는 경로.
 fn unbacked_templates(
     layout: &SpecLayout,
     folder: &Path,
@@ -440,13 +444,17 @@ fn unbacked_templates(
 ) -> Vec<LayoutError> {
     let mut errors = Vec::new();
     walk(&layout.root, &mut Vec::new(), &mut |entry, path| {
-        if let Some(template) = &entry.template {
-            if !backed(template, folder, templates) {
-                errors.push(LayoutError::at(
-                    path,
-                    format!("template {template:?} is neither given nor in the layout folder"),
-                ));
-            }
+        let Some(template) = &entry.template else { return };
+        if hidden_template(template) {
+            errors.push(LayoutError::at(
+                path,
+                format!("template {template:?} has a part that starts with `.`, so agents never get it"),
+            ));
+        } else if !backed(template, folder, templates) {
+            errors.push(LayoutError::at(
+                path,
+                format!("template {template:?} is neither given nor in the layout folder"),
+            ));
         }
     });
     errors
@@ -767,6 +775,28 @@ mod tests {
         assert_eq!(errors[0].path, Some(vec![2]), "{errors:?}");
         assert!(errors[0].message.contains("gone.md"), "{errors:?}");
         assert_eq!(files_in(root.path(), "atelier"), before);
+    }
+
+    /// **점으로 시작하는 조각이 든 템플릿 경로는 그 항목 자리에서 거절된다** — resolve는 그런 템플릿을
+    /// 없는 것으로 친다(원자적 쓰기의 임시 파일 자리다). 받아 쓰면 저장은 됐다는데 그 `Template:` 줄은
+    /// 에이전트에게 영영 가지 않는다. 미리보기도 같은 검증을 지나 글이 없다. 아무것도 쓰지 않는다.
+    #[test]
+    fn a_template_path_with_a_part_starting_with_a_dot_is_refused_at_its_entry() {
+        for template in [".plan.md", ".templates/adr.md", "sub/.plan.md"] {
+            let root = tempfile::tempdir().unwrap();
+            let given = bodies(&[(template, "# plan\n")]);
+
+            let preview = preview_layout(root.path(), "atelier", pointing_to(template), &given).unwrap();
+            let outcome = save_layout(root.path(), "atelier", pointing_to(template), &given).unwrap();
+
+            let SaveOutcome::Refused(errors) = outcome else { panic!("{template}: 저장됐다: {outcome:?}") };
+            assert_eq!(errors.len(), 1, "{template}: {errors:?}");
+            assert_eq!(errors[0].path, Some(vec![0]), "{template}: {errors:?}");
+            assert!(errors[0].message.contains(template), "{template}: {errors:?}");
+            assert_eq!(preview.errors, errors, "{template}: 미리보기와 저장의 검증이 갈렸다");
+            assert_eq!(preview.text, None, "{template}");
+            assert!(!root.path().join("layouts/atelier").exists(), "{template}: 거절된 저장이 폴더를 만들었다");
+        }
     }
 
     /// 데이터 루트를 담은 폴더 아래 모든 경로. 저장이 데이터 루트 **밖에** 무엇이든 만들면 드러난다.
