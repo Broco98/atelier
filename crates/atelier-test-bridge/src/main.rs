@@ -174,6 +174,16 @@ const HANDLERS: &[(&str, Handler)] = &[
             &serde_json::from_value(value(a, "templates")?).map_err(err)?,
         ))
     }),
+    // 편집기의 미리보기(티켓 14) — 같은 코어 입구(`preview_layout`)를 **진짜로** 탄다. 규칙이 코어에 있어
+    // 여기가 한 벌 더 갖지 않는다. 다리의 데이터 루트의 템플릿을 보되 아무것도 쓰지 않는다.
+    ("render_spec_layout", |a| {
+        ok(atelier_core::preview_layout(
+            &data_root(),
+            &text(a, "id")?,
+            value(a, "layout")?,
+            &serde_json::from_value(value(a, "templates")?).map_err(err)?,
+        ))
+    }),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];

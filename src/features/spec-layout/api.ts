@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Mode } from "@/mode";
 import type {
+  LayoutPreview,
   SaveAnswer,
   SpecLayoutJson,
   SpecLayoutRead,
@@ -30,4 +31,10 @@ export const specLayoutApi = {
    */
   write: (id: Mode, layout: SpecLayoutJson, templates: TemplateBodies) =>
     invoke<SaveAnswer>("write_spec_layout", { id, layout, templates }),
+  /**
+   * 편집기의 미리보기(티켓 14) — 저장하지 않은 초안을 저장하면 에이전트가 받을 글, 그 안의 항목의 줄, 검증 오류,
+   * 경고. 인자는 저장과 같다(템플릿은 늘 전부). **아무것도 쓰지 않는다.** 오류가 있으면 글이 없다.
+   */
+  render: (id: Mode, layout: SpecLayoutJson, templates: TemplateBodies) =>
+    invoke<LayoutPreview>("render_spec_layout", { id, layout, templates }),
 };

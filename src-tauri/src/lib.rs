@@ -294,6 +294,7 @@ pub fn run() {
             commands::revert_spec_layout,
             commands::read_spec_layout,
             commands::write_spec_layout,
+            commands::render_spec_layout,
             commands::quit_app,
         ])
         .build(tauri::generate_context!())

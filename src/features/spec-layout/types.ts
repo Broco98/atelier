@@ -89,3 +89,26 @@ export type SpecLayoutRead = ReadableSpecLayout | UnreadableSpecLayout;
 export interface SaveAnswer {
   errors: LayoutError[];
 }
+
+/**
+ * 안내문에서 항목 하나가 차지한 줄(엔진의 `EntryLines`). `path`는 오류의 자리와 같은 모양이고(`[]`이 맨 위 항목
+ * — 방침 문단), `start`는 안내문을 `\n`으로 가른 줄을 0부터 센 첫 줄이다. 미리보기 팝업이 고른 항목의 줄을
+ * 칠한다 — 줄 규칙은 엔진의 것이라 앱이 글을 다시 읽어 셈하지 않는다.
+ */
+export interface EntryLines {
+  path: number[];
+  start: number;
+  count: number;
+}
+
+/**
+ * 저장하지 않은 초안의 미리보기(`render_spec_layout`) — 그 초안을 저장하면 에이전트가 받을 안내문과 그 안의
+ * 항목의 줄, 검증 오류, 경고가 한 답에 온다. 오류의 모양은 저장의 답과 같다. **오류가 있으면 글이 없다**
+ * (`text: null`, 결정 28).
+ */
+export interface LayoutPreview {
+  text: string | null;
+  lines: EntryLines[];
+  errors: LayoutError[];
+  warnings: string[];
+}

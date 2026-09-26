@@ -375,6 +375,19 @@ pub async fn write_spec_layout(
     atelier_core::save_layout(&atelier_core::data_root(), &id, layout, &templates).map_err(err)
 }
 
+/// 편집기의 미리보기(티켓 14) — 저장하지 않은 초안을 저장하면 에이전트가 받을 안내문과 그 안의 항목의 줄,
+/// 검증 오류, 경고. 편집기는 초안이 바뀔 때마다 부른다 — 팝업을 닫은 동안에도 오류가 서고 저장이 잠긴다.
+/// 오류의 모양은 저장(`write_spec_layout`)과 같다. **디스크에 쓰지 않는다.** 규칙은 코어의 미리보기 함수에
+/// 있다 — 여기에 두면 L4 다리가 같은 규칙을 한 벌 더 가진다. id는 모드 이름 둘만 받는다.
+#[tauri::command]
+pub async fn render_spec_layout(
+    id: String,
+    layout: serde_json::Value,
+    templates: std::collections::BTreeMap<String, String>,
+) -> CmdResult<atelier_core::LayoutPreview> {
+    atelier_core::preview_layout(&atelier_core::data_root(), &id, layout, &templates).map_err(err)
+}
+
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
 /// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
 /// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).

@@ -4,6 +4,7 @@ import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type {
+  LayoutPreview,
   SaveAnswer,
   SpecLayoutState,
   UnreadableSpecLayout,
@@ -484,6 +485,38 @@ export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
 export const SPEC_LAYOUT_SAVED: SaveAnswer = { errors: [] };
 
 /**
+ * 편집기의 미리보기 답(spec 레이아웃 티켓 14) — **오류 없음 + 고정 글.** 글과 항목의 줄은 엔진의 `preview_layout`이 위
+ * 읽기(`SPEC_LAYOUT_READ`)를 고치지 않은 초안에 내는 그대로다(엔진으로 맞춰 봤다). 하네스는 인자마다 다른 답을 주지
+ * 못하므로 초안을 고쳐도 이 글이 온다 — 「고친 초안이 실려 나갔다」는 IPC 기록으로 잰다.
+ */
+export const SPEC_LAYOUT_RENDERED: LayoutPreview = {
+  text: [
+    "Spec layout — how to arrange documents inside `specDir`.",
+    "",
+    "spec 폴더의 방침 문단.",
+    "",
+    "  overview.md   work의 요약",
+    "  decisions.md  정한 것과 그 이유",
+    "                Template: ~/.atelier/layouts/atelier/decisions.md",
+    "  {n}-{name}/   판 하나",
+    "    tickets/    그 판의 티켓",
+    "",
+    "`{n}` is a number and `{name}` is any name without `/`. A trailing `/` marks a folder, and indentation shows " +
+      "what goes inside it. Where a file has a `Template:` line, read that template before you create the file " +
+      "and follow its shape.",
+  ].join("\n"),
+  lines: [
+    { path: [], start: 2, count: 1 },
+    { path: [0], start: 4, count: 1 },
+    { path: [1], start: 5, count: 2 },
+    { path: [2], start: 7, count: 1 },
+    { path: [2, 0], start: 8, count: 1 },
+  ],
+  errors: [],
+  warnings: [],
+};
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -579,6 +612,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 편집기의 [저장]이 나간다(티켓 11). **검증 거절도 성공 답이다** — 오류를 재는 시나리오는 이것을 오류
   // 데이터로 덮어쓴다(`ipcFailure`가 아니다). 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   write_spec_layout: SPEC_LAYOUT_SAVED,
+  // 편집기가 초안이 바뀔 때마다 짧은 지연 뒤에 나간다 — 연 초안에도 한 번 나간다(티켓 14). 그래서 **편집기를 여는
+  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 두 id가 같은 답을 받는다. 오류를
+  // 재는 시나리오는 이것을 오류 데이터로 덮어쓴다. 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  render_spec_layout: SPEC_LAYOUT_RENDERED,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //
