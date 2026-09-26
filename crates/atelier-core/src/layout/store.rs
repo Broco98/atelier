@@ -231,7 +231,7 @@ pub fn save_layout(
 /// 「저장하면 받을 것」이다. 그 초안을 저장한 뒤 에이전트가 받는 안내문과 글자까지 같다(스토리 29).
 /// - **검증은 저장과 같은 한 벌이다**(`validate`). 가리키는 템플릿이 초안 본문에도 디스크에도 없으면 그
 ///   항목 자리의 오류다. 오류가 있으면 **안내문이 없다**(결정 28) — 저장이 잠기므로 「저장하면 받을 글」이 없다.
-/// - 템플릿 판정은 「초안에 본문이 있거나 디스크에 있는 경로」다. 저장하면 있을 것이기 때문이다.
+/// - 템플릿 판정은 「초안에 본문이 있거나 디스크에 있는 경로」다(`backed`). 저장하면 있을 것이기 때문이다.
 /// - 물러서기 줄은 싣지 않는다. 지금 폴더가 깨졌어도 저장하면 이 초안이 그 자리를 고친다.
 /// - **디스크에 아무것도 쓰지 않는다.**
 ///
@@ -252,7 +252,7 @@ pub fn preview_layout(
         }
     };
     let verdict = template_verdict_with(&layout, crate::collapse_home(&folder), |template| {
-        templates.contains_key(template) || folder.join(template).is_file()
+        backed(template, &folder, templates)
     });
     let (rendered, lines) = render_with_lines(&layout, Some(&verdict), None);
     Ok(LayoutPreview {
@@ -386,7 +386,7 @@ fn unbacked_templates(
     let mut errors = Vec::new();
     walk(&layout.root, &mut Vec::new(), &mut |entry, path| {
         if let Some(template) = &entry.template {
-            if !templates.contains_key(template) && !folder.join(template).is_file() {
+            if !backed(template, folder, templates) {
                 errors.push(LayoutError::at(
                     path,
                     format!("template {template:?} is neither given nor in the layout folder"),
@@ -395,6 +395,12 @@ fn unbacked_templates(
         }
     });
     errors
+}
+
+/// 저장하면 레이아웃 폴더에 있을 템플릿인가 — 인자(초안)에 본문이 있거나 디스크에 있다. 저장의 검증
+/// (`unbacked_templates`)과 미리보기의 템플릿 판정(`preview_layout`)이 이 한 벌을 본다.
+fn backed(template: &str, folder: &Path, templates: &BTreeMap<String, String>) -> bool {
+    templates.contains_key(template) || folder.join(template).is_file()
 }
 
 /// 건넨 본문 가운데 **어느 파일 항목도 가리키지 않는 것** — 문서 전체의 오류다(자리가 없다).
