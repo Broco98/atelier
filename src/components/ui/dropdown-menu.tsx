@@ -1,8 +1,8 @@
-// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px(변형 wide는 200px — 아카이브 거르개의 지금 값), 안쪽 p-1→5px·항목 사이 1px(세로 flex gap-px), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→32px·9px·9px·gap-2·12.5px, 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → 줄 끝의 흐름 안 한 칸(켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다)·size-3·text-primary·굵기 2.4, 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크·하위 메뉴 항목과 라벨은 아직 registry 그대로다.
+// 앱 규격으로 고친 자리: 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-32→190px(변형 wide는 200px — 아카이브 거르개의 지금 값), 안쪽 p-1→5px·항목 사이 1px(세로 flex gap-px), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 항목 rounded-md·px-1.5·py-1·gap-1.5·text-sm→32px·9px·9px·gap-2·12.5px, 항목의 켜짐 focus:**:text-accent-foreground(자손 글자색 덮기)를 걷는다(켜진 줄은 바탕만 바뀐다 — 옅은 경로 힌트 같은 자손의 text-tertiary가 켜져도 옅게 남게), 구분선 -mx-1 my-1→my-[3px](안쪽 여백 안에 선다), 포털 상자를 z-50에 올린다(가림막이 쌓임 순서를 가진 조작까지 덮게). 열림 애니메이션 클래스는 registry 그대로다. 라디오 항목은 보통 항목과 같은 줄 규격이고 자손 덮기(focus:**:text-accent-foreground)를 걷는다(설명 칸의 옅은 글자가 켜져도 옅게 남게), 체크 지시자는 absolute right-2 + 줄의 pr-8 → 줄 끝의 흐름 안 한 칸(켜진 줄에만 서므로 빈 자리를 잡아 두지 않는다)·size-3·text-primary·굵기 2.4, 라디오 항목은 고르면 닫힌다(closeOnClick 기본 false→true, S33). 체크 항목과 라벨은 아직 registry 그대로다. 하위 메뉴(Sub·SubTrigger·SubContent)는 걷었다 — 쓰는 자리가 없고, SubContent는 앱 카드 위에 registry 카드 모양(rounded-lg·bg-popover·ring-1·p-1)을 className으로 다시 덮었다.
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
-import { ChevronRightIcon, CheckIcon } from "lucide-react"
+import { CheckIcon } from "lucide-react"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
@@ -104,55 +104,6 @@ function DropdownMenuItem({
         "group/dropdown-menu-item relative flex h-8 shrink-0 cursor-default items-center gap-2 rounded-[9px] px-[9px] text-[12.5px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
-      {...props}
-    />
-  )
-}
-
-function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
-  return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />
-}
-
-function DropdownMenuSubTrigger({
-  className,
-  inset,
-  children,
-  ...props
-}: MenuPrimitive.SubmenuTrigger.Props & {
-  inset?: boolean
-}) {
-  return (
-    <MenuPrimitive.SubmenuTrigger
-      data-slot="dropdown-menu-sub-trigger"
-      data-inset={inset}
-      className={cn(
-        "flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-popup-open:bg-accent data-popup-open:text-accent-foreground data-open:bg-accent data-open:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronRightIcon className="ml-auto" />
-    </MenuPrimitive.SubmenuTrigger>
-  )
-}
-
-function DropdownMenuSubContent({
-  align = "start",
-  alignOffset = -3,
-  side = "right",
-  sideOffset = 0,
-  className,
-  ...props
-}: React.ComponentProps<typeof DropdownMenuContent>) {
-  return (
-    <DropdownMenuContent
-      data-slot="dropdown-menu-sub-content"
-      className={cn("w-auto min-w-[96px] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
-      align={align}
-      alignOffset={alignOffset}
-      side={side}
-      sideOffset={sideOffset}
       {...props}
     />
   )
@@ -279,7 +230,4 @@ export {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 }
