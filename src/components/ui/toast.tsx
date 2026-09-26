@@ -1,4 +1,5 @@
 // 앱 규격으로 고친 자리: 한 장만 선다(S26) — 모든 토스트가 고정 id 하나로 나는 `showToast`가 앱의 유일한 호출이고, 관리자(`toast`)는 내보내지 않는다(id 없이 내면 둘이 쌓인다), Provider timeout 기본 5000→1600ms(지금 규칙)·관리자를 기본으로 문다, Viewport 자리 fixed 오른쪽 아래(sm:)·max-w-sm→absolute 아래 가운데 20px·z-20(화면마다 지금 토스트 자리에 둔다, S14 — 두 화면의 relative 상자가 받는다)·이름 Notifications→메시지(S37), Portal을 걷는다(자리가 화면 안이다), `Toaster`는 Provider를 싸지 않는다 — Viewport + 목록이고 Provider는 앱 루트 하나다, 토스트 쌓기(absolute·--toast-index·peek·scale·높이 변수·data-behind/expanded)를 걷고 흐름 안의 한 줄로 선다, 모양 rounded-2xl·border·bg-popover·shadow-lg·p-4·gap-3→10px·border-strong·bg-background·shadow-lg·px-3.5 py-2·gap-2·12.5px(옛 토스트), 밀어서 닫기를 걷는다(swipeDirection 빈 배열, S27), 닫기 버튼(Close toast)·Action·Content·Description을 걷는다, 아이콘 다섯(success·info·warning·error·loading)→둘(성공 Check 초록 · 거절 Ban 옅은 글자, 14px), 제목 text-sm font-medium→물려받는다, 들고남 translateY(150%) 500ms→100ms 페이드와 확대(결정 7, 아래 가운데를 기준점으로 — 쌓임이 없어 밀어 올릴 것이 없다). 포커스 링은 registry 그대로다.
+import type { ReactNode } from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "cn"
 import { BanIcon, CheckIcon } from "lucide-react"
@@ -76,28 +77,26 @@ function ToastTitle({ className, ...props }: ToastPrimitive.Title.Props) {
   )
 }
 
-function ToastIcon({ type }: { type: string | undefined }) {
-  if (type === "success") {
-    return (
-      <CheckIcon
-        data-slot="toast-icon"
-        className="size-3.5 shrink-0 text-green-700"
-        strokeWidth={2.4}
-      />
-    )
-  }
+/** 말마다 글리프 하나 — 한 일은 초록 체크, 못 한 일은 옅은 금지 표시다(결정 47). 말이 늘면 여기가 컴파일에서 깨진다. */
+const TOAST_ICONS: Record<ToastKind, ReactNode> = {
+  success: (
+    <CheckIcon
+      data-slot="toast-icon"
+      className="size-3.5 shrink-0 text-green-700"
+      strokeWidth={2.4}
+    />
+  ),
+  rejected: (
+    <BanIcon
+      data-slot="toast-icon"
+      className="size-3.5 shrink-0 text-tertiary"
+      strokeWidth={2.2}
+    />
+  ),
+}
 
-  if (type === "rejected") {
-    return (
-      <BanIcon
-        data-slot="toast-icon"
-        className="size-3.5 shrink-0 text-tertiary"
-        strokeWidth={2.2}
-      />
-    )
-  }
-
-  return null
+function ToastIcon({ kind }: { kind: ToastKind }) {
+  return TOAST_ICONS[kind]
 }
 
 function ToastList() {
@@ -105,7 +104,9 @@ function ToastList() {
 
   return toasts.map((toastItem) => (
     <Toast key={toastItem.id} toast={toastItem}>
-      <ToastIcon type={toastItem.type} />
+      {/* Base UI는 `type`을 문자열로만 안다. 관리자는 이 파일 밖에 안 나가고 토스트를 내는 길이 `showToast`
+          하나라 그 값은 늘 ToastKind다. */}
+      <ToastIcon kind={toastItem.type as ToastKind} />
       <ToastTitle />
     </Toast>
   ))
