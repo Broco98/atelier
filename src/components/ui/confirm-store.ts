@@ -30,9 +30,27 @@ export interface DialogAsk {
    * 원래 문제가 그대로 돌아온다. 어느 쪽이든 포커스가 창 **안으로** 오는 성질은 같다.
    */
   focus?: "confirm" | "cancel";
+  /**
+   * 취소 버튼의 글자. 안 주면 「취소」다(지금까지의 모든 물음). 떠날 때 확인은 「계속 편집」이다 — 거기서
+   * 취소가 무엇을 하는지(머문다)를 적는다. 진행 버튼이 할 일을 적는 것과 같은 까닭이다.
+   */
+  cancel?: string;
 }
 
-type Pending = DialogAsk & { answer: (ok: boolean) => void };
+/**
+ * 셋째 갈래를 받는 물음(spec 레이아웃 결정 27 — 떠날 때 확인). `extra`를 주면 그 글자의 버튼이 진행 버튼 **뒤**
+ * (맨 오른쪽)에 주 버튼으로 선다. 안 주면 여느 물음처럼 둘이다 — 할 수 있을 때만 서는 버튼이 그렇다.
+ *
+ * 답은 `askChoice`로만 받는다. `askDialog`의 답은 참·거짓이라 셋째 자리가 없고, 그래서 그 물음은 이것을 못 준다.
+ */
+export interface ChoiceAsk extends DialogAsk {
+  extra?: string;
+}
+
+/** 창의 답 — `true`는 진행 버튼, `false`는 취소(취소 버튼 · Esc · 바깥), `"extra"`는 셋째 버튼이다. */
+export type DialogAnswer = boolean | "extra";
+
+type Pending = ChoiceAsk & { answer: (answer: DialogAnswer) => void };
 
 /** 지금 떠 있는 창. `null`이면 없다. **한 번에 하나다.** */
 export const dialogStore = new Store<Pending | null>(null);
@@ -44,13 +62,20 @@ export const dialogStore = new Store<Pending | null>(null);
  * 화면에서 사라지고, 답을 기다리던 약속이 영영 안 풀린다.
  */
 export function askDialog(ask: DialogAsk): Promise<boolean> {
+  return askChoice(ask).then((answer) => answer === true);
+}
+
+/**
+ * 셋째 갈래를 받는 물음을 띄우고 답을 기다린다 — 띄우는 규칙(앞의 물음은 취소로 접는다)은 `askDialog`와 같다.
+ */
+export function askChoice(ask: ChoiceAsk): Promise<DialogAnswer> {
   return new Promise((resolve) => {
     dialogStore.state?.answer(false);
     dialogStore.setState(() => ({
       ...ask,
-      answer: (ok) => {
+      answer: (answer) => {
         dialogStore.setState(() => null);
-        resolve(ok);
+        resolve(answer);
       },
     }));
   });

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import AppDialog from "./AppDialog";
-import { askDialog, dialogStore, showProblem } from "./confirm-store";
+import { askChoice, askDialog, dialogStore, showProblem } from "./confirm-store";
 
 // 앱이 묻고 알리는 창. **OS 시트를 대신하는 자리**라 여기서 보는 것은 두 가지다 —
 // 무엇이 그려지는가(마크업)와, 답이 어떻게 오가는가(스토어).
@@ -63,6 +63,42 @@ describe("본문이 없는 물음", () => {
     expect(description(markup)).toBeNull();
     expect(markup).toContain("Atelier 종료");
     expect(markup).not.toMatch(/ id="/);
+  });
+});
+
+// **셋째 갈래**(spec 레이아웃 결정 27) — 떠날 때 확인은 [계속 편집] · [버리고 나가기] · [저장하고 나가기] 셋이다.
+// 기존 물음들은 그대로 둘이고 답도 참·거짓이다: 셋째 버튼과 취소 버튼의 글자는 그것을 주는 물음에만 선다.
+describe("셋째 버튼을 받는 물음", () => {
+  const buttonsOf = (markup: string) => [...markup.matchAll(/<button\b[^>]*>([^<]*)<\/button>/g)].map((m) => m[1]);
+
+  it("취소 버튼이 준 글자로 서고, 셋째 버튼이 진행 버튼 뒤에 선다", () => {
+    void askChoice({
+      title: "저장하지 않은 변경이 있어요",
+      cancel: "계속 편집",
+      confirm: "버리고 나가기",
+      danger: true,
+      extra: "저장하고 나가기",
+    });
+    expect(buttonsOf(render())).toEqual(["계속 편집", "버리고 나가기", "저장하고 나가기"]);
+  });
+
+  it("기존 물음은 [취소]와 진행 버튼 둘이다", () => {
+    void askDialog({ title: "셸 닫기", body: "실행 중인 명령이 있어요", confirm: "닫기", danger: true });
+    expect(buttonsOf(render())).toEqual(["취소", "닫기"]);
+  });
+
+  it("셋째 버튼을 누르면 그 답이 오고, 진행과 취소는 참·거짓 그대로다", async () => {
+    const ask = { title: "가", cancel: "머물기", confirm: "버리기", extra: "저장하기" };
+    const extra = askChoice(ask);
+    dialogStore.state!.answer("extra");
+    expect(await extra).toBe("extra");
+    expect(dialogStore.state).toBeNull();
+    const yes = askChoice(ask);
+    dialogStore.state!.answer(true);
+    expect(await yes).toBe(true);
+    const no = askChoice(ask);
+    dialogStore.state!.answer(false);
+    expect(await no).toBe(false);
   });
 });
 

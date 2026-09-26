@@ -58,7 +58,12 @@ function AppDialog() {
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="flex w-[330px] max-w-full flex-col rounded-[13px] border border-border-strong bg-background p-4 shadow-lg"
+        // 셋째 버튼이 서면 넓어진다 — 세 버튼의 글자가 330px 한 줄에 안 든다(프로토타입의 떠날 때 창이 400px다).
+        // 둘인 물음의 폭은 그대로다.
+        className={cn(
+          "flex max-w-full flex-col rounded-[13px] border border-border-strong bg-background p-4 shadow-lg",
+          pending.extra ? "w-[400px]" : "w-[330px]",
+        )}
       >
         <span className="text-[14px] font-semibold tracking-[-0.01em]">{pending.title}</span>
         {/* 본문이 없는 물음이 있다 — 셸이 0개인 종료 확인은 그 줄이 **아예 없다**(결정 15). 빈 줄의
@@ -77,7 +82,7 @@ function AppDialog() {
               onClick={() => pending.answer(false)}
               className="h-7 rounded-[8px] px-3 text-[12.5px] font-medium text-muted-foreground transition-colors outline-none hover:bg-state-1 focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              취소
+              {pending.cancel ?? "취소"}
             </button>
           )}
           <button
@@ -93,6 +98,16 @@ function AppDialog() {
           >
             {pending.confirm}
           </button>
+          {/* 셋째 버튼(떠날 때의 [저장하고 나가기])은 진행 버튼 뒤, 맨 오른쪽의 주 버튼이다. 할 수 있을 때만 준다. */}
+          {pending.extra && (
+            <button
+              type="button"
+              onClick={() => pending.answer("extra")}
+              className="h-7 rounded-[8px] bg-primary px-3 text-[12.5px] font-medium text-primary-foreground transition-colors outline-none hover:bg-primary/85 focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              {pending.extra}
+            </button>
+          )}
         </div>
       </div>
     </div>
