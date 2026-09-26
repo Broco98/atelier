@@ -592,21 +592,20 @@ fn layout_files(home: &std::path::Path, id: &str) -> Vec<(std::path::PathBuf, Ve
 
 /// 레이아웃 도구는 **읽기와 저장 둘뿐이다.** 되돌리기는 사람이 설정 페이지에서 한다(결정 21).
 /// 만들기·지우기·모드 선택은 기능 자체가 없다(결정 25) — 레이아웃은 모드마다 하나다.
+///
+/// 이름에 `layout`이 든 도구를 통째로 잰다. 되돌리기 같은 도구가 이름에 `layout` 없이 더해지면
+/// `listed_tools_are_exactly_this_wave`가 빨개진다 — 그 테스트가 도구 목록 전체를 고정한다.
 #[test]
 fn the_layout_tools_are_read_and_save_and_nothing_else() {
     let home = tempfile::tempdir().unwrap();
     let names = Server::start(home.path()).tool_names(2);
     let mut layout_tools: Vec<_> = names.iter().filter(|n| n.contains("layout")).cloned().collect();
     layout_tools.sort();
-    assert_eq!(layout_tools, ["atelier_get_spec_layout", "atelier_save_spec_layout"]);
-    for name in &names {
-        for verb in ["revert", "reset", "restore", "delete", "remove_spec", "create", "select", "use_"] {
-            assert!(
-                !(name.contains(verb) && name.contains("layout")),
-                "없어야 할 레이아웃 도구가 있다: {name}"
-            );
-        }
-    }
+    assert_eq!(
+        layout_tools,
+        ["atelier_get_spec_layout", "atelier_save_spec_layout"],
+        "레이아웃 도구는 읽기와 저장 둘뿐이다 — 되돌리기·만들기·지우기·모드 선택 도구는 없다"
+    );
 }
 
 /// 두 도구의 설명이 **참조를 가르친다** — 설정 페이지가 복사해 준 `~/.atelier/layouts/<id>/`를
