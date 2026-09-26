@@ -34,9 +34,23 @@ export function exceptionsFromText(text: string, defaults: string[] | null): str
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
-  const same =
-    defaults !== null &&
-    list.length === defaults.length &&
-    list.every((entry, i) => entry === defaults[i]);
-  return same ? null : list;
+  return sameList(list, defaults) ? null : list;
+}
+
+/**
+ * 이름 하나를 목록에 더한 값 — 판 04의 「예외로 두기」(프로세스 티켓 31 · 프로세스 스펙 S7). 칸에서 한 줄을 더하는 것과 **같은
+ * 규칙**이다: `null`이면 기본 목록 + 그 이름, 고친 목록이 있으면 그 끝에 더한다.
+ *
+ * 이미 든 이름이면 받은 값 그대로다(`null`이면 `null`) — 같은 줄을 두 번 적지 않는다. 더한 결과가 기본 목록과 같으면 `null`이다
+ * (`exceptionsFromText`와 같은 까닭 — 파일에는 사람이 고친 것만 적는다). 기본 목록은 부르는 쪽이 IPC로 받아 넘긴다.
+ */
+export function exceptionsWith(list: string[] | null, defaults: string[], name: string): string[] | null {
+  const shown = list ?? defaults;
+  if (shown.includes(name)) return list;
+  const next = [...shown, name];
+  return sameList(next, defaults) ? null : next;
+}
+
+function sameList(list: string[], defaults: string[] | null): boolean {
+  return defaults !== null && list.length === defaults.length && list.every((entry, i) => entry === defaults[i]);
 }

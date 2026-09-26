@@ -354,6 +354,22 @@ pub async fn processes_trend(pool: tauri::State<'_, Arc<pty::PtyPool>>) -> CmdRe
     Ok(pty::trend(&pool))
 }
 
+// 사람이 고른 프로세스를 끝낸다 — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리](프로세스 결정 6 · 티켓 31). 받는 것은
+// **화면이 보인 신원(pid, 시작 시각) 목록**이다 — 여기서 다시 판정하지 않는다. 신호까지 보내고 돌아오며(S5) 유예와 SIGKILL은
+// 풀의 뒤 스레드가 돈다. 정리 기록에 까닭 「손으로」로 적힌다. 신호 전에 표 한 장을 찍으니 blocking 풀에서 돌린다.
+//
+// 모드를 안 받는다 — 화면이 앱 전체를 보인다(프로세스 결정 9).
+#[tauri::command]
+pub async fn processes_end(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    targets: Vec<crate::processes::Identity>,
+) -> CmdResult<()> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::end_by_hand(&pool, &targets))
+        .await
+        .map_err(|e| format!("프로세스를 끝내지 못했습니다: {e}"))
+}
+
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
 // **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
 // (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
@@ -522,6 +538,18 @@ mod tests {
         let body = command_body("processes_trend");
         assert_eq!(body.matches("pty::trend(").count(), 1, "명령이 배경 표본의 고리를 안 읽는다");
         assert!(!body.contains("pty::summar") && !body.contains("pty::screen("), "추이 IPC가 부를 때마다 표를 찍는다");
+    }
+
+    /// **손으로 끝내기는 blocking 풀에서 신호까지 보낸다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 31). 끝내기는 정리
+    /// 기록에 적을 이름을 떠 두려 신호 전에 이 맥의 프로세스 표 한 장을 찍는다(ms) — async 명령 안에서 곧바로 부르면 그동안 tokio
+    /// 워커 하나가 멎는다. 유예와 SIGKILL은 풀의 뒤 스레드가 돈다(`pty::end_by_hand`).
+    #[test]
+    fn a_hand_picked_ending_signals_off_the_async_workers() {
+        let body = command_body("processes_end");
+        let blocking = body.find("spawn_blocking(").expect("손으로 끝내기를 blocking 풀로 안 보낸다 — 표를 찍는 동안 tokio 워커가 멎는다");
+        let end = body.find("pty::end_by_hand(").expect("명령이 풀의 손으로 끝내기를 안 부른다");
+        assert!(blocking < end, "끝내기({end})가 blocking 풀({blocking}) 밖에 있다");
+        assert_eq!(body.matches("pty::end_by_hand(").count(), 1, "끝내기를 두 번 부른다 — 한쪽이 blocking 풀 밖일 수 있다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던

@@ -388,6 +388,7 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = {
     otherInstances: {},
   },
   pool: [],
+  instances: [],
 };
 
 /**
@@ -519,6 +520,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 요약 카드의 추이(티켓 30) — `Processes` 화면이 열려 있는 동안 요약이 올 때마다 한 번 부른다. 답은 위 `PROCESS_TREND`(빈 고리)이고,
   // 스파크라인을 재는 검사가 덮어쓴다. **모드를 안 받는다** — 요약과 같은 앱 전체의 값이다.
   processes_trend: PROCESS_TREND,
+  // 신원 목록 끝내기(티켓 31) — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리]가 부른다. 값은 안 쓰인다(신호까지 보내고
+  // 돌아온다). 검사가 보는 것은 나갔는가와 그 인자(화면에 보인 신원)다(IPC 기록). **모드를 안 받는다** — 화면이 앱 전체다.
+  processes_end: null,
   pty_kill: null,
   // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).

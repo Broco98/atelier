@@ -548,7 +548,9 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     let readings = metrics::read(screen::targets(&verdict, &listed));
     let cpu = pool.screen_cpu().sample(Instant::now(), readings.cpu_ns());
     let measured = Measured { readings: readings.by_id, cpu };
-    ScreenSnapshot::of(&verdict, listed, &measured)
+    // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
+    let instances = screen::instances(&verdict, &records, |generation| pool.record.file(generation));
+    ScreenSnapshot::of(&verdict, listed, &measured, instances)
 }
 
 /// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
@@ -907,6 +909,43 @@ fn exited(pool: &Arc<PtyPool>, id: u32) {
     // 읽히고, 앱 종료가 이 세대의 표식째 끝낸다(`end`의 같은 자리와 같다).
     if let Err(e) = behind {
         eprintln!("atelier: could not start the shell-exit thread for pty {id}: {e}");
+    }
+}
+
+/// **사람이 고른 프로세스를 끝낸다** — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리](프로세스 결정 6 · 기본값 [끝내기] ·
+/// 티켓 31). 받은 신원 목록이 곧 대상이다 — **판정하지 않는다.** 화면이 보인 표본의 신원(그 프로세스와 그 PID 트리, 또는 묶음의
+/// 행 전부)을 그대로 받는다: 여기서 다시 가르면 사람이 본 것과 끝나는 것이 갈린다.
+///
+/// 표본과 신호 사이는 초 단위라 그사이 pid가 재사용될 수 있다 — 끝내기가 신호마다 직전에 신원을 다시 본다(프로세스 스펙 S4). 겹친
+/// 신원과 유예 중인 끝내기가 이미 SIGTERM을 보낸 신원은 끝내기가 거른다(`Claim::start_by_hand`). 셸 그룹은 없다.
+///
+/// 셸 닫기처럼 **신호까지 보내고 돌아온다**(S5). 유예와 SIGKILL은 뒤 스레드(`atelier-by-hand`)가 돌고, 그동안 이 끝내기는 진행 중인
+/// 끝내기 목록에 있어 앱이 닫히면 종료가 마감한다. 끝낸 것은 정리 기록에 까닭 「손으로」로 적는다(티켓 11) — 셸 키와 주인은 없다.
+/// 사람이 누른 것이라 `●`를 켜지 않는다(못 끝냄이 들면 켠다 — `cleanup_log::worth_a_look`). 표 한 장을 찍으니 `commands.rs`가
+/// blocking 풀에서 부른다.
+pub fn end_by_hand(pool: &PtyPool, targets: &[Identity]) {
+    if targets.is_empty() {
+        return;
+    }
+    // **셈이 먼저다** — 표를 찍는 사이 앱이 닫히면 종료가 이 끝내기가 목록에 오르기를 기다려 마감한다.
+    let claim = pool.endings.claim();
+    // 정리 기록에 적을 이름 · 명령줄을 **신호 전에** 떠 둔다 — SIGTERM에 곧 끝나는 것은 뒤에 찍으면 행이 없다. 받은 신원보다 먼저
+    // 태어난 것은 볼 까닭이 없어 env를 가지치기한다(S3). 신원이 표의 행과 다른 것(재사용된 pid)은 행이 없어 기록에 안 든다 —
+    // 끝내기도 그것에 신호를 안 보낸다.
+    let snapshot = snapshot::take(env_scope(targets.iter().map(|id| Some(*id))));
+    let aimed: Vec<Aimed> =
+        snapshot.procs.iter().filter(|row| targets.contains(&row.id)).map(|row| Aimed::of(row, false)).collect();
+    let running = claim.start_by_hand(targets);
+    let record = Arc::clone(&pool.record);
+    let behind = std::thread::Builder::new().name("atelier-by-hand".into()).spawn(move || {
+        let outcomes = running.finish();
+        if let Some(event) = cleanup_log::event(cleanup_log::now_ms(), Reason::Manual, None, None, &aimed, &outcomes) {
+            record.log(event);
+        }
+    });
+    // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다(`end`의 같은 자리와 같다). 기록은 빠진다.
+    if let Err(e) = behind {
+        eprintln!("atelier: could not start the by-hand ending thread: {e}");
     }
 }
 
@@ -1811,8 +1850,12 @@ mod tests {
             "두 목록이 한 잠금 안에 없다 — 잠금 {locked} · 판정의 셸 {judged} · 풀의 셸 {listed} · 기록 {records}"
         );
         assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &measured)"),
-            "판정 결과와 풀의 셸 목록과 지표를 그대로 싣지 않는다"
+            body.contains("ScreenSnapshot::of(&verdict, listed, &measured, instances)"),
+            "판정 결과와 풀의 셸 목록과 지표와 다른 인스턴스의 실행들을 그대로 싣지 않는다"
+        );
+        assert!(
+            body.contains("screen::instances(&verdict, &records,"),
+            "다른 인스턴스를 판정이 받은 그 기록으로 실행마다 안 묶는다 — 판정과 화면이 다른 순간의 기록을 본다"
         );
     }
 
@@ -1833,6 +1876,83 @@ mod tests {
         let sampled = body.find("pool.screen_cpu()").expect("풀이 쥔 앞 표본과 견준다");
         assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
         assert!(!body.contains("CpuMeter::default()"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
+    }
+
+    /// **손으로 끝내기는 셈 → 표 → 신호 순이다**(티켓 31 · 프로세스 스펙 S5). 판정하지 않는다 — 받은 신원이 화면에 보인 그대로다.
+    /// - 셈이 먼저다: 표를 찍는 사이 앱이 닫혀도 종료가 이 끝내기가 목록에 오르기를 기다려 마감한다(셸 닫기의 빼기 전 셈과 같다).
+    /// - 표는 **신호 전에** 찍는다: 정리 기록에 적을 이름 · 명령줄을 떠 둔다. SIGTERM에 곧 끝나는 것은 신호 뒤에 찍으면 행이 없어
+    ///   기록에서 빠진다.
+    /// - 끝내기는 `start_by_hand`다 — 겹친 신원과 유예 중인 신원을 거른다(`processes::ending`의 검사). 까닭은 「손으로」다.
+    ///
+    /// 실행으로는 장면을 못 세운다 — 셈과 표의 차례는 밖에서 안 보인다. 자리로 잰다. 끝내는 동작은 아래 실물 검사가 잰다.
+    #[test]
+    fn a_hand_picked_ending_counts_itself_reads_the_rows_then_signals() {
+        let body = body_of("pub fn end_by_hand(", "\n}\n");
+        let claimed = body.find("pool.endings.claim()").expect("판정 중으로 세지 않는다 — 표를 찍는 사이 종료가 이 끝내기를 모른다");
+        let taken = body.find("snapshot::take(").expect("기록에 적을 행을 표에서 뜨지 않는다");
+        let started = body.find(".start_by_hand(").expect("사람이 고른 신원의 끝내기로 시작하지 않는다");
+        assert!(claimed < taken && taken < started, "차례가 어긋났다 — 셈 {claimed} · 표 {taken} · 신호 {started}");
+        assert!(body.contains("Reason::Manual"), "정리 기록에 까닭 「손으로」를 안 남긴다");
+        assert!(!body.contains("verdict::"), "사람이 고른 신원을 판정으로 다시 가른다 — 화면에 보인 것과 끝나는 것이 갈린다");
+    }
+
+    /// **손으로 끝내기**(티켓 31) — 끝내기 IPC가 받은 신원 중 **시작 시각이 다른 pid(재사용)에는 신호가 안 가고**, 끝낸 것은 정리
+    /// 기록에 까닭 「손으로」로 남는다. 화면에 보인 표본과 신호 사이는 초 단위라 그사이 pid가 남에게 넘어갈 수 있다(S4).
+    ///
+    /// 자식 둘: 하나는 제 pid에 시작 시각을 1µs 틀린 신원으로 넘긴다(그 pid를 새로 받은 남의 모양 — 0.3초 내내 살아야 한다), 다른
+    /// 하나는 제 신원 그대로 넘긴다(앵커 — 끝나고 기록에 선다). 기록은 임시 루트에 연 이 풀의 인스턴스 기록 곁이다. 신호는 이 검사가
+    /// 띄운 자식에게만 간다 — 넘기는 신원이 그 둘뿐이다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_hand_picked_ending_leaves_a_reused_pid_alone_and_logs_what_it_ended() {
+        use std::time::Duration;
+
+        use crate::processes::cleanup_log::Reason;
+        use crate::processes::ending::Outcome;
+        use crate::processes::snapshot::identity_of;
+        use crate::processes::testkit::{holds_for, key, wait_until, Kid};
+        use crate::processes::Identity;
+
+        let root = temp_home("by-hand");
+        let pool = super::PtyPool::default();
+        super::open_record(&pool, &root, "test");
+        let (spared, ended) = (Kid::spawn("sleep", &key(31)), Kid::spawn("sleep", &key(32)));
+        let (spared_id, ended_id) = (spared.settle(), ended.settle());
+        let forged = spared_id.map(|id| Identity { pid: id.pid, started_us: id.started_us + 1 });
+
+        if let (Some(forged), Some(ended_id)) = (forged, ended_id) {
+            super::end_by_hand(&pool, &[forged, ended_id]);
+        }
+        let left_alone =
+            spared_id.is_some_and(|id| holds_for(Duration::from_millis(300), || identity_of(id.pid) == Some(id)));
+        let finished = ended_id.is_some_and(|id| wait_until(|| identity_of(id.pid) != Some(id)));
+        let mut events = Vec::new();
+        wait_until(|| {
+            events = pool.record.events();
+            !events.is_empty()
+        });
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(spared);
+        drop(ended);
+        let _ = std::fs::remove_dir_all(&root);
+
+        let ended_id = ended_id.expect("끝낼 자식이 5초 안에 제 세션을 열지 못했다");
+        spared_id.expect("남길 자식이 5초 안에 제 세션을 열지 못했다");
+        assert!(finished, "제 신원 그대로 넘긴 자식이 5초가 지나도 산다 — 손으로 끝내기가 아무것도 안 끝냈다");
+        assert!(left_alone, "시작 시각이 다른 신원인데 그 pid의 프로세스에 신호가 갔다");
+        let logged: Vec<(Reason, Option<String>, Option<String>, Vec<(u32, Outcome)>)> = events
+            .into_iter()
+            .map(|event| {
+                let targets = event.targets.iter().map(|target| (target.pid, target.outcome)).collect();
+                (event.reason, event.shell_key, event.owner, targets)
+            })
+            .collect();
+        assert_eq!(
+            logged,
+            vec![(Reason::Manual, None, None, vec![(ended_id.pid, Outcome::Ended)])],
+            "정리 기록에 「손으로」 한 줄이 끝낸 자식 하나로 서야 한다 — 재사용된 pid의 신원은 안 든다"
+        );
     }
 
     /// **배경 표본은 화면 스냅샷과 같은 순서로 모은다**(티켓 29 · 프로세스 스펙 S52 · S38). 표를 한 장 찍고(env 전부 — 출처 불명은

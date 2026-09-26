@@ -119,6 +119,23 @@ describe("구획 저장은 최신 설정에 자기 칸만 덮는다", () => {
     expect(file.now().notifications).toEqual({ enabled: false });
   });
 
+  // **값 대신 고치는 함수를 받는다**(프로세스 티켓 31). `Processes`의 「예외로 두기」는 터미널 구획의 칸 하나(예외 목록)만 고친다 —
+  // 그 구획을 저장 전에 읽어 값으로 넘기면, 그사이 설정 화면이 저장한 글꼴을 옛 사본으로 덮는다. 함수는 줄 안에서 **쓰는 순간의 최신
+  // 구획**을 받는다. 앞 저장(글꼴)이 줄에 먼저 섰고, 함수 저장은 그 뒤의 파일에서 짓는다.
+  it("값 대신 고치는 함수를 주면 쓰는 순간의 최신 구획에서 짓는다", async () => {
+    const file = fakeFile(opened);
+    const save = sectionSaver(file.read, file.write);
+
+    const [, written] = await Promise.all([
+      save("terminal", { ...opened.terminal, fontSize: 15 }),
+      save("terminal", (latest) => ({ ...latest, processExceptions: ["tmux", "esbuild"] })),
+    ]);
+
+    expect(file.now().terminal.fontSize, "함수 저장이 앞 저장의 글꼴을 옛 사본으로 덮었다").toBe(15);
+    expect(file.now().terminal.processExceptions).toEqual(["tmux", "esbuild"]);
+    expect(written).toEqual(file.now());
+  });
+
   // 한 번 실패해도 줄이 막히면 안 된다 — 다음 저장이 영영 안 나가면 화면은 「저장 중…」에 선다.
   it("앞 저장이 실패해도 다음 저장은 나간다", async () => {
     const file = fakeFile(opened);

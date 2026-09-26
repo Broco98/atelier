@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exceptionsFromText, exceptionsText } from "./process-exceptions";
+import { exceptionsFromText, exceptionsText, exceptionsWith } from "./process-exceptions";
 
 // 「셸을 닫아도 남길 프로세스」 칸의 글자 ↔ 저장할 값(프로세스 결정 5 · 프로세스 스펙 S7). 칸은 한 줄에 하나씩
 // 쓰는 목록이고, 파일의 `null`은 「기본 목록을 쓴다」다 — 기본 목록은 백엔드(판정이 쓰는 Rust 상수)가 준다.
@@ -55,5 +55,30 @@ describe("칸의 글자를 저장할 값으로", () => {
 
   it("기본 목록을 모르면 견주지 않고 목록 그대로다", () => {
     expect(exceptionsFromText("tmux\ndocker*", null)).toEqual(["tmux", "docker*"]);
+  });
+});
+
+// 판 04의 「예외로 두기」(프로세스 티켓 31 · 프로세스 스펙 S7) — `Processes` 행의 이름 하나를 목록에 더한다. 설정 칸에서 한 줄을
+// 더하는 것과 **같은 규칙**이다: `null`이면 기본 목록 + 그 이름을 적는다.
+describe("이름 하나를 목록에 더하기", () => {
+  it("`null`이면 기본 목록 + 그 이름이다", () => {
+    expect(exceptionsWith(null, DEFAULTS, "esbuild")).toEqual(["tmux", "docker*", "esbuild"]);
+  });
+
+  it("고친 목록이 있으면 그 끝에 더한다 — 기본 목록을 되살리지 않는다", () => {
+    expect(exceptionsWith(["colima"], DEFAULTS, "esbuild")).toEqual(["colima", "esbuild"]);
+    expect(exceptionsWith([], DEFAULTS, "esbuild")).toEqual(["esbuild"]);
+  });
+
+  // 이미 든 이름을 한 번 더 적으면 칸에 같은 줄이 둘 선다. `null`에 든 이름(기본 목록의 것)이면 `null` 그대로다 — 파일에는 사람이
+  // 고친 것만 적는다.
+  it("이미 든 이름이면 그대로다", () => {
+    expect(exceptionsWith(["colima", "esbuild"], DEFAULTS, "esbuild")).toEqual(["colima", "esbuild"]);
+    expect(exceptionsWith(null, DEFAULTS, "tmux")).toBeNull();
+  });
+
+  // 칸의 규칙(`exceptionsFromText`)과 같다 — 더한 결과가 기본 목록과 같으면 `null`이다. 그래야 다음 판의 기본 목록이 이 사람에게 닿는다.
+  it("더한 결과가 기본 목록과 같으면 `null`이다", () => {
+    expect(exceptionsWith(["tmux"], DEFAULTS, "docker*")).toBeNull();
   });
 });

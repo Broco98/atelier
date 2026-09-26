@@ -348,6 +348,7 @@ pub fn run() {
             commands::processes_snapshot,
             commands::processes_summary,
             commands::processes_trend,
+            commands::processes_end,
             commands::read_settings,
             commands::write_settings,
             commands::default_process_exceptions,

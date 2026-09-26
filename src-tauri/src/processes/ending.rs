@@ -214,6 +214,16 @@ struct Listed<K: Kernel> {
     endings: BTreeMap<u64, Ending<K>>,
 }
 
+impl<K: Kernel> Listed<K> {
+    /// 목록의 끝내기들이 이미 SIGTERM을 보낸 신원 — 보내려 할 때 이미 없던 신원은 안 든다.
+    fn signalled(&self) -> HashSet<Identity> {
+        self.endings
+            .values()
+            .flat_map(|ending| ending.targets.iter().filter(|(_, signalled)| *signalled).map(|(id, _)| *id))
+            .collect()
+    }
+}
+
 impl Default for InFlight {
     fn default() -> Self {
         InFlight::with_kernel(Os)
@@ -262,12 +272,9 @@ impl<K: Kernel> InFlight<K> {
             .wait_timeout_while(self.lock(), JUDGING_LIMIT, |listed| listed.judging > 0)
             .unwrap_or_else(|e| e.into_inner());
         let mut endings: Vec<Ending<K>> = listed.endings.values().cloned().collect();
+        let signalled = listed.signalled();
         drop(listed);
 
-        let signalled: HashSet<Identity> = endings
-            .iter()
-            .flat_map(|ending| ending.targets.iter().filter(|(_, signalled)| *signalled).map(|(id, _)| *id))
-            .collect();
         let fresh: Vec<Identity> = targets.iter().copied().filter(|id| !signalled.contains(id)).collect();
         endings.push(Ending::start_with(self.kernel.clone(), &fresh, groups));
         // 오른 차례는 거의 신호를 보낸 차례지만, 두 스레드에서는 뒤바뀔 수 있다 — 이른 마감이 늦은 것 뒤에서
@@ -299,6 +306,23 @@ impl<K: Kernel> Claim<K> {
         self.open = false;
         self.list.changed.notify_all();
         Running { list: Arc::clone(&self.list), id, ending }
+    }
+
+    /// **사람이 고른 신원 목록의 끝내기**(티켓 31 — `Processes`의 [끝내기] · [정리]). 판정 없이 받은 신원을 끝낸다. 셸 그룹은 없다 —
+    /// 셸을 닫는 길이 아니다.
+    ///
+    /// 받는 것은 화면이 **보인 표본의 신원**이라 신호와 사이가 초 단위다(프로세스 스펙 판 04 › 동작). 그사이 그 pid를 남이 받았으면
+    /// 신호 직전의 신원 확인이 거른다(`Ending::start_with` — S4) — 판정이 고른 것과 같은 길이다. 여기서 더 거르는 것은 둘이다.
+    /// - 같은 신원이 두 번 오면 한 번만 넘긴다.
+    /// - 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뺀다. 유예 중인 프로세스의 행은 다음 표본까지 화면에 남아 [끝내기]를 한 번 더
+    ///   누를 수 있다 — 두 번째 SIGTERM을 「그래도 끝내라」로 읽는 도구가 있다(`InFlight::close`와 같은 까닭). 그 신원의 마감(SIGKILL)은
+    ///   앞 끝내기가 제 마감 시각에 한다. 뺀 신원은 결과에 없다.
+    pub fn start_by_hand(self, targets: &[Identity]) -> Running<K> {
+        let signalled = self.list.lock().signalled();
+        let mut seen = HashSet::new();
+        let fresh: Vec<Identity> =
+            targets.iter().copied().filter(|id| !signalled.contains(id) && seen.insert(*id)).collect();
+        self.start(&fresh, &[])
     }
 }
 
@@ -615,9 +639,81 @@ mod tests {
     ///
     /// 「신호가 안 갔다」를 재는 줄은 그 pid를 **살아 있는 남**이 쥐게 두고, 받은 신호 목록을 통째로 견준다
     /// — 남이 없으면 신호가 가도 아무 일이 없어 그 줄은 아무것도 재지 않는다.
+    ///
+    /// 표는 입구 둘이 함께 쓴다 — 판정이 고른 것의 끝내기(`Ending::start_with`)와 사람이 고른 것의 끝내기(`Claim::start_by_hand`,
+    /// 티켓 31). 뒤의 것은 셸 그룹이 없어 그룹 없는 줄만 탄다.
     #[test]
     fn only_the_identity_that_was_judged_is_signalled() {
-        let cases = [
+        let mut wrong = Vec::new();
+        for case in survivor_cases() {
+            let fake = Fake::new(case.world, case.arrivals);
+            let outcomes: Vec<Outcome> = Ending::start_with(&fake, &case.targets, &case.groups)
+                .finish()
+                .into_iter()
+                .map(|(_, outcome)| outcome)
+                .collect();
+            let got = (fake.sent.borrow().clone(), outcomes, fake.ms());
+            let want = (case.sent, case.outcomes, case.done_at);
+            if got != want {
+                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
+            }
+        }
+        assert!(wrong.is_empty(), "끝내기가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **사람이 고른 신원 목록의 끝내기도 같은 표를 지난다**(티켓 31 — `Processes`의 [끝내기] · [정리]). 받는 신원은 화면에 보인
+    /// 표본의 것이라 신호와 사이가 초 단위다(프로세스 스펙 판 04 › 동작) — 그사이 그 pid를 남이 받았으면 SIGTERM도 SIGKILL도 그
+    /// 남에게 안 간다(S4). 셸 그룹을 받지 않는 입구라 그룹 없는 줄만 탄다. 앵커: 그룹 없는 줄이 하나라도 있다.
+    #[test]
+    fn a_hand_picked_ending_leaves_a_reused_pid_alone_like_any_other() {
+        let cases: Vec<Case> = survivor_cases().into_iter().filter(|case| case.groups.is_empty()).collect();
+        assert!(cases.len() >= 4, "그룹 없는 줄이 모자란다 — 이 입구가 재는 것이 없다");
+        let mut wrong = Vec::new();
+        for case in cases {
+            let fake = Fake::new(case.world, case.arrivals);
+            let list = Arc::new(InFlight::with_kernel(&fake));
+            let outcomes: Vec<Outcome> = list
+                .claim()
+                .start_by_hand(&case.targets)
+                .finish()
+                .into_iter()
+                .map(|(_, outcome)| outcome)
+                .collect();
+            let got = (fake.sent.borrow().clone(), outcomes, fake.ms());
+            let want = (case.sent, case.outcomes, case.done_at);
+            if got != want {
+                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
+            }
+            assert_eq!(list.listed(), vec![], "{} — 마감했는데 목록에 남았다", case.what);
+        }
+        assert!(wrong.is_empty(), "손으로 끝내기가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **사람이 고른 신원에는 SIGTERM이 한 번만 간다**(티켓 31). 같은 신원이 두 번 오면 한 번만 보낸다. 유예 중인 끝내기(앞서 누른
+    /// [끝내기])가 이미 SIGTERM을 보낸 신원도 다시 안 보낸다 — 그 행은 다음 표본까지 화면에 남아 한 번 더 누를 수 있고, 두 번째
+    /// SIGTERM을 「그래도 끝내라」로 읽는 도구가 있다(`InFlight::close`와 같은 까닭). 그 신원의 SIGKILL은 앞 끝내기가 제 마감에
+    /// 보낸다. 앵커: 겹치지 않은 신원(20)은 SIGTERM을 받는다.
+    #[test]
+    fn a_hand_picked_ending_signals_each_identity_once() {
+        let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20)], vec![]);
+        let list = Arc::new(InFlight::with_kernel(&fake));
+        let first = list.claim().start_by_hand(&[id(10)]);
+        let second = list.claim().start_by_hand(&[id(10), id(20), id(20)]);
+        let second = second.finish();
+        let first = first.finish();
+
+        assert_eq!(
+            fake.sent.borrow().clone(),
+            vec![(0, P(10), SIGTERM), (0, P(20), SIGTERM), (2000, P(10), SIGKILL)],
+            "겹친 신원이나 유예 중인 신원에 SIGTERM이 또 갔다"
+        );
+        assert_eq!(second, vec![(id(20), Outcome::Ended)], "둘째 끝내기가 맡은 것이 어긋났다");
+        assert_eq!(first, vec![(id(10), Outcome::Forced)], "앞 끝내기가 제 마감에 SIGKILL을 안 보냈다");
+    }
+
+    /// 위 표 — 신원 확인 · 유예 · SIGKILL · 셸 그룹의 줄들.
+    fn survivor_cases() -> Vec<Case> {
+        vec![
             Case {
                 what: "신원이 같은 것만 SIGTERM을 받는다 — pid가 같아도 시작 시각이 다르면 빠진다",
                 world: vec![proc(10), proc(11).born(999).on_term(Fate::Ignores), proc(13)],
@@ -727,23 +823,7 @@ mod tests {
                 outcomes: vec![],
                 done_at: 2000,
             },
-        ];
-
-        let mut wrong = Vec::new();
-        for case in cases {
-            let fake = Fake::new(case.world, case.arrivals);
-            let outcomes: Vec<Outcome> = Ending::start_with(&fake, &case.targets, &case.groups)
-                .finish()
-                .into_iter()
-                .map(|(_, outcome)| outcome)
-                .collect();
-            let got = (fake.sent.borrow().clone(), outcomes, fake.ms());
-            let want = (case.sent, case.outcomes, case.done_at);
-            if got != want {
-                wrong.push(format!("{}\n    기대 {want:?}\n    받음 {got:?}", case.what));
-            }
-        }
-        assert!(wrong.is_empty(), "끝내기가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+        ]
     }
 
     /// 결과는 받은 대상의 순서 그대로, 신원째 돌아온다 — 부르는 쪽(정리 기록)이 그것으로 행을 찾는다.

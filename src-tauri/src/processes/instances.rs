@@ -226,6 +226,15 @@ impl Record {
         }
     }
 
+    /// **한 세대의 기록 한 장** — 디스크에서(티켓 31). `Processes`의 「다른 인스턴스」가 실행마다 빌드 종류와 버전을 보인다(프로세스
+    /// 스펙 S54) — 판정의 기록(`records`)은 그 두 칸을 안 싣는다(판정이 안 읽어서다). 없거나 깨졌으면 `None`이다(`read`).
+    ///
+    /// 열지 않은 기록은 어디를 읽을지 몰라 늘 `None`이다. 읽기는 잠금 밖이다(`events`와 같은 까닭).
+    pub fn file(&self, generation: &str) -> Option<InstanceFile> {
+        let dir = self.lock().place.as_ref().map(|place| place.dir.clone())?;
+        read(&dir, generation)
+    }
+
     /// 판정에 줄 기록들 — 이 실행의 것은 **메모리에서**, 남의 것은 디스크에서. 제 파일은 쓰기가 실패했으면 낡았을 수 있고,
     /// 판정이 이 실행의 셸 목록을 여기서 읽는다. **스냅샷을 찍은 뒤에** 부른다(프로세스 스펙 S52) — 그 사이 뜬 셸의
     /// 키가 여기 이미 있다.
@@ -719,6 +728,31 @@ mod tests {
         record.log(event(2));
         assert_eq!(logged(&dir), [2], "닫은 뒤에 온 종료의 사건을 안 적었다");
         assert_eq!(read(&dir, "G"), None, "사건을 적으며 닫은 인스턴스 기록을 되살렸다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **다른 실행의 기록 한 장을 디스크에서 읽는다**(티켓 31) — `Processes`의 「다른 인스턴스」가 실행마다 빌드 종류와 버전을
+    /// 보인다(프로세스 스펙 S54). 판정의 기록(`records`)은 그 두 칸을 안 싣는다. 없거나 깨진 기록은 `None`이고, 열지 않은 기록은
+    /// 어디를 읽을지 몰라 늘 `None`이다(검사의 풀은 진짜 데이터 루트를 안 읽는다).
+    #[test]
+    fn another_runs_record_is_read_from_the_folder() {
+        let dir = temp_dir("file");
+        let other = Record::default();
+        other.open(Place { build: Build::Release, version: "0.15.0".into(), ..place(&dir, "H") });
+        other.raise("H-3");
+        assert_eq!(Record::default().file("H"), None, "열지 않은 기록이 폴더를 읽었다");
+
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        let file = record.file("H").expect("다른 실행의 기록을 못 읽었다");
+        assert_eq!(
+            (file.build, file.version.as_str(), file.shell_keys.as_slice()),
+            (Build::Release, "0.15.0", ["H-3".to_string()].as_slice()),
+            "다른 실행의 빌드 · 버전 · 셸 키를 그대로 못 읽었다"
+        );
+        assert_eq!(record.file("Z"), None, "없는 세대의 기록을 읽었다");
+        std::fs::write(dir.join("B.json"), "{\"app\":").unwrap();
+        assert_eq!(record.file("B"), None, "깨진 기록을 기록으로 읽었다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

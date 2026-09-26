@@ -60,11 +60,27 @@ export interface PoolShell {
   metrics: ProcessMetrics;
 }
 
+/**
+ * 다른 인스턴스 하나 — **지금 떠 있는 다른 아틀리에 실행**(CONTEXT 「다른 인스턴스」 · 프로세스 스펙 S54 · 티켓 31). 화면이 실행마다
+ * 빌드 종류와 버전을 머리로 세우고, 그 밑에 그 실행의 셸 키가 낸 행(`verdict.otherInstances`)을 보인다. 보기만 한다.
+ */
+export interface OtherInstance {
+  generation: string;
+  /** 빌드 종류 — `pnpm tauri dev`면 `dev`, 설치본이면 `release`. 그 실행의 기록을 못 읽었으면 `null`. */
+  build: "dev" | "release" | null;
+  /** 앱 버전. `build`와 같이 빈다. */
+  version: string | null;
+  /** 이 실행의 셸 키 중 다른 인스턴스 묶음에 행이 선 것. */
+  shellKeys: string[];
+}
+
 export interface ProcessSnapshot {
   /** 판정 결과. */
   verdict: ProcessGroups;
   /** 앱에 떠 있는 셸 — 두 세계의 것이 함께, pty id 순. */
   pool: PoolShell[];
+  /** 다른 인스턴스 묶음의 행을 낸 실행들 — 세대 순(티켓 31). */
+  instances: OtherInstance[];
 }
 
 /**

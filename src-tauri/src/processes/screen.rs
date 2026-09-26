@@ -12,14 +12,18 @@
 //! **행마다 지표(메모리 · CPU · 포트)를 싣는다**(티켓 28). 읽는 것은 판정이 묶음에 넣은 행과 풀의 셸 프로세스뿐이다
 //! (`targets` — 프로세스 스펙 S38의 「우리 트리만」). 셸 프로세스 자신의 행은 판정에 없어 그 지표는 풀의 셸이 싣는다. 트리의 합
 //! (셸 행 · work 행)은 화면이 짓는다 — work은 화면만 아는 층이다.
+//!
+//! **다른 인스턴스는 실행마다 빌드 종류와 버전을 싣는다**(티켓 31 · 프로세스 스펙 S54). 판정의 묶음은 셸 키마다라 실행을 모른다 —
+//! 그 키를 낸 실행을 인스턴스 기록에서 찾아 묶고, 두 칸은 그 실행의 기록 파일에서 읽는다(`instances`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
+use super::instances::{Build, InstanceFile};
 use super::metrics::Reading;
-use super::verdict::Verdict;
-use super::{Identity, Proc};
+use super::verdict::{InstanceRecord, Verdict};
+use super::{of_generation, Identity, Proc};
 
 /// 화면 스냅샷 한 장. 프런트의 `ProcessSnapshot`(`src/features/processes/types.ts`)과 **칸 이름으로만** 이어진다 — 어긋나면
 /// 컴파일도 타입 검사도 통과하고 화면만 조용히 빈다. 그래서 와이어 모양을 아래 검사가 글자로 못박는다.
@@ -30,6 +34,22 @@ pub struct ScreenSnapshot {
     pub verdict: Groups,
     /// 풀에 앉은 셸 — pty id 순.
     pub pool: Vec<PoolShell>,
+    /// 다른 인스턴스 묶음(`verdict.otherInstances`)의 행을 낸 실행들 — 세대 순(티켓 31).
+    pub instances: Vec<Instance>,
+}
+
+/// **다른 인스턴스 하나** — 지금 떠 있는 다른 아틀리에 실행(프로세스 스펙 S54 · 티켓 31). 화면이 이 실행마다 빌드 종류와 버전을
+/// 머리로 세우고 그 밑에 그 실행의 셸 키가 낸 행을 보인다. 보기만 한다 — 그 실행이 제 셸을 닫을 때 끝낸다.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Instance {
+    pub generation: String,
+    /// 빌드 종류. 그 실행의 기록 파일을 못 읽었으면(판정 뒤에 닫혀 지웠다) `None`이다.
+    pub build: Option<Build>,
+    /// 앱 버전. `build`와 같이 빈다.
+    pub version: Option<String>,
+    /// 이 실행의 셸 키 중 다른 인스턴스 묶음에 행이 선 것 — 판정의 순서(키 순) 그대로다.
+    pub shell_keys: Vec<String>,
 }
 
 /// 풀에 앉은 셸 하나. **pty id와 셸 키를 함께 싣는다** — 셸 키는 스냅샷의 셸을 스토어의 셸과 잇는 값이고(스토어의
@@ -124,8 +144,8 @@ pub struct Row {
 }
 
 impl ScreenSnapshot {
-    /// 판정 하나와 풀의 셸 목록, 그리고 이번 표본의 지표로 한 장을 짓는다.
-    pub fn of(verdict: &Verdict, pool: Vec<PoolShell>, measured: &Measured) -> Self {
+    /// 판정 하나와 풀의 셸 목록, 이번 표본의 지표, 그리고 다른 인스턴스의 실행들(`instances`)로 한 장을 짓는다.
+    pub fn of(verdict: &Verdict, pool: Vec<PoolShell>, measured: &Measured, instances: Vec<Instance>) -> Self {
         let rows = |procs: &[&Proc]| -> Vec<Row> { procs.iter().map(|proc| Row::of(proc, measured)).collect() };
         let by_key = |groups: &BTreeMap<&str, Vec<&Proc>>| -> BTreeMap<String, Vec<Row>> {
             groups.iter().map(|(key, procs)| (key.to_string(), rows(procs))).collect()
@@ -142,8 +162,39 @@ impl ScreenSnapshot {
                 other_instances: by_key(&verdict.other_instances),
             },
             pool: pool.into_iter().map(|shell| PoolShell { metrics: measured.metrics(shell.process), ..shell }).collect(),
+            instances,
         }
     }
+}
+
+/// **다른 인스턴스 묶음의 셸 키를 그 키를 낸 실행으로 묶는다**(티켓 31). 실행은 판정이 받은 인스턴스 기록(`records`)에서 판정과
+/// 같은 규칙(`of_generation` — 「세대-숫자」)으로 찾는다: 판정이 다른 인스턴스로 가른 키는 살아 있는 실행의 기록이 있는 키다.
+/// 기록에 없는 키는 판정이 다른 인스턴스로 가르지 않으므로 여기 안 선다 — 화면은 실행에 안 묶인 키를 따로 세운다.
+///
+/// 빌드 종류와 버전은 그 실행의 기록 파일에서 읽는다(`file` — 판정의 기록이 안 싣는 칸이다). 행이 선 실행의 파일만 읽는다.
+pub fn instances(
+    verdict: &Verdict,
+    records: &[InstanceRecord],
+    file: impl Fn(&str) -> Option<InstanceFile>,
+) -> Vec<Instance> {
+    let mut keys_by_run: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for key in verdict.other_instances.keys() {
+        if let Some(record) = records.iter().find(|record| of_generation(key, &record.generation)) {
+            keys_by_run.entry(record.generation.as_str()).or_default().push(key.to_string());
+        }
+    }
+    keys_by_run
+        .into_iter()
+        .map(|(generation, shell_keys)| {
+            let file = file(generation);
+            Instance {
+                generation: generation.to_string(),
+                build: file.as_ref().map(|file| file.build),
+                version: file.map(|file| file.version),
+                shell_keys,
+            }
+        })
+        .collect()
 }
 
 /// **지표를 읽을 신원 — 우리 트리의 프로세스만**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부와 풀의 셸 프로세스다. 이 맥의
@@ -201,6 +252,8 @@ mod tests {
 
     /// **화면 스냅샷이 싣는 모양**(티켓 26 · 27 · 28). 프런트가 칸 이름으로 읽는다 — 글자로 못박는다.
     ///
+    /// 다른 인스턴스는 실행마다 빌드 종류 · 버전과 그 실행의 셸 키가 선다(티켓 31) — 기록을 못 읽은 실행은 두 칸이 빈다.
+    ///
     /// 판정의 묶음 다섯이 모두 서게 한 장을 짓는다: 셸 G-1의 자손(부른 이름 · 명령줄이 읽힌 vite와 그 밑의 esbuild, 셸 도우미
     /// gitstatusd), 예외(tmux), 확정 고아와 출처 불명, 다른 인스턴스. 셸 자신의 pid나 uid · 그룹 · 표식 같은 판정 안쪽 칸은
     /// 안 나간다. 풀의 셸 목록은 pty id와 셸 키, 그리고 셸이 마지막으로 무언가를 찍은 때(에포크 ms — 티켓 27의 「조용함」 경과)다.
@@ -245,6 +298,11 @@ mod tests {
             cpu: HashMap::from([(vite.id, 12.5), (zsh, 0.25)]),
         };
 
+        let instances = vec![
+            Instance { generation: "H".into(), build: Some(Build::Release), version: Some("0.15.0".into()), shell_keys: vec!["H-2".into()] },
+            Instance { generation: "D".into(), build: None, version: None, shell_keys: vec!["D-7".into()] },
+        ];
+
         let unmeasured = serde_json::json!({ "memory": null, "cpu": null, "ports": [] });
         let plain = |pid: u32, ppid: u32, name: &str| {
             serde_json::json!({
@@ -257,7 +315,7 @@ mod tests {
             })
         };
         assert_eq!(
-            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &measured)).unwrap(),
+            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &measured, instances)).unwrap(),
             serde_json::json!({
                 "verdict": {
                     "descendants": {
@@ -299,6 +357,10 @@ mod tests {
                     },
                     { "ptyId": 2, "shellKey": "G-2", "lastOutputMs": 1_758_000_060_000u64, "metrics": unmeasured },
                 ],
+                "instances": [
+                    { "generation": "H", "build": "release", "version": "0.15.0", "shellKeys": ["H-2"] },
+                    { "generation": "D", "build": null, "version": null, "shellKeys": ["D-7"] },
+                ],
             })
         );
     }
@@ -324,5 +386,66 @@ mod tests {
         let pool = [pool_shell(1, "G-1", 0, Some(zsh)), pool_shell(2, "G-2", 0, None)];
 
         assert_eq!(targets(&verdict, &pool), BTreeSet::from([zsh, vite.id, tmux.id, stale.id, unknown.id, other.id]));
+    }
+
+    fn record(generation: &str) -> InstanceRecord {
+        InstanceRecord {
+            generation: generation.into(),
+            app: Identity { pid: 9_000, started_us: 1 },
+            shell_keys: vec![],
+            updated_us: 0,
+        }
+    }
+
+    /// **다른 인스턴스를 실행마다 묶는다**(티켓 31 · 프로세스 스펙 S54). 판정의 다른 인스턴스 묶음은 셸 키마다라, 그 키를 낸 실행(세대)을
+    /// 기록에서 찾아 실행 하나에 그 실행의 키를 모은다 — 실행 순은 세대 순, 키는 판정의 순서 그대로다. 빌드 종류와 버전은 그 실행의 기록
+    /// 파일에서 읽는다(판정의 기록은 두 칸을 안 싣는다). **세대는 접두가 아니라 「세대-숫자」로 가른다** — 세대 `H`의 키 `H-1`과 세대
+    /// `HX`의 키 `HX-1`은 다른 실행이다(앵커). 파일을 못 읽은 실행(그새 닫혀 지웠다)은 빌드 · 버전이 비고 키는 그대로 선다. 다른
+    /// 인스턴스 행이 없는 실행(셸만 있고 띄운 것이 없다)은 안 선다 — 이 묶음은 행을 보이는 자리다.
+    #[test]
+    fn other_instances_are_grouped_by_the_run_that_issued_their_keys() {
+        let (a, b, c, d) = (row(600, 1, "zsh"), row(610, 1, "node"), row(620, 1, "zsh"), row(630, 1, "sleep"));
+        let verdict = Verdict {
+            other_instances: BTreeMap::from([
+                ("H-1", vec![&a]),
+                ("H-2", vec![&b]),
+                ("HX-1", vec![&c]),
+                ("D-4", vec![&d]),
+            ]),
+            descendants: BTreeMap::new(),
+            exceptions: vec![],
+            helpers: BTreeSet::new(),
+            orphans: Orphans::default(),
+        };
+        let records = [record("G"), record("H"), record("HX"), record("D"), record("Q")];
+        let file = |generation: &str| -> Option<InstanceFile> {
+            let (build, version) = match generation {
+                "H" => (Build::Release, "0.15.0"),
+                "HX" => (Build::Dev, "0.16.0-dev"),
+                _ => return None,
+            };
+            Some(InstanceFile {
+                app: Identity { pid: 9_000, started_us: 1 },
+                build,
+                version: version.into(),
+                shell_keys: vec![],
+                updated_us: 0,
+            })
+        };
+
+        let instance = |generation: &str, build: Option<Build>, version: Option<&str>, keys: &[&str]| Instance {
+            generation: generation.into(),
+            build,
+            version: version.map(String::from),
+            shell_keys: keys.iter().map(|key| key.to_string()).collect(),
+        };
+        assert_eq!(
+            instances(&verdict, &records, file),
+            vec![
+                instance("D", None, None, &["D-4"]),
+                instance("H", Some(Build::Release), Some("0.15.0"), &["H-1", "H-2"]),
+                instance("HX", Some(Build::Dev), Some("0.16.0-dev"), &["HX-1"]),
+            ]
+        );
     }
 }

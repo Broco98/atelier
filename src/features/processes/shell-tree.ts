@@ -132,19 +132,27 @@ function byStart(a: ProcessRow, b: ProcessRow): number {
 
 /**
  * 셸 하나의 노드. 판정은 셸 도우미를 자손에도 그대로 싣는다(함께 끝낼 대상이다) — 곁 집합(`helpers`)의 신원으로 갈라 따로 둔다.
- *
- * **들여쓰기는 부모 pid로 짓는다.** 셸 자신의 행은 스냅샷에 없으므로(판정이 셸 자신을 안 싣는다) 셸의 직속 자식과 트리가 끊겨
- * 표식으로만 잡힌 것(claude Bash 도구가 띄운 dev 서버 — 부모 1)이 함께 깊이 1에 선다. 부모 행이 자식보다 늦게 태어났으면 그 pid는
- * 재사용된 남이다 — 판정과 같은 규칙으로 잇지 않는다(`verdict.rs`). 그래서 고리가 생기지 않는다.
+ * 사람이 띄운 자손은 트리로 편다(`processTree`). 셸 자신의 행은 스냅샷에 없으므로(판정이 셸 자신을 안 싣는다) 셸의 직속 자식과
+ * 트리가 끊겨 표식으로만 잡힌 것(claude Bash 도구가 띄운 dev 서버 — 부모 1)이 함께 깊이 1에 선다.
  */
 function shellNode(shell: Shell, pool: PoolShell, rows: ReadonlyArray<ProcessRow>, helperIds: ReadonlySet<string>): ShellNode {
-  const sorted = [...rows].sort(byStart);
-  const helpers = sorted.filter((row) => helperIds.has(identityKey(row.id)));
-  const spawned = sorted.filter((row) => !helperIds.has(identityKey(row.id)));
+  const helpers = [...rows].sort(byStart).filter((row) => helperIds.has(identityKey(row.id)));
+  const descendants = processTree(rows.filter((row) => !helperIds.has(identityKey(row.id))));
+  return { shell, pool, helpers, descendants };
+}
 
-  const byPid = new Map(spawned.map((row) => [row.id.pid, row]));
+/**
+ * 행들을 **트리로 펴다** — 깊이 우선으로 편 차례이고, 형제는 시작 순이며, 깊이 1이 맨 위다. 셸의 자손과 고아 · 다른 인스턴스 · 예외
+ * 묶음(티켓 31)이 같은 규칙으로 선다.
+ *
+ * **들여쓰기는 부모 pid로 짓는다.** 부모 행이 묶음에 없으면 맨 위에 선다. 부모 행이 자식보다 늦게 태어났으면 그 pid는 재사용된
+ * 남이다 — 판정과 같은 규칙으로 잇지 않는다(`verdict.rs`). 그래서 고리가 생기지 않는다.
+ */
+export function processTree(rows: ReadonlyArray<ProcessRow>): DescendantNode[] {
+  const sorted = [...rows].sort(byStart);
+  const byPid = new Map(sorted.map((row) => [row.id.pid, row]));
   const children = new Map<ProcessRow | null, ProcessRow[]>();
-  for (const row of spawned) {
+  for (const row of sorted) {
     const parent = byPid.get(row.ppid);
     const under = parent !== undefined && parent !== row && parent.id.startedUs <= row.id.startedUs ? parent : null;
     const siblings = children.get(under);
@@ -152,15 +160,15 @@ function shellNode(shell: Shell, pool: PoolShell, rows: ReadonlyArray<ProcessRow
     else children.set(under, [row]);
   }
 
-  const descendants: DescendantNode[] = [];
+  const nodes: DescendantNode[] = [];
   const walk = (parent: ProcessRow | null, depth: number) => {
     for (const row of children.get(parent) ?? []) {
-      descendants.push({ row, depth });
+      nodes.push({ row, depth });
       walk(row, depth + 1);
     }
   };
   walk(null, 1);
-  return { shell, pool, helpers, descendants };
+  return nodes;
 }
 
 /**
@@ -235,8 +243,8 @@ export function groupTotals(group: GroupNode): ProcessMetrics {
 // **메모리는 이름의 끝 조각이다**(티켓 28). 표기는 행의 칸과 같은 함수(`formatMemory`)라 눈과 귀가 같은 숫자를 받는다. 못 읽었으면
 // 그 조각이 빠진다 — 「알 수 없음」을 줄마다 읽어 주는 것은 소리일 뿐이다(macOS 밖에서는 늘 그렇다).
 
-/** 이름 조각들 끝에 메모리를 붙여 한 문장으로. */
-function withMemory(parts: ReadonlyArray<string>, memory: number | null): string {
+/** 이름 조각들 끝에 메모리를 붙여 한 문장으로. 고아 · 다른 인스턴스 묶음의 줄(티켓 31)도 이것으로 짓는다. */
+export function withMemory(parts: ReadonlyArray<string>, memory: number | null): string {
   return (memory === null ? parts : [...parts, formatMemory(memory)]).join(", ");
 }
 

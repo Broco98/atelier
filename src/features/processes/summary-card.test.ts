@@ -67,6 +67,7 @@ const 스냅샷 = (over: Partial<ProcessSnapshot["verdict"]> = {}, pool = 0): Pr
     lastOutputMs: 0,
     metrics: { memory: null, cpu: null, ports: [] },
   })),
+  instances: [],
 });
 
 describe("요약 카드의 수", () => {

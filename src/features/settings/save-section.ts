@@ -31,16 +31,24 @@ export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks">;
  * (`saveSettingsSection`).
  *
  * 돌려주는 것은 **파일에 쓴 그 설정**이다 — 부르는 쪽이 그것을 셸에 먹인다.
+ *
+ * 값 대신 **고치는 함수**(`SectionUpdate`)를 받으면 줄 안에서 읽은 최신 구획으로 짓는다(프로세스 티켓 31 — 칸 하나만 고치는 쪽).
  */
+/** 구획 하나를 고치는 함수 — 쓰는 순간의 최신 구획을 받아 쓸 구획을 돌려준다(`sectionSaver`). */
+export type SectionUpdate<K extends SettingsSectionKey> = (latest: Settings[K]) => Settings[K];
+
 export function sectionSaver(
   read: () => Promise<Settings>,
   write: (settings: Settings) => Promise<void>,
 ) {
   let tail: Promise<unknown> = Promise.resolve();
-  return <K extends SettingsSectionKey>(key: K, value: Settings[K]): Promise<Settings> => {
+  return <K extends SettingsSectionKey>(key: K, value: Settings[K] | SectionUpdate<K>): Promise<Settings> => {
     const run = tail.then(async () => {
       const latest = await read();
-      const next: Settings = { ...latest, [key]: value };
+      // 함수면 **쓰는 순간의 최신 구획**에서 짓는다 — 칸 하나만 고치는 쪽(`Processes`의 「예외로 두기」)이 줄 밖에서 읽은 구획을
+      // 값으로 넘기면, 그사이 저장된 같은 구획의 다른 칸을 옛 사본으로 덮는다.
+      const section = typeof value === "function" ? (value as SectionUpdate<K>)(latest[key]) : value;
+      const next: Settings = { ...latest, [key]: section };
       await write(next);
       return next;
     });
