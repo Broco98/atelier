@@ -143,7 +143,13 @@ pub fn save_layout(
     write_atomically(&folder, LAYOUT_FILE, &serialize_layout(&layout))?;
     // 빠진 템플릿은 새 `layout.json`이 선 **뒤에** 지운다 — 먼저 지우면 실패한 저장이 앞 레이아웃이
     // 가리키는 템플릿을 잃게 한다. 비게 된 하위 폴더는 남긴다: 폴더는 사람이 만들었을 수 있다.
-    for dropped in previous.difference(&pointed_templates(&layout)) {
+    // 새 레이아웃이 쥐는 파일과 같은 파일이면 다르게 적혔어도 지우지 않는다(`Held`).
+    let pointed = pointed_templates(&layout);
+    let held = Held::of(&folder, pointed.iter().map(String::as_str).chain([LAYOUT_FILE]));
+    for dropped in previous.difference(&pointed) {
+        if held.holds(&folder, dropped) {
+            continue;
+        }
         match std::fs::remove_file(folder.join(dropped)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
             _ => {}
@@ -151,6 +157,64 @@ pub fn save_layout(
     }
     let verdict = template_verdict(&layout, &folder, crate::collapse_home(&folder));
     Ok(SaveOutcome::Saved(render_layout(&layout, Some(&verdict), None)))
+}
+
+/// 새 레이아웃이 쥐는 파일 — 가리키는 템플릿과 레이아웃 파일 자신. 빠진 템플릿은 이것과 **같은
+/// 파일이 아닐 때만** 지운다.
+///
+/// **어느 파일인지는 글자가 아니라 파일 시스템이 정한다.** macOS의 기본 파일 시스템에서 `ADR.md`와
+/// `adr.md`는 한 파일이고, 어디서든 `sub//x.md`와 `sub/x.md`가 그렇다. 경로를 글자로 견주면
+/// 템플릿 경로의 대소문자만 바꾼 저장이 새 레이아웃이 가리키는 본문을 지운다. 틀리더라도 남기는
+/// 쪽으로 틀린다 — 남은 파일 하나는 해가 없지만, 산 템플릿을 지우면 사람이 쓴 본문이 사라진다.
+///
+/// 유닉스에서는 파일의 정체(장치와 inode)로 견준다. 그 밖에서는 정체를 얻을 안정된 길이 없어, 경로
+/// 조각마다 NFC로 맞추고 대소문자를 접은 이름으로 견준다.
+struct Held {
+    #[cfg(unix)]
+    ids: BTreeSet<(u64, u64)>,
+    #[cfg(not(unix))]
+    names: BTreeSet<Vec<String>>,
+}
+
+#[cfg(unix)]
+impl Held {
+    fn of<'a>(folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        let ids = paths
+            .into_iter()
+            .filter_map(|path| std::fs::metadata(folder.join(path)).ok())
+            .map(|meta| (meta.dev(), meta.ino()))
+            .collect();
+        Self { ids }
+    }
+
+    /// 지울 경로가 쥔 파일인가. 링크는 따라가지 않는다 — 지우는 것은 링크 자신이다.
+    fn holds(&self, folder: &Path, path: &str) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::symlink_metadata(folder.join(path))
+            .is_ok_and(|meta| self.ids.contains(&(meta.dev(), meta.ino())))
+    }
+}
+
+#[cfg(not(unix))]
+impl Held {
+    fn of<'a>(_folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
+        Self { names: paths.into_iter().map(folded_parts).collect() }
+    }
+
+    fn holds(&self, _folder: &Path, path: &str) -> bool {
+        self.names.contains(&folded_parts(path))
+    }
+}
+
+/// 경로 조각마다 NFC로 맞추고 대소문자를 접은 이름 — 유닉스 밖에서 `Held`가 견주는 모양이다.
+#[cfg(not(unix))]
+fn folded_parts(path: &str) -> Vec<String> {
+    let nfc = icu_normalizer::ComposingNormalizerBorrowed::new_nfc();
+    Path::new(path)
+        .components()
+        .map(|part| super::parse::folded(&nfc.normalize(&part.as_os_str().to_string_lossy())))
+        .collect()
 }
 
 /// 가리키는데 인자에도 디스크에도 본문이 없는 템플릿 — 항목마다 위치가 붙은 오류다. 문서 순서
@@ -566,6 +630,71 @@ mod tests {
         assert_eq!(files[0].1, "# 사람이 고친 본문\n");
         assert_eq!(files[2].1, "사람의 메모\n");
         assert!(root.path().join("layouts/atelier/sub").is_dir(), "빈 하위 폴더를 지웠다");
+    }
+
+    /// 템플릿 하나를 `template` 경로로 가리키는 레이아웃.
+    fn pointing_to(template: &str) -> serde_json::Value {
+        serde_json::json!({ "root": { "children": [
+            { "pattern": "adr.md", "kind": "file", "template": template } ] } })
+    }
+
+    /// **어느 파일인지는 글자가 아니라 파일 시스템이 정한다.** `sub//x.md`는 `sub/x.md`와 같은
+    /// 파일이다 — 앞 레이아웃의 `sub/x.md`를 새 레이아웃이 `sub//x.md`로 적었다고 빠진 템플릿으로
+    /// 지우면, 새 레이아웃이 가리키는 템플릿의 본문이 사라진다. 인자에 없는 템플릿은 디스크의 지금
+    /// 본문 그대로여야 한다.
+    #[test]
+    fn a_template_written_another_way_is_not_removed_as_dropped() {
+        let root = tempfile::tempdir().unwrap();
+        let first = save_layout(
+            root.path(),
+            "atelier",
+            pointing_to("sub/x.md"),
+            &bodies(&[("sub/x.md", "# 사람이 쓴 본문\n")]),
+        )
+        .unwrap();
+        assert!(matches!(first, SaveOutcome::Saved(_)), "{first:?}");
+
+        let second =
+            save_layout(root.path(), "atelier", pointing_to("sub//x.md"), &BTreeMap::new()).unwrap();
+        let SaveOutcome::Saved(rendered) = second else { panic!("거절됐다: {second:?}") };
+        assert!(rendered.warnings.is_empty(), "{rendered:?}");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("layouts/atelier/sub/x.md")).unwrap(),
+            "# 사람이 쓴 본문\n"
+        );
+    }
+
+    /// macOS의 기본 파일 시스템에서는 `ADR.md`와 `adr.md`가 한 파일이다 — 템플릿 경로의 대소문자만
+    /// 바꿔 저장해도 본문이 남는다. 본문을 넘기지 않으면 지금 본문이, 넘기면 새 본문이다. 대소문자를
+    /// 가리는 파일 시스템(리눅스 CI)에서는 둘이 다른 파일이라 잴 것이 없다.
+    #[test]
+    fn a_case_only_template_rename_keeps_the_body_on_a_case_insensitive_disk() {
+        for new_body in [None, Some("# 새 본문\n")] {
+            let root = tempfile::tempdir().unwrap();
+            let folder = root.path().join("layouts/atelier");
+            let first = save_layout(
+                root.path(),
+                "atelier",
+                pointing_to("ADR.md"),
+                &bodies(&[("ADR.md", "# 사람이 쓴 본문\n")]),
+            )
+            .unwrap();
+            assert!(matches!(first, SaveOutcome::Saved(_)), "{first:?}");
+            if !folder.join("adr.md").exists() {
+                return; // 대소문자를 가리는 디스크다
+            }
+
+            let templates = new_body.map(|body| bodies(&[("adr.md", body)])).unwrap_or_default();
+            let second = save_layout(root.path(), "atelier", pointing_to("adr.md"), &templates).unwrap();
+            let SaveOutcome::Saved(rendered) = second else {
+                panic!("{new_body:?}: 거절됐다: {second:?}")
+            };
+            assert!(rendered.warnings.is_empty(), "{new_body:?}: {rendered:?}");
+            assert_eq!(
+                std::fs::read_to_string(folder.join("adr.md")).unwrap(),
+                new_body.unwrap_or("# 사람이 쓴 본문\n"),
+            );
+        }
     }
 
     /// **깨진 폴더에 저장해도 폴더 안의 `.md`는 하나도 지워지지 않는다** — 앞 레이아웃을 읽을 수

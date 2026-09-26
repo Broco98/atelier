@@ -273,7 +273,7 @@ fn names_layout_file(template: &str) -> bool {
 
 /// 이름을 접는다 — 대문자로 올렸다가 소문자로 내린다. 소문자로만 내리면 `ſ`처럼 이미 소문자인데
 /// 대문자로는 `S`가 되는 글자를 놓친다.
-fn folded(name: &str) -> String {
+pub(crate) fn folded(name: &str) -> String {
     name.to_uppercase().to_lowercase()
 }
 
