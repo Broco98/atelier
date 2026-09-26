@@ -7,7 +7,7 @@ import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
 import type { LayoutDraft } from "./draft";
 import { latestPreview, PREVIEW_DELAY_MS, type DraftPreview } from "./preview";
-import type { LayoutPreview } from "./types";
+import type { LayoutPreview, SpecLayoutRead } from "./types";
 
 // ["spec-layout"]으로 시작하는 쿼리(상태, 편집기의 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
 // 폴더가 바뀌면 둘 다 낡는다(구현 스펙 3절).
@@ -132,8 +132,14 @@ export function useRevertSpecLayout() {
  * 초안도 묻는다: 읽은 레이아웃에 이미 오류(누락 템플릿)가 있으면 그 자리에 선다. 팝업을 닫은 동안에도 묻는다 —
  * 그 답의 오류가 항목 아래에 서고 저장을 잠근다(스토리 30·31).
  *
- * 쿼리가 아니다 — 답은 초안 하나에 대한 것이라 캐시로 나눠 쓸 것이 없고, 레이아웃 폴더가 바뀌었다고(`invalidateSpecLayout`)
- * 지울 것도 아니다. 지연 동안 초안이 또 바뀌면 앞 물음은 나가지 않는다.
+ * **답은 초안과 디스크에 달렸다.** 초안에 본문이 없는 템플릿은 엔진이 레이아웃 폴더에 그 파일이 있는지를 본다
+ * (엔진의 `backed`) — 밖에서 그 파일이 사라지거나 되살아나면 같은 초안의 답이 바뀐다. 그래서 초안이 바뀔 때만이 아니라
+ * 레이아웃 폴더를 다시 읽은 것이 바뀔 때도(`disk` — 편집기의 마지막 읽기, 구조 공유라 내용이 바뀔 때만 새 객체다)
+ * 다시 묻는다. 고치지 않은 초안도, 밖 변경 배너가 선 동안에도 묻는다 — [내 초안 유지]를 누를 때는 답이 이미 새것이다.
+ * 앞 답을 지우지는 않는다: 새 답이 올 때까지 그 오류가 서 있다.
+ *
+ * 쿼리가 아니다 — 답은 초안 하나에 대한 것이라 캐시로 나눠 쓸 것이 없다. 지연 동안 초안이 또 바뀌면 앞 물음은
+ * 나가지 않는다.
  *
  * **요청마다 순번을 둔다** — 늦게 온 옛 답은 새 초안의 답을 덮지 못한다(`latestPreview`). 명령 자체가 거절되면
  * (IPC) 그 까닭을 문서 전체의 오류로 받는다: 저장이 잠기고 까닭이 선다.
@@ -141,11 +147,11 @@ export function useRevertSpecLayout() {
  * `reserve(draft)`는 엔진이 **다른 길로** 줄 판정의 순번을 지금 잡고, 그 답을 받을 손을 돌려준다 — 저장의 검증
  * 거절이 그것이다. 미리보기와 저장 사이에 디스크가 바뀌면(템플릿 파일이 사라졌다) 저장이 거절하고, 그 오류가 그
  * 초안의 답이 된다. 순번을 **저장을 누른 때** 잡으므로, 저장하는 동안 초안을 또 고쳐 나간 물음의 답은 거절보다
- * 새것으로 남는다.
+ * 새것으로 남는다. 거절은 초안이나 레이아웃 폴더가 바뀌어 다시 물을 때까지 선다.
  *
  * 초안이 없으면(`null` — 밖에서 깨져 편집기가 「읽지 못함」 화면이다, 티켓 15) 묻지 않는다.
  */
-export function useDraftPreview(id: Mode, draft: LayoutDraft | null) {
+export function useDraftPreview(id: Mode, draft: LayoutDraft | null, disk: SpecLayoutRead) {
   const [preview, setPreview] = useState<DraftPreview | null>(null);
   const seq = useRef(0);
 
@@ -154,6 +160,7 @@ export function useDraftPreview(id: Mode, draft: LayoutDraft | null) {
     return (answer: LayoutPreview) => setPreview((now) => latestPreview(now, { seq: mine, draft, answer }));
   }, []);
 
+  // `disk`는 본문에서 읽지 않는다 — 폴더를 다시 읽은 것이 바뀌면 같은 초안을 다시 묻게 하는 방아쇠다.
   useEffect(() => {
     if (draft === null) return;
     const timer = window.setTimeout(() => {
@@ -163,7 +170,7 @@ export function useDraftPreview(id: Mode, draft: LayoutDraft | null) {
       );
     }, PREVIEW_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [id, draft, reserve]);
+  }, [id, draft, disk, reserve]);
 
   return { preview, reserve };
 }

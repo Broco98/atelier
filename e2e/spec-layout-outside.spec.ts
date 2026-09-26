@@ -1,6 +1,6 @@
 import type { ReadableSpecLayout, SpecLayoutJson, SpecLayoutRead, TemplateBodies } from "@/features/spec-layout/types";
 import { expect, test, type Page } from "./evidence";
-import { CHANGED_SPEC_LAYOUT_READ, SPEC_LAYOUT_READ, UNREADABLE_ATELIER_READ } from "./fixtures";
+import { CHANGED_SPEC_LAYOUT_READ, SPEC_LAYOUT_READ, SPEC_LAYOUT_RENDERED, UNREADABLE_ATELIER_READ } from "./fixtures";
 import { callCount, fireEvent, installFixtureBackend, ipcCallArgs, swapAnswer, unknownIpcCalls } from "./harness";
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22). 에이전트가 레이아웃을 저장하거나 사람이 손으로 고치면 감시가
@@ -96,6 +96,43 @@ test("[내 초안 유지]는 배너를 닫고 초안을 남기며, 저장하면 
   // 합치지 않는다 — 밖에서 고친 `decisions.md`의 설명도 초안의 것으로 덮는다
   expect(layout.root.children).toEqual([{ ...OVERVIEW, description: MINE }, DECISIONS, SPEC_LAYOUT_READ.layout.root.children![2]]);
   expect(templates).toEqual(SPEC_LAYOUT_READ.templates);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 미리보기의 답은 초안에만 달리지 않는다 — 초안에 본문이 없는 템플릿은 엔진이 디스크에 그 파일이 있는지를 본다. 밖에서
+// 그 파일이 되살아났는데 고치지 않은 초안을 다시 묻지 않으면, 엔진이 이제 받을 초안의 저장이 옛 오류로 잠긴 채 남는다.
+test("밖이 바뀌면 고치지 않은 초안도 미리보기를 다시 묻는다 — [내 초안 유지] 뒤 디스크가 풀어 준 저장이 잠겨 있지 않다", async ({
+  page,
+}) => {
+  const message = 'template "decisions.md" is neither given nor in the layout folder';
+  await installFixtureBackend(page, {
+    render_spec_layout: { text: null, lines: [], errors: [{ path: [1], message }], warnings: [] },
+  });
+  await openEditor(page);
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(1);
+  // 고친 초안의 물음이 **답을 갈아 끼우기 전에** 나가야 한다 — 그 뒤에 나가면 새 답을 받아 고침 없이도 초록이 된다.
+  await 설명(page).fill(MINE);
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(2);
+  await expect(page.getByRole("treeitem", { name: "decisions.md 검증 오류", exact: true })).toBeVisible();
+  await expect(저장(page)).toBeDisabled();
+
+  // 밖에서 템플릿 파일이 되살아났다 — 이제 엔진은 같은 초안에 오류 없이 답한다
+  await swapAnswer(page, "render_spec_layout", SPEC_LAYOUT_RENDERED);
+  const before = await callCount(page, "render_spec_layout");
+  await changeOutside(page, CHANGED_SPEC_LAYOUT_READ);
+  await expect(배너(page)).toContainText("밖에서 이 레이아웃이 바뀌었어요");
+
+  await 배너버튼(page, "내 초안 유지").click();
+  await expect(배너(page)).toHaveCount(0);
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBeGreaterThan(before);
+  await expect(행(page, "decisions.md")).toBeVisible();
+  await expect(저장(page)).toBeEnabled();
+
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
+  const [{ layout }] = await writes(page);
+  expect(layout.root.children![0]).toEqual({ ...OVERVIEW, description: MINE });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

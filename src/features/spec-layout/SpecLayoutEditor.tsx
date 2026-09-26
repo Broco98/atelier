@@ -185,7 +185,9 @@ function EditorScreen({
 
   const draft = view?.draft ?? null;
   // 초안마다 엔진에 묻는 미리보기 — 그 답의 오류가 항목 아래에 서고, 글이 팝업에 선다. 팝업을 닫은 동안에도 묻는다.
-  const { preview, reserve } = useDraftPreview(id, draft);
+  // 답은 디스크에도 달려(초안에 본문이 없는 템플릿은 그 파일이 있는지를 본다) 레이아웃 폴더를 다시 읽은 것이 바뀌면
+  // 고치지 않은 초안도 다시 묻는다 — 밖 변경 배너가 선 동안에도, 유지한 뒤에도 답이 새 디스크의 것이다.
+  const { preview, reserve } = useDraftPreview(id, draft, read);
   const opener = useRef<HTMLButtonElement>(null);
   // 팝업을 닫으면 포커스를 머리의 버튼에 돌려준다 — 팝업은 body 끝에 떠 있어, 안 돌려주면 `<body>`로 떨어진다.
   const closePreview = useCallback(() => {
@@ -207,8 +209,8 @@ function EditorScreen({
   // **템플릿은 늘 전부 넘긴다**(구현 스펙 3절) — 읽은 본문을 그대로 싣는다. 저장은 지금 초안의 미리보기가 오류 없이
   // 도착해야 열린다. 그래도 검증이 거절할 수 있다 — 미리보기와 저장 사이에 디스크가 바뀌었을 때(템플릿 파일이
   // 사라졌다). 그 거절은 답의 `errors`로 오고 아무것도 쓰이지 않았다: 초안은 그대로 남고, 그 오류가 이 초안의 가장
-  // 새 판정이 되어 그 자리에 선다(`reserve`). 거절(throw)은 쓰다가 실패한 것뿐이다. 답은 썼는가다 — [저장하고
-  // 나가기]는 쓰였을 때만 떠난다.
+  // 새 판정이 되어 그 자리에 선다(`reserve`) — 초안이나 레이아웃 폴더가 바뀌어 다시 물을 때까지다. 거절(throw)은
+  // 쓰다가 실패한 것뿐이다. 답은 썼는가다 — [저장하고 나가기]는 쓰였을 때만 떠난다.
   const save = async (): Promise<boolean> => {
     if (draft === null || !enabled) return false;
     const saved = draft;
