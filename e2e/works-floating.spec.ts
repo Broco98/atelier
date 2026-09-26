@@ -575,3 +575,48 @@ test("다이어그램을 끌다 가림막 위에서 손을 떼도 창은 남는�
   await expect(dialog).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── Mermaid 「코드」 (스토리 103) ──
+// 다이어그램 머리 줄의 「코드」는 켬/끔 토글이다 — 켜면 그림 자리에 원본 mermaid 코드가 서고, 켜졌는지를 `aria-pressed`로
+// 말한다(전에는 말하지 않았다). 도움말 「원본 mermaid 코드 보기」는 툴팁이다 — 포커스로 뜨는 툴팁은 포인터를 한 번도
+// 안 쓴 검사에서 잰다(「좋은 검사」). 문서는 전체화면 절의 「다이어그램.md」다.
+
+const 코드 = (page: Page) => page.getByRole("button", { name: "코드", exact: true });
+/** 원본 코드의 한 줄 — 그림(svg)에는 이 글자가 없다. 그림의 글자는 노드 이름뿐이다. */
+const 원본코드 = (page: Page) => page.getByText("A[시작] --> B[끝]");
+
+test("다이어그램의 「코드」는 켬/끔을 말하고, 누르면 그림과 원본 코드가 뒤집힌다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+  const code = 코드(page);
+
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+
+  await code.click();
+  await expect(code).toHaveAttribute("aria-pressed", "true");
+  await expect(원본코드(page)).toBeVisible();
+
+  await code.click();
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 띄우고, Space로 켜고 끈다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await 문서를연다(page, 다이어그램문서);
+  const code = 코드(page);
+  const tooltip = page.locator("[data-slot=tooltip-content]");
+
+  await code.focus();
+  await expect(tooltip).toHaveText("원본 mermaid 코드 보기");
+
+  await page.keyboard.press("Space");
+  await expect(code).toHaveAttribute("aria-pressed", "true");
+  await expect(원본코드(page)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(code).toHaveAttribute("aria-pressed", "false");
+  await expect(원본코드(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

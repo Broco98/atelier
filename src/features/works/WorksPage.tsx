@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster, showToast } from "@/components/ui/toast";
+import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import ShellHeadName from "@/features/terminal/ShellHeadName";
 import ShellTabs from "@/features/terminal/ShellTabs";
@@ -581,24 +583,29 @@ function WorksPage({
             {/* 분할 토글 — **뷰 탭이 있던 자리다**(결정 86). 켜면 spec이 왼쪽,
                 터미널이 오른쪽이다. 끄면 `tab`이 가리키는 쪽이 남으므로(결정 97)
                 여기서 정할 것이 없다 — 지금 `tab`을 그대로 넘긴다. */}
-            <button
-              type="button"
-              onClick={() => changeSplit(split === null ? "lr" : null, tab)}
-              // **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
-              // 아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
-              // 이름하고 켜짐은 `aria-pressed`가 말하는 것은 옆 `</>`와 같은 규칙이다.
-              aria-label="분할"
-              aria-pressed={split !== null}
-              // 툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
-              // 날지를 틀리게 말한다(작업 메뉴의 `title`이 이미 같은 모양이다).
-              title={split !== null ? "분할 끄기" : "분할 켜기"}
-              className={cn(
-                "icon-button transition-colors",
-                split !== null ? "toggle-on" : "text-tertiary quiet-hover",
-              )}
-            >
-              <Columns2 className="size-4" strokeWidth={2} />
-            </button>
+            {/* **말은 「분할」이다**(CONTEXT.md). 켜고 끄는 상태이지 화면 이름이
+                아니라 「2열로 보기」처럼 가는 곳으로 부르지 않는다. 라벨이 대상을
+                이름하고 켜짐은 `aria-pressed`(Toggle이 스스로 단다)가 말하는 것은 옆 `</>`와
+                같은 규칙이다. 모양(24px 아이콘 버튼, 꺼짐 tertiary · 켜짐 toggle-on)은 부품의 icon 크기다.
+
+                툴팁만 상태를 탄다 — 켜져 있는데 「켜기」가 뜨면 누르기 전에 무슨 일이
+                날지를 틀리게 말한다(작업 메뉴의 도움말이 이미 같은 모양이다). 설명(`aria-description`)은
+                안 남긴다 — 「켜기/끄기」는 `aria-pressed`가 이미 말한다(S28). */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    size="icon"
+                    aria-label="분할"
+                    pressed={split !== null}
+                    onPressedChange={(on) => changeSplit(on ? "lr" : null, tab)}
+                  />
+                }
+              >
+                <Columns2 className="size-4" strokeWidth={2} />
+              </TooltipTrigger>
+              <TooltipContent>{split !== null ? "분할 끄기" : "분할 켜기"}</TooltipContent>
+            </Tooltip>
             {/* 패널 여는 버튼은 두 본문 **모두**에 그린다. 한때 터미널에서 뺐던 것은
                 그때 패널이 거기 없었기 때문이고(결정 11), 그 이유는 #100이 머지되며
                 사라졌다. 지금은 양쪽 다 패널을 이고 있으므로 누르면 실제로 열린다.

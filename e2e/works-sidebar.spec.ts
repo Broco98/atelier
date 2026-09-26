@@ -1194,7 +1194,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   await expect(lit(1)).toHaveAttribute("aria-pressed", "true");
 
   // 분할을 켜고 첫 칸으로 되돌린 뒤 다시 누른다.
-  const 분할 = page.locator('button[title="분할 켜기"]');
+  const 분할 = page.getByRole("button", { name: "분할", exact: true });
   await 분할.click();
   await expect(page).toHaveURL(/split=/);
   await lit(0).click();

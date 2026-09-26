@@ -560,7 +560,7 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
     .toBe(초록);
 
   // 분할을 켠다 — 열 하나가 터미널이라 그 셸은 보고 있는 것이다(결정 7).
-  await page.locator('button[title="분할 켜기"]').click();
+  await page.getByRole("button", { name: "분할", exact: true }).click();
   await expect(page).toHaveURL(/split=/);
   await expect
     .poll(() => 칸배경(page, 0), { message: "분할로 보고 있는데 초록이 안 꺼졌다" })
