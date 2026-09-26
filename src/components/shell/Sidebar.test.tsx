@@ -149,7 +149,7 @@ describe("사이드바가 그 값을 그 모양으로 읽는다", () => {
     // 이쪽은 위와 반대다(#203) — 값이 문자열이라 Record 하나로 읽는 것이 맞다. 행마다
     // 구독하면 열여덟 개가 같은 셀렉터를 각자 돌면서 얻는 것이 없다. 값을 고르는 자리가
     // 여기 하나라는 것을 리터럴로 못박는다.
-    expect(sidebar).toContain("signals={signals}");
+    expect(sidebar).toContain("shells={{ shellCounts, signals, notes, renderRowMeta }}");
     // **부르는 자리를 센다 — 이름이 아니다.** 이름만 세면 import 줄과 주석의 산문까지
     // 걸려, 자리가 늘었는지 글이 늘었는지가 갈리지 않는다(위 검사와 같은 근거).
     expect(countOf(sidebar, "(state) => signalsOf(state, mode)")).toBe(1);

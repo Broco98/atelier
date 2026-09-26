@@ -14,6 +14,7 @@ import {
   띠,
   레인,
   오른쪽메타,
+  툴팁,
   행버튼,
 } from "./harness";
 
@@ -883,7 +884,7 @@ test("도는 레인은 행 글자색 스피너로 1초에 한 바퀴 매끄럽�
   await expect(스피너).toHaveCount(1);
 
   // **스크린리더에는 따로 안 읽힌다**(스토리 43) — 상태는 행 버튼의 이름(「… — 도는 중」)이 한
-  // 번 말한다. Spinner는 겉 상자에 `role="status"`와 영어 이름 「Loading」을 들고 오므로, 레인이
+  // 번 말한다. Spinner는 겉 상자에 `role="status"`와 이름 「불러오는 중」을 들고 오므로, 레인이
   // `aria-hidden`을 **안쪽 svg에** 주면 이 역할이 행 안에 그대로 남는다. 앵커는 바로 위
   // 「도는 레인이 섰다」다 — 레인이 안 서도 0이다.
   await expect(workRow(page, plainWork.slug).getByRole("status")).toHaveCount(0);
@@ -951,9 +952,6 @@ const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { nam
  * 서 있는 토글을 재는 검사는 역할과 이름으로 집는다.
  */
 const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
-
-/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
-const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /** 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다. */
 const 부르게한다 = (page: Page, ptyId: number) =>

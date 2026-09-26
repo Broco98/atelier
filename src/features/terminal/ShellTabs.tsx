@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
@@ -532,11 +532,10 @@ function ShellTabs({
 }
 
 /**
- * 탭 줄의 `+`. **묻는 `+`(메뉴 트리거)와 바로 여는 `+`가 같은 버튼이다** — 갈리는 것은 누를 때 하는
- * 일뿐이다. 메뉴 트리거가 될 때는 메뉴 부품이 여는 동작과 속성을 얹어 부르므로 나머지 props를 그대로 편다.
- */
-/**
- * `+` — 셸 열기. 도움말은 앱 툴팁이다(스토리 112). **꽉 찼으면(`notice`) 툴팁이 잠긴 이유를 말하고**, 그 문장은
+ * 탭 줄의 `+` — 셸 열기. **묻는 `+`(메뉴 트리거)와 바로 여는 `+`가 같은 버튼이다** — 갈리는 것은 누를 때
+ * 하는 일뿐이다.
+ *
+ * 도움말은 앱 툴팁이다(스토리 112). **꽉 찼으면(`notice`) 툴팁이 잠긴 이유를 말하고**, 그 문장은
  * 설명(`aria-description`)으로도 남는다 — 툴팁은 스크린리더에 아무것도 주지 않는다(S28). 이름은 늘 「셸 열기」다.
  *
  * 메뉴를 여는 `+`에서는 메뉴 트리거가 이것을 제 버튼으로 그린다(`ShellPicker`의 `render`) — 그래서 받은 속성
@@ -549,28 +548,26 @@ function PlusButton({
 }: ComponentProps<"button"> & { notice: string | null }) {
   const full = notice !== null;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        data-tab="new"
-        aria-label="셸 열기"
-        aria-disabled={full || undefined}
-        aria-description={notice ?? undefined}
-        className={cn(
-          // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
-          // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
-          // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
-          // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
-          "-ml-0.5 shrink-0 text-tertiary",
-          full ? "icon-button opacity-40" : "icon-button-quiet",
-          className,
-        )}
-        {...props}
-      >
-        <Plus className="size-3.5" strokeWidth={1.8} />
-      </TooltipTrigger>
-      <TooltipContent>{notice ?? "셸 열기"}</TooltipContent>
-    </Tooltip>
+    <Hint
+      text={notice ?? "셸 열기"}
+      announce={full ? "description" : undefined}
+      type="button"
+      data-tab="new"
+      aria-label="셸 열기"
+      aria-disabled={full || undefined}
+      className={cn(
+        // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
+        // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
+        // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
+        // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+        "-ml-0.5 shrink-0 text-tertiary",
+        full ? "icon-button opacity-40" : "icon-button-quiet",
+        className,
+      )}
+      {...props}
+    >
+      <Plus className="size-3.5" strokeWidth={1.8} />
+    </Hint>
   );
 }
 
@@ -771,25 +768,23 @@ const ShellTab = memo(function ShellTab({
           role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
           것을 지킨다). 셸을 죽이는 길은 여전히 확인을 거치는 하나다(결정 22·92) —
           부르는 쪽이 `requestCloseShell`을 준다. */}
-      <Tooltip>
-        <TooltipTrigger
-          type="button"
-          aria-label={`${name} 닫기`}
-          onClick={() => onClose(shell.id)}
-          className={cn(
-            "icon-button-tint shrink-0 text-tertiary",
-            // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
-            // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
-            // 켜진 칸도 68px 아래에서는 함께 접는다: 거기부터는 글리프와 닫기가 한 칸에
-            // 못 서고, 둘 중 남는 쪽은 글리프다(결정 11). 그 폭에서 닫는
-            // 길은 ⌘W다(결정 13) — 새로 만드는 길이 아니라 이미 있는 길이다.
-            active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
-          )}
-        >
-          <X className="size-3" strokeWidth={1.8} />
-        </TooltipTrigger>
-        <TooltipContent>셸 닫기</TooltipContent>
-      </Tooltip>
+      <Hint
+        text="셸 닫기"
+        type="button"
+        aria-label={`${name} 닫기`}
+        onClick={() => onClose(shell.id)}
+        className={cn(
+          "icon-button-tint shrink-0 text-tertiary",
+          // 크롬이 하는 그대로다(결정 20) — 좁아지면 **켜진 칸에만** 닫기가 남는다.
+          // 여덟 칸에 24px씩 늘 세우면 스크롤이 그만큼 일찍 시작된다.
+          // 켜진 칸도 68px 아래에서는 함께 접는다: 거기부터는 글리프와 닫기가 한 칸에
+          // 못 서고, 둘 중 남는 쪽은 글리프다(결정 11). 그 폭에서 닫는
+          // 길은 ⌘W다(결정 13) — 새로 만드는 길이 아니라 이미 있는 길이다.
+          active ? "@max-[68px]:hidden" : "@max-[88px]:hidden",
+        )}
+      >
+        <X className="size-3" strokeWidth={1.8} />
+      </Hint>
     </div>
   );
 });

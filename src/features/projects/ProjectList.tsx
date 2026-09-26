@@ -5,7 +5,7 @@ import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizable
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -64,19 +64,17 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
           sidebarOpen ? "pl-0.5" : "pl-(--titlebar-inset-panel)",
         )}
       >
-        <Tooltip>
-          <TooltipTrigger
-            type="button"
-            onClick={onAdd}
-            aria-label="프로젝트 등록"
-            className="icon-button-quiet text-tertiary"
-          >
-            {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
-                이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}
-            <Plus className="size-4" strokeWidth={1.8} />
-          </TooltipTrigger>
-          <TooltipContent>프로젝트 등록</TooltipContent>
-        </Tooltip>
+        <Hint
+          text="프로젝트 등록"
+          announce="name"
+          type="button"
+          onClick={onAdd}
+          className="icon-button-quiet text-tertiary"
+        >
+          {/* 글리프도 16px — 사이드바를 닫으면 셸 컨트롤(토글·뒤로·앞으로) 바로 옆에 같은 간격으로
+              이어 서므로, 이 하나만 14px이면 넷이 한 메뉴로 읽히지 않는다 */}
+          <Plus className="size-4" strokeWidth={1.8} />
+        </Hint>
       </div>
 
       {/* mb-[10px] = 헤더 행(44px)에서 24px 아이콘 버튼을 뺀 상하 여백 — 위아래 갭을 맞춘다 */}

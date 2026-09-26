@@ -27,7 +27,7 @@ import {
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { PopoverPortal } from "@/components/ui/popover-portal";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { TAB_ROW_COLUMN } from "@/components/shell/panel-layout";
 import { useHomeDir, useSpecFile } from "./hooks";
@@ -386,8 +386,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
       align="right"
       width={FRAME_HINT_WIDTH}
       // **덮개가 아니라는 증거가 이 한 줄이다.** 포인터를 안 받으므로 카드 밑의 프레임이
-      // 계속 눌린다. `onClose`도 안 넘긴다 — 그쪽은 바깥 클릭을 받는 투명 막을 함께 깔고,
-      // 그 막이 곧 덮개다.
+      // 계속 눌린다. 바깥 클릭을 받는 막도 없다 — 그런 막이 곧 덮개다(`PopoverPortal` 머리말).
       className="pointer-events-none px-3.5 py-2.5"
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}
@@ -516,17 +515,15 @@ function BlockWrapper({
           x에서 40px 아래로 크로스페이드하면 눈에는 버튼이 미끄러진 것으로 보인다
           (제보: "스르륵 뜨면서 움직이는 것처럼 보인다"). 배경·글자색은 계속 전환한다 —
           그건 한 버튼 안에서 일어나는 일이라 겹칠 상대가 없다 */}
-      <Tooltip>
-        <TooltipTrigger
-          type="button"
-          onClick={() => onCopy(start, end)}
-          aria-label={`${range}줄 참조 복사`}
-          className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
-        >
-          <Copy className="size-3" strokeWidth={1.8} aria-hidden />
-        </TooltipTrigger>
-        <TooltipContent>{`${range}줄 참조 복사`}</TooltipContent>
-      </Tooltip>
+      <Hint
+        text={`${range}줄 참조 복사`}
+        announce="name"
+        type="button"
+        onClick={() => onCopy(start, end)}
+        className="icon-button-quiet absolute right-full top-1 mr-4 cursor-copy text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        <Copy className="size-3" strokeWidth={1.8} aria-hidden />
+      </Hint>
       {children}
     </div>
   );

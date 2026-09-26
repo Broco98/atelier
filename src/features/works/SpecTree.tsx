@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { BookOpen, ChevronRight, Compass, Copy, Layers, ListChecks, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 
 interface TreeNode {
   name: string;
@@ -67,6 +67,11 @@ function buildTree(files: string[]): TreeNode[] {
 // 트리의 폴더와 판이 같은 모양으로 접혀야 하고, 한쪽만 바뀌면 그 자리가 갈린다.
 export const COLLAPSE_ROW =
   "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
+
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행 · 판 머리글(SpecSection)이
+// 함께 읽는다. 같은 식을 세 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다.
+// 인라인 style인 것은 깊이가 정해지지 않은 수라 클래스로 못 적어서다.
+export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
 
 interface TreeProps {
   files: string[];
@@ -140,7 +145,7 @@ function TreeRows({
               onOpenChange={(open) => onOpenChange(node.path, open)}
               className="flex flex-col"
             >
-              <CollapsibleTrigger className={COLLAPSE_ROW} style={{ paddingLeft: 8 + depth * 14 }}>
+              <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
                 <ChevronRight
                   className={cn("size-3 transition-transform", expanded && "rotate-90")}
                   strokeWidth={2.2}
@@ -196,7 +201,7 @@ function TreeRows({
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
                   onCopy && "pr-1.5",
                 )}
-                style={{ paddingLeft: 8 + depth * 14 }}
+                style={treeIndent(depth)}
               >
                 <FileGlyph name={node.name} />
                 <span className="min-w-0 flex-1 truncate">{node.name}</span>
@@ -206,17 +211,15 @@ function TreeRows({
                 // 페이드를 걸면 옆 행으로 옮겨 갈 때 두 복사 아이콘이 겹쳐 미끄러져 보인다.
                 // focus-visible:opacity-100이 없으면 Tab으로 도달은 하는데 보이지 않는다 —
                 // 거터 복사 버튼이 이미 같은 답을 하고 있다
-                <Tooltip>
-                  <TooltipTrigger
-                    type="button"
-                    aria-label={`${node.name} 경로 복사`}
-                    onClick={() => onCopy(node.path)}
-                    className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
-                  >
-                    <Copy className="size-3" strokeWidth={1.8} />
-                  </TooltipTrigger>
-                  <TooltipContent>경로 복사</TooltipContent>
-                </Tooltip>
+                <Hint
+                  text="경로 복사"
+                  type="button"
+                  aria-label={`${node.name} 경로 복사`}
+                  onClick={() => onCopy(node.path)}
+                  className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
+                >
+                  <Copy className="size-3" strokeWidth={1.8} />
+                </Hint>
               )}
             </div>
           </div>

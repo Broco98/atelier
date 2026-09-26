@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Copy, Folder, GitBranch, Info, PanelTop } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import { useProjects } from "@/features/projects/hooks";
 import type { ProjectView } from "@/features/projects/types";
 import { hasProjects } from "@/mode";
@@ -123,24 +123,22 @@ function MetaRow({
   // 도움말 「복사」는 툴팁이다. 행의 이름은 값이라, 「누르면 복사한다」는 이름보다 더 말하는 것 — 설명으로도
   // 남긴다(S28 — 툴팁은 스크린리더에 아무것도 주지 않는다).
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        aria-description="복사"
-        onClick={() => onCopy(value)}
-        className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
-      >
-        {glyph}
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
-        {tail ?? (
-          <Copy
-            className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-            strokeWidth={1.8}
-          />
-        )}
-      </TooltipTrigger>
-      <TooltipContent>복사</TooltipContent>
-    </Tooltip>
+    <Hint
+      text="복사"
+      announce="description"
+      type="button"
+      onClick={() => onCopy(value)}
+      className="group flex h-[30px] items-center gap-[9px] rounded-[8px] px-2 text-left text-[13px] transition-colors hover:bg-state-1"
+    >
+      {glyph}
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{shown}</span>
+      {tail ?? (
+        <Copy
+          className="size-3 shrink-0 text-tertiary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          strokeWidth={1.8}
+        />
+      )}
+    </Hint>
   );
 }
 
@@ -169,19 +167,15 @@ function WorkMetaMenu({ mode, work }: { mode: Mode; work: WorkView }) {
       {/* 도움말 「메타」는 툴팁이다(S39 — 판 4의 규칙을 이 표면을 옮기는 김에 앞당겼다). 툴팁 트리거가 곧 카드를
           여는 버튼이다 — 한 버튼에 두 부품이 붙는다(`render`). 이름(「… 메타」)이 툴팁 글자보다 더 말하므로 옮겨
           남길 설명이 없다(S28). */}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger aria-label={label} className="icon-button-quiet text-tertiary" />
-          }
-        >
-          {/* 글리프는 셸 nav(사이드바 토글·뒤로·앞으로)와 같은 16px이다 — 이 버튼들은 그것들과
-              **한 줄에 나란히 선다.** 상자(24px)는 icon-button이 이미 맞춰 두었는데 글리프만
-              작으면 같은 행에서 이쪽만 물러나 보인다. */}
-          <Info className="size-4" strokeWidth={1.8} />
-        </TooltipTrigger>
-        <TooltipContent>메타</TooltipContent>
-      </Tooltip>
+      <Hint
+        text="메타"
+        render={<PopoverTrigger aria-label={label} className="icon-button-quiet text-tertiary" />}
+      >
+        {/* 글리프는 셸 nav(사이드바 토글·뒤로·앞으로)와 같은 16px이다 — 이 버튼들은 그것들과
+            **한 줄에 나란히 선다.** 상자(24px)는 icon-button이 이미 맞춰 두었는데 글리프만
+            작으면 같은 행에서 이쪽만 물러나 보인다. */}
+        <Info className="size-4" strokeWidth={1.8} />
+      </Hint>
       <PopoverContent align="start" aria-label={label}>
         {/* 누르면 닫는다 — 복사가 끝났다는 신호가 팝오버가 사라지는 것이다.
             결정 47이 토스트를 화면(WorksPage)으로 올려 이제 헤더에서도 띄울 수는

@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { askDanger, showProblem } from "@/components/ui/confirm-store";
-import { Folder, Maximize2, Minimize2 } from "lucide-react";
+import { Folder } from "lucide-react";
+import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
 import PageHeader from "@/components/shell/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import ProjectList from "./ProjectList";
 import ProjectDetail from "./ProjectDetail";
 import { projectsApi } from "./api";
@@ -18,39 +17,14 @@ interface ProjectsPageProps {
   onOpenWork: (slug: string | null) => void;
 }
 
-const PANEL_OPEN_KEY = "projects-panel-open";
-
 function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: ProjectsPageProps) {
   // 이 화면은 `/projects` 주소에만 산다 — Maison 접두사가 붙을 수 없어 모드가 상수다
   // (결정 17: Maison에 프로젝트는 없다).
   const { data: projects = [] } = useProjects("atelier");
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
+  // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Archive와 같은 하나를 쓴다.
+  const [panelOpen, togglePanel] = useListPanel("projects-panel-open");
   const createProject = useCreateProject();
   const deleteProject = useDeleteProject();
-
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
-
-  // Cmd+Enter — 목록 패널 접기/펼치기 (콘텐츠 확대·축소). 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      e.preventDefault();
-      setPanelOpen((open) => !open);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   // 첫 항목으로 조용히 떨어지지 않는다 — 무선택은 주소 쪽에서 정규화한다 (routes/projects.index.tsx)
   const selected = projects.find((p) => p.slug === selectedSlug) ?? null;
@@ -116,24 +90,7 @@ function ProjectsPage({ sidebarOpen, selectedSlug, onSelect, onOpenWork }: Proje
                   </Button>
                 </>
               )}
-              {/* 도움말은 툴팁이고 상태를 탄다 — 누르면 무슨 일이 날지를 말한다. 열림은 `aria-expanded`가 이미
-                  말하므로 설명(`aria-description`)은 안 단다(S28). */}
-              <Tooltip>
-                <TooltipTrigger
-                  type="button"
-                  onClick={() => setPanelOpen((open) => !open)}
-                  aria-label="목록 패널 토글"
-                  aria-expanded={panelOpen}
-                  className="icon-button-quiet text-tertiary"
-                >
-                  {panelOpen ? (
-                    <Maximize2 className="size-4" strokeWidth={1.7} />
-                  ) : (
-                    <Minimize2 className="size-4" strokeWidth={1.7} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>{panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}</TooltipContent>
-              </Tooltip>
+              <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
             </>
           }
         />

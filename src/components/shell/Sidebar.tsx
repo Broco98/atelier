@@ -21,7 +21,7 @@ import {
   signalsOf,
   topSignalView,
 } from "@/features/terminal/shell-attention";
-import type { BandRow, CallingNote } from "@/features/terminal/shell-attention";
+import type { BandRow } from "@/features/terminal/shell-attention";
 import { selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
@@ -31,7 +31,7 @@ import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
 import { ModeSwitch } from "./ModeSwitch";
 import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
-import { SignalMeta, showsElapsed } from "./shell-signal";
+import { SignalMeta, showsElapsed, type CallingNote } from "./shell-signal";
 import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -89,7 +89,7 @@ function Sidebar({
   const size = useResizableWidth("sidebar-width", 280, 240, 400);
   // **work마다 셸이 몇 개인가만 읽는다**(결정 2·3). 셀렉터가 얕은 비교를 타므로 셸이
   // 열리고 닫힐 때만 이 셸이 다시 그려진다 — 프롬프트마다 오는 OSC 타이틀에는 안 흔들린다.
-  // 목록이 스스로 구독하지 않는 이유는 SidebarWorkList의 `shellCounts` 주석에 있다.
+  // 목록이 스스로 구독하지 않는 이유는 `WorkRowShells`(`WorkSectionList.tsx`) 머리말에 있다.
   // **이 세계의 것만 센다**(결정 10). 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한
   // 루트 쌍 안에서만 본다) 안 거르면 저쪽 세계의 셸이 이 행의 숫자에 얹힌다. 키가 slug인
   // 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
@@ -153,6 +153,14 @@ function Sidebar({
       </SidebarFrame>
     );
   }
+
+  // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미 쓰는 그
+  // 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지 않는다. **셸 수는
+  // 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**(결정 8) — 행마다 구독하는 것은
+  // 「도는 것」과 신호 하나씩이다. 구독이 행마다 따로인 이유는 `RowMetaFor`가 든다.
+  const renderRowMeta = (work: WorkView) => (
+    <RowMetaFor owner={ownerOf(mode, work.slug)} shellCount={shellCounts[work.slug] ?? 0} />
+  );
 
   return (
     <SidebarFrame open={open} size={size}>
@@ -234,20 +242,9 @@ function Sidebar({
         // nav와 **같은 값**을 받는다 — 세계를 판정하는 자리가 셸 하나여야 목록·nav·세그먼트가
         // 함께 움직인다(`SidebarWorkList`의 `mode` 주석).
         mode={mode}
-        shellCounts={shellCounts}
-        // 행의 오른쪽 메타도 **여기서 읽어 내린다**(결정 2) — 개수(`shellCounts`)가 이미
-        // 쓰는 그 우회와 같은 길이고, 이유도 같다: 목록은 터미널을 한 번도 참조하지
-        // 않는다. **셸 수는 구독하지 않고 위에서 읽은 Record에서 꺼내 내려준다**
-        // (결정 8) — 행마다 구독하는 것은 「도는 것」과 신호 하나씩이다. 구독이 행마다
-        // 따로인 이유는 `RowMetaFor`가 든다.
-        signals={signals}
-        notes={notes}
-        renderRowMeta={(work) => (
-          <RowMetaFor
-            owner={ownerOf(mode, work.slug)}
-            shellCount={shellCounts[work.slug] ?? 0}
-          />
-        )}
+        // 셸에서 오는 값 넷은 **한 묶음으로** 내려간다(`WorkRowShells`) — 목록은 그것을 행까지
+        // 나를 뿐 터미널을 한 번도 참조하지 않는다.
+        shells={{ shellCounts, signals, notes, renderRowMeta }}
       />
 
       {/* **바닥 고정** — 「설정은 목적지 셋과 성질이 다르다」를 위치로 말한다(결정 51).

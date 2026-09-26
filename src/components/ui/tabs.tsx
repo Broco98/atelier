@@ -2,6 +2,8 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cn } from "cn"
 
+import { resolveClassName } from "@/components/ui/resolve-class-name"
+
 type TabsProps<Value extends string> = Omit<
   TabsPrimitive.Root.Props,
   "value" | "defaultValue" | "onValueChange"
@@ -63,7 +65,7 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
         cn(
           "relative inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[9px] px-[10px] text-[13px] font-medium whitespace-nowrap transition-colors outline-none group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
           tabsTriggerTone(state.active),
-          typeof className === "function" ? className(state) : className
+          resolveClassName(className, state)
         )
       }
       {...props}

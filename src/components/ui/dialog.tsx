@@ -1,10 +1,11 @@
-// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→13px·border-strong·shadow-lg·bg-background, 글자 text-sm→13.5px, 제목·설명·바닥은 확인 창(alert-dialog)과 같은 값, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](이름 바꾸기 창이 첫 쓰는 자리다). 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다.
+// 앱 규격으로 고친 자리: 가림막 bg-black/10·backdrop-blur-xs→modal-scrim(25% 검정, 흐림 없음), Popup에 aria-modal 직접(S31), 카드 rounded-xl·ring·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background), 글자 text-sm→13.5px, 가림막·창 상자·머리·제목·설명·바닥은 확인 창(alert-dialog)과 같은 값이라 두 파일이 dialog-look.ts 한 곳에서 읽는다, 닫기 버튼의 읽는 이름 Close→닫기, 변형 palette(검색 팔레트 — 위 12vh, 폭 560px, 높이 60vh까지, 안쪽 없이 세로로 쌓는다)를 더했다, Portal 없이 Overlay 뒤에 서는 창 DialogPopup을 따로 내보낸다. 가운데 창(default)은 w-full·max-w-[calc(100%-2rem)]·sm:max-w-sm→확인 창과 같은 330px·max-w-[calc(100%-4rem)](dialogLook.center — 이름 바꾸기 창이 첫 쓰는 자리다). 변형 fullscreen(전체화면 뷰어 — 사방 36px 안쪽, 폭 1280px까지, 옛 뷰어의 모서리 14px, 안쪽 없이 세로로 쌓는다)을 더했다.
 import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
+import { dialogLook } from "@/components/ui/dialog-look"
 import { XIcon } from "lucide-react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -23,7 +24,8 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-// 가림막은 앱의 모든 모달이 쓰는 막(`modal-scrim`)이다 — 뒤를 흐리지 않고 어둡게만 한다.
+// 가림막은 앱의 모든 모달이 쓰는 막(`modal-scrim`)이다 — 뒤를 흐리지 않고 어둡게만 한다. 확인 창과
+// 같은 것이라 `dialogLook`에서 읽는다.
 function DialogOverlay({
   className,
   ...props
@@ -31,23 +33,21 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
-      className={cn(
-        "modal-scrim isolate duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        className
-      )}
+      className={cn(dialogLook.overlay, className)}
       {...props}
     />
   )
 }
 
+// 창 상자는 확인 창과 같은 것(`dialogLook.popup`)에 글자 13.5px을 더한다.
 const dialogPopupVariants = cva(
-  "fixed left-1/2 z-50 -translate-x-1/2 rounded-[13px] border border-border-strong bg-background text-[13.5px] text-foreground shadow-lg duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+  [dialogLook.popup, "text-[13.5px]"],
   {
     variants: {
       variant: {
-        // 가운데의 작은 창(이름 바꾸기). 확인 창(`alert-dialog`)과 한 계열이라 자리·폭·안쪽이 그 창과 같다.
-        default:
-          "top-1/2 grid w-[330px] max-w-[calc(100%-4rem)] -translate-y-1/2 gap-4 p-4",
+        // 가운데의 작은 창(이름 바꾸기). 확인 창(`alert-dialog`)과 한 계열이라 자리·폭·안쪽을 그 창과
+        // 함께 `dialogLook.center`에서 읽는다.
+        default: dialogLook.center,
         // 검색 팔레트. 위쪽 12vh에 선다(확인 창은 가운데다). 첫 줄이 입력칸이고 나머지를 목록이
         // 채워 구르므로, 안쪽 여백 없이 세로로 쌓고 넘치는 것은 목록이 든다.
         palette:
@@ -120,7 +120,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("grid gap-1.5", className)}
+      className={cn(dialogLook.header, className)}
       {...props}
     />
   )
@@ -137,7 +137,7 @@ function DialogFooter({
   return (
     <div
       data-slot="dialog-footer"
-      className={cn("flex justify-end gap-1.5", className)}
+      className={cn(dialogLook.footer, className)}
       {...props}
     >
       {children}
@@ -154,10 +154,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn(
-        "text-[14px] font-semibold tracking-[-0.01em]",
-        className
-      )}
+      className={cn(dialogLook.title, className)}
       {...props}
     />
   )
@@ -170,10 +167,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn(
-        "text-[13px] leading-[1.6] text-tertiary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
-      )}
+      className={cn(dialogLook.description, className)}
       {...props}
     />
   )

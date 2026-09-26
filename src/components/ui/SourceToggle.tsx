@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { CodeXml, Eye } from "lucide-react";
-import { ToggleGroup, ToggleGroupChip, ToggleGroupItem } from "./toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
+import { SegmentGroup, SegmentGroupItem } from "./segment-group";
+import { Hint } from "./tooltip";
+
+/** 칸이 놓인 순서 — 아래 `SourceToggle`이 칸을 그리는 순서와 같다. 칩이 이것으로 서는 자리를 안다. */
+const CELLS = ["doc", "source"] as const;
 
 // 지금 보고 있는 것이 **문서인가 원문인가**를 두 칸으로 말한다(결정 33).
 //
@@ -20,10 +23,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 // **두 칸을 함께 잠근다**: 한 칸만 잠그면 잠긴 채로도 반대 칸이 눌려, 결정 21이 없애려던
 // 「눌리는데 아무 일도 안 난다」가 그 자리에서 되살아난다.
 //
-// **ToggleGroup의 segment 변형이다**(결정 1, 판 4). 한 컨트롤이라 Tab 자리가 하나이고(첫 칸 — S30),
-// 그 안에서는 ←/→로 옮긴다. 부품은 선 칸을 누르면 값을 비우는데(`[]`), 여기서는 그것을 **뒤집기**로
-// 읽는다(S16 — 모드 전환은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라 칸마다 네이티브
-// `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일(`toggle-group.tsx`)이 든다.
+// **두 칸 토글 부품(`SegmentGroup` — Base UI ToggleGroup 위)이다**(결정 1, 판 4). 한 컨트롤이라 Tab
+// 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로 옮긴다. 부품은 선 칸을 누르면 값을 비우는데(`[]`),
+// 여기서는 그것을 **뒤집기**로 읽는다(S16 — 모드 전환은 같은 `[]`를 버린다). 잠김은 그룹의 `disabled`라
+// 칸마다 네이티브 `disabled`가 되고, 칩까지 부품이 흐린다. 바닥·칩·칸의 모양은 부품 파일
+// (`segment-group.tsx`)이 든다.
 export function SourceToggle({
   on,
   locked = false,
@@ -37,23 +41,22 @@ export function SourceToggle({
   className?: string;
 }) {
   return (
-    <ToggleGroup
-      variant="segment"
+    <SegmentGroup
       size="icon"
+      cells={CELLS}
       value={[on ? "source" : "doc"]}
       // 선 칸을 눌러 비운 값(`[]`)도 뒤집기다 — 두 칸이 한 토글의 두 얼굴이다(위 주석).
       onValueChange={([pick]) => onChange(pick === undefined ? !on : pick === "source")}
       disabled={locked}
       className={className}
     >
-      <ToggleGroupChip at={on ? 1 : 0} />
       <Segment value="doc" label="문서로 보기" locked={locked}>
         <Eye className="size-3.5" strokeWidth={1.9} />
       </Segment>
       <Segment value="source" label="원문 보기" locked={locked}>
         <CodeXml className="size-3.5" strokeWidth={2} />
       </Segment>
-    </ToggleGroup>
+    </SegmentGroup>
   );
 }
 
@@ -71,11 +74,8 @@ function Segment({
   return (
     // 이름은 글리프가 못 말하니 `aria-label`이 든다. 도움말은 같은 글자의 툴팁이다 — 이름보다 더 말하는 것이
     // 없어 설명(`aria-description`)은 안 단다(S28). **잠기면 툴팁도 없다**(S23) — 칸이 네이티브 `disabled`다.
-    <Tooltip>
-      <TooltipTrigger disabled={locked} render={<ToggleGroupItem value={value} aria-label={label} />}>
-        {children}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Hint text={label} announce="name" disabled={locked} render={<SegmentGroupItem value={value} />}>
+      {children}
+    </Hint>
   );
 }

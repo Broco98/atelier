@@ -542,11 +542,12 @@ export function TerminalSection({
             size="chip"
             aria-label="글꼴 프리셋"
             value={fontChipsOf(fontFamily)}
-            onValueChange={([pick]) => {
-              // 켜진 칩을 다시 누르면 부품이 값을 비운다(`[]`) — 버린다(S16). 「고르지 않음」은 「기본」
-              // 칩이 말하고, 칩을 다시 눌러 끄는 것은 뜻이 없다.
-              if (pick) onChange({ fontFamily: pick === DEFAULT_FONT_CHIP ? null : pick });
-            }}
+            // 켜진 칩을 다시 눌러 끄는 것은 뜻이 없다 — 부품이 그 누름을 없던 일로 한다(S16). 「고르지 않음」은
+            // 「기본」 칩이 말한다.
+            deselectable={false}
+            onValueChange={([pick]) =>
+              onChange({ fontFamily: pick === DEFAULT_FONT_CHIP ? null : pick })
+            }
           >
             <ToggleGroupItem value={DEFAULT_FONT_CHIP}>기본</ToggleGroupItem>
             {FONT_PRESETS.map((preset) => (
@@ -602,15 +603,14 @@ export function TerminalSection({
 
       {/* 테마 — 두 벌뿐이다(결정 54). 기본은 어둡게이고 그 기본은 백엔드가 정해 온다
           (`settings.rs`의 `TerminalTheme::default`), 그래서 이 칸에는 「고르지 않음」이 없다 —
-          켜진 칩을 다시 눌러 비운 값(`[]`)은 버린다(S16). 둘 중 하나가 늘 켜져 있다. */}
+          켜진 칩을 다시 눌러 값을 비우지 못한다(S16 — 부품의 `deselectable={false}`). 둘 중 하나가 늘 켜져 있다. */}
       <Row label="테마">
         <ToggleGroup
           size="chip"
           aria-label="테마"
           value={[theme]}
-          onValueChange={([pick]) => {
-            if (pick) onChange({ theme: pick });
-          }}
+          deselectable={false}
+          onValueChange={([pick]) => onChange({ theme: pick })}
         >
           {(["light", "dark"] as const).map((option) => (
             <ToggleGroupItem key={option} value={option}>

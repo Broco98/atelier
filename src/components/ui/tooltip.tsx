@@ -1,6 +1,7 @@
-// 앱 규격으로 고친 자리: Provider 지연 기본값 0→600ms(S3, 앱 루트에 하나), 글자 text-xs→11.5px(P5), 열림·닫힘 길이 duration-100 추가(결정 7의 100ms — registry 툴팁만 길이가 없어 tw-animate 기본 150ms였다). 열림 애니메이션 클래스는 registry 그대로다. Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다).
+// 앱 규격으로 고친 자리: Provider 지연 기본값 0→600ms(S3, 앱 루트에 하나), 글자 text-xs→11.5px(P5), 열림·닫힘 길이 duration-100 추가(결정 7의 100ms — registry 툴팁만 길이가 없어 tw-animate 기본 150ms였다). 열림 애니메이션 클래스는 registry 그대로다. Root가 Esc를 멈추지 않고 아래 층에 보낸다(allowPropagation — 툴팁은 사람이 연 층이 아니다. 첫 쓰는 자리는 전체화면 창의 닫기 버튼이다). 앱이 더한 조각 `Hint` 하나: 트리거와 툴팁과 그 글자가 스크린리더로 가는 길(S28)을 한 곳에서 잇는다.
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "cn"
+import { Kbd } from "./kbd"
 
 function TooltipProvider({
   delay = 600,
@@ -73,4 +74,51 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+// **도움말 하나 — 앱이 더한 조각이다.** 트리거와 툴팁을 한 번에 세우고, 툴팁 글자를 스크린리더에 어떻게 남길지(S28)를
+// 이 한 곳이 정한다. 툴팁은 `aria-describedby`도 역할도 달지 않아 그 글자는 스크린리더에 없다 — 옛 `title`이 이름 다음에
+// 읽어 주던 말을 잃지 않으려면 트리거에 옮겨 적어야 하는데, 자리마다 손으로 적으면 같은 글자를 두 번 쓰고 한쪽만
+// 고치는 날 눈과 귀가 다른 말을 듣는다.
+//
+// - `announce="name"`: 이름이 없던 아이콘 버튼이다 — 툴팁 글자가 이름(`aria-label`)이 된다.
+// - `announce="description"`: 이름보다 더 말하는 글자다(하는 일 · 잠긴 이유 · 지금 값) — 설명(`aria-description`)으로 남는다.
+// - 없으면 눈에만 뜬다: 이름과 같은 말이거나 이름이 이미 품었거나, `aria-pressed`·`aria-expanded`가 말하는 켬/끔·펼침이다.
+// - `shortcut`은 글자 옆에 Kbd로 붙고 설명으로도 남는다(「검색 ⌘K」).
+//
+// 나머지 속성은 트리거(`TooltipTrigger`)의 것이다 — `render`로 다른 부품의 버튼(메뉴·Select·Popover 트리거)에 얹고,
+// `disabled`면 툴팁이 없다(S23). 트리거에 직접 준 `aria-label`·`aria-description`이 위의 것보다 이긴다.
+function Hint({
+  text,
+  shortcut,
+  announce,
+  ...props
+}: TooltipPrimitive.Trigger.Props & {
+  /** 툴팁 글자. */
+  text: string
+  /** 글자 옆의 키(Kbd). 설명으로도 남는다. */
+  shortcut?: string
+  /** 툴팁 글자를 이름으로 남기나, 설명으로 남기나. 없으면 눈에만 뜬다. */
+  announce?: "name" | "description"
+}) {
+  const description =
+    [announce === "description" ? text : null, shortcut].filter(Boolean).join(" ") || undefined
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={announce === "name" ? text : undefined}
+        aria-description={description}
+        {...props}
+      />
+      <TooltipContent>
+        {text}
+        {shortcut !== undefined && (
+          <>
+            {" "}
+            <Kbd>{shortcut}</Kbd>
+          </>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, Hint }

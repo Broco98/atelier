@@ -3,6 +3,7 @@ import type { AgentSignal, CanonicalEvent } from "./agents/types";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { Mode } from "@/mode";
+import type { CallingKind, CallingNote, ShellSignal } from "@/components/shell/shell-signal";
 import type { ShellHookState } from "./types";
 
 // 셸 **상태 축**을 아는 순수 모듈. 「에이전트가 말한 사실 · 사람이 본 행동 · 그 값이 어디서
@@ -20,8 +21,15 @@ import type { ShellHookState } from "./types";
 // 것이 검사로 못박혀 있어(그 파일 머리말) 어댑터를 부를 수 없다. 그래서 규칙은 여기 있고
 // 레지스트리에는 「그 칸에 앉힌다」는 리듀서만 남는다.
 
-/** 에이전트가 말한 사실. 「아무 주장도 없음」은 `Attention` 자체가 `null`인 것으로 말한다. */
-export type AttentionKind = "waiting" | "done" | "working";
+/**
+ * 에이전트가 말한 사실. 「아무 주장도 없음」은 `Attention` 자체가 `null`인 것으로 말한다.
+ *
+ * **어휘는 화면값(`ShellSignal`)과 같은 셋이고, 그 한 벌을 딛는다.** 화면값의 모양은 그리는 쪽
+ * (`components/shell/shell-signal`)에 적혀 있고 이 feature가 그것을 가져온다 — 사이드바 목록이
+ * 이 feature를 모른 채 같은 타입을 받아야 해서다(그 파일 머리말). 사실과 그리는 것을 가르는 것은
+ * 어휘가 아니라 `seen`이다(`signalOf`).
+ */
+export type AttentionKind = ShellSignal;
 
 /** 그 값이 어디서 왔나. 권위 규칙이 이 값 하나로 갈린다. */
 export type AttentionSource = "hook" | "osc" | "bell";
@@ -54,9 +62,6 @@ export interface Attention {
    */
   agent: string | null;
 }
-
-/** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
-export type ShellSignal = AttentionKind;
 
 /**
  * 정규 이벤트 → `kind`. 스펙 전이 표의 셋째 칸이 그대로 이 표다.
@@ -211,20 +216,8 @@ export function signalOf(shell: Shell): ShellSignal | null {
 const RANK: Readonly<Record<ShellSignal, number>> = { waiting: 0, done: 1, working: 2 };
 
 /**
- * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
- * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
- *
- * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
- * `AttentionKind`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
- * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
- * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
- * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다.
- */
-export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
-
-/**
  * 그 화면값이 「확인할 것」인가. **이 판정의 유일한 자리다** — 넓히는 날 고칠 곳이 이 한 줄
- * 이어야 띠·배지·알림이 함께 따라온다(위 `CallingKind` 머리말).
+ * 이어야 띠·배지·알림이 함께 따라온다(`CallingKind` 머리말 — `components/shell/shell-signal`).
  */
 export function isCalling(kind: ShellSignal | null): kind is CallingKind {
   return kind === "waiting" || kind === "done";
@@ -299,22 +292,6 @@ export function topSignalView(shells: ReadonlyArray<Shell>): SignalView | null {
     since: attention.since,
     running: runningOn(top.shell) ?? attention.agent,
   };
-}
-
-/**
- * **부르는 셸이 한 말**(`sidebar-active-band` 결정 14). 행이 한 줄이 되면서 행에서 빠진 셸의 마지막
- * 말이 서는 자리 둘 — 호버 카드의 말 칸과 행 버튼의 접근성 설명(`aria-description`) — 이 이 값
- * 하나를 나눠 읽는다.
- *
- * **종류가 함께 오는 것은 카드의 라벨 때문이다.** 칸의 라벨이 상태 말(「나를 기다림」·「확인할 것」)
- * 이라, 말만 실어 보내면 받는 쪽이 종류를 다른 값에서 다시 찾아 맞춰야 한다 — 그 둘이 같은
- * 셸의 것이라는 보장을 받는 쪽이 지게 된다. 종류가 `CallingKind`인 것은 이 값이 **부르는
- * 셸에만** 서기 때문이다(아래 `callingNote`).
- */
-export interface CallingNote {
-  kind: CallingKind;
-  /** 셸이 마지막으로 한 말의 첫 줄. 어댑터가 접어 준 것 그대로이고 비어 있지 않다. */
-  message: string;
 }
 
 /**

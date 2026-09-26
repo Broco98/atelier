@@ -24,6 +24,56 @@ const MARQUEE_SPEED = 50; // px/s
 // `SidebarWorkList.test.tsx`의 소스 스캔이 지킨다 — 어긋나도 화면에는 속도 오차로만 나타난다.
 const TITLE_FADE = 12; // px
 
+/**
+ * 행이 **셸에서 받는 값 넷** — 사이드바(`Sidebar`)가 읽어 목록(`SidebarWorkList`)을 거쳐 여기까지
+ * 함께 내려온다. 넷이 늘 같이 다니므로 한 이름으로 묶었다: 따로 나르면 거치는 자리마다 prop 넷을
+ * 옮겨 적고, 하나를 빠뜨려도 그 자리의 타입만 보고는 모른다.
+ *
+ * **넷 다 값을 고르는 자리가 위(`Sidebar`)다.** 목록은 터미널 스토어를 모른다 — 여기서
+ * `terminal-store`를 import하면 `@xterm/*`와 그 CSS가 따라 들어와 이 목록의 정적 마크업 검사가
+ * 서지 못한다(SidebarWorkList.test.tsx가 그 계약을 센다). 그래서 모양도 이쪽에 적는다.
+ */
+export interface WorkRowShells {
+  /**
+   * work별 셸 개수 — **행의 오른쪽 메타가 서는 조건**이다(결정 2·3). 셸이 없는 행에는 그 칸이
+   * 없다. 종류·수가 무엇을 적는지는 메타 조각이 정한다: 셸 수와 도는 것을 **둘 다 아는
+   * 자리**에서만 「그 밖의 셸」의 수를 낼 수 있어서, 두 값이 `ShellMeta` 하나로 합쳐졌다(결정 3·13).
+   */
+  shellCounts: Record<string, number>;
+  /**
+   * work마다의 **화면값**(#203) — 레인이 점·스피너를 세울지 work 상태 아이콘을 세울지, 그리고
+   * 행 버튼의 이름에 상태 말이 붙을지를 가른다. 값이 없는 work은 **키 자체가 없다.**
+   *
+   * **개수와 같은 길로 온다**(위 머리말) — 이 목록은 터미널을 모른다. 슬롯이 아니라 값인 것은
+   * 두 자리가 함께 읽기 때문이다: 레인은 마크업 안쪽이고 이름은 버튼의 속성이라, 슬롯 하나로는
+   * 둘째 자리에 닿지 않는다. **문자열 Record라 얕은 비교가 그대로 먹는다** — 객체를 담으면
+   * 회차마다 새것이라 어느 셸에서 명령이 시작될 때마다 목록 전체가 다시 그려진다
+   * (`signalsByOwner` 머리말).
+   */
+  signals: Record<string, ShellSignal>;
+  /**
+   * work마다 **부르는 셸이 한 말**(`sidebar-active-band` 결정 14) — 종류와 말이다. 값이 없는 work은
+   * 키 자체가 없다(부르지 않거나, 말 없이 불렀다 — S6).
+   *
+   * **`signals`와 같은 길로 온다 — 슬롯이 아니라 값이다.** 이 값을 읽는 자리가 둘인데 둘 다
+   * 행 마크업 **안**이 아니다: 행 버튼의 접근성 설명은 버튼의 **속성**이고, 호버 카드는 목록
+   * 밖의 포털에 선다(`SidebarWorkList`). 슬롯 하나로는 그 두 자리에 닿지 않는다. 고르는 자리는
+   * 위(`Sidebar`) 하나이고, 그 고름이 레인·메타와 같은 셸을 딛는다 — 여기서 둘로 나눠 줄 뿐이다.
+   */
+  notes: Record<string, CallingNote>;
+  /**
+   * 행의 **오른쪽 메타**(`sidebar-active-band` S4·S5). 같은 이유로 슬롯이고, 값을 고르는 자리는
+   * 터미널 스토어를 아는 Sidebar다(결정 13) — 이 목록은 터미널을 한 번도 참조하지 않는다.
+   *
+   * **오는 것이 하나가 아니다**: 그 셸이 부르거나 돌면 **신호의 마크와 경과**(부름은 마크 + 경과,
+   * 도는 중은 마크 — `components/shell/shell-signal`의 `SignalMeta`)이고, 조용하면 종류·수
+   * (`shell-meta`의 `ShellMeta`)다. 셸이 없는 행에는 칸이 아예 없다 — 슬롯을 불러도 그 행에는
+   * 서지 않는다(`WorkRow`). 타입이 `ReactNode`뿐이라 이 문단이 「이 슬롯에 무엇이 오나」를
+   * 묻는 유일한 자리다.
+   */
+  renderRowMeta: (work: WorkView) => ReactNode;
+}
+
 // 구획을 그리는 부분. 구독하는 자리(useWorks·라우터·localStorage·끌기 상태)는 `SidebarWorkList`에
 // 남기고 여기는 **받은 것만** 그린다. 이 저장소의 컴포넌트 seam은 정적 마크업이라, 구획이 서는 조건
 // (결정 82·108)과 핀의 생김새(결정 85)를 그물에 걸려면 훅을 부르지 않는 자리가 있어야
@@ -38,15 +88,12 @@ export function WorkSectionList({
   mode,
   open,
   selectedSlug,
-  shellCounts,
-  signals,
-  notes,
+  shells,
   onToggleSection,
   onOpen,
   onHover,
   onLeave,
   onTogglePin,
-  renderRowMeta,
   draggedSlug,
   lineY,
   litEmptySlot,
@@ -57,17 +104,13 @@ export function WorkSectionList({
   mode: Mode;
   open: SectionsOpen;
   selectedSlug: string | null;
-  shellCounts: Record<string, number>;
-  signals: Record<string, ShellSignal>;
-  /** work마다 부르는 셸이 한 말(`sidebar-active-band` 결정 14). 행 버튼의 접근성 설명이 읽는다. */
-  notes: Record<string, CallingNote>;
+  /** 행이 셸에서 받는 값 넷(`WorkRowShells`). 행마다 제 slug의 것을 꺼내 `WorkRow`에 건넨다. */
+  shells: WorkRowShells;
   onToggleSection: (section: keyof SectionsOpen) => void;
   onOpen: (slug: string) => void;
   onHover: (slug: string, row: HTMLElement) => void;
   onLeave: () => void;
   onTogglePin: (work: WorkView) => void;
-  /** 행 오른쪽 메타의 **내용** — 슬롯이다. 그리는 것도 고르는 것도 위(`Sidebar`)의 일이다(`WorkRow`의 `meta`). */
-  renderRowMeta: (work: WorkView) => ReactNode;
   /**
    * 지금 끌리고 있는 행(UI개선 스펙 §4). **구독은 위(`SidebarWorkList`)가 하고 여기는 받기만 한다** —
    * 이 파일이 훅을 부르면 정적 마크업 seam이 서지 못한다(그 계약을 소스 검사가 센다).
@@ -97,15 +140,15 @@ export function WorkSectionList({
       work={work}
       active={work.slug === selectedSlug}
       dragging={work.slug === draggedSlug}
-      shellCount={shellCounts[work.slug] ?? 0}
-      signal={signals[work.slug] ?? null}
-      note={notes[work.slug] ?? null}
+      shellCount={shells.shellCounts[work.slug] ?? 0}
+      signal={shells.signals[work.slug] ?? null}
+      note={shells.notes[work.slug] ?? null}
       onOpen={onOpen}
       onHover={onHover}
       onLeave={onLeave}
       onTogglePin={onTogglePin}
       onArmDrag={onArmDrag}
-      meta={renderRowMeta(work)}
+      meta={shells.renderRowMeta(work)}
     />
   );
   return (
@@ -612,6 +655,14 @@ function WorkRow({
           이다. **왼쪽 `pl-(--glyph-gap)`이 제목과 메타를 떼는 값이다** — 캔버스 보드 B의 행
           간격(9px)이고, 메타가 있을 때만 난다(S34: 바닥을 두지 않는다).
 
+          **슬롯이 아무것도 안 그리면 칸이 통째로 빠진다(`empty:hidden`)** — 「칸의 폭은 선 것들의
+          폭이다」(스펙 S34). 조용한 갈래(`ShellMeta`)는 셸이 하나라도 있으면 늘 무언가를 그리므로
+          여기 안 걸리고, 걸리는 것은 신호 갈래가 `null`인 드문 경우 하나다(도는 셸의 마크를
+          모를 때 — `SignalMeta` 머리말). 그때 빈 상자가 9px 틈을 쥐면 제목만 까닭 없이 짧아진다.
+          칸이 서는가를 여기서 묻지 못하는 것은 무엇을 그릴지가 슬롯 **안의** 구독에서 정해지기
+          때문이라(`RowMetaFor`), 빈 것을 보고 물러나는 일은 CSS가 한다. 아래 hover의 투명과는
+          뜻이 반대다: 그쪽은 선 것이 **있어서** 칸을 쥔 채 안 보이게 하고, 여기는 선 것이 없다.
+
           hover하면 메타가 **투명해진다**(판 05 결정 6). `hidden`이 아니다 — `display:none`은 칸
           폭 계산에서 빠져 2열이 핀의 24px로 **줄고** 제목이 hover마다 튄다. `visibility:hidden`도
           아니다: 셸 수가 마우스 위치에 따라 있다 없다 하는 정보가 되면 안 된다. 트랜지션은
@@ -640,7 +691,7 @@ function WorkRow({
         <div
           data-row-meta={work.slug}
           data-shells={signal === null ? work.slug : undefined}
-          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-(--glyph-gap) group-hover:opacity-0 peer-focus-visible:opacity-0"
+          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-(--glyph-gap) group-hover:opacity-0 peer-focus-visible:opacity-0 empty:hidden"
         >
           {meta}
         </div>

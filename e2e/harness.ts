@@ -463,8 +463,14 @@ export async function pointIn(target: Locator, where: RowPoint) {
  * 안 보고 지나가면 뒤의 「IPC 없음」들이 「끌기가 시작도 안 됐다」로도 초록이 된다.
  *
  * L3·L4가 함께 딛는다 — 손짓을 spec마다 적으면 문턱이나 흐려짐이 바뀌는 날 고칠 자리가 여럿이 된다.
+ *
+ * **행이 멈춘 뒤에 잰다.** 맨 마우스는 로케이터 동작과 달리 요소가 움직이는 중인지 안 기다린다 — 구획을
+ * 접은 직전이면 아래 행들이 180ms 동안 올라가는 중이라, 움직이는 도중에 잰 자리를 부하 걸린 러너가
+ * 늦게 누르면 행 한 칸 아래를 누른다(끌기가 시작도 안 된다). `scrollIntoViewIfNeeded`가 상자가 두 프레임
+ * 내리 같을 때까지 기다린다.
  */
 export async function pickUpRow(page: Page, slug: string) {
+  await workRow(page, slug).scrollIntoViewIfNeeded();
   const from = await pointIn(workRow(page, slug), "middle");
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -523,6 +529,15 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
 
 /** 알림 띠. 부르는 셸이 없으면 **DOM에 아예 없다**(#204 · 스토리 38). */
 export const 띠 = (page: Page) => page.locator("[data-band]");
+
+/**
+ * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
+ * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
+ *
+ * **여기 사는 이유는 툴팁을 집는 길을 하나로 두려는 것이다.** spec마다 선택자를 옮겨 적으면 표식이 바뀌는 날
+ * 한 파일만 고쳐지고, 고쳐지지 않은 쪽의 「툴팁이 없다」(`toHaveCount(0)`)는 헛돌아 초록이 된다.
+ */
+export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
@@ -641,6 +656,22 @@ export async function openShell(page: Page): Promise<void> {
   await expect(tabs).toHaveCount(before + 1);
   await awaitSpawned(page, before + 1);
 }
+
+/**
+ * 셸의 **입력칸** — 사람이 친 글자를 받는 xterm의 숨은 `<textarea>`다. 셸을 붙이면 포커스를 스스로
+ * 가져가고, 창이 닫히면 돌아와야 하는 자리가 여기다. 「셸에 포커스가 있다」는
+ * `expect(셸입력(page)).toBeFocused()`로 잰다.
+ *
+ * **역할과 이름으로 집는다**(검사 규칙). 이름 「Terminal input」은 xterm이 스스로 다는 것이고
+ * (`Terminal.strings.promptLabel`의 기본값) 앱은 바꾸지 않는다. 화면에 선 입력칸은 늘 하나다 — 켜진
+ * 칸의 집만 DOM에 붙고 나머지 칸은 떼어 둔다(`terminal-store`의 `detachShell`). 모달이 떠 있는 동안에는
+ * 그 아래라 `aria-hidden`이어서 안 잡히므로, 「포커스가 돌아왔다」는 창이 닫힌 뒤에 선다.
+ *
+ * **여기 사는 이유는 셸 입력칸을 집는 길을 하나로 두려는 것이다.** 한때 spec마다 `activeElement`의
+ * 클래스 문자열을 옮겨 적었다 — xterm이 그 이름을 바꾸는 날 한 파일만 고쳐지고, 고쳐지지 않은 쪽의
+ * 「셸에 포커스가 없다」는 헛돌아 초록이 된다.
+ */
+export const 셸입력 = (page: Page) => page.getByRole("textbox", { name: "Terminal input", exact: true });
 
 /**
  * 셸 하나가 **스스로 말하게 만든다.** 백엔드의 감시가 상태 파일을 읽어 쏘는
@@ -830,6 +861,28 @@ export async function clipboardWrites(page: Page): Promise<string[]> {
     if (!written) throw new Error("recordClipboard를 먼저 깔아야 한다");
     return written;
   });
+}
+
+/**
+ * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`나 `resume`으로만 흐른다.
+ * **페이지를 열기 전에 `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는
+ * 된다. 열림 애니메이션의 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
+ *
+ * **여기 사는 이유는 읽고 세우는 사이의 경주를 한 곳에서 막으려는 것이다.** 페이지의 지금을 읽은 뒤 `pauseAt`이
+ * 닿기까지 느린 러너에서 100ms가 넘게 흐르면, 세울 시각이 이미 지나 `pauseAt`이 「Cannot fast-forward to the
+ * past」로 던진다(판 3 PR의 리눅스 `Verify`가 그렇게 빨갰다). 던질 때 시계는 이미 멈춰 있으므로, 지금을 다시 읽어
+ * 세우면 된다. 여유를 크게 잡아 피하지 않는 것은, 세우며 건너뛴 시간 안에 걸린 타이머가 한꺼번에 불리기 때문이다.
+ */
+export async function 시계를세운다(page: Page): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const now = await page.evaluate(() => Date.now());
+    try {
+      await page.clock.pauseAt(now + 100);
+      return;
+    } catch (error) {
+      if (attempt >= 3 || !String(error).includes("Cannot fast-forward to the past")) throw error;
+    }
+  }
 }
 
 /**

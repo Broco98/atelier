@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Maximize2 } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
 
 // 툴바 버튼 — 크기는 icon-button(24px) 규격 밖이다. 배율 텍스트("100%")가 들어가야 해서
@@ -45,21 +45,13 @@ function CopyCodeButton({ code }: { code: string }) {
     timer.current = window.setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        onClick={onCopy}
-        aria-label="원본 mermaid 코드 복사"
-        className={toolbarButtonQuiet}
-      >
-        {copied ? (
-          <Check className="size-3 text-green-700" strokeWidth={2.4} />
-        ) : (
-          <Copy className="size-3" strokeWidth={2} />
-        )}
-      </TooltipTrigger>
-      <TooltipContent>원본 mermaid 코드 복사</TooltipContent>
-    </Tooltip>
+    <Hint text="원본 mermaid 코드 복사" announce="name" type="button" onClick={onCopy} className={toolbarButtonQuiet}>
+      {copied ? (
+        <Check className="size-3 text-green-700" strokeWidth={2.4} />
+      ) : (
+        <Copy className="size-3" strokeWidth={2} />
+      )}
+    </Hint>
   );
 }
 
@@ -128,13 +120,11 @@ function MermaidBlock({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [showCode, setShowCode] = useState(false);
-  const [fullOpen, setFullOpen] = useState(false);
   const [fullScale, setFullScale] = useState(1);
 
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
   const pan = usePanScroll();
   const modalPan = usePanScroll();
-  const openFull = useRef<HTMLButtonElement>(null);
   // 전체화면의 본문 상자. 창이 떠 있는 동안에만 선다(Portal의 자식) — 붙으면 여기 들고, 떨어지면 null이다.
   const [fullBody, setFullBody] = useState<HTMLDivElement | null>(null);
 
@@ -159,7 +149,7 @@ function MermaidBlock({ code }: { code: string }) {
   }, [code, id]);
 
   // 창이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산).
-  // 여는 순간(fullOpen)이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
+  // 여는 순간이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
   // 여는 순간에는 아직 잴 상자가 없다. 붙는 것도 칠하기 전이라 100%로 한 번 그려졌다 튀는 일이 없다.
   useLayoutEffect(() => {
     if (!fullBody || !size) return;
@@ -176,29 +166,37 @@ function MermaidBlock({ code }: { code: string }) {
           <ZoomControls scale={scale} onChange={setScale} max={2.4} />
           <span className="mx-1 h-3.5 w-px bg-border" />
           {/* 켬/끔 토글이다 — 켜졌는지를 `aria-pressed`로 말한다(스토리 103). 이름은 보이는 글자 「코드」이고,
-              도움말은 툴팁이다. 설명(`aria-description`)으로 남기지 않는다 — 단축키도 잠긴 이유도 아니다(S28). */}
-          <Tooltip>
-            <TooltipTrigger
-              render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
-            >
-              코드
-            </TooltipTrigger>
-            <TooltipContent>원본 mermaid 코드 보기</TooltipContent>
-          </Tooltip>
+              도움말은 툴팁이다. 도움말은 이름보다 더 말한다 — 무엇의 코드인지(원본 mermaid)와 켜면 무엇이 서는지를.
+              그래서 설명(`aria-description`)으로도 남는다(S28 — 옛 `title`이 이름 다음에 읽어 주던 말이다). */}
+          <Hint
+            text="원본 mermaid 코드 보기"
+            announce="description"
+            render={<Toggle size="toolbar" pressed={showCode} onPressedChange={setShowCode} />}
+          >
+            코드
+          </Hint>
           <CopyCodeButton code={code} />
-          {/* 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28). */}
-          <Tooltip>
-            <TooltipTrigger
-              ref={openFull}
-              type="button"
-              onClick={() => setFullOpen(true)}
-              aria-label="전체화면으로 크게 보기"
-              className={toolbarButtonQuiet}
+          {/* 여는 버튼은 이 자리에 서고 창은 body 끝에 뜬다. 버튼은 글리프뿐이라 이름이 없던 버튼이다 —
+              툴팁 글자가 곧 이름이다(S28, 틀이 단다). */}
+          <FullscreenModal
+            name="다이어그램"
+            label="mermaid"
+            trigger={<button className={toolbarButtonQuiet} />}
+            controls={
+              <>
+                <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+                <CopyCodeButton code={code} />
+              </>
+            }
+          >
+            <div
+              {...modalPan}
+              ref={setFullBody}
+              className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
             >
-              <Maximize2 className="size-3" strokeWidth={2} />
-            </TooltipTrigger>
-            <TooltipContent>전체화면으로 크게 보기</TooltipContent>
-          </Tooltip>
+              {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+            </div>
+          </FullscreenModal>
         </span>
       </div>
       {error && !svg ? (
@@ -217,28 +215,6 @@ function MermaidBlock({ code }: { code: string }) {
           )}
         </div>
       )}
-
-      <FullscreenModal
-        name="다이어그램"
-        label="mermaid"
-        open={fullOpen}
-        onClose={() => setFullOpen(false)}
-        returnFocus={openFull}
-        controls={
-          <>
-            <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-            <CopyCodeButton code={code} />
-          </>
-        }
-      >
-        <div
-          {...modalPan}
-          ref={setFullBody}
-          className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
-        >
-          {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-        </div>
-      </FullscreenModal>
     </div>
   );
 }

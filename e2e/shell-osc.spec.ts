@@ -16,10 +16,11 @@ import {
   writeShell,
   띠,
   레인,
+  셸입력,
   행버튼,
 } from "./harness";
 
-const [, plainWork] = WORKS;
+const [pinnedWork, plainWork] = WORKS;
 
 // **훅을 안 깐 셸의 보너스 길**(#208 · 결정 11의 P). 파싱과 벨 규칙은 순수 함수 seam이 표로
 // 전수하고(`shell-osc.test.ts`), **여기서만 보이는 것**은 그 규칙이 실제로 xterm에 붙어 있는가다.
@@ -136,6 +137,13 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
   await writeShell(page, "running git push...\r\n");
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
+  // **아무것도 안 그리는 오른쪽 메타는 칸도 틈도 안 먹는다**(S34 — 「칸의 폭은 선 것들의 폭이다」).
+  // 풀려서 도는 중이 됐는데 아는 명령이 안 돌면 마크가 없고, 도는 중에는 경과도 안 붙어 메타가
+  // 빈다(`SignalMeta`가 `null`) — 그 갈래에 닿는 층이 여기다. 빈 칸이 9px 틈을 쥐면 제목만 까닭
+  // 없이 짧아지므로, 이 행의 이름 버튼이 **셸 없는 행의 것과 같은 폭**인가로 잰다(같은 목록의 두 행이다).
+  const 이름폭 = async (name: string) => (await 행버튼(page, name).boundingBox())!.width;
+  const 셸없는행 = await 이름폭(pinnedWork.title);
+  await expect.poll(() => 이름폭(`${plainWork.title} — 도는 중`)).toBe(셸없는행);
   // 부르는 셸이 아니게 됐으니 띠가 통째로 사라진다(도는 중은 띠에 못 온다 — 결정 8).
   //
   // _한때 여기서 「말은 남는다」(도는 행의 둘째 줄이 직전 말을 흐리게 든다 — 결정 13의 셋째)를
@@ -215,9 +223,6 @@ test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-/** 포커스가 xterm의 숨은 입력칸에 있는가 — 셸을 붙이면 그쪽이 스스로 가져간다. */
-const focusedClass = (page: Page) => page.evaluate(() => document.activeElement?.className ?? "");
-
 // **사람이 키를 친 직후의 첫 프레임만 다른 길로 간다**(#208 리뷰). xterm의 `write()`는 평소
 // 파싱을 다음 tick으로 미루는데(`WriteBuffer._scheduleInnerWrite`), 바로 앞에 사람 입력이
 // 있었으면 그 한 번은 **`write()` 안에서 동기로** 파싱한다(`_didUserInput` 갈래). 그래서
@@ -235,7 +240,7 @@ test("사람이 키를 친 직후 프레임에 실려 온 승인 요청도 앰�
   // **이 줄이 이 검사의 전제다.** 포커스가 셸에 없으면 xterm이 그 키를 「사람 입력」으로 안
   // 세고(`coreService.onUserInput`), 그러면 다음 프레임이 동기 갈래를 안 타 이 검사가
   // 아무것도 안 잰다 — 늘 초록인 검사가 된다.
-  await expect.poll(() => focusedClass(page)).toContain("xterm-helper-textarea");
+  await expect(셸입력(page)).toBeFocused();
   // 사람이 승인한다. 이 한 글자가 PTY로 나가면서 xterm에 「방금 사람이 쳤다」가 선다.
   await page.keyboard.type("y");
 

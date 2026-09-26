@@ -1,9 +1,9 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentMarkOf } from "@/components/ui/agent-mark";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { BandRow, CallingKind } from "@/features/terminal/shell-attention";
-import { SIGNAL_LABEL, SignalLane, formatElapsed } from "./shell-signal";
+import { Hint } from "@/components/ui/tooltip";
+import type { BandRow } from "@/features/terminal/shell-attention";
+import { SIGNAL_LABEL, SignalLane, formatElapsed, type CallingKind } from "./shell-signal";
 
 // 알림 띠(#204, 결정 5·8 · 이름은 `sidebar-active-band` 결정 13). 사이드바 목록 **위**, nav 아래에 서서 **부르는 셸만**
 // 한 줄씩 모은다 — 열여덟 행을 훑는 대신 여기만 본다. 부르는 것이 하나도 없으면 **띠 자체가
@@ -63,8 +63,8 @@ const WEIGHT: Readonly<Record<CallingKind, string>> = {
  * 넷만 골라 받으면 부르는 쪽이 「누른 줄이 어느 것인가」를 id로 되찾아야 하고, 그 되찾기가
  * 정렬과 갈리는 날 엉뚱한 화면이 열린다.
  *
- * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다
- * (`shell-signal.tsx`가 `ShellSignal`을 같은 조건으로 들인다).
+ * 값 import가 아니라 **타입 import**라 이 조각은 여전히 정적 마크업 seam에 산다(`import type`은
+ * 컴파일에서 지워진다 — 이 파일 머리말).
  */
 export interface BandItem extends BandRow {
   /** 화면의 이름 — work 제목이거나, 최상위 셸이면 `Terminal`이다(결정 13의 다섯째). */
@@ -144,7 +144,7 @@ export function AttentionBand({
       {/* **자리는 굴러가는 띠 상자 안이다**(`sidebar-active-band` 결정 15) — 펼쳐서 넘치면 ⌃도 줄과 함께 굴러
           내려간다. 상자 밖에 세우면 낮은 창에서 ⌃가 늘 보이는 대신 그만큼 줄이 먼저 가려진다. */}
       {overflow && (
-        <MoreToggle expanded={expanded} hidden={items.length - BAND_LIMIT} onToggle={onToggle} />
+        <MoreToggle expanded={expanded} hiddenCount={items.length - BAND_LIMIT} onToggle={onToggle} />
       )}
     </div>
   );
@@ -166,30 +166,28 @@ export function AttentionBand({
  */
 function MoreToggle({
   expanded,
-  hidden,
+  hiddenCount,
   onToggle,
 }: {
   expanded: boolean;
   /** 접혔을 때 숨은 줄 수. 펼쳐져 있어도 같은 값이다 — 그때는 이름이 「접기」라 안 읽는다. */
-  hidden: number;
+  hiddenCount: number;
   onToggle: () => void;
 }) {
-  const label = expanded ? "접기" : `${hidden}개 더 보기`;
+  const label = expanded ? "접기" : `${hiddenCount}개 더 보기`;
   const Chevron = expanded ? ChevronUp : ChevronDown;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        aria-label={label}
-        className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
-      >
-        {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
-        <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Hint
+      text={label}
+      announce="name"
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="flex h-6 w-full shrink-0 items-center justify-center rounded-[8px] text-tertiary transition-colors hover:bg-state-2 hover:text-muted-foreground"
+    >
+      {/* 굵기는 구획 헤더의 ⌄와 같다(`SectionHeader`) — 한 컬럼의 두 ⌄가 다른 선으로 서지 않는다. */}
+      <Chevron className="size-3.5 shrink-0" strokeWidth={2.2} />
+    </Hint>
   );
 }
 

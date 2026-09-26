@@ -1,6 +1,14 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_SHELL_NAME, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, parentPath, readIpcRecord, spawnedCwds, unknownIpcCalls } from "./harness";
+import {
+  awaitSpawned,
+  installFixtureBackend,
+  parentPath,
+  readIpcRecord,
+  spawnedCwds,
+  unknownIpcCalls,
+  셸입력,
+} from "./harness";
 
 // 티켓 08(#221) — **⌘T가 언제나 「모든 프로젝트」에 연다**(UI개선 결정 17~19·30, UI개선 스펙 §7).
 //
@@ -25,9 +33,7 @@ const shells = (page: Page) => page.locator('[data-tab="shell"]');
  */
 async function focusShell(page: Page): Promise<void> {
   await page.locator(".xterm-screen").click();
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea")))
-    .toBe(true);
+  await expect(셸입력(page)).toBeFocused();
 }
 
 // UI개선 결정 30. 기본 자리와 진입 자리는 **다른 물음이다** — 진입이 기본 자리를 타면 git이 안 되는
@@ -108,9 +114,7 @@ test("프로젝트가 하나인 work에서 ⌘T는 그 워크트리에서 뜬다
 
   // 포커스를 걷는다 — **정말 걷혔는지** 확인해야 아래 ⌘T가 창 리스너 길을 잰다.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await expect
-    .poll(() => page.evaluate(() => document.activeElement?.classList.contains("xterm-helper-textarea")))
-    .toBe(false);
+  await expect(셸입력(page)).not.toBeFocused();
   await page.keyboard.press("Meta+t");
 
   await awaitSpawned(page, 3);

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { PROJECTS, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls, 툴팁 } from "./harness";
 
 // 이 프로젝트에서 시작된 work이 하나 있는 짝 — 픽스처가 그렇게 묶어 뒀다(`projects: ["billing"]`).
 const project = PROJECTS[0];
@@ -58,7 +58,7 @@ test("이 프로젝트의 work을 열면 그 work의 마지막 자리가 열린�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ── 기준 브랜치 (스토리 67~69, S32 · S37) ──
+// ── 기준 브랜치 (스토리 67~69, S28 · S32 · S37) ──
 // 프로젝트 화면의 기준 브랜치는 로컬 브랜치 목록(Select)에서 고른다. 여는 버튼이 `combobox`이고 목록이
 // `listbox`라, 지금 값이 「선택됨」으로 읽힌다. 방향키와 글자 치기로 찾는 것은 부품이 한다. 저장은 **값이 바뀔
 // 때만**이다(지금 규칙). 목록은 지금처럼 버튼 **아래로** 뜬다 — registry의 트리거 맞춤(고른 값을 트리거 자리에
@@ -76,6 +76,8 @@ test("기준 브랜치를 키로 열면 목록이 버튼 아래에 서고 지금
   await page.goto(`/projects/${project.slug}`);
   const trigger = 기준브랜치(page);
   const list = page.getByRole("listbox");
+  // 도움말(툴팁) 「브랜치 목록에서 변경」은 이름보다 더 말하는 하는 일이라 설명으로도 남는다(S28).
+  await expect(trigger).toHaveAccessibleDescription("브랜치 목록에서 변경");
 
   await trigger.focus();
   await page.keyboard.press("ArrowDown");
@@ -137,12 +139,40 @@ test("로컬 브랜치가 없는 프로젝트의 기준 브랜치는 목록 대�
   await installFixtureBackend(page);
   await page.goto(`/projects/${bare.slug}`);
 
-  // 누르기 전에는 지금 값을 적은 버튼이다(지금 규칙) — 누르면 그 자리가 입력칸이 된다.
-  await page.getByRole("button", { name: bare.baseBranch, exact: true }).click();
+  // 누르기 전에는 지금 값을 적은 버튼이다(지금 규칙) — 누르면 그 자리가 입력칸이 된다. 도움말 「클릭해서 편집」은
+  // 툴팁이고 이름(값)보다 더 말하는 하는 일이라 설명으로도 남는다(S28 · S29 — 버튼이라 `title` 예외가 아니다).
+  const editSpot = page.getByRole("button", { name: bare.baseBranch, exact: true });
+  await expect(editSpot).toHaveAccessibleDescription("클릭해서 편집");
+  await editSpot.focus();
+  await expect(툴팁(page)).toHaveText("클릭해서 편집");
+  await editSpot.click();
   const input = page.getByRole("textbox", { name: "기준 브랜치" });
   await expect(input).toBeFocused();
   await expect(input).toHaveValue(bare.baseBranch);
   // 앵커(입력칸이 섰다) 뒤에 — 목록을 여는 버튼은 이 프로젝트에 없다.
   await expect(기준브랜치(page)).toHaveCount(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ── 제자리 편집 자리 (S28 · S29) ──
+// 프로젝트 제목은 누르면 그 자리가 입력칸이 되는 버튼이다. 버튼이라 `title` 예외(S29 — 버튼이 아닌 자리)가 아니고,
+// 도움말 「클릭해서 편집」은 앱 툴팁이다. 툴팁은 스크린리더에 아무것도 주지 않으므로 이름(제목)보다 더 말하는 그 말이
+// 버튼의 설명으로도 남는다(S28). 포커스로 뜨는 툴팁은 포인터를 한 번도 안 쓴 검사에서 잰다(「좋은 검사」).
+
+test("프로젝트 제목은 포커스에 툴팁 「클릭해서 편집」을 띄우고 그 말을 설명으로 말한다 — 이름은 제목 그대로다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.goto(`/projects/${project.slug}`);
+  // 목록 행도 같은 이름으로 시작한다 — 머리(h1) 안으로 좁힌다.
+  const title = page.getByRole("heading", { level: 1 }).getByRole("button", { name: project.name, exact: true });
+  const tooltip = 툴팁(page);
+  await expect(title).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+
+  await title.focus();
+
+  await expect(tooltip).toHaveText("클릭해서 편집");
+  await expect(title).toHaveAccessibleDescription("클릭해서 편집");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
