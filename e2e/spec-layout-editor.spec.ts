@@ -23,9 +23,10 @@ import {
 // 파일·폴더 항목, 모르는 아이콘, 오류 줄)은 마크업 seam이 잰다(`SpecLayoutEditor.test.tsx`), 필드를 바꾸는
 // 규칙은 순수 함수의 seam이 잰다(`draft.test.ts`).
 //
-// **이 층이 드는 것은 두 명령의 배선이다** — 편집기가 열리면 `read_spec_layout`이 나가고, [저장]을 눌러야만
-// `write_spec_layout`이 나가며, 거기에 고친 초안이 모르는 키와 템플릿 전부와 함께 실린다. 두 명령을 태우는
-// 시나리오가 여기 있어야 fixture 이름 표에서 빠졌을 때 빨개진다(구현 스펙 3절).
+// **이 층이 드는 것은 세 명령의 배선이다** — 편집기가 열리면 `read_spec_layout`이 나가고, [저장]을 눌러야만
+// `write_spec_layout`이 나가며, 거기에 고친 초안이 모르는 키와 템플릿 전부와 함께 실린다. 미리보기의
+// `render_spec_layout`은 아래 티켓 14의 절이 든다. 세 명령을 태우는 시나리오가 여기 있어야 fixture 이름 표에서
+// 빠졌을 때 빨개진다(구현 스펙 3절).
 
 const aside = (page: Page) => page.locator("aside");
 const 머리 = (page: Page) => page.locator("main header").first();

@@ -8,9 +8,10 @@ import type { LayoutEntryJson, SpecLayoutJson, SpecLayoutRead, TemplateBodies } 
 // 사라진다 — 설정의 `patchTerminal`이 못박은 것과 같은 규칙이고, 그래서 필드를 바꾸는 길은 모두 아래
 // `updateEntry` 하나를 지난다.
 //
-// 규칙은 여기 없다(결정 13). 이름 틀이 맞는지, 폴더에 자식이 있어도 되는지는 저장이 엔진의 검증으로
-// 판정한다. 여기가 아는 것은 「무엇이 따라가는가」다 — 종류를 바꾸거나 템플릿을 켜고 끌 때 항목의
-// `template`과 본문 맵이 함께 움직인다. 템플릿 경로를 짓는 것만 따로 산다(`template-path.ts`).
+// 규칙은 여기 없다(결정 13). 이름 틀이 맞는지, 폴더에 자식이 있어도 되는지는 엔진의 검증이 판정한다 —
+// 미리보기가 초안마다 물어 그 자리에 세우고 저장을 잠그며(티켓 14), 저장도 같은 검증을 지난다. 여기가 아는
+// 것은 「무엇이 따라가는가」다 — 종류를 바꾸거나 템플릿을 켜고 끌 때 항목의 `template`과 본문 맵이 함께
+// 움직인다. 템플릿 경로를 짓는 것만 따로 산다(`template-path.ts`).
 //
 // 트리를 고치는 함수(더하기·지우기·옮기기·놓기, 티켓 13)는 새 초안과 함께 **그 뒤에 고를 자리**를 준다
 // (`TreeEdit`). 할 수 없는 조작은 `null`이고, 버튼의 잠금이 그 답이다(`editsAt`). 트리가 할 수 있는 것을 가르는
@@ -43,7 +44,7 @@ export function entryAt(layout: SpecLayoutJson, path: EntryPath): LayoutEntryJso
   return entry ?? null;
 }
 
-/** 이름 틀을 바꾼다. 비운 칸도 그대로 싣는다 — 빈 이름 틀은 저장이 그 자리의 오류로 알린다. */
+/** 이름 틀을 바꾼다. 비운 칸도 그대로 싣는다 — 빈 이름 틀은 미리보기가 그 자리의 오류로 알리고 저장을 잠근다. */
 export function setPattern(draft: LayoutDraft, path: EntryPath, pattern: string): LayoutDraft {
   return { ...draft, layout: updateEntry(draft.layout, path, (entry) => ({ ...entry, pattern })) };
 }
@@ -77,8 +78,8 @@ export function setIcon(draft: LayoutDraft, path: EntryPath, icon: string | null
  * - **폴더로 바꾸면 템플릿을 뗀다** — 그 항목의 `template`과 본문 맵의 본문이다. 폴더에는 템플릿이 없고,
  *   아무도 가리키지 않는 본문은 저장이 거절한다. 본문은 **다른 파일 항목이 같은 경로를 가리키지 않을
  *   때만** 뗀다 — 그쪽은 여전히 그 본문의 주인이다.
- * - **파일로 바꾸면 자식은 그대로 둔다.** 사람의 손을 대신 치우지 않는다 — 저장이 그 자리에 「파일 항목의
- *   `children`」 오류를 세우고, 옮기기로 푼다.
+ * - **파일로 바꾸면 자식은 그대로 둔다.** 사람의 손을 대신 치우지 않는다 — 미리보기가 그 자리에 「파일 항목의
+ *   `children`」 오류를 세우고(저장이 잠긴다), 옮기기로 푼다.
  */
 export function setKind(draft: LayoutDraft, path: EntryPath, kind: "file" | "folder"): LayoutDraft {
   if (kind === "folder") return detachTemplate(draft, path, (entry) => ({ ...entry, kind }));
@@ -317,7 +318,8 @@ export function dropEntry(draft: LayoutDraft, from: EntryPath, target: DropTarge
  * 두 초안이 **내용으로** 같은가 — 레이아웃(모르는 키까지)과 템플릿 본문. 키의 순서는 보지 않는다: 아이콘을
  * 뗐다 다시 달면 그 키가 항목의 맨 뒤로 가지만 저장되는 것은 같다. 항목의 순서는 본다 — 그것이 레이아웃이다.
  *
- * 편집기의 「고친 것이 있다」가 이것이다(저장 가능 판정, `canSave`) — 고쳤다가 되돌린 초안은 고친 것이 없다.
+ * 초안이 기준본과 다른가(`unsaved`), 미리보기의 답이 지금 초안의 것인가(저장 가능 판정, `canSave`), 다시 읽은 두
+ * 레이아웃이 같은가(밖 변경 판정의 `sameRead`)가 이것으로 견준다 — 고쳤다가 되돌린 초안은 같다.
  */
 export function sameDraft(a: LayoutDraft, b: LayoutDraft): boolean {
   return sameJson(a.layout, b.layout) && sameJson(a.templates, b.templates);
