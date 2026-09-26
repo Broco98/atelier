@@ -4,9 +4,9 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { dialogStore } from "@/components/ui/confirm-store";
-import { archiveQuery } from "@/features/archive/hooks";
+import { archivedFileQuery, archiveQuery } from "@/features/archive/hooks";
 import {
   invalidateWorks,
   moveWorkOptions,
@@ -663,6 +663,47 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
     await settle();
     expect(waiting("list_archive")).toHaveLength(0);
   });
+
+  // **「조회 중」은 목록 조회만 센다**(티켓 14 리뷰). spec 본문과 아카이브 문서도 이 문으로 다시 읽지만 문을 잡지 않는다.
+  // 웹뷰의 react-query는 실패한 조회를 세 번 더 시도하고(1 · 2 · 4초 쉼) 그동안 내내 「도는 중」이다. 읽을 수 없는 문서
+  // (spec/의 `ref.pdf` — 코어의 `read_to_string`이 UTF-8이 아니라 매번 실패한다)를 띄워 두면 그것이 문을 잡아, 이벤트마다
+  // 목록 다시 읽기가 7초씩 밀리고 표시한 쪽(상태 · 제목 · 고정 · 삭제의 진행 표시)은 14초를 섰다.
+  const docs = [
+    { name: "spec 본문이", doc: specFileQuery("atelier", "가", "ref.pdf"), command: "read_spec_file" },
+    { name: "아카이브 문서가", doc: archivedFileQuery("atelier", "치운-가", "ref.pdf"), command: "read_archived_file" },
+  ];
+  for (const { name, doc, command } of docs) {
+    it(`실패해 다시 시도하는 ${name} 목록 다시 읽기를 붙잡지 않는다`, async () => {
+      calls.length = 0;
+      // 웹뷰의 기본값을 세운다 — Node에서는 react-query가 서버로 보고 다시 시도하지 않는다(query-core `retryer`의 `isServer`).
+      const client = new QueryClient({ defaultOptions: { queries: { retry: 3 } } });
+      // 쉬는 중인 다시 시도를 거둔다 — 남기면 1초 뒤 다음 검사의 기록에 그 부름이 선다. 빨간 판에서도 거두도록 끝에 건다.
+      onTestFinished(() => client.cancelQueries());
+      new QueryObserver(client, worksQuery("atelier")).subscribe(() => {});
+      new QueryObserver(client, doc).subscribe(() => {});
+      await settle();
+      expect(answer("list_works", OLD)).toBe(1);
+      rejectFirst(command, "stream did not contain valid UTF-8");
+      await settle();
+      // 앵커: 쉬는 동안에도 그 문서는 「도는 중」이다 — 아니면 아래가 옛 판정에서도 초록이다.
+      expect(client.getQueryState(doc.queryKey)).toMatchObject({ fetchStatus: "fetching", fetchFailureCount: 1 });
+
+      void invalidateWorks(client);
+      await settle();
+      expect(waiting("list_works"), "다시 시도하는 문서가 목록 다시 읽기를 붙잡았다").toHaveLength(1);
+
+      // 목록이 도는 중에 온 것은 표시만 하고, 그 목록이 끝나면 곧바로 한 번 더 — 문서의 다시 시도를 안 기다린다.
+      void invalidateWorks(client);
+      answer("list_works", OLD);
+      await settle();
+      expect(waiting("list_works"), "뒤따르는 한 번이 문서의 다시 시도를 기다렸다").toHaveLength(1);
+      answer("list_works", NEW);
+      await settle();
+      expect(slugsOf(client.getQueryData(worksQuery("atelier").queryKey))).toBe("cab");
+      // 문서는 도는 시도를 버리지 않는다(`cancelRefetch: false`) — 쉬는 중이라 새로 나간 부름이 없다.
+      expect(waiting(command), "도는 문서 읽기를 버리고 새로 불렀다").toHaveLength(0);
+    });
+  }
 });
 
 // **work 목록은 창으로 돌아올 때 다시 읽지 않는다**(프로세스 결정 18 ①). 변화는 감시자가 이미 알린다 — 창을 오갈 때마다

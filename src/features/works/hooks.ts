@@ -12,7 +12,7 @@ import { invalidateArchive, isReadingArchive } from "@/features/archive/hooks";
 import { showProblem } from "@/components/ui/confirm-store";
 import { worksApi } from "./api";
 import { movedWorks, type RowGap } from "./row-drop";
-import type { Mode } from "@/mode";
+import { ALL_MODES, type Mode } from "@/mode";
 import type { WorkStatus, WorkView } from "./types";
 
 // ["works"]로 시작하는 모든 쿼리(두 세계의 목록·spec 파일)가 works:changed 한 번에 무효화된다.
@@ -37,7 +37,8 @@ const WORKS_KEY = ["works"] as const;
  * **조회 중에 온 무효화는 표시만 하고, 도는 조회가 모두 끝나면 한 번 더 읽는다**(프로세스 결정 18 ① · 프로세스 스펙 S20 ·
  * 티켓 14). 에이전트가 spec을 쓰는 동안 이벤트는 조회보다 자주 온다. 올 때마다 도는 조회를 끊고 새로 부르면 코어는 버려진
  * 조회까지 다 돈다 — IPC는 취소되지 않고, 한 번이 워크트리마다 `git status`다. 그래서 무효화는 도는 조회를 버리지 않고
- * (`cancelRefetch: false`), 이 문이 다시 읽는 쿼리(두 세계의 목록 · spec 본문과 아카이브) 중 하나라도 돌면 표시만 한다.
+ * (`cancelRefetch: false`), 목록 조회(두 세계의 work 목록과 아카이브 목록) 중 하나라도 돌면 표시만 한다. spec 본문과
+ *   아카이브 문서는 함께 다시 읽되 문을 잡지 않는다 — 실패해 다시 시도하는 문서가 목록을 7초씩 밀었다(`reading`).
  * - 표시한 쪽은 **뒤따르는 한 번**의 promise를 받는다. 같은 회차에 온 표시는 그 하나를 나눠 갖는다 — 몇 번 왔든 다시
  *   읽기 한 번이면 다 덮는다.
  * - 도는 조회의 promise를 주지 않는 것이 위 계약이다. 그 조회는 쓰기 **전** 파일을 읽었을 수 있다 — 삭제 뒤의 진행 표시가
@@ -104,9 +105,22 @@ export function invalidateWorks(queryClient: QueryClient): Promise<void> {
  */
 const trailing = new WeakMap<QueryClient, Promise<void>>();
 
-/** 이 문이 다시 읽는 쿼리 중 **도는 조회가 있는가** — 두 세계의 목록 · spec 본문과 아카이브. 누가 띄웠든 센다. */
+/**
+ * **목록 조회가 도는가** — 두 세계의 work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
+ * `ensureQueryData` · 저쪽 세계 읽기).
+ *
+ * **spec 본문과 아카이브 문서는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
+ * 실패한 조회를 세 번 더 시도하고(1 · 2 · 4초 쉼) 그동안 내내 「도는 중」이다 — 읽을 수 없는 문서 하나(spec/의 `ref.pdf`는
+ * 코어의 `read_to_string`이 매번 실패한다)가 떠 있으면, 접두사로 셀 때 이벤트마다 목록 다시 읽기가 7초씩 밀렸다. 영영 안
+ * 돌아오는 문서 읽기도 같은 길로 목록을 멈춘다. 대가: 목록 없이 홀로 돌던 문서 읽기(창으로 돌아올 때의 재조회 등)에 이
+ * 문의 무효화가 합류한다 — 쓰기 전 파일을 읽었으면 그 본문만 다음 이벤트까지 낡는다. 무효화는 목록과 문서를 함께 띄우고
+ * 목록이 훨씬 오래 도므로, 흔한 길(에이전트가 이어 쓰는 동안)의 문서 읽기는 목록이 잡은 문 안에 든다.
+ */
 function reading(queryClient: QueryClient): boolean {
-  return queryClient.isFetching({ queryKey: WORKS_KEY }) > 0 || isReadingArchive(queryClient);
+  return (
+    ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: worksQuery(mode).queryKey, exact: true }) > 0) ||
+    isReadingArchive(queryClient)
+  );
 }
 
 /**
