@@ -1,7 +1,16 @@
 import type { ReadableSpecLayout, SpecLayoutJson, SpecLayoutRead, TemplateBodies } from "@/features/spec-layout/types";
 import { expect, test, type Page } from "./evidence";
 import { CHANGED_SPEC_LAYOUT_READ, SPEC_LAYOUT_READ, SPEC_LAYOUT_RENDERED, UNREADABLE_ATELIER_READ } from "./fixtures";
-import { callCount, fireEvent, installFixtureBackend, ipcCallArgs, swapAnswer, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  fireEvent,
+  hoverRowPoint,
+  installFixtureBackend,
+  ipcCallArgs,
+  pickUpEntry,
+  swapAnswer,
+  unknownIpcCalls,
+} from "./harness";
 
 // 밖에서 바뀐 레이아웃(spec 레이아웃 티켓 15 · 결정 22). 에이전트가 레이아웃을 저장하거나 사람이 손으로 고치면 감시가
 // `layouts:changed`를 쏘고, 전역 구독 하나가 레이아웃 읽기를 다시 부른다. 편집기는 따로 듣지 않고 다시 읽힌 답을
@@ -148,6 +157,36 @@ test("초안이 없을 때 밖에서 바뀌면 배너 없이 새로 읽은 것�
   await expect(설명(page)).toHaveValue(OUTSIDE_DECISIONS.description!);
   await expect(배너(page)).toHaveCount(0);
   await expect(저장(page)).toBeDisabled();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 끄는 도중에는 초안이 없다 — 놓기 전까지 끌기는 초안이 아니다. 그래서 밖 변경이 조용히 트리를 갈아 끼운다(판정
+// 3번). 끌리는 항목과 겨눈 자리는 인덱스 경로라, 끌기를 거두지 않으면 놓는 순간 그 자리에 새로 선 다른 항목이 옮겨 간다.
+test("끄는 도중 밖 변경이 트리를 조용히 갈아 끼우면 끌기가 거둬져, 놓아도 아무 항목도 옮겨 가지 않는다", async ({ page }) => {
+  const root = SPEC_LAYOUT_READ.layout.root;
+  const shifted: ReadableSpecLayout = {
+    ...SPEC_LAYOUT_READ,
+    layout: {
+      ...SPEC_LAYOUT_READ.layout,
+      root: { ...root, children: [{ pattern: "brief.md", kind: "file", description: "한 줄 요약" }, ...root.children!] },
+    },
+  };
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await pickUpEntry(page, 행(page, "{n}-{name}/"));
+  await changeOutside(page, shifted);
+  await expect(행(page, "brief.md")).toBeVisible();
+  await hoverRowPoint(page, 행(page, "overview.md"), "upper");
+  await page.mouse.up();
+
+  await expect(page.getByRole("treeitem")).toHaveText(["brief.md", "overview.md", "decisions.md", "{n}-{name}/", "tickets/"]);
+  await expect(page.locator("[data-entry-drop]")).toHaveCount(0);
+  for (const row of await page.getByRole("treeitem").all()) await expect(row).not.toHaveCSS("opacity", "0.4");
+  // 새로 읽은 것이 기준본이고 아무것도 옮겨 가지 않았다 — 저장할 것이 없다
+  await expect(저장(page)).toBeDisabled();
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
