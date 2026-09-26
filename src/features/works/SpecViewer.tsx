@@ -386,8 +386,7 @@ function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement 
       align="right"
       width={FRAME_HINT_WIDTH}
       // **덮개가 아니라는 증거가 이 한 줄이다.** 포인터를 안 받으므로 카드 밑의 프레임이
-      // 계속 눌린다. `onClose`도 안 넘긴다 — 그쪽은 바깥 클릭을 받는 투명 막을 함께 깔고,
-      // 그 막이 곧 덮개다.
+      // 계속 눌린다. 바깥 클릭을 받는 막도 없다 — 그런 막이 곧 덮개다(`PopoverPortal` 머리말).
       className="pointer-events-none px-3.5 py-2.5"
     >
       {/* 살아 있는 동안 화면에 새로 뜬 말이라 `status`다 — 읽는 사람이 눈으로 못 잡아도 듣는다 */}

@@ -441,8 +441,8 @@ function SidebarWorkList({
         </div>
       </div>
 
-      {/* onClose를 넘기지 않는다 — 바깥 클릭 막이 깔리면 포인터를 가로채 열자마자 닫힌다.
-          이 카드의 여닫음은 행의 hover가 온전히 소유한다. */}
+      {/* 바깥 클릭 막이 없다 — 막이 깔리면 포인터를 가로채 앵커에서 곧바로 mouseleave가 나 열자마자
+          닫힌다. 이 카드의 여닫음은 행의 hover가 온전히 소유한다(`PopoverPortal` 머리말). */}
       {hovered && (
         <PopoverPortal
           anchorRef={hoverAnchor}
