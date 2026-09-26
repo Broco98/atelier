@@ -255,7 +255,9 @@ pub fn run() {
             //
             // 세웠으면 **이미 깐 훅을 지금 목록으로 맞춘다**(프로세스 결정 15 · 티켓 21) — 위에서 센 몫으로, 뒤 스레드에서. 우리
             // 훅이 하나도 없는 설정은 안 건드린다. 처리기를 세운 뒤에만 맞추는 것은, 설정만 새 경로를 가리키면 에이전트가 매 턴
-            // 없는 파일을 부르기 때문이다. 못 세웠으면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다.
+            // 없는 파일을 부르기 때문이다. 못 세웠으면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다. 데이터 루트를 옮긴
+            // 실행(`ATELIER_HOME`)도 몫이 빈손으로 끝난다 — 모든 실행이 함께 부르는 진짜 설정을 임시 루트의 처리기로 돌려 놓지
+            // 않게, 그 가름은 맞춤이 스스로 한다(`startup::sync_hooks`).
             match shells::write_hook_script(&root) {
                 Ok(()) => startup::sync_hooks(hook_sync, hooks::agent_home(), root.clone()),
                 Err(e) => {
@@ -643,7 +645,9 @@ mod tests {
     /// 가리키게 고친다 — 그 파일을 못 세웠는데 설정만 고치면 에이전트가 매 턴 없는 파일을 부르고, 처리기는 fail-open이라 그것이
     /// 어디에도 안 보인다. 그래서 세우기가 된 갈래에서만 맞춘다. 고칠 설정은 진짜 홈의 것(`hooks::agent_home`)이고 처리기는 이
     /// 실행의 데이터 루트의 것이다. 셋업은 헤드리스로 못 돌리니(`run()`) 자리로 잰다 — 맞춤이 무엇을 쓰는지는 `startup.rs`의
-    /// `the_hook_sync_runs_on_the_homes_it_is_given_and_reports_what_it_wrote`가 임시 홈에서 잰다.
+    /// `the_hook_sync_runs_on_the_homes_it_is_given_and_reports_what_it_wrote`가 임시 홈에서 재고, 루트를 옮긴 실행(`ATELIER_HOME`)이
+    /// 진짜 설정을 안 건드리는 것은 `a_run_on_a_moved_data_root_leaves_the_homes_hooks_alone`이, 이 줄이 건네는 두 입력이 설치본에서
+    /// 기본 자리로 읽히는 것은 `the_installed_apps_home_and_root_are_synced`가 잰다.
     #[test]
     fn the_hook_sync_runs_once_the_handler_stands() {
         let setup = setup_source();

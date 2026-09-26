@@ -12,7 +12,7 @@
 //! 정리가 아직 돌고 있으면 끝날 때까지 기다렸다 답한다. 기다리는 것은 부르는 스레드라, 명령은 blocking 풀에서 묻는다
 //! (`commands::startup_report` — tokio 워커를 막지 않는다).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 use serde::Serialize;
@@ -147,15 +147,34 @@ pub fn clean_up(chore: Chore, pool: Arc<PtyPool>) {
 /// 처리기는 `<root>/hooks/atelier-hook.zsh`다. **처리기를 디스크에 세운 뒤에 부른다**(`lib.rs`의 셋업) — 설정만 새 경로를 가리키면
 /// 에이전트가 매 턴 없는 파일을 부른다.
 ///
+/// **루트가 그 홈의 기본 자리가 아니면 맞추지 않는다**(`syncs_hooks_of`) — 몫은 빈손으로 끝난다.
+///
 /// 파일을 넷까지 읽고 쓰는 기다리는 일이라 뒤 스레드로 보낸다 — 셋업이 그동안 서지 않고, 묻는 쪽(`commands::startup_report`)은
 /// blocking 풀에서 몫을 기다린다. 스레드를 못 띄우면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다.
 pub fn sync_hooks(chore: Chore, home: PathBuf, root: PathBuf) {
+    if !syncs_hooks_of(&home, &root) {
+        eprintln!("atelier: 데이터 루트({})가 기본 자리가 아니라 이미 깐 에이전트 훅을 맞추지 않습니다", root.display());
+        drop(chore);
+        return;
+    }
     in_background(
         chore,
         "atelier-hook-sync",
         move || hooks::sync(&home, &shells::handler_path(&root)),
         |report, agents| report.hooks_updated = agents,
     );
+}
+
+/// **이 실행이 이 홈의 에이전트 훅을 맞추는가** — 데이터 루트가 그 홈의 기본 자리(`<홈>/.atelier`)일 때만.
+///
+/// 고칠 설정(`~/.claude` · `~/.codex`)은 이 홈의 모든 실행이 함께 부르는 것이고, 맞춤은 그것이 **이 실행의** 처리기
+/// (`<root>/hooks/…zsh`)를 가리키게 고친다. 루트를 옮긴 실행(`ATELIER_HOME` — 테스트용 내부 오버라이드, 사람이 dev 앱을 띄워 볼
+/// 때도 쓴다)이 그렇게 하면 사람의 에이전트가 임시 폴더를 부르게 된다: 그 폴더가 지워지면 모든 세션이 사건마다 없는 파일을
+/// 부르고, 설치본과 번갈아 켜면 처리기 경로가 달라 서로를 「일부」로 읽고 켤 때마다 되쓰며 `.bak`을 덮고 토스트를 띄운다 —
+/// 판이 같아 P5가 못 막는다. 그 실행에서 자동으로 하는 일은 안전한 쪽에 둔다(인스턴스 기록의 「`ATELIER_HOME`을 준 경우」와
+/// 같은 규칙). 설치 버튼은 사람이 누르는 것이라 이 가드를 안 탄다.
+fn syncs_hooks_of(home: &Path, root: &Path) -> bool {
+    root == atelier_core::default_data_root(home)
 }
 
 /// 시작 정리가 끝내려 한 것 중 **실제로 끝낸 것** — 끝남(TERM) · 강제(KILL). 「이미 없음」은 끝낸 것이 아니고, 「못 끝냄」은
@@ -321,10 +340,12 @@ mod tests {
 
     /// **앱이 뜰 때의 훅 맞춤이 인자로 받은 홈과 데이터 루트에서 돌고, 맞춘 에이전트를 시작 보고에 싣는다**(프로세스 결정 15 ·
     /// 티켓 21). 옛 설치는 지금 목록으로 맞춰지고 `.bak`이 서며, 설정의 처리기 경로는 받은 데이터 루트의 새 처리기다. 한 번도 깐
-    /// 적이 없는 홈은 글자 그대로이고 보고의 훅 칸이 빈다.
+    /// 적이 없는 홈은 글자 그대로이고 보고의 훅 칸이 빈다. 루트는 그 홈의 기본 자리다 — 옮긴 루트는 맞추지 않는다(아래
+    /// `a_run_on_a_moved_data_root_leaves_the_homes_hooks_alone`).
     #[test]
     fn the_hook_sync_runs_on_the_homes_it_is_given_and_reports_what_it_wrote() {
-        let (home, root) = (temp_dir("sync-home"), temp_dir("sync-root"));
+        let home = temp_dir("sync-home");
+        let root = atelier_core::default_data_root(&home);
         old_install(&home);
         let holder = Arc::new(ReportHolder::default());
         sync_hooks(holder.expect(), home.clone(), root.clone());
@@ -346,14 +367,58 @@ mod tests {
         let foreign = "{\n    \"model\": \"opus\"\n}";
         std::fs::write(fresh.join(".claude/settings.json"), foreign).unwrap();
         let holder = Arc::new(ReportHolder::default());
-        sync_hooks(holder.expect(), fresh.clone(), root.clone());
+        sync_hooks(holder.expect(), fresh.clone(), atelier_core::default_data_root(&fresh));
         let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다");
         assert!(report.hooks_updated.is_empty(), "깐 적이 없는데 맞췄다고 한다: {:?}", report.hooks_updated);
         assert_eq!(std::fs::read_to_string(fresh.join(".claude/settings.json")).unwrap(), foreign, "남의 설정을 다시 썼다");
         assert!(!fresh.join(".claude/settings.json.bak").exists(), "쓴 것이 없는데 벌을 떴다");
         assert!(!fresh.join(".codex").exists(), "없던 codex 설정을 만들었다");
         let _ = std::fs::remove_dir_all(&fresh);
-        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **데이터 루트를 옮긴 실행은 홈의 훅을 맞추지 않는다**(티켓 21 리뷰 — 까닭은 `syncs_hooks_of`). `ATELIER_HOME`으로 뜬
+    /// dev 앱이 사람의 claude · codex를 임시 폴더의 처리기로 돌려 놓으면, 그 폴더가 지워진 뒤 모든 세션이 없는 파일을 부르고
+    /// 설치본과 번갈아 켤 때마다 서로 되쓴다. 글자 · `.bak`이 그대로이고, 몫은 빈손으로 끝나 보고는 빈 훅 칸으로 답한다.
+    ///
+    /// 앵커: 같은 홈을 그 홈의 기본 루트로 맞추면 맞춘다 — 위의 「안 맞춤」이 옛 설치를 못 알아봐서가 아니다.
+    #[test]
+    fn a_run_on_a_moved_data_root_leaves_the_homes_hooks_alone() {
+        let (home, moved) = (temp_dir("moved-home"), temp_dir("moved-root"));
+        old_install(&home);
+        let files = [".claude/settings.json", ".codex/config.toml"];
+        let before = files.map(|file| std::fs::read_to_string(home.join(file)).unwrap());
+
+        let holder = Arc::new(ReportHolder::default());
+        sync_hooks(holder.expect(), home.clone(), moved.clone());
+        let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다 — 안 맞춘 몫이 안 끝났다");
+        assert!(report.hooks_updated.is_empty(), "옮긴 루트의 실행이 홈의 훅을 맞췄다고 한다: {:?}", report.hooks_updated);
+        for (file, was) in files.iter().zip(&before) {
+            assert_eq!(&std::fs::read_to_string(home.join(file)).unwrap(), was, "{file}을 옮긴 루트의 처리기로 다시 썼다");
+            assert!(!home.join(format!("{file}.bak")).exists(), "{file}의 .bak을 덮었다");
+        }
+
+        let holder = Arc::new(ReportHolder::default());
+        sync_hooks(holder.expect(), home.clone(), atelier_core::default_data_root(&home));
+        let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다");
+        assert_eq!(
+            report.hooks_updated,
+            ["claude", "codex"],
+            "그 홈의 기본 루트로도 옛 설치를 안 맞춘다 — 위의 「안 맞춤」이 잰 것이 없다"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::remove_dir_all(&moved);
+    }
+
+    /// **설치본이 건네는 두 입력은 기본 자리로 읽힌다.** 앱은 홈을 `hooks::agent_home()`(`~/`를 편 것 — 끝에 `/`가 붙는다)으로,
+    /// 루트를 `atelier_core::data_root()`로 건넨다. 둘이 글자로 갈려 기본 자리로 안 읽히면 위의 가드가 설치본의 맞춤까지 막는다
+    /// — 토스트도 오류도 없이 영영. env(`ATELIER_HOME`)에 기대지 않게, 오버라이드가 없을 때의 루트(`~/.atelier`)를 곧바로 건넨다.
+    #[test]
+    fn the_installed_apps_home_and_root_are_synced() {
+        assert!(
+            syncs_hooks_of(&hooks::agent_home(), &atelier_core::expand_home("~/.atelier")),
+            "설치본의 홈({})과 기본 루트를 기본 자리로 안 읽는다 — 설치본이 이미 깐 훅을 영영 안 맞춘다",
+            hooks::agent_home().display()
+        );
     }
 
     /// **시작 보고는 훅 맞춤이 끝난 뒤 답한다**(티켓 21 — 티켓 10이 세운 「기여자 여럿」에 훅 맞춤을 하나 더한다). 시작 정리의 몫이
@@ -368,7 +433,8 @@ mod tests {
         use std::os::unix::ffi::OsStrExt;
         use std::os::unix::fs::FileTypeExt;
 
-        let (home, root) = (temp_dir("wait-home"), temp_dir("wait-root"));
+        let home = temp_dir("wait-home");
+        let root = atelier_core::default_data_root(&home);
         old_install(&home);
         let fifo = home.join(".codex/config.toml");
         std::fs::remove_file(&fifo).unwrap();
@@ -413,7 +479,6 @@ mod tests {
         assert_eq!(report.hooks_updated, ["claude"], "훅 맞춤의 몫이 빠졌거나 codex를 썼다");
         assert!(std::fs::symlink_metadata(&fifo).unwrap().file_type().is_fifo(), "우리 것이 없는 codex 설정을 다시 썼다");
         let _ = std::fs::remove_dir_all(&home);
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 와이어 모양. 프런트는 `cleaned` · `hooksUpdated`를 읽는다 — `rename_all`이 빠지면 훅 칸이

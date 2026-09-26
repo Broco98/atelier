@@ -582,7 +582,8 @@ impl Installed {
 ///
 /// **데이터 루트와 다른 홈이다.** 훅 처리기가 사는 곳은 `atelier_core::data_root()`(테스트가 `ATELIER_HOME`으로 옮기는 우리
 /// 폴더)이고, 고칠 설정이 사는 곳은 진짜 홈이다 — `~/.claude` · `~/.codex`는 우리 것이 아니라서 그 오버라이드가 걸리면 안 된다.
-/// 그래서 `ATELIER_HOME`으로 뜬 앱도 진짜 설정을 맞추고, 처리기 경로는 그 루트를 가리키게 된다(설치 버튼과 같다).
+/// 그래서 `ATELIER_HOME`으로 뜬 앱의 설치 버튼은 진짜 설정에 그 루트의 처리기를 건다 — 사람이 누른 것이다. 앱이 뜰 때의
+/// 맞춤은 그 실행에서 돌지 않는다(`startup::sync_hooks` — 루트가 이 홈의 기본 자리일 때만).
 pub fn agent_home() -> PathBuf {
     atelier_core::expand_home("~/")
 }
