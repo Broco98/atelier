@@ -479,7 +479,7 @@
    hover에 더 진해지지 않는다: 칩은 누르는 것이 아니라 서 있는 칸을 말하는 것이다 — 누르는 것은
    그 위의 칸이다.
    글자색을 안 정한다: 이 칩은 칸에 붙어 있지 않고 두 칸 사이를 미끄러지는 별개의 요소라
-   (`toggle-group.tsx`의 segment) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
+   (`segment-group.tsx`) 밑에 깔릴 뿐 글리프를 품지 않는다 — 색은 칸이 각자 갖는다. */
 @utility segment-on {
   background: var(--background);
   box-shadow:

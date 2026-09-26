@@ -45,7 +45,7 @@ describe("두 칸이 두 세계다", () => {
 
 describe("칩 하나가 서 있는 칸을 말한다", () => {
   it.each(ALL_MODES)("%s에서도 칩은 하나다", (mode) => {
-    // 칸마다 배경을 켜고 끄는 안은 기각됐다(`toggle-group.tsx`의 segment 주석) — 그 대가로 두 세계가 동시에
+    // 칸마다 배경을 켜고 끄는 안은 기각됐다(`segment-group.tsx`의 칩 주석) — 그 대가로 두 세계가 동시에
     // 서는 판이 마크업에서 아예 불가능하다. 칩이 둘이 되면 그 보장이 조용히 사라진다.
     expect(markup(mode).split("segment-on").length - 1).toBe(1);
   });

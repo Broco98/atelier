@@ -1,4 +1,4 @@
-import { ToggleGroup, ToggleGroupChip, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
 import { ALL_MODES, type Mode } from "@/mode";
 
 /**
@@ -22,9 +22,9 @@ const LABEL: Record<Mode, string> = { atelier: "Atelier", maison: "Maison" };
  * 사이를 미끄러지는 **떠오른 칩**이 말한다(`segment-on`의 근거가 그것이다). 같은 규격으로
  * 두면 nav 항목이 다섯 개인 것처럼 읽혀 「가는 곳」과 「어느 세계인가」가 한 줄에 섞인다.
  *
- * **ToggleGroup의 segment 변형이다**(결정 1, 판 4). 사이드바 안이지만 결정 3의 예외 목록에
- * 들었다(P9). 한 컨트롤이라 Tab 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로 옮긴다.
- * 바닥·칩·칸의 모양은 부품 파일(`toggle-group.tsx`)이 든다.
+ * **두 칸 토글 부품(`SegmentGroup` — Base UI ToggleGroup 위)이다**(결정 1, 판 4). 사이드바 안이지만
+ * 결정 3의 예외 목록에 들었다(P9). 한 컨트롤이라 Tab 자리가 하나이고(첫 칸 — S30), 그 안에서는 ←/→로
+ * 옮긴다. 바닥·칩·칸의 모양은 부품 파일(`segment-group.tsx`)이 든다.
  *
  * **점 신호는 없다**(판 02). 저쪽 세계에서 무언가 돌고 있다는 표시는 다음 판의 몫이다 —
  * 지금 넣으면 세그먼트가 「고르는 것」이면서 「알리는 것」이 되고, 그 둘의 규격이 아직 정하지
@@ -39,30 +39,29 @@ const LABEL: Record<Mode, string> = { atelier: "Atelier", maison: "Maison" };
  */
 export function ModeSwitch({ mode, onPick }: { mode: Mode; onPick: (mode: Mode) => void }) {
   return (
-    <ToggleGroup
-      variant="segment"
+    <SegmentGroup
       // 사전의 말로 부른다. 목업(`life-mode-switch.html`)은 여기를 「공간 선택」이라 적었는데
       // CONTEXT.md의 「모드」 항목이 **「공간」을 _피할 말_로 등재했다** — 목업이 정본인 범위는
       // 세그먼트의 모양이고 낱말의 정본은 그 사전이다. 그리고 이것이 이 컨트롤의 유일한
       // 사용자 노출 문장이라, 여기 남으면 사전이 금지한 말을 앱이 스크린 리더로 말한다.
       // (`context-glossary.test.ts`가 그 되돌림을 붙든다.)
       aria-label="모드 선택"
+      // 칸 순서가 `ALL_MODES` 순서다 — 칩이 이것과 값으로 서는 자리를 안다.
+      cells={ALL_MODES}
       value={[mode]}
       onValueChange={([pick]) => {
         if (pick) onPick(pick);
       }}
     >
-      {/* 칩이 몇 칸째에 서는가. 칸 순서가 `ALL_MODES` 순서라 인덱스가 그대로 자리다. */}
-      <ToggleGroupChip at={ALL_MODES.indexOf(mode)} />
       {ALL_MODES.map((one) => (
         // `aria-pressed`이지 `aria-expanded`가 아니다(부품이 단다) — 이 칸은 무언가를 펼치는 것이
         // 아니라 **눌린 채 서 있는** 것이다(목업도 그렇다). 그 구분이 사이드바에서는 값을 하나 더
         // 갖는다: 접히는 것은 구획 머리뿐이라 `aria-expanded`를 가진 버튼이 곧 구획 머리이고,
         // 그 사실에 검사 둘이 기대고 있다(`Sidebar.test.tsx`·`SidebarWorkList.test.tsx`).
-        <ToggleGroupItem key={one} value={one}>
+        <SegmentGroupItem key={one} value={one}>
           {LABEL[one]}
-        </ToggleGroupItem>
+        </SegmentGroupItem>
       ))}
-    </ToggleGroup>
+    </SegmentGroup>
   );
 }
