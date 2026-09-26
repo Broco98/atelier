@@ -317,6 +317,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     agent: "claude",
     subagents: 0,
     subagentId: null,
+    dialog: null,
     ...over,
   });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({

@@ -2,6 +2,7 @@ import type { ShellHookState } from "../types";
 import {
   firstLine,
   flagAt,
+  permissionDialog,
   permissionLine,
   questionLine,
   sessionEnd,
@@ -9,6 +10,14 @@ import {
   stringAt,
 } from "./payload";
 import type { AgentAdapter, AgentSignal } from "./types";
+
+/**
+ * 그 도구가 **사람에게 묻는 도구**(`AskUserQuestion`)인가. PreToolUse와 PermissionRequest 둘이 읽는다 — 그 도구는 권한 흐름을
+ * 지나(`checkPermissions`가 `ask`를 돌려준다 — 2.1.283 소스) PermissionRequest 훅도 그 도구 이름으로 돈다.
+ */
+function asksQuestion(payload: unknown): boolean {
+  return stringAt(payload, "tool_name") === "AskUserQuestion";
+}
 
 /**
  * claude가 훅으로 말한 것을 정규 이벤트로 접는다. 스펙 전이 표(프로세스 결정 13)의 claude 칸 그대로다.
@@ -33,8 +42,8 @@ export const claude: AgentAdapter = {
       case "PreToolUse":
         // **`AskUserQuestion`은 훅이 아니라 도구다** — 사람이 답해야 하는 도구라 기다림이다. 도구 이름으로
         // **`if`로** 가른다(파일 머리말: 안쪽 `switch`의 `case`로 써도 이름 검사가 훅 이름으로 읽는다).
-        if (stringAt(payload, "tool_name") === "AskUserQuestion") {
-          return { event: "waiting", message: questionLine(payload) };
+        if (asksQuestion(payload)) {
+          return { event: "waiting", message: questionLine(payload), dialog: "question" };
         }
         return { event: "tool", message: null };
       case "PostToolUse":
@@ -48,10 +57,16 @@ export const claude: AgentAdapter = {
           ? { event: "interrupt", message: null }
           : { event: "tool", message: null };
       case "PermissionRequest":
-        return { event: "waiting", message: permissionLine(payload) };
+        // **`AskUserQuestion`의 요청은 물음 창이다**(티켓 25 리뷰 반영) — 권한 흐름을 지날 뿐 창의 첫째가 `Yes`가 아니다.
+        // 말도 PreToolUse와 같게 첫 물음이다: 도구 이름으로 갈아 끼우면 PreToolUse가 세운 물음이 몇 ms 만에
+        // `AskUserQuestion`이 된다.
+        if (asksQuestion(payload)) {
+          return { event: "waiting", message: questionLine(payload), dialog: "question" };
+        }
+        return { event: "waiting", message: permissionLine(payload), dialog: permissionDialog(payload) };
       case "Elicitation":
-        // 물음 자체가 페이로드에 한 줄로 온다. 요약할 것이 없다.
-        return { event: "waiting", message: firstLine(stringAt(payload, "message")) };
+        // 물음 자체가 페이로드에 한 줄로 온다. 요약할 것이 없다. 창은 MCP 서버가 지은 양식이라 물음이다.
+        return { event: "waiting", message: firstLine(stringAt(payload, "message")), dialog: "question" };
       case "Stop":
         return { event: "stop", message: firstLine(stringAt(payload, "last_assistant_message")) };
       case "StopFailure":

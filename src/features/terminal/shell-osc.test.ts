@@ -9,12 +9,18 @@ import { bellSignal, oscSignal } from "./shell-osc";
 // 구현 스펙의 3절(「Codex TUI의 OSC 9는 본문으로만 갈린다」)이다 — 한 글자라도 틀리면 훅을
 // 안 깐 Codex 사용자의 승인 요청이 앰버가 아니라 초록으로 뜬다.
 describe("OSC 본문을 정규 이벤트로 접는다", () => {
+  // 승인 넷 — 접두사 **뒤가** 말이 된다. **어느 창인지는 모른다**(티켓 25 리뷰 반영) — 본문 한 줄로는 권한 창인지 물음인지 못
+  // 가르고(`Plan mode prompt:`는 물음이다), 승인 추론은 이 기다림을 안 읽는다.
   it.each([
-    // 승인 넷 — 접두사 **뒤가** 말이 된다.
-    ["Approval requested: Bash(git status)", "waiting", "Bash(git status)"],
-    ["Codex wants to edit src/main.rs", "waiting", "src/main.rs"],
-    ["Approval requested by codex", "waiting", "codex"],
-    ["Plan mode prompt: 어느 쪽으로 갈까요?", "waiting", "어느 쪽으로 갈까요?"],
+    ["Approval requested: Bash(git status)", "Bash(git status)"],
+    ["Codex wants to edit src/main.rs", "src/main.rs"],
+    ["Approval requested by codex", "codex"],
+    ["Plan mode prompt: 어느 쪽으로 갈까요?", "어느 쪽으로 갈까요?"],
+  ] as const)("%s → waiting", (body, message) => {
+    expect(oscSignal(body)).toEqual({ event: "waiting", message, dialog: null });
+  });
+
+  it.each([
     // **그 밖은 전부 `stop`(→ 확인할 것)이고 본문 전체가 말이 된다**(결정 13의 둘째).
     // 누군가 알리려 했으니 안 본 것이 있다 — 무슨 일인지는 사람이 이 글자를 읽는다. 옛 표는 이 줄을 `end`로
     // 접었는데, 프로세스 결정 13이 확인할 것을 턴의 끝(`stop`)으로 옮기고 `end`를 지우는 사건으로 바꿨다.
@@ -33,7 +39,7 @@ describe("OSC 본문을 정규 이벤트로 접는다", () => {
     "Approval requested: ",
     "Codex wants to edit ",
   ])("%s는 말 없는 기다림이다", (body) => {
-    expect(oscSignal(body)).toEqual({ event: "waiting", message: null });
+    expect(oscSignal(body)).toEqual({ event: "waiting", message: null, dialog: null });
   });
 
   // **빈 본문은 아무 주장도 아니다**(결정 3). 여기서 `done`을 만들면 본문 없는 OSC 하나에

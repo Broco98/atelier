@@ -181,10 +181,6 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
   it.each([
     // 실측: `UserPromptSubmit`이 프롬프트를 싣는 키는 `prompt`다(위 실측 픽스처).
     ["UserPromptSubmit", { prompt: "고쳐 줘" }, "start", null],
-    // B-2:149 `tool_name`·`tool_input`·`tool_use_id`.
-    ["PermissionRequest", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_01" }, "waiting", "Bash · git status"],
-    // B-2:150 `mcp_server_name`·`message`·`mode`·`url`·`elicitation_id`·`requested_schema`.
-    ["Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", mode: "form", elicitation_id: "el_1" }, "waiting", "어느 쪽으로 할까요?"],
     // B-2:152 `last_assistant_message`·`agent_id`·`agent_type`.
     ["Stop", { last_assistant_message: "테스트 셋 통과\n커밋할까요?", agent_id: "a1", agent_type: "general" }, "stop", "테스트 셋 통과"],
     // **실측**: `SessionEnd`가 이유를 싣는 키는 **`reason`**이다(위 실측 픽스처).
@@ -202,12 +198,6 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
     ["PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "false" }, tool_use_id: "toolu_04", error: "Exit code 1", is_interrupt: false }, "tool", null],
     // **중단으로 닿은 실패는 중단이다**(프로세스 결정 12의 사실 쪽).
     ["PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_use_id: "toolu_05", error: "Interrupted", is_interrupt: true }, "interrupt", null],
-    // **`AskUserQuestion`은 훅이 아니라 도구다** — PreToolUse 안에서 도구 이름으로 가른다. 입력 모양은 claude
-    // 2.1.283 바이너리의 도구 스키마(`questions[]` · `question` · `header` · `options` · `multiSelect`)다. 말은
-    // 첫 물음의 첫 줄이다 — 사람이 답할 것이 그것이다.
-    ["PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?\n둘 다 돼요", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false }] }, tool_use_id: "toolu_06" }, "waiting", "어느 쪽으로 할까요?"],
-    // 물음을 못 읽으면 도구 이름이 바닥이다(`permissionLine`) — 모르는 것을 지어내지 않는다.
-    ["PreToolUse", { tool_name: "AskUserQuestion", tool_input: {}, tool_use_id: "toolu_07" }, "waiting", "AskUserQuestion"],
     // StopFailure(문서): `error`(종류 열둘 중 하나) · 선택 `error_details` · 선택 `last_assistant_message`. 말은 **오류
     // 상세의 첫 줄**, 없으면 **오류 종류**다(S57) — 「오류로 끝남」은 상태 기계가 붙인다(아래 전이 표).
     ["StopFailure", { error: "rate_limit", error_details: "429 Too Many Requests\nretry-after: 30", last_assistant_message: "API Error: 429" }, "stopFailure", "429 Too Many Requests"],
@@ -218,6 +208,26 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
     ["SubagentStop", 실측_SubagentStop, "subagent", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("claude", event, payload))).toEqual({ event: canonical, message });
+  });
+
+  // **기다림은 어느 창인지도 싣는다**(티켓 25 리뷰 반영). 승인 추론이 권한 창에만 건다 — 18의 키 표는 권한 창(첫째가 늘
+  // `Yes`)을 잰 것이고, 물음 창(`AskUserQuestion` · Elicitation)의 첫째는 첫 물음의 첫 선택지다. 창을 모르면 `null`이다.
+  it.each([
+    // B-2:149 `tool_name`·`tool_input`·`tool_use_id`.
+    ["승인 요청", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_01" }, "Bash · git status", "permission"],
+    // B-2:150 `mcp_server_name`·`message`·`mode`·`url`·`elicitation_id`·`requested_schema`.
+    ["Elicitation", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", mode: "form", elicitation_id: "el_1" }, "어느 쪽으로 할까요?", "question"],
+    // **`AskUserQuestion`은 훅이 아니라 도구다** — PreToolUse 안에서 도구 이름으로 가른다. 입력 모양은 claude
+    // 2.1.283 바이너리의 도구 스키마(`questions[]` · `question` · `header` · `options` · `multiSelect`)다. 말은
+    // 첫 물음의 첫 줄이다 — 사람이 답할 것이 그것이다.
+    ["AskUserQuestion", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?\n둘 다 돼요", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false }] }, tool_use_id: "toolu_06" }, "어느 쪽으로 할까요?", "question"],
+    // 물음을 못 읽으면 도구 이름이 바닥이다(`permissionLine`) — 모르는 것을 지어내지 않는다.
+    ["물음을 못 읽은 AskUserQuestion", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: {}, tool_use_id: "toolu_07" }, "AskUserQuestion", "question"],
+    // **`AskUserQuestion`은 권한 흐름을 지난다** — 그 도구의 `checkPermissions`가 `ask`를 돌려, PermissionRequest 훅도 그
+    // 도구 이름으로 돈다(2.1.283 소스). 창은 물음이고, 같은 물음이라 말도 PreToolUse와 같다.
+    ["AskUserQuestion의 권한 요청", "PermissionRequest", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false }] }, tool_use_id: "toolu_08" }, "어느 쪽으로 할까요?", "question"],
+  ] as const)("%s → 기다림", (_이름, event, payload, message, dialog) => {
+    expect(foldHookState(hook("claude", event, payload))).toEqual({ event: "waiting", message, dialog });
   });
 
   // **모르는 이벤트는 아무것도 안 만든다** — 「모르면 아무 주장도 안 한다」(결정 3)가 여기서
@@ -233,10 +243,14 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
 
   // 훅 스크립트는 페이로드를 못 읽어도 「그 이벤트가 났다」를 남긴다(`atelier-hook.py`).
   // 그 사실까지 버리면 사람이 부르는 셸을 못 본다 — message만 없는 채로 선다.
+  //
+  // **어느 창인지는 모른다**(티켓 25 리뷰 반영) — 도구 이름이 없으면 `AskUserQuestion`의 물음일 수도 있다. 모르면 승인 추론이
+  // 안 서고, 옛 동작대로 도구가 끝날 때 풀린다.
   it("페이로드가 없어도 이벤트는 산다", () => {
     expect(foldHookState(hook("claude", "PermissionRequest"))).toEqual({
       event: "waiting",
       message: null,
+      dialog: null,
     });
   });
 
@@ -249,8 +263,6 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
   it.each([
     // B-1:324 codex의 `UserPromptSubmit` 고유 필드는 `permission_mode`다 — 프롬프트 본문이 없다.
     ["UserPromptSubmit", { permission_mode: "default" }, "start", null],
-    // B-1:317 `turn_id`·`tool_name`·`tool_input`(+`tool_input.description`).
-    ["PermissionRequest", { turn_id: "t1", tool_name: "shell", tool_input: { command: "cargo test" } }, "waiting", "shell · cargo test"],
     // B-1:318 `turn_id`·`stop_hook_active`·`last_assistant_message`.
     ["Stop", { turn_id: "t1", stop_hook_active: false, last_assistant_message: "PR #174 열었다" }, "stop", "PR #174 열었다"],
     // B-1:323 codex `SessionEnd`에는 **고유 필드가 없다**(`—`). 이유를 물을 것이 없으니 늘 끝이다.
@@ -270,6 +282,17 @@ describe("codex 어댑터가 페이로드를 정규 이벤트로 접는다", () 
     ["Interrupt", { turn_id: "t1", permission_mode: "default" }, "interrupt", null],
   ] as const)("%s → %s", (event, payload, canonical, message) => {
     expect(foldHookState(hook("codex", event, payload))).toEqual({ event: canonical, message });
+  });
+
+  // B-1:317 `turn_id`·`tool_name`·`tool_input`(+`tool_input.description`). 창은 권한 창이다(티켓 25 리뷰 반영 — 어댑터 표의
+  // 「기다림은 어느 창인지도 싣는다」). 도구 이름이 없으면 어느 창인지 모른다.
+  it("`PermissionRequest` → 기다림, 권한 창", () => {
+    expect(foldHookState(hook("codex", "PermissionRequest", { turn_id: "t1", tool_name: "shell", tool_input: { command: "cargo test" } }))).toEqual({
+      event: "waiting",
+      message: "shell · cargo test",
+      dialog: "permission",
+    });
+    expect(foldHookState(hook("codex", "PermissionRequest", { turn_id: "t1" }))).toEqual({ event: "waiting", message: null, dialog: null });
   });
 
   // **`clear`는 claude 줄이다.** 스펙 전이 표는 `end` 줄에만 codex를 적고 `clear` 줄에서는
@@ -366,8 +389,9 @@ const 직전: Attention = {
   agent: "claude",
   subagents: 0,
   subagentId: null,
+  dialog: null,
 };
-const 기다리던것: Attention = { ...직전, kind: "waiting", message: "Bash · git push" };
+const 기다리던것: Attention = { ...직전, kind: "waiting", message: "Bash · git push", dialog: "permission" };
 const 끝난것: Attention = { ...직전, kind: "done", message: "다 했어요" };
 
 /** 사건 여럿을 차례로 앉힌다 — 파일이 바뀔 때마다 감시가 한 장씩 실어 오는 그 길이다. */
@@ -384,6 +408,7 @@ const 훅상태 = (over: Partial<Attention>): Attention => ({
   agent: "claude",
   subagents: 0,
   subagentId: null,
+  dialog: null,
   ...over,
 });
 
@@ -403,10 +428,10 @@ describe("전이 표 — 프로세스 결정 13", () => {
     ["codex PreToolUse", 기다리던것, hook("codex", "PreToolUse", { turn_id: "t2", tool_name: "shell", tool_input: { command: "ls" }, tool_use_id: "call_3" }), 훅상태({ message: "Bash · git push", agent: "codex" })],
     ["codex PostToolUse", 기다리던것, hook("codex", "PostToolUse", { turn_id: "t2", tool_name: "shell", tool_input: { command: "ls" }, tool_response: "ok", tool_use_id: "call_3" }), 훅상태({ message: "Bash · git push", agent: "codex" })],
     // `waiting` → 기다림. **사람이 답해야 할 때만** 선다.
-    ["claude 승인 요청", 직전, hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" } }), 훅상태({ kind: "waiting", message: "Bash · git push" })],
-    ["codex 승인 요청", 직전, hook("codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }), 훅상태({ kind: "waiting", message: "shell · rm -rf .", agent: "codex" })],
-    ["claude elicitation", 직전, hook("claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", elicitation_id: "el_2" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?" })],
-    ["claude AskUserQuestion", 직전, hook("claude", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?", header: "방향", options: [], multiSelect: false }] }, tool_use_id: "toolu_11" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?" })],
+    ["claude 승인 요청", 직전, hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "git push" } }), 훅상태({ kind: "waiting", message: "Bash · git push", dialog: "permission" })],
+    ["codex 승인 요청", 직전, hook("codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "rm -rf ." } }), 훅상태({ kind: "waiting", message: "shell · rm -rf .", agent: "codex", dialog: "permission" })],
+    ["claude elicitation", 직전, hook("claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", elicitation_id: "el_2" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?", dialog: "question" })],
+    ["claude AskUserQuestion", 직전, hook("claude", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "어느 쪽으로 할까요?", header: "방향", options: [], multiSelect: false }] }, tool_use_id: "toolu_11" }), 훅상태({ kind: "waiting", message: "어느 쪽으로 할까요?", dialog: "question" })],
     // `stop` → 서브에이전트가 없으면 **확인할 것**, 있으면 도는 중(서브에이전트 N).
     ["claude 턴 끝", 직전, hook("claude", "Stop", { last_assistant_message: "테스트 셋 통과 — 커밋할까요?" }, { stopped: true }), 훅상태({ kind: "done", message: "테스트 셋 통과 — 커밋할까요?" })],
     ["codex 턴 끝", 직전, hook("codex", "Stop", { turn_id: "t2", last_assistant_message: "PR #174 열었다" }, { stopped: true }), 훅상태({ kind: "done", message: "PR #174 열었다", agent: "codex" })],
@@ -450,7 +475,7 @@ describe("전이 표 — 프로세스 결정 13", () => {
     const 요청 = hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, ...서브 }, { at: 80, subagents: 1 });
     const 끝 = hook("claude", "PostToolUse", { tool_name: "Bash", tool_input: { command: "npm test" }, tool_response: {}, tool_use_id: "toolu_24", ...서브 }, { at: 95, subagents: 1 });
     const 기다림 = 차례로(직전, 요청);
-    expect(기다림).toEqual(훅상태({ kind: "waiting", message: "Bash · npm test", since: 80, subagents: 1, subagentId: 서브.agent_id }));
+    expect(기다림).toEqual(훅상태({ kind: "waiting", message: "Bash · npm test", since: 80, subagents: 1, subagentId: 서브.agent_id, dialog: "permission" }));
     expect(차례로(기다림, 끝)).toEqual(
       훅상태({ message: "Bash · npm test", since: 95, subagents: 1, subagentId: 서브.agent_id }),
     );
@@ -561,7 +586,7 @@ describe("전이 표 — 프로세스 결정 13", () => {
   it("기다림 + `waiting` → 기다림, 새 `since`", () => {
     const 둘째 = hook("claude", "PermissionRequest", { tool_name: "Edit", tool_input: { file_path: "src/pty.rs" } }, { at: 90 });
     expect(nextAttention(기다리던것, 둘째)).toEqual(
-      훅상태({ kind: "waiting", message: "Edit · src/pty.rs", since: 90 }),
+      훅상태({ kind: "waiting", message: "Edit · src/pty.rs", since: 90, dialog: "permission" }),
     );
   });
 
@@ -643,6 +668,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     agent: "claude",
     subagents: 0,
     subagentId: null,
+    dialog: null,
   };
 
   it.each(["osc", "bell"] as const)("%s가 와도 그대로다 — 같은 객체다", (source) => {
@@ -666,6 +692,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
       // 서브에이전트도 모른다 — 수는 처리기가 접어 싣는 훅 길의 값이고, 낸 서브에이전트는 훅 페이로드의 칸이다.
       subagents: 0,
       subagentId: null,
+      dialog: null,
     });
   });
 
@@ -702,6 +729,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
         agent: null,
         subagents: 0,
         subagentId: null,
+        dialog: null,
       });
     });
 
@@ -737,7 +765,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   const 훅이세운확인할것: Attention = { ...훅이말한것, kind: "done", message: "다 했어요" };
 
   it.each([
-    ["OSC 승인 요청", { event: "waiting", message: "Bash(git push)" }, "osc", "waiting"],
+    ["OSC 승인 요청", { event: "waiting", message: "Bash(git push)", dialog: null }, "osc", "waiting"],
     ["OSC 완료", { event: "stop", message: "PR #174 열었다" }, "osc", "done"],
     ["벨", { event: "stop", message: null }, "bell", "done"],
   ] as const)("에이전트가 사라진 뒤에는 다시 말한다 — %s", (_이름, signal, source, kind) => {
@@ -766,7 +794,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     for (const 그것 of [훅이말한것, 훅이세운확인할것]) {
       const 그대로 = nextOnRunning(그것, before, after, 150);
       expect(그대로).toBe(그것);
-      expect(applySignal(그대로, { event: "waiting", message: "Bash(git push)" }, 200, "osc", null, NO_HOOK_COUNTS)).toBe(그것);
+      expect(applySignal(그대로, { event: "waiting", message: "Bash(git push)", dialog: null }, 200, "osc", null, NO_HOOK_COUNTS)).toBe(그것);
       expect(applySignal(그대로, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_COUNTS)).toBe(그것);
     }
   });
@@ -891,7 +919,7 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
   const 승인뒤 = 훅상태({ message: "Bash · sleep 30", since: 700 });
 
   it("앵커: 승인 요청이 기다림을 세웠다", () => {
-    expect(기다림).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30" }));
+    expect(기다림).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30", dialog: "permission" }));
   });
 
   it.each([
@@ -952,6 +980,33 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
     expect(누름(그것, "confirm")).toBe(그것);
   });
 
+  // **권한 창에만 건다**(티켓 25 리뷰 반영). 18의 키 표는 권한 창을 잰 것이다 — 권한 창의 첫째는 늘 `Yes`다. 물음 창의 첫째는 첫
+  // 물음의 첫 선택지이고, `AskUserQuestion`은 답을 고르면 다음 물음으로 넘어가 마지막 뒤에 제출 화면(「Submit answers」 ·
+  // 「Cancel」)을 세운다(2.1.283 소스). 물음이 여럿이면 `1`이나 첫 Enter는 첫 물음에만 답한 것이고 창은 그대로 사람을 기다린다 —
+  // 도는 중으로 읽으면 부르는 신호 없이 굳는다. Elicitation의 양식도 키를 안 쟀다. 어느 창인지 모르는 요청(도구 이름이 없다)도
+  // 같다. 모르면 옛 동작대로 도구가 끝날 때(PostToolUse) 풀린다.
+  const 물음둘 = {
+    questions: [
+      { question: "어느 쪽으로 할까요?", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false },
+      { question: "테스트도 고칠까요?", header: "테스트", options: [{ label: "네" }, { label: "아니요" }], multiSelect: false },
+    ],
+  };
+  it.each([
+    ["AskUserQuestion", hook("claude", "PreToolUse", { tool_name: "AskUserQuestion", tool_input: 물음둘, tool_use_id: "toolu_31" })],
+    ["AskUserQuestion의 권한 요청", hook("claude", "PermissionRequest", { tool_name: "AskUserQuestion", tool_input: 물음둘, tool_use_id: "toolu_31" })],
+    ["Elicitation", hook("claude", "Elicitation", { mcp_server_name: "atelier", message: "어느 쪽으로 할까요?", mode: "form", elicitation_id: "el_3" })],
+    ["도구를 모르는 권한 요청", hook("claude", "PermissionRequest")],
+  ] as const)("권한 창이 아닌 기다림 + 확정 키는 그대로다 — %s", (_이름, 한장) => {
+    const 그기다림 = nextAttention(직전, 한장);
+    // 앵커: 훅이 말한 기다림이다 — 권한 창이었으면 같은 키가 도는 중으로 간다(위 표).
+    expect(그기다림).toMatchObject({ kind: "waiting", source: "hook" });
+    expect(누름(그기다림, "approve")).toBe(그기다림);
+    expect(누름(그기다림, "confirm")).toBe(그기다림);
+    expect(누름(그기다림, "amend", "other", "confirm")).toBe(그기다림);
+    // 자취도 안 든다 — 읽을 창이 아니다.
+    expect(inferApproval(그기다림, null, "move", 700).answering).toBeNull();
+  });
+
   it("상태가 없는 셸 + 확정 키는 없음 그대로다", () => {
     expect(누름(null, "approve")).toBeNull();
     expect(누름(null, "confirm")).toBeNull();
@@ -962,7 +1017,7 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
   it("승인한 도는 중에는 OSC · 벨이 아무것도 못 바꾼다 — 권위가 그대로다", () => {
     const 도는중 = 누름(기다림, "approve");
     expect(도는중?.source).toBe("hook");
-    expect(applySignal(도는중, { event: "waiting", message: "Approval requested" }, 800, "osc", null, NO_HOOK_COUNTS)).toBe(도는중);
+    expect(applySignal(도는중, { event: "waiting", message: "Approval requested", dialog: null }, 800, "osc", null, NO_HOOK_COUNTS)).toBe(도는중);
     expect(applySignal(도는중, { event: "stop", message: null }, 800, "bell", null, NO_HOOK_COUNTS)).toBe(도는중);
   });
 
@@ -1014,7 +1069,7 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
     const 끝난도구 = nextAttention(도는중, hook("claude", "PostToolUse", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_response: {}, tool_use_id: "toolu_30" }, { at: 800 }));
     expect(끝난도구).toEqual(훅상태({ message: "Bash · sleep 30", since: 800 }));
     const 다음창 = nextAttention(끝난도구, { ...승인요청, at: 810 });
-    expect(다음창).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30", since: 810 }));
+    expect(다음창).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30", since: 810, dialog: "permission" }));
   });
 
   // 승인은 부르는 상태에서 **나가는** 것이라 울 일이 없고, 「봤다」는 도는 중에서 뜻이 없다. 새 사실이라 시각만 새로 찍는다.
@@ -1122,6 +1177,7 @@ const 상태 = (over: Partial<Attention> = {}): Attention => ({
   agent: "claude",
   subagents: 0,
   subagentId: null,
+  dialog: null,
   ...over,
 });
 
@@ -1552,17 +1608,19 @@ it("터미널에서 시간을 아는 파일은 셋뿐이다 — 상태 축엔 �
 
 // **칸이 늘면 여기서 터진다.** `nextAttention`의 「안 바뀌면 받은 것을 그대로 준다」와
 // `shell-registry`의 `setAttention`이 그 판정 하나에 매달려 있는데, 견주는 칸이 손으로
-// 적혀 있어(`same`) 아홉째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
+// 적혀 있어(`same`) 열째가 늘면 그 칸만 조용히 안 견줘진다 — 값이 바뀌었는데 화면이 안 바뀐다.
 //
 // **일곱째가 서브에이전트 수다**(프로세스 스펙 S51). 옆 맵에 두지 않은 것은 셸 탭 툴팁과 `Processes` 셸 행이 상태와
 // **같은 문**(`attentionOn`의 죽은 칸 가리개)을 딛고 읽게 하려는 것이다 — 맵이 따로면 죽은 칸의 수가 남는다.
 // **여덟째가 그 사실을 낸 서브에이전트다**(티켓 20 리뷰 반영) — 기다림을 푸는 도구가 그 기다림을 낸 에이전트의 것인지를
 // 견주려면 기다림이 선 뒤에도 들고 있어야 한다. `stopped`는 여기 없다: 셸 상태의 칸이 아니라 사건에 실려 오는 값이다
-// (전이에만 쓴다).
-it("상태에 든 칸은 정확히 여덟이다", () => {
-  const 상태값 = applySignal(null, { event: "waiting", message: "물음" }, 10, "hook", "claude", NO_HOOK_COUNTS);
+// (전이에만 쓴다). **아홉째가 기다림이 선 창이다**(티켓 25 리뷰 반영) — 키가 올 때 승인 추론이 그 기다림이 권한 창인지
+// 물어야 해서 기다림이 선 뒤에도 들고 있는다.
+it("상태에 든 칸은 정확히 아홉이다", () => {
+  const 상태값 = applySignal(null, { event: "waiting", message: "물음", dialog: "question" }, 10, "hook", "claude", NO_HOOK_COUNTS);
   expect(Object.keys(상태값 ?? {}).sort()).toEqual([
     "agent",
+    "dialog",
     "kind",
     "message",
     "seen",
@@ -1580,6 +1638,19 @@ it("낸 서브에이전트만 달라도 새 상태다 — 같은 객체가 아�
   const 본에이전트요청 = nextAttention(앉은뒤, { ...서브요청, payload: { tool_name: "Bash" } });
   expect(본에이전트요청).not.toBe(앉은뒤);
   expect(본에이전트요청?.subagentId).toBeNull();
+});
+
+// **아홉째 칸도 견준다**(티켓 25 리뷰 반영) — 같은 시각 · 같은 말에 창만 바뀐 기다림이 「같은 것」으로 삼켜지면, 물음 창이던
+// 기다림이 권한 창이 되어도 승인 추론이 안 서거나, 그 거꾸로 물음의 첫 답이 승인으로 읽힌다.
+it("창만 달라도 새 상태다 — 같은 객체가 아니다", () => {
+  const 물음 = hook("claude", "Elicitation", { mcp_server_name: "atelier", message: "Bash", mode: "form", elicitation_id: "el_4" }, { at: 10 });
+  const 앉은뒤 = nextAttention(null, 물음);
+  // 앵커: 말도 시각도 같다 — 창 하나만 다르다.
+  const 권한요청 = nextAttention(앉은뒤, { ...물음, event: "PermissionRequest", payload: { tool_name: "Bash" } });
+  expect(권한요청).toMatchObject({ kind: "waiting", message: "Bash", since: 10 });
+  expect(앉은뒤).toMatchObject({ kind: "waiting", message: "Bash", since: 10 });
+  expect(권한요청).not.toBe(앉은뒤);
+  expect(권한요청?.dialog).toBe("permission");
 });
 
 // **「도는 중 · 서브에이전트 N」의 N을 읽는 문**(S32 · S51). 셸 탭 툴팁이 쓰고 `Processes` 셸 행(27)이 같은 함수를

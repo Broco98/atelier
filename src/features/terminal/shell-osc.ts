@@ -69,7 +69,8 @@ export function oscSignal(body: string): AgentSignal | null {
   const prefix = WAITING_PREFIXES.find((one) => body.startsWith(one));
   // 접두사만 오고 뒤가 비면 말은 없되 앰버는 선다. `null`은 「지운다」가 아니라 「직전 것을
   // 그대로 둔다」이고, 그 규칙은 `applySignal`이 든다.
-  if (prefix !== undefined) return { event: "waiting", message: firstLine(body.slice(prefix.length)) };
+  // 어느 창인지는 모른다 — 본문 한 줄로는 권한 창인지 물음인지 못 가른다(`AgentSignal` 머리말).
+  if (prefix !== undefined) return { event: "waiting", message: firstLine(body.slice(prefix.length)), dialog: null };
 
   const line = firstLine(body);
   return line === null ? null : { event: "stop", message: line };

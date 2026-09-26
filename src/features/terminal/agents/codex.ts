@@ -1,5 +1,5 @@
 import type { ShellHookState } from "../types";
-import { firstLine, permissionLine, stringAt } from "./payload";
+import { firstLine, permissionDialog, permissionLine, stringAt } from "./payload";
 import type { AgentAdapter, AgentSignal } from "./types";
 
 /**
@@ -22,7 +22,7 @@ export const codex: AgentAdapter = {
         // 같아도 도구로 접는다. 말을 안 싣는 이유는 claude 쪽과 같다.
         return { event: "tool", message: null };
       case "PermissionRequest":
-        return { event: "waiting", message: permissionLine(payload) };
+        return { event: "waiting", message: permissionLine(payload), dialog: permissionDialog(payload) };
       case "Stop":
         return { event: "stop", message: firstLine(stringAt(payload, "last_assistant_message")) };
       case "SubagentStart":

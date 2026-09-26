@@ -1,6 +1,6 @@
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { foldHookState, subagentOf } from "./agents";
-import type { AgentSignal } from "./agents/types";
+import type { AgentSignal, DialogKind } from "./agents/types";
 import type { AnswerKey } from "./shell-input";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
@@ -89,6 +89,15 @@ export interface Attention {
    * 사건이 올 때 견줄 것이 없다.
    */
   subagentId: string | null;
+  /**
+   * **기다림이 선 창** — 권한 창인가 물음 창인가(`DialogKind`). 셸 상태의 아홉째 칸이다(티켓 25 리뷰 반영). 어댑터가 접어 준
+   * 그대로이고, 기다림이 아니거나 어느 창인지 모르면(OSC · 벨 · 도구 이름을 못 읽은 요청) `null`이다.
+   *
+   * **읽는 자리는 하나다 — 승인 추론**(`inferApproval`). 18의 키 표는 권한 창을 잰 것이라 물음 창의 `1` · Enter를 승인으로
+   * 읽으면, 물음이 여럿인 `AskUserQuestion`에서 첫 답만 한 사람을 두고 셸이 도는 중으로 굳는다. 키가 올 때 「그 기다림이 어느
+   * 창인가」를 알아야 해서 기다림이 선 뒤에도 들고 있는다 — `subagentId`와 같은 까닭이다.
+   */
+  dialog: DialogKind | null;
 }
 
 /** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
@@ -144,7 +153,7 @@ export const FAILED_LABEL = "오류로 끝남";
  * | `interrupt` · `clear` | **없음** |
  * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다. **멈춘 턴 뒤의 끝**(`stopped`)이면 도는 중은 확인할 것 |
  * | (중단 추론 — `inferInterrupt`) | `interrupt`와 같다(출처 `key`) |
- * | (승인 추론 — `inferApproval`) | 훅이 말한 기다림에서 창이 열린 뒤 첫 키인 `1` · Enter, 처음 자리의 고치기 칸(Tab)의 Enter → `tool`과 같다(출처 `hook`을 이어받는다) |
+ * | (승인 추론 — `inferApproval`) | 훅이 말한 **권한 창의** 기다림에서 창이 열린 뒤 첫 키인 `1` · Enter, 처음 자리의 고치기 칸(Tab)의 Enter → `tool`과 같다(출처 `hook`을 이어받는다). 물음 창(`AskUserQuestion` · Elicitation)은 안 읽는다 |
  * | (에이전트 사라짐 — `nextOnRunning`) | `end`와 같다(출처 `gone`) + 권위가 풀린다 |
  *
  * **`end`의 마지막 칸은 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 「안 본 완료를 남긴다」를 둔 까닭은 `claude -p`
@@ -210,6 +219,8 @@ export function applySignal(
       agent,
       subagents: counts.subagents,
       subagentId: counts.subagentId,
+      // 창은 기다림만 싣는다 — 다른 사실은 창이 닫힌 뒤다.
+      dialog: signal.event === "waiting" ? signal.dialog : null,
     });
 
   switch (signal.event) {
@@ -382,9 +393,12 @@ export interface Approval {
  *   들어갔을 수 있다(티켓 25 리뷰 반영).
  * - Ctrl-C · 글자는 창에서 아무 일도 안 한다고 쟀지만, 안 잰 키와 같이 묶는다(`answerKey`의 `other`).
  *
- * **훅이 말한 기다림에만 건다.** OSC가 세운 기다림은 다시 흐른 출력이 푼다(`nextOnOutput`) — 그 창의 키는 이 표가 안 잰
- * 것이다. 에이전트는 가리지 않고, **누가 낸 기다림이든** 푼다: 도구 사건은 그 기다림을 낸 에이전트의 것만 풀지만(`tool` 줄),
- * 확정 키는 사람이 그 창에 답한 것이다.
+ * **훅이 말한 권한 창의 기다림에만 건다.** OSC가 세운 기다림은 다시 흐른 출력이 푼다(`nextOnOutput`) — 그 창의 키는 이 표가
+ * 안 잰 것이다. **물음 창(`Attention.dialog`)도 안 읽는다**(티켓 25 리뷰 반영): `AskUserQuestion`의 첫째는 `Yes`가 아니라 첫
+ * 물음의 첫 선택지이고, 답을 고르면 다음 물음으로 넘어간다(2.1.283 소스) — 물음이 여럿이면 `1`이나 첫 Enter는 첫 물음에만 답한
+ * 것이고 창은 그대로 사람을 기다린다. Elicitation의 양식도 키를 안 쟀다. 어느 창인지 모르는 기다림도 같다. 에이전트는 가리지
+ * 않고, **누가 낸 기다림이든** 푼다: 도구 사건은 그 기다림을 낸 에이전트의 것만 풀지만(`tool` 줄), 확정 키는 사람이 그 창에
+ * 답한 것이다.
  *
  * **결과는 `tool`과 같고 출처는 훅을 이어받는다.** 사람이 창에 답했을 뿐 에이전트는 그대로 떠 있고, 도는 동안 말하는 것도
  * 여전히 훅이다 — 출처를 `key`로 앉히면 그 셸의 권위가 풀려 에이전트가 도는 동안 OSC · 벨이 상태를 바꾼다. 말한 에이전트 ·
@@ -399,7 +413,9 @@ export function inferApproval(
   key: AnswerKey,
   at: number,
 ): Approval {
-  if (now === null || now.kind !== "waiting" || now.source !== "hook") return { attention: now, answering: null };
+  if (now === null || now.kind !== "waiting" || now.source !== "hook" || now.dialog !== "permission") {
+    return { attention: now, answering: null };
+  }
   const step = answerStep(answering !== null && answering.since === now.since ? answering.step : "fresh", key);
   if (step !== "approved") return { attention: now, answering: { since: now.since, step } };
   const approved = applySignal(now, { event: "tool", message: null }, at, "hook", now.agent, {
@@ -456,7 +472,7 @@ export function nextOnRunning(
   return applySignal(prev, { event: "end", message: null }, at, "gone", before, NO_HOOK_COUNTS);
 }
 
-/** 여덟 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
+/** 아홉 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
 function same(a: Attention | null, b: Attention | null): boolean {
   if (a === null || b === null) return a === b;
   return (
@@ -467,7 +483,8 @@ function same(a: Attention | null, b: Attention | null): boolean {
     a.source === b.source &&
     a.agent === b.agent &&
     a.subagents === b.subagents &&
-    a.subagentId === b.subagentId
+    a.subagentId === b.subagentId &&
+    a.dialog === b.dialog
   );
 }
 

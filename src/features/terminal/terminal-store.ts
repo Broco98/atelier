@@ -714,8 +714,8 @@ const answerTraces = new Map<number, Answering>();
  * 오는 훅이 없어(판 03 선행 시험), 이 키가 없으면 기다림은 도구가 끝나야 풀린다. 부르는 자리는 셸의 키 핸들러 하나다(`answerKey`).
  *
  * **시계가 없다** — 중단 추론과 달리 기다리지 않는다. 승인은 사람이 그 창에 답한 순간 사실이고, 그 뒤에 올 훅은 도구가
- * 끝나야 온다. 무엇이 승인인지(확정 키 · 놓인 자리 · 거절 뒤의 키) 판단은 `inferApproval`이 혼자 한다 — 여기서 「기다림일
- * 때만」을 적으면 그 규칙이 두 벌이 된다. 키는 막지 않는다 — 그대로 셸로 가서 창에 답한다.
+ * 끝나야 온다. 무엇이 승인인지(어느 창인가 · 확정 키 · 놓인 자리 · 거절 뒤의 키) 판단은 `inferApproval`이 혼자 한다 — 여기서
+ * 「기다림일 때만」을 적으면 그 규칙이 두 벌이 된다. 키는 막지 않는다 — 그대로 셸로 가서 창에 답한다.
  */
 function noteAnswer(id: number, key: AnswerKey): void {
   const now = attentionOfId(terminalStore.state, id);

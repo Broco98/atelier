@@ -50,6 +50,7 @@ const 말한다 = (kind: "waiting" | "done"): Attention => ({
   agent: "claude",
   subagents: 0,
   subagentId: null,
+  dialog: null,
 });
 
 /**

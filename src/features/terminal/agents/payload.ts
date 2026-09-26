@@ -1,3 +1,5 @@
+import type { DialogKind } from "./types";
+
 // 훅 페이로드에서 **한 줄**을 뽑는 자리. 에이전트별 어댑터가 함께 딛는 조각들이라 여기
 // 모아 둔다 — 「어느 키를 읽는가」는 에이전트마다 다르지만 「뽑은 것을 어떻게 한 줄로
 // 만드는가」는 같다. 에이전트를 더할 때 느는 것은 어댑터 한 파일이고, 이 파일은 안 는다.
@@ -69,6 +71,15 @@ export function permissionLine(payload: unknown): string | null {
 
   if (tool === null) return detail;
   return detail === null ? tool : `${tool} · ${detail}`;
+}
+
+/**
+ * 승인 요청이 세운 **창**(티켓 25 리뷰 반영). 도구 이름이 있으면 권한 창이다 — 물음 도구(claude의 `AskUserQuestion`)는 어댑터가
+ * 먼저 가른다. **도구 이름이 없으면 모른다**(`null`): 처리기가 페이로드를 못 읽어도 이벤트는 남기는데(`atelier-hook.py`), 그 요청이
+ * 물음일 수도 있다. 모르면 승인 추론이 안 서고 옛 동작대로 도구가 끝날 때 풀린다.
+ */
+export function permissionDialog(payload: unknown): DialogKind | null {
+  return stringAt(payload, "tool_name") === null ? null : "permission";
 }
 
 /** 그 키의 값이 **참(`true`) 그 자체**인가. 글자 `"true"`나 1은 아니다 — 모르는 모양은 거짓이다. */

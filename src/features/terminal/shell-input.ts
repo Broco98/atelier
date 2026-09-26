@@ -113,7 +113,8 @@ export function isInterruptKey(event: KeyDown): boolean {
  * **셸로 안 가는 키는 `null`이다**(앱 단축키 · 수정키만 · 키업) — 창에 닿지 않는다. 가르는 기준은 `keyRoute` 하나이고, 지름길은
  * 수정키가 안 붙은 것만이다: ⇧1은 `!`이고, ⇧Enter는 셸에 줄바꿈으로 간다(결정 91).
  *
- * 이 표는 **Bash 권한 창**을 잰 것이다. 파일 고치기 · `AskUserQuestion` · Elicitation 창의 선택지는 안 쟀다.
+ * 이 표는 **Bash 권한 창**을 잰 것이다. 파일 고치기 창의 선택지는 안 쟀다. 물음 창(`AskUserQuestion` · Elicitation)은 첫째가
+ * `Yes`가 아니라서 승인 추론이 이 답을 안 읽는다 — 창을 가리는 것은 이 파일이 아니라 기다림이 든 창이다(`Attention.dialog`).
  */
 export type AnswerKey = "approve" | "pick" | "cancel" | "confirm" | "move" | "amend" | "other";
 

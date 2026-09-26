@@ -13,8 +13,8 @@ import {
 
 // 프로세스 티켓 25 — **승인한 도구가 도는 동안 「도는 중」이다**(프로세스 결정 13 · P7 (가)). claude의 PreToolUse는 권한 창
 // **앞**에 오고, 사람이 승인한 뒤 도구가 도는 동안에는 오는 훅이 없다(판 03 선행 시험) — 옛 코드에서는 `sleep 30`을 승인하면
-// 도구가 끝나 PostToolUse가 올 때까지 「나를 기다림」이었다. 그래서 훅이 말한 기다림에서 그 셸에 **확정 키**가 들어오면 곧바로
-// 도는 중이다.
+// 도구가 끝나 PostToolUse가 올 때까지 「나를 기다림」이었다. 그래서 훅이 말한 **권한 창의** 기다림에서 그 셸에 **확정 키**가
+// 들어오면 곧바로 도는 중이다. 물음 창(`AskUserQuestion` · Elicitation)은 안 읽는다(리뷰 반영 — 마지막 검사).
 //
 // 어느 키가 확정인지는 L2가 표로 잰다(`shell-attention.test.ts`의 「승인 추론」 · `shell-input.test.ts`의 「권한 창의 키」). 여기서
 // 보는 것은 그 판단이 **진짜 키 핸들러**에 붙어 띠와 레인까지 가는가다 — 스토어는 xterm을 들여 노드 seam에 없다. 시계는 안
@@ -39,12 +39,31 @@ const 승인요청 = (at: number, command = "sleep 30") => ({
   payload: { tool_name: "Bash", tool_input: { command } },
 });
 
+/**
+ * `AskUserQuestion` 물음 한 장 — PreToolUse에 도구 이름으로 온다. 입력 모양은 claude 2.1.283 바이너리의 도구 스키마다. 물음이
+ * 둘이라 첫 답 뒤에도 창이 남는다.
+ */
+const 물음 = (at: number) => ({
+  agent: "claude",
+  event: "PreToolUse",
+  at,
+  payload: {
+    tool_name: "AskUserQuestion",
+    tool_input: {
+      questions: [
+        { question: "어느 쪽으로 할까요?", header: "방향", options: [{ label: "왼쪽" }, { label: "오른쪽" }], multiSelect: false },
+        { question: "테스트도 고칠까요?", header: "테스트", options: [{ label: "네" }, { label: "아니요" }], multiSelect: false },
+      ],
+    },
+  },
+});
+
 /** 그 셸로 나간 바이트 전부 — 누른 키가 키 핸들러를 지나 셸에 닿았다는 앵커다(핸들러가 먼저 돌고 xterm이 보낸다). */
 const 나간바이트 = async (page: Page): Promise<string> =>
   (await ipcCallArgs(page, "pty_write", "id")).map(({ args }) => String(args.data)).join("");
 
-/** 셸 하나가 뜨고 포커스가 그 xterm에 있다 — 누른 키가 셸의 키 핸들러에 닿는다. 그 셸에 승인 요청을 세운다. */
-async function 승인창앞(page: Page): Promise<void> {
+/** 셸 하나가 뜨고 포커스가 그 xterm에 있다 — 누른 키가 셸의 키 핸들러에 닿는다. 그 셸에 승인 요청(주면 그 한 장)을 세운다. */
+async function 승인창앞(page: Page, 한장: Parameters<typeof markAttention>[1] = 승인요청(Date.now())): Promise<void> {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -53,7 +72,7 @@ async function 승인창앞(page: Page): Promise<void> {
       message: "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다",
     })
     .toContain("xterm-helper-textarea");
-  await markAttention(page, 승인요청(Date.now()));
+  await markAttention(page, 한장);
   await expect(기다림줄(page)).toHaveCount(1);
   await expect(링(page)).toHaveCount(0);
 }
@@ -149,6 +168,34 @@ test("승인 요청에서 2를 누르면 「나를 기다림」이 남는다", a
   await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
   await expect(둘째줄(page)).toContainText("sleep 60");
   await page.keyboard.press("Enter");
+  await expect(링(page)).toHaveCount(1);
+  await expect(띠(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **물음 창은 안 읽는다**(리뷰 반영). 18의 키 표는 권한 창을 잰 것이다 — 권한 창의 첫째는 늘 `Yes`다. `AskUserQuestion`의 첫째는
+// 첫 물음의 첫 선택지이고, 답을 고르면 다음 물음으로 넘어간다(2.1.283 소스) — 물음이 여럿이면 `1`이나 첫 Enter는 첫 물음에만
+// 답한 것이고 claude는 그대로 사람을 기다린다. 도는 중으로 읽으면 부르는 신호 없이 굳는다.
+//
+// 앵커: 누른 키가 셸에 닿았다(`pty_write`), 그리고 같은 셸에서 새 승인 요청의 `1`은 도는 중으로 간다.
+test("물음(AskUserQuestion)에서 1 · Enter를 눌러도 「나를 기다림」이 남는다", async ({ page }) => {
+  await 승인창앞(page, 물음(Date.now()));
+  await expect(둘째줄(page)).toContainText("어느 쪽으로 할까요?");
+
+  await page.keyboard.press("1");
+  await expect.poll(() => 나간바이트(page), { message: "1이 셸에 안 닿았다" }).toContain("1");
+  await expect(기다림줄(page)).toHaveCount(1);
+  await expect(링(page)).toHaveCount(0);
+
+  await page.keyboard.press("Enter");
+  await expect.poll(() => 나간바이트(page), { message: "Enter가 셸에 안 닿았다" }).toContain("1\r");
+  await expect(기다림줄(page)).toHaveCount(1);
+  await expect(링(page)).toHaveCount(0);
+
+  await fireAttention(page, 승인요청(Date.now() + 1, "sleep 60"));
+  await expect(둘째줄(page)).toContainText("sleep 60");
+  await page.keyboard.press("1");
   await expect(링(page)).toHaveCount(1);
   await expect(띠(page)).toHaveCount(0);
 
