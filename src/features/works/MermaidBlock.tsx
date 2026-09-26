@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Maximize2 } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Hint } from "@/components/ui/tooltip";
 import FullscreenModal from "./FullscreenModal";
@@ -120,13 +120,11 @@ function MermaidBlock({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [showCode, setShowCode] = useState(false);
-  const [fullOpen, setFullOpen] = useState(false);
   const [fullScale, setFullScale] = useState(1);
 
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
   const pan = usePanScroll();
   const modalPan = usePanScroll();
-  const openFull = useRef<HTMLButtonElement>(null);
   // 전체화면의 본문 상자. 창이 떠 있는 동안에만 선다(Portal의 자식) — 붙으면 여기 들고, 떨어지면 null이다.
   const [fullBody, setFullBody] = useState<HTMLDivElement | null>(null);
 
@@ -151,7 +149,7 @@ function MermaidBlock({ code }: { code: string }) {
   }, [code, id]);
 
   // 창이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산).
-  // 여는 순간(fullOpen)이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
+  // 여는 순간이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
   // 여는 순간에는 아직 잴 상자가 없다. 붙는 것도 칠하기 전이라 100%로 한 번 그려졌다 튀는 일이 없다.
   useLayoutEffect(() => {
     if (!fullBody || !size) return;
@@ -178,17 +176,27 @@ function MermaidBlock({ code }: { code: string }) {
             코드
           </Hint>
           <CopyCodeButton code={code} />
-          {/* 글리프뿐이라 이름이 없던 버튼이다 — 툴팁 글자와 같은 이름을 단다(S28). */}
-          <Hint
-            text="전체화면으로 크게 보기"
-            announce="name"
-            ref={openFull}
-            type="button"
-            onClick={() => setFullOpen(true)}
-            className={toolbarButtonQuiet}
+          {/* 여는 버튼은 이 자리에 서고 창은 body 끝에 뜬다. 버튼은 글리프뿐이라 이름이 없던 버튼이다 —
+              툴팁 글자가 곧 이름이다(S28, 틀이 단다). */}
+          <FullscreenModal
+            name="다이어그램"
+            label="mermaid"
+            trigger={<button className={toolbarButtonQuiet} />}
+            controls={
+              <>
+                <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+                <CopyCodeButton code={code} />
+              </>
+            }
           >
-            <Maximize2 className="size-3" strokeWidth={2} />
-          </Hint>
+            <div
+              {...modalPan}
+              ref={setFullBody}
+              className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
+            >
+              {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+            </div>
+          </FullscreenModal>
         </span>
       </div>
       {error && !svg ? (
@@ -207,28 +215,6 @@ function MermaidBlock({ code }: { code: string }) {
           )}
         </div>
       )}
-
-      <FullscreenModal
-        name="다이어그램"
-        label="mermaid"
-        open={fullOpen}
-        onClose={() => setFullOpen(false)}
-        returnFocus={openFull}
-        controls={
-          <>
-            <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-            <CopyCodeButton code={code} />
-          </>
-        }
-      >
-        <div
-          {...modalPan}
-          ref={setFullBody}
-          className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
-        >
-          {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-        </div>
-      </FullscreenModal>
     </div>
   );
 }
