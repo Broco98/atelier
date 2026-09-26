@@ -205,7 +205,9 @@ fn read_entry(
             refuse("a folder entry takes no `template`; only files have templates".to_string());
         } else if kind.is_some() && crate::works::safe_rel(template).is_err() {
             refuse(format!("`template` must be a path inside the layout folder, not {template:?}"));
-        } else if kind.is_some() && template == LAYOUT_FILE {
+        } else if kind.is_some() && !ends_in_a_name(template) {
+            refuse(format!("`template` must end in a file name, not {template:?}"));
+        } else if kind.is_some() && names_layout_file(template) {
             // 레이아웃 파일 자신을 템플릿으로 삼으면 저장이 그 본문으로 레이아웃을 덮고, 빠진
             // 템플릿을 지울 때 레이아웃 파일을 지운다
             refuse(format!("`template` must not be the layout file {LAYOUT_FILE:?} itself"));
@@ -243,6 +245,36 @@ fn read_entry(
 
     let pattern = pattern.ok().flatten();
     LayoutEntry { pattern, kind, description, icon, template, children, extra: map }
+}
+
+/// 템플릿 경로가 파일 이름으로 끝나는가. `a.md/`와 `a.md/.`은 파일을 가리키지 않는다 — 디스크에서는
+/// 늘 없는 템플릿인데, 저장은 끝을 떨군 `a.md`에 본문을 쓴다(`layout.json/`이면 레이아웃 파일을
+/// 덮는다). 경로 조각(`Path::components`)이 끝의 `/`와 `.`을 떨궈 폴더 밖 검사로는 걸리지 않으므로
+/// 글자에서 본다.
+fn ends_in_a_name(template: &str) -> bool {
+    !(template.ends_with('/') || template.ends_with("/."))
+}
+
+/// 템플릿 경로가 레이아웃 파일 자신인가 — 어떻게 적었든. **글자가 아니라 파일 시스템이 같은
+/// 파일로 보는지를 따진다.** macOS의 기본 파일 시스템은 이름의 대소문자를 가리지 않고(유니코드로
+/// 접는다) `Layout.JSON`도 `layout.jſon`(긴 s)도 `layout.json`과 같은 파일이다 — 구현 스펙 5절이 템플릿
+/// 이름을 정할 때 대소문자를 가리지 않는 것과 같은 까닭이다. 하위 폴더의 `layout.json`은 레이아웃
+/// 파일이 아니다.
+fn names_layout_file(template: &str) -> bool {
+    use std::path::{Component, Path};
+    let mut parts = Path::new(template).components();
+    match (parts.next(), parts.next()) {
+        (Some(Component::Normal(name)), None) => {
+            name.to_str().is_some_and(|name| folded(name) == LAYOUT_FILE)
+        }
+        _ => false,
+    }
+}
+
+/// 이름을 접는다 — 대문자로 올렸다가 소문자로 내린다. 소문자로만 내리면 `ſ`처럼 이미 소문자인데
+/// 대문자로는 `S`가 되는 글자를 놓친다.
+fn folded(name: &str) -> String {
+    name.to_uppercase().to_lowercase()
 }
 
 /// 타입이 틀린 필드 — 오류는 이미 쌓였다. 「없음」과 갈라야 「없다」는 오류가 겹쳐 서지 않는다.
@@ -418,6 +450,15 @@ mod tests {
             // 레이아웃 파일 자신은 템플릿이 아니다 — 저장이 그 본문으로 레이아웃을 덮고, 빠진 템플릿을
             // 지울 때 레이아웃 파일을 지운다
             ("레이아웃 파일을 가리키는 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.json" }"#), Some(vec![1, 0]), "layout.json"),
+            // macOS의 기본 파일 시스템은 대소문자를 가리지 않고 유니코드로 접는다 — 이 이름들도
+            // 레이아웃 파일 자신이다
+            ("대소문자만 다른 레이아웃 파일 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "Layout.JSON" }"#), Some(vec![1, 0]), "layout.json"),
+            ("접으면 레이아웃 파일인 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.jſon" }"#), Some(vec![1, 0]), "layout.json"),
+            // 템플릿은 파일이다 — `/`로 끝나면 폴더를 가리킨다. 경로 조각이 끝의 `/`와 `.`을 떨궈
+            // 폴더 밖 검사로는 걸리지 않는다
+            ("`/`로 끝나는 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.json/" }"#), Some(vec![1, 0]), "layout.json/"),
+            ("`/`로 끝나는 하위 폴더 템플릿", with_children(r#"{ "pattern": "a.md", "kind": "file", "template": "sub/a.md/" }"#), Some(vec![0]), "sub/a.md/"),
+            ("`/.`로 끝나는 템플릿", with_children(r#"{ "pattern": "a.md", "kind": "file", "template": "a.md/." }"#), Some(vec![0]), "a.md/."),
             // 맨 위 항목은 spec 폴더 자신이다 — 이름 틀도 종류도 없다
             ("맨 위 항목의 `pattern`", r#"{ "root": { "pattern": "spec" } }"#.to_string(), Some(vec![]), "`pattern`"),
             ("맨 위 항목의 `kind`", r#"{ "root": { "kind": "folder" } }"#.to_string(), Some(vec![]), "`kind`"),
@@ -431,6 +472,15 @@ mod tests {
             assert_eq!(errors[0].path, path, "{case}: 위치가 틀렸다: {errors:?}");
             assert!(errors[0].message.contains(phrase), "{case}: {phrase:?}가 없다: {errors:?}");
         }
+    }
+
+    /// 하위 폴더의 `layout.json`은 레이아웃 파일이 아니다 — 여느 템플릿처럼 받는다. 레이아웃 파일은
+    /// 레이아웃 폴더 바로 아래의 그것 하나다.
+    #[test]
+    fn a_layout_json_in_a_sub_folder_is_an_ordinary_template() {
+        let text = with_children(r#"{ "pattern": "a.md", "kind": "file", "template": "sub/layout.json" }"#);
+        let layout = parse_layout(&text).unwrap();
+        assert_eq!(layout.root.children[0].template.as_deref(), Some("sub/layout.json"));
     }
 
     /// 오류는 첫 것에서 멈추지 않고 **전부** 모인다 — 문서 순서(깊이 우선)다. 하나 고치고 다시
