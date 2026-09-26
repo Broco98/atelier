@@ -65,6 +65,8 @@ import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
 import { orphanedWorldOf, orphanNotice, orphanToastId, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
+import { attachWebgl, closeWebgl, failWebgl, loseWebgl, NO_WEBGL_SEATS } from "./shell-webgl";
+import type { WebglSeats } from "./shell-webgl";
 import { terminalLook } from "./terminal-defaults";
 import type { TerminalLook } from "./terminal-defaults";
 import { attachIme } from "./terminal-ime";
@@ -111,7 +113,8 @@ interface ShellInstance {
   // wrapper를 본다 — 화면의 컨테이너가 아니라. 떼어 두면 크기가 0이라 저절로 조용해지고,
   // 다시 붙으면 크기가 생겨 저절로 깨어난다. 화면 수명과 무관하므로 disconnect도 없다.
   observer: ResizeObserver;
-  // 컨텍스트를 잃어 dispose했으면 null이 된다. 다시 붙일 때 그러면 새로 만든다.
+  // WebGL 렌더러. **최근에 붙은 셸 몇 개만 쥔다**(티켓 17 · `shell-webgl`) — 자리를 내주고 놓았거나 컨텍스트를 잃어
+  // 놓았으면 null이고, 그동안 xterm은 DOM 렌더러로 그린다. 다시 붙을 때 자리가 나면 새로 싣는다.
   webgl: WebglAddon | null;
   // PTY가 떠 있는 동안의 id. 종료 프레임이 오면 다시 null이다 — 죽은 셸에는 쓰지 않는다.
   // 레지스트리의 `id`와 다른 번호다(shell-registry.ts의 openShell 주석).
@@ -440,7 +443,7 @@ function killPty(instance: ShellInstance, ptyId: number, path: ClosePath): void 
 /**
  * 인스턴스를 거둔다 — **이것이 유일한 정리 경로다.** 부르는 곳이 둘이다: `×`(`closeShell`)와
  * 정상 종료(결정 48로 목록에서 스스로 빠지는 칸). 흩어 놓으면 PTY만 죽고 인스턴스가
- * 남거나(WebGL 컨텍스트를 계속 쥔 채 상한만 갉아먹는다) 목록에서만 빠지고 셸이 살아남는다.
+ * 남거나(스크롤백과, 쥐고 있었으면 WebGL 자리까지 쥔 채 리로드까지 산다) 목록에서만 빠지고 셸이 살아남는다.
  *
  * **`kill`은 스스로 갈린다.** 정상 종료로 오면 PTY가 이미 죽었고 `ptyId`도 그 자리에서
  * null로 눕혀지므로 아래 가드가 그대로 건너뛴다. 닫는 자리(`path`)는 닫기 IPC의 까닭을 고르는
@@ -451,11 +454,15 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
   instance.closed = true;
   // 그 셸을 기다리던 포커스는 버린다(프로세스 스펙 S21) — 줄 셸이 없다.
   pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });
+  // WebGL 자리에서도 뺀다(티켓 17) — 그 자리만큼 다음에 붙는 셸이 남의 addon을 놓지 않고 싣는다.
+  webglSeats = closeWebgl(webglSeats, instance.id);
   if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
   instance.observer.disconnect();
-  // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
-  // 묶여 있어 **WebGL 컨텍스트도 여기서 풀린다.** 상한 8이 컨텍스트 수를 말하는 이상
-  // 이 한 줄이 상한을 되돌려주는 자리다.
+  // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로 묶여 있어 WebGL
+  // 애드온도 여기서 놓인다. _한때 여기 「상한 8이 컨텍스트 수를 말하는 이상 이 한 줄이 상한을 되돌려준다」고 적혀
+  // 있었는데 둘 다 틀렸다_(프로세스 결정 18 ③이 이렇게 고쳤다): 상한 8(`MAX_SHELLS`)은 컨텍스트가 아니라 **화면
+  // (owner)마다의 셸 수**이고(결정 23), WebKit의 컨텍스트 슬롯은 dispose가 아니라 **GC 때** 풀린다. 앱 전체에서 쥐는
+  // 컨텍스트 수를 지키는 것은 이제 WebGL 자리(`shell-webgl`)다.
   instance.term.dispose();
   instance.wrapper.remove();
 }
@@ -1335,7 +1342,7 @@ function openOrReattach(instance: ShellInstance, kind: AttachKind) {
   // 이미 적힌 종료 코드(결정 22)를 "띄우지 못했다"로 덮어써, 이 터미널의 핵심 용도인
   // "claude가 조용히 죽었을 때 이유를 읽는 것"이 사라진다. 화면 문제는 화면 문제로 남긴다.
   try {
-    loadWebgl(instance);
+    holdWebgl(instance);
     refit(instance);
     if (give) instance.term.focus();
   } catch (error) {
@@ -1373,24 +1380,83 @@ function failOpen(instance: ShellInstance, error: unknown) {
   }
 }
 
-function loadWebgl(instance: ShellInstance) {
-  if (instance.webgl) return;
+/**
+ * 어느 셸이 WebGL을 쥐나(티켓 17 · 프로세스 결정 18 ③). 누구를 놓고 누구에게 싣는지, 잃으면 무엇을 하는지는
+ * `shell-webgl`이 혼자 안다. 여기는 그 답을 들고 있기만 한다 — `pendingFocus`처럼 모듈 값이고 화면이 그리지 않는다.
+ */
+let webglSeats: WebglSeats = NO_WEBGL_SEATS;
 
-  const webgl = new WebglAddon();
-  // 컨텍스트를 잃으면 그 애드온을 **dispose한다 — 잃은 자리에서 되살리지 않는다.**
-  // dispose하면 xterm이 DOM 렌더러로 떨어져 화면이 계속 보이고, 안 하면 검게 굳는다.
-  // 되살리는 자리는 여기다: DOM에서 뗐다 붙이는 동안 잃었으면 다시 붙을 때 새로 만든다.
-  webgl.onContextLoss(() => {
-    webgl.dispose();
-    instance.webgl = null;
-  });
+/**
+ * 붙는 셸에 WebGL을 싣는 자리 — 셸을 열거나 다시 붙이는 함수가 포커스 줄 바로 위에서 부른다(처음 붙음 · 떼었다 다시
+ * 붙음 · 글꼴이 늦게 와 엶). 컨텍스트를 잃은 보이는 셸을 다시 싣는 것도 이 길이다.
+ *
+ * _한때 셸마다 한 번 실으면 놓지 않았다._ 셸이 WebKit 한도(열여섯)를 넘으면 붙일 때마다 숨은 셸 하나가 밀려났고, 밀려난
+ * 셸로 3초 안에 돌아가면 `instance.webgl`이 아직 남아 있어 다시 싣지 않고 잃은 캔버스에 그렸다 — xterm은 잃은 뒤
+ * 복구를 3초 기다리고서야 `onContextLoss`를 쏜다. 그 3초 동안 셸 화면이 비었다.
+ */
+function holdWebgl(instance: ShellInstance): void {
+  const plan = attachWebgl(webglSeats, instance.id);
+  webglSeats = plan.seats;
+  if (plan.kind === "dom") return;
+  if (plan.kind === "hold") {
+    // **이미 쥔 셸은 한 번 그린다.** 숨었다 돌아온 셸은 그사이 바뀐 것이 없으면 xterm이 다시 안 그린다. 그러면 WebKit이
+    // 한도에서 잃힐 것을 고르는 순서(가장 오래 안 그림)가 우리가 놓는 순서(가장 오래 안 붙음)와 갈려, GC를 기다리는
+    // 놓은 컨텍스트보다 쥔 셸이 먼저 잃힐 수 있다. 붙을 때마다 그리면 쥔 셸은 늘 놓은 것보다 나중에 그린 것이다.
+    instance.term.refresh(0, instance.term.rows - 1);
+    return;
+  }
+  // **먼저 놓고 싣는다.** 거꾸로 하면 싣는 순간 N+1개를 쥔다.
+  for (const id of plan.release) {
+    const holder = instances.get(id);
+    if (holder) releaseWebgl(holder);
+  }
+  loadWebgl(instance);
+}
+
+/** 그 셸의 addon을 놓는다 — xterm이 DOM 렌더러로 돌아간다. 자리(`webglSeats`)는 부르는 쪽이 이미 고쳤다. */
+function releaseWebgl(instance: ShellInstance): void {
+  const webgl = instance.webgl;
+  if (webgl === null) return;
+  instance.webgl = null;
+  webgl.dispose();
+}
+
+function loadWebgl(instance: ShellInstance): void {
   try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => loseContext(instance, webgl));
     // `activate()`는 WebGL2를 못 얻으면 **동기로 던진다.** 안 잡으면 셸을 띄우기도 전에
     // 화면이 죽으므로 같은 자리(DOM 렌더러)로 떨어뜨린다.
     instance.term.loadAddon(webgl);
     instance.webgl = webgl;
   } catch (error) {
+    // 쥐지 않았으니 자리에서 뺀다 — 남기면 쥐지도 않은 셸 때문에 다른 셸이 addon을 놓는다. 다음 붙음에 다시 싣는다.
+    webglSeats = failWebgl(webglSeats, instance.id);
     console.warn("atelier: WebGL 렌더러를 붙이지 못했다 — DOM 렌더러로 간다", error);
+  }
+}
+
+/**
+ * 컨텍스트를 잃었다 — xterm이 복구를 3초 기다리다 포기했다(`onContextLoss`). 그 addon을 **놓는다 — 잃은 자리에서
+ * 되살리지 않는다.** 놓으면 xterm이 DOM 렌더러로 떨어져 화면이 계속 보이고, 안 놓으면 검게 굳는다.
+ *
+ * 다시 싣는 것은 붙음과 같은 길(`holdWebgl`)이다(프로세스 스펙 S24). 보이는 셸은 **다음 프레임에** — 잃은 그 사건
+ * 처리 안에서 새 컨텍스트를 만들지 않는다 — 셸마다 세 번까지 싣고, 넘으면 앱을 다시 켤 때까지 DOM에 머문다. 숨은
+ * 셸은 예산을 안 쓰고 다시 붙을 때 싣는다.
+ */
+function loseContext(instance: ShellInstance, webgl: WebglAddon): void {
+  // 이미 놓은 addon의 늦은 알림이다 — 그 셸은 그사이 새로 실었거나 닫혔다.
+  if (instance.webgl !== webgl) return;
+  releaseWebgl(instance);
+  const lost = loseWebgl(webglSeats, instance.id, isAttached(instance));
+  webglSeats = lost.seats;
+  if (lost.next === "stayDom") {
+    console.warn("atelier: 이 셸은 WebGL 컨텍스트를 거듭 잃어 앱을 다시 켤 때까지 DOM 렌더러로 그린다");
+  }
+  if (lost.next === "reload") {
+    requestAnimationFrame(() => {
+      if (isAttached(instance)) holdWebgl(instance);
+    });
   }
 }
 
