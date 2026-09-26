@@ -4,6 +4,7 @@ import {
   dropEntry,
   dropPlaceAt,
   editsAt,
+  followSelection,
   moveEntry,
   removeEntry,
   sameDraft,
@@ -19,6 +20,7 @@ import {
   type EntryPath,
   type LayoutDraft,
 } from "./draft";
+import type { SpecLayoutJson } from "./types";
 
 // 편집기의 초안 조작(spec 레이아웃 티켓 11 · 구현 스펙 5절 「초안 조작은 순수 함수다」). 필드를 바꾸는
 // 함수는 초안을 받아 새 초안을 돌려준다 — 이 저장소의 L2에는 DOM이 없어, 상태를 쥔 편집기가 아니라
@@ -815,5 +817,53 @@ describe("같은 초안", () => {
 
   it("항목의 순서가 다르면 다르다", () => {
     expect(sameDraft(moveEntry(opened(), [1], "up")!.draft, opened())).toBe(false);
+  });
+});
+
+// **밖 변경을 조용히 받은 뒤에도 고르던 항목을 고른다**(티켓 15 · 판정 3번). 고른 자리는 인덱스 경로라, 에이전트가
+// 고르던 항목 앞에 항목을 더하거나 지우면 같은 경로가 다른 항목을 가리킨다 — 오른쪽 열과 열린 아이콘 팝오버가 사람이
+// 고르지 않은 항목으로 옮겨 가, 다음 손질이 그 항목에 들어간다. 그래서 고르던 항목을 이름 틀로 층마다 따라간다.
+describe("밖 변경 뒤에 고를 자리", () => {
+  /** 최상위 맨 앞에 항목 하나가 선 레이아웃 — 밖에서 에이전트가 더했다. */
+  const prepended = (draft: LayoutDraft): SpecLayoutJson => ({
+    ...draft.layout,
+    root: { ...draft.layout.root, children: [{ pattern: "research", kind: "folder" }, ...draft.layout.root.children!] },
+  });
+
+  it("고르던 항목 앞에 항목이 서면 그 항목을 따라 한 칸 뒤를 고른다", () => {
+    expect(followSelection({ draft: opened(), selected: [1] }, prepended(opened()))).toEqual([2]);
+  });
+
+  it("깊은 자리도 이름 틀을 층마다 따라간다", () => {
+    const inside = moveEntry(addEntry(opened(), [2], "file").draft, [2, 1], "up")!.draft;
+    expect(followSelection({ draft: opened(), selected: [2, 0] }, prepended(inside))).toEqual([3, 1]);
+  });
+
+  it("앞의 항목이 지워지면 당겨진 자리를 고른다", () => {
+    expect(followSelection({ draft: opened(), selected: [2, 0] }, removeEntry(opened(), [0])!.draft.layout)).toEqual([
+      1, 0,
+    ]);
+  });
+
+  it("설명만 바뀌었거나 이름 틀을 고친 항목은 같은 자리 그대로다", () => {
+    expect(followSelection({ draft: opened(), selected: [1] }, setDescription(opened(), [1], "새 설명").layout)).toEqual([1]);
+    expect(followSelection({ draft: opened(), selected: [1] }, setPattern(opened(), [1], "decision-log.md").layout)).toEqual([
+      1,
+    ]);
+  });
+
+  it("머리 `spec/`을 골랐으면 그대로다", () => {
+    expect(followSelection({ draft: opened(), selected: [] }, prepended(opened()))).toEqual([]);
+  });
+
+  it("고르던 항목도 그 자리도 없으면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`을 고른다", () => {
+    expect(followSelection({ draft: opened(), selected: [2, 0] }, removeEntry(opened(), [2])!.draft.layout)).toEqual([0]);
+    const empty = { ...opened().layout, root: { description: "방침 문단." } };
+    expect(followSelection({ draft: opened(), selected: [1] }, empty)).toEqual([]);
+  });
+
+  it("처음 열 때(앞의 자리가 없다)도 첫 최상위 항목을, 항목이 없으면 머리 `spec/`을 고른다", () => {
+    expect(followSelection(null, opened().layout)).toEqual([0]);
+    expect(followSelection(null, { root: {} })).toEqual([]);
   });
 });

@@ -125,6 +125,41 @@ export interface TreeEdit {
 }
 
 /**
+ * 새로 읽은 레이아웃(`after`)을 펼칠 때 고를 자리(티켓 15) — **고르던 항목을 따라간다.** 자리가 인덱스 경로라, 밖에서
+ * 고르던 항목 앞에 항목이 서거나 지워지면 같은 경로가 다른 항목을 가리킨다. 그래서 앞 상태(`before`)에서 고르던
+ * 항목의 이름 틀을 맨 위 항목에서부터 한 층씩 새 레이아웃에서 찾는다 — 형제 사이의 이름 틀은 겹치지 않는다(엔진의
+ * 검증).
+ *
+ * - 찾으면 그 자리다. 설명만 바뀌었으면 같은 자리, 앞에 항목이 섰으면 한 칸 뒤다. 머리 `spec/`(`[]`)은 그대로다.
+ * - 못 찾았는데 같은 자리에 항목이 있으면 그 자리다 — 이름 틀을 고친 항목이다.
+ * - 그것도 없으면 첫 최상위 항목을, 항목이 없으면 머리 `spec/`을 고른다. 처음 열 때(`before`가 `null`)도 그렇다.
+ */
+export function followSelection(before: TreeEdit | null, after: SpecLayoutJson): EntryPath {
+  if (before !== null) {
+    const followed = followEntry(before.draft.layout, before.selected, after);
+    if (followed !== null) return followed;
+    if (entryAt(after, before.selected) !== null) return before.selected;
+  }
+  return (after.root.children ?? []).length > 0 ? [0] : [];
+}
+
+/** `from`의 그 자리 항목을 이름 틀로 층마다 `to`에서 찾은 자리. 어느 층에서든 못 찾으면 `null`이다. */
+function followEntry(from: SpecLayoutJson, path: EntryPath, to: SpecLayoutJson): EntryPath | null {
+  const found: number[] = [];
+  let was: LayoutEntryJson | undefined = from.root;
+  let now: LayoutEntryJson | undefined = to.root;
+  for (const index of path) {
+    was = was?.children?.[index];
+    const pattern = was?.pattern;
+    const at: number = pattern === undefined ? -1 : (now?.children ?? []).findIndex((child) => child.pattern === pattern);
+    if (at < 0) return null;
+    now = now?.children?.[at];
+    found.push(at);
+  }
+  return found;
+}
+
+/**
  * 항목을 더한다(티켓 13 · 프로토타입의 동작).
  *
  * - 고른 것이 **폴더**면 그 안의 마지막 자식으로, **파일**이면 그 뒤의 형제로 더한다. 머리 `spec/`(빈 경로)을

@@ -29,6 +29,20 @@ const 배너버튼 = (page: Page, name: "새로 불러오기" | "내 초안 유�
 const EDITOR = "/settings/spec-layout/atelier";
 const [OVERVIEW, DECISIONS] = SPEC_LAYOUT_READ.layout.root.children!;
 const [, OUTSIDE_DECISIONS] = CHANGED_SPEC_LAYOUT_READ.layout.root.children!;
+/**
+ * 밖에서 에이전트가 맨 앞에 항목 하나(`brief.md`)를 더한 레이아웃 — 뒤의 항목들이 한 칸씩 밀려, 편집기가 쥔 인덱스
+ * 경로가 다른 항목을 가리키게 된다.
+ */
+const BRIEF_FIRST: ReadableSpecLayout = {
+  ...SPEC_LAYOUT_READ,
+  layout: {
+    ...SPEC_LAYOUT_READ.layout,
+    root: {
+      ...SPEC_LAYOUT_READ.layout.root,
+      children: [{ pattern: "brief.md", kind: "file", description: "한 줄 요약" }, ...SPEC_LAYOUT_READ.layout.root.children!],
+    },
+  },
+};
 /** 사람이 편집기에서 고친 `overview.md`의 설명 — 밖의 변경(`decisions.md`)과 다른 칸이다. */
 const MINE = "work의 요약, 사람이 고쳤다";
 
@@ -161,22 +175,31 @@ test("초안이 없을 때 밖에서 바뀌면 배너 없이 새로 읽은 것�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 고른 자리도 인덱스 경로다 — 밖 변경이 고르던 항목 앞에 항목을 세우면 같은 경로가 다른 항목을 가리킨다. 오른쪽 열이
+// 그 항목으로 옮겨 가면 다음 손질이 사람이 고르지 않은 항목에 들어간다.
+test("초안이 없을 때 밖에서 고르던 항목 앞에 항목이 서면, 고른 것이 자리가 아니라 그 항목을 따라간다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  await 행(page, "decisions.md").click();
+  await expect(설명(page)).toHaveValue(DECISIONS.description!);
+
+  await changeOutside(page, BRIEF_FIRST);
+  await expect(행(page, "brief.md")).toBeVisible();
+  await expect(행(page, "decisions.md")).toHaveAttribute("aria-selected", "true");
+  await expect(설명(page)).toHaveValue(DECISIONS.description!);
+  await expect(저장(page)).toBeDisabled();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 끄는 도중에는 초안이 없다 — 놓기 전까지 끌기는 초안이 아니다. 그래서 밖 변경이 조용히 트리를 갈아 끼운다(판정
 // 3번). 끌리는 항목과 겨눈 자리는 인덱스 경로라, 끌기를 거두지 않으면 놓는 순간 그 자리에 새로 선 다른 항목이 옮겨 간다.
 test("끄는 도중 밖 변경이 트리를 조용히 갈아 끼우면 끌기가 거둬져, 놓아도 아무 항목도 옮겨 가지 않는다", async ({ page }) => {
-  const root = SPEC_LAYOUT_READ.layout.root;
-  const shifted: ReadableSpecLayout = {
-    ...SPEC_LAYOUT_READ,
-    layout: {
-      ...SPEC_LAYOUT_READ.layout,
-      root: { ...root, children: [{ pattern: "brief.md", kind: "file", description: "한 줄 요약" }, ...root.children!] },
-    },
-  };
   await installFixtureBackend(page);
   await openEditor(page);
 
   await pickUpEntry(page, 행(page, "{n}-{name}/"));
-  await changeOutside(page, shifted);
+  await changeOutside(page, BRIEF_FIRST);
   await expect(행(page, "brief.md")).toBeVisible();
   await hoverRowPoint(page, 행(page, "overview.md"), "upper");
   await page.mouse.up();
