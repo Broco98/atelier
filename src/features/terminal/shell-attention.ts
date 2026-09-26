@@ -1,6 +1,7 @@
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { foldHookState, subagentOf } from "./agents";
 import type { AgentSignal } from "./agents/types";
+import type { AnswerKey } from "./shell-input";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { Mode } from "@/mode";
@@ -20,7 +21,8 @@ import type { ShellHookState } from "./types";
 // terminal-activity-signal 결정 2(훅 · OSC로만 — 휴리스틱 · 타이머 금지)를 프로세스 결정 12가 이렇게 고쳤다: **사람이
 // 누른 키(Esc · Ctrl-C)에 묶인 중단 추론만** 허용한다. 근거가 시간이 아니라 사람이 실제로 누른 키다. 기다리는 시계는
 // 터미널 스토어에 있고, 이 파일은 「누른 순간의 값 · 지금 값 · 그사이 온 훅 수」를 견줄 뿐이다(`inferInterrupt`). TTL은
-// 여전히 없다 — 아무도 안 누르면 30분 도는 턴도 끝까지 도는 중이다.
+// 여전히 없다 — 아무도 안 누르면 30분 도는 턴도 끝까지 도는 중이다. 사람이 권한 창에 누른 확정 키로 기다림을 푸는 승인
+// 추론(`inferApproval` — 프로세스 결정 13 · P7)도 같은 근거이고, 기다리지도 않는다: 키 하나로 곧바로 간다.
 //
 // **레지스트리와 갈라 둔 이유**는 값 import다. `shell-registry.ts`는 값을 하나도 안 들이는
 // 것이 검사로 못박혀 있어(그 파일 머리말) 어댑터를 부를 수 없다. 그래서 규칙은 여기 있고
@@ -142,6 +144,7 @@ export const FAILED_LABEL = "오류로 끝남";
  * | `interrupt` · `clear` | **없음** |
  * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다. **멈춘 턴 뒤의 끝**(`stopped`)이면 도는 중은 확인할 것 |
  * | (중단 추론 — `inferInterrupt`) | `interrupt`와 같다(출처 `key`) |
+ * | (승인 추론 — `inferApproval`) | 훅이 말한 기다림에서 확정 키 → `tool`과 같다(출처 `hook`을 이어받는다) |
  * | (에이전트 사라짐 — `nextOnRunning`) | `end`와 같다(출처 `gone`) + 권위가 풀린다 |
  *
  * **`end`의 마지막 칸은 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 「안 본 완료를 남긴다」를 둔 까닭은 `claude -p`
@@ -324,6 +327,105 @@ export function inferInterrupt(
   if (now === null || now.kind !== base.kind || now.since !== base.since) return now;
   if (hooksBetween !== 0) return now;
   return applySignal(now, { event: "interrupt", message: null }, at, "key", null, NO_HOOK_COUNTS);
+}
+
+/**
+ * **승인 추론의 자취** — 훅이 말한 기다림 하나에 사람이 그 셸에서 누른 키가 권한 창을 어디까지 옮겼나. 스토어가 셸마다 들고
+ * 키마다 `inferApproval`에 넘긴다. 그 기다림의 `since`에 묶인다 — 새 승인 요청이 서면(새 `since`) 처음부터다. 같은 기다림을
+ * 다시 읽거나 수만 바뀐 것은 같은 창이라 이어진다.
+ */
+export interface Answering {
+  since: number;
+  step: AnswerStep;
+}
+
+/**
+ * 창이 어디까지 왔나. 판 03 선행 시험의 「권한 창의 키」 표를 접는 칸이다.
+ *
+ * - `fresh` — 창이 열린 뒤 아직 아무 키도 안 눌렀다. 놓인 자리는 첫째(`1. Yes`)다.
+ * - `moved` — 자리가 옮겨졌을 수 있다. 숫자는 여전히 지름길이지만 Enter가 무엇을 확정할지 모른다.
+ * - `amending` — 첫째 자리를 고치기 칸으로 열었다(Tab). 숫자는 글자이고, Enter가 승인을 확정한다.
+ * - `closed` — 창이 닫혔다: 거절했거나, 무엇을 확정했는지 모른다. 그 뒤의 키는 사람의 다음 말이라 더 읽지 않는다.
+ */
+export type AnswerStep = "fresh" | "moved" | "amending" | "closed";
+
+/** `inferApproval`의 답 — 다음 상태와, 다음 키에 넘길 자취. 훅이 말한 기다림이 아니거나 승인했으면 자취는 `null`이다. */
+export interface Approval {
+  attention: Attention | null;
+  answering: Answering | null;
+}
+
+/**
+ * **승인 추론**(프로세스 결정 13 · P7 (가) · S30). 사람이 그 셸에 누른 키 하나(`answerKey`)와 지금 상태, 그 기다림에 앞서 누른
+ * 키의 자취를 받아 **승인인가**를 가른다. 승인이면 도는 중을, 아니면 **지금 값을 그대로**(같은 객체) 돌려준다 —
+ * `nextOnOutput`과 같은 계약이라 부르는 쪽은 항등성만 보고 스토어를 건드린다. 자취는 부르는 쪽이 들고 다음 키에 넘긴다.
+ *
+ * **왜 필요한가**: 결정 13은 「승인 뒤 도구가 돌면 기다림이 풀린다」인데, claude의 PreToolUse는 권한 창 **앞**에 오고 승인부터
+ * PostToolUse까지 오는 훅이 없다(판 03 선행 시험 — 대화형 다섯 번 · `-p` 여섯 번). 전이 표만으로는 `sleep 30`을 승인하면
+ * 도구가 끝날 때까지 「나를 기다림」이다. 문서의 이벤트 목록에도 「승인됨」은 없다.
+ *
+ * **무엇이 승인인가**(18의 표):
+ * - `1` · `2`는 곧바로 승인이다. 놓인 자리와 상관없다.
+ * - Enter는 놓인 자리를 확정한다. **창이 열린 뒤 아무 키도 안 누른 Enter만** 승인으로 읽는다 — 처음 자리가 `1. Yes`다. 자리를
+ *   옮겼을 수 있으면(↑ ↓ · 안 잰 키) 모른다: `3. No`를 확정한 거절을 도는 중으로 읽으면 claude는 사람의 말을 기다리는데 셸은
+ *   도는 중으로 굳는다. 모르면 옛 동작대로 도구가 끝날 때 풀린다(fail-closed).
+ * - Tab은 놓인 자리를 고치기 칸으로 연다. 처음 자리에서 연 칸의 Enter는 승인이고, 칸에 친 숫자는 글자다.
+ * - `3` · Esc는 거절이다(S30) — 거절 뒤에는 훅이 하나도 없고 claude는 사람의 다음 말을 기다리므로 기다림이 사실이다. 그 뒤에
+ *   친 키는 그 말이라 더 읽지 않는다.
+ * - Ctrl-C · 글자는 창에서 아무 일도 안 한다 — 기다림 그대로다.
+ *
+ * **훅이 말한 기다림에만 건다.** OSC가 세운 기다림은 다시 흐른 출력이 푼다(`nextOnOutput`) — 그 창의 키는 이 표가 안 잰
+ * 것이다. 에이전트는 가리지 않고, **누가 낸 기다림이든** 푼다: 도구 사건은 그 기다림을 낸 에이전트의 것만 풀지만(`tool` 줄),
+ * 확정 키는 사람이 그 창에 답한 것이다.
+ *
+ * **결과는 `tool`과 같고 출처는 훅을 이어받는다.** 사람이 창에 답했을 뿐 에이전트는 그대로 떠 있고, 도는 동안 말하는 것도
+ * 여전히 훅이다 — 출처를 `key`로 앉히면 그 셸의 권위가 풀려 에이전트가 도는 동안 OSC · 벨이 상태를 바꾼다. 말한 에이전트 ·
+ * 서브에이전트 수 · 낸 서브에이전트도 그 기다림의 것을 그대로 싣는다. 말은 그 요청의 것이 남는다(도구 사건은 말을 안 싣는다).
+ *
+ * **기다리는 시간이 없다** — 키 하나로 곧바로 간다. 그 뒤 도구가 끝나면 PostToolUse가 도는 중을 잇고, 다음 권한 창은
+ * `waiting`이 새 `since`로 기다림을 다시 세운다.
+ */
+export function inferApproval(
+  now: Attention | null,
+  answering: Answering | null,
+  key: AnswerKey,
+  at: number,
+): Approval {
+  if (now === null || now.kind !== "waiting" || now.source !== "hook") return { attention: now, answering: null };
+  const step = answerStep(answering !== null && answering.since === now.since ? answering.step : "fresh", key);
+  if (step !== "approved") return { attention: now, answering: { since: now.since, step } };
+  const approved = applySignal(now, { event: "tool", message: null }, at, "hook", now.agent, {
+    subagents: now.subagents,
+    subagentId: now.subagentId,
+    stopped: false,
+  });
+  return { attention: approved, answering: null };
+}
+
+/**
+ * 키 하나가 창을 어디로 옮기나 — 18의 표를 접는다(`inferApproval` 머리말). 모르는 것은 늘 **덜 아는 쪽**으로 간다: 자리가
+ * 옮겨졌을 수 있으면 `moved`, 무엇을 확정했는지 모르면 `closed`다. 거기서는 승인이 Enter로 안 선다.
+ */
+function answerStep(step: AnswerStep, key: AnswerKey): AnswerStep | "approved" {
+  switch (step) {
+    case "fresh":
+      if (key === "approve" || key === "confirm") return "approved";
+      if (key === "amend") return "amending";
+      if (key === "reject" || key === "cancel") return "closed";
+      return "moved";
+    case "moved":
+      if (key === "approve") return "approved";
+      if (key === "move" || key === "other") return "moved";
+      // 옮긴 자리의 Enter · 고치기 칸은 무엇을 확정할지 모른다. `3` · Esc는 거절이다.
+      return "closed";
+    case "amending":
+      if (key === "confirm") return "approved";
+      // 칸에 친 숫자 · 글자는 글자다. 칸을 닫거나(Esc) 칸 밖으로 나가는 키 뒤는 모른다.
+      if (key === "approve" || key === "reject" || key === "other") return "amending";
+      return "closed";
+    case "closed":
+      return "closed";
+  }
 }
 
 /**

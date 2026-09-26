@@ -10,6 +10,7 @@ import {
   NO_HOOK_COUNTS,
   bandRows,
   callingShells,
+  inferApproval,
   inferInterrupt,
   isShellSeen,
   markShellsSeen,
@@ -23,7 +24,8 @@ import {
   topSignal,
   topSignalView,
 } from "./shell-attention";
-import type { Attention } from "./shell-attention";
+import type { Answering, Attention } from "./shell-attention";
+import type { AnswerKey } from "./shell-input";
 import { ownerOf } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
 import type { ShellHookState } from "./types";
@@ -851,6 +853,174 @@ describe("중단 추론 — 프로세스 결정 12", () => {
 
     const 늦은끝 = hook("claude", "SubagentStop", 실측_SubagentStop, { at: 30, subagents: 1, stopped: true });
     expect(nextAttention(끊긴뒤, 늦은끝)).toBeNull();
+  });
+});
+
+// ── 승인 추론(프로세스 결정 13 · P7 (가) · S30). claude의 PreToolUse는 권한 창 **앞**에 오고, 사람이 승인한 뒤 도구가 도는
+// 동안에는 오는 훅이 없다 — 판 03 선행 시험이 대화형 다섯 번 · `-p` 여섯 번 모두 그렇게 쟀다. 그래서 PermissionRequest가
+// 세운 기다림은 도구가 끝나 PostToolUse가 와야 풀렸다: `sleep 30`을 승인하면 30초 동안 「나를 기다림」이다. 사람이 그 창에
+// **확정 키**를 누른 순간이 승인이다.
+//
+// 스토어가 셸마다 「그 기다림에 누른 키의 자취」를 들고, 키마다 그 자취와 지금 값을 건넨다. 여기서 재는 것은 그 둘로
+// **승인인가**를 가르는 순수 함수다 — 시계는 없다: 키 하나로 곧바로 간다. 답의 모양은 `nextOnOutput`과 같은 계약에 자취를
+// 더한 것이다: 승인이면 도는 중(`tool`과 같다), 아니면 **지금 값 그대로**(같은 객체).
+//
+// 어느 키가 확정인지는 18의 「권한 창의 키」 표다(Bash 권한 창):
+// - `1` · `2`는 곧바로 승인, `3` · Esc는 곧바로 거절, ↑ ↓는 고르기만, Ctrl-C · 글자는 아무 일도 없다.
+// - **Enter는 놓인 자리에 달렸다.** 처음 자리(`1. Yes`)면 승인이고, ↓로 `3. No`에 놓였으면 거절이다. 거절을 도는 중으로 읽으면
+//   claude는 사람의 말을 기다리는데 셸은 도는 중으로 굳는다(18). 그래서 창이 열린 뒤 **아무 키도 안 누른** Enter만 승인으로
+//   읽는다 — 자리를 옮겼을 수 있으면 모른다로 둔다(fail-closed: 옛 동작대로 도구가 끝날 때 풀린다).
+// - Tab은 놓인 자리를 고치기 칸으로 연다. 처음 자리에서 연 칸의 Enter는 승인이고, 칸에 친 숫자는 글자다.
+describe("승인 추론 — 프로세스 결정 13 · P7", () => {
+  /** 키 여럿을 차례로 누른다 — 스토어가 키마다 하는 그 일이다(자취를 넘기고 받은 것을 다음에 넘긴다). */
+  const 누름 = (now: Attention | null, ...keys: ReadonlyArray<AnswerKey>): Attention | null => {
+    let attention = now;
+    let answering: Answering | null = null;
+    for (const key of keys) ({ attention, answering } = inferApproval(attention, answering, key, 700));
+    return attention;
+  };
+
+  // 승인 요청 한 장이 세운 기다림 — `tool_input`은 훅 문서 · 18 실측의 모양이다.
+  const 승인요청 = hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "sleep 30" } }, { at: 10 });
+  const 기다림 = nextAttention(직전, 승인요청);
+  // 승인한 뒤의 값 — PostToolUse가 올 때와 같다(`tool` 줄): 말은 그 요청의 것이 남고, 시각은 누른 순간이다.
+  const 승인뒤 = 훅상태({ message: "Bash · sleep 30", since: 700 });
+
+  it("앵커: 승인 요청이 기다림을 세웠다", () => {
+    expect(기다림).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30" }));
+  });
+
+  it.each([
+    ["1", ["approve"]],
+    ["2", ["approve"]],
+    ["처음 자리의 Enter", ["confirm"]],
+    // 고치기 칸에 친 글자는 창의 지름길이 아니다 — `3`도 글자다(r6: Tab · x · Enter가 승인 + 그 글을 넘김).
+    ["Tab · 글자 · Enter", ["amend", "other", "confirm"]],
+    ["Tab · 3 · Enter", ["amend", "reject", "confirm"]],
+    // 숫자는 놓인 자리와 상관없는 지름길이다.
+    ["↓ 뒤의 1", ["move", "approve"]],
+    ["↓ ↑ 뒤의 2", ["move", "move", "approve"]],
+  ] as const)("훅이 말한 기다림 + 확정 키는 도는 중이다 — %s", (_이름, keys) => {
+    expect(누름(기다림, ...keys)).toEqual(승인뒤);
+  });
+
+  it.each([
+    // 거절이다(S30) — 거절 뒤에는 훅이 하나도 없고 claude는 사람의 다음 말을 기다린다(18). 기다림이 사실이다.
+    ["Esc", ["cancel"]],
+    ["3", ["reject"]],
+    // 창에서 아무 일도 안 한다(18 r5 — 창이 그대로 남는다).
+    ["Ctrl-C", ["other"]],
+    // 고르기만 한다.
+    ["↓", ["move"]],
+    ["↑", ["move"]],
+    // **자리를 옮긴 뒤의 Enter는 모른다** — `3. No`를 확정했을 수 있다(r5: ↓ ↓ Enter는 거절이었다).
+    ["↓ 뒤의 Enter", ["move", "confirm"]],
+    ["↓ ↓ 뒤의 Enter", ["move", "move", "confirm"]],
+    // 안 잰 키가 자리를 옮겼을 수 있다 — 그 뒤의 Enter도 모른다.
+    ["글자 뒤의 Enter", ["other", "confirm"]],
+    ["Ctrl-C 뒤의 Enter", ["other", "confirm"]],
+    // 옮긴 자리를 고치기 칸으로 열면 그 칸의 Enter가 무엇을 확정할지 모르고, 칸에 친 숫자는 글자다.
+    ["↓ · Tab · 1 · Enter", ["move", "amend", "approve", "confirm"]],
+    // 고치기 칸을 Esc로 닫은 뒤는 모른다.
+    ["Tab · Esc · Enter", ["amend", "cancel", "confirm"]],
+    // **거절 뒤에 친 키는 사람의 다음 말이다** — 「1번 파일부터 고쳐」의 첫 글자가 승인으로 읽히면 claude가 사람을 기다리는데
+    // 셸은 도는 중으로 굳는다.
+    ["Esc 뒤의 1", ["cancel", "approve"]],
+    ["3 뒤의 Enter", ["reject", "confirm"]],
+    ["↓ Enter 뒤의 1", ["move", "confirm", "approve"]],
+  ] as const)("훅이 말한 기다림 + 확정이 아닌 키는 기다림 그대로다 — %s", (_이름, keys) => {
+    expect(누름(기다림, ...keys)).toBe(기다림);
+  });
+
+  // **훅이 말한 기다림에만 건다.** 도는 중 · 확인할 것 · 없음에는 풀 기다림이 없고, OSC가 세운 기다림(훅 없는 codex의 승인
+  // 요청)은 다시 흐른 출력이 푼다(`nextOnOutput`) — 그 창의 키는 이 표가 안 잰 것이다.
+  it.each([
+    ["도는 중", 직전],
+    ["확인할 것", 끝난것],
+    ["OSC가 세운 기다림", { ...기다리던것, source: "osc" as const, agent: null }],
+    ["사라짐이 남긴 확인할 것", { ...끝난것, source: "gone" as const }],
+  ])("%s + 확정 키는 그대로다", (_이름, 그것) => {
+    expect(누름(그것, "approve")).toBe(그것);
+    expect(누름(그것, "confirm")).toBe(그것);
+  });
+
+  it("상태가 없는 셸 + 확정 키는 없음 그대로다", () => {
+    expect(누름(null, "approve")).toBeNull();
+    expect(누름(null, "confirm")).toBeNull();
+  });
+
+  // **출처는 훅을 이어받는다**(티켓 22가 남긴 주의). 사람이 창에 답했을 뿐 claude는 그대로 떠 있고, 도는 동안 말하는 것도 여전히
+  // 훅이다. 출처를 `key`로 앉히면 그 셸의 권위가 풀려 claude가 도는 동안 OSC · 벨이 상태를 바꾼다.
+  it("승인한 도는 중에는 OSC · 벨이 아무것도 못 바꾼다 — 권위가 그대로다", () => {
+    const 도는중 = 누름(기다림, "approve");
+    expect(도는중?.source).toBe("hook");
+    expect(applySignal(도는중, { event: "waiting", message: "Approval requested" }, 800, "osc", null, NO_HOOK_COUNTS)).toBe(도는중);
+    expect(applySignal(도는중, { event: "stop", message: null }, 800, "bell", null, NO_HOOK_COUNTS)).toBe(도는중);
+  });
+
+  // 에이전트를 가리지 않는다 — codex의 승인 요청도 훅이 말한 기다림이다. 말한 에이전트는 그대로 싣는다.
+  it("codex의 승인 요청 + 확정 키는 도는 중이다", () => {
+    const codex기다림 = nextAttention(null, hook("codex", "PermissionRequest", { turn_id: "t2", tool_name: "shell", tool_input: { command: "sleep 30" } }));
+    expect(누름(codex기다림, "approve")).toEqual(훅상태({ message: "shell · sleep 30", since: 700, agent: "codex" }));
+  });
+
+  // **누가 낸 기다림이든 푼다**(티켓 20 리뷰 반영이 남긴 주의). 도구 사건은 그 기다림을 낸 에이전트의 것만 풀지만(`tool` 줄),
+  // 확정 키는 사람이 그 창에 답한 것이다 — 서브에이전트가 낸 승인 요청도 사람이 답하면 그 서브에이전트의 도구가 돈다.
+  it("서브에이전트가 낸 승인 요청도 확정 키가 푼다 — 낸 서브에이전트는 그대로 든다", () => {
+    const 서브요청 = hook("claude", "PermissionRequest", { tool_name: "Bash", tool_input: { command: "npm test" }, agent_id: "ace905bb8e05c8931" }, { at: 10, subagents: 1 });
+    const 서브기다림 = nextAttention(직전, 서브요청);
+    expect(서브기다림?.subagentId).toBe("ace905bb8e05c8931");
+    expect(누름(서브기다림, "approve")).toEqual(
+      훅상태({ message: "Bash · npm test", since: 700, subagents: 1, subagentId: "ace905bb8e05c8931" }),
+    );
+  });
+
+  // **자취는 그 기다림에 묶인다.** 같은 기다림을 다시 읽거나(순서 가드에 막힌 늦은 사건) 수만 바뀌어도 이어지고, 새 승인 요청이
+  // 서면(새 `since`) 처음부터다 — 앞 창에서 옮긴 자리가 새 창의 Enter를 막으면 두 번째 승인이 도구 끝까지 기다림으로 남는다.
+  it("새 승인 요청이 서면 자취가 처음부터다 — 앞 창에서 ↓를 눌렀어도 새 창의 Enter는 승인이다", () => {
+    let { attention, answering } = inferApproval(기다림, null, "move", 700);
+    ({ attention, answering } = inferApproval(attention, answering, "confirm", 710));
+    // 앵커: 앞 창의 Enter는 모른다로 남았다.
+    expect(attention).toBe(기다림);
+
+    const 새창 = nextAttention(attention, { ...승인요청, at: 20, payload: { tool_name: "Bash", tool_input: { command: "sleep 60" } } });
+    expect(새창?.since).toBe(20);
+    expect(inferApproval(새창, answering, "confirm", 720).attention).toEqual(
+      훅상태({ message: "Bash · sleep 60", since: 720 }),
+    );
+  });
+
+  it("같은 기다림에 서브에이전트 사건이 와도 자취가 이어진다 — ↓ 뒤의 Enter는 여전히 모른다", () => {
+    let { attention, answering } = inferApproval(기다림, null, "move", 700);
+    attention = nextAttention(attention, hook("claude", "SubagentStart", 실측_SubagentStart, { at: 40, subagents: 1 }));
+    // 앵커: 수만 바뀌었다 — 같은 기다림이다.
+    expect(attention?.since).toBe(기다림?.since);
+    expect(attention?.subagents).toBe(1);
+    ({ attention } = inferApproval(attention, answering, "confirm", 710));
+    expect(attention?.kind).toBe("waiting");
+  });
+
+  // 스펙 전이 표 그대로 이어진다: 승인한 도구가 끝나면 PostToolUse가 도는 중을 잇고, 다음 권한 창은 새 기다림이다(20).
+  it("승인 뒤 PostToolUse는 도는 중을 잇고, 다음 승인 요청은 기다림을 다시 세운다", () => {
+    const 도는중 = 누름(기다림, "confirm");
+    const 끝난도구 = nextAttention(도는중, hook("claude", "PostToolUse", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_response: {}, tool_use_id: "toolu_30" }, { at: 800 }));
+    expect(끝난도구).toEqual(훅상태({ message: "Bash · sleep 30", since: 800 }));
+    const 다음창 = nextAttention(끝난도구, { ...승인요청, at: 810 });
+    expect(다음창).toEqual(훅상태({ kind: "waiting", message: "Bash · sleep 30", since: 810 }));
+  });
+
+  // 승인은 부르는 상태에서 **나가는** 것이라 울 일이 없고, 「봤다」는 도는 중에서 뜻이 없다. 새 사실이라 시각만 새로 찍는다.
+  it("본 기다림에 확정 키를 눌러도 새 사실이다 — 시각이 누른 순간이다", () => {
+    const 본기다림 = { ...기다림!, seen: true };
+    expect(누름(본기다림, "approve")).toEqual(승인뒤);
+  });
+
+  // 자취를 **돌려주는 모양**도 잰다 — 스토어는 이 값을 그대로 다음 키에 넘긴다. 훅이 말한 기다림이 아니면 들 것이 없다.
+  it("자취는 훅이 말한 기다림에만 선다", () => {
+    expect(inferApproval(기다림, null, "move", 700).answering).toEqual({ since: 10, step: "moved" });
+    expect(inferApproval(기다림, null, "approve", 700).answering).toBeNull();
+    expect(inferApproval(직전, null, "move", 700).answering).toBeNull();
+    expect(inferApproval(null, null, "move", 700).answering).toBeNull();
   });
 });
 

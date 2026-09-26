@@ -16,6 +16,7 @@ import type { AgentSignal } from "./agents/types";
 import { onPtyRunning, onShellAttention, terminalApi } from "./api";
 import {
   applySignal,
+  inferApproval,
   inferInterrupt,
   markShellsSeen,
   NO_HOOK_COUNTS,
@@ -24,7 +25,7 @@ import {
   nextOnRunning,
   ptyIdOf,
 } from "./shell-attention";
-import type { AttentionSource, ShellView } from "./shell-attention";
+import type { Answering, AttentionSource, ShellView } from "./shell-attention";
 import { bellSignal, oscSignal } from "./shell-osc";
 import { createNotifier, notifyShells, outgoing } from "./shell-notify";
 import type { NotifyPayload } from "./shell-notify";
@@ -70,8 +71,8 @@ import type {
 } from "./shell-registry";
 import { deferAttach, focusOnAttach, focusPlaceOf, nextPendingFocus } from "./shell-focus";
 import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
-import { humanInput, isInterruptKey, keyRoute } from "./shell-input";
-import type { InputHappening } from "./shell-input";
+import { answerKey, humanInput, isInterruptKey, keyRoute } from "./shell-input";
+import type { AnswerKey, InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
 import { nextRecall, recallTarget } from "./shell-recall";
 import type { RecallTarget } from "./shell-recall";
@@ -468,8 +469,9 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
   pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });
   // WebGL 자리에서도 뺀다(티켓 17) — 그 자리만큼 다음에 붙는 셸이 남의 addon을 놓지 않고 싣는다.
   webglSeats = closeWebgl(webglSeats, instance.id);
-  // 훅 사건 수도 지운다(중단 추론) — 번호는 다시 안 쓰이지만 셸이 닫힐 때마다 한 칸씩 남는다.
+  // 훅 사건 수도 지운다(중단 추론) — 번호는 다시 안 쓰이지만 셸이 닫힐 때마다 한 칸씩 남는다. 승인 추론의 자취도 같다.
   hookEvents.delete(instance.id);
+  answerTraces.delete(instance.id);
   if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
   instance.observer.disconnect();
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로 묶여 있어 WebGL
@@ -698,6 +700,31 @@ function watchInterrupt(id: number): void {
     if (next === now) return;
     terminalStore.setState((state) => setAttention(state, id, next));
   }, INTERRUPT_WAIT_MS);
+}
+
+/**
+ * 셸마다 **지금 기다림에 사람이 누른 키의 자취**(승인 추론 — 프로세스 결정 13 · P7). 자취가 무엇이고 언제 처음부터인지는 상태
+ * 기계가 정한다(`inferApproval` — 그 기다림의 `since`에 묶인다). 여기는 받은 것을 다음 키에 넘길 뿐이다. 값이 화면이 그리는 것이
+ * 아니라 스토어에 두지 않는다(`hookEvents`와 같은 까닭). 셸이 거둬질 때 함께 지운다(`disposeInstance`).
+ */
+const answerTraces = new Map<number, Answering>();
+
+/**
+ * 그 셸에 권한 창의 키가 들어왔다 — **승인이면 곧바로 도는 중**이다(프로세스 결정 13 · P7 (가)). 승인한 뒤 도구가 도는 동안에는
+ * 오는 훅이 없어(판 03 선행 시험), 이 키가 없으면 기다림은 도구가 끝나야 풀린다. 부르는 자리는 셸의 키 핸들러 하나다(`answerKey`).
+ *
+ * **시계가 없다** — 중단 추론과 달리 기다리지 않는다. 승인은 사람이 그 창에 답한 순간 사실이고, 그 뒤에 올 훅은 도구가
+ * 끝나야 온다. 무엇이 승인인지(확정 키 · 놓인 자리 · 거절 뒤의 키) 판단은 `inferApproval`이 혼자 한다 — 여기서 「기다림일
+ * 때만」을 적으면 그 규칙이 두 벌이 된다. 키는 막지 않는다 — 그대로 셸로 가서 창에 답한다.
+ */
+function noteAnswer(id: number, key: AnswerKey): void {
+  const now = attentionOfId(terminalStore.state, id);
+  const { attention, answering } = inferApproval(now, answerTraces.get(id) ?? null, key, Date.now());
+  if (answering === null) answerTraces.delete(id);
+  else answerTraces.set(id, answering);
+  // **안 바뀌면 스토어를 안 건드린다** — 키를 칠 때마다 여기 온다(`watchInterrupt`와 같은 까닭).
+  if (attention === now) return;
+  terminalStore.setState((state) => setAttention(state, id, attention));
 }
 
 /**
@@ -1260,9 +1287,9 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
   // 닫는 것은 `×`와 **같은 길**이다 — 마지막 칸을 닫아도 새 셸이 저절로 뜨지 않는 것까지
   // 그대로 따라온다(판 02).
   //
-  // **키다운을 가르는 자리는 여기 하나다**(프로세스 스펙 S16). 한 번 가른 답(`keyRoute`)으로 넷을 고른다 —
-  // 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지, 중단 추론을 걸지(Esc · Ctrl-C — 프로세스 결정 12). 뒤 판의
-  // 승인 추론(확정 키)도 이 답을 이 자리에서 더 읽는다.
+  // **키다운을 가르는 자리는 여기 하나다**(프로세스 스펙 S16). 한 번 가른 답(`keyRoute`)으로 다섯을 고른다 —
+  // 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지, 중단 추론을 걸지(Esc · Ctrl-C — 프로세스 결정 12), 승인 추론에
+  // 넘길지(권한 창의 확정 키 — 프로세스 결정 13 · P7).
   term.attachCustomKeyEventHandler((event) => {
     const route = keyRoute(event);
     // keypress · keyup — xterm이 평소대로 한다.
@@ -1270,6 +1297,10 @@ function createInstance(id: number, origin: ShellOrigin): ShellInstance {
     noteInput(instance, { kind: "keydown", event });
     // **중단 키는 막지 않는다** — 셸로 가서 에이전트를 끊고, 여기서는 기준값을 잡아 시계만 건다(`watchInterrupt`).
     if (isInterruptKey(event)) watchInterrupt(instance.id);
+    // **권한 창의 키도 막지 않는다** — 셸로 가서 창에 답하고, 여기서는 그것이 승인인지만 본다(`noteAnswer`). 셸로 안 가는
+    // 키는 창에 안 닿는다(`null`).
+    const answer = answerKey(event);
+    if (answer !== null) noteAnswer(instance.id, answer);
     // **앱 몫이되 이 셸이 하지 않는다**(결정 99). 본문을 옮기는 키(⌘1~9·⌃Tab)가 그것이라,
     // `false`로 xterm의 타이핑만 막고 **그대로 위로 흘려보낸다** — 어느 본문으로 갈지는
     // 화면이 알고, 그 화면이 window에서 이 키를 듣는다. 여기서 `stopPropagation`을 부르면
