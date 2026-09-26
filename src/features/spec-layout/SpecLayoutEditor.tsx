@@ -27,9 +27,9 @@ import type {
   UnreadableSpecLayout,
 } from "./types";
 
-// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(620px) 안이 아니라 그
-// 항목의 하위 주소(`/settings/spec-layout/<id>`)에 선 **별도 화면**이다 — 트리와 고른 항목, 두 열이 설정 한
-// 열에 들지 않는다. 설정 nav는 그대로 서고 「spec 레이아웃」이 켜져 있다.
+// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(620px) 안이 아니라 설정 nav
+// 항목 「spec 레이아웃」의 하위 주소(`/settings/spec-layout/<id>`)에 선 **별도 화면**이다 — 트리와 고른 항목,
+// 두 열이 설정 한 열에 들지 않는다. 설정 nav는 그대로 서고 「spec 레이아웃」이 켜져 있다.
 //
 // **이 화면의 주된 쓰임은 마지막 손질이다**(결정 20). 레이아웃은 대부분 에이전트가 고치고, 사람은 여기서
 // 한 칸을 고친다. 그래서 머리에는 뒤로, 위치, 저장만 둔다 — id, 배지, 오류 개수, 「저장하지 않은 변경」,
@@ -45,7 +45,7 @@ import type {
 function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean }) {
   const read = useQuery(specLayoutReadQuery(id));
   const navigate = useNavigate();
-  // 뒤로는 그 항목의 페이지다 — 편집기로 오는 문이 거기 한 곳(모드 행의 [편집])이라, 히스토리를 되감지
+  // 뒤로는 「spec 레이아웃」 설정 페이지다 — 편집기로 오는 문이 거기 한 곳(모드 행의 [편집])이라, 히스토리를 되감지
   // 않고 늘 그 자리로 간다. 주소로 바로 왔어도 같은 곳에 선다.
   const back = () => void navigate({ to: "/settings/spec-layout" });
   const data = read.data;

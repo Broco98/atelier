@@ -7,10 +7,10 @@ import {
 } from "./fixtures";
 import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
 
-// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 항목 페이지의 모드 행에서 [편집]을
-// 누르면 그 항목 아래의 하위 주소에 편집기가 선다. 두 열의 모양(맨 위 항목의 행이 없다, 파일·폴더 항목,
-// 모르는 아이콘, 오류 줄)은 마크업 seam이 잰다(`SpecLayoutEditor.test.tsx`), 필드를 바꾸는 규칙은 순수
-// 함수의 seam이 잰다(`draft.test.ts`).
+// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 모드 행에서
+// [편집]을 누르면 그 설정 nav 항목 아래의 하위 주소에 편집기가 선다. 두 열의 모양(맨 위 항목의 행이 없다,
+// 파일·폴더 항목, 모르는 아이콘, 오류 줄)은 마크업 seam이 잰다(`SpecLayoutEditor.test.tsx`), 필드를 바꾸는
+// 규칙은 순수 함수의 seam이 잰다(`draft.test.ts`).
 //
 // **이 층이 드는 것은 두 명령의 배선이다** — 편집기가 열리면 `read_spec_layout`이 나가고, [저장]을 눌러야만
 // `write_spec_layout`이 나가며, 거기에 고친 초안이 모르는 키와 템플릿 전부와 함께 실린다. 두 명령을 태우는
@@ -24,7 +24,7 @@ const 편집 = (page: Page, name: "Atelier" | "Maison") =>
 const 저장 = (page: Page) => page.getByRole("button", { name: "저장", exact: true });
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
 
-/** 편집기에 들어와 트리가 선 뒤까지 — 설정 항목 페이지의 모드 행에서 [편집]을 누른다. */
+/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 모드 행에서 [편집]을 누른다. */
 async function openEditor(page: Page) {
   await page.goto("/settings/spec-layout");
   await 편집(page, "Atelier").click();
@@ -218,14 +218,14 @@ test("편집기 주소에서 설정 nav의 「spec 레이아웃」이 켜져 있
   await installFixtureBackend(page);
   await openEditor(page);
 
-  const 항목 = aside(page).getByRole("button", { name: "spec 레이아웃", exact: true });
-  await expect(항목.locator("xpath=..")).toHaveClass(/selected-row/);
+  const nav항목 = aside(page).getByRole("button", { name: "spec 레이아웃", exact: true });
+  await expect(nav항목.locator("xpath=..")).toHaveClass(/selected-row/);
 
   await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃$/);
   await expect(page.locator("main li")).toHaveCount(2);
-  await expect(항목.locator("xpath=..")).toHaveClass(/selected-row/);
+  await expect(nav항목.locator("xpath=..")).toHaveClass(/selected-row/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

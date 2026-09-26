@@ -55,7 +55,7 @@ function SpecLayoutPage() {
     setNotice(null);
   };
   const reread = () => void states.refetch();
-  // 편집기는 이 항목 아래의 하위 주소다(티켓 11) — 설정 한 열 밖의 별도 화면이다.
+  // 편집기는 이 설정 nav 항목 아래의 하위 주소다(티켓 11) — 설정 한 열 밖의 별도 화면이다.
   const edit = (state: SpecLayoutState) =>
     void navigate({ to: "/settings/spec-layout/$id", params: { id: state.id } });
   // **확인을 거친 뒤에만 지운다** — 폴더째 지우므로 템플릿과 레이아웃이 모르는 파일도 사라진다. 되돌리기는
