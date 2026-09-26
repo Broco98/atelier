@@ -10,10 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProcessesRouteImport } from './routes/processes'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TerminalRouteImport } from './routes/terminal'
 import { Route as ArchiveIndexRouteImport } from './routes/archive.index'
 import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
+import { Route as MaisonProcessesRouteImport } from './routes/maison.processes'
 import { Route as MaisonTerminalRouteImport } from './routes/maison.terminal'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
@@ -31,6 +33,11 @@ import { Route as MaisonRoomsSlugRouteImport } from './routes/maison.rooms.$slug
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProcessesRoute = ProcessesRouteImport.update({
+  id: '/processes',
+  path: '/processes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -51,6 +58,11 @@ const ArchiveIndexRoute = ArchiveIndexRouteImport.update({
 const ArchiveSlugRoute = ArchiveSlugRouteImport.update({
   id: '/archive/$slug',
   path: '/archive/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaisonProcessesRoute = MaisonProcessesRouteImport.update({
+  id: '/maison/processes',
+  path: '/maison/processes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MaisonTerminalRoute = MaisonTerminalRouteImport.update({
@@ -121,9 +133,11 @@ const MaisonRoomsSlugRoute = MaisonRoomsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/processes': typeof MaisonProcessesRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
@@ -141,8 +155,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/processes': typeof ProcessesRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/processes': typeof MaisonProcessesRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
@@ -161,9 +177,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/processes': typeof ProcessesRoute
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
+  '/maison/processes': typeof MaisonProcessesRoute
   '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
@@ -183,9 +201,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/processes'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/processes'
     | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
@@ -203,8 +223,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/processes'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/processes'
     | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
@@ -222,9 +244,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/processes'
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
+    | '/maison/processes'
     | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
@@ -243,9 +267,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ProcessesRoute: typeof ProcessesRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
+  MaisonProcessesRoute: typeof MaisonProcessesRoute
   MaisonTerminalRoute: typeof MaisonTerminalRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   WorksSlugRoute: typeof WorksSlugRoute
@@ -265,6 +291,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/processes': {
+      id: '/processes'
+      path: '/processes'
+      fullPath: '/processes'
+      preLoaderRoute: typeof ProcessesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -293,6 +326,13 @@ declare module '@tanstack/react-router' {
       path: '/archive/$slug'
       fullPath: '/archive/$slug'
       preLoaderRoute: typeof ArchiveSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maison/processes': {
+      id: '/maison/processes'
+      path: '/maison/processes'
+      fullPath: '/maison/processes'
+      preLoaderRoute: typeof MaisonProcessesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/maison/terminal': {
@@ -409,9 +449,11 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ProcessesRoute: ProcessesRoute,
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
+  MaisonProcessesRoute: MaisonProcessesRoute,
   MaisonTerminalRoute: MaisonTerminalRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   WorksSlugRoute: WorksSlugRoute,

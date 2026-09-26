@@ -26,6 +26,7 @@ use tauri::{AppHandle, Emitter};
 use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::instances::{self, Place, Record};
+use crate::processes::screen::{PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Proc, Snapshot, SHELL_KEY_ENV};
@@ -479,6 +480,49 @@ fn asked_of(shells: &HashMap<u32, Shell>, id: u32) -> Result<Asked, String> {
 /// 때마다 묻고, `claude`가 도는 칸은 조용히 죽는다.
 fn command_runs(shell_pid: u32, foreground: i32) -> bool {
     foreground != shell_pid as i32
+}
+
+/// `Processes` 화면의 스냅샷(`processes_snapshot`, 프로세스 결정 10 · 티켓 26). 화면이 열려 있는 동안 프런트가 2초마다 묻는다 —
+/// 닫혀 있으면 아무도 안 부른다(스토리 95). 판정 결과에 풀의 셸 목록을 곁들인다(`processes::screen`).
+///
+/// 순서는 닫기 전 물음과 같다: 스냅샷을 먼저 찍고, 셸 목록과 인스턴스 기록은 그 **뒤에** 읽는다(S52). 다른 점은 둘이다.
+/// - env를 **전부** 읽는다. 셸 닫기는 그 셸이 뜬 뒤에 태어난 것만 읽지만(S3), 화면은 고아를 가려야 하고 고아는 지금 풀의
+///   어느 셸보다 먼저 태어났을 수 있다.
+/// - 판정에 넘기는 셸 목록과 화면에 싣는 풀의 셸 목록을 **한 잠금 안에서** 읽는다. 다른 순간의 것이면 그 사이에 뜨거나 닫힌
+///   셸이 한쪽에만 선다.
+///
+/// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
+pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
+    let snapshot = snapshot::take(EnvScope::All);
+    let (live, listed): (Vec<ShellEntry>, Vec<PoolShell>) = {
+        let shells = pool.lock();
+        (
+            shells.values().map(Shell::entry).collect(),
+            pool_shells(shells.iter().map(|(id, shell)| (*id, shell.key.as_str()))),
+        )
+    };
+    let records = pool.record.records();
+    let exceptions = exceptions();
+    let verdict = verdict::judge(&Inputs {
+        snapshot: &snapshot,
+        generation: instance_prefix(),
+        shells: &live,
+        ending: &[],
+        instances: &records,
+        exceptions: &exceptions,
+        app_pid: std::process::id(),
+        inherited_key: crate::processes::inherited_key(),
+        occasion: Occasion::Normal,
+    });
+    ScreenSnapshot::of(&verdict, listed)
+}
+
+/// 풀의 셸 목록 — pty id와 셸 키의 짝을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다.
+fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str)>) -> Vec<PoolShell> {
+    let mut listed: Vec<PoolShell> =
+        shells.map(|(pty_id, key)| PoolShell { pty_id, shell_key: key.to_string() }).collect();
+    listed.sort_by_key(|shell| shell.pty_id);
+    listed
 }
 
 /// 셸 하나에서 **지금 도는 명령**. `running`이 `None`이면 프롬프트에 서 있다.
@@ -1589,7 +1633,7 @@ mod tests {
 
     /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
     /// 오르므로, 스냅샷에 선 프로세스의 키는 그 뒤에 읽은 기록에 이미 있다. 뒤집히면 그 사이 뜬 셸의 자손이 「목록에 없는
-    /// 이 세대 키」로 읽힌다. 판정을 부르는 네 자리를 모두 본다.
+    /// 이 세대 키」로 읽힌다. 판정을 부르는 다섯 자리를 모두 본다 — 다섯째가 `Processes` 화면의 스냅샷이다(티켓 26).
     #[test]
     fn the_records_are_read_after_the_snapshot() {
         for (path, body) in [
@@ -1597,12 +1641,53 @@ mod tests {
             ("begin", body_of("fn begin(", "\n}\n")),
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
             ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
+            ("screen", body_of("pub fn screen(", "\n}\n")),
         ] {
             let taken = body.find("snapshot::take(").unwrap_or_else(|| panic!("{path}가 스냅샷을 안 찍는다"));
             let read = body.find("pool.record.records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
             assert!(taken < read, "{path}: 기록({read})을 스냅샷({taken})보다 먼저 읽는다");
             assert!(body.contains("instances: &records"), "{path}: 읽은 기록을 판정에 안 넘긴다");
         }
+    }
+
+    /// `Processes` 화면의 스냅샷은 **풀의 셸 목록을 판정에 넘긴 셸 목록과 한 잠금 안에서** 읽는다(티켓 26). 두 목록이 다른
+    /// 순간의 것이면 그 사이에 뜨거나 닫힌 셸이 한쪽에만 선다 — 화면이 판정의 셸을 풀에서 못 찾거나, 판정에 없는 셸을 풀
+    /// 목록에서 본다(32의 화면 밖 셸이 그 차이를 셸로 센다). env는 **전부** 읽는다: 고아는 지금 풀의 어느 셸보다 먼저 태어났을
+    /// 수 있어 셸 닫기의 가지치기(`env_scope`, S3)를 쓰면 표식이 안 읽혀 묶음에서 빠진다.
+    ///
+    /// 실행으로는 못 잰다 — 진짜 스냅샷은 이 맥의 표 전체라 기대값을 못 세운다. 자리로 잰다. 판정 결과가 와이어에 실리는
+    /// 모양은 `processes::screen`의 검사가 잰다.
+    #[test]
+    fn the_screen_reads_the_pool_with_the_shells_it_judges() {
+        let body = body_of("pub fn screen(", "\n}\n");
+        assert_eq!(body.matches("snapshot::take(").count(), 1, "화면 스냅샷이 표를 한 장이 아니게 찍는다");
+        assert!(body.contains("snapshot::take(EnvScope::All)"), "화면 스냅샷이 env를 가지치기한다 — 오래된 고아의 표식이 안 읽힌다");
+        let taken = body.find("snapshot::take(").expect("스냅샷을 찍는다");
+        assert_eq!(body.matches("pool.lock()").count(), 1, "풀을 두 번 잠근다 — 두 목록이 다른 순간의 것이 된다");
+        let locked = body.find("pool.lock()").expect("풀을 잠근다");
+        let judged = body.find("shells.values().map(Shell::entry)").expect("판정에 넘길 셸 목록을 읽는다");
+        let listed = body.find("pool_shells(").expect("풀의 셸 목록을 읽는다");
+        let records = body.find("pool.record.records()").expect("기록을 읽는다");
+        assert!(taken < locked, "풀({locked})을 스냅샷({taken})보다 먼저 읽는다");
+        assert!(
+            locked < judged && locked < listed && judged < records && listed < records,
+            "두 목록이 한 잠금 안에 없다 — 잠금 {locked} · 판정의 셸 {judged} · 풀의 셸 {listed} · 기록 {records}"
+        );
+        assert!(body.contains("ScreenSnapshot::of(&verdict, listed)"), "판정 결과와 풀의 셸 목록을 그대로 싣지 않는다");
+    }
+
+    /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로
+    /// 선다(티켓 26).
+    #[test]
+    fn the_pool_list_is_in_pty_order_with_each_shells_key() {
+        assert_eq!(
+            super::pool_shells([(3, "G-3"), (1, "G-1"), (2, "G-2")].into_iter()),
+            vec![
+                super::PoolShell { pty_id: 1, shell_key: "G-1".into() },
+                super::PoolShell { pty_id: 2, shell_key: "G-2".into() },
+                super::PoolShell { pty_id: 3, shell_key: "G-3".into() },
+            ]
+        );
     }
 
     /// 앱 종료는 **끝내기를 마감한 뒤, 그 결과로** 인스턴스 기록을 닫는다(프로세스 스펙 「인스턴스 기록 › 지우는 때」 · 티켓

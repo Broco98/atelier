@@ -468,6 +468,41 @@ describe("모드별 마지막 주소", () => {
   });
 });
 
+// `Processes`(티켓 26 · 프로세스 결정 8 · 9). 두 세계에 **같은 화면**이 서고 주소는 그 세계의 것이다 — 각 세계의 nav가 자기
+// 접두사로 가서 nav를 눌러 세계를 떠나지 않는다. 목록 화면이 아니라 정규화가 없다: 들어온 주소 그대로 선다. 캐시를 새로 심지
+// 않는 것도 그래서다(이 화면은 목록을 안 읽는다).
+describe("Processes의 주소", () => {
+  it.each([
+    ["/processes", "atelier"],
+    ["/maison/processes", "maison"],
+  ] as const)("%s는 그대로 서고 %s의 자리로 적힌다", async (path, mode) => {
+    const { router, history } = setup([path]);
+    await router.load();
+    expect(router.state.location.pathname).toBe(path);
+    // 라우트가 **그 주소의 것**이다 — 없는 주소면 루트의 404 갈래로 떨어져도 pathname은 그대로라, 위 한 줄로는 안 갈린다.
+    expect(router.state.matches.map((match) => match.routeId)).toContain(path);
+    expect(history.length).toBe(1);
+    expect(shellMode(path)).toBe(mode);
+    expect(shellStore.state.lastPlace[mode]).toBe(path);
+  });
+
+  // 저쪽 세계에 다녀오면 떠나온 Processes로 돌아온다 — 세계를 싣는 주소라 마지막 자리로 적힌다(`rememberVisit`). 세계 밖
+  // 주소로 적히면(`/settings`처럼) 돌아올 때 목록 화면으로 간다.
+  it("저쪽 세계에 다녀오면 떠나온 Processes로 돌아온다", async () => {
+    const { router } = setup(["/maison/processes"]);
+    await router.load();
+
+    const there = modeSwitchTarget("maison", "atelier");
+    if (there) await router.navigate(there);
+    expect(router.state.location.pathname).toBe("/works/work-a");
+
+    const back = modeSwitchTarget("atelier", "maison");
+    if (back) await router.navigate(back);
+    expect(router.state.location.pathname).toBe("/maison/processes");
+    expect(router.state.matches.map((match) => match.routeId)).toContain("/maison/processes");
+  });
+});
+
 // 세그먼트를 눌러 세계를 건너는 일. **히스토리가 절반이다** — 어디에 도착하는가만큼이나 몇
 // 칸이 쌓이는가가 규칙이고, 그쪽이 틀리면 화면은 멀쩡한데 뒤로가기만 이상해진다(뒤로가기를
 // 여러 번 눌러야 이쪽으로 돌아오거나, 눌러도 화면이 그대로인 죽은 칸이 생긴다).

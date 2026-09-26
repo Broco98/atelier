@@ -180,6 +180,15 @@ describe("말의 사전", () => {
     expect(bodyOf("조용한 셸")).toContain("셸 도우미는 세지 않는다");
   });
 
+  // 티켓 26 · 프로세스 결정 8 · 9. main nav에 `Processes`가 **두 세계 모두에** 섰다. 사전이 그 화면을 모르면 다음 사람이 세계마다
+  // 따로 선 화면으로 읽는다 — 그러면 「Maison의 Processes에는 Maison 셸만」 같은 규칙이 생겨 절반이 안 보인다. 본문이 「앱
+  // 전체」와 「두 세계가 같은 화면」을 들어야 그 읽기가 막힌다.
+  it("「Processes」가 등재돼 있고, 두 세계가 같은 화면으로 앱 전체를 본다고 적는다", () => {
+    expect(names).toContain("Processes");
+    expect(bodyOf("Processes")).toContain("앱 전체");
+    expect(bodyOf("Processes")).toContain("두 세계가 같은 화면을 연다");
+  });
+
   it("「가지」·「잎」이 없다", () => {
     // 결정 6이 사이드바에서 펼침을 통째로 걷었다. 가리킬 것이 화면에 없는 말을 사전에
     // 남겨 두면, 다음 사람이 그 말로 지금 화면을 설명하려다 없는 구조를 상상하게 된다.
@@ -206,6 +215,14 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Atelier`");
     expect(uppercase).toContain("`Maison`");
     expect(uppercase).toContain("`Rooms`");
+  });
+
+  // main nav는 세계마다 다르다(결정 6·17) — 그리고 `Processes`가 두 세계에 함께 서며 넷 · 셋이 됐다(티켓 26). **한 문장에서
+  // 두 벌을 함께 본다**: 한쪽만 재면 다른 세계의 벌이 낡아도 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 main nav를 세계마다 넷 · 셋으로 든다", () => {
+    expect(uppercase.replace(/\s+/g, " ")).toContain(
+      "Atelier는 `Projects`·`Terminal`·`Processes`·`Archive` 넷이고 Maison은 `Terminal`·`Processes`·`Archive` 셋이다",
+    );
   });
 
   it("사이드바 가지를 예로 들지 않는다", () => {

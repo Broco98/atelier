@@ -123,6 +123,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("pty_command_running", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_close_checks", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_first_input", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    // `Processes` 화면의 스냅샷(티켓 26)도 **그 풀을 읽는다** — 판정이 풀의 셸 목록과 이 실행의 인스턴스 기록을 입력으로
+    // 받는다. 호출마다 새로 뜨는 다리에는 셸도 기록도 없고, 있다 해도 이 맥의 프로세스 표 전체를 판정하는 일을 검증 층에서
+    // 태울 까닭이 없다. 거절되면 화면은 제목만 선다.
+    ("processes_snapshot", |_| in_app_only("PTY 풀과 인스턴스 기록이 앱 프로세스의 상태입니다")),
     // 설정 둘은 **위 넷과 이유가 다르다.** `~/.atelier/settings.json` 한 장이라 다리가 못 탈
     // 성질이 아닌데, 읽고 쓰는 코드가 앱 크레이트(`src-tauri/src/settings.rs`)에 살고 다리는
     // 코어만 본다. 여기서 파일 규칙을 다시 적지 않는다 — 그 순간 이 층이 검증하는 것이 앱이
@@ -336,7 +340,7 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 20] = [
+    const APP_SOURCES: [(&str, &str); 21] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -347,6 +351,7 @@ mod tests {
         ("processes/instances.rs", include_str!("../../../src-tauri/src/processes/instances.rs")),
         ("processes/mod.rs", include_str!("../../../src-tauri/src/processes/mod.rs")),
         ("processes/procargs.rs", include_str!("../../../src-tauri/src/processes/procargs.rs")),
+        ("processes/screen.rs", include_str!("../../../src-tauri/src/processes/screen.rs")),
         ("processes/snapshot.rs", include_str!("../../../src-tauri/src/processes/snapshot.rs")),
         ("processes/testkit.rs", include_str!("../../../src-tauri/src/processes/testkit.rs")),
         ("processes/verdict.rs", include_str!("../../../src-tauri/src/processes/verdict.rs")),

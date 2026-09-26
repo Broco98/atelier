@@ -141,7 +141,9 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 // 선은 scroll 이벤트만 듣는다 — 그 끌어내림이 이벤트를 안 쏘면 맨 위에서 선이 남는다.
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.setViewportSize({ width: 1280, height: 400 });
+  // 높이는 「접기 전에는 넘치고 접은 뒤에는 들어간다」 사이에 선다. nav가 한 줄(32px + 줄 간격 2px) 늘며(`Processes`, 프로세스
+  // 티켓 26) 목록의 칸이 그만큼 줄어 400에서는 접어도 22px 넘쳤다 — 그 줄만큼 높였다.
+  await page.setViewportSize({ width: 1280, height: 434 });
   await page.goto("/projects");
   await 넘칠때까지(page);
 

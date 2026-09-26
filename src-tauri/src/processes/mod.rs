@@ -21,8 +21,10 @@
 //!   함께 뜬 다른 빌드의 판정이 그 셸의 자손을 고아로 안 보게 한다. 판정은 그 기록을 값으로 받을 뿐 읽지 않는다.
 //! - 정리 기록(`cleanup_log`)은 앱이 무엇을 언제 왜 끝냈는지를 남긴다(티켓 11). 끝내기의 결과와 판정의 행으로 사건을 짓는
 //!   것은 순수하고, 쓰기는 인스턴스 기록과 같은 뮤텍스 안에서 한다(`instances::Record::log`).
+//! - 화면 스냅샷(`screen`)은 판정 결과를 `Processes` 화면에 보낼 값으로 옮긴다(티켓 26). 판정을 다시 가르지 않는다 — 묶음의
+//!   이름과 모양이 판정의 것 그대로다.
 //!
-//! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리)는 풀을 쥔 `pty.rs`에 있다.
+//! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리 · `Processes` 화면의 스냅샷)는 풀을 쥔 `pty.rs`에 있다.
 
 // **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 결과의 출처 불명 · 다른 인스턴스 · 예외 묶음은 13 · 31이 읽는다(판정의
 // 모드와 확정 고아, 시작 정리가 끝낸 결과는 10이, 끝내기의 결과와 판정의 도우미 표시는 11의 정리 기록이 읽는다). 그때까지는
@@ -40,6 +42,7 @@ pub(crate) mod ending;
 pub(crate) mod exceptions;
 pub(crate) mod instances;
 pub(crate) mod procargs;
+pub(crate) mod screen;
 pub(crate) mod snapshot;
 #[cfg(all(test, target_os = "macos"))]
 pub(crate) mod testkit;

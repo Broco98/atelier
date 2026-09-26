@@ -5,6 +5,7 @@ import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { CloseCheck } from "@/features/terminal/types";
+import type { ProcessSnapshot } from "@/features/processes/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -370,6 +371,25 @@ export const FIXTURE_INCREMENTING_KEYS: Record<string, Incrementing> = {
   pty_spawn: { key: "id", follow: { shellKey: `${FIXTURE_GENERATION}-` } },
 };
 
+/**
+ * `Processes` 화면의 스냅샷(티켓 26)이 기본으로 답하는 것 — **아무 셸도 없고 판정이 가른 것도 없는 앱**이다. 화면을 여는 검사만
+ * 부르므로 모든 spec이 지나는 답은 아니지만, 이름 표에 서야 시나리오가 덮어쓴다(`installFixtureBackend`의 덮어쓰기).
+ *
+ * 풀을 비워 두는 것은 픽스처의 셸이 여기 안 서게 하려는 것이다 — 픽스처의 `pty_spawn`이 띄운 셸과 이 답의 풀은 서로를 모른다.
+ * 기본 답에 셸이 서 있으면 화면을 여는 모든 검사가 스토어가 모르는 셸(32의 화면 밖 셸)을 지고 선다. 셸 수를 재는 검사가 제
+ * 풀로 덮는다(`processes.spec.ts`).
+ */
+export const PROCESS_SNAPSHOT: ProcessSnapshot = {
+  verdict: {
+    descendants: {},
+    exceptions: [],
+    helpers: [],
+    orphans: { confirmed: {}, unknown: {} },
+    otherInstances: {},
+  },
+  pool: [],
+};
+
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
   // `shared_projects_root`) 이 명령은 세계를 묻지 않는다. 그래서 이름으로 답해도 위 경계에
@@ -459,6 +479,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 설지 모르고, 셸마다 같은 답을 주는 길이 이 표에 없다. 세기를 재는 검사가 그 시나리오의 pty id로 덮는다
   // (`quit-confirm.spec.ts`의 「세기」, `close-confirm-count.spec.ts`).
   pty_close_checks: {} satisfies Record<number, CloseCheck>,
+  // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
+  // **모드를 안 받는다** — 화면이 앱 전체를 보여 두 세계의 주소가 같은 것을 묻는다(프로세스 결정 9). 그래서 이름 표다.
+  processes_snapshot: PROCESS_SNAPSHOT,
   pty_kill: null,
   // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).

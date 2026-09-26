@@ -314,6 +314,21 @@ pub async fn pty_close_checks(
     .map_err(|e| format!("셸들에 무엇이 도는지 읽지 못했습니다: {e}"))
 }
 
+// `Processes` 화면의 스냅샷 — 판정 결과와 풀의 셸 목록이다(프로세스 결정 10 · 티켓 26). **화면이 열려 있는 동안만** 프런트가
+// 2초마다 부른다(`src/features/processes/hooks.ts`) — 닫혀 있으면 무거운 수집을 안 한다(스토리 95). 스냅샷 한 장과 판정을
+// 기다리는 일이라 blocking 풀에서 돌린다(`pty_close_checks`와 같다).
+//
+// 모드를 안 받는다 — 화면이 앱 전체를 보인다(프로세스 결정 9). 두 세계의 주소가 같은 화면을 열고 같은 것을 묻는다.
+#[tauri::command]
+pub async fn processes_snapshot(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+) -> CmdResult<crate::processes::screen::ScreenSnapshot> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::screen(&pool))
+        .await
+        .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
+}
+
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
 // **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
 // (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
@@ -448,6 +463,18 @@ mod tests {
         let list = body.find("atelier_core::list_works(").expect("명령이 코어의 목록 조회를 안 부른다");
         assert!(blocking < list, "목록 조회({list})가 blocking 풀({blocking}) 밖에 있다");
         assert_eq!(body.matches("list_works(").count(), 1, "목록을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
+    }
+
+    /// **`Processes` 화면의 스냅샷은 blocking 풀에서 찍는다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 26). 화면이 열려
+    /// 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms) — async 명령 안에서 곧바로 부르면 그동안
+    /// tokio 워커 하나가 멎어 나란히 오는 셸 입력 · 목록 조회가 밀린다.
+    #[test]
+    fn the_screen_snapshot_is_taken_off_the_async_workers() {
+        let body = command_body("processes_snapshot");
+        let blocking = body.find("spawn_blocking(").expect("화면 스냅샷을 blocking 풀로 안 보낸다 — 찍는 동안 tokio 워커가 멎는다");
+        let screen = body.find("pty::screen(").expect("명령이 풀의 화면 스냅샷을 안 부른다");
+        assert!(blocking < screen, "스냅샷({screen})이 blocking 풀({blocking}) 밖에 있다");
+        assert_eq!(body.matches("pty::screen(").count(), 1, "스냅샷을 두 번 찍는다 — 한쪽이 blocking 풀 밖일 수 있다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던

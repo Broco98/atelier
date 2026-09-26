@@ -1,4 +1,4 @@
-import { Archive, Folder, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Activity, Archive, Folder, SquareTerminal, type LucideIcon } from "lucide-react";
 
 // Works 항목은 없다. 바로 아래에 작업 목록이 통째로 상주하고 그 섹션 헤더('작업')가
 // Works 화면으로 가는 링크를 겸하므로, nav의 Works는 같은 곳으로 가는 두 번째 버튼이었다.
@@ -28,6 +28,9 @@ export const TERMINAL_LABEL = "Terminal";
 export const navItems = [
   { key: "projects", label: "Projects", icon: Folder, to: "/projects" },
   { key: "terminal", label: TERMINAL_LABEL, icon: SquareTerminal, to: "/terminal" },
+  // **`Terminal` 다음, `Archive` 앞**(프로세스 스펙 S43) — 셸과 가까운 곳에 두고, 차가운 보관물(위 Archive 주석)은 끝에 둔다.
+  // 두 세계 모두에 서고 같은 화면을 연다 — 화면이 앱 전체를 보이므로 세계로 나누면 절반이 안 보인다(프로세스 결정 9).
+  { key: "processes", label: "Processes", icon: Activity, to: "/processes" },
   { key: "archive", label: "Archive", icon: Archive, to: "/archive" },
 ] as const satisfies readonly {
   key: string;

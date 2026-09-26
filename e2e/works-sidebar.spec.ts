@@ -1065,7 +1065,9 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
 // 그 사실은 목록이 실제로 넘칠 때만 보이므로 창을 낮춘다.
 test("스크롤로 밀려난 work의 셸도 띠에서 보인다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.setViewportSize({ width: 1100, height: 320 });
+  // nav가 한 줄(32px + 줄 간격 2px) 늘어(`Processes`, 프로세스 티켓 26) 그만큼 높였다 — 320에서는 목록과 띠가 함께 눌려 띠의
+  // 줄이 목록 머리 아래로 삐져나왔다. 이 검사가 재는 것은 넘치는 목록 위의 띠이지 띠가 눌리는 높이가 아니다.
+  await page.setViewportSize({ width: 1100, height: 354 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await 기다리게한다(page, "커밋할까요?");

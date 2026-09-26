@@ -37,12 +37,14 @@ test("세그먼트를 누르면 사이드바가 통째로 저쪽 세계가 된�
   await expect(page).toHaveURL(`/maison/rooms/${landing.slug}`);
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
 
-  // nav가 **둘**이다. `Projects`가 없는 것은 빠뜨린 게 아니라 이 세계에 프로젝트가 없기
+  // nav가 **셋**이다. `Projects`가 없는 것은 빠뜨린 게 아니라 이 세계에 프로젝트가 없기
   // 때문이고(결정 17), 그 사실이 화면에 남는 유일한 자리가 여기다. 개수까지 세는 것은
   // 「`Terminal`·`Archive`가 있다」만으로는 Atelier 배열이 그대로 그려져도 초록이라서다.
+  // `Processes`는 두 세계 모두에 선다(프로세스 결정 8 · 9 — 자리는 `processes.spec.ts`가 잰다).
   const nav = page.getByRole("navigation");
-  await expect(nav.getByRole("button")).toHaveCount(2);
+  await expect(nav.getByRole("button")).toHaveCount(3);
   await expect(nav.getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Processes", exact: true })).toBeVisible();
   await expect(nav.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
 
   const aside = page.locator("aside");

@@ -335,6 +335,7 @@ pub fn run() {
             commands::pty_first_input,
             commands::pty_command_running,
             commands::pty_close_checks,
+            commands::processes_snapshot,
             commands::read_settings,
             commands::write_settings,
             commands::default_process_exceptions,
