@@ -59,6 +59,12 @@ function opened(): LayoutDraft {
   };
 }
 
+/** `opened()`의 최상위 맨 뒤에 파일 항목 `untitled.md`(`[3]`)를 더한 초안 — 그 앞 형제가 폴더 `{n}-{name}`이다. */
+const withLast = () => addEntry(opened(), [], "file").draft;
+
+/** 최상위 항목들의 이름 틀 — 폴더 안의 자식은 담지 않는다. */
+const top = (draft: LayoutDraft) => draft.layout.root.children?.map((entry) => entry.pattern);
+
 describe("필드를 바꾸는 함수", () => {
   it("이름 틀을 바꿔도 레이아웃 층과 항목 층의 모르는 키가 남는다", () => {
     const next = setPattern(opened(), [1], "adr-{n}-{name}.md");
@@ -456,8 +462,7 @@ describe("지우기", () => {
   // 항목이면 머리 `spec/`이다.
   it("지우면 트리에서 그 바로 위의 행을 고른다", () => {
     expect(removeEntry(opened(), [1])?.selected).toEqual([0]);
-    const withLast = addEntry(opened(), [], "file").draft;
-    expect(removeEntry(withLast, [3])?.selected).toEqual([2, 0]);
+    expect(removeEntry(withLast(), [3])?.selected).toEqual([2, 0]);
     expect(removeEntry(opened(), [2, 0])?.selected).toEqual([2]);
     expect(removeEntry(opened(), [0])?.selected).toEqual([]);
   });
@@ -504,9 +509,6 @@ describe("지우기", () => {
 
 // 키보드 길(버튼 넷과 ⌥↑ ⌥↓ ⌥← ⌥→). 옮기는 주된 길은 끌어다 놓기이고, 이것은 그 길을 키보드로도 남긴 것이다.
 describe("키로 옮기기", () => {
-  /** 최상위 이름 틀들, 그리고 폴더 `{n}-{name}`의 자식 이름 틀들. */
-  const top = (draft: LayoutDraft) => draft.layout.root.children?.map((entry) => entry.pattern);
-
   it("위로·아래로는 형제와 자리를 바꾸고, 자기 아래를 데리고 가며, 옮긴 항목을 계속 고른다", () => {
     const up = moveEntry(opened(), [2], "up");
     expect(top(up!.draft)).toEqual(["overview.md", "{n}-{name}", "decisions.md"]);
@@ -528,8 +530,7 @@ describe("키로 옮기기", () => {
   });
 
   it("들여쓰기는 바로 앞의 형제가 폴더일 때만 되고, 그 폴더의 마지막 자식이 된다", () => {
-    const withLast = addEntry(opened(), [], "file").draft;
-    const indented = moveEntry(withLast, [3], "indent");
+    const indented = moveEntry(withLast(), [3], "indent");
     expect(top(indented!.draft)).toEqual(["overview.md", "decisions.md", "{n}-{name}"]);
     expect(indented!.draft.layout.root.children?.[2].children).toEqual([
       { pattern: "tickets", kind: "folder", color: "red" },
@@ -613,21 +614,22 @@ describe("잠금 판정", () => {
   });
 
   it("고른 항목마다 할 수 있는 것을 준다", () => {
-    const withLast = addEntry(opened(), [], "file").draft;
-    expect(editsAt(withLast, [3])).toEqual({ up: true, down: false, outdent: false, indent: true, remove: true });
-    expect(editsAt(withLast, [2, 0])).toEqual({ up: false, down: false, outdent: true, indent: false, remove: true });
-    expect(editsAt(withLast, [0])).toEqual({ up: false, down: true, outdent: false, indent: false, remove: true });
+    const draft = withLast();
+    expect(editsAt(draft, [3])).toEqual({ up: true, down: false, outdent: false, indent: true, remove: true });
+    expect(editsAt(draft, [2, 0])).toEqual({ up: false, down: false, outdent: true, indent: false, remove: true });
+    expect(editsAt(draft, [0])).toEqual({ up: false, down: true, outdent: false, indent: false, remove: true });
   });
 
   it("판정이 조작의 답과 같다 — 모든 자리, 모든 조작에서", () => {
-    const withLast = addEntry(opened(), [2, 0], "file").draft;
+    // `tickets` 안에 파일을 하나 더했다 — 셋째 층([2, 0, 0])까지 자리가 선다.
+    const deep = addEntry(opened(), [2, 0], "file").draft;
     const paths: EntryPath[] = [[], [0], [1], [2], [2, 0], [2, 0, 0]];
     for (const path of paths) {
-      const edits = editsAt(withLast, path);
+      const edits = editsAt(deep, path);
       for (const move of MOVES) {
-        expect([path, move, edits[move]]).toEqual([path, move, moveEntry(withLast, path, move) !== null]);
+        expect([path, move, edits[move]]).toEqual([path, move, moveEntry(deep, path, move) !== null]);
       }
-      expect([path, edits.remove]).toEqual([path, removeEntry(withLast, path) !== null]);
+      expect([path, edits.remove]).toEqual([path, removeEntry(deep, path) !== null]);
     }
   });
 });
@@ -635,7 +637,6 @@ describe("잠금 판정", () => {
 // 끌어다 놓기 — 옮기는 주된 길이다(구현 스펙 5절). 행의 어디에 놓았는지(앞·뒤·안)를 가르는 것과, 끌어온 항목과
 // 대상과 그 자리로 새 초안을 짓는 것 둘 다 순수 함수다. 포인터와 사각형은 편집기가 재어 비율 하나로 넘긴다.
 describe("놓기 계산", () => {
-  const top = (draft: LayoutDraft) => draft.layout.root.children?.map((entry) => entry.pattern);
   const [overview, decisions, iteration] = opened().layout.root.children!;
   const tickets = iteration.children![0];
 
@@ -759,7 +760,6 @@ describe("트리를 고쳐도 모르는 키가 산다", () => {
     return null;
   }
 
-  const withLast = () => addEntry(opened(), [], "file").draft;
   it.each([
     { name: "더하기", edit: () => addEntry(opened(), [2, 0], "file") },
     { name: "지우기", edit: () => removeEntry(opened(), [0]) },
