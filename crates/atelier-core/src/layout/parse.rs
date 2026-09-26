@@ -78,18 +78,26 @@ pub(crate) fn parse_layout_value(value: Value) -> Result<SpecLayout, Vec<LayoutE
     }
 }
 
-/// 레이아웃을 `layout.json` 본문으로 쓴다. 모르는 키도 제 층에 되돌려 적는다.
-///
-/// 빈 설명, 없는 아이콘·템플릿, 빈 자식 목록은 키째 빠진다 — 읽기가 그것들을 없음으로 읽으므로
-/// 다시 읽으면 같은 레이아웃이다. 사람이 여는 파일이라 끝에 줄바꿈을 둔다.
+/// 레이아웃을 `layout.json` 본문으로 쓴다. 모양은 `serialize_layout_value`의 것이고, 사람이 여는
+/// 파일이라 끝에 줄바꿈을 둔다.
 pub fn serialize_layout(layout: &SpecLayout) -> String {
-    let mut top = Map::new();
-    top.insert("root".to_string(), write_entry(&layout.root));
-    keep_unknown(&mut top, &layout.extra);
-    let mut out = serde_json::to_string_pretty(&Value::Object(top))
+    let mut out = serde_json::to_string_pretty(&serialize_layout_value(layout))
         .expect("a JSON value always serializes");
     out.push('\n');
     out
+}
+
+/// 레이아웃을 디스크 형식의 JSON **값**으로 쓴다 — `parse_layout_value`의 거꾸로다. 표면은 레이아웃을
+/// 글이 아니라 값으로 건네므로(에이전트의 읽기가 그렇다) 글로 썼다 다시 읽지 않게 이 값을 준다.
+/// 모르는 키도 제 층에 되돌려 적는다.
+///
+/// 빈 설명, 없는 아이콘·템플릿, 빈 자식 목록은 키째 빠진다 — 읽기가 그것들을 없음으로 읽으므로
+/// 다시 읽으면 같은 레이아웃이다.
+pub fn serialize_layout_value(layout: &SpecLayout) -> Value {
+    let mut top = Map::new();
+    top.insert("root".to_string(), write_entry(&layout.root));
+    keep_unknown(&mut top, &layout.extra);
+    Value::Object(top)
 }
 
 /// 아는 키는 스펙 예시의 순서(이름 틀, 종류, 아이콘, 설명, 템플릿, 자식)로 적는다. 순서가 파일에
@@ -451,10 +459,12 @@ mod tests {
         assert_eq!(layout.root.children.len(), 2);
     }
 
-    /// 아는 필드도 왕복에서 그대로다 — 쓴 것을 다시 읽으면 같은 레이아웃이다.
+    /// 아는 필드도 왕복에서 그대로다 — 쓴 것을 다시 읽으면 같은 레이아웃이다. 글로 쓰든 값으로
+    /// 쓰든 같다.
     #[test]
     fn what_is_written_reads_back_as_the_same_layout() {
         let layout = parse_layout(SPEC_EXAMPLE).unwrap();
-        assert_eq!(parse_layout(&serialize_layout(&layout)), Ok(layout));
+        assert_eq!(parse_layout(&serialize_layout(&layout)), Ok(layout.clone()));
+        assert_eq!(parse_layout_value(serialize_layout_value(&layout)), Ok(layout));
     }
 }

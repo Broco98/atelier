@@ -114,8 +114,7 @@ impl AtelierServer {
             LayoutContent::Readable { layout, templates, rendered } => {
                 // 디스크 형식 그대로 — 모르는 키까지 `layout.json`에 적힐 모양으로 건넨다. 에이전트가
                 // 이것을 고쳐 그대로 저장에 돌려준다.
-                let layout: Value = serde_json::from_str(&atelier_core::serialize_layout(&layout))
-                    .expect("a serialized layout is JSON");
+                let layout = atelier_core::serialize_layout_value(&layout);
                 (
                     json!({
                         "id": read.id,

@@ -21,7 +21,7 @@ mod work_trees;
 pub use builtin::builtin_layout;
 pub use classify::{classify, SpecTree, SpecTreeGroup, SpecTreeItem};
 pub use model::{EntryKind, LayoutEntry, SpecLayout};
-pub use parse::{parse_layout, serialize_layout, LayoutError};
+pub use parse::{parse_layout, serialize_layout, serialize_layout_value, LayoutError};
 pub use render::{render_layout, Fallback, Rendered, TemplateVerdict};
 pub use resolve::{resolve_layout, LayoutSource, Resolved};
 pub use store::{read_layout, save_layout, LayoutContent, LayoutRead, SaveOutcome};
