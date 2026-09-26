@@ -28,7 +28,8 @@ pub struct LayoutState {
     pub errors: Vec<LayoutError>,
     /// 물러섰다면 그 까닭 — resolve가 물러선 안내문에 적는 것과 같은 글이다.
     pub fallback: Option<String>,
-    /// `layout.json`이 가리키고 디스크에 있는 템플릿 파일의 수. 읽지 못하면 없다.
+    /// `layout.json`이 가리키고 디스크에 있는 템플릿 파일의 수. 읽지 못하면 없다. **적기가 아니라
+    /// 파일로 센다** — 두 항목이 한 파일을 다르게 적어 가리켜도(`sub/x.md`와 `sub//x.md`) 하나다.
     pub template_count: Option<usize>,
     /// 폴더 안에서 `layout.json`과 세어진 템플릿을 뺀 파일의 수. 점 파일은 세지 않는다. 읽지 못하면
     /// `layout.json`만 뺀 수다 — 되돌리기는 폴더째 지우므로 레이아웃이 모르는 파일도 함께 사라진다.
@@ -56,15 +57,17 @@ fn state_of(data_root: &Path, id: Mode) -> LayoutState {
         Ok(true) => match read_layout_file(&folder) {
             Ok(layout) => {
                 let verdict = template_verdict(&layout, &folder, shown.clone());
-                let pointed = verdict.present.iter().map(String::as_str);
-                let held = Held::of(&folder, pointed.chain([LAYOUT_FILE]));
+                let pointed = || verdict.present.iter().map(String::as_str);
+                // 둘 다 적기가 아니라 파일로 가른다 — 한 파일을 두 항목이 다르게 적어 가리켜도 하나다
+                let templates = Held::of(&folder, pointed());
+                let held = Held::of(&folder, pointed().chain([LAYOUT_FILE]));
                 LayoutState {
                     id,
                     folder: shown,
                     edited: true,
                     errors: vec![],
                     fallback: None,
-                    template_count: Some(verdict.present.len()),
+                    template_count: Some(templates.len()),
                     other_file_count: files_besides(&folder, &held),
                 }
             }
@@ -244,6 +247,28 @@ mod tests {
         plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
 
         let atelier = &layout_states(root.path())[0];
+        assert_eq!(atelier.template_count, Some(1));
+        assert_eq!(atelier.other_file_count, 0);
+    }
+
+    /// 템플릿 개수도 **파일로** 센다 — 두 항목이 한 파일을 다르게 적어 가리켜도 템플릿은 하나다.
+    /// 글자로 세면 행과 되돌리기 확인 창이 「템플릿 2개」라 적는데, 지워지는 파일은 하나뿐이다.
+    /// (대소문자만 다른 적기는 파일 시스템에 따라 답이 갈려 여기서 재지 않는다.)
+    #[test]
+    fn two_entries_pointing_at_one_file_count_one_template() {
+        let root = tempfile::tempdir().unwrap();
+        plant(
+            root.path(),
+            "atelier",
+            "layout.json",
+            r#"{ "root": { "children": [
+                { "pattern": "plan.md", "kind": "file", "template": "sub/plan.md" },
+                { "pattern": "draft.md", "kind": "file", "template": "sub//plan.md" } ] } }"#,
+        );
+        plant(root.path(), "atelier", "sub/plan.md", "# Plan\n");
+
+        let atelier = &layout_states(root.path())[0];
+        assert_eq!(atelier.errors, vec![], "읽을 수 있는 레이아웃이어야 잰다");
         assert_eq!(atelier.template_count, Some(1));
         assert_eq!(atelier.other_file_count, 0);
     }

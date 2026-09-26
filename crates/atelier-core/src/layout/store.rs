@@ -208,6 +208,11 @@ impl Held {
         std::fs::symlink_metadata(folder.join(path))
             .is_ok_and(|meta| self.ids.contains(&(meta.dev(), meta.ino())))
     }
+
+    /// 쥔 파일의 수 — 적기가 아니라 파일로 센다. 디스크에 없는 경로는 쥐지 않았으니 세지 않는다.
+    pub(super) fn len(&self) -> usize {
+        self.ids.len()
+    }
 }
 
 #[cfg(not(unix))]
@@ -218,6 +223,11 @@ impl Held {
 
     pub(super) fn holds(&self, _folder: &Path, path: &str) -> bool {
         self.names.contains(&folded_parts(path))
+    }
+
+    /// 쥔 파일의 수 — 접은 이름으로 센다.
+    pub(super) fn len(&self) -> usize {
+        self.names.len()
     }
 }
 
