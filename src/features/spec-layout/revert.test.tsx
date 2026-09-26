@@ -43,12 +43,13 @@ function bodyOf(one: SpecLayoutState): string {
 }
 
 describe("되돌리기 확인 창", () => {
-  it("지울 폴더와, 함께 사라지는 템플릿과 그 밖의 파일의 수와, 다음 호출부터의 뜻을 적는다", () => {
+  // 대가(지우는 것)와 그 뒤의 뜻이 다른 줄에 선다 — 창의 설명은 줄바꿈을 줄바꿈으로 보인다(P4).
+  it("지울 폴더와, 함께 사라지는 템플릿과 그 밖의 파일의 수와, 다음 호출부터의 뜻을 두 줄로 적는다", () => {
     expect(askedFor(state({})).title).toBe("Atelier 레이아웃을 기본값으로 되돌릴까요?");
-    expect(bodyOf(state({}))).toBe(
-      "~/.atelier/layouts/atelier/ 폴더를 지워요. 템플릿 2개와 그 밖의 파일 1개가 함께 사라져요. " +
-        "다음 호출부터 에이전트는 내장 안내문을 받아요.",
-    );
+    expect(bodyOf(state({})).split("\n")).toEqual([
+      "~/.atelier/layouts/atelier/ 폴더를 지워요. 템플릿 2개와 그 밖의 파일 1개가 함께 사라져요.",
+      "다음 호출부터 에이전트는 내장 안내문을 받아요.",
+    ]);
   });
 
   // 레이아웃이 모르는 파일이 없으면 그 말이 없다 — 「그 밖의 파일 0개」는 없는 것을 센다.

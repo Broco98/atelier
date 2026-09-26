@@ -12,12 +12,15 @@ import type { SpecLayoutState } from "./types";
  * 폴더에서는 무엇이 템플릿인지 몰라 템플릿의 수가 없다(`templateCount`가 `null`). 그때는 폴더 안의
  * 파일을 센 것만 적는다.
  *
+ * 본문은 두 줄이다 — 지우는 것(폴더와 함께 사라지는 것)과, 되돌린 뒤의 뜻. 창의 설명은 줄바꿈을 줄바꿈으로
+ * 보이므로(P4) 작업 ⋯의 확인 창(`work-menu-copy.ts`)처럼 대가와 그 뒤를 다른 줄에 세운다.
+ *
  * 창은 붉은 확인 창의 선례(`askDanger`)다 — [취소]와, 경고색의 [되돌리기]. 답이 `true`면 되돌린다.
  */
 export function askRevert(state: SpecLayoutState): Promise<boolean> {
   return askDanger(
     `${modeNameOf(state.id)} 레이아웃을 기본값으로 되돌릴까요?`,
-    `${layoutDirRef(state.folder)} 폴더를 지워요. ${goneOf(state)}가 함께 사라져요. ` +
+    `${layoutDirRef(state.folder)} 폴더를 지워요. ${goneOf(state)}가 함께 사라져요.\n` +
       "다음 호출부터 에이전트는 내장 안내문을 받아요.",
     "되돌리기",
   );
