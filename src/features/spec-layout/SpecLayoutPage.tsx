@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Check, MoreHorizontal, RotateCcw, TriangleAlert, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Bot, Check, MoreHorizontal, Pencil, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { showProblem } from "@/components/ui/confirm-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,8 @@ import type { SpecLayoutState } from "./types";
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 결정 20·23·25, 티켓 08). 모드마다 레이아웃이 하나라
 // Atelier와 Maison이 한 행씩 선다. **이 화면의 주된 쓰임은 확인이다** — 레이아웃은 대부분 에이전트가
 // 고치고, 사람은 여기서 참조를 복사해 앱 터미널의 에이전트에게 붙인다. 되돌리기는 사람만 한다(결정 21) —
-// 고친 행의 ⋯에서 확인을 거쳐 그 모드의 레이아웃 폴더를 지운다(티켓 10).
+// 고친 행의 ⋯에서 확인을 거쳐 그 모드의 레이아웃 폴더를 지운다(티켓 10). 손질은 행의 [편집]이 여는
+// 편집기에서 한다(티켓 11) — 이 페이지 아래의 하위 주소다.
 //
 // **설정 파일 읽기 게이트 밖에 선다**(에이전트 훅 페이지와 같다) — 레이아웃은 `settings.json`에 살지
 // 않고, 설정 초안의 저장 버튼도 지나지 않는다.
@@ -31,6 +33,7 @@ type Notice = { kind: "copied" | "reverted"; reference: string };
 function SpecLayoutPage() {
   const states = useQuery(specLayoutStatesQuery());
   const revertLayout = useRevertSpecLayout();
+  const navigate = useNavigate();
   const [notice, setNotice] = useState<Notice | null>(null);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -52,6 +55,9 @@ function SpecLayoutPage() {
     setNotice(null);
   };
   const reread = () => void states.refetch();
+  // 편집기는 이 항목 아래의 하위 주소다(티켓 11) — 설정 한 열 밖의 별도 화면이다.
+  const edit = (state: SpecLayoutState) =>
+    void navigate({ to: "/settings/spec-layout/$id", params: { id: state.id } });
   // **확인을 거친 뒤에만 지운다** — 폴더째 지우므로 템플릿과 레이아웃이 모르는 파일도 사라진다. 되돌리기는
   // 늘 된다(깨진 폴더도). 알림은 다시 읽기가 끝난 뒤에 선다: 행이 이미 「내장본 그대로」다.
   const revert = async (state: SpecLayoutState) => {
@@ -71,6 +77,7 @@ function SpecLayoutPage() {
         <SpecLayoutSection
           states={states.data}
           onAsk={ask}
+          onEdit={edit}
           onReread={reread}
           onRevert={(state) => void revert(state)}
         />
@@ -102,17 +109,18 @@ function SpecLayoutPage() {
  * 모드 두 행 — 테두리 있는 목록 하나(프로토타입의 모양 그대로). 값을 들지 않는다: 페이지가 들고
  * 이쪽은 그리기만 한다(마크업 테스트가 클릭을 못 건다 — `HooksSection`과 같은 이유). ⋯ 메뉴가 열렸는지만
  * 그 행이 든다 — 화면 밖 누구도 그것을 묻지 않는다.
- *
- * [편집]은 편집기가(티켓 11) 이 행에 더한다.
  */
 export function SpecLayoutSection({
   states,
   onAsk,
+  onEdit,
   onReread,
   onRevert,
 }: {
   states: SpecLayoutState[];
   onAsk: (state: SpecLayoutState) => void;
+  /** 그 모드의 편집기를 연다(티켓 11). 읽을 수 있는 행에만 [편집]이 선다. */
+  onEdit: (state: SpecLayoutState) => void;
   /** 모드 둘의 상태를 다시 읽는다. 감시(티켓 09)가 놓친 경우를 위한 길이다. */
   onReread: () => void;
   /** ⋯ 메뉴의 「기본값으로 되돌리기」를 골랐다. 확인은 부르는 쪽이 묻는다. */
@@ -132,6 +140,7 @@ export function SpecLayoutSection({
             state={state}
             first={index === 0}
             onAsk={() => onAsk(state)}
+            onEdit={() => onEdit(state)}
             onReread={onReread}
             onRevert={() => onRevert(state)}
           />
@@ -148,18 +157,21 @@ const ROW_BUTTON =
 /**
  * 모드 한 행. 상태는 셋 중 하나다 — 내장본 그대로, 고침(가린 폴더 경로와 템플릿 개수), 읽지 못해
  * 내장본으로 물러섬(앰버 한 줄, 경로와 이유 한 줄, [다시 읽기]). 읽지 못한 행도 가린 폴더가 있으므로
- * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다.
+ * 고친 행이다(구현 스펙 5절) — 그래서 ⋯(기본값으로 되돌리기)는 둘 다에 선다. 읽지 못하는 행에는 [편집] 대신
+ * [다시 읽기]가 선다: 편집기가 열 레이아웃이 없다.
  */
 function ModeRow({
   state,
   first,
   onAsk,
+  onEdit,
   onReread,
   onRevert,
 }: {
   state: SpecLayoutState;
   first: boolean;
   onAsk: () => void;
+  onEdit: () => void;
   onReread: () => void;
   onRevert: () => void;
 }) {
@@ -214,6 +226,17 @@ function ModeRow({
           <Bot aria-hidden className="size-3.5" strokeWidth={1.9} />
           부탁
         </button>
+        {!fellBack && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`${name} 레이아웃 편집`}
+            className={ROW_BUTTON}
+          >
+            <Pencil aria-hidden className="size-3.5" strokeWidth={1.9} />
+            편집
+          </button>
+        )}
         {fellBack && (
           <button
             type="button"

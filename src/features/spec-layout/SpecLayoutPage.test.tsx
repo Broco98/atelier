@@ -35,7 +35,13 @@ const broken: SpecLayoutState = {
 
 function render(states: SpecLayoutState[]): string {
   return renderToStaticMarkup(
-    <SpecLayoutSection states={states} onAsk={() => {}} onReread={() => {}} onRevert={() => {}} />,
+    <SpecLayoutSection
+      states={states}
+      onAsk={() => {}}
+      onEdit={() => {}}
+      onReread={() => {}}
+      onRevert={() => {}}
+    />,
   );
 }
 
@@ -72,7 +78,7 @@ describe("모드 두 행", () => {
     expect(textOf(row)).toContain("내장본 그대로예요");
     expect(textOf(row)).not.toContain("고침");
     expect(textOf(row)).not.toContain("~/.atelier/layouts/atelier");
-    expect(buttonsOf(row)).toEqual(["부탁"]);
+    expect(buttonsOf(row)).toEqual(["부탁", "편집"]);
   });
 
   it("고친 행은 가린 폴더 경로와 템플릿 개수를 적는다", () => {
@@ -81,7 +87,7 @@ describe("모드 두 행", () => {
     expect(textOf(row)).toContain("~/.atelier/layouts/atelier/");
     expect(textOf(row)).toContain("템플릿 2개");
     expect(textOf(row)).not.toContain("내장본 그대로");
-    expect(buttonsOf(row)).toEqual(["부탁", "Atelier 레이아웃 메뉴"]);
+    expect(buttonsOf(row)).toEqual(["부탁", "편집", "Atelier 레이아웃 메뉴"]);
   });
 
   // 읽지 못한 행도 가린 폴더가 있으므로 고친 행이다(구현 스펙 5절). 앰버 한 줄이 「내장본으로 물러섰다」를
@@ -112,6 +118,19 @@ describe("모드 두 행", () => {
     const builtins = render([builtin("atelier"), builtin("maison")]);
     expect(builtins).not.toContain("레이아웃 메뉴");
     expect(builtins).not.toContain('aria-haspopup="menu"');
+  });
+
+  // [편집]은 편집기(티켓 11)를 연다. 읽지 못하는 레이아웃은 편집기가 열 것이 없다 — 그 행에는 [편집] 대신
+  // [다시 읽기]가 선다(위 시나리오). 내장본 행에도 [편집]이 있다: 처음 저장하면 그 모드의 폴더가 생긴다.
+  it("[편집]은 읽을 수 있는 행에만 서고, [부탁] 뒤에 선다", () => {
+    const html = render([edited, broken]);
+    const edit = rowOf(html, "Atelier").match(/<button\b[^>]*aria-label="Atelier 레이아웃 편집"[^>]*>/g);
+    expect(edit).toHaveLength(1);
+    expect(rowOf(html, "Maison")).not.toContain("레이아웃 편집");
+    expect(buttonsOf(rowOf(render([builtin("atelier"), builtin("maison")]), "Maison"))).toEqual([
+      "부탁",
+      "편집",
+    ]);
   });
 
   it("[부탁]은 폴더가 없는 행에도, 읽지 못하는 행에도 있다", () => {

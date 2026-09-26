@@ -5,8 +5,9 @@ import { invalidateArchive } from "@/features/archive/hooks";
 import { invalidateWorks } from "@/features/works/hooks";
 import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
+import type { SpecLayoutJson, TemplateBodies } from "./types";
 
-// ["spec-layout"]으로 시작하는 쿼리(상태, 뒤에 붙을 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
+// ["spec-layout"]으로 시작하는 쿼리(상태, 편집기의 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
 // 폴더가 바뀌면 둘 다 낡는다(구현 스펙 3절).
 const SPEC_LAYOUT_KEY = ["spec-layout"] as const;
 
@@ -68,6 +69,39 @@ export const specLayoutStatesQuery = () =>
     queryKey: [...SPEC_LAYOUT_KEY, "states"],
     queryFn: specLayoutApi.states,
   });
+
+/**
+ * 편집기가 여는 모드의 레이아웃(티켓 11). 상태와 같은 머리 키 아래에 산다 — 레이아웃 폴더가 바뀌거나
+ * (감시) 앱이 되돌리거나 저장하면 위 문 하나가 함께 지운다. 편집기는 처음 읽은 것으로 초안을 짓고,
+ * 그 뒤에 다시 읽힌 답은 초안을 덮지 않는다.
+ */
+export const specLayoutReadQuery = (id: Mode) =>
+  queryOptions({
+    queryKey: [...SPEC_LAYOUT_KEY, "read", id],
+    queryFn: () => specLayoutApi.read(id),
+  });
+
+/**
+ * 편집기의 저장(티켓 11). 템플릿은 늘 전부 넘긴다. 답의 `errors`가 비어 있으면 썼다 — 그때만 **위 문을
+ * 연다**(`invalidateSpecLayout`): 상태 행, 레이아웃 읽기, spec 트리를 싣고 오는 work 목록과 아카이브 문서가
+ * 새 레이아웃으로 다시 읽힌다. 검증이 거절한 답에는 아무것도 쓰이지 않았으니 지울 것이 없다.
+ */
+export function useWriteSpecLayout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      layout,
+      templates,
+    }: {
+      id: Mode;
+      layout: SpecLayoutJson;
+      templates: TemplateBodies;
+    }) => specLayoutApi.write(id, layout, templates),
+    onSuccess: (answer) =>
+      answer.errors.length === 0 ? invalidateSpecLayout(queryClient) : undefined,
+  });
+}
 
 /**
  * 모드의 레이아웃을 기본값으로 되돌린다(티켓 10) — 그 모드의 레이아웃 폴더를 지운다. 확인은 부르는 쪽이

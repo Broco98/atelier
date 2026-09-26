@@ -3,7 +3,12 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
-import type { SpecLayoutState } from "@/features/spec-layout/types";
+import type {
+  SaveAnswer,
+  SpecLayoutState,
+  UnreadableSpecLayout,
+  ReadableSpecLayout,
+} from "@/features/spec-layout/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -414,6 +419,60 @@ export const BROKEN_MAISON_LAYOUT: SpecLayoutState = {
 };
 
 /**
+ * 편집기가 여는 Atelier 레이아웃(spec 레이아웃 티켓 11) — 위 상태의 「고친 폴더, 템플릿 1개」와 같은
+ * 폴더다. 모양은 엔진의 `read_layout`이 내는 그대로이고(다리로 실물과 맞춰 봤다), **손으로 적은 모르는
+ * 키가 둘** 섞여 있다 — 레이아웃 층의 `owner`와 항목 층의 `since`. 편집기가 한 칸을 고쳐 저장해도 그
+ * 둘이 저장에 실려야 한다. 템플릿 본문은 저장에 **늘 전부** 돌아간다.
+ */
+export const SPEC_LAYOUT_READ: ReadableSpecLayout = {
+  id: "atelier",
+  folder: "~/.atelier/layouts/atelier",
+  edited: true,
+  layout: {
+    owner: "사람",
+    root: {
+      description: "spec 폴더의 방침 문단.",
+      children: [
+        { pattern: "overview.md", kind: "file", icon: "compass", description: "work의 요약" },
+        {
+          pattern: "decisions.md",
+          kind: "file",
+          description: "정한 것과 그 이유",
+          template: "decisions.md",
+          since: "0.14",
+        },
+        {
+          pattern: "{n}-{name}",
+          kind: "folder",
+          icon: "layers",
+          description: "판 하나",
+          children: [
+            { pattern: "tickets", kind: "folder", icon: "list-checks", description: "그 판의 티켓" },
+          ],
+        },
+      ],
+    },
+  },
+  templates: { "decisions.md": "# 결정\n" },
+  warnings: [],
+};
+
+/**
+ * 읽지 못하는 Maison 레이아웃 — 위 `BROKEN_MAISON_LAYOUT`과 같은 폴더를 편집기가 읽은 답이다. 오류와 원문은
+ * 엔진이 그 파일에 내는 그대로다. 편집기는 이때 편집 UI를 세우지 않는다.
+ */
+export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
+  id: "maison",
+  folder: "~/.atelier/layouts/maison",
+  edited: true,
+  errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
+  raw: '{ "root": { "children": [ { "pattern": "a.md", "kind": "file" }, { "pattern": "b", "kind": "folder" }, { "pattern": "c.md" } ] } }\n',
+};
+
+/** 저장이 된 답 — 검증 오류가 없다. 거절은 문자열이 아니라 이 모양의 `errors`로 온다. */
+export const SPEC_LAYOUT_SAVED: SaveAnswer = { errors: [] };
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -503,6 +562,12 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 두 id가 같은
   // 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
   revert_spec_layout: null,
+  // 편집기가 열릴 때 한 번 나간다(티켓 11). 두 id가 같은 답을 받는다 — 인자 이름이 `id`라 모드 표가 아니다.
+  // 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  read_spec_layout: SPEC_LAYOUT_READ,
+  // 편집기의 [저장]이 나간다(티켓 11). **검증 거절도 성공 답이다** — 오류를 재는 시나리오는 이것을 오류
+  // 데이터로 덮어쓴다(`ipcFailure`가 아니다). 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  write_spec_layout: SPEC_LAYOUT_SAVED,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //
