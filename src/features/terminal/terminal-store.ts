@@ -58,6 +58,8 @@ import type {
   ShellOwner,
   ShellsState,
 } from "./shell-registry";
+import { deferAttach, focusOnAttach, focusPlaceOf, nextPendingFocus } from "./shell-focus";
+import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
 import { humanInput, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
@@ -278,6 +280,44 @@ export function selectShell(id: number): void {
 }
 
 /**
+ * 기다리는 포커스(티켓 16 · 프로세스 스펙 S21) — 한 번에 하나다. 무엇이 남기고 무엇이 지우는지는 `nextPendingFocus`가
+ * 혼자 안다. 여기는 그 답을 들고 있기만 한다. `shownShell`처럼 모듈 값이고 스토어에 두지 않는다 — 화면이 그리는
+ * 것이 아니라서, 스토어에 두면 바뀔 때마다 구독한 화면이 깨어난다.
+ */
+let pendingFocus: PendingFocus = null;
+
+/** 지금 포커스가 앉은 자리. 문서가 없는 자리(웹뷰 밖)에서는 「그 밖」이다. */
+function focusPlaceNow(): FocusPlace {
+  return typeof document === "undefined" ? "elsewhere" : focusPlaceOf(document.activeElement);
+}
+
+/** 셸이 붙어 있나 — 열려 있고 DOM에 있다. 그때만 xterm이 포커스를 받을 수 있다. */
+function isAttached(instance: ShellInstance): boolean {
+  return instance.opened && !instance.closed && !instance.broken && instance.wrapper.isConnected;
+}
+
+/**
+ * 그 셸로 키보드 포커스를 **요청한다**(티켓 16 · 프로세스 결정 18 ②). 셸로 가는 길의 클릭 처리기가 `selectShell`과
+ * 함께 부른다 — 띠의 줄과 셸 탭이다. 판 03의 단축키와 판 04의 [이동]도 여기로 온다.
+ *
+ * **붙어 있으면 그 자리에서 준다 — 붙기가 다시 도는지와 상관없다.** 이미 켜진 셸을 다시 고르면 레지스트리가 같은
+ * 상태를 돌려줘(`activateShell`) 붙기가 안 돈다. 포커스가 붙기에만 달려 있던 때는 그래서 띠에서 보고 있는 셸을
+ * 눌러도 키가 아무 데도 안 들어갔다 — WebKit은 누른 버튼으로 포커스를 옮기지 않는 대신 mousedown에서 **비워서**
+ * (`body`로 간다), 셸에 있던 포커스까지 그 순간 떠난다.
+ *
+ * 붙어 있지 않으면(다른 탭 · 다른 work의 셸) 기다리는 포커스로 적는다 — 그 셸이 붙는 순간 한 번 준다(`openOrReattach`).
+ *
+ * **사이드바 work 행은 부르지 않는다.** 행은 기억된 화면을 연다 — spec 화면일 수도 있다.
+ */
+export function focusShell(id: number): void {
+  const instance = instances.get(id);
+  if (!instance) return;
+  const attached = isAttached(instance);
+  pendingFocus = nextPendingFocus(pendingFocus, { kind: "request", id, attached });
+  if (attached) instance.term.focus();
+}
+
+/**
  * 탭 줄 위에서 손을 뗐다 — 드래그 상태가 틈을 들고 있으면 끈 셸을 그 틈으로 옮긴다
  * (UI개선 결정 11 · UI개선 스펙 S10). **두 화면(work 화면 · `/terminal`)이 같은 이것을
  * 준다** — 탭 줄은 스토어를 모르고, 「놓은 곳이 이긴다」의 탭 줄 몫을 화면마다 적으면 한쪽만
@@ -409,6 +449,8 @@ function killPty(instance: ShellInstance, ptyId: number, path: ClosePath): void 
 function disposeInstance(instance: ShellInstance, path: ClosePath | null): void {
   instances.delete(instance.id);
   instance.closed = true;
+  // 그 셸을 기다리던 포커스는 버린다(프로세스 스펙 S21) — 줄 셸이 없다.
+  pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });
   if (instance.ptyId !== null && path !== null) killPty(instance, instance.ptyId, path);
   instance.observer.disconnect();
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로
@@ -918,7 +960,7 @@ export function attachShell(host: HTMLElement, id: number): void {
   // 이펙트를 다시 돌린다.
   if (!instance) return;
   host.appendChild(instance.wrapper);
-  openOrReattach(instance);
+  openOrReattach(instance, "attach");
 }
 
 /**
@@ -929,6 +971,9 @@ export function attachShell(host: HTMLElement, id: number): void {
  */
 export function detachShell(id: number): void {
   instances.get(id)?.wrapper.remove();
+  // 열리지 못한 채 떨어진 셸의 기다리는 포커스는 버린다 — 사람이 떠났다(`nextPendingFocus`). 열린 셸은 붙는 순간
+  // 이미 소비했다.
+  pendingFocus = nextPendingFocus(pendingFocus, { kind: "detached", id });
 }
 
 function createInstance(id: number, origin: ShellOrigin): ShellInstance {
@@ -1192,7 +1237,7 @@ async function loadFont(instance: ShellInstance) {
   // 인스턴스는 영영 안 열리고 셸도 안 뜬다.
   await claimFont(terminalLook(terminalSettingsStore.state));
   instance.fontsReady = true;
-  openOrReattach(instance);
+  openOrReattach(instance, "fontLate");
   // **스스로 거른다** — 글꼴을 기다리는 사이 `×`·아카이빙으로 거둔 칸(`closed`)과, 바로 위에서
   // 열다 터진 칸(`broken`)은 띄우지 않는다.
   //
@@ -1245,9 +1290,17 @@ async function restyleShells(): Promise<void> {
  * **이 게이트는 화면만 막는다 — 셸은 안 막는다.** PTY를 띄우는 것은 글꼴이 온 순간의
  * `loadFont`이고 여기서는 부르지 않는다. 한때 여기가 「처음 열 때 spawn」이라 떼어진 칸의
  * 셸이 사람이 그 칸을 다시 볼 때까지 시작도 안 했다(`loadFont` 머리말).
+ *
+ * `kind`는 누가 불렀나다 — 셸이 붙었다(`attachShell`)와 글꼴이 늦게 와 이제 연다(`loadFont`). 붙는 순간 포커스를
+ * 줄지가 이것으로 갈린다(아래 포커스 줄).
  */
-function openOrReattach(instance: ShellInstance) {
-  if (instance.closed || instance.broken || !instance.fontsReady || !instance.wrapper.isConnected) {
+function openOrReattach(instance: ShellInstance, kind: AttachKind) {
+  if (instance.closed || instance.broken || !instance.wrapper.isConnected) return;
+  if (!instance.fontsReady) {
+    // **붙었는데 글꼴이 아직이다**(여기 오는 것은 `attach`뿐이다 — 글꼴 길은 문을 먼저 연다). 지금 열렸으면 포커스를
+    // 받았을 자리면 그 붙음을 기다리는 포커스로 남긴다(`deferAttach`). 글꼴 길은 기다리는 것이 이 셸일 때만 주므로,
+    // 안 남기면 콜드 스타트의 첫 셸은 포커스를 영영 못 받는다 — 첫 셸은 늘 글꼴보다 먼저 붙는다.
+    pendingFocus = deferAttach(instance.id, pendingFocus, focusPlaceNow());
     return;
   }
 
@@ -1268,15 +1321,23 @@ function openOrReattach(instance: ShellInstance) {
     }
   }
 
+  // **포커스 줄 — 조건이 있다**(티켓 16 · 프로세스 스펙 S21). 돌아온 사용자는 이어 치려고 온 것이다: 포커스가 없으면
+  // 커서가 빈 테두리로 그려져 "치다 만 자리"가 남았는지도 눈에 안 띈다. 그런데 한때 이 줄에 조건이 없어서, 요청하지
+  // 않은 셸이 늦게 열리면서 — 글꼴이 늦게 와 열 때도, 사람이 팔레트나 이름 바꾸기 칸에 가 있어도 — 포커스를 빼앗았다.
+  // 줄지 말지는 `focusOnAttach`가 혼자 정한다. 여기는 그 답대로 xterm을 부른다.
+  //
+  // **판정을 먼저 하고 기다리는 포커스를 소비한 뒤 연다.** 아래가 터져도 그 셸의 붙음은 지나갔다 — 남기면 다른 셸이
+  // 붙을 때마다 「다른 셸을 기다린다」로 막힌다.
+  const give = focusOnAttach({ kind, id: instance.id }, pendingFocus, focusPlaceNow());
+  pendingFocus = nextPendingFocus(pendingFocus, { kind: "attached", id: instance.id });
+
   // **다시 붙는 길에서 터지는 것은 셸의 실패가 아니다.** 이 자리에서 `fail()`을 부르면
   // 이미 적힌 종료 코드(결정 22)를 "띄우지 못했다"로 덮어써, 이 터미널의 핵심 용도인
   // "claude가 조용히 죽었을 때 이유를 읽는 것"이 사라진다. 화면 문제는 화면 문제로 남긴다.
   try {
     loadWebgl(instance);
     refit(instance);
-    // 돌아온 사용자는 이어 치려고 온 것이다. 포커스가 없으면 커서가 빈 테두리로 그려져
-    // "치다 만 자리"가 남았는지도 눈에 안 띈다.
-    instance.term.focus();
+    if (give) instance.term.focus();
   } catch (error) {
     console.warn("atelier: 터미널을 다시 붙이는 중 문제가 났다", error);
   }
@@ -1302,6 +1363,8 @@ function openOrReattach(instance: ShellInstance) {
  */
 function failOpen(instance: ShellInstance, error: unknown) {
   instance.broken = true;
+  // 이 칸은 다시 안 열린다 — 닫힌 셸처럼 그 셸을 기다리던 포커스를 버린다. 남기면 다른 셸이 붙을 때마다 막힌다.
+  pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });
   const shell = terminalStore.state.shells.find((candidate) => candidate.id === instance.id);
   if (shell?.status.kind === "running") fail(instance, error);
   if (instance.ptyId !== null) {

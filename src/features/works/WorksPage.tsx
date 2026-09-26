@@ -46,6 +46,7 @@ import {
 import {
   closeShellsOf,
   dropShellOnSlot,
+  focusShell,
   holdOwner,
   onNewShellRequested,
   onShellOpenRejected,
@@ -525,7 +526,11 @@ function WorksPage({
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
       // 보고 있는 work의 것이기 때문이다.
+      //
+      // **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `focusShell`). 켜는 것만으로는 안
+      // 온다: 켜진 칸을 다시 고르면 붙기가 안 돈다.
       onSelect={(id) => {
+        focusShell(id);
         selectShell(id);
         onSelectTab("terminal");
       }}
