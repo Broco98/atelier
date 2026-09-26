@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { Archive, Maximize2, Minimize2 } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SourceToggle } from "@/components/ui/SourceToggle";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Toaster, showToast } from "@/components/ui/toast";
-import { Hint } from "@/components/ui/tooltip";
+import ListPanelToggle, { useListPanel } from "@/components/shell/ListPanelToggle";
 import PageHeader from "@/components/shell/PageHeader";
 import { HtmlDoc, ImageDoc, PrettyView, SourceView } from "@/features/works/SpecViewer";
 import { docBody, ignoresSourceToggle } from "@/features/works/doc-refs";
@@ -30,8 +30,6 @@ interface ArchivePageProps {
   // 본문 링크는 지금 아카이브 안에서만 움직인다
   onFollowLink: (path: string) => void;
 }
-
-const PANEL_OPEN_KEY = "archive-panel-open";
 
 // 목록 패널 + 본문. Projects와 같은 2단이다 — 아카이브 목록은 사이드바에 상주하지 않으므로
 // (nav 항목 하나뿐) 패널이 그 목록의 자리다. `works-nav-depth`가 지운 것은 **Works의**
@@ -76,31 +74,8 @@ function ArchivePage({
     body === "image" ? null : current,
   );
 
-  const [panelOpen, setPanelOpen] = useState(
-    () => localStorage.getItem(PANEL_OPEN_KEY) !== "0",
-  );
-  useEffect(() => {
-    localStorage.setItem(PANEL_OPEN_KEY, panelOpen ? "1" : "0");
-  }, [panelOpen]);
-
-  // ⌘Enter — "본문을 넓히는 토글". 이 화면의 유일한 접이식이 목록 패널이라 그 자리를 받는다
-  // (Projects와 같은 규칙). 입력 중에는 무시.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || e.shiftKey || e.altKey || e.ctrlKey || e.key !== "Enter") return;
-      const target = e.target as HTMLElement;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target.isContentEditable
-      )
-        return;
-      e.preventDefault();
-      setPanelOpen((open) => !open);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  // 목록 패널의 접힘과 ⌘Enter(본문을 넓히는 토글) — Projects와 같은 하나를 쓴다.
+  const [panelOpen, togglePanel] = useListPanel("archive-panel-open");
 
   // 작업 화면과 **같은 호출**이다(결정 11) — 토스트의 상태는 부품이 들고, 여기서는 내기만 한다.
   const copyText = useCallback((text: string) => {
@@ -246,22 +221,7 @@ function ArchivePage({
                   onChange={setShowSource}
                 />
               )}
-              {/* 도움말은 툴팁이고 상태를 탄다 — 누르면 무슨 일이 날지를 말한다. 열림은 `aria-expanded`가 이미
-                  말하므로 설명(`aria-description`)은 안 단다(S28). */}
-              <Hint
-                text={panelOpen ? "목록 패널 접기" : "목록 패널 펼치기"}
-                type="button"
-                onClick={() => setPanelOpen((open) => !open)}
-                aria-label="목록 패널 토글"
-                aria-expanded={panelOpen}
-                className="icon-button-quiet text-tertiary"
-              >
-                {panelOpen ? (
-                  <Maximize2 className="size-4" strokeWidth={1.7} />
-                ) : (
-                  <Minimize2 className="size-4" strokeWidth={1.7} />
-                )}
-              </Hint>
+              <ListPanelToggle open={panelOpen} onToggle={togglePanel} />
             </>
           }
         />
