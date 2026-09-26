@@ -1,10 +1,12 @@
-// 앱 규격으로 고친 자리: 트리거 테두리 있는 입력칸(border-input·h-8/h-7·rounded-lg·text-sm·size 변형)→조용한 칩 하나(26px·9px 모서리·좌우 7px·12.5px·muted 글자·quiet-hover, 옛 기준 브랜치 버튼), 트리거 화살표 size-4→size-2.5·굵기 2.2, 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-36→248px(기준 브랜치의 지금 값), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 트리거 맞춤 alignItemWithTrigger 기본 true→false·align center→start(목록은 트리거 아래 왼쪽 끝에 붙는다, S32), 카드 안 목록 앞뒤에 머리·바닥 칸(header·footer — listbox 밖에 선다), 목록 안쪽 5px·항목 사이 1px, 항목 rounded-md·py-1·pl-1.5·pr-8·gap-1.5·text-sm→32px·9px 모서리·좌우 9px·gap-2·13px(기준 브랜치 줄의 지금 값), 항목의 자손 글자색 덮기(focus:**:text-accent-foreground)를 걷는다(켜진 줄은 바탕만 바뀐다), 항목 글자 칸 shrink-0·whitespace-nowrap→min-w-0·truncate(긴 가지 이름이 줄임표로 접힌다), 체크 지시자 absolute right-2→줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4(드롭다운 라디오 줄과 같다), 스크롤 화살표 bg-popover→bg-background. 열림 애니메이션 클래스는 registry 그대로다. 라벨·구분선·그룹은 registry 그대로다(쓰는 자리가 없다).
+// 앱 규격으로 고친 자리: 트리거 테두리 있는 입력칸(border-input·h-8/h-7·rounded-lg·text-sm·size 변형)→조용한 칩 하나(26px·9px 모서리·좌우 7px·12.5px·muted 글자·quiet-hover, 옛 기준 브랜치 버튼), 트리거 화살표 size-4→size-2.5·굵기 2.2, 카드 rounded-lg·ring-1 ring-foreground/10·shadow-md·bg-popover→floating-card(index.css 한 곳 — 13px·border-strong·shadow-lg·bg-background, 옛 PopoverPortal 카드), 폭 w-(--anchor-width)·min-w-36→248px(기준 브랜치의 지금 값), overflow-y-auto에 scroll-quiet, 카드에 data-popover 표식, 트리거 맞춤 alignItemWithTrigger 기본 true→false·align center→start(목록은 트리거 아래 왼쪽 끝에 붙는다, S32), 카드 안 목록 앞뒤에 머리·바닥 칸(header·footer — listbox 밖에 선다), 목록 안쪽 5px·항목 사이 1px(menu-list — index.css 한 곳, 드롭다운 카드와 같은 것), 항목 rounded-md·py-1·pl-1.5·pr-8·gap-1.5·text-sm→menu-row(index.css 한 곳 — 32px·9px 모서리·좌우 9px·gap-2·shrink-0, 드롭다운 항목과 같은 것)·13px(기준 브랜치 줄의 지금 값), 항목의 자손 글자색 덮기(focus:**:text-accent-foreground)를 걷는다(켜진 줄은 바탕만 바뀐다), 항목 글자 칸 shrink-0·whitespace-nowrap→min-w-0·truncate(긴 가지 이름이 줄임표로 접힌다), 체크 지시자 absolute right-2→MenuCheck(menu-check.tsx — 줄 끝의 흐름 안 한 칸·size-3·text-primary·굵기 2.4, 드롭다운 라디오 줄과 같은 것), 스크롤 화살표 bg-popover→bg-background. 열림 애니메이션 클래스는 registry 그대로다. 라벨·구분선·그룹은 registry 그대로다(쓰는 자리가 없다).
 "use client"
 
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
+
+import { MenuCheck } from "@/components/ui/menu-check"
 
 const Select = SelectPrimitive.Root
 
@@ -95,7 +97,7 @@ function SelectContent({
         >
           {header}
           <SelectScrollUpButton />
-          <SelectPrimitive.List className="flex flex-col gap-px p-[5px] outline-none">
+          <SelectPrimitive.List className="menu-list outline-none">
             {children}
           </SelectPrimitive.List>
           <SelectScrollDownButton />
@@ -128,7 +130,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex h-8 w-full shrink-0 cursor-default items-center gap-2 rounded-[9px] px-[9px] text-[13px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex menu-row w-full cursor-default items-center text-[13px] outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -136,14 +138,11 @@ function SelectItem({
       <SelectPrimitive.ItemText className="min-w-0 flex-1 truncate">
         {children}
       </SelectPrimitive.ItemText>
-      {/* 체크는 **줄 끝의 흐름 안**에 선다 — 켜진 줄에만 서므로 다른 줄에 빈 자리를 잡아 두지 않는다(드롭다운
-          라디오 줄과 같다). 지금 값은 이 그림이 아니라 줄의 `aria-selected`가 말한다. */}
+      {/* 체크는 **줄 끝의 흐름 안**에 선다 — 드롭다운 라디오 줄과 같은 그림이다(`menu-check.tsx`). */}
       <SelectPrimitive.ItemIndicator
         data-slot="select-item-indicator"
-        className="pointer-events-none flex shrink-0 items-center text-primary"
-      >
-        <CheckIcon className="size-3" strokeWidth={2.4} />
-      </SelectPrimitive.ItemIndicator>
+        render={<MenuCheck />}
+      />
     </SelectPrimitive.Item>
   )
 }
