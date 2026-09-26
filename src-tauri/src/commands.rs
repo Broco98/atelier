@@ -329,6 +329,21 @@ pub async fn processes_snapshot(
         .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
 }
 
+// nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(프로세스 결정 11 · 티켓 29). 두 세계의 모든
+// 화면에 선 nav 메타가 10초마다 부른다(`src/features/processes/hooks.ts`). 답은 Rust의 배경 표본이 10초마다 앉힌 마지막 장이다 —
+// 부를 때마다 표를 찍지 않는다. 첫 장이 아직 없으면 그 자리에서 모으므로(표 한 장과 판정) blocking 풀에서 돌린다.
+//
+// 모드를 안 받는다 — nav 메타는 「이 세계의 것만 센다」의 예외다(프로세스 결정 9). 두 세계가 같은 값을 묻는다.
+#[tauri::command]
+pub async fn processes_summary(
+    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+) -> CmdResult<crate::processes::summary::Summary> {
+    let pool = Arc::clone(&pool);
+    tauri::async_runtime::spawn_blocking(move || pty::summary(&pool))
+        .await
+        .map_err(|e| format!("프로세스 요약을 읽지 못했습니다: {e}"))
+}
+
 // 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
 // **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
 // (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
@@ -475,6 +490,19 @@ mod tests {
         let screen = body.find("pty::screen(").expect("명령이 풀의 화면 스냅샷을 안 부른다");
         assert!(blocking < screen, "스냅샷({screen})이 blocking 풀({blocking}) 밖에 있다");
         assert_eq!(body.matches("pty::screen(").count(), 1, "스냅샷을 두 번 찍는다 — 한쪽이 blocking 풀 밖일 수 있다");
+    }
+
+    /// **nav 메타의 요약은 blocking 풀에서 답한다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 29). 답은 대개 배경 표본이 앉힌
+    /// 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 이 맥의 프로세스 표 한 장과 판정을 모은다 — async 명령 안에서 곧바로
+    /// 부르면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
+    #[test]
+    fn the_summary_is_answered_off_the_async_workers() {
+        let body = command_body("processes_summary");
+        let blocking = body.find("spawn_blocking(").expect("요약을 blocking 풀로 안 보낸다 — 첫 장을 모으는 동안 tokio 워커가 멎는다");
+        let summary = body.find("pty::summary(").expect("명령이 배경 표본의 요약을 안 읽는다");
+        assert!(blocking < summary, "요약({summary})이 blocking 풀({blocking}) 밖에 있다");
+        assert_eq!(body.matches("pty::summary(").count(), 1, "요약을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
+        assert!(!body.contains("pty::summarize("), "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던

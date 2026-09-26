@@ -3,7 +3,7 @@ import { processesApi } from "./api";
 
 // **`Processes` 화면의 폴러가 사는 자리다**(프로세스 스펙 「수집」 · 티켓 26). 터미널 폴더 밖에 두는 것은 그 폴더의 시계 규칙
 // 때문이다 — 터미널에서 시간을 아는 파일은 셋뿐이고(`shell-attention.test.ts`의 소스 스캔), 상태 축에 시계가 들어오는 것을 그
-// 목록이 막는다. 이 박자는 셸 상태와 상관없는 수집의 박자라 여기 선다. 29의 요약 폴러(10초)도 이 폴더에 선다.
+// 목록이 막는다. 이 박자는 셸 상태와 상관없는 수집의 박자라 여기 선다. nav 메타의 요약 폴러(10초, 티켓 29)도 여기 선다.
 
 /**
  * 화면 표본의 박자(프로세스 스펙 「수집 › 화면 표본(2초)」). 한 번에 이 맥의 프로세스 표 한 장과 판정, 그리고 우리 트리의 지표(티켓 28)가
@@ -31,4 +31,29 @@ export const snapshotQuery = queryOptions({
 
 export function useProcessSnapshot() {
   return useQuery(snapshotQuery);
+}
+
+/**
+ * 요약의 박자(프로세스 스펙 「수집 › 배경 표본(10초)」 · 티켓 29). Rust의 배경 표본도 10초마다 모으므로(`processes::summary::EVERY`)
+ * 이보다 자주 물어도 같은 장이 온다.
+ */
+export const SUMMARY_EVERY_MS = 10_000;
+
+/**
+ * nav 메타의 요약 — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id(티켓 29). **nav 메타가 두 세계의 모든 화면에
+ * 서므로 늘 돈다** — 화면 스냅샷(`snapshotQuery`)과 반대다. 부르는 자리는 nav 메타 하나다(`ProcessesNavMeta`): 보는 쪽이 둘이면
+ * 박자도 둘이다(react-query는 보는 쪽마다 `refetchInterval`을 건다). 30의 요약 카드는 새 박자를 걸지 않고 이 캐시를 읽는다.
+ *
+ * 창이 가려져 있으면 쉰다(`refetchIntervalInBackground` 기본값) — 그동안은 아무도 nav를 안 본다. Rust의 배경 표본은 그래도 돈다.
+ * 다시 시도하지 않는다(스냅샷과 같은 까닭 — 박자가 곧 다시 묻고, L4의 다리는 이 명령을 거절한다).
+ */
+export const summaryQuery = queryOptions({
+  queryKey: ["processes", "summary"],
+  queryFn: () => processesApi.summary(),
+  refetchInterval: SUMMARY_EVERY_MS,
+  retry: false,
+});
+
+export function useProcessSummary() {
+  return useQuery(summaryQuery);
 }

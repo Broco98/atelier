@@ -88,6 +88,13 @@ impl From<CloseReason> for Reason {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
+    /// 기록 번호 — 이 파일에서 1부터 오르는 번호다. **적는 자리가 매긴다**(`add` — 파일의 가장 큰 번호 + 1). 사건을 짓는 쪽
+    /// (`event`)은 0으로 둔다: 짓는 순간에는 파일을 모른다.
+    ///
+    /// nav 메타의 `●`가 이 번호로 「본 뒤 새로 생긴 기록」을 가른다(프로세스 스펙 S41 · 티켓 29) — 시각(`at`)은 새로고침이 셸
+    /// 여럿을 한 번에 닫으면 같은 ms에 여러 줄이라 사건 하나를 못 가리킨다. 이 번호가 없던 판이 쓴 줄은 0으로 읽는다.
+    #[serde(default)]
+    pub id: u64,
     /// 끝내기가 끝난 시각(에포크 ms). 유예 2초 뒤 SIGKILL로 끝난 것도 있으니, 사람이 누른 순간이 아니라 끝난 순간이다.
     pub at: u64,
     pub reason: Reason,
@@ -151,6 +158,7 @@ pub fn event(
         })
         .collect();
     targets.iter().any(|target| target.outcome != Outcome::Gone).then(|| Event {
+        id: 0,
         at,
         reason,
         shell_key: shell_key.map(str::to_string),
@@ -175,6 +183,28 @@ pub fn ended_count(aimed: &[Aimed], outcomes: &[(Identity, Outcome)]) -> Option<
     (count > 0).then_some(count)
 }
 
+/// **이 사건이 `●`를 켜나**(프로세스 결정 11 · 프로세스 스펙 S41 · 티켓 29). 앱이 **사람 손 없이** 끝낸 사건이거나, 끝내려다 못
+/// 끝낸 것(「못 끝냄」)이 든 사건이다.
+///
+/// - 사람 손 없이: 시작 정리 · MCP 아카이브 · 셸 스스로 끝남. 사람이 안 본 사이에 무언가가 사라졌다 — 나중에 까닭을 찾을 수 있게
+///   알린다(프로세스 결정 6).
+/// - 사람이 누른 것 — ×(셸 닫기) · 종료 · 새로고침 · UI 아카이브 · [끝내기] · [정리](손으로) — 은 켜지 않는다. 사람이 방금 한 일에
+///   점이 서면 점이 늘 켜지고, 그러면 「서서히 차오르는 것이 눈에 띈다」(결정 11의 이유)가 무너진다.
+/// - 「못 끝냄」은 까닭과 상관없이 켠다. 사람이 누른 닫기라도 남은 것은 사람이 모른다.
+pub fn worth_a_look(event: &Event) -> bool {
+    matches!(event.reason, Reason::StartupCleanup | Reason::McpArchive | Reason::ShellExit)
+        || event.targets.iter().any(|target| target.outcome == Outcome::Survived)
+}
+
+/// `●`를 켜는 기록 중 **가장 새것의 번호** — 요약이 싣는 「머리 id」다(티켓 29). 기록은 새것부터라 처음 걸린 것이 머리다. 없으면
+/// `None`.
+///
+/// **머리 하나면 된다.** 프런트는 이 번호를 본 것과 견준다 — 새 자동 기록이 서면 머리가 바뀌고, 사람 손 기록은 머리를 안 옮긴다.
+/// 가르는 것이 여기(Rust)인 것은 까닭을 다 보는 자리가 여기뿐이라서다: 화면이 닫혀 있을 때 프런트가 받는 것은 요약뿐이다.
+pub fn look_head(events: &[Event]) -> Option<u64> {
+    events.iter().find(|event| worth_a_look(event)).map(|event| event.id)
+}
+
 /// 명령줄의 앞 200자. 바이트가 아니라 글자로 자른다 — 한글 인자 한가운데서 끊으면 UTF-8이 깨진다.
 fn cut(command: &str) -> String {
     command.chars().take(COMMAND_CHARS).collect()
@@ -186,11 +216,16 @@ pub fn read(path: &Path) -> Vec<Event> {
     std::fs::read_to_string(path).ok().and_then(|content| serde_json::from_str(&content).ok()).unwrap_or_default()
 }
 
-/// 사건 하나를 맨 앞에 더하고 100건으로 자른다. **부르는 쪽이 잠금을 쥐고 부른다**(`instances::Record::log`).
+/// 사건 하나에 번호를 매겨 맨 앞에 더하고 100건으로 자른다. **부르는 쪽이 잠금을 쥐고 부른다**(`instances::Record::log`).
+///
+/// 번호는 파일에 있는 가장 큰 번호 + 1이다 — 잘려 나간 줄의 번호는 다시 안 쓴다(남은 것이 늘 더 크다). 파일이 없거나 깨졌으면 1부터
+/// 다시 선다. 두 실행이 같은 순간 쓰면 한쪽 사건을 잃는 것(머리말)과 같은 창에서 번호도 겹칠 수 있다 — 겹친 쪽은 이미 사라진
+/// 줄이다.
 ///
 /// 쓰기가 실패해도 부른 길(셸 닫기 · 종료)을 막지 않는다 — 기록 한 줄을 잃을 뿐이다.
-pub(super) fn add(path: &Path, event: Event) {
+pub(super) fn add(path: &Path, mut event: Event) {
     let mut events = read(path);
+    event.id = events.iter().map(|one| one.id).max().unwrap_or(0) + 1;
     events.insert(0, event);
     events.truncate(KEEP);
     let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|name| name.to_str())) else {
@@ -339,6 +374,7 @@ mod tests {
     #[test]
     fn an_event_crosses_the_wire_in_the_shape_the_screen_will_read() {
         let event = Event {
+            id: 42,
             at: 1_790_000_000_123,
             reason: Reason::StartupCleanup,
             shell_key: None,
@@ -348,6 +384,7 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&event).unwrap(),
             serde_json::json!({
+                "id": 42,
                 "at": 1_790_000_000_123_u64,
                 "reason": "startupCleanup",
                 "shellKey": null,
@@ -373,6 +410,74 @@ mod tests {
         for (outcome, wire) in outcomes {
             assert_eq!(serde_json::to_value(outcome).unwrap(), wire, "결과 {outcome:?}의 글자가 다르다");
         }
+
+        // 번호가 없던 판(티켓 11)이 쓴 줄도 읽는다 — 번호는 0이다. 못 읽으면 그 파일 전체가 빈 기록이 된다(`read`).
+        let older: Event = serde_json::from_value(serde_json::json!({
+            "at": 1, "reason": "shellExit", "shellKey": null, "owner": null, "targets": [],
+        }))
+        .expect("번호 없는 옛 줄을 못 읽었다");
+        assert_eq!(older.id, 0);
+    }
+
+    /// 번호와 까닭과 결과로 사건 하나 — `●` 검사의 재료다. 대상은 결과마다 하나씩이다.
+    fn logged(id: u64, reason: Reason, outcomes: &[Outcome]) -> Event {
+        let targets = outcomes
+            .iter()
+            .enumerate()
+            .map(|(n, outcome)| Target { pid: 100 + n as u32, name: "node".into(), command: None, outcome: *outcome })
+            .collect();
+        Event { id, at: 1_790_000_000_000 + id, reason, shell_key: None, owner: None, targets }
+    }
+
+    /// **`●`를 켜는 기록은 앱이 사람 손 없이 끝낸 것과 「못 끝냄」이 든 것뿐이다**(프로세스 스펙 S41 · 티켓 29). 까닭 여덟을 다
+    /// 돈다 — 시작 정리 · MCP 아카이브 · 셸 스스로 끝남은 켜고, 사람이 누른 ×(셸 닫기) · 종료 · 새로고침 · UI 아카이브 · 손으로
+    /// ([끝내기] · [정리])는 안 켠다. 사람 손 기록이라도 「못 끝냄」이 들면 켠다 — 남은 것은 사람이 모른다.
+    ///
+    /// 앵커: 켜는 줄과 안 켜는 줄이 둘 다 있다 — 한쪽으로 무너지면(늘 참 · 늘 거짓) 반대쪽 줄들이 빨갛다.
+    #[test]
+    fn only_what_the_app_ended_without_a_person_is_worth_a_look() {
+        use Outcome::{Ended, Forced, Gone, Survived};
+        let cases = [
+            ("시작 정리", logged(1, Reason::StartupCleanup, &[Ended]), true),
+            ("MCP 아카이브", logged(2, Reason::McpArchive, &[Forced]), true),
+            ("셸 스스로 끝남", logged(3, Reason::ShellExit, &[Ended, Gone]), true),
+            ("사람이 누른 ×", logged(4, Reason::ShellClose, &[Ended, Forced]), false),
+            ("앱 종료", logged(5, Reason::AppExit, &[Ended]), false),
+            ("새로고침", logged(6, Reason::Reload, &[Forced]), false),
+            ("UI 아카이브", logged(7, Reason::Archive, &[Ended]), false),
+            ("[끝내기] · [정리]", logged(8, Reason::Manual, &[Ended]), false),
+            ("사람이 누른 ×인데 못 끝낸 것이 있다", logged(9, Reason::ShellClose, &[Ended, Survived]), true),
+            ("앱 종료가 못 끝냈다", logged(10, Reason::AppExit, &[Survived]), true),
+            ("[끝내기]가 못 끝냈다", logged(11, Reason::Manual, &[Survived]), true),
+        ];
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter(|(_, event, want)| worth_a_look(event) != *want)
+            .map(|(what, _, want)| format!("{what}: 기대 {want}"))
+            .collect();
+        assert!(wrong.is_empty(), "`●`를 켜는지가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **요약의 머리 id는 `●`를 켜는 기록 중 가장 새것의 번호다**(티켓 29). 기록은 새것부터다 — 그 뒤에 사람 손 기록이 몇 줄 쌓여도
+    /// 머리는 그대로다(사람이 ×로 닫을 때마다 머리가 옮으면 점이 늘 켜진다). 켜는 기록이 하나도 없으면 없다.
+    #[test]
+    fn the_look_head_is_the_newest_event_worth_a_look() {
+        use Outcome::{Ended, Survived};
+        let events = [
+            logged(9, Reason::ShellClose, &[Ended]),
+            logged(8, Reason::AppExit, &[Ended]),
+            logged(7, Reason::ShellExit, &[Ended]),
+            logged(6, Reason::Reload, &[Ended]),
+            logged(5, Reason::StartupCleanup, &[Ended]),
+        ];
+        assert_eq!(look_head(&events), Some(7), "사람 손 기록 밑의 가장 새 자동 기록이 머리가 아니다");
+
+        let by_hand = [logged(3, Reason::ShellClose, &[Ended]), logged(2, Reason::Manual, &[Ended]), logged(1, Reason::Archive, &[Ended])];
+        assert_eq!(look_head(&by_hand), None, "사람 손 기록뿐인데 머리가 섰다");
+        assert_eq!(look_head(&[]), None, "빈 기록에 머리가 섰다");
+
+        let survived = [logged(4, Reason::ShellClose, &[Survived]), logged(3, Reason::ShellExit, &[Ended])];
+        assert_eq!(look_head(&survived), Some(4), "못 끝냄이 든 사람 손 기록이 머리가 아니다");
     }
 
     /// 닫기 IPC가 받는 까닭은 프런트가 고르는 셋뿐이다 — Rust가 아는 까닭(앱 종료 · 시작 정리 …)을 프런트가 실어 보내면 거절한다.

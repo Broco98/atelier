@@ -156,6 +156,16 @@ impl Record {
         }
     }
 
+    /// **정리 기록 전부** — 새것부터(티켓 29의 요약이 `●`의 머리 id를 여기서 고른다). 열지 않았으면 빈 기록이다(검사의 풀은 진짜
+    /// 데이터 루트를 안 읽는다).
+    ///
+    /// 읽기는 잠금 밖이다 — 쓰기가 원자적 바꿔 넣기라 잠금 없이 읽어도 온전한 한 장을 본다(`cleanup_log::add`). 쥔 채 읽으면 그동안
+    /// 셸 띄우기의 키 올리기가 기다린다.
+    pub fn events(&self) -> Vec<Event> {
+        let path = self.lock().log.clone();
+        path.map(|path| cleanup_log::read(&path)).unwrap_or_default()
+    }
+
     /// 셸 키를 올린다 — **자식을 띄우기 전에**(프로세스 스펙 S52).
     pub fn raise(&self, key: &str) {
         let mut book = self.lock();
@@ -612,6 +622,7 @@ mod tests {
     /// 사건 하나 — 번호(`at`)로 가른다.
     fn event(n: u64) -> Event {
         Event {
+            id: 0,
             at: n,
             reason: cleanup_log::Reason::ShellClose,
             shell_key: Some(format!("G-{n}")),
@@ -662,6 +673,35 @@ mod tests {
 
         record.log(event(5));
         assert_eq!(logged(&dir), [5], "깨진 파일 위에 새로 안 썼다");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **적을 때마다 다음 번호가 선다**(티켓 29) — `●`가 「본 뒤 새로 생긴 기록」을 이 번호로 가른다. 번호는 파일의 가장 큰 번호 + 1이라
+    /// 잘려 나간 줄 뒤에도 오르기만 하고, 번호가 없던 판이 쓴 줄(0으로 읽힘) 위에서는 1부터 선다. 짓는 쪽이 준 번호는 버린다 — 짓는
+    /// 순간에는 파일을 모른다. 읽기(`events`)는 쓴 그대로 새것부터 돌려주고, 열지 않은 기록은 빈 기록이다.
+    #[test]
+    fn each_logged_event_takes_the_next_number() {
+        let dir = temp_dir("log-ids");
+        assert!(Record::default().events().is_empty(), "열지 않은 기록이 무언가를 읽었다");
+
+        let record = Record::default();
+        record.open(place(&dir, "G"));
+        std::fs::write(
+            dir.join("cleanup-log.json"),
+            r#"[{"at":2,"reason":"shellClose","shellKey":null,"owner":null,"targets":[]},{"at":1,"reason":"reload","shellKey":null,"owner":null,"targets":[]}]"#,
+        )
+        .unwrap();
+        record.log(Event { id: 77, ..event(3) });
+        record.log(event(4));
+        let ids: Vec<(u64, u64)> = record.events().iter().map(|one| (one.id, one.at)).collect();
+        assert_eq!(ids, [(2, 4), (1, 3), (0, 2), (0, 1)], "번호가 파일의 가장 큰 번호 + 1로 안 섰다");
+
+        for n in 5..=110 {
+            record.log(event(n));
+        }
+        let kept = record.events();
+        assert_eq!(kept.len(), 100);
+        assert_eq!((kept[0].id, kept[99].id), (108, 9), "잘려 나간 뒤에 번호가 다시 섰다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

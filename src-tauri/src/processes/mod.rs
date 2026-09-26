@@ -25,8 +25,10 @@
 //!   이름과 모양이 판정의 것 그대로다.
 //! - 지표(`metrics`)는 부작용 층이다(티켓 28). 판정이 고른 프로세스만 메모리(`phys_footprint`) · CPU 시간 · LISTEN 포트를 읽고,
 //!   두 표본의 차이로 CPU%를 짓는 계산(순수)을 함께 든다. 수집처럼 macOS에서만 읽고 다른 OS는 빈 값이다.
+//! - 요약(`summary`)은 nav 메타가 10초마다 묻는 값이다(티켓 29) — 앱 전체 메모리 합계, 출처 불명의 신원, `●`를 켜는 기록의 머리 id.
+//!   화면이 닫혀 있어도 배경 표본이 모은다. 값만 짓는다.
 //!
-//! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리 · `Processes` 화면의 스냅샷)는 풀을 쥔 `pty.rs`에 있다.
+//! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리 · `Processes` 화면의 스냅샷 · 배경 표본)는 풀을 쥔 `pty.rs`에 있다.
 
 // **안 쓰임 경고를 이 모듈 한 자리에서 끈다.** 판정 결과의 출처 불명 · 다른 인스턴스 · 예외 묶음은 13 · 31이 읽는다(판정의
 // 모드와 확정 고아, 시작 정리가 끝낸 결과는 10이, 끝내기의 결과와 판정의 도우미 표시는 11의 정리 기록이 읽는다). 그때까지는
@@ -47,6 +49,7 @@ pub(crate) mod metrics;
 pub(crate) mod procargs;
 pub(crate) mod screen;
 pub(crate) mod snapshot;
+pub(crate) mod summary;
 #[cfg(all(test, target_os = "macos"))]
 pub(crate) mod testkit;
 pub(crate) mod verdict;

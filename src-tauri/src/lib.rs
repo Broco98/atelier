@@ -287,6 +287,10 @@ pub fn run() {
             // 끝낸 것을 위에서 센 몫으로 시작 보고에 싣는다. **기록을 연 뒤다** — 연 뒤라야 남의 기록이 읽힌다. 이 실행의 셸은
             // 안 본다: 웹뷰가 곧 첫 셸을 띄운다.
             startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+            // nav 메타의 배경 표본(프로세스 결정 10 · 11 · 티켓 29). 앱 전체 메모리 합계와 손볼 것(출처 불명 · `●`를 켜는 기록)을 10초마다
+            // 모은다 — 화면이 닫혀 있어도 돈다. **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸
+            // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
+            pty::sample_in_background(Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -336,6 +340,7 @@ pub fn run() {
             commands::pty_command_running,
             commands::pty_close_checks,
             commands::processes_snapshot,
+            commands::processes_summary,
             commands::read_settings,
             commands::write_settings,
             commands::default_process_exceptions,
@@ -694,5 +699,19 @@ mod tests {
             .find("startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));")
             .expect("셋업이 시작 정리를 위에서 센 몫으로 안 부른다 — 지난 실행의 고아가 안 치워지거나 보고가 그것을 안 기다린다");
         assert!(opened < cleaned, "시작 정리({cleaned})가 기록을 열기({opened}) 전에 돈다 — 남의 기록을 못 읽는다");
+    }
+
+    /// **nav 메타의 배경 표본은 인스턴스 기록을 연 뒤에 건다**(티켓 29). 먼저 걸면 첫 판정이 남의 기록을 못 읽어(`Record::records`가
+    /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 뜨자마자 `●`가 선다. 표본이 한 번뿐이어야 박자가
+    /// 하나다(10초). 셋업은 헤드리스로 못 돌리니 자리로 잰다. 모으는 순서는 `pty.rs`의 핀이 잰다.
+    #[test]
+    fn the_background_sample_starts_after_the_record_opens() {
+        let setup = setup_source();
+        let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
+        let sampled = setup
+            .find("pty::sample_in_background(Arc::clone(&app.state::<Arc<pty::PtyPool>>()));")
+            .expect("셋업이 배경 표본을 안 건다 — 화면이 닫혀 있으면 nav 메타의 합계가 안 바뀐다");
+        assert!(opened < sampled, "배경 표본({sampled})이 기록을 열기({opened}) 전에 걸린다 — 첫 장이 남의 셸 자손을 출처 불명으로 본다");
+        assert_eq!(setup.matches("pty::sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
     }
 }

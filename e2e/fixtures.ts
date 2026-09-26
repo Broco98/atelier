@@ -5,7 +5,7 @@ import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { ProcessMetrics, ProcessSnapshot } from "@/features/processes/types";
+import type { ProcessMetrics, ProcessSnapshot, ProcessSummary } from "@/features/processes/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -391,6 +391,20 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = {
 };
 
 /**
+ * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
+ * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계는 결정 10 그림의 「아틀리에 합계 3.4GB」다.
+ *
+ * **모든 spec이 지나는 답이다** — nav 메타가 두 세계의 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
+ * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — `●`를 켜는 검사).
+ */
+export const PROCESS_SUMMARY: ProcessSummary = {
+  total: 3_650_722_202,
+  webviewExcluded: true,
+  unknown: [],
+  recordHead: null,
+};
+
+/**
  * 못 읽은 지표(티켓 28) — 스냅샷의 행과 풀의 셸마다 싣는 칸이다. 숫자를 안 보는 검사의 행이 이것을 든다: 숫자 칸은 「—」로 서고, 행의
  * 접근성 이름에 메모리 조각이 안 붙는다(macOS 밖의 앱과 같다).
  */
@@ -488,6 +502,10 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
   // **모드를 안 받는다** — 화면이 앱 전체를 보여 두 세계의 주소가 같은 것을 묻는다(프로세스 결정 9). 그래서 이름 표다.
   processes_snapshot: PROCESS_SNAPSHOT,
+  // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 두 세계의 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
+  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`(손볼 것 없음)이고, `●`를 재는
+  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts`). **모드를 안 받는다** — 메타는 「이 세계의 것만 센다」의 예외다.
+  processes_summary: PROCESS_SUMMARY,
   pty_kill: null,
   // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).

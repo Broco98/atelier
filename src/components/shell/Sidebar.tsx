@@ -17,6 +17,7 @@ import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
 import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
+import ProcessesNavMeta from "@/features/processes/ProcessesNavMeta";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
 import { navItemsOf, type Mode } from "@/mode";
 import { AttentionBand, type BandItem } from "./attention-band";
@@ -86,6 +87,10 @@ function Sidebar({
   // **이 세계의 것만 센다**(결정 10). 두 루트에 같은 slug가 설 수 있어(코어의 유일성은 한
   // 루트 쌍 안에서만 본다) 안 거르면 저쪽 세계의 셸이 이 행의 숫자에 얹힌다. 키가 slug인
   // 것은 목록이 터미널을 모르기 때문이다 — `shellCountsOf` 머리말이 그 사정을 든다.
+  // **nav `Processes`의 메타 하나만 예외다 — 프로세스 결정 9가 이렇게 고쳤다.** 그 메타는
+  // 앱 전체의 메모리 합계와 손볼 것을 두 세계에 같은 값으로 세운다(`ProcessesNavMeta`) — 이름
+  // (`Processes` = 앱 전체)이 그 이유를 말하고, 세계로 나누면 절반이 안 보인다. 이 행들의 셸
+  // 수와 화면값은 그대로 이 세계의 것이다.
   const shellCounts = useStore(terminalStore, (state) => shellCountsOf(state, mode), shallow);
   // 최상위 셸은 어느 work의 것도 아니라 nav 항목이 그 수를 안는다 — 세는 자리도 따로다.
   // 숫자 하나라 얕은 비교가 필요 없다. 이 값도 work 행과 **같은 어휘**로 선다(결정 4).
@@ -177,9 +182,14 @@ function Sidebar({
             // 셸에서 claude가 돌면 여기에도 로고가 뜬다 — 무리가 하나뿐일 때 숫자가
             // 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다. 「없으면 아무것도 안
             // 선다」도 슬롯 안으로 내려갔다.
+            //
+            // **`Processes`의 메타는 앱 전체다**(프로세스 결정 9 · 11) — 메모리 합계와 손볼
+            // 것의 `●`. 두 세계의 nav가 같은 조각을 세우고, 요약 폴러(10초)가 그 안에 산다.
             meta={
               item.key === "terminal" ? (
                 <SubrowFor owner={ownerOf(mode)} shellCount={topShells} />
+              ) : item.key === "processes" ? (
+                <ProcessesNavMeta />
               ) : null
             }
           />

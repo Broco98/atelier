@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useEffect } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
@@ -11,6 +11,7 @@ import { worksQuery } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
 import { ALL_MODES, worldNameOf, type Mode } from "@/mode";
 import { useProcessSnapshot } from "./hooks";
+import { openProcessesScreen } from "./looked";
 import { formatCpu, formatMemory, formatPorts } from "./metrics";
 import {
   CURRENT_WORLD,
@@ -46,6 +47,8 @@ import type { ProcessMetrics } from "./types";
  */
 function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean }) {
   const { data: snapshot, dataUpdatedAt } = useProcessSnapshot();
+  // **이 화면이 서 있는 동안이 「화면이 열려 있다」다**(티켓 29) — nav 메타의 `●`가 창 포커스와 함께 이것으로 「봤다」를 가른다.
+  useEffect(() => openProcessesScreen(), []);
   // 스토어의 셸 전부 — 두 세계의 것이 한 벌이다(owner가 세계를 싣는다). 상태 칸이 셸 상태를 읽으므로 좁히지 않는다.
   const shells = useStore(terminalStore, (state) => state.shells);
   const lists = useWorldLists(
