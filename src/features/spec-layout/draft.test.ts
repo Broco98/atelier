@@ -222,6 +222,16 @@ describe("템플릿", () => {
     expect(next.templates).toEqual({ "decisions.md": "# 결정\n", "Decisions-2.md": "" });
   });
 
+  // 누락 템플릿(레이아웃은 가리키는데 본문 맵에 없다)의 경로도 쓰인 경로다 — 본문 맵만 보면 두 항목이 한
+  // 파일을 나눠 쓰다 한쪽에 적은 본문이 다른 쪽의 본문이 된다.
+  it("누락 템플릿의 경로와 겹쳐도 번호를 붙인다", () => {
+    const missing: LayoutDraft = { ...opened(), templates: {} };
+    const next = setTemplate(setPattern(missing, [0], "decisions.md"), [0], true);
+    expect(next.layout.root.children?.[0].template).toBe("decisions-2.md");
+    expect(next.layout.root.children?.[1].template).toBe("decisions.md");
+    expect(next.templates).toEqual({ "decisions-2.md": "" });
+  });
+
   // 「없음」으로 바꾸고 저장하면 그 템플릿 파일은 지워진다 — 저장이 빠진 템플릿을 지운다(티켓 07).
   it("끄면 항목의 template과 본문 맵의 본문이 둘 다 빠지고, 모르는 키는 남는다", () => {
     const next = setTemplate(opened(), [1], false);
