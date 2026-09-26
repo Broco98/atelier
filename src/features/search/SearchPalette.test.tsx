@@ -69,14 +69,15 @@ const render = (
       selected={selected}
       onQuery={() => {}}
       onGo={() => {}}
-      onClose={() => {}}
     />,
   );
 
 // 줄을 **표식으로** 집는다 — 모양(클래스 문자열)으로 가르면 규격을 손보는 날 검사가 샌다.
-// 줄 안에는 다른 button이 없어 첫 `</button>`까지가 그 줄 전부다.
-const rowsOf = (markup: string) =>
-  markup.match(/<button[^>]*data-row=""[\s\S]*?<\/button>/g) ?? [];
+// 줄 안에는 `span`만 있고 다른 div가 없어 첫 `</div>`까지가 그 줄 전부다. **줄의 태그는 보지
+// 않는다** — `role="option"`이 버튼이던 때(Tab이 줄로 갔다)에서 div(S13)로 바뀌었고, 재는 것은
+// 표식이다.
+const ROW = /<(\w+)[^>]*data-row=""[\s\S]*?<\/\1>/g;
+const rowsOf = (markup: string) => markup.match(ROW) ?? [];
 
 // 구획 머리도 **표식으로** 집는다. 글로만 찾으면 목적지 라벨 `Projects`와 그룹 머리
 // 「프로젝트」가 같은 자리에 있는지 없는지를 못 가른다.
@@ -333,10 +334,15 @@ describe("팔레트에는 프리뷰가 없다", () => {
   // 위 검사는 「무엇을 안 부른다」이고 이것은 **「무엇을 안 그린다」**다. 방향키가 옮기는 것이
   // 표시 하나뿐이면 **줄 밖의 화면은 글자 하나 안 바뀐다** — 프리뷰가 있으면 고른 줄마다
   // 다른 문서가 펴지므로 여기가 갈린다.
+  //
+  // **입력칸의 `aria-activedescendant`만은 빼고 잰다.** 그것은 켜진 줄을 가리키는 id라 고른 줄마다
+  // 바뀌는 것이 옳다(스토리 84) — 줄 밖에 서 있을 뿐 켜짐 표시의 한 조각이다.
   it("고른 줄이 바뀌어도 줄 밖의 화면은 그대로다", () => {
     const hits = [text("가", "a.md", "첫 대목"), text("가", "b.md", "둘째 대목")];
     const outside = (at: number) =>
-      render(hits, { selected: at }).replace(/<button[^>]*data-row=""[\s\S]*?<\/button>/g, "[줄]");
+      render(hits, { selected: at })
+        .replace(ROW, "[줄]")
+        .replace(/ aria-activedescendant="[^"]*"/, "");
     expect(outside(0)).toBe(outside(1));
   });
 });

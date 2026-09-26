@@ -771,9 +771,11 @@ describe("오른쪽 끝 조작", () => {
 describe("`+`", () => {
   it("프로젝트가 여럿이면 곧바로 열지 않고 물어본다", () => {
     // 결정 24. 아무 데나 열면 틀린 워크트리에서 claude가 돈다.
+    // 메뉴 트리거라는 것은 정적 마크업에도 선다. **열림(`aria-expanded`)은 여기서 안 잰다** — 판 3에서
+    // `+`가 메뉴 부품(Base UI Menu)의 트리거가 되면서 그 값은 부품이 마운트 뒤에 단다(정적 렌더에는
+    // 없다). 닫힘 → 열림 → 닫힘은 셸 열기 spec(`e2e/shell-picker.spec.ts`)이 잰다.
     const plus = plusOf(render(NO_SHELLS, { projects: ["atelier", "cli"] }));
     expect(plus).toMatch(/aria-haspopup="menu"/);
-    expect(plus).toMatch(/aria-expanded="false"/);
   });
 
   it("하나면 묻지 않는다", () => {

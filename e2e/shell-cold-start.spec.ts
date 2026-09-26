@@ -320,7 +320,7 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
   await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
 
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
-  await page.getByRole("button", { name: "아카이빙", exact: true }).click();
+  await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
   await expect(tabs(page)).toHaveCount(0);
 

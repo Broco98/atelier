@@ -604,7 +604,7 @@ body.dragging-row * {
         animation: none;
     }
 
-    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(쌓임·들고남)와 Collapsible 패널
+    /* 키프레임이 아니라 `transition`으로 움직이는 둘 — 토스트(들고남)와 Collapsible 패널
        (접힘) — 은 전이도 끈다. */
     [data-slot^="toast"],
     [data-slot="collapsible-content"] {

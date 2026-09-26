@@ -15,7 +15,10 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "main",
     createdAt: "2026-01-02T03:04:05Z",
     description: "결제 도메인",
-    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main"] },
+    // **로컬 브랜치가 둘이다** — 기준 브랜치 목록(프로젝트 화면의 Select)에서 「지금 값이 아닌 가지를 고르면」을
+    // 재려면 고를 다른 가지가 있어야 한다(`projects-list.spec.ts`). 지금 값(`main`)이 목록에 들어 있어, 앞에
+    // 붙이는 규칙(지금 값이 목록에 없을 때)은 이 프로젝트에서 안 탄다.
+    git: { remoteSlug: "acme/billing", currentBranch: "main", localBranches: ["main", "release"] },
     missing: false,
   },
   {
@@ -25,6 +28,7 @@ export const PROJECTS: ProjectView[] = [
     baseBranch: "develop",
     createdAt: "2026-01-03T03:04:05Z",
     description: "",
+    // git 정보가 없다 — 로컬 브랜치가 없는 프로젝트다. 기준 브랜치가 목록 대신 직접 적는 입력칸으로 선다.
     git: null,
     missing: false,
   },
@@ -108,9 +112,13 @@ export const WORKS: WorkView[] = [
       },
     ],
     specDir: "~/.atelier/works/multi-work/spec",
-    // 문서 하나 — 본문 열보다 넓은 문서다(`SPEC_FILE_BODIES`의 「넓은.md」). 첫 work에 두지 않는
-    // 것은 그 목록이 검색 답(`SEARCH_HITS`)의 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
-    specFiles: ["넓은.md"],
+    // 문서 둘 — 본문 열보다 넓은 문서(「넓은.md」)와 mermaid 블록 하나를 가진 문서(「다이어그램.md」)다.
+    // 본문은 `SPEC_FILE_BODIES`에 있다. 첫 work에 두지 않는 것은 그 목록이 검색 답(`SEARCH_HITS`)의
+    // 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
+    //
+    // **새 문서는 뒤에 붙인다** — 파일을 안 고르고 들어오면 첫 문서가 열린다(`defaultFile`). 뒤에 붙이면
+    // 그 화면이 그대로다.
+    specFiles: ["넓은.md", "다이어그램.md"],
   },
 ];
 
@@ -419,6 +427,11 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 진짜 키를 쳐야 하고, 그러면 xterm의 `onData`가 이 커맨드로 나간다. 값은 안 쓰이지만
   // **답이 있어야 화이트리스트를 안 넘는다.**
   pty_write: null,
+  // 프로젝트 화면의 기준 브랜치를 바꾸는 쓰기(판 3 — `projects-list.spec.ts`의 기준 브랜치 절). **모드를 안
+  // 받는다** — 위 `list_projects`와 같은 등록부의 명령이다. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시
+  // 읽어 오는 것이 화면을 고치는 자리다(`useUpdateProject`). 그래서 답은 `null`이고, 바꾼 값을 **기억하지
+  // 않는다** — 다시 읽은 목록은 그대로 `PROJECTS`다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
+  update_project: null,
   // 종료 확인의 「종료」(UI개선 결정 14). 값은 안 쓰인다 — 검사가 보는 것은 **나갔는가**이고 그것은 IPC
   // 기록에서 읽는다(`quit-confirm.spec.ts`). 그래도 **답이 있어야 화이트리스트를 안 넘는다** —
   // 없으면 「종료」를 누르는 검사가 매번 모르는 호출을 지고 선다.
@@ -478,6 +491,18 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
     `| ${Array.from({ length: 40 }, (_, at) => `열${at}`).join(" | ")} |`,
     `| ${Array.from({ length: 40 }, () => "---").join(" | ")} |`,
     `| ${Array.from({ length: 40 }, () => "끊기지않는칸값").join(" | ")} |`,
+    "",
+  ].join("\n"),
+  // **mermaid 블록 하나를 가진 문서**(`works-floating.spec.ts`의 전체화면 · Mermaid 「코드」). 다이어그램은
+  // 일부러 작다 — 전체화면이 창에 맞춘 배율이 100%가 아니게 되어(상한 300%에 닿는다) 「맞춤 배율로
+  // 열렸다」가 화면에서 갈린다.
+  "다이어그램.md": [
+    "# 다이어그램 문서",
+    "",
+    "```mermaid",
+    "graph LR",
+    "  A[시작] --> B[끝]",
+    "```",
     "",
   ].join("\n"),
 };
@@ -564,7 +589,7 @@ export interface ModeAnswer {
 export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
   list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
   /**
-   * **두 칸이 다 빈 넷.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
+   * **두 칸이 다 빈 둘.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
    * 아직 하나도 안 태운다 — 목록 화면은 `list_works`가, 문서는 `read_spec_file`이 답한다.
    *
    * 그래도 **여기 있어야 한다.** 없으면 하네스가 이름 표로 떨어뜨리는 것이 아니라 화이트리스트
@@ -576,9 +601,22 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * 화면이 생기는 날 그 호출이 하네스에 물려, 그때 이 칸을 채우라고 말해 준다.
    */
   get_work: { atelier: {}, maison: {} },
-  set_work_title: { atelier: {}, maison: {} },
-  set_work_status: { atelier: {}, maison: {} },
   remove_work: { atelier: {}, maison: {} },
+  /**
+   * 이름 바꾸기 창에서 저장하면 나가는 쓰기(판 3 — `works-floating.spec.ts`의 이름 바꾸기 절). 돌려주는 값은
+   * 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는 자리다(`useSetWorkTitle`). 그래서 답은
+   * 아래 `set_work_status`와 같은 `null`이고, 이름을 **기억하지 않는다**. 검사가 재는 것은 「무엇이 나갔나」다.
+   * Maison 칸이 빈 것은 Room 이름 바꾸기를 태우는 시나리오가 아직 없어서다 — 그것을 잴 때 채운다.
+   */
+  set_work_title: { atelier: { value: null }, maison: {} },
+  /**
+   * 상태 메뉴에서 다른 상태를 고르면 나가는 쓰기(판 3 — `works-floating.spec.ts`의 상태 메뉴 절). 돌려주는
+   * 값은 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는 자리다(`useSetWorkStatus`).
+   * 그래서 답은 `set_work_pinned`와 같은 `null`이다. 이 답은 상태를 **기억하지 않는다** — 다시 읽은 목록은
+   * 그대로 `WORKS`라 배지가 옛 상태로 남는다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
+   * Maison 칸이 빈 것은 아래 `list_archive`와 같은 이유다(Room 상태 메뉴를 태우는 시나리오가 아직 없다).
+   */
+  set_work_status: { atelier: { value: null }, maison: {} },
   /**
    * **Atelier 칸만 찼다** — 아카이빙이 셸을 거두는 자리(`closeShellsOf`)를 태우는 시나리오가
    * 생겼다(`shell-cold-start.spec.ts`). 답은 비어 있다: 코어가 돌려주는 것이 없고, 화면은

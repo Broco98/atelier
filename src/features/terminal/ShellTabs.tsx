@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
@@ -309,10 +309,9 @@ function ShellTabs({
     [],
   );
 
-  // 프로젝트가 여럿인 Work에서만 `+`가 묻는다. 앵커가 그 버튼이라 여기 산다.
+  // 프로젝트가 여럿인 Work에서만 `+`가 묻는다.
   const asks = projects.length > 1;
-  const plusRef = useRef<HTMLButtonElement>(null);
-  const [picking, setPicking] = useState(false);
+  const plusTitle = full ? shellCapNotice(state, owner) : "셸 열기";
 
   // 줄이 넘치면 **켜진 칸이 화면 밖에 있을 수 있다**(결정 20). ⌘1~9는 안 보이는 칸도
   // 고르므로(`shellForNav`는 폭을 모른다) 고른 칸이 안 보이면 「눌렀는데 아무 일도 없다」로
@@ -488,34 +487,28 @@ function ShellTabs({
 
           이 저장소의 잠근 버튼 관용구(disabled + pointer-events-none)를 쓰지 않는다 —
           pointer-events-none은 hover 자체를 막아 **그 title이 안 뜬다**(ShellControls.tsx의
-          주석이 이미 적어 둔 함정이다). aria-disabled + 클릭 무시다. */}
-      <button
-        ref={plusRef}
-        type="button"
-        data-tab="new"
-        aria-label="셸 열기"
-        aria-disabled={full || undefined}
-        // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이
-        // 안 뜨는 것이 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다.
-        aria-haspopup={asks ? "menu" : undefined}
-        aria-expanded={asks ? picking : undefined}
-        title={full ? shellCapNotice(state, owner) : "셸 열기"}
-        onClick={() => {
-          if (full) return;
-          if (asks) setPicking((open) => !open);
-          else onOpen({ kind: "default" });
-        }}
-        className={cn(
-          // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
-          // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
-          // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
-          // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
-          "-ml-0.5 shrink-0 text-tertiary",
-          full ? "icon-button opacity-40" : "icon-button-quiet",
-        )}
-      >
-        <Plus className="size-3.5" strokeWidth={1.8} />
-      </button>
+          주석이 이미 적어 둔 함정이다). aria-disabled + 클릭 무시다. 메뉴를 여는 `+`도 같다 — 잠겼으면
+          메뉴가 여는 것만 막는다(`ShellPicker`의 `locked`). */}
+      {asks ? (
+        // 프로젝트를 묻는 `+`는 여는 버튼이 아니라 메뉴를 여는 버튼이다 — 눌렀는데 셸이 안 뜨는 것이
+        // 정상인 유일한 경우라, 그 사실이 속성에 드러나야 한다. 그 속성(`aria-haspopup="menu"`·
+        // `aria-expanded`)은 메뉴 부품의 트리거가 단다.
+        <ShellPicker
+          trigger={<PlusButton full={full} title={plusTitle} />}
+          locked={full}
+          projects={projects}
+          defaultHint={placeHint(defaultCwd)}
+          onPick={onOpen}
+        />
+      ) : (
+        <PlusButton
+          full={full}
+          title={plusTitle}
+          onClick={() => {
+            if (!full) onOpen({ kind: "default" });
+          }}
+        />
+      )}
 
       {/* 탭과 조작 사이의 남는 자리. **이 줄에서 가장 넓은 끄는 자리다** — 속성이 빠지면
           「창이 가끔만 끌린다」가 되는데 화면으로는 어느 자리가 죽었는지가 안 보인다.
@@ -533,19 +526,34 @@ function ShellTabs({
           {actions}
         </div>
       )}
-
-      {picking && (
-        <ShellPicker
-          anchorRef={plusRef}
-          projects={projects}
-          defaultHint={placeHint(defaultCwd)}
-          onPick={(place) => {
-            setPicking(false);
-            if (place) onOpen(place);
-          }}
-        />
-      )}
     </header>
+  );
+}
+
+/**
+ * 탭 줄의 `+`. **묻는 `+`(메뉴 트리거)와 바로 여는 `+`가 같은 버튼이다** — 갈리는 것은 누를 때 하는
+ * 일뿐이다. 메뉴 트리거가 될 때는 메뉴 부품이 여는 동작과 속성을 얹어 부르므로 나머지 props를 그대로 편다.
+ */
+function PlusButton({ full, className, ...props }: ComponentProps<"button"> & { full: boolean }) {
+  return (
+    <button
+      type="button"
+      data-tab="new"
+      aria-label="셸 열기"
+      aria-disabled={full || undefined}
+      className={cn(
+        // 탭들에 **바짝 붙는다**. 줄의 gap 4px에 이 버튼의 좌우 여백 5px이 더해져 마지막
+        // 칸의 `×`와 15px이 벌어지는데, 그 거리가 이 버튼을 탭의 꼬리가 아니라 따로 선
+        // 조작으로 읽히게 한다(크롬의 `+`는 마지막 탭에 붙어 있다). 0으로 붙이지 않는
+        // 것은 상자가 스크롤 중일 때 잘린 칸과 맞닿아 보이기 때문이다.
+        "-ml-0.5 shrink-0 text-tertiary",
+        full ? "icon-button opacity-40" : "icon-button-quiet",
+        className,
+      )}
+      {...props}
+    >
+      <Plus className="size-3.5" strokeWidth={1.8} />
+    </button>
   );
 }
 

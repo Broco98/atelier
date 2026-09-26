@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import FullscreenModal from "./FullscreenModal";
@@ -14,6 +14,8 @@ const toolbarButton =
   "flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] px-1 text-[12px] transition-colors";
 const toolbarButtonQuiet = cn(toolbarButton, "text-tertiary quiet-hover");
 
+// 세 버튼의 보이는 글자(−, 지금 배율, +)는 무엇을 하는지 말하지 못한다 — 이름을 따로 단다(S37).
+// 가운데 버튼은 지금 배율을 보이며 누르면 100%로 돌아간다. 이름은 하는 일이다.
 function ZoomControls({
   scale,
   onChange,
@@ -25,9 +27,9 @@ function ZoomControls({
 }) {
   return (
     <>
-      <button type="button" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
-      <button type="button" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
-      <button type="button" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
+      <button type="button" aria-label="축소" onClick={() => onChange(Math.max(0.4, scale - 0.2))} className={toolbarButtonQuiet}>−</button>
+      <button type="button" aria-label="100%로" onClick={() => onChange(1)} className={toolbarButtonQuiet}>{Math.round(scale * 100)}%</button>
+      <button type="button" aria-label="확대" onClick={() => onChange(Math.min(max, scale + 0.2))} className={toolbarButtonQuiet}>+</button>
     </>
   );
 }
@@ -89,30 +91,28 @@ function SizedSvg({ svg, size, scale }: { svg: string; size: SvgSize | null; sca
   );
 }
 
-// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다
+// 드래그로 overflow 컨테이너를 스크롤하는 팬 — pointer capture로 컨테이너 밖으로 나가도 이어진다.
+// 컨테이너는 손잡이가 달린 요소 자신(currentTarget)이다. ref를 쥐지 않아서 ref 자리가 비어 있다 —
+// 전체화면의 본문은 그 자리로 「상자가 붙었다」를 받아 맞춤 배율을 잰다.
 function usePanScroll() {
-  const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || !ref.current) return;
-    drag.current = {
-      x: e.clientX,
-      y: e.clientY,
-      left: ref.current.scrollLeft,
-      top: ref.current.scrollTop,
-    };
-    ref.current.setPointerCapture(e.pointerId);
+    if (e.button !== 0) return;
+    const box = e.currentTarget;
+    drag.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    box.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!drag.current || !ref.current) return;
-    ref.current.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
-    ref.current.scrollTop = drag.current.top - (e.clientY - drag.current.y);
+    if (!drag.current) return;
+    const box = e.currentTarget;
+    box.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
+    box.scrollTop = drag.current.top - (e.clientY - drag.current.y);
   };
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     drag.current = null;
-    if (ref.current?.hasPointerCapture(e.pointerId)) ref.current.releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
-  return { ref, onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
+  return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd };
 }
 
 function MermaidBlock({ code }: { code: string }) {
@@ -127,6 +127,9 @@ function MermaidBlock({ code }: { code: string }) {
   const size = useMemo(() => (svg ? svgSize(svg) : null), [svg]);
   const pan = usePanScroll();
   const modalPan = usePanScroll();
+  const openFull = useRef<HTMLButtonElement>(null);
+  // 전체화면의 본문 상자. 창이 떠 있는 동안에만 선다(Portal의 자식) — 붙으면 여기 들고, 떨어지면 null이다.
+  const [fullBody, setFullBody] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let on = true;
@@ -148,17 +151,15 @@ function MermaidBlock({ code }: { code: string }) {
     };
   }, [code, id]);
 
-  // 참조가 안정적이어야 모달의 Escape 리스너가 렌더마다 붙었다 떼이지 않는다
-  const close = useCallback(() => setFullOpen(false), []);
-
-  // 모달이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산)
+  // 창이 열리면 다이어그램이 화면에 꽉 맞는 배율로 시작한다 (svg 도착 전에 열렸으면 size 갱신 때 재계산).
+  // 여는 순간(fullOpen)이 아니라 **본문 상자가 붙은 순간**에 잰다 — 창 안은 Portal이 다음 커밋에 세워서,
+  // 여는 순간에는 아직 잴 상자가 없다. 붙는 것도 칠하기 전이라 100%로 한 번 그려졌다 튀는 일이 없다.
   useLayoutEffect(() => {
-    const el = modalPan.ref.current;
-    if (!fullOpen || !el || !size) return;
+    if (!fullBody || !size) return;
     const pad = 56; // 모달 콘텐츠 p-7 좌우·상하 패딩 합
-    const fit = Math.min((el.clientWidth - pad) / size.w, (el.clientHeight - pad) / size.h);
+    const fit = Math.min((fullBody.clientWidth - pad) / size.w, (fullBody.clientHeight - pad) / size.h);
     setFullScale(Math.min(3, Math.max(0.4, fit)));
-  }, [fullOpen, size, modalPan.ref]);
+  }, [fullBody, size]);
 
   return (
     <div className="overflow-hidden rounded-[12px] border bg-panel">
@@ -176,7 +177,7 @@ function MermaidBlock({ code }: { code: string }) {
             코드
           </button>
           <CopyCodeButton code={code} />
-          <button type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
+          <button ref={openFull} type="button" onClick={() => setFullOpen(true)} title="전체화면으로 크게 보기" className={toolbarButtonQuiet}>
             <Maximize2 className="size-3" strokeWidth={2} />
           </button>
         </span>
@@ -198,22 +199,27 @@ function MermaidBlock({ code }: { code: string }) {
         </div>
       )}
 
-      {fullOpen && (
-        <FullscreenModal
-          label="mermaid"
-          onClose={close}
-          controls={
-            <>
-              <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
-              <CopyCodeButton code={code} />
-            </>
-          }
+      <FullscreenModal
+        name="다이어그램"
+        label="mermaid"
+        open={fullOpen}
+        onClose={() => setFullOpen(false)}
+        returnFocus={openFull}
+        controls={
+          <>
+            <ZoomControls scale={fullScale} onChange={setFullScale} max={3} />
+            <CopyCodeButton code={code} />
+          </>
+        }
+      >
+        <div
+          {...modalPan}
+          ref={setFullBody}
+          className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet"
         >
-          <div {...modalPan} className="min-h-0 flex-1 cursor-grab select-none overflow-auto p-7 active:cursor-grabbing scroll-quiet">
-            {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
-          </div>
-        </FullscreenModal>
-      )}
+          {svg && <SizedSvg svg={svg} size={size} scale={fullScale} />}
+        </div>
+      </FullscreenModal>
     </div>
   );
 }

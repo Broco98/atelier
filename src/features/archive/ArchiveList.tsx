@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowDown, Check, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import SpecTree from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy";
@@ -51,8 +57,6 @@ function ArchiveList({
   const [query, setQuery] = useState("");
   const [sortAsc, setSortAsc] = useState(false);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterAnchor = useRef<HTMLButtonElement>(null);
 
   // 이 세계에 프로젝트라는 것이 있는가(결정 17). 필터 버튼과, 좁혀서 0개일 때 하는 말이
   // 이 한 값에서 함께 나온다 — 표가 그 둘을 한 칸으로 든다(archive-copy.ts).
@@ -132,11 +136,14 @@ function ArchiveList({
                 있어서, 「옵션이 비면 안 그린다」로 두면 그날 저 세계에 없는 개념이 화면에
                 선다. 좁혀도 0개일 때 하는 말과 **같은 값**에서 나온다(archive-copy.ts). */}
             {canFilter && (
-              <span className="relative flex min-w-0">
-                <button
-                  ref={filterAnchor}
-                  type="button"
-                  onClick={() => setFilterOpen((v) => !v)}
+              // **라디오 메뉴다**(판 3, 스토리 46~49 · 51 · 52). 여닫이 · 줄 옮기기 · Esc 닫기와 거르개로
+              // 포커스 돌려주기 · 바깥 누르기가 닫기만 하는 것은 메뉴 부품이 한다. 지금 값은 줄의
+              // `aria-checked`로 읽히고, 고르면 닫힌다(라디오 항목의 `closeOnClick`, S33).
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  // **이름을 단다**(S37). 사이드바가 접히면 글자가 숨고 깔때기 아이콘만 남는다 — 이름이
+                  // 없으면 읽을 말이 없다. 지금 값은 `title`이 그대로 든다(Tooltip은 판 4).
+                  aria-label="프로젝트 거르기"
                   title={projectFilter ?? "모든 프로젝트"}
                   className={cn(
                     "flex h-6 max-w-[120px] items-center gap-[5px] rounded-[8px] px-[9px] text-[12px] font-medium transition-colors",
@@ -152,36 +159,24 @@ function ArchiveList({
                       <ChevronDown className="size-2.5 shrink-0" strokeWidth={2.2} />
                     </>
                   )}
-                </button>
-                {filterOpen && (
-                  <PopoverPortal
-                    anchorRef={filterAnchor}
-                    align="right"
-                    width={200}
-                    onClose={() => setFilterOpen(false)}
-                    className="flex flex-col gap-px p-[5px]"
+                </DropdownMenuTrigger>
+                {/* 자리와 폭은 지금 그대로다 — 거르개와 오른쪽 끝끼리 맞추고(옛 카드의 `align="right"`), 200px다. */}
+                <DropdownMenuContent align="end" width="wide">
+                  <DropdownMenuRadioGroup
+                    // 「모든 프로젝트」는 거르지 않는 값(`null`)이다 — 줄의 값도 그대로 `null`이다.
+                    value={projectFilter}
+                    onValueChange={(option: string | null) => setProjectFilter(option)}
                   >
                     {[null, ...projectOptions].map((option) => (
-                      <button
-                        key={option ?? "*"}
-                        type="button"
-                        onClick={() => {
-                          setProjectFilter(option);
-                          setFilterOpen(false);
-                        }}
-                        className="flex h-8 w-full items-center gap-2 rounded-[9px] px-[9px] text-left transition-colors hover:bg-state-2"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
+                      <DropdownMenuRadioItem key={option ?? "*"} value={option}>
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
                           {option ?? "모든 프로젝트"}
                         </span>
-                        {projectFilter === option && (
-                          <Check className="size-3 shrink-0 text-primary" strokeWidth={2.4} />
-                        )}
-                      </button>
+                      </DropdownMenuRadioItem>
                     ))}
-                  </PopoverPortal>
-                )}
-              </span>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </span>
         </div>

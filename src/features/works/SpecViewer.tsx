@@ -371,8 +371,8 @@ const FRAME_HINT_WIDTH = 300;
  *
  * 표면은 **새로 안 짓는다** — 호버 카드와 같은 `PopoverPortal`이다. `bottom`+`right`로
  * 프레임에 매면 그 카드의 화면 물리기 규칙이 창 오른쪽 아래로 끌어당겨, 프레임 위에 뜨되
- * 본문 시작 자리는 안 가린다. 등장 모션이 없는 것도 이 저장소의 떠 있는 표면 그대로다
- * (아카이브 토스트) — 움직이는 것이 없어 `prefers-reduced-motion`이 끌 것도 없다.
+ * 본문 시작 자리는 안 가린다. 등장 모션이 없는 것도 그 카드 그대로다(호버 카드) — 움직이는
+ * 것이 없어 `prefers-reduced-motion`이 끌 것도 없다.
  */
 function FrameFocusHint({ anchorRef }: { anchorRef: RefObject<HTMLIFrameElement | null> }) {
   return (
