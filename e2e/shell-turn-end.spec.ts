@@ -12,8 +12,9 @@ import {
 
 // 프로세스 티켓 20 — **턴을 마친 셸은 「확인할 것」이 되고, 훅이 도구 · 오류 · 서브에이전트를 말한다**(프로세스 결정
 // 13 · 14). 전이 하나하나는 L2의 표가 재고(`shell-attention.test.ts`), 여기서는 그 값이 **진짜 스토어 → 띠 · 행 · 탭**
-// 까지 가는 길 넷을 본다: 턴의 끝이 띠에 확인할 것으로 서고 보면 꺼지는 것, 오류로 끝난 턴의 말, `/clear`가 아무것도
-// 안 세우는 것, 서브에이전트 수가 탭 툴팁에 서는 것.
+// 까지 가는 길 여섯을 본다: 턴의 끝이 띠에 확인할 것으로 서고 보면 꺼지는 것, 오류로 끝난 턴의 말, `/clear`가 아무것도
+// 안 세우는 것, 서브에이전트 수가 탭 툴팁에 서는 것, 그리고 리뷰 반영 둘 — `claude -p`의 멈춘 세션 끝 한 장이 확인할
+// 것을 세우는 것, 다른 에이전트의 도구가 승인 대기를 안 푸는 것.
 //
 // **보는 셸과 부르는 셸을 가른다.** 켠 칸에 온 확인할 것은 그 순간 「봤다」가 되어(결정 7) 띠에 안 선다 — 그래서
 // 칸 둘을 세우고 첫째를 켠 채 **둘째(pty 2)가 말하게** 한다. 「보면 꺼진다」는 그 둘째를 켜는 것으로 잰다.
@@ -117,6 +118,84 @@ test("`/clear` 뒤에는 띠에 아무것도 없고 도는 중도 안 선다", a
   await expect(띠(page)).toHaveCount(0);
   // 그리고 그 자리에 **도는 중이 안 선다** — 레인에 점도 링도 없다(work 상태 아이콘이 돌아온다).
   await expect(레인점).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **`claude -p`의 끝**(티켓 20 리뷰 반영). `Stop` 뒤 17ms 만에 `SessionEnd`가 와서(판 03 선행 시험 r1) 감시의
+// 디바운스(100ms)가 두 장을 한 회차로 읽는다 — 화면에 닿는 것은 멈춘 `SessionEnd` 한 장뿐이다. 그 장만으로도 확인할
+// 것이 서야 결정 13의 「안 본 완료를 남긴다」가 남길 것을 갖는다. 앵커는 **새 턴이 닿았다**는 것이다: 먼저 도는 중의
+// 링을 세운다(안 닿았으면 아래 확인할 것이 「아무것도 없던 셸」의 것이 된다).
+test("`claude -p`처럼 멈춘 세션 끝 한 장만 와도 띠에 확인할 것이 선다", async ({ page }) => {
+  await 둘째가말할자리(page);
+  const 링 = 레인(page, plainWork.slug).locator('[data-signal="working"]');
+
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now(), payload: { prompt: "hi" } }, 2);
+  await expect(링).toHaveCount(1);
+  await expect(띠(page)).toHaveCount(0);
+
+  await fireAttention(
+    page,
+    { agent: "claude", event: "SessionEnd", at: Date.now(), payload: { reason: "other" }, stopped: true },
+    2,
+  );
+  await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
+  await expect(링).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **승인을 기다리는 동안 다른 에이전트가 돌린 도구는 그 기다림을 안 푼다**(티켓 20 리뷰 반영). 서브에이전트 안의 도구
+// 훅도 같은 설정으로 불리고 페이로드에 `agent_id`가 실린다 — 그 사건으로 기다림을 풀면 claude가 승인 창에 선 채로
+// 「나를 기다림」이 내려간다. 기다림을 푸는 것은 **그 기다림을 낸 에이전트의** 도구다(승인한 도구가 끝나 온 PostToolUse).
+//
+// 앵커: 서브에이전트의 사건이 **닿았다**는 것. 사건은 한 통로로 차례로 오므로, 뒤에 쏜 사건(첫째 칸의 승인 요청)이
+// 화면에 서면 앞의 것도 이미 앉았다 — 그때 둘째 칸의 기다림이 남아 있어야 한다.
+test("승인을 기다리는 셸에 서브에이전트의 도구 사건이 와도 「나를 기다림」이 남는다", async ({ page }) => {
+  await 둘째가말할자리(page);
+  const 시각 = Date.now();
+  const 기다림줄 = 띠(page).getByRole("button", { name: /나를 기다림/ });
+  const 승인요청 = (at: number) => ({
+    agent: "claude",
+    event: "PermissionRequest",
+    at,
+    payload: { tool_name: "Bash", tool_input: { command: "git push" } },
+  });
+
+  await markAttention(page, 승인요청(시각), 2);
+  await expect(기다림줄).toHaveCount(1);
+
+  // 백그라운드 서브에이전트의 Read — 18의 실측 id 모양(16진 17자)이다.
+  await fireAttention(
+    page,
+    {
+      agent: "claude",
+      event: "PreToolUse",
+      at: 시각 + 10,
+      payload: { tool_name: "Read", tool_input: { file_path: "src/a.ts" }, agent_id: "ace905bb8e05c8931", agent_type: "general-purpose" },
+      subagents: 1,
+    },
+    2,
+  );
+  // 첫째 칸은 둘째 칸보다 먼저 앉았다(`둘째가말할자리`) — 착석을 다시 기다릴 것이 없어 곧바로 쏜다.
+  await fireAttention(page, 승인요청(시각 + 20), 1);
+  // 두 칸이 모두 부른다 — 둘째 칸의 기다림이 서브에이전트의 도구에 안 풀렸다.
+  await expect(기다림줄).toHaveCount(2);
+
+  // 기다림을 낸 에이전트(본 에이전트 — `agent_id`가 없다)의 도구가 끝나면 그때 풀린다.
+  await fireAttention(
+    page,
+    {
+      agent: "claude",
+      event: "PostToolUse",
+      at: 시각 + 30,
+      payload: { tool_name: "Bash", tool_input: { command: "git push" }, tool_response: {} },
+      subagents: 1,
+    },
+    2,
+  );
+  await expect(기다림줄).toHaveCount(1);
+  await expect(이름표(page, 1)).toHaveAttribute("title", "도는 중 · 서브에이전트 1");
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

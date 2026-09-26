@@ -99,6 +99,7 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
       source: "hook",
       agent: "claude",
       subagents: 0,
+      subagentId: null,
     });
     // **먼저 실제로 달라졌는가** — 이것이 없으면 아래 「같다」가 「아무 일도 안 났다」로도 초록이다.
     expect(signalsOf(뒤, "atelier")).toEqual({ 나: "waiting" });

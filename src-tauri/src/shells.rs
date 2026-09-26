@@ -152,7 +152,7 @@ pub struct ShellHookState {
     payload: serde_json::Value,
     /// 도는 서브에이전트 수.
     subagents: usize,
-    /// 턴이 멈췄나 — Stop · StopFailure에서 참, 새 턴 · 세션 끝 · 중단에서 거짓(S50).
+    /// 턴이 멈췄나 — Stop · StopFailure에서 참, 새 턴 · 중단에서 거짓(S50). 세션 끝은 그대로 둔다(처리기 머리말 — 티켓 20 리뷰 반영).
     stopped: bool,
 }
 
@@ -1388,18 +1388,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// **멈춤은 Stop · StopFailure가 켜고, 새 턴 · 세션 끝 · 중단이 끈다**(S50). 그 밖의 사건은 그대로 둔다 — 그래서 Stop 뒤에
-    /// 온 SubagentStop에도 참이고, 화면(티켓 20)은 서브에이전트가 다 끝나는 순간을 「확인할 것」으로 읽을 수 있다.
+    /// **멈춤은 Stop · StopFailure가 켜고, 새 턴 · 중단이 끈다**(S50). 그 밖의 사건은 그대로 둔다 — 그래서 Stop 뒤에 온
+    /// SubagentStop에도 참이고, 화면(티켓 20)은 서브에이전트가 다 끝나는 순간을 「확인할 것」으로 읽을 수 있다.
+    ///
+    /// **세션 끝(SessionEnd)은 멈춤을 안 건드린다**(티켓 20 리뷰 반영 — 스펙 S50은 끈다고 적었다). `claude -p`는 Stop 뒤
+    /// 17ms 만에 SessionEnd를 내고(판 03 선행 시험 r1), 감시는 100ms로 디바운스해 그 순간의 파일 한 장만 싣는다. 끄면 화면은
+    /// 「멈춘 턴 뒤의 끝」과 「도는 턴이 끊긴 끝」을 못 갈라 `claude -p`의 확인할 것이 한 번도 안 선다. 도는 턴의 끝은 새 턴이
+    /// 이미 멈춤을 껐으므로 거짓이다(아래 UserPromptSubmit → SessionEnd).
     ///
     /// 중단은 둘이다: claude PostToolUseFailure의 `is_interrupt: true`, codex의 Interrupt. 중단 아닌 도구 실패는 멈춤을 안 건드린다.
     #[test]
-    fn stopped_is_set_by_a_stop_and_cleared_by_a_new_turn_an_end_or_an_interrupt() {
+    fn stopped_is_set_by_a_stop_cleared_by_a_new_turn_or_an_interrupt_and_kept_by_an_end() {
         let root = temp_root("handler-stopped");
         write_hook_script(&root).expect("스크립트를 세운다");
         let shell = "1700-9";
         let stopped = |state: serde_json::Value| (state["event"].as_str().unwrap_or_default().to_string(), state["stopped"].clone());
 
-        let steps: [(&str, &str, String, bool); 12] = [
+        let steps: [(&str, &str, String, bool); 15] = [
             ("claude", "SubagentStart", claude_subagent_start("aaa1"), false),
             ("claude", "Stop", CLAUDE_STOP.to_string(), true),
             ("claude", "SubagentStop", claude_subagent_stop("aaa1"), true),
@@ -1409,8 +1414,13 @@ mod tests {
             ("claude", "PostToolUseFailure", claude_tool_failure(false), true),
             ("claude", "PostToolUseFailure", claude_tool_failure(true), false),
             ("claude", "Stop", CLAUDE_STOP.to_string(), true),
+            // `claude -p`의 끝 — 멈춘 턴 뒤의 끝이라 참 그대로다.
+            ("claude", "SessionEnd", r#"{"reason":"other"}"#.to_string(), true),
+            ("claude", "UserPromptSubmit", r#"{"prompt":"다음"}"#.to_string(), false),
+            // 도는 턴이 끊긴 끝 — 새 턴이 끈 멈춤 그대로 거짓이다.
             ("claude", "SessionEnd", r#"{"reason":"prompt_input_exit"}"#.to_string(), false),
             ("codex", "Stop", r#"{"turn_id":"t1"}"#.to_string(), true),
+            ("codex", "SessionEnd", "{}".to_string(), true),
             ("codex", "Interrupt", r#"{"turn_id":"t1"}"#.to_string(), false),
         ];
         for (agent, event, payload, expected) in steps {

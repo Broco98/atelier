@@ -104,6 +104,19 @@ export function stopFailureLine(payload: unknown): string | null {
 }
 
 /**
+ * 이 사건을 낸 **서브에이전트**의 id — 본 에이전트가 낸 사건이면 `null`이다(티켓 20 리뷰 반영). 서브에이전트 안의 훅도
+ * 같은 설정으로 불리고 페이로드에 `agent_id`가 실린다(Claude Code 훅 문서의 공통 입력 칸, 연구 B-2). codex도 같은
+ * 칸 이름이다(codex-cli 0.155.1 바이너리의 도구 · 서브에이전트 훅 스키마 — 티켓 19 · 20이 읽음).
+ *
+ * **두 에이전트가 같은 칸이라 어댑터 밖에서 한 번 읽는다** — 처리기가 서브에이전트 수를 접을 때 에이전트를 안 가리고
+ * 이 칸을 읽는 것(S51)과 같은 가름이다. 읽는 자리는 `shell-attention.ts`의 `nextAttention` 하나이고, 쓰는 자리는 「도구가
+ * 기다림을 푸는가」 하나다.
+ */
+export function subagentOf(payload: unknown): string | null {
+  return stringAt(payload, "agent_id");
+}
+
+/**
  * claude의 `SessionEnd` 하나를 정규 이벤트로 접는다.
  *
  * **claude 전용이다.** 스펙 전이 표는 `end` 줄에만 codex를 적고 `clear` 줄에서는 뺐다

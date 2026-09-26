@@ -81,7 +81,8 @@ export interface ShellHookState {
    */
   subagents: number;
   /**
-   * 턴이 멈췄나(S50) — Stop · StopFailure에서 참, 새 턴 · 세션 끝 · 중단에서 거짓. 순서 가드에 막힌 늦은 사건은
+   * 턴이 멈췄나(S50) — Stop · StopFailure에서 참, 새 턴 · 중단에서 거짓, 세션 끝은 그대로 둔다(`claude -p`의 끝을 읽는
+   * 칸이다 — `applySignal`의 `end` 줄). 순서 가드에 막힌 늦은 사건은
    * `event` · `at`을 그대로 두고 이 칸과 `subagents`만 바꾼다(S27). 옛 처리기의 파일이면 거짓이다.
    */
   stopped: boolean;

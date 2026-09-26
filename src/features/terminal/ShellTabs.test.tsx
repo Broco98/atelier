@@ -825,6 +825,7 @@ describe("칸이 물든다", () => {
     source: "hook",
     agent: "claude",
     subagents: 0,
+    subagentId: null,
   });
 
   /**

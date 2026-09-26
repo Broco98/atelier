@@ -153,10 +153,16 @@ setopt extended_glob
         fi
       fi
       ;;
-    # 멈춤(S50): 턴이 끝나면 참, 새 턴 · 세션 끝 · 중단이면 거짓. 새 턴과 세션 끝은 도는 서브에이전트도 비운다.
-    (UserPromptSubmit|SessionEnd)
+    # 멈춤(S50): 턴이 끝나면 참, 새 턴 · 중단이면 거짓. 새 턴과 세션 끝은 도는 서브에이전트도 비운다.
+    (UserPromptSubmit)
       ids=()
       stopped=false
+      ;;
+    # **세션 끝은 멈춤을 그대로 둔다**(티켓 20 리뷰 반영 — 스펙 S50은 끈다고 적었다). `claude -p`는 Stop 뒤 17ms 만에
+    # SessionEnd를 내고, 앱의 감시는 100ms로 디바운스해 그 순간의 이 파일 한 장만 싣는다 — 화면은 Stop을 못 본다. 여기서
+    # 끄면 그 한 장이 「멈춘 턴 뒤의 끝」인지 「도는 턴이 끊긴 끝」인지를 아무도 모른다. 도는 턴이면 새 턴이 이미 껐다.
+    (SessionEnd)
+      ids=()
       ;;
     (Stop|StopFailure)
       stopped=true

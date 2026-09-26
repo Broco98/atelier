@@ -286,6 +286,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     source: "hook",
     agent: "claude",
     subagents: 0,
+    subagentId: null,
     ...over,
   });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
@@ -467,15 +468,31 @@ describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
     ).toEqual([[], []]);
   });
 
-  // **세션 끝은 남긴 확인할 것을 다시 울리지 않는다** — `claude -p`가 `Stop` 직후 `SessionEnd`를 내는 길이다.
+  // **세션 끝은 남긴 확인할 것을 다시 울리지 않는다.** 대화형 claude에서 턴을 마친 뒤 `/exit`하는 길이다 — `Stop`과
+  // `SessionEnd` 사이가 디바운스(100ms)보다 넓어 두 장이 따로 닿는다. 세션 끝은 멈춤을 안 끈다(처리기).
   it("확인할 것 뒤의 세션 끝은 안 운다", () => {
     expect(
       흘린다(
         새턴,
         사건("Stop", { last_assistant_message: "다 했어요" }, { at: 200, stopped: true }),
-        사건("SessionEnd", { reason: "other" }, { at: 210 }),
+        사건("SessionEnd", { reason: "prompt_input_exit" }, { at: 5_000, stopped: true }),
       ),
     ).toEqual([[], ["다 했어요"], []]);
+  });
+
+  // **`claude -p`가 실제로 닿는 모양**(티켓 20 리뷰 반영). `Stop` 뒤 17ms 만에 `SessionEnd`가 와서(판 03 선행 시험 r1)
+  // 감시의 디바운스가 두 장을 한 회차로 읽는다 — 프런트에 닿는 것은 멈춘 `SessionEnd` 한 장뿐이다. 그래도 확인할 것에
+  // 들어서므로 한 번 운다. 말은 없어(멈춘 턴의 말은 파일에서 사라졌다) 본문은 화면값의 이름이다.
+  it("디바운스가 `Stop`을 삼켜 멈춘 세션 끝 한 장만 와도 한 번 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "other" }, { at: 217, stopped: true }))).toEqual([
+      [],
+      ["확인할 것"],
+    ]);
+  });
+
+  // 도는 턴이 끊긴 채 세션이 끝나면(멈춤 거짓) 부를 것이 없다 — 결정 13의 표대로 도는 중만 지운다.
+  it("멈추지 않은 세션 끝은 안 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "other" }, { at: 217 }))).toEqual([[], []]);
   });
 });
 

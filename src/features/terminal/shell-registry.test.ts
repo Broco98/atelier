@@ -2129,6 +2129,7 @@ describe("셸에 「스스로 말한 것」이 앉는다", () => {
     source: "hook",
     agent: "claude",
     subagents: 0,
+    subagentId: null,
   };
 
   it("그 칸에 그대로 앉는다", () => {
@@ -2175,6 +2176,7 @@ describe("「봤다」가 그 칸에 앉는다", () => {
     source: "hook",
     agent: "claude",
     subagents: 0,
+    subagentId: null,
   };
 
   it("본 칸의 상태에 「봤다」가 선다", () => {
@@ -2253,6 +2255,7 @@ describe("죽은 셸의 상태", () => {
     source: "hook",
     agent: "claude",
     subagents: 0,
+    subagentId: null,
   };
 
   it("정상 종료는 칸과 함께 사라진다", () => {

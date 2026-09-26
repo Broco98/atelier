@@ -1,4 +1,4 @@
-import { foldHookState } from "./agents";
+import { foldHookState, subagentOf } from "./agents";
 import type { AgentSignal } from "./agents/types";
 import { markSeen, modeOfOwner, runningOn, shellRowName, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
@@ -63,20 +63,35 @@ export interface Attention {
    * 전이에만 쓴다.
    */
   subagents: number;
+  /**
+   * **이 사실을 낸 서브에이전트**의 id(페이로드의 `agent_id`) — 본 에이전트가 냈으면 `null`이다. 셸 상태의 여덟째
+   * 칸이다(티켓 20 리뷰 반영 — 스펙은 일곱 칸을 적었다). 훅 밖의 길(OSC · 벨 · 출력)은 `null`이다.
+   *
+   * **읽는 자리는 하나다 — 도구 사건이 기다림을 푸는가**(`applySignal`의 `tool` 줄). 기다림을 푸는 것은 그 기다림을 낸
+   * 에이전트의 도구뿐이라, 기다림이 선 뒤에도 「누가 냈나」를 들고 있어야 한다. 사건에만 싣고 여기 안 두면 둘째
+   * 사건이 올 때 견줄 것이 없다.
+   */
+  subagentId: string | null;
 }
 
 /** 화면값 — 행의 레인·탭 채움·띠·알림이 **모두 이 값 하나만** 읽는다. */
 export type ShellSignal = AttentionKind;
 
 /**
- * 사건이 싣고 오는 **두 값** — 처리기가 접어 상태 파일에 적는다(프로세스 스펙 S50 · S51). 어댑터는 이것을 안
- * 읽는다: 어느 훅 이름이 무슨 일인가(정규 이벤트)와 「지금 서브에이전트가 몇이고 턴이 멈췄나」는 다른 사실이고,
- * 뒤쪽은 에이전트를 가리지 않는다.
+ * 사건이 싣고 오는 **서브에이전트와 멈춤의 값** — 어댑터는 이것을 안 읽는다: 어느 훅 이름이 무슨 일인가(정규 이벤트)와
+ * 「지금 서브에이전트가 몇이고 턴이 멈췄고 이 사건은 어느 서브에이전트가 냈나」는 다른 사실이고, 뒤쪽은 에이전트를
+ * 가리지 않는다. 수와 멈춤은 처리기가 접어 상태 파일에 적고(프로세스 스펙 S50 · S51), 낸 서브에이전트는 페이로드의
+ * `agent_id`다(`agents/payload.ts`의 `subagentOf` — 처리기가 수를 접을 때 읽는 그 칸이다).
  */
 export interface HookCounts {
   /** 도는 서브에이전트 수. */
   subagents: number;
-  /** 턴이 멈췄나 — `Stop` · `StopFailure`에서 참, 새 턴 · 세션 끝 · 중단에서 거짓. 순서 가드에 막힌 사건도 접는다. */
+  /** 이 사건을 낸 서브에이전트의 id. 본 에이전트가 냈으면 `null`이다(`Attention.subagentId`). */
+  subagentId: string | null;
+  /**
+   * 턴이 멈췄나 — `Stop` · `StopFailure`에서 참, 새 턴 · 중단에서 거짓. **세션 끝은 그대로 둔다**(`end` 줄이 이 값으로
+   * 「멈춘 턴 뒤의 끝」을 가른다 — `applySignal` 머리말). 순서 가드에 막힌 사건도 접는다.
+   */
   stopped: boolean;
 }
 
@@ -85,7 +100,7 @@ export interface HookCounts {
  * (기본값) 훅 길에서 이 값을 빠뜨려도 조용히 통과하고, 그 결과는 「서브에이전트가 도는데 확인할 것」이라
  * 화면에서 티가 안 난다. 그래서 `agent`처럼 **늘 넘기는 자리**이고, 모르는 쪽은 이 이름을 적는다.
  */
-export const NO_HOOK_COUNTS: HookCounts = { subagents: 0, stopped: false };
+export const NO_HOOK_COUNTS: HookCounts = { subagents: 0, subagentId: null, stopped: false };
 
 /**
  * 「오류로 끝남」 — API 오류로 끝난 턴의 말 머리(프로세스 스펙 S57). 메시지 자리에 서고, 오류 상세의 첫 줄(없으면
@@ -104,13 +119,25 @@ export const FAILED_LABEL = "오류로 끝남";
  * | 정규 이벤트 | 결과 |
  * |---|---|
  * | `start` | 도는 중 |
- * | `tool` | 도는 중 — 기다림이 풀린다 |
+ * | `tool` | 도는 중 — 기다림이 풀린다. **다른 에이전트가 낸 기다림은 그대로**(수만 고친다) |
  * | `waiting` | 기다림 |
  * | `stop` | 서브에이전트가 없으면 **확인할 것**, 있으면 도는 중(서브에이전트 N) |
  * | `stopFailure` | 확인할 것 + 「오류로 끝남」 |
  * | `subagent` | 지금 상태를 두고 수만 고친다. **도는 중이고 멈춘** 셸이면 수가 0이 될 때 확인할 것(S50) |
  * | `interrupt` · `clear` | **없음** |
- * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다 |
+ * | `end` | 도는 중 · 기다림은 지운다. 안 본 확인할 것은 남긴다. **멈춘 턴 뒤의 끝**(`stopped`)이면 도는 중은 확인할 것 |
+ *
+ * **`end`의 마지막 칸은 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 「안 본 완료를 남긴다」를 둔 까닭은 `claude -p`
+ * — `Stop` 뒤 몇 ms 만에 `SessionEnd`가 온다 — 인데, 그 두 장은 감시의 디바운스(100ms, `shells.rs`) 한 회차에 들어가
+ * 화면에는 `SessionEnd` 한 장만 닿는다. 남길 완료가 한 번도 안 선 채로 도는 중이 지워지던 것이다. 처리기가 세션 끝에서
+ * 멈춤을 안 끄므로(S50을 그만큼 고쳤다) 그 한 장이 「멈춘 턴 뒤의 끝」을 말하고, 여기서 삼켜진 `Stop`을 대신 세운다.
+ * 도는 턴이 끊긴 끝은 새 턴이 멈춤을 이미 껐으므로 표대로 지워진다.
+ *
+ * **`tool`의 마지막 칸도 표에 없던 것이다**(티켓 20 리뷰 반영). 결정 13이 기다림을 푸는 까닭으로 든 것은 「승인 뒤 도구가
+ * 돌면」이다. 서브에이전트 안의 도구 훅도 같은 설정으로 불려(페이로드에 `agent_id`) 표를 글자 그대로 옮기면, 한 에이전트가
+ * 승인 창에 선 동안 **다른 에이전트**(백그라운드 서브에이전트가 기본이다 — 18)가 돌린 도구가 그 기다림을 내린다 — 사람이
+ * 답해야 하는 동안 「나를 기다림」이 사라지고, 두 사건이 한 디바운스에 들면 알림도 안 운다. 그래서 기다림을 푸는 것은
+ * **그 기다림을 낸 에이전트의 도구**(`subagentId`가 같다 — 본 에이전트끼리는 둘 다 `null`)다.
  *
  * 어휘 셋과 우선순위(기다림 › 안 본 완료 › 도는 중)는 그대로다 — 바뀐 것은 뜻 칸이다: 턴의 끝은 사람이 답할
  * 것이 아니라 **아직 안 본 결과**이고, 도구와 서브에이전트도 도는 중이다. 「없음」은 **상태 없음**(`null`)을
@@ -141,7 +168,7 @@ export function applySignal(
    * 그 결과는 초록 행에서 마크가 사라지는 것뿐이라 화면에서 티가 안 난다.
    */
   agent: string | null,
-  /** 사건이 실어 온 수와 멈춤. 훅 밖의 길은 `NO_HOOK_COUNTS`를 적는다(그 머리말). */
+  /** 사건이 실어 온 수 · 낸 서브에이전트 · 멈춤. 훅 밖의 길은 `NO_HOOK_COUNTS`를 적는다(그 머리말). */
   counts: HookCounts,
 ): Attention | null {
   if (prev !== null && prev.source === "hook" && source !== "hook") return prev;
@@ -150,11 +177,26 @@ export function applySignal(
   // **말한 에이전트는 직전 것을 이어받지 않는다.** 말을 한 것은 이번에 온 그 사건이고, 훅 길에서는 늘 값이
   // 실려 온다. 이어받으면 OSC가 말한 상태에 옛 훅의 이름이 남아 「이 말은 claude가 했다」가 거짓이 된다.
   const fact = (kind: AttentionKind, message: string | null = signal.message ?? prev?.message ?? null) =>
-    reread(prev, { kind, message, since: at, seen: false, source, agent, subagents: counts.subagents });
+    reread(prev, {
+      kind,
+      message,
+      since: at,
+      seen: false,
+      source,
+      agent,
+      subagents: counts.subagents,
+      subagentId: counts.subagentId,
+    });
 
   switch (signal.event) {
     case "start":
+      return fact("working");
     case "tool":
+      // **다른 에이전트의 도구는 기다림을 안 푼다**(머리말의 `tool` 칸). 새 사실이 아니라 시각도 「봤다」도 그대로이고,
+      // 파일이 실어 온 수만 앉힌다.
+      if (prev !== null && prev.kind === "waiting" && prev.subagentId !== counts.subagentId) {
+        return withSubagents(prev, counts.subagents);
+      }
       return fact("working");
     case "waiting":
       return fact("waiting");
@@ -176,9 +218,14 @@ export function applySignal(
       // 사람이 끊었거나 대화를 지웠다 — 사람이 이미 그 자리에 있으므로 부를 것도 돌 것도 없다.
       return null;
     case "end":
+      if (prev === null) return null;
       // `claude -p`는 `Stop` 직후 몇 ms 만에 `SessionEnd`가 온다 — 확인할 것까지 지우면 완료 알림이 뜨자마자
       // 사라진다(프로세스 결정 13). 남기는 것이지 새로 세우는 것이 아니라 시각도 「봤다」도 그대로다.
-      return prev !== null && prev.kind === "done" ? withSubagents(prev, counts.subagents) : null;
+      if (prev.kind === "done") return withSubagents(prev, counts.subagents);
+      // 그 `Stop`이 디바운스에 삼켜져 이 한 장만 닿았다(머리말의 마지막 표 칸). **말은 없다** — 멈춘 턴의 말은 삼켜진
+      // 파일에 있었고, 직전 말은 지난 턴의 것일 수 있어 결과로 세우면 틀린 글이 된다. 기다림은 표대로 지운다.
+      if (prev.kind === "working" && counts.stopped) return fact("done", null);
+      return null;
   }
 }
 
@@ -221,7 +268,7 @@ export function nextOnOutput(prev: Attention | null, at: number): Attention | nu
   return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent, NO_HOOK_COUNTS);
 }
 
-/** 일곱 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
+/** 여덟 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
 function same(a: Attention | null, b: Attention | null): boolean {
   if (a === null || b === null) return a === b;
   return (
@@ -231,7 +278,8 @@ function same(a: Attention | null, b: Attention | null): boolean {
     a.seen === b.seen &&
     a.source === b.source &&
     a.agent === b.agent &&
-    a.subagents === b.subagents
+    a.subagents === b.subagents &&
+    a.subagentId === b.subagentId
   );
 }
 
@@ -259,6 +307,7 @@ export function nextAttention(
 
   const next = applySignal(prev, signal, hook.at, "hook", hook.agent, {
     subagents: hook.subagents,
+    subagentId: subagentOf(hook.payload),
     stopped: hook.stopped,
   });
   return same(prev, next) ? prev : next;
