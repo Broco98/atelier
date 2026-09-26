@@ -14,6 +14,7 @@ import {
   띠,
   레인,
   오른쪽메타,
+  툴팁,
   행버튼,
 } from "./harness";
 
@@ -951,9 +952,6 @@ const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { nam
  * 서 있는 토글을 재는 검사는 역할과 이름으로 집는다.
  */
 const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
-
-/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
-const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /** 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다. */
 const 부르게한다 = (page: Page, ptyId: number) =>

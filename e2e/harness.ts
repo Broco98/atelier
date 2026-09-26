@@ -525,6 +525,15 @@ export async function moveOntoHalf(page: Page, half: "left" | "right") {
 export const 띠 = (page: Page) => page.locator("[data-band]");
 
 /**
+ * 떠 있는 툴팁. 역할이 없어(S28) 표식(`data-slot`)으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. 닫히는 툴팁과
+ * 새로 서는 툴팁이 잠깐 겹치는 자리는 글자로 좁힌다(`.filter({ hasText })`).
+ *
+ * **여기 사는 이유는 툴팁을 집는 길을 하나로 두려는 것이다.** spec마다 선택자를 옮겨 적으면 표식이 바뀌는 날
+ * 한 파일만 고쳐지고, 고쳐지지 않은 쪽의 「툴팁이 없다」(`toHaveCount(0)`)는 헛돌아 초록이 된다.
+ */
+export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
+
+/**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
  * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
  *

@@ -8,6 +8,7 @@ import {
   recordClipboard,
   unknownIpcCalls,
   workRow,
+  툴팁,
 } from "./harness";
 import { fillToCap, MAX_SHELLS } from "./tab-row";
 
@@ -337,7 +338,7 @@ test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로
   await page.goto(`/works/${pinnedWork.slug}`);
   const info = 메타(page);
   const card = 메타카드(page);
-  const tooltip = page.locator("[data-slot=tooltip-content]");
+  const tooltip = 툴팁(page);
 
   await info.focus();
   await expect(tooltip).toHaveText("메타");
@@ -543,7 +544,7 @@ test("닫기 버튼은 포커스에 툴팁 「닫기」와 Kbd `Esc`를 띄우�
 }) => {
   await installFixtureBackend(page);
   await 문서를연다(page, 다이어그램문서);
-  const tooltip = page.locator("[data-slot=tooltip-content]", { hasText: "닫기" });
+  const tooltip = 툴팁(page).filter({ hasText: "닫기" });
 
   await 크게보기(page).focus();
   await page.keyboard.press("Enter");
@@ -625,7 +626,7 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
   await installFixtureBackend(page);
   await 문서를연다(page, 다이어그램문서);
   const code = 코드(page);
-  const tooltip = page.locator("[data-slot=tooltip-content]");
+  const tooltip = 툴팁(page);
 
   await code.focus();
   await expect(tooltip).toHaveText("원본 mermaid 코드 보기");
@@ -650,8 +651,6 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
 // 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
 // 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
 
-/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
-const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 /** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
 const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
 
