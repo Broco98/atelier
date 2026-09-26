@@ -9,7 +9,7 @@ import { isAtOrUnder } from "@/lib/path-prefix";
 export const SETTINGS_ENTRY = "/settings";
 
 /**
- * 설정 nav 항목 넷(UI개선 결정 21·22). 항목 하나 = 페이지 하나 = 주소 하나다.
+ * 설정 nav 항목의 표(UI개선 결정 21·22). 항목 하나 = 페이지 하나 = 주소 하나다.
  *
  * **라벨은 한국어다**(결정 21의 이름 그대로) — main nav의 대문자 층도, 탭 줄의 소문자 가족도
  * 아니다(`CONTEXT.md` 표기 절). `터미널`은 설정 항목의 이름이고, 문장에서는 「터미널 설정」으로

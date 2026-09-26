@@ -331,7 +331,8 @@ function asideClass(open: boolean, dragging: boolean): string {
 }
 
 /**
- * 설정 nav(UI개선 결정 21). 맨 위 「← 앱으로 돌아가기」, 그 아래 항목 셋.
+ * 설정 nav(UI개선 결정 21). 맨 위 「← 앱으로 돌아가기」, 그 아래 설정 nav 항목들 — 표는
+ * `SETTINGS_ITEMS`(`features/settings/pages.ts`)가 든다.
  *
  * **규격은 main nav와 같은 `SidebarItem`이고 거터도 GUTTER다** — 같은 사이드바 자리에 갈아 서는
  * 것이라 규격이 갈리면 들어가는 순간 행이 튄다. 켜짐은 앱 셸이 내린 원시값과 견준다 — 라우터 링크의

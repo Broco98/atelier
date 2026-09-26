@@ -19,8 +19,8 @@ import type {
   TerminalTheme,
 } from "./types";
 
-// 앱 전역 설정 화면 (결정 51·52·54). 항목은 `터미널` · `알림` · `에이전트 훅` · `spec 레이아웃` 넷이고,
-// 항목 하나가 주소 하나인 페이지다(UI개선 결정 22 · `pages.ts`) — 조각(`…SettingsPage` ·
+// 앱 전역 설정 화면 (결정 51·52·54). 설정 nav 항목은 `pages.ts`의 표(`SETTINGS_ITEMS`)가 들고,
+// 항목 하나가 주소 하나인 페이지다(UI개선 결정 22) — 조각(`…SettingsPage` ·
 // `AgentHooksPage` · `SpecLayoutPage`, #225)이 한 페이지에 하나씩 서고 초안과 저장은 조각마다 따로
 // 산다. 터미널 설정과 알림 설정이 각자 저장 버튼을 갖고, 에이전트 훅은 누르면 바로 적용되며, spec
 // 레이아웃은 레이아웃 폴더에 산다(`features/spec-layout`).
