@@ -4,12 +4,13 @@ import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "@/routeTree.gen";
 import { announceStay, whenArrived } from "./arrival";
 
-// 이동이 닿으면 할 일(develop 머지 — 셸로 가는 길이 셸을 켜고 포커스를 요청하는 때). 진짜 라우터를 메모리 히스토리로 띄워
-// 「언제 부르는가」만 본다 — 막기가 없을 때 `navigate` 안에서 곧바로, 주소가 그대로인 이동에도, 막혀 머물면 안, 다른 데 먼저
-// 닿으면 안, 새 요청이 오면 앞의 것은 안.
+// 이동이 닿으면 할 일(develop 머지 — 셸로 가는 길이 셸을 켜고 포커스를 요청하는 때, 토스트의 [보기]가 그 토스트를 내리는 때).
+// 진짜 라우터를 메모리 히스토리로 띄워 「언제 부르는가」만 본다 — 막기가 없을 때 `navigate` 안에서 곧바로, 주소가 그대로인
+// 이동에도, 막혀 머물면 안, 다른 데 먼저 닿으면 안, 같은 칸에 새 요청이 오면 앞의 것은 안, 칸이 다르면 둘 다.
 //
 // **막기 자체는 이 층에 없다.** 히스토리는 `document`가 있을 때만 막기를 부르고 Vitest 기본 환경(node)에는 그것이 없다. 막는
-// 쪽이 하는 일(`announceStay`)을 여기서 손으로 부르고, 편집기의 진짜 막기를 지나는 ⌘J는 L3(`shell-recall.spec.ts`)가 잰다.
+// 쪽이 하는 일(`announceStay`)을 여기서 손으로 부르고, 편집기의 진짜 막기를 지나는 ⌘J와 [보기]는 L3(`shell-recall.spec.ts` ·
+// `processes-view.spec.ts`)가 잰다.
 //
 // isServer · origin을 넘기는 까닭은 `router.test.ts` 머리말과 같다 — node에서 라우터가 제가 클라이언트인 줄 알게 한다.
 
@@ -36,7 +37,7 @@ describe("이동이 닿으면 할 일", () => {
     await router.load();
     const arrive = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive);
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
     const done = router.navigate({ to: "/processes" });
     expect(arrive).toHaveBeenCalledTimes(1);
     await done;
@@ -48,7 +49,7 @@ describe("이동이 닿으면 할 일", () => {
     await router.load();
     const arrive = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/terminal" }).href, arrive);
+    whenArrived(router, router.buildLocation({ to: "/terminal" }).href, arrive, "shell");
     await router.navigate({ to: "/terminal" });
     expect(arrive).toHaveBeenCalledTimes(1);
   });
@@ -58,7 +59,7 @@ describe("이동이 닿으면 할 일", () => {
     await router.load();
     const arrive = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive);
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
     // 막는 쪽이 [계속 편집]에서 하는 일. 막힌 이동은 히스토리에 안 적혀 라우터가 안 돈다.
     announceStay();
     // 사람이 뒤에 다른 길로 같은 화면에 간다(「앱으로 돌아가기」가 들어오기 전의 그 화면으로).
@@ -71,7 +72,7 @@ describe("이동이 닿으면 할 일", () => {
     await router.load();
     const arrive = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive);
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
     await router.navigate({ to: "/maison/terminal" });
     await router.navigate({ to: "/processes" });
     expect(arrive).not.toHaveBeenCalled();
@@ -82,7 +83,7 @@ describe("이동이 닿으면 할 일", () => {
     await router.load();
     const arrive = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive);
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, arrive, "shell");
     await router.navigate({ to: "/processes" });
     await router.navigate({ to: "/maison/terminal" });
     await router.navigate({ to: "/processes" });
@@ -95,11 +96,40 @@ describe("이동이 닿으면 할 일", () => {
     const first = vi.fn();
     const second = vi.fn();
 
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, first);
-    whenArrived(router, router.buildLocation({ to: "/processes" }).href, second);
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, first, "shell");
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, second, "shell");
     await router.navigate({ to: "/processes" });
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  // 칸은 길마다 하나다 — 셸로 가는 길(⌘J)과 토스트의 [보기]. 한 칸에 둘을 두면 뒤의 요청이 앞의 것(셸 켜기 · 토스트 내리기)을
+  // 소리 없이 지운다.
+  it("칸이 다르면 서로 덮지 않는다 — 닿으면 둘 다 부른다", async () => {
+    const router = setup();
+    await router.load();
+    const shell = vi.fn();
+    const processes = vi.fn();
+
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, shell, "shell");
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, processes, "processes");
+    await router.navigate({ to: "/processes" });
+    expect(shell).toHaveBeenCalledTimes(1);
+    expect(processes).toHaveBeenCalledTimes(1);
+  });
+
+  it("머묾은 모든 칸을 거둔다", async () => {
+    const router = setup();
+    await router.load();
+    const shell = vi.fn();
+    const processes = vi.fn();
+
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, shell, "shell");
+    whenArrived(router, router.buildLocation({ to: "/processes" }).href, processes, "processes");
+    announceStay();
+    await router.navigate({ to: "/processes" });
+    expect(shell).not.toHaveBeenCalled();
+    expect(processes).not.toHaveBeenCalled();
   });
 
   it("머묾은 기다리는 것이 없으면 아무 일도 안 한다", () => {

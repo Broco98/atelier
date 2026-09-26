@@ -43,6 +43,7 @@ import { viewProcesses } from "./processes-view";
  * 요청은 그 셸을 기다리는 채 남아 다음에 붙는 다른 셸이 포커스를 못 받았다 — 주인 잃은 셸 갈림 뒤에 둔 까닭과 같은 함정이
  * 막힌 이동 뒤에서 다시 열린 것이다. 닿음은 새 화면이 그려지기 전에 오므로 막히지 않는 길은 예전과 같다: 켜진 셸로 화면이
  * 처음부터 서고, 요청은 그 셸이 붙기 전에 적힌다. 목적지는 이동과 같은 옵션으로 한 번 지어(`buildLocation`) 닿은 주소와 견준다.
+ * 기다리는 칸은 `shell`이다 — 토스트의 [보기]가 쓰는 `processes` 칸과 안 섞인다.
  *
  * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12 · 32). 그 work은 목록에 없어 가면 없는 work으로 간다 —
  * 대신 `Processes`로 간다: 그 화면의 주인 잃은 셸 묶음이 그 셸을 들고 [모두 닫기]를 든다. 가는 길은 토스트의 [보기]와 같은
@@ -59,10 +60,15 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
         return;
       }
       const go = (target: NavigateOptions) => {
-        whenArrived(router, router.buildLocation(target).href, () => {
-          focusShell(id);
-          selectShell(id);
-        });
+        whenArrived(
+          router,
+          router.buildLocation(target).href,
+          () => {
+            focusShell(id);
+            selectShell(id);
+          },
+          "shell",
+        );
         void router.navigate(target);
       };
       const mode = modeOfOwner(owner);

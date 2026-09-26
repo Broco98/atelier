@@ -36,7 +36,14 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <TooltipProvider>
         {/* 토스트도 Provider는 **여기 하나**다(S14). 자리(Viewport)는 화면마다 지금 토스트 자리에 두고 —
             작업 화면과 아카이브 화면 — 한 번에 한 화면만 서므로 늘 하나다. Tooltip과 달리 Viewport는
-            Provider 밖에서 던진다. */}
+            Provider 밖에서 던진다.
+
+            **예외가 하나 있다 — 앱 셸의 동작 토스트**(`components/shell/AppToasts.tsx`, 프로세스 스펙 P2 (나)).
+            그것은 제 관리자(`appToasts`)로 제 Provider와 Viewport(「앱 메시지」)를 앱 셸에 둔다. 어느 화면에서든
+            서고 [모두 닫기] · [보기]를 싣고 누를 때까지 남아야 해서다 — 여기 자리는 작업 · 아카이브 화면에만 있고,
+            한 장(S26)에 실으면 복사 토스트가 [모두 닫기]를 갈아 끼운다. 그 Provider는 Viewport만 감싸 이 Provider
+            아래 화면들의 토스트를 가로채지 않는다. 그래서 작업 · 아카이브 화면에는 두 영역(「메시지」 · 「앱
+            메시지」)이 함께 설 수 있다. S14 · S26을 넘는 이 예외는 사람 결정으로 남았다(develop 머지). */}
         <ToastProvider>
           <RouterProvider router={router} />
         </ToastProvider>

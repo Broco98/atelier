@@ -43,16 +43,40 @@ describe("Processes로 가는 문", () => {
   });
 });
 
+// [보기]는 **닿은 순간에** 토스트를 내린다(develop 머지). 앱 토스트는 설정 화면에도 서고, spec 레이아웃 편집기의 떠날 때 확인이 이동을
+// 막을 수 있다 — 먼저 내리면 [계속 편집]으로 머물 때 누를 때까지 남는 동작 토스트가 사라진다. 길(앱 셸)이 닿음을 알리는 것은
+// `arrived`를 부르는 것이고, 진짜 라우터와 진짜 막기를 지나는 것은 L3가 잰다(`processes-view.spec.ts`의 편집기 둘).
 describe("토스트의 [보기]", () => {
-  it("누르면 그 토스트를 내리고 Processes로 간다", () => {
+  it("누르면 Processes로 가고, 닿으면 그 토스트를 내린다", () => {
     const closed = vi.spyOn(appToasts, "close").mockImplementation(() => {});
     let viewed = 0;
-    const stop = onViewProcesses(() => (viewed += 1));
+    const stop = onViewProcesses((arrived) => {
+      viewed += 1;
+      expect(closed, "닿기 전에 토스트를 내렸다").not.toHaveBeenCalled();
+      arrived();
+    });
     const action = viewAction("startup:cleanup");
     expect(action.label).toBe("보기");
     action.run();
     stop();
     expect(closed).toHaveBeenCalledWith("startup:cleanup");
     expect(viewed).toBe(1);
+  });
+
+  it("이동이 막혀 닿지 않으면 토스트를 내리지 않는다", () => {
+    const closed = vi.spyOn(appToasts, "close").mockImplementation(() => {});
+    let viewed = 0;
+    // 막힌 길 — 이동은 걸었지만 닿지 않아 `arrived`를 안 부른다.
+    const stop = onViewProcesses(() => (viewed += 1));
+    viewAction("processes-ended:3").run();
+    stop();
+    expect(viewed).toBe(1);
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it("건 길이 없으면 토스트를 내리지 않는다 — 가지도 않았다", () => {
+    const closed = vi.spyOn(appToasts, "close").mockImplementation(() => {});
+    viewAction("startup:cleanup").run();
+    expect(closed).not.toHaveBeenCalled();
   });
 });
