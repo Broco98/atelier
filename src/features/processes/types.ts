@@ -7,6 +7,19 @@ export interface ProcessIdentity {
   startedUs: number;
 }
 
+/**
+ * 프로세스 하나의 지표(프로세스 결정 10 · 프로세스 스펙 S37 · S38 · 티켓 28). 못 읽은 것은 비었다 — 화면이 「—」로 세운다(macOS
+ * 밖에서는 늘 빈다).
+ */
+export interface ProcessMetrics {
+  /** `phys_footprint`(바이트) — 활성 상태 보기의 「메모리」 열과 같은 값이다. 못 읽었으면 `null`. */
+  memory: number | null;
+  /** CPU%(한 코어를 다 쓰면 100 — 여러 코어면 넘는다). 첫 표본이거나 못 읽었으면 `null`. */
+  cpu: number | null;
+  /** TCP LISTEN 로컬 포트 — 오름차순, 겹침 없음. */
+  ports: number[];
+}
+
 /** 스냅샷의 한 행. [끝내기]가 끝내기에 되돌려 줄 값이 이 신원이다 — 「화면에 보인 표본의 신원」. */
 export interface ProcessRow {
   id: ProcessIdentity;
@@ -17,6 +30,7 @@ export interface ProcessRow {
   argv0: string | null;
   /** 명령줄 전체. env를 못 읽은 행은 `null`. */
   command: string | null;
+  metrics: ProcessMetrics;
 }
 
 /** 판정의 묶음 — Rust `verdict::Verdict`의 칸 그대로다. 각 칸의 뜻은 그쪽 머리말이 든다. */
@@ -42,6 +56,8 @@ export interface PoolShell {
    * 끝난 명령 뒤의 프롬프트도 출력이라, 이 값 뒤로는 셸에 아무 일이 없었다. 아직 아무것도 안 찍었으면 띄운 때다.
    */
   lastOutputMs: number;
+  /** 셸 프로세스 **자신의** 지표. 판정은 셸 자신을 행으로 안 싣는다 — 셸 행의 트리 합은 화면이 이것과 자손을 더해 짓는다. */
+  metrics: ProcessMetrics;
 }
 
 export interface ProcessSnapshot {

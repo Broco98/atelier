@@ -4,7 +4,8 @@ import type { ShellSignal } from "@/features/terminal/shell-attention";
 import { modeOfOwner, runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
 import { ALL_MODES, navItemsOf, worldNameOf, type Mode } from "@/mode";
-import type { PoolShell, ProcessIdentity, ProcessRow, ProcessSnapshot } from "./types";
+import { formatMemory, sumMetrics } from "./metrics";
+import type { PoolShell, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
 // **`Processes`의 셸 묶음**(프로세스 결정 9 · 10 · 프로세스 스펙 S53 · 티켓 27). 화면은 앱 전체를 세계 → work → 셸 → 자손으로 세운다.
 // 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 행마다의 접근성 이름을 짓는다. 순수 함수다 — 지금 시각도 인자로 받는다.
@@ -36,7 +37,7 @@ export interface WorldNode {
   groups: ReadonlyArray<GroupNode>;
 }
 
-/** work 행(최상위 터미널이면 `Terminal`). 이름과 셸 수만 들고 동작은 없다(S53). 메모리 · CPU는 28이 더한다. */
+/** work 행(최상위 터미널이면 `Terminal`). 이름 · 셸 수 · 트리 합(메모리 · CPU — `groupTotals`)이고 동작은 없다(S53). */
 export interface GroupNode {
   owner: ShellOwner;
   /** 목록의 제목. 목록에 없으면 slug, 최상위 터미널이면 nav의 `Terminal`이다. */
@@ -210,16 +211,43 @@ export function stateText(state: ShellState, now: number): string {
   }
 }
 
-// ── 행의 접근성 이름(S58) — 행마다 한 문장이다. 스크린리더가 트리를 줄로 읽을 때 그 줄이 무엇인지가 이 이름에서 끝난다.
+// ── 트리 합(티켓 28 · S53) — 셸 행과 work 행의 숫자. 합하는 규칙(읽은 것끼리, 포트는 합침)은 `sumMetrics`가 든다.
 
-/** 셸 행 — 「셸 이름, 상태, 메모리」. 메모리는 28이 채우기 전까지 빠진다. 셸 이름은 탭 줄과 같은 것이다(`shellRowName`). */
-export function shellRowLabel(node: ShellNode, now: number): string {
-  return `${shellRowName(node.shell)}, ${stateText(shellStateOf(node), now)}`;
+/**
+ * 셸 행의 숫자 — **그 셸의 트리 전부**다: 셸 프로세스 자신(판정은 셸을 행으로 안 싣는다 — 풀의 셸이 싣는다), 셸 도우미, 사람이 띄운
+ * 자손. 도우미도 셸을 닫으면 함께 끝나는 그 셸의 몫이라 숫자에 든다 — 빠지는 것은 「조용함」과 확인 창의 수뿐이다(P1).
+ */
+export function shellTotals(node: ShellNode): ProcessMetrics {
+  return sumMetrics([
+    node.pool.metrics,
+    ...node.helpers.map((row) => row.metrics),
+    ...node.descendants.map(({ row }) => row.metrics),
+  ]);
 }
 
-/** work 행 — 이름과 셸 수. 세는 말은 「셸 N개」다(CONTEXT 「셸」). */
+/** work 행의 숫자 — 그 work 셸들의 트리 합을 더한다. 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」다. */
+export function groupTotals(group: GroupNode): ProcessMetrics {
+  return sumMetrics(group.shells.map(shellTotals));
+}
+
+// ── 행의 접근성 이름(S58) — 행마다 한 문장이다. 스크린리더가 트리를 줄로 읽을 때 그 줄이 무엇인지가 이 이름에서 끝난다.
+//
+// **메모리는 이름의 끝 조각이다**(티켓 28). 표기는 행의 칸과 같은 함수(`formatMemory`)라 눈과 귀가 같은 숫자를 받는다. 못 읽었으면
+// 그 조각이 빠진다 — 「알 수 없음」을 줄마다 읽어 주는 것은 소리일 뿐이다(macOS 밖에서는 늘 그렇다).
+
+/** 이름 조각들 끝에 메모리를 붙여 한 문장으로. */
+function withMemory(parts: ReadonlyArray<string>, memory: number | null): string {
+  return (memory === null ? parts : [...parts, formatMemory(memory)]).join(", ");
+}
+
+/** 셸 행 — 「셸 이름, 상태, 메모리」. 메모리는 셸의 트리 합이다. 셸 이름은 탭 줄과 같은 것이다(`shellRowName`). */
+export function shellRowLabel(node: ShellNode, now: number): string {
+  return withMemory([shellRowName(node.shell), stateText(shellStateOf(node), now)], shellTotals(node).memory);
+}
+
+/** work 행 — 이름, 셸 수, 메모리(트리 합). 세는 말은 「셸 N개」다(CONTEXT 「셸」). */
 export function groupRowLabel(group: GroupNode): string {
-  return `${group.name}, ${shellCount(group.shells.length)}`;
+  return withMemory([group.name, shellCount(group.shells.length)], groupTotals(group).memory);
 }
 
 export function shellCount(count: number): string {
@@ -240,6 +268,11 @@ export const CURRENT_WORLD = "지금 세계";
 export function descendantLabel(row: ProcessRow): string {
   const invoked = row.argv0?.split("/").pop();
   return invoked ? invoked : row.name;
+}
+
+/** 자손 행 — 부른 이름과 그 프로세스의 메모리. 셸 행과 같은 모양(이름, …, 메모리)이라 줄마다 같은 자리에서 숫자가 읽힌다. */
+export function descendantRowLabel(row: ProcessRow): string {
+  return withMemory([descendantLabel(row)], row.metrics.memory);
 }
 
 /** 셸 도우미 줄 — 「셸 도우미」와 그 이름들. 사람이 띄운 것과 섞이지 않게 한 줄로 따로 선다(P1). */

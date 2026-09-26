@@ -11,21 +11,26 @@ import { worksQuery } from "@/features/works/hooks";
 import { cn } from "@/lib/utils";
 import { ALL_MODES, worldNameOf, type Mode } from "@/mode";
 import { useProcessSnapshot } from "./hooks";
+import { formatCpu, formatMemory, formatPorts } from "./metrics";
 import {
   CURRENT_WORLD,
   HELPER_LABEL,
   descendantLabel,
+  descendantRowLabel,
   groupRowLabel,
+  groupTotals,
   helperLabel,
   shellCount,
   shellRowLabel,
   shellStateOf,
+  shellTotals,
   shellTree,
   stateText,
   worldRowLabel,
   type ListedItem,
   type ShellNode,
 } from "./shell-tree";
+import type { ProcessMetrics } from "./types";
 
 /**
  * `Processes` 화면(프로세스 결정 8 · 9 · 10). 아틀리에가 띄운 셸과 그 셸에서 뜬 프로세스를 **앱 전체**로 보인다 — 두 세계의
@@ -34,8 +39,8 @@ import {
  *
  * **세계를 받는 것은 차례 때문이다**(티켓 27) — 지금 세계가 맨 위에 선다. 무엇을 보이는지는 세계와 상관없다.
  *
- * 셸 묶음은 세계 → work → 셸 → 자손으로 선다(`shellTree`). 숫자(메모리 · CPU · 포트)는 28, 요약 카드는 30, 나머지 묶음(고아 ·
- * 다른 인스턴스 · 예외 · 주인 잃은 셸 · 화면 밖 셸 · 정리 기록)은 31 · 32가 붙인다.
+ * 셸 묶음은 세계 → work → 셸 → 자손으로 선다(`shellTree`). 행마다 숫자(메모리 · CPU · 포트 — 티켓 28)가 서고, 셸 행과 work 행은 그
+ * 트리의 합이다. 요약 카드는 30, 나머지 묶음(고아 · 다른 인스턴스 · 예외 · 주인 잃은 셸 · 화면 밖 셸 · 정리 기록)은 31 · 32가 붙인다.
  *
  * 스냅샷은 이 화면이 떠 있는 동안만 2초마다 온다(`useProcessSnapshot`) — 화면이 내려가면 묻기도 멎는다.
  */
@@ -75,10 +80,14 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
                   </TreeRow>
                   {world.groups.map((group) => (
                     <Fragment key={group.owner}>
-                      {/* work 행 — 이름과 셸 수. 동작은 없다(S53): 여러 셸을 한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. */}
+                      {/* work 행 — 이름, 셸 수, 그 work 셸들의 트리 합(메모리 · CPU). 포트는 없고 동작도 없다(S53): 여러 셸을
+                          한 번에 닫는 길은 [조용한 셸 모두 닫기](32)다. */}
                       <TreeRow level={2} label={groupRowLabel(group)}>
                         <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
                         <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>
+                        <span className="flex-1" />
+                        <Figures metrics={groupTotals(group)} ports={false} />
+                        <Actions />
                       </TreeRow>
                       {group.shells.map((node) => (
                         <ShellRows
@@ -147,7 +156,43 @@ function TreeRow({
 }
 
 /**
- * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 3이다(세계 → work → 셸).
+ * 행의 숫자 칸 — 메모리 · CPU · 포트(프로세스 결정 10 · 티켓 28). 글자는 표기 함수의 결과 그대로다(`formatMemory` · `formatCpu` ·
+ * `formatPorts` — nav 메타와 다른 묶음도 같은 함수를 읽는다). 칸마다 너비가 정해져 있어 들여쓰기가 달라도 세로로 맞는다. work 행은
+ * 포트 칸이 없다(S53) — 자리만 비워 둔다.
+ */
+function Figures({ metrics, ports = true }: { metrics: ProcessMetrics; ports?: boolean }) {
+  const listed = formatPorts(metrics.ports);
+  return (
+    <>
+      <span data-cell="memory" className="w-16 shrink-0 text-right text-[12.5px] tabular-nums text-muted-foreground">
+        {formatMemory(metrics.memory)}
+      </span>
+      <span data-cell="cpu" className="w-11 shrink-0 text-right text-[12.5px] tabular-nums text-muted-foreground">
+        {formatCpu(metrics.cpu)}
+      </span>
+      {ports ? (
+        <span
+          data-cell="ports"
+          title={listed || undefined}
+          className="w-28 shrink-0 truncate pl-2 text-[12.5px] tabular-nums text-muted-foreground"
+        >
+          {listed}
+        </span>
+      ) : (
+        <span aria-hidden className="w-28 shrink-0" />
+      )}
+    </>
+  );
+}
+
+/** 행 끝의 동작 자리 — 줄마다 같은 너비라 숫자 칸이 동작이 없는 줄(work · 자손)에서도 셸 행과 같은 자리에 선다. */
+function Actions({ children }: { children?: React.ReactNode }) {
+  return <span className="flex w-[92px] shrink-0 justify-end">{children}</span>;
+}
+
+/**
+ * 셸 하나의 줄들 — 셸 행, 셸 도우미의 옅은 줄, 사람이 띄운 자손의 트리. 셸 행의 깊이는 3이다(세계 → work → 셸). 셸 행의 숫자는 그
+ * 셸의 트리 합이다(셸 프로세스 · 도우미 · 자손 — `shellTotals`).
  */
 function ShellRows({
   node,
@@ -182,20 +227,23 @@ function ShellRows({
           )}
           <span className="min-w-0 truncate">{stateText(state, now)}</span>
         </span>
-        <button
-          type="button"
-          onClick={onGo}
-          className="h-6 shrink-0 rounded-[8px] px-2 text-[12.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-        >
-          이동
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-6 shrink-0 rounded-[8px] px-2 text-[12.5px] font-medium text-muted-foreground transition-colors quiet-hover"
-        >
-          닫기
-        </button>
+        <Figures metrics={shellTotals(node)} />
+        <Actions>
+          <button
+            type="button"
+            onClick={onGo}
+            className="h-6 shrink-0 rounded-[8px] px-2 text-[12.5px] font-medium text-muted-foreground transition-colors quiet-hover"
+          >
+            이동
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-6 shrink-0 rounded-[8px] px-2 text-[12.5px] font-medium text-muted-foreground transition-colors quiet-hover"
+          >
+            닫기
+          </button>
+        </Actions>
       </TreeRow>
       {node.helpers.length > 0 && (
         // **셸 도우미는 옅은 줄 하나로 따로 선다**(P1) — 사람이 띄운 것과 한 무게로 섞이면 「이 셸에서 띄운 프로세스」로 읽힌다.
@@ -211,11 +259,13 @@ function ShellRows({
         <TreeRow
           key={`${row.id.pid}@${row.id.startedUs}`}
           level={3 + depth}
-          label={descendantLabel(row)}
+          label={descendantRowLabel(row)}
           title={row.command ?? undefined}
           className="text-[12.5px] text-muted-foreground"
         >
-          <span className="min-w-0 truncate">{descendantLabel(row)}</span>
+          <span className="min-w-0 flex-1 truncate">{descendantLabel(row)}</span>
+          <Figures metrics={row.metrics} />
+          <Actions />
         </TreeRow>
       ))}
     </>

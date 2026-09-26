@@ -3,18 +3,22 @@ import { ownerOf, topTerminal } from "@/features/terminal/shell-registry";
 import type { Shell } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
 import { worldNameOf } from "@/mode";
+import { formatMemory } from "./metrics";
 import {
   descendantLabel,
+  descendantRowLabel,
   groupRowLabel,
+  groupTotals,
   helperLabel,
   shellRowLabel,
   shellStateOf,
+  shellTotals,
   shellTree,
   stateText,
   worldRowLabel,
 } from "./shell-tree";
 import type { ListedItem, ShellNode, TreeInput } from "./shell-tree";
-import type { PoolShell, ProcessRow, ProcessSnapshot } from "./types";
+import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
 // 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 세계 → work →
 // 셸 → 자손으로 세운다. 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 · 접근성 이름이다 — 스냅샷(Rust가
@@ -38,7 +42,15 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   ...over,
 });
 
-const 풀 = (ptyId: number, shellKey: string, lastOutputMs = 1_000): PoolShell => ({ ptyId, shellKey, lastOutputMs });
+/** 못 읽은 지표 — 묶음과 상태 칸의 검사는 숫자를 안 본다. */
+const 빈지표: ProcessMetrics = { memory: null, cpu: null, ports: [] };
+
+const 풀 = (ptyId: number, shellKey: string, lastOutputMs = 1_000, metrics = 빈지표): PoolShell => ({
+  ptyId,
+  shellKey,
+  lastOutputMs,
+  metrics,
+});
 
 /** 스냅샷의 한 행. 시작 시각은 따로 준다 — 차례가 pid 순이 아니라 시작 순인지를 가르려고. */
 const 행 = (pid: number, ppid: number, startedUs: number, name: string, over: Partial<ProcessRow> = {}): ProcessRow => ({
@@ -47,6 +59,7 @@ const 행 = (pid: number, ppid: number, startedUs: number, name: string, over: P
   name,
   argv0: null,
   command: null,
+  metrics: 빈지표,
   ...over,
 });
 
@@ -297,10 +310,19 @@ describe("자손 — 시작 순, 트리 들여쓰기, 셸 도우미는 따로", 
 });
 
 /** 셸 하나를 스냅샷과 이은 노드. 상태 칸은 이 노드 하나에서 나온다. */
-function 노드(shell: Shell, descendants: ProcessRow[] = [], helpers: ProcessRow[] = [], lastOutputMs = 1_000): ShellNode {
+function 노드(
+  shell: Shell,
+  descendants: ProcessRow[] = [],
+  helpers: ProcessRow[] = [],
+  lastOutputMs = 1_000,
+  metrics = 빈지표,
+): ShellNode {
   const key = shell.shellKey ?? "G-1";
   const [world] = shellTree(
-    기본({ shells: [{ ...shell, shellKey: key }], snapshot: 스냅샷([풀(1, key, lastOutputMs)], { [key]: descendants }, helpers) }),
+    기본({
+      shells: [{ ...shell, shellKey: key }],
+      snapshot: 스냅샷([풀(1, key, lastOutputMs, metrics)], { [key]: descendants }, helpers),
+    }),
   );
   return world.groups[0].shells[0];
 }
@@ -371,20 +393,67 @@ describe("셸 행의 상태 칸", () => {
   });
 });
 
+const MiB = 1024 * 1024;
+const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
+
+describe("트리 합 — 셸 행과 work 행의 숫자(티켓 28 · S53)", () => {
+  // 셸 행의 숫자는 **그 셸의 트리 전부**다: 셸 프로세스 자신(판정은 셸을 행으로 안 싣는다 — 풀의 셸이 싣는다), 셸 도우미, 사람이 띄운
+  // 자손. 도우미도 셸을 닫으면 함께 끝나는 그 셸의 것이라 메모리에 든다 — 「조용함」과 확인 창의 수에서만 빠진다(P1).
+  it("셸 행은 셸 프로세스 · 셸 도우미 · 자손을 모두 더한다", () => {
+    const helper = 행(150, 100, 5, "gitstatusd", { metrics: 지표(2 * MiB, 0.5) });
+    const vite = 행(200, 1, 10, "node", { metrics: 지표(300 * MiB, 10, [5173]) });
+    const esbuild = 행(210, 200, 11, "esbuild", { metrics: 지표(20 * MiB, 2, [5173, 24678]) });
+    const node = 노드(칸(1, "G-1"), [helper, vite, esbuild], [helper], 1_000, 지표(8 * MiB, 0.5));
+    expect(shellTotals(node)).toEqual(지표(330 * MiB, 13, [5173, 24678]));
+  });
+
+  // work 행은 그 work의 셸의 트리 합을 다시 더한다 — 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」.
+  it("work 행은 그 work 셸들의 트리 합을 더한다", () => {
+    const input = 기본({
+      shells: [칸(1, "G-1"), 칸(2, "G-2")],
+      snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB, 1)), 풀(2, "G-2", 1_000, 지표(6 * MiB, null))], {
+        "G-1": [행(200, 1, 10, "node", { metrics: 지표(300 * MiB, 10, [5173]) })],
+      }),
+    });
+    const [world] = shellTree(input);
+    expect(groupTotals(world.groups[0])).toEqual(지표(314 * MiB, 11, [5173]));
+  });
+
+  // 첫 표본 — CPU를 아무도 못 쟀다. 합은 「—」로 서야 한다(0%는 쟀는데 안 썼다는 말이다).
+  it("첫 표본에서는 트리 합의 CPU도 비었다", () => {
+    const node = 노드(칸(1, "G-1"), [행(200, 1, 10, "node", { metrics: 지표(MiB) })], [], 1_000, 지표(MiB));
+    expect(shellTotals(node)).toEqual(지표(2 * MiB, null));
+  });
+});
+
 describe("행의 접근성 이름 — 한 문장", () => {
-  // S58 — 「셸 이름, 상태, 메모리」를 한 문장으로 잇는다. 메모리는 28이 채우기 전까지 빠진다. 셸 이름은 탭 줄과 같은 것이다
-  // (`shellRowName` — 프로젝트가 붙는 셸은 `프로젝트 · 이름`).
-  it("셸 행은 셸 이름과 상태를 잇는다", () => {
+  // S58 — 「셸 이름, 상태, 메모리」를 한 문장으로 잇는다. 셸 이름은 탭 줄과 같은 것이다(`shellRowName` — 프로젝트가 붙는 셸은
+  // `프로젝트 · 이름`). 메모리는 셸의 트리 합이고, 표기는 행의 칸과 같은 함수다(`formatMemory`).
+  it("셸 행은 셸 이름 · 상태 · 트리 합 메모리를 잇는다", () => {
+    const node = 노드(칸(1, "G-1"), [행(200, 1, 10, "node", { metrics: 지표(300 * MiB) })], [], 1_000, 지표(12 * MiB));
+    expect(shellRowLabel(node, 61_000)).toBe(`zsh, 띄운 프로세스 1개, ${formatMemory(312 * MiB)}`);
+    expect(shellRowLabel(node, 61_000)).toBe("zsh, 띄운 프로세스 1개, 312MB");
+  });
+
+  // 메모리를 못 읽은 셸(macOS 밖, 그사이 끝남)은 그 조각이 빠진다 — 「알 수 없음」을 읽어 주는 것은 소리일 뿐이다.
+  it("셸 행은 셸 이름과 상태를 잇고, 메모리를 못 읽었으면 그 조각이 빠진다", () => {
     expect(shellRowLabel(노드(칸(1, "G-1"), [], [], 1_000), 61_000)).toBe("zsh, 조용함 1m");
     expect(shellRowLabel(노드(칸(1, "G-1", { project: "billing", attention: 상태({ kind: "waiting" }) })), 1_000)).toBe(
       "billing · zsh, 나를 기다림 0s",
     );
   });
 
-  it("work 행은 이름과 셸 수, 세계 행은 세계의 이름이고 지금 세계면 그렇다고 말한다", () => {
+  it("work 행은 이름 · 셸 수 · 트리 합 메모리, 세계 행은 세계의 이름이고 지금 세계면 그렇다고 말한다", () => {
     const input = 기본({ shells: [칸(1, "G-1"), 칸(2, "G-2")], snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2")]) });
     const [world] = shellTree(input);
     expect(groupRowLabel(world.groups[0])).toBe("plain-work, 셸 2개");
+    const measured = shellTree(
+      기본({
+        shells: [칸(1, "G-1"), 칸(2, "G-2")],
+        snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(700 * MiB)), 풀(2, "G-2", 1_000, 지표(500 * MiB))]),
+      }),
+    );
+    expect(groupRowLabel(measured[0].groups[0])).toBe("plain-work, 셸 2개, 1.2GB");
     expect(worldRowLabel(world)).toBe(`${worldNameOf("atelier")}, 지금 세계`);
     expect(worldRowLabel({ ...world, current: false })).toBe(worldNameOf("atelier"));
   });
@@ -395,6 +464,12 @@ describe("행의 접근성 이름 — 한 문장", () => {
     expect(descendantLabel(행(1, 0, 0, "2.1.3", { argv0: "/Users/me/.local/bin/claude" }))).toBe("claude");
     expect(descendantLabel(행(1, 0, 0, "node", { argv0: "node" }))).toBe("node");
     expect(descendantLabel(행(1, 0, 0, "esbuild"))).toBe("esbuild");
+  });
+
+  // 자손 행의 이름은 부른 이름과 그 프로세스의 메모리다 — 셸 행과 같은 모양(이름, …, 메모리)이라 줄마다 같은 자리에서 숫자가 읽힌다.
+  it("자손 행은 부른 이름과 메모리를 잇고, 메모리를 못 읽었으면 이름만이다", () => {
+    expect(descendantRowLabel(행(1, 0, 0, "node", { argv0: "node", metrics: 지표(320 * MiB, 3, [5173]) }))).toBe("node, 320MB");
+    expect(descendantRowLabel(행(1, 0, 0, "esbuild"))).toBe("esbuild");
   });
 
   it("셸 도우미 줄은 「셸 도우미」와 그 이름들이다", () => {

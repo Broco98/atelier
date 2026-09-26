@@ -5,7 +5,7 @@ import type { WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { ProcessSnapshot } from "@/features/processes/types";
+import type { ProcessMetrics, ProcessSnapshot } from "@/features/processes/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -389,6 +389,12 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = {
   },
   pool: [],
 };
+
+/**
+ * 못 읽은 지표(티켓 28) — 스냅샷의 행과 풀의 셸마다 싣는 칸이다. 숫자를 안 보는 검사의 행이 이것을 든다: 숫자 칸은 「—」로 서고, 행의
+ * 접근성 이름에 메모리 조각이 안 붙는다(macOS 밖의 앱과 같다).
+ */
+export const NO_METRICS: ProcessMetrics = { memory: null, cpu: null, ports: [] };
 
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의

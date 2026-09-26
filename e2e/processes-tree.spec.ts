@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, FIXTURE_GENERATION, PROCESS_SNAPSHOT, WORKS } from "./fixtures";
+import { answerByArg, FIXTURE_GENERATION, NO_METRICS, PROCESS_SNAPSHOT, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -61,6 +61,7 @@ const 행 = (pid: number, ppid: number, startedUs: number, name: string, over: P
   name,
   argv0: null,
   command: null,
+  metrics: NO_METRICS,
   ...over,
 });
 
@@ -85,7 +86,7 @@ function 스냅샷(ptys: number[], withTree = true): ProcessSnapshot {
       descendants: withTree ? { [키(ptys[0])]: [gitstatusd, vite, esbuild] } : {},
       helpers: withTree ? [gitstatusd.id] : [],
     },
-    pool: [...ptys, 99].map((pty) => ({ ptyId: pty, shellKey: 키(pty), lastOutputMs })),
+    pool: [...ptys, 99].map((pty) => ({ ptyId: pty, shellKey: 키(pty), lastOutputMs, metrics: NO_METRICS })),
   };
 }
 
@@ -292,8 +293,9 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// S58 — 스크린리더가 트리 깊이를 읽는다. 셸 묶음은 트리 역할이고, 행의 접근성 이름은 「셸 이름, 상태」를 한 문장으로 잇고(메모리는
-// 28이 채운다), 행마다 `aria-level`이 깊이를 말한다.
+// S58 — 스크린리더가 트리 깊이를 읽는다. 셸 묶음은 트리 역할이고, 행의 접근성 이름은 「셸 이름, 상태」를 한 문장으로 잇고(메모리
+// 조각은 지표를 읽은 셸에만 붙는다 — 여기 픽스처는 못 읽은 지표다. 붙은 모양은 `processes-metrics.spec.ts`), 행마다 `aria-level`이
+// 깊이를 말한다.
 test("셸 묶음이 트리 역할이고, 셸 행의 접근성 이름이 이름과 상태를 한 문장으로 잇고, 행마다 aria-level이 깊이를 말한다", async ({
   page,
 }) => {

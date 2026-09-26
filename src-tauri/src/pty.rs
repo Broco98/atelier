@@ -15,7 +15,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use atelier_core::Mode;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -26,7 +26,8 @@ use tauri::{AppHandle, Emitter};
 use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::instances::{self, Place, Record};
-use crate::processes::screen::{PoolShell, ScreenSnapshot};
+use crate::processes::metrics::{self, CpuMeter};
+use crate::processes::screen::{self, Measured, PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, Identity, Proc, Snapshot, SHELL_KEY_ENV};
@@ -125,6 +126,10 @@ pub struct PtyPool {
     /// setup에서 이벤트를 쏘는 함수를 건다(`announce_ends`). 기본값은 빈 자리라, 검사가 세우는 풀은 아무 데도 안 쏜다 —
     /// 풀 배선 장면은 제 함수를 걸어 받은 알림을 잰다.
     announcer: OnceLock<Box<dyn Fn(Ended) + Send + Sync>>,
+    /// `Processes` 화면 스냅샷의 앞 표본 — CPU%를 두 표본의 차이로 짓는다(프로세스 스펙 S37 · 티켓 28). 화면이 2초마다 부르는
+    /// `screen`만 쓴다. 풀에 두는 것은 그 함수가 풀 하나만 받기 때문이고, 박자가 다른 읽기(29의 배경 표본)는 제 것을 따로 쥔다 — 한 앞
+    /// 표본을 나눠 쓰면 두 박자가 섞인다.
+    screen_cpu: Mutex<CpuMeter>,
 }
 
 impl PtyPool {
@@ -132,6 +137,11 @@ impl PtyPool {
     /// 하나가 앱 전체로 번진다 — 안을 꺼내 이어 간다.
     fn lock(&self) -> MutexGuard<'_, HashMap<u32, Shell>> {
         self.shells.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 화면 스냅샷의 앞 표본. 잠금이 오염됐으면 안을 꺼내 이어 간다(`lock`과 같다) — 잃어도 CPU 칸이 한 박자 「—」일 뿐이다.
+    fn screen_cpu(&self) -> MutexGuard<'_, CpuMeter> {
+        self.screen_cpu.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// 알리는 함수를 한 번 건다. 두 번째는 버린다 — 앱에서는 setup 한 자리만 부른다.
@@ -501,6 +511,10 @@ fn command_runs(shell_pid: u32, foreground: i32) -> bool {
 /// - 판정에 넘기는 셸 목록과 화면에 싣는 풀의 셸 목록을 **한 잠금 안에서** 읽는다. 다른 순간의 것이면 그 사이에 뜨거나 닫힌
 ///   셸이 한쪽에만 선다.
 ///
+/// **지표(메모리 · CPU · 포트)는 판정 뒤에 읽는다**(티켓 28). 무엇이 우리 트리인지는 판정이 정하므로(프로세스 스펙 S38 — 우리 트리만)
+/// 판정이 묶음에 넣은 행과 풀의 셸 프로세스만 읽는다(`screen::targets`). 풀 잠금 밖이다 — 프로세스마다 fd를 훑는 동안 셸 입력 ·
+/// 닫기가 기다리지 않게. CPU%는 풀이 쥔 앞 표본과 견준다(`CpuMeter`).
+///
 /// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
 pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
     let snapshot = snapshot::take(EnvScope::All);
@@ -508,9 +522,9 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
         let shells = pool.lock();
         (
             shells.values().map(Shell::entry).collect(),
-            pool_shells(
-                shells.iter().map(|(id, shell)| (*id, shell.key.as_str(), shell.last_output.load(Ordering::Relaxed))),
-            ),
+            pool_shells(shells.iter().map(|(id, shell)| {
+                (*id, shell.key.as_str(), shell.last_output.load(Ordering::Relaxed), shell.process)
+            })),
         )
     };
     let records = pool.record.records();
@@ -526,13 +540,23 @@ pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
         inherited_key: crate::processes::inherited_key(),
         occasion: Occasion::Normal,
     });
-    ScreenSnapshot::of(&verdict, listed)
+    let readings = metrics::read(screen::targets(&verdict, &listed));
+    let cpu = pool.screen_cpu().sample(Instant::now(), readings.cpu_ns());
+    let measured = Measured { readings: readings.by_id, cpu };
+    ScreenSnapshot::of(&verdict, listed, &measured)
 }
 
-/// 풀의 셸 목록 — pty id · 셸 키 · 마지막 출력 시각을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다.
-fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64)>) -> Vec<PoolShell> {
+/// 풀의 셸 목록 — pty id · 셸 키 · 마지막 출력 시각 · 셸 프로세스의 신원을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를
+/// 때마다 순서가 흔들린다. 지표는 비워 둔다 — 판정 뒤에 읽어 `ScreenSnapshot::of`가 채운다.
+fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64, Option<Identity>)>) -> Vec<PoolShell> {
     let mut listed: Vec<PoolShell> = shells
-        .map(|(pty_id, key, last_output_ms)| PoolShell { pty_id, shell_key: key.to_string(), last_output_ms })
+        .map(|(pty_id, key, last_output_ms, process)| PoolShell {
+            pty_id,
+            shell_key: key.to_string(),
+            last_output_ms,
+            process,
+            metrics: Default::default(),
+        })
         .collect();
     listed.sort_by_key(|shell| shell.pty_id);
     listed
@@ -598,6 +622,10 @@ type Running = BTreeMap<u32, Option<String>>;
 /// 없어서**(0.2.186 확인) 그 큰 구조체를 손으로 선언해야 한다 — 커널 레이아웃을 우리가
 /// 베껴 드는 것은 조용히 틀릴 자리다. `proc_name`은 libc에 이미 바인딩이 있어 새 의존이
 /// 들지 않는다.
+///
+/// **이 방침에는 예외가 하나 있다**(프로세스 스펙 S38 · 티켓 28): `Processes`의 포트를 읽는 소켓 fd 정보
+/// (`processes/metrics.rs`의 `SocketFdInfo`). libc에 그 구조체가 없고 크레이트를 들이는 것보다 작아서, 쓰는 칸
+/// 셋만 손으로 적고 크기와 자리를 검사로 못박았다 — 커널과 어긋나면 그 검사가 빨갛다.
 ///
 /// 버퍼가 `pbi_name`(32바이트)보다 커야 `proc_name`이 ENOMEM으로 돌아가지 않는다. 넉넉히
 /// 0으로 채워 두는 것은 이름이 버퍼를 꽉 채워 NUL 없이 올 수 있어서다.
@@ -1693,20 +1721,47 @@ mod tests {
             locked < judged && locked < listed && judged < records && listed < records,
             "두 목록이 한 잠금 안에 없다 — 잠금 {locked} · 판정의 셸 {judged} · 풀의 셸 {listed} · 기록 {records}"
         );
-        assert!(body.contains("ScreenSnapshot::of(&verdict, listed)"), "판정 결과와 풀의 셸 목록을 그대로 싣지 않는다");
+        assert!(
+            body.contains("ScreenSnapshot::of(&verdict, listed, &measured)"),
+            "판정 결과와 풀의 셸 목록과 지표를 그대로 싣지 않는다"
+        );
+    }
+
+    /// **지표는 판정 뒤에, 판정이 고른 것만, 풀 잠금 밖에서 읽는다**(티켓 28 · 프로세스 스펙 S38). 무엇이 우리 트리인지는 판정이
+    /// 정하므로 판정보다 앞설 수 없고, 읽을 신원은 판정의 결과와 풀의 셸에서만 고른다(`screen::targets` — 이 맥의 다른 프로세스의 fd를
+    /// 훑지 않는다). 프로세스마다 fd를 훑는 일이라 풀을 쥔 채 하면 그동안 셸 입력 · 크기 바꾸기 · 닫기가 기다린다.
+    ///
+    /// CPU%는 풀이 쥔 앞 표본과 견준다(`CpuMeter`) — 부를 때마다 새로 세우면 늘 첫 표본이라 CPU 칸이 영영 「—」다. 실행으로는 장면
+    /// `Ask`가 잰다(macOS — 두 번 찍으면 둘째에 셸의 CPU%가 선다).
+    #[test]
+    fn the_screen_measures_what_the_verdict_picked_outside_the_pool_lock() {
+        let body = body_of("pub fn screen(", "\n}\n");
+        let judged = body.find("verdict::judge(").expect("판정한다");
+        let read = body.find("metrics::read(screen::targets(&verdict, &listed))").expect("판정이 고른 것만 지표를 읽는다");
+        let lock_ends = body.find("pool.record.records()").expect("잠금을 푼 뒤 기록을 읽는다");
+        assert!(lock_ends < read && judged < read, "지표를 판정({judged})이나 풀 잠금이 풀리기({lock_ends}) 전에 읽는다 — {read}");
+        assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
+        let sampled = body.find("pool.screen_cpu()").expect("풀이 쥔 앞 표본과 견준다");
+        assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
+        assert!(!body.contains("CpuMeter::default()"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
     }
 
     /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로
-    /// 서고(티켓 26), 그 셸이 마지막으로 무언가를 찍은 때가 함께 간다(티켓 27 — 「조용함」의 경과). 셋이 한 셸의 것으로 붙어 다닌다.
+    /// 서고(티켓 26), 그 셸이 마지막으로 무언가를 찍은 때(티켓 27 — 「조용함」의 경과)와 셸 프로세스의 신원(티켓 28 — 셸 자신의 지표를
+    /// 찾는 열쇠)이 함께 간다. 넷이 한 셸의 것으로 붙어 다닌다. 지표는 아직 비었다 — 판정 뒤에 읽어 채운다.
     #[test]
     fn the_pool_list_is_in_pty_order_with_each_shells_key() {
+        let zsh = |pid: u32| Some(crate::processes::Identity { pid, started_us: u64::from(pid) * 10 });
+        let shell = |pty_id: u32, key: &str, last_output_ms: u64, process: Option<crate::processes::Identity>| super::PoolShell {
+            pty_id,
+            shell_key: key.into(),
+            last_output_ms,
+            process,
+            metrics: Default::default(),
+        };
         assert_eq!(
-            super::pool_shells([(3, "G-3", 30), (1, "G-1", 10), (2, "G-2", 20)].into_iter()),
-            vec![
-                super::PoolShell { pty_id: 1, shell_key: "G-1".into(), last_output_ms: 10 },
-                super::PoolShell { pty_id: 2, shell_key: "G-2".into(), last_output_ms: 20 },
-                super::PoolShell { pty_id: 3, shell_key: "G-3".into(), last_output_ms: 30 },
-            ]
+            super::pool_shells([(3, "G-3", 30, zsh(33)), (1, "G-1", 10, zsh(11)), (2, "G-2", 20, None)].into_iter()),
+            vec![shell(1, "G-1", 10, zsh(11)), shell(2, "G-2", 20, None), shell(3, "G-3", 30, zsh(33))]
         );
     }
 
@@ -3280,8 +3335,19 @@ mod tests {
         });
         let before = super::command_running(pool, id);
         let echoed = stamped();
-        // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다.
-        let on_screen = super::screen(pool).pool.into_iter().find(|shell| shell.pty_id == id).map(|shell| shell.last_output_ms);
+        // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다. 두 번 찍는다: 셸
+        // 프로세스 자신과 자손의 지표가 서고, CPU%는 둘째 표본부터 선다(티켓 28).
+        let first = super::screen(pool);
+        let second = super::screen(pool);
+        let shell_of = |snapshot: &super::ScreenSnapshot| snapshot.pool.iter().find(|shell| shell.pty_id == id).cloned();
+        let (first_shell, second_shell) = (shell_of(&first), shell_of(&second));
+        let on_screen = first_shell.as_ref().map(|shell| shell.last_output_ms);
+        let helper_memory = first
+            .verdict
+            .descendants
+            .get(key)
+            .and_then(|rows| rows.iter().find(|row| Some(row.id) == helper))
+            .and_then(|row| row.metrics.memory);
 
         // 셸의 자식인 `sleep` 중 셸 자신의 그룹에 사는 것(잡 제어 밖의 백그라운드 잡)과 제 그룹을 연 것(명령).
         // 시스템 바이너리라 표식은 안 읽히고 셸의 트리로 잡힌다.
@@ -3350,6 +3416,15 @@ mod tests {
             on_screen >= echoed,
             "화면 스냅샷이 풀의 셸에 마지막 출력 시각을 안 싣는다 ({on_screen:?} < {echoed:?})"
         );
+        let (first_shell, second_shell) = (first_shell.expect("풀의 셸이 화면에 있다"), second_shell.expect("풀의 셸이 화면에 있다"));
+        assert!(
+            first_shell.metrics.memory.is_some_and(|memory| memory > 0),
+            "화면 스냅샷이 셸 프로세스 자신의 메모리를 안 싣는다: {:?}",
+            first_shell.metrics
+        );
+        assert_eq!(first_shell.metrics.cpu, None, "첫 표본에 셸의 CPU%가 섰다");
+        assert!(second_shell.metrics.cpu.is_some(), "둘째 표본에 셸의 CPU%가 안 섰다 — 풀이 앞 표본을 안 쥔다");
+        assert!(helper_memory.is_some_and(|memory| memory > 0), "화면 스냅샷이 셸 자손의 메모리를 안 싣는다");
         assert_eq!(
             before,
             Ok(CloseCheck { command: false, descendants: 0 }),

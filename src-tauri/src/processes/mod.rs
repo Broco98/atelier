@@ -23,6 +23,8 @@
 //!   것은 순수하고, 쓰기는 인스턴스 기록과 같은 뮤텍스 안에서 한다(`instances::Record::log`).
 //! - 화면 스냅샷(`screen`)은 판정 결과를 `Processes` 화면에 보낼 값으로 옮긴다(티켓 26). 판정을 다시 가르지 않는다 — 묶음의
 //!   이름과 모양이 판정의 것 그대로다.
+//! - 지표(`metrics`)는 부작용 층이다(티켓 28). 판정이 고른 프로세스만 메모리(`phys_footprint`) · CPU 시간 · LISTEN 포트를 읽고,
+//!   두 표본의 차이로 CPU%를 짓는 계산(순수)을 함께 든다. 수집처럼 macOS에서만 읽고 다른 OS는 빈 값이다.
 //!
 //! 넷을 잇는 자리(셸 띄우기 · 셸 닫기 · 앱 종료 · 앱 시작의 정리 · `Processes` 화면의 스냅샷)는 풀을 쥔 `pty.rs`에 있다.
 
@@ -41,6 +43,7 @@ pub(crate) mod cleanup_log;
 pub(crate) mod ending;
 pub(crate) mod exceptions;
 pub(crate) mod instances;
+pub(crate) mod metrics;
 pub(crate) mod procargs;
 pub(crate) mod screen;
 pub(crate) mod snapshot;

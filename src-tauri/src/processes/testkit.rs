@@ -18,6 +18,9 @@ use super::{snapshot, Identity, SHELL_KEY_ENV};
 /// 자식의 역할을 싣는 변수. 앱은 이 이름을 모른다.
 pub(crate) const CHILD_ROLE: &str = "ATELIER_PROCESSES_TEST_CHILD";
 
+/// 역할 `map`이 붙이는 파일의 크기(바이트).
+pub(crate) const MAPPED: usize = 64 * 1024 * 1024;
+
 /// 이 검사 실행에서만 쓰는 표식 값. 번호는 검사마다 다르게 준다 — 같은 바이너리 안에서 나란히 돈다.
 pub(crate) fn key(n: u32) -> String {
     format!("test-{}-{n}", std::process::id())
@@ -42,6 +45,45 @@ fn a_child_the_real_tests_spawn() {
                 libc::signal(libc::SIGTERM, libc::SIG_IGN);
                 libc::setsid();
             }
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        // 제 CPU 시계로 200ms를 바쁘게 돈 뒤 제 세션을 열고 잠든다 — 지표의 CPU 시간 단위를 재는 검사가 쓴다. 세션을 연 것이
+        // 「다 돌았다」는 알림이다(`Kid::settle`이 그것을 기다린다). 재는 기준이 자식 자신의 시계라 부모가 읽은 값과 견줄 수 있다.
+        Some("busy") => {
+            let spent = || {
+                let mut now = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+                unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut now) };
+                Duration::new(now.tv_sec as u64, now.tv_nsec as u32)
+            };
+            while spent() < Duration::from_millis(200) {
+                std::hint::spin_loop();
+            }
+            unsafe { libc::setsid() };
+            std::thread::sleep(Duration::from_secs(60));
+        }
+        // 64MB짜리 빈 파일을 읽기 전용으로 붙여 모든 쪽을 한 번씩 읽은 뒤 제 세션을 열고 잠든다 — 지표의 메모리가 상주 크기가
+        // 아니라 `phys_footprint`인지 재는 검사가 쓴다. 읽기만 한 파일 쪽은 상주 크기에는 들고 footprint에는 안 든다(되돌려
+        // 쓸 수 있는 깨끗한 쪽이다). 파일은 붙인 뒤 곧바로 지운다 — 붙은 것은 남는다.
+        Some("map") => {
+            use std::os::fd::AsRawFd;
+            let path = std::env::temp_dir().join(format!("atelier-metrics-map-{}", std::process::id()));
+            let file = std::fs::File::options()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .expect("임시 파일을 만든다");
+            file.set_len(MAPPED as u64).expect("파일 길이를 잡는다");
+            let at = unsafe {
+                libc::mmap(std::ptr::null_mut(), MAPPED, libc::PROT_READ, libc::MAP_PRIVATE, file.as_raw_fd(), 0)
+            };
+            let _ = std::fs::remove_file(&path);
+            assert_ne!(at, libc::MAP_FAILED, "파일을 붙이지 못했다");
+            let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+            for offset in (0..MAPPED).step_by(page) {
+                unsafe { std::ptr::read_volatile(at.cast::<u8>().add(offset)) };
+            }
+            unsafe { libc::setsid() };
             std::thread::sleep(Duration::from_secs(60));
         }
         // 곧바로 끝난다. 부모가 거두기 전까지 좀비로 남는다.
