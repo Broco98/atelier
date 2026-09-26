@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { BROKEN_MAISON_LAYOUT, SPEC_LAYOUT_STATES } from "./fixtures";
-import { callCount, installFixtureBackend, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcFailure, unknownIpcCalls } from "./harness";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08 · 결정 20·23·25).
 //
@@ -36,8 +36,23 @@ test("설정 nav에서 「spec 레이아웃」을 열면 상태 명령이 나가
   await expect(행(page, "Atelier")).toContainText(`${atelier.folder}/`);
   await expect(행(page, "Atelier")).toContainText(`템플릿 ${atelier.templateCount}개`);
   await expect(행(page, "Maison")).toContainText("내장본 그대로예요");
-  // 설정 파일의 게이트 밖이다 — 이 페이지는 `settings.json`을 읽지 않는다.
+  // 설정 초안의 저장 버튼을 지나지 않는다. (게이트 밖인지는 아래 시나리오가 잰다 — 이 fixture의
+  // `read_settings`는 성공하므로 여기서는 게이트 안이어도 두 행이 선다.)
   await expect(page.getByRole("button", { name: "저장", exact: true })).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **설정 파일 읽기 게이트 밖이다**(티켓 08) — 레이아웃은 `settings.json`에 살지 않으니, 우리 파일이 깨져
+// 있다고 레이아웃을 못 볼 이유가 없다. 첫 시나리오에 이 거절을 싣지 않는 것은 그쪽이 먼저 여는 터미널
+// 설정이 `read_settings`의 성공을 딛기 때문이다.
+test("설정 파일을 읽지 못해도 「spec 레이아웃」의 두 행이 선다 — 설정 파일 읽기 게이트 밖이다", async ({ page }) => {
+  await installFixtureBackend(page, { read_settings: ipcFailure("설정 파일을 읽지 못했어요") });
+  await page.goto("/settings/spec-layout");
+  await expect(page.locator("main li")).toHaveCount(2);
+  // 게이트였다면 행 대신 그 까닭과 「다시 읽기」가 섰다
+  await expect(page.getByText("설정 파일을 읽지 못했어요")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "다시 읽기", exact: true })).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

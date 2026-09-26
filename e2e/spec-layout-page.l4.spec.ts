@@ -33,6 +33,8 @@ test("다리의 상태가 고친 폴더와 깨진 폴더를 가르고, 설정의
   });
   await installRealBackend(page, sandbox);
 
+  // 다리의 `read_settings`는 앱에만 있어 거절한다 — 여기서 행이 서는 것도 이 페이지가 설정 파일 읽기
+  // 게이트 밖이라서다(그것을 따로 재는 것은 L3의 시나리오다).
   await page.goto("/settings/spec-layout");
   const [atelierState, maisonState] = (await askBackend(page, "spec_layout_states", {})) as SpecLayoutState[];
   expect(atelierState).toEqual({
