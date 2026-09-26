@@ -10,6 +10,13 @@ import { Hint } from "@/components/ui/tooltip";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
 
+/**
+ * 제자리 편집 자리 둘(제목 · git 정보가 없을 때의 기준 브랜치)의 도움말. 둘은 이미 `<button>`이라 `title` 예외
+ * (S29 — 버튼이 아닌 자리)가 아니다 — 앱 툴팁이다. 이름은 보이는 값이고, 누르면 편집이 열린다는 이 말은 이름보다
+ * 더 말하는 하는 일이라 설명(`aria-description`)으로도 남는다(S28).
+ */
+const EDIT_HELP = "클릭해서 편집";
+
 interface ProjectDetailProps {
   project: ProjectView;
   // null = 선택 변경 없이 Works 화면으로 이동
@@ -164,10 +171,10 @@ function TitleEditor({ project }: { project: ProjectView }) {
 
   if (!editing) {
     return (
-      <button
+      <Hint
+        text={EDIT_HELP}
+        announce="description"
         type="button"
-        // 편집 자리의 도움말은 `title`로 남는다(S29 — 판 4의 예외 목록).
-        title="클릭해서 편집"
         onClick={() => {
           finished.current = false;
           setDraft(project.name);
@@ -176,7 +183,7 @@ function TitleEditor({ project }: { project: ProjectView }) {
         className="-mx-2 -my-1 max-w-full truncate rounded-[10px] px-2 py-1 text-left text-[25px] font-semibold tracking-[-0.015em] transition-colors hover:bg-state-2"
       >
         {project.name}
-      </button>
+      </Hint>
     );
   }
   return (
@@ -296,10 +303,10 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
 
   if (!editing) {
     return (
-      <button
+      <Hint
+        text={EDIT_HELP}
+        announce="description"
         type="button"
-        // 편집 자리의 도움말은 `title`로 남는다(S29 — 판 4의 예외 목록).
-        title="클릭해서 편집"
         onClick={() => {
           finished.current = false;
           setDraft(project.baseBranch);
@@ -308,7 +315,7 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         className="-ml-[7px] flex h-[26px] items-center rounded-[9px] px-[7px] font-mono text-[12.5px] text-muted-foreground transition-colors quiet-hover"
       >
         {project.baseBranch}
-      </button>
+      </Hint>
     );
   }
   return (
