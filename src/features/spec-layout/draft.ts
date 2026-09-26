@@ -139,17 +139,8 @@ export function addEntry(draft: LayoutDraft, selected: EntryPath, kind: "file" |
   const siblings = entryAt(draft.layout, parent)?.children ?? [];
   const index = inside ? siblings.length : selected[selected.length - 1] + 1;
   const pattern = freePattern(siblings, kind === "file" ? ".md" : "");
-  return {
-    draft: {
-      ...draft,
-      layout: updateChildren(draft.layout, parent, (children) => [
-        ...children.slice(0, index),
-        { pattern, kind },
-        ...children.slice(index),
-      ]),
-    },
-    select: [...parent, index],
-  };
+  const added = [...parent, index];
+  return { draft: { ...draft, layout: insertAt(draft.layout, added, { pattern, kind }) }, select: added };
 }
 
 /**
@@ -157,22 +148,17 @@ export function addEntry(draft: LayoutDraft, selected: EntryPath, kind: "file" |
  * `null`이다. 머리 `spec/`을 골랐을 때 휴지통이 잠기는 것이 이 답이다(`editsAt`).
  *
  * - 사라진 항목들이 가리키던 템플릿 본문을 함께 뗀다 — 아무도 가리키지 않는 본문은 저장이 거절한다. 남은
- *   파일 항목이 같은 경로를 가리키면 그 본문은 남는다(`detachTemplate`과 같은 규칙).
+ *   파일 항목이 같은 경로를 가리키면 그 본문은 남는다(`pruneTemplates`).
  * - 그 뒤에는 트리에서 **바로 위에 보이던 행**을 고른다 — 앞 형제가 있으면 그 아래의 맨 끝 행, 없으면 부모다.
  *   첫 최상위 항목이었으면 머리 `spec/`이다.
  */
 export function removeEntry(draft: LayoutDraft, path: EntryPath): TreeEdit | null {
-  const entry = path.length === 0 ? null : entryAt(draft.layout, path);
-  if (entry === null) return null;
+  if (movableAt(draft.layout, path) === null) return null;
   const parent = path.slice(0, -1);
   const index = path[path.length - 1];
-  const layout = updateChildren(draft.layout, parent, (children) =>
-    children.filter((_, i) => i !== index),
-  );
-  const kept = templatesOf(layout.root);
-  const dropped = templatesOf(entry).filter((template) => !kept.includes(template));
+  const layout = detachAt(draft.layout, path);
   return {
-    draft: { layout, templates: dropped.reduce(without, draft.templates) },
+    draft: { layout, templates: pruneTemplates(draft.templates, draft.layout, layout) },
     select: index === 0 ? parent : lastRowUnder(layout, [...parent, index - 1]),
   };
 }
@@ -190,24 +176,30 @@ export type EntryMove = "up" | "down" | "outdent" | "indent";
  * - 머리 `spec/`(빈 경로)은 항목이 아니라 아무것도 옮기지 않는다.
  */
 export function moveEntry(draft: LayoutDraft, path: EntryPath, move: EntryMove): TreeEdit | null {
-  if (path.length === 0 || entryAt(draft.layout, path) === null) return null;
+  const entry = movableAt(draft.layout, path);
+  if (entry === null) return null;
   const parent = path.slice(0, -1);
   const index = path[path.length - 1];
   const siblings = entryAt(draft.layout, parent)?.children ?? [];
   switch (move) {
     case "up":
-      return index === 0 ? null : relocate(draft, path, () => [...parent, index - 1]);
+      return index === 0 ? null : relocate(draft, path, entry, () => [...parent, index - 1]);
     case "down":
-      return index === siblings.length - 1 ? null : relocate(draft, path, () => [...parent, index + 1]);
+      return index === siblings.length - 1
+        ? null
+        : relocate(draft, path, entry, () => [...parent, index + 1]);
     case "indent": {
       if (index === 0 || !isFolder(siblings[index - 1])) return null;
       const folder = [...parent, index - 1];
-      return relocate(draft, path, (rest) => [...folder, entryAt(rest, folder)?.children?.length ?? 0]);
+      return relocate(draft, path, entry, (rest) => [
+        ...folder,
+        entryAt(rest, folder)?.children?.length ?? 0,
+      ]);
     }
     case "outdent":
       return parent.length === 0
         ? null
-        : relocate(draft, path, () => [...parent.slice(0, -1), parent[parent.length - 1] + 1]);
+        : relocate(draft, path, entry, () => [...parent.slice(0, -1), parent[parent.length - 1] + 1]);
   }
 }
 
@@ -260,14 +252,15 @@ export function dropPlaceAt(entry: LayoutEntryJson, ratio: number): DropPlace {
  * - 파일 안에는 놓지 않는다 — 파일 항목의 `children`은 저장이 거절한다.
  */
 export function dropEntry(draft: LayoutDraft, from: EntryPath, target: DropTarget): TreeEdit | null {
-  if (from.length === 0 || entryAt(draft.layout, from) === null) return null;
+  const entry = movableAt(draft.layout, from);
+  if (entry === null) return null;
   if (target.place === "end") {
-    return relocate(draft, from, (rest) => [rest.root.children?.length ?? 0]);
+    return relocate(draft, from, entry, (rest) => [rest.root.children?.length ?? 0]);
   }
   const { path, place } = target;
-  const onto = path.length === 0 ? null : entryAt(draft.layout, path);
+  const onto = movableAt(draft.layout, path);
   if (onto === null || within(path, from) || (place === "inside" && !isFolder(onto))) return null;
-  return relocate(draft, from, (rest) => {
+  return relocate(draft, from, entry, (rest) => {
     const at = afterRemoval(path, from);
     if (place === "inside") return [...at, entryAt(rest, at)?.children?.length ?? 0];
     const index = at[at.length - 1];
@@ -294,27 +287,43 @@ function afterRemoval(path: EntryPath, removed: EntryPath): EntryPath {
 }
 
 /**
- * 그 자리의 항목을 떼어 다른 자리에 세운다 — 자식은 항목과 함께 간다. 세울 자리는 **뗀 뒤의 트리**에서의 경로다
- * (`to`가 뗀 레이아웃을 받는다). 템플릿 본문은 그대로다: 가리키는 항목이 자리만 바꾼다.
+ * `from` 자리의 항목(`entry`, 부르는 쪽이 `movableAt`으로 이미 찾았다)을 떼어 다른 자리에 세운다 — 자식은 항목과
+ * 함께 간다. 세울 자리는 **뗀 뒤의 트리**에서의 경로다(`to`가 뗀 레이아웃을 받는다). 템플릿 본문은 그대로다:
+ * 가리키는 항목이 자리만 바꾼다.
  */
 function relocate(
   draft: LayoutDraft,
   from: EntryPath,
+  entry: LayoutEntryJson,
   to: (rest: SpecLayoutJson) => EntryPath,
 ): TreeEdit {
-  const entry = entryAt(draft.layout, from) as LayoutEntryJson;
-  const index = from[from.length - 1];
-  const rest = updateChildren(draft.layout, from.slice(0, -1), (children) =>
-    children.filter((_, i) => i !== index),
-  );
+  const rest = detachAt(draft.layout, from);
   const at = to(rest);
-  const slot = at[at.length - 1];
-  const layout = updateChildren(rest, at.slice(0, -1), (children) => [
+  return { draft: { ...draft, layout: insertAt(rest, at, entry) }, select: at };
+}
+
+/**
+ * 끌고 옮기고 지울 수 있는 그 자리의 항목. 없으면 `null`이다 — **머리 `spec/`(빈 경로)은 항목이 아니라**(결정 26)
+ * 끌 것도, 옮기거나 지울 것도, 놓을 대상도 아니다.
+ */
+function movableAt(layout: SpecLayoutJson, path: EntryPath): LayoutEntryJson | null {
+  return path.length === 0 ? null : entryAt(layout, path);
+}
+
+/** 그 자리의 항목을 뗀 레이아웃 — 자기 아래도 함께 떨어진다. 뒤의 형제들이 한 칸씩 당겨진다. */
+function detachAt(layout: SpecLayoutJson, path: EntryPath): SpecLayoutJson {
+  const index = path[path.length - 1];
+  return updateChildren(layout, path.slice(0, -1), (children) => children.filter((_, i) => i !== index));
+}
+
+/** 그 자리에 항목을 세운 레이아웃 — 그 자리에 있던 형제부터 한 칸씩 밀린다. */
+function insertAt(layout: SpecLayoutJson, path: EntryPath, entry: LayoutEntryJson): SpecLayoutJson {
+  const slot = path[path.length - 1];
+  return updateChildren(layout, path.slice(0, -1), (children) => [
     ...children.slice(0, slot),
     entry,
     ...children.slice(slot),
   ]);
-  return { draft: { ...draft, layout }, select: at };
 }
 
 /** 그 항목 아래에서 트리의 맨 끝 행 — 마지막 자식을 따라 끝까지 내려간다. 자식이 없으면 그 자신이다. */
@@ -341,20 +350,28 @@ function isFolder(entry: LayoutEntryJson): boolean {
 
 /**
  * 그 자리의 항목에서 `template`을 떼고(`change`도 함께 입힌다), 본문 맵에서 그 본문을 뗀다. 본문은 **다른
- * 파일 항목이 같은 경로를 가리키지 않을 때만** 뗀다 — 그쪽은 여전히 그 본문의 주인이다. 아무도 가리키지
- * 않는 본문은 저장이 거절한다.
+ * 파일 항목이 같은 경로를 가리키지 않을 때만** 뗀다 — 그쪽은 여전히 그 본문의 주인이다(`pruneTemplates`).
  */
 function detachTemplate(
   draft: LayoutDraft,
   path: EntryPath,
   change: (entry: LayoutEntryJson) => LayoutEntryJson,
 ): LayoutDraft {
-  const template = entryAt(draft.layout, path)?.template;
   const layout = updateEntry(draft.layout, path, (entry) => change(without(entry, "template")));
-  if (template === undefined || templatesOf(layout.root).includes(template)) {
-    return { ...draft, layout };
-  }
-  return { layout, templates: without(draft.templates, template) };
+  return { layout, templates: pruneTemplates(draft.templates, draft.layout, layout) };
+}
+
+/**
+ * 고치기 전(`before`)에는 가리켰는데 고친 뒤(`after`)에는 아무도 가리키지 않는 템플릿의 본문을 맵에서 뗀다 —
+ * 아무도 가리키지 않는 본문은 저장이 거절한다. 남은 파일 항목 하나라도 같은 경로를 가리키면 본문은 남는다(저장의
+ * 검증처럼 경로 글자 그대로 견준다). 고치기 전부터 아무도 가리키지 않던 본문은 건드리지 않는다. 뗄 것이 없으면
+ * 받은 맵 그대로다.
+ */
+function pruneTemplates(templates: TemplateBodies, before: SpecLayoutJson, after: SpecLayoutJson): TemplateBodies {
+  const kept = templatesOf(after.root);
+  return templatesOf(before.root)
+    .filter((template) => !kept.includes(template))
+    .reduce(without, templates);
 }
 
 /**
