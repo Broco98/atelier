@@ -19,7 +19,7 @@ import {
   행버튼,
 } from "./harness";
 
-const [, plainWork] = WORKS;
+const [pinnedWork, plainWork] = WORKS;
 
 // **훅을 안 깐 셸의 보너스 길**(#208 · 결정 11의 P). 파싱과 벨 규칙은 순수 함수 seam이 표로
 // 전수하고(`shell-osc.test.ts`), **여기서만 보이는 것**은 그 규칙이 실제로 xterm에 붙어 있는가다.
@@ -136,6 +136,13 @@ test("승인 접두사가 붙은 OSC 9는 앰버를 세우고, 다시 흐르는 
   await writeShell(page, "running git push...\r\n");
 
   await expect(lane.locator('[data-signal="working"]')).toHaveCount(1);
+  // **아무것도 안 그리는 오른쪽 메타는 칸도 틈도 안 먹는다**(S34 — 「칸의 폭은 선 것들의 폭이다」).
+  // 풀려서 도는 중이 됐는데 아는 명령이 안 돌면 마크가 없고, 도는 중에는 경과도 안 붙어 메타가
+  // 빈다(`SignalMeta`가 `null`) — 그 갈래에 닿는 층이 여기다. 빈 칸이 9px 틈을 쥐면 제목만 까닭
+  // 없이 짧아지므로, 이 행의 이름 버튼이 **셸 없는 행의 것과 같은 폭**인가로 잰다(같은 목록의 두 행이다).
+  const 이름폭 = async (name: string) => (await 행버튼(page, name).boundingBox())!.width;
+  const 셸없는행 = await 이름폭(pinnedWork.title);
+  await expect.poll(() => 이름폭(`${plainWork.title} — 도는 중`)).toBe(셸없는행);
   // 부르는 셸이 아니게 됐으니 띠가 통째로 사라진다(도는 중은 띠에 못 온다 — 결정 8).
   //
   // _한때 여기서 「말은 남는다」(도는 행의 둘째 줄이 직전 말을 흐리게 든다 — 결정 13의 셋째)를

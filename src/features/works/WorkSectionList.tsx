@@ -655,6 +655,14 @@ function WorkRow({
           이다. **왼쪽 `pl-(--glyph-gap)`이 제목과 메타를 떼는 값이다** — 캔버스 보드 B의 행
           간격(9px)이고, 메타가 있을 때만 난다(S34: 바닥을 두지 않는다).
 
+          **슬롯이 아무것도 안 그리면 칸이 통째로 빠진다(`empty:hidden`)** — 「칸의 폭은 선 것들의
+          폭이다」(스펙 S34). 조용한 갈래(`ShellMeta`)는 셸이 하나라도 있으면 늘 무언가를 그리므로
+          여기 안 걸리고, 걸리는 것은 신호 갈래가 `null`인 드문 경우 하나다(도는 셸의 마크를
+          모를 때 — `SignalMeta` 머리말). 그때 빈 상자가 9px 틈을 쥐면 제목만 까닭 없이 짧아진다.
+          칸이 서는가를 여기서 묻지 못하는 것은 무엇을 그릴지가 슬롯 **안의** 구독에서 정해지기
+          때문이라(`RowMetaFor`), 빈 것을 보고 물러나는 일은 CSS가 한다. 아래 hover의 투명과는
+          뜻이 반대다: 그쪽은 선 것이 **있어서** 칸을 쥔 채 안 보이게 하고, 여기는 선 것이 없다.
+
           hover하면 메타가 **투명해진다**(판 05 결정 6). `hidden`이 아니다 — `display:none`은 칸
           폭 계산에서 빠져 2열이 핀의 24px로 **줄고** 제목이 hover마다 튄다. `visibility:hidden`도
           아니다: 셸 수가 마우스 위치에 따라 있다 없다 하는 정보가 되면 안 된다. 트랜지션은
@@ -683,7 +691,7 @@ function WorkRow({
         <div
           data-row-meta={work.slug}
           data-shells={signal === null ? work.slug : undefined}
-          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-(--glyph-gap) group-hover:opacity-0 peer-focus-visible:opacity-0"
+          className="pointer-events-none col-start-2 row-start-1 flex items-center justify-self-end pl-(--glyph-gap) group-hover:opacity-0 peer-focus-visible:opacity-0 empty:hidden"
         >
           {meta}
         </div>

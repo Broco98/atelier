@@ -221,7 +221,8 @@ export function formatElapsed(ms: number): string {
  *
  * **아무것도 안 설 때는 `null`이다.** 도는 셸의 마크를 모르는 드문 갈래(훅 없는 셸이 OSC로
  * 앰버를 세웠다가 출력으로 풀린 칸에서 아는 명령이 안 도는 경우)다 — 빈 상자를 세우면 칸이
- * 오른쪽 여백만큼의 폭을 쥔다.
+ * 오른쪽 여백만큼의 폭을 쥔다. work 행의 칸 상자도 그때 함께 빠진다(`WorkSectionList.tsx`의
+ * `empty:hidden`) — 제목과 떼던 9px 틈까지 안 남는다.
  */
 export function SignalMeta({
   kind,

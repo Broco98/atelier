@@ -447,7 +447,9 @@ describe("work 행은 한 줄이고, 오른쪽 메타가 핀과 2열 한 칸에 
     // 순간 바뀌어서(pty.rs가 1초마다 잰다) 자리에 매면 claude가 답을 마칠 때마다 이 칸이
     // 생겼다 사라지고 제목이 끊기는 자리가 좌우로 뛴다. 자리가 서는 조건은 **안 변하는 값**
     // (셸을 포함하는가)이고 변하는 것은 그 **안에서** 변한다 — 그래서 슬롯이 아무것도 안
-    // 그려도 자리는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    // 그려도 자리의 상자는 선다. 조건을 `runningKinds.length > 0` 꼴로 바꾸면 여기가 빨개진다.
+    // (비어 있는 상자가 폭을 안 먹는 것은 CSS의 일이고 L3가 잰다 — 셸 OSC spec의 「풀린 칸」.
+    // 조용한 행의 슬롯은 셸이 있으면 늘 무언가를 그리므로 결정 3의 화면은 그대로다.)
     const markup = render(works("가"), ALL, { shellCounts: { 가: 1 }, renderRowMeta: () => null });
     expect(shellBoxesOf(markup)).toHaveLength(1);
   });
