@@ -176,7 +176,8 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
 ///   한다.
 /// - 쓰는 순서는 템플릿 → `layout.json` → 빠진 템플릿 지우기다. 파일마다 원자적으로 쓴다(점으로
 ///   시작하는 임시 파일 → rename) — resolve도 감시도 점 파일을 보지 않는다.
-/// - 레이아웃이 모르는 파일은 건드리지 않는다.
+/// - 레이아웃이 모르는 파일은 건드리지 않는다. 빠진 템플릿이라도 링크인 하위 폴더 너머에 있으면
+///   남긴다 — 그곳은 레이아웃 폴더 밖이다.
 ///
 /// id는 모드 이름 둘만 받는다 — 어긋나면 디스크를 보기 전에 `Err`다.
 pub fn save_layout(
@@ -210,11 +211,12 @@ pub fn save_layout(
     write_atomically(&folder, LAYOUT_FILE, &serialize_layout(&layout))?;
     // 빠진 템플릿은 새 `layout.json`이 선 **뒤에** 지운다 — 먼저 지우면 실패한 저장이 앞 레이아웃이
     // 가리키는 템플릿을 잃게 한다. 비게 된 하위 폴더는 남긴다: 폴더는 사람이 만들었을 수 있다.
-    // 새 레이아웃이 쥐는 파일과 같은 파일이면 다르게 적혔어도 지우지 않는다(`Held`).
+    // 새 레이아웃이 쥐는 파일과 같은 파일이면 다르게 적혔어도 지우지 않는다(`Held`). 가는 길의 하위
+    // 폴더가 링크면 그 너머도 남긴다(`through_a_link`) — 둘 다 남기는 쪽으로 틀린다.
     let pointed = pointed_templates(&layout);
     let held = Held::of(&folder, pointed.iter().map(String::as_str).chain([LAYOUT_FILE]));
     for dropped in previous.difference(&pointed) {
-        if held.holds(&folder, dropped) {
+        if held.holds(&folder, dropped) || through_a_link(&folder, dropped) {
             continue;
         }
         match std::fs::remove_file(folder.join(dropped)) {
@@ -319,7 +321,8 @@ impl Held {
         Self { ids }
     }
 
-    /// 지울 경로가 쥔 파일인가. 링크는 따라가지 않는다 — 지우는 것은 링크 자신이다.
+    /// 지울 경로가 쥔 파일인가. 끝 조각의 링크는 따라가지 않는다 — 지우는 것은 링크 자신이다. 가는 길의
+    /// 하위 폴더가 링크인 경로는 여기 오기 전에 `through_a_link`가 남겼다.
     pub(super) fn holds(&self, folder: &Path, path: &str) -> bool {
         use std::os::unix::fs::MetadataExt;
         std::fs::symlink_metadata(folder.join(path))
@@ -346,6 +349,21 @@ impl Held {
     pub(super) fn len(&self) -> usize {
         self.names.len()
     }
+}
+
+/// 지울 경로가 **링크인 하위 폴더를 지나는가** — 지나면 그 너머는 이 레이아웃 폴더 밖이다. 다른 모드가
+/// 가리키는 템플릿일 수 있어(두 모드가 템플릿 폴더를 링크로 나눠 쓴다) 빠졌다고 지우지 않는다.
+///
+/// 레이아웃 폴더 아래의 조각만 본다 — 레이아웃 폴더 자신이 링크인 것(dotfiles에 둔 레이아웃)은 괜찮다.
+/// 끝 조각은 보지 않는다: 링크면 지우는 것은 링크 자신이다. 조각을 확인하지 못하면 지나는 것으로 친다 —
+/// 남기는 쪽으로 틀린다. 경로는 검증(`safe_rel`)을 지난 것이라 조각이 모두 이름이다.
+fn through_a_link(folder: &Path, path: &str) -> bool {
+    let parts: Vec<_> = Path::new(path).components().collect();
+    let mut at = folder.to_path_buf();
+    parts[..parts.len().saturating_sub(1)].iter().any(|part| {
+        at.push(part);
+        std::fs::symlink_metadata(&at).map_or(true, |meta| meta.file_type().is_symlink())
+    })
 }
 
 /// 경로 조각마다 NFC로 맞추고 대소문자를 접은 이름 — 유닉스 밖에서 `Held`가 견주는 모양이다.
@@ -921,6 +939,67 @@ mod tests {
                 new_body.unwrap_or("# 사람이 쓴 본문\n"),
             );
         }
+    }
+
+    /// 빠진 템플릿이 **링크로 이어 둔 하위 폴더** 너머에 있으면 지우지 않는다 — 링크가 가리키는 곳은 이
+    /// 레이아웃 폴더 밖이고, 다른 모드가 가리키는 템플릿일 수 있다. 두 모드가 템플릿 폴더를 나눠 쓰는
+    /// 모양(`maison/shared -> ../atelier/shared`)이다. 틀리더라도 남기는 쪽으로 틀린다(`Held`와 같다).
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_template_behind_a_linked_sub_folder_is_left() {
+        let root = tempfile::tempdir().unwrap();
+        let body = bodies(&[("shared/adr.md", "# 사람이 쓴 본문\n")]);
+        let atelier = save_layout(root.path(), "atelier", pointing_to("shared/adr.md"), &body).unwrap();
+        assert!(matches!(atelier, SaveOutcome::Saved(_)), "{atelier:?}");
+        let link = root.path().join("layouts/maison/shared");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink("../atelier/shared", &link).unwrap();
+        let shared =
+            save_layout(root.path(), "maison", pointing_to("shared/adr.md"), &BTreeMap::new()).unwrap();
+        assert!(matches!(shared, SaveOutcome::Saved(_)), "링크 너머의 본문을 못 봤다: {shared:?}");
+
+        let dropped = save_layout(root.path(), "maison", without_templates(), &BTreeMap::new()).unwrap();
+        assert!(matches!(dropped, SaveOutcome::Saved(_)), "{dropped:?}");
+
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("layouts/atelier/shared/adr.md")).unwrap(),
+            "# 사람이 쓴 본문\n",
+            "다른 모드의 템플릿을 지웠다"
+        );
+        let LayoutContent::Readable { templates, rendered, .. } =
+            read_layout(root.path(), "atelier").unwrap().content
+        else {
+            panic!("atelier가 안 읽힌다")
+        };
+        assert_eq!(templates, body);
+        assert!(rendered.warnings.is_empty(), "{rendered:?}");
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(), "링크가 사라졌다");
+    }
+
+    /// 링크는 **레이아웃 폴더 아래에서만** 멈춘다 — 레이아웃 폴더 자신이 다른 곳(dotfiles)을 가리키는 링크면
+    /// 그 안은 이 레이아웃의 것이라, 빠진 템플릿이 여느 때처럼 지워진다.
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_template_in_a_linked_layout_folder_is_still_removed() {
+        let outer = tempfile::tempdir().unwrap();
+        let root = outer.path().join("home");
+        let elsewhere = outer.path().join("dotfiles/atelier-layout");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::create_dir_all(root.join("layouts")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, root.join("layouts/atelier")).unwrap();
+        let first = save_layout(
+            &root,
+            "atelier",
+            pointing_to("sub/adr.md"),
+            &bodies(&[("sub/adr.md", "# ADR\n")]),
+        )
+        .unwrap();
+        assert!(matches!(first, SaveOutcome::Saved(_)), "{first:?}");
+
+        let dropped = save_layout(&root, "atelier", without_templates(), &BTreeMap::new()).unwrap();
+        assert!(matches!(dropped, SaveOutcome::Saved(_)), "{dropped:?}");
+        assert!(!elsewhere.join("sub/adr.md").exists(), "빠진 템플릿이 남았다");
+        assert!(elsewhere.join("layout.json").is_file());
     }
 
     /// **깨진 폴더에 저장해도 폴더 안의 `.md`는 하나도 지워지지 않는다** — 앞 레이아웃을 읽을 수
