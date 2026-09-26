@@ -1,5 +1,5 @@
 import { Store } from "@tanstack/react-store";
-import { ALL_MODES, placeModeOf, routesOf, slugOf } from "@/mode";
+import { modeFrom, placeModeOf, routesOf, slugOf } from "@/mode";
 import { recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
 import type { Mode } from "@/mode";
@@ -80,12 +80,10 @@ export function toggleSidebar() {
  * 그 구분에서 모드는 설정 쪽이다(결정 9는 기동을 넘어 기억하라고 했다). `/`가 이 값을 읽어
  * 첫 화면을 정한다.
  *
- * 적힌 값을 `ALL_MODES`로 **검증한다**: 캐스트로 두면 저장소에 남은 옛 값이나 손으로 고친
- * 문자열이 그대로 모드가 되어, 표에 없는 키로 파생을 찾다 `undefined`가 화면까지 간다.
+ * 적힌 값은 `modeFrom`으로 **검증해** 읽는다 — 모르는 값이면 Atelier다.
  */
 export function lastMode(): Mode {
-  const stored = readStored(LAST_MODE_KEY);
-  return ALL_MODES.find((mode) => mode === stored) ?? "atelier";
+  return modeFrom(readStored(LAST_MODE_KEY)) ?? "atelier";
 }
 
 /**

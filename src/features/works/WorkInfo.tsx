@@ -4,7 +4,6 @@ import { hasProjects } from "@/mode";
 import type { Mode } from "@/mode";
 import { itemNameOf } from "./work-sections";
 import { specDirRef, worktreeDirRef, workDirRef } from "./refs";
-import { splitSpecFiles } from "./spec-sections";
 import type { WorkView } from "./types";
 
 // 프로젝트 하나의 base 판정. **두 경우가 구분되는 값으로 내려와야 한다** —
@@ -54,10 +53,6 @@ export function relativeToWorkDir(path: string, workDir: string): string {
 function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
   const workDir = workDirRef(mode, work.slug);
   const specDir = specDirRef(mode, work.slug);
-  // 판은 폴더, 문서는 파일이라 **단위가 달라 더할 수 없고**, 문서 개수는 판 안 문서를
-  // 포함한다. spec 탭의 `Documents` 구획(판 **밖** 문서만)과 다른 집합이라, 한 클릭
-  // 거리에서 같은 이름이 다른 집합을 가리키지 않도록 `(전체)`를 붙인다.
-  const iterations = splitSpecFiles(work.specFiles).iterations.length;
   // 뒷문장은 브랜치가 미정일 때만 참이다. 코어는 프로젝트 없이도 브랜치를 확정해 저장하므로
   // (works.rs의 nothing_to_decide가 세 조건을 **모두** 요구한다) "프로젝트 0개 + 브랜치
   // 있음"이 실재하고, 그 화면에서 뒷문장은 거짓이 된다.
@@ -158,9 +153,11 @@ function WorkInfo({ mode, work, bases, onCopy, onOpenProject }: WorkInfoProps) {
       <Section title="문서">
         {/* 세 경로 중 spec만 복사 행이 없었다 */}
         <PathRow label="spec" path={specDir} relativeTo={workDir} onCopy={onCopy} />
-        <Note>
-          판 {iterations} · 문서 {work.specFiles.length}(전체)
-        </Note>
+        {/* 개수는 문서 하나다 — 판 안 문서를 포함한 spec 파일 전부. 판을 세지 않는다(spec 레이아웃
+            결정 24): 폴더가 곧 개념이라 `02-editor/`가 스스로 판을 말하고, 화면이 판이라는 세는
+            말을 따로 갖지 않는다. `(전체)` 꼬리도 뗐다 — spec 탭의 `Documents` 구획(판 밖 문서만)과
+            가르려고 붙였던 것이라, 구획이 사라지면서 가를 상대가 없다. */}
+        <Note>문서 {work.specFiles.length}</Note>
       </Section>
     </div>
   );

@@ -20,6 +20,7 @@ import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsHooksRouteImport } from './routes/settings.hooks'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings.notifications'
+import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-layout'
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
@@ -27,6 +28,8 @@ import { Route as MaisonArchiveIndexRouteImport } from './routes/maison.archive.
 import { Route as MaisonArchiveSlugRouteImport } from './routes/maison.archive.$slug'
 import { Route as MaisonRoomsIndexRouteImport } from './routes/maison.rooms.index'
 import { Route as MaisonRoomsSlugRouteImport } from './routes/maison.rooms.$slug'
+import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
+import { Route as SettingsSpecLayoutIdRouteImport } from './routes/settings.spec-layout.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -83,6 +86,11 @@ const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsSpecLayoutRoute = SettingsSpecLayoutRouteImport.update({
+  id: '/spec-layout',
+  path: '/spec-layout',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsTerminalRoute = SettingsTerminalRouteImport.update({
   id: '/terminal',
   path: '/terminal',
@@ -118,6 +126,16 @@ const MaisonRoomsSlugRoute = MaisonRoomsSlugRouteImport.update({
   path: '/maison/rooms/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsSpecLayoutIndexRoute = SettingsSpecLayoutIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsSpecLayoutRoute,
+} as any)
+const SettingsSpecLayoutIdRoute = SettingsSpecLayoutIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SettingsSpecLayoutRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -128,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
@@ -136,8 +155,10 @@ export interface FileRoutesByFullPath {
   '/works/': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
   '/maison/archive/': typeof MaisonArchiveIndexRoute
   '/maison/rooms/': typeof MaisonRoomsIndexRoute
+  '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -155,8 +176,10 @@ export interface FileRoutesByTo {
   '/works': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
   '/maison/archive': typeof MaisonArchiveIndexRoute
   '/maison/rooms': typeof MaisonRoomsIndexRoute
+  '/settings/spec-layout': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -168,6 +191,7 @@ export interface FileRoutesById {
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
+  '/settings/spec-layout': typeof SettingsSpecLayoutRouteWithChildren
   '/settings/terminal': typeof SettingsTerminalRoute
   '/works/$slug': typeof WorksSlugRoute
   '/archive/': typeof ArchiveIndexRoute
@@ -176,8 +200,10 @@ export interface FileRoutesById {
   '/works/': typeof WorksIndexRoute
   '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
   '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
+  '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
   '/maison/archive/': typeof MaisonArchiveIndexRoute
   '/maison/rooms/': typeof MaisonRoomsIndexRoute
+  '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -190,6 +216,7 @@ export interface FileRouteTypes {
     | '/projects/$slug'
     | '/settings/hooks'
     | '/settings/notifications'
+    | '/settings/spec-layout'
     | '/settings/terminal'
     | '/works/$slug'
     | '/archive/'
@@ -198,8 +225,10 @@ export interface FileRouteTypes {
     | '/works/'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
+    | '/settings/spec-layout/$id'
     | '/maison/archive/'
     | '/maison/rooms/'
+    | '/settings/spec-layout/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -217,8 +246,10 @@ export interface FileRouteTypes {
     | '/works'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
+    | '/settings/spec-layout/$id'
     | '/maison/archive'
     | '/maison/rooms'
+    | '/settings/spec-layout'
   id:
     | '__root__'
     | '/'
@@ -229,6 +260,7 @@ export interface FileRouteTypes {
     | '/projects/$slug'
     | '/settings/hooks'
     | '/settings/notifications'
+    | '/settings/spec-layout'
     | '/settings/terminal'
     | '/works/$slug'
     | '/archive/'
@@ -237,8 +269,10 @@ export interface FileRouteTypes {
     | '/works/'
     | '/maison/archive/$slug'
     | '/maison/rooms/$slug'
+    | '/settings/spec-layout/$id'
     | '/maison/archive/'
     | '/maison/rooms/'
+    | '/settings/spec-layout/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -337,6 +371,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsNotificationsRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/spec-layout': {
+      id: '/settings/spec-layout'
+      path: '/spec-layout'
+      fullPath: '/settings/spec-layout'
+      preLoaderRoute: typeof SettingsSpecLayoutRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/terminal': {
       id: '/settings/terminal'
       path: '/terminal'
@@ -386,12 +427,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MaisonRoomsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/spec-layout/': {
+      id: '/settings/spec-layout/'
+      path: '/'
+      fullPath: '/settings/spec-layout/'
+      preLoaderRoute: typeof SettingsSpecLayoutIndexRouteImport
+      parentRoute: typeof SettingsSpecLayoutRoute
+    }
+    '/settings/spec-layout/$id': {
+      id: '/settings/spec-layout/$id'
+      path: '/$id'
+      fullPath: '/settings/spec-layout/$id'
+      preLoaderRoute: typeof SettingsSpecLayoutIdRouteImport
+      parentRoute: typeof SettingsSpecLayoutRoute
+    }
   }
 }
+
+interface SettingsSpecLayoutRouteChildren {
+  SettingsSpecLayoutIdRoute: typeof SettingsSpecLayoutIdRoute
+  SettingsSpecLayoutIndexRoute: typeof SettingsSpecLayoutIndexRoute
+}
+
+const SettingsSpecLayoutRouteChildren: SettingsSpecLayoutRouteChildren = {
+  SettingsSpecLayoutIdRoute: SettingsSpecLayoutIdRoute,
+  SettingsSpecLayoutIndexRoute: SettingsSpecLayoutIndexRoute,
+}
+
+const SettingsSpecLayoutRouteWithChildren =
+  SettingsSpecLayoutRoute._addFileChildren(SettingsSpecLayoutRouteChildren)
 
 interface SettingsRouteChildren {
   SettingsHooksRoute: typeof SettingsHooksRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
+  SettingsSpecLayoutRoute: typeof SettingsSpecLayoutRouteWithChildren
   SettingsTerminalRoute: typeof SettingsTerminalRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -399,6 +468,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsHooksRoute: SettingsHooksRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
+  SettingsSpecLayoutRoute: SettingsSpecLayoutRouteWithChildren,
   SettingsTerminalRoute: SettingsTerminalRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Archive, ArrowDown, ChevronDown, Filter, Folder, FolderOpen, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
@@ -16,6 +16,7 @@ import {
 import SpecTree from "@/features/works/SpecTree";
 import { formatCreated } from "@/features/works/status";
 import { emptyListCopy, hasProjectFilter, narrowedNotice } from "./archive-copy";
+import { archiveTreeItems } from "./archive-tree";
 import { useArchivedDocs } from "./hooks";
 import type { ArchiveEntry } from "./types";
 import type { Mode } from "@/mode";
@@ -310,7 +311,10 @@ function ArchiveRow({
   useEffect(() => {
     if (expanded) setEverOpened(true);
   }, [expanded]);
-  const { data: docs, isPending } = useArchivedDocs(mode, everOpened ? entry.slug : null);
+  // 문서 목록과 spec 트리가 **한 답으로** 온다 — 그래서 "도착 전에는 null"을 지키는 쿼리가 여전히
+  // 하나다. 둘이 따로 오면 목록만 먼저 와서 펼치는 도중 트리가 늦게 서며 높이가 튄다.
+  const { data: archived, isPending } = useArchivedDocs(mode, everOpened ? entry.slug : null);
+  const items = useMemo(() => (archived ? archiveTreeItems(archived) : []), [archived]);
 
   return (
     <Collapsible open={expanded} onOpenChange={onExpandedChange} className="flex shrink-0 flex-col">
@@ -334,9 +338,10 @@ function ArchiveRow({
         <div className="flex flex-col pt-[3px]">
           {/* 도착 전에는 아무 말도 하지 않는다 — 빈 배열과 "아직 안 읽었다"를 같이 다루면
               펼치는 순간 "없어요"가 한 프레임 스쳤다가 트리로 바뀐다 */}
-          {isPending ? null : docs && docs.length > 0 ? (
+          {isPending ? null : items.length > 0 ? (
+            // 경로는 모두 work 폴더 기준이다(`archiveTreeItems`) — 선택 표시·복사·읽기가 그대로 쓴다
             <SpecTree
-              files={docs}
+              items={items}
               current={currentDoc}
               onSelect={(path) => onSelectDoc(entry.slug, path)}
               onCopy={(path) => onCopyDoc(entry.slug, path)}

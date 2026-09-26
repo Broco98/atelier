@@ -1,6 +1,6 @@
 [package]
 name = "atelier-core"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2021"
 
 [dependencies]
@@ -10,6 +10,10 @@ serde_yaml_ng = "0.10"
 thiserror = "2"
 dirs = "6"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# 이름 틀과 파일 이름을 NFC로 맞춘다(spec 레이아웃의 분류). 앱 쪽에 이미 있는 판이라(`url` →
+# `idna` 경로) 새로 받는 크레이트는 없지만, MCP 바이너리에는 새로 든다
+# (`cargo tree -p atelier-cli -e normal -i icu_normalizer`).
+icu_normalizer = { version = "2.2", default-features = false, features = ["compiled_data"] }
 
 [dev-dependencies]
 tempfile = "3"

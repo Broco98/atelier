@@ -30,7 +30,7 @@ export const archiveQuery = (mode: Mode) =>
 export function useArchive(mode: Mode) {
   const queryClient = useQueryClient();
 
-  // 아카이브 폴더는 감시하지 않는다(watcher.rs는 projects/works만 본다). 대신 works:changed를
+  // 아카이브 폴더는 감시하지 않는다(watcher.rs는 projects/works/layouts만 본다). 대신 works:changed를
   // 듣는다 — 아카이빙은 **언제나** works/에서 하나가 사라지는 일이라, 앱에서 했든 에이전트가
   // MCP로 했든 그 이벤트가 반드시 함께 온다. 감시 대상을 늘리지 않고 같은 신선도를 얻는다.
   useEffect(() => {

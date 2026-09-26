@@ -874,7 +874,10 @@ fn dirty_report(project: &str, files: &[git::DirtyEntry]) -> String {
 
 /// 주어진 work 디렉터리 밖을 가리키지 않는 상대 경로만 통과시킨다. 빈 문자열·절대 경로·
 /// `..`이 든 경로 셋 다 밖을 가리킬 수 있어 한자리에서 함께 막는다.
-fn safe_rel(rel_path: &str) -> Result<&Path> {
+///
+/// 크레이트 안에 연다 — spec 레이아웃의 템플릿 경로도 이 검사로 레이아웃 폴더 안에 가둔다.
+/// 「밖」의 정의가 두 벌이 되면 한쪽만 느슨해지는 날이 온다.
+pub(crate) fn safe_rel(rel_path: &str) -> Result<&Path> {
     let rel = Path::new(rel_path);
     let safe = !rel_path.is_empty()
         && rel.is_relative()

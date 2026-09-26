@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./alert-dialog";
-import { dialogStore, type DialogAsk } from "./confirm-store";
+import { dialogStore, type DialogAnswer, type DialogAsk } from "./confirm-store";
 import { createFirstFrameGuard } from "./first-frame-guard";
 
 /**
@@ -26,9 +26,10 @@ const guard = createFirstFrameGuard();
  * 창 자체는 Base UI AlertDialog다(`alert-dialog.tsx`) — 모양도 그 부품 파일이 든다. 여기는 스토어의
  * 물음을 창에 잇는 일만 한다: 여닫기, 답, 첫 포커스.
  *
- * **답하는 길이 넷이고 모두 스토어의 `answer`로 간다** — 두 버튼, Esc(창이 `onOpenChange`로
- * 알린다), 가림막 클릭. 「취소」는 창을 닫는 버튼(`AlertDialogCancel`)이라 Esc와 같은 길로 온다.
- * 「취소」·Esc·가림막은 `false`다. 알림(`notice`)에도 Esc는 듣는다 — 버튼이 하나뿐이라
+ * **답하는 길이 넷이고 모두 스토어의 `answer`로 간다** — 버튼(둘, 셋째 버튼이 서면 셋), Esc(창이
+ * `onOpenChange`로 알린다), 가림막 클릭. 「취소」는 창을 닫는 버튼(`AlertDialogCancel`)이라 Esc와 같은 길로
+ * 온다. 「취소」·Esc·가림막은 `false`, 진행 버튼은 `true`, 셋째 버튼(`extra` — 떠날 때의 [저장하고
+ * 나가기], spec 레이아웃 결정 27)은 `"extra"`다. 알림(`notice`)에도 Esc는 듣는다 — 버튼이 하나뿐이라
  * 닫는 것이 곧 확인이고, 그때 답이 `false`로 가도 부르는 쪽이 답을 안 본다(showProblem).
  */
 function AppDialog() {
@@ -47,7 +48,10 @@ function AppDialog() {
     guard.surfaceRef(element);
   }, []);
 
-  /** 물음이 고른 버튼 — 「취소에 포커스」를 청하면 「취소」(종료 확인, #223), 아니면 진행 버튼이다. */
+  /**
+   * 물음이 고른 버튼 — 「취소에 포커스」를 청하면 「취소」(종료 확인 #223, 편집기를 떠날 때 확인 — spec 레이아웃
+   * 결정 27: Enter가 초안을 버리지 않는다), 아니면 진행 버튼이다.
+   */
   const focusTarget = (of: DialogAsk | null) =>
     (of?.focus === "cancel" ? cancelRef.current : null) ?? confirmRef.current;
 
@@ -83,7 +87,7 @@ function AppDialog() {
     focusTarget(pending)?.focus();
   }, [pending]);
 
-  const answer = (ok: boolean) => dialogStore.state?.answer(ok);
+  const answer = (value: DialogAnswer) => dialogStore.state?.answer(value);
 
   return (
     <AlertDialog
@@ -100,6 +104,9 @@ function AppDialog() {
         initialFocus={() => focusTarget(ask)}
         // 바깥을 눌러도 닫힌다 — 되돌릴 수 없는 일이어도 **취소로** 닫으므로 안전하다(S12).
         onBackdropClick={() => answer(false)}
+        // 셋째 버튼이 서면 넓어진다 — 세 버튼 글자가 330px 한 줄에 안 든다(프로토타입 400px). 둘인 물음의
+        // 폭은 그대로다.
+        className={ask?.extra ? "w-[400px]" : undefined}
       >
         <AlertDialogHeader>
           <AlertDialogTitle>{ask?.title}</AlertDialogTitle>
@@ -109,7 +116,8 @@ function AppDialog() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           {/* 알림에는 취소가 없다 — 되돌릴 것이 없는데 두 갈래를 주면 무엇이 다른지를 묻게 된다. */}
-          {!ask?.notice && <AlertDialogCancel ref={cancelRef}>취소</AlertDialogCancel>}
+          {/* 취소의 글자는 물음이 고를 수 있다 — 떠날 때 확인은 「계속 편집」이다. 안 주면 「취소」다. */}
+          {!ask?.notice && <AlertDialogCancel ref={cancelRef}>{ask?.cancel ?? "취소"}</AlertDialogCancel>}
           <AlertDialogAction
             ref={confirmRef}
             variant={ask?.danger ? "destructive" : "default"}
@@ -117,6 +125,8 @@ function AppDialog() {
           >
             {ask?.confirm}
           </AlertDialogAction>
+          {/* 셋째 버튼(떠날 때의 [저장하고 나가기])은 진행 버튼 뒤, 맨 오른쪽의 주 버튼이다. 할 수 있을 때만 준다. */}
+          {ask?.extra && <AlertDialogAction onClick={() => answer("extra")}>{ask.extra}</AlertDialogAction>}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

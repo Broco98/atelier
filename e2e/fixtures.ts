@@ -1,8 +1,15 @@
-import type { ArchiveEntry } from "@/features/archive/types";
+import type { ArchivedDocs, ArchiveEntry } from "@/features/archive/types";
 import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
-import type { WorkView } from "@/features/works/types";
+import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
+import type {
+  LayoutPreview,
+  SaveAnswer,
+  SpecLayoutState,
+  UnreadableSpecLayout,
+  ReadableSpecLayout,
+} from "@/features/spec-layout/types";
 import type { Mode } from "@/mode";
 
 // L3가 쓰는 고정 데이터는 여기 한 곳에만 있다. 테스트마다 제각각인 가짜 데이터가
@@ -33,6 +40,36 @@ export const PROJECTS: ProjectView[] = [
     missing: false,
   },
 ];
+
+/**
+ * spec 트리를 **손으로 적는** 조각들(spec 레이아웃 구현 스펙 Testing 「앱」). 이 층의 백엔드는 이 표라
+ * 엔진이 없다 — 트리는 엔진이 내장본으로 가른 모양을 옮겨 적은 것이고, 앱은 그것을 그대로 그린다.
+ *
+ * **아이콘은 레이아웃의 자리를 받은 것에만 있다.** 내장본에서 파일로 아이콘을 받는 것은 최상위
+ * `overview.md`(`compass`) 하나다. 아이콘을 받은 파일 행은 확장자 라벨 대신 아이콘을 그리므로
+ * (spec 레이아웃 티켓 05), 이름으로 행을 찾는 검사가 `overview.md`는 라벨 없이, `개요.md`는
+ * `MD 개요.md`로 집는다. 그 둘이 지금 화면과 같게 하려고 `개요.md`에는 아이콘을 주지 않는다.
+ */
+const specFile = (path: string, icon: string | null = null): SpecTreeItem => ({
+  name: path.slice(path.lastIndexOf("/") + 1),
+  path,
+  kind: "file",
+  icon,
+  group: null,
+  children: [],
+});
+const specFolder = (path: string, children: SpecTreeItem[]): SpecTreeItem => ({
+  ...specFile(path),
+  kind: "folder",
+  children,
+});
+/** 문서가 하나도 없는 work의 트리 — 기본 문서도 없다. */
+const emptySpecTree = (layoutId: SpecTree["layoutId"]): SpecTree => ({
+  layoutId,
+  fallback: null,
+  defaultDoc: null,
+  items: [],
+});
 
 // 사이드바 작업 목록. **고정된 것과 아닌 것을 둘 다** 둔다 — 이 목록이 갈리는 자리가
 // 그 둘이기 때문이다(결정 82의 구획, 결정 85의 채운 핀). 순서는 코어가 정하므로
@@ -71,6 +108,19 @@ export const WORKS: WorkView[] = [
     // `.html`은 프레임으로 서고, `.json`은 그 옆에서 **지금 그대로**임을 받쳐 준다.
     // **뒤에 더한다** — 앞 검사 하나가 이 목록을 자리로 집는다(`specFiles[1]`이 그림이다).
     specFiles: ["overview.md", "증거/샷.png", "목업/조각.html", "메타.json"],
+    // 내장본의 자리를 받는 것은 `overview.md`뿐이고 기본 문서도 그것이다. 나머지는 맞지 않은 것이라
+    // 맨 뒤에 코드포인트순으로 선다(폴더는 이름 뒤에 `/`를 붙여 견준다).
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "overview.md",
+      items: [
+        specFile("overview.md", "compass"),
+        specFile("메타.json"),
+        specFolder("목업", [specFile("목업/조각.html")]),
+        specFolder("증거", [specFile("증거/샷.png")]),
+      ],
+    },
   },
   {
     slug: "plain-work",
@@ -82,7 +132,9 @@ export const WORKS: WorkView[] = [
     pinned: false,
     worktrees: [],
     specDir: "~/.atelier/works/plain-work/spec",
+    // **빈 spec 폴더의 work.** 트리도 비고 기본 문서가 없다 — 화면은 「아직 spec이 없어요」로 선다.
     specFiles: [],
+    specTree: emptySpecTree("atelier"),
   },
   // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
   // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
@@ -116,9 +168,17 @@ export const WORKS: WorkView[] = [
     // 본문은 `SPEC_FILE_BODIES`에 있다. 첫 work에 두지 않는 것은 그 목록이 검색 답(`SEARCH_HITS`)의
     // 줄이라 줄 수를 재는 검사가 따라 흔들려서다.
     //
-    // **새 문서는 뒤에 붙인다** — 파일을 안 고르고 들어오면 첫 문서가 열린다(`defaultFile`). 뒤에 붙이면
-    // 그 화면이 그대로다.
+    // **새 문서는 뒤에 붙인다** — 파일을 안 고르고 들어오면 트리의 기본 문서(`specTree.defaultDoc` —
+    // 내장본의 어느 자리에도 안 맞아 코드포인트순 첫 파일, 「넓은.md」)가 열린다. 뒤에 붙이는 이름은
+    // 코드포인트순으로도 뒤에 서야 그 화면이 그대로다.
     specFiles: ["넓은.md", "다이어그램.md"],
+    // 내장본의 어느 자리에도 안 맞는다 — 기본 문서 후보가 없어 첫 파일이 기본 문서다.
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "넓은.md",
+      items: [specFile("넓은.md"), specFile("다이어그램.md")],
+    },
   },
 ];
 
@@ -149,6 +209,7 @@ export const ROOMS: WorkView[] = [
     worktrees: [],
     specDir: "~/.atelier/maison/rooms/draft-room/spec",
     specFiles: [],
+    specTree: emptySpecTree("maison"),
   },
   {
     slug: "reading-room",
@@ -160,10 +221,16 @@ export const ROOMS: WorkView[] = [
     pinned: false,
     worktrees: [],
     specDir: "~/.atelier/maison/rooms/reading-room/spec",
-    // **`overview.md`가 아니다.** 그 이름은 화면이 기본 문서로 특별 대접하는 값이라
-    // (`WorksPage`의 `defaultFile`), Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 목록에서
-    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다.
+    // **`overview.md`가 아니다.** Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 트리에서
+    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다. 이 이름은 내장본의 어느 자리에도 안 맞아
+    // 아이콘이 없고, 기본 문서는 후보가 없어 첫 파일이다(위 `specFile` 머리말).
     specFiles: ["개요.md"],
+    specTree: {
+      layoutId: "maison",
+      fallback: null,
+      defaultDoc: "개요.md",
+      items: [specFile("개요.md")],
+    },
   },
 ];
 
@@ -322,6 +389,171 @@ export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
 };
 
 /**
+ * 모드 둘의 레이아웃 상태(spec 레이아웃 티켓 08) — Atelier는 고친 폴더(템플릿 1개), Maison은 내장본
+ * 그대로다. 모양은 엔진의 `layout_states`가 내는 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본
+ * 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는 이것에 `/`만 붙여 참조로 복사한다.
+ */
+export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
+  {
+    id: "atelier",
+    folder: "~/.atelier/layouts/atelier",
+    edited: true,
+    errors: [],
+    fallback: null,
+    templateCount: 1,
+    otherFileCount: 0,
+  },
+  {
+    id: "maison",
+    folder: "~/.atelier/layouts/maison",
+    edited: false,
+    errors: [],
+    fallback: null,
+    templateCount: 0,
+    otherFileCount: 0,
+  },
+];
+
+/**
+ * 읽지 못해 내장본으로 물러선 Maison — `layout.json`의 셋째 항목에 `kind`가 없다. 오류와 까닭의 글은
+ * 엔진이 그 파일에 내는 것 그대로다. 무엇이 템플릿인지 모르므로 템플릿 개수가 없다.
+ */
+export const BROKEN_MAISON_LAYOUT: SpecLayoutState = {
+  id: "maison",
+  folder: "~/.atelier/layouts/maison",
+  edited: true,
+  errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
+  fallback: 'root.children[2]: `kind` is missing ("file" or "folder")',
+  templateCount: null,
+  otherFileCount: 1,
+};
+
+/**
+ * 편집기가 여는 Atelier 레이아웃(spec 레이아웃 티켓 11) — 위 상태의 「고친 폴더, 템플릿 1개」와 같은
+ * 폴더다. 모양은 엔진의 `read_layout`이 내는 그대로이고(다리로 실물과 맞춰 봤다), **손으로 적은 모르는
+ * 키가 둘** 섞여 있다 — 레이아웃 층의 `owner`와 항목 층의 `since`. 편집기가 한 칸을 고쳐 저장해도 그
+ * 둘이 저장에 실려야 한다. 템플릿 본문은 저장에 **늘 전부** 돌아간다.
+ */
+export const SPEC_LAYOUT_READ: ReadableSpecLayout = {
+  id: "atelier",
+  folder: "~/.atelier/layouts/atelier",
+  edited: true,
+  layout: {
+    owner: "사람",
+    root: {
+      description: "spec 폴더의 방침 문단.",
+      children: [
+        { pattern: "overview.md", kind: "file", icon: "compass", description: "work의 요약" },
+        {
+          pattern: "decisions.md",
+          kind: "file",
+          description: "정한 것과 그 이유",
+          template: "decisions.md",
+          since: "0.14",
+        },
+        {
+          pattern: "{n}-{name}",
+          kind: "folder",
+          icon: "layers",
+          description: "판 하나",
+          children: [
+            { pattern: "tickets", kind: "folder", icon: "list-checks", description: "그 판의 티켓" },
+          ],
+        },
+      ],
+    },
+  },
+  templates: { "decisions.md": "# 결정\n" },
+  warnings: [],
+};
+
+/**
+ * 템플릿 파일이 디스크에서 사라진 Atelier 레이아웃(spec 레이아웃 티켓 12) — 위 읽기와 같은 레이아웃인데
+ * `decisions.md` 항목이 가리키는 템플릿 파일이 폴더에 없다. 읽기는 그 본문 없이 누락 경고를 준다(경고의
+ * 글은 엔진이 내는 그대로다). 편집기는 그 항목을 「있음」, 빈 본문 칸, 경고로 세운다.
+ */
+export const MISSING_TEMPLATE_READ: ReadableSpecLayout = {
+  ...SPEC_LAYOUT_READ,
+  templates: {},
+  warnings: ["missing template for `decisions.md`: ~/.atelier/layouts/atelier/decisions.md"],
+};
+
+/**
+ * 읽지 못하는 Maison 레이아웃 — 위 `BROKEN_MAISON_LAYOUT`과 같은 폴더를 편집기가 읽은 답이다. 오류와 원문은
+ * 엔진이 그 파일에 내는 그대로다. 편집기는 이때 편집 UI를 세우지 않는다.
+ */
+export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
+  id: "maison",
+  folder: "~/.atelier/layouts/maison",
+  edited: true,
+  errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
+  raw: '{ "root": { "children": [ { "pattern": "a.md", "kind": "file" }, { "pattern": "b", "kind": "folder" }, { "pattern": "c.md" } ] } }\n',
+};
+
+/**
+ * 편집기가 연 뒤에 **밖에서 고쳐진** Atelier 레이아웃(spec 레이아웃 티켓 15) — `SPEC_LAYOUT_READ`에서 에이전트가
+ * `decisions.md` 항목의 설명 한 칸을 고쳐 저장한 것이다. 처음부터 답하면 편집기가 이것을 기준본으로 읽으므로,
+ * 시나리오 도중에 읽기의 답으로 갈아 끼운다(`harness`의 `swapAnswer`).
+ */
+export const CHANGED_SPEC_LAYOUT_READ: ReadableSpecLayout = {
+  ...SPEC_LAYOUT_READ,
+  layout: {
+    ...SPEC_LAYOUT_READ.layout,
+    root: {
+      ...SPEC_LAYOUT_READ.layout.root,
+      children: SPEC_LAYOUT_READ.layout.root.children!.map((entry) =>
+        entry.pattern === "decisions.md" ? { ...entry, description: "정한 것, 그 이유, 에이전트가 더한 버린 안" } : entry,
+      ),
+    },
+  },
+};
+
+/**
+ * 편집기가 연 뒤에 **밖에서 깨진** Atelier 레이아웃(티켓 15) — `UNREADABLE_MAISON_READ`와 같은 파일이 Atelier의
+ * 레이아웃 폴더에 놓였다. 오류와 원문은 엔진이 그 파일에 내는 그대로다. 도중에 읽기의 답으로 갈아 끼운다.
+ */
+export const UNREADABLE_ATELIER_READ: UnreadableSpecLayout = {
+  ...UNREADABLE_MAISON_READ,
+  id: "atelier",
+  folder: "~/.atelier/layouts/atelier",
+};
+
+/** 저장이 된 답 — 검증 오류가 없다. 거절은 문자열이 아니라 이 모양의 `errors`로 온다. */
+export const SPEC_LAYOUT_SAVED: SaveAnswer = { errors: [] };
+
+/**
+ * 편집기의 미리보기 답(spec 레이아웃 티켓 14) — **오류 없음 + 고정 글.** 글과 항목의 줄은 엔진의 `preview_layout`이 위
+ * 읽기(`SPEC_LAYOUT_READ`)를 고치지 않은 초안에 내는 그대로다(엔진으로 맞춰 봤다). 하네스는 인자마다 다른 답을 주지
+ * 못하므로 초안을 고쳐도 이 글이 온다 — 「고친 초안이 실려 나갔다」는 IPC 기록으로 잰다.
+ */
+export const SPEC_LAYOUT_RENDERED: LayoutPreview = {
+  text: [
+    "Spec layout — how to arrange documents inside `specDir`.",
+    "",
+    "spec 폴더의 방침 문단.",
+    "",
+    "  overview.md   work의 요약",
+    "  decisions.md  정한 것과 그 이유",
+    "                Template: ~/.atelier/layouts/atelier/decisions.md",
+    "  {n}-{name}/   판 하나",
+    "    tickets/    그 판의 티켓",
+    "",
+    "`{n}` is a number and `{name}` is any name without `/`. A trailing `/` marks a folder, and indentation shows " +
+      "what goes inside it. Where a file has a `Template:` line, read that template before you create the file " +
+      "and follow its shape.",
+  ].join("\n"),
+  lines: [
+    { path: [], start: 2, count: 1 },
+    { path: [0], start: 4, count: 1 },
+    { path: [1], start: 5, count: 2 },
+    { path: [2], start: 7, count: 1 },
+    { path: [2, 0], start: 8, count: 1 },
+  ],
+  errors: [],
+  warnings: [],
+};
+
+/**
  * L3에서 우리 커맨드에 답하는 표. L4에서는 이 자리를 다리가 대신한다.
  * 이름이 낡는 것은 `src/tauri-commands.test.ts`가 Rust 등록부와 대조해 잡는다.
  *
@@ -404,6 +636,23 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
       preview: "[[hooks.Stop]]",
     },
   ] satisfies HookStatus[],
+  // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **모드를
+  // 안 받는다** — 인자 없이 두 모드를 함께 답한다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  spec_layout_states: SPEC_LAYOUT_STATES,
+  // 설정의 ⋯ → 「기본값으로 되돌리기」가 확인을 거친 뒤에 나간다(티켓 10). 답은 쓰이지 않는다 — 화면은
+  // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 두 id가 같은
+  // 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  revert_spec_layout: null,
+  // 편집기가 열릴 때 한 번 나간다(티켓 11). 두 id가 같은 답을 받는다 — 인자 이름이 `id`라 모드 표가 아니다.
+  // 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  read_spec_layout: SPEC_LAYOUT_READ,
+  // 편집기의 [저장]이 나간다(티켓 11). **검증 거절도 성공 답이다** — 오류를 재는 시나리오는 이것을 오류
+  // 데이터로 덮어쓴다(`ipcFailure`가 아니다). 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  write_spec_layout: SPEC_LAYOUT_SAVED,
+  // 편집기가 초안이 바뀔 때마다 짧은 지연 뒤에 나간다 — 연 초안에도 한 번 나간다(티켓 14). 그래서 **편집기를 여는
+  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 두 id가 같은 답을 받는다. 오류를
+  // 재는 시나리오는 이것을 오류 데이터로 덮어쓴다. 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
+  render_spec_layout: SPEC_LAYOUT_RENDERED,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
   // 여는 것만으로 셸 하나가 뜬다. 앞 판까지는 문서 본문만 서서 이 길을 안 지났다.
   //
@@ -521,18 +770,37 @@ export const ROOM_SPEC_FILE_BODIES: Record<string, string> = {
 // harness.ts의 플러그인 표가 든다.)
 
 /**
- * 아카이브의 문서 목록 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
- * spec(`spec/…`)이 한 목록에 함께 오고, 기록이 맨 앞이다(코어 `list_archived_docs`).
+ * 아카이브의 문서 답 — **slug별**이다. 경로는 work 루트 기준이라 기록(`record.md`)과
+ * spec(`spec/…`)이 한 목록에 함께 오고, 기록이 맨 앞이다(코어 `list_archived_docs`). 그중 `spec/`
+ * 아래를 엔진이 가른 spec 트리가 같은 답에 실린다 — 경로는 spec 기준이다.
  *
  * 파일 종류 표의 세 줄을 담는다: `.md` · 그림 · `.html`. **뒤에 더한다** — 위 `specFiles`와
  * 같은 규칙이다(검사가 목록을 자리로 집을 수 있다).
  *
- * `bare-archive`가 `[]`인 것은 지어낸 상태가 아니다 — 손으로 옮겨 둔 폴더에는 기록이 없고,
+ * **최상위 `tickets/`가 든다**(spec 레이아웃 구현 스펙 7절 허용 차이 4). 내장본에서 `tickets/`는 판
+ * 폴더 안의 자리라, 최상위의 것은 맞지 않은 폴더로 아이콘 없이 선다 — 이름으로 알아보던 앱은 여기
+ * `list-checks`를 줬다. 트리는 엔진이 내장본으로 가른 모양을 옮겨 적은 것이다(다리로 확인했다): 맞은
+ * 것이 없어 셋 다 맨 뒤에 코드포인트순으로 서고, 기본 문서도 코드포인트순 첫 파일이다. 아카이브
+ * 화면은 그 기본 문서를 쓰지 않고 목록의 첫 문서를 연다.
+ *
+ * `bare-archive`가 빈 목록인 것은 지어낸 상태가 아니다 — 손으로 옮겨 둔 폴더에는 기록이 없고,
  * 코어도 없으면 안 넣는다.
  */
-export const ARCHIVED_DOCS: Record<string, string[]> = {
-  "shipped-work": ["record.md", "spec/증거/샷.png", "spec/목업/조각.html"],
-  "bare-archive": [],
+export const ARCHIVED_DOCS: Record<string, ArchivedDocs> = {
+  "shipped-work": {
+    docs: ["record.md", "spec/증거/샷.png", "spec/목업/조각.html", "spec/tickets/할일.md"],
+    specTree: {
+      layoutId: "atelier",
+      fallback: null,
+      defaultDoc: "tickets/할일.md",
+      items: [
+        specFolder("tickets", [specFile("tickets/할일.md")]),
+        specFolder("목업", [specFile("목업/조각.html")]),
+        specFolder("증거", [specFile("증거/샷.png")]),
+      ],
+    },
+  },
+  "bare-archive": { docs: [], specTree: emptySpecTree("atelier") },
 };
 
 /**
@@ -549,6 +817,7 @@ export const ARCHIVED_DOCS: Record<string, string[]> = {
 export const ARCHIVED_FILE_BODIES: Record<string, string> = {
   "record.md": "# 기록 — 치운 일\n\n한 줄.\n",
   "spec/목업/조각.html": SPEC_FILE_BODIES["목업/조각.html"],
+  "spec/tickets/할일.md": "# 치운 일의 할 일\n\n남은 것 하나.\n",
 };
 
 /**

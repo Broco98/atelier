@@ -69,7 +69,13 @@ pub fn archive_dir(mode: Mode) -> PathBuf {
     archive_in(&mode_home(mode))
 }
 
-// 아래 셋이 **배치의 정본이다** — 어느 홈 아래 어느 폴더가 무엇인지를 아는 자리가 여기
+/// spec 레이아웃 폴더들의 자리. 앱의 감시자가 이 폴더를 본다(spec 레이아웃 결정 22). 모드를 안 받는
+/// 까닭은 아래 `layouts_in`과 같다 — 두 모드의 레이아웃이 이 안에 `<id>/`로 나란히 산다.
+pub fn layouts_dir() -> PathBuf {
+    layouts_in(&data_root())
+}
+
+// 아래 넷이 **배치의 정본이다** — 어느 홈 아래 어느 폴더가 무엇인지를 아는 자리가 여기
 // 하나다. 위의 모드별 셋은 `mode_home(mode)`를 먹인 것뿐이고, 루트를 인자로 받는 코어 함수들
 // (`search`)은 이쪽을 먹인다. **가르면 두 벌이 생긴다**: 한쪽만 고친 날 앱이 보는 폴더와
 // 검색이 보는 폴더가 갈리는데, 화면에는 「왜 안 뜨지」로만 나타난다.
@@ -91,6 +97,13 @@ pub(crate) fn works_in(root: &Path, mode: Mode) -> PathBuf {
 
 pub(crate) fn archive_in(root: &Path) -> PathBuf {
     root.join("archive")
+}
+
+/// spec 레이아웃 폴더들의 자리. **모드를 안 받는다** — 모드별 홈이 아니라 데이터 루트 아래 하나이고,
+/// 두 모드의 레이아웃이 그 안에 `<id>/`로 나란히 산다(spec 레이아웃 구현 스펙 1절 「resolve」).
+/// 어느 모드의 서버든 두 모드의 레이아웃을 읽고 고칠 수 있어야 하기 때문이다.
+pub(crate) fn layouts_in(root: &Path) -> PathBuf {
+    root.join("layouts")
 }
 
 pub fn expand_home(path: &str) -> PathBuf {

@@ -10,6 +10,7 @@ import {
   ALL_MODES,
   destinationsOf,
   hasProjects,
+  modeFrom,
   modeOf,
   navItemsOf,
   navTargetOf,
@@ -128,6 +129,16 @@ describe("주소에서 slug를 읽는다", () => {
 describe("모드별 표", () => {
   it("모드는 둘뿐이다 — 결정 5", () => {
     expect(ALL_MODES).toEqual(["atelier", "maison"]);
+  });
+
+  // 밖에서 온 글자(저장소에 남은 마지막 모드, 편집기 주소의 id)는 표의 키로 **검증해** 읽는다 —
+  // 캐스트로 두면 옛 값이나 손으로 고친 글자가 표에 없는 키로 파생을 찾는다.
+  it.each(ALL_MODES)("%s는 그 모드로 읽힌다", (mode) => {
+    expect(modeFrom(mode)).toBe(mode);
+  });
+
+  it.each(["Maison", "", "maisonette", null])("%j는 모드가 아니다", (text) => {
+    expect(modeFrom(text)).toBeNull();
   });
 
   // **이 다섯이 서로 다른 값이어야 한다.** 표 한쪽을 다른 쪽으로 눕히는 변형(둘 다 `/works`를

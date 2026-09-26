@@ -294,6 +294,30 @@ async function install(
   });
 }
 
+/**
+ * 화면을 거치지 않고 앱의 IPC 입구로 **한 번 묻고 답을 그대로 들고 나온다.** 거절은 던진다.
+ *
+ * L3의 답은 손으로 적은 fixture라 「엔진이 정말 그렇게 답하는가」는 L4에서 답째 잰다 — 하네스를 지나 다리로
+ * 가므로 「진짜 코어가 이렇게 답한다」가 된다. 화면이 값으로 보이지 않는 답의 모양(예: 트리의 행이 받은 아이콘의
+ * 이름 — 글리프에는 이름이 없다)도 여기서 잰다. 앱이 부르지 않는 명령(`get_work`)이 입구를 타는지도 여기서
+ * 잰다 — 화면으로는 그 호출을 만들 수 없다.
+ */
+export async function askBackend(
+  page: Page,
+  cmd: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  return page.evaluate(
+    ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) =>
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__.invoke(cmd, args),
+    { cmd, args },
+  );
+}
+
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
 export async function unknownIpcCalls(page: Page): Promise<string[]> {
   return (await readIpcRecord(page))?.unknown ?? [];
@@ -413,6 +437,46 @@ export async function fireEvent(
   );
 }
 
+/**
+ * **시나리오 도중에** 커맨드 하나의 답을 갈아 끼운다(spec 레이아웃 티켓 15) — 이 뒤로 그 커맨드는 `answer`를 답한다.
+ *
+ * 고정 답은 설치할 때 한 번 정해진다(`installFixtureBackend`). 그대로는 「밖에서 바뀌었다」를 못 세운다 — 처음부터
+ * 다른 답이면 편집기가 그것을 기준본으로 읽는다. 그래서 편집기가 연 뒤에 읽기의 답을 바꾸고 이벤트를 쏜다
+ * (`fireEvent`) — 전역 구독이 읽기를 다시 부르면 바뀐 답이 온다.
+ *
+ * 모양은 셸 생성 가로채기(`interceptPtySpawn`)와 같다: 앱의 `invoke`를 감싸고, 창 전역 값에서 답을 꺼낸다. 처음
+ * 부를 때 한 번 감싸고, 그 뒤로는 전역 값만 고친다. **부름은 먼저 원래 자리를 지난다** — 하네스의 기록(`callCount`,
+ * `ipcCallArgs`)이 그 부름을 세야 「다시 불렸다」를 기다릴 수 있다. 답만 바꿔 돌려준다.
+ *
+ * 페이지를 다시 읽으면 감싼 것이 사라진다 — 도중에만 쓴다. **표에 없는 이름은 여기서 터진다**(덮어쓰기와 같은
+ * 규칙): 커맨드가 개명되면 갈아 끼우기가 아무 데도 안 걸린 채 지나가, 「바뀌었는데도 조용했다」가 초록이 된다.
+ */
+export async function swapAnswer(page: Page, command: string, answer: unknown): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
+    throw new Error(`갈아 끼울 커맨드가 고정 답 표에 없습니다: ${command}`);
+  }
+  await page.evaluate(
+    ({ command, answer }: { command: string; answer: unknown }) => {
+      const win = window as unknown as {
+        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
+        __ATELIER_SWAPPED_ANSWERS__?: Record<string, unknown>;
+      };
+      if (win.__ATELIER_SWAPPED_ANSWERS__ === undefined) {
+        const swapped: Record<string, unknown> = {};
+        win.__ATELIER_SWAPPED_ANSWERS__ = swapped;
+        const internals = win.__TAURI_INTERNALS__;
+        const invoke = internals.invoke;
+        internals.invoke = async (cmd, args, options) => {
+          const original = await invoke(cmd, args, options);
+          return Object.prototype.hasOwnProperty.call(swapped, cmd) ? swapped[cmd] : original;
+        };
+      }
+      win.__ATELIER_SWAPPED_ANSWERS__[command] = answer;
+    },
+    { command, answer },
+  );
+}
+
 /** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
 export const workRow = (page: Page, slug: string) => page.locator(`[data-work-row="${slug}"]`);
 
@@ -489,6 +553,38 @@ export async function dragRowOnto(page: Page, slug: string, target: Locator, whe
   await pickUpRow(page, slug);
   await hoverRowPoint(page, target, where);
   await expect(page.locator("[data-drop-line]")).toBeVisible();
+  await page.mouse.up();
+}
+
+/**
+ * 「spec 레이아웃」 편집기 트리의 항목을 눌러 **문턱을 넘긴 채** 멈춘다(spec 레이아웃 티켓 13). 문턱을 넘은
+ * 증거로 끌리는 행이 흐려진 것을 먼저 본다 — `pickUpRow`와 같은 까닭이다: 안 보고 지나가면 뒤의 「아무것도
+ * 안 바뀌었다」가 「끌기가 시작도 안 됐다」로도 초록이 된다.
+ *
+ * 작업 행 도우미와 따로 두는 것은 행을 찾는 자리가 달라서다 — 편집기의 행에는 slug가 없어 부르는 쪽이 행을
+ * 로케이터로 준다. 문턱은 **옆으로** 넘긴다: 12px 옆은 아직 그 행 위라, 아래로 넘기면 들르는 이웃 행이 겨눠진다.
+ *
+ * **행이 멈춘 뒤에 잰다** — `pickUpRow`와 같은 까닭이다(`scrollIntoViewIfNeeded`가 상자가 두 프레임 내리 같을
+ * 때까지 기다린다).
+ */
+export async function pickUpEntry(page: Page, row: Locator) {
+  await row.scrollIntoViewIfNeeded();
+  const from = await pointIn(row, "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y, { steps: 3 });
+  await expect(row).toHaveCSS("opacity", "0.4");
+}
+
+/**
+ * 편집기 항목을 끌어 대상의 그 자리(윗 사분의 일 · 가운데 · 아랫 사분의 일)에 놓는다. 대상은 트리의 행이거나 트리
+ * 아래 빈 자리(`[data-entry-end]`)다. 놓기 전에 거기 놓일 표시(`data-entry-drop` — 앞·뒤·빈 자리의 선, 안의
+ * 밝아짐)가 섰는지 본다 — 놓을 곳이 있는 끌기만 부른다.
+ */
+export async function dragEntryOnto(page: Page, row: Locator, target: Locator, where: RowPoint) {
+  await pickUpEntry(page, row);
+  await hoverRowPoint(page, target, where);
+  await expect(target).toHaveAttribute("data-entry-drop", /^(before|after|inside|end)$/);
   await page.mouse.up();
 }
 

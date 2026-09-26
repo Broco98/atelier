@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import {
+import SettingsPage, {
   canSave,
   HooksSection,
   hookStateLabel,
@@ -483,5 +484,27 @@ describe("구획은 제 제목을 들지 않는다", () => {
     expect(headings(render(settings()))).toEqual([]);
     expect(headings(renderNotifications(withNotifications()))).toEqual([]);
     expect(headings(renderHooks([hook()]))).toEqual([]);
+  });
+});
+
+// ── 본문 머리(UI개선 결정 22 · spec 레이아웃 티켓 08)
+//
+// 머리(`Settings / …`)와 제목 역할의 줄은 설정 nav와 **같은 표**(`SETTINGS_ITEMS`)를 읽는다 — 넷째 항목을
+// 표에 더한 것만으로 머리가 선다. 사이드바의 설정 nav가 그 표를 도는 것은 `Sidebar.test.tsx`의 소스
+// 검사가, 눌러서 그 페이지에 서는 것은 L3(`spec-layout-page.spec.ts`)가 잰다.
+describe("본문 머리", () => {
+  function renderPage(item: "spec-layout"): string {
+    return renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <SettingsPage sidebarOpen item={item} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("「spec 레이아웃」 페이지의 머리는 `Settings / spec 레이아웃`이다", () => {
+    const html = renderPage("spec-layout");
+    const header = /<header\b[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
+    expect(header.replace(/<[^>]+>/g, "")).toBe("Settings/spec 레이아웃");
+    expect(html).toContain('<h2 class="sr-only">spec 레이아웃</h2>');
   });
 });

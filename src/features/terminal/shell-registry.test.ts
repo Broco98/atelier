@@ -63,6 +63,7 @@ import type { Shell, ShellOrigin, ShellOwner, ShellsState } from "./shell-regist
 import { attentionOn } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import type { WorkView, WorktreeView } from "@/features/works/types";
+import { workFixture } from "@/features/works/work-fixture";
 // 모드 목록을 **표에서** 받는다 — 여기 손으로 둘을 적으면 세계가 셋이 되는 날 이 파일만
 // 조용히 둘을 재고, 그때 빠지는 것이 정확히 이 판이 지키려는 불변식이다.
 import { ALL_MODES } from "@/mode";
@@ -569,25 +570,22 @@ it("본문도 DOM 전역을 안 읽는다 — 머리말이 약속한 것이 이�
 // ─────────────────────────────────────────────────────────────────────────────
 // 판 03. 셸이 「어느 Work 것인가」를 갖게 되면서 목록 하나가 화면 여럿을 먹인다.
 
-const w = (projects: string[]): WorkView => ({
-  slug: "w",
-  title: "어떤 작업",
-  status: "active",
-  branch: "feat/w",
-  createdAt: "2026-08-17",
-  projects,
-  pinned: false,
-  worktrees: projects.map(
-    (project): WorktreeView => ({
-      project,
-      path: `~/.atelier/works/w/trees/${project}`,
-      exists: true,
-      dirty: false,
-    }),
-  ),
-  specDir: "~/.atelier/works/w/spec",
-  specFiles: [],
-});
+const w = (projects: string[]): WorkView =>
+  workFixture({
+    slug: "w",
+    branch: "feat/w",
+    createdAt: "2026-08-17",
+    projects,
+    worktrees: projects.map(
+      (project): WorktreeView => ({
+        project,
+        path: `~/.atelier/works/w/trees/${project}`,
+        exists: true,
+        dirty: false,
+      }),
+    ),
+    specDir: "~/.atelier/works/w/spec",
+  });
 
 // 결정 26. 아카이브·삭제가 「그 Work의 셸만」 거두려면 고르는 규칙이 한 자리에 있어야 한다.
 describe("셸은 자기 화면 것만 보인다", () => {

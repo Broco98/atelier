@@ -1,0 +1,28 @@
+Spec layout format — what `layout` holds and what a save checks.
+
+A layout has one top entry, `root`: the `specDir` itself. Its `children` are what goes inside it, listed in the order the guidance shows them. Every entry is a JSON object:
+
+  pattern      the file or folder name: fixed (`decisions.md`) or with placeholders (`{n}-{name}`). Required, except on `root`, which has none. Not empty, no `/`.
+  kind         "file" or "folder". Required, except on `root`, which is always a folder.
+  description  what agents read about this place: what it is for and when to create it. On `root` it is the paragraph at the top of the guidance. Optional.
+  icon         the name of the icon the desktop app draws next to it, one of: compass, layers, list-checks, search, book-open, file-text, notebook-pen, lightbulb, flask-conical, scale, image, flag. Any other name draws none. It is not part of the guidance. Optional.
+  template     files only: the path of a template in the layout folder. Optional.
+  children     folders only: the entries inside it. Optional, any depth.
+
+Keys this list does not name are kept as they are. When two sibling entries match the same name, the earlier one wins.
+
+Placeholders: `{n}` is one or more ASCII digits and `{name}` is any name that is not empty. A pattern may use each at most once, and not side by side (`{n}{name}`). Entries with `{n}` sort by number, newest first.
+
+A save is refused, and nothing is written, when:
+- a field is not the JSON type it should be: text, except `children`, a list of entries
+- `root` has a `pattern`, a `kind` or a `template`
+- any other entry has no `kind`, a `kind` other than "file" or "folder", or a `pattern` that is missing, empty or holds `/`
+- a pattern has an unknown placeholder, uses one twice, or puts `{n}` and `{name}` side by side
+- two siblings have the same pattern
+- a file entry has `children`, or a folder entry has a `template`
+- a template path leaves the layout folder, does not end in a file name, has a part that starts with `.`, or is `layout.json` itself or a path under it, in any letter case
+- a template has no body in `templates` and none in the layout folder
+- `templates` holds a body that no file entry points to
+Each error names its entry by its place under `root`, such as `root.children[1].children[0]`.
+
+Templates are Markdown files in the layout folder, next to `layout.json`. A template path is relative to that folder and may go into sub-folders (`iteration/plan.md`). `templates` maps those paths to bodies. A template left out of `templates` keeps the body it has now, so pass only the ones you change. A template that no entry points to any more is deleted by the save. Files the layout never pointed to are left alone.

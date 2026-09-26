@@ -1,16 +1,5 @@
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
-import { ALL_MODES, type Mode } from "@/mode";
-
-/**
- * 세계의 이름. **대문자 영어다**(US 59) — 사이드바에서 이 두 낱말이 nav 항목
- * (`Terminal`·`Archive`)과 같은 층이고, 그 아래 구획 머리부터 갈린다.
- *
- * `@/mode`의 표가 아니라 여기 사는 것은 이 저장소의 「쓰는 자리가 하나면 그 파일로, 둘이면
- * 공용으로」다(`shell-meta.tsx` 머리말). 화면에 세계의 이름을 적는 자리는 이 세그먼트
- * 하나뿐이라 표까지 올릴 이유가 없다 — 둘째 자리가 생기는 날 그 표로 옮긴다.
- * `Record<Mode, …>`라 모드가 하나 늘면 그날 L0가 여기서 빨개진다.
- */
-const LABEL: Record<Mode, string> = { atelier: "Atelier", maison: "Maison" };
+import { ALL_MODES, modeNameOf, type Mode } from "@/mode";
 
 /**
  * 어느 세계에 있는가를 말하고, 저쪽으로 건너가는 두 칸. 사이드바 최상단(신호등 띠 바로
@@ -59,7 +48,7 @@ export function ModeSwitch({ mode, onPick }: { mode: Mode; onPick: (mode: Mode) 
         // 갖는다: 접히는 것은 구획 머리뿐이라 `aria-expanded`를 가진 버튼이 곧 구획 머리이고,
         // 그 사실에 검사 둘이 기대고 있다(`Sidebar.test.tsx`·`SidebarWorkList.test.tsx`).
         <SegmentGroupItem key={one} value={one}>
-          {LABEL[one]}
+          {modeNameOf(one)}
         </SegmentGroupItem>
       ))}
     </SegmentGroup>

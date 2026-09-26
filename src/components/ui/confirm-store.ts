@@ -26,34 +26,62 @@ export interface DialogAsk {
   /**
    * 창이 뜰 때 포커스를 받는 버튼. 안 주면 진행 버튼이다(지금까지의 모든 물음).
    *
-   * **종료 확인만 `cancel`로 부른다**(#223) — ⌘Q 뒤에 반사적으로 친 Enter가 앱을 끄면 실수 종료라는
-   * 원래 문제가 그대로 돌아온다. 어느 쪽이든 포커스가 창 **안으로** 오는 성질은 같다.
+   * **반사적으로 친 Enter가 되돌릴 수 없는 일을 하면 안 되는 물음이 `cancel`로 부른다** — 종료
+   * 확인(#223: ⌘Q 뒤의 Enter가 앱을 끄면 실수 종료라는 원래 문제가 그대로 돌아온다)과 편집기를 떠날
+   * 때 확인(spec 레이아웃 결정 27: Enter가 초안을 버린다)이다. 어느 쪽이든 포커스가 창 **안으로** 오는
+   * 성질은 같다.
    */
   focus?: "confirm" | "cancel";
+  /**
+   * 취소 버튼의 글자. 안 주면 「취소」다(지금까지의 모든 물음). 떠날 때 확인은 「계속 편집」이다 — 거기서
+   * 취소가 무엇을 하는지(머문다)를 적는다. 진행 버튼이 할 일을 적는 것과 같은 까닭이다.
+   */
+  cancel?: string;
 }
 
-type Pending = DialogAsk & { answer: (ok: boolean) => void };
+/**
+ * 셋째 갈래를 받는 물음(spec 레이아웃 결정 27 — 떠날 때 확인). `extra`를 주면 그 글자의 버튼이 진행 버튼 **뒤**
+ * (맨 오른쪽)에 주 버튼으로 선다. 안 주면 여느 물음처럼 둘이다 — 할 수 있을 때만 서는 버튼이 그렇다.
+ *
+ * 답은 `askChoice`로만 받는다. `askDialog`의 답은 참·거짓이라 셋째 자리가 없고, 그래서 그 물음은 이것을 못 준다.
+ */
+export interface ChoiceAsk extends DialogAsk {
+  extra?: string;
+}
+
+/** 창의 답 — `true`는 진행 버튼, `false`는 취소(취소 버튼 · Esc · 바깥), `"extra"`는 셋째 버튼이다. */
+export type DialogAnswer = boolean | "extra";
+
+type Pending = ChoiceAsk & { answer: (answer: DialogAnswer) => void };
 
 /** 지금 떠 있는 창. `null`이면 없다. **한 번에 하나다.** */
 export const dialogStore = new Store<Pending | null>(null);
 
 /**
- * 창을 띄우고 답을 기다린다.
+ * 창을 띄우고 답(참 · 거짓 · 셋째)을 기다린다.
  *
  * **앞의 물음이 아직 떠 있으면 그것을 취소로 접는다.** 겹쳐 띄우면 어느 것에 답했는지가
  * 화면에서 사라지고, 답을 기다리던 약속이 영영 안 풀린다.
  */
-export function askDialog(ask: DialogAsk): Promise<boolean> {
+export function askChoice(ask: ChoiceAsk): Promise<DialogAnswer> {
   return new Promise((resolve) => {
     dialogStore.state?.answer(false);
     dialogStore.setState(() => ({
       ...ask,
-      answer: (ok) => {
+      answer: (answer) => {
         dialogStore.setState(() => null);
-        resolve(ok);
+        resolve(answer);
       },
     }));
   });
+}
+
+/**
+ * 두 갈래 물음 — `askChoice`의 참·거짓 판. 셋째 답이 없어 셋째 버튼(`extra`)도 받지 않는다. 앞의 물음을 접는
+ * 규칙은 `askChoice`에 있다.
+ */
+export function askDialog(ask: DialogAsk): Promise<boolean> {
+  return askChoice(ask).then((answer) => answer === true);
 }
 
 /** 되돌릴 수 없는 일을 묻는다. 진행 버튼이 경고색이다. */

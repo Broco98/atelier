@@ -1,111 +1,52 @@
-import { useMemo, useState } from "react";
-import { BookOpen, ChevronRight, Compass, Copy, Layers, ListChecks, Search } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Hint } from "@/components/ui/tooltip";
+import { specIconOf } from "./spec-icons";
+import type { SpecTreeItem } from "./types";
 
-interface TreeNode {
-  name: string;
-  path: string;
-  children: TreeNode[] | null; // null = 파일
-}
-
-// spec 폴더에서 의미를 갖는 다섯 이름. 고정하는 것은 **폴더 이름뿐**이고 그 안의
-// 파일 이름은 자유다. 규칙에 없는 폴더·파일도 트리에서 사라지지 않는다 —
-// 아틀리에가 특정 스킬의 산출물 이름에 묶이면 안 되기 때문이다.
-const OVERVIEW = "overview.md";
-const ITERATION = /^(\d+)-/; // NN-<이름>/ = 판 하나
-const TICKETS = "tickets";
-// 판을 넘어 사는 구역. 이 배열이 트리에서의 순서이자 아이콘의 유일한 출처다.
-const STANDING = [
-  { name: "research", Glyph: Search },
-  { name: "explanation", Glyph: BookOpen },
-] as const;
-
-/** 구역 번호와 구역 안 순서. 같은 키는 커널이 준 순서를 그대로 지킨다(안정 정렬). */
-function sectionKey(node: TreeNode): [number, number] {
-  const isDir = node.children !== null;
-  if (!isDir && node.name === OVERVIEW) return [0, 0];
-  const iteration = isDir ? ITERATION.exec(node.name) : null;
-  if (iteration) return [1, Number(iteration[1])];
-  const standing = isDir ? STANDING.findIndex((s) => s.name === node.name) : -1;
-  if (standing >= 0) return [2, standing];
-  return [3, 0];
-}
-
-/** overview → 판(번호 오름차순) → 상시 구역 → 나머지. 최상위에서만 적용한다. */
-function orderSections(nodes: TreeNode[]): TreeNode[] {
-  return [...nodes].sort((a, b) => {
-    const [aSection, aOrder] = sectionKey(a);
-    const [bSection, bOrder] = sectionKey(b);
-    return aSection - bSection || aOrder - bOrder;
-  });
-}
-
-function buildTree(files: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-  for (const file of files) {
-    const parts = file.split("/");
-    let siblings = root;
-    let prefix = "";
-    for (let i = 0; i < parts.length; i++) {
-      const name = parts[i];
-      prefix = prefix ? `${prefix}/${name}` : name;
-      const isFile = i === parts.length - 1;
-      let node = siblings.find((n) => n.name === name && (n.children === null) === isFile);
-      if (!node) {
-        node = { name, path: prefix, children: isFile ? null : [] };
-        siblings.push(node);
-      }
-      if (node.children) siblings = node.children;
-    }
-  }
-  return root;
-}
-
-// 접기 행 하나의 규격. 판 머리글(SpecSection)이 같은 문자열을 읽는다 —
-// 트리의 폴더와 판이 같은 모양으로 접혀야 하고, 한쪽만 바뀌면 그 자리가 갈린다.
-export const COLLAPSE_ROW =
+// 접기 행 하나의 규격. 폴더 행이 쓴다.
+const COLLAPSE_ROW =
   "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
 
-// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행 · 판 머리글(SpecSection)이
-// 함께 읽는다. 같은 식을 세 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다.
-// 인라인 style인 것은 깊이가 정해지지 않은 수라 클래스로 못 적어서다.
-export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행이 함께 읽는다. 같은 식을
+// 두 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다. 인라인 style인 것은 깊이가
+// 정해지지 않은 수라 클래스로 못 적어서다.
+const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
 
 interface TreeProps {
-  files: string[];
+  // 엔진이 가른 spec 트리의 첫 층 — `spec/` 바로 아래의 파일·폴더들. **받은 순서 그대로
+  // 그린다** — 앱에는 순서의 규칙도 폴더 이름의 규칙도 없다(spec 레이아웃 결정 13,
+  // `src/spec-folder-names.test.ts`가 소스로 본다). 구획 머리도 없다(spec 레이아웃 결정 24): 번호
+  // 묶음 폴더도 레이아웃의 자리에 선다. 아카이브는 그 트리를 기록 행 곁의 `spec/` 행 아래에 얹어
+  // 넘긴다(`archive/archive-tree.ts`).
+  items: SpecTreeItem[];
   current: string | null;
   onSelect: (path: string) => void;
   // 파일 행 hover 시 경로 복사 버튼 (생략 시 미표시)
   onCopy?: (path: string) => void;
-  // 들여쓰기 시작 단. 판 구획 안에서는 판 머리글 아래로 한 단 들어간다.
-  depth?: number;
 }
 
-function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
-  const tree = useMemo(() => orderSections(buildTree(files)), [files]);
-  // 접힌 폴더 경로 — 트리가 소유하며 리마운트(패널 토글)를 넘어 살지 않는다.
-  // **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
-  // `key`를 떼서, 작업을 옮겨도 이 접힘이 유지된다(그 결정이 감수한 것이다).
+function SpecTree({ items, current, onSelect, onCopy }: TreeProps) {
+  // 손으로 접고 편 폴더 — 폴더 경로가 키다. 트리가 소유하며 리마운트(패널 토글)를 넘어 살지
+  // 않는다. **작업 전환은 더 이상 리마운트가 아니다** — 결정 49가 패널을 화면으로 올리며
+  // `key`를 떼서, 작업을 옮겨도 이 기억이 유지된다(그 결정이 감수한 것이다).
+  //
+  // 손으로 바꾼 것만 기억하고 기본값은 매번 받은 트리의 파일·폴더에서 낸다. 판이 새로 생겼을 때
+  // 그것이 저절로 「펼쳐진 최신 판」이 되려면, 처음 그린 때의 펼침을 굳혀 두면 안 된다.
   //
   // 접힘을 폴더마다의 Collapsible에 맡기지 않고 여기 둔다 — 부모 폴더가 접히면 자식 폴더가 언마운트되는데,
   // 그때 자식의 접힘이 제 안에 살았다면 부모를 다시 펼 때 사라진다.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const setOpen = (path: string, open: boolean) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (open) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  };
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // Collapsible은 **다음** 상태를 알린다 — 받은 값을 그대로 적는다.
+  const setOpen = (path: string, open: boolean) => setToggled((prev) => ({ ...prev, [path]: open }));
   return (
     <TreeRows
-      nodes={tree}
-      depth={depth}
+      items={items}
+      depth={0}
       current={current}
-      collapsed={collapsed}
+      isOpen={(item) => toggled[item.path] ?? openByDefault(item)}
       onOpenChange={setOpen}
       onSelect={onSelect}
       onCopy={onCopy}
@@ -113,52 +54,67 @@ function SpecTree({ files, current, onSelect, onCopy, depth = 0 }: TreeProps) {
   );
 }
 
+/**
+ * 손대기 전의 펼침. 번호 묶음의 구성원은 **최신 표시가 붙은 것만** 펼친다 — 판이 쌓여도 지금
+ * 판이 보이고 지난 판은 접힌 채 아래에 선다. 묶음 밖 폴더는 펼친 채 시작한다. 중첩된 묶음도
+ * 같다(spec 레이아웃 결정 4: 「어디에 있든 같은 동작」). 파일 묶음(`adr-{n}-{name}.md`)은 펼칠
+ * 것이 없다.
+ */
+function openByDefault(item: SpecTreeItem): boolean {
+  return item.group === null || item.group.latest;
+}
+
 // 폴더는 Collapsible이다(판 4, 스토리 114). 행이 트리거라 `aria-expanded`를 스스로 달고, 자식 줄은 패널이다.
 // 기본 변형이라 움직임 없이 **바로** 접히고 닫히면 언마운트된다 — 지금까지의 조건부 렌더와 같다.
 // 뿌리가 곧 노드 상자(`flex flex-col`)라 상자가 느는 것은 자식 줄을 싸는 패널 하나다.
 function TreeRows({
-  nodes,
+  items,
   depth,
   current,
-  collapsed,
+  isOpen,
   onOpenChange,
   onSelect,
   onCopy,
 }: {
-  nodes: TreeNode[];
+  items: SpecTreeItem[];
   depth: number;
   current: string | null;
-  collapsed: Set<string>;
+  isOpen: (item: SpecTreeItem) => boolean;
   onOpenChange: (path: string, open: boolean) => void;
   onSelect: (path: string) => void;
   onCopy?: (path: string) => void;
 }) {
   return (
     <>
-      {nodes.map((node) => {
-        if (node.children) {
-          const expanded = !collapsed.has(node.path);
+      {items.map((item) => {
+        if (item.kind === "folder") {
+          const expanded = isOpen(item);
           return (
             <Collapsible
-              key={node.path}
+              key={item.path}
               open={expanded}
-              onOpenChange={(open) => onOpenChange(node.path, open)}
+              onOpenChange={(open) => onOpenChange(item.path, open)}
               className="flex flex-col"
             >
               <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
+                {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
+                    독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
+                    (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}
                 <ChevronRight
-                  className={cn("size-3 transition-transform", expanded && "rotate-90")}
+                  className={cn("size-3 shrink-0 transition-[rotate] duration-150", expanded && "rotate-90")}
                   strokeWidth={2.2}
                 />
-                <FolderGlyph name={node.name} />
-                {node.name}
+                <FolderGlyph icon={item.icon} />
+                {/* 폴더 이름을 그대로 보여준다 — 경로 복사가 붙어 있는 트리라 화면의 이름이
+                    디스크의 이름과 어긋나면 안 된다. 판 폴더 이름은 길어서 자른다 */}
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="flex flex-col">
                 <TreeRows
-                  nodes={node.children}
+                  items={item.children}
                   depth={depth + 1}
                   current={current}
-                  collapsed={collapsed}
+                  isOpen={isOpen}
                   onOpenChange={onOpenChange}
                   onSelect={onSelect}
                   onCopy={onCopy}
@@ -182,11 +138,11 @@ function TreeRows({
         // 남는 것은 오른쪽 끝 pr-1(4px)뿐이고, 그건 복사 버튼을 행 가장자리에서
         // 띄우는 값이라 어느 버튼에도 넣을 수 없다.
         return (
-          <div key={node.path} className="flex flex-col">
+          <div key={item.path} className="flex flex-col">
             <div
               className={cn(
                 "group flex h-7 items-center rounded-[8px] pr-1 text-[12.5px] transition-colors",
-                node.path === current
+                item.path === current
                   ? "selected-row font-medium"
                   : "text-muted-foreground hover:bg-state-1",
               )}
@@ -196,15 +152,15 @@ function TreeRows({
                   클릭 영역이 되게 한다 (items-center는 자식을 내용 높이로 줄인다) */}
               <button
                 type="button"
-                onClick={() => onSelect(node.path)}
+                onClick={() => onSelect(item.path)}
                 className={cn(
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
                   onCopy && "pr-1.5",
                 )}
                 style={treeIndent(depth)}
               >
-                <FileGlyph name={node.name} />
-                <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                <FileGlyph name={item.name} icon={item.icon} />
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
               </button>
               {onCopy && (
                 // 페이드 없이 뜨는 것은 icon-button-tint가 정한다 — 행 높이가 28px뿐이라
@@ -214,8 +170,8 @@ function TreeRows({
                 <Hint
                   text="경로 복사"
                   type="button"
-                  aria-label={`${node.name} 경로 복사`}
-                  onClick={() => onCopy(node.path)}
+                  aria-label={`${item.name} 경로 복사`}
+                  onClick={() => onCopy(item.path)}
                   className="icon-button-tint text-tertiary opacity-0 outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 group-hover:opacity-100"
                 >
                   <Copy className="size-3" strokeWidth={1.8} />
@@ -229,26 +185,24 @@ function TreeRows({
   );
 }
 
-// 알려진 폴더 이름의 글리프. tickets/는 판 안에 있든 밖에 있든 같은 아이콘이다 —
-// 이름으로만 판단하고 위치는 보지 않는다. 규칙에 없는 폴더는 아이콘 없이 그대로 보인다.
-//
-// 판 머리글(SpecSection)도 이것을 부른다 — 폴더 하나가 트리 안에 있을 때와 구획 머리글로
-// 올라섰을 때 다른 아이콘을 달면, 위 STANDING 배열이 「아이콘의 유일한 출처」라는 말이 깨진다.
-export function FolderGlyph({ name }: { name: string }) {
-  const className = "size-3 shrink-0 text-tertiary";
-  if (ITERATION.test(name)) return <Layers className={className} strokeWidth={1.9} />;
-  if (name === TICKETS) return <ListChecks className={className} strokeWidth={1.9} />;
-  const standing = STANDING.find((s) => s.name === name);
-  if (standing) return <standing.Glyph className={className} strokeWidth={1.9} />;
-  return null;
+const GLYPH = "size-3 shrink-0 text-tertiary";
+
+// 폴더 행의 글리프 — 항목이 준 아이콘이다. 없거나 표에 없는 이름이면 아무것도 안 그린다:
+// 지금의 폴더 모양(화살표와 이름)이 그대로 선다.
+function FolderGlyph({ icon }: { icon: string | null }) {
+  const Glyph = specIconOf(icon);
+  return Glyph && <Glyph className={GLYPH} strokeWidth={1.9} />;
 }
 
-// 파일 타입 글리프 — 확장자를 소형 mono 라벨로 (MD, YAML …). 다섯 이름 중 파일은
-// overview.md 하나뿐이라, 그것만 확장자 대신 진입점 글리프를 받는다.
-function FileGlyph({ name }: { name: string }) {
-  if (name === OVERVIEW) {
-    return <Compass className="size-3 shrink-0 text-tertiary" strokeWidth={1.9} />;
-  }
+// 파일 행의 글리프. 항목이 아이콘을 줬으면 **확장자 라벨 대신** 그 아이콘이다. 라벨은 글자라 이름
+// 버튼의 접근성 이름에 들어가서, 둘을 함께 그리면 `overview.md` 행의 이름이 `MD overview.md`가
+// 된다 — 이름으로 행을 찾는 L3·L4가 그것을 딛는다(spec 레이아웃 구현 스펙 4절).
+//
+// 아이콘이 없거나 표에 없는 이름이면 확장자를 소형 mono 라벨로 (MD, YAML …). 확장자는 레이아웃이
+// 아니라 파일의 성질이라 남는다.
+function FileGlyph({ name, icon }: { name: string; icon: string | null }) {
+  const Glyph = specIconOf(icon);
+  if (Glyph) return <Glyph className={GLYPH} strokeWidth={1.9} />;
   const dot = name.lastIndexOf(".");
   const ext = dot > 0 ? name.slice(dot + 1).toUpperCase() : "";
   if (!ext) return null;

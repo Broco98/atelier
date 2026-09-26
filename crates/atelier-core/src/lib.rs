@@ -37,10 +37,11 @@ mod atomic;
 mod order;
 mod recent;
 mod search;
+mod layout;
 
 pub use mode::{mode_from_env, Mode, MODE_ENV};
 pub use paths::{
-    archive_dir, collapse_home, data_root, expand_home, mode_home, projects_dir,
+    archive_dir, collapse_home, data_root, expand_home, layouts_dir, mode_home, projects_dir,
     shared_projects_root, works_dir,
 };
 // **`touch_recent_work` 하나만 밖으로 낸다.** 읽는 쪽은 크레이트 안의 검색뿐이라
@@ -49,6 +50,14 @@ pub use paths::{
 pub use recent::touch_recent_work;
 pub use search::{search, Destination, SearchHit, SearchResults};
 pub use slug::slugify;
+pub use layout::{
+    builtin_layout, classify, classify_archived_docs, classify_works, layout_states, parse_layout,
+    preview_layout, read_layout, render_layout, resolve_layout, revert_layout, save_layout,
+    serialize_layout, serialize_layout_value, with_archived_spec_tree, with_spec_trees,
+    ArchivedDocs, EntryKind, EntryLines, Fallback, LayoutContent, LayoutEntry, LayoutError, LayoutPreview,
+    LayoutRead, LayoutSource, LayoutState, Rendered, Resolved, SaveOutcome, SpecLayout, SpecTree, SpecTreeGroup,
+    SpecTreeItem, TemplateVerdict, WorkWithSpecTree,
+};
 pub use project::{parse_project, render_project, Project, ProjectView};
 pub use git::{detect as detect_git, origin_head, GitInfo};
 pub use store::{

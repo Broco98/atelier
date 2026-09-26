@@ -441,6 +441,16 @@ describe("모드별 마지막 주소", () => {
       maison: "/maison/rooms/work-a",
     });
     expect(lastMode()).toBe("maison");
+
+    // 설정의 하위 주소도 세계 밖이다 — 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11). 주소에 모드
+    // 이름(`atelier`)이 들었어도 그것은 레이아웃의 id지 떠나온 세계가 아니다.
+    await router.navigate({ to: "/settings/spec-layout/$id", params: { id: "atelier" } });
+    expect(router.state.location.pathname).toBe("/settings/spec-layout/atelier");
+    expect(shellStore.state.lastPlace).toEqual({
+      atelier: null,
+      maison: "/maison/rooms/work-a",
+    });
+    expect(lastMode()).toBe("maison");
   });
 
   // 적히지 않는다는 것과 **셸이 무엇을 드는가**는 다른 물음이다. 그 화면에서도 nav는 무언가를
@@ -871,7 +881,7 @@ describe("화면 탭의 주소", () => {
 });
 
 // 설정은 목록도 선택도 없는 화면이라(결정 51·52) 위 규칙 둘이 **걸리지 않아야 한다** —
-// 마지막으로 보던 항목도 목록 정규화도 여기엔 없다. 대신 항목이 셋이라 주소가 갈렸고(UI개선
+// 마지막으로 보던 항목도 목록 정규화도 여기엔 없다. 대신 항목이 여럿이라 주소가 갈렸고(UI개선
 // 결정 22) `/settings`는 **첫 항목으로 치환**된다.
 //
 // 설정으로 가는 문은 셋이다(사이드바 바닥 · ⌘, · 팔레트). 셋 다 `/settings`로 가고, **설정 안에서는
@@ -890,7 +900,7 @@ describe("설정 화면의 주소", () => {
     expect(history.length).toBe(1);
   });
 
-  it.each(["terminal", "notifications", "hooks"] as const)(
+  it.each(["terminal", "notifications", "hooks", "spec-layout"] as const)(
     "`/settings/%s`는 제 화면에 선다",
     async (page) => {
       const { router } = setup([`/settings/${page}`]);
@@ -899,6 +909,26 @@ describe("설정 화면의 주소", () => {
       expect(router.state.matches.map((match) => match.routeId)).toContain(`/settings/${page}`);
     },
   );
+
+  // 「spec 레이아웃」의 편집기는 그 항목 아래의 하위 주소다(spec 레이아웃 티켓 11) — 설정 한 열의 본문이
+  // 아니라 제 라우트에 선다. 항목 라우트에 Outlet이 없으면 주소는 맞는데 편집기가 안 선다: 매치로 본다.
+  it.each(["atelier", "maison"] as const)("`/settings/spec-layout/%s`는 편집기 화면에 선다", async (id) => {
+    const { router } = setup([`/settings/spec-layout/${id}`]);
+    await router.load();
+    expect(router.state.location.pathname).toBe(`/settings/spec-layout/${id}`);
+    const routes = router.state.matches.map((match) => match.routeId);
+    expect(routes).toContain("/settings/spec-layout/$id");
+    expect(routes).not.toContain("/settings/spec-layout/");
+  });
+
+  // 레이아웃은 모드마다 하나라 id는 모드 이름 둘뿐이다(spec 레이아웃 결정 25). 모르는 id로 온 주소는
+  // 부를 레이아웃이 없다 — 「spec 레이아웃」 페이지로 치환한다. 칸은 늘지 않는다.
+  it("모르는 id의 편집기 주소는 「spec 레이아웃」 페이지로 치환된다", async () => {
+    const { router, history } = setup(["/settings/spec-layout/gallery"]);
+    await router.load();
+    expect(router.state.location.pathname).toBe("/settings/spec-layout");
+    expect(history.length).toBe(1);
+  });
 
   // 터미널을 쓰다 ⌘,로 열고 되돌아오는 흐름이다 — 한 칸이어야 뒤로가기 한 번에 돌아온다.
   it("설정을 열면 한 칸이 남고 뒤로가기로 보던 작업에 돌아온다", async () => {
