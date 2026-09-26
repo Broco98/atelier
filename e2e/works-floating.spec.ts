@@ -7,6 +7,7 @@ import {
   ipcCallArgs,
   recordClipboard,
   unknownIpcCalls,
+  workRow,
 } from "./harness";
 
 // 판 3 — **작업 화면의 떠 있는 것**(S8, P14). 그 표면을 이미 다루는 spec 파일이 없는 것만 여기 모은다:
@@ -34,6 +35,14 @@ const 애니메이션 = (target: Locator) => target.evaluate((el) => getComputed
  * 옆의 ⓘ(「작업 메타」)와 가르려고 이름 전체로 집는다.
  */
 const 작업메뉴 = (page: Page) => page.getByRole("button", { name: "작업 메뉴", exact: true });
+
+/**
+ * 페이지의 시계를 지금에서 조금 뒤로 세운다 — 그다음부터는 `page.clock.runFor`로만 흐른다. **페이지를 열기 전에
+ * `page.clock.install()`을 건 검사만 쓴다.** 세운 시계에서도 누르기·포커스·키·올리기는 된다. 열림 애니메이션의
+ * 프레임(rAF)도 세운 시계를 타므로, 사라짐을 볼 때는 시계를 돌리거나 다시 흐르게 둔다.
+ */
+const 시계를세운다 = async (page: Page) =>
+  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
 
 // ── 떠 있는 것의 애니메이션 (결정 7) ──
 // 떠 있는 것은 100ms 페이드와 확대로 뜨고, 「동작 줄이기」면 그것이 꺼진다. 끄는 규칙은 부품마다가 아니라
@@ -352,8 +361,6 @@ test("ⓘ는 포커스에 「메타」 툴팁을 띄우고, 키로 열어 Esc로
 // 부품·같은 호출이다. 세운 시계에서는 사라지는 전이의 프레임(rAF)이 안 와서, 사라짐을 볼 때는 시계를 다시 흐르게 둔다.
 
 const 메시지 = (page: Page) => page.getByRole("region", { name: "메시지", exact: true });
-const 시계를세운다 = async (page: Page) =>
-  page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
 
 // 터미널 탭에서 잰다 — 토스트가 SpecViewer 안에 살던 앞 판에는 **이 탭에서 트리를 복사하면 아무 말이 없었다**(결정 47).
 test("셸을 보던 채 트리에서 경로를 복사하면 「메시지」 영역에 「… 복사됨」이 선다", async ({ page }) => {
@@ -620,3 +627,87 @@ test("「코드」는 포커스에 툴팁 「원본 mermaid 코드 보기」를 
   await expect(원본코드(page)).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// ── 툴팁 (스토리 112 · 113, S28 · S29 · P13) ──
+// 버튼의 도움말은 OS `title`이 아니라 앱 툴팁이다 — 올리면 600ms 뒤에, 포커스면 곧바로 선다. 단축키가 있으면 옆에 Kbd로
+// 붙는다(「검색 ⌘K」). 툴팁은 역할도 설명도 주지 않으므로(S28) 글자는 표식(`data-slot`)으로 집고, 이름보다 더 말하던 것
+// (단축키)은 버튼의 접근성 설명으로 따로 잰다. 대표는 사이드바의 검색 버튼 하나다 — 사이드바에서 `title`을 들던 버튼이
+// 그것뿐이고(P13), 규칙이 부품 한 곳이라 나머지 자리는 같은 부품을 부른다.
+//
+// **사이드바 작업 행과 그 위의 핀에는 툴팁이 없다**(스토리 113, S29). 350ms 호버 카드가 600ms 툴팁보다 먼저 서므로, 카드가
+// 선 순간에 「툴팁이 없다」를 재면 행에 툴팁을 잘못 달아도 초록이다 — 카드를 앵커로 본 뒤 시계로 툴팁 지연을 넘겨 돌리고
+// 잰다. 대조로 같은 시계에서 검색 버튼은 툴팁을 세운다(시계가 툴팁을 막아서 초록인 판을 가른다).
+
+/** 떠 있는 툴팁. 역할이 없어(S28) 표식으로 집는다 — 앱에 툴팁은 한 번에 하나만 선다. */
+const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
+/** 사이드바 머리(셸 컨트롤 줄)의 검색 버튼 — ⌘K와 같은 팔레트를 연다. */
+const 검색 = (page: Page) => page.getByRole("button", { name: "검색", exact: true });
+
+test("검색 버튼에 올리면 600ms 뒤 툴팁 「검색」과 Kbd `⌘K`가 서고, 버튼은 단축키를 설명으로 말한다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const search = 검색(page);
+  const tooltip = 툴팁(page);
+  await expect(search).toBeVisible();
+  // 이름은 그대로 「검색」이고, 이름보다 더 말하던 단축키는 설명이다(S28).
+  await expect(search).toHaveAccessibleDescription("⌘K");
+  await expect(tooltip).toHaveCount(0);
+
+  await 시계를세운다(page);
+  await search.hover();
+  await page.clock.runFor(500);
+  // 아래에서 곧 선다 — 이 「없다」는 그 앵커에 기대어 지연이 0이 아님을 잰다.
+  await expect(tooltip).toHaveCount(0);
+  await page.clock.runFor(200);
+  await expect(tooltip).toContainText("검색");
+  await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 포인터를 한 번도 안 쓴다 — 포커스로 뜨는 툴팁은 그래야 잰다(「좋은 검사」).
+test("포인터 없이 검색 버튼에 포커스하면 툴팁 「검색」과 Kbd `⌘K`가 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const tooltip = 툴팁(page);
+  await expect(검색(page)).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+
+  await 검색(page).focus();
+
+  await expect(tooltip).toContainText("검색");
+  await expect(tooltip.locator("[data-slot=kbd]")).toHaveText("⌘K");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+test("작업 행과 그 위의 핀에 올려 툴팁 지연을 넘겨도 툴팁은 안 서고 호버 카드만 선다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.clock.install();
+  await page.goto(`/works/${pinnedWork.slug}`);
+  const row = workRow(page, plainWork.slug);
+  const card = page.locator("[data-popover]");
+  const tooltip = 툴팁(page);
+  await expect(row).toBeVisible();
+  await expect(card).toHaveCount(0);
+
+  await row.hover();
+  // 앵커: 호버 카드가 섰다(350ms). 툴팁(600ms)은 그 뒤라, 여기서 재면 헛돈다.
+  await expect(card).toBeVisible();
+  await page.clock.runFor(1000);
+  await expect(tooltip).toHaveCount(0);
+
+  // 핀은 행 안에 있다 — 올려도 카드는 그대로 서 있다.
+  await row.getByRole("button", { name: `${plainWork.title} 고정`, exact: true }).hover();
+  await page.clock.runFor(1000);
+  await expect(card).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+
+  // 대조: 같은 시계에서 검색 버튼은 툴팁을 세운다.
+  await 검색(page).hover();
+  await page.clock.runFor(1000);
+  await expect(tooltip).toContainText("검색");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
