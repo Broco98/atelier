@@ -99,9 +99,19 @@ function 행(state: ShellsState): string {
       mode="atelier"
       open={{ pinned: true, works: true }}
       selectedSlug={null}
-      shellCounts={{ [WORK.slug]: 1 }}
-      signals={signals}
-      notes={callingNotesOf(state, "atelier")}
+      shells={{
+        shellCounts: { [WORK.slug]: 1 },
+        signals,
+        notes: callingNotesOf(state, "atelier"),
+        renderRowMeta: (work) => {
+          // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`의 `RowMetaFor`) — 값을 고르는 길이
+          // 행마다 따로다.
+          const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
+          return view === null ? null : (
+            <SignalMeta kind={view.kind} running={view.running} since={view.since} now={view.since} />
+          );
+        },
+      }}
       onToggleSection={() => {}}
       onOpen={() => {}}
       onHover={() => {}}
@@ -111,14 +121,6 @@ function 행(state: ShellsState): string {
       lineY={null}
       litEmptySlot={null}
       onArmDrag={() => {}}
-      renderRowMeta={(work) => {
-        // 사이드바가 실제로 그리는 그대로다(`Sidebar.tsx`의 `RowMetaFor`) — 값을 고르는 길이
-        // 행마다 따로다.
-        const view = topSignalView(shellsOf(state, ownerOf("atelier", work.slug)));
-        return view === null ? null : (
-          <SignalMeta kind={view.kind} running={view.running} since={view.since} now={view.since} />
-        );
-      }}
     />,
   );
 }
