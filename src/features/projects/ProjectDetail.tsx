@@ -3,6 +3,7 @@ import { Folder, GitFork, GitMerge, ChevronRight, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorks } from "@/features/works/hooks";
 import { formatCreated, StatusIcon } from "@/features/works/status";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUpdateProject } from "./hooks";
 import type { ProjectView } from "./types";
@@ -177,7 +178,8 @@ function TitleEditor({ project }: { project: ProjectView }) {
     );
   }
   return (
-    <input
+    <Input
+      variant="inline-title"
       autoFocus
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
@@ -186,7 +188,6 @@ function TitleEditor({ project }: { project: ProjectView }) {
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className="-mx-2 -my-1 w-full rounded-[10px] border border-primary bg-background px-2 py-1 text-[25px] font-semibold tracking-[-0.015em] outline-none"
     />
   );
 }
@@ -301,7 +302,9 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
     );
   }
   return (
-    <input
+    <Input
+      variant="inline-chip"
+      className="w-[150px]"
       autoFocus
       // 이름표가 없던 칸이다(S37) — 옆 줄의 「baseBranch」 글자는 이 칸과 묶여 있지 않다. 목록이 서는 프로젝트의
       // 여는 버튼과 같은 이름이다.
@@ -313,7 +316,6 @@ function InlineBranchEditor({ project }: { project: ProjectView }) {
         if (e.key === "Enter") finish(true);
         if (e.key === "Escape") finish(false);
       }}
-      className="h-[26px] w-[150px] rounded-[9px] border border-primary bg-background px-[7px] font-mono text-[12.5px] outline-none"
     />
   );
 }

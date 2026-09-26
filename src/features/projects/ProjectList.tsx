@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Folder, GitFork, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import useResizableWidth, { ResizeHandle } from "@/components/shell/useResizableWidth";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import type { ProjectView } from "./types";
 
 interface ProjectListProps {
@@ -75,18 +76,18 @@ function ProjectList({ projects, selectedSlug, onSelect, onAdd, sidebarOpen, ope
 
       {/* mb-[10px] = 헤더 행(44px)에서 24px 아이콘 버튼을 뺀 상하 여백 — 위아래 갭을 맞춘다 */}
       {projects.length > 0 && (
-        <div className="relative mb-[10px] shrink-0">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-tertiary"
-            strokeWidth={1.8}
-          />
-          <input
+        <InputGroup className="mb-[10px] shrink-0">
+          <InputGroupAddon>
+            <Search strokeWidth={1.8} />
+          </InputGroupAddon>
+          {/* 이름은 aria-label이 든다(S37) — placeholder는 이름표가 아니라 빈 칸에만 서는 안내 글자다. */}
+          <InputGroupInput
+            aria-label="프로젝트 검색"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="프로젝트 검색"
-            className="h-9 w-full rounded-full border bg-background pl-9 pr-3.5 text-[13.5px] outline-none placeholder:text-tertiary focus:border-primary"
           />
-        </div>
+        </InputGroup>
       )}
 
       {projects.length === 0 ? (
