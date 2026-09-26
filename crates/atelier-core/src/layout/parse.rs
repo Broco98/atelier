@@ -207,10 +207,13 @@ fn read_entry(
             refuse(format!("`template` must be a path inside the layout folder, not {template:?}"));
         } else if kind.is_some() && !ends_in_a_name(template) {
             refuse(format!("`template` must end in a file name, not {template:?}"));
-        } else if kind.is_some() && names_layout_file(template) {
+        } else if kind.is_some() && at_or_under_layout_file(template) {
             // 레이아웃 파일 자신을 템플릿으로 삼으면 저장이 그 본문으로 레이아웃을 덮고, 빠진
-            // 템플릿을 지울 때 레이아웃 파일을 지운다
-            refuse(format!("`template` must not be the layout file {LAYOUT_FILE:?} itself"));
+            // 템플릿을 지울 때 레이아웃 파일을 지운다. 그 이름의 폴더 아래면 저장이 폴더를 만들어
+            // 레이아웃 파일을 쓸 수 없게 한다
+            refuse(format!(
+                "`template` must not be the layout file {LAYOUT_FILE:?} itself or a path under it"
+            ));
         }
     }
 
@@ -255,20 +258,21 @@ fn ends_in_a_name(template: &str) -> bool {
     !(template.ends_with('/') || template.ends_with("/."))
 }
 
-/// 템플릿 경로가 레이아웃 파일 자신인가 — 어떻게 적었든. **글자가 아니라 파일 시스템이 같은
-/// 파일로 보는지를 따진다.** macOS의 기본 파일 시스템은 이름의 대소문자를 가리지 않고(유니코드로
-/// 접는다) `Layout.JSON`도 `layout.jſon`(긴 s)도 `layout.json`과 같은 파일이다 — 구현 스펙 5절이 템플릿
-/// 이름을 정할 때 대소문자를 가리지 않는 것과 같은 까닭이다. 하위 폴더의 `layout.json`은 레이아웃
-/// 파일이 아니다.
-fn names_layout_file(template: &str) -> bool {
+/// 템플릿 경로가 레이아웃 파일 자신이거나 **그 이름의 폴더 아래**인가 — 어떻게 적었든. 첫 경로
+/// 조각만 본다: 자신이면 저장이 레이아웃 파일을 덮고, 그 아래면 저장이 `layout.json`이라는 폴더를
+/// 만들어 레이아웃 파일을 영영 쓸 수 없게 한다. 하위 폴더의 `layout.json`(`sub/layout.json`)은
+/// 레이아웃 파일이 아니다 — 여느 템플릿이다.
+///
+/// **글자가 아니라 파일 시스템이 같은 이름으로 보는지를 따진다.** macOS의 기본 파일 시스템은 이름의
+/// 대소문자를 가리지 않고(유니코드로 접는다) `Layout.JSON`도 `layout.jſon`(긴 s)도 `layout.json`과
+/// 같은 이름이다 — 구현 스펙 5절이 템플릿 이름을 정할 때 대소문자를 가리지 않는 것과 같은 까닭이다.
+/// 경로 조각이 모두 이름인 것은 폴더 밖 검사(`safe_rel`)가 먼저 지켰다 — `./`가 첫 조각을 가리지 못한다.
+fn at_or_under_layout_file(template: &str) -> bool {
     use std::path::{Component, Path};
-    let mut parts = Path::new(template).components();
-    match (parts.next(), parts.next()) {
-        (Some(Component::Normal(name)), None) => {
-            name.to_str().is_some_and(|name| folded(name) == LAYOUT_FILE)
-        }
-        _ => false,
-    }
+    matches!(
+        Path::new(template).components().next(),
+        Some(Component::Normal(name)) if name.to_str().is_some_and(|name| folded(name) == LAYOUT_FILE)
+    )
 }
 
 /// 이름을 접는다 — 대문자로 올렸다가 소문자로 내린다. 소문자로만 내리면 `ſ`처럼 이미 소문자인데
@@ -454,6 +458,10 @@ mod tests {
             // 레이아웃 파일 자신이다
             ("대소문자만 다른 레이아웃 파일 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "Layout.JSON" }"#), Some(vec![1, 0]), "layout.json"),
             ("접으면 레이아웃 파일인 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.jſon" }"#), Some(vec![1, 0]), "layout.json"),
+            // 레이아웃 파일 이름의 폴더 아래도 안 된다 — 저장이 `layout.json`이라는 폴더를 만들어, 그 뒤로
+            // 레이아웃 파일을 쓸 수 없다
+            ("레이아웃 파일 이름의 폴더 아래 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.json/x.md" }"#), Some(vec![1, 0]), "layout.json"),
+            ("대소문자만 다른 레이아웃 파일 이름의 폴더 아래 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "LAYOUT.JSON/x.md" }"#), Some(vec![1, 0]), "layout.json"),
             // 템플릿은 파일이다 — `/`로 끝나면 폴더를 가리킨다. 경로 조각이 끝의 `/`와 `.`을 떨궈
             // 폴더 밖 검사로는 걸리지 않는다
             ("`/`로 끝나는 템플릿", nested(r#"{ "pattern": "b.md", "kind": "file", "template": "layout.json/" }"#), Some(vec![1, 0]), "layout.json/"),

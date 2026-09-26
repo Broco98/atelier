@@ -766,6 +766,25 @@ mod tests {
         assert_eq!(everything_under(outer.path()), before);
     }
 
+    /// **레이아웃 파일 이름의 폴더 아래 템플릿은 거절되고 아무것도 쓰지 않는다.** 쓰면 `layout.json`이라는
+    /// 폴더가 서서 레이아웃 파일을 쓸 수 없게 되고, 그 모드는 사람이 되돌리기 전까지 깨진 채 남는다 —
+    /// 에이전트에게는 되돌리는 길이 없다(결정 21). 대소문자만 다른 이름도 macOS에서는 같은 폴더다.
+    #[test]
+    fn a_template_under_the_layout_file_name_is_refused_and_nothing_is_written() {
+        for template in ["layout.json/x.md", "LAYOUT.JSON/x.md"] {
+            let root = tempfile::tempdir().unwrap();
+            let layout = serde_json::json!({ "root": { "children": [
+                { "pattern": "a.md", "kind": "file", "template": template } ] } });
+            let outcome =
+                save_layout(root.path(), "maison", layout, &bodies(&[(template, "# x\n")])).unwrap();
+            let SaveOutcome::Refused(errors) = outcome else { panic!("{template}: 저장됐다: {outcome:?}") };
+            assert_eq!(errors.len(), 1, "{template}: {errors:?}");
+            assert_eq!(errors[0].path, Some(vec![0]), "{template}: {errors:?}");
+            assert!(errors[0].message.contains("layout.json"), "{template}: {errors:?}");
+            assert!(!root.path().join("layouts/maison").exists(), "{template}: 거절된 저장이 폴더를 만들었다");
+        }
+    }
+
     /// 어느 파일 항목도 가리키지 않는 본문은 거절된다 — 그 자리의 파일은 레이아웃이 모르는 파일일
     /// 수 있고, 저장은 그런 파일을 건드리지 않는다.
     #[test]

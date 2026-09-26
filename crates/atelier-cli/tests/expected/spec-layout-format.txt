@@ -20,7 +20,7 @@ A save is refused, and nothing is written, when:
 - a pattern has an unknown placeholder, uses one twice, or puts `{n}` and `{name}` side by side
 - two siblings have the same pattern
 - a file entry has `children`, or a folder entry has a `template`
-- a template path leaves the layout folder, does not end in a file name, or is `layout.json` itself in any letter case
+- a template path leaves the layout folder, does not end in a file name, or is `layout.json` itself or a path under it, in any letter case
 - a template has no body in `templates` and none in the layout folder
 - `templates` holds a body that no file entry points to
 Each error names its entry by its place under `root`, such as `root.children[1].children[0]`.
