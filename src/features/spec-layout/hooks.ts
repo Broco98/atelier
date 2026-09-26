@@ -7,7 +7,7 @@ import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
 import type { LayoutDraft } from "./draft";
 import { latestPreview, PREVIEW_DELAY_MS, type DraftPreview } from "./preview";
-import type { LayoutPreview, SpecLayoutJson, TemplateBodies } from "./types";
+import type { LayoutPreview } from "./types";
 
 // ["spec-layout"]으로 시작하는 쿼리(상태, 편집기의 레이아웃 읽기)가 한 번에 무효화된다 — 레이아웃
 // 폴더가 바뀌면 둘 다 낡는다(구현 스펙 3절).
@@ -85,10 +85,8 @@ export const specLayoutReadQuery = (id: Mode) =>
   });
 
 /** 편집기가 저장에 싣는 것 — 모드와, 초안의 레이아웃과 템플릿 본문 전부. */
-export interface LayoutWrite {
+export interface LayoutWrite extends LayoutDraft {
   id: Mode;
-  layout: SpecLayoutJson;
-  templates: TemplateBodies;
 }
 
 /**

@@ -214,11 +214,7 @@ function EditorScreen({
     const saved = draft;
     const refused = reserve(saved);
     try {
-      const answer = await write.mutateAsync({
-        id,
-        layout: saved.layout,
-        templates: saved.templates,
-      });
+      const answer = await write.mutateAsync({ id, ...saved });
       if (answer.errors.length === 0) return true;
       refused({ text: null, lines: [], errors: answer.errors, warnings: [] });
     } catch (e) {
