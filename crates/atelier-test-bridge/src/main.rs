@@ -156,6 +156,10 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("install_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
     ("uninstall_agent_hooks", |_| in_app_only("훅 설치 모듈이 앱 크레이트에 있습니다")),
+    // spec 레이아웃 상태 — `commands.rs`와 같은 코어 입구(`layout_states`)를 **진짜로** 탄다. 레이아웃은
+    // 모드의 홈이 아니라 데이터 루트 아래에 산다(`layouts/<id>/`). 읽기가 실패하는 길이 없다: 못 읽는
+    // 폴더는 그 모드의 행에 오류로 선다.
+    ("spec_layout_states", |_| ok(Ok(atelier_core::layout_states(&data_root())))),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];

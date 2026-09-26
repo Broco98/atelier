@@ -337,6 +337,16 @@ pub async fn uninstall_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>>
     Ok(crate::hooks::uninstall(&agent_home(), &hook_script()))
 }
 
+// spec 레이아웃(spec 레이아웃 구현 스펙 3절). 규칙은 전부 코어의 레이아웃 저장소에 있고 여기는 그것을
+// 부르기만 한다 — L4 다리도 같은 입구를 부른다. 레이아웃은 모드의 홈이 아니라 데이터 루트 아래에
+// 산다(`layouts/<id>/`). 인자가 있으면 이름은 `id`다: 모드 명령이 아니라 레이아웃 id를 받는다.
+
+/// 모드 둘의 레이아웃 상태 — 설정의 「spec 레이아웃」 페이지가 그린다. 아무것도 쓰지 않는다.
+#[tauri::command]
+pub async fn spec_layout_states() -> CmdResult<Vec<atelier_core::LayoutState>> {
+    Ok(atelier_core::layout_states(&atelier_core::data_root()))
+}
+
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
 /// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
 /// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).

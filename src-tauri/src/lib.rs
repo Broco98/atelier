@@ -290,6 +290,7 @@ pub fn run() {
             commands::agent_hooks,
             commands::install_agent_hooks,
             commands::uninstall_agent_hooks,
+            commands::spec_layout_states,
             commands::quit_app,
         ])
         .build(tauri::generate_context!())
