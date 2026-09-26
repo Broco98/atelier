@@ -9,45 +9,39 @@ import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
 // 환경(node)에서 돈다 — xterm을 부르는 자리는 스토어에 남고, 여기서는 「기다리는 포커스가 어떻게 바뀌나」와
 // 「붙는 순간 포커스를 주나」를 값으로 잰다. 화면에서 실제로 포커스가 오는지는 L3(`e2e/shell-focus.spec.ts`)가 본다.
 
-const 요청 = (id: number): PendingFocus => ({ id, by: "request" });
-const 붙음 = (id: number): PendingFocus => ({ id, by: "attach" });
-
 describe("기다리는 포커스", () => {
   it("붙어 있지 않은 셸을 요청하면 그 셸을 기다린다", () => {
-    expect(nextPendingFocus(null, { kind: "request", id: 3, attached: false })).toEqual(요청(3));
+    expect(nextPendingFocus(null, { kind: "request", id: 3, attached: false })).toBe(3);
   });
 
   // 붙어 있으면 스토어가 그 자리에서 포커스를 준다 — 기다릴 것이 없다. 앞 요청도 이 요청에 덮였다.
   it("붙어 있는 셸을 요청하면 그 자리에서 채워 기다리는 것이 없다", () => {
     expect(nextPendingFocus(null, { kind: "request", id: 3, attached: true })).toBeNull();
-    expect(nextPendingFocus(요청(5), { kind: "request", id: 3, attached: true })).toBeNull();
+    expect(nextPendingFocus(5, { kind: "request", id: 3, attached: true })).toBeNull();
   });
 
   it("새 요청이 앞 요청을 덮는다 — 한 번에 하나다", () => {
-    expect(nextPendingFocus(요청(3), { kind: "request", id: 4, attached: false })).toEqual(요청(4));
-    expect(nextPendingFocus(붙음(3), { kind: "request", id: 4, attached: false })).toEqual(요청(4));
+    expect(nextPendingFocus(3, { kind: "request", id: 4, attached: false })).toBe(4);
   });
 
   it("그 셸이 붙으면 한 번 소비한다", () => {
-    expect(nextPendingFocus(요청(3), { kind: "attached", id: 3 })).toBeNull();
-    expect(nextPendingFocus(붙음(3), { kind: "attached", id: 3 })).toBeNull();
+    expect(nextPendingFocus(3, { kind: "attached", id: 3 })).toBeNull();
   });
 
   // 화면을 옮기는 동안 다른 셸이 잠깐 붙어도 요청은 남는다 — 그 셸이 붙을 때까지.
   it("다른 셸이 붙으면 소비하지 않는다", () => {
-    expect(nextPendingFocus(요청(3), { kind: "attached", id: 4 })).toEqual(요청(3));
+    expect(nextPendingFocus(3, { kind: "attached", id: 4 })).toBe(3);
   });
 
   it("그 셸이 닫히면 버린다", () => {
-    expect(nextPendingFocus(요청(3), { kind: "closed", id: 3 })).toBeNull();
-    expect(nextPendingFocus(요청(3), { kind: "closed", id: 4 })).toEqual(요청(3));
+    expect(nextPendingFocus(3, { kind: "closed", id: 3 })).toBeNull();
+    expect(nextPendingFocus(3, { kind: "closed", id: 4 })).toBe(3);
   });
 
   // 열리지 못한 채 화면에서 떨어진 셸 — 사람이 떠났다. 남겨 두면 다른 셸이 붙을 때마다 포커스를 막는다.
   it("그 셸이 떨어지면 버린다", () => {
-    expect(nextPendingFocus(붙음(3), { kind: "detached", id: 3 })).toBeNull();
-    expect(nextPendingFocus(요청(3), { kind: "detached", id: 3 })).toBeNull();
-    expect(nextPendingFocus(요청(3), { kind: "detached", id: 4 })).toEqual(요청(3));
+    expect(nextPendingFocus(3, { kind: "detached", id: 3 })).toBeNull();
+    expect(nextPendingFocus(3, { kind: "detached", id: 4 })).toBe(3);
   });
 
   it("기다리는 것이 없으면 붙음 · 떨어짐 · 닫힘이 아무것도 안 만든다", () => {
@@ -61,9 +55,9 @@ describe("글꼴을 기다리는 붙음", () => {
   // 셸이 붙었는데 글꼴이 아직이라 못 열었다 — 그 붙음이 줄 포커스를 여는 순간(글꼴이 늦게 온 길)까지 들고 간다.
   // 이것이 없으면 콜드 스타트의 첫 셸은 늘 글꼴 길로 열리고, 그 길은 기다리는 것이 이 셸일 때만 주므로 포커스가
   // 영영 안 온다.
-  it("지금 붙었으면 포커스를 줄 자리면 그 셸의 붙음으로 기다린다", () => {
-    expect(deferAttach(1, null, "elsewhere")).toEqual(붙음(1));
-    expect(deferAttach(1, null, "shell")).toEqual(붙음(1));
+  it("지금 붙었으면 포커스를 줄 자리면 그 셸을 기다린다", () => {
+    expect(deferAttach(1, null, "elsewhere")).toBe(1);
+    expect(deferAttach(1, null, "shell")).toBe(1);
   });
 
   it("다른 입력칸에 포커스가 있으면 남기지 않는다", () => {
@@ -71,12 +65,13 @@ describe("글꼴을 기다리는 붙음", () => {
   });
 
   it("다른 셸의 요청을 덮지 않는다", () => {
-    expect(deferAttach(1, 요청(2), "elsewhere")).toEqual(요청(2));
+    expect(deferAttach(1, 2, "elsewhere")).toBe(2);
   });
 
-  // 같은 셸의 사람 요청은 붙음보다 강하다 — 낮추면 입력칸에 있을 때 요청한 셸이 포커스를 못 받는다.
-  it("그 셸의 요청은 그대로 둔다", () => {
-    expect(deferAttach(1, 요청(1), "elsewhere")).toEqual(요청(1));
+  // 이미 이 셸을 기다린다(사람이 불렀다) — 입력칸에 있어도 버리지 않는다. 줄지는 여는 순간 그때 자리로 다시 가른다.
+  it("그 셸을 기다리고 있으면 그대로 둔다", () => {
+    expect(deferAttach(1, 1, "elsewhere")).toBe(1);
+    expect(deferAttach(1, 1, "field")).toBe(1);
   });
 });
 
@@ -90,19 +85,16 @@ describe("붙는 순간 포커스를 주나", () => {
     // 사람이 팔레트나 이름 바꾸기 칸에 가 있다 — 요청하지 않은 셸이 빼앗지 않는다.
     ["다른 입력칸에 포커스가 있음", "attach", null, "field", false],
     // 기다리는 포커스가 다른 셸이다 — 화면을 옮기는 사이 잠깐 붙은 셸이 가로채지 않는다.
-    ["다른 셸을 기다림", "attach", 요청(2), "elsewhere", false],
-    ["다른 셸을 기다림(글꼴 길)", "fontLate", 요청(2), "elsewhere", false],
-    ["다른 셸의 붙음을 기다림", "attach", 붙음(2), "elsewhere", false],
-    ["이 셸을 기다림", "attach", 요청(1), "elsewhere", true],
-    // 사람이 이 셸을 불렀다 — 입력칸에서 불렀어도 간다. 빼앗지 않는 것은 요청하지 않은 셸이다.
-    ["이 셸을 기다림 · 입력칸", "attach", 요청(1), "field", true],
-    // 글꼴이 늦게 와 여는 길은 기다리는 포커스가 이 셸일 때만 준다.
+    ["다른 셸을 기다림", "attach", 2, "elsewhere", false],
+    ["다른 셸을 기다림(글꼴 길)", "fontLate", 2, "elsewhere", false],
+    ["이 셸을 기다림", "attach", 1, "elsewhere", true],
+    // 사람이 이 셸을 부른 **뒤에** 입력칸으로 갔다 — 요청했어도 빼앗지 않는다(입력칸 조건에는 예외가 없다).
+    ["이 셸을 기다림 · 입력칸", "attach", 1, "field", false],
+    // 글꼴이 늦게 와 여는 길은 기다리는 포커스가 이 셸일 때만 준다 — 요청이든 글꼴을 기다린 붙음이든 같다.
     ["글꼴 길 · 기다리는 것 없음", "fontLate", null, "elsewhere", false],
-    ["글꼴 길 · 이 셸을 기다림", "fontLate", 요청(1), "elsewhere", true],
-    ["글꼴 길 · 이 셸을 기다림 · 입력칸", "fontLate", 요청(1), "field", true],
-    // 글꼴을 기다린 붙음이 여는 순간 — 그사이 사람이 입력칸으로 갔으면 빼앗지 않는다.
-    ["글꼴 길 · 이 셸의 붙음", "fontLate", 붙음(1), "elsewhere", true],
-    ["글꼴 길 · 이 셸의 붙음 · 입력칸", "fontLate", 붙음(1), "field", false],
+    ["글꼴 길 · 이 셸을 기다림", "fontLate", 1, "elsewhere", true],
+    // 그사이 사람이 입력칸으로 갔으면 빼앗지 않는다.
+    ["글꼴 길 · 이 셸을 기다림 · 입력칸", "fontLate", 1, "field", false],
   ])("%s", (_name, kind, pending, place, give) => {
     expect(focusOnAttach({ kind, id: 1 }, pending, place)).toBe(give);
   });

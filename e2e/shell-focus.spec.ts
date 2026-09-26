@@ -108,7 +108,7 @@ test("이미 켜진 셸 탭을 다시 누르면 포커스가 그 셸로 온다",
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// ─── 요청하지 않은 셸은 늦게 열리면서 포커스를 빼앗지 않는다(스토리 47) ───
+// ─── 늦게 열린 셸은 입력칸의 포커스를 빼앗지 않는다(스토리 47) ───
 //
 // 셸은 글꼴이 온 뒤에야 열린다(`loadFont`). 그 틈에 사람이 다른 입력칸으로 갔으면 늦게 열린 셸이 그 포커스를 가져가면
 // 안 된다 — 한때 여는 함수 안의 포커스 한 줄에 조건이 없어 가져갔다. 틈은 글꼴을 붙잡아 세운다(`holdTerminalFonts`).
@@ -128,6 +128,31 @@ test("글꼴이 늦게 와 셸이 열려도 팔레트 입력칸의 포커스를 
 
   // **앵커** — 셸이 열리고 떴다. 포커스를 주는 줄은 여는 자리에서 곧바로 돌므로, 이 뒤에 입력칸이 포커스를 쥐고 있으면
   // 늦게 열린 셸이 안 가져간 것이다.
+  await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
+  await awaitSpawned(page, 1);
+  await expect(searchBox(page)).toBeFocused();
+  expect(await shellHasFocus(page)).toBe(false);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 요청한 셸이어도 같다 — 입력칸 조건에는 예외가 없다(티켓 16 · 프로세스 스펙 S21). 사람이 셸을 부른 **뒤에** 입력칸으로
+// 갔으면 그 입력칸이 지금의 뜻이다. 띠 · 셸 탭은 버튼이라 부르는 순간 입력칸에 있을 수 없으니(누른 버튼이 포커스를
+// 비운다), 입력칸 조건이 사람 요청을 이기는지는 이 순서로만 잰다. 한때 사람 요청이 입력칸 조건보다 앞서 여기가 빨갰다.
+test("요청한 셸도 늦게 열리면서 그 뒤에 간 팔레트 입력칸의 포커스를 빼앗지 않는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const releaseFonts = await holdTerminalFonts(page);
+  await page.goto("/terminal", { waitUntil: "domcontentloaded" });
+  const lit = page.locator('[data-tab="shell"] button[aria-pressed="true"]');
+  await expect(lit).toHaveCount(1);
+  // 글꼴이 아직이라 안 열렸다 — 누른 탭은 그 자리에서 포커스를 못 주고 기다리는 포커스로 적힌다.
+  await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(0);
+
+  await lit.click();
+  await page.keyboard.press("Meta+k");
+  await expect(searchBox(page)).toBeFocused();
+  await releaseFonts();
+
+  // **앵커** — 위 검사와 같다. 셸이 열리고 떴으니 포커스 줄은 이미 지나갔다.
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(1);
   await awaitSpawned(page, 1);
   await expect(searchBox(page)).toBeFocused();

@@ -29,12 +29,11 @@ export interface AttachEvent {
 }
 
 /**
- * 기다리는 포커스 — **한 번에 하나다.** `by`는 누가 남겼나:
- * - `request` — 사람이 셸로 가는 길을 눌렀다(`focusShell`). 그 셸이 붙으면 입력칸에 있었어도 간다.
- * - `attach` — 셸이 붙었는데 글꼴이 아직이라 못 열었다(`deferAttach`). 여는 순간 그 붙음이 줄 포커스를 준다 — 그사이
- *   사람이 입력칸으로 갔으면 안 준다. 요청보다 약하다.
+ * 기다리는 포커스 — 포커스를 기다리는 셸의 레지스트리 id다. **한 번에 하나다.** 남기는 자리는 둘이다: 사람이 셸로 가는
+ * 길을 눌렀다(`focusShell`), 셸이 붙었는데 글꼴이 아직이라 못 열었다(`deferAttach`). **둘은 무게가 같다** — 누가
+ * 남겼든 그 셸이 열리는 순간 포커스가 다른 입력칸에 있으면 안 준다(`focusOnAttach`). 그래서 누가 남겼는지는 적지 않는다.
  */
-export type PendingFocus = { id: number; by: "request" | "attach" } | null;
+export type PendingFocus = number | null;
 
 /** 지금 포커스가 앉은 자리. */
 export type FocusPlace =
@@ -67,35 +66,35 @@ export type PendingEvent =
  *   두면 다른 셸이 붙을 때마다 「다른 셸을 기다린다」로 포커스를 막는다. 열린 셸은 붙는 순간 이미 소비했다.
  */
 export function nextPendingFocus(pending: PendingFocus, event: PendingEvent): PendingFocus {
-  if (event.kind === "request") return event.attached ? null : { id: event.id, by: "request" };
-  return pending !== null && pending.id === event.id ? null : pending;
+  if (event.kind === "request") return event.attached ? null : event.id;
+  return pending === event.id ? null : pending;
 }
 
 /**
- * 셸이 붙었는데 **글꼴이 아직이라 못 열었다** — 지금 열렸으면 포커스를 받았을 자리면 그 붙음을 기다리는 포커스로
+ * 셸이 붙었는데 **글꼴이 아직이라 못 열었다** — 지금 열렸으면 포커스를 받았을 자리면 그 셸을 기다리는 포커스로
  * 남긴다. 글꼴 길은 기다리는 것이 이 셸일 때만 주므로(`focusOnAttach`), 이것이 없으면 콜드 스타트의 첫 셸은 포커스를
  * 영영 못 받는다 — 첫 셸은 늘 글꼴보다 먼저 붙는다.
  *
- * 다른 셸의 요청은 덮지 않는다(그 판정이 이미 거짓이다). 같은 셸의 사람 요청은 그대로 둔다 — 붙음으로 낮추면 입력칸에
- * 있던 사람이 부른 셸이 포커스를 못 받는다.
+ * 다른 셸의 요청은 덮지 않는다(그 판정이 이미 거짓이다). 이 셸을 이미 기다리고 있으면 입력칸에 있어도 그대로 남는다 —
+ * 여는 순간 다시 판정한다.
  */
 export function deferAttach(id: number, pending: PendingFocus, place: FocusPlace): PendingFocus {
-  if (pending !== null && pending.id === id) return pending;
-  return focusOnAttach({ kind: "attach", id }, pending, place) ? { id, by: "attach" } : pending;
+  return focusOnAttach({ kind: "attach", id }, pending, place) ? id : pending;
 }
 
 /**
  * 셸이 붙는 순간 xterm에 포커스를 주나(프로세스 스펙 S21). 위에서부터 처음 걸리는 줄이 답이다.
  *
  * 1. 기다리는 포커스가 **다른 셸**이면 안 준다.
- * 2. 기다리는 것이 이 셸의 **사람 요청**이면 준다 — 입력칸에서 불렀어도 간다. 빼앗지 않는 것은 요청하지 않은 셸이다.
- * 3. **글꼴이 늦게 와 여는 길**은 기다리는 포커스가 이 셸일 때만 준다.
- * 4. 포커스가 앱의 **다른 입력칸**(xterm 말고)에 있으면 안 준다.
- * 5. 그 밖(기다리는 것이 없고 셸이 붙음)은 지금처럼 준다 — 돌아온 사람은 이어 치려고 온 것이다.
+ * 2. **글꼴이 늦게 와 여는 길**은 기다리는 포커스가 이 셸일 때만 준다.
+ * 3. 포커스가 앱의 **다른 입력칸**(xterm 말고)에 있으면 안 준다 — **이 셸을 사람이 요청했어도 그렇다**(티켓 16 · S21은
+ *    이 조건에 예외를 두지 않는다). 지금 부르는 자리(띠 · 셸 탭)는 버튼이라 부르는 순간 포커스가 비워진다. 그러니 여기
+ *    걸리는 것은 부른 **뒤에** 입력칸으로 간 사람이고, 그 입력칸이 지금의 뜻이다. 한때 사람 요청이 이 줄보다 앞서, 요청한
+ *    셸이 늦게 열리며 그사이 연 팔레트의 글자를 가져갔다.
+ * 4. 그 밖(기다리는 것이 없거나 이 셸이고, 셸이 붙음)은 지금처럼 준다 — 돌아온 사람은 이어 치려고 온 것이다.
  */
 export function focusOnAttach(event: AttachEvent, pending: PendingFocus, place: FocusPlace): boolean {
-  if (pending !== null && pending.id !== event.id) return false;
-  if (pending !== null && pending.by === "request") return true;
+  if (pending !== null && pending !== event.id) return false;
   if (event.kind === "fontLate" && pending === null) return false;
   return place !== "field";
 }
