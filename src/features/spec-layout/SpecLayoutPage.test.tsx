@@ -107,13 +107,15 @@ describe("모드 두 행", () => {
 
   // ⋯의 메뉴에는 「기본값으로 되돌리기」 하나가 있다(티켓 10). 되돌릴 것은 가린 폴더라, 가린 폴더가 없는
   // 내장본 행에는 설 자리가 없다. 읽지 못한 행도 가린 폴더가 있으므로 선다 — 깨진 폴더도 되돌려진다.
+  //
+  // ⋯는 메뉴 부품의 트리거라 「메뉴를 연다」(`aria-haspopup`)를 정적 렌더에서도 단다. 「열렸다/닫혔다」
+  // (`aria-expanded`)는 부품이 마운트된 뒤에 달아 여기서는 안 보인다 — 여닫힘은 설정 L3가 메뉴 항목을 눌러 잰다.
   it("⋯는 고친 행과 읽지 못한 행에만 서고, 내장본 행에는 없다", () => {
     const html = render([edited, broken]);
     for (const name of ["Atelier", "Maison"]) {
       const menu = rowOf(html, name).match(/<button\b[^>]*aria-label="[^"]* 레이아웃 메뉴"[^>]*>/g);
       expect(menu, `${name} 행의 ⋯`).toHaveLength(1);
       expect(menu![0]).toContain('aria-haspopup="menu"');
-      expect(menu![0]).toContain('aria-expanded="false"');
     }
     const builtins = render([builtin("atelier"), builtin("maison")]);
     expect(builtins).not.toContain("레이아웃 메뉴");

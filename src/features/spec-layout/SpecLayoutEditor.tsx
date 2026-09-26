@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import PageHeader from "@/components/shell/PageHeader";
 import { showProblem } from "@/components/ui/confirm-store";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
 import { layoutDirRef } from "@/features/works/refs";
@@ -1161,31 +1161,18 @@ const ICON_CHOICES: (SpecIconName | null)[] = [null, ...(Object.keys(SPEC_ICONS)
  * 제목 옆의 아이콘 칸. 누르면 팝오버에서 앱의 아이콘 표(`SPEC_ICONS`)로 고른다. 칸은 지금 아이콘을
  * 그린다 — 없으면 흐린 「없음」, 모르는 이름이면 경고다.
  *
- * 키보드는 설정의 ⋯ 메뉴(`RevertMenu`)와 같다 — 열리면 고른 칸에 포커스가 가고, Esc는 닫기만 하며 포커스를
- * 칸으로 돌려준다(팝오버가 body 끝에 떠 있어 안 돌려주면 포커스가 `<body>`로 떨어진다).
+ * **카드는 Popover다**(develop 판 3 — 작업 ⓘ 메타와 같다). 열리면 고른 칸에 포커스가 가고(`initialFocus`), Esc로
+ * 닫으면 포커스가 칸으로 돌아온다 — 둘 다 부품이 한다. 고르면 닫고, 포커스는 역시 부품이 칸으로 돌려준다. 모달이
+ * 아니라(부품 기본, S46) 바깥을 누르면 카드가 닫히고 그 누른 것도 눌린다.
  */
 function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: string | null) => void }) {
   const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLButtonElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const Current = specIconOf(icon);
-  const close = () => {
-    setOpen(false);
-    anchor.current?.focus();
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    close();
-  };
   return (
-    <>
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((was) => !was)}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
         aria-label="아이콘 바꾸기"
-        aria-expanded={open}
         title={icon ?? "아이콘 없음"}
         className={cn(
           "flex size-9 shrink-0 items-center justify-center rounded-[10px] border transition-colors",
@@ -1203,55 +1190,49 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
         ) : (
           <Ban aria-hidden className="size-[18px] text-tertiary opacity-60" strokeWidth={1.9} />
         )}
-      </button>
-      {open && (
-        <PopoverPortal
-          anchorRef={anchor}
-          width={268}
-          onClose={() => setOpen(false)}
-          // 지금 고른 칸에 포커스가 간다 — 모르는 이름이라 고른 칸이 없으면 첫 칸(「아이콘 없음」)이다.
-          onPlaced={(card) =>
-            (
-              card.querySelector<HTMLElement>('[aria-checked="true"]') ??
-              card.querySelector<HTMLElement>('[role="radio"]')
-            )?.focus()
-          }
-        >
-          <div
-            role="radiogroup"
-            aria-label="아이콘"
-            onKeyDown={onKeyDown}
-            className="grid grid-cols-7 gap-0.5 p-1.5"
-          >
-            {ICON_CHOICES.map((choice) => {
-              const Glyph = choice === null ? Ban : SPEC_ICONS[choice];
-              const checked = choice === icon;
-              const name = choice ?? "아이콘 없음";
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  aria-label={name}
-                  title={name}
-                  onClick={() => {
-                    onPick(choice);
-                    close();
-                  }}
-                  className={cn(
-                    "flex h-[34px] items-center justify-center rounded-[8px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-                    checked ? "toggle-on" : "text-muted-foreground quiet-hover",
-                  )}
-                >
-                  <Glyph aria-hidden className="size-4" strokeWidth={1.9} />
-                </button>
-              );
-            })}
-          </div>
-        </PopoverPortal>
-      )}
-    </>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        aria-label="아이콘 바꾸기"
+        // 폭은 쓰는 자리의 것이다(S41) — 일곱 칸이 한 줄에 선다.
+        className="w-[268px]"
+        // 지금 고른 칸에 포커스가 간다 — 모르는 이름이라 고른 칸이 없으면 첫 칸(「아이콘 없음」)이다.
+        initialFocus={() =>
+          grid.current?.querySelector<HTMLElement>('[aria-checked="true"]') ??
+          grid.current?.querySelector<HTMLElement>('[role="radio"]') ??
+          true
+        }
+      >
+        {/* 안쪽 여백은 카드(`PopoverContent`)가 든다. */}
+        <div ref={grid} role="radiogroup" aria-label="아이콘" className="grid grid-cols-7 gap-0.5">
+          {ICON_CHOICES.map((choice) => {
+            const Glyph = choice === null ? Ban : SPEC_ICONS[choice];
+            const checked = choice === icon;
+            const name = choice ?? "아이콘 없음";
+            return (
+              <button
+                key={name}
+                type="button"
+                role="radio"
+                aria-checked={checked}
+                aria-label={name}
+                title={name}
+                onClick={() => {
+                  onPick(choice);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex h-[34px] items-center justify-center rounded-[8px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+                  checked ? "toggle-on" : "text-muted-foreground quiet-hover",
+                )}
+              >
+                <Glyph aria-hidden className="size-4" strokeWidth={1.9} />
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

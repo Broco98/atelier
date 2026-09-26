@@ -1,9 +1,14 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Bot, Check, MoreHorizontal, Pencil, RotateCcw, TriangleAlert, X } from "lucide-react";
 import { showProblem } from "@/components/ui/confirm-store";
-import { PopoverPortal } from "@/components/ui/popover-portal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { layoutDirRef } from "@/features/works/refs";
 import { modeNameOf } from "@/mode";
@@ -259,36 +264,25 @@ function ModeRow({
 }
 
 /**
- * 고친 행의 ⋯ — 메뉴에는 붉은 「기본값으로 되돌리기」 하나가 있다(프로토타입). 고르면 메뉴를 닫고
+ * 고친 행의 ⋯ — 메뉴에는 붉은 「기본값으로 되돌리기」 하나가 있다(프로토타입). 고르면 메뉴가 닫히고
  * 부르는 쪽에 알린다: 폴더를 지우는 일이라 확인 창을 먼저 거친다(페이지의 `revert`).
  *
- * 키보드는 `ShellPicker`와 같다 — 열리면 항목에 포커스가 가고, Esc와 Tab은 닫기만 하며 포커스를 ⋯로
- * 돌려준다(메뉴가 body 끝에 떠 있어 안 돌려주면 포커스가 `<body>`로 떨어진다).
+ * **메뉴 부품(`DropdownMenu`)이 다 한다**(develop 판 3 — 작업 ⋯와 같다) — 여닫이, 줄 옮기기, Esc 닫기와 ⋯로
+ * 포커스 돌려주기, 바깥 누르기가 닫기만 하는 것(S9). ⋯가 「메뉴를 연다」와 「열렸다/닫혔다」를 말한다
+ * (`aria-haspopup` · `aria-expanded`). 확인 창이 닫히면 포커스는 ⋯로 온다 — 창을 연 항목은 그때 이미
+ * 사라졌고, 부품의 포커스 기록이 그 앞 자리(⋯)로 돌려준다.
  */
 function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) {
+  // 열림을 여기서 든다 — ⋯의 켜짐(`toggle-on`)이 그것을 그린다.
   const [open, setOpen] = useState(false);
-  const anchor = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const noteId = useId();
   const label = `${name} 레이아웃 메뉴`;
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape" && event.key !== "Tab") return;
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(false);
-    anchor.current?.focus();
-  };
-
   return (
-    <>
-      <button
-        ref={anchor}
-        type="button"
-        onClick={() => setOpen((was) => !was)}
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
         aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
         // 켜짐이 있는 아이콘 버튼 — quiet-hover는 꺼진 가지 안에만 둔다(`index.css`의 그 유틸리티).
         className={cn(
           "flex size-7 shrink-0 items-center justify-center rounded-[8px] transition-colors",
@@ -296,44 +290,29 @@ function RevertMenu({ name, onRevert }: { name: string; onRevert: () => void }) 
         )}
       >
         <MoreHorizontal aria-hidden className="size-4" strokeWidth={2} />
-      </button>
-      {open && (
-        <PopoverPortal
-          anchorRef={anchor}
-          // 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다.
-          align="right"
-          width={260}
-          onClose={() => setOpen(false)}
-          onPlaced={(card) => card.querySelector<HTMLElement>('[role="menuitem"]')?.focus()}
+      </DropdownMenuTrigger>
+      {/* 오른쪽 맞춤이다 — ⋯가 행의 오른쪽 끝이라 왼쪽 맞춤이면 메뉴가 설정 열 밖으로 뻗는다. */}
+      <DropdownMenuContent align="end" width="layout" aria-label={label}>
+        <DropdownMenuItem
+          variant="destructive"
+          size="note"
+          // 이름은 머리 한 줄이고, 아래 줄은 그 설명이다 — 이름에 섞이면 「기본값으로 되돌리기폴더를…」이 된다.
+          aria-labelledby={titleId}
+          aria-describedby={noteId}
+          onClick={onRevert}
         >
-          <div role="menu" aria-label={label} onKeyDown={onKeyDown} className="flex flex-col p-1">
-            <button
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              // 이름은 머리 한 줄이고, 아래 줄은 그 설명이다 — 이름에 섞이면 「기본값으로 되돌리기폴더를…」이 된다.
-              aria-labelledby={titleId}
-              aria-describedby={noteId}
-              onClick={() => {
-                setOpen(false);
-                onRevert();
-              }}
-              className="flex w-full items-start gap-2.5 rounded-[7px] px-2.5 py-[7px] text-left text-destructive outline-none transition-colors hover:bg-destructive/10 focus:bg-destructive/10"
-            >
-              <RotateCcw aria-hidden className="mt-[3px] size-3.5 shrink-0" strokeWidth={1.9} />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span id={titleId} className="text-[13px] font-medium">
-                  기본값으로 되돌리기
-                </span>
-                <span id={noteId} className="text-[12px] leading-[1.5] text-tertiary">
-                  폴더를 지우고 내장본으로 돌아가요
-                </span>
-              </span>
-            </button>
-          </div>
-        </PopoverPortal>
-      )}
-    </>
+          <RotateCcw aria-hidden className="mt-[3px] size-3.5" strokeWidth={1.9} />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span id={titleId} className="text-[13px] font-medium">
+              기본값으로 되돌리기
+            </span>
+            <span id={noteId} className="text-[12px] leading-[1.5] text-tertiary">
+              폴더를 지우고 내장본으로 돌아가요
+            </span>
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
