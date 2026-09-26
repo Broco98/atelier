@@ -1,4 +1,4 @@
-import { sameDraft, type LayoutDraft } from "./draft";
+import { sameDraft, unsaved, type LayoutDraft } from "./draft";
 import type { LayoutPreview } from "./types";
 
 // 편집기가 엔진에 묻는 미리보기(spec 레이아웃 티켓 14 · 구현 스펙 5절). 편집기는 초안이 바뀔 때마다 짧은 지연 뒤에
@@ -27,7 +27,8 @@ export function latestPreview(now: DraftPreview | null, arrived: DraftPreview): 
 /**
  * 편집기의 저장을 열까(구현 스펙 5절 — 저장 가능 판정). 넷이 모두 맞아야 한다.
  *
- * - **고친 것이 있다** — 초안이 기준본(마지막으로 읽거나 저장한 것)과 내용으로 다르다(`sameDraft`).
+ * - **고친 것이 있다** — 초안이 기준본(마지막으로 읽거나 저장한 것)과 내용으로 다르다(`unsaved`). 기준본이 깨져
+ *   내용이 없으면(`null` — 깨짐 배너에서 초안을 유지했다, 티켓 15) 어떤 초안이든 고친 것이다: 저장하면 고쳐진다.
  * - **지금 초안에 대한 답이 도착했다** — 답은 초안의 내용에 대한 것이라 내용으로 견준다. 옛 초안의 답이
  *   오류가 없었다고 지금 초안도 그렇다는 법은 없다.
  * - **그 답에 오류가 없다** — 잘못된 동안 저장이 잠긴다(스토리 31).
@@ -35,11 +36,11 @@ export function latestPreview(now: DraftPreview | null, arrived: DraftPreview): 
  */
 export function canSave(state: {
   draft: LayoutDraft;
-  baseline: LayoutDraft;
+  baseline: LayoutDraft | null;
   preview: DraftPreview | null;
   saving: boolean;
 }): boolean {
   const { draft, baseline, preview, saving } = state;
-  if (saving || sameDraft(draft, baseline)) return false;
+  if (saving || !unsaved(draft, baseline)) return false;
   return preview !== null && sameDraft(preview.draft, draft) && preview.answer.errors.length === 0;
 }

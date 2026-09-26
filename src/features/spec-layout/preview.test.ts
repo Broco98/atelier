@@ -78,6 +78,14 @@ describe("저장 가능 판정", () => {
   it("저장 중이면 잠긴다", () => {
     expect(state({ saving: true })).toBe(false);
   });
+
+  // 깨짐 배너에서 [내 초안 유지]를 고르면 기준본이 깨진 것이 되어 내용이 없다(티켓 15). 유지한 초안을 저장하면
+  // 레이아웃이 고쳐진다 — 읽은 그대로의 초안이어도 저장이 열려야 한다.
+  it("기준본이 깨져 내용이 없으면 어떤 초안이든 고친 것이다", () => {
+    expect(state({ draft: baseline, baseline: null, preview: { seq: 1, draft: baseline, answer: CLEAN } })).toBe(
+      true,
+    );
+  });
 });
 
 // **요청마다 순번을 둔다**(구현 스펙 5절) — 초안을 빠르게 고치면 요청이 여럿 떠 있고, 답은 보낸 차례로 오지

@@ -279,6 +279,16 @@ export function sameDraft(a: LayoutDraft, b: LayoutDraft): boolean {
   return sameJson(a.layout, b.layout) && sameJson(a.templates, b.templates);
 }
 
+/**
+ * 초안에 저장하지 않은 것이 있는가 — 기준본(마지막으로 읽거나 저장한 것)과 내용으로 다르다(`sameDraft`). 기준본이
+ * 깨져 내용이 없으면(`null` — 깨짐 배너에서 초안을 유지했다) 어떤 초안이든 저장하지 않은 것이다.
+ *
+ * 저장 가능 판정의 「고친 것이 있다」(`canSave`), 떠날 때 물을지, 밖 변경 판정의 「초안이 있다」가 모두 이것이다.
+ */
+export function unsaved(draft: LayoutDraft, baseline: LayoutDraft | null): boolean {
+  return baseline === null || !sameDraft(draft, baseline);
+}
+
 /** JSON 값 둘이 같은가 — 객체는 키의 순서 없이, 배열은 순서대로 견준다. */
 function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
