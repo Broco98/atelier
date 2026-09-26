@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useId,
   useLayoutEffect,
   useRef,
@@ -15,6 +16,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Ban,
+  Eye,
   File,
   Folder,
   IndentDecrease,
@@ -56,7 +58,9 @@ import {
   type LayoutDraft,
   type TreeEdit,
 } from "./draft";
-import { specLayoutReadQuery, useWriteSpecLayout } from "./hooks";
+import { specLayoutReadQuery, useDraftPreview, useWriteSpecLayout } from "./hooks";
+import { canSave } from "./preview";
+import PreviewDialog from "./PreviewDialog";
 import type {
   LayoutEntryJson,
   LayoutError,
@@ -70,12 +74,13 @@ import type {
 // 두 열이 설정 한 열에 들지 않는다. 설정 nav는 그대로 서고 「spec 레이아웃」이 켜져 있다.
 //
 // **이 화면의 주된 쓰임은 마지막 손질이다**(결정 20). 레이아웃은 대부분 에이전트가 고치고, 사람은 여기서
-// 한 칸을 고친다. 그래서 머리에는 뒤로, 위치, 저장만 둔다 — id, 배지, 오류 개수, 「저장하지 않은 변경」,
-// 부탁 버튼, 설명 문구, 도움말은 두지 않는다(구현 스펙 5절 「배치」).
+// 한 칸을 고친다. 그래서 머리에는 뒤로, 위치, 「LLM이 받는 텍스트」, 저장만 둔다 — id, 배지, 오류 개수, 「저장하지
+// 않은 변경」, 부탁 버튼, 설명 문구, 도움말은 두지 않는다(구현 스펙 5절 「배치」).
 //
 // **규칙이 없다**(결정 13). 초안을 고치는 것은 `draft.ts`의 순수 함수이고, 이름 틀이 맞는지·폴더에 자식이
-// 있어도 되는지는 저장이 엔진의 검증으로 판정한다. 그 오류는 데이터로 와서(`{ path, message }`) 그 자리의
-// 항목 제목 아래에 붉은 줄로 선다.
+// 있어도 되는지는 엔진의 검증이 판정한다. 편집기는 초안이 바뀔 때마다 짧은 지연 뒤에 엔진에 묻고(미리보기,
+// 티켓 14), 그 오류는 데이터로 와서(`{ path, message }`) 그 자리의 항목 제목 아래에 붉은 줄로 서며 저장을
+// 잠근다. 같은 답의 글이 「LLM이 받는 텍스트」 팝업에 선다.
 //
 // 항목을 더하고 지우고 옮기는 것은 트리 위 한 줄과 트리 자신이다(티켓 13). 옮기는 주된 길은 **끌어다 놓기**이고
 // (공용 끌기 모듈을 딛는다), 옮기기 버튼 넷과 ⌥↑ ⌥↓ ⌥← ⌥→는 키보드 길이다.
@@ -115,8 +120,8 @@ function SpecLayoutEditor({ id, sidebarOpen }: { id: Mode; sidebarOpen: boolean 
 }
 
 /**
- * 편집 UI — 초안과 고른 자리를 든다. 초안은 **처음 읽은 것으로 한 번 짓는다**: 저장 뒤의 무효화나 감시가
- * 다시 읽어 와도 쓰던 초안을 덮지 않는다(밖 변경을 어떻게 받을지는 티켓 15가 정한다).
+ * 편집 UI — 초안과 고른 자리, 기준본, 초안의 미리보기를 든다. 초안은 **처음 읽은 것으로 한 번 짓는다**: 저장
+ * 뒤의 무효화나 감시가 다시 읽어 와도 쓰던 초안을 덮지 않는다(밖 변경을 어떻게 받을지는 티켓 15가 정한다).
  */
 function EditorScreen({
   id,
@@ -136,23 +141,37 @@ function EditorScreen({
     draft: { layout: read.layout, templates: read.templates },
     selected: (read.layout.root.children ?? []).length > 0 ? [0] : [],
   }));
-  // 마지막 저장이 돌려준 검증 오류. 다음 저장까지 그 자리에 선다 — 저장 전에 미리 알려 주고 저장을
-  // 잠그는 것은 초안마다 엔진에 묻는 미리보기의 일이다(티켓 14).
-  const [errors, setErrors] = useState<LayoutError[]>([]);
+  // 기준본 — 마지막으로 읽거나 저장한 것. 초안이 이것과 내용으로 다르면 「고친 것이 있다」(`canSave`). 저장이 되면
+  // 저장한 초안이 기준본이 된다.
+  const [baseline, setBaseline] = useState(draft);
+  // 초안마다 엔진에 묻는 미리보기 — 그 답의 오류가 항목 아래에 서고, 글이 팝업에 선다. 팝업을 닫은 동안에도 묻는다.
+  const { preview, reserve } = useDraftPreview(id, draft);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  // 팝업을 닫으면 포커스를 머리의 버튼에 돌려준다 — 팝업은 body 끝에 떠 있어, 안 돌려주면 `<body>`로 떨어진다.
+  const closePreview = useCallback(() => {
+    setPreviewOpen(false);
+    opener.current?.focus();
+  }, []);
   const write = useWriteSpecLayout();
+  const enabled = canSave({ draft, baseline, preview, saving: write.isPending });
 
-  // **템플릿은 늘 전부 넘긴다**(구현 스펙 3절) — 읽은 본문을 그대로 싣는다. 검증이 거절하면 답의 `errors`가
-  // 오고 아무것도 쓰이지 않았다: 초안은 그대로 남고 오류가 그 자리에 선다. 거절(throw)은 쓰다가 실패한
-  // 것뿐이다.
+  // **템플릿은 늘 전부 넘긴다**(구현 스펙 3절) — 읽은 본문을 그대로 싣는다. 저장은 지금 초안의 미리보기가 오류 없이
+  // 도착해야 열린다. 그래도 검증이 거절할 수 있다 — 미리보기와 저장 사이에 디스크가 바뀌었을 때(템플릿 파일이
+  // 사라졌다). 그 거절은 답의 `errors`로 오고 아무것도 쓰이지 않았다: 초안은 그대로 남고, 그 오류가 이 초안의 가장
+  // 새 판정이 되어 그 자리에 선다(`reserve`). 거절(throw)은 쓰다가 실패한 것뿐이다.
   const save = async () => {
-    if (write.isPending) return;
+    if (!enabled) return;
+    const saved = draft;
+    const refused = reserve(saved);
     try {
       const answer = await write.mutateAsync({
         id,
-        layout: draft.layout,
-        templates: draft.templates,
+        layout: saved.layout,
+        templates: saved.templates,
       });
-      setErrors(answer.errors);
+      if (answer.errors.length === 0) setBaseline(saved);
+      else refused({ text: null, lines: [], errors: answer.errors, warnings: [] });
     } catch (e) {
       await showProblem(`저장하지 못했습니다: ${e}`);
     }
@@ -164,22 +183,39 @@ function EditorScreen({
       sidebarOpen={sidebarOpen}
       onBack={onBack}
       actions={
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={write.isPending}
-          // 규격은 설정의 저장 버튼(`SettingsPage`의 `SaveButton`)과 같다 — 이 저장소의 주 버튼 하나다.
-          className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
-        >
-          {write.isPending ? "저장 중…" : "저장"}
-        </button>
+        <>
+          <button
+            ref={opener}
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={previewOpen}
+            className="inline-flex h-[30px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-[11px] text-[13.5px] font-medium text-muted-foreground transition-colors quiet-hover"
+          >
+            <Eye aria-hidden className="size-[15px]" strokeWidth={1.9} />
+            LLM이 받는 텍스트
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!enabled}
+            // 규격은 설정의 저장 버튼(`SettingsPage`의 `SaveButton`)과 같다 — 이 저장소의 주 버튼 하나다.
+            className="h-8 rounded-[10px] bg-primary px-4 text-[14px] font-medium text-primary-foreground transition-[filter] hover:brightness-[1.08] disabled:pointer-events-none disabled:opacity-40"
+          >
+            {write.isPending ? "저장 중…" : "저장"}
+          </button>
+        </>
       }
     >
+      {previewOpen && (
+        <PreviewDialog answer={preview?.answer ?? null} selected={selected} onClose={closePreview} />
+      )}
       <EditorColumns
         draft={draft}
         folder={read.folder}
         selected={selected}
-        errors={errors}
+        // 마지막으로 받은 답의 오류 — 초안을 고친 직후에는 아직 앞 초안의 것이다. 지연 뒤의 답이 그것을 바꾼다.
+        errors={preview?.answer.errors ?? []}
         onSelect={(path) => setView((now) => ({ ...now, selected: path }))}
         onChange={(change) => setView((now) => ({ ...now, draft: change(now.draft) }))}
         // 할 수 없는 조작(`null`)은 같은 상태를 돌려준다 — 다시 그리지 않는다.

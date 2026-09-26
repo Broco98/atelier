@@ -1,0 +1,117 @@
+import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { EntryPath } from "./draft";
+import type { LayoutPreview } from "./types";
+
+// 「LLM이 받는 텍스트」 팝업(spec 레이아웃 티켓 14 · 결정 11·28 · 구현 스펙 5절 「배치」). 편집기 머리의 버튼으로 연다 —
+// 늘 떠 있는 열이 아니다(프로토타입 뒤 사용자 선택). 보이는 글은 편집기가 마지막으로 받은 미리보기의 것이고, 그것은
+// 엔진이 지금 초안을 **저장하면 에이전트가 받을 글** 그대로다(스토리 29). 여기는 글을 짓지도 고치지도 않는다.
+
+/**
+ * 팝업 — 문서 최상위에 막(`modal-scrim`)을 깔고 가운데에 선다. 닫는 길은 [닫기], Esc, 바깥 누르기다(다른 모달과
+ * 같은 손버릇, `FullscreenModal`). 열리면 [닫기]에 포커스를 준다 — 포커스가 트리에 남아 있으면 ⌥화살표가 막 뒤의
+ * 항목을 옮긴다.
+ */
+function PreviewDialog({
+  answer,
+  selected,
+  onClose,
+}: {
+  answer: LayoutPreview | null;
+  selected: EntryPath;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const close = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    close.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="modal-scrim flex items-center justify-center p-9"
+      // 눌린 자리가 막 자신일 때만 닫는다 — 글을 끌어 고르다 막 위에서 손을 떼도 닫히지 않게(`FullscreenModal`).
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="flex h-[640px] max-h-full w-[760px] max-w-full flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
+      >
+        <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border pr-3 pl-5">
+          <h2 id={titleId} className="text-[15px] font-semibold tracking-[-0.01em]">
+            LLM이 받는 텍스트
+          </h2>
+          <span className="text-[12.5px] text-tertiary">저장 전 초안</span>
+          <button
+            ref={close}
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            title="닫기 (Esc)"
+            className="icon-button-quiet ml-auto size-[30px] text-muted-foreground"
+          >
+            <X aria-hidden className="size-4" strokeWidth={2} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar pt-3.5 pb-5 scroll-quiet">
+          <PreviewText answer={answer} selected={selected} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * 팝업의 본문 — 엔진이 준 글을 줄마다 그대로 보이고, **고른 항목의 줄을 칠해 둔다**(구현 스펙 5절 「배치」). 어느 줄이
+ * 그 항목의 것인지도 엔진이 준다(`lines`) — 줄 규칙은 render의 것이라 여기서 글을 다시 읽어 셈하지 않는다(결정 13).
+ * 머리 `spec/`을 골랐으면(`[]`) 방침 문단의 줄이다.
+ *
+ * **답에 오류가 있으면 글 대신 한 줄이다**(결정 28) — 저장이 잠겨 있으니 「저장하면 받을 글」이 없다. 답이 아직
+ * 오지 않았으면 아무것도 보이지 않는다.
+ */
+export function PreviewText({ answer, selected }: { answer: LayoutPreview | null; selected: EntryPath }) {
+  if (answer === null) return null;
+  if (answer.errors.length > 0 || answer.text === null) {
+    return <p className="px-5 text-[13px] leading-[1.6] text-tertiary">오류를 고치면 보여요</p>;
+  }
+  const held = answer.lines.find(
+    ({ path }) => path.length === selected.length && path.every((index, i) => index === selected[i]),
+  );
+  return (
+    <div className="font-mono text-[12px] leading-[1.65] text-foreground">
+      {answer.text.split("\n").map((line, index) => {
+        const picked = held !== undefined && index >= held.start && index < held.start + held.count;
+        return (
+          <div
+            key={index}
+            data-line=""
+            data-selected={picked ? "" : undefined}
+            className={cn("min-h-5 whitespace-pre-wrap break-words px-5", picked && "bg-primary/10")}
+          >
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default PreviewDialog;

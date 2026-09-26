@@ -4,6 +4,7 @@ import {
   BROKEN_MAISON_LAYOUT,
   MISSING_TEMPLATE_READ,
   SPEC_LAYOUT_READ,
+  SPEC_LAYOUT_RENDERED,
   SPEC_LAYOUT_STATES,
   UNREADABLE_MAISON_READ,
 } from "./fixtures";
@@ -60,8 +61,8 @@ test("모드 행의 [편집]을 누르면 편집기 주소가 열리고 읽기 �
   const reads = await ipcCallArgs(page, "read_spec_layout", "id");
   expect(reads.map(({ args }) => args)).toEqual([{ id: "atelier" }]);
 
-  // 위치는 세 칸이다 — `Settings / spec 레이아웃 / Atelier`
-  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃\s*\/\s*Atelier\s*저장$/);
+  // 위치는 세 칸이다 — `Settings / spec 레이아웃 / Atelier`. 머리의 동작은 「LLM이 받는 텍스트」와 저장이다(티켓 14).
+  await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃\s*\/\s*Atelier\s*LLM이 받는 텍스트\s*저장$/);
   // 트리는 최상위 항목부터다 — 맨 위 항목의 행이 없다(결정 26)
   await expect(page.getByRole("treeitem")).toHaveText([
     "overview.md",
@@ -493,7 +494,13 @@ test("항목을 끌다 Esc를 누르면 표시가 걷히고, 그 자리에서 �
 
   expect(await 트리(page)).toEqual(before);
   await expect(이름틀(page)).toHaveValue("overview.md");
-  expect(await saved(page)).toEqual(SPEC_LAYOUT_READ.layout);
+  // 초안이 그대로다 — 저장은 고친 것이 있어야 열리므로(티켓 14) 한 칸을 고쳐 저장해, 그 한 칸 말고는 읽은 것과
+  // 같은지 본다.
+  await 설명(page).fill("work의 요약, 고쳤다");
+  expect(await saved(page)).toEqual({
+    owner: "사람",
+    root: { ...READ_ROOT, children: [{ ...OVERVIEW, description: "work의 요약, 고쳤다" }, DECISIONS, ITERATION] },
+  });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -612,6 +619,131 @@ test("파일 추가는 고른 파일 뒤에 untitled.md를 세워 고르고, 휴
     owner: "사람",
     root: { ...READ_ROOT, children: [OVERVIEW, { pattern: "untitled.md", kind: "file" }, DECISIONS] },
   });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 저장 전에 보는 것(티켓 14) — 검증 오류와 「LLM이 받는 텍스트」. 편집기는 초안이 바뀔 때마다 짧은 지연 뒤에
+// `render_spec_layout`을 부른다. 답을 어느 초안의 것으로 받을지(순번)와 저장을 열지는 순수 함수의 seam이, 팝업의
+// 모양(글 대신 「오류를 고치면 보여요」)은 마크업 seam이 잰다. **이 층이 드는 것은 명령의 배선이다** — 고친 초안이
+// 실려 나가고, 그 답의 오류가 그 자리에 서며 저장을 잠그고, 그 답의 글이 팝업에 선다. 하네스는 인자마다 다른 답을
+// 주지 못하므로 「고친 초안이 실려 나갔다」는 IPC 기록으로 잰다.
+type RenderArgs = WriteArgs;
+
+/** 나간 `render_spec_layout`들의 인자, 나간 순서대로. */
+async function renders(page: Page): Promise<RenderArgs[]> {
+  return (await ipcCallArgs(page, "render_spec_layout", "id")).map(({ args }) => args as RenderArgs);
+}
+
+const 팝업 = (page: Page) => page.getByRole("dialog", { name: "LLM이 받는 텍스트", exact: true });
+const 미리보기 = (page: Page) => page.getByRole("button", { name: "LLM이 받는 텍스트", exact: true });
+
+test("편집기를 열면 읽은 초안이, 항목을 고치면 고친 초안이 미리보기 명령에 실려 나가고, 그 답이 온 뒤에야 저장이 풀린다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  // 연 초안도 한 번 묻는다 — 읽은 그대로다. 고친 것이 없으니 저장은 잠겨 있다.
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(1);
+  expect(await renders(page)).toEqual([
+    { id: "atelier", layout: SPEC_LAYOUT_READ.layout, templates: SPEC_LAYOUT_READ.templates },
+  ]);
+  await expect(저장(page)).toBeDisabled();
+
+  // 한 글자씩 쳐도 치는 동안에는 묻지 않는다 — 짧은 지연 뒤에 마지막 초안 하나를 묻는다.
+  await 행(page, "decisions.md").click();
+  await 설명(page).click();
+  await page.keyboard.type(", 버린 안", { delay: 20 });
+  await expect(저장(page)).toBeEnabled();
+  const asked = await renders(page);
+  expect(asked.length - 1).toBeLessThan(", 버린 안".length);
+  const { root } = SPEC_LAYOUT_READ.layout;
+  expect(asked[asked.length - 1]).toEqual({
+    id: "atelier",
+    layout: {
+      owner: "사람",
+      root: {
+        ...root,
+        children: [root.children![0], { ...root.children![1], description: "정한 것과 그 이유, 버린 안" }, root.children![2]],
+      },
+    },
+    templates: { "decisions.md": "# 결정\n" },
+  });
+  // 묻기만 했다 — 저장을 누르기 전에는 아무것도 쓰지 않는다
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **오류는 저장 전에 선다**(스토리 30·31) — 저장을 누르지 않아도 미리보기의 답에 오류가 있으면 그 자리의 항목 제목
+// 아래에 붉은 줄이 서고, 트리의 그 행에 표시가 붙으며, 고쳐도 저장이 잠긴다. 팝업은 글 대신 한 줄이다(결정 28).
+test("미리보기의 답에 오류가 있으면 저장 전에 그 항목 아래에 붉은 줄이 서고 저장이 잠기며, 팝업은 「오류를 고치면 보여요」다", async ({
+  page,
+}) => {
+  const message = "two siblings have the pattern `tickets`";
+  await installFixtureBackend(page, {
+    render_spec_layout: { text: null, lines: [], errors: [{ path: [2, 0], message }], warnings: [] },
+  });
+  await openEditor(page);
+
+  const 오류 = page.getByText(message, { exact: true });
+  await expect(page.getByRole("treeitem", { name: "tickets/ 검증 오류", exact: true })).toBeVisible();
+  await expect(오류).toHaveCount(0);
+  await page.getByRole("treeitem", { name: "tickets/ 검증 오류", exact: true }).click();
+  await expect(오류).toBeVisible();
+  await expect(오류).toHaveClass(/text-red-600/);
+  // 다른 항목에는 서지 않는다
+  await 행(page, "overview.md").click();
+  await expect(오류).toHaveCount(0);
+
+  // 고쳐도 — 그 초안의 답이 와도 — 오류가 있는 동안 저장이 잠긴다
+  const before = await callCount(page, "render_spec_layout");
+  await 설명(page).fill("work의 요약, 고쳤다");
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(before + 1);
+  await expect(저장(page)).toBeDisabled();
+
+  await 미리보기(page).click();
+  await expect(팝업(page)).toBeVisible();
+  await expect(팝업(page)).toContainText("오류를 고치면 보여요");
+  await expect(팝업(page).locator("[data-line]")).toHaveCount(0);
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 팝업은 편집기 머리의 버튼으로 연다 — 늘 떠 있는 열이 아니다(구현 스펙 5절 「배치」). 글은 받은 답 그대로이고, 고른
+// 항목의 줄(이름 줄, 템플릿 줄)이 칠해져 있다. 머리 `spec/`을 골랐으면 방침 문단의 줄이다.
+test("「LLM이 받는 텍스트」를 누르면 팝업이 미리보기의 글을 보이고 고른 항목의 줄이 칠해져 있으며, Esc로 닫힌다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+  await 행(page, "decisions.md").click();
+  await expect.poll(() => callCount(page, "render_spec_layout")).toBe(1);
+  await expect(팝업(page)).toHaveCount(0);
+
+  await 미리보기(page).click();
+  await expect(팝업(page)).toBeVisible();
+  expect(await 팝업(page).locator("[data-line]").allTextContents()).toEqual(SPEC_LAYOUT_RENDERED.text!.split("\n"));
+  expect(await 팝업(page).locator("[data-selected]").allTextContents()).toEqual([
+    "  decisions.md  정한 것과 그 이유",
+    "                Template: ~/.atelier/layouts/atelier/decisions.md",
+  ]);
+  const [line] = await 팝업(page).locator("[data-selected]").evaluateAll((rows) =>
+    rows.map((row) => getComputedStyle(row).backgroundColor),
+  );
+  expect(line).not.toBe("rgba(0, 0, 0, 0)");
+
+  await page.keyboard.press("Escape");
+  await expect(팝업(page)).toHaveCount(0);
+  await expect(미리보기(page)).toBeFocused();
+
+  await page.getByRole("button", { name: "spec/", exact: true }).click();
+  await 미리보기(page).click();
+  expect(await 팝업(page).locator("[data-selected]").allTextContents()).toEqual(["spec 폴더의 방침 문단."]);
+  await 팝업(page).getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(팝업(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
