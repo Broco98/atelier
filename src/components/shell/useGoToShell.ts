@@ -1,10 +1,11 @@
 import { useCallback } from "react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter, type NavigateOptions } from "@tanstack/react-router";
 import { modeOfOwner, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { focusShell, isOrphanedShell, selectShell } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { modeOf, routesOf, slugOf } from "@/mode";
+import { whenArrived } from "@/lib/arrival";
 import { viewProcesses } from "./processes-view";
 
 /**
@@ -37,13 +38,18 @@ import { viewProcesses } from "./processes-view";
  * 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다. 이웃 work(`sidebar-active-band`)이
  * 띠 처리기를 옮기면 이 함수를 부르는 줄만 옮기면 된다 — 한때 이 몸통이 `Sidebar.tsx`의 띠 처리기(`useOpenBand`) 안에 있었다.
  *
+ * **켜기와 요청은 이동이 닿은 순간이다**(`whenArrived` — develop 머지). spec 레이아웃 편집기의 떠날 때 확인이 이동을 막을 수
+ * 있어서다(`useConfirmLeave`). 한때 이동을 걸기 전에 켜고 요청했는데, 그러면 [계속 편집]에 막혀도 그 work의 탭은 바뀐 채,
+ * 요청은 그 셸을 기다리는 채 남아 다음에 붙는 다른 셸이 포커스를 못 받았다 — 주인 잃은 셸 갈림 뒤에 둔 까닭과 같은 함정이
+ * 막힌 이동 뒤에서 다시 열린 것이다. 닿음은 새 화면이 그려지기 전에 오므로 막히지 않는 길은 예전과 같다: 켜진 셸로 화면이
+ * 처음부터 서고, 요청은 그 셸이 붙기 전에 적힌다. 목적지는 이동과 같은 옵션으로 한 번 지어(`buildLocation`) 닿은 주소와 견준다.
+ *
  * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12 · 32). 그 work은 목록에 없어 가면 없는 work으로 간다 —
  * 대신 `Processes`로 간다: 그 화면의 주인 잃은 셸 묶음이 그 셸을 들고 [모두 닫기]를 든다. 가는 길은 토스트의 [보기]와 같은
  * 문이다(`viewProcesses`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다. 판 01~03에서는 그 세계의 주인 잃은 셸 토스트를 다시
  * 세우고 화면은 그대로였다.
  */
 export default function useGoToShell(): (shell: { id: number; owner: ShellOwner }) => void {
-  const navigate = useNavigate();
   const router = useRouter();
 
   return useCallback(
@@ -52,18 +58,23 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
         viewProcesses();
         return;
       }
-      focusShell(id);
-      selectShell(id);
+      const go = (target: NavigateOptions) => {
+        whenArrived(router, router.buildLocation(target).href, () => {
+          focusShell(id);
+          selectShell(id);
+        });
+        void router.navigate(target);
+      };
       const mode = modeOfOwner(owner);
       const routes = routesOf(mode);
       const slug = slugOfOwner(owner);
       if (slug === null) {
-        void navigate({ to: routes.terminal });
+        go({ to: routes.terminal });
         return;
       }
       const pathname = router.state.location.pathname;
       const here = modeOf(pathname) === mode && slugOf(pathname) === slug;
-      void navigate({
+      go({
         to: routes.item,
         params: { slug },
         search: here
@@ -72,6 +83,6 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
         replace: here,
       });
     },
-    [navigate, router],
+    [router],
   );
 }

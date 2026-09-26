@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 import { useBlocker, type ShouldBlockFn } from "@tanstack/react-router";
 import { askChoice } from "@/components/ui/confirm-store";
+import { announceStay } from "@/lib/arrival";
 
 // 떠날 때 확인(spec 레이아웃 티켓 15 · 결정 27 · 구현 스펙 5절 「편집기의 저장은 따로다」). 저장하지 않은 초안을 두고
 // 편집기를 떠나면 묻는다 — **이 저장소의 첫 「떠날 때 확인」이다.**
@@ -46,6 +47,9 @@ export async function askLeave(savable: boolean): Promise<LeaveChoice> {
  * - 저장하지 않은 것이 없으면(`unsaved`가 거짓) 묻지 않는다.
  * - [저장하고 나가기]는 저장이 **되어야** 떠난다. 저장이 오류 데이터로 돌아오거나 쓰다가 실패하면 편집기에 남아
  *   그 까닭을 보인다 — `save`가 그것을 보이고 거짓을 준다.
+ * - **막으면 알린다**(`announceStay` — develop 머지). 라우터의 막기는 막았다는 것을 이동을 건 쪽에 알리지 않는다. 이동이
+ *   닿기를 기다리던 일(⌘J가 미뤄 둔 셸 켜기와 포커스 요청 — `whenArrived`)이 이것으로 거둬진다. 안 거두면 [계속 편집]
+ *   뒤에 그 요청이 남아 다음에 같은 화면에 닿는 이동에서 되살아난다.
  *
  * 물음은 이동이 일어난 순간의 값으로 한다 — 막는 함수는 한 번 걸어 두고, 값은 렌더마다 갈아 끼운다.
  */
@@ -57,9 +61,9 @@ export function useConfirmLeave(state: { unsaved: boolean; savable: boolean; sav
   const shouldBlockFn = useCallback<ShouldBlockFn>(async ({ current, next }) => {
     if (next.pathname === current.pathname || !latest.current.unsaved) return false;
     const choice = await askLeave(latest.current.savable);
-    if (choice === "stay") return true;
-    if (choice === "discard") return false;
-    return !(await latest.current.save());
+    const stay = choice === "stay" || (choice === "save" && !(await latest.current.save()));
+    if (stay) announceStay();
+    return stay;
   }, []);
   // 창을 닫는 것(beforeunload)은 받지 않는다 — 앱 종료는 종료 확인의 몫이다.
   useBlocker({ shouldBlockFn, enableBeforeUnload: false });
