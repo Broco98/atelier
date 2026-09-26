@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
@@ -9,6 +10,7 @@ import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
 import { quitShellCounts } from "@/features/terminal/terminal-store";
+import { invalidateWorks } from "@/features/works/hooks";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
@@ -85,6 +87,22 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, [router]);
+
+  // **work 목록이 바뀌었다는 알림을 듣는 자리가 여기 하나다**(프로세스 결정 18 ① · 티켓 14). 감시자(`watcher.rs`)가 works/
+  // 아래가 바뀔 때마다 쏜다 — 에이전트가 spec을 쓰는 동안은 쉬지 않고 온다. 목록을 쓰는 훅이 저마다 들으면 부르는
+  // 자리(사이드바 · 작업 화면 · 프로젝트 상세 · 아카이브 …)마다 구독이 붙어, 이벤트 한 번에 조회가 그 수만큼 돌았다(작업
+  // 화면에서 넷). 셸은 어느 화면에서든 서 있으므로 여기서 한 번이면 다 덮는다. 조회 중에 온 것의 합치기, 옮기기 중 미룸,
+  // 아카이브 목록과 저쪽 세계는 무효화 문(`invalidateWorks`)이 든다 — 이 자리는 배선뿐이다. 이벤트의 모양이 바뀌어도
+  // (감시자가 경로를 싣는 날) 여기 한 자리만 고친다. 이벤트에는 기다릴 사람이 없어 반환을 버린다.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const unlisten = listen("works:changed", () => {
+      void invalidateWorks(queryClient);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [queryClient]);
 
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
   // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open` 바로 옆인 것은 그쪽도

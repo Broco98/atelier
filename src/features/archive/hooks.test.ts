@@ -9,8 +9,8 @@ import type { Mode } from "@/mode";
 import type { ArchiveEntry } from "./types";
 
 // works 쪽과 같은 계약이고 근거도 같다(`works/hooks.test.ts`). **아카이빙은 works에서
-// 하나가 사라지는 일**이라 이쪽도 `works:changed`를 듣는데, 그때 지우는 것이 한 세계뿐이면
-// 저쪽 세계의 아카이브 목록만 조용히 낡는다.
+// 하나가 사라지는 일**이라 `works:changed`가 오면 목록 무효화 문이 이쪽도 지우는데, 그때
+// 지우는 것이 한 세계뿐이면 저쪽 세계의 아카이브 목록만 조용히 낡는다.
 // **훅이 짓는 키를 그대로 쓴다** — 손으로 같은 모양을 다시 지으면 진짜 키에서 `mode`가
 // 빠져도 이 파일이 초록이다(works 쪽 `specKey`와 같은 이유).
 const docsKey = (mode: Mode) => archivedDocsQuery(mode, "치운-가").queryKey;

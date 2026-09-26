@@ -1,10 +1,12 @@
 /// <reference types="node" />
-// 소스 스캔 한 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
-import { readFileSync } from "fs";
+// 소스 스캔 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+import { readdirSync, readFileSync } from "fs";
+import { join } from "path";
 import { fileURLToPath } from "url";
 import { MutationObserver, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { dialogStore } from "@/components/ui/confirm-store";
+import { archiveQuery } from "@/features/archive/hooks";
 import {
   invalidateWorks,
   moveWorkOptions,
@@ -97,6 +99,43 @@ describe("무효화하는 문", () => {
   it("이 파일에서 캐시를 지우는 자리가 하나다", () => {
     const source = readFileSync(fileURLToPath(new URL("./hooks.ts", import.meta.url)), "utf8");
     expect(source.split("invalidateQueries(").length - 1).toBe(1);
+  });
+});
+
+// **`works:changed`를 듣는 자리는 앱 루트 하나다**(프로세스 결정 18 ① · 티켓 14). 목록을 쓰는 훅이 저마다 들으면
+// 부르는 자리(사이드바 · 사이드바 work 목록 · works 라우트 · 작업 화면 · 프로젝트 상세 · 아카이브 둘)마다 구독이 붙어,
+// 이벤트 한 번에 목록 조회가 그 수만큼 돈다 — 워크트리 21개면 `git status` 84번이다. L3가 화면 셋에서 살아 있는 구독 수를
+// 재지만 화면은 더 있다. 그래서 여기서는 **소스 전체**를 훑는다: 구독이 서는 파일이 앱 셸 하나여야 한다.
+//
+// 아카이브 목록도 같은 문을 탄다 — 아카이브 무효화를 부르는 자리가 그 문 하나여야 합치기를 함께 받는다(아래 「합치기 문」).
+const src = fileURLToPath(new URL("../..", import.meta.url));
+
+/** 화면 소스(테스트 파일을 뺀 `src`의 `.ts` · `.tsx`)마다 `pattern`이 몇 번 서는가. 0인 파일은 안 싣는다. */
+function occurrences(pattern: RegExp): Record<string, number> {
+  const names = readdirSync(src, { recursive: true, encoding: "utf8" }).filter(
+    (name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name),
+  );
+  // 훑기가 무너지면 아래 검사가 빈 표를 통과시킬 뻔한다 — 여기서 먼저 선다.
+  expect(names.length, "src에서 소스 파일을 하나도 찾지 못했다").toBeGreaterThan(0);
+  const found: Record<string, number> = {};
+  for (const name of names) {
+    const count = [...readFileSync(join(src, name), "utf8").matchAll(pattern)].length;
+    if (count > 0) found[name.split("\\").join("/")] = count;
+  }
+  return found;
+}
+
+describe("works:changed를 듣는 자리", () => {
+  it("앱 셸 한 곳에서 한 번 듣고, 그 구독이 무효화 문을 부른다", () => {
+    expect(occurrences(/listen(?:<[^>]*>)?\(\s*"works:changed"/g)).toEqual({
+      "components/shell/AppShell.tsx": 1,
+    });
+    const shell = readFileSync(join(src, "components/shell/AppShell.tsx"), "utf8");
+    expect(shell).toMatch(/listen\("works:changed", \(\) => \{\s*void invalidateWorks\(queryClient\);/);
+  });
+
+  it("아카이브 무효화를 부르는 자리가 목록 무효화 문 하나다", () => {
+    expect(occurrences(/(?<!function )invalidateArchive\(/g)).toEqual({ "features/works/hooks.ts": 1 });
   });
 });
 
@@ -451,6 +490,9 @@ describe("저쪽 세계를 함께 읽는 문", () => {
   // 읽은 목록 — 그 work이 든 — 을 성공으로 앉히고, 그 세계를 다시 읽을 까닭이 사라진다(다음 이벤트까지 주인 잃은 셸을 못 본다).
   // 재는 것은 결과다: 둘째 무효화 **뒤에** 나간 조회가 있고, 마지막에 앉은 목록이 그 조회의 답이다. 끊고 다시 부르든 끝난 뒤
   // 한 번 더 부르든 초록이다 — 둘째 무효화 뒤에 나간 조회가 없으면 빨갛다.
+  //
+  // 둘째 무효화 앞의 조회는 **두 세계 모두** 답한다. 합치기 문(티켓 14)은 도는 조회가 모두 끝난 뒤에 한 번 더 읽으므로,
+  // 지금 세계의 조회가 남아 있으면 뒤따르는 한 번이 아직 안 나간다 — 그것은 이 검사가 재는 경쟁이 아니다.
   const isMaison = (call: Call) => (call.args as { mode: Mode }).mode === "maison";
   /** 아카이브 전(`x`가 있다)과 뒤(`x`가 없다)의 Maison 목록. */
   const BEFORE_ARCHIVE = [row("a"), row("x")];
@@ -468,6 +510,7 @@ describe("저쪽 세계를 함께 읽는 문", () => {
       void invalidateWorks(client);
       await settle();
       answer("list_works", BEFORE_ARCHIVE, (call) => isMaison(call) && calls.indexOf(call) < mark);
+      answer("list_works", OLD, (call) => !isMaison(call) && calls.indexOf(call) < mark);
       await settle();
 
       expect(waiting("list_works", afterMark), "둘째 무효화 뒤에 저쪽 세계를 다시 읽지 않았다").toHaveLength(1);
@@ -490,5 +533,151 @@ describe("저쪽 세계를 함께 읽는 문", () => {
     expect(client.getQueryState(worksQuery("maison").queryKey)).toBeUndefined();
     calls.length = 0;
     await archivedWhileReading(client);
+  });
+});
+
+// **합치기 문**(프로세스 스펙 판 02 ① · S20 · 티켓 14). 에이전트가 spec을 쉬지 않고 쓰면 `works:changed`가 조회보다
+// 자주 온다. 그때마다 도는 조회를 버리고 새로 부르면 코어는 버려진 조회까지 다 돈다(IPC는 취소되지 않는다). 그래서
+// 조회 중에 온 무효화는 **표시만** 하고, 도는 조회가 끝나면 **한 번 더** 읽는다.
+//
+// 표시만 한 쪽이 받는 promise는 **뒤따르는 한 번**의 것이다. 도는 조회의 것을 주면 삭제의 진행 표시가 쓰기 **전**
+// 파일을 읽었을 수 있는 조회에서 걷혀, 방금 지운 work이 브레드크럼과 본문에 잠깐 다시 선다(스토리 52 · `invalidateWorks`
+// 머리말의 계약).
+describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝난 뒤 한 번 더", () => {
+  const listCalls = () => calls.filter((call) => call.command === "list_works");
+
+  it("조회 중에 무효화가 N번 오면, 도는 조회를 버리지 않고 끝난 뒤 한 번만 더 돈다", async () => {
+    const { client, shown } = await listed();
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+
+    for (let n = 0; n < 3; n += 1) void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_works"), "도는 조회를 버리고 새로 불렀다").toHaveLength(1);
+
+    answer("list_works", OLD);
+    await settle();
+    expect(waiting("list_works"), "끝난 뒤 한 번 더 읽지 않았다").toHaveLength(1);
+    answer("list_works", NEW);
+    await settle();
+    expect(shown()).toBe("cab");
+    // 첫 목록 · 도는 조회 · 뒤따르는 한 번 — 그 뒤로는 멎는다.
+    expect(listCalls()).toHaveLength(3);
+    expect(waiting("list_works")).toHaveLength(0);
+  });
+
+  it("표시만 한 쪽의 promise는 뒤따르는 조회가 끝난 뒤에 풀린다 — 도는 조회가 끝났을 때가 아니다", async () => {
+    const { client } = await listed();
+    const done = { running: false, marked: false };
+    void invalidateWorks(client).then(() => (done.running = true));
+    await settle();
+
+    const marked = invalidateWorks(client);
+    const alsoMarked = invalidateWorks(client);
+    void marked.then(() => (done.marked = true));
+
+    answer("list_works", OLD);
+    await settle();
+    expect(done.running, "도는 조회를 부른 쪽은 그 조회가 끝나면 풀린다").toBe(true);
+    expect(done.marked, "표시만 한 쪽이 쓰기 전 파일을 읽었을 수 있는 조회에서 풀렸다").toBe(false);
+
+    answer("list_works", NEW);
+    await settle();
+    expect(done.marked).toBe(true);
+    // 같은 회차에 온 무효화는 뒤따르는 한 번의 promise 하나를 나눠 갖는다.
+    expect(alsoMarked).toBe(marked);
+  });
+
+  // 도는 조회가 이 문이 띄운 것이 아니어도 같다 — 화면이 처음 선 순간의 조회(값이 없어 react-query가 `cancelRefetch`로도 안
+  // 끊는다)에 합류하면, 그 답이 쓰기 전 목록이어도 무효 표시가 걷히고 promise가 풀린다.
+  it("화면이 처음 부른 조회가 도는 중이어도 거기 합류하지 않고 끝난 뒤 한 번 더 읽는다", async () => {
+    calls.length = 0;
+    const client = new QueryClient();
+    new QueryObserver(client, worksQuery("atelier")).subscribe(() => {});
+    await settle();
+    expect(waiting("list_works")).toHaveLength(1);
+
+    let done = false;
+    void invalidateWorks(client).then(() => (done = true));
+    await settle();
+    answer("list_works", OLD);
+    await settle();
+    expect(done).toBe(false);
+    expect(waiting("list_works"), "처음 부른 조회에 합류하고 다시 안 읽었다").toHaveLength(1);
+
+    answer("list_works", NEW);
+    await settle();
+    expect(done).toBe(true);
+    expect(slugsOf(client.getQueryData(worksQuery("atelier").queryKey))).toBe("cab");
+  });
+
+  // 옮기기는 도는 목록 조회를 끊고(`moveWorkOptions`의 1) 그동안 온 무효화를 끝난 뒤로 미룬다(S9). 표시해 둔 한 번이
+  // 옮기기 도중에 풀려 나가면 쓰기 전 순서 파일을 읽고, 끝난 뒤의 미룬 한 번과 함께 두 번이 된다.
+  it("옮기기 중 미룸과 겹쳐도 뒤따르는 조회는 한 번이고, 옮기기가 끝난 뒤에 나간다", async () => {
+    const { client, shown } = await listed();
+    void invalidateWorks(client);
+    await settle();
+    void invalidateWorks(client);
+    const moveStart = calls.length;
+    move(client);
+    await settle();
+    void invalidateWorks(client);
+    await settle();
+    expect(listCalls().filter((call) => calls.indexOf(call) >= moveStart), "옮기기 도중에 목록을 읽었다").toHaveLength(0);
+
+    answer("move_work", NEW);
+    await settle();
+    await settle();
+    const after = listCalls().filter((call) => calls.indexOf(call) >= moveStart);
+    expect(after).toHaveLength(1);
+    expect(after[0].beforeMoveAnswered).toBe(false);
+    answer("list_works", NEW, (call) => calls.indexOf(call) >= moveStart);
+    await settle();
+    expect(shown()).toBe("cab");
+    expect(waiting("list_works", (call) => calls.indexOf(call) >= moveStart)).toHaveLength(0);
+  });
+
+  // **아카이브 목록도 같은 문을 탄다**(스펙 판 02 ①의 아카이브 줄). 아카이브 폴더는 감시하지 않지만 아카이빙은 언제나
+  // works/에서 하나가 사라지는 일이라 `works:changed`가 함께 온다 — 그 한 번에 아카이브 목록도 한 번이고 합치기를 받는다.
+  it("아카이브 목록도 이 문으로 다시 읽고, 조회 중에 온 무효화는 끝난 뒤 한 번으로 합친다", async () => {
+    calls.length = 0;
+    const client = new QueryClient();
+    new QueryObserver(client, archiveQuery("atelier")).subscribe(() => {});
+    await settle();
+    expect(answer("list_archive", [])).toBe(1);
+    await settle();
+
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_archive"), "목록 무효화 문이 아카이브를 안 읽었다").toHaveLength(1);
+    void invalidateWorks(client);
+    void invalidateWorks(client);
+    await settle();
+    expect(waiting("list_archive")).toHaveLength(1);
+
+    answer("list_archive", []);
+    await settle();
+    expect(waiting("list_archive")).toHaveLength(1);
+    answer("list_archive", []);
+    await settle();
+    expect(waiting("list_archive")).toHaveLength(0);
+  });
+});
+
+// **work 목록은 창으로 돌아올 때 다시 읽지 않는다**(프로세스 결정 18 ①). 변화는 감시자가 이미 알린다 — 창을 오갈 때마다
+// 워크트리마다 `git status`를 돌 까닭이 없다. 다른 쿼리의 기본값은 그대로다.
+//
+// **이것을 L3에 두지 않는다.** TanStack v5는 창 `focus`가 아니라 `visibilitychange`만 듣고(`focusManager`), 그마저
+// `staleTime` 30초 안이면 다시 부르지 않는다. 그래서 창 포커스를 쏘는 L3는 이 옵션과 상관없이 초록이다(스펙 리뷰 코드 8).
+// 값으로 잰다.
+describe("창 포커스 재조회", () => {
+  it("work 목록 쿼리는 두 세계 모두 끈다", () => {
+    for (const mode of ALL_MODES) expect(worksQuery(mode).refetchOnWindowFocus, mode).toBe(false);
+  });
+
+  it("다른 쿼리는 기본값 그대로다", () => {
+    expect(specFileQuery("atelier", "가", "overview.md").refetchOnWindowFocus).toBeUndefined();
+    expect(archiveQuery("atelier").refetchOnWindowFocus).toBeUndefined();
   });
 });
