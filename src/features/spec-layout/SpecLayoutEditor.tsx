@@ -34,7 +34,7 @@ import { PopoverPortal } from "@/components/ui/popover-portal";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
 import { layoutDirRef } from "@/features/works/refs";
-import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
+import { armDrag, cancelPress, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { cn } from "@/lib/utils";
 import { modeNameOf, type Mode } from "@/mode";
 import {
@@ -167,7 +167,7 @@ function EditorScreen({
 
   // 새로 읽은 것을 받는다 — 초안을 버리고 그것을 보인다. 고르던 항목이 새것에도 있으면 자리가 밀렸어도 그 항목을
   // 고른다(`followSelection`). 깨졌으면 「읽지 못함」 화면이라 미리보기 팝업도 닫는다 — 열린 채로 두면 고쳐져 편집 UI가
-  // 돌아올 때 저절로 다시 뜬다. 끄던 항목이 있으면 트리(`EntryTree`)가 그 끌기를 거둔다.
+  // 돌아올 때 저절로 다시 뜬다. 누르거나 끄던 항목이 있으면 트리(`EntryTree`)가 그 눌림을 거둔다.
   const take = (fresh: SpecLayoutRead) => {
     const next = viewOf(fresh, view);
     setBaseline(fresh);
@@ -646,16 +646,19 @@ function EntryTree({
     latest.current = draft;
   });
 
-  // **끄는 도중 초안이 바뀌면 끌기를 거둔다** — 끌기는 놓기 전까지 초안이 아니라, 그동안 밖 변경은 트리를 조용히
-  // 갈아 끼운다(판정 3번). 끌리는 항목(`from`)과 흐려진 행이 인덱스 경로라 새 트리에서는 다른 항목을 가리킨다 — 그대로
-  // 두면 놓는 순간 그 자리에 새로 선 항목이 옮겨 간다. 작업 행 목록(UI개선 스펙 S8)과 같은 길이다: Esc처럼 아무것도
-  // 안 부른다. 제 놓기는 여기 걸리지 않는다 — 공용 모듈이 놓은 뒤 곧바로 상태를 비워, 새 초안이 그려질 때는 끌기가 없다.
-  // 문턱 전의 눌림은 거두지 않는다(작업 행 목록과 같다).
+  // **누르거나 끄는 도중 초안이 바뀌면 그 눌림을 거둔다** — 끌기는 놓기 전까지 초안이 아니라, 그동안 밖 변경은 트리를
+  // 조용히 갈아 끼운다(판정 3번). 끌리는 항목(`from`)과 흐려진 행이 인덱스 경로라 새 트리에서는 다른 항목을 가리킨다 —
+  // 그대로 두면 놓는 순간 그 자리에 새로 선 항목이 옮겨 간다. 문턱 뒤면 Esc처럼 아무것도 안 부른다.
+  //
+  // **문턱 전의 눌림도 거둔다.** `from`은 누른 순간 잡은 인덱스 경로라, 남겨 두면 문턱에서 그 경로의 새 항목으로 끌기가
+  // 선다. 작업 행 목록(UI개선 스펙 S8)이 문턱 전을 두는 것과 다른 까닭이다 — 그쪽 원천은 slug라 목록이 바뀌어도 같은
+  // 작업을 가리킨다. 제 놓기는 여기 걸리지 않는다 — 공용 모듈이 `drop`을 부르기 전에 눌림을 비워, 새 초안이 그려질 때는
+  // 거둘 것이 없다.
   const seenDraft = useRef(draft);
   useEffect(() => {
     if (seenDraft.current === draft) return;
     seenDraft.current = draft;
-    if (dragStore.state.source?.kind === "entry") cancelDrag();
+    cancelPress("entry");
   }, [draft]);
 
   // 키로 옮긴 뒤 초점을 옮긴 행에 돌려준다. 행은 자리로 키를 받아, 들여쓰거나 내어쓰면 초점을 쥔 행이 사라져

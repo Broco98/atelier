@@ -153,9 +153,11 @@ export function cancelDrag(): void {
 
 /**
  * 지금 걸린 눌림 하나 — **문턱 전이든 뒤든**. 위 `abortActive`와 따로 두는 것은 문턱 전의 눌림도
- * 거둬야 하는 길이 있어서다(아래 `cancelGoneShellDrag`). 사이드바 목록의 취소(`cancelDrag`)는
- * 문턱에서 기하를 재므로 문턱 전을 건드릴 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채
- * 천천히 끄는 손이 논다.
+ * 거둬야 하는 길이 둘 있어서다: 끄는 셸이 사라졌을 때(`cancelGoneShellDrag`)와 편집기 트리가 바뀌었을
+ * 때(`cancelPress`). 편집기 항목의 원천은 누른 순간 잡은 인덱스 경로라, 문턱 전에 트리가 바뀌어도
+ * 남은 눌림이 문턱에서 그 경로의 새 항목으로 끌기를 시작한다. 사이드바 목록의 취소(`cancelDrag`)는
+ * 문턱 전을 건드리지 않는다 — 원천이 slug라 목록이 바뀌어도 같은 작업을 가리키고 기하는 문턱에서
+ * 재므로 거둘 까닭이 없고, 건드리면 목록이 갱신될 때마다 누른 채 천천히 끄는 손이 논다.
  */
 let armed: { source: AnyDragSource; disarm: () => void } | null = null;
 
@@ -174,6 +176,16 @@ export function cancelGoneShellDrag(alive: (shellId: number) => boolean): void {
   const source = armed?.source;
   if (source?.kind !== "shell" || source.shellId === null || alive(source.shellId)) return;
   armed?.disarm();
+}
+
+/**
+ * **그 종류의 눌림을 거둔다 — 문턱 전이든 뒤든.** 원천이 누른 순간의 자리를 쥐는 쪽(편집기 트리의 인덱스
+ * 경로 — `EntryDragSource`)이 그 자리가 가리키던 것이 바뀌었을 때 부른다. 거두는 길은 `cancelGoneShellDrag`와
+ * 같다: 문턱 전이면 리스너만 떼고, 뒤면 Esc와 같이 표시를 걷고 뗄 때 클릭을 삼키며 `drop`을 안 부른다.
+ * 다른 종류의 눌림은 건드리지 않는다.
+ */
+export function cancelPress(kind: AnyDragSource["kind"]): void {
+  if (armed?.source.kind === kind) armed.disarm();
 }
 
 /**
@@ -271,8 +283,9 @@ export function armDrag(
     window.setTimeout(() => window.removeEventListener("click", swallow, true), 0);
   };
 
-  // 원천이 사라져 거둘 때의 길(`cancelGoneShellDrag`). 문턱 뒤면 Esc와 같다. 문턱 전이면 이 눌림은
-  // 아직 클릭일 뿐이라 **리스너만 뗀다** — 표시도 상태도 선 적이 없고, 삼킬 클릭도 없다.
+  // 원천이 사라지거나 가리키던 것이 바뀌어 거둘 때의 길(`cancelGoneShellDrag` · `cancelPress`). 문턱 뒤면
+  // Esc와 같다. 문턱 전이면 이 눌림은 아직 클릭일 뿐이라 **리스너만 뗀다** — 표시도 상태도 선 적이 없고,
+  // 삼킬 클릭도 없다.
   const gesture = {
     source,
     disarm: () => {

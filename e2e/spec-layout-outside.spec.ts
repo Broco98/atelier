@@ -8,6 +8,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   pickUpEntry,
+  pointIn,
   swapAnswer,
   unknownIpcCalls,
 } from "./harness";
@@ -208,6 +209,34 @@ test("끄는 도중 밖 변경이 트리를 조용히 갈아 끼우면 끌기가
   await expect(page.locator("[data-entry-drop]")).toHaveCount(0);
   for (const row of await page.getByRole("treeitem").all()) await expect(row).not.toHaveCSS("opacity", "0.4");
   // 새로 읽은 것이 기준본이고 아무것도 옮겨 가지 않았다 — 저장할 것이 없다
+  await expect(저장(page)).toBeDisabled();
+  expect(await callCount(page, "write_spec_layout")).toBe(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// 문턱 전의 눌림도 같다 — 끌리는 항목은 누른 순간 잡은 인덱스 경로라, 누른 채 머무는 동안 밖 변경이 트리를 갈아
+// 끼우면 남은 눌림이 문턱에서 그 경로에 새로 선 항목(`decisions.md`)으로 끌기를 시작한다. 작업 행 목록은 원천이
+// slug라 이 길이 없다.
+test("문턱 전에 누른 채 밖 변경이 트리를 갈아 끼우면 그 눌림이 거둬져, 끌어 놓아도 아무 항목도 옮겨 가지 않는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  const from = await pointIn(행(page, "{n}-{name}/"), "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await changeOutside(page, BRIEF_FIRST);
+  await expect(행(page, "brief.md")).toBeVisible();
+  // 누른 자리에서 문턱을 넘긴 뒤 겨눈다 — 눌림이 남았으면 여기서 끌기가 서고 `overview.md` 앞에 선이 선다
+  await page.mouse.move(from.x + 12, from.y, { steps: 3 });
+  await hoverRowPoint(page, 행(page, "overview.md"), "upper");
+  await expect(page.locator("[data-entry-drop]")).toHaveCount(0);
+  for (const row of await page.getByRole("treeitem").all()) await expect(row).not.toHaveCSS("opacity", "0.4");
+  await page.mouse.up();
+
+  await expect(page.getByRole("treeitem")).toHaveText(["brief.md", "overview.md", "decisions.md", "{n}-{name}/", "tickets/"]);
   await expect(저장(page)).toBeDisabled();
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 

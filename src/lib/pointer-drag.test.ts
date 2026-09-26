@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   armDrag,
   cancelGoneShellDrag,
+  cancelPress,
   clearHalf,
   DRAG_THRESHOLD,
   dragStore,
@@ -15,7 +16,7 @@ import {
   shellMoveOf,
   tabDragOf,
 } from "./pointer-drag";
-import type { DragSource, DragState, EntryDragSource, RowDragSource } from "./pointer-drag";
+import type { AnyDragSource, DragSource, DragState, EntryDragSource, RowDragSource } from "./pointer-drag";
 
 // 끌기 제스처가 **기능 폴더 밖**에 사는 이유가 import 금지 검사 둘이다(스펙 S4) — 작업 기능
 // 폴더는 `/terminal`이 못 부르고(TerminalPage.test.tsx), 터미널 기능 폴더는 사이드바 목록이
@@ -169,11 +170,11 @@ describe("탭 줄에 놓인 셸", () => {
   });
 });
 
-// **끄는 셸이 사라지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길(종료 · `×`·⌘W · 아카이빙)은
-// 모두 터미널 스토어의 구독이 이것 하나로 모은다 — 그 구독은 xterm을 들여 노드에서 못 부르므로(L3
-// `tab-order.spec.ts`가 두 화면에서 잰다), 여기서는 **판정과 거두는 길**을 잰다: 문턱 뒤 · 문턱 전 · 살아
-// 있는 셸 · 셸이 아닌 원천. 창과 body는 이 몸짓이 쓰는 만큼만 세운다(리스너 · 클래스 목록).
-describe("끄는 셸이 사라지면", () => {
+/**
+ * 눌림을 거두는 길을 재는 묶음이 딛는 창과 body — 이 몸짓이 쓰는 만큼만 세운다(리스너 · 클래스 목록). 검사마다 새로
+ * 세우고, 부른 `describe` 안에 그 준비를 건다.
+ */
+function gestureWindow() {
   const classes = new Set<string>();
   let target: EventTarget;
 
@@ -195,6 +196,16 @@ describe("끄는 셸이 사라지면", () => {
       vi.unstubAllGlobals();
     };
   });
+
+  return { classes, pointer };
+}
+
+// **끄는 셸이 사라지면 끌기를 거둔다**(결정 48 · UI개선 스펙 S8). 셸이 사라지는 길(종료 · `×`·⌘W · 아카이빙)은
+// 모두 터미널 스토어의 구독이 이것 하나로 모은다 — 그 구독은 xterm을 들여 노드에서 못 부르므로(L3
+// `tab-order.spec.ts`가 두 화면에서 잰다), 여기서는 **판정과 거두는 길**을 잰다: 문턱 뒤 · 문턱 전 · 살아
+// 있는 셸 · 셸이 아닌 원천.
+describe("끄는 셸이 사라지면", () => {
+  const { classes, pointer } = gestureWindow();
 
   const shell: DragSource = { kind: "shell", owner: "maison:", shellId: 3 };
   const gone = () => false;
@@ -259,6 +270,67 @@ describe("끄는 셸이 사라지면", () => {
     expect(dragStore.state.source).toBe(source);
     pointer("pointerup", 20);
     expect(calls).toEqual(["drop", "end"]);
+  });
+});
+
+// **편집기 항목의 눌림은 문턱 전에도 거둔다**(spec 레이아웃 티켓 15). 그 원천은 누른 순간 잡은 인덱스 경로라, 누른 채
+// 머무는 동안 밖 변경이 트리를 갈아 끼우면 같은 경로가 다른 항목을 가리킨다 — 눌림을 남기면 문턱에서 그 항목으로 끌기가
+// 선다. 편집기 트리가 초안이 바뀔 때 부르는 길(L3 `spec-layout-outside.spec.ts`가 화면에서 잰다)의 판정과 거두는 길을
+// 여기서 잰다: 문턱 전 · 문턱 뒤 · 다른 종류의 눌림.
+describe("그 종류의 눌림을 거두면", () => {
+  const { classes, pointer } = gestureWindow();
+
+  const entry: EntryDragSource = { kind: "entry", path: [2] };
+
+  /** 손잡이 넷이 불린 차례. */
+  function arm(source: AnyDragSource) {
+    const calls: string[] = [];
+    armDrag(source, { clientX: 0, clientY: 0 }, {
+      start: () => calls.push("start"),
+      move: () => calls.push("move"),
+      drop: () => calls.push("drop"),
+      end: () => calls.push("end"),
+    });
+    return calls;
+  }
+
+  it("문턱 전의 눌림을 거둔다 — 그 뒤 움직여도 끌기가 안 서고 손잡이가 하나도 안 불린다", () => {
+    const calls = arm(entry);
+    cancelPress("entry");
+
+    pointer("pointermove", 10);
+    expect(dragStore.state.source).toBeNull();
+    expect(classes.has("dragging-row")).toBe(false);
+    pointer("pointerup", 10);
+    expect(calls).toEqual([]);
+  });
+
+  it("문턱을 넘은 끌기는 Esc처럼 거둔다 — 표시를 걷고, 떼도 놓지 않으며, 끝은 한 번 알린다", () => {
+    const calls = arm(entry);
+    pointer("pointermove", 10);
+    expect(dragStore.state.source).toBe(entry);
+
+    cancelPress("entry");
+
+    expect(dragStore.state).toEqual({ source: null, half: null, slot: null });
+    expect(classes.has("dragging-row")).toBe(false);
+    pointer("pointermove", 20);
+    expect(dragStore.state.source).toBeNull();
+    pointer("pointerup", 20);
+    expect(calls).toEqual(["start", "move", "end"]);
+  });
+
+  // 작업 행은 원천이 slug이고 기하를 문턱에서 잰다 — 편집기 트리가 바뀌었다고 그 눌림을 거두면 누른 손이 논다.
+  it("다른 종류의 눌림은 건드리지 않는다", () => {
+    const work: RowDragSource = { kind: "work", slug: "a" };
+    const calls = arm(work);
+    cancelPress("entry");
+    pointer("pointermove", 10);
+    cancelPress("entry");
+
+    expect(dragStore.state.source).toBe(work);
+    pointer("pointerup", 10);
+    expect(calls).toEqual(["start", "move", "drop", "end"]);
   });
 });
 
