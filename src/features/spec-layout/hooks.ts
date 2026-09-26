@@ -97,14 +97,15 @@ export interface LayoutWrite extends LayoutDraft {
  *
  * `onWritten`은 썼을 때 **문을 열기 전에** 부른다(티켓 15). 편집기는 거기서 기준본을 저장한 것으로 바꾼다 — 제
  * 저장이 부른 다시 읽기가 도착할 때 기준본이 이미 저장본이어야, 그 답이 밖 변경이 아니라 무시(판정 1번)로 걸린다.
+ * 그래서 빠뜨릴 수 없는 인자다: 없이 저장하면 제 저장을 밖 변경으로 읽는다.
  */
-export function useWriteSpecLayout(onWritten?: (written: LayoutWrite) => void) {
+export function useWriteSpecLayout(onWritten: (written: LayoutWrite) => void) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, layout, templates }: LayoutWrite) => specLayoutApi.write(id, layout, templates),
     onSuccess: (answer, written) => {
       if (answer.errors.length > 0) return undefined;
-      onWritten?.(written);
+      onWritten(written);
       return invalidateSpecLayout(queryClient);
     },
   });
