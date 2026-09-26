@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import SpecTree, { COLLAPSE_ROW, FolderGlyph } from "./SpecTree";
+import SpecTree, { COLLAPSE_ROW, FolderGlyph, treeIndent } from "./SpecTree";
 import { splitSpecFiles } from "./spec-sections";
 
 interface SpecSectionProps {
@@ -149,7 +149,7 @@ function CollapseSection({
 }) {
   return (
     <Collapsible open={open} onOpenChange={onOpenChange} className="flex flex-col">
-      <CollapsibleTrigger className={COLLAPSE_ROW} style={{ paddingLeft: 8 + depth * 14 }}>
+      <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
         {/* 트랜지션 목록에 transform이 아니라 rotate를 적는다: Tailwind v4의 rotate-*는
             독립 rotate 속성을 써서, transform만 걸면 화살표가 뚝 끊긴다
             (SidebarWorkList가 같은 자리에서 같은 사실을 적고 있다) */}

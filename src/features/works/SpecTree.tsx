@@ -68,6 +68,11 @@ function buildTree(files: string[]): TreeNode[] {
 export const COLLAPSE_ROW =
   "flex h-7 items-center gap-1 rounded-[8px] text-left text-[12.5px] text-tertiary transition-colors hover:bg-state-1";
 
+// 트리 한 단의 들여쓰기 — 첫 단 8px, 한 단 내려갈 때마다 14px. 폴더 행 · 파일 행 · 판 머리글(SpecSection)이
+// 함께 읽는다. 같은 식을 세 자리에 옮겨 적으면 한쪽만 고친 날 같은 깊이의 줄이 서로 다른 x에서 시작한다.
+// 인라인 style인 것은 깊이가 정해지지 않은 수라 클래스로 못 적어서다.
+export const treeIndent = (depth: number) => ({ paddingLeft: 8 + depth * 14 });
+
 interface TreeProps {
   files: string[];
   current: string | null;
@@ -140,7 +145,7 @@ function TreeRows({
               onOpenChange={(open) => onOpenChange(node.path, open)}
               className="flex flex-col"
             >
-              <CollapsibleTrigger className={COLLAPSE_ROW} style={{ paddingLeft: 8 + depth * 14 }}>
+              <CollapsibleTrigger className={COLLAPSE_ROW} style={treeIndent(depth)}>
                 <ChevronRight
                   className={cn("size-3 transition-transform", expanded && "rotate-90")}
                   strokeWidth={2.2}
@@ -196,7 +201,7 @@ function TreeRows({
                   "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left",
                   onCopy && "pr-1.5",
                 )}
-                style={{ paddingLeft: 8 + depth * 14 }}
+                style={treeIndent(depth)}
               >
                 <FileGlyph name={node.name} />
                 <span className="min-w-0 flex-1 truncate">{node.name}</span>
