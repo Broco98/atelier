@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { CopiedNotice, SpecLayoutSection } from "./SpecLayoutPage";
+import { CopiedNotice, RevertedNotice, SpecLayoutSection } from "./SpecLayoutPage";
 import type { SpecLayoutState } from "./types";
 
 // 설정의 「spec 레이아웃」 페이지(spec 레이아웃 티켓 08). 행은 엔진이 준 상태를 **그리기만** 한다 —
@@ -131,5 +131,18 @@ describe("부탁 알림", () => {
     expect(html).toContain("참조를 복사했어요");
     expect(html).toContain("~/.atelier/layouts/maison/");
     expect(html).toContain("앱 터미널의 에이전트에게 붙이고 부탁을 이어 적으세요.");
+  });
+});
+
+describe("되돌린 알림", () => {
+  // 되돌린 것이 어디까지 따라가는지를 적는다 — 지운 폴더, 그리고 spec 패널 탭과 에이전트의 안내문(티켓 10).
+  it("지운 폴더와, 내장본으로 돌아가 spec 패널 탭과 에이전트 안내문도 따라간다는 말을 적는다", () => {
+    const html = renderToStaticMarkup(
+      <RevertedNotice reference="~/.atelier/layouts/atelier/" onClose={() => {}} />,
+    );
+    expect(html).toContain('role="status"');
+    expect(textOf(html)).toContain("되돌렸어요 ~/.atelier/layouts/atelier/");
+    expect(textOf(html)).toContain("내장본으로 돌아갔어요. spec 패널 탭과 에이전트 안내문도 따라가요.");
+    expect(html).toContain('aria-label="알림 닫기"');
   });
 });
