@@ -920,9 +920,54 @@ mod tests {
     /// 첫 호출 한 번뿐이다.
     fn ready_handler(root: &Path) {
         write_hook_script(root).expect("스크립트를 세운다");
-        let (wrote, out) = feed(handler_command(&handler_path(root), root, None, &["claude", "Stop"]).into_spawned(), "{}");
+        warm_up(&handler_path(root), root);
+    }
+
+    fn warm_up(handler: &Path, root: &Path) {
+        let (wrote, out) = feed(handler_command(handler, root, None, &["claude", "Stop"]).into_spawned(), "{}");
         wrote.expect("페이로드를 끝까지 쓸 수 있다");
         assert!(out.status.success(), "헛부름이 0이 아닌 코드로 끝났다: {out:?}");
+    }
+
+    /// 처리기의 잠금 줄 — `-i`(다시 쥐어 보는 틈)가 든 5.9의 꼴이다.
+    const LOCK_WITH_INTERVAL: &str = "zsystem flock -t 1 -i 0.001 -f lockfd $lock";
+
+    /// **zsh 5.8을 흉내 낸 처리기 사본**을 세우고 한 번 헛불러 둔다. macOS 11 Big Sur의 `/bin/zsh`는 5.8, 12 Monterey · 13
+    /// Ventura는 5.8.1이고 5.9는 14 Sonoma부터다. 앱은 최소 macOS를 안 걸어 그 기계에도 깔린다. `zsystem flock`의 `-i`와 소수
+    /// 초는 5.9에서 들어왔다(zsh NEWS 「Changes from 5.8.1 to 5.9」). 그 전의 zsh는 모르는 옵션을 만나면 파일을 열기 전에
+    /// 「flock: unknown option」을 말하고 1로 끝난다.
+    ///
+    /// 이 기계와 CI(ubuntu)의 zsh는 5.9라 그 갈래가 저절로는 안 돈다. 그래서 잠금 줄의 `-i` 한 글자를 5.9도 모르는 옵션으로
+    /// 바꿔 같은 1을 낸다. `body`는 처리기 본문이다(fork 없음 검사는 침묵 줄을 뺀 사본을 준다).
+    fn old_zsh_handler(root: &Path, body: &str) -> PathBuf {
+        assert_eq!(body.matches(LOCK_WITH_INTERVAL).count(), 1, "처리기에 잠금 줄 `{LOCK_WITH_INTERVAL}`이 하나가 아니다 — 흉내가 빗나간다");
+        let path = hooks_dir(root).join("zsh-5.8.zsh");
+        write_executable(&path, &body.replacen(LOCK_WITH_INTERVAL, &LOCK_WITH_INTERVAL.replace(" -i ", " -Z "), 1)).unwrap();
+        warm_up(&path, root);
+        path
+    }
+
+    /// 한 셸의 잠금 파일을 **이 검사 프로세스가** 쥔다 — 처리기와 같은 fcntl 쓰기 잠금이다. 돌려준 파일을 닫으면(drop) 풀린다.
+    fn hold_lock(root: &Path, shell: &str) -> std::fs::File {
+        use std::os::fd::AsRawFd;
+
+        std::fs::create_dir_all(shells_dir(root)).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(lock_path(root, shell))
+            .unwrap();
+        // SAFETY: 모두 0인 `flock`은 올바른 값이고, 살아 있는 fd에 그 잠금 한 칸을 건다.
+        let held = unsafe {
+            let mut lock: libc::flock = std::mem::zeroed();
+            lock.l_type = libc::F_WRLCK as _;
+            lock.l_whence = libc::SEEK_SET as _;
+            libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &lock)
+        };
+        assert_eq!(held, 0, "검사가 잠금을 못 쥐었다: {}", std::io::Error::last_os_error());
+        file
     }
 
     /// 처리기 한 벌을 띄운다 — stdin은 아직 안 준다(`feed`가 준다). 처리기의 시각이 stdin을 받기 **전에** 서는지 재려면 둘을
@@ -1256,6 +1301,93 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// **잠금이 쥐여 있으면 기다렸다가 쓰고, 끝내 안 풀리면 1초 남짓에 손을 뗀다** — 5.9의 `-i` 꼴도, 그것을 모르는 zsh 5.8의
+    /// 갈래(`old_zsh_handler`)도 같다. 기다림에 끝이 없으면 멈춘 처리기 하나가 에이전트의 턴을 붙잡는다. 기다리지 않으면 경합에서
+    /// 사건을 잃는다. 5.8에서 잠금 줄이 1로 끝났다고 그냥 나가면, 그 기계에서는 사건이 하나도 안 남는다.
+    ///
+    /// 잠금은 이 검사 프로세스가 쥔다(`hold_lock`). 처음엔 300ms 뒤에 놓고, 다음엔 놓지 않는다.
+    #[test]
+    fn a_handler_waits_for_a_held_lock_and_gives_up_after_about_a_second_on_zsh_5_9_and_5_8() {
+        let root = temp_root("handler-held-lock");
+        ready_handler(&root);
+        let handlers = [("zsh 5.9", handler_path(&root)), ("zsh 5.8 흉내", old_zsh_handler(&root, HANDLER))];
+        let quiet_success =
+            |out: &std::process::Output| out.status.success() && out.stdout.is_empty() && out.stderr.is_empty();
+
+        for (n, (zsh, handler)) in handlers.iter().enumerate() {
+            let shell = format!("1700-2{n}");
+
+            let held = hold_lock(&root, &shell);
+            let started = std::time::Instant::now();
+            let child = handler_command(handler, &root, Some(&shell), &["claude", "Stop"]).into_spawned();
+            let release = std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                drop(held);
+            });
+            let (wrote, out) = feed(child, CLAUDE_STOP);
+            release.join().unwrap();
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(quiet_success(&out), "{zsh}: {out:?}");
+            assert!(
+                shells_dir(&root).join(format!("{shell}.json")).exists(),
+                "{zsh}: 잠금이 300ms 만에 풀렸는데 안 썼다 — 기다리지 않고 나갔다"
+            );
+            assert!(started.elapsed() >= std::time::Duration::from_millis(300), "{zsh}: 잠금이 풀리기 전에 썼다");
+            assert_eq!(state_in(&root, &shell)["event"], "Stop");
+
+            // 끝이 없는 처리기가 검사를 영영 붙잡지 않게, 5초가 지나면 놓는다 — 그러면 처리기가 쓰고 아래 단언이 빨갛다.
+            let held = hold_lock(&root, &shell);
+            let (done, watchdog) = std::sync::mpsc::channel::<()>();
+            let release = std::thread::spawn(move || {
+                let _ = watchdog.recv_timeout(std::time::Duration::from_secs(5));
+                drop(held);
+            });
+            let started = std::time::Instant::now();
+            let command = handler_command(handler, &root, Some(&shell), &["claude", "UserPromptSubmit"]);
+            let (wrote, out) = feed(command.into_spawned(), r#"{"prompt":"다음"}"#);
+            let took = started.elapsed();
+            let _ = done.send(());
+            release.join().unwrap();
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(quiet_success(&out), "{zsh}: {out:?}");
+            assert!(took < std::time::Duration::from_secs(5), "{zsh}: 안 풀리는 잠금을 {took:?} 기다렸다 — 기다림에 끝이 없다");
+            assert!(took >= std::time::Duration::from_millis(900), "{zsh}: 1초를 채우지 않고 {took:?}에 손을 뗐다");
+            assert_eq!(state_in(&root, &shell)["event"], "Stop", "{zsh}: 잠금을 못 쥐고도 썼다");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **`-i`를 모르는 zsh 5.8에서도 한꺼번에 돈 처리기가 서로의 접기를 안 지운다.** 5.8의 갈래는 한 번씩 쥐어 보고 쉬었다가
+    /// 다시 쥔다 — 그 틈에 둘이 함께 들어가면 잠금이 없는 것과 같다. 경합 검사(`handlers_racing_on_one_shell_lose_no_subagent`)를
+    /// 그 갈래로 다시 돈다.
+    #[test]
+    fn on_zsh_5_8_handlers_racing_on_one_shell_still_lose_no_subagent() {
+        let root = temp_root("handler-race-zsh58");
+        ready_handler(&root);
+        let handler = old_zsh_handler(&root, HANDLER);
+        let shell = "1700-14";
+
+        let ids: Vec<String> = (0..16).map(|n| format!("old{n:02}")).collect();
+        let waiting: Vec<std::process::Child> = ids
+            .iter()
+            .map(|_| handler_command(&handler, &root, Some(shell), &["claude", "SubagentStart"]).into_spawned())
+            .collect();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let running: Vec<std::thread::JoinHandle<_>> = waiting
+            .into_iter()
+            .zip(ids.clone())
+            .map(|(child, id)| std::thread::spawn(move || feed(child, &claude_subagent_start(&id))))
+            .collect();
+        for run in running {
+            let (wrote, out) = run.join().unwrap();
+            wrote.expect("페이로드를 끝까지 쓸 수 있다");
+            assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
+        }
+
+        assert_eq!(subagent_ids(&state_in(&root, shell)), ids, "zsh 5.8의 갈래에서 처리기가 서로의 접기를 지웠다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// **멈춤은 Stop · StopFailure가 켜고, 새 턴 · 세션 끝 · 중단이 끈다**(S50). 그 밖의 사건은 그대로 둔다 — 그래서 Stop 뒤에
     /// 온 SubagentStop에도 참이고, 화면(티켓 20)은 서브에이전트가 다 끝나는 순간을 「확인할 것」으로 읽을 수 있다.
     ///
@@ -1315,8 +1447,8 @@ mod tests {
     ///
     /// **목록이 아니라 커널로 잰다.** zsh에서 프로세스가 생기는 길(바깥 명령, `$(…)`, 파이프, 서브셸, `&`)은 글자로 다 못 막는다.
     /// 그래서 처리기를 **프로세스를 못 만드는 몸**으로 띄운다: 자식에서 `RLIMIT_NPROC`를 1로 낮춘 뒤 exec한다 — 그 사용자에게는
-    /// 이미 프로세스가 여럿이라 그 뒤의 fork는 모두 실패한다. 그 몸으로 모든 갈래(새 파일, 옛 파일 읽기, id 읽기, 중단 읽기, 막힘)를
-    /// 밟아도 파일이 맞게 서야 한다.
+    /// 이미 프로세스가 여럿이라 그 뒤의 fork는 모두 실패한다. 그 몸으로 모든 갈래(새 파일, 옛 파일 읽기, id 읽기, 중단 읽기, 막힘,
+    /// zsh 5.8의 잠금 — 쥐여 있는 잠금을 쉬었다 다시 쥐는 길까지)를 밟아도 파일이 맞게 서야 한다.
     ///
     /// **침묵 줄을 뺀 사본을 띄운다.** 처리기는 fail-open이라 맨 앞에서 stderr를 닫는다(`exec 2>/dev/null`). 그대로면 쓸모없는
     /// fork의 실패(「fork failed」)가 안 보인다 — 그 한 줄만 뺀 사본으로 stderr가 비었는지 본다. 그 줄이 정확히 하나이고 다른 줄이
@@ -1402,6 +1534,29 @@ mod tests {
             (blocked["event"].as_str(), blocked["at"].as_u64(), subagent_ids(&blocked)),
             (Some("PermissionRequest"), Some(99_999_999_999_999), Vec::<String>::new())
         );
+
+        // zsh 5.8의 갈래(`old_zsh_handler`) — 잠금이 쥐여 있어 쉬었다가 다시 쥐는 길까지 밟는다. 이 사본은 침묵 줄이 없어 zsh의
+        // 잠금 경고(흉내 낸 「unknown option」, 못 쥔 시도마다의 「failed to lock file」)를 말한다. 그 둘을 걷고 남은 것이 없어야 한다.
+        let old = old_zsh_handler(&root, &body);
+        let shell = "1700-15";
+        let held = hold_lock(&root, shell);
+        let child = without_fork(handler_command(&old, &root, Some(shell), &["claude", "SubagentStart"])).into_spawned();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(held);
+        });
+        let (wrote, out) = feed(child, &claude_subagent_start("bbb2"));
+        release.join().unwrap();
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert!(out.status.success() && out.stdout.is_empty(), "zsh 5.8 갈래: {out:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let expected = |line: &str| line.contains("flock: unknown option") || line.contains("failed to lock file");
+        let others: Vec<&str> = stderr.lines().filter(|line| !expected(line)).collect();
+        assert!(others.is_empty(), "zsh 5.8 갈래: 프로세스를 못 만드는 몸에서 처리기가 말을 했다 — 어딘가 fork한다: {others:?}");
+        // 앵커: 흉내가 먹었고(5.8의 갈래로 갔고), 잠금이 쥐여 있던 동안 쉬었다 다시 쥐는 길을 밟았다.
+        assert!(stderr.contains("flock: unknown option"), "zsh 5.8 흉내가 안 먹었다: {stderr}");
+        assert!(stderr.contains("failed to lock file"), "잠금이 쥐여 있던 동안 다시 쥐는 길을 안 밟았다: {stderr}");
+        assert_eq!(subagent_ids(&state_in(&root, shell)), vec!["bbb2"]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
