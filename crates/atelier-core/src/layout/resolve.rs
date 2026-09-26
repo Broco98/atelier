@@ -78,7 +78,7 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
                 fallback: None,
             });
         }
-        Err(e) => folder_error(&e).to_string(),
+        Err(e) => fallback_reason(&[folder_error(&e)]),
         Ok(true) => match read_layout_file(&folder) {
             Ok(layout) => {
                 return Ok(Resolved {
@@ -89,8 +89,7 @@ pub fn resolve_layout(data_root: &Path, mode: Mode, work_layout: Option<&str>) -
                     fallback: None,
                 });
             }
-            // 까닭에는 **첫** 오류와 그 위치만 적는다. 나머지는 설정 페이지가 목록으로 보인다.
-            Err(unreadable) => unreadable.errors.first().map(ToString::to_string).unwrap_or_default(),
+            Err(unreadable) => fallback_reason(&unreadable.errors),
         },
     };
     Ok(Resolved {
@@ -114,6 +113,14 @@ pub(crate) fn folder_present(folder: &Path) -> std::io::Result<bool> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// 물러선 까닭 — **첫** 오류와 그 위치만 적는다. 나머지는 설정 페이지가 목록으로 보인다.
+///
+/// resolve와 설정의 상태(`states.rs`)가 이 한 자리를 지난다 — 에이전트가 받는 물러선 안내문과 설정의
+/// 행이 같은 까닭을 말해야 한다.
+pub(crate) fn fallback_reason(errors: &[LayoutError]) -> String {
+    errors.first().map(ToString::to_string).unwrap_or_default()
 }
 
 /// 폴더가 있는지조차 확인하지 못한 까닭 — 문서 전체의 오류다.

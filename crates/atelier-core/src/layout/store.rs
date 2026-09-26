@@ -180,7 +180,10 @@ pub fn save_layout(
 ///
 /// 유닉스에서는 파일의 정체(장치와 inode)로 견준다. 그 밖에서는 정체를 얻을 안정된 길이 없어, 경로
 /// 조각마다 NFC로 맞추고 대소문자를 접은 이름으로 견준다.
-struct Held {
+///
+/// 상태(`states.rs`)도 이것으로 「그 밖의 파일」을 가른다 — 템플릿을 글자로 빼면 다르게 적힌 템플릿이
+/// 그 밖의 파일로 한 번 더 세어진다.
+pub(super) struct Held {
     #[cfg(unix)]
     ids: BTreeSet<(u64, u64)>,
     #[cfg(not(unix))]
@@ -189,7 +192,7 @@ struct Held {
 
 #[cfg(unix)]
 impl Held {
-    fn of<'a>(folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
+    pub(super) fn of<'a>(folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
         use std::os::unix::fs::MetadataExt;
         let ids = paths
             .into_iter()
@@ -200,7 +203,7 @@ impl Held {
     }
 
     /// 지울 경로가 쥔 파일인가. 링크는 따라가지 않는다 — 지우는 것은 링크 자신이다.
-    fn holds(&self, folder: &Path, path: &str) -> bool {
+    pub(super) fn holds(&self, folder: &Path, path: &str) -> bool {
         use std::os::unix::fs::MetadataExt;
         std::fs::symlink_metadata(folder.join(path))
             .is_ok_and(|meta| self.ids.contains(&(meta.dev(), meta.ino())))
@@ -209,11 +212,11 @@ impl Held {
 
 #[cfg(not(unix))]
 impl Held {
-    fn of<'a>(_folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
+    pub(super) fn of<'a>(_folder: &Path, paths: impl IntoIterator<Item = &'a str>) -> Self {
         Self { names: paths.into_iter().map(folded_parts).collect() }
     }
 
-    fn holds(&self, _folder: &Path, path: &str) -> bool {
+    pub(super) fn holds(&self, _folder: &Path, path: &str) -> bool {
         self.names.contains(&folded_parts(path))
     }
 }
