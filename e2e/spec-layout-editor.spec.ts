@@ -740,7 +740,11 @@ test("「LLM이 받는 텍스트」를 누르면 팝업이 미리보기의 글�
     rows.map((row) => getComputedStyle(row).backgroundColor),
   );
   expect(line).not.toBe("rgba(0, 0, 0, 0)");
+  // 열리면 창 자신이 포커스를 받는다(S45) — 닫기 버튼에 링과 툴팁이 서지 않는다. Esc는 닫기의 설명으로도 읽힌다.
+  await expect(팝업(page)).toBeFocused();
+  await expect(팝업(page).getByRole("button", { name: "닫기", exact: true })).toHaveAccessibleDescription("Esc");
 
+  // 닫히면 포커스가 여는 버튼으로 돌아온다 — WebKit은 누른 버튼에 포커스를 주지 않아 부품의 기본값이면 `<body>`다.
   await page.keyboard.press("Escape");
   await expect(팝업(page)).toHaveCount(0);
   await expect(미리보기(page)).toBeFocused();

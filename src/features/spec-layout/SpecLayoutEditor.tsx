@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -192,12 +191,8 @@ function EditorScreen({
   // 답은 디스크에도 달려(초안에 본문이 없는 템플릿은 그 파일이 있는지를 본다) 레이아웃 폴더를 다시 읽은 것이 바뀌면
   // 고치지 않은 초안도 다시 묻는다 — 밖 변경 배너가 선 동안에도, 유지한 뒤에도 답이 새 디스크의 것이다.
   const { preview, reserve } = useDraftPreview(id, draft, read);
+  // 팝업을 여는 머리의 버튼 — 팝업이 닫히면 포커스가 여기로 돌아온다(`PreviewDialog`).
   const opener = useRef<HTMLButtonElement>(null);
-  // 팝업을 닫으면 포커스를 머리의 버튼에 돌려준다 — 팝업은 body 끝에 떠 있어, 안 돌려주면 `<body>`로 떨어진다.
-  const closePreview = useCallback(() => {
-    setPreviewOpen(false);
-    opener.current?.focus();
-  }, []);
   // **제 저장** — 쓰였으면 기준본이 저장한 것이 되고, 선 배너는 걷힌다(저장이 밖의 변경을 덮었다). 그래서 제 저장이
   // 부른 다시 읽기는 판정 1번(무시)에 걸린다. 이 바꿈은 **다시 읽기가 도착하기 전에 그려져 있어야** 하므로 저장의
   // 무효화보다 먼저, 곧바로 그린다(`flushSync`) — 미루면 다시 읽힌 답이 옛 기준본과 견줘져 제 저장을 밖 변경으로 읽는다.
@@ -268,9 +263,13 @@ function EditorScreen({
         </>
       }
     >
-      {previewOpen && (
-        <PreviewDialog answer={preview?.answer ?? null} selected={view.selected} onClose={closePreview} />
-      )}
+      <PreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        opener={opener}
+        answer={preview?.answer ?? null}
+        selected={view.selected}
+      />
       {outside !== null && (
         <OutsideBanner
           verdict={outside.verdict}

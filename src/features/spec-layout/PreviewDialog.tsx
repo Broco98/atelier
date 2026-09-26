@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useRef, type RefObject } from "react";
 import { X } from "lucide-react";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { samePath, type EntryPath } from "./draft";
 import type { LayoutPreview } from "./types";
@@ -10,72 +11,59 @@ import type { LayoutPreview } from "./types";
 // 엔진이 지금 초안을 **저장하면 에이전트가 받을 글** 그대로다(스토리 29). 여기는 글을 짓지도 고치지도 않는다.
 
 /**
- * 팝업 — 문서 최상위에 막(`modal-scrim`)을 깔고 가운데에 선다. 닫는 길은 [닫기], Esc, 바깥 누르기다(다른 모달과
- * 같은 손버릇, `FullscreenModal`). 열리면 [닫기]에 포커스를 준다 — 포커스가 트리에 남아 있으면 ⌥화살표가 막 뒤의
- * 항목을 옮긴다.
+ * 팝업 — **창은 Dialog다**(develop 판 3 · S31, 전체화면 뷰어 `FullscreenModal`과 같은 손버릇). 막(`modal-scrim`)과
+ * 가운데 카드, 스크린리더의 모달 창, 창 안에 가둔 포커스, Esc와 막 누르기로 닫기는 부품이 한다 — 창 keydown 리스너는
+ * 없다. 막은 누르고 뗀 클릭에 닫힌다: 창 안에서 글을 끌어 고르다 막 위에서 손을 떼도 닫히지 않는다.
+ *
+ * **열리면 창 자신이 포커스를 받는다**(S45) — 첫 버튼(닫기)이면 연 순간 그 버튼에 링과 툴팁이 선다. 포커스가 창
+ * 안에 갇히므로 트리의 ⌥화살표가 막 뒤의 항목을 옮기지 않는다. 닫히면 포커스는 여는 버튼(`opener`)으로 간다 —
+ * 부품의 기본값(열기 전 포커스)에 맡기지 않는 것은 WebKit이 버튼을 눌러도 포커스를 주지 않아서다.
+ *
+ * 여닫음은 편집기가 든다 — 레이아웃이 읽지 못하게 깨지면 편집기가 닫는다.
  */
 function PreviewDialog({
+  open,
+  onOpenChange,
+  opener,
   answer,
   selected,
-  onClose,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** 여는 버튼 — 닫힌 뒤 포커스가 돌아갈 자리다. */
+  opener: RefObject<HTMLButtonElement | null>;
   answer: LayoutPreview | null;
   selected: EntryPath;
-  onClose: () => void;
 }) {
-  const titleId = useId();
-  const close = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    close.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className="modal-scrim flex items-center justify-center p-9"
-      // 눌린 자리가 막 자신일 때만 닫는다 — 글을 끌어 고르다 막 위에서 손을 떼도 닫히지 않게(`FullscreenModal`).
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="flex h-[640px] max-h-full w-[760px] max-w-full flex-col overflow-hidden rounded-[14px] border border-border-strong bg-background shadow-lg"
+  const popup = useRef<HTMLDivElement>(null);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* 부품의 닫기(×)를 세우지 않는다 — 머리 줄의 오른쪽 끝에 제 닫기가 있다. 창의 이름은 제목이 준다. */}
+      <DialogContent
+        ref={popup}
+        variant="preview"
+        showCloseButton={false}
+        initialFocus={popup}
+        finalFocus={opener}
       >
         <div className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-border pr-3 pl-5">
-          <h2 id={titleId} className="text-[15px] font-semibold tracking-[-0.01em]">
-            LLM이 받는 텍스트
-          </h2>
+          <DialogTitle>LLM이 받는 텍스트</DialogTitle>
           <span className="text-[12.5px] text-tertiary">저장 전 초안</span>
-          <button
-            ref={close}
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            title="닫기 (Esc)"
-            className="icon-button-quiet ml-auto size-[30px] text-muted-foreground"
+          {/* 툴팁은 스크린리더에 아무것도 주지 않는다 — 단축키는 설명으로 남긴다(S28 — `shortcut`). */}
+          <Hint
+            text="닫기"
+            shortcut="Esc"
+            announce="name"
+            render={<DialogClose className="icon-button-quiet ml-auto size-[30px] text-muted-foreground" />}
           >
             <X aria-hidden className="size-4" strokeWidth={2} />
-          </button>
+          </Hint>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar pt-3.5 pb-5 scroll-quiet">
           <PreviewText answer={answer} selected={selected} />
         </div>
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }
 
