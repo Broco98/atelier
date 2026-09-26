@@ -56,12 +56,13 @@ pub enum SaveOutcome {
     Refused(Vec<LayoutError>),
 }
 
-/// **앱이 받는 읽기의 모양**(`read_spec_layout`) — Tauri 명령과 L4 다리가 이것을 그대로 싣는다.
+/// **읽기의 모양은 이 한 벌이다** — 앱의 `read_spec_layout`(Tauri 명령과 L4 다리)도, 에이전트의
+/// `atelier_get_spec_layout`도 이 직렬화를 그대로 싣는다(결정 20). 두 표면이 JSON을 따로 짜면 키 하나를
+/// 고치는 날 앱과 에이전트가 조용히 갈린다.
 ///
 /// 읽을 수 있으면 `{ id, folder, edited, layout, templates, warnings }`이고, `layout`은 디스크 형식
-/// 그대로다(`serialize_layout_value` — 모르는 키까지). 편집기는 그것을 초안으로 펼쳐 고치고 그대로
-/// 저장에 돌려준다. 깨졌으면 `{ id, folder, edited, errors, raw }`다. 에이전트의 `atelier_get_spec_layout`이
-/// 주는 JSON과 같은 이름이다.
+/// 그대로다(`serialize_layout_value` — 모르는 키까지). 편집기와 에이전트는 그것을 고쳐 그대로 저장에
+/// 돌려준다. 깨졌으면 `{ id, folder, edited, errors, raw }`다.
 impl serde::Serialize for LayoutRead {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
@@ -1069,7 +1070,7 @@ mod tests {
 
     /// **앱의 편집기가 받는 읽기의 모양**(`read_spec_layout`, 티켓 11). 읽을 수 있는 레이아웃은 디스크
     /// 형식 그대로(모르는 키까지), 템플릿 본문, 경고다 — 편집기는 그것을 초안으로 펼쳐 고치고 저장에
-    /// 돌려준다. 에이전트의 `atelier_get_spec_layout`이 주는 JSON과 같은 이름이다.
+    /// 돌려준다.
     #[test]
     fn the_app_reads_a_readable_layout_as_its_disk_form_with_bodies_and_warnings() {
         let root = tempfile::tempdir().unwrap();

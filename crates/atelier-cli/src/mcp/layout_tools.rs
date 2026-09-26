@@ -110,45 +110,24 @@ impl AtelierServer {
             Ok(read) => read,
             Err(e) => return Ok(kernel_error(e)),
         };
-        let (answer, note) = match read.content {
-            LayoutContent::Readable { layout, templates, rendered } => {
-                // 디스크 형식 그대로 — 모르는 키까지 `layout.json`에 적힐 모양으로 건넨다. 에이전트가
-                // 이것을 고쳐 그대로 저장에 돌려준다.
-                let layout = atelier_core::serialize_layout_value(&layout);
-                (
-                    json!({
-                        "id": read.id,
-                        "folder": read.folder,
-                        "edited": read.edited,
-                        "layout": layout,
-                        "templates": templates,
-                        "warnings": rendered.warnings,
-                    }),
-                    rendered.text,
-                )
-            }
+        let note = match &read.content {
+            LayoutContent::Readable { rendered, .. } => rendered.text.clone(),
             // 깨졌으면 원문과 오류 전부다 — 에이전트는 그것을 고쳐 다시 저장한다. 고칠지는 사용자가
             // 정한다: 물러선 안내문이 「부탁받기 전에는 고치지 마라」고 말하는 것과 같은 뜻이다.
-            LayoutContent::Broken { errors, raw } => (
-                json!({
-                    "id": read.id,
-                    "folder": read.folder,
-                    "edited": read.edited,
-                    "errors": errors,
-                    "raw": raw,
-                }),
-                format!(
-                    "The spec layout `{}/` cannot be read, so atelier_get_work and \
-                     atelier_start_work carry the built-in guidance instead:\n{}\n\n`raw` is \
-                     `layout.json` as it is now. Tell the user. If they ask you to repair it, fix \
-                     these errors and save the whole layout with atelier_save_spec_layout.",
-                    read.folder,
-                    error_lines(&errors)
-                ),
+            LayoutContent::Broken { errors, .. } => format!(
+                "The spec layout `{}/` cannot be read, so atelier_get_work and \
+                 atelier_start_work carry the built-in guidance instead:\n{}\n\n`raw` is \
+                 `layout.json` as it is now. Tell the user. If they ask you to repair it, fix \
+                 these errors and save the whole layout with atelier_save_spec_layout.",
+                read.folder,
+                error_lines(errors)
             ),
         };
         Ok(CallToolResult::success(vec![
-            ContentBlock::json(&answer)?,
+            // 앱의 `read_spec_layout`과 같은 값이다 — 모양은 엔진의 `LayoutRead` 직렬화 한 벌이 정한다.
+            // `layout`은 디스크 형식 그대로라 모르는 키까지 `layout.json`에 적힐 모양으로 건넨다.
+            // 에이전트가 이것을 고쳐 그대로 저장에 돌려준다.
+            ContentBlock::json(&read)?,
             ContentBlock::text(note),
             ContentBlock::text(LAYOUT_FORMAT),
         ]))
