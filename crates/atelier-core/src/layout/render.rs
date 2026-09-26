@@ -44,6 +44,20 @@ fn fallback_line(fallback: &Fallback) -> String {
     )
 }
 
+/// 안내문에서 항목 하나가 차지한 줄 — 편집기의 미리보기 팝업이 고른 항목의 줄을 칠한다(구현 스펙 5절
+/// 「배치」). 줄 규칙이 여기 한 벌이라 앱이 글을 다시 읽어 셈하지 않는다(결정 13).
+///
+/// 항목의 줄은 이름 줄, 여러 줄 설명의 뒷줄, `Template:` 줄이다. 맨 위 항목(`path`가 `[]`)의 줄은 방침
+/// 문단이고, 그 설명이 비었으면 줄이 없어 여기에도 없다.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct EntryLines {
+    /// 맨 위 항목에서부터의 인덱스 경로 — 검증 오류의 자리(`LayoutError.path`)와 같은 모양이다.
+    pub path: Vec<usize>,
+    /// 첫 줄. 안내문을 `\n`으로 가른 줄을 0부터 센다.
+    pub start: usize,
+    pub count: usize,
+}
+
 /// 레이아웃을 안내문으로 옮긴다. **디스크를 보지 않는다** — 템플릿이 디스크에 있는지는
 /// `templates`가, 물러섰는지는 `fallback`이 말한다.
 ///
@@ -54,8 +68,18 @@ pub fn render_layout(
     templates: Option<&TemplateVerdict>,
     fallback: Option<&Fallback>,
 ) -> Rendered {
+    render_with_lines(layout, templates, fallback).0
+}
+
+/// `render_layout`과 같은 안내문에, 항목마다 그 글에서 차지한 줄을 더한다(`EntryLines`). 편집기의 미리보기가
+/// 부른다 — 에이전트는 줄 자리가 필요 없다.
+pub(crate) fn render_with_lines(
+    layout: &SpecLayout,
+    templates: Option<&TemplateVerdict>,
+    fallback: Option<&Fallback>,
+) -> (Rendered, Vec<EntryLines>) {
     let mut rows = Vec::new();
-    collect_rows(&layout.root.children, 1, &mut rows);
+    collect_rows(&layout.root.children, &mut Vec::new(), &mut rows);
     let mut warnings = Vec::new();
     for row in &mut rows {
         row.template = template_path(row.entry, templates, &mut warnings);
@@ -63,16 +87,42 @@ pub fn render_layout(
     let column = rows.iter().map(|row| row.head.chars().count()).max().unwrap_or(0) + 2;
     let list: Vec<String> = rows.iter().map(|row| row.line(column)).collect();
 
+    let guide = layout.root.description.clone();
     let sections = [
         fallback.map(fallback_line).unwrap_or_default(),
         HEADER.to_string(),
-        layout.root.description.clone(),
+        guide.clone(),
         list.join("\n"),
         grammar(&rows),
     ];
+    // 덩어리마다 첫 줄을 센다 — 빈 덩어리는 줄이 없고, 덩어리 사이에는 빈 줄 하나가 선다.
+    let mut starts = [0; 5];
+    let mut next = 0;
+    for (i, section) in sections.iter().enumerate() {
+        starts[i] = next;
+        if !section.is_empty() {
+            next += line_count(section) + 1;
+        }
+    }
+    let mut lines = Vec::new();
+    if !guide.is_empty() {
+        lines.push(EntryLines { path: Vec::new(), start: starts[2], count: line_count(&guide) });
+    }
+    let mut start = starts[3];
+    for (row, line) in rows.iter().zip(&list) {
+        let count = line_count(line);
+        lines.push(EntryLines { path: row.path.clone(), start, count });
+        start += count;
+    }
+
     // 빈 덩어리는 앞뒤 빈 줄과 함께 빠진다 — 덩어리 사이의 빈 줄은 늘 하나다.
     let text = sections.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
-    Rendered { text, warnings }
+    (Rendered { text, warnings }, lines)
+}
+
+/// 글이 `\n`으로 갈리는 줄의 수 — 빈 글도 한 줄이다.
+fn line_count(text: &str) -> usize {
+    text.split('\n').count()
 }
 
 /// 항목의 템플릿을 `Template:` 줄에 실을 경로로 옮긴다. 판정에 없으면 경고를 남기고 없음이다.
@@ -124,10 +174,12 @@ fn grammar(rows: &[Row]) -> String {
     [placeholders, folders, templates].into_iter().flatten().collect::<Vec<_>>().join(" ")
 }
 
-/// 안내문의 한 줄이 될 항목 — 「들여쓰기 + 이름」과 그 항목, 그리고 실을 템플릿 경로.
+/// 안내문의 한 줄이 될 항목 — 「들여쓰기 + 이름」과 그 항목, 그 자리, 그리고 실을 템플릿 경로.
 struct Row<'a> {
     head: String,
     entry: &'a LayoutEntry,
+    /// 맨 위 항목에서부터의 인덱스 경로. 깊이는 이 길이다.
+    path: Vec<usize>,
     /// `Template:` 줄에 실을 경로. 판정에 있는 템플릿일 때만 있다.
     template: Option<String>,
 }
@@ -152,13 +204,17 @@ impl Row<'_> {
     }
 }
 
-/// 나열 순서 그대로, 깊이 우선으로 편다. 깊이마다 두 칸이고 최상위 항목이 두 칸이다.
-fn collect_rows<'a>(entries: &'a [LayoutEntry], depth: usize, rows: &mut Vec<Row<'a>>) {
-    for entry in entries {
+/// 나열 순서 그대로, 깊이 우선으로 편다. 깊이마다 두 칸이고 최상위 항목이 두 칸이다. `parent`는 이
+/// 항목들을 쥔 항목의 자리다.
+fn collect_rows<'a>(entries: &'a [LayoutEntry], parent: &mut Vec<usize>, rows: &mut Vec<Row<'a>>) {
+    for (i, entry) in entries.iter().enumerate() {
+        parent.push(i);
         let name = entry.pattern.as_deref().unwrap_or_default();
         let slash = if entry.is_folder() { "/" } else { "" };
-        rows.push(Row { head: format!("{}{name}{slash}", "  ".repeat(depth)), entry, template: None });
-        collect_rows(&entry.children, depth + 1, rows);
+        let head = format!("{}{name}{slash}", "  ".repeat(parent.len()));
+        rows.push(Row { head, entry, path: parent.clone(), template: None });
+        collect_rows(&entry.children, parent, rows);
+        parent.pop();
     }
 }
 

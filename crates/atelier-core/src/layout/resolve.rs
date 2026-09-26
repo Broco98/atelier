@@ -158,6 +158,19 @@ pub(crate) fn read_layout_file(folder: &Path) -> std::result::Result<SpecLayout,
 /// **점 파일은 없는 것으로 친다.** 저장은 파일마다 점으로 시작하는 임시 파일에 쓰고 이름을 바꾼다
 /// — 그 사이에 읽혀도 반쯤 쓴 파일을 템플릿으로 건네지 않는다.
 pub(crate) fn template_verdict(layout: &SpecLayout, folder: &Path, shown: String) -> TemplateVerdict {
+    template_verdict_with(layout, shown, |template| folder.join(template).is_file())
+}
+
+/// 템플릿 판정의 틀 — 가리키는 템플릿 가운데 `exists`가 있다고 하는 것. 점 파일은 `exists`가 무엇을 말하든
+/// 없는 것이다(위 판정의 까닭).
+///
+/// 미리보기(`preview_layout`)가 「초안에 본문이 있거나 디스크에 있는 것」으로 이것을 부른다 — 점 파일 규칙이
+/// 여기 한 벌이라, 저장한 뒤 resolve가 내릴 판정과 미리보기의 판정이 갈리지 않는다.
+pub(crate) fn template_verdict_with(
+    layout: &SpecLayout,
+    shown: String,
+    exists: impl Fn(&str) -> bool,
+) -> TemplateVerdict {
     let mut present = BTreeSet::new();
     let mut stack = vec![&layout.root];
     while let Some(entry) = stack.pop() {
@@ -165,7 +178,7 @@ pub(crate) fn template_verdict(layout: &SpecLayout, folder: &Path, shown: String
             let hidden = Path::new(template)
                 .components()
                 .any(|part| part.as_os_str().to_string_lossy().starts_with('.'));
-            if !hidden && folder.join(template).is_file() {
+            if !hidden && exists(template) {
                 present.insert(template.clone());
             }
         }

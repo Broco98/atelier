@@ -11,10 +11,10 @@ use super::model::{LayoutEntry, SpecLayout};
 use super::parse::{
     parse_layout_value, serialize_layout, serialize_layout_value, LayoutError, LAYOUT_FILE,
 };
-use super::render::{render_layout, Rendered};
+use super::render::{render_layout, render_with_lines, EntryLines, Rendered};
 use super::resolve::{
     folder_error, folder_present, layout_folder, layout_id, read_layout_file, template_verdict,
-    Unreadable,
+    template_verdict_with, Unreadable,
 };
 use crate::atomic::write_atomically;
 use crate::{Mode, Result};
@@ -54,6 +54,20 @@ pub enum SaveOutcome {
     Saved(Rendered),
     /// 검증이 거절했다. 아무것도 쓰지 않았다.
     Refused(Vec<LayoutError>),
+}
+
+/// 미리보기의 답 — 안내문과 그 안의 항목의 줄, 검증 오류, 경고(`render_spec_layout`, 티켓 14). 앱은 JSON
+/// `{ text, lines: [{ path, start, count }], errors: [{ path, message }], warnings }`로 받는다. 오류의 모양은
+/// 저장의 것과 같다.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct LayoutPreview {
+    /// 이 초안을 저장하면 에이전트가 받을 안내문. 검증 오류가 있으면 없다(결정 28).
+    pub text: Option<String>,
+    /// 그 안내문에서 항목마다 차지한 줄 — 팝업이 고른 항목의 줄을 칠한다. 글이 없으면 비었다.
+    pub lines: Vec<EntryLines>,
+    pub errors: Vec<LayoutError>,
+    /// render의 경고 — 저장해도 실리지 않을 템플릿(점 파일).
+    pub warnings: Vec<String>,
 }
 
 /// **읽기의 모양은 이 한 벌이다** — 앱의 `read_spec_layout`(Tauri 명령과 L4 다리)도, 에이전트의
@@ -173,15 +187,10 @@ pub fn save_layout(
 ) -> Result<SaveOutcome> {
     let id = layout_id(id)?;
     let folder = layout_folder(data_root, id);
-    let layout = match parse_layout_value(layout) {
+    let layout = match validate(layout, &folder, templates) {
         Ok(layout) => layout,
         Err(errors) => return Ok(SaveOutcome::Refused(errors)),
     };
-    let mut errors = unbacked_templates(&layout, &folder, templates);
-    errors.extend(stray_bodies(&layout, templates));
-    if !errors.is_empty() {
-        return Ok(SaveOutcome::Refused(errors));
-    }
     // 앞 레이아웃이 가리키던 템플릿. **읽을 수 없으면(없거나 깨졌으면) 없는 것으로 친다** — 깨진
     // 레이아웃을 고쳐 저장하는 길에서 폴더의 `.md`를 하나도 지우지 않는다. 무엇이 템플릿이었는지
     // 모르는 채로 지우면 사람이 둔 파일이 사라진다.
@@ -215,6 +224,43 @@ pub fn save_layout(
     }
     let verdict = template_verdict(&layout, &folder, crate::collapse_home(&folder));
     Ok(SaveOutcome::Saved(render_layout(&layout, Some(&verdict), None)))
+}
+
+/// **저장하지 않은 초안의 미리보기**(티켓 14) — 편집기가 초안이 바뀔 때마다 부른다(`render_spec_layout`).
+///
+/// 「저장하면 받을 것」이다. 그 초안을 저장한 뒤 에이전트가 받는 안내문과 글자까지 같다(스토리 29).
+/// - **검증은 저장과 같은 한 벌이다**(`validate`). 가리키는 템플릿이 초안 본문에도 디스크에도 없으면 그
+///   항목 자리의 오류다. 오류가 있으면 **안내문이 없다**(결정 28) — 저장이 잠기므로 「저장하면 받을 글」이 없다.
+/// - 템플릿 판정은 「초안에 본문이 있거나 디스크에 있는 경로」다. 저장하면 있을 것이기 때문이다.
+/// - 물러서기 줄은 싣지 않는다. 지금 폴더가 깨졌어도 저장하면 이 초안이 그 자리를 고친다.
+/// - **디스크에 아무것도 쓰지 않는다.**
+///
+/// 규칙이 Tauri 명령 안에 살면 L4 다리가 같은 규칙을 한 벌 더 가져야 한다. 그래서 여기 엔진에 둔다.
+/// id는 모드 이름 둘만 받는다 — 어긋나면 디스크를 보기 전에 `Err`다.
+pub fn preview_layout(
+    data_root: &Path,
+    id: &str,
+    layout: serde_json::Value,
+    templates: &BTreeMap<String, String>,
+) -> Result<LayoutPreview> {
+    let id = layout_id(id)?;
+    let folder = layout_folder(data_root, id);
+    let layout = match validate(layout, &folder, templates) {
+        Ok(layout) => layout,
+        Err(errors) => {
+            return Ok(LayoutPreview { text: None, lines: Vec::new(), errors, warnings: Vec::new() })
+        }
+    };
+    let verdict = template_verdict_with(&layout, crate::collapse_home(&folder), |template| {
+        templates.contains_key(template) || folder.join(template).is_file()
+    });
+    let (rendered, lines) = render_with_lines(&layout, Some(&verdict), None);
+    Ok(LayoutPreview {
+        text: Some(rendered.text),
+        lines,
+        errors: Vec::new(),
+        warnings: rendered.warnings,
+    })
 }
 
 /// 모드의 레이아웃을 **기본값으로 되돌린다** — 그 모드의 레이아웃 폴더를 지운다(결정 7). 그 뒤로는
@@ -310,6 +356,24 @@ fn folded_parts(path: &str) -> Vec<String> {
         .components()
         .map(|part| super::parse::folded(&nfc.normalize(&part.as_os_str().to_string_lossy())))
         .collect()
+}
+
+/// 저장의 검증 — 읽기(parse)의 검증에 더해, 가리키는 템플릿은 인자나 디스크에 본문이 있어야 하고, 넘긴
+/// 본문은 어느 파일 항목이 가리키는 것이어야 한다. **저장과 미리보기가 이 한 벌을 지난다** — 둘이 갈리면
+/// 미리보기가 풀어 준 저장을 저장이 거절하거나, 잠근 저장이 사실은 되는 것이 된다.
+fn validate(
+    layout: serde_json::Value,
+    folder: &Path,
+    templates: &BTreeMap<String, String>,
+) -> std::result::Result<SpecLayout, Vec<LayoutError>> {
+    let layout = parse_layout_value(layout)?;
+    let mut errors = unbacked_templates(&layout, folder, templates);
+    errors.extend(stray_bodies(&layout, templates));
+    if errors.is_empty() {
+        Ok(layout)
+    } else {
+        Err(errors)
+    }
 }
 
 /// 가리키는데 인자에도 디스크에도 본문이 없는 템플릿 — 항목마다 위치가 붙은 오류다. 문서 순서
@@ -1158,5 +1222,197 @@ mod tests {
             revert_layout(root.path(), id).unwrap();
         }
         assert_eq!(everything_under(root.path()), Vec::<std::path::PathBuf>::new());
+    }
+
+    /// 템플릿이 없는 초안 — 파일 항목, 번호 틀 폴더와 그 자식.
+    fn without_templates() -> serde_json::Value {
+        serde_json::json!({ "root": { "description": "방침 문단.", "children": [
+            { "pattern": "overview.md", "kind": "file", "description": "요약" },
+            { "pattern": "{n}-{name}", "kind": "folder", "description": "한 판", "children": [
+                { "pattern": "tickets", "kind": "folder", "description": "그 판의 티켓" } ] } ] } })
+    }
+
+    /// 그 초안을 저장한 뒤 **에이전트가 받는 글** — `atelier_get_work`가 싣는 것과 같은 길(resolve → render)이다.
+    fn guidance_after_saving(root: &Path, layout: serde_json::Value, templates: &BTreeMap<String, String>) -> String {
+        let outcome = save_layout(root, "atelier", layout, templates).unwrap();
+        assert!(matches!(outcome, SaveOutcome::Saved(_)), "저장이 거절됐다: {outcome:?}");
+        let resolved = crate::resolve_layout(root, Mode::Atelier, None).unwrap();
+        render_layout(&resolved.layout, resolved.templates.as_ref(), resolved.fallback.as_ref()).text
+    }
+
+    /// **미리보기는 「저장하면 받을 것」이다**(스토리 29) — 같은 초안에 대해 미리보기 글과, 그 초안을 저장한 뒤
+    /// 에이전트가 받는 안내문이 글자까지 같다. 템플릿이 없는 초안, 본문을 초안에 쥔 템플릿, 디스크에만 있는
+    /// 템플릿(에이전트처럼 본문을 넘기지 않았다)을 모두 본다. 깨진 폴더 위에서도 물러서기 줄이 없다 — 저장하면
+    /// 그 폴더가 고쳐지기 때문이다.
+    #[test]
+    fn a_preview_is_the_text_the_agent_gets_after_saving_that_draft() {
+        let cases: [(&str, &[(&str, &str)], serde_json::Value, BTreeMap<String, String>); 4] = [
+            ("템플릿 없음", &[], without_templates(), BTreeMap::new()),
+            ("초안의 본문", &[], with_decisions("방침"), bodies(&[("decisions.md", "# 결정\n")])),
+            (
+                "디스크의 본문",
+                &[("layout.json", r#"{ "root": {} }"#), ("decisions.md", "# 결정\n")],
+                with_decisions("방침"),
+                BTreeMap::new(),
+            ),
+            ("깨진 폴더 위", &[("layout.json", "{ not json")], without_templates(), BTreeMap::new()),
+        ];
+        for (case, planted, layout, templates) in cases {
+            let root = tempfile::tempdir().unwrap();
+            for (file, content) in planted {
+                plant(root.path(), "atelier", file, content);
+            }
+
+            let preview = preview_layout(root.path(), "atelier", layout.clone(), &templates).unwrap();
+            assert_eq!(preview.errors, [], "{case}");
+            let saved = guidance_after_saving(root.path(), layout, &templates);
+            assert_eq!(preview.text.as_deref(), Some(saved.as_str()), "{case}");
+            assert!(!saved.starts_with("Could not read"), "{case}: {saved}");
+        }
+    }
+
+    /// **미리보기는 디스크에 아무것도 쓰지 않는다** — 부르기 전후로 데이터 루트의 파일 목록과 레이아웃 폴더의
+    /// 내용이 같다. 폴더가 없는 모드에 폴더가 생기지 않고(생기면 그것이 내장본을 가린다), 초안이 쥔 새 본문도,
+    /// 바꾼 본문도 쓰이지 않는다. 거절되는 초안과 모드 이름이 아닌 id도 마찬가지다.
+    #[test]
+    fn a_preview_writes_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
+        let before = (everything_under(root.path()), files_in(root.path(), "atelier"));
+
+        let drafts = [
+            (with_decisions("새 방침"), bodies(&[("decisions.md", "# 바꾼 본문\n")])),
+            (serde_json::from_str(THREE_TEMPLATES).unwrap(), bodies(&[("sub/plan.md", "# Plan\n")])),
+            (without_templates(), bodies(&[("stray.md", "x")])),
+        ];
+        for id in ["atelier", "maison", "../.."] {
+            for (layout, templates) in &drafts {
+                let _ = preview_layout(root.path(), id, layout.clone(), templates);
+            }
+        }
+        assert_eq!((everything_under(root.path()), files_in(root.path(), "atelier")), before);
+        assert!(!root.path().join("layouts/maison").exists(), "미리보기가 가림 폴더를 만들었다");
+    }
+
+    /// 초안에 본문이 있는 템플릿은 **디스크에 없어도** `Template:` 줄로 실린다 — 저장하면 그 파일이 선다.
+    /// 경로는 레이아웃 폴더 아래이고, 폴더가 아직 없어도 그 자리다(처음 저장하면 거기 선다).
+    #[test]
+    fn a_template_body_in_the_draft_goes_out_as_its_template_line() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = crate::collapse_home(&root.path().join("layouts").join("atelier"));
+
+        let preview = preview_layout(
+            root.path(),
+            "atelier",
+            with_decisions("방침"),
+            &bodies(&[("decisions.md", "# 결정\n")]),
+        )
+        .unwrap();
+
+        let text = preview.text.expect("오류가 없으면 글이 있다");
+        assert!(text.contains(&format!("Template: {folder}/decisions.md")), "{text}");
+        assert_eq!(preview.warnings, Vec::<String>::new());
+    }
+
+    /// 누락 템플릿(티켓 12)이 **여기서 잠긴다** — 초안이 가리키는 템플릿이 초안 본문에도 디스크에도 없으면 그
+    /// 항목 자리의 오류이고, 글이 없다(결정 28). 칸에 본문을 적은 초안은 오류가 없다.
+    #[test]
+    fn a_draft_pointing_to_a_missing_template_is_an_error_at_that_entry_and_has_no_text() {
+        let root = tempfile::tempdir().unwrap();
+        plant(root.path(), "atelier", "layout.json", THREE_TEMPLATES);
+        plant(root.path(), "atelier", "decisions.md", "# Decisions\n");
+        let draft: serde_json::Value = serde_json::from_str(THREE_TEMPLATES).unwrap();
+
+        // `decisions.md`는 디스크에, `sub/plan.md`는 초안에 있다. `gone.md`는 어디에도 없다.
+        let missing =
+            preview_layout(root.path(), "atelier", draft.clone(), &bodies(&[("sub/plan.md", "# Plan\n")]))
+                .unwrap();
+        assert_eq!(missing.text, None);
+        assert_eq!(missing.warnings, Vec::<String>::new());
+        let places: Vec<_> = missing.errors.iter().map(|e| e.path.clone()).collect();
+        assert_eq!(places, [Some(vec![2])], "{:?}", missing.errors);
+        assert!(missing.errors[0].message.contains("gone.md"), "{:?}", missing.errors);
+
+        let written = preview_layout(
+            root.path(),
+            "atelier",
+            draft,
+            &bodies(&[("sub/plan.md", "# Plan\n"), ("gone.md", "# 다시 쓴 뼈대\n")]),
+        )
+        .unwrap();
+        assert_eq!(written.errors, []);
+        assert!(written.text.is_some());
+    }
+
+    /// 미리보기는 **항목마다 제 줄이 어디인지** 준다 — 편집기의 팝업이 고른 항목의 줄을 칠한다(구현 스펙 5절
+    /// 「배치」). 줄 규칙은 render의 것이라 앱이 글을 다시 읽어 셈하지 않는다(결정 13). 항목의 줄은 이름 줄과
+    /// 여러 줄 설명의 뒷줄, `Template:` 줄이다. 맨 위 항목(`[]`)은 방침 문단의 줄이다. 줄은 0부터 센다.
+    #[test]
+    fn the_preview_says_which_lines_each_entry_holds() {
+        let root = tempfile::tempdir().unwrap();
+        let draft = serde_json::json!({ "root": { "description": "방침 한 줄.\n둘째 줄.", "children": [
+            { "pattern": "a.md", "kind": "file", "description": "하나\n둘", "template": "a.md" },
+            { "pattern": "b", "kind": "folder", "children": [
+                { "pattern": "c.md", "kind": "file", "description": "셋" } ] } ] } });
+
+        let preview = preview_layout(root.path(), "atelier", draft, &bodies(&[("a.md", "# A\n")])).unwrap();
+
+        let text = preview.text.expect("오류가 없으면 글이 있다");
+        let lines: Vec<&str> = text.split('\n').collect();
+        assert_eq!(lines[2], "방침 한 줄.", "{text}");
+        assert_eq!(lines[5].trim_end(), "  a.md    하나", "{text}");
+        assert_eq!(lines[9], "    c.md  셋", "{text}");
+        let held: Vec<_> =
+            preview.lines.iter().map(|held| (held.path.clone(), held.start, held.count)).collect();
+        assert_eq!(held, [(vec![], 2, 2), (vec![0], 5, 3), (vec![1], 8, 1), (vec![1, 0], 9, 1)]);
+    }
+
+    /// **앱이 받는 미리보기의 모양**(`render_spec_layout`) — 글, 항목의 줄, 오류, 경고가 한 답에 온다. 오류의
+    /// 모양은 저장의 것(`{ path, message }`)과 같고, 오류가 있으면 글은 `null`이다.
+    #[test]
+    fn the_app_gets_a_preview_as_its_text_lines_errors_and_warnings() {
+        let root = tempfile::tempdir().unwrap();
+        let refused = preview_layout(
+            root.path(),
+            "atelier",
+            serde_json::json!({ "root": { "children": [ { "pattern": "a.md" } ] } }),
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(refused).unwrap(),
+            serde_json::json!({
+                "text": null,
+                "lines": [],
+                "errors": [{ "path": [0], "message": "`kind` is missing (\"file\" or \"folder\")" }],
+                "warnings": [],
+            })
+        );
+
+        let draft = serde_json::json!({ "root": { "children": [ { "pattern": "a.md", "kind": "file" } ] } });
+        let shown = preview_layout(root.path(), "atelier", draft, &BTreeMap::new()).unwrap();
+        assert_eq!(
+            serde_json::to_value(shown).unwrap(),
+            serde_json::json!({
+                "text": "Spec layout — how to arrange documents inside `specDir`.\n\n  a.md",
+                "lines": [{ "path": [0], "start": 2, "count": 1 }],
+                "errors": [],
+                "warnings": [],
+            })
+        );
+    }
+
+    /// id는 모드 이름 둘만 받는다 — IPC로 온 `"../.."`이 데이터 루트 밖의 템플릿을 보면 안 된다.
+    #[test]
+    fn the_preview_takes_only_the_two_mode_names() {
+        let root = tempfile::tempdir().unwrap();
+        for id in ["../..", "..", "", "Atelier", "works", "atelier/"] {
+            let refused = preview_layout(root.path(), id, without_templates(), &BTreeMap::new());
+            assert!(refused.is_err(), "{id:?}가 통과했다: {refused:?}");
+        }
+        for id in ["atelier", "maison"] {
+            assert!(preview_layout(root.path(), id, without_templates(), &BTreeMap::new()).is_ok(), "{id}");
+        }
     }
 }
