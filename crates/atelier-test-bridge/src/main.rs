@@ -163,6 +163,17 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 기본값으로 되돌리기 — 같은 코어 입구(`revert_layout`)가 다리의 데이터 루트에서 **진짜로** 폴더를
     // 지운다. 모드 이름이 아닌 id는 코어가 거절한다.
     ("revert_spec_layout", |a| ok(atelier_core::revert_layout(&data_root(), &text(a, "id")?))),
+    // 편집기의 읽기와 저장(티켓 11) — 같은 코어 입구(`read_layout`·`save_layout`)가 다리의 데이터 루트에서
+    // **진짜로** 읽고 쓴다. 저장의 검증 거절은 답의 데이터(`{ errors }`)라 여기서도 성공으로 나간다.
+    ("read_spec_layout", |a| ok(atelier_core::read_layout(&data_root(), &text(a, "id")?))),
+    ("write_spec_layout", |a| {
+        ok(atelier_core::save_layout(
+            &data_root(),
+            &text(a, "id")?,
+            value(a, "layout")?,
+            &serde_json::from_value(value(a, "templates")?).map_err(err)?,
+        ))
+    }),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
 ];
@@ -187,6 +198,11 @@ fn err(error: impl std::fmt::Display) -> String {
 
 fn text(args: &Args, key: &str) -> Result<String, String> {
     maybe_text(args, key).ok_or_else(|| format!("인자 '{key}'(문자열)가 필요합니다"))
+}
+
+/// JSON 값 그대로의 인자 — 모양을 여기서 보지 않는다. 받는 코어가 본다(레이아웃은 모르는 키까지 값으로 건넨다).
+fn value(args: &Args, key: &str) -> Result<Value, String> {
+    args.get(key).cloned().ok_or_else(|| format!("인자 '{key}'가 필요합니다"))
 }
 
 fn maybe_text(args: &Args, key: &str) -> Option<String> {

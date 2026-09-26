@@ -355,6 +355,26 @@ pub async fn revert_spec_layout(id: String) -> CmdResult<()> {
     atelier_core::revert_layout(&atelier_core::data_root(), &id).map_err(err)
 }
 
+/// 편집기가 여는 모드의 레이아웃 — 디스크 형식 그대로의 레이아웃과 템플릿 본문, 경고. 깨졌으면 오류와
+/// 원문이다(편집기는 그때 편집 UI를 세우지 않는다). 아무것도 쓰지 않는다. id는 모드 이름 둘만 받는다.
+#[tauri::command]
+pub async fn read_spec_layout(id: String) -> CmdResult<atelier_core::LayoutRead> {
+    atelier_core::read_layout(&atelier_core::data_root(), &id).map_err(err)
+}
+
+/// 편집기의 저장. 템플릿은 늘 전부 받는다. **검증이 거절하면 거절이 아니라 답이다** — 위치가 붙은
+/// 오류가 성공 응답의 데이터(`{ errors }`)로 가고 아무것도 쓰지 않는다. 명령이 거절하는 것은 쓰다가
+/// 실패한 것(IO)과 모드 이름이 아닌 id뿐이다. `layout`은 값으로 받는다 — 구조체로 받으면 모르는 키가
+/// 역직렬화에서 떨어진다.
+#[tauri::command]
+pub async fn write_spec_layout(
+    id: String,
+    layout: serde_json::Value,
+    templates: std::collections::BTreeMap<String, String>,
+) -> CmdResult<atelier_core::SaveOutcome> {
+    atelier_core::save_layout(&atelier_core::data_root(), &id, layout, &templates).map_err(err)
+}
+
 /// 사람이 종료 확인에서 「종료」를 골랐다(결정 14·15). **「확인됨」을 먼저 세우고** 끈다 — 끄는
 /// 사이에 끼어드는 #224의 `terminate:` 훅이 다시 막고 묻지 않게. 셸 정리는 여기서 하지 않는다:
 /// `app.exit`가 부르는 `RunEvent::Exit`의 `reap_all`이 지금처럼 그대로 돈다(`lib.rs`).
