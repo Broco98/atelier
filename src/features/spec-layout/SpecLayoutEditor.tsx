@@ -568,8 +568,12 @@ function IconPicker({ icon, onPick }: { icon: string | null; onPick: (icon: stri
           anchorRef={anchor}
           width={268}
           onClose={() => setOpen(false)}
+          // 지금 고른 칸에 포커스가 간다 — 모르는 이름이라 고른 칸이 없으면 첫 칸(「아이콘 없음」)이다.
           onPlaced={(card) =>
-            card.querySelector<HTMLElement>('[aria-checked="true"], [role="radio"]')?.focus()
+            (
+              card.querySelector<HTMLElement>('[aria-checked="true"]') ??
+              card.querySelector<HTMLElement>('[role="radio"]')
+            )?.focus()
           }
         >
           <div

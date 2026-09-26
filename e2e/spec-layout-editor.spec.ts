@@ -129,6 +129,36 @@ test("항목을 고치기만 하고 저장을 누르지 않으면 저장 명령�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 아이콘은 제목 옆 칸의 팝오버에서 앱의 아이콘 표로 고른다 — 고른 이름이 초안에, 저장에 실린다.
+test("아이콘 칸의 팝오버에서 아이콘을 고르면 트리 행이 따라오고 저장에 그 이름이 실린다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openEditor(page);
+
+  await 행(page, "decisions.md").click();
+  const 칸 = page.getByRole("button", { name: "아이콘 바꾸기", exact: true });
+  await 칸.click();
+  const 표 = page.getByRole("radiogroup", { name: "아이콘", exact: true });
+  // 이 항목에는 아이콘이 없다 — 「아이콘 없음」이 골라져 있다
+  await expect(표.getByRole("radio", { name: "아이콘 없음", exact: true })).toHaveAttribute("aria-checked", "true");
+  await 표.getByRole("radio", { name: "scale", exact: true }).click();
+  await expect(표).toHaveCount(0);
+  await expect(칸).toHaveAttribute("title", "scale");
+
+  await 저장(page).click();
+  await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
+  const [{ layout }] = (await writes(page)) as [{ layout: typeof SPEC_LAYOUT_READ.layout }];
+  expect(layout.root.children![1]).toEqual({
+    pattern: "decisions.md",
+    kind: "file",
+    description: "정한 것과 그 이유",
+    template: "decisions.md",
+    since: "0.14",
+    icon: "scale",
+  });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 트리 열의 머리 `spec/`은 항목이 아니다 — 누르면 맨 위 항목의 설명(방침 문단) 칸 하나만 선다(결정 26).
 test("머리 `spec/`을 눌러 안내를 고치고 저장하면 저장된 레이아웃의 맨 위 항목 설명이 바뀌어 있다", async ({
   page,
