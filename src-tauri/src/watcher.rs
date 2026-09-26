@@ -93,8 +93,9 @@ fn works_change_is_relevant(path: &Path) -> bool {
 
 /// 레이아웃 폴더 아래는 점 파일만 거른다 — 저장의 원자적 쓰기가 남기는 tmp 단계다. 나머지는 모두
 /// 소식이다: `layout.json`도, 어느 깊이의 템플릿도, 되돌리기로 사라지는 `<id>/` 폴더 자체도.
-/// works의 체크아웃 거르기(`trees/`)는 빌리지 않는다 — 레이아웃에는 체크아웃이 없고, 그 이름의
-/// 폴더 항목에 템플릿이 설 수 있다.
+/// works의 체크아웃 거르기(`trees/`)는 빌리지 않는다 — 레이아웃에는 체크아웃이 없고, 템플릿 파일은
+/// 레이아웃 폴더 안의 `trees/`라는 하위 폴더에도 설 수 있다(손으로 적은 템플릿 경로는 폴더 안 어느
+/// 상대 경로든 된다).
 fn layout_change_is_relevant(path: &Path) -> bool {
     !is_dotfile(path)
 }
@@ -211,7 +212,8 @@ mod tests {
     /// (`atomic.rs`의 `tmp_name`), 그 중간 단계가 새면 저장 한 번이 종을 여러 번 친다.
     ///
     /// **works의 규칙을 빌리지 않는다** — 그쪽은 코드 체크아웃(`trees/`)도 거르는데, 레이아웃에는 체크아웃이
-    /// 없고 `trees/`라는 폴더 항목의 템플릿이 설 수 있다. 계획에 실린 함수로 잰다(위 Room 검사와 같은 이유).
+    /// 없고 레이아웃 폴더 안의 `trees/`라는 하위 폴더에 템플릿 파일이 설 수 있다. 계획에 실린 함수로
+    /// 잰다(위 Room 검사와 같은 이유).
     #[test]
     fn a_layout_or_template_is_news_but_dotfiles_are_not() {
         let layouts = atelier_core::layouts_dir();
