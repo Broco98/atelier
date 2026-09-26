@@ -922,6 +922,7 @@ const 칸 = (attention: Attention | null, status: Shell["status"] = { kind: "run
   status,
   title: null,
   shellName: "zsh",
+  shellKey: "G-1",
   owner: 소유(),
   project: null,
   cwd: null,

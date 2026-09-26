@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, Settings, type LucideIcon } from "lucide-react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { cn } from "@/lib/utils";
@@ -17,16 +16,16 @@ import {
 import type { ShellOwner } from "@/features/terminal/shell-registry";
 import { bandRows, signalsOf, topSignalView } from "@/features/terminal/shell-attention";
 import type { BandRow } from "@/features/terminal/shell-attention";
-import { focusShell, remindOrphan, selectShell, setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
-import { recallSearch, tabSearch } from "@/routes/-work-search";
+import { setNotifyTitles, terminalStore } from "@/features/terminal/terminal-store";
 import { SETTINGS_ITEMS, type SettingsItemKey } from "@/features/settings/pages";
-import { navItemsOf, routesOf, slugOf, type Mode } from "@/mode";
+import { navItemsOf, type Mode } from "@/mode";
 import { AttentionBand, type BandItem } from "./attention-band";
 import { foldingInnerClass, PANEL_MOTION } from "./panel-layout";
 import { ModeSwitch } from "./ModeSwitch";
 import { TERMINAL_LABEL, type NavKey } from "./nav-items";
 import { ShellMeta } from "./shell-meta";
 import { SignalLine, showsElapsed } from "./shell-signal";
+import useGoToShell from "./useGoToShell";
 import useResizableWidth, { ResizeHandle, type ResizableWidth } from "./useResizableWidth";
 
 interface SidebarProps {
@@ -116,7 +115,8 @@ function Sidebar({
   useNotifyTitles(resolveTitle);
   // 띠의 줄은 늘 경과를 단다(부르는 것만 서므로) — 줄이 하나라도 있으면 시계가 돈다.
   const bandNow = useNow(items.length > 0);
-  const openBand = useOpenBand(mode);
+  // 띠의 줄을 누르면 그 셸로 간다 — ⌘J(방금 부른 셸로)와 **같은 길**이다(`useGoToShell`).
+  const openBand = useGoToShell();
 
   // **설정이면 설정 nav를 그린다**(UI개선 결정 21) — 모드 전환·nav·띠·작업 목록·바닥 Settings가
   // 빠지고 「← 앱으로 돌아가기」와 항목만 선다.
@@ -440,61 +440,6 @@ function useNotifyTitles(resolve: (owner: ShellOwner) => string): void {
   }, [resolve]);
 }
 
-/**
- * 띠의 줄을 눌렀을 때 하는 일(결정 13의 넷째·다섯째). **둘로 갈린 일 하나다**: 셸을 켜는
- * 것은 스토어의 일이라 주소와 무관하고, 화면을 옮기는 것은 주소를 쥔 쪽의 일이다 —
- * `WorksPage`의 `dropHere`가 같은 분담을 이미 쓰고 있다.
- *
- * **spec을 보고 있었으면 터미널로 밀어낸다**(결정 13의 넷째) — 결정 10의 알림 클릭 규칙과
- * 같은 자리로 간다. **분할은 안 건드린다**: 분할 중이면 두 열이 이미 서 있으므로 바뀌는
- * 것은 터미널 열의 탭 하나뿐이고, 분할을 자동으로 여는 안은 「사람이 안 시킨 레이아웃
- * 변경」이라 기각됐다.
- *
- * 주소를 짓는 모양이 둘인 것은 work이 같은가로 갈리기 때문이다 — 같으면 보던 문서와 분할을
- * 지켜야 해서 **함수형**이고(결정 15가 그 형태를 못박았다), 다르면 그 work의 마지막 화면을
- * 씨앗으로 삼는다(`recallSearch`, 결정 77·97). `dropInto`가 같은 갈림을 같은 모양으로 쓴다.
- * **이 자리가 `recallSearch`를 부르는 여섯 문 중 하나다** — 그쪽 머리말이 그 문들을 이름으로
- * 세고 있으니 여기가 늘거나 줄면 그 목록도 함께 고친다.
- *
- * 같은 work 안에서는 `replace`다(결정 13) — 탭을 한 번 옮겼는데 되돌리는 데 뒤로가기를
- * 두 번 눌러야 하는 일이 없다. 화면이 통째로 바뀌는 쪽은 히스토리를 남긴다.
- *
- * **키보드 포커스도 데려간다**(티켓 16 · 프로세스 스펙 S21). 지금 보고 있는 셸이면 그 자리에서, 다른 탭 · 다른 work의
- * 셸이면 화면이 옮겨져 그 셸이 붙는 순간 온다(`focusShell`). 셸을 켜기 **전에** 부른다 — 요청이 먼저 적혀 있으면 켜기가
- * 언제 붙기를 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`remindOrphan`) **뒤에** 부른다 — 앞에 두면 붙을 화면이
- * 없는 셸에 기다리는 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다.
- * 이웃 work(`sidebar-active-band`)이 이 처리기를 옮기면 `focusShell` 줄도 이 자리(갈림 다음, 켜기 · 화면 이동 앞)로
- * 함께 옮긴다.
- *
- * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12). 그 work은 목록에 없어 가면 없는 work으로 간다 —
- * 대신 그 세계의 주인 잃은 셸 토스트를 다시 세운다(`remindOrphan`). 셸도 켜지 않는다: 켜 봐야 보일 화면이 없다.
- * 판 04부터는 `Processes`로 간다(티켓 32).
- */
-function useOpenBand(mode: Mode): (item: BandItem) => void {
-  const navigate = useNavigate();
-  const routes = routesOf(mode);
-  const openSlug = useRouterState({ select: (state) => slugOf(state.location.pathname) });
-
-  return (item) => {
-    if (remindOrphan(item.id)) return;
-    focusShell(item.id);
-    selectShell(item.id);
-    const slug = slugOfOwner(item.owner);
-    if (slug === null) {
-      void navigate({ to: routes.terminal });
-      return;
-    }
-    const here = slug === openSlug;
-    void navigate({
-      to: routes.item,
-      params: { slug },
-      search: here
-        ? (prev: object) => tabSearch(prev, "terminal")
-        : tabSearch(recallSearch(mode, slug), "terminal"),
-      replace: here,
-    });
-  };
-}
 
 /**
  * **둘째 줄의 셸 갈래** 하나가 자기 것만 구독한다(결정 2·4). 스토어를 아는 자리가 여기라서

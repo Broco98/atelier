@@ -46,6 +46,7 @@ import {
   searchHotkey,
   setAttention,
   setRunning,
+  setShellKey,
   setShellName,
   setTitle,
   shellCapNotice,
@@ -523,6 +524,29 @@ describe("셸 이름은 타이틀 → 셸 이름 순이다", () => {
     const { state } = opened(1);
     expect(setTitle(state, 9999, "무엇")).toBe(state);
     expect(setShellName(state, 9999, "zsh")).toBe(state);
+  });
+});
+
+// 프로세스 스펙 S34 · 티켓 23 — **셸 키는 spawn 답이 싣는다.** 세대는 백엔드만 알아서, 막 연 칸에는 키가 없다. 키로 셸을
+// 찾는 길(방금 부른 셸로)이 이 칸을 읽는다.
+describe("spawn 답의 셸 키를 셸이 든다", () => {
+  it("막 연 칸에는 키가 없다", () => {
+    const { state, ids } = opened(1);
+    expect(shellOf(state, ids[0]).shellKey).toBeNull();
+  });
+
+  it("답이 온 칸이 그 키를 든다 — 다른 칸은 그대로다", () => {
+    const { state, ids } = opened(2);
+    const keyed = setShellKey(state, ids[1], "1790000000000-2");
+    expect(shellOf(keyed, ids[1]).shellKey).toBe("1790000000000-2");
+    expect(shellOf(keyed, ids[0])).toBe(shellOf(state, ids[0]));
+  });
+
+  it("같은 키가 다시 오거나 모르는 id면 상태가 그대로다", () => {
+    const { state, ids } = opened(1);
+    const keyed = setShellKey(state, ids[0], "G-1");
+    expect(setShellKey(keyed, ids[0], "G-1")).toBe(keyed);
+    expect(setShellKey(state, 9999, "G-1")).toBe(state);
   });
 });
 

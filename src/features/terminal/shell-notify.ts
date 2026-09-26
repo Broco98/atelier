@@ -85,12 +85,8 @@ export interface NotifyInput {
  */
 export function decideNotification(input: NotifyInput): NotifyContent | null {
   const { next } = input;
-  // 「확인할 것」 둘로 들어가는 것만이 울릴 일이다. 도는 중과 없음은 여기서 함께 걸린다.
-  // **갈래의 이름을 딛는다**(`isCalling`) — 축이 느는 날 띠·배지와 여기가 갈리지 않게.
-  if (!isCalling(next)) return null;
-  // **시각까지 같아야 「머무름」이다.** 화면값만 견주면 훅 셸의 둘째 승인 요청이 삼켜진다
-  // (위 머리말).
-  if (next === input.prev && input.since === input.prevSince) return null;
+  // 뒤의 `isCalling`은 앞이 참이면 늘 참이다 — 아래 말 고르기(`SIGNAL_LABEL[next]`)에 좁힌 값을 건네려고 한 번 더 적는다.
+  if (!entersCalling(input) || !isCalling(next)) return null;
   if (input.visible) return null;
   // **접히는 것은 뒤에 온 쪽이다**(결정 10 — 첫 것만). 턴 종료와 권한 요청이 연달아 오는
   // 그 순간이 이 창이 있는 이유다.
@@ -104,11 +100,31 @@ export function decideNotification(input: NotifyInput): NotifyContent | null {
 }
 
 /**
+ * **부르는 상태에 들어섰나** — 알림 판정의 첫 두 줄이다(위 `decideNotification`). 울릴지는 그 뒤의 두 줄(보고 있나 · 5초 창)이
+ * 더 가르지만, 들어섰다는 사실은 거기서 안 바뀐다. 그 사실만 따로 읽는 자리가 방금 부른 셸의 기억이다(티켓 23 · 프로세스
+ * 스펙 S59) — 보고 있어서 · 접혀서 · 알림을 꺼서 안 울린 부름도 사람을 부른 것이다. 판정을 두 벌 적지 않으려고 여기 하나로
+ * 뗐다.
+ */
+export function entersCalling(input: Pick<NotifyInput, "prev" | "prevSince" | "next" | "since">): boolean {
+  // 「확인할 것」 둘로 들어가는 것만이 울릴 일이다. 도는 중과 없음은 여기서 함께 걸린다.
+  // **갈래의 이름을 딛는다**(`isCalling`) — 축이 느는 날 띠·배지와 여기가 갈리지 않게.
+  if (!isCalling(input.next)) return false;
+  // **시각까지 같아야 「머무름」이다.** 화면값만 견주면 훅 셸의 둘째 승인 요청이 삼켜진다
+  // (위 `decideNotification` 머리말).
+  return !(input.next === input.prev && input.since === input.prevSince);
+}
+
+/**
  * 판정에 걸릴 셸 하나. `kind`는 **화면값**이라(`signalOf`) 본 완료는 이미 `null`이고,
  * `visible`은 결정 7의 판정(`isShellSeen`)이 그대로 온 것이다.
  */
 export interface NotifyShell {
   id: number;
+  /**
+   * 그 셸의 셸 키(프로세스 스펙 S34). 알림 판정은 안 쓴다 — 들어선 셸을 기억하는 자리(방금 부른 셸로 · 티켓 23)가 이 값으로
+   * 셸을 가리킨다. spawn 응답 전이면 `null`이다.
+   */
+  key: string | null;
   /**
    * 5초 창을 나누는 키 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 그 세계의
    * 최상위 셸이다.
@@ -132,11 +148,20 @@ export interface NotifyShell {
 }
 
 /**
- * 회차마다 목록을 받아 **울릴 것만** 돌려준다. 상태는 둘뿐이다 — 셸마다의 직전 화면값과
+ * 회차 하나가 낸 것 둘. `fired`는 **울릴 것**이고, `entered`는 이 회차에 **부르는 상태에 들어선 셸**이다 — 울렸든(보임 억제 ·
+ * 5초 창에 걸려) 안 울렸든 든다(`entersCalling`). 차례는 받은 목록 그대로다.
+ */
+export interface NotifyStep {
+  fired: ReadonlyArray<NotifyContent>;
+  entered: ReadonlyArray<NotifyShell>;
+}
+
+/**
+ * 회차마다 목록을 받아 울릴 것과 들어선 셸을 돌려준다. 상태는 둘뿐이다 — 셸마다의 직전 화면값과
  * work마다의 마지막 알림 시각.
  */
 export interface Notifier {
-  step(shells: ReadonlyArray<NotifyShell>, now: number): ReadonlyArray<NotifyContent>;
+  step(shells: ReadonlyArray<NotifyShell>, now: number): NotifyStep;
 }
 
 /**
@@ -165,16 +190,17 @@ export function createNotifier(): Notifier {
   return {
     step(shells, now) {
       const fired: NotifyContent[] = [];
+      const entered: NotifyShell[] = [];
       const next = new Map<number, { kind: ShellSignal | null; since: number }>();
 
       for (const shell of shells) {
         next.set(shell.id, { kind: shell.kind, since: shell.since });
         const was = previous.get(shell.id) ?? null;
+        const edge = { prev: was?.kind ?? null, prevSince: was?.since ?? null, next: shell.kind, since: shell.since };
+        // **울리기 전에 적는다** — 아래 판정이 보임 · 5초 창으로 거절해도 들어선 사실은 남는다(`entersCalling`).
+        if (entersCalling(edge)) entered.push(shell);
         const content = decideNotification({
-          prev: was?.kind ?? null,
-          prevSince: was?.since ?? null,
-          next: shell.kind,
-          since: shell.since,
+          ...edge,
           visible: shell.visible,
           lastNotifiedAt: lastByOwner.get(shell.owner) ?? null,
           now,
@@ -188,7 +214,7 @@ export function createNotifier(): Notifier {
       }
 
       previous = next;
-      return fired;
+      return { fired, entered };
     },
   };
 }
@@ -216,6 +242,7 @@ export function notifyShells(
 ): ReadonlyArray<NotifyShell> {
   return callingShells(state.shells).map(({ shell, kind, attention }) => ({
     id: shell.id,
+    key: shell.shellKey,
     owner: shell.owner,
     kind,
     since: attention.since,

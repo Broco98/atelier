@@ -64,11 +64,19 @@ const HOTKEY_PREFIX: &str = "hotkey:";
 /// 줄에 서는 것이 읽힌다 — 나머지는 전부 「지금 이 화면의」 무엇이다. 그 자리를 검사가
 /// 못 박는다(`검색이_표의_맨_앞이다`): 메뉴를 세우는 함수가 tauri 핸들을 요구해 단위 검사가
 /// 안 태우므로, 다음 사람이 표를 알파벳순으로 정리하면 조용히 밀린다.
+///
+/// **⌘J는 「방금 부른 셸로」다**(프로세스 결정 16 · 프로세스 스펙 P3 · 티켓 23) — 가장 최근에 사람을 부른 셸로 가서 키보드
+/// 포커스를 그 셸에 준다. OS 알림을 누르는 길이 안 되는(판 03 선행 시험) 자리를 이 키가 맡는다. **앱 안 단축키다** — 전역
+/// 단축키로 두지 않는다: 앱이 앞에 있을 때만 먹고, 알림을 보고 앱으로 넘어온 뒤 누르는 흐름이다. 이 항목이 셸에 포커스가
+/// 있어도 듣는 길인 것은 위 다른 항목과 같다. 번호 항목들 **앞**에 선다 — 금이 첫 번호 앞에 그어지므로 뒤에 두면 번호들
+/// 사이에 끼고, 그 자리는 `방금_부른_셸로가_번호_항목들_앞에_선다`가 못 박는다. 이름은 코드의 말(`callingShells`의 「부른다」)을
+/// 영어로 옮긴 것이다 — View 메뉴의 다른 항목처럼 영어다.
 const HOTKEYS: &[(&str, &str)] = &[
     ("KeyK", "Search"),
     ("KeyB", "Sidebar"),
     ("Enter", "Panel"),
     ("KeyT", "New Shell"),
+    ("KeyJ", "Last Calling Shell"),
     ("Digit1", "Tab 1"),
     ("Digit2", "Tab 2"),
     ("Digit3", "Tab 3"),
@@ -374,6 +382,7 @@ mod tests {
     #[test]
     fn accelerator를_code에서_만든다() {
         assert_eq!(accelerator_of("KeyK"), "CmdOrCtrl+K");
+        assert_eq!(accelerator_of("KeyJ"), "CmdOrCtrl+J");
         assert_eq!(accelerator_of("Digit1"), "CmdOrCtrl+1");
         assert_eq!(accelerator_of("Digit9"), "CmdOrCtrl+9");
         assert_eq!(accelerator_of("KeyB"), "CmdOrCtrl+B");
@@ -575,7 +584,7 @@ mod tests {
     #[test]
     fn 살리기로_한_키가_다_있다() {
         let codes: Vec<&str> = HOTKEYS.iter().map(|(code, _)| *code).collect();
-        for want in ["KeyK", "KeyB", "KeyT", "Enter"] {
+        for want in ["KeyK", "KeyB", "KeyT", "KeyJ", "Enter"] {
             assert!(codes.contains(&want), "{want}가 표에 없다");
         }
         for n in 1..=9 {
@@ -610,6 +619,19 @@ mod tests {
             HOTKEYS[first_digit..].iter().all(|(code, _)| code.starts_with("Digit")),
             "번호 항목 사이에 다른 항목이 끼었다 — 구분선이 엉뚱한 자리에 선다"
         );
+    }
+
+    /// **「방금 부른 셸로」(⌘J)가 번호 항목들 앞에 선다**(프로세스 스펙 P3 · 티켓 23). 금은 「첫 `Digit*` 항목 앞」에 한 번만
+    /// 그어지므로(`번호_항목이_표_뒤쪽에_몰려_있다`), 번호 뒤에 붙이면 그 검사가 빨개지고 번호 사이에 끼우면 금이 엉뚱한 자리에
+    /// 선다. 자리를 못 박는 것은 위 「맨 앞이다」와 같은 까닭이다 — 표의 순서가 곧 메뉴의 순서인데 메뉴를 세우는 함수는 단위
+    /// 검사가 못 태운다.
+    #[test]
+    fn 방금_부른_셸로가_번호_항목들_앞에_선다() {
+        let at = HOTKEYS.iter().position(|(code, _)| *code == "KeyJ").expect("⌘J가 표에 없다");
+        let first_digit =
+            HOTKEYS.iter().position(|(code, _)| code.starts_with("Digit")).expect("번호 항목이 없다");
+        assert!(at < first_digit, "⌘J({at})가 번호 항목({first_digit}) 뒤에 있다");
+        assert_eq!(HOTKEYS[at].1, "Last Calling Shell");
     }
 
     /// **시작 보고의 자리가 앱에 서는가**(프로세스 스펙 S11). 명령은 그 자리를 `State`로 찾는데, `manage`가

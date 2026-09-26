@@ -34,6 +34,10 @@ use crate::processes::{procargs, Identity, Proc, Snapshot, SHELL_KEY_ENV};
 #[serde(rename_all = "camelCase")]
 pub struct PtySpawned {
     pub id: u32,
+    /// 셸 키 — `<세대>-<PTY 번호>`, 그 셸 env의 `ATELIER_SHELL`과 같은 값이다(프로세스 스펙 S34 · 티켓 23). **세대는 여기에만
+    /// 있어서 싣는다** — 프런트가 번호만 알면 옛 실행의 키(알림 클릭)와 이번 실행의 같은 번호 셸을 못 가른다. 프런트는 이
+    /// 값으로 셸을 가리킨다(방금 부른 셸로).
+    pub shell_key: String,
     pub shell_name: String,
 }
 
@@ -221,6 +225,8 @@ pub fn spawn(
     let root = atelier_core::data_root();
     let state_file = crate::shells::state_path(&root, &shell_id);
     let lock_file = crate::shells::lock_path(&root, &shell_id);
+    // 답에 실을 셸 키는 풀에 앉히는 것과 **같은 값**이다 — 따로 다시 지으면 env에 심은 표식과 프런트가 쥔 키가 갈릴 자리가 생긴다.
+    let shell_key = shell_id.clone();
     pool.lock().insert(
         id,
         Shell { pid, key: shell_id, process, first_input_us: None, master, writer, state_file, lock_file },
@@ -268,7 +274,7 @@ pub fn spawn(
         // 채널이 여기서 떨어지며 JS 쪽 콜백이 정리된다.
     });
 
-    Ok(PtySpawned { id, shell_name })
+    Ok(PtySpawned { id, shell_key, shell_name })
 }
 
 /// 셸 프로세스와 그 입출력 — `spawn`이 실패할 수 있는 몫에서 나온 것.
@@ -1863,6 +1869,19 @@ mod tests {
             planted(&one).get("ATELIER_SHELL"),
             planted(&two).get("ATELIER_SHELL"),
             "두 셸에 같은 값이 실렸다 — 상태 파일이 하나로 겹친다"
+        );
+    }
+
+    /// **셸 띄우기 답이 셸 키를 싣는다**(프로세스 스펙 S34 · 티켓 23) — 와이어 모양을 글자로 못박는다. 프런트는 이 칸
+    /// (`shellKey`)으로 셸을 가리킨다: 방금 부른 셸로 가는 길이 키로 셸을 찾는다. 칸 이름이 어긋나면 프런트는 `undefined`를
+    /// 받아 모든 셸이 키 없는 셸이 되고, 그 길은 조용히 아무 데도 안 간다. 실린 값이 셸 env의 표식과 같은지는 셸을 실제로
+    /// 띄우는 `tests/top_terminal.rs`가 잰다.
+    #[test]
+    fn the_spawn_answer_crosses_the_wire_with_the_shell_key() {
+        let spawned = super::PtySpawned { id: 3, shell_key: "G-3".to_string(), shell_name: "zsh".to_string() };
+        assert_eq!(
+            serde_json::to_value(&spawned).expect("직렬화된다"),
+            serde_json::json!({ "id": 3, "shellKey": "G-3", "shellName": "zsh" })
         );
     }
 

@@ -175,6 +175,7 @@ describe("무엇이 실리나", () => {
 describe("판정을 회차에 걸어 두는 것", () => {
   const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => ({
     id: 1,
+    key: "G-1",
     owner: 소유("signal"),
     kind: "waiting",
     since: 0,
@@ -187,9 +188,9 @@ describe("판정을 회차에 걸어 두는 것", () => {
 
   it("같은 값이 계속 와도 한 번만 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([shell()], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(0);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell()], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(0);
   });
 
   // **이것이 훅 셸의 실물 경로다**(위 판정 검사의 짝). claude가 `Bash` 승인을 묻고, 사람이
@@ -198,32 +199,32 @@ describe("판정을 회차에 걸어 두는 것", () => {
   // 승인 요청이 삼켜져, 다른 앱을 보던 사람은 claude가 멈춰 선 것을 모른다.
   it("같은 화면값으로 새 승인이 오면 두 번째도 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell({ since: 0, message: "Bash · git status" })], 0)).toHaveLength(1);
-    const 다음 = notifier.step([shell({ since: 180_000, message: "Edit · src/pty.rs" })], 180_000);
+    expect(notifier.step([shell({ since: 0, message: "Bash · git status" })], 0).fired).toHaveLength(1);
+    const 다음 = notifier.step([shell({ since: 180_000, message: "Edit · src/pty.rs" })], 180_000).fired;
     expect(다음.map((one) => one.body)).toEqual(["Edit · src/pty.rs"]);
   });
 
   // 스토리 60의 반대쪽 — 「그쳤다가 다시 부르면」이 회차에서도 산다.
   it("도는 중을 지나 다시 부르면 두 번째도 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([shell({ kind: "working" })], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(1);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell({ kind: "working" })], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(1);
   });
 
   // **셸이 사라졌다 돌아오는 것도 재무장이다.** 칸이 닫히면 그 기억도 함께 없어져야 —
   // 안 그러면 같은 번호를 물려받은 새 칸이 첫 부름을 삼킨다.
   it("목록에서 빠졌다 돌아온 셸은 다시 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(1);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(1);
   });
 
   // 결정 10의 중복 창 — 턴 종료와 권한 요청이 연달아 울리지 않는다(스토리 61).
   it("같은 work의 셸 둘이 한꺼번에 부르면 첫 것만 울린다", () => {
     const notifier = createNotifier();
-    const fired = notifier.step([shell({ id: 1 }), shell({ id: 2, shellName: "atelier · codex" })], 0);
+    const fired = notifier.step([shell({ id: 1 }), shell({ id: 2, shellName: "atelier · codex" })], 0).fired;
     expect(fired.map((one) => one.subtitle)).toEqual(["atelier · claude"]);
   });
 
@@ -233,7 +234,7 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const fired = notifier.step(
       [shell({ id: 1, owner: 소유("signal") }), shell({ id: 2, owner: 소유("papercuts"), title: "ux 종이베임" })],
       0,
-    );
+    ).fired;
     expect(fired.map((one) => one.title)).toEqual(["터미널 신호", "ux 종이베임"]);
   });
 
@@ -243,8 +244,36 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const fired = notifier.step(
       [shell({ id: 1, owner: 소유(), title: "Terminal" }), shell({ id: 2, owner: 소유("signal") })],
       0,
-    );
+    ).fired;
     expect(fired.map((one) => one.title)).toEqual(["Terminal", "터미널 신호"]);
+  });
+
+  // **들어선 셸은 울렸든 안 울렸든 따로 낸다**(티켓 23 — 방금 부른 셸로). 「들어섰나」는 판정의 첫 두 줄(부르는가 · 새
+  // 사실인가)이 가르고, 보임 억제와 5초 창은 그 뒤의 일이다 — 그 둘에 걸려 안 울린 부름도 사람을 부른 것은 같다(S59).
+  it("부르는 상태에 들어선 셸을 울림과 따로 낸다 — 보고 있거나 접혀 안 울렸어도", () => {
+    const notifier = createNotifier();
+    const 첫회차 = notifier.step([shell({ id: 1, key: "G-1", visible: true })], 0);
+    expect(첫회차.fired).toEqual([]);
+    expect(첫회차.entered.map((one) => one.key)).toEqual(["G-1"]);
+
+    // 머무는 셸은 다시 안 들어선다. 같은 work의 둘째는 5초 창에 접혀 안 울리지만 들어섰다.
+    const 둘째회차 = notifier.step(
+      [shell({ id: 1, key: "G-1", visible: true }), shell({ id: 2, key: "G-2", since: 1000 })],
+      1000,
+    );
+    expect(둘째회차.fired).toHaveLength(1);
+    expect(둘째회차.entered.map((one) => one.key)).toEqual(["G-2"]);
+  });
+
+  it("들어섬은 엣지다 — 머물면 없고, 새 사실이나 그쳤다 다시 부르면 다시 들어선다", () => {
+    const notifier = createNotifier();
+    expect(notifier.step([shell()], 0).entered).toHaveLength(1);
+    expect(notifier.step([shell()], 1000).entered).toEqual([]);
+    // 같은 화면값의 새 사실(둘째 승인 요청).
+    expect(notifier.step([shell({ since: 2000 })], 2000).entered).toHaveLength(1);
+    // 도는 중을 지나 다시 부른다.
+    expect(notifier.step([shell({ since: 2000, kind: "working" })], 3000).entered).toEqual([]);
+    expect(notifier.step([shell({ since: 4000 })], 4000).entered).toHaveLength(1);
   });
 
   // **접힌 알림은 창을 늘리지 않는다.** 접힌 것까지 시각을 갱신하면 셸이 줄줄이 부르는
@@ -253,9 +282,9 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const notifier = createNotifier();
     notifier.step([shell({ id: 1 })], 0);
     // 4초에 둘째 셸이 불러 접힌다.
-    expect(notifier.step([shell({ id: 1 }), shell({ id: 2, kind: "waiting" })], 4000)).toHaveLength(0);
+    expect(notifier.step([shell({ id: 1 }), shell({ id: 2, kind: "waiting" })], 4000).fired).toHaveLength(0);
     // 셋째가 5초에 부르면 창은 첫 알림에서 재므로 열려 있다.
-    expect(notifier.step([shell({ id: 1 }), shell({ id: 2 }), shell({ id: 3 })], COALESCE_MS)).toHaveLength(1);
+    expect(notifier.step([shell({ id: 1 }), shell({ id: 2 }), shell({ id: 3 })], COALESCE_MS).fired).toHaveLength(1);
   });
 });
 
@@ -268,6 +297,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     status: { kind: "running" },
     title: null,
     shellName: "zsh",
+    shellKey: "G-1",
     owner: 소유(),
     project: null,
     cwd: null,
@@ -361,6 +391,16 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     });
   });
 
+  // 방금 부른 셸로 가는 길이 이 키로 셸을 찾는다(티켓 23) — 레지스트리 번호가 아니라 셸 키다(알림 클릭과 같은 길).
+  it("셸 키가 실린다", () => {
+    const rows = notifyShells(
+      화면(칸({ id: 1, owner: 소유("가"), shellKey: "G-7", attention: 상태() })),
+      { activeIds: [], focused: true },
+      제목,
+    );
+    expect(rows[0].key).toBe("G-7");
+  });
+
   it("최상위 셸의 제목도 밖이 정한다", () => {
     const rows = notifyShells(
       화면(칸({ id: 1, owner: 소유(), attention: 상태() })),
@@ -382,6 +422,7 @@ describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
     status: { kind: "running" },
     title: null,
     shellName: "zsh",
+    shellKey: "G-1",
     owner: 소유("signal"),
     project: null,
     cwd: null,
@@ -411,7 +452,7 @@ describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
         { activeIds: [], focused: false },
         () => "터미널 신호",
       );
-      return notifier.step(rows, (at + 1) * (COALESCE_MS + 1)).map((fired) => fired.body);
+      return notifier.step(rows, (at + 1) * (COALESCE_MS + 1)).fired.map((fired) => fired.body);
     });
   };
 

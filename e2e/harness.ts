@@ -10,8 +10,10 @@ import {
   ArgAnswers,
   FIXTURE_BY_MODE,
   FIXTURE_COMMANDS,
+  FIXTURE_GENERATION,
   FIXTURE_INCREMENTING_KEYS,
   FIXTURE_SHELL_NAME,
+  type Incrementing,
   type ModeAnswer,
 } from "./fixtures";
 import type { Mode } from "@/mode";
@@ -136,9 +138,9 @@ interface InitArgs extends FixtureTables {
   /**
    * **부를 때마다 답이 달라져야 하는** 커맨드들: 커맨드 이름 → 그 답에서 하나씩 올릴 키.
    * 무엇을 왜 여기 넣는지는 `fixtures`의 `FIXTURE_INCREMENTING_KEYS`가 든다. L4는 진짜
-   * 백엔드가 답하므로 비어 있다.
+   * 백엔드가 답하므로 비어 있다. 오른 수를 따라 다시 짓는 칸(셸 키)도 줄마다 함께 온다.
    */
-  incrementing: Record<string, string>;
+  incrementing: Record<string, Incrementing>;
 }
 
 /**
@@ -271,7 +273,7 @@ async function install(
     // `pty_spawn`이 #187에서 모드 표로 옮겨 갔다.
     const bump = (cmd: string, answer: unknown) => {
       if (!Object.prototype.hasOwnProperty.call(incrementing, cmd)) return answer;
-      const key = incrementing[cmd];
+      const { key, follow } = incrementing[cmd];
       const base = (answer as Record<string, unknown> | undefined)?.[key];
       // **여기서 조용히 넘어가지 않는다.** 키가 틀렸거나 답의 모양이 바뀌면 `base + n`이
       // `undefined`나 문자열 이어붙이기가 되어 시나리오는 돌고 값만 이상해진다 — 그러면
@@ -281,7 +283,13 @@ async function install(
       }
       const n = seen.get(cmd) ?? 0;
       seen.set(cmd, n + 1);
-      return { ...(answer as Record<string, unknown>), [key]: base + n };
+      const next = base + n;
+      // **따라 짓는 칸은 오른 수에서 다시 짓는다**(셸 키 — 티켓 23). 표의 값을 그대로 두면 셸이 몇이든 같은 키를
+      // 받아, 키로 셸을 찾는 길이 늘 첫 셸로 간다. 답을 갈아 끼운 뒤(`replaceAnswer`)에도 같은 규칙으로 짓는다.
+      const followed = Object.fromEntries(
+        Object.entries(follow).map(([field, prefix]) => [field, `${prefix}${next}`]),
+      );
+      return { ...(answer as Record<string, unknown>), [key]: next, ...followed };
     };
 
     // 고른 답을 내보낸다 — 거절 표시면 던지고, 아니면 회차를 얹는다. 두 표가 **같은 문**을 지난다:
@@ -944,7 +952,9 @@ export async function typeIntoShell(page: Page): Promise<void> {
  * 구독이 안 보이면 기다렸다 다시 보고, 끝내 없으면 **던진다.**
  *
  * 셸 ID는 `<앱 인스턴스 접두사>-<pty id>`다(`pty.rs`의 `shell_id`). 프런트가 되뽑는 것은
- * 마지막 `-` 뒤의 번호뿐이라(`ptyIdOf`) 접두사는 아무 문자열이어도 된다. **어느 셸에 앉힐지
+ * 마지막 `-` 뒤의 번호뿐이라(`ptyIdOf`) 상태가 앉는 데는 접두사가 무엇이어도 되지만, **픽스처의 세대로 짓는다**
+ * (`FIXTURE_GENERATION`) — 그 셸이 spawn 답으로 받은 셸 키와 같은 문자열이어야 키로 셸을 찾는 길(방금 부른 셸로)이
+ * 실물과 같은 셸을 가리킨다(티켓 23). **어느 셸에 앉힐지
  * `ptyId`로 고르는 규칙은 `markRunning`과 같다** — 픽스처가 세는 것은 `pty_spawn`이 불린
  * 순서라, 칸마다 응답을 기다려 세우는 `openShell`을 써야 그 수가 「n번째 칸」과 같아진다.
  *
@@ -997,7 +1007,8 @@ export async function fireAttention(
 ): Promise<void> {
   await fireEvent(page, "shell:attention", [
     {
-      shellId: `l3-${ptyId}`,
+      // 셸 키와 같은 문자열이다 — 픽스처의 spawn 답이 그 셸에 준 키(`FIXTURE_INCREMENTING_KEYS`).
+      shellId: `${FIXTURE_GENERATION}-${ptyId}`,
       state:
         state === null
           ? null

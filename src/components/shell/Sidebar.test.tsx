@@ -343,7 +343,7 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
     // 사이드바를 통째로 바꿔 끼우거나 훅 앞에서 갈라지면 늘 서 있어야 하는 알림 제목 배선
     // (`useNotifyTitles`)이 설정에 있는 동안 멎는다 — 셸이 불러도 알림 제목이 낡거나 안 걸린다.
     // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이라 아래 비교가 읽은 것 없이 선다.
-    const lastHooks = ["useNotifyTitles(resolveTitle);", "useOpenBand(mode);"].map((hook) =>
+    const lastHooks = ["useNotifyTitles(resolveTitle);", "useGoToShell();"].map((hook) =>
       sidebar.indexOf(hook),
     );
     expect([branchAt, ...lastHooks].every((at) => at > -1)).toBe(true);

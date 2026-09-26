@@ -649,6 +649,8 @@ const ShellTab = memo(function ShellTab({
     // 아니다 — 이 칸의 폭은 이미 flex가 정한다.
     <div
       data-tab="shell"
+      // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
+      data-shell-key={shell.shellKey ?? undefined}
       className={cn(
         "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른

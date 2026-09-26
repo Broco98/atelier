@@ -1,6 +1,11 @@
 /** `pty_spawn`의 응답. `shellName`은 셸 행에 적히는 이름의 재료다(결정 31). */
 export interface PtySpawned {
   id: number;
+  /**
+   * 셸 키 — `<세대>-<PTY 번호>`, 그 셸 env의 `ATELIER_SHELL`과 같은 값이다(프로세스 스펙 S34). **세대는 백엔드만 알아서
+   * 답에 실려 온다** — 프런트가 번호만 쥐면 다른 실행이 준 키(알림 클릭)와 이번 실행의 같은 번호 셸을 못 가른다.
+   */
+  shellKey: string;
   shellName: string;
 }
 

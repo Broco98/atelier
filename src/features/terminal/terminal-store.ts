@@ -52,6 +52,7 @@ import {
   runningOfId,
   setAttention,
   setRunning,
+  setShellKey,
   setShellName,
   setTitle,
   shellOpenNotice,
@@ -72,6 +73,8 @@ import type { AttachKind, FocusPlace, PendingFocus } from "./shell-focus";
 import { humanInput, isInterruptKey, keyRoute } from "./shell-input";
 import type { InputHappening } from "./shell-input";
 import { reclaimOnLeave } from "./shell-leave";
+import { nextRecall, recallTarget } from "./shell-recall";
+import type { RecallTarget } from "./shell-recall";
 import { orphanedWorldOf, orphanNotice, orphanToastId, vanishedOwners } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
 import { attachWebgl, closeWebgl, failWebgl, loseWebgl, NO_WEBGL_SEATS } from "./shell-webgl";
@@ -815,6 +818,21 @@ export function setNotifyTitles(resolve: (owner: ShellOwner) => string): void {
 let badgeShown = 0;
 
 /**
+ * **방금 부른 셸**의 셸 키(프로세스 결정 16 · 프로세스 스펙 S59 · 티켓 23). ⌘J가 이 셸로 간다. 무엇을 기억하는지는 `nextRecall`이
+ * 혼자 정하고 여기는 그 답을 들고 있기만 한다 — `pendingFocus`처럼 모듈 값이다: 화면이 그리는 것이 아니다.
+ *
+ * **자리가 알림 판정 곁인 것**은 「부르는 상태에 들어선 순간」을 그 판정이 이미 가르기 때문이다(`entersCalling` — 회차가
+ * `entered`로 낸다). 다른 자리에서 다시 가르면 알림과 기억이 다른 순간을 「들어섰다」로 읽는다. 셸이 닫혀도 지우지 않는다 —
+ * 누르면 「그 셸은 닫혔어요」로 끝나야 한다(fail-closed · `recallTarget`).
+ */
+let recalled: string | null = null;
+
+/** ⌘J가 갈 곳 — 기억한 셸 키로 지금 목록에서 찾는다. `null`이면 부른 셸이 없다. */
+export function recalledShell(): RecallTarget {
+  return recallTarget(recalled, terminalStore.state.shells);
+}
+
+/**
  * 회차 하나. **구독이 부르고, 설정이 바뀔 때도 부른다.**
  *
  * **판정기는 알림이 꺼져 있어도 돈다.** 안 돌리면 꺼 둔 동안의 전이가 기억에 안 앉고, 다시
@@ -823,7 +841,9 @@ let badgeShown = 0;
  */
 function notifyTick(): void {
   const rows = notifyShells(terminalStore.state, currentView(), notifyTitleOf);
-  const fired = notifier.step(rows, Date.now());
+  const { fired, entered } = notifier.step(rows, Date.now());
+  // **알림을 꺼 두었어도 기억한다**(S59) — 들어선 셸은 아래 설정(`outgoing`)과 보임 · 5초 창보다 먼저 갈린다.
+  recalled = nextRecall(recalled, entered);
   // **고른 값이 무엇을 바꾸는지도 여기 없다**(`outgoing`). 「끄면 조용하다」·「소리만 끈다」를
   // 이 배선 안의 `if`로 들면 그 두 줄을 지워도 어느 층도 빨개지지 않는다 — 순수 함수로
   // 내려야 표가 그것을 잡는다(2026-09-10 리뷰).
@@ -1651,8 +1671,11 @@ async function spawn(instance: ShellInstance) {
     // **응답 전에 사람이 쳤으면 여기서 알린다**(`tellFirstInput`) — 그때는 알릴 pty가 없었다.
     const typed = firstInputOfId(terminalStore.state, instance.id);
     if (typed !== null) tellFirstInput(instance, typed);
-    // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다.
-    terminalStore.setState((state) => setShellName(state, instance.id, spawned.shellName));
+    // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다. 셸 키도 같은 답에 실려
+    // 온다(프로세스 스펙 S34) — 세대는 백엔드만 안다. 한 번의 `setState`로 둘을 앉힌다.
+    terminalStore.setState((state) =>
+      setShellKey(setShellName(state, instance.id, spawned.shellName), instance.id, spawned.shellKey),
+    );
     // 이 왕복 사이에 폭이 바뀌었으면 그 `resize`는 `ptyId`가 없어서 버려졌고, xterm은 값이
     // **바뀔 때만** `onResize`를 때리므로 스스로 다시 알려주지 않는다. 그대로 두면 셸이
     // 옛 격자에 영영 갇힌다 — 여기서 한 번 맞춘다. 떼어진 채 기본 격자로 나간 칸이 응답 전에

@@ -9,7 +9,8 @@ import SearchPalette from "@/features/search/SearchPalette";
 import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-settings";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
-import { quitShellCounts } from "@/features/terminal/terminal-store";
+import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/features/terminal/shell-recall";
+import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
@@ -20,6 +21,7 @@ import ShellOwners from "./ShellOwners";
 import { showAppToast } from "./app-toast";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
 import { startupNotices, startupReportStore } from "./startup-report";
+import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
@@ -202,6 +204,39 @@ function AppShell() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // ⌘J는 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23) — 가장 최근에 부르는 상태(기다림 · 확인할
+  // 것)에 들어선 셸이다. 무엇을 기억하는지는 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 가는 길은 띠의 줄과 같은
+  // 함수가 든다(`useGoToShell`). 이 자리는 키와 게이트와 「닫혔다」 토스트뿐이다.
+  //
+  // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
+  // `View ▸ Last Calling Shell`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
+  //
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
+  // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
+  // 셸에 준 포커스를 팔레트가 닫히며 옛 자리로 되돌린다. Esc로 닫고 누르면 된다.
+  //
+  // **부른 셸이 없어도 키는 먹는다**(`preventDefault`) — 메뉴가 같은 키를 한 번 더 받아 합성 keydown이 돌아와도 같은 답이지만,
+  // 한 번 누른 키가 두 번 도는 길을 열어 두지 않는다.
+  //
+  // **그 셸이 닫혔으면 토스트로 끝낸다**(fail-closed) — 먼저 부른 다른 셸로 대신 가지도, 옛 자리로 옮기지도 않는다.
+  const goToShell = useGoToShell();
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!recallHotkey(e)) return;
+      if (dialogStore.state !== null || searchOpen) return;
+      e.preventDefault();
+      const target = recalledShell();
+      if (target === null) return;
+      if (target.kind === "closed") {
+        showAppToast({ id: CLOSED_SHELL_TOAST_ID, text: CLOSED_SHELL_NOTICE });
+        return;
+      }
+      goToShell(target.shell);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goToShell, searchOpen]);
 
   return (
     <div

@@ -60,6 +60,15 @@ export interface Shell {
   /** `$SHELL`의 basename. 백엔드가 spawn 응답에 실어 준다(결정 8) — 프런트는 모른다. */
   shellName: string | null;
   /**
+   * **셸 키**(`<세대>-<PTY 번호>`, 프로세스 스펙 S34) — 그 셸 env의 `ATELIER_SHELL`과 같은 값이다. spawn 응답이 실어 준다:
+   * 세대는 백엔드만 안다. 응답 전이거나 못 뜬 칸이면 `null`이다.
+   *
+   * **셸을 실행 밖에서도 가리키는 이름이다.** 레지스트리 `id`는 이 실행의 프런트가 스스로 발급한 번호라 백엔드도 다른 실행도
+   * 모른다. 키로 셸을 찾는 길이 이것을 읽는다 — 방금 부른 셸로(티켓 23), 그리고 판 04의 스냅샷이 풀의 셸을 이 칸과 잇는다.
+   * 키로 찾았는데 없으면 그 셸은 닫혔다(옛 세대의 키도 같다 — 번호만 보면 이번 실행의 같은 번호 셸로 간다).
+   */
+  shellKey: string | null;
+  /**
    * 어느 세계의 무엇인가(결정 10·26). 형식과 뜻은 아래 `ShellOwner`가 든다 — 그 세계의
    * 최상위 터미널은 뒤가 빈 키이고, `null`이라는 갈래는 없다.
    */
@@ -507,6 +516,8 @@ export function openShell(
     status: { kind: "running" },
     title: null,
     shellName: null,
+    // 세대는 백엔드만 안다 — spawn 응답이 실어 온다(`setShellKey`).
+    shellKey: null,
     owner: origin.owner,
     project: origin.project,
     cwd: origin.cwd,
@@ -708,6 +719,11 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
   return patch(state, id, (shell) =>
     shell.shellName === shellName ? shell : { ...shell, shellName },
   );
+}
+
+/** spawn 응답이 실어 준 셸 키(프로세스 스펙 S34). 안 바뀌면 같은 상태다 — `patch`의 관용구 그대로다. */
+export function setShellKey(state: ShellsState, id: number, shellKey: string): ShellsState {
+  return patch(state, id, (shell) => (shell.shellKey === shellKey ? shell : { ...shell, shellKey }));
 }
 
 /**

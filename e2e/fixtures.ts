@@ -347,8 +347,28 @@ export const FIXTURE_SHELL_NAME = "zsh";
  * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** `responses`는 `addInitScript`의
  * 인자로 직렬화되어 브라우저로 건너가므로 함수는 그 길을 못 지난다 — 수를 올리는 일은
  * 브라우저 안에서 일어나야 하고, 여기는 **어느 커맨드의 어느 키인가**만 말한다.
+ *
+ * **셸 키도 그 수를 따라 오른다**(프로세스 스펙 S34 · 티켓 23). 셸 키는 `<세대>-<PTY 번호>`라 번호가 오르면 키도
+ * 함께 갈려야 한다 — 수만 올리고 키를 고정 답으로 두면 셸이 몇이든 키가 하나뿐이라, 키로 셸을 찾는 길(방금 부른
+ * 셸로 · 알림 클릭)이 늘 첫 셸로 간다. 그래서 줄마다 **오른 수를 뒤에 붙여 다시 짓는 글자 칸**을 함께 적는다.
  */
-export const FIXTURE_INCREMENTING_KEYS: Record<string, string> = { pty_spawn: "id" };
+export interface Incrementing {
+  /** 부를 때마다 1씩 올리는 수의 칸. */
+  key: string;
+  /** 오른 수를 뒤에 붙여 다시 짓는 칸: 칸 이름 → 앞말. 표의 첫 값도 `앞말 + 첫 수`여야 한다(아래 자기 검사). */
+  follow: Record<string, string>;
+}
+
+/**
+ * 픽스처 백엔드의 **세대** — 셸 키의 앞머리(`<세대>-<PTY 번호>`, `pty.rs`의 `shell_id`). 훅 사건을 흉내 내는
+ * 손잡이(`harness`의 `fireAttention`)가 셸 id를 이것으로 짓는다 — 두 자리가 같은 값을 봐야 셸 키와 훅의 셸 id가
+ * 같은 셸을 가리킨다(실물에서 둘은 같은 문자열 하나다).
+ */
+export const FIXTURE_GENERATION = "l3";
+
+export const FIXTURE_INCREMENTING_KEYS: Record<string, Incrementing> = {
+  pty_spawn: { key: "id", follow: { shellKey: `${FIXTURE_GENERATION}-` } },
+};
 
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
@@ -698,8 +718,9 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    */
   move_work: { atelier: { value: WORKS_MOVED }, maison: { value: ROOMS_MOVED } },
   /**
-   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
-   * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면
+   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellKey, shellName}`)은 세계를 안 탄다:
+   * pty 번호도 셸 키(세대는 실행 하나의 것이다)도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다.
+   * 번호와 셸 키는 부를 때마다 함께 오른다(`FIXTURE_INCREMENTING_KEYS`). 여기서 답을 가르면
    * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.
    *
    * 이 줄이 사는 이유는 **fail-closed 하나다.** 이름으로 답하는 표에 두면 `mode`를 빠뜨린
@@ -717,8 +738,8 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * Maison은 `/maison/terminal`이 지난다.
    */
   pty_spawn: {
-    atelier: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
-    maison: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
+    atelier: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
+    maison: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
   },
   /**
    * work 화면이 설 때마다 한 번 나간다(팔레트 결정 14). 답은 안 쓰인다 — 순서를 세우는 것은
@@ -772,7 +793,10 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
 // 모드마다 따로 세는 것이 아니라 값 하나가 호출 순서대로 오르므로(하네스의 `seen`), 여기서는
 // **모든 칸의 첫 값이 수인가**를 본다 — 한 칸만 모양이 달라도 그 모드의 시나리오에서만
 // `base + n`이 조용히 문자열이 된다.
-for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
+//
+// **따라 짓는 칸도 첫 값이 `앞말 + 첫 수`인가**를 본다(셸 키 — 티켓 23). 하네스는 오른 뒤의 값만 다시 지으므로,
+// 첫 값이 어긋나 있으면 첫 셸만 다른 모양의 키를 받는다 — 둘째 셸부터는 맞아 보여 눈에 안 띈다.
+for (const [cmd, { key, follow }] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
   const forCmd = FIXTURE_BY_MODE[cmd];
   if (forCmd === undefined) {
     throw new Error(`수를 올릴 커맨드가 모드 표에 없습니다: ${cmd}`);
@@ -781,6 +805,11 @@ for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
     const value = answer.value as Record<string, unknown> | undefined;
     if (value === undefined || typeof value[key] !== "number") {
       throw new Error(`수를 올릴 값이 수가 아닙니다: ${cmd}.${mode}.${key}`);
+    }
+    for (const [field, prefix] of Object.entries(follow)) {
+      if (value[field] !== `${prefix}${value[key]}`) {
+        throw new Error(`따라 짓는 값이 「앞말 + 첫 수」가 아닙니다: ${cmd}.${mode}.${field}`);
+      }
     }
   }
 }
