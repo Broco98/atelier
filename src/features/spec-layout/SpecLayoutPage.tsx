@@ -188,8 +188,10 @@ function ModeRow({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-h-[22px] items-center gap-2">
           <span className="text-[13.5px] font-medium">{name}</span>
+          {/* 상태 배지의 바탕은 칩 바탕(`bg-accent` = state-2, 6%)이다 — draft 상태 배지와 같다. `bg-muted`는 이제
+              행 hover 농도(state-1, 3%)라 흰 바탕 위에서 거의 안 보인다. */}
           {state.edited && (
-            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+            <span className="inline-flex h-[18px] items-center rounded-[6px] bg-accent px-1.5 text-[11px] font-medium text-muted-foreground">
               고침
             </span>
           )}
