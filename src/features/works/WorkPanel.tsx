@@ -334,7 +334,7 @@ function TabButton({
 // display:contents인 것이 핵심이다. 평범한 div로 감싸면 자식의 flex-1이 패널 카드가
 // 아니라 이 껍데기를 기준으로 잡혀 스크롤 경계가 카드에서 옮겨가고, 카드의 넘침 감춤에
 // 트리가 잘린다 — 마크업만 보면 멀쩡하다. contents는 상자를 만들지 않아 자식이 카드의
-// 직계 flex 자식으로 남는다. 감춤은 cn이 twMerge라 display 충돌을 알아서 정리한다.
+// 직계 flex 자식으로 남는다. 감춤은 cn이 display 충돌에서 뒤에 온 `hidden`만 남겨 알아서 정리한다.
 function TabPanel({ active, children }: { active: boolean; children: React.ReactNode }) {
   return <div className={cn("contents", !active && "hidden")}>{children}</div>;
 }

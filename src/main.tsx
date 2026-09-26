@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { router } from "./router";
 import { queryClient } from "./query-client";
 import { installScrollQuiet } from "./lib/scroll-quiet";
@@ -23,7 +24,12 @@ void loadNotifySettings();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {/* 툴팁의 지연을 앱 전체가 **한 Provider**에서 나눠 쓴다(S3) — 한 번 뜬 뒤 옆 트리거로
+          옮기면 바로 뜨는 것이 이 묶음 덕이다. registry의 `Tooltip`은 제 Provider를 싸지 않으므로
+          이것이 없으면 지연이 트리거마다 따로 돈다. 600ms는 부품 파일의 기본값이다. */}
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );
