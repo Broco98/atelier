@@ -1,3 +1,4 @@
+import type { SpecLayoutJson, TemplateBodies } from "@/features/spec-layout/types";
 import { expect, test, type Page } from "./evidence";
 import {
   BROKEN_MAISON_LAYOUT,
@@ -33,9 +34,11 @@ async function openEditor(page: Page) {
   await expect(행(page, "overview.md")).toBeVisible();
 }
 
-/** 나간 `write_spec_layout`들의 인자, 나간 순서대로. */
-async function writes(page: Page) {
-  return (await ipcCallArgs(page, "write_spec_layout", "id")).map(({ args }) => args);
+type WriteArgs = { id: string; layout: SpecLayoutJson; templates: TemplateBodies };
+
+/** 나간 `write_spec_layout`들의 인자, 나간 순서대로. 모양은 단언이다 — `ipcCallArgs`는 `id` 키만 잰다. */
+async function writes(page: Page): Promise<WriteArgs[]> {
+  return (await ipcCallArgs(page, "write_spec_layout", "id")).map(({ args }) => args as WriteArgs);
 }
 
 test("모드 행의 [편집]을 누르면 편집기 주소가 열리고 읽기 명령이 나가며, 트리에 실제 항목만 선다", async ({ page }) => {
@@ -147,7 +150,7 @@ test("아이콘 칸의 팝오버에서 아이콘을 고르면 트리 행이 따�
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
-  const [{ layout }] = (await writes(page)) as [{ layout: typeof SPEC_LAYOUT_READ.layout }];
+  const [{ layout }] = await writes(page);
   expect(layout.root.children![1]).toEqual({
     pattern: "decisions.md",
     kind: "file",
@@ -175,7 +178,7 @@ test("머리 `spec/`을 눌러 안내를 고치고 저장하면 저장된 레이
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
-  const [{ layout }] = (await writes(page)) as [{ layout: typeof SPEC_LAYOUT_READ.layout }];
+  const [{ layout }] = await writes(page);
   expect(layout.root.description).toBe("spec 폴더의 방침 문단. 한 줄을 더했다.");
   expect(layout.root.children).toEqual(SPEC_LAYOUT_READ.layout.root.children);
   expect(layout.owner).toBe("사람");
@@ -294,9 +297,7 @@ test("파일 항목의 템플릿을 켜고 본문을 적어 저장하면 저장 
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
-  const [{ layout, templates }] = (await writes(page)) as [
-    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
-  ];
+  const [{ layout, templates }] = await writes(page);
   expect(layout.root.children![0]).toEqual({
     pattern: "overview.md",
     kind: "file",
@@ -322,9 +323,7 @@ test("템플릿을 없음으로 바꿔 저장하면 그 항목의 template이 �
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
-  const [{ layout, templates }] = (await writes(page)) as [
-    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
-  ];
+  const [{ layout, templates }] = await writes(page);
   // 모르는 키(`since`)는 남는다
   expect(layout.root.children![1]).toEqual({
     pattern: "decisions.md",
@@ -359,9 +358,7 @@ test("누락 템플릿이 든 레이아웃을 열어 그 항목의 본문을 적
 
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
-  const [{ layout, templates }] = (await writes(page)) as [
-    { layout: typeof SPEC_LAYOUT_READ.layout; templates: Record<string, string> },
-  ];
+  const [{ layout, templates }] = await writes(page);
   expect(layout.root.children![1].template).toBe("decisions.md");
   expect(templates).toEqual({ "decisions.md": "# 결정\n\n## 다시 쓴 뼈대\n" });
 
