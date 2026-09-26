@@ -87,11 +87,11 @@ pub(crate) fn render_with_lines(
     let column = rows.iter().map(|row| row.head.chars().count()).max().unwrap_or(0) + 2;
     let list: Vec<String> = rows.iter().map(|row| row.line(column)).collect();
 
-    let guide = layout.root.description.clone();
+    let policy = &layout.root.description;
     let sections = [
         fallback.map(fallback_line).unwrap_or_default(),
         HEADER.to_string(),
-        guide.clone(),
+        policy.clone(),
         list.join("\n"),
         grammar(&rows),
     ];
@@ -105,8 +105,8 @@ pub(crate) fn render_with_lines(
         }
     }
     let mut lines = Vec::new();
-    if !guide.is_empty() {
-        lines.push(EntryLines { path: Vec::new(), start: starts[2], count: line_count(&guide) });
+    if !policy.is_empty() {
+        lines.push(EntryLines { path: Vec::new(), start: starts[2], count: line_count(policy) });
     }
     let mut start = starts[3];
     for (row, line) in rows.iter().zip(&list) {
