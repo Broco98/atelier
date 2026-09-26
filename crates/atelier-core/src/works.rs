@@ -1521,6 +1521,12 @@ mod tests {
     ///
     /// 각 호출은 「동시에 돈 수가 상한에 닿았다」는 문이 열리기를 기다린다(시한 5초). 병렬이 상한보다 좁으면
     /// 문이 안 열려 호출마다 시한을 다 채우고 최대 동시 수가 상한에 못 미쳐 빨개진다 — 멈춰 서지는 않는다.
+    ///
+    /// **문이 열린 뒤에도 각 호출은 돈 채로 잠깐(`HOLD`) 머문다.** 머물지 않으면 문이 열린 뒤 오는 호출은 같은
+    /// 잠금 안에서 올렸다 곧바로 내리므로, 동시 수가 (기다리는 상한-1개 + 1)에서 멈춰 상한을 무시하는 풀도
+    /// 초록이었다(리뷰 발견 — 변형 「도우미 = 넣은 수 - 1」에서도 초록). 머무는 동안 상한보다 넓은 풀이면
+    /// 다른 일꾼이 들어와 최대 동시 수가 상한을 넘고, 그러면 머물던 호출들도 곧바로 깨어 빨개진다. 맞는 풀은
+    /// 일꾼마다 약 세 번 머물러 이 검사가 0.6초쯤 걸린다.
     #[test]
     fn map_bounded_runs_up_to_the_limit_at_once_and_never_more() {
         use std::sync::{Condvar, Mutex};
@@ -1530,6 +1536,7 @@ mod tests {
             in_flight: usize,
             most: usize,
         }
+        const HOLD: Duration = Duration::from_millis(200);
         let limit = 4;
         let items: Vec<usize> = (0..11).collect();
         let gate = (Mutex::new(Gate { in_flight: 0, most: 0 }), Condvar::new());
@@ -1540,7 +1547,9 @@ mod tests {
             g.in_flight += 1;
             g.most = g.most.max(g.in_flight);
             opened.notify_all();
-            let (mut g, _) = opened.wait_timeout_while(g, Duration::from_secs(5), |g| g.most < limit).unwrap();
+            let (g, _) = opened.wait_timeout_while(g, Duration::from_secs(5), |g| g.most < limit).unwrap();
+            // 문이 열린 뒤: 돈 채로 머물러 상한 밖의 일꾼이 들어올 틈을 준다. 상한을 넘으면 곧바로 나온다.
+            let (mut g, _) = opened.wait_timeout_while(g, HOLD, |g| g.most <= limit).unwrap();
             g.in_flight -= 1;
             i * 10
         });
