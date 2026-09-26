@@ -7,6 +7,7 @@ import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 
+import { resolveClassName } from "@/components/ui/resolve-class-name"
 import { toggleVariants } from "@/components/ui/toggle"
 
 /**
@@ -140,7 +141,7 @@ function ToggleGroup<Value extends string>({
           look.variant === "segment"
             ? segmentGroupVariants({ size: look.size })
             : "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=chip]:flex-wrap data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
-          typeof className === "function" ? className(state) : className
+          resolveClassName(className, state)
         )
       }
       disabled={disabled}
@@ -174,7 +175,7 @@ function ToggleGroupItem({
           cn(
             segmentItemVariants({ size: context.size }),
             segmentItemTone(state.pressed),
-            typeof className === "function" ? className(state) : className
+            resolveClassName(className, state)
           )
         }
         {...props}
@@ -197,7 +198,7 @@ function ToggleGroupItem({
             variant: context.variant || variant,
             size: context.size || size,
           }),
-          typeof className === "function" ? className(state) : className
+          resolveClassName(className, state)
         )
       }
       {...props}
