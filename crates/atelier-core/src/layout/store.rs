@@ -33,9 +33,9 @@ pub struct LayoutRead {
 pub enum LayoutContent {
     Readable {
         layout: SpecLayout,
-        /// 가리키고 디스크에 있는 템플릿의 본문. 키는 레이아웃 폴더 기준 경로다.
+        /// 가리키고 디스크에 있으며 읽을 수 있는 템플릿의 본문. 키는 레이아웃 폴더 기준 경로다.
         templates: BTreeMap<String, String>,
-        /// 이 레이아웃의 안내문과 경고(누락 템플릿).
+        /// 이 레이아웃의 안내문과 경고(누락 템플릿, 읽을 수 없는 템플릿).
         rendered: Rendered,
     },
     Broken {
@@ -57,8 +57,8 @@ pub enum SaveOutcome {
 /// 모드의 레이아웃을 읽는다. **아무것도 쓰지 않는다** — resolve와 같은 규칙이다(결정 7).
 ///
 /// 폴더가 없으면 코드 내장본이다. 폴더가 있으면 그 `layout.json`이고, 가리키는 템플릿 가운데
-/// 디스크에 있는 것의 본문을 함께 준다. 깨졌으면 오류 전부와 원문을 준다 — 에이전트와 편집기가
-/// 그것을 고쳐 다시 저장한다(결정 20).
+/// 디스크에 있는 것의 본문을 함께 준다 — 있는데 읽을 수 없는 것은 본문 없이 경고다. 깨졌으면 오류
+/// 전부와 원문을 준다 — 에이전트와 편집기가 그것을 고쳐 다시 저장한다(결정 20).
 ///
 /// id는 모드 이름 둘만 받는다. `"../.."`이 데이터 루트 밖을 읽으면 안 된다.
 pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
@@ -81,11 +81,22 @@ pub fn read_layout(data_root: &Path, id: &str) -> Result<LayoutRead> {
             Err(Unreadable { errors, raw }) => LayoutContent::Broken { errors, raw },
             Ok(layout) => {
                 let verdict = template_verdict(&layout, &folder, shown.clone());
+                let mut rendered = render_layout(&layout, Some(&verdict), None);
+                // 읽을 수 없는 템플릿(UTF-8이 아님, 권한)은 본문 없이 경고다 — 읽기 전체가 실패하면
+                // 레이아웃을 읽고 고쳐 저장하는 길이 막힌다. 대체 문자로 채우지 않는다: 받은 본문을
+                // 저장에 돌려주면 원래 바이트가 조용히 바뀐다. 판정과 안내문은 그대로라 atelier_get_work가
+                // 주는 `Template:` 줄과 같다.
                 let mut templates = BTreeMap::new();
                 for path in &verdict.present {
-                    templates.insert(path.clone(), std::fs::read_to_string(folder.join(path))?);
+                    match std::fs::read_to_string(folder.join(path)) {
+                        Ok(body) => {
+                            templates.insert(path.clone(), body);
+                        }
+                        Err(e) => rendered
+                            .warnings
+                            .push(format!("cannot read template {shown}/{path}: {e}")),
+                    }
                 }
-                let rendered = render_layout(&layout, Some(&verdict), None);
                 LayoutContent::Readable { layout, templates, rendered }
             }
         },
@@ -350,6 +361,48 @@ mod tests {
             "안내문이 폴더의 레이아웃이 아니다: {}",
             rendered.text
         );
+    }
+
+    /// 가리키는 템플릿 하나를 **읽을 수 없어도**(UTF-8이 아닌 바이트) 읽기는 실패하지 않는다 —
+    /// 레이아웃을 읽어야 에이전트와 편집기가 고쳐 저장할 수 있다. 그 템플릿은 본문 없이 경고로
+    /// 나온다. 안내문은 atelier_get_work가 주는 것 그대로다: 파일은 있으므로 `Template:` 줄이 선다.
+    ///
+    /// 본문을 대체 문자로 채워 주지 않는다 — 받은 본문을 저장에 그대로 돌려주면 원래 바이트가 조용히
+    /// 바뀐다. 본문을 빼 두면, 읽은 것을 그대로 돌려준 저장이 디스크의 그 파일을 건드리지 않는다.
+    #[test]
+    fn an_unreadable_template_is_left_out_with_a_warning_and_the_read_goes_on() {
+        let root = tempfile::tempdir().unwrap();
+        plant(
+            root.path(),
+            "atelier",
+            "layout.json",
+            r#"{ "root": { "children": [
+                { "pattern": "a.md", "kind": "file", "template": "a.md" },
+                { "pattern": "b.md", "kind": "file", "template": "b.md" } ] } }"#,
+        );
+        plant(root.path(), "atelier", "a.md", "# A\n");
+        let unreadable = root.path().join("layouts/atelier/b.md");
+        std::fs::write(&unreadable, [0xff, 0xfe, 0x00]).unwrap();
+
+        let read = read_layout(root.path(), "atelier").unwrap();
+        let LayoutContent::Readable { layout, templates, rendered } = read.content else {
+            panic!("읽혀야 한다: {:?}", read.content);
+        };
+        assert_eq!(templates, bodies(&[("a.md", "# A\n")]));
+        let folder = crate::collapse_home(&root.path().join("layouts/atelier"));
+        assert_eq!(rendered.warnings.len(), 1, "{:?}", rendered.warnings);
+        assert!(
+            rendered.warnings[0].contains(&format!("{folder}/b.md")),
+            "어느 템플릿인지 말하지 않는다: {:?}",
+            rendered.warnings
+        );
+        assert!(rendered.text.contains(&format!("Template: {folder}/b.md")), "{}", rendered.text);
+
+        let saved =
+            save_layout(root.path(), "atelier", crate::serialize_layout_value(&layout), &templates)
+                .unwrap();
+        assert!(matches!(saved, SaveOutcome::Saved(_)), "{saved:?}");
+        assert_eq!(std::fs::read(&unreadable).unwrap(), [0xff, 0xfe, 0x00]);
     }
 
     /// 깨진 레이아웃은 **원문과 오류 전부**를 준다 — 에이전트가 그 글을 고쳐 다시 저장한다
