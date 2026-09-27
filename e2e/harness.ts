@@ -402,7 +402,12 @@ async function install(
  * **무엇을 재려고 있는가**: 시나리오 도중에 백엔드의 답이 바뀌는 것. 덮어쓰기(`installFixtureBackend`)는
  * 페이지가 뜰 때 초기화 스크립트 인자로 한 번 굳고, 모드 표(`list_works`)는 그마저 막혀 있다. 그래서
  * 「MCP로 아카이브된 work이 목록에서 빠진다」(첫 조회에는 있고 `works:changed` 뒤의 조회에는 없다)나
- * 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채** 초록이다.
+ * 「손볼 것이 새로 생기면 점이 선다」가 이 도구 없이는 **목록이 영영 안 바뀐 채** 초록이다. 「밖에서 레이아웃이
+ * 바뀌었다」(spec 레이아웃 티켓 15)도 같다 — 처음부터 다른 답이면 편집기가 그것을 기준본으로 읽는다.
+ *
+ * **도중에 답을 가는 도구는 이것 하나다.** 한때 `invoke`를 감싸 답만 바꿔 돌려주는 둘째 도구가 있었는데, 그 답은
+ * 거절(`ipcFailure`) · 회차(`bump`)의 문(`deliver`)을 건너뛰었고 둘을 겹치면 어느 쪽이 이기는지 정해진 데가 없었다.
+ * 표를 고치므로 바꾼 답도 처음 답과 같은 문을 지난다.
  *
  * **무엇을 잘못 쓰면 헛도는가**
  * - **바꾸기만 하고 다시 읽게 하지 않으면** 화면은 앞 답을 쥔 채다 — 캐시가 무효화돼야 새 답을
@@ -722,46 +727,6 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
     { handlers: [...live.values()], event, payload },
   );
   return live.size;
-}
-
-/**
- * **시나리오 도중에** 커맨드 하나의 답을 갈아 끼운다(spec 레이아웃 티켓 15) — 이 뒤로 그 커맨드는 `answer`를 답한다.
- *
- * 고정 답은 설치할 때 한 번 정해진다(`installFixtureBackend`). 그대로는 「밖에서 바뀌었다」를 못 세운다 — 처음부터
- * 다른 답이면 편집기가 그것을 기준본으로 읽는다. 그래서 편집기가 연 뒤에 읽기의 답을 바꾸고 이벤트를 쏜다
- * (`fireEvent`) — 전역 구독이 읽기를 다시 부르면 바뀐 답이 온다.
- *
- * 모양은 셸 생성 가로채기(`interceptPtySpawn`)와 같다: 앱의 `invoke`를 감싸고, 창 전역 값에서 답을 꺼낸다. 처음
- * 부를 때 한 번 감싸고, 그 뒤로는 전역 값만 고친다. **부름은 먼저 원래 자리를 지난다** — 하네스의 기록(`callCount`,
- * `ipcCallArgs`)이 그 부름을 세야 「다시 불렸다」를 기다릴 수 있다. 답만 바꿔 돌려준다.
- *
- * 페이지를 다시 읽으면 감싼 것이 사라진다 — 도중에만 쓴다. **표에 없는 이름은 여기서 터진다**(덮어쓰기와 같은
- * 규칙): 커맨드가 개명되면 갈아 끼우기가 아무 데도 안 걸린 채 지나가, 「바뀌었는데도 조용했다」가 초록이 된다.
- */
-export async function swapAnswer(page: Page, command: string, answer: unknown): Promise<void> {
-  if (!Object.prototype.hasOwnProperty.call(FIXTURE_COMMANDS, command)) {
-    throw new Error(`갈아 끼울 커맨드가 고정 답 표에 없습니다: ${command}`);
-  }
-  await page.evaluate(
-    ({ command, answer }: { command: string; answer: unknown }) => {
-      const win = window as unknown as {
-        __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown, options?: unknown) => Promise<unknown> };
-        __ATELIER_SWAPPED_ANSWERS__?: Record<string, unknown>;
-      };
-      if (win.__ATELIER_SWAPPED_ANSWERS__ === undefined) {
-        const swapped: Record<string, unknown> = {};
-        win.__ATELIER_SWAPPED_ANSWERS__ = swapped;
-        const internals = win.__TAURI_INTERNALS__;
-        const invoke = internals.invoke;
-        internals.invoke = async (cmd, args, options) => {
-          const original = await invoke(cmd, args, options);
-          return Object.prototype.hasOwnProperty.call(swapped, cmd) ? swapped[cmd] : original;
-        };
-      }
-      win.__ATELIER_SWAPPED_ANSWERS__[command] = answer;
-    },
-    { command, answer },
-  );
 }
 
 /** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */

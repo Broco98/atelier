@@ -498,7 +498,7 @@ export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
 /**
  * 편집기가 연 뒤에 **밖에서 고쳐진** Atelier 레이아웃(spec 레이아웃 티켓 15) — `SPEC_LAYOUT_READ`에서 에이전트가
  * `decisions.md` 항목의 설명 한 칸을 고쳐 저장한 것이다. 처음부터 답하면 편집기가 이것을 기준본으로 읽으므로,
- * 시나리오 도중에 읽기의 답으로 갈아 끼운다(`harness`의 `swapAnswer`).
+ * 시나리오 도중에 읽기의 답으로 갈아 끼운다(`harness`의 `replaceAnswer`).
  */
 export const CHANGED_SPEC_LAYOUT_READ: ReadableSpecLayout = {
   ...SPEC_LAYOUT_READ,
