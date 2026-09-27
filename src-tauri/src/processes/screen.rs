@@ -191,7 +191,8 @@ pub fn instances(
 
 /// **지표를 읽을 신원 — 우리 트리의 프로세스만**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부와 풀의 셸 프로세스다. 이 맥의
 /// 다른 프로세스는 읽지 않는다: 포트는 프로세스마다 fd를 훑는 일이라, 표 전체를 2초마다 훑으면 화면 하나가 이 맥의 모든 소켓을
-/// 뒤진다. 셸 도우미는 셸의 자손 묶음에 이미 들었다.
+/// 뒤진다. 예외 묶음도 우리 트리 안의 것이다 — 판정이 셸별 자손이나 표식 묶음에 들 행에서만 예외를 가른다(launchd의
+/// `ssh-agent`, 앱 밖 tmux는 판정 밖이라 여기 안 온다). 셸 도우미는 셸의 자손 묶음에 이미 들었다.
 pub fn targets(verdict: &Verdict, pool: &[PoolShell]) -> BTreeSet<Identity> {
     let grouped = verdict
         .descendants
