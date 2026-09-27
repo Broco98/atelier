@@ -9,6 +9,7 @@ import {
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
@@ -105,7 +106,7 @@ test("[보기]가 붙은 시작 정리 토스트와 셸 스스로 끝남 토스�
   await holdCommand(page, "startup_report");
   await page.goto("/terminal");
   await expect(toastRegion(page)).toBeAttached();
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   await releaseCommand(page, "startup_report");
   const cleanup = toastOf(page, cleanupText(1));

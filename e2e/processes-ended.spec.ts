@@ -6,6 +6,7 @@ import {
   installFixtureBackend,
   releaseCommand,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 
@@ -74,7 +75,7 @@ test("셸 스스로 끝남 알림은 [보기]를 들고 1.6초가 지나도 남�
   await holdCommand(page, "startup_report");
   await page.goto("/terminal");
   await expect(toastRegion(page)).toBeAttached();
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   await releaseCommand(page, "startup_report");
   const short = toastRegion(page).getByRole("dialog", { name: "에이전트 훅을 새 목록으로 맞췄어요", exact: true });

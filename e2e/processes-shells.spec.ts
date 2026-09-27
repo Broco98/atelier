@@ -10,6 +10,7 @@ import {
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 import { eventLabel } from "@/features/processes/cleanup-log";
 import type { CleanupEvent, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
@@ -248,7 +249,7 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   await page.goto("/processes");
   await expect(제목(page)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   const offscreen = 묶음(page, "화면 밖 셸");
   await 다음박자(page);
@@ -347,7 +348,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(page).toHaveURL("/processes");
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
   // 두 박자 — 스토어가 모르는 99가 화면 밖 셸로 선다.
   const offscreen = 묶음(page, "화면 밖 셸");
   await 다음박자(page);

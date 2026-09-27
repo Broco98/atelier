@@ -13,6 +13,7 @@ import {
   띠,
   레인,
   셸입력,
+  시계를세운다,
 } from "./harness";
 
 // 프로세스 티켓 22 — **끊거나 에이전트가 사라지면 「도는 중」이 풀린다**(프로세스 결정 12). 판단은 L2가 표로 잰다
@@ -23,7 +24,7 @@ import {
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts`의 1.6초 검사 머리말)이 여기도 걸린다:
 // - `install()`은 **페이지를 열기 전에** 부른다. 연 뒤에 깔면 이미 걸린 타이머는 진짜 시계로 돈다.
 // - `Date.now`도 가짜 시계를 따른다 — 상태의 `since`, 알림 접기(5초), 첫 입력 시각이 모두 그 시계로 잰다.
-// 깐 뒤로 시간은 저절로 흐르므로, 키를 누르기 전에 **멈춘다**(`pauseAt`). 그 뒤로는 `runFor`만큼만 간다 — 500ms의 앞뒤가
+// 깐 뒤로 시간은 저절로 흐르므로, 키를 누르기 전에 **멈춘다**(`시계를세운다`). 그 뒤로는 `runFor`만큼만 간다 — 500ms의 앞뒤가
 // 러너 속도에 안 흐려진다.
 
 const [, plainWork] = WORKS;
@@ -47,7 +48,7 @@ async function 도는셸에포커스(page: Page): Promise<void> {
   await expect(셸입력(page), "셸에 포커스가 없다 — 누른 키가 셸에 안 닿는다").toBeFocused();
   await markAttention(page, 새턴());
   await expect(링(page)).toHaveCount(1);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 }
 
 // claude는 생각하는 중에 끊으면 그 순간 오는 훅이 없다(판 03 선행 시험) — 옛 코드에서는 이 링이 다음 턴까지 돌았다.
@@ -142,7 +143,7 @@ test("에이전트가 사라져도 안 본 확인할 것은 남고, 그 뒤 OSC 
   // 그 칸이 claude를 돈다고 말한다 — 부르는 칸의 이름이 도는 것까지 싣는다(`ShellTabs`의 `spokenName`). 아래에서 이 말이
   // 빠지는 것이 앵커라, 먼저 섰는지 본다. (마크 글리프는 이름이 숨는 좁은 폭에서만 서서 이 폭에서는 늘 없다.)
   await expect(이름표(page, 1)).toHaveAccessibleName(/claude 실행 중/);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   await fireEvent(page, "pty:running", [{ id: 2, running: null }]);
   // 앵커: 도는 명령이 바뀐 것이 화면에 닿았다 — 그 칸이 더는 claude를 말하지 않는다. 확인할 것은 그대로 부른다.
@@ -169,7 +170,7 @@ test("사라짐 바로 뒤에 멈춘 세션 끝이 닿아도 확인할 것이 �
   await markRunning(page, "claude", 2);
   await markAttention(page, 새턴(), 2);
   await expect(링(page)).toHaveCount(1);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   await fireEvent(page, "pty:running", [{ id: 2, running: null }]);
   await page.clock.runFor(100);

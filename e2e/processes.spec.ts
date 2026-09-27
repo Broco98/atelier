@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, PROJECTS } from "./fixtures";
-import { callCount, installFixtureBackend, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, unknownIpcCalls, 시계를세운다 } from "./harness";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 26 — **`Processes`가 두 세계 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
@@ -9,7 +9,7 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 // 진짜 언마운트가 있어야 드러난다.
 //
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
-// 저절로 흐르므로 세기 전에 멈춘다(`pauseAt`). 그 뒤로는 `runFor`만큼만 간다 — 2초 박자가 러너 속도에 안 흐려진다.
+// 저절로 흐르므로 세기 전에 멈춘다(`시계를세운다`). 그 뒤로는 `runFor`만큼만 간다 — 2초 박자가 러너 속도에 안 흐려진다.
 
 const [project] = PROJECTS;
 
@@ -83,7 +83,7 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2") });
   await page.goto("/processes");
   await expect(shellCount(page, 2)).toBeVisible();
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   // 앵커: 화면에 있는 동안은 는다 — **2초에 한 번**. 멈춘 것이 시계가 안 돌아서가 아니다.
   const opened = await callCount(page, "processes_snapshot");

@@ -10,6 +10,7 @@ import {
   setWindowFocused,
   stubWindowFocus,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL } from "@/features/processes/needs-look";
@@ -23,7 +24,7 @@ import type { ProcessIdentity, ProcessRow, ProcessSummary } from "@/features/pro
 // 지나 nav `Processes` 옆에 서고 꺼지는가다 — 합계 글자는 화면이 쓰는 그 표기 함수로 짓는다(모양은 L2의 몫).
 //
 // **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
-// 저절로 흐르므로 세기 전에 멈춘다(`pauseAt`). 그 뒤로는 `runFor`만큼만 간다 — 10초 박자가 러너 속도에 안 흐려진다. 요약을 바꾸는
+// 저절로 흐르므로 세기 전에 멈춘다(`시계를세운다`). 그 뒤로는 `runFor`만큼만 간다 — 10초 박자가 러너 속도에 안 흐려진다. 요약을 바꾸는
 // 것은 01의 답 바꾸기다(`replaceAnswer`) — 바꾼 뒤 다음 박자가 그 답을 가져온다.
 
 const [project] = PROJECTS;
@@ -41,11 +42,6 @@ const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", ex
 
 const 신원 = (pid: number): ProcessIdentity => ({ pid, startedUs: 1_790_000_000_000_000 + pid });
 const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
-
-/** 시계를 멈춘다 — 첫 요약이 화면에 선 뒤에. 그 뒤로는 `runFor`만큼만 간다. */
-async function 멈춤(page: Page): Promise<void> {
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
-}
 
 /** 스냅샷 박자 하나를 넘긴다 — 멈춘 시계를 조금씩 흘려 화면이 스냅샷을 **실제로 다시 물을 때까지**(`processes-shells.spec.ts`의 `다음박자`). */
 async function 스냅샷박자(page: Page): Promise<void> {
@@ -93,7 +89,7 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
   await page.goto("/projects");
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await expect(점(page)).toHaveCount(0);
-  await 멈춤(page);
+  await 시계를세운다(page);
 
   // 출처 불명 하나가 새로 선다 — 요약의 신원 목록에 하나를 더한다.
   await replaceAnswer(page, "processes_summary", 요약({ unknown: [신원(4_101)] }));
@@ -128,7 +124,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
   await page.goto("/processes");
   await expect(제목(page)).toBeVisible();
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
-  await 멈춤(page);
+  await 시계를세운다(page);
 
   await setWindowFocused(page, false);
   await fireWindowEvent(page, "blur");
@@ -160,7 +156,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await page.goto("/processes");
   await expect(제목(page)).toBeVisible();
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
-  await 멈춤(page);
+  await 시계를세운다(page);
 
   // 스냅샷에만 선다 — 요약은 아직 옛 장(손볼 것 없음)이다.
   await replaceAnswer(page, "processes_snapshot", {
@@ -204,7 +200,7 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await awaitSpawned(page, 1);
-  await 멈춤(page);
+  await 시계를세운다(page);
   // 떠 있는 셸은 손볼 것이 아니다 — 주인 잃음 표시가 선 셸만 센다.
   await 박자(page);
   await expect(점(page)).toHaveCount(0);

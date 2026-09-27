@@ -10,6 +10,7 @@ import {
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  시계를세운다,
 } from "./harness";
 import { formatCpu, formatMemory } from "@/features/processes/metrics";
 import type { ProcessRow, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -144,7 +145,7 @@ test("추이의 점 수만큼 스파크라인이 선다", async ({ page }) => {
     "aria-label",
     `지난 1시간 합계 추이, ${formatMemory(seven[0].total)}에서 ${formatMemory(seven[6].total)}`,
   );
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
 
   // 앵커: 추이가 바뀌면 다음 요약 박자에 선도 바뀐다 — 픽스처의 기본(빈 고리)이나 첫 답에 굳은 그림이 아니다.
   await replaceAnswer(page, "processes_trend", 점들(3));
@@ -164,7 +165,7 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await installFixtureBackend(page, { processes_trend: 점들(4) });
   await page.goto("/projects");
   await expect.poll(() => callCount(page, "processes_summary")).toBeGreaterThan(0);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await 시계를세운다(page);
   await page.clock.runFor(4_000);
 
   await nav(page, "Processes").click();
