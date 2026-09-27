@@ -586,7 +586,7 @@ export const FIXTURE_SHELL_NAME = "zsh";
  * — `shellOfPty`가 그 id를 가진 첫 인스턴스를 주기 때문이다. 그래서 「서로 다른 상태의
  * 셸 둘」이라는 그림 자체를 못 세운다(terminal-tabs.spec.ts의 티켓 #198 마디).
  *
- * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** `responses`는 `addInitScript`의
+ * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** 두 표(하네스의 `byName` · `byMode`)는 `addInitScript`의
  * 인자로 직렬화되어 브라우저로 건너가므로 함수는 그 길을 못 지난다 — 수를 올리는 일은
  * 브라우저 안에서 일어나야 하고, 여기는 **어느 커맨드의 어느 키인가**만 말한다.
  *
