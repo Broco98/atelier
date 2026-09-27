@@ -308,7 +308,8 @@ pub fn run() {
             // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
             //
             // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
-            // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다.
+            // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다 —
+            // 이 setup이 메인 스레드를 쥔 동안 도는 첫 표본은 답을 못 받아, 표본이 그 장을 미루고 곧 다시 모은다(`sample_once`).
             let asker = app.handle().clone();
             processes.ask_web_content_with(move || webview::content_pid(&asker));
             Arc::clone(&processes).sample_in_background();

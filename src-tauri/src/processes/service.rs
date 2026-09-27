@@ -12,7 +12,7 @@
 //! 찾는다. 웹뷰에게 WebContent를 묻는 함수와 배경 표본의 스레드는 앱이 setup에서 건다(`ask_web_content_with` · `sample_in_background`).
 
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::cleanup_log::{self, Event};
 use super::instances::Record;
@@ -135,7 +135,8 @@ impl ProcessService {
     }
 
     /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
-    /// 중, 표본 스레드를 안 건 검사의 서비스) 그 자리에서 모아 앉힌다 — 프런트는 뜨자마자 묻는다.
+    /// 중 · 첫 장을 웹뷰의 답까지 미루는 중(`sample_once`), 표본 스레드를 안 건 검사의 서비스) 그 자리에서 모아 앉힌다 — 프런트는
+    /// 뜨자마자 묻는다.
     pub fn summary(&self) -> Summary {
         self.background.latest().unwrap_or_else(|| {
             let fresh = self.summarize();
@@ -165,23 +166,42 @@ impl ProcessService {
     }
 
     /// **배경 표본을 건다** — setup에서 한 번, 인스턴스 기록을 연 **뒤에**(티켓 29 · 프로세스 스펙 「수집 › 배경 표본」). 곧바로 한
-    /// 장을 모으고 10초마다 다시 모은다. 화면이 닫혀 있어도, 창이 가려져 있어도 돈다 — nav 메타는 늘 서 있고, 1시간 추이(티켓 30)는
+    /// 장을 모으고 10초마다 다시 모은다(`sample_once` — 첫 장은 웹뷰의 첫 답을 잠깐 기다린다). 화면이 닫혀 있어도, 창이 가려져 있어도 돈다 — nav 메타는 늘 서 있고, 1시간 추이(티켓 30)는
     /// 그 사이를 비우면 안 된다. 앉힐 때 합계를 읽은 때(에포크 ms)를 함께 넘겨 추이의 점이 된다. 스레드가 이 서비스를 쥐어 풀도 함께
     /// 쥔다 — 앱이 사는 동안 돈다.
     ///
     /// 기록을 열기 전에 모으면 판정이 이 실행 밖의 모든 세대를 기록 없는 세대로 본다 — 함께 뜬 다른 빌드의 셸 자손이 모두 출처
     /// 불명으로 서서 뜨자마자 `●`가 선다. 그래서 setup의 자리가 `pty::open_record` 뒤다(`lib.rs`의 핀).
     pub fn sample_in_background(self: Arc<Self>) {
-        let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || loop {
-            let fresh = self.summarize();
-            self.background.keep(fresh, clock::now_ms());
-            std::thread::sleep(summary::EVERY);
+        let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || {
+            let mut held = 0;
+            loop {
+                let wait = self.sample_once(&mut held);
+                std::thread::sleep(wait);
+            }
         });
         // 스레드를 못 띄우면 요약은 첫 물음이 그 자리에서 모은 한 장에서 멎는다(`summary`) — nav 메타의 합계가 안 바뀐다. 조용히
         // 넘기지 않고 한 줄 남긴다.
         if let Err(e) = spawned {
             eprintln!("atelier: could not start the summary sampler: {e}");
         }
+    }
+
+    /// **배경 표본 한 번** — 한 장을 모아 앉히고 다음 박자(`summary::EVERY`)를 돌려준다. 잠은 부르는 쪽(`sample_in_background`)이 잔다.
+    ///
+    /// **첫 장은 웹뷰의 첫 답을 기다린다**(티켓 30 · S39 — `summary::holds_first`). 앱에서 첫 표본은 setup이 메인 스레드를 쥔 동안
+    /// 돌아 WebContent 물음이 늦고, 아직 아는 신원이 없어 「웹뷰 제외」 장이 선다 — 요약 IPC가 그 장을 다음 박자까지 돌려준다. 그래서
+    /// 묻는 함수는 걸렸는데 한 번도 제때 답을 못 받았으면 그 장을 앉히지 않고, 미룬 수(`held`)를 올려 짧게(`FIRST_RETRY_AFTER`) 쉬게
+    /// 한다. 상한 뒤에는 그대로 앉힌다. 미루는 동안 요약 IPC는 마지막 장이 없어 그 자리에서 모은다(`summary`) — 그때는 setup이 끝나
+    /// 메인 스레드가 답한다.
+    fn sample_once(&self, held: &mut u32) -> Duration {
+        let fresh = self.summarize();
+        if summary::holds_first(self.background.web_content.unheard(), *held) {
+            *held += 1;
+            return summary::FIRST_RETRY_AFTER;
+        }
+        self.background.keep(fresh, clock::now_ms());
+        summary::EVERY
     }
 }
 
@@ -359,6 +379,63 @@ mod tests {
         assert_eq!(first.record_head, None, "연 적 없는 기록에서 머리를 골랐다 — 검사의 풀이 진짜 정리 기록을 읽는다");
     }
 
+    /// 웹뷰의 답을 차례로 주는 가짜 물음 — 차례가 다 떨어지면 「늦음」이다(메인 스레드가 끝내 안 답한다).
+    fn scripted(answers: &[WebContentAnswer]) -> impl Fn() -> WebContentAnswer + Send + Sync + 'static {
+        let queue = Mutex::new(answers.iter().copied().collect::<std::collections::VecDeque<_>>());
+        move || queue.lock().unwrap().pop_front().unwrap_or(WebContentAnswer::Late)
+    }
+
+    /// **배경 표본의 첫 장은 웹뷰의 첫 답을 기다린다**(티켓 30 · 프로세스 스펙 S39). 앱에서 첫 표본은 setup이 메인 스레드를 쥔 동안
+    /// 돌아 WebContent 물음이 늦고(「늦음」), 아직 아는 신원이 없어 「웹뷰 제외」 장이 선다 — 요약 IPC가 그 장을 다음 박자(10초)까지
+    /// 돌려주고, 추이의 첫 점이 웹뷰만큼 낮다. 그래서 **묻는 함수는 걸렸는데 한 번도 제때 답을 못 받았으면** 그 장을 앉히지 않고 짧게
+    /// 쉬어 다시 모은다. 상한(`FIRST_RETRIES`) 뒤에는 그대로 앉힌다 — 웹뷰가 끝내 답을 안 하는 기계에서 요약이 비지 않게. 묻는 함수가
+    /// 없거나(검사의 서비스) 한 번이라도 답했으면(macOS 밖은 늘 「없음」으로 답한다) 곧바로 앉힌다.
+    ///
+    /// 미루는 동안 요약 IPC는 마지막 장이 없어 그 자리에서 모은다(`summary`) — 그때는 setup이 끝나 메인 스레드가 답한다.
+    ///
+    /// 표본마다 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다). 잠은 없다 — 쉴 때는 돌려받기만 한다.
+    #[test]
+    fn the_first_background_sample_waits_for_the_webviews_first_answer() {
+        let unasked = service();
+        assert_eq!(unasked.sample_once(&mut 0), summary::EVERY, "묻는 함수가 없는데 첫 장을 미뤘다");
+        assert!(unasked.background.latest().is_some(), "묻는 함수가 없는데 첫 장을 안 앉혔다");
+
+        let late_then_answered = service();
+        late_then_answered.ask_web_content_with(scripted(&[
+            WebContentAnswer::Late,
+            WebContentAnswer::Late,
+            WebContentAnswer::Answered(None),
+        ]));
+        let mut held = 0;
+        for n in 1..=2 {
+            assert_eq!(late_then_answered.sample_once(&mut held), summary::FIRST_RETRY_AFTER, "{n}째 늦은 답에 곧 다시 모으지 않는다");
+            assert_eq!(late_then_answered.background.latest(), None, "{n}째 늦은 답의 장을 앉혔다 — 「웹뷰 제외」가 먼저 선다");
+        }
+        assert_eq!(late_then_answered.sample_once(&mut held), summary::EVERY, "웹뷰가 답했는데 또 미뤘다");
+        assert!(late_then_answered.background.latest().is_some(), "웹뷰가 답한 장을 안 앉혔다");
+        assert_eq!(held, 2);
+
+        let never = service();
+        never.ask_web_content_with(scripted(&[]));
+        let mut held = 0;
+        for _ in 0..summary::FIRST_RETRIES {
+            assert_eq!(never.sample_once(&mut held), summary::FIRST_RETRY_AFTER);
+        }
+        assert_eq!(never.background.latest(), None, "상한 전에 앉혔다");
+        assert_eq!(never.sample_once(&mut held), summary::EVERY, "상한 뒤에도 미룬다 — 웹뷰가 끝내 답을 안 하면 요약이 빈다");
+        assert!(never.background.latest().is_some_and(|kept| kept.webview_excluded), "상한 뒤에 「웹뷰 제외」 장을 안 앉혔다");
+        assert_eq!(never.sample_once(&mut held), summary::EVERY, "한 번 앉힌 뒤에 다시 미뤘다");
+
+        // 미루는 동안의 요약 IPC — 그 자리에서 모은 장을 돌려주고 앉힌다. 그 장이 웹뷰의 첫 답을 받았으니 다음 표본은 곧바로 앉는다.
+        let asked_meanwhile = service();
+        asked_meanwhile.ask_web_content_with(scripted(&[WebContentAnswer::Late, WebContentAnswer::Answered(None)]));
+        let mut held = 0;
+        assert_eq!(asked_meanwhile.sample_once(&mut held), summary::FIRST_RETRY_AFTER);
+        let answered = asked_meanwhile.summary();
+        assert_eq!(asked_meanwhile.background.latest(), Some(answered), "미루는 동안 요약 IPC가 그 자리에서 모은 장을 안 앉혔다");
+        assert_eq!(asked_meanwhile.sample_once(&mut held), summary::EVERY, "요약 IPC가 웹뷰의 답을 받았는데 또 미뤘다");
+    }
+
     /// **추이 IPC는 배경 자리의 고리를 돌려준다**(티켓 30) — 표본이 앉힐 때 합계와 그 때를 한 점으로 더한 것이다. 부를 때마다 표를
     /// 찍지 않는다(찍으면 화면이 열려 있는 동안 요약 박자마다 표 한 장이 는다). 아직 한 점도 없으면 빈 목록이다.
     #[test]
@@ -459,6 +536,27 @@ mod tests {
         drop(stand_in);
         answer.store(pid, Ordering::Relaxed);
         assert!(service.summarize().webview_excluded, "끝난 WebContent를 셌다");
+    }
+
+    /// **늦은 첫 답 뒤에 처음 앉힌 장은 웹뷰를 셌다**(티켓 30 · S39) — 앱이 막 떴을 때 nav와 요약 카드가 「웹뷰 제외」 장을 다음
+    /// 박자까지 보이지 않는다. 검사가 띄운 자식 하나를 WebContent 자리에 세운다(`the_app_body_counts_the_web_content_the_webview_names`와
+    /// 같다). 신호는 이 검사가 띄운 자식에게만 간다(`Kid`의 거두기).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_first_kept_sample_counts_the_web_content_that_answered_late() {
+        use crate::processes::testkit::{key, Kid};
+
+        let stand_in = Kid::spawn("sleep", &key(31));
+        let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
+        let service = service();
+        service.ask_web_content_with(scripted(&[WebContentAnswer::Late, WebContentAnswer::Answered(Some(pid))]));
+        let mut held = 0;
+        while service.background.latest().is_none() && held < summary::FIRST_RETRIES {
+            service.sample_once(&mut held);
+        }
+        let kept = service.background.latest().expect("첫 장을 앉혔다");
+        assert!(!kept.webview_excluded, "처음 앉힌 장이 「웹뷰 제외」다 — 늦은 첫 답의 장을 앉혔다");
+        drop(stand_in);
     }
 
     /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로
