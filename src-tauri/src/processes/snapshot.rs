@@ -37,11 +37,18 @@ impl EnvScope {
 /// 프로세스 표를 한 장 찍는다.
 #[cfg(target_os = "macos")]
 pub fn take(scope: EnvScope) -> Snapshot {
+    take_from(mac::all_pids(), scope)
+}
+
+/// 받은 pid들로 표를 한 장 찍는다 — `take`의 몸통. pid 목록을 따로 받는 것은 검사가 **좀비 하나만 든 목록**으로 건너뛴 수를 세기
+/// 위해서다: 이 맥의 표 전체에는 남의 uid라 못 읽는 것이 늘 있어(macOS 26.6 실측 — 669개 중 225개) 건너뛴 수가 좀비와 상관없이
+/// 1 이상이다.
+#[cfg(target_os = "macos")]
+fn take_from(pids: Vec<i32>, scope: EnvScope) -> Snapshot {
     use super::procargs::{self, ProcArgs};
     use super::Proc;
 
     let uid = unsafe { libc::geteuid() };
-    let pids = mac::all_pids();
     // env를 읽는 버퍼는 이 한 장이다(프로세스 스펙 S2). 읽을 때마다 채운 길이까지만 본다.
     let mut buf = vec![0u8; procargs::buffer_len()];
     let mut procs = Vec::with_capacity(pids.len());
@@ -168,7 +175,7 @@ mod mac {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::{identity_of, take, EnvScope};
+    use super::{identity_of, take, take_from, EnvScope};
     use crate::processes::testkit::{key, wait_until, Kid};
 
     /// **스냅샷이 표식을 읽는다.** 준 값 그대로여야 한다.
@@ -213,6 +220,9 @@ mod tests {
 
     /// **좀비를 하나 둔 채로도 스냅샷이 성공한다.** 좀비는 행으로 서지 않고 건너뛴 수에 든다.
     ///
+    /// 건너뛴 수는 **좀비와 이 검사 자신만 든 pid 목록**으로 잰다(`take_from`). 표 전체의 건너뛴 수는 남의 uid라 못 읽는 것 때문에
+    /// 좀비와 상관없이 늘 1 이상이라 아무것도 안 잰다.
+    ///
     /// 좀비는 `WNOWAIT`로 만든다 — 끝났는지는 보되 거두지는 않는다. 스냅샷을 찍은 뒤에 거둔다.
     ///
     /// 한 pid의 신원만 묻는 길(`identity_of`)도 같은 좀비로 잰다. 끝내기는 그 길로 「아직 살아 있나」를
@@ -230,6 +240,7 @@ mod tests {
             ok == 0 && info.si_pid == pid as libc::pid_t
         });
         let snapshot = take(EnvScope::All);
+        let pair = take_from(vec![pid as i32, std::process::id() as i32], EnvScope::All);
         let zombie = identity_of(pid);
         let me = identity_of(std::process::id());
 
@@ -245,7 +256,11 @@ mod tests {
             !snapshot.procs.iter().any(|p| p.id.pid == pid),
             "좀비가 행으로 섰다"
         );
-        assert!(snapshot.skipped >= 1, "좀비를 건너뛰고도 세지 않았다");
+        assert_eq!(
+            (pair.skipped, pair.procs.iter().map(|p| p.id.pid).collect::<Vec<_>>()),
+            (1, vec![std::process::id()]),
+            "좀비와 이 검사 자신만 든 목록에서 좀비 하나를 건너뛰고 세고, 이 검사 자신은 행으로 세워야 한다"
+        );
         assert_eq!(zombie, None, "좀비를 살아 있는 신원으로 읽었다");
         assert_eq!(
             me,
