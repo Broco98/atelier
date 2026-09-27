@@ -2457,24 +2457,156 @@ mod tests {
             }
         }
 
-        /// 셸에서 띄울 자식의 역할(`processes::testkit`).
-        fn role(self) -> &'static str {
+        /// 셸에 칠 한 줄 — 그 셸에서 자식을 띄운다. `( … & )`는 서브셸이 자식을 뒤로 띄우고 곧바로 끝나는 모양이다 — 자식의 부모가
+        /// launchd(1)로 바뀌어 트리가 끊긴다. 자식은 스스로 `setsid`한다(`processes::testkit`의 역할). 자식이 쥐는 것은 이 셸의
+        /// 표식뿐이다. SIGTERM을 무시하는 역할(`ignore-term`)은 유예 2초를 살아, 거두는 길이 유예를 기다리지 않는지 · 키가 끝내기
+        /// 뒤에 내려가는지를 그 창에서 본다.
+        ///
+        /// 묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 제 안쪽(`ask_side` · `record_failed_side` · `startup_side`)으로
+        /// 갈라져 이 줄을 안 친다.
+        fn line(self) -> String {
+            use crate::processes::testkit::{child_args, exe, CHILD_ROLE};
+
+            let args = child_args().join(" ");
+            let child = |role: &str, argv0: &str| {
+                format!("( {CHILD_ROLE}={role} {argv0}'{}' {args} </dev/null >/dev/null 2>&1 & )", exe().display())
+            };
             match self {
-                Scene::Close | Scene::CloseKeeping | Scene::ExitKeeping | Scene::Ask => "sleep",
-                _ => "ignore-term",
+                Scene::Close => format!("{}\n", child("sleep", "")),
+                Scene::CloseIgnoring | Scene::Reload | Scene::Exit => format!("{}\n", child("ignore-term", "")),
+                // 표식이 안 읽히는 시스템 바이너리가 셸 밑에서 SIGTERM · SIGHUP을 무시한다. 셸이 끝나면 launchd 밑으로
+                // 넘어가 트리도 끊긴다 — 종료의 판정은 그것을 다시 못 찾는다. 그 신원을 쥔 것은 닫기가 뒤로 보낸
+                // 끝내기(진행 중인 끝내기)뿐이다. 표식 자식이었다면 종료가 이 세대의 표식으로 다시 찾아 이 장면이
+                // 목록 없이도 초록이다(변형으로 확인).
+                //
+                // 무시는 `/bin/sh -c`로 건다. 대화형 zsh의 서브셸 `( trap '' TERM; exec … )`은 exec한 것에 무시를
+                // 물려주지 않았다(실측 — SIGTERM에 곧바로 끝났다).
+                Scene::CloseThenExit => "/bin/sh -c \"trap '' TERM HUP; exec /bin/sleep 30\" &\n".to_string(),
+                // 같은 자식 둘. 뒤의 것은 zsh의 `ARGV0`로 argv[0]을 예외 이름으로 바꿔 부른다 — 커널 이름은 테스트
+                // 바이너리 그대로라, 부른 이름으로 걸리는 길을 탄다(프로세스 스펙 S7).
+                Scene::CloseKeeping | Scene::ExitKeeping => {
+                    format!("{}; {}\n", child("sleep", ""), child("sleep", &format!("ARGV0={} ", keep_name())))
+                }
+                // 기록 장면의 자식도 `ARGV0`로 부른다 — 짧은 이름으로. 정리 기록의 명령줄은 앞 200자라, 테스트 바이너리의 전체
+                // 경로를 argv[0]으로 두면 뒤의 인자가 잘리는 자리가 코드가 아니라 체크아웃 · target 경로의 길이에 달린다(경로가
+                // 143자를 넘으면 자식 테스트 이름이 잘렸다 — 재 봤다). 커널 이름은 여전히 exec 경로에서 온다.
+                Scene::Record => format!("{}\n", child("ignore-term", &format!("ARGV0={RECORD_ARGV0} "))),
+                Scene::Ask | Scene::RecordFailed | Scene::Startup => {
+                    unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 셸에 자식을 안 띄운다")
+                }
             }
         }
 
-        /// 예외 이름으로 부른 자식을 하나 더 띄우고, 그 이름을 설정의 예외 목록에 적는 장면인가.
+        /// 셸에서 띄운 자식이 표식 자식이 아니라 **셸의 자식인 시스템 바이너리**(`sleep`)인가 — 스냅샷에서 그것을 알아보는 잣대가
+        /// 다르다(`line`).
+        fn child_is_the_shells_sleep(self) -> bool {
+            match self {
+                Scene::CloseThenExit => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::Reload
+                | Scene::CloseKeeping
+                | Scene::ExitKeeping
+                | Scene::Ask
+                | Scene::Record
+                | Scene::RecordFailed
+                | Scene::Startup
+                | Scene::Exit => false,
+            }
+        }
+
+        /// 예외 이름으로 부른 자식을 하나 더 띄우고, 그 이름을 설정의 예외 목록에 적는 장면인가. 묻는 장면은 제 안쪽에서 따로 적는다.
         fn keeps(self) -> bool {
-            matches!(self, Scene::CloseKeeping | Scene::ExitKeeping)
+            match self {
+                Scene::CloseKeeping | Scene::ExitKeeping => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::Reload
+                | Scene::Ask
+                | Scene::Record
+                | Scene::RecordFailed
+                | Scene::Startup
+                | Scene::Exit => false,
+            }
         }
 
         /// 인스턴스 기록을 연 풀로 도는 장면인가. 나머지 장면의 풀은 기록을 안 연다 — 아무 파일도 안 쓴다. 정리 기록(티켓 11)도
         /// 연 기록만 쓴다.
         fn records(self) -> bool {
-            matches!(self, Scene::Record | Scene::RecordFailed | Scene::Startup | Scene::ExitKeeping | Scene::Exit)
+            match self {
+                Scene::Record | Scene::RecordFailed | Scene::Startup | Scene::ExitKeeping | Scene::Exit => true,
+                Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::Reload | Scene::CloseKeeping | Scene::Ask => {
+                    false
+                }
+            }
         }
+
+        /// 자식을 띄우기 전에 **사람이 처음 입력했다고** 알리는 장면인가. 입력이 없는 셸의 자손은 모두 셸 도우미라(프로세스 스펙
+        /// P1) 정리 기록이 그 끝내기를 안 적고(티켓 11) 셸 스스로 끝남이 알리지 않는다(티켓 13) — 기록을 여는 장면 가운데 그것을
+        /// 보는 장면이 알린다. 알린 시각 뒤에 뜬 자식은 사람이 띄운 것이다. 묻는 장면은 제 안쪽에서 알리는 때를 고른다.
+        fn typed_by_a_person(self) -> bool {
+            match self {
+                Scene::Record | Scene::ExitKeeping | Scene::Exit => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::Reload
+                | Scene::CloseKeeping
+                | Scene::Ask
+                | Scene::RecordFailed
+                | Scene::Startup => false,
+            }
+        }
+
+        /// 셸 키가 끝내기가 끝난 **뒤에** 기록에서 내려가는지 지켜보는 장면인가(프로세스 스펙 S52).
+        fn watches_the_key(self) -> bool {
+            match self {
+                Scene::Record | Scene::Exit => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::Reload
+                | Scene::CloseKeeping
+                | Scene::ExitKeeping
+                | Scene::Ask
+                | Scene::RecordFailed
+                | Scene::Startup => false,
+            }
+        }
+
+        /// 안쪽 검사 프로세스가 **이 검사가 지은 셸 키를 물려받고** 뜨는 장면인가 — 설치본 셸에서 띄운 dev 앱의 모양(`on_the_pool_side`).
+        /// 나머지는 어디서 돌리든 같은 입력(물려받은 키 없음)이 되게 지운다.
+        fn inherits_a_key(self) -> bool {
+            match self {
+                Scene::Startup => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::Reload
+                | Scene::CloseKeeping
+                | Scene::ExitKeeping
+                | Scene::Ask
+                | Scene::Record
+                | Scene::RecordFailed
+                | Scene::Exit => false,
+            }
+        }
+    }
+
+    /// 예외 장면의 자식이 부를 이름. 이 검사 프로세스의 pid를 붙여 이 기계의 어떤 실제 이름과도 안 겹치게 한다 — 예외 목록은
+    /// 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정 파일에만 적는다(`keep_on_the_list`).
+    #[cfg(target_os = "macos")]
+    fn keep_name() -> String {
+        format!("atelier-keep-{}", std::process::id())
+    }
+
+    /// 예외 목록에 `keep_name` 하나를 적는다 — 안쪽의 데이터 루트(임시)의 설정에만.
+    #[cfg(target_os = "macos")]
+    fn keep_on_the_list() {
+        let mut settings = crate::settings::Settings::default();
+        settings.terminal.process_exceptions = Some(vec![keep_name()]);
+        crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
     }
 
     /// **풀 배선 — ×로 닫기**(티켓 04). 헤드리스 IPC 채널로 셸을 띄우고 `kill`로 닫아 판정까지 간다(프로세스
@@ -2667,12 +2799,11 @@ mod tests {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        match scene {
-            Scene::Startup => {
-                command.env(crate::processes::SHELL_KEY_ENV, format!("test-{}-inherited-1", std::process::id()))
-            }
-            _ => command.env_remove(crate::processes::SHELL_KEY_ENV),
-        };
+        if scene.inherits_a_key() {
+            command.env(crate::processes::SHELL_KEY_ENV, format!("test-{}-inherited-1", std::process::id()));
+        } else {
+            command.env_remove(crate::processes::SHELL_KEY_ENV);
+        }
         let mut inner = command.spawn().expect("검사 프로세스를 하나 더 띄운다");
 
         // 안쪽은 스스로 끝난다(자식이 서기를 5초, 끝나기를 5초까지 기다린다). 그래도 멎으면 거둔다.
@@ -2704,22 +2835,16 @@ mod tests {
         );
     }
 
-    /// 풀 배선 검사의 안쪽 — 임시 HOME에서 셸을 띄우고, 셸에 한 줄을 쳐 표식 자식을 띄우고, 장면의 길로 셸을
-    /// 거둔다.
-    ///
-    /// `( … & )`는 서브셸이 자식을 뒤로 띄우고 곧바로 끝나는 모양이다 — 자식의 부모가 launchd(1)로 바뀌어
-    /// 트리가 끊긴다. 자식은 스스로 `setsid`한다. 자식이 쥐는 것은 이 셸의 표식뿐이다.
+    /// 풀 배선 검사의 안쪽 — 임시 HOME에서 셸을 띄우고, 셸에 한 줄을 쳐 자식을 띄우고(`Scene::line`), 장면의 길로 셸을
+    /// 거둔다. 묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 제 안쪽으로 갈라진다.
     #[cfg(target_os = "macos")]
     fn pool_side(scene: Scene) {
         use std::collections::HashMap;
-        use std::sync::atomic::AtomicBool;
         use std::time::Instant;
-
-        use tauri::ipc::Channel;
 
         use crate::processes::ending::{self, Group, GRACE};
         use crate::processes::snapshot::{identity_of, take, EnvScope};
-        use crate::processes::testkit::{child_args, exe, holds_for, wait_until, Adopted, CHILD_ROLE};
+        use crate::processes::testkit::{holds_for, wait_until, Adopted};
 
         let home = PathBuf::from(std::env::var_os("HOME").expect("임시 HOME"));
         let pool = std::sync::Arc::new(super::PtyPool::default());
@@ -2731,82 +2856,37 @@ mod tests {
         let announced = std::sync::Arc::new(std::sync::Mutex::new(Vec::<super::Ended>::new()));
         let heard_end = std::sync::Arc::clone(&announced);
         pool.announce_with(move |ended| heard_end.lock().unwrap_or_else(|e| e.into_inner()).push(ended));
-        if scene == Scene::RecordFailed {
-            return record_failed_side(&pool, &home);
+        match scene {
+            Scene::RecordFailed => return record_failed_side(&pool, &home),
+            Scene::Startup => return startup_side(&pool),
+            Scene::Close
+            | Scene::CloseIgnoring
+            | Scene::CloseThenExit
+            | Scene::Reload
+            | Scene::CloseKeeping
+            | Scene::ExitKeeping
+            | Scene::Ask
+            | Scene::Record
+            | Scene::Exit => {}
         }
-        if scene == Scene::Startup {
-            return startup_side(&pool);
-        }
-        let spoke = std::sync::Arc::new(AtomicBool::new(false));
-        let heard = std::sync::Arc::clone(&spoke);
-        let frames = Channel::new(move |_| {
-            heard.store(true, std::sync::atomic::Ordering::Relaxed);
-            Ok(())
-        });
-        let spawned = super::spawn(&pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
-            .expect("셸을 띄운다");
+        let spawned = spawn_until_it_speaks(&pool, &home);
         let key = crate::processes::shell_key::mint(spawned.id);
         let raised_on_spawn = listed(&key);
-
-        // 셸이 무언가(프롬프트)를 내보낸 뒤에 친다 — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
-        wait_until(|| spoke.load(std::sync::atomic::Ordering::Relaxed));
         let shell_pid = pool.lock().get(&spawned.id).and_then(|shell| shell.pid);
         if scene == Scene::Ask {
             return ask_side(&pool, spawned.id, &key, shell_pid);
         }
-        let args = child_args().join(" ");
-        // 예외 장면의 자식이 부를 이름. 이 검사 프로세스의 pid를 붙여 이 기계의 어떤 실제 이름과도 안 겹치게 한다 —
-        // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정 파일에만 적는다.
-        let keep_name = format!("atelier-keep-{}", std::process::id());
         if scene.keeps() {
-            let mut settings = crate::settings::Settings::default();
-            settings.terminal.process_exceptions = Some(vec![keep_name.clone()]);
-            crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
+            keep_on_the_list();
         }
-        let line = match scene {
-            // 표식이 안 읽히는 시스템 바이너리가 셸 밑에서 SIGTERM · SIGHUP을 무시한다. 셸이 끝나면 launchd 밑으로
-            // 넘어가 트리도 끊긴다 — 종료의 판정은 그것을 다시 못 찾는다. 그 신원을 쥔 것은 닫기가 뒤로 보낸
-            // 끝내기(진행 중인 끝내기)뿐이다. 표식 자식이었다면 종료가 이 세대의 표식으로 다시 찾아 이 장면이
-            // 목록 없이도 초록이다(변형으로 확인).
-            //
-            // 무시는 `/bin/sh -c`로 건다. 대화형 zsh의 서브셸 `( trap '' TERM; exec … )`은 exec한 것에 무시를
-            // 물려주지 않았다(실측 — SIGTERM에 곧바로 끝났다).
-            Scene::CloseThenExit => "/bin/sh -c \"trap '' TERM HUP; exec /bin/sleep 30\" &\n".to_string(),
-            // 같은 자식 둘. 뒤의 것은 zsh의 `ARGV0`로 argv[0]을 예외 이름으로 바꿔 부른다 — 커널 이름은 테스트
-            // 바이너리 그대로라, 부른 이름으로 걸리는 길을 탄다(프로세스 스펙 S7).
-            Scene::CloseKeeping | Scene::ExitKeeping => {
-                let child = |argv0: &str| {
-                    format!(
-                        "( {CHILD_ROLE}={} {argv0}'{}' {args} </dev/null >/dev/null 2>&1 & )",
-                        scene.role(),
-                        exe().display()
-                    )
-                };
-                format!("{}; {}\n", child(""), child(&format!("ARGV0={keep_name} ")))
-            }
-            // 기록 장면의 자식도 `ARGV0`로 부른다 — 짧은 이름으로. 정리 기록의 명령줄은 앞 200자라, 테스트 바이너리의 전체
-            // 경로를 argv[0]으로 두면 뒤의 인자가 잘리는 자리가 코드가 아니라 체크아웃 · target 경로의 길이에 달린다(경로가
-            // 143자를 넘으면 자식 테스트 이름이 잘렸다 — 재 봤다). 커널 이름은 여전히 exec 경로에서 온다.
-            Scene::Record => format!(
-                "( {CHILD_ROLE}={} ARGV0={RECORD_ARGV0} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
-                scene.role(),
-                exe().display()
-            ),
-            _ => format!(
-                "( {CHILD_ROLE}={} '{}' {args} </dev/null >/dev/null 2>&1 & )\n",
-                scene.role(),
-                exe().display()
-            ),
-        };
-        // 기록 장면은 사람이 친 것으로 알린다 — 입력이 없는 셸의 자손은 모두 셸 도우미라(프로세스 스펙 P1) 정리 기록이 그
-        // 닫기를 안 적는다(티켓 11). 알린 시각 뒤에 뜬 자식은 사람이 띄운 것이다.
-        if matches!(scene, Scene::Record | Scene::ExitKeeping | Scene::Exit) {
+        if scene.typed_by_a_person() {
             super::note_first_input(&pool, spawned.id, crate::processes::clock::now_ms()).expect("첫 입력을 알린다");
         }
-        super::write(&pool, spawned.id, &line).expect("셸에 한 줄을 친다");
+        super::write(&pool, spawned.id, &scene.line()).expect("셸에 한 줄을 친다");
 
         // 표식 자식: 트리가 끊겼고(부모 1) 제 세션을 열었다(pgid = pid). 시스템 바이너리: 셸의 자식인 `sleep`.
         // 예외 장면은 표식 자식이 둘이라 부른 이름으로 가른다 — 예외 이름으로 부른 것이 `kept`다.
+        let keep_name = keep_name();
         let invoked_keep = |p: &crate::processes::Proc| {
             p.argv0.as_deref().is_some_and(|argv0| argv0.rsplit('/').next() == Some(keep_name.as_str()))
         };
@@ -2814,14 +2894,15 @@ mod tests {
         let mut kept = None;
         wait_until(|| {
             let procs = take(EnvScope::All).procs;
-            let marked = |p: &&crate::processes::Proc| {
-                p.shell_key.as_deref() == Some(key.as_str()) && p.ppid == 1 && p.pgid == p.id.pid
-            };
+            let marked = |p: &&crate::processes::Proc| marked_by(p, &key);
             child = procs
                 .iter()
-                .find(|p| match scene {
-                    Scene::CloseThenExit => shell_pid == Some(p.ppid) && p.name == "sleep",
-                    _ => marked(p) && !invoked_keep(p),
+                .find(|p| {
+                    if scene.child_is_the_shells_sleep() {
+                        shell_pid == Some(p.ppid) && p.name == "sleep"
+                    } else {
+                        marked(p) && !invoked_keep(p)
+                    }
                 })
                 .map(|p| p.id);
             kept = procs.iter().filter(marked).find(|p| invoked_keep(p)).map(|p| p.id);
@@ -2885,7 +2966,7 @@ mod tests {
                 super::write(&pool, spawned.id, "exit\n").expect("셸에 exit를 친다");
                 wait_until(|| !pool.lock().contains_key(&spawned.id));
             }
-            // 위에서 제 안쪽(`ask_side` · `record_failed_side`)으로 갈라져 여기 안 온다.
+            // 위에서 제 안쪽(`ask_side` · `record_failed_side` · `startup_side`)으로 갈라져 여기 안 온다.
             Scene::Ask | Scene::RecordFailed | Scene::Startup => {
                 unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
             }
@@ -2901,7 +2982,7 @@ mod tests {
         // 아직 살아 있으면 끝내기가 끝나기 전에 내린 것이다.
         let listed_on_return = listed(&key);
         let mut lowered_while_alive = false;
-        let lowered = matches!(scene, Scene::Record | Scene::Exit)
+        let lowered = scene.watches_the_key()
             && wait_until(|| {
                 let still = listed(&key);
                 lowered_while_alive |= !still && alive();
@@ -2915,36 +2996,37 @@ mod tests {
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 떨어질 때 신원을 다시 본다.
         drop(reaped);
 
+        let seen = Observed {
+            key: &key,
+            shell_id: spawned.id,
+            child,
+            raised_on_spawn,
+            listed_on_return,
+            alive_on_return,
+            lowered,
+            lowered_while_alive,
+            ended_after,
+        };
         assert!(child.is_some(), "셸에서 띄운 자식이 5초 안에 서지 않았다");
         assert!(emptied, "셸을 거두는 길이 돌아왔는데 풀에 셸이 남았다");
         assert!(ended, "셸을 거뒀는데 그 셸의 표식을 문 자식이 5초가 지나도 살아 있다");
-        if scene == Scene::Close {
-            return;
-        }
-        if scene == Scene::Record {
-            return record_side(
-                &pool,
-                &home,
-                raised_on_spawn,
-                (listed_on_return, alive_on_return),
-                lowered,
-                lowered_while_alive,
-                (&key, child),
-                &announced,
-            );
-        }
-        if scene == Scene::Exit {
-            return exit_side(
-                &announced,
-                (listed_on_return, alive_on_return),
-                (lowered, lowered_while_alive),
-                ended_after,
-                (&key, spawned.id, child),
-            );
-        }
-        if scene.keeps() {
-            assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
-            if scene == Scene::ExitKeeping {
+        match scene {
+            Scene::Close => {}
+            Scene::CloseIgnoring | Scene::Reload => {
+                assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
+                assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
+                assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+            }
+            Scene::CloseThenExit => {
+                assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
+                assert!(!alive_on_return, "종료 길이 돌아왔는데 방금 닫은 셸의 자식이 살아 있다 ({returned:?})");
+            }
+            Scene::CloseKeeping => {
+                assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
+                assert!(survived, "셸을 닫았더니 예외 목록에 적은 이름({keep_name})의 자식까지 끝났다");
+            }
+            Scene::ExitKeeping => {
+                assert!(kept.is_some(), "예외 이름({keep_name})으로 부른 자식이 5초 안에 서지 않았다");
                 // 종료는 대상이 끝나기를 기다리고 돌아온다 — 앵커가 그때 살아 있으면 판정이 그것을 안 골랐다.
                 assert!(!alive_on_return, "종료 길이 돌아왔는데 예외가 아닌 표식 자식이 살아 있다 ({returned:?})");
                 assert!(survived, "앱 종료 길이 예외 목록에 적은 이름({keep_name})의 자식까지 끝냈다");
@@ -2966,19 +3048,61 @@ mod tests {
                     )],
                     "앱 종료가 끝낸 것을 정리 기록에 「앱 종료」 한 줄로 안 적었다"
                 );
-            } else {
-                assert!(survived, "셸을 닫았더니 예외 목록에 적은 이름({keep_name})의 자식까지 끝났다");
             }
-            return;
-        }
-        assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
-        if scene == Scene::CloseThenExit {
-            assert!(!alive_on_return, "종료 길이 돌아왔는데 방금 닫은 셸의 자식이 살아 있다 ({returned:?})");
-        } else {
-            assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
-            assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+            Scene::Record => record_side(&pool, &home, &seen, &announced),
+            Scene::Exit => exit_side(&seen, &announced),
+            Scene::Ask | Scene::RecordFailed | Scene::Startup => {
+                unreachable!("묻는 장면 · 띄우기가 실패하는 장면 · 시작 정리 장면은 거두는 길을 안 탄다")
+            }
         }
     }
+
+    /// 거두는 길을 탄 장면이 본 것 — 끝 절반(`record_side` · `exit_side`)이 단언한다. 모두 자식을 거둔 뒤에 단언한다.
+    #[cfg(target_os = "macos")]
+    struct Observed<'k> {
+        /// 장면이 띄운 셸의 키와 pty id.
+        key: &'k str,
+        shell_id: u32,
+        /// 셸에서 띄운 자식 — 5초 안에 못 섰으면 `None`.
+        child: Option<crate::processes::Identity>,
+        /// 셸을 띄운 직후 그 키가 인스턴스 기록에 있었나.
+        raised_on_spawn: bool,
+        /// 거두는 길이 돌아온 순간(셸 스스로 끝남은 셸이 풀에서 빠진 순간) 키가 기록에 있었나 · 자식이 살아 있었나.
+        listed_on_return: bool,
+        alive_on_return: bool,
+        /// 키가 5초 안에 기록에서 내려갔나 · 내려간 것을 본 순간 자식이 아직 살아 있었나(`Scene::watches_the_key`).
+        lowered: bool,
+        lowered_while_alive: bool,
+        /// 거두는 길을 부른 때부터 자식이 끝난 것을 본 때까지.
+        ended_after: Duration,
+    }
+
+    /// 풀에 셸 하나를 띄우고, 그 셸이 무언가(프롬프트)를 내보낼 때까지 기다린다(5초까지) — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
+    #[cfg(target_os = "macos")]
+    fn spawn_until_it_speaks(pool: &std::sync::Arc<super::PtyPool>, home: &Path) -> super::PtySpawned {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use tauri::ipc::Channel;
+
+        let spoke = std::sync::Arc::new(AtomicBool::new(false));
+        let heard = std::sync::Arc::clone(&spoke);
+        let frames = Channel::new(move |_| {
+            heard.store(true, Ordering::Relaxed);
+            Ok(())
+        });
+        let spawned =
+            super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames).expect("셸을 띄운다");
+        crate::processes::testkit::wait_until(|| spoke.load(Ordering::Relaxed));
+        spawned
+    }
+
+    /// 그 셸 키를 문 **표식 자식**인가 — 트리가 끊겼고(부모 1) 제 세션을 열었다(pgid = pid). claude Bash 도구가 띄운 dev 서버의
+    /// 모양이다.
+    #[cfg(target_os = "macos")]
+    fn marked_by(p: &crate::processes::Proc, key: &str) -> bool {
+        p.shell_key.as_deref() == Some(key) && p.ppid == 1 && p.pgid == p.id.pid
+    }
+
     /// 이 실행(안쪽 검사 프로세스)의 인스턴스 기록에 그 셸 키가 있나. 안쪽의 데이터 루트는 임시다.
     #[cfg(target_os = "macos")]
     fn listed(key: &str) -> bool {
@@ -3006,34 +3130,17 @@ mod tests {
     /// **정리 기록**(티켓 11)도 여기서 본다. 첫 셸의 닫기는 「셸 닫기」 한 줄로 적힌다 — 그 셸 키와 주인, 사람이 띄운 자식이
     /// 결과(SIGTERM을 무시해 강제)와 명령줄(자식을 부른 인자)을 달고. 스스로 끝난 둘째 셸과, 끝낼 것이 없던 앱 종료는 안 적힌다.
     #[cfg(target_os = "macos")]
-    #[allow(clippy::too_many_arguments)]
     fn record_side(
         pool: &std::sync::Arc<super::PtyPool>,
         home: &Path,
-        raised_on_spawn: bool,
-        (listed_on_return, alive_on_return): (bool, bool),
-        lowered: bool,
-        lowered_while_alive: bool,
-        (closed_key, closed_child): (&str, Option<crate::processes::Identity>),
+        first: &Observed,
         announced: &std::sync::Mutex<Vec<super::Ended>>,
     ) {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        use tauri::ipc::Channel;
-
         use crate::processes::testkit::wait_until;
 
-        let spoke = std::sync::Arc::new(AtomicBool::new(false));
-        let heard = std::sync::Arc::clone(&spoke);
-        let frames = Channel::new(move |_| {
-            heard.store(true, Ordering::Relaxed);
-            Ok(())
-        });
-        let second = super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames)
-            .expect("둘째 셸을 띄운다");
+        let second = spawn_until_it_speaks(pool, home);
         let second_key = crate::processes::shell_key::mint(second.id);
         let second_raised = listed(&second_key);
-        wait_until(|| spoke.load(Ordering::Relaxed));
         super::write(pool, second.id, "exit\n").expect("둘째 셸에 exit를 친다");
         let second_left = wait_until(|| !pool.lock().contains_key(&second.id));
         let second_lowered = wait_until(|| !listed(&second_key));
@@ -3045,13 +3152,18 @@ mod tests {
         let after_exit = on_the_record();
         let log = crate::processes::cleanup_log::read(&crate::processes::cleanup_log::path(&atelier_core::data_root()));
 
-        assert!(raised_on_spawn, "셸을 띄웠는데 그 키가 인스턴스 기록에 없다");
+        assert!(first.raised_on_spawn, "셸을 띄웠는데 그 키가 인스턴스 기록에 없다");
         assert!(
-            listed_on_return && alive_on_return,
-            "닫기가 돌아온 순간 키가 기록에 없거나({listed_on_return}) 자식이 이미 없다({alive_on_return}) — 끝내기가 도는 창을 못 봤다"
+            first.listed_on_return && first.alive_on_return,
+            "닫기가 돌아온 순간 키가 기록에 없거나({}) 자식이 이미 없다({}) — 끝내기가 도는 창을 못 봤다",
+            first.listed_on_return,
+            first.alive_on_return
         );
-        assert!(!lowered_while_alive, "그 셸의 자식이 아직 사는데 키를 기록에서 내렸다 — 다른 실행이 그 자식을 확정 고아로 본다");
-        assert!(lowered, "끝내기가 끝났는데 키가 5초가 지나도 기록에 남았다");
+        assert!(
+            !first.lowered_while_alive,
+            "그 셸의 자식이 아직 사는데 키를 기록에서 내렸다 — 다른 실행이 그 자식을 확정 고아로 본다"
+        );
+        assert!(first.lowered, "끝내기가 끝났는데 키가 5초가 지나도 기록에 남았다");
         assert!(second_raised, "둘째 셸의 키가 기록에 없다");
         assert!(second_left, "`exit`를 쳤는데 둘째 셸이 풀에서 안 빠졌다");
         assert!(second_lowered, "셸이 스스로 끝났는데 그 키가 기록에 남았다");
@@ -3066,7 +3178,7 @@ mod tests {
             after_exit.is_none(),
             "못 끝낸 것이 없는데({outcomes:?}) 앱 종료 뒤에도 기록이 남았다 — 다음 실행이 죽은 실행의 기록으로 헛일을 한다"
         );
-        assert_closed_shell_logged(&log, closed_key, closed_child);
+        assert_closed_shell_logged(&log, first.key, first.child);
     }
 
     /// 정리 기록에 셸 닫기 한 줄 — 그 셸 키와 주인, 자식 하나(강제, 명령줄은 자식을 부른 argv 전체)뿐이다. 자식은 짧은 이름으로
@@ -3114,28 +3226,24 @@ mod tests {
     /// 풀 배선 장면 `Exit`의 끝 절반 — 셸은 `exit`로 스스로 끝나 풀에서 빠졌고, 자식은 이미 거뒀다(끝났거나 검사가 SIGKILL).
     /// 단언만 남았다.
     #[cfg(target_os = "macos")]
-    fn exit_side(
-        announced: &std::sync::Mutex<Vec<super::Ended>>,
-        (listed_on_leave, alive_on_leave): (bool, bool),
-        (lowered, lowered_while_alive): (bool, bool),
-        ended_after: Duration,
-        (key, shell_id, child): (&str, u32, Option<crate::processes::Identity>),
-    ) {
+    fn exit_side(seen: &Observed, announced: &std::sync::Mutex<Vec<super::Ended>>) {
         use crate::processes::cleanup_log::{self, Reason};
         use crate::processes::ending::{Outcome, GRACE};
         use crate::processes::testkit::wait_until;
 
-        let child = child.expect("셸에서 띄운 자식을 봤다");
+        let child = seen.child.expect("셸에서 띄운 자식을 봤다");
         assert!(
-            listed_on_leave && alive_on_leave,
-            "셸이 풀에서 빠진 순간 키가 기록에 없거나({listed_on_leave}) 자식이 이미 없다({alive_on_leave}) — 끝내기가 도는 창을 못 봤다"
+            seen.listed_on_return && seen.alive_on_return,
+            "셸이 풀에서 빠진 순간 키가 기록에 없거나({}) 자식이 이미 없다({}) — 끝내기가 도는 창을 못 봤다",
+            seen.listed_on_return,
+            seen.alive_on_return
         );
         assert!(
-            !lowered_while_alive,
+            !seen.lowered_while_alive,
             "스스로 끝난 셸의 자식이 아직 사는데 키를 기록에서 내렸다 — 다른 실행이 그 자식을 확정 고아로 본다"
         );
-        assert!(lowered, "끝내기가 끝났는데 스스로 끝난 셸의 키가 5초가 지나도 기록에 남았다");
-        assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+        assert!(seen.lowered, "끝내기가 끝났는데 스스로 끝난 셸의 키가 5초가 지나도 기록에 남았다");
+        assert!(seen.ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({:?})", seen.ended_after);
 
         let log = cleanup_log::read(&cleanup_log::path(&atelier_core::data_root()));
         assert_eq!(
@@ -3145,7 +3253,7 @@ mod tests {
                     (event.reason, event.shell_key.clone(), event.owner.clone(), targets)
                 })
                 .collect::<Vec<_>>(),
-            [(Reason::ShellExit, Some(key.to_string()), None, vec![(child.pid, Outcome::Forced)])],
+            [(Reason::ShellExit, Some(seen.key.to_string()), None, vec![(child.pid, Outcome::Forced)])],
             "셸이 스스로 끝나며 끝낸 것을 정리 기록에 「셸 스스로 끝남」 한 줄(owner 없음)로 안 적었다"
         );
 
@@ -3154,7 +3262,7 @@ mod tests {
         let announced = announced.lock().unwrap_or_else(|e| e.into_inner()).clone();
         assert_eq!(
             announced,
-            [super::Ended { reason: Reason::ShellExit, shell_id, count: 1 }],
+            [super::Ended { reason: Reason::ShellExit, shell_id: seen.shell_id, count: 1 }],
             "셸이 스스로 끝나며 끝낸 것을 한 번 알리지 않았다"
         );
     }
@@ -3358,12 +3466,8 @@ mod tests {
 
         use super::CloseCheck;
 
-        // 예외 목록은 안쪽의 데이터 루트(임시 `ATELIER_HOME`)의 설정에만 적는다. 이름에 이 검사 프로세스의 pid를 붙여
-        // 이 기계의 어떤 실제 이름과도 안 겹치게 한다.
-        let keep_name = format!("atelier-keep-{}", std::process::id());
-        let mut settings = crate::settings::Settings::default();
-        settings.terminal.process_exceptions = Some(vec![keep_name.clone()]);
-        crate::settings::write(&atelier_core::data_root(), &settings).expect("임시 데이터 루트에 설정을 쓴다");
+        let keep_name = keep_name();
+        keep_on_the_list();
 
         let args = child_args().join(" ");
         let child = |argv0: &str| {
