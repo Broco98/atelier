@@ -3426,7 +3426,7 @@ mod tests {
             log: crate::processes::cleanup_log::path(&atelier_core::data_root()),
         });
         dead.raise(&dead_key);
-        let dead_file = dir.join(format!("{dead_generation}.json"));
+        let dead_file = instances::file_of(&dir, &dead_generation);
         let recorded = dead_file.exists();
         // 판정의 스냅샷 뒤에 막 뜬 실행의 모양 — 앱은 **지금** 살아 있는데(이 프로세스의 진짜 신원) 판정이 죽은 것으로 읽었다.
         // 판정으로는 이 모양을 못 세우니(앱이 스냅샷에 있다) 아래에서 지울 목록에 손으로 얹는다.
@@ -3441,7 +3441,7 @@ mod tests {
             version: "0.0.0".to_string(),
             log: crate::processes::cleanup_log::path(&atelier_core::data_root()),
         });
-        let late_file = dir.join(format!("{late_generation}.json"));
+        let late_file = instances::file_of(&dir, &late_generation);
         // 이 프로세스가 물려받은 셸 키 — 바깥이 지어 물려줬다(`on_the_pool_side`). 그 셸을 띄운 실행(설치본의 모양)은 죽었고
         // 기록이 남았다. 그 키를 문 자식은 이 앱과 함께 뜬 vite의 모양이다.
         let inherited_key = crate::processes::inherited_key().expect("바깥이 시작 정리 장면에 물려받은 키를 준다").to_string();

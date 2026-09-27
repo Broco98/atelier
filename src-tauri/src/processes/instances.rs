@@ -36,6 +36,33 @@ pub fn dir(root: &Path) -> PathBuf {
     root.join("instances")
 }
 
+/// 한 세대의 기록 파일 — `<폴더>/<세대>.json`. **세대는 파일 이름이다**(`InstanceFile`). 쓰기 · 읽기 · 지우기가 모두 이 이름을
+/// 지나고, 폴더를 훑는 쪽은 그 거꾸로(`generation_of`)를 쓴다 — 이름 규칙은 `name_of`와 `generation_of` 한 쌍에만 있다.
+pub fn file_of(dir: &Path, generation: &str) -> PathBuf {
+    dir.join(name_of(generation))
+}
+
+/// 기록 파일의 이름(`file_of`). 코어의 원자 쓰기가 폴더와 이름을 따로 받아 이름만 따로 선다.
+fn name_of(generation: &str) -> String {
+    format!("{generation}.json")
+}
+
+/// 기록 파일의 이름에서 세대를 되읽는다 — `name_of`의 거꾸로. `.json`으로 끝나지 않으면 기록이 아니다: 쓰는 중인 tmp는 코어의
+/// 원자 쓰기가 `.tmp`로 끝나게 짓는다.
+fn generation_of(path: &Path) -> Option<&str> {
+    path.file_name()?.to_str()?.strip_suffix(".json").filter(|generation| !generation.is_empty())
+}
+
+/// 기록 한 장을 지운다 — 앱 종료가 제 기록을(`Record::close`), 시작 정리가 죽은 실행의 기록을(`Record::forget`). 이미 없으면
+/// 조용하다. 다른 실패는 한 줄 남기고 넘어간다 — 지우기가 부른 길(종료 · 시작 정리)을 막지 않는다.
+fn remove_record(path: &Path) {
+    if let Err(e) = std::fs::remove_file(path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            eprintln!("atelier: instance record remove failed ({}): {e}", path.display());
+        }
+    }
+}
+
 /// 빌드 종류. 판 04의 `Processes`가 「다른 인스턴스」마다 보인다(프로세스 스펙 S8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -102,10 +129,6 @@ impl Place {
             version: version.to_string(),
             log: cleanup_log::path(root),
         })
-    }
-
-    fn file_name(&self) -> String {
-        format!("{}.json", self.generation)
     }
 }
 
@@ -198,12 +221,7 @@ impl Record {
         if outcomes.iter().any(|(_, outcome)| *outcome == Outcome::Survived) {
             return;
         }
-        let path = place.dir.join(place.file_name());
-        if let Err(e) = std::fs::remove_file(&path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("atelier: instance record remove failed ({}): {e}", path.display());
-            }
-        }
+        remove_record(&file_of(&place.dir, &place.generation));
     }
 
     /// **죽은 실행의 기록을 지운다** — 시작 정리가 그 실행이 남긴 확정 고아를 끝낸 뒤에(프로세스 스펙 「인스턴스 기록 › 지우는
@@ -217,12 +235,7 @@ impl Record {
             return;
         };
         for generation in generations.into_iter().filter(|generation| *generation != place.generation) {
-            let path = place.dir.join(format!("{generation}.json"));
-            if let Err(e) = std::fs::remove_file(&path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("atelier: dead instance record remove failed ({}): {e}", path.display());
-                }
-            }
+            remove_record(&file_of(&place.dir, generation));
         }
     }
 
@@ -288,9 +301,8 @@ impl Book {
             shell_keys: self.keys.iter().cloned().collect(),
             updated_us: self.updated_us,
         };
-        if let Err(e) = atelier_core::write_json_atomically(&place.dir, &place.file_name(), &file, "인스턴스 기록을")
-        {
-            eprintln!("atelier: instance record write failed ({}): {e}", place.dir.join(place.file_name()).display());
+        if let Err(e) = atelier_core::write_json_atomically(&place.dir, &name_of(&place.generation), &file, "인스턴스 기록을") {
+            eprintln!("atelier: instance record write failed ({}): {e}", file_of(&place.dir, &place.generation).display());
         }
     }
 }
@@ -329,11 +341,11 @@ fn alive_generations(dir: &Path) -> Vec<String> {
 /// 한 세대의 기록. **깨졌으면 「기록 없음」이다** — 없는 것과 같게 친다. 그 세대의 셸 자손은 판정에서 출처 불명이 되고,
 /// 자동으로는 아무도 안 건드린다.
 pub fn read(dir: &Path, generation: &str) -> Option<InstanceFile> {
-    let content = std::fs::read_to_string(dir.join(format!("{generation}.json"))).ok()?;
+    let content = std::fs::read_to_string(file_of(dir, generation)).ok()?;
     serde_json::from_str(&content).ok()
 }
 
-/// 폴더의 기록 전부 — (세대, 기록). `.json`만 기록이다: 쓰는 중인 tmp는 코어의 원자 쓰기가 `.tmp`로 끝나게 짓는다.
+/// 폴더의 기록 전부 — (세대, 기록). 이름이 기록의 모양인 것만 읽는다(`generation_of`).
 /// 깨진 기록은 **조용히 건너뛴다** — 판정마다 읽으니, 깨진 한 장이 셸을 닫을 때마다 stderr에 줄을 남긴다.
 pub fn read_all(dir: &Path) -> Vec<(String, InstanceFile)> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -342,10 +354,7 @@ pub fn read_all(dir: &Path) -> Vec<(String, InstanceFile)> {
     let mut records: Vec<(String, InstanceFile)> = entries
         .filter_map(|entry| {
             let path = entry.ok()?.path();
-            let generation = path.file_stem()?.to_str()?;
-            if path.extension()? != "json" {
-                return None;
-            }
+            let generation = generation_of(&path)?;
             Some((generation.to_string(), read(dir, generation)?))
         })
         .collect();
@@ -378,6 +387,20 @@ mod tests {
             version: "0.14.1".to_string(),
             // 기록 폴더 안에 둔다 — 검사마다 따로 선 폴더를 한 번에 지운다. `read_all`은 이것을 깨진 기록으로 건너뛴다.
             log: dir.join("cleanup-log.json"),
+        }
+    }
+
+    /// **기록 파일의 이름이 세대다** — 짓는 쪽(`file_of`)과 되읽는 쪽(`generation_of`)이 한 쌍이다. 폴더를 훑는 쪽(`read_all`)이
+    /// 되읽지 못하는 이름은 기록이 아니다: 쓰는 중인 tmp, 빈 세대, 다른 확장자.
+    #[test]
+    fn a_record_file_is_named_by_its_generation_and_read_back_from_its_name() {
+        let dir = Path::new("/instances");
+        assert_eq!(file_of(dir, "1790000000000"), Path::new("/instances/1790000000000.json"));
+        for generation in ["1790000000000", "test-42-dead", "a.b"] {
+            assert_eq!(generation_of(&file_of(dir, generation)), Some(generation), "{generation}의 파일에서 세대를 못 되읽는다");
+        }
+        for not_a_record in [".D.json.77.0.tmp", ".json", "G.JSON", "G.json.tmp", "G"] {
+            assert_eq!(generation_of(&dir.join(not_a_record)), None, "{not_a_record}를 기록으로 읽었다");
         }
     }
 
