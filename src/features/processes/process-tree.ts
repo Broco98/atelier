@@ -98,6 +98,14 @@ export function withMemory(parts: ReadonlyArray<string>, memory: number | null):
 }
 
 /**
+ * 프로세스를 세는 말 — 「프로세스 N개」. 고아 · 다른 인스턴스 · 예외 묶음의 수, 실행 줄, 정리 기록의 사건 줄이 이것으로 센다. 셸을 세는
+ * 자리는 「셸 N개」다(`shell-tree.ts`의 `shellCount`).
+ */
+export function processCount(count: number): string {
+  return `프로세스 ${count}개`;
+}
+
+/**
  * 프로세스 줄의 이름 — **부른 이름**이다(argv[0]의 마지막 조각). 커널 이름은 실제로 실행된 파일이라 심링크로 부른 것(`claude` → 버전
  * 경로)이 다른 이름이 된다 — 셸 탭이 고르는 순서와 같다(`pty::foreground_name`). 부른 이름을 못 읽은 행(env를 못 읽었다)은 커널
  * 이름이다.

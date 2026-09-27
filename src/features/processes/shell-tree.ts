@@ -338,6 +338,7 @@ export function ownerlessGroupRowLabel(group: GroupNode): string {
   );
 }
 
+/** 셸을 세는 말 — 「셸 N개」(CONTEXT 「셸」). 프로세스를 세는 자리는 `processCount`(`process-tree.ts`)다. */
 export function shellCount(count: number): string {
   return `셸 ${count}개`;
 }

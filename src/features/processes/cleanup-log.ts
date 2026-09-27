@@ -1,3 +1,4 @@
+import { processCount } from "./process-tree";
 import type { CleanupEvent, CleanupOutcome, CleanupReason, CleanupTarget } from "./types";
 
 // **정리 기록을 사람 말로**(프로세스 결정 6 · 프로세스 스펙 S12 · 티켓 32). 앱이 무엇을 언제 왜 끝냈는지가 `Processes`의 맨 끝 묶음에
@@ -52,7 +53,7 @@ export function loggedAt(at: number): string {
 
 /** 사건 한 줄 — 「까닭, 프로세스 N개, 때」. 눈에 보이는 줄과 접근성 이름이 같은 이것을 읽는다. */
 export function eventLabel(event: CleanupEvent): string {
-  return `${reasonLabel(event.reason)}, 프로세스 ${event.targets.length}개, ${loggedAt(event.at)}`;
+  return `${reasonLabel(event.reason)}, ${processCount(event.targets.length)}, ${loggedAt(event.at)}`;
 }
 
 /**

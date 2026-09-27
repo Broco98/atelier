@@ -4,6 +4,7 @@ import {
   exceptionName,
   identitiesOf,
   identityKey,
+  processCount,
   processLabel,
   processRowLabel,
   processTree,
@@ -91,9 +92,6 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
 }
 
 const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
-
-/** 네 묶음의 수 — 프로세스를 센다(셸 묶음은 셸을 센다). */
-const processCount = (count: number) => `프로세스 ${count}개`;
 
 /** 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {

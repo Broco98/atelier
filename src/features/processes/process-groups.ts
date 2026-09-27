@@ -1,5 +1,5 @@
 import { sumMetrics } from "./metrics";
-import { processTree, withMemory, type ProcessNode } from "./process-tree";
+import { processCount, processTree, withMemory, type ProcessNode } from "./process-tree";
 import type { OtherInstance, ProcessMetrics, ProcessSnapshot } from "./types";
 
 // **`Processes`의 다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31). 다른 인스턴스를 실행마다
@@ -69,5 +69,5 @@ export function instanceGroups(snapshot: ProcessSnapshot): InstanceGroup[] {
 
 /** 실행 줄의 접근성 이름 — 「빌드, 프로세스 N개, 메모리」 한 문장(S58). 메모리는 그 실행의 합이다. */
 export function instanceRowLabel(group: InstanceGroup): string {
-  return withMemory([group.label, `프로세스 ${group.nodes.length}개`], group.totals.memory);
+  return withMemory([group.label, processCount(group.nodes.length)], group.totals.memory);
 }

@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { eventKey, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
 import { useCleanupLog } from "./hooks";
+import { processCount } from "./process-tree";
 import { Section } from "./tree-rows";
 import type { CleanupEvent } from "./types";
 
@@ -59,7 +60,7 @@ function EventRow({ event, open, onToggle }: { event: CleanupEvent; open: boolea
           className={cn("size-3.5 shrink-0 text-tertiary transition-transform", open && "rotate-90")}
         />
         <span className="shrink-0 text-[13px] font-medium">{reasonLabel(event.reason)}</span>
-        <span className="shrink-0 text-[12px] text-tertiary">{`프로세스 ${event.targets.length}개`}</span>
+        <span className="shrink-0 text-[12px] text-tertiary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
         <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
       </button>
