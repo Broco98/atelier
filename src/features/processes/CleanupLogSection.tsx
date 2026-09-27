@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { eventKeys, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
 import { useCleanupLog } from "./hooks";
@@ -23,11 +24,13 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
   if (events.length === 0) return null;
   const keys = eventKeys(events);
 
-  const toggle = (key: string) =>
+  // 여닫이 부품은 **다음** 상태를 알린다 — 받은 값을 그대로 적는다(`SpecTree`와 같다).
+  const openFor = (key: string, next: boolean) =>
     setOpen((was) => {
-      const next = new Set(was);
-      if (!next.delete(key)) next.add(key);
-      return next;
+      const opened = new Set(was);
+      if (next) opened.add(key);
+      else opened.delete(key);
+      return opened;
     });
 
   return (
@@ -35,7 +38,7 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
       <ol aria-label="정리 기록" className="flex flex-col gap-0.5">
         {events.map((event, at) => {
           const key = keys[at];
-          return <EventRow key={key} event={event} open={open.has(key)} onToggle={() => toggle(key)} />;
+          return <EventRow key={key} event={event} open={open.has(key)} onOpenChange={(next) => openFor(key, next)} />;
         })}
       </ol>
     </Section>
@@ -43,17 +46,24 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
 }
 
 /**
- * 사건 한 줄 — 누르면 대상이 펼쳐진다. **버튼의 이름이 그 줄의 한 문장이다**(`eventLabel`) — 안의 글자 조각을 이어 읽지 않는다. 펼쳤는지는
- * `aria-expanded`가 말한다.
+ * 사건 한 줄 — 누르면 대상이 펼쳐진다. **여닫음은 앱의 여닫이 부품이 든다**(`Collapsible` 기본 변형 — `ArchiveList` · `SpecTree`와 같은
+ * 부품): 줄이 트리거라 `aria-expanded`를 스스로 달고, 대상 목록은 패널이다. 기본 변형이라 움직임 없이 바로 접히고 닫히면 내려간다 —
+ * 펼친 것은 사건의 열쇠로 화면이 든다(`eventKeys`). **버튼의 이름이 그 줄의 한 문장이다**(`eventLabel`) — 안의 글자 조각을 이어 읽지
+ * 않는다.
  */
-function EventRow({ event, open, onToggle }: { event: CleanupEvent; open: boolean; onToggle: () => void }) {
+function EventRow({
+  event,
+  open,
+  onOpenChange,
+}: {
+  event: CleanupEvent;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
-    <li className="flex flex-col">
-      <button
-        type="button"
-        aria-expanded={open}
+    <Collapsible open={open} onOpenChange={onOpenChange} render={<li />} className="flex flex-col">
+      <CollapsibleTrigger
         aria-label={eventLabel(event)}
-        onClick={onToggle}
         className="flex h-8 min-w-0 items-center gap-2 rounded-[8px] pr-1 text-left transition-colors quiet-hover"
       >
         <ChevronRight
@@ -64,8 +74,8 @@ function EventRow({ event, open, onToggle }: { event: CleanupEvent; open: boolea
         <span className="shrink-0 text-[12px] text-tertiary">{processCount(event.targets.length)}</span>
         <span className="flex-1" />
         <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">{loggedAt(event.at)}</span>
-      </button>
-      {open && (
+      </CollapsibleTrigger>
+      <CollapsibleContent>
         <ul aria-label={`${reasonLabel(event.reason)}의 대상`} className="flex flex-col gap-1 pb-2 pl-[22px]">
           {event.targets.map((target, at) => (
             // 대상 한 줄 — 이름 · 결과, 그 밑에 명령줄. 명령줄은 Rust가 적을 때 앞 200자로 잘랐다(토큰 같은 비밀 — S12). 줄을 넘기며
@@ -83,8 +93,8 @@ function EventRow({ event, open, onToggle }: { event: CleanupEvent; open: boolea
             </li>
           ))}
         </ul>
-      )}
-    </li>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

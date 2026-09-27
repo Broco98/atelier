@@ -396,8 +396,9 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   await expect(log.getByText("기록 3건", { exact: true })).toBeVisible();
 
   const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
-  // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다.
+  // 차례가 기록의 차례다 — 새것부터. 줄의 이름이 까닭 · 대상 수 · 때의 한 문장이다. 사건마다 목록의 한 항목이다.
   await expect(사건들).toHaveText([/^셸 스스로 끝남/, /^시작 정리/, /^셸 닫기/]);
+  await expect(log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("listitem")).toHaveCount(3);
   expect(await 사건들.evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")))).toEqual(
     기록.map(eventLabel),
   );
@@ -417,6 +418,12 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   await expect(대상.nth(1).getByText("ruby server.rb --port 4000", { exact: true })).toBeVisible();
   // 다른 사건은 접힌 채다 — 앵커: 누른 사건의 명령줄은 섰다.
   await expect(log.getByText("node vite --port 5173", { exact: true })).toHaveCount(0);
+  // 키보드로도 여닫는다 — 줄이 버튼이다.
+  await 시작정리.focus();
+  await page.keyboard.press("Enter");
+  await expect(시작정리).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Space");
+  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
 
   // 다시 누르면 접힌다.
   await 시작정리.click();
