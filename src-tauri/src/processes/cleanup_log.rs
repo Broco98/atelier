@@ -5,8 +5,9 @@
 //! 에 남긴다 — 새것부터 최근 100건이다. 읽는 화면은 판 04(`Processes`)가 세운다.
 //!
 //! **셸이나 셸 도우미만 끝난 사건은 적지 않는다**(프로세스 스펙 P1). p10k 셸은 닫을 때마다 `gitstatusd`가 함께 끝난다 —
-//! 그것까지 적으면 × 한 번마다 한 줄이 차 100건이 금세 쓸모없는 줄로 찬다. 셸과 도우미는 셸의 몫이라 대상 목록에도 안 든다
-//! (셸 자신이 목록에 없듯이). 사람이 띄운 것(도우미가 아닌 자손)이나 고아가 하나라도 끝났을 때만 적는다.
+//! 그것까지 적으면 × 한 번마다 한 줄이 차 100건이 금세 쓸모없는 줄로 찬다. 사람이 띄운 것(도우미가 아닌 자손)이나 고아가 하나라도
+//! 끝났을 때, 또는 무엇이든 못 끝냈을 때만 적는다. 도우미 표시는 **적을지만** 가른다 — 적는 사건의 대상 목록에는 도우미도 든다(앱이
+//! 신호를 보내 끝낸 것이다). 셸 자신은 끝내기의 대상이 아니라(그룹 신호) 목록에 없다.
 //!
 //! 셸이 스스로 끝나며 끝낸 것을 토스트로 알릴 때의 수(`ended_count`, 티켓 13)도 같은 규칙으로 센다 — 도우미와 이미 없음은
 //! 앱이 끝낸 것으로 안 친다.
@@ -103,7 +104,7 @@ pub struct Event {
     /// 그 셸의 주인(`atelier:<slug>` 꼴, 프런트의 `ShellOwner`). **닫기 IPC로 온 사건에만 있다** — Rust 풀은 셸의 주인을
     /// 모른다(티켓 11 「스펙과 다른 점」). 채우려면 셸을 띄울 때 넘겨야 하는데, 읽는 화면이 아직 없다.
     pub owner: Option<String>,
-    /// 끝낸 것 — 셸과 셸 도우미는 빠진다.
+    /// 끝내기에 넘긴 것 전부 — 셸 도우미도 든다. 셸 자신은 끝내기의 대상이 아니라(그룹 신호) 없다.
     pub targets: Vec<Target>,
 }
 
@@ -125,7 +126,7 @@ pub struct Aimed {
     pub id: Identity,
     pub name: String,
     pub command: Option<String>,
-    /// 셸 도우미인가(`Verdict::helpers`) — 사건을 적을지 가르고, 대상 목록에서 빠진다.
+    /// 셸 도우미인가(`Verdict::helpers`) — 사건을 적을지와 알릴 수(`ended_count`)만 가른다. 대상 목록에는 그대로 든다.
     pub helper: bool,
 }
 
@@ -137,9 +138,12 @@ impl Aimed {
 
 /// 끝내기의 결과로 사건 하나를 짓는다 — **적을 것이 없으면 `None`이다.**
 ///
-/// 도우미가 아닌 대상이 하나라도 끝났을 때만 적는다: 끝남(TERM) · 강제(KILL) · 못 끝냄. 못 끝냄은 앱이 끝내려다 못 한
-/// 것이라 반드시 남긴다(`●`를 켠다). 이미 없음은 앱이 끝낸 것이 아니다 — 그것뿐이면 적지 않고, 다른 것과 함께면 그 결과로
-/// 목록에 든다. 결과를 못 찾은 대상(끝내기에 안 넘어간 것)은 빠진다.
+/// 적는 것은 둘이다(프로세스 스펙 P1 · S41).
+/// - 도우미가 아닌 대상이 끝남(TERM) · 강제(KILL) · 못 끝냄이다 — 사람이 띄운 것이나 고아를 앱이 끝냈다.
+/// - **누구든** 못 끝냄이다 — 앱이 끝내려다 못 한 것이라 반드시 남긴다(`●`를 켠다). SIGKILL도 버틴 도우미도 그렇다.
+///
+/// 도우미만 끝났으면(끝남 · 강제) 적지 않는다. 이미 없음은 앱이 끝낸 것이 아니다 — 그것뿐이면 적지 않는다. 적는 사건의 대상
+/// 목록에는 결과가 돌아온 것이 모두 든다(도우미 · 이미 없음도 그 결과로). 결과를 못 찾은 대상(끝내기에 안 넘어간 것)은 빠진다.
 pub fn event(
     at: u64,
     reason: Reason,
@@ -148,22 +152,32 @@ pub fn event(
     aimed: &[Aimed],
     outcomes: &[(Identity, Outcome)],
 ) -> Option<Event> {
-    let targets: Vec<Target> = aimed
+    let settled: Vec<(&Aimed, Outcome)> = counted(aimed, outcomes).collect();
+    let worth = settled
         .iter()
-        .filter(|one| !one.helper)
-        .filter_map(|one| {
-            let (_, outcome) = outcomes.iter().find(|(id, _)| *id == one.id)?;
-            Some(Target { pid: one.id.pid, name: one.name.clone(), command: one.command.as_deref().map(cut), outcome: *outcome })
-        })
-        .collect();
-    targets.iter().any(|target| target.outcome != Outcome::Gone).then(|| Event {
+        .any(|(one, outcome)| *outcome == Outcome::Survived || (!one.helper && *outcome != Outcome::Gone));
+    worth.then(|| Event {
         id: 0,
         at,
         reason,
         shell_key: shell_key.map(str::to_string),
         owner: owner.map(str::to_string),
-        targets,
+        targets: settled
+            .iter()
+            .map(|(one, outcome)| Target {
+                pid: one.id.pid,
+                name: one.name.clone(),
+                command: one.command.as_deref().map(cut),
+                outcome: *outcome,
+            })
+            .collect(),
     })
+}
+
+/// 끝내기에 넘긴 것마다 그 결과 — 넘긴 순서대로. 결과를 못 찾은 것(끝내기에 안 넘어간 것 — 진행 중인 끝내기가 이미 맡은 신원)은
+/// 빠진다. 적을지(`event`)와 알릴 수(`ended_count`)가 이 짝으로 가른다 — 넘긴 것과 결과를 잇는 자리는 여기 하나다.
+fn counted<'x>(aimed: &'x [Aimed], outcomes: &'x [(Identity, Outcome)]) -> impl Iterator<Item = (&'x Aimed, Outcome)> + 'x {
+    aimed.iter().filter_map(|one| outcomes.iter().find(|(id, _)| *id == one.id).map(|(_, outcome)| (one, *outcome)))
 }
 
 /// 사람에게 알릴 「앱이 끝낸 수」 — **알릴 것이 없으면 `None`이다**(티켓 13 · 프로세스 스펙 P4). 셸이 스스로 끝나며 그 셸에서
@@ -173,11 +187,8 @@ pub fn event(
 /// 때마다 `gitstatusd` 하나로 토스트가 선다. 이미 없음은 앱이 끝낸 것이 아니다. 못 끝냄도 세지 않는다 — 문구가 「끝냈어요」다.
 /// 못 끝냄은 정리 기록에 남아(`event`) 판 04의 `●`가 알린다. 그래서 이 수가 0이어도 사건은 적힐 수 있다(못 끝냄뿐일 때).
 pub fn ended_count(aimed: &[Aimed], outcomes: &[(Identity, Outcome)]) -> Option<usize> {
-    let count = aimed
-        .iter()
-        .filter(|one| !one.helper)
-        .filter_map(|one| outcomes.iter().find(|(id, _)| *id == one.id))
-        .filter(|(_, outcome)| matches!(outcome, Outcome::Ended | Outcome::Forced))
+    let count = counted(aimed, outcomes)
+        .filter(|(one, outcome)| !one.helper && matches!(outcome, Outcome::Ended | Outcome::Forced))
         .count();
     (count > 0).then_some(count)
 }
@@ -247,9 +258,10 @@ mod tests {
         Aimed { id: id(pid), name: name.to_string(), command: Some(format!("{name} --serve")), helper }
     }
 
-    /// **셸이나 셸 도우미만 끝난 사건은 적지 않는다**(프로세스 스펙 P1). 도우미가 아닌 것이 하나라도 끝나면 적고, 그때
-    /// 목록에는 도우미가 빠진다. 셸 자신은 끝내기의 대상이 아니라(그룹 신호) 여기 오지 않는다 — 대상이 없는 사건이 셸만 끝난
-    /// 사건이다.
+    /// **셸이나 셸 도우미만 끝난 사건은 적지 않는다**(프로세스 스펙 P1). 도우미가 아닌 것이 하나라도 끝나면 적고, 그때 대상
+    /// 목록에는 **도우미도 든다** — 도우미도 앱이 신호를 보내 끝낸 것이다(티켓 11 · 구현-스펙 「사건 하나」는 대상을 거르지 않는다).
+    /// 도우미 표시는 「적을지」만 가른다. **못 끝냄은 누구든 적는다** — 도우미라도 앱이 끝내려다 못 한 것이라 `●`를 켠다(S41). 셸
+    /// 자신은 끝내기의 대상이 아니라(그룹 신호) 여기 오지 않는다 — 대상이 없는 사건이 셸만 끝난 사건이다.
     ///
     /// 앵커: 적히는 줄이 있다 — 늘 `None`을 주게 무너지면 「안 적힌다」들이 저절로 참이 된다.
     #[test]
@@ -287,10 +299,11 @@ mod tests {
         assert_eq!(
             written.targets,
             vec![
+                Target { pid: 11, name: "gitstatusd".into(), command: Some("gitstatusd --serve".into()), outcome: Outcome::Ended },
                 Target { pid: 12, name: "node".into(), command: Some("node --serve".into()), outcome: Outcome::Forced },
                 Target { pid: 13, name: "esbuild".into(), command: Some("esbuild --serve".into()), outcome: Outcome::Gone },
             ],
-            "대상 목록이 어긋났다 — 도우미가 섞였거나, 함께 넘어간 이미 없음이 빠졌다"
+            "대상 목록이 어긋났다 — 함께 끝낸 도우미나 함께 넘어간 이미 없음이 빠졌다"
         );
         assert_eq!((written.at, written.reason), (at, Reason::ShellClose));
         assert_eq!((written.shell_key.as_deref(), written.owner.as_deref()), (Some("G-1"), Some("atelier:x")));
@@ -300,6 +313,10 @@ mod tests {
             survived.is_some_and(|event| event.targets[0].outcome == Outcome::Survived),
             "못 끝낸 것을 안 적었다 — 앱이 끝내려다 못 한 것이 기록에서 사라진다"
         );
+        let helper_survived = event(at, Reason::ShellClose, Some("G-1"), None, &[helper], &[(id(11), Outcome::Survived)])
+            .expect("못 끝낸 도우미를 안 적었다 — SIGKILL도 버틴 도우미가 기록에도 `●`에도 안 선다");
+        assert_eq!(helper_survived.targets.iter().map(|target| target.pid).collect::<Vec<_>>(), [11]);
+        assert!(worth_a_look(&helper_survived), "못 끝낸 도우미가 든 사건이 `●`를 안 켠다");
     }
 
     /// **셸이 스스로 끝나며 끝낸 것을 알릴지**(티켓 13 · 프로세스 스펙 P4 · P1). 알릴 수는 도우미가 아닌 대상 중 끝남 · 강제다.

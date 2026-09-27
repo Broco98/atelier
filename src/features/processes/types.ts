@@ -127,7 +127,10 @@ export type { CleanupReason };
 /** 끝낸 것의 결과 — Rust `ending::Outcome`의 와이어 글자다. 끝남(TERM) · 강제(KILL) · 못 끝냄 · 이미 없음. */
 export type CleanupOutcome = "ended" | "forced" | "survived" | "gone";
 
-/** 정리 기록의 대상 하나(Rust `cleanup_log::Target`). 셸과 셸 도우미는 안 든다(프로세스 스펙 P1). */
+/**
+ * 정리 기록의 대상 하나(Rust `cleanup_log::Target`). 셸 자신은 안 든다 — 끝내기의 대상이 아니다. 셸 도우미는 적는 사건이면 함께
+ * 든다(도우미만 끝난 사건은 안 적는다 — 프로세스 스펙 P1).
+ */
 export interface CleanupTarget {
   pid: number;
   /** 커널 이름. */
