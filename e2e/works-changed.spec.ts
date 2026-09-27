@@ -13,6 +13,7 @@ import {
   liveSubscriptions,
   modeButton,
   releaseCommand,
+  steadyCount,
   unknownIpcCalls,
   workRow,
 } from "./harness";
@@ -43,20 +44,6 @@ async function settle(page: Page): Promise<void> {
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
-}
-
-/**
- * 그 커맨드의 호출 수가 **멎은 값** — 0.3초 동안 그대로면 멎은 것이다. 이벤트를 쏘기 전에 부른다: 화면이 서며 나간 조회가
- * 쏜 뒤에 기록되면 「이벤트 한 번에 몇 번」에 섞인다.
- */
-async function steadyCount(page: Page, command: string): Promise<number> {
-  let count = await callCount(page, command);
-  for (;;) {
-    await page.waitForTimeout(300);
-    const next = await callCount(page, command);
-    if (next === count) return count;
-    count = next;
-  }
 }
 
 /** 작업 화면에 선다 — 사이드바(목록 둘)와 works 라우트 · 작업 화면이 모두 목록을 쓴다. */

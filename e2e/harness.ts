@@ -535,6 +535,32 @@ export async function callCount(page: Page, command: string): Promise<number> {
 }
 
 /**
+ * 그 커맨드의 호출 수가 **멎은 값** — 0.3초 간격으로 두 번 센 수가 같으면 멎은 것이다. 이벤트를 쏘기 전에 부른다: 화면이 서며
+ * 나간 조회가 쏜 뒤에 기록되면 「이벤트 한 번에 몇 번」에 섞인다(`works-changed.spec.ts`).
+ *
+ * **멎지 않으면 상한(`limitMs`, 기본 10초)에서 던진다** — 0.3초마다 센 수를 싣고. 폴러나 되풀이 조회처럼 멎지 않는 커맨드에
+ * 부르면 끝나지 않아, 검사가 러너의 제한 시간에서야 무엇을 기다렸는지 없이 빨개졌다. 지금 부르는 자리는 모두 두 번째 셈에서
+ * 멎는다(0.3초 남짓 — 실측).
+ */
+export async function steadyCount(
+  page: Page,
+  command: string,
+  { limitMs = 10_000 }: { limitMs?: number } = {},
+): Promise<number> {
+  const started = Date.now();
+  const seen = [await callCount(page, command)];
+  for (;;) {
+    await page.waitForTimeout(300);
+    const next = await callCount(page, command);
+    if (next === seen[seen.length - 1]) return next;
+    seen.push(next);
+    if (Date.now() - started >= limitMs) {
+      throw new Error(`${command}의 호출 수가 ${limitMs}ms 안에 멎지 않았다 — 0.3초마다 센 수: ${seen.join(" → ")}`);
+    }
+  }
+}
+
+/**
  * 경로 한 단계 위 — 「모든 프로젝트」(워크트리들의 부모)와 Work 폴더(`specDir`의 부모)의
  * 기대값을 픽스처 경로에서 **파생한다**(폴더 이름을 검사에 안 적는다).
  */

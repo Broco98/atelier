@@ -12,6 +12,7 @@ import {
   readIpcRecord,
   releaseCommand,
   replaceAnswer,
+  steadyCount,
   unknownIpcCalls,
   workRow,
 } from "./harness";
@@ -25,6 +26,9 @@ import type { Mode } from "@/mode";
 // 앱 코드는 안 본다. 재는 것은 하네스이고, 앱은 그 하네스를 실제로 태우는 무대다 — 구독 수를 앱의
 // 구독으로 세지 않는 것도 그래서다: `works:changed`의 구독 수는 앱이 정하는 값이라(14가 작업 화면의
 // 넷을 하나로 모았다 — `works-changed.spec.ts`), 그것을 여기 기대값으로 적으면 앱의 변경이 이 파일을 깬다.
+//
+// (5)는 뒤에 하네스로 올라온 도구다 — `works-changed.spec.ts`가 딛는 멎은 호출 수(`steadyCount`)가 멎지 않는 커맨드에서 끝없이
+// 기다리지 않고 센 수를 싣고 던지는지를 잰다.
 
 const [pinnedWork, plainWork] = WORKS;
 const [project] = PROJECTS;
@@ -368,5 +372,30 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   await replaceAnswer(page, "pty_close_check", QUIET_SHELL);
   expect(await ask(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });
 
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// ─── (5) 멎은 호출 수 ───
+//
+// `steadyCount`는 0.3초 간격의 두 셈이 같아질 때까지 기다린다. 멎지 않는 커맨드(폴러 · 되풀이 조회)에 부르면 끝나지 않아, 검사는
+// 러너의 제한 시간에서야 무엇을 기다렸는지 없이 빨개진다. 그래서 상한에서 **센 수를 싣고** 던진다.
+
+test("(5) 호출 수가 멎으면 그 수를 주고, 멎지 않으면 상한에서 센 수를 싣고 던진다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openProject(page);
+  const settled = await steadyCount(page, "list_projects");
+  expect(settled).toBeGreaterThan(0);
+  expect(await callCount(page, "list_projects")).toBe(settled);
+
+  // 0.1초마다 부르는 손을 건다 — 0.3초 간격의 두 셈이 같을 날이 없다.
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> } }
+    ).__TAURI_INTERNALS__;
+    window.setInterval(() => void internals.invoke("list_projects", {}), 100);
+  });
+  await expect(steadyCount(page, "list_projects", { limitMs: 1_000 })).rejects.toThrow(
+    /list_projects의 호출 수가 1000ms 안에 멎지 않았다 — 0\.3초마다 센 수: \d+( → \d+)+/,
+  );
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
