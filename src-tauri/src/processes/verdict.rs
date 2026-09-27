@@ -402,12 +402,19 @@ pub fn at_startup<'a>(input: &Inputs<'a>) -> Vec<&'a Proc> {
 
 /// **죽은 실행의 기록** — 이 실행 말고, 앱이 스냅샷에 없는 기록들(프로세스 스펙 S9). 확정 고아 (가)를 가르는 규칙과 한 자리다
 /// (`Table::alive`). 시작 정리가 그 고아를 끝낸 뒤 이 기록들을 지운다(프로세스 스펙 「인스턴스 기록 › 지우는 때」).
+///
+/// **앱이 물려받은 키를 낸 실행은 죽었어도 안 고른다**(프로세스 스펙 S6 · 「dev 앱을 설치본 셸에서 띄우는 경우」). 판정은 그 키를 문
+/// 것(앱과 조상 사슬, 앱과 함께 뜬 vite)을 판정 밖에 둬 이 실행의 시작 정리가 그 실행의 고아를 다 치우지 않는다. 그 기록을 지우면
+/// 설치본이 다시 뜰 때 그 키가 기록 없는 세대(출처 불명)로 읽혀, 살아남은 dev 앱과 vite가 확정 고아로 정리되지 않는다.
 pub fn dead_instances<'a>(input: &Inputs<'a>) -> Vec<&'a InstanceRecord> {
     let table = Table::of(&input.snapshot.procs);
+    let inherited = |record: &InstanceRecord| {
+        input.run.inherited_key.is_some_and(|key| shell_key::of_generation(key, &record.generation))
+    };
     input
         .instances
         .iter()
-        .filter(|record| record.generation != input.run.generation && !table.alive(record))
+        .filter(|record| record.generation != input.run.generation && !inherited(record) && !table.alive(record))
         .collect()
 }
 
@@ -1266,9 +1273,13 @@ mod tests {
 
     /// **시작 정리가 지울 죽은 실행의 기록**(프로세스 스펙 「인스턴스 기록 › 지우는 때」). 살아 있다 = 앱 pid의 행이 있고
     /// 시작 시각도 같다(S9) — 확정 고아 (가)를 가르는 규칙과 한 자리다. 이 실행의 기록은 죽은 것으로 안 친다.
+    ///
+    /// **앱이 물려받은 키의 실행은 죽었어도 안 고른다**(프로세스 스펙 S6 · 「dev 앱을 설치본 셸에서 띄우는 경우」). 시작 정리는 그 키를
+    /// 문 것(앱과 함께 뜬 vite)을 판정 밖에 둬 안 끝낸다. 그 기록까지 지우면 설치본이 다시 뜰 때 그 키가 기록 없는 세대(출처 불명)로
+    /// 읽혀, 살아남은 dev 앱과 vite가 확정 고아로 정리되지 않는다. 앵커: 같은 세상에서 물려받은 키가 없으면 그 실행을 고른다.
     #[test]
     fn dead_instances_are_the_records_whose_app_is_gone() {
-        let dead = |rows: Vec<Proc>| -> Vec<String> {
+        let dead_inheriting = |rows: Vec<Proc>, inherited_key: Option<&str>| -> Vec<String> {
             let mut procs = world();
             procs.extend([row(70, 1), row(80, 1)]);
             for added in rows {
@@ -1279,7 +1290,7 @@ mod tests {
             let records = records();
             let mut got: Vec<String> = dead_instances(&Inputs {
                 snapshot: &snapshot,
-                run: ThisRun { inherited_key: Some("I-3"), ..run("G") },
+                run: ThisRun { inherited_key, ..run("G") },
                 shells: &[],
                 ending: &[],
                 instances: &records,
@@ -1292,11 +1303,18 @@ mod tests {
             got.sort();
             got
         };
+        let dead = |rows: Vec<Proc>| dead_inheriting(rows, Some("I-3"));
         assert_eq!(dead(vec![]), ["R", "X"], "앱 pid가 없는 실행(X)과 그 pid를 남이 받은 실행(R)만 죽었다");
+        let installed_gone = || vec![row(10, 1).born(9_000), row(APP, 40).born(9_000)];
         assert_eq!(
-            dead(vec![row(10, 1).born(9_000), row(APP, 40).born(9_000)]),
+            dead_inheriting(installed_gone(), None),
             ["I", "R", "X"],
             "설치본(I)의 pid를 남이 받았으면 죽었다 — 이 실행(G)의 행이 달라도 이 실행은 죽은 것으로 안 친다"
+        );
+        assert_eq!(
+            dead(installed_gone()),
+            ["R", "X"],
+            "앱이 물려받은 키의 실행(I)을 죽은 기록으로 골랐다 — 설치본이 다시 뜨면 그 키가 출처 불명이 되어 dev 앱과 vite가 안 정리된다"
         );
     }
 

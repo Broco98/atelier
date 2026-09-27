@@ -916,7 +916,8 @@ struct StartupPlan {
 /// 2. 스냅샷을 찍고, **그 뒤에** 셸 목록과 기록을 읽는다(프로세스 스펙 S52). 첫 셸이 이 사이에 떠도 그 키는 이 실행의
 ///    것이라 시작 정리가 안 본다.
 /// 3. 시작 정리 모드로 판정해 **확정 고아만** 고른다(`verdict::at_startup`) — 출처 불명, 다른 인스턴스, 예외는 안 고른다.
-///    지울 기록은 앱이 스냅샷에 없는 실행의 것이다(`verdict::dead_instances`).
+///    지울 기록은 앱이 스냅샷에 없는 실행의 것이다(`verdict::dead_instances`) — 앱이 물려받은 키의 실행은 빼고. 그 실행이 남긴 것은
+///    판정 밖이라 이 정리가 다 못 치우니, 그 기록은 그 실행(설치본)이 다시 뜰 때 쓴다.
 fn plan_startup(pool: &PtyPool, exceptions: &[String]) -> StartupPlan {
     let claim = pool.endings.claim();
     let snapshot = snapshot::take(EnvScope::All);
@@ -2488,7 +2489,9 @@ mod tests {
     /// **앱이 물려받은 셸 키를 문 것은 안 고른다**(프로세스 스펙 S6). 설치본 셸에서 `pnpm tauri dev`로 띄운 dev 앱과 그
     /// vite는 설치본 셸의 키를 함께 문다. 설치본이 죽어 그 기록이 남으면 vite는 죽은 실행의 키를 문 확정 고아 (가)의 모양이다
     /// — 다시 뜬 dev 앱이 제 프런트 서버를 끝낸다. 셸 닫기와 종료는 이 세대의 자손만 끝내 이 키를 만날 일이 없어, 이 배선이
-    /// 실제로 지키는 자리는 시작 정리뿐이다. 그래서 안쪽 검사 프로세스가 죽은 실행의 키를 물려받고 뜬다(`on_the_pool_side`).
+    /// 실제로 지키는 자리는 시작 정리뿐이다. 그래서 안쪽 검사 프로세스가 죽은 실행의 키를 물려받고 뜬다(`on_the_pool_side`). **그 실행의
+    /// 기록도 안 지운다** — 설치본이 다시 뜨면 그 기록으로 살아남은 dev 앱과 vite를 확정 고아로 치운다(프로세스 스펙 「dev 앱을 설치본
+    /// 셸에서 띄우는 경우」). 지우면 그 키가 출처 불명이 되어 아무도 안 치운다.
     ///
     /// 앵커: 고른 것이 끝난다 — 아무것도 안 고르면 「기록이 없는 세대의 자식은 안 골랐다」와 「물려받은 키를 문 자식은 안
     /// 골랐다」가 저절로 참이 된다.
@@ -3118,11 +3121,15 @@ mod tests {
         let vite = Kid::spawn("sleep", &inherited_key);
         let (left_id, unrecorded_id, vite_id) = (left.settle(), unrecorded.settle(), vite.settle());
 
+        let installed_file = instances::file_of(&dir, installed_generation);
+
         let mut plan = super::plan_startup(pool, &super::exceptions());
         let picked: Vec<Identity> = plan.targets.iter().map(|proc| proc.id).collect();
         let forgets = plan.dead.iter().any(|record| record.generation == dead_generation);
-        // 물려받은 키의 실행을 판정이 죽은 것으로 읽었다 — 그 키를 문 자식은 막히지 않으면 확정 고아 (가)다.
-        let installed_dead = plan.dead.iter().any(|record| record.generation == installed_generation);
+        // 물려받은 키의 실행은 죽었다(앱 신원이 이 프로세스의 pid에 다른 시작 시각) — 그 키를 문 자식은 막히지 않으면 확정 고아
+        // (가)다. 그래도 그 실행의 기록은 지울 목록에 없어야 한다: 설치본이 다시 뜰 때 그 기록으로 dev 앱과 vite를 치운다.
+        let installed_dead = !instances::alive(Identity { pid: me, started_us: 1 });
+        let installed_forgets = plan.dead.iter().any(|record| record.generation == installed_generation);
         // **끝내기에는 이 검사가 띄운 자식만 넘긴다.** 판정은 이 기계의 표 전체를 읽는다. 기록이 임시 데이터 루트의 것뿐이라
         // 고르는 것도 이 자식뿐이어야 하지만, 그 믿음으로 남에게 신호를 보내지 않는다.
         plan.targets.retain(|proc| Some(proc.id) == left_id);
@@ -3139,6 +3146,7 @@ mod tests {
         let unrecorded_lives =
             holds_for(Duration::from_millis(300), || unrecorded_id.is_some_and(|id| identity_of(id.pid) == Some(id)));
         let forgotten = !dead_file.exists();
+        let installed_kept = installed_file.exists();
         let late_kept = late_file.exists();
         let own_kept = on_the_record().is_some();
         let reported = crate::startup::cleaned(&attempts);
@@ -3160,7 +3168,12 @@ mod tests {
         );
         assert!(
             installed_dead,
-            "물려받은 키의 실행을 죽은 것으로 안 읽었다 — 아래 「안 골랐다」가 아무것도 못 잰다"
+            "물려받은 키의 실행이 살아 있다 — 아래 「안 골랐다」 · 「안 지웠다」가 아무것도 못 잰다"
+        );
+        assert!(
+            !installed_forgets,
+            "앱이 물려받은 키의 실행을 죽은 기록으로 지울 목록에 올렸다 — 설치본이 다시 뜨면 그 키가 출처 불명이 되어 살아남은 dev 앱과 \
+             vite가 정리되지 않는다"
         );
         assert!(
             !picked.contains(&vite_id),
@@ -3180,6 +3193,7 @@ mod tests {
         );
         assert!(unrecorded_lives, "기록이 없는 세대의 키를 문 자식이 시작 정리 뒤에 끝났다");
         assert!(forgotten, "죽은 실행의 고아를 처리했는데 그 실행의 기록이 남았다 — 다음 실행이 헛일을 한다");
+        assert!(installed_kept, "시작 정리가 앱이 물려받은 키의 실행 기록을 지웠다 — 그 실행이 남긴 것을 설치본이 다시 떠도 못 치운다");
         assert!(late_recorded, "막 뜬 실행의 기록을 못 썼다 — 아래 「남았다」가 아무것도 못 잰다");
         assert!(
             late_kept,
