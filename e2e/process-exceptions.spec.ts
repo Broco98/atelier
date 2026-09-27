@@ -124,3 +124,25 @@ test("기본 목록을 못 받으면 곧바로 그렇게 적고 칸을 잠그며
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
+
+// **네트워크가 끊겨도 기본 목록을 묻는다** — 기본 목록은 로컬 IPC라 네트워크와 상관이 없다. react-query는 창이 `offline`을
+// 받으면 그 뒤 새로 서는 조회를 부르지 않고 멈춰 두는데(`networkMode`의 기본 `online`), 이 조회가 그 길을 타면 칸은 기본 목록을
+// 모르는 채 잠기고 「읽지 못했어요」도 안 서 사람은 왜 못 고치는지 모른다. 페이지를 떠나면 버리는 조회라(`gcTime: 0`) 설정 ›
+// 터미널을 열 때마다 새로 선다.
+//
+// 앱이 떠 있는 동안 끊기는 것을 흉내 낸다 — 다른 설정 항목에 서 있다가 창에 `offline`을 쏘고(웹뷰가 네트워크가 끊기면 쏘는 것),
+// 그 뒤 터미널로 옮긴다. 페이지를 다시 읽으면 react-query가 다시 온라인으로 시작하므로 옮기기는 사이드바로 한다.
+test("네트워크가 끊긴 뒤 열어도 기본 목록을 묻고 칸을 연다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/settings/hooks");
+  await expect(page.getByRole("heading", { name: "에이전트 훅", exact: true })).toBeVisible();
+
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.locator("aside").getByRole("button", { name: "터미널", exact: true }).click();
+  await expect(page).toHaveURL("/settings/terminal");
+
+  await expect(목록(page), "끊긴 뒤 연 칸에 기본 목록이 안 섰다").toHaveValue(DEFAULTS.join("\n"));
+  await expect(목록(page)).toBeEnabled();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});

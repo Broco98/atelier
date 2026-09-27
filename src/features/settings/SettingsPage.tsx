@@ -426,6 +426,8 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
  * - **열려 있는 동안 다시 묻지 않는다**(`staleTime: Infinity` — 창으로 돌아올 때도). 판정이 쓰는 Rust 상수라 앱이 도는 동안
  *   안 바뀐다.
  * - **페이지를 떠나면 버린다**(`gcTime: 0`). 다시 열면 새로 묻는다 — 못 받았던 것도 그때 다시 묻는다.
+ * - **네트워크가 끊겨도 묻는다**(`networkMode: "always"`). 로컬 IPC라 네트워크와 상관이 없다 — 기본(`online`)이면 창이
+ *   `offline`을 받은 뒤 여는 페이지마다 조회가 멈춰, 칸이 말없이 잠긴다(L3 `process-exceptions`).
  */
 const defaultExceptionsQuery = queryOptions({
   queryKey: ["settings", "defaultExceptions"],
@@ -433,6 +435,7 @@ const defaultExceptionsQuery = queryOptions({
   retry: false,
   staleTime: Infinity,
   gcTime: 0,
+  networkMode: "always",
 });
 
 /**
