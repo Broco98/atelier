@@ -16,6 +16,9 @@ import type { Settings } from "./types";
  */
 export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks" | "spec-layout">;
 
+/** 구획 하나를 고치는 함수 — 쓰는 순간의 최신 구획을 받아 쓸 구획을 돌려준다(`sectionSaver`). */
+export type SectionUpdate<K extends SettingsSectionKey> = (latest: Settings[K]) => Settings[K];
+
 /**
  * `(읽기, 쓰기) → 저장`. 돌려받은 `save(key, value)`는 **쓰는 순간 최신 설정을 읽어 그 구획
  * 칸만 덮어** 쓴다.
@@ -35,9 +38,6 @@ export type SettingsSectionKey = Exclude<SettingsItemKey, "hooks" | "spec-layout
  *
  * 값 대신 **고치는 함수**(`SectionUpdate`)를 받으면 줄 안에서 읽은 최신 구획으로 짓는다(프로세스 티켓 31 — 칸 하나만 고치는 쪽).
  */
-/** 구획 하나를 고치는 함수 — 쓰는 순간의 최신 구획을 받아 쓸 구획을 돌려준다(`sectionSaver`). */
-export type SectionUpdate<K extends SettingsSectionKey> = (latest: Settings[K]) => Settings[K];
-
 export function sectionSaver(
   read: () => Promise<Settings>,
   write: (settings: Settings) => Promise<void>,
