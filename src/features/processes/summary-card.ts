@@ -1,6 +1,7 @@
 import { signalOf } from "@/features/terminal/shell-attention";
 import { liveOwnerlessOf, type ShellsState } from "@/features/terminal/shell-registry";
 import { ALL_MODES } from "@/mode";
+import { formatMemory } from "./metrics";
 import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
 // **`Processes` 요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」 · 티켓 30). 순수 함수다.
@@ -57,16 +58,40 @@ export interface SparkBox {
  *   — 그러면 몇 MB 흔들림이 절벽처럼 선다. 모두 0이면 바닥에 눕는다.
  */
 export function sparkline(points: ReadonlyArray<TrendPoint>, { width, height, inset }: SparkBox): Array<[number, number]> {
-  const last = points[points.length - 1];
+  const shown = drawnPoints(points);
+  const last = shown[shown.length - 1];
   if (last === undefined) return [];
   const start = last.at - TREND_SPAN_MS;
-  const shown = points.filter((point) => point.at >= start);
   const top = Math.max(...shown.map((point) => point.total));
   const span = height - inset * 2;
   return shown.map((point) => [
     ((point.at - start) / TREND_SPAN_MS) * width,
     inset + (top > 0 ? 1 - point.total / top : 1) * span,
   ]);
+}
+
+/**
+ * 스파크라인이 그리는 점 — 마지막 점에서 거꾸로 1시간(`TREND_SPAN_MS`) 안의 것. 선(`sparkline`)과 그 이름(`trendLabel`)이 이 한 규칙을
+ * 읽는다 — 따로 고르면 귀에 남는 구간이 눈의 선과 갈린다.
+ */
+function drawnPoints(points: ReadonlyArray<TrendPoint>): ReadonlyArray<TrendPoint> {
+  const last = points[points.length - 1];
+  if (last === undefined) return [];
+  const start = last.at - TREND_SPAN_MS;
+  return points.filter((point) => point.at >= start);
+}
+
+/**
+ * 스파크라인의 접근성 이름 — **그린 점**의 처음과 끝 합계다(`drawnPoints`). 선의 모양은 눈의 것이고, 귀에는 얼마에서 얼마로 왔는지가
+ * 남는다. 1시간보다 오래된 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다.
+ */
+export function trendLabel(points: ReadonlyArray<TrendPoint>): string {
+  const shown = drawnPoints(points);
+  const first = shown[0];
+  const end = shown[shown.length - 1];
+  return first && end
+    ? `지난 1시간 합계 추이, ${formatMemory(first.total)}에서 ${formatMemory(end.total)}`
+    : "지난 1시간 합계 추이, 아직 없음";
 }
 
 /** 앱 본체에 웹뷰를 못 셌을 때 값 옆에 붙는 말(프로세스 스펙 S39). */

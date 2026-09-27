@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { NO_SHELLS, ownerOf } from "@/features/terminal/shell-registry";
 import type { Shell, ShellsState } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { TREND_SPAN_MS, appBodyNote, cardCounts, sparkline } from "./summary-card";
+import { TREND_SPAN_MS, appBodyNote, cardCounts, sparkline, trendLabel } from "./summary-card";
+import { formatMemory } from "./metrics";
 import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
 // 프로세스 티켓 30 — **요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」). 카드는 새 박자를 걸지 않고
@@ -161,6 +162,17 @@ describe("지난 1시간 스파크라인", () => {
   // 모두 0이어도 선은 바닥에 선다 — 0으로 나누지 않는다.
   it("모두 0이면 바닥에 눕는다", () => {
     expect(sparkline([점(10, 0), 점(0, 0)], box).map(([, y]) => y)).toEqual([18, 18]);
+  });
+
+  // **접근성 이름은 선이 그린 점의 처음과 끝이다** — 귀에 남는 「얼마에서 얼마로」가 눈의 선과 같은 구간이어야 한다. 1시간보다 오래된
+  // 점(맥이 잠든 사이 고리가 넓어졌다)은 선에 없으니 이름에도 없다.
+  it("추이의 이름은 그린 점의 처음과 끝 합계다 — 1시간보다 오래된 점은 안 든다", () => {
+    const stale = { at: 10_000_000 - TREND_SPAN_MS - 1, total: 50 * 1024 * 1024 };
+    const drawn = [점(60, 100 * 1024 * 1024), 점(0, 300 * 1024 * 1024)];
+    expect(trendLabel([stale, ...drawn])).toBe(
+      `지난 1시간 합계 추이, ${formatMemory(drawn[0].total)}에서 ${formatMemory(drawn[1].total)}`,
+    );
+    expect(trendLabel([])).toBe("지난 1시간 합계 추이, 아직 없음");
   });
 });
 

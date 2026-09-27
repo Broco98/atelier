@@ -3,7 +3,7 @@ import { terminalStore } from "@/features/terminal/terminal-store";
 import { useProcessTrend, useSummaryCache } from "./hooks";
 import { NOT_READ, formatCpu, formatMemory } from "./metrics";
 import { shellCount } from "./shell-tree";
-import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, sparkline, type SparkBox } from "./summary-card";
+import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, sparkline, trendLabel, type SparkBox } from "./summary-card";
 import type { ProcessSnapshot, TrendPoint } from "./types";
 
 /**
@@ -63,15 +63,11 @@ const BOX: SparkBox = { width: 120, height: 20, inset: 1.5 };
 function Sparkline({ points }: { points: ReadonlyArray<TrendPoint> }) {
   const line = sparkline(points, BOX);
   const last = line[line.length - 1];
-  const first = points[0];
-  const end = points[points.length - 1];
-  // 이름은 처음과 끝의 합계다 — 선의 모양은 눈의 것이고, 귀에는 얼마에서 얼마로 왔는지가 남는다.
-  const label =
-    first && end ? `지난 1시간 합계 추이, ${formatMemory(first.total)}에서 ${formatMemory(end.total)}` : "지난 1시간 합계 추이, 아직 없음";
   return (
     <svg
       role="img"
-      aria-label={label}
+      // 이름은 그린 점의 처음과 끝 합계다(`trendLabel`) — 선과 같은 구간이다.
+      aria-label={trendLabel(points)}
       data-figure="trend"
       width={BOX.width}
       height={BOX.height}
