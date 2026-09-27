@@ -4,8 +4,12 @@ import type { ProcessMetrics } from "./types";
 // 접근성 이름, 그리고 29의 nav 메타와 31의 묶음 행이 모두 이 함수를 읽는다 — 같은 숫자가 자리마다 다른 모양(「1.2GB」와 「1229MB」)으로
 // 서지 않게. 순수 함수다.
 
-/** 못 읽은 값 — 첫 표본의 CPU, macOS 밖, 그사이 끝난 프로세스. 「0」은 쟀는데 없었다는 말이라 모르는 것에 쓰지 않는다. */
-export const UNKNOWN = "—";
+/**
+ * 못 읽은 값의 글자 — 첫 표본의 CPU, macOS 밖, 그사이 끝난 프로세스. 「0」은 쟀는데 없었다는 말이라 모르는 것에 쓰지 않는다.
+ * `UNKNOWN`으로 부르지 않는다 — 이 화면에서 unknown은 「출처 불명」(요약 카드의 `counts.unknown`)이라, 「—」와 한 줄에 서면 거꾸로
+ * 읽힌다.
+ */
+export const NOT_READ = "—";
 
 const MiB = 1024 * 1024;
 const MiB_PER_GiB = 1024;
@@ -18,7 +22,7 @@ const MiB_PER_GiB = 1024;
  * 크기다 — 그때부터 GB로 선다.
  */
 export function formatMemory(bytes: number | null): string {
-  if (bytes === null) return UNKNOWN;
+  if (bytes === null) return NOT_READ;
   const mb = Math.round(bytes / MiB);
   if (mb < MiB_PER_GiB) return `${mb}MB`;
   return `${(bytes / (MiB * MiB_PER_GiB)).toFixed(1)}GB`;
@@ -29,7 +33,7 @@ export function formatMemory(bytes: number | null): string {
  * 준다). 두 표본의 차이라 **첫 표본은 없다** — 「—」로 선다(S37).
  */
 export function formatCpu(percent: number | null): string {
-  if (percent === null) return UNKNOWN;
+  if (percent === null) return NOT_READ;
   return `${Math.round(percent)}%`;
 }
 

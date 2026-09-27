@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { UNKNOWN, formatCpu, formatMemory, formatPorts, sumMetrics } from "./metrics";
+import { NOT_READ, formatCpu, formatMemory, formatPorts, sumMetrics } from "./metrics";
 import type { ProcessMetrics } from "./types";
 
 // 프로세스 티켓 28 — **지표를 글자로**(프로세스 스펙 S40 · S37 · S38). 행의 숫자 칸 · 트리 합 · 접근성 이름, 그리고 29의 nav 메타와 31의
@@ -37,8 +37,8 @@ describe("메모리 표기(S40) — 1GB 이상은 소수 한 자리 GB, 그 아�
   });
 
   it("못 읽었으면 「—」다", () => {
-    expect(formatMemory(null)).toBe(UNKNOWN);
-    expect(UNKNOWN).toBe("—");
+    expect(formatMemory(null)).toBe(NOT_READ);
+    expect(NOT_READ).toBe("—");
   });
 });
 
@@ -51,7 +51,7 @@ describe("CPU 표기(S37) — 정수 %, 첫 표본은 「—」", () => {
   });
 
   it("첫 표본이거나 못 읽었으면 「—」다", () => {
-    expect(formatCpu(null)).toBe(UNKNOWN);
+    expect(formatCpu(null)).toBe(NOT_READ);
   });
 });
 

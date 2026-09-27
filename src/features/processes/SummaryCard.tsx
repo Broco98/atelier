@@ -1,7 +1,7 @@
 import { useStore } from "@tanstack/react-store";
 import { terminalStore } from "@/features/terminal/terminal-store";
 import { useProcessTrend, useSummaryCache } from "./hooks";
-import { UNKNOWN, formatCpu, formatMemory } from "./metrics";
+import { NOT_READ, formatCpu, formatMemory } from "./metrics";
 import { shellCount } from "./shell-tree";
 import { WEBVIEW_EXCLUDED, appBodyNote, cardCounts, sparkline, type SparkBox } from "./summary-card";
 import type { ProcessSnapshot, TrendPoint } from "./types";
@@ -17,7 +17,8 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
   const { data: summary } = useSummaryCache();
   const { data: trend } = useProcessTrend();
   const counts = cardCounts(useStore(terminalStore, (state) => state), snapshot);
-  const known = (count: number | null) => (count === null ? UNKNOWN : String(count));
+  // 못 센 수(스냅샷 전)는 「—」다 — 「0」이면 모르는 것을 없다고 한다.
+  const countOrDash = (count: number | null) => (count === null ? NOT_READ : String(count));
 
   return (
     <section aria-label="요약" className="mt-4 rounded-[12px] border bg-panel px-4 py-3">
@@ -37,11 +38,11 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
       {/* 수들은 한 줄에 간격으로 잇는다 — 항목마다 「이름 수」 한 조각이라 스크린리더도 목록으로 그대로 읽는다(가운뎃점을 글자로
           넣으면 그것까지 읽는다). 셸 수의 말은 「셸 N개」다(CONTEXT 「셸」). 고아는 확정 고아와 출처 불명으로 갈라 적는다(CONTEXT 「고아」). */}
       <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
-        <li data-figure="shells">{counts.shells === null ? `셸 ${UNKNOWN}` : shellCount(counts.shells)}</li>
+        <li data-figure="shells">{counts.shells === null ? `셸 ${NOT_READ}` : shellCount(counts.shells)}</li>
         <li data-figure="working">도는 중 {counts.working}</li>
         <li data-figure="ownerless-shells">주인 잃은 셸 {counts.ownerlessShells}</li>
-        <li data-figure="confirmed">확정 고아 {known(counts.confirmed)}</li>
-        <li data-figure="unknown">출처 불명 {known(counts.unknown)}</li>
+        <li data-figure="confirmed">확정 고아 {countOrDash(counts.confirmed)}</li>
+        <li data-figure="unknown">출처 불명 {countOrDash(counts.unknown)}</li>
         {/* 앱 본체 — Rust 본체 + 웹뷰(WebContent). GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 —
             누를 것 없는 글자라 앱 툴팁(`Hint`)의 트리거로 세우면 포커스와 역할이 새로 생긴다(`sidebar-active-band` S29와 같은 까닭). */}
         <li data-figure="app" title={summary ? appBodyNote(summary.webviewExcluded) : undefined}>
