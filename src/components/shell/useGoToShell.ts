@@ -2,10 +2,10 @@ import { useCallback } from "react";
 import { useRouter, type NavigateOptions } from "@tanstack/react-router";
 import { modeOfOwner, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { focusShell, isOwnerlessShell, selectShell } from "@/features/terminal/terminal-store";
+import { isOwnerlessShell, selectShellWithFocus } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { modeOf, routesOf, slugOf } from "@/mode";
-import { whenArrived } from "@/lib/arrival";
+import { navigateThen } from "@/lib/arrival";
 import { viewProcesses } from "./processes-view";
 
 /**
@@ -33,17 +33,18 @@ import { viewProcesses } from "./processes-view";
  * 같은 수법).
  *
  * **키보드 포커스도 데려간다**(티켓 16 · 프로세스 스펙 S21). 지금 보고 있는 셸이면 그 자리에서, 다른 탭 · 다른 work의 셸이면
- * 화면이 옮겨져 그 셸이 붙는 순간 온다(`focusShell`). 셸을 켜기 **전에** 부른다 — 요청이 먼저 적혀 있으면 켜기가 언제 붙기를
- * 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`isOwnerlessShell`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
- * 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다. 이웃 work(`sidebar-active-band`)이
- * 띠 처리기를 옮기면 이 함수를 부르는 줄만 옮기면 된다 — 한때 이 몸통이 `Sidebar.tsx`의 띠 처리기(`useOpenBand`) 안에 있었다.
+ * 화면이 옮겨져 그 셸이 붙는 순간 온다. 켜기와 요청의 짝(요청이 먼저 — 관례)은 스토어의 `selectShellWithFocus` 한 자리가 든다 —
+ * 셸 탭 둘도 같은 그것을 부른다. 주인 잃은 셸 갈림(`isOwnerlessShell`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
+ * 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다(L3 `shell-ownerless`가 잰다). 이웃
+ * work(`sidebar-active-band`)이 띠 처리기를 옮기면 이 함수를 부르는 줄만 옮기면 된다 — 한때 이 몸통이 `Sidebar.tsx`의 띠
+ * 처리기(`useOpenBand`) 안에 있었다.
  *
- * **켜기와 요청은 이동이 닿은 순간이다**(`whenArrived` — develop 머지). spec 레이아웃 편집기의 떠날 때 확인이 이동을 막을 수
+ * **켜기와 요청은 이동이 닿은 순간이다**(`navigateThen` — develop 머지). spec 레이아웃 편집기의 떠날 때 확인이 이동을 막을 수
  * 있어서다(`useConfirmLeave`). 한때 이동을 걸기 전에 켜고 요청했는데, 그러면 [계속 편집]에 막혀도 그 work의 탭은 바뀐 채,
  * 요청은 그 셸을 기다리는 채 남아 다음에 붙는 다른 셸이 포커스를 못 받았다 — 주인 잃은 셸 갈림 뒤에 둔 까닭과 같은 함정이
  * 막힌 이동 뒤에서 다시 열린 것이다. 닿음은 새 화면이 그려지기 전에 오므로 막히지 않는 길은 예전과 같다: 켜진 셸로 화면이
- * 처음부터 서고, 요청은 그 셸이 붙기 전에 적힌다. 목적지는 이동과 같은 옵션으로 한 번 지어(`buildLocation`) 닿은 주소와 견준다.
- * 기다리는 칸은 `shell`이다 — 토스트의 [보기]가 쓰는 `processes` 칸과 안 섞인다.
+ * 처음부터 서고, 요청은 그 셸이 붙기 전에 적힌다. 「목적지를 짓고 → 닿음을 걸고 → 이동한다」의 순서는 `navigateThen`이 든다 —
+ * 토스트의 [보기]도 같은 그것을 부른다. 기다리는 칸은 `shell`이다 — [보기]가 쓰는 `processes` 칸과 안 섞인다.
  *
  * **주인 잃은 셸은 화면 이동 전에 갈린다**(프로세스 스펙 S14 · 티켓 12 · 32). 그 work은 목록에 없어 가면 없는 work으로 간다 —
  * 대신 `Processes`로 간다: 그 화면의 주인 잃은 셸 묶음이 그 셸을 들고 [모두 닫기]를 든다. 가는 길은 토스트의 [보기]와 같은
@@ -59,18 +60,7 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
         viewProcesses();
         return;
       }
-      const go = (target: NavigateOptions) => {
-        whenArrived(
-          router,
-          router.buildLocation(target).href,
-          () => {
-            focusShell(id);
-            selectShell(id);
-          },
-          "shell",
-        );
-        void router.navigate(target);
-      };
+      const go = (target: NavigateOptions) => navigateThen(router, target, () => selectShellWithFocus(id), "shell");
       const mode = modeOfOwner(owner);
       const routes = routesOf(mode);
       const slug = slugOfOwner(owner);

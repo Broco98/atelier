@@ -228,7 +228,7 @@ test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// [이동] = `selectShell` + 화면 이동 + `focusShell`(티켓 16) — 띠의 줄 · ⌘J와 같은 길(`useGoToShell`)이다.
+// [이동] = 화면 이동 + 닿으면 켜기와 포커스 요청(`selectShellWithFocus` · 티켓 16) — 띠의 줄 · ⌘J와 같은 길(`useGoToShell`)이다.
 test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입력칸에 온다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3], false) });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);

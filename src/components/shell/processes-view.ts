@@ -41,7 +41,7 @@ export function viewProcesses(arrived: () => void = () => {}): void {
  * 가는 주소 — **지금 세계의** `Processes`다. 화면은 앱 전체를 보이므로(프로세스 결정 9) 보러 가려고 세계를 건너지 않는다.
  * 세계는 셸이 드는 것과 같이 읽는다(`shellMode`): 설정(`/settings`)은 세계 밖이라 마지막 세계의 주소다.
  */
-export function processesAddress(pathname: string): string {
+export function processesAddress(pathname: string): ReturnType<typeof routesOf>["processes"] {
   return routesOf(shellMode(pathname)).processes;
 }
 

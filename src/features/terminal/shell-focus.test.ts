@@ -155,7 +155,7 @@ describe("포커스를 주는 자리가 배선돼 있다", () => {
 
   it("요청 · 붙음 · 떨어짐 · 닫힘이 기다리는 포커스를 고친다", () => {
     // 붙지 않은 셸의 요청을 적는 줄(코드 리뷰 스펙 6) — 빠지면 사이에 붙는 셸이 포커스를 가로챈다.
-    expect(bodyOf(store, "export function focusShell(")).toContain(
+    expect(bodyOf(store, "function focusShell(")).toContain(
       'pendingFocus = nextPendingFocus(pendingFocus, { kind: "request", id, attached });',
     );
     expect(bodyOf(store, "function openOrReattach(")).toContain(
@@ -169,6 +169,18 @@ describe("포커스를 주는 자리가 배선돼 있다", () => {
     const closed = 'pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });';
     expect(bodyOf(store, "function disposeInstance(")).toContain(closed);
     expect(bodyOf(store, "function failOpen(")).toContain(closed);
+  });
+
+  // 셸로 가는 길은 **켜기와 요청을 한 자리에서** 한다(코드 리뷰 표준 45 — 짝이 세 벌이었다). 요청이 먼저다(관례 — 그 함수
+  // 머리말). 부르는 자리 셋(셸 탭 둘 · 셸로 가는 길)이 모두 그 함수를 부른다 — 요청(`focusShell`)은 스토어 밖으로 안 나가
+  // 한쪽만 요청을 잃는 짝이 서지 않는다(타입이 막는다).
+  it("셸로 가는 길은 켜기와 포커스 요청을 한 자리에서 한다 — 요청이 먼저다", () => {
+    expect(bodyOf(store, "export function selectShellWithFocus(")).toMatch(/\{\n  focusShell\(id\);\n  selectShell\(id\);$/);
+    expect(countOf(store, "export function focusShell("), "포커스 요청이 스토어 밖으로 나갔다").toBe(0);
+    const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+    expect(read("./TerminalPage.tsx")).toContain("onSelect={selectShellWithFocus}");
+    expect(read("../works/WorksPage.tsx")).toContain("selectShellWithFocus(id);");
+    expect(read("../../components/shell/useGoToShell.ts")).toContain("() => selectShellWithFocus(id)");
   });
 
   it("여는 두 자리가 사건의 종류를 말한다", () => {

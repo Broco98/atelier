@@ -1,4 +1,4 @@
-import type { RegisteredRouter } from "@tanstack/react-router";
+import type { NavigateOptions, RegisteredRouter } from "@tanstack/react-router";
 
 /**
  * **이동이 닿으면 할 일**(develop 머지 — 프로세스 스펙 S21 · S15와 spec 레이아웃 결정 27의 짝). 이동을 거는 쪽이 이동 **때문에**
@@ -27,10 +27,17 @@ import type { RegisteredRouter } from "@tanstack/react-router";
  * - **칸마다 한 번에 하나다.** 같은 칸의 새 요청이 앞의 것을 덮는다(기다리는 포커스와 같은 규칙 — `nextPendingFocus`). **칸이
  *   다르면 서로 안 덮는다** — 셸로 가는 요청이 [보기]의 토스트 내리기를 지우거나 그 반대가 되지 않게 칸을 가른다. 머묾은
  *   모든 칸을 거둔다: 막힌 이동은 하나이고, 그것을 기다리던 일은 무엇이든 낡았다.
+ *
+ * **이동을 거는 쪽은 `navigateThen` 하나를 부른다** — 「목적지를 짓고 → 닿음을 걸고 → 이동한다」의 순서를 그 함수가 든다.
+ * **라우터의 막기를 새로 세우는 쪽은 막는 순간 `announceStay`를 부른다** — 안 부르면 그 막기 뒤에서 같은 함정이 다시 열린다
+ * (`arrival.test.ts`의 소스 스캔이 막기 자리를 모두 찾아 잰다).
  */
 
 /** 이 모듈이 라우터에서 쓰는 것 — 이동 사건 구독 하나. 검사가 제 라우터를 준다. */
 type ArrivalRouter = Pick<RegisteredRouter, "subscribe">;
+
+/** `navigateThen`이 라우터에서 쓰는 것 — 구독 · 목적지 짓기 · 이동. */
+type NavigatingRouter = Pick<RegisteredRouter, "subscribe" | "buildLocation" | "navigate">;
 
 /** 기다리는 닿음의 칸 — 이동을 거는 길마다 하나다(머리말). */
 export type ArrivalSlot = "shell" | "processes";
@@ -53,6 +60,25 @@ export function whenArrived(router: ArrivalRouter, href: string, arrive: () => v
     if (toLocation.href === href) arrive();
   });
   settles.set(slot, end);
+}
+
+/**
+ * **걸고 이동한다** — `target`에 닿으면 `arrive`를 한 번 부르도록 걸고(`whenArrived`) 그 이동을 건다(코드 리뷰 표준 57). 셸로
+ * 가는 길(`useGoToShell` — 셸 켜기와 포커스 요청)과 토스트의 [보기](앱 셸 — 토스트 내리기)가 이것을 부른다.
+ *
+ * **순서가 계약이다 — 여기 하나에 둔다.** 목적지는 이동과 같은 옵션으로 **한 번** 지어(`buildLocation`) 닿은 주소와 견준다 — 따로
+ * 지으면 검색 값 하나로 어긋나 닿아도 안 부른다. 거는 것이 이동보다 먼저다 — 막기가 없으면 닿음이 `navigate` 안에서 곧바로
+ * 온다. 그리고 이동 **때문에** 하는 일은 모두 `arrive` 안에 둔다: 이동을 걸기 전에 하면 떠날 때 확인에 막혀 머물러도 그 일이
+ * 남는다(develop 머지의 고침 — 사람이 안 시킨 탭 바뀜과 남은 기다리는 포커스, 되살릴 길 없이 내려간 토스트).
+ */
+export function navigateThen(
+  router: NavigatingRouter,
+  target: NavigateOptions,
+  arrive: () => void,
+  slot: ArrivalSlot,
+): void {
+  whenArrived(router, router.buildLocation(target).href, arrive, slot);
+  void router.navigate(target);
 }
 
 /**

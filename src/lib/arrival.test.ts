@@ -1,8 +1,12 @@
+/// <reference types="node" />
+// 소스 스캔 몇 건 때문에 Node 타입을 끌어온다 — 근거는 src/tauri-commands.test.ts 머리말과 같다.
+import { readdirSync, readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { routeTree } from "@/routeTree.gen";
-import { announceStay, whenArrived } from "./arrival";
+import { announceStay, navigateThen, whenArrived } from "./arrival";
 
 // 이동이 닿으면 할 일(develop 머지 — 셸로 가는 길이 셸을 켜고 포커스를 요청하는 때, 토스트의 [보기]가 그 토스트를 내리는 때).
 // 진짜 라우터를 메모리 히스토리로 띄워 「언제 부르는가」만 본다 — 막기가 없을 때 `navigate` 안에서 곧바로, 주소가 그대로인
@@ -134,5 +138,77 @@ describe("이동이 닿으면 할 일", () => {
 
   it("머묾은 기다리는 것이 없으면 아무 일도 안 한다", () => {
     expect(() => announceStay()).not.toThrow();
+  });
+});
+
+describe("걸고 이동한다(navigateThen)", () => {
+  // 코드 리뷰 표준 57 — 「목적지를 짓고 → 닿음을 걸고 → 이동한다」가 셸로 가는 길과 토스트의 [보기]에 두 벌이었다. 한 함수가 든다.
+  it("닿으면 이동 안에서 곧바로 부른다 — 새 화면이 서기 전이다", async () => {
+    const router = setup();
+    await router.load();
+    const arrive = vi.fn();
+
+    navigateThen(router, { to: "/processes" }, arrive, "shell");
+    // 이동을 이미 걸었다 — 막기가 없으니 닿음이 그 안에서 왔다.
+    expect(arrive).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/processes"));
+  });
+
+  it("막혀 머물면 안 부른다 — 뒤에 같은 주소에 닿아도", async () => {
+    const router = setup();
+    await router.load();
+    // 막기가 물은 채 머무는 이동을 흉내 낸다 — 이동이 히스토리에 안 적혀 라우터가 안 돈다(이 층에는 막기가 없다 — 머리말).
+    const stuck = { ...router, navigate: () => Promise.resolve() } as unknown as typeof router;
+    const arrive = vi.fn();
+
+    navigateThen(stuck, { to: "/processes" }, arrive, "shell");
+    announceStay();
+    await router.navigate({ to: "/processes" });
+    expect(arrive).not.toHaveBeenCalled();
+  });
+});
+
+// **이동을 거는 자리와 막는 자리**(develop 머지 · 코드 리뷰 표준 57). 두 약속이 소스에 있어야 한다 — 어기면 막힌 이동 뒤에 부수
+// 효과가 남는데, 그 실패는 막기가 있는 화면(spec 레이아웃 편집기)에서만 L3로 드러난다.
+describe("이동을 거는 자리와 막는 자리", () => {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const read = (path: string) => readFileSync(root + path, "utf8");
+  const countOf = (text: string, literal: string) => text.split(literal).length - 1;
+
+  // 거는 쪽은 순서를 손으로 적지 않는다 — `navigateThen` 하나를 부른다.
+  it("이동을 걸고 닿음을 기다리는 자리는 모두 navigateThen을 부른다", () => {
+    for (const path of ["components/shell/useGoToShell.ts", "components/shell/AppShell.tsx"]) {
+      const source = read(path);
+      expect(countOf(source, "navigateThen("), path).toBe(1);
+      expect(countOf(source, "whenArrived("), `${path}가 닿음을 손으로 건다`).toBe(0);
+      expect(countOf(source, "buildLocation("), `${path}가 목적지를 따로 짓는다`).toBe(0);
+    }
+  });
+
+  // 셸로 가는 길 — 주인 잃은 셸 갈림이 켜기 · 포커스 요청보다 먼저이고(붙을 화면이 없는 셸에 기다림이 안 남는다), 켜기와 요청은
+  // 닿은 순간에 한다(막힌 이동 뒤에 안 남는다 — bf462b5 · 4151e68).
+  it("셸로 가는 길은 주인 잃은 셸을 먼저 가르고, 켜기와 포커스 요청을 닿은 순간에 한다", () => {
+    const source = read("components/shell/useGoToShell.ts");
+    const 갈림 = source.indexOf("if (isOwnerlessShell(id))");
+    const 켜기 = source.indexOf("selectShellWithFocus(id)");
+    expect(갈림).toBeGreaterThan(-1);
+    expect(켜기, "주인 잃은 셸 갈림 앞에서 셸을 켠다").toBeGreaterThan(갈림);
+    expect(countOf(source, "selectShellWithFocus(")).toBe(1);
+    expect(source).toContain('navigateThen(router, target, () => selectShellWithFocus(id), "shell")');
+  });
+
+  // **라우터의 막기를 세우는 자리는 막는 순간 알린다**(`announceStay`). 라우터의 막기는 막았다는 것을 이동을 건 쪽에 알리지
+  // 않는다 — 안 알리면 [계속 편집] 뒤에 기다리던 일(⌘J의 셸 켜기와 포커스 요청, [보기]의 토스트 내리기)이 남아 다음에 같은
+  // 화면에 닿는 이동에서 되살아난다. 막기를 새로 세우는 자리가 이것을 잊으면 여기가 빨개진다(구현 기록 「머지」의 남은 것).
+  it("라우터의 막기를 세우는 자리는 모두 announceStay를 부른다", () => {
+    const blockers = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .map((file) => file.split("\\").join("/"))
+      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
+      .filter((file) => /useBlocker\(|<Block[\s>]/.test(read(file)));
+    // 앵커 — 막기가 적어도 하나 있다(spec 레이아웃 편집기의 떠날 때 확인). 없으면 아래가 아무것도 안 잰다.
+    expect(blockers).toContain("features/spec-layout/leave.ts");
+    for (const file of blockers) {
+      expect(read(file), `${file}가 라우터의 막기를 세우고 머물 때 알리지 않는다`).toContain("announceStay()");
+    }
   });
 });

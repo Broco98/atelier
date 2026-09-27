@@ -13,7 +13,7 @@ import { searchHotkey } from "@/features/terminal/shell-registry";
 import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/features/terminal/shell-recall";
 import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
 import { invalidateWorks } from "@/features/works/hooks";
-import { whenArrived } from "@/lib/arrival";
+import { navigateThen } from "@/lib/arrival";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
@@ -170,16 +170,14 @@ function AppShell() {
   // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다. 주소는
   // **부를 때** 읽는다(`router.state`) — 구독하면 셸의 주소 구독이 하나 는다. 무엇을 여는지는 `processesAddress`가 혼자 안다.
   //
-  // **가서 할 일(토스트 내리기)은 닿은 순간이다**(`whenArrived`의 `processes` 칸 — develop 머지). 이 셸은 설정에도 서고, spec
-  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다. 목적지는 이동과 같은 옵션으로
-  // 한 번 지어(`buildLocation`) 닿은 주소와 견준다(`useGoToShell`과 같은 수법).
+  // **가서 할 일(토스트 내리기)은 닿은 순간이다**(`navigateThen`의 `processes` 칸 — develop 머지). 이 셸은 설정에도 서고, spec
+  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다. 「목적지를 짓고 → 닿음을 걸고 →
+  // 이동한다」의 순서는 그 함수가 든다(`useGoToShell`과 같은 함수).
   useEffect(
     () =>
-      onViewProcesses((arrived) => {
-        const target = { to: processesAddress(router.state.location.pathname) };
-        whenArrived(router, router.buildLocation(target).href, arrived, "processes");
-        void router.navigate(target);
-      }),
+      onViewProcesses((arrived) =>
+        navigateThen(router, { to: processesAddress(router.state.location.pathname) }, arrived, "processes"),
+      ),
     [router],
   );
 
@@ -250,7 +248,7 @@ function AppShell() {
   // 셸에 준 포커스를 팔레트가 닫히며 옛 자리로 되돌린다. Esc로 닫고 누르면 된다.
   //
   // **떠날 때 확인이 걸린 편집기에서는 먹는다**(develop 머지) — 그 화면을 떠나는 다른 길처럼 이동이 그 물음을 지난다. [계속
-  // 편집]이면 셸로 가는 길은 아무것도 남기지 않는다: 셸 켜기와 포커스 요청은 이동이 닿은 순간이다(`whenArrived`).
+  // 편집]이면 셸로 가는 길은 아무것도 남기지 않는다: 셸 켜기와 포커스 요청은 이동이 닿은 순간이다(`navigateThen`).
   //
   // **부른 셸이 없어도 키는 먹는다**(`preventDefault`) — 메뉴가 같은 키를 한 번 더 받아 합성 keydown이 돌아와도 같은 답이지만,
   // 한 번 누른 키가 두 번 도는 길을 열어 두지 않는다.

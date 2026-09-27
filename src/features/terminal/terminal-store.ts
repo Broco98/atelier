@@ -305,6 +305,23 @@ export function selectShell(id: number): void {
 }
 
 /**
+ * **셸로 가는 길** — 그 셸을 켜고 키보드 포커스를 요청한다(티켓 16 · 프로세스 결정 18 ②). 셸 탭(work 화면 · 최상위 터미널)과
+ * 셸로 가는 길(`useGoToShell` — 띠의 줄 · ⌘J · `Processes`의 [이동])이 이것을 부른다(코드 리뷰 표준 45 — 짝이 세 벌이었다).
+ * 켜는 것만으로는 포커스가 안 온다: 켜진 셸을 다시 고르면 레지스트리가 같은 상태를 돌려줘 붙기가 안 돈다(`focusShell`).
+ *
+ * **요청이 켜기보다 먼저다 — 관례다.** 요청이 먼저 적혀 있으면 켜기가 언제 붙기를 부르든 그 붙음이 요청을 본다. 지금은 켜기가
+ * 붙기를 곧바로 부르지 않아(붙는 것은 화면의 이펙트다) 거꾸로 해도 같지만, 켜기가 붙기를 동기로 부르는 날 뒤에 온 요청은 이미
+ * 지나간 붙음을 못 보고 기다림으로 남는다.
+ *
+ * **주인 잃은 셸에는 부르지 않는다** — 붙을 화면이 없는 셸에 기다림이 남는다. 그 갈림은 셸로 가는 길이 먼저 한다
+ * (`useGoToShell`의 `isOwnerlessShell`).
+ */
+export function selectShellWithFocus(id: number): void {
+  focusShell(id);
+  selectShell(id);
+}
+
+/**
  * 기다리는 포커스(티켓 16 · 프로세스 스펙 S21) — 한 번에 하나다. 무엇이 남기고 무엇이 지우는지는 `nextPendingFocus`가
  * 혼자 안다. 여기는 그 답을 들고 있기만 한다. `shownShell`처럼 모듈 값이고 스토어에 두지 않는다 — 화면이 그리는
  * 것이 아니라서, 스토어에 두면 바뀔 때마다 구독한 화면이 깨어난다.
@@ -322,8 +339,8 @@ function isAttached(instance: ShellInstance): boolean {
 }
 
 /**
- * 그 셸로 키보드 포커스를 **요청한다**(티켓 16 · 프로세스 결정 18 ②). 셸로 가는 길의 클릭 처리기가 `selectShell`과
- * 함께 부른다 — 띠의 줄과 셸 탭이다. 판 03의 단축키와 판 04의 [이동]도 여기로 온다.
+ * 그 셸로 키보드 포커스를 **요청한다**(티켓 16 · 프로세스 결정 18 ②). 셸로 가는 길이 켜기와 함께 부른다(`selectShellWithFocus`
+ * — 띠의 줄 · 셸 탭 · 판 03의 단축키 · 판 04의 [이동]).
  *
  * **붙어 있으면 그 자리에서 준다 — 붙기가 다시 도는지와 상관없다.** 이미 켜진 셸을 다시 고르면 레지스트리가 같은
  * 상태를 돌려줘(`activateShell`) 붙기가 안 돈다. 포커스가 붙기에만 달려 있던 때는 그래서 띠에서 보고 있는 셸을
@@ -334,7 +351,7 @@ function isAttached(instance: ShellInstance): boolean {
  *
  * **사이드바 work 행은 부르지 않는다.** 행은 기억된 화면을 연다 — spec 화면일 수도 있다.
  */
-export function focusShell(id: number): void {
+function focusShell(id: number): void {
   const instance = instances.get(id);
   if (!instance) return;
   const attached = isAttached(instance);
