@@ -27,8 +27,8 @@ use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
 use crate::processes::clock;
 use crate::processes::ending::{Claim, Group, InFlight, Outcome};
 use crate::processes::instances::{self, Place, Record};
-use crate::processes::metrics::{self, CpuMeter};
-use crate::processes::screen::{self, Measured, PoolShell, ScreenSnapshot};
+use crate::processes::metrics::{self, CpuMeter, Measured};
+use crate::processes::screen::{self, PoolShell, ScreenSnapshot};
 use crate::processes::snapshot::{self, EnvScope};
 use crate::processes::summary::{self, Background, Body, Summary};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
@@ -585,8 +585,9 @@ pub fn summarize(pool: &PtyPool) -> Summary {
     };
     let readings = metrics::read(summary::targets(&verdict, &shells, &body));
     let cpu = pool.background.cpu(Instant::now(), readings.cpu_ns());
+    let measured = Measured { readings: readings.by_id, cpu };
     let head = cleanup_log::look_head(&pool.record.events());
-    Summary::of(&verdict, &shells, &body, &readings.by_id, &cpu, head)
+    Summary::of(&verdict, &shells, &body, &measured, head)
 }
 
 /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는

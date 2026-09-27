@@ -50,6 +50,14 @@ impl Readings {
     }
 }
 
+/// 이번 표본의 지표 — 커널에서 읽은 것(`read`)과 앞 표본으로 잰 CPU%(`CpuMeter`). 신원으로 찾는다. 화면 스냅샷과 요약이 이 한 값을
+/// 받는다(`screen::ScreenSnapshot::of` · `summary::Summary::of`) — 두 칸은 늘 한 표본의 것이라 따로 다니지 않는다.
+#[derive(Debug, Default)]
+pub struct Measured {
+    pub readings: HashMap<Identity, Reading>,
+    pub cpu: HashMap<Identity, f64>,
+}
+
 /// 받은 신원의 지표를 읽는다. 실패하지 않는다 — 못 읽은 것은 건너뛰고 센다.
 ///
 /// **읽은 뒤에 신원을 다시 본다.** 판정과 이 읽기 사이에 그 pid가 끝나 남에게 넘어갔으면 읽은 것은 남의 숫자다 — 시작 시각까지

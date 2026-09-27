@@ -16,12 +16,12 @@
 //! **다른 인스턴스는 실행마다 빌드 종류와 버전을 싣는다**(티켓 31 · 프로세스 스펙 S54). 판정의 묶음은 셸 키마다라 실행을 모른다 —
 //! 그 키를 낸 실행을 인스턴스 기록에서 찾아 묶고, 두 칸은 그 실행의 기록 파일에서 읽는다(`instances`).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
 use super::instances::{Build, InstanceFile};
-use super::metrics::Reading;
+use super::metrics::Measured;
 use super::verdict::{InstanceRecord, Verdict};
 use super::{shell_key, Identity, Proc};
 
@@ -82,24 +82,16 @@ pub struct Metrics {
     pub ports: Vec<u16>,
 }
 
-/// 이번 표본의 지표 — 커널에서 읽은 것과 앞 표본으로 잰 CPU%. 신원으로 찾는다.
-#[derive(Debug, Default)]
-pub struct Measured {
-    pub readings: HashMap<Identity, Reading>,
-    pub cpu: HashMap<Identity, f64>,
-}
-
-impl Measured {
-    fn metrics(&self, id: Option<Identity>) -> Metrics {
-        let Some(id) = id else {
-            return Metrics::default();
-        };
-        let reading = self.readings.get(&id);
-        Metrics {
-            memory: reading.map(|reading| reading.memory),
-            cpu: self.cpu.get(&id).copied(),
-            ports: reading.map(|reading| reading.ports.clone()).unwrap_or_default(),
-        }
+/// 이번 표본에서 한 프로세스의 지표를 와이어 모양으로 뜬다. 신원을 모르면(셸 프로세스를 못 읽었다) 비었다.
+fn metrics_of(measured: &Measured, id: Option<Identity>) -> Metrics {
+    let Some(id) = id else {
+        return Metrics::default();
+    };
+    let reading = measured.readings.get(&id);
+    Metrics {
+        memory: reading.map(|reading| reading.memory),
+        cpu: measured.cpu.get(&id).copied(),
+        ports: reading.map(|reading| reading.ports.clone()).unwrap_or_default(),
     }
 }
 
@@ -161,7 +153,7 @@ impl ScreenSnapshot {
                 },
                 other_instances: by_key(&verdict.other_instances),
             },
-            pool: pool.into_iter().map(|shell| PoolShell { metrics: measured.metrics(shell.process), ..shell }).collect(),
+            pool: pool.into_iter().map(|shell| PoolShell { metrics: metrics_of(measured, shell.process), ..shell }).collect(),
             instances,
         }
     }
@@ -220,7 +212,7 @@ impl Row {
             name: proc.name.clone(),
             argv0: proc.argv0.clone(),
             command: proc.command.clone(),
-            metrics: measured.metrics(Some(proc.id)),
+            metrics: metrics_of(measured, Some(proc.id)),
         }
     }
 }

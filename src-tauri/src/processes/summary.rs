@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use super::metrics::{CpuMeter, Reading};
+use super::metrics::{CpuMeter, Measured};
 use super::verdict::Verdict;
 use super::Identity;
 
@@ -103,23 +103,16 @@ fn sum_read<T: std::iter::Sum<T>>(values: impl Iterator<Item = Option<T>>) -> Op
 }
 
 impl Summary {
-    /// 판정 하나와 이 실행의 셸 프로세스, 앱 본체, 읽은 지표, 배경 미터가 지은 CPU%, 기록의 머리로 한 장을 짓는다.
-    pub fn of(
-        verdict: &Verdict,
-        shells: &[Identity],
-        body: &Body,
-        readings: &HashMap<Identity, Reading>,
-        cpu: &HashMap<Identity, f64>,
-        record_head: Option<u64>,
-    ) -> Summary {
+    /// 판정 하나와 이 실행의 셸 프로세스, 앱 본체, 이번 표본의 지표(CPU%는 배경 미터가 지은 것), 기록의 머리로 한 장을 짓는다.
+    pub fn of(verdict: &Verdict, shells: &[Identity], body: &Body, measured: &Measured, record_head: Option<u64>) -> Summary {
         let counted = targets(verdict, shells, body);
-        let memory = |id: &Identity| readings.get(id).map(|reading| reading.memory);
+        let memory = |id: &Identity| measured.readings.get(id).map(|reading| reading.memory);
         let unknown: BTreeSet<Identity> = verdict.orphans.unknown.values().flatten().map(|proc| proc.id).collect();
         Summary {
             total: sum_read(counted.iter().map(memory)),
-            cpu: sum_read(counted.iter().map(|id| cpu.get(id).copied())),
+            cpu: sum_read(counted.iter().map(|id| measured.cpu.get(id).copied())),
             app: sum_read(body.ids().map(|id| memory(&id))),
-            webview_excluded: body.web_content.is_none_or(|id| !readings.contains_key(&id)),
+            webview_excluded: body.web_content.is_none_or(|id| !measured.readings.contains_key(&id)),
             unknown: unknown.into_iter().collect(),
             record_head,
         }
@@ -255,6 +248,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::processes::metrics::Reading;
     use crate::processes::verdict::Orphans;
     use crate::processes::Proc;
 
@@ -276,9 +270,9 @@ mod tests {
     }
 
     const MB: u64 = 1024 * 1024;
-    /// 아무것도 못 잰 CPU — 배경 표본의 첫 장.
-    fn no_cpu() -> HashMap<Identity, f64> {
-        HashMap::new()
+    /// 메모리만 읽은 표본 — 배경 표본의 첫 장이라 앞 표본이 없어 CPU를 못 쟀다.
+    fn memory_only(readings: HashMap<Identity, Reading>) -> Measured {
+        Measured { readings, cpu: HashMap::new() }
     }
 
     fn rust_only(app: Identity) -> Body {
@@ -312,7 +306,7 @@ mod tests {
         };
         let readings = HashMap::from([(body.rust.unwrap(), reading(410 * MB)), (body.web_content.unwrap(), reading(200 * MB))]);
         let cpu = HashMap::from([(body.rust.unwrap(), 2.5), (body.web_content.unwrap(), 1.5)]);
-        let summary = Summary::of(&verdict, &[], &body, &readings, &cpu, Some(7));
+        let summary = Summary::of(&verdict, &[], &body, &Measured { readings, cpu }, Some(7));
         assert_eq!(
             serde_json::to_value(summary).unwrap(),
             serde_json::json!({
@@ -324,7 +318,7 @@ mod tests {
                 "recordHead": 7,
             })
         );
-        let blank = Summary::of(&empty(), &[], &Body::default(), &HashMap::new(), &no_cpu(), None);
+        let blank = Summary::of(&empty(), &[], &Body::default(), &Measured::default(), None);
         assert_eq!(
             serde_json::to_value(blank).unwrap(),
             serde_json::json!({
@@ -355,7 +349,7 @@ mod tests {
             },
             other_instances: BTreeMap::from([("H-2", vec![&other])]),
         };
-        let summary = Summary::of(&verdict, &[], &Body::default(), &HashMap::new(), &no_cpu(), None);
+        let summary = Summary::of(&verdict, &[], &Body::default(), &Measured::default(), None);
         assert_eq!(summary.unknown, [older.id, lost.id, below.id], "출처 불명의 신원이 판정의 것과 다르다");
     }
 
@@ -411,14 +405,14 @@ mod tests {
             BTreeSet::from([body.rust.unwrap(), body.web_content.unwrap(), zsh, bash, gitstatusd.id, vite.id, esbuild.id]),
             "합계에 드는 신원이 앱 본체 + 이 실행의 셸과 자손이 아니다"
         );
-        let summary = Summary::of(&verdict, &[zsh, bash], &body, &readings, &cpu, None);
+        let summary = Summary::of(&verdict, &[zsh, bash], &body, &Measured { readings, cpu }, None);
         assert_eq!(
             summary.total,
             Some((400 + 200 + 4 + 3 + 2 + 300) * MB),
             "합계가 어긋났다 — 예외 · 다른 인스턴스 · 고아가 섞였거나, 셸 · 도우미 · 앱 본체(WebContent 포함)가 빠졌다"
         );
         assert_eq!(summary.cpu, Some(15.0), "CPU가 합계에 드는 것의 잰 값끼리의 합이 아니다");
-        let unread = Summary::of(&verdict, &[zsh, bash], &body, &HashMap::new(), &no_cpu(), None);
+        let unread = Summary::of(&verdict, &[zsh, bash], &body, &Measured::default(), None);
         assert_eq!((unread.total, unread.cpu), (None, None), "아무것도 못 읽었는데 숫자가 섰다 — 모르는 것을 0이라 한다");
     }
 
@@ -429,22 +423,22 @@ mod tests {
         let rust = Identity { pid: 42, started_us: 4_200 };
         let web = Identity { pid: 77, started_us: 7_700 };
         let both = Body { rust: Some(rust), web_content: Some(web) };
-        let read_both = HashMap::from([(rust, reading(410 * MB)), (web, reading(200 * MB))]);
+        let read_both = memory_only(HashMap::from([(rust, reading(410 * MB)), (web, reading(200 * MB))]));
 
-        let counted = Summary::of(&empty(), &[], &both, &read_both, &no_cpu(), None);
+        let counted = Summary::of(&empty(), &[], &both, &read_both, None);
         assert_eq!((counted.app, counted.webview_excluded), (Some(610 * MB), false), "WebContent를 앱 본체에 안 셌다");
 
-        let unasked = Summary::of(&empty(), &[], &rust_only(rust), &read_both, &no_cpu(), None);
+        let unasked = Summary::of(&empty(), &[], &rust_only(rust), &read_both, None);
         assert_eq!(
             (unasked.app, unasked.total, unasked.webview_excluded),
             (Some(410 * MB), Some(410 * MB), true),
             "WebContent를 모르는데 「웹뷰 제외」가 안 섰다"
         );
 
-        let gone = Summary::of(&empty(), &[], &both, &HashMap::from([(rust, reading(410 * MB))]), &no_cpu(), None);
+        let gone = Summary::of(&empty(), &[], &both, &memory_only(HashMap::from([(rust, reading(410 * MB))])), None);
         assert_eq!((gone.app, gone.webview_excluded), (Some(410 * MB), true), "WebContent를 못 읽었는데 셌다고 한다");
 
-        let nothing = Summary::of(&empty(), &[], &both, &HashMap::new(), &no_cpu(), None);
+        let nothing = Summary::of(&empty(), &[], &both, &Measured::default(), None);
         assert_eq!((nothing.app, nothing.webview_excluded), (None, true));
     }
 
@@ -478,8 +472,8 @@ mod tests {
         assert_eq!(background.latest(), None);
         assert_eq!(background.trend(), vec![]);
         let app = Identity { pid: 42, started_us: 4_200 };
-        let first = Summary::of(&empty(), &[], &rust_only(app), &HashMap::from([(app, reading(600 * MB))]), &no_cpu(), Some(1));
-        let blank = Summary::of(&empty(), &[], &Body::default(), &HashMap::new(), &no_cpu(), Some(2));
+        let first = Summary::of(&empty(), &[], &rust_only(app), &memory_only(HashMap::from([(app, reading(600 * MB))])), Some(1));
+        let blank = Summary::of(&empty(), &[], &Body::default(), &Measured::default(), Some(2));
         background.keep(first, 10_000);
         background.keep(blank.clone(), 20_000);
         assert_eq!(background.latest(), Some(blank));
