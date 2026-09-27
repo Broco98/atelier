@@ -1088,16 +1088,11 @@ export async function closeQuietShells(): Promise<void> {
   }
   const body = quietCloseNotice(quiet.length);
   if (!(await askDialog({ title: "조용한 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
-  for (const shell of quiet) if (isLiveShell(shell.id)) closeShell(shell.id, "quiet");
+  for (const shell of quiet) if (isLiveShellOf(terminalStore.state, shell.id)) closeShell(shell.id, "quiet");
 }
 
 /** 닫을 조용한 셸이 없을 때의 짧은 토스트(`closeQuietShells`). 자기 id라 거푸 눌러도 한 자리를 고친다. */
 const NO_QUIET_TOAST_ID = "processes:no-quiet";
-
-/** 그 칸이 아직 목록에 있고 살아 있는가 — 창에 답하는 사이 닫히거나 끝난 칸을 거르는 자리다(`closeQuietShells`). */
-function isLiveShell(id: number): boolean {
-  return isLiveShellOf(terminalStore.state, id);
-}
 
 /**
  * 화면 밖 셸의 [닫기](티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 이 스토어가 모르는 셸이다. 칸이 없어 `closeShell`을

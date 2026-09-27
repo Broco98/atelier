@@ -1847,7 +1847,9 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     );
     // [조용한 셸 모두 닫기](티켓 32 · S44). 셸마다 묻지 않고 **한 번** 물었다(`quietCloseNotice`). 무엇이 조용한지는 `quietShellsOf`
     // 하나가 정한다 — 그 판정을 안 딛고 스토어의 셸을 손으로 고르면 여기가 빨개진다.
-    expect(store).toContain('for (const shell of quiet) if (isLiveShell(shell.id)) closeShell(shell.id, "quiet");');
+    expect(store).toContain(
+      'for (const shell of quiet) if (isLiveShellOf(terminalStore.state, shell.id)) closeShell(shell.id, "quiet");',
+    );
     // 여덟째가 생기면 확인을 건너뛰는 길이 하나 더 난 것이다. `requestCloseShell(`은 대문자
     // `C` 때문에 이 부분문자열에 안 걸린다 — 그래서 세는 것으로 충분하다.
     expect(
