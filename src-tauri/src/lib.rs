@@ -189,8 +189,8 @@ pub fn run() {
     // 프런트는 뜨자마자 보고를 묻는다. 셋업 안에서 세면 그 사이에 온 물음이 그 일을 안 기다리고 빈 보고를 받을 자리가 생긴다.
     // 스레드에 넘길 수 있게 풀과 같이 `Arc`다.
     let report = Arc::new(startup::ReportHolder::default());
-    let cleanup = report.expect();
-    let hook_sync = report.expect();
+    let cleanup = report.chore();
+    let hook_sync = report.chore();
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -671,7 +671,7 @@ mod tests {
         );
         let holder = run.find("let report = Arc::new(startup::ReportHolder::default());").expect("시작 보고의 자리를 안 세운다");
         let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
-        for (chore, what) in [("let cleanup = report.expect();", "시작 정리"), ("let hook_sync = report.expect();", "훅 맞춤")] {
+        for (chore, what) in [("let cleanup = report.chore();", "시작 정리"), ("let hook_sync = report.chore();", "훅 맞춤")] {
             let counted = run.find(chore).unwrap_or_else(|| panic!("{what}의 몫을 그 자리에서 안 센다"));
             assert!(
                 holder < counted && counted < builder,

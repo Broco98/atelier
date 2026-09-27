@@ -70,7 +70,7 @@ impl ReportHolder {
     /// 시작 때 할 일 하나를 몫으로 센다 — **웹뷰가 서기 전에**(`lib.rs`의 `run`, 빌더보다 앞). 웹뷰는 셋업의 앱 몫보다 먼저
     /// 서고 프런트는 뜨자마자 묻는다 — 몫을 셋업 안에서 세면 그 사이에 온 물음이 빈 보고를 받을 자리가 생긴다. 센 몫이
     /// 끝나기 전에는 `answer`가 기다린다.
-    pub fn expect(self: &Arc<Self>) -> Chore {
+    pub fn chore(self: &Arc<Self>) -> Chore {
         self.lock().pending += 1;
         Chore { holder: Arc::clone(self), open: true }
     }
@@ -115,7 +115,7 @@ impl Drop for Chore {
 }
 
 /// 시작 때 할 일 하나를 **뒤 스레드에서** 돌리고 그 결과를 그 몫으로 보고에 싣는다. 몫은 부르는 쪽이 미리 센 것이다
-/// (`ReportHolder::expect`). 스레드를 못 띄우면 몫은 빈손으로 끝난다(`Chore`).
+/// (`ReportHolder::chore`). 스레드를 못 띄우면 몫은 빈손으로 끝난다(`Chore`).
 pub fn in_background<T>(
     chore: Chore,
     name: &str,
@@ -225,8 +225,8 @@ mod tests {
     #[test]
     fn ready_waits_for_every_chore() {
         let holder = Arc::new(ReportHolder::default());
-        let cleanup = holder.expect();
-        let hooks = holder.expect();
+        let cleanup = holder.chore();
+        let hooks = holder.chore();
         let answered = ask(&holder);
 
         assert!(answered.recv_timeout(STILL).is_err(), "아무 몫도 안 끝났는데 답했다");
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn a_chore_dropped_without_a_result_does_not_hold_the_answer() {
         let holder = Arc::new(ReportHolder::default());
-        let chore = holder.expect();
+        let chore = holder.chore();
         let answered = ask(&holder);
         assert!(answered.recv_timeout(STILL).is_err(), "몫이 남았는데 답했다");
         drop(chore);
@@ -269,7 +269,7 @@ mod tests {
         let holder = Arc::new(ReportHolder::default());
         let (release, gate) = mpsc::channel::<()>();
         in_background(
-            holder.expect(),
+            holder.chore(),
             "atelier-test-startup-chore",
             move || {
                 let _ = gate.recv();
@@ -348,7 +348,7 @@ mod tests {
         let root = atelier_core::default_data_root(&home);
         old_install(&home);
         let holder = Arc::new(ReportHolder::default());
-        sync_hooks(holder.expect(), home.clone(), root.clone());
+        sync_hooks(holder.chore(), home.clone(), root.clone());
 
         let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("맞춤이 끝났는데 5초가 지나도 답이 없다");
         assert_eq!(report.hooks_updated, ["claude", "codex"], "맞춘 에이전트가 보고에 안 실렸다");
@@ -367,7 +367,7 @@ mod tests {
         let foreign = "{\n    \"model\": \"opus\"\n}";
         std::fs::write(fresh.join(".claude/settings.json"), foreign).unwrap();
         let holder = Arc::new(ReportHolder::default());
-        sync_hooks(holder.expect(), fresh.clone(), atelier_core::default_data_root(&fresh));
+        sync_hooks(holder.chore(), fresh.clone(), atelier_core::default_data_root(&fresh));
         let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다");
         assert!(report.hooks_updated.is_empty(), "깐 적이 없는데 맞췄다고 한다: {:?}", report.hooks_updated);
         assert_eq!(std::fs::read_to_string(fresh.join(".claude/settings.json")).unwrap(), foreign, "남의 설정을 다시 썼다");
@@ -389,7 +389,7 @@ mod tests {
         let before = files.map(|file| std::fs::read_to_string(home.join(file)).unwrap());
 
         let holder = Arc::new(ReportHolder::default());
-        sync_hooks(holder.expect(), home.clone(), moved.clone());
+        sync_hooks(holder.chore(), home.clone(), moved.clone());
         let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다 — 안 맞춘 몫이 안 끝났다");
         assert!(report.hooks_updated.is_empty(), "옮긴 루트의 실행이 홈의 훅을 맞췄다고 한다: {:?}", report.hooks_updated);
         for (file, was) in files.iter().zip(&before) {
@@ -398,7 +398,7 @@ mod tests {
         }
 
         let holder = Arc::new(ReportHolder::default());
-        sync_hooks(holder.expect(), home.clone(), atelier_core::default_data_root(&home));
+        sync_hooks(holder.chore(), home.clone(), atelier_core::default_data_root(&home));
         let report = ask(&holder).recv_timeout(Duration::from_secs(5)).expect("5초가 지나도 답이 없다");
         assert_eq!(
             report.hooks_updated,
@@ -443,10 +443,10 @@ mod tests {
         assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "파이프를 못 만들었다");
 
         let holder = Arc::new(ReportHolder::default());
-        let cleanup = holder.expect();
+        let cleanup = holder.chore();
         let (returned, came_back) = mpsc::channel();
         {
-            let (chore, home, root) = (holder.expect(), home.clone(), root.clone());
+            let (chore, home, root) = (holder.chore(), home.clone(), root.clone());
             std::thread::spawn(move || {
                 sync_hooks(chore, home, root);
                 let _ = returned.send(());
