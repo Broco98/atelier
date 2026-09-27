@@ -632,7 +632,10 @@ mod tests {
     }
 
     /// **시작 정리가 죽은 실행의 기록을 지운다**(티켓 10). 넘겨받은 세대의 기록만 지우고, 이 실행의 기록은 넘겨받아도 안
-    /// 지운다 — 지우면 이 실행의 셸 자손이 남에게 출처 불명이 된다. 열지 않은 기록은 어디를 지울지 몰라 아무것도 안 한다.
+    /// 지운다 — 지우면 이 실행의 셸 자손이 남에게 출처 불명이 된다.
+    ///
+    /// 열지 않은 기록은 어디를 지울지 몰라 아무것도 안 한다(`forget`). 그것은 여기서 재지 않는다 — 열지 않은 기록은 이 검사의 폴더를
+    /// 가리킬 길이 없어(`Book::place`가 `None`), 이 폴더를 보는 단언은 어떤 구현에서도 참이다.
     ///
     /// 앵커: 넘겨받은 남의 기록(X)은 실제로 사라진다 — 아무것도 안 지우게 무너지면 「남았다」들이 저절로 참이 된다.
     #[test]
@@ -649,9 +652,6 @@ mod tests {
             .collect();
         let record = Record::default();
         record.open(place(&dir, "G"));
-
-        Record::default().forget(["X"]);
-        assert!(read(&dir, "X").is_some(), "열지 않은 기록이 무언가를 지웠다 — 어디를 지울지 모른다");
 
         record.forget(["X", "G"]);
         assert!(read(&dir, "X").is_none(), "넘겨받은 죽은 실행의 기록이 남았다");
@@ -756,14 +756,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// **열지 않은 기록은 아무 사건도 안 쓴다** — 검사가 세우는 풀이 진짜 데이터 루트에 쓰지 않게. **닫은 뒤에는 쓴다** — 앱
-    /// 종료가 기록을 닫은 뒤에 그 종료의 사건을 적는다. 인스턴스 기록 파일은 닫은 뒤 그대로다.
+    /// **닫은 뒤에도 정리 기록은 쓴다** — 앱 종료가 기록을 닫은 뒤에 그 종료의 사건을 적는다. 인스턴스 기록 파일은 닫은 뒤 그대로다.
+    ///
+    /// 열지 않은 기록이 아무 사건도 안 쓰는 것(`log_cleanup` — 검사가 세우는 풀이 진짜 데이터 루트에 쓰지 않게)은 여기서 재지 않는다.
+    /// 한때 이 검사가 「열지 않은 기록에 적은 뒤 이 검사의 폴더가 없다」로 쟀는데, 열지 않은 기록은 이 폴더를 가리킬 길이 없어
+    /// (`Book::log`가 `None`) 그 단언은 어떤 구현에서도 참이었다.
     #[test]
-    fn only_an_opened_record_logs_and_closing_it_does_not_stop_the_log() {
+    fn closing_the_record_does_not_stop_the_log() {
         let dir = temp_dir("log-open");
-        Record::default().log_cleanup(event(1));
-        assert!(std::fs::read_dir(&dir).is_err(), "열지 않은 기록이 파일을 썼다");
-
         let record = Record::default();
         record.open(place(&dir, "G"));
         record.close(&[]);
