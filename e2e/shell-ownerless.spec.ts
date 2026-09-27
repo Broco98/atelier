@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
-import { MAISON_LANDING_ROOM, ROOMS, WORKS } from "./fixtures";
+import { BUSY_SHELL, MAISON_LANDING_ROOM, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
 import type { WorkView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { StartupReport } from "@/components/shell/startup-report";
@@ -44,11 +44,6 @@ import {
 
 const [pinnedWork, plainWork] = WORKS;
 const [, readingRoom] = ROOMS;
-
-/** 조용하지 않은 답 하나 — 명령이 돈다. claude가 대답하는 셸의 모양이다. */
-const BUSY = { command: true, descendants: 0 };
-/** 조용한 답 — 명령도 사람이 띄운 자손도 없다(셸 도우미는 이미 뺀 수다). */
-const QUIET = { command: false, descendants: 0 };
 
 /**
  * 그 화면에 **도착했다** — 주소가 아니라 화면으로 잰다. 주소는 이동을 시작하는 순간 바뀌지만 떠나는 work 화면은 도착할
@@ -122,7 +117,7 @@ async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: 
 test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 닫히고, 조용하지 않은 셸은 남아 토스트가 선다", async ({
   page,
 }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: QUIET, 2: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: QUIET_SHELL, 2: BUSY_SHELL } });
   await twoShells(page, `/works/${plainWork.slug}`);
 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
@@ -203,7 +198,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
 // UI 길은 성공 뒤에 제 손으로 닫는다(`closeShellsOf`, 결정 26). 그 사이 목록이 slug 없이 앉아도 감지는 그 slug를 안 본다
 // (제외 창, S13). 창이 없으면 아카이브 코어 호출이 돌아오기 전에 앉은 목록이 그 셸을 주인 잃은 셸로 알린다.
 test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브는 여전히 알린다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY, 2: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
   // 고정된 일에 셸 하나(pty 1), 그냥 일에 `+`로 하나(pty 2).
   await page.goto(`/works/${pinnedWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -249,7 +244,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
 test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ page }) => {
   await page.clock.install();
   const report: StartupReport = { cleaned: [], hooksUpdated: ["claude"] };
-  await installFixtureBackend(page, { startup_report: report, pty_close_checks: { 1: BUSY } });
+  await installFixtureBackend(page, { startup_report: report, pty_close_checks: { 1: BUSY_SHELL } });
   await holdCommand(page, "startup_report");
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -276,7 +271,7 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
 test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트는 다시 서지 않고, 그 셸을 기다리는 포커스도 안 남는다", async ({
   page,
 }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
@@ -318,7 +313,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
 });
 
 test("Room을 MCP로 아카이브하면 문구가 「Room」이다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
   await page.goto(`/maison/rooms/${readingRoom.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
@@ -333,7 +328,7 @@ test("Room을 MCP로 아카이브하면 문구가 「Room」이다", async ({ pa
 // 목록 쿼리는 관찰자가 있는 것만 다시 부른다 — Atelier에 있는 동안 Maison 목록은 아무도 안 본다. 그래서 저쪽 세계는
 // **그 세계의 셸이 있을 때만** 같은 무효화에서 함께 읽는다(S13). 없을 때까지 늘 읽으면 이벤트마다 조회가 둘이다.
 test("저쪽 세계의 Room이 MCP로 아카이브돼도 알린다 — 그 세계에 셸이 있을 때만 함께 읽는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
   const maisonLists = async () =>
     (await ipcCallArgs(page, "list_works", "mode")).filter(({ args }) => args.mode === "maison").length;
   const atelierLists = async () =>

@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
-import { ROOMS, WORKS } from "./fixtures";
+import { BUSY_SHELL, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -69,7 +69,7 @@ test("명령이 돌고 자손도 있으면 명령 문구 아래에 함께 끝날
 
 // 수가 0이면 둘째 줄이 없다 — 「0개도 함께 끝나요」는 거짓말은 아니지만 읽을 까닭이 없는 줄이다.
 test("명령만 돌면 지금 문구 그대로다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_check: { command: true, descendants: 0 } });
+  await installFixtureBackend(page, { pty_close_check: BUSY_SHELL });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -105,7 +105,7 @@ test("명령 없이 자손만 있으면 그 수로 묻는다", async ({ page }) 
 // 명령도 자손도 없으면(스토리 6) 지금처럼 묻지 않는다 — p10k 셸의 `gitstatusd`는 셸 도우미라 백엔드가 수에서
 // 뺐다(Rust `asking_before_a_close_counts_what_a_person_spawned`).
 test("명령도 자손도 없으면 묻지 않고 닫는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_check: { command: false, descendants: 0 } });
+  await installFixtureBackend(page, { pty_close_check: QUIET_SHELL });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -154,7 +154,7 @@ test("Room의 아카이브 확인 창도 같은 문구다", async ({ page }) => 
 });
 
 test("띄운 프로세스가 없으면 아카이브 확인 창은 셸 수만 말한다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: { command: true, descendants: 0 } } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
   const dialog = await askToArchive(page, `/works/${plainWork.slug}`, "작업 메뉴", plainWork.title);
 
   // 앵커: 물음이 나갔다 — 안 물어서 안 붙은 것이 아니다.
@@ -208,8 +208,8 @@ test("종료 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙이고, 
 test("띄운 프로세스가 없으면 종료 확인 창은 지금 줄 그대로다", async ({ page }) => {
   await installFixtureBackend(page, {
     pty_close_checks: {
-      1: { command: false, descendants: 0 },
-      2: { command: true, descendants: 0 },
+      1: QUIET_SHELL,
+      2: BUSY_SHELL,
     },
   });
   const dialog = await askToQuit(page);

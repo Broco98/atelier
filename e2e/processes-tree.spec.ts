@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import { answerByArg, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -27,7 +27,6 @@ import type { ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 // 셸과 잇는다 — 실물에서 둘이 같은 셸 키 하나인 것과 같다.
 
 const [, plainWork] = WORKS;
-
 
 const 트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
 const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
@@ -303,7 +302,7 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷([1, 2], false),
     pty_close_check: answerByArg("id", {
-      1: { command: false, descendants: 0 },
+      1: QUIET_SHELL,
       2: { command: false, descendants: 2 },
     }),
   });

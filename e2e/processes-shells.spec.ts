@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import { answerByArg, BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -42,11 +42,6 @@ async function 줄들(scope: Locator): Promise<Array<{ level: string | null; nam
     .getByRole("treeitem")
     .evaluateAll((rows) => rows.map((row) => ({ level: row.getAttribute("aria-level"), name: row.getAttribute("aria-label") })));
 }
-
-/** 조용하지 않은 답 — 명령이 돈다. claude가 대답하는 셸의 모양이다. */
-const BUSY = { command: true, descendants: 0 };
-/** 조용한 답 — 명령도 사람이 띄운 자손도 없다(셸 도우미는 이미 뺀 수다). */
-const QUIET = { command: false, descendants: 0 };
 
 const vite: ProcessRow = {
   id: { pid: 200, startedUs: 2_000 },
@@ -190,8 +185,8 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
 }) => {
   await installFixtureBackend(page, {
     // 셋 다 조용하지 않다 — MCP 아카이브가 모두 주인 잃은 셸로 남긴다. 한 줄 닫기의 물음은 조용하다 — 창 없이 닫는다.
-    pty_close_checks: { 1: BUSY, 2: BUSY, 3: BUSY },
-    pty_close_check: QUIET,
+    pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL, 3: BUSY_SHELL },
+    pty_close_check: QUIET_SHELL,
     processes_snapshot: 스냅샷([1, 2, 3]),
   });
   // `그냥 일`에 셸 셋(pty 1 · 2 · 3) — 사람이 친 셸과 `+`로 연 셸 둘이다(떠남으로 회수되지 않는다).
@@ -242,7 +237,7 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷([7], 7),
     // 셸 하나씩 묻는다(셸 탭의 ×와 같다) — 7은 띄운 프로세스가 있어 묻고, 9는 조용해 안 묻는다.
-    pty_close_check: answerByArg("id", { 7: { command: false, descendants: 1 }, 9: QUIET }),
+    pty_close_check: answerByArg("id", { 7: { command: false, descendants: 1 }, 9: QUIET_SHELL }),
   });
   await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
@@ -324,9 +319,9 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
     // 99는 스토어가 모르는 셸이다 — 화면 밖 셸 묶음이 서 있다는 앵커. 1 · 2 · 3은 스토어가 아는 셸이다.
     processes_snapshot: 스냅샷([1, 2, 3, 99]),
     // 1은 도는 것이 있어 MCP 아카이브가 주인 잃은 셸로 남긴다. 3은 조용하다 — [조용한 셸 모두 닫기]가 닫는다.
-    pty_close_checks: { 1: BUSY, 3: QUIET },
+    pty_close_checks: { 1: BUSY_SHELL, 3: QUIET_SHELL },
     // 2는 조용하다 — 셸 행의 [닫기]가 묻지 않고 닫는다.
-    pty_close_check: answerByArg("id", { 2: QUIET }),
+    pty_close_check: answerByArg("id", { 2: QUIET_SHELL }),
   });
   // `그냥 일`에 셸 하나(pty 1)를 두고 MCP가 그 work을 아카이브한다 — 주인 잃은 셸이다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -547,7 +542,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
 }) => {
   await installFixtureBackend(page, {
     // 1(Atelier work) · 4(Maison Terminal)는 조용하다. 2는 사람이 띄운 것이 있고, 3은 답이 없다(`null`).
-    pty_close_checks: { 1: QUIET, 2: { command: false, descendants: 2 }, 3: null, 4: QUIET },
+    pty_close_checks: { 1: QUIET_SHELL, 2: { command: false, descendants: 2 }, 3: null, 4: QUIET_SHELL },
   });
   await 두세계에셸을띄운다(page);
   await navButton(page, "Processes").click();
@@ -586,7 +581,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
 
 // N = 0 — 물을 것이 없는 창을 안 띄운다. 짧은 토스트로 눌렸다는 것을 말한다(티켓 32가 구현에 맡긴 모양).
 test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);

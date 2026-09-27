@@ -675,6 +675,18 @@ export const CLEANUP_LOG: CleanupEvent[] = [];
  */
 export const NO_METRICS: ProcessMetrics = { memory: null, cpu: null, ports: [] };
 
+/**
+ * 닫기 전 물음(`pty_close_check` · `pty_close_checks`)에 **조용하지 않은 셸**이 주는 답 — 명령이 돈다(띄운 프로세스는 0).
+ * claude가 대답하는 셸의 모양이다. MCP 아카이브는 이 셸을 닫지 않고 주인 잃은 셸로 남기고, 셸 하나의 닫기는 확인 창으로 묻는다.
+ */
+export const BUSY_SHELL: CloseCheck = { command: true, descendants: 0 };
+
+/**
+ * 닫기 전 물음에 **조용한 셸**이 주는 답 — 명령도 사람이 띄운 프로세스도 없다(셸 도우미는 Rust가 이미 뺀 수다). 묻지 않고
+ * 닫히는 셸이다.
+ */
+export const QUIET_SHELL: CloseCheck = { command: false, descendants: 0 };
+
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
   // `shared_projects_root`) 이 명령은 세계를 묻지 않는다. 그래서 이름으로 답해도 위 경계에
@@ -772,7 +784,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 「명령이 도는가」를 넓혔다). **명령이 도는 답인 것은 물어야 하는 쪽을 태우기 위해서다** — 셸 닫기 확인 창이 이
   // 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다. 수는 0이다: 창의 둘째 줄은 그것을 재는 검사
   // (`close-confirm-count.spec.ts`)가 덮어 세운다.
-  pty_close_check: { command: true, descendants: 0 } satisfies CloseCheck,
+  pty_close_check: BUSY_SHELL,
   // 셸 여럿의 닫기 전 물음(티켓 08) — 종료 확인 창과 아카이브 확인 창이 셀 때 **한 번** 부른다. 답은 pty id → 그
   // 셸의 답이고, 답한 셸만 싣는다.
   //

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import { BUSY_SHELL, MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   fireEvent,
@@ -70,7 +70,7 @@ test("셸 스스로 끝남 토스트의 [보기]를 누르면 Processes로 간�
 // 주인 잃은 셸 토스트는 버튼이 둘이다 — [모두 닫기]가 앞이다(주된 동작). [보기]는 그 셸들이 선 묶음으로 간다.
 test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 잃은 셸 묶음으로 간다", async ({ page }) => {
   await installFixtureBackend(page, {
-    pty_close_checks: { 1: { command: true, descendants: 0 } },
+    pty_close_checks: { 1: BUSY_SHELL },
     processes_snapshot: {
       ...PROCESS_SNAPSHOT,
       pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
@@ -161,7 +161,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
   page,
 }) => {
   await installFixtureBackend(page, {
-    pty_close_checks: { 1: { command: true, descendants: 0 } },
+    pty_close_checks: { 1: BUSY_SHELL },
     processes_snapshot: {
       ...PROCESS_SNAPSHOT,
       pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],

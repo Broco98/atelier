@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, PROCESS_SNAPSHOT, PROCESS_SUMMARY, PROJECTS } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROCESS_SNAPSHOT, PROCESS_SUMMARY, PROJECTS, QUIET_SHELL } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -186,7 +186,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
 test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", async ({ page }) => {
   await page.clock.install();
   await installFixtureBackend(page, {
-    pty_close_check: { command: false, descendants: 0 },
+    pty_close_check: QUIET_SHELL,
     processes_summary: 요약({ recordHead: 3 }),
   });
   // 먼저 화면을 본다 — 그때 있던 자동 기록(머리 3)은 본 것이 된다.

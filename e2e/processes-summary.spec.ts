@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, shellKeyOf, WORKS } from "./fixtures";
+import { BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -82,7 +82,7 @@ test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주�
     processes_snapshot: 스냅샷,
     processes_trend: 점들(5),
     // 두 셸 모두 조용하지 않다 — MCP 아카이브가 닫지 않고 주인 잃은 셸로 남긴다.
-    pty_close_checks: { 1: { command: true, descendants: 0 }, 2: { command: true, descendants: 0 } },
+    pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL },
   });
   // 그냥 일에 셸 둘을 띄우고(사람이 친 셸 · `+`로 연 셸) 둘 다 claude가 돌게 한다 — 셸 상태 「도는 중」.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./evidence";
+import { BUSY_SHELL, QUIET_SHELL } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -68,11 +69,8 @@ test("종료 요청이 OS 시트가 아니라 앱의 확인 창을 띄운다", a
 // `markRunning`(1초 폴링 값)은 **안 쓴다**: 이 창은 폴링 값이 아니라 지금 물은 답으로 세야 하고, 폴링 값을 읽는
 // 변형은 아래 「안 돈다」 갈래가 문다. 띄운 프로세스 수(M)는 `close-confirm-count.spec.ts`가 잰다.
 
-const RUNNING = { command: true, descendants: 0 };
-const QUIET = { command: false, descendants: 0 };
-
 test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: RUNNING, 2: RUNNING } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
   await page.goto("/terminal");
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
   // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
@@ -88,7 +86,7 @@ test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) =>
 });
 
 test("물음이 「안 돈다」면 도는 셸이 0으로 적힌다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: QUIET, 2: QUIET } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: QUIET_SHELL, 2: QUIET_SHELL } });
   await page.goto("/terminal");
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
   // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
@@ -120,7 +118,7 @@ test("물음이 「모름」이면 안 도는 것으로 센다", async ({ page }
 // **두 세계를 합친다.** 지금 서 있는 세계만 세면 Maison 화면에서 끌 때 Atelier 셸이 수에서 빠지는데,
 // 종료는 두 세계의 셸을 함께 죽인다.
 test("Atelier와 Maison의 셸이 합쳐 세진다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: RUNNING, 2: RUNNING } });
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7). 쓴 셸을 두고 건넌다.
