@@ -39,7 +39,9 @@ pub struct Reading {
 #[derive(Debug, Default)]
 pub struct Readings {
     pub by_id: HashMap<Identity, Reading>,
-    /// 받은 신원 가운데 못 읽은 수 — 그사이 끝난 것, 좀비, 남의 uid, pid가 남에게 넘어간 것.
+    /// 받은 신원 가운데 못 읽은 수 — 그사이 끝난 것, 좀비, 남의 uid, pid가 남에게 넘어간 것. macOS의 읽기만 센다(실물 검사가 읽는다)
+    /// — 다른 OS는 아무것도 안 읽어 늘 0이다.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub skipped: u32,
 }
 
@@ -95,7 +97,8 @@ pub fn read(_ids: impl IntoIterator<Item = Identity>) -> Readings {
 
 /// mach 시각 단위(tick)를 ns로 — `mach_timebase_info`가 준 비율(`numer / denom`)을 곱한다. Apple Silicon은 125/3(1 tick ≈
 /// 41.7ns), Intel은 1/1이다. 곱(tick × 125)이 u64를 넘을 수 있어 넓혀서 하고, 넘치면 끝에 눕힌다. 비율을 못 읽었으면(분모 0) 안
-/// 바꾼다 — 0으로 나누지 않는다.
+/// 바꾼다 — 0으로 나누지 않는다. 순수 계산이라 검사는 모든 OS에서 돌고, 부르는 읽기는 macOS에만 있다.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn ticks_to_ns(ticks: u64, numer: u32, denom: u32) -> u64 {
     if denom == 0 {
         return ticks;

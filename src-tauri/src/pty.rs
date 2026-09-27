@@ -1264,6 +1264,8 @@ mod tests {
     use std::collections::BTreeMap;
     use std::ffi::OsStr;
     use std::path::{Path, PathBuf};
+    // 이 모듈에서 시간을 재는 검사는 모두 실물(macOS)이다.
+    #[cfg(target_os = "macos")]
     use std::time::Duration;
 
     use atelier_core::Mode;

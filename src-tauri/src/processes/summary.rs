@@ -154,7 +154,8 @@ impl Trend {
 pub enum WebContentAnswer {
     /// 웹뷰가 답했다 — pid, 또는 없음(아직 아무것도 안 띄웠다 · 이 OS의 WebKit에 그 SPI가 없다 · 창이 없다).
     Answered(Option<u32>),
-    /// 제때 답이 안 왔다 — 메인 스레드가 바빴다.
+    /// 제때 답이 안 왔다 — 메인 스레드가 바빴다. 웹뷰에게 묻는 앱 층(`webview::content_pid`)은 macOS에만 있다.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Late,
 }
 

@@ -76,7 +76,9 @@ pub struct Ending<K: Kernel = Os> {
     groups: Vec<Group>,
 }
 
-/// 끝내기를 시작한다 — SIGTERM과 SIGHUP을 보내고 곧바로 돌아온다.
+/// 끝내기를 시작한다 — SIGTERM과 SIGHUP을 보내고 곧바로 돌아온다. **실물 검사(`real`)만 부른다** — 앱의 끝내기는 모두 진행 중인
+/// 끝내기 목록을 지난다(`InFlight::claim` → `Claim::start`, 앱 종료는 `InFlight::close`). 목록 밖의 끝내기는 앱이 닫힐 때 마감되지 않는다.
+#[cfg(all(test, target_os = "macos"))]
 pub fn start(targets: &[Identity], groups: &[Group]) -> Ending {
     Ending::start_with(Os, targets, groups)
 }

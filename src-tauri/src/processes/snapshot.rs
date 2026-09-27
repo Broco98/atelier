@@ -24,6 +24,8 @@ pub enum EnvScope {
 }
 
 impl EnvScope {
+    /// 이 시각에 태어난 프로세스의 env를 읽나. 표를 읽는 수집은 macOS에만 있다 — 다른 OS는 빈 스냅샷이다.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     fn reads(self, started_us: u64) -> bool {
         match self {
             EnvScope::All => true,

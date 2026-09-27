@@ -11,13 +11,16 @@
 use super::SHELL_KEY_ENV;
 
 /// 한 프로세스의 exec 때 문자열 — 커널이 채운 버퍼를 **빌려** 본다. 수집은 프로세스 수백 개를 버퍼
-/// 하나로 돌려 읽으므로(프로세스 스펙 S2), 행마다 argv 전체를 문자열로 떠 두지 않는다.
+/// 하나로 돌려 읽으므로(프로세스 스펙 S2), 행마다 argv 전체를 문자열로 떠 두지 않는다. 가르기는 모든 OS에서 재지만 부르는 수집은
+/// macOS에만 있다 — 다른 OS의 앱 빌드에서는 안 쓰인다.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) struct ProcArgs<'b> {
     argc: usize,
     /// argv[0]부터 버퍼 끝까지. 실행 파일 경로와 정렬용 NUL은 이미 건넜다.
     strings: &'b [u8],
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 impl<'b> ProcArgs<'b> {
     /// 커널이 준 버퍼를 가른다. 모양이 아니면 `None`이다.
     pub(crate) fn parse(buf: &'b [u8]) -> Option<Self> {
