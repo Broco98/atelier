@@ -17,19 +17,19 @@
 
 use tauri::AppHandle;
 
-use crate::processes::summary::Asked;
+use crate::processes::summary::WebContentAnswer;
 
 /// 웹뷰에게 WebContent의 pid를 묻는다. 창이 없으면(아직 안 떴다 · 닫혔다) 「없음」이다. 메인 스레드가 `ASK_WITHIN` 안에 답하지
 /// 않으면 「늦음」이다. **메인 스레드에서 부르지 않는다** — 그 자리에서는 물음이 곧바로 돌아 기다릴 것이 없지만, 배경 표본만 부른다.
 #[cfg(target_os = "macos")]
-pub fn content_pid(app: &AppHandle) -> Asked {
+pub fn content_pid(app: &AppHandle) -> WebContentAnswer {
     macos::content_pid(app)
 }
 
 /// macOS 밖에는 물을 SPI가 없다 — 요약은 「웹뷰 제외」다.
 #[cfg(not(target_os = "macos"))]
-pub fn content_pid(_app: &AppHandle) -> Asked {
-    Asked::Answered(None)
+pub fn content_pid(_app: &AppHandle) -> WebContentAnswer {
+    WebContentAnswer::Answered(None)
 }
 
 #[cfg(target_os = "macos")]
@@ -41,7 +41,7 @@ mod macos {
     use objc2::{msg_send, sel};
     use tauri::{AppHandle, Manager};
 
-    use crate::processes::summary::Asked;
+    use crate::processes::summary::WebContentAnswer;
 
     /// 창 하나의 라벨. `tauri.conf.json`이 라벨을 안 적어 Tauri의 기본값(`main`)이다(`terminate.rs`와 같다).
     const MAIN_WINDOW: &str = "main";
@@ -50,9 +50,9 @@ mod macos {
     /// 배경 표본의 박자(10초)에 견줘 짧게 둔다: 그 스레드는 이것을 기다리는 동안 다음 장을 못 모은다.
     const ASK_WITHIN: Duration = Duration::from_millis(500);
 
-    pub(super) fn content_pid(app: &AppHandle) -> Asked {
+    pub(super) fn content_pid(app: &AppHandle) -> WebContentAnswer {
         let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
-            return Asked::Answered(None);
+            return WebContentAnswer::Answered(None);
         };
         let (answer, answered) = mpsc::sync_channel(1);
         let sent = window.with_webview(move |webview| {
@@ -61,11 +61,11 @@ mod macos {
             let _ = answer.send(pid);
         });
         if sent.is_err() {
-            return Asked::Answered(None);
+            return WebContentAnswer::Answered(None);
         }
         match answered.recv_timeout(ASK_WITHIN) {
-            Ok(pid) => Asked::Answered(pid),
-            Err(_) => Asked::Late,
+            Ok(pid) => WebContentAnswer::Answered(pid),
+            Err(_) => WebContentAnswer::Late,
         }
     }
 

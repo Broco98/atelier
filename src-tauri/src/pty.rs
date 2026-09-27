@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
 use crate::processes::clock;
-use crate::processes::ending::{Claim, Group, InFlight, Outcome};
+use crate::processes::ending::{Claim, Group, InFlight, Outcome, Running};
 use crate::processes::instances::{self, Place, Record};
 use crate::processes::metrics::{self, CpuMeter, Measured};
 use crate::processes::screen::{self, PoolShell, ScreenSnapshot};
@@ -403,7 +403,7 @@ pub struct CloseCheck {
 
 /// 물은 셸 하나가 **그 순간** 쥔 것 — 풀 잠금 안에서 읽는다(`asked_of`).
 #[derive(Debug, Clone)]
-struct Asked {
+struct AskedShell {
     entry: ShellEntry,
     /// 셸의 pid — 그대로 셸의 프로세스 그룹이다(`Shell::pid`).
     pid: u32,
@@ -444,7 +444,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
         return ids.iter().map(|id| Err(gone(*id))).collect();
     }
     let snapshot = snapshot::take(env_scope(born));
-    let (live, asked): (Vec<ShellEntry>, Vec<Result<Asked, String>>) = {
+    let (live, asked): (Vec<ShellEntry>, Vec<Result<AskedShell, String>>) = {
         let shells = pool.lock();
         (shells.values().map(Shell::entry).collect(), ids.iter().map(|id| asked_of(&shells, *id)).collect())
     };
@@ -466,7 +466,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
 
 /// 판정 한 번으로 물은 셸마다 답한다 — 위 함수에서 스냅샷을 찍고 셸을 읽는 일만 뺀 나머지다. 값만 받으므로 셸
 /// 셋을 한 번에 물은 것과 하나씩 물은 것을 표로 견준다. 못 읽은 셸의 오류는 그 자리에 그대로 둔다.
-fn checks_on(input: &Inputs, asked: Vec<Result<Asked, String>>) -> Vec<Result<CloseCheck, String>> {
+fn checks_on(input: &Inputs, asked: Vec<Result<AskedShell, String>>) -> Vec<Result<CloseCheck, String>> {
     let verdict = verdict::judge(input);
     asked.into_iter().map(|one| one.map(|asked| close_check(&verdict, &asked))).collect()
 }
@@ -475,14 +475,14 @@ fn checks_on(input: &Inputs, asked: Vec<Result<Asked, String>>) -> Vec<Result<Cl
 /// 빼는 것은 `verdict::close_count`가 혼자 한다. foreground 그룹은 명령이 돌 때만 넘긴다 — 프롬프트면 그 그룹은
 /// 셸 자신이고, 잡 제어 밖에서 뜬 자손이 거기 산다. 늘 넘기면 그것이 수에서 빠져 확인 창 없이 함께 끝난다
 /// (`one_snapshot_answers_every_shell_as_if_asked_alone`의 셸 A와 풀 배선 장면 `Ask`가 잰다).
-fn close_check(verdict: &Verdict, asked: &Asked) -> CloseCheck {
+fn close_check(verdict: &Verdict, asked: &AskedShell) -> CloseCheck {
     let command = command_runs(asked.pid, asked.foreground);
     let command_group = if command { u32::try_from(asked.foreground).ok() } else { None };
     CloseCheck { command, descendants: verdict::close_count(verdict, &asked.entry.key, command_group) }
 }
 
 /// 풀에서 물은 셸이 그 순간 쥔 것을 읽는다. 못 읽으면 그 까닭이다.
-fn asked_of(shells: &HashMap<u32, Shell>, id: u32) -> Result<Asked, String> {
+fn asked_of(shells: &HashMap<u32, Shell>, id: u32) -> Result<AskedShell, String> {
     let shell = shells.get(&id).ok_or_else(|| gone(id))?;
     // 이름은 `process_group_leader`지만 속은 `tcgetpgrp`라 **지금 터미널을 쥔 그룹**이다
     // (`groups_of`가 같은 값을 같은 뜻으로 쓴다).
@@ -493,7 +493,7 @@ fn asked_of(shells: &HashMap<u32, Shell>, id: u32) -> Result<Asked, String> {
     // 셸의 pid가 그대로 그 pgid다 — `portable-pty`가 `pre_exec`에서 `setsid()`를 부른다
     // (`Shell::pid`의 주석).
     let pid = shell.pid.ok_or_else(|| format!("셸의 pid를 모릅니다 (id {id})"))?;
-    Ok(Asked { entry: shell.entry(), pid, foreground })
+    Ok(AskedShell { entry: shell.entry(), pid, foreground })
 }
 
 /// 포그라운드 그룹이 셸 자신이 아니면 명령이 돈다(ux-papercuts 결정 92의 판정 — 「명령」의 뜻은 그대로다. 프로세스
@@ -615,7 +615,7 @@ pub fn cleanup_events(pool: &PtyPool) -> Vec<cleanup_log::Event> {
 
 /// 웹뷰에게 WebContent의 pid를 묻는 함수를 한 번 건다(S39 · 티켓 30). 앱은 setup에서 `webview::content_pid`를 건다 — 이 층은 Tauri를
 /// 모른다. 안 걸면(검사의 풀) 요약은 「웹뷰 제외」다.
-pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::Asked + Send + Sync + 'static) {
+pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::WebContentAnswer + Send + Sync + 'static) {
     pool.background.web_content.ask_with(ask);
 }
 
@@ -682,7 +682,7 @@ const POLL: Duration = Duration::from_secs(1);
 /// 한 회차에 잰 것 전부 — pty id마다 「지금 도는 것」이다. 잰 값과 **직전에 쏜 값**이 같은
 /// 모양이라야 둘을 그대로 뺄 수 있어서 이름을 붙였다. `HashMap`이 아니라 `BTreeMap`인 것은
 /// 나가는 순서가 회차마다 흔들리지 않게 하기 위해서다.
-type Running = BTreeMap<u32, Option<String>>;
+type RunningCommands = BTreeMap<u32, Option<String>>;
 
 // **여기서부터는 macOS의 커널 인터페이스다.** `proc_name`도 `KERN_PROCARGS2`도 리눅스
 // libc에는 없다. 우리가 파는 것은 macOS 앱 하나뿐이지만(릴리스 워크플로가 만드는 타깃이
@@ -784,7 +784,7 @@ fn running_command(shell_pid: u32, foreground: i32, name: Option<String>) -> Opt
 ///
 /// 이름은 **셸 자신일 때도 읽는다.** 판정을 여기서 한 번 더 가르면 「도는가」가 두 자리에
 /// 살게 되고, 아끼는 것은 셸당 초당 syscall 하나다.
-fn measure(pool: &PtyPool) -> Running {
+fn measure(pool: &PtyPool) -> RunningCommands {
     let shells = pool.lock();
     shells
         .iter()
@@ -803,7 +803,7 @@ fn measure(pool: &PtyPool) -> Running {
 /// adr-04가 폴링을 산 값이 이 한 줄에 있다 — 비용은 재기가 아니라 **다시 그리기**에 있다.
 /// 안 가르면 사이드바와 탭 줄이 초마다 통째로 다시 그려진다(`shell-registry.ts`의
 /// `sameBranch`가 막고 있는 그 문제와 같은 것이다).
-fn changes(sent: &Running, now: &Running) -> Vec<PtyRunning> {
+fn changes(sent: &RunningCommands, now: &RunningCommands) -> Vec<PtyRunning> {
     let mut out = Vec::new();
     for (id, running) in now {
         // **직전에 없던 셸은 「아무것도 안 돌던 셸」과 같다.** 프런트도 새 칸을 `null`로
@@ -834,7 +834,7 @@ pub fn watch_running(app: AppHandle, pool: Arc<PtyPool>) {
     std::thread::spawn(move || {
         // **프런트가 지금 믿고 있는 값**이다. 안 쏜 회차에는 잰 값과 같으므로 그대로
         // 덮어써도 어긋나지 않는다 — 「바뀐 것만 쏜다」가 성립하는 근거가 이 한 줄이다.
-        let mut sent = Running::new();
+        let mut sent = RunningCommands::new();
         loop {
             std::thread::sleep(POLL);
             let now = measure(&pool);
@@ -1167,8 +1167,8 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
 /// 남아 앱 종료가 마감하고, 셸 키도 기록에 남는다.
 struct Behind {
     shells: Vec<Shell>,
-    /// 진행 중인 끝내기 목록에 오른 끝내기(`processes::ending::Running`) — 이 파일의 `Running`(도는 명령의 표)과 다른 것이다.
-    running: crate::processes::ending::Running,
+    /// 진행 중인 끝내기 목록에 오른 끝내기(`processes::ending::Running`).
+    running: Running,
     /// 셸 키마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 판정 때 떠 둔 것.
     aimed: Vec<(String, Vec<Aimed>)>,
     cause: Cause,
@@ -1677,9 +1677,9 @@ mod tests {
         };
         let asked = |entry: &ShellEntry, foreground: i32| {
             let pid = entry.process.expect("신원이 있다").pid;
-            Ok(super::Asked { entry: entry.clone(), pid, foreground })
+            Ok(super::AskedShell { entry: entry.clone(), pid, foreground })
         };
-        let gone: Result<super::Asked, String> = Err(super::gone(9));
+        let gone: Result<super::AskedShell, String> = Err(super::gone(9));
         let questions = vec![asked(&a, 100), asked(&b, 200), asked(&c, 330), gone.clone()];
 
         let together = super::checks_on(&input, questions.clone());
@@ -2048,7 +2048,7 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::Arc;
 
-        use crate::processes::summary::Asked;
+        use crate::processes::summary::WebContentAnswer;
         use crate::processes::testkit::{key, Kid};
 
         let unasked = super::PtyPool::default();
@@ -2060,8 +2060,8 @@ mod tests {
         let asked = Arc::clone(&answer);
         let pool = super::PtyPool::default();
         super::ask_web_content_with(&pool, move || match asked.load(Ordering::Relaxed) {
-            0 => Asked::Late,
-            pid => Asked::Answered(Some(pid)),
+            0 => WebContentAnswer::Late,
+            pid => WebContentAnswer::Answered(Some(pid)),
         });
         let counted = super::summarize(&pool);
         assert!(!counted.webview_excluded, "웹뷰가 이름 댄 WebContent를 앱 본체에 안 셌다");

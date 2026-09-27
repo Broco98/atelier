@@ -150,7 +150,7 @@ impl Trend {
 
 /// 웹뷰에게 WebContent의 pid를 물은 답(S39 — 묻는 길은 앱 층의 `webview::content_pid`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Asked {
+pub enum WebContentAnswer {
     /// 웹뷰가 답했다 — pid, 또는 없음(아직 아무것도 안 띄웠다 · 이 OS의 WebKit에 그 SPI가 없다 · 창이 없다).
     Answered(Option<u32>),
     /// 제때 답이 안 왔다 — 메인 스레드가 바빴다.
@@ -165,13 +165,13 @@ pub enum Asked {
 /// 지표를 읽는 쪽이 신원 재확인에서 거른다(`metrics::read`) — 남의 숫자가 앱 본체에 안 든다.
 #[derive(Default)]
 pub struct WebContent {
-    ask: OnceLock<Box<dyn Fn() -> Asked + Send + Sync>>,
+    ask: OnceLock<Box<dyn Fn() -> WebContentAnswer + Send + Sync>>,
     last: Mutex<Option<Identity>>,
 }
 
 impl WebContent {
     /// 묻는 함수를 한 번 건다. 두 번째는 버린다 — 앱에서는 setup 한 자리만 부른다.
-    pub fn ask_with(&self, ask: impl Fn() -> Asked + Send + Sync + 'static) {
+    pub fn ask_with(&self, ask: impl Fn() -> WebContentAnswer + Send + Sync + 'static) {
         if self.ask.set(Box::new(ask)).is_err() {
             eprintln!("atelier: the web content asker was already set");
         }
@@ -180,9 +180,9 @@ impl WebContent {
     /// 지금의 WebContent 신원. 묻는 함수가 없으면 없다. pid를 신원으로 바꾸는 것은 부르는 쪽이 건넨다(`snapshot::identity_of`) —
     /// 이 자리는 커널을 안 읽는다.
     pub fn identity(&self, identify: impl Fn(u32) -> Option<Identity>) -> Option<Identity> {
-        let asked = self.ask.get()?();
+        let answer = self.ask.get()?();
         let mut last = lock(&self.last);
-        if let Asked::Answered(pid) = asked {
+        if let WebContentAnswer::Answered(pid) = answer {
             *last = pid.and_then(identify);
         }
         *last
@@ -508,9 +508,9 @@ mod tests {
         let answer = Arc::new(AtomicU32::new(77));
         let asked = Arc::clone(&answer);
         seat.ask_with(move || match asked.load(Ordering::Relaxed) {
-            0 => Asked::Answered(None),
-            u32::MAX => Asked::Late,
-            pid => Asked::Answered(Some(pid)),
+            0 => WebContentAnswer::Answered(None),
+            u32::MAX => WebContentAnswer::Late,
+            pid => WebContentAnswer::Answered(Some(pid)),
         });
         assert_eq!(seat.identity(identify), Some(web), "답한 pid를 신원으로 안 바꿨다");
         answer.store(u32::MAX, Ordering::Relaxed);
