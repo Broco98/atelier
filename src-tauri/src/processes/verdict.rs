@@ -188,47 +188,22 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     //
     // 이 길도 막힌 행에서 멈춘다. 그 위는 앱을 띄운 쪽이다 — tmux 안에서 띄운 dev 앱이면 앱이 띄운 셸의 자손이 모두
     // tmux 밑이라, 멈추지 않으면 셸을 닫아도 아무것도 안 끝난다.
-    let excepted = |proc: &'a Proc| -> bool {
-        for node in table.up_from(proc) {
-            if blocked.contains(&node.id.pid) {
-                return false;
-            }
-            if exceptions::caught(input.exceptions, node) {
-                return true;
-            }
-        }
-        false
-    };
+    let excepted = |proc: &'a Proc| table.up_until(proc, &blocked).any(|node| exceptions::caught(input.exceptions, node));
 
     // 자기부터 부모를 따라 올라가다 처음 만나는 자리가 그 행의 셸이다. 막힌 행을 만나거나 끝까지
     // 올라가면 판정 밖이다.
     let owner_of = |proc: &'a Proc| -> Option<&'a str> {
-        for node in table.up_from(proc) {
-            if blocked.contains(&node.id.pid) {
-                return None;
-            }
-            if let Some(key) = shell_at.get(&node.id.pid) {
-                return Some(*key);
-            }
-            if let Some(key) = node.shell_key.as_deref().filter(|&key| ours(key)) {
-                return Some(key);
-            }
-        }
-        None
+        table.up_until(proc, &blocked).find_map(|node| {
+            shell_at.get(&node.id.pid).copied().or_else(|| node.shell_key.as_deref().filter(|&key| ours(key)))
+        })
     };
 
-    // 셸별 자손이 아닌 표식 행이 어느 묶음에 드나 — 그 행부터 올라가다 처음 만나는 표식이 정한다. 막힌 행을 만나거나
-    // 끝까지 표식이 없으면 판정 밖이다.
+    // 셸별 자손이 아닌 표식 행이 어느 묶음에 드나 — 그 행부터 올라가다 **처음 만나는 표식**이 정한다. 그 표식이 어느 묶음에도
+    // 안 들면(이 실행의 세대인데 기록 갱신 뒤에 태어났다) 더 올라가지 않는다. 막힌 행을 만나거나 끝까지 표식이 없으면 판정 밖이다.
     let stray_of = |proc: &'a Proc| -> Option<(Stray, &'a str)> {
-        for node in table.up_from(proc) {
-            if blocked.contains(&node.id.pid) {
-                return None;
-            }
-            if let Some(key) = node.shell_key.as_deref() {
-                return stray(key, node, own, input, &table).map(|bundle| (bundle, key));
-            }
-        }
-        None
+        let carrier = table.up_until(proc, &blocked).find(|node| node.shell_key.is_some())?;
+        let key = carrier.shell_key.as_deref()?;
+        stray(key, carrier, own, input, &table).map(|bundle| (bundle, key))
     };
 
     let mut descendants: BTreeMap<&'a str, Vec<&'a Proc>> =
@@ -435,6 +410,12 @@ impl<'a> Table<'a> {
     /// 이 행부터 부모를 따라 올라가는 사슬(자기 포함). 스냅샷이 흔들려 고리가 생겨도 행 수에서 멈춘다.
     fn up_from(&self, start: &'a Proc) -> impl Iterator<Item = &'a Proc> + '_ {
         std::iter::successors(Some(start), |node| self.parent(node)).take(self.rows + 1)
+    }
+
+    /// 이 행부터 올라가다 **막힌 행(`stop`) 앞에서 끊는** 사슬(프로세스 스펙 S6). 판정의 걷기 셋(예외 · 셸 자리 · 표식)이 모두
+    /// 이 사슬을 걷는다 — 막힌 행(앱과 조상 사슬, 물려받은 키를 문 것)의 위는 앱을 띄운 쪽이라 어느 걷기도 거기를 넘지 않는다.
+    fn up_until<'s>(&'s self, start: &'a Proc, stop: &'s HashSet<u32>) -> impl Iterator<Item = &'a Proc> + 's {
+        self.up_from(start).take_while(move |node| !stop.contains(&node.id.pid))
     }
 
     /// 그 pid와 그 조상들의 pid. 행이 없으면 비어 있다.
@@ -962,6 +943,13 @@ mod tests {
             )
             .orphaned(&[("X-1", &[311])])
             .of_other_instance(&[("D-1", &[327, 328])]),
+            case(
+                "가장 가까운 표식이 정한다 — 그 표식이 어느 묶음에도 안 들면(이 실행의 세대 · 기록 갱신 뒤 태생) 위의 표식을 따르지 \
+                 않는다",
+                vec![row(311, 1).key("X-1"), row(308, 311).key("G-8").born(6_000), row(309, 308).born(6_100)],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311])]),
             case(
                 "셸의 트리 안에서는 죽은 세대의 표식을 물어도 그 셸의 자손이다 — 고아가 아니다",
                 vec![row(115, 100).key("X-1"), row(116, 115)],
