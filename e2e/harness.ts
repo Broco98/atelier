@@ -1216,8 +1216,8 @@ export async function sentNotifications(
 /**
  * 클립보드 쓰기를 **손으로 잡는다**(S35). 앱이 복사하는 길은 하나다 — `navigator.clipboard.writeText`
  * (ⓘ 메타의 행 · 작업 화면과 아카이브 화면의 경로 복사). 그 함수 하나만 갈아 끼우고 **무엇을 썼는지**를
- * 받아 적는다. 셸 생성을 가로채는 손잡이(`holdPtySpawn`)와 알림 손잡이(`stubNotifications`)와 같은 모양이다 —
- * 새 층이 아니다.
+ * 받아 적는다. 앱의 입구 하나를 갈아 끼우는 커맨드 붙잡기(`holdCommand`)와 알림 손잡이(`stubNotifications`)와 같은
+ * 모양이다 — 새 층이 아니다.
  *
  * 쓰기를 적는 이유: WebKit에서 `clipboard-read` 권한으로 클립보드를 **읽는** 길은 확인되지 않았다. 읽을 수
  * 없으면 「복사됐다」는 화면에 안 보이는 사실이라, 앱이 넘긴 값을 그 자리에서 잡는 것이 이 층에서 잴 수 있는
@@ -1488,7 +1488,8 @@ const armHold = ({ command, holdsKey }: { command: string; holdsKey: string }) =
 /**
  * 커맨드 하나의 **응답을 붙잡는다**(프로세스 관리 티켓 01) — 「부르러 나갔는데 아직 안 돌아왔다」의 틈을
  * 결정적으로 세운다. 붙잡힌 수는 `heldCalls`로, 놓은 뒤에 새로 나간 수는 `callsSinceRelease`로 읽고,
- * `releaseCommand`로 한꺼번에 놓는다. 놓는 순서는 부른 순서 그대로다.
+ * `releaseCommand`로 한꺼번에 놓는다. 놓는 순서는 부른 순서 그대로다 — 부를 때마다 번호가 오르는 커맨드(`pty_spawn` —
+ * `FIXTURE_INCREMENTING_KEYS`)도 번호가 부른 순서대로 붙는다.
  *
  * **언제부터 붙잡는가는 부르는 때가 정한다.** 페이지를 열기 **전에** 부르면 초기화 스크립트로 깔려 부팅 때
  * 나가는 첫 부름부터 붙잡고 — `installFixtureBackend` **뒤에** 깔아야 한다(그쪽이 세운 `invoke`를
@@ -1543,25 +1544,6 @@ export async function releaseCommand(page: Page, command: string): Promise<void>
 /** 놓은 **뒤에** 새로 나간 그 커맨드의 부름 수. 놓기 전에는 0이다(`holdCommand`). */
 export async function callsSinceRelease(page: Page, command: string): Promise<number> {
   return onGate(page, command, "sinceRelease");
-}
-
-/**
- * `pty_spawn`의 **응답을 붙잡는다** — `holdCommand`의 셸 띄우기 몫이다. 붙잡힌 부름의 수는 `heldSpawns`로
- * 읽고, `releaseSpawns`로 한꺼번에 놓는다. 규칙은 전부 `holdCommand` 머리말이다(기록은 놓은 뒤에 남는다,
- * 페이지를 열기 전에 깔면 첫 부름부터 붙잡는다). 놓는 순서는 부른 순서 그대로라 픽스처의 번호도 그대로다.
- */
-export async function holdPtySpawn(page: Page): Promise<void> {
-  await holdCommand(page, "pty_spawn");
-}
-
-/** 붙잡힌 `pty_spawn` 부름의 수(`holdPtySpawn`). 안 깔았으면 던진다. */
-export async function heldSpawns(page: Page): Promise<number> {
-  return heldCalls(page, "pty_spawn");
-}
-
-/** 붙잡은 `pty_spawn` 응답을 한꺼번에 놓는다(`holdPtySpawn`). */
-export async function releaseSpawns(page: Page): Promise<void> {
-  await releaseCommand(page, "pty_spawn");
 }
 
 /**

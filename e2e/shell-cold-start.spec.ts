@@ -6,15 +6,15 @@ import {
   badgeCalls,
   callCount,
   exitShell,
-  heldSpawns,
-  holdPtySpawn,
+  heldCalls,
+  holdCommand,
   holdTerminalFonts,
   installFixtureBackend,
   ipcCallArgs,
   markRunning,
   ptyGrids,
   refuseFirstSpawn,
-  releaseSpawns,
+  releaseCommand,
   sentNotifications,
   setWindowFocused,
   spawnedCwds,
@@ -291,7 +291,7 @@ test("글꼴이 오기 전에 닫은 칸은 안 뜨고, 남은 칸만 뜬다", a
 // 죽여야 한다 — 안 죽이면 목록에도 상한에도 없는 셸이 ⌘Q까지 돈다.
 test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 그 셸을 거둔다", async ({ page }) => {
   await installFixtureBackend(page);
-  await holdPtySpawn(page);
+  await holdCommand(page, "pty_spawn");
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
@@ -300,11 +300,11 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
 
   await releaseFonts();
   // **두 칸 다 띄우러 나갔다** — 첫 칸은 떼어진 채다.
-  await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
   await closeOf(page, 0, "셸").click();
   await expect(tabs(page)).toHaveCount(1);
-  await releaseSpawns(page);
+  await releaseCommand(page, "pty_spawn");
 
   await expectEveryTabStarted(page, 1);
   await expect
@@ -318,7 +318,7 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
 // 칸이 전부, 늦게 온 셸까지 죽는다.
 test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온 셸들을 전부 거둔다", async ({ page }) => {
   await installFixtureBackend(page);
-  await holdPtySpawn(page);
+  await holdCommand(page, "pty_spawn");
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
@@ -326,14 +326,14 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
   await expect(tabs(page)).toHaveCount(2);
 
   await releaseFonts();
-  await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
   await expect(tabs(page)).toHaveCount(0);
 
-  await releaseSpawns(page);
+  await releaseCommand(page, "pty_spawn");
   await expect
     .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id).sort())
     .toEqual([1, 2]);
@@ -378,7 +378,7 @@ for (const replied of [true, false]) {
     page,
   }) => {
     await installFixtureBackend(page);
-    if (!replied) await holdPtySpawn(page);
+    if (!replied) await holdCommand(page, "pty_spawn");
     await armXtermOpenFailure(page);
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto("/terminal", { waitUntil: "domcontentloaded" });
@@ -387,12 +387,12 @@ for (const replied of [true, false]) {
     await expect(tabs(page)).toHaveCount(2);
     await releaseFonts();
     if (replied) await expectEveryTabStarted(page, 2);
-    else await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+    else await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
     await failXtermOpen(page);
     await tabs(page).nth(0).locator("button[aria-pressed]").click();
     await expect(page.locator("[data-shell-notice]")).toContainText(OPEN_FAILURE);
-    if (!replied) await releaseSpawns(page);
+    if (!replied) await releaseCommand(page, "pty_spawn");
 
     await expect
       .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id))
