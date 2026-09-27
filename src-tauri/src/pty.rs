@@ -775,7 +775,7 @@ fn exited(pool: &Arc<PtyPool>, id: u32) {
 /// 행 전부)을 그대로 받는다: 여기서 다시 가르면 사람이 본 것과 끝나는 것이 갈린다.
 ///
 /// 표본과 신호 사이는 초 단위라 그사이 pid가 재사용될 수 있다 — 끝내기가 신호마다 직전에 신원을 다시 본다(프로세스 스펙 S4). 겹친
-/// 신원과 유예 중인 끝내기가 이미 SIGTERM을 보낸 신원은 끝내기가 거른다(`Claim::start_by_hand`). 셸 그룹은 없다.
+/// 신원과 유예 중인 끝내기가 이미 SIGTERM을 보낸 신원은 끝내기가 거른다(`Claim::start` — 셸 닫기 · 새로고침도 같다). 셸 그룹은 없다.
 ///
 /// 셸 닫기처럼 **신호까지 보내고 돌아온다**(S5). 유예와 SIGKILL은 뒤 스레드(`atelier-by-hand`)가 돌고, 그동안 이 끝내기는 진행 중인
 /// 끝내기 목록에 있어 앱이 닫히면 종료가 마감한다. 끝낸 것은 정리 기록에 까닭 「손으로」로 적는다(티켓 11) — 셸 키와 주인은 없다.
@@ -959,8 +959,14 @@ fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<StartupAttempt> {
     pool.record.forget(
         dead.iter().filter(|record| !instances::alive(record.app)).map(|record| record.generation.as_str()),
     );
-    // 끝내기는 받은 순서 그대로 결과를 준다.
-    outcomes.into_iter().zip(targets).map(|((id, outcome), proc)| StartupAttempt { id, name: proc.name, outcome }).collect()
+    // 결과는 신원으로 행과 잇는다 — 진행 중인 끝내기가 이미 맡은 신원은 결과에 없어(`Claim::start`) 순서로 짝지으면 어긋난다.
+    outcomes
+        .into_iter()
+        .filter_map(|(id, outcome)| {
+            let proc = targets.iter().find(|proc| proc.id == id)?;
+            Some(StartupAttempt { id, name: proc.name.clone(), outcome })
+        })
+        .collect()
 }
 
 /// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. 판정까지 하고(`begin`) 돌아온다. 셸을 떨구고
@@ -988,6 +994,8 @@ fn end(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) {
 ///    부모가 먼저 끝나 launchd 밑으로 넘어간 dev 서버는 트리가 끊겨 표식으로만 잡힌다. 스스로 끝난 셸은 PID 트리가
 ///    없다 — 표식으로만 잡힌다(`exited`).
 /// 4. 끝내기를 시작해(대상 SIGTERM, 셸 그룹 SIGHUP) 진행 중인 끝내기 목록에 올리고 돌아온다. 뒤 절반(`Behind`)을 돌려준다.
+///    진행 중인 끝내기(손으로 [끝내기]의 유예 중)가 이미 SIGTERM을 보낸 자손은 끝내기가 뺀다(`Claim::start`) — 그 자손은 앞
+///    끝내기의 사건에만 적힌다.
 ///
 /// **셸 그룹과 그 순간의 foreground 그룹에 가는 신호는 지금 방어선 그대로 남는다.** 셸 그룹 밖으로 떨어진
 /// 자손이 대상 목록으로 더해질 뿐이다. 다른 OS는 스냅샷이 비고 셸의 신원도 몰라, 지금처럼 그룹 신호만 간다.
@@ -1765,6 +1773,52 @@ mod tests {
             logged,
             vec![(Reason::Manual, None, None, vec![(ended_id.pid, Outcome::Ended)])],
             "정리 기록에 「손으로」 한 줄이 끝낸 자식 하나로 서야 한다 — 재사용된 pid의 신원은 안 든다"
+        );
+    }
+
+    /// **시작 정리의 시도는 신원으로 제 행과 짝짓는다**(티켓 10 · 31). 진행 중인 끝내기(유예 중인 [끝내기])가 이미 SIGTERM을 보낸
+    /// 신원은 시작 정리의 끝내기가 뺀다(`Claim::start`) — 결과가 넘긴 것보다 짧아져, 순서로 짝지으면 뒤의 결과가 앞 행의 이름을 단다.
+    ///
+    /// 자식 하나(SIGTERM을 무시해 유예 동안 산다)를 손으로 끝내기에 먼저 넘긴 뒤, 시작 정리에 그 자식의 행과 없는 신원의 행(그 자식의
+    /// pid에 시작 시각 1µs — 어떤 프로세스와도 안 맞아 신호가 안 간다)을 차례로 넘긴다. 시작 정리의 시도는 없는 신원 하나이고, 그 행의
+    /// 이름으로 「이미 없음」이다. 신호는 이 검사가 띄운 자식에게만 간다. 연 적 없는 기록의 풀이라 아무 파일도 안 쓴다.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_startup_attempt_carries_its_own_rows_name() {
+        use crate::processes::ending::Outcome;
+        use crate::processes::testkit::{key, Kid};
+        use crate::processes::{Identity, Proc};
+
+        let pool = super::PtyPool::default();
+        let kid = Kid::spawn("ignore-term", &key(33));
+        let settled = kid.settle();
+        let row = |id: Identity, name: &str| Proc {
+            id,
+            ppid: 1,
+            pgid: id.pid,
+            uid: 0,
+            name: name.to_string(),
+            argv0: None,
+            command: None,
+            shell_key: None,
+        };
+        let attempts = settled.map(|kid_id| {
+            let by_hand = pool.endings.claim().start_by_hand(&[kid_id]);
+            let gone = Identity { pid: kid_id.pid, started_us: 1 };
+            let targets = vec![row(kid_id, "in-grace"), row(gone, "long-gone")];
+            let attempts = super::carry_out(&pool, super::StartupPlan { claim: pool.endings.claim(), targets, dead: Vec::new() });
+            drop(by_hand);
+            (gone, attempts)
+        });
+
+        // **거두는 것이 단언보다 먼저다.**
+        drop(kid);
+
+        let (gone, attempts) = attempts.expect("자식이 5초 안에 제 세션을 열지 못했다");
+        assert_eq!(
+            attempts,
+            vec![super::StartupAttempt { id: gone, name: "long-gone".into(), outcome: Outcome::Gone }],
+            "시작 정리의 시도가 제 행의 이름을 안 달았다 — 진행 중인 끝내기가 맡은 신원을 빼고 순서로 짝지었다"
         );
     }
 

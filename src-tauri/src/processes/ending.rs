@@ -222,6 +222,18 @@ impl<K: Kernel> Listed<K> {
             .flat_map(|ending| ending.targets.iter().filter(|(_, signalled)| *signalled).map(|(id, _)| *id))
             .collect()
     }
+
+    /// **새 끝내기가 맡을 대상** — 목록의 끝내기가 이미 SIGTERM을 보낸 신원을 빼고, 겹친 신원은 한 번만 둔다. 두 번째 SIGTERM을
+    /// 「그래도 끝내라」로 읽는 도구가 있다 — 정리하던 것이 정리를 버린다. 뺀 신원의 SIGKILL은 그것을 맡은 끝내기가 제 마감 시각에
+    /// 보낸다. 뺀 신원은 새 끝내기의 결과에 없다 — 정리 기록에서 한 프로세스가 두 사건에 서지 않는다.
+    ///
+    /// **잠금을 쥔 채 부르고, 신호도 그 잠금 안에서 보낸다**(`Claim::start` · `InFlight::close`). 확인과 신호가 잠금 둘에 걸치면 동시에
+    /// 온 두 끝내기가 모두 확인을 먼저 지나 둘 다 쏜다.
+    fn unsignalled(&self, targets: &[Identity]) -> Vec<Identity> {
+        let signalled = self.signalled();
+        let mut seen = HashSet::new();
+        targets.iter().copied().filter(|id| !signalled.contains(id) && seen.insert(*id)).collect()
+    }
 }
 
 impl Default for InFlight {
@@ -261,8 +273,7 @@ impl<K: Kernel> InFlight<K> {
     /// - 판정 중인 닫기가 있으면 그것이 목록에 오르기를 기다린다(최대 `JUDGING_LIMIT`).
     /// - 목록의 끝내기는 **남은 유예만** 기다린다 — 마감 시각을 그대로 들고 온다. 이미 지났으면 곧바로
     ///   SIGKILL이다.
-    /// - 목록이 이미 SIGTERM을 보낸 신원에는 다시 안 보낸다. 두 번째 SIGTERM을 「그래도 끝내라」로 읽는 도구가
-    ///   있다 — 정리하던 것이 정리를 버린다.
+    /// - 목록이 이미 SIGTERM을 보낸 신원에는 다시 안 보낸다(`Listed::unsignalled` — 셸 닫기 · 손으로 끝내기와 같은 규칙).
     ///
     /// 목록에서 내리지 않는다. 뒤 스레드가 같은 끝내기를 나란히 마감하다 내린다 — 앱이 먼저 끝나면 함께
     /// 사라진다.
@@ -272,11 +283,9 @@ impl<K: Kernel> InFlight<K> {
             .wait_timeout_while(self.lock(), JUDGING_LIMIT, |listed| listed.judging > 0)
             .unwrap_or_else(|e| e.into_inner());
         let mut endings: Vec<Ending<K>> = listed.endings.values().cloned().collect();
-        let signalled = listed.signalled();
-        drop(listed);
-
-        let fresh: Vec<Identity> = targets.iter().copied().filter(|id| !signalled.contains(id)).collect();
+        let fresh = listed.unsignalled(targets);
         endings.push(Ending::start_with(self.kernel.clone(), &fresh, groups));
+        drop(listed);
         // 오른 차례는 거의 신호를 보낸 차례지만, 두 스레드에서는 뒤바뀔 수 있다 — 이른 마감이 늦은 것 뒤에서
         // 기다리지 않게 마감 시각으로 줄 세운다.
         endings.sort_by_key(|ending| ending.deadline);
@@ -292,16 +301,22 @@ pub struct Claim<K: Kernel = Os> {
 }
 
 impl<K: Kernel> Claim<K> {
-    /// 끝내기를 시작하고(대상 SIGTERM, 셸 그룹 SIGHUP) 목록에 올린다. 곧바로 돌아온다.
+    /// 끝내기를 시작하고(대상 SIGTERM, 셸 그룹 SIGHUP) 목록에 올린다. 곧바로 돌아온다. 셸 닫기 · 새로고침 · 셸 스스로 끝남 ·
+    /// 시작 정리 · 손으로 끝내기가 모두 이것을 지난다.
+    ///
+    /// **진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뺀다**(`Listed::unsignalled`) — [끝내기]의 유예 중에 그 행의 셸을 닫거나
+    /// 새로고침하면 같은 신원이 두 끝내기에 든다. 빼기 · 신호 · 목록에 오르기가 **한 잠금 안**이다 — 동시에 온 두 끝내기도 한 신원에
+    /// SIGTERM을 한 번만 보낸다. 신호는 ms 단위라(신원 읽기와 `kill`) 그동안 다른 끝내기가 잠금을 기다려도 짧다.
     pub fn start(mut self, targets: &[Identity], groups: &[Group]) -> Running<K> {
-        let ending = Ending::start_with(self.list.kernel.clone(), targets, groups);
-        let id = {
+        let (id, ending) = {
             let mut listed = self.list.lock();
+            let fresh = listed.unsignalled(targets);
+            let ending = Ending::start_with(self.list.kernel.clone(), &fresh, groups);
             let id = listed.next;
             listed.next += 1;
             listed.endings.insert(id, ending.clone());
             listed.judging -= 1;
-            id
+            (id, ending)
         };
         self.open = false;
         self.list.changed.notify_all();
@@ -312,17 +327,11 @@ impl<K: Kernel> Claim<K> {
     /// 셸을 닫는 길이 아니다.
     ///
     /// 받는 것은 화면이 **보인 표본의 신원**이라 신호와 사이가 초 단위다(프로세스 스펙 판 04 › 동작). 그사이 그 pid를 남이 받았으면
-    /// 신호 직전의 신원 확인이 거른다(`Ending::start_with` — S4) — 판정이 고른 것과 같은 길이다. 여기서 더 거르는 것은 둘이다.
-    /// - 같은 신원이 두 번 오면 한 번만 넘긴다.
-    /// - 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뺀다. 유예 중인 프로세스의 행은 다음 표본까지 화면에 남아 [끝내기]를 한 번 더
-    ///   누를 수 있다 — 두 번째 SIGTERM을 「그래도 끝내라」로 읽는 도구가 있다(`InFlight::close`와 같은 까닭). 그 신원의 마감(SIGKILL)은
-    ///   앞 끝내기가 제 마감 시각에 한다. 뺀 신원은 결과에 없다.
+    /// 신호 직전의 신원 확인이 거른다(`Ending::start_with` — S4) — 판정이 고른 것과 같은 길이다. 겹친 신원과 진행 중인 끝내기가 이미
+    /// SIGTERM을 보낸 신원은 `start`가 뺀다 — 유예 중인 프로세스의 행은 다음 표본까지 화면에 남아 [끝내기]를 한 번 더 누를 수 있다.
+    /// 뺀 신원은 결과에 없다.
     pub fn start_by_hand(self, targets: &[Identity]) -> Running<K> {
-        let signalled = self.list.lock().signalled();
-        let mut seen = HashSet::new();
-        let fresh: Vec<Identity> =
-            targets.iter().copied().filter(|id| !signalled.contains(id) && seen.insert(*id)).collect();
-        self.start(&fresh, &[])
+        self.start(targets, &[])
     }
 }
 
@@ -713,6 +722,84 @@ mod tests {
         );
         assert_eq!(second, vec![(id(20), Outcome::Ended)], "둘째 끝내기가 맡은 것이 어긋났다");
         assert_eq!(first, vec![(id(10), Outcome::Forced)], "앞 끝내기가 제 마감에 SIGKILL을 안 보냈다");
+    }
+
+    /// **진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뒤의 어느 끝내기도 다시 안 쏜다**(티켓 31 · 프로세스 스펙 S5). [끝내기]의 유예
+    /// 중에 그 행의 셸을 닫거나 새로고침하면(셸 닫기 · 새로고침은 `start`), 또는 시작 정리가 같은 신원을 고르면 두 번째 SIGTERM이 간다
+    /// — 그것을 「그래도 끝내라」로 읽는 도구가 있다(`InFlight::close`와 같은 까닭). 뺀 신원은 뒤 끝내기의 결과에 없어 정리 기록의 두
+    /// 번째 사건에 안 선다. 그 신원의 SIGKILL은 앞 끝내기가 제 마감에 보낸다.
+    ///
+    /// 앵커: 겹치지 않은 신원(20)은 SIGTERM을 받고, 뒤 끝내기의 셸 그룹(100)은 SIGHUP을 받는다.
+    #[test]
+    fn what_an_ending_in_flight_signalled_is_not_signalled_again() {
+        let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20), proc(100)], vec![]);
+        let list = Arc::new(InFlight::with_kernel(&fake));
+        let by_hand = list.claim().start_by_hand(&[id(10)]);
+        let closing = list.claim().start(&[id(10), id(20)], &[shell(100)]);
+        let closed = closing.finish();
+        let ended = by_hand.finish();
+
+        assert_eq!(
+            fake.sent.borrow().clone(),
+            vec![(0, P(10), SIGTERM), (0, P(20), SIGTERM), (0, G(100), SIGHUP), (2000, P(10), SIGKILL)],
+            "유예 중인 신원에 뒤의 끝내기가 SIGTERM을 또 보냈다"
+        );
+        assert_eq!(closed, vec![(id(20), Outcome::Ended)], "뒤 끝내기의 결과에 앞 끝내기가 맡은 신원이 섰다 — 정리 기록 두 사건에 선다");
+        assert_eq!(ended, vec![(id(10), Outcome::Forced)], "앞 끝내기가 제 마감에 SIGKILL을 안 보냈다");
+    }
+
+    /// 스레드를 넘나드는 커널 — 모두 살아 있고 SIGTERM을 못 들은 척한다. **신원을 읽을 때마다 잠깐 잔다**: 「이미 보냈나」 확인과
+    /// 신호 사이를 벌려, 확인을 잠금 밖에서 하면 동시에 온 두 호출이 모두 SIGTERM을 보내게 한다.
+    #[derive(Clone, Default)]
+    struct Slow {
+        sent: Arc<Mutex<Vec<(u32, i32)>>>,
+    }
+
+    impl Kernel for Slow {
+        fn identity_of(&self, pid: u32) -> Option<Identity> {
+            std::thread::sleep(Duration::from_millis(20));
+            Some(id(pid))
+        }
+        fn kill(&self, pid: u32, sig: i32) {
+            self.sent.lock().unwrap_or_else(|e| e.into_inner()).push((pid, sig));
+        }
+        fn killpg(&self, pgid: u32, sig: i32) {
+            panic!("그룹 없는 끝내기에서 그룹 {pgid}에 신호 {sig}가 갔다");
+        }
+        fn group_alive(&self, _pgid: u32) -> bool {
+            false
+        }
+        fn now(&self) -> Instant {
+            Instant::now()
+        }
+        fn sleep(&self, duration: Duration) {
+            std::thread::sleep(duration);
+        }
+    }
+
+    /// **동시에 온 두 [끝내기]도 한 신원에 SIGTERM을 한 번만 보낸다**(티켓 31). 「이미 보냈나」 확인과 신호와 목록에 오르기가 한 잠금
+    /// 안이다 — 잠금 둘에 걸치면 둘 다 확인을 먼저 지나 둘 다 쏜다. 앵커: 한 번은 간다.
+    #[test]
+    fn two_endings_at_once_signal_an_identity_once() {
+        let kernel = Slow::default();
+        let list = Arc::new(InFlight::with_kernel(kernel.clone()));
+        let ready = Arc::new(std::sync::Barrier::new(2));
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let (list, ready) = (Arc::clone(&list), Arc::clone(&ready));
+                std::thread::spawn(move || {
+                    let claim = list.claim();
+                    ready.wait();
+                    drop(claim.start_by_hand(&[id(10)]));
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().expect("끝내기 스레드가 패닉했다");
+        }
+
+        let terms = kernel.sent.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|sent| **sent == (10, SIGTERM)).count();
+        assert_eq!(terms, 1, "동시에 온 두 끝내기가 한 신원에 SIGTERM을 {terms}번 보냈다");
     }
 
     /// 위 표 — 신원 확인 · 유예 · SIGKILL · 셸 그룹의 줄들.

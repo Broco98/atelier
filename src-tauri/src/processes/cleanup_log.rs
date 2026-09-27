@@ -319,6 +319,16 @@ mod tests {
         assert!(worth_a_look(&helper_survived), "못 끝낸 도우미가 든 사건이 `●`를 안 켠다");
     }
 
+    /// **끝내기가 결과를 안 준 대상은 사건에 안 선다** — 진행 중인 끝내기가 이미 SIGTERM을 보낸 신원은 뒤 끝내기가 빼(`ending::Claim::start`)
+    /// 그 결과에 없다. [끝내기]의 유예 중에 그 행의 셸을 닫아도 그 프로세스는 [끝내기]의 사건 하나에만 선다. 앵커: 결과가 온 것은 선다.
+    #[test]
+    fn a_target_the_ending_left_to_another_is_not_on_this_event() {
+        let (server, other) = (aimed(12, "node", false), aimed(13, "esbuild", false));
+        let written = event(1, Reason::ShellClose, Some("G-1"), None, &[server, other], &[(id(12), Outcome::Ended)])
+            .expect("끝낸 것이 있는데 안 적었다");
+        assert_eq!(written.targets.iter().map(|target| target.pid).collect::<Vec<_>>(), [12], "다른 끝내기가 맡은 대상이 이 사건에 섰다");
+    }
+
     /// **셸이 스스로 끝나며 끝낸 것을 알릴지**(티켓 13 · 프로세스 스펙 P4 · P1). 알릴 수는 도우미가 아닌 대상 중 끝남 · 강제다.
     /// 셸 도우미만, 또는 이미 없음만 끝났으면 알리지 않는다 — p10k 셸에서 `exit`를 칠 때마다 토스트가 서면 안 된다.
     ///
