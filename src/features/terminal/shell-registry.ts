@@ -1521,11 +1521,11 @@ export type CloseChecks = ReadonlyMap<number, CloseCheck>;
  */
 export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
-  closeChecks: (ids: number[]) => Promise<CloseChecks | null>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<QuitCounts> {
   const live = shells.filter(isAlive);
   if (live.length === 0) return { live: 0, running: 0, spawned: 0 };
-  const answers = await closeChecks(live.map((shell) => shell.id)).catch(() => null);
+  const answers = await fetchCloseChecks(live.map((shell) => shell.id)).catch(() => null);
   const checks = live.flatMap((shell) => answers?.get(shell.id) ?? []);
   return {
     live: live.length,
@@ -1540,11 +1540,11 @@ export async function countQuitShells(
  */
 export async function countSpawned(
   shells: ReadonlyArray<Shell>,
-  closeChecks: (ids: number[]) => Promise<CloseChecks | null>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<number | null> {
   const live = shells.filter(isAlive);
   if (live.length === 0) return 0;
-  const answers = await closeChecks(live.map((shell) => shell.id)).catch(() => null);
+  const answers = await fetchCloseChecks(live.map((shell) => shell.id)).catch(() => null);
   if (!answers) return null;
   return live.reduce((sum, shell) => sum + (answers.get(shell.id)?.descendants ?? 0), 0);
 }

@@ -139,7 +139,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
 test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", async ({ page }) => {
   await page.clock.install();
   await installFixtureBackend(page, {
-    pty_command_running: { command: false, descendants: 0 },
+    pty_close_check: { command: false, descendants: 0 },
     processes_summary: 요약({ recordHead: 3 }),
   });
   // 먼저 화면을 본다 — 그때 있던 자동 기록(머리 3)은 본 것이 된다.

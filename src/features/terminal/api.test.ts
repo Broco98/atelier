@@ -73,7 +73,7 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
     await terminalApi.write(1, "x");
     await terminalApi.resize(1, 80, 24);
     await terminalApi.kill(1, "shellClose", "maison:");
-    await terminalApi.commandRunning(1);
+    await terminalApi.closeCheck(1);
     // 셸 여럿의 닫기 전 물음(티켓 08)도 id들로 가리킨다 — 두 세계의 셸을 한 번에 묻는다(종료 확인).
     await terminalApi.closeChecks([1, 2]);
     expect(calls).toHaveLength(5);

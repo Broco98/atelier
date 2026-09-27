@@ -310,12 +310,12 @@ pub async fn pty_first_input(
 // 결정 92의 「명령이 도는가」를 넓혔다). 구독도 폴링도 없다 — 매 순간 바뀌는 값이라 상태에 얹으면 폴링이 생기고,
 // 필요한 순간은 닫을 때뿐이다. 스냅샷 한 장을 찍는 기다리는 일이라 blocking 풀에서 돌린다(`pty_kill`과 같다).
 #[tauri::command]
-pub async fn pty_command_running(
+pub async fn pty_close_check(
     pool: tauri::State<'_, Arc<pty::PtyPool>>,
     id: u32,
 ) -> CmdResult<pty::CloseCheck> {
     let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::command_running(&pool, id))
+    tauri::async_runtime::spawn_blocking(move || pty::close_check(&pool, id))
         .await
         .map_err(|e| format!("셸에 무엇이 도는지 읽지 못했습니다: {e}"))?
 }

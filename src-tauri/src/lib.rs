@@ -359,7 +359,7 @@ pub fn run() {
             commands::pty_resize,
             commands::pty_kill,
             commands::pty_first_input,
-            commands::pty_command_running,
+            commands::pty_close_check,
             commands::pty_close_checks,
             commands::processes_snapshot,
             commands::processes_summary,

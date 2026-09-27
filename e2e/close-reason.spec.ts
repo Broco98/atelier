@@ -28,7 +28,7 @@ async function archive(page: Page, path: string, menu: string): Promise<void> {
 
 test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 실린다", async ({ page }) => {
   // 명령도 자손도 없으면 묻지 않고 닫는다 — 확인 창을 거치든 아니든 닫는 길은 하나다(`requestCloseShell`).
-  await installFixtureBackend(page, { pty_command_running: { command: false, descendants: 0 } });
+  await installFixtureBackend(page, { pty_close_check: { command: false, descendants: 0 } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 

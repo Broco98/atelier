@@ -130,7 +130,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
   await expect(toast.getByRole("button", { name: "모두 닫기", exact: true })).toBeVisible();
   // 두 셸을 **한 번에** 물었다(스냅샷 한 장) — 셸마다 따로 묻지 않는다.
   expect((await ipcCallArgs(page, "pty_close_checks", "ids")).map(({ args }) => args.ids)).toEqual([[1, 2]]);
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   // 조용하지 않은 셸은 **남는다** — 기다렸다 자동으로 닫지도 않는다(결정 4의 기각).
   await settle(page);
   expect(await kills(page)).toHaveLength(1);
@@ -192,7 +192,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
     ]);
   await expect(toast).toBeHidden();
   // 셸마다 닫기 확인 창(08)을 띄우지 않는다 — 셸 하나의 물음이 한 번도 안 나갔다.
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

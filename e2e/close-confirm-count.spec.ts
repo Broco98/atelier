@@ -20,7 +20,7 @@ import {
 // 어떻게 읽는지를 잰다. 수를 세는 규칙(셸 도우미 · 예외 · foreground 그룹을 뺀다)은 Rust 판정 표가 든다 — 여기서는
 // 답 하나를 통째로 덮어 창의 갈래를 편다.
 //
-// 셸 하나의 닫기는 `pty_command_running`(셸 하나의 답), 아카이브와 종료는 `pty_close_checks`(pty id → 답, 스냅샷
+// 셸 하나의 닫기는 `pty_close_check`(셸 하나의 답), 아카이브와 종료는 `pty_close_checks`(pty id → 답, 스냅샷
 // 한 장)를 부른다.
 
 const [, plainWork] = WORKS;
@@ -52,7 +52,7 @@ const closeActiveShell = (page: Page) =>
 // ── 셸 닫기 확인 창(P6) ──
 
 test("명령이 돌고 자손도 있으면 명령 문구 아래에 함께 끝날 수를 적는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: { command: true, descendants: 2 } });
+  await installFixtureBackend(page, { pty_close_check: { command: true, descendants: 2 } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -69,7 +69,7 @@ test("명령이 돌고 자손도 있으면 명령 문구 아래에 함께 끝날
 
 // 수가 0이면 둘째 줄이 없다 — 「0개도 함께 끝나요」는 거짓말은 아니지만 읽을 까닭이 없는 줄이다.
 test("명령만 돌면 지금 문구 그대로다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: { command: true, descendants: 0 } });
+  await installFixtureBackend(page, { pty_close_check: { command: true, descendants: 0 } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -85,7 +85,7 @@ test("명령만 돌면 지금 문구 그대로다", async ({ page }) => {
 // 프롬프트에 dev 서버만 남은 셸은 묻지 않고 닫혀 그 서버가 조용히 끝났다. 빈 프롬프트에는 명령이 없으니(CONTEXT
 // 「명령」) 명령 문구는 안 선다.
 test("명령 없이 자손만 있으면 그 수로 묻는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: { command: false, descendants: 3 } });
+  await installFixtureBackend(page, { pty_close_check: { command: false, descendants: 3 } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -105,7 +105,7 @@ test("명령 없이 자손만 있으면 그 수로 묻는다", async ({ page }) 
 // 명령도 자손도 없으면(스토리 6) 지금처럼 묻지 않는다 — p10k 셸의 `gitstatusd`는 셸 도우미라 백엔드가 수에서
 // 뺐다(Rust `asking_before_a_close_counts_what_a_person_spawned`).
 test("명령도 자손도 없으면 묻지 않고 닫는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: { command: false, descendants: 0 } });
+  await installFixtureBackend(page, { pty_close_check: { command: false, descendants: 0 } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
@@ -113,7 +113,7 @@ test("명령도 자손도 없으면 묻지 않고 닫는다", async ({ page }) =
 
   // 앵커: 물음이 나갔고 그 답으로 닫았다 — 묻기 전에 닫은 것이 아니다.
   await expect.poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id)).toEqual([1]);
-  expect(await callCount(page, "pty_command_running")).toBe(1);
+  expect(await callCount(page, "pty_close_check")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -140,7 +140,7 @@ test("아카이브 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙�
   expect(await ipcCallArgs(page, "pty_close_checks", "ids")).toEqual([
     { call: 'pty_close_checks {"ids":[1]}', args: { ids: [1] } },
   ]);
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -201,7 +201,7 @@ test("종료 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙이고, 
   expect(await bodyLines(dialog)).toEqual(["셸 2(띄운 프로세스 3개 포함) · 명령이 도는 셸 1"]);
   // 셸마다 부르지 않는다 — 셸 둘이어도 배치 한 번이다.
   expect(await callCount(page, "pty_close_checks")).toBe(1);
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

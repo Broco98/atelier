@@ -23,7 +23,7 @@ export interface PtyExit {
 }
 
 /**
- * 셸을 닫기 전에 묻는 답(`pty_command_running` · `pty_close_checks`) — 프로세스 결정 3이 ux-papercuts 결정 92의
+ * 셸을 닫기 전에 묻는 답(`pty_close_check` · `pty_close_checks`) — 프로세스 결정 3이 ux-papercuts 결정 92의
  * 「명령이 도는가」를 넓힌 모양이다.
  *
  * `descendants`는 **확인 창이 말할 수**다 — 이 셸에서 띄운 프로세스 중 셸 도우미(사람이 처음 입력하기 전에 뜬 것),

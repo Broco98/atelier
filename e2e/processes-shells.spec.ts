@@ -174,7 +174,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(orphans).toHaveCount(0);
   // 같은 셸의 토스트도 내려간다 — 같은 함수다. 셸마다 닫기 확인 창(08)을 안 띄웠다.
   await expect(page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog")).toHaveCount(0);
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -187,7 +187,7 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷([7], 7),
     // 셸 하나씩 묻는다(셸 탭의 ×와 같다) — 7은 띄운 프로세스가 있어 묻고, 9는 조용해 안 묻는다.
-    pty_command_running: answerByArg("id", { 7: { command: false, descendants: 1 }, 9: QUIET }),
+    pty_close_check: answerByArg("id", { 7: { command: false, descendants: 1 }, 9: QUIET }),
   });
   await page.goto("/processes");
   await expect(제목(page)).toBeVisible();
@@ -241,7 +241,7 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
       { id: 9, reason: "shellClose", owner: null },
     ]);
   await expect(dialog).toHaveCount(0);
-  expect((await ipcCallArgs(page, "pty_command_running", "id")).map(({ args }) => args.id)).toEqual([7, 7, 9]);
+  expect((await ipcCallArgs(page, "pty_close_check", "id")).map(({ args }) => args.id)).toEqual([7, 7, 9]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -259,7 +259,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
     // 1은 도는 것이 있어 MCP 아카이브가 주인 잃은 셸로 남긴다. 3은 조용하다 — [조용한 셸 모두 닫기]가 닫는다.
     pty_close_checks: { 1: BUSY, 3: QUIET },
     // 2는 조용하다 — 셸 행의 [닫기]가 묻지 않고 닫는다.
-    pty_command_running: answerByArg("id", { 2: QUIET }),
+    pty_close_check: answerByArg("id", { 2: QUIET }),
   });
   // `그냥 일`에 셸 하나(pty 1)를 두고 MCP가 그 work을 아카이브한다 — 주인 잃은 셸이다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -475,7 +475,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
   await settle(page);
   expect(await callCount(page, "pty_kill")).toBe(2);
   // 셸마다 닫기 확인 창을 안 띄웠다.
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

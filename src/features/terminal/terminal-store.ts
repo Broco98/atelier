@@ -533,7 +533,7 @@ export async function requestCloseShell(id: number): Promise<void> {
   // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
   // 앱 밖의 일처럼 읽힌다. 문구는 `closeNotice`가 든다(결정 105 · 프로세스 스펙 P6).
   const ask = (body: string) => askDialog({ title: "셸 닫기", body, confirm: "닫기", danger: true });
-  if (!(await confirmClose(shell, await closeCheck(id), ask))) return;
+  if (!(await confirmClose(shell, await fetchCloseCheck(id), ask))) return;
   closeShell(id, "person");
 }
 
@@ -544,7 +544,7 @@ export async function requestCloseShell(id: number): Promise<void> {
  * 혼자 안다.
  */
 export function quitShellCounts(): Promise<QuitCounts> {
-  return countQuitShells(terminalStore.state.shells, closeChecks);
+  return countQuitShells(terminalStore.state.shells, fetchCloseChecks);
 }
 
 /**
@@ -552,7 +552,7 @@ export function quitShellCounts(): Promise<QuitCounts> {
  * (프로세스 스펙 S18). 못 얻으면 `null`이다. 세는 규칙은 `countSpawned`가 혼자 안다.
  */
 export function spawnedCountOf(owner: ShellOwner): Promise<number | null> {
-  return countSpawned(shellsOf(terminalStore.state, owner), closeChecks);
+  return countSpawned(shellsOf(terminalStore.state, owner), fetchCloseChecks);
 }
 
 /**
@@ -562,11 +562,11 @@ export function spawnedCountOf(owner: ShellOwner): Promise<number | null> {
  * `null`로 오는 길이 둘이다: PTY가 아직·이미 없는 칸(`ptyId`가 null — 못 뜬 칸과 스스로
  * 끝난 칸이 그렇다)과, 백엔드가 판정을 못 낸 경우(tcgetpgrp 실패, 이미 지워진 id).
  */
-async function closeCheck(id: number): Promise<CloseCheck | null> {
+async function fetchCloseCheck(id: number): Promise<CloseCheck | null> {
   const ptyId = instances.get(id)?.ptyId ?? null;
   if (ptyId === null) return null;
   try {
-    return await terminalApi.commandRunning(ptyId);
+    return await terminalApi.closeCheck(ptyId);
   } catch {
     return null;
   }
@@ -577,7 +577,7 @@ async function closeCheck(id: number): Promise<CloseCheck | null> {
  * 되돌린다. 답한 칸만 든다: pty가 아직·이미 없는 칸은 묻지도 않는다. 물을 칸이 하나도 없으면 IPC 없이 빈 답이다.
  * 물음이 실패하면 `null`이다.
  */
-async function closeChecks(ids: number[]): Promise<CloseChecks | null> {
+async function fetchCloseChecks(ids: number[]): Promise<CloseChecks | null> {
   const asked = ids.flatMap((id) => {
     const ptyId = instances.get(id)?.ptyId ?? null;
     return ptyId === null ? [] : [{ id, ptyId }];
@@ -594,7 +594,7 @@ async function closeChecks(ids: number[]): Promise<CloseChecks | null> {
 /**
  * pty id로 그 칸의 **레지스트리 id**를 되찾는다. **둘은 다른 번호다** — 레지스트리는 자기
  * 번호를 스스로 발급하고(`openShell`의 주석: 못 뜬 칸에는 pty id라는 것이 아예 없다),
- * 백엔드는 그것을 모른다. 위 `closeCheck`가 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
+ * 백엔드는 그것을 모른다. 위 `fetchCloseCheck`가 반대 방향으로 가는 그 사이를 이쪽으로 잇는다.
  *
  * **모르는 pty id가 실제로 온다.** 이벤트가 오는 사이에 그 칸이 `×`로 닫혔거나 스스로
  * 끝났으면 `ptyId`가 이미 null로 눕혀져 있다. 그때는 `null`이고, 부르는 쪽이 건너뛴다.
@@ -1006,7 +1006,7 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
   if (ids.length === 0) return;
   for (const id of ids) judging.add(id);
   try {
-    const checks = await closeChecks(ids);
+    const checks = await fetchCloseChecks(ids);
     const left: number[] = [];
     for (const id of ids) {
       const shell = terminalStore.state.shells.find((one) => one.id === id);
@@ -1053,7 +1053,7 @@ function showOrphans(mode: Mode): void {
 export async function closeOrphans(modes: ReadonlyArray<Mode>): Promise<void> {
   const live = modes.flatMap((mode) => liveOrphansOf(terminalStore.state, mode));
   if (live.length > 0) {
-    const spawned = await countSpawned(live, closeChecks);
+    const spawned = await countSpawned(live, fetchCloseChecks);
     const body = orphansCloseNotice(live.length, spawned);
     if (!(await askDialog({ title: "주인 잃은 셸 닫기", body, confirm: "모두 닫기", danger: true }))) return;
   }
@@ -1081,7 +1081,7 @@ export function isOrphanedShell(id: number): boolean {
  */
 export async function closeQuietShells(): Promise<void> {
   const shells = terminalStore.state.shells;
-  const quiet = quietShellsOf(shells, await closeChecks(shells.map((shell) => shell.id)));
+  const quiet = quietShellsOf(shells, await fetchCloseChecks(shells.map((shell) => shell.id)));
   if (quiet.length === 0) {
     showAppToast({ id: NO_QUIET_TOAST_ID, text: NO_QUIET_NOTICE });
     return;
@@ -1102,13 +1102,13 @@ function isLiveShell(id: number): boolean {
 /**
  * 화면 밖 셸의 [닫기](티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 이 스토어가 모르는 셸이다. 칸이 없어 `closeShell`을
  * 못 지난다: 스냅샷이 준 pty id를 그대로 닫는다. **묻는 규칙은 셸 탭의 ×와 같다** — 닫기 직전에 그 셸 하나를 물어
- * (`pty_command_running`) 명령이 돌거나 함께 끝날 것이 있으면 같은 창으로 묻는다(`asksBeforeClose` · `closeNotice`).
+ * (`pty_close_check`) 명령이 돌거나 함께 끝날 것이 있으면 같은 창으로 묻는다(`asksBeforeClose` · `closeNotice`).
  * 못 얻으면 안 묻는다 — 사람이 고른 닫기를 모르는 것을 이유로 막지 않는다(`needsCloseConfirm`과 같다).
  *
  * 까닭은 「셸 닫기」이고 주인은 없다(`null`) — 사람이 누른 닫기라 `●`를 켜지 않는다.
  */
 export async function closeOffscreenShell(ptyId: number): Promise<void> {
-  const check = await terminalApi.commandRunning(ptyId).catch(() => null);
+  const check = await terminalApi.closeCheck(ptyId).catch(() => null);
   if (check && asksBeforeClose(check)) {
     if (!(await askDialog({ title: "셸 닫기", body: closeNotice(check), confirm: "닫기", danger: true }))) return;
   }

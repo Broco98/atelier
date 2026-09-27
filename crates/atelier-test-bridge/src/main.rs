@@ -139,7 +139,7 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("pty_write", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_resize", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_kill", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
-    ("pty_command_running", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_close_check", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_close_checks", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_first_input", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     // `Processes` 화면의 스냅샷(티켓 26)도 **그 풀을 읽는다** — 판정이 풀의 셸 목록과 이 실행의 인스턴스 기록을 입력으로

@@ -398,7 +398,7 @@ struct AskedShell {
     foreground: i32,
 }
 
-/// 셸 하나의 닫기 전 물음(`pty_command_running`). 셸 탭의 ×, ⌘W, 셸 메뉴의 닫기가 닫기 직전에 한 번 부른다.
+/// 셸 하나의 닫기 전 물음(`pty_close_check`). 셸 탭의 ×, ⌘W, 셸 메뉴의 닫기가 닫기 직전에 한 번 부른다.
 ///
 /// **배치 물음과 같은 길이다** — 셸 하나를 배치로 묻는다. 셸 하나를 닫을 때와 종료 · 아카이브 확인 창이 셀 때가
 /// 규칙을 따로 들면, 같은 셸이 닫기 창에서는 조용하고 종료 창에서는 무언가 도는 셸이 된다.
@@ -410,7 +410,7 @@ struct AskedShell {
 /// 않는다」고 적혀 있었는데, `adr-04`가 그것을 뒤집었다: 아래 `watch_running`이 명령 판정을 1초마다 재서 프런트
 /// 상태에 얹는다. 그래도 닫기 판정은 **그 순간의 진실**이어야 하고 구독값은 최대 1초 낡았다. 게다가 이제 스냅샷을
 /// 한 장 찍는다 — 1초마다 셸마다 찍을 값이 아니다.
-pub fn command_running(pool: &PtyPool, id: u32) -> Result<CloseCheck, String> {
+pub fn close_check(pool: &PtyPool, id: u32) -> Result<CloseCheck, String> {
     close_checks(pool, &[id]).pop().unwrap_or_else(|| Err(gone(id)))
 }
 
@@ -455,14 +455,14 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
 /// 셋을 한 번에 물은 것과 하나씩 물은 것을 표로 견준다. 못 읽은 셸의 오류는 그 자리에 그대로 둔다.
 fn checks_on(input: &Inputs, asked: Vec<Result<AskedShell, String>>) -> Vec<Result<CloseCheck, String>> {
     let verdict = verdict::judge(input);
-    asked.into_iter().map(|one| one.map(|asked| close_check(&verdict, &asked))).collect()
+    asked.into_iter().map(|one| one.map(|asked| answer_for(&verdict, &asked))).collect()
 }
 
 /// **셸 하나의 답 — 두 물음이 모두 이 하나를 지난다.** 명령이 도는가는 결정 92의 판정 그대로이고, 수에서 셋을
 /// 빼는 것은 `verdict::close_count`가 혼자 한다. foreground 그룹은 명령이 돌 때만 넘긴다 — 프롬프트면 그 그룹은
 /// 셸 자신이고, 잡 제어 밖에서 뜬 자손이 거기 산다. 늘 넘기면 그것이 수에서 빠져 확인 창 없이 함께 끝난다
 /// (`one_snapshot_answers_every_shell_as_if_asked_alone`의 셸 A와 풀 배선 장면 `Ask`가 잰다).
-fn close_check(verdict: &Verdict, asked: &AskedShell) -> CloseCheck {
+fn answer_for(verdict: &Verdict, asked: &AskedShell) -> CloseCheck {
     let command = command_runs(asked.pid, asked.foreground);
     let command_group = if command { u32::try_from(asked.foreground).ok() } else { None };
     CloseCheck { command, descendants: verdict::close_count(verdict, &asked.entry.key, command_group) }
@@ -1431,12 +1431,12 @@ mod tests {
     }
 
     /// 위 판정을 **실제로 딛는가**. 조립부는 살아 있는 pty가 있어야 실행으로 재는데 이
-    /// seam에는 없어서, `command_running`이 늘 `Ok(false)`를 돌려주게 만들어도 위 테스트가
+    /// seam에는 없어서, `close_check`가 늘 `Ok(false)`를 돌려주게 만들어도 위 테스트가
     /// 초록이었다(실측). `spawn`과 같은 방식으로 자리에서 잰다 — 값 둘을 읽어 판정에
     /// 그대로 넘기는지.
     ///
     /// **몸통이 넓어졌다**(티켓 08). 셸 하나의 물음이 배치 물음(`close_checks`)을 지나고, 값 둘을 읽는 자리
-    /// (`asked_of`)와 판정에 넘기는 자리(`close_check`)가 갈렸다. 그래서 핀이 넷이다: 셸 하나가 배치를 지나는가,
+    /// (`asked_of`)와 판정에 넘기는 자리(`answer_for`)가 갈렸다. 그래서 핀이 넷이다: 셸 하나가 배치를 지나는가,
     /// 값 둘을 읽는가, 그 둘을 판정에 그대로 넘기고 수는 `verdict::close_count` 하나로 세는가, 배치가 스냅샷을
     /// **한 장** 찍고 셸 목록은 그 **뒤에** 읽는가(프로세스 스펙 S52).
     ///
@@ -1445,18 +1445,18 @@ mod tests {
     /// 뒤집어도 초록인 것을 실측했다(그러면 죽은 셸이 늘 「명령이 돈다」가 된다). 그 자리는
     /// **살아 있는 pty 없이는 못 잰다** — 풀 배선 장면 `Ask`가 진짜 셸로 잰다. 수를 세는 규칙은
     /// `processes::verdict`의 표가, 배치와 셸 하나가 같은 답을 내는지와 foreground 그룹을 명령이 돌 때만 빼는지는
-    /// 아래 표가 잰다 — `close_check`가 그룹을 늘 넘기도록 바꿔도 이 핀과 판정 표는 초록이었다(실측).
+    /// 아래 표가 잰다 — `answer_for`가 그룹을 늘 넘기도록 바꿔도 이 핀과 판정 표는 초록이었다(실측).
     #[test]
-    fn command_running_hands_both_values_to_the_verdict() {
+    fn close_check_hands_both_values_to_the_verdict() {
         assert!(
-            body_of("pub fn command_running(", "\n}\n").contains("close_checks(pool, &[id])"),
+            body_of("pub fn close_check(", "\n}\n").contains("close_checks(pool, &[id])"),
             "셸 하나의 물음이 배치 물음을 안 지난다 — 닫기 창과 종료 창이 규칙을 따로 든다"
         );
         assert!(
             body_of("fn asked_of(", "\n}\n").contains("process_group_leader()"),
             "터미널을 쥔 그룹을 안 읽는다 — 판정의 한쪽 값이 없다"
         );
-        let check = body_of("fn close_check(", "\n}\n");
+        let check = body_of("fn answer_for(", "\n}\n");
         assert!(
             check.contains("command_runs(asked.pid, asked.foreground)"),
             "값 둘을 그대로 판정에 넘기지 않는다 — 여기서 답을 새로 지으면 위 전수가 헛돈다"
@@ -1485,7 +1485,7 @@ mod tests {
     /// 산다. 셸 B(200)는 입력이 없다 — 자손은 모두 셸 도우미다. 셸 C(300)에서는 claude가 돌고(그 그룹 330과 MCP
     /// 서버), Bash 도구가 dev 서버(340, 제 세션)를 띄웠다. 못 읽은 셸의 오류는 제 자리에 남는다.
     ///
-    /// **foreground 그룹은 명령이 돌 때만 뺀다**(`close_check`) — 그 갈래를 재는 것도 이 표다. A는 프롬프트에 서
+    /// **foreground 그룹은 명령이 돌 때만 뺀다**(`answer_for`) — 그 갈래를 재는 것도 이 표다. A는 프롬프트에 서
     /// 있어 터미널을 쥔 그룹이 셸 자신(100)이다. 그 그룹을 늘 빼면 103이 수에서 빠져 A가 조용한 셸이 되고, 확인 창
     /// 없이 닫히며 103이 함께 끝난다. C의 331(그룹 330)은 명령의 그룹이라 빠진다 — 두 갈래가 한 표에 선다.
     /// 판정 표(`verdict`)는 `close_count`에 그룹을 곧바로 주므로 이 갈래를 못 잰다.
@@ -2419,7 +2419,7 @@ mod tests {
         on_the_pool_side("the_exit_leaves_the_child_named_on_the_exception_list", Scene::ExitKeeping);
     }
 
-    /// **풀 배선 — 닫기 전 물음**(티켓 08 · 프로세스 스펙 P1 · S55). 진짜 zsh로 `command_running`이 확인 창에 줄 답을
+    /// **풀 배선 — 닫기 전 물음**(티켓 08 · 프로세스 스펙 P1 · S55). 진짜 zsh로 `close_check`가 확인 창에 줄 답을
     /// 본다: 사람이 입력하기 전에 뜬 것(셸 도우미)은 수에 안 들고, 입력 뒤에 제 세션으로 떨어진 dev 서버와 잡 제어
     /// 밖에서 셸 자신의 그룹에 뜬 것은 들고, 예외 목록의 이름과 명령 자신(foreground 그룹)은 안 든다. 배치 물음도
     /// 같은 답을 낸다.
@@ -3252,7 +3252,7 @@ mod tests {
             helper = marked().first().map(|p| p.id);
             helper.is_some()
         });
-        let before = super::command_running(pool, id);
+        let before = super::close_check(pool, id);
         let echoed = stamped();
         // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다. 앱처럼 이 풀을 보는
         // 서비스 하나로 두 번 찍는다: 셸 프로세스 자신과 자손의 지표가 서고, CPU%는 둘째 표본부터 선다(티켓 28 — 앞 표본은 서비스가 쥔다).
@@ -3285,7 +3285,7 @@ mod tests {
 
         // (2) 사람이 처음 입력했다. 그 뒤에 dev 서버 모양 하나와, 예외 목록의 이름으로 부른 것 하나와, 잡 제어를
         // 끈 채 뒤로 띄운 것 하나를 띄운다. 마지막 것은 셸 자신의 그룹에 산다 — 프롬프트에서 터미널을 쥔 그룹도
-        // 셸 자신이라, 명령이 없는데 그 그룹을 빼면 이것이 수에서 빠진다(`close_check`가 그룹을 명령이 돌 때만 넘기는
+        // 셸 자신이라, 명령이 없는데 그 그룹을 빼면 이것이 수에서 빠진다(`answer_for`가 그룹을 명령이 돌 때만 넘기는
         // 까닭). 잡 제어는 같은 줄에서 다시 켠다 — (3)의 명령이 제 그룹을 열어야 한다.
         super::note_first_input(pool, id, clock::now_ms()).expect("있는 셸이다");
         std::thread::sleep(Duration::from_millis(5));
@@ -3303,13 +3303,13 @@ mod tests {
             background = sleep_of_shell(true);
             spawned.is_some() && kept.is_some() && background.is_some()
         });
-        let after = super::command_running(pool, id);
+        let after = super::close_check(pool, id);
 
         // (3) 명령이 돈다 — 셸이 터미널을 잡에 넘겼다.
         super::write(pool, id, "/bin/sleep 30\n").expect("셸에 한 줄을 친다");
         let mut during = None;
         wait_until(|| {
-            during = super::command_running(pool, id).ok().filter(|check| check.command);
+            during = super::close_check(pool, id).ok().filter(|check| check.command);
             during.is_some()
         });
         let batch = super::close_checks(pool, &[id, u32::MAX]);

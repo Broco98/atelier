@@ -59,7 +59,7 @@ export const terminalApi = {
   // `onPtyRunning`이 명령 판정을 1초마다 실어 온다. 그래도 **이 자리는 그대로다**: 닫기
   // 판정은 그 순간의 진실이어야 하고 구독값은 최대 1초 낡았다. 묻는 자리는 여전히
   // 닫기 직전 한 번뿐이다(`requestCloseShell`).
-  commandRunning: (id: number) => invoke<CloseCheck>("pty_command_running", { id }),
+  closeCheck: (id: number) => invoke<CloseCheck>("pty_close_check", { id }),
   // 셸 여럿에 같은 것을 **한 번에** 묻는다 — 백엔드는 스냅샷 한 장으로 셸마다 답한다(티켓 08). 종료 확인 창과
   // 아카이브 확인 창이 「(띄운 프로세스 M개 포함)」을 셀 때 부른다. 셸마다 위 물음을 부르면 스냅샷이 셸 수만큼이다.
   //

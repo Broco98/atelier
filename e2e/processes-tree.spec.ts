@@ -254,7 +254,7 @@ test("[이동]을 누르면 그 셸로 가서 포커스가 그 셸의 xterm 입�
 test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫히고, 자손이 있으면 확인 창이 선다", async ({ page }) => {
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷([1, 2], false),
-    pty_command_running: answerByArg("id", {
+    pty_close_check: answerByArg("id", {
       1: { command: false, descendants: 0 },
       2: { command: false, descendants: 2 },
     }),
@@ -270,7 +270,7 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   await expect
     .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args))
     .toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);
-  expect(await callCount(page, "pty_command_running")).toBe(1);
+  expect(await callCount(page, "pty_close_check")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(셸행(page, 1)).toHaveCount(0);
 

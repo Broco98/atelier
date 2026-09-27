@@ -3,7 +3,7 @@
 //! 띄우기 답에 실린 셸 키가 그 셸 env의 표식(`ATELIER_SHELL`)과 같은가(프로세스 스펙 S34 · 티켓 23).
 //!
 //! **왜 여기여야 하나.** 이 저장소의 pty 검사들은 살아 있는 pty가 없어 값과 자리로만
-//! 재고, 그 한계를 스스로 적어 두었다(`pty.rs`의 `command_running_hands_both_values_to_the_verdict`).
+//! 재고, 그 한계를 스스로 적어 두었다(`pty.rs`의 `close_check_hands_both_values_to_the_verdict`).
 //! 심은 값이 **자식 프로세스까지 실제로 내려가는지**는 그 방식으로 못 본다 —
 //! `CommandBuilder`에 적힌 값을 읽는 검사는 크레이트가 그것을 안 넘기게 되는 날 그대로
 //! 초록이다. 여기서 한 번 실행으로 딛는다.

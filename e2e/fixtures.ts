@@ -765,7 +765,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 「명령이 도는가」를 넓혔다). **명령이 도는 답인 것은 물어야 하는 쪽을 태우기 위해서다** — 셸 닫기 확인 창이 이
   // 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다. 수는 0이다: 창의 둘째 줄은 그것을 재는 검사
   // (`close-confirm-count.spec.ts`)가 덮어 세운다.
-  pty_command_running: { command: true, descendants: 0 } satisfies CloseCheck,
+  pty_close_check: { command: true, descendants: 0 } satisfies CloseCheck,
   // 셸 여럿의 닫기 전 물음(티켓 08) — 종료 확인 창과 아카이브 확인 창이 셀 때 **한 번** 부른다. 답은 pty id → 그
   // 셸의 답이고, 답한 셸만 싣는다.
   //
@@ -969,7 +969,7 @@ export interface ModeAnswer {
  * 답**으로 간다 — 이름 표면 `FIXTURE_COMMANDS`의 값, 모드 표면 그 모드의 `value`다.
  *
  * **무엇을 재려고 있는가**: 셸마다 다른 답. 이름 표의 덮어쓰기는 커맨드 이름에 값 하나라, 셸 id를
- * 인자로 받는 커맨드(`pty_command_running`)가 셸 둘에 다른 말을 못 했다(`quit-confirm.spec.ts`의 「세기」
+ * 인자로 받는 커맨드(`pty_close_check`)가 셸 둘에 다른 말을 못 했다(`quit-confirm.spec.ts`의 「세기」
  * 머리말). 「조용한 셸은 닫히고 조용하지 않은 셸은 남는다」를 한 시나리오로 세우려면 이것이 있어야 한다.
  *
  * **무엇을 잘못 쓰면 헛도는가**

@@ -336,7 +336,7 @@ test("세는 동안과 창이 떠 있을 때의 요청은 창을 안 바꾼다",
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   // **세기 한 벌은 물음 한 번이다** — 셸이 둘이어도 한 번에 묻는다. 둘째 요청이 무시되지 않았다면 두 번이 나간다.
   expect(await callCount(page, "pty_close_checks")).toBe(1);
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
 
   // 창이 떠 있을 때의 요청. 통과됐다면 세기가 한 벌 더 나가고, 창이 「아니오」로 접혔다 다시 선다.
   await fireQuitRequest(page);
