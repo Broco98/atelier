@@ -406,7 +406,7 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 27] = [
+    const APP_SOURCES: [(&str, &str); 28] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
@@ -430,6 +430,7 @@ mod tests {
         ("quit.rs", include_str!("../../../src-tauri/src/quit.rs")),
         ("settings.rs", include_str!("../../../src-tauri/src/settings.rs")),
         ("shells.rs", include_str!("../../../src-tauri/src/shells.rs")),
+        ("shells/testkit.rs", include_str!("../../../src-tauri/src/shells/testkit.rs")),
         ("startup.rs", include_str!("../../../src-tauri/src/startup.rs")),
         ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
