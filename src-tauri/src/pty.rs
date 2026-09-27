@@ -1501,6 +1501,11 @@ mod tests {
     /// 있어 터미널을 쥔 그룹이 셸 자신(100)이다. 그 그룹을 늘 빼면 103이 수에서 빠져 A가 조용한 셸이 되고, 확인 창
     /// 없이 닫히며 103이 함께 끝난다. C의 331(그룹 330)은 명령의 그룹이라 빠진다 — 두 갈래가 한 표에 선다.
     /// 판정 표(`verdict`)는 `close_count`에 그룹을 곧바로 주므로 이 갈래를 못 잰다.
+    ///
+    /// **「하나씩 물은 것과 같다」는 값으로 재지 않는다 — 모양이 지킨다.** 셸 하나의 물음은 배치 물음을 지나고(`close_check` —
+    /// `close_check_hands_both_values_to_the_verdict`가 자리로 잰다), 배치는 판정 한 번의 답을 물음마다 같은 함수로 나눈다
+    /// (`checks_on`). 한때 이 표가 같은 입력으로 셋을 한 번에 · 하나씩 돌려 견줬는데, 두 쪽을 같은 함수가 지어 판정 · 답의 규칙이
+    /// 어떻게 틀려도 같았다(변형 「`answer_for`가 그룹을 늘 넘긴다」에서 그 단언은 초록이고 아래 값이 빨갛다). 그래서 셸마다 값을 적어 잰다.
     #[test]
     fn one_snapshot_answers_every_shell_as_if_asked_alone() {
         use crate::processes::verdict::{Inputs, Occasion, ShellEntry};
@@ -1554,19 +1559,14 @@ mod tests {
             Ok(super::AskedShell { entry: entry.clone(), pid, foreground })
         };
         let gone: Result<super::AskedShell, String> = Err(super::gone(9));
-        let questions = vec![asked(&a, 100), asked(&b, 200), asked(&c, 330), gone.clone()];
-
-        let together = super::checks_on(&input, questions.clone());
-        let alone: Vec<_> =
-            questions.into_iter().flat_map(|one| super::checks_on(&input, vec![one])).collect();
+        let questions = vec![asked(&a, 100), asked(&b, 200), asked(&c, 330), gone];
 
         let quiet = |descendants| Ok(super::CloseCheck { command: false, descendants });
         assert_eq!(
-            together,
+            super::checks_on(&input, questions),
             vec![quiet(2), quiet(0), Ok(super::CloseCheck { command: true, descendants: 1 }), Err(super::gone(9))],
             "셸마다 명령과 수가 어긋났다 — A가 1이면 프롬프트인데 셸 자신의 그룹(100)을 명령의 그룹으로 뺐다"
         );
-        assert_eq!(together, alone, "셸 셋을 한 번에 물은 답이 하나씩 물은 답과 다르다");
     }
 
     /// `spawn`의 풀 등록이 읽기 스레드보다 **앞에** 있어야 한다.
