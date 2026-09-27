@@ -1112,7 +1112,9 @@ mod tests {
 /// 사용자의 셸이 함께 있다.
 ///
 /// 판정의 입력은 모두 적어 준다(앱 pid, 물려받은 키 없음, 셸 목록 없음). 검사 프로세스도 설치본 셸의
-/// 표식을 물려받았지만 그 사실에 흔들리지 않게.
+/// 표식을 물려받았지만 그 사실에 흔들리지 않게. **앱 pid는 이 검사를 띄운 쪽(부모)이다** — 자식은 이 검사가 곧바로 띄우는데,
+/// 셸 목록의 키를 문 앱의 자식은 판정이 셸 자신으로 본다(`verdict::judge` — 셸은 앱이 곧바로 띄운다). 이 검사 프로세스는 셸을
+/// 띄우는 쪽이 아니라 셸 밑에서 자식을 띄운 쪽의 자리다. 부모와 그 조상 사슬은 그대로 막힌다.
 #[cfg(all(test, target_os = "macos"))]
 mod real {
     use std::sync::Arc;
@@ -1130,7 +1132,7 @@ mod real {
         let ending = [ShellEntry { key: key.to_string(), process: None, first_input_us: None }];
         let verdict = judge(&Inputs {
             snapshot: &snapshot,
-            run: ThisRun { generation: "test", app_pid: std::process::id(), inherited_key: None },
+            run: ThisRun { generation: "test", app_pid: std::os::unix::process::parent_id(), inherited_key: None },
             shells: &[],
             ending: &ending,
             instances: &[],
