@@ -148,17 +148,40 @@ pub struct Point {
 
 /// **합계의 1시간 고리**(프로세스 결정 10 · S37). 넘치면 가장 오래된 점부터 버린다 — 늘 마지막 `TREND_POINTS`개다. 메모리에만 산다:
 /// 앱을 다시 켜면 빈다.
+///
+/// **한 기준의 합계만 잇는다**(`add`) — 웹뷰(WebContent)를 센 합계와 못 센 합계는 웹뷰만큼(약 1.6GB) 다른 값이라 한 선에 이으면
+/// 없던 오르내림이 선다.
 #[derive(Debug, Default)]
 pub struct Trend {
     points: VecDeque<Point>,
+    /// 고리의 점이 웹뷰를 센 합계다 — 그런 점이 한 번 오면 참이 되고 다시 안 내려간다.
+    counts_webview: bool,
 }
 
 impl Trend {
+    /// 고리 끝에 한 점을 더한다(넘치면 가장 오래된 것부터 버린다). 기준은 가르지 않는다 — 가르는 것은 `add`다.
     pub fn push(&mut self, point: Point) {
         if self.points.len() == TREND_POINTS {
             self.points.pop_front();
         }
         self.points.push_back(point);
+    }
+
+    /// **표본의 합계를 한 점으로 더한다 — 한 기준의 점만**(티켓 30 · S39). `counted_webview`는 그 합계가 웹뷰를 셌는가다.
+    /// - 웹뷰를 센 점이 **처음** 오면 그 앞의 제외 점을 비우고 거기서 선을 시작한다 — 앱이 막 떠 웹뷰를 못 센 점과 이으면 켠 뒤 한
+    ///   시간 동안 없던 상승이 선다.
+    /// - 그 뒤의 제외 표본(그사이 WebContent를 못 읽었다)은 점을 안 넣는다 — 넣으면 없던 하락이 선다. 선이 그만큼 빈다.
+    /// - **한 번도 못 셌으면** 제외 점끼리 잇는다 — macOS 밖이나 웹뷰가 끝내 답을 안 하는 기계에서 추이가 비지 않게.
+    pub fn add(&mut self, point: Point, counted_webview: bool) {
+        match (self.counts_webview, counted_webview) {
+            (false, true) => {
+                self.points.clear();
+                self.counts_webview = true;
+                self.push(point);
+            }
+            (true, false) => {}
+            _ => self.push(point),
+        }
     }
 
     /// 오래된 것부터.
@@ -257,11 +280,12 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl Background {
-    /// 새 표본을 앉힌다. 합계가 있으면 그 때(`at`, 에포크 ms)와 함께 추이 고리에 한 점을 더한다 — 합계를 못 읽은 표본(macOS 밖)은 점이
-    /// 없다.
+    /// 새 표본을 앉힌다. 합계가 있으면 그 때(`at`, 에포크 ms)와 함께 추이 고리에 한 점을 더한다 — **고리가 든 기준의 합계일 때만**
+    /// (`Trend::add` — 웹뷰를 센 합계와 못 센 합계를 한 선에 안 잇는다). 합계를 못 읽은 표본(macOS 밖)은 점이 없다. 점을 안 넣는 장도
+    /// 마지막 장으로는 앉는다.
     pub fn keep(&self, summary: Summary, at: u64) {
         if let Some(total) = summary.total {
-            lock(&self.trend).push(Point { at, total });
+            lock(&self.trend).add(Point { at, total }, !summary.webview_excluded);
         }
         *lock(&self.latest) = Some(summary);
     }
@@ -519,6 +543,42 @@ mod tests {
         background.keep(blank.clone(), 20_000);
         assert_eq!(background.latest(), Some(blank));
         assert_eq!(background.trend(), vec![Point { at: 10_000, total: 600 * MB }], "합계 없는 장이 점을 남겼거나 점이 빠졌다");
+    }
+
+    /// **추이 고리는 한 기준의 합계만 잇는다**(티켓 30 · S39). 웹뷰(WebContent)를 못 센 합계와 센 합계를 한 선에 이으면 웹뷰가 처음
+    /// 셀 때 없던 상승(약 1.6GB)이 서고, 그 점이 한 시간 동안 스파크라인에 남는다. 그래서 웹뷰를 센 점이 처음 오면 그 앞의 제외 점을
+    /// 비우고, 그 뒤 제외 표본(WebContent를 그사이 못 읽었다)은 점을 안 넣는다. **한 번도 못 셌으면** 제외 점끼리 잇는다(macOS 밖 ·
+    /// 웹뷰가 끝내 답을 안 하는 기계 — 추이가 비지 않게). 합계 없는 장은 어느 쪽이든 점이 없다.
+    #[test]
+    fn the_trend_joins_totals_of_one_basis_only() {
+        let sheet = |total: Option<u64>, webview_excluded: bool| Summary {
+            total,
+            cpu: None,
+            app: None,
+            webview_excluded,
+            unknown: vec![],
+            record_head: None,
+        };
+        let point = |at: u64, total: u64| Point { at, total };
+
+        let never = Background::default();
+        never.keep(sheet(Some(400 * MB), true), 10_000);
+        never.keep(sheet(Some(410 * MB), true), 20_000);
+        assert_eq!(never.trend(), vec![point(10_000, 400 * MB), point(20_000, 410 * MB)], "한 번도 못 셌는데 제외 점끼리 안 이었다");
+
+        let counted = Background::default();
+        counted.keep(sheet(Some(400 * MB), true), 10_000);
+        counted.keep(sheet(Some(2_000 * MB), false), 20_000);
+        assert_eq!(counted.trend(), vec![point(20_000, 2_000 * MB)], "웹뷰를 센 첫 점 앞의 제외 점이 남았다 — 없던 상승이 선다");
+        counted.keep(sheet(Some(400 * MB), true), 30_000);
+        counted.keep(sheet(None, false), 40_000);
+        counted.keep(sheet(Some(2_010 * MB), false), 50_000);
+        assert_eq!(
+            counted.trend(),
+            vec![point(20_000, 2_000 * MB), point(50_000, 2_010 * MB)],
+            "웹뷰를 센 뒤의 제외 표본이 점을 넣었다 — 없던 하락이 선다"
+        );
+        assert_eq!(counted.latest(), Some(sheet(Some(2_010 * MB), false)), "점을 안 넣는 장도 마지막 장으로는 앉는다");
     }
 
     /// **배경 미터는 제 박자로 버린다**(티켓 30). 표본 사이가 10초를 조금 넘어도 CPU가 선다 — 화면의 나이(10초)로 버리면 요약의 CPU가
