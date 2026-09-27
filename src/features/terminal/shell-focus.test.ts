@@ -133,11 +133,18 @@ describe("지금 포커스 자리", () => {
   });
 });
 
-// 스토어는 xterm을 들여 노드에서 못 부른다 — 배선은 소스로 못박는다(`shell-registry.test.ts`의 「판정 셋이 실제로
-// 배선돼 있다」와 같은 까닭). 이름이 있는지가 아니라 **표현식을 통째로** 본다.
+// 배선은 소스로도 못박는다(`shell-registry.test.ts`의 「판정 셋이 실제로 배선돼 있다」와 같은 까닭). 이름이 있는지가 아니라
+// **표현식을 통째로** 본다. 스토어를 그대로 돌려 붙음 · 요청 · 닫힘의 순서를 재는 것은 `terminal-store.test.ts`의 「셸로 가는
+// 길의 포커스」다 — 줄 하나가 **다른 자리에** 남아 있으면 소스 핀은 초록이다(열다 터진 셸의 닫힘 줄이 그랬다).
 describe("포커스를 주는 자리가 배선돼 있다", () => {
   const store = readFileSync(fileURLToPath(new URL("./terminal-store.ts", import.meta.url)), "utf8");
   const countOf = (text: string, literal: string) => text.split(literal).length - 1;
+  /** 그 함수의 몸통 — 머리부터 다음 최상위 닫는 괄호까지. 한 줄이 **그 함수 안에** 있는지 본다. */
+  const bodyOf = (text: string, head: string) => {
+    const start = text.indexOf(head);
+    expect(start, `${head}가 스토어에 없다`).toBeGreaterThan(-1);
+    return text.slice(start, text.indexOf("\n}\n", start));
+  };
 
   // 둘뿐이다: 붙는 순간의 한 줄(판정을 지난다)과 요청한 셸이 이미 붙어 있을 때의 한 줄.
   it("xterm에 포커스를 주는 자리가 둘이고, 붙는 순간의 줄은 판정 뒤에 선다", () => {
@@ -146,10 +153,22 @@ describe("포커스를 주는 자리가 배선돼 있다", () => {
     expect(store).toContain("const give = focusOnAttach({ kind, id: instance.id }, pendingFocus, focusPlaceNow());");
   });
 
-  it("붙음 · 떨어짐 · 닫힘이 기다리는 포커스를 고친다", () => {
-    expect(store).toContain('pendingFocus = nextPendingFocus(pendingFocus, { kind: "attached", id: instance.id });');
-    expect(store).toContain('pendingFocus = nextPendingFocus(pendingFocus, { kind: "detached", id });');
-    expect(store).toContain('pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });');
+  it("요청 · 붙음 · 떨어짐 · 닫힘이 기다리는 포커스를 고친다", () => {
+    // 붙지 않은 셸의 요청을 적는 줄(코드 리뷰 스펙 6) — 빠지면 사이에 붙는 셸이 포커스를 가로챈다.
+    expect(bodyOf(store, "export function focusShell(")).toContain(
+      'pendingFocus = nextPendingFocus(pendingFocus, { kind: "request", id, attached });',
+    );
+    expect(bodyOf(store, "function openOrReattach(")).toContain(
+      'pendingFocus = nextPendingFocus(pendingFocus, { kind: "attached", id: instance.id });',
+    );
+    expect(bodyOf(store, "export function detachShell(")).toContain(
+      'pendingFocus = nextPendingFocus(pendingFocus, { kind: "detached", id });',
+    );
+    // 닫힘은 **두 자리**다 — 닫기의 유일한 정리 길과 열다 터진 셸. 한 자리에서 빠져도 다른 자리가 같은 글자를 들어, 파일 전체에서
+    // 찾으면 초록이었다(구현 기록 16의 남은 것).
+    const closed = 'pendingFocus = nextPendingFocus(pendingFocus, { kind: "closed", id: instance.id });';
+    expect(bodyOf(store, "function disposeInstance(")).toContain(closed);
+    expect(bodyOf(store, "function failOpen(")).toContain(closed);
   });
 
   it("여는 두 자리가 사건의 종류를 말한다", () => {

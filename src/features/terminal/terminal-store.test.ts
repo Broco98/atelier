@@ -111,6 +111,7 @@ import { ptyIdOf } from "./shell-key";
 import { NO_SHELLS, topTerminal } from "./shell-registry";
 import {
   attachShell,
+  focusShell,
   openNewShell,
   recalledShell,
   requestCloseShell,
@@ -182,9 +183,12 @@ function hookEvent(shellKey: string, state: Omit<ShellHookState, "subagents" | "
   fake.attention?.([{ shellId: shellKey, state: { subagents: 0, stopped: false, ...state } }]);
 }
 
+/** 화면이 셸의 집을 들일 자리 하나. */
+const 자리 = () => new FakeElement() as unknown as HTMLElement;
+
 /** 화면이 그 셸을 붙여 보여 준다 — `TerminalPane`이 하는 둘(집 들이기 · 보이는 셸 알리기). */
 function showOnScreen(id: number): void {
-  attachShell(new FakeElement() as unknown as HTMLElement, id);
+  attachShell(자리(), id);
   showShell(id);
 }
 
@@ -259,5 +263,52 @@ describe("첫 사람 입력 — 스토어를 거쳐", () => {
     expect(seated.firstInput).not.toBeNull();
     expect(terminalApi.firstInput).toHaveBeenCalledTimes(1);
     expect(terminalApi.firstInput).toHaveBeenCalledWith(ptyIdOf(seated.shellKey!), seated.firstInput);
+  });
+});
+
+describe("셸로 가는 길의 포커스 — 스토어를 거쳐", () => {
+  // 코드 리뷰 스펙 6 · 구현 기록 16의 남은 것. 붙지 않은 셸(다른 탭 · 다른 work의 셸)로 가는 길은 기다리는 포커스를 적어 그 셸이
+  // 붙는 순간 준다(`focusShell`). 그 줄이 빠져도 L3 ②(띠에서 다른 work의 셸)는 초록이었다 — 화면을 옮기면 기다리는 것이 없어도
+  // 붙는 셸이 포커스를 받는다(`focusOnAttach`). 그래서 **사이에 다른 셸이 붙는** 모양으로 잰다: 기다림이 적혔으면 그 셸은 못
+  // 가로챈다.
+  it("붙지 않은 셸에 포커스를 요청하면 그 셸이 붙을 때까지 기다린다 — 사이에 붙는 다른 셸이 가로채지 않는다", async () => {
+    const a = await openShellSpawned();
+    const b = await openShellSpawned();
+
+    focusShell(a.id);
+    // 붙어 있지 않다 — 그 자리에서 줄 곳이 없다.
+    expect(a.term.focused).toBe(0);
+    attachShell(자리(), b.id);
+    expect(b.term.focused, "기다리는 포커스가 안 적혀 사이에 붙은 셸이 가져갔다").toBe(0);
+    attachShell(자리(), a.id);
+    expect(a.term.focused).toBe(1);
+  });
+
+  it("붙어 있는 셸에 요청하면 그 자리에서 준다 — 기다리는 것이 안 남는다", async () => {
+    const a = await openShellSpawned();
+    const b = await openShellSpawned();
+    attachShell(자리(), a.id);
+    const given = a.term.focused;
+
+    focusShell(a.id);
+    expect(a.term.focused).toBe(given + 1);
+    // 기다리는 것이 없으니 뒤에 붙는 셸도 받는다.
+    attachShell(자리(), b.id);
+    expect(b.term.focused).toBe(1);
+  });
+
+  // 기다리던 셸이 닫히면 버린다(프로세스 스펙 S21). 안 버리면 줄 셸이 없는 기다림이 남아 다음에 붙는 셸마다 포커스를 막는다.
+  // 닫기의 유일한 정리 길(`disposeInstance`)이 그 줄을 든다 — 그 줄이 빠지면 여기가 빨개진다(열다 터진 셸의 같은 줄은 다른
+  // 자리라 소스 핀이 못 가른다).
+  it("기다리던 셸이 닫히면 기다림을 버린다 — 다음에 붙는 셸이 포커스를 받는다", async () => {
+    const a = await openShellSpawned();
+    const b = await openShellSpawned();
+
+    focusShell(a.id);
+    await requestCloseShell(a.id);
+    // 앵커: 닫혔다.
+    expect(terminalStore.state.shells.some((one) => one.id === a.id)).toBe(false);
+    attachShell(자리(), b.id);
+    expect(b.term.focused).toBe(1);
   });
 });

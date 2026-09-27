@@ -109,6 +109,23 @@ test("이미 켜진 셸 탭을 다시 누르면 포커스가 그 셸로 온다",
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 최상위 터미널의 셸 탭도 같은 길이다(구현 기록 16의 남은 것 — `/terminal`의 셸 탭 배선을 재는 검사가 없었다). 화면이 둘이라
+// 탭 줄의 처리기도 두 벌이고, 한쪽만 포커스 요청을 잃으면 그 화면에서만 「눌렀는데 키가 안 들어간다」가 된다.
+test("최상위 터미널에서 이미 켜진 셸 탭을 다시 누르면 포커스가 그 셸로 온다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto("/terminal");
+  await awaitSpawned(page, 1);
+  await expectShellFocused(page, "처음 붙은 셸에 포커스가 없다");
+  const lit = page.locator('[data-tab="shell"] button[aria-pressed="true"]');
+  await expect(lit).toHaveCount(1);
+
+  await lit.click();
+
+  await expect(lit).toHaveCount(1);
+  await expectShellFocused(page, "켜진 탭을 누른 뒤 포커스가 셸로 안 돌아왔다");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // ─── 늦게 열린 셸은 입력칸의 포커스를 빼앗지 않는다(스토리 47) ───
 //
 // 셸은 글꼴이 온 뒤에야 열린다(`loadFont`). 그 틈에 사람이 다른 입력칸으로 갔으면 늦게 열린 셸이 그 포커스를 가져가면

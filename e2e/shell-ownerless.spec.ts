@@ -21,6 +21,7 @@ import {
   unknownIpcCalls,
   workRow,
   띠,
+  셸입력,
 } from "./harness";
 
 // 티켓 12 — **MCP로 아카이브 · 삭제된 work의 셸을 앱이 알아서 닫거나 남긴다**(프로세스 결정 4 · 프로세스 스펙 S13 ·
@@ -266,7 +267,12 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
 // 띠의 줄은 누르면 그 work의 터미널로 간다. 주인 잃은 셸의 work은 없다 — **그 work 화면으로 가기 전에** 갈려 `Processes`로
 // 간다(프로세스 스펙 S14 · 티켓 32): 그 화면의 주인 잃은 셸 묶음이 그 셸을 든다. 판 01~03에서는 같은 토스트를 다시 띄우고
 // 화면은 그대로였다.
-test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트는 다시 서지 않는다", async ({ page }) => {
+//
+// **그 셸을 기다리는 포커스도 안 남는다**(구현 기록 16의 남은 것). 셸로 가는 길이 포커스 요청을 주인 잃은 셸 갈림 **앞에** 두면
+// 붙을 화면이 없는 셸에 기다림이 남아, 뒤에 간 터미널의 셸이 붙어도 포커스를 못 받는다(`focusOnAttach`의 첫 줄).
+test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트는 다시 서지 않고, 그 셸을 기다리는 포커스도 안 남는다", async ({
+  page,
+}) => {
   await installFixtureBackend(page, { pty_close_checks: { 1: BUSY } });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -300,6 +306,11 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   // 토스트를 다시 세우지 않는다 — 갈 화면이 생겼다. 앵커: 화면이 옮겨 갔다(위 두 줄).
   await settle(page);
   expect(await toastsNow(page)).toBe(0);
+
+  // 터미널로 돌아가면 그 화면의 셸(pty 2)이 다시 붙으며 포커스를 받는다 — 주인 잃은 셸을 기다리는 것이 없다.
+  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await expect(page).toHaveURL("/terminal");
+  await expect(셸입력(page), "주인 잃은 셸을 기다리는 포커스가 남아 터미널의 셸이 포커스를 못 받았다").toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
