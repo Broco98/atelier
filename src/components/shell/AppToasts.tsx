@@ -1,5 +1,6 @@
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Toast, ToastProvider, ToastTitle, ToastViewport } from "@/components/ui/toast";
 import { appToasts, toastActionsOf } from "./app-toast";
 
@@ -13,7 +14,8 @@ import { appToasts, toastActionsOf } from "./app-toast";
  * 화면의 토스트가 전부 이 자리로 샌다. 이 자리의 토스트는 모듈 매니저(`appToasts`)로만 들어온다.
  *
  * **모양은 앱 토스트 부품의 것이다**(`components/ui/toast.tsx`의 `Toast` · `ToastTitle` · `ToastViewport`) — 표면 · 글자 ·
- * 들고남이 작업 화면의 복사 토스트와 한 정의다. 이 자리가 더하는 것만 여기 있다: 자리, 여럿이 쌓이는 것, 동작 버튼.
+ * 들고남이 작업 화면의 복사 토스트와 한 정의다. 이 자리가 더하는 것만 여기 있다: 자리, 여럿이 쌓이는 것, 동작 버튼. 동작 버튼은
+ * 앱 버튼 부품이다(`Button` secondary · xs — 채운 작은 버튼, 글자만 토스트의 한 단 아래 12px).
  *
  * **자리는 오른쪽 아래다.** 작업 · 아카이브 화면의 복사 토스트는 본문 가운데 아래에 서므로, 기본 창 폭(1280)에서는 두
  * 토스트가 함께 서도 대개 안 겹친다(아주 긴 경로만 닿는다). 좁은 창(최소 900)에서는 가로로 겹친다 — 프로세스 스펙 P2가
@@ -56,14 +58,9 @@ function ToastList() {
         <ToastTitle className="min-w-0 flex-1 leading-[1.5]" />
         {/* 버튼은 동작 토스트에만 선다 — 데이터에 버튼이 없으면 × 도 안 그린다(`toastOptionsOf`). */}
         {actions.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={action.run}
-            className="h-6 shrink-0 rounded-[7px] bg-state-2 px-2.5 text-[12px] font-medium transition-colors outline-none hover:bg-state-3 focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
+          <Button key={action.label} variant="secondary" size="xs" onClick={action.run} className="text-[12px]">
             {action.label}
-          </button>
+          </Button>
         ))}
         {actions.length > 0 && (
           <ToastPrimitive.Close aria-label="닫기" className="icon-button-quiet shrink-0 text-tertiary">
