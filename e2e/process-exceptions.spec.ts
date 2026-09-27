@@ -125,6 +125,52 @@ test("기본 목록을 못 받으면 곧바로 그렇게 적고 칸을 잠그며
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **창으로 돌아와도, 네트워크가 돌아와도 못 받은 기본 목록을 다시 묻지 않는다.** 시간만 돌리는 위 검사는 이 둘을 못 본다 —
+// react-query는 값이 없는 조회를 `staleTime`과 상관없이 낡았다고 보고 창이 다시 보이면(`visibilitychange`) 다시 부른다.
+// 네트워크가 돌아올 때(`online`)도 같은 길인데, 이 조회는 `networkMode: "always"`라 그 기본이 꺼져 있다. 다시 묻는 동안은
+// 실패가 아니라 기다림이라 「읽지 못했어요」가 사라지고 칸은 잠긴 채다 — 위 검사가 막으려는 「칸이 말없이 잠긴다」가 그 동안
+// 선다. 옛 훅(이펙트에서 한 번)은 페이지를 다시 열 때까지 다시 묻지 않았다.
+//
+// 창으로 돌아오기는 웹뷰가 최소화 · 가리기 · 다른 Space에서 돌아올 때 쏘는 `visibilitychange`로 흉내 낸다 — react-query는 창
+// `focus`가 아니라 이것만 듣는다(`focusManager`). 네트워크가 돌아오기는 `offline` 뒤 `online`이다(끊기지 않은 채 `online`만
+// 쏘면 react-query가 바뀐 것이 없다고 본다).
+test("못 받은 기본 목록은 창으로 돌아와도, 네트워크가 돌아와도 다시 묻지 않는다", async ({ page }) => {
+  await page.clock.install();
+  await installFixtureBackend(page, {
+    default_process_exceptions: ipcFailure("기본 목록을 읽지 못했습니다"),
+  });
+  await page.goto("/settings/terminal");
+  const 못받음 = 구획(page).getByText("기본 목록을 읽지 못했어요.", { exact: true });
+  await expect(못받음).toBeVisible();
+
+  await 시계를세운다(page);
+  const asked = await callCount(page, "default_process_exceptions");
+  expect(asked, "기본 목록을 안 물었다").toBeGreaterThan(0);
+
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
+  await page.clock.runFor(1_000);
+  expect(
+    await callCount(page, "default_process_exceptions"),
+    "창으로 돌아오자 못 받은 기본 목록을 다시 물었다",
+  ).toBe(asked);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+  });
+  await page.clock.runFor(1_000);
+  expect(
+    await callCount(page, "default_process_exceptions"),
+    "네트워크가 돌아오자 못 받은 기본 목록을 다시 물었다",
+  ).toBe(asked);
+
+  // 말과 잠김이 그대로다.
+  await expect(못받음).toBeVisible();
+  await expect(목록(page)).toBeDisabled();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **네트워크가 끊겨도 기본 목록을 묻는다** — 기본 목록은 로컬 IPC라 네트워크와 상관이 없다. react-query는 창이 `offline`을
 // 받으면 그 뒤 새로 서는 조회를 부르지 않고 멈춰 두는데(`networkMode`의 기본 `online`), 이 조회가 그 길을 타면 칸은 기본 목록을
 // 모르는 채 잠기고 「읽지 못했어요」도 안 서 사람은 왜 못 고치는지 모른다. 페이지를 떠나면 버리는 조회라(`gcTime: 0`) 설정 ›

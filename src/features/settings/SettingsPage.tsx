@@ -423,8 +423,10 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
  *
  * - **다시 시도하지 않는다**(`retry: false`). 못 받으면 곧바로 「읽지 못했어요」를 적는다 — 웹뷰의 기본(세 번 더, 1 · 2 · 4초
  *   쉼)이면 그 7초 동안 칸이 말없이 잠긴다(L3 `process-exceptions`).
- * - **열려 있는 동안 다시 묻지 않는다**(`staleTime: Infinity` — 창으로 돌아올 때도). 판정이 쓰는 Rust 상수라 앱이 도는 동안
- *   안 바뀐다.
+ * - **열려 있는 동안 다시 묻지 않는다**(`staleTime: "static"` — 창으로 돌아올 때도, 네트워크가 돌아올 때도). 판정이 쓰는
+ *   Rust 상수라 앱이 도는 동안 안 바뀐다. `Infinity`로는 모자란다: react-query는 **값이 없는 조회**(못 받은 것)를
+ *   `staleTime`과 상관없이 낡았다고 봐 창이 다시 보이면 다시 부르고, 그 동안 「읽지 못했어요」가 사라져 칸이 말없이 잠긴다
+ *   (L3 `process-exceptions`). `"static"`은 그 재조회를 값이 있든 없든 건너뛴다.
  * - **페이지를 떠나면 버린다**(`gcTime: 0`). 다시 열면 새로 묻는다 — 못 받았던 것도 그때 다시 묻는다.
  * - **네트워크가 끊겨도 묻는다**(`networkMode: "always"`). 로컬 IPC라 네트워크와 상관이 없다 — 기본(`online`)이면 창이
  *   `offline`을 받은 뒤 여는 페이지마다 조회가 멈춰, 칸이 말없이 잠긴다(L3 `process-exceptions`).
@@ -433,7 +435,7 @@ const defaultExceptionsQuery = queryOptions({
   queryKey: ["settings", "defaultExceptions"],
   queryFn: settingsApi.defaultExceptions,
   retry: false,
-  staleTime: Infinity,
+  staleTime: "static",
   gcTime: 0,
   networkMode: "always",
 });
