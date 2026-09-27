@@ -317,25 +317,33 @@ fn worktree_paths(works_root: &Path, work: &Work) -> Vec<PathBuf> {
     work.projects.iter().map(|p| trees.join(p)).collect()
 }
 
-/// 워크트리마다 (있는가, 더러운가). **`git status`를 부르는 자리가 여기 하나다** — 폴더가 없으면 git을 안 부른다.
-fn tree_states(trees: &[PathBuf]) -> Vec<(bool, bool)> {
+/// 워크트리 하나의 상태 — 목록 조회가 읽어 뷰(`WorktreeView`)에 옮겨 적는 두 칸이다. 이름 없는 `(bool, bool)`로
+/// 다니면 두 칸을 뒤바꿔도 컴파일된다. 와이어 모양은 뷰가 정하고, 이것은 이 모듈 밖으로 안 나간다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TreeState {
+    exists: bool,
+    dirty: bool,
+}
+
+/// 워크트리마다의 상태. **`git status`를 부르는 자리가 여기 하나다** — 폴더가 없으면 git을 안 부른다.
+fn tree_states(trees: &[PathBuf]) -> Vec<TreeState> {
     map_bounded(trees, status_workers(available_cores()), |tree| {
         let exists = tree.is_dir();
-        (exists, exists && git::is_dirty(tree))
+        TreeState { exists, dirty: exists && git::is_dirty(tree) }
     })
 }
 
 fn view_of(
     works_root: &Path,
     work: Work,
-    trees: impl IntoIterator<Item = (PathBuf, (bool, bool))>,
+    trees: impl IntoIterator<Item = (PathBuf, TreeState)>,
 ) -> WorkView {
     let dir = works_root.join(&work.slug);
     let worktrees = work
         .projects
         .iter()
         .zip(trees)
-        .map(|(project, (path, (exists, dirty)))| WorktreeView {
+        .map(|(project, (path, TreeState { exists, dirty }))| WorktreeView {
             project: project.clone(),
             path: collapse_home(&path),
             exists,
@@ -1473,7 +1481,7 @@ mod tests {
             std::fs::write(works.join(tree).join("untracked.txt"), "x").unwrap();
         }
 
-        let listed: Vec<(String, Vec<(String, bool, bool)>)> = list_works(&works)
+        let listed: Vec<(String, Vec<(String, TreeState)>)> = list_works(&works)
             .unwrap()
             .into_iter()
             .map(|v| {
@@ -1484,28 +1492,32 @@ mod tests {
                     .map(|t| {
                         let at = format!("{slug}/trees/{}", t.project);
                         assert!(t.path.ends_with(&at), "{at}의 경로가 다른 자리를 가리킨다: {}", t.path);
-                        (t.project, t.exists, t.dirty)
+                        (t.project, TreeState { exists: t.exists, dirty: t.dirty })
                     })
                     .collect();
                 (slug, trees)
             })
             .collect();
 
-        let tree = |project: &str, exists: bool, dirty: bool| (project.to_string(), exists, dirty);
+        const CLEAN: TreeState = TreeState { exists: true, dirty: false };
+        const DIRTY: TreeState = TreeState { exists: true, dirty: true };
+        // 폴더가 사라진 자리 — git을 안 부르므로 더럽지도 않다.
+        const GONE: TreeState = TreeState { exists: false, dirty: false };
+        let tree = |project: &str, state: TreeState| (project.to_string(), state);
         let expected = vec![
-            ("w-e".to_string(), vec![tree("api", true, false)]),
-            ("w-a".to_string(), vec![tree("fe", true, false), tree("be", true, true), tree("api", true, false)]),
-            ("w-b".to_string(), vec![tree("fe", true, true)]),
-            ("w-c".to_string(), vec![tree("be", false, false), tree("api", true, true)]),
+            ("w-e".to_string(), vec![tree("api", CLEAN)]),
+            ("w-a".to_string(), vec![tree("fe", CLEAN), tree("be", DIRTY), tree("api", CLEAN)]),
+            ("w-b".to_string(), vec![tree("fe", DIRTY)]),
+            ("w-c".to_string(), vec![tree("be", GONE), tree("api", DIRTY)]),
             ("w-d".to_string(), vec![]),
-            ("w-f".to_string(), vec![tree("api", true, true), tree("fe", true, false), tree("be", true, true)]),
-            ("w-g".to_string(), vec![tree("be", true, false)]),
-            ("w-h".to_string(), vec![tree("fe", true, true), tree("api", true, false)]),
+            ("w-f".to_string(), vec![tree("api", DIRTY), tree("fe", CLEAN), tree("be", DIRTY)]),
+            ("w-g".to_string(), vec![tree("be", CLEAN)]),
+            ("w-h".to_string(), vec![tree("fe", DIRTY), tree("api", CLEAN)]),
         ];
         assert_eq!(listed, expected);
 
         // 앵커: 이 픽스처가 상한보다 많은 워크트리를 읽는다(상한은 많아야 8이다).
-        let read = expected.iter().flat_map(|(_, t)| t).filter(|(_, exists, _)| *exists).count();
+        let read = expected.iter().flat_map(|(_, t)| t).filter(|(_, state)| state.exists).count();
         assert!(read > status_workers(usize::MAX), "워크트리 {read}개가 상한 이하다 — 일꾼 하나가 여럿을 읽는 길을 안 탄다");
     }
 
