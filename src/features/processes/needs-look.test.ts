@@ -117,6 +117,17 @@ describe("주인 잃은 셸만 센다 — 화면 밖 셸은 안 켠다(S42)", ()
 });
 
 describe("본 것의 집합", () => {
+  // **본 것의 이름은 저장된다**(localStorage — `looked.ts`). 글자의 모양이 바뀌면 앱을 새 판으로 올린 날 저장된 집합이 하나도 안
+  // 맞아, 사람이 이미 본 주인 잃은 셸 · 출처 불명 · 기록이 모두 새것이 되고 `●`가 다시 선다. 신원 글자는 화면의 신원 열쇠와 한 함수다
+  // (`process-tree.ts`의 `identityKey`) — 그쪽을 고쳐도 여기가 빨개진다.
+  it("본 것 이름의 글자가 그대로다 — shell:셸 키 · unknown:pid@시작 · record:기록 번호", () => {
+    expect(lookablesOf(["G-1"], 요약([{ pid: 500, startedUs: 1_790_000_000_000_500 }], 7))).toEqual([
+      "shell:G-1",
+      "unknown:500@1790000000000500",
+      "record:7",
+    ]);
+  });
+
   it("셸 키 · 신원 · 기록 번호가 같은 글자여도 서로 안 겹친다", () => {
     const seen = 봤다(["7"], 요약());
     expect(needsLook(seen, lookablesOf([], 요약([], 7)))).toBe(true);

@@ -3,6 +3,7 @@ import { instanceGroups, instanceRowLabel, tidyUnknownAsk, type InstanceGroup } 
 import {
   exceptionName,
   identitiesOf,
+  identityKey,
   processLabel,
   processRowLabel,
   processTree,
@@ -89,7 +90,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
   );
 }
 
-const keyOf = ({ row }: ProcessNode) => `${row.id.pid}@${row.id.startedUs}`;
+const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
 /** 네 묶음의 수 — 프로세스를 센다(셸 묶음은 셸을 센다). */
 const processCount = (count: number) => `프로세스 ${count}개`;

@@ -8,6 +8,16 @@ import type { ProcessIdentity, ProcessRow } from "./types";
 // 이 줄을 「자손」으로 부르지 않는다 — 예외 · 고아 · 다른 인스턴스의 줄은 셸의 자손이 아니다(CONTEXT 「예외」 · 「고아」). 셸 · work ·
 // 세계의 층은 `shell-tree.ts`가, 다른 인스턴스를 실행마다 묶는 것과 확인 창의 말은 `process-groups.ts`가 짓고, 둘 다 이 도구를 딛는다.
 
+/**
+ * 신원을 한 글자로 — 집합과 줄의 열쇠. pid만으로는 재사용을 못 가른다(프로세스 결정 3).
+ *
+ * **이 글자는 저장된다.** nav 메타의 본 것(`needs-look.ts`의 `unknown:<신원>`)이 이것으로 짓고 localStorage에 남는다(`looked.ts`).
+ * 모양을 바꾸면 앱을 새 판으로 올린 날 사람이 본 출처 불명이 모두 새것이 되어 `●`가 다시 선다 — `needs-look.test.ts`가 글자를 잡는다.
+ */
+export function identityKey(id: ProcessIdentity): string {
+  return `${id.pid}@${id.startedUs}`;
+}
+
 /** 트리로 편 프로세스 한 줄. 깊이 1이 그 묶음의 맨 위다 — 셸의 자손이면 셸 바로 밑이다. */
 export interface ProcessNode {
   row: ProcessRow;

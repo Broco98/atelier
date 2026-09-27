@@ -5,8 +5,8 @@ import { modeOfOwner, runningOn, shellRowName, slugOfOwner } from "@/features/te
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
 import { ALL_MODES, modeNameOf, navItemsOf, type Mode } from "@/mode";
 import { sumMetrics } from "./metrics";
-import { byStart, processLabel, processTree, withMemory, type ProcessNode } from "./process-tree";
-import type { PoolShell, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
+import { byStart, identityKey, processLabel, processTree, withMemory, type ProcessNode } from "./process-tree";
+import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
 // **`Processes`의 셸 묶음**(프로세스 결정 9 · 10 · 프로세스 스펙 S53 · 티켓 27). 화면은 앱 전체를 세계 → work → 셸 → 자손으로 세운다.
 // 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 셸 · work · 세계 줄의 접근성 이름을 짓는다. 프로세스 한 줄(셸의 자손)을 트리로 펴고
@@ -193,7 +193,8 @@ function unknownPool({ pool, shells }: PoolBeat): PoolShell[] {
   return pool.filter((one) => !known.has(one.shellKey));
 }
 
-function poolKey(pool: PoolShell): string {
+/** 풀의 셸 하나를 한 글자로 — 두 박자를 견주는 열쇠이자 화면 밖 셸 줄의 열쇠. pty id와 셸 키가 함께 같아야 같은 셸이다. */
+export function poolKey(pool: PoolShell): string {
   return `${pool.ptyId}/${pool.shellKey}`;
 }
 
@@ -229,11 +230,6 @@ function groupName(mode: Mode, owner: ShellOwner, listed: ReadonlyArray<ListedIt
  */
 function terminalLabel(mode: Mode): string {
   return navItemsOf(mode).find((item) => item.key === "terminal")?.label ?? "Terminal";
-}
-
-/** 신원을 한 글자로 — 집합의 키. pid만으로는 재사용을 못 가른다(프로세스 결정 3). */
-function identityKey(id: ProcessIdentity): string {
-  return `${id.pid}@${id.startedUs}`;
 }
 
 /**

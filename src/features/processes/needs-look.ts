@@ -1,3 +1,4 @@
+import { identityKey } from "./process-tree";
 import type { ProcessSummary } from "./types";
 
 // **nav 메타의 `●` 판정**(프로세스 결정 11 · 프로세스 스펙 S41 · S42 · 티켓 29). 순수 함수다 — 본 것의 집합과 지금 집합을 받아 점을
@@ -37,8 +38,9 @@ export function ownerlessShellKeys(shells: ReadonlyArray<{ ownerless: boolean; s
 export function lookablesOf(ownerlessKeys: ReadonlyArray<string>, summary: ProcessSummary | undefined): string[] {
   const names = ownerlessKeys.map((key) => `shell:${key}`);
   if (summary === undefined) return names;
-  // 신원은 pid와 시작 시각의 쌍이다 — pid만 쓰면 재사용된 pid의 새 프로세스를 본 것으로 친다.
-  names.push(...summary.unknown.map(({ pid, startedUs }) => `unknown:${pid}@${startedUs}`));
+  // 신원은 pid와 시작 시각의 쌍이다 — pid만 쓰면 재사용된 pid의 새 프로세스를 본 것으로 친다. **이름은 localStorage에 남는
+  // 모양이라 글자를 바꾸지 않는다**(`shell:` · `unknown:` · `record:` 앞말과 신원 글자 — `needs-look.test.ts`가 잡는다).
+  names.push(...summary.unknown.map((id) => `unknown:${identityKey(id)}`));
   if (summary.recordHead !== null) names.push(`record:${summary.recordHead}`);
   return names;
 }

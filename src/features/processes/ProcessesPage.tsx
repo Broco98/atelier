@@ -21,7 +21,7 @@ import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
 import { openProcessesScreen } from "./looked";
 import { endAsk } from "./process-groups";
-import { exceptionName, processLabel, processRowLabel, subtreeAt } from "./process-tree";
+import { exceptionName, identityKey, processLabel, processRowLabel, subtreeAt } from "./process-tree";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
 import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
@@ -37,6 +37,7 @@ import {
   offscreenStateOf,
   ownerlessGroupRowLabel,
   ownerlessGroups,
+  poolKey,
   shellCount,
   shellRowLabel,
   shellStateOf,
@@ -180,7 +181,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
               <div role="tree" aria-label="화면 밖 셸" className="flex flex-col gap-0.5">
                 {offscreen.map((node) => (
                   <ShellRows
-                    key={`${node.pool.ptyId}/${node.pool.shellKey}`}
+                    key={poolKey(node.pool)}
                     node={node}
                     level={1}
                     name={OFFSCREEN_NAME}
@@ -322,7 +323,7 @@ function ShellRows({
         // 보인 표본의 것**이다(이 줄을 그린 스냅샷) — 창이 떠 있는 동안 박자가 새 스냅샷을 가져와도 바뀌지 않는다. 그사이 pid가
         // 재사용됐으면 끝내기가 신호 직전 신원 확인으로 거른다(S4).
         <TreeRow
-          key={`${row.id.pid}@${row.id.startedUs}`}
+          key={identityKey(row.id)}
           level={level + depth}
           label={processRowLabel(row)}
           title={row.command ?? undefined}
