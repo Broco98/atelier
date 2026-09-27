@@ -48,6 +48,7 @@ import {
   type ListedItem,
   type PoolBeat,
   type ShellNode,
+  type ShellProcesses,
   type ShellState,
 } from "./shell-tree";
 import type { PoolShell } from "./types";
@@ -276,7 +277,7 @@ function ShellRows({
   onGo,
   onClose,
 }: {
-  node: Pick<ShellNode, "pool" | "helpers" | "descendants">;
+  node: ShellProcesses;
   level: number;
   name: string;
   state: ShellState;

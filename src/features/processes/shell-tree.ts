@@ -47,14 +47,21 @@ export interface GroupNode {
   shells: ReadonlyArray<ShellNode>;
 }
 
-/** 스토어의 셸 하나와 풀의 그 셸 — 셸 키로 이은 것. */
-export interface ShellNode {
-  shell: Shell;
+/**
+ * 셸 하나의 프로세스 — 풀의 셸(셸 프로세스 자신), 셸 도우미, 사람이 띄운 자손. 스토어의 셸(`ShellNode`)과 화면 밖 셸(`OffscreenNode`)이
+ * 같은 모양으로 들고, 셸 줄의 숫자(`shellTotals`)와 그 밑의 줄들이 이것만 읽는다.
+ */
+export interface ShellProcesses {
   pool: PoolShell;
   /** 셸 도우미(프로세스 스펙 P1) — 시작 순. 셸 행 아래 옅은 줄 하나로 따로 선다. */
   helpers: ReadonlyArray<ProcessRow>;
   /** 사람이 띄운 자손 — 트리를 깊이 우선으로 편 차례이고, 형제는 시작 순이다. 깊이 1이 셸 바로 밑이다. */
   descendants: ReadonlyArray<ProcessNode>;
+}
+
+/** 스토어의 셸 하나와 풀의 그 셸 — 셸 키로 이은 것. */
+export interface ShellNode extends ShellProcesses {
+  shell: Shell;
 }
 
 /**
@@ -138,12 +145,8 @@ export function ownerlessGroups({ current, shells, snapshot }: Pick<TreeInput, "
 
 // ── 화면 밖 셸(티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 화면 스토어가 모르는 셸.
 
-/** 화면 밖 셸 하나 — 스토어의 칸이 없어 풀의 셸과 그 셸 키의 자손만 든다. */
-export interface OffscreenNode {
-  pool: PoolShell;
-  helpers: ReadonlyArray<ProcessRow>;
-  descendants: ReadonlyArray<ProcessNode>;
-}
+/** 화면 밖 셸 하나 — 스토어의 칸이 없어 셸 하나의 프로세스(풀의 셸과 그 셸 키의 자손)만 든다. */
+export type OffscreenNode = ShellProcesses;
 
 /**
  * 스냅샷 한 박자 — 그 스냅샷의 풀과, **그 박자를 처음 그릴 때 스토어가 든 셸**. 화면 밖 셸은 두 박자 모두 스토어가 모른 셸이라
@@ -241,7 +244,7 @@ function terminalLabel(mode: Mode): string {
 function splitRows(
   rows: ReadonlyArray<ProcessRow>,
   helperIds: ReadonlySet<string>,
-): Pick<ShellNode, "helpers" | "descendants"> {
+): Pick<ShellProcesses, "helpers" | "descendants"> {
   const helpers = [...rows].sort(byStart).filter((row) => helperIds.has(identityKey(row.id)));
   const descendants = processTree(rows.filter((row) => !helperIds.has(identityKey(row.id))));
   return { helpers, descendants };
@@ -301,7 +304,7 @@ export function stateText(state: ShellState, now: number): string {
  * 셸 행의 숫자 — **그 셸의 트리 전부**다: 셸 프로세스 자신(판정은 셸을 행으로 안 싣는다 — 풀의 셸이 싣는다), 셸 도우미, 사람이 띄운
  * 자손. 도우미도 셸을 닫으면 함께 끝나는 그 셸의 몫이라 숫자에 든다 — 빠지는 것은 「조용함」과 확인 창의 수뿐이다(P1).
  */
-export function shellTotals(node: Pick<ShellNode, "pool" | "helpers" | "descendants">): ProcessMetrics {
+export function shellTotals(node: ShellProcesses): ProcessMetrics {
   return sumMetrics([
     node.pool.metrics,
     ...node.helpers.map((row) => row.metrics),
