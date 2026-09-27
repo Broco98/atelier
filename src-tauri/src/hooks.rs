@@ -192,22 +192,54 @@ fn strip_claude_ours(list: &mut Vec<Value>) -> bool {
     removed
 }
 
+/// 이벤트마다 우리 훅을 걷는다 — `skip`에 든 이벤트는 건너뛴다. 걷은 것이 있으면 참이다. 병합은 목록 밖 이벤트만(`skip`이
+/// `CLAUDE_EVENTS`), 제거는 모든 이벤트를(`skip`이 빈 목록) 이 하나로 걷는다.
+///
+/// 이벤트 안에서는 `strip_claude_ours`의 규칙 그대로다(이번에 비운 그룹만 함께 걷는다). 그 이벤트를 **이번에 우리가 비웠으면
+/// 키째 걷는다** — 걷은 것이 있는데 배열이 비었으면 우리가 비운 것이다. 사람이 적어 둔 빈 배열 · 배열이 아닌 값은 그대로다.
+/// **남은 키의 차례를 지킨다** — `retain`은 차례를 그대로 두고, `Map::remove`는 끝 키를 비운 자리로 옮겨 사람의 이벤트 차례를
+/// 흩는다(「설치 전 파일로 글자까지 돌아온다」가 우리 것이 끝에 있을 때만 서던 자리다).
+fn strip_ours_from_events(hooks: &mut Map<String, Value>, skip: &[&str]) -> bool {
+    let mut removed = false;
+    hooks.retain(|event, list| {
+        if skip.contains(&event.as_str()) {
+            return true;
+        }
+        let Some(list) = list.as_array_mut() else { return true };
+        let stripped = strip_claude_ours(list);
+        removed |= stripped;
+        !(stripped && list.is_empty())
+    });
+    removed
+}
+
+/// 병합 · 제거가 낸 설정을 글자로. **바뀐 것이 없으면 원문을 글자 그대로 돌려준다** — 그래야 `apply`가 아무것도 안 쓴다. 다시
+/// 적으면 사람이 4칸 들여쓰기로 관리하던 파일이 우리 것이 하나도 안 바뀌었는데도 통째로 다시 쓰이고 `.bak`이 덮인다(git
+/// dotfiles라면 전체가 diff로 뜬다). 바뀌었으면 **파싱 후 재직렬화하되 우리 키 밖은 그대로 싣는다**(`settings.rs`의 왕복 보존이
+/// 선례) — 텍스트로 끼워 넣지 않는 이유는 JSON에 「파일 끝에 덧붙인다」가 없어서다.
+fn serialize_claude(source: &str, root: Map<String, Value>, changed: bool) -> Result<String, String> {
+    if !changed {
+        return Ok(source.to_string());
+    }
+    let mut out = serde_json::to_string_pretty(&Value::Object(root))
+        .map_err(|e| format!("설정을 옮겨 적지 못했습니다: {e}"))?;
+    out.push('\n');
+    Ok(out)
+}
+
 /// 사용자의 `~/.claude/settings.json` 내용을 **지금 목록으로 맞춘** 새 내용 — 처음 까는 것도, 이미 깐 것을 고치는 것(갱신
 /// 모드, 프로세스 결정 15)도 이 함수다. 설치 버튼과 앱이 뜰 때의 맞춤(`sync`)이 같은 병합을 쓴다.
 ///
 /// **순수 함수다** — 파일 내용 문자열을 받아 새 내용 문자열을 낸다. 디스크를 아는 것은
 /// 이 아래 쓰기 층뿐이라, 「남의 훅이 살아남는가」를 실물 홈 없이 표로 잴 수 있다.
 ///
-/// **파싱 후 재직렬화하되 우리 키 밖은 그대로 싣는다**(`settings.rs`의 왕복 보존이 선례).
-/// 텍스트로 끼워 넣지 않는 이유는 JSON에 「파일 끝에 덧붙인다」가 없어서다.
-///
 /// 이벤트마다 우리 그룹이 지금 모양 그대로 하나면 그 자리에 둔다. 아니면 **우리 훅을 걷고 지금 그룹을 그 이벤트의 맨 뒤에 다시
 /// 넣는다** — 옛 python 줄 · `async`가 어긋난 줄 · 판이 옛 줄 · 겹친 줄이 모두 이 길로 지금 줄 하나가 된다. 목록 밖 이벤트에
-/// 앉은 우리 줄은 걷는다. 남의 항목과 그 차례는 그대로다. 옛 「우리 것이 있으면 건너뛴다」는 여기서 끝났다 — 그 규칙으로는
-/// 이미 깐 사람의 명령줄도 `async`도 고칠 길이 없었다.
+/// 앉은 우리 줄은 걷는다(`strip_ours_from_events` — 제거와 같은 걷기). 남의 항목과 그 차례는 그대로다. 옛 「우리 것이 있으면
+/// 건너뛴다」는 여기서 끝났다 — 그 규칙으로는 이미 깐 사람의 명령줄도 `async`도 고칠 길이 없었다.
 ///
-/// **바뀐 것이 없으면 원문을 글자 그대로 돌려준다** — 그래야 `apply`가 아무것도 안 쓴다. 다시 적으면 사람이 4칸 들여쓰기로
-/// 둔 파일이 우리 것이 다 지금 모양인데도 통째로 다시 쓰이고 `.bak`이 덮인다(`unmerge_claude`의 같은 규칙).
+/// **바뀐 것이 없으면 원문을 글자 그대로 돌려준다** — 우리 것이 다 지금 모양인 파일은 다시 안 적힌다(`serialize_claude`, 제거와
+/// 같은 끝).
 ///
 /// **파일에 이 빌드보다 새로운 판의 줄이 있으면 손대지 않는다**(P5) — 새 빌드가 맞춘 것을 옛 목록으로 되돌리지 않는다.
 pub fn merge_claude(source: &str, handler: &Path) -> Result<String, String> {
@@ -220,26 +252,8 @@ pub fn merge_claude(source: &str, handler: &Path) -> Result<String, String> {
     let hooks = hooks
         .as_object_mut()
         .ok_or_else(|| "`hooks`가 객체가 아닙니다 — 손대지 않았습니다".to_string())?;
-    let mut changed = false;
-
-    // 목록 밖 이벤트의 우리 줄을 걷는다. 그 이벤트를 우리가 비웠으면 키째 걷는다 — 차례를 지키는 `shift_remove`다(`remove`는
-    // 끝 키를 그 자리로 옮겨 사람의 이벤트 차례를 흩는다).
-    let mut emptied_events: Vec<String> = Vec::new();
-    for (event, list) in hooks.iter_mut() {
-        if CLAUDE_EVENTS.contains(&event.as_str()) {
-            continue;
-        }
-        let Some(list) = list.as_array_mut() else { continue };
-        if strip_claude_ours(list) {
-            changed = true;
-            if list.is_empty() {
-                emptied_events.push(event.clone());
-            }
-        }
-    }
-    for event in &emptied_events {
-        hooks.shift_remove(event);
-    }
+    // 목록 밖 이벤트의 우리 줄을 걷는다 — 목록의 이벤트는 아래에서 지금 모양인지 보고 고친다.
+    let mut changed = strip_ours_from_events(hooks, CLAUDE_EVENTS);
 
     for event in CLAUDE_EVENTS {
         let want = claude_group(handler, event);
@@ -256,13 +270,7 @@ pub fn merge_claude(source: &str, handler: &Path) -> Result<String, String> {
         changed = true;
     }
 
-    if !changed {
-        return Ok(source.to_string());
-    }
-    let mut out = serde_json::to_string_pretty(&Value::Object(root))
-        .map_err(|e| format!("설정을 옮겨 적지 못했습니다: {e}"))?;
-    out.push('\n');
-    Ok(out)
+    serialize_claude(source, root, changed)
 }
 
 /// Codex에 거는 이벤트. 구현 결정 8의 다섯(Claude와 넷이 겹치고 `Elicitation` 대신 `Interrupt`다 — Codex 훅 목록에
@@ -810,47 +818,22 @@ pub fn unmerge_claude(source: &str) -> Result<String, String> {
 
     let mut root = parse_claude(source)?;
 
-    // **이번 제거가 실제로 걷어낸 것이 있나.** 없으면 원문을 글자 그대로 돌려준다 —
-    // 그러면 `apply`의 `after == before`가 참이 되어 디스크에 손이 안 간다. 이 플래그가
-    // 없으면 비지 않은 파일은 언제나 파싱 후 재직렬화라, 사람이 4칸 들여쓰기로 관리하던
-    // 파일이 **우리 것이 하나도 없어도** 통째로 다시 쓰이고 `.bak`이 뜬다. 우리가 지운 것은
-    // 없는데 남의 파일만 바뀌어 있는 자리다(git dotfiles라면 전체가 diff로 뜬다).
-    // `apply`의 독이 「바뀔 것이 없으면 아무것도 안 쓴다」라고 적고, `unmerge_claude`의 독이
-    // 「codex 쪽은 아무것도 안 쓰는데 같은 층에서 둘이 갈릴 이유가 없다」고 적어 둔 그
-    // 불변조건을 — 말이 아니라 값으로 — 세우는 한 줄이다.
+    // **이번 제거가 실제로 걷어낸 것이 있나.** 없으면 원문을 글자 그대로 돌려준다(`serialize_claude`) — 그러면 `apply`의
+    // `after == before`가 참이 되어 디스크에 손이 안 간다. 이 플래그가 없으면 비지 않은 파일은 언제나 파싱 후 재직렬화라,
+    // 우리 것이 **하나도 없는** 남의 파일이 통째로 다시 쓰이고 `.bak`이 뜬다 — 위 「codex 쪽과 갈릴 이유가 없다」를 말이 아니라
+    // 값으로 세우는 자리다.
     let mut removed = false;
 
     if let Some(hooks) = root.get_mut("hooks").and_then(Value::as_object_mut) {
-        let mut emptied_events: Vec<String> = Vec::new();
-        for (event, list) in hooks.iter_mut() {
-            let Some(list) = list.as_array_mut() else { continue };
-            // 우리 훅을 걷고 이번에 비운 그룹만 함께 걷는다(`strip_claude_ours`). 걷은 뒤 배열이 비었으면 우리가 비운 것이다 —
-            // 처음부터 빈 배열이었으면 걷은 것이 없다.
-            if strip_claude_ours(list) {
-                removed = true;
-                if list.is_empty() {
-                    emptied_events.push(event.clone());
-                }
-            }
-        }
-        // **차례를 지키며 걷는다**(`shift_remove`). `remove`는 끝 키를 비운 자리로 옮겨, 사람의 이벤트 · 키 차례를 흩는다 —
-        // 「설치 전 파일로 글자까지 돌아온다」가 우리 것이 끝에 있을 때만 서던 자리다.
-        for event in &emptied_events {
-            hooks.shift_remove(event);
-        }
-        if !emptied_events.is_empty() && hooks.is_empty() {
+        removed = strip_ours_from_events(hooks, &[]);
+        // `hooks` 구획도 **우리가 비웠을 때만** 걷는다 — 걷은 것이 있는데 비었으면 우리가 비운 것이다. 사람이 적어 둔 빈 `hooks`는
+        // 걷은 것이 없어 그대로다. 차례를 지키는 `shift_remove`다(바깥 키 차례).
+        if removed && hooks.is_empty() {
             root.shift_remove("hooks");
         }
     }
 
-    if !removed {
-        return Ok(source.to_string());
-    }
-
-    let mut out = serde_json::to_string_pretty(&Value::Object(root))
-        .map_err(|e| format!("설정을 옮겨 적지 못했습니다: {e}"))?;
-    out.push('\n');
-    Ok(out)
+    serialize_claude(source, root, removed)
 }
 
 /// 얼마나 깔렸나. **설정 파일을 읽어 판정한다** — 앱은 따로 기억하지 않는다(구현 결정 8).
