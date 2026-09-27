@@ -2,7 +2,7 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
-import { OUTCOME_LABEL, REASON_LABEL, eventKey, eventLabel, loggedAt, targetLabel } from "./cleanup-log";
+import { OUTCOME_LABEL, REASON_LABEL, eventKey, eventKeys, eventLabel, loggedAt, targetLabel } from "./cleanup-log";
 import type { CleanupEvent, CleanupTarget } from "./types";
 
 // 프로세스 티켓 32 — **정리 기록을 사람 말로**(프로세스 결정 6 · 프로세스 스펙 S12). 앱이 무엇을 언제 왜 끝냈는지가 `Processes`의
@@ -85,6 +85,21 @@ describe("사건 한 줄 — 까닭, 대상 수, 때", () => {
   it("줄의 열쇠는 번호와 때다 — 번호 없는 옛 줄끼리도 갈린다", () => {
     expect(eventKey(사건({ id: 0, at: 1 }))).not.toBe(eventKey(사건({ id: 0, at: 2 })));
     expect(eventKey(사건({ id: 7 }))).not.toBe(eventKey(사건({ id: 8 })));
+  });
+
+  // **펼침은 사건에 붙는다**(코드 리뷰 스펙 5) — 기록은 새 사건을 맨 앞에 넣는다. 목록 안 자리를 열쇠에 넣으면 새 사건 하나에 모든
+  // 열쇠가 밀려 펼쳐 둔 사건이 다음 박자에 접힌다.
+  it("목록의 열쇠는 새 사건이 맨 앞에 붙어도 옛 사건의 것이 그대로다", () => {
+    const before = [사건({ id: 3, at: 30 }), 사건({ id: 2, at: 20 }), 사건({ id: 0, at: 5 }), 사건({ id: 0, at: 5 })];
+    const after = [사건({ id: 4, at: 40 }), ...before];
+    expect(eventKeys(after).slice(1)).toEqual(eventKeys(before));
+  });
+
+  // 번호 없는 옛 줄이 같은 ms에 둘이면 번호와 때가 다 같다 — 그때만 겹침 차례를 붙여 가른다. 겹치지 않는 열쇠는 `eventKey` 그대로다.
+  it("겹치는 열쇠에만 겹침 차례를 붙인다", () => {
+    const keys = eventKeys([사건({ id: 3, at: 30 }), 사건({ id: 0, at: 5 }), 사건({ id: 0, at: 5 }), 사건({ id: 0, at: 5 })]);
+    expect(keys).toEqual([eventKey(사건({ id: 3, at: 30 })), "0@5", "0@5#1", "0@5#2"]);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 

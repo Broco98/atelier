@@ -413,6 +413,37 @@ test("정리 기록이 최근 것부터 까닭 · 대상 수 · 때로 서고, �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **펼침은 사건에 붙는다 — 목록 안 자리가 아니다**(코드 리뷰 스펙 5). 기록은 새 사건을 맨 앞에 넣으므로, 자리로 펼침을 들면 사건을 펼쳐
+// 읽는 중에 자손 행 [끝내기]나 배경 기록 하나가 서기만 해도 다음 스냅샷 박자에 저절로 접힌다.
+test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 사건은 그대로 펼쳐져 있다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_cleanup_log: 기록 });
+  await page.goto("/processes");
+  const log = 묶음(page, "정리 기록");
+  const 사건들 = log.getByRole("list", { name: "정리 기록", exact: true }).getByRole("button");
+  await expect(사건들).toHaveCount(3);
+  const 시작정리 = 버튼(log, eventLabel(기록[1]));
+  await 시작정리.click();
+  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
+
+  const 새것: CleanupEvent = {
+    id: 4,
+    at: new Date(2026, 8, 27, 15, 0).getTime(),
+    reason: "manual",
+    shellKey: null,
+    owner: null,
+    targets: [{ pid: 800, name: "node", command: "node server.js", outcome: "ended" }],
+  };
+  await replaceAnswer(page, "processes_cleanup_log", [새것, ...기록]);
+  // 앵커: 새 사건이 맨 위에 섰다 — 기록을 다시 읽은 뒤의 화면이다.
+  await expect(사건들).toHaveCount(4);
+  await expect(사건들.first()).toHaveAttribute("aria-label", eventLabel(새것));
+  await expect(시작정리).toHaveAttribute("aria-expanded", "true");
+  await expect(log.getByText("ruby server.rb --port 4000", { exact: true })).toBeVisible();
+  // 새 사건은 접힌 채로 선다.
+  await expect(사건들.first()).toHaveAttribute("aria-expanded", "false");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 /**
  * 두 세계에 셸을 띄운다 — `그냥 일`에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4). 저절로 뜬
  * 셸은 입력 없이 화면을 떠나면 닫히므로 한 글자씩 친다(`processes-tree.spec.ts`와 같다).

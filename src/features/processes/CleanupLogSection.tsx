@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { eventKey, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
+import { eventKeys, eventLabel, loggedAt, outcomeLabel, reasonLabel, targetLabel } from "./cleanup-log";
 import { useCleanupLog } from "./hooks";
 import { processCount } from "./process-tree";
 import { Section } from "./tree-rows";
@@ -17,9 +17,11 @@ import type { CleanupEvent } from "./types";
  */
 function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
   const { data: events = [] } = useCleanupLog(snapshotAt);
-  // 펼친 사건 — 사건의 열쇠로 든다. 박자마다 새 목록이 와도 펼친 것이 그대로다.
+  // 펼친 사건 — 사건의 열쇠로 든다(`eventKeys` — 목록 안 자리가 아니다). 박자마다 새 목록이 와도, 새 사건이 맨 위에 서도 펼친 것이
+  // 그대로다.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   if (events.length === 0) return null;
+  const keys = eventKeys(events);
 
   const toggle = (key: string) =>
     setOpen((was) => {
@@ -32,8 +34,7 @@ function CleanupLogSection({ snapshotAt }: { snapshotAt: number }) {
     <Section title="정리 기록" note={`기록 ${events.length}건`}>
       <ol aria-label="정리 기록" className="flex flex-col gap-0.5">
         {events.map((event, at) => {
-          // 번호 없는 옛 줄이 같은 ms에 둘이면 열쇠가 겹친다 — 기록이 준 차례를 덧붙여 가른다.
-          const key = `${eventKey(event)}#${at}`;
+          const key = keys[at];
           return <EventRow key={key} event={event} open={open.has(key)} onToggle={() => toggle(key)} />;
         })}
       </ol>

@@ -58,10 +58,27 @@ export function eventLabel(event: CleanupEvent): string {
 
 /**
  * 사건 줄의 열쇠 — 번호와 때다. 번호는 파일 안에서 오르기만 하지만(티켓 29) 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다. 둘 다
- * 같은 줄(번호 없는 옛 줄이 같은 ms에 둘)은 기록이 차례로 준 자리로 가른다 — 화면이 목록 안 차례를 덧붙인다.
+ * 같은 줄(번호 없는 옛 줄이 같은 ms에 둘)은 목록이 겹침 차례로 가른다(`eventKeys`).
  */
 export function eventKey(event: CleanupEvent): string {
   return `${event.id}@${event.at}`;
+}
+
+/**
+ * 목록의 사건마다 열쇠 — 펼침과 줄을 든다. `eventKey`이고, **같은 열쇠가 앞에 이미 섰을 때만** 그 겹침 차례를 붙인다(`#1`, `#2` …).
+ *
+ * 목록 안 자리를 붙이지 않는다: 기록은 새 사건을 맨 앞에 넣으므로(Rust `cleanup_log::add`) 자리를 붙이면 새 사건 하나에 모든 열쇠가
+ * 밀려, 펼쳐 읽던 사건이 다음 박자에 접힌다. 겹치는 것은 번호가 없던 판의 옛 줄이 같은 ms에 둘일 때뿐이고, 그 줄들은 목록 끝에서 제
+ * 차례를 지키므로 겹침 차례도 안 바뀐다.
+ */
+export function eventKeys(events: ReadonlyArray<CleanupEvent>): string[] {
+  const taken = new Map<string, number>();
+  return events.map((event) => {
+    const key = eventKey(event);
+    const before = taken.get(key) ?? 0;
+    taken.set(key, before + 1);
+    return before === 0 ? key : `${key}#${before}`;
+  });
 }
 
 /** 펼친 대상 한 줄 — 「이름, 결과」. 명령줄은 그 밑에 따로 선다(길어서 한 줄에 못 싣는다). */
