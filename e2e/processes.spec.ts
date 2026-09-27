@@ -97,11 +97,15 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
   await page.clock.runFor(10_000);
   expect(await callCount(page, "processes_snapshot")).toBe(left);
 
-  // 앵커: 돌아오면 다시 묻는다 — 멈춘 것은 화면이 떠나서다.
+  // 앵커: 돌아오면 다시 묻는다 — 멈춘 것은 화면이 떠나서다. 돌아온 순간 곧바로 한 번 묻고, **박자를 다시 건다**
+  // (`snapshotQuery` 머리말). 곧바로의 한 번만 세면 박자가 다시 안 서도 초록이라, 그 한 번을 먼저 기다린 뒤 2초를 넘겨
+  // 한 번 더 오는 것을 센다.
   await navButton(page, "Processes").click();
   await expect(title(page)).toBeVisible();
+  await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(left);
+  const returned = await callCount(page, "processes_snapshot");
   await page.clock.runFor(2_000);
-  expect(await callCount(page, "processes_snapshot")).toBeGreaterThan(left);
+  expect(await callCount(page, "processes_snapshot")).toBe(returned + 1);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
