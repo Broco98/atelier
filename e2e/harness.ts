@@ -1471,6 +1471,10 @@ const armHold = ({ command, holdsKey }: { command: string; holdsKey: string }) =
       return invoke(cmd, args, options);
     };
   }
+  // **놓기 전의 두 번째 붙잡기는 던진다.** 새 문이 앞 문을 덮으면 앞 문에 붙잡힌 부름은 놓을 길이 없다 — 놓기는 새 문만 연다.
+  if (Object.prototype.hasOwnProperty.call(gates, command) && gates[command].holding) {
+    throw new Error(`holdCommand(${command})가 아직 붙잡고 있다 — 놓은(releaseCommand) 뒤에 다시 붙잡는다`);
+  }
   let open!: () => void;
   const gate: HoldGate = {
     holding: true,
@@ -1484,6 +1488,9 @@ const armHold = ({ command, holdsKey }: { command: string; holdsKey: string }) =
   };
   gates[command] = gate;
 };
+
+/** 페이지를 열기 전에 초기화 스크립트로 깐 붙잡기의 커맨드들, 페이지마다(`holdCommand`). */
+const armedBeforeOpen = new WeakMap<Page, Set<string>>();
 
 /**
  * 커맨드 하나의 **응답을 붙잡는다**(프로세스 관리 티켓 01) — 「부르러 나갔는데 아직 안 돌아왔다」의 틈을
@@ -1504,12 +1511,24 @@ const armHold = ({ command, holdsKey }: { command: string; holdsKey: string }) =
  *   `callCount`는 붙잡혔던 부름과 새 부름을 **섞어** 센다. 둘을 가르는 것이 `heldCalls` · `callsSinceRelease`다.
  * - 연 뒤에 붙잡으면 **그 전에 나가 아직 안 돌아온 부름**은 어느 수에도 안 든다. 붙잡기 전에 화면이 멎었는지
  *   (앵커) 먼저 본다.
- * - 놓은 뒤로는 다시 안 붙잡는다. 다시 붙잡으려면 이 함수를 또 부른다 — 수가 0부터 다시 선다.
+ * - 놓은 뒤로는 다시 안 붙잡는다. 다시 붙잡으려면 이 함수를 또 부른다 — 수가 0부터 다시 선다. **놓기 전에** 같은
+ *   커맨드로 또 부르면 던진다: 새 문이 앞 문을 덮으면 앞 문에 붙잡힌 부름이 영영 안 풀린다.
  */
 export async function holdCommand(page: Page, command: string): Promise<void> {
   const arg = { command, holdsKey: HOLDS_KEY };
-  if (page.url() === "about:blank") await page.addInitScript(armHold, arg);
-  else await page.evaluate(armHold, arg);
+  if (page.url() !== "about:blank") {
+    await page.evaluate(armHold, arg);
+    return;
+  }
+  // 열기 전에는 페이지 안에 문이 아직 없어 거기서 못 가른다 — 여기서 센다. 초기화 스크립트가 같은 커맨드로 둘 깔리면
+  // 뜰 때마다 뒤 것이 페이지 안에서 던진다(`armHold`).
+  const armed = armedBeforeOpen.get(page) ?? new Set<string>();
+  if (armed.has(command)) {
+    throw new Error(`holdCommand(${command})를 페이지를 열기 전에 이미 깔았다 — 놓은(releaseCommand) 뒤에 다시 붙잡는다`);
+  }
+  armed.add(command);
+  armedBeforeOpen.set(page, armed);
+  await page.addInitScript(armHold, arg);
 }
 
 /** 그 커맨드의 문에서 한 값을 읽거나 문을 연다. 안 깔았으면 던진다 — 없는 문을 0으로 읽지 않는다. */

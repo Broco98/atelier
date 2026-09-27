@@ -227,6 +227,39 @@ test("(2) 페이지가 뜬 뒤에 붙잡으면 그때부터 붙잡는다 — 갈
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 놓기 전에 같은 커맨드를 또 붙잡으면 문이 새로 서서, 앞 문에 붙잡힌 부름은 놓을 길이 없다 — 놓기(`releaseCommand`)는 새
+// 문만 연다. 그 부름을 기다리는 화면은 영영 안 서고, 검사는 러너의 제한 시간에서야 엉뚱한 줄로 빨개진다.
+test("(2) 놓기 전에 같은 커맨드를 다시 붙잡으면 던지고 앞 문은 그대로다 — 놓은 뒤에는 다시 붙잡는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await holdCommand(page, "list_projects");
+  // 페이지를 열기 전에도 던진다 — 초기화 스크립트가 둘 깔리면 뜰 때마다 뒤 것이 앞 문을 덮는다.
+  await expect(holdCommand(page, "list_projects")).rejects.toThrow("list_projects");
+  // 다른 커맨드는 따로 붙잡는다.
+  await holdCommand(page, "list_works");
+  await page.goto(`/projects/${project.slug}`);
+  await expect.poll(() => heldCalls(page, "list_projects")).toBeGreaterThan(0);
+  const held = await heldCalls(page, "list_projects");
+
+  await expect(holdCommand(page, "list_projects")).rejects.toThrow("list_projects");
+  // 앞 문이 그대로다 — 놓으면 붙잡혔던 부름이 풀려 화면이 선다.
+  expect(await heldCalls(page, "list_projects")).toBe(held);
+  await releaseCommand(page, "list_projects");
+  await expect(projectRow(page)).toBeVisible();
+  expect(await callCount(page, "list_projects")).toBe(held);
+
+  // 놓은 뒤에는 다시 붙잡는다 — 수가 0부터 선다(`holdCommand` 머리말).
+  await holdCommand(page, "list_projects");
+  expect(await heldCalls(page, "list_projects")).toBe(0);
+  await fireEvent(page, "projects:changed", null);
+  await expect.poll(() => heldCalls(page, "list_projects")).toBe(1);
+  expect(await callCount(page, "list_projects")).toBe(held);
+  await releaseCommand(page, "list_projects");
+  await expect.poll(() => callCount(page, "list_projects")).toBe(held + 1);
+
+  await releaseCommand(page, "list_works");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // ─── (3) 인자별 답 · (4) 답 바꾸기 ───
 
 /**
