@@ -1,4 +1,5 @@
 import { Store } from "@tanstack/react-store";
+import { readStored, writeStored } from "@/lib/stored";
 import { seenWith } from "./needs-look";
 
 // **「봤다」의 재료가 사는 자리**(프로세스 스펙 S41 · 티켓 29) — 본 것의 집합과, 지금 `Processes` 화면이 열려 있는가. 점을 켤지는 순수
@@ -8,7 +9,7 @@ import { seenWith } from "./needs-look";
 // **본 것의 집합은 앱을 껐다 켜도 남는다**(localStorage). 정리 기록은 실행을 넘어 남는다(최근 100건) — 본 것을 실행마다 잊으면 지난주의
 // 자동 기록 하나가 앱을 켤 때마다 점을 다시 켠다. 그것이 S41이 막으려던 「점이 늘 켜진다」다. 셸 키는 실행마다 새로 서니 남아도 해가
 // 없고, 집합은 상한에서 잘린다(`SEEN_CAP`). 저장이 안 되는 자리(사생활 모드처럼 접근이 던지는 저장소)에서는 이번 실행 동안만 기억한다
-// — 여기서 던지면 그 편의 때문에 사이드바가 죽는다(`shell-store.ts`의 저장 문과 같은 규칙).
+// — 여기서 던지면 그 편의 때문에 사이드바가 죽는다. 저장소를 만지는 문은 셸 스토어와 같은 둘이다(`lib/stored.ts`).
 
 const SEEN_KEY = "processes-seen";
 
@@ -46,19 +47,17 @@ export function markSeen(now: ReadonlyArray<string>): void {
 
 /** 저장해 둔 본 것. 없거나 모양이 아니면 빈 집합이다 — 모르는 값을 본 것으로 치면 새것을 못 가린다. */
 function readSeen(): ReadonlyArray<string> {
+  const stored = readStored(SEEN_KEY);
+  if (stored === null) return [];
   try {
-    const stored = typeof localStorage === "undefined" ? null : localStorage.getItem(SEEN_KEY);
-    const parsed: unknown = stored === null ? [] : JSON.parse(stored);
+    const parsed: unknown = JSON.parse(stored);
     return Array.isArray(parsed) && parsed.every((name) => typeof name === "string") ? parsed : [];
   } catch {
     return [];
   }
 }
 
+/** 본 것을 적는다. 적어 두지 못하면 다음 실행에 한 번 더 점이 설 뿐이다. */
 function writeSeen(seen: ReadonlyArray<string>): void {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(SEEN_KEY, JSON.stringify(seen));
-  } catch {
-    // 적어 두지 못하면 다음 실행에 한 번 더 점이 설 뿐이다.
-  }
+  writeStored(SEEN_KEY, JSON.stringify(seen));
 }
