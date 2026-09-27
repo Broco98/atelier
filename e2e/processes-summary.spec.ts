@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "./evidence";
 import { BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, shellKeyOf, WORKS } from "./fixtures";
 import {
+  archiveByMcp,
   awaitSpawned,
   callCount,
   fireAttention,
-  fireEvent,
   installFixtureBackend,
   navButton,
   openShell,
@@ -92,8 +92,7 @@ test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주�
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now() }, 1);
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit", at: Date.now() }, 2);
   // MCP가 그 work을 아카이브했다 — 목록에서 빠지고 감시자의 이벤트가 온다. 두 셸은 주인 잃은 셸로 남는다.
-  await replaceAnswer(page, "list_works", WORKS.filter((one) => one.slug !== plainWork.slug), "atelier");
-  await fireEvent(page, "works:changed", null);
+  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   await navButton(page, "Processes").click();

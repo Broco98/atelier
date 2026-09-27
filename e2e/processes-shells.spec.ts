@@ -1,10 +1,10 @@
 import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
+  archiveByMcp,
   awaitSpawned,
   bodyLines,
   callCount,
-  fireEvent,
   installFixtureBackend,
   ipcCallArgs,
   kills,
@@ -19,8 +19,6 @@ import {
 } from "./harness";
 import { eventLabel } from "@/features/processes/cleanup-log";
 import type { CleanupEvent, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
-import type { WorkView } from "@/features/works/types";
-import type { Mode } from "@/mode";
 
 // 프로세스 티켓 32 — **`Processes`에서 주인 잃은 셸 · 화면 밖 셸 · 정리 기록을 보고 쌓인 셸을 치운다**(프로세스 결정 4 · 6 · 9 ·
 // 프로세스 스펙 S12 · S42 · S44 · P1, 스토리 89 · 90 · 94 · 96 · 97).
@@ -69,12 +67,6 @@ async function settle(page: Page): Promise<void> {
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
-}
-
-/** **MCP가 그것을 아카이브했다** — 그 세계의 목록 답에서 slug를 빼고 `works:changed`를 쏜다(`shell-ownerless.spec.ts`와 같다). */
-async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
-  await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
-  await fireEvent(page, "works:changed", null);
 }
 
 /**

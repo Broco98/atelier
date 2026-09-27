@@ -1,10 +1,9 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { BUSY_SHELL, MAISON_LANDING_ROOM, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
-import type { WorkView } from "@/features/works/types";
-import type { Mode } from "@/mode";
 import type { StartupReport } from "@/components/shell/startup-report";
 import {
+  archiveByMcp,
   awaitSpawned,
   bodyLines,
   callCount,
@@ -21,7 +20,6 @@ import {
   openShell,
   processesTitle,
   releaseCommand,
-  replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
   workRow,
@@ -91,15 +89,6 @@ async function twoShells(page: Page, path: string): Promise<void> {
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-}
-
-/**
- * **MCP가 그것을 아카이브했다** — 그 세계의 목록 답에서 slug를 빼고 `works:changed`를 쏜다. 목록을 쥔 코어는 다른
- * 프로세스(MCP 서버)가 바꿨고, 앱은 감시자의 이벤트로만 안다.
- */
-async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
-  await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
-  await fireEvent(page, "works:changed", null);
 }
 
 test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 닫히고, 조용하지 않은 셸은 남아 토스트가 선다", async ({

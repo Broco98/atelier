@@ -16,6 +16,7 @@ import {
   type Incrementing,
   type ModeAnswer,
 } from "./fixtures";
+import type { WorkView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 
 // 공식 mocks의 CJS 빌드는 의존성이 없는 자립 스크립트다. 그 텍스트를 브라우저
@@ -727,6 +728,20 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
     { handlers: [...live.values()], event, payload },
   );
   return live.size;
+}
+
+/**
+ * **MCP가 그 work(Room)들을 아카이브했다** — 그 세계의 목록 답(`list_works`)에서 slug를 빼고 `works:changed`를 쏜다(프로세스 티켓
+ * 12). 목록을 쥔 코어는 다른 프로세스(MCP 서버)가 바꿨고, 앱은 감시자의 이벤트 뒤의 목록 재조회로만 안다 — 그래서 이 층의 흉내는
+ * 답을 갈고(`replaceAnswer`) 그 이벤트를 쏘는 것이다. 새 답은 `list`에서 `slugs`를 뺀 것이다 — 앞서 뺀 slug도 계속 빠져 있어야
+ * 하면 다시 준다(답을 통째로 갈므로).
+ *
+ * **떠나는 화면이 서 있을 때 부르지 않는다.** 목록에서 slug가 빠지면 그 work을 보던 화면은 다른 work으로 옮겨 가므로
+ * (`-works-view.tsx`의 정규화), 도착을 본 **뒤에** 부른다(`shell-ownerless.spec.ts`의 `arrived`).
+ */
+export async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
+  await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
+  await fireEvent(page, "works:changed", null);
 }
 
 /** 사이드바의 그 작업 행(UI개선 티켓 05) — 끄는 자리이자 놓일 기준이다. */
