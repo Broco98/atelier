@@ -7,7 +7,7 @@ import { foldHookState } from "./agents";
 import {
   applySignal,
   attentionOn,
-  NO_HOOK_COUNTS,
+  NO_HOOK_TURN,
   bandRows,
   callingShells,
   inferApproval,
@@ -671,7 +671,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   };
 
   it.each(["osc", "bell"] as const)("%s가 와도 그대로다 — 같은 객체다", (source) => {
-    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source, null, NO_HOOK_COUNTS);
+    const 그대로 = applySignal(훅이말한것, { event: "start", message: null }, 200, source, null, NO_HOOK_TURN);
     expect(그대로).toBe(훅이말한것);
   });
 
@@ -679,7 +679,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   // 사용자에게 이 판이 통째로 없는 것이 된다.
   it("훅이 안 온 셸은 OSC가 바꾼다", () => {
     const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
-    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc", null, NO_HOOK_COUNTS)).toEqual({
+    expect(applySignal(osc가말한것, { event: "start", message: null }, 200, "osc", null, NO_HOOK_TURN)).toEqual({
       kind: "working",
       message: "커밋할까요?",
       since: 200,
@@ -699,14 +699,14 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
   it("OSC가 말하던 셸에 훅이 오면 훅이 이긴다", () => {
     const osc가말한것: Attention = { ...훅이말한것, source: "osc", agent: null };
     expect(
-      applySignal(osc가말한것, { event: "stop", message: null }, 200, "hook", "claude", NO_HOOK_COUNTS)?.source,
+      applySignal(osc가말한것, { event: "stop", message: null }, 200, "hook", "claude", NO_HOOK_TURN)?.source,
     ).toBe("hook");
   });
 
   // 벨과 OSC의 완료는 **`stop`으로 들어온다**(`shell-osc.ts`) — 프로세스 결정 13이 확인할 것을 턴의 끝(`stop`)에 두고
   // `end`를 「지우는 사건」으로 바꿨으므로, 옛 표대로 `end`를 쓰면 벨이 아무것도 못 세운다.
   it("아무것도 안 온 셸은 벨이 바꾼다", () => {
-    expect(applySignal(null, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_COUNTS)?.kind).toBe("done");
+    expect(applySignal(null, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_TURN)?.kind).toBe("done");
   });
 
   // **훅 없는 Codex 셸의 앰버를 푸는 것은 출력이다**(스펙 전이 표의 마지막 줄 · 구현 스펙
@@ -769,7 +769,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     ["벨", { event: "stop", message: null }, "bell", "done"],
   ] as const)("에이전트가 사라진 뒤에는 다시 말한다 — %s", (_이름, signal, source, kind) => {
     const 남은것 = nextOnRunning(훅이세운확인할것, "claude", "zsh", 150);
-    const 말한뒤 = applySignal(남은것, signal, 200, source, null, NO_HOOK_COUNTS);
+    const 말한뒤 = applySignal(남은것, signal, 200, source, null, NO_HOOK_TURN);
     expect(말한뒤?.kind).toBe(kind);
     expect(말한뒤?.since).toBe(200);
     expect(말한뒤?.source).toBe(source);
@@ -779,7 +779,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     const 도는중: Attention = { ...훅이말한것, kind: "working" };
     const 지워진것 = nextOnRunning(도는중, "claude", null, 150);
     expect(지워진것).toBeNull();
-    expect(applySignal(지워진것, { event: "stop", message: "PR #174 열었다" }, 200, "osc", null, NO_HOOK_COUNTS)?.kind).toBe(
+    expect(applySignal(지워진것, { event: "stop", message: "PR #174 열었다" }, 200, "osc", null, NO_HOOK_TURN)?.kind).toBe(
       "done",
     );
   });
@@ -793,8 +793,8 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     for (const 그것 of [훅이말한것, 훅이세운확인할것]) {
       const 그대로 = nextOnRunning(그것, before, after, 150);
       expect(그대로).toBe(그것);
-      expect(applySignal(그대로, { event: "waiting", message: "Bash(git push)", dialog: null }, 200, "osc", null, NO_HOOK_COUNTS)).toBe(그것);
-      expect(applySignal(그대로, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_COUNTS)).toBe(그것);
+      expect(applySignal(그대로, { event: "waiting", message: "Bash(git push)", dialog: null }, 200, "osc", null, NO_HOOK_TURN)).toBe(그것);
+      expect(applySignal(그대로, { event: "stop", message: null }, 200, "bell", null, NO_HOOK_TURN)).toBe(그것);
     }
   });
 
@@ -803,7 +803,7 @@ describe("훅이 말한 셸에서는 OSC·벨·출력이 아무것도 못 바꾼
     const 남은것 = nextOnRunning(훅이세운확인할것, "claude", null, 150);
     const 새턴 = nextAttention(남은것, hook("claude", "UserPromptSubmit", { prompt: "다시" }, { at: 300 }));
     expect(새턴?.source).toBe("hook");
-    expect(applySignal(새턴, { event: "stop", message: "PR #174 열었다" }, 400, "osc", null, NO_HOOK_COUNTS)).toBe(새턴);
+    expect(applySignal(새턴, { event: "stop", message: "PR #174 열었다" }, 400, "osc", null, NO_HOOK_TURN)).toBe(새턴);
   });
 });
 
@@ -1016,8 +1016,8 @@ describe("승인 추론 — 프로세스 결정 13 · P7", () => {
   it("승인한 도는 중에는 OSC · 벨이 아무것도 못 바꾼다 — 권위가 그대로다", () => {
     const 도는중 = 누름(기다림, "approve");
     expect(도는중?.source).toBe("hook");
-    expect(applySignal(도는중, { event: "waiting", message: "Approval requested", dialog: null }, 800, "osc", null, NO_HOOK_COUNTS)).toBe(도는중);
-    expect(applySignal(도는중, { event: "stop", message: null }, 800, "bell", null, NO_HOOK_COUNTS)).toBe(도는중);
+    expect(applySignal(도는중, { event: "waiting", message: "Approval requested", dialog: null }, 800, "osc", null, NO_HOOK_TURN)).toBe(도는중);
+    expect(applySignal(도는중, { event: "stop", message: null }, 800, "bell", null, NO_HOOK_TURN)).toBe(도는중);
   });
 
   // 에이전트를 가리지 않는다 — codex의 승인 요청도 훅이 말한 기다림이다. 말한 에이전트는 그대로 싣는다.
@@ -1103,7 +1103,7 @@ describe("에이전트 사라짐 — 프로세스 결정 12", () => {
   });
 
   // **`end`와 같다**를 줄마다 옮겨 적지 않고 견준다 — 멈추지 않은 세션 끝(`stopped: false`)이 그 짝이다. 사라짐은 멈춤을
-  // 모른다(`NO_HOOK_COUNTS`): 서브에이전트가 돌던 멈춘 턴도 프로세스가 사라졌으면 도는 것이 없다.
+  // 모른다(`NO_HOOK_TURN`): 서브에이전트가 돌던 멈춘 턴도 프로세스가 사라졌으면 도는 것이 없다.
   it.each([
     ["도는 중", 직전],
     ["서브에이전트가 도는 멈춘 턴", { ...직전, subagents: 2 }],
@@ -1619,7 +1619,7 @@ it("터미널에서 시간을 아는 파일은 넷뿐이다 — 상태 축엔 �
 // (전이에만 쓴다). **아홉째가 기다림이 선 창이다**(티켓 25 리뷰 반영) — 키가 올 때 승인 추론이 그 기다림이 권한 창인지
 // 물어야 해서 기다림이 선 뒤에도 들고 있는다.
 it("상태에 든 칸은 정확히 아홉이다", () => {
-  const 상태값 = applySignal(null, { event: "waiting", message: "물음", dialog: "question" }, 10, "hook", "claude", NO_HOOK_COUNTS);
+  const 상태값 = applySignal(null, { event: "waiting", message: "물음", dialog: "question" }, 10, "hook", "claude", NO_HOOK_TURN);
   expect(Object.keys(상태값 ?? {}).sort()).toEqual([
     "agent",
     "dialog",

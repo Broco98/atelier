@@ -109,12 +109,15 @@ export interface Attention {
 }
 
 /**
- * 사건이 싣고 오는 **서브에이전트와 멈춤의 값** — 어댑터는 이것을 안 읽는다: 어느 훅 이름이 무슨 일인가(정규 이벤트)와
- * 「지금 서브에이전트가 몇이고 턴이 멈췄고 이 사건은 어느 서브에이전트가 냈나」는 다른 사실이고, 뒤쪽은 에이전트를
- * 가리지 않는다. 수와 멈춤은 처리기가 접어 상태 파일에 적고(프로세스 스펙 S50 · S51), 낸 서브에이전트는 페이로드의
- * `agent_id`다(`agents/payload.ts`의 `subagentOf` — 처리기가 수를 접을 때 읽는 그 칸이다).
+ * 사건이 싣고 오는 **그 턴의 형편** — 도는 서브에이전트 수, 이 사건을 낸 서브에이전트, 턴이 멈췄나. 어댑터는 이것을 안
+ * 읽는다: 어느 훅 이름이 무슨 일인가(정규 이벤트)와 「지금 서브에이전트가 몇이고 턴이 멈췄고 이 사건은 어느 서브에이전트가
+ * 냈나」는 다른 사실이고, 뒤쪽은 에이전트를 가리지 않는다. 수와 멈춤은 처리기가 접어 상태 파일에 적고(프로세스 스펙 S50 ·
+ * S51), 낸 서브에이전트는 페이로드의 `agent_id`다(`agents/payload.ts`의 `subagentOf` — 처리기가 수를 접을 때 읽는 그 칸이다).
+ *
+ * 이름이 「수」가 아닌 까닭: 세 칸 가운데 수는 하나뿐이다(코드 리뷰 표준 40). 「사실」도 아니다 — 이 모듈에서 사실은 셸
+ * 상태(`Attention`)이고, 이것은 그 사실을 접을 때 곁에 오는 값이다.
  */
-export interface HookCounts {
+export interface HookTurn {
   /** 도는 서브에이전트 수. */
   subagents: number;
   /** 이 사건을 낸 서브에이전트의 id. 본 에이전트가 냈으면 `null`이다(`Attention.subagentId`). */
@@ -131,7 +134,7 @@ export interface HookCounts {
  * (기본값) 훅 길에서 이 값을 빠뜨려도 조용히 통과하고, 그 결과는 「서브에이전트가 도는데 확인할 것」이라
  * 화면에서 티가 안 난다. 그래서 `agent`처럼 **늘 넘기는 자리**이고, 모르는 쪽은 이 이름을 적는다.
  */
-export const NO_HOOK_COUNTS: HookCounts = { subagents: 0, subagentId: null, stopped: false };
+export const NO_HOOK_TURN: HookTurn = { subagents: 0, subagentId: null, stopped: false };
 
 /**
  * 「오류로 끝남」 — API 오류로 끝난 턴의 말 머리(프로세스 스펙 S57). 메시지 자리에 서고, 오류 상세의 첫 줄(없으면
@@ -206,8 +209,8 @@ export function applySignal(
    * 그 결과는 초록 행에서 마크가 사라지는 것뿐이라 화면에서 티가 안 난다.
    */
   agent: string | null,
-  /** 사건이 실어 온 수 · 낸 서브에이전트 · 멈춤. 훅 밖의 길은 `NO_HOOK_COUNTS`를 적는다(그 머리말). */
-  counts: HookCounts,
+  /** 사건이 실어 온 턴의 형편 — 수 · 낸 서브에이전트 · 멈춤. 훅 밖의 길은 `NO_HOOK_TURN`을 적는다(그 머리말). */
+  turn: HookTurn,
 ): Attention | null {
   if (prev !== null && prev.source === "hook" && (source === "osc" || source === "bell")) return prev;
 
@@ -222,8 +225,8 @@ export function applySignal(
       seen: false,
       source,
       agent,
-      subagents: counts.subagents,
-      subagentId: counts.subagentId,
+      subagents: turn.subagents,
+      subagentId: turn.subagentId,
       // 창은 기다림만 싣는다 — 다른 사실은 창이 닫힌 뒤다.
       dialog: signal.event === "waiting" ? signal.dialog : null,
     });
@@ -234,14 +237,14 @@ export function applySignal(
     case "tool":
       // **다른 에이전트의 도구는 기다림을 안 푼다**(머리말의 `tool` 칸). 새 사실이 아니라 시각도 「봤다」도 그대로이고,
       // 파일이 실어 온 수만 앉힌다.
-      if (prev !== null && prev.kind === "waiting" && prev.subagentId !== counts.subagentId) {
-        return withSubagents(prev, counts.subagents);
+      if (prev !== null && prev.kind === "waiting" && prev.subagentId !== turn.subagentId) {
+        return withSubagents(prev, turn.subagents);
       }
       return fact("working");
     case "waiting":
       return fact("waiting");
     case "stop":
-      return fact(counts.subagents > 0 ? "working" : "done");
+      return fact(turn.subagents > 0 ? "working" : "done");
     case "stopFailure":
       return fact("done", signal.message === null ? FAILED_LABEL : `${FAILED_LABEL} · ${signal.message}`);
     case "subagent":
@@ -249,10 +252,10 @@ export function applySignal(
       if (prev === null) return null;
       // S50 — 턴이 이미 멈췄고 마지막 서브에이전트가 졌다. 확인할 것에 **들어서는** 것이라 「봤다」가 풀리고
       // 알림이 한 번 운다. 시각은 멈춘 그때 그대로다(서브에이전트 사건은 시각을 안 바꾼다).
-      if (prev.kind === "working" && counts.stopped && counts.subagents === 0) {
+      if (prev.kind === "working" && turn.stopped && turn.subagents === 0) {
         return { ...prev, kind: "done", seen: false, agent, subagents: 0 };
       }
-      return withSubagents(prev, counts.subagents);
+      return withSubagents(prev, turn.subagents);
     case "interrupt":
     case "clear":
       // 사람이 끊었거나 대화를 지웠다 — 사람이 이미 그 자리에 있으므로 부를 것도 돌 것도 없다.
@@ -262,14 +265,14 @@ export function applySignal(
       // `claude -p`는 `Stop` 직후 몇 ms 만에 `SessionEnd`가 온다 — 확인할 것까지 지우면 완료 알림이 뜨자마자
       // 사라진다(프로세스 결정 13). 남기는 것이지 새로 세우는 것이 아니라 시각도 「봤다」도 그대로다.
       if (prev.kind === "done") {
-        const kept = withSubagents(prev, counts.subagents);
+        const kept = withSubagents(prev, turn.subagents);
         // **에이전트가 사라져 남긴 것이면 권위가 풀린다**(프로세스 결정 12) — 출처 하나만 바꾼다. 그대로 두면 claude를
         // 끝낸 셸에서 띄운 다른 도구의 OSC · 벨이 이 확인할 것에 막혀 영영 안 선다.
         return source === "gone" && kept.source !== "gone" ? { ...kept, source } : kept;
       }
       // 그 `Stop`이 디바운스에 삼켜져 이 한 장만 닿았다(머리말의 마지막 표 칸). **말은 없다** — 멈춘 턴의 말은 삼켜진
       // 파일에 있었고, 직전 말은 지난 턴의 것일 수 있어 결과로 세우면 틀린 글이 된다. 기다림은 표대로 지운다.
-      if (prev.kind === "working" && counts.stopped) return fact("done", null);
+      if (prev.kind === "working" && turn.stopped) return fact("done", null);
       return null;
   }
 }
@@ -310,7 +313,7 @@ export function nextOnOutput(prev: Attention | null, at: number): Attention | nu
   if (prev === null || prev.kind !== "waiting" || prev.source !== "osc") return prev;
   // **`applySignal`을 딛는다 — 여기서 칸을 직접 짜지 않는다.** 권위 규칙도 「봤다」를 푸는
   // 규칙도 저기 하나에 있고, 손으로 짜면 그 둘이 이 자리에서만 조용히 늙는다.
-  return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent, NO_HOOK_COUNTS);
+  return applySignal(prev, { event: "start", message: null }, at, "osc", prev.agent, NO_HOOK_TURN);
 }
 
 /**
@@ -342,7 +345,7 @@ export function inferInterrupt(
   if (base === null || base.kind !== "working") return now;
   if (now === null || now.kind !== base.kind || now.since !== base.since) return now;
   if (hooksBetween !== 0) return now;
-  return applySignal(now, { event: "interrupt", message: null }, at, "key", null, NO_HOOK_COUNTS);
+  return applySignal(now, { event: "interrupt", message: null }, at, "key", null, NO_HOOK_TURN);
 }
 
 /**
@@ -458,7 +461,7 @@ function answerStep(step: AnswerStep, key: AnswerKey): AnswerStep | "approved" {
  *
  * **에이전트 이름에서 다른 것이나 없음으로 바뀌면 사라진 것이다** — kill · 크래시 · `/exit` 어느 것이든 같다. 결과는
  * `end`와 같다: 도는 중 · 기다림은 지우고, 안 본 확인할 것은 남긴다. 그리고 **권위가 풀린다**(출처 `gone` — `applySignal`
- * 머리말). 사라짐은 서브에이전트도 멈춤도 모른다(`NO_HOOK_COUNTS`) — 프로세스가 사라졌으면 도는 것이 없다.
+ * 머리말). 사라짐은 서브에이전트도 멈춤도 모른다(`NO_HOOK_TURN`) — 프로세스가 사라졌으면 도는 것이 없다.
  *
  * **「아는 에이전트」의 표를 다시 적지 않는다**(`agentMarkOf` — 판 04 결정 15). 벨이 삼켜지는 셸(`bellSignal`)과 권위가
  * 풀리는 셸이 같은 표를 딛어야 한다. 에이전트가 아닌 명령이 바뀐 것(`node` → `zsh`)은 사라짐이 아니다 — 옛 claude가
@@ -474,7 +477,7 @@ export function nextOnRunning(
   at: number,
 ): Attention | null {
   if (before === after || agentMarkOf(before) === null) return prev;
-  return applySignal(prev, { event: "end", message: null }, at, "gone", before, NO_HOOK_COUNTS);
+  return applySignal(prev, { event: "end", message: null }, at, "gone", before, NO_HOOK_TURN);
 }
 
 /** 아홉 칸이 다 같은가. 「같은 값이면 받은 상태를 그대로 돌려준다」의 판정이다. */
