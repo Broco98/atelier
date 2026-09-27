@@ -21,7 +21,8 @@ import {
   worldRowLabel,
 } from "./shell-tree";
 import type { ListedItem, ShellNode, TreeInput } from "./shell-tree";
-import type { PoolShell, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
+import { metricsOf as 지표, NO_METRICS, poolShell, processRow as 행, snapshotFixture } from "./process-fixture";
+import type { PoolShell, ProcessRow } from "./types";
 
 // 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 세계 → work →
 // 셸 → 자손으로 세운다. 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 · 접근성 이름이다 — 스냅샷(Rust가
@@ -45,43 +46,13 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   ...over,
 });
 
-/** 못 읽은 지표 — 묶음과 상태 칸의 검사는 숫자를 안 본다. */
-const 빈지표: ProcessMetrics = { memory: null, cpu: null, ports: [] };
+/** 풀의 셸 — 마지막 출력은 에포크 1_000ms가 기본이다(경과를 재는 검사가 그 뒤의 지금을 준다). 묶음과 상태 칸의 검사는 숫자를 안 본다. */
+const 풀 = (ptyId: number, shellKey: string, lastOutputMs = 1_000, metrics = NO_METRICS): PoolShell =>
+  poolShell(ptyId, shellKey, lastOutputMs, metrics);
 
-const 풀 = (ptyId: number, shellKey: string, lastOutputMs = 1_000, metrics = 빈지표): PoolShell => ({
-  ptyId,
-  shellKey,
-  lastOutputMs,
-  metrics,
-});
-
-/** 스냅샷의 한 행. 시작 시각은 따로 준다 — 차례가 pid 순이 아니라 시작 순인지를 가르려고. */
-const 행 = (pid: number, ppid: number, startedUs: number, name: string, over: Partial<ProcessRow> = {}): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name,
-  argv0: null,
-  command: null,
-  metrics: 빈지표,
-  ...over,
-});
-
-const 스냅샷 = (
-  pool: PoolShell[],
-  descendants: Record<string, ProcessRow[]> = {},
-  helpers: ProcessRow[] = [],
-): ProcessSnapshot => ({
-  verdict: {
-    descendants,
-    exceptions: [],
-    helpers: helpers.map((row) => row.id),
-    orphans: { confirmed: {}, unknown: {} },
-    otherInstances: {},
-  },
-  pool,
-  instances: [],
-  recordHead: null,
-});
+/** 풀과 셸 키마다의 자손 · 셸 도우미만 선 스냅샷. 도우미는 행으로 받아 신원만 싣는다 — 자손 행과 신원으로 짝짓는 판정 그대로다. */
+const 스냅샷 = (pool: PoolShell[], descendants: Record<string, ProcessRow[]> = {}, helpers: ProcessRow[] = []) =>
+  snapshotFixture({ pool, verdict: { descendants, helpers: helpers.map((row) => row.id) } });
 
 const 목록 = (...items: Array<[slug: string, title: string]>): ListedItem[] => items.map(([slug, title]) => ({ slug, title }));
 
@@ -302,7 +273,7 @@ function 노드(
   descendants: ProcessRow[] = [],
   helpers: ProcessRow[] = [],
   lastOutputMs = 1_000,
-  metrics = 빈지표,
+  metrics = NO_METRICS,
 ): ShellNode {
   const key = shell.shellKey ?? "G-1";
   const [world] = shellTree(
@@ -381,7 +352,6 @@ describe("셸 행의 상태 칸", () => {
 });
 
 const MiB = 1024 * 1024;
-const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
 
 describe("트리 합 — 셸 행과 work 행의 숫자(티켓 28 · S53)", () => {
   // 셸 행의 숫자는 **그 셸의 트리 전부**다: 셸 프로세스 자신(판정은 셸을 행으로 안 싣는다 — 풀의 셸이 싣는다), 셸 도우미, 사람이 띄운

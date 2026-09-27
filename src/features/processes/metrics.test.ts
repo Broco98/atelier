@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NOT_READ, formatCpu, formatMemory, formatPorts, sumMetrics } from "./metrics";
-import type { ProcessMetrics } from "./types";
+import { metricsOf as 지표 } from "./process-fixture";
 
 // 프로세스 티켓 28 — **지표를 글자로**(프로세스 스펙 S40 · S37 · S38). 행의 숫자 칸 · 트리 합 · 접근성 이름, 그리고 29의 nav 메타와 31의
 // 행이 모두 이 함수를 읽는다 — 같은 숫자가 자리마다 다른 모양으로 서지 않게 표기가 한 자리에 산다. 화면에 선 글자가 이 결과와
@@ -8,8 +8,6 @@ import type { ProcessMetrics } from "./types";
 
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
-
-const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
 
 describe("메모리 표기(S40) — 1GB 이상은 소수 한 자리 GB, 그 아래는 MB 정수", () => {
   it("1GB 아래는 MB 정수다 — 반올림한다", () => {

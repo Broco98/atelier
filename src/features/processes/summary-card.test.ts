@@ -4,7 +4,8 @@ import type { Shell, ShellsState } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
 import { TREND_SPAN_MS, appBodyNote, cardCounts, sparkline, trendLabel } from "./summary-card";
 import { formatMemory } from "./metrics";
-import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
+import { poolShell, processRow, snapshotFixture } from "./process-fixture";
+import type { ProcessGroups, ProcessRow, TrendPoint } from "./types";
 
 // 프로세스 티켓 30 — **요약 카드의 수와 추이**(프로세스 결정 10 · 프로세스 스펙 「화면 구성 › 요약 카드」). 카드는 새 박자를 걸지 않고
 // 화면이 이미 받는 것(2초 스냅샷 · 10초 요약 · 스토어)에서 읽는다. 여기서 재는 것은 어느 수를 무엇으로 세는가와 스파크라인의 모양이다.
@@ -44,33 +45,11 @@ const 끝남: Shell["status"] = { kind: "exited", exit: { exitCode: 1, signal: n
 
 const 스토어 = (...shells: Shell[]): ShellsState => ({ ...NO_SHELLS, shells });
 
-const 행 = (pid: number): ProcessRow => ({
-  id: { pid, startedUs: pid * 10 },
-  ppid: 1,
-  name: "node",
-  argv0: null,
-  command: null,
-  metrics: { memory: null, cpu: null, ports: [] },
-});
+const 행 = (pid: number): ProcessRow => processRow(pid, 1, pid * 10, "node");
 
-const 스냅샷 = (over: Partial<ProcessSnapshot["verdict"]> = {}, pool = 0): ProcessSnapshot => ({
-  verdict: {
-    descendants: {},
-    exceptions: [],
-    helpers: [],
-    orphans: { confirmed: {}, unknown: {} },
-    otherInstances: {},
-    ...over,
-  },
-  pool: Array.from({ length: pool }, (_, at) => ({
-    ptyId: at + 1,
-    shellKey: `G-${at + 1}`,
-    lastOutputMs: 0,
-    metrics: { memory: null, cpu: null, ports: [] },
-  })),
-  instances: [],
-  recordHead: null,
-});
+/** 판정의 묶음을 덮어쓰고 풀에 셸 `pool`개(`G-1` …)가 앉은 스냅샷. */
+const 스냅샷 = (over: Partial<ProcessGroups> = {}, pool = 0) =>
+  snapshotFixture({ verdict: over, pool: Array.from({ length: pool }, (_, at) => poolShell(at + 1, `G-${at + 1}`, 0)) });
 
 describe("요약 카드의 수", () => {
   // **셸 수는 풀의 셸이다** — 두 세계의 것이 함께, 스토어가 모르는 셸(화면 밖 셸)도 든다. 앱이 띄워 둔 셸이 몇인지가 이 수다.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SEEN_CAP, lookSourceOf, lookablesOf, needsLook, ownerlessShellKeys, seenWith } from "./needs-look";
-import type { ProcessIdentity, ProcessRow, ProcessSnapshot, ProcessSummary } from "./types";
+import { identityOf as 신원, processRow, snapshotFixture } from "./process-fixture";
+import type { ProcessIdentity, ProcessRow, ProcessSummary } from "./types";
 
 // 프로세스 티켓 29 — **nav 메타의 `●` 판정**(프로세스 결정 11 · 프로세스 스펙 S41 · S42). 점은 손볼 것이 **본 뒤 새로 생겼을 때만**
 // 선다: 본 것의 집합(주인 잃은 셸의 셸 키 · 출처 불명의 신원 · 기록 머리 id)과 지금 집합을 견준다. 이 파일은 그 판정의 순수 함수를
@@ -18,7 +19,6 @@ const 요약 = (unknown: ProcessIdentity[] = [], recordHead: number | null = nul
   unknown,
   recordHead,
 });
-const 신원 = (pid: number): ProcessIdentity => ({ pid, startedUs: 1_790_000_000_000_000 + pid });
 const 셸 = (shellKey: string | null, ownerless: boolean) => ({ shellKey, ownerless });
 
 /** 본 때의 집합을 지어 둔다 — 그때 화면을 열고 봤다. */
@@ -96,26 +96,18 @@ describe("본 것은 남아 있어도 점을 안 켠다", () => {
 // 2초 스냅샷으로 새 출처 불명 · 새 정리 기록을 먼저 보인다. 그것을 요약과 **같은 이름**으로 지어야, 떠난 뒤 늦은 요약이 그것을 실어
 // 와도 본 것으로 읽힌다.
 describe("화면 스냅샷의 손볼 것", () => {
-  const 행 = (pid: number): ProcessRow => ({
-    id: 신원(pid),
-    ppid: 1,
-    name: "sleep",
-    argv0: null,
-    command: null,
-    metrics: { memory: null, cpu: null, ports: [] },
-  });
-  const 스냅샷 = (unknown: Record<string, ProcessRow[]>, recordHead: number | null): ProcessSnapshot => ({
-    verdict: {
-      descendants: { "G-1": [행(900)] },
-      exceptions: [행(901)],
-      helpers: [],
-      orphans: { confirmed: { "F-1": [행(902)] }, unknown },
-      otherInstances: { "H-1": [행(903)] },
-    },
-    pool: [],
-    instances: [],
-    recordHead,
-  });
+  /** 요약의 출처 불명과 같은 신원을 싣는 행 — 시작 시각은 `신원`의 것이다. */
+  const 행 = (pid: number): ProcessRow => processRow(pid, 1, 신원(pid).startedUs, "sleep");
+  const 스냅샷 = (unknown: Record<string, ProcessRow[]>, recordHead: number | null) =>
+    snapshotFixture({
+      verdict: {
+        descendants: { "G-1": [행(900)] },
+        exceptions: [행(901)],
+        orphans: { confirmed: { "F-1": [행(902)] }, unknown },
+        otherInstances: { "H-1": [행(903)] },
+      },
+      recordHead,
+    });
 
   it("스냅샷의 출처 불명 · 기록 머리는 요약이 싣는 것과 같은 이름이다", () => {
     const snapshot = 스냅샷({ "OLD-1": [행(500), 행(501)], "OLD-2": [행(510)] }, 7);

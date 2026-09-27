@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { exceptionName, processLabel, processRowLabel, processTree, strayTree, subtreeAt } from "./process-tree";
 import type { ProcessNode } from "./process-tree";
-import type { ProcessMetrics, ProcessRow } from "./types";
+import { metricsOf as 지표, processRow } from "./process-fixture";
+import type { ProcessRow } from "./types";
 
 // 프로세스 티켓 27 · 31 — **프로세스 한 줄의 규칙**(프로세스 스펙 S53 · S54 · S58 · 기본값 [끝내기]). 셸의 자손, 확정 고아 · 출처 불명,
 // 다른 인스턴스, 예외가 모두 같은 규칙으로 선다: 트리로 펴는 차례, 줄의 이름과 접근성 이름, [끝내기]가 넘길 신원. 순수 함수다 — 셸 밑에서
@@ -9,18 +10,9 @@ import type { ProcessMetrics, ProcessRow } from "./types";
 
 const MiB = 1024 * 1024;
 
-const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
-
-/** 스냅샷의 한 행. 시작 시각은 따로 준다 — 차례가 pid 순이 아니라 시작 순인지를 가르려고. */
-const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name: `p${pid}`,
-  argv0: null,
-  command: null,
-  metrics: 지표(null),
-  ...over,
-});
+/** 스냅샷의 한 행 — 이름은 pid에서 짓는다(`p<pid>`). 이름을 보는 검사가 덮어쓴다. */
+const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow =>
+  processRow(pid, ppid, startedUs, `p${pid}`, over);
 
 /** 편 줄마다 (pid, 깊이). */
 const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { formatMemory } from "./metrics";
 import { buildLabel, endAsk, instanceGroups, instanceRowLabel, tidyUnknownAsk } from "./process-groups";
 import type { ProcessNode } from "./process-tree";
-import type { OtherInstance, ProcessRow, ProcessSnapshot } from "./types";
+import { metricsOf as 지표, processRow, snapshotFixture } from "./process-fixture";
+import type { OtherInstance, ProcessRow } from "./types";
 
 // 프로세스 티켓 31 — **다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 기본값 [끝내기]). 다른
 // 인스턴스를 실행마다 묶고, [끝내기] · [정리]가 띄울 확인 창의 말을 짓는다. 순수 함수다 — 묶음을 트리로 펴는 것과 넘길 신원은
@@ -10,28 +11,13 @@ import type { OtherInstance, ProcessRow, ProcessSnapshot } from "./types";
 
 const MiB = 1024 * 1024;
 
-const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name: `p${pid}`,
-  argv0: null,
-  command: null,
-  metrics: { memory: null, cpu: null, ports: [] },
-  ...over,
-});
+/** 스냅샷의 한 행 — 이름은 pid에서 짓는다(`p<pid>`). 이름을 보는 검사가 덮어쓴다. */
+const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow =>
+  processRow(pid, ppid, startedUs, `p${pid}`, over);
 
-const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: OtherInstance[]): ProcessSnapshot => ({
-  verdict: {
-    descendants: {},
-    exceptions: [],
-    helpers: [],
-    orphans: { confirmed: {}, unknown: {} },
-    otherInstances,
-  },
-  pool: [],
-  instances,
-  recordHead: null,
-});
+/** 다른 인스턴스 묶음과 그 실행들만 선 스냅샷. */
+const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: OtherInstance[]) =>
+  snapshotFixture({ verdict: { otherInstances }, instances });
 
 const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);
 
@@ -97,8 +83,8 @@ describe("다른 인스턴스", () => {
     const snapshot = 스냅샷(
       {
         "H-1": [
-          행(600, 1, 6_000, { metrics: { memory: 4 * MiB, cpu: 1, ports: [5173] } }),
-          행(601, 600, 6_010, { metrics: { memory: 200 * MiB, cpu: 2, ports: [] } }),
+          행(600, 1, 6_000, { metrics: 지표(4 * MiB, 1, [5173]) }),
+          행(601, 600, 6_010, { metrics: 지표(200 * MiB, 2) }),
         ],
       },
       [{ generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-1"] }],
