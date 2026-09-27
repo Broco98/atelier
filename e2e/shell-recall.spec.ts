@@ -17,11 +17,15 @@ import {
   toastsNow,
   typeIntoShell,
   unknownIpcCalls,
+  떠날때확인버튼,
+  떠날때확인에머문다,
   띠,
   레인,
   셸입력,
   이름표,
   칸들,
+  편집기에서앱으로,
+  편집기에초안,
 } from "./harness";
 
 // 프로세스 티켓 23 — **단축키 하나로 방금 부른 셸로 간다**(프로세스 결정 16 · 프로세스 스펙 S34 · S59 · P3 ⌘J).
@@ -301,40 +305,10 @@ test("부른 셸이 없으면 ⌘J가 아무것도 안 한다 — 도는 중인 
 // 순간** 일어나고, 막히면 거둔다(`whenArrived`). 편집기는 설정 안이라 띠는 안 서고(설정 nav), `Processes`의 [이동]도 그
 // 화면에 없다 — 이 자리에 닿는 길은 ⌘J뿐이다.
 
-const EDITOR = "/settings/spec-layout/atelier";
-const 떠날때 = (page: Page) => page.getByRole("alertdialog", { name: "저장하지 않은 변경이 있어요", exact: true });
-const 창버튼 = (page: Page, name: "계속 편집" | "버리고 나가기") => 떠날때(page).getByRole("button", { name, exact: true });
-const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "spec 레이아웃") =>
-  page.locator("aside").getByRole("button", { name, exact: true });
-
-/**
- * 앱 안의 길로 spec 레이아웃 편집기에 들어가 저장하지 않은 초안을 하나 만든다(`spec-layout-leave.spec.ts`의 `draftOne`).
- * 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 빈다 — 사이드바 바닥의 `Settings`로 들어간다.
- */
-async function 편집기에초안(page: Page): Promise<void> {
-  await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
-  await 설정항목(page, "spec 레이아웃").click();
-  await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
-  await expect(page).toHaveURL(EDITOR);
-  await page.getByRole("treeitem", { name: "decisions.md", exact: true }).click();
-  await page.getByLabel("설명", { exact: true }).fill("정한 것, 그 이유, 버린 안");
-  await expect(page.getByRole("button", { name: "저장", exact: true })).toBeEnabled();
-}
-
 /** 편집기에서 ⌘J를 누르고 떠날 때 확인에 [계속 편집]으로 답한다 — 편집기에 머문다. */
 async function 막힌단축키(page: Page): Promise<void> {
   await page.keyboard.press("Meta+j");
-  await expect(떠날때(page)).toBeVisible();
-  await 창버튼(page, "계속 편집").click();
-  await expect(떠날때(page)).toHaveCount(0);
-  await expect(page).toHaveURL(EDITOR);
-}
-
-/** 편집기를 떠나 들어오기 전 화면으로 돌아간다(UI개선 결정 27) — 초안은 버린다. */
-async function 앱으로(page: Page): Promise<void> {
-  await 설정항목(page, "앱으로 돌아가기").click();
-  await 창버튼(page, "버리고 나가기").click();
-  await expect(떠날때(page)).toHaveCount(0);
+  await 떠날때확인에머문다(page);
 }
 
 test("편집기의 ⌘J가 떠날 때 확인에 막히면 그 셸을 켜 두지 않는다 — 돌아간 work 화면은 보던 탭 그대로다", async ({ page }) => {
@@ -350,7 +324,7 @@ test("편집기의 ⌘J가 떠날 때 확인에 막히면 그 셸을 켜 두지 
 
   await 편집기에초안(page);
   await 막힌단축키(page);
-  await 앱으로(page);
+  await 편집기에서앱으로(page);
 
   // 들어오기 전의 그 화면이다 — ⌘J가 가려던 셸의 화면과 주소가 같아, 막힌 요청이 남았으면 여기서 켜진다.
   await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=terminal`);
@@ -374,7 +348,7 @@ test("편집기의 ⌘J가 떠날 때 확인에 막히면 기다리는 포커스
 
   await 편집기에초안(page);
   await 막힌단축키(page);
-  await 앱으로(page);
+  await 편집기에서앱으로(page);
 
   await expect(page).toHaveURL("/terminal");
   await expect(칸들(page)).toHaveCount(1);
@@ -397,7 +371,7 @@ test("편집기의 ⌘J에 [버리고 나가기]면 그 셸의 화면으로 가�
 
   await 편집기에초안(page);
   await page.keyboard.press("Meta+j");
-  await 창버튼(page, "버리고 나가기").click();
+  await 떠날때확인버튼(page, "버리고 나가기").click();
 
   await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=terminal`);
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");

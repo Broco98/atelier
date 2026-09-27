@@ -1,7 +1,15 @@
 import type { SpecLayoutJson } from "@/features/spec-layout/types";
 import { expect, test, type Page } from "./evidence";
 import { SPEC_LAYOUT_READ, WORKS } from "./fixtures";
-import { callCount, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import {
+  callCount,
+  installFixtureBackend,
+  ipcCallArgs,
+  SPEC_LAYOUT_EDITOR,
+  unknownIpcCalls,
+  떠날때확인,
+  떠날때확인버튼,
+} from "./harness";
 
 // 떠날 때 확인(spec 레이아웃 티켓 15 · 결정 27) — **이 저장소의 첫 「떠날 때 확인」이다.** 저장하지 않은 초안을 두고
 // 편집기를 떠나면 앱의 확인 창이 [계속 편집], [버리고 나가기], 그리고 저장할 수 있을 때만 서는 [저장하고 나가기]로
@@ -19,18 +27,14 @@ const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exa
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
 const 저장 = (page: Page) => page.getByRole("button", { name: "저장", exact: true });
 const 뒤로 = (page: Page) => page.getByRole("button", { name: "설정으로 돌아가기", exact: true });
-const 떠날때 = (page: Page) => page.getByRole("alertdialog", { name: "저장하지 않은 변경이 있어요", exact: true });
-const 창버튼 = (page: Page, name: "계속 편집" | "버리고 나가기" | "저장하고 나가기") =>
-  떠날때(page).getByRole("button", { name, exact: true });
 
-const EDITOR = "/settings/spec-layout/atelier";
 const EDITED = "정한 것, 그 이유, 버린 안";
 
 /** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 모드 행에서 [편집]을 누른다. */
 async function openEditor(page: Page) {
   await page.goto("/settings/spec-layout");
   await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(행(page, "overview.md")).toBeVisible();
 }
 
@@ -55,12 +59,12 @@ test("초안이 있는 채로 뒤로를 누르면 확인 창이 뜨고, [계속 
   await draftOne(page);
 
   await 뒤로(page).click();
-  await expect(떠날때(page)).toBeVisible();
-  await expect(떠날때(page).getByRole("button")).toHaveText(["계속 편집", "버리고 나가기", "저장하고 나가기"]);
+  await expect(떠날때확인(page)).toBeVisible();
+  await expect(떠날때확인(page).getByRole("button")).toHaveText(["계속 편집", "버리고 나가기", "저장하고 나가기"]);
 
-  await 창버튼(page, "계속 편집").click();
-  await expect(떠날때(page)).toHaveCount(0);
-  await expect(page).toHaveURL(EDITOR);
+  await 떠날때확인버튼(page, "계속 편집").click();
+  await expect(떠날때확인(page)).toHaveCount(0);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(설명(page)).toHaveValue(EDITED);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
@@ -85,18 +89,18 @@ for (const [label, dismiss] of dismissals) {
     await draftOne(page);
 
     await 뒤로(page).click();
-    await expect(창버튼(page, "계속 편집")).toBeFocused();
+    await expect(떠날때확인버튼(page, "계속 편집")).toBeFocused();
 
     await dismiss(page);
-    await expect(떠날때(page)).toHaveCount(0);
-    await expect(page).toHaveURL(EDITOR);
+    await expect(떠날때확인(page)).toHaveCount(0);
+    await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
     await expect(설명(page)).toHaveValue(EDITED);
     expect(await callCount(page, "write_spec_layout")).toBe(0);
 
     // 머문 뒤에도 떠나는 길은 그대로 물음에 걸린다 — 답한 물음이 막기를 풀어 두지 않았다.
     await 뒤로(page).click();
-    await expect(떠날때(page)).toBeVisible();
-    await 창버튼(page, "버리고 나가기").click();
+    await expect(떠날때확인(page)).toBeVisible();
+    await 떠날때확인버튼(page, "버리고 나가기").click();
     await expect(page).toHaveURL("/settings/spec-layout");
     expect(await callCount(page, "write_spec_layout")).toBe(0);
 
@@ -110,7 +114,7 @@ test("[버리고 나가기]면 저장하지 않고 떠나고, 다시 열면 읽�
   await draftOne(page);
 
   await 뒤로(page).click();
-  await 창버튼(page, "버리고 나가기").click();
+  await 떠날때확인버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect(page.locator("main li")).toHaveCount(2);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
@@ -129,7 +133,7 @@ test("[저장하고 나가기]면 저장 명령이 초안을 싣고 나간 뒤�
   await draftOne(page);
 
   await 뒤로(page).click();
-  await 창버튼(page, "저장하고 나가기").click();
+  await 떠날때확인버튼(page, "저장하고 나가기").click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
   const [layout] = await writtenLayouts(page);
@@ -160,10 +164,10 @@ test("저장할 수 없는 초안이면 확인 창에 [저장하고 나가기]�
   await expect(저장(page)).toBeDisabled();
 
   await 뒤로(page).click();
-  await expect(떠날때(page)).toBeVisible();
-  await expect(떠날때(page).getByRole("button")).toHaveText(["계속 편집", "버리고 나가기"]);
-  await 창버튼(page, "계속 편집").click();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(떠날때확인(page)).toBeVisible();
+  await expect(떠날때확인(page).getByRole("button")).toHaveText(["계속 편집", "버리고 나가기"]);
+  await 떠날때확인버튼(page, "계속 편집").click();
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(설명(page)).toHaveValue(EDITED);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
@@ -179,9 +183,9 @@ test("[저장하고 나가기]의 답이 오류 데이터면 떠나지 않고 �
   await draftOne(page);
 
   await 뒤로(page).click();
-  await 창버튼(page, "저장하고 나가기").click();
+  await 떠날때확인버튼(page, "저장하고 나가기").click();
   await expect(page.getByText(message, { exact: true })).toBeVisible();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(설명(page)).toHaveValue(EDITED);
   expect(await callCount(page, "write_spec_layout")).toBe(1);
 
@@ -196,16 +200,16 @@ test("초안이 있는 채로 설정 nav의 다른 항목을 누르거나 팔레
 
   // 설정 nav의 「터미널」 — 머문다
   await page.locator("aside").getByRole("button", { name: "터미널", exact: true }).click();
-  await expect(떠날때(page)).toBeVisible();
-  await 창버튼(page, "계속 편집").click();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(떠날때확인(page)).toBeVisible();
+  await 떠날때확인버튼(page, "계속 편집").click();
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(설명(page)).toHaveValue(EDITED);
 
   // 팔레트로 work의 문서 — 버리고 간다
   await page.keyboard.press("Meta+k");
   await page.getByRole("option").first().click();
-  await expect(떠날때(page)).toBeVisible();
-  await 창버튼(page, "버리고 나가기").click();
+  await expect(떠날때확인(page)).toBeVisible();
+  await 떠날때확인버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL(new RegExp(`^[^?]*/works/${work.slug}\\?`));
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
@@ -222,20 +226,20 @@ test("앞으로로 떠나려다 [계속 편집]이면 히스토리도 편집기�
   await 뒤로(page).click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await page.goBack();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await draftOne(page);
 
   await page.goForward();
-  await expect(떠날때(page)).toBeVisible();
-  await 창버튼(page, "계속 편집").click();
-  await expect(떠날때(page)).toHaveCount(0);
-  await expect(page).toHaveURL(EDITOR);
+  await expect(떠날때확인(page)).toBeVisible();
+  await 떠날때확인버튼(page, "계속 편집").click();
+  await expect(떠날때확인(page)).toHaveCount(0);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await expect(설명(page)).toHaveValue(EDITED);
 
   // 히스토리가 편집기에 섰으면 다음 뒤로도 떠나는 길이다 — 묻는다
   await page.goBack();
-  await expect(떠날때(page)).toBeVisible();
-  await 창버튼(page, "버리고 나가기").click();
+  await expect(떠날때확인(page)).toBeVisible();
+  await 떠날때확인버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL("/settings/spec-layout");
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
@@ -249,17 +253,17 @@ test("초안이 없으면 묻지 않는다 — 연 그대로도, 저장한 뒤�
 
   await page.locator("aside").getByRole("button", { name: "터미널", exact: true }).click();
   await expect(page).toHaveURL("/settings/terminal");
-  await expect(떠날때(page)).toHaveCount(0);
+  await expect(떠날때확인(page)).toHaveCount(0);
 
   await page.goBack();
-  await expect(page).toHaveURL(EDITOR);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
   await draftOne(page);
   await 저장(page).click();
   await expect.poll(() => callCount(page, "write_spec_layout")).toBe(1);
   await expect(저장(page)).toHaveText("저장");
   await 뒤로(page).click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(떠날때(page)).toHaveCount(0);
+  await expect(떠날때확인(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

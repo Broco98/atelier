@@ -953,6 +953,55 @@ export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 �
 export const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
   `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
 
+/** spec 레이아웃 편집기(Atelier 레이아웃)의 주소. */
+export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/atelier";
+
+/**
+ * **떠날 때 확인**(spec 레이아웃 티켓 15 · 결정 27) — 저장하지 않은 초안을 두고 편집기를 떠나는 이동을 라우터의 막기로 붙잡는
+ * 앱의 확인 창. 셸로 가는 길(⌘J)과 토스트의 [보기]도 이 막기에 걸리므로, 막혔을 때 그 길이 아무것도 남기지 않는지를 이 창으로
+ * 잰다(`shell-recall.spec.ts` · `processes-view.spec.ts`).
+ */
+export const 떠날때확인 = (page: Page) =>
+  page.getByRole("alertdialog", { name: "저장하지 않은 변경이 있어요", exact: true });
+
+/** 떠날 때 확인의 버튼. [저장하고 나가기]는 저장할 수 있을 때만 선다. */
+export const 떠날때확인버튼 = (page: Page, name: "계속 편집" | "버리고 나가기" | "저장하고 나가기") =>
+  떠날때확인(page).getByRole("button", { name, exact: true });
+
+/** 설정 사이드바의 항목. 「앱으로 돌아가기」는 설정에 들어오기 전의 화면으로 간다(UI개선 결정 27). */
+export const 설정항목 = (page: Page, name: "앱으로 돌아가기" | "spec 레이아웃") =>
+  page.locator("aside").getByRole("button", { name, exact: true });
+
+/**
+ * **앱 안의 길로** spec 레이아웃 편집기에 들어가 저장하지 않은 초안을 하나 만든다 — `decisions.md`의 설명 한 칸이다
+ * (`spec-layout-leave.spec.ts`의 `draftOne`과 같은 초안). 주소를 직접 치면 페이지가 새로 떠 셸 스토어가 비므로, 사이드바 바닥의
+ * `Settings`로 들어간다. 초안의 미리보기 답이 와 [저장]이 풀리기까지 기다린다.
+ */
+export async function 편집기에초안(page: Page): Promise<void> {
+  await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
+  await 설정항목(page, "spec 레이아웃").click();
+  await page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true }).click();
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
+  await page.getByRole("treeitem", { name: "decisions.md", exact: true }).click();
+  await page.getByLabel("설명", { exact: true }).fill("정한 것, 그 이유, 버린 안");
+  await expect(page.getByRole("button", { name: "저장", exact: true })).toBeEnabled();
+}
+
+/** 떠나는 이동을 건 뒤에 부른다 — 떠날 때 확인이 선 것을 보고 [계속 편집]으로 답한다. 편집기에 머문다. */
+export async function 떠날때확인에머문다(page: Page): Promise<void> {
+  await expect(떠날때확인(page)).toBeVisible();
+  await 떠날때확인버튼(page, "계속 편집").click();
+  await expect(떠날때확인(page)).toHaveCount(0);
+  await expect(page).toHaveURL(SPEC_LAYOUT_EDITOR);
+}
+
+/** 편집기를 떠나 설정에 들어오기 전의 화면으로 돌아간다(UI개선 결정 27) — 떠날 때 확인에 [버리고 나가기]로 답해 초안은 버린다. */
+export async function 편집기에서앱으로(page: Page): Promise<void> {
+  await 설정항목(page, "앱으로 돌아가기").click();
+  await 떠날때확인버튼(page, "버리고 나가기").click();
+  await expect(떠날때확인(page)).toHaveCount(0);
+}
+
 /**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
  * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
