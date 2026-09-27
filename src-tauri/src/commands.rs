@@ -577,53 +577,40 @@ mod tests {
         body
     }
 
-    /// **시작 보고는 blocking 풀에서 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 10). 보고는 시작 정리가 끝날
-    /// 때까지(최악 2초 남짓) 답하지 않는다 — async 명령 안에서 곧바로 기다리면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
-    /// `#[tauri::command]`는 런타임 없이 못 부르니 자리로 잰다. 기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
+    /// **기다리는 명령은 blocking 풀에서 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」). async 명령 안에서 곧바로 기다리면 그동안
+    /// tokio 워커 하나가 멎어 나란히 오는 셸 입력 · 목록 조회 · 설정 읽기가 밀린다. `#[tauri::command]`는 런타임 없이 못 부르니 자리로
+    /// 잰다 — 명령마다 기다리는 부름이 `spawn_blocking(` 뒤에 서고, 한 번만 선다(두 번이면 한쪽이 blocking 풀 밖일 수 있다).
+    ///
+    /// - `startup_report`(티켓 10): 시작 정리가 끝날 때까지(최악 2초 남짓) 답하지 않는다 — 부팅 때 워커 하나가 그만큼 멎는다.
+    ///   기다리는 쪽의 동작은 `startup.rs`의 검사가 잰다.
+    /// - `list_works`(티켓 15): 코어의 목록 조회가 워크트리마다 `git status` 프로세스를 기다린다. 명령의 모양(공개 async 함수)은
+    ///   그대로다 — 등록 이름 검사와 다리가 그 자리를 본다.
+    /// - `processes_snapshot`(티켓 26): 화면이 열려 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms).
+    /// - `processes_summary`(티켓 29): 답은 대개 배경 표본이 앉힌 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 표 한 장과
+    ///   판정을 모은다. 부를 때마다 표를 찍지는 않는다(`summarize`가 아니다).
+    /// - `processes_end`(티켓 31): 정리 기록에 적을 이름을 떠 두려 신호 전에 표 한 장을 찍는다. 유예와 SIGKILL은 풀의 뒤 스레드가
+    ///   돈다(`pty::end_by_hand`).
     #[test]
-    fn the_startup_report_waits_off_the_async_workers() {
-        let body = command_body("startup_report");
-        let blocking = body.find("spawn_blocking(").expect("시작 보고를 blocking 풀로 안 보낸다 — 기다리는 동안 tokio 워커가 멎는다");
-        let answer = body.find("holder.answer()").expect("시작 보고를 붙잡은 자리에서 안 읽는다");
-        assert!(blocking < answer, "보고를 읽는 줄({answer})이 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches("answer()").count(), 1, "보고를 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
-    }
-
-    /// **work 목록은 blocking 풀에서 git을 기다린다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 15). 코어의
-    /// 목록 조회는 워크트리마다 `git status` 프로세스를 기다린다 — async 명령 안에서 곧바로 부르면 그동안 tokio
-    /// 워커 하나가 멎는다. 명령의 모양(공개 async 함수)은 그대로다: 등록 이름 검사와 다리가 그 자리를 본다.
-    #[test]
-    fn the_work_list_waits_for_git_off_the_async_workers() {
-        let body = command_body("list_works");
-        let blocking = body.find("spawn_blocking(").expect("work 목록을 blocking 풀로 안 보낸다 — git을 기다리는 동안 tokio 워커가 멎는다");
-        let list = body.find("atelier_core::list_works(").expect("명령이 코어의 목록 조회를 안 부른다");
-        assert!(blocking < list, "목록 조회({list})가 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches("list_works(").count(), 1, "목록을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
-    }
-
-    /// **`Processes` 화면의 스냅샷은 blocking 풀에서 찍는다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 26). 화면이 열려
-    /// 있는 동안 2초마다 오고, 한 번에 이 맥의 프로세스 표 한 장과 판정이 든다(ms) — async 명령 안에서 곧바로 부르면 그동안
-    /// tokio 워커 하나가 멎어 나란히 오는 셸 입력 · 목록 조회가 밀린다.
-    #[test]
-    fn the_screen_snapshot_is_taken_off_the_async_workers() {
-        let body = command_body("processes_snapshot");
-        let blocking = body.find("spawn_blocking(").expect("화면 스냅샷을 blocking 풀로 안 보낸다 — 찍는 동안 tokio 워커가 멎는다");
-        let screen = body.find("processes.screen()").expect("명령이 프로세스 서비스의 화면 스냅샷을 안 부른다");
-        assert!(blocking < screen, "스냅샷({screen})이 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches(".screen(").count(), 1, "스냅샷을 두 번 찍는다 — 한쪽이 blocking 풀 밖일 수 있다");
-    }
-
-    /// **nav 메타의 요약은 blocking 풀에서 답한다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 29). 답은 대개 배경 표본이 앉힌
-    /// 장이지만, 첫 장이 아직 없으면(앱이 막 떴다) 그 자리에서 이 맥의 프로세스 표 한 장과 판정을 모은다 — async 명령 안에서 곧바로
-    /// 부르면 부팅 때 tokio 워커 하나가 그만큼 멎는다.
-    #[test]
-    fn the_summary_is_answered_off_the_async_workers() {
-        let body = command_body("processes_summary");
-        let blocking = body.find("spawn_blocking(").expect("요약을 blocking 풀로 안 보낸다 — 첫 장을 모으는 동안 tokio 워커가 멎는다");
-        let summary = body.find("processes.summary()").expect("명령이 배경 표본의 요약을 안 읽는다");
-        assert!(blocking < summary, "요약({summary})이 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches(".summary(").count(), 1, "요약을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
-        assert!(!body.contains(".summarize("), "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다");
+    fn the_waiting_commands_wait_off_the_async_workers() {
+        for (command, call, once) in [
+            ("startup_report", "holder.answer()", "answer()"),
+            ("list_works", "atelier_core::list_works(", "list_works("),
+            ("processes_snapshot", "processes.screen()", ".screen("),
+            ("processes_summary", "processes.summary()", ".summary("),
+            ("processes_end", "pty::end_by_hand(", "pty::end_by_hand("),
+        ] {
+            let body = command_body(command);
+            let blocking = body
+                .find("spawn_blocking(")
+                .unwrap_or_else(|| panic!("{command}: blocking 풀로 안 보낸다 — 기다리는 동안 tokio 워커가 멎는다"));
+            let waits = body.find(call).unwrap_or_else(|| panic!("{command}: 기다리는 부름(`{call}`)이 없다"));
+            assert!(blocking < waits, "{command}: 기다리는 부름({waits})이 blocking 풀({blocking}) 밖에 있다");
+            assert_eq!(body.matches(once).count(), 1, "{command}: 두 번 부른다 — 한쪽이 blocking 풀 밖일 수 있다");
+        }
+        assert!(
+            !command_body("processes_summary").contains(".summarize("),
+            "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다"
+        );
     }
 
     /// **추이 IPC는 배경 표본의 고리를 돌려줄 뿐이다**(티켓 30). 요약이 올 때마다 부르므로, 여기서 표를 찍거나 요약을 새로 모으면
@@ -633,18 +620,6 @@ mod tests {
         let body = command_body("processes_trend");
         assert_eq!(body.matches("processes.trend()").count(), 1, "명령이 배경 표본의 고리를 안 읽는다");
         assert!(!body.contains(".summar") && !body.contains(".screen("), "추이 IPC가 부를 때마다 표를 찍는다");
-    }
-
-    /// **손으로 끝내기는 blocking 풀에서 신호까지 보낸다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 31). 끝내기는 정리
-    /// 기록에 적을 이름을 떠 두려 신호 전에 이 맥의 프로세스 표 한 장을 찍는다(ms) — async 명령 안에서 곧바로 부르면 그동안 tokio
-    /// 워커 하나가 멎는다. 유예와 SIGKILL은 풀의 뒤 스레드가 돈다(`pty::end_by_hand`).
-    #[test]
-    fn a_hand_picked_ending_signals_off_the_async_workers() {
-        let body = command_body("processes_end");
-        let blocking = body.find("spawn_blocking(").expect("손으로 끝내기를 blocking 풀로 안 보낸다 — 표를 찍는 동안 tokio 워커가 멎는다");
-        let end = body.find("pty::end_by_hand(").expect("명령이 풀의 손으로 끝내기를 안 부른다");
-        assert!(blocking < end, "끝내기({end})가 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches("pty::end_by_hand(").count(), 1, "끝내기를 두 번 부른다 — 한쪽이 blocking 풀 밖일 수 있다");
     }
 
     // **「받은 모드가 그대로 내려간다」를 재던 단위 테스트 둘은 여기 없다.** 잴 대상이던
