@@ -442,11 +442,12 @@ mod tests {
         assert!(wrong.is_empty(), "예외 목록이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
-    /// **`null`에서 한 항목을 더해 저장하면 기본 목록 + 그 항목이 판정에 간다.** 더하는 규칙은 목록을 고치는
-    /// 화면이 진다(`src/features/settings/process-exceptions.ts` — 판 04의 「예외로 두기」도 같은 저장 줄을 탄다).
-    /// 여기서는 그렇게 쓴 파일이 판정 쪽에 줄어들거나 기본으로 되돌아가지 않고 그대로 닿는지를 본다.
+    /// **적힌 목록이 판정에 그대로 닿는다** — 줄어들거나 기본 목록으로 되돌아가지 않는다. 「`null`에서 한 항목을 더하면
+    /// 기본 목록 + 그 항목」이라는 규칙은 여기서 안 잰다: 더하는 일은 목록을 고치는 화면이 하고
+    /// (`src/features/settings/process-exceptions.ts` — 판 04의 「예외로 두기」도 같은 저장 줄을 탄다) 그 규칙은 L2
+    /// (`process-exceptions.test.ts`)가 잰다. 여기 적는 목록(기본 목록 + 하나)은 그 규칙이 지을 모양일 뿐이다.
     #[test]
-    fn the_defaults_plus_one_saved_from_null_reach_the_verdict_as_written() {
+    fn a_written_list_reaches_the_verdict_as_written() {
         let root = temp_root("exceptions-plus-one");
         let mut wanted = crate::processes::exceptions::defaults();
         wanted.push("mydaemon".to_string());
