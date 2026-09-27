@@ -1023,10 +1023,10 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     outcomes
 }
 
-/// 시작 정리가 끝내려 한 것 하나 — 신원, 커널 이름, 결과. 시작 보고가 끝낸 것(끝남 · 강제)을 골라 알린다
-/// (`startup::cleaned`).
+/// 시작 정리가 끝내려 한 것 하나 — 신원, 커널 이름, 결과. **시도다** — 끝냈든(끝남 · 강제) 못 끝냈든(이미 없음 · 못 끝냄) 결과째
+/// 담는다. 시작 보고는 이 중 끝낸 것만 골라(`startup::cleaned`) 제 값(`startup::Cleaned`)으로 알린다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cleared {
+pub struct StartupAttempt {
     pub id: Identity,
     pub name: String,
     pub outcome: Outcome,
@@ -1037,7 +1037,7 @@ pub struct Cleared {
 ///
 /// 판정(`plan_startup`)과 끝내기(`carry_out`)를 가른 것은 실물 검사가 그 사이에서 끝낼 신원을 자기 자식으로 거르기
 /// 위해서다 — 이 함수는 둘을 그대로 잇는다.
-pub fn clean_up_at_startup(pool: &PtyPool) -> Vec<Cleared> {
+pub fn clean_up_at_startup(pool: &PtyPool) -> Vec<StartupAttempt> {
     carry_out(pool, plan_startup(pool, &exceptions()))
 }
 
@@ -1086,7 +1086,7 @@ fn plan_startup(pool: &PtyPool, exceptions: &[String]) -> StartupPlan {
 /// 태어났다). 끝내기 전에 앱이 끝나면 기록은 남아, 다음 실행의 시작 정리가 한 번 더 해 본다.
 ///
 /// 끝낸 것은 정리 기록에 「시작 정리」로 적는다(티켓 11). 고아에는 셸도 도우미도 없다 — 끝낸 것이 하나라도 있으면 적는다.
-fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<Cleared> {
+fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<StartupAttempt> {
     let StartupPlan { claim, targets, dead } = plan;
     let ids: Vec<Identity> = targets.iter().map(|proc| proc.id).collect();
     let outcomes = claim.start(&ids, &[]).finish();
@@ -1098,7 +1098,7 @@ fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<Cleared> {
         dead.iter().filter(|record| !instances::alive(record.app)).map(|record| record.generation.as_str()),
     );
     // 끝내기는 받은 순서 그대로 결과를 준다.
-    outcomes.into_iter().zip(targets).map(|((id, outcome), proc)| Cleared { id, name: proc.name, outcome }).collect()
+    outcomes.into_iter().zip(targets).map(|((id, outcome), proc)| StartupAttempt { id, name: proc.name, outcome }).collect()
 }
 
 /// 풀에서 뺀 셸들과 그 셸들에서 나온 것을 끝낸다 — 셸 닫기와 새로고침의 길. 판정까지 하고(`begin`) 돌아온다. 셸을 떨구고
@@ -3478,7 +3478,7 @@ mod tests {
             updated_us: 0,
         });
         let late_recorded = late_file.exists();
-        let cleared = super::carry_out(pool, plan);
+        let attempts = super::carry_out(pool, plan);
         let left_alive = || left_id.is_some_and(|id| identity_of(id.pid) == Some(id));
         let ended = wait_until(|| !left_alive());
         let unrecorded_lives =
@@ -3486,7 +3486,7 @@ mod tests {
         let forgotten = !dead_file.exists();
         let late_kept = late_file.exists();
         let own_kept = on_the_record().is_some();
-        let reported = crate::startup::cleaned(&cleared);
+        let reported = crate::startup::cleaned(&attempts);
         let log = crate::processes::cleanup_log::read(&crate::processes::cleanup_log::path(&atelier_core::data_root()));
 
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이다(`Kid`의 Drop).
@@ -3513,7 +3513,7 @@ mod tests {
         );
         assert!(forgets, "죽은 실행의 기록을 지울 것으로 안 골랐다");
         assert_eq!(
-            cleared.iter().map(|one| (one.id, one.outcome)).collect::<Vec<_>>(),
+            attempts.iter().map(|one| (one.id, one.outcome)).collect::<Vec<_>>(),
             vec![(left_id, crate::processes::ending::Outcome::Ended)],
             "고른 자식을 SIGTERM으로 끝낸 결과가 아니다"
         );

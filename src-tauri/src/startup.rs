@@ -18,7 +18,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use serde::Serialize;
 
 use crate::processes::ending::Outcome;
-use crate::pty::{self, Cleared, PtyPool};
+use crate::pty::{self, PtyPool, StartupAttempt};
 use crate::{hooks, shells};
 
 /// 앱이 뜰 때 한 일. 프런트의 `StartupReport`(`src/components/shell/startup-report.ts`)와 **필드 이름으로만**
@@ -135,8 +135,8 @@ pub fn in_background<T>(
 /// 그 몫(`chore`)으로 싣는다. 인스턴스 기록을 연 **뒤에** 부른다(`pty::open_record`) — 기록을 안 열면 남의 기록도 안 읽혀
 /// 끝낼 것이 없다. 판정 · 끝내기 · 죽은 실행의 기록 지우기는 풀을 쥔 `pty::clean_up_at_startup`이 한다.
 pub fn clean_up(chore: Chore, pool: Arc<PtyPool>) {
-    in_background(chore, "atelier-startup-cleanup", move || pty::clean_up_at_startup(&pool), |report, cleared| {
-        report.cleaned = cleaned(&cleared)
+    in_background(chore, "atelier-startup-cleanup", move || pty::clean_up_at_startup(&pool), |report, attempts| {
+        report.cleaned = cleaned(&attempts)
     });
 }
 
@@ -179,8 +179,8 @@ fn syncs_hooks_of(home: &Path, root: &Path) -> bool {
 
 /// 시작 정리가 끝내려 한 것 중 **실제로 끝낸 것** — 끝남(TERM) · 강제(KILL). 「이미 없음」은 끝낸 것이 아니고, 「못 끝냄」은
 /// 아직 산다. 끝낸 차례 그대로다.
-pub fn cleaned(cleared: &[Cleared]) -> Vec<Cleaned> {
-    cleared
+pub fn cleaned(attempts: &[StartupAttempt]) -> Vec<Cleaned> {
+    attempts
         .iter()
         .filter(|one| matches!(one.outcome, Outcome::Ended | Outcome::Forced))
         .map(|one| Cleaned { pid: one.id.pid, name: one.name.clone() })
@@ -208,8 +208,8 @@ mod tests {
         rx
     }
 
-    fn cleared(pid: u32, name: &str, outcome: Outcome) -> Cleared {
-        Cleared { id: Identity { pid, started_us: 1_000 + u64::from(pid) }, name: name.to_string(), outcome }
+    fn attempt(pid: u32, name: &str, outcome: Outcome) -> StartupAttempt {
+        StartupAttempt { id: Identity { pid, started_us: 1_000 + u64::from(pid) }, name: name.to_string(), outcome }
     }
 
     /// 시작 때 할 일이 없으면 곧바로 빈 보고다 — 프런트는 알릴 것 없이 지나간다.
@@ -274,13 +274,13 @@ mod tests {
             move || {
                 let _ = gate.recv();
                 vec![
-                    cleared(311, "node", Outcome::Ended),
-                    cleared(312, "gone", Outcome::Gone),
-                    cleared(313, "vite", Outcome::Forced),
-                    cleared(314, "stuck", Outcome::Survived),
+                    attempt(311, "node", Outcome::Ended),
+                    attempt(312, "gone", Outcome::Gone),
+                    attempt(313, "vite", Outcome::Forced),
+                    attempt(314, "stuck", Outcome::Survived),
                 ]
             },
-            |report, cleared| report.cleaned = super::cleaned(&cleared),
+            |report, attempts| report.cleaned = super::cleaned(&attempts),
         );
         let answered = ask(&holder);
 
@@ -310,7 +310,7 @@ mod tests {
         assert!(!body.contains("mod tests"), "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다");
         assert!(body.contains("in_background(chore,"), "시작 정리가 받은 몫으로 뒤 스레드에 가는 길을 안 탄다");
         assert!(body.contains("pty::clean_up_at_startup(&pool)"), "시작 정리가 풀의 정리를 안 부른다");
-        assert!(body.contains("report.cleaned = cleaned(&cleared)"), "정리의 결과를 보고에 안 싣는다");
+        assert!(body.contains("report.cleaned = cleaned(&attempts)"), "정리의 결과를 보고에 안 싣는다");
     }
 
     /// 임시 폴더 하나 — 이 검사만의 이름이다. 진짜 홈(`~/.claude` · `~/.codex`)과 진짜 데이터 루트는 건드리지 않는다.
