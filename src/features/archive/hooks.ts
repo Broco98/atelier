@@ -1,6 +1,6 @@
 import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { archiveApi } from "./api";
-import { ALL_MODES, type Mode } from "@/mode";
+import type { Mode } from "@/mode";
 
 // ["archive"]로 시작하는 모든 쿼리(두 세계의 목록·문서 목록·내용)가 한 번에 무효화된다.
 // 모드는 이 접두사 **바로 뒤**에 실린다 — 근거는 works 쪽 `WORKS_KEY`와 같다.
@@ -18,14 +18,6 @@ const ARCHIVE_KEY = ["archive"] as const;
  */
 export function invalidateArchive(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: ARCHIVE_KEY }, { cancelRefetch: false });
-}
-
-/**
- * 아카이브 **목록**(두 세계) 조회가 도는가 — 무효화 문이 「조회 중」을 가를 때 함께 본다. 문서 목록과 내용은 안 센다: 실패해
- * 다시 시도하는 문서 하나가 문을 잡아 목록 다시 읽기를 밀었다(그 문의 `reading` 머리말 · 티켓 14 리뷰).
- */
-export function isReadingArchive(queryClient: QueryClient): boolean {
-  return ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: archiveQuery(mode).queryKey, exact: true }) > 0);
 }
 
 // 라우트가 렌더 전에 목록을 확보할 수 있도록 훅 밖으로 꺼낸 정의 (worksQuery와 같은 이유).

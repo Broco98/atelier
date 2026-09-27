@@ -7,8 +7,9 @@ import {
   useQuery,
   useQueryClient,
   type QueryClient,
+  type QueryKey,
 } from "@tanstack/react-query";
-import { invalidateArchive, isReadingArchive } from "@/features/archive/hooks";
+import { archiveQuery, invalidateArchive } from "@/features/archive/hooks";
 import { showProblem } from "@/components/ui/confirm-store";
 import { worksApi } from "./api";
 import { movedWorks, type RowGap } from "./row-drop";
@@ -109,7 +110,7 @@ const trailing = new WeakMap<QueryClient, Promise<void>>();
  * **목록 조회가 도는가** — 두 세계의 work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
  * `ensureQueryData` · 저쪽 세계 읽기).
  *
- * **spec 본문과 아카이브 문서는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
+ * **spec 본문과 아카이브 문서(문서 목록 · 본문)는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
  * 실패한 조회를 세 번 더 시도하고(1 · 2 · 4초 쉼) 그동안 내내 「도는 중」이다 — 읽을 수 없는 문서 하나(spec/의 `ref.pdf`는
  * 코어의 `read_to_string`이 매번 실패한다)가 떠 있으면, 접두사로 셀 때 이벤트마다 목록 다시 읽기가 7초씩 밀렸다. 영영 안
  * 돌아오는 문서 읽기도 같은 길로 목록을 멈춘다. 대가: 목록 없이 홀로 돌던 문서 읽기(창으로 돌아올 때의 재조회 등)에 이
@@ -117,10 +118,15 @@ const trailing = new WeakMap<QueryClient, Promise<void>>();
  * 목록이 훨씬 오래 도므로, 흔한 길(에이전트가 이어 쓰는 동안)의 문서 읽기는 목록이 잡은 문 안에 든다.
  */
 function reading(queryClient: QueryClient): boolean {
-  return (
-    ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: worksQuery(mode).queryKey, exact: true }) > 0) ||
-    isReadingArchive(queryClient)
-  );
+  return fetchingInAnyWorld(queryClient, worksQuery) || fetchingInAnyWorld(queryClient, archiveQuery);
+}
+
+/**
+ * 세계마다 하나인 쿼리(`worksQuery` · `archiveQuery`)가 **어느 세계에서든** 도는가. 키를 정확히(`exact`) 본다 — 접두사로 보면
+ * 그 목록 키 아래 사는 문서 읽기까지 세어진다(`reading`이 안 세는 것).
+ */
+function fetchingInAnyWorld(queryClient: QueryClient, query: (mode: Mode) => { queryKey: QueryKey }): boolean {
+  return ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: query(mode).queryKey, exact: true }) > 0);
 }
 
 /**
