@@ -2,10 +2,12 @@ import { expect, test, type Locator, type Page } from "./evidence";
 import { answerByArg, BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  bodyLines,
   callCount,
   fireEvent,
   installFixtureBackend,
   ipcCallArgs,
+  kills,
   modeButton,
   navButton,
   openShell,
@@ -60,18 +62,6 @@ function 스냅샷(ptys: number[], tree: number | null = null): ProcessSnapshot 
     verdict: { ...PROCESS_SNAPSHOT.verdict, descendants: tree === null ? {} : { [shellKeyOf(tree)]: [vite] } },
     pool: ptys.map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs, metrics: NO_METRICS })),
   };
-}
-
-/** 지금까지 나간 닫기의 인자, 나간 순서대로. */
-async function kills(page: Page): Promise<Record<string, unknown>[]> {
-  return (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args);
-}
-
-/** 창 본문의 줄들 — 창의 설명(`aria-describedby`)이 가리키는 줄이다(`close-confirm-count.spec.ts`와 같다). */
-async function bodyLines(dialog: Locator): Promise<string[]> {
-  const id = await dialog.getAttribute("aria-describedby");
-  if (!id) return [];
-  return (await dialog.page().locator(`[id="${id}"]`).innerText()).split("\n");
 }
 
 /** 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「없다」를 재기 전에 부른다.** */

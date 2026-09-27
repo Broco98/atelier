@@ -5,7 +5,7 @@ import {
   callCount,
   fireAttention,
   installFixtureBackend,
-  ipcCallArgs,
+  kills,
   markRunning,
   modeButton,
   navButton,
@@ -315,7 +315,7 @@ test("[닫기]를 누르면 명령도 자손도 없는 셸은 묻지 않고 닫�
   await 셸행(page, 1).getByRole("button", { name: "닫기", exact: true }).click();
   // 앵커: 닫기 전 물음이 나갔고 그 답으로 닫았다 — 묻기 전에 닫은 것이 아니다.
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args))
+    .poll(() => kills(page))
     .toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);
   expect(await callCount(page, "pty_close_check")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);

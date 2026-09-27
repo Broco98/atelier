@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { QUIET_SHELL, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, kills, unknownIpcCalls } from "./harness";
 
 // 티켓 11 — **닫기 IPC가 까닭과 셸의 주인을 싣는다**(프로세스 스펙 S12). 백엔드는 그 닫기가 끝낸 것을 정리 기록에 이
 // 까닭으로 적는다. 어느 닫기가 어느 까닭인지는 표 한 자리(`CLOSE_REASONS`)가 고르고, 이 층이 재는 것은 그 표가 진짜
@@ -11,11 +11,6 @@ import { awaitSpawned, installFixtureBackend, ipcCallArgs, unknownIpcCalls } fro
 // 기록이 무엇을 적는지(도우미를 빼고, 셸만 끝난 사건은 안 적는다)는 Rust의 검사가 잰다 — 여기서는 인자만 본다.
 
 const [, plainWork] = WORKS;
-
-/** 지금까지 나간 닫기의 인자, 나간 순서대로. */
-async function kills(page: Page): Promise<Record<string, unknown>[]> {
-  return (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args);
-}
 
 /** 작업 화면(터미널 탭)에서 셸 하나가 뜬 뒤 ⋯ 메뉴의 「아카이빙」을 누르고 확인 창에서 한 번 더 누른다. */
 async function archive(page: Page, path: string, menu: string): Promise<void> {

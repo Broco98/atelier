@@ -1,11 +1,12 @@
 import { expect, test } from "./evidence";
-import type { Locator, Page } from "./evidence";
+import type { Page } from "./evidence";
 import { BUSY_SHELL, MAISON_LANDING_ROOM, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
 import type { WorkView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { StartupReport } from "@/components/shell/startup-report";
 import {
   awaitSpawned,
+  bodyLines,
   callCount,
   fireEvent,
   heldCalls,
@@ -13,6 +14,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   ipcFailure,
+  kills,
   markAttention,
   modeButton,
   navButton,
@@ -67,11 +69,6 @@ const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialo
 /** [모두 닫기]가 한 번 묻는 창. */
 const closeAllDialog = (page: Page) => page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
 
-/** 지금까지 나간 닫기의 인자, 나간 순서대로. */
-async function kills(page: Page): Promise<Record<string, unknown>[]> {
-  return (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args);
-}
-
 /**
  * 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「없다」를 재기 전에 부른다**
  * (`startup-report.spec.ts`의 같은 이름과 같은 까닭).
@@ -84,15 +81,6 @@ async function settle(page: Page): Promise<void> {
 
 /** **지금** 선 토스트의 수 — 되풀이하지 않고 한 번 센다(`startup-report.spec.ts`의 `toastsNow`). */
 const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").count();
-
-/**
- * 창 본문의 줄들 — 창의 설명(`aria-describedby`)이 가리키는 줄이다(`close-confirm-count.spec.ts`와 같다).
- */
-async function bodyLines(dialog: Locator): Promise<string[]> {
-  const id = await dialog.getAttribute("aria-describedby");
-  if (!id) return [];
-  return (await dialog.page().locator(`[id="${id}"]`).innerText()).split("\n");
-}
 
 /**
  * work 화면(터미널 탭)에 셸 둘을 세운다: 들어오면 뜨는 셸(pty 1)에 사람이 한 키를 치고, `+`로 하나 더(pty 2) 연다.

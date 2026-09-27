@@ -1335,6 +1335,25 @@ export async function ipcCallArgs(
     });
 }
 
+/**
+ * 지금까지 나간 셸 닫기(`pty_kill`)의 인자, 나간 순서대로 — `{ id, reason, owner }`다(닫기 IPC가 까닭과 셸의 주인을 싣는다,
+ * 프로세스 스펙 S12). 인자에 `id`가 없는 호출이 섞이면 던진다(`ipcCallArgs`) — 기록 형식이 바뀐 것을 「안 닫았다」로 읽지 않는다.
+ */
+export async function kills(page: Page): Promise<Record<string, unknown>[]> {
+  return (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args);
+}
+
+/**
+ * 확인 창 본문의 **줄들** — 창의 설명(`aria-describedby`)이 가리키는 자리를 읽는다. 설명이 없으면 빈 목록이다(셸 줄이 없는
+ * 종료 창). `innerText`는 CSS가 그린 대로 읽어, 본문의 줄바꿈이 화면에서 한 줄로 접히면 여기서도 한 줄이다 — 「명령 문구
+ * **아래**」를 재는 자리가 그것을 딛는다(`close-confirm-count.spec.ts`).
+ */
+export async function bodyLines(dialog: Locator): Promise<string[]> {
+  const id = await dialog.getAttribute("aria-describedby");
+  if (!id) return [];
+  return (await dialog.page().locator(`[id="${id}"]`).innerText()).split("\n");
+}
+
 /** 배지가 나가는 IPC 커맨드 이름. 위 손잡이가 호출을 고르고 인자를 잘라 내는 기준이다. */
 const BADGE_COMMAND = "plugin:window|set_badge_count";
 

@@ -3,6 +3,7 @@ import type { Locator, Page } from "./evidence";
 import { BUSY_SHELL, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
 import {
   awaitSpawned,
+  bodyLines,
   callCount,
   fireEvent,
   installFixtureBackend,
@@ -31,16 +32,6 @@ const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
 const closeDialog = (page: Page) => page.getByRole("alertdialog", { name: "셸 닫기" });
 const quitDialog = (page: Page) => page.getByRole("alertdialog", { name: "Atelier 종료" });
 const shells = (page: Page) => page.locator('[data-tab="shell"]');
-
-/**
- * 창 본문의 **줄들**. 본문은 창의 설명(`aria-describedby`)이 가리키는 줄이다. `innerText`는 CSS가 그린 대로 읽어,
- * 본문의 줄바꿈이 화면에서 한 줄로 접히면 여기서도 한 줄이다 — 「명령 문구 **아래**」를 재는 자리가 그것이다.
- */
-async function bodyLines(dialog: Locator): Promise<string[]> {
-  const id = await dialog.getAttribute("aria-describedby");
-  if (!id) return [];
-  return (await dialog.page().locator(`[id="${id}"]`).innerText()).split("\n");
-}
 
 /** 본문의 마지막 줄 — 아카이브 확인 창의 셸 줄이 선다. */
 const lastLine = (lines: string[]): string | undefined => lines[lines.length - 1];
