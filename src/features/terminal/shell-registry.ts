@@ -127,7 +127,7 @@ export interface Shell {
   firstInput: number | null;
   /**
    * **「주인 잃은 셸」인가**(프로세스 결정 4 · 티켓 12). MCP로 아카이브 · 삭제된 work의 셸 중 **조용하지 않은** 것이다
-   * (`isQuietShell`) — 부탁을 보낸 claude가 대개 그 셸 안에 있어서, 닫지 않고 이 표시를 세워 남긴다. 거짓으로 뜨고,
+   * (`closesWithoutAsking`이 거짓) — 부탁을 보낸 claude가 대개 그 셸 안에 있어서, 닫지 않고 이 표시를 세워 남긴다. 거짓으로 뜨고,
    * 한 번 서면 안 내린다(`markOwnerless`).
    *
    * **표시가 선 셸은 다시 판정하지 않는다**(`vanishedOwners`). 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로
@@ -766,7 +766,7 @@ export function markFirstInput(state: ShellsState, id: number, at: number): Shel
  * 재조회는 이벤트마다 오므로 같은 표시를 또 세우는 일이 흔하고, 그때 새 상태를 만들면 화면이 이유 없이 다시 그려진다
  * (`patch`의 관용구). 내리는 리듀서는 없다 — 표시는 셸이 닫힐 때 칸과 함께 사라진다.
  *
- * 무엇이 주인을 잃었는지는 여기서 안 정한다(`shell-owners.ts`의 `vanishedOwners`와 `isQuietShell`). 이 리듀서는 그 답을
+ * 무엇이 주인을 잃었는지는 여기서 안 정한다(`shell-owners.ts`의 `vanishedOwners`와 `closesWithoutAsking`). 이 리듀서는 그 답을
  * 받아 적기만 한다.
  */
 export function markOwnerless(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
@@ -1393,35 +1393,50 @@ export async function confirmClose(
 }
 
 /**
- * MCP로 아카이브 · 삭제된 work의 셸이 **조용한가**(프로세스 결정 4 · 티켓 12). 조용한 셸 = 명령 없음 + 자손 0이다 — 그
- * 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 조용한 셸만 사람 손 없이 닫힌다.
+ * 이 셸이 **조용한가**(CONTEXT 「조용한 셸」 · 프로세스 결정 4 · 티켓 12). 조용한 셸 = **살아 있는 셸** + 명령 없음 + 자손
+ * 0이다 — 그 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1).
  *
  * **모르면 조용하지 않다.** `checks`가 `null`이거나(배치 물음 전체가 실패) 그 셸의 답이 없으면(pty가 아직 없다 · 백엔드가
- * 못 읽었다) 거짓이다. 사람이 누르지 않은 닫기라 모르는 것은 닫지 않는다 — 닫으면 대답하던 claude가 도구 호출 도중 죽는다.
- * **`needsCloseConfirm`과 거꾸로다**: 그쪽은 사람이 누른 닫기라 못 얻은 답을 「안 묻고 닫는다」로 읽는다. 그 모양을
- * 빌리면(`!needsCloseConfirm(...)`) 모르는 셸이 조용한 셸로 읽혀 묻지 않고 닫힌다.
+ * 못 읽었다) 거짓이다. 이 판정을 딛는 닫기는 둘인데(MCP 아카이브 · [조용한 셸 모두 닫기]) 둘 다 셸마다 묻지 않는다 — 모르는
+ * 것을 닫으면 대답하던 claude가 도구 호출 도중 죽는다. **`needsCloseConfirm`과 거꾸로다**: 그쪽은 셸 하나를 사람이 누른
+ * 닫기라 못 얻은 답을 「안 묻고 닫는다」로 읽는다. 그 모양을 빌리면(`!needsCloseConfirm(...)`) 모르는 셸이 조용한 셸로
+ * 읽혀 묻지 않고 닫힌다.
  *
- * **끝난 칸 · 못 뜬 칸은 조용하다** — 닫힐 프로세스가 없어 배치 물음이 그 칸을 싣지도 않는다(답이 없는 것이 당연하다).
- * 주인이 사라졌는데 그 칸만 남으면 닫을 길이 없어서 아카이브의 회수처럼 함께 거둔다.
+ * **끝난 칸 · 못 뜬 칸은 조용한 셸이 아니다** — 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). 답이 있어도 그렇다.
+ * MCP 아카이브가 그 칸을 함께 거두는 것은 이 판정이 아니라 `closesWithoutAsking`의 몫이다.
  */
 export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean {
-  if (!isAlive(shell)) return true;
+  if (!isAlive(shell)) return false;
   const check = checks?.get(shell.id);
   return check !== undefined && !check.command && check.descendants === 0;
 }
 
 /**
- * [조용한 셸 모두 닫기]가 닫는 셸(티켓 32 · 프로세스 스펙 S44) — 받은 셸 중 **살아 있고**, 배치 물음이 「명령도 사람이 띄운
- * 자손도 없다」고 답한 셸. 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 차례는 받은 그대로다.
+ * MCP로 아카이브 · 삭제된 work의 칸을 **사람 손 없이 닫는가**(프로세스 결정 4 · 티켓 12) — 참이면 곧바로 닫히고(까닭 「MCP
+ * 아카이브」), 거짓이면 주인 잃은 셸로 남는다(`settleOwners`).
  *
- * **모르면 조용하지 않다** — `isQuietShell`과 같다: 물음 전체가 실패했거나(`null`) 그 셸의 답이 없으면 안 고른다. 사람이
- * 누른 닫기지만 셸 여럿을 수로 한 번 묻는 자리라, 모르는 셸을 넣으면 창의 N과 닫히는 것이 갈리고 도는 것을 모르고 닫는다.
+ * 닫는 것은 **조용한 셸**(`isQuietShell` — 모르면 조용하지 않다)과 **끝난 칸 · 못 뜬 칸**이다. 뒤의 둘은 닫힐 프로세스가 없어
+ * 배치 물음이 그 칸을 싣지도 않는다(답이 없는 것이 당연하다). 주인이 사라졌는데 그 칸만 남으면 닫을 길이 없어서 아카이브의
+ * 회수처럼 함께 거둔다.
+ */
+export function closesWithoutAsking(shell: Shell, checks: CloseChecks | null): boolean {
+  return !isAlive(shell) || isQuietShell(shell, checks);
+}
+
+/**
+ * [조용한 셸 모두 닫기]가 닫는 셸(티켓 32 · 프로세스 스펙 S44) — 받은 셸 중 **조용한 셸**(`isQuietShell`): 살아 있고, 배치
+ * 물음이 「명령도 사람이 띄운 자손도 없다」고 답한 셸. 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 차례는 받은
+ * 그대로다.
  *
- * **끝난 칸 · 못 뜬 칸은 고르지 않는다** — `isQuietShell`과 갈리는 자리다. 그쪽은 주인이 사라진 셸을 거두는 판정이라 그 칸도
- * 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(결정 22)을 치우는 것이 아니다.
+ * **모르면 조용하지 않다**: 물음 전체가 실패했거나(`null`) 그 셸의 답이 없으면 안 고른다. 사람이 누른 닫기지만 셸 여럿을
+ * 수로 한 번 묻는 자리라, 모르는 셸을 넣으면 창의 N과 닫히는 것이 갈리고 도는 것을 모르고 닫는다.
+ *
+ * **끝난 칸 · 못 뜬 칸은 고르지 않는다** — MCP 아카이브(`closesWithoutAsking`)와 갈리는 자리다. 그쪽은 주인이 사라진 셸을
+ * 거두는 판정이라 그 칸도 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(결정 22)을 치우는 것이
+ * 아니다.
  */
 export function quietShellsOf(shells: ReadonlyArray<Shell>, checks: CloseChecks | null): Shell[] {
-  return shells.filter((shell) => isAlive(shell) && isQuietShell(shell, checks));
+  return shells.filter((shell) => isQuietShell(shell, checks));
 }
 
 /** [조용한 셸 모두 닫기]가 **한 번** 묻는 말(티켓 32 · 프로세스 스펙 S44) — 셸 여럿을 한 번에 닫는 자리는 수를 말한다. */

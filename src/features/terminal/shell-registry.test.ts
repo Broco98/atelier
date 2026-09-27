@@ -15,6 +15,7 @@ import {
   CLOSE_NOTICE,
   CLOSE_REASONS,
   closeNotice,
+  closesWithoutAsking,
   closingShellsNotice,
   confirmClose,
   countQuitShells,
@@ -1838,8 +1839,9 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
       'for (const id of reclaimOnLeave(terminalStore.state, from, to)) closeShell(id, "reclaim");',
     );
     // MCP로 아카이브된 work의 **조용한 셸**(티켓 12 · 프로세스 결정 4). 물을 것이 없다 — 명령도 사람이 띄운 자손도 없다.
-    // 무엇이 조용한지는 `isQuietShell` 하나가 정한다: 그 판정을 안 딛고 닫으면 여기가 빨개진다.
-    expect(store).toContain('if (isQuietShell(shell, checks)) closeShell(id, "mcpArchive");');
+    // 무엇을 묻지 않고 닫는지는 `closesWithoutAsking` 하나가 정한다(조용한 셸 + 끝난 칸 · 못 뜬 칸): 그 판정을 안 딛고 닫거나
+    // 살아 있는 칸만 보는 `isQuietShell`로 바꾸면 여기가 빨개진다.
+    expect(store).toContain('if (closesWithoutAsking(shell, checks)) closeShell(id, "mcpArchive");');
     // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`ownerlessCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트는
     // 그 세계 하나를, `Processes`의 묶음은 두 세계를 넘긴다(티켓 32) — 같은 함수다.
     expect(store).toContain(
@@ -2432,6 +2434,10 @@ describe("종료 확인이 세는 셸", () => {
 // **모르면 조용하지 않다.** 사람이 누른 닫기(`needsCloseConfirm`)는 못 얻은 답을 「안 묻고 닫는다」로 읽는다 — 모르는
 // 것을 이유로 사람이 고른 닫기를 막지 않는다. 이쪽은 사람이 누르지 않은 닫기라 거꾸로다: 모르는 셸을 닫으면 대답하던
 // claude가 도구 호출 도중 죽는다. 그래서 그 판정의 모양을 빌리지 않는다 — 아래 마지막 검사가 둘이 갈리는 자리다.
+//
+// **두 이름이 갈린다**(코드 리뷰 표준 41). 「조용한 셸」(`isQuietShell`)은 CONTEXT의 말 그대로 **셸**이라 살아 있는 칸만이다.
+// MCP 아카이브가 사람 손 없이 거두는 것(`closesWithoutAsking`)은 그 셸과 **끝난 칸 · 못 뜬 칸**이다 — 한 이름이 두 뜻을
+// 들면 [조용한 셸 모두 닫기]가 그것을 되돌려야 했다.
 describe("조용한 셸", () => {
   const check = (command: boolean, descendants: number) => ({ command, descendants });
   const one = () => {
@@ -2439,31 +2445,45 @@ describe("조용한 셸", () => {
     return { shell: state.shells[0], id: ids[0], state };
   };
 
-  it("명령도 자손도 없으면 조용하다", () => {
+  it("명령도 자손도 없으면 조용하고, MCP 아카이브가 묻지 않고 닫는다", () => {
     const { shell, id } = one();
-    expect(isQuietShell(shell, new Map([[id, check(false, 0)]]))).toBe(true);
+    const checks = new Map([[id, check(false, 0)]]);
+    expect(isQuietShell(shell, checks)).toBe(true);
+    expect(closesWithoutAsking(shell, checks)).toBe(true);
   });
 
-  it("명령이 돌거나 자손이 있으면 조용하지 않다", () => {
+  it("명령이 돌거나 자손이 있으면 조용하지 않고, 닫지 않는다", () => {
     const { shell, id } = one();
-    expect(isQuietShell(shell, new Map([[id, check(true, 0)]]))).toBe(false);
-    expect(isQuietShell(shell, new Map([[id, check(false, 1)]]))).toBe(false);
+    for (const answer of [check(true, 0), check(false, 1)]) {
+      const checks = new Map([[id, answer]]);
+      expect(isQuietShell(shell, checks)).toBe(false);
+      expect(closesWithoutAsking(shell, checks)).toBe(false);
+    }
   });
 
-  it("배치 답이 `null`이거나 그 셸의 답이 없으면 조용하지 않다", () => {
+  it("배치 답이 `null`이거나 그 셸의 답이 없으면 조용하지 않고, 닫지 않는다", () => {
     const { shell, id } = one();
-    expect(isQuietShell(shell, null)).toBe(false);
-    expect(isQuietShell(shell, new Map())).toBe(false);
-    expect(isQuietShell(shell, new Map([[id + 1, check(false, 0)]]))).toBe(false);
+    for (const checks of [null, new Map(), new Map([[id + 1, check(false, 0)]])]) {
+      expect(isQuietShell(shell, checks)).toBe(false);
+      expect(closesWithoutAsking(shell, checks)).toBe(false);
+    }
   });
 
   // 끝난 칸 · 못 뜬 칸은 닫힐 프로세스가 없다 — 묻지도 않는다(배치 물음이 그 칸을 안 싣는다). 주인이 사라졌는데 이 칸만
-  // 남으면 닫을 길이 없어서, 아카이브의 회수(`closeShellsOf`)처럼 함께 거둔다.
-  it("끝난 칸과 못 뜬 칸은 답이 없어도 조용하다", () => {
+  // 남으면 닫을 길이 없어서, 아카이브의 회수(`closeShellsOf`)처럼 함께 거둔다. 그래도 그 칸은 **셸이 아니라** 조용한 셸이
+  // 아니다 — 답이 「조용하다」여도 그렇다.
+  it("끝난 칸과 못 뜬 칸은 조용한 셸이 아니지만, MCP 아카이브는 답이 없어도 묻지 않고 거둔다", () => {
     const two = opened(2).state;
     const [a, b] = two.shells.map((shell) => shell.id);
     const state = markFailed(markExited(two, a, EXIT_42), b, "폴더가 없습니다");
-    for (const shell of state.shells) expect(isQuietShell(shell, null)).toBe(true);
+    const quietAnswers = new Map([
+      [a, check(false, 0)],
+      [b, check(false, 0)],
+    ]);
+    for (const shell of state.shells) {
+      expect(isQuietShell(shell, quietAnswers)).toBe(false);
+      expect(closesWithoutAsking(shell, null)).toBe(true);
+    }
   });
 
   it("사람이 누른 닫기와 모르는 것을 거꾸로 읽는다", () => {
@@ -2471,7 +2491,7 @@ describe("조용한 셸", () => {
     // 사람이 누른 닫기: 못 얻었으면 안 묻고 닫는다.
     expect(needsCloseConfirm(shell, null)).toBe(false);
     // 사람이 누르지 않은 닫기: 못 얻었으면 안 닫는다.
-    expect(isQuietShell(shell, null)).toBe(false);
+    expect(closesWithoutAsking(shell, null)).toBe(false);
   });
 });
 
@@ -2568,8 +2588,8 @@ describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
     expect(quietShellsOf(state.shells, null)).toEqual([]);
   });
 
-  // 끝난 칸 · 못 뜬 칸은 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). MCP 아카이브의 판정(`isQuietShell`)은 그 칸을
-  // 「조용하다」로 읽어 주인과 함께 거두지만, 여기서 거두면 사람이 이유를 읽기 전에 사라진다 — 닫힐 프로세스도 없다.
+  // 끝난 칸 · 못 뜬 칸은 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). MCP 아카이브의 판정(`closesWithoutAsking`)은 그
+  // 칸을 주인과 함께 거두지만, 여기서 거두면 사람이 이유를 읽기 전에 사라진다 — 닫힐 프로세스도 없다.
   it("끝난 칸과 못 뜬 칸은 고르지 않는다", () => {
     const two = opened(3).state;
     const [a, b, c] = two.shells.map((shell) => shell.id);

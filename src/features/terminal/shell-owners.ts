@@ -9,8 +9,8 @@ import type { ShellOwner, ShellsState } from "./shell-registry";
  *
  * claude에게 MCP로 work을 아카이브 · 삭제하라고 시키면 그 일은 다른 프로세스(MCP 서버)가 한다 — 앱은 `works:changed` 뒤의
  * **목록 재조회**로만 안다. 새 목록이 앉으면 그 세계의 셸 owner 중 slug가 목록에서 사라진 것을 찾고(`vanishedOwners`),
- * 그 셸들이 조용한지는 배치 물음 한 번으로 본다(`isQuietShell` · 터미널 스토어의 `settleOwners`). 조용한 셸은 닫히고
- * 나머지는 「주인 잃은 셸」로 남아 토스트로 알린다.
+ * 그 셸들이 조용한지는 배치 물음 한 번으로 본다(`closesWithoutAsking` · 터미널 스토어의 `settleOwners`). 조용한 셸과 끝난 칸 ·
+ * 못 뜬 칸은 닫히고 나머지는 「주인 잃은 셸」로 남아 토스트로 알린다.
  *
  * **모르면 판단하지 않는다**(fail-closed). 조회가 실패했거나 결과가 아직 없는 것을 「목록이 비었다」로 읽으면 그 세계의
  * 셸이 전부 주인을 잃는다.

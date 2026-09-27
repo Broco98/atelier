@@ -37,12 +37,12 @@ import {
   attentionOfId,
   CLOSE_REASONS,
   closeNotice,
+  closesWithoutAsking,
   confirmClose,
   countQuitShells,
   countSpawned,
   firstInputOfId,
   isLiveShellOf,
-  isQuietShell,
   liveOwnerlessOf,
   markExited,
   markFailed,
@@ -991,8 +991,9 @@ export function holdOwner(owner: ShellOwner): () => void {
  *
  * 1. 사라진 owner를 찾는다(`vanishedOwners` — 실패 · 로딩이면 판단 안 함, 제외 창 · 이미 주인 잃은 셸은 뺀다).
  * 2. 그 셸들이 조용한지 **배치 물음 한 번으로** 본다(티켓 08의 `pty_close_checks`).
- * 3. 조용한 셸은 곧바로 닫는다 — 까닭은 「MCP 아카이브」다. 나머지는 「주인 잃은 셸」로 표시하고 남긴다: 부탁을 보낸
- *    claude가 대개 그 셸 안에 있어, 닫으면 도구 호출 도중 죽는다. 기다렸다가 저절로 닫지 않는다(결정 4의 기각).
+ * 3. 조용한 셸과 끝난 칸 · 못 뜬 칸은 곧바로 닫는다(`closesWithoutAsking`) — 까닭은 「MCP 아카이브」다. 나머지는 「주인 잃은 셸」로
+ *    표시하고 남긴다: 부탁을 보낸 claude가 대개 그 셸 안에 있어, 닫으면 도구 호출 도중 죽는다. 기다렸다가 저절로 닫지
+ *    않는다(결정 4의 기각).
  * 4. 남긴 것이 있으면 토스트를 세운다(`showOwnerless`).
  *
  * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
@@ -1011,7 +1012,7 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
     for (const id of ids) {
       const shell = terminalStore.state.shells.find((one) => one.id === id);
       if (!shell || shell.ownerless || heldOwners.has(shell.owner)) continue;
-      if (isQuietShell(shell, checks)) closeShell(id, "mcpArchive");
+      if (closesWithoutAsking(shell, checks)) closeShell(id, "mcpArchive");
       else left.push(id);
     }
     if (left.length === 0) return;
