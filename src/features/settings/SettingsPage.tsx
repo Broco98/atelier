@@ -850,7 +850,8 @@ export function NotificationSection({
  * 화면이 그 둘을 한 낱말로 접으면 **없는 사실을 만들고** 사람을 실패하는 버튼으로 보낸다.
  *
  * **일부만 깔린 것은 「업데이트 필요」다**(프로세스 결정 15 · 프로세스 스펙 S35). 앱이 뜰 때 저절로 맞추지만, 그 전에 연
- * 사람이나 맞추기가 실패한 사람에게는 「설치」 버튼이 고칠 길이다 — 병합이 이미 깔린 것을 지금 목록으로 맞춘다.
+ * 사람이나 맞추기가 실패한 사람에게는 「설치」 버튼이 고칠 길이다 — 병합이 이미 깔린 것을 지금 목록으로 맞춘다. 병합이 못
+ * 고치는 자리(codex 설정에 손으로 적어 둔 옛 줄)는 설치의 답이 `writeError`로 그 까닭을 싣는다(`hooks.rs`의 `unfixed`).
  */
 export function hookStateLabel(status: HookStatus): string {
   if (status.error !== null) return "확인 못 함";

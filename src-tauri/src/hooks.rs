@@ -360,7 +360,7 @@ pub fn merge_codex(source: &str, handler: &Path) -> Result<String, String> {
     // 훅 위에 우리 구획을 그대로 얹으면 같은 명령이 두 벌이 되어 이벤트마다 훅이 두 번
     // 돈다 — claude 쪽이 `claude_group_is_ours`로 막는 그 자리(스토리 72)의 codex 판이다.
     // 그 줄이 옛 줄이어도 갈아 끼우지 않는다: 울타리 밖은 사람의 글이라 텍스트로 잘라 내지 않는다(구현 결정 8) — 판정은
-    // 그 이벤트를 「일부」로 남기고, 사람이 그 줄을 지우면 다음 맞춤이 채운다.
+    // 그 이벤트를 「일부」로 남기고, 설치 버튼의 답이 그 까닭을 말하며(`unfixed`), 사람이 그 줄을 지우면 다음 맞춤이 채운다.
     let present = codex_ours(&parse_codex(&out)?).into_iter().map(|(event, _)| event.to_string()).collect::<Vec<_>>();
     let missing: Vec<&str> =
         CODEX_EVENTS.iter().copied().filter(|event| !present.iter().any(|on| on == event)).collect();
@@ -652,6 +652,9 @@ pub struct HookStatus {
     /// 방금 **넣거나 걷다** 난 오류. `error`와 한 칸을 쓰면 안 되는 이유가 있다 — 파일이
     /// 읽기 전용이면 쓰기만 실패하고 판정은 멀쩡히 되는데, 그때 화면이 「확인 못 함」이라
     /// 적으면 아는 사실을 「모른다」로 지우는 것이 된다.
+    ///
+    /// 쓰기는 됐어도 **버튼이 할 일을 다 못 한 까닭**도 이 칸이다 — 걷고도 남은 줄(`leftover`), 넣고도 「일부」인 줄(`unfixed`).
+    /// 둘 다 사람이 그 파일을 손으로 고쳐야 한다는 말이고, 버튼의 답에만 선다.
     pub write_error: Option<String>,
     /// 그 파일에 실제로 들어가는 글자. **쓰는 함수와 같은 곳에서 나온다**(스토리 73) —
     /// 화면이 따로 적으면 「무엇이 들어가는지 보여 준다」는 약속이 실물과 갈릴 수 있다.
@@ -709,12 +712,15 @@ pub fn status(home: &Path, handler: &Path) -> Vec<HookStatus> {
 
 /// 둘 다에 넣는다 — 이미 깔린 것은 지금 목록으로 맞춘다(병합이 갱신 모드다). 「업데이트 필요」의 화면에서 사람이 고칠 길이
 /// 이 버튼이다. 돌아오는 것은 **넣고 난 뒤의 상태**다 — 화면이 다시 물어보지 않는다.
+///
+/// **넣고 난 뒤에도 「일부」면 그 까닭도 말한다**(아래 `unfixed` — 제거의 `leftover`와 짝이다).
 pub fn install(home: &Path, handler: &Path) -> Vec<HookStatus> {
     AGENTS
         .iter()
         .map(|agent| {
             let merge = agent.merge;
-            let failed = apply(&(agent.path)(home), |source| merge(source, handler)).err();
+            let path = (agent.path)(home);
+            let failed = apply(&path, |source| merge(source, handler)).err().or_else(|| unfixed(agent, &path, handler));
             look(agent, home, handler, failed)
         })
         .collect()
@@ -757,6 +763,32 @@ fn leftover(agent: &Agent, path: &Path) -> Option<String> {
     // 우리 것으로 알아보는 이름이 둘이라(`is_ours`) 둘 다 적는다 — 한쪽만 적으면 사람이 그 이름만 찾아 지우고 다른 줄을 남긴다.
     Some(format!(
         "손으로 적어 둔 훅이 남아 있어 앱이 못 걷었습니다 — {}을 열어 `{}`나 `{}`가 든 줄을 직접 지워 주세요.",
+        atelier_core::collapse_home(path),
+        crate::shells::SCRIPT_NAME,
+        crate::shells::HANDLER_NAME
+    ))
+}
+
+/// 넣고 난 파일이 **아직 「일부」면** 그 까닭을 사람의 말로 — 제거의 `leftover`와 짝이다.
+///
+/// 병합은 claude의 우리 줄을 모두 지금 모양으로 고치고 codex의 울타리 구획을 통째로 새것으로 바꾼다. 그래도 「일부」가 남는 것은
+/// **codex 울타리 밖에 사람이 손으로 적어 둔 우리 줄**이 지금 줄이 아닐 때다 — 옛 줄, 목록 밖 이벤트의 줄, 한 이벤트에 둘. 울타리
+/// 밖은 사람의 글이라 병합이 그 이벤트를 건너뛰고(`merge_codex` — 구현 결정 8), 판정은 그 줄을 지금 줄과 견줘 「일부」로 남긴다
+/// (`codex_installed` — 「전부」로 읽으면 옛 처리기가 말없이 도는 기계가 「설치됨」으로 선다). 이 까닭이 없으면 화면은 「업데이트
+/// 필요」인 채 설치 버튼이 말없이 아무것도 안 한다. 사람이 그 줄을 지우고 다시 누르면 병합이 그 이벤트를 구획에 채운다.
+///
+/// **설치 버튼의 답에만 싣는다.** 앱이 뜰 때의 맞춤(`sync`)은 실제로 쓴 에이전트만 돌려주므로 바꿀 것이 없는 이 파일에 토스트가
+/// 안 선다(S36). 판정 조회(`status`)에도 안 싣는다 — 누르기 전의 「업데이트 필요」는 고칠 길(설치)을 가리키고, 앱이 못 고친다는
+/// 것은 누른 뒤에야 사실이 된다.
+fn unfixed(agent: &Agent, path: &Path, handler: &Path) -> Option<String> {
+    let source = read_or_empty(path).ok()?;
+    if (agent.installed)(&source, handler) != Ok(Installed::Partial) {
+        return None;
+    }
+    // 우리 것으로 알아보는 이름이 둘이라(`is_ours`) 둘 다 적는다(`leftover`와 같은 까닭). 「아틀리에 설정 화면이 넣은」은 울타리
+    // 여는 줄(`CODEX_BEGIN`)에 적힌 그 말이다 — 사람이 파일에서 찾을 글자로 울타리를 가리킨다.
+    Some(format!(
+        "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — {}을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `{}`나 `{}`가 든 줄을 지우고 다시 설치해 주세요.",
         atelier_core::collapse_home(path),
         crate::shells::SCRIPT_NAME,
         crate::shells::HANDLER_NAME
@@ -1969,6 +2001,84 @@ trust_level = "trusted"
         let merged = merge_codex(&source, &script()).unwrap();
         assert_eq!(merged, format!("{CODEX_REAL}\n{}", codex_block(&script())), "구획이 통째로 새것이 아니다");
         assert_eq!(codex_installed(&merged, &script()), Ok(Installed::Full));
+    }
+
+    /// 사람이 울타리 밖에 손으로 적어 둔 codex 훅 한 벌 — matcher 그룹과 명령 블록, 명령줄은 `command` 그대로.
+    fn codex_line_by_hand(event: &str, command: &str) -> String {
+        format!("\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n", toml_basic_string(command))
+    }
+
+    /// codex 설정 한 장만 든 임시 홈.
+    fn codex_home(name: &str, config: &str) -> PathBuf {
+        let home = temp_home(name);
+        std::fs::create_dir_all(home.join(".codex")).unwrap();
+        std::fs::write(codex_config_path(&home), config).unwrap();
+        home
+    }
+
+    /// **울타리 밖에 손으로 적어 둔 우리 줄이 옛 줄이면, 설치 버튼이 못 고친 까닭을 말한다.** 울타리 밖은 사람의 글이라 병합이 그
+    /// 이벤트를 건너뛰고(`merge_codex`) 판정은 그 줄을 「일부」로 읽는다(`codex_installed`) — 까닭이 없으면 화면은 「업데이트 필요」인
+    /// 채 설치 버튼이 말없이 아무것도 안 한다. 사람의 줄은 글자 그대로다. 빠진 이벤트만 구획으로 더한다 — 다른 이벤트가 이미 지금
+    /// 줄이면 파일도 그대로다.
+    ///
+    /// 옛 줄 하나가 지난 설치의 구획 곁에 선 것, 손으로 적은 옛 다섯만 있는 것, 목록 밖 이벤트에 손으로 적은 우리 줄 — 모두 병합이
+    /// 못 고치는 「일부」다. 앱이 뜰 때의 맞춤은 쓴 것이 없어 이것을 안 돌려준다(토스트가 안 선다, S36).
+    #[test]
+    fn an_old_line_by_hand_outside_the_fence_is_said_on_install() {
+        let old_by_hand = |event: &str| codex_line_by_hand(event, &command_line(&old_script(), CODEX, event));
+        let beside_the_block = merge_codex(&format!("{CODEX_REAL}{}", old_by_hand("Stop")), &script()).unwrap();
+        let old_five_by_hand: String = std::iter::once(CODEX_REAL.to_string()).chain(OLD_CODEX.map(old_by_hand)).collect();
+        let new_four: Vec<&str> = CODEX_EVENTS.iter().copied().filter(|event| !OLD_CODEX.contains(event)).collect();
+        let off_the_list =
+            format!("{}{}", codex_by_hand(&script()), codex_line_by_hand("Notification", &codex_command(&script(), "Notification")));
+
+        let cases = [
+            ("beside", beside_the_block.clone(), beside_the_block),
+            ("old-five", old_five_by_hand.clone(), format!("{old_five_by_hand}\n{}", codex_block_for(&script(), &new_four))),
+            ("off-list", off_the_list.clone(), off_the_list),
+        ];
+        for (name, config, installed) in cases {
+            let home = codex_home(&format!("by-hand-{name}"), &config);
+            assert_eq!(codex_installed(&config, &script()), Ok(Installed::Partial), "{name}: 「일부」가 아니다 — 검사가 재는 자리가 없다");
+
+            let after = install(&home, &script());
+            let codex = agent(&after, "codex");
+            assert_eq!(read(&codex_config_path(&home)), installed, "{name}: 사람이 적은 줄을 고쳤거나 빠진 이벤트를 안 더했다");
+            assert_eq!(codex.installed, Installed::Partial, "{name}");
+            let said = codex.write_error.clone().unwrap_or_default();
+            assert!(
+                said.contains("config.toml")
+                    && said.contains("손으로")
+                    && said.contains(crate::shells::SCRIPT_NAME)
+                    && said.contains(crate::shells::HANDLER_NAME),
+                "{name}: 설치가 말없이 아무것도 안 했다 — 어느 파일의 무엇을 고쳐야 하는지 화면이 말할 것이 없다: {said:?}"
+            );
+            assert_eq!(agent(&after, "claude").write_error, None, "{name}: 다 고친 claude 쪽에 까닭이 섰다");
+
+            assert_eq!(sync(&home, &script()), Vec::<String>::new(), "{name}: 쓴 것이 없는 맞춤이 토스트를 부른다");
+            assert_eq!(read(&codex_config_path(&home)), installed, "{name}: 맞춤이 사람이 적은 줄을 고쳤다");
+            let _ = std::fs::remove_dir_all(&home);
+        }
+    }
+
+    /// 앵커 셋 — **설치가 고칠 수 있거나 고칠 것이 없으면 까닭이 안 선다.** 울타리 밖의 지금 줄은 「전부」이고, 울타리 안의 옛 줄은
+    /// 구획째 갈아 끼우며(구현-스펙 「맞추는 것」), 이 빌드보다 새로운 판의 줄은 손대지 않고 「전부」로 읽는다(P5).
+    #[test]
+    fn install_says_nothing_when_it_fixed_everything_or_had_nothing_to_fix() {
+        let newer = format!("{} list-{}", command_line(&script(), CODEX, "Stop"), LIST_VERSION + 1);
+        let cases = [
+            ("current-by-hand", codex_by_hand(&script()), None),
+            ("old-in-fence", codex_with_old_block(&OLD_CODEX), Some(format!("{CODEX_REAL}\n{}", codex_block(&script())))),
+            ("newer-by-hand", format!("{CODEX_REAL}{}", codex_line_by_hand("Stop", &newer)), None),
+        ];
+        for (name, config, fixed) in cases {
+            let home = codex_home(&format!("said-nothing-{name}"), &config);
+            let codex = agent(&install(&home, &script()), "codex").clone();
+            assert_eq!(codex.installed, Installed::Full, "{name}");
+            assert_eq!(codex.write_error, None, "{name}: 고칠 것을 다 고쳤는데 까닭이 섰다");
+            assert_eq!(read(&codex_config_path(&home)), fixed.unwrap_or(config), "{name}");
+            let _ = std::fs::remove_dir_all(&home);
+        }
     }
 
     /// **설치 상태는 셋이다**(프로세스 결정 15 · 프로세스 스펙 S35): 우리 훅이 하나도 없으면 없음, 지금 목록 전부가 지금 모양으로

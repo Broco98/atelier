@@ -527,6 +527,21 @@ describe("훅 구획의 화면", () => {
     expect(html).toContain("설정을 쓰지 못했습니다");
   });
 
+  // 설치를 눌렀는데도 「업데이트 필요」인 자리 — codex 설정에 손으로 적어 둔 옛 줄은 앱이 안 고친다(`hooks.rs`의
+  // `unfixed`). 그 까닭이 설치의 답에 실려 오는데 화면이 안 적으면, 사람에게는 버튼이 말없이 아무것도 안 한 것으로 보인다.
+  // 낱말은 그대로 「업데이트 필요」다 — 파일이 여전히 그렇다.
+  it("설치하고도 업데이트 필요면 앱이 못 고친 까닭이 그 줄 아래 선다", () => {
+    const why =
+      "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — ~/.codex/config.toml을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `atelier-hook.py`나 `atelier-hook.zsh`가 든 줄을 지우고 다시 설치해 주세요.";
+    const status = hook({ agent: "codex", path: "~/.codex/config.toml", installed: "partial", writeError: why });
+    expect(hookStateLabel(status)).toBe("업데이트 필요");
+
+    const html = renderHooks([status]);
+    expect(html).toContain("업데이트 필요");
+    expect(html).toContain("손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요");
+    expect(html).not.toContain("확인 못 함");
+  });
+
   // 깨진 파일에서는 쓰기도 판정도 같은 까닭으로 실패한다 — 그때 같은 줄이 두 번 서면
   // 사람은 두 가지 일이 났다고 읽는다.
   it("같은 까닭은 두 번 안 적는다", () => {
