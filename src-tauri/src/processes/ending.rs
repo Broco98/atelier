@@ -401,9 +401,7 @@ impl Kernel for Os {
     }
 
     fn kill(&self, pid: u32, sig: i32) {
-        // `kill(0)`은 **앱 자신의 그룹**을, `kill(-1)`은 보낼 수 있는 모든 프로세스를 쏜다. i32를 넘는 값도
-        // 음수로 접혀 그룹 신호가 된다.
-        let Some(pid) = i32::try_from(pid).ok().filter(|pid| *pid > 1) else {
+        let Some(pid) = signallable(pid) else {
             return;
         };
         unsafe {
@@ -428,13 +426,19 @@ impl Kernel for Os {
     }
 }
 
-/// 그룹에 신호를 보낸다.
-///
-/// `killpg`에 pgid를 그대로 믿고 넘기면 두 가지로 위험하다(둘 다 실측): `0`은 **앱 자신의 프로세스
-/// 그룹**을 쏘고, 음수는 macOS에서 `kill(-N)`이 되어 그룹이 아니라 pid `N` 하나를 죽이면서 반환값은 0을
-/// 준다.
+/// **신호를 보내도 되는 번호인가** — 되면 libc가 받는 꼴(`i32`)로 준다. 커널에 번호를 넘기는 세 자리(`Os::kill` ·
+/// `signal_group` · `group_alive`)가 모두 이것을 지난다. 번호를 그대로 믿고 넘기면 위험하다(모두 실측):
+/// - `kill(0)` · `killpg(0)`은 **앱 자신의 프로세스 그룹**을 쏜다.
+/// - `kill(-1)`은 보낼 수 있는 모든 프로세스를 쏜다. i32를 넘는 u32는 음수로 접혀 그런 번호가 된다.
+/// - 음수 pgid는 macOS에서 `kill(-N)`이 되어 그룹이 아니라 pid `N` 하나를 죽이면서 반환값은 0을 준다.
+/// - 1은 launchd다.
+fn signallable(pid: u32) -> Option<i32> {
+    i32::try_from(pid).ok().filter(|pid| *pid > 1)
+}
+
+/// 그룹에 신호를 보낸다. 번호는 `signallable`이 거른다.
 pub(crate) fn signal_group(pgid: u32, sig: i32) {
-    let Some(pgid) = i32::try_from(pgid).ok().filter(|pgid| *pgid > 1) else {
+    let Some(pgid) = signallable(pgid) else {
         return;
     };
     unsafe {
@@ -442,9 +446,9 @@ pub(crate) fn signal_group(pgid: u32, sig: i32) {
     }
 }
 
-/// 그룹이 아직 있는가.
+/// 그룹이 아직 있는가. 신호를 보낼 수 없는 번호는 없는 그룹이다(`signallable`).
 pub(crate) fn group_alive(pgid: u32) -> bool {
-    let Some(pgid) = i32::try_from(pgid).ok().filter(|pgid| *pgid > 1) else {
+    let Some(pgid) = signallable(pgid) else {
         return false;
     };
     if unsafe { libc::killpg(pgid, 0) } == 0 {
@@ -824,6 +828,19 @@ mod tests {
                 done_at: 2000,
             },
         ]
+    }
+
+    /// **앱 자신의 그룹 · launchd · 모두에게는 신호가 갈 길이 없다.** 0은 앱 자신의 그룹, 1은 launchd, i32를 넘는 값은 음수로 접혀
+    /// 「모두」나 남의 pid가 된다. 보이는 것은 그룹의 생존 물음뿐이라(`group_alive` — 신호 0이라 아무것도 안 보낸다) 그것으로 잰다:
+    /// 가드가 없으면 0은 앱 자신의 그룹이라 살았고, 1은 launchd의 그룹이라 EPERM으로 살았다고 답한다. 앵커: 이 검사 자신의 그룹은
+    /// 번호로 물으면 살아 있다.
+    #[test]
+    fn no_signal_finds_its_way_to_our_own_group_launchd_or_everyone() {
+        for pgid in [0, 1, u32::MAX, i32::MAX as u32 + 1] {
+            assert!(!group_alive(pgid), "그룹 {pgid}를 살아 있다고 봤다 — 가드 없이 커널에 물었다");
+        }
+        let ours = unsafe { libc::getpgrp() } as u32;
+        assert!(ours > 1 && group_alive(ours), "이 검사의 그룹 {ours}를 못 봤다 — 위 단언이 아무것도 못 잰다");
     }
 
     /// 결과는 받은 대상의 순서 그대로, 신원째 돌아온다 — 부르는 쪽(정리 기록)이 그것으로 행을 찾는다.
