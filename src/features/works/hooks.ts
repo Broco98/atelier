@@ -73,8 +73,10 @@ const WORKS_KEY = ["works"] as const;
  *   react-query가 `cancelRefetch`로도 안 끊는다. 억지로 끊으면 세계를 건너는 라우트(`pickWorkSlug`의 `ensureQueryData`)가
  *   거기 합류해 있다가 취소를 받아 빈 목록으로 정규화한다.
  *
- * 돌려주는 promise는 **관찰되는 쿼리의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽 세계는 이 화면의
- * 목록이 아니다. 저쪽 세계의 읽기는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다.
+ * 곧바로 읽는 쪽이 돌려주는 promise는 **관찰되는 쿼리의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽
+ * 세계는 이 화면의 목록이 아니다. 저쪽 세계의 읽기는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다. **표시한 쪽은 저쪽
+ * 세계까지 기다린다:** 뒤따르는 한 번은 도는 목록 조회가 **모두** 끝난 뒤에 나가므로(`readsSettled` — 두 세계 · 아카이브를 한
+ * 줄로 본다), 그때 돌던 저쪽 세계의 목록이 늦으면 표시한 쪽의 진행 표시도 그만큼 선다. 세계마다 문을 가르지 않은 대가다(티켓 14).
  */
 export function invalidateWorks(queryClient: QueryClient): Promise<void> {
   const state = movesOf(queryClient);
