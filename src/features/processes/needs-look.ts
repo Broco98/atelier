@@ -20,7 +20,10 @@ import type { ProcessSummary } from "./types";
  */
 export const NEEDS_LOOK_LABEL = "손볼 것이 있어요";
 
-/** 본 것의 집합이 쥐는 이름 수의 상한. 넘치면 가장 먼저 본 것부터 빠진다 — 앱을 몇 달 켜 두어도 저장한 집합이 안 불어난다. */
+/**
+ * 본 것의 집합이 쥐는 **옛 이름** 수의 상한. 넘치면 가장 먼저 본 것부터 빠진다 — 앱을 몇 달 켜 두어도 저장한 집합이 안 불어난다.
+ * 지금 것은 이 상한에 안 걸린다(`seenWith`).
+ */
 export const SEEN_CAP = 256;
 
 /**
@@ -57,10 +60,14 @@ export function needsLook(seen: ReadonlyArray<string>, now: ReadonlyArray<string
  * 남겨 두어도 새것을 못 가리지 않는다.
  *
  * **새것이 없으면 받은 집합을 그대로 돌려준다** — 화면이 열려 있는 동안 요약이 올 때마다 다시 보는데, 그때마다 새 집합이면 저장도
- * 그때마다 한다. 새것이 있으면 지금 것을 모두 뒤로 옮긴 뒤 앞에서 자른다(`SEEN_CAP`) — 지금 것은 잘리지 않는다.
+ * 그때마다 한다. 새것이 있으면 지금 것을 **모두** 남기고, 남는 칸(`SEEN_CAP` − 지금 것 수)만큼만 가장 최근에 본 옛 것을 앞에 둔다.
+ * 상한은 옛 것에만 건다: 출처 불명은 트리 전체를 신원으로 실어 한 번에 수백이 설 수 있는데, 지금 것까지 자르면 잘린 것이 본 뒤에도
+ * 새것이라 점이 곧바로 다시 선다. 지금 것이 상한을 넘으면 집합은 지금 것뿐이다 — 그래도 다음에 같은 것을 보면 새것이 없어 그대로다.
  */
 export function seenWith(seen: ReadonlyArray<string>, now: ReadonlyArray<string>): ReadonlyArray<string> {
   if (!needsLook(seen, now)) return seen;
   const current = new Set(now);
-  return [...seen.filter((name) => !current.has(name)), ...current].slice(-SEEN_CAP);
+  const room = Math.max(0, SEEN_CAP - current.size);
+  const older = seen.filter((name) => !current.has(name));
+  return [...(room === 0 ? [] : older.slice(-room)), ...current];
 }

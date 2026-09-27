@@ -157,4 +157,26 @@ describe("본 것의 집합", () => {
     expect(needsLook(seen, lookablesOf([], 요약([신원(SEEN_CAP + 10)])))).toBe(false);
     expect(needsLook(seen, lookablesOf([], 요약([신원(1)])))).toBe(true);
   });
+
+  // **상한은 옛 것에만 건다.** 출처 불명은 트리 전체를 신원으로 싣는다(`summary.rs`) — 한 번에 수백이 설 수 있다. 지금 것까지 자르면
+  // 본 뒤에도 잘린 것이 새것이 되어 `●`가 곧바로 다시 선다. 넘친 동안에도 같은 것을 다시 보면 받은 집합을 그대로 돌려준다(저장도 안 한다).
+  it(`지금 것이 ${SEEN_CAP}개를 넘어도 본 뒤에는 안 서고, 같은 것을 다시 보면 새 집합을 안 짓는다`, () => {
+    const many = lookablesOf(["G-1"], 요약(Array.from({ length: SEEN_CAP + 44 }, (_, at) => 신원(at + 1)), 7));
+    const seen = seenWith(["shell:OLD"], many);
+    expect(needsLook(seen, many)).toBe(false);
+    expect(seen).toHaveLength(many.length);
+    expect(seenWith(seen, many)).toBe(seen);
+    // 앵커: 옛 것은 남는 칸이 없어 빠졌고, 넘친 동안에도 새것은 켠다.
+    expect(seen).not.toContain("shell:OLD");
+    expect(needsLook(seen, [...many, "unknown:9@9"])).toBe(true);
+  });
+
+  it("지금 것이 상한 아래면 남는 칸만큼 가장 최근에 본 옛 것을 남긴다", () => {
+    const old = Array.from({ length: SEEN_CAP }, (_, at) => `shell:OLD-${at}`);
+    const now = lookablesOf([], 요약([신원(1), 신원(2)]));
+    const seen = seenWith(old, now);
+    expect(seen).toHaveLength(SEEN_CAP);
+    expect(seen.slice(-2)).toEqual(now);
+    expect(seen[0]).toBe("shell:OLD-2");
+  });
 });
