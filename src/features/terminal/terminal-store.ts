@@ -11,6 +11,7 @@ import { askDialog } from "@/components/ui/confirm-store";
 import { appToasts, showAppToast } from "@/components/shell/app-toast";
 import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
+import { windowFocused } from "@/lib/window-focus";
 import { TERMINAL_LABEL } from "@/components/shell/nav-items";
 import type { Mode } from "@/mode";
 import type { AgentSignal } from "./agents/types";
@@ -391,28 +392,9 @@ terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
 let shownShell: number | null = null;
 
 /**
- * 앱 창이 포커스를 쥐고 있나(결정 7). 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
- *
- * **`document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다.** 이벤트만으로는 못
- * 가른다 — 분할에서 spec 프레임을 누르면 부모 `window`에 `blur`가 오는데(SpecViewer의
- * `useFrameFocused`가 그 실측을 들고 있다) 그때도 앱은 앞에 있다. `hasFocus()`는 그
- * 경우에 참이고 다른 앱으로 넘어갔을 때만 거짓이라, 두 경우가 갈린다.
- *
- * **Tauri의 `onFocusChanged`를 안 쓴다.** 값은 더 정확하겠지만 IPC 구독이 하나 더 늘어
- * 픽스처 백엔드가 모르는 호출이 되고(L3의 `unknownIpcCalls`), 얻는 것은 이 DOM 이벤트가
- * 이미 주는 사실 하나다.
- *
- * **이 줄에 그물이 걸려 있다.** 여기가 참을 늘 돌려주면 아무도 안 보는 곳에서 「봤다」가
- * 서는데 그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서 안 보인다 — 헤드리스
- * WebKit은 `document.hasFocus()`가 늘 참이라 브라우저에 맡길 수 없어서, L3가 그 함수를
- * 손으로 잡고 「창이 뒤에 있으면 초록이 선다」를 잰다(`e2e/terminal-tabs.spec.ts`).
+ * 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(결정 7). 창 포커스의 판정은 nav `Processes`의 `●`와 한 함수다
+ * (`lib/window-focus.ts`의 `windowFocused` — `document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다).
  */
-function windowFocused(): boolean {
-  // 문서가 없는 자리(웹뷰 밖)에서는 **거짓**이다.
-  return typeof document !== "undefined" && document.hasFocus();
-}
-
-/** 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(결정 7). */
 function currentView(): ShellView {
   return { activeIds: shownShell === null ? [] : [shownShell], focused: windowFocused() };
 }
@@ -445,7 +427,7 @@ if (typeof window !== "undefined") {
   // **`blur`에서도 부르는 것은 iframe 하나 때문이다.** 진짜 blur(다른 앱으로 넘어감)에서는
   // 이 호출이 아무 일도 안 한다 — `hasFocus()`가 거짓이라 「봤다」가 하나도 안 서고, 안
   // 바뀐 상태가 그대로 돌아온다. 값이 나는 것은 **blur는 오는데 `hasFocus()`는 참인** 경우
-  // 뿐이고(위 `windowFocused` 머리말의 그 사례), 그 길이 실재한다: 다른 앱을 보다가 분할된
+  // 뿐이고(`windowFocused` 머리말의 그 사례 — `lib/window-focus.ts`), 그 길이 실재한다: 다른 앱을 보다가 분할된
   // 화면의 spec 프레임을 **바로 눌러** 돌아오면 포커스가 자식 문서로 들어가므로 부모
   // `window`에는 `focus` 없이 `blur`만 온다. 그때 이 줄이 없으면 눈앞의 셸이 초록인 채로
   // 남는다 — 다음 이벤트가 올 때까지.

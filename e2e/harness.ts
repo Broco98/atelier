@@ -1171,7 +1171,7 @@ export async function fireAttention(
  * 앞세워도 양쪽 다 `document.hasFocus()`가 참이다. 그래서 **브라우저가 답하는 그 한 줄만**
  * 갈아 끼우고, 앱이 그것을 실제로 딛는지를 잰다: 여기서 거짓을 돌려주는데도 「봤다」가 서면
  * 앱은 포커스를 안 보고 있는 것이다(그 fail-open은 초록이 안 뜨는 것으로만 나타나 화면에서
- * 안 보인다 — `terminal-store.ts`의 `windowFocused` 머리말).
+ * 안 보인다 — `src/lib/window-focus.ts`의 `windowFocused` 머리말).
  *
  * **값과 이벤트를 갈라 둔다.** `hasFocus`가 바뀌는 것과 `focus`/`blur`가 도착하는 것은 다른
  * 사실이고, 한 손잡이에 묶으면 「리스너가 일한다」와 「판정이 값을 읽는다」 중 무엇이 초록을

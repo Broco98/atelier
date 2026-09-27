@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { shallow, useStore } from "@tanstack/react-store";
 import { terminalStore } from "@/features/terminal/terminal-store";
+import { windowFocused } from "@/lib/window-focus";
 import { useProcessSummary } from "./hooks";
 import { lookStore, markSeen } from "./looked";
 import { formatMemory } from "./metrics";
@@ -52,8 +53,8 @@ export default function ProcessesNavMeta() {
 }
 
 /**
- * 앱 창이 포커스를 쥐고 있나 — 터미널의 「봤다」와 같은 판정이다(`terminal-store.ts`의 `windowFocused` 머리말): **`document.hasFocus()`가
- * 판정이고 `focus`/`blur`는 신호일 뿐이다.** 분할에서 spec 프레임을 누르면 `blur`만 오는데 그때도 앱은 앞에 있다.
+ * 앱 창이 포커스를 쥐고 있나 — 터미널의 「봤다」와 **같은 판정 하나**다(`windowFocused` — S41 「띠와 같은 규칙」): `document.hasFocus()`가
+ * 판정이고 `focus`/`blur`는 신호일 뿐이다. 분할에서 spec 프레임을 누르면 `blur`만 오는데 그때도 앱은 앞에 있다.
  */
 function useWindowFocused(): boolean {
   const [focused, setFocused] = useState(windowFocused);
@@ -68,8 +69,4 @@ function useWindowFocused(): boolean {
     };
   }, []);
   return focused;
-}
-
-function windowFocused(): boolean {
-  return typeof document !== "undefined" && document.hasFocus();
 }
