@@ -2,8 +2,8 @@
 //! 티켓 29 · 30).
 //!
 //! nav `Processes` 옆 메타는 두 세계의 모든 화면에 늘 선다. 평소에는 아틀리에의 메모리 합계이고, 손볼 것이 새로 생기면 그 앞에
-//! `●`가 선다. 화면이 닫혀 있어도 그 값이 있어야 해서 **Rust가 10초마다 모은다**(배경 표본 — `pty::sample_in_background`). 화면
-//! 스냅샷(2초, `screen`)은 화면이 열려 있을 때만 온다.
+//! `●`가 선다. 화면이 닫혀 있어도 그 값이 있어야 해서 **Rust가 10초마다 모은다**(배경 표본 —
+//! `service::ProcessService::sample_in_background`). 화면 스냅샷(2초, `screen`)은 화면이 열려 있을 때만 온다.
 //!
 //! 모으는 것은 이렇다.
 //! - **합계** = 앱 본체 + 이 실행의 모든 셸과 자손(셸 도우미 포함). 예외와 다른 인스턴스는 빼고, 고아도 안 든다(고아는 따로
@@ -23,8 +23,9 @@
 //! 합계의 메모리는 화면의 트리 합과 같은 규칙이다(`src/features/processes/metrics.ts`의 `sumMetrics`) — 읽은 것끼리 더하고, 아무것도
 //! 못 읽었으면 없다. 그래야 nav와 화면이 같은 앱을 두고 다른 말을 하지 않는다.
 //!
-//! **이 파일은 값과 그 값을 쥐는 자리만 짓는다.** 스냅샷 · 판정 · 지표 읽기 · 기록 읽기를 잇는 자리는 풀을 쥔 `pty::summarize`다
-//! (화면 스냅샷과 같은 순서). 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 setup에서 건다 — 이 층은 Tauri를 모른다.
+//! **이 파일은 값과 그 값을 쥐는 자리만 짓는다.** 스냅샷 · 판정 · 지표 읽기 · 기록 읽기를 잇는 자리는 프로세스 서비스의
+//! `summarize`다(`service` — 화면 스냅샷과 같은 순서). 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 setup에서 건다 — 이 층은 Tauri를
+//! 모른다.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -194,7 +195,7 @@ impl WebContent {
 pub struct Background {
     latest: Mutex<Option<Summary>>,
     trend: Mutex<Trend>,
-    /// 배경 표본의 앞 표본 — 화면의 것(`PtyPool::screen_cpu`)과 따로다. 나눠 쓰면 2초와 10초 박자가 섞인다.
+    /// 배경 표본의 앞 표본 — 화면의 것(`ProcessService`의 `screen_cpu`)과 따로다. 나눠 쓰면 2초와 10초 박자가 섞인다.
     cpu: Mutex<CpuMeter>,
     pub web_content: WebContent,
 }

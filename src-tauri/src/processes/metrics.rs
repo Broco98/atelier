@@ -118,7 +118,8 @@ pub fn percent(before_ns: u64, now_ns: u64, wall: Duration) -> Option<f64> {
 /// 것이라, 그 사이의 평균을 지금 값처럼 세우지 않는다(`CpuMeter`).
 pub const STALE: Duration = Duration::from_secs(10);
 
-/// 두 표본 사이의 CPU%(S37). 부르는 쪽이 이것을 쥐고 부를 때마다 새 표본을 넣는다 — 화면 스냅샷은 풀에 하나를 쥔다(`pty::screen`).
+/// 두 표본 사이의 CPU%(S37). 부르는 쪽이 이것을 쥐고 부를 때마다 새 표본을 넣는다 — 화면 스냅샷은 프로세스 서비스에 하나를 쥔다
+/// (`service::ProcessService::screen`).
 /// 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는 제 것을 따로 쥔다(`summary::Background`): 한 앞 표본을 나눠 쓰면 두 박자가
 /// 섞여 차이의 벽시계가 뒤엉킨다. 배경 표본의 박자는 `STALE`과 같은 10초라(잠 10초 + 모으는 시간이라 늘 조금 넘는다) 그 자리는 버리는
 /// 나이를 따로 정해 미터를 세운다(`aged`).

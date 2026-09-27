@@ -15,7 +15,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use atelier_core::Mode;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -27,10 +27,9 @@ use crate::processes::cleanup_log::{self, Aimed, CloseReason, Reason};
 use crate::processes::clock;
 use crate::processes::ending::{Claim, Group, InFlight, Outcome, Running};
 use crate::processes::instances::{self, Place, Record};
-use crate::processes::metrics::{self, CpuMeter, Measured};
-use crate::processes::screen::{self, PoolShell, ScreenSnapshot};
+use crate::processes::screen::PoolShell;
+use crate::processes::service::{pool_shells, ShellListing};
 use crate::processes::snapshot::{self, EnvScope};
-use crate::processes::summary::{self, Background, Body, Summary};
 use crate::processes::verdict::{self, InstanceRecord, Inputs, Occasion, ShellEntry, Verdict};
 use crate::processes::{procargs, shell_key, Identity, Proc, Snapshot, ThisRun, SHELL_KEY_ENV};
 
@@ -122,20 +121,13 @@ pub struct PtyPool {
     endings: Arc<InFlight>,
     /// 이 실행의 인스턴스 기록 — 셸 키 목록(프로세스 결정 6 · 프로세스 스펙 S52). 셸 키를 올리고 내리는 자리가 둘 다 풀을
     /// 쥔다: 셸 띄우기와 뒤로 보낸 끝내기(셸 닫기 · 새로고침 · 셸 스스로 끝남 — 스레드에 넘기려고 `Arc`다). 앱은 setup에서 연다(`open_record`).
-    /// 기본값은 안 연 기록이라, 검사가 세우는 풀은 아무 파일도 안 쓴다.
+    /// 기본값은 안 연 기록이라, 검사가 세우는 풀은 아무 파일도 안 쓴다. 읽기(`Processes` 화면 · 요약 · 정리 기록)는 프로세스 서비스가
+    /// 풀을 보는 창으로 읽는다(`ShellListing::record`).
     record: Arc<Record>,
     /// 앱이 사람 손 없이 끝낸 것을 프런트에 알리는 자리 — 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때(티켓 13). 앱은
     /// setup에서 이벤트를 쏘는 함수를 건다(`announce_ends`). 기본값은 빈 자리라, 검사가 세우는 풀은 아무 데도 안 쏜다 —
     /// 풀 배선 장면은 제 함수를 걸어 받은 알림을 잰다.
     announcer: OnceLock<Box<dyn Fn(Ended) + Send + Sync>>,
-    /// `Processes` 화면 스냅샷의 앞 표본 — CPU%를 두 표본의 차이로 짓는다(프로세스 스펙 S37 · 티켓 28). 화면이 2초마다 부르는
-    /// `screen`만 쓴다. 풀에 두는 것은 그 함수가 풀 하나만 받기 때문이고, 박자가 다른 읽기(배경 표본 — 요약 카드의 CPU, 티켓 30)는
-    /// 제 것을 따로 쥔다(`Background`) — 한 앞 표본을 나눠 쓰면 두 박자가 섞인다.
-    screen_cpu: Mutex<CpuMeter>,
-    /// 배경 표본의 자리(티켓 29 · 30) — 마지막 요약(nav 메타가 10초마다 묻는다), 합계의 1시간 고리(추이), 배경의 CPU 미터, 웹뷰에게
-    /// WebContent를 묻는 자리. 앱은 setup에서 묻는 함수와 표본 스레드를 건다(`ask_web_content_with` · `sample_in_background`). 기본값은
-    /// 빈 자리라, 검사가 세우는 풀에서는 요약을 물으면 그 자리에서 한 장을 모으고, 웹뷰는 모른다(「웹뷰 제외」).
-    background: Background,
 }
 
 impl PtyPool {
@@ -143,11 +135,6 @@ impl PtyPool {
     /// 하나가 앱 전체로 번진다 — 안을 꺼내 이어 간다.
     fn lock(&self) -> MutexGuard<'_, HashMap<u32, Shell>> {
         self.shells.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// 화면 스냅샷의 앞 표본. 잠금이 오염됐으면 안을 꺼내 이어 간다(`lock`과 같다) — 잃어도 CPU 칸이 한 박자 「—」일 뿐이다.
-    fn screen_cpu(&self) -> MutexGuard<'_, CpuMeter> {
-        self.screen_cpu.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// 알리는 함수를 한 번 건다. 두 번째는 버린다 — 앱에서는 setup 한 자리만 부른다.
@@ -506,152 +493,24 @@ fn command_runs(shell_pid: u32, foreground: i32) -> bool {
     foreground != shell_pid as i32
 }
 
-/// `Processes` 화면의 스냅샷(`processes_snapshot`, 프로세스 결정 10 · 티켓 26). 화면이 열려 있는 동안 프런트가 2초마다 묻는다 —
-/// 닫혀 있으면 아무도 안 부른다(스토리 95). 판정 결과에 풀의 셸 목록을 곁들인다(`processes::screen`).
-///
-/// 순서는 닫기 전 물음과 같다: 스냅샷을 먼저 찍고, 셸 목록과 인스턴스 기록은 그 **뒤에** 읽는다(S52). 다른 점은 둘이다.
-/// - env를 **전부** 읽는다. 셸 닫기는 그 셸이 뜬 뒤에 태어난 것만 읽지만(S3), 화면은 고아를 가려야 하고 고아는 지금 풀의
-///   어느 셸보다 먼저 태어났을 수 있다.
-/// - 판정에 넘기는 셸 목록과 화면에 싣는 풀의 셸 목록을 **한 잠금 안에서** 읽는다. 다른 순간의 것이면 그 사이에 뜨거나 닫힌
-///   셸이 한쪽에만 선다.
-///
-/// **지표(메모리 · CPU · 포트)는 판정 뒤에 읽는다**(티켓 28). 무엇이 우리 트리인지는 판정이 정하므로(프로세스 스펙 S38 — 우리 트리만)
-/// 판정이 묶음에 넣은 행과 풀의 셸 프로세스만 읽는다(`screen::targets`). 풀 잠금 밖이다 — 프로세스마다 fd를 훑는 동안 셸 입력 ·
-/// 닫기가 기다리지 않게. CPU%는 풀이 쥔 앞 표본과 견준다(`CpuMeter`).
-///
-/// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
-pub fn screen(pool: &PtyPool) -> ScreenSnapshot {
-    let snapshot = snapshot::take(EnvScope::All);
-    let (live, listed): (Vec<ShellEntry>, Vec<PoolShell>) = {
-        let shells = pool.lock();
+/// **`Processes` 화면과 nav 메타가 풀을 보는 창**(`processes::service`). 셸 목록 둘과 인스턴스 기록만 연다 — 읽기를 잇는 자리(스냅샷 ·
+/// 판정 · 지표 · 요약)는 서비스에 살고, 이 파일에는 셸을 띄우고 끝내는 길만 남는다.
+impl ShellListing for PtyPool {
+    /// 판정에 넘길 셸과 화면에 실을 풀의 셸을 **한 잠금 안에서** 읽는다(티켓 26). 다른 순간의 것이면 그 사이에 뜨거나 닫힌 셸이 한쪽에만
+    /// 선다. 풀의 셸은 pty id 순이고 셸마다 셸 키 · 마지막 출력 시각 · 셸 프로세스의 신원을 싣는다(`service::pool_shells`).
+    fn listing(&self) -> (Vec<ShellEntry>, Vec<PoolShell>) {
+        let shells = self.lock();
         (
             shells.values().map(Shell::entry).collect(),
             pool_shells(shells.iter().map(|(id, shell)| {
                 (*id, shell.key.as_str(), shell.last_output.load(Ordering::Relaxed), shell.process)
             })),
         )
-    };
-    let records = pool.record.records();
-    let exceptions = exceptions();
-    let verdict = verdict::judge(&Inputs {
-        snapshot: &snapshot,
-        run: ThisRun::current(),
-        shells: &live,
-        ending: &[],
-        instances: &records,
-        exceptions: &exceptions,
-        occasion: Occasion::Normal,
-    });
-    let readings = metrics::read(screen::targets(&verdict, &listed));
-    let cpu = pool.screen_cpu().sample(Instant::now(), readings.cpu_ns());
-    let measured = Measured { readings: readings.by_id, cpu };
-    // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
-    let instances = screen::instances(&verdict, &records, |generation| pool.record.file(generation));
-    ScreenSnapshot::of(&verdict, listed, &measured, instances)
-}
-
-/// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
-/// 표본이 10초마다 부른다(`sample_in_background`) — 화면이 닫혀 있어도 돈다.
-///
-/// 순서는 화면 스냅샷(`screen`)과 같다: 스냅샷을 먼저 찍고, 판정에 넘길 셸 목록과 셸 프로세스의 신원을 **한 잠금 안에서** 읽고,
-/// 인스턴스 기록은 그 **뒤에** 읽는다(S52). env는 전부 읽는다 — 출처 불명은 지금 풀의 어느 셸보다 먼저 태어났을 수 있다. 지표는
-/// 판정 뒤, 풀 잠금 밖에서 합계에 드는 것만 읽는다(`summary::targets` — 앱 본체 + 이 실행의 셸과 자손).
-///
-/// **앱 본체는 Rust 본체와 웹뷰의 WebContent다**(S39 · 티켓 30). WebContent의 pid는 웹뷰에게 묻는다 — 메인 스레드로 가는 물음이라
-/// 풀 잠금 밖이다(`summary::WebContent`, 묻는 함수는 setup이 건다). **CPU%는 배경 표본의 앞 표본과 견준다**(`Background`의 미터) —
-/// 화면의 앞 표본(`PtyPool::screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다.
-///
-/// `●`를 켜는 기록의 머리는 정리 기록 파일에서 고른다(`cleanup_log::look_head`). 아무것도 안 끝낸다.
-pub fn summarize(pool: &PtyPool) -> Summary {
-    let snapshot = snapshot::take(EnvScope::All);
-    let (live, shells): (Vec<ShellEntry>, Vec<Identity>) = {
-        let shells = pool.lock();
-        (shells.values().map(Shell::entry).collect(), shells.values().filter_map(|shell| shell.process).collect())
-    };
-    let records = pool.record.records();
-    let exceptions = exceptions();
-    let verdict = verdict::judge(&Inputs {
-        snapshot: &snapshot,
-        run: ThisRun::current(),
-        shells: &live,
-        ending: &[],
-        instances: &records,
-        exceptions: &exceptions,
-        occasion: Occasion::Normal,
-    });
-    let body = Body {
-        rust: snapshot::identity_of(std::process::id()),
-        web_content: pool.background.web_content.identity(snapshot::identity_of),
-    };
-    let readings = metrics::read(summary::targets(&verdict, &shells, &body));
-    let cpu = pool.background.cpu(Instant::now(), readings.cpu_ns());
-    let measured = Measured { readings: readings.by_id, cpu };
-    let head = cleanup_log::look_head(&pool.record.events());
-    Summary::of(&verdict, &shells, &body, &measured, head)
-}
-
-/// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
-/// 중, 표본 스레드를 안 건 검사의 풀) 그 자리에서 모아 앉힌다 — 프런트는 뜨자마자 묻는다.
-pub fn summary(pool: &PtyPool) -> Summary {
-    pool.background.latest().unwrap_or_else(|| {
-        let fresh = summarize(pool);
-        pool.background.keep(fresh.clone(), clock::now_ms());
-        fresh
-    })
-}
-
-/// 추이 IPC의 답(`processes_trend`) — 배경 표본이 든 합계의 1시간치, 오래된 것부터(프로세스 결정 10 · 티켓 30). 표를 찍지 않는다 —
-/// 고리를 복사할 뿐이다.
-pub fn trend(pool: &PtyPool) -> Vec<summary::Point> {
-    pool.background.trend()
-}
-
-/// 정리 기록 IPC의 답(`processes_cleanup_log`) — **이 풀의 인스턴스 기록이 연** 정리 기록을 새것부터(프로세스 스펙 S12 · 티켓 32).
-/// 파일이 최근 100건만 담으므로(`cleanup_log::KEEP`) 그것이 곧 화면의 「최근 100건」이다. 데이터 루트를 다시 계산하지 않는다 —
-/// 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록이면 빈 기록이다. 표를 찍지 않는다.
-pub fn cleanup_events(pool: &PtyPool) -> Vec<cleanup_log::Event> {
-    pool.record.events()
-}
-
-/// 웹뷰에게 WebContent의 pid를 묻는 함수를 한 번 건다(S39 · 티켓 30). 앱은 setup에서 `webview::content_pid`를 건다 — 이 층은 Tauri를
-/// 모른다. 안 걸면(검사의 풀) 요약은 「웹뷰 제외」다.
-pub fn ask_web_content_with(pool: &PtyPool, ask: impl Fn() -> summary::WebContentAnswer + Send + Sync + 'static) {
-    pool.background.web_content.ask_with(ask);
-}
-
-/// **배경 표본을 건다** — setup에서 한 번, 인스턴스 기록을 연 **뒤에**(티켓 29 · 프로세스 스펙 「수집 › 배경 표본」). 곧바로 한 장을
-/// 모으고 10초마다 다시 모은다. 화면이 닫혀 있어도, 창이 가려져 있어도 돈다 — nav 메타는 늘 서 있고, 1시간 추이(티켓 30)는 그 사이를
-/// 비우면 안 된다. 앉힐 때 합계를 읽은 때(에포크 ms)를 함께 넘겨 추이의 점이 된다.
-///
-/// 기록을 열기 전에 모으면 판정이 이 실행 밖의 모든 세대를 기록 없는 세대로 본다 — 함께 뜬 다른 빌드의 셸 자손이 모두 출처
-/// 불명으로 서서 뜨자마자 `●`가 선다. 그래서 setup의 자리가 `open_record` 뒤다(`lib.rs`의 핀).
-pub fn sample_in_background(pool: Arc<PtyPool>) {
-    let spawned = std::thread::Builder::new().name("atelier-summary".into()).spawn(move || loop {
-        let fresh = summarize(&pool);
-        pool.background.keep(fresh, clock::now_ms());
-        std::thread::sleep(summary::EVERY);
-    });
-    // 스레드를 못 띄우면 요약은 첫 물음이 그 자리에서 모은 한 장에서 멎는다(`summary`) — nav 메타의 합계가 안 바뀐다. 조용히
-    // 넘기지 않고 한 줄 남긴다.
-    if let Err(e) = spawned {
-        eprintln!("atelier: could not start the summary sampler: {e}");
     }
-}
 
-/// 풀의 셸 목록 — pty id · 셸 키 · 마지막 출력 시각 · 셸 프로세스의 신원을 **pty id 순**으로. 풀이 해시 맵이라 그대로 두면 부를
-/// 때마다 순서가 흔들린다. 지표는 비워 둔다 — 판정 뒤에 읽어 `ScreenSnapshot::of`가 채운다.
-fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64, Option<Identity>)>) -> Vec<PoolShell> {
-    let mut listed: Vec<PoolShell> = shells
-        .map(|(pty_id, key, last_output_ms, process)| PoolShell {
-            pty_id,
-            shell_key: key.to_string(),
-            last_output_ms,
-            process,
-            metrics: Default::default(),
-        })
-        .collect();
-    listed.sort_by_key(|shell| shell.pty_id);
-    listed
+    fn record(&self) -> &Record {
+        &self.record
+    }
 }
 
 /// 셸 하나에서 **지금 도는 명령**. `running`이 `None`이면 프롬프트에 서 있다.
@@ -1211,11 +1070,12 @@ fn env_scope(shells: impl IntoIterator<Item = Option<Identity>>) -> EnvScope {
 /// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
 /// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
 ///
-/// 판정을 부르는 자리마다 부른다 — 여섯이다: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료의 `end_for_exit`, 닫기
-/// 전 물음의 `close_checks`(확인 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다), 시작 정리의 `clean_up_at_startup`,
-/// `Processes` 화면의 `screen`, 배경 표본의 `summarize`. 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선 장면
-/// `CloseKeeping`(닫기)과 `ExitKeeping`(종료), `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀
-/// (`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 화면 스냅샷과 배경 표본의 배선은 재는 검사가 없다.
+/// 판정을 부르는 자리마다 부른다 — 이 파일의 넷: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료의 `end_for_exit`, 닫기
+/// 전 물음의 `close_checks`(확인 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다), 시작 정리의 `clean_up_at_startup`. 판정을
+/// 부르는 나머지 둘(`Processes` 화면의 스냅샷 · 배경 표본)은 `processes::service`가 같은 설정을 같은 루트에서 읽는다 — 그 층은 이
+/// 파일을 모른다. 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료),
+/// `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀(`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 화면
+/// 스냅샷과 배경 표본의 배선은 재는 검사가 없다.
 fn exceptions() -> Vec<String> {
     crate::settings::process_exceptions(&atelier_core::data_root())
 }
@@ -1737,17 +1597,23 @@ mod tests {
     }
 
     /// 판정을 부르는 여섯 자리 — 이름과 본문(순서에 뜻은 없다): 셸 닫기 전 물음, 끝내기의 앞 절반(셸 닫기 · 새로고침 · 셸 스스로
-    /// 끝남), 앱 종료, 시작 정리, `Processes` 화면의 스냅샷(티켓 26), nav 메타의 배경 표본(티켓 29). 판정을 부르는 자리가 늘면
-    /// 여기 더한다 — 아래 두 검사가 함께 본다.
+    /// 끝남), 앱 종료, 시작 정리 — 이 파일의 넷 — 과 `Processes` 화면의 스냅샷(티켓 26), nav 메타의 배경 표본(티켓 29) — 읽기를 잇는
+    /// `processes::service`의 둘. **표는 한 장이다**: 두 파일에 나눠 두면 한쪽 자리가 늘 때 다른 쪽 표가 모른다. 판정을 부르는 자리가
+    /// 늘면 여기 더한다 — 아래 두 검사가 함께 본다.
     fn verdict_sites() -> [(&'static str, &'static str); 6] {
         [
             ("close_checks", body_of("pub fn close_checks(", "\n}\n")),
             ("begin", body_of("fn begin(", "\n}\n")),
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
             ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
-            ("screen", body_of("pub fn screen(", "\n}\n")),
-            ("summarize", body_of("pub fn summarize(", "\n}\n")),
+            ("service::screen", service_method("pub fn screen(")),
+            ("service::summarize", service_method("pub fn summarize(")),
         ]
+    }
+
+    /// `processes::service`의 메서드 하나의 본문 — `impl` 안이라 닫는 표식이 한 칸 들여 있다(`\n    }\n`).
+    fn service_method(start: &str) -> &'static str {
+        crate::tests::body_of(include_str!("processes/service.rs"), start, "\n    }\n")
     }
 
     /// 판정은 **스냅샷을 먼저 찍고 인스턴스 기록을 그 뒤에 읽는다**(프로세스 스펙 S52). 셸 키는 자식을 띄우기 전에 기록에
@@ -1757,7 +1623,9 @@ mod tests {
     fn the_records_are_read_after_the_snapshot() {
         for (path, body) in verdict_sites() {
             let taken = body.find("snapshot::take(").unwrap_or_else(|| panic!("{path}가 스냅샷을 안 찍는다"));
-            let read = body.find("pool.record.records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
+            // 이 파일은 풀의 칸(`pool.record.records()`)으로, 서비스는 풀을 보는 창(`self.pool.record().records()`)으로 읽는다.
+            let read = body.find(".records()").unwrap_or_else(|| panic!("{path}가 기록을 안 읽는다"));
+            assert_eq!(body.matches(".records()").count(), 1, "{path}: 기록을 두 번 읽는다 — 판정과 다른 자리가 다른 순간의 기록을 본다");
             assert!(taken < read, "{path}: 기록({read})을 스냅샷({taken})보다 먼저 읽는다");
             assert!(body.contains("instances: &records"), "{path}: 읽은 기록을 판정에 안 넘긴다");
         }
@@ -1783,56 +1651,41 @@ mod tests {
         }
     }
 
-    /// `Processes` 화면의 스냅샷은 **풀의 셸 목록을 판정에 넘긴 셸 목록과 한 잠금 안에서** 읽는다(티켓 26). 두 목록이 다른
-    /// 순간의 것이면 그 사이에 뜨거나 닫힌 셸이 한쪽에만 선다 — 화면이 판정의 셸을 풀에서 못 찾거나, 판정에 없는 셸을 풀
-    /// 목록에서 본다(32의 화면 밖 셸이 그 차이를 셸로 센다). env는 **전부** 읽는다: 고아는 지금 풀의 어느 셸보다 먼저 태어났을
-    /// 수 있어 셸 닫기의 가지치기(`env_scope`, S3)를 쓰면 표식이 안 읽혀 묶음에서 빠진다.
+    /// **풀은 판정의 셸과 화면의 셸을 한 잠금 안에서 읽는다**(티켓 26 · 29 — `processes::service::ShellListing::listing`). 두 목록이
+    /// 다른 순간의 것이면 그 사이에 뜨거나 닫힌 셸이 한쪽에만 선다 — 화면이 판정의 셸을 풀에서 못 찾거나(32의 화면 밖 셸이 그 차이를
+    /// 셸로 센다), 요약이 판정에 없는 셸의 프로세스를 합계에 넣는다. 서비스가 이 목록을 한 번만 받는 것은 서비스의 핀이 잰다.
     ///
-    /// 실행으로는 못 잰다 — 진짜 스냅샷은 이 맥의 표 전체라 기대값을 못 세운다. 자리로 잰다. 판정 결과가 와이어에 실리는
-    /// 모양은 `processes::screen`의 검사가 잰다.
+    /// 두 읽기 사이의 창은 밖에서 안 보여 자리로 잰다. 두 목록이 같은 셸을 싣는지는 값으로 본다 — 셸을 띄우지 않고 `openpty`로 선
+    /// 풀의 칸 둘을 pty id 거꾸로 넣는다: 판정의 셸은 두 키를, 화면의 셸은 pty id 순으로 같은 두 키와 그 셸의 마지막 출력 시각 · 신원을
+    /// 싣는다. 기록은 풀의 그 기록이다(연 적 없는 기록 — 앵커).
     #[test]
-    fn the_screen_reads_the_pool_with_the_shells_it_judges() {
-        let body = body_of("pub fn screen(", "\n}\n");
-        assert_eq!(body.matches("snapshot::take(").count(), 1, "화면 스냅샷이 표를 한 장이 아니게 찍는다");
-        assert!(body.contains("snapshot::take(EnvScope::All)"), "화면 스냅샷이 env를 가지치기한다 — 오래된 고아의 표식이 안 읽힌다");
-        let taken = body.find("snapshot::take(").expect("스냅샷을 찍는다");
-        assert_eq!(body.matches("pool.lock()").count(), 1, "풀을 두 번 잠근다 — 두 목록이 다른 순간의 것이 된다");
-        let locked = body.find("pool.lock()").expect("풀을 잠근다");
-        let judged = body.find("shells.values().map(Shell::entry)").expect("판정에 넘길 셸 목록을 읽는다");
-        let listed = body.find("pool_shells(").expect("풀의 셸 목록을 읽는다");
-        let records = body.find("pool.record.records()").expect("기록을 읽는다");
-        assert!(taken < locked, "풀({locked})을 스냅샷({taken})보다 먼저 읽는다");
-        assert!(
-            locked < judged && locked < listed && judged < records && listed < records,
-            "두 목록이 한 잠금 안에 없다 — 잠금 {locked} · 판정의 셸 {judged} · 풀의 셸 {listed} · 기록 {records}"
-        );
-        assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &measured, instances)"),
-            "판정 결과와 풀의 셸 목록과 지표와 다른 인스턴스의 실행들을 그대로 싣지 않는다"
-        );
-        assert!(
-            body.contains("screen::instances(&verdict, &records,"),
-            "다른 인스턴스를 판정이 받은 그 기록으로 실행마다 안 묶는다 — 판정과 화면이 다른 순간의 기록을 본다"
-        );
-    }
+    fn the_pool_lists_its_shells_for_the_verdict_and_the_screen_under_one_lock() {
+        use crate::processes::service::ShellListing;
 
-    /// **지표는 판정 뒤에, 판정이 고른 것만, 풀 잠금 밖에서 읽는다**(티켓 28 · 프로세스 스펙 S38). 무엇이 우리 트리인지는 판정이
-    /// 정하므로 판정보다 앞설 수 없고, 읽을 신원은 판정의 결과와 풀의 셸에서만 고른다(`screen::targets` — 이 맥의 다른 프로세스의 fd를
-    /// 훑지 않는다). 프로세스마다 fd를 훑는 일이라 풀을 쥔 채 하면 그동안 셸 입력 · 크기 바꾸기 · 닫기가 기다린다.
-    ///
-    /// CPU%는 풀이 쥔 앞 표본과 견준다(`CpuMeter`) — 부를 때마다 새로 세우면 늘 첫 표본이라 CPU 칸이 영영 「—」다. 실행으로는 장면
-    /// `Ask`가 잰다(macOS — 두 번 찍으면 둘째에 셸의 CPU%가 선다).
-    #[test]
-    fn the_screen_measures_what_the_verdict_picked_outside_the_pool_lock() {
-        let body = body_of("pub fn screen(", "\n}\n");
-        let judged = body.find("verdict::judge(").expect("판정한다");
-        let read = body.find("metrics::read(screen::targets(&verdict, &listed))").expect("판정이 고른 것만 지표를 읽는다");
-        let lock_ends = body.find("pool.record.records()").expect("잠금을 푼 뒤 기록을 읽는다");
-        assert!(lock_ends < read && judged < read, "지표를 판정({judged})이나 풀 잠금이 풀리기({lock_ends}) 전에 읽는다 — {read}");
-        assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
-        let sampled = body.find("pool.screen_cpu()").expect("풀이 쥔 앞 표본과 견준다");
-        assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
-        assert!(!body.contains("CpuMeter::default()"), "부를 때마다 앞 표본을 새로 세운다 — CPU%가 늘 첫 표본이다");
+        let body = body_of("fn listing(&self)", "\n    }\n");
+        assert_eq!(body.matches("self.lock()").count(), 1, "풀을 두 번 잠근다 — 두 목록이 다른 순간의 것이 된다");
+        let locked = body.find("let shells = self.lock();").expect("풀을 잠근다");
+        let judged = body.find("shells.values().map(Shell::entry)").expect("판정에 넘길 셸 목록을 잠금 안에서 읽는다");
+        let listed = body.find("pool_shells(shells.iter()").expect("풀의 셸 목록을 잠금 안에서 읽는다");
+        assert!(locked < judged && locked < listed, "두 목록이 한 잠금 안에 없다 — 잠금 {locked} · 판정의 셸 {judged} · 풀의 셸 {listed}");
+
+        let pool = super::PtyPool::default();
+        let zsh = crate::processes::Identity { pid: 4_242, started_us: 42 };
+        let mut later = idle_shell("1700-9");
+        later.process = Some(zsh);
+        later.last_output.store(9_000, std::sync::atomic::Ordering::Relaxed);
+        pool.lock().insert(9, later);
+        pool.lock().insert(2, idle_shell("1700-2"));
+        let (judged, listed) = pool.listing();
+        let mut keys: Vec<&str> = judged.iter().map(|shell| shell.key.as_str()).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["1700-2", "1700-9"], "판정에 넘길 셸이 풀의 셸이 아니다");
+        let seen: Vec<(u32, &str, u64, Option<crate::processes::Identity>)> = listed
+            .iter()
+            .map(|shell| (shell.pty_id, shell.shell_key.as_str(), shell.last_output_ms, shell.process))
+            .collect();
+        assert_eq!(seen, [(2, "1700-2", 0, None), (9, "1700-9", 9_000, Some(zsh))], "화면의 셸이 pty id 순으로 그 셸의 것을 안 싣는다");
+        assert!(std::ptr::eq(pool.record(), &*pool.record), "서비스가 보는 기록이 풀의 기록이 아니다");
     }
 
     /// **손으로 끝내기는 셈 → 표 → 신호 순이다**(티켓 31 · 프로세스 스펙 S5). 판정하지 않는다 — 받은 신원이 화면에 보인 그대로다.
@@ -1909,188 +1762,6 @@ mod tests {
             logged,
             vec![(Reason::Manual, None, None, vec![(ended_id.pid, Outcome::Ended)])],
             "정리 기록에 「손으로」 한 줄이 끝낸 자식 하나로 서야 한다 — 재사용된 pid의 신원은 안 든다"
-        );
-    }
-
-    /// **배경 표본은 화면 스냅샷과 같은 순서로 모은다**(티켓 29 · 프로세스 스펙 S52 · S38). 표를 한 장 찍고(env 전부 — 출처 불명은
-    /// 지금 풀의 어느 셸보다 먼저 태어났을 수 있다), 판정의 셸 목록과 셸 프로세스의 신원을 한 잠금 안에서 읽는다. 지표는 판정 뒤,
-    /// 잠금 밖에서 **합계에 드는 것만** 읽는다(`summary::targets` — 앱 본체와 이 실행의 셸 · 자손). `●`의 머리는 이 풀의 인스턴스
-    /// 기록이 연 정리 기록에서 고른다 — 데이터 루트를 다시 계산하면 검사의 풀이 진짜 기록을 읽는다.
-    ///
-    /// **웹뷰에게 WebContent를 묻는 것도 잠금 밖이다**(티켓 30) — 메인 스레드로 가는 물음이라 답을 기다리는 동안 풀을 쥐면 셸 입력 ·
-    /// 닫기가 함께 기다린다. 앱 본체의 신원은 지표를 읽기 전에 서야 합계에 든다. **CPU%는 배경의 미터와 견준다** — 읽은 뒤에, 화면의
-    /// 앞 표본이 아니라.
-    ///
-    /// 실행으로는 못 잰다 — 진짜 스냅샷은 이 맥의 표 전체라 기대값을 못 세운다. 값의 모양은 `processes::summary`의 검사가 잰다.
-    #[test]
-    fn the_background_sample_reads_like_the_screen_and_measures_only_the_total() {
-        let body = body_of("pub fn summarize(", "\n}\n");
-        assert!(body.contains("snapshot::take(EnvScope::All)"), "배경 표본이 env를 가지치기한다 — 오래된 출처 불명의 표식이 안 읽힌다");
-        assert_eq!(body.matches("pool.lock()").count(), 1, "풀을 두 번 잠근다 — 판정의 셸과 셸 프로세스가 다른 순간의 것이 된다");
-        let judged = body.find("verdict::judge(").expect("판정한다");
-        let read = body.find("metrics::read(summary::targets(&verdict, &shells, &body))").expect("합계에 드는 것만 지표를 읽는다");
-        let records = body.find("pool.record.records()").expect("기록을 읽는다");
-        assert!(records < read && judged < read, "지표를 판정({judged})이나 풀 잠금이 풀리기({records}) 전에 읽는다 — {read}");
-        assert_eq!(body.matches("metrics::read(").count(), 1, "지표를 두 번 읽는다");
-        let asked = body.find("pool.background.web_content.identity(").expect("앱 본체에 WebContent를 묻는다");
-        assert!(records < asked && asked < read, "WebContent를 풀 잠금 안({records} 앞)이나 지표를 읽은 뒤({read})에 묻는다 — {asked}");
-        let sampled = body.find("pool.background.cpu(").expect("배경의 미터로 CPU%를 짓는다");
-        assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
-        assert!(body.contains("cleanup_log::look_head(&pool.record.events())"), "`●`의 머리를 이 풀의 정리 기록에서 안 고른다");
-        assert!(!body.contains("screen_cpu"), "배경 표본이 화면의 앞 표본을 나눠 쓴다 — 두 박자가 섞인다");
-        assert!(!body.contains("CpuMeter::"), "부를 때마다 앞 표본을 새로 세운다 — 요약의 CPU가 늘 첫 표본이다");
-    }
-
-    /// **요약 IPC는 배경 표본의 마지막 장을 돌려준다**(티켓 29) — 부를 때마다 표를 찍지 않는다. 아직 한 장도 없으면 그 자리에서
-    /// 모아 앉힌다(앱이 막 떠 첫 표본이 도는 중에 프런트가 묻는다). 연 적 없는 기록의 풀은 정리 기록을 안 읽는다 — 머리가 없다.
-    ///
-    /// 둘째 갈래는 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다).
-    #[test]
-    fn the_summary_answers_the_last_background_sample() {
-        let pool = super::PtyPool::default();
-        let kept = super::Summary {
-            total: Some(1),
-            cpu: None,
-            app: Some(1),
-            webview_excluded: true,
-            unknown: vec![],
-            record_head: Some(9),
-        };
-        pool.background.keep(kept.clone(), 5_000);
-        assert_eq!(super::summary(&pool), kept, "배경 표본이 앉힌 장을 안 돌려준다");
-
-        let fresh = super::PtyPool::default();
-        let first = super::summary(&fresh);
-        assert_eq!(fresh.background.latest(), Some(first.clone()), "그 자리에서 모은 장을 안 앉혔다");
-        assert_eq!(first.record_head, None, "연 적 없는 기록에서 머리를 골랐다 — 검사의 풀이 진짜 정리 기록을 읽는다");
-    }
-
-    /// **추이 IPC는 배경 자리의 고리를 돌려준다**(티켓 30) — 표본이 앉힐 때 합계와 그 때를 한 점으로 더한 것이다. 부를 때마다 표를
-    /// 찍지 않는다(찍으면 화면이 열려 있는 동안 요약 박자마다 표 한 장이 는다). 아직 한 점도 없으면 빈 목록이다.
-    #[test]
-    fn the_trend_answers_the_background_ring() {
-        let pool = super::PtyPool::default();
-        assert_eq!(super::trend(&pool), vec![], "빈 풀의 추이가 빈 목록이 아니다");
-        let kept = |total: u64| super::Summary {
-            total: Some(total),
-            cpu: None,
-            app: None,
-            webview_excluded: true,
-            unknown: vec![],
-            record_head: None,
-        };
-        pool.background.keep(kept(3), 7_000);
-        pool.background.keep(kept(5), 17_000);
-        assert_eq!(
-            super::trend(&pool),
-            vec![super::summary::Point { at: 7_000, total: 3 }, super::summary::Point { at: 17_000, total: 5 }]
-        );
-        let body = body_of("pub fn trend(", "\n}\n");
-        assert!(!body.contains("summarize(") && !body.contains("snapshot::take("), "추이 IPC가 표를 찍는다");
-    }
-
-    /// **정리 기록 IPC는 이 풀의 인스턴스 기록이 연 정리 기록을 새것부터 돌려준다**(티켓 32 · 프로세스 스펙 S12). 데이터 루트를 다시
-    /// 계산하지 않는다 — 그러면 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록의 풀은 빈 기록이다(앵커 — 늘 빈 목록을 주게 무너지면
-    /// 둘째 단언이 빨개진다). 파일에 100건을 넘게 담지 않으므로(`cleanup_log::KEEP`) 최근 100건이 곧 전부다.
-    ///
-    /// 자리는 검사가 손으로 세운다(`Place`) — 앱의 신원을 읽는 `open_record`는 macOS에서만 서서, 그 길로 열면 이 검사가 리눅스에서 늘
-    /// 빈 기록을 본다. 신호는 없다 — 기록 파일을 쓰고 읽을 뿐이다.
-    #[test]
-    fn the_cleanup_log_answers_this_pools_log_newest_first() {
-        use crate::processes::cleanup_log::{Event, Reason, Target};
-        use crate::processes::ending::Outcome;
-        use crate::processes::instances::{Build, Place};
-        use crate::processes::Identity;
-
-        let unopened = super::PtyPool::default();
-        assert_eq!(super::cleanup_events(&unopened), vec![], "연 적 없는 기록의 풀이 기록을 읽었다 — 검사의 풀이 진짜 정리 기록을 읽는다");
-
-        let root = temp_home("cleanup-log");
-        let pool = super::PtyPool::default();
-        pool.record.open(Place {
-            dir: root.join("instances"),
-            generation: format!("test-{}-1", std::process::id()),
-            app: Identity { pid: std::process::id(), started_us: 1 },
-            build: Build::Dev,
-            version: "test".into(),
-            log: crate::processes::cleanup_log::path(&root),
-        });
-        let event = |at: u64, reason: Reason| Event {
-            id: 0,
-            at,
-            reason,
-            shell_key: None,
-            owner: None,
-            targets: vec![Target { pid: 7, name: "node".into(), command: None, outcome: Outcome::Ended }],
-        };
-        pool.record.log(event(1_000, Reason::ShellClose));
-        pool.record.log(event(2_000, Reason::StartupCleanup));
-        pool.record.log(event(3_000, Reason::Manual));
-        let answered = super::cleanup_events(&pool);
-        let _ = std::fs::remove_dir_all(&root);
-
-        let seen: Vec<(u64, u64, Reason)> = answered.iter().map(|one| (one.id, one.at, one.reason)).collect();
-        assert_eq!(
-            seen,
-            vec![(3, 3_000, Reason::Manual), (2, 2_000, Reason::StartupCleanup), (1, 1_000, Reason::ShellClose)],
-            "정리 기록이 새것부터 오지 않는다"
-        );
-    }
-
-    /// **앱 본체에 웹뷰가 이름 댄 WebContent가 든다**(S39 · 티켓 30). 앱에서는 setup이 웹뷰에게 묻는 함수를 건다(`webview.rs`) — 여기서는
-    /// 검사가 띄운 자식 하나를 WebContent 자리에 세운다. 살아 있으면 셌다(「웹뷰 제외」가 아니다). 답이 늦으면 마지막으로 안 신원을
-    /// 다시 쓴다. 그 자식이 끝났으면(신원으로 못 바꾼다) 「웹뷰 제외」다. 묻는 함수가 없는 풀(앵커)은 늘 「웹뷰 제외」다.
-    ///
-    /// 표를 찍고 판정하지만 읽기만 한다 — 신호는 이 검사가 띄운 자식에게만 간다(`Kid`의 거두기).
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn the_app_body_counts_the_web_content_the_webview_names() {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        use std::sync::Arc;
-
-        use crate::processes::summary::WebContentAnswer;
-        use crate::processes::testkit::{key, Kid};
-
-        let unasked = super::PtyPool::default();
-        assert!(super::summarize(&unasked).webview_excluded, "묻는 함수가 없는데 웹뷰를 셌다");
-
-        let stand_in = Kid::spawn("sleep", &key(30));
-        let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
-        let answer = Arc::new(AtomicU32::new(pid));
-        let asked = Arc::clone(&answer);
-        let pool = super::PtyPool::default();
-        super::ask_web_content_with(&pool, move || match asked.load(Ordering::Relaxed) {
-            0 => WebContentAnswer::Late,
-            pid => WebContentAnswer::Answered(Some(pid)),
-        });
-        let counted = super::summarize(&pool);
-        assert!(!counted.webview_excluded, "웹뷰가 이름 댄 WebContent를 앱 본체에 안 셌다");
-        assert!(counted.app.is_some_and(|app| counted.total.is_some_and(|total| total >= app)), "앱 본체가 합계에 안 들었다");
-
-        answer.store(0, Ordering::Relaxed);
-        assert!(!super::summarize(&pool).webview_excluded, "답이 늦자 마지막으로 안 WebContent를 버렸다");
-
-        drop(stand_in);
-        answer.store(pid, Ordering::Relaxed);
-        assert!(super::summarize(&pool).webview_excluded, "끝난 WebContent를 셌다");
-    }
-
-    /// 풀의 셸 목록은 **pty id 순**이다 — 풀이 해시 맵이라 그대로 두면 부를 때마다 순서가 흔들린다. 셸마다 pty id와 셸 키가 짝으로
-    /// 서고(티켓 26), 그 셸이 마지막으로 무언가를 찍은 때(티켓 27 — 「조용함」의 경과)와 셸 프로세스의 신원(티켓 28 — 셸 자신의 지표를
-    /// 찾는 열쇠)이 함께 간다. 넷이 한 셸의 것으로 붙어 다닌다. 지표는 아직 비었다 — 판정 뒤에 읽어 채운다.
-    #[test]
-    fn the_pool_list_is_in_pty_order_with_each_shells_key() {
-        let zsh = |pid: u32| Some(crate::processes::Identity { pid, started_us: u64::from(pid) * 10 });
-        let shell = |pty_id: u32, key: &str, last_output_ms: u64, process: Option<crate::processes::Identity>| super::PoolShell {
-            pty_id,
-            shell_key: key.into(),
-            last_output_ms,
-            process,
-            metrics: Default::default(),
-        };
-        assert_eq!(
-            super::pool_shells([(3, "G-3", 30, zsh(33)), (1, "G-1", 10, zsh(11)), (2, "G-2", 20, None)].into_iter()),
-            vec![shell(1, "G-1", 10, zsh(11)), shell(2, "G-2", 20, None), shell(3, "G-3", 30, zsh(33))]
         );
     }
 
@@ -2378,28 +2049,10 @@ mod tests {
         body_of("pub fn spawn(", "\n}\n")
     }
 
-    /// 소스를 잘라 함수 하나의 본문만 돌려준다. **가드가 여기 사는 것이 요점이다.**
-    ///
-    /// 이 파일을 읽어 자기 자신을 검사하는 방식은 조용히 새는 자리가 하나 있다: 소스 스캔이
-    /// 찾는 리터럴은 그것을 찾는 `assert`의 문자열로도 이 파일에 있으므로, 슬라이스가 테스트
-    /// 모듈까지 흘러가면 검사가 제 문장을 읽고 스스로 통과한다. 표식이 사라진 경우는 두
-    /// `expect`가 막고, 표식은 있는데 끝이 흘러간 경우는 아래 `assert`가 막는다. 호출자마다
-    /// 이 줄을 옮겨 적게 두면 언젠가 한 곳이 빠지므로 — 실제로 이 판에서 한 번 빠졌다 —
-    /// 슬라이스를 뽑는 유일한 자리에 둔다.
+    /// 이 파일에서 함수 하나의 본문. 자르는 가드는 `crate::tests::body_of` 한 자리에 산다 — 이 파일과 `processes::service`를
+    /// 함께 보는 표(`verdict_sites`)가 같은 가드를 지난다.
     fn body_of(start: &str, end: &str) -> &'static str {
-        let src = include_str!("pty.rs");
-        let body = src
-            .split_once(start)
-            .expect("여는 표식이 있다")
-            .1
-            .split_once(end)
-            .expect("닫는 표식이 있다")
-            .0;
-        assert!(
-            !body.contains("mod tests"),
-            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
-        );
-        body
+        crate::tests::body_of(include_str!("pty.rs"), start, end)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3599,11 +3252,14 @@ mod tests {
         });
         let before = super::command_running(pool, id);
         let echoed = stamped();
-        // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다. 두 번 찍는다: 셸
-        // 프로세스 자신과 자손의 지표가 서고, CPU%는 둘째 표본부터 선다(티켓 28).
-        let first = super::screen(pool);
-        let second = super::screen(pool);
-        let shell_of = |snapshot: &super::ScreenSnapshot| snapshot.pool.iter().find(|shell| shell.pty_id == id).cloned();
+        // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다. 앱처럼 이 풀을 보는
+        // 서비스 하나로 두 번 찍는다: 셸 프로세스 자신과 자손의 지표가 서고, CPU%는 둘째 표본부터 선다(티켓 28 — 앞 표본은 서비스가 쥔다).
+        let processes = crate::processes::service::ProcessService::new(std::sync::Arc::clone(pool));
+        let first = processes.screen();
+        let second = processes.screen();
+        let shell_of = |snapshot: &crate::processes::screen::ScreenSnapshot| {
+            snapshot.pool.iter().find(|shell| shell.pty_id == id).cloned()
+        };
         let (first_shell, second_shell) = (shell_of(&first), shell_of(&second));
         let on_screen = first_shell.as_ref().map(|shell| shell.last_output_ms);
         let helper_memory = first

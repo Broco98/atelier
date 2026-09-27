@@ -19,6 +19,8 @@ use std::sync::Arc;
 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
+use processes::service::ProcessService;
+
 /// `atelier ▸ Settings…`(⌘,)의 id — 메뉴를 세우는 곳과 그 클릭을 받는 곳 둘이 이 문자열로만
 /// 이어져 있다.
 ///
@@ -199,6 +201,9 @@ pub fn run() {
     // PTY 풀 — 셸을 쥔 자리. 명령은 앱에 건 것(`manage`)을 `State`로 찾고, 셋업은 스레드 · 알림 · 기록 · 정리에 **바로 이 값을**
     // 건넨다. 빌더 앞에서 한 번 세워 셋업이 앱에서 다시 찾지 않는다(위 `report`와 같다).
     let pool = Arc::new(pty::PtyPool::default());
+    // 프로세스 서비스 — `Processes` 화면과 nav 메타가 읽는 값(스냅샷 · 요약 · 추이 · 정리 기록)을 모으는 자리. **위 풀을 본다**(셸
+    // 목록 · 인스턴스 기록). 풀과 따로 앱에 걸고 `processes_*` 명령이 `State`로 찾는다. 셋업이 WebContent를 묻는 길과 배경 표본을 건다.
+    let processes = Arc::new(ProcessService::new(Arc::clone(&pool)));
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -235,6 +240,7 @@ pub fn run() {
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::clone(&pool))
+        .manage(Arc::clone(&processes))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
         .manage(Arc::clone(&report))
         .setup(move |app| {
@@ -304,8 +310,8 @@ pub fn run() {
             // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
             // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다.
             let asker = app.handle().clone();
-            pty::ask_web_content_with(&pool, move || webview::content_pid(&asker));
-            pty::sample_in_background(Arc::clone(&pool));
+            processes.ask_web_content_with(move || webview::content_pid(&asker));
+            Arc::clone(&processes).sample_in_background();
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -484,23 +490,37 @@ mod tests {
     // 것은 이제 `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 **값으로**
     // 잰다 — 진짜 셸 ID로 이름 지은 파일이 진짜 접두사의 쓸기에서 살아남는가.
 
-    /// **셋업이 건네는 풀이 앱에 건 바로 그 풀이다.** 명령은 앱에 건 풀을 `State`로 찾고, 셋업은 도는 명령의 감시 · 셸 스스로
-    /// 끝남의 알림 · 인스턴스 기록 · 시작 정리 · 배경 표본에 풀을 건넨다. 둘이 다른 풀이면 조용하다 — 셸은 명령의 풀에서 뜨고
-    /// 닫히는데, 그 키는 연 적 없는 기록에 오르고 감시는 빈 풀을 잰다. 그래서 풀은 `run`에 하나뿐이고(빌더 앞), 앱에 그것을 걸고,
-    /// 셋업은 앱에서 다시 찾지 않는다. `manage`가 빠지면 명령이 부를 때마다 `state not managed`로 거절되는데 L3는 고정 표가 답해
-    /// 못 본다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
+    /// **셋업이 건네는 풀과 프로세스 서비스가 앱에 건 바로 그것이고, 서비스는 그 풀을 본다.** 명령은 앱에 건 두 값을 `State`로
+    /// 찾는다 — 셸 명령(`pty_*` · `processes_end`)은 풀을, 읽기 명령(`processes_snapshot` · `_summary` · `_trend` · `_cleanup_log`)은
+    /// 서비스를. 셋업은 도는 명령의 감시 · 셸 스스로 끝남의 알림 · 인스턴스 기록 · 시작 정리에 풀을, WebContent 물음 · 배경 표본에
+    /// 서비스를 건넨다. 어느 둘이 어긋나도 조용하다 — 셸은 명령의 풀에서 뜨는데 그 키는 연 적 없는 기록에 오르거나, `Processes`
+    /// 화면이 빈 풀을 판정한다. `manage` 하나가 빠지면 그 명령은 부를 때마다 `state not managed`로 거절되는데 L3는 고정 표가 답해
+    /// 못 본다. 그래서 둘은 `run`에 하나씩이고(빌더 앞), 서비스는 그 풀로 서고, 앱에 둘 다 걸고, 셋업은 앱에서 다시 찾지 않는다.
+    /// 셋업은 헤드리스로 못 돌리니 자리로 잰다.
     #[test]
-    fn the_setup_hands_on_the_pool_the_app_manages() {
+    fn the_setup_hands_on_the_pool_and_the_service_the_app_manages() {
         let run = run_source();
-        assert_eq!(run.matches("PtyPool::default()").count(), 1, "풀을 둘 세운다 — 셋업과 명령이 다른 풀을 본다");
-        let made = run.find("let pool = Arc::new(pty::PtyPool::default());").expect("풀을 빌더 앞에서 한 번 세우지 않는다");
         let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
-        assert!(made < builder, "풀({made})을 빌더({builder}) 뒤에서 세운다");
+        for (made, what) in [
+            ("let pool = Arc::new(pty::PtyPool::default());", "풀"),
+            ("let processes = Arc::new(ProcessService::new(Arc::clone(&pool)));", "이 풀을 보는 프로세스 서비스"),
+        ] {
+            let at = run.find(made).unwrap_or_else(|| panic!("{what}을 빌더 앞에서 한 번 세우지 않는다"));
+            assert!(at < builder, "{what}({at})을 빌더({builder}) 뒤에서 세운다");
+        }
+        assert_eq!(run.matches("PtyPool::default()").count(), 1, "풀을 둘 세운다 — 셋업 · 서비스 · 명령이 다른 풀을 본다");
+        assert_eq!(run.matches("ProcessService::new(").count(), 1, "서비스를 둘 세운다 — 배경 표본과 요약 명령이 다른 자리를 본다");
+        for (managed, what) in [(".manage(Arc::clone(&pool))", "풀"), (".manage(Arc::clone(&processes))", "프로세스 서비스")] {
+            assert!(
+                run.contains(managed),
+                "{what}을 앱에 안 건다 — 그것을 찾는 명령이 부를 때마다 `state not managed`로 거절된다"
+            );
+        }
+        let setup = setup_source();
         assert!(
-            run.contains(".manage(Arc::clone(&pool))"),
-            "셋업이 건네는 풀을 앱에 안 건다 — 명령이 부를 때마다 거절되거나 다른 풀을 본다"
+            !setup.contains("PtyPool>>()") && !setup.contains("ProcessService>>()"),
+            "셋업이 앱에서 풀이나 서비스를 다시 찾는다 — 빌더 앞의 값을 건네라"
         );
-        assert!(!setup_source().contains("PtyPool>>()"), "셋업이 앱에서 풀을 다시 찾는다 — 빌더 앞의 풀을 건네라");
     }
 
     /// `run`의 본문(주석 줄 없이). 자르는 까닭은 `setup_source`와 같다.
@@ -536,6 +556,28 @@ mod tests {
             "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
         );
         without_comment_lines(body)
+    }
+
+    /// 소스를 잘라 함수 하나의 본문만 돌려준다 — `start`에서 `end`까지. **가드가 여기 사는 것이 요점이다.**
+    ///
+    /// 파일을 읽어 자기 자신을 검사하는 방식은 조용히 새는 자리가 하나 있다: 소스 스캔이 찾는 리터럴은 그것을 찾는 `assert`의
+    /// 문자열로도 그 파일에 있으므로, 슬라이스가 테스트 모듈까지 흘러가면 검사가 제 문장을 읽고 스스로 통과한다. 표식이 사라진
+    /// 경우는 두 `expect`가 막고, 표식은 있는데 끝이 흘러간 경우는 아래 `assert`가 막는다. 호출자마다 이 줄을 옮겨 적게 두면
+    /// 언젠가 한 곳이 빠지므로 — 실제로 `pty.rs`에서 한 번 빠졌다 — 슬라이스를 뽑는 유일한 자리에 둔다. `pty.rs`와
+    /// `processes/service.rs`의 자리 핀이 이것을 지난다.
+    pub(crate) fn body_of(src: &'static str, start: &str, end: &str) -> &'static str {
+        let body = src
+            .split_once(start)
+            .expect("여는 표식이 있다")
+            .1
+            .split_once(end)
+            .expect("닫는 표식이 있다")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        body
     }
 
     /// 주석 줄(`//`로 시작하는 줄)을 비운다. 자리 검사가 **주석 처리된 호출에 속지 않게** —
@@ -757,29 +799,29 @@ mod tests {
 
     /// **nav 메타의 배경 표본은 인스턴스 기록을 연 뒤에 건다**(티켓 29). 먼저 걸면 첫 판정이 남의 기록을 못 읽어(`Record::records`가
     /// 빈 목록) 함께 뜬 다른 빌드(dev · 설치본)의 셸 자손이 모두 출처 불명으로 서고 — 뜨자마자 `●`가 선다. 표본이 한 번뿐이어야 박자가
-    /// 하나다(10초). 셋업은 헤드리스로 못 돌리니 자리로 잰다. 모으는 순서는 `pty.rs`의 핀이 잰다.
+    /// 하나다(10초). 셋업은 헤드리스로 못 돌리니 자리로 잰다. 모으는 순서는 `processes::service`의 핀이 잰다.
     #[test]
     fn the_background_sample_starts_after_the_record_opens() {
         let setup = setup_source();
         let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
         let sampled = setup
-            .find("pty::sample_in_background(Arc::clone(&pool));")
+            .find("Arc::clone(&processes).sample_in_background();")
             .expect("셋업이 배경 표본을 안 건다 — 화면이 닫혀 있으면 nav 메타의 합계가 안 바뀐다");
         assert!(opened < sampled, "배경 표본({sampled})이 기록을 열기({opened}) 전에 걸린다 — 첫 장이 남의 셸 자손을 출처 불명으로 본다");
-        assert_eq!(setup.matches("pty::sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
+        assert_eq!(setup.matches("sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
     }
 
     /// **웹뷰에게 WebContent를 물을 길은 배경 표본보다 먼저 건다**(프로세스 스펙 S39 · 티켓 30). 안 걸면 조용하다 — 요약은 잘 서는데
     /// 앱 본체가 늘 Rust 본체뿐이고 「웹뷰 제외」가 영영 붙는다. 늦게 걸면 첫 장이 웹뷰 없이 서 추이의 첫 점이 그만큼 낮다. 묻는
     /// 함수는 창을 다시 찾는 앱 핸들을 쥔다 — 창을 쥐면 그 창이 다시 서도 옛 창에 묻는다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
-    /// 물음이 앱 본체에 드는 것은 `pty.rs`의 실물 검사가, SPI가 이 맥에 있는지는 `webview.rs`의 검사가 잰다.
+    /// 물음이 앱 본체에 드는 것은 `processes::service`의 실물 검사가, SPI가 이 맥에 있는지는 `webview.rs`의 검사가 잰다.
     #[test]
     fn the_web_content_is_asked_for_before_the_background_sample_starts() {
         let setup = setup_source();
         let asked = setup
-            .find("pty::ask_web_content_with(&pool, move || webview::content_pid(&asker));")
+            .find("processes.ask_web_content_with(move || webview::content_pid(&asker));")
             .expect("셋업이 웹뷰에게 WebContent를 물을 길을 안 건다 — 앱 본체가 늘 「웹뷰 제외」다");
-        let sampled = setup.find("pty::sample_in_background(").expect("배경 표본을 건다");
+        let sampled = setup.find("sample_in_background(").expect("배경 표본을 건다");
         assert!(asked < sampled, "물을 길({asked})이 배경 표본({sampled}) 뒤에 걸린다 — 첫 장이 웹뷰 없이 선다");
         assert!(setup.contains("let asker = app.handle().clone();"), "묻는 함수가 앱 핸들이 아닌 것을 쥔다");
     }

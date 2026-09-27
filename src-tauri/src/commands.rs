@@ -10,6 +10,7 @@ use atelier_core::{
 use std::sync::Arc;
 
 use crate::processes::cleanup_log::CloseReason;
+use crate::processes::service::ProcessService;
 use crate::pty;
 
 type CmdResult<T> = Result<T, String>;
@@ -340,15 +341,16 @@ pub async fn pty_close_checks(
 
 // `Processes` 화면의 스냅샷 — 판정 결과와 풀의 셸 목록이다(프로세스 결정 10 · 티켓 26). **화면이 열려 있는 동안만** 프런트가
 // 2초마다 부른다(`src/features/processes/hooks.ts`) — 닫혀 있으면 무거운 수집을 안 한다(스토리 95). 스냅샷 한 장과 판정을
-// 기다리는 일이라 blocking 풀에서 돌린다(`pty_close_checks`와 같다).
+// 기다리는 일이라 blocking 풀에서 돌린다(`pty_close_checks`와 같다). 읽기의 자리는 풀과 따로 앱에 걸린 프로세스 서비스다
+// (`processes::service`) — 아래 셋(요약 · 추이 · 정리 기록)도 같다.
 //
 // 모드를 안 받는다 — 화면이 앱 전체를 보인다(프로세스 결정 9). 두 세계의 주소가 같은 화면을 열고 같은 것을 묻는다.
 #[tauri::command]
 pub async fn processes_snapshot(
-    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    processes: tauri::State<'_, Arc<ProcessService>>,
 ) -> CmdResult<crate::processes::screen::ScreenSnapshot> {
-    let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::screen(&pool))
+    let processes = Arc::clone(&processes);
+    tauri::async_runtime::spawn_blocking(move || processes.screen())
         .await
         .map_err(|e| format!("프로세스 스냅샷을 찍지 못했습니다: {e}"))
 }
@@ -360,10 +362,10 @@ pub async fn processes_snapshot(
 // 모드를 안 받는다 — nav 메타는 「이 세계의 것만 센다」의 예외다(프로세스 결정 9). 두 세계가 같은 값을 묻는다.
 #[tauri::command]
 pub async fn processes_summary(
-    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    processes: tauri::State<'_, Arc<ProcessService>>,
 ) -> CmdResult<crate::processes::summary::Summary> {
-    let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::summary(&pool))
+    let processes = Arc::clone(&processes);
+    tauri::async_runtime::spawn_blocking(move || processes.summary())
         .await
         .map_err(|e| format!("프로세스 요약을 읽지 못했습니다: {e}"))
 }
@@ -374,22 +376,24 @@ pub async fn processes_summary(
 //
 // 모드를 안 받는다 — 요약과 같은 앱 전체의 값이다(프로세스 결정 9).
 #[tauri::command]
-pub async fn processes_trend(pool: tauri::State<'_, Arc<pty::PtyPool>>) -> CmdResult<Vec<crate::processes::summary::Point>> {
-    Ok(pty::trend(&pool))
+pub async fn processes_trend(
+    processes: tauri::State<'_, Arc<ProcessService>>,
+) -> CmdResult<Vec<crate::processes::summary::Point>> {
+    Ok(processes.trend())
 }
 
 // 정리 기록 — 앱이 무엇을 언제 왜 끝냈는가, 새것부터 최근 100건(프로세스 결정 6 · 프로세스 스펙 S12 · 티켓 32). `Processes` 화면이
-// 스냅샷이 올 때마다 한 번 부른다(`src/features/processes/hooks.ts`의 `cleanupLogQuery`). 기록은 이 풀의 인스턴스 기록이 연
+// 스냅샷이 올 때마다 한 번 부른다(`src/features/processes/hooks.ts`의 `cleanupLogQuery`). 기록은 풀의 인스턴스 기록이 연
 // 자리에서 읽는다 — 데이터 루트를 여기서 다시 계산하지 않는다. 파일 한 장(100건)을 읽을 뿐이라 표를 찍지 않는다. 적는 것은 끝내기
 // 길들이고 여기는 읽기만 한다.
 //
 // 모드를 안 받는다 — 화면이 앱 전체를 보인다(프로세스 결정 9). 기록도 앱에 한 장이다.
 #[tauri::command]
 pub async fn processes_cleanup_log(
-    pool: tauri::State<'_, Arc<pty::PtyPool>>,
+    processes: tauri::State<'_, Arc<ProcessService>>,
 ) -> CmdResult<Vec<crate::processes::cleanup_log::Event>> {
-    let pool = Arc::clone(&pool);
-    tauri::async_runtime::spawn_blocking(move || pty::cleanup_events(&pool))
+    let processes = Arc::clone(&processes);
+    tauri::async_runtime::spawn_blocking(move || processes.cleanup_events())
         .await
         .map_err(|e| format!("정리 기록을 읽지 못했습니다: {e}"))
 }
@@ -604,9 +608,9 @@ mod tests {
     fn the_screen_snapshot_is_taken_off_the_async_workers() {
         let body = command_body("processes_snapshot");
         let blocking = body.find("spawn_blocking(").expect("화면 스냅샷을 blocking 풀로 안 보낸다 — 찍는 동안 tokio 워커가 멎는다");
-        let screen = body.find("pty::screen(").expect("명령이 풀의 화면 스냅샷을 안 부른다");
+        let screen = body.find("processes.screen()").expect("명령이 프로세스 서비스의 화면 스냅샷을 안 부른다");
         assert!(blocking < screen, "스냅샷({screen})이 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches("pty::screen(").count(), 1, "스냅샷을 두 번 찍는다 — 한쪽이 blocking 풀 밖일 수 있다");
+        assert_eq!(body.matches(".screen(").count(), 1, "스냅샷을 두 번 찍는다 — 한쪽이 blocking 풀 밖일 수 있다");
     }
 
     /// **nav 메타의 요약은 blocking 풀에서 답한다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 29). 답은 대개 배경 표본이 앉힌
@@ -616,10 +620,10 @@ mod tests {
     fn the_summary_is_answered_off_the_async_workers() {
         let body = command_body("processes_summary");
         let blocking = body.find("spawn_blocking(").expect("요약을 blocking 풀로 안 보낸다 — 첫 장을 모으는 동안 tokio 워커가 멎는다");
-        let summary = body.find("pty::summary(").expect("명령이 배경 표본의 요약을 안 읽는다");
+        let summary = body.find("processes.summary()").expect("명령이 배경 표본의 요약을 안 읽는다");
         assert!(blocking < summary, "요약({summary})이 blocking 풀({blocking}) 밖에 있다");
-        assert_eq!(body.matches("pty::summary(").count(), 1, "요약을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
-        assert!(!body.contains("pty::summarize("), "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다");
+        assert_eq!(body.matches(".summary(").count(), 1, "요약을 두 번 읽는다 — 한쪽이 blocking 풀 밖일 수 있다");
+        assert!(!body.contains(".summarize("), "요약 IPC가 부를 때마다 표를 찍는다 — 배경 표본의 장을 안 쓴다");
     }
 
     /// **추이 IPC는 배경 표본의 고리를 돌려줄 뿐이다**(티켓 30). 요약이 올 때마다 부르므로, 여기서 표를 찍거나 요약을 새로 모으면
@@ -627,8 +631,8 @@ mod tests {
     #[test]
     fn the_trend_answers_the_ring_without_sampling() {
         let body = command_body("processes_trend");
-        assert_eq!(body.matches("pty::trend(").count(), 1, "명령이 배경 표본의 고리를 안 읽는다");
-        assert!(!body.contains("pty::summar") && !body.contains("pty::screen("), "추이 IPC가 부를 때마다 표를 찍는다");
+        assert_eq!(body.matches("processes.trend()").count(), 1, "명령이 배경 표본의 고리를 안 읽는다");
+        assert!(!body.contains(".summar") && !body.contains(".screen("), "추이 IPC가 부를 때마다 표를 찍는다");
     }
 
     /// **손으로 끝내기는 blocking 풀에서 신호까지 보낸다**(프로세스 스펙 「가로지르는 규칙 › IPC」 · 티켓 31). 끝내기는 정리
