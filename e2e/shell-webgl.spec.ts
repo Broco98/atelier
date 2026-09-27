@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, openShell, typeIntoShell, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, navButton, openShell, typeIntoShell, unknownIpcCalls } from "./harness";
 
 // 티켓 17 — **셸을 스무 개 오가도 화면이 비지 않는다**(프로세스 결정 18 ③ · 프로세스 스펙 S23 · 스토리 49~51).
 //
@@ -59,7 +59,7 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
 
 /** nav의 `Terminal` — 그 세계의 최상위 터미널도 셸 화면이다. 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
 }
 

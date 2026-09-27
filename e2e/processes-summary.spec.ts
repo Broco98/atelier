@@ -1,12 +1,14 @@
 import { expect, test, type Page } from "./evidence";
-import { FIXTURE_GENERATION, NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, WORKS } from "./fixtures";
+import { NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
   fireAttention,
   fireEvent,
   installFixtureBackend,
+  navButton,
   openShell,
+  processesTitle,
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
@@ -22,13 +24,10 @@ import type { ProcessRow, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/
 // 스토어(진짜로 띄운 셸 · 진짜 셸 상태 · 진짜 MCP 아카이브 감지)**를 지나 화면 맨 위 카드에 서는가, 그리고 카드가 새 박자를 안 거는가다.
 
 const [, plainWork] = WORKS;
-const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
 
 const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact: true });
 const 칸 = (page: Page, figure: string) => 카드(page).locator(`[data-figure="${figure}"]`);
 const 추이 = (page: Page) => 카드(page).locator('svg[data-figure="trend"]');
-const nav = (page: Page, label: string) => page.locator("aside nav").getByRole("button", { name: label, exact: true });
-const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 const 행 = (pid: number): ProcessRow => ({
   id: { pid, startedUs: 1_790_000_000_000_000 + pid },
@@ -46,7 +45,7 @@ const 스냅샷: ProcessSnapshot = {
     ...PROCESS_SNAPSHOT.verdict,
     orphans: { confirmed: { "F-1": [행(4_001), 행(4_002)], "F-2": [행(4_003)] }, unknown: { "OLD-1": [행(5_001)] } },
   },
-  pool: [1, 2, 99].map((pty) => ({ ptyId: pty, shellKey: 키(pty), lastOutputMs: Date.now(), metrics: NO_METRICS })),
+  pool: [1, 2, 99].map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs: Date.now(), metrics: NO_METRICS })),
 };
 
 const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
@@ -97,8 +96,8 @@ test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주�
   await fireEvent(page, "works:changed", null);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
-  await nav(page, "Processes").click();
-  await expect(제목(page)).toBeVisible();
+  await navButton(page, "Processes").click();
+  await expect(processesTitle(page)).toBeVisible();
   // 합계 · CPU · 앱 본체는 요약(nav 메타와 같은 장)이다 — 표기 함수의 결과가 선다. 합계는 nav 옆 숫자와 같다.
   await expect(칸(page, "total")).toContainText(formatMemory(summary.total));
   await expect(칸(page, "cpu")).toContainText(formatCpu(summary.cpu));
@@ -125,7 +124,7 @@ test("웹뷰를 못 센 요약이면 앱 본체에 「웹뷰 제외」가 붙고
   const summary = 요약({ app: 400 * 1024 * 1024, webviewExcluded: true });
   await installFixtureBackend(page, { processes_summary: summary });
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(칸(page, "app")).toHaveText(`앱 본체 ${formatMemory(summary.app)}(웹뷰 제외)`);
   await expect(칸(page, "app")).toHaveAttribute("title", /못 셌어요/);
   await expect(칸(page, "app")).toHaveAttribute("title", /GPU · Networking/);
@@ -138,7 +137,7 @@ test("추이의 점 수만큼 스파크라인이 선다", async ({ page }) => {
   const seven = 점들(7);
   await installFixtureBackend(page, { processes_trend: seven });
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect.poll(() => 그린점(page)).toBe(7);
   // 접근성 이름은 처음과 끝의 합계다 — 선의 모양은 눈의 것이다.
   await expect(추이(page)).toHaveAttribute(
@@ -168,8 +167,8 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await 시계를세운다(page);
   await page.clock.runFor(4_000);
 
-  await nav(page, "Processes").click();
-  await expect(제목(page)).toBeVisible();
+  await navButton(page, "Processes").click();
+  await expect(processesTitle(page)).toBeVisible();
   // 셈은 nav 메타의 박자 **바로 뒤**에서 시작한다 — 그래야 아래 10초에 박자가 정확히 하나, 5초에는 없다.
   await 박자직후(page);
   await expect.poll(() => 그린점(page)).toBe(4);
@@ -182,8 +181,8 @@ test("추이는 요약이 올 때마다 한 번 묻고, 카드가 요약을 더 
   await page.clock.runFor(5_000);
   expect(await callCount(page, "processes_trend")).toBe(trends + 1);
 
-  await nav(page, "Terminal").click();
-  await expect(제목(page)).toHaveCount(0);
+  await navButton(page, "Terminal").click();
+  await expect(processesTitle(page)).toHaveCount(0);
   const left = await callCount(page, "processes_trend");
   const summariesLeft = await callCount(page, "processes_summary");
   await page.clock.runFor(20_000);

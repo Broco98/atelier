@@ -1,6 +1,14 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { FIXTURE_GENERATION, PROCESS_SNAPSHOT } from "./fixtures";
-import { awaitSpawned, callCount, installFixtureBackend, ipcCallArgs, typeIntoShell, unknownIpcCalls } from "./harness";
+import { PROCESS_SNAPSHOT, shellKeyOf } from "./fixtures";
+import {
+  awaitSpawned,
+  callCount,
+  installFixtureBackend,
+  ipcCallArgs,
+  navButton,
+  typeIntoShell,
+  unknownIpcCalls,
+} from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import type { ProcessIdentity, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
@@ -18,8 +26,6 @@ import type { Settings } from "@/features/settings/types";
 
 const MiB = 1024 * 1024;
 
-const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
-const nav = (page: Page, label: string) => page.locator("aside nav").getByRole("button", { name: label, exact: true });
 const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
 const 줄 = (scope: Locator, name: string) => scope.getByRole("treeitem", { name, exact: true });
 const 메모리칸 = (row: Locator) => row.locator('[data-cell="memory"]');
@@ -63,7 +69,7 @@ function 스냅샷(): ProcessSnapshot {
     ...PROCESS_SNAPSHOT,
     verdict: {
       ...PROCESS_SNAPSHOT.verdict,
-      descendants: { [키(1)]: [vite, esbuild, watcher, sleep] },
+      descendants: { [shellKeyOf(1)]: [vite, esbuild, watcher, sleep] },
       exceptions: [tmux, tmux밑zsh],
       orphans: {
         confirmed: { "OLD-3": [고아node, 고아esbuild], "OLD-5": [고아python] },
@@ -71,7 +77,7 @@ function 스냅샷(): ProcessSnapshot {
       },
       otherInstances: { "H-2": [남의zsh, 남의node], "R-1": [설치본zsh] },
     },
-    pool: [{ ptyId: 1, shellKey: 키(1), lastOutputMs: Date.now(), metrics: { memory: 4 * MiB, cpu: null, ports: [] } }],
+    pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: { memory: 4 * MiB, cpu: null, ports: [] } }],
     instances: [
       { generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-2"] },
       { generation: "R", build: "release", version: "0.14.1", shellKeys: ["R-1"] },
@@ -84,7 +90,7 @@ async function 셸을띄우고연다(page: Page): Promise<void> {
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
   await expect(줄(page.getByRole("tree", { name: "셸", exact: true }), `node, ${formatMemory(vite.metrics.memory)}`)).toBeVisible();
 }

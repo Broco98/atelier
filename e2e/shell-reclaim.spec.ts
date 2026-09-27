@@ -6,6 +6,7 @@ import {
   callCount,
   installFixtureBackend,
   ipcCallArgs,
+  navButton,
   openShell,
   unknownIpcCalls,
   writeShell,
@@ -38,7 +39,7 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
 
 /** nav의 `Terminal` — 그 세계의 최상위 터미널도 owner다(결정 10). 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
 }
 

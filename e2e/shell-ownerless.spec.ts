@@ -14,7 +14,10 @@ import {
   ipcCallArgs,
   ipcFailure,
   markAttention,
+  modeButton,
+  navButton,
   openShell,
+  processesTitle,
   releaseCommand,
   replaceAnswer,
   typeIntoShell,
@@ -285,7 +288,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
     at: Date.now(),
     payload: { message: "아카이브할까요?" },
   });
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   // 최상위 터미널의 첫 셸(pty 2)이 떴으면 떠나온 work 화면은 내려갔다.
   await arrived(page, 2);
@@ -302,13 +305,13 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   // 목록에서 빠진 work의 줄은 제목 대신 slug를 적는다(`titleResolver`).
   await 띠(page).getByRole("button", { name: `${plainWork.slug} — 나를 기다림`, exact: true }).click();
   await expect(page).toHaveURL("/processes");
-  await expect(page.getByRole("heading", { name: "Processes", exact: true })).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   // 토스트를 다시 세우지 않는다 — 갈 화면이 생겼다. 앵커: 화면이 옮겨 갔다(위 두 줄).
   await settle(page);
   expect(await toastsNow(page)).toBe(0);
 
   // 터미널로 돌아가면 그 화면의 셸(pty 2)이 다시 붙으며 포커스를 받는다 — 주인 잃은 셸을 기다리는 것이 없다.
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect(셸입력(page), "주인 잃은 셸을 기다리는 포커스가 남아 터미널의 셸이 포커스를 못 받았다").toBeFocused();
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -347,9 +350,7 @@ test("저쪽 세계의 Room이 MCP로 아카이브돼도 알린다 — 그 세�
   expect(await maisonLists()).toBe(0);
 
   // ── Maison에 셸 하나를 두고 돌아온다 ──
-  const modeButton = (label: string) =>
-    page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-  await modeButton("Maison").click();
+  await modeButton(page, "Maison").click();
   await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
   await page.locator('[data-tab="new"]').click();
   await awaitSpawned(page, 1);
@@ -358,7 +359,7 @@ test("저쪽 세계의 Room이 MCP로 아카이브돼도 알린다 — 그 세�
       ({ args }) => args.mode === "atelier" && args.slug === plainWork.slug,
     ).length;
   const touchedBefore = await touched();
-  await modeButton("Atelier").click();
+  await modeButton(page, "Atelier").click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
   // 도착을 화면으로 잰다(`arrived`의 머리말) — work 화면이 서면 「열었다」를 코어에 적는다. 그 전에 쏘면 아직 서 있는
   // Room 화면이 제 Room이 사라진 것을 보고 다른 Room으로 옮긴다. 수는 안 맞춘다 — 개발 빌드의 StrictMode가 그 이펙트를

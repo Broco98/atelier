@@ -11,6 +11,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   liveSubscriptions,
+  modeButton,
   releaseCommand,
   unknownIpcCalls,
   workRow,
@@ -108,13 +109,11 @@ test("이벤트를 모든 구독에 한 번 쏘면 list_works가 한 번 나간�
   expect(await firedCalls(page, "list_works")).toBe(1);
 
   // ── Maison에 셸 하나를 두고 돌아온다(`shell-ownerless.spec.ts`의 저쪽 세계 검사와 같은 길) ──
-  const modeButton = (label: string) =>
-    page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-  await modeButton("Maison").click();
+  await modeButton(page, "Maison").click();
   await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
   await page.locator('[data-tab="new"]').click();
   await awaitSpawned(page, 1);
-  await modeButton("Atelier").click();
+  await modeButton(page, "Atelier").click();
   await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
   await expect(page.locator('[data-tab="spec"]')).toBeVisible();
 

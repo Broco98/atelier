@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "./evidence";
 import { MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, PROJECTS } from "./fixtures";
-import { callCount, installFixtureBackend, unknownIpcCalls, 시계를세운다 } from "./harness";
+import {
+  callCount,
+  installFixtureBackend,
+  modeButton,
+  navButton,
+  navButtons,
+  processesTitle,
+  unknownIpcCalls,
+  시계를세운다,
+} from "./harness";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 26 — **`Processes`가 두 세계 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
@@ -13,14 +22,6 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 
 const [project] = PROJECTS;
 
-/** 사이드바 nav의 항목들. 버튼 글자는 라벨뿐이다 — 메타(셸 수)는 버튼 밖에 선다(`SidebarItem`). */
-const navButtons = (page: Page) => page.locator("aside nav").getByRole("button");
-const navButton = (page: Page, label: string) =>
-  page.locator("aside nav").getByRole("button", { name: label, exact: true });
-const modeButton = (page: Page, label: string) =>
-  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-/** 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. */
-const title = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 /**
  * 요약 카드의 셸 수. **카드 안에서 찾는다** — 스토어가 모르는 풀의 셸은 두 박자 뒤 「화면 밖 셸」 묶음에 서고(티켓 32) 그 머리도
  * 「셸 N개」라, 화면 전체에서 찾으면 같은 글자가 둘이다.
@@ -48,7 +49,7 @@ test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서�
   await expect(navButtons(page)).toHaveText(["Projects", "Terminal", "Processes", "Archive"]);
   await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
-  await expect(title(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 3)).toBeVisible();
 
   // 저쪽 세계에서도 선다. 세계마다 nav 배열이 따로라(`MAISON_NAV`) 한쪽에만 더하면 다른 쪽에서 빠진다.
@@ -60,7 +61,7 @@ test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서�
   await expect(page).toHaveURL("/maison/processes");
   await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
   // **같은 화면이다** — 제목도, 앱 전체의 셸 수도 같다. 세계로 나누면 절반이 안 보인다.
-  await expect(title(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 3)).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -70,7 +71,7 @@ test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서�
 test("fixture 스냅샷에 실린 풀의 셸 수가 화면에 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2", "M-7", "M-8", "Q-1") });
   await page.goto("/maison/processes");
-  await expect(title(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 5)).toBeVisible();
   await expect(shellCount(page, 0)).toHaveCount(0);
 
@@ -92,7 +93,7 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
 
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
-  await expect(title(page)).toHaveCount(0);
+  await expect(processesTitle(page)).toHaveCount(0);
   const left = await callCount(page, "processes_snapshot");
   await page.clock.runFor(10_000);
   expect(await callCount(page, "processes_snapshot")).toBe(left);
@@ -101,7 +102,7 @@ test("화면에 있는 동안은 2초마다 스냅샷을 묻고, 화면을 떠�
   // (`snapshotQuery` 머리말). 곧바로의 한 번만 세면 박자가 다시 안 서도 초록이라, 그 한 번을 먼저 기다린 뒤 2초를 넘겨
   // 한 번 더 오는 것을 센다.
   await navButton(page, "Processes").click();
-  await expect(title(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(left);
   const returned = await callCount(page, "processes_snapshot");
   await page.clock.runFor(2_000);

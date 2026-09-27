@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "./evidence";
-import { FIXTURE_GENERATION, MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, WORKS } from "./fixtures";
+import { MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   fireEvent,
   holdCommand,
   installFixtureBackend,
+  processesTitle,
   releaseCommand,
   replaceAnswer,
   typeIntoShell,
@@ -23,8 +24,6 @@ import type { ProcessesEnded } from "@/components/shell/processes-ended";
 
 const [, plainWork] = WORKS;
 
-const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
-const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
 
@@ -48,7 +47,7 @@ test("시작 정리 토스트의 [보기]를 누르면 토스트가 내려가고
 
   await toast.getByRole("button", { name: "보기", exact: true }).click();
   await expect(page).toHaveURL("/maison/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(toast).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -63,7 +62,7 @@ test("셸 스스로 끝남 토스트의 [보기]를 누르면 Processes로 간�
 
   await toast.getByRole("button", { name: "보기", exact: true }).click();
   await expect(page).toHaveURL("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(toast).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -74,7 +73,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
     pty_close_checks: { 1: { command: true, descendants: 0 } },
     processes_snapshot: {
       ...PROCESS_SNAPSHOT,
-      pool: [{ ptyId: 1, shellKey: 키(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
+      pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
     },
   });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -91,7 +90,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
   await expect(
     page
       .getByRole("region", { name: "주인 잃은 셸", exact: true })
-      .locator(`[role="treeitem"][data-shell-key="${키(1)}"]`),
+      .locator(`[role="treeitem"][data-shell-key="${shellKeyOf(1)}"]`),
   ).toBeVisible();
   await expect(toast).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -165,7 +164,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
     pty_close_checks: { 1: { command: true, descendants: 0 } },
     processes_snapshot: {
       ...PROCESS_SNAPSHOT,
-      pool: [{ ptyId: 1, shellKey: 키(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
+      pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
     },
   });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
@@ -186,7 +185,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
   await toast.getByRole("button", { name: "보기", exact: true }).click();
   await 창버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(toast).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -199,7 +198,7 @@ test("편집기에서 셸 스스로 끝남 토스트의 [보기]가 막히면 �
 }) => {
   await installFixtureBackend(page);
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(toastRegion(page)).toBeAttached();
   await 편집기에초안(page);
   await fireEvent(page, "processes:ended", shellExit(1, 2));
@@ -213,7 +212,7 @@ test("편집기에서 셸 스스로 끝남 토스트의 [보기]가 막히면 �
   await 창버튼(page, "버리고 나가기").click();
   await expect(떠날때(page)).toHaveCount(0);
   await expect(page).toHaveURL("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(toast, "물리친 [보기]가 되살아나 토스트를 내렸다").toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

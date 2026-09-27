@@ -613,6 +613,12 @@ export const FIXTURE_INCREMENTING_KEYS: Record<string, Incrementing> = {
 };
 
 /**
+ * 픽스처의 `pty_spawn`이 **n번째로 띄운 셸**(pty n)에 준 셸 키 — 위 줄이 짓는 `<세대>-<번호>`다. 스냅샷 픽스처의 풀 ·
+ * 판정이 이 키를 실으면 `Processes` 화면이 스토어의 그 셸과 잇는다(실물에서 둘이 같은 셸 키 하나인 것과 같다).
+ */
+export const shellKeyOf = (pty: number): string => `${FIXTURE_GENERATION}-${pty}`;
+
+/**
  * `Processes` 화면의 스냅샷(티켓 26)이 기본으로 답하는 것 — **아무 셸도 없고 판정이 가른 것도 없는 앱**이다. 화면을 여는 검사만
  * 부르므로 모든 spec이 지나는 답은 아니지만, 이름 표에 서야 시나리오가 덮어쓴다(`installFixtureBackend`의 덮어쓰기).
  *

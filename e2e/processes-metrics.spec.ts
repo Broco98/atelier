@@ -1,6 +1,14 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { FIXTURE_GENERATION, NO_METRICS, PROCESS_SNAPSHOT, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, openShell, replaceAnswer, typeIntoShell, unknownIpcCalls } from "./harness";
+import { NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import {
+  awaitSpawned,
+  installFixtureBackend,
+  navButton,
+  openShell,
+  replaceAnswer,
+  typeIntoShell,
+  unknownIpcCalls,
+} from "./harness";
 import { formatCpu, formatMemory, formatPorts } from "@/features/processes/metrics";
 import type { ProcessMetrics, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 
@@ -17,12 +25,10 @@ const [, plainWork] = WORKS;
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
 
-const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
 const 트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
-const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeitem"][data-shell-key="${키(pty)}"]`);
+const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const work행 = (page: Page) => 트리(page).locator('[role="treeitem"][aria-level="2"]');
 const 칸 = (row: Locator, cell: "memory" | "cpu" | "ports") => row.locator(`[data-cell="${cell}"]`);
-const nav = (page: Page, label: string) => page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
 const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
 
@@ -46,7 +52,7 @@ function 스냅샷(cpu?: { shell1: number; gitstatusd: number; vite: number; esb
     verdict: {
       ...PROCESS_SNAPSHOT.verdict,
       descendants: {
-        [키(1)]: [
+        [shellKeyOf(1)]: [
           행(150, 1, 1_000, "gitstatusd", 지표(2 * MiB, cpu?.gitstatusd ?? null)),
           행(200, 1, 2_000, "node", 지표(1.2 * GiB, cpu?.vite ?? null, [5173])),
           행(210, 200, 2_100, "esbuild", 지표(20 * MiB, cpu?.esbuild ?? null, [24678])),
@@ -55,10 +61,10 @@ function 스냅샷(cpu?: { shell1: number; gitstatusd: number; vite: number; esb
       helpers: [{ pid: 150, startedUs: 1_000 }],
     },
     pool: [
-      { ptyId: 1, shellKey: 키(1), lastOutputMs, metrics: 지표(8 * MiB, cpu?.shell1 ?? null) },
-      { ptyId: 2, shellKey: 키(2), lastOutputMs, metrics: 지표(6 * MiB, cpu?.shell2 ?? null) },
+      { ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs, metrics: 지표(8 * MiB, cpu?.shell1 ?? null) },
+      { ptyId: 2, shellKey: shellKeyOf(2), lastOutputMs, metrics: 지표(6 * MiB, cpu?.shell2 ?? null) },
       // 스토어가 모르는 풀의 셸(32의 화면 밖 셸) — 숫자가 어느 합에도 안 든다.
-      { ptyId: 99, shellKey: 키(99), lastOutputMs, metrics: 지표(64 * GiB, 99) },
+      { ptyId: 99, shellKey: shellKeyOf(99), lastOutputMs, metrics: 지표(64 * GiB, 99) },
     ],
   };
 }
@@ -72,7 +78,7 @@ async function 셸둘을띄우고연다(page: Page): Promise<void> {
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
 }

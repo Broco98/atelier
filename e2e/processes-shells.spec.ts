@@ -1,12 +1,15 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, FIXTURE_GENERATION, NO_METRICS, PROCESS_SNAPSHOT, WORKS } from "./fixtures";
+import { answerByArg, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
   fireEvent,
   installFixtureBackend,
   ipcCallArgs,
+  modeButton,
+  navButton,
   openShell,
+  processesTitle,
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
@@ -28,14 +31,9 @@ import type { Mode } from "@/mode";
 
 const [, plainWork] = WORKS;
 
-const 키 = (pty: number) => `${FIXTURE_GENERATION}-${pty}`;
-const nav = (page: Page, label: string) => page.locator("aside nav").getByRole("button", { name: label, exact: true });
-const 모드 = (page: Page, label: string) =>
-  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
 const 셸트리 = (page: Page) => page.getByRole("tree", { name: "셸", exact: true });
-const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${키(pty)}"]`);
+const 셸줄 = (scope: Locator, pty: number) => scope.locator(`[role="treeitem"][data-shell-key="${shellKeyOf(pty)}"]`);
 const 버튼 = (scope: Locator, name: string) => scope.getByRole("button", { name, exact: true });
 
 /** 한 묶음의 줄들 — 깊이와 접근성 이름. 화면에 선 차례 그대로다. */
@@ -64,8 +62,8 @@ function 스냅샷(ptys: number[], tree: number | null = null): ProcessSnapshot 
   const lastOutputMs = Date.now() - 2 * 3_600_000;
   return {
     ...PROCESS_SNAPSHOT,
-    verdict: { ...PROCESS_SNAPSHOT.verdict, descendants: tree === null ? {} : { [키(tree)]: [vite] } },
-    pool: ptys.map((pty) => ({ ptyId: pty, shellKey: 키(pty), lastOutputMs, metrics: NO_METRICS })),
+    verdict: { ...PROCESS_SNAPSHOT.verdict, descendants: tree === null ? {} : { [shellKeyOf(tree)]: [vite] } },
+    pool: ptys.map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs, metrics: NO_METRICS })),
   };
 }
 
@@ -121,13 +119,13 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
   // 주인이 있는 셸 하나(Atelier `Terminal`, pty 3) — 세계 트리의 앵커다.
-  await nav(page, "Terminal").click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
@@ -208,7 +206,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
     토스트자리.getByRole("dialog", { name: `아카이브된 작업의 셸 ${n}개에 아직 도는 것이 있어요`, exact: true });
   await expect(토스트(3)).toBeVisible();
 
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(셸줄(ownerless, 1)).toBeVisible();
@@ -247,7 +245,7 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
     pty_close_check: answerByArg("id", { 7: { command: false, descendants: 1 }, 9: QUIET }),
   });
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
   await 시계를세운다(page);
 
@@ -337,14 +335,14 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
   // Atelier `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
-  await nav(page, "Terminal").click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await openShell(page);
 
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect.poll(() => callCount(page, "processes_snapshot")).toBeGreaterThan(0);
@@ -410,7 +408,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
         .locator('[role="treeitem"][data-shell-key]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-shell-key"))),
     )
-    .toEqual([키(99)]);
+    .toEqual([shellKeyOf(99)]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -420,7 +418,7 @@ const 기록: CleanupEvent[] = [
     id: 3,
     at: new Date(2026, 8, 27, 14, 3).getTime(),
     reason: "shellExit",
-    shellKey: 키(5),
+    shellKey: shellKeyOf(5),
     owner: null,
     targets: [{ pid: 700, name: "node", command: "node vite --port 5173", outcome: "ended" }],
   },
@@ -439,7 +437,7 @@ const 기록: CleanupEvent[] = [
     id: 1,
     at: new Date(2026, 8, 26, 22, 0).getTime(),
     reason: "shellClose",
-    shellKey: 키(2),
+    shellKey: shellKeyOf(2),
     owner: `atelier:${plainWork.slug}`,
     targets: [{ pid: 500, name: "esbuild", command: "esbuild --service", outcome: "gone" }],
   },
@@ -530,14 +528,14 @@ async function 두세계에셸을띄운다(page: Page): Promise<void> {
   await typeIntoShell(page);
   await openShell(page);
 
-  await nav(page, "Terminal").click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 
-  await 모드(page, "Maison").click();
-  await nav(page, "Terminal").click();
+  await modeButton(page, "Maison").click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/maison/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
   await awaitSpawned(page, 1);
@@ -552,7 +550,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
     pty_close_checks: { 1: QUIET, 2: { command: false, descendants: 2 }, 3: null, 4: QUIET },
   });
   await 두세계에셸을띄운다(page);
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/maison/processes");
   const quietAll = 버튼(page.locator("header"), "조용한 셸 모두 닫기");
 
@@ -592,7 +590,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  await nav(page, "Processes").click();
+  await navButton(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
 
   await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();

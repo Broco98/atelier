@@ -6,6 +6,10 @@ import {
   fireWindowEvent,
   installFixtureBackend,
   ipcCallArgs,
+  modeButton,
+  navButton,
+  navButtons,
+  processesTitle,
   replaceAnswer,
   setWindowFocused,
   stubWindowFocus,
@@ -29,16 +33,10 @@ import type { ProcessIdentity, ProcessRow, ProcessSummary } from "@/features/pro
 
 const [project] = PROJECTS;
 
-const navButtons = (page: Page) => page.locator("aside nav").getByRole("button");
-const navButton = (page: Page, label: string) =>
-  page.locator("aside nav").getByRole("button", { name: label, exact: true });
 /** nav 항목 한 줄 — 버튼과 그 오른쪽 메타가 함께 선 상자(`SidebarItem`). 메타는 버튼 **밖**이다. */
 const navRow = (page: Page, label: string) =>
   page.locator("aside nav > div").filter({ has: page.getByRole("button", { name: label, exact: true }) });
 const 점 = (page: Page) => navRow(page, "Processes").getByRole("img", { name: NEEDS_LOOK_LABEL, exact: true });
-const modeButton = (page: Page, label: string) =>
-  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-const 제목 = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 const 신원 = (pid: number): ProcessIdentity => ({ pid, startedUs: 1_790_000_000_000_000 + pid });
 const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
@@ -98,12 +96,12 @@ test("손볼 것이 새로 생기면 ●가 서고, 화면을 열면 꺼지며, 
 
   // 화면을 연다(창 포커스 있음) — 그 순간 꺼진다.
   await navButton(page, "Processes").click();
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(점(page)).toHaveCount(0);
 
   // 떠나도 다시 안 선다 — 그 출처 불명은 아직 남아 있지만 본 것이다.
   await navButton(page, "Projects").click();
-  await expect(제목(page)).toHaveCount(0);
+  await expect(processesTitle(page)).toHaveCount(0);
   await 박자(page);
   await expect(점(page)).toHaveCount(0);
 
@@ -122,7 +120,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
   await page.clock.install();
   await installFixtureBackend(page);
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await 시계를세운다(page);
 
@@ -154,7 +152,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await page.clock.install();
   await installFixtureBackend(page);
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await 시계를세운다(page);
 
@@ -170,7 +168,7 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
 
   // 떠난 뒤에야 요약이 그 둘을 싣는다.
   await navButton(page, "Projects").click();
-  await expect(제목(page)).toHaveCount(0);
+  await expect(processesTitle(page)).toHaveCount(0);
   await replaceAnswer(page, "processes_summary", 요약({ unknown: [불명.id], recordHead: 5 }));
   await 박자(page);
   await expect(점(page), "화면에서 본 출처 불명 · 정리 기록을 늦은 요약이 새것으로 켰다").toHaveCount(0);
@@ -193,7 +191,7 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   });
   // 먼저 화면을 본다 — 그때 있던 자동 기록(머리 3)은 본 것이 된다.
   await page.goto("/processes");
-  await expect(제목(page)).toBeVisible();
+  await expect(processesTitle(page)).toBeVisible();
   await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
   await expect(점(page)).toHaveCount(0);
 

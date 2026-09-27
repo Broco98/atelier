@@ -888,6 +888,25 @@ export const 띠 = (page: Page) => page.locator("[data-band]");
 export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
+ * 사이드바 nav의 항목 버튼들, 위에서부터. 버튼 글자는 라벨뿐이다 — 메타(셸 수 · 메모리 합계)는 버튼 밖에 선다(`SidebarItem`).
+ *
+ * **여기 사는 이유는 nav를 집는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의
+ * 마크업이 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽의 「nav에 없다」(`toHaveCount(0)`)가 헛돈다.
+ */
+export const navButtons = (page: Page) => page.locator("aside nav").getByRole("button");
+
+/** 사이드바 nav의 그 항목 버튼(`Terminal` · `Processes` …). */
+export const navButton = (page: Page, label: string) =>
+  page.locator("aside nav").getByRole("button", { name: label, exact: true });
+
+/** 사이드바의 세계 고르기(`Atelier` · `Maison`). */
+export const modeButton = (page: Page, label: "Atelier" | "Maison") =>
+  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
+
+/** `Processes` 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
+export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
+
+/**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
  * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
  *

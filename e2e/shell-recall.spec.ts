@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { FIXTURE_GENERATION, WORKS } from "./fixtures";
+import { shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -8,6 +8,8 @@ import {
   fireEvent,
   installFixtureBackend,
   markAttention,
+  modeButton,
+  navButton,
   openShell,
   sentNotifications,
   stubNotifications,
@@ -77,7 +79,7 @@ async function settle(page: Page): Promise<void> {
 
 /** 떠 있는 work 화면을 떠나 최상위 터미널로 간다 — 그 첫 셸(pty `n`)이 spawn 답을 받고 포커스를 쥘 때까지. */
 async function 터미널로(page: Page, n: number): Promise<void> {
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(n);
   await awaitSpawned(page, 1);
@@ -90,8 +92,8 @@ test("셸 띄우기 답의 셸 키를 셸이 든다 — 두 셸의 키가 서로
   await awaitSpawned(page, 1);
   await openShell(page);
 
-  await expect(칸들(page).nth(0)).toHaveAttribute("data-shell-key", `${FIXTURE_GENERATION}-1`);
-  await expect(칸들(page).nth(1)).toHaveAttribute("data-shell-key", `${FIXTURE_GENERATION}-2`);
+  await expect(칸들(page).nth(0)).toHaveAttribute("data-shell-key", shellKeyOf(1));
+  await expect(칸들(page).nth(1)).toHaveAttribute("data-shell-key", shellKeyOf(2));
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -196,8 +198,8 @@ test("저쪽 세계의 셸이 나중에 불렀으면 ⌘J가 그 세계의 화�
   await typeIntoShell(page);
 
   // 세그먼트로 건너간다 — 주소를 직접 치면 페이지가 새로 떠 스토어가 빈다(`terminal-worlds.spec.ts`).
-  await page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: "Atelier", exact: true }).click();
-  await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
+  await modeButton(page, "Atelier").click();
+  await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await awaitSpawned(page, 1);
   await expectShellFocused(page, "이쪽 터미널의 셸에 포커스가 없다");
