@@ -282,7 +282,7 @@ pub fn run() {
             // 없는 파일을 부르기 때문이다. 못 세웠으면 몫은 빈손으로 끝나고 맞춤은 다음 실행으로 미뤄진다. 데이터 루트를 옮긴
             // 실행(`ATELIER_HOME`)도 몫이 빈손으로 끝난다 — 모든 실행이 함께 부르는 진짜 설정을 임시 루트의 처리기로 돌려 놓지
             // 않게, 그 가름은 맞춤이 스스로 한다(`startup::sync_hooks`).
-            match shells::write_hook_script(&root) {
+            match shells::write_hook_scripts(&root) {
                 Ok(()) => startup::sync_hooks(hook_sync, hooks::agent_home(), root.clone()),
                 Err(e) => {
                     eprintln!("atelier: {e}");
@@ -450,7 +450,7 @@ mod tests {
         let setup = setup_source();
 
         assert!(
-            setup.contains("shells::write_hook_script(&root)"),
+            setup.contains("shells::write_hook_scripts(&root)"),
             "훅 스크립트를 안 쓴다 — 사용자가 걸 것이 홈에 없다"
         );
         assert!(
@@ -780,7 +780,7 @@ mod tests {
     #[test]
     fn the_hook_sync_runs_once_the_handler_stands() {
         let setup = setup_source();
-        let written = setup.find("match shells::write_hook_script(&root) {").expect("처리기를 세운 결과로 가르지 않는다");
+        let written = setup.find("match shells::write_hook_scripts(&root) {").expect("처리기를 세운 결과로 가르지 않는다");
         let synced = setup
             .find("Ok(()) => startup::sync_hooks(hook_sync, hooks::agent_home(), root.clone()),")
             .expect("처리기를 세운 갈래에서 위에서 센 몫으로 훅 맞춤을 안 부른다 — 이미 깐 훅이 옛 처리기에 남거나 보고가 그것을 안 기다린다");

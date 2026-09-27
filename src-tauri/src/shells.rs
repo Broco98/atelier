@@ -80,7 +80,7 @@ pub fn handler_path(root: &Path) -> PathBuf {
 ///
 /// **맞춤보다 먼저 세운다**(`lib.rs`의 셋업). 설정만 새 경로를 가리키면 사용자의 claude가 매 턴 없는 파일을 부른다. 옛 파일도 계속
 /// 세운다 — 옛 빌드가 깐 채 아직 안 맞춘 설정이 그것을 부른다. 아무 설정에도 안 걸린 파일은 안 불리니 세워 두는 것은 무해하다.
-pub fn write_hook_script(root: &Path) -> Result<(), String> {
+pub fn write_hook_scripts(root: &Path) -> Result<(), String> {
     let dir = hooks_dir(root);
     std::fs::create_dir_all(&dir).map_err(|e| format!("훅 폴더를 만들지 못했습니다: {e}"))?;
     write_executable(&script_path(root), HOOK_SCRIPT)?;
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn without_a_shell_id_the_hook_eats_the_payload_and_exits_zero() {
         let root = temp_root("no-env");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         // 파이프 버퍼(64KB)를 훌쩍 넘긴다. 커널이 대신 받아 줄 수 없는 크기라야 「스크립트가
         // 읽는가」가 쓰는 쪽에 보인다.
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn a_shell_id_that_could_escape_the_folder_writes_nothing() {
         let root = temp_root("evil-id");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         for evil in ["../evil", "a/b", "..", "."] {
             let (wrote, out) = run_hook(&root, Some(evil), &["claude", "Stop"], "{}");
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn with_a_shell_id_the_hook_leaves_one_file_and_no_tmp() {
         let root = temp_root("with-env");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         let (wrote, out) = run_hook(
             &root,
@@ -910,7 +910,7 @@ mod tests {
 
     // ── 새 처리기(티켓 19 · 프로세스 스펙 S26 · S27 · S28) — 실물로 띄운다 ──
     //
-    // 처리기를 임시 루트에 세우고(`write_hook_script`, 앱과 같은 길) 에이전트가 부르는 모양 — 셸 없이 곧바로(`args` 꼴), argv
+    // 처리기를 임시 루트에 세우고(`write_hook_scripts`, 앱과 같은 길) 에이전트가 부르는 모양 — 셸 없이 곧바로(`args` 꼴), argv
     // 둘(에이전트 · 사건), stdin의 페이로드 — 으로 띄운다. 페이로드는 지어내지 않고 출처를 단다.
 
     /// claude 2.1.283의 SubagentStart 페이로드. **실측**: 판 03 선행 시험 r2(`research/판03-선행-시험.md`) — 진짜 claude를 `-p`로
@@ -955,7 +955,7 @@ mod tests {
     /// 검사는 그 값을 처리기가 늦게 뜬 것으로 읽는다 — 앱에서는 처리기 파일이 켤 때마다 새로 안 쓰이므로 이 값은 앱을 올린 뒤
     /// 첫 호출 한 번뿐이다.
     fn ready_handler(root: &Path) {
-        write_hook_script(root).expect("스크립트를 세운다");
+        write_hook_scripts(root).expect("스크립트를 세운다");
         warm_up(&handler_path(root), root);
     }
 
@@ -1041,7 +1041,7 @@ mod tests {
     #[test]
     fn without_a_shell_id_the_handler_eats_the_payload_and_exits_zero() {
         let root = temp_root("handler-no-env");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         let big = format!(r#"{{"prompt":"{}"}}"#, "x".repeat(1_000_000));
         let command = handler_command(&handler_path(&root), &root, None, &["claude", "UserPromptSubmit"]);
@@ -1058,7 +1058,7 @@ mod tests {
     #[test]
     fn a_shell_id_or_an_argument_that_could_escape_makes_the_handler_write_nothing() {
         let root = temp_root("handler-evil");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         let cases: [(&str, [&str; 2]); 6] = [
             ("../evil", ["claude", "Stop"]),
@@ -1087,7 +1087,7 @@ mod tests {
     #[test]
     fn the_handler_leaves_one_state_file_in_the_new_contract_and_no_tmp() {
         let root = temp_root("handler-one");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         let before = now_ms();
         let state = call(&root, "1700-3", "claude", "Stop", r#"{"last_assistant_message":"테스트 셋 통과"}"#);
@@ -1117,7 +1117,7 @@ mod tests {
     #[test]
     fn without_atelier_home_the_handler_writes_under_the_home() {
         let root = temp_root("handler-home");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         let mut command = handler_command(&handler_path(&root), &root, Some("1700-2"), &["codex", "Stop"]);
         command.env_remove("ATELIER_HOME");
@@ -1249,7 +1249,7 @@ mod tests {
     #[test]
     fn the_subagent_set_stays_right_through_a_late_stop_and_a_missing_start() {
         let root = temp_root("handler-subagents");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let shell = "1700-8";
         let ids = |state: serde_json::Value| subagent_ids(&state);
 
@@ -1414,7 +1414,7 @@ mod tests {
     #[test]
     fn stopped_is_set_by_a_stop_cleared_by_a_new_turn_or_an_interrupt_and_kept_by_an_end() {
         let root = temp_root("handler-stopped");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let shell = "1700-9";
         let stopped = |state: serde_json::Value| (state["event"].as_str().unwrap_or_default().to_string(), state["stopped"].clone());
 
@@ -1452,7 +1452,7 @@ mod tests {
     #[test]
     fn a_payload_past_the_pipe_buffer_is_taken_and_written_whole() {
         let root = temp_root("handler-big");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let big = format!(r#"{{"prompt":"{}"}}"#, "가".repeat(400_000));
 
         let started = std::time::Instant::now();
@@ -1522,7 +1522,7 @@ mod tests {
         );
 
         let root = temp_root("handler-no-fork");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let loud = hooks_dir(&root).join("loud.zsh");
         let body: String = HANDLER.lines().filter(|line| line.trim() != SILENCE).map(|line| format!("{line}\n")).collect();
         write_executable(&loud, &body).unwrap();
@@ -1639,7 +1639,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let root = temp_root("write-both");
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
 
         assert_eq!(std::fs::read_to_string(script_path(&root)).unwrap(), HOOK_SCRIPT, "옛 처리기가 안 섰다");
         assert_eq!(std::fs::read_to_string(handler_path(&root)).unwrap(), HANDLER, "새 처리기가 안 섰다");
@@ -1662,18 +1662,18 @@ mod tests {
 
         let root = temp_root("write-once");
         let inode = || std::fs::metadata(handler_path(&root)).unwrap().ino();
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let first = inode();
 
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         assert_eq!(inode(), first, "같은 처리기를 새 파일로 다시 썼다 — 켤 때마다 첫 훅이 느려진다");
 
         std::fs::write(handler_path(&root), "#!/bin/zsh -f\nexit 0\n").unwrap();
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         assert_eq!(std::fs::read_to_string(handler_path(&root)).unwrap(), HANDLER, "다른 본문을 그대로 뒀다");
 
         std::fs::set_permissions(handler_path(&root), std::fs::Permissions::from_mode(0o644)).unwrap();
-        write_hook_script(&root).expect("스크립트를 세운다");
+        write_hook_scripts(&root).expect("스크립트를 세운다");
         let mode = std::fs::metadata(handler_path(&root)).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755, "실행 권한이 빠진 처리기를 그대로 뒀다");
         let _ = std::fs::remove_dir_all(&root);

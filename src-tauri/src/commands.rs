@@ -468,7 +468,7 @@ pub async fn agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
 /// 파일을 부른다 — 병합이 성공한 것이 오히려 나쁜 상태다.
 #[tauri::command]
 pub async fn install_agent_hooks() -> CmdResult<Vec<crate::hooks::HookStatus>> {
-    crate::shells::write_hook_script(&atelier_core::data_root())?;
+    crate::shells::write_hook_scripts(&atelier_core::data_root())?;
     Ok(crate::hooks::install(&crate::hooks::agent_home(), &hook_handler()))
 }
 

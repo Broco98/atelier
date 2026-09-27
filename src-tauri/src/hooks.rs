@@ -50,7 +50,8 @@ const CLAUDE_ASYNC_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUse
 /// 새로우면 맞추지 않고(설치 버튼도 되돌리지 않는다) 「전부」로 읽는다(`Installed`).
 ///
 /// **목록을 바꾸는 장은 이 판을 올린다** — `CLAUDE_EVENTS` · `CODEX_EVENTS` · `CLAUDE_ASYNC_EVENTS` · 등록 모양 어느 것이든. 판이
-/// 그대로면 위의 되쓰기가 그대로 난다. 검사 `the_installer_lists_are_decision_fourteen`이 목록과 판을 함께 못박는다.
+/// 그대로면 위의 되쓰기가 그대로 난다. 검사 `the_installer_lists_and_their_version_are_pinned`가 목록 · `async` 대상 · 등록 모양을 판과
+/// 함께 못박는다.
 pub const LIST_VERSION: u32 = 2;
 
 /// 판을 싣기 전의 명령줄 — 옛 python 처리기를 부르던 셸 꼴(구현 결정 8의 다섯, 프로세스 결정 14가 더한 여섯) — 은 이 판으로
@@ -923,12 +924,12 @@ mod tests {
     use std::path::PathBuf;
 
     /// 새 처리기의 자리 — 설치가 사용자 설정에 적어 넣는 경로(티켓 21).
-    fn script() -> PathBuf {
+    fn handler() -> PathBuf {
         PathBuf::from("/Users/someone/.atelier/hooks/atelier-hook.zsh")
     }
 
     /// 옛 python 처리기의 자리 — 이 판 전의 설치 버튼이 적던 경로. 옛 빌드가 깐 설정을 지을 때만 쓴다.
-    fn old_script() -> PathBuf {
+    fn old_handler() -> PathBuf {
         PathBuf::from("/Users/someone/.atelier/hooks/atelier-hook.py")
     }
 
@@ -939,7 +940,7 @@ mod tests {
 
     /// 옛 빌드가 깐 claude 훅 하나 — 옛 python 처리기를 부르는 셸 꼴 명령줄이고 판이 없다. 이 판 전의 `claude_group`이 적던 그대로다.
     fn old_claude_hook(event: &str) -> Value {
-        json!({ "type": "command", "command": command_line(&old_script(), CLAUDE, event) })
+        json!({ "type": "command", "command": command_line(&old_handler(), CLAUDE, event) })
     }
 
     /// 옛 빌드가 깐 claude 설정의 `hooks` 구획 — `events`마다 옛 그룹 하나.
@@ -953,7 +954,7 @@ mod tests {
         for event in events {
             out.push_str(&format!(
                 "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
-                toml_basic_string(&command_line(&old_script(), CODEX, event))
+                toml_basic_string(&command_line(&old_handler(), CODEX, event))
             ));
         }
         out.push_str(CODEX_END);
@@ -980,7 +981,7 @@ mod tests {
   }
 }"#;
 
-        let merged = merge_claude(source, &script()).expect("병합이 된다");
+        let merged = merge_claude(source, &handler()).expect("병합이 된다");
         let value: Value = serde_json::from_str(&merged).expect("JSON이다");
 
         assert_eq!(value["model"], "opus", "우리 키 밖의 내용이 사라졌다");
@@ -1014,7 +1015,7 @@ mod tests {
     #[test]
     fn an_empty_file_becomes_a_settings_file_with_only_our_hooks() {
         for source in ["", "   \n", "{}"] {
-            let merged = merge_claude(source, &script()).expect("병합이 된다");
+            let merged = merge_claude(source, &handler()).expect("병합이 된다");
             let value: Value = serde_json::from_str(&merged).expect("JSON이다");
             let hooks = value["hooks"].as_object().expect("`hooks`가 섰다");
             assert_eq!(hooks.len(), CLAUDE_EVENTS.len(), "이벤트 수가 다르다: {merged}");
@@ -1029,7 +1030,7 @@ mod tests {
     /// 끝나기 전에 다음 사건이 올 수 있고, 그 사건들은 순서 가드가 가려 줄 까닭이 없는 자리다.
     #[test]
     fn the_tool_events_go_in_without_a_matcher_and_async() {
-        let merged = merge_claude("{}", &script()).expect("병합이 된다");
+        let merged = merge_claude("{}", &handler()).expect("병합이 된다");
         let value: Value = serde_json::from_str(&merged).expect("JSON이다");
         let tools = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
 
@@ -1060,22 +1061,27 @@ mod tests {
         }
     }
 
-    /// **설치기가 거는 목록이 결정 14 그대로다** — claude는 다섯에 여섯을, codex는 다섯에 넷을 더했다. 이 목록은
-    /// 프런트 어댑터의 갈래와 양방향으로 같아야 한다(`shell-attention.test.ts`의 「훅이 나르는 어휘」) — 그쪽이 이
-    /// 선언을 글자로 읽으므로 여기서는 **무엇이 들었는가**를 잰다.
+    /// **설치기가 거는 목록과 그 판을 함께 못박는다**(프로세스 결정 14 · 프로세스 스펙 P5). 목록은 결정 14 그대로다 — claude는
+    /// 구현 결정 8의 다섯에 여섯을, codex는 다섯에 넷을 더했고, `async`로 거는 것은 claude의 도구 사건 셋이다(S25). 이 목록은 프런트
+    /// 어댑터의 갈래와 양방향으로 같아야 한다(`shell-attention.test.ts`의 「훅이 나르는 어휘」) — 그쪽이 선언을 글자로 읽으므로 여기서는
+    /// **무엇이 들었는가**를 잰다.
     ///
-    /// **목록의 판도 함께 못박는다**(프로세스 스펙 P5). 목록(과 `async` 대상 · 등록 모양)을 바꾸는 사람은 이 검사를 고쳐야
-    /// 하고, 그때 판도 올려야 한다 — 판이 그대로면 목록이 다른 두 빌드가 켤 때마다 서로의 설정을 되쓰고 토스트를 띄운다.
+    /// **등록 모양도 글자로 못박는다** — claude의 그룹 하나(`claude_group` — 동기 · `async` 한 벌씩)와 codex 구획의 이벤트 한 벌
+    /// (`codex_block_for`). 목록 · `async` 대상 · 등록 모양 어느 것을 바꾸는 사람도 이 검사를 고쳐야 하고, 그때 판(`LIST_VERSION`)도
+    /// 올려야 한다 — 판이 그대로면 목록이 다른 두 빌드가 켤 때마다 서로의 설정을 되쓰고 토스트를 띄운다.
     #[test]
-    fn the_installer_lists_are_decision_fourteen() {
+    fn the_installer_lists_and_their_version_are_pinned() {
         assert_eq!(
             LIST_VERSION, 2,
-            "목록의 판이 바뀌었다 — 아래 목록도 그 판의 것인지 보고 함께 고친다(목록을 바꾸면 판을 올린다)"
+            "목록의 판이 바뀌었다 — 아래 목록 · 모양도 그 판의 것인지 보고 함께 고친다(목록이나 모양을 바꾸면 판을 올린다)"
         );
-        let mut claude: Vec<&str> = CLAUDE_EVENTS.to_vec();
-        claude.sort_unstable();
+        let sorted = |list: &[&'static str]| {
+            let mut list = list.to_vec();
+            list.sort_unstable();
+            list
+        };
         assert_eq!(
-            claude,
+            sorted(CLAUDE_EVENTS),
             [
                 "Elicitation",
                 "PermissionRequest",
@@ -1090,10 +1096,8 @@ mod tests {
                 "UserPromptSubmit",
             ]
         );
-        let mut codex: Vec<&str> = CODEX_EVENTS.to_vec();
-        codex.sort_unstable();
         assert_eq!(
-            codex,
+            sorted(CODEX_EVENTS),
             [
                 "Interrupt",
                 "PermissionRequest",
@@ -1106,13 +1110,37 @@ mod tests {
                 "UserPromptSubmit",
             ]
         );
+        assert_eq!(
+            sorted(CLAUDE_ASYNC_EVENTS),
+            ["PostToolUse", "PostToolUseFailure", "PreToolUse"],
+            "`async`로 거는 목록이 바뀌었다 — 판을 올린다"
+        );
+
+        let handler = "/Users/someone/.atelier/hooks/atelier-hook.zsh";
+        assert_eq!(
+            claude_group(&PathBuf::from(handler), "Stop"),
+            json!({ "hooks": [{ "type": "command", "command": handler, "args": ["claude", "Stop", "list-2"] }] }),
+            "claude에 거는 동기 훅의 모양이 바뀌었다 — 판을 올린다"
+        );
+        assert_eq!(
+            claude_group(&PathBuf::from(handler), "PreToolUse"),
+            json!({ "hooks": [{ "type": "command", "command": handler, "args": ["claude", "PreToolUse", "list-2"], "async": true }] }),
+            "claude에 거는 `async` 훅의 모양이 바뀌었다 — 판을 올린다"
+        );
+        assert_eq!(
+            codex_block_for(&PathBuf::from(handler), &["Stop"]),
+            format!(
+                "{CODEX_BEGIN}\n\n[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"'{handler}' codex Stop list-2\"\n{CODEX_END}\n"
+            ),
+            "codex 구획에 적는 모양이 바뀌었다 — 판을 올린다"
+        );
     }
 
     /// codex 울타리 블록에도 넷이 더해진다(결정 14 — 「지금 울타리 블록에 더함」). codex 쪽은 동기다: 스펙이
     /// `async`를 claude 도구 사건에만 걸었다.
     #[test]
     fn the_codex_block_carries_the_new_events_synchronously() {
-        let block = codex_block(&script());
+        let block = codex_block(&handler());
         let value: toml::Table = toml::from_str(&block).expect("TOML이다");
         for event in ["PreToolUse", "PostToolUse", "SubagentStart", "SubagentStop"] {
             let inner = value["hooks"][event][0]["hooks"][0].as_table().unwrap_or_else(|| panic!("`{event}`가 없다: {block}"));
@@ -1125,8 +1153,8 @@ mod tests {
     /// 글자까지 같아야 한다 — 다르면 그 차이가 곧 파일에 쌓이는 쓰레기다.
     #[test]
     fn installing_twice_is_the_same_as_installing_once() {
-        let once = merge_claude("{}", &script()).unwrap();
-        let twice = merge_claude(&once, &script()).unwrap();
+        let once = merge_claude("{}", &handler()).unwrap();
+        let twice = merge_claude(&once, &handler()).unwrap();
         assert_eq!(once, twice);
     }
 
@@ -1135,7 +1163,7 @@ mod tests {
     #[test]
     fn broken_json_is_refused() {
         for source in ["{ 여기서 잘렸", "[1, 2]", "\"글자\""] {
-            let err = merge_claude(source, &script()).expect_err("거부해야 한다");
+            let err = merge_claude(source, &handler()).expect_err("거부해야 한다");
             assert!(err.contains("손대지 않았습니다"), "무슨 일이 났는지 안 말한다: {err}");
         }
     }
@@ -1160,7 +1188,7 @@ mod tests {
   }
 }
 "#;
-        let installed = merge_claude(before, &script()).unwrap();
+        let installed = merge_claude(before, &handler()).unwrap();
         assert_ne!(installed, before, "설치가 아무것도 안 했다");
 
         let removed = unmerge_claude(&installed).expect("제거가 된다");
@@ -1173,7 +1201,7 @@ mod tests {
     fn a_foreign_hook_inside_our_group_is_kept() {
         let source = format!(
             r#"{{"hooks":{{"Stop":[{{"hooks":[{{"type":"command","command":{}}},{{"type":"command","command":"say done"}}]}}]}}}}"#,
-            serde_json::to_string(&command_line(&old_script(), "claude", "Stop")).unwrap()
+            serde_json::to_string(&command_line(&old_handler(), "claude", "Stop")).unwrap()
         );
 
         let removed = unmerge_claude(&source).expect("제거가 된다");
@@ -1225,7 +1253,7 @@ mod tests {
         assert_eq!(unmerge_claude("").expect("제거가 된다"), "");
 
         let home = temp_home("remove-empty");
-        uninstall(&home, &script());
+        uninstall(&home, &handler());
         assert!(!claude_settings_path(&home).exists(), "제거가 없던 파일을 만들었다");
         assert!(!codex_config_path(&home).exists(), "제거가 없던 파일을 만들었다");
         let _ = std::fs::remove_dir_all(&home);
@@ -1235,31 +1263,31 @@ mod tests {
     /// 읽힌다 — 손으로 적어 둔 훅도 「설치됨」이고, 손으로 지운 훅은 「아님」이다.
     #[test]
     fn installed_is_read_from_the_file() {
-        assert_eq!(claude_installed("{}", &script()), Ok(Installed::None), "빈 파일이 설치됨이다");
+        assert_eq!(claude_installed("{}", &handler()), Ok(Installed::None), "빈 파일이 설치됨이다");
 
-        let installed = merge_claude("{}", &script()).unwrap();
-        assert_eq!(claude_installed(&installed, &script()), Ok(Installed::Full), "설치한 파일이 전부가 아니다");
+        let installed = merge_claude("{}", &handler()).unwrap();
+        assert_eq!(claude_installed(&installed, &handler()), Ok(Installed::Full), "설치한 파일이 전부가 아니다");
 
         let removed = unmerge_claude(&installed).unwrap();
-        assert_eq!(claude_installed(&removed, &script()), Ok(Installed::None), "제거한 파일이 설치됨이다");
+        assert_eq!(claude_installed(&removed, &handler()), Ok(Installed::None), "제거한 파일이 설치됨이다");
     }
 
     /// **반쯤 깔린 것은 「일부」다**(프로세스 결정 15 · 프로세스 스펙 S35). 사람이 한 줄을 지웠거나 판이 바뀌어 이벤트가
     /// 늘었을 때, 「설치됨」이라 답하면 사람은 고칠 까닭을 모르고, 「설치 안 됨」이라 답하면 깔린 훅을 안 깔렸다고 한다.
     #[test]
     fn a_half_installed_file_is_partial() {
-        let installed = merge_claude("{}", &script()).unwrap();
+        let installed = merge_claude("{}", &handler()).unwrap();
         let mut value: Value = serde_json::from_str(&installed).unwrap();
         value["hooks"].as_object_mut().unwrap().shift_remove("Stop");
 
-        assert_eq!(claude_installed(&value.to_string(), &script()), Ok(Installed::Partial));
+        assert_eq!(claude_installed(&value.to_string(), &handler()), Ok(Installed::Partial));
     }
 
     /// 깨진 파일에서는 **판정을 안 한다.** 「아님」이라 답하면 화면이 설치 버튼을 열고,
     /// 눌러 봐야 병합이 거부해 사람은 왜인지 모른 채 두 번 실패한다.
     #[test]
     fn installed_on_broken_json_is_refused_not_false() {
-        assert!(claude_installed("{ 잘렸", &script()).is_err());
+        assert!(claude_installed("{ 잘렸", &handler()).is_err());
     }
 
     // ── Codex TOML
@@ -1277,7 +1305,7 @@ trust_level = "trusted"
     /// 통째로 거부돼 사용자의 codex가 안 뜬다 — 그래서 파싱해서 잰다.
     #[test]
     fn codex_gets_a_matcher_group_and_a_command_block_per_event() {
-        let merged = merge_codex(CODEX_REAL, &script()).expect("병합이 된다");
+        let merged = merge_codex(CODEX_REAL, &handler()).expect("병합이 된다");
         let value: toml::Table = toml::from_str(&merged).expect("TOML이다");
 
         let hooks = value["hooks"].as_table().expect("`hooks` 테이블이 섰다");
@@ -1299,7 +1327,7 @@ trust_level = "trusted"
     /// 한다 — 덧붙이기이지 다시 쓰기가 아니다.
     #[test]
     fn codex_notify_and_the_rest_of_the_file_are_untouched() {
-        let merged = merge_codex(CODEX_REAL, &script()).unwrap();
+        let merged = merge_codex(CODEX_REAL, &handler()).unwrap();
         assert!(merged.starts_with(CODEX_REAL), "앞부분이 바뀌었다:\n{merged}");
 
         let value: toml::Table = toml::from_str(&merged).unwrap();
@@ -1314,14 +1342,14 @@ trust_level = "trusted"
     /// 사용자의 마지막 키와 우리 주석이 한 줄에 붙어 TOML이 깨진다.
     #[test]
     fn codex_without_a_trailing_newline_is_still_valid_toml() {
-        let merged = merge_codex("model = \"gpt-5\"", &script()).expect("병합이 된다");
+        let merged = merge_codex("model = \"gpt-5\"", &handler()).expect("병합이 된다");
         toml::from_str::<toml::Table>(&merged).expect("TOML이다");
     }
 
     /// 파일이 아예 없는 것도 정상 경로다 — codex를 처음 쓰는 사람이다.
     #[test]
     fn codex_from_an_empty_file_is_valid_toml() {
-        let merged = merge_codex("", &script()).unwrap();
+        let merged = merge_codex("", &handler()).unwrap();
         let value: toml::Table = toml::from_str(&merged).unwrap();
         assert_eq!(value["hooks"].as_table().map(toml::Table::len), Some(CODEX_EVENTS.len()));
     }
@@ -1330,22 +1358,22 @@ trust_level = "trusted"
     /// 두 개** 넣어 훅이 두 번 돈다.
     #[test]
     fn merging_codex_twice_is_the_same_as_once() {
-        let once = merge_codex(CODEX_REAL, &script()).unwrap();
-        let twice = merge_codex(&once, &script()).unwrap();
+        let once = merge_codex(CODEX_REAL, &handler()).unwrap();
+        let twice = merge_codex(&once, &handler()).unwrap();
         assert_eq!(once, twice);
     }
 
     /// **깨진 TOML은 거부하고 손대지 않는다.**
     #[test]
     fn broken_toml_is_refused() {
-        let err = merge_codex("model = ", &script()).expect_err("거부해야 한다");
+        let err = merge_codex("model = ", &handler()).expect_err("거부해야 한다");
         assert!(err.contains("손대지 않았습니다"), "무슨 일이 났는지 안 말한다: {err}");
     }
 
     /// 제거는 설치 전 파일로 **글자까지** 돌아온다.
     #[test]
     fn removing_the_codex_block_leaves_the_file_as_it_was() {
-        let installed = merge_codex(CODEX_REAL, &script()).unwrap();
+        let installed = merge_codex(CODEX_REAL, &handler()).unwrap();
         assert_ne!(installed, CODEX_REAL);
         assert_eq!(unmerge_codex(&installed).unwrap(), CODEX_REAL);
     }
@@ -1355,7 +1383,7 @@ trust_level = "trusted"
     fn install_and_remove_can_repeat_without_growing_the_file() {
         let mut now = CODEX_REAL.to_string();
         for _ in 0..3 {
-            now = merge_codex(&now, &script()).unwrap();
+            now = merge_codex(&now, &handler()).unwrap();
             now = unmerge_codex(&now).unwrap();
         }
         assert_eq!(now, CODEX_REAL);
@@ -1364,23 +1392,23 @@ trust_level = "trusted"
     /// 설치 여부는 여기서도 파일이 답한다.
     #[test]
     fn codex_installed_is_read_from_the_file() {
-        assert_eq!(codex_installed(CODEX_REAL, &script()), Ok(Installed::None));
-        let installed = merge_codex(CODEX_REAL, &script()).unwrap();
-        assert_eq!(codex_installed(&installed, &script()), Ok(Installed::Full));
-        assert_eq!(codex_installed(&unmerge_codex(&installed).unwrap(), &script()), Ok(Installed::None));
-        assert!(codex_installed("model = ", &script()).is_err(), "깨진 파일에서 판정을 하면 안 된다");
+        assert_eq!(codex_installed(CODEX_REAL, &handler()), Ok(Installed::None));
+        let installed = merge_codex(CODEX_REAL, &handler()).unwrap();
+        assert_eq!(codex_installed(&installed, &handler()), Ok(Installed::Full));
+        assert_eq!(codex_installed(&unmerge_codex(&installed).unwrap(), &handler()), Ok(Installed::None));
+        assert!(codex_installed("model = ", &handler()).is_err(), "깨진 파일에서 판정을 하면 안 된다");
     }
 
     /// **울타리만 있고 알맹이가 빠진 것은 「일부」다.** 사람이 블록 안을 손으로
     /// 지웠거나 판이 바뀌어 이벤트가 늘었을 때 그렇다.
     #[test]
     fn a_codex_block_missing_an_event_is_partial() {
-        let installed = merge_codex(CODEX_REAL, &script()).unwrap();
+        let installed = merge_codex(CODEX_REAL, &handler()).unwrap();
         // 헤더 한 줄만 지운다 — 남은 키들이 위 matcher 그룹으로 흘러들어 **TOML로는
         // 여전히 멀쩡하다.** 그래서 이 케이스가 「파일은 안 깨졌는데 훅은 없다」다.
         let broken = installed.replace("[[hooks.Stop.hooks]]\ntype", "type");
         toml::from_str::<toml::Table>(&broken).expect("여전히 TOML이다");
-        assert_eq!(codex_installed(&broken, &script()), Ok(Installed::Partial));
+        assert_eq!(codex_installed(&broken, &handler()), Ok(Installed::Partial));
     }
 
     /// 이 내용에서 그 이벤트에 우리 명령이 앉아 있는가 — 검사 쪽 잣대. 판정 함수와 같은
@@ -1424,13 +1452,13 @@ trust_level = "trusted"
     /// 사람은 고칠 까닭을 모른다(claude 쪽 `a_half_installed_file_is_partial`과 같은 자리).
     #[test]
     fn a_codex_block_without_one_of_our_commands_is_partial() {
-        let installed = merge_codex(CODEX_REAL, &script()).unwrap();
-        let line = format!("command = {}\n", toml_basic_string(&codex_command(&script(), "Stop")));
+        let installed = merge_codex(CODEX_REAL, &handler()).unwrap();
+        let line = format!("command = {}\n", toml_basic_string(&codex_command(&handler(), "Stop")));
         let gutted = installed.replace(&line, "");
         assert_ne!(gutted, installed, "지울 줄을 못 찾았다 — 검사가 아무것도 안 재고 있다");
         toml::from_str::<toml::Table>(&gutted).expect("여전히 TOML이다");
 
-        assert_eq!(codex_installed(&gutted, &script()), Ok(Installed::Partial), "명령이 빠졌는데 「전부」다");
+        assert_eq!(codex_installed(&gutted, &handler()), Ok(Installed::Partial), "명령이 빠졌는데 「전부」다");
     }
 
     /// **손으로 적어 둔 codex 훅도 「설치됨」이다** — claude 쪽 짝
@@ -1438,10 +1466,10 @@ trust_level = "trusted"
     /// 설치를 눌러도 **사본이 하나 더 붙지 않는다**: 붙으면 이벤트마다 훅이 두 번 돈다.
     #[test]
     fn a_hand_written_codex_hook_reads_as_installed_and_is_not_doubled() {
-        let by_hand = codex_by_hand(&script());
-        assert_eq!(codex_installed(&by_hand, &script()), Ok(Installed::Full), "손으로 적은 훅이 「전부」가 아니다");
+        let by_hand = codex_by_hand(&handler());
+        assert_eq!(codex_installed(&by_hand, &handler()), Ok(Installed::Full), "손으로 적은 훅이 「전부」가 아니다");
 
-        let merged = merge_codex(&by_hand, &script()).expect("병합이 된다");
+        let merged = merge_codex(&by_hand, &handler()).expect("병합이 된다");
         toml::from_str::<toml::Table>(&merged).expect("TOML이다");
         for event in CODEX_EVENTS {
             assert_eq!(codex_ours_count(&merged, event), 1, "`{event}`에 우리 명령이 두 벌이다");
@@ -1469,7 +1497,7 @@ trust_level = "trusted"
         let before = "{\n  \"model\": \"opus\"\n}\n";
         std::fs::write(&path, before).unwrap();
 
-        apply(&path, |source| merge_claude(source, &script())).expect("넣는다");
+        apply(&path, |source| merge_claude(source, &handler())).expect("넣는다");
 
         assert_eq!(
             std::fs::read_to_string(path.with_extension("json.bak")).expect(".bak이 없다"),
@@ -1505,7 +1533,7 @@ trust_level = "trusted"
         std::fs::write(&path, "{\n  \"model\": \"opus\"\n}\n").unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-        apply(&path, |source| merge_claude(source, &script())).expect("넣는다");
+        apply(&path, |source| merge_claude(source, &handler())).expect("넣는다");
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(
@@ -1528,7 +1556,7 @@ trust_level = "trusted"
         let path = claude_settings_path(&home);
         std::os::unix::fs::symlink(&real, &path).unwrap();
 
-        apply(&path, |source| merge_claude(source, &script())).expect("넣는다");
+        apply(&path, |source| merge_claude(source, &handler())).expect("넣는다");
 
         assert!(
             std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink(),
@@ -1554,7 +1582,7 @@ trust_level = "trusted"
         let before = "{\n    \"model\": \"opus\"\n}";
         std::fs::write(&path, before).unwrap();
 
-        uninstall(&home, &script());
+        uninstall(&home, &handler());
 
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
@@ -1576,11 +1604,11 @@ trust_level = "trusted"
     fn a_hook_we_could_not_remove_is_said_out_loud() {
         let home = temp_home("codex-by-hand");
         std::fs::create_dir_all(home.join(".codex")).unwrap();
-        std::fs::write(codex_config_path(&home), codex_by_hand(&script())).unwrap();
+        std::fs::write(codex_config_path(&home), codex_by_hand(&handler())).unwrap();
 
         let by_hand: serde_json::Map<String, Value> = CLAUDE_EVENTS
             .iter()
-            .map(|event| ((*event).to_string(), json!([claude_group(&script(), event)])))
+            .map(|event| ((*event).to_string(), json!([claude_group(&handler(), event)])))
             .collect();
         std::fs::write(
             claude_settings_path(&home),
@@ -1588,7 +1616,7 @@ trust_level = "trusted"
         )
         .unwrap();
 
-        let gone = uninstall(&home, &script());
+        let gone = uninstall(&home, &handler());
 
         let codex = agent(&gone, "codex");
         assert_eq!(codex.installed, Installed::Full, "이 파일은 여전히 우리 명령을 들고 있다");
@@ -1615,8 +1643,8 @@ trust_level = "trusted"
         let before = "{\n  \"model\": \"opus\"\n}\n";
         std::fs::write(&path, before).unwrap();
 
-        apply(&path, |s| merge_claude(s, &script())).unwrap();
-        apply(&path, |s| merge_claude(s, &script())).unwrap();
+        apply(&path, |s| merge_claude(s, &handler())).unwrap();
+        apply(&path, |s| merge_claude(s, &handler())).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(path.with_extension("json.bak")).unwrap(),
@@ -1634,7 +1662,7 @@ trust_level = "trusted"
         let before = "{ 여기서 잘렸";
         std::fs::write(&path, before).unwrap();
 
-        apply(&path, |s| merge_claude(s, &script())).expect_err("거부해야 한다");
+        apply(&path, |s| merge_claude(s, &handler())).expect_err("거부해야 한다");
 
         assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "깨진 파일을 고쳤다");
         assert!(!path.with_extension("json.bak").exists(), "손도 안 댔는데 벌을 떴다");
@@ -1648,7 +1676,7 @@ trust_level = "trusted"
         let path = codex_config_path(&home);
         assert!(!path.parent().unwrap().exists());
 
-        apply(&path, |s| merge_codex(s, &script())).expect("넣는다");
+        apply(&path, |s| merge_codex(s, &handler())).expect("넣는다");
 
         let written = std::fs::read_to_string(&path).unwrap();
         toml::from_str::<toml::Table>(&written).expect("TOML이다");
@@ -1666,18 +1694,18 @@ trust_level = "trusted"
     fn install_then_status_then_uninstall() {
         let home = temp_home("round");
 
-        let before = status(&home, &script());
+        let before = status(&home, &handler());
         assert_eq!(before.len(), 2, "에이전트가 둘이다");
         assert_eq!(agent(&before, "claude").installed, Installed::None);
         assert_eq!(agent(&before, "codex").installed, Installed::None);
 
-        let after = install(&home, &script());
+        let after = install(&home, &handler());
         assert_eq!(agent(&after, "claude").installed, Installed::Full, "{:?}", agent(&after, "claude").error);
         assert_eq!(agent(&after, "codex").installed, Installed::Full, "{:?}", agent(&after, "codex").error);
         // **새로 물어봐도 같은 답이다** — 방금 돌려준 값이 앱의 기억이 아니라 파일의 사실이다.
-        assert_eq!(status(&home, &script()), after);
+        assert_eq!(status(&home, &handler()), after);
 
-        let gone = uninstall(&home, &script());
+        let gone = uninstall(&home, &handler());
         assert_eq!(agent(&gone, "claude").installed, Installed::None);
         assert_eq!(agent(&gone, "codex").installed, Installed::None);
         let _ = std::fs::remove_dir_all(&home);
@@ -1691,7 +1719,7 @@ trust_level = "trusted"
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         std::fs::write(codex_config_path(&home), "model = ").unwrap();
 
-        let after = install(&home, &script());
+        let after = install(&home, &handler());
         assert_eq!(agent(&after, "claude").installed, Installed::Full, "claude가 codex 때문에 막혔다");
 
         let codex = agent(&after, "codex");
@@ -1712,7 +1740,7 @@ trust_level = "trusted"
         let home = temp_home("hand-written");
         let by_hand: serde_json::Map<String, Value> = CLAUDE_EVENTS
             .iter()
-            .map(|event| ((*event).to_string(), json!([claude_group(&script(), event)])))
+            .map(|event| ((*event).to_string(), json!([claude_group(&handler(), event)])))
             .collect();
         std::fs::write(
             claude_settings_path(&home),
@@ -1720,7 +1748,7 @@ trust_level = "trusted"
         )
         .unwrap();
 
-        assert_eq!(agent(&status(&home, &script()), "claude").installed, Installed::Full);
+        assert_eq!(agent(&status(&home, &handler()), "claude").installed, Installed::Full);
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -1733,8 +1761,8 @@ trust_level = "trusted"
     #[test]
     fn the_preview_is_what_goes_into_an_empty_home() {
         let home = temp_home("preview");
-        let before = status(&home, &script());
-        install(&home, &script());
+        let before = status(&home, &handler());
+        install(&home, &handler());
 
         let claude = std::fs::read_to_string(claude_settings_path(&home)).unwrap();
         assert_eq!(agent(&before, "claude").preview, claude, "미리보기가 실물과 다르다");
@@ -1768,8 +1796,8 @@ trust_level = "trusted"
         let before = r#"{"model":"opus","hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"codegraph prompt-hook"}]}]}}"#;
         std::fs::write(claude_settings_path(&home), before).unwrap();
 
-        let shown = agent(&status(&home, &script()), "claude").preview.clone();
-        install(&home, &script());
+        let shown = agent(&status(&home, &handler()), "claude").preview.clone();
+        install(&home, &handler());
         let after: Value =
             serde_json::from_str(&std::fs::read_to_string(claude_settings_path(&home)).unwrap())
                 .unwrap();
@@ -1793,9 +1821,9 @@ trust_level = "trusted"
     #[test]
     fn a_write_failure_does_not_erase_what_we_know() {
         let home = temp_home("write-failed");
-        install(&home, &script());
+        install(&home, &handler());
 
-        let one = look(&AGENTS[0], &home, &script(), Some("설정을 쓰지 못했습니다".to_string()));
+        let one = look(&AGENTS[0], &home, &handler(), Some("설정을 쓰지 못했습니다".to_string()));
         assert_eq!(one.installed, Installed::Full, "읽어서 아는 사실을 쓰기 실패가 지웠다");
         assert_eq!(one.error, None, "판정은 됐는데 「확인 못 함」 칸에 적혔다");
         assert_eq!(one.write_error.as_deref(), Some("설정을 쓰지 못했습니다"));
@@ -1808,7 +1836,7 @@ trust_level = "trusted"
     /// 안 감싼다 — 셸이 없으니 따옴표가 글자 그대로 파일 이름이 된다. 셋째 인자가 목록의 판이다(P5). 처리기는 셋째부터 안 읽는다.
     #[test]
     fn a_claude_hook_calls_the_handler_directly_with_the_list_version() {
-        let merged: Value = serde_json::from_str(&merge_claude("{}", &script()).unwrap()).unwrap();
+        let merged: Value = serde_json::from_str(&merge_claude("{}", &handler()).unwrap()).unwrap();
         for event in CLAUDE_EVENTS {
             let hook = &merged["hooks"][*event][0]["hooks"][0];
             assert_eq!(hook["type"], "command");
@@ -1824,7 +1852,7 @@ trust_level = "trusted"
     /// 읽는다) 판을 맨 끝 낱말로 싣는다.
     #[test]
     fn a_codex_hook_is_a_quoted_command_line_ending_in_the_list_version() {
-        let value: toml::Table = toml::from_str(&codex_block(&script())).unwrap();
+        let value: toml::Table = toml::from_str(&codex_block(&handler())).unwrap();
         for event in CODEX_EVENTS {
             assert_eq!(
                 value["hooks"][*event][0]["hooks"][0]["command"].as_str(),
@@ -1841,7 +1869,7 @@ trust_level = "trusted"
     #[test]
     fn the_installed_lines_run_the_handler() {
         let root = temp_home("run-installed");
-        crate::shells::write_hook_script(&root).expect("처리기를 세운다");
+        crate::shells::write_hook_scripts(&root).expect("처리기를 세운다");
         let handler = crate::shells::handler_path(&root);
         let shell = format!("test-{}-21", std::process::id());
 
@@ -1882,15 +1910,15 @@ trust_level = "trusted"
     fn an_old_install_is_brought_to_the_current_list() {
         for events in [&OLD_CLAUDE[..], &["Stop"][..]] {
             let source = serde_json::to_string_pretty(&json!({ "hooks": old_claude_hooks(events) })).unwrap();
-            assert_eq!(claude_installed(&source, &script()), Ok(Installed::Partial), "옛 설치가 「일부」가 아니다: {events:?}");
+            assert_eq!(claude_installed(&source, &handler()), Ok(Installed::Partial), "옛 설치가 「일부」가 아니다: {events:?}");
 
-            let merged = merge_claude(&source, &script()).expect("맞춘다");
+            let merged = merge_claude(&source, &handler()).expect("맞춘다");
             let value: Value = serde_json::from_str(&merged).unwrap();
             for event in CLAUDE_EVENTS {
-                assert_eq!(value["hooks"][*event], json!([claude_group(&script(), event)]), "`{event}`가 지금 줄 하나가 아니다: {merged}");
+                assert_eq!(value["hooks"][*event], json!([claude_group(&handler(), event)]), "`{event}`가 지금 줄 하나가 아니다: {merged}");
             }
             assert!(!merged.contains(crate::shells::SCRIPT_NAME), "옛 명령줄이 남았다: {merged}");
-            assert_eq!(claude_installed(&merged, &script()), Ok(Installed::Full));
+            assert_eq!(claude_installed(&merged, &handler()), Ok(Installed::Full));
         }
     }
 
@@ -1914,15 +1942,15 @@ trust_level = "trusted"
         }))
         .unwrap();
 
-        let merged = merge_claude(&source, &script()).unwrap();
+        let merged = merge_claude(&source, &handler()).unwrap();
         let value: Value = serde_json::from_str(&merged).unwrap();
 
         let keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(keys, ["model", "hooks", "env"], "바깥 키의 차례가 바뀌었다");
         let events: Vec<&str> = value["hooks"].as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(&events[..3], ["UserPromptSubmit", "Notification", "Stop"], "이벤트의 차례가 바뀌었다");
-        assert_eq!(value["hooks"]["UserPromptSubmit"], json!([codegraph, greet, claude_group(&script(), "UserPromptSubmit")]));
-        assert_eq!(value["hooks"]["Stop"], json!([audit, claude_group(&script(), "Stop")]));
+        assert_eq!(value["hooks"]["UserPromptSubmit"], json!([codegraph, greet, claude_group(&handler(), "UserPromptSubmit")]));
+        assert_eq!(value["hooks"]["Stop"], json!([audit, claude_group(&handler(), "Stop")]));
         assert_eq!(value["hooks"]["Notification"], json!([note]));
         assert_eq!(value["env"], json!({ "A": "1" }));
     }
@@ -1934,7 +1962,7 @@ trust_level = "trusted"
         let tools = ["PreToolUse", "PostToolUse", "PostToolUseFailure"];
         let mut hooks = Map::new();
         for event in CLAUDE_EVENTS {
-            let mut hook = claude_group(&script(), event)["hooks"][0].clone();
+            let mut hook = claude_group(&handler(), event)["hooks"][0].clone();
             let hook_map = hook.as_object_mut().unwrap();
             // 뒤집는다 — 도구 셋에서는 떼고, 턴의 끝에는 붙인다.
             if tools.contains(event) {
@@ -1945,9 +1973,9 @@ trust_level = "trusted"
             hooks.insert((*event).to_string(), json!([{ "hooks": [hook] }]));
         }
         let source = json!({ "hooks": hooks }).to_string();
-        assert_eq!(claude_installed(&source, &script()), Ok(Installed::Partial), "`async`가 어긋났는데 「전부」다");
+        assert_eq!(claude_installed(&source, &handler()), Ok(Installed::Partial), "`async`가 어긋났는데 「전부」다");
 
-        let merged: Value = serde_json::from_str(&merge_claude(&source, &script()).unwrap()).unwrap();
+        let merged: Value = serde_json::from_str(&merge_claude(&source, &handler()).unwrap()).unwrap();
         for event in CLAUDE_EVENTS {
             let groups = merged["hooks"][*event].as_array().unwrap();
             assert_eq!(groups.len(), 1, "`{event}`에 우리 줄이 겹쳤다: {merged}");
@@ -1962,17 +1990,17 @@ trust_level = "trusted"
     /// 두면 그 이벤트에서 처리기가 두 번 돈다. 걷기도 두 이름을 다 안다.
     #[test]
     fn old_and_new_names_are_both_ours_and_give_way_to_the_current_line() {
-        let current = |event: &str| claude_group(&script(), event);
+        let current = |event: &str| claude_group(&handler(), event);
         let source = json!({ "hooks": {
             "Stop": [{ "hooks": [old_claude_hook("Stop")] }],
-            "PreToolUse": [{ "hooks": [{ "type": "command", "command": command_line(&script(), CLAUDE, "PreToolUse"), "async": true }] }],
-            "PostToolUse": [{ "hooks": [{ "type": "command", "command": script().to_string_lossy(), "args": [CLAUDE, "PostToolUse"], "async": true }] }],
+            "PreToolUse": [{ "hooks": [{ "type": "command", "command": command_line(&handler(), CLAUDE, "PreToolUse"), "async": true }] }],
+            "PostToolUse": [{ "hooks": [{ "type": "command", "command": handler().to_string_lossy(), "args": [CLAUDE, "PostToolUse"], "async": true }] }],
             "UserPromptSubmit": [{ "hooks": [old_claude_hook("UserPromptSubmit")] }, current("UserPromptSubmit")],
         }})
         .to_string();
-        assert_eq!(claude_installed(&source, &script()), Ok(Installed::Partial));
+        assert_eq!(claude_installed(&source, &handler()), Ok(Installed::Partial));
 
-        let merged = merge_claude(&source, &script()).unwrap();
+        let merged = merge_claude(&source, &handler()).unwrap();
         let value: Value = serde_json::from_str(&merged).unwrap();
         for event in CLAUDE_EVENTS {
             assert_eq!(value["hooks"][*event], json!([current(event)]), "`{event}`가 지금 줄 하나가 아니다: {merged}");
@@ -1988,11 +2016,11 @@ trust_level = "trusted"
     fn the_codex_block_is_replaced_whole() {
         let source = codex_with_old_block(&OLD_CODEX);
         toml::from_str::<toml::Table>(&source).expect("옛 구획도 TOML이다");
-        assert_eq!(codex_installed(&source, &script()), Ok(Installed::Partial), "옛 구획인데 「일부」가 아니다");
+        assert_eq!(codex_installed(&source, &handler()), Ok(Installed::Partial), "옛 구획인데 「일부」가 아니다");
 
-        let merged = merge_codex(&source, &script()).unwrap();
-        assert_eq!(merged, format!("{CODEX_REAL}\n{}", codex_block(&script())), "구획이 통째로 새것이 아니다");
-        assert_eq!(codex_installed(&merged, &script()), Ok(Installed::Full));
+        let merged = merge_codex(&source, &handler()).unwrap();
+        assert_eq!(merged, format!("{CODEX_REAL}\n{}", codex_block(&handler())), "구획이 통째로 새것이 아니다");
+        assert_eq!(codex_installed(&merged, &handler()), Ok(Installed::Full));
     }
 
     /// codex 설정 한 장만 든 임시 홈.
@@ -2012,23 +2040,23 @@ trust_level = "trusted"
     /// 못 고치는 「일부」다. 앱이 뜰 때의 맞춤은 쓴 것이 없어 이것을 안 돌려준다(토스트가 안 선다, S36).
     #[test]
     fn an_old_line_by_hand_outside_the_fence_is_said_on_install() {
-        let old_by_hand = |event: &str| codex_hook(event, &command_line(&old_script(), CODEX, event));
-        let beside_the_block = merge_codex(&format!("{CODEX_REAL}{}", old_by_hand("Stop")), &script()).unwrap();
+        let old_by_hand = |event: &str| codex_hook(event, &command_line(&old_handler(), CODEX, event));
+        let beside_the_block = merge_codex(&format!("{CODEX_REAL}{}", old_by_hand("Stop")), &handler()).unwrap();
         let old_five_by_hand: String = std::iter::once(CODEX_REAL.to_string()).chain(OLD_CODEX.map(old_by_hand)).collect();
         let new_four: Vec<&str> = CODEX_EVENTS.iter().copied().filter(|event| !OLD_CODEX.contains(event)).collect();
         let off_the_list =
-            format!("{}{}", codex_by_hand(&script()), codex_hook("Notification", &codex_command(&script(), "Notification")));
+            format!("{}{}", codex_by_hand(&handler()), codex_hook("Notification", &codex_command(&handler(), "Notification")));
 
         let cases = [
             ("beside", beside_the_block.clone(), beside_the_block),
-            ("old-five", old_five_by_hand.clone(), format!("{old_five_by_hand}\n{}", codex_block_for(&script(), &new_four))),
+            ("old-five", old_five_by_hand.clone(), format!("{old_five_by_hand}\n{}", codex_block_for(&handler(), &new_four))),
             ("off-list", off_the_list.clone(), off_the_list),
         ];
         for (name, config, installed) in cases {
             let home = codex_home(&format!("by-hand-{name}"), &config);
-            assert_eq!(codex_installed(&config, &script()), Ok(Installed::Partial), "{name}: 「일부」가 아니다 — 검사가 재는 자리가 없다");
+            assert_eq!(codex_installed(&config, &handler()), Ok(Installed::Partial), "{name}: 「일부」가 아니다 — 검사가 재는 자리가 없다");
 
-            let after = install(&home, &script());
+            let after = install(&home, &handler());
             let codex = agent(&after, "codex");
             assert_eq!(read(&codex_config_path(&home)), installed, "{name}: 사람이 적은 줄을 고쳤거나 빠진 이벤트를 안 더했다");
             assert_eq!(codex.installed, Installed::Partial, "{name}");
@@ -2042,7 +2070,7 @@ trust_level = "trusted"
             );
             assert_eq!(agent(&after, "claude").write_error, None, "{name}: 다 고친 claude 쪽에 까닭이 섰다");
 
-            assert_eq!(sync(&home, &script()), Vec::<String>::new(), "{name}: 쓴 것이 없는 맞춤이 토스트를 부른다");
+            assert_eq!(sync(&home, &handler()), Vec::<String>::new(), "{name}: 쓴 것이 없는 맞춤이 토스트를 부른다");
             assert_eq!(read(&codex_config_path(&home)), installed, "{name}: 맞춤이 사람이 적은 줄을 고쳤다");
             let _ = std::fs::remove_dir_all(&home);
         }
@@ -2052,15 +2080,15 @@ trust_level = "trusted"
     /// 구획째 갈아 끼우며(구현-스펙 「맞추는 것」), 이 빌드보다 새로운 판의 줄은 손대지 않고 「전부」로 읽는다(P5).
     #[test]
     fn install_says_nothing_when_it_fixed_everything_or_had_nothing_to_fix() {
-        let newer = format!("{} list-{}", command_line(&script(), CODEX, "Stop"), LIST_VERSION + 1);
+        let newer = format!("{} list-{}", command_line(&handler(), CODEX, "Stop"), LIST_VERSION + 1);
         let cases = [
-            ("current-by-hand", codex_by_hand(&script()), None),
-            ("old-in-fence", codex_with_old_block(&OLD_CODEX), Some(format!("{CODEX_REAL}\n{}", codex_block(&script())))),
+            ("current-by-hand", codex_by_hand(&handler()), None),
+            ("old-in-fence", codex_with_old_block(&OLD_CODEX), Some(format!("{CODEX_REAL}\n{}", codex_block(&handler())))),
             ("newer-by-hand", format!("{CODEX_REAL}{}", codex_hook("Stop", &newer)), None),
         ];
         for (name, config, fixed) in cases {
             let home = codex_home(&format!("said-nothing-{name}"), &config);
-            let codex = agent(&install(&home, &script()), "codex").clone();
+            let codex = agent(&install(&home, &handler()), "codex").clone();
             assert_eq!(codex.installed, Installed::Full, "{name}");
             assert_eq!(codex.write_error, None, "{name}: 고칠 것을 다 고쳤는데 까닭이 섰다");
             assert_eq!(read(&codex_config_path(&home)), fixed.unwrap_or(config), "{name}");
@@ -2073,13 +2101,13 @@ trust_level = "trusted"
     /// 것도 일부다 — 앱이 뜰 때 맞추거나 설치 버튼이 고칠 것이 남았다.
     #[test]
     fn the_claude_install_state_is_none_partial_or_full() {
-        let full = merge_claude("{}", &script()).unwrap();
+        let full = merge_claude("{}", &handler()).unwrap();
         let edited = |edit: &dyn Fn(&mut Map<String, Value>)| {
             let mut value: Value = serde_json::from_str(&full).unwrap();
             edit(value["hooks"].as_object_mut().unwrap());
             value.to_string()
         };
-        let state = |source: &str| claude_installed(source, &script()).unwrap();
+        let state = |source: &str| claude_installed(source, &handler()).unwrap();
         let foreign = json!({ "hooks": [{ "type": "command", "command": "say done" }] });
 
         assert_eq!(state("{}"), Installed::None);
@@ -2115,7 +2143,7 @@ trust_level = "trusted"
         );
         assert_eq!(
             state(&edited(&|hooks| {
-                hooks.insert("Notification".into(), json!([claude_group(&script(), "Notification")]));
+                hooks.insert("Notification".into(), json!([claude_group(&handler(), "Notification")]));
             })),
             Installed::Partial,
             "목록 밖 이벤트에 우리 줄이 남았는데 「전부」다"
@@ -2133,13 +2161,13 @@ trust_level = "trusted"
     /// 이벤트에 우리 줄이 남은 것도 일부다.
     #[test]
     fn the_codex_install_state_is_none_partial_or_full() {
-        let state = |source: &str| codex_installed(source, &script()).unwrap();
-        let full = merge_codex(CODEX_REAL, &script()).unwrap();
+        let state = |source: &str| codex_installed(source, &handler()).unwrap();
+        let full = merge_codex(CODEX_REAL, &handler()).unwrap();
 
         assert_eq!(state(CODEX_REAL), Installed::None);
         assert_eq!(state(&full), Installed::Full);
         assert_eq!(state(&codex_with_old_block(&OLD_CODEX)), Installed::Partial, "옛 구획인데 「전부」다");
-        let stray = format!("{full}{}", codex_hook("Notification", &codex_command(&script(), "Notification")));
+        let stray = format!("{full}{}", codex_hook("Notification", &codex_command(&handler(), "Notification")));
         assert_eq!(state(&stray), Installed::Partial, "목록 밖 이벤트에 우리 줄이 남았는데 「전부」다");
     }
 
@@ -2163,62 +2191,62 @@ trust_level = "trusted"
         // 새 빌드가 쓴 모양: 이 빌드가 모르는 이벤트가 하나 더 있고, 판이 하나 높다.
         let mut hooks = Map::new();
         for event in CLAUDE_EVENTS.iter().chain(&["Notification"]) {
-            let hook = json!({ "type": "command", "command": script().to_string_lossy(), "args": [CLAUDE, event, newer] });
+            let hook = json!({ "type": "command", "command": handler().to_string_lossy(), "args": [CLAUDE, event, newer] });
             hooks.insert((*event).to_string(), json!([{ "hooks": [hook] }]));
         }
         let claude = serde_json::to_string_pretty(&json!({ "hooks": hooks })).unwrap();
-        assert_eq!(merge_claude(&claude, &script()).unwrap(), claude, "새 목록을 옛 목록으로 되썼다");
-        assert_eq!(claude_installed(&claude, &script()), Ok(Installed::Full), "새 목록의 파일이 「업데이트 필요」다");
+        assert_eq!(merge_claude(&claude, &handler()).unwrap(), claude, "새 목록을 옛 목록으로 되썼다");
+        assert_eq!(claude_installed(&claude, &handler()), Ok(Installed::Full), "새 목록의 파일이 「업데이트 필요」다");
 
         // 셸 꼴 줄의 판은 명령줄의 **마지막** 낱말이다 — 이 빌드의 줄은 다 지금 것이고, 목록 밖 이벤트에 셸 꼴로 적힌 줄 하나만
         // 새로운 판이어도 그 파일은 새 빌드의 것이다.
-        let mut shell_form = serde_json::from_str::<Value>(&merge_claude("{}", &script()).unwrap()).unwrap();
+        let mut shell_form = serde_json::from_str::<Value>(&merge_claude("{}", &handler()).unwrap()).unwrap();
         shell_form["hooks"]["Notification"] = json!([{ "hooks": [{
             "type": "command",
-            "command": format!("{} {newer}", command_line(&script(), CLAUDE, "Notification")),
+            "command": format!("{} {newer}", command_line(&handler(), CLAUDE, "Notification")),
         }] }]);
         let shell_form = serde_json::to_string_pretty(&shell_form).unwrap();
-        assert_eq!(merge_claude(&shell_form, &script()).unwrap(), shell_form, "셸 꼴 줄의 새 판을 못 읽고 되썼다");
-        assert_eq!(claude_installed(&shell_form, &script()), Ok(Installed::Full));
+        assert_eq!(merge_claude(&shell_form, &handler()).unwrap(), shell_form, "셸 꼴 줄의 새 판을 못 읽고 되썼다");
+        assert_eq!(claude_installed(&shell_form, &handler()), Ok(Installed::Full));
 
         let mut codex = format!("{CODEX_REAL}\n{CODEX_BEGIN}\n");
         for event in CODEX_EVENTS.iter().chain(&["Notification"]) {
-            codex.push_str(&codex_hook(event, &format!("{} {newer}", command_line(&script(), CODEX, event))));
+            codex.push_str(&codex_hook(event, &format!("{} {newer}", command_line(&handler(), CODEX, event))));
         }
         codex.push_str(&format!("{CODEX_END}\n"));
-        assert_eq!(merge_codex(&codex, &script()).unwrap(), codex, "새 목록을 옛 목록으로 되썼다");
-        assert_eq!(codex_installed(&codex, &script()), Ok(Installed::Full), "새 목록의 파일이 「업데이트 필요」다");
+        assert_eq!(merge_codex(&codex, &handler()).unwrap(), codex, "새 목록을 옛 목록으로 되썼다");
+        assert_eq!(codex_installed(&codex, &handler()), Ok(Installed::Full), "새 목록의 파일이 「업데이트 필요」다");
 
         // 앱이 뜰 때의 맞춤도 안 쓴다.
         let home = temp_home("newer-list");
         std::fs::write(claude_settings_path(&home), &claude).unwrap();
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         std::fs::write(codex_config_path(&home), &codex).unwrap();
-        assert_eq!(sync(&home, &script()), Vec::<String>::new(), "새 목록의 파일을 맞췄다");
+        assert_eq!(sync(&home, &handler()), Vec::<String>::new(), "새 목록의 파일을 맞췄다");
         assert_eq!(std::fs::read_to_string(claude_settings_path(&home)).unwrap(), claude);
         assert_eq!(std::fs::read_to_string(codex_config_path(&home)).unwrap(), codex);
         let _ = std::fs::remove_dir_all(&home);
 
         // 앵커: 판만 이 빌드의 것으로 바꾸면 맞춘다(모르는 이벤트를 걷는다) — 판 말고 다른 까닭으로 안 쓴 것이 아니다.
         let same = claude.replace(&newer, &ours);
-        assert_eq!(claude_installed(&same, &script()), Ok(Installed::Partial));
-        assert_ne!(merge_claude(&same, &script()).unwrap(), same);
+        assert_eq!(claude_installed(&same, &handler()), Ok(Installed::Partial));
+        assert_ne!(merge_claude(&same, &handler()).unwrap(), same);
         let same = codex.replace(&newer, &ours);
-        assert_eq!(codex_installed(&same, &script()), Ok(Installed::Partial));
-        assert_ne!(merge_codex(&same, &script()).unwrap(), same);
+        assert_eq!(codex_installed(&same, &handler()), Ok(Installed::Partial));
+        assert_ne!(merge_codex(&same, &handler()).unwrap(), same);
     }
 
     /// **지금 모양 그대로면 병합이 원문을 글자 그대로 돌려준다** — 사람이 2칸이 아닌 들여쓰기로 두었거나 한 줄로 적어 둔
     /// 파일도. 다시 적으면 설치 버튼 한 번에 우리 것이 다 지금 모양인 파일이 통째로 다시 쓰이고 `.bak`이 덮인다.
     #[test]
     fn a_file_already_current_comes_back_as_it_was() {
-        let full: Value = serde_json::from_str(&merge_claude("{}", &script()).unwrap()).unwrap();
+        let full: Value = serde_json::from_str(&merge_claude("{}", &handler()).unwrap()).unwrap();
         let one_line = json!({ "model": "opus", "hooks": full["hooks"] }).to_string();
-        assert_eq!(merge_claude(&one_line, &script()).unwrap(), one_line, "바꿀 것이 없는데 다시 적었다");
+        assert_eq!(merge_claude(&one_line, &handler()).unwrap(), one_line, "바꿀 것이 없는데 다시 적었다");
 
         let home = temp_home("install-current");
         std::fs::write(claude_settings_path(&home), &one_line).unwrap();
-        install(&home, &script());
+        install(&home, &handler());
         assert_eq!(std::fs::read_to_string(claude_settings_path(&home)).unwrap(), one_line);
         assert!(!backup_path(&claude_settings_path(&home)).exists(), "쓴 것이 없는데 벌을 떴다");
         let _ = std::fs::remove_dir_all(&home);
@@ -2230,16 +2258,16 @@ trust_level = "trusted"
     #[test]
     fn our_lines_on_events_off_the_list_are_taken_away() {
         let foreign = json!({ "hooks": [{ "type": "command", "command": "say idle" }] });
-        let mut value: Value = serde_json::from_str(&merge_claude("{}", &script()).unwrap()).unwrap();
+        let mut value: Value = serde_json::from_str(&merge_claude("{}", &handler()).unwrap()).unwrap();
         value["hooks"]["Notification"] = json!([{ "hooks": [old_claude_hook("Notification")] }]);
-        value["hooks"]["TeammateIdle"] = json!([claude_group(&script(), "TeammateIdle"), foreign.clone()]);
+        value["hooks"]["TeammateIdle"] = json!([claude_group(&handler(), "TeammateIdle"), foreign.clone()]);
         let source = value.to_string();
-        assert_eq!(claude_installed(&source, &script()), Ok(Installed::Partial));
+        assert_eq!(claude_installed(&source, &handler()), Ok(Installed::Partial));
 
-        let merged: Value = serde_json::from_str(&merge_claude(&source, &script()).unwrap()).unwrap();
+        let merged: Value = serde_json::from_str(&merge_claude(&source, &handler()).unwrap()).unwrap();
         assert!(merged["hooks"].get("Notification").is_none(), "우리가 비운 목록 밖 이벤트가 남았다: {merged}");
         assert_eq!(merged["hooks"]["TeammateIdle"], json!([foreign]), "목록 밖 이벤트의 우리 줄이 남았거나 남의 줄이 사라졌다");
-        assert_eq!(claude_installed(&merged.to_string(), &script()), Ok(Installed::Full));
+        assert_eq!(claude_installed(&merged.to_string(), &handler()), Ok(Installed::Full));
     }
 
     /// **제거가 남은 것의 차례를 지킨다.** 우리가 비운 이벤트 · `hooks` 구획을 걷을 때 끝 키를 그 자리로 옮기면(`Map::remove` —
@@ -2247,7 +2275,7 @@ trust_level = "trusted"
     /// 끝에 있을 때만 서던 자리다.
     #[test]
     fn removing_keeps_the_order_of_what_is_left() {
-        let ours = json!([claude_group(&script(), "Stop")]);
+        let ours = json!([claude_group(&handler(), "Stop")]);
         let say = |word: &str| json!([{ "hooks": [{ "type": "command", "command": word }] }]);
         let events = json!({ "hooks": { "Stop": ours, "Notification": say("a"), "SessionStart": say("b") } }).to_string();
         let removed: Value = serde_json::from_str(&unmerge_claude(&events).unwrap()).unwrap();
@@ -2272,21 +2300,21 @@ trust_level = "trusted"
                 "SessionStart": [{ "hooks": [] }, { "hooks": [old_claude_hook("SessionStart")] }, foreign.clone()],
                 "TeammateIdle": [],
                 "PreCompact": "x",
-                "Stop": [{ "hooks": [] }, claude_group(&script(), "Stop")],
+                "Stop": [{ "hooks": [] }, claude_group(&handler(), "Stop")],
             },
             "model": "opus",
         })
         .to_string();
         let events = |value: &Value| value["hooks"].as_object().unwrap().keys().cloned().collect::<Vec<_>>();
 
-        let merged: Value = serde_json::from_str(&merge_claude(&source, &script()).unwrap()).unwrap();
+        let merged: Value = serde_json::from_str(&merge_claude(&source, &handler()).unwrap()).unwrap();
         let mut want: Vec<String> = ["SessionStart", "TeammateIdle", "PreCompact", "Stop"].map(String::from).to_vec();
         want.extend(CLAUDE_EVENTS.iter().filter(|event| **event != "Stop").map(|event| (*event).to_string()));
         assert_eq!(events(&merged), want, "병합 뒤 이벤트 차례가 흩어졌다");
         assert_eq!(merged["hooks"]["SessionStart"], json!([{ "hooks": [] }, foreign]), "병합이 사람의 빈 그룹을 걷었거나 우리 줄을 남겼다");
         assert_eq!(merged["hooks"]["TeammateIdle"], json!([]));
         assert_eq!(merged["hooks"]["PreCompact"], "x");
-        assert_eq!(merged["hooks"]["Stop"], json!([{ "hooks": [] }, claude_group(&script(), "Stop")]), "지금 줄을 옮겼다");
+        assert_eq!(merged["hooks"]["Stop"], json!([{ "hooks": [] }, claude_group(&handler(), "Stop")]), "지금 줄을 옮겼다");
         let outer: Vec<&str> = merged.as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(outer, ["hooks", "model"]);
 
@@ -2322,17 +2350,17 @@ trust_level = "trusted"
         let (claude, codex) = (claude_settings_path(&home), codex_config_path(&home));
         let (claude_before, codex_before) = (read(&claude), read(&codex));
 
-        assert_eq!(sync(&home, &script()), ["claude", "codex"]);
+        assert_eq!(sync(&home, &handler()), ["claude", "codex"]);
         assert_eq!(read(&backup_path(&claude)), claude_before, "claude의 .bak이 맞추기 전 내용이 아니다");
         assert_eq!(read(&backup_path(&codex)), codex_before, "codex의 .bak이 맞추기 전 내용이 아니다");
-        for one in status(&home, &script()) {
+        for one in status(&home, &handler()) {
             assert_eq!(one.installed, Installed::Full, "{} 쪽이 맞춰지지 않았다: {one:?}", one.agent);
         }
         assert_eq!(serde_json::from_str::<Value>(&read(&claude)).unwrap()["model"], "opus", "우리 키 밖의 내용이 사라졌다");
         assert!(read(&codex).starts_with(CODEX_REAL), "codex 설정의 사람 글이 바뀌었다");
 
         let (claude_once, codex_once) = (read(&claude), read(&codex));
-        assert_eq!(sync(&home, &script()), Vec::<String>::new(), "맞춘 설정을 다시 맞췄다 — 켤 때마다 토스트가 선다");
+        assert_eq!(sync(&home, &handler()), Vec::<String>::new(), "맞춘 설정을 다시 맞췄다 — 켤 때마다 토스트가 선다");
         assert_eq!((read(&claude), read(&codex)), (claude_once, codex_once));
         assert_eq!(read(&backup_path(&claude)), claude_before, "두 번째 맞춤이 되돌릴 벌을 덮었다");
         let _ = std::fs::remove_dir_all(&home);
@@ -2348,7 +2376,7 @@ trust_level = "trusted"
         let foreign = "{\n    \"model\": \"opus\",\n    \"hooks\": {\"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"say done\"}]}]}\n}";
         std::fs::write(&claude, foreign).unwrap();
 
-        assert_eq!(sync(&home, &script()), Vec::<String>::new());
+        assert_eq!(sync(&home, &handler()), Vec::<String>::new());
         assert_eq!(read(&claude), foreign, "우리 것이 없는데 남의 파일을 다시 썼다");
         assert!(!backup_path(&claude).exists(), "쓴 것이 없는데 벌을 떴다");
         assert!(!codex_config_path(&home).exists(), "없던 codex 설정을 만들었다");
@@ -2356,7 +2384,7 @@ trust_level = "trusted"
         std::fs::create_dir_all(home.join(".codex")).unwrap();
         std::fs::write(codex_config_path(&home), CODEX_REAL).unwrap();
         std::fs::remove_file(&claude).unwrap();
-        assert_eq!(sync(&home, &script()), Vec::<String>::new());
+        assert_eq!(sync(&home, &handler()), Vec::<String>::new());
         assert_eq!(read(&codex_config_path(&home)), CODEX_REAL, "우리 것이 없는데 codex 설정을 다시 썼다");
         assert!(!backup_path(&codex_config_path(&home)).exists());
         assert!(!claude.exists(), "없던 claude 설정을 만들었다");
@@ -2372,7 +2400,7 @@ trust_level = "trusted"
         let broken = "{ 여기서 잘렸 atelier-hook.py";
         std::fs::write(&claude, broken).unwrap();
 
-        assert_eq!(sync(&home, &script()), ["codex"]);
+        assert_eq!(sync(&home, &handler()), ["codex"]);
         assert_eq!(read(&claude), broken, "깨진 파일을 고쳤다");
         assert!(!backup_path(&claude).exists(), "손도 안 댔는데 벌을 떴다");
         let _ = std::fs::remove_dir_all(&home);
@@ -2391,7 +2419,7 @@ trust_level = "trusted"
         std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
         std::os::unix::fs::symlink(&real, claude_settings_path(&home)).unwrap();
 
-        assert!(sync(&home, &script()).contains(&"claude".to_string()));
+        assert!(sync(&home, &handler()).contains(&"claude".to_string()));
         let link = std::fs::symlink_metadata(claude_settings_path(&home)).unwrap();
         assert!(link.file_type().is_symlink(), "심링크가 보통 파일로 갈렸다");
         assert!(read(&real).contains(crate::shells::HANDLER_NAME), "심링크 너머의 진짜 파일이 안 맞춰졌다");
