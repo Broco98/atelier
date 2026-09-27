@@ -158,6 +158,11 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await settle(page);
   expect(await callCount(page, "pty_kill")).toBe(0);
   await expect(ownerless).toBeVisible();
+  // 같은 셸의 토스트(티켓 12)도 그대로 섰다 — 아래 「내려간다」의 앵커다. 안 섰으면 그 단언은 처음부터 참이다.
+  const 토스트자리 = page.getByRole("region", { name: "앱 메시지", exact: true });
+  await expect(
+    토스트자리.getByRole("dialog", { name: "아카이브된 작업의 셸 2개에 아직 도는 것이 있어요", exact: true }),
+  ).toBeVisible();
 
   // ── 확인 ──
   await 버튼(ownerless, "모두 닫기").click();
@@ -173,7 +178,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
     ]);
   await expect(ownerless).toHaveCount(0);
   // 같은 셸의 토스트도 내려간다 — 같은 함수다. 셸마다 닫기 확인 창(08)을 안 띄웠다.
-  await expect(page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog")).toHaveCount(0);
+  await expect(토스트자리.getByRole("dialog")).toHaveCount(0);
   expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
