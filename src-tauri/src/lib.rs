@@ -196,6 +196,9 @@ pub fn run() {
     let report = Arc::new(startup::ReportHolder::default());
     let cleanup = report.chore();
     let hook_sync = report.chore();
+    // PTY 풀 — 셸을 쥔 자리. 명령은 앱에 건 것(`manage`)을 `State`로 찾고, 셋업은 스레드 · 알림 · 기록 · 정리에 **바로 이 값을**
+    // 건넨다. 빌더 앞에서 한 번 세워 셋업이 앱에서 다시 찾지 않는다(위 `report`와 같다).
+    let pool = Arc::new(pty::PtyPool::default());
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -231,7 +234,7 @@ pub fn run() {
         // 셸이 부르는 것을 **앱 밖에서도** 알리는 채널(#206 · 결정 10). 판정은 프런트의 순수
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
-        .manage(Arc::new(pty::PtyPool::default()))
+        .manage(Arc::clone(&pool))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
         .manage(Arc::clone(&report))
         .setup(move |app| {
@@ -245,10 +248,10 @@ pub fn run() {
             // 풀을 여기서 건넨다. 스레드가 `state()`로 스스로 찾게 두면 그것이 등록되기
             // 전에 뜰 수 있는 코드가 되고, 그때 나는 것은 조용한 패닉 하나다 — 폴링이
             // 통째로 죽는데 앱은 멀쩡히 돈다.
-            pty::watch_running(app.handle().clone(), Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+            pty::watch_running(app.handle().clone(), Arc::clone(&pool));
             // 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때 알릴 길을 건다(프로세스 스펙 S49 · P4 · 티켓 13). 같은 길이다 —
             // 끝내기의 뒤 스레드가 emit하고 프런트가 `listen`으로 받는다. 셸은 웹뷰가 뜬 뒤에 띄우므로 여기가 먼저다.
-            pty::announce_ends(app.handle().clone(), &app.state::<Arc<pty::PtyPool>>());
+            pty::announce_ends(app.handle().clone(), &pool);
 
             // 셸이 **스스로 말하는** 길(#201). 위 둘이 앱이 물어서 아는 값이라면 이쪽은
             // 에이전트의 훅이 파일 한 장을 놓고 가는 길이고, 여기가 그 길의 세 자리다.
@@ -289,11 +292,11 @@ pub fn run() {
             // 인스턴스 기록을 연다(프로세스 결정 6 · 프로세스 스펙 S52). 이 실행의 셸 키가 디스크에 서야 함께 뜬 다른
             // 빌드의 판정이 이 실행의 셸 자손을 고아로 안 본다. 시작 정리는 이 줄 **뒤에** 선다 — 기록이 먼저다.
             // 셸은 프런트가 뜬 뒤에야 불리지만, 그보다 먼저 올린 키가 있어도 여는 쓰기가 함께 적는다(`Record::open`).
-            pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string());
+            pty::open_record(&pool, &root, &app.package_info().version.to_string());
             // 시작 정리(프로세스 결정 6 · 티켓 10). 지난 실행이 남긴 확정 고아를 뒤 스레드에서 끝내고, 죽은 실행의 기록을 지우고,
             // 끝낸 것을 위에서 센 몫으로 시작 보고에 싣는다. **기록을 연 뒤다** — 연 뒤라야 남의 기록이 읽힌다. 이 실행의 셸은
             // 안 본다: 웹뷰가 곧 첫 셸을 띄운다.
-            startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+            startup::clean_up(cleanup, Arc::clone(&pool));
             // nav 메타의 배경 표본(프로세스 결정 10 · 11 · 티켓 29). 앱 전체 메모리 합계와 손볼 것(출처 불명 · `●`를 켜는 기록)을 10초마다
             // 모은다 — 화면이 닫혀 있어도 돈다. **기록을 연 뒤다** — 먼저 모으면 판정이 남의 기록을 못 읽어 함께 뜬 다른 빌드의 셸
             // 자손이 모두 출처 불명으로 서고, 뜨자마자 `●`가 선다. 첫 장은 시작 정리의 기록을 못 볼 수 있다 — 다음 장(10초)이 본다.
@@ -301,8 +304,8 @@ pub fn run() {
             // 표본을 걸기 **전에** 웹뷰에게 WebContent의 pid를 물을 길을 건다(프로세스 스펙 S39 · 티켓 30) — 앱 본체 = Rust 본체 +
             // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다.
             let asker = app.handle().clone();
-            pty::ask_web_content_with(&app.state::<Arc<pty::PtyPool>>(), move || webview::content_pid(&asker));
-            pty::sample_in_background(Arc::clone(&app.state::<Arc<pty::PtyPool>>()));
+            pty::ask_web_content_with(&pool, move || webview::content_pid(&asker));
+            pty::sample_in_background(Arc::clone(&pool));
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -458,9 +461,7 @@ mod tests {
     #[test]
     fn the_instance_record_opens_when_the_app_comes_up() {
         assert!(
-            setup_source().contains(
-                "pty::open_record(&app.state::<Arc<pty::PtyPool>>(), &root, &app.package_info().version.to_string())"
-            ),
+            setup_source().contains("pty::open_record(&pool, &root, &app.package_info().version.to_string())"),
             "인스턴스 기록을 안 연다 — 다른 빌드가 이 실행의 셸 자손을 출처 불명으로 본다"
         );
     }
@@ -471,7 +472,7 @@ mod tests {
     #[test]
     fn the_ended_processes_are_announced_once_the_app_comes_up() {
         assert!(
-            setup_source().contains("pty::announce_ends(app.handle().clone(), &app.state::<Arc<pty::PtyPool>>());"),
+            setup_source().contains("pty::announce_ends(app.handle().clone(), &pool);"),
             "셸 스스로 끝남의 알림을 안 건다 — 셸이 스스로 끝나며 띄운 것을 끝내도 토스트가 안 선다"
         );
     }
@@ -482,6 +483,42 @@ mod tests {
     // 고정 접두사도, `chrono`로 잰 값도 `SystemTime`이라는 토큰을 안 쓴다. 두 접두사가 갈리는
     // 것은 이제 `shells.rs`의 `a_sweep_keeps_the_file_a_live_shell_is_named_with`가 **값으로**
     // 잰다 — 진짜 셸 ID로 이름 지은 파일이 진짜 접두사의 쓸기에서 살아남는가.
+
+    /// **셋업이 건네는 풀이 앱에 건 바로 그 풀이다.** 명령은 앱에 건 풀을 `State`로 찾고, 셋업은 도는 명령의 감시 · 셸 스스로
+    /// 끝남의 알림 · 인스턴스 기록 · 시작 정리 · 배경 표본에 풀을 건넨다. 둘이 다른 풀이면 조용하다 — 셸은 명령의 풀에서 뜨고
+    /// 닫히는데, 그 키는 연 적 없는 기록에 오르고 감시는 빈 풀을 잰다. 그래서 풀은 `run`에 하나뿐이고(빌더 앞), 앱에 그것을 걸고,
+    /// 셋업은 앱에서 다시 찾지 않는다. `manage`가 빠지면 명령이 부를 때마다 `state not managed`로 거절되는데 L3는 고정 표가 답해
+    /// 못 본다. 셋업은 헤드리스로 못 돌리니 자리로 잰다.
+    #[test]
+    fn the_setup_hands_on_the_pool_the_app_manages() {
+        let run = run_source();
+        assert_eq!(run.matches("PtyPool::default()").count(), 1, "풀을 둘 세운다 — 셋업과 명령이 다른 풀을 본다");
+        let made = run.find("let pool = Arc::new(pty::PtyPool::default());").expect("풀을 빌더 앞에서 한 번 세우지 않는다");
+        let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
+        assert!(made < builder, "풀({made})을 빌더({builder}) 뒤에서 세운다");
+        assert!(
+            run.contains(".manage(Arc::clone(&pool))"),
+            "셋업이 건네는 풀을 앱에 안 건다 — 명령이 부를 때마다 거절되거나 다른 풀을 본다"
+        );
+        assert!(!setup_source().contains("PtyPool>>()"), "셋업이 앱에서 풀을 다시 찾는다 — 빌더 앞의 풀을 건네라");
+    }
+
+    /// `run`의 본문(주석 줄 없이). 자르는 까닭은 `setup_source`와 같다.
+    fn run_source() -> String {
+        let src = include_str!("lib.rs");
+        let body = src
+            .split_once("pub fn run() {")
+            .expect("`run`이 있다")
+            .1
+            .split_once("#[cfg(test)]")
+            .expect("테스트 모듈의 머리")
+            .0;
+        assert!(
+            !body.contains("mod tests"),
+            "잘라 낸 자리가 테스트 모듈까지 삼켰다 — 소스 스캔이 제 문자열을 읽고 통과한다"
+        );
+        without_comment_lines(body)
+    }
 
     /// `setup` 클로저의 본문. 소스 스캔이 **테스트 모듈까지 흘러가면 제 문자열을 읽고 스스로
     /// 통과하므로**(pty.rs의 `body_of`가 같은 자리를 막는다) 자르는 자리를 한 곳에 둔다.
@@ -670,10 +707,7 @@ mod tests {
     /// 몫을 영영 모른다.
     #[test]
     fn the_startup_report_has_a_holder_when_the_app_comes_up() {
-        let src = include_str!("lib.rs");
-        let run = without_comment_lines(
-            src.split_once("pub fn run() {").expect("`run`이 있다").1.split_once("#[cfg(test)]").expect("테스트 모듈의 머리").0,
-        );
+        let run = run_source();
         let holder = run.find("let report = Arc::new(startup::ReportHolder::default());").expect("시작 보고의 자리를 안 세운다");
         let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
         for (chore, what) in [("let cleanup = report.chore();", "시작 정리"), ("let hook_sync = report.chore();", "훅 맞춤")] {
@@ -716,7 +750,7 @@ mod tests {
         let setup = setup_source();
         let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
         let cleaned = setup
-            .find("startup::clean_up(cleanup, Arc::clone(&app.state::<Arc<pty::PtyPool>>()));")
+            .find("startup::clean_up(cleanup, Arc::clone(&pool));")
             .expect("셋업이 시작 정리를 위에서 센 몫으로 안 부른다 — 지난 실행의 고아가 안 치워지거나 보고가 그것을 안 기다린다");
         assert!(opened < cleaned, "시작 정리({cleaned})가 기록을 열기({opened}) 전에 돈다 — 남의 기록을 못 읽는다");
     }
@@ -729,7 +763,7 @@ mod tests {
         let setup = setup_source();
         let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
         let sampled = setup
-            .find("pty::sample_in_background(Arc::clone(&app.state::<Arc<pty::PtyPool>>()));")
+            .find("pty::sample_in_background(Arc::clone(&pool));")
             .expect("셋업이 배경 표본을 안 건다 — 화면이 닫혀 있으면 nav 메타의 합계가 안 바뀐다");
         assert!(opened < sampled, "배경 표본({sampled})이 기록을 열기({opened}) 전에 걸린다 — 첫 장이 남의 셸 자손을 출처 불명으로 본다");
         assert_eq!(setup.matches("pty::sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
@@ -743,7 +777,7 @@ mod tests {
     fn the_web_content_is_asked_for_before_the_background_sample_starts() {
         let setup = setup_source();
         let asked = setup
-            .find("pty::ask_web_content_with(&app.state::<Arc<pty::PtyPool>>(), move || webview::content_pid(&asker));")
+            .find("pty::ask_web_content_with(&pool, move || webview::content_pid(&asker));")
             .expect("셋업이 웹뷰에게 WebContent를 물을 길을 안 건다 — 앱 본체가 늘 「웹뷰 제외」다");
         let sampled = setup.find("pty::sample_in_background(").expect("배경 표본을 건다");
         assert!(asked < sampled, "물을 길({asked})이 배경 표본({sampled}) 뒤에 걸린다 — 첫 장이 웹뷰 없이 선다");
