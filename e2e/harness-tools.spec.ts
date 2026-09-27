@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./evidence";
 import { answerByArg, FIXTURE_COMMANDS, PROJECTS, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
 import {
+  askBackendSettled,
   callCount,
   callsSinceRelease,
   fireEvent,
@@ -285,29 +286,9 @@ test("(2) 놓기 전에 같은 커맨드를 다시 붙잡으면 던지고 앞 �
 });
 
 // ─── (3) 인자별 답 · (4) 답 바꾸기 ───
-
-/**
- * 브라우저 안에서 IPC를 한 번 부르고 **답이든 거절이든 그대로 들고 나온다**(`mode-fail-closed.spec.ts`의
- * `ask`와 같은 모양). 앱을 거치지 않는 것은 재는 것이 하네스의 답이라서다 — 앱의 어느 화면이 그 커맨드를
- * 어떤 인자로 부르는지는 뒤 장들이 바꾼다.
- */
-async function ask(page: Page, cmd: string, args: Record<string, unknown>) {
-  return page.evaluate(
-    async ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) => {
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
-        }
-      ).__TAURI_INTERNALS__;
-      try {
-        return { answer: await internals.invoke(cmd, args), error: null as string | null };
-      } catch (error) {
-        return { answer: null as unknown, error: String(error) };
-      }
-    },
-    { cmd, args },
-  );
-}
+//
+// 답은 앱을 거치지 않고 IPC 입구로 곧바로 묻는다(`askBackendSettled`). 재는 것이 하네스의 답이라서다 — 앱의 어느 화면이 그 커맨드를
+// 어떤 인자로 부르는지는 뒤 장들이 바꾼다.
 
 test("(3) 같은 커맨드를 인자 둘로 부르면 인자마다 다른 답이 온다 — 수 인자도 가르고, 맞는 답이 없으면 기본 답", async ({
   page,
@@ -323,10 +304,10 @@ test("(3) 같은 커맨드를 인자 둘로 부르면 인자마다 다른 답이
   });
   await openProject(page);
 
-  expect(await ask(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });
-  expect(await ask(page, "pty_close_check", { id: 2 })).toEqual({ answer: null, error: null });
+  expect(await askBackendSettled(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });
+  expect(await askBackendSettled(page, "pty_close_check", { id: 2 })).toEqual({ answer: null, error: null });
   // 맞는 답이 없으면 그 커맨드의 기본 답 — 이름 표의 값이다.
-  expect(await ask(page, "pty_close_check", { id: 3 })).toEqual({
+  expect(await askBackendSettled(page, "pty_close_check", { id: 3 })).toEqual({
     answer: FIXTURE_COMMANDS.pty_close_check,
     error: null,
   });
@@ -335,7 +316,7 @@ test("(3) 같은 커맨드를 인자 둘로 부르면 인자마다 다른 답이
   );
 
   // 인자가 아예 없으면 문다 — 인자 이름이 바뀐 것이다. 기본 답으로 떨어지면 그 개명이 조용히 초록이다.
-  expect((await ask(page, "pty_close_check", {})).error).toContain("pty_close_check");
+  expect((await askBackendSettled(page, "pty_close_check", {})).error).toContain("pty_close_check");
   expect(await unknownIpcCalls(page)).toEqual(["pty_close_check"]);
 });
 
@@ -367,10 +348,10 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   await expect(workRow(page, pinnedWork.slug)).toBeVisible();
 
   // 한 모드만 갈았다 — 저쪽 세계의 답은 그대로다.
-  expect(await ask(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
+  expect(await askBackendSettled(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
   // 이름 표의 커맨드는 이름으로 간다.
   await replaceAnswer(page, "pty_close_check", QUIET_SHELL);
-  expect(await ask(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });
+  expect(await askBackendSettled(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "./evidence";
+import { expect, test } from "./evidence";
 import { FIXTURE_BY_MODE, ROOMS } from "./fixtures";
-import { installFixtureBackend, unknownIpcCalls } from "./harness";
+import { askBackendSettled, installFixtureBackend, unknownIpcCalls } from "./harness";
 
 // **이 층의 백엔드는 픽스처 표다.** 실물은 `mode`를 필수로 받아 빠뜨린 호출을 거절하지만
 // (#187 — 다리 계약 테스트가 L1에서 잰다) 그 거절은 여기까지 안 온다: L3에서 답하는 것은
@@ -24,29 +24,6 @@ const [ROOM_DOC] = room.specFiles;
  */
 const UNKNOWN_MODE = "masion";
 
-/**
- * 브라우저 안에서 IPC를 한 번 부르고 **답이든 거절이든 그대로 들고 나온다.** 거절을
- * `page.evaluate` 밖으로 던지게 두면 테스트가 그 자리에서 죽어, 「물렸다」와 「엉뚱한 데서
- * 터졌다」가 갈리지 않는다.
- */
-async function ask(page: Page, cmd: string, args: Record<string, unknown>) {
-  return page.evaluate(
-    async ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) => {
-      const internals = (
-        window as unknown as {
-          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
-        }
-      ).__TAURI_INTERNALS__;
-      try {
-        return { answer: await internals.invoke(cmd, args), error: null as string | null };
-      } catch (error) {
-        return { answer: null as unknown, error: String(error) };
-      }
-    },
-    { cmd, args },
-  );
-}
-
 test("모드로 갈리는 커맨드는 mode가 없거나 모르는 값이면 답을 못 받는다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/maison/rooms/${room.slug}`);
@@ -58,7 +35,7 @@ test("모드로 갈리는 커맨드는 mode가 없거나 모르는 값이면 답
   // **대조군이 먼저다.** 아래가 전부 거절이므로, 하네스가 그냥 다 던지고 있어도 이 파일은
   // 초록이 된다 — 그때 이 검사는 아무것도 안 재는 것이다. 아는 세계로 물으면 그 세계의 답이
   // 온다는 것을 여기서 못 박는다.
-  expect(await ask(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
+  expect(await askBackendSettled(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
 
   // **표를 그대로 훑는다** — 줄이 늘면 이 검사가 저절로 그것도 본다. 손으로 적은 목록은
   // 새로 옮겨 온 커맨드를 조용히 빼놓는다(그 실패가 이 파일이 막으려는 것과 같은 종류다).
@@ -70,9 +47,9 @@ test("모드로 갈리는 커맨드는 mode가 없거나 모르는 값이면 답
   const commands = Object.keys(FIXTURE_BY_MODE);
   expect(commands.length, "모드로 갈리는 표가 비었다 — 이 검사가 읽는 표가 맞나").toBeGreaterThan(0);
   for (const cmd of commands) {
-    expect((await ask(page, cmd, {})).error, `${cmd}: mode가 없는데 답이 왔다`).toContain(cmd);
+    expect((await askBackendSettled(page, cmd, {})).error, `${cmd}: mode가 없는데 답이 왔다`).toContain(cmd);
     expect(
-      (await ask(page, cmd, { mode: UNKNOWN_MODE })).error,
+      (await askBackendSettled(page, cmd, { mode: UNKNOWN_MODE })).error,
       `${cmd}: 모르는 세계인데 답이 왔다`,
     ).toContain(cmd);
   }

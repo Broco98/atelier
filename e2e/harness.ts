@@ -491,6 +491,33 @@ export async function askBackend(
   );
 }
 
+/**
+ * `askBackend`처럼 IPC 입구로 한 번 묻되, **답이든 거절이든 그대로 들고 나온다** — 거절은 `error`에 문자열로 싣는다. 거절을
+ * `page.evaluate` 밖으로 던지게 두면 검사가 그 자리에서 죽어, 「하네스가 물었다」와 「엉뚱한 데서 터졌다」가 갈리지 않는다.
+ * 하네스의 답과 물림을 재는 자리(`mode-fail-closed.spec.ts` · `harness-tools.spec.ts`)가 딛는다.
+ */
+export async function askBackendSettled(
+  page: Page,
+  cmd: string,
+  args: Record<string, unknown>,
+): Promise<{ answer: unknown; error: string | null }> {
+  return page.evaluate(
+    async ({ cmd, args }: { cmd: string; args: Record<string, unknown> }) => {
+      const internals = (
+        window as unknown as {
+          __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__;
+      try {
+        return { answer: await internals.invoke(cmd, args), error: null as string | null };
+      } catch (error) {
+        return { answer: null as unknown, error: String(error) };
+      }
+    },
+    { cmd, args },
+  );
+}
+
 /** 화이트리스트 밖으로 새어 나간 호출. 비어 있지 않으면 하네스가 낡은 것이다. */
 export async function unknownIpcCalls(page: Page): Promise<string[]> {
   return (await readIpcRecord(page))?.unknown ?? [];
