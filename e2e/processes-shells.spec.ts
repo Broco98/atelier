@@ -225,12 +225,17 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
   await page.clock.runFor(100);
   await expect(dialog).toHaveCount(0);
   expect(await callCount(page, "pty_kill")).toBe(0);
+  // 취소한 셸은 그대로 선다.
+  await expect(셸줄(offscreen, 7)).toBeVisible();
   await 버튼(셸줄(offscreen, 7), "닫기").click();
   await 버튼(dialog, "닫기").click();
   // 스냅샷의 pty id로 닫는다. 까닭은 「셸 닫기」, 주인은 없다 — 스토어의 칸이 없어 모른다.
   await expect.poll(() => kills(page)).toEqual([{ id: 7, reason: "shellClose", owner: null }]);
   await page.clock.runFor(100);
   await expect(dialog).toHaveCount(0);
+  // **닫은 줄은 곧바로 빠진다** — 스냅샷은 다음 박자까지 앞 장이라 풀에 7이 남아 있다(시계가 멈춰 박자가 안 왔다). 앵커: 9는 선다.
+  await expect(셸줄(offscreen, 7)).toHaveCount(0);
+  await expect(셸줄(offscreen, 9)).toBeVisible();
 
   // ── [닫기]: 조용한 셸 ── 묻지 않고 닫는다.
   await 버튼(셸줄(offscreen, 9), "닫기").click();
@@ -242,6 +247,13 @@ test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면
     ]);
   await expect(dialog).toHaveCount(0);
   expect((await ipcCallArgs(page, "pty_close_check", "id")).map(({ args }) => args.id)).toEqual([7, 7, 9]);
+  await expect(offscreen).toHaveCount(0);
+
+  // 풀에서 빠진 뒤의 박자에도 안 선다 — 닫은 것을 잊어도(풀에 없으니) 다시 설 셸이 없다.
+  await replaceAnswer(page, "processes_snapshot", 스냅샷([]));
+  await 다음박자(page);
+  await 다음박자(page);
+  await expect(offscreen).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

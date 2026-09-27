@@ -12,6 +12,7 @@ import {
   offscreenShells,
   ownerlessGroupRowLabel,
   ownerlessGroups,
+  poolKey,
   shellRowLabel,
   shellStateOf,
   shellTotals,
@@ -560,6 +561,28 @@ describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지�
   it("앞 박자에 스토어가 몰랐어도 지금 알면 화면 밖 셸이 아니다", () => {
     const pool = [풀(4, "G-4")];
     expect(offscreenShells({ shells: [칸(4, "G-4")], snapshot: 스냅샷(pool), previous: { pool, shells: [] } })).toEqual([]);
+  });
+
+  // **화면 밖 셸의 [닫기]로 닫은 셸은 곧바로 안 선다**(티켓 32의 남은 것) — 스토어가 모르는 셸이라 스토어에서 뺄 칸이 없고, 스냅샷은
+  // 다음 박자까지 앞 장이라 그 셸이 풀에 남는다. 화면이 닫은 셸(pty id · 셸 키)을 넘기면 그것은 가린다.
+  it("화면이 닫은 셸은 풀에 남아 있어도 화면 밖 셸로 안 선다", () => {
+    const pool = [풀(4, "G-4"), 풀(5, "G-5")];
+    const found = offscreenShells({
+      shells: [],
+      snapshot: 스냅샷(pool),
+      previous: { pool, shells: [] },
+      closed: new Set([poolKey(풀(4, "G-4"))]),
+    });
+    // 앵커: 닫지 않은 5는 선다.
+    expect(found.map((node) => node.pool.shellKey)).toEqual(["G-5"]);
+    // pty id와 셸 키가 함께 같아야 같은 셸이다 — 같은 키의 다른 pty는 가리지 않는다.
+    const other = offscreenShells({
+      shells: [],
+      snapshot: 스냅샷(pool),
+      previous: { pool, shells: [] },
+      closed: new Set([poolKey(풀(9, "G-4"))]),
+    });
+    expect(other.map((node) => node.pool.shellKey)).toEqual(["G-4", "G-5"]);
   });
 
   // 셸은 pty id와 셸 키가 함께 같아야 같은 셸이다 — 키만 보면 같은 키의 셸이 닫혔다 다시 뜬 것을(다른 pty id) 두 박자에 선 것으로

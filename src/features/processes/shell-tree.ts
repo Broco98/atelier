@@ -163,6 +163,11 @@ export interface OffscreenInput {
   snapshot: ProcessSnapshot;
   /** 바로 앞 박자. 아직 없으면(화면을 막 열었다) 화면 밖 셸도 없다. */
   previous: PoolBeat | undefined;
+  /**
+   * 이 화면의 [닫기]로 닫은 화면 밖 셸(`poolKey`). 풀에 남아 있어도 가린다 — 스토어가 모르는 셸이라 스토어에서 뺄 칸이 없고, 스냅샷은
+   * 다음 박자까지 앞 장이다. 화면이 풀에서 빠진 것을 잊는다(`ProcessesPage`).
+   */
+  closed?: ReadonlySet<string>;
 }
 
 /**
@@ -179,14 +184,17 @@ export interface OffscreenInput {
  * 앞 박자의 스토어는 **그 박자를 처음 그린 때의 것**이다(`PoolBeat` — 화면이 적어 둔다). 끝난 칸 · 주인 잃은 셸도 스토어가 아는
  * 셸이다(키가 칸에 있다).
  *
+ * **이 화면의 [닫기]로 닫은 셸은 곧바로 안 선다**(`closed`) — 스토어의 셸을 닫을 때 스토어가 칸을 곧바로 빼는 것(위 「닫는 쪽」)과 같은
+ * 뜻이다. 화면 밖 셸은 스토어에 칸이 없어 화면이 닫은 것을 따로 든다.
+ *
  * **pty id와 셸 키가 함께 같아야 같은 셸이다** — 키만 보면 닫혔다 다시 뜬 셸을 두 박자에 선 것으로 읽는다.
  */
-export function offscreenShells({ shells, snapshot, previous }: OffscreenInput): OffscreenNode[] {
+export function offscreenShells({ shells, snapshot, previous, closed }: OffscreenInput): OffscreenNode[] {
   if (previous === undefined) return [];
   const before = new Set(unknownPool(previous).map(poolKey));
   const helpers = new Set(snapshot.verdict.helpers.map(identityKey));
   return unknownPool({ pool: snapshot.pool, shells })
-    .filter((pool) => before.has(poolKey(pool)))
+    .filter((pool) => before.has(poolKey(pool)) && !closed?.has(poolKey(pool)))
     .map((pool) => ({ pool, ...splitRows(snapshot.verdict.descendants[pool.shellKey] ?? [], helpers) }));
 }
 

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
@@ -87,10 +87,11 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   useSeeWhileLooking(shown);
 
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
+  const [closedOffscreen, markOffscreenClosed] = useClosedOffscreen(snapshot?.pool);
 
   const tree = snapshot ? shellTree({ current: mode, shells, lists, snapshot }) : [];
   const ownerless = snapshot ? ownerlessGroups({ current: mode, shells, snapshot }) : [];
-  const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous }) : [];
+  const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous, closed: closedOffscreen }) : [];
   // **경과의 지금은 스냅샷이 도착한 때다**(`dataUpdatedAt`). 박자(2초)마다 새 값이라 경과가 그만큼씩 늙는다 — 따로 시계를 켜지
   // 않는다. 박자가 멎으면(창이 가려짐) 경과도 멎는데, 그동안은 아무도 안 본다.
   const now = dataUpdatedAt;
@@ -185,7 +186,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
           {offscreen.length > 0 && (
             // **화면 밖 셸**(프로세스 스펙 S42 · 티켓 32) — 풀에는 있는데 화면이 모르는 셸. 새로고침 중에 끝난 spawn이 남길 수 있다
             // (추정). 스토어의 칸이 없어 이름도 주인도 모른다 — 「셸」로 서고 자손은 셸 키로 잇는다. [닫기]는 셸 탭의 ×와 같은 규칙으로 묻는다
-            // (`closeOffscreenShell`). `●`를 안 켠다.
+            // (`closeOffscreenShell`). 닫은 줄은 곧바로 빠진다(`useClosedOffscreen`). `●`를 안 켠다.
             <Section title="화면 밖 셸" note={shellCount(offscreen.length)}>
               <div role="tree" aria-label="화면 밖 셸" className="flex flex-col gap-0.5">
                 {offscreen.map((node) => (
@@ -197,7 +198,9 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
                     state={offscreenStateOf(node)}
                     label={offscreenRowLabel(node, now)}
                     now={now}
-                    onClose={() => void closeOffscreenShell(node.pool.ptyId)}
+                    onClose={() =>
+                      void closeOffscreenShell(node.pool.ptyId).then((closed) => closed && markOffscreenClosed(node.pool))
+                    }
                   />
                 ))}
               </div>
@@ -252,6 +255,24 @@ function usePreviousBeat(
     return seen.current;
   }
   return seen.previous;
+}
+
+/**
+ * **이 화면의 [닫기]로 닫은 화면 밖 셸**(`poolKey`) — 풀에서 빠질 때까지 화면 밖 셸에서 가린다(`offscreenShells`의 `closed`). 스토어의
+ * 셸은 닫으면 스토어가 칸을 곧바로 빼 다음 스냅샷 전에도 안 서는데(`usePreviousBeat`), 화면 밖 셸은 스토어에 칸이 없어 이 화면이 든다.
+ * 스냅샷은 다음 박자(2초)까지 앞 장이라 풀에 그 셸이 남아 있다.
+ *
+ * 풀에서 빠진 셸은 잊는다 — 새 스냅샷을 본 렌더에서 고친다(렌더 중 상태 갱신 — `usePreviousBeat`와 같은 수법). 닫기가 풀에서 못 뺀
+ * 셸(닫기 IPC가 거절됐다)은 풀에 남는 동안 가려진다 — 스토어의 셸이 닫기 뒤 탭 줄에서 빠지는 것과 같다.
+ */
+function useClosedOffscreen(pool: ReadonlyArray<PoolShell> | undefined): [ReadonlySet<string>, (shell: PoolShell) => void] {
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
+  if (pool !== undefined && closed.size > 0) {
+    const pooled = new Set(pool.map(poolKey));
+    if ([...closed].some((key) => !pooled.has(key))) setClosed(new Set([...closed].filter((key) => pooled.has(key))));
+  }
+  const markClosed = useCallback((shell: PoolShell) => setClosed((was) => new Set(was).add(poolKey(shell))), []);
+  return [closed, markClosed];
 }
 
 /**

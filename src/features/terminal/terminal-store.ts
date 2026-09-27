@@ -1084,13 +1084,17 @@ const NO_QUIET_TOAST_ID = "processes:no-quiet";
  * 못 얻으면 안 묻는다 — 사람이 고른 닫기를 모르는 것을 이유로 막지 않는다(`needsCloseConfirm`과 같다).
  *
  * 까닭은 「셸 닫기」이고 주인은 없다(`null`) — 사람이 누른 닫기라 `●`를 켜지 않는다.
+ *
+ * **닫았는지를 돌려준다**(창에서 취소하면 거짓) — 이 스토어에는 뺄 칸이 없어, 화면이 닫은 셸을 스스로 가린다(`Processes`의 화면 밖
+ * 셸 — 스냅샷은 다음 박자까지 앞 장이다).
  */
-export async function closeOffscreenShell(ptyId: number): Promise<void> {
+export async function closeOffscreenShell(ptyId: number): Promise<boolean> {
   const check = await terminalApi.closeCheck(ptyId).catch(() => null);
   if (check && asksBeforeClose(check)) {
-    if (!(await askDialog({ title: "셸 닫기", body: closeNotice(check), confirm: "닫기", danger: true }))) return;
+    if (!(await askDialog({ title: "셸 닫기", body: closeNotice(check), confirm: "닫기", danger: true }))) return false;
   }
   killPty(ptyId, "offscreen", null);
+  return true;
 }
 
 /**
