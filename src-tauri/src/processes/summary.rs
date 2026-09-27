@@ -181,7 +181,7 @@ impl WebContent {
     /// 이 자리는 커널을 안 읽는다.
     pub fn identity(&self, identify: impl Fn(u32) -> Option<Identity>) -> Option<Identity> {
         let asked = self.ask.get()?();
-        let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+        let mut last = lock(&self.last);
         if let Asked::Answered(pid) = asked {
             *last = pid.and_then(identify);
         }
@@ -210,7 +210,7 @@ impl Default for Background {
     }
 }
 
-/// 잠금이 오염됐으면 안을 꺼내 이어 간다 — 잃어도 요약 한 장 · 추이 한 점 · CPU 한 박자다.
+/// 잠금이 오염됐으면 안을 꺼내 이어 간다 — 잃어도 요약 한 장 · 추이 한 점 · CPU 한 박자 · 마지막으로 안 WebContent다.
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
 }
