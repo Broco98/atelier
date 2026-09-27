@@ -512,11 +512,20 @@ function closeShell(id: number, path: ClosePath): void {
  */
 export async function requestCloseShell(id: number): Promise<void> {
   const shell = terminalStore.state.shells.find((one) => one.id === id);
-  // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
-  // 앱 밖의 일처럼 읽힌다. 문구는 `closeNotice`가 든다(결정 105 · 프로세스 스펙 P6).
-  const ask = (body: string) => askDialog({ title: "셸 닫기", body, confirm: "닫기", danger: true });
-  if (!(await confirmClose(shell, await fetchCloseCheck(id), ask))) return;
+  if (!(await confirmClose(shell, await fetchCloseCheck(id), shellCloseDialog))) return;
   closeShell(id, "person");
+}
+
+/**
+ * 셸 **하나**를 닫기 전에 묻는 창(결정 92 · 105). 셸 탭의 `×` · ⌘W(`requestCloseShell`)와 `Processes`의 화면 밖 셸
+ * [닫기](`closeOffscreenShell`)가 같은 창으로 묻는다 — 창 모양이 두 벌이면 한쪽만 늙는다(코드 리뷰 표준 43). 본문은 부르는
+ * 쪽이 판정과 함께 넘긴다(`closeNotice` — 결정 105 · 프로세스 스펙 P6).
+ *
+ * **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이 앱 밖의 일처럼 읽힌다. 셸 여럿을 한 번에
+ * 닫는 창(주인 잃은 셸 · 조용한 셸)은 제목과 버튼이 다르다 — 이것을 안 쓴다.
+ */
+function shellCloseDialog(body: string): Promise<boolean> {
+  return askDialog({ title: "셸 닫기", body, confirm: "닫기", danger: true });
 }
 
 /**
@@ -1080,7 +1089,8 @@ const NO_QUIET_TOAST_ID = "processes:no-quiet";
 /**
  * 화면 밖 셸의 [닫기](티켓 32 · 프로세스 스펙 S42) — 풀에는 있는데 이 스토어가 모르는 셸이다. 칸이 없어 `closeShell`을
  * 못 지난다: 스냅샷이 준 pty id를 그대로 닫는다. **묻는 규칙은 셸 탭의 ×와 같다** — 닫기 직전에 그 셸 하나를 물어
- * (`pty_close_check`) 명령이 돌거나 함께 끝날 것이 있으면 같은 창으로 묻는다(`asksBeforeClose` · `closeNotice`).
+ * (`pty_close_check`) 명령이 돌거나 함께 끝날 것이 있으면 같은 창으로 묻는다(`asksBeforeClose` · `closeNotice` · `shellCloseDialog`).
+ * `confirmClose`는 안 딛는다 — 그 판정은 칸을 받아(`needsCloseConfirm`) 칸이 없으면 안 묻는다.
  * 못 얻으면 안 묻는다 — 사람이 고른 닫기를 모르는 것을 이유로 막지 않는다(`needsCloseConfirm`과 같다).
  *
  * 까닭은 「셸 닫기」이고 주인은 없다(`null`) — 사람이 누른 닫기라 `●`를 켜지 않는다.
@@ -1091,7 +1101,7 @@ const NO_QUIET_TOAST_ID = "processes:no-quiet";
 export async function closeOffscreenShell(ptyId: number): Promise<boolean> {
   const check = await terminalApi.closeCheck(ptyId).catch(() => null);
   if (check && asksBeforeClose(check)) {
-    if (!(await askDialog({ title: "셸 닫기", body: closeNotice(check), confirm: "닫기", danger: true }))) return false;
+    if (!(await shellCloseDialog(closeNotice(check)))) return false;
   }
   killPty(ptyId, "offscreen", null);
   return true;

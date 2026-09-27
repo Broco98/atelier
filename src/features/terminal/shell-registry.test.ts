@@ -1827,7 +1827,7 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     expect(store).toContain("function closeShell(id: number, path: ClosePath): void {");
     // 확인을 마친 뒤. `!`가 빠지거나 `confirmClose`가 통째로 사라지면 여기가 빨개진다.
     expect(store).toContain(
-      "if (!(await confirmClose(shell, await fetchCloseCheck(id), ask))) return;",
+      "if (!(await confirmClose(shell, await fetchCloseCheck(id), shellCloseDialog))) return;",
     );
     // 아카이빙 회수. 그 길에는 사람이 이미 한 번 확인했다(결정 26의 순서).
     expect(store).toContain(
