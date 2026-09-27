@@ -12,6 +12,7 @@ import {
   openShell,
   typeIntoShell,
   unknownIpcCalls,
+  두세계에셸을띄운다,
   셸입력,
 } from "./harness";
 import type { ProcessRow, ProcessSnapshot } from "@/features/processes/types";
@@ -117,31 +118,6 @@ function 스냅샷(ptys: number[], withTree = true): ProcessSnapshot {
     },
     pool: [...ptys, 99].map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs, metrics: NO_METRICS })),
   };
-}
-
-/**
- * 두 세계에 셸을 띄운다 — `그냥 일`에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4). 저절로 뜬
- * 셸은 입력 없이 화면을 떠나면 닫히므로(프로세스 결정 7) 한 글자씩 친다. 화면 이동은 앱 안에서 한다 — 주소로 다시 열면 스토어가
- * 비워진다.
- */
-async function 두세계에셸을띄운다(page: Page): Promise<void> {
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-  await openShell(page);
-
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  await modeButton(page, "Maison").click();
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/maison/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
 }
 
 test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 · 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {

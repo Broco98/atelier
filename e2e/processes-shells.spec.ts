@@ -8,13 +8,13 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   kills,
-  modeButton,
   navButton,
   openShell,
   processesTitle,
   replaceAnswer,
   typeIntoShell,
   unknownIpcCalls,
+  두세계에셸을띄운다,
   시계를세운다,
 } from "./harness";
 import { eventLabel } from "@/features/processes/cleanup-log";
@@ -494,30 +494,6 @@ test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 
   await expect(사건들.first()).toHaveAttribute("aria-expanded", "false");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-/**
- * 두 세계에 셸을 띄운다 — `그냥 일`에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4). 저절로 뜬
- * 셸은 입력 없이 화면을 떠나면 닫히므로 한 글자씩 친다(`processes-tree.spec.ts`와 같다).
- */
-async function 두세계에셸을띄운다(page: Page): Promise<void> {
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-  await openShell(page);
-
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  await modeButton(page, "Maison").click();
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/maison/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-}
 
 test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한 번 묻고 닫는다 — 자손이 있는 셸 · 답이 없는 셸은 세지도 닫지도 않는다", async ({
   page,

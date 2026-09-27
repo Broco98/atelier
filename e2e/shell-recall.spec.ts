@@ -18,6 +18,8 @@ import {
   띠,
   레인,
   셸입력,
+  이름표,
+  칸들,
 } from "./harness";
 
 // 프로세스 티켓 23 — **단축키 하나로 방금 부른 셸로 간다**(프로세스 결정 16 · 프로세스 스펙 S34 · S59 · P3 ⌘J).
@@ -35,9 +37,6 @@ import {
 
 const [, plainWork] = WORKS;
 
-const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
-/** 칸의 이름 버튼 — 켜짐(`aria-pressed`)이 서는 자리다. */
-const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 const 토스트자리 = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
 const 닫힌셸토스트 = (page: Page) => 토스트자리(page).getByRole("dialog", { name: "그 셸은 닫혔어요", exact: true });

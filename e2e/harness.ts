@@ -15,6 +15,7 @@ import {
   FIXTURE_SHELL_NAME,
   type Incrementing,
   type ModeAnswer,
+  WORKS,
 } from "./fixtures";
 import type { WorkView } from "@/features/works/types";
 import type { Mode } from "@/mode";
@@ -1073,6 +1074,54 @@ export async function typeIntoShell(page: Page): Promise<void> {
   await expect
     .poll(() => callCount(page, "pty_first_input"), { message: "친 키가 사람 입력으로 안 적혔다" })
     .toBe(before + 1);
+}
+
+/** 탭 줄의 셸 칸들, 왼쪽부터. */
+export const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
+
+/**
+ * 그 셸 칸의 이름 버튼 — 켜짐(`aria-pressed`)과 툴팁이 서는 자리다. 싣는 이름에 도는 것 · 상태까지 실리고(`ShellTabs`의
+ * `spokenName`), 툴팁은 앱의 것(`Hint`)이라 그 글자는 이 버튼의 설명(`aria-description`)으로도 남는다(`sidebar-active-band` S28).
+ */
+export const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
+
+/**
+ * `그냥 일`(`WORKS[1]`)의 터미널 탭에 칸 둘을 세우고 **첫째를 켠다** — 말하는 것은 둘째(pty 2, `openShell` 머리말)다. 켠 칸에 온
+ * 확인할 것은 그 순간 「봤다」가 되어(terminal-activity-signal 결정 7) 띠에 안 서므로, 보는 셸과 부르는 셸을 가른다. 픽스처
+ * 백엔드는 덮어쓰기 없이 여기서 깐다 — 시계를 쓰는 검사는 그 전에 `page.clock.install()`을 건다.
+ */
+export async function 둘째가말할자리(page: Page): Promise<void> {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${WORKS[1].slug}?tab=terminal`);
+  await expect(칸들(page)).toHaveCount(1);
+  await openShell(page);
+  await 이름표(page, 0).click();
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
+}
+
+/**
+ * 두 세계에 셸을 띄운다 — `그냥 일`(`WORKS[1]`)에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4).
+ * 저절로 뜬 셸은 입력 없이 화면을 떠나면 닫히므로(프로세스 결정 7) 한 글자씩 친다. 화면 이동은 앱 안에서 한다 — 주소로 다시 열면
+ * 스토어가 비워진다. 끝나면 Maison `Terminal`에 서 있다.
+ */
+export async function 두세계에셸을띄운다(page: Page): Promise<void> {
+  await page.goto(`/works/${WORKS[1].slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await openShell(page);
+
+  await navButton(page, "Terminal").click();
+  await expect(page).toHaveURL("/terminal");
+  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+
+  await modeButton(page, "Maison").click();
+  await navButton(page, "Terminal").click();
+  await expect(page).toHaveURL("/maison/terminal");
+  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
 }
 
 /**

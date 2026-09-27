@@ -7,13 +7,14 @@ import {
   installFixtureBackend,
   markAttention,
   markRunning,
-  openShell,
   unknownIpcCalls,
   writeShell,
+  둘째가말할자리,
   띠,
   레인,
   셸입력,
   시계를세운다,
+  이름표,
 } from "./harness";
 
 // 프로세스 티켓 22 — **끊거나 에이전트가 사라지면 「도는 중」이 풀린다**(프로세스 결정 12). 판단은 L2가 표로 잰다
@@ -32,8 +33,6 @@ const [, plainWork] = WORKS;
 const ESC = "\x1b";
 const BEL = "\x07";
 
-const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
-const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 const 링 = (page: Page) => 레인(page, plainWork.slug).locator('[data-signal="working"]');
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
 
@@ -96,16 +95,6 @@ test("Esc 뒤 500ms 안에 훅이 오면 도는 중이 남는다 — 시각을 �
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
-
-/** 칸 둘을 세우고 첫째를 켠다. 말하는 것은 둘째(pty 2)다 — 켠 칸에 온 확인할 것은 그 순간 「봤다」가 된다(결정 7). */
-async function 둘째가말할자리(page: Page): Promise<void> {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await expect(칸들(page)).toHaveCount(1);
-  await openShell(page);
-  await 이름표(page, 0).click();
-  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
-}
 
 // **에이전트 사라짐**(S31). kill · 크래시 · `/exit` 어느 것이든 1초마다 오는 `pty:running`이 그 셸의 도는 명령을 바꿔 말한다.
 // 풀린 셸에서는 그 뒤의 OSC가 다시 말한다. 사라짐은 한 박자(300ms — 아래 `claude -p` 검사) 뒤에 앉아서, 링이 걷히기를

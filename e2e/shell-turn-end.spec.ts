@@ -2,12 +2,12 @@ import { expect, test, type Page } from "./evidence";
 import { WORKS } from "./fixtures";
 import {
   fireAttention,
-  installFixtureBackend,
   markAttention,
-  openShell,
   unknownIpcCalls,
+  둘째가말할자리,
   띠,
   레인,
+  이름표,
   툴팁,
   행버튼,
 } from "./harness";
@@ -23,23 +23,7 @@ import {
 
 const [, plainWork] = WORKS;
 
-const 칸들 = (page: Page) => page.locator('[data-tab="shell"]');
-/**
- * 칸의 이름 버튼 — 켜짐(`aria-pressed`)과 툴팁이 서는 자리다. 툴팁은 앱의 것(`Hint`)이라 그 글자는 이름 버튼의 설명
- * (`aria-description`)으로도 남는다(`sidebar-active-band` S28) — 「툴팁에 무엇이 섰나」를 설명으로 잰다.
- */
-const 이름표 = (page: Page, at: number) => 칸들(page).nth(at).locator("button[aria-pressed]");
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
-
-/** 칸 둘을 세우고 첫째를 켠다. 둘째가 pty 2다(`openShell` 머리말). */
-async function 둘째가말할자리(page: Page): Promise<void> {
-  await installFixtureBackend(page);
-  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
-  await expect(칸들(page)).toHaveCount(1);
-  await openShell(page);
-  await 이름표(page, 0).click();
-  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
-}
 
 // 옛 표에서 `Stop`은 「나를 기다림」이었고 보고 있어도 안 꺼졌다(기다림은 「봤다」로 안 꺼진다). 턴의 끝은 사람이
 // 답할 것이 아니라 **아직 안 본 결과**다 — 그래서 확인할 것이고, 그 셸을 보면 꺼진다.
