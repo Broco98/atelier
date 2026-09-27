@@ -342,7 +342,11 @@ fn watch_into(dir: &Path, prefix: &str, mut emit: impl FnMut(Vec<ShellAttention>
 }
 
 #[cfg(test)]
+pub(crate) mod testkit;
+
+#[cfg(test)]
 mod tests {
+    use super::testkit::{assert_quiet_success, feed, handler_command, hook_command, state_in, Launch};
     use super::*;
     use crate::processes::clock::now_ms;
 
@@ -1015,14 +1019,8 @@ mod tests {
     fn call(root: &Path, shell: &str, agent: &str, event: &str, payload: &str) -> serde_json::Value {
         let (wrote, out) = feed(spawn_handler(root, shell, agent, event), payload);
         wrote.expect("페이로드를 끝까지 쓸 수 있다 — 처리기가 stdin을 다 안 읽었다");
-        assert!(out.status.success(), "{agent} {event}: 0이 아닌 코드로 끝났다: {out:?}");
-        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{agent} {event}: 처리기가 말을 했다: {out:?}");
+        assert_quiet_success(&out, &format!("{agent} {event}"));
         state_in(root, shell)
-    }
-
-    fn state_in(root: &Path, shell: &str) -> serde_json::Value {
-        let written = std::fs::read_to_string(state_path(root, shell)).expect("그 셸의 상태 파일이 있다");
-        serde_json::from_str(&written).unwrap_or_else(|e| panic!("상태 파일이 JSON이 아니다({e}): {written}"))
     }
 
     /// 상태 파일의 서브에이전트 id — 집합이라 정렬해 견준다.
@@ -1050,8 +1048,7 @@ mod tests {
         let (wrote, out) = feed(command.into_spawned(), &big);
 
         wrote.expect("에이전트가 페이로드를 끝까지 쓸 수 있다 — 처리기가 stdin을 안 읽고 나갔다");
-        assert!(out.status.success(), "종료 코드가 0이 아니다: {:?}", out.status);
-        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "처리기가 말을 했다: {out:?}");
+        assert_quiet_success(&out, "셸 ID 없이");
         assert!(!shells_dir(&root).exists(), "셸 ID가 없는데 상태 폴더를 만들었다 — 아틀리에 밖에서 자국을 남긴다");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1116,7 +1113,7 @@ mod tests {
     }
 
     /// `ATELIER_HOME`이 없으면 데이터 루트는 `~/.atelier`다 — 앱(`atelier_core::data_root`)과 같은 자리. 검사의 `HOME`은 임시
-    /// 루트다(`hook_command`).
+    /// 루트다(`testkit::handler_call`).
     #[test]
     fn without_atelier_home_the_handler_writes_under_the_home() {
         let root = temp_root("handler-home");
@@ -1175,7 +1172,7 @@ mod tests {
         let late = call(&root, shell, "claude", "SubagentStart", &claude_subagent_start("ace905bb8e05c8931"));
         let (wrote, out) = feed(early_stop, CLAUDE_STOP);
         wrote.expect("페이로드를 끝까지 쓸 수 있다");
-        assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "이른 Stop: {out:?}");
+        assert_quiet_success(&out, "이른 Stop");
         let after = state_in(&root, shell);
         for field in ["agent", "event", "at", "payload"] {
             assert_eq!(after[field], late[field], "이른 Stop이 늦은 사건의 `{field}`를 덮었다 — 늦게 끝난 옛 사건이 이겼다");
@@ -1188,7 +1185,7 @@ mod tests {
         let late = call(&root, shell, "claude", "PostToolUse", r#"{"tool_name":"Bash","tool_response":{"stdout":"ok"}}"#);
         let (wrote, out) = feed(early_stop_of_subagent, &claude_subagent_stop("ace905bb8e05c8931"));
         wrote.expect("페이로드를 끝까지 쓸 수 있다");
-        assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "이른 SubagentStop: {out:?}");
+        assert_quiet_success(&out, "이른 SubagentStop");
         let after = state_in(&root, shell);
         for field in ["agent", "event", "at", "payload"] {
             assert_eq!(after[field], late[field], "이른 SubagentStop이 늦은 사건의 `{field}`를 덮었다");
@@ -1308,11 +1305,21 @@ mod tests {
     fn handlers_racing_on_one_shell_lose_no_subagent() {
         let root = temp_root("handler-race");
         ready_handler(&root);
-        let shell = "1700-13";
 
-        let ids: Vec<String> = (0..16).map(|n| format!("race{n:02}")).collect();
-        let waiting: Vec<std::process::Child> =
-            ids.iter().map(|_| spawn_handler(&root, shell, "claude", "SubagentStart")).collect();
+        let (left, raced) = race(&root, &handler_path(&root), "1700-13", "race");
+        assert_eq!(left, raced, "한꺼번에 돈 처리기가 서로의 접기를 지웠다 — 잠금이 안 선다");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 처리기 `handler` 열여섯 벌을 한 셸에 띄워 stdin을 쥐고 있다가 한꺼번에 놓는다 — 모두 SubagentStart이고 id는 `<prefix>00`부터
+    /// 다. 순서와 무관하게 집합은 열여섯이어야 한다. 부름마다 페이로드를 끝까지 받고 말없이 0으로 끝나는지 보고, 셸의 상태 파일에
+    /// 남은 id와 띄운 id를 돌려준다(둘 다 정렬했다).
+    fn race(root: &Path, handler: &Path, shell: &str, prefix: &str) -> (Vec<String>, Vec<String>) {
+        let ids: Vec<String> = (0..16).map(|n| format!("{prefix}{n:02}")).collect();
+        let waiting: Vec<std::process::Child> = ids
+            .iter()
+            .map(|_| handler_command(handler, root, Some(shell), &["claude", "SubagentStart"]).into_spawned())
+            .collect();
         std::thread::sleep(std::time::Duration::from_millis(200));
         let running: Vec<std::thread::JoinHandle<_>> = waiting
             .into_iter()
@@ -1322,11 +1329,9 @@ mod tests {
         for run in running {
             let (wrote, out) = run.join().unwrap();
             wrote.expect("페이로드를 끝까지 쓸 수 있다");
-            assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
+            assert_quiet_success(&out, &format!("{shell}의 SubagentStart"));
         }
-
-        assert_eq!(subagent_ids(&state_in(&root, shell)), ids, "한꺼번에 돈 처리기가 서로의 접기를 지웠다 — 잠금이 안 선다");
-        let _ = std::fs::remove_dir_all(&root);
+        (subagent_ids(&state_in(root, shell)), ids)
     }
 
     /// **잠금이 쥐여 있으면 기다렸다가 쓰고, 끝내 안 풀리면 1초 남짓에 손을 뗀다** — 5.9의 `-i` 꼴도, 그것을 모르는 zsh 5.8의
@@ -1339,8 +1344,6 @@ mod tests {
         let root = temp_root("handler-held-lock");
         ready_handler(&root);
         let handlers = [("zsh 5.9", handler_path(&root)), ("zsh 5.8 흉내", old_zsh_handler(&root, HANDLER))];
-        let quiet_success =
-            |out: &std::process::Output| out.status.success() && out.stdout.is_empty() && out.stderr.is_empty();
 
         for (n, (zsh, handler)) in handlers.iter().enumerate() {
             let shell = format!("1700-2{n}");
@@ -1355,7 +1358,7 @@ mod tests {
             let (wrote, out) = feed(child, CLAUDE_STOP);
             release.join().unwrap();
             wrote.expect("페이로드를 끝까지 쓸 수 있다");
-            assert!(quiet_success(&out), "{zsh}: {out:?}");
+            assert_quiet_success(&out, zsh);
             assert!(
                 shells_dir(&root).join(format!("{shell}.json")).exists(),
                 "{zsh}: 잠금이 300ms 만에 풀렸는데 안 썼다 — 기다리지 않고 나갔다"
@@ -1377,7 +1380,7 @@ mod tests {
             let _ = done.send(());
             release.join().unwrap();
             wrote.expect("페이로드를 끝까지 쓸 수 있다");
-            assert!(quiet_success(&out), "{zsh}: {out:?}");
+            assert_quiet_success(&out, zsh);
             assert!(took < std::time::Duration::from_secs(5), "{zsh}: 안 풀리는 잠금을 {took:?} 기다렸다 — 기다림에 끝이 없다");
             assert!(took >= std::time::Duration::from_millis(900), "{zsh}: 1초를 채우지 않고 {took:?}에 손을 뗐다");
             assert_eq!(state_in(&root, &shell)["event"], "Stop", "{zsh}: 잠금을 못 쥐고도 썼다");
@@ -1393,26 +1396,9 @@ mod tests {
         let root = temp_root("handler-race-zsh58");
         ready_handler(&root);
         let handler = old_zsh_handler(&root, HANDLER);
-        let shell = "1700-14";
 
-        let ids: Vec<String> = (0..16).map(|n| format!("old{n:02}")).collect();
-        let waiting: Vec<std::process::Child> = ids
-            .iter()
-            .map(|_| handler_command(&handler, &root, Some(shell), &["claude", "SubagentStart"]).into_spawned())
-            .collect();
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        let running: Vec<std::thread::JoinHandle<_>> = waiting
-            .into_iter()
-            .zip(ids.clone())
-            .map(|(child, id)| std::thread::spawn(move || feed(child, &claude_subagent_start(&id))))
-            .collect();
-        for run in running {
-            let (wrote, out) = run.join().unwrap();
-            wrote.expect("페이로드를 끝까지 쓸 수 있다");
-            assert!(out.status.success() && out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
-        }
-
-        assert_eq!(subagent_ids(&state_in(&root, shell)), ids, "zsh 5.8의 갈래에서 처리기가 서로의 접기를 지웠다");
+        let (left, raced) = race(&root, &handler, "1700-14", "old");
+        assert_eq!(left, raced, "zsh 5.8의 갈래에서 처리기가 서로의 접기를 지웠다");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1715,11 +1701,7 @@ mod tests {
         }
     }
 
-    /// 훅을 **에이전트가 부르는 그대로** 돌린다 — argv 둘과 파이프로 온 페이로드.
-    ///
-    /// **쓰기의 실패를 삼키지 않고 돌려준다.** 스크립트가 stdin을 안 읽고 나가면 그 실패는
-    /// 훅이 아니라 **쓰는 쪽**(에이전트)에서 `EPIPE`로 나므로, 여기서 `unwrap`으로 삼키면
-    /// 그 자리를 잴 검사가 어디에도 안 남는다.
+    /// 훅을 **에이전트가 부르는 그대로** 돌린다 — argv 둘과 파이프로 온 페이로드. 쓰기의 실패는 삼키지 않고 돌려준다(`feed`).
     fn run_hook(
         root: &Path,
         shell: Option<&str>,
@@ -1727,55 +1709,6 @@ mod tests {
         stdin: &str,
     ) -> (std::io::Result<()>, std::process::Output) {
         feed(hook_command(&script_path(root), root, shell, args).spawn().expect("스크립트가 돈다"), stdin)
-    }
-
-    /// 훅 한 장을 띄울 명령 — stdin · stdout · stderr는 파이프다. 부르는 쪽이 띄우고 `feed`로 페이로드를 준다.
-    ///
-    /// `ATELIER_SHELL`은 늘 명시한다: 검사 프로세스는 이 앱의 셸에서 떠 진짜 셸 키를 물려받았다.
-    fn hook_command(program: &Path, root: &Path, shell: Option<&str>, args: &[&str]) -> std::process::Command {
-        let mut command = std::process::Command::new(program);
-        command
-            .args(args)
-            .env("ATELIER_HOME", root)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        match shell {
-            Some(id) => command.env("ATELIER_SHELL", id),
-            None => command.env_remove("ATELIER_SHELL"),
-        };
-        command
-    }
-
-    /// 새 처리기를 띄울 명령 — `hook_command`에 **`HOME`까지 임시 루트로 옮긴다.** 새 처리기는 `ATELIER_HOME`이 없으면
-    /// `HOME` 아래로 간다 — 검사가 그 갈래를 밟을 때 진짜 홈에 쓰면 안 된다. (옛 python 검사는 `HOME`을 안 옮긴다 — macOS의
-    /// python은 `HOME/Library`에 캐시를 적어 「상태 폴더 밖에 안 쓴다」 검사가 그것을 제 자국으로 본다.)
-    fn handler_command(program: &Path, root: &Path, shell: Option<&str>, args: &[&str]) -> std::process::Command {
-        let mut command = hook_command(program, root, shell, args);
-        command.env("HOME", root);
-        command
-    }
-
-    /// 명령을 띄운다 — 못 뜨면 거기서 검사를 멈춘다(처리기 파일이 없거나 실행 권한이 없다).
-    trait Launch {
-        fn into_spawned(self) -> std::process::Child;
-    }
-
-    impl Launch for std::process::Command {
-        fn into_spawned(mut self) -> std::process::Child {
-            self.spawn().unwrap_or_else(|e| panic!("훅이 안 뜬다({e}): {self:?}"))
-        }
-    }
-
-    /// 뜬 훅에 페이로드를 다 쓰고 파이프를 닫은 뒤 끝을 기다린다.
-    fn feed(mut child: std::process::Child, stdin: &str) -> (std::io::Result<()>, std::process::Output) {
-        use std::io::Write;
-
-        let mut pipe = child.stdin.take().expect("stdin이 열려 있다");
-        let wrote = pipe.write_all(stdin.as_bytes()).and_then(|()| pipe.flush());
-        // 파이프를 닫아야 스크립트의 `read()`가 EOF를 본다 — 안 닫으면 둘이 서로를 기다린다.
-        drop(pipe);
-        (wrote, child.wait_with_output().expect("끝난다"))
     }
 
     fn files_in(dir: &Path) -> Vec<String> {

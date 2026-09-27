@@ -1406,16 +1406,17 @@ trust_level = "trusted"
             .count()
     }
 
+    /// codex 설정의 훅 한 벌 — matcher 그룹과 명령 블록(구현 결정 8의 짝), 명령줄은 `command` 그대로. 울타리 안이든 밖이든 같은
+    /// 모양이다 — 우리 구획(`codex_block_for`)이 이벤트마다 적는 글자와 같다. 옛 빌드의 구획(`old_codex_block`)은 그 판의 글자로
+    /// 얼려 두고 이것을 안 쓴다.
+    fn codex_hook(event: &str, command: &str) -> String {
+        format!("\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n", toml_basic_string(command))
+    }
+
     /// 우리 블록과 같은 모양을 **울타리 없이** 손으로 적어 둔 파일.
-    fn codex_by_hand(script: &Path) -> String {
-        let mut out = String::from(CODEX_REAL);
-        for event in CODEX_EVENTS {
-            out.push_str(&format!(
-                "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
-                toml_basic_string(&codex_command(script, event))
-            ));
-        }
-        out
+    fn codex_by_hand(handler: &Path) -> String {
+        let hooks: String = CODEX_EVENTS.iter().map(|event| codex_hook(event, &codex_command(handler, event))).collect();
+        format!("{CODEX_REAL}{hooks}")
     }
 
     /// **울타리는 있는데 우리 명령이 하나 없으면 「일부」다.** 판정 근거는 헤더 줄이 아니라
@@ -1860,28 +1861,19 @@ trust_level = "trusted"
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// 훅 한 번을 에이전트처럼 띄운다 — 셸 키 · 데이터 루트 · `HOME`을 명시하고 페이로드를 준 뒤, 처리기가 남긴 상태 파일을 읽는다.
-    /// `ATELIER_SHELL`은 늘 명시한다: 검사 프로세스는 이 앱의 셸에서 떠 진짜 셸 키를 물려받았다.
-    fn run_once(mut command: std::process::Command, root: &Path, shell: &str) -> Value {
-        use std::io::Write;
+    /// 훅 한 번을 에이전트처럼 띄운다 — 셸 키 · 데이터 루트 · `HOME`을 명시하고(`shells::testkit::handler_call` — 검사 프로세스는
+    /// 이 앱의 셸에서 떠 진짜 셸 키를 물려받았다) 페이로드를 준 뒤, 말없이 0으로 끝났는지 보고 처리기가 남긴 상태 파일을 읽는다.
+    fn run_once(command: std::process::Command, root: &Path, shell: &str) -> Value {
+        use crate::shells::testkit::{assert_quiet_success, feed, handler_call, state_in, Launch};
 
         let state = crate::shells::state_path(root, shell);
         let _ = std::fs::remove_file(&state);
-        let mut child = command
-            .env("ATELIER_SHELL", shell)
-            .env("ATELIER_HOME", root)
-            .env("HOME", root)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .unwrap_or_else(|e| panic!("훅이 안 뜬다({e}): {command:?}"));
-        child.stdin.take().expect("stdin이 열려 있다").write_all(b"{}").expect("페이로드를 준다");
-        let out = child.wait_with_output().expect("끝난다");
-        assert!(out.status.success(), "훅이 0이 아닌 코드로 끝났다: {out:?}");
-        let written = std::fs::read_to_string(&state)
-            .unwrap_or_else(|e| panic!("처리기가 상태 파일을 안 남겼다({e}) — 적어 넣은 줄로는 처리기가 안 돈다: {command:?}"));
-        serde_json::from_str(&written).expect("상태 파일이 JSON이다")
+        let what = format!("{command:?}");
+        let (wrote, out) = feed(handler_call(command, root, Some(shell)).into_spawned(), "{}");
+        wrote.expect("페이로드를 끝까지 쓸 수 있다");
+        assert_quiet_success(&out, &what);
+        assert!(state.exists(), "처리기가 상태 파일을 안 남겼다 — 적어 넣은 줄로는 처리기가 안 돈다: {what}");
+        state_in(root, shell)
     }
 
     /// **우리 훅이 하나라도 있으면 지금 목록 전부로 맞춘다**(프로세스 결정 15). 옛 다섯만 깔린 설정도, 하나만 남은 설정도 — 우리
@@ -2003,11 +1995,6 @@ trust_level = "trusted"
         assert_eq!(codex_installed(&merged, &script()), Ok(Installed::Full));
     }
 
-    /// 사람이 울타리 밖에 손으로 적어 둔 codex 훅 한 벌 — matcher 그룹과 명령 블록, 명령줄은 `command` 그대로.
-    fn codex_line_by_hand(event: &str, command: &str) -> String {
-        format!("\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n", toml_basic_string(command))
-    }
-
     /// codex 설정 한 장만 든 임시 홈.
     fn codex_home(name: &str, config: &str) -> PathBuf {
         let home = temp_home(name);
@@ -2025,12 +2012,12 @@ trust_level = "trusted"
     /// 못 고치는 「일부」다. 앱이 뜰 때의 맞춤은 쓴 것이 없어 이것을 안 돌려준다(토스트가 안 선다, S36).
     #[test]
     fn an_old_line_by_hand_outside_the_fence_is_said_on_install() {
-        let old_by_hand = |event: &str| codex_line_by_hand(event, &command_line(&old_script(), CODEX, event));
+        let old_by_hand = |event: &str| codex_hook(event, &command_line(&old_script(), CODEX, event));
         let beside_the_block = merge_codex(&format!("{CODEX_REAL}{}", old_by_hand("Stop")), &script()).unwrap();
         let old_five_by_hand: String = std::iter::once(CODEX_REAL.to_string()).chain(OLD_CODEX.map(old_by_hand)).collect();
         let new_four: Vec<&str> = CODEX_EVENTS.iter().copied().filter(|event| !OLD_CODEX.contains(event)).collect();
         let off_the_list =
-            format!("{}{}", codex_by_hand(&script()), codex_line_by_hand("Notification", &codex_command(&script(), "Notification")));
+            format!("{}{}", codex_by_hand(&script()), codex_hook("Notification", &codex_command(&script(), "Notification")));
 
         let cases = [
             ("beside", beside_the_block.clone(), beside_the_block),
@@ -2069,7 +2056,7 @@ trust_level = "trusted"
         let cases = [
             ("current-by-hand", codex_by_hand(&script()), None),
             ("old-in-fence", codex_with_old_block(&OLD_CODEX), Some(format!("{CODEX_REAL}\n{}", codex_block(&script())))),
-            ("newer-by-hand", format!("{CODEX_REAL}{}", codex_line_by_hand("Stop", &newer)), None),
+            ("newer-by-hand", format!("{CODEX_REAL}{}", codex_hook("Stop", &newer)), None),
         ];
         for (name, config, fixed) in cases {
             let home = codex_home(&format!("said-nothing-{name}"), &config);
@@ -2152,10 +2139,7 @@ trust_level = "trusted"
         assert_eq!(state(CODEX_REAL), Installed::None);
         assert_eq!(state(&full), Installed::Full);
         assert_eq!(state(&codex_with_old_block(&OLD_CODEX)), Installed::Partial, "옛 구획인데 「전부」다");
-        let stray = format!(
-            "{full}\n[[hooks.Notification]]\n\n[[hooks.Notification.hooks]]\ntype = \"command\"\ncommand = {}\n",
-            toml_basic_string(&codex_command(&script(), "Notification"))
-        );
+        let stray = format!("{full}{}", codex_hook("Notification", &codex_command(&script(), "Notification")));
         assert_eq!(state(&stray), Installed::Partial, "목록 밖 이벤트에 우리 줄이 남았는데 「전부」다");
     }
 
@@ -2199,10 +2183,7 @@ trust_level = "trusted"
 
         let mut codex = format!("{CODEX_REAL}\n{CODEX_BEGIN}\n");
         for event in CODEX_EVENTS.iter().chain(&["Notification"]) {
-            codex.push_str(&format!(
-                "\n[[hooks.{event}]]\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n",
-                toml_basic_string(&format!("{} {newer}", command_line(&script(), CODEX, event)))
-            ));
+            codex.push_str(&codex_hook(event, &format!("{} {newer}", command_line(&script(), CODEX, event))));
         }
         codex.push_str(&format!("{CODEX_END}\n"));
         assert_eq!(merge_codex(&codex, &script()).unwrap(), codex, "새 목록을 옛 목록으로 되썼다");
