@@ -100,19 +100,16 @@ function ViewOnly() {
 }
 
 /**
- * 묶음의 프로세스 한 줄 — 셸의 자손 행과 같은 모양이다: 부른 이름(명령줄은 툴팁), 숫자 칸, 접근성 이름 「이름, 메모리」. `menu`면 행
- * 메뉴(「예외로 두기」)가 선다.
+ * 묶음의 프로세스 한 줄 — 셸의 자손 행과 같은 모양이다: 부른 이름(명령줄은 이름 글자의 툴팁 — 줄 안의 ⋯가 앱 툴팁을 들어 줄에 걸면
+ * 둘이 겹친다), 숫자 칸, 접근성 이름 「이름, 메모리」. `menu`면 행 메뉴(「예외로 두기」)가 선다.
  */
 function StrayRow({ node, level, menu = false }: { node: ProcessNode; level: number; menu?: boolean }) {
   const { row } = node;
   return (
-    <TreeRow
-      level={level}
-      label={processRowLabel(row)}
-      title={row.command ?? undefined}
-      className="text-[12.5px] text-muted-foreground"
-    >
-      <span className="min-w-0 flex-1 truncate">{processLabel(row)}</span>
+    <TreeRow level={level} label={processRowLabel(row)} className="text-[12.5px] text-muted-foreground">
+      <span title={row.command ?? undefined} className="min-w-0 flex-1 truncate">
+        {processLabel(row)}
+      </span>
       <Figures metrics={row.metrics} />
       <Actions>{menu && <RowMenu name={exceptionName(row)} />}</Actions>
     </TreeRow>

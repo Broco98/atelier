@@ -162,19 +162,27 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 툴팁의 명령줄은 수집이 `KERN_PROCARGS2`의 argv 전체에서 읽은 것이다(티켓 11). 스냅샷의 행마다 실려 온다.
-test("자손 행의 툴팁에 스냅샷의 명령줄이 선다", async ({ page }) => {
+// 툴팁의 명령줄은 수집이 `KERN_PROCARGS2`의 argv 전체에서 읽은 것이다(티켓 11). 스냅샷의 행마다 실려 온다. 명령줄은 **이름 글자의**
+// 툴팁이다 — 줄 전체에 걸면 줄 안의 ⋯(앱 툴팁 「프로세스 메뉴」)에 올린 포인터에 브라우저 툴팁(명령줄)이 함께 떠 둘이 겹친다.
+test("자손 행의 이름에 스냅샷의 명령줄이 툴팁으로 서고, 줄 안의 ⋯에는 앱 툴팁 하나만 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷([1]) });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
   await nav(page, "Processes").click();
 
-  await expect(트리(page).getByRole("treeitem", { name: "node", exact: true })).toHaveAttribute("title", "node vite --port 5173");
-  await expect(트리(page).getByRole("treeitem", { name: "esbuild", exact: true })).toHaveAttribute(
+  const node = 트리(page).getByRole("treeitem", { name: "node", exact: true });
+  await expect(node.getByText("node", { exact: true })).toHaveAttribute("title", "node vite --port 5173");
+  await expect(트리(page).getByRole("treeitem", { name: "esbuild", exact: true }).getByText("esbuild", { exact: true })).toHaveAttribute(
     "title",
     "esbuild --service=0.25.0 --ping",
   );
+  // ⋯와 [끝내기]는 명령줄 툴팁 밖이다 — 스스로도, 감싼 것도 `title`이 없다.
+  for (const name of ["프로세스 메뉴", "끝내기"]) {
+    const button = node.getByRole("button", { name, exact: true });
+    await expect(button).toBeVisible();
+    expect(await button.evaluate((element) => element.closest("[title]")?.getAttribute("title") ?? null), name).toBeNull();
+  }
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

@@ -104,6 +104,10 @@ test("확정 고아와 출처 불명이 갈린 묶음으로 서고, 다른 인�
   await expect(줄(확정, 이름(고아esbuild))).toHaveAttribute("aria-level", "2");
   await expect(줄(확정, 이름(고아python))).toHaveAttribute("aria-level", "1");
   await expect(확정.getByRole("button", { name: "정리", exact: true })).toBeVisible();
+  // 행 메뉴 ⋯에는 앱 툴팁 하나만 선다 — 명령줄 툴팁(`title`)은 이름 글자의 것이라 ⋯를 감싸지 않는다.
+  const 메뉴 = 줄(확정, 이름(고아node)).getByRole("button", { name: "프로세스 메뉴", exact: true });
+  await expect(메뉴).toBeVisible();
+  expect(await 메뉴.evaluate((element) => element.closest("[title]")?.getAttribute("title") ?? null)).toBeNull();
 
   // 출처 불명 — 따로 선 묶음이다. 확정 고아의 행이 섞이지 않는다.
   const 불명 = 묶음(page, "출처 불명");

@@ -349,8 +349,9 @@ function ShellRows({
         </TreeRow>
       )}
       {node.descendants.map(({ row, depth }, at) => (
-        // 자손 행 — 부른 이름. **명령줄은 툴팁이다**(수집이 `KERN_PROCARGS2`의 argv 전체에서 읽은 것, 티켓 11). 자르지 않는다: 이
-        // 맥의 같은 사용자가 `ps`로 보는 것과 같은 글자이고, 디스크에 남기는 정리 기록만 앞 200자로 자른다(S12).
+        // 자손 행 — 부른 이름. **명령줄은 이름 글자의 툴팁이다**(수집이 `KERN_PROCARGS2`의 argv 전체에서 읽은 것, 티켓 11). 자르지
+        // 않는다: 이 맥의 같은 사용자가 `ps`로 보는 것과 같은 글자이고, 디스크에 남기는 정리 기록만 앞 200자로 자른다(S12). 줄 전체가
+        // 아니라 이름 칸에 거는 것은 줄 안의 ⋯가 앱 툴팁(「프로세스 메뉴」)을 들어서다 — 줄에 걸면 ⋯에 올린 포인터에 두 툴팁이 겹친다.
         //
         // [끝내기](기본값 [끝내기] · 티켓 31) — 앱 확인 창을 거친 뒤 그 프로세스와 그 PID 트리를 끝낸다. 넘기는 신원은 **누른 순간 화면에
         // 보인 표본의 것**이다(이 줄을 그린 스냅샷) — 창이 떠 있는 동안 박자가 새 스냅샷을 가져와도 바뀌지 않는다. 그사이 pid가
@@ -359,10 +360,11 @@ function ShellRows({
           key={identityKey(row.id)}
           level={level + depth}
           label={processRowLabel(row)}
-          title={row.command ?? undefined}
           className="text-[12.5px] text-muted-foreground"
         >
-          <span className="min-w-0 flex-1 truncate">{processLabel(row)}</span>
+          <span title={row.command ?? undefined} className="min-w-0 flex-1 truncate">
+            {processLabel(row)}
+          </span>
           <Figures metrics={row.metrics} />
           <Actions>
             <RowButton
