@@ -41,6 +41,47 @@ async function 줄들(page: Page): Promise<Array<{ level: string | null; name: s
     .evaluateAll((rows) => rows.map((row) => ({ level: row.getAttribute("aria-level"), name: row.getAttribute("aria-label") })));
 }
 
+/**
+ * 그 줄 글자의 **바탕과의 대비**(WCAG 대비비 — 1에서 21). 글자색의 알파에 그 줄과 조상들의 불투명도를 곱해 바탕 위에 섞은
+ * 색으로 잰다 — 옅게 하는 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는
+ * 불투명한 배경이다. 색은 캔버스에 칠해 읽는다 — 계산된 값이 늘 `rgb()`는 아니다(어두운 테마의 `oklch()` 토큰).
+ */
+const 글자대비 = (row: Locator): Promise<number> =>
+  row.evaluate((element) => {
+    const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    if (!pen) throw new Error("캔버스를 못 열었다 — 색을 읽을 수 없다");
+    const rgba = (color: string): [number, number, number, number] => {
+      pen.clearRect(0, 0, 1, 1);
+      pen.fillStyle = color;
+      pen.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
+      return [r, g, b, a / 255];
+    };
+    let back: [number, number, number] = [255, 255, 255];
+    let opacity = 1;
+    for (let at: Element | null = element; at !== null; at = at.parentElement) {
+      opacity *= Number(getComputedStyle(at).opacity);
+    }
+    for (let at: Element | null = element; at !== null; at = at.parentElement) {
+      const [r, g, b, a] = rgba(getComputedStyle(at).backgroundColor);
+      if (a === 1) {
+        back = [r, g, b];
+        break;
+      }
+    }
+    const [r, g, b, a] = rgba(getComputedStyle(element).color);
+    const alpha = a * opacity;
+    const ink = [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * back[at]);
+    const luminance = ([red, green, blue]: number[]) => {
+      const [lr, lg, lb] = [red, green, blue].map((channel) => {
+        const c = channel / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+    };
+    const [light, dark] = [luminance(ink), luminance(back)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  });
 
 /** 켜진 셸 탭의 셸 키 — 탭 칸의 `data-shell-key`(티켓 23). */
 const 켜진셸 = (page: Page) =>
@@ -133,11 +174,12 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
   // 스토어가 모르는 풀의 셸(`l3-99`)은 이 묶음에 없다 — 32의 화면 밖 셸이다. 앵커는 위에서 선 셸 넷이다.
   await expect(트리(page).locator(`[data-shell-key="${키(99)}"]`)).toHaveCount(0);
 
-  // **셸 도우미는 옅게 선다**(P1) — 사람이 띄운 것과 한 무게로 읽히면 섞인다. 옆의 자손 행보다 글자가 옅다.
-  const 색 = (row: Locator) => row.evaluate((element) => getComputedStyle(element).color);
+  // **셸 도우미는 옅게 선다**(P1) — 사람이 띄운 것과 한 무게로 읽히면 섞인다. 옆의 자손 행보다 글자가 옅다 — 바탕과의 대비가
+  // 낮다. 색이 다른지만 보면 더 짙은 색으로 바뀌어도 초록이다.
   const 도우미 = 트리(page).getByRole("treeitem", { name: "셸 도우미, gitstatusd-darwin-arm64", exact: true });
   const 자손 = 트리(page).getByRole("treeitem", { name: "node", exact: true });
-  expect(await 색(도우미)).not.toBe(await 색(자손));
+  const [도우미대비, 자손대비] = [await 글자대비(도우미), await 글자대비(자손)];
+  expect(도우미대비, `셸 도우미 ${도우미대비.toFixed(2)} · 자손 ${자손대비.toFixed(2)}`).toBeLessThan(자손대비);
 
   // Atelier로 건너가 연다 — 이제 Atelier가 맨 위다. 같은 화면이 지금 세계만 바꿔 세운다.
   await 모드(page, "Atelier").click();
