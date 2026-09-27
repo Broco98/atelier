@@ -1,5 +1,5 @@
 import { signalOf } from "@/features/terminal/shell-attention";
-import { liveOrphansOf, type ShellsState } from "@/features/terminal/shell-registry";
+import { liveOwnerlessOf, type ShellsState } from "@/features/terminal/shell-registry";
 import { ALL_MODES } from "@/mode";
 import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
@@ -9,7 +9,7 @@ import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 // - 10초 요약(배경 표본, nav 메타와 같은 장): 합계 · CPU · 앱 본체 · 「웹뷰 제외」 · 추이. nav 옆 숫자와 카드의 합계가 늘 같다.
 // - 2초 스냅샷(화면 표본): 셸 수(풀) · 확정 고아 수 · 출처 불명 수. 같은 화면의 묶음(31 · 32)이 이 스냅샷으로 서므로 카드와 묶음이 다른
 //   수를 말하지 않는다. 출처 불명은 요약에도 있지만(`unknown`) 그쪽은 10초 박자다.
-// - 스토어: 「도는 중」인 셸 수(셸 상태 — 레지스트리의 문 `signalOf`), 주인 잃은 셸 수(`liveOrphansOf`). 둘 다 스토어만 아는 사실이다.
+// - 스토어: 「도는 중」인 셸 수(셸 상태 — 레지스트리의 문 `signalOf`), 주인 잃은 셸 수(`liveOwnerlessOf`). 둘 다 스토어만 아는 사실이다.
 
 /** 요약 카드의 수. 스냅샷에서 세는 수는 첫 스냅샷 전에 `null`이다 — 「0」이라 하면 모르는 것을 없다고 한다. */
 export interface CardCounts {
@@ -18,7 +18,7 @@ export interface CardCounts {
   /** 셸 상태가 「도는 중」인 셸(훅 · OSC가 말한 것). 명령이 도는 것과 다르다 — 그것은 셸 상태가 아니다. */
   working: number;
   /** 주인 잃은 셸 중 아직 도는 것 — 두 세계의 것. */
-  orphanedShells: number;
+  ownerlessShells: number;
   confirmed: number | null;
   unknown: number | null;
 }
@@ -33,7 +33,7 @@ export function cardCounts(state: ShellsState, snapshot: ProcessSnapshot | undef
     shells: snapshot ? snapshot.pool.length : null,
     // 셸 상태는 레지스트리가 내놓는 문으로 읽는다 — 끝난 칸에 남은 도는 중을 가리는 자리가 거기다(소스 스캔이 막는 길).
     working: state.shells.filter((shell) => signalOf(shell) === "working").length,
-    orphanedShells: ALL_MODES.reduce((count, mode) => count + liveOrphansOf(state, mode).length, 0),
+    ownerlessShells: ALL_MODES.reduce((count, mode) => count + liveOwnerlessOf(state, mode).length, 0),
     confirmed: snapshot ? rowsIn(snapshot.verdict.orphans.confirmed) : null,
     unknown: snapshot ? rowsIn(snapshot.verdict.orphans.unknown) : null,
   };

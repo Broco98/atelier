@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEEN_CAP, lookablesOf, needsLook, orphanShellKeys, seenWith } from "./needs-look";
+import { SEEN_CAP, lookablesOf, needsLook, ownerlessShellKeys, seenWith } from "./needs-look";
 import type { ProcessIdentity, ProcessSummary } from "./types";
 
 // 프로세스 티켓 29 — **nav 메타의 `●` 판정**(프로세스 결정 11 · 프로세스 스펙 S41 · S42). 점은 손볼 것이 **본 뒤 새로 생겼을 때만**
@@ -19,10 +19,10 @@ const 요약 = (unknown: ProcessIdentity[] = [], recordHead: number | null = nul
   recordHead,
 });
 const 신원 = (pid: number): ProcessIdentity => ({ pid, startedUs: 1_790_000_000_000_000 + pid });
-const 셸 = (shellKey: string | null, orphaned: boolean) => ({ shellKey, orphaned });
+const 셸 = (shellKey: string | null, ownerless: boolean) => ({ shellKey, ownerless });
 
 /** 본 때의 집합을 지어 둔다 — 그때 화면을 열고 봤다. */
-const 봤다 = (orphans: string[], summary?: ProcessSummary) => seenWith([], lookablesOf(orphans, summary));
+const 봤다 = (ownerless: string[], summary?: ProcessSummary) => seenWith([], lookablesOf(ownerless, summary));
 
 describe("손볼 것이 새로 생기면 점이 선다", () => {
   it("아무것도 안 봤고 손볼 것도 없으면 점이 없다 — 합계만 선다", () => {
@@ -94,20 +94,20 @@ describe("본 것은 남아 있어도 점을 안 켠다", () => {
 
 describe("주인 잃은 셸만 센다 — 화면 밖 셸은 안 켠다(S42)", () => {
   it("주인 잃음 표시가 선 셸의 키만 이름이 된다", () => {
-    expect(orphanShellKeys([셸("G-1", true), 셸("G-2", false), 셸("G-3", true)])).toEqual(["G-1", "G-3"]);
+    expect(ownerlessShellKeys([셸("G-1", true), 셸("G-2", false), 셸("G-3", true)])).toEqual(["G-1", "G-3"]);
   });
 
   // 도는 셸 · 사람이 연 셸은 손볼 것이 아니다. 화면 밖 셸(풀에는 있는데 스토어가 모르는 셸)은 스토어의 셸이 아니라 이 입력에 올
   // 길이 없다 — 판정의 입력은 스토어의 셸과 요약뿐이다.
   it("주인 잃음 표시가 없는 셸은 새로 떠도 안 켠다", () => {
     const seen = 봤다([], 요약());
-    const now = lookablesOf(orphanShellKeys([셸("G-1", false), 셸("G-2", false)]), 요약());
+    const now = lookablesOf(ownerlessShellKeys([셸("G-1", false), 셸("G-2", false)]), 요약());
     expect(needsLook(seen, now)).toBe(false);
   });
 
   // spawn 답 전이거나 못 뜬 칸 — 셸 키가 없다. 키가 서면 그때 센다(돌지 않는 칸은 손볼 것도 없다).
   it("셸 키가 아직 없는 주인 잃은 셸은 세지 않는다", () => {
-    expect(orphanShellKeys([셸(null, true)])).toEqual([]);
+    expect(ownerlessShellKeys([셸(null, true)])).toEqual([]);
   });
 
   it("요약이 아직 안 왔어도 주인 잃은 셸은 센다", () => {

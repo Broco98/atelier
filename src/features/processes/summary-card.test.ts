@@ -22,7 +22,7 @@ const 칸 = (id: number, over: Partial<Shell> = {}): Shell => ({
   attention: null,
   auto: false,
   firstInput: null,
-  orphaned: false,
+  ownerless: false,
   ...over,
 });
 
@@ -93,12 +93,12 @@ describe("요약 카드의 수", () => {
   // **주인 잃은 셸은 아직 도는 것이다**(CONTEXT 「주인 잃은 셸」) — 두 세계를 함께 센다. 표시가 선 채 끝난 칸은 도는 것이 아니다.
   it("주인 잃은 셸은 두 세계의, 아직 도는 것만이다", () => {
     const state = 스토어(
-      칸(1, { orphaned: true }),
-      칸(2, { orphaned: true, owner: ownerOf("maison", "finance") }),
-      칸(3, { orphaned: true, status: 끝남 }),
+      칸(1, { ownerless: true }),
+      칸(2, { ownerless: true, owner: ownerOf("maison", "finance") }),
+      칸(3, { ownerless: true, status: 끝남 }),
       칸(4),
     );
-    expect(cardCounts(state, 스냅샷()).orphanedShells).toBe(2);
+    expect(cardCounts(state, 스냅샷()).ownerlessShells).toBe(2);
   });
 
   // **확정 고아와 출처 불명은 갈라 센다**(CONTEXT 「고아」 — 앱이 알아서 치우는 것은 확정 고아뿐이다). 키가 여럿이어도 행을 모두 센다.
@@ -118,7 +118,7 @@ describe("요약 카드의 수", () => {
     expect(cardCounts(스토어(칸(1, { attention: 상태("working") })), undefined)).toEqual({
       shells: null,
       working: 1,
-      orphanedShells: 0,
+      ownerlessShells: 0,
       confirmed: null,
       unknown: null,
     });

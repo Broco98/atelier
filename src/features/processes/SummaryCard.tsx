@@ -39,7 +39,7 @@ export default function SummaryCard({ snapshot }: { snapshot: ProcessSnapshot | 
       <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
         <li data-figure="shells">{counts.shells === null ? `셸 ${UNKNOWN}` : shellCount(counts.shells)}</li>
         <li data-figure="working">도는 중 {counts.working}</li>
-        <li data-figure="orphaned-shells">주인 잃은 셸 {counts.orphanedShells}</li>
+        <li data-figure="ownerless-shells">주인 잃은 셸 {counts.ownerlessShells}</li>
         <li data-figure="confirmed">확정 고아 {known(counts.confirmed)}</li>
         <li data-figure="unknown">출처 불명 {known(counts.unknown)}</li>
         {/* 앱 본체 — Rust 본체 + 웹뷰(WebContent). GPU · Networking은 세지 않는다는 것을 툴팁이 말한다(S39). 툴팁은 `title`이다 —

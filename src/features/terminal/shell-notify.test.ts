@@ -306,7 +306,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     attention: null,
     auto: false,
     firstInput: null,
-    orphaned: false,
+    ownerless: false,
     ...over,
   });
   const 상태 = (over: Partial<Attention> = {}): Attention => ({
@@ -432,7 +432,7 @@ describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
     attention,
     auto: false,
     firstInput: null,
-    orphaned: false,
+    ownerless: false,
   });
   const 사건 = (
     event: string,

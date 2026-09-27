@@ -128,13 +128,13 @@ export interface Shell {
   /**
    * **「주인 잃은 셸」인가**(프로세스 결정 4 · 티켓 12). MCP로 아카이브 · 삭제된 work의 셸 중 **조용하지 않은** 것이다
    * (`isQuietShell`) — 부탁을 보낸 claude가 대개 그 셸 안에 있어서, 닫지 않고 이 표시를 세워 남긴다. 거짓으로 뜨고,
-   * 한 번 서면 안 내린다(`markOrphaned`).
+   * 한 번 서면 안 내린다(`markOwnerless`).
    *
    * **표시가 선 셸은 다시 판정하지 않는다**(`vanishedOwners`). 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로
    * 닫히는데, 그것이 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다. 닫는 길은 사람이 누르는 [모두 닫기]와
    * 종료뿐이다.
    */
-  orphaned: boolean;
+  ownerless: boolean;
 }
 
 export interface ShellsState {
@@ -530,7 +530,7 @@ export function openShell(
     // 막 뜬 셸에는 사람 입력이 없다. p10k가 프롬프트마다 묻는 커서 위치의 응답은 입력이 아니다(`shell-input.ts`).
     firstInput: null,
     // 막 뜬 셸의 주인은 그것을 연 화면이다. 주인을 잃는 것은 목록에서 그 work이 사라진 뒤다(`vanishedOwners`).
-    orphaned: false,
+    ownerless: false,
   };
   return {
     state: {
@@ -769,10 +769,10 @@ export function markFirstInput(state: ShellsState, id: number, at: number): Shel
  * 무엇이 주인을 잃었는지는 여기서 안 정한다(`shell-owners.ts`의 `vanishedOwners`와 `isQuietShell`). 이 리듀서는 그 답을
  * 받아 적기만 한다.
  */
-export function markOrphaned(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
+export function markOwnerless(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
   let next = state;
   for (const id of ids) {
-    next = patch(next, id, (shell) => (shell.orphaned ? shell : { ...shell, orphaned: true }));
+    next = patch(next, id, (shell) => (shell.ownerless ? shell : { ...shell, ownerless: true }));
   }
   return next;
 }
@@ -783,16 +783,16 @@ export function markOrphaned(state: ShellsState, ids: ReadonlyArray<number>): Sh
  *
  * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(결정 10) slug로는 못 가른다.
  */
-export function orphansOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
-  return state.shells.filter((shell) => shell.orphaned && modeOfOwner(shell.owner) === mode);
+export function ownerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return state.shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode);
 }
 
 /**
  * 그 세계의 주인 잃은 셸 중 **도는 것**. 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기] 확인 창의 N이
  * 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 도는지는 `isAlive` 하나가 가른다.
  */
-export function liveOrphansOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
-  return orphansOf(state, mode).filter(isAlive);
+export function liveOwnerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return ownerlessOf(state, mode).filter(isAlive);
 }
 
 /** 그 칸의 첫 사람 입력 시각. 없는 칸이거나 아직 입력이 없으면 `null`이다. */
@@ -1444,7 +1444,7 @@ export const NO_QUIET_NOTICE = "닫을 조용한 셸이 없어요";
  * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). 결정 26은 이 길의 셸을
  *   「알려진 대가」로 남겨 두었는데, 프로세스 결정 4가 이렇게 고쳤다: 목록 재조회로 알아채 조용한 셸은 닫고 나머지는
  *   주인 잃은 셸로 남긴다.
- * - `orphans` — 주인 잃은 셸의 [모두 닫기](`closeOrphans` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
+ * - `ownerless` — 주인 잃은 셸의 [모두 닫기](`closeOwnerless` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
  * - `quiet` — `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32).
  * - `offscreen` — `Processes`의 화면 밖 셸 [닫기](`closeOffscreenShell` · 티켓 32). 스토어에 칸이 없는 셸이다.
  * - `openFailed` — xterm 열기 실패(`failOpen`).
@@ -1455,7 +1455,7 @@ export type ClosePath =
   | "reclaim"
   | "archive"
   | "mcpArchive"
-  | "orphans"
+  | "ownerless"
   | "quiet"
   | "offscreen"
   | "openFailed"
@@ -1469,7 +1469,7 @@ export type ClosePath =
  * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다.
  *
  * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이라 `●`가 설 수 있는 까닭이다.
- * 주인 잃은 셸의 [모두 닫기](`orphans`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
+ * 주인 잃은 셸의 [모두 닫기](`ownerless`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
  * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
  *
  * `Processes`의 닫기 둘(`quiet` · `offscreen` · 티켓 32)도 사람이 누른 닫기라 「셸 닫기」다(프로세스 스펙 S44 · S42). 「화면 밖
@@ -1480,7 +1480,7 @@ export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
   reclaim: "shellClose",
   archive: "archive",
   mcpArchive: "mcpArchive",
-  orphans: "shellClose",
+  ownerless: "shellClose",
   quiet: "shellClose",
   offscreen: "shellClose",
   openFailed: "shellClose",
@@ -1517,7 +1517,7 @@ export type CloseChecks = ReadonlyMap<number, CloseCheck>;
  * 길은 곧 끌 수 없는 길이다. 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.** 살아 있는 칸이 없으면
  * 묻지 않는다.
  *
- * **주인 잃은 셸도 센다**(티켓 12) — 종료하면 그 셸도 함께 끝난다. 표시(`Shell.orphaned`)는 이 셈에 안 든다.
+ * **주인 잃은 셸도 센다**(티켓 12) — 종료하면 그 셸도 함께 끝난다. 표시(`Shell.ownerless`)는 이 셈에 안 든다.
  */
 export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
@@ -1571,9 +1571,9 @@ export function closingShellsNotice(live: number, spawned: number | null): strin
 /**
  * 주인 잃은 셸의 [모두 닫기]가 **한 번** 묻는 말(티켓 12). 셸마다 닫기 확인 창(`closeNotice`)을 띄우면 창이 N번 뜬다 —
  * 여러 셸을 한 번에 닫는 자리는 수를 말하며 한 번 묻는다(프로세스 스펙 S18 · S44). N은 **도는** 주인 잃은 셸이고
- * (`liveOrphansOf`), 띄운 프로세스 수는 아카이브 확인 창과 같은 말이다(`spawnedNote`) — 못 얻었으면 안 붙는다.
+ * (`liveOwnerlessOf`), 띄운 프로세스 수는 아카이브 확인 창과 같은 말이다(`spawnedNote`) — 못 얻었으면 안 붙는다.
  */
-export function orphansCloseNotice(live: number, spawned: number | null): string {
+export function ownerlessCloseNotice(live: number, spawned: number | null): string {
   return `주인 잃은 셸 ${live}개를 닫아요${spawnedNote(spawned)}.`;
 }
 

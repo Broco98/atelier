@@ -29,13 +29,13 @@ export const SEEN_CAP = 256;
  *
  * 문자열 배열을 돌려준다 — 스토어 셀렉터가 얕은 비교로 견주므로, 주인 잃음과 상관없는 셸의 변화(타이틀 · 도는 것)에는 같은 값이다.
  */
-export function orphanShellKeys(shells: ReadonlyArray<{ orphaned: boolean; shellKey: string | null }>): string[] {
-  return shells.flatMap((shell) => (shell.orphaned && shell.shellKey !== null ? [shell.shellKey] : []));
+export function ownerlessShellKeys(shells: ReadonlyArray<{ ownerless: boolean; shellKey: string | null }>): string[] {
+  return shells.flatMap((shell) => (shell.ownerless && shell.shellKey !== null ? [shell.shellKey] : []));
 }
 
 /** 지금 손볼 것의 이름들. 요약이 아직 안 왔으면(첫 답 전 · 거절) 주인 잃은 셸만이다. */
-export function lookablesOf(orphanKeys: ReadonlyArray<string>, summary: ProcessSummary | undefined): string[] {
-  const names = orphanKeys.map((key) => `shell:${key}`);
+export function lookablesOf(ownerlessKeys: ReadonlyArray<string>, summary: ProcessSummary | undefined): string[] {
+  const names = ownerlessKeys.map((key) => `shell:${key}`);
   if (summary === undefined) return names;
   // 신원은 pid와 시작 시각의 쌍이다 — pid만 쓰면 재사용된 pid의 새 프로세스를 본 것으로 친다.
   names.push(...summary.unknown.map(({ pid, startedUs }) => `unknown:${pid}@${startedUs}`));

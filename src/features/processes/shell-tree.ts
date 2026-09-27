@@ -69,14 +69,14 @@ export interface DescendantNode {
  * 아니다 — spawn 답 전이라 키가 없거나, 이유가 있는 끝으로 칸만 남았거나, 스냅샷 뒤에 막 떴다(다음 스냅샷에 선다).
  *
  * 목록에 없는 work은 숨기지 않는다 — 목록을 아직 못 읽었을 수 있고, 숨기면 도는 것이 화면에서 사라진다. 다만 **주인 잃은 셸**
- * (스토어의 표시 — 티켓 12)은 여기 안 서고 제 묶음에 선다(`orphanGroups` · 티켓 32): 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이고
+ * (스토어의 표시 — 티켓 12)은 여기 안 서고 제 묶음에 선다(`ownerlessGroups` · 티켓 32): 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이고
  * 수가 두 번 읽힌다.
  */
 export function shellTree({ current, shells, lists, snapshot }: TreeInput): WorldNode[] {
   const worlds: WorldNode[] = [];
   for (const mode of worldOrder(current)) {
     const byOwner = nodesByOwner(
-      shells.filter((shell) => !shell.orphaned && modeOfOwner(shell.owner) === mode),
+      shells.filter((shell) => !shell.ownerless && modeOfOwner(shell.owner) === mode),
       snapshot,
     );
     if (byOwner.size === 0) continue;
@@ -126,13 +126,13 @@ function nodesByOwner(shells: ReadonlyArray<Shell>, snapshot: ProcessSnapshot): 
  * **주인 잃은 셸 묶음**(프로세스 결정 4 · 티켓 32) — 12가 스토어에 「주인 잃음」으로 표시한 셸을 work마다 모은다. 두 세계가 함께 서고
  * (화면이 앱 전체다 — 프로세스 결정 9) 지금 세계의 것이 먼저, 세계 안은 스토어의 차례다. 이름은 slug다 — 그 work은 목록에 없다.
  *
- * 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다. [모두 닫기]는 그 칸도 함께 거둔다(`closeOrphans`).
+ * 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다. [모두 닫기]는 그 칸도 함께 거둔다(`closeOwnerless`).
  */
-export function orphanGroups({ current, shells, snapshot }: Pick<TreeInput, "current" | "shells" | "snapshot">): GroupNode[] {
+export function ownerlessGroups({ current, shells, snapshot }: Pick<TreeInput, "current" | "shells" | "snapshot">): GroupNode[] {
   return worldOrder(current).flatMap((mode) =>
     [
       ...nodesByOwner(
-        shells.filter((shell) => shell.orphaned && modeOfOwner(shell.owner) === mode),
+        shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode),
         snapshot,
       ),
     ].map(([owner, nodes]) => ({ owner, name: groupName(mode, owner, []), shells: nodes })),
@@ -380,7 +380,7 @@ export function groupRowLabel(group: GroupNode): string {
  * 주인 잃은 셸 묶음의 work 줄 — 이름, **세계**, 셸 수, 메모리(티켓 32). 두 세계의 것이 한 묶음에 서고 두 세계에 같은 slug가 설 수
  * 있어(결정 10) 세계를 말한다. 세계 트리의 work 줄은 세계 줄 밑에 서서 말하지 않는다(`groupRowLabel`).
  */
-export function orphanGroupRowLabel(group: GroupNode): string {
+export function ownerlessGroupRowLabel(group: GroupNode): string {
   return withMemory(
     [group.name, modeNameOf(modeOfOwner(group.owner)), shellCount(group.shells.length)],
     groupTotals(group).memory,

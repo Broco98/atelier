@@ -36,7 +36,7 @@ const [shipped] = ARCHIVE;
 
 /**
  * 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「더 없다」를 재기 전에 부른다**
- * (`shell-orphans.spec.ts`의 같은 이름과 같은 까닭).
+ * (`shell-ownerless.spec.ts`의 같은 이름과 같은 까닭).
  */
 async function settle(page: Page): Promise<void> {
   await page.evaluate(
@@ -107,7 +107,7 @@ test("이벤트를 모든 구독에 한 번 쏘면 list_works가 한 번 나간�
   await openWork(page);
   expect(await firedCalls(page, "list_works")).toBe(1);
 
-  // ── Maison에 셸 하나를 두고 돌아온다(`shell-orphans.spec.ts`의 저쪽 세계 검사와 같은 길) ──
+  // ── Maison에 셸 하나를 두고 돌아온다(`shell-ownerless.spec.ts`의 저쪽 세계 검사와 같은 길) ──
   const modeButton = (label: string) =>
     page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
   await modeButton("Maison").click();

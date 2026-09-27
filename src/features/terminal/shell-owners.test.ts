@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { orphanNotice, orphanToastId, orphanedWorldOf, vanishedOwners, worldsToReread } from "./shell-owners";
+import { ownerlessNotice, ownerlessToastId, ownerlessWorldOf, vanishedOwners, worldsToReread } from "./shell-owners";
 import type { ListResult } from "./shell-owners";
-import { markExited, markOrphaned, NO_SHELLS, openShell, ownerOf, topTerminal } from "./shell-registry";
+import { markExited, markOwnerless, NO_SHELLS, openShell, ownerOf, topTerminal } from "./shell-registry";
 import type { ShellOrigin, ShellOwner, ShellsState } from "./shell-registry";
 import type { Mode } from "@/mode";
 
@@ -90,8 +90,8 @@ describe("사라진 owner", () => {
   // 이미 주인 잃은 셸은 다시 판정하지 않는다 — 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로 닫힌다.
   // 그것이 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다.
   it("이미 주인 잃은 셸은 다시 안 나온다", () => {
-    const orphaned = markOrphaned(state, [1, 2]);
-    expect(vanishedOwners(orphaned, "atelier", listed(), NOTHING_HELD)).toEqual([ownerOf("atelier", "na")]);
+    const ownerless = markOwnerless(state, [1, 2]);
+    expect(vanishedOwners(ownerless, "atelier", listed(), NOTHING_HELD)).toEqual([ownerOf("atelier", "na")]);
   });
 });
 
@@ -120,35 +120,35 @@ describe("주인 잃은 셸의 세계", () => {
   const state = shellsAt(originIn("atelier", "ga"), originIn("maison", "na"));
 
   it("주인 잃은 셸이면 그 세계다", () => {
-    const orphaned = markOrphaned(state, [1, 2]);
-    expect(orphanedWorldOf(orphaned, 1)).toBe("atelier");
-    expect(orphanedWorldOf(orphaned, 2)).toBe("maison");
+    const ownerless = markOwnerless(state, [1, 2]);
+    expect(ownerlessWorldOf(ownerless, 1)).toBe("atelier");
+    expect(ownerlessWorldOf(ownerless, 2)).toBe("maison");
   });
 
   // 띠가 이것으로 갈린다(S14) — 주인이 있는 셸은 지금처럼 그 work으로 간다.
   it("주인이 있는 셸 · 없는 번호는 `null`이다", () => {
-    expect(orphanedWorldOf(state, 1)).toBeNull();
-    expect(orphanedWorldOf(state, 99)).toBeNull();
+    expect(ownerlessWorldOf(state, 1)).toBeNull();
+    expect(ownerlessWorldOf(state, 99)).toBeNull();
   });
 
   // 끝난 칸도 주인 잃은 셸이다 — 표시는 셸이 끝나도 안 지워진다.
   it("끝난 칸도 표시가 남는다", () => {
-    const ended = markExited(markOrphaned(state, [1]), 1, { exitCode: 1, signal: null });
-    expect(orphanedWorldOf(ended, 1)).toBe("atelier");
+    const ended = markExited(markOwnerless(state, [1]), 1, { exitCode: 1, signal: null });
+    expect(ownerlessWorldOf(ended, 1)).toBe("atelier");
   });
 });
 
 describe("토스트", () => {
   // 세는 말은 세계의 것이다(프로세스 스펙 S45) — Atelier는 화면의 말 「작업」(`itemNameOf`), Maison은 「Room」이다.
   it("그 세계의 말로 N을 센다", () => {
-    expect(orphanNotice("atelier", 2)).toBe("아카이브된 작업의 셸 2개에 아직 도는 것이 있어요");
-    expect(orphanNotice("maison", 1)).toBe("아카이브된 Room의 셸 1개에 아직 도는 것이 있어요");
+    expect(ownerlessNotice("atelier", 2)).toBe("아카이브된 작업의 셸 2개에 아직 도는 것이 있어요");
+    expect(ownerlessNotice("maison", 1)).toBe("아카이브된 Room의 셸 1개에 아직 도는 것이 있어요");
   });
 
   // 동작 토스트는 자기 id를 쓴다 — 같은 알림이 다시 오면(주인 잃은 셸이 늘었다 · 띠에서 다시 불렀다) 새로 쌓이지 않고
   // 그 자리를 고친다. 세계마다 따로인 것은 [모두 닫기]가 그 세계의 셸만 닫기 때문이다.
   it("세계마다 id가 하나다", () => {
-    expect(orphanToastId("atelier")).toBe(orphanToastId("atelier"));
-    expect(orphanToastId("atelier")).not.toBe(orphanToastId("maison"));
+    expect(ownerlessToastId("atelier")).toBe(ownerlessToastId("atelier"));
+    expect(ownerlessToastId("atelier")).not.toBe(ownerlessToastId("maison"));
   });
 });

@@ -87,7 +87,7 @@ async function settle(page: Page): Promise<void> {
   );
 }
 
-/** **MCP가 그것을 아카이브했다** — 그 세계의 목록 답에서 slug를 빼고 `works:changed`를 쏜다(`shell-orphans.spec.ts`와 같다). */
+/** **MCP가 그것을 아카이브했다** — 그 세계의 목록 답에서 slug를 빼고 `works:changed`를 쏜다(`shell-ownerless.spec.ts`와 같다). */
 async function archiveByMcp(page: Page, mode: Mode, list: WorkView[], ...slugs: string[]): Promise<void> {
   await replaceAnswer(page, "list_works", list.filter((one) => !slugs.includes(one.slug)), mode);
   await fireEvent(page, "works:changed", null);
@@ -128,10 +128,10 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
 
   await nav(page, "Processes").click();
   await expect(page).toHaveURL("/processes");
-  const orphans = 묶음(page, "주인 잃은 셸");
-  await expect(orphans).toBeVisible();
+  const ownerless = 묶음(page, "주인 잃은 셸");
+  await expect(ownerless).toBeVisible();
   // work마다 선다 — 목록에 없는 work이라 이름은 slug이고, 두 세계가 한 묶음이라 세계를 말한다.
-  expect(await 줄들(orphans)).toEqual([
+  expect(await 줄들(ownerless)).toEqual([
     { level: "1", name: `${plainWork.slug}, Atelier, 셸 2개` },
     { level: "2", name: "zsh, 띄운 프로세스 1개" },
     { level: "3", name: "node" },
@@ -143,11 +143,11 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(셸줄(셸트리(page), 2)).toHaveCount(0);
   // [이동]이 없다 — 그 work은 목록에 없어 갈 화면이 없다. 앵커: 세계 트리의 셸 줄에는 있다.
   await expect(버튼(셸줄(셸트리(page), 3), "이동")).toBeVisible();
-  await expect(버튼(orphans, "이동")).toHaveCount(0);
+  await expect(버튼(ownerless, "이동")).toHaveCount(0);
   const asked = await callCount(page, "pty_close_checks");
 
   // ── 취소 ──
-  await 버튼(orphans, "모두 닫기").click();
+  await 버튼(ownerless, "모두 닫기").click();
   const dialog = page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
   await expect(dialog).toBeVisible();
   // 토스트의 [모두 닫기](티켓 12)와 같은 말이다 — 창을 띄우기 전에 배치 물음 한 번으로 지금의 수를 센다.
@@ -157,10 +157,10 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(dialog).toHaveCount(0);
   await settle(page);
   expect(await callCount(page, "pty_kill")).toBe(0);
-  await expect(orphans).toBeVisible();
+  await expect(ownerless).toBeVisible();
 
   // ── 확인 ──
-  await 버튼(orphans, "모두 닫기").click();
+  await 버튼(ownerless, "모두 닫기").click();
   await expect(dialog).toBeVisible();
   await 버튼(dialog, "모두 닫기").click();
   // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 `●`가 선다(S41).
@@ -171,7 +171,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
       { id: 1, reason: "shellClose", owner },
       { id: 2, reason: "shellClose", owner },
     ]);
-  await expect(orphans).toHaveCount(0);
+  await expect(ownerless).toHaveCount(0);
   // 같은 셸의 토스트도 내려간다 — 같은 함수다. 셸마다 닫기 확인 창(08)을 안 띄웠다.
   await expect(page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog")).toHaveCount(0);
   expect(await callCount(page, "pty_close_check")).toBe(0);
@@ -284,8 +284,8 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   const offscreen = 묶음(page, "화면 밖 셸");
   await 다음박자(page);
   await expect(셸줄(offscreen, 99)).toBeVisible();
-  const orphans = 묶음(page, "주인 잃은 셸");
-  await expect(셸줄(orphans, 1)).toBeVisible();
+  const ownerless = 묶음(page, "주인 잃은 셸");
+  await expect(셸줄(ownerless, 1)).toBeVisible();
 
   // ── 셸 행의 [닫기] ── 2는 조용해 묻지 않고 닫힌다. 스냅샷은 그대로라 풀에 2가 남아 있다.
   await 버튼(셸줄(셸트리(page), 2), "닫기").click();
@@ -315,10 +315,10 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect(셸줄(offscreen, 99)).toBeVisible();
 
   // ── 주인 잃은 셸 [모두 닫기] ──
-  await 버튼(orphans, "모두 닫기").click();
-  const orphanDialog = page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
-  await expect(orphanDialog).toBeVisible();
-  await 버튼(orphanDialog, "모두 닫기").click();
+  await 버튼(ownerless, "모두 닫기").click();
+  const ownerlessDialog = page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
+  await expect(ownerlessDialog).toBeVisible();
+  await 버튼(ownerlessDialog, "모두 닫기").click();
   await expect
     .poll(() => kills(page))
     .toEqual([
@@ -327,8 +327,8 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
       { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
     ]);
   await page.clock.runFor(100);
-  await expect(orphanDialog).toHaveCount(0);
-  await expect(orphans).toHaveCount(0);
+  await expect(ownerlessDialog).toHaveCount(0);
+  await expect(ownerless).toHaveCount(0);
   await expect(셸줄(offscreen, 1)).toHaveCount(0);
   await expect(셸줄(offscreen, 99)).toBeVisible();
 

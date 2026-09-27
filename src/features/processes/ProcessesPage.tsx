@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { modeOfOwner, shellRowName, slugOfOwner, type Shell } from "@/features/terminal/shell-registry";
 import {
   closeOffscreenShell,
-  closeOrphans,
+  closeOwnerless,
   closeQuietShells,
   requestCloseShell,
   terminalStore,
@@ -36,8 +36,8 @@ import {
   offscreenRowLabel,
   offscreenShells,
   offscreenStateOf,
-  orphanGroupRowLabel,
-  orphanGroups,
+  ownerlessGroupRowLabel,
+  ownerlessGroups,
   shellCount,
   shellRowLabel,
   shellStateOf,
@@ -80,7 +80,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
 
   const tree = snapshot ? shellTree({ current: mode, shells, lists, snapshot }) : [];
-  const orphans = snapshot ? orphanGroups({ current: mode, shells, snapshot }) : [];
+  const ownerless = snapshot ? ownerlessGroups({ current: mode, shells, snapshot }) : [];
   const offscreen = snapshot ? offscreenShells({ shells, snapshot, previous }) : [];
   // **경과의 지금은 스냅샷이 도착한 때다**(`dataUpdatedAt`). 박자(2초)마다 새 값이라 경과가 그만큼씩 늙는다 — 따로 시계를 켜지
   // 않는다. 박자가 멎으면(창이 가려짐) 경과도 멎는데, 그동안은 아무도 안 본다.
@@ -145,19 +145,19 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
               ))}
             </div>
           )}
-          {orphans.length > 0 && (
+          {ownerless.length > 0 && (
             // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 도는 것이 남은 셸. 두 세계의 것이 work마다
-            // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOrphans`) — 두 세계를 넘기고 한 번 묻는다. [이동]은 없다: 그 work은
+            // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 두 세계를 넘기고 한 번 묻는다. [이동]은 없다: 그 work은
             // 목록에 없어 갈 화면이 없다.
             <Section
               title="주인 잃은 셸"
-              note={shellCount(orphans.reduce((sum, group) => sum + group.shells.length, 0))}
-              action={<RowButton onClick={() => void closeOrphans(ALL_MODES)}>모두 닫기</RowButton>}
+              note={shellCount(ownerless.reduce((sum, group) => sum + group.shells.length, 0))}
+              action={<RowButton onClick={() => void closeOwnerless(ALL_MODES)}>모두 닫기</RowButton>}
             >
               <div role="tree" aria-label="주인 잃은 셸" className="flex flex-col gap-0.5">
-                {orphans.map((group) => (
+                {ownerless.map((group) => (
                   <Fragment key={group.owner}>
-                    <TreeRow level={1} label={orphanGroupRowLabel(group)}>
+                    <TreeRow level={1} label={ownerlessGroupRowLabel(group)}>
                       <span className="min-w-0 truncate text-[13px] font-medium">{group.name}</span>
                       <span className="shrink-0 text-[12px] text-tertiary">{modeNameOf(modeOfOwner(group.owner))}</span>
                       <span className="shrink-0 text-[12px] text-tertiary">{shellCount(group.shells.length)}</span>

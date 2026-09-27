@@ -4,7 +4,7 @@ import { terminalStore } from "@/features/terminal/terminal-store";
 import { useProcessSummary } from "./hooks";
 import { lookStore, markSeen } from "./looked";
 import { formatMemory } from "./metrics";
-import { NEEDS_LOOK_LABEL, lookablesOf, needsLook, orphanShellKeys } from "./needs-look";
+import { NEEDS_LOOK_LABEL, lookablesOf, needsLook, ownerlessShellKeys } from "./needs-look";
 
 /**
  * **nav `Processes`의 메타**(프로세스 결정 11 · 티켓 29) — 평소에는 아틀리에의 메모리 합계이고, 손볼 것이 **본 뒤 새로** 생기면 그
@@ -22,11 +22,11 @@ import { NEEDS_LOOK_LABEL, lookablesOf, needsLook, orphanShellKeys } from "./nee
 export default function ProcessesNavMeta() {
   const { data: summary } = useProcessSummary();
   // 두 세계의 주인 잃은 셸 — 셸 키로 센다. 얕은 비교라 주인 잃음과 상관없는 셸의 변화(타이틀 · 도는 것)에는 다시 안 그린다.
-  const orphanKeys = useStore(terminalStore, (state) => orphanShellKeys(state.shells), shallow);
+  const ownerlessKeys = useStore(terminalStore, (state) => ownerlessShellKeys(state.shells), shallow);
   const seen = useStore(lookStore, (state) => state.seen);
   const screenOpen = useStore(lookStore, (state) => state.screens > 0);
   const focused = useWindowFocused();
-  const now = useMemo(() => lookablesOf(orphanKeys, summary), [orphanKeys, summary]);
+  const now = useMemo(() => lookablesOf(ownerlessKeys, summary), [ownerlessKeys, summary]);
   const looking = screenOpen && focused;
 
   useEffect(() => {

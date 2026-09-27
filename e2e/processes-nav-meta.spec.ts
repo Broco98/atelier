@@ -22,7 +22,7 @@ import type { ProcessIdentity, ProcessSummary } from "@/features/processes/types
 // (`cleanup_log::look_head`). 여기서 보는 것은 요약 픽스처가 **진짜 요약 폴러(10초) · 진짜 사이드바 · 진짜 화면 열기와 창 포커스**를
 // 지나 nav `Processes` 옆에 서고 꺼지는가다 — 합계 글자는 화면이 쓰는 그 표기 함수로 짓는다(모양은 L2의 몫).
 //
-// **시계는 `page.clock`이다.** 주의 둘(`shell-orphans.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
+// **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
 // 저절로 흐르므로 세기 전에 멈춘다(`pauseAt`). 그 뒤로는 `runFor`만큼만 간다 — 10초 박자가 러너 속도에 안 흐려진다. 요약을 바꾸는
 // 것은 01의 답 바꾸기다(`replaceAnswer`) — 바꾼 뒤 다음 박자가 그 답을 가져온다.
 

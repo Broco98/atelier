@@ -8,7 +8,7 @@ import type { ProcessSnapshot } from "@/features/processes/types";
 // 진짜 라우터**를 지나 화면이 서는가, 스냅샷이 화면까지 오는가, 그리고 떠나면 묻기가 멈추는가다 — 마지막은 진짜 타이머와
 // 진짜 언마운트가 있어야 드러난다.
 //
-// **시계는 `page.clock`이다.** 주의 둘(`shell-orphans.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
+// **시계는 `page.clock`이다.** 주의 둘(`shell-ownerless.spec.ts` 머리말): `install()`은 페이지를 열기 **전에** 부르고, 깐 뒤로 시간은
 // 저절로 흐르므로 세기 전에 멈춘다(`pauseAt`). 그 뒤로는 `runFor`만큼만 간다 — 2초 박자가 러너 속도에 안 흐려진다.
 
 const [project] = PROJECTS;

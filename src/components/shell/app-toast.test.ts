@@ -26,11 +26,11 @@ describe("토스트의 수명", () => {
   it("동작 토스트는 자기 id로 서고 저절로 내려가지 않는다", () => {
     let ran = 0;
     const options = toastOptionsOf({
-      id: "orphan-shells",
+      id: "ownerless-shells",
       text: "아카이브된 작업의 셸 2개에 아직 도는 것이 있어요",
       actions: [{ label: "모두 닫기", run: () => (ran += 1) }],
     });
-    expect(options.id).toBe("orphan-shells");
+    expect(options.id).toBe("ownerless-shells");
     expect(options.timeout).toBe(0);
     const [only] = toastActionsOf(options.data);
     expect(only.label).toBe("모두 닫기");
@@ -43,7 +43,7 @@ describe("토스트의 수명", () => {
   it("버튼이 여럿인 동작 토스트는 받은 차례로 버튼을 든다", () => {
     const ran: string[] = [];
     const options = toastOptionsOf({
-      id: "orphans:atelier",
+      id: "ownerless:atelier",
       text: "아카이브된 작업의 셸 1개에 아직 도는 것이 있어요",
       actions: [
         { label: "모두 닫기", run: () => ran.push("모두 닫기") },

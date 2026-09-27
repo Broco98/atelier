@@ -108,7 +108,7 @@ test("요약 카드에 합계 · 추이 · CPU · 셸 수 · 도는 중 · 주�
   await expect(칸(page, "unknown")).toHaveText("출처 불명 1");
   // 도는 중 · 주인 잃은 셸은 스토어다 — 셸 상태로 세고, 두 셸 모두 주인을 잃었다.
   await expect(칸(page, "working")).toHaveText("도는 중 2");
-  await expect(칸(page, "orphaned-shells")).toHaveText("주인 잃은 셸 2");
+  await expect(칸(page, "ownerless-shells")).toHaveText("주인 잃은 셸 2");
   // 지난 1시간 — 스파크라인이 선다.
   await expect(카드(page)).toContainText("지난 1시간");
   await expect.poll(() => 그린점(page)).toBe(5);

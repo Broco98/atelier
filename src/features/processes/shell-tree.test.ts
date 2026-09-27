@@ -12,8 +12,8 @@ import {
   helperLabel,
   offscreenRowLabel,
   offscreenShells,
-  orphanGroupRowLabel,
-  orphanGroups,
+  ownerlessGroupRowLabel,
+  ownerlessGroups,
   shellRowLabel,
   shellStateOf,
   shellTotals,
@@ -42,7 +42,7 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   attention: null,
   auto: false,
   firstInput: null,
-  orphaned: false,
+  ownerless: false,
   ...over,
 });
 
@@ -489,14 +489,14 @@ describe("주인 잃은 셸 묶음", () => {
   it("표시가 선 셸은 세계 트리에 안 서고 이 묶음에 선다 — 목록에 없을 뿐인 셸은 트리에 그대로다", () => {
     const input = 기본({
       shells: [
-        칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
+        칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
         칸(2, "G-2", { owner: ownerOf("atelier", "unread-work") }),
         칸(3, "G-3", { owner: ownerOf("atelier") }),
       ],
       snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
     });
     expect(편모양(input)).toEqual(["1 atelier (지금)", "2 unread-work", "3 G-2", "2 Terminal", "3 G-3"]);
-    expect(orphanGroups(input).map((group) => [group.name, group.shells.map((node) => node.shell.shellKey)])).toEqual([
+    expect(ownerlessGroups(input).map((group) => [group.name, group.shells.map((node) => node.shell.shellKey)])).toEqual([
       ["gone-work", ["G-1"]],
     ]);
   });
@@ -505,14 +505,14 @@ describe("주인 잃은 셸 묶음", () => {
   // 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다 — [모두 닫기]는 그 칸도 함께 거둔다(12).
   it("두 세계의 주인 잃은 셸이 지금 세계부터 work마다 서고, 풀에 없는 칸은 안 선다", () => {
     const shells = [
-      칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), orphaned: true }),
-      칸(2, "G-2", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
-      칸(3, "G-3", { owner: ownerOf("atelier", "gone-work"), orphaned: true }),
-      칸(4, "G-4", { owner: ownerOf("atelier", "gone-work"), orphaned: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
+      칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), ownerless: true }),
+      칸(2, "G-2", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
+      칸(3, "G-3", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
+      칸(4, "G-4", { owner: ownerOf("atelier", "gone-work"), ownerless: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
     ];
     const snapshot = 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")], { "G-3": [행(300, 1, 30, "node")] });
     const 모양 = (current: "atelier" | "maison") =>
-      orphanGroups(기본({ current, shells, snapshot })).map((group) => [
+      ownerlessGroups(기본({ current, shells, snapshot })).map((group) => [
         group.owner,
         group.shells.map((node) => [node.shell.id, node.descendants.map(({ row }) => row.id.pid)]),
       ]);
@@ -524,19 +524,19 @@ describe("주인 잃은 셸 묶음", () => {
   });
 
   it("주인 잃은 셸이 없으면 묶음이 비었다", () => {
-    expect(orphanGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
+    expect(ownerlessGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
   });
 
   // 두 세계가 한 묶음에 서므로 work 줄이 세계를 말한다 — 두 세계에 같은 slug가 설 수 있다(결정 10). 세계 트리의 work 줄은 세계
   // 줄 밑에 서서 말할 까닭이 없다.
   it("work 줄은 이름 · 세계 · 셸 수 · 메모리다", () => {
-    const [group] = orphanGroups(
+    const [group] = ownerlessGroups(
       기본({
-        shells: [칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), orphaned: true })],
+        shells: [칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), ownerless: true })],
         snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB))]),
       }),
     );
-    expect(orphanGroupRowLabel(group)).toBe(`gone-room, ${modeNameOf("maison")}, 셸 1개, 8MB`);
+    expect(ownerlessGroupRowLabel(group)).toBe(`gone-room, ${modeNameOf("maison")}, 셸 1개, 8MB`);
   });
 });
 
@@ -567,7 +567,7 @@ describe("화면 밖 셸 가르기 — 풀의 셸 + 스토어의 셸 키 + 지�
   // 끝난 칸도, 주인 잃은 셸도 스토어가 아는 셸이다 — 키가 칸에 있다. 주인 잃은 셸은 그 묶음에 서고 여기 안 선다.
   it("스토어에 셸 키가 있는 셸은 화면 밖 셸이 아니다 — 주인 잃은 셸 · 끝난 칸도", () => {
     const shells = [
-      칸(1, "G-1", { orphaned: true }),
+      칸(1, "G-1", { ownerless: true }),
       칸(2, "G-2", { status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
       칸(3, null),
     ];

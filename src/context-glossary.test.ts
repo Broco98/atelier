@@ -195,6 +195,35 @@ describe("말의 사전", () => {
     expect(bodyOf("조용한 셸")).toContain("셸 도우미는 세지 않는다");
   });
 
+  // 코드 리뷰 표준 5. 사전이 「고아 셸」을 거부했는데 코드는 주인 잃은 셸을 `orphan`으로 불렀다(옛 `Shell.orphaned` ·
+  // `closeOrphans` · 요약 카드의 `orphanedShells` …). 같은 브랜치의 판정(`verdict.orphans` · Rust `Orphans`)은 진짜
+  // 고아라서, 판정과 스토어를 함께 읽는 자리(`summary-card.ts`)에서 한 낱말이 두 뜻으로 나란히 섰다. 그래서 주인 잃은
+  // 셸은 코드에서 `ownerless`이고, `orphan`은 **판정의 고아에만** 남는다. 판정을 읽는 모듈(`summary-card.ts` ·
+  // `StraySections.tsx` · `process-groups.ts` · `types.ts`)은 여기서 뺀다 — 그 `orphans`가 옳은 말이다.
+  //
+  // **셸 스토어 모듈은 폴더째 본다** — 새 모듈이 서도 그물 안이다. 그물이 비면 「안 부른다」가 「안 읽었다」로 초록이
+  // 되므로, 아는 모듈이 목록에 있는지부터 잰다.
+  it("주인 잃은 셸을 다루는 모듈이 그 셸을 orphan으로 부르지 않는다", () => {
+    const terminal = join(src, "features", "terminal");
+    const processes = join(src, "features", "processes");
+    const scanned = [
+      ...sourceFiles(terminal),
+      join(src, "components", "shell", "useGoToShell.ts"),
+      ...["shell-tree.ts", "needs-look.ts", "ProcessesNavMeta.tsx", "ProcessesPage.tsx", "SummaryCard.tsx"].map((name) =>
+        join(processes, name),
+      ),
+    ];
+    expect(scanned).toEqual(
+      expect.arrayContaining([
+        join(terminal, "terminal-store.ts"),
+        join(terminal, "shell-registry.ts"),
+        join(terminal, "shell-owners.ts"),
+      ]),
+    );
+    const named = scanned.filter((path) => /orphan/i.test(readFileSync(path, "utf8")));
+    expect(named.map((path) => path.slice(src.length))).toEqual([]);
+  });
+
   // 티켓 32 · 프로세스 스펙 S42. `Processes`에 「화면 밖 셸」 묶음이 섰다 — 앱의 셸 풀에는 있는데 화면이 모르는 셸이다. 이름이 없으면
   // 다음 사람이 「주인 잃은 셸」로 부르는데, 그쪽은 화면이 알고 표시까지 세운 셸(주인인 work이 사라졌다)이고 이쪽은 화면이 모르는
   // 셸이라 주인이 살아 있을 수 있다 — 한 말로 부르면 [모두 닫기]가 어느 쪽을 닫는지가 문장에서 사라진다. 방금 뜬 셸도 한 순간 화면이

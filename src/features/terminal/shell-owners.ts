@@ -54,7 +54,7 @@ export function vanishedOwners(
   const listed = new Set(result.data.map((item) => item.slug));
   const gone: ShellOwner[] = [];
   for (const shell of state.shells) {
-    if (shell.orphaned || modeOfOwner(shell.owner) !== mode) continue;
+    if (shell.ownerless || modeOfOwner(shell.owner) !== mode) continue;
     const slug = slugOfOwner(shell.owner);
     if (slug === null || listed.has(slug) || held.has(shell.owner) || gone.includes(shell.owner)) continue;
     gone.push(shell.owner);
@@ -80,17 +80,17 @@ export function worldsToReread(state: ShellsState, current: Mode): Mode[] {
  * work으로 가지 않고 `Processes`로 간다(티켓 32 — 판 01~03에서는 그 세계의 토스트를 다시 띄웠다). 끝난 칸도 표시가 남아
  * 있으면 주인 잃은 셸이다.
  */
-export function orphanedWorldOf(state: ShellsState, id: number): Mode | null {
+export function ownerlessWorldOf(state: ShellsState, id: number): Mode | null {
   const shell = state.shells.find((one) => one.id === id);
-  return shell?.orphaned ? modeOfOwner(shell.owner) : null;
+  return shell?.ownerless ? modeOfOwner(shell.owner) : null;
 }
 
 /**
  * 주인 잃은 셸 토스트의 문장(프로세스 결정 4 · 프로세스 스펙 S45). **세는 말은 그 세계의 것이다** — 지금 선 화면이 아니라
  * 아카이브된 것의 세계다. 낱말은 `itemNameOf`에서 온다: Atelier는 화면의 말 「작업」, Maison은 「Room」이다.
- * N은 **도는** 주인 잃은 셸이다(`liveOrphansOf`).
+ * N은 **도는** 주인 잃은 셸이다(`liveOwnerlessOf`).
  */
-export function orphanNotice(mode: Mode, count: number): string {
+export function ownerlessNotice(mode: Mode, count: number): string {
   return `아카이브된 ${itemNameOf(mode)}의 셸 ${count}개에 아직 도는 것이 있어요`;
 }
 
@@ -99,6 +99,6 @@ export function orphanNotice(mode: Mode, count: number): string {
  * (주인 잃은 셸이 늘었다 · 띠에서 다시 불렀다) 새로 쌓이지 않고 그 자리를 고친다. 세계마다 따로인 것은 [모두 닫기]가 그
  * 세계의 셸만 닫기 때문이다.
  */
-export function orphanToastId(mode: Mode): string {
-  return `orphans:${mode}`;
+export function ownerlessToastId(mode: Mode): string {
+  return `ownerless:${mode}`;
 }

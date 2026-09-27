@@ -58,7 +58,7 @@ async function arrived(page: Page, spawned: number): Promise<void> {
 }
 
 /** 화면의 말(`itemNameOf`): Atelier의 work은 「작업」, Maison은 「Room」이다(프로세스 스펙 S45). */
-const orphanText = (count: number, item: "작업" | "Room" = "작업") =>
+const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
   `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 /** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). */
@@ -125,7 +125,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
 
   // 조용한 셸 하나만 닫는다 — 까닭은 「MCP 아카이브」이고 주인은 그 work이다(정리 기록 · 판 04의 `●`가 이것을 읽는다).
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "mcpArchive", owner: `atelier:${plainWork.slug}` }]);
-  const toast = toastOf(page, orphanText(1));
+  const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: "모두 닫기", exact: true })).toBeVisible();
   // 두 셸을 **한 번에** 물었다(스냅샷 한 장) — 셸마다 따로 묻지 않는다.
@@ -145,7 +145,7 @@ test("닫기 전 물음이 거절되면 어느 셸도 닫지 않고 모두 주�
 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
 
-  await expect(toastOf(page, orphanText(2))).toBeVisible();
+  await expect(toastOf(page, ownerlessText(2))).toBeVisible();
   // 앵커: 물었다 — 안 물어서 안 닫은 것이 아니다.
   expect(await callCount(page, "pty_close_checks")).toBe(1);
   await settle(page);
@@ -160,7 +160,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
   });
   await twoShells(page, `/works/${plainWork.slug}`);
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
-  const toast = toastOf(page, orphanText(2));
+  const toast = toastOf(page, ownerlessText(2));
   await expect(toast).toBeVisible();
   const asked = await callCount(page, "pty_close_checks");
 
@@ -228,7 +228,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
 
   // 창이 닫힌 뒤의 MCP 아카이브는 알린다 — 감지가 살아 있는데 위에서 안 섰다는 것이 이 줄로 선다.
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug, pinnedWork.slug);
-  await expect(toastOf(page, orphanText(1))).toBeVisible();
+  await expect(toastOf(page, ownerlessText(1))).toBeVisible();
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -252,15 +252,15 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
   await typeIntoShell(page);
 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
-  const orphans = toastOf(page, orphanText(1));
-  await expect(orphans).toBeVisible();
+  const ownerless = toastOf(page, ownerlessText(1));
+  await expect(ownerless).toBeVisible();
   await releaseCommand(page, "startup_report");
   const short = toastOf(page, "에이전트 훅을 새 목록으로 맞췄어요");
   await expect(short).toBeVisible();
 
   await page.clock.runFor(2_000);
   await expect(short).toBeHidden();
-  await expect(orphans).toBeVisible();
+  await expect(ownerless).toBeVisible();
 });
 
 // 띠의 줄은 누르면 그 work의 터미널로 간다. 주인 잃은 셸의 work은 없다 — **그 work 화면으로 가기 전에** 갈려 `Processes`로
@@ -285,7 +285,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   await arrived(page, 2);
 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
-  const toast = toastOf(page, orphanText(1));
+  const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   // `×`는 알림 자리가 펼쳐졌을 때(마우스가 올라가거나 포커스가 들었을 때)만 보조 기술에 드러난다 — Base UI의
   // `Toast.Close`가 그 밖에서는 `aria-hidden`이다. 사람처럼 먼저 올리고 누른다.
@@ -311,7 +311,7 @@ test("Room을 MCP로 아카이브하면 문구가 「Room」이다", async ({ pa
 
   await archiveByMcp(page, "maison", ROOMS, readingRoom.slug);
 
-  await expect(toastOf(page, orphanText(1, "Room"))).toBeVisible();
+  await expect(toastOf(page, ownerlessText(1, "Room"))).toBeVisible();
   expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -358,7 +358,7 @@ test("저쪽 세계의 Room이 MCP로 아카이브돼도 알린다 — 그 세�
   await archiveByMcp(page, "maison", ROOMS, MAISON_LANDING_ROOM.slug);
 
   await expect.poll(maisonLists).toBe(maisonBefore + 1);
-  await expect(toastOf(page, orphanText(1, "Room"))).toBeVisible();
+  await expect(toastOf(page, ownerlessText(1, "Room"))).toBeVisible();
   expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

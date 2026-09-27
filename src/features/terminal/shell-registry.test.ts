@@ -27,16 +27,16 @@ import {
   isInPlaceGap,
   isLiveShellOf,
   isQuietShell,
-  liveOrphansOf,
-  markOrphaned,
+  liveOwnerlessOf,
+  markOwnerless,
   MAX_SHELLS,
   moveShell,
   needsCloseConfirm,
   NO_QUIET_NOTICE,
   NO_SHELLS,
   openShell,
-  orphansCloseNotice,
-  orphansOf,
+  ownerlessCloseNotice,
+  ownerlessOf,
   placeHint,
   placeOrigin,
   closesShellFromWindow,
@@ -1399,20 +1399,20 @@ describe("닫기의 까닭", () => {
       ["mcpArchive", "mcpArchive"],
     ]);
     // 사람이 누르지 않은 닫기 셋도 여기 든다 — 자손이 없거나 모두 셸 도우미라 기록은 백엔드가 안 세운다(P1).
-    // 주인 잃은 셸의 [모두 닫기](`orphans`)는 사람이 누른 닫기라 「셸 닫기」다(티켓 12 · S41) — 「MCP 아카이브」로 두면
+    // 주인 잃은 셸의 [모두 닫기](`ownerless`)는 사람이 누른 닫기라 「셸 닫기」다(티켓 12 · S41) — 「MCP 아카이브」로 두면
     // 판 04의 `●`가 사람이 누른 닫기로 켜진다.
     expect(Object.keys(CLOSE_REASONS).sort()).toEqual([
       "archive",
       "mcpArchive",
       "offscreen",
       "openFailed",
-      "orphans",
+      "ownerless",
       "person",
       "quiet",
       "reclaim",
       "spawnRace",
     ]);
-    expect(CLOSE_REASONS.orphans).toBe("shellClose");
+    expect(CLOSE_REASONS.ownerless).toBe("shellClose");
     // `Processes`의 닫기 둘(티켓 32) — [조용한 셸 모두 닫기]와 화면 밖 셸의 [닫기]도 사람이 누른 닫기라 「셸 닫기」다(S44 · S42).
     // 「화면 밖 셸」은 까닭이 아니다 — 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
     expect(CLOSE_REASONS.quiet).toBe("shellClose");
@@ -1840,10 +1840,10 @@ describe("판정 셋이 실제로 배선돼 있다", () => {
     // MCP로 아카이브된 work의 **조용한 셸**(티켓 12 · 프로세스 결정 4). 물을 것이 없다 — 명령도 사람이 띄운 자손도 없다.
     // 무엇이 조용한지는 `isQuietShell` 하나가 정한다: 그 판정을 안 딛고 닫으면 여기가 빨개진다.
     expect(store).toContain('if (isQuietShell(shell, checks)) closeShell(id, "mcpArchive");');
-    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`orphansCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트는
+    // 주인 잃은 셸의 [모두 닫기]. 셸마다 묻지 않고 **한 번** 물었다(`ownerlessCloseNotice`) — 그 뒤라 여기서는 안 묻는다. 토스트는
     // 그 세계 하나를, `Processes`의 묶음은 두 세계를 넘긴다(티켓 32) — 같은 함수다.
     expect(store).toContain(
-      'for (const shell of modes.flatMap((mode) => orphansOf(terminalStore.state, mode))) closeShell(shell.id, "orphans");',
+      'for (const shell of modes.flatMap((mode) => ownerlessOf(terminalStore.state, mode))) closeShell(shell.id, "ownerless");',
     );
     // [조용한 셸 모두 닫기](티켓 32 · S44). 셸마다 묻지 않고 **한 번** 물었다(`quietCloseNotice`). 무엇이 조용한지는 `quietShellsOf`
     // 하나가 정한다 — 그 판정을 안 딛고 스토어의 셸을 손으로 고르면 여기가 빨개진다.
@@ -2414,7 +2414,7 @@ describe("종료 확인이 세는 셸", () => {
   it("주인 잃은 셸도 센다", async () => {
     const two = opened(2).state;
     const [a, b] = two.shells.map((shell) => shell.id);
-    const state = markOrphaned(two, [a]);
+    const state = markOwnerless(two, [a]);
     const asking = batch([
       [a, check(true, 1)],
       [b, check(false, 0)],
@@ -2480,21 +2480,21 @@ describe("주인 잃은 셸", () => {
   const 방: ShellOrigin = { mode: "maison", cwd: null, owner: ownerOf("maison", "ga"), project: null };
 
   it("막 뜬 셸은 주인이 있다", () => {
-    expect(opened(1).state.shells[0].orphaned).toBe(false);
+    expect(opened(1).state.shells[0].ownerless).toBe(false);
   });
 
   it("고른 칸에만 표시가 선다", () => {
     const { state, ids } = opened(3, 가);
-    const marked = markOrphaned(state, [ids[0], ids[2]]);
-    expect(marked.shells.map((shell) => shell.orphaned)).toEqual([true, false, true]);
+    const marked = markOwnerless(state, [ids[0], ids[2]]);
+    expect(marked.shells.map((shell) => shell.ownerless)).toEqual([true, false, true]);
   });
 
   // 목록 조회는 이벤트마다 오므로, 이미 선 표시를 또 세우는 것이 흔하다 — 화면이 이유 없이 다시 그려지면 안 된다.
   it("이미 표시된 칸과 모르는 번호는 상태를 그대로 둔다", () => {
     const { state, ids } = opened(1, 가);
-    const marked = markOrphaned(state, ids);
-    expect(markOrphaned(marked, ids)).toBe(marked);
-    expect(markOrphaned(state, [99])).toBe(state);
+    const marked = markOwnerless(state, ids);
+    expect(markOwnerless(marked, ids)).toBe(marked);
+    expect(markOwnerless(state, [99])).toBe(state);
   });
 
   // [모두 닫기]가 닫는 것은 **그 세계의** 주인 잃은 셸 전부다 — 끝난 칸도 함께 거둔다. 토스트의 N은 **도는 것**만 센다
@@ -2507,10 +2507,10 @@ describe("주인 잃은 셸", () => {
       state = next.state;
     }
     // 1 · 2는 가, 3은 나, 4는 Room 가. 1은 주인이 있고, 2는 끝났다.
-    const marked = markExited(markOrphaned(state, [2, 3, 4]), 2, EXIT_42);
-    expect(orphansOf(marked, "atelier").map((shell) => shell.id)).toEqual([2, 3]);
-    expect(liveOrphansOf(marked, "atelier").map((shell) => shell.id)).toEqual([3]);
-    expect(orphansOf(marked, "maison").map((shell) => shell.id)).toEqual([4]);
+    const marked = markExited(markOwnerless(state, [2, 3, 4]), 2, EXIT_42);
+    expect(ownerlessOf(marked, "atelier").map((shell) => shell.id)).toEqual([2, 3]);
+    expect(liveOwnerlessOf(marked, "atelier").map((shell) => shell.id)).toEqual([3]);
+    expect(ownerlessOf(marked, "maison").map((shell) => shell.id)).toEqual([4]);
   });
 });
 
@@ -2518,12 +2518,12 @@ describe("주인 잃은 셸", () => {
 // 아카이브 확인 창과 같다(프로세스 스펙 S18 · S44).
 describe("[모두 닫기]의 확인 창", () => {
   it("주인 잃은 셸 수를 적고, 띄운 프로세스가 있으면 그 뒤에 붙인다", () => {
-    expect(orphansCloseNotice(2, 0)).toBe("주인 잃은 셸 2개를 닫아요.");
-    expect(orphansCloseNotice(2, 3)).toBe("주인 잃은 셸 2개를 닫아요(띄운 프로세스 3개 포함).");
+    expect(ownerlessCloseNotice(2, 0)).toBe("주인 잃은 셸 2개를 닫아요.");
+    expect(ownerlessCloseNotice(2, 3)).toBe("주인 잃은 셸 2개를 닫아요(띄운 프로세스 3개 포함).");
   });
 
   it("못 얻은 수는 안 붙인다", () => {
-    expect(orphansCloseNotice(1, null)).toBe("주인 잃은 셸 1개를 닫아요.");
+    expect(ownerlessCloseNotice(1, null)).toBe("주인 잃은 셸 1개를 닫아요.");
   });
 });
 

@@ -30,7 +30,7 @@ const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialo
 const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;
 const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
-const orphanText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
+const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 const cleaned = (count: number): StartupReport => ({
   cleaned: Array.from({ length: count }, (_, i) => ({ pid: 40_000 + i, name: "node" })),
@@ -81,7 +81,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
   await typeIntoShell(page);
   await replaceAnswer(page, "list_works", WORKS.filter((one) => one.slug !== plainWork.slug), "atelier");
   await fireEvent(page, "works:changed", null);
-  const toast = toastOf(page, orphanText(1));
+  const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: /^(모두 닫기|보기)$/ })).toHaveText(["모두 닫기", "보기"]);
 
@@ -98,7 +98,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
 
 // [보기]를 든 토스트는 누를 때까지 남는다(P2). 1.6초가 정말 흘렀는지는 같은 흐름에 선 짧은 토스트(훅 맞춤)가 내려가는 것으로 본다 —
 // 시계가 토스트의 타이머를 안 움직였으면 그 앵커가 빨갛다. 보고는 붙잡아 두었다가 시계를 멈춘 뒤 놓는다: 저절로 흐르는 시간이 짧은
-// 토스트의 1.6초를 미리 깎지 않게(`shell-orphans.spec.ts`의 같은 수법).
+// 토스트의 1.6초를 미리 깎지 않게(`shell-ownerless.spec.ts`의 같은 수법).
 test("[보기]가 붙은 시작 정리 토스트와 셸 스스로 끝남 토스트는 1.6초가 지나도 남는다", async ({ page }) => {
   await page.clock.install();
   await installFixtureBackend(page, { startup_report: { ...cleaned(1), hooksUpdated: ["claude"] } });
@@ -174,7 +174,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
   // 셸의 claude가 MCP로 그 work을 아카이브한다 — 명령이 도는 셸이 남아 주인 잃은 셸 토스트가 설정 화면에 선다.
   await replaceAnswer(page, "list_works", WORKS.filter((one) => one.slug !== plainWork.slug), "atelier");
   await fireEvent(page, "works:changed", null);
-  const toast = toastOf(page, orphanText(1));
+  const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
 
   await 막힌보기(page, toast);

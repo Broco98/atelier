@@ -68,7 +68,7 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   attention: null,
   auto: false,
   firstInput: null,
-  orphaned: false,
+  ownerless: false,
   ...over,
 });
 

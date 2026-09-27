@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useRouter, type NavigateOptions } from "@tanstack/react-router";
 import { modeOfOwner, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { ShellOwner } from "@/features/terminal/shell-registry";
-import { focusShell, isOrphanedShell, selectShell } from "@/features/terminal/terminal-store";
+import { focusShell, isOwnerlessShell, selectShell } from "@/features/terminal/terminal-store";
 import { recallSearch, tabSearch } from "@/routes/-work-search";
 import { modeOf, routesOf, slugOf } from "@/mode";
 import { whenArrived } from "@/lib/arrival";
@@ -34,7 +34,7 @@ import { viewProcesses } from "./processes-view";
  *
  * **키보드 포커스도 데려간다**(티켓 16 · 프로세스 스펙 S21). 지금 보고 있는 셸이면 그 자리에서, 다른 탭 · 다른 work의 셸이면
  * 화면이 옮겨져 그 셸이 붙는 순간 온다(`focusShell`). 셸을 켜기 **전에** 부른다 — 요청이 먼저 적혀 있으면 켜기가 언제 붙기를
- * 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`isOrphanedShell`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
+ * 부르든 그 붙음이 요청을 본다. 주인 잃은 셸 갈림(`isOwnerlessShell`) **뒤에** 부른다 — 앞에 두면 붙을 화면이 없는 셸에 기다리는
  * 포커스가 남아, 그 셸이 닫히거나 새 요청이 올 때까지 다른 셸이 붙어도 포커스를 못 받는다. 이웃 work(`sidebar-active-band`)이
  * 띠 처리기를 옮기면 이 함수를 부르는 줄만 옮기면 된다 — 한때 이 몸통이 `Sidebar.tsx`의 띠 처리기(`useOpenBand`) 안에 있었다.
  *
@@ -55,7 +55,7 @@ export default function useGoToShell(): (shell: { id: number; owner: ShellOwner 
 
   return useCallback(
     ({ id, owner }) => {
-      if (isOrphanedShell(id)) {
+      if (isOwnerlessShell(id)) {
         viewProcesses();
         return;
       }
