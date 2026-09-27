@@ -1538,15 +1538,8 @@ export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
   fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<QuitCounts> {
-  const live = shells.filter(isAlive);
-  if (live.length === 0) return { live: 0, running: 0, spawned: 0 };
-  const answers = await fetchCloseChecks(live.map((shell) => shell.id)).catch(() => null);
-  const checks = live.flatMap((shell) => answers?.get(shell.id) ?? []);
-  return {
-    live: live.length,
-    running: checks.filter((check) => check.command).length,
-    spawned: checks.reduce((sum, check) => sum + check.descendants, 0),
-  };
+  const { live, running, spawned } = await spawnedOf(shells, fetchCloseChecks);
+  return { live, running: running ?? 0, spawned: spawned ?? 0 };
 }
 
 /**
@@ -1557,11 +1550,31 @@ export async function countSpawned(
   shells: ReadonlyArray<Shell>,
   fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<number | null> {
+  return (await spawnedOf(shells, fetchCloseChecks)).spawned;
+}
+
+/**
+ * 셸 여럿이 닫히면 함께 끝날 것 — **세는 규칙의 한 자리다**(코드 리뷰 표준 44). 종료 확인(`countQuitShells`)과 아카이브 ·
+ * 주인 잃은 셸의 [모두 닫기](`countSpawned`)가 이것을 딛는다. 끝난 칸 · 못 뜬 칸은 닫힐 프로세스가 없어 묻지도 세지도 않고,
+ * 살아 있는 칸이 없으면 묻지 않는다(수는 0). 살아 있는 칸은 **한 번에** 묻는다(티켓 08). 답이 없는 셸은 합에서 빠진다.
+ *
+ * 물음이 **실패하면** 셈 둘이 `null`이다 — 모름을 어떻게 읽을지는 부르는 쪽이 정한다: 종료 확인은 0으로 세고(던지면 창이 안
+ * 떠 끌 수 없다 — 그 함수 머리말), 아카이브 창은 수를 안 적는다(`spawnedNote`).
+ */
+async function spawnedOf(
+  shells: ReadonlyArray<Shell>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
+): Promise<{ live: number; running: number | null; spawned: number | null }> {
   const live = shells.filter(isAlive);
-  if (live.length === 0) return 0;
+  if (live.length === 0) return { live: 0, running: 0, spawned: 0 };
   const answers = await fetchCloseChecks(live.map((shell) => shell.id)).catch(() => null);
-  if (!answers) return null;
-  return live.reduce((sum, shell) => sum + (answers.get(shell.id)?.descendants ?? 0), 0);
+  if (!answers) return { live: live.length, running: null, spawned: null };
+  const checks = live.flatMap((shell) => answers.get(shell.id) ?? []);
+  return {
+    live: live.length,
+    running: checks.filter((check) => check.command).length,
+    spawned: checks.reduce((sum, check) => sum + check.descendants, 0),
+  };
 }
 
 /**

@@ -522,8 +522,8 @@ export async function requestCloseShell(id: number): Promise<void> {
 /**
  * 종료 확인이 적을 수(UI개선 결정 15 · 프로세스 스펙 S18). **두 세계를 합친** 목록 전부를 센다 — 이 스토어는
  * 세계마다 갈리지 않고 한 벌이다(owner가 세계를 싣는다). 명령이 도는지와 띄운 프로세스 수는 셸 닫기 확인과 **같은
- * 물음**을 셸 여럿에 한 번에 보내 지금 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 `countQuitShells`가
- * 혼자 안다.
+ * 물음**을 셸 여럿에 한 번에 보내 지금 묻는다 — 1초 폴링 값(`running`)은 늦다. 세는 규칙은 레지스트리의 한 자리
+ * (`spawnedOf`)가 알고, 아카이브 창의 M(`countSpawned`)도 그것을 딛는다.
  */
 export function quitShellCounts(): Promise<QuitCounts> {
   return countQuitShells(terminalStore.state.shells, fetchCloseChecks);
@@ -531,7 +531,7 @@ export function quitShellCounts(): Promise<QuitCounts> {
 
 /**
  * 이 owner의 셸들에서 띄워 함께 끝날 프로세스 수 — 아카이브 · 삭제 확인 창의 「(띄운 프로세스 M개 포함)」이다
- * (프로세스 스펙 S18). 못 얻으면 `null`이다. 세는 규칙은 `countSpawned`가 혼자 안다.
+ * (프로세스 스펙 S18). 못 얻으면 `null`이다. 세는 규칙은 종료 확인의 수와 한 자리다(레지스트리의 `spawnedOf`).
  */
 export function spawnedCountOf(owner: ShellOwner): Promise<number | null> {
   return countSpawned(shellsOf(terminalStore.state, owner), fetchCloseChecks);
