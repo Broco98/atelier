@@ -1085,8 +1085,9 @@ fn env_scope(shells: impl IntoIterator<Item = Option<Identity>>) -> EnvScope {
 /// 전 물음의 `close_checks`(확인 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다), 시작 정리의 `clean_up_at_startup`. 판정을
 /// 부르는 나머지 둘(`Processes` 화면의 스냅샷 · 배경 표본)은 `processes::service`가 같은 설정을 같은 루트에서 읽는다 — 그 층은 이
 /// 파일을 모른다. 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료),
-/// `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀(`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 화면
-/// 스냅샷과 배경 표본의 배선은 재는 검사가 없다.
+/// `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀(`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 판정마다
+/// 새로 읽는 것(한 번 읽어 쥐지 않는 것)과 화면 스냅샷 · 배경 표본의 배선은 자리 핀(`the_exception_list_is_read_anew_for_every_verdict`)이
+/// 잰다 — 장면들은 설정을 한 번 쓰고 안 고쳐 그 차이를 못 본다.
 fn exceptions() -> Vec<String> {
     crate::settings::process_exceptions(&atelier_core::data_root())
 }
@@ -1664,6 +1665,30 @@ mod tests {
         }
     }
 
+    /// **예외 목록은 판정마다 설정에서 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7) — 사람이 설정 › 터미널에서 목록을 고치면 다음에
+    /// 닫는 셸부터 먹는다. 풀 배선 장면(`CloseKeeping` · `ExitKeeping` · `Ask`)은 설정을 한 번 쓰고 끝까지 안 고쳐, 한 번 읽고 쥐고
+    /// 있는 변형(`OnceLock` · 풀의 칸)도 초록이다. 그래서 자리로 잰다: 읽는 함수 둘(이 파일 · `processes::service`)은 쥐는 것 없이 설정을
+    /// 부르는 한 줄이고, 판정을 부르는 자리마다 그 함수를 부른다. 시작 정리는 앱의 정리가 부른 목록을 판정에 넘긴다
+    /// (`the_startup_cleanup_counts_itself_judges_ends_then_forgets`).
+    #[test]
+    fn the_exception_list_is_read_anew_for_every_verdict() {
+        const READ: &str = "fn exceptions() -> Vec<String> {";
+        const SETTINGS: &str = "crate::settings::process_exceptions(&atelier_core::data_root())";
+        for (path, body) in [
+            ("pty::exceptions", body_of(READ, "\n}\n")),
+            ("service::exceptions", crate::tests::body_of(include_str!("processes/service.rs"), READ, "\n}\n")),
+        ] {
+            assert_eq!(body.trim(), SETTINGS, "{path}: 예외 목록을 설정에서 곧바로 읽지 않는다 — 한 번 읽은 목록을 쥐면 고친 목록이 안 먹는다");
+        }
+        for (path, body) in verdict_sites() {
+            let reads = match path {
+                "plan_startup" => body.contains("exceptions,"),
+                _ => body.contains("exceptions()"),
+            };
+            assert!(reads, "{path}: 판정마다 예외 목록을 새로 읽지 않는다");
+        }
+    }
+
     /// **풀은 판정의 셸과 화면의 셸을 한 잠금 안에서 읽는다**(티켓 26 · 29 — `processes::service::ShellListing::listing`). 두 목록이
     /// 다른 순간의 것이면 그 사이에 뜨거나 닫힌 셸이 한쪽에만 선다 — 화면이 판정의 셸을 풀에서 못 찾거나(32의 화면 밖 셸이 그 차이를
     /// 셸로 센다), 요약이 판정에 없는 셸의 프로세스를 합계에 넣는다. 서비스가 이 목록을 한 번만 받는 것은 서비스의 핀이 잰다.
@@ -1910,6 +1935,41 @@ mod tests {
         }
     }
 
+    /// **새로고침은 정리 기록에 까닭 「새로고침」, 주인 없이 적힌다**(티켓 11). 새로고침은 IPC로 오지 않고(웹뷰가 다시 뜬다) 풀은 셸의
+    /// 주인을 모른다 — 주인을 줄 자리가 없다. 실물 장면 `Reload`는 기록을 안 연 풀로 돌아 정리 기록을 안 쓴다. 까닭을 셸 닫기로 바꾼
+    /// 변형이 이 크레이트의 L1 전부를 통과해 자리로 잰다. 다른 길의 까닭은 실물 장면(셸 닫기 · 셸 스스로 끝남 · 앱 종료 · 시작 정리 ·
+    /// 손으로)이 기록째 잰다.
+    #[test]
+    fn a_reload_logs_its_ending_as_a_reload_without_an_owner() {
+        assert!(
+            body_of("pub fn end_for_reload(", "\npub fn ").contains("end(pool, shells, claim, Cause { reason: Reason::Reload, owner: None });"),
+            "새로고침이 끝낸 것을 정리 기록에 「새로고침」 · 주인 없음으로 안 적는다"
+        );
+    }
+
+    /// **셸 스스로 끝남은 끝낸 수를 정리 기록과 같은 규칙으로 세어 알린다**(티켓 13 · 프로세스 스펙 P4) — 도우미 · 이미 없음 · 못
+    /// 끝냄은 빠지고(`cleanup_log::ended_count` — 그 표가 규칙을 잰다), 셀 것이 없으면 알리지 않는다. 그래서 p10k 셸의 `exit`는
+    /// `gitstatusd`(도우미)만 끝나 조용하다.
+    ///
+    /// 실행으로는 못 가른다 — 실물 장면 `Exit`의 자식은 첫 입력 뒤에 떠 도우미가 아니고, `Record`의 둘째 셸은 끝낼 것이 없다. 결과 수
+    /// (`outcomes.len()`)로 세거나 도우미까지 세도 두 장면은 초록이다. 도우미만 끝나는 셸은 사람의 zsh 설정(gitstatusd)이 있어야 선다.
+    /// 그래서 자리로 잰다: 알림은 `ended_count`가 준 `Some` 갈래 안에서 그 수로 한 번만 나간다.
+    #[test]
+    fn a_shell_exit_announces_only_what_the_log_rule_counts() {
+        let body = body_of("fn exited(", "\n}\n");
+        let counted = body
+            .find("if let Some(count) = cleanup_log::ended_count(&members, &outcomes) {")
+            .expect("셸 스스로 끝남이 알릴 수를 정리 기록의 규칙(`ended_count`)으로 안 센다 — 도우미만 끝난 p10k 셸의 `exit`도 알린다");
+        let announced = body
+            .find("owner.announce(Ended { reason: Reason::ShellExit, shell_id: id, count });")
+            .expect("셸 스스로 끝남이 센 수로 알리지 않는다");
+        assert!(
+            counted < announced && !body[counted..announced].contains('}'),
+            "알림이 `ended_count`의 `Some` 갈래 밖에 있다 — 셀 것이 없어도 알린다"
+        );
+        assert_eq!(body.matches(".announce(").count(), 1, "셸 스스로 끝남이 두 번 알린다");
+    }
+
     /// **셸 스스로 끝남의 알림이 싣는 모양**(티켓 13). 프런트(`processes-ended.ts`의 `ProcessesEnded`)가 칸 이름으로 읽는다 —
     /// 글자로 못박는다. 까닭은 정리 기록의 낱말 그대로다.
     #[test]
@@ -1958,6 +2018,9 @@ mod tests {
     /// - 판정 전에 **판정 중으로 센다.** 판정하는 사이 앱이 닫히면 종료가 이 끝내기를 기다려 마감한다. 뒤집혀도 터지는 것은
     ///   그 ms 창에 ⌘Q가 올 때뿐이다(셸 닫기의 같은 자리는 `a_close_is_counted_before_its_shell_leaves_the_pool`).
     /// - 판정은 **시작 정리의 판정**(`verdict::at_startup` — 확정 고아만, 이 실행 것은 안 봄)이다.
+    /// - 끝내기는 판정 중 셈(`plan`의 `claim`)으로 시작한다(`Claim::start`) — 진행 중인 끝내기 목록에 올라, 유예 중에 앱이 닫히면
+    ///   종료가 그 고아를 SIGKILL까지 마감한다. 셈 없이 시작하면(`ending::start`) 목록에 안 올라 종료가 그것을 모르고, 셈은 떨어지며
+    ///   물러난다. 실물 장면 `Startup`은 유예 중에 앱을 닫지 않아 이 차이를 못 본다.
     /// - 죽은 실행의 기록은 끝내기를 **마감한 뒤에** 지운다. 먼저 지우면 끝내기가 도는 사이 앱이 닫혔을 때 남은 고아가 다음부터
     ///   출처 불명이 되어 영영 안 치워진다.
     /// - 판정에 **앱의 pid와 앱이 물려받은 셸 키**를 넘긴다(프로세스 스펙 S6). 설치본 셸에서 띄운 dev 앱이 제 vite와 제
@@ -1977,6 +2040,13 @@ mod tests {
         assert!(plan.contains("verdict::dead_instances(&input)"), "시작 정리가 지울 기록을 판정과 같은 입력으로 안 고른다");
 
         let carry = body_of("fn carry_out(", "\n}\n");
+        assert!(
+            carry.contains("let StartupPlan { claim, targets, dead } = plan;")
+                && carry.contains("let outcomes = claim.start(&ids, &[]).finish();"),
+            "시작 정리의 끝내기가 판정 중 셈으로 시작하지 않는다 — 진행 중인 끝내기 목록에 안 올라, 유예 중에 앱이 닫히면 고아에 SIGKILL이 \
+             안 간다"
+        );
+        assert!(!carry.contains("ending::start("), "시작 정리가 셈 밖의 끝내기(`ending::start`)를 쓴다 — 종료가 그것을 모른다");
         let ended = carry.find(".finish()").expect("시작 정리가 끝내기를 마감하지 않는다");
         let forgot = carry.find("pool.record.forget(").expect("시작 정리가 죽은 실행의 기록을 안 지운다");
         assert!(ended < forgot, "기록을 지우는 줄({forgot})이 끝내기 마감({ended})보다 앞에 있다 — 고아가 남은 채 기록이 사라진다");
