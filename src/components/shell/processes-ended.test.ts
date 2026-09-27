@@ -1,13 +1,18 @@
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
+import type { CleanupReason } from "@/features/processes/types";
 import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
 import { onViewProcesses } from "./processes-view";
 
 // 셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈다는 알림(프로세스 관리 티켓 13 · 프로세스 스펙 S49 · P4). 어느 화면에서든
 // 서는 것과 곧 내려가는 것은 L3가(`e2e/processes-ended.spec.ts`), 여기는 **이벤트 → 알릴 말**과 **두 언어를 잇는 이름**을 본다.
 
-const ended = (count: number, shellId = 3, reason = "shellExit"): ProcessesEnded => ({ reason, shellId, count });
+const ended = (count: number, shellId = 3, reason: CleanupReason = "shellExit"): ProcessesEnded => ({
+  reason,
+  shellId,
+  count,
+});
 
 describe("셸 스스로 끝남이 알리는 말", () => {
   it("끝낸 수를 말한다", () => {

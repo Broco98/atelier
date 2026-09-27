@@ -1,3 +1,4 @@
+import type { CleanupReason } from "@/features/processes/types";
 import type { AppNotice } from "./app-toast";
 import { viewAction } from "./processes-view";
 
@@ -21,8 +22,11 @@ export const PROCESSES_ENDED_EVENT = "processes:ended";
 
 /** 이벤트가 싣는 것(`pty.rs`의 `Ended`). 와이어 모양은 Rust 쪽 검사가 글자로 못박는다. */
 export interface ProcessesEnded {
-  /** 앱이 끝낸 까닭 — 정리 기록의 낱말(`cleanup_log::Reason`)이다. 지금 이 이벤트로 오는 것은 `shellExit` 하나다. */
-  reason: string;
+  /**
+   * 앱이 끝낸 까닭 — 정리 기록의 낱말(`cleanup_log::Reason`)이다. 지금 이 이벤트로 오는 것은 `shellExit` 하나다. 글자 대신 그
+   * 타입이라, 아래 `endedNotice`가 견주는 글자가 정리 기록에 없는 낱말로 틀리면 tsc가 운다.
+   */
+  reason: CleanupReason;
   /** 스스로 끝난 셸의 pty id. 레지스트리를 찾는 데 쓰지 않는다(위 머리말) — 토스트의 id에만 싣는다. */
   shellId: number;
   /** 끝낸 수 — 셸 도우미와 「이미 없음」은 빠졌다. Rust는 0이면 안 쏜다. */

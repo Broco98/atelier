@@ -1,6 +1,8 @@
 // `Processes` 화면의 스냅샷(프로세스 결정 10 · 티켓 26). Rust의 `processes::screen::ScreenSnapshot`과 **칸 이름으로만** 이어진다 —
 // 와이어 모양은 Rust 쪽 검사(`the_snapshot_crosses_the_wire_in_the_shape_the_frontend_reads`)가 글자로 못박는다.
 
+import type { CleanupReason } from "@/features/terminal/types";
+
 /** 프로세스 하나의 신원 — pid와 커널이 준 시작 시각(에포크 µs)의 쌍(프로세스 결정 3). pid만으로는 재사용을 못 가른다. */
 export interface ProcessIdentity {
   pid: number;
@@ -117,18 +119,10 @@ export interface TrendPoint {
 }
 
 /**
- * 정리 기록의 까닭(프로세스 결정 6 · 프로세스 스펙 S5) — Rust `cleanup_log::Reason`의 와이어 글자(camelCase)다. 화면의 말은
- * `cleanup-log.ts`의 `REASON_LABEL`이 든다 — 두 언어가 이 글자로만 이어지므로 그 검사가 Rust 선언을 읽어 견준다.
+ * 정리 기록의 까닭 — 정의는 `features/terminal/types.ts`에 산다(닫기 IPC의 까닭 `CloseReason`이 이것을 좁힌다). 이 기능의
+ * 화면과 검사는 여기서 가져간다.
  */
-export type CleanupReason =
-  | "shellClose"
-  | "shellExit"
-  | "appExit"
-  | "reload"
-  | "archive"
-  | "mcpArchive"
-  | "startupCleanup"
-  | "manual";
+export type { CleanupReason };
 
 /** 끝낸 것의 결과 — Rust `ending::Outcome`의 와이어 글자다. 끝남(TERM) · 강제(KILL) · 못 끝냄 · 이미 없음. */
 export type CleanupOutcome = "ended" | "forced" | "survived" | "gone";

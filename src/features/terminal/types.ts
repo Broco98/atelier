@@ -36,13 +36,35 @@ export interface CloseCheck {
 }
 
 /**
+ * 정리 기록의 까닭(프로세스 결정 6 · 프로세스 스펙 S5) — Rust `cleanup_log::Reason`의 와이어 글자(camelCase)다. 화면의 말은
+ * `features/processes/cleanup-log.ts`의 `REASON_LABEL`이 든다 — 두 언어가 이 글자로만 이어지므로 그 검사가 Rust 선언을 읽어
+ * 견준다.
+ *
+ * **여기 사는 것은 아래 `CloseReason`이 이것을 좁히기 때문이다.** 정리 기록은 `features/processes`의 것이지만, 그 기능이 이
+ * 기능을 가져다 쓰고 반대는 없다 — 닫기의 까닭이 이것을 보려면 이 층에 있어야 한다. `features/processes/types.ts`가 다시
+ * 내보낸다.
+ */
+export type CleanupReason =
+  | "shellClose"
+  | "shellExit"
+  | "appExit"
+  | "reload"
+  | "archive"
+  | "mcpArchive"
+  | "startupCleanup"
+  | "manual";
+
+/**
  * 닫기 IPC(`pty_kill`)가 싣는 **까닭** — 그 닫기가 끝낸 것이 정리 기록에 이 까닭으로 적힌다(티켓 11). 글자는 Rust
  * `cleanup_log::CloseReason`과 같고, 모르는 글자는 백엔드가 인자째 거절한다. 앱 종료 · 새로고침 · 시작 정리처럼 Rust 안에서
  * 생기는 까닭은 여기 없다.
  *
+ * **정리 기록의 까닭에서 좁힌다**(Rust의 `impl From<CloseReason> for Reason`과 같은 관계) — 따로 적으면 한쪽 글자가 바뀌어도
+ * 둘이 갈린 줄 모른다. 좁힌 결과가 이 셋 그대로인지는 `types.test.ts`가 타입으로 잰다: `Extract`는 없는 글자를 조용히 버린다.
+ *
  * 어느 닫기가 어느 까닭인지는 `shell-registry.ts`의 `CLOSE_REASONS` 한 자리가 고른다.
  */
-export type CloseReason = "shellClose" | "archive" | "mcpArchive";
+export type CloseReason = Extract<CleanupReason, "shellClose" | "archive" | "mcpArchive">;
 
 /**
  * 셸 하나에서 **지금 도는 명령**의 이름. `running`이 `null`이면 프롬프트에 서 있다.
