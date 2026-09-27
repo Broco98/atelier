@@ -7,24 +7,26 @@ import type { Shell } from "./shell-registry";
  *
  * 가는 곳은 **가장 최근에 부르는 상태(기다림 · 확인할 것)에 들어선 셸**이다. 결정 16은 「방금 알린 셸로」라 적었는데 「알린」을
  * 「부른」으로 읽는다: OS 알림을 꺼 두었거나, 그 셸을 보고 있어서 · 같은 work의 창에 접혀서 안 울렸어도 그 셸은 사람을 불렀다.
- * 들어선 순간을 가르는 것은 알림 판정이 이미 한다(`shell-notify.ts`의 `entersCalling` — 회차가 `entered`로 낸다). 여기는 그
- * 순서를 받아 **기억할 키 하나**를 고르고(`nextRecall`), 누른 순간 그 키로 **갈 셸**을 찾는다(`recallTarget`).
+ * 들어선 순간을 가르는 것은 알림 판정이 이미 한다(`shell-notify.ts`의 `entersCalling` — 회차가 `entered`로 낸다). 그 판정은
+ * 들어섬을 화면값이 아니라 **부르는 사실**(`NotifyShell.call`)로 가른다 — 보고 있는 셸에 온 턴끝은 같은 갱신 안에서 본 것이 되어
+ * 화면값이 없어도 부른 것이다(코드 리뷰 스펙 2). 여기는 그 순서를 받아 **기억할 키 하나**를 고르고(`nextRecall`), 누른 순간 그
+ * 키로 **갈 셸**을 찾는다(`recallTarget`).
  *
  * **셸 키로 기억한다 — 레지스트리 번호가 아니다.** 알림 클릭(판 03 선행 시험이 「안 됨」으로 닫았다)이 되는 날 알림이 싣는 것도
  * 셸 키이고, 두 길이 같은 판정을 지나야 「그 셸은 닫혔어요」가 한 자리에서 선다. 키에는 세대가 들어 있어 다른 실행의 키가 이번
  * 실행의 같은 번호 셸을 가리키지 않는다(S34).
  *
  * 이 모듈은 시간을 모른다 — 차례는 받은 회차와 사실이 도착한 값(`since`)의 크기로만 가른다. 셸 상태의 칸도 직접 안 읽는다:
- * 들어선 셸의 화면값과 시각은 알림 판정의 재료(`notifyShells`)가 이미 뽑아 준 것이다.
+ * 들어선 셸의 부르는 사실과 시각은 알림 판정의 재료(`notifyShells`)가 이미 뽑아 준 것이다.
  */
 
 /**
- * 부르는 상태에 들어선 셸 하나 — 알림 판정의 재료 한 줄(`NotifyShell`)이 그대로 이 모양이다. `kind`는 화면값이고, `since`는
- * 그 사실이 도착한 값이다. `shellKey`는 그 셸의 셸 키이고 spawn 응답 전이면 `null`이다.
+ * 부르는 상태에 들어선 셸 하나 — 알림 판정의 재료 한 줄(`NotifyShell`)이 그대로 이 모양이다. `call`은 부르는 사실이고(「봤다」와
+ * 무관하다 — 화면값이 아니다), `since`는 그 사실이 도착한 값이다. `shellKey`는 그 셸의 셸 키이고 spawn 응답 전이면 `null`이다.
  */
 export interface CallEntry {
   shellKey: string | null;
-  kind: ShellSignal | null;
+  call: ShellSignal | null;
   since: number;
 }
 
@@ -43,7 +45,7 @@ export interface CallEntry {
 export function nextRecall(prev: string | null, entered: ReadonlyArray<CallEntry>): string | null {
   let latest: CallEntry | null = null;
   for (const entry of entered) {
-    if (entry.shellKey === null || !isCalling(entry.kind)) continue;
+    if (entry.shellKey === null || !isCalling(entry.call)) continue;
     if (latest === null || entry.since > latest.since) latest = entry;
   }
   return latest?.shellKey ?? prev;

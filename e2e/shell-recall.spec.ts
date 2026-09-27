@@ -129,6 +129,37 @@ test("두 셸이 차례로 부르면 ⌘J가 나중에 부른 셸로 가고 포�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **보고 있던 셸의 턴끝도 부름이다**(코드 리뷰 스펙 2 · S59). 보고 있는 셸에 온 확인할 것은 같은 갱신 안에서 본 것이 되어 띠 ·
+// 탭에 안 선다 — 그래도 사람을 부른 것이라 ⌘J가 기억한다. 한때 기억의 재료가 「봤다」로 걸러진 화면값이라 여기서 ⌘J가 아무것도
+// 안 했다(바꾸기 전 코드에서 빨간 것을 봤다).
+test("보고 있던 셸이 턴을 마친 뒤 다른 셸로 옮기면 ⌘J가 그 셸로 돌아간다 — 확인할 것이 곧바로 꺼졌어도", async ({ page }) => {
+  await installFixtureBackend(page);
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await openShell(page);
+  await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
+
+  // 보고 있는 둘째 칸이 턴을 돌다 마친다.
+  await markAttention(page, { agent: "claude", event: "UserPromptSubmit", at: 1000, payload: { prompt: "고쳐 줘" } }, 2);
+  await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(1);
+  await fireAttention(page, 턴끝(2000), 2);
+  // **앵커** — 턴끝이 닿았다(도는 중이 걷혔다). 보고 있었으니 확인할 것은 곧바로 본 것이다: 띠에 안 선다.
+  await expect(레인(page, plainWork.slug).locator('[data-signal="working"]')).toHaveCount(0);
+  await settle(page);
+  await expect(띠(page)).toHaveCount(0);
+
+  await 이름표(page, 0).click();
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
+  await expectShellFocused(page, "첫 칸을 누른 뒤 포커스가 셸에 없다 — 아래 ⌘J가 셸 안에서 눌리지 않는다");
+
+  await page.keyboard.press("Meta+j");
+
+  await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "false");
+  await expectShellFocused(page, "⌘J로 간 셸에 포커스가 없다");
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // **다른 work의 셸이면 화면을 옮긴 뒤 같다.** 누르는 길은 메뉴다 — 셸에 포커스가 있어 xterm이 키를 먹는 상태에서 메뉴가 쏜
 // 사건이 창의 리스너에 닿는다.
 test("다른 work의 셸이 나중에 불렀으면 메뉴의 ⌘J가 그 화면으로 옮긴 뒤 포커스를 그 셸에 준다", async ({ page }) => {

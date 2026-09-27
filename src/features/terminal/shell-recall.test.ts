@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLOSED_SHELL_NOTICE, nextRecall, recallHotkey, recallTarget } from "./shell-recall";
 import type { CallEntry } from "./shell-recall";
-import { createNotifier, outgoing } from "./shell-notify";
+import { createNotifier } from "./shell-notify";
 import type { NotifyShell } from "./shell-notify";
 import { ownerOf } from "./shell-registry";
 import type { Shell } from "./shell-registry";
@@ -10,9 +10,9 @@ import type { Shell } from "./shell-registry";
 // 상태(기다림 · 확인할 것)에 **들어선** 셸이다. 「들어서는」 순간은 알림 판정이 이미 가르고(`createNotifier`의 `entered`),
 // 이 파일이 재는 것은 그 순서를 받아 갈 셸을 고르는 순수 함수 둘과 키 판정 하나다. 시계도 셸 상태 칸도 안 읽는다.
 
-const 들어섬 = (shellKey: string | null, since: number, kind: CallEntry["kind"] = "waiting"): CallEntry => ({
+const 들어섬 = (shellKey: string | null, since: number, call: CallEntry["call"] = "waiting"): CallEntry => ({
   shellKey,
-  kind,
+  call,
   since,
 });
 
@@ -106,24 +106,23 @@ describe("기억한 셸 키 → 갈 곳", () => {
 
 // **알림이 억제돼도 기억한다**(S59). 들어섬을 가르는 것은 알림 판정의 첫 두 줄(부르는가 · 새 사실인가)뿐이고, 보고 있어서 ·
 // 5초 창에 접혀서 · 설정에서 꺼서 안 울린 것은 기억에서 안 빠진다. 알림 판정의 회차를 그대로 지나 잰다.
+//
+// 보고 있어서 안 울린 부름과 알림을 꺼 둔 동안의 부름은 **스토어를 거쳐** 잰다(`terminal-store.test.ts`의 「방금 부른 셸로」 —
+// 코드 리뷰 스펙 2). 한때 여기서 회차의 줄을 손으로 지어 쟀는데, 그 두 검사는 스토어가 지나는 두 자리(보고 있는 셸의 사실이
+// 곧바로 본 것이 되는 훅 구독 · 설정보다 먼저 가르는 회차)를 안 지나 실패할 수 없었다.
 describe("OS 알림이 억제된 부름도 기억한다", () => {
   const 줄 = (patch: Partial<NotifyShell>): NotifyShell => ({
     id: 1,
     shellKey: "G-1",
     owner: ownerOf("atelier", "signal"),
     kind: "waiting",
+    call: "waiting",
     since: 0,
     visible: false,
     title: "터미널 신호",
     shellName: "zsh",
     message: null,
     ...patch,
-  });
-
-  it("보고 있어서 안 울렸어도 기억한다", () => {
-    const { fired, entered } = createNotifier().step([줄({ visible: true })], 0);
-    expect(fired).toEqual([]);
-    expect(nextRecall(null, entered)).toBe("G-1");
   });
 
   it("같은 work의 5초 창에 접혀 안 울렸어도 기억한다", () => {
@@ -135,12 +134,6 @@ describe("OS 알림이 억제된 부름도 기억한다", () => {
     );
     expect(fired).toEqual([]);
     expect(nextRecall("G-1", entered)).toBe("G-2");
-  });
-
-  it("알림을 꺼 두었어도 기억한다", () => {
-    const { fired, entered } = createNotifier().step([줄({})], 0);
-    expect(outgoing(fired, 1, { enabled: false, sound: false }).toShow).toEqual([]);
-    expect(nextRecall(null, entered)).toBe("G-1");
   });
 
   // 들어섬은 엣지다 — 같은 사실로 머무는 셸은 다시 들어서지 않는다. 그사이 다른 셸이 들어섰으면 그 셸이 기억으로 남는다.

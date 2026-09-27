@@ -850,8 +850,9 @@ let badgeShown = 0;
  * 혼자 정하고 여기는 그 답을 들고 있기만 한다 — `pendingFocus`처럼 모듈 값이다: 화면이 그리는 것이 아니다.
  *
  * **자리가 알림 판정 곁인 것**은 「부르는 상태에 들어선 순간」을 그 판정이 이미 가르기 때문이다(`entersCalling` — 회차가
- * `entered`로 낸다). 다른 자리에서 다시 가르면 알림과 기억이 다른 순간을 「들어섰다」로 읽는다. 셸이 닫혀도 지우지 않는다 —
- * 누르면 「그 셸은 닫혔어요」로 끝나야 한다(fail-closed · `recallTarget`).
+ * `entered`로 낸다). 다른 자리에서 다시 가르면 알림과 기억이 다른 순간을 「들어섰다」로 읽는다. 들어섬은 화면값이 아니라 부르는
+ * 사실로 가른다 — 보고 있는 셸에 온 턴끝은 훅 구독의 같은 갱신 안에서 본 것이 되어 화면값이 없다(코드 리뷰 스펙 2 · `NotifyShell.call`).
+ * 셸이 닫혀도 지우지 않는다 — 누르면 「그 셸은 닫혔어요」로 끝나야 한다(fail-closed · `recallTarget`).
  */
 let recalled: string | null = null;
 
@@ -869,13 +870,13 @@ export function recalledShell(): RecallTarget {
  */
 function notifyTick(): void {
   const rows = notifyShells(terminalStore.state, currentView(), notifyTitleOf);
-  const { fired, entered } = notifier.step(rows, Date.now());
+  const { fired, entered, calling } = notifier.step(rows, Date.now());
   // **알림을 꺼 두었어도 기억한다**(S59) — 들어선 셸은 아래 설정(`outgoing`)과 보임 · 5초 창보다 먼저 갈린다.
   recalled = nextRecall(recalled, entered);
   // **고른 값이 무엇을 바꾸는지도 여기 없다**(`outgoing`). 「끄면 조용하다」·「소리만 끈다」를
   // 이 배선 안의 `if`로 들면 그 두 줄을 지워도 어느 층도 빨개지지 않는다 — 순수 함수로
   // 내려야 표가 그것을 잡는다(2026-09-10 리뷰).
-  const { toShow, badge } = outgoing(fired, rows.length, notifyChoice());
+  const { toShow, badge } = outgoing(fired, calling, notifyChoice());
   setBadge(badge);
   for (const one of toShow) show(one);
 }

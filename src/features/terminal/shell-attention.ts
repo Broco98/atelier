@@ -774,29 +774,56 @@ export interface CallingShell {
  * 자르면 헤더의 `N`이 셀 것이 사라진다.
  */
 export function callingShells(shells: ReadonlyArray<Shell>): ReadonlyArray<CallingShell> {
-  // 화면값과 시각을 **한 번에** 뽑아 두고 그것으로 줄 세운다. 비교 함수 안에서 다시
+  // **부르는 사실에서 본 확인할 것만 뺀다** — 차례는 그대로다(아래 `shellCalls`의 차례에서 거른 것이다). 줄을 고르는
+  // 자리를 둘로 두면 띠 · 독 배지와 방금 부른 셸의 기억이 다른 차례를 말한다.
+  return shellCalls(shells).flatMap(({ shell, kind, attention }) => (kind === null ? [] : [{ shell, kind, attention }]));
+}
+
+/**
+ * 부르는 셸 하나 — **「봤다」와 무관하게**(코드 리뷰 스펙 2). 화면값(`kind`)과 부르는 사실(`call`)을 함께 든다.
+ */
+export interface ShellCall {
+  shell: Shell;
+  /** 그 셸이 부르는 사실(`Attention.kind`) — 봤어도 그대로다. */
+  call: CallingKind;
+  /** 화면값 — `call`과 같거나, **본 확인할 것이면 `null`**이다(`signalOf`). 띠 · 독 배지 · 알림이 읽는다. */
+  kind: CallingKind | null;
+  /** 그 셸이 말한 사실 통째로(`CallingShell.attention`과 같은 까닭). */
+  attention: Attention;
+}
+
+/**
+ * **부르는 사실이 선 셸들** — 본 확인할 것도 든다(프로세스 결정 16 · 프로세스 스펙 S59 · 코드 리뷰 스펙 2). 띠(`callingShells`)는
+ * 본 확인할 것을 안 그리지만, 방금 부른 셸의 기억(⌘J)은 그것도 부름으로 센다: 보고 있는 셸에 온 턴끝은 같은 갱신 안에서 곧바로
+ * 본 것이 되는데(`markShellsSeen`), 보고 있어서 안 울린 부름도 사람을 부른 것이다. 알림 판정의 재료(`notifyShells`)가 이 목록이다.
+ *
+ * 차례는 띠와 같다 — 기다림 먼저, 같은 종류 안에서는 오래된 순. 가르는 것은 부르는 사실이다(본 확인할 것은 안 본 확인할 것들
+ * 사이에 제 시각으로 선다). 띠의 차례는 이 차례에서 본 확인할 것만 뺀 것이다.
+ */
+export function shellCalls(shells: ReadonlyArray<Shell>): ReadonlyArray<ShellCall> {
+  // 사실과 시각을 **한 번에** 뽑아 두고 그것으로 줄 세운다. 비교 함수 안에서 다시
   // 부르면 정렬이 도는 동안 같은 판정이 수십 번 돌고, 무엇보다 그 자리에서 `null`을
   // 단언으로 지워야 한다 — 걸러 낸 뒤라 안전하지만, 단언은 다음 사람이 조건을 넓힐 때
   // 조용히 거짓말이 된다.
-  const calling: CallingShell[] = [];
+  const calls: ShellCall[] = [];
   for (const shell of shells) {
-    const kind = signalOf(shell);
-    // **갈래의 이름을 딛는다.** 리터럴 둘로 좁히면 축이 느는 날 새 값이 조용히 걸러져
-    // 띠·독 배지·알림 셋이 함께 침묵한다(`CallingKind` 머리말).
-    if (!isCalling(kind)) continue;
-    // **없으면 줄을 안 낸다.** `signalOf`가 이미 죽은 칸을 걸렀으므로 값이 있는 것은
-    // 확실하지만, 그 확신을 `?? 0`으로 메워 두면 다음 사람이 위 조건을 넓히는 날 이 셸이
-    // **1970년부터 기다린 것**으로 맨 위에 선다 — 사람이 읽는 글자라 틀린 값이 그대로 뜻이
-    // 된다(`topSignalView`가 같은 자리에서 같은 이유로 문을 다시 딛는다).
+    // **죽은 칸은 없다**(`attentionOn`). 그 확신을 `?? 0`으로 메워 두면 다음 사람이 조건을 넓히는 날 이 셸이
+    // **1970년부터 기다린 것**으로 맨 위에 선다 — 사람이 읽는 글자라 틀린 값이 그대로 뜻이 된다(`topSignalView`가 같은
+    // 자리에서 같은 이유로 문을 다시 딛는다).
     const attention = attentionOn(shell);
     if (attention === null) continue;
-    calling.push({ shell, kind, attention });
+    // **갈래의 이름을 딛는다.** 리터럴 둘로 좁히면 축이 느는 날 새 값이 조용히 걸러져
+    // 띠·독 배지·알림 셋이 함께 침묵한다(`CallingKind` 머리말).
+    const call = attention.kind;
+    if (!isCalling(call)) continue;
+    const kind = signalOf(shell);
+    calls.push({ shell, call, kind: isCalling(kind) ? kind : null, attention });
   }
 
-  return calling.sort((a, b) =>
-    a.kind === b.kind
+  return calls.sort((a, b) =>
+    a.call === b.call
       ? a.attention.since - b.attention.since
-      : RANK[a.kind] - RANK[b.kind],
+      : RANK[a.call] - RANK[b.call],
   );
 }
 

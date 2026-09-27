@@ -1,6 +1,6 @@
 import { SIGNAL_LABEL, type ShellSignal } from "@/components/shell/shell-signal";
 import type { NotifyChoice } from "@/features/settings/notifications";
-import { callingShells, isCalling, isShellSeen } from "./shell-attention";
+import { isCalling, isShellSeen, shellCalls } from "./shell-attention";
 import type { ShellView } from "./shell-attention";
 import { shellRowName } from "./shell-registry";
 import type { ShellOwner, ShellsState } from "./shell-registry";
@@ -104,7 +104,8 @@ export function decideNotification(input: NotifyInput): NotifyContent | null {
  * **부르는 상태에 들어섰나** — 알림 판정의 첫 두 줄이다(위 `decideNotification`). 울릴지는 그 뒤의 두 줄(보고 있나 · 5초 창)이
  * 더 가르지만, 들어섰다는 사실은 거기서 안 바뀐다. 그 사실만 따로 읽는 자리가 방금 부른 셸의 기억이다(티켓 23 · 프로세스
  * 스펙 S59) — 보고 있어서 · 접혀서 · 알림을 꺼서 안 울린 부름도 사람을 부른 것이다. 판정을 두 벌 적지 않으려고 여기 하나로
- * 뗐다.
+ * 뗐다. **견주는 값이 둘이다** — 알림은 화면값(`NotifyShell.kind`)으로, 기억은 부르는 사실(`NotifyShell.call`)로 이 판정을
+ * 지난다(`createNotifier`).
  */
 export function entersCalling(input: Pick<NotifyInput, "prev" | "prevSince" | "next" | "since">): boolean {
   // 「확인할 것」 둘로 들어가는 것만이 울릴 일이다. 도는 중과 없음은 여기서 함께 걸린다.
@@ -116,8 +117,8 @@ export function entersCalling(input: Pick<NotifyInput, "prev" | "prevSince" | "n
 }
 
 /**
- * 판정에 걸릴 셸 하나. `kind`는 **화면값**이라(`signalOf`) 본 완료는 이미 `null`이고,
- * `visible`은 결정 7의 판정(`isShellSeen`)이 그대로 온 것이다.
+ * 판정에 걸릴 셸 하나. `kind`는 **화면값**이라(`signalOf`) 본 완료는 이미 `null`이고, `call`은 **부르는 사실**이라 봤어도
+ * 그대로다. `visible`은 결정 7의 판정(`isShellSeen`)이 그대로 온 것이다.
  */
 export interface NotifyShell {
   id: number;
@@ -135,7 +136,14 @@ export interface NotifyShell {
    * 다른 쪽의 부름이 「같은 창의 반복」으로 삼켜진다.
    */
   owner: ShellOwner;
+  /** 화면값 — 알림(`fired`)과 독 배지가 이것으로 가른다. 본 확인할 것은 `null`이다. */
   kind: ShellSignal | null;
+  /**
+   * 부르는 사실 — **「봤다」와 무관하다**(코드 리뷰 스펙 2). 들어섬(`entered` — 방금 부른 셸의 기억)이 이것으로 가른다. 보고 있는
+   * 셸에 온 턴끝은 같은 갱신 안에서 본 것이 되어(`markShellsSeen`) 화면값이 없는데, 그 부름도 사람을 부른 것이다(S59).
+   * `notifyShells`가 내는 줄에서는 늘 부르는 값이다(`shellCalls`).
+   */
+  call: ShellSignal | null;
   /**
    * 그 사실이 도착한 시각(`Attention.since`). **`kind`와 함께 기억된다** — 회차가 화면값
    * 하나만 들면 같은 값으로 도착한 새 사실이 「계속 같은 값이 온 것」으로 삼켜진다.
@@ -149,16 +157,18 @@ export interface NotifyShell {
 }
 
 /**
- * 회차 하나가 낸 것 둘. `fired`는 **울릴 것**이고, `entered`는 이 회차에 **부르는 상태에 들어선 셸**이다 — 울렸든(보임 억제 ·
- * 5초 창에 걸려) 안 울렸든 든다(`entersCalling`). 차례는 받은 목록 그대로다.
+ * 회차 하나가 낸 것 셋. `fired`는 **울릴 것**이고, `entered`는 이 회차에 **부르는 상태에 들어선 셸**이다 — 울렸든(보임 억제 ·
+ * 5초 창에 걸려) 안 울렸든, 봤든 든다(`entersCalling`을 부르는 사실로). 차례는 받은 목록 그대로다. `calling`은 **지금 부르는
+ * 셸의 수**(화면값)다 — 독 배지가 센다(`outgoing`). 본 확인할 것은 줄에 들어도(기억의 재료) 안 센다: 띠 헤더의 `N`과 같은 수다.
  */
 export interface NotifyStep {
   fired: ReadonlyArray<NotifyContent>;
   entered: ReadonlyArray<NotifyShell>;
+  calling: number;
 }
 
 /**
- * 회차마다 목록을 받아 울릴 것과 들어선 셸을 돌려준다. 상태는 둘뿐이다 — 셸마다의 직전 화면값과
+ * 회차마다 목록을 받아 울릴 것과 들어선 셸을 돌려준다. 상태는 둘뿐이다 — 셸마다의 직전 값(화면값 · 부르는 사실 · 시각)과
  * work마다의 마지막 알림 시각.
  */
 export interface Notifier {
@@ -185,23 +195,27 @@ export function createNotifier(): Notifier {
   // **기억하는 것이 화면값 하나가 아니라 「그 사실의 정체」다**(`decideNotification` 머리말).
   // 훅 셸은 `waiting`을 벗어나는 길이 사실상 없어서, 값만 들면 승인 요청이 연달아 오는 동안
   // 둘째부터 전부 삼켜진다.
-  let previous = new Map<number, { kind: ShellSignal | null; since: number }>();
+  let previous = new Map<number, { kind: ShellSignal | null; call: ShellSignal | null; since: number }>();
   const lastByOwner = new Map<string | null, number>();
 
   return {
     step(shells, now) {
       const fired: NotifyContent[] = [];
       const entered: NotifyShell[] = [];
-      const next = new Map<number, { kind: ShellSignal | null; since: number }>();
+      const next = new Map<number, { kind: ShellSignal | null; call: ShellSignal | null; since: number }>();
 
       for (const shell of shells) {
-        next.set(shell.id, { kind: shell.kind, since: shell.since });
+        next.set(shell.id, { kind: shell.kind, call: shell.call, since: shell.since });
         const was = previous.get(shell.id) ?? null;
-        const edge = { prev: was?.kind ?? null, prevSince: was?.since ?? null, next: shell.kind, since: shell.since };
-        // **울리기 전에 적는다** — 아래 판정이 보임 · 5초 창으로 거절해도 들어선 사실은 남는다(`entersCalling`).
-        if (entersCalling(edge)) entered.push(shell);
+        const at = { prevSince: was?.since ?? null, since: shell.since };
+        // **울리기 전에 적는다** — 아래 판정이 보임 · 5초 창으로 거절해도 들어선 사실은 남는다(`entersCalling`). 견주는 것은
+        // **부르는 사실**이다 — 화면값으로 견주면 보고 있는 셸의 턴끝(곧바로 본 것이 된다)이 들어서지 못한다(코드 리뷰 스펙 2).
+        if (entersCalling({ ...at, prev: was?.call ?? null, next: shell.call })) entered.push(shell);
+        // 울림은 **화면값**으로 가른다 — 알림의 전이 표와 억제(보임 · 5초 창 · 설정)는 그대로다.
         const content = decideNotification({
-          ...edge,
+          ...at,
+          prev: was?.kind ?? null,
+          next: shell.kind,
           visible: shell.visible,
           lastNotifiedAt: lastByOwner.get(shell.owner) ?? null,
           now,
@@ -215,23 +229,26 @@ export function createNotifier(): Notifier {
       }
 
       previous = next;
-      return { fired, entered };
+      return { fired, entered, calling: shells.filter((shell) => isCalling(shell.kind)).length };
     },
   };
 }
 
 /**
  * 레지스트리에서 이 회차의 재료를 뽑는다. **부르는 셸만 든다** — 「누가 부르나」와 그 차례는
- * 이미 정해져 있고(`callingShells`, 띠가 읽는 그 목록) 여기가 더하는 것은 알림에만 필요한
+ * 이미 정해져 있고(`shellCalls`, 띠가 읽는 목록의 바탕) 여기가 더하는 것은 알림에만 필요한
  * 셋뿐이다: 지금 보고 있는가 · 화면의 이름 · 셸의 이름.
+ *
+ * **본 확인할 것도 든다**(코드 리뷰 스펙 2) — 화면값은 없고(`kind: null`) 부르는 사실(`call`)만 선 줄이다. 울리지 않고
+ * 배지에도 안 세이지만(`NotifyStep.calling`), 들어섬은 부르는 사실로 가르므로 방금 부른 셸의 기억에 든다.
  *
  * **부르기를 그친 셸이 목록에서 빠지는 것이 곧 재무장이다.** 조용해진 셸을 `kind: null`로
  * 실어 보내는 안도 있었지만, 그러면 셸 여덟이 늘 목록에 앉아 있고 「부르는 것만 본다」는
  * 성질이 이 자리에서 깨진다 — `Notifier`가 회차마다 기억을 통째로 갈아 끼우므로(그 머리말)
  * 빠지는 것만으로 같은 일이 난다.
  *
- * **독 배지가 세는 것도 이 목록이다.** 「확인할 것의 수」를 다른 자리에서 다시 세면 배지와
- * 띠 헤더의 `N`이 갈리는 날이 온다(`callingShells` 머리말의 그 경고).
+ * **독 배지가 세는 것도 이 목록이다** — 화면값이 부르는 줄만(`NotifyStep.calling`). 「확인할 것의 수」를 다른 자리에서
+ * 다시 세면 배지와 띠 헤더의 `N`이 갈리는 날이 온다(`callingShells` 머리말의 그 경고).
  *
  * `titleOf`가 밖에서 오는 것은 터미널이 슬러그까지만 알기 때문이다(`bandRows` 머리말) —
  * work 제목도 최상위 셸의 `Terminal`도 화면의 말이라, 둘 다 쥔 자리가 건넨다.
@@ -241,11 +258,12 @@ export function notifyShells(
   view: ShellView,
   titleOf: (owner: ShellOwner) => string,
 ): ReadonlyArray<NotifyShell> {
-  return callingShells(state.shells).map(({ shell, kind, attention }) => ({
+  return shellCalls(state.shells).map(({ shell, kind, call, attention }) => ({
     id: shell.id,
     shellKey: shell.shellKey,
     owner: shell.owner,
     kind,
+    call,
     since: attention.since,
     // 결정 7의 판정 **그 함수**를 딛는다(스토리 80) — 탭 물들임과 두 벌이 되면 초록은
     // 꺼졌는데 알림은 울리는(또는 그 반대인) 어긋남이 난다.
@@ -321,7 +339,7 @@ export interface NotifyOutgoing {
  * 열고도 몇 개가 부르는지 안다)가 알림을 끈 사람에게서 통째로 사라지므로, 구현-스펙의
  * 미확인 목록에 그대로 올려 뒀다.
  *
- * `calling`은 **지금 부르는 셸의 수**다(`notifyShells`가 낸 목록의 길이) — 이 회차에 울린
+ * `calling`은 **지금 부르는 셸의 수**다(회차가 낸 `NotifyStep.calling` — 화면값이 부르는 줄) — 이 회차에 울린
  * 것의 수가 아니다. 접혀서 안 울린 셸도 독에는 세어야 「몇 개가 부르나」가 맞는다.
  */
 export function outgoing(

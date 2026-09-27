@@ -174,18 +174,22 @@ describe("무엇이 실리나", () => {
 // **만들어 낸다** — 회차마다 목록을 받아 셸마다 직전과 견주고, 울린 것은 그 work의 시각을
 // 갱신한다. 여기가 틀리면 판정이 아무리 맞아도 두 번째 프롬프트가 삼켜진다.
 describe("판정을 회차에 걸어 두는 것", () => {
-  const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => ({
-    id: 1,
-    shellKey: "G-1",
-    owner: 소유("signal"),
-    kind: "waiting",
-    since: 0,
-    visible: false,
-    title: "터미널 신호",
-    shellName: "atelier · claude",
-    message: null,
-    ...patch,
-  });
+  // 부르는 사실(`call`)은 따로 안 주면 화면값과 같다 — 안 본 셸이다. 본 확인할 것만 둘이 갈린다(`kind: null`).
+  const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => {
+    const row = {
+      id: 1,
+      shellKey: "G-1",
+      owner: 소유("signal"),
+      kind: "waiting" as ShellSignal | null,
+      since: 0,
+      visible: false,
+      title: "터미널 신호",
+      shellName: "atelier · claude",
+      message: null,
+      ...patch,
+    };
+    return { ...row, call: patch.call === undefined ? row.kind : patch.call };
+  };
 
   it("같은 값이 계속 와도 한 번만 울린다", () => {
     const notifier = createNotifier();
@@ -277,6 +281,36 @@ describe("판정을 회차에 걸어 두는 것", () => {
     expect(notifier.step([shell({ since: 4000 })], 4000).entered).toHaveLength(1);
   });
 
+  // **본 확인할 것은 울리지 않고 배지에도 안 세지만 들어선다**(코드 리뷰 스펙 2). 보고 있는 셸에 온 턴끝은 같은 갱신 안에서
+  // 본 것이 되어 화면값이 없다(`kind: null`) — 들어섬은 부르는 사실(`call`)로 가른다. 방금 부른 셸의 기억이 그 줄을 받는다.
+  it("본 확인할 것은 울리지도 배지에 세이지도 않지만 부르는 상태에 들어선다", () => {
+    const notifier = createNotifier();
+    const 첫회차 = notifier.step([shell({ id: 1, shellKey: "G-1", kind: null, call: "done", visible: true })], 0);
+    expect(첫회차.fired).toEqual([]);
+    expect(첫회차.calling).toBe(0);
+    expect(첫회차.entered.map((one) => one.shellKey)).toEqual(["G-1"]);
+    // 머물면 다시 안 들어선다 — 부르는 사실과 시각이 그대로다.
+    expect(notifier.step([shell({ id: 1, kind: null, call: "done", visible: true })], 1000).entered).toEqual([]);
+  });
+
+  // 독 배지의 수는 **화면값이 부르는 줄**이다 — 띠 헤더의 `N`과 같다. 본 확인할 것은 줄에 들어도 안 센다.
+  it("회차가 지금 부르는 셸의 수를 낸다 — 본 확인할 것은 안 센다", () => {
+    const { calling } = createNotifier().step(
+      [shell({ id: 1 }), shell({ id: 2, kind: "done" }), shell({ id: 3, kind: null, call: "done" })],
+      0,
+    );
+    expect(calling).toBe(2);
+  });
+
+  // **본 것이 되어도 알림의 전이는 그대로다.** 본 확인할 것은 화면값이 없으므로(나감), 그 뒤에 온 새 사실은 다시 들어가
+  // 운다 — 줄에서 빠졌다 돌아온 것과 같다(위 「목록에서 빠졌다 돌아온 셸」).
+  it("본 확인할 것 뒤에 새 사실이 오면 다시 운다", () => {
+    const notifier = createNotifier();
+    expect(notifier.step([shell({ kind: "done", since: 0 })], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell({ kind: null, call: "done", since: 0 })], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell({ kind: "done", since: 60_000 })], 60_000).fired).toHaveLength(1);
+  });
+
   // **접힌 알림은 창을 늘리지 않는다.** 접힌 것까지 시각을 갱신하면 셸이 줄줄이 부르는
   // 동안 창이 끝없이 밀려 5초가 지나도 아무것도 안 울린다.
   it("접힌 알림은 창을 밀지 않는다", () => {
@@ -331,7 +365,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     return slug === null ? "Terminal" : `《${slug}》`;
   };
 
-  // **띠와 같은 목록이다.** 부르는 셸만 들고 차례도 그쪽이 정한 그대로다 — 접히는 차례가
+  // **띠와 같은 차례다.** 부르는 셸만 들고 차례도 그쪽이 정한 그대로다 — 접히는 차례가
   // 우선순위와 갈리면 5초 창에서 급한 것이 접히고 덜 급한 것이 울린다.
   it("부르는 셸만, 띠의 차례 그대로 든다", () => {
     const rows = notifyShells(
@@ -346,9 +380,30 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     );
     expect(rows.map((one) => one.id)).toEqual([2, 1]);
     expect(rows.map((one) => one.kind)).toEqual(["waiting", "done"]);
+    expect(rows.map((one) => one.call)).toEqual(["waiting", "done"]);
     // **시각도 함께 온다** — 판정이 「같은 값으로 새 사실이 왔나」를 이 칸으로 가른다.
     // 여기서 빠지면 위 판정 검사가 아무리 맞아도 실물에서는 둘째 승인이 삼켜진다.
     expect(rows.map((one) => one.since)).toEqual([20, 30]);
+  });
+
+  // **본 확인할 것도 든다**(코드 리뷰 스펙 2) — 화면값은 없고(`kind: null`) 부르는 사실(`call`)만 선다. 한때 여기서
+  // 빠져, 보고 있는 셸에 온 턴끝이 방금 부른 셸의 기억(⌘J)에 못 들었다. 차례는 부르는 사실로 선다 — 띠의 차례에서 본
+  // 확인할 것만 끼운 것이다.
+  it("본 확인할 것도 화면값 없이 부르는 사실로 든다", () => {
+    const rows = notifyShells(
+      화면(
+        칸({ id: 1, owner: 소유("가"), attention: 상태({ kind: "done", since: 30 }) }),
+        칸({ id: 2, owner: 소유("나"), attention: 상태({ kind: "done", since: 20, seen: true }) }),
+        칸({ id: 3, owner: 소유("다"), attention: 상태({ kind: "waiting", since: 40 }) }),
+      ),
+      { activeIds: [], focused: true },
+      제목,
+    );
+    expect(rows.map((one) => [one.id, one.kind, one.call])).toEqual([
+      [3, "waiting", "waiting"],
+      [2, null, "done"],
+      [1, "done", "done"],
+    ]);
   });
 
   // 「봤다」 판정은 **한 자리**다(스토리 80) — 탭 물들임과 같은 함수(`isShellSeen`)를 딛는다.
