@@ -20,10 +20,10 @@ import type { Shell } from "./shell-registry";
 
 /**
  * 부르는 상태에 들어선 셸 하나 — 알림 판정의 재료 한 줄(`NotifyShell`)이 그대로 이 모양이다. `kind`는 화면값이고, `since`는
- * 그 사실이 도착한 값이다. `key`는 그 셸의 셸 키이고 spawn 응답 전이면 `null`이다.
+ * 그 사실이 도착한 값이다. `shellKey`는 그 셸의 셸 키이고 spawn 응답 전이면 `null`이다.
  */
 export interface CallEntry {
-  key: string | null;
+  shellKey: string | null;
   kind: ShellSignal | null;
   since: number;
 }
@@ -43,10 +43,10 @@ export interface CallEntry {
 export function nextRecall(prev: string | null, entered: ReadonlyArray<CallEntry>): string | null {
   let latest: CallEntry | null = null;
   for (const entry of entered) {
-    if (entry.key === null || !isCalling(entry.kind)) continue;
+    if (entry.shellKey === null || !isCalling(entry.kind)) continue;
     if (latest === null || entry.since > latest.since) latest = entry;
   }
-  return latest?.key ?? prev;
+  return latest?.shellKey ?? prev;
 }
 
 /**
@@ -59,9 +59,9 @@ export function nextRecall(prev: string | null, entered: ReadonlyArray<CallEntry
  */
 export type RecallTarget = { kind: "go"; shell: Shell } | { kind: "closed" } | null;
 
-export function recallTarget(key: string | null, shells: ReadonlyArray<Shell>): RecallTarget {
-  if (key === null) return null;
-  const shell = shells.find((one) => one.shellKey === key);
+export function recallTarget(shellKey: string | null, shells: ReadonlyArray<Shell>): RecallTarget {
+  if (shellKey === null) return null;
+  const shell = shells.find((one) => one.shellKey === shellKey);
   return shell ? { kind: "go", shell } : { kind: "closed" };
 }
 

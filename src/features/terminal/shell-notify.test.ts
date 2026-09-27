@@ -176,7 +176,7 @@ describe("무엇이 실리나", () => {
 describe("판정을 회차에 걸어 두는 것", () => {
   const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => ({
     id: 1,
-    key: "G-1",
+    shellKey: "G-1",
     owner: 소유("signal"),
     kind: "waiting",
     since: 0,
@@ -253,17 +253,17 @@ describe("판정을 회차에 걸어 두는 것", () => {
   // 사실인가)이 가르고, 보임 억제와 5초 창은 그 뒤의 일이다 — 그 둘에 걸려 안 울린 부름도 사람을 부른 것은 같다(S59).
   it("부르는 상태에 들어선 셸을 울림과 따로 낸다 — 보고 있거나 접혀 안 울렸어도", () => {
     const notifier = createNotifier();
-    const 첫회차 = notifier.step([shell({ id: 1, key: "G-1", visible: true })], 0);
+    const 첫회차 = notifier.step([shell({ id: 1, shellKey: "G-1", visible: true })], 0);
     expect(첫회차.fired).toEqual([]);
-    expect(첫회차.entered.map((one) => one.key)).toEqual(["G-1"]);
+    expect(첫회차.entered.map((one) => one.shellKey)).toEqual(["G-1"]);
 
     // 머무는 셸은 다시 안 들어선다. 같은 work의 둘째는 5초 창에 접혀 안 울리지만 들어섰다.
     const 둘째회차 = notifier.step(
-      [shell({ id: 1, key: "G-1", visible: true }), shell({ id: 2, key: "G-2", since: 1000 })],
+      [shell({ id: 1, shellKey: "G-1", visible: true }), shell({ id: 2, shellKey: "G-2", since: 1000 })],
       1000,
     );
     expect(둘째회차.fired).toHaveLength(1);
-    expect(둘째회차.entered.map((one) => one.key)).toEqual(["G-2"]);
+    expect(둘째회차.entered.map((one) => one.shellKey)).toEqual(["G-2"]);
   });
 
   it("들어섬은 엣지다 — 머물면 없고, 새 사실이나 그쳤다 다시 부르면 다시 들어선다", () => {
@@ -400,7 +400,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
       { activeIds: [], focused: true },
       제목,
     );
-    expect(rows[0].key).toBe("G-7");
+    expect(rows[0].shellKey).toBe("G-7");
   });
 
   it("최상위 셸의 제목도 밖이 정한다", () => {

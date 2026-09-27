@@ -125,7 +125,7 @@ export interface NotifyShell {
    * 그 셸의 셸 키(프로세스 스펙 S34). 알림 판정은 안 쓴다 — 들어선 셸을 기억하는 자리(방금 부른 셸로 · 티켓 23)가 이 값으로
    * 셸을 가리킨다. spawn 응답 전이면 `null`이다.
    */
-  key: string | null;
+  shellKey: string | null;
   /**
    * 5초 창을 나누는 키 — **소유자 키 그대로**다(`<모드>:<slug>`). slug가 비었으면 그 세계의
    * 최상위 셸이다.
@@ -243,7 +243,7 @@ export function notifyShells(
 ): ReadonlyArray<NotifyShell> {
   return callingShells(state.shells).map(({ shell, kind, attention }) => ({
     id: shell.id,
-    key: shell.shellKey,
+    shellKey: shell.shellKey,
     owner: shell.owner,
     kind,
     since: attention.since,

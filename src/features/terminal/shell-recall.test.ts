@@ -10,8 +10,8 @@ import type { Shell } from "./shell-registry";
 // 상태(기다림 · 확인할 것)에 **들어선** 셸이다. 「들어서는」 순간은 알림 판정이 이미 가르고(`createNotifier`의 `entered`),
 // 이 파일이 재는 것은 그 순서를 받아 갈 셸을 고르는 순수 함수 둘과 키 판정 하나다. 시계도 셸 상태 칸도 안 읽는다.
 
-const 들어섬 = (key: string | null, since: number, kind: CallEntry["kind"] = "waiting"): CallEntry => ({
-  key,
+const 들어섬 = (shellKey: string | null, since: number, kind: CallEntry["kind"] = "waiting"): CallEntry => ({
+  shellKey,
   kind,
   since,
 });
@@ -109,7 +109,7 @@ describe("기억한 셸 키 → 갈 곳", () => {
 describe("OS 알림이 억제된 부름도 기억한다", () => {
   const 줄 = (patch: Partial<NotifyShell>): NotifyShell => ({
     id: 1,
-    key: "G-1",
+    shellKey: "G-1",
     owner: ownerOf("atelier", "signal"),
     kind: "waiting",
     since: 0,
@@ -128,9 +128,9 @@ describe("OS 알림이 억제된 부름도 기억한다", () => {
 
   it("같은 work의 5초 창에 접혀 안 울렸어도 기억한다", () => {
     const notifier = createNotifier();
-    notifier.step([줄({ id: 1, key: "G-1", since: 0 })], 0);
+    notifier.step([줄({ id: 1, shellKey: "G-1", since: 0 })], 0);
     const { fired, entered } = notifier.step(
-      [줄({ id: 1, key: "G-1", since: 0 }), 줄({ id: 2, key: "G-2", since: 1000 })],
+      [줄({ id: 1, shellKey: "G-1", since: 0 }), 줄({ id: 2, shellKey: "G-2", since: 1000 })],
       1000,
     );
     expect(fired).toEqual([]);
@@ -146,14 +146,14 @@ describe("OS 알림이 억제된 부름도 기억한다", () => {
   // 들어섬은 엣지다 — 같은 사실로 머무는 셸은 다시 들어서지 않는다. 그사이 다른 셸이 들어섰으면 그 셸이 기억으로 남는다.
   it("머무는 셸은 다시 들어서지 않는다 — 그사이 들어선 다른 셸이 기억에 남는다", () => {
     const notifier = createNotifier();
-    let recalled = nextRecall(null, notifier.step([줄({ id: 1, key: "G-1", since: 0 })], 0).entered);
+    let recalled = nextRecall(null, notifier.step([줄({ id: 1, shellKey: "G-1", since: 0 })], 0).entered);
     recalled = nextRecall(
       recalled,
-      notifier.step([줄({ id: 1, key: "G-1", since: 0 }), 줄({ id: 2, key: "G-2", since: 10 })], 10).entered,
+      notifier.step([줄({ id: 1, shellKey: "G-1", since: 0 }), 줄({ id: 2, shellKey: "G-2", since: 10 })], 10).entered,
     );
     recalled = nextRecall(
       recalled,
-      notifier.step([줄({ id: 1, key: "G-1", since: 0 }), 줄({ id: 2, key: "G-2", since: 10 })], 20).entered,
+      notifier.step([줄({ id: 1, shellKey: "G-1", since: 0 }), 줄({ id: 2, shellKey: "G-2", since: 10 })], 20).entered,
     );
     expect(recalled).toBe("G-2");
   });
