@@ -131,6 +131,28 @@ test("(1) 살아 있는 구독을 멎은 뒤에 세고, 모든 구독에 쏘면 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 해제는 **번호로** 짝짓는다(`plugin:event|unlisten`의 `eventId`). 위 검사는 붙인 차례대로 떼서, 해제가 올 때마다 먼저 붙은
+// 구독을 지우는 셈으로 세어도 같은 수가 나온다 — 가운데 구독을 먼저 떼야 두 셈이 갈린다.
+test("(1) 해제를 번호로 짝짓는다 — 가운데 구독을 먼저 떼면 그 구독만 빠지고 앞뒤 둘이 받는다", async ({ page }) => {
+  await installFixtureBackend(page);
+  await openProject(page);
+
+  await subscribe(page, "first");
+  await subscribe(page, "second");
+  await subscribe(page, "third");
+  await unsubscribe(page, "second");
+  expect(await liveSubscriptions(page, PROBE)).toBe(2);
+  expect(await fireEventToAll(page, PROBE, null)).toBe(2);
+  expect(await hits(page)).toEqual({ first: 1, second: 0, third: 1 });
+
+  // 마지막 구독을 떼면 첫 구독이 남는다 — 차례로 세면 마지막 하나가 남는다.
+  await unsubscribe(page, "third");
+  expect(await fireEventToAll(page, PROBE, null)).toBe(1);
+  expect(await hits(page)).toEqual({ first: 2, second: 0, third: 1 });
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 test("(1) 앱의 구독도 StrictMode가 붙였다 뗀 첫 구독을 빼고 센다", async ({ page }) => {
   await installFixtureBackend(page);
   await openProject(page);
