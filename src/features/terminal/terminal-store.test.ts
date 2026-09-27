@@ -19,6 +19,8 @@ const fake = vi.hoisted(() => {
     rows = 24;
     options: Record<string, unknown>;
     focused = 0;
+    /** 셸의 키 핸들러(`attachCustomKeyEventHandler`) — 검사가 키다운을 이리로 넣는다. */
+    keyHandler: (event: unknown) => boolean = () => true;
     parser = { registerOscHandler: () => ({ dispose() {} }) };
     constructor(options: Record<string, unknown>) {
       this.options = { ...options };
@@ -29,7 +31,9 @@ const fake = vi.hoisted(() => {
     onBell() {}
     onResize() {}
     onData() {}
-    attachCustomKeyEventHandler() {}
+    attachCustomKeyEventHandler(handler: (event: unknown) => boolean) {
+      this.keyHandler = handler;
+    }
     open() {}
     focus() {
       this.focused += 1;
@@ -101,7 +105,9 @@ vi.mock("./api", () => ({
 }));
 
 import { sendNotification } from "@tauri-apps/plugin-notification";
+import { terminalApi } from "./api";
 import { applyNotifySettings } from "./notify-settings";
+import { ptyIdOf } from "./shell-key";
 import { NO_SHELLS, topTerminal } from "./shell-registry";
 import {
   attachShell,
@@ -168,7 +174,7 @@ async function openShellSpawned(): Promise<{ id: number; ptyId: number; shellKey
   await vi.waitFor(() => expect(terminalStore.state.shells.find((one) => one.id === shell.id)?.shellKey).not.toBeNull());
   const shellKey = terminalStore.state.shells.find((one) => one.id === shell.id)!.shellKey!;
   const channel = fake.channels[fake.channels.length - 1];
-  return { id: shell.id, ptyId: Number(shellKey.split("-")[1]), shellKey, term, channel };
+  return { id: shell.id, ptyId: ptyIdOf(shellKey)!, shellKey, term, channel };
 }
 
 /** 셸이 훅으로 말한 것 한 장 — 앱이 받는 모양 그대로(셸 키 · 훅 상태). */
@@ -214,5 +220,44 @@ describe("방금 부른 셸로(⌘J) — 스토어를 거쳐", () => {
     } finally {
       applyNotifySettings({ enabled: true, sound: true });
     }
+  });
+});
+
+describe("첫 사람 입력 — 스토어를 거쳐", () => {
+  /** 셸에서 누른 글자 키 하나 — xterm이 키 핸들러에 건네는 모양의 필요한 칸만. */
+  const 글자키 = (key: string) => ({
+    type: "keydown",
+    key,
+    code: `Key${key.toUpperCase()}`,
+    keyCode: key.toUpperCase().charCodeAt(0),
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    preventDefault() {},
+    stopPropagation() {},
+  });
+
+  // 구현 기록 07의 남은 것. 띄우기 답이 오기 전에는 pty가 없어 친 키가 셸로 안 가고 버려진다(`onData`). 한때 그 키도 첫 입력으로
+  // 적혀, 답이 앉는 자리가 **셸이 태어나기 전 시각**을 백엔드에 다시 알렸다 — 그 셸의 자손이 모두 「입력 뒤에 뜬 것」으로 읽혀
+  // 도우미가 도우미로 안 갈렸다(판정은 첫 입력 전에 태어난 자손을 도우미로 가른다).
+  it("셸 띄우기 답이 오기 전에 친 키는 첫 입력이 아니다 — 그 키는 셸에 안 닿는다", async () => {
+    openNewShell(topTerminal("atelier"));
+    const shell = terminalStore.state.shells[terminalStore.state.shells.length - 1];
+    const term = fake.terms[fake.terms.length - 1];
+    // 답 전이다 — 스토어는 아직 셸 키를 모른다.
+    expect(shell.shellKey).toBeNull();
+    term.keyHandler(글자키("a"));
+
+    await vi.waitFor(() => expect(terminalStore.state.shells.find((one) => one.id === shell.id)?.shellKey).not.toBeNull());
+    expect(terminalStore.state.shells.find((one) => one.id === shell.id)?.firstInput).toBeNull();
+    expect(terminalApi.firstInput).not.toHaveBeenCalled();
+
+    // **앵커** — 답 뒤에 친 키는 첫 입력이다. 그 셸의 pty로 한 번 알린다.
+    term.keyHandler(글자키("b"));
+    const seated = terminalStore.state.shells.find((one) => one.id === shell.id)!;
+    expect(seated.firstInput).not.toBeNull();
+    expect(terminalApi.firstInput).toHaveBeenCalledTimes(1);
+    expect(terminalApi.firstInput).toHaveBeenCalledWith(ptyIdOf(seated.shellKey!), seated.firstInput);
   });
 });

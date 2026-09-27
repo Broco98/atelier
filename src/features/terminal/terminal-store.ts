@@ -1127,26 +1127,24 @@ export function closeUnusedShells(from: ShellOwner | null, to: ShellOwner | null
  * **시각을 찍는 자리가 여기인 것은 시계 규칙 때문이다.** 터미널 폴더에서 시간을 아는 파일은 셋뿐이고
  * (`shell-attention.test.ts`의 소스 스캔) 이 스토어가 그중 하나다. 판정 모듈은 시간을 모른다.
  *
+ * **셸에 닿는 입력만 센다 — pty가 없으면 적지 않는다.** 띄우기 답 전(그리고 끝난 뒤)에는 친 키가 셸로 안 가고 버려진다
+ * (`onData`의 쓰기 줄). 한때 그 키도 첫 입력으로 적고 답이 앉는 자리가 다시 알려, **셸이 태어나기 전 시각**이 백엔드의 첫 입력
+ * 칸에 앉았다 — 그러면 그 셸의 자손이 모두 「입력 뒤에 뜬 것」으로 읽혀 도우미가 도우미로 안 갈린다(구현 기록 07의 남은 것).
+ * 그 키는 셸이 받지 않았으니 도우미 판정에 안 드는 것이 맞다.
+ *
+ * 알림은 **셸마다 한 번이다.** 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을 셸 도우미로 가른다(티켓 08). 시각은 사람
+ * 입력을 본 순간의 값이다 — 백엔드가 받은 순간이 아닌 까닭은 `pty::note_first_input`이 든다. 실패는 흘린다 — 셸이 이미
+ * 끝났거나(다른 IPC와 같은 경주) 다리(L4)가 PTY를 모르는 것이다.
+ *
  * 둘째 입력부터는 판정도 안 탄다 — 키를 칠 때마다 불리는 자리다.
  */
 function noteInput(instance: ShellInstance, happening: InputHappening): void {
-  if (instance.closed || firstInputOfId(terminalStore.state, instance.id) !== null) return;
+  const ptyId = instance.ptyId;
+  if (instance.closed || ptyId === null || firstInputOfId(terminalStore.state, instance.id) !== null) return;
   if (!humanInput(happening)) return;
   const at = Date.now();
   terminalStore.setState((state) => markFirstInput(state, instance.id, at));
-  tellFirstInput(instance, at);
-}
-
-/**
- * 첫 사람 입력을 백엔드에 알린다 — **셸마다 한 번이다.** 백엔드는 그 셸의 자손 중 이 순간 전에 태어난 것을
- * 셸 도우미로 가른다(티켓 08). 시각은 사람 입력을 본 순간의 값이다 — 백엔드가 받은 순간이 아닌 까닭은
- * `pty::note_first_input`이 든다.
- *
- * pty가 아직 없으면(spawn 응답 전) 여기서는 못 알린다. 응답이 앉는 자리가 다시 부른다(`spawn`).
- * 실패는 흘린다 — 셸이 이미 끝났거나(다른 IPC와 같은 경주) 다리(L4)가 PTY를 모르는 것이다.
- */
-function tellFirstInput(instance: ShellInstance, at: number): void {
-  if (instance.ptyId !== null) ignoreGone(terminalApi.firstInput(instance.ptyId, at));
+  ignoreGone(terminalApi.firstInput(ptyId, at));
 }
 
 /**
@@ -1749,9 +1747,6 @@ async function spawn(instance: ShellInstance) {
       return;
     }
     instance.ptyId = spawned.id;
-    // **응답 전에 사람이 쳤으면 여기서 알린다**(`tellFirstInput`) — 그때는 알릴 pty가 없었다.
-    const typed = firstInputOfId(terminalStore.state, instance.id);
-    if (typed !== null) tellFirstInput(instance, typed);
     // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다. 셸 키도 같은 답에 실려
     // 온다(프로세스 스펙 S34) — 세대는 백엔드만 안다. 한 번의 `setState`로 둘을 앉힌다.
     terminalStore.setState((state) =>
