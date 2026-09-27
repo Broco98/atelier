@@ -923,6 +923,37 @@ export const modeButton = (page: Page, label: "Atelier" | "Maison") =>
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
 /**
+ * 앱 토스트가 서는 자리(앱 셸의 Viewport) — 화면이 무엇이든 늘 있다. 토스트 하나는 그 안의 `dialog`이고 이름이 그 문구다.
+ *
+ * **여기 사는 이유는 토스트를 집는 길과 그 문구를 한 곳에 두려는 것이다.** 여섯 spec이 이 자리를 저마다 집고 같은 문구를 두
+ * 벌씩 적었다 — 문구나 자리가 바뀌는 날 한 파일만 고쳐지면, 고쳐지지 않은 쪽의 「안 섰다」(`toHaveCount(0)`)가 헛돈다.
+ */
+export const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
+
+/** 그 문구의 토스트. */
+export const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
+
+/**
+ * **지금** 선 토스트의 수 — 되풀이하지 않고 한 번 센다. `toHaveCount(0)`은 0이 될 때까지 기다리므로, 잘못 선 짧은 토스트가
+ * 1.6초 뒤 내려가는 것을 기다려 초록이 된다(0개에도 토스트를 세우는 변형이 그렇게 지나갔다 — `startup-report.spec.ts`). 부르기 전에
+ * 화면이 받은 것을 다 그렸는지 먼저 본다.
+ */
+export const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").count();
+
+/** 시작 정리 토스트의 문구 — 지난 실행에서 남은 프로세스 `count`개를 끝냈다(프로세스 스펙 S11). [보기]를 들어 누를 때까지 남는다. */
+export const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;
+
+/** 이미 깔린 훅을 지금 목록으로 맞췄을 때의 짧은 토스트(프로세스 스펙 S36). 1.6초 뒤 내려가 시계가 흘렀다는 앵커가 된다. */
+export const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
+
+/** 셸 스스로 끝남 토스트의 문구 — 셸이 끝나며 그 셸에서 띄운 것을 `count`개 끝냈다(프로세스 스펙 S49). */
+export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
+
+/** 주인 잃은 셸 토스트의 문구. 화면의 말(`itemNameOf`)을 따라 Atelier의 work은 「작업」, Maison은 「Room」이다(프로세스 스펙 S45). */
+export const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
+  `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
+
+/**
  * 한 칸에서 **명령이 돌게 만든다.** 백엔드가 1초마다 쏘는 `pty:running`을 손으로 한 번
  * 쏘는 것이다(adr-04) — 픽스처 백엔드는 커맨드에만 답하지 이벤트를 쏘지 않는다.
  *

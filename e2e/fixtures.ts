@@ -5,6 +5,7 @@ import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
+import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
 import type { CleanupEvent, ProcessMetrics, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
@@ -674,6 +675,15 @@ export const CLEANUP_LOG: CleanupEvent[] = [];
  * 접근성 이름에 메모리 조각이 안 붙는다(macOS 밖의 앱과 같다).
  */
 export const NO_METRICS: ProcessMetrics = { memory: null, cpu: null, ports: [] };
+
+/** 시작 정리가 `count`개를 끝낸 시작 보고(`startup_report`의 답). 무엇을 끝냈는지는 토스트가 안 적는다 — 수만 본다. */
+export const startupCleaned = (count: number): StartupReport => ({
+  cleaned: Array.from({ length: count }, (_, i) => ({ pid: 40_000 + i, name: "node" })),
+  hooksUpdated: [],
+});
+
+/** 셸 `shellId`가 스스로 끝나며 그 셸에서 띄운 것을 `count`개 끝냈다는 이벤트(`processes:ended`)의 실을 것. */
+export const shellExitEnded = (shellId: number, count: number): ProcessesEnded => ({ reason: "shellExit", shellId, count });
 
 /**
  * 닫기 전 물음(`pty_close_check` · `pty_close_checks`)에 **조용하지 않은 셸**이 주는 답 — 명령이 돈다(띄운 프로세스는 0).

@@ -10,8 +10,12 @@ import {
   kills,
   navButton,
   openShell,
+  ownerlessText,
   processesTitle,
   replaceAnswer,
+  toastOf,
+  toastRegion,
+  toastsNow,
   typeIntoShell,
   unknownIpcCalls,
   두세계에셸을띄운다,
@@ -135,10 +139,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   expect(await callCount(page, "pty_kill")).toBe(0);
   await expect(ownerless).toBeVisible();
   // 같은 셸의 토스트(티켓 12)도 그대로 섰다 — 아래 「내려간다」의 앵커다. 안 섰으면 그 단언은 처음부터 참이다.
-  const 토스트자리 = page.getByRole("region", { name: "앱 메시지", exact: true });
-  await expect(
-    토스트자리.getByRole("dialog", { name: "아카이브된 작업의 셸 2개에 아직 도는 것이 있어요", exact: true }),
-  ).toBeVisible();
+  await expect(toastOf(page, ownerlessText(2))).toBeVisible();
 
   // ── 확인 ──
   await 버튼(ownerless, "모두 닫기").click();
@@ -154,7 +155,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
     ]);
   await expect(ownerless).toHaveCount(0);
   // 같은 셸의 토스트도 내려간다 — 같은 함수다. 셸마다 닫기 확인 창(08)을 안 띄웠다.
-  await expect(토스트자리.getByRole("dialog")).toHaveCount(0);
+  await expect(toastRegion(page).getByRole("dialog")).toHaveCount(0);
   expect(await callCount(page, "pty_close_check")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -178,9 +179,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   await openShell(page);
   await openShell(page);
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
-  const 토스트자리 = page.getByRole("region", { name: "앱 메시지", exact: true });
-  const 토스트 = (n: number) =>
-    토스트자리.getByRole("dialog", { name: `아카이브된 작업의 셸 ${n}개에 아직 도는 것이 있어요`, exact: true });
+  const 토스트 = (n: number) => toastOf(page, ownerlessText(n));
   await expect(토스트(3)).toBeVisible();
 
   await navButton(page, "Processes").click();
@@ -199,14 +198,14 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
   // `×`는 알림 자리가 펼쳐졌을 때만 보조 기술에 드러난다(`shell-ownerless.spec.ts`의 같은 손) — 먼저 올리고 누른다.
   await 토스트(2).hover();
   await 토스트(2).getByRole("button", { name: "닫기", exact: true }).click();
-  await expect(토스트자리.getByRole("dialog")).toHaveCount(0);
+  await expect(toastRegion(page).getByRole("dialog")).toHaveCount(0);
 
   await 버튼(셸줄(ownerless, 2), "닫기").click();
   // 앵커 — 닫았다.
   await expect.poll(() => kills(page)).toHaveLength(2);
   await expect(셸줄(ownerless, 2)).toHaveCount(0);
   await settle(page);
-  expect(await 토스트자리.getByRole("dialog").count(), "사람이 닫은 주인 잃은 셸 토스트가 다시 섰다").toBe(0);
+  expect(await toastsNow(page), "사람이 닫은 주인 잃은 셸 토스트가 다시 섰다").toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -547,10 +546,7 @@ test("닫을 조용한 셸이 없으면 창 없이 그렇다고 알린다", asyn
   await expect(page).toHaveURL("/processes");
 
   await 버튼(page.locator("header"), "조용한 셸 모두 닫기").click();
-  const toast = page.getByRole("region", { name: "앱 메시지", exact: true }).getByRole("dialog", {
-    name: "닫을 조용한 셸이 없어요",
-    exact: true,
-  });
+  const toast = toastOf(page, "닫을 조용한 셸이 없어요");
   await expect(toast).toBeVisible();
   // 앵커: 물었다 — 안 물어서 없다고 한 것이 아니다.
   expect(await callCount(page, "pty_close_checks")).toBe(1);

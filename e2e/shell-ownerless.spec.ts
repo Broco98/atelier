@@ -10,6 +10,7 @@ import {
   fireEvent,
   heldCalls,
   holdCommand,
+  HOOKS_TEXT,
   installFixtureBackend,
   ipcCallArgs,
   ipcFailure,
@@ -18,8 +19,11 @@ import {
   modeButton,
   navButton,
   openShell,
+  ownerlessText,
   processesTitle,
   releaseCommand,
+  toastOf,
+  toastsNow,
   typeIntoShell,
   unknownIpcCalls,
   workRow,
@@ -56,14 +60,6 @@ async function arrived(page: Page, spawned: number): Promise<void> {
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(spawned);
 }
 
-/** 화면의 말(`itemNameOf`): Atelier의 work은 「작업」, Maison은 「Room」이다(프로세스 스펙 S45). */
-const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
-  `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
-
-/** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). */
-const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
-const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
-
 /** [모두 닫기]가 한 번 묻는 창. */
 const closeAllDialog = (page: Page) => page.getByRole("alertdialog", { name: "주인 잃은 셸 닫기" });
 
@@ -76,9 +72,6 @@ async function settle(page: Page): Promise<void> {
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
 }
-
-/** **지금** 선 토스트의 수 — 되풀이하지 않고 한 번 센다(`startup-report.spec.ts`의 `toastsNow`). */
-const toastsNow = (page: Page) => toastRegion(page).getByRole("dialog").count();
 
 /**
  * work 화면(터미널 탭)에 셸 둘을 세운다: 들어오면 뜨는 셸(pty 1)에 사람이 한 키를 치고, `+`로 하나 더(pty 2) 연다.
@@ -231,7 +224,7 @@ test("주인 잃은 셸 토스트는 1.6초가 지나도 남는다", async ({ pa
   const ownerless = toastOf(page, ownerlessText(1));
   await expect(ownerless).toBeVisible();
   await releaseCommand(page, "startup_report");
-  const short = toastOf(page, "에이전트 훅을 새 목록으로 맞췄어요");
+  const short = toastOf(page, HOOKS_TEXT);
   await expect(short).toBeVisible();
 
   await page.clock.runFor(2_000);

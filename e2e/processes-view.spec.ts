@@ -1,19 +1,32 @@
 import { expect, test, type Page } from "./evidence";
-import { BUSY_SHELL, MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import {
+  BUSY_SHELL,
+  MAISON_LANDING_ROOM,
+  NO_METRICS,
+  PROCESS_SNAPSHOT,
+  shellExitEnded,
+  shellKeyOf,
+  startupCleaned,
+  WORKS,
+} from "./fixtures";
 import {
   archiveByMcp,
   awaitSpawned,
+  cleanupText,
+  endedText,
   fireEvent,
   holdCommand,
+  HOOKS_TEXT,
   installFixtureBackend,
+  ownerlessText,
   processesTitle,
   releaseCommand,
+  toastOf,
+  toastRegion,
   typeIntoShell,
   unknownIpcCalls,
   시계를세운다,
 } from "./harness";
-import type { StartupReport } from "@/components/shell/startup-report";
-import type { ProcessesEnded } from "@/components/shell/processes-ended";
 
 // 프로세스 티켓 32 — **토스트의 [보기]가 `Processes`로 간다**(프로세스 스펙 S15 · P2, 스토리 94 · 101). 시작 정리(티켓 10) · 주인
 // 잃은 셸(티켓 12) · 셸 스스로 끝남(티켓 13)의 토스트가 [보기]를 들고, 누르면 토스트가 내려가고 **지금 세계의** `Processes`가
@@ -24,23 +37,9 @@ import type { ProcessesEnded } from "@/components/shell/processes-ended";
 
 const [, plainWork] = WORKS;
 
-const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
-const toastOf = (page: Page, text: string) => toastRegion(page).getByRole("dialog", { name: text, exact: true });
-
-const cleanupText = (count: number) => `지난 실행에서 남은 프로세스 ${count}개를 정리했어요`;
-const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
-const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
-const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
-
-const cleaned = (count: number): StartupReport => ({
-  cleaned: Array.from({ length: count }, (_, i) => ({ pid: 40_000 + i, name: "node" })),
-  hooksUpdated: [],
-});
-const shellExit = (shellId: number, count: number): ProcessesEnded => ({ reason: "shellExit", shellId, count });
-
 // Maison에서 연다 — 화면은 앱 전체라(프로세스 결정 9) 보러 가려고 세계를 건너지 않는다. 가는 곳이 그 세계의 주소다.
 test("시작 정리 토스트의 [보기]를 누르면 토스트가 내려가고 지금 세계의 Processes로 간다", async ({ page }) => {
-  await installFixtureBackend(page, { startup_report: cleaned(2) });
+  await installFixtureBackend(page, { startup_report: startupCleaned(2) });
   await page.goto(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
   const toast = toastOf(page, cleanupText(2));
   await expect(toast).toBeVisible();
@@ -56,7 +55,7 @@ test("셸 스스로 끝남 토스트의 [보기]를 누르면 Processes로 간�
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await expect(toastRegion(page)).toBeAttached();
-  await fireEvent(page, "processes:ended", shellExit(1, 2));
+  await fireEvent(page, "processes:ended", shellExitEnded(1, 2));
   const toast = toastOf(page, endedText(2));
   await expect(toast).toBeVisible();
 
@@ -100,7 +99,7 @@ test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 �
 // 토스트의 1.6초를 미리 깎지 않게(`shell-ownerless.spec.ts`의 같은 수법).
 test("[보기]가 붙은 시작 정리 토스트와 셸 스스로 끝남 토스트는 1.6초가 지나도 남는다", async ({ page }) => {
   await page.clock.install();
-  await installFixtureBackend(page, { startup_report: { ...cleaned(1), hooksUpdated: ["claude"] } });
+  await installFixtureBackend(page, { startup_report: { ...startupCleaned(1), hooksUpdated: ["claude"] } });
   await holdCommand(page, "startup_report");
   await page.goto("/terminal");
   await expect(toastRegion(page)).toBeAttached();
@@ -111,7 +110,7 @@ test("[보기]가 붙은 시작 정리 토스트와 셸 스스로 끝남 토스�
   const hooks = toastOf(page, HOOKS_TEXT);
   await expect(cleanup).toBeVisible();
   await expect(hooks).toBeVisible();
-  await fireEvent(page, "processes:ended", shellExit(3, 4));
+  await fireEvent(page, "processes:ended", shellExitEnded(3, 4));
   const ended = toastOf(page, endedText(4));
   await expect(ended).toBeVisible();
 
@@ -199,7 +198,7 @@ test("편집기에서 셸 스스로 끝남 토스트의 [보기]가 막히면 �
   await expect(processesTitle(page)).toBeVisible();
   await expect(toastRegion(page)).toBeAttached();
   await 편집기에초안(page);
-  await fireEvent(page, "processes:ended", shellExit(1, 2));
+  await fireEvent(page, "processes:ended", shellExitEnded(1, 2));
   const toast = toastOf(page, endedText(2));
   await expect(toast).toBeVisible();
 

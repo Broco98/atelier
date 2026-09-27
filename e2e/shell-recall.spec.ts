@@ -13,6 +13,8 @@ import {
   openShell,
   sentNotifications,
   stubNotifications,
+  toastOf,
+  toastsNow,
   typeIntoShell,
   unknownIpcCalls,
   띠,
@@ -38,8 +40,7 @@ import {
 const [, plainWork] = WORKS;
 
 const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { name, exact: true });
-const 토스트자리 = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
-const 닫힌셸토스트 = (page: Page) => 토스트자리(page).getByRole("dialog", { name: "그 셸은 닫혔어요", exact: true });
+const 닫힌셸토스트 = (page: Page) => toastOf(page, "그 셸은 닫혔어요");
 
 /** 네이티브 메뉴의 `View ▸ Last Calling Shell`(⌘J)이 쏘는 것을 손으로 쏜다. */
 const 메뉴로누름 = (page: Page) => fireEvent(page, "hotkey:menu", "KeyJ");
@@ -286,7 +287,7 @@ test("부른 셸이 없으면 ⌘J가 아무것도 안 한다 — 도는 중인 
     .poll(() => page.evaluate(() => (window as unknown as { __recallKeys: { count: number } }).__recallKeys.count))
     .toBe(1);
   await settle(page);
-  expect(await 토스트자리(page).getByRole("dialog").count()).toBe(0);
+  expect(await toastsNow(page)).toBe(0);
   await expect(page).toHaveURL(`/works/${plainWork.slug}?tab=terminal`);
   await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
   await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "false");

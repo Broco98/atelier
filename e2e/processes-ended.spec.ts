@@ -1,14 +1,19 @@
 import { expect, test, type Page } from "./evidence";
+import { shellExitEnded } from "./fixtures";
 import {
+  endedText,
   fireEvent,
   fireEventToAll,
   holdCommand,
+  HOOKS_TEXT,
   installFixtureBackend,
   releaseCommand,
+  toastOf,
+  toastRegion,
+  toastsNow,
   unknownIpcCalls,
   시계를세운다,
 } from "./harness";
-import type { ProcessesEnded } from "@/components/shell/processes-ended";
 
 // **셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈다는 알림**(프로세스 관리 티켓 13 · 프로세스 스펙 S49 · P4 · P2).
 //
@@ -24,16 +29,6 @@ import type { ProcessesEnded } from "@/components/shell/processes-ended";
 // 서야 「어느 화면에서든」이 잰 것이 된다(`startup-report.spec.ts`와 같다).
 
 const EVENT = "processes:ended";
-
-const shellExit = (shellId: number, count: number): ProcessesEnded => ({ reason: "shellExit", shellId, count });
-
-const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
-
-/** 이 work의 토스트가 서는 자리(앱 셸의 Viewport). 화면이 무엇이든 늘 있다. */
-const toastRegion = (page: Page) => page.getByRole("region", { name: "앱 메시지", exact: true });
-
-const toastOf = (page: Page, count: number) =>
-  toastRegion(page).getByRole("dialog", { name: endedText(count), exact: true });
 
 /** 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다(`startup-report.spec.ts`와 같다). */
 async function settle(page: Page): Promise<void> {
@@ -53,11 +48,11 @@ for (const { screen, path } of [
     // **살아 있는 구독마다 쏜다** — 백엔드의 `emit`은 모든 구독에 간다. 듣는 자리가 이펙트라 StrictMode(dev)에서 붙었다
     // 떼었다 다시 붙는데, 떼기를 빼먹고 토스트의 id까지 없으면 이벤트 하나에 토스트가 둘 선다. 마지막 구독에만 쏘면(`fireEvent`)
     // 그 둘째를 못 본다.
-    expect(await fireEventToAll(page, EVENT, shellExit(1, 2))).toBeGreaterThan(0);
-    await expect(toastOf(page, 2)).toBeVisible();
+    expect(await fireEventToAll(page, EVENT, shellExitEnded(1, 2))).toBeGreaterThan(0);
+    await expect(toastOf(page, endedText(2))).toBeVisible();
     // **한 번만.** 둘째가 그려질 틈을 준 뒤 한 번 센다.
     await settle(page);
-    expect(await toastRegion(page).getByRole("dialog").count()).toBe(1);
+    expect(await toastsNow(page)).toBe(1);
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 }
@@ -78,10 +73,10 @@ test("셸 스스로 끝남 알림은 [보기]를 들고 1.6초가 지나도 남�
   await 시계를세운다(page);
 
   await releaseCommand(page, "startup_report");
-  const short = toastRegion(page).getByRole("dialog", { name: "에이전트 훅을 새 목록으로 맞췄어요", exact: true });
+  const short = toastOf(page, HOOKS_TEXT);
   await expect(short).toBeVisible();
-  await fireEvent(page, EVENT, shellExit(1, 3));
-  const toast = toastOf(page, 3);
+  await fireEvent(page, EVENT, shellExitEnded(1, 3));
+  const toast = toastOf(page, endedText(3));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: "보기", exact: true })).toBeVisible();
 
