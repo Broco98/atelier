@@ -139,11 +139,15 @@ test("에이전트가 사라져도 안 본 확인할 것은 남고, 그 뒤 OSC 
     2,
   );
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
+  // 그 칸이 claude를 돈다고 말한다 — 부르는 칸의 이름이 도는 것까지 싣는다(`ShellTabs`의 `spokenName`). 아래에서 이 말이
+  // 빠지는 것이 앵커라, 먼저 섰는지 본다. (마크 글리프는 이름이 숨는 좁은 폭에서만 서서 이 폭에서는 늘 없다.)
+  await expect(이름표(page, 1)).toHaveAccessibleName(/claude 실행 중/);
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
 
   await fireEvent(page, "pty:running", [{ id: 2, running: null }]);
-  // 앵커: 도는 명령이 바뀐 것이 화면에 닿았다 — 그 칸의 claude 마크가 사라졌다.
-  await expect(칸들(page).nth(1).getByRole("img", { name: "claude 실행 중" })).toHaveCount(0);
+  // 앵커: 도는 명령이 바뀐 것이 화면에 닿았다 — 그 칸이 더는 claude를 말하지 않는다. 확인할 것은 그대로 부른다.
+  await expect(이름표(page, 1)).not.toHaveAccessibleName(/claude 실행 중/);
+  await expect(이름표(page, 1)).toHaveAccessibleName(/확인할 것/);
   await page.clock.runFor(1_000);
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
 
