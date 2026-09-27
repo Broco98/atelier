@@ -9,7 +9,7 @@ import type { Ask } from "./process-groups";
 import type { ProcessIdentity } from "./types";
 
 // **`Processes`의 동작 셋**(티켓 31) — 신원 목록 끝내기([끝내기] · [정리]), 물은 뒤에 끝내기, 「예외로 두기」. 무엇을 넘길지(신원 ·
-// 이름)와 확인 창의 말은 순수 모듈이 짓는다(`process-groups.ts`) — 여기는 IPC와 창과 캐시만 잇는다.
+// 이름)와 확인 창의 말은 순수 모듈이 짓는다(`process-tree.ts` · `process-groups.ts`) — 여기는 IPC와 창과 캐시만 잇는다.
 //
 // 끝낸 뒤 · 예외에 더한 뒤 **스냅샷을 곧바로 다시 묻는다** — 박자(2초)를 기다리면 누른 행이 그만큼 그대로 서서 안 먹힌 것처럼 읽힌다.
 

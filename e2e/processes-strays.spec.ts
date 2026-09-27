@@ -9,8 +9,8 @@ import type { Settings } from "@/features/settings/types";
 // [끝내기] · 프로세스 스펙 S4 · S7 · S54 · S58, 스토리 86 · 91 · 92 · 93).
 //
 // 묶음을 짓는 규칙(트리 · 실행마다 묶기 · 빌드 이름 · 끝낼 신원 · 확인 창의 말 · 예외 목록에 더하기)은 L2가 표로 잰다
-// (`process-groups.test.ts` · `process-exceptions.test.ts`). 여기서 보는 것은 그 결과가 **진짜 스냅샷 폴러 · 진짜 확인 창 · 진짜 설정
-// 저장**을 지나 화면에 서고 IPC에 실리는가다. 끝내기가 신호 직전에 신원을 다시 보는 것(재사용된 pid)은 L1이 잰다 — 이 층이 보는 것은
+// (`process-tree.test.ts` · `process-groups.test.ts` · `process-exceptions.test.ts`). 여기서 보는 것은 그 결과가 **진짜 스냅샷
+// 폴러 · 진짜 확인 창 · 진짜 설정 저장**을 지나 화면에 서고 IPC에 실리는가다. 끝내기가 신호 직전에 신원을 다시 보는 것(재사용된 pid)은 L1이 잰다 — 이 층이 보는 것은
 // **화면에 보인 신원이 그대로 실리는가**다.
 //
 // 숫자 칸의 기대 글자는 화면이 쓰는 그 표기 함수로 짓는다(`processes-metrics.spec.ts`와 같은 규칙) — 모양은 L2의 몫이다.

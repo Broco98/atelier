@@ -4,11 +4,13 @@ import { attentionOn, runningSubagents, signalOf } from "@/features/terminal/she
 import { modeOfOwner, runningOn, shellRowName, slugOfOwner } from "@/features/terminal/shell-registry";
 import type { Shell, ShellOwner } from "@/features/terminal/shell-registry";
 import { ALL_MODES, modeNameOf, navItemsOf, type Mode } from "@/mode";
-import { formatMemory, sumMetrics } from "./metrics";
+import { sumMetrics } from "./metrics";
+import { byStart, processLabel, processTree, withMemory, type ProcessNode } from "./process-tree";
 import type { PoolShell, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
 
 // **`Processes`의 셸 묶음**(프로세스 결정 9 · 10 · 프로세스 스펙 S53 · 티켓 27). 화면은 앱 전체를 세계 → work → 셸 → 자손으로 세운다.
-// 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 행마다의 접근성 이름을 짓는다. 순수 함수다 — 지금 시각도 인자로 받는다.
+// 이 모듈은 그 층과 차례를 짓고, 셸 행의 상태 칸과 셸 · work · 세계 줄의 접근성 이름을 짓는다. 프로세스 한 줄(셸의 자손)을 트리로 펴고
+// 이름 짓는 규칙은 고아 · 예외 묶음과 같은 것이라 `process-tree.ts`에 있다. 순수 함수다 — 지금 시각도 인자로 받는다.
 //
 // **두 출처를 셸 키로 잇는 자리가 여기 하나다.** 세계와 work(owner)는 스토어의 것이고 — Rust는 owner를 모른다 — 셸별 자손은
 // 스냅샷의 판정 결과다(`verdict.descendants`, 키가 셸 키). 스토어의 셸이 든 셸 키(`Shell.shellKey`, 티켓 23)가 그 둘을 잇는다.
@@ -52,12 +54,7 @@ export interface ShellNode {
   /** 셸 도우미(프로세스 스펙 P1) — 시작 순. 셸 행 아래 옅은 줄 하나로 따로 선다. */
   helpers: ReadonlyArray<ProcessRow>;
   /** 사람이 띄운 자손 — 트리를 깊이 우선으로 편 차례이고, 형제는 시작 순이다. 깊이 1이 셸 바로 밑이다. */
-  descendants: ReadonlyArray<DescendantNode>;
-}
-
-export interface DescendantNode {
-  row: ProcessRow;
-  depth: number;
+  descendants: ReadonlyArray<ProcessNode>;
 }
 
 /**
@@ -145,7 +142,7 @@ export function ownerlessGroups({ current, shells, snapshot }: Pick<TreeInput, "
 export interface OffscreenNode {
   pool: PoolShell;
   helpers: ReadonlyArray<ProcessRow>;
-  descendants: ReadonlyArray<DescendantNode>;
+  descendants: ReadonlyArray<ProcessNode>;
 }
 
 /**
@@ -239,11 +236,6 @@ function identityKey(id: ProcessIdentity): string {
   return `${id.pid}@${id.startedUs}`;
 }
 
-/** 시작 순 — 같으면 pid 순. pid는 돌고 돌아 작아질 수 있어 뜬 차례를 말하지 않는다. */
-function byStart(a: ProcessRow, b: ProcessRow): number {
-  return a.id.startedUs - b.id.startedUs || a.id.pid - b.id.pid;
-}
-
 /**
  * 셸 하나의 자손을 가른다. 판정은 셸 도우미를 자손에도 그대로 싣는다(함께 끝낼 대상이다) — 곁 집합(`helperIds`)의 신원으로 갈라
  * 따로 둔다. 사람이 띄운 자손은 트리로 편다(`processTree`). 셸 자신의 행은 스냅샷에 없으므로(판정이 셸 자신을 안 싣는다) 셸의 직속
@@ -257,36 +249,6 @@ function splitRows(
   const helpers = [...rows].sort(byStart).filter((row) => helperIds.has(identityKey(row.id)));
   const descendants = processTree(rows.filter((row) => !helperIds.has(identityKey(row.id))));
   return { helpers, descendants };
-}
-
-/**
- * 행들을 **트리로 펴다** — 깊이 우선으로 편 차례이고, 형제는 시작 순이며, 깊이 1이 맨 위다. 셸의 자손과 고아 · 다른 인스턴스 · 예외
- * 묶음(티켓 31)이 같은 규칙으로 선다.
- *
- * **들여쓰기는 부모 pid로 짓는다.** 부모 행이 묶음에 없으면 맨 위에 선다. 부모 행이 자식보다 늦게 태어났으면 그 pid는 재사용된
- * 남이다 — 판정과 같은 규칙으로 잇지 않는다(`verdict.rs`). 그래서 고리가 생기지 않는다.
- */
-export function processTree(rows: ReadonlyArray<ProcessRow>): DescendantNode[] {
-  const sorted = [...rows].sort(byStart);
-  const byPid = new Map(sorted.map((row) => [row.id.pid, row]));
-  const children = new Map<ProcessRow | null, ProcessRow[]>();
-  for (const row of sorted) {
-    const parent = byPid.get(row.ppid);
-    const under = parent !== undefined && parent !== row && parent.id.startedUs <= row.id.startedUs ? parent : null;
-    const siblings = children.get(under);
-    if (siblings) siblings.push(row);
-    else children.set(under, [row]);
-  }
-
-  const nodes: DescendantNode[] = [];
-  const walk = (parent: ProcessRow | null, depth: number) => {
-    for (const row of children.get(parent) ?? []) {
-      nodes.push({ row, depth });
-      walk(row, depth + 1);
-    }
-  };
-  walk(null, 1);
-  return nodes;
 }
 
 /**
@@ -356,15 +318,8 @@ export function groupTotals(group: GroupNode): ProcessMetrics {
   return sumMetrics(group.shells.map(shellTotals));
 }
 
-// ── 행의 접근성 이름(S58) — 행마다 한 문장이다. 스크린리더가 트리를 줄로 읽을 때 그 줄이 무엇인지가 이 이름에서 끝난다.
-//
-// **메모리는 이름의 끝 조각이다**(티켓 28). 표기는 행의 칸과 같은 함수(`formatMemory`)라 눈과 귀가 같은 숫자를 받는다. 못 읽었으면
-// 그 조각이 빠진다 — 「알 수 없음」을 줄마다 읽어 주는 것은 소리일 뿐이다(macOS 밖에서는 늘 그렇다).
-
-/** 이름 조각들 끝에 메모리를 붙여 한 문장으로. 고아 · 다른 인스턴스 묶음의 줄(티켓 31)도 이것으로 짓는다. */
-export function withMemory(parts: ReadonlyArray<string>, memory: number | null): string {
-  return (memory === null ? parts : [...parts, formatMemory(memory)]).join(", ");
-}
+// ── 행의 접근성 이름(S58) — 행마다 한 문장이고, 메모리가 그 끝 조각이다(`withMemory`). 프로세스 줄(셸의 자손)의 이름은
+// `process-tree.ts`의 `processRowLabel`이다.
 
 /** 셸 행 — 「셸 이름, 상태, 메모리」. 메모리는 셸의 트리 합이다. 셸 이름은 탭 줄과 같은 것이다(`shellRowName`). */
 export function shellRowLabel(node: ShellNode, now: number): string {
@@ -398,23 +353,9 @@ export function worldRowLabel(world: WorldNode): string {
 
 export const CURRENT_WORLD = "지금 세계";
 
-/**
- * 자손 행 — **부른 이름**이다(argv[0]의 마지막 조각). 커널 이름은 실제로 실행된 파일이라 심링크로 부른 것(`claude` → 버전 경로)이
- * 다른 이름이 된다 — 셸 탭이 고르는 순서와 같다(`pty::foreground_name`). 부른 이름을 못 읽은 행(env를 못 읽었다)은 커널 이름이다.
- */
-export function descendantLabel(row: ProcessRow): string {
-  const invoked = row.argv0?.split("/").pop();
-  return invoked ? invoked : row.name;
-}
-
-/** 자손 행 — 부른 이름과 그 프로세스의 메모리. 셸 행과 같은 모양(이름, …, 메모리)이라 줄마다 같은 자리에서 숫자가 읽힌다. */
-export function descendantRowLabel(row: ProcessRow): string {
-  return withMemory([descendantLabel(row)], row.metrics.memory);
-}
-
-/** 셸 도우미 줄 — 「셸 도우미」와 그 이름들. 사람이 띄운 것과 섞이지 않게 한 줄로 따로 선다(P1). */
+/** 셸 도우미 줄 — 「셸 도우미」와 그 이름들(프로세스 줄과 같은 부른 이름). 사람이 띄운 것과 섞이지 않게 한 줄로 따로 선다(P1). */
 export function helperLabel(helpers: ReadonlyArray<ProcessRow>): string {
-  return `${HELPER_LABEL}, ${helpers.map(descendantLabel).join(" · ")}`;
+  return `${HELPER_LABEL}, ${helpers.map(processLabel).join(" · ")}`;
 }
 
 /** CONTEXT의 말 그대로다(「셸 도우미」). */

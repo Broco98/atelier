@@ -1,21 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { formatMemory } from "./metrics";
-import {
-  buildLabel,
-  endAsk,
-  exceptionName,
-  instanceGroups,
-  instanceRowLabel,
-  strayTree,
-  subtreeAt,
-  tidyUnknownAsk,
-} from "./process-groups";
-import { processTree } from "./shell-tree";
+import { buildLabel, endAsk, instanceGroups, instanceRowLabel, tidyUnknownAsk } from "./process-groups";
+import type { ProcessNode } from "./process-tree";
 import type { OtherInstance, ProcessRow, ProcessSnapshot } from "./types";
 
-// 프로세스 티켓 31 — **고아 · 다른 인스턴스 · 예외 묶음을 짓는 규칙**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 기본값 [끝내기]).
-// 판정이 가른 묶음(셸 키마다)을 화면이 트리로 펴고, 다른 인스턴스를 실행마다 묶고, [끝내기] · [정리]가 넘길 신원과 확인 창의 말을
-// 짓는다. 순수 함수다 — 화면이 진짜 폴러 · 확인 창 · IPC를 지나 서는지는 L3가 잰다(`processes-strays.spec.ts`).
+// 프로세스 티켓 31 — **다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 기본값 [끝내기]). 다른
+// 인스턴스를 실행마다 묶고, [끝내기] · [정리]가 띄울 확인 창의 말을 짓는다. 순수 함수다 — 묶음을 트리로 펴는 것과 넘길 신원은
+// `process-tree.test.ts`가, 화면이 진짜 폴러 · 확인 창 · IPC를 지나 서는지는 L3가 잰다(`processes-strays.spec.ts`).
 
 const MiB = 1024 * 1024;
 
@@ -41,49 +32,7 @@ const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: Othe
   instances,
 });
 
-const 펼침 = (nodes: ReturnType<typeof processTree>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);
-
-describe("프로세스 트리", () => {
-  // 셸의 자손 트리와 같은 규칙이다(`shellNode`) — 형제는 시작 순이고, 부모 pid로 들여쓰고, 부모가 자식보다 늦게 태어났으면 그 pid는
-  // 재사용된 남이라 잇지 않는다.
-  it("부모 pid로 들여쓰고 형제는 시작 순이며, 자식보다 늦게 태어난 부모에는 잇지 않는다", () => {
-    const rows = [행(30, 1, 300), 행(10, 1, 100), 행(11, 10, 110), 행(12, 11, 120), 행(40, 50, 90), 행(50, 1, 500)];
-    expect(펼침(processTree(rows))).toEqual([
-      [40, 1],
-      [10, 1],
-      [11, 2],
-      [12, 3],
-      [30, 1],
-      [50, 1],
-    ]);
-  });
-
-  // 고아 · 출처 불명은 판정이 셸 키마다 가른다 — 화면은 키를 안 보인다(사람이 읽을 뜻이 없다). 키를 넘어 한 트리로 편다.
-  it("셸 키마다 갈린 묶음을 한 트리로 편다", () => {
-    const tree = strayTree({ "OLD-3": [행(400, 1, 4_000), 행(410, 400, 4_100)], "OLD-5": [행(450, 1, 4_500)] });
-    expect(펼침(tree)).toEqual([
-      [400, 1],
-      [410, 2],
-      [450, 1],
-    ]);
-  });
-});
-
-describe("[끝내기]가 넘길 신원", () => {
-  // 기본값 [끝내기] — 「그 프로세스와 그 PID 트리」. 깊이 우선으로 편 줄에서 그 줄 뒤로 더 깊은 줄이 이어지는 데까지가 그 트리다.
-  it("그 줄과 그 밑의 줄들이고, 같은 깊이의 형제에서 멈춘다", () => {
-    const tree = processTree([행(10, 1, 100), 행(11, 10, 110), 행(12, 11, 120), 행(13, 10, 130), 행(20, 1, 200)]);
-    expect(subtreeAt(tree, 0).map((id) => id.pid)).toEqual([10, 11, 12, 13]);
-    expect(subtreeAt(tree, 1).map((id) => id.pid)).toEqual([11, 12]);
-    expect(subtreeAt(tree, 4).map((id) => id.pid)).toEqual([20]);
-  });
-
-  // 넘기는 것은 **화면에 보인 표본의 신원**이다 — pid만이 아니라 시작 시각까지(끝내기가 신호 직전에 둘을 함께 본다).
-  it("신원은 표본의 (pid, 시작 시각) 그대로다", () => {
-    const tree = processTree([행(10, 1, 123_456)]);
-    expect(subtreeAt(tree, 0)).toEqual([{ pid: 10, startedUs: 123_456 }]);
-  });
-});
+const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);
 
 describe("확인 창의 말", () => {
   it("[끝내기] — 하나면 그것만, 밑에 뜬 것이 있으면 그 수를 든다", () => {
@@ -156,14 +105,5 @@ describe("다른 인스턴스", () => {
     const [group] = instanceGroups(snapshot);
     expect(group.totals).toEqual({ memory: 204 * MiB, cpu: 3, ports: [5173] });
     expect(instanceRowLabel(group)).toBe(`dev 빌드 · v0.15.0, 프로세스 2개, ${formatMemory(204 * MiB)}`);
-  });
-});
-
-describe("「예외로 두기」가 더할 이름", () => {
-  // 예외 목록은 커널 이름이나 부른 이름으로 건다(`processes/exceptions.rs`의 `caught`). 행이 보인 이름(부른 이름 → 없으면 커널 이름)을
-  // 더한다 — 사람이 화면에서 본 그 글자다.
-  it("부른 이름(argv[0]의 마지막 조각)이고, 없으면 커널 이름이다", () => {
-    expect(exceptionName(행(1, 1, 1, { name: "node", argv0: "/opt/homebrew/bin/pnpm" }))).toBe("pnpm");
-    expect(exceptionName(행(1, 1, 1, { name: "esbuild", argv0: null }))).toBe("esbuild");
   });
 });

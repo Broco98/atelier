@@ -1,40 +1,13 @@
 import { sumMetrics } from "./metrics";
-import { descendantLabel, processTree, withMemory, type DescendantNode } from "./shell-tree";
-import type { OtherInstance, ProcessIdentity, ProcessMetrics, ProcessRow, ProcessSnapshot } from "./types";
+import { processTree, withMemory, type ProcessNode } from "./process-tree";
+import type { OtherInstance, ProcessMetrics, ProcessSnapshot } from "./types";
 
-// **`Processes`의 고아 · 다른 인스턴스 · 예외 묶음**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31). 판정이 가른 묶음을
-// 화면이 트리로 펴고, 다른 인스턴스를 실행마다 묶고, [끝내기] · [정리]가 넘길 신원과 확인 창의 말을 짓는다. 순수 함수다.
+// **`Processes`의 다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31). 다른 인스턴스를 실행마다
+// 묶고, [끝내기] · [정리]가 띄울 확인 창의 말을 짓는다. 순수 함수다. 묶음을 트리로 펴는 것과 넘길 신원은 프로세스 줄의 도구다
+// (`process-tree.ts` — 셸의 자손과 같은 규칙).
 //
-// **묶음을 다시 가르지 않는다.** 무엇이 확정 고아이고 무엇이 출처 불명인지는 판정이 정한다(`verdict.rs`) — 화면이 다시 가르면 판정이
-// 두 벌이 되고, [정리]가 끝내는 것과 화면이 보인 것이 갈린다.
-
-/**
- * 고아(확정 고아나 출처 불명) 한 갈래를 한 트리로 — 판정은 셸 키마다 가르지만 화면은 키를 안 보인다(사람이 읽을 뜻이 없다). 트리의
- * 규칙은 셸의 자손과 같다(`processTree`).
- */
-export function strayTree(groups: Readonly<Record<string, ReadonlyArray<ProcessRow>>>): DescendantNode[] {
-  return processTree(Object.values(groups).flat());
-}
-
-/** 묶음이 보인 신원 전부 — [정리]가 끝내기에 넘기는 것이다. 화면에 보인 표본의 (pid, 시작 시각) 그대로다. */
-export function identitiesOf(nodes: ReadonlyArray<DescendantNode>): ProcessIdentity[] {
-  return nodes.map(({ row }) => row.id);
-}
-
-/**
- * **[끝내기]가 넘길 신원 — 그 줄의 프로세스와 그 PID 트리**(기본값 [끝내기]). 깊이 우선으로 편 줄에서 그 줄 뒤로 더 깊은 줄이 이어지는
- * 데까지가 그 트리다. 화면에 보인 표본의 신원이다 — 그사이 pid가 재사용됐으면 끝내기가 신호 직전 신원 확인으로 거른다(S4).
- */
-export function subtreeAt(nodes: ReadonlyArray<DescendantNode>, at: number): ProcessIdentity[] {
-  const top = nodes[at];
-  if (top === undefined) return [];
-  const ids = [top.row.id];
-  for (const node of nodes.slice(at + 1)) {
-    if (node.depth <= top.depth) break;
-    ids.push(node.row.id);
-  }
-  return ids;
-}
+// **묶음을 다시 가르지 않는다.** 무엇이 확정 고아이고 무엇이 출처 불명인지, 어느 셸 키가 다른 인스턴스의 것인지는 판정이
+// 정한다(`verdict.rs`) — 화면이 다시 가르면 판정이 두 벌이 되고, [정리]가 끝내는 것과 화면이 보인 것이 갈린다.
 
 /** 확인 창 하나의 말 — `askDanger`에 넘긴다. */
 export interface Ask {
@@ -59,7 +32,7 @@ export interface InstanceGroup {
   /** 줄의 키. 어느 실행에도 안 묶인 키들의 묶음은 `null`이다. */
   generation: string | null;
   label: string;
-  nodes: DescendantNode[];
+  nodes: ProcessNode[];
   /** 그 실행의 행을 더한 것 — 셸 행 · work 행과 같은 규칙(`sumMetrics`). */
   totals: ProcessMetrics;
 }
@@ -97,12 +70,4 @@ export function instanceGroups(snapshot: ProcessSnapshot): InstanceGroup[] {
 /** 실행 줄의 접근성 이름 — 「빌드, 프로세스 N개, 메모리」 한 문장(S58). 메모리는 그 실행의 합이다. */
 export function instanceRowLabel(group: InstanceGroup): string {
   return withMemory([group.label, `프로세스 ${group.nodes.length}개`], group.totals.memory);
-}
-
-/**
- * 「예외로 두기」가 목록에 더할 이름 — 행이 보인 이름(부른 이름, 없으면 커널 이름)이다. 예외 목록은 둘 중 어느 것으로도 건다
- * (`processes/exceptions.rs`의 `caught`) — 사람이 화면에서 본 그 글자를 적는다.
- */
-export function exceptionName(row: ProcessRow): string {
-  return descendantLabel(row);
 }

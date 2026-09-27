@@ -1,20 +1,21 @@
 import { askThenEnd, endProcesses } from "./actions";
+import { instanceGroups, instanceRowLabel, tidyUnknownAsk, type InstanceGroup } from "./process-groups";
 import {
   exceptionName,
   identitiesOf,
-  instanceGroups,
-  instanceRowLabel,
+  processLabel,
+  processRowLabel,
+  processTree,
   strayTree,
-  tidyUnknownAsk,
-  type InstanceGroup,
-} from "./process-groups";
-import { descendantLabel, descendantRowLabel, processTree, type DescendantNode } from "./shell-tree";
+  type ProcessNode,
+} from "./process-tree";
 import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import type { ProcessSnapshot } from "./types";
 
 /**
  * **셸 묶음 밑의 네 묶음** — 확정 고아 · 출처 불명 · 다른 인스턴스 · 예외(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31).
- * 무엇이 어느 묶음인지는 판정이 정한다 — 여기는 판정의 묶음을 트리로 펴 세울 뿐이다(`process-groups.ts`). 빈 묶음은 안 선다.
+ * 무엇이 어느 묶음인지는 판정이 정한다 — 여기는 판정의 묶음을 트리로 펴 세울 뿐이다(`process-tree.ts` · `process-groups.ts`). 빈 묶음은
+ * 안 선다.
  *
  * - **확정 고아**: [정리] 한 번이면 그 묶음의 신원 전부가 끝내기에 넘어간다 — 기록이 그 셸이 없다고 말한다.
  * - **출처 불명**: [정리]가 확인 창을 한 번 더 띄운다(「출처를 모르는 프로세스 N개를 끝내요」) — 누구의 것인지 모른다.
@@ -88,7 +89,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
   );
 }
 
-const keyOf = ({ row }: DescendantNode) => `${row.id.pid}@${row.id.startedUs}`;
+const keyOf = ({ row }: ProcessNode) => `${row.id.pid}@${row.id.startedUs}`;
 
 /** 네 묶음의 수 — 프로세스를 센다(셸 묶음은 셸을 센다). */
 const processCount = (count: number) => `프로세스 ${count}개`;
@@ -102,16 +103,16 @@ function ViewOnly() {
  * 묶음의 프로세스 한 줄 — 셸의 자손 행과 같은 모양이다: 부른 이름(명령줄은 툴팁), 숫자 칸, 접근성 이름 「이름, 메모리」. `menu`면 행
  * 메뉴(「예외로 두기」)가 선다.
  */
-function StrayRow({ node, level, menu = false }: { node: DescendantNode; level: number; menu?: boolean }) {
+function StrayRow({ node, level, menu = false }: { node: ProcessNode; level: number; menu?: boolean }) {
   const { row } = node;
   return (
     <TreeRow
       level={level}
-      label={descendantRowLabel(row)}
+      label={processRowLabel(row)}
       title={row.command ?? undefined}
       className="text-[12.5px] text-muted-foreground"
     >
-      <span className="min-w-0 flex-1 truncate">{descendantLabel(row)}</span>
+      <span className="min-w-0 flex-1 truncate">{processLabel(row)}</span>
       <Figures metrics={row.metrics} />
       <Actions>{menu && <RowMenu name={exceptionName(row)} />}</Actions>
     </TreeRow>

@@ -20,15 +20,14 @@ import { askThenEnd } from "./actions";
 import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
 import { openProcessesScreen } from "./looked";
-import { endAsk, exceptionName, subtreeAt } from "./process-groups";
+import { endAsk } from "./process-groups";
+import { exceptionName, processLabel, processRowLabel, subtreeAt } from "./process-tree";
 import StraySections from "./StraySections";
 import SummaryCard from "./SummaryCard";
 import { Actions, Figures, RowButton, RowMenu, Section, TreeRow } from "./tree-rows";
 import {
   CURRENT_WORLD,
   HELPER_LABEL,
-  descendantLabel,
-  descendantRowLabel,
   groupRowLabel,
   groupTotals,
   helperLabel,
@@ -312,7 +311,7 @@ function ShellRows({
         // 닫으면 함께 끝나지만 확인 창의 수에도 조용함 판정에도 안 든다(CONTEXT 「셸 도우미」).
         <TreeRow level={level + 1} label={helperLabel(node.helpers)} data-helper="" className="text-[12.5px] text-tertiary">
           <span className="shrink-0">{HELPER_LABEL}</span>
-          <span className="min-w-0 truncate">{node.helpers.map(descendantLabel).join(" · ")}</span>
+          <span className="min-w-0 truncate">{node.helpers.map(processLabel).join(" · ")}</span>
         </TreeRow>
       )}
       {node.descendants.map(({ row, depth }, at) => (
@@ -325,17 +324,17 @@ function ShellRows({
         <TreeRow
           key={`${row.id.pid}@${row.id.startedUs}`}
           level={level + depth}
-          label={descendantRowLabel(row)}
+          label={processRowLabel(row)}
           title={row.command ?? undefined}
           className="text-[12.5px] text-muted-foreground"
         >
-          <span className="min-w-0 flex-1 truncate">{descendantLabel(row)}</span>
+          <span className="min-w-0 flex-1 truncate">{processLabel(row)}</span>
           <Figures metrics={row.metrics} />
           <Actions>
             <RowButton
               onClick={() => {
                 const targets = subtreeAt(node.descendants, at);
-                void askThenEnd(endAsk(descendantLabel(row), targets.length), targets);
+                void askThenEnd(endAsk(processLabel(row), targets.length), targets);
               }}
             >
               끝내기

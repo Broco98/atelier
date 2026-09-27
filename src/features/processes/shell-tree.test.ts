@@ -5,8 +5,6 @@ import type { Attention } from "@/features/terminal/shell-attention";
 import { modeNameOf } from "@/mode";
 import { formatMemory } from "./metrics";
 import {
-  descendantLabel,
-  descendantRowLabel,
   groupRowLabel,
   groupTotals,
   helperLabel,
@@ -248,18 +246,10 @@ describe("스냅샷의 셸은 셸 키로 스토어의 셸에 붙는다", () => {
   });
 });
 
-describe("자손 — 시작 순, 트리 들여쓰기, 셸 도우미는 따로", () => {
-  // 판정은 pid 순으로 싣는다. 화면은 **시작 순**이다(S53) — pid는 돌고 돌아 작아질 수 있어 뜬 차례를 말하지 않는다.
-  it("셸 바로 밑의 자손은 시작 순이다 — pid 순이 아니다", () => {
-    const input = 기본({
-      shells: [칸(1, "G-1")],
-      snapshot: 스냅샷([풀(1, "G-1")], { "G-1": [행(100, 1, 30, "c"), 행(200, 1, 10, "a"), 행(300, 1, 20, "b")] }),
-    });
-    expect(편모양(input).slice(3)).toEqual(["4 200", "4 300", "4 100"]);
-  });
-
-  // 들여쓰기는 부모 pid로 짓는다. 셸 자신의 행은 스냅샷에 없어(판정이 셸 자신을 안 싣는다) 셸 바로 밑의 자식과 트리가 끊겨 표식으로만
-  // 잡힌 것(claude Bash 도구가 띄운 dev 서버 — 부모 1)이 같은 깊이 1에 선다. 형제도 시작 순이다.
+describe("자손 — 셸 밑의 트리, 셸 도우미는 따로", () => {
+  // 자손은 프로세스 줄의 트리 규칙(시작 순 · 부모 pid로 들여쓰기 · 늦게 태어난 부모에 안 잇기 — `process-tree.test.ts`)으로 셸 밑에
+  // 선다. 셸 자신의 행은 스냅샷에 없어(판정이 셸 자신을 안 싣는다) 셸 바로 밑의 자식과 트리가 끊겨 표식으로만 잡힌 것(claude Bash
+  // 도구가 띄운 dev 서버 — 부모 1)이 같은 깊이 1에 선다. 형제도 시작 순이다.
   it("부모가 그 셸의 자손이면 그 밑에 한 칸 들여 선다 — 깊이 우선으로 편다", () => {
     const input = 기본({
       shells: [칸(1, "G-1")],
@@ -274,16 +264,6 @@ describe("자손 — 시작 순, 트리 들여쓰기, 셸 도우미는 따로", 
       }),
     });
     expect(편모양(input).slice(3)).toEqual(["4 200", "5 220", "6 230", "5 210", "4 300"]);
-  });
-
-  // pid 재사용. 부모 행이 자식보다 늦게 태어났으면 그 pid는 남이다 — 판정이 같은 규칙으로 링크를 끊는다(`verdict.rs`). 끊지 않으면
-  // 먼저 뜬 것이 나중에 뜬 것의 밑에 서고, 고리가 생기면 트리가 끝나지 않는다.
-  it("부모 pid가 같아도 부모가 나중에 태어났으면 그 밑에 안 선다", () => {
-    const input = 기본({
-      shells: [칸(1, "G-1")],
-      snapshot: 스냅샷([풀(1, "G-1")], { "G-1": [행(200, 300, 10, "old"), 행(300, 1, 20, "new")] }),
-    });
-    expect(편모양(input).slice(3)).toEqual(["4 200", "4 300"]);
   });
 
   // P1 — 사람이 처음 입력하기 전에 태어난 자손은 셸 도우미다. 판정은 도우미를 자손에도 그대로 싣고(끝낼 대상이다) 곁 집합으로
@@ -463,20 +443,7 @@ describe("행의 접근성 이름 — 한 문장", () => {
     expect(worldRowLabel({ ...world, current: false })).toBe(modeNameOf("atelier"));
   });
 
-  // 자손 행은 부른 이름이다 — 커널 이름은 실제로 실행된 파일이라 심링크로 부른 것(`claude` → 버전 경로)이 다른 이름이 된다. 부른
-  // 이름을 못 읽은 행(env를 못 읽었다)은 커널 이름이다.
-  it("자손 행은 부른 이름의 마지막 조각이고, 없으면 커널 이름이다", () => {
-    expect(descendantLabel(행(1, 0, 0, "2.1.3", { argv0: "/Users/me/.local/bin/claude" }))).toBe("claude");
-    expect(descendantLabel(행(1, 0, 0, "node", { argv0: "node" }))).toBe("node");
-    expect(descendantLabel(행(1, 0, 0, "esbuild"))).toBe("esbuild");
-  });
-
-  // 자손 행의 이름은 부른 이름과 그 프로세스의 메모리다 — 셸 행과 같은 모양(이름, …, 메모리)이라 줄마다 같은 자리에서 숫자가 읽힌다.
-  it("자손 행은 부른 이름과 메모리를 잇고, 메모리를 못 읽었으면 이름만이다", () => {
-    expect(descendantRowLabel(행(1, 0, 0, "node", { argv0: "node", metrics: 지표(320 * MiB, 3, [5173]) }))).toBe("node, 320MB");
-    expect(descendantRowLabel(행(1, 0, 0, "esbuild"))).toBe("esbuild");
-  });
-
+  // 도우미의 이름은 프로세스 줄과 같은 부른 이름이다. 자손 행의 이름(부른 이름, 메모리)은 `process-tree.test.ts`가 잰다.
   it("셸 도우미 줄은 「셸 도우미」와 그 이름들이다", () => {
     expect(helperLabel([행(1, 0, 0, "gitstatusd"), 행(2, 0, 1, "zsh", { argv0: "/bin/zsh" })])).toBe("셸 도우미, gitstatusd · zsh");
   });
