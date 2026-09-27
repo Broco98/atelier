@@ -3,6 +3,7 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
+import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { CloseCheck } from "@/features/terminal/types";
 import type { CleanupEvent, ProcessMetrics, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
@@ -678,10 +679,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   //
   // **파일이 없는 상태를 답한다** — 그것이 첫 실행의 정상 경로이고(`settings.rs`의 `read`),
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
-  // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
-  read_settings: {
-    terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null },
-  } satisfies Settings,
+  // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다. 구획의 모양은 L2와 같은 한 자리
+  // (`settings-fixture.ts`의 `terminalSettings`)가 짓는다 — 설정을 덮어쓰는 spec도 그것을 불러 제 칸만 고친다.
+  read_settings: { terminal: terminalSettings() } satisfies Settings,
   // 예외 목록의 기본값(프로세스 스펙 S7). 설정 › 터미널이 열릴 때 한 번 부른다(`SettingsPage.tsx`) — 그 페이지를
   // 여는 spec이 모두 지나므로 표에 선다. 파일의 `processExceptions`가 `null`이면 칸에 이 목록이 보인다.
   //

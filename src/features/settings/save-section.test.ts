@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { sectionSaver } from "./save-section";
+import { terminalSettings } from "./settings-fixture";
 import type { NotificationSettings, Settings, TerminalSettings } from "./types";
 
 // 구획 저장이 지켜야 하는 것은 화면으로는 안 잡힌다 — **덮어쓰기는 조용하다.** 알림을 끄고
@@ -29,12 +30,7 @@ function fakeFile(initial: unknown) {
 }
 
 // 화면을 열 때 읽은 사본 — 두 구획이 **같은 옛 사본**을 들고 시작한다.
-const terminal: TerminalSettings = {
-  fontFamily: null,
-  fontSize: null,
-  theme: "dark",
-  processExceptions: null,
-};
+const terminal: TerminalSettings = terminalSettings();
 const notifications: NotificationSettings = { enabled: true };
 const opened = {
   terminal,

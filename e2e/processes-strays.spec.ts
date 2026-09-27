@@ -3,6 +3,7 @@ import { FIXTURE_GENERATION, PROCESS_SNAPSHOT } from "./fixtures";
 import { awaitSpawned, callCount, installFixtureBackend, ipcCallArgs, typeIntoShell, unknownIpcCalls } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import type { ProcessIdentity, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
+import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { Settings } from "@/features/settings/types";
 
 // 프로세스 티켓 31 — **고아 · 다른 인스턴스 · 예외를 보고, 고아를 치우고 프로세스를 끝낸다**(프로세스 결정 5 · 6 · 10 · 기본값
@@ -241,7 +242,7 @@ test("행 메뉴의 「예외로 두기」는 그 이름을 설정 저장에 싣
 test("고아 행의 「예외로 두기」는 고친 목록이 있으면 그 목록 끝에 이름을 더한다", async ({ page }) => {
   await installFixtureBackend(page, {
     processes_snapshot: 스냅샷(),
-    read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: ["tmux"] } } satisfies Settings,
+    read_settings: { terminal: terminalSettings({ processExceptions: ["tmux"] }) } satisfies Settings,
   });
   await page.goto("/processes");
 

@@ -14,6 +14,8 @@ import {
   unknownIpcCalls,
   행버튼,
 } from "./harness";
+import { terminalSettings } from "@/features/settings/settings-fixture";
+import type { NotificationSettings, Settings } from "@/features/settings/types";
 
 // 판 06 — **셸이 부르는 것을 앱 밖으로 내보내는 길**(#206 · 결정 10).
 //
@@ -141,11 +143,8 @@ test("독 배지에 확인할 것의 수가 뜨고, 0이면 사라진다", async
 // **화면에서 고른 값이 저장을 지나 같은 자리로 오는 길은 이 파일 맨 아래 검사가 잰다** —
 // 마크업 seam(`SettingsPage.test.tsx`)이 재는 것은 그 길의 양 끝(`notificationChoice`·
 // `patchNotifications`)뿐이고, 둘을 잇는 `save()`의 접착 한 줄은 그 층에서는 안 걸린다.
-const 설정 = (notifications: { enabled?: boolean; sound?: boolean }) => ({
-  read_settings: {
-    terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null },
-    notifications,
-  },
+const 설정 = (notifications: NotificationSettings) => ({
+  read_settings: { terminal: terminalSettings(), notifications } satisfies Settings,
 });
 
 test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ page }) => {

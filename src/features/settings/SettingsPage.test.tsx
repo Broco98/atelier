@@ -16,6 +16,7 @@ import SettingsPage, {
   TerminalSection,
 } from "./SettingsPage";
 import { notificationChoice, patchNotifications } from "./notifications";
+import { terminalSettings } from "./settings-fixture";
 import { textareaLook } from "@/components/ui/textarea-look";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
@@ -40,7 +41,7 @@ import type { HookStatus, NotificationSettings, Settings } from "./types";
 // 전부 순수 함수로 꺼내 두고 여기서 그 함수들을 직접 돌린다.
 
 const settings = (terminal: Partial<Settings["terminal"]> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null, ...terminal },
+  terminal: terminalSettings(terminal),
 });
 
 function render(value: Settings, sizeText = ""): string {
@@ -57,12 +58,7 @@ function render(value: Settings, sizeText = ""): string {
 describe("읽은 것을 펼쳐 고친다", () => {
   it("고친 필드만 바뀐다", () => {
     const next = patchTerminal(settings({ fontSize: 15 }), { theme: "light" });
-    expect(next.terminal).toEqual({
-      fontFamily: null,
-      fontSize: 15,
-      theme: "light",
-      processExceptions: null,
-    });
+    expect(next.terminal).toEqual(terminalSettings({ fontSize: 15, theme: "light" }));
   });
 
   // 백엔드가 `#[serde(flatten)] extra`로 실어 보내는 것들이다(`settings.rs`). 타입에는
@@ -328,7 +324,7 @@ describe("이 판이 열지 않은 것", () => {
 // **안 고른 값은 키가 없다** — 백엔드가 이 구획만 `skip_serializing_if`로 줄째 빼기
 // 때문이고(`settings.rs`), 그래서 아무것도 안 준 기본이 빈 구획 `{}`다.
 const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark", processExceptions: null },
+  terminal: terminalSettings(),
   notifications: { ...patch },
 });
 
