@@ -2,9 +2,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { PtyExit, ShellAttention, ShellHookState } from "./types";
 
 // **터미널 스토어를 그대로 돌린다**(코드 리뷰 스펙 2 · 6 반영). 이 폴더의 다른 L2는 순수 모듈을 재거나 스토어의 줄을 소스로
-// 못박는다 — 스토어는 xterm과 Tauri를 들여 노드에서 셸을 못 연다(`shell-focus.test.ts`의 머리말). 그래서 **배선이 순서를
-// 틀리거나 줄 하나를 잃는 회귀**(보고 있던 셸의 확인할 것이 ⌘J 기억에서 빠진다, 요청한 셸의 기다리는 포커스가 안 적힌다)는
-// 순수 함수의 표가 아무리 맞아도 안 잡혔다.
+// 못박는다 — 스토어는 xterm과 Tauri를 들여 그대로는 노드에서 셸을 못 연다. 그래서 **배선이 순서를 틀리거나 줄 하나를 잃는
+// 회귀**(보고 있던 셸의 확인할 것이 ⌘J 기억에서 빠진다, 요청한 셸의 기다리는 포커스가 안 적힌다, 셸이 뜨기 전 키가 첫 입력으로
+// 앉는다, 주인 잃은 셸 토스트의 수가 안 따라온다)는 순수 함수의 표가 아무리 맞아도 안 잡혔다.
 //
 // 여기서는 경계만 가짜로 둔다 — xterm(`Terminal` · 애드온), IPC(`./api` — 셸 띄우기 답 · 사건 구독), 채널(`Channel`), 창
 // 포커스, 확인 창, 문서 몇 조각(`document` · `ResizeObserver` · `getComputedStyle`). 스토어의 코드는 한 줄도 안 바꾼다. 사건은
@@ -171,8 +171,20 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-/** 셸을 하나 열고(기본은 최상위 터미널) 띄우기 답이 앉을 때까지 기다린다. 레지스트리 id · pty 번호 · 셸 키를 준다. */
-async function openShellSpawned(origin: ShellOrigin = topTerminal("atelier")): Promise<{ id: number; ptyId: number; shellKey: string; term: InstanceType<typeof fake.FakeTerminal>; channel: InstanceType<typeof fake.FakeChannel> }> {
+type FakeTerminal = InstanceType<typeof fake.FakeTerminal>;
+type FakeChannel = InstanceType<typeof fake.FakeChannel>;
+
+/** 띄운 셸 하나 — 레지스트리 id · pty 번호 · 셸 키와, 그 셸의 가짜 xterm과 채널. */
+interface SpawnedShell {
+  id: number;
+  ptyId: number;
+  shellKey: string;
+  term: FakeTerminal;
+  channel: FakeChannel;
+}
+
+/** 셸을 하나 열고(기본은 최상위 터미널) 띄우기 답이 앉을 때까지 기다린다. */
+async function openShellSpawned(origin: ShellOrigin = topTerminal("atelier")): Promise<SpawnedShell> {
   const before = terminalStore.state.shells.length;
   openNewShell(origin);
   const shell = terminalStore.state.shells[before];
@@ -189,7 +201,7 @@ function hookEvent(shellKey: string, state: Omit<ShellHookState, "subagents" | "
 }
 
 /** 채널로 종료 프레임을 흘린다 — 셸이 스스로 끝났다. */
-function exitFrame(channel: InstanceType<typeof fake.FakeChannel>, exit: PtyExit): void {
+function exitFrame(channel: FakeChannel, exit: PtyExit): void {
   channel.onmessage(exit);
 }
 
@@ -204,7 +216,7 @@ function showOnScreen(id: number): void {
 
 describe("방금 부른 셸로(⌘J) — 스토어를 거쳐", () => {
   // 코드 리뷰 스펙 2. 기억의 재료가 「봤다」로 걸러진 화면값이면, 보고 있는 셸의 턴끝(Stop)은 같은 갱신 안에서 곧바로 본
-  // 확인할 것이 되어(`markShellsSeen`) 기억에 못 든다. 결정 16 · S59는 「보고 있어서 안 울린 부름도 사람을 부른 것」이다.
+  // 확인할 것이 되어(`markShellsSeen`) 기억에 못 든다. 프로세스 결정 16 · 프로세스 스펙 S59는 「보고 있어서 안 울린 부름도 사람을 부른 것」이다.
   it("보고 있는 셸에 턴끝이 오면 다른 셸로 옮긴 뒤에도 ⌘J가 그 셸로 간다", async () => {
     const a = await openShellSpawned();
     const b = await openShellSpawned();
