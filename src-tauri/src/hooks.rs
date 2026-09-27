@@ -635,7 +635,8 @@ pub struct HookStatus {
     pub agent: String,
     /// 사람이 읽는 경로 — `~/.claude/settings.json`.
     pub path: String,
-    /// 없음 · 일부 · 전부(`Installed`). 선 위에서는 `"none"` · `"partial"` · `"full"`이다.
+    /// 없음 · 일부 · 전부(`Installed`). 선 위에서는 `"none"` · `"partial"` · `"full"`이다(검사
+    /// `the_install_state_goes_over_the_wire_as_none_partial_or_full` — 프런트 `HookInstalled`의 짝).
     pub installed: Installed,
     /// 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 「없음」이지만 「안 깔렸다」가
     /// 아니라 「모른다」다 — 화면이 그 둘을 갈라 적는다.
@@ -2063,6 +2064,16 @@ trust_level = "trusted"
             toml_basic_string(&codex_command(&script(), "Notification"))
         );
         assert_eq!(state(&stray), Installed::Partial, "목록 밖 이벤트에 우리 줄이 남았는데 「전부」다");
+    }
+
+    /// **설치 상태는 선 위에서 `"none"` · `"partial"` · `"full"`이다** — 프런트 `HookInstalled`(`settings/types.ts`)의 짝이다.
+    /// 화면은 이 글자로 낱말 표(`hookStateLabel`)를 고른다. 이름을 바꾸거나 `rename_all`을 바꾸면 어느 층도 안 빨개진 채
+    /// 화면의 낱말만 빈다 — L2 · L3는 손으로 적은 답을 쓰고, 이 글자를 재는 것은 이 검사 하나다.
+    #[test]
+    fn the_install_state_goes_over_the_wire_as_none_partial_or_full() {
+        for (installed, wire) in [(Installed::None, "none"), (Installed::Partial, "partial"), (Installed::Full, "full")] {
+            assert_eq!(serde_json::to_value(installed).unwrap(), wire, "설치 상태 {installed:?}의 글자가 다르다");
+        }
     }
 
     /// **파일에 적힌 목록의 판이 이 빌드보다 새로우면 맞추지 않는다**(프로세스 스펙 P5). 목록이 다른 두 빌드를 번갈아 켜도 서로
