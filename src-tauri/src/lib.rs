@@ -28,6 +28,11 @@ use tauri::{Emitter, Manager};
 /// 그 상황이다.
 const SETTINGS_MENU_ID: &str = "settings";
 
+/// 창 하나의 라벨. `tauri.conf.json`이 라벨을 안 적어 Tauri의 기본값(`main`)이다. 그 창을 다시 찾는 자리 둘 — ⌘Q · Dock 종료의
+/// 확인 창을 사람 앞에 세우는 `terminate.rs`와 WebContent의 pid를 묻는 `webview.rs` — 가 이 한 값을 쓴다. 둘 다 macOS 몫이다.
+#[cfg(target_os = "macos")]
+const MAIN_WINDOW: &str = "main";
+
 /// 프레임에 포커스가 갔을 때 죽던 단축키들을 되살리는 항목의 id 접두사.
 ///
 /// **뒤에 붙는 것은 그 키의 `KeyboardEvent.code`다** (`hotkey:KeyB` · `hotkey:Digit3`).

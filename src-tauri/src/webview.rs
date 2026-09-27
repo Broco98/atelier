@@ -43,15 +43,12 @@ mod macos {
 
     use crate::processes::summary::WebContentAnswer;
 
-    /// 창 하나의 라벨. `tauri.conf.json`이 라벨을 안 적어 Tauri의 기본값(`main`)이다(`terminate.rs`와 같다).
-    const MAIN_WINDOW: &str = "main";
-
     /// 메인 스레드의 답을 기다리는 한계. 셀렉터 둘을 보내는 일이라 평소엔 1ms 안이다 — 이보다 늦으면 메인 스레드가 다른 일에 묶였다.
     /// 배경 표본의 박자(10초)에 견줘 짧게 둔다: 그 스레드는 이것을 기다리는 동안 다음 장을 못 모은다.
     const ASK_WITHIN: Duration = Duration::from_millis(500);
 
     pub(super) fn content_pid(app: &AppHandle) -> WebContentAnswer {
-        let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+        let Some(window) = app.get_webview_window(crate::MAIN_WINDOW) else {
             return WebContentAnswer::Answered(None);
         };
         let (answer, answered) = mpsc::sync_channel(1);

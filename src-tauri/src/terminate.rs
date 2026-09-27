@@ -112,15 +112,12 @@ mod macos {
     /// **`ask` 안에서만 부른다.** 시스템 종료·「확인됨」 쪽에서 부르면 로그아웃이 창을 띄운다.
     fn bring_to_front(app: &AppHandle) {
         let _ = app.show();
-        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        if let Some(window) = app.get_webview_window(crate::MAIN_WINDOW) {
             let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
         }
     }
-
-    /// 창 하나의 라벨. `tauri.conf.json`이 라벨을 안 적어 Tauri의 기본값(`main`)이다.
-    const MAIN_WINDOW: &str = "main";
 
     /// 지금 처리 중인 Apple Event의 `why?` 속성. ⌘Q·메뉴는 `terminate:`를 직접 불러 이벤트가 없고,
     /// Dock은 `quit` 이벤트에 속성이 없다.
