@@ -178,6 +178,57 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// **주인 잃은 셸 토스트의 N은 셸이 닫히면 따라온다**(구현 기록 12 · 32의 남은 것). 그 토스트는 동작 토스트라 사람이 닫을 때까지
+// 남는데, 한때 N은 세울 때만 지어져 `Processes`에서 하나씩 닫아도 「셸 3개에 아직 도는 것이 있어요」로 남았다. 고치는 길은
+// **고치기만** 한다 — 사람이 [×]로 닫은 토스트는 셸이 더 닫혀도 다시 안 선다.
+test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 줄고, 토스트를 닫은 뒤에는 한 줄을 더 닫아도 토스트가 돌아오지 않는다", async ({
+  page,
+}) => {
+  await installFixtureBackend(page, {
+    // 셋 다 조용하지 않다 — MCP 아카이브가 모두 주인 잃은 셸로 남긴다. 한 줄 닫기의 물음은 조용하다 — 창 없이 닫는다.
+    pty_close_checks: { 1: BUSY, 2: BUSY, 3: BUSY },
+    pty_close_check: QUIET,
+    processes_snapshot: 스냅샷([1, 2, 3]),
+  });
+  // `그냥 일`에 셸 셋(pty 1 · 2 · 3) — 사람이 친 셸과 `+`로 연 셸 둘이다(떠남으로 회수되지 않는다).
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await openShell(page);
+  await openShell(page);
+  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  const 토스트자리 = page.getByRole("region", { name: "앱 메시지", exact: true });
+  const 토스트 = (n: number) =>
+    토스트자리.getByRole("dialog", { name: `아카이브된 작업의 셸 ${n}개에 아직 도는 것이 있어요`, exact: true });
+  await expect(토스트(3)).toBeVisible();
+
+  await nav(page, "Processes").click();
+  await expect(page).toHaveURL("/processes");
+  const ownerless = 묶음(page, "주인 잃은 셸");
+  await expect(셸줄(ownerless, 1)).toBeVisible();
+
+  // ── 한 줄 닫기 — 토스트의 수가 준다 ──
+  await 버튼(셸줄(ownerless, 1), "닫기").click();
+  const owner = `atelier:${plainWork.slug}`;
+  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner }]);
+  await expect(토스트(2)).toBeVisible();
+  await expect(토스트(3)).toHaveCount(0);
+
+  // ── 사람이 토스트를 닫은 뒤 — 한 줄을 더 닫아도 안 돌아온다 ──
+  // `×`는 알림 자리가 펼쳐졌을 때만 보조 기술에 드러난다(`shell-ownerless.spec.ts`의 같은 손) — 먼저 올리고 누른다.
+  await 토스트(2).hover();
+  await 토스트(2).getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(토스트자리.getByRole("dialog")).toHaveCount(0);
+
+  await 버튼(셸줄(ownerless, 2), "닫기").click();
+  // 앵커 — 닫았다.
+  await expect.poll(() => kills(page)).toHaveLength(2);
+  await expect(셸줄(ownerless, 2)).toHaveCount(0);
+  await settle(page);
+  expect(await 토스트자리.getByRole("dialog").count(), "사람이 닫은 주인 잃은 셸 토스트가 다시 섰다").toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
 // 화면 밖 셸(S42)은 **두 스냅샷에 연달아** 선 셸만이다 — 방금 뜬 셸이 spawn 답 전에 찍힌 한 장에 스토어가 모르는 셸로 선다. 박자는
 // `page.clock`으로 넘긴다(`processes.spec.ts` 머리말의 두 주의): 깐 뒤 멈추고, 한 박자씩 흘린다.
 test("스토어가 모르는 풀의 셸이 두 스냅샷 연달아 서면 화면 밖 셸로 서고, [닫기]가 그 pty id로 셸 탭의 × 규칙대로 닫는다", async ({

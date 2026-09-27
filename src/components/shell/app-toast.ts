@@ -88,3 +88,12 @@ export function toastActionsOf(data: unknown): ReadonlyArray<ToastAction> {
 export function showAppToast(notice: AppNotice): void {
   appToasts.add(toastOptionsOf(notice));
 }
+
+/**
+ * 떠 있는 토스트의 글자를 고친다 — **떠 있을 때만이다.** 없는 id와 닫히는 중인 id에는 아무 일도 안 한다: Base UI 토스트 저장소가
+ * 거른다(`store.js`의 `updateToastInternal`). **새로 세우지 않는다** — 사람이 이미 닫은 동작 토스트를 되살리지 않고 수만 맞출 때
+ * 쓴다(주인 잃은 셸이 닫힌 뒤의 N). 같은 id로 다시 세우는 것은 `showAppToast`다.
+ */
+export function retextAppToast(id: string, text: string): void {
+  appToasts.update(id, { title: text });
+}

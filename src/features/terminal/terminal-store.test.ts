@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ShellAttention, ShellHookState } from "./types";
+import type { PtyExit, ShellAttention, ShellHookState } from "./types";
 
 // **터미널 스토어를 그대로 돌린다**(코드 리뷰 스펙 2 · 6 반영). 이 폴더의 다른 L2는 순수 모듈을 재거나 스토어의 줄을 소스로
 // 못박는다 — 스토어는 xterm과 Tauri를 들여 노드에서 셸을 못 연다(`shell-focus.test.ts`의 머리말). 그래서 **배선이 순서를
@@ -105,17 +105,22 @@ vi.mock("./api", () => ({
 }));
 
 import { sendNotification } from "@tauri-apps/plugin-notification";
+import { appToasts } from "@/components/shell/app-toast";
 import { terminalApi } from "./api";
 import { applyNotifySettings } from "./notify-settings";
 import { ptyIdOf } from "./shell-key";
-import { NO_SHELLS, topTerminal } from "./shell-registry";
+import { ownerlessNotice, ownerlessToastId } from "./shell-owners";
+import { NO_SHELLS, ownerOf, topTerminal } from "./shell-registry";
+import type { ShellOrigin } from "./shell-registry";
 import {
   attachShell,
+  closeQuietShells,
   openNewShell,
   recalledShell,
   requestCloseShell,
   selectShell,
   selectShellWithFocus,
+  settleOwners,
   showShell,
   terminalStore,
 } from "./terminal-store";
@@ -166,10 +171,10 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-/** 최상위 터미널에 셸을 하나 열고 띄우기 답이 앉을 때까지 기다린다. 레지스트리 id · pty 번호 · 셸 키를 준다. */
-async function openShellSpawned(): Promise<{ id: number; ptyId: number; shellKey: string; term: InstanceType<typeof fake.FakeTerminal>; channel: InstanceType<typeof fake.FakeChannel> }> {
+/** 셸을 하나 열고(기본은 최상위 터미널) 띄우기 답이 앉을 때까지 기다린다. 레지스트리 id · pty 번호 · 셸 키를 준다. */
+async function openShellSpawned(origin: ShellOrigin = topTerminal("atelier")): Promise<{ id: number; ptyId: number; shellKey: string; term: InstanceType<typeof fake.FakeTerminal>; channel: InstanceType<typeof fake.FakeChannel> }> {
   const before = terminalStore.state.shells.length;
-  openNewShell(topTerminal("atelier"));
+  openNewShell(origin);
   const shell = terminalStore.state.shells[before];
   const term = fake.terms[fake.terms.length - 1];
   await vi.waitFor(() => expect(terminalStore.state.shells.find((one) => one.id === shell.id)?.shellKey).not.toBeNull());
@@ -181,6 +186,11 @@ async function openShellSpawned(): Promise<{ id: number; ptyId: number; shellKey
 /** 셸이 훅으로 말한 것 한 장 — 앱이 받는 모양 그대로(셸 키 · 훅 상태). */
 function hookEvent(shellKey: string, state: Omit<ShellHookState, "subagents" | "stopped"> & Partial<ShellHookState>): void {
   fake.attention?.([{ shellId: shellKey, state: { subagents: 0, stopped: false, ...state } }]);
+}
+
+/** 채널로 종료 프레임을 흘린다 — 셸이 스스로 끝났다. */
+function exitFrame(channel: InstanceType<typeof fake.FakeChannel>, exit: PtyExit): void {
+  channel.onmessage(exit);
 }
 
 /** 화면이 셸의 집을 들일 자리 하나. */
@@ -310,5 +320,90 @@ describe("셸로 가는 길의 포커스 — 스토어를 거쳐", () => {
     expect(terminalStore.state.shells.some((one) => one.id === a.id)).toBe(false);
     attachShell(자리(), b.id);
     expect(b.term.focused).toBe(1);
+  });
+});
+
+describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
+  // 구현 기록 12 · 32의 남은 것. 주인 잃은 셸 토스트(동작 토스트 — 누르거나 닫을 때까지 남는다)의 N은 **도는** 주인 잃은 셸이다.
+  // 한때 그 N은 세울 때만 지어져, 그 셸이 스스로 끝나거나 `Processes`에서 닫혀도 「아직 도는 것이 있어요」가 옛 수로 남았다.
+  // 고치는 길은 **고치기만** 한다(`update`) — 새로 세우면(`add`) 사람이 이미 닫은 토스트가 셸 하나 닫힐 때마다 되살아난다.
+  const 사라진work = (slug: string): ShellOrigin => ({ mode: "atelier", owner: ownerOf("atelier", slug), project: null, cwd: `~/${slug}` });
+  const 토스트 = ownerlessToastId("atelier");
+  const 목록 = { status: "success" as const, data: [] };
+
+  /** 그 work의 셸 `count`개를 열고, 그 work이 목록에서 사라진 것을 알린다 — 셸이 모두 주인 잃은 셸이 된다(조용한지 모른다). */
+  async function 주인잃은셸(slug: string, count: number) {
+    const shells = [];
+    for (let n = 0; n < count; n += 1) shells.push(await openShellSpawned(사라진work(slug)));
+    await settleOwners("atelier", 목록);
+    for (const one of shells) expect(terminalStore.state.shells.find((shell) => shell.id === one.id)?.ownerless).toBe(true);
+    return shells;
+  }
+
+  let add: ReturnType<typeof vi.spyOn>;
+  let update: ReturnType<typeof vi.spyOn>;
+  let close: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    add = vi.spyOn(appToasts, "add");
+    update = vi.spyOn(appToasts, "update");
+    close = vi.spyOn(appToasts, "close");
+  });
+  afterEach(() => {
+    add.mockRestore();
+    update.mockRestore();
+    close.mockRestore();
+  });
+
+  it("주인 잃은 셸 하나가 닫히면 토스트의 N이 줄고, 마지막이 닫히면 토스트가 내려간다", async () => {
+    const [a, b] = await 주인잃은셸("gone", 2);
+    // 앵커 — 세웠다(새 주인 잃은 셸이 생겼다).
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice("atelier", 2) }));
+
+    // `Processes`의 한 줄 닫기 — 셸 닫기 확인을 거치는 길이다.
+    await requestCloseShell(a.id);
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 1) });
+    expect(close).not.toHaveBeenCalledWith(토스트);
+
+    await requestCloseShell(b.id);
+    expect(close).toHaveBeenCalledWith(토스트);
+    // 세우기는 처음 한 번뿐이다.
+    expect(add).toHaveBeenCalledTimes(1);
+  });
+
+  // 사람이 [×]로 닫은 동작 토스트는 셸이 닫힐 때마다 되살아나면 안 된다 — 고치기(`update`)는 떠 있지 않은 id에 아무것도 안 한다
+  // (Base UI 매니저). 그래서 닫는 길 셋 어디서도 **세우지(`add`) 않는다**.
+  it("닫는 길 셋(한 줄 닫기 · [조용한 셸 모두 닫기] · 스스로 끝남)은 토스트를 세우지 않고 고치기만 한다", async () => {
+    const [a, b, c, d] = await 주인잃은셸("gone", 4);
+    appToasts.close(토스트);
+    add.mockClear();
+    update.mockClear();
+
+    await requestCloseShell(a.id);
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 3) });
+
+    // 조용해진 셸 하나(b)만 닫힌다 — 나머지는 답이 없어 조용한지 모른다.
+    vi.mocked(terminalApi.closeChecks).mockResolvedValueOnce({ [b.ptyId]: { command: false, descendants: 0 } });
+    await closeQuietShells();
+    expect(terminalStore.state.shells.some((shell) => shell.id === b.id)).toBe(false);
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 2) });
+
+    // 스스로 끝남 — 정상 종료는 목록에서 빠지고, 이유가 있는 끝은 목록에 남지만 더는 도는 셸이 아니다.
+    exitFrame(c.channel, { exitCode: 0, signal: null });
+    expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 1) });
+    exitFrame(d.channel, { exitCode: 1, signal: null });
+    expect(terminalStore.state.shells.some((shell) => shell.id === d.id)).toBe(true);
+    expect(close).toHaveBeenLastCalledWith(토스트);
+
+    expect(add, "사람이 닫은 토스트가 다시 섰다").not.toHaveBeenCalled();
+  });
+
+  // 세우는 길은 그대로다 — 새 주인 잃은 셸이 생기면 사람이 앞의 것을 닫았어도 다시 선다(지금 수로).
+  it("새 주인 잃은 셸이 생기면 토스트가 다시 선다", async () => {
+    await 주인잃은셸("gone", 1);
+    appToasts.close(토스트);
+    add.mockClear();
+
+    await 주인잃은셸("gone-too", 1);
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ id: 토스트, title: ownerlessNotice("atelier", 2) }));
   });
 });

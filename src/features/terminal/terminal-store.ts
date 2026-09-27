@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { askDialog } from "@/components/ui/confirm-store";
-import { appToasts, showAppToast } from "@/components/shell/app-toast";
+import { appToasts, retextAppToast, showAppToast } from "@/components/shell/app-toast";
 import { viewAction } from "@/components/shell/processes-view";
 import { cancelGoneShellDrag, dragStore, shellMoveOf } from "@/lib/pointer-drag";
 import { windowFocused } from "@/lib/window-focus";
@@ -511,9 +511,13 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
  * 부르는 쪽은 **닫는 자리**(`path`)를 말한다 — 까닭은 그 자리로 표가 고른다(`CLOSE_REASONS` · 티켓 11).
  */
 function closeShell(id: number, path: ClosePath): void {
+  // 주인 잃은 셸이면 그 세계 — 빼기 **전에** 읽는다.
+  const world = ownerlessWorldOf(terminalStore.state, id);
   const instance = instances.get(id);
   if (instance) disposeInstance(instance, path);
   terminalStore.setState((state) => removeShell(state, id));
+  // 주인 잃은 셸이 닫혔다 — 그 세계의 토스트의 N을 맞춘다(떠 있을 때만 — `refreshOwnerless`).
+  if (world !== null) refreshOwnerless(world);
 }
 
 /**
@@ -1033,21 +1037,43 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
 }
 
 /**
- * 그 세계의 주인 잃은 셸 토스트를 세운다(티켓 12). **동작 토스트다** — 자기 id를 써서(`ownerlessToastId`) 다시 오면 그
- * 자리를 고치고, 누르거나 닫을 때까지 남는다. N은 **도는** 주인 잃은 셸이다. 도는 것이 없으면 세우지 않는다 — 「아직
- * 도는 것이 있어요」가 거짓이 된다.
+ * 그 세계의 주인 잃은 셸 토스트가 말할 것 — id와 문구(티켓 12). N은 **도는** 주인 잃은 셸이다(`liveOwnerlessOf`). 도는 것이
+ * 없으면 `null`이다 — 「아직 도는 것이 있어요」가 거짓이 된다. 세우기(`showOwnerless`)와 고치기(`refreshOwnerless`)가 같은 N과
+ * 같은 말을 이 한 자리에서 짓는다.
+ */
+function ownerlessToastOf(mode: Mode): { id: string; text: string } | null {
+  const count = liveOwnerlessOf(terminalStore.state, mode).length;
+  return count === 0 ? null : { id: ownerlessToastId(mode), text: ownerlessNotice(mode, count) };
+}
+
+/**
+ * 그 세계의 주인 잃은 셸 토스트를 **세운다**(티켓 12) — 새 주인 잃은 셸이 생긴 순간이다(`settleOwners`). **동작 토스트다** — 자기
+ * id를 써서(`ownerlessToastId`) 다시 오면 그 자리를 고치고, 사람이 닫았으면 다시 선다(새로 알릴 것이 생겼다). 누르거나 닫을 때까지
+ * 남는다. 도는 것이 없으면 세우지 않는다.
  */
 function showOwnerless(mode: Mode): void {
-  const count = liveOwnerlessOf(terminalStore.state, mode).length;
-  if (count === 0) return;
-  const id = ownerlessToastId(mode);
+  const toast = ownerlessToastOf(mode);
+  if (toast === null) return;
   showAppToast({
-    id,
-    text: ownerlessNotice(mode, count),
+    ...toast,
     // [보기]는 `Processes`의 주인 잃은 셸 묶음으로 간다(티켓 32 · 프로세스 스펙 S15). [모두 닫기]가 앞이다 — 이 토스트의
     // 주된 동작이다.
-    actions: [{ label: "모두 닫기", run: () => void closeOwnerless([mode]) }, viewAction(id)],
+    actions: [{ label: "모두 닫기", run: () => void closeOwnerless([mode]) }, viewAction(toast.id)],
   });
+}
+
+/**
+ * 주인 잃은 셸이 닫히거나 스스로 끝났다 — 그 세계의 토스트를 **떠 있을 때만** 지금 수로 **고치고**, 도는 것이 안 남았으면 내린다
+ * (구현 기록 12 · 32의 남은 것 — 한때 N은 세울 때만 지어져, 셸이 닫혀도 옛 수로 남았다). 부르는 자리는 둘이다: 셸 닫기의 한
+ * 길(`closeShell` — `Processes`의 한 줄 · [조용한 셸 모두 닫기] · [모두 닫기]가 모두 지난다)과 종료 프레임(스스로 끝남 — `spawn`).
+ *
+ * **세우지 않는다.** 여기서 `showOwnerless`를 부르면(`appToasts.add`) 사람이 이미 [×]로 닫은 동작 토스트가 셸 하나 닫힐 때마다 다시
+ * 선다. 고치기는 떠 있지 않은 id에 아무것도 안 하고(`retextAppToast`), 내리기도 없는 id에는 아무 일도 안 한다.
+ */
+function refreshOwnerless(mode: Mode): void {
+  const toast = ownerlessToastOf(mode);
+  if (toast === null) appToasts.close(ownerlessToastId(mode));
+  else retextAppToast(toast.id, toast.text);
 }
 
 /**
@@ -1721,6 +1747,7 @@ async function spawn(instance: ShellInstance) {
         return;
       }
       instance.ptyId = null;
+      const world = ownerlessWorldOf(terminalStore.state, instance.id);
       terminalStore.setState((state) => markExited(state, instance.id, frame));
       // **결정 48의 나머지 반쪽이 여기다.** 정상 종료한 칸은 목록에서 스스로 빠지는데,
       // 빠지면 그 칸은 다시 그려지지 않아 `×`가 영영 안 생긴다 — 즉 `closeShell`이 그 id로
@@ -1734,6 +1761,8 @@ async function spawn(instance: ShellInstance) {
       if (!hasShell(instance.id)) {
         disposeInstance(instance, null);
       }
+      // 주인 잃은 셸이 스스로 끝났다 — 빠졌든(정상 종료) 이유를 읽으라고 남았든 더는 도는 셸이 아니다(`refreshOwnerless`).
+      if (world !== null) refreshOwnerless(world);
     };
 
     // `~` 축약 표기를 그대로 넘긴다 — 펴는 것은 `expand_home`을 가진 백엔드 한 곳이다
