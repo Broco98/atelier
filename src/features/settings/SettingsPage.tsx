@@ -11,6 +11,7 @@ import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import SpecLayoutPage from "@/features/spec-layout/SpecLayoutPage";
 import { hooksApi, settingsApi } from "./api";
@@ -418,31 +419,32 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
 }
 
 /**
- * 예외 목록의 기본값을 한 번 묻는다(`default_process_exceptions`). 아직 안 왔으면 `null`, 못 받았으면 `"failed"`.
+ * 예외 목록의 기본값 조회(`default_process_exceptions`). 페이지가 열릴 때 한 번 묻는다.
+ *
+ * - **다시 시도하지 않는다**(`retry: false`). 못 받으면 곧바로 「읽지 못했어요」를 적는다 — 웹뷰의 기본(세 번 더, 1 · 2 · 4초
+ *   쉼)이면 그 7초 동안 칸이 말없이 잠긴다(L3 `process-exceptions`).
+ * - **열려 있는 동안 다시 묻지 않는다**(`staleTime: Infinity` — 창으로 돌아올 때도). 판정이 쓰는 Rust 상수라 앱이 도는 동안
+ *   안 바뀐다.
+ * - **페이지를 떠나면 버린다**(`gcTime: 0`). 다시 열면 새로 묻는다 — 못 받았던 것도 그때 다시 묻는다.
+ */
+const defaultExceptionsQuery = queryOptions({
+  queryKey: ["settings", "defaultExceptions"],
+  queryFn: settingsApi.defaultExceptions,
+  retry: false,
+  staleTime: Infinity,
+  gcTime: 0,
+});
+
+/**
+ * 예외 목록의 기본값. 아직 안 왔으면 `null`, 못 받았으면 `"failed"`.
  *
  * 설정 파일과 따로 묻는 것은 **값을 정하는 자리가 다르기 때문이다** — 파일에는 사람이 고친 것만 있고, 기본 목록은
  * 판정이 쓰는 Rust 상수다. 못 받아도 터미널 설정의 다른 칸은 그대로 쓴다: 예외 칸만 잠긴다
  * (`ProcessExceptionsSection`).
  */
 function useDefaultExceptions(): string[] | null | "failed" {
-  const [defaults, setDefaults] = useState<string[] | null | "failed">(null);
-
-  useEffect(() => {
-    let alive = true;
-    settingsApi.defaultExceptions().then(
-      (list) => {
-        if (alive) setDefaults(list);
-      },
-      () => {
-        if (alive) setDefaults("failed");
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  return defaults;
+  const { data, isError } = useQuery(defaultExceptionsQuery);
+  return data ?? (isError ? "failed" : null);
 }
 
 /**
