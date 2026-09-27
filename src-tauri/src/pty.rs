@@ -798,7 +798,7 @@ pub fn end_by_hand(pool: &PtyPool, targets: &[Identity]) {
     let behind = std::thread::Builder::new().name("atelier-by-hand".into()).spawn(move || {
         let outcomes = running.finish();
         if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::Manual, None, None, &aimed, &outcomes) {
-            record.log(event);
+            record.log_cleanup(event);
         }
     });
     // 스레드를 못 띄우면 끝내기는 마감되지 않은 채 목록에 남는다 — 앱 종료가 마감한다(`end`의 같은 자리와 같다). 기록은 빠진다.
@@ -877,9 +877,9 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
     // 못 끝낸 것이 없으면 인스턴스 기록을 지우고, 있으면 남긴다 — 다음 실행의 시작 정리가 이 실행을 「죽은 인스턴스」로
     // 읽어 한 번 더 해 본다. 어느 쪽이든 기록을 닫아, 아직 도는 뒤 스레드의 늦은 쓰기가 파일을 되살리지 않는다.
     pool.record.close(&outcomes);
-    // 기록을 닫아도 정리 기록은 적힌다(`Record::log`). 셸과 도우미만 끝났으면 안 적는다.
+    // 기록을 닫아도 정리 기록은 적힌다(`Record::log_cleanup`). 셸과 도우미만 끝났으면 안 적는다.
     if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::AppExit, None, None, &aimed, &outcomes) {
-        pool.record.log(event);
+        pool.record.log_cleanup(event);
     }
     outcomes
 }
@@ -954,7 +954,7 @@ fn carry_out(pool: &PtyPool, plan: StartupPlan) -> Vec<StartupAttempt> {
     let outcomes = claim.start(&ids, &[]).finish();
     let aimed: Vec<Aimed> = targets.iter().map(|proc| Aimed::of(proc, false)).collect();
     if let Some(event) = cleanup_log::event(clock::now_ms(), Reason::StartupCleanup, None, None, &aimed, &outcomes) {
-        pool.record.log(event);
+        pool.record.log_cleanup(event);
     }
     pool.record.forget(
         dead.iter().filter(|record| !instances::alive(record.app)).map(|record| record.generation.as_str()),
@@ -1057,7 +1057,7 @@ impl Behind {
         let at = clock::now_ms();
         for (key, members) in &aimed {
             if let Some(event) = cleanup_log::event(at, cause.reason, Some(key), cause.owner.as_deref(), members, &outcomes) {
-                record.log(event);
+                record.log_cleanup(event);
             }
         }
         // **셸 키는 끝내기가 끝난 뒤에 내린다**(프로세스 스펙 S52). 유예 2초 동안 SIGTERM을 무시하며 사는 자손은 아직 이
@@ -1749,7 +1749,7 @@ mod tests {
         let finished = ended_id.is_some_and(|id| wait_until(|| identity_of(id.pid) != Some(id)));
         let mut events = Vec::new();
         wait_until(|| {
-            events = pool.record.events();
+            events = pool.record.cleanup_events();
             !events.is_empty()
         });
 

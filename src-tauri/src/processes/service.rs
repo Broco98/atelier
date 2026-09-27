@@ -130,7 +130,7 @@ impl ProcessService {
         let readings = metrics::read(summary::targets(&verdict, &shells, &body));
         let cpu = self.background.cpu(Instant::now(), readings.cpu_ns());
         let measured = Measured { readings: readings.by_id, cpu };
-        let head = cleanup_log::look_head(&self.pool.record().events());
+        let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
         Summary::of(&verdict, &shells, &body, &measured, head)
     }
 
@@ -152,9 +152,10 @@ impl ProcessService {
 
     /// 정리 기록 IPC의 답(`processes_cleanup_log`) — **풀의 인스턴스 기록이 연** 정리 기록을 새것부터(프로세스 스펙 S12 · 티켓 32).
     /// 파일이 최근 100건만 담으므로(`cleanup_log::KEEP`) 그것이 곧 화면의 「최근 100건」이다. 데이터 루트를 다시 계산하지 않는다 —
-    /// 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록이면 빈 기록이다. 표를 찍지 않는다.
+    /// 검사의 풀이 진짜 기록을 읽는다. 연 적 없는 기록이면 빈 기록이다. 표를 찍지 않는다. 이름이 기록의 읽기
+    /// (`instances::Record::cleanup_events`)와 같다 — 이것은 서비스의 IPC 답이고 그것은 기록 한 장의 읽기다.
     pub fn cleanup_events(&self) -> Vec<Event> {
-        self.pool.record().events()
+        self.pool.record().cleanup_events()
     }
 
     /// 웹뷰에게 WebContent의 pid를 묻는 함수를 한 번 건다(S39 · 티켓 30). 앱은 setup에서 `webview::content_pid`를 건다 — 이 층은
@@ -327,7 +328,7 @@ mod tests {
         let sampled = body.find("self.background.cpu(").expect("배경의 미터로 CPU%를 짓는다");
         assert!(read < sampled, "읽기({read}) 전에 CPU% 표본을 넣는다({sampled})");
         assert!(
-            body.contains("cleanup_log::look_head(&self.pool.record().events())"),
+            body.contains("cleanup_log::look_head(&self.pool.record().cleanup_events())"),
             "`●`의 머리를 풀의 정리 기록에서 안 고른다"
         );
         assert!(!body.contains("screen_cpu"), "배경 표본이 화면의 앞 표본을 나눠 쓴다 — 두 박자가 섞인다");
@@ -411,9 +412,9 @@ mod tests {
             owner: None,
             targets: vec![Target { pid: 7, name: "node".into(), command: None, outcome: Outcome::Ended }],
         };
-        pool.record.log(event(1_000, Reason::ShellClose));
-        pool.record.log(event(2_000, Reason::StartupCleanup));
-        pool.record.log(event(3_000, Reason::Manual));
+        pool.record.log_cleanup(event(1_000, Reason::ShellClose));
+        pool.record.log_cleanup(event(2_000, Reason::StartupCleanup));
+        pool.record.log_cleanup(event(3_000, Reason::Manual));
         let answered = ProcessService::new(pool).cleanup_events();
         let _ = std::fs::remove_dir_all(&root);
 

@@ -172,7 +172,7 @@ impl Record {
     /// 인스턴스 기록과 같은 뮤텍스인 것은 스펙이 정한 것이다 — 앱에 기록은 하나(풀이 쥔다)라 이 잠금이 곧 프로세스 전역이다.
     ///
     /// 열지 않았으면 쓰지 않는다. 닫은 뒤에는 쓴다(`Book::log`).
-    pub fn log(&self, event: Event) {
+    pub fn log_cleanup(&self, event: Event) {
         let book = self.lock();
         if let Some(path) = &book.log {
             cleanup_log::add(path, event);
@@ -184,7 +184,7 @@ impl Record {
     ///
     /// 읽기는 잠금 밖이다 — 쓰기가 원자적 바꿔 넣기라 잠금 없이 읽어도 온전한 한 장을 본다(`cleanup_log::add`). 쥔 채 읽으면 그동안
     /// 셸 띄우기의 키 올리기가 기다린다.
-    pub fn events(&self) -> Vec<Event> {
+    pub fn cleanup_events(&self) -> Vec<Event> {
         let path = self.lock().log.clone();
         path.map(|path| cleanup_log::read(&path)).unwrap_or_default()
     }
@@ -661,7 +661,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    // ── 정리 기록(티켓 11) ── 쓰기는 이 기록의 뮤텍스를 지난다(`Record::log`).
+    // ── 정리 기록(티켓 11) ── 쓰기는 이 기록의 뮤텍스를 지난다(`Record::log_cleanup`).
 
     /// 사건 하나 — 번호(`at`)로 가른다.
     fn event(n: u64) -> Event {
@@ -691,13 +691,13 @@ mod tests {
         let record = Record::default();
         record.open(place(&dir, "G"));
         for n in 1..=100 {
-            record.log(event(n));
+            record.log_cleanup(event(n));
         }
         let full = logged(&dir);
         assert_eq!(full.len(), 100, "100건을 다 못 담았다");
         assert_eq!((full[0], full[99]), (100, 1), "새것부터가 아니다");
 
-        record.log(event(101));
+        record.log_cleanup(event(101));
         let after = logged(&dir);
         assert_eq!(after.len(), 100, "100건을 넘겼다");
         assert_eq!(after[0], 101, "새 사건이 맨 앞이 아니다");
@@ -715,7 +715,7 @@ mod tests {
         std::fs::write(dir.join("cleanup-log.json"), "[{\"at\":").unwrap();
         assert!(cleanup_log::read(&dir.join("cleanup-log.json")).is_empty(), "깨진 파일을 기록으로 읽었다");
 
-        record.log(event(5));
+        record.log_cleanup(event(5));
         assert_eq!(logged(&dir), [5], "깨진 파일 위에 새로 안 썼다");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn each_logged_event_takes_the_next_number() {
         let dir = temp_dir("log-ids");
-        assert!(Record::default().events().is_empty(), "열지 않은 기록이 무언가를 읽었다");
+        assert!(Record::default().cleanup_events().is_empty(), "열지 않은 기록이 무언가를 읽었다");
 
         let record = Record::default();
         record.open(place(&dir, "G"));
@@ -735,15 +735,15 @@ mod tests {
             r#"[{"at":2,"reason":"shellClose","shellKey":null,"owner":null,"targets":[]},{"at":1,"reason":"reload","shellKey":null,"owner":null,"targets":[]}]"#,
         )
         .unwrap();
-        record.log(Event { id: 77, ..event(3) });
-        record.log(event(4));
-        let ids: Vec<(u64, u64)> = record.events().iter().map(|one| (one.id, one.at)).collect();
+        record.log_cleanup(Event { id: 77, ..event(3) });
+        record.log_cleanup(event(4));
+        let ids: Vec<(u64, u64)> = record.cleanup_events().iter().map(|one| (one.id, one.at)).collect();
         assert_eq!(ids, [(2, 4), (1, 3), (0, 2), (0, 1)], "번호가 파일의 가장 큰 번호 + 1로 안 섰다");
 
         for n in 5..=110 {
-            record.log(event(n));
+            record.log_cleanup(event(n));
         }
-        let kept = record.events();
+        let kept = record.cleanup_events();
         assert_eq!(kept.len(), 100);
         assert_eq!((kept[0].id, kept[99].id), (108, 9), "잘려 나간 뒤에 번호가 다시 섰다");
         let _ = std::fs::remove_dir_all(&dir);
@@ -754,13 +754,13 @@ mod tests {
     #[test]
     fn only_an_opened_record_logs_and_closing_it_does_not_stop_the_log() {
         let dir = temp_dir("log-open");
-        Record::default().log(event(1));
+        Record::default().log_cleanup(event(1));
         assert!(std::fs::read_dir(&dir).is_err(), "열지 않은 기록이 파일을 썼다");
 
         let record = Record::default();
         record.open(place(&dir, "G"));
         record.close(&[]);
-        record.log(event(2));
+        record.log_cleanup(event(2));
         assert_eq!(logged(&dir), [2], "닫은 뒤에 온 종료의 사건을 안 적었다");
         assert_eq!(read(&dir, "G"), None, "사건을 적으며 닫은 인스턴스 기록을 되살렸다");
         let _ = std::fs::remove_dir_all(&dir);
@@ -813,7 +813,7 @@ mod tests {
                 std::thread::spawn(move || {
                     for n in 0..ROUNDS {
                         turn.wait();
-                        record.log(event(side + n));
+                        record.log_cleanup(event(side + n));
                         if side == 1_000 {
                             record.raise(&format!("G-{n}"));
                         }
