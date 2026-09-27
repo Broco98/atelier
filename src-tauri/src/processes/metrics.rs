@@ -478,7 +478,7 @@ mod real {
     fn the_memory_is_the_footprint_not_the_resident_size() {
         use crate::processes::testkit::MAPPED;
 
-        let kid = Kid::spawn("map", &key(5));
+        let kid = Kid::spawn("map", &key(42));
         let settled = kid.settle();
         let memory = settled.and_then(|id| read([id]).by_id.get(&id).map(|reading| reading.memory));
         let resident = settled.and_then(|id| super::mac::usage(id.pid as i32)).map(|usage| usage.ri_resident_size);
@@ -499,7 +499,7 @@ mod real {
     /// 돌린다 — 제 시간을 재면 남의 검사가 쓴 시간이 섞인다.
     #[test]
     fn cpu_time_is_in_nanoseconds() {
-        let kid = Kid::spawn("busy", &key(3));
+        let kid = Kid::spawn("busy", &key(40));
         let settled = kid.settle();
         let readings = settled.map(|id| read([id]));
 
@@ -519,7 +519,7 @@ mod real {
     /// 다시 보는 자리다(`read`) — 그 자리를 빼면 끝난 프로세스의 숫자가 행에 선다.
     #[test]
     fn a_zombie_leaves_only_its_own_metrics_empty() {
-        let kid = Kid::spawn("sleep", &key(4));
+        let kid = Kid::spawn("sleep", &key(41));
         let zombie = kid.settle();
         let pid = kid.pid();
         // 이 검사가 방금 띄운 자식에게만 보낸다 — 아직 거두지 않아 그 pid는 남에게 넘어갈 수 없다.

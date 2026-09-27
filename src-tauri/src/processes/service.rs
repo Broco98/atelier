@@ -526,7 +526,7 @@ mod tests {
 
         assert!(service().summarize().webview_excluded, "묻는 함수가 없는데 웹뷰를 셌다");
 
-        let stand_in = Kid::spawn("sleep", &key(30));
+        let stand_in = Kid::spawn("sleep", &key(50));
         let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
         let answer = Arc::new(AtomicU32::new(pid));
         let asked = Arc::clone(&answer);
@@ -555,7 +555,7 @@ mod tests {
     fn the_first_kept_sample_counts_the_web_content_that_answered_late() {
         use crate::processes::testkit::{key, Kid};
 
-        let stand_in = Kid::spawn("sleep", &key(31));
+        let stand_in = Kid::spawn("sleep", &key(51));
         let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
         let service = service();
         service.ask_web_content_with(scripted(&[WebContentAnswer::Late, WebContentAnswer::Answered(Some(pid))]));

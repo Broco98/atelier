@@ -21,9 +21,50 @@ pub(crate) const CHILD_ROLE: &str = "ATELIER_PROCESSES_TEST_CHILD";
 /// 역할 `map`이 붙이는 파일의 크기(바이트).
 pub(crate) const MAPPED: usize = 64 * 1024 * 1024;
 
-/// 이 검사 실행에서만 쓰는 표식 값. 번호는 검사마다 다르게 준다 — 같은 바이너리 안에서 나란히 돈다.
+/// 이 검사 실행에서만 쓰는 표식 값. 번호는 검사마다 다르게 준다 — 같은 바이너리 안에서 나란히 돈다. 겹치면
+/// `every_marker_number_is_given_once`가 빨갛다.
 pub(crate) fn key(n: u32) -> String {
     format!("test-{}-{n}", std::process::id())
+}
+
+/// **표식 번호는 이 크레이트에서 한 자리에만 선다**(위 `key`의 규칙). 같은 바이너리의 검사는 나란히 돌아, 두 검사가 같은 번호로
+/// 자식을 띄우면 한쪽의 자식이 다른 쪽이 찾는 표식을 문다. 한때 지표(`metrics`)가 끝내기(`ending`)와, 서비스(`service`)가
+/// `pty`와 번호를 나눠 썼다(코드 리뷰 표준 69) — 주석의 규칙만으로는 새 검사가 빈 번호를 고를 수 없다.
+///
+/// 소스에서 `key(` 바로 뒤에 숫자와 `)`가 오는 부름을 센다(`.key("G-1")` 같은 판정 표의 글자는 숫자가 아니라 안 든다).
+#[test]
+fn every_marker_number_is_given_once() {
+    fn sources(dir: &std::path::Path, found: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("소스 폴더를 읽는다").map(|entry| entry.expect("항목").path()) {
+            if entry.is_dir() {
+                sources(&entry, found);
+            } else if entry.extension().is_some_and(|ext| ext == "rs") {
+                found.push(entry);
+            }
+        }
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    sources(&root, &mut files);
+
+    let mut given: std::collections::BTreeMap<u32, Vec<String>> = std::collections::BTreeMap::new();
+    for file in &files {
+        let text = std::fs::read_to_string(file).expect("소스를 읽는다");
+        for (at, _) in text.match_indices("key(") {
+            let named = text[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_');
+            let rest = &text[at + "key(".len()..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            if named || digits.is_empty() || !rest[digits.len()..].starts_with(')') {
+                continue;
+            }
+            let line = text[..at].matches('\n').count() + 1;
+            let place = format!("{}:{line}", file.strip_prefix(&root).unwrap_or(file).display());
+            given.entry(digits.parse().expect("숫자다")).or_default().push(place);
+        }
+    }
+    assert!(given.len() >= 10, "표식 번호를 거의 못 찾았다 — 이 검사가 부름을 못 읽는다: {given:?}");
+    let shared: Vec<_> = given.iter().filter(|(_, places)| places.len() > 1).collect();
+    assert!(shared.is_empty(), "표식 번호를 두 검사가 나눠 쓴다 — 빈 번호로 옮긴다: {shared:?}");
 }
 
 /// 자식이 하는 일. 역할이 없으면(혼자 돌 때) 아무것도 안 하고 통과한다.
