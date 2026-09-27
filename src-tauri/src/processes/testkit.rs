@@ -205,6 +205,19 @@ impl Drop for Kid {
     }
 }
 
+/// 검사가 **셸을 거쳐** 띄운 자식 — 셸에 친 줄로 떠 핸들이 없고 신원만 안다(`pty`의 풀 배선 장면). `Kid`처럼 **떨어질 때
+/// 거둔다**: 그 신원이 아직 그 프로세스면 SIGKILL한다. 단언이나 기다림이 패닉해도 풀리는 길에서 돈다 — 안 거두면 제 잠(60초)이
+/// 끝날 때까지 남는다. 보내기 직전에 신원을 다시 보므로, 그사이 끝나 pid가 남에게 넘어갔으면 안 보낸다.
+pub(crate) struct Adopted(pub(crate) Option<Identity>);
+
+impl Drop for Adopted {
+    fn drop(&mut self) {
+        if let Some(id) = self.0.filter(|id| snapshot::identity_of(id.pid) == Some(*id)) {
+            unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
+        }
+    }
+}
+
 /// 조건이 설 때까지 10ms마다 본다. 5초면 포기한다.
 pub(crate) fn wait_until(mut ready: impl FnMut() -> bool) -> bool {
     for _ in 0..500 {

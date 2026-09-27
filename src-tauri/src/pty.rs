@@ -2690,12 +2690,17 @@ mod tests {
         let output = inner.wait_with_output().expect("안쪽 검사의 출력을 읽는다");
         let _ = std::fs::remove_dir_all(&home);
 
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             status.is_some_and(|s| s.success()),
-            "안쪽 검사({})가 실패했다 ({status:?})\n--- stdout\n{}\n--- stderr\n{}",
+            "안쪽 검사({})가 실패했다 ({status:?})\n--- stdout\n{stdout}\n--- stderr\n{}",
             scene.name(),
-            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
+        );
+        // 이름이 어긋나면 libtest는 0개를 돌리고 성공으로 끝난다 — 그러면 장면이 한 번도 안 돌고 초록이다.
+        assert!(
+            stdout.contains("test result: ok. 1 passed;"),
+            "안쪽 검사({name})가 돌지 않았다 — 바깥이 넘긴 이름이 검사 함수의 이름과 다르다\n--- stdout\n{stdout}"
         );
     }
 
@@ -2714,7 +2719,7 @@ mod tests {
 
         use crate::processes::ending::{self, Group, GRACE};
         use crate::processes::snapshot::{identity_of, take, EnvScope};
-        use crate::processes::testkit::{child_args, exe, holds_for, wait_until, CHILD_ROLE};
+        use crate::processes::testkit::{child_args, exe, holds_for, wait_until, Adopted, CHILD_ROLE};
 
         let home = PathBuf::from(std::env::var_os("HOME").expect("임시 HOME"));
         let pool = std::sync::Arc::new(super::PtyPool::default());
@@ -2822,6 +2827,8 @@ mod tests {
             kept = procs.iter().filter(marked).find(|p| invoked_keep(p)).map(|p| p.id);
             child.is_some() && (!scene.keeps() || kept.is_some())
         });
+        // 찾은 자식은 곧바로 쥔다 — 아래 어디서 패닉해도 떨어질 때 거둔다(`Adopted`). 안 거두면 60초까지 남는다.
+        let reaped = (Adopted(child), Adopted(kept));
 
         // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
         // 셸 키를 문 것을, 앱 종료는 이 세대의 키를 문 것 전부를 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에
@@ -2905,13 +2912,8 @@ mod tests {
         // 예외 자식에 신호가 갔다면 앵커와 같은 순간(SIGTERM)이다 — 앵커가 끝난 뒤로도 한동안 살아 있는지 본다.
         let survived = scene.keeps() && holds_for(Duration::from_millis(500), kept_alive);
 
-        // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 신원을 방금 다시 봤다.
-        if let Some(id) = child.filter(|_| alive()) {
-            unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
-        }
-        if let Some(id) = kept.filter(|_| kept_alive()) {
-            unsafe { libc::kill(id.pid as i32, libc::SIGKILL) };
-        }
+        // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 떨어질 때 신원을 다시 본다.
+        drop(reaped);
 
         assert!(child.is_some(), "셸에서 띄운 자식이 5초 안에 서지 않았다");
         assert!(emptied, "셸을 거두는 길이 돌아왔는데 풀에 셸이 남았다");
@@ -3350,8 +3352,8 @@ mod tests {
     fn ask_side(pool: &std::sync::Arc<super::PtyPool>, id: u32, key: &str, shell_pid: Option<u32>) {
         use crate::processes::clock;
         use crate::processes::ending::{self, Group};
-        use crate::processes::snapshot::{identity_of, take, EnvScope};
-        use crate::processes::testkit::{child_args, exe, wait_until, CHILD_ROLE};
+        use crate::processes::snapshot::{take, EnvScope};
+        use crate::processes::testkit::{child_args, exe, wait_until, Adopted, CHILD_ROLE};
         use crate::processes::Proc;
 
         use super::CloseCheck;
@@ -3392,6 +3394,8 @@ mod tests {
             helper = marked().first().map(|p| p.id);
             helper.is_some()
         });
+        // 찾은 자식은 곧바로 쥔다 — 아래 어디서 패닉해도 떨어질 때 거둔다(`Adopted`).
+        let mut reaped = vec![Adopted(helper)];
         let before = super::close_check(pool, id);
         let echoed = stamped();
         // 화면 스냅샷이 그 값을 풀의 셸에 싣는다. 읽기만 한다 — 판정을 이 기계의 표에 「끝내기」로 돌리지 않는다. 앱처럼 이 풀을 보는
@@ -3443,6 +3447,7 @@ mod tests {
             background = sleep_of_shell(true);
             spawned.is_some() && kept.is_some() && background.is_some()
         });
+        reaped.extend([spawned, kept, background].map(Adopted));
         let after = super::close_check(pool, id);
 
         // (3) 명령이 돈다 — 셸이 터미널을 잡에 넘겼다.
@@ -3453,14 +3458,10 @@ mod tests {
             during.is_some()
         });
         let batch = super::close_checks(pool, &[id, u32::MAX]);
-        let command = sleep_of_shell(false);
+        reaped.push(Adopted(sleep_of_shell(false)));
 
-        // **거두는 것이 단언보다 먼저다.** 이 장면이 띄운 자식이고, 신원을 방금 다시 본다.
-        for child in [helper, spawned, kept, background, command].into_iter().flatten() {
-            if identity_of(child.pid) == Some(child) {
-                unsafe { libc::kill(child.pid as i32, libc::SIGKILL) };
-            }
-        }
+        // **거두는 것이 단언보다 먼저다.** 이 장면이 띄운 자식이고, 떨어질 때 신원을 다시 본다.
+        drop(reaped);
         let shells: Vec<super::Shell> = pool.lock().drain().map(|(_, shell)| shell).collect();
         let groups: Vec<Group> =
             shells.iter().filter_map(|shell| Some(Group { pgid: shell.pid?, leader: shell.process })).collect();
