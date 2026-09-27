@@ -1465,6 +1465,12 @@ mod tests {
             let report = start_work(&works, &archive_root(&works), Some(&projects), slug, Some(slug), &slugs(on), Some(&format!("feat/{slug}")))
                 .unwrap();
             assert!(report.errors.is_empty(), "{slug}: {:?}", report.errors);
+            // **만든 날을 한 날로 못 박는다.** `createdAt`은 날짜 단위이고 순서는 그 내림차순이라, 픽스처를 짓는 사이
+            // 자정을 넘기면 뒤에 만든 work이 앞선다 — 이 검사가 재는 병렬과 무관하게 빨개진다. 한 날이면 순서는 고정과
+            // slug만 정한다.
+            let mut work = read_work(&works, slug).unwrap();
+            work.created_at = "2026-01-02".to_string();
+            write_work(&works, &work).unwrap();
         };
         start("w-a", &["fe", "be", "api"]);
         start("w-b", &["fe"]);
