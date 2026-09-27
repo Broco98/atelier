@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { FIXTURE_COMMANDS } from "./fixtures";
-import { installFixtureBackend, ipcCallArgs, unknownIpcCalls } from "./harness";
+import { callCount, installFixtureBackend, ipcCallArgs, ipcFailure, unknownIpcCalls, 시계를세운다 } from "./harness";
 
 // 설정 › 터미널의 「셸을 닫아도 남길 프로세스」(프로세스 결정 5 · 티켓 06). 목록을 고치고 저장하면 그 목록이 설정
 // 저장에 실리고, 「기본값으로」를 누르고 저장하면 `null`이 실린다 — `null`이 「기본 목록을 쓴다」이고, 그 목록은
@@ -93,6 +93,34 @@ test("적힌 목록에서 「기본값으로」를 누르고 저장하면 `null`
   expect(written, "쓰기가 한 번 나가야 한다").toHaveLength(1);
   // **키가 있고 값이 `null`이다** — 기본 목록을 글자로 적으면 다음 판의 기본 목록이 이 사람에게 안 닿는다.
   expect(written[0]).toHaveProperty("processExceptions", null);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **기본 목록을 못 받으면 곧바로 그렇게 적고 칸을 잠근다 — 다시 묻지 않는다.** 칸은 기본 목록을 모르는 채 열리면 안 되고(한 줄을
+// 더해 저장하는 순간 기본 목록이 통째로 사라진다), 잠긴 채 말이 없으면 사람은 왜 못 고치는지 모른다. 다시 묻기를 기다리게 하면
+// (웹뷰 react-query의 기본 — 세 번 더, 1 · 2 · 4초 쉼) 그 7초 동안 칸이 말없이 잠기고 말은 그 뒤에야 선다. 다른 칸(글꼴 · 크기 ·
+// 테마)은 그대로 쓴다.
+//
+// **시계를 페이지를 열기 전에 건다**(`page.clock`) — 말이 선 뒤 시간을 손으로 돌려, 다시 묻는 타이머가 걸려 있지 않은지 본다.
+// 부른 수를 그대로 견주지 않는 것은 개발 빌드의 StrictMode가 마운트를 두 번 돌리기 때문이다(묻는 자리에 따라 한 번 또는 두 번).
+test("기본 목록을 못 받으면 곧바로 그렇게 적고 칸을 잠그며, 다시 묻지 않는다", async ({ page }) => {
+  await page.clock.install();
+  await installFixtureBackend(page, {
+    default_process_exceptions: ipcFailure("기본 목록을 읽지 못했습니다"),
+  });
+  await page.goto("/settings/terminal");
+
+  await expect(구획(page).getByText("기본 목록을 읽지 못했어요.", { exact: true })).toBeVisible();
+  await expect(목록(page), "기본 목록을 모르는데 칸이 열렸다").toBeDisabled();
+  // 앵커: 구획의 다른 칸은 선다 — 예외 칸만 잠긴다.
+  await expect(구획(page).getByRole("button", { name: "밝게", exact: true })).toBeEnabled();
+
+  await 시계를세운다(page);
+  const asked = await callCount(page, "default_process_exceptions");
+  expect(asked, "기본 목록을 안 물었다").toBeGreaterThan(0);
+  await page.clock.runFor(10_000);
+  expect(await callCount(page, "default_process_exceptions"), "못 받은 기본 목록을 다시 물었다").toBe(asked);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
