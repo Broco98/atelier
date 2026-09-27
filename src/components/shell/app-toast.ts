@@ -1,4 +1,5 @@
 import { Toast } from "@base-ui/react/toast";
+import { TOAST_TIMEOUT_MS } from "@/components/ui/toast";
 
 // **어느 화면에서든 서는 토스트**(프로세스 스펙 P2 (나)). 이 work이 알리는 것 — 시작 정리, 주인 잃은 셸, 셸이
 // 스스로 끝남, 훅 갱신, 「그 셸은 닫혔어요」 — 은 사람이 어느 화면에 있든 닿아야 한다. 그래서 자리가 앱
@@ -17,12 +18,6 @@ import { Toast } from "@base-ui/react/toast";
  * 일은 스토어에 두고 셸이 서서 읽는다(`startup-report.ts`).
  */
 export const appToasts = Toast.createToastManager();
-
-/**
- * 버튼 없는 토스트가 서 있는 시간 — 작업 · 아카이브 화면의 복사 토스트와 같은 값이다(`components/ui/toast.tsx`의
- * `ToastProvider` 기본값). 한 앱에서 두 토스트가 다른 빠르기로 사라지면 어느 쪽이 느린지가 눈에 걸린다.
- */
-export const SHORT_TOAST_MS = 1600;
 
 /**
  * 알릴 것 하나. 문장은 **부르는 쪽이 짓는다** — work과 Room을 세계에 따라 갈라 적어야 하는데(프로세스
@@ -64,15 +59,16 @@ interface ActionsData {
 }
 
 /**
- * 알릴 것을 매니저가 받는 모양으로. **수명은 버튼이 정한다**: 버튼 없는 토스트는 짧게 서고, 버튼이 든
- * 토스트는 저절로 내려가지 않는다(`timeout: 0`) — 1.6초 뒤에 사라지면 [모두 닫기]를 누를 틈이 없다.
+ * 알릴 것을 매니저가 받는 모양으로. **수명은 버튼이 정한다**: 버튼 없는 토스트는 작업 · 아카이브 화면의 복사 토스트와 같은
+ * 시간(`components/ui/toast.tsx`의 `TOAST_TIMEOUT_MS`)만큼 짧게 서고, 버튼이 든 토스트는 저절로 내려가지 않는다
+ * (`timeout: 0`) — 1.6초 뒤에 사라지면 [모두 닫기]를 누를 틈이 없다.
  */
 export function toastOptionsOf(notice: AppNotice): Parameters<typeof appToasts.add>[0] {
   if ("actions" in notice) {
     const data: ActionsData = { actions: notice.actions };
     return { id: notice.id, title: notice.text, timeout: 0, data };
   }
-  return { id: notice.id, title: notice.text, timeout: SHORT_TOAST_MS };
+  return { id: notice.id, title: notice.text, timeout: TOAST_TIMEOUT_MS };
 }
 
 /**

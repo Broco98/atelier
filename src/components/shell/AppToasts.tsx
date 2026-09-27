@@ -1,7 +1,7 @@
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { X } from "lucide-react";
 import { Toast, ToastProvider, ToastTitle, ToastViewport } from "@/components/ui/toast";
-import { appToasts, SHORT_TOAST_MS, toastActionsOf } from "./app-toast";
+import { appToasts, toastActionsOf } from "./app-toast";
 
 /**
  * 이 work의 토스트가 서는 자리(프로세스 스펙 P2 (나)). 앱 셸에 하나 서서 **어느 화면에서든** 보인다 —
@@ -31,7 +31,7 @@ import { appToasts, SHORT_TOAST_MS, toastActionsOf } from "./app-toast";
  */
 export default function AppToasts() {
   return (
-    <ToastProvider toastManager={appToasts} timeout={SHORT_TOAST_MS}>
+    <ToastProvider toastManager={appToasts}>
       <ToastViewport
         aria-label="앱 메시지"
         className="fixed right-5 left-auto z-40 flex max-w-[min(340px,calc(100vw-40px))] translate-x-0 flex-col-reverse items-end gap-2"

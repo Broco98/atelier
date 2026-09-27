@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { SHORT_TOAST_MS, toastActionsOf, toastOptionsOf } from "./app-toast";
+import { TOAST_TIMEOUT_MS } from "@/components/ui/toast";
+import { toastActionsOf, toastOptionsOf } from "./app-toast";
 
 // 이 work의 토스트가 **얼마나 서 있는가**(프로세스 스펙 P2). 매니저에 넘기는 모양만 값으로 본다 — 화면에
 // 서는 것과 사라지는 것은 L3가(`e2e/startup-report.spec.ts`) 브라우저에서 잰다.
 
 describe("토스트의 수명", () => {
   it("버튼 없는 토스트는 짧게 선다 — 복사 토스트와 같은 시간이다", () => {
-    expect(SHORT_TOAST_MS).toBe(1600);
+    expect(TOAST_TIMEOUT_MS).toBe(1600);
     const options = toastOptionsOf({ text: "지난 실행에서 남은 프로세스 2개를 정리했어요" });
-    expect(options.timeout).toBe(SHORT_TOAST_MS);
+    expect(options.timeout).toBe(TOAST_TIMEOUT_MS);
     expect(options.title).toBe("지난 실행에서 남은 프로세스 2개를 정리했어요");
     expect(toastActionsOf(options.data)).toEqual([]);
   });
