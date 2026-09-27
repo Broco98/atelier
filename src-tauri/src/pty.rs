@@ -2397,7 +2397,8 @@ mod tests {
         /// ×로 닫고 곧바로 앱 종료 길을 부른다(2초 안의 ⌘Q). 자식은 셸 트리에만 있는 시스템 바이너리이고
         /// SIGTERM · SIGHUP을 무시한다.
         CloseThenExit,
-        /// 웹뷰를 새로고침한다. 자식은 SIGTERM을 무시한다.
+        /// 웹뷰를 새로고침한다. 자식은 SIGTERM을 무시한다. 셸을 둘 띄우고 둘 다에서 자식을 띄운다 — 풀을 통째로 비우고 뺀 셸
+        /// 전부를 끝내는 것을 「셸 하나만 뺀다 · 하나만 끝낸다」와 가른다.
         Reload,
         /// ×로 닫는다. 표식 자식을 둘 띄우고, 하나는 예외 목록에 적은 이름으로 부른다(프로세스 결정 5) — 닫기가
         /// 다른 하나는 끝내고 그것은 남긴다. 목록은 안쪽의 데이터 루트(임시)의 설정 파일에 적는다.
@@ -2559,6 +2560,23 @@ mod tests {
             }
         }
 
+        /// 셸을 **하나 더** 띄우고 거기서도 같은 줄로 자식을 띄우는 장면인가 — 거두는 길이 풀의 셸 전부를 거두는지 본다.
+        fn two_shells(self) -> bool {
+            match self {
+                Scene::Reload => true,
+                Scene::Close
+                | Scene::CloseIgnoring
+                | Scene::CloseThenExit
+                | Scene::CloseKeeping
+                | Scene::ExitKeeping
+                | Scene::Ask
+                | Scene::Record
+                | Scene::RecordFailed
+                | Scene::Startup
+                | Scene::Exit => false,
+            }
+        }
+
         /// 셸 키가 끝내기가 끝난 **뒤에** 기록에서 내려가는지 지켜보는 장면인가(프로세스 스펙 S52).
         fn watches_the_key(self) -> bool {
             match self {
@@ -2641,7 +2659,8 @@ mod tests {
     }
 
     /// **새로고침은 풀을 그 자리에서 비우고 멈추지 않으며, 옛 셸의 표식 자식은 뒤에서 끝난다.** 옛 길은 셸 그룹에만
-    /// 신호를 보내 제 세션으로 떨어진 자식에 안 닿았다.
+    /// 신호를 보내 제 세션으로 떨어진 자식에 안 닿았다. 셸 둘로 돈다 — 셸이 하나면 「풀에서 하나만 뺀다 · 뺀 셸 하나만 끝낸다」도
+    /// 초록이다.
     #[cfg(target_os = "macos")]
     #[test]
     fn a_reload_empties_the_pool_at_once_and_ends_the_old_shells_children_behind() {
@@ -2910,6 +2929,8 @@ mod tests {
         });
         // 찾은 자식은 곧바로 쥔다 — 아래 어디서 패닉해도 떨어질 때 거둔다(`Adopted`). 안 거두면 60초까지 남는다.
         let reaped = (Adopted(child), Adopted(kept));
+        let sibling = if scene.two_shells() { another_shell_with_a_child(&pool, &home, scene) } else { None };
+        let reaped_sibling = Adopted(sibling);
 
         // **거두기 전에 이 세대의 키가 이 검사의 것뿐인지 본다.** 닫기 · 새로고침은 이 기계의 표 전체를 판정해 그
         // 셸 키를 문 것을, 앱 종료는 이 세대의 키를 문 것 전부를 끝낸다 — 구현 세션도 사용자의 셸도 같은 표에
@@ -2934,7 +2955,7 @@ mod tests {
             .procs
             .iter()
             .filter(|p| p.shell_key.as_deref().is_some_and(|k| k.starts_with(&generation)))
-            .filter(|p| Some(p.id) != child && Some(p.id) != kept && !from_here(p.id.pid))
+            .filter(|p| ![child, kept, sibling].contains(&Some(p.id)) && !from_here(p.id.pid))
             .map(|p| p.id.pid)
             .collect();
         if !foreign.is_empty() {
@@ -2951,6 +2972,7 @@ mod tests {
 
         let alive = || child.is_some_and(|id| identity_of(id.pid) == Some(id));
         let kept_alive = || kept.is_some_and(|id| identity_of(id.pid) == Some(id));
+        let sibling_alive = || sibling.is_some_and(|id| identity_of(id.pid) == Some(id));
         let began = Instant::now();
         match scene {
             Scene::Close | Scene::CloseIgnoring | Scene::CloseThenExit | Scene::CloseKeeping | Scene::Record => {
@@ -2990,11 +3012,12 @@ mod tests {
             });
         let ended = wait_until(|| !alive());
         let ended_after = began.elapsed();
+        let sibling_ended = wait_until(|| !sibling_alive());
         // 예외 자식에 신호가 갔다면 앵커와 같은 순간(SIGTERM)이다 — 앵커가 끝난 뒤로도 한동안 살아 있는지 본다.
         let survived = scene.keeps() && holds_for(Duration::from_millis(500), kept_alive);
 
         // **거두는 것이 단언보다 먼저다.** 이 검사가 띄운 자식이고, 떨어질 때 신원을 다시 본다.
-        drop(reaped);
+        drop((reaped, reaped_sibling));
 
         let seen = Observed {
             key: &key,
@@ -3010,12 +3033,19 @@ mod tests {
         assert!(child.is_some(), "셸에서 띄운 자식이 5초 안에 서지 않았다");
         assert!(emptied, "셸을 거두는 길이 돌아왔는데 풀에 셸이 남았다");
         assert!(ended, "셸을 거뒀는데 그 셸의 표식을 문 자식이 5초가 지나도 살아 있다");
+        // SIGTERM을 무시하는 자식의 유예가 뒤에서 흘렀다 — 거두는 길은 기다리지 않고 돌아오고, 자식은 유예 뒤에 끝났다.
+        let the_grace_ran_behind = || {
+            assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
+            assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
+            assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+        };
         match scene {
             Scene::Close => {}
-            Scene::CloseIgnoring | Scene::Reload => {
-                assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
-                assert!(alive_on_return, "SIGTERM을 무시하는 자식이 거두는 길이 돌아온 순간 이미 없다 — 유예가 안 흘렀다");
-                assert!(ended_after >= GRACE, "SIGTERM을 무시하는 자식이 유예 전에 끝났다 ({ended_after:?})");
+            Scene::CloseIgnoring => the_grace_ran_behind(),
+            Scene::Reload => {
+                the_grace_ran_behind();
+                assert!(sibling.is_some(), "둘째 셸에서 띄운 자식이 5초 안에 서지 않았다");
+                assert!(sibling_ended, "새로고침이 둘째 셸의 표식 자식을 안 끝냈다 — 풀의 셸 하나만 거뒀다");
             }
             Scene::CloseThenExit => {
                 assert!(closed < GRACE / 2, "{}: 거두는 길이 유예를 기다렸다 ({closed:?})", scene.name());
@@ -3094,6 +3124,27 @@ mod tests {
             super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames).expect("셸을 띄운다");
         crate::processes::testkit::wait_until(|| spoke.load(Ordering::Relaxed));
         spawned
+    }
+
+    /// 풀에 셸 하나를 더 띄우고 장면의 줄(`Scene::line`)로 표식 자식을 띄운다 — 두 셸 장면(`Scene::two_shells`)의 둘째 셸. 그
+    /// 자식의 신원이다(5초 안에 못 서면 `None`). 부르는 쪽이 곧바로 쥔다(`Adopted`).
+    #[cfg(target_os = "macos")]
+    fn another_shell_with_a_child(
+        pool: &std::sync::Arc<super::PtyPool>,
+        home: &Path,
+        scene: Scene,
+    ) -> Option<crate::processes::Identity> {
+        use crate::processes::snapshot::{take, EnvScope};
+
+        let second = spawn_until_it_speaks(pool, home);
+        let key = crate::processes::shell_key::mint(second.id);
+        super::write(pool, second.id, &scene.line()).expect("둘째 셸에 한 줄을 친다");
+        let mut child = None;
+        crate::processes::testkit::wait_until(|| {
+            child = take(EnvScope::All).procs.iter().find(|p| marked_by(p, &key)).map(|p| p.id);
+            child.is_some()
+        });
+        child
     }
 
     /// 그 셸 키를 문 **표식 자식**인가 — 트리가 끊겼고(부모 1) 제 세션을 열었다(pgid = pid). claude Bash 도구가 띄운 dev 서버의
