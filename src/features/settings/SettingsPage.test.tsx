@@ -16,6 +16,7 @@ import SettingsPage, {
   TerminalSection,
 } from "./SettingsPage";
 import { notificationChoice, patchNotifications } from "./notifications";
+import { textareaLook } from "@/components/ui/textarea-look";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
 import type { HookStatus, NotificationSettings, Settings } from "./types";
@@ -292,6 +293,13 @@ describe("셸을 닫아도 남길 프로세스", () => {
   it("기본 목록을 못 받았으면 그렇게 적는다", () => {
     expect(renderExceptions({ text: null, defaultsFailed: true })).toContain("기본 목록을 읽지 못했어요");
     expect(renderExceptions()).not.toContain("기본 목록을 읽지 못했어요");
+  });
+
+  // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 폭만 이 자리 것이다.
+  it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭만 이 자리 것이다", () => {
+    const classes = /<textarea[^>]*class="([^"]*)"/.exec(renderExceptions())?.[1].split(" ") ?? [];
+    const look = textareaLook.split(" ").filter((name) => name !== "w-full");
+    expect(classes).toEqual(expect.arrayContaining([...look, "w-[280px]"]));
   });
 });
 

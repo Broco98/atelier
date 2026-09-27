@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { textareaLook } from "@/components/ui/textarea-look";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
@@ -751,7 +753,7 @@ export function ProcessExceptionsSection({
         onChange={(e) => onChange(e.target.value)}
         rows={7}
         spellCheck={false}
-        className="w-[280px] resize-y rounded-[9px] border border-border-strong bg-background px-[9px] py-[6px] text-[13px] leading-[1.6] outline-none focus:border-primary disabled:opacity-40"
+        className={cn(textareaLook, "w-[280px] disabled:opacity-40")}
       />
       <div className="flex items-center gap-3">
         {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다. */}
