@@ -2186,6 +2186,45 @@ trust_level = "trusted"
         assert_eq!(left, ["model", "env"], "바깥 키 차례가 흩어졌다");
     }
 
+    /// **병합과 제거가 이벤트를 걷는 규칙이 같다** — 우리 줄만 걷고, 우리가 비운 그룹 · 이벤트만 함께 걷고, 남은 것의 차례를
+    /// 지킨다. 병합은 목록 밖 이벤트를, 제거는 모든 이벤트를 걷는다. 사람이 적어 둔 빈 그룹 · 빈 배열 · 배열이 아닌 값은
+    /// 우리가 비운 것이 아니라 그 사람의 내용이라 그대로다 — 병합 쪽 걷기에서 이것을 재는 검사가 따로 없었다.
+    #[test]
+    fn both_walks_take_only_ours_and_keep_the_rest_in_order() {
+        let foreign = json!({ "hooks": [{ "type": "command", "command": "say hi" }] });
+        let source = json!({
+            "hooks": {
+                "Notification": [{ "hooks": [old_claude_hook("Notification")] }],
+                "SessionStart": [{ "hooks": [] }, { "hooks": [old_claude_hook("SessionStart")] }, foreign.clone()],
+                "TeammateIdle": [],
+                "PreCompact": "x",
+                "Stop": [{ "hooks": [] }, claude_group(&script(), "Stop")],
+            },
+            "model": "opus",
+        })
+        .to_string();
+        let events = |value: &Value| value["hooks"].as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+
+        let merged: Value = serde_json::from_str(&merge_claude(&source, &script()).unwrap()).unwrap();
+        let mut want: Vec<String> = ["SessionStart", "TeammateIdle", "PreCompact", "Stop"].map(String::from).to_vec();
+        want.extend(CLAUDE_EVENTS.iter().filter(|event| **event != "Stop").map(|event| (*event).to_string()));
+        assert_eq!(events(&merged), want, "병합 뒤 이벤트 차례가 흩어졌다");
+        assert_eq!(merged["hooks"]["SessionStart"], json!([{ "hooks": [] }, foreign]), "병합이 사람의 빈 그룹을 걷었거나 우리 줄을 남겼다");
+        assert_eq!(merged["hooks"]["TeammateIdle"], json!([]));
+        assert_eq!(merged["hooks"]["PreCompact"], "x");
+        assert_eq!(merged["hooks"]["Stop"], json!([{ "hooks": [] }, claude_group(&script(), "Stop")]), "지금 줄을 옮겼다");
+        let outer: Vec<&str> = merged.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(outer, ["hooks", "model"]);
+
+        let removed: Value = serde_json::from_str(&unmerge_claude(&source).unwrap()).unwrap();
+        assert_eq!(events(&removed), ["SessionStart", "TeammateIdle", "PreCompact", "Stop"], "제거 뒤 이벤트 차례가 흩어졌다");
+        assert_eq!(removed["hooks"]["SessionStart"], json!([{ "hooks": [] }, foreign]), "제거가 사람의 빈 그룹을 걷었거나 우리 줄을 남겼다");
+        assert_eq!(removed["hooks"]["TeammateIdle"], json!([]));
+        assert_eq!(removed["hooks"]["PreCompact"], "x");
+        assert_eq!(removed["hooks"]["Stop"], json!([{ "hooks": [] }]));
+        assert_eq!(removed["model"], "opus");
+    }
+
     /// 옛 빌드가 깐 홈 — claude 설정에 옛 다섯, codex 설정에 옛 구획.
     fn old_home(name: &str) -> PathBuf {
         let home = temp_home(name);
