@@ -706,7 +706,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// **깨진 기록 파일은 빈 기록으로 읽고 새로 쓴다.** 한 장이 깨졌다고 적기를 멈추면 그 뒤로 앱이 끝낸 것이 모두 사라진다.
+    /// **깨진 기록 파일은 빈 기록으로 읽고 새로 쓴다.** 한 장이 깨졌다고 적기를 멈추면 그 뒤로 앱이 끝낸 것이 모두 사라진다. 그 위에
+    /// 선 번호는 **사건 시각 이상이다**(`cleanup_log::next_id`) — 1부터 다시 서면 localStorage에 남은 본 번호(`record:1` …)와 겹쳐 새 자동
+    /// 기록이 `●`를 못 켠다.
     #[test]
     fn a_broken_log_reads_as_empty_and_is_written_anew() {
         let dir = temp_dir("log-broken");
@@ -715,14 +717,18 @@ mod tests {
         std::fs::write(dir.join("cleanup-log.json"), "[{\"at\":").unwrap();
         assert!(cleanup_log::read(&dir.join("cleanup-log.json")).is_empty(), "깨진 파일을 기록으로 읽었다");
 
-        record.log_cleanup(event(5));
-        assert_eq!(logged(&dir), [5], "깨진 파일 위에 새로 안 썼다");
+        let at = 1_790_000_000_123;
+        record.log_cleanup(event(at));
+        assert_eq!(logged(&dir), [at], "깨진 파일 위에 새로 안 썼다");
+        let ids: Vec<u64> = record.cleanup_events().iter().map(|one| one.id).collect();
+        assert_eq!(ids, [at], "깨진 파일 위의 번호가 사건 시각이 아니다 — 옛 파일의 본 번호와 겹칠 수 있다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// **적을 때마다 다음 번호가 선다**(티켓 29) — `●`가 「본 뒤 새로 생긴 기록」을 이 번호로 가른다. 번호는 파일의 가장 큰 번호 + 1이라
-    /// 잘려 나간 줄 뒤에도 오르기만 하고, 번호가 없던 판이 쓴 줄(0으로 읽힘) 위에서는 1부터 선다. 짓는 쪽이 준 번호는 버린다 — 짓는
-    /// 순간에는 파일을 모른다. 읽기(`events`)는 쓴 그대로 새것부터 돌려주고, 열지 않은 기록은 빈 기록이다.
+    /// **적을 때마다 다음 번호가 선다**(티켓 29) — `●`가 「본 뒤 새로 생긴 기록」을 이 번호로 가른다. 번호는 파일의 가장 큰 번호 + 1과
+    /// 사건 시각 중 큰 것이라(`cleanup_log::next_id`) 번호가 없던 판이 쓴 줄(0으로 읽힘) 위에서는 사건 시각부터 서고, 같은 ms의 둘째
+    /// 사건 · 시계가 뒤로 간 사건은 + 1로 서며, 잘려 나간 줄 뒤에도 오르기만 한다. 짓는 쪽이 준 번호는 버린다 — 짓는 순간에는 파일을
+    /// 모른다. 읽기(`cleanup_events`)는 쓴 그대로 새것부터 돌려주고, 열지 않은 기록은 빈 기록이다.
     #[test]
     fn each_logged_event_takes_the_next_number() {
         let dir = temp_dir("log-ids");
@@ -736,16 +742,17 @@ mod tests {
         )
         .unwrap();
         record.log_cleanup(Event { id: 77, ..event(3) });
-        record.log_cleanup(event(4));
+        record.log_cleanup(event(3));
         let ids: Vec<(u64, u64)> = record.cleanup_events().iter().map(|one| (one.id, one.at)).collect();
-        assert_eq!(ids, [(2, 4), (1, 3), (0, 2), (0, 1)], "번호가 파일의 가장 큰 번호 + 1로 안 섰다");
+        assert_eq!(ids, [(4, 3), (3, 3), (0, 2), (0, 1)], "번호가 사건 시각 · 파일의 가장 큰 번호 + 1로 안 섰다");
 
-        for n in 5..=110 {
-            record.log_cleanup(event(n));
+        // 시계가 뒤로 간 사건들 — 시각(1)보다 파일의 번호가 커서 + 1로 선다.
+        for _ in 5..=110 {
+            record.log_cleanup(event(1));
         }
         let kept = record.cleanup_events();
         assert_eq!(kept.len(), 100);
-        assert_eq!((kept[0].id, kept[99].id), (108, 9), "잘려 나간 뒤에 번호가 다시 섰다");
+        assert_eq!((kept[0].id, kept[99].id), (110, 11), "잘려 나간 뒤에 번호가 다시 섰다");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -145,7 +145,10 @@ export interface CleanupTarget {
  * (`an_event_crosses_the_wire_in_the_shape_the_screen_will_read`)가 글자로 못박는다. 정리 기록 IPC가 새것부터 최근 100건을 준다.
  */
 export interface CleanupEvent {
-  /** 기록 번호 — 파일 안에서 1부터 오른다(티켓 29). 번호가 없던 판의 줄은 0이다. */
+  /**
+   * 기록 번호 — 파일 안에서 오르기만 한다(티켓 29): 가장 큰 번호 + 1과 사건 시각(ms) 중 큰 것이라 파일을 잃어도 옛 번호로 안 돌아간다.
+   * 번호가 없던 판의 줄은 0이다.
+   */
   id: number;
   /** 끝내기가 **끝난** 시각(에포크 ms). */
   at: number;

@@ -57,7 +57,7 @@ export function eventLabel(event: CleanupEvent): string {
 }
 
 /**
- * 사건 줄의 열쇠 — 번호와 때다. 번호는 파일 안에서 1부터 오르지만(티켓 29) 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다. 둘 다
+ * 사건 줄의 열쇠 — 번호와 때다. 번호는 파일 안에서 오르기만 하지만(티켓 29) 번호가 없던 판의 줄은 모두 0이라 때와 함께 짓는다. 둘 다
  * 같은 줄(번호 없는 옛 줄이 같은 ms에 둘)은 기록이 차례로 준 자리로 가른다 — 화면이 목록 안 차례를 덧붙인다.
  */
 export function eventKey(event: CleanupEvent): string {

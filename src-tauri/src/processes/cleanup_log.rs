@@ -88,8 +88,8 @@ impl From<CloseReason> for Reason {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
-    /// 기록 번호 — 이 파일에서 1부터 오르는 번호다. **적는 자리가 매긴다**(`add` — 파일의 가장 큰 번호 + 1). 사건을 짓는 쪽
-    /// (`event`)은 0으로 둔다: 짓는 순간에는 파일을 모른다.
+    /// 기록 번호 — 이 파일에서 **오르기만 하는** 번호다. **적는 자리가 매긴다**(`add` · `next_id` — 파일의 가장 큰 번호 + 1과 사건
+    /// 시각(ms) 중 큰 것). 사건을 짓는 쪽(`event`)은 0으로 둔다: 짓는 순간에는 파일을 모른다.
     ///
     /// nav 메타의 `●`가 이 번호로 「본 뒤 새로 생긴 기록」을 가른다(프로세스 스펙 S41 · 티켓 29) — 시각(`at`)은 새로고침이 셸
     /// 여럿을 한 번에 닫으면 같은 ms에 여러 줄이라 사건 하나를 못 가리킨다. 이 번호가 없던 판이 쓴 줄은 0으로 읽는다.
@@ -226,16 +226,27 @@ pub fn read(path: &Path) -> Vec<Event> {
     std::fs::read_to_string(path).ok().and_then(|content| serde_json::from_str(&content).ok()).unwrap_or_default()
 }
 
-/// 사건 하나에 번호를 매겨 맨 앞에 더하고 100건으로 자른다. **부르는 쪽이 잠금을 쥐고 부른다**(`instances::Record::log_cleanup`).
+/// 새 사건의 번호 — **파일의 가장 큰 번호 + 1과 사건 시각(에포크 ms) 중 큰 것**(티켓 29).
 ///
-/// 번호는 파일에 있는 가장 큰 번호 + 1이다 — 잘려 나간 줄의 번호는 다시 안 쓴다(남은 것이 늘 더 크다). 파일이 없거나 깨졌으면 1부터
-/// 다시 선다. 두 실행이 같은 순간 쓰면 한쪽 사건을 잃는 것(머리말)과 같은 창에서 번호도 겹칠 수 있다 — 겹친 쪽은 이미 사라진
-/// 줄이다.
+/// - 파일의 가장 큰 번호 + 1 — 같은 ms에 둘이 서도(새로고침이 셸 여럿을 한 번에 닫는다) 갈린다. 잘려 나간 줄의 번호는 다시 안 쓴다
+///   (남은 것이 늘 더 크다). 시계가 뒤로 가도 번호는 안 되돌아간다.
+/// - 사건 시각 — **파일을 잃어도 옛 번호로 안 돌아간다.** 파일이 없거나 깨지면 가장 큰 번호가 사라지는데, 거기서 1부터 다시 서면
+///   프런트가 localStorage에 쥔 본 번호(`record:7` — `looked.ts`)와 겹쳐 새 자동 기록이 `●`를 못 켠다. 시각은 앞선 어느 번호보다도
+///   크다(옛 판의 작은 번호 · 앞선 시각).
+///
+/// 두 실행이 같은 순간 쓰면 한쪽 사건을 잃는 것(머리말)과 같은 창에서 번호도 겹칠 수 있다 — 겹친 쪽은 이미 사라진 줄이다.
+fn next_id(events: &[Event], at: u64) -> u64 {
+    let after_file = events.iter().map(|one| one.id).max().map_or(1, |most| most + 1);
+    after_file.max(at)
+}
+
+/// 사건 하나에 번호를 매겨(`next_id`) 맨 앞에 더하고 100건으로 자른다. **부르는 쪽이 잠금을 쥐고 부른다**
+/// (`instances::Record::log_cleanup`).
 ///
 /// 쓰기가 실패해도 부른 길(셸 닫기 · 종료)을 막지 않는다 — 기록 한 줄을 잃을 뿐이다.
 pub(super) fn add(path: &Path, mut event: Event) {
     let mut events = read(path);
-    event.id = events.iter().map(|one| one.id).max().unwrap_or(0) + 1;
+    event.id = next_id(&events, event.at);
     events.insert(0, event);
     events.truncate(KEEP);
     let (Some(dir), Some(name)) = (path.parent(), path.file_name().and_then(|name| name.to_str())) else {
@@ -499,6 +510,31 @@ mod tests {
 
         let survived = [logged(4, Reason::ShellClose, &[Survived]), logged(3, Reason::ShellExit, &[Ended])];
         assert_eq!(look_head(&survived), Some(4), "못 끝냄이 든 사람 손 기록이 머리가 아니다");
+    }
+
+    /// **기록 번호는 오르기만 하고, 파일을 잃어도 옛 번호로 안 돌아간다**(티켓 29 · 프로세스 스펙 S41). 번호는 파일의 가장 큰 번호 +
+    /// 1과 사건 시각(ms) 중 큰 것이다. 빈 파일(없거나 깨졌다) 위의 번호는 사건 시각이라 옛 파일의 본 번호(localStorage의 `record:7`)와
+    /// 안 겹친다. 같은 ms의 둘째 사건은 + 1로 갈리고, 시계가 뒤로 가도 번호는 안 되돌아간다. 번호가 없던 판의 줄(0)만 있어도 시각이다.
+    #[test]
+    fn a_record_number_only_rises_even_when_the_file_is_lost() {
+        let at = 1_790_000_000_000;
+        let numbered = |id: u64, at: u64| Event { id, at, ..logged(0, Reason::ShellExit, &[Outcome::Ended]) };
+        let cases = [
+            ("빈 파일 — 사건 시각", vec![], at, at),
+            ("옛 판의 작은 번호 위 — 사건 시각", vec![numbered(7, 5), numbered(6, 4)], at, at),
+            ("번호 없던 판의 줄(0)뿐 — 사건 시각", vec![numbered(0, 3)], at, at),
+            ("같은 ms의 둘째 — 가장 큰 번호 + 1", vec![numbered(at, at)], at, at + 1),
+            ("시계가 뒤로 갔다 — 가장 큰 번호 + 1", vec![numbered(at + 5, at + 5)], at, at + 6),
+            ("시각 0(모름)이고 파일도 비었다 — 1", vec![], 0, 1),
+        ];
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter_map(|(what, events, at, want)| {
+                let got = next_id(events, *at);
+                (got != *want).then(|| format!("{what}: 기대 {want}, 받음 {got}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "기록 번호가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
     /// 닫기 IPC가 받는 까닭은 프런트가 고르는 셋뿐이다 — Rust가 아는 까닭(앱 종료 · 시작 정리 …)을 프런트가 실어 보내면 거절한다.

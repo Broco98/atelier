@@ -421,7 +421,7 @@ mod tests {
         let seen: Vec<(u64, u64, Reason)> = answered.iter().map(|one| (one.id, one.at, one.reason)).collect();
         assert_eq!(
             seen,
-            vec![(3, 3_000, Reason::Manual), (2, 2_000, Reason::StartupCleanup), (1, 1_000, Reason::ShellClose)],
+            vec![(3_000, 3_000, Reason::Manual), (2_000, 2_000, Reason::StartupCleanup), (1_000, 1_000, Reason::ShellClose)],
             "정리 기록이 새것부터 오지 않는다"
         );
     }
