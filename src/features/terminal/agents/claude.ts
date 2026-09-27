@@ -20,6 +20,14 @@ function asksQuestion(payload: unknown): boolean {
 }
 
 /**
+ * 그 도구가 선 기다림 — 물음 창이고 말은 첫 물음이다(`questionLine`). PreToolUse와 PermissionRequest가 **같은 신호**를 낸다:
+ * 말이 갈리면 PreToolUse가 세운 물음이 몇 ms 뒤의 PermissionRequest에 다른 줄로 갈아 끼워진다(티켓 25 리뷰 반영).
+ */
+function questionSignal(payload: unknown): AgentSignal {
+  return { event: "waiting", message: questionLine(payload), dialog: "question" };
+}
+
+/**
  * claude가 훅으로 말한 것을 정규 이벤트로 접는다. 스펙 전이 표(프로세스 결정 13)의 claude 칸 그대로다.
  *
  * **이름은 앱이 넘긴 것이다.** 훅 처리기는 argv로 받은 이벤트 이름을 그대로 적으므로
@@ -42,9 +50,7 @@ export const claude: AgentAdapter = {
       case "PreToolUse":
         // **`AskUserQuestion`은 훅이 아니라 도구다** — 사람이 답해야 하는 도구라 기다림이다. 도구 이름으로
         // **`if`로** 가른다(파일 머리말: 안쪽 `switch`의 `case`로 써도 이름 검사가 훅 이름으로 읽는다).
-        if (asksQuestion(payload)) {
-          return { event: "waiting", message: questionLine(payload), dialog: "question" };
-        }
+        if (asksQuestion(payload)) return questionSignal(payload);
         return { event: "tool", message: null };
       case "PostToolUse":
         // 도구가 돌았다. **말은 안 싣는다** — 도는 중의 둘째 줄은 직전 맥락이고, 도구마다 두 번 오는 사건이 그
@@ -58,11 +64,9 @@ export const claude: AgentAdapter = {
           : { event: "tool", message: null };
       case "PermissionRequest":
         // **`AskUserQuestion`의 요청은 물음 창이다**(티켓 25 리뷰 반영) — 권한 흐름을 지날 뿐 창의 첫째가 `Yes`가 아니다.
-        // 말도 PreToolUse와 같게 첫 물음이다: 도구 이름으로 갈아 끼우면 PreToolUse가 세운 물음이 몇 ms 만에
-        // `AskUserQuestion`이 된다.
-        if (asksQuestion(payload)) {
-          return { event: "waiting", message: questionLine(payload), dialog: "question" };
-        }
+        // 말도 PreToolUse와 같게 첫 물음이다(`questionSignal` 한 자리): 도구 이름으로 갈아 끼우면 PreToolUse가 세운 물음이 몇 ms
+        // 만에 `AskUserQuestion`이 된다.
+        if (asksQuestion(payload)) return questionSignal(payload);
         return { event: "waiting", message: permissionLine(payload), dialog: permissionDialog(payload) };
       case "Elicitation":
         // 물음 자체가 페이로드에 한 줄로 온다. 요약할 것이 없다. 창은 MCP 서버가 지은 양식이라 물음이다.
