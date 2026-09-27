@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { TOAST_TIMEOUT_MS } from "@/components/ui/toast";
-import { toastActionsOf, toastOptionsOf } from "./app-toast";
+import { toastActionsOf, toastOptionsOf, type AppNotice } from "./app-toast";
 
 // 이 work의 토스트가 **얼마나 서 있는가**(프로세스 스펙 P2). 매니저에 넘기는 모양만 값으로 본다 — 화면에
 // 서는 것과 사라지는 것은 L3가(`e2e/startup-report.spec.ts`) 브라우저에서 잰다.
@@ -8,15 +8,17 @@ import { toastActionsOf, toastOptionsOf } from "./app-toast";
 describe("토스트의 수명", () => {
   it("버튼 없는 토스트는 짧게 선다 — 복사 토스트와 같은 시간이다", () => {
     expect(TOAST_TIMEOUT_MS).toBe(1600);
-    const options = toastOptionsOf({ text: "지난 실행에서 남은 프로세스 2개를 정리했어요" });
+    const options = toastOptionsOf({ id: "startup:hooks", text: "에이전트 훅을 새 목록으로 맞췄어요" });
     expect(options.timeout).toBe(TOAST_TIMEOUT_MS);
-    expect(options.title).toBe("지난 실행에서 남은 프로세스 2개를 정리했어요");
+    expect(options.title).toBe("에이전트 훅을 새 목록으로 맞췄어요");
     expect(toastActionsOf(options.data)).toEqual([]);
   });
 
-  it("짧은 토스트도 id를 주면 그 id로 선다", () => {
-    expect(toastOptionsOf({ id: "startup-cleanup", text: "정리" }).id).toBe("startup-cleanup");
-    expect(toastOptionsOf({ text: "정리" }).id).toBeUndefined();
+  // **알림마다 제 id를 단다** — 같은 id로 다시 오면 매니저가 새로 쌓지 않고 그 자리를 고친다. 알리는 자리가 이펙트 · 이벤트라
+  // 같은 알림이 거푸 온다(StrictMode의 두 번 · 거푸 누름). id 없는 알림은 타입이 안 받는다 — 이 줄은 tsc(L0)에서 운다.
+  it("짧은 토스트도 제 id로 선다 — id 없는 알림은 없다", () => {
+    expect(toastOptionsOf({ id: "processes:no-quiet", text: "닫을 조용한 셸이 없어요" }).id).toBe("processes:no-quiet");
+    expectTypeOf<{ text: string }>().not.toExtend<AppNotice>();
   });
 
   // **동작 토스트는 누르거나 닫을 때까지 남는다.** 1.6초 뒤에 사라지면 [모두 닫기]를 누를 틈이 없다.

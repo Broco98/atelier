@@ -23,11 +23,14 @@ export const appToasts = Toast.createToastManager();
  * 알릴 것 하나. 문장은 **부르는 쪽이 짓는다** — work과 Room을 세계에 따라 갈라 적어야 하는데(프로세스
  * 스펙 S45), 그 세계는 지금 선 화면이 아니라 알림의 주인(아카이브된 work 등)의 것이라 부르는 쪽만 안다.
  * 낱말은 `itemNameOf(mode)`(`features/works/work-sections.ts`)에서 가져온다.
+ *
+ * **알림마다 제 id를 단다** — 같은 id로 다시 오면 새로 쌓이지 않고 그 자리를 고친다. 알리는 자리가 이펙트 · 이벤트라 같은
+ * 알림이 거푸 온다(StrictMode의 두 번 · 거푸 누름). 그래서 짧은 토스트도 id가 필수다 — id 없이 매번 새로 서는 알림을 부르는
+ * 자리가 없었다.
  */
 export type AppNotice =
   | {
-      /** 같은 id로 다시 오면 새로 쌓이지 않고 그 자리를 고친다. 없으면 매번 새로 선다. */
-      id?: string;
+      id: string;
       text: string;
     }
   | {
