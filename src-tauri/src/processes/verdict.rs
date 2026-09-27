@@ -219,7 +219,11 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
     let mut helpers = BTreeSet::new();
     let mut orphans = Orphans::default();
     let mut other_instances: BTreeMap<&'a str, Vec<&'a Proc>> = BTreeMap::new();
-    for proc in procs {
+    // **행을 pid 순으로 돈다** — 묶음마다 행이 pid 순으로 쌓여, 결과의 묶음을 하나씩 짚어 줄 세우는 자리가 없다(묶음이 늘어도
+    // 여기는 안 바뀐다).
+    let mut rows: Vec<&'a Proc> = procs.iter().collect();
+    rows.sort_by_key(|p| p.id.pid);
+    for proc in rows {
         let pid = proc.id.pid;
         if pid <= 1
             || proc.uid != input.snapshot.uid
@@ -256,16 +260,23 @@ pub fn judge<'a>(input: &Inputs<'a>) -> Verdict<'a> {
             bundle.entry(key).or_default().push(proc);
         }
     }
-    for members in descendants
-        .values_mut()
-        .chain(orphans.confirmed.values_mut())
-        .chain(orphans.unknown.values_mut())
-        .chain(other_instances.values_mut())
-    {
-        members.sort_by_key(|p| p.id.pid);
-    }
-    excepted_rows.sort_by_key(|p| p.id.pid);
     Verdict { descendants, exceptions: excepted_rows, helpers, orphans, other_instances }
+}
+
+impl<'a> Verdict<'a> {
+    /// **묶음에 든 행 전부** — 셸 키마다 묶이는 넷(셸별 자손 · 확정 고아 · 출처 불명 · 다른 인스턴스)의 행. 묶음을 나열하는 자리는
+    /// 이 한 곳이다 — 묶음을 하나 더하면 여기 더한다. 읽는 쪽(`rows` → `screen::targets`)이 따로 나열하면 하나를 빠뜨려도 컴파일되고,
+    /// 그 묶음의 숫자 칸만 조용히 빈다.
+    pub fn grouped(&self) -> impl Iterator<Item = &'a Proc> + '_ {
+        [&self.descendants, &self.orphans.confirmed, &self.orphans.unknown, &self.other_instances]
+            .into_iter()
+            .flat_map(|bundle| bundle.values().flatten().copied())
+    }
+
+    /// **판정이 결과에 실은 행 전부** — 묶음(`grouped`)과 예외. 판정 밖은 안 든다. 셸 도우미는 셸별 자손에 이미 들었다(표시일 뿐이다).
+    pub fn rows(&self) -> impl Iterator<Item = &'a Proc> + '_ {
+        self.grouped().chain(self.exceptions.iter().copied())
+    }
 }
 
 /// 셸별 자손이 아닌 표식 행의 묶음.
@@ -739,6 +750,17 @@ mod tests {
             )
             .inheriting("G-1"),
             case(
+                "묶음마다 pid 순이다 — 스냅샷의 행 순서와 상관없이",
+                vec![
+                    row(239, 1).named("tmux").key("G-1"),
+                    row(209, 1).key("G-1"),
+                    row(237, 1).named("tmux").key("G-1"),
+                    row(201, 1).key("G-1"),
+                ],
+                &[("G-1", &[201, 209])],
+            )
+            .excepting(&[237, 239]),
+            case(
                 "pid ≤ 1 — 표식을 물어도",
                 vec![row(0, 0).key("G-1"), row(1, 0).key("G-1"), row(207, 1).key("G-1")],
                 &[("G-1", &[207])],
@@ -942,6 +964,21 @@ mod tests {
             )
             .excepting(&[320, 321, 322])
             .orphaned(&[("X-1", &[311])]),
+            case(
+                "묶음마다 pid 순이다 — 확정 고아 · 출처 불명 · 다른 인스턴스도",
+                vec![
+                    row(352, 1).key("X-1"),
+                    row(311, 1).key("X-1"),
+                    row(351, 1).key("OLD-1"),
+                    row(310, 1).key("OLD-1"),
+                    row(353, 1).key("D-1"),
+                    row(313, 1).key("D-1"),
+                ],
+                &[],
+            )
+            .orphaned(&[("X-1", &[311, 352])])
+            .of_unknown_origin(&[("OLD-1", &[310, 351])])
+            .of_other_instance(&[("D-1", &[313, 353])]),
             // ── 예외는 우리 트리 안에서만 가른다(프로세스 스펙 S38 · 결정 2). 이름이 걸려도 셸별 자손 · 표식 묶음에 안 들 행은 판정 밖이다.
             case(
                 "우리 트리 밖의 예외 이름은 판정 밖 — 앱 밖에서 띄운 tmux 서버와 그 밑(창의 셸 · dev 서버), launchd 밑의 ssh-agent",

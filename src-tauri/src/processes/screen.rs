@@ -194,15 +194,7 @@ pub fn instances(
 /// 뒤진다. 예외 묶음도 우리 트리 안의 것이다 — 판정이 셸별 자손이나 표식 묶음에 들 행에서만 예외를 가른다(launchd의
 /// `ssh-agent`, 앱 밖 tmux는 판정 밖이라 여기 안 온다). 셸 도우미는 셸의 자손 묶음에 이미 들었다.
 pub fn targets(verdict: &Verdict, pool: &[PoolShell]) -> BTreeSet<Identity> {
-    let grouped = verdict
-        .descendants
-        .values()
-        .chain(verdict.orphans.confirmed.values())
-        .chain(verdict.orphans.unknown.values())
-        .chain(verdict.other_instances.values())
-        .flatten()
-        .chain(verdict.exceptions.iter());
-    grouped.map(|proc| proc.id).chain(pool.iter().filter_map(|shell| shell.process)).collect()
+    verdict.rows().map(|proc| proc.id).chain(pool.iter().filter_map(|shell| shell.process)).collect()
 }
 
 impl Row {
