@@ -1,9 +1,10 @@
+import { unknownIdentities } from "./process-groups";
 import { identityKey } from "./process-tree";
-import type { ProcessSummary } from "./types";
+import type { ProcessIdentity, ProcessSnapshot } from "./types";
 
 // **nav 메타의 `●` 판정**(프로세스 결정 11 · 프로세스 스펙 S41 · S42 · 티켓 29). 순수 함수다 — 본 것의 집합과 지금 집합을 받아 점을
-// 켤지 답한다. 무엇이 「지금」인지는 스토어(주인 잃은 셸)와 요약(출처 불명 · 기록 머리)이 주고, 언제 「봤다」인지는 화면이 정한다
-// (`ProcessesNavMeta`).
+// 켤지 답한다. 무엇이 「지금」인지는 스토어(주인 잃은 셸)와 요약 · 화면 스냅샷(출처 불명 · 기록 머리)이 주고, 언제 「봤다」인지는
+// `looked.ts`의 한 판정이 정한다(`useSeeWhileLooking` — nav 메타와 화면이 함께 부른다).
 //
 // **손볼 것은 셋이다.** 주인 잃은 셸(셸 키로), 출처 불명(신원으로), 앱이 사람 손 없이 끝낸 정리 기록(머리 id로). 셋을 한 목록의
 // 이름으로 편다 — 갈래를 앞에 붙여 셸 키와 기록 번호가 같은 글자여도 안 겹친다.
@@ -12,7 +13,8 @@ import type { ProcessSummary } from "./types";
 // 「있다」만 보면 사람이 두기로 한 출처 불명 하나가 점을 영영 켠다. 사람이 방금 한 일(×로 닫기 · [정리] …)에 점이 서지 않는 것은
 // Rust가 그 기록으로 머리를 안 옮기기 때문이다(`cleanup_log::look_head`) — 까닭을 다 보는 자리가 거기뿐이다.
 //
-// 화면 밖 셸(풀에는 있는데 스토어가 모르는 셸, S42)은 켜지 않는다: 이 판정의 입력은 스토어의 셸과 요약뿐이라 그 셸이 올 길이 없다.
+// 화면 밖 셸(풀에는 있는데 스토어가 모르는 셸, S42)은 켜지 않는다: 이 판정의 입력은 스토어의 셸과 요약 · 스냅샷의 출처 불명 · 기록
+// 머리뿐이라 그 셸이 올 길이 없다.
 
 /**
  * 점의 접근성 이름 — 눈에는 점 하나지만 스크린리더에는 이 말이다. 점을 그리는 자리(`ProcessesNavMeta`)와 그것을 집는 L3가 이 글자
@@ -37,15 +39,35 @@ export function ownerlessShellKeys(shells: ReadonlyArray<{ ownerless: boolean; s
   return shells.flatMap((shell) => (shell.ownerless && shell.shellKey !== null ? [shell.shellKey] : []));
 }
 
-/** 지금 손볼 것의 이름들. 요약이 아직 안 왔으면(첫 답 전 · 거절) 주인 잃은 셸만이다. */
-export function lookablesOf(ownerlessKeys: ReadonlyArray<string>, summary: ProcessSummary | undefined): string[] {
+/**
+ * 출처 불명과 기록 머리를 싣는 장 — 요약(`ProcessSummary`, 10초)이 이 모양이고, 화면 스냅샷은 `lookSourceOf`로 이 모양이 된다(2초).
+ * 두 장이 같은 판정 · 같은 기록에서 오므로 같은 이름을 짓는다.
+ */
+export interface LookSource {
+  /** 출처 불명의 신원. */
+  unknown: ReadonlyArray<ProcessIdentity>;
+  /** `●`를 켜는 정리 기록 중 가장 새것의 번호. */
+  recordHead: number | null;
+}
+
+/** 지금 손볼 것의 이름들. 장이 아직 안 왔으면(첫 답 전 · 거절) 주인 잃은 셸만이다. */
+export function lookablesOf(ownerlessKeys: ReadonlyArray<string>, source: LookSource | undefined): string[] {
   const names = ownerlessKeys.map((key) => `shell:${key}`);
-  if (summary === undefined) return names;
+  if (source === undefined) return names;
   // 신원은 pid와 시작 시각의 쌍이다 — pid만 쓰면 재사용된 pid의 새 프로세스를 본 것으로 친다. **이름은 localStorage에 남는
   // 모양이라 글자를 바꾸지 않는다**(`shell:` · `unknown:` · `record:` 앞말과 신원 글자 — `needs-look.test.ts`가 잡는다).
-  names.push(...summary.unknown.map((id) => `unknown:${identityKey(id)}`));
-  if (summary.recordHead !== null) names.push(`record:${summary.recordHead}`);
+  names.push(...source.unknown.map((id) => `unknown:${identityKey(id)}`));
+  if (source.recordHead !== null) names.push(`record:${source.recordHead}`);
   return names;
+}
+
+/**
+ * **화면 스냅샷의 손볼 것**(S41) — 출처 불명 묶음의 신원 전부(`unknownIdentities`)와 기록 머리. 요약이 싣는 것과 같다(Rust
+ * `Summary::of`는 판정의 출처 불명 신원을 모두 싣고, 머리는 같은 `look_head`다). 화면이 보는 동안 이것으로도 「봤다」를 앉힌다 —
+ * 요약은 최대 20초 늦어, 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에 늦은 요약에 실려 점을 켠다.
+ */
+export function lookSourceOf(snapshot: ProcessSnapshot): LookSource {
+  return { unknown: unknownIdentities(snapshot), recordHead: snapshot.recordHead };
 }
 
 /** **점을 켜나** — 지금 것 가운데 본 적 없는 것이 하나라도 있다. */

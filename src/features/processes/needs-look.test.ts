@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SEEN_CAP, lookablesOf, needsLook, ownerlessShellKeys, seenWith } from "./needs-look";
-import type { ProcessIdentity, ProcessSummary } from "./types";
+import { SEEN_CAP, lookSourceOf, lookablesOf, needsLook, ownerlessShellKeys, seenWith } from "./needs-look";
+import type { ProcessIdentity, ProcessRow, ProcessSnapshot, ProcessSummary } from "./types";
 
 // 프로세스 티켓 29 — **nav 메타의 `●` 판정**(프로세스 결정 11 · 프로세스 스펙 S41 · S42). 점은 손볼 것이 **본 뒤 새로 생겼을 때만**
 // 선다: 본 것의 집합(주인 잃은 셸의 셸 키 · 출처 불명의 신원 · 기록 머리 id)과 지금 집합을 견준다. 이 파일은 그 판정의 순수 함수를
@@ -92,13 +92,58 @@ describe("본 것은 남아 있어도 점을 안 켠다", () => {
   });
 });
 
+// **화면이 보는 동안은 스냅샷의 손볼 것도 본 것이다**(S41). 요약은 배경 표본(10초)을 nav가 10초마다 가져와 최대 20초 늦다 — 화면은
+// 2초 스냅샷으로 새 출처 불명 · 새 정리 기록을 먼저 보인다. 그것을 요약과 **같은 이름**으로 지어야, 떠난 뒤 늦은 요약이 그것을 실어
+// 와도 본 것으로 읽힌다.
+describe("화면 스냅샷의 손볼 것", () => {
+  const 행 = (pid: number): ProcessRow => ({
+    id: 신원(pid),
+    ppid: 1,
+    name: "sleep",
+    argv0: null,
+    command: null,
+    metrics: { memory: null, cpu: null, ports: [] },
+  });
+  const 스냅샷 = (unknown: Record<string, ProcessRow[]>, recordHead: number | null): ProcessSnapshot => ({
+    verdict: {
+      descendants: { "G-1": [행(900)] },
+      exceptions: [행(901)],
+      helpers: [],
+      orphans: { confirmed: { "F-1": [행(902)] }, unknown },
+      otherInstances: { "H-1": [행(903)] },
+    },
+    pool: [],
+    instances: [],
+    recordHead,
+  });
+
+  it("스냅샷의 출처 불명 · 기록 머리는 요약이 싣는 것과 같은 이름이다", () => {
+    const snapshot = 스냅샷({ "OLD-1": [행(500), 행(501)], "OLD-2": [행(510)] }, 7);
+    const summary = 요약([신원(500), 신원(501), 신원(510)], 7);
+    expect(new Set(lookablesOf(["G-1"], lookSourceOf(snapshot)))).toEqual(new Set(lookablesOf(["G-1"], summary)));
+  });
+
+  // 화면에서 보고 떠난 뒤 늦은 요약이 그 둘을 실어 온다 — 새것이 아니다. 앵커: 화면이 못 본 것은 켠다.
+  it("화면에서 본 것은 늦은 요약에 실려 와도 안 켜고, 화면이 못 본 것은 켠다", () => {
+    const seen = seenWith([], lookablesOf([], lookSourceOf(스냅샷({ "OLD-1": [행(500)] }, 8))));
+    expect(needsLook(seen, lookablesOf([], 요약([신원(500)], 8)))).toBe(false);
+    expect(needsLook(seen, lookablesOf([], 요약([신원(500), 신원(600)], 8)))).toBe(true);
+    expect(needsLook(seen, lookablesOf([], 요약([신원(500)], 9)))).toBe(true);
+  });
+
+  // 출처 불명만이다 — 확정 고아 · 예외 · 다른 인스턴스 · 셸의 자손은 손볼 것이 아니다(요약도 안 싣는다).
+  it("출처 불명 묶음의 행만 이름이 된다", () => {
+    expect(lookablesOf([], lookSourceOf(스냅샷({}, null)))).toEqual([]);
+  });
+});
+
 describe("주인 잃은 셸만 센다 — 화면 밖 셸은 안 켠다(S42)", () => {
   it("주인 잃음 표시가 선 셸의 키만 이름이 된다", () => {
     expect(ownerlessShellKeys([셸("G-1", true), 셸("G-2", false), 셸("G-3", true)])).toEqual(["G-1", "G-3"]);
   });
 
   // 도는 셸 · 사람이 연 셸은 손볼 것이 아니다. 화면 밖 셸(풀에는 있는데 스토어가 모르는 셸)은 스토어의 셸이 아니라 이 입력에 올
-  // 길이 없다 — 판정의 입력은 스토어의 셸과 요약뿐이다.
+  // 길이 없다 — 판정의 입력은 스토어의 셸과 요약 · 스냅샷의 출처 불명 · 기록 머리뿐이다.
   it("주인 잃음 표시가 없는 셸은 새로 떠도 안 켠다", () => {
     const seen = 봤다([], 요약());
     const now = lookablesOf(ownerlessShellKeys([셸("G-1", false), 셸("G-2", false)]), 요약());

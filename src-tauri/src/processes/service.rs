@@ -72,6 +72,9 @@ impl ProcessService {
     /// 트리만) 판정이 묶음에 넣은 행과 풀의 셸 프로세스만 읽는다(`screen::targets`). 풀 잠금 밖이다 — 프로세스마다 fd를 훑는 동안 셸
     /// 입력 · 닫기가 기다리지 않게. CPU%는 이 자리가 쥔 앞 표본과 견준다(`CpuMeter`).
     ///
+    /// **`●`를 켜는 기록의 머리도 싣는다**(티켓 29 · S41) — 요약(`summarize`)과 같은 자리(풀의 정리 기록)에서 고른다. 화면은 보는 동안
+    /// 이 머리와 출처 불명을 본 것으로 앉힌다: 요약은 최대 20초 늦어 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에 점을 켠다.
+    ///
     /// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
     pub fn screen(&self) -> ScreenSnapshot {
         let snapshot = snapshot::take(EnvScope::All);
@@ -92,7 +95,9 @@ impl ProcessService {
         let measured = Measured { readings: readings.by_id, cpu };
         // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
         let instances = screen::instances(&verdict, &records, |generation| self.pool.record().file(generation));
-        ScreenSnapshot::of(&verdict, listed, &measured, instances)
+        // `●`를 켜는 기록의 머리 — 요약과 같은 자리에서 고른다(`summarize`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
+        let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
+        ScreenSnapshot::of(&verdict, listed, &measured, instances, head)
     }
 
     /// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
@@ -288,8 +293,12 @@ mod tests {
         assert!(listed < records, "기록({records})을 셸 목록({listed})보다 먼저 읽는다");
         assert!(body.contains("shells: &live,"), "판정에 풀이 준 셸 목록을 안 넘긴다");
         assert!(
-            body.contains("ScreenSnapshot::of(&verdict, listed, &measured, instances)"),
-            "판정 결과와 풀의 셸 목록과 지표와 다른 인스턴스의 실행들을 그대로 싣지 않는다"
+            body.contains("ScreenSnapshot::of(&verdict, listed, &measured, instances, head)"),
+            "판정 결과와 풀의 셸 목록과 지표와 다른 인스턴스의 실행들과 기록의 머리를 그대로 싣지 않는다"
+        );
+        assert!(
+            body.contains("let head = cleanup_log::look_head(&self.pool.record().cleanup_events());"),
+            "`●`의 머리를 요약과 같은 자리(풀의 정리 기록)에서 안 고른다 — 검사의 풀이 진짜 기록을 읽거나 화면과 nav가 다른 머리를 본다"
         );
         assert!(
             body.contains("screen::instances(&verdict, &records,"),

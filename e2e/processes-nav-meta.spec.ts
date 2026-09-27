@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, PROCESS_SUMMARY, PROJECTS } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROCESS_SNAPSHOT, PROCESS_SUMMARY, PROJECTS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -13,7 +13,7 @@ import {
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL } from "@/features/processes/needs-look";
-import type { ProcessIdentity, ProcessSummary } from "@/features/processes/types";
+import type { ProcessIdentity, ProcessRow, ProcessSummary } from "@/features/processes/types";
 
 // 프로세스 티켓 29 — **nav에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
 // 스토리 81 · 82).
@@ -45,6 +45,15 @@ const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_
 /** 시계를 멈춘다 — 첫 요약이 화면에 선 뒤에. 그 뒤로는 `runFor`만큼만 간다. */
 async function 멈춤(page: Page): Promise<void> {
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+}
+
+/** 스냅샷 박자 하나를 넘긴다 — 멈춘 시계를 조금씩 흘려 화면이 스냅샷을 **실제로 다시 물을 때까지**(`processes-shells.spec.ts`의 `다음박자`). */
+async function 스냅샷박자(page: Page): Promise<void> {
+  const before = await callCount(page, "processes_snapshot");
+  for (let step = 0; step < 20 && (await callCount(page, "processes_snapshot")) === before; step += 1) {
+    await page.clock.runFor(250);
+  }
+  expect(await callCount(page, "processes_snapshot"), "5초 넘게 스냅샷 박자가 안 왔다").toBeGreaterThan(before);
 }
 
 /** 요약 박자 하나(10초)를 넘긴다 — 그사이 요약이 **실제로 다시 불렸는지**를 함께 본다(안 불렸으면 아래 단언이 헛돈다). */
@@ -130,6 +139,50 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
   await setWindowFocused(page, true);
   await fireWindowEvent(page, "focus");
   await expect(점(page)).toHaveCount(0);
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **화면에서 본 것은 본 것이다 — 요약이 늦어도**(티켓 29 · S41). 요약은 배경 표본(10초)을 nav가 10초마다 가져오니 최대 20초 늦다.
+// 화면은 2초 스냅샷으로 새 출처 불명과 새 정리 기록을 먼저 보인다 — 「봤다」가 요약으로만 앉으면 화면에서 본 그것이 떠난 뒤 늦은
+// 요약에 실려 점을 켠다. 그래서 보는 동안 화면이 스냅샷의 손볼 것도 본 것으로 앉힌다. 박자는 `page.clock`으로 넘긴다.
+test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 기록은 요약이 늦게 실어 와도 떠난 뒤 ●를 켜지 않는다", async ({ page }) => {
+  const 불명: ProcessRow = {
+    id: 신원(4_404),
+    ppid: 1,
+    name: "sleep",
+    argv0: null,
+    command: null,
+    metrics: { memory: null, cpu: null, ports: [] },
+  };
+  await page.clock.install();
+  await installFixtureBackend(page);
+  await page.goto("/processes");
+  await expect(제목(page)).toBeVisible();
+  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await 멈춤(page);
+
+  // 스냅샷에만 선다 — 요약은 아직 옛 장(손볼 것 없음)이다.
+  await replaceAnswer(page, "processes_snapshot", {
+    ...PROCESS_SNAPSHOT,
+    verdict: { ...PROCESS_SNAPSHOT.verdict, orphans: { confirmed: {}, unknown: { "OLD-1": [불명] } } },
+    recordHead: 5,
+  });
+  await 스냅샷박자(page);
+  await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
+  await expect(점(page)).toHaveCount(0);
+
+  // 떠난 뒤에야 요약이 그 둘을 싣는다.
+  await navButton(page, "Projects").click();
+  await expect(제목(page)).toHaveCount(0);
+  await replaceAnswer(page, "processes_summary", 요약({ unknown: [불명.id], recordHead: 5 }));
+  await 박자(page);
+  await expect(점(page), "화면에서 본 출처 불명 · 정리 기록을 늦은 요약이 새것으로 켰다").toHaveCount(0);
+
+  // 앵커: 화면이 못 본 것은 켠다 — 「안 선다」가 점을 못 켜는 화면이라서가 아니다.
+  await replaceAnswer(page, "processes_summary", 요약({ unknown: [불명.id, 신원(4_405)], recordHead: 5 }));
+  await 박자(page);
+  await expect(점(page)).toBeVisible();
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

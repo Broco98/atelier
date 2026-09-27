@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useStore } from "@tanstack/react-store";
 import PageHeader from "@/components/shell/PageHeader";
@@ -19,7 +19,8 @@ import { ALL_MODES, modeNameOf, type Mode } from "@/mode";
 import { askThenEnd } from "./actions";
 import CleanupLogSection from "./CleanupLogSection";
 import { useProcessSnapshot } from "./hooks";
-import { openProcessesScreen } from "./looked";
+import { openProcessesScreen, useSeeWhileLooking } from "./looked";
+import { lookSourceOf, lookablesOf, ownerlessShellKeys } from "./needs-look";
 import { endAsk } from "./process-groups";
 import { exceptionName, identityKey, processLabel, processRowLabel, subtreeAt } from "./process-tree";
 import StraySections from "./StraySections";
@@ -77,6 +78,13 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
     ALL_MODES.filter((one) => shells.some((shell) => modeOfOwner(shell.owner) === one && slugOfOwner(shell.owner) !== null)),
   );
   const goToShell = useGoToShell();
+  // **보는 동안 이 화면이 보인 손볼 것도 본 것이다**(티켓 29 · S41 — `useSeeWhileLooking`). nav 메타의 요약은 최대 20초 늦다 — 그것으로만
+  // 앉히면 이 스냅샷(2초)에 먼저 선 출처 불명 · 정리 기록이 떠난 뒤 늦은 요약에 실려 `●`를 켠다. 이름은 요약과 같은 이름이다.
+  const shown = useMemo(
+    () => (snapshot ? lookablesOf(ownerlessShellKeys(shells), lookSourceOf(snapshot)) : NOTHING_SHOWN),
+    [shells, snapshot],
+  );
+  useSeeWhileLooking(shown);
 
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
 
@@ -204,6 +212,9 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
     </div>
   );
 }
+
+/** 스냅샷 전의 「보인 손볼 것」 — 늘 같은 배열이라 보는 동안의 이펙트가 렌더마다 다시 돌지 않는다. */
+const NOTHING_SHOWN: ReadonlyArray<string> = [];
 
 /**
  * 셸이 선 세계의 목록 — work 행의 이름과 차례(사이드바 순서)가 여기서 온다. 사이드바가 이미 보는 지금 세계의 것은 캐시에 있다.

@@ -83,6 +83,11 @@ export interface ProcessSnapshot {
   pool: PoolShell[];
   /** 다른 인스턴스 묶음의 행을 낸 실행들 — 세대 순(티켓 31). */
   instances: OtherInstance[];
+  /**
+   * `●`를 켜는 정리 기록 중 가장 새것의 번호 — 요약의 `recordHead`와 같은 값이다(Rust `cleanup_log::look_head`). 화면이 보는 동안
+   * 출처 불명과 함께 본 것으로 앉힌다(티켓 29 · S41 — `lookSourceOf`). 없으면 `null`.
+   */
+  recordHead: number | null;
 }
 
 /**

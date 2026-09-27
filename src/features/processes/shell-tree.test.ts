@@ -79,6 +79,7 @@ const 스냅샷 = (
   },
   pool,
   instances: [],
+  recordHead: null,
 });
 
 const 목록 = (...items: Array<[slug: string, title: string]>): ListedItem[] => items.map(([slug, title]) => ({ slug, title }));

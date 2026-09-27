@@ -30,6 +30,7 @@ const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: Othe
   },
   pool: [],
   instances,
+  recordHead: null,
 });
 
 const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);

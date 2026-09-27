@@ -36,6 +36,10 @@ pub struct ScreenSnapshot {
     pub pool: Vec<PoolShell>,
     /// 다른 인스턴스 묶음(`verdict.otherInstances`)의 행을 낸 실행들 — 세대 순(티켓 31).
     pub instances: Vec<Instance>,
+    /// `●`를 켜는 정리 기록 중 가장 새것의 번호(`cleanup_log::look_head` — 요약의 `record_head`와 같은 값). 화면이 보는 동안 이 번호와
+    /// 출처 불명을 본 것으로 앉힌다(티켓 29 · 프로세스 스펙 S41) — 요약은 최대 20초 늦어, 그것으로만 앉히면 화면에서 본 기록이 떠난
+    /// 뒤에 `●`를 켠다. 없으면 `None`.
+    pub record_head: Option<u64>,
 }
 
 /// **다른 인스턴스 하나** — 지금 떠 있는 다른 아틀리에 실행(프로세스 스펙 S54 · 티켓 31). 화면이 이 실행마다 빌드 종류와 버전을
@@ -136,8 +140,14 @@ pub struct Row {
 }
 
 impl ScreenSnapshot {
-    /// 판정 하나와 풀의 셸 목록, 이번 표본의 지표, 그리고 다른 인스턴스의 실행들(`instances`)로 한 장을 짓는다.
-    pub fn of(verdict: &Verdict, pool: Vec<PoolShell>, measured: &Measured, instances: Vec<Instance>) -> Self {
+    /// 판정 하나와 풀의 셸 목록, 이번 표본의 지표, 다른 인스턴스의 실행들(`instances`), 정리 기록의 머리로 한 장을 짓는다.
+    pub fn of(
+        verdict: &Verdict,
+        pool: Vec<PoolShell>,
+        measured: &Measured,
+        instances: Vec<Instance>,
+        record_head: Option<u64>,
+    ) -> Self {
         let rows = |procs: &[&Proc]| -> Vec<Row> { procs.iter().map(|proc| Row::of(proc, measured)).collect() };
         let by_key = |groups: &BTreeMap<&str, Vec<&Proc>>| -> BTreeMap<String, Vec<Row>> {
             groups.iter().map(|(key, procs)| (key.to_string(), rows(procs))).collect()
@@ -155,6 +165,7 @@ impl ScreenSnapshot {
             },
             pool: pool.into_iter().map(|shell| PoolShell { metrics: metrics_of(measured, shell.process), ..shell }).collect(),
             instances,
+            record_head,
         }
     }
 }
@@ -237,7 +248,8 @@ mod tests {
 
     /// **화면 스냅샷이 싣는 모양**(티켓 26 · 27 · 28). 프런트가 칸 이름으로 읽는다 — 글자로 못박는다.
     ///
-    /// 다른 인스턴스는 실행마다 빌드 종류 · 버전과 그 실행의 셸 키가 선다(티켓 31) — 기록을 못 읽은 실행은 두 칸이 빈다.
+    /// 다른 인스턴스는 실행마다 빌드 종류 · 버전과 그 실행의 셸 키가 선다(티켓 31) — 기록을 못 읽은 실행은 두 칸이 빈다. `●`를 켜는
+    /// 정리 기록의 머리 번호도 싣는다(티켓 29 — 화면이 보는 동안 본 것으로 앉힌다).
     ///
     /// 판정의 묶음 다섯이 모두 서게 한 장을 짓는다: 셸 G-1의 자손(부른 이름 · 명령줄이 읽힌 vite와 그 밑의 esbuild, 셸 도우미
     /// gitstatusd), 예외(tmux), 확정 고아와 출처 불명, 다른 인스턴스. 셸 자신의 pid나 uid · 그룹 · 표식 같은 판정 안쪽 칸은
@@ -300,7 +312,7 @@ mod tests {
             })
         };
         assert_eq!(
-            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &measured, instances)).unwrap(),
+            serde_json::to_value(ScreenSnapshot::of(&verdict, pool, &measured, instances, Some(7))).unwrap(),
             serde_json::json!({
                 "verdict": {
                     "descendants": {
@@ -346,8 +358,11 @@ mod tests {
                     { "generation": "H", "build": "release", "version": "0.15.0", "shellKeys": ["H-2"] },
                     { "generation": "D", "build": null, "version": null, "shellKeys": ["D-7"] },
                 ],
+                "recordHead": 7,
             })
         );
+        let blank = ScreenSnapshot::of(&verdict, vec![], &Measured::default(), vec![], None);
+        assert_eq!(serde_json::to_value(blank).unwrap()["recordHead"], serde_json::Value::Null, "머리가 없는데 번호가 섰다");
     }
 
     /// **지표는 우리 트리의 프로세스만 읽는다**(프로세스 스펙 S38). 판정이 묶음에 넣은 행 전부(자손 · 예외 · 고아 두 갈래 · 다른

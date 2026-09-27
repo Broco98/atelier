@@ -629,6 +629,7 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = {
   },
   pool: [],
   instances: [],
+  recordHead: null,
 };
 
 /**

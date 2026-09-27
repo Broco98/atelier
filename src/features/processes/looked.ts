@@ -1,10 +1,13 @@
-import { Store } from "@tanstack/react-store";
+import { useEffect, useState } from "react";
+import { Store, useStore } from "@tanstack/react-store";
 import { readStored, writeStored } from "@/lib/stored";
+import { windowFocused } from "@/lib/window-focus";
 import { seenWith } from "./needs-look";
 
-// **「봤다」의 재료가 사는 자리**(프로세스 스펙 S41 · 티켓 29) — 본 것의 집합과, 지금 `Processes` 화면이 열려 있는가. 점을 켤지는 순수
-// 함수가 가르고(`needs-look.ts`), 언제 「봤다」인지(화면이 열려 있고 창에 포커스가 있을 때)는 nav 메타가 이 둘과 창 포커스로 정한다
-// (`ProcessesNavMeta`). 화면은 열릴 때 여기에 알리기만 한다.
+// **「봤다」가 사는 자리**(프로세스 스펙 S41 · 티켓 29) — 본 것의 집합과, 지금 `Processes` 화면이 열려 있는가, 그리고 언제 「봤다」인지의
+// 한 판정(`useSeeWhileLooking` — 화면이 열려 있고 창에 포커스가 있을 때). 점을 켤지는 순수 함수가 가른다(`needs-look.ts`). 보는 동안
+// 무엇을 본 것으로 앉히는지는 부르는 자리 둘이 준다 — nav 메타는 요약(10초)의 손볼 것을, 화면은 스냅샷(2초)의 손볼 것을. 두 자리가
+// 같은 판정을 지나야 한쪽만 고친 날 「보고 있다」가 둘로 갈리지 않는다.
 //
 // **본 것의 집합은 앱을 껐다 켜도 남는다**(localStorage). 정리 기록은 실행을 넘어 남는다(최근 100건) — 본 것을 실행마다 잊으면 지난주의
 // 자동 기록 하나가 앱을 켤 때마다 점을 다시 켠다. 그것이 S41이 막으려던 「점이 늘 켜진다」다. 셸 키는 실행마다 새로 서니 남아도 해가
@@ -43,6 +46,42 @@ export function markSeen(now: ReadonlyArray<string>): void {
   if (after === before) return;
   lookStore.setState((state) => ({ ...state, seen: after }));
   writeSeen(after);
+}
+
+/**
+ * **보는 동안 지금 것을 본 것으로 앉힌다**(S41). 「보고 있다」는 띠와 같다 — `Processes` 화면이 열려 있고 창에 포커스가 있을 때다. 그동안은
+ * 새로 온 것도 곧바로 본 것이 된다. 돌려주는 값은 지금 보고 있는가다(nav 메타가 그동안 점을 안 켠다).
+ *
+ * 부르는 자리가 둘이다 — nav 메타(`ProcessesNavMeta` — 요약의 손볼 것)와 화면(`ProcessesPage` — 스냅샷의 손볼 것). 요약은 최대 20초
+ * 늦어, nav 메타만 부르면 화면에서 본 것이 떠난 뒤 늦은 요약에 실려 점을 켠다.
+ */
+export function useSeeWhileLooking(now: ReadonlyArray<string>): boolean {
+  const screenOpen = useStore(lookStore, (state) => state.screens > 0);
+  const focused = useWindowFocused();
+  const looking = screenOpen && focused;
+  useEffect(() => {
+    if (looking) markSeen(now);
+  }, [looking, now]);
+  return looking;
+}
+
+/**
+ * 앱 창이 포커스를 쥐고 있나 — 터미널의 「봤다」와 **같은 판정 하나**다(`windowFocused` — S41 「띠와 같은 규칙」): `document.hasFocus()`가
+ * 판정이고 `focus`/`blur`는 신호일 뿐이다. 분할에서 spec 프레임을 누르면 `blur`만 오는데 그때도 앱은 앞에 있다.
+ */
+function useWindowFocused(): boolean {
+  const [focused, setFocused] = useState(windowFocused);
+  useEffect(() => {
+    const sync = () => setFocused(windowFocused());
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    sync();
+    return () => {
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+    };
+  }, []);
+  return focused;
 }
 
 /** 저장해 둔 본 것. 없거나 모양이 아니면 빈 집합이다 — 모르는 값을 본 것으로 치면 새것을 못 가린다. */

@@ -1,10 +1,10 @@
 import { sumMetrics } from "./metrics";
 import { processCount, processTree, withMemory, type ProcessNode } from "./process-tree";
-import type { OtherInstance, ProcessMetrics, ProcessSnapshot } from "./types";
+import type { OtherInstance, ProcessIdentity, ProcessMetrics, ProcessSnapshot } from "./types";
 
 // **`Processes`의 다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 티켓 31). 다른 인스턴스를 실행마다
-// 묶고, [끝내기] · [정리]가 띄울 확인 창의 말을 짓는다. 순수 함수다. 묶음을 트리로 펴는 것과 넘길 신원은 프로세스 줄의 도구다
-// (`process-tree.ts` — 셸의 자손과 같은 규칙).
+// 묶고, [끝내기] · [정리]가 띄울 확인 창의 말을 짓는다. 출처 불명 묶음의 신원도 여기서 뽑는다(`unknownIdentities` — `●`의 재료). 순수
+// 함수다. 묶음을 트리로 펴는 것과 넘길 신원은 프로세스 줄의 도구다(`process-tree.ts` — 셸의 자손과 같은 규칙).
 //
 // **묶음을 다시 가르지 않는다.** 무엇이 확정 고아이고 무엇이 출처 불명인지, 어느 셸 키가 다른 인스턴스의 것인지는 판정이
 // 정한다(`verdict.rs`) — 화면이 다시 가르면 판정이 두 벌이 되고, [정리]가 끝내는 것과 화면이 보인 것이 갈린다.
@@ -25,6 +25,14 @@ export function endAsk(label: string, count: number): Ask {
 /** 출처 불명 [정리]의 확인 창(결정 6). 확정 고아의 [정리]는 묻지 않는다 — 기록이 그 셸이 없다고 말한다. */
 export function tidyUnknownAsk(count: number): Ask {
   return { title: "출처 불명 정리", body: `출처를 모르는 프로세스 ${count}개를 끝내요.`, confirm: "끝내기" };
+}
+
+/**
+ * 스냅샷의 **출처 불명 묶음의 신원 전부**(키 순 · 행 순). 요약이 싣는 출처 불명(`ProcessSummary.unknown`)과 같은 것이다 — Rust
+ * `Summary::of`가 판정의 출처 불명 신원을 모두 싣는다. 화면이 보는 동안 `●`의 본 것으로 앉히는 재료다(`needs-look.ts`의 `lookSourceOf`).
+ */
+export function unknownIdentities(snapshot: ProcessSnapshot): ProcessIdentity[] {
+  return Object.values(snapshot.verdict.orphans.unknown).flatMap((rows) => rows.map((row) => row.id));
 }
 
 /** 다른 인스턴스의 실행 하나 — 머리 줄(빌드 종류 · 버전과 합)과 그 밑의 트리. */
