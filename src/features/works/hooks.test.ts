@@ -17,6 +17,7 @@ import {
 } from "./hooks";
 import { ALL_MODES } from "@/mode";
 import type { Mode } from "@/mode";
+import { queryClient } from "@/query-client";
 import type { WorkView } from "./types";
 
 // 캐시가 세계별로 갈렸다는 것과, 그것을 지우는 일이 **두 세계를 함께** 덮는다는 것.
@@ -683,10 +684,20 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
       new QueryObserver(client, doc).subscribe(() => {});
       await settle();
       expect(answer("list_works", OLD)).toBe(1);
+      // 문서는 한 번 읽힌 뒤, 다시 읽다(창으로 돌아올 때의 재조회처럼) 실패한다. **값이 있어야** 맨 끝 단언이 `cancelRefetch`를
+      // 가른다 — 값 없는 조회는 react-query가 `cancelRefetch: true`로도 안 끊고 합류한다(query-core `query.js`의 `fetch`).
+      expect(answer(command, "본문")).toBe(1);
+      await settle();
+      void client.refetchQueries({ queryKey: doc.queryKey, exact: true });
+      await settle();
       rejectFirst(command, "stream did not contain valid UTF-8");
       await settle();
-      // 앵커: 쉬는 동안에도 그 문서는 「도는 중」이다 — 아니면 아래가 옛 판정에서도 초록이다.
-      expect(client.getQueryState(doc.queryKey)).toMatchObject({ fetchStatus: "fetching", fetchFailureCount: 1 });
+      // 앵커: 쉬는 동안에도 그 문서는 「도는 중」이다 — 아니면 아래가 옛 판정에서도 초록이다. 값을 든 채다.
+      expect(client.getQueryState(doc.queryKey)).toMatchObject({
+        fetchStatus: "fetching",
+        fetchFailureCount: 1,
+        data: "본문",
+      });
 
       void invalidateWorks(client);
       await settle();
@@ -700,8 +711,10 @@ describe("합치기 문 — 조회 중에 온 무효화는 표시만 하고 끝�
       answer("list_works", NEW);
       await settle();
       expect(slugsOf(client.getQueryData(worksQuery("atelier").queryKey))).toBe("cab");
-      // 문서는 도는 시도를 버리지 않는다(`cancelRefetch: false`) — 쉬는 중이라 새로 나간 부름이 없다.
+      // 문서는 도는 시도를 버리지 않는다(`cancelRefetch: false`) — 쉬는 중이라 새로 나간 부름이 없다. 끊으면(`true`) 값이 있는
+      // 조회라 도는 시도를 버리고 곧바로 새로 부른다.
       expect(waiting(command), "도는 문서 읽기를 버리고 새로 불렀다").toHaveLength(0);
+      expect(client.getQueryState(doc.queryKey)?.fetchFailureCount, "도는 시도가 끊기고 새 시도가 섰다").toBe(1);
     });
   }
 });
@@ -717,8 +730,15 @@ describe("창 포커스 재조회", () => {
     for (const mode of ALL_MODES) expect(worksQuery(mode).refetchOnWindowFocus, mode).toBe(false);
   });
 
-  it("다른 쿼리는 기본값 그대로다", () => {
-    expect(specFileQuery("atelier", "가", "overview.md").refetchOnWindowFocus).toBeUndefined();
-    expect(archiveQuery("atelier").refetchOnWindowFocus).toBeUndefined();
+  // 「기본값 그대로」는 쿼리 옵션만 봐서는 못 잰다 — 앱 캐시(`query-client.ts`)의 기본 옵션에서 끄면 모든 쿼리가 꺼지는데
+  // 쿼리 옵션은 여전히 비어 있다. 그래서 **앱 캐시가 합친 값**(`defaultQueryOptions` — 캐시의 기본 옵션 · 키별 기본값 · 쿼리
+  // 옵션 순)으로 잰다. 비어 있으면 react-query는 다시 읽는다(`false`만 끈다).
+  it("다른 쿼리는 기본값 그대로다 — 앱 캐시의 기본 옵션까지 합친 값으로", () => {
+    expect(queryClient.defaultQueryOptions(specFileQuery("atelier", "가", "overview.md")).refetchOnWindowFocus).not.toBe(false);
+    expect(queryClient.defaultQueryOptions(archiveQuery("atelier")).refetchOnWindowFocus).not.toBe(false);
+    // 앵커: 합친 값이 쿼리 옵션을 싣는다 — 안 싣으면 위 둘이 저절로 참이다.
+    for (const mode of ALL_MODES) {
+      expect(queryClient.defaultQueryOptions(worksQuery(mode)).refetchOnWindowFocus, mode).toBe(false);
+    }
   });
 });
