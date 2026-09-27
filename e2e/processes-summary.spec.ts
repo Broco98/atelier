@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, PROCESS_SUMMARY, shellKeyOf, WORKS } from "./fixtures";
+import { BUSY_SHELL, shellKeyOf, summaryWith as 요약, WORKS } from "./fixtures";
 import {
   archiveByMcp,
   awaitSpawned,
@@ -15,7 +15,8 @@ import {
   시계를세운다,
 } from "./harness";
 import { formatCpu, formatMemory } from "@/features/processes/metrics";
-import type { ProcessRow, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
+import { identityOf, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
+import type { ProcessRow, TrendPoint } from "@/features/processes/types";
 
 // 프로세스 티켓 30 — **요약 카드가 합계와 한 시간 추이와 앱 본체를 보인다**(프로세스 결정 10 · 프로세스 스펙 S37 · S39, 스토리 83).
 //
@@ -29,26 +30,16 @@ const 카드 = (page: Page) => page.getByRole("region", { name: "요약", exact:
 const 칸 = (page: Page, figure: string) => 카드(page).locator(`[data-figure="${figure}"]`);
 const 추이 = (page: Page) => 카드(page).locator('svg[data-figure="trend"]');
 
-const 행 = (pid: number): ProcessRow => ({
-  id: { pid, startedUs: 1_790_000_000_000_000 + pid },
-  ppid: 1,
-  name: "node",
-  argv0: "node",
-  command: "node server.js",
-  metrics: NO_METRICS,
-});
+const 행 = (pid: number): ProcessRow =>
+  processRow(pid, 1, identityOf(pid).startedUs, "node", { argv0: "node", command: "node server.js" });
 
 /** 풀에 셸 셋(둘은 스토어의 셸, 하나는 스토어가 모르는 셸)이 앉고, 확정 고아 셋(키 둘)과 출처 불명 하나가 선 스냅샷. */
-const 스냅샷: ProcessSnapshot = {
-  ...PROCESS_SNAPSHOT,
+const 스냅샷 = snapshotFixture({
   verdict: {
-    ...PROCESS_SNAPSHOT.verdict,
     orphans: { confirmed: { "F-1": [행(4_001), 행(4_002)], "F-2": [행(4_003)] }, unknown: { "OLD-1": [행(5_001)] } },
   },
-  pool: [1, 2, 99].map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs: Date.now(), metrics: NO_METRICS })),
-};
-
-const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
+  pool: [1, 2, 99].map((pty) => poolShell(pty, shellKeyOf(pty), Date.now())),
+});
 
 /** 지난 1시간 안에 고르게 선 합계 `count`점 — 마지막 점이 지금이다. */
 function 점들(count: number): TrendPoint[] {

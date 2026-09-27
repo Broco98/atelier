@@ -7,7 +7,8 @@ import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { StartupReport } from "@/components/shell/startup-report";
 import type { ProcessesEnded } from "@/components/shell/processes-ended";
 import type { CloseCheck } from "@/features/terminal/types";
-import type { CleanupEvent, ProcessMetrics, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
+import { snapshotFixture } from "@/features/processes/process-fixture";
+import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
   LayoutPreview,
   SaveAnswer,
@@ -626,19 +627,11 @@ export const shellKeyOf = (pty: number): string => `${FIXTURE_GENERATION}-${pty}
  * 풀을 비워 두는 것은 픽스처의 셸이 여기 안 서게 하려는 것이다 — 픽스처의 `pty_spawn`이 띄운 셸과 이 답의 풀은 서로를 모른다.
  * 기본 답에 셸이 서 있으면 화면을 여는 모든 검사가 스토어가 모르는 셸(32의 화면 밖 셸)을 지고 선다. 셸 수를 재는 검사가 제
  * 풀로 덮는다(`processes.spec.ts`).
+ *
+ * 모양은 L2와 같은 한 자리(`process-fixture.ts`의 `snapshotFixture`)가 짓는다 — 스냅샷을 덮어쓰는 spec도 그것을 불러 제 칸만 고치고,
+ * 행 · 풀의 셸 · 지표도 거기서 짓는다.
  */
-export const PROCESS_SNAPSHOT: ProcessSnapshot = {
-  verdict: {
-    descendants: {},
-    exceptions: [],
-    helpers: [],
-    orphans: { confirmed: {}, unknown: {} },
-    otherInstances: {},
-  },
-  pool: [],
-  instances: [],
-  recordHead: null,
-};
+export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
 
 /**
  * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
@@ -657,6 +650,9 @@ export const PROCESS_SUMMARY: ProcessSummary = {
   recordHead: null,
 };
 
+/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계 · `●`를 켜는 것을 재는 검사가 제 칸만 덮어쓴다. */
+export const summaryWith = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
+
 /**
  * 요약 카드의 추이(티켓 30)가 기본으로 답하는 것 — **막 뜬 앱**이라 아직 한 점도 없다. `Processes` 화면을 여는 검사만 부르므로(요약이
  * 올 때마다 한 번) 모든 spec이 지나는 답은 아니지만, 이름 표에 서야 화면을 여는 검사가 화이트리스트 탐지기에 안 물리고 시나리오가
@@ -669,12 +665,6 @@ export const PROCESS_TREND: TrendPoint[] = [];
  * 부르므로 화면을 여는 검사가 모두 지난다. 기록을 재는 검사가 덮어쓴다(`processes-shells.spec.ts`).
  */
 export const CLEANUP_LOG: CleanupEvent[] = [];
-
-/**
- * 못 읽은 지표(티켓 28) — 스냅샷의 행과 풀의 셸마다 싣는 칸이다. 숫자를 안 보는 검사의 행이 이것을 든다: 숫자 칸은 「—」로 서고, 행의
- * 접근성 이름에 메모리 조각이 안 붙는다(macOS 밖의 앱과 같다).
- */
-export const NO_METRICS: ProcessMetrics = { memory: null, cpu: null, ports: [] };
 
 /** 시작 정리가 `count`개를 끝낸 시작 보고(`startup_report`의 답). 무엇을 끝냈는지는 토스트가 안 적는다 — 수만 본다. */
 export const startupCleaned = (count: number): StartupReport => ({

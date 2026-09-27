@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
+import { answerByArg, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -15,7 +15,8 @@ import {
   두세계에셸을띄운다,
   셸입력,
 } from "./harness";
-import type { ProcessRow, ProcessSnapshot } from "@/features/processes/types";
+import { poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
+import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 27 — **`Processes`에서 셸과 자손 트리를 보고 이동하거나 닫는다**(프로세스 결정 9 · 10 · 프로세스 스펙 S32 · S53 ·
 // S58 · P1, 스토리 60 · 79 · 80 · 85 · 88 · 98 · 100 · 102).
@@ -85,16 +86,6 @@ const 글자대비 = (row: Locator): Promise<number> =>
 const 켜진셸 = (page: Page) =>
   page.locator('[data-tab="shell"]:has(button[aria-pressed="true"])').getAttribute("data-shell-key");
 
-const 행 = (pid: number, ppid: number, startedUs: number, name: string, over: Partial<ProcessRow> = {}): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name,
-  argv0: null,
-  command: null,
-  metrics: NO_METRICS,
-  ...over,
-});
-
 const gitstatusd = 행(150, 1, 1_000, "gitstatusd", {
   argv0: "/Users/me/.cache/gitstatus/gitstatusd-darwin-arm64",
   command: "gitstatusd-darwin-arm64 -G v1.5.4 -s -1",
@@ -109,15 +100,13 @@ const esbuild = 행(210, 200, 2_100, "esbuild", { argv0: "/p/node_modules/esbuil
  */
 function 스냅샷(ptys: number[], withTree = true): ProcessSnapshot {
   const lastOutputMs = Date.now() - 2 * 3_600_000;
-  return {
-    ...PROCESS_SNAPSHOT,
+  return snapshotFixture({
     verdict: {
-      ...PROCESS_SNAPSHOT.verdict,
       descendants: withTree ? { [shellKeyOf(ptys[0])]: [gitstatusd, vite, esbuild] } : {},
       helpers: withTree ? [gitstatusd.id] : [],
     },
-    pool: [...ptys, 99].map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs, metrics: NO_METRICS })),
-  };
+    pool: [...ptys, 99].map((pty) => poolShell(pty, shellKeyOf(pty), lastOutputMs)),
+  });
 }
 
 test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 · 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {

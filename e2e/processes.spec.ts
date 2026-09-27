@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, NO_METRICS, PROCESS_SNAPSHOT, PROJECTS } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROJECTS } from "./fixtures";
 import {
   callCount,
   installFixtureBackend,
@@ -10,6 +10,7 @@ import {
   unknownIpcCalls,
   시계를세운다,
 } from "./harness";
+import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 26 — **`Processes`가 두 세계 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
@@ -33,10 +34,8 @@ const shellCount = (page: Page, count: number) =>
  * 풀에 셸이 `keys`만큼 선 스냅샷. **두 세계의 셸을 섞는다** — 화면은 앱 전체를 보이므로(프로세스 결정 9) 어느 세계의 주소로
  * 열든 같은 수가 서야 한다. 셸 키의 세대는 픽스처의 것이 아니다: 이 검사는 스토어의 셸과 잇지 않는다(27의 몫).
  */
-const withPool = (...keys: string[]): ProcessSnapshot => ({
-  ...PROCESS_SNAPSHOT,
-  pool: keys.map((shellKey, at) => ({ ptyId: at + 1, shellKey, lastOutputMs: 1_758_000_000_000, metrics: NO_METRICS })),
-});
+const withPool = (...keys: string[]): ProcessSnapshot =>
+  snapshotFixture({ pool: keys.map((shellKey, at) => poolShell(at + 1, shellKey, 1_758_000_000_000)) });
 
 test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서고, 누르면 그 세계의 주소로 같은 화면이 열린다", async ({
   page,

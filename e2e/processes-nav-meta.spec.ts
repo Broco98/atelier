@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, PROCESS_SNAPSHOT, PROCESS_SUMMARY, PROJECTS, QUIET_SHELL } from "./fixtures";
+import { MAISON_LANDING_ROOM, PROCESS_SUMMARY, PROJECTS, QUIET_SHELL, summaryWith as 요약 } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -18,7 +18,7 @@ import {
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL } from "@/features/processes/needs-look";
-import type { ProcessIdentity, ProcessRow, ProcessSummary } from "@/features/processes/types";
+import { identityOf as 신원, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 
 // 프로세스 티켓 29 — **nav에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
 // 스토리 81 · 82).
@@ -37,9 +37,6 @@ const [project] = PROJECTS;
 const navRow = (page: Page, label: string) =>
   page.locator("aside nav > div").filter({ has: page.getByRole("button", { name: label, exact: true }) });
 const 점 = (page: Page) => navRow(page, "Processes").getByRole("img", { name: NEEDS_LOOK_LABEL, exact: true });
-
-const 신원 = (pid: number): ProcessIdentity => ({ pid, startedUs: 1_790_000_000_000_000 + pid });
-const 요약 = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
 
 /** 스냅샷 박자 하나를 넘긴다 — 멈춘 시계를 조금씩 흘려 화면이 스냅샷을 **실제로 다시 물을 때까지**(`processes-shells.spec.ts`의 `다음박자`). */
 async function 스냅샷박자(page: Page): Promise<void> {
@@ -141,14 +138,7 @@ test("창에 포커스가 없으면 화면이 열려 있어도 본 것이 아니
 // 화면은 2초 스냅샷으로 새 출처 불명과 새 정리 기록을 먼저 보인다 — 「봤다」가 요약으로만 앉으면 화면에서 본 그것이 떠난 뒤 늦은
 // 요약에 실려 점을 켠다. 그래서 보는 동안 화면이 스냅샷의 손볼 것도 본 것으로 앉힌다. 박자는 `page.clock`으로 넘긴다.
 test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 기록은 요약이 늦게 실어 와도 떠난 뒤 ●를 켜지 않는다", async ({ page }) => {
-  const 불명: ProcessRow = {
-    id: 신원(4_404),
-    ppid: 1,
-    name: "sleep",
-    argv0: null,
-    command: null,
-    metrics: { memory: null, cpu: null, ports: [] },
-  };
+  const 불명 = processRow(4_404, 1, 신원(4_404).startedUs, "sleep");
   await page.clock.install();
   await installFixtureBackend(page);
   await page.goto("/processes");
@@ -157,11 +147,11 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
   await 시계를세운다(page);
 
   // 스냅샷에만 선다 — 요약은 아직 옛 장(손볼 것 없음)이다.
-  await replaceAnswer(page, "processes_snapshot", {
-    ...PROCESS_SNAPSHOT,
-    verdict: { ...PROCESS_SNAPSHOT.verdict, orphans: { confirmed: {}, unknown: { "OLD-1": [불명] } } },
-    recordHead: 5,
-  });
+  await replaceAnswer(
+    page,
+    "processes_snapshot",
+    snapshotFixture({ verdict: { orphans: { confirmed: {}, unknown: { "OLD-1": [불명] } } }, recordHead: 5 }),
+  );
   await 스냅샷박자(page);
   await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
   await expect(점(page)).toHaveCount(0);

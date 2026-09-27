@@ -2,8 +2,6 @@ import { expect, test, type Page } from "./evidence";
 import {
   BUSY_SHELL,
   MAISON_LANDING_ROOM,
-  NO_METRICS,
-  PROCESS_SNAPSHOT,
   shellExitEnded,
   shellKeyOf,
   startupCleaned,
@@ -31,6 +29,7 @@ import {
   편집기에서앱으로,
   편집기에초안,
 } from "./harness";
+import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 
 // 프로세스 티켓 32 — **토스트의 [보기]가 `Processes`로 간다**(프로세스 스펙 S15 · P2, 스토리 94 · 101). 시작 정리(티켓 10) · 주인
 // 잃은 셸(티켓 12) · 셸 스스로 끝남(티켓 13)의 토스트가 [보기]를 들고, 누르면 토스트가 내려가고 **지금 세계의** `Processes`가
@@ -74,10 +73,7 @@ test("셸 스스로 끝남 토스트의 [보기]를 누르면 Processes로 간�
 test("주인 잃은 셸 토스트의 [보기]를 누르면 Processes의 주인 잃은 셸 묶음으로 간다", async ({ page }) => {
   await installFixtureBackend(page, {
     pty_close_checks: { 1: BUSY_SHELL },
-    processes_snapshot: {
-      ...PROCESS_SNAPSHOT,
-      pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
-    },
+    processes_snapshot: snapshotFixture({ pool: [poolShell(1, shellKeyOf(1), Date.now())] }),
   });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
@@ -141,10 +137,7 @@ test("편집기에서 주인 잃은 셸 토스트의 [보기]가 떠날 때 확�
 }) => {
   await installFixtureBackend(page, {
     pty_close_checks: { 1: BUSY_SHELL },
-    processes_snapshot: {
-      ...PROCESS_SNAPSHOT,
-      pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: NO_METRICS }],
-    },
+    processes_snapshot: snapshotFixture({ pool: [poolShell(1, shellKeyOf(1), Date.now())] }),
   });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { NO_METRICS, PROCESS_SNAPSHOT, shellKeyOf, WORKS } from "./fixtures";
+import { shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   installFixtureBackend,
@@ -10,6 +10,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 import { formatCpu, formatMemory, formatPorts } from "@/features/processes/metrics";
+import { metricsOf as 지표, NO_METRICS, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessMetrics, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 28 — **프로세스마다 메모리 · CPU · 포트가 선다**(프로세스 결정 10 · 프로세스 스펙 S37 · S38 · S40 · S53 · S58, 스토리
@@ -30,16 +31,9 @@ const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeite
 const work행 = (page: Page) => 트리(page).locator('[role="treeitem"][aria-level="2"]');
 const 칸 = (row: Locator, cell: "memory" | "cpu" | "ports") => row.locator(`[data-cell="${cell}"]`);
 
-const 지표 = (memory: number | null, cpu: number | null = null, ports: number[] = []): ProcessMetrics => ({ memory, cpu, ports });
-
-const 행 = (pid: number, ppid: number, startedUs: number, name: string, metrics: ProcessMetrics): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name,
-  argv0: name,
-  command: `${name} --fixture`,
-  metrics,
-});
+/** env를 읽은 행 — 부른 이름은 커널 이름 그대로다. 이 파일이 재는 것은 숫자라 지표를 늘 준다. */
+const 행 = (pid: number, ppid: number, startedUs: number, name: string, metrics: ProcessMetrics): ProcessRow =>
+  processRow(pid, ppid, startedUs, name, { argv0: name, command: `${name} --fixture`, metrics });
 
 /**
  * `그냥 일`의 셸 둘(pty 1 · 2). 첫 셸에는 셸 도우미(gitstatusd)와 사람이 띄운 트리(vite → esbuild)가 있다 — vite는 1GB를 넘고 LISTEN
@@ -47,10 +41,8 @@ const 행 = (pid: number, ppid: number, startedUs: number, name: string, metrics
  */
 function 스냅샷(cpu?: { shell1: number; gitstatusd: number; vite: number; esbuild: number; shell2: number }): ProcessSnapshot {
   const lastOutputMs = Date.now() - 2 * 3_600_000;
-  return {
-    ...PROCESS_SNAPSHOT,
+  return snapshotFixture({
     verdict: {
-      ...PROCESS_SNAPSHOT.verdict,
       descendants: {
         [shellKeyOf(1)]: [
           행(150, 1, 1_000, "gitstatusd", 지표(2 * MiB, cpu?.gitstatusd ?? null)),
@@ -61,12 +53,12 @@ function 스냅샷(cpu?: { shell1: number; gitstatusd: number; vite: number; esb
       helpers: [{ pid: 150, startedUs: 1_000 }],
     },
     pool: [
-      { ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs, metrics: 지표(8 * MiB, cpu?.shell1 ?? null) },
-      { ptyId: 2, shellKey: shellKeyOf(2), lastOutputMs, metrics: 지표(6 * MiB, cpu?.shell2 ?? null) },
+      poolShell(1, shellKeyOf(1), lastOutputMs, 지표(8 * MiB, cpu?.shell1 ?? null)),
+      poolShell(2, shellKeyOf(2), lastOutputMs, 지표(6 * MiB, cpu?.shell2 ?? null)),
       // 스토어가 모르는 풀의 셸(32의 화면 밖 셸) — 숫자가 어느 합에도 안 든다.
-      { ptyId: 99, shellKey: shellKeyOf(99), lastOutputMs, metrics: 지표(64 * GiB, 99) },
+      poolShell(99, shellKeyOf(99), lastOutputMs, 지표(64 * GiB, 99)),
     ],
-  };
+  });
 }
 
 /** 셸 1의 트리(셸 프로세스 · 도우미 · vite · esbuild)와 work(셸 1 + 셸 2)의 메모리 합. */

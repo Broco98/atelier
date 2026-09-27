@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { PROCESS_SNAPSHOT, shellKeyOf } from "./fixtures";
+import { shellKeyOf } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -10,6 +10,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
+import { metricsOf, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessIdentity, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { Settings } from "@/features/settings/types";
@@ -30,14 +31,9 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 줄 = (scope: Locator, name: string) => scope.getByRole("treeitem", { name, exact: true });
 const 메모리칸 = (row: Locator) => row.locator('[data-cell="memory"]');
 
-const 행 = (pid: number, ppid: number, startedUs: number, name: string, memory: number): ProcessRow => ({
-  id: { pid, startedUs },
-  ppid,
-  name,
-  argv0: name,
-  command: `${name} --fixture`,
-  metrics: { memory, cpu: null, ports: [] },
-});
+/** env를 읽은 행 — 부른 이름은 커널 이름 그대로다. 줄 이름에 메모리가 붙게 메모리만 늘 준다. */
+const 행 = (pid: number, ppid: number, startedUs: number, name: string, memory: number): ProcessRow =>
+  processRow(pid, ppid, startedUs, name, { argv0: name, command: `${name} --fixture`, metrics: metricsOf(memory) });
 
 const 신원 = (row: ProcessRow): ProcessIdentity => row.id;
 const pid순 = (ids: ProcessIdentity[]) => [...ids].sort((a, b) => a.pid - b.pid);
@@ -65,10 +61,8 @@ const tmux = 행(300, 1, 3_000, "tmux", 10 * MiB);
 const tmux밑zsh = 행(310, 300, 3_100, "zsh", 6 * MiB);
 
 function 스냅샷(): ProcessSnapshot {
-  return {
-    ...PROCESS_SNAPSHOT,
+  return snapshotFixture({
     verdict: {
-      ...PROCESS_SNAPSHOT.verdict,
       descendants: { [shellKeyOf(1)]: [vite, esbuild, watcher, sleep] },
       exceptions: [tmux, tmux밑zsh],
       orphans: {
@@ -77,12 +71,12 @@ function 스냅샷(): ProcessSnapshot {
       },
       otherInstances: { "H-2": [남의zsh, 남의node], "R-1": [설치본zsh] },
     },
-    pool: [{ ptyId: 1, shellKey: shellKeyOf(1), lastOutputMs: Date.now(), metrics: { memory: 4 * MiB, cpu: null, ports: [] } }],
+    pool: [poolShell(1, shellKeyOf(1), Date.now(), metricsOf(4 * MiB))],
     instances: [
       { generation: "H", build: "dev", version: "0.15.0", shellKeys: ["H-2"] },
       { generation: "R", build: "release", version: "0.14.1", shellKeys: ["R-1"] },
     ],
-  };
+  });
 }
 
 /** 셸 하나를 띄우고 `Processes`를 연다 — 자손 행은 스토어의 셸과 이어져야 선다. */

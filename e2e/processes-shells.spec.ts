@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "./evidence";
-import { answerByArg, BUSY_SHELL, NO_METRICS, PROCESS_SNAPSHOT, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
+import { answerByArg, BUSY_SHELL, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   archiveByMcp,
   awaitSpawned,
@@ -22,7 +22,8 @@ import {
   시계를세운다,
 } from "./harness";
 import { eventLabel } from "@/features/processes/cleanup-log";
-import type { CleanupEvent, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
+import { poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
+import type { CleanupEvent, ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 32 — **`Processes`에서 주인 잃은 셸 · 화면 밖 셸 · 정리 기록을 보고 쌓인 셸을 치운다**(프로세스 결정 4 · 6 · 9 ·
 // 프로세스 스펙 S12 · S42 · S44 · P1, 스토리 89 · 90 · 94 · 96 · 97).
@@ -47,23 +48,15 @@ async function 줄들(scope: Locator): Promise<Array<{ level: string | null; nam
     .evaluateAll((rows) => rows.map((row) => ({ level: row.getAttribute("aria-level"), name: row.getAttribute("aria-label") })));
 }
 
-const vite: ProcessRow = {
-  id: { pid: 200, startedUs: 2_000 },
-  ppid: 1,
-  name: "node",
-  argv0: "node",
-  command: "node vite --port 5173",
-  metrics: NO_METRICS,
-};
+const vite = processRow(200, 1, 2_000, "node", { argv0: "node", command: "node vite --port 5173" });
 
 /** 풀에 `ptys`의 셸이 앉은 스냅샷 — 마지막 출력은 두 시간 전이다(조용한 셸의 경과가 「2h」로 선다). `tree`의 셸 밑에는 vite가 있다. */
 function 스냅샷(ptys: number[], tree: number | null = null): ProcessSnapshot {
   const lastOutputMs = Date.now() - 2 * 3_600_000;
-  return {
-    ...PROCESS_SNAPSHOT,
-    verdict: { ...PROCESS_SNAPSHOT.verdict, descendants: tree === null ? {} : { [shellKeyOf(tree)]: [vite] } },
-    pool: ptys.map((pty) => ({ ptyId: pty, shellKey: shellKeyOf(pty), lastOutputMs, metrics: NO_METRICS })),
-  };
+  return snapshotFixture({
+    verdict: { descendants: tree === null ? {} : { [shellKeyOf(tree)]: [vite] } },
+    pool: ptys.map((pty) => poolShell(pty, shellKeyOf(pty), lastOutputMs)),
+  });
 }
 
 /** 화면이 지금까지 받은 것을 다 그린 뒤에 돌아온다 — 두 프레임을 넘긴다. **「없다」를 재기 전에 부른다.** */
