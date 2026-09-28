@@ -188,8 +188,8 @@ describe("claude 어댑터가 페이로드를 정규 이벤트로 접는다", ()
     ["SessionEnd", { reason: "logout" }, "end", null],
     // ── 프로세스 결정 14가 더한 여섯. 키의 출처: 도구 셋은 Claude Code 훅 문서(2026-09-26, 티켓 18이 읽음) —
     // `tool_name`·`tool_input`·`tool_use_id`, Post에 `tool_response`, Failure에 `error`·`is_interrupt`(선택).
-    // **도구 사건은 말을 안 싣는다**(직전 유지). 도는 중의 둘째 줄은 직전 맥락이고, 도구마다 두 번 오는 사건이
-    // 그 줄을 도구 이름으로 갈아 끼우면 사람이 읽을 말이 도구가 돌 때마다 튄다.
+    // **도구 사건은 말을 안 싣는다**(직전 유지). 도는 중인 셸의 말은 직전 맥락이고, 도구마다 두 번 오는 사건이
+    // 그 말을 도구 이름으로 갈아 끼우면 사람이 읽을 말이 도구가 돌 때마다 튄다.
     ["PreToolUse", { tool_name: "Bash", tool_input: { command: "git status" }, tool_use_id: "toolu_03" }, "tool", null],
     ["PostToolUse", { tool_name: "Bash", tool_input: { command: "git status" }, tool_response: { stdout: "clean" }, tool_use_id: "toolu_03" }, "tool", null],
     // **중단이 아닌 실패는 도구다**(S56) — 도구가 실패해도 턴은 돈다.

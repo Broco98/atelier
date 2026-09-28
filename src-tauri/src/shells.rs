@@ -1096,7 +1096,7 @@ mod tests {
         assert_eq!((state["agent"].as_str(), state["event"].as_str()), (Some("claude"), Some("Stop")));
         assert_eq!(
             state["payload"]["last_assistant_message"], "테스트 셋 통과",
-            "페이로드가 그대로 안 실렸다 — 둘째 줄에 적을 말이 여기서만 온다"
+            "페이로드가 그대로 안 실렸다 — 셸의 말(호버 카드의 말 칸 · 행 버튼의 설명)이 여기서만 온다"
         );
         let at = state["at"].as_u64().expect("`at`은 ms 수다");
         assert!((before..=after).contains(&at), "`at`({at})이 부른 때({before}..={after}) 밖이다");
