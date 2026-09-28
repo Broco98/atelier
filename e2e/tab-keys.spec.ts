@@ -70,7 +70,8 @@ test("⌘W가 켜진 셸 칸을 닫는다 — 확인을 거쳐서", async ({ pag
 
   await page.keyboard.press("Meta+w");
 
-  // **확인 창을 우회하지 않는다**(결정 22·92). 픽스처의 `pty_close_check`이 「명령이 돈다」라
+  // **확인 창을 우회하지 않는다** — ⌘W는 `×`와 같은 판정을 쓴다(ux-papercuts 결정 92 · work-tab-header 결정 13).
+  // 픽스처의 `pty_close_check`이 「명령이 돈다」라
   // 이 길은 늘 물어본다 — 여기가 안 서면 셸을 말없이 죽이는 길이 새로 생긴 것이다.
   const ask = page.getByRole("alertdialog");
   await expect(ask).toBeVisible();
