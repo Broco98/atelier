@@ -199,7 +199,7 @@ describe("모드별 nav", () => {
     expect(maison?.to).toBe("/maison/processes");
   });
 
-  // **양쪽을 함께 못 박는다**: 「둘이다」만 세우면 그 둘이 Atelier 주소를 가리켜도 초록이다.
+  // **양쪽을 함께 못 박는다**: 「셋이다」만 세우면 그 셋이 Atelier 주소를 가리켜도 초록이다.
   it("Maison nav는 Maison 주소로 간다", () => {
     for (const item of navItemsOf("maison")) {
       expect(modeOf(item.to)).toBe("maison");

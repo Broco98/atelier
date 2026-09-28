@@ -277,7 +277,8 @@ function useClosedOffscreen(pool: ReadonlyArray<PoolShell> | undefined): [Readon
 
 /**
  * 스토어의 셸 하나의 줄들 — 이름은 탭 줄의 것(`shellRowName`), 상태는 셸 상태부터(`shellStateOf`)다. [닫기]는 셸 탭의 ×와 같은
- * 길이다(결정 92): 명령이나 자손이 있으면 확인 창이 묻고, 까닭은 「셸 닫기」다. [이동]은 부르는 쪽이 주면 선다.
+ * 길이다. 명령이 돌 때만 묻던 ux-papercuts 결정 92를 프로세스 결정 3이 이렇게 고쳤다: 명령이나 자손이 있으면 확인 창이 묻는다.
+ * 까닭은 「셸 닫기」다. [이동]은 부르는 쪽이 주면 선다.
  */
 function StoreShellRows({ node, level, now, onGo }: { node: ShellNode; level: number; now: number; onGo?: () => void }) {
   return (

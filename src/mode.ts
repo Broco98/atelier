@@ -135,8 +135,9 @@ const MAISON_ROUTES = {
 } as const satisfies ModeRoutes;
 
 /**
- * Maison nav는 `Terminal`·`Processes`·`Archive` 셋이다(결정 6 · 프로세스 결정 8). `Projects`가 없는 것은 빠뜨린 게 아니라
- * **이 세계에 프로젝트가 없기 때문**이다(결정 17) — Room은 토픽이고 저장소에 안 붙는다.
+ * Maison nav는 `Terminal`·`Processes`·`Archive` 셋이다. life-mode 결정 6은 `Terminal` · `Archive` 둘이었고, 프로세스 결정
+ * 8 · 9가 이렇게 고쳤다: `Processes`가 main nav에 서되 두 세계 모두에 선다. `Projects`가 없는 것은 빠뜨린 게 아니라
+ * **이 세계에 프로젝트가 없기 때문**이다(life-mode 결정 17) — Room은 토픽이고 저장소에 안 붙는다.
  *
  * Atelier 벌은 `nav-items.ts`가 계속 든다 — 그 파일의 주석이 「Works 항목은 왜 없는가」·
  * 「설정은 왜 여기 없는가」를 이미 못박고 있고, 그것을 여기로 옮기면 이유가 배열에서 떨어진다.
