@@ -142,8 +142,8 @@ pub fn read(root: &Path) -> Result<Settings, String> {
     })
 }
 
-/// 판정이 쓸 예외 목록(프로세스 결정 5 · 프로세스 스펙 S7). **끝낼 때마다 부른다** — 사람이 설정을 고친 뒤
-/// 닫는 셸에 곧바로 먹는다. 앱이 따로 기억하는 값이 없다.
+/// 판정이 쓸 예외 목록(프로세스 결정 5 · 프로세스 스펙 S7). 앱은 **판정마다** 데이터 루트로 부른다(`process_exceptions_now`)
+/// — 사람이 설정을 고친 뒤 닫는 셸에 곧바로 먹는다. 앱이 따로 기억하는 값이 없다.
 ///
 /// `null`이거나 줄이 없으면 기본 목록이다. **파일이 깨졌어도 기본 목록이다** — `read`는 깨진 파일을 실패로
 /// 돌려주고 설정 화면은 고칠 때까지 아무것도 안 쓰지만, 셸 닫기는 그동안에도 돈다. 여기서 실패를 「예외 없음」으로
@@ -160,6 +160,18 @@ pub fn process_exceptions(root: &Path) -> Vec<String> {
             crate::processes::exceptions::defaults()
         }
     }
+}
+
+/// **지금** 설정의 예외 목록 — 앱의 데이터 루트(`ATELIER_HOME`)에서 **부를 때마다 새로** 읽는다(프로세스 결정 5 · 프로세스 스펙 S7).
+/// 사람이 설정 › 터미널에서 목록을 고치면 다음 판정부터 먹는다. 앱이 따로 쥐는 값이 없다.
+///
+/// **판정을 부르는 자리가 모두 이 하나를 부른다** — 끝내기의 길(`pty.rs`: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료,
+/// 닫기 전 물음, 시작 정리)과 `Processes` 화면의 스냅샷 · 배경 표본(`processes::service`). 두 층이 저마다 읽는 함수를 들면 한쪽만
+/// 바뀐 날(기본값을 더하거나 다른 루트를 읽거나) 화면이 「예외」로 보인 것을 셸 닫기가 끝낸다. 판정 표는 목록을 직접 받으니 이 배선은
+/// 못 잰다 — 자리 핀(`pty.rs`의 `the_exception_list_is_read_anew_for_every_verdict`)이 이 한 줄과 여섯 자리를 재고, 풀 배선 장면
+/// `CloseKeeping` · `ExitKeeping` · `Ask`가 닫기 · 종료 · 닫기 전 물음에서 하나씩 실행으로 잰다.
+pub fn process_exceptions_now() -> Vec<String> {
+    process_exceptions(&atelier_core::data_root())
 }
 
 /// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (`work.json`·projects와 같은 규칙).

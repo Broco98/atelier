@@ -80,7 +80,7 @@ impl ProcessService {
         let snapshot = snapshot::take(EnvScope::All);
         let (live, listed) = self.pool.listing();
         let records = self.pool.record().records();
-        let exceptions = exceptions();
+        let exceptions = crate::settings::process_exceptions_now();
         let verdict = verdict::judge(&Inputs {
             snapshot: &snapshot,
             run: ThisRun::current(),
@@ -127,7 +127,7 @@ impl ProcessService {
         let (live, listed) = self.pool.listing();
         let shells: Vec<Identity> = listed.iter().filter_map(|shell| shell.process).collect();
         let records = self.pool.record().records();
-        let exceptions = exceptions();
+        let exceptions = crate::settings::process_exceptions_now();
         let verdict = verdict::judge(&Inputs {
             snapshot: &snapshot,
             run: ThisRun::current(),
@@ -235,13 +235,6 @@ pub fn pool_shells<'a>(shells: impl Iterator<Item = (u32, &'a str, u64, Option<I
         .collect();
     listed.sort_by_key(|shell| shell.pty_id);
     listed
-}
-
-/// 예외 목록 — **읽을 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 화면의 예외 묶음과 요약의 합계가 사람이
-/// 방금 고친 목록을 따른다. 끝내기의 길이 읽는 목록(`pty::exceptions`)과 같은 설정 · 같은 루트다 — 화면이 예외로 보인 것이 셸을
-/// 닫을 때 남는 것이다.
-fn exceptions() -> Vec<String> {
-    crate::settings::process_exceptions(&atelier_core::data_root())
 }
 
 #[cfg(test)]

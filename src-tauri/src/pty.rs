@@ -436,7 +436,7 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
         (shells.values().map(Shell::entry).collect(), ids.iter().map(|id| asked_of(&shells, *id)).collect())
     };
     let records = pool.record.records();
-    let exceptions = exceptions();
+    let exceptions = crate::settings::process_exceptions_now();
     checks_on(
         &Inputs {
             snapshot: &snapshot,
@@ -858,7 +858,7 @@ pub fn end_for_exit(pool: &PtyPool) -> Vec<(Identity, Outcome)> {
         shells: &[],
         ending: &ending,
         instances: &records,
-        exceptions: &exceptions(),
+        exceptions: &crate::settings::process_exceptions_now(),
         occasion: Occasion::Normal,
     });
     let groups = groups_led(&shells, &pgids, &snapshot);
@@ -899,7 +899,7 @@ pub struct StartupAttempt {
 /// 판정(`plan_startup`)과 끝내기(`carry_out`)를 가른 것은 실물 검사가 그 사이에서 끝낼 신원을 자기 자식으로 거르기
 /// 위해서다 — 이 함수는 둘을 그대로 잇는다.
 pub fn clean_up_at_startup(pool: &PtyPool) -> Vec<StartupAttempt> {
-    carry_out(pool, plan_startup(pool, &exceptions()))
+    carry_out(pool, plan_startup(pool, &crate::settings::process_exceptions_now()))
 }
 
 /// 시작 정리가 고른 것 — 끝낼 확정 고아(스냅샷의 행)와 지울 죽은 실행의 기록. 판정 중인 셈을 쥐고 있다.
@@ -1007,7 +1007,7 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
     let snapshot = snapshot::take(env_scope(ending.iter().map(|shell| shell.process)));
     let live: Vec<ShellEntry> = pool.lock().values().map(Shell::entry).collect();
     let records = pool.record.records();
-    let exceptions = exceptions();
+    let exceptions = crate::settings::process_exceptions_now();
     let verdict = verdict::judge(&Inputs {
         snapshot: &snapshot,
         run: ThisRun::current(),
@@ -1079,20 +1079,6 @@ fn env_scope(shells: impl IntoIterator<Item = Option<Identity>>) -> EnvScope {
         .collect::<Option<Vec<u64>>>()
         .and_then(|born| born.into_iter().min())
         .map_or(EnvScope::All, EnvScope::BornSince)
-}
-
-/// 예외 목록 — **끝낼 때마다 설정을 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7). 사람이 설정 › 터미널에서
-/// 목록을 고치면 다음에 닫는 셸부터 먹는다. 파일이 없거나 깨졌으면 기본 목록이다.
-///
-/// 판정을 부르는 자리마다 부른다 — 이 파일의 넷: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료의 `end_for_exit`, 닫기
-/// 전 물음의 `close_checks`(확인 창의 수에서 예외를 빼려면 판정이 목록을 알아야 한다), 시작 정리의 `clean_up_at_startup`. 판정을
-/// 부르는 나머지 둘(`Processes` 화면의 스냅샷 · 배경 표본)은 `processes::service`가 같은 설정을 같은 루트에서 읽는다 — 그 층은 이
-/// 파일을 모른다. 판정 표는 목록을 직접 받으니 이 배선은 못 잰다. 풀 배선 장면 `CloseKeeping`(닫기)과 `ExitKeeping`(종료),
-/// `Ask`(닫기 전 물음)가 하나씩 재고, 시작 정리는 자리 핀(`the_startup_cleanup_counts_itself_judges_ends_then_forgets`)이 잰다. 판정마다
-/// 새로 읽는 것(한 번 읽어 쥐지 않는 것)과 화면 스냅샷 · 배경 표본의 배선은 자리 핀(`the_exception_list_is_read_anew_for_every_verdict`)이
-/// 잰다 — 장면들은 설정을 한 번 쓰고 안 고쳐 그 차이를 못 본다.
-fn exceptions() -> Vec<String> {
-    crate::settings::process_exceptions(&atelier_core::data_root())
 }
 
 /// 셸들이 거느린 그룹과 그 리더의 신원. 셸 그룹의 리더는 띄울 때 쥔 셸의 신원이고, foreground 그룹의 리더는
@@ -1670,25 +1656,24 @@ mod tests {
 
     /// **예외 목록은 판정마다 설정에서 새로 읽는다**(프로세스 결정 5 · 프로세스 스펙 S7) — 사람이 설정 › 터미널에서 목록을 고치면 다음에
     /// 닫는 셸부터 먹는다. 풀 배선 장면(`CloseKeeping` · `ExitKeeping` · `Ask`)은 설정을 한 번 쓰고 끝까지 안 고쳐, 한 번 읽고 쥐고
-    /// 있는 변형(`OnceLock` · 풀의 칸)도 초록이다. 그래서 자리로 잰다: 읽는 함수 둘(이 파일 · `processes::service`)은 쥐는 것 없이 설정을
-    /// 부르는 한 줄이고, 판정을 부르는 자리마다 그 함수를 부른다. 시작 정리는 앱의 정리가 부른 목록을 판정에 넘긴다
-    /// (`the_startup_cleanup_counts_itself_judges_ends_then_forgets`).
+    /// 있는 변형(`OnceLock` · 풀의 칸)도 초록이다. 그래서 자리로 잰다: 읽는 함수는 하나(`settings::process_exceptions_now`)이고 쥐는 것
+    /// 없이 설정을 부르는 한 줄이며, 판정을 부르는 여섯 자리가 모두 그것을 부른다. 끝내기의 길(이 파일)과 화면 · 요약(`processes::service`)이
+    /// 저마다 읽는 함수를 들면 한쪽만 바뀐 날 화면이 「예외」로 보인 것을 셸 닫기가 끝낸다. 시작 정리는 앱의 정리가 부른 목록을 판정에
+    /// 넘긴다(`the_startup_cleanup_counts_itself_judges_ends_then_forgets`).
     #[test]
     fn the_exception_list_is_read_anew_for_every_verdict() {
-        const READ: &str = "fn exceptions() -> Vec<String> {";
-        const SETTINGS: &str = "crate::settings::process_exceptions(&atelier_core::data_root())";
-        for (path, body) in [
-            ("pty::exceptions", body_of(READ, "\n}\n")),
-            ("service::exceptions", crate::tests::body_of(include_str!("processes/service.rs"), READ, "\n}\n")),
-        ] {
-            assert_eq!(body.trim(), SETTINGS, "{path}: 예외 목록을 설정에서 곧바로 읽지 않는다 — 한 번 읽은 목록을 쥐면 고친 목록이 안 먹는다");
-        }
+        let read = crate::tests::body_of(include_str!("settings.rs"), "pub fn process_exceptions_now() -> Vec<String> {", "\n}\n");
+        assert_eq!(
+            read.trim(),
+            "process_exceptions(&atelier_core::data_root())",
+            "예외 목록을 설정에서 곧바로 읽지 않는다 — 한 번 읽은 목록을 쥐면 고친 목록이 안 먹는다"
+        );
         for (path, body) in verdict_sites() {
             let reads = match path {
                 "plan_startup" => body.contains("exceptions,"),
-                _ => body.contains("exceptions()"),
+                _ => body.contains("crate::settings::process_exceptions_now()"),
             };
-            assert!(reads, "{path}: 판정마다 예외 목록을 새로 읽지 않는다");
+            assert!(reads, "{path}: 판정마다 예외 목록을 한 자리(`settings::process_exceptions_now`)에서 새로 읽지 않는다");
         }
     }
 
@@ -2032,7 +2017,7 @@ mod tests {
     #[test]
     fn the_startup_cleanup_counts_itself_judges_ends_then_forgets() {
         assert!(
-            body_of("pub fn clean_up_at_startup(", "\n}\n").contains("carry_out(pool, plan_startup(pool, &exceptions()))"),
+            body_of("pub fn clean_up_at_startup(", "\n}\n").contains("carry_out(pool, plan_startup(pool, &crate::settings::process_exceptions_now()))"),
             "앱의 시작 정리가 판정과 끝내기를 그대로 잇지 않는다 — 실물 장면이 잰 것과 앱이 하는 것이 갈린다"
         );
         let plan = body_of("fn plan_startup(", "\n}\n");
@@ -3413,7 +3398,7 @@ mod tests {
 
         let installed_file = instances::file_of(&dir, installed_generation);
 
-        let mut plan = super::plan_startup(pool, &super::exceptions());
+        let mut plan = super::plan_startup(pool, &crate::settings::process_exceptions_now());
         let picked: Vec<Identity> = plan.targets.iter().map(|proc| proc.id).collect();
         let forgets = plan.dead.iter().any(|record| record.generation == dead_generation);
         // 물려받은 키의 실행은 죽었다(앱 신원이 이 프로세스의 pid에 다른 시작 시각) — 그 키를 문 자식은 막히지 않으면 확정 고아

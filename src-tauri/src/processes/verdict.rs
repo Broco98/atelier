@@ -65,8 +65,8 @@ pub struct Inputs<'a> {
     /// 풀에 없어도 셸 목록에 든다: 띄우는 중인 셸, 풀에서 빠졌지만 끝내기가 아직 도는 셸이다. 이 실행의 기록이 없으면
     /// (앱 신원을 못 읽어 기록을 안 씀) 이 세대의 목록 밖 키는 어느 묶음에도 넣지 않는다 — 확정 고아를 가를 근거가 없다.
     pub instances: &'a [InstanceRecord],
-    /// 예외 목록(프로세스 결정 5) — 설정의 `terminal.processExceptions`, `null`이면 기본 목록. 부르는 쪽이 끝낼
-    /// 때마다 설정에서 읽어 준다(`settings::process_exceptions`).
+    /// 예외 목록(프로세스 결정 5) — 설정의 `terminal.processExceptions`, `null`이면 기본 목록. 부르는 쪽이 판정
+    /// 때마다 설정에서 읽어 준다(`settings::process_exceptions_now`).
     pub exceptions: &'a [String],
     pub occasion: Occasion,
 }
