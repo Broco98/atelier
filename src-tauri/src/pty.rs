@@ -451,8 +451,9 @@ pub fn close_checks(pool: &PtyPool, ids: &[u32]) -> Vec<Result<CloseCheck, Strin
     )
 }
 
-/// 판정 한 번으로 물은 셸마다 답한다 — 위 함수에서 스냅샷을 찍고 셸을 읽는 일만 뺀 나머지다. 값만 받으므로 셸
-/// 셋을 한 번에 물은 것과 하나씩 물은 것을 표로 견준다. 못 읽은 셸의 오류는 그 자리에 그대로 둔다.
+/// 판정 한 번으로 물은 셸마다 답한다 — 위 함수에서 스냅샷을 찍고 셸을 읽는 일만 뺀 나머지다. 값만 받으므로 검사가 셸마다의
+/// 답을 표로 적어 잰다(`one_snapshot_answers_every_shell_as_if_asked_alone`). 「하나씩 물은 것과 같다」는 값으로 견주지 않는다 —
+/// 셸 하나의 물음도 이 함수를 지나는 모양(`close_check`)이 지킨다. 못 읽은 셸의 오류는 그 자리에 그대로 둔다.
 fn checks_on(input: &Inputs, asked: Vec<Result<AskedShell, String>>) -> Vec<Result<CloseCheck, String>> {
     let verdict = verdict::judge(input);
     asked.into_iter().map(|one| one.map(|asked| answer_for(&verdict, &asked))).collect()
@@ -1939,9 +1940,12 @@ mod tests {
     /// 끝냄은 빠지고(`cleanup_log::ended_count` — 그 표가 규칙을 잰다), 셀 것이 없으면 알리지 않는다. 그래서 p10k 셸의 `exit`는
     /// `gitstatusd`(도우미)만 끝나 조용하다.
     ///
-    /// 실행으로는 못 가른다 — 실물 장면 `Exit`의 자식은 첫 입력 뒤에 떠 도우미가 아니고, `Record`의 둘째 셸은 끝낼 것이 없다. 결과 수
-    /// (`outcomes.len()`)로 세거나 도우미까지 세도 두 장면은 초록이다. 도우미만 끝나는 셸은 사람의 zsh 설정(gitstatusd)이 있어야 선다.
-    /// 그래서 자리로 잰다: 알림은 `ended_count`가 준 `Some` 갈래 안에서 그 수로 한 번만 나간다.
+    /// 지금의 실물 장면은 이것을 못 가른다 — `Exit`의 자식은 첫 입력 뒤에 떠 도우미가 아니고, `Record`의 둘째 셸은 끝낼 것이 없다.
+    /// 결과 수(`outcomes.len()`)로 세거나 도우미까지 세도 두 장면은 초록이다. 그래서 자리로 잰다: 알림은 `ended_count`가 준 `Some`
+    /// 갈래 안에서 그 수로 한 번만 나간다. 도우미만 끝나는 장면은 **세울 수 있다** — 입력이 없는 셸의 자손은 모두 셸 도우미라
+    /// (프로세스 스펙 P1, `Scene::typed_by_a_person`) 첫 입력 알림 전에 자식을 띄우고 `exit`를 치면 된다. 위 두 변형은 이 핀이 이미
+    /// 빨갛게 해 그 장면은 더하지 않았다. 그 장면만 잡는 것은 이 핀 밖의 변형이다 — 끝낸 것의 목록(`members`)을 짓는 줄이나 셸
+    /// 도우미 표시(`Aimed`)를 바꾸는 것.
     #[test]
     fn a_shell_exit_announces_only_what_the_log_rule_counts() {
         let body = body_of("fn exited(", "\n}\n");

@@ -76,8 +76,9 @@ pub struct Ending<K: Kernel = Os> {
     groups: Vec<Group>,
 }
 
-/// 끝내기를 시작한다 — SIGTERM과 SIGHUP을 보내고 곧바로 돌아온다. **실물 검사(`real`)만 부른다** — 앱의 끝내기는 모두 진행 중인
-/// 끝내기 목록을 지난다(`InFlight::claim` → `Claim::start`, 앱 종료는 `InFlight::close`). 목록 밖의 끝내기는 앱이 닫힐 때 마감되지 않는다.
+/// 끝내기를 시작한다 — SIGTERM과 SIGHUP을 보내고 곧바로 돌아온다. **검사만 부른다** — 이 파일의 실물 검사(`real`)와 `pty.rs`의 macOS
+/// 풀 배선 장면이 끝에 셸 그룹을 거둘 때(`pool_side` · `ask_side`). 앱의 끝내기는 모두 진행 중인 끝내기 목록을 지난다
+/// (`InFlight::claim` → `Claim::start`, 앱 종료는 `InFlight::close`). 목록 밖의 끝내기는 앱이 닫힐 때 마감되지 않는다.
 #[cfg(all(test, target_os = "macos"))]
 pub fn start(targets: &[Identity], groups: &[Group]) -> Ending {
     Ending::start_with(Os, targets, groups)
@@ -192,9 +193,10 @@ const JUDGING_LIMIT: Duration = Duration::from_millis(500);
 
 /// **진행 중인 끝내기** — 뒤 스레드로 보낸 끝내기의 목록(프로세스 스펙 S5).
 ///
-/// 셸 닫기 · 새로고침은 신호를 보낸 뒤 유예와 SIGKILL을 뒤 스레드에 맡기고 곧바로 돌아온다. 그 스레드는 앱과
-/// 함께 사라진다 — ×를 누르고 2초 안에 ⌘Q를 누르면 SIGTERM을 무시한 자손에 SIGKILL이 영영 안 간다. 그래서
-/// 뒤로 보내는 끝내기는 모두 여기 오르고, 앱 종료가 목록을 동기로 마감한다(`close`).
+/// 셸 닫기 · 새로고침 · 손으로 끝내기는 신호를 보낸 뒤 유예와 SIGKILL을 뒤 스레드에 맡기고 곧바로 돌아온다 — 셸 스스로
+/// 끝남과 시작 정리는 처음부터 제 스레드에서 돈다. 그 스레드들은 앱과 함께 사라진다 — ×를 누르고 2초 안에 ⌘Q를 누르면
+/// SIGTERM을 무시한 자손에 SIGKILL이 영영 안 간다. 그래서 뒤로 보내는 끝내기는 모두 여기 오르고, 앱 종료가 목록을 동기로
+/// 마감한다(`close`).
 ///
 /// 한 닫기는 두 걸음으로 오른다.
 /// 1. `claim` — **풀에서 셸을 빼기 전에** 「판정 중」으로 센다. 판정이 끝나기 전에 종료가 오면 종료는 그것이

@@ -8,8 +8,9 @@
 //! **풀을 트레이트 뒤에서 본다**(`ShellListing`). 이 자리가 풀에게 묻는 것은 둘뿐이다 — 셸 목록(판정의 셸과 화면의 셸)과 인스턴스
 //! 기록. 그래서 `processes`가 `pty`를 모르고, 검사는 셸 없는 가짜 풀로 이 자리를 돌린다. PTY 풀(`pty::PtyPool`)이 구현한다.
 //!
-//! **Tauri를 모른다.** 앱은 이 값을 풀과 따로 앱에 걸고(`lib.rs`의 `manage`), 명령(`commands.rs`의 `processes_*`)이 그것을 `State`로
-//! 찾는다. 웹뷰에게 WebContent를 묻는 함수와 배경 표본의 스레드는 앱이 setup에서 건다(`ask_web_content_with` · `sample_in_background`).
+//! **Tauri를 모른다.** 앱은 이 값을 풀과 따로 앱에 걸고(`lib.rs`의 `manage`), 읽는 명령(`commands.rs`의 `processes_snapshot` ·
+//! `_summary` · `_trend` · `_cleanup_log`)이 그것을 `State`로 찾는다. 끝내는 `processes_end`는 풀을 찾는다 — 끝내기의 길은 풀에 산다.
+//! 웹뷰에게 WebContent를 묻는 함수와 배경 표본의 스레드는 앱이 setup에서 건다(`ask_web_content_with` · `sample_in_background`).
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};

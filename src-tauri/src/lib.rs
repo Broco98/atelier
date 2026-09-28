@@ -202,7 +202,9 @@ pub fn run() {
     // 건넨다. 빌더 앞에서 한 번 세워 셋업이 앱에서 다시 찾지 않는다(위 `report`와 같다).
     let pool = Arc::new(pty::PtyPool::default());
     // 프로세스 서비스 — `Processes` 화면과 nav 메타가 읽는 값(스냅샷 · 요약 · 추이 · 정리 기록)을 모으는 자리. **위 풀을 본다**(셸
-    // 목록 · 인스턴스 기록). 풀과 따로 앱에 걸고 `processes_*` 명령이 `State`로 찾는다. 셋업이 WebContent를 묻는 길과 배경 표본을 건다.
+    // 목록 · 인스턴스 기록). 풀과 따로 앱에 걸고, 읽는 명령(`processes_snapshot` · `_summary` · `_trend` · `_cleanup_log`)이 `State`로
+    // 찾는다 — 끝내는 `processes_end`는 셸 명령처럼 풀을 찾는다(서비스는 아무것도 안 끝낸다). 셋업이 WebContent를 묻는 길과 배경
+    // 표본을 건다.
     let process_service = Arc::new(ProcessService::new(Arc::clone(&pool)));
     tauri::Builder::default()
         .menu(build_menu)
