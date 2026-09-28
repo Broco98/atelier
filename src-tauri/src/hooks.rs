@@ -361,7 +361,7 @@ pub fn merge_codex(source: &str, handler: &Path) -> Result<String, String> {
     // 훅 위에 우리 구획을 그대로 얹으면 같은 명령이 두 벌이 되어 이벤트마다 훅이 두 번
     // 돈다 — claude 쪽이 `claude_group_is_ours`로 막는 그 자리(스토리 72)의 codex 판이다.
     // 그 줄이 옛 줄이어도 갈아 끼우지 않는다: 울타리 밖은 사람의 글이라 텍스트로 잘라 내지 않는다(구현 결정 8) — 판정은
-    // 그 이벤트를 「일부」로 남기고, 설치 버튼의 답이 그 까닭을 말하며(`unfixed`), 사람이 그 줄을 지우면 다음 맞춤이 채운다.
+    // 그 이벤트를 「일부」로 남기고, 설치 버튼의 답이 그 까닭을 말하며(`unfixed`), 사람이 그 훅을 한 벌째 지우면 다음 맞춤이 채운다.
     let present = codex_ours(&parse_codex(&out)?).into_iter().map(|(event, _)| event.to_string()).collect::<Vec<_>>();
     let missing: Vec<&str> =
         CODEX_EVENTS.iter().copied().filter(|event| !present.iter().any(|on| on == event)).collect();
@@ -776,7 +776,7 @@ fn leftover(agent: &Agent, path: &Path) -> Option<String> {
 /// **codex 울타리 밖에 사람이 손으로 적어 둔 우리 줄**이 지금 줄이 아닐 때다 — 옛 줄, 목록 밖 이벤트의 줄, 한 이벤트에 둘. 울타리
 /// 밖은 사람의 글이라 병합이 그 이벤트를 건너뛰고(`merge_codex` — 구현 결정 8), 판정은 그 줄을 지금 줄과 견줘 「일부」로 남긴다
 /// (`codex_installed` — 「전부」로 읽으면 옛 처리기가 말없이 도는 기계가 「설치됨」으로 선다). 이 까닭이 없으면 화면은 「업데이트
-/// 필요」인 채 설치 버튼이 말없이 아무것도 안 한다. 사람이 그 줄을 지우고 다시 누르면 병합이 그 이벤트를 구획에 채운다.
+/// 필요」인 채 설치 버튼이 말없이 아무것도 안 한다. 사람이 그 훅을 한 벌째 지우고 다시 누르면 병합이 그 이벤트를 구획에 채운다.
 ///
 /// **설치 버튼의 답에만 싣는다.** 앱이 뜰 때의 맞춤(`sync`)은 실제로 쓴 에이전트만 돌려주므로 바꿀 것이 없는 이 파일에 토스트가
 /// 안 선다(프로세스 스펙 S36). 판정 조회(`status`)에도 안 싣는다 — 누르기 전의 「업데이트 필요」는 고칠 길(설치)을 가리키고, 앱이 못 고친다는
@@ -788,8 +788,11 @@ fn unfixed(agent: &Agent, path: &Path, handler: &Path) -> Option<String> {
     }
     // 우리 것으로 알아보는 이름이 둘이라(`is_ours`) 둘 다 적는다(`leftover`와 같은 까닭). 「아틀리에 설정 화면이 넣은」은 울타리
     // 여는 줄(`CODEX_BEGIN`)에 적힌 그 말이다 — 사람이 파일에서 찾을 글자로 울타리를 가리킨다.
+    //
+    // **지울 것은 줄이 아니라 훅 한 벌이다.** 이름은 `command` 줄에만 있고, 그 위의 `[[hooks.X]]` · `[[hooks.X.hooks]]` · `type` 줄이
+    // 한 벌이다. 그 줄만 지우면 병합이 명령 없는 항목을 못 봐 「설치됨」이 되는데, 파일에는 명령 없는 훅 항목이 남는다.
     Some(format!(
-        "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — {}을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `{}`나 `{}`가 든 줄을 지우고 다시 설치해 주세요.",
+        "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — {}을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `{}`나 `{}`가 든 줄을 찾아, 그 줄이 속한 훅을 `[[hooks.<이벤트>]]` 머리 줄부터 통째로 지우고 다시 설치해 주세요.",
         atelier_core::collapse_home(path),
         crate::shells::SCRIPT_NAME,
         crate::shells::HANDLER_NAME
@@ -2074,6 +2077,58 @@ trust_level = "trusted"
             assert_eq!(read(&codex_config_path(&home)), installed, "{name}: 맞춤이 사람이 적은 줄을 고쳤다");
             let _ = std::fs::remove_dir_all(&home);
         }
+    }
+
+    /// 명령 없는 codex 훅 항목의 수 — `hooks.<이벤트>`의 묶음마다, 명령 블록이 없거나 명령 블록에 `command`가 없는 것.
+    fn codex_commandless(source: &str) -> usize {
+        let table: toml::Table = toml::from_str(source).expect("TOML이다");
+        let Some(hooks) = table.get("hooks").and_then(toml::Value::as_table) else {
+            return 0;
+        };
+        hooks
+            .values()
+            .filter_map(toml::Value::as_array)
+            .flatten()
+            .map(|group| match group.get("hooks").and_then(toml::Value::as_array) {
+                None => 1,
+                Some(inner) => inner.iter().filter(|hook| hook.get("command").is_none()).count(),
+            })
+            .sum()
+    }
+
+    /// **설치가 못 고친 까닭을 그대로 따르면 명령 없는 훅이 안 남는다.** 손으로 적은 codex 훅 한 벌은 네 줄이다 — `[[hooks.X]]` ·
+    /// `[[hooks.X.hooks]]` · `type = "command"` · `command = "…"` — 스크립트 이름은 `command` 줄에만 있다. 까닭이 「그 이름이 든 줄」을
+    /// 지우라고만 하면 사람은 `command` 한 줄을 지운다. 그러면 병합은 명령 없는 항목을 못 봐(`codex_ours`) 그 이벤트를 구획에 채우고
+    /// 화면은 「설치됨」인데, 파일에는 명령 없는 `hooks.X` 항목이 남는다 — codex가 명령을 요구하면 설정을 못 읽고, 아틀리에는 아무 말도
+    /// 안 한다. 그래서 까닭은 그 줄이 속한 훅을 `[[hooks.<이벤트>]]` 머리 줄부터 통째로 지우라고 한다.
+    ///
+    /// 까닭이 말하는 단위(훅 한 벌)를 지우고 다시 설치하면 「설치됨」이고 명령 없는 항목이 없다. 앵커: 이름이 든 줄만 지우면 다시 설치해도
+    /// 「설치됨」인 채 명령 없는 항목 하나가 남는다 — 줄 단위 안내가 사람을 어디로 보내는지가 여기서 보인다.
+    #[test]
+    fn following_the_install_reason_leaves_no_hook_without_a_command() {
+        let by_hand = codex_hook("Stop", &command_line(&old_handler(), CODEX, "Stop"));
+        let home = codex_home("follow-the-reason", &format!("{CODEX_REAL}{by_hand}"));
+        let said = agent(&install(&home, &handler()), "codex").write_error.clone().unwrap_or_default();
+        assert!(
+            said.contains("`[[hooks.<이벤트>]]` 머리 줄부터 통째로"),
+            "까닭이 훅 한 벌이 아니라 이름이 든 줄을 지우라고 한다 — 사람이 `command` 줄만 지우면 명령 없는 훅 항목이 남는다: {said:?}"
+        );
+
+        let installed = read(&codex_config_path(&home));
+        assert_eq!(installed.matches(&by_hand).count(), 1, "사람이 적은 훅이 글자 그대로 안 남았다 — 아래가 아무것도 못 잰다");
+        let command = format!("command = {}\n", toml_basic_string(&command_line(&old_handler(), CODEX, "Stop")));
+        let cases = [
+            ("훅 한 벌", installed.replacen(&by_hand, "", 1), 0),
+            ("이름이 든 줄", installed.replacen(&by_hand, &by_hand.replacen(&command, "", 1), 1), 1),
+        ];
+        for (unit, edited, left) in cases {
+            assert_ne!(edited, installed, "{unit}: 지울 것을 못 찾았다");
+            std::fs::write(codex_config_path(&home), &edited).unwrap();
+            let codex = agent(&install(&home, &handler()), "codex").clone();
+            assert_eq!((codex.installed, codex.write_error), (Installed::Full, None), "{unit}: 지우고 다시 설치했는데 「설치됨」이 아니다");
+            assert_eq!(codex_commandless(&read(&codex_config_path(&home))), left, "{unit}을 지우고 다시 설치한 파일의 명령 없는 훅 항목 수");
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// 앵커 셋 — **설치가 고칠 수 있거나 고칠 것이 없으면 까닭이 안 선다.** 울타리 밖의 지금 줄은 「전부」이고, 울타리 안의 옛 줄은
