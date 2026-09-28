@@ -150,12 +150,12 @@ impl ProcessService {
     /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
     /// 중 · 첫 장을 웹뷰의 답까지 미루는 중(`sample_once`), 표본 스레드를 안 건 검사의 서비스) 그 자리에서 모아 앉힌다 — 프런트는
     /// 뜨자마자 묻는다.
+    ///
+    /// **모으는 사이 표본이 웹뷰를 센 장을 앉혔으면 그 장을 돌려준다**(`Background::fill_in`). 이 물음이 늦어 「웹뷰 제외」로 모은 장이
+    /// 그것을 덮으면 nav와 요약 카드가 다음 박자(10초)까지 웹뷰만큼 낮은 합계를 보인다 — 표본의 제외 장이 이 장을 덮는 거울 쪽은
+    /// `sample_once`가 막는다.
     pub fn summary(&self) -> Summary {
-        self.background.latest().unwrap_or_else(|| {
-            let fresh = self.summarize();
-            self.background.keep(fresh.clone(), clock::now_ms());
-            fresh
-        })
+        self.background.latest().unwrap_or_else(|| self.background.fill_in(self.summarize(), clock::now_ms()))
     }
 
     /// 추이 IPC의 답(`processes_trend`) — 배경 표본이 든 합계의 1시간치, 오래된 것부터(프로세스 결정 10 · 티켓 30). 표를 찍지 않는다 —
@@ -449,21 +449,19 @@ mod tests {
         assert_eq!(asked_meanwhile.sample_once(&mut held), summary::EVERY, "요약 IPC가 웹뷰의 답을 받았는데 또 미뤘다");
     }
 
-    /// 표본이 WebContent를 물은 **뒤**, 그 표본이 풀을 다시 볼 때 요약 IPC 하나를 그 자리에서 돌리는 풀 — 두 스레드의 차례(표본의
-    /// 물음이 늦음으로 끝난 뒤, 표본이 미룰지 가르기 전에 IPC의 물음이 답을 받는다)를 한 스레드에서 고정한다. IPC의 요약은 다시
-    /// 이 풀을 보지만 한 번만 돈다.
-    #[derive(Default)]
-    struct IpcMeanwhile {
+    /// 서비스가 WebContent를 물은 **뒤**, 그 모으기가 풀을 다시 볼 때 다른 스레드의 일 하나(`then`)를 그 자리에서 돌리는 풀 — 두
+    /// 스레드의 차례(먼저 모으기 시작한 쪽의 물음이 끝난 뒤, 그쪽이 장을 가르거나 앉히기 전에 다른 쪽이 돈다)를 한 스레드에서 고정한다.
+    /// 그 일도 다시 이 풀을 보지만 한 번만 돈다.
+    struct Meanwhile {
         record: Record,
         service: std::sync::OnceLock<std::sync::Weak<ProcessService>>,
         /// 웹뷰에게 한 번이라도 물었나 — 묻는 함수가 세운다.
         asked: Arc<std::sync::atomic::AtomicBool>,
         ran: std::sync::atomic::AtomicBool,
-        /// IPC가 돌려준 장.
-        answered: Mutex<Option<Summary>>,
+        then: Box<dyn Fn(&ProcessService) + Send + Sync>,
     }
 
-    impl ShellListing for IpcMeanwhile {
+    impl ShellListing for Meanwhile {
         fn listing(&self) -> (Vec<ShellEntry>, Vec<PoolShell>) {
             (Vec::new(), Vec::new())
         }
@@ -472,35 +470,52 @@ mod tests {
             use std::sync::atomic::Ordering;
             if self.asked.load(Ordering::SeqCst) && !self.ran.swap(true, Ordering::SeqCst) {
                 let service = self.service.get().and_then(std::sync::Weak::upgrade).expect("서비스가 아직 산다");
-                *self.answered.lock().unwrap() = Some(service.summary());
+                (self.then)(&service);
             }
             &self.record
         }
     }
 
-    /// **첫 장을 미룰지는 그 장을 모은 물음이 가른다**(티켓 30 · S39). 표본의 물음이 늦어 그 장이 「웹뷰 제외」인데, 표본이 가르기 전에
-    /// 요약 IPC(다른 스레드)의 물음이 답을 받아 제 장을 앉혔다 — 그 뒤에 자리의 지금 값(「들었다」)으로 가르면 표본이 제 제외 장을
-    /// 앉혀 IPC의 장을 덮는다. nav와 요약 카드가 다음 박자(10초)까지 그 장을 보인다. 이 장은 이 장의 물음으로 가른다: 미루고, IPC의
-    /// 장이 남는다. 다음 표본은 들은 답이 있어 곧바로 앉는다(앵커).
-    ///
-    /// 표본마다 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다).
-    #[test]
-    fn a_sample_asked_too_late_is_held_even_if_the_summary_ipc_heard_meanwhile() {
-        use std::sync::atomic::Ordering;
+    /// `Meanwhile` 풀을 보는 서비스 — 웹뷰는 `answers`를 차례로 답한다(`scripted`).
+    fn meanwhile(answers: &[WebContentAnswer], then: impl Fn(&ProcessService) + Send + Sync + 'static) -> Arc<ProcessService> {
+        use std::sync::atomic::{AtomicBool, Ordering};
 
-        let pool = Arc::new(IpcMeanwhile::default());
+        let asked = Arc::new(AtomicBool::new(false));
+        let pool = Arc::new(Meanwhile {
+            record: Record::default(),
+            service: std::sync::OnceLock::new(),
+            asked: Arc::clone(&asked),
+            ran: AtomicBool::new(false),
+            then: Box::new(then),
+        });
         let service = Arc::new(ProcessService::new(Arc::clone(&pool)));
-        pool.service.set(Arc::downgrade(&service)).expect("한 번만 건다");
-        let answers = scripted(&[WebContentAnswer::Late, WebContentAnswer::Answered(None)]);
-        let asked = Arc::clone(&pool.asked);
+        assert!(pool.service.set(Arc::downgrade(&service)).is_ok(), "한 번만 건다");
+        let answers = scripted(answers);
         service.ask_web_content_with(move || {
             asked.store(true, Ordering::SeqCst);
             answers()
         });
+        service
+    }
+
+    /// **첫 장을 미룰지는 그 장을 모은 물음이 가른다**(티켓 30 · S39). 표본의 물음이 늦어 그 장이 「웹뷰 제외」인데, 표본이 가르기 전에
+    /// 요약 IPC(다른 스레드)의 물음이 답을 받아 제 장을 앉혔다 — 그 뒤에 자리의 지금 값(「들었다」)으로 가르면 표본이 제 제외 장을
+    /// 앉혀 IPC의 장을 덮는다. nav와 요약 카드가 다음 박자(10초)까지 그 장을 보인다. 이 장은 이 장의 물음으로 가른다: 미루고, IPC의
+    /// 장이 남는다. 다음 표본은 들은 답이 있어 곧바로 앉는다(앵커). 거울 쪽(IPC의 제외 장이 표본의 장을 덮는 것)은
+    /// `a_summary_asked_too_late_does_not_cover_the_sample_that_counted_the_webview`가 잰다.
+    ///
+    /// 표본마다 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다).
+    #[test]
+    fn a_sample_asked_too_late_is_held_even_if_the_summary_ipc_heard_meanwhile() {
+        let answered = Arc::new(Mutex::new(None));
+        let seen = Arc::clone(&answered);
+        let service = meanwhile(&[WebContentAnswer::Late, WebContentAnswer::Answered(None)], move |service| {
+            *seen.lock().unwrap() = Some(service.summary());
+        });
 
         let mut held = 0;
         let wait = service.sample_once(&mut held);
-        let answered = pool.answered.lock().unwrap().clone();
+        let answered = answered.lock().unwrap().clone();
         assert!(answered.is_some(), "표본이 모으는 사이 요약 IPC가 안 돌았다 — 이 검사가 재는 차례가 없다");
         assert_eq!(
             wait,
@@ -509,6 +524,40 @@ mod tests {
         );
         assert_eq!(service.background.latest(), answered, "표본이 IPC가 앉힌 장을 덮었다");
         assert_eq!(service.sample_once(&mut held), summary::EVERY, "들은 답이 있는데 다음 표본도 미뤘다");
+    }
+
+    /// **요약 IPC가 제 물음이 늦어 모은 「웹뷰 제외」 장은, 그사이 배경 표본이 앉힌 웹뷰를 센 장을 덮지 않는다**(티켓 30 · S39) — 위
+    /// `a_sample_asked_too_late_is_held_even_if_the_summary_ipc_heard_meanwhile`의 거울이다. 앱이 막 떠 마지막 장이 없을 때 요약 IPC가
+    /// 그 자리에서 모으는데, 그 물음이 늦어(아직 들은 답이 없다) 그 장은 「웹뷰 제외」다. 그사이 표본의 물음이 답을 받아 웹뷰를 센 장을
+    /// 앉혔다 — IPC가 제 장을 그대로 앉히면 nav와 요약 카드가 다음 박자(10초)까지 웹뷰만큼 낮은 합계를 보인다. IPC는 표본의 장을
+    /// 돌려주고 그 장이 남는다(`Background::fill_in`). 추이는 이 차례에서도 안 흔들린다 — 웹뷰를 센 점 뒤의 제외 점은 원래 안 든다
+    /// (`Trend::add`).
+    ///
+    /// 검사가 띄운 자식 하나를 WebContent 자리에 세운다(`the_app_body_counts_the_web_content_the_webview_names`와 같다). 신호는 이
+    /// 검사가 띄운 자식에게만 간다(`Kid`의 거두기).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_summary_asked_too_late_does_not_cover_the_sample_that_counted_the_webview() {
+        use crate::processes::testkit::{key, Kid};
+
+        let stand_in = Kid::spawn("sleep", &key(52));
+        let pid = stand_in.settle().expect("WebContent 자리의 자식이 자리를 잡는다").pid;
+        let sampled = Arc::new(Mutex::new(None));
+        let seen = Arc::clone(&sampled);
+        let service = meanwhile(&[WebContentAnswer::Late, WebContentAnswer::Answered(Some(pid))], move |service| {
+            *seen.lock().unwrap() = Some(service.sample_once(&mut 0));
+        });
+
+        let answered = service.summary();
+        assert_eq!(
+            *sampled.lock().unwrap(),
+            Some(summary::EVERY),
+            "요약 IPC가 모으는 사이 표본이 웹뷰의 답을 받아 제 장을 앉히지 않았다 — 이 검사가 재는 차례가 없다"
+        );
+        let kept = service.background.latest().expect("장이 앉았다");
+        assert!(!kept.webview_excluded, "요약 IPC의 「웹뷰 제외」 장이 그사이 표본이 앉힌 웹뷰를 센 장을 덮었다");
+        assert_eq!(answered, kept, "요약 IPC가 앉은 장과 다른 장을 돌려줬다");
+        drop(stand_in);
     }
 
     /// **추이 IPC는 배경 자리의 고리를 돌려준다**(티켓 30) — 표본이 앉힐 때 합계와 그 때를 한 점으로 더한 것이다. 부를 때마다 표를

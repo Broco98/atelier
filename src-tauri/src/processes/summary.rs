@@ -295,10 +295,33 @@ impl Background {
     /// (`Trend::add` — 웹뷰를 센 합계와 못 센 합계를 한 선에 안 잇는다). 합계를 못 읽은 표본(macOS 밖)은 점이 없다. 점을 안 넣는 장도
     /// 마지막 장으로는 앉는다.
     pub fn keep(&self, summary: Summary, at: u64) {
+        let mut latest = lock(&self.latest);
+        self.seat(&mut latest, summary, at);
+    }
+
+    /// **요약 IPC가 그 자리에서 모은 장을 앉히고, 그 뒤의 마지막 장을 돌려준다**(`ProcessService::summary`). 그 장을 모으는 사이 배경
+    /// 표본이 **웹뷰를 센** 장을 앉혔으면, 웹뷰를 못 센 이 장으로 덮지 않고 표본의 장을 돌려준다.
+    ///
+    /// 앱이 막 떴을 때의 차례다(티켓 30 · S39): 마지막 장이 없어 IPC가 모으는데 그 물음이 늦어(아직 들은 답이 없다) 「웹뷰 제외」 장이
+    /// 서고, 그사이 표본의 물음이 답을 받아 웹뷰를 센 장을 앉힌다. 덮으면 nav와 요약 카드가 다음 박자까지 웹뷰만큼 낮은 합계를 보인다.
+    /// 거울 쪽(표본의 제외 장이 IPC의 장을 덮는 것)은 표본이 제 물음으로 첫 장을 미뤄 막는다(`holds_first`). 가르기와 앉히기는 한
+    /// 잠금 안이다 — 그 사이에 표본이 앉히면 가른 것이 낡는다. 그 밖의 장(둘 다 셌거나 둘 다 못 셌다, 웹뷰를 센 이 장)은 그대로 앉는다.
+    pub fn fill_in(&self, summary: Summary, at: u64) -> Summary {
+        let mut latest = lock(&self.latest);
+        if let Some(kept) = latest.as_ref().filter(|kept| summary.webview_excluded && !kept.webview_excluded) {
+            return kept.clone();
+        }
+        self.seat(&mut latest, summary.clone(), at);
+        summary
+    }
+
+    /// 쥔 마지막 장의 자리에 새 장을 앉히고 추이에 점을 더한다 — 마지막 장의 잠금을 쥔 채 부른다(`keep` · `fill_in`). 잠금 차례는
+    /// 늘 마지막 장 → 추이다.
+    fn seat(&self, latest: &mut Option<Summary>, summary: Summary, at: u64) {
         if let Some(total) = summary.total {
             lock(&self.trend).add(Point { at, total }, !summary.webview_excluded);
         }
-        *lock(&self.latest) = Some(summary);
+        *latest = Some(summary);
     }
 
     /// 마지막 표본. 아직 한 장도 없으면 `None`이다.
@@ -590,6 +613,37 @@ mod tests {
             "웹뷰를 센 뒤의 제외 표본이 점을 넣었다 — 없던 하락이 선다"
         );
         assert_eq!(counted.latest(), Some(sheet(Some(2_010 * MB), false)), "점을 안 넣는 장도 마지막 장으로는 앉는다");
+    }
+
+    /// **요약 IPC가 모은 장은 웹뷰를 센 마지막 장을 「웹뷰 제외」로 덮지 않는다**(`fill_in` · 티켓 30 · S39) — 앱이 막 떴을 때 IPC의
+    /// 물음이 늦은 사이 표본이 웹뷰를 센 장을 앉히면, IPC는 표본의 장을 돌려주고 그 장이 남는다(추이에도 점이 안 는다). 앵커 셋: 빈
+    /// 자리에는 제외 장도 앉고, 웹뷰를 센 IPC의 장은 제외 장을 갈아 끼우며, 둘 다 셌으면 IPC의 장이 앉는다.
+    #[test]
+    fn a_summary_ipc_sheet_does_not_drop_the_webview_the_last_sheet_counted() {
+        let sheet = |total: u64, webview_excluded: bool| Summary {
+            total: Some(total),
+            cpu: None,
+            app: None,
+            webview_excluded,
+            unknown: vec![],
+            record_head: None,
+        };
+        let point = |at: u64, total: u64| Point { at, total };
+
+        let counted = Background::default();
+        counted.keep(sheet(2_000 * MB, false), 10_000);
+        assert_eq!(counted.fill_in(sheet(400 * MB, true), 11_000), sheet(2_000 * MB, false), "요약 IPC가 웹뷰를 센 마지막 장이 아니라 제 제외 장을 돌려줬다");
+        assert_eq!(counted.latest(), Some(sheet(2_000 * MB, false)), "요약 IPC의 제외 장이 웹뷰를 센 마지막 장을 덮었다");
+        assert_eq!(counted.trend(), vec![point(10_000, 2_000 * MB)]);
+
+        let empty = Background::default();
+        assert_eq!(empty.fill_in(sheet(400 * MB, true), 11_000), sheet(400 * MB, true));
+        assert_eq!(empty.latest(), Some(sheet(400 * MB, true)), "빈 자리에 요약 IPC의 장을 안 앉혔다");
+        assert_eq!(empty.fill_in(sheet(2_000 * MB, false), 12_000), sheet(2_000 * MB, false));
+        assert_eq!(empty.latest(), Some(sheet(2_000 * MB, false)), "웹뷰를 센 요약 IPC의 장이 제외 장을 못 갈아 끼웠다");
+        assert_eq!(empty.fill_in(sheet(2_010 * MB, false), 13_000), sheet(2_010 * MB, false));
+        assert_eq!(empty.latest(), Some(sheet(2_010 * MB, false)), "둘 다 셌는데 요약 IPC의 장이 안 앉았다");
+        assert_eq!(empty.trend(), vec![point(12_000, 2_000 * MB), point(13_000, 2_010 * MB)]);
     }
 
     /// **배경 미터는 제 박자로 버린다**(티켓 30). 표본 사이가 10초를 조금 넘어도 CPU가 선다 — 화면의 나이(10초)로 버리면 요약의 CPU가
