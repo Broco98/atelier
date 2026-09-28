@@ -1037,8 +1037,8 @@ export async function settleOwners(mode: Mode, result: ListResult | undefined): 
 }
 
 /**
- * 그 세계의 주인 잃은 셸 토스트가 말할 것 — id와 문구(티켓 12). N은 **도는** 주인 잃은 셸이다(`liveOwnerlessOf`). 도는 것이
- * 없으면 `null`이다 — 「아직 도는 것이 있어요」가 거짓이 된다. 세우기(`showOwnerless`)와 고치기(`refreshOwnerless`)가 같은 N과
+ * 그 세계의 주인 잃은 셸 토스트가 말할 것 — id와 문구(티켓 12). N은 **살아 있는** 주인 잃은 셸이다(`liveOwnerlessOf`). 살아 있는
+ * 것이 없으면 `null`이다 — 「아직 도는 것이 있어요」가 거짓이 된다. 세우기(`showOwnerless`)와 고치기(`refreshOwnerless`)가 같은 N과
  * 같은 말을 이 한 자리에서 짓는다.
  */
 function ownerlessToastOf(mode: Mode): { id: string; text: string } | null {
