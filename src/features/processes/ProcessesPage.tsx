@@ -220,7 +220,8 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
 const NOTHING_SHOWN: ReadonlyArray<string> = [];
 
 /**
- * 셸이 선 세계의 목록 — work 행의 이름과 차례(사이드바 순서)가 여기서 온다. 사이드바가 이미 보는 지금 세계의 것은 캐시에 있다.
+ * 셸이 선 세계의 목록 — work 행의 이름과 차례(사이드바 순서)가 여기서 온다. 사이드바가 이미 보는 지금 세계의 것은 캐시에 있어 곧바로
+ * 선다 — 다만 그 캐시가 `worksQuery`의 `staleTime`보다 오래됐으면 이 화면이 설 때 한 번 다시 읽는다(react-query의 마운트 재조회).
  * 저쪽 세계의 것은 **그 세계에 work의 셸이 있을 때만** 묻는다 — 목록 조회는 워크트리마다 `git status`라 셸 없는 세계를 화면을 열
  * 때마다 읽을 까닭이 없다. 최상위 터미널의 셸만 있는 세계도 안 묻는다(이름이 nav의 `Terminal`이다).
  */

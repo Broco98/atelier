@@ -91,7 +91,8 @@ export function flagAt(payload: unknown, key: string): boolean {
  * `AskUserQuestion` 도구의 **첫 물음** 한 줄. 입력 모양은 claude 2.1.283 바이너리의 도구 스키마다 —
  * `tool_input.questions[]`의 원소마다 `question`(물음 글) · `header` · `options` · `multiSelect`.
  *
- * **첫 물음만 싣는다.** 한 번에 넷까지 묻지만 둘째 줄·띠·알림은 한 줄이고, 사람이 창을 열면 전부 보인다.
+ * **첫 물음만 싣는다.** 한 번에 넷까지 묻지만 셸의 말이 서는 자리(호버 카드의 말 칸 · 행 버튼의 설명 — `callingNote`)와 띠 ·
+ * 알림은 한 줄이고, 사람이 창을 열면 전부 보인다.
  * 물음을 못 읽으면 승인 요청과 같은 요약(`permissionLine` — 모르면 도구 이름만)이 바닥이다: 모르는 것을
  * 지어내지 않는다.
  */

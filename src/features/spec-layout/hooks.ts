@@ -45,7 +45,7 @@ export function invalidateSpecLayout(queryClient: QueryClient) {
  * 하나만 부르는 것도 까닭이다 — 구독이 둘이면 L3가 한쪽만 깨워 다른 쪽을 잴 수 없다. 이 둘은
  * `hooks.test.ts`가 소스로 센다.
  *
- * 배선은 work 목록의 `works:changed` 구독(`useWorks`)과 같다.
+ * 배선은 앱 루트(`AppShell`)의 `works:changed` 구독과 같다.
  */
 export function useFollowLayoutChanges() {
   const queryClient = useQueryClient();

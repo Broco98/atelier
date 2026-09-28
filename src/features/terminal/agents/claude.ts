@@ -53,8 +53,8 @@ export const claude: AgentAdapter = {
         if (asksQuestion(payload)) return questionSignal(payload);
         return { event: "tool", message: null };
       case "PostToolUse":
-        // 도구가 돌았다. **말은 안 싣는다** — 도는 중의 둘째 줄은 직전 맥락이고, 도구마다 두 번 오는 사건이 그
-        // 줄을 도구 이름으로 갈아 끼우면 사람이 읽을 말이 도구가 돌 때마다 튄다.
+        // 도구가 돌았다. **말은 안 싣는다** — 도는 중인 셸의 말은 직전 맥락이고, 도구마다 두 번 오는 사건이 그
+        // 말을 도구 이름으로 갈아 끼우면 사람이 읽을 말이 도구가 돌 때마다 튄다.
         return { event: "tool", message: null };
       case "PostToolUseFailure":
         // **중단으로 닿은 실패만 중단이다**(프로세스 결정 12의 사실 쪽). 도구가 스스로 실패한 것은 턴이 계속
