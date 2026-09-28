@@ -5,7 +5,7 @@ import {
   callCount,
   fireWindowEvent,
   installFixtureBackend,
-  ipcCallArgs,
+  kills,
   modeButton,
   navButton,
   navButtons,
@@ -250,7 +250,7 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   // ×로 닫는다 — 까닭 「셸 닫기」가 나간다. 백엔드는 이 닫기를 정리 기록에 적지만 머리는 그대로 3이다.
   await 칸들(page).locator('button[aria-label$="닫기"]').first().click();
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.reason))
+    .poll(async () => (await kills(page)).map(({ reason }) => reason))
     .toEqual(["shellClose"]);
   await 박자(page);
   await expect(점(page)).toHaveCount(0);

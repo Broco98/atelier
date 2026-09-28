@@ -11,6 +11,7 @@ import {
   holdTerminalFonts,
   installFixtureBackend,
   ipcCallArgs,
+  kills,
   markRunning,
   ptyGrids,
   refuseFirstSpawn,
@@ -308,7 +309,7 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
 
   await expectEveryTabStarted(page, 1);
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id))
+    .poll(async () => (await kills(page)).map(({ id }) => id))
     .toEqual([1]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -335,7 +336,7 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
 
   await releaseCommand(page, "pty_spawn");
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id).sort())
+    .poll(async () => (await kills(page)).map(({ id }) => id).sort())
     .toEqual([1, 2]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -395,7 +396,7 @@ for (const replied of [true, false]) {
     if (!replied) await releaseCommand(page, "pty_spawn");
 
     await expect
-      .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id))
+      .poll(async () => (await kills(page)).map(({ id }) => id))
       .toEqual([1]);
     // 옆 칸은 그대로 돈다. 거둔 칸에는 셸 이름이 안 앉는다 — 이유가 그대로 남는다.
     await expect(closeOf(page, 1, FIXTURE_SHELL_NAME)).toHaveCount(1, { timeout: 20_000 });

@@ -9,6 +9,7 @@ import {
   installFixtureBackend,
   ipcCallArgs,
   ipcFailure,
+  kills,
   openShell,
   unknownIpcCalls,
   칸들,
@@ -54,7 +55,7 @@ test("명령이 돌고 자손도 있으면 명령 문구 아래에 함께 끝날
   expect(await bodyLines(dialog)).toEqual([CLOSE_NOTICE, "이 셸에서 띄운 프로세스 2개도 함께 끝나요."]);
   // 창을 거쳐 닫는다 — 둘째 줄이 섰어도 닫는 길은 그대로다.
   await dialog.getByRole("button", { name: "닫기", exact: true }).click();
-  await expect.poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id)).toEqual([1]);
+  await expect.poll(async () => (await kills(page)).map(({ id }) => id)).toEqual([1]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -103,7 +104,7 @@ test("명령도 자손도 없으면 묻지 않고 닫는다", async ({ page }) =
   await closeActiveShell(page);
 
   // 앵커: 물음이 나갔고 그 답으로 닫았다 — 묻기 전에 닫은 것이 아니다.
-  await expect.poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id)).toEqual([1]);
+  await expect.poll(async () => (await kills(page)).map(({ id }) => id)).toEqual([1]);
   expect(await callCount(page, "pty_close_check")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   expect(await unknownIpcCalls(page)).toEqual([]);

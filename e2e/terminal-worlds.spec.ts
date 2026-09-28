@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "./evidence";
 import { MAISON_LANDING_ROOM } from "./fixtures";
-import { installFixtureBackend, readIpcRecord, typeIntoShell, unknownIpcCalls } from "./harness";
+import { installFixtureBackend, kills, readIpcRecord, typeIntoShell, unknownIpcCalls } from "./harness";
 
 // 판 01 · 티켓 #184 — **두 세계의 최상위 터미널이 서로 다른 셸이다**(결정 10).
 //
@@ -121,11 +121,7 @@ test("두 세계의 Terminal은 서로 다른 셸이고, 갈았다 돌아와도 
   // 「이쪽 셸은 안 닫혔다」가 아직 안 나간 호출과 안 섞인다. 그 닫기는 까닭 「셸 닫기」와 저쪽 세계의 주인을 싣는다
   // (티켓 11) — 회수는 사람이 누른 닫기가 아니어도 셸 닫기이고, 주인이 세계를 싣는다.
   expect(await spawnedModes(page)).toHaveLength(afterCrossing);
-  await expect
-    .poll(async () =>
-      ((await readIpcRecord(page))?.calls ?? []).filter((call) => call.startsWith("pty_kill")),
-    )
-    .toEqual(['pty_kill {"id":3,"reason":"shellClose","owner":"maison:"}']);
+  await expect.poll(() => kills(page)).toEqual([{ id: 3, reason: "shellClose", owner: "maison:" }]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

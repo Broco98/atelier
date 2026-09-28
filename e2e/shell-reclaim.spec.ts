@@ -6,6 +6,7 @@ import {
   callCount,
   installFixtureBackend,
   ipcCallArgs,
+  kills,
   navButton,
   openShell,
   unknownIpcCalls,
@@ -29,7 +30,7 @@ const [pinnedWork, plainWork] = WORKS;
 
 /** 지금까지 닫힌 셸의 pty id, 불린 순서대로. */
 async function killed(page: Page): Promise<unknown[]> {
-  return (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id);
+  return (await kills(page)).map(({ id }) => id);
 }
 
 /** 사이드바에서 그 work을 누른다 — SPA 이동이라 스토어가 산다(주소를 치면 페이지가 새로 뜬다). */
