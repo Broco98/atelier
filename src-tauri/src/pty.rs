@@ -2876,9 +2876,8 @@ mod tests {
             | Scene::Record
             | Scene::Exit => {}
         }
-        let spawned = spawn_until_it_speaks(&pool, &home);
+        let (spawned, raised_on_spawn) = spawn_until_it_speaks(&pool, &home);
         let key = crate::processes::shell_key::mint(spawned.id);
-        let raised_on_spawn = listed(&key);
         let shell_pid = pool.lock().get(&spawned.id).and_then(|shell| shell.pid);
         if scene == Scene::Ask {
             return ask_side(&pool, spawned.id, &key, shell_pid);
@@ -3083,7 +3082,7 @@ mod tests {
         shell_id: u32,
         /// 셸에서 띄운 자식 — 5초 안에 못 섰으면 `None`.
         child: Option<crate::processes::Identity>,
-        /// 셸을 띄운 직후 그 키가 인스턴스 기록에 있었나.
+        /// 셸 띄우기가 돌아온 바로 그때(프롬프트를 기다리기 전) 그 키가 인스턴스 기록에 있었나(`spawn_until_it_speaks`).
         raised_on_spawn: bool,
         /// 거두는 길이 돌아온 순간(셸 스스로 끝남은 셸이 풀에서 빠진 순간) 키가 기록에 있었나 · 자식이 살아 있었나.
         listed_on_return: bool,
@@ -3096,8 +3095,12 @@ mod tests {
     }
 
     /// 풀에 셸 하나를 띄우고, 그 셸이 무언가(프롬프트)를 내보낼 때까지 기다린다(5초까지) — 읽기 전에 쓴 줄을 셸이 버릴 수 있다.
+    ///
+    /// 함께 **띄우기가 돌아온 바로 그때** 그 셸 키가 인스턴스 기록에 있었나를 준다(프로세스 스펙 S52 — 키는 자식을 띄우기 전에
+    /// 오른다). 프롬프트를 기다린 뒤에 보면, 키를 셸이 처음 말할 때 올리는 변형(띄우기 밖으로 밀린 올리기)도 참이다. 기록을 안 연
+    /// 풀에서는 늘 거짓이다 — 기록을 여는 장면만 단언한다.
     #[cfg(target_os = "macos")]
-    fn spawn_until_it_speaks(pool: &std::sync::Arc<super::PtyPool>, home: &Path) -> super::PtySpawned {
+    fn spawn_until_it_speaks(pool: &std::sync::Arc<super::PtyPool>, home: &Path) -> (super::PtySpawned, bool) {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         use tauri::ipc::Channel;
@@ -3110,8 +3113,9 @@ mod tests {
         });
         let spawned =
             super::spawn(pool, Mode::Atelier, Some(home.display().to_string()), 80, 24, frames).expect("셸을 띄운다");
+        let raised_on_spawn = listed(&crate::processes::shell_key::mint(spawned.id));
         crate::processes::testkit::wait_until(|| spoke.load(Ordering::Relaxed));
-        spawned
+        (spawned, raised_on_spawn)
     }
 
     /// 풀에 셸 하나를 더 띄우고 장면의 줄(`Scene::line`)로 표식 자식을 띄운다 — 두 셸 장면(`Scene::two_shells`)의 둘째 셸. 그
@@ -3124,7 +3128,7 @@ mod tests {
     ) -> Option<crate::processes::Identity> {
         use crate::processes::snapshot::{take, EnvScope};
 
-        let second = spawn_until_it_speaks(pool, home);
+        let (second, _) = spawn_until_it_speaks(pool, home);
         let key = crate::processes::shell_key::mint(second.id);
         super::write(pool, second.id, &scene.line()).expect("둘째 셸에 한 줄을 친다");
         let mut child = None;
@@ -3177,9 +3181,8 @@ mod tests {
     ) {
         use crate::processes::testkit::wait_until;
 
-        let second = spawn_until_it_speaks(pool, home);
+        let (second, second_raised) = spawn_until_it_speaks(pool, home);
         let second_key = crate::processes::shell_key::mint(second.id);
-        let second_raised = listed(&second_key);
         super::write(pool, second.id, "exit\n").expect("둘째 셸에 exit를 친다");
         let second_left = wait_until(|| !pool.lock().contains_key(&second.id));
         let second_lowered = wait_until(|| !listed(&second_key));
