@@ -85,6 +85,8 @@ export function needsLook(seen: ReadonlyArray<string>, now: ReadonlyArray<string
  * 그때마다 한다. 새것이 있으면 지금 것을 **모두** 남기고, 남는 칸(`SEEN_CAP` − 지금 것 수)만큼만 가장 최근에 본 옛 것을 앞에 둔다.
  * 상한은 옛 것에만 건다: 출처 불명은 트리 전체를 신원으로 실어 한 번에 수백이 설 수 있는데, 지금 것까지 자르면 잘린 것이 본 뒤에도
  * 새것이라 점이 곧바로 다시 선다. 지금 것이 상한을 넘으면 집합은 지금 것뿐이다 — 그래도 다음에 같은 것을 보면 새것이 없어 그대로다.
+ * 그래서 「봤다」를 앉히는 자리가 둘이면 두 자리의 지금 것을 합쳐 준다(`looked.ts`의 `markSeen`) — 한 자리의 것만 주면 다른 자리가
+ * 방금 본 것이 옛 것으로 잘린다.
  */
 export function seenWith(seen: ReadonlyArray<string>, now: ReadonlyArray<string>): ReadonlyArray<string> {
   if (!needsLook(seen, now)) return seen;

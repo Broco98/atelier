@@ -84,7 +84,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
     () => (snapshot ? lookablesOf(ownerlessShellKeys(shells), lookSourceOf(snapshot)) : NOTHING_SHOWN),
     [shells, snapshot],
   );
-  useSeeWhileLooking(shown);
+  useSeeWhileLooking("screen", shown);
 
   const previous = usePreviousBeat(snapshot?.pool, shells, dataUpdatedAt);
   const [closedOffscreen, markOffscreenClosed] = useClosedOffscreen(snapshot?.pool);

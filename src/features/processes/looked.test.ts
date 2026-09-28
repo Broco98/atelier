@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SEEN_CAP, needsLook } from "./needs-look";
 
 // 프로세스 티켓 29 — **nav 메타의 본 것이 앱을 껐다 켜도 남는다**(프로세스 스펙 S41). 본 것의 집합은 localStorage에 산다(`looked.ts`) —
 // 실행마다 잊으면 지난주의 자동 기록 하나가 앱을 켤 때마다 점을 다시 켠다. 이 파일은 그 저장의 두 끝을 잰다: 앱이 뜰 때 읽고, 새것을
@@ -65,10 +66,10 @@ describe("본 것의 저장", () => {
   it("새것을 보면 적고, 새것이 없으면 안 적는다", async () => {
     const values = installStorage();
     const { lookStore, markSeen } = await launch();
-    markSeen(["shell:G-1"]);
+    markSeen("nav", ["shell:G-1"]);
     expect(values.get(SEEN_KEY)).toBe(JSON.stringify(["shell:G-1"]));
     values.delete(SEEN_KEY);
-    markSeen(["shell:G-1"]);
+    markSeen("nav", ["shell:G-1"]);
     expect(values.has(SEEN_KEY)).toBe(false);
     expect(lookStore.state.seen).toEqual(["shell:G-1"]);
   });
@@ -79,13 +80,46 @@ describe("본 것의 저장", () => {
     installStorage({}, throwing);
     const broken = await launch();
     expect(broken.lookStore.state.seen).toEqual([]);
-    expect(() => broken.markSeen(["shell:G-1"])).not.toThrow();
+    expect(() => broken.markSeen("nav", ["shell:G-1"])).not.toThrow();
     expect(broken.lookStore.state.seen).toEqual(["shell:G-1"]);
 
     Reflect.deleteProperty(globalThis, "localStorage");
     const none = await launch();
     expect(none.lookStore.state.seen).toEqual([]);
-    expect(() => none.markSeen(["shell:G-1"])).not.toThrow();
+    expect(() => none.markSeen("nav", ["shell:G-1"])).not.toThrow();
     expect(none.lookStore.state.seen).toEqual(["shell:G-1"]);
+  });
+});
+
+// **「봤다」를 앉히는 자리는 둘이다** — nav 메타는 요약(최대 20초 늦다)으로, 화면은 스냅샷(2초)으로. 두 자리가 본 것은 조금씩
+// 다르다(요약은 이미 끝난 것을 들고 새것은 없다). 상한은 지금 것 밖에 걸리므로, 한 자리의 것만 지금 것으로 치면 그 수가 상한에
+// 닿을 때 다른 자리가 방금 본 것이 잘린다 — 보는 동안 두 자리가 번갈아 다시 적고, 떠난 뒤에는 화면에서 본 출처 불명이 늦은 요약에
+// 실려 와 점이 선다.
+describe("두 자리가 함께 앉힌다", () => {
+  const 불명 = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, at) => `unknown:${from + at}@1`);
+
+  it("저마다 본 것이 상한을 넘어도 서로의 것을 안 지우고, 같은 것을 다시 보면 안 적는다", async () => {
+    const values = installStorage();
+    const { lookStore, markSeen } = await launch();
+    const screen = 불명(1, SEEN_CAP + 44);
+    const nav = 불명(51, SEEN_CAP + 94);
+    markSeen("screen", screen);
+    markSeen("nav", nav);
+    expect(needsLook(lookStore.state.seen, screen), "요약이 화면에서 본 것을 지웠다").toBe(false);
+    expect(needsLook(lookStore.state.seen, nav)).toBe(false);
+    values.delete(SEEN_KEY);
+    markSeen("screen", screen);
+    markSeen("nav", nav);
+    expect(values.has(SEEN_KEY), "보는 동안 번갈아 다시 적는다").toBe(false);
+  });
+
+  it("저마다는 상한 아래라도 합이 넘으면 서로의 것을 안 지운다", async () => {
+    installStorage();
+    const { lookStore, markSeen } = await launch();
+    const screen = 불명(1, 200);
+    const nav = 불명(101, 300);
+    markSeen("screen", screen);
+    markSeen("nav", nav);
+    expect(needsLook(lookStore.state.seen, screen), "요약이 화면에서 본 것을 지웠다").toBe(false);
   });
 });

@@ -26,7 +26,7 @@ export default function ProcessesNavMeta() {
   const ownerlessKeys = useStore(terminalStore, (state) => ownerlessShellKeys(state.shells), shallow);
   const seen = useStore(lookStore, (state) => state.seen);
   const now = useMemo(() => lookablesOf(ownerlessKeys, summary), [ownerlessKeys, summary]);
-  const looking = useSeeWhileLooking(now);
+  const looking = useSeeWhileLooking("nav", now);
 
   // 보는 동안은 켜지 않는다 — 위 이펙트가 본 것으로 앉히기 전 한 프레임에 점이 깜박이지 않게.
   const lit = !looking && needsLook(seen, now);
