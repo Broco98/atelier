@@ -788,8 +788,9 @@ export function ownerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell
 }
 
 /**
- * 그 세계의 주인 잃은 셸 중 **도는 것**. 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기] 확인 창의 N이
- * 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 도는지는 `isAlive` 하나가 가른다.
+ * 그 세계의 주인 잃은 셸 중 **살아 있는 것**(CONTEXT 「주인 잃은 셸」). 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기]
+ * 확인 창의 N이 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 살아 있는지는 `isAlive` 하나가 가른다. 명령 · 자손을
+ * 보는 판정(조용하지 않은 셸 — 프로세스 결정 4)과 다르다: 조용해진 셸도 살아 있으면 센다.
  */
 export function liveOwnerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
   return ownerlessOf(state, mode).filter(isAlive);
@@ -1598,7 +1599,7 @@ export function closingShellsNotice(live: number, spawned: number | null): strin
 
 /**
  * 주인 잃은 셸의 [모두 닫기]가 **한 번** 묻는 말(티켓 12). 셸마다 닫기 확인 창(`closeNotice`)을 띄우면 창이 N번 뜬다 —
- * 여러 셸을 한 번에 닫는 자리는 수를 말하며 한 번 묻는다(프로세스 스펙 S18 · S44). N은 **도는** 주인 잃은 셸이고
+ * 여러 셸을 한 번에 닫는 자리는 수를 말하며 한 번 묻는다(프로세스 스펙 S18 · S44). N은 **살아 있는** 주인 잃은 셸이고
  * (`liveOwnerlessOf`), 띄운 프로세스 수는 아카이브 확인 창과 같은 말이다(`spawnedNote`) — 못 얻었으면 안 붙는다.
  */
 export function ownerlessCloseNotice(live: number, spawned: number | null): string {

@@ -336,7 +336,7 @@ describe("셸로 가는 길의 포커스 — 스토어를 거쳐", () => {
 });
 
 describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
-  // 구현 기록 12 · 32의 남은 것. 주인 잃은 셸 토스트(동작 토스트 — 누르거나 닫을 때까지 남는다)의 N은 **도는** 주인 잃은 셸이다.
+  // 구현 기록 12 · 32의 남은 것. 주인 잃은 셸 토스트(동작 토스트 — 누르거나 닫을 때까지 남는다)의 N은 **살아 있는** 주인 잃은 셸이다.
   // 한때 그 N은 세울 때만 지어져, 그 셸이 스스로 끝나거나 `Processes`에서 닫혀도 「아직 도는 것이 있어요」가 옛 수로 남았다.
   // 고치는 길은 **고치기만** 한다(`update`) — 새로 세우면(`add`) 사람이 이미 닫은 토스트가 셸 하나 닫힐 때마다 되살아난다.
   const 사라진work = (slug: string): ShellOrigin => ({ mode: "atelier", owner: ownerOf("atelier", slug), project: null, cwd: `~/${slug}` });
@@ -399,7 +399,7 @@ describe("주인 잃은 셸 토스트의 N — 스토어를 거쳐", () => {
     expect(terminalStore.state.shells.some((shell) => shell.id === b.id)).toBe(false);
     expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 2) });
 
-    // 스스로 끝남 — 정상 종료는 목록에서 빠지고, 이유가 있는 끝은 목록에 남지만 더는 도는 셸이 아니다.
+    // 스스로 끝남 — 정상 종료는 목록에서 빠지고, 이유가 있는 끝은 목록에 남지만 더는 살아 있는 셸이 아니다.
     exitFrame(c.channel, { exitCode: 0, signal: null });
     expect(update).toHaveBeenLastCalledWith(토스트, { title: ownerlessNotice("atelier", 1) });
     exitFrame(d.channel, { exitCode: 1, signal: null });

@@ -18,7 +18,7 @@ export interface CardCounts {
   shells: number | null;
   /** 셸 상태가 「도는 중」인 셸(훅 · OSC가 말한 것). 명령이 도는 것과 다르다 — 그것은 셸 상태가 아니다. */
   working: number;
-  /** 주인 잃은 셸 중 아직 도는 것 — 두 세계의 것. */
+  /** 주인 잃은 셸 중 아직 살아 있는 것 — 두 세계의 것. */
   ownerlessShells: number;
   confirmed: number | null;
   unknown: number | null;

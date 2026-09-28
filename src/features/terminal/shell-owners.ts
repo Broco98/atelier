@@ -88,7 +88,7 @@ export function ownerlessWorldOf(state: ShellsState, id: number): Mode | null {
 /**
  * 주인 잃은 셸 토스트의 문장(프로세스 결정 4 · 프로세스 스펙 S45). **세는 말은 그 세계의 것이다** — 지금 선 화면이 아니라
  * 아카이브된 것의 세계다. 낱말은 `itemNameOf`에서 온다: Atelier는 화면의 말 「작업」, Maison은 「Room」이다.
- * N은 **도는** 주인 잃은 셸이다(`liveOwnerlessOf`).
+ * N은 **살아 있는** 주인 잃은 셸이다(`liveOwnerlessOf`).
  */
 export function ownerlessNotice(mode: Mode, count: number): string {
   return `아카이브된 ${itemNameOf(mode)}의 셸 ${count}개에 아직 도는 것이 있어요`;

@@ -2519,9 +2519,9 @@ describe("주인 잃은 셸", () => {
     expect(markOwnerless(state, [99])).toBe(state);
   });
 
-  // [모두 닫기]가 닫는 것은 **그 세계의** 주인 잃은 셸 전부다 — 끝난 칸도 함께 거둔다. 토스트의 N은 **도는 것**만 센다
+  // [모두 닫기]가 닫는 것은 **그 세계의** 주인 잃은 셸 전부다 — 끝난 칸도 함께 거둔다. 토스트의 N은 **살아 있는 것**만 센다
   // (「아직 도는 것이 있어요」).
-  it("그 세계의 주인 잃은 셸 — 전부와 도는 것", () => {
+  it("그 세계의 주인 잃은 셸 — 전부와 살아 있는 것", () => {
     let state = opened(1, 가).state;
     for (const origin of [가, 나, 방]) {
       const next = openShell(state, origin);
