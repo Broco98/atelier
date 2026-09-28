@@ -38,7 +38,7 @@ describe("키다운 가르기 — 셸로 보낼 키 · 앱 단축키 · 수정�
     expect(keyRoute(event)).toEqual({ to: "shell", rewrite: null });
   });
 
-  // 셸에 가되 바이트가 갈리는 키(결정 91). 가르는 자리가 한 곳이어야 키 핸들러가 이 답 하나로 돈다.
+  // 셸에 가되 바이트가 갈리는 키(ux-papercuts 결정 91). 가르는 자리가 한 곳이어야 키 핸들러가 이 답 하나로 돈다.
   it("⇧Enter는 셸로 가되 다른 바이트로 간다", () => {
     expect(keyRoute(key({ code: "Enter", key: "Enter", keyCode: 13, shiftKey: true }))).toEqual({
       to: "shell",
@@ -49,7 +49,7 @@ describe("키다운 가르기 — 셸로 보낼 키 · 앱 단축키 · 수정�
   it.each([
     ["⌘T", key({ code: "KeyT", key: "t", metaKey: true }), "new"],
     ["⌘W", key({ code: "KeyW", key: "w", metaKey: true }), "close"],
-    // 본문을 옮기는 키와 팔레트 — 셸이 타이핑하지 않고 위로 흘려보낸다(결정 99).
+    // 본문을 옮기는 키와 팔레트 — 셸이 타이핑하지 않고 위로 흘려보낸다(ux-papercuts 결정 99).
     ["⌘2", key({ code: "Digit2", key: "2", metaKey: true }), "app"],
     ["⌃Tab", key({ code: "Tab", key: "Tab", keyCode: 9, ctrlKey: true }), "app"],
     ["⌘K", key({ code: "KeyK", key: "k", metaKey: true }), "app"],
@@ -207,7 +207,7 @@ describe("권한 창의 키 — 확정 · 거절 · 고르기", () => {
     // ⌃⇧N · ⌥N은 ⌃N이 아니다.
     ["⌃⇧N", key({ code: "KeyN", key: "N", keyCode: 78, ctrlKey: true, shiftKey: true })],
     ["⌥N", key({ code: "KeyN", key: "˜", keyCode: 78, altKey: true })],
-    // ⇧Enter는 셸에 줄바꿈으로 간다(결정 91) — 확정이 아니다.
+    // ⇧Enter는 셸에 줄바꿈으로 간다(ux-papercuts 결정 91) — 확정이 아니다.
     ["⇧Enter", key({ code: "Enter", key: "Enter", keyCode: 13, shiftKey: true })],
     ["⌥Enter", key({ code: "Enter", key: "Enter", keyCode: 13, altKey: true })],
     ["⌃Esc", key({ code: "Escape", key: "Escape", keyCode: 27, ctrlKey: true })],

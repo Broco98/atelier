@@ -86,14 +86,14 @@ describe("떠날 때 회수할 셸", () => {
     expect(out).not.toContain(남의것);
   });
 
-  // 최상위 터미널도 owner다(결정 10). 세계마다 따로다.
+  // 최상위 터미널도 owner다(life-mode 결정 10). 세계마다 따로다.
   it("최상위 터미널을 떠나면 그 세계의 자동 셸이 나온다", () => {
     const top = open(NO_SHELLS, topTerminal("atelier"), true);
     const there = open(top.state, topTerminal("maison"), true);
     expect(reclaimOnLeave(there.state, ownerOf("atelier"), ownerOf("maison"))).toEqual([top.id]);
   });
 
-  // 못 뜬 칸은 이유를 적고 남는다(결정 23) — 닫을 프로세스도 없다. 회수하면 읽어야 할 이유가 함께 사라진다.
+  // 못 뜬 칸은 이유를 적고 남는다(in-app-terminal 결정 23) — 닫을 프로세스도 없다. 회수하면 읽어야 할 이유가 함께 사라진다.
   it("못 뜬 자동 셸은 나오지 않는다", () => {
     const a = open(NO_SHELLS, 가에서(), true);
     const failed = markFailed(a.state, a.id, "셸을 띄우지 못했습니다");

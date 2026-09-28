@@ -458,7 +458,7 @@ fn checks_on(input: &Inputs, asked: Vec<Result<AskedShell, String>>) -> Vec<Resu
     asked.into_iter().map(|one| one.map(|asked| answer_for(&verdict, &asked))).collect()
 }
 
-/// **셸 하나의 답 — 두 물음이 모두 이 하나를 지난다.** 명령이 도는가는 결정 92의 판정 그대로이고, 수에서 셋을
+/// **셸 하나의 답 — 두 물음이 모두 이 하나를 지난다.** 명령이 도는가는 ux-papercuts 결정 92의 판정 그대로이고, 수에서 셋을
 /// 빼는 것은 `verdict::close_count`가 혼자 한다. foreground 그룹은 명령이 돌 때만 넘긴다 — 프롬프트면 그 그룹은
 /// 셸 자신이고, 잡 제어 밖에서 뜬 자손이 거기 산다. 늘 넘기면 그것이 수에서 빠져 확인 창 없이 함께 끝난다
 /// (`one_snapshot_answers_every_shell_as_if_asked_alone`의 셸 A와 풀 배선 장면 `Ask`가 잰다).

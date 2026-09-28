@@ -118,7 +118,7 @@ export function entersCalling(input: Pick<NotifyInput, "prev" | "prevSince" | "n
 
 /**
  * 판정에 걸릴 셸 하나. `kind`는 **화면값**이라(`signalOf`) 본 완료는 이미 `null`이고, `call`은 **부르는 사실**이라 봤어도
- * 그대로다. `visible`은 결정 7의 판정(`isShellSeen`)이 그대로 온 것이다.
+ * 그대로다. `visible`은 terminal-activity-signal 결정 7의 판정(`isShellSeen`)이 그대로 온 것이다.
  */
 export interface NotifyShell {
   id: number;

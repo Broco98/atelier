@@ -15,6 +15,6 @@ export const Route = createFileRoute("/processes")({
 // 셸 상태를 읽는 것은 라우트 층의 일이고 feature 화면은 prop으로 받는다(`terminal.tsx`와 같다).
 function ProcessesRoute() {
   const sidebarOpen = useStore(shellStore, (state) => state.sidebarOpen);
-  // **주소가 세계의 정본이다**(결정 8) — 그 리터럴을 여기서 한 번만 적는다.
+  // **주소가 세계의 정본이다**(life-mode 결정 8) — 그 리터럴을 여기서 한 번만 적는다.
   return <ProcessesPage mode="atelier" sidebarOpen={sidebarOpen} />;
 }

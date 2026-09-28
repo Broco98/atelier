@@ -14,7 +14,7 @@ import type { ShellHookState } from "../types";
  * - `interrupt` 사람이 끊었다 · `clear` 대화를 지웠다(`/clear`) · `end` 세션이 끝났다
  *
  * **옛 판에는 다섯이었고 `stop`과 `waiting`이 둘 다 「나를 기다림」이었다**(terminal-activity-signal 결정 3의 표 ·
- * 결정 12). 프로세스 결정 13이 이렇게 고쳤다: 턴의 끝은 사람이 답할 것이 아니라 **아직 안 본 결과**(확인할
+ * 같은 work 결정 12). 프로세스 결정 13이 이렇게 고쳤다: 턴의 끝은 사람이 답할 것이 아니라 **아직 안 본 결과**(확인할
  * 것)이고, 기다림은 사람이 답해야 할 때(승인 · elicitation · `AskUserQuestion`)만 선다. 그래서 두 이름은 이제
  * 결과까지 갈린다.
  */

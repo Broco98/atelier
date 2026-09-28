@@ -18,7 +18,7 @@ import {
 // 안 세우는 것, 서브에이전트 수가 탭 툴팁에 서는 것, 그리고 리뷰 반영 둘 — `claude -p`의 멈춘 세션 끝 한 장이 확인할
 // 것을 세우는 것, 다른 에이전트의 도구가 승인 대기를 안 푸는 것.
 //
-// **보는 셸과 부르는 셸을 가른다.** 켠 칸에 온 확인할 것은 그 순간 「봤다」가 되어(결정 7) 띠에 안 선다 — 그래서
+// **보는 셸과 부르는 셸을 가른다.** 켠 칸에 온 확인할 것은 그 순간 「봤다」가 되어(terminal-activity-signal 결정 7) 띠에 안 선다 — 그래서
 // 칸 둘을 세우고 첫째를 켠 채 **둘째(pty 2)가 말하게** 한다. 「보면 꺼진다」는 그 둘째를 켜는 것으로 잰다.
 
 const [, plainWork] = WORKS;
@@ -42,7 +42,7 @@ test("턴을 마친 셸은 띠에 확인할 것으로 서고, 그 셸 탭을 보
   // 「나를 기다림」은 안 선다 — 사람이 답할 것이 없다.
   await expect(띠줄(page, `${plainWork.title} — 나를 기다림`)).toHaveCount(0);
 
-  // 그 셸을 켠다 — 창이 앞에 있고 칸이 켜졌으니 「봤다」다(결정 7).
+  // 그 셸을 켠다 — 창이 앞에 있고 칸이 켜졌으니 「봤다」다(terminal-activity-signal 결정 7).
   await 이름표(page, 1).click();
   await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
   await expect(띠(page)).toHaveCount(0);

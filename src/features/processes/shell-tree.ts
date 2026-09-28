@@ -66,7 +66,7 @@ export interface ShellNode extends ShellProcesses {
 
 /**
  * 셸 묶음을 짓는다. **셸이 선 세계만 선다** — 지금 세계가 먼저, 그다음이 저쪽 세계다. 세계 안에서는 사이드바 순서(목록이 준
- * 차례 그대로 — 고정이 먼저인 것은 코어가 정한다, 결정 100)이고, 목록에 없는 work이 그 뒤, 최상위 터미널(`Terminal`)이 맨 끝이다.
+ * 차례 그대로 — 고정이 먼저인 것은 코어가 정한다, ux-papercuts 결정 100)이고, 목록에 없는 work이 그 뒤, 최상위 터미널(`Terminal`)이 맨 끝이다.
  * work 안의 셸은 탭의 차례다.
  *
  * **양쪽에 다 있는 셸만 선다.** 스토어가 모르는 풀의 셸은 「화면 밖 셸」이라 따로 묶인다(32). 풀에 없는 스토어의 칸은 프로세스가
@@ -261,7 +261,7 @@ function splitRows(
 /**
  * 셸 행의 상태 칸(S53) — 위에서부터 첫 갈래다.
  * - 셸 상태(나를 기다림 · 확인할 것 · 도는 중 · 서브에이전트 N)가 있으면 그것이다. 레지스트리가 내놓는 문(`signalOf` ·
- *   `runningSubagents`)을 딛는다 — 셸 탭 · 사이드바 · 띠와 같은 말이어야 한다(스토리 79). 죽은 칸 가리개도 그 문에 있다.
+ *   `runningSubagents`)을 딛는다 — 셸 탭 · 사이드바 · 띠와 같은 말이어야 한다(terminal-activity-signal 스토리 79). 죽은 칸 가리개도 그 문에 있다.
  * - 없고 조용하면 「조용함」과 경과다. 조용함 = 명령도 없고 사람이 띄운 자손도 없음(CONTEXT 「조용한 셸」 — 셸 도우미는 안 센다).
  * - 명령이 돌면 그 명령이다(마크는 화면이 `agentMarkOf`로 고른다 — 표를 아는 자리가 하나다).
  * - 명령 없이 사람이 띄운 것만 남았으면(`pnpm dev &`, claude가 띄우고 나간 dev 서버) 그 수다. 스펙은 이 갈래를 안 적었다 —
@@ -340,7 +340,7 @@ export function groupRowLabel(group: GroupNode): string {
 
 /**
  * 주인 잃은 셸 묶음의 work 줄 — 이름, **세계**, 셸 수, 메모리(티켓 32). 두 세계의 것이 한 묶음에 서고 두 세계에 같은 slug가 설 수
- * 있어(결정 10) 세계를 말한다. 세계 트리의 work 줄은 세계 줄 밑에 서서 말하지 않는다(`groupRowLabel`).
+ * 있어(life-mode 결정 10) 세계를 말한다. 세계 트리의 work 줄은 세계 줄 밑에 서서 말하지 않는다(`groupRowLabel`).
  */
 export function ownerlessGroupRowLabel(group: GroupNode): string {
   return withMemory(

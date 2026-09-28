@@ -49,7 +49,7 @@ const 닫힌셸토스트 = (page: Page) => toastOf(page, "그 셸은 닫혔어�
 /** 네이티브 메뉴의 `View ▸ Last Calling Shell`(⌘J)이 쏘는 것을 손으로 쏜다. */
 const 메뉴로누름 = (page: Page) => fireEvent(page, "hotkey:menu", "KeyJ");
 
-/** 셸이 사람에게 묻는다 — 띠에 「나를 기다림」. 보고 있어도 안 꺼진다(결정 7). `at`이 부른 차례를 가른다. */
+/** 셸이 사람에게 묻는다 — 띠에 「나를 기다림」. 보고 있어도 안 꺼진다(terminal-activity-signal 결정 7). `at`이 부른 차례를 가른다. */
 const 기다림 = (at: number) => ({
   agent: "claude",
   event: "Elicitation",
@@ -230,7 +230,7 @@ test("방금 부른 셸이 닫혔으면 「그 셸은 닫혔어요」가 서고 
   await 터미널로(page, 2);
   await expect(띠줄(page, `${plainWork.title} — 나를 기다림`)).toHaveCount(1);
 
-  // 그 셸이 스스로 끝났다 — 코드 0이면 칸이 목록에서 빠진다(결정 48).
+  // 그 셸이 스스로 끝났다 — 코드 0이면 칸이 목록에서 빠진다(in-app-terminal-v2 결정 48).
   await exitShell(page, 1, 0);
   // 앵커: 셸이 빠져 띠의 줄도 없다.
   await expect(띠(page)).toHaveCount(0);

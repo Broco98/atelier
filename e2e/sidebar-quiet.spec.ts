@@ -168,7 +168,7 @@ test("알림 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => 
   await page.setViewportSize({ width: 1280, height: 360 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  // 보고 있는 셸이라 띠에 남는 것은 기다림이다(결정 7 — 턴의 끝인 확인할 것은 보는 순간 꺼진다).
+  // 보고 있는 셸이라 띠에 남는 것은 기다림이다(terminal-activity-signal 결정 7 — 턴의 끝인 확인할 것은 보는 순간 꺼진다).
   await markAttention(page, {
     agent: "claude",
     event: "Elicitation",

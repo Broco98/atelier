@@ -324,7 +324,7 @@ function ShellRows({
       <TreeRow level={level} label={label} data-shell-key={node.pool.shellKey} className="hover:bg-state-1">
         <span className="min-w-0 truncate text-[13px]">{name}</span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] text-muted-foreground">
-          {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(스토리 79). */}
+          {/* 셸 상태가 있으면 사이드바 · 띠와 같은 글리프가 선다 — 같은 셸에 같은 색이다(terminal-activity-signal 스토리 79). */}
           {state.kind === "signal" && <SignalLane kind={state.signal} />}
           {mark && (
             // 마크는 「누구」다 — 이름은 접근성으로만 한 번 더 읽힌다(`SignalMeta`와 같은 규칙).

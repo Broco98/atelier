@@ -37,7 +37,7 @@ async function toWork(page: Page, work: (typeof WORKS)[number]): Promise<void> {
   await expect(page).toHaveURL(new RegExp(`/works/${work.slug}(\\?|$)`));
 }
 
-/** nav의 `Terminal` — 그 세계의 최상위 터미널도 owner다(결정 10). 들어가면 셸이 저절로 하나 뜬다. */
+/** nav의 `Terminal` — 그 세계의 최상위 터미널도 owner다(life-mode 결정 10). 들어가면 셸이 저절로 하나 뜬다. */
 async function toTerminal(page: Page): Promise<void> {
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
@@ -124,7 +124,7 @@ test("회수된 화면에 다시 오면 새 셸이 저절로 뜬다", async ({ p
   await expect.poll(() => killed(page)).toEqual([1]);
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
 
-  // 사이드바는 그 work에서 보던 화면(터미널)을 되살린다(결정 77).
+  // 사이드바는 그 work에서 보던 화면(터미널)을 되살린다(ux-papercuts 결정 77).
   await toWork(page, pinnedWork);
   await expect(page).toHaveURL(/tab=terminal/);
   await expect.poll(() => callCount(page, "pty_spawn"), { message: "돌아왔는데 셸이 안 떴다" }).toBe(3);

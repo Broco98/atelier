@@ -29,7 +29,7 @@ test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 
 
   await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').first().click();
 
-  // 최상위 터미널의 주인은 뒤가 빈 `atelier:`다(결정 10).
+  // 최상위 터미널의 주인은 뒤가 빈 `atelier:`다(life-mode 결정 10).
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

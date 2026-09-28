@@ -672,7 +672,7 @@ export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | nu
  * **빠진 칸의 인스턴스를 거두는 일은 여기 없다 — 그 자리는 터미널 스토어다.** 목록에서만 빼면
  * 「열고 → `exit`」을 되풀이하는 동안 목록은 0개라 말하는데 xterm 인스턴스(스크롤백, 쥐고 있었으면 WebGL 자리까지)는
  * 계속 쌓인다. _한때 여기 「상한 8이 세는 것은 살아 있는 WebGL 컨텍스트의 수」라고 적혀 있었는데 틀렸다_(프로세스 결정
- * 18 ③이 이렇게 고쳤다) — 상한은 화면마다의 셸 수이고(결정 23), 컨텍스트 수는 WebGL 자리(`shell-webgl`)가 지킨다.
+ * 18 ③이 이렇게 고쳤다) — 상한은 화면마다의 셸 수이고(work-tab-header 결정 23), 컨텍스트 수는 WebGL 자리(`shell-webgl`)가 지킨다.
  * `×`는 `closeShell`이 둘을 한자리에서 하고, 이 길의 짝은 터미널 스토어의 채널 콜백이 든다 —
  * 이 함수가 그 칸을 뺐으면 그 자리에서 `disposeInstance`를 태운다. 거두는 일은 DOM을 아는
  * 쪽만 할 수 있어 이 순수 모듈에 들일 수 없다.
@@ -781,7 +781,7 @@ export function markOwnerless(state: ShellsState, ids: ReadonlyArray<number>): S
  * **그 세계의** 주인 잃은 셸 전부 — 끝난 칸 · 못 뜬 칸도 든다. [모두 닫기]가 닫는 것이 이것이다: 주인이 사라졌는데 이
  * 칸만 남으면 닫을 길이 없다(아카이브의 회수가 끝난 칸까지 거두는 것과 같은 이유 — `runningShellsOf` 머리말).
  *
- * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(결정 10) slug로는 못 가른다.
+ * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(life-mode 결정 10) slug로는 못 가른다.
  */
 export function ownerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
   return state.shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode);
@@ -1351,7 +1351,7 @@ export function asksBeforeClose(check: CloseCheck | null): boolean {
 }
 
 /**
- * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 닫기 전 물음이 주는
+ * 도는 명령을 죽이기 전에 하는 말(ux-papercuts 결정 105). **프로그램 이름은 안 싣는다** — 닫기 전 물음이 주는
  * 것은 「도는가」와 수이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹 더 든다. 「명령」은 CONTEXT.md에
  * 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
  *
@@ -1402,7 +1402,7 @@ export async function confirmClose(
  * 닫기라 못 얻은 답을 「안 묻고 닫는다」로 읽는다. 그 모양을 빌리면(`!needsCloseConfirm(...)`) 모르는 셸이 조용한 셸로
  * 읽혀 묻지 않고 닫힌다.
  *
- * **끝난 칸 · 못 뜬 칸은 조용한 셸이 아니다** — 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). 답이 있어도 그렇다.
+ * **끝난 칸 · 못 뜬 칸은 조용한 셸이 아니다** — 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(in-app-terminal 결정 22). 답이 있어도 그렇다.
  * MCP 아카이브가 그 칸을 함께 거두는 것은 이 판정이 아니라 `closesWithoutAsking`의 몫이다.
  */
 export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean {
@@ -1432,7 +1432,7 @@ export function closesWithoutAsking(shell: Shell, checks: CloseChecks | null): b
  * 수로 한 번 묻는 자리라, 모르는 셸을 넣으면 창의 N과 닫히는 것이 갈리고 도는 것을 모르고 닫는다.
  *
  * **끝난 칸 · 못 뜬 칸은 고르지 않는다** — MCP 아카이브(`closesWithoutAsking`)와 갈리는 자리다. 그쪽은 주인이 사라진 셸을
- * 거두는 판정이라 그 칸도 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(결정 22)을 치우는 것이
+ * 거두는 판정이라 그 칸도 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(in-app-terminal 결정 22)을 치우는 것이
  * 아니다.
  */
 export function quietShellsOf(shells: ReadonlyArray<Shell>, checks: CloseChecks | null): Shell[] {
@@ -1455,8 +1455,8 @@ export const NO_QUIET_NOTICE = "닫을 조용한 셸이 없어요";
  *
  * - `person` — `×`, ⌘W, 셸 메뉴의 닫기(`requestCloseShell`).
  * - `reclaim` — 화면을 떠난 안 쓴 자동 셸의 회수(`closeUnusedShells` · 프로세스 결정 7).
- * - `archive` — UI 아카이브 · 삭제가 성공한 뒤의 회수(`closeShellsOf` · 결정 26).
- * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). 결정 26은 이 길의 셸을
+ * - `archive` — UI 아카이브 · 삭제가 성공한 뒤의 회수(`closeShellsOf` · in-app-terminal 결정 26).
+ * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). in-app-terminal 결정 26은 이 길의 셸을
  *   「알려진 대가」로 남겨 두었는데, 프로세스 결정 4가 이렇게 고쳤다: 목록 재조회로 알아채 조용한 셸은 닫고 나머지는
  *   주인 잃은 셸로 남긴다.
  * - `ownerless` — 주인 잃은 셸의 [모두 닫기](`closeOwnerless` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
@@ -1588,7 +1588,7 @@ export function spawnedNote(spawned: number | null): string {
 }
 
 /**
- * 아카이브 · 삭제 확인 창의 셸 줄(결정 26 · 프로세스 스펙 S18). 셸이 0개면 그 줄이 없다(`null`).
+ * 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18). 셸이 0개면 그 줄이 없다(`null`).
  * 두 세계가 같은 말이다 — 세는 것이 셸이지 work이나 Room이 아니다.
  */
 export function closingShellsNotice(live: number, spawned: number | null): string | null {

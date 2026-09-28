@@ -966,7 +966,7 @@ const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
  * 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다.
  *
  * **기다림으로 부른다**(claude `Elicitation`, `기다리게한다`와 같은 길). 턴의 끝(`Stop`)은 프로세스 결정 13 뒤로 「확인할 것」이고,
- * 보고 있는 셸의 확인할 것은 그 순간 「봤다」가 된다(결정 7) — ⌘T로 연 칸은 켜진 채 부르므로 `Stop`이면 띠에 안 선다.
+ * 보고 있는 셸의 확인할 것은 그 순간 「봤다」가 된다(terminal-activity-signal 결정 7) — ⌘T로 연 칸은 켜진 채 부르므로 `Stop`이면 띠에 안 선다.
  */
 const 부르게한다 = (page: Page, ptyId: number) =>
   markAttention(
@@ -1712,7 +1712,7 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   //
   // work 행과 **같은 구독 컴포넌트**를 쓰므로(`RowMetaFor`) 그 가름이 빠지기 쉽다 —
   // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
-  // 부르는 상태로 세운다 — 기다림은 보고 있어도 안 꺼지므로(결정 7) 이 셸이 그 사이 내내 말하는 중이다.
+  // 부르는 상태로 세운다 — 기다림은 보고 있어도 안 꺼지므로(terminal-activity-signal 결정 7) 이 셸이 그 사이 내내 말하는 중이다.
   await markAttention(page, {
     agent: "claude",
     event: "Elicitation",

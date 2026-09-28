@@ -56,7 +56,7 @@ export function nextRecall(prev: string | null, entered: ReadonlyArray<CallEntry
  *
  * **닫힌 셸은 갈 셸에서 빠진다 — 먼저 부른 다른 셸로 대신 가지 않는다**(fail-closed, 프로세스 결정 16). 사람은 방금 부른 그
  * 셸을 보러 누른 것이라, 엉뚱한 셸로 옮기는 것보다 「그 셸은 닫혔어요」가 참말이다. 옛 세대의 키도 같다 — 키 전체로 찾으므로
- * 이번 실행의 같은 번호 셸로 가지 않는다. 끝났지만 목록에 남은 칸(이유가 있는 끝 — 결정 48)은 닫힌 것이 아니다: 왜 끝났는지
+ * 이번 실행의 같은 번호 셸로 가지 않는다. 끝났지만 목록에 남은 칸(이유가 있는 끝 — in-app-terminal-v2 결정 48)은 닫힌 것이 아니다: 왜 끝났는지
  * 읽으러 간다.
  */
 export type RecallTarget = { kind: "go"; shell: Shell } | { kind: "closed" } | null;

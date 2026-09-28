@@ -1801,7 +1801,7 @@ export async function callsSinceRelease(page: Page, command: string): Promise<nu
 }
 
 /**
- * **첫 `pty_spawn` 하나를 그 이유로 거절한다** — 나머지는 그대로 답한다(결정 23의 「못 띄운 이유」).
+ * **첫 `pty_spawn` 하나를 그 이유로 거절한다** — 나머지는 그대로 답한다(in-app-terminal 결정 23의 「못 띄운 이유」).
  * `installFixtureBackend` **뒤에** 깔아야 한다 — 그쪽이 세운 `invoke`를 감싼다. 초기화 스크립트는
  * 직렬화되어 페이지로 가므로 이유를 값으로 넘긴다.
  */

@@ -99,7 +99,7 @@ const countOf = (source: string, literal: string) => source.split(literal).lengt
 // (work-sections.test.ts가 선례다). 관찰하는 것은 "어떤 조작을 하면 목록과 활성이 어떻게
 // 되는가"뿐이다.
 //
-// 여기서 관찰하지 않는 것 — xterm 인스턴스가 언마운트를 넘겨 사는지(결정 20·21. 프로세스 결정 7이
+// 여기서 관찰하지 않는 것 — xterm 인스턴스가 언마운트를 넘겨 사는지(in-app-terminal 결정 20·21. 프로세스 결정 7이
 // 입력 없는 자동 셸만 예외로 두었다 — 그 판정은 `shell-leave.test.ts`가 센다). 이 모듈에
 // "화면 전환"이라는 조작이 없어 정의상 못 본다. 스펙이 그 항목을 seam에서 빼 실물 왕복
 // 관찰로 옮겼다(spec.md의 Seam 1 아래 인용문).
@@ -1284,13 +1284,13 @@ describe("닫기 전에 묻는가", () => {
     expect(needsCloseConfirm(running, check(true, 0))).toBe(true);
   });
 
-  // **프로세스 결정 3이 넓힌 갈래다.** 결정 92는 foreground가 셸이면 안 물었다 — 빈 프롬프트에 dev 서버만 남은
+  // **프로세스 결정 3이 넓힌 갈래다.** ux-papercuts 결정 92는 foreground가 셸이면 안 물었다 — 빈 프롬프트에 dev 서버만 남은
   // 셸은 묻지 않고 닫혀 그 서버가 조용히 끝났다.
   it("명령이 없어도 함께 끝날 프로세스가 있으면 묻는다", () => {
     expect(needsCloseConfirm(running, check(false, 1))).toBe(true);
   });
 
-  // 결정 92가 피한 것은 그대로 피한다 — 셸 도우미(p10k의 `gitstatusd`)는 백엔드가 수에서 뺐다(프로세스 스펙 P1).
+  // ux-papercuts 결정 92가 피한 것은 그대로 피한다 — 셸 도우미(p10k의 `gitstatusd`)는 백엔드가 수에서 뺐다(프로세스 스펙 P1).
   it("명령도 함께 끝날 것도 없으면 안 묻는다 — 빈 프롬프트를 닫을 때마다 팝업이 뜨면 안 된다", () => {
     expect(needsCloseConfirm(running, check(false, 0))).toBe(false);
   });
@@ -2588,7 +2588,7 @@ describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
     expect(quietShellsOf(state.shells, null)).toEqual([]);
   });
 
-  // 끝난 칸 · 못 뜬 칸은 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(결정 22). MCP 아카이브의 판정(`closesWithoutAsking`)은 그
+  // 끝난 칸 · 못 뜬 칸은 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(in-app-terminal 결정 22). MCP 아카이브의 판정(`closesWithoutAsking`)은 그
   // 칸을 주인과 함께 거두지만, 여기서 거두면 사람이 이유를 읽기 전에 사라진다 — 닫힐 프로세스도 없다.
   it("끝난 칸과 못 뜬 칸은 고르지 않는다", () => {
     const two = opened(3).state;
@@ -2612,7 +2612,7 @@ describe("[조용한 셸 모두 닫기]가 닫는 것", () => {
     expect(NO_QUIET_NOTICE).toBe("닫을 조용한 셸이 없어요");
   });
 
-  // 창에 답하는 사이 셸이 스스로 끝나면 그 칸은 죽은 이유를 읽으라고 남은 칸이다(결정 22) — 창에 답한 뒤 다시 보고 거르지 않는다.
+  // 창에 답하는 사이 셸이 스스로 끝나면 그 칸은 죽은 이유를 읽으라고 남은 칸이다(in-app-terminal 결정 22) — 창에 답한 뒤 다시 보고 거르지 않는다.
   it("창에 답한 뒤 다시 볼 때 끝난 칸 · 사라진 칸은 살아 있지 않다", () => {
     const three = opened(3).state;
     const [a, b, c] = three.shells.map((shell) => shell.id);
@@ -2700,7 +2700,7 @@ describe("종료 확인의 본문", () => {
   });
 });
 
-// 아카이브 · 삭제 확인 창의 셸 줄(결정 26 · 프로세스 스펙 S18). 두 세계가 같은 말이다.
+// 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18). 두 세계가 같은 말이다.
 describe("아카이브 확인의 셸 줄", () => {
   it("셸 수를 적고, 띄운 프로세스가 있으면 그 뒤에 붙인다", () => {
     expect(closingShellsNotice(2, 0)).toBe("셸 2개가 닫혀요.");

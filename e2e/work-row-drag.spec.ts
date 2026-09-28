@@ -294,7 +294,7 @@ test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인
   await expect(line(page)).toBeVisible();
   const rowTopBefore = (await workRow(page, plainWork.slug).boundingBox())!.y;
 
-  // 보고 있는 셸에서 띠가 서는 것은 기다림이다(결정 7) — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  // 보고 있는 셸에서 띠가 서는 것은 기다림이다(terminal-activity-signal 결정 7) — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
   await markAttention(page, {
     agent: "claude",
     event: "Elicitation",

@@ -37,7 +37,7 @@ export interface KeyDown {
 /**
  * 키다운 하나가 가는 곳.
  *
- * - `shell` — xterm이 셸로 보낸다. `rewrite`가 있으면 그 바이트로 바꿔 보낸다(⇧Enter · 결정 91).
+ * - `shell` — xterm이 셸로 보낸다. `rewrite`가 있으면 그 바이트로 바꿔 보낸다(⇧Enter · ux-papercuts 결정 91).
  * - `ime` — 입력기가 문 키(keyCode 229). xterm은 이 키로 아무것도 안 보내고, 글자는 입력기가 확정할 때
  *   간다 — 한글이면 IME 다리가, 조합 사건이 오는 입력기(일본어 · 중국어)면 xterm의 조합 도우미가 보낸다.
  *   조합 중의 Esc도 이 키로 온다. 셸 키와 가르는 것은 그 Esc를 「끊었다」로 읽지 않게 하려는 것이다.
@@ -111,7 +111,7 @@ export function isInterruptKey(event: KeyDown): boolean {
  *   있어(PageDown 같은) 하나로 묶는다. 입력기가 문 키도 여기다 — 무엇이 창에 닿을지 모른다.
  *
  * **셸로 안 가는 키는 `null`이다**(앱 단축키 · 수정키만 · 키업) — 창에 닿지 않는다. 가르는 기준은 `keyRoute` 하나이고, 지름길은
- * 수정키가 안 붙은 것만이다: ⇧1은 `!`이고, ⇧Enter는 셸에 줄바꿈으로 간다(결정 91).
+ * 수정키가 안 붙은 것만이다: ⇧1은 `!`이고, ⇧Enter는 셸에 줄바꿈으로 간다(ux-papercuts 결정 91).
  *
  * 이 표는 **Bash 권한 창**을 잰 것이다. 파일 고치기 창의 선택지는 안 쟀다. 물음 창(`AskUserQuestion` · Elicitation)은 첫째가
  * `Yes`가 아니라서 승인 추론이 이 답을 안 읽는다 — 창을 가리는 것은 이 파일이 아니라 기다림이 든 창이다(`Attention.dialog`).

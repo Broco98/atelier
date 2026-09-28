@@ -55,7 +55,7 @@ describe("사라진 owner", () => {
     expect(vanishedOwners(state, "atelier", listed("ga", "na"), NOTHING_HELD)).toEqual([]);
   });
 
-  // **세계마다 따로 본다**(결정 10) — 두 세계에 같은 slug가 설 수 있다. Atelier 목록에서 `ga`가 빠진 것으로 Maison의
+  // **세계마다 따로 본다**(life-mode 결정 10) — 두 세계에 같은 slug가 설 수 있다. Atelier 목록에서 `ga`가 빠진 것으로 Maison의
   // Room `ga`가 주인을 잃으면 안 된다.
   it("그 세계의 목록은 그 세계의 셸만 본다", () => {
     expect(vanishedOwners(state, "maison", listed("ga"), NOTHING_HELD)).toEqual([]);

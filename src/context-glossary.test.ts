@@ -298,7 +298,7 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Rooms`");
   });
 
-  // main nav는 세계마다 다르다(결정 6·17) — 그리고 `Processes`가 두 세계에 함께 서며 넷 · 셋이 됐다(티켓 26). **한 문장에서
+  // main nav는 세계마다 다르다(life-mode 결정 6·17) — 그리고 `Processes`가 두 세계에 함께 서며 넷 · 셋이 됐다(티켓 26). **한 문장에서
   // 두 벌을 함께 본다**: 한쪽만 재면 다른 세계의 벌이 낡아도 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
   it("대문자 층이 main nav를 세계마다 넷 · 셋으로 든다", () => {
     expect(uppercase.replace(/\s+/g, " ")).toContain(

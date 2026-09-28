@@ -190,7 +190,7 @@ test("자손 행의 이름에 스냅샷의 명령줄이 툴팁으로 서고, 줄
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 셸 상태는 레지스트리가 내놓는 함수로 읽는다(셸 탭 · 사이드바 · 띠와 같은 말 — 스토리 79). 셸 상태가 없고 조용하면 「조용함」과
+// 셸 상태는 레지스트리가 내놓는 함수로 읽는다(셸 탭 · 사이드바 · 띠와 같은 말 — terminal-activity-signal 스토리 79). 셸 상태가 없고 조용하면 「조용함」과
 // 경과, 둘 다 아니면 도는 명령의 마크와 이름이다.
 test("셸 상태가 있는 셸은 상태 칸에 그 상태가, 조용한 셸은 「조용함」이, 명령이 도는 셸은 그 명령이 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3, 4], false) });

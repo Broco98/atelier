@@ -165,7 +165,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// UI 길은 성공 뒤에 제 손으로 닫는다(`closeShellsOf`, 결정 26). 그 사이 목록이 slug 없이 앉아도 감지는 그 slug를 안 본다
+// UI 길은 성공 뒤에 제 손으로 닫는다(`closeShellsOf`, in-app-terminal 결정 26). 그 사이 목록이 slug 없이 앉아도 감지는 그 slug를 안 본다
 // (제외 창, S13). 창이 없으면 아카이브 코어 호출이 돌아오기 전에 앉은 목록이 그 셸을 주인 잃은 셸로 알린다.
 test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브는 여전히 알린다", async ({ page }) => {
   await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
@@ -245,7 +245,7 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
-  // 부르는 셸 — 보고 있는 채 받아도 띠에 남는 기다림이다(결정 7). 턴의 끝(`Stop`)은 프로세스 결정 13이 「확인할
+  // 부르는 셸 — 보고 있는 채 받아도 띠에 남는 기다림이다(terminal-activity-signal 결정 7). 턴의 끝(`Stop`)은 프로세스 결정 13이 「확인할
   // 것」으로 옮겨, 보고 있는 셸에서는 곧바로 「봤다」가 된다.
   await markAttention(page, {
     agent: "claude",

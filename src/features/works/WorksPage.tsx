@@ -773,7 +773,7 @@ function WorksPage({
   );
   const terminalBody = terminalWork && (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21. 프로세스 결정 7이
+      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(in-app-terminal 결정 20·21. 프로세스 결정 7이
           입력 없는 자동 셸만 예외로 두었다). */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </div>
@@ -823,7 +823,7 @@ function WorksPage({
     <main className={cn("relative flex flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
-          자리만 새로 잡힌다(결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
+          자리만 새로 잡힌다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
           그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다. */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </main>
@@ -1244,7 +1244,7 @@ function WorkMenu({
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
-    // (결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
+    // (in-app-terminal 결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
     closeShellsOf(ownerOf(mode, work.slug));
     release();
   };

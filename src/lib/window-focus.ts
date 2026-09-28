@@ -1,5 +1,5 @@
 /**
- * 앱 창이 포커스를 쥐고 있나 — 「봤다」의 한쪽 재료다. 터미널 셸의 「봤다」(결정 7 · `terminal-store.ts`)와 nav `Processes`의 `●`
+ * 앱 창이 포커스를 쥐고 있나 — 「봤다」의 한쪽 재료다. 터미널 셸의 「봤다」(terminal-activity-signal 결정 7 · `terminal-store.ts`)와 nav `Processes`의 `●`
  * (프로세스 스펙 S41 — 띠와 같은 규칙 · `looked.ts`의 `useSeeWhileLooking`)가 이 한 판정을 읽는다. 두 자리가 따로 적으면 한쪽만 고친 날 같은 창을
  * 두 판정이 다르게 본다. 이 앱은 창이 하나라 어느 창인지 물을 것이 없다.
  *

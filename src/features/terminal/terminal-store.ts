@@ -409,7 +409,7 @@ terminalStore.subscribe(() => cancelGoneShellDrag(hasShell));
 let shownShell: number | null = null;
 
 /**
- * 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(결정 7). 창 포커스의 판정은 nav `Processes`의 `●`와 한 함수다
+ * 「봤다」 판정이 딛는 것 전부 — 지금 보이는 칸과 창 포커스(terminal-activity-signal 결정 7). 창 포커스의 판정은 nav `Processes`의 `●`와 한 함수다
  * (`lib/window-focus.ts`의 `windowFocused` — `document.hasFocus()`가 판정이고 `focus`/`blur`는 신호일 뿐이다).
  */
 function currentView(): ShellView {
@@ -485,7 +485,7 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
   // Terminal이 자기가 만든 DOM과 애드온을 함께 거둔다 — `_addonManager`가 `_register`로 묶여 있어 WebGL
   // 애드온도 여기서 놓인다. _한때 여기 「상한 8이 컨텍스트 수를 말하는 이상 이 한 줄이 상한을 되돌려준다」고 적혀
   // 있었는데 둘 다 틀렸다_(프로세스 결정 18 ③이 이렇게 고쳤다): 상한 8(`MAX_SHELLS`)은 컨텍스트가 아니라 **화면
-  // (owner)마다의 셸 수**이고(결정 23), WebKit의 컨텍스트 슬롯은 dispose가 아니라 **GC 때** 풀린다. 앱 전체에서 쥐는
+  // (owner)마다의 셸 수**이고(work-tab-header 결정 23), WebKit의 컨텍스트 슬롯은 dispose가 아니라 **GC 때** 풀린다. 앱 전체에서 쥐는
   // 컨텍스트 수를 지키는 것은 이제 WebGL 자리(`shell-webgl`)다.
   instance.term.dispose();
   instance.wrapper.remove();
@@ -493,7 +493,7 @@ function disposeInstance(instance: ShellInstance, path: ClosePath | null): void 
 
 /**
  * 셸을 거둔다. **셸을 죽이는 유일한 길이다**(결정 22). 화면을 옮기는 것으로는 여기 오지
- * 않는다(결정 20) — 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다: 그 셸은 화면을 떠나면
+ * 않는다(in-app-terminal 결정 20) — 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다: 그 셸은 화면을 떠나면
  * 이 길로 닫힌다(`closeUnusedShells`).
  *
  * 목록에서 빼는 길은 이제 **둘이다** — 결정 48이 정상 종료한 칸을 스스로 빼기 때문이다.
@@ -538,9 +538,9 @@ export async function requestCloseShell(id: number): Promise<void> {
 }
 
 /**
- * 셸 **하나**를 닫기 전에 묻는 창(결정 92 · 105). 셸 탭의 `×` · ⌘W(`requestCloseShell`)와 `Processes`의 화면 밖 셸
+ * 셸 **하나**를 닫기 전에 묻는 창(ux-papercuts 결정 92 · 105). 셸 탭의 `×` · ⌘W(`requestCloseShell`)와 `Processes`의 화면 밖 셸
  * [닫기](`closeOffscreenShell`)가 같은 창으로 묻는다 — 창 모양이 두 벌이면 한쪽만 늙는다(코드 리뷰 표준 43). 본문은 부르는
- * 쪽이 판정과 함께 넘긴다(`closeNotice` — 결정 105 · 프로세스 스펙 P6).
+ * 쪽이 판정과 함께 넘긴다(`closeNotice` — ux-papercuts 결정 105 · 프로세스 스펙 P6).
  *
  * **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이 앱 밖의 일처럼 읽힌다. 셸 여럿을 한 번에
  * 닫는 창(주인 잃은 셸 · 조용한 셸)은 제목과 버튼이 다르다 — 이것을 안 쓴다.
@@ -956,12 +956,12 @@ terminalStore.subscribe(notifyTick);
 onNotifySettingsChanged(notifyTick);
 
 /**
- * 이 Work의 셸을 전부 거둔다 — **UI에서** 아카이빙·삭제가 **성공한 뒤에** 부른다(결정 26).
+ * 이 Work의 셸을 전부 거둔다 — **UI에서** 아카이빙·삭제가 **성공한 뒤에** 부른다(in-app-terminal 결정 26).
  *
  * 순서가 계약이다. 먼저 죽이면 dirty 거부에 걸렸을 때 **Work는 남고 돌던 claude만 사라진다.**
  * 고르는 것은 `shellsOf` 하나라 다른 Work의 셸과 최상위 터미널의 셸은 안 걸린다.
  *
- * 결정 26은 MCP로 아카이브 · 삭제된 work의 셸을 「알려진 대가」로 남겨 두었다 — 그 길은 이 함수를 안 지난다. 프로세스
+ * in-app-terminal 결정 26은 MCP로 아카이브 · 삭제된 work의 셸을 「알려진 대가」로 남겨 두었다 — 그 길은 이 함수를 안 지난다. 프로세스
  * 결정 4가 이렇게 고쳤다: 앱 루트가 목록 재조회로 알아채(`settleOwners`) 조용한 셸은 닫고, 나머지는 「주인 잃은 셸」로
  * 남겨 알린다. 그 감지가 이 길의 셸을 세지 않게 부르는 쪽이 제외 창을 연다(`holdOwner`).
  */
@@ -1112,7 +1112,7 @@ export function isOwnerlessShell(id: number): boolean {
  * **닫을 것이 없으면 묻지 않고 짧은 토스트로 끝낸다** — 「조용한 셸 0개를 닫아요」 창은 물을 것이 없는 물음이고, 버튼이 아무
  * 일도 안 하면 눌렸는지가 안 보인다. 닫는 길은 셸 닫기이고 까닭은 「셸 닫기」다 — 사람이 누른 닫기라 `●`를 켜지 않는다.
  *
- * **창에 답한 뒤 다시 본다**: 묻는 동안 셸이 스스로 끝났으면 그 칸은 죽은 이유를 읽으라고 남은 칸이라(결정 22) 거두지 않는다.
+ * **창에 답한 뒤 다시 본다**: 묻는 동안 셸이 스스로 끝났으면 그 칸은 죽은 이유를 읽으라고 남은 칸이라(in-app-terminal 결정 22) 거두지 않는다.
  * 그 사이 새로 조용해진 셸은 안 넣는다 — 창의 N보다 많이 닫지 않는다.
  */
 export async function closeQuietShells(): Promise<void> {
@@ -1205,7 +1205,7 @@ export function attachShell(host: HTMLElement, id: number): void {
 
 /**
  * 집을 DOM에서 뺀다. **`dispose`도 `kill`도 없다** — 다른 nav를 한 번 본 대가로, 또는 옆
- * 칸으로 갈아탄 대가로 셸이 죽지 않는다(결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로
+ * 칸으로 갈아탄 대가로 셸이 죽지 않는다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로
  * 두었는데, 그 회수도 여기가 아니다 — 패인이 내려가는 것은 spec 탭 전환에도 일어나 떠남이 아니다.
  * 떠남은 앱 루트가 owner로 잰다(`closeUnusedShells`).
  */
@@ -1459,7 +1459,7 @@ async function claimFont(look: TerminalLook): Promise<void> {
 
 /**
  * 글꼴이 오면 **셸을 띄운다 — 화면에 붙어 있든 아니든.** 사람이 연 셸은 뒤에서도 돈다
- * (결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 글꼴이 오기 전에
+ * (in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 — 그 셸은 글꼴이 오기 전에
  * 화면을 떠나면 뜨지도 않고 닫힌다(`closeUnusedShells`).
  *
  * _한때 여는 것과 띄우는 것이 한 게이트였다_: 글꼴이 온 순간 칸이 DOM에 붙어 있을 때만 열고,
@@ -1728,7 +1728,7 @@ async function spawn(instance: ShellInstance) {
       if (frame instanceof ArrayBuffer) {
         // **출력이 도착했다는 사실 하나를 알린다**(#208). OSC가 세운 기다림을 푸는 것이
         // 여기이고, 그 밖에는 아무것도 안 한다 — 「몇 초 조용했나」로 상태를 만드는 코드는
-        // 이 판에 없다(결정 2·3). 프로세스 결정 12가 결정 2를 이만큼 고쳤다: 사람이 누른 중단 키 뒤의 한 순간만
+        // 이 판에 없다(terminal-activity-signal 결정 2·3). 프로세스 결정 12가 그 결정 2를 이만큼 고쳤다: 사람이 누른 중단 키 뒤의 한 순간만
         // 잰다(`watchInterrupt`) — 출력이 멎은 시간은 여전히 아무것도 안 만든다.
         //
         // **쓰기 전에 알린다.** 이 프레임에 실려 온 OSC는 **이 프레임보다 새 사실**이라
@@ -1793,7 +1793,7 @@ async function spawn(instance: ShellInstance) {
       return;
     }
     instance.ptyId = spawned.id;
-    // 타이틀을 안 쏘는 셸의 칸 이름이 된다(결정 31). `$SHELL`의 basename이라 프런트는 모른다. 셸 키도 같은 답에 실려
+    // 타이틀을 안 쏘는 셸의 칸 이름이 된다(in-app-terminal 결정 31). `$SHELL`의 basename이라 프런트는 모른다. 셸 키도 같은 답에 실려
     // 온다(프로세스 스펙 S34) — 세대는 백엔드만 안다. 한 번의 `setState`로 둘을 앉힌다.
     terminalStore.setState((state) =>
       setShellKey(setShellName(state, instance.id, spawned.shellName), instance.id, spawned.shellKey),

@@ -110,7 +110,7 @@ describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
     ]);
   });
 
-  // **셸이 뜬 차례가 아니라 사이드바의 차례다**(S53). 고정이 먼저인 것은 코어의 목록이 정한다(`list_works` — 결정 100) — 여기서
+  // **셸이 뜬 차례가 아니라 사이드바의 차례다**(S53). 고정이 먼저인 것은 코어의 목록이 정한다(`list_works` — ux-papercuts 결정 100) — 여기서
   // 다시 정렬하면 차례를 정하는 자리가 둘이 된다. 그래서 목록을 받은 차례 그대로 따른다. 최상위 터미널(nav `Terminal`)은 work이
   // 아니라 맨 끝이다.
   it("세계 안에서는 사이드바 순서(고정 먼저)이고, 그다음이 Terminal이다 — 셸이 뜬 차례가 아니다", () => {
@@ -300,7 +300,7 @@ const 상태 = (over: Partial<Attention>): Attention => ({
 
 describe("셸 행의 상태 칸", () => {
   // 셸 상태(나를 기다림 · 확인할 것 · 도는 중 · 서브에이전트 N)가 있으면 그것이다. 레지스트리가 내놓는 문(`signalOf` ·
-  // `runningSubagents`)을 딛는다 — 셸 탭 · 사이드바 · 띠와 같은 말이어야 한다(스토리 79).
+  // `runningSubagents`)을 딛는다 — 셸 탭 · 사이드바 · 띠와 같은 말이어야 한다(terminal-activity-signal 스토리 79).
   it("셸 상태가 있으면 그것이다 — 서브에이전트 수까지", () => {
     const now = 1_000 + 3 * 60_000;
     expect(stateText(shellStateOf(노드(칸(1, "G-1", { attention: 상태({ kind: "waiting" }) }))), now)).toBe("나를 기다림 3m");
@@ -466,7 +466,7 @@ describe("주인 잃은 셸 묶음", () => {
     expect(ownerlessGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
   });
 
-  // 두 세계가 한 묶음에 서므로 work 줄이 세계를 말한다 — 두 세계에 같은 slug가 설 수 있다(결정 10). 세계 트리의 work 줄은 세계
+  // 두 세계가 한 묶음에 서므로 work 줄이 세계를 말한다 — 두 세계에 같은 slug가 설 수 있다(life-mode 결정 10). 세계 트리의 work 줄은 세계
   // 줄 밑에 서서 말할 까닭이 없다.
   it("work 줄은 이름 · 세계 · 셸 수 · 메모리다", () => {
     const [group] = ownerlessGroups(
