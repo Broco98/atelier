@@ -1,5 +1,5 @@
 //! 에이전트 훅 설치 — 사용자의 claude·codex 설정에 우리 훅을 **병합해** 넣고 걷어낸다. 이미 깐 사람의 훅은 앱이 뜰 때 지금
-//! 목록으로 맞춘다(`sync`, 프로세스 결정 15 · 티켓 21).
+//! 목록으로 맞춘다(`sync`, 프로세스 결정 15 · 프로세스 티켓 21).
 
 use std::path::{Path, PathBuf};
 
@@ -34,16 +34,16 @@ pub const CLAUDE_EVENTS: &[&str] = &[
     "SubagentStop",
 ];
 
-/// 그중 **`async: true`로 거는 것** — 도구 사건 셋(프로세스 결정 14 · S25). 도구마다 두 번 불리는 훅이 동기면
+/// 그중 **`async: true`로 거는 것** — 도구 사건 셋(프로세스 결정 14 · 프로세스 스펙 S25). 도구마다 두 번 불리는 훅이 동기면
 /// claude가 그때마다 처리기가 끝나길 기다린다. 비동기라 순서가 뒤집힐 수 있는 것은 처리기의 순서 가드가 받는다
-/// (S27 — 늦게 끝난 `PostToolUse`가 `Stop`을 못 덮는다).
+/// (프로세스 스펙 S27 — 늦게 끝난 `PostToolUse`가 `Stop`을 못 덮는다).
 ///
-/// **알려진 경계**: 비동기 `PreToolUse`의 처리기가 곧이어 오는 `PermissionRequest`의 처리기보다 **늦게** 뜨면(티켓 18
+/// **알려진 경계**: 비동기 `PreToolUse`의 처리기가 곧이어 오는 `PermissionRequest`의 처리기보다 **늦게** 뜨면(프로세스 티켓 18
 /// 실측으로 둘 사이가 1.8~14.8ms) 가드가 `PreToolUse`를 새 사건으로 보고 기다림을 덮는다 — 그 승인 요청은 띠에도
 /// 알림에도 안 선다. 프로세스 결정 14 그대로 두고 구현 기록 「## 20」에 적었다.
 const CLAUDE_ASYNC_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUseFailure"];
 
-/// 설치 목록의 **판**(프로세스 스펙 P5 · 티켓 21). 우리 명령줄의 맨 끝 낱말로 싣는다(`list-2`).
+/// 설치 목록의 **판**(프로세스 스펙 P5 · 프로세스 티켓 21). 우리 명령줄의 맨 끝 낱말로 싣는다(`list-2`).
 ///
 /// **두 빌드가 같은 사용자 설정을 저마다 「지금 목록」으로 맞춘다** — 설치본과 `pnpm tauri dev`는 같은 홈을 보고, 둘 다 앱이 뜰 때
 /// 맞춘다(`sync`). 목록이 다르면 켤 때마다 서로의 것으로 되쓰고 토스트가 선다. 그래서 파일에 적힌 판이 이 빌드의 것보다
@@ -147,7 +147,7 @@ fn claude_version(hook: &Value) -> u32 {
     }
 }
 
-/// 우리 줄 가운데 **이 빌드보다 새로운 판**이 있는가(P5). 있으면 그 파일은 새 빌드가 맞춘 것이다.
+/// 우리 줄 가운데 **이 빌드보다 새로운 판**이 있는가(프로세스 스펙 P5). 있으면 그 파일은 새 빌드가 맞춘 것이다.
 fn claude_is_newer(ours: &[(&str, &Value)]) -> bool {
     ours.iter().any(|(_, hook)| claude_version(hook) > LIST_VERSION)
 }
@@ -242,7 +242,7 @@ fn serialize_claude(source: &str, root: Map<String, Value>, changed: bool) -> Re
 /// **바뀐 것이 없으면 원문을 글자 그대로 돌려준다** — 우리 것이 다 지금 모양인 파일은 다시 안 적힌다(`serialize_claude`, 제거와
 /// 같은 끝).
 ///
-/// **파일에 이 빌드보다 새로운 판의 줄이 있으면 손대지 않는다**(P5) — 새 빌드가 맞춘 것을 옛 목록으로 되돌리지 않는다.
+/// **파일에 이 빌드보다 새로운 판의 줄이 있으면 손대지 않는다**(프로세스 스펙 P5) — 새 빌드가 맞춘 것을 옛 목록으로 되돌리지 않는다.
 pub fn merge_claude(source: &str, handler: &Path) -> Result<String, String> {
     let mut root = parse_claude(source)?;
     if root.get("hooks").and_then(Value::as_object).is_some_and(|hooks| claude_is_newer(&claude_ours(hooks))) {
@@ -349,7 +349,7 @@ fn toml_basic_string(value: &str) -> String {
 /// 한 번이고, 옛 python 줄 · 판이 옛 줄 · 빠진 이벤트가 모두 새 구획 하나로 바뀌며, 홈이 옮겨져 경로가 낡았을 때도 그것을
 /// 고친다.
 ///
-/// **파일에 이 빌드보다 새로운 판의 줄이 있으면 손대지 않는다**(P5) — 새 빌드가 맞춘 것을 옛 목록으로 되돌리지 않는다.
+/// **파일에 이 빌드보다 새로운 판의 줄이 있으면 손대지 않는다**(프로세스 스펙 P5) — 새 빌드가 맞춘 것을 옛 목록으로 되돌리지 않는다.
 pub fn merge_codex(source: &str, handler: &Path) -> Result<String, String> {
     if codex_is_newer(&codex_ours(&parse_codex(source)?)) {
         return Ok(source.to_string());
@@ -434,7 +434,7 @@ fn codex_ours(table: &toml::Table) -> Vec<(&str, &str)> {
         .collect()
 }
 
-/// 우리 줄 가운데 **이 빌드보다 새로운 판**이 있는가(P5). codex의 줄은 셸 꼴이라 판이 명령줄의 마지막 낱말이다.
+/// 우리 줄 가운데 **이 빌드보다 새로운 판**이 있는가(프로세스 스펙 P5). codex의 줄은 셸 꼴이라 판이 명령줄의 마지막 낱말이다.
 fn codex_is_newer(ours: &[(&str, &str)]) -> bool {
     ours.iter().any(|(_, command)| version_in(command.split_whitespace().last()) > LIST_VERSION)
 }
@@ -560,8 +560,8 @@ fn backup_path(path: &Path) -> PathBuf {
 /// 목록 밖 이벤트에 우리 줄이 없다. 곧 「맞춰도 바뀔 것이 없다」와 같은 말이다. 옛 명령줄이 하나 남은 것도, 도구 사건의
 /// `async`가 빠진 것도 「일부」다 — 앱이 뜰 때 맞추거나(`sync`) 설치 버튼이 고칠 것이 남았다.
 ///
-/// **파일의 목록 판이 이 빌드보다 새로우면 「전부」다**(티켓 21이 S35에 더한 것). 옛 빌드가 새 빌드가 쓴 파일을 읽으면 모양이
-/// 달라 「일부」로 보이는데, 그 화면의 설치 버튼을 누르면 새 목록을 옛 목록으로 되쓴다(P5와 S35가 만나는 빈 곳). 병합도 그
+/// **파일의 목록 판이 이 빌드보다 새로우면 「전부」다**(프로세스 티켓 21이 프로세스 스펙 S35에 더한 것). 옛 빌드가 새 빌드가 쓴 파일을 읽으면 모양이
+/// 달라 「일부」로 보이는데, 그 화면의 설치 버튼을 누르면 새 목록을 옛 목록으로 되쓴다(프로세스 스펙 P5와 S35가 만나는 빈 곳). 병합도 그
 /// 파일에는 손대지 않는다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -597,11 +597,11 @@ pub fn agent_home() -> PathBuf {
     atelier_core::expand_home("~/")
 }
 
-/// **이미 깐 훅을 앱이 뜰 때 지금 목록으로 맞춘다**(프로세스 결정 15 · 티켓 21). 에이전트마다 설정 파일을 읽어, 판정이
+/// **이미 깐 훅을 앱이 뜰 때 지금 목록으로 맞춘다**(프로세스 결정 15 · 프로세스 티켓 21). 에이전트마다 설정 파일을 읽어, 판정이
 /// 「일부」일 때만 병합을 쓴다. 우리 훅이 하나도 없으면(「없음」) 안 건드린다 — 설치 자체가 동의이고, 한 번도 안 깐 사람의
-/// 설정을 앱을 켰다고 고칠 까닭이 없다. 「전부」(새로운 판 포함, P5)면 바꿀 것이 없다.
+/// 설정을 앱을 켰다고 고칠 까닭이 없다. 「전부」(새로운 판 포함, 프로세스 스펙 P5)면 바꿀 것이 없다.
 ///
-/// 돌려주는 것은 **실제로 쓴** 에이전트다 — 시작 보고의 훅 칸이고, 비어 있지 않으면 프런트가 토스트를 한 번 띄운다(S36).
+/// 돌려주는 것은 **실제로 쓴** 에이전트다 — 시작 보고의 훅 칸이고, 비어 있지 않으면 프런트가 토스트를 한 번 띄운다(프로세스 스펙 S36).
 ///
 /// 쓰기 규칙은 설치 버튼과 같은 `apply`다 — `.bak`, 모드와 심링크, 바뀐 게 없으면 안 씀, 깨진 파일은 안 건드림. 판정과 병합은
 /// 한 번 읽은 내용 위에서 한다(`apply`의 변환 안) — 따로 읽으면 그 사이에 사람이 우리 훅을 걷은 파일에 옛 판정으로 다시 깔 수
@@ -779,7 +779,7 @@ fn leftover(agent: &Agent, path: &Path) -> Option<String> {
 /// 필요」인 채 설치 버튼이 말없이 아무것도 안 한다. 사람이 그 줄을 지우고 다시 누르면 병합이 그 이벤트를 구획에 채운다.
 ///
 /// **설치 버튼의 답에만 싣는다.** 앱이 뜰 때의 맞춤(`sync`)은 실제로 쓴 에이전트만 돌려주므로 바꿀 것이 없는 이 파일에 토스트가
-/// 안 선다(S36). 판정 조회(`status`)에도 안 싣는다 — 누르기 전의 「업데이트 필요」는 고칠 길(설치)을 가리키고, 앱이 못 고친다는
+/// 안 선다(프로세스 스펙 S36). 판정 조회(`status`)에도 안 싣는다 — 누르기 전의 「업데이트 필요」는 고칠 길(설치)을 가리키고, 앱이 못 고친다는
 /// 것은 누른 뒤에야 사실이 된다.
 fn unfixed(agent: &Agent, path: &Path, handler: &Path) -> Option<String> {
     let source = read_or_empty(path).ok()?;
@@ -923,7 +923,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    /// 새 처리기의 자리 — 설치가 사용자 설정에 적어 넣는 경로(티켓 21).
+    /// 새 처리기의 자리 — 설치가 사용자 설정에 적어 넣는 경로(프로세스 티켓 21).
     fn handler() -> PathBuf {
         PathBuf::from("/Users/someone/.atelier/hooks/atelier-hook.zsh")
     }
@@ -1022,7 +1022,7 @@ mod tests {
         }
     }
 
-    /// **도구 사건 셋은 matcher 없이 `async: true`로 걸린다**(프로세스 결정 14 · S25). 도구마다 두 번 불리는 훅이
+    /// **도구 사건 셋은 matcher 없이 `async: true`로 걸린다**(프로세스 결정 14 · 프로세스 스펙 S25). 도구마다 두 번 불리는 훅이
     /// 동기면 claude가 그때마다 처리기가 끝나길 기다린다 — 에이전트를 막지 않는 것이 프로세스 결정 14의 조건이다.
     /// matcher가 없어야 모든 도구가 온다(`AskUserQuestion`도 PreToolUse로 와서 기다림이 된다).
     ///
@@ -1062,7 +1062,7 @@ mod tests {
     }
 
     /// **설치기가 거는 목록과 그 판을 함께 못박는다**(프로세스 결정 14 · 프로세스 스펙 P5). 목록은 프로세스 결정 14 그대로다 — claude는
-    /// 구현 결정 8의 다섯에 여섯을, codex는 다섯에 넷을 더했고, `async`로 거는 것은 claude의 도구 사건 셋이다(S25). 이 목록은 프런트
+    /// 구현 결정 8의 다섯에 여섯을, codex는 다섯에 넷을 더했고, `async`로 거는 것은 claude의 도구 사건 셋이다(프로세스 스펙 S25). 이 목록은 프런트
     /// 어댑터의 갈래와 양방향으로 같아야 한다(`shell-attention.test.ts`의 「훅이 나르는 어휘」) — 그쪽이 선언을 글자로 읽으므로 여기서는
     /// **무엇이 들었는가**를 잰다.
     ///
@@ -1830,10 +1830,10 @@ trust_level = "trusted"
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    // ── 새 처리기의 줄과 갱신(프로세스 결정 15 · 프로세스 스펙 S28 · S35 · P5 · 티켓 21)
+    // ── 새 처리기의 줄과 갱신(프로세스 결정 15 · 프로세스 스펙 S28 · S35 · P5 · 프로세스 티켓 21)
 
     /// **claude 훅은 처리기를 셸 없이 곧바로 부르는 `args` 꼴이다**(구현 기록 19절 — 훅마다 셸 한 벌을 던다). 경로는 따옴표로
-    /// 안 감싼다 — 셸이 없으니 따옴표가 글자 그대로 파일 이름이 된다. 셋째 인자가 목록의 판이다(P5). 처리기는 셋째부터 안 읽는다.
+    /// 안 감싼다 — 셸이 없으니 따옴표가 글자 그대로 파일 이름이 된다. 셋째 인자가 목록의 판이다(프로세스 스펙 P5). 처리기는 셋째부터 안 읽는다.
     #[test]
     fn a_claude_hook_calls_the_handler_directly_with_the_list_version() {
         let merged: Value = serde_json::from_str(&merge_claude("{}", &handler()).unwrap()).unwrap();
@@ -2037,7 +2037,7 @@ trust_level = "trusted"
     /// 줄이면 파일도 그대로다.
     ///
     /// 옛 줄 하나가 지난 설치의 구획 곁에 선 것, 손으로 적은 옛 다섯만 있는 것, 목록 밖 이벤트에 손으로 적은 우리 줄 — 모두 병합이
-    /// 못 고치는 「일부」다. 앱이 뜰 때의 맞춤은 쓴 것이 없어 이것을 안 돌려준다(토스트가 안 선다, S36).
+    /// 못 고치는 「일부」다. 앱이 뜰 때의 맞춤은 쓴 것이 없어 이것을 안 돌려준다(토스트가 안 선다, 프로세스 스펙 S36).
     #[test]
     fn an_old_line_by_hand_outside_the_fence_is_said_on_install() {
         let old_by_hand = |event: &str| codex_hook(event, &command_line(&old_handler(), CODEX, event));
@@ -2077,7 +2077,7 @@ trust_level = "trusted"
     }
 
     /// 앵커 셋 — **설치가 고칠 수 있거나 고칠 것이 없으면 까닭이 안 선다.** 울타리 밖의 지금 줄은 「전부」이고, 울타리 안의 옛 줄은
-    /// 구획째 갈아 끼우며(구현-스펙 「맞추는 것」), 이 빌드보다 새로운 판의 줄은 손대지 않고 「전부」로 읽는다(P5).
+    /// 구획째 갈아 끼우며(구현-스펙 「맞추는 것」), 이 빌드보다 새로운 판의 줄은 손대지 않고 「전부」로 읽는다(프로세스 스펙 P5).
     #[test]
     fn install_says_nothing_when_it_fixed_everything_or_had_nothing_to_fix() {
         let newer = format!("{} list-{}", command_line(&handler(), CODEX, "Stop"), LIST_VERSION + 1);
@@ -2183,7 +2183,7 @@ trust_level = "trusted"
 
     /// **파일에 적힌 목록의 판이 이 빌드보다 새로우면 맞추지 않는다**(프로세스 스펙 P5). 목록이 다른 두 빌드를 번갈아 켜도 서로
     /// 되쓰지 않게 — 새 빌드가 쓴 파일을 옛 빌드가 옛 목록으로 되돌리지 않는다. 설치 버튼(같은 병합)도 되돌리지 않는다. 판정은
-    /// 「전부」다 — 「업데이트 필요」를 띄우면 그 버튼이 새 목록을 옛 목록으로 되쓴다(티켓 21 「스펙과 다른 점」).
+    /// 「전부」다 — 「업데이트 필요」를 띄우면 그 버튼이 새 목록을 옛 목록으로 되쓴다(프로세스 티켓 21 「스펙과 다른 점」).
     #[test]
     fn a_file_from_a_newer_list_is_left_as_it_is() {
         let newer = format!("list-{}", LIST_VERSION + 1);

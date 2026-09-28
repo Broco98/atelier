@@ -8,7 +8,7 @@ import { IME_KEYCODE, isModifierKey } from "./terminal-ime";
  * 따로 세운 것은 읽는 쪽이 여럿이어서다. 셸의 키 핸들러(`terminal-store.ts`의
  * `attachCustomKeyEventHandler`)가 키다운 하나를 여기서 한 번 가르고, 그 답으로 무엇을 할지 고른다 —
  * 앱이 가져갈지, 바꿔 보낼지, 사람 입력으로 적을지, 중단 추론을 걸지(Esc · Ctrl-C — `isInterruptKey`, 프로세스 결정
- * 12), 승인 추론에 넘길지(권한 창의 확정 키 — `answerKey`, 프로세스 결정 13 · P7). 가르는 자리가 둘이면 한쪽만 키가 늘어,
+ * 12), 승인 추론에 넘길지(권한 창의 확정 키 — `answerKey`, 프로세스 결정 13 · 프로세스 스펙 P7). 가르는 자리가 둘이면 한쪽만 키가 늘어,
  * 셸로 간 키가 입력으로 안 세이거나 앱이 가져간 키가 입력으로 세인다.
  *
  * **데이터 모양이 아니라 DOM 사건으로 가른다.** xterm이 셸로 내보내는 데이터(`onData`)는 사람이 친 것과
@@ -74,7 +74,7 @@ export function keyRoute(event: KeyDown): KeyRoute | null {
 }
 
 /**
- * **중단 키인가** — Esc · Ctrl-C(프로세스 결정 12 · S30). 셸의 키 핸들러가 이 키를 보면 중단 추론을 건다: 그 순간의 상태를
+ * **중단 키인가** — Esc · Ctrl-C(프로세스 결정 12 · 프로세스 스펙 S30). 셸의 키 핸들러가 이 키를 보면 중단 추론을 건다: 그 순간의 상태를
  * 기준값으로 잡고, 잠시 뒤에도 그대로면 턴이 끊긴 것으로 본다(`shell-attention.ts`의 `inferInterrupt`). 키는 막지 않는다 —
  * 그대로 셸로 가서 에이전트를 끊는다.
  *
@@ -98,7 +98,7 @@ export function isInterruptKey(event: KeyDown): boolean {
  * (`shell-attention.ts`의 `inferApproval`).
  *
  * - `approve` — `1`. Enter 없이 곧바로 첫째 자리를 확정한다 — 권한 창의 첫째는 늘 `Yes`다.
- * - `pick` — `2`~`9`. Enter 없이 곧바로 그 자리를 확정하는데, **무엇인지는 창의 선택지에 달렸다.** 18이 잰 셋짜리 Bash 창에서는
+ * - `pick` — `2`~`9`. Enter 없이 곧바로 그 자리를 확정하는데, **무엇인지는 창의 선택지에 달렸다.** 프로세스 티켓 18이 잰 셋짜리 Bash 창에서는
  *   `2`가 승인(허용 규칙도 적는다) · `3`이 거절이었지만, 허용 규칙 제안이 없는 Bash 창과 WebFetch 창은 「1. Yes · 2. No」 둘이라
  *   `2`가 거절이고, auto 모드 줄이 끼면 `3`이 승인 · `4`가 거절이다. 키로는 어느 창인지 모른다.
  * - `cancel` — Esc. 거절한다(「Esc to cancel」). 숫자와 따로 두는 것은 고치기 칸에서 뜻이 갈려서다 — 칸 안의 숫자는 글자이고
