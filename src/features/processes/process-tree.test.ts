@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { exceptionName, processLabel, processRowLabel, processTree, strayTree, subtreeAt } from "./process-tree";
 import type { ProcessNode } from "./process-tree";
-import { metricsOf as 지표, processRow } from "./process-fixture";
-import type { ProcessRow } from "./types";
+import { metricsOf as 지표, pidNamedRow as 행 } from "./process-fixture";
 
 // 프로세스 티켓 27 · 31 — **프로세스 한 줄의 규칙**(프로세스 스펙 S53 · S54 · S58 · 기본값 [끝내기]). 셸의 자손, 확정 고아 · 출처 불명,
 // 다른 인스턴스, 예외가 모두 같은 규칙으로 선다: 트리로 펴는 차례, 줄의 이름과 접근성 이름, [끝내기]가 넘길 신원. 순수 함수다 — 셸 밑에서
 // 어느 깊이에 서는지는 `shell-tree.test.ts`, 실행마다 묶기는 `process-groups.test.ts`가 잰다.
 
 const MiB = 1024 * 1024;
-
-/** 스냅샷의 한 행 — 이름은 pid에서 짓는다(`p<pid>`). 이름을 보는 검사가 덮어쓴다. */
-const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow =>
-  processRow(pid, ppid, startedUs, `p${pid}`, over);
 
 /** 편 줄마다 (pid, 깊이). */
 const 펼침 = (nodes: ReadonlyArray<ProcessNode>) => nodes.map(({ row, depth }) => [row.id.pid, depth]);

@@ -10,7 +10,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 import { formatCpu, formatMemory, formatPorts } from "@/features/processes/metrics";
-import { metricsOf as 지표, NO_METRICS, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
+import { envReadRow, metricsOf as 지표, NO_METRICS, poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessMetrics, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 
 // 프로세스 티켓 28 — **프로세스마다 메모리 · CPU · 포트가 선다**(프로세스 결정 10 · 프로세스 스펙 S37 · S38 · S40 · S53 · S58, 스토리
@@ -31,9 +31,9 @@ const 셸행 = (page: Page, pty: number) => 트리(page).locator(`[role="treeite
 const work행 = (page: Page) => 트리(page).locator('[role="treeitem"][aria-level="2"]');
 const 칸 = (row: Locator, cell: "memory" | "cpu" | "ports") => row.locator(`[data-cell="${cell}"]`);
 
-/** env를 읽은 행 — 부른 이름은 커널 이름 그대로다. 이 파일이 재는 것은 숫자라 지표를 늘 준다. */
+/** env를 읽은 행(`envReadRow`). 이 파일이 재는 것은 숫자라 지표를 늘 준다. */
 const 행 = (pid: number, ppid: number, startedUs: number, name: string, metrics: ProcessMetrics): ProcessRow =>
-  processRow(pid, ppid, startedUs, name, { argv0: name, command: `${name} --fixture`, metrics });
+  envReadRow(pid, ppid, startedUs, name, { metrics });
 
 /**
  * `그냥 일`의 셸 둘(pty 1 · 2). 첫 셸에는 셸 도우미(gitstatusd)와 사람이 띄운 트리(vite → esbuild)가 있다 — vite는 1GB를 넘고 LISTEN

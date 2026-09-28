@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatMemory } from "./metrics";
 import { buildLabel, endAsk, instanceGroups, instanceRowLabel, tidyUnknownAsk } from "./process-groups";
 import type { ProcessNode } from "./process-tree";
-import { metricsOf as 지표, processRow, snapshotFixture } from "./process-fixture";
+import { metricsOf as 지표, pidNamedRow as 행, snapshotFixture } from "./process-fixture";
 import type { OtherInstance, ProcessRow } from "./types";
 
 // 프로세스 티켓 31 — **다른 인스턴스 묶음과 확인 창의 말**(프로세스 결정 5 · 6 · 10 · 프로세스 스펙 S54 · 기본값 [끝내기]). 다른
@@ -10,10 +10,6 @@ import type { OtherInstance, ProcessRow } from "./types";
 // `process-tree.test.ts`가, 화면이 진짜 폴러 · 확인 창 · IPC를 지나 서는지는 L3가 잰다(`processes-strays.spec.ts`).
 
 const MiB = 1024 * 1024;
-
-/** 스냅샷의 한 행 — 이름은 pid에서 짓는다(`p<pid>`). 이름을 보는 검사가 덮어쓴다. */
-const 행 = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow =>
-  processRow(pid, ppid, startedUs, `p${pid}`, over);
 
 /** 다른 인스턴스 묶음과 그 실행들만 선 스냅샷. */
 const 스냅샷 = (otherInstances: Record<string, ProcessRow[]>, instances: OtherInstance[]) =>

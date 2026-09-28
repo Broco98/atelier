@@ -10,7 +10,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
-import { metricsOf, poolShell, processRow, snapshotFixture } from "@/features/processes/process-fixture";
+import { envReadRow, metricsOf, poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessIdentity, ProcessRow, ProcessSnapshot } from "@/features/processes/types";
 import { terminalSettings } from "@/features/settings/settings-fixture";
 import type { Settings } from "@/features/settings/types";
@@ -31,9 +31,9 @@ const 묶음 = (page: Page, name: string) => page.getByRole("region", { name, ex
 const 줄 = (scope: Locator, name: string) => scope.getByRole("treeitem", { name, exact: true });
 const 메모리칸 = (row: Locator) => row.locator('[data-cell="memory"]');
 
-/** env를 읽은 행 — 부른 이름은 커널 이름 그대로다. 줄 이름에 메모리가 붙게 메모리만 늘 준다. */
+/** env를 읽은 행(`envReadRow`). 줄 이름에 메모리가 붙게 메모리만 늘 준다. */
 const 행 = (pid: number, ppid: number, startedUs: number, name: string, memory: number): ProcessRow =>
-  processRow(pid, ppid, startedUs, name, { argv0: name, command: `${name} --fixture`, metrics: metricsOf(memory) });
+  envReadRow(pid, ppid, startedUs, name, { metrics: metricsOf(memory) });
 
 const 신원 = (row: ProcessRow): ProcessIdentity => row.id;
 const pid순 = (ids: ProcessIdentity[]) => [...ids].sort((a, b) => a.pid - b.pid);

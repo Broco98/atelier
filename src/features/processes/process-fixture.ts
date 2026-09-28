@@ -44,6 +44,25 @@ export const processRow = (
   ...over,
 });
 
+/**
+ * 이름을 pid에서 지은 행(`p<pid>`) — 이름보다 차례 · 깊이 · 묶음을 보는 검사(L2 process-tree · process-groups)의 행이다. 이름을
+ * 보는 검사는 `over`로 덮어쓴다. 이름 규칙을 파일마다 적으면 한쪽만 고친 날 두 파일의 행이 조용히 갈린다.
+ */
+export const pidNamedRow = (pid: number, ppid: number, startedUs: number, over: Partial<ProcessRow> = {}): ProcessRow =>
+  processRow(pid, ppid, startedUs, `p${pid}`, over);
+
+/**
+ * env를 읽은 행 — 부른 이름(`argv0`)은 커널 이름 그대로이고 명령줄은 `<이름> --fixture`다. 숫자와 줄 이름을 보는 L3(processes-metrics ·
+ * processes-strays)의 행이고, 지표는 `over`로 준다.
+ */
+export const envReadRow = (
+  pid: number,
+  ppid: number,
+  startedUs: number,
+  name: string,
+  over: Partial<ProcessRow> = {},
+): ProcessRow => processRow(pid, ppid, startedUs, name, { argv0: name, command: `${name} --fixture`, ...over });
+
 /** 풀에 앉은 셸 하나. 마지막 출력은 늘 준다 — 「조용함」의 경과가 이것에서 잰다. */
 export const poolShell = (ptyId: number, shellKey: string, lastOutputMs: number, metrics: ProcessMetrics = NO_METRICS): PoolShell => ({
   ptyId,
