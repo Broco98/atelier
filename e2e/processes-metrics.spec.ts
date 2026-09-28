@@ -134,13 +134,11 @@ test("셸 행의 접근성 이름이 「셸 이름, 상태, 메모리」 한 문
 
 // 앵커 — 지표를 못 읽은 앱(macOS 밖)은 칸에 「—」가 서고 이름에 메모리 조각이 안 붙는다. 「0MB」는 모르는 것을 없다고 한다.
 test("지표를 못 읽은 셸은 칸에 「—」가 서고 접근성 이름에 메모리가 안 붙는다", async ({ page }) => {
-  const 못읽음 = 스냅샷();
+  // 풀의 셸은 같고 지표만 못 읽었다. 판정은 바탕의 빈 것 그대로다(`snapshotFixture`) — 자손 · 도우미 없이 셸 칸만 본다.
   await installFixtureBackend(page, {
-    processes_snapshot: {
-      ...못읽음,
-      verdict: { ...못읽음.verdict, descendants: {}, helpers: [] },
-      pool: 못읽음.pool.map((shell) => ({ ...shell, metrics: NO_METRICS })),
-    },
+    processes_snapshot: snapshotFixture({
+      pool: 스냅샷().pool.map((shell) => poolShell(shell.ptyId, shell.shellKey, shell.lastOutputMs, NO_METRICS)),
+    }),
   });
   await 셸둘을띄우고연다(page);
 
