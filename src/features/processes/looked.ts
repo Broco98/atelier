@@ -39,7 +39,11 @@ export function openProcessesScreen(): () => void {
   };
 }
 
-/** 「봤다」를 앉히는 자리 — nav 메타(`ProcessesNavMeta` — 요약의 손볼 것)와 화면(`ProcessesPage` — 스냅샷의 손볼 것). */
+/**
+ * 「봤다」를 앉히는 자리 — nav 메타(`ProcessesNavMeta` — 요약의 손볼 것)와 화면(`ProcessesPage` — 스냅샷의 손볼 것). **두 자리는
+ * 서로 다른 이름을 넘긴다** — 같은 이름이면 `lastMarked`의 칸이 하나라 합이 안 선다. tsc는 그것을 못 가르고, L3
+ * `processes-nav-meta`의 상한을 넘는 장면이 잰다.
+ */
 export type LookSite = "nav" | "screen";
 
 /**

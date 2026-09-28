@@ -17,7 +17,7 @@ import {
   시계를세운다,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
-import { NEEDS_LOOK_LABEL } from "@/features/processes/needs-look";
+import { NEEDS_LOOK_LABEL, SEEN_CAP } from "@/features/processes/needs-look";
 import { identityOf as 신원, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 
 // 프로세스 티켓 29 — **nav에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
@@ -165,6 +165,56 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
 
   // 앵커: 화면이 못 본 것은 켠다 — 「안 선다」가 점을 못 켜는 화면이라서가 아니다.
   await replaceAnswer(page, "processes_summary", 요약({ unknown: [불명.id, 신원(4_405)], recordHead: 5 }));
+  await 박자(page);
+  await expect(점(page)).toBeVisible();
+
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **두 자리가 본 것은 합쳐 앉는다 — 저마다 상한을 넘어도**(S41 · 묶음 리뷰 minor M12). 상한(`SEEN_CAP`)은 「지금 것」 밖의 옛 것에만
+// 걸리고, 지금 것은 두 자리(nav 메타 · 화면)가 저마다 마지막으로 앉힌 것의 합이다(`looked.ts`의 `markSeen`). 그 합은 두 자리가 **서로
+// 다른 자리 이름**(`LookSite`)을 넘길 때만 선다 — 같은 이름이면 칸이 하나라 마지막에 앉힌 자리의 것만 지금 것이 되고, 그 수가 상한에
+// 닿으면 다른 자리가 방금 본 것이 잘린다. 합치는 규칙은 L2(`looked.test`)가 자리 이름을 손으로 넘겨 잰다. 여기서 재는 것은 진짜
+// 사이드바와 진짜 화면이 그 이름을 **다르게** 넘기는가다. 위 검사는 상한 아래 장면이라 이것을 못 가른다.
+//
+// 장면: 요약은 늦어 옛 출처 불명을 싣고, 화면은 새것을 먼저 보인다 — 겹치는 것 말고 저마다만 본 것이 있고, 저마다 상한을 넘는다.
+// 화면이 먼저 보고 요약이 나중에 온다 — nav가 마지막에 앉히므로, 이름이 같으면 집합에 요약의 것만 남는 차례다. 떠난 뒤 요약이
+// 화면이 본 것을 따라잡아 싣는다.
+test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 요약이 늦게 실어 와도 ●를 켜지 않는다", async ({ page }) => {
+  const 신원들 = (from: number, count: number) => Array.from({ length: count }, (_, at) => 신원(from + at));
+  const 수 = SEEN_CAP + 44;
+  const 요약이본것 = 신원들(5_001, 수);
+  const 화면이본것 = 신원들(5_051, 수);
+  await page.clock.install();
+  await installFixtureBackend(page);
+  await page.goto("/processes");
+  await expect(processesTitle(page)).toBeVisible();
+  await expect(navRow(page, "Processes")).toContainText(formatMemory(PROCESS_SUMMARY.total));
+  await 시계를세운다(page);
+
+  await replaceAnswer(
+    page,
+    "processes_snapshot",
+    snapshotFixture({
+      verdict: {
+        orphans: { confirmed: {}, unknown: { "OLD-1": 화면이본것.map((id) => processRow(id.pid, 1, id.startedUs, "sleep")) } },
+      },
+    }),
+  );
+  await 스냅샷박자(page);
+  await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
+  await replaceAnswer(page, "processes_summary", 요약({ unknown: 요약이본것 }));
+  await 박자(page);
+  await expect(점(page)).toHaveCount(0);
+
+  await navButton(page, "Projects").click();
+  await expect(processesTitle(page)).toHaveCount(0);
+  await replaceAnswer(page, "processes_summary", 요약({ unknown: 화면이본것 }));
+  await 박자(page);
+  await expect(점(page), "요약이 앉힐 때 화면에서 본 출처 불명이 상한 밖으로 잘렸다").toHaveCount(0);
+
+  // 앵커: 두 자리 모두 못 본 것은 켠다 — 「안 선다」가 점을 못 켜는 장면이라서가 아니다.
+  await replaceAnswer(page, "processes_summary", 요약({ unknown: [...화면이본것, 신원(6_001)] }));
   await 박자(page);
   await expect(점(page)).toBeVisible();
 
