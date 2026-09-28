@@ -482,7 +482,7 @@ describe("전이 표 — 프로세스 결정 13", () => {
   });
 
   // **「없음」은 상태 전이가 상태 없음을 돌려주는 것이다**(스펙 전이 표 아래 줄). 옛 전이 함수는 늘 값을 돌려줘서
-  // `/clear`가 「도는 중」을 세웠다 — 지워진 대화 위에 링이 돌고, 그 링을 풀 사건이 다음 턴까지 안 온다.
+  // `/clear`가 「도는 중」을 세웠다 — 지워진 대화 위에 스피너가 돌고, 그 스피너를 풀 사건이 다음 턴까지 안 온다.
   it.each([
     ["claude 중단(`is_interrupt`)", hook("claude", "PostToolUseFailure", { tool_name: "Bash", tool_input: { command: "sleep 30" }, tool_use_id: "toolu_05", error: "Interrupted", is_interrupt: true })],
     ["codex 중단", hook("codex", "Interrupt", { turn_id: "t1", permission_mode: "default" })],
