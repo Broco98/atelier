@@ -10,6 +10,7 @@ import {
   clearHalf,
   DRAG_THRESHOLD,
   dragStore,
+  dragTraceLine,
   farEnough,
   hoverHalf,
   hoverSlot,
@@ -349,5 +350,112 @@ describe("드래그 임계값", () => {
     expect(farEnough(-DRAG_THRESHOLD, 0)).toBe(true);
     expect(farEnough(0, DRAG_THRESHOLD)).toBe(true);
     expect(farEnough(4, 4)).toBe(true);
+  });
+});
+
+// ─── 끌기 계측(티켓 16 · 프로세스 스펙 S22) ───
+//
+// 사이드바 행을 눌렀는데 안 열린다 — 행 클릭이 5px 문턱에 삼켜진다는 가설이 있다. 문턱은 고치지 않고(판 02는 재기만
+// 한다) dev 빌드에서 **문턱을 넘은 순간과 삼킨 클릭**을 한 줄씩 남긴다. 줄에는 `dx` · `dy` · `pointerType` · 삼켰는지가
+// 선다. 릴리스 빌드에는 안 선다 — 로그는 dev 가드 한 곳을 지난다.
+describe("끌기 계측", () => {
+  const gesture = read("./pointer-drag.ts");
+
+  it("한 줄에 dx · dy · pointerType · 삼켰는지가 선다", () => {
+    const line = dragTraceLine({ source: "work", moment: "threshold", dx: 3, dy: -4.26, pointerType: "mouse", swallowed: false });
+    expect(line).toBe("atelier: 끌기(work) 문턱 dx=3 dy=-4.3 pointerType=mouse swallowed=false");
+    expect(dragTraceLine({ source: "shell", moment: "swallow", dx: 0, dy: 6, pointerType: "pen", swallowed: true })).toBe(
+      "atelier: 끌기(shell) 삼킨 클릭 dx=0 dy=6 pointerType=pen swallowed=true",
+    );
+  });
+
+  // 포인터 종류를 모르는 사건도 온다(합성 이벤트 · 오래된 엔진) — 빈 칸 대신 그렇다고 적는다.
+  it("포인터 종류를 모르면 그렇게 적는다", () => {
+    expect(dragTraceLine({ source: "spec", moment: "threshold", dx: 5, dy: 0, pointerType: "", swallowed: false })).toContain(
+      "pointerType=?",
+    );
+  });
+
+  // **dev 가드가 한 곳이다.** 부르는 자리마다 가드를 적으면 한 자리를 잊은 날 릴리스 빌드에 로그가 선다. 콘솔을
+  // 부르는 자리도 그 함수 안 하나다.
+  it("로그는 dev 가드 한 곳을 지난다", () => {
+    const countOf = (text: string, literal: string) => text.split(literal).length - 1;
+    expect(countOf(gesture, "import.meta.env.DEV")).toBe(1);
+    expect(gesture).toContain("if (!import.meta.env.DEV) return;");
+    expect(countOf(gesture, "console.")).toBe(1);
+    // 정의 하나와 부르는 자리 둘(문턱 · 삼킨 클릭).
+    expect(countOf(gesture, "traceDrag(")).toBe(3);
+  });
+
+  describe("몸짓이 두 순간에 한 줄씩 남긴다", () => {
+    let target: EventTarget;
+    let timers: (() => void)[];
+    let lines: string[];
+
+    const pointer = (type: string, clientX: number, clientY = 0, pointerType = "mouse") =>
+      target.dispatchEvent(Object.assign(new Event(type), { clientX, clientY, pointerType }));
+    const click = () =>
+      target.dispatchEvent(Object.assign(new Event("click"), { stopPropagation() {}, preventDefault() {} }));
+
+    beforeEach(() => {
+      target = new EventTarget();
+      timers = [];
+      lines = [];
+      // 클릭 삼키기를 걷는 타이머는 **붙잡는다** — 떼기와 클릭 사이가 이 검사의 자리다.
+      vi.stubGlobal("window", Object.assign(target, { setTimeout: (run: () => void) => timers.push(run) }));
+      vi.stubGlobal("document", { body: { classList: { add: () => {}, remove: () => {} } } });
+      vi.stubEnv("DEV", true);
+      vi.spyOn(console, "debug").mockImplementation((line: string) => void lines.push(line));
+      dragStore.setState(() => ({ source: null, half: null, slot: null }));
+      return () => {
+        pointer("pointerup", 0);
+        for (const run of timers) run();
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+      };
+    });
+
+    it("문턱을 넘은 순간과 삼킨 클릭", () => {
+      armDrag({ kind: "work", slug: "a" }, { clientX: 10, clientY: 10 });
+      pointer("pointermove", 12, 11);
+      expect(lines, "문턱 전에는 아무것도 안 남긴다").toEqual([]);
+      pointer("pointermove", 13, 14);
+      pointer("pointermove", 30, 30);
+      pointer("pointerup", 11, 13);
+      click();
+
+      expect(lines).toEqual([
+        "atelier: 끌기(work) 문턱 dx=3 dy=4 pointerType=mouse swallowed=false",
+        "atelier: 끌기(work) 삼킨 클릭 dx=1 dy=3 pointerType=mouse swallowed=true",
+      ]);
+    });
+
+    // 본문에서 놓으면 누른 자리와 뗀 자리가 달라 브라우저가 클릭을 안 낸다 — 삼킨 것이 없어 문턱 한 줄뿐이다.
+    it("삼킬 클릭이 없으면 문턱 한 줄이다", () => {
+      armDrag({ kind: "shell", owner: "atelier:", shellId: 1 }, { clientX: 0, clientY: 0 });
+      pointer("pointermove", 0, 8, "touch");
+      pointer("pointerup", 0, 80, "touch");
+
+      expect(lines).toEqual(["atelier: 끌기(shell) 문턱 dx=0 dy=8 pointerType=touch swallowed=false"]);
+    });
+
+    // 문턱 안의 눌림은 클릭이다 — 계측할 끌기가 없다.
+    it("문턱 안에서 떼면 아무것도 안 남긴다", () => {
+      armDrag({ kind: "work", slug: "a" }, { clientX: 0, clientY: 0 });
+      pointer("pointermove", 2, 2);
+      pointer("pointerup", 2, 2);
+      click();
+      expect(lines).toEqual([]);
+    });
+
+    it("릴리스 빌드에서는 아무것도 안 남긴다", () => {
+      vi.stubEnv("DEV", false);
+      armDrag({ kind: "work", slug: "a" }, { clientX: 0, clientY: 0 });
+      pointer("pointermove", 20, 0);
+      pointer("pointerup", 0, 0);
+      click();
+      expect(lines).toEqual([]);
+    });
   });
 });

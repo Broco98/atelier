@@ -81,7 +81,7 @@ describe("적어 둘 세계를 묻는다", () => {
     },
   );
 
-  // 표의 다섯 화면은 전부 적히는 자리여야 한다 — 하나가 세계 밖으로 떨어지면 그 화면에
+  // 표의 여섯 화면은 전부 적히는 자리여야 한다 — 하나가 세계 밖으로 떨어지면 그 화면에
   // 머무는 동안 마지막 주소가 낡은 채 굳는다.
   it("표의 주소는 모두 자기 세계로 적힌다", () => {
     for (const mode of ALL_MODES) {
@@ -141,9 +141,9 @@ describe("모드별 표", () => {
     expect(modeFrom(text)).toBeNull();
   });
 
-  // **이 다섯이 서로 다른 값이어야 한다.** 표 한쪽을 다른 쪽으로 눕히는 변형(둘 다 `/works`를
+  // **이 여섯이 서로 다른 값이어야 한다.** 표 한쪽을 다른 쪽으로 눕히는 변형(둘 다 `/works`를
   // 돌려주는 것)은 화면을 안 죽이고 지나간다 — Maison으로 가도 Atelier가 뜰 뿐이다.
-  it.each(["list", "item", "terminal", "archive", "archiveItem"] as const)(
+  it.each(["list", "item", "terminal", "processes", "archive", "archiveItem"] as const)(
     "%s 주소가 두 모드에서 갈린다",
     (key) => {
       expect(routesOf("maison")[key]).not.toBe(routesOf("atelier")[key]);
@@ -173,11 +173,33 @@ describe("모드별 표", () => {
 
 describe("모드별 nav", () => {
   // 결정 6. `Projects`가 없는 것은 빠뜨린 게 아니라 이 세계에 프로젝트가 없기 때문이다(결정 17).
-  it("Maison nav는 Terminal·Archive 둘이다", () => {
-    expect(navItemsOf("maison").map((item) => item.key)).toEqual(["terminal", "archive"]);
+  // `Processes`는 두 세계 모두에 선다(프로세스 결정 8 · 9) — 화면이 앱 전체를 보이므로 세계를 가리지 않는다.
+  it("Maison nav는 Terminal·Processes·Archive 셋이다", () => {
+    expect(navItemsOf("maison").map((item) => item.key)).toEqual(["terminal", "processes", "archive"]);
   });
 
-  // **양쪽을 함께 못 박는다**: 「둘이다」만 세우면 그 둘이 Atelier 주소를 가리켜도 초록이다.
+  // **자리가 두 세계에서 같다**(프로세스 스펙 S43): `Terminal` 다음, `Archive` 앞. 셸과 가까운 곳에 두고 차가운 보관물은
+  // 끝에 둔다. 한 세계만 재면 다른 세계의 배열에서 자리가 어긋나도 초록이고, 세그먼트를 누를 때마다 그 줄이 자리를 옮긴다.
+  it.each(ALL_MODES)("%s nav에서 Processes는 Terminal 다음, Archive 앞이다", (mode) => {
+    const keys = navItemsOf(mode).map((item) => item.key);
+    const at = keys.indexOf("processes");
+    expect(at, "Processes가 없다").toBeGreaterThan(0);
+    expect(keys[at - 1]).toBe("terminal");
+    expect(keys[at + 1]).toBe("archive");
+  });
+
+  // 두 세계의 줄이 **같은 얼굴**이다 — 라벨과 글리프(위 Maison 표 머리말: 하는 일이 같은데 그림이 다르면 세그먼트를 눌렀을
+  // 때 nav가 통째로 바뀐 것처럼 읽힌다). 가는 곳만 갈린다: 각 세계의 nav는 자기 접두사로 간다(프로세스 결정 9).
+  it("Processes 줄은 두 세계에서 라벨과 글리프가 같고 가는 곳만 다르다", () => {
+    const [atelier, maison] = ALL_MODES.map((mode) => navItemsOf(mode).find((item) => item.key === "processes"));
+    expect(atelier?.label).toBe("Processes");
+    expect(maison?.label).toBe(atelier?.label);
+    expect(maison?.icon).toBe(atelier?.icon);
+    expect(atelier?.to).toBe("/processes");
+    expect(maison?.to).toBe("/maison/processes");
+  });
+
+  // **양쪽을 함께 못 박는다**: 「셋이다」만 세우면 그 셋이 Atelier 주소를 가리켜도 초록이다.
   it("Maison nav는 Maison 주소로 간다", () => {
     for (const item of navItemsOf("maison")) {
       expect(modeOf(item.to)).toBe("maison");
@@ -191,6 +213,7 @@ describe("모드별 nav", () => {
     expect(navItemsOf("atelier")).toBe(navItems);
     const routes = routesOf("atelier");
     expect(navItemsOf("atelier").find((item) => item.key === "terminal")?.to).toBe(routes.terminal);
+    expect(navItemsOf("atelier").find((item) => item.key === "processes")?.to).toBe(routes.processes);
     expect(navItemsOf("atelier").find((item) => item.key === "archive")?.to).toBe(routes.archive);
   });
 

@@ -9,19 +9,26 @@ import { bellSignal, oscSignal } from "./shell-osc";
 // 구현 스펙의 3절(「Codex TUI의 OSC 9는 본문으로만 갈린다」)이다 — 한 글자라도 틀리면 훅을
 // 안 깐 Codex 사용자의 승인 요청이 앰버가 아니라 초록으로 뜬다.
 describe("OSC 본문을 정규 이벤트로 접는다", () => {
+  // 승인 넷 — 접두사 **뒤가** 말이 된다. **어느 창인지는 모른다**(티켓 25 리뷰 반영) — 본문 한 줄로는 권한 창인지 물음인지 못
+  // 가르고(`Plan mode prompt:`는 물음이다), 승인 추론은 이 기다림을 안 읽는다.
   it.each([
-    // 승인 넷 — 접두사 **뒤가** 말이 된다.
-    ["Approval requested: Bash(git status)", "waiting", "Bash(git status)"],
-    ["Codex wants to edit src/main.rs", "waiting", "src/main.rs"],
-    ["Approval requested by codex", "waiting", "codex"],
-    ["Plan mode prompt: 어느 쪽으로 갈까요?", "waiting", "어느 쪽으로 갈까요?"],
-    // **그 밖은 전부 `end`(→ 초록)이고 본문 전체가 말이 된다**(결정 13의 둘째).
-    // 누군가 알리려 했으니 안 본 것이 있다 — 무슨 일인지는 사람이 이 글자를 읽는다.
-    ["PR #174 열었다", "end", "PR #174 열었다"],
-    ["Codex", "end", "Codex"],
+    ["Approval requested: Bash(git status)", "Bash(git status)"],
+    ["Codex wants to edit src/main.rs", "src/main.rs"],
+    ["Approval requested by codex", "codex"],
+    ["Plan mode prompt: 어느 쪽으로 갈까요?", "어느 쪽으로 갈까요?"],
+  ] as const)("%s → waiting", (body, message) => {
+    expect(oscSignal(body)).toEqual({ event: "waiting", message, dialog: null });
+  });
+
+  it.each([
+    // **그 밖은 전부 `stop`(→ 확인할 것)이고 본문 전체가 말이 된다**(terminal-activity-signal 결정 13의 둘째).
+    // 누군가 알리려 했으니 안 본 것이 있다 — 무슨 일인지는 사람이 이 글자를 읽는다. 옛 표는 이 줄을 `end`로
+    // 접었는데, 프로세스 결정 13이 확인할 것을 턴의 끝(`stop`)으로 옮기고 `end`를 지우는 사건으로 바꿨다.
+    ["PR #174 열었다", "stop", "PR #174 열었다"],
+    ["Codex", "stop", "Codex"],
     // 여러 줄이면 첫 줄만 — 자르는 자리는 `firstLine` 하나다(훅 길과 같은 함수).
-    ["테스트 셋 통과\n커밋할까요?", "end", "테스트 셋 통과"],
-    ["\n\n  늦게 시작하는 말  ", "end", "늦게 시작하는 말"],
+    ["테스트 셋 통과\n커밋할까요?", "stop", "테스트 셋 통과"],
+    ["\n\n  늦게 시작하는 말  ", "stop", "늦게 시작하는 말"],
   ] as const)("%s → %s", (body, event, message) => {
     expect(oscSignal(body)).toEqual({ event, message });
   });
@@ -32,7 +39,7 @@ describe("OSC 본문을 정규 이벤트로 접는다", () => {
     "Approval requested: ",
     "Codex wants to edit ",
   ])("%s는 말 없는 기다림이다", (body) => {
-    expect(oscSignal(body)).toEqual({ event: "waiting", message: null });
+    expect(oscSignal(body)).toEqual({ event: "waiting", message: null, dialog: null });
   });
 
   // **빈 본문은 아무 주장도 아니다**(결정 3). 여기서 `done`을 만들면 본문 없는 OSC 하나에
@@ -56,12 +63,12 @@ describe("벨은 아는 에이전트가 없을 때만 말한다", () => {
   // 모르는 명령이 끝나며 울린 벨 — 이 판이 판 04 결정 21의 감수를 절반 닫는 자리다
   // (`; tput bel`을 붙인 사람은 밀려난 칸에서도 띠가 받는다).
   it.each(["make", "node", "cargo", "vim"])("%s가 도는 셸의 벨은 안 본 완료다", (running) => {
-    expect(bellSignal(running)).toEqual({ event: "end", message: null });
+    expect(bellSignal(running)).toEqual({ event: "stop", message: null });
   });
 
   // 빈 프롬프트에서 사람이 `printf '\\a'`를 친 자리다. 도는 명령이 없다는 것은 아는
   // 에이전트도 없다는 뜻이라 같은 길로 간다.
   it("도는 것이 없어도 안 본 완료다", () => {
-    expect(bellSignal(null)).toEqual({ event: "end", message: null });
+    expect(bellSignal(null)).toEqual({ event: "stop", message: null });
   });
 });

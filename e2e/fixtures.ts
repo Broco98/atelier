@@ -3,6 +3,12 @@ import type { ProjectView } from "@/features/projects/types";
 import type { SearchHit, SearchResults } from "@/features/search/types";
 import type { SpecTree, SpecTreeItem, WorkView } from "@/features/works/types";
 import type { HookStatus, Settings } from "@/features/settings/types";
+import { terminalSettings } from "@/features/settings/settings-fixture";
+import type { StartupReport } from "@/components/shell/startup-report";
+import type { ProcessesEnded } from "@/components/shell/processes-ended";
+import type { CloseCheck } from "@/features/terminal/types";
+import { snapshotFixture } from "@/features/processes/process-fixture";
+import type { CleanupEvent, ProcessSnapshot, ProcessSummary, TrendPoint } from "@/features/processes/types";
 import type {
   LayoutPreview,
   SaveAnswer,
@@ -138,7 +144,8 @@ export const WORKS: WorkView[] = [
   },
   // **프로젝트가 둘인 work**(UI개선 결정 17~19·30). 새 셸 자리가 갈리는 곳이 이 모양 하나다 —
   // ⌘T는 「모든 프로젝트」(워크트리들의 부모 폴더)에, `+` 메뉴는 고른 프로젝트에 열고, 들어가도
-  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 테스트마다 못 덮으므로 여기 한 벌을 둔다.
+  // 셸이 저절로 안 선다. 모드 표의 `list_works`는 페이지를 열 때 못 덮으므로(뜬 뒤에 한 칸을 가는
+  // `replaceAnswer`뿐이다 — `FIXTURE_BY_MODE` 머리말) 여기 한 벌을 둔다.
   //
   // **끝에 더한다** — 앞 두 줄을 자리로 집는 검사가 여럿이다(`const [pinnedWork, plainWork] = WORKS`).
   {
@@ -493,7 +500,7 @@ export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
 /**
  * 편집기가 연 뒤에 **밖에서 고쳐진** Atelier 레이아웃(spec 레이아웃 티켓 15) — `SPEC_LAYOUT_READ`에서 에이전트가
  * `decisions.md` 항목의 설명 한 칸을 고쳐 저장한 것이다. 처음부터 답하면 편집기가 이것을 기준본으로 읽으므로,
- * 시나리오 도중에 읽기의 답으로 갈아 끼운다(`harness`의 `swapAnswer`).
+ * 시나리오 도중에 읽기의 답으로 갈아 끼운다(`harness`의 `replaceAnswer`).
  */
 export const CHANGED_SPEC_LAYOUT_READ: ReadableSpecLayout = {
   ...SPEC_LAYOUT_READ,
@@ -581,11 +588,104 @@ export const FIXTURE_SHELL_NAME = "zsh";
  * — `shellOfPty`가 그 id를 가진 첫 인스턴스를 주기 때문이다. 그래서 「서로 다른 상태의
  * 셸 둘」이라는 그림 자체를 못 세운다(terminal-tabs.spec.ts의 티켓 #198 마디).
  *
- * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** `responses`는 `addInitScript`의
+ * **고정 답 표에 함수를 둘 수 없어 여기가 따로 선다.** 두 표(하네스의 `byName` · `byMode`)는 `addInitScript`의
  * 인자로 직렬화되어 브라우저로 건너가므로 함수는 그 길을 못 지난다 — 수를 올리는 일은
  * 브라우저 안에서 일어나야 하고, 여기는 **어느 커맨드의 어느 키인가**만 말한다.
+ *
+ * **셸 키도 그 수를 따라 오른다**(프로세스 스펙 S34 · 티켓 23). 셸 키는 `<세대>-<PTY 번호>`라 번호가 오르면 키도
+ * 함께 갈려야 한다 — 수만 올리고 키를 고정 답으로 두면 셸이 몇이든 키가 하나뿐이라, 키로 셸을 찾는 길(방금 부른
+ * 셸로 · 알림 클릭)이 늘 첫 셸로 간다. 그래서 줄마다 **오른 수를 뒤에 붙여 다시 짓는 글자 칸**을 함께 적는다.
  */
-export const FIXTURE_INCREMENTING_KEYS: Record<string, string> = { pty_spawn: "id" };
+export interface Incrementing {
+  /** 부를 때마다 1씩 올리는 수의 칸. */
+  key: string;
+  /** 오른 수를 뒤에 붙여 다시 짓는 칸: 칸 이름 → 앞말. 표의 첫 값도 `앞말 + 첫 수`여야 한다(아래 자기 검사). */
+  follow: Record<string, string>;
+}
+
+/**
+ * 픽스처 백엔드의 **세대** — 셸 키의 앞머리(`<세대>-<PTY 번호>`, Rust `processes/shell_key.rs`의 `mint`). 훅 사건을 흉내 내는
+ * 손잡이(`harness`의 `fireAttention`)가 셸 id를 이것으로 짓는다 — 두 자리가 같은 값을 봐야 셸 키와 훅의 셸 id가
+ * 같은 셸을 가리킨다(실물에서 둘은 같은 문자열 하나다).
+ */
+export const FIXTURE_GENERATION = "l3";
+
+export const FIXTURE_INCREMENTING_KEYS: Record<string, Incrementing> = {
+  pty_spawn: { key: "id", follow: { shellKey: `${FIXTURE_GENERATION}-` } },
+};
+
+/**
+ * 픽스처의 `pty_spawn`이 **n번째로 띄운 셸**(pty n)에 준 셸 키 — 위 줄이 짓는 `<세대>-<번호>`다. 스냅샷 픽스처의 풀 ·
+ * 판정이 이 키를 실으면 `Processes` 화면이 스토어의 그 셸과 잇는다(실물에서 둘이 같은 셸 키 하나인 것과 같다).
+ */
+export const shellKeyOf = (pty: number): string => `${FIXTURE_GENERATION}-${pty}`;
+
+/**
+ * `Processes` 화면의 스냅샷(티켓 26)이 기본으로 답하는 것 — **아무 셸도 없고 판정이 가른 것도 없는 앱**이다. 화면을 여는 검사만
+ * 부르므로 모든 spec이 지나는 답은 아니지만, 이름 표에 서야 시나리오가 덮어쓴다(`installFixtureBackend`의 덮어쓰기).
+ *
+ * 풀을 비워 두는 것은 픽스처의 셸이 여기 안 서게 하려는 것이다 — 픽스처의 `pty_spawn`이 띄운 셸과 이 답의 풀은 서로를 모른다.
+ * 기본 답에 셸이 서 있으면 화면을 여는 모든 검사가 스토어가 모르는 셸(32의 화면 밖 셸)을 지고 선다. 셸 수를 재는 검사가 제
+ * 풀로 덮는다(`processes.spec.ts`).
+ *
+ * 모양은 L2와 같은 한 자리(`process-fixture.ts`의 `snapshotFixture`)가 짓는다 — 스냅샷을 덮어쓰는 spec도 그것을 불러 제 칸만 고치고,
+ * 행 · 풀의 셸 · 지표도 거기서 짓는다.
+ */
+export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
+
+/**
+ * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
+ * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
+ * 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
+ *
+ * **모든 spec이 지나는 답이다** — nav 메타가 두 세계의 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
+ * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — `●`를 켜는 검사).
+ */
+export const PROCESS_SUMMARY: ProcessSummary = {
+  total: 3_650_722_202,
+  cpu: 42,
+  app: 639_631_360,
+  webviewExcluded: false,
+  unknown: [],
+  recordHead: null,
+};
+
+/** 위 요약에서 `over`의 칸만 바꾼 것 — 합계 · `●`를 켜는 것을 재는 검사가 제 칸만 덮어쓴다. */
+export const summaryWith = (over: Partial<ProcessSummary>): ProcessSummary => ({ ...PROCESS_SUMMARY, ...over });
+
+/**
+ * 요약 카드의 추이(티켓 30)가 기본으로 답하는 것 — **막 뜬 앱**이라 아직 한 점도 없다. `Processes` 화면을 여는 검사만 부르므로(요약이
+ * 올 때마다 한 번) 모든 spec이 지나는 답은 아니지만, 이름 표에 서야 화면을 여는 검사가 화이트리스트 탐지기에 안 물리고 시나리오가
+ * 덮어쓴다(`processes-summary.spec.ts`).
+ */
+export const PROCESS_TREND: TrendPoint[] = [];
+
+/**
+ * 정리 기록(티켓 32)이 기본으로 답하는 것 — **빈 기록**이다: 앱이 아직 아무것도 안 끝냈다. `Processes` 화면이 스냅샷이 올 때마다 한 번
+ * 부르므로 화면을 여는 검사가 모두 지난다. 기록을 재는 검사가 덮어쓴다(`processes-shells.spec.ts`).
+ */
+export const CLEANUP_LOG: CleanupEvent[] = [];
+
+/** 시작 정리가 `count`개를 끝낸 시작 보고(`startup_report`의 답). 무엇을 끝냈는지는 토스트가 안 적는다 — 수만 본다. */
+export const startupCleaned = (count: number): StartupReport => ({
+  cleaned: Array.from({ length: count }, (_, i) => ({ pid: 40_000 + i, name: "node" })),
+  hooksUpdated: [],
+});
+
+/** 셸 `shellId`가 스스로 끝나며 그 셸에서 띄운 것을 `count`개 끝냈다는 이벤트(`processes:ended`)의 실을 것. */
+export const shellExitEnded = (shellId: number, count: number): ProcessesEnded => ({ reason: "shellExit", shellId, count });
+
+/**
+ * 닫기 전 물음(`pty_close_check` · `pty_close_checks`)에 **조용하지 않은 셸**이 주는 답 — 명령이 돈다(띄운 프로세스는 0).
+ * claude가 대답하는 셸의 모양이다. MCP 아카이브는 이 셸을 닫지 않고 주인 잃은 셸로 남기고, 셸 하나의 닫기는 확인 창으로 묻는다.
+ */
+export const BUSY_SHELL: CloseCheck = { command: true, descendants: 0 };
+
+/**
+ * 닫기 전 물음에 **조용한 셸**이 주는 답 — 명령도 사람이 띄운 프로세스도 없다(셸 도우미는 Rust가 이미 뺀 수다). 묻지 않고
+ * 닫히는 셸이다.
+ */
+export const QUIET_SHELL: CloseCheck = { command: false, descendants: 0 };
 
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
@@ -597,8 +697,22 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   //
   // **파일이 없는 상태를 답한다** — 그것이 첫 실행의 정상 경로이고(`settings.rs`의 `read`),
   // 고르지 않은 값이 `null`인 것도 그 파일의 규칙 그대로다. 여기서 글꼴 이름을 지어내면
-  // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다.
-  read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } satisfies Settings,
+  // 「값을 정하는 유일한 지점」이 `terminal-defaults.ts` 말고 하나 더 생긴다. 구획의 모양은 L2와 같은 한 자리
+  // (`settings-fixture.ts`의 `terminalSettings`)가 짓는다 — 설정을 덮어쓰는 spec도 그것을 불러 제 칸만 고친다.
+  read_settings: { terminal: terminalSettings() } satisfies Settings,
+  // 예외 목록의 기본값(프로세스 스펙 S7). 설정 › 터미널이 열릴 때 한 번 부른다(`SettingsPage.tsx`) — 그 페이지를
+  // 여는 spec이 모두 지나므로 표에 선다. 파일의 `processExceptions`가 `null`이면 칸에 이 목록이 보인다.
+  //
+  // **진짜 목록을 베껴 적지 않는다.** 값을 정하는 자리는 Rust 상수 하나이고(`processes/exceptions.rs`의
+  // `DEFAULTS`), 그것이 프로세스 결정 5의 이름을 다 드는지는 그쪽 L1이 잰다. 이 층이 재는 것은 「백엔드가 준 목록을 칸에
+  // 보이고, 고친 것을 저장에 싣는다」라 짧은 합성으로 족하다 — 진짜처럼 적어 두면 그쪽이 바뀔 때 조용히 낡는다.
+  default_process_exceptions: ["tmux", "docker*"],
+  // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →
+  // `loadStartupReport`) — 그래서 이 줄이 없으면 모든 spec이 화이트리스트 탐지기에 물린다.
+  //
+  // **아무것도 안 한 시작을 답한다**(정리 0, 훅 갱신 없음) — 지난 실행이 깨끗하게 끝났으면 그것이
+  // 정상 경로이고, 토스트가 안 서는 쪽이다. 정리 토스트를 재는 검사만 덮어쓴다(`startup-report.spec.ts`).
+  startup_report: { cleaned: [], hooksUpdated: [] } satisfies StartupReport,
   // 설정 화면의 **저장**이 나가는 자리(#206). 돌려주는 값은 쓰이지 않는다 — 화면이 보는
   // 것은 「실패하지 않았다」뿐이고, 그 뒤에 고른 값이 알림 배선으로 간다
   // (`SettingsPage.tsx`의 `useSectionSave`). 그 한 줄이 이 표에 이 이름이 있는 이유 전부다:
@@ -622,7 +736,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     {
       agent: "claude",
       path: "~/.claude/settings.json",
-      installed: false,
+      installed: "none",
       error: null,
       writeError: null,
       preview: '{ "hooks": { "Stop": [] } }',
@@ -630,7 +744,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     {
       agent: "codex",
       path: "~/.codex/config.toml",
-      installed: false,
+      installed: "none",
       error: null,
       writeError: null,
       preview: "[[hooks.Stop]]",
@@ -666,10 +780,38 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 셸을 띄운 직후 한 번, 그리고 열 폭이 바뀔 때마다 나간다 — 분할 경계를 끄는 검사가
   // 바로 그 두 번째를 센다(works-split.spec.ts).
   pty_resize: null,
-  // 닫기 직전에만 묻는다(결정 92). **`true`인 것은 물어야 하는 쪽을 태우기 위해서다** —
-  // 셸 닫기 확인 창이 이 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다.
-  pty_command_running: true,
+  // 셸을 닫기 직전에만 묻는다 — 명령이 도는가와 함께 끝날 프로세스 수(프로세스 결정 3이 ux-papercuts 결정 92의
+  // 「명령이 도는가」를 넓혔다). **명령이 도는 답인 것은 물어야 하는 쪽을 태우기 위해서다** — 셸 닫기 확인 창이 이
+  // 앱의 것인지(OS 시트가 아닌지)를 보는 검사가 그 길을 지난다. 수는 0이다: 창의 둘째 줄은 그것을 재는 검사
+  // (`close-confirm-count.spec.ts`)가 덮어 세운다.
+  pty_close_check: BUSY_SHELL,
+  // 셸 여럿의 닫기 전 물음(티켓 08) — 종료 확인 창과 아카이브 확인 창이 셀 때 **한 번** 부른다. 답은 pty id → 그
+  // 셸의 답이고, 답한 셸만 싣는다.
+  //
+  // **기본은 빈 답이다** — 아무 셸도 답하지 않았다(명령 없음, 띄운 프로세스 없음으로 센다). 고정 답은 어느 pty id가
+  // 설지 모르고, 셸마다 같은 답을 주는 길이 이 표에 없다. 세기를 재는 검사가 그 시나리오의 pty id로 덮는다
+  // (`quit-confirm.spec.ts`의 「세기」, `close-confirm-count.spec.ts`).
+  pty_close_checks: {} satisfies Record<number, CloseCheck>,
+  // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
+  // **모드를 안 받는다** — 화면이 앱 전체를 보여 두 세계의 주소가 같은 것을 묻는다(프로세스 결정 9). 그래서 이름 표다.
+  processes_snapshot: PROCESS_SNAPSHOT,
+  // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 두 세계의 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
+  // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`(손볼 것 없음)이고, `●`를 재는
+  // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts`). **모드를 안 받는다** — 메타는 「이 세계의 것만 센다」의 예외다.
+  processes_summary: PROCESS_SUMMARY,
+  // 요약 카드의 추이(티켓 30) — `Processes` 화면이 열려 있는 동안 요약이 올 때마다 한 번 부른다. 답은 위 `PROCESS_TREND`(빈 고리)이고,
+  // 스파크라인을 재는 검사가 덮어쓴다. **모드를 안 받는다** — 요약과 같은 앱 전체의 값이다.
+  processes_trend: PROCESS_TREND,
+  // 신원 목록 끝내기(티켓 31) — `Processes`의 자손 행 [끝내기]와 고아 묶음의 [정리]가 부른다. 값은 안 쓰인다(신호까지 보내고
+  // 돌아온다). 검사가 보는 것은 나갔는가와 그 인자(화면에 보인 신원)다(IPC 기록). **모드를 안 받는다** — 화면이 앱 전체다.
+  processes_end: null,
+  // 정리 기록 읽기(티켓 32) — `Processes` 화면이 스냅샷이 올 때마다 한 번 부른다. 답은 위 `CLEANUP_LOG`(빈 기록)이다. **모드를 안
+  // 받는다** — 기록은 앱에 한 장이다.
+  processes_cleanup_log: CLEANUP_LOG,
   pty_kill: null,
+  // 셸의 첫 사람 입력(프로세스 결정 7). 키를 치는 시나리오마다 셸 하나에 한 번 나간다 — 값은 안 쓰이지만
+  // **답이 있어야 화이트리스트를 안 넘는다.** 검사가 보는 것은 나갔는가와 그 인자다(IPC 기록).
+  pty_first_input: null,
   // **타자를 치는 시나리오가 이 판에 생겼다**(#208 리뷰). 사람이 키를 친 직후의 첫 프레임만
   // xterm이 **동기로** 파싱하는데(`WriteBuffer.write`의 `_didUserInput` 갈래), 그 갈래에서
   // 출력 알림과 OSC의 순서가 뒤집히면 방금 선 앰버가 그 자리에서 꺼진다 — 그 순서를 재려면
@@ -829,12 +971,46 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  * 칸을 통째로 비우면(`{}`) 그 세계의 그 명령은 **아무 답도 없다** — 아직 아무도 안 태우는
  * 세계를 그렇게 적는다. 지어낸 답을 앉히는 것보다 낫다: 지어낸 답은 그 화면이 생기는 날
  * 아무도 안 고치는 채로 초록을 준다.
+ *
+ * 인자 값은 **문자열로 바꿔** 견주고, `arg`가 호출에 **아예 없으면** `value`가 있어도 문다 — 이름 표의
+ * 인자별 답(`ArgAnswers`)과 한 규칙이다(`harness.ts`의 `pick`).
  */
 export interface ModeAnswer {
   readonly value?: unknown;
   readonly arg?: string;
   readonly answers?: Record<string, unknown>;
 }
+
+/**
+ * **인자별 답을 이름 표에도 연다**(프로세스 관리 티켓 01) — 위 `ModeAnswer`의 `arg` · `answers`와
+ * 같은 모양이고, 하네스가 두 표를 같은 규칙으로 푼다(`harness.ts`의 `pick`). 받는 자리는
+ * `installFixtureBackend`의 덮어쓰기와 `replaceAnswer`다. 인자에 맞는 답이 없으면 **그 커맨드의 기본
+ * 답**으로 간다 — 이름 표면 `FIXTURE_COMMANDS`의 값, 모드 표면 그 모드의 `value`다.
+ *
+ * **무엇을 재려고 있는가**: 셸마다 다른 답. 이름 표의 덮어쓰기는 커맨드 이름에 값 하나라, 셸 id를
+ * 인자로 받는 커맨드(`pty_close_check`)가 셸 둘에 다른 말을 못 했다(`quit-confirm.spec.ts`의 「세기」
+ * 머리말). 「조용한 셸은 닫히고 조용하지 않은 셸은 남는다」를 한 시나리오로 세우려면 이것이 있어야 한다.
+ *
+ * **무엇을 잘못 쓰면 헛도는가**
+ * - 표의 키는 문자열이고(JS 객체의 키) 하네스가 **인자를 문자열로 바꿔** 견준다 — `{ 1: … }`는 수 `1`과
+ *   문자열 `"1"`에 함께 맞는다. 수와 문자열을 갈라야 하는 인자에는 못 쓴다.
+ * - 맞는 답이 없으면 기본 답이 조용히 온다. **기본 답과 같은 값을 인자별로 적으면** 표가 안 먹어도
+ *   초록이다 — 가르려는 셸에는 기본 답과 다른 값을 준다.
+ * - 인자 이름(`arg`)이 호출에 **아예 없으면** 하네스가 문다(기본 답으로 안 떨어진다). 인자 이름이 바뀌면
+ *   조용히 기본 답을 받는 대신 그 자리에서 빨개지라는 것이다.
+ */
+export class ArgAnswers {
+  readonly arg: string;
+  readonly answers: Readonly<Record<string, unknown>>;
+  constructor(arg: string, answers: Readonly<Record<string, unknown>>) {
+    this.arg = arg;
+    this.answers = answers;
+  }
+}
+
+/** `arg` 인자의 값마다 다른 답. 키는 인자 값을 문자열로 적은 것이다(`ArgAnswers` 머리말). */
+export const answerByArg = (arg: string, answers: Readonly<Record<string, unknown>>): ArgAnswers =>
+  new ArgAnswers(arg, answers);
 
 /**
  * **모드로 갈리는 커맨드의 답.** 위 이름 표보다 먼저 보고, **여기 있는 커맨드는 그 표로
@@ -848,6 +1024,12 @@ export interface ModeAnswer {
  *
  * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
  * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
+ *
+ * **페이지를 열 때는 이 표를 못 덮는다** — `installFixtureBackend`의 덮어쓰기는 이름 표의 이름만 받고
+ * 여기 있는 이름이면 던진다. 뜬 뒤에 **한 모드의 한 칸을** 가는 길이 하나 있다: `replaceAnswer`(프로세스
+ * 관리 티켓 01). 시나리오 도중에 목록이 바뀌어야 서는 검사(MCP로 아카이브된 work이 목록에서 빠진다)를
+ * 위한 것이고, 그 길로만 연다 — 초기화 때 덮게 두면 「모드마다 답이 갈려 있다」는 이 표의 약속이 테스트마다
+ * 흩어진다.
  *
  * **모드를 받는 커맨드는 전부 여기 있어야 한다**(#187) — 그 경계는 `src/tauri-commands.test.ts`가
  * `commands.rs`에서 뽑아 **양쪽으로** 지킨다: 이름 표에 있으면 물고, 여기 없어도 문다.
@@ -935,8 +1117,9 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    */
   move_work: { atelier: { value: WORKS_MOVED }, maison: { value: ROOMS_MOVED } },
   /**
-   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellName}`)은 세계를 안 탄다:
-   * pty 번호도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다. 여기서 답을 가르면
+   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellKey, shellName}`)은 세계를 안 탄다:
+   * pty 번호도 셸 키(세대는 실행 하나의 것이다)도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다.
+   * 번호와 셸 키는 부를 때마다 함께 오른다(`FIXTURE_INCREMENTING_KEYS`). 여기서 답을 가르면
    * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.
    *
    * 이 줄이 사는 이유는 **fail-closed 하나다.** 이름으로 답하는 표에 두면 `mode`를 빠뜨린
@@ -954,8 +1137,8 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * Maison은 `/maison/terminal`이 지난다.
    */
   pty_spawn: {
-    atelier: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
-    maison: { value: { id: 1, shellName: FIXTURE_SHELL_NAME } },
+    atelier: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
+    maison: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
   },
   /**
    * work 화면이 설 때마다 한 번 나간다(팔레트 결정 14). 답은 안 쓰인다 — 순서를 세우는 것은
@@ -1009,7 +1192,10 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
 // 모드마다 따로 세는 것이 아니라 값 하나가 호출 순서대로 오르므로(하네스의 `seen`), 여기서는
 // **모든 칸의 첫 값이 수인가**를 본다 — 한 칸만 모양이 달라도 그 모드의 시나리오에서만
 // `base + n`이 조용히 문자열이 된다.
-for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
+//
+// **따라 짓는 칸도 첫 값이 `앞말 + 첫 수`인가**를 본다(셸 키 — 티켓 23). 하네스는 오른 뒤의 값만 다시 지으므로,
+// 첫 값이 어긋나 있으면 첫 셸만 다른 모양의 키를 받는다 — 둘째 셸부터는 맞아 보여 눈에 안 띈다.
+for (const [cmd, { key, follow }] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
   const forCmd = FIXTURE_BY_MODE[cmd];
   if (forCmd === undefined) {
     throw new Error(`수를 올릴 커맨드가 모드 표에 없습니다: ${cmd}`);
@@ -1018,6 +1204,11 @@ for (const [cmd, key] of Object.entries(FIXTURE_INCREMENTING_KEYS)) {
     const value = answer.value as Record<string, unknown> | undefined;
     if (value === undefined || typeof value[key] !== "number") {
       throw new Error(`수를 올릴 값이 수가 아닙니다: ${cmd}.${mode}.${key}`);
+    }
+    for (const [field, prefix] of Object.entries(follow)) {
+      if (value[field] !== `${prefix}${value[key]}`) {
+        throw new Error(`따라 짓는 값이 「앞말 + 첫 수」가 아닙니다: ${cmd}.${mode}.${field}`);
+      }
     }
   }
 }

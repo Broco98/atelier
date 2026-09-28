@@ -1,7 +1,7 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
 import type { Mode } from "@/mode";
 import type { Attention } from "./shell-attention";
-import type { PtyExit } from "./types";
+import type { CloseCheck, CloseReason, PtyExit } from "./types";
 
 // 셸 목록과 그 목록에 관한 규칙, 그리고 **window 키 판정**을 아는 순수 모듈. import는 타입뿐
 // 이라 DOM 없는 기본 환경에서 그대로 돈다(work-sections.ts·shell-store.ts의 pickSlug가 선례).
@@ -60,6 +60,15 @@ export interface Shell {
   /** `$SHELL`의 basename. 백엔드가 spawn 응답에 실어 준다(결정 8) — 프런트는 모른다. */
   shellName: string | null;
   /**
+   * **셸 키**(`<세대>-<PTY 번호>`, 프로세스 스펙 S34) — 그 셸 env의 `ATELIER_SHELL`과 같은 값이다. spawn 응답이 실어 준다:
+   * 세대는 백엔드만 안다. 응답 전이거나 못 뜬 칸이면 `null`이다.
+   *
+   * **셸을 실행 밖에서도 가리키는 이름이다.** 레지스트리 `id`는 이 실행의 프런트가 스스로 발급한 번호라 백엔드도 다른 실행도
+   * 모른다. 키로 셸을 찾는 길이 이것을 읽는다 — 방금 부른 셸로(티켓 23), 그리고 판 04의 스냅샷이 풀의 셸을 이 칸과 잇는다.
+   * 키로 찾았는데 없으면 그 셸은 닫혔다(옛 세대의 키도 같다 — 번호만 보면 이번 실행의 같은 번호 셸로 간다).
+   */
+  shellKey: string | null;
+  /**
    * 어느 세계의 무엇인가(결정 10·26). 형식과 뜻은 아래 `ShellOwner`가 든다 — 그 세계의
    * 최상위 터미널은 뒤가 빈 키이고, `null`이라는 갈래는 없다.
    */
@@ -100,6 +109,32 @@ export interface Shell {
    * 부르려면 값을 들여야 해서, 이 파일에는 「그 칸에 앉힌다」는 리듀서만 둔다.
    */
   attention: Attention | null;
+  /**
+   * **셸이 0개인 화면이 스스로 띄운 셸인가**(프로세스 결정 7). 화면에 들어오기만 해도 뜨는 셸
+   * (`ensureShell`)이 참이고, 사람이 `+` · ⌘T로 연 셸은 거짓이다. 뜰 때 정해지고 안 바뀐다.
+   *
+   * 이 값과 아래 `firstInput`이 함께 「안 쓴 자동 셸」을 가른다 — 그 화면을 떠나면 닫는 셸이다
+   * (`shell-leave.ts`). 사람이 연 셸은 입력이 없어도 닫지 않는다: 연 사람이 무엇을 할지 모른다.
+   */
+  auto: boolean;
+  /**
+   * 첫 사람 입력의 시각(에포크 ms). 아직 없으면 `null`이다. **한 번만 앉는다**(`markFirstInput`).
+   *
+   * 무엇이 사람 입력인지는 `shell-input.ts`가 정하고, 시각을 찍는 자리는 터미널 스토어다 — 이 모듈은
+   * 시간을 모른다. 백엔드도 같은 값을 한 번 받는다: 셸 도우미를 「사람이 처음 입력하기 전에 태어난
+   * 자손」으로 가르는 기준이 이 시각이다(프로세스 스펙 P1).
+   */
+  firstInput: number | null;
+  /**
+   * **「주인 잃은 셸」인가**(프로세스 결정 4 · 티켓 12). MCP로 아카이브 · 삭제된 work의 셸 중 **조용하지 않은** 것이다
+   * (`closesWithoutAsking`이 거짓) — 부탁을 보낸 claude가 대개 그 셸 안에 있어서, 닫지 않고 이 표시를 세워 남긴다. 거짓으로 뜨고,
+   * 한 번 서면 안 내린다(`markOwnerless`).
+   *
+   * **표시가 선 셸은 다시 판정하지 않는다**(`vanishedOwners`). 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로
+   * 닫히는데, 그것이 프로세스 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다. 닫는 길은 사람이 누르는 [모두 닫기]와
+   * 종료뿐이다.
+   */
+  ownerless: boolean;
 }
 
 export interface ShellsState {
@@ -386,13 +421,14 @@ export function placeHint(cwd: string | null): string | null {
  *
  * **결정 30을 뒤집었다** — 그때는 앱 전체 하나였다. 근거는 WebGL 컨텍스트가 웹뷰의
  * 자원이고 결정 21이 비활성 셸의 xterm을 React 트리 밖에 두어 **안 보이는 칸도 컨텍스트를
- * 계속 쥔다**는 것이었다. 그 사실은 그대로지만 상한이 답할 물음이 아니었다: 사람이 세는
+ * 계속 쥔다**는 것이었다(그 사실은 아래처럼 바뀌었다). 어쨌든 상한이 답할 물음이 아니었다: 사람이 세는
  * 단위는 「이 화면에 몇 개」이고, 앱 전체로 세면 **남의 work에서 연 셸 때문에 이 화면의
  * `+`가 잠긴다** — 왜 잠겼는지가 이 화면에 안 보인다.
  *
- * 컨텍스트가 웹뷰의 한도를 넘으면 `WebglAddon`이 `onContextLoss`로 스스로 물러나고
- * (terminal-store의 그 핸들러) 그 칸은 DOM 렌더러로 그려진다 — 느려지는 것이지 깨지는
- * 것이 아니다. 상한이 막아야 할 것은 그 열화이지 사람이 화면마다 여는 일이 아니다.
+ * 컨텍스트 수는 이제 **이 상한이 아니라 WebGL 자리가 지킨다**(프로세스 결정 18 ③ · `shell-webgl`) — 앱 전체에서 최근에
+ * 붙인 셸 몇 개만 WebGL을 쥐고, 안 보이는 칸도 그 밖이면 놓고 DOM 렌더러로 그린다. _한때 여기 「한도를 넘으면 애드온이
+ * 스스로 물러나 DOM으로 그려질 뿐 느려지는 것이지 깨지는 것이 아니다」라고 적혀 있었는데 사실이 아니었다_: WebKit이
+ * 밀어낸 셸은 xterm이 복구를 기다리는 3초 동안 빈 화면이었다.
  */
 export const MAX_SHELLS = 8;
 
@@ -462,8 +498,16 @@ export interface OpenedShell {
  * **`origin`을 통째로 받는다 — 갈래 둘만 뽑아 받지 않는다.** 한때 `owner`·`project`만
  * 받았는데, cwd가 칸에 눌러앉게 되면서(위 `Shell.cwd`) 뽑을 이유가 없어졌다. 통째로
  * 받으면 여는 자리가 셸에 적히는 자리와 **같은 값 하나**를 본다.
+ *
+ * **`auto`만은 기본값이 있다 — 거짓(사람이 연 셸)이다.** 소유자와 반대인 것은 틀리는 방향 때문이다:
+ * 빠뜨린 자리의 셸은 떠날 때 닫히지 않을 뿐이고, 기본값이 참이면 인자를 잊은 자리 하나가 사람이 연
+ * 셸을 떠날 때마다 닫는다(프로세스 결정 7). 참을 넘기는 자리는 셸이 0개인 화면의 `ensureShell` 하나다.
  */
-export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell | null {
+export function openShell(
+  state: ShellsState,
+  origin: ShellOrigin,
+  auto = false,
+): OpenedShell | null {
   if (atCap(state, origin.owner)) return null;
 
   const id = state.nextId;
@@ -472,6 +516,8 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     status: { kind: "running" },
     title: null,
     shellName: null,
+    // 세대는 백엔드만 안다 — spawn 응답이 실어 온다(`setShellKey`).
+    shellKey: null,
     owner: origin.owner,
     project: origin.project,
     cwd: origin.cwd,
@@ -480,6 +526,11 @@ export function openShell(state: ShellsState, origin: ShellOrigin): OpenedShell 
     // **막 뜬 셸은 아무 주장도 안 한다**(결정 3). 여기에 「도는 중」을 미리 앉히면 훅도
     // OSC도 안 낸 명령이 도는 것처럼 보이고, 그 스피너는 영영 안 꺼진다.
     attention: null,
+    auto,
+    // 막 뜬 셸에는 사람 입력이 없다. p10k가 프롬프트마다 묻는 커서 위치의 응답은 입력이 아니다(`shell-input.ts`).
+    firstInput: null,
+    // 막 뜬 셸의 주인은 그것을 연 화면이다. 주인을 잃는 것은 목록에서 그 work이 사라진 뒤다(`vanishedOwners`).
+    ownerless: false,
   };
   return {
     state: {
@@ -508,8 +559,17 @@ export function runningShellsOf(state: ShellsState, owner: ShellOwner): number {
 }
 
 /**
+ * 그 칸이 목록에 있고 **살아 있는가**. 없는 칸 · 끝난 칸 · 못 뜬 칸은 아니다. [조용한 셸 모두 닫기]가 창에 답한 뒤 다시 본다
+ * (티켓 32) — 묻는 사이 스스로 끝난 셸의 칸은 죽은 이유를 읽으라고 남은 칸이라 거두지 않는다.
+ */
+export function isLiveShellOf(state: ShellsState, id: number): boolean {
+  const shell = state.shells.find((one) => one.id === id);
+  return shell !== undefined && isAlive(shell);
+}
+
+/**
  * 닫힐 프로세스가 **있는** 칸인가. 끝난 칸·못 뜬 칸은 목록에 남아도(결정 22) 아니다 — 세는 자리
- * (`runningShellsOf` · `countQuitShells`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
+ * (`runningShellsOf` · `countQuitShells` · `countSpawned`)와 묻는 자리(`needsCloseConfirm`)가 이 하나를 딛는다.
  */
 function isAlive(shell: Shell): boolean {
   return shell.status.kind === "running";
@@ -609,9 +669,10 @@ export function activeShellOf(state: ShellsState, owner: ShellOwner): Shell | nu
  * 정하지 않는다. 마지막 칸이 이렇게 사라지면 셸 0개인 화면이 되고, 그 자리에서 새 셸이
  * 저절로 뜨지 않는 것까지 `×`의 성질을 그대로 물려받는다.
  *
- * **빠진 칸의 인스턴스를 거두는 일은 여기 없다 — 그 자리는 터미널 스토어다.** 상한 8이
- * 세는 것은 셸의 수가 아니라 살아 있는 WebGL 컨텍스트의 수라(결정 30), 목록에서만 빼면
- * 「열고 → `exit`」을 되풀이하는 동안 목록은 0개라 말하는데 컨텍스트는 계속 쌓인다.
+ * **빠진 칸의 인스턴스를 거두는 일은 여기 없다 — 그 자리는 터미널 스토어다.** 목록에서만 빼면
+ * 「열고 → `exit`」을 되풀이하는 동안 목록은 0개라 말하는데 xterm 인스턴스(스크롤백, 쥐고 있었으면 WebGL 자리까지)는
+ * 계속 쌓인다. _한때 여기 「상한 8이 세는 것은 살아 있는 WebGL 컨텍스트의 수」라고 적혀 있었는데 틀렸다_(프로세스 결정
+ * 18 ③이 이렇게 고쳤다) — 상한은 화면마다의 셸 수이고(work-tab-header 결정 23), 컨텍스트 수는 WebGL 자리(`shell-webgl`)가 지킨다.
  * `×`는 `closeShell`이 둘을 한자리에서 하고, 이 길의 짝은 터미널 스토어의 채널 콜백이 든다 —
  * 이 함수가 그 칸을 뺐으면 그 자리에서 `disposeInstance`를 태운다. 거두는 일은 DOM을 아는
  * 쪽만 할 수 있어 이 순수 모듈에 들일 수 없다.
@@ -669,6 +730,11 @@ export function setShellName(state: ShellsState, id: number, shellName: string):
   );
 }
 
+/** spawn 응답이 실어 준 셸 키(프로세스 스펙 S34). 안 바뀌면 같은 상태다 — `patch`의 관용구 그대로다. */
+export function setShellKey(state: ShellsState, id: number, shellKey: string): ShellsState {
+  return patch(state, id, (shell) => (shell.shellKey === shellKey ? shell : { ...shell, shellKey }));
+}
+
 /**
  * 백엔드가 잰 「지금 도는 것」(adr-04). `null`이면 프롬프트에 서 있다.
  *
@@ -684,11 +750,63 @@ export function setRunning(state: ShellsState, id: number, running: string | nul
 }
 
 /**
+ * 첫 사람 입력을 적는다(프로세스 결정 7). **이미 있으면 받은 상태를 그대로 돌려준다** — 첫 것만
+ * 남는다. 셸 도우미를 가르는 기준이 「사람이 처음 입력하기 전에 태어났나」라(프로세스 스펙 P1), 뒤의
+ * 입력이 덮으면 그사이 사람이 띄운 것이 도우미로 읽힌다. 키를 칠 때마다 불리는 자리라 안 바뀐 칸이
+ * 같은 객체로 남는 것도 계약이다 — `patch`의 관용구 그대로다.
+ *
+ * 무엇이 사람 입력인지는 여기서 안 정한다(`shell-input.ts`). 시각은 부르는 쪽(터미널 스토어)이 찍어 온다.
+ */
+export function markFirstInput(state: ShellsState, id: number, at: number): ShellsState {
+  return patch(state, id, (shell) => (shell.firstInput === null ? { ...shell, firstInput: at } : shell));
+}
+
+/**
+ * 그 칸들에 「주인 잃은 셸」 표시를 세운다(프로세스 결정 4 · 티켓 12). **이미 선 칸과 모르는 번호는 그대로다** — 목록
+ * 재조회는 이벤트마다 오므로 같은 표시를 또 세우는 일이 흔하고, 그때 새 상태를 만들면 화면이 이유 없이 다시 그려진다
+ * (`patch`의 관용구). 내리는 리듀서는 없다 — 표시는 셸이 닫힐 때 칸과 함께 사라진다.
+ *
+ * 무엇이 주인을 잃었는지는 여기서 안 정한다(`shell-owners.ts`의 `vanishedOwners`와 `closesWithoutAsking`). 이 리듀서는 그 답을
+ * 받아 적기만 한다.
+ */
+export function markOwnerless(state: ShellsState, ids: ReadonlyArray<number>): ShellsState {
+  let next = state;
+  for (const id of ids) {
+    next = patch(next, id, (shell) => (shell.ownerless ? shell : { ...shell, ownerless: true }));
+  }
+  return next;
+}
+
+/**
+ * **그 세계의** 주인 잃은 셸 전부 — 끝난 칸 · 못 뜬 칸도 든다. [모두 닫기]가 닫는 것이 이것이다: 주인이 사라졌는데 이
+ * 칸만 남으면 닫을 길이 없다(아카이브의 회수가 끝난 칸까지 거두는 것과 같은 이유 — `runningShellsOf` 머리말).
+ *
+ * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(life-mode 결정 10) slug로는 못 가른다.
+ */
+export function ownerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return state.shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode);
+}
+
+/**
+ * 그 세계의 주인 잃은 셸 중 **살아 있는 것**(CONTEXT 「주인 잃은 셸」). 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기]
+ * 확인 창의 N이 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 살아 있는지는 `isAlive` 하나가 가른다. 명령 · 자손을
+ * 보는 판정(조용하지 않은 셸 — 프로세스 결정 4)과 다르다: 조용해진 셸도 살아 있으면 센다.
+ */
+export function liveOwnerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
+  return ownerlessOf(state, mode).filter(isAlive);
+}
+
+/** 그 칸의 첫 사람 입력 시각. 없는 칸이거나 아직 입력이 없으면 `null`이다. */
+export function firstInputOfId(state: ShellsState, id: number): number | null {
+  return state.shells.find((shell) => shell.id === id)?.firstInput ?? null;
+}
+
+/**
  * 셸이 **스스로 말한 것**을 그 칸에 앉힌다(#202).
  *
  * **판정을 안 한다.** 무엇이 되는지는 `shell-attention.ts`의 `nextAttention`이 이미 정했고,
  * 그것이 「안 바뀌면 받은 것을 그대로 준다」를 지키므로 여기서는 **항등성만** 본다 —
- * 다섯 칸을 견주는 자리가 두 벌이 되면 한쪽만 늙는다. 그래서 위 `setRunning`과 달리 값
+ * 칸들을 견주는 자리(`shell-attention.ts`의 `same`)가 두 벌이 되면 한쪽만 늙는다. 그래서 위 `setRunning`과 달리 값
  * 비교가 아니라 `===`다.
  *
  * 나머지 성질은 `patch`의 관용구 그대로다: 모르는 id는 무시하고, 안 바뀐 칸은 같은 객체로
@@ -1198,32 +1316,45 @@ export function shellRowName(shell: Shell): string {
 }
 
 /**
- * 이 칸을 닫기 전에 사람에게 물어야 하는가(결정 92). **⌘W와 `×` 두 길이 이 하나를 부른다** —
- * 셸 하나를 없애는 길이 둘인데 한쪽만 막으면 같은 사고가 마우스로만 남는다.
+ * 이 칸을 닫기 전에 사람에게 물어야 하는가. **⌘W와 `×` 두 길이 이 하나를 부른다** — 셸 하나를 없애는 길이 둘인데
+ * 한쪽만 막으면 같은 사고가 마우스로만 남는다.
  *
- * `commandRunning`은 **닫기 직전에** 백엔드에 물어 온 답이다. 셸 상태에 얹어 두지 않는 것은
- * 그 값이 매 순간 바뀌기 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ * **명령이 돌거나 함께 끝날 프로세스가 있으면 묻는다.** ux-papercuts 결정 92는 「foreground가 셸이 아닐 때만
+ * 묻는다」였고, 프로세스 결정 3이 「foreground가 셸이어도 자손이 있으면 묻는다」로 넓혔다 — 셸을 닫으면 그 셸에서
+ * 띄운 것이 모두 끝나서(티켓 04), 빈 프롬프트에 dev 서버만 남은 셸을 묻지 않고 닫으면 그 서버가 조용히 끝난다. 결정
+ * 92가 피한 것(빈 프롬프트를 닫을 때마다 팝업)은 그대로 피한다: 셸 도우미(p10k의 `gitstatusd`)는 백엔드가 수에서
+ * 뺐다(프로세스 스펙 P1).
  *
- * **`null`은 「못 얻었다」이고 그때는 안 묻는다.** 모르는 것을 이유로 닫는 길을 막지 않는다.
- * 그 경우가 실제로 온다: 이미 끝난 pty, tcgetpgrp 실패, IPC 실패.
+ * `check`는 **닫기 직전에** 백엔드에 물어 온 답이다. 셸 상태에 얹어 두지 않는 것은 그 값이 매 순간 바뀌기
+ * 때문이다 — 얹으면 폴링이 생기고, 필요한 순간은 닫을 때 한 번뿐이다.
+ *
+ * **`null`은 「못 얻었다」이고 그때는 안 묻는다.** 모르는 것을 이유로 사람이 고른 닫기를 막지 않는다. 그 경우가
+ * 실제로 온다: 이미 끝난 pty, tcgetpgrp 실패, IPC 실패. 사람이 누르지 않은 닫기(티켓 12의 조용한 셸)는 거꾸로
+ * 읽는다 — 모르면 안 닫는다.
  *
  * **끝난 칸·못 뜬 칸도 안 묻는다.** 물어볼 프로세스가 없고, 그 pty id는 이미 회수돼 남이
  * 앉아 있을 수 있다 — 백엔드가 무엇을 답하든 여기서 끊는다. 그 칸들이 목록에 남아 있는
  * 것은 죽은 이유를 읽기 위해서다(결정 22).
  */
-export function needsCloseConfirm(
-  shell: Shell | undefined,
-  commandRunning: boolean | null,
-): boolean {
+export function needsCloseConfirm(shell: Shell | undefined, check: CloseCheck | null): boolean {
   if (!shell || !isAlive(shell)) return false;
-  return commandRunning === true;
+  return asksBeforeClose(check);
 }
 
 /**
- * 도는 명령을 죽이기 전에 하는 말(결정 105). **프로그램 이름은 안 싣는다** — 결정 92가
- * 여는 커맨드가 주는 것은 「도는가」 하나이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹
- * 더 든다. 「명령」은 CONTEXT.md에 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이
- * 아니다.
+ * 답 하나만 보고 묻는가 — 명령이 돌거나 함께 끝날 것이 있으면 묻고, 없거나 못 얻었으면(`null`) 안 묻는다. 위
+ * `needsCloseConfirm`의 절반이고, **칸이 없는 셸**이 이것을 딛는다: `Processes`의 화면 밖 셸(티켓 32 · 프로세스 스펙 S42)은
+ * 풀에만 있고 스토어의 칸이 없다. 두 닫기가 같은 규칙으로 묻게 하려고 판정을 하나로 둔다.
+ */
+export function asksBeforeClose(check: CloseCheck | null): boolean {
+  if (!check) return false;
+  return check.command || check.descendants > 0;
+}
+
+/**
+ * 도는 명령을 죽이기 전에 하는 말(ux-papercuts 결정 105). **프로그램 이름은 안 싣는다** — 닫기 전 물음이 주는
+ * 것은 「도는가」와 수이고, 이름을 실으려면 pgid→커맨드 조회가 한 겹 더 든다. 「명령」은 CONTEXT.md에
+ * 등록된 말이다 — 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
  *
  * **문구가 여기 있는 것은 재기 위해서다.** 스토어에 두면 xterm을 함께 끌고 와 이 seam에서
  * 못 읽고, 그러면 결정 105를 지키는 것이 주석 한 줄뿐이 된다.
@@ -1231,8 +1362,23 @@ export function needsCloseConfirm(
 export const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
 
 /**
+ * 셸 닫기 확인 창의 본문(프로세스 스펙 P6). 묻기로 한 답에만 부른다(`needsCloseConfirm`).
+ *
+ * - 명령이 돌면 지금 문구(`CLOSE_NOTICE`) **아래에** 함께 끝날 수를 한 줄 더한다. 수가 0이면 그 줄은 없다.
+ * - 명령 없이 자손만 있으면 그 수로 묻는다. 빈 프롬프트에는 명령이 없으니(CONTEXT 「명령」) 명령 문구도, 「도」로
+ *   시작하는 프로세스 결정 3의 문장도 안 맞는다.
+ *
+ * 「이 셸에서 띄운 프로세스」는 화면의 말이다 — 「자손」은 코드와 문서의 말이라 화면에 안 뜬다.
+ */
+export function closeNotice(check: CloseCheck): string {
+  if (!check.command) return `이 셸에서 띄운 프로세스 ${check.descendants}개가 아직 돌아요. 닫을까요?`;
+  if (check.descendants === 0) return CLOSE_NOTICE;
+  return `${CLOSE_NOTICE}\n이 셸에서 띄운 프로세스 ${check.descendants}개도 함께 끝나요.`;
+}
+
+/**
  * 닫아도 되는가 — **묻는 것까지가 이 함수다**(결정 92). 물을 필요가 없으면 안 묻고 `true`,
- * 물어야 하면 `ask`가 답한 그대로 돌려준다.
+ * 물어야 하면 `ask`가 답한 그대로 돌려준다. 무엇을 말할지(`closeNotice`)도 여기서 정해 `ask`에 건넨다.
  *
  * **확인 창을 인자로 받는다.** 스토어에서 `confirm`을 직접 부르면 「물었고, 아니라고 하면
  * 안 닫는다」를 재는 길이 없어진다 — 그 한 줄을 지우고 답을 버려도 아무 검사가 안 빨개진다
@@ -1240,54 +1386,239 @@ export const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?
  */
 export async function confirmClose(
   shell: Shell | undefined,
-  commandRunning: boolean | null,
-  ask: () => Promise<boolean>,
+  check: CloseCheck | null,
+  ask: (body: string) => Promise<boolean>,
 ): Promise<boolean> {
-  if (!needsCloseConfirm(shell, commandRunning)) return true;
-  return ask();
-}
-
-/** 종료하면 닫힐 셸 수와, 그중 명령이 도는 셸 수(UI개선 결정 15). 명령의 개수가 아니다. */
-export interface QuitCounts {
-  live: number;
-  running: number;
+  if (!check || !needsCloseConfirm(shell, check)) return true;
+  return ask(closeNotice(check));
 }
 
 /**
- * 종료 확인이 적을 수(UI개선 결정 15 · #223). 받은 목록을 **세계를 가리지 않고** 전부 센다 — 종료는 두
- * 세계의 셸을 함께 죽인다. 명령이 도는지는 셸마다 **지금 물어서** 센다 — 1초 폴링 값
- * (`Shell.running`)은 늦을 수 있다. 물음은 병렬로 나간다.
+ * 이 셸이 **조용한가**(CONTEXT 「조용한 셸」 · 프로세스 결정 4 · 티켓 12). 조용한 셸 = **살아 있는 셸** + 명령 없음 + 자손
+ * 0이다 — 그 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1).
  *
- * **「도는 셸」은 셸 닫기가 물을 셸이다** — 판정을 `needsCloseConfirm`에서 그대로 빌려, 닫기와
- * 종료가 「모르면 안 돈다」·「끝난 칸은 안 센다」에서 갈라질 수 없다. 물음이 **실패해도** 「모름」으로
- * 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는 길은 곧 끌 수 없는 길이다.
+ * **모르면 조용하지 않다.** `checks`가 `null`이거나(배치 물음 전체가 실패) 그 셸의 답이 없으면(pty가 아직 없다 · 백엔드가
+ * 못 읽었다) 거짓이다. 이 판정을 딛는 닫기는 둘인데(MCP 아카이브 · [조용한 셸 모두 닫기]) 둘 다 셸마다 묻지 않는다 — 모르는
+ * 것을 닫으면 대답하던 claude가 도구 호출 도중 죽는다. **`needsCloseConfirm`과 거꾸로다**: 그쪽은 셸 하나를 사람이 누른
+ * 닫기라 못 얻은 답을 「안 묻고 닫는다」로 읽는다. 그 모양을 빌리면(`!needsCloseConfirm(...)`) 모르는 셸이 조용한 셸로
+ * 읽혀 묻지 않고 닫힌다.
  *
- * 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.**
+ * **끝난 칸 · 못 뜬 칸은 조용한 셸이 아니다** — 셸이 아니라 죽은 이유를 읽으라고 남은 칸이다(in-app-terminal 결정 22). 답이 있어도 그렇다.
+ * MCP 아카이브가 그 칸을 함께 거두는 것은 이 판정이 아니라 `closesWithoutAsking`의 몫이다.
+ */
+export function isQuietShell(shell: Shell, checks: CloseChecks | null): boolean {
+  if (!isAlive(shell)) return false;
+  const check = checks?.get(shell.id);
+  return check !== undefined && !check.command && check.descendants === 0;
+}
+
+/**
+ * MCP로 아카이브 · 삭제된 work의 칸을 **사람 손 없이 닫는가**(프로세스 결정 4 · 티켓 12) — 참이면 곧바로 닫히고(까닭 「MCP
+ * 아카이브」), 거짓이면 주인 잃은 셸로 남는다(`settleOwners`).
+ *
+ * 닫는 것은 **조용한 셸**(`isQuietShell` — 모르면 조용하지 않다)과 **끝난 칸 · 못 뜬 칸**이다. 뒤의 둘은 닫힐 프로세스가 없어
+ * 배치 물음이 그 칸을 싣지도 않는다(답이 없는 것이 당연하다). 주인이 사라졌는데 그 칸만 남으면 닫을 길이 없어서 아카이브의
+ * 회수처럼 함께 거둔다.
+ */
+export function closesWithoutAsking(shell: Shell, checks: CloseChecks | null): boolean {
+  return !isAlive(shell) || isQuietShell(shell, checks);
+}
+
+/**
+ * [조용한 셸 모두 닫기]가 닫는 셸(티켓 32 · 프로세스 스펙 S44) — 받은 셸 중 **조용한 셸**(`isQuietShell`): 살아 있고, 배치
+ * 물음이 「명령도 사람이 띄운 자손도 없다」고 답한 셸. 자손 수는 셸 도우미를 이미 뺀 수다(프로세스 스펙 P1). 차례는 받은
+ * 그대로다.
+ *
+ * **모르면 조용하지 않다**: 물음 전체가 실패했거나(`null`) 그 셸의 답이 없으면 안 고른다. 사람이 누른 닫기지만 셸 여럿을
+ * 수로 한 번 묻는 자리라, 모르는 셸을 넣으면 창의 N과 닫히는 것이 갈리고 도는 것을 모르고 닫는다.
+ *
+ * **끝난 칸 · 못 뜬 칸은 고르지 않는다** — MCP 아카이브(`closesWithoutAsking`)와 갈리는 자리다. 그쪽은 주인이 사라진 셸을
+ * 거두는 판정이라 그 칸도 함께 치우지만, 이 버튼은 셸을 치우는 것이지 죽은 이유를 읽으라고 남은 칸(in-app-terminal 결정 22)을 치우는 것이
+ * 아니다.
+ */
+export function quietShellsOf(shells: ReadonlyArray<Shell>, checks: CloseChecks | null): Shell[] {
+  return shells.filter((shell) => isQuietShell(shell, checks));
+}
+
+/** [조용한 셸 모두 닫기]가 **한 번** 묻는 말(티켓 32 · 프로세스 스펙 S44) — 셸 여럿을 한 번에 닫는 자리는 수를 말한다. */
+export function quietCloseNotice(count: number): string {
+  return `조용한 셸 ${count}개를 닫아요.`;
+}
+
+/**
+ * 닫을 조용한 셸이 없을 때 [조용한 셸 모두 닫기]가 세우는 짧은 토스트. 「0개를 닫아요」 창은 물을 것이 없는 물음이고, 아무 일도
+ * 안 하면 버튼이 눌렸는지가 안 보인다(티켓 32가 구현에 맡긴 N=0의 모양).
+ */
+export const NO_QUIET_NOTICE = "닫을 조용한 셸이 없어요";
+
+/**
+ * 프런트가 셸을 닫는 자리 — 까닭을 고르는 열쇠다(`CLOSE_REASONS`).
+ *
+ * - `person` — `×`, ⌘W, 셸 메뉴의 닫기(`requestCloseShell`).
+ * - `reclaim` — 화면을 떠난 안 쓴 자동 셸의 회수(`closeUnusedShells` · 프로세스 결정 7).
+ * - `archive` — UI 아카이브 · 삭제가 성공한 뒤의 회수(`closeShellsOf` · in-app-terminal 결정 26).
+ * - `mcpArchive` — MCP로 아카이브 · 삭제된 work의 **조용한 셸**(`settleOwners` · 티켓 12). in-app-terminal 결정 26은 이 길의 셸을
+ *   「알려진 대가」로 남겨 두었는데, 프로세스 결정 4가 이렇게 고쳤다: 목록 재조회로 알아채 조용한 셸은 닫고 나머지는
+ *   주인 잃은 셸로 남긴다.
+ * - `ownerless` — 주인 잃은 셸의 [모두 닫기](`closeOwnerless` · 티켓 12). 토스트와 `Processes`의 묶음(티켓 32)이 함께 쓴다.
+ * - `quiet` — `Processes`의 [조용한 셸 모두 닫기](`closeQuietShells` · 티켓 32).
+ * - `offscreen` — `Processes`의 화면 밖 셸 [닫기](`closeOffscreenShell` · 티켓 32). 스토어에 칸이 없는 셸이다.
+ * - `openFailed` — xterm 열기 실패(`failOpen`).
+ * - `spawnRace` — spawn 왕복 중에 닫힌 칸의, 늦게 온 셸.
+ */
+export type ClosePath =
+  | "person"
+  | "reclaim"
+  | "archive"
+  | "mcpArchive"
+  | "ownerless"
+  | "quiet"
+  | "offscreen"
+  | "openFailed"
+  | "spawnRace";
+
+/**
+ * 닫는 자리 → 닫기 IPC의 까닭(티켓 11). **까닭은 이 표 한 곳에서 고른다.** 판 04의 `●`가 까닭으로 켜지는데(시작
+ * 정리 · MCP 아카이브 · 셸 스스로 끝남 · 「못 끝냄」만), 자리마다 따로 고르면 사람이 누른 닫기가 점을 켤 수 있다.
+ *
+ * 사람이 누르지 않은 닫기 셋(`reclaim` · `openFailed` · `spawnRace`)도 「셸 닫기」다. 자손이 없거나 모두 셸 도우미라
+ * 정리 기록은 서지 않는다(프로세스 스펙 P1) — 백엔드가 그렇게 거른다.
+ *
+ * **MCP 아카이브의 조용한 셸만 「MCP 아카이브」다**(티켓 12) — 사람 손 없이 닫은 것이라 `●`가 설 수 있는 까닭이다.
+ * 주인 잃은 셸의 [모두 닫기](`ownerless`)는 **사람이 누른 닫기라 「셸 닫기」다**(프로세스 스펙 S41). 같은 셸이어도 누가
+ * 닫았는가로 까닭이 갈린다 — 「MCP 아카이브」로 두면 사람이 [모두 닫기]를 누를 때마다 점이 선다.
+ *
+ * `Processes`의 닫기 둘(`quiet` · `offscreen` · 티켓 32)도 사람이 누른 닫기라 「셸 닫기」다(프로세스 스펙 S44 · S42). 「화면 밖
+ * 셸」은 까닭이 아니다 — 기록은 무엇을 닫았는지가 아니라 누가 왜 닫았는지를 적는다.
+ */
+export const CLOSE_REASONS: Readonly<Record<ClosePath, CloseReason>> = {
+  person: "shellClose",
+  reclaim: "shellClose",
+  archive: "archive",
+  mcpArchive: "mcpArchive",
+  ownerless: "shellClose",
+  quiet: "shellClose",
+  offscreen: "shellClose",
+  openFailed: "shellClose",
+  spawnRace: "shellClose",
+};
+
+/**
+ * 종료하면 닫힐 셸 수, 그중 명령이 도는 셸 수(UI개선 결정 15 — 명령의 개수가 아니다), 그 셸들에서 띄워 함께 끝날
+ * 프로세스 수(프로세스 스펙 S18).
+ */
+export interface QuitCounts {
+  live: number;
+  running: number;
+  spawned: number;
+}
+
+/**
+ * 셸 여럿의 닫기 전 물음 — 레지스트리 id마다 그 셸의 답. **답한 셸만 든다.** 못 얻은 셸(pty가 아직 · 이미 없음,
+ * 백엔드가 못 읽음)은 빠지고, 물음 전체가 실패하면 `null`이다.
+ */
+export type CloseChecks = ReadonlyMap<number, CloseCheck>;
+
+/**
+ * 종료 확인이 적을 수(UI개선 결정 15 · #223 · 프로세스 스펙 S18). 받은 목록을 **세계를 가리지 않고** 전부 센다 —
+ * 종료는 두 세계의 셸을 함께 죽인다. 명령이 도는지와 띄운 프로세스 수는 **지금 물어서** 센다 — 1초 폴링 값
+ * (`Shell.running`)은 늦을 수 있다. 셸 여럿을 **한 번에** 묻는다: 백엔드가 스냅샷 한 장으로 셸마다 답한다(티켓 08).
+ * 셸마다 물으면 셸 20개에 스냅샷 20장이다.
+ *
+ * **「명령이 도는 셸」은 명령 칸만 센다.** 셸 닫기가 물을 셸(`needsCloseConfirm`)을 빌리지 않는다 — 프로세스 결정
+ * 3이 그 판정을 「자손이 있으면 묻는다」로 넓혀서, 빌리면 자손만 있는 셸이 「명령이 도는 셸」에 섞여 창의 글자와
+ * 어긋난다. 그 셸의 자손은 띄운 프로세스 수에 든다. 「모르면 안 돈다」 · 「끝난 칸은 안 센다」는 닫기와 같다.
+ *
+ * 물음이 **실패해도** 「모름」으로 센다: 여기서 던지면 창이 안 뜨는데, 안전판이 없어서(UI개선 결정 31) 창이 못 뜨는
+ * 길은 곧 끌 수 없는 길이다. 끝난 칸·못 뜬 칸은 닫힐 프로세스가 없어 **세지도 묻지도 않는다.** 살아 있는 칸이 없으면
+ * 묻지 않는다.
+ *
+ * **주인 잃은 셸도 센다**(티켓 12) — 종료하면 그 셸도 함께 끝난다. 표시(`Shell.ownerless`)는 이 셈에 안 든다.
  */
 export async function countQuitShells(
   shells: ReadonlyArray<Shell>,
-  commandRunning: (id: number) => Promise<boolean | null>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
 ): Promise<QuitCounts> {
+  const { live, running, spawned } = await spawnedOf(shells, fetchCloseChecks);
+  return { live, running: running ?? 0, spawned: spawned ?? 0 };
+}
+
+/**
+ * 그 셸들에서 띄워 함께 끝날 프로세스 수(프로세스 스펙 S18) — 아카이브 확인 창의 M. 끝난 칸·못 뜬 칸은 묻지 않는다.
+ * 물음이 실패하면 `null`이다 — 모르는 수를 창에 적지 않는다. 살아 있는 칸이 없으면 묻지 않고 0이다.
+ */
+export async function countSpawned(
+  shells: ReadonlyArray<Shell>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
+): Promise<number | null> {
+  return (await spawnedOf(shells, fetchCloseChecks)).spawned;
+}
+
+/**
+ * 셸 여럿이 닫히면 함께 끝날 것 — **세는 규칙의 한 자리다**(코드 리뷰 표준 44). 종료 확인(`countQuitShells`)과 아카이브 ·
+ * 주인 잃은 셸의 [모두 닫기](`countSpawned`)가 이것을 딛는다. 끝난 칸 · 못 뜬 칸은 닫힐 프로세스가 없어 묻지도 세지도 않고,
+ * 살아 있는 칸이 없으면 묻지 않는다(수는 0). 살아 있는 칸은 **한 번에** 묻는다(티켓 08). 답이 없는 셸은 합에서 빠진다.
+ *
+ * 물음이 **실패하면** 셈 둘이 `null`이다 — 모름을 어떻게 읽을지는 부르는 쪽이 정한다: 종료 확인은 0으로 세고(던지면 창이 안
+ * 떠 끌 수 없다 — 그 함수 머리말), 아카이브 창은 수를 안 적는다(`spawnedNote`).
+ */
+async function spawnedOf(
+  shells: ReadonlyArray<Shell>,
+  fetchCloseChecks: (ids: number[]) => Promise<CloseChecks | null>,
+): Promise<{ live: number; running: number | null; spawned: number | null }> {
   const live = shells.filter(isAlive);
-  const answers = await Promise.all(
-    live.map((shell) => commandRunning(shell.id).catch(() => null)),
-  );
+  if (live.length === 0) return { live: 0, running: 0, spawned: 0 };
+  const answers = await fetchCloseChecks(live.map((shell) => shell.id)).catch(() => null);
+  if (!answers) return { live: live.length, running: null, spawned: null };
+  const checks = live.flatMap((shell) => answers.get(shell.id) ?? []);
   return {
     live: live.length,
-    running: live.filter((shell, n) => needsCloseConfirm(shell, answers[n])).length,
+    running: checks.filter((check) => check.command).length,
+    spawned: checks.reduce((sum, check) => sum + check.descendants, 0),
   };
+}
+
+/**
+ * 셸 수 뒤에 붙는 말 — 「(띄운 프로세스 M개 포함)」(프로세스 스펙 S18). **M > 0일 때만** 선다. 못 얻었으면(`null`)
+ * 안 선다. 아카이브 확인 창, 종료 확인 창, 주인 잃은 셸의 [모두 닫기] 창(티켓 12)이 같은 말을 쓴다.
+ *
+ * 괄호는 앞말에 붙여 쓴다 — 이 앱의 다른 괄호 풀이(「git이 무시하는 파일(.env, …)」)와 같다.
+ */
+export function spawnedNote(spawned: number | null): string {
+  return spawned !== null && spawned > 0 ? `(띄운 프로세스 ${spawned}개 포함)` : "";
+}
+
+/**
+ * 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18). 셸이 0개면 그 줄이 없다(`null`).
+ * 두 세계가 같은 말이다 — 세는 것이 셸이지 work이나 Room이 아니다.
+ */
+export function closingShellsNotice(live: number, spawned: number | null): string | null {
+  if (live === 0) return null;
+  return `셸 ${live}개가 닫혀요${spawnedNote(spawned)}.`;
+}
+
+/**
+ * 주인 잃은 셸의 [모두 닫기]가 **한 번** 묻는 말(티켓 12). 셸마다 닫기 확인 창(`closeNotice`)을 띄우면 창이 N번 뜬다 —
+ * 여러 셸을 한 번에 닫는 자리는 수를 말하며 한 번 묻는다(프로세스 스펙 S18 · S44). N은 **살아 있는** 주인 잃은 셸이고
+ * (`liveOwnerlessOf`), 띄운 프로세스 수는 아카이브 확인 창과 같은 말이다(`spawnedNote`) — 못 얻었으면 안 붙는다.
+ */
+export function ownerlessCloseNotice(live: number, spawned: number | null): string {
+  return `주인 잃은 셸 ${live}개를 닫아요${spawnedNote(spawned)}.`;
 }
 
 /**
  * 종료 확인의 본문. **셸이 0개면 없다**(`undefined`) — 그 줄이 아예 서지 않는다(UI개선 결정 15). 그래도
  * 창은 뜬다: 셸이 없을 때의 실수 종료도 조건 밖에 남기지 않는다(UI개선 결정 14).
  *
+ * 띄운 프로세스 수는 **셸 수 바로 뒤에** 붙는다 — 셸과 함께 끝나는 것이라서다. 끝에 붙이면 「명령이 도는 셸 K」의
+ * 풀이로 읽힌다.
+ *
  * 「셸」·「명령」은 `CONTEXT.md`의 말이다 — 명령은 셸 안에서 도는 프로세스이지 셸 자신이 아니다.
  * 문구가 여기 있는 이유는 `CLOSE_NOTICE`와 같다.
  */
-export function quitNotice({ live, running }: QuitCounts): string | undefined {
+export function quitNotice({ live, running, spawned }: QuitCounts): string | undefined {
   if (live === 0) return undefined;
-  return `셸 ${live} · 명령이 도는 셸 ${running}`;
+  return `셸 ${live}${spawnedNote(spawned)} · 명령이 도는 셸 ${running}`;
 }
 
 /**

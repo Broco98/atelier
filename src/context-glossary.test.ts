@@ -75,6 +75,16 @@ describe("말의 사전", () => {
       expect.arrayContaining([
         "셸",
         "명령",
+        "예외",
+        "셸 도우미",
+        "고아",
+        "확정 고아",
+        "출처 불명",
+        "다른 인스턴스",
+        "주인 잃은 셸",
+        "조용한 셸",
+        "화면 밖 셸",
+        "정리 기록",
         "열",
         "분할",
         "터미널",
@@ -129,6 +139,131 @@ describe("말의 사전", () => {
     expect(bodyOf("모든 프로젝트")).toContain("_피할 말_: trees, 루트");
   });
 
+  // 티켓 06 · 프로세스 결정 5. 셸을 닫아도 안 끝나는 것에 이름이 없으면 다음 사람이 「제외」·「화이트리스트」로
+  // 부른다. **화면 이름이 둘이다** — 목록을 고치는 설정 항목은 「셸을 닫아도 남길 프로세스」, 걸린 것의 묶음은
+  // 「예외」. 설정 라벨을 _피할 말_로 올리면 그 칸의 접근성 이름이 위 검사에 물린다: 같은 것의 두 라벨이지 틀린
+  // 말이 아니다. 마지막 줄은 그 그물이 이 칸을 실제로 보는지다 — 못 보면 거부해도 아무것도 안 문다.
+  it("「예외」가 등재돼 있고, 설정 항목의 이름을 거부하지 않는다", () => {
+    expect(names).toContain("예외");
+    expect(bodyOf("예외")).toContain("셸을 닫아도 남길 프로세스");
+    expect(avoided).not.toContain("셸을 닫아도 남길 프로세스");
+    expect(ariaLabels).toContain("셸을 닫아도 남길 프로세스");
+  });
+
+  // 티켓 08 · 프로세스 스펙 P1. 셸이 뜰 때 함께 뜨는 것(p10k의 `gitstatusd`)에 이름이 없으면 다음 사람이 「헬퍼」·
+  // 「데몬」으로 부르고, 그 말은 뜻을 잃는다 — 도우미를 가르는 것은 이름이나 모양이 아니라 **태어난 때**(사람이 처음
+  // 입력하기 전)다. 그 기준과 「셸을 닫으면 함께 끝난다」가 본문에 있어야, 「안 센다」를 「안 끝낸다」로 읽지 않는다.
+  it("「셸 도우미」가 등재돼 있고, 태어난 때로 가르며 함께 끝난다고 적는다", () => {
+    expect(names).toContain("셸 도우미");
+    expect(bodyOf("셸 도우미")).toContain("처음 입력하기 전에");
+    expect(bodyOf("셸 도우미")).toContain("셸을 닫으면 함께 끝나지만");
+    expect(refused).toEqual(expect.arrayContaining(["헬퍼", "데몬"]));
+  });
+
+  // 티켓 09 · 프로세스 결정 6. 셸이 없는데 표식을 문 프로세스에 이름이 없으면 다음 사람이 「좀비」로 부른다 — 그것은
+  // 커널의 말(끝났는데 거둬지지 않은 것)이고 고아는 살아서 돈다. 「고아」는 **두 묶음을 함께 부르는 말**이라, 본문이 그
+  // 둘을 들어야 「고아 · 출처 불명」처럼 나란히 세는 문구가 안 선다. 둘이 갈리는 곳은 앱이 알아서 치우는가 하나다 —
+  // 출처 불명을 「자동으로 안 건드린다」가 본문에서 빠지면 다음 사람이 시작 정리에 그것을 얹는다.
+  it("「고아」가 확정 고아와 출처 불명을 함께 부르고, 「좀비」를 거부한다", () => {
+    expect(bodyOf("고아")).toContain("**확정 고아**와 **출처 불명**을 함께 부르는 말");
+    expect(bodyOf("확정 고아")).toContain("사람 손 없이 치우고 알린다");
+    expect(bodyOf("출처 불명")).toContain("자동으로는 절대 건드리지 않는다");
+    expect(refused).toContain("좀비");
+  });
+
+  // 티켓 31 · 프로세스 스펙 S54. `Processes`에 「다른 인스턴스」 묶음이 섰다 — 지금 떠 있는 다른 아틀리에 실행(dev 빌드와 설치본을 함께
+  // 띄웠을 때)의 셸에서 뜬 것이다. 사전이 그 말을 모르면 다음 사람이 셸 정의의 「xterm 인스턴스」로 읽거나(한 셸의 화면 조각), 「다른
+  // 창」으로 부른다 — 앱은 창이 하나고, 다른 실행은 다른 앱 프로세스다. 본문이 그 둘과 갈라 적어야 하고, 보기만 한다는 것이 있어야
+  // 다음 사람이 여기에 [정리]를 얹지 않는다. 마지막 줄은 접근성 이름 그물이 이 묶음을 실제로 보는지다.
+  it("「다른 인스턴스」가 등재돼 있고, 지금 떠 있는 다른 아틀리에 실행이며 xterm 인스턴스와 다르고, 「다른 창」을 거부한다", () => {
+    expect(names).toContain("다른 인스턴스");
+    expect(bodyOf("다른 인스턴스")).toContain("지금 떠 있는 다른 아틀리에 실행");
+    expect(bodyOf("다른 인스턴스")).toContain("xterm 인스턴스");
+    expect(bodyOf("다른 인스턴스")).toContain("보기만 한다");
+    expect(refused).toContain("다른 창");
+    expect(ariaLabels).toContain("다른 인스턴스");
+  });
+
+  // 티켓 12 · 프로세스 결정 4. MCP로 아카이브 · 삭제된 work의 셸 중 조용하지 않은 것이 남는다 — 그것에 이름이 없으면 다음 사람이
+  // 「고아 셸」로 부르는데, 셸은 앱이 쥐고 있어 고아가 아니다(고아는 셸이 없는 프로세스다 — 위 「고아」). 둘을 한 말로
+  // 부르면 「앱이 알아서 치운다」가 어느 쪽 이야기인지 문장에서 사라진다. 「조용한 셸」은 그 갈림의 기준이라, 본문이
+  // 「명령도 자손도 없다」와 「셸 도우미는 안 센다」를 들어야 다음 사람이 빈 프롬프트의 p10k 셸을 조용하지 않은 셸로 읽지 않는다.
+  it("「주인 잃은 셸」·「조용한 셸」이 등재돼 있고, 「고아 셸」을 거부한다", () => {
+    expect(bodyOf("주인 잃은 셸")).toContain("앱이 쥐고 있어");
+    expect(bodyOf("주인 잃은 셸")).toContain("_피할 말_: 고아 셸");
+    expect(refused).toContain("고아 셸");
+    expect(bodyOf("조용한 셸")).toContain("명령도 없고 이 셸에서 띄운 프로세스도 없는");
+    expect(bodyOf("조용한 셸")).toContain("셸 도우미는 세지 않는다");
+  });
+
+  // 코드 리뷰 표준 5. 사전이 「고아 셸」을 거부했는데 코드는 주인 잃은 셸을 `orphan`으로 불렀다(옛 `Shell.orphaned` ·
+  // `closeOrphans` · 요약 카드의 `orphanedShells` …). 같은 브랜치의 판정(`verdict.orphans` · Rust `Orphans`)은 진짜
+  // 고아라서, 판정과 스토어를 함께 읽는 자리(`summary-card.ts`)에서 한 낱말이 두 뜻으로 나란히 섰다. 그래서 주인 잃은
+  // 셸은 코드에서 `ownerless`이고, `orphan`은 **판정의 고아에만** 남는다. 판정을 읽는 모듈(`summary-card.ts` ·
+  // `StraySections.tsx` · `process-groups.ts` · `types.ts`)은 여기서 뺀다 — 그 `orphans`가 옳은 말이다.
+  //
+  // **셸 스토어 모듈은 폴더째 본다** — 새 모듈이 서도 그물 안이다. 그물이 비면 「안 부른다」가 「안 읽었다」로 초록이
+  // 되므로, 아는 모듈이 목록에 있는지부터 잰다.
+  it("주인 잃은 셸을 다루는 모듈이 그 셸을 orphan으로 부르지 않는다", () => {
+    const terminal = join(src, "features", "terminal");
+    const processes = join(src, "features", "processes");
+    const scanned = [
+      ...sourceFiles(terminal),
+      join(src, "components", "shell", "useGoToShell.ts"),
+      ...["shell-tree.ts", "needs-look.ts", "ProcessesNavMeta.tsx", "ProcessesPage.tsx", "SummaryCard.tsx"].map((name) =>
+        join(processes, name),
+      ),
+    ];
+    expect(scanned).toEqual(
+      expect.arrayContaining([
+        join(terminal, "terminal-store.ts"),
+        join(terminal, "shell-registry.ts"),
+        join(terminal, "shell-owners.ts"),
+      ]),
+    );
+    const named = scanned.filter((path) => /orphan/i.test(readFileSync(path, "utf8")));
+    expect(named.map((path) => path.slice(src.length))).toEqual([]);
+  });
+
+  // 티켓 32 · 프로세스 스펙 S42. `Processes`에 「화면 밖 셸」 묶음이 섰다 — 앱의 셸 풀에는 있는데 화면이 모르는 셸이다. 이름이 없으면
+  // 다음 사람이 「주인 잃은 셸」로 부르는데, 그쪽은 화면이 알고 표시까지 세운 셸(주인인 work이 사라졌다)이고 이쪽은 화면이 모르는
+  // 셸이라 주인이 살아 있을 수 있다 — 한 말로 부르면 [모두 닫기]가 어느 쪽을 닫는지가 문장에서 사라진다. 방금 뜬 셸도 한 순간 화면이
+  // 모르므로, 두 장에 연달아 선 셸만 그렇게 부른다는 것이 본문에 있어야 다음 사람이 한 장으로 가르지 않는다. 방금 닫은 셸은 거꾸로
+  // 한 순간 풀에 남는다 — 두 장 **모두 화면이 몰랐던** 셸이라는 것까지 있어야 지금 화면만 보고 가르지 않는다(리뷰 반영). 마지막 줄은
+  // 접근성 이름 그물이 이 묶음을 실제로 보는지다.
+  it("「화면 밖 셸」이 등재돼 있고, 화면이 모르는 셸이며 주인 잃은 셸과 갈라 적는다", () => {
+    expect(names).toContain("화면 밖 셸");
+    expect(bodyOf("화면 밖 셸")).toContain("화면이 모르는 셸");
+    expect(bodyOf("화면 밖 셸")).toContain("스냅샷 두 장에 연달아");
+    expect(bodyOf("화면 밖 셸")).toContain("두 장 모두 화면이 몰랐던 셸");
+    expect(bodyOf("화면 밖 셸")).toContain("_주인 잃은 셸과 다른 말이다_");
+    expect(ariaLabels).toContain("화면 밖 셸");
+  });
+
+  // 프로세스 결정 6 · 코드 리뷰 반영. 「정리 기록」은 `Processes`의 맨 아래 묶음 이름이고 손볼 것 셋 중 하나인데 사전에 없었다 —
+  // 이름이 없으면 다음 사람이 「인스턴스 기록」(실행마다 제 셸 키를 적어 둔 것)과 한 말로 부른다. 둘은 고아를 가르는 재료와
+  // 끝낸 사건의 자취라, 한 말로 부르면 「기록이 그 셸이 없다고 말한다」가 어느 기록 이야기인지 문장에서 사라진다. 본문이
+  // 「무엇을 언제 왜 끝냈는지」와 사건의 세 가지(까닭 · 대상 · 결과)를 들고, 인스턴스 기록과 갈라 적어야 한다. 마지막 줄은
+  // 접근성 이름 그물이 이 묶음을 실제로 보는지다.
+  it("「정리 기록」이 등재돼 있고, 앱이 무엇을 언제 왜 끝냈는지이며 인스턴스 기록과 갈라 적는다", () => {
+    expect(names).toContain("정리 기록");
+    expect(bodyOf("정리 기록")).toContain("앱이 무엇을 언제 왜 끝냈는지");
+    for (const part of ["까닭", "대상", "결과"]) {
+      expect(bodyOf("정리 기록")).toContain(part);
+    }
+    expect(bodyOf("정리 기록")).toContain("_인스턴스 기록과 다른 말이다_");
+    expect(ariaLabels).toContain("정리 기록");
+  });
+
+  // 티켓 26 · 프로세스 결정 8 · 9. main nav에 `Processes`가 **두 세계 모두에** 섰다. 사전이 그 화면을 모르면 다음 사람이 세계마다
+  // 따로 선 화면으로 읽는다 — 그러면 「Maison의 Processes에는 Maison 셸만」 같은 규칙이 생겨 절반이 안 보인다. 본문이 「앱
+  // 전체」와 「두 세계가 같은 화면」을 들어야 그 읽기가 막힌다.
+  it("「Processes」가 등재돼 있고, 두 세계가 같은 화면으로 앱 전체를 본다고 적는다", () => {
+    expect(names).toContain("Processes");
+    expect(bodyOf("Processes")).toContain("앱 전체");
+    expect(bodyOf("Processes")).toContain("두 세계가 같은 화면을 연다");
+  });
+
   it("「레이아웃」·「항목」·「템플릿」·「번호 묶음」이 등재돼 있다", () => {
     // spec 레이아웃(결정 12, 티켓 08). spec 폴더의 모양을 데이터로 정의하는 말들이다 — 이름이 없으면
     // 다음 사람이 「노드」나 「템플릿」으로 레이아웃을 부르고, 설정 nav의 줄과 레이아웃의 자리를 한
@@ -177,6 +312,14 @@ describe("표기 절은 지금 화면의 것을 예로 든다", () => {
     expect(uppercase).toContain("`Atelier`");
     expect(uppercase).toContain("`Maison`");
     expect(uppercase).toContain("`Rooms`");
+  });
+
+  // main nav는 세계마다 다르다(life-mode 결정 6·17) — 그리고 `Processes`가 두 세계에 함께 서며 넷 · 셋이 됐다(티켓 26). **한 문장에서
+  // 두 벌을 함께 본다**: 한쪽만 재면 다른 세계의 벌이 낡아도 초록이다. 줄바꿈은 문서의 자리라 빈칸 하나로 접어 읽는다.
+  it("대문자 층이 main nav를 세계마다 넷 · 셋으로 든다", () => {
+    expect(uppercase.replace(/\s+/g, " ")).toContain(
+      "Atelier는 `Projects`·`Terminal`·`Processes`·`Archive` 넷이고 Maison은 `Terminal`·`Processes`·`Archive` 셋이다",
+    );
   });
 
   it("대문자 층이 사라진 구획 머리 `Iterations`·`Documents`를 들지 않는다", () => {

@@ -133,13 +133,33 @@ const HANDLERS: &[(&str, Handler)] = &[
     ("touch_recent_work", |a| {
         ok(atelier_core::touch_recent_work(&mode_home(mode(a)?), &text(a, "slug")?))
     }),
-    // 셸 다섯은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
+    // 셸 일곱은 PTY 풀이라는 **앱 프로세스의 상태**를 받는다. 다리는 호출마다 새 프로세스라
     // 그 풀이 없고, 있다 해도 프로세스가 끝나는 순간 셸도 죽는다.
     ("pty_spawn", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_write", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_resize", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
     ("pty_kill", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
-    ("pty_command_running", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_close_check", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_close_checks", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    ("pty_first_input", |_| in_app_only("PTY 풀이 앱 프로세스의 상태입니다")),
+    // `Processes` 화면의 스냅샷(프로세스 티켓 26)도 **그 풀을 읽는다** — 판정이 풀의 셸 목록과 이 실행의 인스턴스 기록을 입력으로
+    // 받는다. 호출마다 새로 뜨는 다리에는 셸도 기록도 없고, 있다 해도 이 맥의 프로세스 표 전체를 판정하는 일을 검증 층에서
+    // 태울 까닭이 없다. 거절되면 화면은 제목만 선다.
+    ("processes_snapshot", |_| in_app_only("PTY 풀과 인스턴스 기록이 앱 프로세스의 상태입니다")),
+    // nav 메타의 요약(프로세스 티켓 29)은 **앱 프로세스의 배경 표본이 앉힌 값**이다 — 10초마다 그 풀을 판정하는 스레드가 앱에 산다. 다리에는
+    // 표본을 모을 실행이 없다. 거절되면 nav 메타가 안 선다(부팅 때의 시작 보고와 같다).
+    ("processes_summary", |_| in_app_only("요약은 앱 프로세스의 배경 표본이 모은 값입니다")),
+    // 요약 카드의 추이(프로세스 티켓 30)도 **그 배경 표본이 든 고리**다 — 앱 프로세스의 메모리에만 산다(앱을 다시 켜면 빈다). 거절되면
+    // 카드에 스파크라인이 안 선다.
+    ("processes_trend", |_| in_app_only("추이는 앱 프로세스의 배경 표본이 든 값입니다")),
+    // 정리 기록(프로세스 티켓 32)은 **앱 프로세스가 연 인스턴스 기록의 자리**에서 읽는다 — 그 자리는 앱이 뜰 때 이 실행의 신원과 함께 선다.
+    // 다리에는 연 기록이 없고, 데이터 루트를 여기서 다시 짚으면 이 층이 앱이 아니라 다리를 검증한다. 거절되면 정리 기록 묶음이
+    // 안 선다.
+    ("processes_cleanup_log", |_| in_app_only("정리 기록은 앱 프로세스가 연 인스턴스 기록의 자리에서 읽습니다")),
+    // 손으로 끝내기(프로세스 티켓 31)는 **그 풀의 진행 중인 끝내기 목록에 오르고 그 인스턴스 기록에 적는다** — 앱이 닫히면 종료가 그 목록을
+    // 마감하고, 기록은 앱 실행 폴더에 산다. 다리에는 둘 다 없고, 있다 해도 검증 층에서 이 맥의 프로세스에 신호를 보낼 까닭이 없다.
+    // 거절되면 [끝내기] · [정리]가 문제 창을 띄운다.
+    ("processes_end", |_| in_app_only("PTY 풀의 진행 중인 끝내기와 인스턴스 기록이 앱 프로세스의 상태입니다")),
     // 설정 둘은 **위 넷과 이유가 다르다.** `~/.atelier/settings.json` 한 장이라 다리가 못 탈
     // 성질이 아닌데, 읽고 쓰는 코드가 앱 크레이트(`src-tauri/src/settings.rs`)에 살고 다리는
     // 코어만 본다. 여기서 파일 규칙을 다시 적지 않는다 — 그 순간 이 층이 검증하는 것이 앱이
@@ -149,6 +169,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     // 코어로 옮기면 위 항목들처럼 진짜 핸들러가 된다.
     ("read_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
     ("write_settings", |_| in_app_only("설정 모듈이 앱 크레이트에 있습니다")),
+    // 예외 목록의 기본값(프로세스 스펙 S7)은 **판정이 쓰는 앱 크레이트의 상수**다. 코어가 모르는 값이라 여기서
+    // 다시 적으면 이 층이 앱이 아니라 다리를 검증한다(위 설정 둘과 같은 이유).
+    ("default_process_exceptions", |_| in_app_only("예외 목록의 기본값이 앱 크레이트의 상수입니다")),
     // 에이전트 훅 셋(#207)도 같은 이유다 — 병합 모듈이 앱 크레이트에 산다
     // (`src-tauri/src/hooks.rs`). 게다가 이쪽이 고치는 것은 `~/.atelier` 밖의 파일
     // (`~/.claude`·`~/.codex`)이라, 다리가 그것을 진짜로 태우면 검증 한 번이 이 기계를
@@ -186,6 +209,9 @@ const HANDLERS: &[(&str, Handler)] = &[
     }),
     // 종료 확인의 「종료」(결정 14). 끌 대상이 **앱 프로세스 자신**이라 다리에는 끌 것이 없다.
     ("quit_app", |_| in_app_only("앱 프로세스를 끄는 일입니다")),
+    // 시작 보고(프로세스 스펙 S11)는 **이 실행이 뜰 때 한 일**이다 — 앱 프로세스가 붙잡아 둔 값이라, 호출마다
+    // 새로 뜨는 다리에는 붙잡을 실행이 없다. 거절되면 프런트는 토스트 없이 넘어간다(부팅 때의 설정 읽기와 같다).
+    ("startup_report", |_| in_app_only("시작 보고는 앱 프로세스가 붙잡아 둔 값입니다")),
 ];
 
 /// 앱 프로세스 안에서만 뜻이 있는 커맨드. **표에는 남긴다** — 빼면 드리프트 검사가
@@ -380,17 +406,35 @@ mod tests {
     ///
     /// 이 표가 다리에 사는 것은 **제 자신을 안 읽기 때문이다.** 앱 크레이트 안에 두면
     /// 아래 검사가 찾는 낱말이 그 검사의 문자열로도 파일에 있어, 스스로를 읽고 빨개진다.
-    const APP_SOURCES: [(&str, &str); 10] = [
+    const APP_SOURCES: [(&str, &str); 28] = [
         ("commands.rs", include_str!("../../../src-tauri/src/commands.rs")),
         ("hooks.rs", include_str!("../../../src-tauri/src/hooks.rs")),
         ("lib.rs", include_str!("../../../src-tauri/src/lib.rs")),
         ("main.rs", include_str!("../../../src-tauri/src/main.rs")),
+        ("processes/cleanup_log.rs", include_str!("../../../src-tauri/src/processes/cleanup_log.rs")),
+        ("processes/clock.rs", include_str!("../../../src-tauri/src/processes/clock.rs")),
+        ("processes/ending.rs", include_str!("../../../src-tauri/src/processes/ending.rs")),
+        ("processes/exceptions.rs", include_str!("../../../src-tauri/src/processes/exceptions.rs")),
+        ("processes/instances.rs", include_str!("../../../src-tauri/src/processes/instances.rs")),
+        ("processes/metrics.rs", include_str!("../../../src-tauri/src/processes/metrics.rs")),
+        ("processes/mod.rs", include_str!("../../../src-tauri/src/processes/mod.rs")),
+        ("processes/procargs.rs", include_str!("../../../src-tauri/src/processes/procargs.rs")),
+        ("processes/screen.rs", include_str!("../../../src-tauri/src/processes/screen.rs")),
+        ("processes/service.rs", include_str!("../../../src-tauri/src/processes/service.rs")),
+        ("processes/shell_key.rs", include_str!("../../../src-tauri/src/processes/shell_key.rs")),
+        ("processes/snapshot.rs", include_str!("../../../src-tauri/src/processes/snapshot.rs")),
+        ("processes/summary.rs", include_str!("../../../src-tauri/src/processes/summary.rs")),
+        ("processes/testkit.rs", include_str!("../../../src-tauri/src/processes/testkit.rs")),
+        ("processes/verdict.rs", include_str!("../../../src-tauri/src/processes/verdict.rs")),
         ("pty.rs", include_str!("../../../src-tauri/src/pty.rs")),
         ("quit.rs", include_str!("../../../src-tauri/src/quit.rs")),
         ("settings.rs", include_str!("../../../src-tauri/src/settings.rs")),
         ("shells.rs", include_str!("../../../src-tauri/src/shells.rs")),
+        ("shells/testkit.rs", include_str!("../../../src-tauri/src/shells/testkit.rs")),
+        ("startup.rs", include_str!("../../../src-tauri/src/startup.rs")),
         ("terminate.rs", include_str!("../../../src-tauri/src/terminate.rs")),
         ("watcher.rs", include_str!("../../../src-tauri/src/watcher.rs")),
+        ("webview.rs", include_str!("../../../src-tauri/src/webview.rs")),
     ];
 
     /// CLI 크레이트 `src/` 아래의 소스 전부. 위 표와 짝이다 — 앱 쪽은 「env를 아예 안

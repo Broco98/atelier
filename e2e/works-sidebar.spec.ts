@@ -8,11 +8,13 @@ import {
   markRunning,
   openShell,
   readIpcRecord,
+  typeIntoShell,
   unknownIpcCalls,
   workRow,
   writeShell,
   띠,
   레인,
+  색대비,
   오른쪽메타,
   툴팁,
   행버튼,
@@ -215,6 +217,8 @@ test("행의 어디를 눌러도 그 work로 간다 — 오른쪽 메타 중 핀
   // 이 화면에 들어와야 그 work에 셸이 서고(`ensureShell`), 그 셸이 불러야 메타에 마크가 선다.
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부르는 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   await 기다리게한다(page, "커밋할까요?", 125_000);
 
   // 옆 work으로 옮긴다 — 셸은 앱 메모리에 살아 그 행의 메타가 그대로 남는다. **그 행을 눌러
@@ -514,44 +518,15 @@ test("오른쪽 메타의 다섯 갈래가 각각 선다", async ({ page }) => {
 // 「누가」를 말하는 글리프다.
 //
 // **계산이 이 층에 있는 이유**: 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는
-// 대비를 못 잰다. 그리고 브라우저는 `oklch`를 **그대로 돌려준다**(WebKit 실측:
-// `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 그래서 색 문자열을 캔버스에 한 번
-// 칠해 실제 픽셀로 받는다. 그 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
-// 짧고 새지 않는다.
+// 대비를 못 잰다 — 색을 캔버스에 칠해 픽셀로 받는 계산은 하네스에 한 벌 있다(`색대비`).
 //
 // **라이트와 다크를 둘 다 잰다.** 다크 팔레트는 아직 앱에 켜는 손잡이가 없지만(`.dark`를
 // 붙이는 자리가 이 저장소에 없다) 토큰은 이미 서 있고, 손잡이가 생기는 날 이 줄이 그 팔레트를
 // 이미 지키고 있어야 한다 — 그날 대비를 다시 세는 사람은 없다.
 //
-// **계산은 색 문자열 둘을 받는 자리로 갈려 있다.** 아래 `대비를잰다`는 글자색을 재는데,
+// **계산은 색 문자열 둘을 받는 자리(`색대비`)로 갈려 있다.** 아래 `대비를잰다`는 글자색을 재는데,
 // 레인의 점은 **배경색**을 재기 때문이다(#203) — 한쪽 모양에 매어 두면 점을 재는 자리가
 // 이 계산을 한 벌 더 갖는다.
-const 색대비 = (page: Page, 앞: string, 뒤: string) =>
-  page.evaluate(
-    ([앞, 뒤]: [string, string]) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 1;
-      const ctx = canvas.getContext("2d")!;
-      const 휘도 = (color: string) => {
-        // 캔버스는 이전 칠을 들고 있으므로 매번 지운다 — 반투명 색을 그 위에 칠하면
-        // 앞의 것과 섞여, 「불투명한가」를 보는 아래 검사가 새어 나간다.
-        ctx.clearRect(0, 0, 1, 1);
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 1, 1);
-        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-        if (a !== 255) throw new Error(`대비를 잴 수 없는 색이다(불투명하지 않다): ${color}`);
-        const 선형 = (one: number) => {
-          const c = one / 255;
-          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-        };
-        return 0.2126 * 선형(r) + 0.7152 * 선형(g) + 0.0722 * 선형(b);
-      };
-      const [밝, 어] = [휘도(앞), 휘도(뒤)].sort((x, y) => y - x);
-      return (밝 + 0.05) / (어 + 0.05);
-    },
-    [앞, 뒤] as [string, string],
-  );
-
 const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
   Promise.all([
     글자.evaluate((el) => getComputedStyle(el).color),
@@ -653,13 +628,16 @@ const 셸에서눈을뗀다 = async (page: Page) => {
   await expect(page).not.toHaveURL(/tab=terminal/);
 };
 
-/** 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Stop`이 그 길이다(스펙 전이 표). */
+/**
+ * 그 셸이 **나를 기다린다**고 말하게 한다 — claude `Elicitation`(사람에게 묻는 것)이 그 길이다. 한때 `Stop`이었는데
+ * 프로세스 결정 13이 턴의 끝을 「확인할 것」으로 옮겼다 — 기다림은 사람이 답해야 할 때만 선다. 말은 물음의 첫 줄이다.
+ */
 const 기다리게한다 = (page: Page, message: string, 지난ms = 0) =>
   markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now() - 지난ms,
-    payload: { last_assistant_message: message },
+    payload: { message },
   });
 
 test("부르는 행은 레인·오른쪽 메타·이름으로 함께 말한다", async ({ page }) => {
@@ -771,15 +749,17 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
     return dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   };
 
-  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **세션 종료**다
-  // (스펙 전이 표) — 턴 종료가 아니다.
+  // 앰버와 초록을 차례로 세워 둘의 점 색을 받는다. 초록을 만드는 것은 **턴의 끝**이다(프로세스 결정 13 — 옛
+  // 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
   const 점색둘 = async () => {
     await 기다리게한다(page, "커밋할까요?");
     const 앰버 = await 점색("waiting");
     await markAttention(page, {
       agent: "claude",
-      event: "SessionEnd",
-      payload: { reason: "logout" },
+      event: "Stop",
+      at: Date.now(),
+      payload: { last_assistant_message: "다 했어요" },
+      stopped: true,
     });
     return { 앰버, 초록: await 점색("done") };
   };
@@ -819,10 +799,10 @@ test("앰버·초록이 라이트·다크 사이드바 배경에서 또렷하다
 
 // **초록 행도 오른쪽 메타에 마크와 경과를 낸다**(티켓 #203 · `sidebar-active-band` S4).
 //
-// **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록을 만드는 길은 스펙 전이
-// 표에 둘뿐이고(세션 종료 · 벨) **둘 다 그 순간 그 PTY에 도는 에이전트가 없다** — 세션이
-// 끝났다는 것은 프로세스가 나갔다는 뜻이고, 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
-// 그래서 마크를 「지금 도는 것」에서만 뽑으면 초록 행은 **늘** 경과뿐이 되는데,
+// **`markRunning`을 한 번도 안 부르는 것이 이 검사의 전부다.** 초록은 **남는** 값이다 — 턴이 끝나 선
+// 확인할 것은 세션이 끝나도 안 본 채 남고(프로세스 결정 13), 벨은 정의상 아는 마크가 없을 때만 초록이 된다.
+// 둘 다 **그 PTY에 도는 에이전트가 없는** 자리에 초록이 서 있게 된다 — 세션이 끝났다는 것은 프로세스가
+// 나갔다는 뜻이다. 그래서 마크를 「지금 도는 것」에서만 뽑으면 그 초록 행은 **늘** 경과뿐이 되는데,
 // 도는 것을 손으로 넣어 주는 검사는 그 사라짐을 한 번도 못 본다(마크업 seam이 그 모양이다).
 // 목업의 초록 예시가 바로 `codex` 셸의 「PR #174 열었다」라 정본과 화면이 갈리는 자리다.
 //
@@ -834,13 +814,14 @@ test("초록 행도 마크와 경과를 낸다 — 도는 것이 없어도", asy
   await 셸에서눈을뗀다(page);
 
   const 메타 = 오른쪽메타(page, plainWork.slug);
-  // 턴이 끝나 말이 남고, 그 뒤 세션이 끝난다 — 초록을 만드는 것은 **세션 종료**다.
-  // 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다.
+  // 턴이 끝나 확인할 것이 서고, 그 뒤 세션이 끝난다 — 세션 종료는 **안 본 확인할 것을 남긴다**(프로세스 결정
+  // 13). 시각을 둘 다 손으로 주는 것은 경과가 그 값에서 나오기 때문이다.
   await markAttention(page, {
     agent: "codex",
     event: "Stop",
     at: Date.now() - 125_000,
     payload: { last_assistant_message: "PR #174 열었다" },
+    stopped: true,
   });
   await markAttention(page, {
     agent: "codex",
@@ -953,11 +934,16 @@ const 띠줄 = (page: Page, name: string) => 띠(page).getByRole("button", { nam
  */
 const 띠토글 = (page: Page) => 띠(page).locator("button[aria-expanded]");
 
-/** 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다. */
+/**
+ * 그 셸이 부르게 한다 — 줄마다 말을 달리 두어 어느 셸의 것인지 글자로 갈린다.
+ *
+ * **기다림으로 부른다**(claude `Elicitation`, `기다리게한다`와 같은 길). 턴의 끝(`Stop`)은 프로세스 결정 13 뒤로 「확인할 것」이고,
+ * 보고 있는 셸의 확인할 것은 그 순간 「봤다」가 된다(terminal-activity-signal 결정 7) — ⌘T로 연 칸은 켜진 채 부르므로 `Stop`이면 띠에 안 선다.
+ */
 const 부르게한다 = (page: Page, ptyId: number) =>
   markAttention(
     page,
-    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: `말 ${ptyId}` } },
+    { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: `말 ${ptyId}` } },
     ptyId,
   );
 
@@ -1076,8 +1062,14 @@ test("띠 이름은 「알림」이고, 안 본 완료 줄은 「확인할 것�
   // 안 본 완료가 띠에 선다.
   await 셸에서눈을뗀다(page);
 
-  // 세션이 끝난 것이 초록이다(스펙 전이 표의 `end`).
-  await markAttention(page, { agent: "claude", event: "SessionEnd", at: Date.now(), payload: {} });
+  // 턴이 끝난 것이 초록이다(프로세스 결정 13 — 옛 전이 표에서는 세션 종료였고, 이제 세션 종료는 도는 중 · 기다림을 지운다).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Stop",
+    at: Date.now(),
+    payload: { last_assistant_message: "다 했어요" },
+    stopped: true,
+  });
 
   // 앵커: 띠가 서고 그 줄이 「확인할 것」을 말한다(줄의 상태 말은 그대로다).
   await expect(띠줄(page, `${plainWork.title} — 확인할 것`)).toHaveCount(1);
@@ -1176,7 +1168,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
   // 부르는 것은 **둘째 칸**이고 켜 두는 것은 첫째다 — 그래야 「탭이 바뀌었다」가 보인다.
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", at: Date.now(), payload: { last_assistant_message: "커밋할까요?" } },
+    { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: "커밋할까요?" } },
     2,
   );
   await lit(0).click();
@@ -1207,7 +1199,7 @@ test("띠 줄을 누르면 그 셸 탭이 켜진다 — spec을 보고 있어도
 });
 
 // **다른 work의 줄을 누르는 갈래**(결정 13의 넷째 · 결정 77·97). 위 검사가 미는 것은 늘
-// 「보고 있는 그 work」이라 `useOpenBand`의 **한쪽 갈래만** 지난다 — 그런데 이 띠가 존재하는
+// 「보고 있는 그 work」이라 셸로 가는 길(`useGoToShell`)의 **한쪽 갈래만** 지난다 — 그런데 이 띠가 존재하는
 // 이유의 절반이 반대쪽이다(스토리 36·43: 지금 안 보고 있는 work으로 건너뛴다).
 //
 // 그 갈래에서 주소를 짓는 모양이 다르다: 같은 work이면 보던 문서·분할을 지키는 **함수형**에
@@ -1264,6 +1256,8 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부르는 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   await 기다리게한다(page, "커밋할까요?");
 
   await expect(띠줄(page, "Terminal — 나를 기다림")).toHaveCount(1);
@@ -1288,7 +1282,9 @@ test("최상위 셸이 부르면 제목 자리에 `Terminal`이 서고, 눌러 �
 // 그 사실은 목록이 실제로 넘칠 때만 보이므로 창을 낮춘다.
 test("스크롤로 밀려난 work의 셸도 띠에서 보인다", async ({ page }) => {
   await installFixtureBackend(page);
-  await page.setViewportSize({ width: 1100, height: 320 });
+  // nav가 한 줄(32px + 줄 간격 2px) 늘어(`Processes`, 프로세스 티켓 26) 그만큼 높였다 — 320에서는 목록과 띠가 함께 눌려 띠의
+  // 줄이 목록 머리 아래로 삐져나왔다. 이 검사가 재는 것은 넘치는 목록 위의 띠이지 띠가 눌리는 높이가 아니다.
+  await page.setViewportSize({ width: 1100, height: 354 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await 기다리게한다(page, "커밋할까요?");
@@ -1688,12 +1684,14 @@ test("최상위 셸의 로고가 nav `Terminal`에 서고, 그 숫자가 구획 
   //
   // work 행과 **같은 구독 컴포넌트**를 쓰므로(`RowMetaFor`) 그 가름이 빠지기 쉽다 —
   // 실제로 한 번 빠졌고 이 세 줄이 그것을 잡았다(2026-09-10).
+  // 부르는 상태로 세운다 — 기다림은 보고 있어도 안 꺼지므로(terminal-activity-signal 결정 7) 이 셸이 그 사이 내내 말하는 중이다.
   await markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now(),
-    payload: { last_assistant_message: "커밋할까요?" },
+    payload: { message: "커밋할까요?" },
   });
+  await expect(띠(page)).toHaveCount(1);
   await expect(navRow.getByRole("img", { name: "claude" })).toHaveCount(1);
   await expect(navRow).not.toContainText("커밋할까요?");
 
@@ -1865,15 +1863,27 @@ test("한 work에서 두 셸이 부르면 오른쪽 메타의 마크·카드의 
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
-  const 부른다 = (agent: string, message: string) => ({
-    agent,
-    event: "Stop",
-    at: Date.now(),
-    payload: { last_assistant_message: message },
-  });
-  await markAttention(page, 부른다("claude", "첫 셸의 말"), 1);
+  // 둘 다 **기다림**으로 부른다(`부르게한다` 머리말 — 턴의 끝(`Stop`)이면 켜진 칸의 확인할 것은 그 순간 꺼진다). 기다림의 길은
+  // 에이전트마다 다르다: claude는 물음(`Elicitation` — 말은 물음의 첫 줄), codex에는 그 사건이 없어 승인 요청(`PermissionRequest`
+  // — 말은 「도구 · 명령」 한 줄, `permissionLine`)이다.
+  const 첫말 = "첫 셸의 말";
+  const 둘째말 = "Bash · git push";
+  await markAttention(
+    page,
+    { agent: "claude", event: "Elicitation", at: Date.now(), payload: { message: 첫말 } },
+    1,
+  );
   await openShell(page);
-  await markAttention(page, 부른다("codex", "둘째 셸의 말"), 2);
+  await markAttention(
+    page,
+    {
+      agent: "codex",
+      event: "PermissionRequest",
+      at: Date.now(),
+      payload: { tool_name: "Bash", tool_input: { command: "git push" } },
+    },
+    2,
+  );
   // 앵커: 둘 다 부른다 — 띠에 두 줄이 선다.
   await expect(띠(page).locator("[data-band-count]")).toHaveText("2");
 
@@ -1885,17 +1895,17 @@ test("한 work에서 두 셸이 부르면 오른쪽 메타의 마크·카드의 
   // **같은 순위(둘 다 기다림)면 먼저 연 셸이 이긴다** — 지금 규칙 그대로다(`topSignalView`).
   await expect(메타.getByRole("img")).toHaveCount(1);
   await expect(메타.getByRole("img", { name: "claude" })).toHaveCount(1);
-  await expect(행).toHaveAccessibleDescription("첫 셸의 말");
-  await expect(말칸(page).getByText("첫 셸의 말", { exact: true })).toBeVisible();
+  await expect(행).toHaveAccessibleDescription(첫말);
+  await expect(말칸(page).getByText(첫말, { exact: true })).toBeVisible();
 
   // **첫 셸이 다시 돌기 시작하면 둘째 셸이 이긴다** — 셋이 함께 그 셸로 옮겨 간다. 둘째 칸이
   // 이미 앉아 있으므로 착석 기다림 없이 쏜다(`markAttention`은 「칸이 하나」를 기다린다).
   await fireAttention(page, { agent: "claude", event: "UserPromptSubmit" }, 1);
   await expect(메타.getByRole("img")).toHaveCount(1);
   await expect(메타.getByRole("img", { name: "codex" })).toHaveCount(1);
-  await expect(행).toHaveAccessibleDescription("둘째 셸의 말");
-  await expect(말칸(page).getByText("둘째 셸의 말", { exact: true })).toBeVisible();
-  await expect(말칸(page)).not.toContainText("첫 셸의 말");
+  await expect(행).toHaveAccessibleDescription(둘째말);
+  await expect(말칸(page).getByText(둘째말, { exact: true })).toBeVisible();
+  await expect(말칸(page)).not.toContainText(첫말);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

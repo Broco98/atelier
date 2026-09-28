@@ -142,10 +142,10 @@ test("목록이 스크롤됐을 때만 윗 가장자리에 선이 서고, 맨 �
 test("굴린 채로 구획을 접어 넘침이 없어지면 선도 사라진다", async ({ page }) => {
   await installFixtureBackend(page);
   // **창 높이가 좁은 창문 안에 있어야 한다** — 처음엔 `SCROLL`만큼 넘치고, `작업`을 접으면 안
-  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 188px → 접으면 122px,
-  // 목록 상자 = 창 높이 − 243px → 365~391px). 두 줄 행(55px) 시절의 400은 그 밖이라 처음부터
-  // 안 넘쳤다. 가운데 값을 고른다.
-  await page.setViewportSize({ width: 1280, height: 380 });
+  // 넘쳐야 한다. 행이 한 줄(32px)이 되면서 그 창문이 옮겨 갔다(목록 내용 188px → 접으면 122px).
+  // nav에 `Processes` 한 줄(32px + 줄 간격 2px, 프로세스 티켓 26)이 더 서서 목록 상자 = 창 높이 − 277px
+  // → 399~425px다. 두 줄 행(55px) 시절의 400은 그 밖이라 처음부터 안 넘쳤다. 가운데 값을 고른다.
+  await page.setViewportSize({ width: 1280, height: 412 });
   await page.goto("/projects");
   await 넘칠때까지(page);
 
@@ -168,11 +168,12 @@ test("알림 띠가 있으면 선이 띠 아래에 선다", async ({ page }) => 
   await page.setViewportSize({ width: 1280, height: 360 });
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
+  // 보고 있는 셸이라 띠에 남는 것은 기다림이다(terminal-activity-signal 결정 7 — 턴의 끝인 확인할 것은 보는 순간 꺼진다).
   await markAttention(page, {
     agent: "claude",
-    event: "Stop",
+    event: "Elicitation",
     at: Date.now(),
-    payload: { last_assistant_message: "커밋할까요?" },
+    payload: { message: "커밋할까요?" },
   });
   await expect(띠(page)).toHaveCount(1);
   await 넘칠때까지(page);

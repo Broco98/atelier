@@ -9,7 +9,7 @@ import {
   ipcCallArgs,
   pickUpEntry,
   pointIn,
-  swapAnswer,
+  replaceAnswer,
   unknownIpcCalls,
 } from "./harness";
 
@@ -19,7 +19,7 @@ import {
 // 판정 표의 여섯 줄은 L2가 잰다(`outside.test.ts`).
 //
 // **이 층이 드는 것은 그 줄이 화면까지 이어지는가다.** fixture의 답은 설치할 때 한 번 정해지므로, 편집기가 연 뒤에
-// 읽기의 답을 갈아 끼우고(`swapAnswer`) 하네스가 종을 친다(`fireEvent`).
+// 읽기의 답을 갈아 끼우고(`replaceAnswer`) 하네스가 종을 친다(`fireEvent`).
 
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
@@ -58,7 +58,7 @@ async function openEditor(page: Page) {
 /** 밖에서 레이아웃이 바뀐다 — 읽기의 답을 갈아 끼우고 종을 친 뒤, 읽기가 다시 불리기까지 기다린다. */
 async function changeOutside(page: Page, read: SpecLayoutRead) {
   const before = await callCount(page, "read_spec_layout");
-  await swapAnswer(page, "read_spec_layout", read);
+  await replaceAnswer(page, "read_spec_layout", read);
   await fireEvent(page, "layouts:changed", null);
   await expect.poll(() => callCount(page, "read_spec_layout")).toBeGreaterThan(before);
 }
@@ -142,7 +142,7 @@ test("밖이 바뀌면 고치지 않은 초안도 미리보기를 다시 묻는�
   await expect(저장(page)).toBeDisabled();
 
   // 밖에서 템플릿 파일이 되살아났다 — 이제 엔진은 같은 초안에 오류 없이 답한다
-  await swapAnswer(page, "render_spec_layout", SPEC_LAYOUT_RENDERED);
+  await replaceAnswer(page, "render_spec_layout", SPEC_LAYOUT_RENDERED);
   const before = await callCount(page, "render_spec_layout");
   await changeOutside(page, CHANGED_SPEC_LAYOUT_READ);
   await expect(배너(page)).toContainText("밖에서 이 레이아웃이 바뀌었어요");

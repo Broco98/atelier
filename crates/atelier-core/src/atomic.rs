@@ -54,7 +54,11 @@ pub(crate) fn read_json_or_default<T: DeserializeOwned + Default>(path: &Path, l
 
 /// 값을 보기 좋은 JSON(끝 줄바꿈 포함)으로 옮겨 `write_atomically`로 쓴다. `what`은 직렬화
 /// 실패 메시지의 목적어다(「순서를」·「이력을」).
-pub(crate) fn write_json_atomically<T: Serialize>(
+///
+/// **이 함수 하나만 크레이트 밖으로 낸다**(`lib.rs`의 `pub use`). 앱의 인스턴스 기록(프로세스 결정 6)이 같은
+/// 규칙 — 같은 폴더 tmp → rename, 쓰기마다 다른 tmp 이름 — 으로 써야 해서다. 앱 쪽에 사본을 두면 「tmp 이름이
+/// 쓰기마다 다르다」가 두 벌로 갈라진다. 잠그지 않는 것은 그대로다: 겹친 쓰기를 가르는 뮤텍스는 부르는 쪽이 든다.
+pub fn write_json_atomically<T: Serialize>(
     dir: &Path,
     file_name: &str,
     value: &T,

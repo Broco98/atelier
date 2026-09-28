@@ -2,11 +2,11 @@ import { memo, useEffect, useMemo, useRef, useState, type ComponentProps } from 
 import { File, Plus, SquareTerminal, X } from "lucide-react";
 import { agentMarkOf } from "@/components/ui/agent-mark";
 import { Hint } from "@/components/ui/tooltip";
-import { SIGNAL_LABEL, signalTint } from "@/components/shell/shell-signal";
+import { SIGNAL_LABEL, signalTint, subagentLabel } from "@/components/shell/shell-signal";
 import { everyFrame } from "@/lib/frame-loop";
 import { cn } from "@/lib/utils";
 import ShellPicker from "./ShellPicker";
-import { signalOf } from "./shell-attention";
+import { runningSubagents, signalOf } from "./shell-attention";
 import {
   activeIdOf,
   atCap,
@@ -628,6 +628,12 @@ const ShellTab = memo(function ShellTab({
     spoken === null
       ? undefined
       : [name, mark && `${mark.label} 실행 중`, spoken].filter(Boolean).join(" — ");
+  // **「도는 중 · 서브에이전트 N」은 이름표의 툴팁에 선다**(프로세스 스펙 S32). 턴이 멈췄는데 서브에이전트가 도는
+  // 셸은 부르지 않으므로(도는 중) 띠에도 행에도 그 사실이 안 선다 — 사람이 「왜 아직 도나」를 물을 자리가 여기다.
+  // 수는 레지스트리 쪽 함수가 낸다(`runningSubagents` — 죽은 칸 가리개를 딛는다). 도는 중은 채움도 이름 꼬리도
+  // 없으므로(스토리 52) 접근성 이름이 아니라 **툴팁**이고, 0이면 아무것도 없다. 툴팁은 앱의 것(`Hint`)이고, 이름보다
+  // 더 말하는 글자라 설명(`aria-description`)으로도 남는다(`sidebar-active-band` S28 — 옛 `title`이 이름 다음에 읽히던 몫).
+  const tooltip = subagentLabel(runningSubagents(shell));
 
   return (
     // 배경(켜짐·hover)은 이 바깥 상자가 갖는다. **가로 여백을 하나도 갖지 않는다** —
@@ -666,6 +672,8 @@ const ShellTab = memo(function ShellTab({
     // 아니다 — 이 칸의 폭은 이미 flex가 정한다.
     <div
       data-tab="shell"
+      // 셸 키(프로세스 스펙 S34)는 화면에 뜨지 않는 말이라 글자가 아니라 표식으로만 선다 — spawn 응답 전이면 없다.
+      data-shell-key={shell.shellKey ?? undefined}
       className={cn(
         "@container flex h-7 w-[180px] min-w-[44px] shrink items-center rounded-[8px] text-[12.5px] transition-colors",
         // 켜진 칸의 무게는 **물들어도 남는다** — 물들임이 말하는 것은 「부른다」이지 「고른
@@ -699,7 +707,11 @@ const ShellTab = memo(function ShellTab({
           items-center는 자식을 내용 높이로 줄인다.
 
           gap-1.5가 글리프와 이름 사이를 벌린다(결정 4·27). */}
-      <button
+      <Hint
+        // 서브에이전트가 없으면 툴팁도 설명도 없다 — 트리거의 `disabled`는 툴팁만 끄고 버튼은 그대로 둔다(Base UI).
+        text={tooltip ?? ""}
+        announce="description"
+        disabled={tooltip === null}
         type="button"
         aria-pressed={active}
         // **상태가 이름에 붙는다**(스토리 55 · 결정 8). 채움은 `aria-hidden`도 아니고 그냥
@@ -763,7 +775,7 @@ const ShellTab = memo(function ShellTab({
             쓴 것과 정면으로 어긋난다.
             직접 선언한 색이라 켜진 칸의 toggle-on 글자색에 안 덮인다. */}
         {end && <span className="shrink-0 text-tertiary">{end.mark}</span>}
-      </button>
+      </Hint>
       {/* 이름 버튼의 **형제**다. 중첩 button은 HTML에서 허용되지 않고, span
           role="button"으로 흉내내면 Tab으로 도달할 수 없다(SpecTree.test.tsx가 같은
           것을 지킨다). 셸을 죽이는 길은 여전히 확인을 거치는 하나다(결정 22·92) —

@@ -588,6 +588,7 @@ test("세계를 건너면 ⌘K가 저쪽 세계를 안 본다", async ({ page })
   await expect.poll(() => destinationsAsked(page)).toEqual([
     "projects",
     "terminal",
+    "processes",
     "archive",
     "settings",
   ]);
@@ -604,7 +605,7 @@ test("세계를 건너면 ⌘K가 저쪽 세계를 안 본다", async ({ page })
   // 아니라(#187이 닫은 것은 빠뜨린 호출이지 틀린 값이 아니다), 그때 이 제목이 네 줄에 다 선다.
   await expect(page.getByRole("option", { name: specWork.title })).toHaveCount(0);
   // `Projects`가 빠진 것은 줄인 게 아니라 이 세계에 프로젝트가 없어서다(결정 17).
-  await expect.poll(() => destinationsAsked(page)).toEqual(["terminal", "archive", "settings"]);
+  await expect.poll(() => destinationsAsked(page)).toEqual(["terminal", "processes", "archive", "settings"]);
   await page.keyboard.press("Escape");
 
   await modeButton(page, "Atelier").click();

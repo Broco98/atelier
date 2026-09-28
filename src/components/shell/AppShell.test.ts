@@ -71,10 +71,15 @@ describe("세그먼트의 목적지", () => {
     // mode="atelier"/>`로 눕혀도 L0는 통과하고(리터럴이 `Mode`다) 무는 L2가 없다(팔레트를
     // 렌더하는 검사가 없다). 소비자가 느는 날 이 줄이 빨개지는 것이 맞다 — 새로 내려 주는
     // 자리도 세계를 받아야 하고, 그것을 여기서 한 번 보고 지나가는 것이 이 검사의 값이다.
-    expect(countOf(source, "mode={mode}")).toBe(2);
+    //
+    // 셋째 소비자는 주인 확인(`ShellOwners`, 티켓 12)이다 — 앱 루트가 **지금 세계의** 목록을 관찰하고, 저쪽 세계는
+    // 셸이 있을 때만 함께 다시 읽는다(프로세스 스펙 S13). 눕히면 Maison에 서 있어도 Atelier 목록만 관찰해, MCP로
+    // 아카이브된 Room의 셸을 못 알아챈다.
+    expect(countOf(source, "mode={mode}")).toBe(3);
     // 어느 쪽이 눕었는지가 실패에 남게 팔레트 몫은 이름으로도 못 박는다 — `Sidebar`는 여러
     // 줄에 걸쳐 서 있어 이 수법이 안 통한다.
     expect(source).toContain("<SearchPalette mode={mode}");
+    expect(source).toContain("<ShellOwners mode={mode} />");
   });
 
   it("그 세계를 `/settings`가 눕히지 않는 쪽에서 읽는다", () => {

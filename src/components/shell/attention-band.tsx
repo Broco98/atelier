@@ -47,9 +47,11 @@ export const BAND_LIMIT = 3;
  * 내려간다 — 바로 아래 work 행이 통째로 `text-muted-foreground`라(SidebarWorkList), 둘을
  * 같은 색으로 두면 띠가 목록과 같은 무게로 읽히고 「기다림 › 안 본 완료」가 점 색에만 남는다.
  *
- * **삼항이 아니라 표다.** 갈래가 느는 날(실패 — 결정 12) 삼항은 새 값을 조용히 아래쪽
- * 가지로 흘려보내는데, `Record<CallingKind, …>`는 그 자리에서 컴파일이 막는다 —
- * `SIGNAL_LABEL`·`TONE`이 같은 이유로 표인 것과 같다.
+ * **삼항이 아니라 표다.** 갈래가 느는 날 삼항은 새 값을 조용히 아래쪽 가지로 흘려보내는데,
+ * `Record<CallingKind, …>`는 그 자리에서 컴파일이 막는다 — `SIGNAL_LABEL`·`TONE`이 같은
+ * 이유로 표인 것과 같다. 실패는 한때 그렇게 늘 갈래였다(terminal-activity-signal 결정 12 — 빨강은
+ * 다음 판). 프로세스 결정 13이 이렇게 고쳤다: API 오류로 끝난 턴은 **확인할 것 + 「오류로 끝남」**
+ * (말로 선다, 색은 없다 — `FAILED_LABEL`)이라 부르는 갈래는 여전히 둘이다.
  */
 const WEIGHT: Readonly<Record<CallingKind, string>> = {
   waiting: "text-foreground",

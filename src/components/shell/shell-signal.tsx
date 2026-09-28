@@ -23,11 +23,14 @@ export type ShellSignal = "waiting" | "done" | "working";
  * 「확인할 것」에 드는 화면값(결정 8). 띠에 서는 것 · 독 배지가 세는 것 · 알림이 울리는 것이
  * 전부 **이 갈래 하나**이고, 도는 중과 조용한 셸은 여기 못 온다.
  *
- * **이름을 세워 두는 이유는 축이 늘 때다.** 실패(빨강)는 다음 판이고(결정 12), 그날
+ * **이름을 세워 두는 이유는 축이 늘 때다.** 실패는 한때 다음 판의 빨강 축이었다(terminal-activity-signal 결정
+ * 12). 프로세스 결정 13이 이렇게 고쳤다: API 오류로 끝난 턴은 **확인할 것 + 「오류로 끝남」**(말로 선다, 색은
+ * 없다 — `FAILED_LABEL`)이라 이 판에서도 축은 셋이다. 언젠가 축이 늘어
  * `ShellSignal`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
  * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
  * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
- * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다. 판정은 `isCalling` 한 자리다.
+ * 있으므로(`shellCalls` — 띠의 `callingShells`는 거기서 본 확인할 것만 뺀 것이다) 갈래의 이름도 하나여야 한다. 판정은
+ * `isCalling` 한 자리다.
  */
 export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
 
@@ -60,6 +63,18 @@ export const SIGNAL_LABEL: Readonly<Record<ShellSignal, string>> = {
   done: "확인할 것",
   working: "도는 중",
 };
+
+/**
+ * 「도는 중 · 서브에이전트 N」(프로세스 스펙 S32). 셸 탭 이름표의 툴팁이 이 말을 쓰고, `Processes` 셸 행의 상태
+ * 칸(티켓 27)이 같은 함수를 쓴다 — 두 자리가 각자 적으면 한쪽이 「하위 에이전트」로 늙는다. 수는
+ * `runningSubagents`(`shell-attention.ts`)가 낸 것이고, **0이면 말이 없다** — 서브에이전트 없이 도는 칸에
+ * 툴팁을 세우면 이름 위에 늘 「도는 중」이 떠, 이름(claude 타이틀의 스피너 · `✳`)이 이미 말하는 것을 한 번 더 말한다.
+ *
+ * **사이드바 행과 띠의 모양은 안 바꾼다** — 그 자리는 `sidebar-active-band`의 몫이다.
+ */
+export function subagentLabel(count: number): string | null {
+  return count > 0 ? `${SIGNAL_LABEL.working} · 서브에이전트 ${count}` : null;
+}
 
 /**
  * 상태색의 유틸리티. 토큰 넷은 `index.css`가 들고 라이트·다크가 거기서 갈린다.

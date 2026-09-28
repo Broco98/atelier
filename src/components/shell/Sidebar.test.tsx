@@ -98,6 +98,9 @@ describe("한 셸이 흔들려도 남의 work 행은 그대로다", () => {
       seen: false,
       source: "hook",
       agent: "claude",
+      subagents: 0,
+      subagentId: null,
+      dialog: null,
     });
     // **먼저 실제로 달라졌는가** — 이것이 없으면 아래 「같다」가 「아무 일도 안 났다」로도 초록이다.
     expect(signalsOf(뒤, "atelier")).toEqual({ 나: "waiting" });
@@ -341,7 +344,7 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
     // 사이드바를 통째로 바꿔 끼우거나 훅 앞에서 갈라지면 늘 서 있어야 하는 알림 제목 배선
     // (`useNotifyTitles`)이 설정에 있는 동안 멎는다 — 셸이 불러도 알림 제목이 낡거나 안 걸린다.
     // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이라 아래 비교가 읽은 것 없이 선다.
-    const lastHooks = ["useNotifyTitles(resolveTitle);", "useOpenBand(mode);"].map((hook) =>
+    const lastHooks = ["useNotifyTitles(resolveTitle);", "useGoToShell();"].map((hook) =>
       sidebar.indexOf(hook),
     );
     expect([branchAt, ...lastHooks].every((at) => at > -1)).toBe(true);

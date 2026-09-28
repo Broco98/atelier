@@ -11,9 +11,11 @@ import {
 import type { NotifyContent, NotifyInput, NotifyShell } from "./shell-notify";
 import type { NotifyChoice } from "@/features/settings/notifications";
 import type { ShellSignal } from "@/components/shell/shell-signal";
+import { nextAttention } from "./shell-attention";
 import type { Attention } from "./shell-attention";
 import { ownerOf, slugOfOwner } from "./shell-registry";
 import type { Shell, ShellOwner, ShellsState } from "./shell-registry";
+import type { ShellHookState } from "./types";
 
 /**
  * 소유자 키 하나. **모드를 여기서만 적는다** — 이 파일이 재는 것은 알림 판정이라 세계는
@@ -60,7 +62,8 @@ const TRANSITIONS = [
   [null, "done", true],
   ["working", "waiting", true],
   ["working", "done", true],
-  // **둘 사이를 오가는 것도 들어감이다**(결정 10). 답을 기다리다 세션을 마친 것은 새 사실이다.
+  // **둘 사이를 오가는 것도 들어감이다**(terminal-activity-signal 결정 10). 답을 기다리던 셸이 턴을 마친 것(`Stop` — 프로세스
+  // 결정 13이 확인할 것으로 고쳤다)도, 턴을 마친 셸이 다시 묻는 것도 새 사실이다.
   ["waiting", "done", true],
   ["done", "waiting", true],
   // **머무름** — 같은 값으로 남아 있는 동안은 조용하다(스토리 60).
@@ -96,12 +99,13 @@ describe("어느 전이가 울리나", () => {
     expect(decide({ prev: "working", next: "waiting" })).not.toBeNull();
   });
 
-  // **훅 셸에는 화면값이 `waiting`을 벗어나는 길이 사실상 없다.** 결정 6의 소거 규칙은
-  // 「`UserPromptSubmit` · 출력」 둘인데 구현 결정 1이 출력을 권위 규칙 **안쪽**으로
-  // 좁혔고(`nextOnOutput`은 `source: "osc"`만 푼다), 승인 클릭은 `UserPromptSubmit`을
-  // 안 낸다 — 설치되는 훅 다섯에 「승인 완료」 이벤트가 없다. 그래서 승인 요청이 연달아
-  // 오는 동안 화면값은 `waiting`에 계속 앉아 있고, **화면값 하나로만 재면 둘째 프롬프트
-  // 부터 전부 삼켜진다** — 결정 10이 이름 붙여 막으려던 그 실패다(Agent Deck).
+  // **훅 셸에서는 승인 요청이 연달아 오는 동안 화면값이 `waiting`에 그대로 앉아 있을 수 있다.** 한때는 벗어나는 길이
+  // 사실상 없었다 — terminal-activity-signal 결정 6의 소거 규칙은 「`UserPromptSubmit` · 출력」 둘인데 그 work의 구현 결정 1이
+  // 출력을 권위 규칙 **안쪽**으로 좁혔고(`nextOnOutput`은 `source: "osc"`만 푼다), 그때 설치되던 훅 다섯에는 「승인 완료」
+  // 이벤트가 없었다. 프로세스 결정 13 · 14가 도구 사건을 더해 승인 뒤 도구가 돌면 기다림이 풀리지만, 두 요청 사이에 도구
+  // 사건이 안 닿는 길(거절한 뒤의 다음 요청, 감시의 디바운스가 도구 사건과 다음 요청을 한 회차로 접은 것)은 남는다. 그래서
+  // **화면값 하나로만 재면 둘째 프롬프트부터 삼켜진다** — terminal-activity-signal 결정 10이 이름 붙여 막으려던 그 실패다
+  // (Agent Deck).
   //
   // 그래서 「머무름」의 판정을 화면값이 아니라 **그 사실의 정체**로 넓힌다: `applySignal`이
   // 이벤트마다 새 `since`를 찍으므로, 같은 값이 그대로 앉아 있는 것과 같은 값으로 새 사실이
@@ -172,57 +176,62 @@ describe("무엇이 실리나", () => {
 // **만들어 낸다** — 회차마다 목록을 받아 셸마다 직전과 견주고, 울린 것은 그 work의 시각을
 // 갱신한다. 여기가 틀리면 판정이 아무리 맞아도 두 번째 프롬프트가 삼켜진다.
 describe("판정을 회차에 걸어 두는 것", () => {
-  const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => ({
-    id: 1,
-    owner: 소유("signal"),
-    kind: "waiting",
-    since: 0,
-    visible: false,
-    title: "터미널 신호",
-    shellName: "atelier · claude",
-    message: null,
-    ...patch,
-  });
+  // 부르는 사실(`call`)은 따로 안 주면 화면값과 같다 — 안 본 셸이다. 본 확인할 것만 둘이 갈린다(`kind: null`).
+  const shell = (patch: Partial<NotifyShell> = {}): NotifyShell => {
+    const row = {
+      id: 1,
+      shellKey: "G-1",
+      owner: 소유("signal"),
+      kind: "waiting" as ShellSignal | null,
+      since: 0,
+      visible: false,
+      title: "터미널 신호",
+      shellName: "atelier · claude",
+      message: null,
+      ...patch,
+    };
+    return { ...row, call: patch.call === undefined ? row.kind : patch.call };
+  };
 
   it("같은 값이 계속 와도 한 번만 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([shell()], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(0);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell()], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(0);
   });
 
   // **이것이 훅 셸의 실물 경로다**(위 판정 검사의 짝). claude가 `Bash` 승인을 묻고, 사람이
-  // 가서 승인하고, 3분 뒤 `Edit` 승인을 묻는다 — 훅 셸에서 그 사이 화면값은 `waiting`에
-  // 그대로 앉아 있고 바뀌는 것은 `since`·`message`뿐이다. 회차가 화면값만 기억하면 둘째
+  // 가서 거절하고, 3분 뒤 `Edit` 승인을 묻는다 — 거절은 도구를 안 돌려 그 사이에 도구 사건이 없고(위 머리말),
+  // 화면값은 `waiting`에 그대로 앉아 바뀌는 것은 `since`·`message`뿐이다. 회차가 화면값만 기억하면 둘째
   // 승인 요청이 삼켜져, 다른 앱을 보던 사람은 claude가 멈춰 선 것을 모른다.
   it("같은 화면값으로 새 승인이 오면 두 번째도 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell({ since: 0, message: "Bash · git status" })], 0)).toHaveLength(1);
-    const 다음 = notifier.step([shell({ since: 180_000, message: "Edit · src/pty.rs" })], 180_000);
+    expect(notifier.step([shell({ since: 0, message: "Bash · git status" })], 0).fired).toHaveLength(1);
+    const 다음 = notifier.step([shell({ since: 180_000, message: "Edit · src/pty.rs" })], 180_000).fired;
     expect(다음.map((one) => one.body)).toEqual(["Edit · src/pty.rs"]);
   });
 
   // 스토리 60의 반대쪽 — 「그쳤다가 다시 부르면」이 회차에서도 산다.
   it("도는 중을 지나 다시 부르면 두 번째도 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([shell({ kind: "working" })], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(1);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell({ kind: "working" })], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(1);
   });
 
   // **셸이 사라졌다 돌아오는 것도 재무장이다.** 칸이 닫히면 그 기억도 함께 없어져야 —
   // 안 그러면 같은 번호를 물려받은 새 칸이 첫 부름을 삼킨다.
   it("목록에서 빠졌다 돌아온 셸은 다시 울린다", () => {
     const notifier = createNotifier();
-    expect(notifier.step([shell()], 0)).toHaveLength(1);
-    expect(notifier.step([], 1000)).toHaveLength(0);
-    expect(notifier.step([shell()], 60_000)).toHaveLength(1);
+    expect(notifier.step([shell()], 0).fired).toHaveLength(1);
+    expect(notifier.step([], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell()], 60_000).fired).toHaveLength(1);
   });
 
   // 결정 10의 중복 창 — 턴 종료와 권한 요청이 연달아 울리지 않는다(스토리 61).
   it("같은 work의 셸 둘이 한꺼번에 부르면 첫 것만 울린다", () => {
     const notifier = createNotifier();
-    const fired = notifier.step([shell({ id: 1 }), shell({ id: 2, shellName: "atelier · codex" })], 0);
+    const fired = notifier.step([shell({ id: 1 }), shell({ id: 2, shellName: "atelier · codex" })], 0).fired;
     expect(fired.map((one) => one.subtitle)).toEqual(["atelier · claude"]);
   });
 
@@ -232,7 +241,7 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const fired = notifier.step(
       [shell({ id: 1, owner: 소유("signal") }), shell({ id: 2, owner: 소유("papercuts"), title: "ux 종이베임" })],
       0,
-    );
+    ).fired;
     expect(fired.map((one) => one.title)).toEqual(["터미널 신호", "ux 종이베임"]);
   });
 
@@ -242,8 +251,66 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const fired = notifier.step(
       [shell({ id: 1, owner: 소유(), title: "Terminal" }), shell({ id: 2, owner: 소유("signal") })],
       0,
-    );
+    ).fired;
     expect(fired.map((one) => one.title)).toEqual(["Terminal", "터미널 신호"]);
+  });
+
+  // **들어선 셸은 울렸든 안 울렸든 따로 낸다**(티켓 23 — 방금 부른 셸로). 「들어섰나」는 판정의 첫 두 줄(부르는가 · 새
+  // 사실인가)이 가르고, 보임 억제와 5초 창은 그 뒤의 일이다 — 그 둘에 걸려 안 울린 부름도 사람을 부른 것은 같다(S59).
+  it("부르는 상태에 들어선 셸을 울림과 따로 낸다 — 보고 있거나 접혀 안 울렸어도", () => {
+    const notifier = createNotifier();
+    const 첫회차 = notifier.step([shell({ id: 1, shellKey: "G-1", visible: true })], 0);
+    expect(첫회차.fired).toEqual([]);
+    expect(첫회차.entered.map((one) => one.shellKey)).toEqual(["G-1"]);
+
+    // 머무는 셸은 다시 안 들어선다. 같은 work의 둘째는 5초 창에 접혀 안 울리지만 들어섰다.
+    const 둘째회차 = notifier.step(
+      [shell({ id: 1, shellKey: "G-1", visible: true }), shell({ id: 2, shellKey: "G-2", since: 1000 })],
+      1000,
+    );
+    expect(둘째회차.fired).toHaveLength(1);
+    expect(둘째회차.entered.map((one) => one.shellKey)).toEqual(["G-2"]);
+  });
+
+  it("들어섬은 엣지다 — 머물면 없고, 새 사실이나 그쳤다 다시 부르면 다시 들어선다", () => {
+    const notifier = createNotifier();
+    expect(notifier.step([shell()], 0).entered).toHaveLength(1);
+    expect(notifier.step([shell()], 1000).entered).toEqual([]);
+    // 같은 화면값의 새 사실(둘째 승인 요청).
+    expect(notifier.step([shell({ since: 2000 })], 2000).entered).toHaveLength(1);
+    // 도는 중을 지나 다시 부른다.
+    expect(notifier.step([shell({ since: 2000, kind: "working" })], 3000).entered).toEqual([]);
+    expect(notifier.step([shell({ since: 4000 })], 4000).entered).toHaveLength(1);
+  });
+
+  // **본 확인할 것은 울리지 않고 배지에도 안 세지만 들어선다**(코드 리뷰 스펙 2). 보고 있는 셸에 온 턴끝은 같은 갱신 안에서
+  // 본 것이 되어 화면값이 없다(`kind: null`) — 들어섬은 부르는 사실(`call`)로 가른다. 방금 부른 셸의 기억이 그 줄을 받는다.
+  it("본 확인할 것은 울리지도 배지에 세이지도 않지만 부르는 상태에 들어선다", () => {
+    const notifier = createNotifier();
+    const 첫회차 = notifier.step([shell({ id: 1, shellKey: "G-1", kind: null, call: "done", visible: true })], 0);
+    expect(첫회차.fired).toEqual([]);
+    expect(첫회차.calling).toBe(0);
+    expect(첫회차.entered.map((one) => one.shellKey)).toEqual(["G-1"]);
+    // 머물면 다시 안 들어선다 — 부르는 사실과 시각이 그대로다.
+    expect(notifier.step([shell({ id: 1, kind: null, call: "done", visible: true })], 1000).entered).toEqual([]);
+  });
+
+  // 독 배지의 수는 **화면값이 부르는 줄**이다 — 띠 헤더의 `N`과 같다. 본 확인할 것은 줄에 들어도 안 센다.
+  it("회차가 지금 부르는 셸의 수를 낸다 — 본 확인할 것은 안 센다", () => {
+    const { calling } = createNotifier().step(
+      [shell({ id: 1 }), shell({ id: 2, kind: "done" }), shell({ id: 3, kind: null, call: "done" })],
+      0,
+    );
+    expect(calling).toBe(2);
+  });
+
+  // **본 것이 되어도 알림의 전이는 그대로다.** 본 확인할 것은 화면값이 없으므로(나감), 그 뒤에 온 새 사실은 다시 들어가
+  // 운다 — 줄에서 빠졌다 돌아온 것과 같다(위 「목록에서 빠졌다 돌아온 셸」).
+  it("본 확인할 것 뒤에 새 사실이 오면 다시 운다", () => {
+    const notifier = createNotifier();
+    expect(notifier.step([shell({ kind: "done", since: 0 })], 0).fired).toHaveLength(1);
+    expect(notifier.step([shell({ kind: null, call: "done", since: 0 })], 1000).fired).toHaveLength(0);
+    expect(notifier.step([shell({ kind: "done", since: 60_000 })], 60_000).fired).toHaveLength(1);
   });
 
   // **접힌 알림은 창을 늘리지 않는다.** 접힌 것까지 시각을 갱신하면 셸이 줄줄이 부르는
@@ -252,14 +319,14 @@ describe("판정을 회차에 걸어 두는 것", () => {
     const notifier = createNotifier();
     notifier.step([shell({ id: 1 })], 0);
     // 4초에 둘째 셸이 불러 접힌다.
-    expect(notifier.step([shell({ id: 1 }), shell({ id: 2, kind: "waiting" })], 4000)).toHaveLength(0);
+    expect(notifier.step([shell({ id: 1 }), shell({ id: 2, kind: "waiting" })], 4000).fired).toHaveLength(0);
     // 셋째가 5초에 부르면 창은 첫 알림에서 재므로 열려 있다.
-    expect(notifier.step([shell({ id: 1 }), shell({ id: 2 }), shell({ id: 3 })], COALESCE_MS)).toHaveLength(1);
+    expect(notifier.step([shell({ id: 1 }), shell({ id: 2 }), shell({ id: 3 })], COALESCE_MS).fired).toHaveLength(1);
   });
 });
 
 // **레지스트리에서 판정의 재료를 뽑는 자리**(#206). 「누가 부르나」는 이미 정해져 있고
-// (`callingShells` — 띠가 읽는 그 목록) 여기가 더하는 것은 알림에만 필요한 셋이다:
+// (`shellCalls` — 띠가 읽는 목록의 바탕, 본 확인할 것도 든다) 여기가 더하는 것은 알림에만 필요한 셋이다:
 // 지금 보고 있는가 · work의 이름 · 셸의 이름.
 describe("레지스트리에서 재료를 뽑는다", () => {
   const 칸 = (over: Partial<Shell>): Shell => ({
@@ -267,11 +334,15 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     status: { kind: "running" },
     title: null,
     shellName: "zsh",
+    shellKey: "G-1",
     owner: 소유(),
     project: null,
     cwd: null,
     running: null,
     attention: null,
+    auto: false,
+    firstInput: null,
+    ownerless: false,
     ...over,
   });
   const 상태 = (over: Partial<Attention> = {}): Attention => ({
@@ -281,6 +352,9 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     seen: false,
     source: "hook",
     agent: "claude",
+    subagents: 0,
+    subagentId: null,
+    dialog: null,
     ...over,
   });
   const 화면 = (...shells: ReadonlyArray<Shell>): ShellsState => ({
@@ -293,7 +367,7 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     return slug === null ? "Terminal" : `《${slug}》`;
   };
 
-  // **띠와 같은 목록이다.** 부르는 셸만 들고 차례도 그쪽이 정한 그대로다 — 접히는 차례가
+  // **띠와 같은 차례다.** 부르는 셸만 들고 차례도 그쪽이 정한 그대로다 — 접히는 차례가
   // 우선순위와 갈리면 5초 창에서 급한 것이 접히고 덜 급한 것이 울린다.
   it("부르는 셸만, 띠의 차례 그대로 든다", () => {
     const rows = notifyShells(
@@ -308,9 +382,30 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     );
     expect(rows.map((one) => one.id)).toEqual([2, 1]);
     expect(rows.map((one) => one.kind)).toEqual(["waiting", "done"]);
+    expect(rows.map((one) => one.call)).toEqual(["waiting", "done"]);
     // **시각도 함께 온다** — 판정이 「같은 값으로 새 사실이 왔나」를 이 칸으로 가른다.
     // 여기서 빠지면 위 판정 검사가 아무리 맞아도 실물에서는 둘째 승인이 삼켜진다.
     expect(rows.map((one) => one.since)).toEqual([20, 30]);
+  });
+
+  // **본 확인할 것도 든다**(코드 리뷰 스펙 2) — 화면값은 없고(`kind: null`) 부르는 사실(`call`)만 선다. 한때 여기서
+  // 빠져, 보고 있는 셸에 온 턴끝이 방금 부른 셸의 기억(⌘J)에 못 들었다. 차례는 부르는 사실로 선다 — 띠의 차례에서 본
+  // 확인할 것만 끼운 것이다.
+  it("본 확인할 것도 화면값 없이 부르는 사실로 든다", () => {
+    const rows = notifyShells(
+      화면(
+        칸({ id: 1, owner: 소유("가"), attention: 상태({ kind: "done", since: 30 }) }),
+        칸({ id: 2, owner: 소유("나"), attention: 상태({ kind: "done", since: 20, seen: true }) }),
+        칸({ id: 3, owner: 소유("다"), attention: 상태({ kind: "waiting", since: 40 }) }),
+      ),
+      { activeIds: [], focused: true },
+      제목,
+    );
+    expect(rows.map((one) => [one.id, one.kind, one.call])).toEqual([
+      [3, "waiting", "waiting"],
+      [2, null, "done"],
+      [1, "done", "done"],
+    ]);
   });
 
   // 「봤다」 판정은 **한 자리**다(스토리 80) — 탭 물들임과 같은 함수(`isShellSeen`)를 딛는다.
@@ -355,6 +450,16 @@ describe("레지스트리에서 재료를 뽑는다", () => {
     });
   });
 
+  // 방금 부른 셸로 가는 길이 이 키로 셸을 찾는다(티켓 23) — 레지스트리 번호가 아니라 셸 키다(알림 클릭과 같은 길).
+  it("셸 키가 실린다", () => {
+    const rows = notifyShells(
+      화면(칸({ id: 1, owner: 소유("가"), shellKey: "G-7", attention: 상태() })),
+      { activeIds: [], focused: true },
+      제목,
+    );
+    expect(rows[0].shellKey).toBe("G-7");
+  });
+
   it("최상위 셸의 제목도 밖이 정한다", () => {
     const rows = notifyShells(
       화면(칸({ id: 1, owner: 소유(), attention: 상태() })),
@@ -362,6 +467,132 @@ describe("레지스트리에서 재료를 뽑는다", () => {
       제목,
     );
     expect(rows[0].title).toBe("Terminal");
+  });
+});
+
+// **훅 사건이 알림까지 — 프로세스 결정 13의 전이 표**(티켓 20). 위 표들은 화면값 넷 사이의 전이만 재고, 어느 훅
+// 사건이 어느 화면값이 되는지는 `shell-attention.test.ts`가 잰다. 그 둘이 **이어졌을 때** 무엇이 울리는지가
+// 이 자리다 — 사건을 상태 기계(`nextAttention`) → 레지스트리 재료(`notifyShells`) → 회차(`createNotifier`)로
+// 그대로 흘린다. 프로세스 결정 13이 바꾼 것 셋이 여기서 갈린다: 턴의 끝은 이제 확인할 것으로 울고(알림 수는 같다),
+// 서브에이전트가 끝나 확인할 것에 **들어설 때** 한 번 울고, 확인할 것에 늦게 온 서브에이전트 사건은 안 운다.
+describe("훅 사건이 알림까지 — 프로세스 결정 13", () => {
+  const 셸 = (attention: Attention | null): Shell => ({
+    id: 1,
+    status: { kind: "running" },
+    title: null,
+    shellName: "zsh",
+    shellKey: "G-1",
+    owner: 소유("signal"),
+    project: null,
+    cwd: null,
+    running: null,
+    attention,
+    auto: false,
+    firstInput: null,
+    ownerless: false,
+  });
+  const 사건 = (
+    event: string,
+    payload: unknown,
+    over: Partial<Pick<ShellHookState, "at" | "subagents" | "stopped">> = {},
+  ): ShellHookState => ({ agent: "claude", event, at: 1_000, payload, subagents: 0, stopped: false, ...over });
+
+  /**
+   * 사건을 **회차마다 하나씩** 흘려 울린 것의 본문을 회차별로 낸다. 창이 뒤에 있어 아무도 안 보고 있고(`focused: false`),
+   * 회차 사이는 5초 창보다 넓게 벌린다 — 접힘이 아니라 판정 자체를 재려는 것이다.
+   */
+  const 흘린다 = (...사건들: ReadonlyArray<ShellHookState>): ReadonlyArray<ReadonlyArray<string>> => {
+    const notifier = createNotifier();
+    let attention: Attention | null = null;
+    return 사건들.map((one, at) => {
+      attention = nextAttention(attention, one);
+      const rows = notifyShells(
+        { shells: [셸(attention)], activeByOwner: {}, nextId: 2 },
+        { activeIds: [], focused: false },
+        () => "터미널 신호",
+      );
+      return notifier.step(rows, (at + 1) * (COALESCE_MS + 1)).fired.map((fired) => fired.body);
+    });
+  };
+
+  const 새턴 = 사건("UserPromptSubmit", { prompt: "고쳐" }, { at: 100 });
+
+  // 옛 표에서는 이 한 번이 「나를 기다림」으로 울었다. 이제 「확인할 것」으로 울고 **수는 같다**.
+  it("턴의 끝은 확인할 것으로 한 번 운다", () => {
+    expect(흘린다(새턴, 사건("Stop", { last_assistant_message: "다 했어요" }, { at: 200, stopped: true }))).toEqual([
+      [],
+      ["다 했어요"],
+    ]);
+  });
+
+  it("API 오류로 끝난 턴도 한 번 운다 — 본문이 「오류로 끝남」이다", () => {
+    expect(흘린다(새턴, 사건("StopFailure", { error: "overloaded" }, { at: 200, stopped: true }))).toEqual([
+      [],
+      ["오류로 끝남 · overloaded"],
+    ]);
+  });
+
+  // **S50의 알림 쪽.** 서브에이전트가 도는 채 멈추면 도는 중이라 안 울고, 모두 끝나 확인할 것에 **들어설 때** 한 번
+  // 운다. 그 뒤 늦은 서브에이전트 사건은 `since`를 안 바꾸므로 「머무름」이라 조용하다.
+  it("서브에이전트가 도는 멈춤은 안 울고, 모두 끝나 확인할 것에 들어설 때 한 번 운다", () => {
+    expect(
+      흘린다(
+        새턴,
+        사건("Stop", { last_assistant_message: "둘을 띄웠어요" }, { at: 200, subagents: 2, stopped: true }),
+        사건("SubagentStop", { agent_id: "a1" }, { at: 300, subagents: 1, stopped: true }),
+        사건("SubagentStop", { agent_id: "a2" }, { at: 400, subagents: 0, stopped: true }),
+        사건("SubagentStop", { agent_id: "a8341c66cb460a30a", agent_type: "" }, { at: 500, subagents: 0, stopped: true }),
+        사건("SubagentStart", { agent_id: "a3" }, { at: 600, subagents: 1, stopped: true }),
+      ),
+    ).toEqual([[], [], [], ["둘을 띄웠어요"], [], []]);
+  });
+
+  // **둘째 승인 요청은 운다**(프로세스 결정 13 — 기다림에 다시 온 `waiting`은 새로 부른 것). 도구 사건이 그 사이에 기다림을
+  // 풀면 나갔다 들어오는 것이라 더 또렷하다.
+  it("기다림에 다시 온 승인 요청은 또 운다", () => {
+    const 승인 = (at: number, command: string) =>
+      사건("PermissionRequest", { tool_name: "Bash", tool_input: { command } }, { at });
+    expect(흘린다(새턴, 승인(200, "git push"), 승인(300, "rm -rf dist"))).toEqual([
+      [],
+      ["Bash · git push"],
+      ["Bash · rm -rf dist"],
+    ]);
+  });
+
+  // **`/clear`와 중단은 아무것도 안 세우니 안 운다** — 옛 표에서는 `/clear`가 도는 중을, codex 중단이 기다림을
+  // 세웠다(뒤쪽은 울었다).
+  it("`/clear` · 중단은 안 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "clear" }, { at: 200 }))).toEqual([[], []]);
+    expect(
+      흘린다(새턴, { ...사건("Interrupt", { turn_id: "t1" }, { at: 200 }), agent: "codex" }),
+    ).toEqual([[], []]);
+  });
+
+  // **세션 끝은 남긴 확인할 것을 다시 울리지 않는다.** 대화형 claude에서 턴을 마친 뒤 `/exit`하는 길이다 — `Stop`과
+  // `SessionEnd` 사이가 디바운스(100ms)보다 넓어 두 장이 따로 닿는다. 세션 끝은 멈춤을 안 끈다(처리기).
+  it("확인할 것 뒤의 세션 끝은 안 운다", () => {
+    expect(
+      흘린다(
+        새턴,
+        사건("Stop", { last_assistant_message: "다 했어요" }, { at: 200, stopped: true }),
+        사건("SessionEnd", { reason: "prompt_input_exit" }, { at: 5_000, stopped: true }),
+      ),
+    ).toEqual([[], ["다 했어요"], []]);
+  });
+
+  // **`claude -p`가 실제로 닿는 모양**(티켓 20 리뷰 반영). `Stop` 뒤 17ms 만에 `SessionEnd`가 와서(판 03 선행 시험 r1)
+  // 감시의 디바운스가 두 장을 한 회차로 읽는다 — 프런트에 닿는 것은 멈춘 `SessionEnd` 한 장뿐이다. 그래도 확인할 것에
+  // 들어서므로 한 번 운다. 말은 없어(멈춘 턴의 말은 파일에서 사라졌다) 본문은 화면값의 이름이다.
+  it("디바운스가 `Stop`을 삼켜 멈춘 세션 끝 한 장만 와도 한 번 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "other" }, { at: 217, stopped: true }))).toEqual([
+      [],
+      ["확인할 것"],
+    ]);
+  });
+
+  // 도는 턴이 끊긴 채 세션이 끝나면(멈춤 거짓) 부를 것이 없다 — 프로세스 결정 13의 표대로 도는 중만 지운다.
+  it("멈추지 않은 세션 끝은 안 운다", () => {
+    expect(흘린다(새턴, 사건("SessionEnd", { reason: "other" }, { at: 217 }))).toEqual([[], []]);
   });
 });
 

@@ -1,3 +1,5 @@
+import type { DialogKind } from "./types";
+
 // 훅 페이로드에서 **한 줄**을 뽑는 자리. 에이전트별 어댑터가 함께 딛는 조각들이라 여기
 // 모아 둔다 — 「어느 키를 읽는가」는 에이전트마다 다르지만 「뽑은 것을 어떻게 한 줄로
 // 만드는가」는 같다. 에이전트를 더할 때 느는 것은 어댑터 한 파일이고, 이 파일은 안 는다.
@@ -69,6 +71,61 @@ export function permissionLine(payload: unknown): string | null {
 
   if (tool === null) return detail;
   return detail === null ? tool : `${tool} · ${detail}`;
+}
+
+/**
+ * 승인 요청이 세운 **창**(티켓 25 리뷰 반영). 도구 이름이 있으면 권한 창이다 — 물음 도구(claude의 `AskUserQuestion`)는 어댑터가
+ * 먼저 가른다. **도구 이름이 없으면 모른다**(`null`): 처리기가 페이로드를 못 읽어도 이벤트는 남기는데(`atelier-hook.zsh` — 페이로드
+ * 칸이 `null`이다), 그 요청이 물음일 수도 있다. 모르면 승인 추론이 안 서고 옛 동작대로 도구가 끝날 때 풀린다.
+ */
+export function permissionDialog(payload: unknown): DialogKind | null {
+  return stringAt(payload, "tool_name") === null ? null : "permission";
+}
+
+/** 그 키의 값이 **참(`true`) 그 자체**인가. 글자 `"true"`나 1은 아니다 — 모르는 모양은 거짓이다. */
+export function flagAt(payload: unknown, key: string): boolean {
+  return objectOf(payload)?.[key] === true;
+}
+
+/**
+ * `AskUserQuestion` 도구의 **첫 물음** 한 줄. 입력 모양은 claude 2.1.283 바이너리의 도구 스키마다 —
+ * `tool_input.questions[]`의 원소마다 `question`(물음 글) · `header` · `options` · `multiSelect`.
+ *
+ * **첫 물음만 싣는다.** 한 번에 넷까지 묻지만 셸의 말이 서는 자리(호버 카드의 말 칸 · 행 버튼의 설명 — `callingNote`)와 띠 ·
+ * 알림은 한 줄이고, 사람이 창을 열면 전부 보인다.
+ * 물음을 못 읽으면 승인 요청과 같은 요약(`permissionLine` — 모르면 도구 이름만)이 바닥이다: 모르는 것을
+ * 지어내지 않는다.
+ */
+export function questionLine(payload: unknown): string | null {
+  const questions = objectOf(objectOf(payload)?.["tool_input"])?.["questions"];
+  const first = Array.isArray(questions) ? questions[0] : undefined;
+  return firstLine(stringAt(first, "question")) ?? permissionLine(payload);
+}
+
+/**
+ * claude `StopFailure`의 한 줄(프로세스 스펙 S57) — **오류 상세의 첫 줄**, 없으면 **오류 종류**다. 모양은 Claude Code
+ * 훅 문서(티켓 18이 읽음): `error`(`rate_limit` · `overloaded` · `server_error` 등 열둘) · 선택 `error_details` ·
+ * 선택 `last_assistant_message`(API 오류 글 자체).
+ *
+ * `last_assistant_message`는 안 읽는다 — 상세가 없을 때 그 글은 대개 `API Error: 429 …` 꼴로 종류와 같은 말을
+ * 길게 하고, 두 칸 중 어느 것을 먼저 읽을지를 스펙이 상세 · 종류 둘로만 정했다. 「오류로 끝남」을 앞에 붙이는
+ * 것은 상태 기계다(`shell-attention.ts`) — 그 말은 결과의 이름이지 페이로드의 것이 아니다.
+ */
+export function stopFailureLine(payload: unknown): string | null {
+  return firstLine(stringAt(payload, "error_details")) ?? stringAt(payload, "error");
+}
+
+/**
+ * 이 사건을 낸 **서브에이전트**의 id — 본 에이전트가 낸 사건이면 `null`이다(티켓 20 리뷰 반영). 서브에이전트 안의 훅도
+ * 같은 설정으로 불리고 페이로드에 `agent_id`가 실린다(Claude Code 훅 문서의 공통 입력 칸, 연구 B-2). codex도 같은
+ * 칸 이름이다(codex-cli 0.155.1 바이너리의 도구 · 서브에이전트 훅 스키마 — 티켓 19 · 20이 읽음).
+ *
+ * **두 에이전트가 같은 칸이라 어댑터 밖에서 한 번 읽는다** — 처리기가 서브에이전트 수를 접을 때 에이전트를 안 가리고
+ * 이 칸을 읽는 것(S51)과 같은 가름이다. 읽는 자리는 `shell-attention.ts`의 `nextAttention` 하나이고, 쓰는 자리는 「도구가
+ * 기다림을 푸는가」 하나다.
+ */
+export function subagentOf(payload: unknown): string | null {
+  return stringAt(payload, "agent_id");
 }
 
 /**

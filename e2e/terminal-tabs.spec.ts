@@ -459,7 +459,7 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
 
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } },
+    { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },
     2,
   );
   const 앰버 = await 토큰색(page, "--signal-wait-soft");
@@ -469,8 +469,8 @@ test("부르는 칸만 물들고, 색이 #203의 토큰 그대로다", async ({ 
   // 옆 칸은 그대로다 — 값이 줄 단위로 앉는 회귀가 여기서 터진다.
   expect(await 칸배경(page, 0)).not.toBe(앰버);
 
-  // 세션이 끝나면 초록이다(스펙 전이 표 — 턴 종료가 아니다).
-  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
+  // 턴이 끝나면 초록이다 — 프로세스 결정 13이 이렇게 고쳤다(옛 표는 세션 끝이 초록이고 턴 끝이 앰버였다).
+  await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 2);
   const 초록 = await 토큰색(page, "--signal-done-soft");
   expect(앰버, "앰버와 초록이 같은 색이다").not.toBe(초록);
   await expect.poll(() => 칸배경(page, 1), { message: "둘째 칸이 초록으로 안 물들었다" }).toBe(초록);
@@ -500,7 +500,7 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
   const 앰버 = await 토큰색(page, "--signal-wait-soft");
   const 켜기 = (at: number) => tabs.nth(at).locator("button[aria-pressed]").click();
 
-  await markAttention(page, { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } }, 2);
+  await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 2);
   await expect.poll(() => 칸배경(page, 1)).toBe(초록);
   // 이름에도 붙어 있다 — 꺼지는 것이 색만이 아니라는 것을 아래에서 같은 자리로 잰다.
   await expect(tabs.nth(1).locator("button[aria-pressed]")).toHaveAttribute(
@@ -520,7 +520,7 @@ test("초록 칸을 켜면 초록이 꺼지고, 앰버 칸을 켜도 앰버는 �
   // (`toggle-on`)이 서야 할 자리인데 앰버가 이긴다(결정 6).
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } },
+    { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },
     2,
   );
   await expect.poll(() => 칸배경(page, 1), { message: "켠 칸의 앰버가 꺼졌다" }).toBe(앰버);
@@ -544,11 +544,7 @@ test("문서를 읽는 동안엔 안 꺼지고, 분할로 함께 보면 꺼진�
   const tabs = page.locator('[data-tab="shell"]');
   const 초록 = await 토큰색(page, "--signal-done-soft");
   const 끝난다 = () =>
-    markAttention(
-      page,
-      { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
-      1,
-    );
+    markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
 
   // 문서로 옮긴다 — 칸은 그대로 켜져 있고 본문만 바뀐다(주소에서 `tab`이 빠진다, 결정 14).
   await page.locator('[data-tab="spec"]').click();
@@ -592,11 +588,7 @@ test("창이 뒤에 있으면 초록이 안 꺼지고, 창이 앞으로 오면 �
 
   const 초록 = await 토큰색(page, "--signal-done-soft");
   await setWindowFocused(page, false);
-  await markAttention(
-    page,
-    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
-    1,
-  );
+  await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
 
   // 그 셸을 **보고 있는데도** 안 꺼진다 — 창이 뒤에 있으면 사람이 본 것이 아니다.
   await expect
@@ -630,11 +622,7 @@ test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임�
 
   const 초록 = await 토큰색(page, "--signal-done-soft");
   await setWindowFocused(page, false);
-  await markAttention(
-    page,
-    { agent: "claude", event: "SessionEnd", payload: { reason: "logout" } },
-    1,
-  );
+  await markAttention(page, { agent: "claude", event: "Stop", stopped: true }, 1);
   await expect
     .poll(() => 칸배경(page, 0), { message: "창이 뒤에 있는데 초록이 안 섰다" })
     .toBe(초록);
@@ -660,7 +648,8 @@ test("blur이 와도 창이 앞에 있으면 「봤다」다 — spec 프레임�
 // 바로 그 모양이다. 여기서는 기다리지 않는다: 두 칸을 곧바로 세우고 나서야 글꼴을 놓는다.
 //
 // **켜지 않은 첫 칸을 누르지 않는다.** 누르면 다시 붙는 길이 그 칸을 열어 초록이 되는데,
-// 사람이 기대하는 것은 「연 셸은 뒤에서도 돈다」다(결정 20·21) — 안 본 칸도 떠 있어야 한다.
+// 사람이 기대하는 것은 「연 셸은 뒤에서도 돈다」다(in-app-terminal 결정 20·21. 프로세스 결정 7이 입력 없는 자동 셸만
+// 예외로 두었는데, 여기서는 화면을 안 떠난다) — 안 본 칸도 떠 있어야 한다.
 for (const [where, url] of [
   ["work 화면", `/works/${plainWork.slug}?tab=terminal`],
   ["/terminal", "/terminal"],

@@ -74,6 +74,15 @@ export const IME_KEYCODE = 229;
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsLock"]);
 
 /**
+ * 누르는 것만으로는 아무 데이터도 안 만드는 키인가 — 위 `MODIFIERS`. **키다운 가르기(`shell-input.ts`)가
+ * 같은 목록을 읽는다**: 「수정키만 누른 것」은 조합을 안 끝내는 키이자 사람 입력이 아닌 키다. 목록이
+ * 두 벌이면 한쪽에만 키가 늘어, 조합을 안 끝내는 키가 입력으로 세이거나 그 반대가 된다.
+ */
+export function isModifierKey(key: string): boolean {
+  return MODIFIERS.has(key);
+}
+
+/**
  * 한글이 될 수 있는 글자. 한국어 IME가 실제로 내보내는 세 대역이다 —
  * 낱자(호환 자모, 실측에서 `ㅇ`=U+3147로 왔다) · 조합용 자모 · 완성 음절.
  * 옛한글 확장 대역(U+A960·U+D7B0)은 두벌식이 못 내므로 넣지 않았다.
@@ -123,7 +132,7 @@ export function imeKeyDown(
   key: string,
   keyCode: number,
 ): { send: string; held: string } {
-  if (keyCode === IME_KEYCODE || MODIFIERS.has(key)) return { send: "", held };
+  if (keyCode === IME_KEYCODE || isModifierKey(key)) return { send: "", held };
   return { send: held, held: "" };
 }
 

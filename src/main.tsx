@@ -9,6 +9,7 @@ import { queryClient } from "./query-client";
 import { installScrollQuiet } from "./lib/scroll-quiet";
 import { loadTerminalSettings } from "./features/terminal/terminal-settings";
 import { loadNotifySettings } from "./features/terminal/notify-settings";
+import { loadStartupReport } from "./components/shell/startup-report";
 import "./index.css";
 
 installScrollQuiet();
@@ -21,6 +22,10 @@ void loadTerminalSettings();
 // 알림 구획도 같은 자리에서 한 번 읽는다(#206). 읽는 쪽이 React 밖이고(모듈 구독이 쏜다)
 // 되읽을 신호가 없는 것까지 위와 같다 — 왜 한 번으로 안 합쳤는지는 그 모듈이 든다.
 void loadNotifySettings();
+// 시작 보고(프로세스 스펙 S11)도 **여기서 한 번** 묻는다. 위 둘과 까닭이 하나 다르다: 이것을 그리는 React
+// 화면은 있다(앱 셸의 토스트). 그래도 이펙트에 두지 않는 것은 StrictMode가 이펙트를 두 번 돌려 묻는 것도
+// 두 번이 되기 때문이다 — 답은 스토어에 두고 셸이 서서 읽는다(`startup-report.ts`).
+void loadStartupReport();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -31,7 +36,14 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <TooltipProvider>
         {/* 토스트도 Provider는 **여기 하나**다(S14). 자리(Viewport)는 화면마다 지금 토스트 자리에 두고 —
             작업 화면과 아카이브 화면 — 한 번에 한 화면만 서므로 늘 하나다. Tooltip과 달리 Viewport는
-            Provider 밖에서 던진다. */}
+            Provider 밖에서 던진다.
+
+            **예외가 하나 있다 — 앱 셸의 동작 토스트**(`components/shell/AppToasts.tsx`, 프로세스 스펙 P2 (나)).
+            그것은 제 관리자(`appToasts`)로 제 Provider와 Viewport(「앱 메시지」)를 앱 셸에 둔다. 어느 화면에서든
+            서고 [모두 닫기] · [보기]를 싣고 누를 때까지 남아야 해서다 — 여기 자리는 작업 · 아카이브 화면에만 있고,
+            한 장(S26)에 실으면 복사 토스트가 [모두 닫기]를 갈아 끼운다. 그 Provider는 Viewport만 감싸 이 Provider
+            아래 화면들의 토스트를 가로채지 않는다. 그래서 작업 · 아카이브 화면에는 두 영역(「메시지」 · 「앱
+            메시지」)이 함께 설 수 있다. S14 · S26을 넘는 이 예외는 사람 결정으로 남았다(develop 머지). */}
         <ToastProvider>
           <RouterProvider router={router} />
         </ToastProvider>

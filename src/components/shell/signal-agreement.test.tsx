@@ -49,6 +49,9 @@ const 말한다 = (kind: "waiting" | "done"): Attention => ({
   seen: false,
   source: "hook",
   agent: "claude",
+  subagents: 0,
+  subagentId: null,
+  dialog: null,
 });
 
 /**

@@ -72,10 +72,31 @@ describe("셸을 띄울 때 세계가 함께 나간다", () => {
     calls.length = 0;
     await terminalApi.write(1, "x");
     await terminalApi.resize(1, 80, 24);
-    await terminalApi.kill(1);
-    await terminalApi.commandRunning(1);
-    expect(calls).toHaveLength(4);
+    await terminalApi.kill(1, "shellClose", "maison:");
+    await terminalApi.closeCheck(1);
+    // 셸 여럿의 닫기 전 물음(티켓 08)도 id들로 가리킨다 — 두 세계의 셸을 한 번에 묻는다(종료 확인).
+    await terminalApi.closeChecks([1, 2]);
+    expect(calls).toHaveLength(5);
     expect(calls.filter((call) => "mode" in call.args)).toEqual([]);
+  });
+
+  // 닫기는 까닭과 셸의 주인을 싣는다(티켓 11) — 백엔드가 그 닫기가 끝낸 것을 정리 기록에 적는다. 주인은 세계를 앞머리에
+  // 품지만 셸을 가리키는 값이 아니라 적을 값이라, 위 「세계가 안 붙는다」와 부딪치지 않는다. 이름은 `commands.rs`의
+  // 인자와 `tauri-commands.test.ts`가 대조하고, 여기서는 값이 그대로 나가는지를 본다.
+  it("닫기가 까닭과 주인을 평평하게 싣는다", async () => {
+    calls.length = 0;
+    await terminalApi.kill(3, "archive", "atelier:spec-search");
+    expect(calls).toEqual([
+      { name: "pty_kill", args: { id: 3, reason: "archive", owner: "atelier:spec-search" } },
+    ]);
+  });
+
+  // 화면 밖 셸(티켓 32 · 프로세스 스펙 S42)은 스토어에 칸이 없어 주인을 모른다 — 지어내지 않고 `null`로 싣는다. 백엔드는 그
+  // 사건을 주인 없이 적는다(티켓 11의 「owner는 없다」).
+  it("주인을 모르는 닫기는 주인 칸을 `null`로 싣는다", async () => {
+    calls.length = 0;
+    await terminalApi.kill(7, "shellClose", null);
+    expect(calls).toEqual([{ name: "pty_kill", args: { id: 7, reason: "shellClose", owner: null } }]);
   });
 
   // 타입이 `mode`를 막는 것도 works 쪽과 같은 계약이고, 두 모양이 각각 어느 변형을 무는지도

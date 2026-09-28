@@ -34,7 +34,8 @@ export interface AgentMark {
  * 「어느 칸에서 에이전트가 도나」라는 이 판의 물음이 오히려 안 보인다.
  *
  * **이름을 접지 않고 그대로 맞춘다.** 백엔드가 주는 것은 **사람이 부른 이름**이고
- * (`pty.rs`의 `invoked_name` — argv[0]의 마지막 조각, 못 얻으면 `p_comm`), 어느 쪽이든
+ * (`processes/procargs.rs`의 `invoked_name` — argv[0]의 마지막 조각, 인터프리터면 뒤따르는 스크립트의 이름.
+ * 못 얻으면 `p_comm`이고, 그 순서는 `pty.rs`의 `foreground_name`이 든다), 어느 쪽이든
  * 인자도 경로도 안 붙는다 — `vim claude.md`가 `vim`으로 오는 것이 그 성질이고,
  * 그래서 부분 일치로 넓힐 이유가 없다(넓히면 그 오탐이 되살아난다).
  */

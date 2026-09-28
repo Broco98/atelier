@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { invalidateArchive } from "@/features/archive/hooks";
 import { invalidateWorks } from "@/features/works/hooks";
 import type { Mode } from "@/mode";
 import { specLayoutApi } from "./api";
@@ -22,17 +21,17 @@ const SPEC_LAYOUT_KEY = ["spec-layout"] as const;
  * 목록과 아카이브 문서 목록이다. 쓰는 레이아웃이 바뀌면 spec 트리도 바뀌기 때문이다. 두 세계를 다
  * 지우는 것은 이벤트가 하나라서다: 어느 모드의 폴더가 바뀌었는지 모른다.
  *
- * work 목록과 아카이브는 **제 문을 지난다**(`invalidateWorks`·`invalidateArchive`). 키를 여기서 직접
- * 지우면 옮기기가 떠 있을 때 미루는 규칙(`invalidateWorks`의 머리말)을 건너뛰어, 옛 순서가 옮기기
- * 응답을 덮을 수 있다.
+ * work 목록과 아카이브는 **제 문을 지난다**(`invalidateWorks`). 키를 여기서 직접 지우면 옮기기가 떠 있을 때
+ * 미루는 규칙(`invalidateWorks`의 머리말)을 건너뛰어, 옛 순서가 옮기기 응답을 덮을 수 있다. 아카이브(문서 목록 포함)는
+ * 그 문 **안에서** 함께 지워진다(`invalidateArchive`를 부르는 자리는 그 문 하나다 — 프로세스 티켓 14). 여기서 따로 부르면
+ * 목록 조회가 도는 동안 온 무효화를 한 번으로 합치는 그 문의 규칙을 아카이브 쪽만 건너뛴다.
  *
- * 돌려주는 promise는 셋이 다 끝날 때 풀린다 — 기다릴지 말지는 부르는 쪽이 정한다(그 짝들과 같다).
+ * 돌려주는 promise는 둘이 다 끝날 때 풀린다 — 기다릴지 말지는 부르는 쪽이 정한다(그 짝들과 같다).
  */
 export function invalidateSpecLayout(queryClient: QueryClient) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: SPEC_LAYOUT_KEY }),
     invalidateWorks(queryClient),
-    invalidateArchive(queryClient),
   ]).then(() => undefined);
 }
 
@@ -46,7 +45,7 @@ export function invalidateSpecLayout(queryClient: QueryClient) {
  * 하나만 부르는 것도 까닭이다 — 구독이 둘이면 L3가 한쪽만 깨워 다른 쪽을 잴 수 없다. 이 둘은
  * `hooks.test.ts`가 소스로 센다.
  *
- * 배선은 work 목록의 `works:changed` 구독(`useWorks`)과 같다.
+ * 배선은 앱 루트(`AppShell`)의 `works:changed` 구독과 같다.
  */
 export function useFollowLayoutChanges() {
   const queryClient = useQueryClient();

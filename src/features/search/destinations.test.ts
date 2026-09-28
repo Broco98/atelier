@@ -56,10 +56,14 @@ describe("목적지는 그 세계의 것뿐이다", () => {
 
   // **key가 같아도 가는 곳이 다르다.** 세계를 안 보는 표 하나로 되돌리는 변형이 여기서
   // 빨개진다 — 그 변형은 목록을 안 바꾸므로 위 검사들만으로는 안 잡힌다.
-  it("Terminal·Archive는 세계마다 다른 곳으로 간다", () => {
+  // `Processes`도 같다(티켓 26) — 화면은 두 세계에서 같지만 **주소는 세계의 것**이라(프로세스 결정 9) ⌘K로 가도 세계를 안
+  // 떠난다.
+  it("Terminal·Processes·Archive는 세계마다 다른 곳으로 간다", () => {
     expect(destinationTo("atelier", "terminal")).toBe("/terminal");
+    expect(destinationTo("atelier", "processes")).toBe("/processes");
     expect(destinationTo("atelier", "archive")).toBe("/archive");
     expect(destinationTo("maison", "terminal")).toBe("/maison/terminal");
+    expect(destinationTo("maison", "processes")).toBe("/maison/processes");
     expect(destinationTo("maison", "archive")).toBe("/maison/archive");
   });
 

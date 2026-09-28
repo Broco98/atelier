@@ -40,6 +40,7 @@ import TerminalPane from "@/features/terminal/TerminalPane";
 import {
   activeIdOf,
   closesShellFromWindow,
+  closingShellsNotice,
   opensShellFromWindow,
   ownerOf,
   runningShellsOf,
@@ -55,11 +56,14 @@ import {
 import {
   closeShellsOf,
   dropShellOnSlot,
+  holdOwner,
   onNewShellRequested,
   onShellOpenRejected,
   openNewShell,
   requestCloseShell,
   selectShell,
+  selectShellWithFocus,
+  spawnedCountOf,
   terminalStore,
 } from "@/features/terminal/terminal-store";
 import type { SplitSide, ViewTab } from "@/routes/-work-search";
@@ -283,7 +287,8 @@ function WorksPage({
   //
   // 이 구독이 이 화면에만 있는 것도 결정 47이다: 최상위 터미널(`/terminal`)에는 이 화면이
   // 없어 ⌘T가 계속 조용하고, 거기서는 `+`의 툴팁과 설명(`aria-description`)이 이유를 말한다. 앱 전역 토스트 표면을
-  // 새로 짓는 안은 기각됐다.
+  // 새로 짓는 안은 기각됐다. 그 뒤 프로세스 스펙 P2가 앱 셸에 제 토스트 자리를 세웠지만(`AppToasts`) 이 거절은 그리로
+  // 옮기지 않았다 — 이 화면의 토스트는 이 화면의 자리(`Toaster`)에 선다.
   useEffect(() => onShellOpenRejected((notice) => showToast(notice, "rejected")), []);
 
   // 참조가 안정적이어야 이 화면이 다시 그려질 때 마크다운 트리가 리마운트(깜빡임)되지 않는다
@@ -517,8 +522,10 @@ function WorksPage({
       // 칸을 누르면 그 셸이 켜지고 **본문이 terminal로 넘어간다** — 사이드바 가지가 하던
       // 짝 그대로다(결정 50). 어느 work으로 갈지를 여기서 안 정하는 것은 이 줄이 늘 지금
       // 보고 있는 work의 것이기 때문이다.
+      //
+      // **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
       onSelect={(id) => {
-        selectShell(id);
+        selectShellWithFocus(id);
         onSelectTab("terminal");
       }}
       // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
@@ -766,7 +773,8 @@ function WorksPage({
   );
   const terminalBody = terminalWork && (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(결정 20·21). */}
+      {/* `key`는 Work마다 다시 마운트시킨다 — 단일 뷰 쪽과 같은 계약이다(in-app-terminal 결정 20·21. 프로세스 결정 7이
+          입력 없는 자동 셸만 예외로 두었다). */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </div>
   );
@@ -815,7 +823,8 @@ function WorksPage({
     <main className={cn("relative flex flex-1 flex-col", TAB_ROW_COLUMN)}>
       {header}
       {/* `key`는 Work마다 다시 마운트시킨다: 셸은 스토어가 들고 있어 안 죽고, 다시 붙는
-          자리만 새로 잡힌다(결정 20·21). */}
+          자리만 새로 잡힌다(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는 자동 셸만 예외로 두었다 —
+          그 셸은 work을 떠날 때 앱 루트(`ShellReclaim`)가 닫는다. */}
       <TerminalPane key={terminalWork.slug} mode={mode} work={terminalWork} />
     </main>
   ) : specBody ? (
@@ -1211,20 +1220,33 @@ function WorkMenu({
     // 셸은 이 Work의 워크트리에서 도는 프로세스라 폴더가 정리되면 함께 끝난다. 누르기 전에
     // 그 사실을 말한다 — 용어는 「셸」이다("터미널"은 화면을 가리키는 말이라 여기서 쓰면
     // 다른 것을 센 것처럼 읽힌다). 0개면 그 줄을 쓰지 않는다.
-    const notice = liveShells > 0 ? `${detail}\n셸 ${liveShells}개가 닫혀요.` : detail;
+    //
+    // 그 셸들에서 띄운 프로세스(dev 서버 등)도 함께 끝난다(프로세스 결정 3) — 그 수를 **창을 띄우기 전에** 물어
+    // 셸 줄 뒤에 붙인다(프로세스 스펙 S18). 못 얻으면 붙이지 않고 창은 그대로 뜬다.
+    const spawned = liveShells > 0 ? await spawnedCountOf(ownerOf(mode, work.slug)) : null;
+    const shellLine = closingShellsNotice(liveShells, spawned);
+    const notice = shellLine ? `${detail}\n${shellLine}` : detail;
     // **앱의 창이다**(OS 시트가 아니다) — 창 하나만 남의 글꼴·남의 모서리로 뜨면 그것이
     // 앱 밖의 일처럼 읽힌다.
     if (!(await askDanger(`'${work.title}' ${verb}`, notice, verb))) return;
+    // **제외 창을 연다**(티켓 12 · 프로세스 스펙 S13). 앱 루트는 목록이 새로 앉을 때마다 slug가 사라진 work의 셸을
+    // 「주인 잃은 셸」로 세운다(MCP로 아카이브된 work을 알아채는 길이 그것뿐이다). 이 길은 성공한 뒤 제 손으로
+    // 닫으므로 그동안 이 owner를 감지에서 뺀다 — 삭제는 재조회가 앉은 뒤에야 돌아오고 아카이브는 안 기다려서,
+    // 재조회가 회수 앞뒤 어디에나 올 수 있다. 닫는 자리는 회수 뒤와, 실패하면 그 자리다.
+    const release = holdOwner(ownerOf(mode, work.slug));
     try {
       await call();
     } catch (e) {
+      release();
       await showProblem(`${verb}하지 못했습니다: ${e}`);
       return;
     }
     // **성공한 뒤에** 거둔다(결정 26). 순서가 계약이다 — dirty 판정은 확인 대화가 아니라
     // 그 뒤 코어에서 나므로, 먼저 죽이면 거부당했을 때 **Work는 남고 돌던 claude만
     // 사라진다.** 터미널에서 claude를 돌리는 것 자체가 워크트리를 dirty로 만든다.
+    // (in-app-terminal 결정 26이 「알려진 대가」로 남긴 MCP 길은 프로세스 결정 4가 이렇게 고쳤다 — 위 제외 창의 감지가 그 길이다.)
     closeShellsOf(ownerOf(mode, work.slug));
+    release();
   };
 
   // **문구는 세계마다 다르다**(#186) — 낱말의 계약은 `work-menu-copy.ts`가 들고 여기서는

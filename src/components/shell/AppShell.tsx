@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import AppDialog from "@/components/ui/AppDialog";
@@ -9,10 +10,21 @@ import { navigateGuardingSettings } from "@/features/settings/navigate-guarding-
 import { useFollowLayoutChanges } from "@/features/spec-layout/hooks";
 import { SETTINGS_ENTRY, settingsItem, settingsItemOf } from "@/features/settings/pages";
 import { searchHotkey } from "@/features/terminal/shell-registry";
-import { quitShellCounts } from "@/features/terminal/terminal-store";
+import { CLOSED_SHELL_NOTICE, CLOSED_SHELL_TOAST_ID, recallHotkey } from "@/features/terminal/shell-recall";
+import { quitShellCounts, recalledShell } from "@/features/terminal/terminal-store";
+import { invalidateWorks } from "@/features/works/hooks";
+import { navigateThen } from "@/lib/arrival";
 import { navItemsOf, navTargetOf } from "@/mode";
 import Sidebar from "./Sidebar";
 import ShellControls from "./ShellControls";
+import AppToasts from "./AppToasts";
+import ShellReclaim from "./ShellReclaim";
+import ShellOwners from "./ShellOwners";
+import { showAppToast } from "./app-toast";
+import { endedNotice, PROCESSES_ENDED_EVENT, type ProcessesEnded } from "./processes-ended";
+import { onViewProcesses, processesAddress } from "./processes-view";
+import { startupNotices, startupReportStore } from "./startup-report";
+import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
@@ -81,8 +93,24 @@ function AppShell() {
     };
   }, [router]);
 
+  // **work 목록이 바뀌었다는 알림을 듣는 자리가 여기 하나다**(프로세스 결정 18 ① · 티켓 14). 감시자(`watcher.rs`)가 works/
+  // 아래가 바뀔 때마다 쏜다 — 에이전트가 spec을 쓰는 동안은 쉬지 않고 온다. 목록을 쓰는 훅이 저마다 들으면 부르는
+  // 자리(사이드바 · 작업 화면 · 프로젝트 상세 · 아카이브 …)마다 구독이 붙어, 이벤트 한 번에 조회가 그 수만큼 돌았다(작업
+  // 화면에서 넷). 셸은 어느 화면에서든 서 있으므로 여기서 한 번이면 다 덮는다. 조회 중에 온 것의 합치기, 옮기기 중 미룸,
+  // 아카이브 목록과 저쪽 세계는 무효화 문(`invalidateWorks`)이 든다 — 이 자리는 배선뿐이다. 이벤트의 모양이 바뀌어도
+  // (감시자가 경로를 싣는 날) 여기 한 자리만 고친다. 이벤트에는 기다릴 사람이 없어 반환을 버린다.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const unlisten = listen("works:changed", () => {
+      void invalidateWorks(queryClient);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [queryClient]);
+
   // **프레임이 삼킨 단축키를 메뉴가 대신 받아 여기로 온다**(#153). 근거와 갈래는
-  // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open` 바로 옆인 것은 그쪽도
+  // `menu-hotkey.ts`가 든다 — 이 자리는 배선뿐이다. `settings:open`(위)과 같은 뿌리에서 듣는 것은 그쪽도
   // 같은 성질이기 때문이다: OS 메뉴가 웹뷰보다 먼저 먹는 것을 유리하게 쓰는 길.
   useEffect(() => {
     const unlisten = listen<string>("hotkey:menu", ({ payload: code }) => {
@@ -111,6 +139,47 @@ function AppShell() {
       void unlisten.then((fn) => fn());
     };
   }, []);
+
+  // **시작 보고를 알리는 자리가 여기 하나다**(프로세스 결정 6 · 프로세스 스펙 S11). 묻는 것은 React보다 먼저
+  // (`main.tsx`)이고 답은 스토어에 앉아 있다 — 셸이 선 뒤에 읽어야 토스트가 설 자리가 있다. 셸은 어느 화면에서든
+  // 서 있으므로 부팅 첫 화면이 무엇이든 뜬다.
+  //
+  // **이펙트가 두 번 돌아도 토스트는 하나다** — StrictMode(dev)가 이 이펙트를 두 번 돌리는데, 알릴 말마다
+  // 늘 같은 id가 붙어 있어(`startupNotices`) 두 번째는 새로 서지 않고 그 자리를 고친다. 순서도 맞다: 토스트
+  // 자리(`AppToasts`)가 이 셸의 자식이라 그 Provider가 매니저에 붙는 이펙트가 이것보다 먼저 돈다.
+  const startupReport = useStore(startupReportStore, (report) => report);
+  useEffect(() => {
+    if (startupReport) startupNotices(startupReport).forEach(showAppToast);
+  }, [startupReport]);
+
+  // **셸이 스스로 끝나며 그 셸에서 띄운 것을 끝냈을 때**(프로세스 스펙 S49 · P4 · 티켓 13). 사람이 끝내기를 고르지 않은
+  // 길이라 알린다 — 셸은 어느 화면에서든 끝날 수 있어(최상위 터미널, 작업 화면의 탭) 토스트 자리와 같은 이 셸에서 듣는다.
+  // 시작 보고와 달리 스토어를 거치지 않는다: 셸은 웹뷰가 뜬 뒤에 띄우므로 이 자리가 늘 먼저 서 있다. 무엇을 말할지는
+  // `processes-ended.ts`가 든다 — 이 자리는 배선뿐이다.
+  useEffect(() => {
+    const unlisten = listen<ProcessesEnded>(PROCESSES_ENDED_EVENT, ({ payload }) => {
+      const notice = endedNotice(payload);
+      if (notice) showAppToast(notice);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // **`Processes`로 가는 문의 길을 건다**(프로세스 스펙 S15 · S14 · 티켓 32). 토스트의 [보기]와 띠의 주인 잃은 셸 줄은 React
+  // 밖에서 짓거나(스토어 · 순수 모듈) 라우터를 안 쥐어 그 문(`viewProcesses`)을 두드리고, 라우터를 쥔 이 셸이 간다. 주소는
+  // **부를 때** 읽는다(`router.state`) — 구독하면 셸의 주소 구독이 하나 는다. 무엇을 여는지는 `processesAddress`가 혼자 안다.
+  //
+  // **가서 할 일(토스트 내리기)은 닿은 순간이다**(`navigateThen`의 `processes` 칸 — develop 머지). 이 셸은 설정에도 서고, spec
+  // 레이아웃 편집기의 떠날 때 확인이 이 이동을 막을 수 있다 — [계속 편집]이면 토스트가 남는다. 「목적지를 짓고 → 닿음을 걸고 →
+  // 이동한다」의 순서는 그 함수가 든다(`useGoToShell`과 같은 함수).
+  useEffect(
+    () =>
+      onViewProcesses((arrived) =>
+        navigateThen(router, { to: processesAddress(router.state.location.pathname) }, arrived, "processes"),
+      ),
+    [router],
+  );
 
   // ⌘B는 사이드바를 접고 편다. **확인 창이 떠 있어도 먹는다** — 아래 ⌘K와 갈리는 자리이고,
   // 그렇게 두는 근거는 이 키가 답을 요구하지 않기 때문이다(창은 그대로 서 있다). 그물은
@@ -166,6 +235,42 @@ function AppShell() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openSearch]);
+
+  // ⌘J는 **방금 부른 셸로** 간다(프로세스 결정 16 · 프로세스 스펙 S59 · P3 · 티켓 23) — 가장 최근에 부르는 상태(기다림 · 확인할
+  // 것)에 들어선 셸이다. 무엇을 기억하는지는 스토어가(`recalledShell` — 규칙은 `shell-recall.ts`), 가는 길은 띠의 줄과 같은
+  // 함수가 든다(`useGoToShell`). 이 자리는 키와 게이트와 「닫혔다」 토스트뿐이다.
+  //
+  // **셸에 포커스가 있어도 먹는다.** xterm은 ⌘가 붙은 글자 키를 셸로 안 보내고 막지도 않아 창까지 올라오고, 메뉴의
+  // `View ▸ Last Calling Shell`이 먼저 받으면 합성 keydown으로 이 리스너에 온다(`menu-hotkey.ts`).
+  //
+  // **확인 창이나 팔레트가 떠 있으면 안 먹는다.** 확인 창은 답을 기다리는 동안 화면을 옮기지 않는다(위 ⌘K의 게이트와 같다).
+  // 팔레트는 제 입력칸에 포커스를 빌렸다가 닫힐 때 돌려주는데(`SearchPalette`), 그 사이에 셸로 가면 두 자리가 포커스를 다툰다 —
+  // 셸에 준 포커스를 팔레트가 닫히며 옛 자리로 되돌린다. Esc로 닫고 누르면 된다.
+  //
+  // **떠날 때 확인이 걸린 편집기에서는 먹는다**(develop 머지) — 그 화면을 떠나는 다른 길처럼 이동이 그 물음을 지난다. [계속
+  // 편집]이면 셸로 가는 길은 아무것도 남기지 않는다: 셸 켜기와 포커스 요청은 이동이 닿은 순간이다(`navigateThen`).
+  //
+  // **부른 셸이 없어도 키는 먹는다**(`preventDefault`) — 메뉴가 같은 키를 한 번 더 받아 합성 keydown이 돌아와도 같은 답이지만,
+  // 한 번 누른 키가 두 번 도는 길을 열어 두지 않는다.
+  //
+  // **그 셸이 닫혔으면 토스트로 끝낸다**(fail-closed) — 먼저 부른 다른 셸로 대신 가지도, 옛 자리로 옮기지도 않는다.
+  const goToShell = useGoToShell();
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!recallHotkey(e)) return;
+      if (dialogStore.state !== null || searchOpen) return;
+      e.preventDefault();
+      const target = recalledShell();
+      if (target === null) return;
+      if (target.kind === "closed") {
+        showAppToast({ id: CLOSED_SHELL_TOAST_ID, text: CLOSED_SHELL_NOTICE });
+        return;
+      }
+      goToShell(target.shell);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goToShell, searchOpen]);
 
   return (
     <div
@@ -240,6 +345,15 @@ function AppShell() {
           **세계는 셸이 정한 것을 그대로 내린다** — 팔레트가 주소를 다시 되짚으면 `/settings`가
           늘 Atelier로 눕는다(위 `mode`의 주석이 든 그 성질). 여기 값은 이미 그것을 넘겼다. */}
       <SearchPalette mode={mode} open={searchOpen} onClose={() => setSearchOpen(false)} />
+      {/* 이 work의 토스트(프로세스 스펙 P2). 셸에 서서 어느 화면에서든 보인다 — 자리와 Provider의
+          범위는 그 파일이 든다. */}
+      <AppToasts />
+      {/* 둘러보다 저절로 뜬 셸이 입력 없이 화면을 떠나면 닫는다(프로세스 결정 7). 떠남은 라우터의 owner로 재므로
+          셸 한 자리에 선다 — 라우터 구독은 제 파일에 있다(위 구독 셋을 늘리지 않는다). */}
+      <ShellReclaim />
+      {/* MCP로 아카이브 · 삭제된 work의 셸을 다룬다(프로세스 결정 4 · 티켓 12) — 목록 쿼리의 결과를 구독해 주인 잃은 셸을
+          찾는다. 지금 세계의 목록을 관찰하므로 **세계를 받는다**. 쿼리 구독은 제 파일에 있다. */}
+      <ShellOwners mode={mode} />
       {/* 묻고 알리는 창은 **여기 하나뿐이다.** 부르는 쪽마다 그리면 두 물음이 겹칠 수 있고,
           그때 어느 것에 답했는지가 화면에서 사라진다. 그리는 것은 포털이라 자리는 이 트리 밖이다. */}
       <AppDialog />
