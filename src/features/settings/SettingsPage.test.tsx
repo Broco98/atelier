@@ -292,10 +292,14 @@ describe("셸을 닫아도 남길 프로세스", () => {
   });
 
   // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 폭만 이 자리 것이다.
+  // 기본 폭(`w-full`)은 **빠져야 한다** — 클래스를 `cn` 없이 이어 붙이면 둘이 함께 실리고, 어느 쪽이 이기는지는 CSS의 차례가 정한다.
   it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭만 이 자리 것이다", () => {
     const classes = /<textarea[^>]*class="([^"]*)"/.exec(renderExceptions())?.[1].split(" ") ?? [];
     const look = textareaLook.split(" ").filter((name) => name !== "w-full");
     expect(classes).toEqual(expect.arrayContaining([...look, "w-[280px]"]));
+    // 앵커: 규격에 기본 폭이 있다 — 없으면 아래가 저절로 참이다.
+    expect(textareaLook.split(" ")).toContain("w-full");
+    expect(classes, "기본 폭이 이 자리 폭과 함께 실렸다").not.toContain("w-full");
   });
 });
 
