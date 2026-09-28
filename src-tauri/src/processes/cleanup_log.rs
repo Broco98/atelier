@@ -287,8 +287,8 @@ mod tests {
         };
         let got = [
             case("셸만 끝났다 — 대상이 없다", &[], &[]),
-            case("셸과 도우미만 끝났다", &[helper.clone()], &[(id(11), Outcome::Ended)]),
-            case("도우미는 강제로 끝났다", &[helper.clone()], &[(id(11), Outcome::Forced)]),
+            case("셸과 도우미만 끝났다", std::slice::from_ref(&helper), &[(id(11), Outcome::Ended)]),
+            case("도우미는 강제로 끝났다", std::slice::from_ref(&helper), &[(id(11), Outcome::Forced)]),
             case(
                 "도우미가 아닌 것은 이미 없었다 — 앱이 끝낸 것이 아니다",
                 &[helper.clone(), server.clone()],
@@ -351,7 +351,9 @@ mod tests {
         let server = aimed(12, "node", false);
         let bundler = aimed(13, "esbuild", false);
         let stale = aimed(14, "python3", false);
-        let cases: [(&str, Vec<Aimed>, Vec<(Identity, Outcome)>, Option<usize>); 9] = [
+        // 한 줄: 무엇 · 끝낼 자손 · 끝내기의 결과 · 알릴 수.
+        type Case = (&'static str, Vec<Aimed>, Vec<(Identity, Outcome)>, Option<usize>);
+        let cases: [Case; 9] = [
             ("끝낼 것이 없었다 — 셸만 끝났다", vec![], vec![], None),
             ("셸 도우미만 끝났다", vec![helper.clone()], vec![(id(11), Outcome::Ended)], None),
             ("셸 도우미만, 강제로 끝났다", vec![helper.clone()], vec![(id(11), Outcome::Forced)], None),

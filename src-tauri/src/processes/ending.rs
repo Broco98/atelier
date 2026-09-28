@@ -629,6 +629,14 @@ mod tests {
         Identity { pid, started_us: u64::from(pid) }
     }
 
+    /// 가짜 커널 위의 진행 중인 끝내기 목록. `Arc`로 싸는 것은 `claim`이 `&Arc<Self>`를 받아서다 — 가짜 커널은 `Cell` ·
+    /// `RefCell`로 한 스레드에서만 돌고, 이 목록은 스레드를 넘지 않는다. 그래서 `Send`도 `Sync`도 아닌 `Arc`라는 clippy의 경고는
+    /// 여기서 겨눌 것이 없다. 스레드를 넘나드는 검사는 `Slow` · `Void` 커널을 쓴다.
+    #[allow(clippy::arc_with_non_send_sync)]
+    fn in_flight(fake: &Fake) -> Arc<InFlight<&Fake>> {
+        Arc::new(InFlight::with_kernel(fake))
+    }
+
     fn shell(pid: u32) -> Group {
         Group { pgid: pid, leader: Some(id(pid)) }
     }
@@ -686,7 +694,7 @@ mod tests {
         let mut wrong = Vec::new();
         for case in cases {
             let fake = Fake::new(case.world, case.arrivals);
-            let list = Arc::new(InFlight::with_kernel(&fake));
+            let list = in_flight(&fake);
             let outcomes: Vec<Outcome> = list
                 .claim()
                 .start_by_hand(&case.targets)
@@ -711,7 +719,7 @@ mod tests {
     #[test]
     fn a_hand_picked_ending_signals_each_identity_once() {
         let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20)], vec![]);
-        let list = Arc::new(InFlight::with_kernel(&fake));
+        let list = in_flight(&fake);
         let first = list.claim().start_by_hand(&[id(10)]);
         let second = list.claim().start_by_hand(&[id(10), id(20), id(20)]);
         let second = second.finish();
@@ -735,7 +743,7 @@ mod tests {
     #[test]
     fn what_an_ending_in_flight_signalled_is_not_signalled_again() {
         let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20), proc(100)], vec![]);
-        let list = Arc::new(InFlight::with_kernel(&fake));
+        let list = in_flight(&fake);
         let by_hand = list.claim().start_by_hand(&[id(10)]);
         let closing = list.claim().start(&[id(10), id(20)], &[shell(100)]);
         let closed = closing.finish();
@@ -956,7 +964,7 @@ mod tests {
     #[test]
     fn an_ending_is_listed_from_start_to_finish() {
         let fake = Fake::new(vec![proc(10), proc(20), proc(30)], vec![]);
-        let list = Arc::new(InFlight::with_kernel(&fake));
+        let list = in_flight(&fake);
         let before = list.listed();
         let first = list.claim().start(&[id(10)], &[]);
         let second = list.claim().start(&[id(20), id(30)], &[]);
@@ -1148,7 +1156,7 @@ mod tests {
         let mut wrong = Vec::new();
         for case in cases {
             let fake = Fake::new(case.world, vec![]);
-            let list = Arc::new(InFlight::with_kernel(&fake));
+            let list = in_flight(&fake);
             // 마감하지 않은 것은 쥐고만 있다 — 뒤 스레드가 아직 자는 중이다.
             let mut sleeping = Vec::new();
             for (at, targets, groups, finished) in &case.in_flight {
@@ -1205,7 +1213,7 @@ mod tests {
     #[test]
     fn the_exit_takes_on_only_what_no_listed_ending_has_signalled() {
         let fake = Fake::new(vec![proc(10).on_term(Fate::Ignores), proc(20)], vec![]);
-        let list = Arc::new(InFlight::with_kernel(&fake));
+        let list = in_flight(&fake);
         let running = list.claim().start(&[id(10), id(30)], &[]);
         let closing = list.close(&[id(10), id(20), id(30)], &[]);
         assert_eq!(closing.fresh(), [id(20), id(30)], "종료가 새로 맡은 대상이 어긋났다");

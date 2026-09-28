@@ -71,7 +71,8 @@ mod tests {
     /// 목록으로 걸리는 줄을 곁에 둔다 — 목록이 아무것도 안 잡아도 그 줄은 초록이기 때문이다.
     #[test]
     fn an_entry_catches_by_the_kernel_name_or_the_invoked_name() {
-        let cases: [(&str, &[&str], &str, Option<&str>, bool); 16] = [
+        type Case = (&'static str, &'static [&'static str], &'static str, Option<&'static str>, bool);
+        let cases: [Case; 16] = [
             ("정확히 같은 커널 이름", &["tmux"], "tmux", None, true),
             ("이름의 일부만 같으면 안 걸린다 — 뒤에 더 붙음", &["tmux"], "tmuxx", None, false),
             ("이름의 일부만 같으면 안 걸린다 — 앞이 모자람", &["tmux"], "tmu", None, false),

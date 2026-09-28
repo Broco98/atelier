@@ -1792,10 +1792,10 @@ mod tests {
         spared_id.expect("남길 자식이 5초 안에 제 세션을 열지 못했다");
         assert!(finished, "제 신원 그대로 넘긴 자식이 5초가 지나도 산다 — 손으로 끝내기가 아무것도 안 끝냈다");
         assert!(left_alone, "시작 시각이 다른 신원인데 그 pid의 프로세스에 신호가 갔다");
-        let logged: Vec<(Reason, Option<String>, Option<String>, Vec<(u32, Outcome)>)> = events
+        let logged: Vec<_> = events
             .into_iter()
             .map(|event| {
-                let targets = event.targets.iter().map(|target| (target.pid, target.outcome)).collect();
+                let targets: Vec<(u32, Outcome)> = event.targets.iter().map(|target| (target.pid, target.outcome)).collect();
                 (event.reason, event.shell_key, event.owner, targets)
             })
             .collect();
