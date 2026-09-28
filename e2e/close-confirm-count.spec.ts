@@ -11,6 +11,7 @@ import {
   ipcFailure,
   openShell,
   unknownIpcCalls,
+  칸들,
 } from "./harness";
 
 // 티켓 08 — **닫기 · 아카이브 · 종료 확인 창이 함께 끝날 프로세스 수를 말한다**(프로세스 결정 3 · 프로세스 스펙 S18 ·
@@ -31,14 +32,13 @@ const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
 
 const closeDialog = (page: Page) => page.getByRole("alertdialog", { name: "셸 닫기" });
 const quitDialog = (page: Page) => page.getByRole("alertdialog", { name: "Atelier 종료" });
-const shells = (page: Page) => page.locator('[data-tab="shell"]');
 
 /** 본문의 마지막 줄 — 아카이브 확인 창의 셸 줄이 선다. */
 const lastLine = (lines: string[]): string | undefined => lines[lines.length - 1];
 
 /** 켜진 셸 탭의 `×`. 셸 탭의 ×, ⌘W, 셸 메뉴의 닫기는 같은 길(`requestCloseShell`)을 탄다. */
 const closeActiveShell = (page: Page) =>
-  page.locator('[data-tab="shell"] button[aria-label$="닫기"]').first().click();
+  칸들(page).locator('button[aria-label$="닫기"]').first().click();
 
 // ── 셸 닫기 확인 창(P6) ──
 
@@ -88,7 +88,7 @@ test("명령 없이 자손만 있으면 그 수로 묻는다", async ({ page }) 
   // 「취소」면 안 닫는다 — 새 갈래도 물은 답을 존중한다.
   await dialog.getByRole("button", { name: "취소", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(shells(page)).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -170,7 +170,7 @@ test("물음이 거절되면 아카이브 확인 창은 셸 수만 말하고 그
 /** Terminal에 셸 둘(pty 1 · 2)을 세우고 종료 요청을 쏜다. */
 async function askToQuit(page: Page): Promise<Locator> {
   await page.goto("/terminal");
-  await expect(shells(page)).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   await openShell(page);
   await fireEvent(page, "app:quit-requested", null);
   const dialog = quitDialog(page);

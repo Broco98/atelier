@@ -11,6 +11,7 @@ import {
   unknownIpcCalls,
   writeShell,
   셸입력,
+  칸들,
 } from "./harness";
 
 // 티켓 07 — **둘러보다 저절로 뜬 셸이 입력 없이 화면을 떠나면 닫힌다**(프로세스 결정 7 · 프로세스 스펙 S16 · S17).
@@ -80,7 +81,7 @@ test("키를 친 셸은 떠나도 남고, 첫 입력을 백엔드에 한 번 알
 
   // 최상위 터미널로 떠난다 — 거기서 셸이 저절로 하나 뜬다(pty 2). 입력 없이 그 화면도 떠나 돌아온다.
   await toTerminal(page);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   await toWork(page, pinnedWork);
 
@@ -88,7 +89,7 @@ test("키를 친 셸은 떠나도 남고, 첫 입력을 백엔드에 한 번 알
   await expect.poll(() => killed(page), { message: "앵커: 최상위 터미널의 자동 셸이 안 닫혔다" }).toEqual([2]);
   // 키를 친 셸은 그대로다 — 돌아온 화면에 그 한 칸이 서 있고 새로 뜬 셸이 없다.
   await expect(page).toHaveURL(/tab=terminal/);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   expect(await callCount(page, "pty_spawn")).toBe(2);
   expect(await callCount(page, "pty_first_input")).toBe(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -104,7 +105,7 @@ test("같은 work의 spec 탭으로만 바꾸면 떠남이 아니다", async ({ 
   await expect(page).not.toHaveURL(/tab=terminal/);
   await expect(page.locator('[data-tab="spec"]')).toHaveAttribute("aria-pressed", "true");
   // 셸 칸으로 돌아온다. 닫혔다면 돌아오는 화면이 셸 0개라 새 셸이 저절로 떴을 것이다.
-  await page.locator('[data-tab="shell"]').click();
+  await 칸들(page).click();
   await expect(page).toHaveURL(/tab=terminal/);
   await expect(page.locator(".xterm-screen")).toBeVisible();
   expect(await callCount(page, "pty_spawn")).toBe(1);
@@ -128,7 +129,7 @@ test("회수된 화면에 다시 오면 새 셸이 저절로 뜬다", async ({ p
   await toWork(page, pinnedWork);
   await expect(page).toHaveURL(/tab=terminal/);
   await expect.poll(() => callCount(page, "pty_spawn"), { message: "돌아왔는데 셸이 안 떴다" }).toBe(3);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   // 떠나온 최상위 터미널의 자동 셸도 같은 규칙으로 닫혔다.
   await expect.poll(() => killed(page)).toEqual([1, 2]);
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -167,7 +168,7 @@ test("`+`로 연 셸은 입력이 없어도 떠날 때 안 닫힌다", async ({ 
   // 사람이 연 셸(pty 2)은 남는다. 돌아오면 그 칸이 서 있어 새 셸이 저절로 뜨지도 않는다.
   await toWork(page, pinnedWork);
   await expect.poll(() => killed(page)).toEqual([1, 3]);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   expect(await callCount(page, "pty_spawn")).toBe(3);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -202,7 +203,7 @@ test("한글만 친 셸은 떠나도 남는다 — IME 다리가 보낸 조합�
   await toWork(page, pinnedWork);
   // **앵커** — 최상위 터미널의 입력 없는 자동 셸은 닫혔다.
   await expect.poll(() => killed(page), { message: "앵커: 자동 셸이 안 닫혔다" }).toEqual([2]);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   expect(await callCount(page, "pty_spawn")).toBe(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
@@ -228,7 +229,7 @@ test("붙여넣기만 한 셸도 떠나도 남는다", async ({ page }) => {
   await toTerminal(page);
   await toWork(page, pinnedWork);
   await expect.poll(() => killed(page), { message: "앵커: 자동 셸이 안 닫혔다" }).toEqual([2]);
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   expect(await callCount(page, "pty_spawn")).toBe(2);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

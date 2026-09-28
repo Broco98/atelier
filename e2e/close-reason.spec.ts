@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { QUIET_SHELL, WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, kills, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, kills, unknownIpcCalls, 칸들 } from "./harness";
 
 // 티켓 11 — **닫기 IPC가 까닭과 셸의 주인을 싣는다**(프로세스 스펙 S12). 백엔드는 그 닫기가 끝낸 것을 정리 기록에 이
 // 까닭으로 적는다. 어느 닫기가 어느 까닭인지는 표 한 자리(`CLOSE_REASONS`)가 고르고, 이 층이 재는 것은 그 표가 진짜
@@ -27,7 +27,7 @@ test("×로 닫으면 닫기에 까닭 「셸 닫기」와 그 셸의 주인이 
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
 
-  await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').first().click();
+  await 칸들(page).locator('button[aria-label$="닫기"]').first().click();
 
   // 최상위 터미널의 주인은 뒤가 빈 `atelier:`다(life-mode 결정 10).
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner: "atelier:" }]);

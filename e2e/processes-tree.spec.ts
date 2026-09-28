@@ -15,6 +15,7 @@ import {
   글자대비,
   두세계에셸을띄운다,
   셸입력,
+  칸들,
 } from "./harness";
 import { poolShell, processRow as 행, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
@@ -43,7 +44,7 @@ async function 줄들(page: Page): Promise<Array<{ level: string | null; name: s
 
 /** 켜진 셸 탭의 셸 키 — 탭 칸의 `data-shell-key`(티켓 23). */
 const 켜진셸 = (page: Page) =>
-  page.locator('[data-tab="shell"]:has(button[aria-pressed="true"])').getAttribute("data-shell-key");
+  칸들(page).filter({ has: page.locator('button[aria-pressed="true"]') }).getAttribute("data-shell-key");
 
 const gitstatusd = 행(150, 1, 1_000, "gitstatusd", {
   argv0: "/Users/me/.cache/gitstatus/gitstatusd-darwin-arm64",

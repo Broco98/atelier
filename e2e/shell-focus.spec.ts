@@ -12,6 +12,7 @@ import {
   unknownIpcCalls,
   띠,
   셸입력,
+  칸들,
 } from "./harness";
 
 // 티켓 16 — **셸로 가는 모든 길이 키보드 포커스를 데려온다**(프로세스 결정 18 ② · 프로세스 스펙 S21 · 스토리 44~46).
@@ -100,7 +101,7 @@ test("이미 켜진 셸 탭을 다시 누르면 포커스가 그 셸로 온다",
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await expectShellFocused(page, "처음 붙은 셸에 포커스가 없다");
-  const lit = page.locator('[data-tab="shell"] button[aria-pressed="true"]');
+  const lit = 칸들(page).locator('button[aria-pressed="true"]');
   await expect(lit).toHaveCount(1);
 
   await lit.click();
@@ -117,7 +118,7 @@ test("최상위 터미널에서 이미 켜진 셸 탭을 다시 누르면 포커
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
   await expectShellFocused(page, "처음 붙은 셸에 포커스가 없다");
-  const lit = page.locator('[data-tab="shell"] button[aria-pressed="true"]');
+  const lit = 칸들(page).locator('button[aria-pressed="true"]');
   await expect(lit).toHaveCount(1);
 
   await lit.click();
@@ -139,7 +140,7 @@ test("글꼴이 늦게 와 셸이 열려도 팔레트 입력칸의 포커스를 
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
 
   await page.keyboard.press("Meta+k");
   await expect(searchBox(page)).toBeFocused();
@@ -161,7 +162,7 @@ test("요청한 셸도 늦게 열리면서 그 뒤에 간 팔레트 입력칸의
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
-  const lit = page.locator('[data-tab="shell"] button[aria-pressed="true"]');
+  const lit = 칸들(page).locator('button[aria-pressed="true"]');
   await expect(lit).toHaveCount(1);
   // 글꼴이 아직이라 안 열렸다 — 누른 탭은 그 자리에서 포커스를 못 주고 기다리는 포커스로 적힌다.
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(0);
@@ -185,7 +186,7 @@ test("글꼴이 늦게 와도 처음 붙은 셸은 포커스를 받는다", asyn
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
-  await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
+  await expect(칸들(page)).toHaveCount(1);
   // 글꼴이 아직이라 안 열렸다 — 이 검사가 글꼴 길을 재고 있다는 전제다.
   await expect(page.locator("[data-shell-host] .xterm")).toHaveCount(0);
 

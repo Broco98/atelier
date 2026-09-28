@@ -1,7 +1,7 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
 import { WORKS } from "./fixtures";
-import { awaitSpawned, installFixtureBackend, navButton, openShell, typeIntoShell, unknownIpcCalls } from "./harness";
+import { awaitSpawned, installFixtureBackend, navButton, openShell, typeIntoShell, unknownIpcCalls, 이름표, 칸들 } from "./harness";
 
 // 티켓 17 — **셸을 스무 개 오가도 화면이 비지 않는다**(프로세스 결정 18 ③ · 프로세스 스펙 S23 · 스토리 49~51).
 //
@@ -42,8 +42,6 @@ const settle = (page: Page) =>
       new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   );
 
-const tabs = (page: Page) => page.locator('[data-tab="shell"]');
-
 /** 이 화면에 셸을 `count`개까지 연다 — 저절로 뜬 첫 셸은 쳐 둔다(치지 않으면 화면을 떠날 때 닫힌다 · 프로세스 결정 7). */
 async function fillShells(page: Page, count: number): Promise<void> {
   await awaitSpawned(page, 1);
@@ -65,9 +63,9 @@ async function toTerminal(page: Page): Promise<void> {
 
 /** 이 화면의 셸을 차례로 켜며 켤 때마다 그 셸이 WebGL로 살아 있는지 본다. */
 async function visitEach(page: Page, where: string, seen: string[]): Promise<void> {
-  const count = await tabs(page).count();
+  const count = await 칸들(page).count();
   for (let at = 0; at < count; at += 1) {
-    const button = tabs(page).nth(at).locator("button[aria-pressed]");
+    const button = 이름표(page, at);
     await button.click();
     await expect(button).toHaveAttribute("aria-pressed", "true");
     await settle(page);
@@ -157,13 +155,13 @@ test("보이는 셸이 컨텍스트를 잃으면 세 번까지 다시 싣고, �
   await expect.poll(() => gaveUp.length).toBe(1);
   // 다시 붙어도 싣지 않는다 — 새 셸을 열어 이 셸을 떼었다가 돌아온다.
   await openShell(page);
-  await tabs(page).nth(0).locator("button[aria-pressed]").click();
-  await expect(tabs(page).nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await 이름표(page, 0).click();
+  await expect(이름표(page, 0)).toHaveAttribute("aria-pressed", "true");
   await settle(page);
   expect(await drawnNow(page)).toBe("dom");
   // 다른 셸의 예산은 따로다 — 새 셸은 WebGL로 그린다.
-  await tabs(page).nth(1).locator("button[aria-pressed]").click();
-  await expect(tabs(page).nth(1).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true");
+  await 이름표(page, 1).click();
+  await expect(이름표(page, 1)).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => drawnNow(page)).toBe("webgl");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

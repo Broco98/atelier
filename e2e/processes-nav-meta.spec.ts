@@ -15,6 +15,7 @@ import {
   stubWindowFocus,
   unknownIpcCalls,
   시계를세운다,
+  칸들,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
 import { NEEDS_LOOK_LABEL, SEEN_CAP, SUMMARY_LAG_MS } from "@/features/processes/needs-look";
@@ -247,7 +248,7 @@ test("사람이 닫은 셸의 정리 기록으로는 ●가 서지 않는다", a
   await expect(점(page)).toHaveCount(0);
 
   // ×로 닫는다 — 까닭 「셸 닫기」가 나간다. 백엔드는 이 닫기를 정리 기록에 적지만 머리는 그대로 3이다.
-  await page.locator('[data-tab="shell"] button[aria-label$="닫기"]').first().click();
+  await 칸들(page).locator('button[aria-label$="닫기"]').first().click();
   await expect
     .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.reason))
     .toEqual(["shellClose"]);
