@@ -17,7 +17,7 @@ import {
   시계를세운다,
 } from "./harness";
 import { formatMemory } from "@/features/processes/metrics";
-import { NEEDS_LOOK_LABEL, SEEN_CAP } from "@/features/processes/needs-look";
+import { NEEDS_LOOK_LABEL, SEEN_CAP, SUMMARY_LAG_MS } from "@/features/processes/needs-look";
 import { identityOf as 신원, processRow, snapshotFixture } from "@/features/processes/process-fixture";
 
 // 프로세스 티켓 29 — **nav에 메모리 합계가 늘 서고, 손볼 것이 생기면 `●`가 선다**(프로세스 결정 9 · 11 · 프로세스 스펙 S40 · S41 · S42,
@@ -179,7 +179,9 @@ test("화면을 보는 동안 스냅샷에 새로 선 출처 불명 · 정리 �
 //
 // 장면: 요약은 늦어 옛 출처 불명을 싣고, 화면은 새것을 먼저 보인다 — 겹치는 것 말고 저마다만 본 것이 있고, 저마다 상한을 넘는다.
 // 화면이 먼저 보고 요약이 나중에 온다 — nav가 마지막에 앉히므로, 이름이 같으면 집합에 요약의 것만 남는 차례다. 떠난 뒤 요약이
-// 화면이 본 것을 따라잡아 싣는다.
+// 화면이 본 것을 따라잡아 싣는다. **요약은 화면이 앉힌 뒤 요약이 늦는 때(`SUMMARY_LAG_MS`)가 지나서 온다** — 그 안이면 요약이 늦는
+// 동안 본 것(`looked.ts`의 `recentlyMarked`)이 화면의 것을 쥐어 이름이 같아도 안 잘린다. 화면은 그동안 같은 장을 보여 다시 앉히지
+// 않는다(앉히기는 손볼 것이 바뀔 때만 인다).
 test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 요약이 늦게 실어 와도 ●를 켜지 않는다", async ({ page }) => {
   const 신원들 = (from: number, count: number) => Array.from({ length: count }, (_, at) => 신원(from + at));
   const 수 = SEEN_CAP + 44;
@@ -203,6 +205,7 @@ test("출처 불명이 상한을 넘어도 화면에서 본 것은 떠난 뒤 �
   );
   await 스냅샷박자(page);
   await expect(page.getByRole("region", { name: "출처 불명", exact: true })).toBeVisible();
+  await page.clock.runFor(SUMMARY_LAG_MS);
   await replaceAnswer(page, "processes_summary", 요약({ unknown: 요약이본것 }));
   await 박자(page);
   await expect(점(page)).toHaveCount(0);

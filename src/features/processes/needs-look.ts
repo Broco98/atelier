@@ -24,9 +24,17 @@ export const NEEDS_LOOK_LABEL = "손볼 것이 있어요";
 
 /**
  * 본 것의 집합이 쥐는 **옛 이름** 수의 상한. 넘치면 가장 먼저 본 것부터 빠진다 — 앱을 몇 달 켜 두어도 저장한 집합이 안 불어난다.
- * 지금 것은 이 상한에 안 걸린다(`seenWith`).
+ * 지금 것은 이 상한에 안 걸린다(`seenWith`). 요약이 늦는 동안 본 것도 지금 것으로 친다(`SUMMARY_LAG_MS`).
  */
 export const SEEN_CAP = 256;
+
+/**
+ * 요약이 늦는 가장 긴 때 — Rust의 배경 표본(10초, `processes::summary::EVERY`)과 nav 메타의 폴(10초, `SUMMARY_EVERY_MS`)이 겹친다.
+ * 떠난 뒤 오는 요약은 떠나기 전 이만큼 안에 뜬 표본을 실을 수 있어, 「봤다」를 앉히는 자리(`looked.ts`)는 이만큼 안에 본 것을
+ * 옛 것으로 안 자른다. 박자가 바뀌면 이것도 따라간다 — `looked.test`가 폴의 두 배 이상인지 잰다. 쓰는 자리는 `looked.ts`인데
+ * 여기 두는 것은 L3(`processes-nav-meta`)가 가져다 쓰기 때문이다 — `looked.ts`는 React와 스토어를 들인다.
+ */
+export const SUMMARY_LAG_MS = 20_000;
 
 /**
  * 주인 잃은 셸의 셸 키 — 두 세계의 것이 함께다(nav 메타는 「이 세계의 것만 센다」의 예외, 프로세스 결정 9). **셸 키로 센다**(티켓 23 ·
@@ -86,7 +94,8 @@ export function needsLook(seen: ReadonlyArray<string>, now: ReadonlyArray<string
  * 상한은 옛 것에만 건다: 출처 불명은 트리 전체를 신원으로 실어 한 번에 수백이 설 수 있는데, 지금 것까지 자르면 잘린 것이 본 뒤에도
  * 새것이라 점이 곧바로 다시 선다. 지금 것이 상한을 넘으면 집합은 지금 것뿐이다 — 그래도 다음에 같은 것을 보면 새것이 없어 그대로다.
  * 그래서 「봤다」를 앉히는 자리가 둘이면 두 자리의 지금 것을 합쳐 준다(`looked.ts`의 `markSeen`) — 한 자리의 것만 주면 다른 자리가
- * 방금 본 것이 옛 것으로 잘린다.
+ * 방금 본 것이 옛 것으로 잘린다. 요약이 늦는 동안(`SUMMARY_LAG_MS`) 본 것도 함께 준다 — 화면이 보고 곧 끝난 것은 두 자리의 마지막
+ * 것에 없지만, 떠난 뒤 늦은 요약에 실려 올 수 있다.
  */
 export function seenWith(seen: ReadonlyArray<string>, now: ReadonlyArray<string>): ReadonlyArray<string> {
   if (!needsLook(seen, now)) return seen;

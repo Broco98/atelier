@@ -37,7 +37,7 @@ export function useProcessSnapshot() {
 
 /**
  * 요약의 박자(프로세스 스펙 「수집 › 배경 표본(10초)」 · 티켓 29). Rust의 배경 표본도 10초마다 모으므로(`processes::summary::EVERY`)
- * 이보다 자주 물어도 같은 장이 온다.
+ * 이보다 자주 물어도 같은 장이 온다. 요약이 늦는 때(`SUMMARY_LAG_MS`)가 이 박자에 기댄다 — 늦추면 그것도 늘린다(`looked.test`가 잰다).
  */
 export const SUMMARY_EVERY_MS = 10_000;
 
