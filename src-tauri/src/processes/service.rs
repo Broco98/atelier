@@ -73,8 +73,9 @@ impl ProcessService {
     /// 트리만) 판정이 묶음에 넣은 행과 풀의 셸 프로세스만 읽는다(`screen::targets`). 풀 잠금 밖이다 — 프로세스마다 fd를 훑는 동안 셸
     /// 입력 · 닫기가 기다리지 않게. CPU%는 이 자리가 쥔 앞 표본과 견준다(`CpuMeter`).
     ///
-    /// **`●`를 켜는 기록의 머리도 싣는다**(티켓 29 · S41) — 요약(`summarize`)과 같은 자리(풀의 정리 기록)에서 고른다. 화면은 보는 동안
-    /// 이 머리와 출처 불명을 본 것으로 앉힌다: 요약은 최대 20초 늦어 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에 점을 켠다.
+    /// **`●`를 켜는 기록의 머리도 싣는다**(티켓 29 · S41) — 요약을 모으는 자리(`gather`)와 같은 곳(풀의 정리 기록)에서 고른다.
+    /// 화면은 보는 동안 이 머리와 출처 불명을 본 것으로 앉힌다: 요약은 최대 20초 늦어 그것으로만 앉히면 화면에서 본 것이 떠난 뒤에
+    /// 점을 켠다.
     ///
     /// 끝낼 셸은 없다 — 아무것도 안 끝낸다. 스냅샷과 판정은 기다리는 일이라 `commands.rs`가 blocking 풀에서 부른다.
     pub fn screen(&self) -> ScreenSnapshot {
@@ -96,7 +97,7 @@ impl ProcessService {
         let measured = Measured { readings: readings.by_id, cpu };
         // 다른 인스턴스의 빌드 · 버전은 그 실행의 기록 파일에서 읽는다(티켓 31) — 판정이 받은 기록은 그 두 칸을 안 싣는다.
         let instances = screen::instances(&verdict, &records, |generation| self.pool.record().file(generation));
-        // `●`를 켜는 기록의 머리 — 요약과 같은 자리에서 고른다(`summarize`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
+        // `●`를 켜는 기록의 머리 — 요약을 모으는 자리와 같은 곳에서 고른다(`gather`). 화면이 보는 동안 본 것으로 앉힌다(티켓 29).
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
         ScreenSnapshot::of(&verdict, listed, &measured, instances, head)
     }
