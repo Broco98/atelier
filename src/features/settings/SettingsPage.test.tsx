@@ -532,7 +532,7 @@ describe("훅 구획의 화면", () => {
   // 낱말은 그대로 「업데이트 필요」다 — 파일이 여전히 그렇다.
   it("설치하고도 업데이트 필요면 앱이 못 고친 까닭이 그 줄 아래 선다", () => {
     const why =
-      "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — ~/.codex/config.toml을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `atelier-hook.py`나 `atelier-hook.zsh`가 든 줄을 찾아, 그 줄이 속한 훅을 `[[hooks.<이벤트>]]` 머리 줄부터 통째로 지우고 다시 설치해 주세요.";
+      "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — ~/.codex/config.toml을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `atelier-hook.py`나 `atelier-hook.zsh`가 든 줄을 찾아, 그 줄이 든 `[[hooks.<이벤트>.hooks]]` 머리 줄과 거기 딸린 줄(`type` · `command` 등)을 지우고, 그 `[[hooks.<이벤트>]]` 묶음에 남은 훅이 없으면 묶음의 머리 줄과 거기 딸린 줄(`matcher` 등)도 지운 뒤 다시 설치해 주세요.";
     const status = hook({ agent: "codex", path: "~/.codex/config.toml", installed: "partial", writeError: why });
     expect(hookStateLabel(status)).toBe("업데이트 필요");
 

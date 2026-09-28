@@ -682,6 +682,12 @@ struct Agent {
     /// 이 내용에 **우리 명령이 하나라도** 앉아 있나. `installed`(지금 모양 그대로인가)와 다른
     /// 물음이다 — 이쪽은 「걷고 났는데 뭐가 남았나」를 재는 자리라 하나만 남아도 참이다.
     remains: fn(&str) -> bool,
+    /// 앱이 못 걷거나(`leftover`) 못 고친(`unfixed`) 손글씨 훅을 **사람이 지울 단위** — 두 까닭이 「이름이 든 줄을 찾아,」 뒤에 이 말을
+    /// 잇는다. 줄이 아니다: 이름은 명령 한 줄에만 있어, 그 줄만 지우면 명령 없는 훅 항목이 남는다(codex가 명령을 요구하면 설정을 못
+    /// 읽는데, 판정은 그것을 우리 것으로 못 봐 화면이 「없음」 · 「설치됨」이다). 묶음째도 아니다: 한 묶음(codex의 `[[hooks.X]]`,
+    /// claude의 matcher 그룹)은 훅을 여럿 담아, 사람의 다른 훅이 함께 사라진다. 그래서 그 훅 한 벌을 지우고, 묶음은 남은 훅이 없을 때만
+    /// 지운다. 파일의 모양이 에이전트마다 달라 말도 따로다.
+    remove_by_hand: &'static str,
 }
 
 const AGENTS: &[Agent] = &[
@@ -693,6 +699,7 @@ const AGENTS: &[Agent] = &[
         installed: claude_installed,
         preview: claude_preview,
         remains: claude_remains,
+        remove_by_hand: "그 줄이 든 훅 `{ … }` 하나를 지우고, 그 묶음의 `hooks`에 남은 훅이 없으면 묶음 `{ … }`도 지운 뒤",
     },
     Agent {
         name: CODEX,
@@ -702,6 +709,7 @@ const AGENTS: &[Agent] = &[
         installed: codex_installed,
         preview: codex_block,
         remains: codex_remains,
+        remove_by_hand: "그 줄이 든 `[[hooks.<이벤트>.hooks]]` 머리 줄과 거기 딸린 줄(`type` · `command` 등)을 지우고, 그 `[[hooks.<이벤트>]]` 묶음에 남은 훅이 없으면 묶음의 머리 줄과 거기 딸린 줄(`matcher` 등)도 지운 뒤",
     },
 ];
 
@@ -755,7 +763,8 @@ pub fn uninstall(home: &Path, handler: &Path) -> Vec<HookStatus> {
 /// **여기서 TOML을 파싱해 마저 걷지 않는 이유:** 넣는 것도 걷는 것도 텍스트라는 것이
 /// 구현 결정 8이고(488줄짜리 실물의 주석과 순서를 파서에 맡길 이유가 없다), 우리가 안 쓴
 /// 모양의 항목을 텍스트로 잘라 내는 일은 사람의 파일을 깨뜨릴 길이 우리가 얻는 것보다
-/// 넓다. 그래서 **아는 것만 말한다** — 어느 파일의 무엇을 지우면 되는지.
+/// 넓다. 그래서 **아는 것만 말한다** — 어느 파일의 무엇을 지우면 되는지. 지울 것은 이름이 든 줄이 아니라 그 훅 한 벌이다
+/// (`Agent::remove_by_hand` — 설치의 `unfixed`와 같은 단위).
 fn leftover(agent: &Agent, path: &Path) -> Option<String> {
     let source = read_or_empty(path).ok()?;
     if !(agent.remains)(&source) {
@@ -763,10 +772,11 @@ fn leftover(agent: &Agent, path: &Path) -> Option<String> {
     }
     // 우리 것으로 알아보는 이름이 둘이라(`is_ours`) 둘 다 적는다 — 한쪽만 적으면 사람이 그 이름만 찾아 지우고 다른 줄을 남긴다.
     Some(format!(
-        "손으로 적어 둔 훅이 남아 있어 앱이 못 걷었습니다 — {}을 열어 `{}`나 `{}`가 든 줄을 직접 지워 주세요.",
+        "손으로 적어 둔 훅이 남아 있어 앱이 못 걷었어요 — {}을 열어 `{}`나 `{}`가 든 줄을 찾아, {} 저장해 주세요.",
         atelier_core::collapse_home(path),
         crate::shells::SCRIPT_NAME,
-        crate::shells::HANDLER_NAME
+        crate::shells::HANDLER_NAME,
+        agent.remove_by_hand
     ))
 }
 
@@ -789,13 +799,14 @@ fn unfixed(agent: &Agent, path: &Path, handler: &Path) -> Option<String> {
     // 우리 것으로 알아보는 이름이 둘이라(`is_ours`) 둘 다 적는다(`leftover`와 같은 까닭). 「아틀리에 설정 화면이 넣은」은 울타리
     // 여는 줄(`CODEX_BEGIN`)에 적힌 그 말이다 — 사람이 파일에서 찾을 글자로 울타리를 가리킨다.
     //
-    // **지울 것은 줄이 아니라 훅 한 벌이다.** 이름은 `command` 줄에만 있고, 그 위의 `[[hooks.X]]` · `[[hooks.X.hooks]]` · `type` 줄이
-    // 한 벌이다. 그 줄만 지우면 병합이 명령 없는 항목을 못 봐 「설치됨」이 되는데, 파일에는 명령 없는 훅 항목이 남는다.
+    // **지울 것은 줄이 아니라 훅 한 벌이고, 묶음째도 아니다**(`Agent::remove_by_hand`). 그 줄만 지우면 병합이 명령 없는 항목을 못 봐
+    // 「설치됨」이 되는데 파일에는 명령 없는 훅 항목이 남고, 묶음째 지우면 같은 묶음에 든 사람의 다른 훅이 함께 사라진다.
     Some(format!(
-        "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — {}을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `{}`나 `{}`가 든 줄을 찾아, 그 줄이 속한 훅을 `[[hooks.<이벤트>]]` 머리 줄부터 통째로 지우고 다시 설치해 주세요.",
+        "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — {}을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `{}`나 `{}`가 든 줄을 찾아, {} 다시 설치해 주세요.",
         atelier_core::collapse_home(path),
         crate::shells::SCRIPT_NAME,
-        crate::shells::HANDLER_NAME
+        crate::shells::HANDLER_NAME,
+        agent.remove_by_hand
     ))
 }
 
@@ -2096,37 +2107,170 @@ trust_level = "trusted"
             .sum()
     }
 
-    /// **설치가 못 고친 까닭을 그대로 따르면 명령 없는 훅이 안 남는다.** 손으로 적은 codex 훅 한 벌은 네 줄이다 — `[[hooks.X]]` ·
-    /// `[[hooks.X.hooks]]` · `type = "command"` · `command = "…"` — 스크립트 이름은 `command` 줄에만 있다. 까닭이 「그 이름이 든 줄」을
-    /// 지우라고만 하면 사람은 `command` 한 줄을 지운다. 그러면 병합은 명령 없는 항목을 못 봐(`codex_ours`) 그 이벤트를 구획에 채우고
-    /// 화면은 「설치됨」인데, 파일에는 명령 없는 `hooks.X` 항목이 남는다 — codex가 명령을 요구하면 설정을 못 읽고, 아틀리에는 아무 말도
-    /// 안 한다. 그래서 까닭은 그 줄이 속한 훅을 `[[hooks.<이벤트>]]` 머리 줄부터 통째로 지우라고 한다.
+    /// codex 설정의 훅 묶음 하나 — `[[hooks.<이벤트>]]` 머리 줄(`head`는 거기 딸린 줄, `matcher` 따위) 아래 명령 블록
+    /// `[[hooks.<이벤트>.hooks]]`를 명령마다 하나씩. codex의 묶음은 명령을 여럿 담을 수 있다 — 사람이 제 훅과 우리 훅을 한 묶음에 둔
+    /// 모양이다. 명령 하나에 `head`가 비면 `codex_hook`과 글자까지 같다.
+    fn codex_group(event: &str, head: &str, commands: &[&str]) -> String {
+        let hooks: String = commands
+            .iter()
+            .map(|command| format!("\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = {}\n", toml_basic_string(command)))
+            .collect();
+        format!("\n[[hooks.{event}]]\n{head}{hooks}")
+    }
+
+    /// 까닭(`Agent::remove_by_hand`)을 **글자 그대로 따라** 고친 codex 설정 — 사람이 하는 대로 줄을 지운다. 울타리 밖에서 이름이 든
+    /// `command` 줄마다, 그 줄이 든 `[[hooks.<이벤트>.hooks]]` 머리 줄과 거기 딸린 줄을 지우고, 그 `[[hooks.<이벤트>]]` 묶음에 남은
+    /// 훅이 없으면 묶음의 머리 줄과 거기 딸린 줄도 지운다. 딸린 줄은 머리 줄 바로 밑의 `키 = 값` 줄이다 — 빈 줄과 주석(울타리의 여는
+    /// 줄)에서 멎는다.
+    fn follow_the_reason(source: &str) -> String {
+        fn header(line: &str) -> bool {
+            line.trim_start().starts_with('[')
+        }
+        fn attached(line: &str) -> bool {
+            let line = line.trim();
+            !line.is_empty() && !line.starts_with('#') && !line.starts_with('[')
+        }
+        // 머리 줄 하나와 거기 딸린 줄을 지운다.
+        fn drop_section(lines: &mut Vec<&str>, head: usize) {
+            let end = (head + 1..lines.len()).find(|&at| !attached(lines[at])).unwrap_or(lines.len());
+            lines.drain(head..end);
+        }
+
+        let mut lines: Vec<&str> = source.split_inclusive('\n').collect();
+        loop {
+            let fence = |mark: &str| lines.iter().position(|line| line.trim_end() == mark);
+            let (from, to) = (fence(CODEX_BEGIN), fence(CODEX_END));
+            let fenced = |at: usize| from.is_some_and(|from| from <= at) && to.is_some_and(|to| at <= to);
+            let Some(named) = (0..lines.len())
+                .find(|&at| !fenced(at) && lines[at].trim_start().starts_with("command") && is_ours(lines[at]))
+            else {
+                break;
+            };
+            let hook = (0..named).rev().find(|&at| header(lines[at])).expect("이름이 든 줄 위에 훅의 머리 줄이 있다");
+            let group = lines[hook].trim().strip_suffix(".hooks]]").expect("훅의 머리 줄은 `[[hooks.<이벤트>.hooks]]`다").to_string();
+            drop_section(&mut lines, hook);
+            let head = (0..hook).rev().find(|&at| lines[at].trim() == format!("{group}]]")).expect("훅 위에 그 묶음의 머리 줄이 있다");
+            let next = (head + 1..lines.len()).find(|&at| header(lines[at]));
+            if !next.is_some_and(|at| lines[at].trim() == format!("{group}.hooks]]")) {
+                drop_section(&mut lines, head);
+            }
+        }
+        lines.concat()
+    }
+
+    /// 까닭이 말하는 codex 훅의 단위 — 훅 한 벌(명령 블록)을 지우고, 묶음은 남은 훅이 없을 때만 지운다.
+    fn says_the_codex_unit(said: &str) -> bool {
+        said.contains("그 줄이 든 `[[hooks.<이벤트>.hooks]]` 머리 줄과 거기 딸린 줄")
+            && said.contains("그 `[[hooks.<이벤트>]]` 묶음에 남은 훅이 없으면 묶음의 머리 줄과 거기 딸린 줄")
+    }
+
+    /// **설치가 못 고친 까닭을 그대로 따르면 명령 없는 훅도, 사라진 남의 훅도 없다.** 손으로 적은 codex 훅 한 벌은 `[[hooks.X.hooks]]`
+    /// 머리 줄과 거기 딸린 `type` · `command` 줄이고, 스크립트 이름은 `command` 줄에만 있다. 그것을 담는 묶음 `[[hooks.X]]`(`matcher`가
+    /// 붙기도 한다)은 훅을 여럿 담을 수 있다(`codex_ours`도 묶음 안의 명령을 하나씩 본다).
+    /// - 까닭이 「그 이름이 든 줄」을 지우라고만 하면 사람은 `command` 한 줄을 지운다. 병합은 명령 없는 항목을 못 봐(`codex_ours`) 그
+    ///   이벤트를 구획에 채우고 화면은 「설치됨」인데, 파일에는 명령 없는 `hooks.X` 항목이 남는다 — codex가 명령을 요구하면 설정을 못
+    ///   읽고, 아틀리에는 아무 말도 안 한다.
+    /// - 까닭이 그 훅을 묶음의 머리 줄부터 통째로 지우라고 하면 같은 묶음에 든 사람의 다른 훅이 함께 사라진다. 다시 설치하면 「설치됨」이고
+    ///   아틀리에는 아무 말도 안 한다.
     ///
-    /// 까닭이 말하는 단위(훅 한 벌)를 지우고 다시 설치하면 「설치됨」이고 명령 없는 항목이 없다. 앵커: 이름이 든 줄만 지우면 다시 설치해도
-    /// 「설치됨」인 채 명령 없는 항목 하나가 남는다 — 줄 단위 안내가 사람을 어디로 보내는지가 여기서 보인다.
+    /// 그래서 까닭은 그 줄이 든 훅 한 벌을 지우고 묶음은 남은 훅이 없을 때만 지우라고 한다. 네 모양 — 우리 훅 하나뿐인 묶음
+    /// (`codex_hook`), 남의 훅 뒤 · 앞에 우리 훅이 든 묶음, `matcher`가 붙은 묶음 — 마다 까닭을 글자 그대로 따르고(`follow_the_reason`)
+    /// 다시 설치하면 「설치됨」이고, 명령 없는 항목이 없고, 남의 훅이 그대로다. 앵커 둘: 이름이 든 줄만 지우면 명령 없는 항목 하나가
+    /// 남고, 묶음째 지우면 남의 훅이 사라진다 — 다른 단위의 안내가 사람을 어디로 보내는지가 여기서 보인다.
     #[test]
     fn following_the_install_reason_leaves_no_hook_without_a_command() {
-        let by_hand = codex_hook("Stop", &command_line(&old_handler(), CODEX, "Stop"));
-        let home = codex_home("follow-the-reason", &format!("{CODEX_REAL}{by_hand}"));
-        let said = agent(&install(&home, &handler()), "codex").write_error.clone().unwrap_or_default();
-        assert!(
-            said.contains("`[[hooks.<이벤트>]]` 머리 줄부터 통째로"),
-            "까닭이 훅 한 벌이 아니라 이름이 든 줄을 지우라고 한다 — 사람이 `command` 줄만 지우면 명령 없는 훅 항목이 남는다: {said:?}"
-        );
-
-        let installed = read(&codex_config_path(&home));
-        assert_eq!(installed.matches(&by_hand).count(), 1, "사람이 적은 훅이 글자 그대로 안 남았다 — 아래가 아무것도 못 잰다");
-        let command = format!("command = {}\n", toml_basic_string(&command_line(&old_handler(), CODEX, "Stop")));
+        let old = |event: &str| command_line(&old_handler(), CODEX, event);
+        let theirs = "my-notifier";
+        let alone = codex_hook("Stop", &old("Stop"));
+        let after_theirs = codex_group("Stop", "", &[theirs, &old("Stop")]);
         let cases = [
-            ("훅 한 벌", installed.replacen(&by_hand, "", 1), 0),
-            ("이름이 든 줄", installed.replacen(&by_hand, &by_hand.replacen(&command, "", 1), 1), 1),
+            ("alone", alone.clone()),
+            ("after-theirs", after_theirs.clone()),
+            ("before-theirs", codex_group("Stop", "", &[&old("Stop"), theirs])),
+            ("matcher", codex_group("PreToolUse", "matcher = \"Bash\"\n", &[&old("PreToolUse")])),
         ];
-        for (unit, edited, left) in cases {
-            assert_ne!(edited, installed, "{unit}: 지울 것을 못 찾았다");
-            std::fs::write(codex_config_path(&home), &edited).unwrap();
+        for (name, by_hand) in cases {
+            let home = codex_home(&format!("follow-the-reason-{name}"), &format!("{CODEX_REAL}{by_hand}"));
+            let said = agent(&install(&home, &handler()), "codex").write_error.clone().unwrap_or_default();
+            assert!(
+                says_the_codex_unit(&said),
+                "{name}: 까닭이 훅 한 벌이 아니라 이름이 든 줄이나 묶음째를 지우라고 한다 — 명령 없는 훅 항목이 남거나 남의 훅이 사라진다: {said:?}"
+            );
+
+            let installed = read(&codex_config_path(&home));
+            assert_eq!(installed.matches(&by_hand).count(), 1, "{name}: 사람이 적은 훅이 글자 그대로 안 남았다 — 아래가 아무것도 못 잰다");
+            let followed = follow_the_reason(&installed);
+            assert_ne!(followed, installed, "{name}: 따를 것을 못 찾았다");
+            std::fs::write(codex_config_path(&home), &followed).unwrap();
+            let codex = agent(&install(&home, &handler()), "codex").clone();
+            assert_eq!((codex.installed, codex.write_error), (Installed::Full, None), "{name}: 까닭대로 지우고 다시 설치했는데 「설치됨」이 아니다");
+            let after = read(&codex_config_path(&home));
+            assert_eq!(codex_commandless(&after), 0, "{name}: 까닭대로 지우고 다시 설치했는데 명령 없는 훅 항목이 남았다");
+            assert_eq!(after.matches(theirs).count(), by_hand.matches(theirs).count(), "{name}: 같은 묶음에 든 남의 훅이 사라졌다");
+            let _ = std::fs::remove_dir_all(&home);
+        }
+
+        let command = format!("command = {}\n", toml_basic_string(&old("Stop")));
+        let anchors = [
+            ("이름이 든 줄", alone.clone(), alone.replacen(&command, "", 1), (1, 0)),
+            ("묶음째", after_theirs, String::new(), (0, 0)),
+        ];
+        for (at, (unit, by_hand, edited, left)) in anchors.into_iter().enumerate() {
+            let home = codex_home(&format!("follow-the-reason-anchor-{at}"), &format!("{CODEX_REAL}{by_hand}"));
+            install(&home, &handler());
+            let installed = read(&codex_config_path(&home));
+            assert_eq!(installed.matches(&by_hand).count(), 1, "{unit}: 사람이 적은 훅이 글자 그대로 안 남았다");
+            std::fs::write(codex_config_path(&home), installed.replacen(&by_hand, &edited, 1)).unwrap();
             let codex = agent(&install(&home, &handler()), "codex").clone();
             assert_eq!((codex.installed, codex.write_error), (Installed::Full, None), "{unit}: 지우고 다시 설치했는데 「설치됨」이 아니다");
-            assert_eq!(codex_commandless(&read(&codex_config_path(&home))), left, "{unit}을 지우고 다시 설치한 파일의 명령 없는 훅 항목 수");
+            let after = read(&codex_config_path(&home));
+            assert_eq!(
+                (codex_commandless(&after), after.matches(theirs).count()),
+                left,
+                "{unit}을 지우고 다시 설치한 파일의 (명령 없는 훅 항목 수, 남의 훅 수)"
+            );
+            let _ = std::fs::remove_dir_all(&home);
+        }
+    }
+
+    /// **제거가 못 걷은 까닭도 같은 단위를 말한다** — 설치 쪽(`following_the_install_reason_leaves_no_hook_without_a_command`)의 짝이다.
+    /// 울타리 밖에 손으로 적어 둔 우리 훅은 제거가 못 걷는다(`a_hook_we_could_not_remove_is_said_out_loud`). 까닭이 「이름이 든 줄」을
+    /// 지우라고만 하면 사람은 `command` 줄만 지운다. 그러면 판정(`codex_remains`)은 거짓이 되어 화면은 「없음」인데, 파일에는 명령 없는
+    /// 훅 항목이 남는다 — codex가 명령을 요구하면 설정을 못 읽고, 아틀리에는 아무 말도 안 한다.
+    ///
+    /// 우리 훅 아홉을 손으로 적고 그 가운데 `Stop`은 사람의 훅과 한 묶음에 둔다. 까닭을 글자 그대로 따르고(`follow_the_reason`) 다시
+    /// 제거하면 「없음」이고, 명령 없는 항목이 없고, 남의 훅이 그대로다. 앵커: 이름이 든 줄만 지우면 「없음」인 채 명령 없는 항목이
+    /// 이벤트마다 하나씩 남는다.
+    #[test]
+    fn following_the_uninstall_reason_leaves_no_hook_without_a_command() {
+        let theirs = "my-notifier";
+        let by_hand: String = CODEX_EVENTS
+            .iter()
+            .map(|event| match *event {
+                "Stop" => codex_group(event, "", &[theirs, &codex_command(&handler(), event)]),
+                _ => codex_hook(event, &codex_command(&handler(), event)),
+            })
+            .collect();
+        let config = format!("{CODEX_REAL}{by_hand}");
+        let home = codex_home("follow-the-leftover", &config);
+        let said = agent(&uninstall(&home, &handler()), "codex").write_error.clone().unwrap_or_default();
+        assert!(
+            says_the_codex_unit(&said),
+            "제거의 까닭이 훅 한 벌이 아니라 이름이 든 줄을 지우라고 한다 — 사람이 `command` 줄만 지우면 명령 없는 훅 항목이 남는다: {said:?}"
+        );
+        assert_eq!(read(&codex_config_path(&home)), config, "제거가 울타리 밖의 손글씨를 고쳤다 — 아래가 아무것도 못 잰다");
+
+        let only_the_lines: String =
+            config.split_inclusive('\n').filter(|line| !(line.starts_with("command") && is_ours(line))).collect();
+        let cases = [("훅 한 벌", follow_the_reason(&config), 0), ("이름이 든 줄", only_the_lines, CODEX_EVENTS.len())];
+        for (unit, edited, left) in cases {
+            assert_ne!(edited, config, "{unit}: 지울 것을 못 찾았다");
+            std::fs::write(codex_config_path(&home), &edited).unwrap();
+            let codex = agent(&uninstall(&home, &handler()), "codex").clone();
+            assert_eq!((codex.installed, codex.write_error), (Installed::None, None), "{unit}: 지우고 다시 제거했는데 「없음」이 아니다");
+            let after = read(&codex_config_path(&home));
+            assert_eq!(codex_commandless(&after), left, "{unit}을 지우고 다시 제거한 파일의 명령 없는 훅 항목 수");
+            assert_eq!(after.matches(theirs).count(), 1, "{unit}: 같은 묶음에 든 남의 훅이 사라졌다");
         }
         let _ = std::fs::remove_dir_all(&home);
     }
