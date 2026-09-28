@@ -1076,9 +1076,9 @@ export const ownerlessText = (count: number, item: "작업" | "Room" = "작업")
 export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/atelier";
 
 /**
- * **떠날 때 확인**(spec 레이아웃 티켓 15 · 결정 27) — 저장하지 않은 초안을 두고 편집기를 떠나는 이동을 라우터의 막기로 붙잡는
- * 앱의 확인 창. 셸로 가는 길(⌘J)과 토스트의 [보기]도 이 막기에 걸리므로, 막혔을 때 그 길이 아무것도 남기지 않는지를 이 창으로
- * 잰다(`shell-recall.spec.ts` · `processes-view.spec.ts`).
+ * **떠날 때 확인**(spec 레이아웃 티켓 15 · spec 레이아웃 결정 27) — 저장하지 않은 초안을 두고 편집기를 떠나는 이동을 라우터의
+ * 막기로 붙잡는 앱의 확인 창. 셸로 가는 길(⌘J)과 토스트의 [보기]도 이 막기에 걸리므로, 막혔을 때 그 길이 아무것도 남기지
+ * 않는지를 이 창으로 잰다(`shell-recall.spec.ts` · `processes-view.spec.ts`).
  */
 export const 떠날때확인 = (page: Page) =>
   page.getByRole("alertdialog", { name: "저장하지 않은 변경이 있어요", exact: true });
