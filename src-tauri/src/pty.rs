@@ -3403,7 +3403,9 @@ mod tests {
         let forgets = plan.dead.iter().any(|record| record.generation == dead_generation);
         // 물려받은 키의 실행은 죽었다(앱 신원이 이 프로세스의 pid에 다른 시작 시각) — 그 키를 문 자식은 막히지 않으면 확정 고아
         // (가)다. 그래도 그 실행의 기록은 지울 목록에 없어야 한다: 설치본이 다시 뜰 때 그 기록으로 dev 앱과 vite를 치운다.
-        let installed_dead = !instances::alive(Identity { pid: me, started_us: 1 });
+        // **죽었는지는 그 기록에 실제로 적힌 앱 신원으로 본다** — 쓸 때의 값을 여기 다시 적으면, 누가 기록의 신원을 살아 있는 값으로
+        // 바꿔도 이 앵커는 옛 값만 보고 참이라 아래 「안 골랐다」 · 「안 지웠다」가 판정 없이 저절로 참인 채 초록이다.
+        let installed_dead = instances::read(&dir, installed_generation).is_some_and(|file| !instances::alive(file.app));
         let installed_forgets = plan.dead.iter().any(|record| record.generation == installed_generation);
         // **끝내기에는 이 검사가 띄운 자식만 넘긴다.** 판정은 이 기계의 표 전체를 읽는다. 기록이 임시 데이터 루트의 것뿐이라
         // 고르는 것도 이 자식뿐이어야 하지만, 그 믿음으로 남에게 신호를 보내지 않는다.
@@ -3443,7 +3445,7 @@ mod tests {
         );
         assert!(
             installed_dead,
-            "물려받은 키의 실행이 살아 있다 — 아래 「안 골랐다」 · 「안 지웠다」가 아무것도 못 잰다"
+            "물려받은 키의 실행 기록이 없거나 그 기록의 앱이 살아 있다 — 아래 「안 골랐다」 · 「안 지웠다」가 아무것도 못 잰다"
         );
         assert!(
             !installed_forgets,
