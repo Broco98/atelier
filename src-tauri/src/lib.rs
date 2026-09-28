@@ -203,7 +203,7 @@ pub fn run() {
     let pool = Arc::new(pty::PtyPool::default());
     // 프로세스 서비스 — `Processes` 화면과 nav 메타가 읽는 값(스냅샷 · 요약 · 추이 · 정리 기록)을 모으는 자리. **위 풀을 본다**(셸
     // 목록 · 인스턴스 기록). 풀과 따로 앱에 걸고 `processes_*` 명령이 `State`로 찾는다. 셋업이 WebContent를 묻는 길과 배경 표본을 건다.
-    let processes = Arc::new(ProcessService::new(Arc::clone(&pool)));
+    let process_service = Arc::new(ProcessService::new(Arc::clone(&pool)));
     tauri::Builder::default()
         .menu(build_menu)
         // 여기서 창을 직접 만지지 않고 **이벤트만 쏜다** — 어디로 갈지는 프런트의 라우터가
@@ -240,7 +240,7 @@ pub fn run() {
         // 함수 하나가 하고(`shell-notify.ts`) 여기는 그 답이 나갈 길을 열어 둘 뿐이다.
         .plugin(tauri_plugin_notification::init())
         .manage(Arc::clone(&pool))
-        .manage(Arc::clone(&processes))
+        .manage(Arc::clone(&process_service))
         // 시작 보고를 붙잡아 두는 자리 — 위에서 몫을 센 그 자리다. 시작 때의 일(정리 · 훅 맞춤)이 여기에 결과를 채운다.
         .manage(Arc::clone(&report))
         .setup(move |app| {
@@ -311,8 +311,8 @@ pub fn run() {
             // WebContent. 늦게 걸면 첫 장이 「웹뷰 제외」로 서고 추이의 첫 점이 그만큼 낮다. 묻는 것은 표본마다 메인 스레드로 간다 —
             // 이 setup이 메인 스레드를 쥔 동안 도는 첫 표본은 답을 못 받아, 표본이 그 장을 미루고 곧 다시 모은다(`sample_once`).
             let asker = app.handle().clone();
-            processes.ask_web_content_with(move || webview::content_pid(&asker));
-            Arc::clone(&processes).sample_in_background();
+            process_service.ask_web_content_with(move || webview::content_pid(&asker));
+            Arc::clone(&process_service).sample_in_background();
             Ok(())
         })
         // 웹뷰가 다시 뜨면 옛 페이지가 쥐고 있던 채널이 죽는다 — 그 순간 셸을 거두지 않으면
@@ -508,14 +508,14 @@ mod tests {
         let builder = run.find("tauri::Builder::default()").expect("빌더가 있다");
         for (made, what) in [
             ("let pool = Arc::new(pty::PtyPool::default());", "풀"),
-            ("let processes = Arc::new(ProcessService::new(Arc::clone(&pool)));", "이 풀을 보는 프로세스 서비스"),
+            ("let process_service = Arc::new(ProcessService::new(Arc::clone(&pool)));", "이 풀을 보는 프로세스 서비스"),
         ] {
             let at = run.find(made).unwrap_or_else(|| panic!("{what}을 빌더 앞에서 한 번 세우지 않는다"));
             assert!(at < builder, "{what}({at})을 빌더({builder}) 뒤에서 세운다");
         }
         assert_eq!(run.matches("PtyPool::default()").count(), 1, "풀을 둘 세운다 — 셋업 · 서비스 · 명령이 다른 풀을 본다");
         assert_eq!(run.matches("ProcessService::new(").count(), 1, "서비스를 둘 세운다 — 배경 표본과 요약 명령이 다른 자리를 본다");
-        for (managed, what) in [(".manage(Arc::clone(&pool))", "풀"), (".manage(Arc::clone(&processes))", "프로세스 서비스")] {
+        for (managed, what) in [(".manage(Arc::clone(&pool))", "풀"), (".manage(Arc::clone(&process_service))", "프로세스 서비스")] {
             assert!(
                 run.contains(managed),
                 "{what}을 앱에 안 건다 — 그것을 찾는 명령이 부를 때마다 `state not managed`로 거절된다"
@@ -810,7 +810,7 @@ mod tests {
         let setup = setup_source();
         let opened = setup.find("pty::open_record(").expect("인스턴스 기록을 여는 줄이 있다");
         let sampled = setup
-            .find("Arc::clone(&processes).sample_in_background();")
+            .find("Arc::clone(&process_service).sample_in_background();")
             .expect("셋업이 배경 표본을 안 건다 — 화면이 닫혀 있으면 nav 메타의 합계가 안 바뀐다");
         assert!(opened < sampled, "배경 표본({sampled})이 기록을 열기({opened}) 전에 걸린다 — 첫 장이 남의 셸 자손을 출처 불명으로 본다");
         assert_eq!(setup.matches("sample_in_background(").count(), 1, "배경 표본을 두 번 건다 — 박자가 둘이다");
@@ -824,7 +824,7 @@ mod tests {
     fn the_web_content_is_asked_for_before_the_background_sample_starts() {
         let setup = setup_source();
         let asked = setup
-            .find("processes.ask_web_content_with(move || webview::content_pid(&asker));")
+            .find("process_service.ask_web_content_with(move || webview::content_pid(&asker));")
             .expect("셋업이 웹뷰에게 WebContent를 물을 길을 안 건다 — 앱 본체가 늘 「웹뷰 제외」다");
         let sampled = setup.find("sample_in_background(").expect("배경 표본을 건다");
         assert!(asked < sampled, "물을 길({asked})이 배경 표본({sampled}) 뒤에 걸린다 — 첫 장이 웹뷰 없이 선다");
