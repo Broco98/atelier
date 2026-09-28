@@ -14,6 +14,7 @@ import {
   writeShell,
   띠,
   레인,
+  색대비,
   오른쪽메타,
   툴팁,
   행버튼,
@@ -517,44 +518,15 @@ test("오른쪽 메타의 다섯 갈래가 각각 선다", async ({ page }) => {
 // 「누가」를 말하는 글리프다.
 //
 // **계산이 이 층에 있는 이유**: 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는
-// 대비를 못 잰다. 그리고 브라우저는 `oklch`를 **그대로 돌려준다**(WebKit 실측:
-// `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 그래서 색 문자열을 캔버스에 한 번
-// 칠해 실제 픽셀로 받는다. 그 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다
-// 짧고 새지 않는다.
+// 대비를 못 잰다 — 색을 캔버스에 칠해 픽셀로 받는 계산은 하네스에 한 벌 있다(`색대비`).
 //
 // **라이트와 다크를 둘 다 잰다.** 다크 팔레트는 아직 앱에 켜는 손잡이가 없지만(`.dark`를
 // 붙이는 자리가 이 저장소에 없다) 토큰은 이미 서 있고, 손잡이가 생기는 날 이 줄이 그 팔레트를
 // 이미 지키고 있어야 한다 — 그날 대비를 다시 세는 사람은 없다.
 //
-// **계산은 색 문자열 둘을 받는 자리로 갈려 있다.** 아래 `대비를잰다`는 글자색을 재는데,
+// **계산은 색 문자열 둘을 받는 자리(`색대비`)로 갈려 있다.** 아래 `대비를잰다`는 글자색을 재는데,
 // 레인의 점은 **배경색**을 재기 때문이다(#203) — 한쪽 모양에 매어 두면 점을 재는 자리가
 // 이 계산을 한 벌 더 갖는다.
-const 색대비 = (page: Page, 앞: string, 뒤: string) =>
-  page.evaluate(
-    ([앞, 뒤]: [string, string]) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 1;
-      const ctx = canvas.getContext("2d")!;
-      const 휘도 = (color: string) => {
-        // 캔버스는 이전 칠을 들고 있으므로 매번 지운다 — 반투명 색을 그 위에 칠하면
-        // 앞의 것과 섞여, 「불투명한가」를 보는 아래 검사가 새어 나간다.
-        ctx.clearRect(0, 0, 1, 1);
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 1, 1);
-        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-        if (a !== 255) throw new Error(`대비를 잴 수 없는 색이다(불투명하지 않다): ${color}`);
-        const 선형 = (one: number) => {
-          const c = one / 255;
-          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-        };
-        return 0.2126 * 선형(r) + 0.7152 * 선형(g) + 0.0722 * 선형(b);
-      };
-      const [밝, 어] = [휘도(앞), 휘도(뒤)].sort((x, y) => y - x);
-      return (밝 + 0.05) / (어 + 0.05);
-    },
-    [앞, 뒤] as [string, string],
-  );
-
 const 대비를잰다 = (page: Page, 글자: Locator, 배경: Locator) =>
   Promise.all([
     글자.evaluate((el) => getComputedStyle(el).color),

@@ -957,6 +957,72 @@ export const 띠 = (page: Page) => page.locator("[data-band]");
 export const 툴팁 = (page: Page) => page.locator("[data-slot=tooltip-content]");
 
 /**
+ * 대비를 재는 **페이지 안** 계산(WCAG 대비비 — 1에서 21). 직렬화되어 페이지로 가므로 모듈의 이름을 못 읽는다.
+ *
+ * 바탕은 `backs`에서 처음 만나는 **불투명한** 색이다 — 끝까지 없으면 던진다(반투명 바탕 위의 대비는 그 아래 무엇이 있느냐에
+ * 달려 잴 수 없다). 글자색(`ink`)은 제 알파에 `opacity`를 곱해 그 바탕 위에 섞은 색으로 잰다 — 눈에 닿는 색이다.
+ *
+ * **색은 캔버스에 한 번 칠해 픽셀로 받는다.** 토큰이 `oklch`와 hex로 갈려 있어 「무슨 색을 골랐나」로는 대비를 못 잰다.
+ * 그리고 브라우저는 `oklch`를 그대로 돌려준다(WebKit 실측: `getComputedStyle(...).color === "oklch(0.708 0 0)"`) — 칠한
+ * 픽셀이 곧 사람 눈에 닿는 값이라, 파서를 손으로 쓰는 것보다 짧고 새지 않는다.
+ */
+const contrastInPage = ({ ink, backs, opacity }: { ink: string; backs: string[]; opacity: number }): number => {
+  const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!pen) throw new Error("캔버스를 못 열었다 — 색을 읽을 수 없다");
+  const rgba = (color: string): [number, number, number, number] => {
+    // 캔버스는 이전 칠을 들고 있으므로 매번 지운다 — 반투명 색을 그 위에 칠하면 앞의 것과 섞여, 「불투명한가」가 새어 나간다.
+    pen.clearRect(0, 0, 1, 1);
+    pen.fillStyle = color;
+    pen.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, a / 255];
+  };
+  const back = backs.map(rgba).find(([, , , a]) => a === 1);
+  if (!back) throw new Error(`대비를 잴 수 없다 — 불투명한 바탕이 없다: ${backs.join(" · ")}`);
+  const [r, g, b, a] = rgba(ink);
+  const alpha = a * opacity;
+  const mixed = [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * back[at]);
+  const luminance = (channels: number[]) => {
+    const [lr, lg, lb] = channels.map((channel) => {
+      const c = channel / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+  };
+  const [light, dark] = [luminance(mixed), luminance(back.slice(0, 3))].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+};
+
+/**
+ * 색 문자열 둘의 대비 — 글자(또는 점)의 색 `앞`을 바탕 `뒤` 위에서 잰다. `뒤`가 불투명하지 않으면 던진다. 색 문자열을 받는
+ * 자리라 글자색도 배경색(레인의 점)도 잰다.
+ *
+ * **여기 사는 이유는 대비 계산을 한 벌로 두려는 것이다.** spec마다 휘도 · 대비비를 적으면 한쪽만 고쳐지는 날(다크 팔레트의
+ * 손잡이가 생겨 색 읽기를 바로잡는 날) 같은 「대비 바닥」을 두 spec이 다른 값으로 잰다.
+ */
+export const 색대비 = (page: Page, 앞: string, 뒤: string): Promise<number> =>
+  page.evaluate(contrastInPage, { ink: 앞, backs: [뒤], opacity: 1 });
+
+/**
+ * 그 요소 글자의 **바탕과의 대비**. 글자색의 알파에 그 요소와 조상들의 불투명도를 곱해 바탕 위에 섞은 색으로 잰다 — 옅게 하는
+ * 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는 불투명한 배경이고, 끝까지
+ * 없으면 흰 바탕이다(문서의 바탕).
+ */
+export async function 글자대비(element: Locator): Promise<number> {
+  const arg = await element.evaluate((node) => {
+    const backs: string[] = [];
+    let opacity = 1;
+    for (let at: Element | null = node; at !== null; at = at.parentElement) {
+      const style = getComputedStyle(at);
+      opacity *= Number(style.opacity);
+      backs.push(style.backgroundColor);
+    }
+    return { ink: getComputedStyle(node).color, backs: [...backs, "rgb(255, 255, 255)"], opacity };
+  });
+  return element.page().evaluate(contrastInPage, arg);
+}
+
+/**
  * 사이드바 nav의 항목 버튼들, 위에서부터. 버튼 글자는 라벨뿐이다 — 메타(셸 수 · 메모리 합계)는 버튼 밖에 선다(`SidebarItem`).
  *
  * **여기 사는 이유는 nav를 집는 길을 하나로 두려는 것이다.** `Processes`를 여는 spec마다 같은 선택자를 적었다 — 사이드바의

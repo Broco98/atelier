@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "./evidence";
+import { expect, test, type Page } from "./evidence";
 import { answerByArg, QUIET_SHELL, shellKeyOf, WORKS } from "./fixtures";
 import {
   awaitSpawned,
@@ -12,6 +12,7 @@ import {
   openShell,
   typeIntoShell,
   unknownIpcCalls,
+  글자대비,
   두세계에셸을띄운다,
   셸입력,
 } from "./harness";
@@ -39,48 +40,6 @@ async function 줄들(page: Page): Promise<Array<{ level: string | null; name: s
     .getByRole("treeitem")
     .evaluateAll((rows) => rows.map((row) => ({ level: row.getAttribute("aria-level"), name: row.getAttribute("aria-label") })));
 }
-
-/**
- * 그 줄 글자의 **바탕과의 대비**(WCAG 대비비 — 1에서 21). 글자색의 알파에 그 줄과 조상들의 불투명도를 곱해 바탕 위에 섞은
- * 색으로 잰다 — 옅게 하는 길이 색 토큰(`text-tertiary`)이든 불투명도든 같은 값으로 읽힌다. 바탕은 위로 올라가며 처음 만나는
- * 불투명한 배경이다. 색은 캔버스에 칠해 읽는다 — 계산된 값이 늘 `rgb()`는 아니다(어두운 테마의 `oklch()` 토큰).
- */
-const 글자대비 = (row: Locator): Promise<number> =>
-  row.evaluate((element) => {
-    const pen = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-    if (!pen) throw new Error("캔버스를 못 열었다 — 색을 읽을 수 없다");
-    const rgba = (color: string): [number, number, number, number] => {
-      pen.clearRect(0, 0, 1, 1);
-      pen.fillStyle = color;
-      pen.fillRect(0, 0, 1, 1);
-      const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
-      return [r, g, b, a / 255];
-    };
-    let back: [number, number, number] = [255, 255, 255];
-    let opacity = 1;
-    for (let at: Element | null = element; at !== null; at = at.parentElement) {
-      opacity *= Number(getComputedStyle(at).opacity);
-    }
-    for (let at: Element | null = element; at !== null; at = at.parentElement) {
-      const [r, g, b, a] = rgba(getComputedStyle(at).backgroundColor);
-      if (a === 1) {
-        back = [r, g, b];
-        break;
-      }
-    }
-    const [r, g, b, a] = rgba(getComputedStyle(element).color);
-    const alpha = a * opacity;
-    const ink = [r, g, b].map((channel, at) => alpha * channel + (1 - alpha) * back[at]);
-    const luminance = ([red, green, blue]: number[]) => {
-      const [lr, lg, lb] = [red, green, blue].map((channel) => {
-        const c = channel / 255;
-        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-      });
-      return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
-    };
-    const [light, dark] = [luminance(ink), luminance(back)].sort((x, y) => y - x);
-    return (light + 0.05) / (dark + 0.05);
-  });
 
 /** 켜진 셸 탭의 셸 키 — 탭 칸의 `data-shell-key`(티켓 23). */
 const 켜진셸 = (page: Page) =>
