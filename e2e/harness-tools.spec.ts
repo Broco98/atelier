@@ -257,8 +257,11 @@ test("(2) 페이지가 뜬 뒤에 붙잡으면 그때부터 붙잡는다 — 갈
 test("(2) 놓기 전에 같은 커맨드를 다시 붙잡으면 던지고 앞 문은 그대로다 — 놓은 뒤에는 다시 붙잡는다", async ({ page }) => {
   await installFixtureBackend(page);
   await holdCommand(page, "list_projects");
-  // 페이지를 열기 전에도 던진다 — 초기화 스크립트가 둘 깔리면 뜰 때마다 뒤 것이 앞 문을 덮는다.
-  await expect(holdCommand(page, "list_projects")).rejects.toThrow("list_projects");
+  // 페이지를 열기 전에도 던진다 — 여기서는 하네스가 센다(`holdCommand`). 초기화 스크립트가 둘 깔리면 뜰 때마다 뒤 것이 페이지
+  // 안에서 던지고 앞 문은 그대로지만(`armHold`), 초기화 스크립트 안의 throw는 페이지 오류로만 남아 검사를 안 멈춘다 — 둘째
+  // 붙잡기가 아무 신호 없이 지나간다. 열기 전에는 놓을 문도 없어서(`releaseCommand`가 「먼저 깔아야 한다」로 던진다) 안내는
+  // 「연 뒤에 놓고 다시」다.
+  await expect(holdCommand(page, "list_projects")).rejects.toThrow(/list_projects.*페이지를 연 뒤/);
   // 다른 커맨드는 따로 붙잡는다.
   await holdCommand(page, "list_works");
   await page.goto(`/projects/${project.slug}`);

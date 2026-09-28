@@ -1747,7 +1747,8 @@ const armedBeforeOpen = new WeakMap<Page, Set<string>>();
  * - 연 뒤에 붙잡으면 **그 전에 나가 아직 안 돌아온 부름**은 어느 수에도 안 든다. 붙잡기 전에 화면이 멎었는지
  *   (앵커) 먼저 본다.
  * - 놓은 뒤로는 다시 안 붙잡는다. 다시 붙잡으려면 이 함수를 또 부른다 — 수가 0부터 다시 선다. **놓기 전에** 같은
- *   커맨드로 또 부르면 던진다: 새 문이 앞 문을 덮으면 앞 문에 붙잡힌 부름이 영영 안 풀린다.
+ *   커맨드로 또 부르면 던진다: 새 문이 앞 문을 덮으면 앞 문에 붙잡힌 부름이 영영 안 풀린다. 열기 전에 깐 붙잡기는 연 뒤에야
+ *   놓을 수 있으므로, 열기 전에는 같은 커맨드를 한 번만 깐다.
  */
 export async function holdCommand(page: Page, command: string): Promise<void> {
   const arg = { command, holdsKey: HOLDS_KEY };
@@ -1756,10 +1757,14 @@ export async function holdCommand(page: Page, command: string): Promise<void> {
     return;
   }
   // 열기 전에는 페이지 안에 문이 아직 없어 거기서 못 가른다 — 여기서 센다. 초기화 스크립트가 같은 커맨드로 둘 깔리면
-  // 뜰 때마다 뒤 것이 페이지 안에서 던진다(`armHold`).
+  // 뜰 때마다 뒤 것이 페이지 안에서 던지고 앞 문은 그대로지만(`armHold`), **초기화 스크립트 안의 throw는 검사에 안 닿는다** —
+  // 페이지 오류로만 남아(증거는 실패한 실행에서만 적힌다) 둘째 붙잡기가 아무 신호 없이 지나간다. 그래서 이 셈이 그 자리의 유일한
+  // 신호다. 열기 전에는 놓을 문도 없다(`releaseCommand`가 「먼저 깔아야 한다」로 던진다) — 다시 붙잡는 길은 연 뒤에 놓고 부르기다.
   const armed = armedBeforeOpen.get(page) ?? new Set<string>();
   if (armed.has(command)) {
-    throw new Error(`holdCommand(${command})를 페이지를 열기 전에 이미 깔았다 — 놓은(releaseCommand) 뒤에 다시 붙잡는다`);
+    throw new Error(
+      `holdCommand(${command})를 페이지를 열기 전에 이미 깔았다 — 열기 전에는 한 번만 깐다. 다시 붙잡으려면 페이지를 연 뒤에 놓고(releaseCommand) 부른다`,
+    );
   }
   armed.add(command);
   armedBeforeOpen.set(page, armed);
