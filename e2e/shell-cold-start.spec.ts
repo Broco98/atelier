@@ -6,15 +6,16 @@ import {
   badgeCalls,
   callCount,
   exitShell,
-  heldSpawns,
-  holdPtySpawn,
+  heldCalls,
+  holdCommand,
   holdTerminalFonts,
   installFixtureBackend,
   ipcCallArgs,
+  kills,
   markRunning,
   ptyGrids,
   refuseFirstSpawn,
-  releaseSpawns,
+  releaseCommand,
   sentNotifications,
   setWindowFocused,
   spawnedCwds,
@@ -24,7 +25,8 @@ import {
   writeShell,
 } from "./harness";
 
-// **글꼴이 오는 사이에 사람이 무엇을 해도, 연 셸은 전부 뜬다**(결정 20·21).
+// **글꼴이 오는 사이에 사람이 무엇을 해도, 연 셸은 전부 뜬다**(in-app-terminal 결정 20·21). 프로세스 결정 7이 입력 없는
+// 자동 셸만 예외로 두었다 — 화면이 저절로 띄운 칸은 떠나는 순간 닫혀, 떠나는 갈래는 사람이 연 칸(`+`)을 두고 간다.
 //
 // 셸은 터미널 글꼴(0.94MB)이 온 뒤에야 열리고 뜬다(`terminal-store`의 `loadFont`). 한때 그
 // 순간 칸이 DOM에 붙어 있을 때만 띄워서, 그 틈에 둘째 칸을 켜거나 화면을 옮기면 떼어진 칸의
@@ -200,11 +202,16 @@ test("떼어진 채 뜬 셸이 처음 보일 때 PTY 격자가 화면 격자로 
 // 첫 화면에 들어오자마자 다른 work·`/terminal`로 옮기면 **켜져 있던 칸까지** 떼어진다 — 화면이
 // 통째로 내려가서다. 두고 온 셸도 뒤에서 떠야 한다. 사람에게 그것이 보이는 자리는 사이드바다:
 // 그 work 행이 그 셸에서 도는 것을 말한다(결정 2).
+//
+// **두고 오는 셸은 사람이 연 칸(`+`)이다.** 화면이 저절로 띄운 셸은 입력 없이 떠나면 닫힌다(프로세스
+// 결정 7) — 글꼴이 오기 전에는 xterm이 안 열려 칠 수도 없으니, 그 셸은 떠나는 순간 뜨지도 않고 사라진다.
 test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 사이드바가 그 셸을 말한다", async ({ page }) => {
   await installFixtureBackend(page);
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
+  await page.locator('[data-tab="new"]').click();
+  await expect(tabs(page)).toHaveCount(2);
 
   await page.locator("nav").getByRole("button", { name: "Terminal", exact: true }).click();
   await expect(page).toHaveURL("/terminal");
@@ -212,7 +219,7 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
 
   await releaseFonts();
   await expectEveryTabStarted(page, 1);
-  // **둘 다 떴고, 연 순서대로다** — 두고 온 work 셸이 먼저다.
+  // **둘 다 떴고, 연 순서대로다** — 두고 온 work 셸(연 칸)이 먼저다. 저절로 뜬 첫 칸은 떠날 때 닫혀 안 떴다.
   await expect.poll(() => callCount(page, "pty_spawn")).toBe(2);
   const [workCwd, topCwd] = await spawnedCwds(page);
   expect(workCwd, "첫 spawn이 work 셸이 아니다").not.toEqual(topCwd);
@@ -236,6 +243,9 @@ for (const [from, to, url] of [
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await expect(tabs(page)).toHaveCount(1);
+    // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
+    await page.locator('[data-tab="new"]').click();
+    await expect(tabs(page)).toHaveCount(2);
 
     await page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: to, exact: true }).click();
     await expect(page).not.toHaveURL(url);
@@ -282,7 +292,7 @@ test("글꼴이 오기 전에 닫은 칸은 안 뜨고, 남은 칸만 뜬다", a
 // 죽여야 한다 — 안 죽이면 목록에도 상한에도 없는 셸이 ⌘Q까지 돈다.
 test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 그 셸을 거둔다", async ({ page }) => {
   await installFixtureBackend(page);
-  await holdPtySpawn(page);
+  await holdCommand(page, "pty_spawn");
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
@@ -291,15 +301,15 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
 
   await releaseFonts();
   // **두 칸 다 띄우러 나갔다** — 첫 칸은 떼어진 채다.
-  await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
   await closeOf(page, 0, "셸").click();
   await expect(tabs(page)).toHaveCount(1);
-  await releaseSpawns(page);
+  await releaseCommand(page, "pty_spawn");
 
   await expectEveryTabStarted(page, 1);
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id))
+    .poll(async () => (await kills(page)).map(({ id }) => id))
     .toEqual([1]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -309,7 +319,7 @@ test("떼어진 채 띄우러 나간 셸을 응답 전에 닫으면 늦게 온 �
 // 칸이 전부, 늦게 온 셸까지 죽는다.
 test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온 셸들을 전부 거둔다", async ({ page }) => {
   await installFixtureBackend(page);
-  await holdPtySpawn(page);
+  await holdCommand(page, "pty_spawn");
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`, { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
@@ -317,16 +327,16 @@ test("응답을 기다리는 셸이 있는 work을 아카이빙하면 늦게 온
   await expect(tabs(page)).toHaveCount(2);
 
   await releaseFonts();
-  await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+  await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
   await page.getByRole("button", { name: "작업 메뉴", exact: true }).click();
   await page.getByRole("menuitem", { name: "아카이빙", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "아카이빙", exact: true }).click();
   await expect(tabs(page)).toHaveCount(0);
 
-  await releaseSpawns(page);
+  await releaseCommand(page, "pty_spawn");
   await expect
-    .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id).sort())
+    .poll(async () => (await kills(page)).map(({ id }) => id).sort())
     .toEqual([1, 2]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -369,7 +379,7 @@ for (const replied of [true, false]) {
     page,
   }) => {
     await installFixtureBackend(page);
-    if (!replied) await holdPtySpawn(page);
+    if (!replied) await holdCommand(page, "pty_spawn");
     await armXtermOpenFailure(page);
     const releaseFonts = await holdTerminalFonts(page);
     await page.goto("/terminal", { waitUntil: "domcontentloaded" });
@@ -378,15 +388,15 @@ for (const replied of [true, false]) {
     await expect(tabs(page)).toHaveCount(2);
     await releaseFonts();
     if (replied) await expectEveryTabStarted(page, 2);
-    else await expect.poll(() => heldSpawns(page), { timeout: 20_000 }).toBe(2);
+    else await expect.poll(() => heldCalls(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
 
     await failXtermOpen(page);
     await tabs(page).nth(0).locator("button[aria-pressed]").click();
     await expect(page.locator("[data-shell-notice]")).toContainText(OPEN_FAILURE);
-    if (!replied) await releaseSpawns(page);
+    if (!replied) await releaseCommand(page, "pty_spawn");
 
     await expect
-      .poll(async () => (await ipcCallArgs(page, "pty_kill", "id")).map(({ args }) => args.id))
+      .poll(async () => (await kills(page)).map(({ id }) => id))
       .toEqual([1]);
     // 옆 칸은 그대로 돈다. 거둔 칸에는 셸 이름이 안 앉는다 — 이유가 그대로 남는다.
     await expect(closeOf(page, 1, FIXTURE_SHELL_NAME)).toHaveCount(1, { timeout: 20_000 });
@@ -502,8 +512,11 @@ test("글꼴을 기다리는 사이 설정에서 크기를 바꿔도 두 셸이 
   const releaseFonts = await holdTerminalFonts(page);
   await page.goto("/terminal", { waitUntil: "domcontentloaded" });
   await expect(tabs(page)).toHaveCount(1);
+  // **두 칸을 연다.** 저절로 뜬 첫 칸은 설정으로 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7) — 떼어진 채
+  // 뜨는 두 셸은 사람이 연 두 칸이고, pty 번호는 그대로 1 · 2다.
   await page.locator('[data-tab="new"]').click();
-  await expect(tabs(page)).toHaveCount(2);
+  await page.locator('[data-tab="new"]').click();
+  await expect(tabs(page)).toHaveCount(3);
 
   await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL("/settings/terminal");

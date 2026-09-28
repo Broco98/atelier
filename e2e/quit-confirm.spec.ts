@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "./evidence";
+import { BUSY_SHELL, QUIET_SHELL } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
@@ -7,6 +8,7 @@ import {
   ipcFailure,
   openShell,
   readIpcRecord,
+  typeIntoShell,
   unknownIpcCalls,
   셸입력,
   시계를세운다,
@@ -62,12 +64,13 @@ test("종료 요청이 OS 시트가 아니라 앱의 확인 창을 띄운다", a
 });
 
 // ── 세기 ──
-// 픽스처의 `pty_command_running`은 이름 표라 셸마다 다른 값을 못 준다 — 그래서 값 하나를 통째로
-// 덮어 세 갈래를 잰다. `markRunning`(1초 폴링 값)은 **안 쓴다**: 이 창은 폴링 값이 아니라 지금 물은
-// 답으로 세야 하고, 폴링 값을 읽는 변형은 아래 `false` 갈래가 문다.
+// 종료 셈은 셸마다 묻지 않고 셸 여럿을 **한 번에** 묻는다(`pty_close_checks`, 티켓 08) — 답은 pty id → 그 셸의
+// 답이라, 셸마다 다른 값을 그 시나리오의 pty id로 적는다. 기본 답은 빈 답(아무 셸도 답하지 않음)이다.
+// `markRunning`(1초 폴링 값)은 **안 쓴다**: 이 창은 폴링 값이 아니라 지금 물은 답으로 세야 하고, 폴링 값을 읽는
+// 변형은 아래 「안 돈다」 갈래가 문다. 띄운 프로세스 수(M)는 `close-confirm-count.spec.ts`가 잰다.
 
 test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) => {
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
   await page.goto("/terminal");
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
   // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
@@ -83,7 +86,7 @@ test("셸 둘이 다 명령을 돌리면 둘 다 적힌다", async ({ page }) =>
 });
 
 test("물음이 「안 돈다」면 도는 셸이 0으로 적힌다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: false });
+  await installFixtureBackend(page, { pty_close_checks: { 1: QUIET_SHELL, 2: QUIET_SHELL } });
   await page.goto("/terminal");
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
   // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
@@ -96,8 +99,10 @@ test("물음이 「안 돈다」면 도는 셸이 0으로 적힌다", async ({ p
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
+// 「모름」은 답이 없는 셸이다 — 백엔드가 그 셸을 못 읽었다(이미 끝남, tcgetpgrp 실패). 물음 전체의 거절은
+// `close-confirm-count.spec.ts`가 잰다.
 test("물음이 「모름」이면 안 도는 것으로 센다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_command_running: null });
+  await installFixtureBackend(page, { pty_close_checks: {} });
   await page.goto("/terminal");
   // 들어오면 뜨는 첫 칸(`ensureShell`)이 선 뒤에 연다 — `openShell`은 누르기 전의 칸 수를 센다.
   // pty가 앉기를 기다리지 않는다: 칸 순서대로 뜨는 것은 앱이 지킨다(`openShell`의 머리말).
@@ -113,9 +118,11 @@ test("물음이 「모름」이면 안 도는 것으로 센다", async ({ page }
 // **두 세계를 합친다.** 지금 서 있는 세계만 세면 Maison 화면에서 끌 때 Atelier 셸이 수에서 빠지는데,
 // 종료는 두 세계의 셸을 함께 죽인다.
 test("Atelier와 Maison의 셸이 합쳐 세진다", async ({ page }) => {
-  await installFixtureBackend(page);
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7). 쓴 셸을 두고 건넌다.
+  await typeIntoShell(page);
 
   // 주소를 직접 치면 페이지가 새로 떠 스토어가 비므로 앱 안의 클릭으로 건넌다(`terminal-worlds.spec.ts`).
   await page
@@ -155,7 +162,7 @@ test("셸이 0개면 창은 뜨고 셸 줄이 없다", async ({ page }) => {
   await expect(dialog).not.toContainText("셸");
   // 줄이 없으면 창의 설명도 없다 — 빈 줄을 그려 두고 가리키는 변형은 여기서 걸린다.
   await expect(dialog).toHaveAccessibleDescription("");
-  expect(await callCount(page, "pty_command_running")).toBe(0);
+  expect(await callCount(page, "pty_close_checks")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -201,8 +208,13 @@ test("셸 닫기 확인의 기본 포커스는 그대로 「닫기」다", async
 // 안 잰다. 셸 쓰기를 세는 뒤의 둘은 한 걸음 더 간다: 글자를 쳐서 셸 쓰기가 실제로 나가는 것을 본 뒤에
 // 창을 띄운다 — 안 나가는 셸이면 「0이다」가 아무것도 안 잰다.
 
-/** 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다. 그때까지 나간 셸 쓰기 수를 돌려준다. */
-async function typeIntoShell(page: Page): Promise<number> {
+/**
+ * 셸에 포커스가 있고, 친 글자가 셸 쓰기로 나간다. 그때까지 나간 셸 쓰기 수를 돌려준다.
+ *
+ * 하네스의 `typeIntoShell`(첫 사람 입력 알림을 기다리는 것, 프로세스 결정 7)과 다른 손이다 — 이것은 셸 쓰기
+ * (`pty_write`) 수를 세어 돌려준다. 같은 이름이면 위에서 가져온 하네스 것과 부딪힌다.
+ */
+async function typeCountingWrites(page: Page): Promise<number> {
   await expect(셸입력(page)).toBeFocused();
   await page.keyboard.type("a");
   await expect.poll(() => callCount(page, "pty_write")).toBeGreaterThan(0);
@@ -241,7 +253,7 @@ test("셸에서 ⌘W로 띄운 바로 뒤의 Enter는 셸로 안 간다", async 
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
-  const written = await typeIntoShell(page);
+  const written = await typeCountingWrites(page);
 
   await 시계를세운다(page);
   await page.keyboard.press("Meta+w");
@@ -261,7 +273,7 @@ test("창에 포커스가 들어온 뒤의 Enter는 창만 답한다", async ({ 
   await installFixtureBackend(page);
   await page.goto("/terminal");
   await awaitSpawned(page, 1);
-  const written = await typeIntoShell(page);
+  const written = await typeCountingWrites(page);
 
   await page.keyboard.press("Meta+w");
   const dialog = page.getByRole("alertdialog", { name: "셸 닫기" });
@@ -320,12 +332,13 @@ test("세는 동안과 창이 떠 있을 때의 요청은 창을 안 바꾼다",
 
   await expect(quitDialog(page)).toBeVisible();
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
-  // **셸 수만큼 한 벌이다.** 둘째 요청이 무시되지 않았다면 네 번이 나간다.
-  expect(await callCount(page, "pty_command_running")).toBe(2);
+  // **세기 한 벌은 물음 한 번이다** — 셸이 둘이어도 한 번에 묻는다. 둘째 요청이 무시되지 않았다면 두 번이 나간다.
+  expect(await callCount(page, "pty_close_checks")).toBe(1);
+  expect(await callCount(page, "pty_close_check")).toBe(0);
 
   // 창이 떠 있을 때의 요청. 통과됐다면 세기가 한 벌 더 나가고, 창이 「아니오」로 접혔다 다시 선다.
   await fireQuitRequest(page);
-  expect(await callCount(page, "pty_command_running")).toBe(2);
+  expect(await callCount(page, "pty_close_checks")).toBe(1);
   await expect(page.getByRole("alertdialog")).toHaveCount(1);
   await expect(quitDialog(page).getByRole("button", { name: "취소", exact: true })).toBeFocused();
   expect(await callCount(page, "quit_app")).toBe(0);

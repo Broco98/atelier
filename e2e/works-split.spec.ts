@@ -221,8 +221,11 @@ test("끌었다 제자리에 놓으면 칸이 안 눌린다", async ({ page }) =
 test("경계를 끌면 터미널 격자가 따라간다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?split=lr`);
-  // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다.
+  // 셸이 떴다 — 격자를 내려보낼 상대가 있다는 뜻이다. **칸이 선 것만으로는 모자란다**: spawn은
+  // 글꼴이 온 뒤에 나가서(`loadFont`), 그보다 먼저 끌면 spawn이 이미 좁아진 격자를 싣고 나가
+  // resize가 한 번도 안 나간다. 느린 기계에서 다섯에 하나꼴로 그렇게 빨갰다.
   await expect(page.locator('[data-tab="shell"]')).toBeVisible();
+  await expect.poll(() => callCount(page, "pty_spawn")).toBeGreaterThan(0);
   const before = await callCount(page, "pty_resize");
 
   // 폭 핸들은 왼쪽 열의 **오른쪽 가장자리**에 얹힌 5px 띠다. 열 머리가 그 열의 폭을 그대로

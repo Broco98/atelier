@@ -3,7 +3,7 @@
 // 자동 @types 포함이 좁아진다. node: 접두사도 쓰지 않는다: moduleResolution "bundler"가
 // 그것을 절대 URI로 보고 건너뛰어 tsc가 빌드에서 실패한다.
 import { readdirSync, readFileSync, type Dirent } from "fs";
-import { join } from "path";
+import { join, relative } from "path";
 import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { FIXTURE_BY_MODE, FIXTURE_COMMANDS } from "../e2e/fixtures";
@@ -23,12 +23,25 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+// 타입 인자는 **선택이다.** 이걸 요구하면 `invoke("x", …)`로 쓴 호출이 통째로 안 보여서,
+// 등록을 빠뜨려도 초록이 된다 — 이 테스트가 막으려던 바로 그 실패가 빠져나간다.
+//
+// 타입 인자 안에 `<…>`가 **한 겹 더** 들어가도 받는다 — `invoke<Record<number, CloseCheck>>(…)`가 그 모양이다.
+// 두 겹 이상은 안 받는데, 그런 호출이 생기면 아래 「하나도 빠짐없이」 검사가 그 자리를 파일:줄로 짚는다.
+const TYPE_ARG = String.raw`(?:<(?:[^<>]|<[^<>]*>)*>)?`;
+const INVOKE_NAME = new RegExp(String.raw`\binvoke${TYPE_ARG}\(\s*"([a-z_]+)"`, "g");
+const INVOKE_WITH_ARGS = new RegExp(
+  String.raw`\binvoke${TYPE_ARG}\(\s*"([a-z_]+)"\s*,\s*\{([^}]*)\}`,
+  "g",
+);
+// 이름을 읽었든 못 읽었든 **호출이 시작되는 자리**다 — `import { invoke }`와 지금 주석 속 `invoke`는 뒤에 `<`나
+// `(`가 안 붙어서 여기 안 든다. 주석에 `invoke(`를 적으면 걸리는데, 그 소음은 호출 하나를 조용히 놓치는 것보다 싸다.
+const INVOKE_SITE = /\binvoke\s*[<(]/g;
+
 function invokedNames(): string[] {
   const names = sourceFiles(join(root, "src")).flatMap((file) => {
     const source = readFileSync(file, "utf8");
-    // 타입 인자는 **선택이다.** 이걸 요구하면 `invoke("x", …)`로 쓴 호출이 통째로 안 보여서,
-    // 등록을 빠뜨려도 초록이 된다 — 이 테스트가 막으려던 바로 그 실패가 빠져나간다.
-    return [...source.matchAll(/\binvoke(?:<[^>]*>)?\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
+    return [...source.matchAll(INVOKE_NAME)].map((m) => m[1]);
   });
   return [...new Set(names)].sort();
 }
@@ -80,6 +93,34 @@ function modeTakingNames(): string[] {
 }
 
 describe("Tauri 명령 배선", () => {
+  // 아래 두 검사(이름 등록 · 인자 이름)는 **정규식이 읽은 호출만** 잰다. 읽지 못한 호출은 어긋나도 초록이다 —
+  // 그 호출이 검사의 눈 밖에 있어서다. 그래서 이 검사를 먼저 둔다: 호출 자리마다 이름을 읽었는지 보고, 못
+  // 읽은 자리를 파일:줄로 적는다. 모르는 모양을 건너뛰지 않는 것은 `registeredNames`와 같은 fail-closed다.
+  //
+  // 실제로 샌 적이 있다(티켓 08 리뷰): `invoke<Record<number, CloseCheck>>("pty_close_checks", …)`는 타입
+  // 인자 안에 `<…>`가 한 겹 더 있어 옛 정규식 `<[^>]*>`가 첫 `>`에서 멈췄고, 곧이어 `(`가 아니라 `>`가 와서
+  // 호출이 통째로 안 보였다. 인자 이름을 `{ shellIds: ids }`로 바꿔도 이 파일도 L3도 초록이었고, 실물에서는
+  // Tauri가 invoke를 거절해 종료 확인 창이 「명령이 도는 셸 0」이라고 말했을 것이다.
+  it("프런트엔드의 invoke 호출은 하나도 빠짐없이 이 검사들의 눈에 든다", () => {
+    const unread: string[] = [];
+    let sites = 0;
+    for (const file of sourceFiles(join(root, "src"))) {
+      const source = readFileSync(file, "utf8");
+      for (const site of source.matchAll(INVOKE_SITE)) {
+        sites += 1;
+        const at = new RegExp(INVOKE_NAME.source, "y");
+        at.lastIndex = site.index;
+        if (!at.test(source)) {
+          const line = source.slice(0, site.index).split("\n").length;
+          unread.push(`${relative(root, file)}:${line}`);
+        }
+      }
+    }
+    // 앵커: 자리를 하나도 못 찾으면 위 목록은 비어서 초록이 된다 — 자리 정규식이 낡은 것을 그렇게 놓치지 않는다
+    expect(sites, "invoke 호출 자리를 하나도 못 찾았다 — 자리 정규식이 낡았나").toBeGreaterThan(0);
+    expect(unread, "이름을 읽지 못한 invoke 호출 — 등록 · 인자 검사가 이 호출을 못 본다").toEqual([]);
+  });
+
   it("프런트엔드가 부르는 이름은 전부 등록돼 있다", () => {
     const missing = invokedNames().filter((name) => !registeredNames().includes(name));
     expect(missing).toEqual([]);
@@ -100,10 +141,7 @@ describe("Tauri 명령 배선", () => {
     const mismatched: string[] = [];
     for (const file of sourceFiles(join(root, "src"))) {
       const source = readFileSync(file, "utf8");
-      const calls = source.matchAll(
-        /\binvoke(?:<[^>]*>)?\(\s*"([a-z_]+)"\s*,\s*\{([^}]*)\}/g,
-      );
-      for (const [, name, args] of calls) {
+      for (const [, name, args] of source.matchAll(INVOKE_WITH_ARGS)) {
         const params = commands.match(new RegExp(`pub async fn ${name}\\(([^)]*)\\)`));
         if (!params) continue;
         const declared = [...params[1].matchAll(/(\w+)\s*:/g)].map((m) => m[1]);

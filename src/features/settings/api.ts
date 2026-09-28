@@ -13,6 +13,9 @@ export const settingsApi = {
   // 객체를 만들어 보내면 그 키들이 조용히 사라진다 — 읽은 것을 펼쳐서 고쳐라
   // (`{ ...settings, terminal: { ...settings.terminal, fontSize: 16 } }`).
   write: (settings: Settings) => invoke<void>("write_settings", { settings }),
+  // 예외 목록의 기본값(프로세스 스펙 S7). `processExceptions`가 `null`일 때 판정이 쓰는 목록이라 **값을 정하는
+  // 자리가 Rust 상수 하나다** — 화면은 받아서 칸에 보이기만 한다(`process-exceptions.ts`).
+  defaultExceptions: () => invoke<string[]>("default_process_exceptions"),
 };
 
 // 에이전트 훅 설치 (#207 · 구현 결정 8). **셋 다 같은 모양으로 답한다** — 지금 상태

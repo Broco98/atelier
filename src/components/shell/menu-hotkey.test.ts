@@ -15,6 +15,7 @@ describe("code에서 key를 되찾는다", () => {
     ["Digit9", "9"],
     ["KeyB", "b"],
     ["KeyT", "t"],
+    ["KeyJ", "j"],
     ["Enter", "Enter"],
   ])("%s → %s", (code, key) => {
     expect(keyOfCode(code)).toBe(key);

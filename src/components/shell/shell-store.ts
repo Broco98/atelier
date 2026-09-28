@@ -1,4 +1,5 @@
 import { Store } from "@tanstack/react-store";
+import { readStored, writeStored } from "@/lib/stored";
 import { modeFrom, placeModeOf, routesOf, slugOf } from "@/mode";
 import { recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
@@ -38,26 +39,8 @@ export interface ShellState {
   lastPlace: Record<Mode, string | null>;
 }
 
-// 저장소를 만지는 문이 이 둘뿐이다. **부를 때마다 확인하고 던지는 것을 삼킨다** —
-// 있는지 한 번만 보고 모듈 상수로 굳히면 나중에 심어진 저장소를 영영 못 보고(라우터 테스트가
-// 케이스마다 심는다), try 없이 만지면 사생활 모드처럼 **존재하지만 접근이 던지는** 저장소에서
-// 앱이 통째로 안 뜬다.
-function readStored(key: string): string | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(key: string, value: string): void {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
-  } catch {
-    // 적어 두지 못하는 것은 이번 실행의 편의를 잃는 일일 뿐이다 — 여기서 던지면 그 편의를
-    // 위해 화면이 죽는다.
-  }
-}
+// 저장소를 만지는 문은 `readStored` · `writeStored`뿐이다(`lib/stored.ts`) — 부를 때마다 확인하고
+// 던지는 것을 삼킨다. 사생활 모드처럼 접근이 던지는 저장소에서도 앱이 뜬다.
 
 export const shellStore = new Store<ShellState>({
   sidebarOpen: readStored(SIDEBAR_OPEN_KEY) !== "0",

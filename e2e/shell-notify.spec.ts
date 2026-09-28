@@ -10,9 +10,12 @@ import {
   setWindowFocused,
   stubNotifications,
   stubWindowFocus,
+  typeIntoShell,
   unknownIpcCalls,
   행버튼,
 } from "./harness";
+import { terminalSettings } from "@/features/settings/settings-fixture";
+import type { NotificationSettings, Settings } from "@/features/settings/types";
 
 // 판 06 — **셸이 부르는 것을 앱 밖으로 내보내는 길**(#206 · 결정 10).
 //
@@ -26,11 +29,25 @@ import {
 
 const work = WORKS.find((one) => one.worktrees.length === 1) ?? WORKS[0];
 
-/** 셸이 답을 마치고 사람을 기다리는 그 이벤트. 전이 표의 `Stop → waiting`이다. */
-const 기다림 = {
+/**
+ * 셸이 턴을 마친 그 사건 — 전이 표의 `Stop → 확인할 것`(프로세스 결정 13). 옛 표에서는 「나를 기다림」으로 울었고,
+ * 이제 확인할 것으로 운다 — **알림 수는 같다.** 「봤다」로 꺼지는 쪽이라 보고 있는 셸에서는 곧바로 사라진다.
+ */
+const 턴끝 = {
   agent: "claude",
   event: "Stop",
   payload: { last_assistant_message: "테스트 셋 통과\n커밋할까요?" },
+  stopped: true,
+};
+
+/**
+ * 셸이 사람에게 묻는 사건 — `Elicitation → 나를 기다림`. **보고 있어도 안 꺼진다**(terminal-activity-signal 결정 7) — 그래서 「보고 있으면 안
+ * 울린다」·배지처럼 그 셸을 보는 채로 재는 검사가 이것을 쓴다.
+ */
+const 기다림 = {
+  agent: "claude",
+  event: "Elicitation",
+  payload: { message: "테스트 셋 통과\n커밋할까요?" },
 };
 
 test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async ({ page }) => {
@@ -42,7 +59,7 @@ test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async
 
   // 창이 뒤에 있으면 켜진 탭도 「보는 중」이 아니다(결정 7) — 그래야 이 셸이 억제를 안 받는다.
   await setWindowFocused(page, false);
-  await markAttention(page, 기다림);
+  await markAttention(page, 턴끝);
 
   await expect
     .poll(async () => (await sentNotifications(page)).length, { message: "알림이 안 울렸다" })
@@ -59,7 +76,7 @@ test("다른 앱을 보고 있으면 셸이 부를 때 한 번 울린다", async
 
   // **같은 값으로 남아 있는 동안은 안 울린다**(스토리 60). 같은 이벤트가 한 번 더 와서
   // 상태는 갱신되지만 화면값은 그대로다.
-  await markAttention(page, { ...기다림, at: 2000 });
+  await markAttention(page, { ...턴끝, at: 2000 });
   await expect
     .poll(async () => (await sentNotifications(page)).length, { message: "두 번 울렸다" })
     .toBe(1);
@@ -126,8 +143,8 @@ test("독 배지에 확인할 것의 수가 뜨고, 0이면 사라진다", async
 // **화면에서 고른 값이 저장을 지나 같은 자리로 오는 길은 이 파일 맨 아래 검사가 잰다** —
 // 마크업 seam(`SettingsPage.test.tsx`)이 재는 것은 그 길의 양 끝(`notificationChoice`·
 // `patchNotifications`)뿐이고, 둘을 잇는 `save()`의 접착 한 줄은 그 층에서는 안 걸린다.
-const 설정 = (notifications: { enabled?: boolean; sound?: boolean }) => ({
-  read_settings: { terminal: { fontFamily: null, fontSize: null, theme: "dark" }, notifications },
+const 설정 = (notifications: NotificationSettings) => ({
+  read_settings: { terminal: terminalSettings(), notifications } satisfies Settings,
 });
 
 test("설정에서 껐으면 부를 때 아무것도 안 나간다", async ({ page }) => {
@@ -200,6 +217,8 @@ test("설정 화면에서 소리를 끄면 앱을 다시 안 띄워도 소리가
 
   await page.goto("/terminal");
   await expect(page.locator(".xterm")).toHaveCount(1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 부를 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   const aside = page.locator("aside");
   await aside.getByRole("button", { name: "Settings", exact: true }).click();
   // 파일에는 알림 구획이 아예 없다(고정 표) — 안 고른 값은 둘 다 켬이다(결정 10).
@@ -253,6 +272,8 @@ test("설정에 있는 동안 셸이 부르면 울린다", async ({ page }) => {
   await page.goto(`/works/${work.slug}?tab=terminal`);
   // **착석은 탭 줄이 있는 여기서 기다린다** — 설정에는 탭 줄이 없어 `markAttention`의 기다림이 던진다.
   await awaitSpawned(page, 1);
+  // 저절로 뜬 셸은 입력 없이 떠나면 닫힌다(프로세스 결정 7) — 설정에서 부를 셸은 사람이 친 셸이다.
+  await typeIntoShell(page);
   await setWindowFocused(page, true);
 
   await page.locator("aside").getByRole("button", { name: "Settings", exact: true }).click();

@@ -10,7 +10,17 @@ use crate::Mode;
 pub fn data_root() -> PathBuf {
     std::env::var_os("ATELIER_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::home_dir().expect("no home directory").join(".atelier"))
+        .unwrap_or_else(|| default_data_root(&dirs::home_dir().expect("no home directory")))
+}
+
+/// 오버라이드가 없을 때 그 홈의 데이터 루트 — `<홈>/.atelier`.
+///
+/// **데이터 루트가 필요한 자리는 이것이 아니라 `data_root()`를 부른다.** 이 값은 「이 실행의 루트가 옮겨졌나」를 묻는
+/// 자리의 잣대다 — 앱이 뜰 때 사용자의 에이전트 설정(`~/.claude` · `~/.codex`)을 맞추는 일은, 그 설정이 모든 실행이 함께
+/// 부르는 것이라 루트가 그 홈의 이 자리일 때만 한다(프로세스 결정 15 · 앱의 `startup::sync_hooks`). 그 물음이 `.atelier`를
+/// 다시 적으면 두 자리가 갈린 날 맞춤이 조용히 영영 안 돈다.
+pub fn default_data_root(home: &Path) -> PathBuf {
+    home.join(".atelier")
 }
 
 /// 프로젝트 등록부. **모드를 안 받는다 — Atelier 전용이다** (결정 17). Room은 토픽이고

@@ -147,10 +147,10 @@ describe("무엇을 물어 나가는가", () => {
   // (`search.rs`의 `destination_hits`).
   it("그 세계의 목적지만 묻는다", () => {
     void searchQuery("maison", "마루").queryFn();
-    expect(asked.get("마루")).toEqual(["terminal", "archive", "settings"]);
+    expect(asked.get("마루")).toEqual(["terminal", "processes", "archive", "settings"]);
 
     void searchQuery("atelier", "아뜰").queryFn();
-    expect(asked.get("아뜰")).toEqual(["projects", "terminal", "archive", "settings"]);
+    expect(asked.get("아뜰")).toEqual(["projects", "terminal", "processes", "archive", "settings"]);
   });
 
   // **세계 자체도 함께 나간다** — 코어가 works·아카이브 루트를 그 값으로 고른다. 위 줄은 목적지

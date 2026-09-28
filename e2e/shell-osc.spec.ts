@@ -184,17 +184,21 @@ test("벨은 아는 에이전트가 도는 칸에서만 삼켜진다", async ({ 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("훅이 한 번이라도 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", async ({ page }) => {
+// 권위 규칙은 한때 「훅이 **한 번이라도** 말한 칸」이었다. 프로세스 결정 12가 이렇게 고쳤다: 에이전트가 foreground에서
+// 사라지면 권위가 풀린다(`shell-release.spec.ts`). 이 칸은 도는 명령이 안 바뀌므로 권위가 그대로다.
+test("훅이 말한 칸에서는 OSC도 출력도 아무것도 못 바꾼다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
 
   // **칸이 하나일 때 먼저 말하게 한다** — `markAttention`은 셸이 정확히 n개일 때까지
   // 기다리는 손잡이라(`awaitSpawned`) 둘째 칸을 연 뒤에는 첫 칸을 못 고른다.
-  // 앰버는 「봤다」로 안 꺼지므로 보고 있는 중에 받아도 그대로 선다(결정 7).
+  // 앰버는 「봤다」로 안 꺼지므로 보고 있는 중에 받아도 그대로 선다(terminal-activity-signal 결정 7). 앰버를 세우는 훅은 사람에게 묻는
+  // 것(`Elicitation`)이다 — 턴의 끝(`Stop`)은 프로세스 결정 13이 「확인할 것」으로 옮겨, 보고 있는 칸에서는 곧바로
+  // 「봤다」가 된다.
   await markAttention(
     page,
-    { agent: "claude", event: "Stop", payload: { last_assistant_message: "커밋할까요?" } },
+    { agent: "claude", event: "Elicitation", payload: { message: "커밋할까요?" } },
     1,
   );
   await openShell(page);

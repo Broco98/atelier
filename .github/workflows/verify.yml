@@ -33,6 +33,9 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
+          # 훅 처리기(`src-tauri/hooks/atelier-hook.zsh`)는 `/bin/zsh -f`로 돈다. L1이 그것을 실물로 띄우므로(`shells.rs`)
+          # 러너에 zsh가 있어야 한다 — 위 목록과 달리 Tauri가 아니라 그 검사 때문이다.
+          sudo apt-get install -y zsh
 
       - uses: pnpm/action-setup@v4
 

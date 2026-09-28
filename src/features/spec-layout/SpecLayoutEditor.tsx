@@ -33,6 +33,7 @@ import { showProblem } from "@/components/ui/confirm-store";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SegmentGroup, SegmentGroupItem } from "@/components/ui/segment-group";
+import { textareaLook } from "@/components/ui/textarea-look";
 import { Hint } from "@/components/ui/tooltip";
 import { settingsItem } from "@/features/settings/pages";
 import { SPEC_ICONS, specIconOf, type SpecIconName } from "@/features/works/spec-icons";
@@ -958,11 +959,6 @@ function lineIdsOf(id: string, errors: LayoutError[]): string | undefined {
   return errors.length === 0 ? undefined : errors.map((_, index) => `${id}-${index}`).join(" ");
 }
 
-// 칸의 규격 — 설정 화면의 입력 칸(`Input`의 `field`)과 같은 가족이다. 여러 줄 칸은 부품이 없어(develop P8 — Textarea를
-// 들이지 않는다) 손으로 짓는다.
-const TEXTAREA =
-  "w-full resize-y rounded-[9px] border border-border-strong bg-background px-2.5 py-2 text-[13px] leading-[1.6] outline-none focus:border-primary";
-
 /**
  * 머리 `spec/`을 골랐을 때의 칸 하나 — 맨 위 항목의 설명, 안내문 맨 위의 방침 문단이다(결정 26). 맨 위
  * 항목의 오류(자리 `[]`)는 칸 위에 선다.
@@ -988,7 +984,7 @@ function GuideField({
         rows={9}
         value={description}
         onChange={(event) => onChange(event.target.value)}
-        className={TEXTAREA}
+        className={textareaLook}
       />
     </div>
   );
@@ -1075,7 +1071,7 @@ function EntryFields({
             const text = event.target.value;
             onChange((draft, path) => setDescription(draft, path, text));
           }}
-          className={TEXTAREA}
+          className={textareaLook}
         />
       </div>
       {kind === "file" && (
@@ -1156,7 +1152,7 @@ function TemplateField({
           value={body ?? ""}
           onChange={(event) => onBody(event.target.value)}
           spellCheck={false}
-          className={cn(TEXTAREA, "font-mono text-[12.5px]")}
+          className={cn(textareaLook, "font-mono text-[12.5px]")}
         />
       )}
     </div>

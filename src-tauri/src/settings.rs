@@ -26,7 +26,8 @@ pub enum TerminalTheme {
     Dark,
 }
 
-/// 결정 52가 연 것만 담는다 — 글꼴 · 크기 · 테마.
+/// 터미널 구획 — in-app-terminal-v2 결정 52가 연 글꼴 · 크기, 같은 판의 결정 54가 더한 테마와, 프로세스 결정 5가 더한 예외 목록
+/// (`process_exceptions`)을 담는다.
 ///
 /// **스크롤백은 없다.** 결정 52가 명시적으로 뺐다 — 모양이 아니라 메모리 값이고
 /// (셸 8개 × 10,000줄) 요청에도 없었다. ANSI 16색 편집도 없다(색 편집기는 별건이다).
@@ -51,6 +52,15 @@ pub struct TerminalSettings {
     /// 아직 그 값을 들 자리가 없다(다크 팔레트가 이 판에서 생긴다).
     #[serde(default)]
     pub theme: TerminalTheme,
+    /// 셸을 닫아도 남길 프로세스 — 예외 목록(프로세스 결정 5). 한 항목이 이름 하나이고, 끝이 `*`면 그 앞부분으로
+    /// 시작하는 이름을 모두 잡는다.
+    ///
+    /// **고치지 않았으면 `null`이고, 그때 판정은 기본 목록을 쓴다**(`processes::exceptions::DEFAULTS`). 기본
+    /// 목록을 여기 적어 두지 않는 까닭은 글꼴과 같다 — 파일에는 사용자가 고친 것만 적는다. 다만 이 기본값은
+    /// 프런트가 아니라 **Rust 상수**가 든다: 판정이 화면 없이 앱 안에서 쓰기 때문이다(프로세스 스펙 S7).
+    /// 빈 목록(`[]`)은 `null`과 다르다 — 「아무것도 남기지 않는다」이다.
+    #[serde(default)]
+    pub process_exceptions: Option<Vec<String>>,
     /// 모르는 키는 **버리지 않는다** — `work.json`과 같은 규칙이다. 손으로 여는 파일이라
     /// 우리가 모르는 줄이 들어 있을 수 있고, 크기 하나를 바꿨을 뿐인데 그것이 사라지면
     /// 「손으로 고칠 수 있다」는 말이 거짓이 된다.
@@ -133,6 +143,38 @@ pub fn read(root: &Path) -> Result<Settings, String> {
     })
 }
 
+/// 판정이 쓸 예외 목록(프로세스 결정 5 · 프로세스 스펙 S7). 앱은 **판정마다** 데이터 루트로 부른다(`process_exceptions_now`)
+/// — 사람이 설정을 고친 뒤 닫는 셸에 곧바로 먹는다. 앱이 따로 기억하는 값이 없다.
+///
+/// `null`이거나 줄이 없으면 기본 목록이다. **파일이 깨졌어도 기본 목록이다** — `read`는 깨진 파일을 실패로
+/// 돌려주고 설정 화면은 고칠 때까지 아무것도 안 쓰지만, 셸 닫기는 그동안에도 돈다. 여기서 실패를 「예외 없음」으로
+/// 읽으면 tmux가 셸과 함께 사라진다. 터미널 글꼴이 깨진 파일 앞에서 기본값으로 흐르는 것과 같은 판단이다
+/// (`terminal-settings.ts`의 `loadTerminalSettings`).
+pub fn process_exceptions(root: &Path) -> Vec<String> {
+    match read(root) {
+        Ok(settings) => settings
+            .terminal
+            .process_exceptions
+            .unwrap_or_else(crate::processes::exceptions::defaults),
+        Err(e) => {
+            eprintln!("atelier: {e} — 예외 목록은 기본 목록으로 간다");
+            crate::processes::exceptions::defaults()
+        }
+    }
+}
+
+/// **지금** 설정의 예외 목록 — 앱의 데이터 루트(`ATELIER_HOME`)에서 **부를 때마다 새로** 읽는다(프로세스 결정 5 · 프로세스 스펙 S7).
+/// 사람이 설정 › 터미널에서 목록을 고치면 다음 판정부터 먹는다. 앱이 따로 쥐는 값이 없다.
+///
+/// **판정을 부르는 자리가 모두 이 하나를 부른다** — 끝내기의 길(`pty.rs`: 셸 닫기 · 새로고침 · 셸 스스로 끝남의 `begin`, 앱 종료,
+/// 닫기 전 물음, 시작 정리)과 `Processes` 화면의 스냅샷 · 배경 표본(`processes::service`). 두 층이 저마다 읽는 함수를 들면 한쪽만
+/// 바뀐 날(기본값을 더하거나 다른 루트를 읽거나) 화면이 「예외」로 보인 것을 셸 닫기가 끝낸다. 판정 표는 목록을 직접 받으니 이 배선은
+/// 못 잰다 — 자리 핀(`pty.rs`의 `the_exception_list_is_read_anew_for_every_verdict`)이 이 한 줄과 여섯 자리를 재고, 풀 배선 장면
+/// `CloseKeeping` · `ExitKeeping` · `Ask`가 닫기 · 종료 · 닫기 전 물음에서 하나씩 실행으로 잰다.
+pub fn process_exceptions_now() -> Vec<String> {
+    process_exceptions(&atelier_core::data_root())
+}
+
 /// 같은 디렉터리 tmp 파일 → rename 원자적 쓰기 (`work.json`·projects와 같은 규칙).
 ///
 /// **원자성이 필요한 이유:** 이 파일 한 장이 설정의 전부다. 반쯤 쓰인 채 앱이 죽으면 다음
@@ -194,6 +236,7 @@ mod tests {
                 font_family: Some("Menlo".to_string()),
                 font_size: Some(13),
                 theme: TerminalTheme::Light,
+                process_exceptions: Some(vec!["tmux".to_string(), "mydaemon*".to_string()]),
                 extra: Default::default(),
             },
             notifications: NotificationSettings {
@@ -349,6 +392,96 @@ mod tests {
         let s = read(&root).unwrap();
         assert_eq!(s.notifications.enabled, None);
         assert_eq!(s.notifications.sound, None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **예외 목록 — 판정이 끝낼 때마다 읽는 값**(프로세스 결정 5 · 프로세스 스펙 S7). `null`이거나 적힌 것이
+    /// 없으면 기본 목록이다. **파일이 깨졌어도 기본 목록이다** — 설정 화면은 깨진 파일을 거부하고 고칠 때까지
+    /// 아무것도 안 쓰지만, 셸 닫기는 그동안에도 돈다. 그때 아무것도 안 남기면 tmux가 셸과 함께 사라진다.
+    ///
+    /// 「기본 목록이다」 줄만 있으면 목록을 안 읽고 늘 기본을 줘도 초록이다 — 적힌 목록이 그대로 오는 줄이 곁에 선다.
+    #[test]
+    fn the_exception_list_is_the_defaults_until_a_list_is_written() {
+        let defaults = crate::processes::exceptions::defaults();
+        let listed = |entries: &[&str]| entries.iter().map(|e| e.to_string()).collect::<Vec<_>>();
+        let cases: [(&str, Option<&str>, Vec<String>); 10] = [
+            ("파일이 없다", None, defaults.clone()),
+            ("빈 파일(`{}`)", Some("{}"), defaults.clone()),
+            ("줄이 없다", Some(r#"{"terminal":{"theme":"dark"}}"#), defaults.clone()),
+            ("`null`", Some(r#"{"terminal":{"processExceptions":null}}"#), defaults.clone()),
+            (
+                "적힌 목록은 그대로다",
+                Some(r#"{"terminal":{"processExceptions":["tmux","mydaemon"]}}"#),
+                listed(&["tmux", "mydaemon"]),
+            ),
+            (
+                "빈 목록은 「아무것도 안 남긴다」 — 기본 목록이 아니다",
+                Some(r#"{"terminal":{"processExceptions":[]}}"#),
+                Vec::new(),
+            ),
+            ("깨진 JSON", Some("{ 예외를 여기 적으면 되나"), defaults.clone()),
+            ("모르는 테마 — 파일이 잘못됐다", Some(r#"{"terminal":{"theme":"solarized"}}"#), defaults.clone()),
+            (
+                "목록이 아닌 값",
+                Some(r#"{"terminal":{"processExceptions":"tmux"}}"#),
+                defaults.clone(),
+            ),
+            (
+                "문자열이 아닌 항목",
+                Some(r#"{"terminal":{"processExceptions":["tmux",3]}}"#),
+                defaults.clone(),
+            ),
+        ];
+
+        let mut wrong = Vec::new();
+        for (n, (what, content, want)) in cases.into_iter().enumerate() {
+            let root = temp_root(&format!("exceptions-{n}"));
+            if let Some(content) = content {
+                std::fs::write(settings_path(&root), content).unwrap();
+            }
+            let got = process_exceptions(&root);
+            if let Some(content) = content {
+                assert_eq!(
+                    std::fs::read_to_string(settings_path(&root)).unwrap(),
+                    content,
+                    "{what}: 읽기가 파일을 고쳤다"
+                );
+            }
+            let _ = std::fs::remove_dir_all(&root);
+            if got != want {
+                wrong.push(format!("{what}: 기대 {want:?}, 받음 {got:?}"));
+            }
+        }
+        assert!(wrong.is_empty(), "예외 목록이 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
+    }
+
+    /// **적힌 목록이 판정에 그대로 닿는다** — 줄어들거나 기본 목록으로 되돌아가지 않는다. 「`null`에서 한 항목을 더하면
+    /// 기본 목록 + 그 항목」이라는 규칙은 여기서 안 잰다: 더하는 일은 목록을 고치는 화면이 하고
+    /// (`src/features/settings/process-exceptions.ts` — 판 04의 「예외로 두기」도 같은 저장 줄을 탄다) 그 규칙은 L2
+    /// (`process-exceptions.test.ts`)가 잰다. 여기 적는 목록(기본 목록 + 하나)은 그 규칙이 지을 모양일 뿐이다.
+    #[test]
+    fn a_written_list_reaches_the_verdict_as_written() {
+        let root = temp_root("exceptions-plus-one");
+        let mut wanted = crate::processes::exceptions::defaults();
+        wanted.push("mydaemon".to_string());
+        let mut s = Settings::default();
+        s.terminal.process_exceptions = Some(wanted.clone());
+        write(&root, &s).unwrap();
+
+        assert_eq!(process_exceptions(&root), wanted);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **고치지 않은 예외 목록은 `null` 줄로 남고, 기본 목록이 파일에 안 적힌다**(프로세스 스펙 S7). 적히면 다음
+    /// 판의 기본 목록이 바뀌어도 이 사람의 파일에 옛 목록이 굳는다 — 고친 적도 없는데.
+    #[test]
+    fn an_unchosen_exception_list_is_written_as_null_not_as_the_defaults() {
+        let root = temp_root("exceptions-unchosen");
+        write(&root, &Settings::default()).unwrap();
+
+        let out = std::fs::read_to_string(settings_path(&root)).unwrap();
+        assert!(out.contains("\"processExceptions\": null"), "고르지 않은 줄이 `null`로 안 남았다: {out}");
+        assert!(!out.contains("tmux"), "고친 적 없는 기본 목록이 파일에 적혔다: {out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

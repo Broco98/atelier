@@ -1,4 +1,4 @@
-// 앱 규격으로 고친 자리: 한 장만 선다(S26) — 모든 토스트가 고정 id 하나로 나는 `showToast`가 앱의 유일한 호출이고, 관리자(`toast`)는 내보내지 않는다(id 없이 내면 둘이 쌓인다), Provider timeout 기본 5000→1600ms(지금 규칙)·관리자를 기본으로 문다, Viewport 자리 fixed 오른쪽 아래(sm:)·max-w-sm→absolute 아래 가운데 20px·z-20(화면마다 지금 토스트 자리에 둔다, S14 — 두 화면의 relative 상자가 받는다)·이름 Notifications→메시지(S37), Portal을 걷는다(자리가 화면 안이다), `Toaster`는 Provider를 싸지 않는다 — Viewport + 목록이고 Provider는 앱 루트 하나다, 토스트 쌓기(absolute·--toast-index·peek·scale·높이 변수·data-behind/expanded)를 걷고 흐름 안의 한 줄로 선다, 모양 rounded-2xl·border·bg-popover·shadow-lg·p-4·gap-3→10px·border-strong·bg-background·shadow-lg·px-3.5 py-2·gap-2·12.5px(옛 토스트), 밀어서 닫기를 걷는다(swipeDirection 빈 배열, S27), 닫기 버튼(Close toast)·Action·Content·Description을 걷는다, 아이콘 다섯(success·info·warning·error·loading)→둘(성공 Check 초록 · 거절 Ban 옅은 글자, 14px), 제목 text-sm font-medium→물려받는다, 들고남 translateY(150%) 500ms→100ms 페이드와 확대(결정 7, 아래 가운데를 기준점으로 — 쌓임이 없어 밀어 올릴 것이 없다). 포커스 링은 registry 그대로다.
+// 앱 규격으로 고친 자리: 한 장만 선다(S26) — 모든 토스트가 고정 id 하나로 나는 `showToast`가 이 관리자의 유일한 호출이고, 관리자(`toast`)는 내보내지 않는다(id 없이 내면 둘이 쌓인다), Provider timeout 기본 5000→1600ms(지금 규칙 — `TOAST_TIMEOUT_MS`로 내보내 앱 셸의 짧은 토스트가 같은 값을 쓴다)·관리자를 기본으로 문다, Viewport 자리 fixed 오른쪽 아래(sm:)·max-w-sm→absolute 아래 가운데 20px·z-20(화면마다 지금 토스트 자리에 둔다, S14 — 두 화면의 relative 상자가 받는다)·이름 Notifications→메시지(S37), Portal을 걷는다(자리가 화면 안이다), `Toaster`는 Provider를 싸지 않는다 — Viewport + 목록이고 Provider는 앱 루트 하나다(앱 셸의 동작 토스트 `AppToasts`는 이 부품의 모양만 입고 제 관리자 · Provider · Viewport를 따로 둔다 — 프로세스 스펙 P2 (나), 아래 `TOAST_ID` 머리말), 토스트 쌓기(absolute·--toast-index·peek·scale·높이 변수·data-behind/expanded)를 걷고 흐름 안의 한 줄로 선다, 모양 rounded-2xl·border·bg-popover·shadow-lg·p-4·gap-3→10px·border-strong·bg-background·shadow-lg·px-3.5 py-2·gap-2·12.5px(옛 토스트), 밀어서 닫기를 걷는다(swipeDirection 빈 배열, S27), 닫기 버튼(Close toast)·Action·Content·Description을 걷는다, 아이콘 다섯(success·info·warning·error·loading)→둘(성공 Check 초록 · 거절 Ban 옅은 글자, 14px), 제목 text-sm font-medium→물려받는다, 들고남 translateY(150%) 500ms→100ms 페이드와 확대(sidebar-active-band 결정 7, 아래 가운데를 기준점으로 — 쌓임이 없어 밀어 올릴 것이 없다). 포커스 링은 registry 그대로다.
 import type { ReactNode } from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { cn } from "cn"
@@ -10,8 +10,21 @@ const toast = ToastPrimitive.createToastManager()
  * 앱의 토스트는 **한 장이다**(S26). 모든 토스트를 이 id 하나로 낸다 — 같은 id로 다시 내면 Base UI가 그
  * 자리에서 갈아 끼우고 시간을 다시 센다. `limit` 1로는 안 된다: 한도를 넘은 토스트가 DOM에서 빠지지 않고
  * `data-limited`·`inert`로 남는다.
+ *
+ * **예외가 하나 있다 — 앱 셸의 동작 토스트**(`components/shell/AppToasts.tsx` · `app-toast.ts`, 프로세스 스펙 P2 (나),
+ * develop 머지). 시작 정리 · 주인 잃은 셸 · 셸 스스로 끝남 같은 알림은 어느 화면에서든 서고, [모두 닫기] · [보기]를
+ * 싣고 누를 때까지 남는다. 이 한 장에 실으면 복사 토스트가 그것을 갈아 끼워 [모두 닫기]가 사라지고, 이 부품의 자리는
+ * 작업 · 아카이브 화면에만 있다(S14). 그래서 그쪽은 이 부품의 `Toast` · `ToastTitle` · `ToastViewport`를 입되 제
+ * 관리자(`appToasts`) · 제 Provider · 제 Viewport(오른쪽 아래, 「앱 메시지」)를 두고, 알림마다 제 id라 여럿이 쌓인다.
+ * 한 화면에 이 한 장과 그쪽 토스트들이 함께 설 수 있다. S14 · S26을 넘는 이 예외는 사람 결정으로 남았다.
  */
 const TOAST_ID = "app-toast"
+
+/**
+ * 토스트가 서 있는 시간 — Provider의 기본값이다. 앱 셸의 버튼 없는 토스트(`components/shell/app-toast.ts`)도 이 값을 쓴다:
+ * 한 앱에서 두 토스트가 다른 빠르기로 사라지면 어느 쪽이 느린지가 눈에 걸린다.
+ */
+const TOAST_TIMEOUT_MS = 1600
 
 /** 토스트의 두 말. 한 일(✓)과 못 한 일(⊘)이 같은 표면을 쓰고, 글리프가 둘을 가른다(결정 47). */
 type ToastKind = "success" | "rejected"
@@ -26,7 +39,7 @@ function showToast(title: string, kind: ToastKind = "success") {
 
 function ToastProvider({
   toastManager = toast,
-  timeout = 1600,
+  timeout = TOAST_TIMEOUT_MS,
   ...props
 }: ToastPrimitive.Provider.Props) {
   return (
@@ -112,7 +125,10 @@ function ToastList() {
   ))
 }
 
-/** 화면마다 지금 토스트 자리에 하나 둔다(S14). 한 번에 한 화면만 마운트되므로 Viewport는 늘 하나다. */
+/**
+ * 화면마다 지금 토스트 자리에 하나 둔다(S14). 한 번에 한 화면만 마운트되므로 이 관리자의 Viewport는 늘 하나다 — 앱 셸의
+ * 동작 토스트 자리(`AppToasts`)는 따로 선다(위 `TOAST_ID` 머리말).
+ */
 function Toaster(props: ToastPrimitive.Viewport.Props) {
   return (
     <ToastViewport {...props}>
@@ -121,5 +137,13 @@ function Toaster(props: ToastPrimitive.Viewport.Props) {
   )
 }
 
-export { Toaster, Toast, ToastProvider, ToastTitle, ToastViewport, showToast }
+export {
+  Toaster,
+  Toast,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+  TOAST_TIMEOUT_MS,
+  showToast,
+}
 export type { ToastKind }

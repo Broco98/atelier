@@ -101,6 +101,29 @@ test("5px 안쪽의 눌림은 그대로 클릭이다 — 그 작업으로 간다
   expect(await moves(page)).toEqual([]);
 });
 
+// 티켓 16 · 프로세스 스펙 S22 — 사이드바 행을 눌렀는데 안 열린다는 말이 있다. 행 클릭이 문턱에 삼켜진다는 가설을 문턱을
+// 고치기 전에 재려고, dev 빌드는 **문턱을 넘은 순간과 삼킨 클릭**을 한 줄씩 남긴다. 이 층은 dev 서버라 가드가 열려 있다.
+// 누르다 손이 조금 밀렸다가 제자리에서 뗀 모양이다 — 행은 안 열리고 두 줄이 선다.
+test("dev 빌드는 문턱을 넘은 순간과 삼킨 클릭을 한 줄씩 남긴다", async ({ page }) => {
+  const traces: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().startsWith("atelier: 끌기")) traces.push(message.text());
+  });
+  await openList(page);
+  const from = await pointIn(workRow(page, plainWork.slug), "middle");
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 6, from.y);
+  await page.mouse.move(from.x + 1, from.y);
+  await page.mouse.up();
+
+  await stayedHome(page);
+  await expect.poll(() => traces.length).toBe(2);
+  expect(traces[0]).toMatch(/^atelier: 끌기\(work\) 문턱 dx=[\d.]+ dy=-?[\d.]+ pointerType=mouse swallowed=false$/);
+  expect(traces[1]).toMatch(/^atelier: 끌기\(work\) 삼킨 클릭 dx=[\d.]+ dy=-?[\d.]+ pointerType=mouse swallowed=true$/);
+  expect(await moves(page)).toEqual([]);
+});
+
 test.describe("놓은 구획이 고정 여부를 정한다", () => {
   test("같은 구획 안에서 끌면 고정 여부가 그대로다", async ({ page }) => {
     await openList(page);
@@ -233,7 +256,13 @@ test("셸 신호 레인이 선 행도 끌어 놓으면 move_work가 나간다", 
   await page.goto(`/works/${plainWork.slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await markRunning(page, "claude");
-  await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
+  // 보고 있는 셸이라 레인에 남는 것은 기다림이다 — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Elicitation",
+    at: Date.now(),
+    payload: { message: "끌어도 될까요?" },
+  });
   await expect(레인(page, plainWork.slug).locator('[data-signal="waiting"]')).toHaveCount(1);
 
   await pickUpRow(page, plainWork.slug);
@@ -265,7 +294,13 @@ test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인
   await expect(line(page)).toBeVisible();
   const rowTopBefore = (await workRow(page, plainWork.slug).boundingBox())!.y;
 
-  await markAttention(page, { agent: "claude", event: "Stop", at: Date.now(), payload: {} });
+  // 보고 있는 셸에서 띠가 서는 것은 기다림이다(terminal-activity-signal 결정 7) — 턴의 끝은 보는 순간 꺼진다(프로세스 결정 13).
+  await markAttention(page, {
+    agent: "claude",
+    event: "Elicitation",
+    at: Date.now(),
+    payload: { message: "끌어도 될까요?" },
+  });
   await expect(띠(page)).toHaveCount(1);
   // 목록이 **실제로 밀렸다** — 안 밀렸는데 초록이면 아무것도 안 잰 것이다.
   await expect

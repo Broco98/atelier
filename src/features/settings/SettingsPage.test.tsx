@@ -11,10 +11,13 @@ import SettingsPage, {
   parseFontSize,
   NotificationSection,
   patchTerminal,
+  ProcessExceptionsSection,
   previewFontFamily,
   TerminalSection,
 } from "./SettingsPage";
 import { notificationChoice, patchNotifications } from "./notifications";
+import { terminalSettings } from "./settings-fixture";
+import { textareaLook } from "@/components/ui/textarea-look";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { terminalThemeDark, terminalThemeLight } from "@/features/terminal/terminal-theme";
 import type { HookStatus, NotificationSettings, Settings } from "./types";
@@ -38,7 +41,7 @@ import type { HookStatus, NotificationSettings, Settings } from "./types";
 // 전부 순수 함수로 꺼내 두고 여기서 그 함수들을 직접 돌린다.
 
 const settings = (terminal: Partial<Settings["terminal"]> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark", ...terminal },
+  terminal: terminalSettings(terminal),
 });
 
 function render(value: Settings, sizeText = ""): string {
@@ -55,7 +58,7 @@ function render(value: Settings, sizeText = ""): string {
 describe("읽은 것을 펼쳐 고친다", () => {
   it("고친 필드만 바뀐다", () => {
     const next = patchTerminal(settings({ fontSize: 15 }), { theme: "light" });
-    expect(next.terminal).toEqual({ fontFamily: null, fontSize: 15, theme: "light" });
+    expect(next.terminal).toEqual(terminalSettings({ fontSize: 15, theme: "light" }));
   });
 
   // 백엔드가 `#[serde(flatten)] extra`로 실어 보내는 것들이다(`settings.rs`). 타입에는
@@ -239,6 +242,67 @@ describe("테마 줄", () => {
   });
 });
 
+// ── 셸을 닫아도 남길 프로세스 (프로세스 결정 5 · 티켓 06)
+//
+// 칸의 글자를 읽는 규칙은 `process-exceptions.test.ts`가, 저장에 무엇이 실리는지는 L3가 잰다
+// (`e2e/process-exceptions.spec.ts`). 여기는 칸과 버튼이 **언제 잠기는가**다 — 클릭을 못 거니 마크업으로 본다.
+
+function renderExceptions(
+  over: Partial<Parameters<typeof ProcessExceptionsSection>[0]> = {},
+): string {
+  return renderToStaticMarkup(
+    <ProcessExceptionsSection
+      text={"tmux\ndocker*"}
+      isDefault={true}
+      defaultsFailed={false}
+      onChange={() => {}}
+      onReset={() => {}}
+      {...over}
+    />,
+  );
+}
+
+const 잠긴_칸 = /<textarea[^>]*disabled=""/;
+const 잠긴_기본값으로 = /<button[^>]*disabled=""[^>]*>기본값으로</;
+
+describe("셸을 닫아도 남길 프로세스", () => {
+  it("칸에 목록이 한 줄에 하나씩 서고, 칸의 이름이 설정 항목의 이름이다", () => {
+    const markup = renderExceptions({ text: "tmux\ncolima", isDefault: false });
+    expect(markup).toMatch(/<textarea[^>]*aria-label="셸을 닫아도 남길 프로세스"/);
+    expect(markup).toContain(">tmux\ncolima</textarea>");
+    expect(markup, "보일 글자가 있는데 칸이 잠겼다").not.toMatch(잠긴_칸);
+  });
+
+  it("고치지 않았으면(기본값) 「기본값으로」가 잠기고, 고쳤으면 열린다", () => {
+    expect(renderExceptions({ isDefault: true })).toMatch(잠긴_기본값으로);
+    const edited = renderExceptions({ isDefault: false });
+    // 앵커: 버튼이 서 있다 — 없으면 「잠기지 않았다」가 저절로 참이다.
+    expect(edited).toContain(">기본값으로</button>");
+    expect(edited).not.toMatch(잠긴_기본값으로);
+  });
+
+  // 기본 목록을 모르는 채 빈 칸을 열어 두면, 거기 한 줄을 더해 저장하는 순간 기본 목록이 통째로 사라진다.
+  it("보일 글자가 없으면(기본 목록을 아직 모름) 칸을 잠근다", () => {
+    expect(renderExceptions({ text: null })).toMatch(잠긴_칸);
+  });
+
+  it("기본 목록을 못 받았으면 그렇게 적는다", () => {
+    expect(renderExceptions({ text: null, defaultsFailed: true })).toContain("기본 목록을 읽지 못했어요");
+    expect(renderExceptions()).not.toContain("기본 목록을 읽지 못했어요");
+  });
+
+  // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 폭만 이 자리 것이다.
+  // 기본 폭(`w-full`)은 **빠져야 한다** — 클래스를 `cn` 없이 이어 붙이면 둘이 함께 실리고, 어느 쪽이 이기는지는 CSS의 차례가 정한다.
+  it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭만 이 자리 것이다", () => {
+    const classes = /<textarea[^>]*class="([^"]*)"/.exec(renderExceptions())?.[1].split(" ") ?? [];
+    const look = textareaLook.split(" ").filter((name) => name !== "w-full");
+    expect(classes).toEqual(expect.arrayContaining([...look, "w-[280px]"]));
+    // 앵커: 규격에 기본 폭이 있다 — 없으면 아래가 저절로 참이다.
+    expect(textareaLook.split(" ")).toContain("w-full");
+    expect(classes, "기본 폭이 이 자리 폭과 함께 실렸다").not.toContain("w-full");
+  });
+});
+
 // 결정 52가 명시적으로 뺀 둘이다. 「설정 화면이 있으니 한 줄 더」로 조용히 들어오기 쉬운
 // 자리라 여기서 못박는다 — 스크롤백은 모양이 아니라 메모리 값이고(셸 8개 × 10,000줄),
 // 색 편집기는 별건이다.
@@ -264,7 +328,7 @@ describe("이 판이 열지 않은 것", () => {
 // **안 고른 값은 키가 없다** — 백엔드가 이 구획만 `skip_serializing_if`로 줄째 빼기
 // 때문이고(`settings.rs`), 그래서 아무것도 안 준 기본이 빈 구획 `{}`다.
 const withNotifications = (patch: Partial<NotificationSettings> = {}): Settings => ({
-  terminal: { fontFamily: null, fontSize: null, theme: "dark" },
+  terminal: terminalSettings(),
   notifications: { ...patch },
 });
 
@@ -277,7 +341,7 @@ function renderNotifications(value: Settings, granted: boolean | null = true): s
 describe("알림 설정의 기본은 프런트가 든다", () => {
   // 백엔드는 구획째 안 쓸 수 있다(`settings.rs`의 `is_empty`) — 그 파일이 여기 그대로 온다.
   it("구획이 아예 없어도 둘 다 켬이다", () => {
-    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    const bare = settings();
     expect(notificationChoice(bare)).toEqual({ enabled: true, sound: true });
   });
 
@@ -297,7 +361,7 @@ describe("알림 설정의 기본은 프런트가 든다", () => {
 
 describe("알림 설정을 고친다", () => {
   it("구획이 없어도 만들어 얹는다", () => {
-    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    const bare = settings();
     expect(patchNotifications(bare, { sound: false }).notifications).toEqual({ sound: false });
   });
 
@@ -361,19 +425,22 @@ describe("알림 구획의 화면", () => {
 //
 // 1. **「모른다」와 「안 깔렸다」가 갈리는 것** — 설정 파일이 깨져 판정을 못 한 것을
 //    「설치 안 됨」이라 적으면, 사람은 설치 버튼을 누르고 실패하는 길로 보내진다.
-//    백엔드는 그때 `installed: false`에 `error`를 함께 실어 보낸다(`hooks.rs`).
+//    백엔드는 그때 `installed: "none"`에 `error`를 함께 실어 보낸다(`hooks.rs`).
 // 2. **미리보기가 화면에 서는 것**(스토리 73) — 내 설정을 앱에 맡기는 일이라, 누르기 전에
 //    무엇이 어디에 들어가는지 보여야 한다. 그 글자는 백엔드가 낸 것을 그대로 그린다.
 // 3. **되돌릴 길이 화면에 있는 것**(스토리 74) — 설치만 있고 제거가 없으면 훅이 남아
 //    있는지 몰라 헤맨다.
 // 4. **아는 사실이 「모른다」로 안 지워지는 것** — 쓰기가 실패한 것(`writeError`)과 판정을
 //    못 한 것(`error`)은 다른 사실이다. 읽기는 되는데 쓰기만 실패한 파일에서 「확인 못 함」이라
-//    적으면, 낱말 셋(설치됨·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+//    적으면, 낱말 넷(설치됨·업데이트 필요·설치 안 됨·확인 못 함)의 뜻이 그 자리에서 깨진다.
+// 5. **반쯤 깔린 것이 「설치됨」으로 안 읽히는 것**(프로세스 결정 15 · 프로세스 스펙 S35 · 티켓 21) — 목록이
+//    는 판에서 옛 훅만 깔린 사람, 도구 사건의 `async`가 빠진 사람, 옛 명령줄이 남은 사람이 그렇다. 「설치됨」이라
+//    적으면 사람은 고칠 까닭을 모르고, 「설치 안 됨」이라 적으면 깔린 훅을 안 깔렸다고 거짓말한다.
 
 const hook = (patch: Partial<HookStatus> = {}): HookStatus => ({
   agent: "claude",
   path: "~/.claude/settings.json",
-  installed: false,
+  installed: "none",
   error: null,
   writeError: null,
   preview: '{\n  "hooks": {}\n}\n',
@@ -399,13 +466,19 @@ function buttonLabels(html: string): string[] {
 }
 
 describe("훅이 지금 어떤지 한 낱말로", () => {
-  it("깔렸으면 설치됨, 아니면 설치 안 됨이다", () => {
-    expect(hookStateLabel(hook({ installed: true }))).toBe("설치됨");
+  it("다 깔렸으면 설치됨, 하나도 없으면 설치 안 됨이다", () => {
+    expect(hookStateLabel(hook({ installed: "full" }))).toBe("설치됨");
     expect(hookStateLabel(hook())).toBe("설치 안 됨");
   });
 
+  // 일부만 지금 모양으로 깔렸다 — 목록이 늘었거나, `async`가 빠졌거나, 옛 명령줄이 남았다. 앱이 뜰 때 저절로
+  // 맞추지만(`hooks.rs`의 `sync`), 그 전에 설정을 연 사람이나 맞추기가 실패한 사람에게는 설치 버튼이 고칠 길이다.
+  it("일부만 깔렸으면 업데이트 필요다", () => {
+    expect(hookStateLabel(hook({ installed: "partial" }))).toBe("업데이트 필요");
+  });
+
   // **`installed`만 보면 둘이 같은 낱말이 된다.** 깨진 파일에서 백엔드는 판정을 안 하고
-  // `false`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
+  // `"none"`에 까닭을 실어 보내는데, 그것을 「설치 안 됨」이라 읽으면 화면이 없는 사실을
   // 만들고 사람을 실패하는 버튼으로 보낸다.
   it("판정을 못 했으면 안 깔렸다고 하지 않는다", () => {
     expect(hookStateLabel(hook({ error: "설정 파일이 잘못됐습니다" }))).toBe("확인 못 함");
@@ -415,7 +488,7 @@ describe("훅이 지금 어떤지 한 낱말로", () => {
 describe("훅 구획의 화면", () => {
   it("에이전트마다 어디에 무엇이 들어가는지와 지금 상태가 선다", () => {
     const html = renderHooks([
-      hook({ installed: true, preview: "클로드 조각" }),
+      hook({ installed: "full", preview: "클로드 조각" }),
       hook({ agent: "codex", path: "~/.codex/config.toml", preview: "코덱스 조각" }),
     ]);
 
@@ -449,13 +522,28 @@ describe("훅 구획의 화면", () => {
   // 읽기는 됐는데 **쓰기만** 실패한 자리. 파일이 읽기 전용이면 그렇다 — 그때 우리는
   // 설치 여부를 안다. 아는 것을 「확인 못 함」으로 지우면 안 된다.
   it("쓰기가 실패해도 아는 상태는 그대로 적고 까닭을 덧붙인다", () => {
-    const status = hook({ installed: true, writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
+    const status = hook({ installed: "full", writeError: "설정을 쓰지 못했습니다: 권한이 없습니다" });
     expect(hookStateLabel(status)).toBe("설치됨");
 
     const html = renderHooks([status]);
     expect(html).toContain("설치됨");
     expect(html).not.toContain("확인 못 함");
     expect(html).toContain("설정을 쓰지 못했습니다");
+  });
+
+  // 설치를 눌렀는데도 「업데이트 필요」인 자리 — codex 설정에 손으로 적어 둔 옛 줄은 앱이 안 고친다(`hooks.rs`의
+  // `unfixed`). 그 까닭이 설치의 답에 실려 오는데 화면이 안 적으면, 사람에게는 버튼이 말없이 아무것도 안 한 것으로 보인다.
+  // 낱말은 그대로 「업데이트 필요」다 — 파일이 여전히 그렇다.
+  it("설치하고도 업데이트 필요면 앱이 못 고친 까닭이 그 줄 아래 선다", () => {
+    const why =
+      "손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요 — ~/.codex/config.toml을 열어 아틀리에 설정 화면이 넣은 구역 밖에서 `atelier-hook.py`나 `atelier-hook.zsh`가 든 줄을 찾아, 그 줄이 든 `[[hooks.<이벤트>.hooks]]` 머리 줄과 거기 딸린 줄(`type` · `command` 등)을 지우고, 그 `[[hooks.<이벤트>]]` 묶음에 남은 훅이 없으면 묶음의 머리 줄과 거기 딸린 줄(`matcher` 등)도 지운 뒤 다시 설치해 주세요.";
+    const status = hook({ agent: "codex", path: "~/.codex/config.toml", installed: "partial", writeError: why });
+    expect(hookStateLabel(status)).toBe("업데이트 필요");
+
+    const html = renderHooks([status]);
+    expect(html).toContain("업데이트 필요");
+    expect(html).toContain("손으로 적어 둔 훅 줄이 지금 모양과 달라 앱이 못 고쳤어요");
+    expect(html).not.toContain("확인 못 함");
   });
 
   // 깨진 파일에서는 쓰기도 판정도 같은 까닭으로 실패한다 — 그때 같은 줄이 두 번 서면

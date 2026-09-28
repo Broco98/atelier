@@ -19,6 +19,7 @@ import {
   openNewShell,
   requestCloseShell,
   selectShell,
+  selectShellWithFocus,
   terminalStore,
 } from "./terminal-store";
 import { armDrag, dragStore, hoverSlot } from "@/lib/pointer-drag";
@@ -180,7 +181,8 @@ function TerminalPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean 
           showing
           // 왼쪽에 남은 것이 사이드바뿐이다 — 그게 접히면 이 줄이 창 왼쪽 끝에 붙는다
           inset={!sidebarOpen}
-          onSelect={selectShell}
+          // 누르면 켜고 **키보드 포커스도 데려온다** — 이미 켜진 탭을 다시 눌러도다(티켓 16 · `selectShellWithFocus`).
+          onSelect={selectShellWithFocus}
           // 확인을 거치는 길 하나다(결정 92) — ⌘W도 같은 함수로 온다.
           onClose={requestCloseShell}
           onOpen={() => openNewShell(topTerminal(mode))}

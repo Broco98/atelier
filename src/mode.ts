@@ -1,4 +1,4 @@
-import { Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
+import { Activity, Archive, Settings, SquareTerminal, type LucideIcon } from "lucide-react";
 import { navItems, type NavKey } from "@/components/shell/nav-items";
 import { SETTINGS_ENTRY } from "@/features/settings/pages";
 import { isAtOrUnder } from "@/lib/path-prefix";
@@ -19,7 +19,9 @@ export type Mode = "atelier" | "maison";
  * `navigate({ to })`로 넘기는데, `string`으로 두면 라우터가 주소를 못 좁혀 그 자리에서
  * L0가 빨개진다(그리고 넓히면 오타 난 주소가 타입 검사를 통과한다).
  */
-type NavTo = (typeof navItems)[number]["to"] | (typeof MAISON_ROUTES)["terminal" | "archive"];
+type NavTo =
+  | (typeof navItems)[number]["to"]
+  | (typeof MAISON_ROUTES)["terminal" | "processes" | "archive"];
 
 /**
  * nav 줄에 서는 항목의 규격. 모드가 갈려도 **규격은 하나다**(결정 6) — 갈리는 것은 배열뿐이다.
@@ -57,7 +59,7 @@ interface PaletteDestination {
 }
 
 /**
- * 그 모드의 화면 다섯. **`to` 리터럴이 박히는 자리는 여기 하나여야 한다** — 정규화
+ * 그 모드의 화면 여섯. **`to` 리터럴이 박히는 자리는 여기 하나여야 한다** — 정규화
  * 리다이렉트·nav·팔레트 도착·사이드바 행·행 강조가 각자 문자열을 들면, Maison 주소 하나를
  * 고칠 때 여섯 자리를 사람이 기억해야 한다.
  */
@@ -67,6 +69,11 @@ interface ModeRoutes {
   /** 그 항목 하나. 라우트 템플릿이라 `$slug`가 그대로 실린다. */
   readonly item: string;
   readonly terminal: string;
+  /**
+   * `Processes`(프로세스 결정 8 · 9). **두 세계에 같은 화면이다** — 화면은 앱 전체를 보이고, 주소가 세계마다 따로인 것은 각
+   * 세계의 nav가 자기 접두사로 가서 nav를 눌러 세계를 떠나지 않게 하려는 것이다.
+   */
+  readonly processes: string;
   readonly archive: string;
   readonly archiveItem: string;
 }
@@ -113,6 +120,7 @@ const ATELIER_ROUTES = {
   list: "/works",
   item: "/works/$slug",
   terminal: "/terminal",
+  processes: "/processes",
   archive: "/archive",
   archiveItem: "/archive/$slug",
 } as const satisfies ModeRoutes;
@@ -121,13 +129,15 @@ const MAISON_ROUTES = {
   list: "/maison/rooms",
   item: "/maison/rooms/$slug",
   terminal: "/maison/terminal",
+  processes: "/maison/processes",
   archive: "/maison/archive",
   archiveItem: "/maison/archive/$slug",
 } as const satisfies ModeRoutes;
 
 /**
- * Maison nav는 `Terminal`·`Archive` 둘이다(결정 6). `Projects`가 없는 것은 빠뜨린 게 아니라
- * **이 세계에 프로젝트가 없기 때문**이다(결정 17) — Room은 토픽이고 저장소에 안 붙는다.
+ * Maison nav는 `Terminal`·`Processes`·`Archive` 셋이다. life-mode 결정 6은 `Terminal` · `Archive` 둘이었고, 프로세스 결정
+ * 8 · 9가 이렇게 고쳤다: `Processes`가 main nav에 서되 두 세계 모두에 선다. `Projects`가 없는 것은 빠뜨린 게 아니라
+ * **이 세계에 프로젝트가 없기 때문**이다(life-mode 결정 17) — Room은 토픽이고 저장소에 안 붙는다.
  *
  * Atelier 벌은 `nav-items.ts`가 계속 든다 — 그 파일의 주석이 「Works 항목은 왜 없는가」·
  * 「설정은 왜 여기 없는가」를 이미 못박고 있고, 그것을 여기로 옮기면 이유가 배열에서 떨어진다.
@@ -138,6 +148,8 @@ const MAISON_ROUTES = {
  */
 const MAISON_NAV = [
   { key: "terminal", label: "Terminal", icon: SquareTerminal, to: MAISON_ROUTES.terminal },
+  // 자리는 Atelier 벌과 같다 — `Terminal` 다음, `Archive` 앞(프로세스 스펙 S43). 가는 화면도 같고, 주소만 이 세계의 것이다.
+  { key: "processes", label: "Processes", icon: Activity, to: MAISON_ROUTES.processes },
   { key: "archive", label: "Archive", icon: Archive, to: MAISON_ROUTES.archive },
 ] as const satisfies readonly NavItem[];
 
@@ -265,7 +277,9 @@ export function hasProjects(mode: Mode): boolean {
 
 /**
  * 화면에 적는 세계의 이름. 사이드바의 세그먼트(`ModeSwitch`)와 설정 「spec 레이아웃」의 행 머리가
- * 이것을 읽는다 — 모드 이름이 곧 레이아웃의 이름이다(spec 레이아웃 결정 25).
+ * 이것을 읽는다 — 모드 이름이 곧 레이아웃의 이름이다(spec 레이아웃 결정 25). `Processes`의 세계 줄과
+ * 주인 잃은 셸 묶음의 세계 표시(프로세스 티켓 27 · 32)도 이것을 읽는다. 문장 안에서도 이 대문자
+ * 그대로다(CONTEXT 「표기」).
  *
  * 세그먼트 한 자리에서만 쓰던 동안은 그 파일에 살았다. 「쓰는 자리가 하나면 그 파일로, 둘이면
  * 공용으로」(`shell-meta.tsx` 머리말) — 둘째 자리가 생긴 날 이 표로 올라왔다. 두 자리가 각자
@@ -313,7 +327,7 @@ export function destinationsOf(mode: Mode): readonly PaletteDestination[] {
   return TABLE[mode].palette;
 }
 
-/** 그 모드의 화면 주소 다섯. 반환 타입이 리터럴 유니온이라 라우터의 `to`로 그대로 나간다. */
+/** 그 모드의 화면 주소 여섯. 반환 타입이 리터럴 유니온이라 라우터의 `to`로 그대로 나간다. */
 export function routesOf(mode: Mode): (typeof TABLE)[Mode]["routes"] {
   return TABLE[mode].routes;
 }

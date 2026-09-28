@@ -4,16 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { textareaLook } from "@/components/ui/textarea-look";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { FONT_FAMILY, FONT_SIZE, MONO_FACE } from "@/features/terminal/terminal-defaults";
 import { applyTerminalSettings } from "@/features/terminal/terminal-settings";
 import { applyNotifySettings } from "@/features/terminal/notify-settings";
 import { terminalThemeFor } from "@/features/terminal/terminal-theme";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import SpecLayoutPage from "@/features/spec-layout/SpecLayoutPage";
 import { hooksApi, settingsApi } from "./api";
 import { notificationChoice, patchNotifications } from "./notifications";
 import { settingsItem, type SettingsItemKey } from "./pages";
+import { exceptionsFromText, exceptionsText } from "./process-exceptions";
 import { saveSettingsSection, type SettingsSectionKey } from "./save-section";
 import type {
   HookStatus,
@@ -374,6 +378,26 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
     if (size !== "invalid") change({ fontSize: size });
   };
 
+  // 예외 목록(프로세스 결정 5). 기본 목록은 백엔드가 준다 — 판정이 쓰는 Rust 상수라 이 화면에 없다.
+  const defaults = useDefaultExceptions();
+  const knownDefaults = Array.isArray(defaults) ? defaults : null;
+  // 칸의 원문. 크기 칸처럼 따로 드는 것은 목록으로만 들면 줄을 새로 여는 순간(빈 줄)을 목록이 삼켜 다음 이름을
+  // 못 적기 때문이다. **손대기 전에는 `null`이고 그때 칸은 초안에서 짓는다** — 기본 목록이 늦게 와도 칸이
+  // 따라오고, 「기본값으로」가 원문을 버리면 칸이 기본 목록으로 돌아간다.
+  const [exceptionsTyped, setExceptionsTyped] = useState<string | null>(null);
+  const exceptionsShown =
+    exceptionsTyped ?? exceptionsText(section.draft.processExceptions, knownDefaults);
+
+  const changeExceptions = (raw: string) => {
+    setExceptionsTyped(raw);
+    change({ processExceptions: exceptionsFromText(raw, knownDefaults) });
+  };
+
+  const resetExceptions = () => {
+    setExceptionsTyped(null);
+    change({ processExceptions: null });
+  };
+
   return (
     <div role="group" aria-label="터미널 설정" className="flex flex-col gap-6">
       <TerminalSection
@@ -382,9 +406,50 @@ function TerminalSettingsPage({ initial }: { initial: Settings }) {
         onChange={change}
         onChangeSize={changeSize}
       />
+      <ProcessExceptionsSection
+        text={exceptionsShown}
+        isDefault={section.draft.processExceptions === null}
+        defaultsFailed={defaults === "failed"}
+        onChange={changeExceptions}
+        onReset={resetExceptions}
+      />
       <SaveButton {...section.button(enabled)} />
     </div>
   );
+}
+
+/**
+ * 예외 목록의 기본값 조회(`default_process_exceptions`). 페이지가 열릴 때 한 번 묻는다.
+ *
+ * - **다시 시도하지 않는다**(`retry: false`). 못 받으면 곧바로 「읽지 못했어요」를 적는다 — 웹뷰의 기본(세 번 더, 1 · 2 · 4초
+ *   쉼)이면 그 7초 동안 칸이 말없이 잠긴다(L3 `process-exceptions`).
+ * - **열려 있는 동안 다시 묻지 않는다**(`staleTime: "static"` — 창으로 돌아올 때도, 네트워크가 돌아올 때도). 판정이 쓰는
+ *   Rust 상수라 앱이 도는 동안 안 바뀐다. `Infinity`로는 모자란다: react-query는 **값이 없는 조회**(못 받은 것)를
+ *   `staleTime`과 상관없이 낡았다고 봐 창이 다시 보이면 다시 부르고, 그 동안 「읽지 못했어요」가 사라져 칸이 말없이 잠긴다
+ *   (L3 `process-exceptions`). `"static"`은 그 재조회를 값이 있든 없든 건너뛴다.
+ * - **페이지를 떠나면 버린다**(`gcTime: 0`). 다시 열면 새로 묻는다 — 못 받았던 것도 그때 다시 묻는다.
+ * - **네트워크가 끊겨도 묻는다**(`networkMode: "always"`). 로컬 IPC라 네트워크와 상관이 없다 — 기본(`online`)이면 창이
+ *   `offline`을 받은 뒤 여는 페이지마다 조회가 멈춰, 칸이 말없이 잠긴다(L3 `process-exceptions`).
+ */
+const defaultExceptionsQuery = queryOptions({
+  queryKey: ["settings", "defaultExceptions"],
+  queryFn: settingsApi.defaultExceptions,
+  retry: false,
+  staleTime: "static",
+  gcTime: 0,
+  networkMode: "always",
+});
+
+/**
+ * 예외 목록의 기본값. 아직 안 왔으면 `null`, 못 받았으면 `"failed"`.
+ *
+ * 설정 파일과 따로 묻는 것은 **값을 정하는 자리가 다르기 때문이다** — 파일에는 사람이 고친 것만 있고, 기본 목록은
+ * 판정이 쓰는 Rust 상수다. 못 받아도 터미널 설정의 다른 칸은 그대로 쓴다: 예외 칸만 잠긴다
+ * (`ProcessExceptionsSection`).
+ */
+function useDefaultExceptions(): string[] | null | "failed" {
+  const { data, isError } = useQuery(defaultExceptionsQuery);
+  return data ?? (isError ? "failed" : null);
 }
 
 /**
@@ -650,6 +715,67 @@ export function TerminalSection({
 }
 
 /**
+ * 「셸을 닫아도 남길 프로세스」 — 예외 목록 한 항목(프로세스 결정 5 · 프로세스 스펙 S7). 한 줄에 하나씩 쓰는
+ * 목록이다. 이름이 걸린 프로세스와 그 밑은 셸을 닫아도, 앱이 무엇을 자동으로 끝내든 남는다.
+ *
+ * **이름이 둘이다**(`CONTEXT.md`의 「예외」). 목록을 고치는 이 자리는 「셸을 닫아도 남길 프로세스」라 부른다 —
+ * 무엇이 되는지를 말하는 이름이다. 걸린 것을 모아 보이는 자리는 「예외」다.
+ *
+ * 줄(`Row`)에 안 앉히는 것은 라벨이 길어서다 — 왼쪽 64px 칸에 넣으면 네 줄로 꺾인다. 저장은 터미널 설정의 저장
+ * 버튼 하나가 함께 진다(초안이 `terminal` 구획 하나다).
+ *
+ * 값을 들지 않는다 — 조각(`TerminalSettingsPage`)이 들고 이쪽은 그리기만 한다(`TerminalSection`과 같은 이유).
+ */
+export function ProcessExceptionsSection({
+  text,
+  isDefault,
+  defaultsFailed,
+  onChange,
+  onReset,
+}: {
+  /**
+   * 칸에 보일 글자. **`null`이면 칸을 잠근다** — 고치지 않았는데(기본값) 기본 목록을 아직 모르는 때다. 빈 칸을
+   * 열어 두면 거기 한 줄을 더해 저장하는 순간 기본 목록이 통째로 사라진다(`exceptionsText`).
+   */
+  text: string | null;
+  /** 초안이 기본값(`null`)인가. 그러면 「기본값으로」가 할 일이 없다. */
+  isDefault: boolean;
+  /** 기본 목록을 못 받았나. */
+  defaultsFailed: boolean;
+  onChange: (raw: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-2 pt-2">
+      <span className="text-[13px] text-tertiary">셸을 닫아도 남길 프로세스</span>
+      <p className="text-[13px] leading-[1.7] text-tertiary">
+        셸을 닫거나 앱을 끄면 그 셸에서 띄운 프로세스도 함께 끝나요. 여기 적은 이름의 프로세스와 그
+        밑에서 뜬 것은 그대로 둬요. 한 줄에 하나씩 적고, 끝에 <code>*</code>를 붙이면 그 이름으로
+        시작하는 것을 모두 둬요.
+      </p>
+      <textarea
+        aria-label="셸을 닫아도 남길 프로세스"
+        value={text ?? ""}
+        disabled={text === null}
+        onChange={(e) => onChange(e.target.value)}
+        rows={7}
+        spellCheck={false}
+        className={cn(textareaLook, "w-[280px] disabled:opacity-40")}
+      />
+      <div className="flex items-center gap-3">
+        {/* 규격은 이 화면의 「다시 읽기」와 같은 가족이다(`Button` ghost · sm) — 주 버튼은 저장 하나다. */}
+        <Button variant="ghost" size="sm" onClick={onReset} disabled={isDefault}>
+          기본값으로
+        </Button>
+        {defaultsFailed && (
+          <span className="text-[13px] text-red-600">기본 목록을 읽지 못했어요.</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
  * `알림` 구획 — **고르는 것이 둘뿐이다**(결정 10 · 스토리 67). 「배경일 때만」 같은 셋째
  * 선택은 기각됐다: 이 앱은 창이 하나이고 「그 셸을 보고 있는가」가 이미 억제를 맡고 있어
  * (결정 7) 셋째 단이 더할 것이 없다.
@@ -717,16 +843,27 @@ export function NotificationSection({
 }
 
 /**
- * 훅이 지금 어떤가를 **한 낱말로**. 셋이고, 셋째가 이 함수가 있는 이유다.
+ * 훅이 지금 어떤가를 **한 낱말로**. 넷이고, 넷째(「확인 못 함」)가 이 함수가 있는 첫 이유다.
  *
  * `installed`만 보면 「깨져서 판정을 못 했다」가 「안 깔렸다」와 같은 낱말이 된다. 백엔드는
- * 그때 판정을 안 하고 `installed: false`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
+ * 그때 판정을 안 하고 `installed: "none"`에 까닭을 함께 실어 보내는데(`hooks.rs`의 `look`),
  * 화면이 그 둘을 한 낱말로 접으면 **없는 사실을 만들고** 사람을 실패하는 버튼으로 보낸다.
+ *
+ * **일부만 깔린 것은 「업데이트 필요」다**(프로세스 결정 15 · 프로세스 스펙 S35). 앱이 뜰 때 저절로 맞추지만, 그 전에 연
+ * 사람이나 맞추기가 실패한 사람에게는 「설치」 버튼이 고칠 길이다 — 병합이 이미 깔린 것을 지금 목록으로 맞춘다. 병합이 못
+ * 고치는 자리(codex 설정에 손으로 적어 둔 옛 줄)는 설치의 답이 `writeError`로 그 까닭을 싣는다(`hooks.rs`의 `unfixed`).
  */
 export function hookStateLabel(status: HookStatus): string {
   if (status.error !== null) return "확인 못 함";
-  return status.installed ? "설치됨" : "설치 안 됨";
+  return INSTALLED_LABEL[status.installed];
 }
+
+/** 설치 상태마다의 낱말. 표로 두면 상태가 하나 늘 때 타입 검사가 빠진 낱말을 잡는다. */
+const INSTALLED_LABEL: Record<HookStatus["installed"], string> = {
+  none: "설치 안 됨",
+  partial: "업데이트 필요",
+  full: "설치됨",
+};
 
 /**
  * `에이전트 훅` 구획 — 에이전트마다 상태·경로·미리보기, 그리고 버튼 둘 (스토리 70~74).

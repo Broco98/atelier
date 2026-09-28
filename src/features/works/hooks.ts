@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
 import {
   hashKey,
@@ -9,12 +7,13 @@ import {
   useQuery,
   useQueryClient,
   type QueryClient,
+  type QueryKey,
 } from "@tanstack/react-query";
-import { invalidateArchive } from "@/features/archive/hooks";
+import { archiveQuery, invalidateArchive } from "@/features/archive/hooks";
 import { showProblem } from "@/components/ui/confirm-store";
 import { worksApi } from "./api";
 import { movedWorks, type RowGap } from "./row-drop";
-import type { Mode } from "@/mode";
+import { ALL_MODES, type Mode } from "@/mode";
 import type { WorkStatus, WorkView } from "./types";
 
 // ["works"]로 시작하는 모든 쿼리(두 세계의 목록·spec 파일)가 works:changed 한 번에 무효화된다.
@@ -22,7 +21,7 @@ import type { WorkStatus, WorkView } from "./types";
 const WORKS_KEY = ["works"] as const;
 
 /**
- * work 목록이 바뀌었다고 알리는 **유일한 문.** 이벤트를 듣는 쪽도 mutation도 여기를 탄다.
+ * work 목록이 바뀌었다고 알리는 **유일한 문.** 이벤트를 듣는 쪽(앱 루트 한 곳 — `AppShell`)도 mutation도 여기를 탄다.
  *
  * **두 세계를 함께 지운다.** 백엔드는 `works:changed`를 모드별로 나누지 않으므로(#181 —
  * 나누는 비용보다 저쪽 목록을 한 번 더 읽는 비용이 싸다) 무효화도 접두사여야 한다. 키를
@@ -36,6 +35,18 @@ const WORKS_KEY = ["works"] as const;
  * 목록은 아직 날아오는 중이라, **방금 지운 work이 브레드크럼과 본문에 그대로 서 있는 창**이
  * 생긴다. 화면으로는 「지웠는데 남아 있다」로만 보인다.
  *
+ * **조회 중에 온 무효화는 표시만 하고, 도는 조회가 모두 끝나면 한 번 더 읽는다**(프로세스 결정 18 ① · 프로세스 스펙 S20 ·
+ * 티켓 14). 에이전트가 spec을 쓰는 동안 이벤트는 조회보다 자주 온다. 올 때마다 도는 조회를 끊고 새로 부르면 코어는 버려진
+ * 조회까지 다 돈다 — IPC는 취소되지 않고, 한 번이 워크트리마다 `git status`다. 그래서 무효화는 도는 조회를 버리지 않고
+ * (`cancelRefetch: false`), 목록 조회(두 세계의 work 목록과 아카이브 목록) 중 하나라도 돌면 표시만 한다. spec 본문과
+ *   아카이브 문서는 함께 다시 읽되 문을 잡지 않는다 — 실패해 다시 시도하는 문서가 목록을 7초씩 밀었다(`reading`).
+ * - 표시한 쪽은 **뒤따르는 한 번**의 promise를 받는다. 같은 회차에 온 표시는 그 하나를 나눠 갖는다 — 몇 번 왔든 다시
+ *   읽기 한 번이면 다 덮는다.
+ * - 도는 조회의 promise를 주지 않는 것이 위 계약이다. 그 조회는 쓰기 **전** 파일을 읽었을 수 있다 — 삭제 뒤의 진행 표시가
+ *   거기서 걷히면 그 창이 다시 열린다. 그 조회가 이 문이 띄운 것이 아니어도(화면이 처음 선 순간의 조회) 같다.
+ * - 그래서 조회는 동시에 하나이고, 끝나면 최대 한 번 더 돈다. 뒤따르는 한 번도 이 문을 다시 지난다 — 그 사이 옮기기가
+ *   시작됐으면 옮기기가 끝난 뒤의 한 번으로 미뤄진다(겹쳐도 한 번).
+ *
  * **옮기기가 떠 있으면 끝난 뒤로 미뤄 한 번** 돈다(스펙 S9). 곧바로 돌리면 쓰기 **전** 파일을 읽은
  * 느린 재조회(워크트리마다 상태를 묻는다)가 옮기기 응답 **뒤에** 도착해 옛 순서로 덮는다. 순서만
  * 바뀐 쓰기는 감시자가 안 쏘므로(점 파일) 그 옛 순서가 `staleTime` 동안 남는다. 대기가 이 문
@@ -46,14 +57,110 @@ const WORKS_KEY = ["works"] as const;
  * 미룬 동안 돌려주는 promise는 곧바로 풀린다 — 그 mutation의 진행 표시는 옮기기가 끝나기를 안
  * 기다린다. 옮기기는 파일 한 장 쓰기라 그 창이 한 박자이고, 그것을 기다리게 하면 이 문이 옮기기의
  * 수명을 알아야 한다.
+ *
+ * **아카이브 목록도 이 문 안에서 함께 지운다**(`invalidateArchive` — 티켓 14). 아카이빙은 언제나 works/에서 하나가 사라지는
+ * 일이라 `works:changed`가 함께 온다. 여기를 타야 이벤트 한 번에 아카이브 목록 조회도 한 번이고 같은 합치기를 받는다.
+ *
+ * **저쪽 세계도 이 문 안에서 함께 읽는다**(티켓 12 · 프로세스 스펙 S13). 무효화는 관찰자가 있는 쿼리만 다시 부르는데
+ * 앱 루트가 관찰하는 것은 지금 세계 하나라, 저쪽 목록은 지워진 채 새로 안 앉는다 — 그러면 MCP로 아카이브된 저쪽 Room의
+ * 셸을 못 알아챈다. 어느 세계를 읽을지는 셸을 아는 쪽이 건 함수가 **이때** 고른다(`readOtherWorldsWith`). 지운 **뒤에**
+ * `prefetchQuery`로 부르는 것이 순서다: 지운 쿼리는 신선도와 무관하게 낡은 것이라 반드시 다시 읽는다.
+ * - `prefetchQuery`는 그 쿼리에 도는 조회가 있으면 새로 안 부르고 **합류한다**(관찰자가 없어 무효화가 끊지도 않는다). 앞
+ *   이벤트의 느린 조회가 MCP 아카이브 **전에** 읽은 목록 — 아카이브된 work이 든 — 을 앉히면 그 세계의 주인 잃은 셸을 못
+ *   본다(티켓 12 리뷰). 이 문은 도는 조회가 **없을 때만** 여기까지 오므로, 합류할 조회는 이번 무효화 뒤에 시작한 것
+ *   (관찰자가 있어 `invalidateQueries`가 방금 부른 것)뿐이다. 합류해도 된다.
+ * - 끊고 다시 부르는 길은 쓰지 않는다: 관찰자 없는 목록은 5분 조용하면 캐시에서 빠지고, 그 뒤의 첫 조회는 값이 없어
+ *   react-query가 `cancelRefetch`로도 안 끊는다. 억지로 끊으면 세계를 건너는 라우트(`pickWorkSlug`의 `ensureQueryData`)가
+ *   거기 합류해 있다가 취소를 받아 빈 목록으로 정규화한다.
+ *
+ * 곧바로 읽는 쪽이 돌려주는 promise는 **관찰되는 쿼리의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽
+ * 세계는 이 화면의 목록이 아니다. 저쪽 세계의 읽기는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다. **표시한 쪽은 저쪽
+ * 세계까지 기다린다:** 뒤따르는 한 번은 도는 목록 조회가 **모두** 끝난 뒤에 나가므로(`readsSettled` — 두 세계 · 아카이브를 한
+ * 줄로 본다), 그때 돌던 저쪽 세계의 목록이 늦으면 표시한 쪽의 진행 표시도 그만큼 선다. 세계마다 문을 가르지 않은 대가다(티켓 14).
  */
-export function invalidateWorks(queryClient: QueryClient) {
+export function invalidateWorks(queryClient: QueryClient): Promise<void> {
   const state = movesOf(queryClient);
   if (state.inFlight > 0) {
     state.deferred = true;
     return Promise.resolve();
   }
-  return queryClient.invalidateQueries({ queryKey: WORKS_KEY });
+  const pending = trailing.get(queryClient);
+  if (pending) return pending;
+  if (reading(queryClient)) {
+    const once = readsSettled(queryClient).then(() => {
+      trailing.delete(queryClient);
+      return invalidateWorks(queryClient);
+    });
+    trailing.set(queryClient, once);
+    return once;
+  }
+  const refetched = Promise.all([
+    queryClient.invalidateQueries({ queryKey: WORKS_KEY }, { cancelRefetch: false }),
+    invalidateArchive(queryClient),
+  ]);
+  for (const mode of otherWorlds.get(queryClient)?.() ?? []) void queryClient.prefetchQuery(worksQuery(mode));
+  return refetched.then(() => undefined);
+}
+
+/**
+ * 캐시마다 **표시해 둔 뒤따르는 한 번**(`invalidateWorks`). 도는 조회가 모두 끝나면 이 문을 다시 지나 풀린다. 캐시에 매는
+ * 까닭은 아래 `moves`와 같다.
+ */
+const trailing = new WeakMap<QueryClient, Promise<void>>();
+
+/**
+ * **목록 조회가 도는가** — 두 세계의 work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
+ * `ensureQueryData` · 저쪽 세계 읽기).
+ *
+ * **spec 본문과 아카이브 문서(문서 목록 · 본문)는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
+ * 실패한 조회를 세 번 더 시도하고(1 · 2 · 4초 쉼) 그동안 내내 「도는 중」이다 — 읽을 수 없는 문서 하나(spec/의 `ref.pdf`는
+ * 코어의 `read_to_string`이 매번 실패한다)가 떠 있으면, 접두사로 셀 때 이벤트마다 목록 다시 읽기가 7초씩 밀렸다. 영영 안
+ * 돌아오는 문서 읽기도 같은 길로 목록을 멈춘다. 대가: 목록 없이 홀로 돌던 문서 읽기(창으로 돌아올 때의 재조회 등)에 이
+ * 문의 무효화가 합류한다 — 쓰기 전 파일을 읽었으면 그 본문만 다음 이벤트까지 낡는다. 무효화는 목록과 문서를 함께 띄우고
+ * 목록이 훨씬 오래 도므로, 흔한 길(에이전트가 이어 쓰는 동안)의 문서 읽기는 목록이 잡은 문 안에 든다.
+ */
+function reading(queryClient: QueryClient): boolean {
+  return fetchingInAnyWorld(queryClient, worksQuery) || fetchingInAnyWorld(queryClient, archiveQuery);
+}
+
+/**
+ * 세계마다 하나인 쿼리(`worksQuery` · `archiveQuery`)가 **어느 세계에서든** 도는가. 키를 정확히(`exact`) 본다 — 접두사로 보면
+ * 그 목록 키 아래 사는 문서 읽기까지 세어진다(`reading`이 안 세는 것).
+ */
+function fetchingInAnyWorld(queryClient: QueryClient, query: (mode: Mode) => { queryKey: QueryKey }): boolean {
+  return ALL_MODES.some((mode) => queryClient.isFetching({ queryKey: query(mode).queryKey, exact: true }) > 0);
+}
+
+/**
+ * 도는 조회가 **모두 끝나면** 풀린다. 캐시의 알림은 쿼리 상태를 바꾸는 그 자리에서 동기로 오므로(query-core `query.js`의
+ * `#dispatch` → `QueryCache.notify`) 끝난 순간에 깬다 — 시계를 안 쓴다. 끊긴 조회(옮기기의 취소)도 상태를 되돌리며 알린다.
+ */
+function readsSettled(queryClient: QueryClient): Promise<void> {
+  return new Promise((resolve) => {
+    const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+      if (reading(queryClient)) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
+/**
+ * 캐시마다 **함께 다시 읽을 저쪽 세계를 고르는 함수** 하나(티켓 12). 앱 루트(`ShellOwners`)가 걸고 내려갈 때 푼다.
+ * 캐시에 매는 까닭은 아래 `moves`와 같다 — L2가 캐시를 검사마다 새로 세운다.
+ */
+const otherWorlds = new WeakMap<QueryClient, () => ReadonlyArray<Mode>>();
+
+/**
+ * 이 캐시의 무효화가 부를 **저쪽 세계를 고르는 함수**를 건다 — 부르는 것은 무효화할 때마다다(셸은 그사이 열리고 닫힌다).
+ * 돌려주는 함수로 푼다. **제가 건 것만 푼다** — StrictMode가 이펙트를 두 번 돌리거나 세계를 건너 새로 걸 때, 앞의 풀기가
+ * 뒤에 건 것을 지우면 저쪽 세계를 영영 안 읽는다.
+ */
+export function readOtherWorldsWith(queryClient: QueryClient, pick: () => ReadonlyArray<Mode>): () => void {
+  otherWorlds.set(queryClient, pick);
+  return () => {
+    if (otherWorlds.get(queryClient) === pick) otherWorlds.delete(queryClient);
+  };
 }
 
 /**
@@ -73,8 +180,11 @@ function movesOf(queryClient: QueryClient) {
 //
 // staleTime이 없으면 beforeLoad가 막 받아온 목록이 즉시 stale이라 이어서 마운트되는
 // useWorks가 같은 IPC를 한 번 더 쏘고, 탭을 옮길 때마다 beforeLoad가 재요청을 기다린다.
-// 이 목록의 신선도는 시간이 아니라 works:changed 무효화가 책임지므로(아래 useWorks),
+// 이 목록의 신선도는 시간이 아니라 works:changed 무효화가 책임지므로(앱 루트의 구독 → 위 문),
 // 여기 값은 그 사이를 메우는 안전망일 뿐이다.
+//
+// **창으로 돌아올 때 다시 읽지 않는다**(프로세스 결정 18 ① · 티켓 14). 변화는 감시자가 이미 알린다 — 워크트리마다
+// `git status`를 도는 조회를 창을 오갈 때마다 돌 까닭이 없다. 이 목록만 끈다: 다른 쿼리는 기본값 그대로다.
 //
 // **모드가 인자다.** 캐시가 세계별로 갈려야 `/maison/rooms` 정규화가 Atelier 목록을 읽지
 // 않는다 — 한 키에 둘을 담으면 세계를 건널 때마다 앞 세계의 목록이 한 프레임 서고, 그
@@ -84,23 +194,13 @@ export const worksQuery = (mode: Mode) =>
     queryKey: [...WORKS_KEY, mode],
     queryFn: () => worksApi.list(mode),
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
-// 듣는 것은 **모드와 무관하다** — 이벤트가 하나뿐이라 어느 세계의 화면이 듣든 지우는 것은
-// 같다. 화면이 둘 다 떠 있을 일이 없으므로 리스너도 하나다.
+// **여기서 듣지 않는다**(프로세스 결정 18 ① · 티켓 14). 이 훅을 부르는 자리는 다섯이다(사이드바 · 사이드바 work 목록 ·
+// works 라우트 · 작업 화면 · 프로젝트 상세). 저마다 `works:changed`를 들으면 이벤트 한 번에 목록 조회가 그 수만큼 돈다 —
+// 작업 화면에서 네 번, 워크트리 21개면 `git status` 84번이었다. 듣는 자리는 앱 루트 하나다(`AppShell`).
 export function useWorks(mode: Mode) {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    const unlisten = listen("works:changed", () => {
-      // 이벤트에는 기다릴 사람이 없다 — 여기서만 반환을 버린다.
-      void invalidateWorks(queryClient);
-    });
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [queryClient]);
-
   return useQuery(worksQuery(mode));
 }
 
@@ -230,18 +330,18 @@ export function useMoveWork(mode: Mode) {
 
 // 아카이브와 삭제 모두 작업 목록에서 사라지게 만든다. 다만 아카이브는 **반대편에 하나를
 // 더한다** — 파일 감시가 뒤늦게 알려주기를 기다리지 않고 여기서 함께 무효화한다.
-// 그러지 않으면 방금 치운 작업이 Archive 화면에 바로 나타나지 않는다.
+// 그러지 않으면 방금 치운 작업이 Archive 화면에 바로 나타나지 않는다. 반대편(아카이브 목록)은
+// 무효화 문이 함께 지운다(티켓 14) — 따로 부르면 그 문의 합치기를 건너뛴다.
 export function useArchiveWork(mode: Mode) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) => worksApi.archive(mode, slug),
-    // **여기만 기다리지 않는다.** 문 둘을 함께 여는 자리라 예전에도 블록 몸통이었고, 그래서
+    // **여기만 기다리지 않는다.** 문 둘을 함께 열던 자리라 예전부터 블록 몸통이었고, 그래서
     // 아카이빙의 `isPending`은 원래부터 커맨드가 돌아오면 풀렸다. 기다리게 바꾸는 것이 더
     // 나을 수 있지만 그것은 이 티켓이 건드린 자리가 아니다 — 여기서 바꾸면 모드를 나누는
     // 변경에 Atelier 동작 변화가 조용히 섞인다.
     onSuccess: () => {
       void invalidateWorks(queryClient);
-      void invalidateArchive(queryClient);
     },
   });
 }

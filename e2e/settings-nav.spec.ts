@@ -7,6 +7,7 @@ import {
   markAttention,
   setWindowFocused,
   stubWindowFocus,
+  typeIntoShell,
   unknownIpcCalls,
   띠,
 } from "./harness";
@@ -190,6 +191,8 @@ test.describe("앱으로 돌아가기", () => {
     await installFixtureBackend(page);
     await page.goto(`/works/${plain.slug}?tab=terminal`);
     await awaitSpawned(page, 1);
+    // 저절로 뜬 셸은 입력 없이 떠나면 닫혀 띠도 함께 내려간다(프로세스 결정 7). 에이전트가 도는 셸은 사람이 친 셸이다.
+    await typeIntoShell(page);
     await page.locator('[data-tab="spec"]').click();
     await expect(page).not.toHaveURL(/tab=terminal/);
     await setWindowFocused(page, false);

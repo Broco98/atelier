@@ -15,6 +15,10 @@ export interface TerminalSettings {
   fontSize: number | null;
   // 이 하나만 파일이 비어도 값이 정해져 온다 — 기본은 어둡게다(결정 54).
   theme: TerminalTheme;
+  // 셸을 닫아도 남길 프로세스 — 예외 목록(프로세스 결정 5). 고치지 않았으면 `null`이고 그때는 **기본 목록**을
+  // 쓴다. 그 목록은 여기에도 파일에도 없다: 판정이 쓰는 Rust 상수이고, 화면은 IPC로 받는다
+  // (`settingsApi.defaultExceptions`). 빈 목록(`[]`)은 `null`과 다르다 — 「아무것도 남기지 않는다」다.
+  processExceptions: string[] | null;
 }
 
 // 알림 구획 (#206 · 결정 10). **둘뿐이다** — 켬/끔과 소리 켬/끔. 「배경일 때만」 같은 셋째
@@ -47,14 +51,22 @@ export interface Settings {
 //
 // **앱이 따로 기억하는 값이 아니다.** 부를 때마다 설정 파일을 읽어 만든 것이라, 사람이
 // 파일을 손으로 고쳐도 다음 조회가 그것을 그대로 말한다.
+
+/**
+ * 얼마나 깔렸나(프로세스 결정 15 · 프로세스 스펙 S35 — `hooks.rs`의 `Installed`). 우리 훅이 하나도 없으면 `none`, 지금 목록
+ * 전부가 지금 모양으로 있으면 `full`, 그 사이 — 목록이 는 판의 옛 훅, 빠진 `async`, 남은 옛 명령줄 — 는 `partial`이다. 파일의
+ * 목록 판이 이 빌드보다 새로우면 `full`이다(그 파일을 옛 목록으로 되쓰지 않게).
+ */
+export type HookInstalled = "none" | "partial" | "full";
+
 export interface HookStatus {
   /** `claude` · `codex`. */
   agent: string;
   /** 사람이 읽는 경로 — `~/.claude/settings.json`. */
   path: string;
-  installed: boolean;
+  installed: HookInstalled;
   /**
-   * 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 `false`지만 뜻은
+   * 파일이 깨져 **판정을 못 했으면** 그 까닭. 그때 `installed`는 `"none"`이지만 뜻은
    * 「안 깔렸다」가 아니라 **「모른다」**다 — 화면이 그 둘을 갈라 적는다.
    */
   error: string | null;
@@ -62,6 +74,10 @@ export interface HookStatus {
    * 방금 **넣거나 걷다** 난 오류. `error`와 다른 칸인 이유가 있다 — 파일이 읽기 전용이면
    * 쓰기만 실패하고 판정은 멀쩡히 된다. 그때 화면이 「확인 못 함」이라 적으면 아는 사실을
    * 「모른다」로 지우는 것이 된다: 상태 낱말은 그대로 두고 까닭만 줄 아래에 적는다.
+   *
+   * 쓰기는 됐어도 **버튼이 할 일을 다 못 한 까닭**도 이 칸으로 온다 — 제거하고도 남은 줄, 설치하고도
+   * 「업데이트 필요」인 줄(codex 설정에 손으로 적어 둔 옛 줄). 둘 다 사람이 그 파일을 고쳐야 한다는
+   * 말이고, 설치 · 제거의 답에만 선다(`hooks.rs`의 `leftover` · `unfixed`).
    */
   writeError: string | null;
   /** 그 파일에 실제로 들어가는 글자(스토리 73). 백엔드의 병합 함수가 낸 값 그대로다. */
