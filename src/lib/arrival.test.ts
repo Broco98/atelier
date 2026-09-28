@@ -174,14 +174,25 @@ describe("이동을 거는 자리와 막는 자리", () => {
   const root = fileURLToPath(new URL("../", import.meta.url));
   const read = (path: string) => readFileSync(root + path, "utf8");
   const countOf = (text: string, literal: string) => text.split(literal).length - 1;
+  /** src의 앱 소스 전부(검사 파일은 뺀다) — 새 자리가 생겨도 목록을 손으로 늘리지 않는다. */
+  const sources = readdirSync(root, { recursive: true, encoding: "utf8" })
+    .map((file) => file.split("\\").join("/"))
+    .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file));
 
-  // 거는 쪽은 순서를 손으로 적지 않는다 — `navigateThen` 하나를 부른다.
+  // 거는 쪽은 순서를 손으로 적지 않는다 — `navigateThen` 하나를 부른다. **src 전부를 훑는다**: 순서를 손으로 적어 틀린 자리가 앞서
+  // 둘이었고(bf462b5 · 4151e68), 셋째 자리가 어느 파일에 설지는 미리 모른다. 닿음을 거는 것(`whenArrived(`)은 `navigateThen`의 몸통
+  // 밖에 없어야 하고, `navigateThen`을 부르는 파일은 목적지를 따로 짓지 않는다(`buildLocation(`).
   it("이동을 걸고 닿음을 기다리는 자리는 모두 navigateThen을 부른다", () => {
-    for (const path of ["components/shell/useGoToShell.ts", "components/shell/AppShell.tsx"]) {
-      const source = read(path);
-      expect(countOf(source, "navigateThen("), path).toBe(1);
-      expect(countOf(source, "whenArrived("), `${path}가 닿음을 손으로 건다`).toBe(0);
-      expect(countOf(source, "buildLocation("), `${path}가 목적지를 따로 짓는다`).toBe(0);
+    const callers = sources.filter((file) => read(file).includes("navigateThen("));
+    // 앵커 — 셸로 가는 길과 토스트의 [보기]가 부른다. 없으면 아래가 아무것도 안 잰다.
+    expect(callers).toEqual(
+      expect.arrayContaining(["components/shell/useGoToShell.ts", "components/shell/AppShell.tsx", "lib/arrival.ts"]),
+    );
+    for (const file of sources.filter((one) => one !== "lib/arrival.ts")) {
+      expect(countOf(read(file), "whenArrived("), `${file}가 닿음을 손으로 건다`).toBe(0);
+    }
+    for (const file of callers.filter((one) => one !== "lib/arrival.ts")) {
+      expect(countOf(read(file), "buildLocation("), `${file}가 목적지를 따로 짓는다`).toBe(0);
     }
   });
 
@@ -200,15 +211,17 @@ describe("이동을 거는 자리와 막는 자리", () => {
   // **라우터의 막기를 세우는 자리는 막는 순간 알린다**(`announceStay`). 라우터의 막기는 막았다는 것을 이동을 건 쪽에 알리지
   // 않는다 — 안 알리면 [계속 편집] 뒤에 기다리던 일(⌘J의 셸 켜기와 포커스 요청, [보기]의 토스트 내리기)이 남아 다음에 같은
   // 화면에 닿는 이동에서 되살아난다. 막기를 새로 세우는 자리가 이것을 잊으면 여기가 빨개진다(구현 기록 「머지」의 남은 것).
+  // 파일마다 **막기 수만큼** 알리는지 센다 — 「파일 어딘가에 하나」면 한 파일에 막기가 둘이고 하나만 알릴 때 못 가린다.
   it("라우터의 막기를 세우는 자리는 모두 announceStay를 부른다", () => {
-    const blockers = readdirSync(root, { recursive: true, encoding: "utf8" })
-      .map((file) => file.split("\\").join("/"))
-      .filter((file) => /\.tsx?$/.test(file) && !/\.test\.tsx?$/.test(file))
-      .filter((file) => /useBlocker\(|<Block[\s>]/.test(read(file)));
+    const blocksIn = (source: string) => source.match(/useBlocker\(|<Block[\s>]/g)?.length ?? 0;
+    const blockers = sources.filter((file) => blocksIn(read(file)) > 0);
     // 앵커 — 막기가 적어도 하나 있다(spec 레이아웃 편집기의 떠날 때 확인). 없으면 아래가 아무것도 안 잰다.
     expect(blockers).toContain("features/spec-layout/leave.ts");
     for (const file of blockers) {
-      expect(read(file), `${file}가 라우터의 막기를 세우고 머물 때 알리지 않는다`).toContain("announceStay()");
+      const source = read(file);
+      expect(countOf(source, "announceStay()"), `${file}가 라우터의 막기를 세우고 머물 때 알리지 않는다`).toBeGreaterThanOrEqual(
+        blocksIn(source),
+      );
     }
   });
 });
