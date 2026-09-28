@@ -156,7 +156,7 @@ function ProcessesPage({ mode, sidebarOpen }: { mode: Mode; sidebarOpen: boolean
             </div>
           )}
           {ownerless.length > 0 && (
-            // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 도는 것이 남은 셸. 두 세계의 것이 work마다
+            // **주인 잃은 셸**(프로세스 결정 4 · 티켓 12 · 32) — MCP로 아카이브 · 삭제된 work의, 조용하지 않아 남은 셸. 두 세계의 것이 work마다
             // 선다. [모두 닫기]는 토스트의 그것과 같은 함수다(`closeOwnerless`) — 두 세계를 넘기고 한 번 묻는다. [이동]은 없다: 그 work은
             // 목록에 없어 갈 화면이 없다.
             <Section

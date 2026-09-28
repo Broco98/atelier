@@ -292,7 +292,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await installFixtureBackend(page, {
     // 99는 스토어가 모르는 셸이다 — 화면 밖 셸 묶음이 서 있다는 앵커. 1 · 2 · 3은 스토어가 아는 셸이다.
     processes_snapshot: 스냅샷([1, 2, 3, 99]),
-    // 1은 도는 것이 있어 MCP 아카이브가 주인 잃은 셸로 남긴다. 3은 조용하다 — [조용한 셸 모두 닫기]가 닫는다.
+    // 1은 조용하지 않아 MCP 아카이브가 주인 잃은 셸로 남긴다. 3은 조용하다 — [조용한 셸 모두 닫기]가 닫는다.
     pty_close_checks: { 1: BUSY_SHELL, 3: QUIET_SHELL },
     // 2는 조용하다 — 셸 행의 [닫기]가 묻지 않고 닫는다.
     pty_close_check: answerByArg("id", { 2: QUIET_SHELL }),
