@@ -75,8 +75,8 @@ export function permissionLine(payload: unknown): string | null {
 
 /**
  * 승인 요청이 세운 **창**(티켓 25 리뷰 반영). 도구 이름이 있으면 권한 창이다 — 물음 도구(claude의 `AskUserQuestion`)는 어댑터가
- * 먼저 가른다. **도구 이름이 없으면 모른다**(`null`): 처리기가 페이로드를 못 읽어도 이벤트는 남기는데(`atelier-hook.py`), 그 요청이
- * 물음일 수도 있다. 모르면 승인 추론이 안 서고 옛 동작대로 도구가 끝날 때 풀린다.
+ * 먼저 가른다. **도구 이름이 없으면 모른다**(`null`): 처리기가 페이로드를 못 읽어도 이벤트는 남기는데(`atelier-hook.zsh` — 페이로드
+ * 칸이 `null`이다), 그 요청이 물음일 수도 있다. 모르면 승인 추론이 안 서고 옛 동작대로 도구가 끝날 때 풀린다.
  */
 export function permissionDialog(payload: unknown): DialogKind | null {
   return stringAt(payload, "tool_name") === null ? null : "permission";

@@ -29,7 +29,8 @@ export type ShellSignal = "waiting" | "done" | "working";
  * `ShellSignal`에 값을 하나 더하면 `RANK`·`SIGNAL_LABEL`·`TONE`은 컴파일러가 가리켜
  * 반드시 채워지지만, 「부르는가」를 리터럴 둘로 좁힌 자리들은 **아무 오류도 안 낸다** —
  * 새 축이 조용히 걸러져 띠에도 배지에도 알림에도 안 나타난다. 그 셋이 한 목록을 딛고
- * 있으므로(`callingShells`) 갈래의 이름도 하나여야 한다. 판정은 `isCalling` 한 자리다.
+ * 있으므로(`shellCalls` — 띠의 `callingShells`는 거기서 본 확인할 것만 뺀 것이다) 갈래의 이름도 하나여야 한다. 판정은
+ * `isCalling` 한 자리다.
  */
 export type CallingKind = Extract<ShellSignal, "waiting" | "done">;
 

@@ -189,7 +189,8 @@ export interface Notifier {
  * 울린다」가 되는 그 자리다.
  *
  * **받은 차례가 곧 접히는 차례다.** 같은 work에서 둘이 한 회차에 부르면 앞의 것이 울리고
- * 뒤의 것이 접히므로, 부르는 쪽은 우선순위대로 줄 세운 목록을 준다(`callingShells`).
+ * 뒤의 것이 접히므로, 부르는 쪽은 우선순위대로 줄 세운 목록을 준다(`notifyShells` — `shellCalls`의 차례 그대로다). 그 목록에는
+ * 본 확인할 것(`kind: null`)도 든다 — 울리지도 배지에 세이지도 않고 들어섬의 재료일 뿐이다(`NotifyStep`).
  */
 export function createNotifier(): Notifier {
   // **기억하는 것이 화면값 하나가 아니라 「그 사실의 정체」다**(`decideNotification` 머리말).
