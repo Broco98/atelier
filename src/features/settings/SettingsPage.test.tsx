@@ -341,7 +341,7 @@ function renderNotifications(value: Settings, granted: boolean | null = true): s
 describe("알림 설정의 기본은 프런트가 든다", () => {
   // 백엔드는 구획째 안 쓸 수 있다(`settings.rs`의 `is_empty`) — 그 파일이 여기 그대로 온다.
   it("구획이 아예 없어도 둘 다 켬이다", () => {
-    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    const bare = settings();
     expect(notificationChoice(bare)).toEqual({ enabled: true, sound: true });
   });
 
@@ -361,7 +361,7 @@ describe("알림 설정의 기본은 프런트가 든다", () => {
 
 describe("알림 설정을 고친다", () => {
   it("구획이 없어도 만들어 얹는다", () => {
-    const bare = { terminal: { fontFamily: null, fontSize: null, theme: "dark" } } as Settings;
+    const bare = settings();
     expect(patchNotifications(bare, { sound: false }).notifications).toEqual({ sound: false });
   });
 
