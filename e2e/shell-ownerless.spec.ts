@@ -100,7 +100,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
   // 두 셸을 **한 번에** 물었다(스냅샷 한 장) — 셸마다 따로 묻지 않는다.
   expect((await ipcCallArgs(page, "pty_close_checks", "ids")).map(({ args }) => args.ids)).toEqual([[1, 2]]);
   expect(await callCount(page, "pty_close_check")).toBe(0);
-  // 조용하지 않은 셸은 **남는다** — 기다렸다 자동으로 닫지도 않는다(결정 4의 기각).
+  // 조용하지 않은 셸은 **남는다** — 기다렸다 자동으로 닫지도 않는다(프로세스 결정 4의 기각).
   await settle(page);
   expect(await kills(page)).toHaveLength(1);
   expect(await unknownIpcCalls(page)).toEqual([]);

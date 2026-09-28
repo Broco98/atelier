@@ -1383,7 +1383,7 @@ describe("닫기 전에 묻는가", () => {
       expect(closeNotice(check(true, 0))).toBe(CLOSE_NOTICE);
     });
 
-    // 빈 프롬프트에는 명령이 없다(CONTEXT 「명령」) — 명령 문구도, 「도」로 시작하는 결정 3의 문장도 안 맞는다.
+    // 빈 프롬프트에는 명령이 없다(CONTEXT 「명령」) — 명령 문구도, 「도」로 시작하는 프로세스 결정 3의 문장도 안 맞는다.
     it("명령 없이 자손만 있으면 그 수로 묻고 명령을 말하지 않는다", () => {
       expect(closeNotice(check(false, 3))).toBe("이 셸에서 띄운 프로세스 3개가 아직 돌아요. 닫을까요?");
       expect(closeNotice(check(false, 3))).not.toContain("명령");

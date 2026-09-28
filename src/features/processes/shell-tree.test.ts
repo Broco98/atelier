@@ -364,7 +364,7 @@ describe("트리 합 — 셸 행과 work 행의 숫자(티켓 28 · S53)", () =>
     expect(shellTotals(node)).toEqual(지표(330 * MiB, 13, [5173, 24678]));
   });
 
-  // work 행은 그 work의 셸의 트리 합을 다시 더한다 — 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」.
+  // work 행은 그 work의 셸의 트리 합을 다시 더한다 — 프로세스 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」.
   it("work 행은 그 work 셸들의 트리 합을 더한다", () => {
     const input = 기본({
       shells: [칸(1, "G-1"), 칸(2, "G-2")],

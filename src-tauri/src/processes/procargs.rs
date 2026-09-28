@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(args.shell_key(), Some("1790081243175-18"));
     }
 
-    /// 시스템 바이너리(`/bin/sleep`)는 env가 0개로 읽힌다 — 표식이 없는 것이다(결정의 사실 4).
+    /// 시스템 바이너리(`/bin/sleep`)는 env가 0개로 읽힌다 — 표식이 없는 것이다(프로세스 결정의 사실 4).
     #[test]
     fn a_system_binary_with_no_env_has_no_marker() {
         let buf = kernel_buffer(2, "/bin/sleep", 3, &["sleep", "30", "", ""]);

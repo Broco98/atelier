@@ -88,7 +88,7 @@ describe("사라진 owner", () => {
   });
 
   // 이미 주인 잃은 셸은 다시 판정하지 않는다 — 다시 보면 claude가 대답을 마치고 조용해진 순간 저절로 닫힌다.
-  // 그것이 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다.
+  // 그것이 프로세스 결정 4가 기각한 「끝날 때까지 기다렸다 자동으로 닫기」다.
   it("이미 주인 잃은 셸은 다시 안 나온다", () => {
     const ownerless = markOwnerless(state, [1, 2]);
     expect(vanishedOwners(ownerless, "atelier", listed(), NOTHING_HELD)).toEqual([ownerOf("atelier", "na")]);

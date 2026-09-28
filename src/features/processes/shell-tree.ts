@@ -320,7 +320,7 @@ export function shellTotals(node: ShellProcesses): ProcessMetrics {
   ]);
 }
 
-/** work 행의 숫자 — 그 work 셸들의 트리 합을 더한다. 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」다. */
+/** work 행의 숫자 — 그 work 셸들의 트리 합을 더한다. 프로세스 결정 10 그림의 「process-manager · 셸 2 … 1.2GB 12%」다. */
 export function groupTotals(group: GroupNode): ProcessMetrics {
   return sumMetrics(group.shells.map(shellTotals));
 }

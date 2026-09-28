@@ -504,7 +504,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
   const dialog = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(dialog).toBeVisible();
   expect(await bodyLines(dialog)).toEqual(["조용한 셸 2개를 닫아요."]);
-  // 스토어의 살아 있는 셸 전부를 **한 번에** 물었다 — 두 세계가 함께다(결정 9).
+  // 스토어의 살아 있는 셸 전부를 **한 번에** 물었다 — 두 세계가 함께다(프로세스 결정 9).
   expect((await ipcCallArgs(page, "pty_close_checks", "ids")).map(({ args }) => args.ids)).toEqual([[1, 2, 3, 4]]);
   await 버튼(dialog, "취소").click();
   await expect(dialog).toHaveCount(0);

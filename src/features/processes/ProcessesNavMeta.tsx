@@ -38,7 +38,7 @@ export default function ProcessesNavMeta() {
     // 않는다. 색은 한 단 올린 `muted-foreground`다 — 이 자리의 tertiary는 사이드바 배경에서 대비 4.5 아래이고, 이 숫자가 이 메타가
     // 있는 이유다.
     <span className="row-meta text-muted-foreground">
-      {/* 점의 색은 신호 토큰이다(결정 11) — 「나를 기다림」의 앰버: 손볼 것은 사람 손을 기다린다. 「확인할 것」의 초록은 끝난 일을
+      {/* 점의 색은 신호 토큰이다(프로세스 결정 11) — 「나를 기다림」의 앰버: 손볼 것은 사람 손을 기다린다. 「확인할 것」의 초록은 끝난 일을
           말하는 색이라 여기 안 맞다. */}
       {lit && <span role="img" aria-label={NEEDS_LOOK_LABEL} className="size-1.5 shrink-0 rounded-full bg-wait" />}
       {total !== null && <span className="tabular-nums">{formatMemory(total)}</span>}

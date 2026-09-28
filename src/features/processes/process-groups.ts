@@ -22,7 +22,7 @@ export function endAsk(label: string, count: number): Ask {
   return { title: `'${label}' 끝내기`, body, confirm: "끝내기" };
 }
 
-/** 출처 불명 [정리]의 확인 창(결정 6). 확정 고아의 [정리]는 묻지 않는다 — 기록이 그 셸이 없다고 말한다. */
+/** 출처 불명 [정리]의 확인 창(프로세스 결정 6). 확정 고아의 [정리]는 묻지 않는다 — 기록이 그 셸이 없다고 말한다. */
 export function tidyUnknownAsk(count: number): Ask {
   return { title: "출처 불명 정리", body: `출처를 모르는 프로세스 ${count}개를 끝내요.`, confirm: "끝내기" };
 }
@@ -46,7 +46,7 @@ export interface InstanceGroup {
 }
 
 /**
- * 빌드 이름(S54) — 결정 10 그림의 「다른 인스턴스 (dev 빌드)」다. 설치본은 「설치본」이다. 버전이 붙는다. 그 실행의 기록을 못 읽었으면
+ * 빌드 이름(S54) — 프로세스 결정 10 그림의 「다른 인스턴스 (dev 빌드)」다. 설치본은 「설치본」이다. 버전이 붙는다. 그 실행의 기록을 못 읽었으면
  * 모른다고 말한다.
  */
 export function buildLabel({ build, version }: Pick<OtherInstance, "build" | "version">): string {

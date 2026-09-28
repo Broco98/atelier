@@ -5,7 +5,7 @@ import type { CleanupEvent, CleanupOutcome, CleanupReason, CleanupTarget } from 
 // 선다 — 사건마다 까닭과 대상 수(와 때), 펼치면 대상마다 이름 · 명령줄 · 결과. 이 모듈은 기록 한 줄을 화면의 말로 옮긴다. 순수하다.
 
 /**
- * 까닭의 말 — 결정 6 · 스펙 S5의 낱말이다. 「손으로」는 [끝내기] · [정리]의 까닭이라 「손으로 끝냄」으로 풀어 적는다: 줄의 머리에
+ * 까닭의 말 — 프로세스 결정 6 · 스펙 S5의 낱말이다. 「손으로」는 [끝내기] · [정리]의 까닭이라 「손으로 끝냄」으로 풀어 적는다: 줄의 머리에
  * 「손으로」만 서면 무엇을 손으로 했는지가 빈다.
  */
 export const REASON_LABEL: Readonly<Record<CleanupReason, string>> = {

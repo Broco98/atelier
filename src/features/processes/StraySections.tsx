@@ -41,7 +41,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
         <Section
           title="확정 고아"
           note={processCount(confirmed.length)}
-          // 묻지 않는다(결정 6) — 누른 순간 화면에 보인 신원 전부다.
+          // 묻지 않는다(프로세스 결정 6) — 누른 순간 화면에 보인 신원 전부다.
           action={<RowButton onClick={() => void endProcesses(identitiesOf(confirmed))}>정리</RowButton>}
         >
           <div role="tree" aria-label="확정 고아" className="flex flex-col gap-0.5">
@@ -94,7 +94,7 @@ function StraySections({ snapshot }: { snapshot: ProcessSnapshot }) {
 
 const keyOf = ({ row }: ProcessNode) => identityKey(row.id);
 
-/** 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
+/** 프로세스 결정 10 그림의 「보기 전용」 — 동작 자리에 선다. 버튼이 아니다. */
 function ViewOnly() {
   return <span className="shrink-0 px-2 text-[12px] text-tertiary">보기 전용</span>;
 }

@@ -135,7 +135,7 @@ pub struct Proc {
     /// 표식(exec 때의 셸 키). 없거나 못 읽었으면 `None`.
     ///
     /// **exec 때의 env다.** 뜬 뒤에 바꾼 env는 안 보인다. 시스템 바이너리(`/bin/zsh`, `/bin/sleep`)는
-    /// env가 0개로 읽혀 늘 `None`이다 — 그것들은 트리로만 잡힌다(결정의 사실 4).
+    /// env가 0개로 읽혀 늘 `None`이다 — 그것들은 트리로만 잡힌다(프로세스 결정의 사실 4).
     pub shell_key: Option<String>,
 }
 

@@ -100,7 +100,7 @@ mod tests {
         assert!(wrong.is_empty(), "일치가 어긋난 줄 {}개:\n  {}", wrong.len(), wrong.join("\n  "));
     }
 
-    /// 기본 목록이 결정 5의 이름을 다 든다 — 화면(IPC)과 판정이 이 상수 하나에서 읽는다.
+    /// 기본 목록이 프로세스 결정 5의 이름을 다 든다 — 화면(IPC)과 판정이 이 상수 하나에서 읽는다.
     #[test]
     fn the_defaults_are_the_ones_decision_5_named() {
         assert_eq!(

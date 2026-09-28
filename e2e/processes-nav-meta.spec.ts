@@ -60,7 +60,7 @@ test("nav Processes 옆에 앱 전체 메모리 합계가 두 세계 모두에�
   await page.goto("/projects");
   await expect(page).toHaveURL(`/projects/${project.slug}`);
 
-  // 표기 함수의 결과가 선다 — 결정 10 그림의 「아틀리에 합계」다. 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다.
+  // 표기 함수의 결과가 선다 — 프로세스 결정 10 그림의 「아틀리에 합계」다. 픽스처의 기본 합계(3.4GB)가 아니라 이 시나리오의 값이다.
   const total = formatMemory(summary.total);
   await expect(navRow(page, "Processes")).toContainText(total);
   // 메타는 버튼 밖이다 — nav를 이름으로 집는 길이 그대로다. 다른 nav 행에는 안 선다. 손볼 것이 없으니 점도 없다.

@@ -122,7 +122,7 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
     { level: "2", name: "Terminal, 셸 1개" },
     { level: "3", name: "zsh, 조용함 2h" },
     { level: "1", name: "Atelier" },
-    // work 행 — 이름(목록의 제목)과 셸 수. 결정 10 그림의 「process-manager · 셸 2」가 이 줄이다.
+    // work 행 — 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의 「process-manager · 셸 2」가 이 줄이다.
     { level: "2", name: `${plainWork.title}, 셸 2개` },
     // 명령 없이 사람이 띄운 것만 남은 셸 — 도우미는 안 센다.
     { level: "3", name: "zsh, 띄운 프로세스 2개" },

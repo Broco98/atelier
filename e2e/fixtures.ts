@@ -635,7 +635,7 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
 
 /**
  * nav 메타의 요약(티켓 29)이 기본으로 답하는 것 — **손볼 것이 하나도 없는 앱**이다: 출처 불명도, `●`를 켜는 정리 기록도 없다. 그래서
- * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
+ * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
  * 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
  *
  * **모든 spec이 지나는 답이다** — nav 메타가 두 세계의 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
@@ -704,7 +704,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // 여는 spec이 모두 지나므로 표에 선다. 파일의 `processExceptions`가 `null`이면 칸에 이 목록이 보인다.
   //
   // **진짜 목록을 베껴 적지 않는다.** 값을 정하는 자리는 Rust 상수 하나이고(`processes/exceptions.rs`의
-  // `DEFAULTS`), 그것이 결정 5의 이름을 다 드는지는 그쪽 L1이 잰다. 이 층이 재는 것은 「백엔드가 준 목록을 칸에
+  // `DEFAULTS`), 그것이 프로세스 결정 5의 이름을 다 드는지는 그쪽 L1이 잰다. 이 층이 재는 것은 「백엔드가 준 목록을 칸에
   // 보이고, 고친 것을 저장에 싣는다」라 짧은 합성으로 족하다 — 진짜처럼 적어 두면 그쪽이 바뀔 때 조용히 낡는다.
   default_process_exceptions: ["tmux", "docker*"],
   // 시작 보고(프로세스 스펙 S11). 위 설정 읽기처럼 **앱이 뜰 때 한 번** 부른다(`main.tsx` →

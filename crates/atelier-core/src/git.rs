@@ -92,7 +92,7 @@ pub(crate) fn worktree_add(
 /// `git commit`이 그 순간과 겹쳐 「index.lock: File exists」로 실패한다. 읽기만 하는 조회가 쓰기를 할 까닭이
 /// 없다 — 고친 stat은 다음 status가 다시 계산할 뿐이다. git 전역 옵션이라 하위 명령 **앞에** 둔다.
 ///
-/// 결정 18이 기각한 셋(`-uno` · `gix` · `core.fsmonitor` 강제)은 여기 넣지 않는다. `-uno`는 추적 안 된 파일만
+/// 프로세스 결정 18이 기각한 셋(`-uno` · `gix` · `core.fsmonitor` 강제)은 여기 넣지 않는다. `-uno`는 추적 안 된 파일만
 /// 있는 워크트리를 깨끗하게 보여, 아카이브 게이트(`dirty_files`)와 표시가 어긋난다.
 pub(crate) const DIRTY_STATUS_ARGS: [&str; 3] = ["--no-optional-locks", "status", "--porcelain"];
 

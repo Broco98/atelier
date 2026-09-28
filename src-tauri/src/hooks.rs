@@ -40,7 +40,7 @@ pub const CLAUDE_EVENTS: &[&str] = &[
 ///
 /// **알려진 경계**: 비동기 `PreToolUse`의 처리기가 곧이어 오는 `PermissionRequest`의 처리기보다 **늦게** 뜨면(티켓 18
 /// 실측으로 둘 사이가 1.8~14.8ms) 가드가 `PreToolUse`를 새 사건으로 보고 기다림을 덮는다 — 그 승인 요청은 띠에도
-/// 알림에도 안 선다. 결정 14 그대로 두고 구현 기록 「## 20」에 적었다.
+/// 알림에도 안 선다. 프로세스 결정 14 그대로 두고 구현 기록 「## 20」에 적었다.
 const CLAUDE_ASYNC_EVENTS: &[&str] = &["PreToolUse", "PostToolUse", "PostToolUseFailure"];
 
 /// 설치 목록의 **판**(프로세스 스펙 P5 · 티켓 21). 우리 명령줄의 맨 끝 낱말로 싣는다(`list-2`).
@@ -1023,7 +1023,7 @@ mod tests {
     }
 
     /// **도구 사건 셋은 matcher 없이 `async: true`로 걸린다**(프로세스 결정 14 · S25). 도구마다 두 번 불리는 훅이
-    /// 동기면 claude가 그때마다 처리기가 끝나길 기다린다 — 에이전트를 막지 않는 것이 결정 14의 조건이다.
+    /// 동기면 claude가 그때마다 처리기가 끝나길 기다린다 — 에이전트를 막지 않는 것이 프로세스 결정 14의 조건이다.
     /// matcher가 없어야 모든 도구가 온다(`AskUserQuestion`도 PreToolUse로 와서 기다림이 된다).
     ///
     /// **나머지는 동기 그대로다** — `async` 칸이 아예 없다. 턴의 끝(`Stop`)이나 승인 요청을 비동기로 걸면 처리기가
@@ -1136,7 +1136,7 @@ mod tests {
         );
     }
 
-    /// codex 울타리 블록에도 넷이 더해진다(결정 14 — 「지금 울타리 블록에 더함」). codex 쪽은 동기다: 스펙이
+    /// codex 울타리 블록에도 넷이 더해진다(프로세스 결정 14 — 「지금 울타리 블록에 더함」). codex 쪽은 동기다: 스펙이
     /// `async`를 claude 도구 사건에만 걸었다.
     #[test]
     fn the_codex_block_carries_the_new_events_synchronously() {
@@ -1955,7 +1955,7 @@ trust_level = "trusted"
         assert_eq!(value["env"], json!({ "A": "1" }));
     }
 
-    /// **갱신이 옛 항목의 `async`를 맞춘다**(프로세스 스펙 S25 · 결정 15). 도구 사건에 빠진 것은 붙이고, 동기여야 할 사건에 붙은
+    /// **갱신이 옛 항목의 `async`를 맞춘다**(프로세스 결정 15 · 프로세스 스펙 S25). 도구 사건에 빠진 것은 붙이고, 동기여야 할 사건에 붙은
     /// 것은 뗀다. 명령줄은 이미 지금 것이다 — `async`만 어긋나도 「일부」이고, 갱신이 그것을 고친다.
     #[test]
     fn the_update_sets_async_where_the_list_says() {

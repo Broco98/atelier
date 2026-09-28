@@ -696,7 +696,7 @@ function hookEventsOf(id: number): number {
 
 /**
  * 중단 추론이 **누른 뒤 기다리는 시간**(프로세스 결정 12 · S29). 이 시계와 이 상수는 여기에만 있다 — 상태 기계는 「누른 순간의
- * 값 · 지금 값 · 그사이 온 훅 수」만 받는다(`inferInterrupt`). 값은 결정 12의 것이다(orca `inferInterrupt`와 같은 모양). 키 뒤에
+ * 값 · 지금 값 · 그사이 온 훅 수」만 받는다(`inferInterrupt`). 값은 프로세스 결정 12의 것이다(orca `inferInterrupt`와 같은 모양). 키 뒤에
  * 온 훅은 감시의 디바운스(100ms)를 지나 닿으므로 그보다 넉넉해야 추론을 버릴 수 있다.
  */
 const INTERRUPT_WAIT_MS = 500;
@@ -1006,7 +1006,7 @@ export function holdOwner(owner: ShellOwner): () => void {
  * 2. 그 셸들이 조용한지 **배치 물음 한 번으로** 본다(티켓 08의 `pty_close_checks`).
  * 3. 조용한 셸과 끝난 칸 · 못 뜬 칸은 곧바로 닫는다(`closesWithoutAsking`) — 까닭은 「MCP 아카이브」다. 나머지는 「주인 잃은 셸」로
  *    표시하고 남긴다: 부탁을 보낸 claude가 대개 그 셸 안에 있어, 닫으면 도구 호출 도중 죽는다. 기다렸다가 저절로 닫지
- *    않는다(결정 4의 기각).
+ *    않는다(프로세스 결정 4의 기각).
  * 4. 남긴 것이 있으면 토스트를 세운다(`showOwnerless`).
  *
  * **물음을 기다린 뒤 다시 본다.** 그사이 사람이 UI로 아카이브를 시작했거나(제외 창) 셸이 닫혔을 수 있다 — 기다리기 전에
