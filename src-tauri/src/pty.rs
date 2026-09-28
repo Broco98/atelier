@@ -1018,7 +1018,7 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
         occasion: Occasion::Normal,
     });
     // 셸마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 지금 떠 둔다. 뒤 스레드는 스냅샷을 못 빌린다.
-    let aimed: Vec<(String, Vec<Aimed>)> = ending
+    let aimed: AimedByShell = ending
         .iter()
         .map(|shell| {
             let members = verdict.descendants.get(shell.key.as_str()).into_iter().flatten();
@@ -1033,14 +1033,17 @@ fn begin(pool: &PtyPool, shells: Vec<Shell>, claim: Claim, cause: Cause) -> Behi
     Behind { shells, running, aimed, cause, record: Arc::clone(&pool.record) }
 }
 
+/// 셸 키마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 판정 때 떠 둔 것. `begin`이 짓고
+/// `Behind`가 쥐었다가 `Behind::finish`가 끝내기의 결과와 함께 돌려준다.
+type AimedByShell = Vec<(String, Vec<Aimed>)>;
+
 /// 시작한 끝내기의 뒤 절반 — 기다리는 일이라 뒤 스레드가 쥔다. 마감하지 않고 떨어지면 끝내기는 진행 중인 끝내기 목록에
 /// 남아 앱 종료가 마감하고, 셸 키도 기록에 남는다.
 struct Behind {
     shells: Vec<Shell>,
     /// 진행 중인 끝내기 목록에 오른 끝내기(`processes::ending::Running`).
     running: Running,
-    /// 셸 키마다 끝낼 자손 — 정리 기록에 적을 것(행의 이름 · 명령줄 · 도우미 표시)을 판정 때 떠 둔 것.
-    aimed: Vec<(String, Vec<Aimed>)>,
+    aimed: AimedByShell,
     cause: Cause,
     record: Arc<Record>,
 }
@@ -1048,7 +1051,7 @@ struct Behind {
 impl Behind {
     /// 셸을 떨구고, 유예와 SIGKILL을 마감하고, 정리 기록에 적고, 셸 키를 내린다. 셸마다 떠 둔 자손과 끝내기의 결과를
     /// 돌려준다 — 셸 스스로 끝남이 그것으로 알릴 수를 센다.
-    fn finish(self) -> (Vec<(String, Vec<Aimed>)>, Vec<(Identity, Outcome)>) {
+    fn finish(self) -> (AimedByShell, Vec<(Identity, Outcome)>) {
         let Behind { shells, running, aimed, cause, record } = self;
         // writer의 Drop이 개행+^D를 쓰고, master의 Drop이 커널 hangup을 건다. 상태 파일도 여기서 사라진다.
         drop(shells);

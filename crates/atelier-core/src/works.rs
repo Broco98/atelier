@@ -391,8 +391,9 @@ fn map_bounded<T: Sync, R: Send>(items: &[T], limit: usize, f: impl Fn(&T) -> R 
     };
     let helpers = limit.min(items.len()).saturating_sub(1);
     let mut done = std::thread::scope(|scope| {
+        // `drain`은 빌린 것만 쥐어 복사된다 — 일꾼마다 한 벌씩 가져가고, 부른 스레드도 아래에서 제 것을 돈다.
         let spawned: Vec<_> = (0..helpers)
-            .filter_map(|_| std::thread::Builder::new().spawn_scoped(scope, &drain).ok())
+            .filter_map(|_| std::thread::Builder::new().spawn_scoped(scope, drain).ok())
             .collect();
         let mut done = drain();
         for helper in spawned {
