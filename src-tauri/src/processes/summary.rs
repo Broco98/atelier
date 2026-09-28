@@ -24,7 +24,7 @@
 //! 못 읽었으면 없다. 그래야 nav와 화면이 같은 앱을 두고 다른 말을 하지 않는다.
 //!
 //! **이 파일은 값과 그 값을 쥐는 자리만 짓는다.** 스냅샷 · 판정 · 지표 읽기 · 기록 읽기를 잇는 자리는 프로세스 서비스의
-//! `summarize`다(`service` — 화면 스냅샷과 같은 순서). 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 setup에서 건다 — 이 층은 Tauri를
+//! `gather`다(`service` — 화면 스냅샷과 같은 순서). 웹뷰에게 묻는 FFI는 앱 층(`webview.rs`)이 setup에서 건다 — 이 층은 Tauri를
 //! 모른다.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
@@ -48,8 +48,8 @@ pub const FIRST_RETRY_AFTER: Duration = Duration::from_secs(1);
 /// 스레드를 붙잡는 때는 많아야 상한 × (`FIRST_RETRY_AFTER` + 웹뷰를 기다리는 한계 0.5초)다.
 pub const FIRST_RETRIES: u32 = 5;
 
-/// **배경 표본이 이 장을 앉히지 않고 곧 다시 모으나**(티켓 30 · S39). 웹뷰에게 물을 길은 걸렸는데 **아직 한 번도 제때 답을 못
-/// 받았고**(`WebContent::unheard`), 미룬 수(`held`)가 상한 아래일 때다.
+/// **배경 표본이 이 장을 앉히지 않고 곧 다시 모으나**(티켓 30 · S39). 웹뷰에게 물을 길은 걸렸는데 이 장을 모은 물음까지 **아직 한
+/// 번도 제때 답을 못 받았고**(`WebContentAsked::unheard`), 미룬 수(`held`)가 상한 아래일 때다.
 ///
 /// 앱에서 첫 표본은 setup이 메인 스레드를 쥔 동안 돈다 — WebContent 물음이 늦어(「늦음」) 아직 아는 신원이 없고, 그 장은 「웹뷰 제외」다.
 /// 앉히면 요약 IPC가 그 장을 다음 박자까지 돌려주고 추이의 첫 점이 웹뷰만큼 낮다. 묻는 함수가 없거나(검사) 한 번이라도 답했으면(macOS
@@ -207,7 +207,7 @@ pub enum WebContentAnswer {
 /// 추이가 그 크기만큼 들쭉날쭉한다. pid가 아니라 신원(pid + 시작 시각)을 쥐므로, 그사이 WebContent가 끝나 pid가 남에게 넘어갔으면
 /// 지표를 읽는 쪽이 신원 재확인에서 거른다(`metrics::read`) — 남의 숫자가 앱 본체에 안 든다.
 ///
-/// **한 번도 제때 답을 못 받은 것도 가른다**(`unheard`) — 배경 표본이 첫 장을 미루는 재료다(`holds_first`).
+/// **한 번도 제때 답을 못 받은 것도 가른다**(`WebContentAsked::unheard`) — 배경 표본이 첫 장을 미루는 재료다(`holds_first`).
 #[derive(Default)]
 pub struct WebContent {
     ask: OnceLock<Box<dyn Fn() -> WebContentAnswer + Send + Sync>>,
@@ -232,25 +232,36 @@ impl WebContent {
         }
     }
 
-    /// 지금의 WebContent 신원. 묻는 함수가 없으면 없다. pid를 신원으로 바꾸는 것은 부르는 쪽이 건넨다(`snapshot::identity_of`) —
-    /// 이 자리는 커널을 안 읽는다.
-    pub fn identity(&self, identify: impl Fn(u32) -> Option<Identity>) -> Option<Identity> {
-        let answer = self.ask.get()?();
+    /// 웹뷰에게 한 번 묻고, 지금의 WebContent 신원과 **이 물음까지 한 번도 제때 답을 못 들었나**를 준다(`WebContentAsked`). 묻는
+    /// 함수가 없으면 신원도 없고 기다릴 답도 없다. pid를 신원으로 바꾸는 것은 부르는 쪽이 건넨다(`snapshot::identity_of`) — 이 자리는
+    /// 커널을 안 읽는다.
+    pub fn identity(&self, identify: impl Fn(u32) -> Option<Identity>) -> WebContentAsked {
+        let Some(ask) = self.ask.get() else {
+            return WebContentAsked { id: None, unheard: false };
+        };
+        let answer = ask();
         let mut last = lock(&self.last);
         if let WebContentAnswer::Answered(pid) = answer {
             *last = Heard::Answer(pid.and_then(identify));
         }
         match *last {
-            Heard::Answer(id) => id,
-            Heard::Nothing => None,
+            Heard::Answer(id) => WebContentAsked { id, unheard: false },
+            Heard::Nothing => WebContentAsked { id: None, unheard: true },
         }
     }
+}
 
-    /// **묻는 함수는 걸렸는데 아직 한 번도 제때 답을 못 받았다** — 물은 것이 모두 「늦음」이었다(앱이 막 떠 setup이 메인 스레드를
-    /// 쥐고 있었다). 묻는 함수가 없으면(검사의 풀) 기다릴 답도 없어 거짓이다. 한 번이라도 답했으면(「없음」이라도) 거짓이다.
-    pub fn unheard(&self) -> bool {
-        self.ask.get().is_some() && *lock(&self.last) == Heard::Nothing
-    }
+/// 웹뷰에게 한 번 물은 결과(`WebContent::identity`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WebContentAsked {
+    /// 지금의 WebContent 신원 — 이번 답, 늦었으면 마지막으로 안 것.
+    pub id: Option<Identity>,
+    /// **묻는 함수는 걸렸는데 이 물음까지 한 번도 제때 답을 못 받았다** — 물은 것이 모두 「늦음」이었다(앱이 막 떠 setup이 메인
+    /// 스레드를 쥐고 있었다). 묻는 함수가 없으면(검사의 풀) 기다릴 답도 없어 거짓이다. 한 번이라도 답했으면(「없음」이라도) 거짓이다.
+    ///
+    /// **이 물음과 한 잠금 안에서 가른다.** 물은 뒤에 자리를 다시 보면 그사이 다른 스레드(요약 IPC)의 물음이 들은 답이 섞인다 —
+    /// 이 물음은 늦어 「웹뷰 제외」로 모은 장을 「들었다」로 읽어 앉힌다(`ProcessService::sample_once`).
+    pub unheard: bool,
 }
 
 /// 배경 표본의 자리 — 마지막 요약 한 장(티켓 29), 합계의 1시간 고리와 CPU 미터(티켓 30), WebContent를 묻는 자리. 요약 IPC가 마지막
@@ -595,40 +606,45 @@ mod tests {
         assert_eq!(background.cpu(late, HashMap::from([(app, 2_000_000_000)])), HashMap::new(), "제 나이를 넘은 앞 표본과 이었다");
     }
 
-    /// **WebContent를 묻는 자리**(티켓 30). 묻는 함수가 없으면(검사의 풀 · setup 전) 모른다. 답한 pid는 신원으로 바꿔 쥐고, 답이 늦으면
-    /// 마지막으로 안 신원을 쓴다(늦을 때마다 앱 본체가 웹뷰만큼 들쭉날쭉하지 않게). 「없다」고 답하면 쥔 것도 잊는다 — 웹뷰가 없는데
-    /// 옛 신원을 붙들지 않는다. 신원으로 못 바꾼 pid(그사이 끝났다)는 없다.
+    /// **WebContent를 묻는 자리**(티켓 30). 묻는 함수가 없으면(검사의 풀 · setup 전) 모르고 기다릴 답도 없다. 답한 pid는 신원으로 바꿔
+    /// 쥐고, 답이 늦으면 마지막으로 안 신원을 쓴다(늦을 때마다 앱 본체가 웹뷰만큼 들쭉날쭉하지 않게). 「없다」고 답하면 쥔 것도 잊는다
+    /// — 웹뷰가 없는데 옛 신원을 붙들지 않는다. 신원으로 못 바꾼 pid(그사이 끝났다)는 없다. 물음마다 그 물음까지 한 번도 제때 답을 못
+    /// 들었는지도 준다 — 늦은 답만 받은 동안만 참이다.
     #[test]
     fn the_web_content_is_what_the_webview_answered_last() {
         let web = Identity { pid: 77, started_us: 7_700 };
         let identify = |pid: u32| (pid == 77).then_some(web);
+        let asked = |id: Option<Identity>, unheard: bool| WebContentAsked { id, unheard };
 
         let seat = WebContent::default();
-        assert_eq!(seat.identity(|_| panic!("묻는 함수가 없는데 커널을 읽었다")), None);
-        assert!(!seat.unheard(), "묻는 함수가 없는데 답을 기다린다고 한다 — 검사의 풀이 첫 장을 미룬다");
+        assert_eq!(
+            seat.identity(|_| panic!("묻는 함수가 없는데 커널을 읽었다")),
+            asked(None, false),
+            "묻는 함수가 없는데 신원이 섰거나 답을 기다린다고 한다 — 검사의 풀이 첫 장을 미룬다"
+        );
 
         let answer = Arc::new(AtomicU32::new(u32::MAX));
-        let asked = Arc::clone(&answer);
-        seat.ask_with(move || match asked.load(Ordering::Relaxed) {
+        let answering = Arc::clone(&answer);
+        seat.ask_with(move || match answering.load(Ordering::Relaxed) {
             0 => WebContentAnswer::Answered(None),
             u32::MAX => WebContentAnswer::Late,
             pid => WebContentAnswer::Answered(Some(pid)),
         });
-        assert!(seat.unheard(), "물을 길을 걸었는데 아직 안 물은 자리가 답을 들었다고 한다");
-        assert_eq!(seat.identity(identify), None, "한 번도 답을 못 받았는데 신원이 섰다");
-        assert!(seat.unheard(), "늦은 답을 들은 답으로 쳤다");
+        assert_eq!(seat.identity(identify), asked(None, true), "한 번도 답을 못 받았는데 신원이 섰거나, 늦은 답을 들은 답으로 쳤다");
         answer.store(77, Ordering::Relaxed);
-        assert_eq!(seat.identity(identify), Some(web), "답한 pid를 신원으로 안 바꿨다");
-        assert!(!seat.unheard(), "답을 들었는데 못 들었다고 한다");
+        assert_eq!(seat.identity(identify), asked(Some(web), false), "답한 pid를 신원으로 안 바꿨거나, 답을 들었는데 못 들었다고 한다");
         answer.store(u32::MAX, Ordering::Relaxed);
-        assert_eq!(seat.identity(identify), Some(web), "답이 늦었는데 마지막으로 안 신원을 버렸다");
-        assert!(!seat.unheard(), "한 번 들은 뒤의 늦은 답에 다시 못 들었다고 한다");
+        assert_eq!(
+            seat.identity(identify),
+            asked(Some(web), false),
+            "답이 늦었는데 마지막으로 안 신원을 버렸거나, 한 번 들은 뒤의 늦은 답에 다시 못 들었다고 한다"
+        );
         answer.store(0, Ordering::Relaxed);
-        assert_eq!(seat.identity(identify), None, "웹뷰가 없다고 답했는데 옛 신원을 붙들었다");
+        assert_eq!(seat.identity(identify), asked(None, false), "웹뷰가 없다고 답했는데 옛 신원을 붙들었다");
         answer.store(u32::MAX, Ordering::Relaxed);
-        assert_eq!(seat.identity(identify), None, "잊은 신원이 늦은 답에서 되살아났다");
+        assert_eq!(seat.identity(identify), asked(None, false), "잊은 신원이 늦은 답에서 되살아났다");
         answer.store(88, Ordering::Relaxed);
-        assert_eq!(seat.identity(identify), None, "신원으로 못 바꾼 pid를 셌다");
+        assert_eq!(seat.identity(identify), asked(None, false), "신원으로 못 바꾼 pid를 셌다");
     }
 
     /// **첫 장을 미루는 판단**(티켓 30). 웹뷰에게 물을 길은 걸렸는데 한 번도 제때 답을 못 받았고 상한 아래일 때만 미룬다. 앵커: 미루는

@@ -1624,7 +1624,7 @@ mod tests {
             ("end_for_exit", body_of("pub fn end_for_exit(", "\n}\n")),
             ("plan_startup", body_of("fn plan_startup(", "\n}\n")),
             ("service::screen", service_method("pub fn screen(")),
-            ("service::summarize", service_method("pub fn summarize(")),
+            ("service::gather", service_method("fn gather(")),
         ]
     }
 

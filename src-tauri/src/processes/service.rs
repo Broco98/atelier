@@ -100,6 +100,12 @@ impl ProcessService {
         ScreenSnapshot::of(&verdict, listed, &measured, instances, head)
     }
 
+    /// **요약 한 장을 모은다**(`gather`) — 요약 IPC가 마지막 장이 없을 때 그 자리에서 부른다(`summary`). 배경 표본은 그 장을 미룰지도
+    /// 함께 받아야 해 `gather`를 곧바로 부른다(`sample_once`).
+    pub fn summarize(&self) -> Summary {
+        self.gather().0
+    }
+
     /// **요약 한 장을 모은다** — nav 메타의 합계와 `●`의 재료, 요약 카드의 CPU와 앱 본체(프로세스 결정 10 · 11 · 티켓 29 · 30). 배경
     /// 표본이 10초마다 부른다(`sample_in_background`) — 화면이 닫혀 있어도 돈다.
     ///
@@ -113,7 +119,10 @@ impl ProcessService {
     /// (`Background`의 미터) — 화면의 앞 표본(`screen_cpu`)을 나눠 쓰면 2초와 10초 박자가 섞인다.
     ///
     /// `●`를 켜는 기록의 머리는 정리 기록 파일에서 고른다(`cleanup_log::look_head`). 아무것도 안 끝낸다.
-    pub fn summarize(&self) -> Summary {
+    ///
+    /// 장과 함께 **이 장을 모은 WebContent 물음까지 웹뷰에게서 한 번도 제때 답을 못 들었나**(`WebContentAsked::unheard`)를 준다 — 배경
+    /// 표본이 첫 장을 미룰지 이 값으로 가른다(`sample_once`).
+    fn gather(&self) -> (Summary, bool) {
         let snapshot = snapshot::take(EnvScope::All);
         let (live, listed) = self.pool.listing();
         let shells: Vec<Identity> = listed.iter().filter_map(|shell| shell.process).collect();
@@ -128,15 +137,13 @@ impl ProcessService {
             exceptions: &exceptions,
             occasion: Occasion::Normal,
         });
-        let body = Body {
-            rust: snapshot::identity_of(std::process::id()),
-            web_content: self.background.web_content.identity(snapshot::identity_of),
-        };
+        let asked = self.background.web_content.identity(snapshot::identity_of);
+        let body = Body { rust: snapshot::identity_of(std::process::id()), web_content: asked.id };
         let readings = metrics::read(summary::targets(&verdict, &shells, &body));
         let cpu = self.background.cpu(Instant::now(), readings.cpu_ns());
         let measured = Measured { readings: readings.by_id, cpu };
         let head = cleanup_log::look_head(&self.pool.record().cleanup_events());
-        Summary::of(&verdict, &shells, &body, &measured, head)
+        (Summary::of(&verdict, &shells, &body, &measured, head), asked.unheard)
     }
 
     /// 요약 IPC의 답(`processes_summary`) — **배경 표본의 마지막 한 장**이다(티켓 29). 아직 한 장도 없으면(앱이 막 떠 첫 표본이 도는
@@ -199,9 +206,12 @@ impl ProcessService {
     /// 묻는 함수는 걸렸는데 한 번도 제때 답을 못 받았으면 그 장을 앉히지 않고, 미룬 수(`held`)를 올려 짧게(`FIRST_RETRY_AFTER`) 쉬게
     /// 한다. 상한 뒤에는 그대로 앉힌다. 미루는 동안 요약 IPC는 마지막 장이 없어 그 자리에서 모은다(`summary`) — 그때는 setup이 끝나
     /// 메인 스레드가 답한다.
+    ///
+    /// **미룰지는 이 장을 모은 물음이 가른다**(`gather`가 함께 주는 값). 다 모은 뒤에 물음의 자리를 다시 보면, 이 장의 물음이 늦은 사이
+    /// 요약 IPC의 물음이 답을 받아 제 장을 앉혔을 때 이 장을 「들었다」로 읽어 앉힌다 — 「웹뷰 제외」 장이 IPC의 장을 덮는다.
     fn sample_once(&self, held: &mut u32) -> Duration {
-        let fresh = self.summarize();
-        if summary::holds_first(self.background.web_content.unheard(), *held) {
+        let (fresh, unheard) = self.gather();
+        if summary::holds_first(unheard, *held) {
             *held += 1;
             return summary::FIRST_RETRY_AFTER;
         }
@@ -338,7 +348,7 @@ mod tests {
     /// 실행으로는 못 잰다 — 진짜 스냅샷은 이 맥의 표 전체라 기대값을 못 세운다. 값의 모양은 `processes::summary`의 검사가 잰다.
     #[test]
     fn the_background_sample_reads_like_the_screen_and_measures_only_the_total() {
-        let body = method_body("pub fn summarize(");
+        let body = method_body("fn gather(");
         assert!(body.contains("snapshot::take(EnvScope::All)"), "배경 표본이 env를 가지치기한다 — 오래된 출처 불명의 표식이 안 읽힌다");
         assert_eq!(body.matches(".listing()").count(), 1, "풀의 셸 목록을 두 번 읽는다 — 판정의 셸과 셸 프로세스가 다른 순간의 것이 된다");
         let listed = body.find("let (live, listed) = self.pool.listing();").expect("판정의 셸과 풀의 셸을 한 번에 받는다");
@@ -445,6 +455,68 @@ mod tests {
         assert_eq!(asked_meanwhile.sample_once(&mut held), summary::EVERY, "요약 IPC가 웹뷰의 답을 받았는데 또 미뤘다");
     }
 
+    /// 표본이 WebContent를 물은 **뒤**, 그 표본이 풀을 다시 볼 때 요약 IPC 하나를 그 자리에서 돌리는 풀 — 두 스레드의 차례(표본의
+    /// 물음이 늦음으로 끝난 뒤, 표본이 미룰지 가르기 전에 IPC의 물음이 답을 받는다)를 한 스레드에서 고정한다. IPC의 요약은 다시
+    /// 이 풀을 보지만 한 번만 돈다.
+    #[derive(Default)]
+    struct IpcMeanwhile {
+        record: Record,
+        service: std::sync::OnceLock<std::sync::Weak<ProcessService>>,
+        /// 웹뷰에게 한 번이라도 물었나 — 묻는 함수가 세운다.
+        asked: Arc<std::sync::atomic::AtomicBool>,
+        ran: std::sync::atomic::AtomicBool,
+        /// IPC가 돌려준 장.
+        answered: Mutex<Option<Summary>>,
+    }
+
+    impl ShellListing for IpcMeanwhile {
+        fn listing(&self) -> (Vec<ShellEntry>, Vec<PoolShell>) {
+            (Vec::new(), Vec::new())
+        }
+
+        fn record(&self) -> &Record {
+            use std::sync::atomic::Ordering;
+            if self.asked.load(Ordering::SeqCst) && !self.ran.swap(true, Ordering::SeqCst) {
+                let service = self.service.get().and_then(std::sync::Weak::upgrade).expect("서비스가 아직 산다");
+                *self.answered.lock().unwrap() = Some(service.summary());
+            }
+            &self.record
+        }
+    }
+
+    /// **첫 장을 미룰지는 그 장을 모은 물음이 가른다**(티켓 30 · S39). 표본의 물음이 늦어 그 장이 「웹뷰 제외」인데, 표본이 가르기 전에
+    /// 요약 IPC(다른 스레드)의 물음이 답을 받아 제 장을 앉혔다 — 그 뒤에 자리의 지금 값(「들었다」)으로 가르면 표본이 제 제외 장을
+    /// 앉혀 IPC의 장을 덮는다. nav와 요약 카드가 다음 박자(10초)까지 그 장을 보인다. 이 장은 이 장의 물음으로 가른다: 미루고, IPC의
+    /// 장이 남는다. 다음 표본은 들은 답이 있어 곧바로 앉는다(앵커).
+    ///
+    /// 표본마다 이 맥의 표를 한 장 찍는다(읽기만 한다 — 아무것도 안 끝낸다).
+    #[test]
+    fn a_sample_asked_too_late_is_held_even_if_the_summary_ipc_heard_meanwhile() {
+        use std::sync::atomic::Ordering;
+
+        let pool = Arc::new(IpcMeanwhile::default());
+        let service = Arc::new(ProcessService::new(Arc::clone(&pool)));
+        pool.service.set(Arc::downgrade(&service)).expect("한 번만 건다");
+        let answers = scripted(&[WebContentAnswer::Late, WebContentAnswer::Answered(None)]);
+        let asked = Arc::clone(&pool.asked);
+        service.ask_web_content_with(move || {
+            asked.store(true, Ordering::SeqCst);
+            answers()
+        });
+
+        let mut held = 0;
+        let wait = service.sample_once(&mut held);
+        let answered = pool.answered.lock().unwrap().clone();
+        assert!(answered.is_some(), "표본이 모으는 사이 요약 IPC가 안 돌았다 — 이 검사가 재는 차례가 없다");
+        assert_eq!(
+            wait,
+            summary::FIRST_RETRY_AFTER,
+            "표본의 물음은 늦었는데 그사이 IPC가 들은 답을 이 장의 것으로 읽고 「웹뷰 제외」 장을 앉혔다"
+        );
+        assert_eq!(service.background.latest(), answered, "표본이 IPC가 앉힌 장을 덮었다");
+        assert_eq!(service.sample_once(&mut held), summary::EVERY, "들은 답이 있는데 다음 표본도 미뤘다");
+    }
+
     /// **추이 IPC는 배경 자리의 고리를 돌려준다**(티켓 30) — 표본이 앉힐 때 합계와 그 때를 한 점으로 더한 것이다. 부를 때마다 표를
     /// 찍지 않는다(찍으면 화면이 열려 있는 동안 요약 박자마다 표 한 장이 는다). 아직 한 점도 없으면 빈 목록이다.
     #[test]
@@ -463,7 +535,10 @@ mod tests {
         service.background.keep(kept(5), 17_000);
         assert_eq!(service.trend(), vec![Point { at: 7_000, total: 3 }, Point { at: 17_000, total: 5 }]);
         let body = method_body("pub fn trend(");
-        assert!(!body.contains("summarize(") && !body.contains("snapshot::take("), "추이 IPC가 표를 찍는다");
+        assert!(
+            !body.contains("summarize(") && !body.contains("gather(") && !body.contains("snapshot::take("),
+            "추이 IPC가 표를 찍는다"
+        );
     }
 
     /// **정리 기록 IPC는 풀의 인스턴스 기록이 연 정리 기록을 새것부터 돌려준다**(티켓 32 · 프로세스 스펙 S12). 데이터 루트를 다시
