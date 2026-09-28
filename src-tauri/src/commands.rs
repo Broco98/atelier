@@ -414,7 +414,8 @@ pub async fn processes_end(
         .map_err(|e| format!("프로세스를 끝내지 못했습니다: {e}"))
 }
 
-// 사용자 설정 둘. 본체는 `settings.rs`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
+// 사용자 설정 셋 — 읽기 · 쓰기와 예외 목록의 기본값(`default_process_exceptions`, 아래). 본체는 `settings.rs` ·
+// `processes::exceptions`에 있고 여기는 위임만 한다 — PTY와 같은 규칙이고,
 // **이 파일에 `pub async fn`으로 있는 것 자체가 배선 테스트의 조건이다**
 // (`src/tauri-commands.test.ts`는 `commands::`로 등록된 이름만 센다).
 //
@@ -445,7 +446,7 @@ pub async fn default_process_exceptions() -> CmdResult<Vec<String>> {
 }
 
 // 에이전트 훅 설치 셋 (#207 · 구현 결정 8). 본체는 `hooks.rs`에 있고 여기는 위임만 한다 —
-// 설정 둘과 같은 규칙이다.
+// 설정 셋과 같은 규칙이다.
 //
 // **홈이 둘이다.** 훅 처리기가 사는 곳은 `atelier_core::data_root()`(테스트가
 // `ATELIER_HOME`으로 옮기는 우리 폴더)이고, 고쳐야 할 설정이 사는 곳은 **진짜 홈**이다

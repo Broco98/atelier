@@ -188,7 +188,8 @@ mod mac {
         })
     }
 
-    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 `None` — 그사이 끝났거나, 남의 uid이거나, 좀비다.
+    /// 한 pid의 자원 사용(`proc_pid_rusage`, 판 0). 못 읽으면 `None` — 그사이 끝났거나 남의 uid다. **좀비는 읽힌다**(0이 온다 —
+    /// `a_zombie_leaves_only_its_own_metrics_empty`의 실측). 좀비의 칸을 비우는 것은 읽은 뒤 신원을 다시 보는 `read`다.
     ///
     /// 판 0을 고른 것은 쓰는 칸(`ri_phys_footprint` · `ri_user_time` · `ri_system_time`)이 모두 거기 있고 가장 작아서다. 뒤 판은 같은
     /// 칸 뒤에 다른 것을 더할 뿐이다.
