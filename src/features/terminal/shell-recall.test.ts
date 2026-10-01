@@ -61,7 +61,7 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   title: null,
   shellName: "zsh",
   shellKey,
-  owner: ownerOf("atelier", "signal"),
+  owner: ownerOf("signal"),
   project: null,
   cwd: null,
   running: null,
@@ -78,7 +78,7 @@ describe("기억한 셸 키 → 갈 곳", () => {
   });
 
   it("그 키의 셸이 떠 있으면 그 셸로 간다", () => {
-    const 둘째 = 칸(2, "G-2", { owner: ownerOf("atelier", "finance") });
+    const 둘째 = 칸(2, "G-2", { owner: ownerOf("finance") });
     expect(recallTarget("G-2", [칸(1, "G-1"), 둘째])).toEqual({ kind: "go", shell: 둘째 });
   });
 
@@ -114,7 +114,7 @@ describe("OS 알림이 억제된 부름도 기억한다", () => {
   const 줄 = (patch: Partial<NotifyShell>): NotifyShell => ({
     id: 1,
     shellKey: "G-1",
-    owner: ownerOf("atelier", "signal"),
+    owner: ownerOf("signal"),
     kind: "waiting",
     call: "waiting",
     since: 0,

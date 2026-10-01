@@ -90,7 +90,7 @@ test("MCP로 아카이브된 work의 조용한 셸은 「MCP 아카이브」로 
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
 
   // 조용한 셸 하나만 닫는다 — 까닭은 「MCP 아카이브」이고 주인은 그 work이다(정리 기록 · 판 04의 `●`가 이것을 읽는다).
-  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "mcpArchive", owner: `atelier:${plainWork.slug}` }]);
+  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "mcpArchive", owner: plainWork.slug }]);
   const toast = toastOf(page, ownerlessText(1));
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button", { name: "모두 닫기", exact: true })).toBeVisible();
@@ -149,7 +149,7 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "모두 닫기", exact: true }).click();
   // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 판 04의 `●`가 선다(S41).
-  const owner = `atelier:${plainWork.slug}`;
+  const owner = plainWork.slug;
   await expect
     .poll(() => kills(page))
     .toEqual([
@@ -159,6 +159,36 @@ test("[모두 닫기]는 한 번만 묻고, 확인하면 주인 잃은 셸마다
   await expect(toast).toBeHidden();
   // 셸마다 닫기 확인 창(08)을 띄우지 않는다 — 셸 하나의 물음이 한 번도 안 나갔다.
   expect(await callCount(page, "pty_close_check")).toBe(0);
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
+
+// **최상위 터미널의 셸은 어느 work의 것도 아니다** — 주인이 빈 글자 `""`다(ui-refresh 결정 23). 빈 글자는 거짓 값이라 「주인
+// 없음」으로 읽는 자리(`if (owner)` · `owner || …`)가 하나라도 있으면 목록이 새로 앉을 때마다 그 셸이 주인 잃은 셸로 선다. 같은 MCP
+// 아카이브에서 work의 셸은 서고(양성) 최상위 셸은 판정에도 안 실린다(음성). 둘 다 조용하지 않은 셸이라, 잘못 실리면 N이 2가 된다.
+test("MCP 아카이브 뒤 그 work의 셸은 주인 잃은 셸로 서고, 최상위 터미널의 셸은 안 선다", async ({ page }) => {
+  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL, 2: BUSY_SHELL } });
+  // `그냥 일`에 셸 하나(pty 1), 최상위 터미널에 셸 하나(pty 2) — 둘 다 사람이 친 셸이라 떠남으로 회수되지 않는다.
+  await page.goto(`/works/${plainWork.slug}?tab=terminal`);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+  await navButton(page, "Terminal").click();
+  await expect(page).toHaveURL("/terminal");
+  await arrived(page, 2);
+  await awaitSpawned(page, 1);
+  await typeIntoShell(page);
+
+  await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
+  // 양성 — 그 work의 셸 하나가 주인 잃은 셸이다.
+  await expect(toastOf(page, ownerlessText(1))).toBeVisible();
+  // 음성 — 판정에 실린 셸은 그 work의 셸뿐이다. 최상위 셸이 실렸으면 이 목록에 2가 있다.
+  expect((await ipcCallArgs(page, "pty_close_checks", "ids")).map(({ args }) => args.ids)).toEqual([[1]]);
+
+  // [모두 닫기]도 그 work의 셸만 닫는다 — 최상위 셸은 남는다.
+  await toastOf(page, ownerlessText(1)).getByRole("button", { name: "모두 닫기", exact: true }).click();
+  await closeAllDialog(page).getByRole("button", { name: "모두 닫기", exact: true }).click();
+  await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner: plainWork.slug }]);
+  await settle(page);
+  expect(await kills(page)).toHaveLength(1);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
@@ -188,7 +218,7 @@ test("UI 아카이브 중에는 토스트가 없다 — 그 뒤 MCP 아카이브
 
   await releaseCommand(page, "archive_work");
   // 앵커: 아카이브 코어 호출이 돌아왔고, UI 길이 그 owner의 셸을 제 까닭으로 닫았다.
-  await expect.poll(() => kills(page)).toEqual([{ id: 2, reason: "archive", owner: `atelier:${plainWork.slug}` }]);
+  await expect.poll(() => kills(page)).toEqual([{ id: 2, reason: "archive", owner: plainWork.slug }]);
   await settle(page);
   expect(await toastsNow(page)).toBe(0);
 

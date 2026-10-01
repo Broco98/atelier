@@ -9,10 +9,10 @@ import type { ShellOrigin, ShellsState } from "./shell-registry";
 // 바꿀 때도 터미널 패인은 내려가지만, 주소가 가리키는 owner는 그대로다. 그래서 아래는 주소 → owner와
 // (앞 owner, 뒤 owner) → 회수할 셸, 두 층으로 잰다.
 
-const 가 = ownerOf("atelier", "ga");
-const 나 = ownerOf("atelier", "na");
-const 가에서 = (): ShellOrigin => ({ mode: "atelier", cwd: "~/w/ga", owner: 가, project: null });
-const 나에서 = (): ShellOrigin => ({ mode: "atelier", cwd: "~/w/na", owner: 나, project: null });
+const 가 = ownerOf("ga");
+const 나 = ownerOf("na");
+const 가에서 = (): ShellOrigin => ({ cwd: "~/w/ga", owner: 가, project: null });
+const 나에서 = (): ShellOrigin => ({ cwd: "~/w/na", owner: 나, project: null });
 
 /** 칸을 연다. `auto`가 참이면 셸이 0개인 화면이 스스로 띄운 셸이다(`ensureShell`). */
 function open(state: ShellsState, origin: ShellOrigin, auto: boolean): { state: ShellsState; id: number } {
@@ -23,10 +23,10 @@ function open(state: ShellsState, origin: ShellOrigin, auto: boolean): { state: 
 
 describe("주소가 선 화면의 owner", () => {
   it.each([
-    ["/works/ga", ownerOf("atelier", "ga")],
-    ["/terminal", ownerOf("atelier")],
+    ["/works/ga", ownerOf("ga")],
+    ["/terminal", ownerOf()],
     // 주소의 slug는 인코딩된 채 온다 — 사이드바 강조와 같은 규칙(`slugOf`)으로 푼다.
-    ["/works/%ED%95%9C%EA%B8%80", ownerOf("atelier", "한글")],
+    ["/works/%ED%95%9C%EA%B8%80", ownerOf("한글")],
   ])("%s → %s", (pathname, owner) => {
     expect(screenOwner(pathname)).toBe(owner);
   });
@@ -86,9 +86,9 @@ describe("떠날 때 회수할 셸", () => {
 
   // 최상위 터미널도 owner다(life-mode 결정 10).
   it("최상위 터미널을 떠나면 그 자동 셸이 나온다 — work의 셸은 안 나온다", () => {
-    const top = open(NO_SHELLS, topTerminal("atelier"), true);
+    const top = open(NO_SHELLS, topTerminal(), true);
     const there = open(top.state, 가에서(), true);
-    expect(reclaimOnLeave(there.state, ownerOf("atelier"), 가)).toEqual([top.id]);
+    expect(reclaimOnLeave(there.state, ownerOf(), 가)).toEqual([top.id]);
   });
 
   // 못 뜬 칸은 이유를 적고 남는다(in-app-terminal 결정 23) — 닫을 프로세스도 없다. 회수하면 읽어야 할 이유가 함께 사라진다.

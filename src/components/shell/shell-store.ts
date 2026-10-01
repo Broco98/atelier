@@ -1,6 +1,7 @@
 import { Store } from "@tanstack/react-store";
 import { readStored, writeStored } from "@/lib/stored";
-import { modeFrom, placeModeOf, routesOf, slugOf } from "@/mode";
+import { workSlugOf } from "@/lib/path-prefix";
+import { modeFrom, placeModeOf, routesOf } from "@/mode";
 import { recallSearch } from "@/routes/-work-search";
 import type { WorkSearch } from "@/routes/-work-search";
 import type { Mode } from "@/mode";
@@ -108,9 +109,9 @@ export function rememberVisit(pathname: string): void {
  */
 export function modeEntryTarget(mode: Mode): { to: string; search?: WorkSearch } {
   const to = shellStore.state.lastPlace[mode] ?? routesOf(mode).list;
-  // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `slugOf`가 `null`을 주는 것이 그 사실이고,
+  // 목록·터미널·아카이브 주소에는 씨앗이 없다 — `workSlugOf`가 `null`을 주는 것이 그 사실이고,
   // 그 화면들은 `search`를 안 쓴다. 첫 화면(무선택 주소)도 여기로 떨어져 정규화가 씨앗을 얹는다.
-  const slug = slugOf(to);
+  const slug = workSlugOf(to);
   return slug === null ? { to } : { to, search: recallSearch(mode, slug) };
 }
 

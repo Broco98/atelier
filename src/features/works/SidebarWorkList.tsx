@@ -4,7 +4,8 @@ import { useStore } from "@tanstack/react-store";
 import { PopoverPortal } from "@/components/ui/popover-portal";
 import { armDrag, cancelDrag, dragStore, type DragPoint } from "@/lib/pointer-drag";
 import { recallSearch } from "@/routes/-work-search";
-import { routesOf, slugOf, type Mode } from "@/mode";
+import { workSlugOf } from "@/lib/path-prefix";
+import { routesOf, type Mode } from "@/mode";
 import { useMoveWork, useSetWorkPinned, useWorks } from "./hooks";
 import { WorkCard } from "./WorkCard";
 import { WorkSectionList, type WorkRowShells } from "./WorkSectionList";
@@ -82,12 +83,11 @@ function SidebarWorkList({
   // 켜지는지가 그것으로 갈렸는데, 그 잎이 탭 줄로 가면서(결정 6·7) 이 목록에 「지금 보고
   // 있는 것」을 말하는 자리가 행 하나로 줄었다.
   //
-  // **읽는 자리가 `@/mode`의 `slugOf` 하나다.** 이 목록이 두 세계의 항목 주소를 다 읽어야 해서
-  // 그리로 옮겼고, `/works/`를 박아 두던 `-work-search.ts`의 옛 파서는 호출부가 없어져 함께
-  // 걷었다 — 답이 갈리는 파서 둘(`/works/a/b`를 `"a/b"`로 읽던 쪽)이 남아 있으면 항목 아래로
+  // **읽는 자리가 `@/lib/path-prefix`의 `workSlugOf` 하나다.** `/works/`를 박아 두던 `-work-search.ts`의
+  // 옛 파서는 호출부가 없어져 함께 걷었다 — 답이 갈리는 파서 둘(`/works/a/b`를 `"a/b"`로 읽던 쪽)이 남아 있으면 항목 아래로
   // 화면이 갈라지는 날 다음 사람이 틀린 쪽을 고른다.
   const openSlug = useRouterState({
-    select: (state) => slugOf(state.location.pathname),
+    select: (state) => workSlugOf(state.location.pathname),
   });
 
   const sectionsOpen: SectionsOpen = {

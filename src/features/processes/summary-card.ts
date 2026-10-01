@@ -1,6 +1,5 @@
 import { signalOf } from "@/features/terminal/shell-attention";
 import { liveOwnerlessOf, type ShellsState } from "@/features/terminal/shell-registry";
-import { ALL_MODES } from "@/mode";
 import { formatMemory } from "./metrics";
 import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
@@ -14,11 +13,11 @@ import type { ProcessRow, ProcessSnapshot, TrendPoint } from "./types";
 
 /** 요약 카드의 수. 스냅샷에서 세는 수는 첫 스냅샷 전에 `null`이다 — 「0」이라 하면 모르는 것을 없다고 한다. */
 export interface CardCounts {
-  /** 풀의 셸 — 두 세계의 것과 화면 밖 셸까지. */
+  /** 풀의 셸 — 화면 밖 셸까지. */
   shells: number | null;
   /** 셸 상태가 「도는 중」인 셸(훅 · OSC가 말한 것). 명령이 도는 것과 다르다 — 그것은 셸 상태가 아니다. */
   working: number;
-  /** 주인 잃은 셸 중 아직 살아 있는 것 — 두 세계의 것. */
+  /** 주인 잃은 셸 중 아직 살아 있는 것. */
   ownerlessShells: number;
   confirmed: number | null;
   unknown: number | null;
@@ -34,7 +33,7 @@ export function cardCounts(state: ShellsState, snapshot: ProcessSnapshot | undef
     shells: snapshot ? snapshot.pool.length : null,
     // 셸 상태는 레지스트리가 내놓는 문으로 읽는다 — 끝난 칸에 남은 도는 중을 가리는 자리가 거기다(소스 스캔이 막는 길).
     working: state.shells.filter((shell) => signalOf(shell) === "working").length,
-    ownerlessShells: ALL_MODES.reduce((count, mode) => count + liveOwnerlessOf(state, mode).length, 0),
+    ownerlessShells: liveOwnerlessOf(state).length,
     confirmed: snapshot ? rowsIn(snapshot.verdict.orphans.confirmed) : null,
     unknown: snapshot ? rowsIn(snapshot.verdict.orphans.unknown) : null,
   };

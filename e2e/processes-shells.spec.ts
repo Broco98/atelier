@@ -92,7 +92,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
 
-  // 주인이 있는 셸 하나(Atelier `Terminal`, pty 3) — 세계 트리의 앵커다.
+  // 주인이 있는 셸 하나(`Terminal`, pty 3) — 셸 트리의 앵커다.
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
@@ -103,18 +103,18 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(page).toHaveURL("/processes");
   const ownerless = 묶음(page, "주인 잃은 셸");
   await expect(ownerless).toBeVisible();
-  // work마다 선다 — 목록에 없는 work이라 이름은 slug이고, 두 세계가 한 묶음이라 세계를 말한다.
+  // work마다 선다 — 목록에 없는 work이라 이름은 slug다. 셸 트리의 work 줄과 같은 말이다(세계를 말하지 않는다).
   expect(await 줄들(ownerless)).toEqual([
-    { level: "1", name: `${plainWork.slug}, Atelier, 셸 2개` },
+    { level: "1", name: `${plainWork.slug}, 셸 2개` },
     { level: "2", name: "zsh, 띄운 프로세스 1개" },
     { level: "3", name: "node" },
     { level: "2", name: "zsh, 조용함 2h" },
   ]);
-  // 세계 트리에는 안 선다 — 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이다. 앵커: 주인이 있는 셸은 거기 섰다.
+  // 셸 트리에는 안 선다 — 한 셸이 두 묶음에 서면 [닫기] 자리가 둘이다. 앵커: 주인이 있는 셸은 거기 섰다.
   await expect(셸줄(셸트리(page), 3)).toBeVisible();
   await expect(셸줄(셸트리(page), 1)).toHaveCount(0);
   await expect(셸줄(셸트리(page), 2)).toHaveCount(0);
-  // [이동]이 없다 — 그 work은 목록에 없어 갈 화면이 없다. 앵커: 세계 트리의 셸 줄에는 있다.
+  // [이동]이 없다 — 그 work은 목록에 없어 갈 화면이 없다. 앵커: 셸 트리의 셸 줄에는 있다.
   await expect(버튼(셸줄(셸트리(page), 3), "이동")).toBeVisible();
   await expect(버튼(ownerless, "이동")).toHaveCount(0);
   const asked = await callCount(page, "pty_close_checks");
@@ -139,7 +139,7 @@ test("주인 잃은 셸이 제 묶음에 서고, [모두 닫기]가 한 번 묻�
   await expect(dialog).toBeVisible();
   await 버튼(dialog, "모두 닫기").click();
   // 사람이 누른 닫기라 까닭은 「셸 닫기」다 — 「MCP 아카이브」면 `●`가 선다(S41).
-  const owner = `atelier:${plainWork.slug}`;
+  const owner = plainWork.slug;
   await expect
     .poll(() => kills(page))
     .toEqual([
@@ -182,7 +182,7 @@ test("Processes에서 주인 잃은 셸을 하나 닫으면 토스트의 수가 
 
   // ── 한 줄 닫기 — 토스트의 수가 준다 ──
   await 버튼(셸줄(ownerless, 1), "닫기").click();
-  const owner = `atelier:${plainWork.slug}`;
+  const owner = plainWork.slug;
   await expect.poll(() => kills(page)).toEqual([{ id: 1, reason: "shellClose", owner }]);
   await expect(토스트(2)).toBeVisible();
   await expect(토스트(3)).toHaveCount(0);
@@ -303,7 +303,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await typeIntoShell(page);
   await archiveByMcp(page, "atelier", WORKS, plainWork.slug);
   await expect.poll(() => callCount(page, "pty_close_checks")).toBe(1);
-  // Atelier `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
+  // `Terminal`에 셸 둘(pty 2 · 3) — 사람이 친 셸과 `+`로 연 셸이다.
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(2);
@@ -325,7 +325,7 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
 
   // ── 셸 행의 [닫기] ── 2는 조용해 묻지 않고 닫힌다. 스냅샷은 그대로라 풀에 2가 남아 있다.
   await 버튼(셸줄(셸트리(page), 2), "닫기").click();
-  await expect.poll(() => kills(page)).toEqual([{ id: 2, reason: "shellClose", owner: "atelier:" }]);
+  await expect.poll(() => kills(page)).toEqual([{ id: 2, reason: "shellClose", owner: "" }]);
   // 앵커: 스토어에서 빠진 뒤의 화면이다 — 같은 렌더가 화면 밖 셸도 가른다.
   await expect(셸줄(셸트리(page), 2)).toHaveCount(0);
   await expect(셸줄(offscreen, 2)).toHaveCount(0);
@@ -339,8 +339,8 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect
     .poll(() => kills(page))
     .toEqual([
-      { id: 2, reason: "shellClose", owner: "atelier:" },
-      { id: 3, reason: "shellClose", owner: "atelier:" },
+      { id: 2, reason: "shellClose", owner: "" },
+      { id: 3, reason: "shellClose", owner: "" },
     ]);
   // 확인 창의 나가는 애니메이션은 프레임을 탄다 — 멈춘 시계를 조금 흘려 창을 걷는다(다 걷히기 전의 막은 다음 누르기를 가로챈다).
   // 100ms는 박자(2초)에 한참 못 미친다 — 스냅샷은 그대로다.
@@ -358,9 +358,9 @@ test("Processes에서 닫은 셸은 다음 스냅샷이 오기 전에도 화면 
   await expect
     .poll(() => kills(page))
     .toEqual([
-      { id: 2, reason: "shellClose", owner: "atelier:" },
-      { id: 3, reason: "shellClose", owner: "atelier:" },
-      { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
+      { id: 2, reason: "shellClose", owner: "" },
+      { id: 3, reason: "shellClose", owner: "" },
+      { id: 1, reason: "shellClose", owner: plainWork.slug },
     ]);
   await page.clock.runFor(100);
   await expect(ownerlessDialog).toHaveCount(0);
@@ -407,7 +407,7 @@ const 기록: CleanupEvent[] = [
     at: new Date(2026, 8, 26, 22, 0).getTime(),
     reason: "shellClose",
     shellKey: shellKeyOf(2),
-    owner: `atelier:${plainWork.slug}`,
+    owner: plainWork.slug,
     targets: [{ pid: 500, name: "esbuild", command: "esbuild --service", outcome: "gone" }],
   },
 ];
@@ -516,12 +516,12 @@ test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 �
   await quietAll.click();
   await expect(dialog).toBeVisible();
   await 버튼(dialog, "모두 닫기").click();
-  // 사람이 누른 닫기라 까닭은 「셸 닫기」다. 주인은 그 셸의 것이다(최상위 터미널은 slug가 없다).
+  // 사람이 누른 닫기라 까닭은 「셸 닫기」다. 주인은 그 셸의 것이다 — work 셸은 slug, 최상위 터미널은 빈 글자다.
   await expect
     .poll(() => kills(page))
     .toEqual([
-      { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
-      { id: 4, reason: "shellClose", owner: "atelier:" },
+      { id: 1, reason: "shellClose", owner: plainWork.slug },
+      { id: 4, reason: "shellClose", owner: "" },
     ]);
   await settle(page);
   expect(await callCount(page, "pty_kill")).toBe(2);

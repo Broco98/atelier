@@ -170,22 +170,6 @@ export function modeOf(_pathname: string): Mode {
 }
 
 /**
- * 주소가 가리키는 항목의 slug. 목록 주소(`/works`)와 다른 화면에서는 `null`이다.
- *
- * `decodeURIComponent`를 잊지 않는다 — 슬러그에 한글이 들어가고, 읽는 자리가 사이드바 강조와
- * 가지 판정 둘이다.
- *
- * 첫 칸만 본다 — slug는 경로의 한 칸이고, 뒤에 더 붙은 주소는 그 항목의 하위 화면이지
- * 다른 slug가 아니다.
- */
-export function slugOf(pathname: string): string | null {
-  const prefix = `${routesOf(modeOf(pathname)).list}/`;
-  if (!pathname.startsWith(prefix)) return null;
-  const segment = pathname.slice(prefix.length).split("/")[0];
-  return segment ? decodeURIComponent(segment) : null;
-}
-
-/**
  * 이 모드에 **프로젝트라는 것이 있는가**(결정 17). 값이 하나라 늘 참이다 — 갈래를 펴는 일은 쓰는 쪽을
  * 옮기는 커밋이 한다(ui-refresh 결정 22).
  */

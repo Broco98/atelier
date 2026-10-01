@@ -14,7 +14,7 @@ import { ownerOf } from "@/features/terminal/shell-registry";
 
 const 줄 = (over: Partial<BandItem> = {}): BandItem => ({
   id: 1,
-  owner: ownerOf("atelier", "plain"),
+  owner: ownerOf("plain"),
   title: "그냥 일",
   shellName: null,
   kind: "waiting",

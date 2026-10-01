@@ -60,23 +60,6 @@ const WORKS_KEY = ["works"] as const;
  *
  * **아카이브 목록도 이 문 안에서 함께 지운다**(`invalidateArchive` — 티켓 14). 아카이빙은 언제나 works/에서 하나가 사라지는
  * 일이라 `works:changed`가 함께 온다. 여기를 타야 이벤트 한 번에 아카이브 목록 조회도 한 번이고 같은 합치기를 받는다.
- *
- * **저쪽 세계도 이 문 안에서 함께 읽는다**(티켓 12 · 프로세스 스펙 S13). 무효화는 관찰자가 있는 쿼리만 다시 부르는데
- * 앱 루트가 관찰하는 것은 지금 세계 하나라, 저쪽 목록은 지워진 채 새로 안 앉는다 — 그러면 MCP로 아카이브된 저쪽 Room의
- * 셸을 못 알아챈다. 어느 세계를 읽을지는 셸을 아는 쪽이 건 함수가 **이때** 고른다(`readOtherWorldsWith`). 지운 **뒤에**
- * `prefetchQuery`로 부르는 것이 순서다: 지운 쿼리는 신선도와 무관하게 낡은 것이라 반드시 다시 읽는다.
- * - `prefetchQuery`는 그 쿼리에 도는 조회가 있으면 새로 안 부르고 **합류한다**(관찰자가 없어 무효화가 끊지도 않는다). 앞
- *   이벤트의 느린 조회가 MCP 아카이브 **전에** 읽은 목록 — 아카이브된 work이 든 — 을 앉히면 그 세계의 주인 잃은 셸을 못
- *   본다(티켓 12 리뷰). 이 문은 도는 조회가 **없을 때만** 여기까지 오므로, 합류할 조회는 이번 무효화 뒤에 시작한 것
- *   (관찰자가 있어 `invalidateQueries`가 방금 부른 것)뿐이다. 합류해도 된다.
- * - 끊고 다시 부르는 길은 쓰지 않는다: 관찰자 없는 목록은 5분 조용하면 캐시에서 빠지고, 그 뒤의 첫 조회는 값이 없어
- *   react-query가 `cancelRefetch`로도 안 끊는다. 억지로 끊으면 세계를 건너는 라우트(`pickWorkSlug`의 `ensureQueryData`)가
- *   거기 합류해 있다가 취소를 받아 빈 목록으로 정규화한다.
- *
- * 곧바로 읽는 쪽이 돌려주는 promise는 **관찰되는 쿼리의 재조회만** 기다린다 — 삭제의 진행 표시가 그것을 기다리는데, 저쪽
- * 세계는 이 화면의 목록이 아니다. 저쪽 세계의 읽기는 실패를 삼키므로 흘려보내도 미처리 거절이 안 생긴다. **표시한 쪽은 저쪽
- * 세계까지 기다린다:** 뒤따르는 한 번은 도는 목록 조회가 **모두** 끝난 뒤에 나가므로(`readsSettled` — 두 세계 · 아카이브를 한
- * 줄로 본다), 그때 돌던 저쪽 세계의 목록이 늦으면 표시한 쪽의 진행 표시도 그만큼 선다. 세계마다 문을 가르지 않은 대가다(티켓 14).
  */
 export function invalidateWorks(queryClient: QueryClient): Promise<void> {
   const state = movesOf(queryClient);
@@ -94,12 +77,10 @@ export function invalidateWorks(queryClient: QueryClient): Promise<void> {
     trailing.set(queryClient, once);
     return once;
   }
-  const refetched = Promise.all([
+  return Promise.all([
     queryClient.invalidateQueries({ queryKey: WORKS_KEY }, { cancelRefetch: false }),
     invalidateArchive(queryClient),
-  ]);
-  for (const mode of otherWorlds.get(queryClient)?.() ?? []) void queryClient.prefetchQuery(worksQuery(mode));
-  return refetched.then(() => undefined);
+  ]).then(() => undefined);
 }
 
 /**
@@ -110,7 +91,7 @@ const trailing = new WeakMap<QueryClient, Promise<void>>();
 
 /**
  * **목록 조회가 도는가** — 두 세계의 work 목록과 아카이브 목록. 누가 띄웠든 센다(화면의 첫 조회 · 라우트의
- * `ensureQueryData` · 저쪽 세계 읽기).
+ * `ensureQueryData`).
  *
  * **spec 본문과 아카이브 문서(문서 목록 · 본문)는 안 센다**(티켓 14 리뷰). 이 문으로 함께 다시 읽을 뿐 문을 잡지 않는다. 웹뷰의 react-query는
  * 실패한 조회를 세 번 더 시도하고(1 · 2 · 4초 쉼) 그동안 내내 「도는 중」이다 — 읽을 수 없는 문서 하나(spec/의 `ref.pdf`는
@@ -143,24 +124,6 @@ function readsSettled(queryClient: QueryClient): Promise<void> {
       resolve();
     });
   });
-}
-
-/**
- * 캐시마다 **함께 다시 읽을 저쪽 세계를 고르는 함수** 하나(티켓 12). 앱 루트(`ShellOwners`)가 걸고 내려갈 때 푼다.
- * 캐시에 매는 까닭은 아래 `moves`와 같다 — L2가 캐시를 검사마다 새로 세운다.
- */
-const otherWorlds = new WeakMap<QueryClient, () => ReadonlyArray<Mode>>();
-
-/**
- * 이 캐시의 무효화가 부를 **저쪽 세계를 고르는 함수**를 건다 — 부르는 것은 무효화할 때마다다(셸은 그사이 열리고 닫힌다).
- * 돌려주는 함수로 푼다. **제가 건 것만 푼다** — StrictMode가 이펙트를 두 번 돌리거나 세계를 건너 새로 걸 때, 앞의 풀기가
- * 뒤에 건 것을 지우면 저쪽 세계를 영영 안 읽는다.
- */
-export function readOtherWorldsWith(queryClient: QueryClient, pick: () => ReadonlyArray<Mode>): () => void {
-  otherWorlds.set(queryClient, pick);
-  return () => {
-    if (otherWorlds.get(queryClient) === pick) otherWorlds.delete(queryClient);
-  };
 }
 
 /**

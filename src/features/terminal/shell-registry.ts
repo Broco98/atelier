@@ -1,5 +1,4 @@
 import type { WorkView, WorktreeView } from "@/features/works/types";
-import type { Mode } from "@/mode";
 import type { Attention } from "./shell-attention";
 import type { CloseCheck, CloseReason, PtyExit } from "./types";
 
@@ -69,8 +68,8 @@ export interface Shell {
    */
   shellKey: string | null;
   /**
-   * 어느 세계의 무엇인가(결정 10·26). 형식과 뜻은 아래 `ShellOwner`가 든다 — 그 세계의
-   * 최상위 터미널은 뒤가 빈 키이고, `null`이라는 갈래는 없다.
+   * 어느 화면의 셸인가(결정 26). 형식과 뜻은 아래 `ShellOwner`가 든다 — 최상위 터미널은 빈
+   * 글자이고, `null`이라는 갈래는 없다.
    */
   owner: ShellOwner;
   /** 이름의 가운데 갈래(결정 31). 프로젝트가 여럿인 Work에서만 찬다. */
@@ -140,8 +139,8 @@ export interface Shell {
 export interface ShellsState {
   shells: ReadonlyArray<Shell>;
   /**
-   * **켜진 칸은 화면마다 따로다.** 키는 소유자 그대로이고, 그 세계의 최상위 터미널은
-   * 뒤가 빈 `"<mode>:"`다 — Work slug는 비어 있을 수 없어 둘이 안 겹친다(`slugOfOwner`).
+   * **켜진 칸은 화면마다 따로다.** 키는 소유자 그대로이고, 최상위 터미널은 빈 글자 `""`다 —
+   * Work slug는 비어 있을 수 없어 둘이 안 겹친다(`slugOfOwner`).
    *
    * 하나로 두면 Work 가에서 나로 갔다 오는 것만으로 가의 줄에 켜진 칸이 없어지고,
    * 그 자리에서 「없으면 하나 띄운다」가 돌면 이미 있는 셸 옆에 셸이 또 뜬다. `×`의
@@ -155,75 +154,33 @@ export interface ShellsState {
 export const NO_SHELLS: ShellsState = { shells: [], activeByOwner: {}, nextId: 1 };
 
 /**
- * 소유자 키를 가르는 글자. **모드에는 없고 slug에는 있을 수 있는 글자**다 — 코어의
- * `is_safe_slug`(`crates/atelier-core/src/slug.rs`)가 막는 것은 빈 값·앞머리의 `.`·`/`·`\`
- * 넷뿐이라, 사람이 `slug`를 손으로 주면 `:`가 그대로 들어온다(`slugify`는 `:`를 `-`로 바꾸지만
- * 그 길은 제목에서 파생할 때만 지난다).
+ * 셸의 소유자 — **어느 화면의 셸인가.** work의 셸이면 그 slug(`spec-search`)이고, 최상위 터미널은
+ * 빈 글자 `""`다(ui-refresh 결정 23).
  *
- * 그래서 읽는 쪽은 **첫 `:`에서만** 가른다. 마지막 `:`로 가르면 `atelier:a:b`의 slug가 `b`가
- * 되어 왕복이 제자리로 안 오고, 그때 화면은 「가끔 셸이 남의 것으로 보인다」로만 보인다.
+ * **빈 글자는 거짓 값이다.** 「소유자가 있나」를 `if (owner)` · `owner || …`로 물으면 최상위 터미널이
+ * 「주인 없음」으로 떨어진다 — 그 갈래는 `null`로만 묻는다(`ShellTally.owner` · 닫기 IPC의 `owner`).
+ * 「최상위인가」는 `slugOfOwner`가 답한다.
  */
-const OWNER_SEP = ":";
+export type ShellOwner = string;
 
 /**
- * 셸의 소유자 — **어느 세계의 무엇인가**(결정 10). `atelier:spec-search`·`maison:finance`이고,
- * 그 세계의 최상위 터미널은 뒤가 빈 `atelier:`·`maison:`이다.
+ * 소유자 키를 짓는다. slug를 안 주면 **최상위 터미널**이다.
  *
- * **타입이 형식을 든다.** 아래 읽는 함수 둘이 「앞머리는 모드다」에 기대는데, 이 모듈은
- * 값 import가 하나도 없어(머리말) 모드 목록을 값으로 확인할 길이 없다 — 그 확인을 타입이
- * 대신한다. 손으로 이은 문자열은 여기 못 앉는다.
+ * **키를 짓는 자리는 여기 하나다.** 부르는 쪽이 키를 손으로 지으면 최상위 터미널을 적는 자리가
+ * 갈리고, 그 화면만 조용히 남의 셸을 세거나 자기 셸을 못 찾는다.
  */
-export type ShellOwner = `${Mode}${typeof OWNER_SEP}${string}`;
-
-/**
- * 소유자 키를 짓는다. slug를 안 주면 그 세계의 **최상위 터미널**이다.
- *
- * **모드가 들어가는 이유는 최상위가 둘이 되어서만이 아니다**(결정 10). 두 루트에 같은 slug가
- * 설 수 있고(코어의 유일성은 한 루트 쌍 안에서만 본다), owner가 slug뿐이면 Atelier의
- * `finance`와 Maison의 `finance`가 셸 목록·상한·켜진 칸을 통째로 나눠 쓴다.
- *
- * **키를 짓는 자리는 여기 하나다.** 부르는 쪽이 문자열을 손으로 이으면 형식을 달리 적는 자리가
- * 생기고, 그 화면만 조용히 남의 셸을 세거나 자기 셸을 못 찾는다.
- */
-export function ownerOf(mode: Mode, slug?: string | null): ShellOwner {
-  return `${mode}${OWNER_SEP}${slug ?? ""}`;
+export function ownerOf(slug?: string | null): ShellOwner {
+  return slug ?? "";
 }
 
 /**
- * 그 소유자의 세계.
+ * 그 소유자의 slug. **`null`이면 최상위 터미널이다.**
  *
- * **`as`가 여기 서는 것은 인자 타입이 이미 형식을 들기 때문이다** — `ShellOwner`가 아닌
- * 문자열은 이 함수에 못 들어오므로 앞머리는 모드일 수밖에 없다. 값으로 한 번 더 확인하려면
- * `ALL_MODES`를 **값으로** import해야 하는데, 머리말의 「값 import가 하나도 없다」가 그 길을
- * 막아 뒀다(그 성질을 이 모듈의 소스 스캔이 지킨다). 형식은 `ownerOf` 하나가 짓는다.
- */
-export function modeOfOwner(owner: ShellOwner): Mode {
-  return owner.slice(0, owner.indexOf(OWNER_SEP)) as Mode;
-}
-
-/**
- * 그 소유자의 slug. **`null`이면 그 세계의 최상위 터미널이다.**
- *
- * 빈 뒤꼬리가 다른 뜻을 가질 수 없는 것은 코어가 빈 slug를 거절하기 때문이다
+ * 빈 글자가 다른 뜻을 가질 수 없는 것은 코어가 빈 slug를 거절하기 때문이다
  * (`is_safe_slug`). 그 한 줄이 최상위 키와 work 키가 안 겹치는 것도 함께 보증한다.
  */
 export function slugOfOwner(owner: ShellOwner): string | null {
-  return owner.slice(owner.indexOf(OWNER_SEP) + 1) || null;
-}
-
-/**
- * `string`으로 실려 온 값이 **그 세계가 지은 소유자 키**인가. 아니면 `null`.
- *
- * 공용 끌기 모듈(`@/lib/pointer-drag`)은 기능 폴더를 타입으로도 못 불러 소유자를 `string`으로
- * 싣는다. 받는 쪽이 `as ShellOwner`로 좁히면 위 「타입이 형식을 든다」가 주석 하나로 내려앉아,
- * 손으로 이은 문자열(`work.slug`)이 그대로 앉고 `slugOfOwner`가 조용히 틀린 slug를 낸다.
- *
- * **`as`를 안 쓰고 `ownerOf`로 다시 짓는다** — 키를 짓는 자리가 여전히 하나이고, 앞머리가
- * 이 세계의 것인지를 값으로 본다. 남의 세계 키는 이 화면이 받을 것이 아니라 `null`이다.
- */
-export function ownerIn(mode: Mode, value: string): ShellOwner | null {
-  const prefix = ownerOf(mode);
-  return value.startsWith(prefix) ? ownerOf(mode, value.slice(prefix.length)) : null;
+  return owner || null;
 }
 
 /**
@@ -231,65 +188,27 @@ export function ownerIn(mode: Mode, value: string): ShellOwner | null {
  * 어디인지는 `ATELIER_HOME`을 보는 백엔드만 안다(결정 25).
  */
 export interface ShellOrigin {
-  /**
-   * 어느 세계에서 뜨는가. **이 값이 그대로 `pty_spawn`의 `mode`로 나간다**(결정 10) —
-   * 셸의 cwd와 `ATELIER_MODE`를 정하는 것이 백엔드의 그 인자다.
-   *
-   * **`owner`에서 뽑지 않는다.** 같은 사실이 거기에도 실려 있지만 꺼내는 길이
-   * `modeOfOwner`뿐이고 그 함수는 `as`로 좁힌다(그 머리말) — 형식이 어긋난 키가 오면
-   * 조용히 아닌 값을 백엔드에 싣고, 그때 나는 것은 「Maison 셸이 Atelier 홈에서 떴다」다.
-   * `Mode`로 들면 그 자리를 컴파일러가 지킨다. 둘이 어긋날 수 없는 것은 origin을 짓는
-   * 자리가 아래 둘뿐이고 **둘 다 같은 인자로 `ownerOf`를 부르기** 때문이다.
-   */
-  mode: Mode;
   /** `~` 축약 표기의 cwd 후보. 펴는 것은 백엔드 한 곳이다 — 여기서 홈을 붙이지 않는다. */
   cwd: string | null;
   owner: ShellOwner;
   project: string | null;
 }
 
-/**
- * **그 세계의** 최상위 터미널이 셸을 여는 자리. Work가 아니라 slug가 없다.
- *
- * **상수가 아니라 함수인 것이 결정 10이다.** 최상위 화면이 세계마다 하나씩이라(`/terminal`과
- * `/maison/terminal`) 값 하나로는 둘을 못 든다 — 한 값으로 두면 두 화면이 같은 셸 목록·같은
- * 상한·같은 켜진 칸을 나눠 쓰고, 모드를 갈아도 저쪽 셸이 계속 도는 것(결정 16의 점이 세는
- * 그것)을 화면이 표현할 수 없다.
- */
-export function topTerminal(mode: Mode): ShellOrigin {
-  return { mode, cwd: null, owner: ownerOf(mode), project: null };
-}
-
-/**
- * 셸을 여는 함수들이 보는 **워크트리 목록**. 아래 `workShellProjects`는 「고를 것이 있나」를,
- * 그 아래 `workShellOrigin`·`workDefaultOrigin`은 「어디에 열까」를 여기서만 읽는다 —
- * **셋이 같은 값을 보는 것을 함수 하나로 세운다.** 조건을 여러 자리에 나눠 적으면 한쪽만
- * 갈린 커밋이 「메뉴는 열리는데 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안
- * 열리는데 열 자리도 없다」)를 만들고, 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이
- * 금지하는 것).
- *
- * **Maison에서는 언제나 빈 배열이다**(결정 17 · US 26). 저 세계에 워크트리가 없는 것은
- * 코어가 프로젝트 붙이기를 거절하기 때문인데, 그 거절 **하나에만** 걸어 두면 손으로 고친
- * work.json 하나로 Room이 프로젝트를 실어 오고 — 목록을 읽는 자리에는 검증이 없다 —
- * `+`가 있지도 않은 워크트리를 고르는 메뉴를 연다. 없는 것을 시도할 수 없어야 한다.
- *
- * **이 물음의 정본은 `@/mode`의 `hasProjects`이고, 여기만 그것을 못 부른다.** 이 모듈은
- * 타입 말고는 아무것도 import하지 않는다(머리말) — 그 성질이 `SidebarWorkList`가 이 파일을
- * 정적 마크업 검사에서 쓰게 해 주고, 소스 스캔이 그것을 지킨다. 값 하나를 들이는 순간
- * `@/mode`가 딸려 오므로 여기서는 갈래를 손으로 적는다. 셋째 세계가 생기는 날 저 표를
- * 고치면서 이 한 줄을 함께 찾아야 한다.
- */
-function shellTrees(mode: Mode, work: WorkView): WorktreeView[] {
-  return mode === "atelier" ? work.worktrees : [];
+/** 최상위 터미널이 셸을 여는 자리. Work가 아니라 slug가 없고, cwd는 데이터 루트다. */
+export function topTerminal(): ShellOrigin {
+  return { cwd: null, owner: ownerOf(), project: null };
 }
 
 /**
  * 이 Work에서 `+`가 **고르라고 물어볼 수 있는** 프로젝트들 — 아래 `workShellOrigin`이
- * 「어디에 열까」를 답한다면 이쪽은 「고를 것이 있나」를 답한다. 같은 기준을 보는 것은
- * 위 `shellTrees` 하나가 세운다.
+ * 「어디에 열까」를 답한다면 이쪽은 「고를 것이 있나」를 답한다. 셋(이것 · `workShellOrigin` ·
+ * `workDefaultOrigin`)이 **같은 `work.worktrees`를 본다** — 조건을 여러 자리에 나눠 적으면
+ * 한쪽만 갈린 커밋이 「메뉴는 열리는데 고른 값으로 셸이 안 생긴다」 또는 그 반대(「메뉴가 안
+ * 열리는데 열 자리도 없다」)를 만들고, 둘 다 눌러도 아무 일이 없는 버튼이다(결정 11·21이
+ * 금지하는 것).
  */
-export function workShellProjects(mode: Mode, work: WorkView): string[] {
-  return shellTrees(mode, work).map((tree) => tree.project);
+export function workShellProjects(work: WorkView): string[] {
+  return work.worktrees.map((tree) => tree.project);
 }
 
 /**
@@ -303,29 +222,13 @@ export function workShellProjects(mode: Mode, work: WorkView): string[] {
  *
  * `worktrees[].exists`는 보지 않는다. 폴더가 없으면 spawn이 실패하고 결정 23의 「그 칸에
  * 이유를 적는다」를 그대로 탄다 — 여기서 한 번 더 판정하면 같은 사실을 두 곳이 말한다.
- *
- * **`mode`를 받는다 — `work`에서 유도하지 않는다**(결정 10). `WorkView`에는 어느 루트에서
- * 읽어 온 것인지가 안 실려 있고(코어가 그 필드를 안 준다), 두 루트에 같은 slug가 설 수
- * 있어 slug만으로는 셸 목록·상한·켜진 칸이 통째로 섞인다.
- *
- * **워크트리는 `shellTrees`로만 본다** — Maison에서는 그것이 빈 배열이라 위 표의 마지막
- * 줄(프로젝트 0개 → Work 폴더)로 언제나 떨어진다. `work.worktrees`를 여기서 직접 읽으면
- * 값이 실려 온 Room에서 `+`가 묻지도 않고(`workShellProjects`가 `[]`니까) 열지도 못하는
- * (`project === null`이라 `null`) 버튼이 되고, 하나만 실려 온 Room은 Room 폴더가 아니라
- * 저쪽 세계의 워크트리에서 셸이 뜬다.
  */
-export function workShellOrigin(
-  mode: Mode,
-  work: WorkView,
-  project: string | null,
-): ShellOrigin | null {
-  const trees = shellTrees(mode, work);
-  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
+export function workShellOrigin(work: WorkView, project: string | null): ShellOrigin | null {
+  const trees = work.worktrees;
+  if (trees.length <= 1) return unpickedOrigin(work, trees);
 
   const picked = project === null ? undefined : trees.find((tree) => tree.project === project);
-  return picked
-    ? { mode, cwd: picked.path, owner: ownerOf(mode, work.slug), project: picked.project }
-    : null;
+  return picked ? { cwd: picked.path, owner: ownerOf(work.slug), project: picked.project } : null;
 }
 
 /**
@@ -334,7 +237,7 @@ export function workShellOrigin(
  *
  * | Work의 모양 | cwd |
  * |---|---|
- * | 프로젝트 0·1개 · Room | `workShellOrigin(mode, work, null)`과 같다 |
+ * | 프로젝트 0·1개 | `workShellOrigin(work, null)`과 같다 |
  * | 프로젝트 여럿 | 「모든 프로젝트」 — **첫 워크트리 경로의 부모**, `project: null` |
  *
  * **위 `workShellOrigin`을 대신하지 않는다.** 그 함수는 「고른 프로젝트」와 「들어갈 때 셸을
@@ -348,10 +251,10 @@ export function workShellOrigin(
  *
  * 탭 이름에 프로젝트 앞말이 없는 것은 `project: null`에서 저절로 나온다(결정 31).
  */
-export function workDefaultOrigin(mode: Mode, work: WorkView): ShellOrigin {
-  const trees = shellTrees(mode, work);
-  if (trees.length <= 1) return unpickedOrigin(mode, work, trees);
-  return { mode, cwd: parentDir(trees[0].path), owner: ownerOf(mode, work.slug), project: null };
+export function workDefaultOrigin(work: WorkView): ShellOrigin {
+  const trees = work.worktrees;
+  if (trees.length <= 1) return unpickedOrigin(work, trees);
+  return { cwd: parentDir(trees[0].path), owner: ownerOf(work.slug), project: null };
 }
 
 /**
@@ -370,26 +273,24 @@ export type ShellPlace = { kind: "default" } | { kind: "project"; project: strin
  * 다른 자리를 고르면 「⌘T와 `+`가 다르게 군다」가 되살아나고, 그 규칙이 설 곳이 여기 하나다.
  * 프로젝트 줄은 그 워크트리고, 고른 이름이 목록에 없으면(열린 사이 work이 바뀌었다) `null`이다.
  */
-export function placeOrigin(mode: Mode, work: WorkView, place: ShellPlace): ShellOrigin | null {
-  return place.kind === "default"
-    ? workDefaultOrigin(mode, work)
-    : workShellOrigin(mode, work, place.project);
+export function placeOrigin(work: WorkView, place: ShellPlace): ShellOrigin | null {
+  return place.kind === "default" ? workDefaultOrigin(work) : workShellOrigin(work, place.project);
 }
 
 /**
- * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work과
- * Room은 기본 자리와 「안 고른」 자리가 같아야 한다 — UI개선 스펙 §11).
+ * 고를 것이 없는 Work의 자리 — 위 두 함수가 **같은 갈래**를 여기서 딛는다(0·1개 work은
+ * 기본 자리와 「안 고른」 자리가 같아야 한다 — UI개선 스펙 §11).
  */
-function unpickedOrigin(mode: Mode, work: WorkView, trees: WorktreeView[]): ShellOrigin {
-  const owner = ownerOf(mode, work.slug);
+function unpickedOrigin(work: WorkView, trees: ReadonlyArray<WorktreeView>): ShellOrigin {
+  const owner = ownerOf(work.slug);
   // 하나뿐이면 고를 것이 없다. 이름에 프로젝트를 적을 이유도 없다(결정 31).
   const cwd = trees.length === 0 ? workDir(work) : trees[0].path;
-  return { mode, cwd, owner, project: null };
+  return { cwd, owner, project: null };
 }
 
 /**
- * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는 세계별
- * 앞머리를 표에서 꺼내 **앱이 짓는데**(#186), 그쪽은 클립보드로 나가는 참조 형식이라 그래도
+ * Work 폴더는 **`specDir`의 부모로 유도한다**(결정 25). `refs.ts`의 `workDirRef`는 참조의
+ * 앞머리를 **앱이 짓는데**(#186), 그쪽은 클립보드로 나가는 참조 형식이라 그래도
  * 된다. 여기 값은 셸의 cwd가 되므로 `ATELIER_HOME`을 바꾼 사람에게 어긋나면 안 된다 —
  * 그 자리가 어디인지 아는 것은 코어뿐이고, `specDir`가 코어에서 온 값이다.
  */
@@ -415,9 +316,9 @@ export function placeHint(cwd: string | null): string | null {
 }
 
 /**
- * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 각 세계의
- * 최상위 터미널(`slugOfOwner`가 `null`인 소유자)도 자기 몫으로 이만큼이다 — 세계가
- * 둘이라 최상위 몫도 둘이다(결정 10). 화면이 늘었을 뿐이라 상한을 새로 만들지 않는다.
+ * **한 화면**이 동시에 들 수 있는 셸 수(결정 23). work 하나마다 이만큼이고, 최상위
+ * 터미널(`slugOfOwner`가 `null`인 소유자)도 자기 몫으로 이만큼이다. 화면이 늘었을 뿐이라
+ * 상한을 새로 만들지 않는다.
  *
  * **결정 30을 뒤집었다** — 그때는 앱 전체 하나였다. 근거는 WebGL 컨텍스트가 웹뷰의
  * 자원이고 결정 21이 비활성 셸의 xterm을 React 트리 밖에 두어 **안 보이는 칸도 컨텍스트를
@@ -577,29 +478,27 @@ function isAlive(shell: Shell): boolean {
 
 /** 이 화면에서 켜진 칸. */
 /**
- * **그 세계의** work별 셸 개수 — 사이드바 work 행 **오른쪽 메타가 서는 조건**이다
+ * work별 셸 개수 — 사이드바 work 행 **오른쪽 메타가 서는 조건**이다
  * (결정 2·3). 조용할 때 그 자리가 무엇을 적는지는 `ShellMeta`가 정한다 — 무리마다의 수를
  * 다 더하면 이 값이다.
  *
  * **키는 소유자가 아니라 slug다.** 사이드바 목록은 터미널을 한 번도 참조하지 않아
  * (SidebarWorkList의 import 계약) 그 안에서 `ownerOf`를 부를 수 없다 — 소유자로 키를 주면
  * 목록이 `work.slug`로 꺼내다 늘 빈손이 되고, 그때 화면은 「숫자가 0」이 아니라 **메타 상자가
- * 아예 안 서서**(`shellCount > 0`) 「셸이 없는 행」으로 보인다. 그래서 세계를 여기서 받아
- * 걸러 내고 나간다 — 목록이 그 세계 것만 그리므로 잃는 것도 없다.
+ * 아예 안 서서**(`shellCount > 0`) 「셸이 없는 행」으로 보인다. 그래서 slug로 키를 지어 내보낸다.
  *
  * **타이틀에는 안 흔들린다.** 셸은 프롬프트마다 OSC 타이틀을 쏘는데, 이 값은 셸이 열리고
  * 닫힐 때만 바뀐다 — 그래서 사이드바가 얕은 비교로 구독하면 목록 전체가 다시 그려지는 일이
  * 없다(Sidebar.tsx의 `shellCounts`).
  *
  * **최상위 터미널의 셸은 여기 없다.** 그쪽은 어느 work의 것도 아니라 세는 자리가 따로다
- * (`shellsOf(state, ownerOf(mode))`) — 한 Record에 섞으면 빈 키가 슬러그인 척하게 된다.
+ * (`shellsOf(state, ownerOf())`) — 한 Record에 섞으면 빈 키가 슬러그인 척하게 된다.
  * 가르는 것은 **slug가 비었는가**이지 소유자가 `null`인가가 아니다: 소유자가 늘 문자열이
  * 된 뒤로 후자는 아무도 안 빼고 조용히 통과하는 판정이다.
  */
-export function shellCountsOf(state: ShellsState, mode: Mode): Record<string, number> {
+export function shellCountsOf(state: ShellsState): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const shell of state.shells) {
-    if (modeOfOwner(shell.owner) !== mode) continue;
     const slug = slugOfOwner(shell.owner);
     if (slug === null) continue;
     counts[slug] = (counts[slug] ?? 0) + 1;
@@ -778,22 +677,20 @@ export function markOwnerless(state: ShellsState, ids: ReadonlyArray<number>): S
 }
 
 /**
- * **그 세계의** 주인 잃은 셸 전부 — 끝난 칸 · 못 뜬 칸도 든다. [모두 닫기]가 닫는 것이 이것이다: 주인이 사라졌는데 이
+ * 주인 잃은 셸 전부 — 끝난 칸 · 못 뜬 칸도 든다. [모두 닫기]가 닫는 것이 이것이다: 주인이 사라졌는데 이
  * 칸만 남으면 닫을 길이 없다(아카이브의 회수가 끝난 칸까지 거두는 것과 같은 이유 — `runningShellsOf` 머리말).
- *
- * 세계는 **owner의 앞머리**로 가른다(`modeOfOwner`). 두 세계에 같은 slug가 설 수 있어(life-mode 결정 10) slug로는 못 가른다.
  */
-export function ownerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
-  return state.shells.filter((shell) => shell.ownerless && modeOfOwner(shell.owner) === mode);
+export function ownerlessOf(state: ShellsState): ReadonlyArray<Shell> {
+  return state.shells.filter((shell) => shell.ownerless);
 }
 
 /**
- * 그 세계의 주인 잃은 셸 중 **살아 있는 것**(CONTEXT 「주인 잃은 셸」). 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기]
+ * 주인 잃은 셸 중 **살아 있는 것**(CONTEXT 「주인 잃은 셸」). 토스트의 N(「셸 N개에 아직 도는 것이 있어요」)과 [모두 닫기]
  * 확인 창의 N이 이것이다 — 끝난 칸을 함께 세면 「아직 도는 것」이 거짓이 된다. 살아 있는지는 `isAlive` 하나가 가른다. 명령 · 자손을
  * 보는 판정(조용하지 않은 셸 — 프로세스 결정 4)과 다르다: 조용해진 셸도 살아 있으면 센다.
  */
-export function liveOwnerlessOf(state: ShellsState, mode: Mode): ReadonlyArray<Shell> {
-  return ownerlessOf(state, mode).filter(isAlive);
+export function liveOwnerlessOf(state: ShellsState): ReadonlyArray<Shell> {
+  return ownerlessOf(state).filter(isAlive);
 }
 
 /** 그 칸의 첫 사람 입력 시각. 없는 칸이거나 아직 입력이 없으면 `null`이다. */
@@ -1520,8 +1417,8 @@ export interface QuitCounts {
 export type CloseChecks = ReadonlyMap<number, CloseCheck>;
 
 /**
- * 종료 확인이 적을 수(UI개선 결정 15 · #223 · 프로세스 스펙 S18). 받은 목록을 **세계를 가리지 않고** 전부 센다 —
- * 종료는 두 세계의 셸을 함께 죽인다. 명령이 도는지와 띄운 프로세스 수는 **지금 물어서** 센다 — 1초 폴링 값
+ * 종료 확인이 적을 수(UI개선 결정 15 · #223 · 프로세스 스펙 S18). 받은 목록을 **화면을 가리지 않고** 전부 센다 —
+ * 종료는 모든 화면의 셸을 함께 죽인다. 명령이 도는지와 띄운 프로세스 수는 **지금 물어서** 센다 — 1초 폴링 값
  * (`Shell.running`)은 늦을 수 있다. 셸 여럿을 **한 번에** 묻는다: 백엔드가 스냅샷 한 장으로 셸마다 답한다(티켓 08).
  * 셸마다 물으면 셸 20개에 스냅샷 20장이다.
  *
@@ -1590,7 +1487,7 @@ export function spawnedNote(spawned: number | null): string {
 
 /**
  * 아카이브 · 삭제 확인 창의 셸 줄(in-app-terminal 결정 26 · 프로세스 스펙 S18). 셸이 0개면 그 줄이 없다(`null`).
- * 두 세계가 같은 말이다 — 세는 것이 셸이지 work이나 Room이 아니다.
+ * 세는 것이 셸이지 work이 아니다.
  */
 export function closingShellsNotice(live: number, spawned: number | null): string | null {
   if (live === 0) return null;

@@ -1,8 +1,3 @@
-/// <reference types="node" />
-// node: 접두사를 쓰지 않는 이유는 `context-glossary.test.ts`의 주석과 같다.
-import { readdirSync, readFileSync, type Dirent } from "fs";
-import { join, relative } from "path";
-import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 import { navItems } from "@/components/shell/nav-items";
 import { SETTINGS_ITEMS } from "@/features/settings/pages";
@@ -17,7 +12,6 @@ import {
   placeModeOf,
   refPrefixesOf,
   routesOf,
-  slugOf,
 } from "./mode";
 
 // 모드는 `"atelier"` 하나다(ui-refresh 결정 3) — 축을 걷는 동안 함수의 모양만 남았다. 이 파일은 그 모양이
@@ -69,30 +63,6 @@ describe("적어 둘 모드를 묻는다", () => {
   });
 });
 
-describe("주소에서 slug를 읽는다", () => {
-  // 한글은 디코드돼야 한다 — 읽는 자리가 사이드바 강조와 가지 판정 둘이다.
-  it("항목 주소를 읽는다", () => {
-    expect(slugOf("/works/spec-search")).toBe("spec-search");
-    expect(slugOf(`/works/${encodeURIComponent("생활 모드")}`)).toBe("생활 모드");
-  });
-
-  // 목록 주소는 **아직 아무것도 안 고른 상태**다(정규화가 붙는 자리). 빈 문자열을 돌려주면
-  // 부르는 쪽이 「고른 것이 있다」로 읽어 없는 항목을 찾는다.
-  it.each(["/works", "/works/"])("목록 주소 %s에는 고른 것이 없다", (pathname) => {
-    expect(slugOf(pathname)).toBeNull();
-  });
-
-  // 「목록 주소만 본다」 — 앞머리를 목록과 무관하게 잡으면 아카이브 항목이 작업으로 읽힌다.
-  it.each(["/terminal", "/archive/shipped", "/"])("%s는 항목 주소가 아니다", (pathname) => {
-    expect(slugOf(pathname)).toBeNull();
-  });
-
-  // slug는 경로의 **한 칸**이다. 뒤가 더 붙은 주소는 그 항목의 하위 화면이지 다른 slug가 아니다.
-  it("첫 칸만 slug다", () => {
-    expect(slugOf("/works/finance/spec")).toBe("finance");
-  });
-});
-
 describe("모드별 표", () => {
   it("모드는 하나다 — ui-refresh 결정 3", () => {
     expect(ALL_MODES).toEqual(["atelier"]);
@@ -118,7 +88,7 @@ describe("모드별 표", () => {
     }
   });
 
-  // `slugOf`가 기대는 불변식이다 — 항목 주소는 목록 주소 아래 한 칸. 이것이 깨지면 slug
+  // `workSlugOf`(`@/lib/path-prefix`)가 기대는 불변식이다 — 항목 주소는 목록 주소 아래 한 칸. 이것이 깨지면 slug
   // 해석기가 조용히 `null`만 돌려준다(주소는 멀쩡한데 사이드바 강조가 안 선다).
   it("항목 주소는 목록 주소 아래 한 칸이다", () => {
     for (const mode of ALL_MODES) {
@@ -211,36 +181,5 @@ describe("모드가 프로젝트를 갖는가", () => {
   it.each(ALL_MODES)("%s: nav의 `Projects` 유무와 같은 답이다", (mode) => {
     const inNav = navItemsOf(mode).some((item) => item.label === "Projects");
     expect(hasProjects(mode)).toBe(inNav);
-  });
-
-  // **리터럴 비교가 다시 태어나지 않는다.** 이 함수가 생기기 전에는 일곱 자리가 각자 늙었고,
-  // 새 자리가 하나 더 늘어도 아무 검사가 안 빨개졌다. 프로덕션 소스를 통째로 훑어 그 모양을
-  // 막는다 — 「값을 정하는 자리는 하나」를 구조로 세우는 마지막 한 칸이다.
-  //
-  // **`shell-registry.ts`가 유일한 예외다.** 그 모듈은 타입 말고 아무것도 import하지 않고
-  // (그 성질을 자기 소스 스캔이 지킨다) 그래야 `SidebarWorkList`가 정적 마크업 검사에서
-  // 그것을 쓸 수 있다 — 값 하나를 들이면 `@/mode`가 딸려 온다. 예외를 **목록으로 못박아**
-  // 두 번째 예외가 조용히 생기지 않게 한다.
-  //
-  // **fail-closed다**: 파일을 하나도 못 읽거나 예외 파일이 사라지면 「깨끗하다」가 아니라
-  // 빨개진다.
-  //
-  // 찾는 값은 남은 모드 이름 하나다 — 지운 이름과의 비교는 `Mode`가 좁아져 L0가 막는다.
-  it("리터럴로 세계를 비교하는 자리가 예외 하나뿐이다", () => {
-    const root = fileURLToPath(new URL(".", import.meta.url));
-    const sources = (function walk(dir: string): string[] {
-      return readdirSync(dir, { withFileTypes: true }).flatMap((entry: Dirent) => {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) return walk(path);
-        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
-      });
-    })(root);
-    expect(sources.length).toBeGreaterThan(50);
-
-    const ALLOWED = ["features/terminal/shell-registry.ts"];
-    const offenders = sources
-      .filter((path) => /mode === "atelier"/.test(readFileSync(path, "utf8")))
-      .map((path) => relative(root, path).split("\\").join("/"));
-    expect(offenders.sort()).toEqual(ALLOWED);
   });
 });

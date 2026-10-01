@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { ownerOf, topTerminal } from "@/features/terminal/shell-registry";
 import type { Shell } from "@/features/terminal/shell-registry";
 import type { Attention } from "@/features/terminal/shell-attention";
-import { modeNameOf } from "@/mode";
 import { formatMemory } from "./metrics";
 import {
   groupRowLabel,
@@ -10,7 +9,6 @@ import {
   helperLabel,
   offscreenRowLabel,
   offscreenShells,
-  ownerlessGroupRowLabel,
   ownerlessGroups,
   poolKey,
   shellRowLabel,
@@ -18,15 +16,14 @@ import {
   shellTotals,
   shellTree,
   stateText,
-  worldRowLabel,
 } from "./shell-tree";
 import type { ListedItem, ShellNode, TreeInput } from "./shell-tree";
 import { metricsOf as 지표, NO_METRICS, poolShell, processRow as 행, snapshotFixture } from "./process-fixture";
 import type { PoolShell, ProcessRow } from "./types";
 
-// 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 세계 → work →
-// 셸 → 자손으로 세운다. 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 · 접근성 이름이다 — 스냅샷(Rust가
-// 가른 셸별 자손)과 스토어(세계 · work)를 **셸 키로** 잇는 자리가 여기 하나다. 화면이 진짜 스토어 · 진짜 스냅샷으로 서는지는 L3가
+// 프로세스 티켓 27 — **`Processes`의 셸 묶음이 서는 차례**(프로세스 결정 9 · 10 · 프로세스 스펙 S53). 화면은 앱 전체를 work → 셸 →
+// 자손으로 세운다(세계 단은 ui-refresh 결정 3으로 걷혔다). 이 파일이 재는 것은 그 층과 차례를 짓는 순수 함수와 셸 행의 상태 칸 ·
+// 접근성 이름이다 — 스냅샷(Rust가 가른 셸별 자손)과 스토어(work)를 **셸 키로** 잇는 자리가 여기 하나다. 화면이 진짜 스토어 · 진짜 스냅샷으로 서는지는 L3가
 // 잰다(`processes-tree.spec.ts`).
 
 const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Shell => ({
@@ -35,7 +32,7 @@ const 칸 = (id: number, shellKey: string | null, over: Partial<Shell> = {}): Sh
   title: null,
   shellName: "zsh",
   shellKey,
-  owner: ownerOf("atelier", "plain-work"),
+  owner: ownerOf("plain-work"),
   project: null,
   cwd: null,
   running: null,
@@ -59,74 +56,61 @@ const 목록 = (...items: Array<[slug: string, title: string]>): ListedItem[] =>
 /** 트리를 한 줄씩 편 모양 — 층이 곧 깊이다. 무엇이 어느 층에 어느 차례로 서는지를 한 번에 본다. */
 function 편모양(input: TreeInput): string[] {
   const lines: string[] = [];
-  for (const world of shellTree(input)) {
-    lines.push(`1 ${world.mode}${world.current ? " (지금)" : ""}`);
-    for (const group of world.groups) {
-      lines.push(`2 ${group.name}`);
-      for (const node of group.shells) {
-        lines.push(`3 ${node.shell.shellKey}`);
-        if (node.helpers.length > 0) lines.push(`4 도우미 ${node.helpers.map((row) => row.id.pid).join(",")}`);
-        for (const { row, depth } of node.descendants) lines.push(`${3 + depth} ${row.id.pid}`);
-      }
+  for (const group of shellTree(input)) {
+    lines.push(`1 ${group.name}`);
+    for (const node of group.shells) {
+      lines.push(`2 ${node.shell.shellKey}`);
+      if (node.helpers.length > 0) lines.push(`3 도우미 ${node.helpers.map((row) => row.id.pid).join(",")}`);
+      for (const { row, depth } of node.descendants) lines.push(`${2 + depth} ${row.id.pid}`);
     }
   }
   return lines;
 }
 
 const 기본 = (over: Partial<TreeInput>): TreeInput => ({
-  current: "atelier",
   shells: [],
-  lists: {},
+  list: [],
   snapshot: 스냅샷([]),
   ...over,
 });
 
-describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
-  // 세계 줄은 Atelier 하나다(ui-refresh 결정 3) — 세계 단을 걷는 것은 판 02의 02다.
-  it("세계 줄은 지금 세계 하나다", () => {
-    const input = 기본({ shells: [칸(1, "G-1", { owner: ownerOf("atelier") })], snapshot: 스냅샷([풀(1, "G-1")]) });
-    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 Terminal", "3 G-1"]);
+describe("묶음 순서 — work → 셸 → 자손", () => {
+  // 세계 단이 없다(ui-refresh 결정 3) — work 행(최상위 터미널이면 `Terminal`)이 맨 윗단이다.
+  it("work 행이 맨 윗단이다 — 그 위에 세계 줄이 없다", () => {
+    const input = 기본({ shells: [칸(1, "G-1", { owner: ownerOf() })], snapshot: 스냅샷([풀(1, "G-1")]) });
+    expect(편모양(input)).toEqual(["1 Terminal", "2 G-1"]);
   });
 
   // **셸이 뜬 차례가 아니라 사이드바의 차례다**(S53). 고정이 먼저인 것은 코어의 목록이 정한다(`list_works` — ux-papercuts 결정 100) — 여기서
   // 다시 정렬하면 차례를 정하는 자리가 둘이 된다. 그래서 목록을 받은 차례 그대로 따른다. 최상위 터미널(nav `Terminal`)은 work이
   // 아니라 맨 끝이다.
-  it("세계 안에서는 사이드바 순서(고정 먼저)이고, 그다음이 Terminal이다 — 셸이 뜬 차례가 아니다", () => {
+  it("사이드바 순서(고정 먼저)이고, 그다음이 Terminal이다 — 셸이 뜬 차례가 아니다", () => {
     const input = 기본({
       shells: [
-        칸(1, "G-1", { owner: ownerOf("atelier") }),
-        칸(2, "G-2", { owner: ownerOf("atelier", "plain-work") }),
-        칸(3, "G-3", { owner: ownerOf("atelier", "pinned-work") }),
+        칸(1, "G-1", { owner: ownerOf() }),
+        칸(2, "G-2", { owner: ownerOf("plain-work") }),
+        칸(3, "G-3", { owner: ownerOf("pinned-work") }),
       ],
-      lists: { atelier: 목록(["pinned-work", "고정된 일"], ["plain-work", "그냥 일"], ["multi-work", "두 저장소 일"]) },
+      list: 목록(["pinned-work", "고정된 일"], ["plain-work", "그냥 일"], ["multi-work", "두 저장소 일"]),
       snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
     });
-    expect(편모양(input)).toEqual([
-      "1 atelier (지금)",
-      "2 고정된 일",
-      "3 G-3",
-      "2 그냥 일",
-      "3 G-2",
-      "2 Terminal",
-      "3 G-1",
-    ]);
+    expect(편모양(input)).toEqual(["1 고정된 일", "2 G-3", "1 그냥 일", "2 G-2", "1 Terminal", "2 G-1"]);
   });
 
   it("work 행은 목록의 제목과 그 work의 셸을 든다 — 셸은 탭의 차례다", () => {
-    const [world] = shellTree(
+    const [work, terminal] = shellTree(
       기본({
-        shells: [칸(5, "G-5"), 칸(2, "G-2"), 칸(9, "G-9", { owner: ownerOf("atelier") })],
-        lists: { atelier: 목록(["plain-work", "그냥 일"]) },
+        shells: [칸(5, "G-5"), 칸(2, "G-2"), 칸(9, "G-9", { owner: ownerOf() })],
+        list: 목록(["plain-work", "그냥 일"]),
         snapshot: 스냅샷([풀(2, "G-2"), 풀(5, "G-5"), 풀(9, "G-9")]),
       }),
     );
-    const [work, terminal] = world.groups;
     expect(work.name).toBe("그냥 일");
-    expect(work.owner).toBe(ownerOf("atelier", "plain-work"));
+    expect(work.owner).toBe(ownerOf("plain-work"));
     // 스토어의 칸 순서(= 탭 줄의 차례)다. 풀은 pty id 순이라 그것을 따르면 탭을 옮겨도 화면이 안 따라온다.
     expect(work.shells.map((node) => node.shell.id)).toEqual([5, 2]);
     expect(terminal.name).toBe("Terminal");
-    expect(terminal.owner).toBe(topTerminal("atelier").owner);
+    expect(terminal.owner).toBe(topTerminal().owner);
   });
 
   // 목록에 없는 work — 목록을 아직 못 읽었다(주인 잃은 셸은 표시가 서서 제 묶음으로 간다 — 아래 「주인 잃은 셸 묶음」). 셸을 숨기면
@@ -134,41 +118,41 @@ describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
   it("목록에 없는 work은 목록의 것 뒤 · Terminal 앞에 slug로 선다", () => {
     const input = 기본({
       shells: [
-        칸(1, "G-1", { owner: ownerOf("atelier") }),
-        칸(2, "G-2", { owner: ownerOf("atelier", "gone-work") }),
-        칸(3, "G-3", { owner: ownerOf("atelier", "plain-work") }),
+        칸(1, "G-1", { owner: ownerOf() }),
+        칸(2, "G-2", { owner: ownerOf("gone-work") }),
+        칸(3, "G-3", { owner: ownerOf("plain-work") }),
       ],
-      lists: { atelier: 목록(["plain-work", "그냥 일"]) },
+      list: 목록(["plain-work", "그냥 일"]),
       snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
     });
-    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 그냥 일", "3 G-3", "2 gone-work", "3 G-2", "2 Terminal", "3 G-1"]);
+    expect(편모양(input)).toEqual(["1 그냥 일", "2 G-3", "1 gone-work", "2 G-2", "1 Terminal", "2 G-1"]);
   });
 
   it("목록이 아직 없어도 선다 — 이름은 slug다", () => {
     const input = 기본({
-      shells: [칸(1, "G-1", { owner: ownerOf("atelier", "reading-work") })],
+      shells: [칸(1, "G-1", { owner: ownerOf("reading-work") })],
       snapshot: 스냅샷([풀(1, "G-1")]),
     });
-    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 reading-work", "3 G-1"]);
+    expect(편모양(input)).toEqual(["1 reading-work", "2 G-1"]);
   });
 
-  // 셸이 하나도 없는 세계는 머리만 서는 빈 줄이 된다 — 「셸 0개」를 층으로 말할 까닭이 없다.
-  it("셸이 없는 세계는 안 선다", () => {
+  // 셸이 하나도 없는 work은 머리만 서는 빈 줄이 된다 — 「셸 0개」를 층으로 말할 까닭이 없다.
+  it("셸이 없으면 아무 줄도 안 선다", () => {
     expect(shellTree(기본({}))).toEqual([]);
   });
 });
 
 describe("스냅샷의 셸은 셸 키로 스토어의 셸에 붙는다", () => {
-  // Rust는 owner를 모른다(티켓 27). 세계 · work는 스토어의 것이고, 자손은 스냅샷의 판정 결과에서 셸 키로 찾는다. pty id는 두 쪽이
+  // Rust는 owner를 모른다(티켓 27). work는 스토어의 것이고, 자손은 스냅샷의 판정 결과에서 셸 키로 찾는다. pty id는 두 쪽이
   // 같은 값을 쓰지만(픽스처 · 실물 모두) 잇는 값이 아니다 — 스토어의 `id`는 프런트가 따로 발급한 번호다.
   it("자손은 그 셸 키의 것이다 — 스토어의 번호나 pty id가 아니다", () => {
-    const [world] = shellTree(
+    const [group] = shellTree(
       기본({
         shells: [칸(1, "G-7"), 칸(7, "G-1")],
         snapshot: 스냅샷([풀(1, "G-1"), 풀(7, "G-7")], { "G-7": [행(700, 1, 70, "node")], "G-1": [행(100, 1, 10, "vim")] }),
       }),
     );
-    const byId = new Map(world.groups[0].shells.map((node) => [node.shell.id, node]));
+    const byId = new Map(group.shells.map((node) => [node.shell.id, node]));
     expect(byId.get(1)?.descendants.map(({ row }) => row.name)).toEqual(["node"]);
     expect(byId.get(1)?.pool).toEqual(풀(7, "G-7"));
     expect(byId.get(7)?.descendants.map(({ row }) => row.name)).toEqual(["vim"]);
@@ -185,13 +169,13 @@ describe("스냅샷의 셸은 셸 키로 스토어의 셸에 붙는다", () => {
       ],
       snapshot: 스냅샷([풀(1, "G-1"), 풀(4, "G-4")]),
     });
-    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 plain-work", "3 G-1"]);
+    expect(편모양(input)).toEqual(["1 plain-work", "2 G-1"]);
   });
 
   it("스냅샷에 그 셸의 자손 칸이 없으면 자손이 없다", () => {
-    const [world] = shellTree(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }));
-    expect(world.groups[0].shells[0].descendants).toEqual([]);
-    expect(world.groups[0].shells[0].helpers).toEqual([]);
+    const [group] = shellTree(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }));
+    expect(group.shells[0].descendants).toEqual([]);
+    expect(group.shells[0].helpers).toEqual([]);
   });
 });
 
@@ -212,7 +196,7 @@ describe("자손 — 셸 밑의 트리, 셸 도우미는 따로", () => {
         ],
       }),
     });
-    expect(편모양(input).slice(3)).toEqual(["4 200", "5 220", "6 230", "5 210", "4 300"]);
+    expect(편모양(input).slice(2)).toEqual(["3 200", "4 220", "5 230", "4 210", "3 300"]);
   });
 
   // P1 — 사람이 처음 입력하기 전에 태어난 자손은 셸 도우미다. 판정은 도우미를 자손에도 그대로 싣고(끝낼 대상이다) 곁 집합으로
@@ -227,9 +211,9 @@ describe("자손 — 셸 밑의 트리, 셸 도우미는 따로", () => {
         [gitstatusd],
       ),
     });
-    expect(편모양(input).slice(3)).toEqual(["4 도우미 150", "4 200", "4 160"]);
-    const [world] = shellTree(input);
-    expect(world.groups[0].shells[0].helpers).toEqual([gitstatusd]);
+    expect(편모양(input).slice(2)).toEqual(["3 도우미 150", "3 200", "3 160"]);
+    const [group] = shellTree(input);
+    expect(group.shells[0].helpers).toEqual([gitstatusd]);
   });
 
   // 도우미 표시는 신원(pid + 시작 시각)이다 — pid만 같은 다른 셸의 행은 도우미가 아니다.
@@ -239,7 +223,7 @@ describe("자손 — 셸 밑의 트리, 셸 도우미는 따로", () => {
       shells: [칸(1, "G-1")],
       snapshot: 스냅샷([풀(1, "G-1")], { "G-1": [행(150, 100, 99, "node")] }, [helper]),
     });
-    expect(편모양(input).slice(3)).toEqual(["4 150"]);
+    expect(편모양(input).slice(2)).toEqual(["3 150"]);
   });
 });
 
@@ -252,13 +236,13 @@ function 노드(
   metrics = NO_METRICS,
 ): ShellNode {
   const key = shell.shellKey ?? "G-1";
-  const [world] = shellTree(
+  const [group] = shellTree(
     기본({
       shells: [{ ...shell, shellKey: key }],
       snapshot: 스냅샷([풀(1, key, lastOutputMs, metrics)], { [key]: descendants }, helpers),
     }),
   );
-  return world.groups[0].shells[0];
+  return group.shells[0];
 }
 
 const 상태 = (over: Partial<Attention>): Attention => ({
@@ -348,8 +332,8 @@ describe("트리 합 — 셸 행과 work 행의 숫자(티켓 28 · S53)", () =>
         "G-1": [행(200, 1, 10, "node", { metrics: 지표(300 * MiB, 10, [5173]) })],
       }),
     });
-    const [world] = shellTree(input);
-    expect(groupTotals(world.groups[0])).toEqual(지표(314 * MiB, 11, [5173]));
+    const [group] = shellTree(input);
+    expect(groupTotals(group)).toEqual(지표(314 * MiB, 11, [5173]));
   });
 
   // 첫 표본 — CPU를 아무도 못 쟀다. 합은 「—」로 서야 한다(0%는 쟀는데 안 썼다는 말이다).
@@ -376,19 +360,17 @@ describe("행의 접근성 이름 — 한 문장", () => {
     );
   });
 
-  it("work 행은 이름 · 셸 수 · 트리 합 메모리, 세계 행은 세계의 이름이고 지금 세계면 그렇다고 말한다", () => {
+  it("work 행은 이름 · 셸 수 · 트리 합 메모리다", () => {
     const input = 기본({ shells: [칸(1, "G-1"), 칸(2, "G-2")], snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2")]) });
-    const [world] = shellTree(input);
-    expect(groupRowLabel(world.groups[0])).toBe("plain-work, 셸 2개");
+    const [group] = shellTree(input);
+    expect(groupRowLabel(group)).toBe("plain-work, 셸 2개");
     const measured = shellTree(
       기본({
         shells: [칸(1, "G-1"), 칸(2, "G-2")],
         snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(700 * MiB)), 풀(2, "G-2", 1_000, 지표(500 * MiB))]),
       }),
     );
-    expect(groupRowLabel(measured[0].groups[0])).toBe("plain-work, 셸 2개, 1.2GB");
-    expect(worldRowLabel(world)).toBe(`${modeNameOf("atelier")}, 지금 세계`);
-    expect(worldRowLabel({ ...world, current: false })).toBe(modeNameOf("atelier"));
+    expect(groupRowLabel(measured[0])).toBe("plain-work, 셸 2개, 1.2GB");
   });
 
   // 도우미의 이름은 프로세스 줄과 같은 부른 이름이다. 자손 행의 이름(부른 이름, 메모리)은 `process-tree.test.ts`가 잰다.
@@ -398,19 +380,19 @@ describe("행의 접근성 이름 — 한 문장", () => {
 });
 
 // 프로세스 티켓 32 — **주인 잃은 셸 묶음**(프로세스 결정 4). 12가 스토어에 「주인 잃음」으로 표시한 셸이다. 그 셸의 work은 목록에 없어
-// 세계 트리에 서면 slug 이름의 work 행으로 선다(27) — 표시가 선 셸은 거기서 빠져 이 묶음으로 옮긴다. 한 셸이 두 묶음에 서면 [닫기]
+// 셸 트리에 서면 slug 이름의 work 행으로 선다(27) — 표시가 선 셸은 거기서 빠져 이 묶음으로 옮긴다. 한 셸이 두 묶음에 서면 [닫기]
 // 자리가 둘이고 수가 두 번 읽힌다.
 describe("주인 잃은 셸 묶음", () => {
-  it("표시가 선 셸은 세계 트리에 안 서고 이 묶음에 선다 — 목록에 없을 뿐인 셸은 트리에 그대로다", () => {
+  it("표시가 선 셸은 셸 트리에 안 서고 이 묶음에 선다 — 목록에 없을 뿐인 셸은 트리에 그대로다", () => {
     const input = 기본({
       shells: [
-        칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
-        칸(2, "G-2", { owner: ownerOf("atelier", "unread-work") }),
-        칸(3, "G-3", { owner: ownerOf("atelier") }),
+        칸(1, "G-1", { owner: ownerOf("gone-work"), ownerless: true }),
+        칸(2, "G-2", { owner: ownerOf("unread-work") }),
+        칸(3, "G-3", { owner: ownerOf() }),
       ],
       snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")]),
     });
-    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 unread-work", "3 G-2", "2 Terminal", "3 G-3"]);
+    expect(편모양(input)).toEqual(["1 unread-work", "2 G-2", "1 Terminal", "2 G-3"]);
     expect(ownerlessGroups(input).map((group) => [group.name, group.shells.map((node) => node.shell.shellKey)])).toEqual([
       ["gone-work", ["G-1"]],
     ]);
@@ -420,9 +402,9 @@ describe("주인 잃은 셸 묶음", () => {
   // 칸도 함께 거둔다(12).
   it("주인 잃은 셸이 work마다 서고, 풀에 없는 칸은 안 선다", () => {
     const shells = [
-      칸(2, "G-2", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
-      칸(3, "G-3", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
-      칸(4, "G-4", { owner: ownerOf("atelier", "gone-work"), ownerless: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
+      칸(2, "G-2", { owner: ownerOf("gone-work"), ownerless: true }),
+      칸(3, "G-3", { owner: ownerOf("gone-work"), ownerless: true }),
+      칸(4, "G-4", { owner: ownerOf("gone-work"), ownerless: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
     ];
     const snapshot = 스냅샷([풀(2, "G-2"), 풀(3, "G-3")], { "G-3": [행(300, 1, 30, "node")] });
     expect(
@@ -430,22 +412,22 @@ describe("주인 잃은 셸 묶음", () => {
         group.owner,
         group.shells.map((node) => [node.shell.id, node.descendants.map(({ row }) => row.id.pid)]),
       ]),
-    ).toEqual([[ownerOf("atelier", "gone-work"), [[2, []], [3, [300]]]]]);
+    ).toEqual([[ownerOf("gone-work"), [[2, []], [3, [300]]]]]);
   });
 
   it("주인 잃은 셸이 없으면 묶음이 비었다", () => {
     expect(ownerlessGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
   });
 
-  // work 줄이 세계를 말한다(세계 표시를 걷는 것은 판 02의 02다).
-  it("work 줄은 이름 · 세계 · 셸 수 · 메모리다", () => {
+  // work 줄은 셸 묶음의 work 줄과 같은 말이다 — 세계를 말하지 않는다(ui-refresh 결정 3).
+  it("work 줄은 이름 · 셸 수 · 메모리다", () => {
     const [group] = ownerlessGroups(
       기본({
-        shells: [칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), ownerless: true })],
+        shells: [칸(1, "G-1", { owner: ownerOf("gone-work"), ownerless: true })],
         snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB))]),
       }),
     );
-    expect(ownerlessGroupRowLabel(group)).toBe(`gone-work, ${modeNameOf("atelier")}, 셸 1개, 8MB`);
+    expect(groupRowLabel(group)).toBe("gone-work, 셸 1개, 8MB");
   });
 });
 

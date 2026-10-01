@@ -79,7 +79,7 @@ export interface OtherInstance {
 export interface ProcessSnapshot {
   /** 판정 결과. */
   verdict: ProcessGroups;
-  /** 앱에 떠 있는 셸 — 두 세계의 것이 함께, pty id 순. */
+  /** 앱에 떠 있는 셸 — pty id 순. */
   pool: PoolShell[];
   /** 다른 인스턴스 묶음의 행을 낸 실행들 — 세대 순(티켓 31). */
   instances: OtherInstance[];
@@ -160,7 +160,10 @@ export interface CleanupEvent {
   reason: CleanupReason;
   /** 셸 하나를 닫은 사건의 셸 키. 앱 종료 · 시작 정리는 없다. */
   shellKey: string | null;
-  /** 그 셸의 주인(`atelier:<slug>` 꼴). 닫기 IPC로 온 사건에만 있다. */
+  /**
+   * 그 셸의 주인 — slug, 최상위 터미널이면 `""`(ui-refresh 결정 23). 옛 판이 적은 줄은 `atelier:<slug>` 꼴로 남는다 — 아무도
+   * 해석하지 않는다. 닫기 IPC로 온 사건에만 있다.
+   */
   owner: string | null;
   targets: CleanupTarget[];
 }

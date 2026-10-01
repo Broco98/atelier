@@ -17,7 +17,7 @@ const 칸 = (id: number, over: Partial<Shell> = {}): Shell => ({
   title: null,
   shellName: "zsh",
   shellKey: `G-${id}`,
-  owner: ownerOf("atelier", "plain-work"),
+  owner: ownerOf("plain-work"),
   project: null,
   cwd: null,
   running: null,
@@ -62,7 +62,7 @@ describe("요약 카드의 수", () => {
   it("도는 중은 셸 상태가 도는 중인 셸이다", () => {
     const state = 스토어(
       칸(1, { attention: 상태("working") }),
-      칸(2, { attention: 상태("working", { subagents: 2 }), owner: ownerOf("atelier") }),
+      칸(2, { attention: 상태("working", { subagents: 2 }), owner: ownerOf() }),
       칸(3, { attention: 상태("waiting") }),
       칸(4, { attention: 상태("done") }),
       칸(5, { running: "cargo" }),
@@ -75,7 +75,7 @@ describe("요약 카드의 수", () => {
   it("주인 잃은 셸은 아직 살아 있는 것만이다", () => {
     const state = 스토어(
       칸(1, { ownerless: true }),
-      칸(2, { ownerless: true, owner: ownerOf("atelier", "finance") }),
+      칸(2, { ownerless: true, owner: ownerOf("finance") }),
       칸(3, { ownerless: true, status: 끝남 }),
       칸(4),
     );
