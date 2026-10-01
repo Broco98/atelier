@@ -1,9 +1,8 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, PROJECTS } from "./fixtures";
+import { PROJECTS } from "./fixtures";
 import {
   callCount,
   installFixtureBackend,
-  modeButton,
   navButton,
   navButtons,
   processesTitle,
@@ -13,7 +12,7 @@ import {
 import { poolShell, snapshotFixture } from "@/features/processes/process-fixture";
 import type { ProcessSnapshot } from "@/features/processes/types";
 
-// 프로세스 티켓 26 — **`Processes`가 두 세계 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
+// 프로세스 티켓 26 — **`Processes`가 nav에 서고, 열려 있을 때만 스냅샷을 묻는다**(프로세스 결정 8 · 9 · 10, 스토리 79 ·
 // 80 · 95). nav 배열과 라우트 표의 자리는 L2가 값으로 잰다(`mode.test.ts` · `router.test.ts`). 여기서 보는 것은 그 표가 **진짜 사이드바와
 // 진짜 라우터**를 지나 화면이 서는가, 스냅샷이 화면까지 오는가, 그리고 떠나면 묻기가 멈추는가다 — 마지막은 진짜 타이머와
 // 진짜 언마운트가 있어야 드러난다.
@@ -32,13 +31,12 @@ const shellCount = (page: Page, count: number) =>
   page.getByRole("region", { name: "요약", exact: true }).getByText(`셸 ${count}개`, { exact: true });
 
 /**
- * 풀에 셸이 `keys`만큼 선 스냅샷. **두 세계의 셸을 섞는다** — 화면은 앱 전체를 보이므로(프로세스 결정 9) 어느 세계의 주소로
- * 열든 같은 수가 서야 한다. 셸 키의 세대는 픽스처의 것이 아니다: 이 검사는 스토어의 셸과 잇지 않는다(27의 몫).
+ * 풀에 셸이 `keys`만큼 선 스냅샷. 화면은 앱 전체를 보인다(프로세스 결정 9). 셸 키의 세대는 픽스처의 것이 아니다: 이 검사는 스토어의 셸과 잇지 않는다(27의 몫).
  */
 const withPool = (...keys: string[]): ProcessSnapshot =>
   snapshotFixture({ pool: keys.map((shellKey, at) => poolShell(at + 1, shellKey, 1_758_000_000_000)) });
 
-test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서고, 누르면 그 세계의 주소로 같은 화면이 열린다", async ({
+test("Processes가 nav에서 Terminal 다음, Archive 앞에 서고, 누르면 그 화면이 열린다", async ({
   page,
 }) => {
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2", "P-3") });
@@ -52,25 +50,13 @@ test("Processes가 두 세계의 nav에서 Terminal 다음, Archive 앞에 서�
   await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 3)).toBeVisible();
 
-  // 저쪽 세계에서도 선다. 세계마다 nav 배열이 따로라(`MAISON_NAV`) 한쪽에만 더하면 다른 쪽에서 빠진다.
-  await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
-  await expect(navButtons(page)).toHaveText(["Terminal", "Processes", "Archive"]);
-  // **각 세계의 nav는 자기 접두사로 간다**(프로세스 결정 9) — 눌러도 세계를 안 떠난다.
-  await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/maison/processes");
-  await expect(modeButton(page, "Maison")).toHaveAttribute("aria-pressed", "true");
-  // **같은 화면이다** — 제목도, 앱 전체의 셸 수도 같다. 세계로 나누면 절반이 안 보인다.
-  await expect(processesTitle(page)).toBeVisible();
-  await expect(shellCount(page, 3)).toBeVisible();
-
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
 // 스냅샷이 화면까지 오는 길의 앵커 — 기본 픽스처(풀이 빈 앱)가 아니라 **이 시나리오의 풀**이 선다. 주소로 곧바로 들어와도 선다.
 test("fixture 스냅샷에 실린 풀의 셸 수가 화면에 선다", async ({ page }) => {
   await installFixtureBackend(page, { processes_snapshot: withPool("P-1", "P-2", "M-7", "M-8", "Q-1") });
-  await page.goto("/maison/processes");
+  await page.goto("/processes");
   await expect(processesTitle(page)).toBeVisible();
   await expect(shellCount(page, 5)).toBeVisible();
   await expect(shellCount(page, 0)).toHaveCount(0);

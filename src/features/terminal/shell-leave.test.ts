@@ -24,9 +24,7 @@ function open(state: ShellsState, origin: ShellOrigin, auto: boolean): { state: 
 describe("주소가 선 화면의 owner", () => {
   it.each([
     ["/works/ga", ownerOf("atelier", "ga")],
-    ["/maison/rooms/ga", ownerOf("maison", "ga")],
     ["/terminal", ownerOf("atelier")],
-    ["/maison/terminal", ownerOf("maison")],
     // 주소의 slug는 인코딩된 채 온다 — 사이드바 강조와 같은 규칙(`slugOf`)으로 푼다.
     ["/works/%ED%95%9C%EA%B8%80", ownerOf("atelier", "한글")],
   ])("%s → %s", (pathname, owner) => {
@@ -34,7 +32,7 @@ describe("주소가 선 화면의 owner", () => {
   });
 
   // owner 없는 화면. 셸을 띄우지 않는 화면이라 그리로 옮기는 것도 떠남이다.
-  it.each(["/", "/works", "/maison/rooms", "/archive/ga", "/maison/archive/ga", "/projects/p", "/settings/terminal"])(
+  it.each(["/", "/works", "/archive/ga", "/projects/p", "/settings/terminal"])(
     "%s에는 owner가 없다",
     (pathname) => {
       expect(screenOwner(pathname)).toBeNull();
@@ -86,11 +84,11 @@ describe("떠날 때 회수할 셸", () => {
     expect(out).not.toContain(남의것);
   });
 
-  // 최상위 터미널도 owner다(life-mode 결정 10). 세계마다 따로다.
-  it("최상위 터미널을 떠나면 그 세계의 자동 셸이 나온다", () => {
+  // 최상위 터미널도 owner다(life-mode 결정 10).
+  it("최상위 터미널을 떠나면 그 자동 셸이 나온다 — work의 셸은 안 나온다", () => {
     const top = open(NO_SHELLS, topTerminal("atelier"), true);
-    const there = open(top.state, topTerminal("maison"), true);
-    expect(reclaimOnLeave(there.state, ownerOf("atelier"), ownerOf("maison"))).toEqual([top.id]);
+    const there = open(top.state, 가에서(), true);
+    expect(reclaimOnLeave(there.state, ownerOf("atelier"), 가)).toEqual([top.id]);
   });
 
   // 못 뜬 칸은 이유를 적고 남는다(in-app-terminal 결정 23) — 닫을 프로세스도 없다. 회수하면 읽어야 할 이유가 함께 사라진다.

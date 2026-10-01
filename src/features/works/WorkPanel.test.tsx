@@ -306,17 +306,6 @@ describe("WorkPanel 두 탭", () => {
     expect(render(true, oneProject, [])).toContain("알 수 없다");
   });
 
-  it("세계가 정보 탭까지 내려간다", () => {
-    // 정보 탭 본문은 순수 표현이라 **받은 것만** 그린다 — 그래서 「Maison에서 프로젝트
-    // 구획을 안 그린다」는 그쪽 검사가 초록이어도, 이 패널이 모드를 안 내려주거나
-    // `"atelier"`로 눕혀 넘기면 화면에서는 그대로 되살아난다. 그 배선을 여기서 잰다.
-    //
-    // 이 fixture의 work은 프로젝트가 0개이고 브랜치가 있다 — 코어가 실제로 그렇게 내려주는
-    // Room의 모양이다(works.rs의 nothing_to_decide).
-    expect(render(true, {}, undefined, undefined, "maison")).not.toContain("프로젝트");
-    expect(render(true, {}, undefined, undefined, "atelier")).toContain("아직 프로젝트가 없어요");
-  });
-
   it("트리 위 Spec 소제목이 없다", () => {
     // 바로 위 탭 버튼이 이미 spec이라 같은 말이 두 줄 연달아 나온다 (결정 23)
     expect(render(true)).not.toMatch(/>Spec</);

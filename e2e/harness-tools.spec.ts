@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { answerByArg, FIXTURE_COMMANDS, PROJECTS, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
+import { answerByArg, FIXTURE_COMMANDS, PROJECTS, QUIET_SHELL, WORKS } from "./fixtures";
 import {
   askBackendSettled,
   callCount,
@@ -350,8 +350,6 @@ test("(4) list_works의 atelier 답에서 work 하나를 빼고 works:changed를
   // 앵커: 목록은 그대로 서 있다 — 통째로 사라진 것이 아니다.
   await expect(workRow(page, pinnedWork.slug)).toBeVisible();
 
-  // 한 모드만 갈았다 — 저쪽 세계의 답은 그대로다.
-  expect(await askBackendSettled(page, "list_works", { mode: "maison" })).toEqual({ answer: ROOMS, error: null });
   // 이름 표의 커맨드는 이름으로 간다.
   await replaceAnswer(page, "pty_close_check", QUIET_SHELL);
   expect(await askBackendSettled(page, "pty_close_check", { id: 1 })).toEqual({ answer: QUIET_SHELL, error: null });

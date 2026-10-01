@@ -28,13 +28,7 @@ import useGoToShell from "./useGoToShell";
 import useIsFullscreen from "./useIsFullscreen";
 import { menuHotkeyInit } from "./menu-hotkey";
 import { QUIT_REQUESTED_EVENT, quitApp, requestQuit } from "./quit-request";
-import {
-  modeEntryTarget,
-  modeSwitchTarget,
-  shellMode,
-  shellStore,
-  toggleSidebar,
-} from "./shell-store";
+import { modeEntryTarget, shellMode, shellStore, toggleSidebar } from "./shell-store";
 import type { NavKey } from "./nav-items";
 
 function AppShell() {
@@ -42,22 +36,18 @@ function AppShell() {
   // 타이틀바 왼쪽 여백은 index.css의 [data-titlebar]가 계산한다 — 전체화면 여부만 여기서 알려준다
   const fullscreen = useIsFullscreen();
   const navigate = useNavigate();
-  // 지금 어느 세계인가. **셋째 구독이고 값은 원시값이다** — 아래 둘과 한 select로 묶어
+  // 지금 모드. **셋째 구독이고 값은 원시값이다** — 아래 둘과 한 select로 묶어
   // 객체 하나로 돌려주면 매번 새 객체라 걸러내지 못해 주소가 바뀔 때마다 셸 전체가
-  // 리렌더한다(아래 두 주석이 지키는 그 최적화). 문자열 하나면 세계를 건널 때만 돈다.
+  // 리렌더한다(아래 두 주석이 지키는 그 최적화).
   //
-  // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 세계 밖이기 때문**이다 — 접두사가
-  // 없어 `modeOf`는 그 주소를 늘 Atelier로 눕히고, 그러면 Maison에서 설정을 연 채 누른 ⌘K가
-  // 저쪽 세계를 뒤지고 「앱으로 돌아가기」가 Atelier로 간다(설정에는 nav가 없다 — UI개선 결정 21).
+  // `modeOf`가 아니라 `shellMode`인 것은 **`/settings`가 모드 밖이기 때문**이다 — 그 주소에서는
+  // 떠나온 모드를 이어 든다(설정에는 nav가 없다 — UI개선 결정 21).
   const mode = useRouterState({ select: (state) => shellMode(state.location.pathname) });
   // 어느 항목이 활성인지는 URL이 정한다 — 셸은 그것을 비출 뿐이다.
   // Works 화면에서는 활성 항목이 없다(nav에 Works가 없다). "지금 Works에 있다"는 것은
   // 사이드바 목록에서 그 작업 행이 강조되는 것으로 드러난다.
   // 파생을 select 안에서 끝낸다 — 밖에서 pathname을 구독하면 작업을 고를 때마다(주소의 slug가
   // 바뀔 때마다) 셸 전체가 리렌더한다. 여기서 걸러 두면 활성 항목이 실제로 바뀔 때만 돈다.
-  //
-  // **훑는 배열이 모드의 것이다.** Atelier 배열로 `/maison/terminal`을 재면 접두사가 하나도
-  // 안 맞아 활성 표시가 통째로 사라진다 — 그 세계에도 Terminal은 서 있는데.
   const activeKey = useRouterState({
     select: (state): NavKey | null =>
       navItemsOf(mode).find((item) => state.location.pathname.startsWith(item.to))?.key ?? null,
@@ -281,19 +271,6 @@ function AppShell() {
         <Sidebar
           open={sidebarOpen}
           mode={mode}
-          onPickMode={(pick) => {
-            // 목적지가 nav와 규칙이 다르다 — 그 세계의 **마지막 주소**이고 없으면 첫 화면이며,
-            // 항목 주소면 그 항목의 마지막 화면이 씨앗으로 얹힌다. 규칙은 하나도 여기 없다
-            // (`shell-store`의 `modeSwitchTarget`): 「같은 세계면 아무 데도 안 간다」도 그 씨앗도
-            // 답의 일부라, 셋 중 하나라도 이 자리에서 다시 지으면 그 함수를 재는 검사들이 초록인
-            // 채로 화면의 규칙만 갈린다. 그래서 **이동 전체를 받아 그대로 넘긴다.**
-            //
-            // 떠나온 세계로 **위 `mode`를 넘긴다** — 셸이 이미 든 값을 두고 주소를 다시 읽으면
-            // 세계를 판정하는 자리가 둘이 된다. (설정에는 세그먼트가 없다 — UI개선 결정 21.)
-            const go = modeSwitchTarget(mode, pick);
-            if (!go) return;
-            void navigate(go);
-          }}
           activeKey={activeKey}
           onSelect={(key) => {
             // 이미 보고 있는 화면이면 아무것도 하지 않는다. 무선택 주소로 한 번 갔다가 항목 주소로
@@ -301,9 +278,7 @@ function AppShell() {
             // 뒤로가기를 눌러도 화면이 그대로인 죽은 항목이 된다.
             // (두 목적지 모두 목록이 화면에 상주하므로 "목록으로 돌아가기"가 따로 필요 없다.)
             //
-            // 목적지도 **그 세계의 배열**에서 나온다 — Maison에서 Terminal을 눌렀는데
-            // Atelier의 `/terminal`로 가면 nav 한 번에 세계를 떠난다. 사이드바가 이제 같은
-            // 배열을 그리므로(#183) 그 세계에 없는 key는 여기 올 일이 없고, 그래도 오면
+            // 목적지는 사이드바가 그리는 **같은 배열**에서 나온다(#183). 없는 key가 오면
             // `navTargetOf`가 `undefined`를 준다 — 아래 가드가 그때 아무 데도 안 간다.
             const target = navTargetOf(mode, key);
             if (!target || key === activeKey) return;
@@ -320,9 +295,8 @@ function AppShell() {
           onPickSettingsItem={(key) => void navigate({ to: settingsItem(key).to })}
           onLeaveSettings={() => {
             // 들어오기 직전 자리로 **한 번에** 간다(결정 27) — 항목을 몇 번 옮겼든 뒤로가기가
-            // 아니라 push다. 넘기는 것은 **떠나온 모드 그대로**다: 설정은 세계를 안 실어 위
-            // `mode`가 곧 떠나온 세계이고, 세그먼트 함수(`modeSwitchTarget`)를 부르면 같은
-            // 세계라 늘 `null`이 나온다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
+            // 아니라 push다. 넘기는 것은 **떠나온 모드 그대로**다: 설정은 모드를 안 실어 위
+            // `mode`가 곧 떠나온 모드다. 목적지 규칙은 하나도 여기 없다(`shell-store`).
             void navigate(modeEntryTarget(mode));
           }}
         />

@@ -63,16 +63,14 @@ describe("되돌리기 확인 창", () => {
   // 읽지 못한 폴더에서는 무엇이 템플릿인지 모른다(`templateCount`가 없다) — 폴더 안의 파일을 센 것만 적는다.
   it("읽지 못한 행의 창은 템플릿의 수 없이 파일의 수만 적는다", () => {
     const broken = state({
-      id: "maison",
-      folder: "~/.atelier/layouts/maison",
       errors: [{ path: null, message: "layout.json is missing" }],
       fallback: "layout.json is missing",
       templateCount: null,
       otherFileCount: 3,
     });
-    expect(askedFor(broken).title).toBe("Maison 레이아웃을 기본값으로 되돌릴까요?");
+    expect(askedFor(broken).title).toBe("Atelier 레이아웃을 기본값으로 되돌릴까요?");
     const body = bodyOf(broken);
-    expect(body).toContain("~/.atelier/layouts/maison/ 폴더를 지워요.");
+    expect(body).toContain("~/.atelier/layouts/atelier/ 폴더를 지워요.");
     expect(body).toContain("파일 3개가 함께 사라져요.");
     expect(body).not.toContain("템플릿");
     expect(body).not.toContain("그 밖의");

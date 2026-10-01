@@ -350,8 +350,7 @@ async function install(
       // **모드로 갈리는 커맨드가 맨 먼저다.** 그리고 여기 있는 커맨드는 아래 이름 표로 **안
       // 떨어진다** — 답을 못 찾으면 그 표가 아니라 화이트리스트 탐지기로 간다. 실물 백엔드는
       // `mode`를 필수로 받지만(#187) 그 거절은 L3에 안 온다: 여기서 백엔드 노릇을 하는 것이
-      // 이 표라, 아래로 떨어지게 두면 `mode`가 없거나 모르는 값인 호출이 조용히 Atelier
-      // 데이터를 받아 「Maison 화면에 Atelier 것이 떴다」가 아무 데도 안 걸린다.
+      // 이 표라, 아래로 떨어지게 두면 `mode`가 없거나 모르는 값인 호출이 조용히 답을 받는다.
       // 그 물림을 음성 케이스로 세우는 자리는 `mode-fail-closed.spec.ts`다.
       if (has(tables.byMode, cmd)) {
         const forCmd = tables.byMode[cmd];
@@ -785,7 +784,7 @@ export async function fireEventToAll(page: Page, event: string, payload: unknown
 }
 
 /**
- * **MCP가 그 work(Room)들을 아카이브했다** — 그 세계의 목록 답(`list_works`)에서 slug를 빼고 `works:changed`를 쏜다(프로세스 티켓
+ * **MCP가 그 work들을 아카이브했다** — 그 모드의 목록 답(`list_works`)에서 slug를 빼고 `works:changed`를 쏜다(프로세스 티켓
  * 12). 목록을 쥔 코어는 다른 프로세스(MCP 서버)가 바꿨고, 앱은 감시자의 이벤트 뒤의 목록 재조회로만 안다 — 그래서 이 층의 흉내는
  * 답을 갈고(`replaceAnswer`) 그 이벤트를 쏘는 것이다. 새 답은 `list`에서 `slugs`를 뺀 것이다 — 앞서 뺀 slug도 계속 빠져 있어야
  * 하면 다시 준다(답을 통째로 갈므로).
@@ -1034,10 +1033,6 @@ export const navButtons = (page: Page) => page.locator("aside nav").getByRole("b
 export const navButton = (page: Page, label: string) =>
   page.locator("aside nav").getByRole("button", { name: label, exact: true });
 
-/** 사이드바의 세계 고르기(`Atelier` · `Maison`). */
-export const modeButton = (page: Page, label: "Atelier" | "Maison") =>
-  page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: label, exact: true });
-
 /** `Processes` 화면의 제목 — 머리의 글자는 제목 역할이 없어(`PageHeader`) 제목 역할은 따로 선다. 그 화면이 섰다는 앵커다. */
 export const processesTitle = (page: Page) => page.getByRole("heading", { name: "Processes", exact: true });
 
@@ -1068,9 +1063,8 @@ export const HOOKS_TEXT = "에이전트 훅을 새 목록으로 맞췄어요";
 /** 셸 스스로 끝남 토스트의 문구 — 셸이 끝나며 그 셸에서 띄운 것을 `count`개 끝냈다(프로세스 스펙 S49). */
 export const endedText = (count: number) => `셸이 끝나면서 그 셸에서 띄운 프로세스 ${count}개를 끝냈어요`;
 
-/** 주인 잃은 셸 토스트의 문구. 화면의 말(`itemNameOf`)을 따라 Atelier의 work은 「작업」, Maison은 「Room」이다(프로세스 스펙 S45). */
-export const ownerlessText = (count: number, item: "작업" | "Room" = "작업") =>
-  `아카이브된 ${item}의 셸 ${count}개에 아직 도는 것이 있어요`;
+/** 주인 잃은 셸 토스트의 문구(프로세스 스펙 S45). */
+export const ownerlessText = (count: number) => `아카이브된 작업의 셸 ${count}개에 아직 도는 것이 있어요`;
 
 /** spec 레이아웃 편집기(Atelier 레이아웃)의 주소. */
 export const SPEC_LAYOUT_EDITOR = "/settings/spec-layout/atelier";
@@ -1299,11 +1293,11 @@ export async function 둘째가말할자리(page: Page): Promise<void> {
 }
 
 /**
- * 두 세계에 셸을 띄운다 — `그냥 일`(`WORKS[1]`)에 둘(pty 1 · 2), Atelier `Terminal`에 하나(pty 3), Maison `Terminal`에 하나(pty 4).
+ * 셸 셋을 띄운다 — `그냥 일`(`WORKS[1]`)에 둘(pty 1 · 2), `Terminal`에 하나(pty 3).
  * 저절로 뜬 셸은 입력 없이 화면을 떠나면 닫히므로(프로세스 결정 7) 한 글자씩 친다. 화면 이동은 앱 안에서 한다 — 주소로 다시 열면
- * 스토어가 비워진다. 끝나면 Maison `Terminal`에 서 있다.
+ * 스토어가 비워진다. 끝나면 `Terminal`에 서 있다.
  */
-export async function 두세계에셸을띄운다(page: Page): Promise<void> {
+export async function 셸셋을띄운다(page: Page): Promise<void> {
   await page.goto(`/works/${WORKS[1].slug}?tab=terminal`);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
@@ -1312,13 +1306,6 @@ export async function 두세계에셸을띄운다(page: Page): Promise<void> {
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(3);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  await modeButton(page, "Maison").click();
-  await navButton(page, "Terminal").click();
-  await expect(page).toHaveURL("/maison/terminal");
-  await expect.poll(() => callCount(page, "pty_spawn"), { timeout: 20_000 }).toBe(4);
   await awaitSpawned(page, 1);
   await typeIntoShell(page);
 }

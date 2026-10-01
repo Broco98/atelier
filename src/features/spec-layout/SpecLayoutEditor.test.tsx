@@ -357,8 +357,8 @@ describe("검증 오류", () => {
 // 주소로 바로 와도 같다. 고치는 길은 설정 행의 에이전트에게 부탁, 손으로 고치기, 되돌리기다.
 describe("읽지 못하는 레이아웃", () => {
   const broken: UnreadableSpecLayout = {
-    id: "maison",
-    folder: "~/.atelier/layouts/maison",
+    id: "atelier",
+    folder: "~/.atelier/layouts/atelier",
     edited: true,
     errors: [
       { path: [2], message: '`kind` is missing ("file" or "folder")' },
@@ -370,7 +370,7 @@ describe("읽지 못하는 레이아웃", () => {
   it("까닭과 설정으로 돌아가는 길만 보이고, 편집 UI가 없다", () => {
     const html = renderToStaticMarkup(<UnreadableLayout read={broken} onBack={() => {}} />);
     const text = textOf(html);
-    expect(text).toContain("~/.atelier/layouts/maison/");
+    expect(text).toContain("~/.atelier/layouts/atelier/");
     expect(text).toContain('root.children[2]: `kind` is missing (&quot;file&quot; or &quot;folder&quot;)');
     expect(text).toContain("layout.json is not valid JSON");
     expect([...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) => textOf(m[1]).trim())).toEqual([

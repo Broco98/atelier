@@ -272,41 +272,20 @@ describe("빈 `작업` 구획이 하는 말", () => {
   });
 });
 
-// 같은 목록이 세계마다 다른 이름으로 선다(#183, US 17). 문구 자체는 순수 함수라
-// `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서 보는 것은 호출부다** — 화면이
-// 그 함수들에 지금 세계를 실제로 넘기는가.
-//
-// **두 세계를 함께 잰다.** 한쪽만 재면 「모드를 안 보고 Atelier로 눕히는」 변형이 그 검사에서
-// 초록이다 — 화면으로는 Maison에 갔는데 목록 머리만 `작업`인 모양으로만 보인다.
-describe("상주 목록이 세계를 따라 이름을 바꾼다", () => {
-  it("머리가 Atelier `작업` · Maison `Rooms`다", () => {
-    const labels = (mode: Mode) =>
-      headersOf(render(works("가"), ALL, { mode })).map((one) => one.label);
-    expect(labels("atelier")).toEqual(["작업"]);
-    expect(labels("maison")).toEqual(["Rooms"]);
-  });
-
-  // 형제 머리는 **상태의 이름**이라 안 갈린다 — 갈리는 것은 「무엇의 목록인가」 하나뿐이고,
-  // 여기가 함께 갈리면 L3가 접근성 이름(`고정 1`)으로 집는 자리가 세계마다 달라진다.
-  it("`고정`은 두 세계에서 같다", () => {
-    const siblings = (mode: Mode) =>
-      headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode }))
-        .map((one) => one.label)
-        .filter((label) => label !== "작업" && label !== "Rooms");
-    expect(siblings("atelier")).toEqual(["고정"]);
-    expect(siblings("maison")).toEqual(["고정"]);
+// 목록의 이름. 문구 자체는 순수 함수라 `work-sections.test.ts`가 글자까지 붙들고 있고, **여기서
+// 보는 것은 호출부다** — 화면이 그 함수들에 지금 모드를 실제로 넘기는가.
+describe("상주 목록의 이름", () => {
+  it("머리가 `작업`이고 형제 머리는 `고정`이다", () => {
+    const labels = headersOf(render(works("pin:가", "나", "draft:다"), ALL, { mode: "atelier" })).map(
+      (one) => one.label,
+    );
+    expect(labels).toEqual(["고정", "작업"]);
   });
 
   // 따옴표가 `&quot;`로 이스케이프돼 나오므로 문장 전체를 리터럴로 붙들지 않는다 — 글자까지의
-  // 계약은 `work-sections.test.ts`가 지고, 여기서는 **어느 세계의 말이 나왔는가**만 본다.
-  it("Room이 없으면 Terminal에서 만들라고 하고, Atelier 문구는 그대로다", () => {
-    const maison = render([], ALL, { mode: "maison" });
-    expect(maison).toContain("새 Room 만들어줘");
-    expect(maison).not.toContain("Claude Code에서 시작돼요");
-
-    const atelier = render([], ALL, { mode: "atelier" });
-    expect(atelier).toContain("작업은 Claude Code에서 시작돼요.");
-    expect(atelier).not.toContain("새 Room 만들어줘");
+  // 계약은 `work-sections.test.ts`가 진다.
+  it("작업이 없으면 Claude Code에서 시작된다고 한다", () => {
+    expect(render([], ALL, { mode: "atelier" })).toContain("작업은 Claude Code에서 시작돼요.");
   });
 });
 

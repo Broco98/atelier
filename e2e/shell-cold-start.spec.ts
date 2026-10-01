@@ -232,36 +232,31 @@ test("글꼴이 오기 전에 work 화면을 떠나도 두고 온 셸이 뜨고 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-// 세계를 갈면 그 세계의 화면으로 가서 터미널이 통째로 내려간다. 두고 온 셸은 **제 세계로** 떠야
-// 한다 — spawn이 싣는 모드가 셸의 홈과 `ATELIER_MODE`를 정한다(결정 10 · #187).
-for (const [from, to, url] of [
-  ["atelier", "Maison", "/terminal"],
-  ["maison", "Atelier", "/maison/terminal"],
-] as const) {
-  test(`글꼴이 오기 전에 ${to}로 갈아도 두고 온 ${from} 셸이 제 세계로 뜬다`, async ({ page }) => {
-    await installFixtureBackend(page);
-    const releaseFonts = await holdTerminalFonts(page);
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await expect(tabs(page)).toHaveCount(1);
-    // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
-    await page.locator('[data-tab="new"]').click();
-    await expect(tabs(page)).toHaveCount(2);
+// 터미널 화면을 떠나면 터미널이 통째로 내려간다. 두고 온 셸은 **제 모드로** 떠야 한다 — spawn이 싣는 모드가
+// 셸의 홈과 `ATELIER_MODE`를 정한다(결정 10 · #187).
+test("글꼴이 오기 전에 터미널 화면을 떠나도 두고 온 셸이 제 모드로 뜬다", async ({ page }) => {
+  await installFixtureBackend(page);
+  const releaseFonts = await holdTerminalFonts(page);
+  await page.goto("/terminal", { waitUntil: "domcontentloaded" });
+  await expect(tabs(page)).toHaveCount(1);
+  // 두고 오는 셸은 사람이 연 칸이다 — 저절로 뜬 첫 칸은 떠날 때 뜨지도 않고 닫힌다(프로세스 결정 7).
+  await page.locator('[data-tab="new"]').click();
+  await expect(tabs(page)).toHaveCount(2);
 
-    await page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: to, exact: true }).click();
-    await expect(page).not.toHaveURL(url);
-    await expect(tabs(page)).toHaveCount(0);
+  await page.locator("nav").getByRole("button", { name: "Projects", exact: true }).click();
+  await expect(page).not.toHaveURL("/terminal");
+  await expect(tabs(page)).toHaveCount(0);
 
-    await releaseFonts();
-    await expect
-      .poll(async () => (await ipcCallArgs(page, "pty_spawn", "mode")).map(({ args }) => args.mode), {
-        message: "두고 온 셸이 안 떴거나 다른 세계로 떴다",
-        timeout: 20_000,
-      })
-      .toEqual([from]);
+  await releaseFonts();
+  await expect
+    .poll(async () => (await ipcCallArgs(page, "pty_spawn", "mode")).map(({ args }) => args.mode), {
+      message: "두고 온 셸이 안 떴거나 다른 모드로 떴다",
+      timeout: 20_000,
+    })
+    .toEqual(["atelier"]);
 
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-}
+  expect(await unknownIpcCalls(page)).toEqual([]);
+});
 
 // ─── 뜨기 전에 닫는다 ───
 //

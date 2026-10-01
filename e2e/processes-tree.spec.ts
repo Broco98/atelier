@@ -7,13 +7,12 @@ import {
   installFixtureBackend,
   kills,
   markRunning,
-  modeButton,
   navButton,
   openShell,
   typeIntoShell,
   unknownIpcCalls,
   글자대비,
-  두세계에셸을띄운다,
+  셸셋을띄운다,
   셸입력,
   칸들,
 } from "./harness";
@@ -69,19 +68,15 @@ function 스냅샷(ptys: number[], withTree = true): ProcessSnapshot {
   });
 }
 
-test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 · 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {
-  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3, 4]) });
-  await 두세계에셸을띄운다(page);
+test("세계 줄 아래 work 행 · 셸 행 · 자손 행 · 셸 도우미의 옅은 줄이 선다", async ({ page }) => {
+  await installFixtureBackend(page, { processes_snapshot: 스냅샷([1, 2, 3]) });
+  await 셸셋을띄운다(page);
 
-  // Maison에서 연다 — Maison이 맨 위다.
   await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/maison/processes");
+  await expect(page).toHaveURL("/processes");
   await expect(셸행(page, 1)).toBeVisible();
   expect(await 줄들(page)).toEqual([
-    { level: "1", name: "Maison, 지금 세계" },
-    { level: "2", name: "Terminal, 셸 1개" },
-    { level: "3", name: "zsh, 조용함 2h" },
-    { level: "1", name: "Atelier" },
+    { level: "1", name: "Atelier, 지금 세계" },
     // work 행 — 이름(목록의 제목)과 셸 수. 프로세스 결정 10 그림의 「process-manager · 셸 2」가 이 줄이다.
     { level: "2", name: `${plainWork.title}, 셸 2개` },
     // 명령 없이 사람이 띄운 것만 남은 셸 — 도우미는 안 센다.
@@ -93,7 +88,7 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
     { level: "2", name: "Terminal, 셸 1개" },
     { level: "3", name: "zsh, 조용함 2h" },
   ]);
-  // 스토어가 모르는 풀의 셸(`l3-99`)은 이 묶음에 없다 — 32의 화면 밖 셸이다. 앵커는 위에서 선 셸 넷이다.
+  // 스토어가 모르는 풀의 셸(`l3-99`)은 이 묶음에 없다 — 32의 화면 밖 셸이다. 앵커는 위에서 선 셸 셋이다.
   await expect(트리(page).locator(`[data-shell-key="${shellKeyOf(99)}"]`)).toHaveCount(0);
 
   // **셸 도우미는 옅게 선다**(P1) — 사람이 띄운 것과 한 무게로 읽히면 섞인다. 옆의 자손 행보다 글자가 옅다 — 바탕과의 대비가
@@ -102,26 +97,6 @@ test("지금 세계가 맨 위에 서고, 그 아래 저쪽 세계의 work 행 �
   const 자손 = 트리(page).getByRole("treeitem", { name: "node", exact: true });
   const [도우미대비, 자손대비] = [await 글자대비(도우미), await 글자대비(자손)];
   expect(도우미대비, `셸 도우미 ${도우미대비.toFixed(2)} · 자손 ${자손대비.toFixed(2)}`).toBeLessThan(자손대비);
-
-  // Atelier로 건너가 연다 — 이제 Atelier가 맨 위다. 같은 화면이 지금 세계만 바꿔 세운다.
-  await modeButton(page, "Atelier").click();
-  await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/processes");
-  await expect.poll(async () => (await 줄들(page))[0]).toEqual({ level: "1", name: "Atelier, 지금 세계" });
-  expect((await 줄들(page)).map((row) => row.name)).toEqual([
-    "Atelier, 지금 세계",
-    `${plainWork.title}, 셸 2개`,
-    "zsh, 띄운 프로세스 2개",
-    "셸 도우미, gitstatusd-darwin-arm64",
-    "node",
-    "esbuild",
-    "zsh, 조용함 2h",
-    "Terminal, 셸 1개",
-    "zsh, 조용함 2h",
-    "Maison",
-    "Terminal, 셸 1개",
-    "zsh, 조용함 2h",
-  ]);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

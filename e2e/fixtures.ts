@@ -190,66 +190,6 @@ export const WORKS: WorkView[] = [
 ];
 
 /**
- * Maison의 Rooms. **Atelier work과 겹치는 값이 하나도 없다** — slug도 제목도 문서 경로도
- * 본문도 다르다. 같은 데이터를 두 세계가 나눠 쓰면 「maison으로 물었다」와 「atelier로
- * 물었다」가 화면에서 갈리지 않아, `mode`가 어긋나도 초록이 된다. 백엔드가 이제 `mode`를
- * **필수로** 받으므로(#187) 통째로 빠뜨린 호출은 거절되지만, **저쪽 세계의 값을 실은**
- * 갈래는 여전히 멀쩡한 인자다 — 그것이 보이려면 이 층의 답이 갈려 있어야 한다.
- *
- * 브랜치도 워크트리도 프로젝트도 없다 — Room은 토픽이고 저장소에 안 붙는다(결정 17).
- * 그래서 `projects`·`worktrees`가 빈 것은 안 채운 게 아니라 이 세계의 모양이다.
- *
- * **초안이 먼저 온다.** `/maison/rooms`의 정규화는 상태와 무관하게 「목록 첫 줄」을 고른다
- * (UI개선 결정 6). 첫 줄이 초안이 아니면 옛 규칙(「초안 아닌 첫 Room」)이 되살아나도 같은 줄을
- * 골라 초록이 된다 — 초안이 첫 줄이어야 그 되돌림이 갈린다. 사이드바에서 초안이 따로 된 구역
- * 없이 `Rooms` 안에 서는 것(UI개선 결정 5)을 재는 것도 이 줄이다.
- */
-export const ROOMS: WorkView[] = [
-  {
-    slug: "draft-room",
-    title: "아직 초안인 방",
-    status: "draft",
-    branch: null,
-    createdAt: "2026-09-01",
-    projects: [],
-    pinned: false,
-    worktrees: [],
-    specDir: "~/.atelier/maison/rooms/draft-room/spec",
-    specFiles: [],
-    specTree: emptySpecTree("maison"),
-  },
-  {
-    slug: "reading-room",
-    title: "읽는 방",
-    status: "active",
-    branch: null,
-    createdAt: "2026-09-02",
-    projects: [],
-    pinned: false,
-    worktrees: [],
-    specDir: "~/.atelier/maison/rooms/reading-room/spec",
-    // **`overview.md`가 아니다.** Atelier의 문서 이름을 그대로 쓰면 「Room 자신의 트리에서
-    // 골랐다」와 「이름을 보고 집었다」가 갈리지 않는다. 이 이름은 내장본의 어느 자리에도 안 맞아
-    // 아이콘이 없고, 기본 문서는 후보가 없어 첫 파일이다(위 `specFile` 머리말).
-    specFiles: ["개요.md"],
-    specTree: {
-      layoutId: "maison",
-      fallback: null,
-      defaultDoc: "개요.md",
-      items: [specFile("개요.md")],
-    },
-  },
-];
-
-/**
- * 무선택 주소(`/maison/rooms`)가 정규화로 고르는 Room — **목록 첫 줄**이고, 초안이어도 안
- * 건너뛴다(UI개선 결정 6). 규칙이 바뀌면 이 한 줄만 고친다: spec마다 `ROOMS`를 따로 풀어
- * 이름을 붙이면 규칙이 갈릴 때 여러 파일을 함께 고쳐야 하고, 같은 `room`이 파일마다 다른
- * Room을 가리키게 된다. 이것이 초안이어야 하는 까닭은 위 `ROOMS` 머리말이다.
- */
-export const MAISON_LANDING_ROOM: WorkView = ROOMS[0];
-
-/**
  * 작업 행을 끌어 놓았을 때 `move_work`가 돌려주는 목록(UI개선 티켓 05). **인자와 무관한 한 벌이고,
  * 원래 목록을 뒤집어 짓는다** — fixture 백엔드에는 상태가 없어 「옮긴 결과」를 지을 수 없으니,
  * 원래와 **확실히 다른** 순서를 주어 「응답으로 캐시를 갈아 끼웠다」를 화면에서 잰다.
@@ -258,7 +198,6 @@ export const MAISON_LANDING_ROOM: WorkView = ROOMS[0];
  * 뒤집어도 `pinned`는 그대로라 화면의 구획은 안 흔들리고 구획 **안** 순서만 뒤집힌다.
  */
 export const WORKS_MOVED: WorkView[] = [...WORKS].reverse();
-export const ROOMS_MOVED: WorkView[] = [...ROOMS].reverse();
 
 // 사이드바 구획 머리의 접근성 이름. 라벨과 옅은 숫자가 같은 버튼 안이라 **이름에 개수가 함께
 // 든다.** 수는 `WORKS`에서 파생한다 — 줄이 더해질 때마다(티켓 08의 멀티 프로젝트 work) 숫자를
@@ -317,34 +256,6 @@ export const SEARCH_HITS: SearchHit[] = WORKS[0].specFiles.map((path) => ({
 export const SEARCH_RESULTS: SearchResults = { hits: SEARCH_HITS };
 
 /**
- * Maison에서 ⇧⇧를 눌렀을 때 오는 줄들. **Atelier의 답과 수도 값도 겹치지 않는다** — 겹치면
- * `mode`를 통째로 빠뜨려도 화면이 같아 보인다(`ROOMS` 머리말). 줄 수가 갈리는 것이 제일 굵은
- * 그물이다: 저쪽 답이 오면 넷이 서고 이쪽은 둘이다.
- *
- * 갈래가 둘인 것은 **도착지가 둘**이기 때문이다 — Room 자체와 그 안의 문서(같은 주소에
- * `file`이 얹힌다). 순서는 코어가 세우는 층 순서 그대로다(작업 → 문서).
- *
- * **아카이브 줄은 없다.** `/maison/archive/<slug>`로 가는 것은 순수 함수 층이 들고
- * (`hit-target.test.ts`), 이 층에서 그 화면을 세우려면 아카이브 목록도 세계별로 갈라야 하는데
- * 그 시나리오가 아직 없다 — **태우지 않는 스텁은 조용히 낡는다**(아래 `write_settings` 주석).
- */
-export const MAISON_SEARCH_HITS: SearchHit[] = [
-  { kind: "work", slug: ROOMS[1].slug, title: ROOMS[1].title, archived: false },
-  {
-    kind: "doc",
-    slug: ROOMS[1].slug,
-    title: ROOMS[1].title,
-    // Room이 **실제로 가진** 문서여야 한다(위 `SEARCH_HITS` 머리말과 같은 규칙). 여기서는 한
-    // 겹 더 물린다: Maison 쪽 `read_spec_file`에는 폴백이 없어, 목록에 없는 경로를 도착지로
-    // 삼으면 본문이 조용히 되돌아가는 게 아니라 하네스가 그 자리에서 문다.
-    path: ROOMS[1].specFiles[0],
-    archived: false,
-  },
-];
-
-export const MAISON_SEARCH_RESULTS: SearchResults = { hits: MAISON_SEARCH_HITS };
-
-/**
  * **질의 하나에만 답을 심어 둔다.** 위 표는 문서 줄만 내므로 「가는 곳」 줄이 이 층에 영영
  * 안 서는데, 그러면 **목록에는 뜨는데 Enter가 아무 일도 안 하는** 실패를 아무 층도 못 잡는다:
  * 목적지의 `key`를 주소로 푸는 자리가 프런트에 따로 있고(`destinations.ts`), 설정은 `navItems`
@@ -383,22 +294,9 @@ export const SEARCH_DESTINATION_RESULTS: SearchResults = {
 };
 
 /**
- * Maison 쪽에 심어 둔 질의. 위 `Settings`를 그대로 쓰지 **않는** 이유는 그 화면에 모드
- * 접두사가 없어서다 — 두 세계가 같은 `/settings`로 가므로, 고르고 나서도 어느 세계의 표에서
- * 주소를 풀었는지가 화면에 안 남는다. `Terminal`은 남는다(`/maison/terminal`).
- *
- * 라벨도 여기서 함께 걸린다: 코어는 `key`만 돌려주므로(결정 21) 줄에 말이 서려면 프런트가
- * **그 세계의 표에서** 되찾아야 한다.
- */
-export const MAISON_SEARCH_DESTINATION_QUERY = "Ter";
-export const MAISON_SEARCH_DESTINATION_RESULTS: SearchResults = {
-  hits: [{ kind: "destination", key: "terminal" }],
-};
-
-/**
- * 모드 둘의 레이아웃 상태(spec 레이아웃 티켓 08) — Atelier는 고친 폴더(템플릿 1개), Maison은 내장본
- * 그대로다. 모양은 엔진의 `layout_states`가 내는 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본
- * 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는 이것에 `/`만 붙여 참조로 복사한다.
+ * 레이아웃 상태(spec 레이아웃 티켓 08) — 고친 폴더(템플릿 1개)다. 모양은 엔진의 `layout_states`가 내는
+ * 그대로이고(다리로 실물과 맞춰 봤다), 폴더는 기본 데이터 루트에서 홈을 `~`로 줄인 경로다 — 설정 페이지는
+ * 이것에 `/`만 붙여 참조로 복사한다.
  */
 export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
   {
@@ -410,24 +308,37 @@ export const SPEC_LAYOUT_STATES: SpecLayoutState[] = [
     templateCount: 1,
     otherFileCount: 0,
   },
-  {
-    id: "maison",
-    folder: "~/.atelier/layouts/maison",
-    edited: false,
-    errors: [],
-    fallback: null,
-    templateCount: 0,
-    otherFileCount: 0,
-  },
 ];
 
 /**
- * 읽지 못해 내장본으로 물러선 Maison — `layout.json`의 셋째 항목에 `kind`가 없다. 오류와 까닭의 글은
- * 엔진이 그 파일에 내는 것 그대로다. 무엇이 템플릿인지 모르므로 템플릿 개수가 없다.
+ * **모드가 아닌 id를 단 상태 한 줄** — Rust `spec_layout_states`가 판 02의 05까지 함께 내는 둘째 줄이다.
+ * 화면은 받은 id가 `Mode`가 아니면 버린다(`spec-layout/api.ts`, ui-refresh 결정 22). 기본 답에 실어 두어 그
+ * 거르기를 이 층이 잰다 — 05에서 이 줄과 거르기를 함께 지운다.
  */
-export const BROKEN_MAISON_LAYOUT: SpecLayoutState = {
+export const STALE_LAYOUT_STATE: Omit<SpecLayoutState, "id"> & { id: string } = {
   id: "maison",
   folder: "~/.atelier/layouts/maison",
+  edited: false,
+  errors: [],
+  fallback: null,
+  templateCount: 0,
+  otherFileCount: 0,
+};
+
+/** 폴더가 아직 없는 레이아웃 — 내장본 그대로다. 되돌릴 것이 없어 ⋯ 메뉴가 안 선다. */
+export const BUILTIN_LAYOUT_STATE: SpecLayoutState = {
+  ...SPEC_LAYOUT_STATES[0],
+  edited: false,
+  templateCount: 0,
+};
+
+/**
+ * 읽지 못해 내장본으로 물러선 레이아웃 — `layout.json`의 셋째 항목에 `kind`가 없다. 오류와 까닭의 글은
+ * 엔진이 그 파일에 내는 것 그대로다. 무엇이 템플릿인지 모르므로 템플릿 개수가 없다.
+ */
+export const BROKEN_LAYOUT_STATE: SpecLayoutState = {
+  id: "atelier",
+  folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
   fallback: 'root.children[2]: `kind` is missing ("file" or "folder")',
@@ -486,12 +397,13 @@ export const MISSING_TEMPLATE_READ: ReadableSpecLayout = {
 };
 
 /**
- * 읽지 못하는 Maison 레이아웃 — 위 `BROKEN_MAISON_LAYOUT`과 같은 폴더를 편집기가 읽은 답이다. 오류와 원문은
- * 엔진이 그 파일에 내는 그대로다. 편집기는 이때 편집 UI를 세우지 않는다.
+ * 읽지 못하는 레이아웃 — 위 `BROKEN_LAYOUT_STATE`와 같은 폴더를 편집기가 읽은 답이다. 오류와 원문은
+ * 엔진이 그 파일에 내는 그대로다. 편집기는 이때 편집 UI를 세우지 않는다. 편집기가 연 뒤에 **밖에서 깨진**
+ * 레이아웃(티켓 15)도 이 답이다 — 그쪽은 도중에 읽기의 답으로 갈아 끼운다.
  */
-export const UNREADABLE_MAISON_READ: UnreadableSpecLayout = {
-  id: "maison",
-  folder: "~/.atelier/layouts/maison",
+export const UNREADABLE_ATELIER_READ: UnreadableSpecLayout = {
+  id: "atelier",
+  folder: "~/.atelier/layouts/atelier",
   edited: true,
   errors: [{ path: [2], message: '`kind` is missing ("file" or "folder")' }],
   raw: '{ "root": { "children": [ { "pattern": "a.md", "kind": "file" }, { "pattern": "b", "kind": "folder" }, { "pattern": "c.md" } ] } }\n',
@@ -513,16 +425,6 @@ export const CHANGED_SPEC_LAYOUT_READ: ReadableSpecLayout = {
       ),
     },
   },
-};
-
-/**
- * 편집기가 연 뒤에 **밖에서 깨진** Atelier 레이아웃(티켓 15) — `UNREADABLE_MAISON_READ`와 같은 파일이 Atelier의
- * 레이아웃 폴더에 놓였다. 오류와 원문은 엔진이 그 파일에 내는 그대로다. 도중에 읽기의 답으로 갈아 끼운다.
- */
-export const UNREADABLE_ATELIER_READ: UnreadableSpecLayout = {
-  ...UNREADABLE_MAISON_READ,
-  id: "atelier",
-  folder: "~/.atelier/layouts/atelier",
 };
 
 /** 저장이 된 답 — 검증 오류가 없다. 거절은 문자열이 아니라 이 모양의 `errors`로 온다. */
@@ -638,7 +540,7 @@ export const PROCESS_SNAPSHOT: ProcessSnapshot = snapshotFixture();
  * 어느 화면에서든 nav `Processes` 옆에 합계만 서고 `●`는 안 선다. 합계 · CPU · 앱 본체는 프로세스 결정 10 그림의 「아틀리에 합계 3.4GB … CPU
  * 42% … 앱 본체 610MB」다. **웹뷰를 센 앱이다**(티켓 30 — WebContent 귀속 시험이 됐다) — 「웹뷰 제외」는 그것을 재는 검사가 덮어 세운다.
  *
- * **모든 spec이 지나는 답이다** — nav 메타가 두 세계의 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
+ * **모든 spec이 지나는 답이다** — nav 메타가 모든 화면에 서서 앱이 뜨자마자 묻는다(시작 보고와 같은 논리). 이름 표에 서야
  * 시나리오가 덮어쓰고(`installFixtureBackend`), 뜬 뒤에 갈아 끼운다(`replaceAnswer` — `●`를 켜는 검사).
  */
 export const PROCESS_SUMMARY: ProcessSummary = {
@@ -688,8 +590,7 @@ export const BUSY_SHELL: CloseCheck = { command: true, descendants: 0 };
 export const QUIET_SHELL: CloseCheck = { command: false, descendants: 0 };
 
 export const FIXTURE_COMMANDS: Record<string, unknown> = {
-  // **모드를 안 받는다** — Maison에는 프로젝트 등록부가 없어서(`commands.rs`의
-  // `shared_projects_root`) 이 명령은 세계를 묻지 않는다. 그래서 이름으로 답해도 위 경계에
+  // **모드를 안 받는다**(`commands.rs`의 `shared_projects_root`). 그래서 이름으로 답해도 위 경계에
   // 안 걸린다.
   list_projects: PROJECTS,
   // 앱이 뜰 때 무조건 한 번 부른다(`main.tsx` → `loadTerminalSettings`). 목록 화면만 보는
@@ -751,20 +652,21 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
     },
   ] satisfies HookStatus[],
   // 설정의 「spec 레이아웃」 페이지가 열릴 때와 [다시 읽기]에 나간다(spec 레이아웃 티켓 08). **모드를
-  // 안 받는다** — 인자 없이 두 모드를 함께 답한다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
-  spec_layout_states: SPEC_LAYOUT_STATES,
+  // 안 받는다** — 인자 없이 레이아웃 전부를 답한다. 둘째 줄은 화면이 거르는 줄이다(`STALE_LAYOUT_STATE`).
+  // 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  spec_layout_states: [...SPEC_LAYOUT_STATES, STALE_LAYOUT_STATE],
   // 설정의 ⋯ → 「기본값으로 되돌리기」가 확인을 거친 뒤에 나간다(티켓 10). 답은 쓰이지 않는다 — 화면은
-  // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 두 id가 같은
-  // 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
+  // 「실패하지 않았다」만 보고 상태를 다시 부른다. **인자 이름이 `id`라 모드 명령이 아니다** — 어느 id든
+  // 같은 답을 받는다. 태우는 시나리오는 `spec-layout-page.spec.ts`다.
   revert_spec_layout: null,
-  // 편집기가 열릴 때 한 번 나간다(티켓 11). 두 id가 같은 답을 받는다 — 인자 이름이 `id`라 모드 표가 아니다.
+  // 편집기가 열릴 때 한 번 나간다(티켓 11). 어느 id든 같은 답을 받는다 — 인자 이름이 `id`라 모드 표가 아니다.
   // 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   read_spec_layout: SPEC_LAYOUT_READ,
   // 편집기의 [저장]이 나간다(티켓 11). **검증 거절도 성공 답이다** — 오류를 재는 시나리오는 이것을 오류
   // 데이터로 덮어쓴다(`ipcFailure`가 아니다). 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   write_spec_layout: SPEC_LAYOUT_SAVED,
   // 편집기가 초안이 바뀔 때마다 짧은 지연 뒤에 나간다 — 연 초안에도 한 번 나간다(티켓 14). 그래서 **편집기를 여는
-  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 두 id가 같은 답을 받는다. 오류를
+  // 시나리오는 모두 이것을 부르고**, 저장 버튼은 지금 초안의 답이 도착해야 풀린다. 어느 id든 같은 답을 받는다. 오류를
   // 재는 시나리오는 이것을 오류 데이터로 덮어쓴다. 태우는 시나리오는 `spec-layout-editor.spec.ts`다.
   render_spec_layout: SPEC_LAYOUT_RENDERED,
   // 판 05가 태운다 — 분할이면 본문에 **터미널 열이 함께 선다**(결정 87)므로 Works 화면을
@@ -795,7 +697,7 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
   // `Processes` 화면이 열려 있는 동안 2초마다 묻는다(티켓 26). 답은 위 `PROCESS_SNAPSHOT`이고, 화면을 여는 검사가 덮어쓴다.
   // **모드를 안 받는다** — 화면이 앱 전체를 보여 두 세계의 주소가 같은 것을 묻는다(프로세스 결정 9). 그래서 이름 표다.
   processes_snapshot: PROCESS_SNAPSHOT,
-  // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 두 세계의 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
+  // nav 메타의 요약(티켓 29). nav `Processes` 옆 메타가 모든 화면에 서므로 **앱이 뜨자마자, 그 뒤 10초마다** 부른다 — 이
   // 줄이 없으면 사이드바가 선 모든 spec이 화이트리스트 탐지기에 물린다. 답은 위 `PROCESS_SUMMARY`(손볼 것 없음)이고, `●`를 재는
   // 검사가 덮어쓰거나 갈아 끼운다(`processes-nav-meta.spec.ts`). **모드를 안 받는다** — 메타는 「이 세계의 것만 센다」의 예외다.
   processes_summary: PROCESS_SUMMARY,
@@ -830,13 +732,9 @@ export const FIXTURE_COMMANDS: Record<string, unknown> = {
 };
 
 /**
- * 경로별 답이 없을 때 Atelier가 내는 한 줄. 사이드바 검사가 spec 파일이 있는 work으로 옮겨
+ * 경로별 답이 없을 때 내는 한 줄. 사이드바 검사가 spec 파일이 있는 work으로 옮겨
  * 가면서 태운다 — 본문 뷰어가 문서를 읽는다. **한 줄이면 족하다**: 그 검사가 보는 것은
  * 사이드바이고, 문서 렌더의 규칙은 SpecViewer.test.tsx가 든다.
- *
- * Maison 쪽에는 짝이 **없다**(아래 `FIXTURE_BY_MODE`) — 그 세계에서 열리는 문서가 하나뿐이라
- * 폴백을 두면 아무도 안 태우는 답이 되고, 그러면 「Room 자신의 문서를 읽었다」가 **폴백이라서**
- * 초록인지 정말 그 문서라서 초록인지 갈리지 않는다.
  */
 export const SPEC_FALLBACK_BODY = "# 개요\n\n한 줄.\n";
 
@@ -896,15 +794,6 @@ export const SPEC_FILE_BODIES: Record<string, string> = {
     "```",
     "",
   ].join("\n"),
-};
-
-/**
- * Room 문서의 본문 — **Atelier 쪽과 한 글자도 안 겹친다.** 겹치면 `mode`가 어긋난 읽기가
- * 화면에서 안 보인다(`ROOMS` 머리말). 특히 위 `SPEC_FALLBACK_BODY`의 「한 줄.」이 여기 있으면,
- * Maison 화면이 Atelier 문서를 읽어 와도 검사가 통과한다.
- */
-export const ROOM_SPEC_FILE_BODIES: Record<string, string> = {
-  "개요.md": "# 읽는 방\n\n이 방에만 있는 문서다.\n",
 };
 
 // (`write_settings`는 위 표에 있다 — 설정 화면의 저장을 태우는 시나리오가 생기면서 그
@@ -968,9 +857,9 @@ export const ARCHIVED_FILE_BODIES: Record<string, string> = {
  *
  * `value`가 **선택인 것이 그물이다**: 없으면 그 모드는 표에 적힌 인자 값에만 답하고 나머지는
  * 하네스가 문다. 폴백은 안 태우는 순간 낡으므로, 태울 것이 없는 모드는 안 두는 쪽이 맞다.
- * 칸을 통째로 비우면(`{}`) 그 세계의 그 명령은 **아무 답도 없다** — 아직 아무도 안 태우는
- * 세계를 그렇게 적는다. 지어낸 답을 앉히는 것보다 낫다: 지어낸 답은 그 화면이 생기는 날
- * 아무도 안 고치는 채로 초록을 준다.
+ * 칸을 통째로 비우면(`{}`) 그 명령은 **아무 답도 없다** — 아직 아무도 안 태우는 명령을 그렇게
+ * 적는다. 지어낸 답을 앉히는 것보다 낫다: 지어낸 답은 그 화면이 생기는 날 아무도 안 고치는
+ * 채로 초록을 준다.
  *
  * 인자 값은 **문자열로 바꿔** 견주고, `arg`가 호출에 **아예 없으면** `value`가 있어도 문다 — 이름 표의
  * 인자별 답(`ArgAnswers`)과 한 규칙이다(`harness.ts`의 `pick`).
@@ -1016,14 +905,10 @@ export const answerByArg = (arg: string, answers: Readonly<Record<string, unknow
  * **모드로 갈리는 커맨드의 답.** 위 이름 표보다 먼저 보고, **여기 있는 커맨드는 그 표로
  * 안 떨어진다** — 답을 못 찾으면 하네스가 문다(harness.ts).
  *
- * 그 fail-closed가 이 표의 존재 이유다. 백엔드는 이제 `mode`를 필수로 받지만(#187) 그 거절은
+ * 그 fail-closed가 이 표의 존재 이유다. 백엔드는 `mode`를 필수로 받지만(#187) 그 거절은
  * **실물에서만** 온다 — L3의 백엔드는 이 표이고, 이름으로만 답하는 표로 떨어지게 두면 `mode`가
- * 없거나 모르는 값인 호출이 조용히 Atelier 데이터를 받아 「Maison 화면인데 Atelier 것이 떴다」가
- * 아무 데도 안 걸린다. 그 fail-closed를 **음성 케이스로** 세우는 자리는
+ * 없거나 모르는 값인 호출이 조용히 답을 받는다. 그 fail-closed를 **음성 케이스로** 세우는 자리는
  * `e2e/mode-fail-closed.spec.ts`이고, 이 표의 이름을 그대로 훑으므로 줄이 늘면 저절로 따라온다.
- *
- * `Record<Mode, ModeAnswer>`가 둘째 그물이다: 모드가 하나 느는 날 칸을 빠뜨린 것을 L0가
- * 잡는다. 값이 실제로 갈려 있어야 하는 것은 타입이 못 보므로 그쪽은 `ROOMS` 머리말이 든다.
  *
  * **페이지를 열 때는 이 표를 못 덮는다** — `installFixtureBackend`의 덮어쓰기는 이름 표의 이름만 받고
  * 여기 있는 이름이면 던진다. 뜬 뒤에 **한 모드의 한 칸을** 가는 길이 하나 있다: `replaceAnswer`(프로세스
@@ -1038,9 +923,9 @@ export const answerByArg = (arg: string, answers: Readonly<Record<string, unknow
  * 없는 채로** 초록이 되고, 그러면 위 음성 케이스가 그것을 안 본다.
  */
 export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
-  list_works: { atelier: { value: WORKS }, maison: { value: ROOMS } },
+  list_works: { atelier: { value: WORKS } },
   /**
-   * **두 칸이 다 빈 둘.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
+   * **칸이 빈 둘.** work 한 건을 slug로 집어 읽거나 고치는 명령들이라 L3 시나리오가
    * 아직 하나도 안 태운다 — 목록 화면은 `list_works`가, 문서는 `read_spec_file`이 답한다.
    *
    * 그래도 **여기 있어야 한다.** 없으면 하네스가 이름 표로 떨어뜨리는 것이 아니라 화이트리스트
@@ -1051,120 +936,84 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
    * 답을 지어내 앉히지 않는 것은 위 `ModeAnswer` 머리말 그대로다. 이 중 하나를 태우는
    * 화면이 생기는 날 그 호출이 하네스에 물려, 그때 이 칸을 채우라고 말해 준다.
    */
-  get_work: { atelier: {}, maison: {} },
-  remove_work: { atelier: {}, maison: {} },
+  get_work: { atelier: {} },
+  remove_work: { atelier: {} },
   /**
    * 이름 바꾸기 창에서 저장하면 나가는 쓰기(판 3 — `works-floating.spec.ts`의 이름 바꾸기 절). 돌려주는 값은
    * 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는 자리다(`useSetWorkTitle`). 그래서 답은
    * 아래 `set_work_status`와 같은 `null`이고, 이름을 **기억하지 않는다**. 검사가 재는 것은 「무엇이 나갔나」다.
-   * Maison 칸이 빈 것은 Room 이름 바꾸기를 태우는 시나리오가 아직 없어서다 — 그것을 잴 때 채운다.
    */
-  set_work_title: { atelier: { value: null }, maison: {} },
+  set_work_title: { atelier: { value: null } },
   /**
    * 상태 메뉴에서 다른 상태를 고르면 나가는 쓰기(판 3 — `works-floating.spec.ts`의 상태 메뉴 절). 돌려주는
    * 값은 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는 것이 화면을 고치는 자리다(`useSetWorkStatus`).
    * 그래서 답은 `set_work_pinned`와 같은 `null`이다. 이 답은 상태를 **기억하지 않는다** — 다시 읽은 목록은
    * 그대로 `WORKS`라 배지가 옛 상태로 남는다. 검사가 재는 것은 「무엇이 나갔나」이고 그것은 IPC 기록에 있다.
-   * Maison 칸이 빈 것은 아래 `list_archive`와 같은 이유다(Room 상태 메뉴를 태우는 시나리오가 아직 없다).
    */
-  set_work_status: { atelier: { value: null }, maison: {} },
+  set_work_status: { atelier: { value: null } },
   /**
-   * **Atelier 칸만 찼다** — 아카이빙이 셸을 거두는 자리(`closeShellsOf`)를 태우는 시나리오가
-   * 생겼다(`shell-cold-start.spec.ts`). 답은 비어 있다: 코어가 돌려주는 것이 없고, 화면은
+   * 아카이빙이 셸을 거두는 자리(`closeShellsOf`)를 태우는 시나리오가 있다(`shell-cold-start.spec.ts`). 답은 비어 있다: 코어가 돌려주는 것이 없고, 화면은
    * 성공인지만 본다. 목록은 그대로 그 work을 답하므로 행이 안 사라지지만, 거기서 재는 것은 셸뿐이다.
    */
-  archive_work: { atelier: { value: null }, maison: {} },
-  /**
-   * 아카이브 목록. **Maison 칸이 비었다** — 저 세계의 아카이브를 여는 시나리오가 아직 없다.
-   * 값을 지어내면 아무도 안 태우는 답이 되어 조용히 낡고(이 파일의 `write_settings` 주석과
-   * 같은 규칙), 그 화면이 생기는 날 Maison에서 나간 첫 호출이 하네스에 물려 여기를 채우라고
-   * 말한다.
-   *
-   * 한때 이 줄은 **이름 표에** 있었다(#187이 옮겼다). 거기서는 `mode`가 어긋난 호출도 답을
-   * 받아, 「Maison 아카이브를 열었는데 Atelier 것이 떴다」가 이 층에 안 걸렸다.
-   */
-  list_archive: { atelier: { value: ARCHIVE }, maison: {} },
+  archive_work: { atelier: { value: null } },
+  /** 아카이브 목록. */
+  list_archive: { atelier: { value: ARCHIVE } },
   /**
    * 아카이브의 문서 목록과 본문 — **인자를 한 겹 더 본다.** 한 시나리오가 아카이브 둘의
    * 서로 다른 목록을 보고, 그 안의 문서를 각각 연다.
    *
    * 두 칸 다 **폴백(`value`)이 없다.** 표에 없는 경로로 읽기가 나가면 그 자리에서 물려,
    * 아카이브가 그림을 **안 읽는다**는 것이 신호로 잡힌다(위 `ARCHIVED_FILE_BODIES` 머리말) —
-   * 폴백을 두면 그 그물이 통째로 사라진다. Maison 칸이 빈 것은 위 `list_archive`와 같은 이유다.
-   *
-   * 이 둘은 한때 모드를 안 보는 **따로 있는 표**(`FIXTURE_BY_ARG`)가 들었다. #187이 이리로
-   * 옮기면서 그 표는 마지막 줄까지 비어 통째로 사라졌다 — 하네스의 갈래도 함께 걷었다.
+   * 폴백을 두면 그 그물이 통째로 사라진다.
    */
   list_archived_docs: {
     atelier: { arg: "slug", answers: ARCHIVED_DOCS },
-    maison: {},
   },
   read_archived_file: {
     atelier: { arg: "path", answers: ARCHIVED_FILE_BODIES },
-    maison: {},
   },
   /**
    * 핀을 누르면 나가는 쓰기. 돌려주는 값은 쓰이지 않는다 — 성공하면 목록을 다시 읽어 오는
-   * 것이 화면을 고치는 자리다(`useSetWorkPinned`). Maison 칸이 빈 것도, 이 줄이 이름 표에서
-   * 온 것도 위 `list_archive`와 같다.
+   * 것이 화면을 고치는 자리다(`useSetWorkPinned`).
    */
-  set_work_pinned: { atelier: { value: null }, maison: {} },
+  set_work_pinned: { atelier: { value: null } },
   /**
    * 작업 행을 끌어 놓으면 나가는 쓰기(UI개선 S3 · 티켓 05). 답은 **뒤집은 목록**이고 인자와
    * 무관하다(`WORKS_MOVED` 머리말) — 화면이 이 답으로 캐시를 갈아 끼우는지를 `work-row-drag.spec.ts`가
-   * 그 순서로 잰다. 두 세계의 답이 갈리는 것은 `list_works`와 같은 이유다: 한 벌을 나눠 쓰면
-   * 「maison으로 물었다」가 화면에서 안 갈린다.
+   * 그 순서로 잰다.
    */
-  move_work: { atelier: { value: WORKS_MOVED }, maison: { value: ROOMS_MOVED } },
+  move_work: { atelier: { value: WORKS_MOVED } },
   /**
-   * **두 모드의 답이 같다 — 그래도 여기다.** spawn 응답(`{id, shellKey, shellName}`)은 세계를 안 탄다:
-   * pty 번호도 셸 키(세대는 실행 하나의 것이다)도 `$SHELL`의 basename도 어느 루트에서 떴는지와 무관하다.
-   * 번호와 셸 키는 부를 때마다 함께 오른다(`FIXTURE_INCREMENTING_KEYS`). 여기서 답을 가르면
-   * 그것은 실물에 없는 차이를 지어내는 것이라 「모드가 갈렸다」가 픽스처의 거짓말 위에 선다.
+   * spawn 응답(`{id, shellKey, shellName}`). 번호와 셸 키는 부를 때마다 함께 오른다(`FIXTURE_INCREMENTING_KEYS`).
    *
    * 이 줄이 사는 이유는 **fail-closed 하나다.** 이름으로 답하는 표에 두면 `mode`를 빠뜨린
-   * spawn도 답을 받아, 이 층은 조용히 초록인 채 Maison 터미널이 Atelier 홈에서 뜨는 것을
-   * 못 본다. 여기 있으면 하네스가 그 자리에서 문다 — 실물 백엔드의 거절(#187)은 L3에 안 온다.
-   *
-   * 그래서 **어느 모드가 실렸는지**까지는 이 표가 못 본다. 그 값을 읽는 자리는 IPC 기록이고
-   * (`terminal-worlds.spec.ts`), 셸 env까지 실물로 잇는 자리는 `src-tauri/tests/top_terminal.rs`다.
+   * spawn도 답을 받는다. 여기 있으면 하네스가 그 자리에서 문다 — 실물 백엔드의 거절(#187)은 L3에 안 온다.
+   * 셸 env까지 실물로 잇는 자리는 `src-tauri/tests/top_terminal.rs`다.
    *
    * 프레임은 오지 않는다: 출력은 `onFrame` 채널로 오고 그 채널은 앱이 만든다 — 여기서
    * 답하는 것은 「띄웠다」 하나뿐이라 셸은 빈 화면으로 선다. 이 층에서 볼 것도 그것뿐이다
    * (진짜 바이트는 L4의 몫이고, 거기서도 안 탄다).
    *
-   * 두 칸이 다 태워진다: Atelier는 work 화면의 터미널 열(결정 87)과 `/terminal`이,
-   * Maison은 `/maison/terminal`이 지난다.
+   * work 화면의 터미널 열(결정 87)과 `/terminal`이 지난다.
    */
   pty_spawn: {
     atelier: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
-    maison: { value: { id: 1, shellKey: `${FIXTURE_GENERATION}-1`, shellName: FIXTURE_SHELL_NAME } },
   },
   /**
    * work 화면이 설 때마다 한 번 나간다(팔레트 결정 14). 답은 안 쓰인다 — 순서를 세우는 것은
    * 코어의 검색이고 화면은 이 값을 도로 안 읽는다. **표에서 빠뜨리면 work 화면을 여는
    * spec들이 한꺼번에 터지는데**, 하네스가 던지는 것을 react-query가 삼켜 콘솔에도 안 남는다.
    *
-   * **두 칸이 다 `null`이다 — 그래도 여기다.** 답이 세계를 안 타는 것은 `pty_spawn`과 같은
-   * 사정이고(위 머리말), 이 줄이 이름 표가 아니라 여기 사는 이유도 같다: 이력은 세계마다
-   * 한 장이라 `mode`를 빠뜨린 호출은 저쪽 장부에 적는다. 이름으로 답하면 그 어긋남이 이
-   * 층에서 조용히 초록이다.
+   * 이 줄이 이름 표가 아니라 여기 사는 이유는 `pty_spawn`과 같다(위 머리말).
    */
-  touch_recent_work: { atelier: { value: null }, maison: { value: null } },
+  touch_recent_work: { atelier: { value: null } },
   read_spec_file: {
     atelier: { value: SPEC_FALLBACK_BODY, arg: "path", answers: SPEC_FILE_BODIES },
-    // 폴백이 없다 — 위 `SPEC_FALLBACK_BODY` 머리말의 이유다. Room이 자기 목록에 없는 문서를
-    // 읽으려 하면 그 자리에서 문다.
-    maison: { arg: "path", answers: ROOM_SPEC_FILE_BODIES },
   },
   /**
    * 팔레트가 뜨자마자 한 번, 그리고 글자마다 다시 나간다 — 캐시도 디바운스도 없다.
    *
-   * **두 세계의 답이 실제로 갈려 있다**(`MAISON_SEARCH_HITS`). 여기가 이름 표에 있으면 세계를
-   * 안 실은 물음도 답을 받아, Maison에서 누른 ⇧⇧에 Atelier work이 서는 화면이 오류 하나 없이
-   * 지나간다.
-   *
-   * 모드마다 **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위
+   * **기본 답과 심어 둔 질의를 함께** 든다. 질의를 한 겹 더 보는 이유는 위
    * `SEARCH_DESTINATION_QUERY` 머리말이 들고, 나머지 질의는 전부 그 모드의 `value`로 떨어진다 —
    * 좁혀지는 규칙은 여기서 흉내내지 않는다.
    */
@@ -1173,11 +1022,6 @@ export const FIXTURE_BY_MODE: Record<string, Record<Mode, ModeAnswer>> = {
       value: SEARCH_RESULTS,
       arg: "query",
       answers: { [SEARCH_DESTINATION_QUERY]: SEARCH_DESTINATION_RESULTS },
-    },
-    maison: {
-      value: MAISON_SEARCH_RESULTS,
-      arg: "query",
-      answers: { [MAISON_SEARCH_DESTINATION_QUERY]: MAISON_SEARCH_DESTINATION_RESULTS },
     },
   },
 };

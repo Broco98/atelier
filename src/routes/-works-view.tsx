@@ -21,8 +21,6 @@ import { routesOf } from "@/mode";
 import type { Mode } from "@/mode";
 
 // /works와 /works/$slug가 그리는 화면은 같다 — 다른 것은 어떤 작업이 선택됐는지뿐이다.
-// **Maison의 Room 화면도 같은 이 컴포넌트다**: 두 세계가 다른 것은 어느 루트를 읽고 어느
-// 주소로 옮기는가뿐이라, 화면을 두 벌로 두면 한쪽만 고치는 날이 온다.
 // 파일명의 "-" 접두사는 라우트 생성기가 이 파일을 라우트로 취급하지 않게 한다.
 function WorksView({
   mode,

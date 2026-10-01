@@ -262,8 +262,6 @@ describe("nav 항목은 더 갈라지지 않는다", () => {
     // **개수 prop이 메타 슬롯이 됐다**(결정 4·13). 그 계약은 그대로 이어진다: 여전히
     // 최상위 셸 수가 이 행에 서고, 이제 그 셸에서 claude가 돌면 로고까지 뜬다. 무리가
     // 하나뿐이라 숫자가 하나로 서는 것이고 규칙은 일반화될 뿐 안 깨진다.
-    // **최상위도 세계마다다**(결정 10) — 화면이 `/terminal`과 `/maison/terminal` 둘이라
-    // 한 값으로 두면 두 세계의 셸 수가 한 숫자로 합쳐진다.
     expect(sidebar).toContain("<RowMetaFor owner={ownerOf(mode)} shellCount={topShells} />");
   });
 });
@@ -286,19 +284,14 @@ describe("사이드바 바깥 상자의 폭 바닥", () => {
   });
 });
 
-// 세그먼트가 **어디에 서고 무엇을 바꾸는가**. 그림 자체는 `ModeSwitch.test.tsx`가 정적
-// 마크업으로 보고(그래서 세그먼트가 순수 컴포넌트로 갈려 있다), 여기서 보는 것은 이 파일이
-// 그것을 **어느 자리에 꽂았는가**다 — 자리는 렌더가 아니라 소스에서만 보인다.
-describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () => {
+// 사이드바 최상단의 짜임 — 자리는 렌더가 아니라 소스에서만 보인다.
+describe("사이드바 최상단은 신호등 띠이고 그 아래가 nav다", () => {
   const sidebar = read("Sidebar.tsx");
 
-  it("신호등 띠 **아래**, nav **위**다", () => {
-    // US 6이 정한 자리 그대로다. 순서가 뒤집히면 「어느 세계인가」가 nav 아래로 내려가
-    // 목적지 하나처럼 읽힌다.
-    //
+  it("신호등 띠 **아래**에 갈래의 몸통이 서고, 앱 갈래의 첫 것이 nav다", () => {
     // 설정 nav가 생긴 뒤로 띠는 두 갈래가 함께 지나는 겉 상자(`SidebarFrame`)에 살고, 갈래의
     // 몸통은 그 띠 **뒤의 자리**(`{children}`)에 선다. 그래서 파일 전체의 첫 띠로 재지 않고 둘로
-    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 모드 전환 < nav. 띠가 파일에 **하나뿐**인
+    // 나눠 잰다: 겉 상자에서 띠 < 몸통 자리, 앱 갈래에서 nav가 맨 앞. 띠가 파일에 **하나뿐**인
     // 것도 센다 — 갈래가 제 띠를 따로 그리면 앞의 비교가 그 띠를 안 본다.
     expect(countOf(sidebar, "data-tauri-drag-region")).toBe(1);
     const frameAt = sidebar.indexOf("function SidebarFrame(");
@@ -308,27 +301,23 @@ describe("세계를 고르는 두 칸이 사이드바 최상단에 선다", () =
     // 앱 갈래 — 설정 갈래를 닫은 뒤에 여는 겉 상자부터 그 상자를 닫는 자리까지.
     const appAt = sidebar.indexOf("<SidebarFrame", sidebar.indexOf("</SidebarFrame>"));
     const app = appAt > -1 ? sidebar.slice(appAt, sidebar.indexOf("</SidebarFrame>", appAt)) : "";
-    const segment = app.indexOf("<ModeSwitch");
     const nav = app.indexOf("<nav");
-    // **넷이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 두 줄이
+    // **셋이 다 있는지부터 센다** — 하나가 없으면 indexOf가 -1이고, 그러면 아래 줄이
     // 읽은 것 없이 통과하거나 엉뚱한 이유로 빨개진다.
-    expect([strip, slot, segment, nav].every((at) => at > -1)).toBe(true);
+    expect([strip, slot, nav].every((at) => at > -1)).toBe(true);
     expect(slot).toBeGreaterThan(strip);
-    expect(nav).toBeGreaterThan(segment);
+    // 겉 상자를 연 줄 바로 뒤의 첫 요소가 nav다(그 사이에는 주석만 선다).
+    expect(app.slice(0, nav)).not.toMatch(/\n\s*<(?!SidebarFrame|nav)[A-Za-z]/);
   });
 
-  it("nav가 **그 세계의 배열**을 돈다", () => {
-    // Atelier 배열을 두 세계에 그리면 Maison에 `Projects`가 서는데(결정 17이 없다고 한
-    // 것이다), 활성 판정은 이미 모드 배열을 보고 있어서 그 항목은 영영 안 켜진다.
+  it("nav가 **그 모드의 배열**을 돈다", () => {
     expect(sidebar).toContain("navItemsOf(mode).map(");
   });
 
-  it("어느 자리도 한 세계로 눕지 않는다", () => {
-    // **이 파일에 세계의 이름이 리터럴로 박히면 안 된다.** 목록·nav·세그먼트가 받는 값이
-    // 전부 하나(`mode`)에서 나와야 세 자리가 함께 움직이는데, 그 어긋남은 화면에서
-    // 「Maison인데 목록만 Atelier」처럼 **한 자리만** 틀린 모양으로 나타나 눈에 안 띈다.
+  it("어느 자리도 모드를 리터럴로 눕히지 않는다", () => {
+    // **이 파일에 모드의 이름이 리터럴로 박히면 안 된다.** 목록과 nav가 받는 값이 전부 하나
+    // (`mode`)에서 나와야 두 자리가 함께 움직인다.
     expect(sidebar).not.toContain('"atelier"');
-    expect(sidebar).not.toContain('"maison"');
   });
 });
 
@@ -355,10 +344,9 @@ describe("설정에서는 사이드바가 설정 nav를 그린다", () => {
     expect(rest).not.toMatch(/\buse[A-Z]\w*\(/);
   });
 
-  it("그 갈래에는 돌아가기와 항목만 서고, 모드 전환·nav·띠·목록·바닥 Settings는 없다", () => {
+  it("그 갈래에는 돌아가기와 항목만 서고, nav·띠·목록·바닥 Settings는 없다", () => {
     expect(branch).toContain("<SettingsNav");
     for (const gone of [
-      "<ModeSwitch",
       "navItemsOf(",
       "<AttentionBand",
       "<SidebarWorkList",

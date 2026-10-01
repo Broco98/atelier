@@ -10,9 +10,8 @@ import type { ArchivedDocs, ArchiveEntry } from "./types";
 import type { SpecTreeGroup, SpecTreeItem } from "@/features/works/types";
 import type { Mode } from "@/mode";
 
-// **프로젝트라는 것이 Maison 화면 어디에도 없다**(결정 17)를 재는 자리. 목록 패널의 필터와
-// 머리말의 프로젝트 칩은 서로 다른 파일에 있어서(ArchiveList · ArchivePage), 한쪽만 고친
-// 커밋이 실제로 있었다 — 화면을 통째로 그려야 그 어긋남이 한 번에 걸린다.
+// 아카이브 화면을 통째로 그려 잰다. 목록 패널의 필터와 머리말의 프로젝트 칩은 서로 다른 파일에
+// 있어서(ArchiveList · ArchivePage) 화면을 통째로 그려야 둘이 한 번에 걸린다.
 //
 // 정보 탭(`WorkInfo.test.tsx`)과 달리 프로바이더를 세운다. 이 화면은 목록도 문서도 스스로
 // 조회하므로 순수 표현일 수 없고, 「목록이 왔다」와 「아직이다」가 빈 화면의 갈래를
@@ -23,9 +22,6 @@ const withProject: ArchiveEntry = {
   title: "치운 것",
   status: "done",
   archivedAt: "2026-08-16",
-  // **Room에도 프로젝트 이름이 실려 올 수 있다** — 손으로 고친 work.json이나 저쪽 세계에서
-  // 옮겨 온 폴더가 그렇다. 값이 비어 있으면 「비면 안 그린다」로 두어도 초록이라, 조건이
-  // 실제로 세계를 보는지 재려면 여기가 채워져 있어야 한다.
   projects: ["atelier"],
 };
 
@@ -64,23 +60,8 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
 });
 
-describe("Maison 아카이브에는 프로젝트 자리가 없다", () => {
-  it("목록 패널에 프로젝트 필터가 없다", () => {
-    const markup = render("maison", [withProject]);
-    expect(markup).not.toContain("모든 프로젝트");
-    expect(markup).not.toContain("프로젝트");
-  });
-
-  it("머리말에 프로젝트 칩이 없다", () => {
-    const markup = render("maison", [withProject], "shipped");
-    // 제목은 떠 있는데(고른 것이 있다) 프로젝트 이름만 없다 — 머리말을 통째로 못 그린
-    // 것과 갈라야 한다.
-    expect(markup).toContain("치운 것");
-    expect(markup).not.toContain("atelier");
-  });
-
-  // **같은 값이 Atelier에서는 둘 다 선다.** 한쪽만 재면 조건을 통째로 지워도 초록이다.
-  it("같은 아카이브를 Atelier로 그리면 필터도 칩도 선다", () => {
+describe("프로젝트 자리", () => {
+  it("프로젝트가 붙은 아카이브를 그리면 필터도 칩도 선다", () => {
     const markup = render("atelier", [withProject], "shipped");
     expect(markup).toContain("모든 프로젝트");
     expect(markup).toContain("atelier");
@@ -88,17 +69,6 @@ describe("Maison 아카이브에는 프로젝트 자리가 없다", () => {
 });
 
 describe("아무것도 안 치웠을 때", () => {
-  // 낱말이 세계를 탄다(#183). 「작업」은 저쪽 세계의 이름이고 「워크트리」는 Room에 없는
-  // 것이라(결정 17), 그 말을 읽은 사용자는 이 세계에 없는 것을 찾아 나선다.
-  it("Maison은 Room 어휘로 말한다", () => {
-    const markup = render("maison", []);
-    expect(markup).toContain("아직 치운 Room이 없어요");
-    expect(markup).toContain("끝난 Room의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.");
-    expect(markup).toContain("끝난 Room의 ⋯ 메뉴에서 아카이빙하면 스펙과 기록이 여기 남아요.");
-    expect(markup).not.toContain("작업");
-    expect(markup).not.toContain("워크트리");
-  });
-
   it("Atelier 문구는 그대로다", () => {
     const markup = render("atelier", []);
     expect(markup).toContain("아직 치운 작업이 없어요");
@@ -123,9 +93,7 @@ describe("좁혀서 0개일 때 하는 말", () => {
     expect(src).toContain("아카이브 검색");
     expect(src).toMatch(/narrowedNotice\(\s*mode\s*,/);
 
-    // 이 문장은 **프로젝트 필터가 만든 좁힘**이라 Maison에서는 닿을 길이 없다. 화면에
-    // 리터럴로 남으면 그 세계에서 영영 안 뜨는 문장이 코드에 앉고, 다음 사람이 그것을
-    // 고치며 뜬다고 믿는다.
+    // 이 문장은 **프로젝트 필터가 만든 좁힘**이다 — 낱말의 정본은 `archive-copy.ts` 하나다.
     expect(src).not.toContain("해당 프로젝트의 아카이브가 없어요");
   });
 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { PROJECTS, ROOMS, SEARCH_DESTINATION_QUERY, WORKS } from "./fixtures";
+import { PROJECTS, SEARCH_DESTINATION_QUERY, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   fireEvent,
@@ -20,7 +20,6 @@ import {
 // 서므로(`Sidebar.test.tsx` 머리말) 그리는 것을 보는 층은 여기뿐이다.
 
 const [pinned, plain] = WORKS;
-const [, room] = ROOMS;
 const [project] = PROJECTS;
 
 const aside = (page: Page) => page.locator("aside");
@@ -54,11 +53,10 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   await expect(page).not.toHaveURL(/tab=terminal/);
   await setWindowFocused(page, false);
   await markAttention(page, { agent: "claude", event: "Stop" });
-  const 모드전환 = page.getByRole("group", { name: "모드 선택" });
   const nav = aside(page).getByRole("button", { name: "Terminal", exact: true });
   const 작업행 = aside(page).getByRole("button", { name: pinned.title, exact: true });
   const 바닥설정 = aside(page).getByRole("button", { name: "Settings", exact: true });
-  for (const one of [모드전환, nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(1);
+  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(1);
 
   await 설정에들어간다(page);
 
@@ -66,7 +64,7 @@ test("설정에 들어가면 첫 항목이 열리고 사이드바가 설정 nav�
   for (const name of ["터미널", "알림", "에이전트 훅"] as const) {
     await expect(설정항목(page, name)).toBeVisible();
   }
-  for (const one of [모드전환, nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(0);
+  for (const one of [nav, 띠(page), 작업행, 바닥설정]) await expect(one).toHaveCount(0);
 
   await expect(켜짐(page, "터미널")).toHaveClass(/selected-row/);
   await expect(켜짐(page, "알림")).not.toHaveClass(/selected-row/);
@@ -177,7 +175,7 @@ test.describe("앱으로 돌아가기", () => {
     await expect(page).toHaveURL(`/works/${plain.slug}?tab=terminal`);
     // 주소만 보면 화면이 안 서도 초록이다 — 탭 줄과 사이드바가 앱의 것으로 되돌아왔다.
     await expect(page.locator('[data-tab="shell"]')).toHaveCount(1);
-    await expect(page.getByRole("group", { name: "모드 선택" })).toBeVisible();
+    await expect(aside(page).getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
 
     // **push다** — 뒤로가기는 설정의 마지막 항목으로 간다(뒤로가기로 나갔다면 앞 항목에 선다).
     await page.goBack();
@@ -233,27 +231,9 @@ test.describe("앱으로 돌아가기", () => {
     expect(await unknownIpcCalls(page)).toEqual([]);
   });
 
-  test("Maison에서 들어갔으면 Maison으로 돌아간다", async ({ page }) => {
-    await installFixtureBackend(page);
-    await page.goto(`/maison/rooms/${room.slug}`);
-    await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
-
-    await 설정에들어간다(page);
-    // 설정에는 세그먼트가 없다 — 떠나온 모드는 돌아가기가 지닌다(CONTEXT.md 「모드」).
-    await expect(page.getByRole("group", { name: "모드 선택" })).toHaveCount(0);
-    await 설정항목(page, "알림").click();
-    await 설정항목(page, "앱으로 돌아가기").click();
-
-    await expect(page).toHaveURL(`/maison/rooms/${room.slug}`);
-    await expect(
-      page.getByRole("group", { name: "모드 선택" }).getByRole("button", { name: "Maison", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(await unknownIpcCalls(page)).toEqual([]);
-  });
-
   // 앱을 켜자마자 설정 — 기억할 자리가 없다. 목록 주소로 가고, 거기서 정규화가 고르는 항목은
   // 이 검사가 재지 않는다(그 규칙의 몫은 라우터 seam이다).
-  test("기억이 없으면 그 모드의 목록 주소로 간다", async ({ page }) => {
+  test("기억이 없으면 작업 목록 주소로 간다", async ({ page }) => {
     await installFixtureBackend(page);
     await page.goto("/settings");
     await expect(page).toHaveURL("/settings/terminal");

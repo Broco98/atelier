@@ -10,7 +10,6 @@ import { archivedFileQuery, archiveQuery } from "@/features/archive/hooks";
 import {
   invalidateWorks,
   moveWorkOptions,
-  readOtherWorldsWith,
   specFileQuery,
   worksQuery,
   type MoveWorkArgs,
@@ -20,9 +19,7 @@ import type { Mode } from "@/mode";
 import { queryClient } from "@/query-client";
 import type { WorkView } from "./types";
 
-// 캐시가 세계별로 갈렸다는 것과, 그것을 지우는 일이 **두 세계를 함께** 덮는다는 것.
-// 둘은 반대 방향으로 틀릴 수 있어 함께 재야 한다 — 키를 안 가르면 Maison이 Atelier 목록을
-// 읽고, 지우기를 모드까지 좁히면 저쪽 세계가 옛 목록을 든 채 남는다.
+// works 캐시를 지우는 일이 목록과 그 아래 걸린 것을 함께 덮는다는 것.
 //
 // 훅을 렌더하지 않는다(이 저장소의 L2에는 DOM이 없다). 훅이 부르는 것은 아래 문 하나이고,
 // 그 문이 무엇을 지우는지가 이 계약의 전부다. 문이 하나뿐인 것은 맨 아래 스캔이 지킨다.
@@ -40,30 +37,8 @@ function seeded() {
   return client;
 }
 
-describe("works 캐시는 세계별로 갈린다", () => {
-  it("한 세계에 심은 목록이 저쪽 세계로 새지 않는다", () => {
-    const client = new QueryClient();
-    client.setQueryData(worksQuery("atelier").queryKey, [] as WorkView[]);
-    expect(client.getQueryData(worksQuery("maison").queryKey)).toBeUndefined();
-  });
-
-  // **목록만 가르면 반쪽이다.** 결정 10이 두 세계에 같은 이름을 허락하므로, 문서 키가 안
-  // 갈리면 Atelier work `가`의 `record.md`와 Maison Room `가`의 그것이 같은 캐시 항목을
-  // 맞는다 — 한 프레임 동안 남의 세계 본문이 그려지고, 화면으로는 「가끔 다른 문서가 떠
-  // 있다」로만 보인다. 키에서 `mode`를 빼는 변형이 여기서 빨개진다.
-  it("한 세계에 심은 문서 본문이 저쪽 세계로 새지 않는다", () => {
-    const client = new QueryClient();
-    client.setQueryData(specFileQuery("atelier", "겹친이름", "record.md").queryKey, "작업의 본문");
-    expect(
-      client.getQueryData(specFileQuery("maison", "겹친이름", "record.md").queryKey),
-    ).toBeUndefined();
-  });
-});
-
 describe("works:changed 무효화", () => {
-  // 백엔드는 이벤트를 모드별로 나누지 않는다(#181) — 그래서 이 한 번이 두 세계를 다 덮어야
-  // 한다. 키를 `["works", mode]`로 좁히는 변형은 여기서 빨개진다.
-  it("두 세계의 목록을 다 지운다", () => {
+  it("목록을 지운다", () => {
     const client = seeded();
     invalidateWorks(client);
     for (const mode of ALL_MODES) {
@@ -390,151 +365,6 @@ describe("겹친 옮기기", () => {
     await settle();
     expect(shown()).toBe("bca");
     dialogStore.state?.answer(true);
-  });
-});
-
-// 티켓 12 · 프로세스 스펙 S13. **MCP로 아카이브된 work은 목록 재조회로만 안다** — 그런데 목록 쿼리는 관찰자가 있는 것만
-// 다시 부르고, 앱 루트가 관찰하는 것은 지금 세계 하나다. 저쪽 세계에 셸이 있으면 그 목록도 **같은 무효화 문 안에서**
-// 함께 읽어야 그 세계의 주인 잃은 셸이 보인다. 따로 부르는 자리를 만들면 무효화 문이 둘이 된다(위 「무효화하는 문」).
-//
-// 누가 저쪽 세계를 읽을지는 문이 모른다 — 셸을 아는 쪽(앱 루트의 `ShellOwners`)이 **고르는 함수**를 걸어 두고, 문은
-// 무효화할 때마다 그 함수를 부른다. 걸 때가 아니라 부를 때 고르는 것이 요점이다: 셸은 그사이 열리고 닫힌다.
-describe("저쪽 세계를 함께 읽는 문", () => {
-  /** 지금 세계(Atelier) 목록을 관찰하는 화면 하나와, 한 번 읽어 둔 저쪽 세계(Maison) 목록. */
-  async function twoWorlds() {
-    const { client } = await listed();
-    client.setQueryData(worksQuery("maison").queryKey, [] as WorkView[]);
-    calls.length = 0;
-    return client;
-  }
-  /** 지금까지 나간 목록 조회가 물은 세계들. */
-  const listedWorlds = () =>
-    calls.filter((call) => call.command === "list_works").map((call) => (call.args as { mode: Mode }).mode);
-
-  it("고르는 함수가 없으면 관찰되는 지금 세계만 다시 읽는다", async () => {
-    const client = await twoWorlds();
-    void invalidateWorks(client);
-    await settle();
-    expect(listedWorlds()).toEqual(["atelier"]);
-  });
-
-  it("저쪽 세계를 고르면 같은 무효화에서 그 세계도 읽는다 — 이벤트 한 번에 조회 둘", async () => {
-    const client = await twoWorlds();
-    const release = readOtherWorldsWith(client, () => ["maison"]);
-    try {
-      void invalidateWorks(client);
-      await settle();
-      expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
-    } finally {
-      release();
-    }
-  });
-
-  it("고르는 것은 무효화할 때다 — 걸어 둔 뒤 바뀐 답을 따른다", async () => {
-    const client = await twoWorlds();
-    let worlds: Mode[] = [];
-    const release = readOtherWorldsWith(client, () => worlds);
-    try {
-      void invalidateWorks(client);
-      await settle();
-      expect(listedWorlds()).toEqual(["atelier"]);
-
-      answer("list_works", OLD);
-      calls.length = 0;
-      worlds = ["maison"];
-      void invalidateWorks(client);
-      await settle();
-      expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
-    } finally {
-      release();
-    }
-  });
-
-  // 루트가 내려가면(StrictMode의 두 번 돌기 · 세계를 건넘) 건 것을 푼다. 뒤에 건 것을 앞의 풀기가 지우면 저쪽 세계를
-  // 영영 안 읽는다 — 풀기는 제가 건 것만 푼다.
-  it("풀면 다시 지금 세계만 읽고, 앞의 풀기가 뒤에 건 것을 지우지 않는다", async () => {
-    const client = await twoWorlds();
-    const first = readOtherWorldsWith(client, () => ["maison"]);
-    const second = readOtherWorldsWith(client, () => ["maison"]);
-    first();
-    void invalidateWorks(client);
-    await settle();
-    expect(listedWorlds().sort()).toEqual(["atelier", "maison"]);
-
-    answer("list_works", OLD);
-    calls.length = 0;
-    second();
-    void invalidateWorks(client);
-    await settle();
-    expect(listedWorlds()).toEqual(["atelier"]);
-  });
-
-  // 곧바로 읽는 쪽이 기다리게 하는 것은 **지금 세계의** 재조회다 — 삭제의 진행 표시가 그것을 기다린다. 저쪽 세계는 이 화면의
-  // 목록이 아니라 그 답까지 기다리게 하지 않는다. (조회 중에 와서 표시한 쪽은 다르다 — 도는 목록 조회가 모두 끝나기를 기다리므로
-  // 그때 돌던 저쪽 세계까지 기다린다. 무효화 문 머리말.)
-  it("곧바로 읽는 쪽이 돌려주는 promise는 저쪽 세계의 답을 안 기다린다", async () => {
-    const client = await twoWorlds();
-    const release = readOtherWorldsWith(client, () => ["maison"]);
-    try {
-      let done = false;
-      void invalidateWorks(client).then(() => (done = true));
-      await settle();
-      answer("list_works", OLD, (call) => (call.args as { mode: Mode }).mode === "atelier");
-      await settle();
-      expect(done).toBe(true);
-    } finally {
-      release();
-    }
-  });
-
-  // **도는 조회에 합류하면 아카이브 전 목록이 앉는다**(티켓 12 리뷰). 저쪽 세계 쿼리는 관찰자가 없어, 무효화가 도는 조회를
-  // 끊지 않고 `prefetchQuery`는 새로 안 부르고 거기 합류한다. 그러면 첫 이벤트(spec 쓰기)의 느린 조회가 MCP 아카이브 **전에**
-  // 읽은 목록 — 그 work이 든 — 을 성공으로 앉히고, 그 세계를 다시 읽을 까닭이 사라진다(다음 이벤트까지 주인 잃은 셸을 못 본다).
-  // 재는 것은 결과다: 둘째 무효화 **뒤에** 나간 조회가 있고, 마지막에 앉은 목록이 그 조회의 답이다. 끊고 다시 부르든 끝난 뒤
-  // 한 번 더 부르든 초록이다 — 둘째 무효화 뒤에 나간 조회가 없으면 빨갛다.
-  //
-  // 둘째 무효화 앞의 조회는 **두 세계 모두** 답한다. 합치기 문(티켓 14)은 도는 조회가 모두 끝난 뒤에 한 번 더 읽으므로,
-  // 지금 세계의 조회가 남아 있으면 뒤따르는 한 번이 아직 안 나간다 — 그것은 이 검사가 재는 경쟁이 아니다.
-  const isMaison = (call: Call) => (call.args as { mode: Mode }).mode === "maison";
-  /** 아카이브 전(`x`가 있다)과 뒤(`x`가 없다)의 Maison 목록. */
-  const BEFORE_ARCHIVE = [row("a"), row("x")];
-  const AFTER_ARCHIVE = [row("a")];
-
-  async function archivedWhileReading(client: QueryClient) {
-    const release = readOtherWorldsWith(client, () => ["maison"]);
-    try {
-      void invalidateWorks(client);
-      await settle();
-      expect(waiting("list_works", isMaison), "첫 무효화가 저쪽 세계를 읽는다").toHaveLength(1);
-
-      const mark = calls.length;
-      const afterMark = (call: Call) => isMaison(call) && calls.indexOf(call) >= mark;
-      void invalidateWorks(client);
-      await settle();
-      answer("list_works", BEFORE_ARCHIVE, (call) => isMaison(call) && calls.indexOf(call) < mark);
-      answer("list_works", OLD, (call) => !isMaison(call) && calls.indexOf(call) < mark);
-      await settle();
-
-      expect(waiting("list_works", afterMark), "둘째 무효화 뒤에 저쪽 세계를 다시 읽지 않았다").toHaveLength(1);
-      answer("list_works", AFTER_ARCHIVE, afterMark);
-      await settle();
-      expect(slugsOf(client.getQueryData(worksQuery("maison").queryKey))).toBe("a");
-    } finally {
-      release();
-    }
-  }
-
-  it("저쪽 세계 조회가 도는 중에 다시 무효화하면, 그 뒤에 나간 조회의 답이 앉는다", async () => {
-    await archivedWhileReading(await twoWorlds());
-  });
-
-  // 저쪽 세계 목록은 관찰자가 없어 5분 조용하면 캐시에서 빠진다 — 긴 코드 작업 끝에 claude가 spec을 쓰고 곧 아카이브하는 흔한
-  // 순서에서 첫 조회는 **값 없는** 조회다. react-query는 값 없는 조회를 안 끊으므로(`cancelRefetch`도 합류한다) 이 경우를 따로 잰다.
-  it("캐시에서 빠진 뒤의 첫 조회가 도는 중이어도 같다", async () => {
-    const { client } = await listed();
-    expect(client.getQueryState(worksQuery("maison").queryKey)).toBeUndefined();
-    calls.length = 0;
-    await archivedWhileReading(client);
   });
 });
 

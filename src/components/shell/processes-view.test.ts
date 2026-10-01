@@ -34,12 +34,11 @@ describe("Processes로 가는 문", () => {
     expect(() => viewProcesses()).not.toThrow();
   });
 
-  // 화면은 앱 전체를 보인다(프로세스 결정 9) — 보러 가려고 세계를 건너지 않는다. 지금 세계의 주소로 간다. 설정(`/settings`)은 세계 밖이라
-  // 마지막 세계의 주소다(`shellMode`).
-  it("지금 세계의 `Processes` 주소로 간다", () => {
+  // 화면은 앱 전체를 보인다(프로세스 결정 9). 어느 화면에서 불러도 같은 주소다 — 설정(`/settings`)도 그렇다.
+  it("어느 화면에서든 `Processes` 주소로 간다", () => {
     expect(processesAddress("/works/plain-work")).toBe("/processes");
-    expect(processesAddress("/maison/rooms/reading-room")).toBe("/maison/processes");
-    expect(processesAddress("/maison/terminal")).toBe("/maison/processes");
+    expect(processesAddress("/terminal")).toBe("/processes");
+    expect(processesAddress("/settings/terminal")).toBe("/processes");
   });
 });
 

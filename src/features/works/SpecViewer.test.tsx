@@ -395,16 +395,9 @@ describe("spec이 없을 때 안내하는 폴더", () => {
       />,
     );
 
-  // 이 줄은 사람이 **그대로 붙여 넣는** 경로다. 세계를 안 타면 Maison에서 있지도 않은
-  // 폴더를 안내하고(결정 17: Room은 자기 홈 아래 산다), 사용자는 거기에 문서를 놓는다.
-  it("Atelier는 works 폴더를 안내한다", () => {
+  // 이 줄은 사람이 **그대로 붙여 넣는** 경로다.
+  it("works 폴더를 안내한다", () => {
     expect(notice("atelier")).toContain("~/.atelier/works/some-work/spec/");
-  });
-
-  it("Maison은 rooms 폴더를 안내한다", () => {
-    const markup = notice("maison", "금융");
-    expect(markup).toContain("~/.atelier/maison/rooms/금융/spec/");
-    expect(markup).not.toContain("~/.atelier/works/");
   });
 
   // 마크업만으로는 **왜 맞았는지**를 못 가른다 — 리터럴 두 벌을 모드로 갈라 적어도 위 둘은

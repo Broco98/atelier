@@ -116,7 +116,7 @@ test("[버리고 나가기]면 저장하지 않고 떠나고, 다시 열면 읽�
   await 뒤로(page).click();
   await 떠날때확인버튼(page, "버리고 나가기").click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(page.locator("main li")).toHaveCount(2);
+  await expect(page.locator("main li")).toHaveCount(1);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   // 초안은 버려졌다 — 다시 연 편집기는 읽은 것으로 선다

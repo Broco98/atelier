@@ -18,7 +18,7 @@ import {
   toastsNow,
   typeIntoShell,
   unknownIpcCalls,
-  두세계에셸을띄운다,
+  셸셋을띄운다,
   시계를세운다,
 } from "./harness";
 import { eventLabel } from "@/features/processes/cleanup-log";
@@ -487,16 +487,17 @@ test("정리 기록을 펼쳐 둔 사이 새 사건이 맨 위에 서도 펼친 
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 
-test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한 번 묻고 닫는다 — 자손이 있는 셸 · 답이 없는 셸은 세지도 닫지도 않는다", async ({
+test("[조용한 셸 모두 닫기]는 조용한 셸만 세어 한 번 묻고 닫는다 — 자손이 있는 셸 · 답이 없는 셸은 세지도 닫지도 않는다", async ({
   page,
 }) => {
   await installFixtureBackend(page, {
-    // 1(Atelier work) · 4(Maison Terminal)는 조용하다. 2는 사람이 띄운 것이 있고, 3은 답이 없다(`null`).
+    // 1(work) · 4(`Terminal`의 `+`)는 조용하다. 2는 사람이 띄운 것이 있고, 3은 답이 없다(`null`).
     pty_close_checks: { 1: QUIET_SHELL, 2: { command: false, descendants: 2 }, 3: null, 4: QUIET_SHELL },
   });
-  await 두세계에셸을띄운다(page);
+  await 셸셋을띄운다(page);
+  await openShell(page);
   await navButton(page, "Processes").click();
-  await expect(page).toHaveURL("/maison/processes");
+  await expect(page).toHaveURL("/processes");
   const quietAll = 버튼(page.locator("header"), "조용한 셸 모두 닫기");
 
   // ── 취소 ──
@@ -504,7 +505,7 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
   const dialog = page.getByRole("alertdialog", { name: "조용한 셸 닫기" });
   await expect(dialog).toBeVisible();
   expect(await bodyLines(dialog)).toEqual(["조용한 셸 2개를 닫아요."]);
-  // 스토어의 살아 있는 셸 전부를 **한 번에** 물었다 — 두 세계가 함께다(프로세스 결정 9).
+  // 스토어의 살아 있는 셸 전부를 **한 번에** 물었다(프로세스 결정 9).
   expect((await ipcCallArgs(page, "pty_close_checks", "ids")).map(({ args }) => args.ids)).toEqual([[1, 2, 3, 4]]);
   await 버튼(dialog, "취소").click();
   await expect(dialog).toHaveCount(0);
@@ -515,12 +516,12 @@ test("[조용한 셸 모두 닫기]는 두 세계의 조용한 셸만 세어 한
   await quietAll.click();
   await expect(dialog).toBeVisible();
   await 버튼(dialog, "모두 닫기").click();
-  // 사람이 누른 닫기라 까닭은 「셸 닫기」다. 주인은 그 셸의 것이다(Maison 최상위 터미널은 slug가 없다).
+  // 사람이 누른 닫기라 까닭은 「셸 닫기」다. 주인은 그 셸의 것이다(최상위 터미널은 slug가 없다).
   await expect
     .poll(() => kills(page))
     .toEqual([
       { id: 1, reason: "shellClose", owner: `atelier:${plainWork.slug}` },
-      { id: 4, reason: "shellClose", owner: "maison:" },
+      { id: 4, reason: "shellClose", owner: "atelier:" },
     ]);
   await settle(page);
   expect(await callCount(page, "pty_kill")).toBe(2);

@@ -1,6 +1,6 @@
 import { expect, test } from "./evidence";
 import type { Locator, Page } from "./evidence";
-import { BUSY_SHELL, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
+import { BUSY_SHELL, QUIET_SHELL, WORKS } from "./fixtures";
 import {
   awaitSpawned,
   bodyLines,
@@ -27,7 +27,6 @@ import {
 // 한 장)를 부른다.
 
 const [, plainWork] = WORKS;
-const [, readingRoom] = ROOMS;
 
 const CLOSE_NOTICE = "실행 중인 명령이 있어요 — 닫을까요?";
 
@@ -133,15 +132,6 @@ test("아카이브 확인 창이 셸 수 뒤에 띄운 프로세스 수를 붙�
     { call: 'pty_close_checks {"ids":[1]}', args: { ids: [1] } },
   ]);
   expect(await callCount(page, "pty_close_check")).toBe(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// 두 세계가 같다 — Room을 아카이브할 때도 같은 문구다.
-test("Room의 아카이브 확인 창도 같은 문구다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: { command: false, descendants: 1 } } });
-  const dialog = await askToArchive(page, `/maison/rooms/${readingRoom.slug}`, "Room 메뉴", readingRoom.title);
-
-  expect(lastLine(await bodyLines(dialog))).toBe("셸 1개가 닫혀요(띄운 프로세스 1개 포함).");
   expect(await unknownIpcCalls(page)).toEqual([]);
 });
 

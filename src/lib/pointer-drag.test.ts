@@ -143,7 +143,7 @@ describe("탭 끌기 판정", () => {
 
   it.each([
     { name: "문서 칸", source: { kind: "spec", owner: "atelier:", shellId: null } as DragSource },
-    { name: "셸 칸", source: { kind: "shell", owner: "maison:", shellId: 2 } as DragSource },
+    { name: "셸 칸", source: { kind: "shell", owner: "atelier:", shellId: 2 } as DragSource },
   ])("$name은 탭이다", ({ source }) => {
     expect(tabDragOf(state(source))).toBe(source);
   });
@@ -208,7 +208,7 @@ function gestureWindow() {
 describe("끄는 셸이 사라지면", () => {
   const { classes, pointer } = gestureWindow();
 
-  const shell: DragSource = { kind: "shell", owner: "maison:", shellId: 3 };
+  const shell: DragSource = { kind: "shell", owner: "atelier:", shellId: 3 };
   const gone = () => false;
 
   function arm(source: DragSource | RowDragSource) {

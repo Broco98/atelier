@@ -44,22 +44,6 @@ const COPY = {
     noSearchMatch: "검색 결과가 없어요",
     filteredOut: "해당 프로젝트의 아카이브가 없어요",
   },
-  maison: {
-    emptyList: {
-      title: "아직 치운 Room이 없어요",
-      body: "끝난 Room의 ⋯ 메뉴에서 아카이빙하면 여기 남아요.",
-    },
-    emptyScreen: {
-      title: "아직 치운 Room이 없어요",
-      // 「워크트리는 정리되고」가 빠진다 — Room에는 워크트리가 없다(결정 17). 이 세계에
-      // 없는 것을 치워 준다고 말하면, 사용자는 그 말에서 Room에도 워크트리가 있다고 배운다.
-      body: "끝난 Room의 ⋯ 메뉴에서 아카이빙하면 스펙과 기록이 여기 남아요.",
-    },
-    noSearchMatch: "검색 결과가 없어요",
-    // Maison에는 프로젝트가 없으니 필터도 없다(결정 17). 문장을 하나 지어 넣으면 화면
-    // 어디에도 안 뜨는 죽은 문장이 표에 앉고, 다음 사람이 그것을 고치며 뜬다고 믿는다.
-    filteredOut: null,
-  },
 } as const satisfies Record<Mode, ArchiveCopy>;
 
 /** 목록 패널이 텅 빈 자리. */

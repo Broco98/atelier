@@ -1,12 +1,11 @@
 import { expect, test, type Page } from "./evidence";
-import { MAISON_LANDING_ROOM, PROCESS_SUMMARY, PROJECTS, QUIET_SHELL, summaryWith as 요약 } from "./fixtures";
+import { PROCESS_SUMMARY, PROJECTS, QUIET_SHELL, summaryWith as 요약 } from "./fixtures";
 import {
   awaitSpawned,
   callCount,
   fireWindowEvent,
   installFixtureBackend,
   kills,
-  modeButton,
   navButton,
   navButtons,
   processesTitle,
@@ -55,7 +54,7 @@ async function 박자(page: Page): Promise<void> {
   await expect.poll(() => callCount(page, "processes_summary"), { message: "10초에 요약을 다시 안 물었다" }).toBeGreaterThan(before);
 }
 
-test("nav Processes 옆에 앱 전체 메모리 합계가 두 세계 모두에서 선다", async ({ page }) => {
+test("nav Processes 옆에 앱 전체 메모리 합계가 선다", async ({ page }) => {
   const summary = 요약({ total: 1_234_567_890 });
   await installFixtureBackend(page, { processes_summary: summary });
   await page.goto("/projects");
@@ -67,13 +66,6 @@ test("nav Processes 옆에 앱 전체 메모리 합계가 두 세계 모두에�
   // 메타는 버튼 밖이다 — nav를 이름으로 집는 길이 그대로다. 다른 nav 행에는 안 선다. 손볼 것이 없으니 점도 없다.
   await expect(navButtons(page)).toHaveText(["Projects", "Terminal", "Processes", "Archive"]);
   await expect(navRow(page, "Archive")).not.toContainText(total);
-  await expect(점(page)).toHaveCount(0);
-
-  // 저쪽 세계에서도 같은 값이다 — 이 메타는 「이 세계의 것만 센다」의 예외다(프로세스 결정 9).
-  await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
-  await expect(navButtons(page)).toHaveText(["Terminal", "Processes", "Archive"]);
-  await expect(navRow(page, "Processes")).toContainText(total);
   await expect(점(page)).toHaveCount(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);

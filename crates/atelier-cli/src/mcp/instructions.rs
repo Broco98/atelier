@@ -290,10 +290,11 @@ mod tests {
     /// **표를 돈다**(위 `SETS`와 같은 규율). 뿌리는 세계마다 다르지만 맞대는 **모양**은
     /// 하나라, 벌별로 검사를 손으로 하나씩 두면 셋째 벌이 생기는 날 그 세계만 결합 없이
     /// 산다 — 실제로 Maison 벌이 한 판 동안 절반만 물려 있었다.
-    const REFERENCE_ROOTS: [(&str, &str, &str, &str); 2] = [
-        ("Atelier", ATELIER, "~/.atelier/works/", "~/.atelier/archive/"),
-        ("Maison", MAISON, "~/.atelier/maison/rooms/", "~/.atelier/maison/archive/"),
-    ];
+    ///
+    /// `MAISON` 벌은 이 표에 없다 — 앱이 Maison 참조를 내지 않으므로 그 뿌리를 앱과 맞댈
+    /// 까닭이 없다(ui-refresh 결정 3).
+    const REFERENCE_ROOTS: [(&str, &str, &str, &str); 1] =
+        [("Atelier", ATELIER, "~/.atelier/works/", "~/.atelier/archive/")];
 
     /// **공통** — 블록 참조 형식은 프론트엔드(src/features/works/refs.ts)가 만들고
     /// 이 지침이 해석한다. 한쪽만 바뀌면 앱이 복사해준 참조를 에이전트가

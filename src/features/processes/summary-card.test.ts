@@ -52,17 +52,17 @@ const 스냅샷 = (over: Partial<ProcessGroups> = {}, pool = 0) =>
   snapshotFixture({ verdict: over, pool: Array.from({ length: pool }, (_, at) => poolShell(at + 1, `G-${at + 1}`, 0)) });
 
 describe("요약 카드의 수", () => {
-  // **셸 수는 풀의 셸이다** — 두 세계의 것이 함께, 스토어가 모르는 셸(화면 밖 셸)도 든다. 앱이 띄워 둔 셸이 몇인지가 이 수다.
+  // **셸 수는 풀의 셸이다** — 스토어가 모르는 셸(화면 밖 셸)도 든다. 앱이 띄워 둔 셸이 몇인지가 이 수다.
   it("셸 수는 스냅샷의 풀이다 — 스토어의 칸 수가 아니다", () => {
     expect(cardCounts(스토어(칸(1)), 스냅샷({}, 3)).shells).toBe(3);
   });
 
   // **「도는 중」은 셸 상태로 센다**(티켓 30) — 레지스트리가 내놓는 문(`signalOf`)을 딛는다. 명령이 도는 것(`running`)은 셸 상태가
   // 아니다. 기다림 · 확인할 것도 도는 중이 아니다. 끝난 칸에 남은 도는 중은 가리개가 가린다(죽은 칸이 영영 돌지 않게).
-  it("도는 중은 셸 상태가 도는 중인 셸이다 — 두 세계를 함께 센다", () => {
+  it("도는 중은 셸 상태가 도는 중인 셸이다", () => {
     const state = 스토어(
       칸(1, { attention: 상태("working") }),
-      칸(2, { attention: 상태("working", { subagents: 2 }), owner: ownerOf("maison") }),
+      칸(2, { attention: 상태("working", { subagents: 2 }), owner: ownerOf("atelier") }),
       칸(3, { attention: 상태("waiting") }),
       칸(4, { attention: 상태("done") }),
       칸(5, { running: "cargo" }),
@@ -71,11 +71,11 @@ describe("요약 카드의 수", () => {
     expect(cardCounts(state, 스냅샷()).working).toBe(2);
   });
 
-  // **주인 잃은 셸은 아직 살아 있는 것이다**(CONTEXT 「주인 잃은 셸」) — 두 세계를 함께 센다. 표시가 선 채 끝난 칸은 살아 있는 것이 아니다.
-  it("주인 잃은 셸은 두 세계의, 아직 살아 있는 것만이다", () => {
+  // **주인 잃은 셸은 아직 살아 있는 것이다**(CONTEXT 「주인 잃은 셸」). 표시가 선 채 끝난 칸은 살아 있는 것이 아니다.
+  it("주인 잃은 셸은 아직 살아 있는 것만이다", () => {
     const state = 스토어(
       칸(1, { ownerless: true }),
-      칸(2, { ownerless: true, owner: ownerOf("maison", "finance") }),
+      칸(2, { ownerless: true, owner: ownerOf("atelier", "finance") }),
       칸(3, { ownerless: true, status: 끝남 }),
       칸(4),
     );

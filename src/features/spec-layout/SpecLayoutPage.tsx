@@ -18,8 +18,8 @@ import { invalidateSpecLayout, specLayoutStatesQuery, useRevertSpecLayout } from
 import { askRevert } from "./revert";
 import type { SpecLayoutState } from "./types";
 
-// 설정의 「spec 레이아웃」 페이지(spec 레이아웃 결정 20·23·25, 티켓 08). 모드마다 레이아웃이 하나라
-// Atelier와 Maison이 한 행씩 선다. **이 화면의 주된 쓰임은 확인이다** — 레이아웃은 대부분 에이전트가
+// 설정의 「spec 레이아웃」 페이지(spec 레이아웃 결정 20·23·25, 티켓 08). 모드마다 레이아웃이 하나이고
+// 모드는 Atelier 하나라 행도 하나다(ui-refresh 결정 3). **이 화면의 주된 쓰임은 확인이다** — 레이아웃은 대부분 에이전트가
 // 고치고, 사람은 여기서 참조를 복사해 앱 터미널의 에이전트에게 붙인다. 되돌리기는 사람만 한다(결정 21) —
 // 고친 행의 ⋯에서 확인을 거쳐 그 모드의 레이아웃 폴더를 지운다(티켓 10). 손질은 행의 [편집]이 여는
 // 편집기에서 한다(티켓 11) — 이 페이지 아래의 하위 주소다.

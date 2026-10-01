@@ -36,13 +36,6 @@ const COPY = {
       "git이 무시하는 파일(.env, 로컬 DB, 빌드 산출물)도 폴더와 함께 사라져요.\n" +
       "되돌릴 수 없어요.",
   },
-  maison: {
-    archive: "스펙과 기록이 아카이브로 옮겨져요.\n되돌릴 수 없어요.",
-    remove:
-      "Room 폴더와 스펙 문서가 모두 지워져요. 기록은 안 남아요 —\n" +
-      "남길 것이 있다면 아카이빙을 쓰세요.\n" +
-      "되돌릴 수 없어요.",
-  },
 } as const satisfies Record<Mode, { archive: string; remove: string }>;
 
 /** 아카이빙 확인 대화의 본문. */

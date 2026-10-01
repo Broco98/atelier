@@ -2,10 +2,10 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { lastMode } from "@/components/shell/shell-store";
 import { routesOf } from "@/mode";
 
-// 앱 진입("/")을 **마지막으로 있던 세계의 첫 화면**으로 정규화한다. 그 세계에서 무엇이
-// 본업인지는 목록 화면이 알고 있다 — Atelier는 작업, Maison은 Rooms.
+// 앱 진입("/")을 **작업 목록**으로 정규화한다. 마지막 모드를 읽지만 모드는 하나라 늘 `/works`다 —
+// 저장소에 지운 모드 이름이 남아 있어도 그렇다(`lastMode`가 모르는 값을 Atelier로 눕힌다).
 // 목적지가 무선택 주소라 거기서 한 번 더 정규화된다: 이번 세션에서 마지막으로 보던 항목,
-// 없으면 초안이 아닌 첫 항목.
+// 없으면 목록 첫 항목.
 //
 // 읽기는 **동기여야 한다.** async로 만들면 아래 REPLACE 성질이 사라지고(라우터가 다른
 // 갈래로 커밋한다), 시작 직후 뒤로가기가 빈 칸으로 떨어진다. 저장소 접근이 던지는 것을

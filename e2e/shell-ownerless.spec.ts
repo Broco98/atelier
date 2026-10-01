@@ -1,13 +1,12 @@
 import { expect, test } from "./evidence";
 import type { Page } from "./evidence";
-import { BUSY_SHELL, MAISON_LANDING_ROOM, QUIET_SHELL, ROOMS, WORKS } from "./fixtures";
+import { BUSY_SHELL, QUIET_SHELL, WORKS } from "./fixtures";
 import type { StartupReport } from "@/components/shell/startup-report";
 import {
   archiveByMcp,
   awaitSpawned,
   bodyLines,
   callCount,
-  fireEvent,
   heldCalls,
   holdCommand,
   HOOKS_TEXT,
@@ -16,7 +15,6 @@ import {
   ipcFailure,
   kills,
   markAttention,
-  modeButton,
   navButton,
   openShell,
   ownerlessText,
@@ -47,7 +45,6 @@ import {
 // `+`로 연 셸이다. 실물에서 claude가 도는 셸은 사람이 친 셸이다.
 
 const [pinnedWork, plainWork] = WORKS;
-const [, readingRoom] = ROOMS;
 
 /**
  * 그 화면에 **도착했다** — 주소가 아니라 화면으로 잰다. 주소는 이동을 시작하는 순간 바뀌지만 떠나는 work 화면은 도착할
@@ -279,63 +276,5 @@ test("띠에서 주인 잃은 셸을 누르면 Processes로 간다 — 토스트
   await navButton(page, "Terminal").click();
   await expect(page).toHaveURL("/terminal");
   await expect(셸입력(page), "주인 잃은 셸을 기다리는 포커스가 남아 터미널의 셸이 포커스를 못 받았다").toBeFocused();
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-test("Room을 MCP로 아카이브하면 문구가 「Room」이다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
-  await page.goto(`/maison/rooms/${readingRoom.slug}?tab=terminal`);
-  await awaitSpawned(page, 1);
-  await typeIntoShell(page);
-
-  await archiveByMcp(page, "maison", ROOMS, readingRoom.slug);
-
-  await expect(toastOf(page, ownerlessText(1, "Room"))).toBeVisible();
-  expect(await callCount(page, "pty_kill")).toBe(0);
-  expect(await unknownIpcCalls(page)).toEqual([]);
-});
-
-// 목록 쿼리는 관찰자가 있는 것만 다시 부른다 — Atelier에 있는 동안 Maison 목록은 아무도 안 본다. 그래서 저쪽 세계는
-// **그 세계의 셸이 있을 때만** 같은 무효화에서 함께 읽는다(S13). 없을 때까지 늘 읽으면 이벤트마다 조회가 둘이다.
-test("저쪽 세계의 Room이 MCP로 아카이브돼도 알린다 — 그 세계에 셸이 있을 때만 함께 읽는다", async ({ page }) => {
-  await installFixtureBackend(page, { pty_close_checks: { 1: BUSY_SHELL } });
-  const maisonLists = async () =>
-    (await ipcCallArgs(page, "list_works", "mode")).filter(({ args }) => args.mode === "maison").length;
-  const atelierLists = async () =>
-    (await ipcCallArgs(page, "list_works", "mode")).filter(({ args }) => args.mode === "atelier").length;
-
-  // ── Maison에 셸이 없다 ──
-  await page.goto(`/works/${plainWork.slug}`);
-  await expect(workRow(page, plainWork.slug)).toHaveCount(1);
-  const atelierBefore = await atelierLists();
-  await fireEvent(page, "works:changed", null);
-  // 앵커: 이 세계의 목록은 다시 읽었다.
-  await expect.poll(atelierLists).toBeGreaterThan(atelierBefore);
-  await settle(page);
-  expect(await maisonLists()).toBe(0);
-
-  // ── Maison에 셸 하나를 두고 돌아온다 ──
-  await modeButton(page, "Maison").click();
-  await expect(page).toHaveURL(`/maison/rooms/${MAISON_LANDING_ROOM.slug}`);
-  await page.locator('[data-tab="new"]').click();
-  await awaitSpawned(page, 1);
-  const touched = async () =>
-    (await ipcCallArgs(page, "touch_recent_work", "slug")).filter(
-      ({ args }) => args.mode === "atelier" && args.slug === plainWork.slug,
-    ).length;
-  const touchedBefore = await touched();
-  await modeButton(page, "Atelier").click();
-  await expect(page).toHaveURL(new RegExp(`/works/${plainWork.slug}`));
-  // 도착을 화면으로 잰다(`arrived`의 머리말) — work 화면이 서면 「열었다」를 코어에 적는다. 그 전에 쏘면 아직 서 있는
-  // Room 화면이 제 Room이 사라진 것을 보고 다른 Room으로 옮긴다. 수는 안 맞춘다 — 개발 빌드의 StrictMode가 그 이펙트를
-  // 두 번 돌린다(실측).
-  await expect.poll(touched).toBeGreaterThan(touchedBefore);
-  const maisonBefore = await maisonLists();
-
-  await archiveByMcp(page, "maison", ROOMS, MAISON_LANDING_ROOM.slug);
-
-  await expect.poll(maisonLists).toBe(maisonBefore + 1);
-  await expect(toastOf(page, ownerlessText(1, "Room"))).toBeVisible();
-  expect(await callCount(page, "pty_kill")).toBe(0);
   expect(await unknownIpcCalls(page)).toEqual([]);
 });

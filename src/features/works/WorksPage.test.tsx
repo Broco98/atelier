@@ -288,22 +288,6 @@ describe("WorksPage 머리행 배치", () => {
     expect(box("작업 메뉴")).not.toMatch(/\bh-\[/);
   });
 
-  // **이름표가 세계를 탄다.** ⓘ·⋯·패널 여닫이·제목 편집의 접근성 이름이 전부 리터럴
-  // 「작업 …」이었다 — 이 판이 사이드바·본문·아카이브·⋯ 메뉴의 문장은 갈라 놓고 화면의
-  // **이름표**는 안 집었고, 그래서 Maison에서 스크린 리더가 Room을 통째로 「작업」이라
-  // 불렀다(CONTEXT.md 「Room」 항목이 금지한 것).
-  //
-  // **화면을 통째로 훑는다.** 이름표를 하나씩 세면 새 이름표가 하나 늘 때 그것만 조용히
-  // Atelier 말로 남는다 — 이 자리가 정확히 그렇게 생긴 구멍이었다.
-  it("Maison 화면에는 「작업」이라는 말이 한 군데도 없다", () => {
-    const markup = render({}, "spec", null, "maison");
-    expect(markup).not.toContain("작업");
-    // fail-closed: 화면이 통째로 안 서면 위 줄은 「없다」가 아니라 「아무것도 없다」다.
-    expect(markup).toContain('aria-label="Room 메뉴"');
-    expect(markup).toContain('aria-label="Room 메타"');
-  });
-
-  // 반대쪽. 이 줄이 없으면 두 세계를 다 Room 어휘로 눕혀도 위 검사가 초록이다.
   it("Atelier 화면의 이름표는 한 글자도 안 바뀐다", () => {
     const markup = render();
     expect(markup).toContain('aria-label="작업 메뉴"');
@@ -793,8 +777,7 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
     terminalStore.setState(() => NO_SHELLS);
   });
 
-  // **비우지 않고 얹는다.** 두 세계에 같은 slug가 함께 서 있을 때 무엇이 줄에 서는가가
-  // 결정 10의 물음이라(아래 「저쪽 세계」 케이스), 심을 때마다 비우면 그 물음이 사라진다.
+  // **비우지 않고 얹는다.** 여러 셸이 함께 서 있을 때 무엇이 줄에 서는가를 재야 해서다.
   // 새고 나가지 않는 것은 `afterEach`가 든다.
   function seedOrigin(origin: ShellOrigin, count = 1): void {
     terminalStore.setState((state) => {
@@ -843,42 +826,6 @@ describe("WorksPage 머리행이 탭 줄이다", () => {
         })!.state,
     );
     expect(kindsOf(headerOf(render()))).toEqual(["spec", "shell", "shell", "new"]);
-  });
-
-  // 결정 10 — **두 루트에 같은 slug가 설 수 있다.** 코어의 유일성은 한 루트 쌍 안에서만 보므로
-  // Atelier의 `some-work`와 Maison의 `some-work`가 함께 있고, 이 화면의 조회가 `mode`를 안
-  // 실으면 Maison work 화면의 줄에 **Atelier 셸들**이 선다. `+`로 연 Maison 셸은 origin이
-  // 제대로 maison이라 그 줄에 영영 안 서서 눌러도 아무 일이 없는 칸이 되고, ⌘W와 `sameScreen`은
-  // `tabOwner`(maison)를 보므로 키가 겨누는 칸과 눈에 보이는 칸이 갈린다.
-  //
-  // **값으로 잰다.** 이 파일의 다른 렌더가 전부 Atelier라 「한쪽 세계로 눕는다」는 변형이
-  // 여기 오기 전까지 무변화였다(실측: `owner={ownerOf("atelier", panelWork.slug)}`로 바꿔도
-  // 966개가 전부 초록이었다).
-  it("저쪽 세계의 같은 이름 셸은 이 줄에 안 선다", () => {
-    seed(2, work.slug, "~/x");
-    expect(kindsOf(headerOf(render({}, "spec", null, "maison")))).toEqual(["spec", "new"]);
-    // 그리고 이쪽 세계의 셸은 **선다** — 없으면 위가 「Maison에서는 아무것도 안 그린다」로도
-    // 통과한다.
-    seedOrigin({ mode: "maison", owner: ownerOf("maison", work.slug), project: null, cwd: "~/x" });
-    expect(kindsOf(headerOf(render({}, "spec", null, "maison")))).toEqual(["spec", "shell", "new"]);
-  });
-
-  // 결정 104 — 분할 열 머리의 이름도 **그 세계의** 켜진 셸에서 온다. 탭 줄과 갈리면 한 화면에
-  // 이름이 둘이 되는데, 두 세계에 같은 slug가 있을 때만 갈리므로 Atelier만 재는 렌더로는
-  // 영영 안 보인다.
-  it("분할 열 머리의 이름도 그 세계의 셸에서 온다", () => {
-    // **프로젝트 이름으로 가른다.** 두 셸 다 타이틀이 없어 이름이 같아지므로(`shellRowName`),
-    // 이 갈래가 없으면 어느 세계의 이름이 섰는지 마크업으로 못 가른다.
-    seedOrigin({
-      mode: "atelier",
-      owner: ownerOf("atelier", work.slug),
-      project: "아뜰리에",
-      cwd: "~/x",
-    });
-    seedOrigin({ mode: "maison", owner: ownerOf("maison", work.slug), project: "메종", cwd: "~/x" });
-    const head = render(specDocs(["overview.md"]), "terminal", "lr", "maison");
-    expect(head).toContain("메종");
-    expect(head).not.toContain("아뜰리에");
   });
 
   it("세로 목록의 둘째 줄은 안 따라온다", () => {
@@ -1063,18 +1010,6 @@ describe("WorksPage ⌘W가 겨누는 칸", () => {
     expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
   });
 
-  // 결정 10. 두 루트에 **같은 slug**가 설 수 있다 — 소유자에 세계가 안 실리면 Maison의
-  // 같은 이름 work에서 연 셸을 Atelier 화면의 ⌘W가 죽인다.
-  it("저쪽 세계의 같은 이름 셸도 안 닫는다", () => {
-    seed({
-      mode: "maison",
-      owner: ownerOf("maison", work.slug),
-      project: null,
-      cwd: "~/x",
-    });
-    expect(shellClosedByTab("terminal", ownerFor(work.slug), terminalStore.state)).toBeNull();
-  });
-
   // 배선은 렌더로 못 본다(이펙트다). **정규식으로 블록을 잘라내지 않는다** — 앞쪽
   // `[\s\S]*?`가 남의 이펙트에서 출발해 초록이 되는 사고를 이 파일이 이미 겪었다.
   it("그 판단이 window에서 듣는 자리에 실제로 배선돼 있다", () => {
@@ -1176,14 +1111,12 @@ describe("WorksPage 상한에서 ⌘T가 말한다", () => {
 describe("셸 안 ⌘T의 요청은 그 셸의 화면에만 간다", () => {
   // UI개선 결정 19. 셸 안 ⌘T는 요청만 보내고 **그 셸의 소유자 화면**이 연다. 가려 받는 규칙이 화면마다
   // 있으면 규칙을 잊은 화면 하나가 남의 셸의 ⌘T에 제 셸을 연다 — 한 번 눌러 두 화면에 셸이
-  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다. 같은 slug가
-  // 두 세계에 설 수 있어(결정 10) 세계만 다른 소유자도 남이다.
+  // 선다. 그래서 가르는 자리는 스토어 하나이고, 이 검사가 그 자리를 값으로 잰다.
   it("구독한 소유자의 요청만 듣고, 끊으면 안 듣는다", () => {
     const mine = ownerOf("atelier", "가");
     let heard = 0;
     const stop = onNewShellRequested(mine, () => heard++);
     requestNewShell(ownerOf("atelier", "나"));
-    requestNewShell(ownerOf("maison", "가"));
     requestNewShell(ownerOf("atelier"));
     expect(heard, "남의 셸의 요청을 들었다").toBe(0);
     requestNewShell(mine);
@@ -1357,16 +1290,6 @@ describe("아무것도 안 골랐을 때의 본문", () => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   });
 
-  // **머리도 그 세계의 이름을 인다.** 낱말은 `work-sections.test.ts`가 글자까지 재고 여기서
-  // 보는 것은 화면이 그 표를 부르는가다 — 이 자리가 리터럴 `"Works"`였고, 같은 화면 본문이
-  // 이미 「아직 Room이 없어요」라고 말하고 있었다(한 화면에 두 세계의 말).
-  it("Maison 머리가 `Rooms`이고 `Works`가 아니다", () => {
-    const html = renderEmpty("maison");
-    expect(html).toContain(">Rooms<");
-    expect(html).not.toContain(">Works<");
-  });
-
-  // 반대쪽. 이 줄이 없으면 두 세계를 다 `Rooms`로 눕혀도 위 검사가 초록이다.
   it("Atelier 머리는 그대로 `Works`다", () => {
     const html = renderEmpty("atelier");
     expect(html).toContain(">Works<");
@@ -1382,28 +1305,6 @@ describe("아무것도 안 골랐을 때의 본문", () => {
     expect(html).toContain("새 작업");
   });
 
-  // 따옴표가 `&quot;`로 이스케이프돼 나오므로 `atelier로 "새 작업" 시작해줘`를 통째로
-  // 붙들지 않는다 — 「Atelier의 말이 안 남았다」는 어휘 조각으로 센다.
-  it("Maison에서는 Room 어휘로 말하고 Atelier의 말이 한 조각도 안 남는다", () => {
-    const html = renderEmpty("maison", [PROJECT]);
-    expect(html).toContain("아직 Room이 없어요");
-    expect(html).toContain("Room은 Terminal에서 claude에게 부탁해서 만들어요.");
-    expect(html).toContain("새 Room 만들어줘");
-    expect(html).not.toContain("작업");
-    expect(html).not.toContain("Claude Code");
-    expect(html).not.toContain("atelier로");
-  });
-
-  // **프로젝트 갈래가 Maison에서 아예 안 선다**(결정 17). 프로젝트가 0개인 것은 이 세계의
-  // 정상 상태다 — 쿼리가 Atelier에서만 켜지므로(`useProjects`) 저 세계에서는 **늘** 0개이고,
-  // 그때 갈래가 참으로 누우면 Maison 한가운데가 「먼저 프로젝트를 등록해요」라고 말한다.
-  it("Maison에서는 프로젝트가 0개여도 등록을 시키지 않는다", () => {
-    const html = renderEmpty("maison", []);
-    expect(html).not.toContain("먼저 프로젝트를 등록해요");
-    expect(html).not.toContain("폴더 등록해줘");
-    expect(html).toContain("아직 Room이 없어요");
-  });
-
   // 반대쪽 증거. 이 갈래가 Atelier에서는 그대로 살아 있어야 한다 — 위 검사가 「어디서도 안
   // 뜬다」로 통과하면 첫 실행의 안내가 통째로 사라진 것을 못 본다.
   it("Atelier에서는 프로젝트가 0개면 등록으로 이끈다", () => {
@@ -1413,11 +1314,7 @@ describe("아무것도 안 골랐을 때의 본문", () => {
   });
 });
 
-// **프로젝트를 고르는 `+`는 Atelier의 것이다**(US 26). 갈리는 값(`projects`)이 워크트리에서
-// 나오고 Maison에는 워크트리가 없으니 저 세계에서는 어차피 안 물어야 맞다 — 그런데 그
-// 사실을 지키는 것이 **코어의 거절 하나뿐**이라, 손으로 고친 work.json 하나면 저 세계의
-// Room에도 프로젝트가 실려 와 이 줄이 없는 워크트리를 고르는 메뉴를 연다. 그래서 값이
-// 왔다고 가정하고 두 세계를 함께 잰다 — 한쪽만 재면 조건이 어느 쪽으로 누워도 초록이다.
+// **프로젝트를 고르는 `+`**(US 26). 갈리는 값(`projects`)이 워크트리에서 나온다.
 describe("프로젝트를 고르는 `+`", () => {
   beforeEach(() => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
@@ -1439,10 +1336,6 @@ describe("프로젝트를 고르는 `+`", () => {
 
   it("Atelier에서 워크트리가 둘이면 어디에 열지 물어본다", () => {
     expect(asks(render(twoTrees, "spec", null, "atelier"))).toBe(true);
-  });
-
-  it("Maison에서는 같은 값이 와도 묻지 않는다", () => {
-    expect(asks(render(twoTrees, "spec", null, "maison"))).toBe(false);
   });
 });
 

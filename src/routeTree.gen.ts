@@ -15,8 +15,6 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TerminalRouteImport } from './routes/terminal'
 import { Route as ArchiveIndexRouteImport } from './routes/archive.index'
 import { Route as ArchiveSlugRouteImport } from './routes/archive.$slug'
-import { Route as MaisonProcessesRouteImport } from './routes/maison.processes'
-import { Route as MaisonTerminalRouteImport } from './routes/maison.terminal'
 import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
@@ -26,10 +24,6 @@ import { Route as SettingsSpecLayoutRouteImport } from './routes/settings.spec-l
 import { Route as SettingsTerminalRouteImport } from './routes/settings.terminal'
 import { Route as WorksIndexRouteImport } from './routes/works.index'
 import { Route as WorksSlugRouteImport } from './routes/works.$slug'
-import { Route as MaisonArchiveIndexRouteImport } from './routes/maison.archive.index'
-import { Route as MaisonArchiveSlugRouteImport } from './routes/maison.archive.$slug'
-import { Route as MaisonRoomsIndexRouteImport } from './routes/maison.rooms.index'
-import { Route as MaisonRoomsSlugRouteImport } from './routes/maison.rooms.$slug'
 import { Route as SettingsSpecLayoutIndexRouteImport } from './routes/settings.spec-layout.index'
 import { Route as SettingsSpecLayoutIdRouteImport } from './routes/settings.spec-layout.$id'
 
@@ -61,16 +55,6 @@ const ArchiveIndexRoute = ArchiveIndexRouteImport.update({
 const ArchiveSlugRoute = ArchiveSlugRouteImport.update({
   id: '/archive/$slug',
   path: '/archive/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaisonProcessesRoute = MaisonProcessesRouteImport.update({
-  id: '/maison/processes',
-  path: '/maison/processes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaisonTerminalRoute = MaisonTerminalRouteImport.update({
-  id: '/maison/terminal',
-  path: '/maison/terminal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
@@ -118,26 +102,6 @@ const WorksSlugRoute = WorksSlugRouteImport.update({
   path: '/works/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MaisonArchiveIndexRoute = MaisonArchiveIndexRouteImport.update({
-  id: '/maison/archive/',
-  path: '/maison/archive/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaisonArchiveSlugRoute = MaisonArchiveSlugRouteImport.update({
-  id: '/maison/archive/$slug',
-  path: '/maison/archive/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaisonRoomsIndexRoute = MaisonRoomsIndexRouteImport.update({
-  id: '/maison/rooms/',
-  path: '/maison/rooms/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaisonRoomsSlugRoute = MaisonRoomsSlugRouteImport.update({
-  id: '/maison/rooms/$slug',
-  path: '/maison/rooms/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsSpecLayoutIndexRoute = SettingsSpecLayoutIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -155,8 +119,6 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
-  '/maison/processes': typeof MaisonProcessesRoute
-  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -167,11 +129,7 @@ export interface FileRoutesByFullPath {
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
-  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
-  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
   '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
-  '/maison/archive/': typeof MaisonArchiveIndexRoute
-  '/maison/rooms/': typeof MaisonRoomsIndexRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesByTo {
@@ -179,8 +137,6 @@ export interface FileRoutesByTo {
   '/processes': typeof ProcessesRoute
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
-  '/maison/processes': typeof MaisonProcessesRoute
-  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -190,11 +146,7 @@ export interface FileRoutesByTo {
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/works': typeof WorksIndexRoute
-  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
-  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
   '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
-  '/maison/archive': typeof MaisonArchiveIndexRoute
-  '/maison/rooms': typeof MaisonRoomsIndexRoute
   '/settings/spec-layout': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -204,8 +156,6 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/terminal': typeof TerminalRoute
   '/archive/$slug': typeof ArchiveSlugRoute
-  '/maison/processes': typeof MaisonProcessesRoute
-  '/maison/terminal': typeof MaisonTerminalRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/settings/hooks': typeof SettingsHooksRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -216,11 +166,7 @@ export interface FileRoutesById {
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/works/': typeof WorksIndexRoute
-  '/maison/archive/$slug': typeof MaisonArchiveSlugRoute
-  '/maison/rooms/$slug': typeof MaisonRoomsSlugRoute
   '/settings/spec-layout/$id': typeof SettingsSpecLayoutIdRoute
-  '/maison/archive/': typeof MaisonArchiveIndexRoute
-  '/maison/rooms/': typeof MaisonRoomsIndexRoute
   '/settings/spec-layout/': typeof SettingsSpecLayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -231,8 +177,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
-    | '/maison/processes'
-    | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
     | '/settings/notifications'
@@ -243,11 +187,7 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/settings/'
     | '/works/'
-    | '/maison/archive/$slug'
-    | '/maison/rooms/$slug'
     | '/settings/spec-layout/$id'
-    | '/maison/archive/'
-    | '/maison/rooms/'
     | '/settings/spec-layout/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -255,8 +195,6 @@ export interface FileRouteTypes {
     | '/processes'
     | '/terminal'
     | '/archive/$slug'
-    | '/maison/processes'
-    | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
     | '/settings/notifications'
@@ -266,11 +204,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/settings'
     | '/works'
-    | '/maison/archive/$slug'
-    | '/maison/rooms/$slug'
     | '/settings/spec-layout/$id'
-    | '/maison/archive'
-    | '/maison/rooms'
     | '/settings/spec-layout'
   id:
     | '__root__'
@@ -279,8 +213,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terminal'
     | '/archive/$slug'
-    | '/maison/processes'
-    | '/maison/terminal'
     | '/projects/$slug'
     | '/settings/hooks'
     | '/settings/notifications'
@@ -291,11 +223,7 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/settings/'
     | '/works/'
-    | '/maison/archive/$slug'
-    | '/maison/rooms/$slug'
     | '/settings/spec-layout/$id'
-    | '/maison/archive/'
-    | '/maison/rooms/'
     | '/settings/spec-layout/'
   fileRoutesById: FileRoutesById
 }
@@ -305,17 +233,11 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   TerminalRoute: typeof TerminalRoute
   ArchiveSlugRoute: typeof ArchiveSlugRoute
-  MaisonProcessesRoute: typeof MaisonProcessesRoute
-  MaisonTerminalRoute: typeof MaisonTerminalRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   WorksSlugRoute: typeof WorksSlugRoute
   ArchiveIndexRoute: typeof ArchiveIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   WorksIndexRoute: typeof WorksIndexRoute
-  MaisonArchiveSlugRoute: typeof MaisonArchiveSlugRoute
-  MaisonRoomsSlugRoute: typeof MaisonRoomsSlugRoute
-  MaisonArchiveIndexRoute: typeof MaisonArchiveIndexRoute
-  MaisonRoomsIndexRoute: typeof MaisonRoomsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -360,20 +282,6 @@ declare module '@tanstack/react-router' {
       path: '/archive/$slug'
       fullPath: '/archive/$slug'
       preLoaderRoute: typeof ArchiveSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/maison/processes': {
-      id: '/maison/processes'
-      path: '/maison/processes'
-      fullPath: '/maison/processes'
-      preLoaderRoute: typeof MaisonProcessesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/maison/terminal': {
-      id: '/maison/terminal'
-      path: '/maison/terminal'
-      fullPath: '/maison/terminal'
-      preLoaderRoute: typeof MaisonTerminalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/': {
@@ -439,34 +347,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorksSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/maison/archive/': {
-      id: '/maison/archive/'
-      path: '/maison/archive'
-      fullPath: '/maison/archive/'
-      preLoaderRoute: typeof MaisonArchiveIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/maison/archive/$slug': {
-      id: '/maison/archive/$slug'
-      path: '/maison/archive/$slug'
-      fullPath: '/maison/archive/$slug'
-      preLoaderRoute: typeof MaisonArchiveSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/maison/rooms/': {
-      id: '/maison/rooms/'
-      path: '/maison/rooms'
-      fullPath: '/maison/rooms/'
-      preLoaderRoute: typeof MaisonRoomsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/maison/rooms/$slug': {
-      id: '/maison/rooms/$slug'
-      path: '/maison/rooms/$slug'
-      fullPath: '/maison/rooms/$slug'
-      preLoaderRoute: typeof MaisonRoomsSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings/spec-layout/': {
       id: '/settings/spec-layout/'
       path: '/'
@@ -523,17 +403,11 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   TerminalRoute: TerminalRoute,
   ArchiveSlugRoute: ArchiveSlugRoute,
-  MaisonProcessesRoute: MaisonProcessesRoute,
-  MaisonTerminalRoute: MaisonTerminalRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   WorksSlugRoute: WorksSlugRoute,
   ArchiveIndexRoute: ArchiveIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   WorksIndexRoute: WorksIndexRoute,
-  MaisonArchiveSlugRoute: MaisonArchiveSlugRoute,
-  MaisonRoomsSlugRoute: MaisonRoomsSlugRoute,
-  MaisonArchiveIndexRoute: MaisonArchiveIndexRoute,
-  MaisonRoomsIndexRoute: MaisonRoomsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

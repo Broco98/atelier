@@ -33,14 +33,12 @@ const NOTHING_HELD = { has: () => false };
 const holding = (...owners: ShellOwner[]) => new Set(owners);
 
 describe("사라진 owner", () => {
-  // Atelier의 work 가 · 나, Maison의 Room 가, 두 세계의 최상위 터미널.
+  // work 가 · 나와 최상위 터미널.
   const state = shellsAt(
     originIn("atelier", "ga"),
     originIn("atelier", "ga"),
     originIn("atelier", "na"),
-    originIn("maison", "ga"),
     topTerminal("atelier"),
-    topTerminal("maison"),
   );
 
   it("목록에서 빠진 slug의 owner가 한 번씩 나온다", () => {
@@ -55,18 +53,10 @@ describe("사라진 owner", () => {
     expect(vanishedOwners(state, "atelier", listed("ga", "na"), NOTHING_HELD)).toEqual([]);
   });
 
-  // **세계마다 따로 본다**(life-mode 결정 10) — 두 세계에 같은 slug가 설 수 있다. Atelier 목록에서 `ga`가 빠진 것으로 Maison의
-  // Room `ga`가 주인을 잃으면 안 된다.
-  it("그 세계의 목록은 그 세계의 셸만 본다", () => {
-    expect(vanishedOwners(state, "maison", listed("ga"), NOTHING_HELD)).toEqual([]);
-    expect(vanishedOwners(state, "maison", listed(), NOTHING_HELD)).toEqual([ownerOf("maison", "ga")]);
-  });
-
   // 최상위 터미널은 어느 work의 것도 아니다 — 목록이 비어도 주인을 안 잃는다.
   it("최상위 터미널의 셸은 안 나온다", () => {
-    const tops = shellsAt(topTerminal("atelier"), topTerminal("maison"));
+    const tops = shellsAt(topTerminal("atelier"));
     expect(vanishedOwners(tops, "atelier", listed(), NOTHING_HELD)).toEqual([]);
-    expect(vanishedOwners(tops, "maison", listed(), NOTHING_HELD)).toEqual([]);
   });
 
   it.each<[string, ListResult | undefined]>([
@@ -95,34 +85,21 @@ describe("사라진 owner", () => {
   });
 });
 
-// 목록 쿼리는 관찰자가 있는 것만 다시 부른다 — 앱 루트는 지금 세계만 관찰하므로, 저쪽 세계는 따로 불러야 새로 앉는다.
-// 부르는 것은 **그 세계를 owner로 가진 셸이 스토어에 하나라도 있을 때만**이다(S13). 그래서 이벤트 한 번에 목록 조회는
-// 저쪽 세계에 셸이 없으면 1번, 있으면 2번이다 — 판 02(14)가 이 수를 기대값으로 쓴다.
+// 다시 읽을 다른 세계가 없다 — 모드가 하나다(ui-refresh 결정 3). 이 함수를 걷는 것은 판 02의 02다.
 describe("저쪽 세계를 다시 읽는가", () => {
-  it("저쪽 세계에 셸이 없으면 안 읽는다 — 지금 세계의 셸은 세지 않는다", () => {
+  it("다시 읽을 세계가 없다", () => {
     expect(worldsToReread(NO_SHELLS, "atelier")).toEqual([]);
-    expect(worldsToReread(shellsAt(originIn("atelier", "ga")), "atelier")).toEqual([]);
-  });
-
-  it("저쪽 세계에 셸이 있으면 그 세계를 읽는다", () => {
-    expect(worldsToReread(shellsAt(originIn("maison", "ga")), "atelier")).toEqual(["maison"]);
-    expect(worldsToReread(shellsAt(originIn("atelier", "ga")), "maison")).toEqual(["atelier"]);
-  });
-
-  // 스펙의 문장 그대로 「그 세계를 owner로 가진 셸」이다 — 최상위 터미널의 셸도 그 세계의 셸이다. 주인을 잃을 수는 없지만
-  // 조회 수를 셸의 종류로 가르면 판 02가 기대값으로 쓰는 수가 셸 종류마다 갈린다.
-  it("저쪽 세계의 최상위 터미널 셸도 센다", () => {
-    expect(worldsToReread(shellsAt(topTerminal("maison")), "atelier")).toEqual(["maison"]);
+    expect(worldsToReread(shellsAt(originIn("atelier", "ga"), topTerminal("atelier")), "atelier")).toEqual([]);
   });
 });
 
 describe("주인 잃은 셸의 세계", () => {
-  const state = shellsAt(originIn("atelier", "ga"), originIn("maison", "na"));
+  const state = shellsAt(originIn("atelier", "ga"), originIn("atelier", "na"));
 
   it("주인 잃은 셸이면 그 세계다", () => {
     const ownerless = markOwnerless(state, [1, 2]);
     expect(ownerlessWorldOf(ownerless, 1)).toBe("atelier");
-    expect(ownerlessWorldOf(ownerless, 2)).toBe("maison");
+    expect(ownerlessWorldOf(ownerless, 2)).toBe("atelier");
   });
 
   // 띠가 이것으로 갈린다(S14) — 주인이 있는 셸은 지금처럼 그 work으로 간다.
@@ -139,16 +116,14 @@ describe("주인 잃은 셸의 세계", () => {
 });
 
 describe("토스트", () => {
-  // 세는 말은 세계의 것이다(프로세스 스펙 S45) — Atelier는 화면의 말 「작업」(`itemNameOf`), Maison은 「Room」이다.
-  it("그 세계의 말로 N을 센다", () => {
+  // 세는 말은 화면의 말 「작업」이다(프로세스 스펙 S45 · `itemNameOf`).
+  it("화면의 말로 N을 센다", () => {
     expect(ownerlessNotice("atelier", 2)).toBe("아카이브된 작업의 셸 2개에 아직 도는 것이 있어요");
-    expect(ownerlessNotice("maison", 1)).toBe("아카이브된 Room의 셸 1개에 아직 도는 것이 있어요");
   });
 
   // 동작 토스트는 자기 id를 쓴다 — 같은 알림이 다시 오면(주인 잃은 셸이 늘었다 · 띠에서 다시 불렀다) 새로 쌓이지 않고
-  // 그 자리를 고친다. 세계마다 따로인 것은 [모두 닫기]가 그 세계의 셸만 닫기 때문이다.
-  it("세계마다 id가 하나다", () => {
+  // 그 자리를 고친다.
+  it("id가 하나다", () => {
     expect(ownerlessToastId("atelier")).toBe(ownerlessToastId("atelier"));
-    expect(ownerlessToastId("atelier")).not.toBe(ownerlessToastId("maison"));
   });
 });

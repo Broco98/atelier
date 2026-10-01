@@ -1,12 +1,11 @@
 import type { SpecLayoutJson, TemplateBodies } from "@/features/spec-layout/types";
 import { expect, test, type Page } from "./evidence";
 import {
-  BROKEN_MAISON_LAYOUT,
+  BROKEN_LAYOUT_STATE,
   MISSING_TEMPLATE_READ,
   SPEC_LAYOUT_READ,
   SPEC_LAYOUT_RENDERED,
-  SPEC_LAYOUT_STATES,
-  UNREADABLE_MAISON_READ,
+  UNREADABLE_ATELIER_READ,
 } from "./fixtures";
 import {
   callCount,
@@ -18,7 +17,7 @@ import {
   unknownIpcCalls,
 } from "./harness";
 
-// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 모드 행에서
+// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 「spec 레이아웃」 설정 페이지의 레이아웃 행에서
 // [편집]을 누르면 그 설정 nav 항목 아래의 하위 주소에 편집기가 선다. 두 열의 모양(맨 위 항목의 행이 없다,
 // 파일·폴더 항목, 모르는 아이콘, 오류 줄)은 마크업 seam이 잰다(`SpecLayoutEditor.test.tsx`), 필드를 바꾸는
 // 규칙은 순수 함수의 seam이 잰다(`draft.test.ts`).
@@ -31,15 +30,14 @@ import {
 const aside = (page: Page) => page.locator("aside");
 const 머리 = (page: Page) => page.locator("main header").first();
 const 행 = (page: Page, name: string) => page.getByRole("treeitem", { name, exact: true });
-const 편집 = (page: Page, name: "Atelier" | "Maison") =>
-  page.getByRole("button", { name: `${name} 레이아웃 편집`, exact: true });
+const 편집 = (page: Page) => page.getByRole("button", { name: "Atelier 레이아웃 편집", exact: true });
 const 저장 = (page: Page) => page.getByRole("button", { name: "저장", exact: true });
 const 설명 = (page: Page) => page.getByLabel("설명", { exact: true });
 
-/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 모드 행에서 [편집]을 누른다. */
+/** 편집기에 들어와 트리가 선 뒤까지 — 「spec 레이아웃」 설정 페이지의 레이아웃 행에서 [편집]을 누른다. */
 async function openEditor(page: Page) {
   await page.goto("/settings/spec-layout");
-  await 편집(page, "Atelier").click();
+  await 편집(page).click();
   await expect(page).toHaveURL("/settings/spec-layout/atelier");
   await expect(행(page, "overview.md")).toBeVisible();
 }
@@ -51,12 +49,12 @@ async function writes(page: Page): Promise<WriteArgs[]> {
   return (await ipcCallArgs(page, "write_spec_layout", "id")).map(({ args }) => args as WriteArgs);
 }
 
-test("모드 행의 [편집]을 누르면 편집기 주소가 열리고 읽기 명령이 나가며, 트리에 실제 항목만 선다", async ({ page }) => {
+test("레이아웃 행의 [편집]을 누르면 편집기 주소가 열리고 읽기 명령이 나가며, 트리에 실제 항목만 선다", async ({ page }) => {
   await installFixtureBackend(page);
   await page.goto("/settings/spec-layout");
   expect(await callCount(page, "read_spec_layout")).toBe(0);
 
-  await 편집(page, "Atelier").click();
+  await 편집(page).click();
   await expect(page).toHaveURL("/settings/spec-layout/atelier");
   await expect.poll(() => callCount(page, "read_spec_layout")).toBe(1);
   const reads = await ipcCallArgs(page, "read_spec_layout", "id");
@@ -142,7 +140,7 @@ test("항목을 고치기만 하고 저장을 누르지 않으면 저장 명령�
     .getByRole("button", { name: "버리고 나가기", exact: true })
     .click();
   await expect(page).toHaveURL("/settings/spec-layout");
-  await expect(page.locator("main li")).toHaveCount(2);
+  await expect(page.locator("main li")).toHaveCount(1);
   expect(await callCount(page, "write_spec_layout")).toBe(0);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -250,7 +248,7 @@ test("편집기 주소에서 설정 nav의 「spec 레이아웃」이 켜져 있
   await page.getByRole("button", { name: "설정으로 돌아가기", exact: true }).click();
   await expect(page).toHaveURL("/settings/spec-layout");
   await expect(머리(page)).toHaveText(/^Settings\s*\/\s*spec 레이아웃$/);
-  await expect(page.locator("main li")).toHaveCount(2);
+  await expect(page.locator("main li")).toHaveCount(1);
   await expect(nav항목.locator("xpath=..")).toHaveClass(/selected-row/);
 
   expect(await unknownIpcCalls(page)).toEqual([]);
@@ -262,23 +260,24 @@ test("읽지 못하는 레이아웃은 행에 [편집]이 없고, 편집기 주�
   page,
 }) => {
   await installFixtureBackend(page, {
-    spec_layout_states: [SPEC_LAYOUT_STATES[0], BROKEN_MAISON_LAYOUT],
-    read_spec_layout: UNREADABLE_MAISON_READ,
+    spec_layout_states: [BROKEN_LAYOUT_STATE],
+    read_spec_layout: UNREADABLE_ATELIER_READ,
   });
   await page.goto("/settings/spec-layout");
-  await expect(page.locator("main li")).toHaveCount(2);
-  await expect(편집(page, "Atelier")).toBeVisible();
-  await expect(편집(page, "Maison")).toHaveCount(0);
+  await expect(page.locator("main li")).toHaveCount(1);
+  // 앵커: 행이 섰고 그 자리에 [다시 읽기]가 있다
+  await expect(page.getByRole("button", { name: "Atelier 레이아웃 다시 읽기", exact: true })).toBeVisible();
+  await expect(편집(page)).toHaveCount(0);
 
-  await page.goto("/settings/spec-layout/maison");
-  await expect(page.getByText("~/.atelier/layouts/maison/ 레이아웃을 읽지 못해 편집할 수 없어요")).toBeVisible();
+  await page.goto("/settings/spec-layout/atelier");
+  await expect(page.getByText("~/.atelier/layouts/atelier/ 레이아웃을 읽지 못해 편집할 수 없어요")).toBeVisible();
   await expect(page.getByText('root.children[2]: `kind` is missing ("file" or "folder")')).toBeVisible();
   await expect(page.getByRole("treeitem")).toHaveCount(0);
   await expect(page.getByRole("textbox")).toHaveCount(0);
   await expect(저장(page)).toHaveCount(0);
   await expect.poll(() => callCount(page, "read_spec_layout")).toBe(1);
   const reads = await ipcCallArgs(page, "read_spec_layout", "id");
-  expect(reads.map(({ args }) => args)).toEqual([{ id: "maison" }]);
+  expect(reads.map(({ args }) => args)).toEqual([{ id: "atelier" }]);
 
   await page
     .getByRole("main")

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./evidence";
-import { ROOMS, ROOMS_MOVED, WORKS, WORKS_MOVED } from "./fixtures";
+import { WORKS, WORKS_MOVED } from "./fixtures";
 import {
   awaitSpawned,
   dragRowOnto,
@@ -11,6 +11,7 @@ import {
   markRunning,
   pickUpRow,
   pointIn,
+  replaceAnswer,
   shownWorkOrder,
   unknownIpcCalls,
   workRow,
@@ -322,20 +323,6 @@ test("끄는 도중 띠가 서서 목록이 내려앉아도 놓은 틈이 포인
   ]);
 });
 
-test("Maison Room도 같은 손짓이고 `mode: \"maison\"`이 실린다", async ({ page }) => {
-  const [firstRoom, secondRoom] = ROOMS;
-  await installFixtureBackend(page);
-  await page.goto(`/maison/rooms/${firstRoom.slug}`);
-  await expect(page.locator("[data-work-row]")).toHaveCount(ROOMS.length);
-
-  await dragRowOnto(page, secondRoom.slug, workRow(page, firstRoom.slug), "upper");
-  await expect.poll(() => moves(page)).toEqual([
-    { mode: "maison", slug: secondRoom.slug, pinned: false, before: firstRoom.slug },
-  ]);
-  await expect.poll(() => shownWorkOrder(page)).toEqual(sectioned(ROOMS_MOVED));
-  await expect(page).toHaveURL(new RegExp(`/maison/rooms/${firstRoom.slug}`));
-});
-
 // **낙관적 목록과 응답이 갈리는 끌기**를 고른다 — `고정` 행을 `작업` 끝으로. 낙관적으로는 그 행이
 // `작업` 맨 아래에 고정이 풀린 채 서지만, fixture 응답(뒤집은 목록)은 그 행이 여전히 고정이고
 // 나머지 순서가 뒤집혔다. 둘이 같은 끌기를 고르면 「응답으로 갈아 끼웠다」를 화면이 말하지 못한다.
@@ -358,23 +345,24 @@ test("move_work의 응답으로 화면이 그 순서로 선다", async ({ page }
 
 const emptySlot = (page: Page, section: "pinned" | "works") => page.locator(`[data-empty-slot="${section}"]`);
 
-test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", () => {
-  const [firstRoom, secondRoom] = ROOMS;
+test.describe("빈 `고정` 받침(고정이 하나도 없는 목록)", () => {
+  // 모드 표의 `list_works`는 페이지를 열 때 못 덮는다 — 뜬 뒤에 한 칸을 간다(`FIXTURE_BY_MODE` 머리말).
+  const unpinned = WORKS.map((work) => ({ ...work, pinned: false }));
 
-  async function openRooms(page: Page) {
-    await installFixtureBackend(page);
-    await page.goto(`/maison/rooms/${firstRoom.slug}`);
-    await expect(page.locator("[data-work-row]")).toHaveCount(ROOMS.length);
+  async function openUnpinned(page: Page) {
+    await openList(page);
+    await replaceAnswer(page, "list_works", unpinned, "atelier");
+    await fireEvent(page, "works:changed", null);
     // 전제: 고정이 0개라 머리도 받침도 없다.
-    expect(ROOMS.some((room) => room.pinned)).toBe(false);
     await expect(headOf(page, "pinned")).toHaveCount(0);
+    await expect(page.locator("[data-work-row]")).toHaveCount(unpinned.length);
   }
 
   test("끄는 동안만 서고, 거기 놓으면 `pinned: true, before: null`", async ({ page }) => {
-    await openRooms(page);
+    await openUnpinned(page);
     await expect(emptySlot(page, "pinned")).toHaveCount(0);
 
-    await pickUpRow(page, secondRoom.slug);
+    await pickUpRow(page, plainWork.slug);
     await expect(emptySlot(page, "pinned")).toBeVisible();
     await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
     // 받침에 놓일 때는 선 대신 받침이 밝아진다.
@@ -383,14 +371,14 @@ test.describe("빈 `고정` 받침(Maison — Room은 둘 다 고정 아님)", (
     await page.mouse.up();
 
     await expect.poll(() => moves(page)).toEqual([
-      { mode: "maison", slug: secondRoom.slug, pinned: true, before: null },
+      { mode: "atelier", slug: plainWork.slug, pinned: true, before: null },
     ]);
-    await expect(page).toHaveURL(new RegExp(`/maison/rooms/${firstRoom.slug}`));
+    await stayedHome(page);
   });
 
   test("놓지 않고 목록 밖에서 떼면 받침이 사라지고 명령이 안 나간다", async ({ page }) => {
-    await openRooms(page);
-    await pickUpRow(page, secondRoom.slug);
+    await openUnpinned(page);
+    await pickUpRow(page, plainWork.slug);
     await hoverRowPoint(page, emptySlot(page, "pinned"), "middle");
     await expect(emptySlot(page, "pinned")).toHaveAttribute("data-lit", "");
 

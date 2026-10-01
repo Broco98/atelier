@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Mode } from "@/mode";
+import { modeFrom, type Mode } from "@/mode";
 import type {
   LayoutPreview,
   SaveAnswer,
@@ -9,11 +9,26 @@ import type {
   TemplateBodies,
 } from "./types";
 
+/** 백엔드가 준 레이아웃 상태 한 줄 — id가 아직 `Mode`로 검증되지 않았다(아래 `states`). */
+type WireLayoutState = Omit<SpecLayoutState, "id"> & { id: string };
+
 // 레이아웃은 `settings.json`이 아니라 데이터 루트의 레이아웃 폴더에 산다(spec 레이아웃 결정 25) —
 // 경로를 여기서 말하지 않는 이유는 설정의 `api.ts`와 같다: 그 자리를 아는 곳은 코어 하나다.
 export const specLayoutApi = {
-  /** 모드 둘(Atelier, Maison 순서)의 레이아웃 상태. 아무것도 쓰지 않는다. */
-  states: () => invoke<SpecLayoutState[]>("spec_layout_states"),
+  /**
+   * 레이아웃 상태. 아무것도 쓰지 않는다.
+   *
+   * **받은 줄 가운데 id가 `Mode`인 것만 남긴다**(ui-refresh 결정 22). 백엔드는 아직 지운 모드의 줄을 함께
+   * 주는데, 그 id로 화면이 이름을 찾으면 표에 없는 키라 행이 무너진다. 줄 수가 아니라 값으로 거른다 —
+   * 백엔드가 줄을 줄이거나 순서를 바꿔도 같은 답이다. 레이아웃 id가 사라지는 판 02의 05에서 이 거르기도 지운다.
+   */
+  states: async (): Promise<SpecLayoutState[]> => {
+    const states = await invoke<WireLayoutState[]>("spec_layout_states");
+    return states.flatMap((state) => {
+      const id = modeFrom(state.id);
+      return id === null ? [] : [{ ...state, id }];
+    });
+  },
   /**
    * 모드의 레이아웃을 기본값으로 되돌린다 — 그 모드의 레이아웃 폴더를 지운다. 깨진 폴더도 지운다.
    * **확인을 거친 뒤에만 부른다**(`askRevert`). 인자 이름이 `mode`가 아니라 `id`인 것은 레이아웃 id를

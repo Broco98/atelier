@@ -10,6 +10,6 @@ describe("isAtOrUnder", () => {
   // **경계가 이 함수의 전부다.** 이름이 같은 앞머리로 시작하는 이웃 주소는 밖이다.
   it("앞머리만 같은 이웃 주소는 밖이다", () => {
     expect(isAtOrUnder("/settingsx", "/settings")).toBe(false);
-    expect(isAtOrUnder("/maisonette", "/maison")).toBe(false);
+    expect(isAtOrUnder("/worksx", "/works")).toBe(false);
   });
 });

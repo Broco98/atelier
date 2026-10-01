@@ -76,25 +76,6 @@ const COPY = {
       code: 'atelier로 "새 작업" 시작해줘',
     },
   },
-  maison: {
-    label: "Rooms",
-    page: "Rooms",
-    item: "Room",
-    // 고정은 세계를 안 타는 말이라 같은 문장이다 — 「작업」도 「Room」도 안 부른다.
-    allPinned: "전부 고정돼 있어요.",
-    // Room도 앱에서 못 만든다. 다만 시작하는 자리가 Atelier와 다르다 — Maison에는
-    // `Projects`가 없어서(결정 17) 저장소를 여는 대신 nav의 `Terminal`에서 claude에게
-    // 말한다. 그 한 줄이 이 세계에서 실제로 통하는 유일한 길이다.
-    empty: 'Terminal에서 claude에게 "새 Room 만들어줘"',
-    screen: {
-      title: "아직 Room이 없어요",
-      // 「작업」도 「Claude Code」도 안 부른다 — 이 세계에서 통하지 않는 지시다. Room은
-      // Maison 셸의 claude가 MCP로만 만들고(decisions.md 「미결 · Room 만들기」), 그 셸을
-      // 여는 자리가 nav의 `Terminal`이다.
-      body: "Room은 Terminal에서 claude에게 부탁해서 만들어요. Room이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
-      code: "새 Room 만들어줘",
-    },
-  },
 } as const satisfies Record<
   Mode,
   {

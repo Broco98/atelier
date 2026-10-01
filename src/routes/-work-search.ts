@@ -147,7 +147,6 @@ export interface WorkMemory {
  */
 const lastView: Record<Mode, Map<string, WorkMemory>> = {
   atelier: new Map(),
-  maison: new Map(),
 };
 
 export function rememberView(mode: Mode, slug: string, view: WorkMemory): void {

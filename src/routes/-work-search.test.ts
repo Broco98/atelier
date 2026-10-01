@@ -115,10 +115,10 @@ describe("주소를 고치는 짝", () => {
 
 // 주소에서 항목을 읽는 자리는 이 파일에 없다. `/works/`를 박아 두던 `workSlugOf`가 여기
 // 살았는데, #183이 마지막 호출부(사이드바 목록의 강조)를 `@/mode`의 `slugOf`로 옮기면서
-// 호출부가 0이 됐다 — 두 세계의 목록 주소를 다 읽어야 하고 항목 아래로 화면이 갈라지는 날
-// 첫 칸만 slug여야 하는데, 그쪽은 `/works/a/b`를 통째로 `"a/b"`라고 답했다. 답이 갈리는
-// 파서 둘을 남겨 두면 다음 사람이 어느 쪽을 집는지가 우연이 되므로 함께 걷었다.
-// 그물은 `mode.test.ts`의 「주소에서 slug를 읽는다」가 두 세계에서 더 촘촘하게 든다.
+// 호출부가 0이 됐다 — 항목 아래로 화면이 갈라지는 날 첫 칸만 slug여야 하는데, 그쪽은
+// `/works/a/b`를 통째로 `"a/b"`라고 답했다. 답이 갈리는 파서 둘을 남겨 두면 다음 사람이 어느
+// 쪽을 집는지가 우연이 되므로 함께 걷었다.
+// 그물은 `mode.test.ts`의 「주소에서 slug를 읽는다」가 더 촘촘하게 든다.
 
 // 결정 77. work을 옮길 때 떠나던 주소는 버리고 **그 work의 기억**을 되살린다. 라우터
 // seam에서는 이것도 안 보인다 — 그쪽은 주소에 적힌 것만 보고, 「새 주소를 무엇으로
@@ -142,40 +142,6 @@ describe("work마다 마지막으로 보던 화면", () => {
   it("work마다 따로 센다", () => {
     rememberView("atelier", "나", { tab: "terminal", split: "lr", file: "01-판/spec.md" });
     expect(recallView("atelier", "다")).toEqual({ tab: "spec", split: null, file: null });
-  });
-
-  // **두 세계에 같은 이름이 설 수 있다**(결정 10). slug 하나로 키를 잡으면 이 검사가
-  // 빨개진다 — Room을 적어 두는 순간 같은 이름 work의 기억이 통째로 덮인다.
-  it("같은 이름의 work과 Room이 서로를 안 덮어쓴다", () => {
-    rememberView("atelier", "겹친이름", { tab: "terminal", split: "rl", file: "작업/spec.md" });
-    rememberView("maison", "겹친이름", { tab: "spec", split: null, file: "방/기록.md" });
-
-    expect(recallView("atelier", "겹친이름")).toEqual({
-      tab: "terminal",
-      split: "rl",
-      file: "작업/spec.md",
-    });
-    expect(recallView("maison", "겹친이름")).toEqual({
-      tab: "spec",
-      split: null,
-      file: "방/기록.md",
-    });
-  });
-
-  // 문을 여는 값도 갈려야 한다 — `recallView`만 갈리고 `recallSearch`가 한 세계를 굳게 잡고
-  // 있으면, 기억은 맞는데 **열리는 주소가 저쪽 세계의 화면**이 된다.
-  it("여는 주소의 씨앗도 세계별로 갈린다", () => {
-    rememberView("atelier", "같은이름", { tab: "terminal", split: null, file: null });
-    expect(recallSearch("maison", "같은이름")).toEqual({
-      tab: undefined,
-      split: undefined,
-      file: undefined,
-    });
-    expect(recallSearch("atelier", "같은이름")).toEqual({
-      tab: "terminal",
-      split: undefined,
-      file: undefined,
-    });
   });
 
   // **work을 여는 문이 전부 이 값을 쓴다** — `recallSearch`가 그 합성의 이름이다. 빈 객체
@@ -250,15 +216,11 @@ describe("두 view의 배선", () => {
   // 두 파일을 렌더하는 테스트가 저장소에 없어 L2가 전부 초록이다 — 그래서 이 층에만 그물이
   // 비어 있었다.
   //
-  // 실제로 어긋나는 모습: Maison에서 보던 Room이 사라져 복구 이동이 돌면 같은 이름 Atelier
-  // work의 탭·분할·문서 기억이 씨앗으로 실려 엉뚱한 분할·문서로 열리고(기준 3), 기억이 저쪽
-  // 칸에 적히면 다음 `/maison/rooms` 정규화가 저 세계의 slug를 고른다(기준 2).
-  //
   // 세는 것이 인자의 뜻이 아니라 **리터럴의 유무**라 파서가 샐 자리가 없다 — 어느 인자가
   // 어디로 가는지 읽지 않고 「이 파일에 박힌 세계가 하나도 없다」만 본다. 모드는 언제나 위에서
   // 내려온다는 것이 이 층의 규칙이므로, 새 자리가 늘어도 이 검사는 그대로 산다.
   it.each(["./-works-view.tsx", "./-archive-view.tsx"])("%s에는 박힌 세계가 없다", (file) => {
-    expect(read(file).match(/["'](?:atelier|maison)["']/g) ?? []).toEqual([]);
+    expect(read(file).match(/["']atelier["']/g) ?? []).toEqual([]);
   });
 
   // **「열었다」를 적는 자리도 하나다**(결정 14) — 그리고 위와 **다른 effect**여야 한다.

@@ -82,32 +82,10 @@ const 기본 = (over: Partial<TreeInput>): TreeInput => ({
 });
 
 describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
-  // 두 세계의 셸이 섞여 스토어에 앉아 있다(스토어는 세계마다 갈리지 않는다). 화면은 지금 세계를 위에 세운다(프로세스 결정 9).
-  const 두세계 = {
-    shells: [
-      칸(1, "G-1", { owner: ownerOf("maison") }),
-      칸(2, "G-2", { owner: ownerOf("atelier") }),
-    ],
-    snapshot: 스냅샷([풀(1, "G-1"), 풀(2, "G-2")]),
-  };
-
-  it("지금 세계가 먼저다 — Maison에서 열면 Maison이 맨 위다", () => {
-    expect(편모양(기본({ ...두세계, current: "maison" }))).toEqual([
-      "1 maison (지금)",
-      "2 Terminal",
-      "3 G-1",
-      "1 atelier",
-      "2 Terminal",
-      "3 G-2",
-    ]);
-    expect(편모양(기본({ ...두세계, current: "atelier" }))).toEqual([
-      "1 atelier (지금)",
-      "2 Terminal",
-      "3 G-2",
-      "1 maison",
-      "2 Terminal",
-      "3 G-1",
-    ]);
+  // 세계 줄은 Atelier 하나다(ui-refresh 결정 3) — 세계 단을 걷는 것은 판 02의 02다.
+  it("세계 줄은 지금 세계 하나다", () => {
+    const input = 기본({ shells: [칸(1, "G-1", { owner: ownerOf("atelier") })], snapshot: 스냅샷([풀(1, "G-1")]) });
+    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 Terminal", "3 G-1"]);
   });
 
   // **셸이 뜬 차례가 아니라 사이드바의 차례다**(S53). 고정이 먼저인 것은 코어의 목록이 정한다(`list_works` — ux-papercuts 결정 100) — 여기서
@@ -166,18 +144,16 @@ describe("묶음 순서 — 세계 → work → 셸 → 자손", () => {
     expect(편모양(input)).toEqual(["1 atelier (지금)", "2 그냥 일", "3 G-3", "2 gone-work", "3 G-2", "2 Terminal", "3 G-1"]);
   });
 
-  it("목록이 아직 없는 세계도 선다 — 이름은 slug다", () => {
+  it("목록이 아직 없어도 선다 — 이름은 slug다", () => {
     const input = 기본({
-      shells: [칸(1, "G-1", { owner: ownerOf("maison", "reading-room") })],
+      shells: [칸(1, "G-1", { owner: ownerOf("atelier", "reading-work") })],
       snapshot: 스냅샷([풀(1, "G-1")]),
     });
-    expect(편모양(input)).toEqual(["1 maison", "2 reading-room", "3 G-1"]);
+    expect(편모양(input)).toEqual(["1 atelier (지금)", "2 reading-work", "3 G-1"]);
   });
 
   // 셸이 하나도 없는 세계는 머리만 서는 빈 줄이 된다 — 「셸 0개」를 층으로 말할 까닭이 없다.
   it("셸이 없는 세계는 안 선다", () => {
-    const input = 기본({ current: "maison", shells: [칸(1, "G-1", { owner: ownerOf("atelier") })], snapshot: 스냅샷([풀(1, "G-1")]) });
-    expect(shellTree(input).map((world) => world.mode)).toEqual(["atelier"]);
     expect(shellTree(기본({}))).toEqual([]);
   });
 });
@@ -440,42 +416,36 @@ describe("주인 잃은 셸 묶음", () => {
     ]);
   });
 
-  // 두 세계가 함께 선다 — 화면이 앱 전체다(프로세스 결정 9). 지금 세계의 것이 먼저이고, 세계 안은 스토어의 차례(탭의 차례)다.
-  // 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다 — [모두 닫기]는 그 칸도 함께 거둔다(12).
-  it("두 세계의 주인 잃은 셸이 지금 세계부터 work마다 서고, 풀에 없는 칸은 안 선다", () => {
+  // 묶음 안은 스토어의 차례(탭의 차례)다. 풀에 없는 칸(끝난 칸 · 아직 안 앉은 칸)은 프로세스가 아니라 안 선다 — [모두 닫기]는 그
+  // 칸도 함께 거둔다(12).
+  it("주인 잃은 셸이 work마다 서고, 풀에 없는 칸은 안 선다", () => {
     const shells = [
-      칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), ownerless: true }),
       칸(2, "G-2", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
       칸(3, "G-3", { owner: ownerOf("atelier", "gone-work"), ownerless: true }),
       칸(4, "G-4", { owner: ownerOf("atelier", "gone-work"), ownerless: true, status: { kind: "exited", exit: { exitCode: 1, signal: null } } }),
     ];
-    const snapshot = 스냅샷([풀(1, "G-1"), 풀(2, "G-2"), 풀(3, "G-3")], { "G-3": [행(300, 1, 30, "node")] });
-    const 모양 = (current: "atelier" | "maison") =>
-      ownerlessGroups(기본({ current, shells, snapshot })).map((group) => [
+    const snapshot = 스냅샷([풀(2, "G-2"), 풀(3, "G-3")], { "G-3": [행(300, 1, 30, "node")] });
+    expect(
+      ownerlessGroups(기본({ shells, snapshot })).map((group) => [
         group.owner,
         group.shells.map((node) => [node.shell.id, node.descendants.map(({ row }) => row.id.pid)]),
-      ]);
-    expect(모양("atelier")).toEqual([
-      [ownerOf("atelier", "gone-work"), [[2, []], [3, [300]]]],
-      [ownerOf("maison", "gone-room"), [[1, []]]],
-    ]);
-    expect(모양("maison").map(([owner]) => owner)).toEqual([ownerOf("maison", "gone-room"), ownerOf("atelier", "gone-work")]);
+      ]),
+    ).toEqual([[ownerOf("atelier", "gone-work"), [[2, []], [3, [300]]]]]);
   });
 
   it("주인 잃은 셸이 없으면 묶음이 비었다", () => {
     expect(ownerlessGroups(기본({ shells: [칸(1, "G-1")], snapshot: 스냅샷([풀(1, "G-1")]) }))).toEqual([]);
   });
 
-  // 두 세계가 한 묶음에 서므로 work 줄이 세계를 말한다 — 두 세계에 같은 slug가 설 수 있다(life-mode 결정 10). 세계 트리의 work 줄은 세계
-  // 줄 밑에 서서 말할 까닭이 없다.
+  // work 줄이 세계를 말한다(세계 표시를 걷는 것은 판 02의 02다).
   it("work 줄은 이름 · 세계 · 셸 수 · 메모리다", () => {
     const [group] = ownerlessGroups(
       기본({
-        shells: [칸(1, "G-1", { owner: ownerOf("maison", "gone-room"), ownerless: true })],
+        shells: [칸(1, "G-1", { owner: ownerOf("atelier", "gone-work"), ownerless: true })],
         snapshot: 스냅샷([풀(1, "G-1", 1_000, 지표(8 * MiB))]),
       }),
     );
-    expect(ownerlessGroupRowLabel(group)).toBe(`gone-room, ${modeNameOf("maison")}, 셸 1개, 8MB`);
+    expect(ownerlessGroupRowLabel(group)).toBe(`gone-work, ${modeNameOf("atelier")}, 셸 1개, 8MB`);
   });
 });
 

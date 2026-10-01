@@ -10,7 +10,7 @@ import { ALL_MODES, refPrefixesOf } from "@/mode";
 // 초록으로 남는다(`mode.test.ts`가 표 자체의 값을 따로 재는 것과 층이 다르다).
 //
 // **맨 아래 소스 검사만 예외다** — 거기서는 표를 부르는 것이 기대값을 짓기 위해서가 아니라
-// 「그 값이 `refs.ts`에 글자로 없다」를 세계 수와 무관하게 재기 위해서다.
+// 「그 값이 `refs.ts`에 글자로 없다」를 재기 위해서다.
 
 describe("참조 생성기 — Atelier", () => {
   it("작업·spec 폴더는 `~/.atelier/works/` 아래다", () => {
@@ -40,56 +40,15 @@ describe("참조 생성기 — Atelier", () => {
   });
 });
 
-describe("참조 생성기 — Maison", () => {
-  // Maison의 참조가 Atelier 루트를 가리키면 에이전트는 **있지도 않은 폴더**를 열거나, 더
-  // 나쁘게는 같은 slug를 가진 저쪽 세계의 문서를 연다(결정 10: 이름은 세계마다 따로 산다).
-  it("Room 폴더는 `~/.atelier/maison/rooms/` 아래다", () => {
-    expect(workDirRef("maison", "kitchen")).toBe("~/.atelier/maison/rooms/kitchen/");
-    expect(specDirRef("maison", "kitchen")).toBe("~/.atelier/maison/rooms/kitchen/spec/");
-  });
-
-  it("spec 참조는 같은 꼬리표를 Room 루트 위에 단다", () => {
-    expect(specRef("maison", "kitchen", "overview.md")).toBe(
-      "~/.atelier/maison/rooms/kitchen/spec/overview.md",
-    );
-    expect(specRef("maison", "kitchen", "overview.md", 19, 27)).toBe(
-      "~/.atelier/maison/rooms/kitchen/spec/overview.md:L19-27",
-    );
-  });
-
-  it("아카이브 참조는 `~/.atelier/maison/archive/` 아래다", () => {
-    expect(archiveRef("maison", "kitchen", "record.md")).toBe(
-      "~/.atelier/maison/archive/kitchen/record.md",
-    );
-    expect(archiveRef("maison", "kitchen", "spec/overview.md", 19)).toBe(
-      "~/.atelier/maison/archive/kitchen/spec/overview.md:L19",
-    );
-  });
-});
-
-describe("참조 생성기 — 세계 사이", () => {
-  // 「모드를 받는다」만으로는 부족하다. 인자를 받아 놓고 안 쓰면(또는 한 자리만 갈아 끼우면)
-  // 두 세계가 같은 글자를 내는데, 화면에서는 복사된 한 줄이 그럴듯해 아무도 못 알아본다.
-  it("같은 slug라도 두 세계의 참조가 절대 같지 않다", () => {
-    expect(workDirRef("atelier", "같은-이름")).not.toBe(workDirRef("maison", "같은-이름"));
-    expect(specRef("atelier", "같은-이름", "overview.md")).not.toBe(
-      specRef("maison", "같은-이름", "overview.md"),
-    );
-    expect(archiveRef("atelier", "같은-이름", "record.md")).not.toBe(
-      archiveRef("maison", "같은-이름", "record.md"),
-    );
-  });
-
-  // 모드가 하나 더 서는 날 이 셋이 함께 갱신돼야 한다 — 새 세계가 Atelier 루트를 물려받아도
-  // 위 두 describe는 그 세계를 아예 안 보므로 조용히 통과한다.
-  it("모든 세계의 참조가 `~/.atelier/`로 시작한다", () => {
+describe("참조 생성기 — 공통", () => {
+  it("참조가 `~/.atelier/`로 시작한다", () => {
     for (const mode of ALL_MODES) {
       expect(workDirRef(mode, "s")).toMatch(/^~\/\.atelier\//);
       expect(archiveRef(mode, "s", "record.md")).toMatch(/^~\/\.atelier\//);
     }
   });
 
-  // 워크트리는 코어가 완성해 내려준 경로다 — 세계별 앞머리를 여기서 다시 지으면
+  // 워크트리는 코어가 완성해 내려준 경로다 — 앞머리를 여기서 다시 지으면
   // `ATELIER_HOME`을 옮긴 설치에서 앱이 지은 경로와 실물이 갈린다.
   it("워크트리 참조는 받은 경로에 `/`만 보장한다", () => {
     expect(worktreeDirRef("~/.atelier/works/w/trees/atelier")).toBe(
@@ -108,12 +67,12 @@ describe("참조 생성기 — 세계 사이", () => {
 describe("레이아웃 참조", () => {
   it("받은 폴더 경로에 `/`만 보장한다", () => {
     expect(layoutDirRef("~/.atelier/layouts/atelier")).toBe("~/.atelier/layouts/atelier/");
-    expect(layoutDirRef("~/.atelier/layouts/maison/")).toBe("~/.atelier/layouts/maison/");
+    expect(layoutDirRef("~/.atelier/layouts/atelier/")).toBe("~/.atelier/layouts/atelier/");
   });
 
   it("홈 밖의 데이터 루트도 받은 그대로다", () => {
-    expect(layoutDirRef("/tmp/atelier-home/layouts/maison")).toBe(
-      "/tmp/atelier-home/layouts/maison/",
+    expect(layoutDirRef("/tmp/atelier-home/layouts/atelier")).toBe(
+      "/tmp/atelier-home/layouts/atelier/",
     );
   });
 });
@@ -132,8 +91,7 @@ describe("뿌리는 이 파일에 없다", () => {
   const src = readFileSync(fileURLToPath(new URL("./refs.ts", import.meta.url)), "utf8");
 
   it("네 생성기의 앞머리가 모드 표에서 온다", () => {
-    // 뿌리는 둘이고 둘 다 표에서 꺼낸다 — 한쪽만 표를 보면 그 세계의 아카이브 참조만
-    // 조용히 낡는다.
+    // 뿌리는 둘이고 둘 다 표에서 꺼낸다 — 한쪽만 표를 보면 아카이브 참조만 조용히 낡는다.
     expect(src).toMatch(/refPrefixesOf\(mode\)\.work/);
     expect(src).toMatch(/refPrefixesOf\(mode\)\.archive/);
   });
@@ -145,8 +103,6 @@ describe("뿌리는 이 파일에 없다", () => {
   });
 
   it("표가 드는 뿌리가 글자로 하나도 없다", () => {
-    // 세계가 하나 더 서는 날 이 검사가 함께 넓어진다 — 리터럴 넷을 손으로 적어 두면
-    // 셋째 세계는 조용히 빠진다.
     for (const mode of ALL_MODES) {
       const refs = refPrefixesOf(mode);
       expect(src, `${mode} work 뿌리`).not.toContain(refs.work);

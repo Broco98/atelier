@@ -112,13 +112,12 @@ describe("빈 작업 구획이 하는 말", () => {
     expect(notice()).toBe("작업은 Claude Code에서 시작돼요.");
   });
 
-  // `작업`이 비는 모양(아무것도 없음·고정만·고정된 초안만)을 두 세계에서 다 돌려 **나온 말을
+  // `작업`이 비는 모양(아무것도 없음·고정만·고정된 초안만)을 다 돌려 **나온 말을
   // 글자로** 댄다. 초안 갈래(「진행 중인 … 없어요」)가 되살아나 고정된 초안에 셋째 문장을 주면
   // 여기서 갈린다. 초안이 고정 밖에 있는 모양은 `작업`이 안 비므로 이 판정에 안 닿는다(위 둘째 describe).
   it("나올 수 있는 말은 「고정만 있다」·「아무것도 없다」 둘뿐이다", () => {
     const expected = {
       atelier: ["작업은 Claude Code에서 시작돼요.", "전부 고정돼 있어요."],
-      maison: ['Terminal에서 claude에게 "새 Room 만들어줘"', "전부 고정돼 있어요."],
     };
     const shapes = [[], ["pin:고정"], ["pin:draft:고정초안"]];
     for (const mode of ALL_MODES) {
@@ -132,21 +131,13 @@ describe("빈 작업 구획이 하는 말", () => {
   });
 });
 
-// 같은 목록이 세계마다 **다른 이름**으로 자기를 부른다(#183, US 17). 판정 규칙은 하나이고
-// 갈리는 것은 낱말뿐이라, 여기서 보는 것은 「갈래마다 그 세계의 말이 나오는가」다.
-describe("상주 목록이 세계마다 자기 어휘로 말한다", () => {
+// 목록이 **자기를 부르는 말**(#183, US 17). 판정 규칙은 하나이고 낱말은 어휘 표에서 온다.
+describe("상주 목록이 자기 어휘로 말한다", () => {
   const notice = (mode: (typeof ALL_MODES)[number], ...args: Array<string>) =>
     emptyMainNotice(splitWorkSections(works(...args), ALL), mode);
 
-  it("머리는 Atelier `작업` · Maison `Rooms`다", () => {
+  it("머리는 `작업`이다", () => {
     expect(listLabelOf("atelier")).toBe("작업");
-    expect(listLabelOf("maison")).toBe("Rooms");
-  });
-
-  // 앱에 Room을 만드는 화면이 없으니 **어디서 시작하는지**를 말한다. Atelier는 저장소를 여는
-  // Claude Code이고 Maison에는 그 자리가 없어서(결정 17: 프로젝트가 없다) nav의 `Terminal`이다.
-  it("Room이 하나도 없으면 Terminal에서 만들라고 한다", () => {
-    expect(notice("maison")).toBe('Terminal에서 claude에게 "새 Room 만들어줘"');
   });
 
   it("Atelier 문구 둘은 한 글자도 안 바뀐다", () => {
@@ -155,28 +146,10 @@ describe("상주 목록이 세계마다 자기 어휘로 말한다", () => {
       "전부 고정돼 있어요.",
     ]);
   });
-
-  // **한쪽으로 눕히는 변형이 여기서 걸린다.** 두 세계가 한 표를 읽어도 위 검사들은 전부
-  // 초록일 수 있다 — Atelier 문구가 정본이라 Maison이 그것을 그대로 뱉으면 「Atelier는
-  // 그대로다」도, 「Maison에 Room 문구가 있다」도(갈래가 다르니) 따로따로는 통과한다.
-  // 대상을 이름으로 부르는 두 갈래가 실제로 갈리는지를 함께 재야 그물이 닫힌다.
-  it("대상을 부르는 갈래는 두 세계가 다른 말을 쓴다", () => {
-    expect(notice("maison")).not.toBe(notice("atelier"));
-    expect(listLabelOf("maison")).not.toBe(listLabelOf("atelier"));
-  });
-
-  // 고정은 세계를 안 타는 말이다 — 「작업」도 「Room」도 안 부르므로 굳이 갈라 두면 같은
-  // 문장이 두 벌이 된다. 그 하나가 **일부러 같다**는 것을 남긴다.
-  it("고정 갈래만 두 세계가 같은 문장이다", () => {
-    expect(notice("maison", "pin:고정")).toBe(notice("atelier", "pin:고정"));
-  });
 });
 
-// 사이드바가 아니라 **본문 한가운데**가 하는 말(US 22). 목록의 빈 구획과 한 표에서 나오는데,
-// 이 자리가 오래 안 갈려 있었다 — 사이드바만 Room 어휘로 옮기면 Room이 0개인 화면에서
-// 목록은 「Terminal에서 claude에게 …」인데 본문은 「작업은 Claude Code에서 시작돼요」라고
-// 적고, 그 지시는 이 세계에서 실제로 통하지 않는다(Room은 MCP로만 만들어진다).
-describe("고른 것이 없는 본문이 세계마다 자기 어휘로 말한다", () => {
+// 사이드바가 아니라 **본문 한가운데**가 하는 말(US 22). 목록의 빈 구획과 한 표에서 나온다.
+describe("고른 것이 없는 본문이 자기 어휘로 말한다", () => {
   it("Atelier 세 조각은 한 글자도 안 바뀐다", () => {
     expect(emptyScreenCopy("atelier")).toEqual({
       title: "아직 작업이 없어요",
@@ -184,40 +157,18 @@ describe("고른 것이 없는 본문이 세계마다 자기 어휘로 말한다
       code: 'atelier로 "새 작업" 시작해줘',
     });
   });
-
-  it("Maison은 Terminal의 claude에게 부탁하라고 한다", () => {
-    expect(emptyScreenCopy("maison")).toEqual({
-      title: "아직 Room이 없어요",
-      body: "Room은 Terminal에서 claude에게 부탁해서 만들어요. Room이 시작되면 스펙 문서와 진행 상황이 여기에 나타나요.",
-      code: "새 Room 만들어줘",
-    });
-  });
-
-  // **Maison에 Atelier의 어휘가 한 조각도 안 남는다.** 위 두 검사는 세 칸을 통째로 재지만
-  // 표를 손볼 때 한 칸만 Atelier 문장을 되붙이는 사고는 그 자리에서만 빨개지고 이유가 안
-  // 보인다 — 여기서 보는 것은 「이 세계에서 통하지 않는 말」이라는 성질 쪽이다.
-  it.each(["작업", "Claude Code", "atelier로"])("Maison 본문에 `%s`가 없다", (word) => {
-    const { title, body, code } = emptyScreenCopy("maison");
-    expect(`${title}\n${body}\n${code}`).not.toContain(word);
-  });
 });
 
-// **머리에 이는 화면 이름도 세계를 탄다.** 이 갈래는 고른 항목이 없을 때만 서는데, Room이
-// 0개인 Maison에서는 그것이 **늘** 서는 상태다 — 그 자리가 리터럴 `"Works"`였던 동안, 본문
-// 한가운데가 「아직 Room이 없어요」라고 말하는 바로 그 화면의 머리가 `Works`였다.
+// **머리에 이는 화면 이름**은 고른 항목이 없을 때만 선다.
 describe("화면이 머리에 이는 자기 이름", () => {
-  it("두 세계가 각자 자기 이름을 든다", () => {
+  it("화면 이름은 `Works`다", () => {
     expect(pageNameOf("atelier")).toBe("Works");
-    expect(pageNameOf("maison")).toBe("Rooms");
   });
 
   // **`label`과 갈린 값이라는 것을 함께 잰다.** 한 칸으로 접으면 Atelier 머리가 한국어
   // `작업`으로 눕어 `Archive`·`Projects`와 다른 층이 되고, 그때 이 검사만 빨개진다.
   it("사이드바 구획 라벨과 같은 값이 아니다", () => {
     expect(pageNameOf("atelier")).not.toBe(listLabelOf("atelier"));
-    // Maison은 두 자리가 같은 낱말이다 — 우연이 아니라 그 세계에서 구획 머리와 화면 이름이
-    // 같은 층(대문자 영어)이라서다. 그 동치도 일부러 못박는다.
-    expect(pageNameOf("maison")).toBe(listLabelOf("maison"));
   });
 });
 

@@ -78,7 +78,7 @@ describe("기억한 셸 키 → 갈 곳", () => {
   });
 
   it("그 키의 셸이 떠 있으면 그 셸로 간다", () => {
-    const 둘째 = 칸(2, "G-2", { owner: ownerOf("maison", "finance") });
+    const 둘째 = 칸(2, "G-2", { owner: ownerOf("atelier", "finance") });
     expect(recallTarget("G-2", [칸(1, "G-1"), 둘째])).toEqual({ kind: "go", shell: 둘째 });
   });
 
