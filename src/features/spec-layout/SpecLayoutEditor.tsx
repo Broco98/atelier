@@ -81,7 +81,7 @@ import {
   type UnreadableSpecLayout,
 } from "./types";
 
-// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(620px) 안이 아니라 설정 nav
+// 「spec 레이아웃」의 편집기(spec 레이아웃 티켓 11 · 결정 11·20·26). 설정 한 열(설정 틀의 본문) 안이 아니라 설정 nav
 // 항목 「spec 레이아웃」의 하위 주소(`/settings/spec-layout/edit`)에 선 **별도 화면**이다 — 트리와 고른 항목,
 // 두 열이 설정 한 열에 들지 않는다. 설정 nav는 그대로 서고 「spec 레이아웃」이 켜져 있다.
 //

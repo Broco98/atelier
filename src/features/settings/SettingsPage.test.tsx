@@ -180,7 +180,11 @@ describe("프리셋", () => {
   });
 
   it("프리셋 칩이 목록 순서대로 그려진다", () => {
-    const markup = render(settings());
+    // 칩 줄 안에서 센다 — 「글꼴」 행의 설명 줄(판 06 문구 표 S2)이 기본 글꼴의 이름을 칩보다 먼저 적는다.
+    const rendered = render(settings());
+    const chipsAt = rendered.indexOf('aria-label="글꼴 프리셋"');
+    expect(chipsAt, "칩 줄이 없다").toBeGreaterThanOrEqual(0);
+    const markup = rendered.slice(chipsAt);
     const positions = FONT_PRESETS.map((preset) => markup.indexOf(preset));
     expect(positions.some((at) => at < 0), "그려지지 않은 프리셋이 있다").toBe(false);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -291,15 +295,20 @@ describe("셸을 닫아도 남길 프로세스", () => {
     expect(renderExceptions()).not.toContain("기본 목록을 읽지 못했어요");
   });
 
-  // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 폭만 이 자리 것이다.
-  // 기본 폭(`w-full`)은 **빠져야 한다** — 클래스를 `cn` 없이 이어 붙이면 둘이 함께 실리고, 어느 쪽이 이기는지는 CSS의 차례가 정한다.
-  it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭만 이 자리 것이다", () => {
+  // 여러 줄 칸은 부품이 없어 클래스를 한 곳(`textareaLook`)에서 받는다 — 옮겨 적으면 한쪽만 고쳐져 여백이 갈린다. 이 자리 것은
+  // 고정폭 글자 단계(`text-mono`)뿐이고, 폭은 규격의 폭 가득(`w-full`)이다 — 설정 행의 아래 줄을 가득 쓴다(판 06 티켓 06).
+  // 폭은 **하나만** 실려야 한다 — 클래스를 `cn` 없이 이어 붙이면 둘이 함께 실리고, 어느 쪽이 이기는지는 CSS의 차례가 정한다.
+  it("칸이 여러 줄 칸의 규격을 그대로 쓰고, 폭은 규격의 폭 가득 하나다", () => {
     const classes = /<textarea[^>]*class="([^"]*)"/.exec(renderExceptions())?.[1].split(" ") ?? [];
-    const look = textareaLook.split(" ").filter((name) => name !== "w-full");
-    expect(classes).toEqual(expect.arrayContaining([...look, "w-[280px]"]));
-    // 앵커: 규격에 기본 폭이 있다 — 없으면 아래가 저절로 참이다.
+    // 글자 단계(`text-ui`와 그 줄 높이)는 이 자리의 고정폭 단계가 갈아 낀다.
+    const look = textareaLook.split(" ").filter((name) => name !== "text-ui" && !name.startsWith("leading-"));
+    expect(classes).toEqual(expect.arrayContaining([...look, "font-mono", "text-mono"]));
+    // 앵커: 규격에 폭 가득이 있다 — 없으면 아래가 저절로 「폭이 없다」로 빨개진다.
     expect(textareaLook.split(" ")).toContain("w-full");
-    expect(classes, "기본 폭이 이 자리 폭과 함께 실렸다").not.toContain("w-full");
+    expect(
+      classes.filter((name) => /^w-/.test(name)),
+      "폭이 둘 실렸거나 규격의 폭이 아니다",
+    ).toEqual(["w-full"]);
   });
 });
 
@@ -506,9 +515,10 @@ describe("훅 구획의 화면", () => {
     expect(html).toContain("코덱스 조각");
   });
 
-  // 스토리 70·74 — 버튼 하나로 깔리고, 되돌릴 길이 화면에 있다.
-  it("설치와 제거가 버튼으로 둘 다 있다", () => {
-    expect(buttonLabels(renderHooks([hook()]))).toEqual(["설치", "제거"]);
+  // 스토리 70·74 — 버튼 하나로 깔리고, 되돌릴 길이 화면에 있다. 차례는 바닥 줄의 「제거」 · 「설치」다 — 오른쪽 끝이
+  // 하는 일의 버튼이다(프로토타입 `Settings-hooks`, 판 06 티켓 06).
+  it("제거와 설치가 버튼으로 둘 다 있다", () => {
+    expect(buttonLabels(renderHooks([hook()]))).toEqual(["제거", "설치"]);
   });
 
   // 스토리 73 — claude 쪽 미리보기는 **빈 설정에 병합한 결과**라 그대로 두면 「내 파일이
@@ -589,12 +599,15 @@ describe("본문 머리", () => {
     );
   }
 
-  it("「spec 레이아웃」 페이지의 머리는 `Settings › spec 레이아웃`이다", () => {
+  it("「spec 레이아웃」 페이지의 머리는 `Settings › spec 레이아웃`이고, 본문의 큰 제목이 같은 낱말이다", () => {
     const html = renderPage("spec-layout");
     // 카드 머리의 위치 캡슐이다 — 조각 사이의 꺾쇠는 글자가 아니라 아이콘이라 조각만 센다.
     const head = /<div data-slot="card-head"[\s\S]*?<\/nav>/.exec(html)?.[0] ?? "";
     expect(head).toContain('aria-label="위치"');
     expect([...head.matchAll(/<span[^>]*>([^<]*)<\/span>/g)].map((m) => m[1])).toEqual(["Settings", "spec 레이아웃"]);
-    expect(html).toContain('<h2 class="sr-only">spec 레이아웃</h2>');
+    // 제목 역할의 줄이 보이는 큰 제목이다(판 06 티켓 06) — 같은 요소 · 같은 레벨이고, 감춰 두지 않는다.
+    const title = /<h2\b([^>]*)>([^<]*)<\/h2>/.exec(html);
+    expect(title?.[2]).toBe("spec 레이아웃");
+    expect(title?.[1], "제목이 감춰져 있다").not.toContain("sr-only");
   });
 });

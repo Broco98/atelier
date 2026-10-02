@@ -10,8 +10,10 @@ import type { HookStatus } from "@/features/settings/types";
 
 const HOOKS = "agent_hooks";
 
-/** 한 에이전트의 줄. 상태 낱말과 경로가 한 상자에 선다 — 경로로 그 상자를 찾는다(줄에 접근성 이름이 없다). */
-const 줄 = (page: Page, path: string) => page.getByText(path, { exact: true }).locator("xpath=..");
+/** 한 에이전트의 줄 — 설정 묶음의 행 하나다(`SettingsRow`). 경로는 행의 설명 칸에, 상태 낱말은 오른쪽 컨트롤 칸에 서서
+ *  둘의 부모가 다르다 — 경로 글자에서 가장 가까운 행으로 올라가 찾는다(행에 접근성 이름이 없다). */
+const 줄 = (page: Page, path: string) =>
+  page.getByText(path, { exact: true }).locator('xpath=ancestor::*[@data-slot="settings-row"][1]');
 
 const status = (agent: string, path: string, installed: HookStatus["installed"]): HookStatus => ({
   agent,
